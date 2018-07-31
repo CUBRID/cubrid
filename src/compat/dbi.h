@@ -111,6 +111,7 @@ extern "C"
   extern int db_get_last_insert_id (DB_VALUE * value);
   extern int db_get_variable (DB_VALUE * name, DB_VALUE * value);
   extern int db_shutdown (void);
+  extern int db_shutdown_keep_transaction (void);
   extern int db_ping_server (int client_val, int *server_val);
   extern int db_disable_modification (void);
   extern int db_enable_modification (void);

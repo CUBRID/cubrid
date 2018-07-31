@@ -343,6 +343,7 @@ EXPORTS
     db_set_preferred_hosts
     db_set_connect_order
     db_shutdown
+    db_shutdown_keep_transaction
     db_string_free
     db_synchronize_cache
     db_time_decode
@@ -805,7 +806,6 @@ EXPORTS
     db_rename_method
     db_rename_trigger
     db_resolution_isclass
-	db_restore_tran_index
     db_send_arglist
     db_seq_cardinality
     db_seq_copy
@@ -830,7 +830,7 @@ EXPORTS
     db_set_method_arg_domain
     db_set_print
     db_set_type
-	db_set_override_tran_index
+    db_set_override_tran_index
     db_sqlx_debug_print_result
     db_statement_count
     db_strftime

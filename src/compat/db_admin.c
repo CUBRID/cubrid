@@ -883,6 +883,14 @@ db_restart (const char *program, int print_version, const char *volume)
       client_credential.process_id = -1;
       client_credential.preferred_hosts = db_Preferred_hosts;
       client_credential.connect_order = db_Connect_order;
+      if (db_Client_type == BOOT_CLIENT_DDL_PROXY)
+        {
+          client_credential.desired_tran_index = db_get_override_tran_index ();
+        }
+      else
+        {
+          client_credential.desired_tran_index = NULL_TRAN_INDEX;
+        }
 
       error = boot_restart_client (&client_credential);
       if (error != NO_ERROR)
@@ -958,7 +966,32 @@ db_shutdown (void)
 {
   int error = NO_ERROR;
 
-  error = boot_shutdown_client (true);
+  error = boot_shutdown_client (true, BOOT_END_TRANSACTION);
+  db_Database_name[0] = '\0';
+  db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
+  db_Program_name[0] = '\0';
+#if !defined(WINDOWS)
+  (void) os_set_signal_handler (SIGFPE, prev_sigfpe_handler);
+#endif
+  db_Disable_modifications = 0;
+
+  db_free_execution_plan ();
+
+  return (error);
+}
+
+/*
+ * db_shutdown_keep_transaction() - This closes a database that was previously restarted.
+ * return : error code.
+ *
+ * note: similar to db_shutdown, but keeps transaction alive
+ */
+int
+db_shutdown_keep_transaction (void)
+{
+  int error = NO_ERROR;
+
+  error = boot_shutdown_client (true, BOOT_KEEP_TRANSACTION);
   db_Database_name[0] = '\0';
   db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
   db_Program_name[0] = '\0';
@@ -2912,16 +2945,6 @@ int
 db_get_override_tran_index (void)
 {
   return db_Override_tran_index;
-}
-
-/*
-* db_restore_tran_index () -
-* return : void
-*/
-void db_restore_tran_index (void)
-{
-  int saved_tran_index = tran_get_saved_tran_index ();
-  tran_set_tran_index (saved_tran_index);
 }
 
 /*

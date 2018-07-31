@@ -317,7 +317,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
   /* If the client is restarted, shutdown the client */
   if (BOOT_IS_CLIENT_RESTARTED ())
     {
-      (void) boot_shutdown_client (true);
+      (void) boot_shutdown_client (true, BOOT_END_TRANSACTION);
     }
 
   if (!boot_Is_client_all_final)
@@ -643,7 +643,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
 
   if (error_code != NO_ERROR)
     {
-      (void) boot_shutdown_client (false);
+      (void) boot_shutdown_client (false, BOOT_END_TRANSACTION);
     }
   else
     {
@@ -680,7 +680,7 @@ error_exit:
   if (BOOT_IS_CLIENT_RESTARTED ())
     {
       er_log_debug (ARG_FILE_LINE, "boot_initialize_client: unregister client { tran %d }\n", tm_Tran_index);
-      boot_shutdown_client (false);
+      boot_shutdown_client (false, BOOT_END_TRANSACTION);
     }
   else
     {
@@ -783,7 +783,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   /* If the client is restarted, shutdown the client */
   if (BOOT_IS_CLIENT_RESTARTED ())
     {
-      (void) boot_shutdown_client (true);
+      (void) boot_shutdown_client (true, BOOT_END_TRANSACTION);
     }
 
   if (!boot_Is_client_all_final)
@@ -1213,12 +1213,6 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
     }
 
 #if defined(CS_MODE)
-  if (client_credential->client_type == DB_CLIENT_TYPE_DDL_PROXY)
-    {
-      tran_save_tran_index ();
-      tran_set_tran_index (db_get_override_tran_index ());
-    }
-
   if (lang_set_charset ((INTL_CODESET) boot_Server_credential.db_charset) != NO_ERROR)
     {
       assert (er_errid () != NO_ERROR);
@@ -1252,19 +1246,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
       goto error;
     }
 
-  /* Initialize client modules for execution */
-  if (db_get_override_tran_index () != NULL_TRAN_INDEX)
-    {
-      assert (client_credential->client_type == BOOT_CLIENT_DDL_PROXY);
-
-      boot_client (tran_index, tran_lock_wait_msecs, tran_isolation);
-      tran_save_tran_index ();
-      boot_client (db_get_override_tran_index (), tran_lock_wait_msecs, tran_isolation);
-    }
-  else
-    {
-      boot_client (tran_index, tran_lock_wait_msecs, tran_isolation);
-    }
+  boot_client (tran_index, tran_lock_wait_msecs, tran_isolation);
 
   oid_set_root (&boot_Server_credential.root_class_oid);
   OID_INIT_TEMPID ();
@@ -1369,8 +1351,6 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 
 error:
 
-  db_restore_tran_index ();
-
   /* free the thing get from au_user_name_dup() */
   if (is_db_user_alloced == true)
     {
@@ -1395,7 +1375,7 @@ error:
   if (BOOT_IS_CLIENT_RESTARTED ())
     {
       er_log_debug (ARG_FILE_LINE, "boot_restart_client: unregister client { tran %d }\n", tm_Tran_index);
-      boot_shutdown_client (false);
+      boot_shutdown_client (false, BOOT_END_TRANSACTION);
     }
   else
     {
@@ -1462,33 +1442,35 @@ error:
  */
 
 int
-boot_shutdown_client (bool is_er_final)
+boot_shutdown_client (bool is_er_final, BOOT_TRANSACTION_MODE transaction_mode)
 {
   if (BOOT_IS_CLIENT_RESTARTED ())
     {
-      /* 
-       * wait for other server request to finish.
-       * if db_shutdown() is called by signal handler or atexit handler,
-       * the server request may be running.
-       */
-      tran_wait_server_active_trans ();
+      if (transaction_mode == BOOT_END_TRANSACTION)
+        {
+          /* 
+           * wait for other server request to finish.
+           * if db_shutdown() is called by signal handler or atexit handler,
+           * the server request may be running.
+           */
+          tran_wait_server_active_trans ();
 
-      /* 
-       * Either Abort or commit the current transaction depending upon the value
-       * of the commit_on_shutdown system parameter.
-       */
-      if (tran_is_active_and_has_updated ())
-	{
-	  if (prm_get_bool_value (PRM_ID_COMMIT_ON_SHUTDOWN) != false)
+          /* 
+           * Either Abort or commit the current transaction depending upon the value
+           * of the commit_on_shutdown system parameter.
+           */
+          if (tran_is_active_and_has_updated ())
 	    {
-	      (void) tran_commit (false);
+	      if (prm_get_bool_value (PRM_ID_COMMIT_ON_SHUTDOWN) != false)
+	        {
+	          (void) tran_commit (false);
+	        }
+	      else
+	        {
+	          (void) tran_abort ();
+	        }
 	    }
-	  else
-	    {
-	      (void) tran_abort ();
-	    }
-	}
-
+        }
       /* 
        * Make sure that we are still up. For example, if the server died, we do
        * not need to call the following stuff any longer.
@@ -1537,7 +1519,7 @@ boot_shutdown_client_at_exit (void)
 	  er_init (NULL, ER_NEVER_EXIT);
 	}
 
-      (void) boot_shutdown_client (true);
+      (void) boot_shutdown_client (true, BOOT_END_TRANSACTION);
     }
 }
 

@@ -63,7 +63,6 @@
 #endif /* WINDOWS */
 
 int tm_Tran_index = NULL_TRAN_INDEX;
-int tm_Saved_tran_index = NULL_TRAN_INDEX;
 TRAN_ISOLATION tm_Tran_isolation = TRAN_UNKNOWN_ISOLATION;
 bool tm_Tran_async_ws = false;
 int tm_Tran_wait_msecs = TRAN_LOCK_INFINITE_WAIT;
@@ -220,42 +219,6 @@ tran_reset_isolation (TRAN_ISOLATION isolation, bool async_ws)
     }
 
   return error_code;
-}
-
-/*
- * tran_get_tran_index
- */
-int
-tran_get_tran_index (void)
-{
-  return tm_Tran_index;
-}
-
-/*
- * tran_set_tran_index
- */
-void
-tran_set_tran_index (int tran_index)
-{
-  tm_Tran_index = tran_index;
-}
-
-/*
- * tran_save_tran_index - backups tran index
- */
-void
-tran_save_tran_index (void)
-{
-  tm_Saved_tran_index = tm_Tran_index;
-}
-
-/*
- * tran_get_saved_tran_index - get backup-ed tran index
- */
-int
-tran_get_saved_tran_index (void)
-{
-  return tm_Saved_tran_index;
 }
 
 /* only loaddb changes this setting */
