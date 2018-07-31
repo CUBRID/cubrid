@@ -845,6 +845,9 @@ net_server_init (void)
   req_p->processing_function = slogtb_does_active_user_exist;
   req_p->name = "NET_SERVER_AU_DOES_ACTIVE_USER_EXIST";
 
+  req_p = &net_Requests[NET_SERVER_BO_REGISTER_CLIENT_WITH_TRAN_INDEX];
+  req_p->processing_function = sboot_register_client;
+  req_p->name = "NET_SERVER_BO_REGISTER_CLIENT_WITH_TRAN_INDEX";
 }
 
 #if defined(CUBRID_DEBUG)

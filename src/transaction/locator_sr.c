@@ -13974,12 +13974,18 @@ locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *statement)
   static const char *db_name = boot_db_name ();
   int error = NO_ERROR;
   int exit_status;
+  char tran_index_str[DB_BIGINT_PRECISION + 1] = { 0 };
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
-  const char *ddl_argv[6] = {path,
+  ltoa (tran_index, tran_index_str, 10);
+
+  const char *ddl_argv[8] = {path,
 			     "-udba",
 			     db_name,
 			     "-c",
 			     statement,
+                             "-t",
+                             tran_index_str,
 			     NULL
 			    };
 
@@ -14013,6 +14019,34 @@ int
 locator_repl_start_tran (THREAD_ENTRY * thread_p)
 {
   /* TODO */
+  static BOOT_CLIENT_CREDENTIAL applier_Client_credentials = {
+    BOOT_CLIENT_LOG_APPLIER,	/* client_type */
+    NULL,				/* client_info */
+    NULL,				/* db_name */
+    NULL,				/* db_user */
+    NULL,				/* db_password */
+    (char *) "(repl_applier)",		/* program_name */
+    NULL,				/* login_name */
+    NULL,				/* host_name */
+    NULL,				/* preferred_hosts */
+    0,				/* connect_order */
+    -1				/* process_id */
+  };
+
+  int client_lock_wait = 0;
+  TRAN_ISOLATION client_isolation = TRAN_DEFAULT_ISOLATION;
+
+  int tran_index =
+    logtb_assign_tran_index (thread_p, NULL_TRANID, TRAN_ACTIVE, &applier_Client_credentials, NULL, client_lock_wait,
+			     client_isolation);
+  if (tran_index == NULL_TRAN_INDEX)
+    {
+      ASSERT_ERROR ();
+      return ER_FAILED;
+    }
+
+  logtb_set_current_tran_index (thread_p, tran_index);
+
   return NO_ERROR;
 }
 

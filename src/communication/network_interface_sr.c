@@ -3193,6 +3193,16 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   ptr = or_unpack_int (ptr, &xint);
   client_isolation = (TRAN_ISOLATION) xint;
 
+  if (client_credential.client_type == BOOT_CLIENT_DDL_PROXY)
+    {
+      ptr = or_unpack_int (ptr, &client_credential.desired_tran_index);
+      assert (client_credential.desired_tran_index != NULL_TRAN_INDEX);
+    }
+  else
+    {
+      client_credential.desired_tran_index = NULL_TRAN_INDEX;
+    }
+
   tran_index = xboot_register_client (thread_p, &client_credential, client_lock_wait, client_isolation, &tran_state,
 				      &server_credential);
   if (tran_index == NULL_TRAN_INDEX)

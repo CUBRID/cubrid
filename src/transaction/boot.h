@@ -127,6 +127,7 @@ struct boot_client_credential
   char *preferred_hosts;	/* LINE_MAX */
   int connect_order;
   int process_id;
+  int desired_tran_index;
 };
 
 typedef struct boot_db_path_info BOOT_DB_PATH_INFO;

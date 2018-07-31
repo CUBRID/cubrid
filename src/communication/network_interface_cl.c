@@ -3564,6 +3564,7 @@ boot_register_client (BOOT_CLIENT_CREDENTIAL * client_credential, int client_loc
   int request_size, area_size, req_error, temp_int;
   char *request, *reply, *area, *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  int request_id = NET_SERVER_BO_REGISTER_CLIENT;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
@@ -3578,6 +3579,12 @@ boot_register_client (BOOT_CLIENT_CREDENTIAL * client_credential, int client_loc
 		  + OR_INT_SIZE	/* process_id */
 		  + OR_INT_SIZE	/* client_lock_wait */
 		  + OR_INT_SIZE /* client_isolation */ );
+
+  if (client_credential->client_type == BOOT_CLIENT_DDL_PROXY)
+    {
+      assert (client_credential->desired_tran_index != NULL_TRAN_INDEX);
+      request_size += OR_INT_SIZE; /* desired_tran_index */
+    }
 
   request = (char *) malloc (request_size);
   if (request == NULL)
@@ -3597,8 +3604,14 @@ boot_register_client (BOOT_CLIENT_CREDENTIAL * client_credential, int client_loc
   ptr = or_pack_int (ptr, client_credential->process_id);
   ptr = or_pack_int (ptr, client_lock_wait);
   ptr = or_pack_int (ptr, (int) client_isolation);
+  if (client_credential->client_type == BOOT_CLIENT_DDL_PROXY)
+    {
+      assert (client_credential->desired_tran_index != NULL_TRAN_INDEX);
+      ptr = or_pack_int (ptr, client_credential->desired_tran_index);
+      request_id = NET_SERVER_BO_REGISTER_CLIENT_WITH_TRAN_INDEX;
+    }
 
-  req_error = net_client_request2 (NET_SERVER_BO_REGISTER_CLIENT, request, request_size, reply,
+  req_error = net_client_request2 (request_id, request, request_size, reply,
 				   OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
   if (!req_error)
     {

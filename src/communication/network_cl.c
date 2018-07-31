@@ -638,6 +638,7 @@ net_histo_setup_names (void)
   net_Req_buffer[NET_SERVER_LOCK_RR].name = "NET_SERVER_LOCK_RR";
   net_Req_buffer[NET_SERVER_TZ_GET_CHECKSUM].name = "NET_SERVER_TZ_GET_CHECKSUM";
   net_Req_buffer[NET_SERVER_SPACEDB].name = "NET_SERVER_SPACEDB";
+  net_Req_buffer[NET_SERVER_BO_REGISTER_CLIENT_WITH_TRAN_INDEX].name = "NET_SERVER_BO_REGISTER_CLIENT_WITH_TRAN_INDEX";
 }
 
 /*
