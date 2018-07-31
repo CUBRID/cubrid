@@ -412,8 +412,6 @@ static CT_ATTR ct_partition_atts[] = {
   {"comment", NULL_ATTRID, DB_TYPE_VARCHAR}
 };
 
-#define NULL_OID_INITIALIZER    {NULL_PAGEID, NULL_SLOTID, NULL_VOLID}
-
 CT_CLASS ct_Class = {
   CT_CLASS_NAME,
   NULL_OID_INITIALIZER,

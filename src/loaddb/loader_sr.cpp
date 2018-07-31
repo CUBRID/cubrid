@@ -29,17 +29,18 @@
 #include "loader_sr.hpp"
 #include "locator_sr.h"
 #include "thread_manager.hpp"
+#include "transform.h"
 #include "xserver_interface.h"
 
 namespace cubload
 {
 
   server_loader::server_loader ()
-    : m_class_oid ({NULL_PAGEID, NULL_SLOTID, NULL_VOLID})
-  , m_attr_ids (NULL)
-  , m_attr_info ()
-  , m_err_total (0)
-  , m_total_fails (0)
+    : m_class_oid (NULL_OID_INITIALIZER)
+    , m_attr_ids (NULL)
+    , m_attr_info ()
+    , m_err_total (0)
+    , m_total_fails (0)
   {
     //
   }
@@ -310,7 +311,7 @@ namespace cubload
       }
 
     heap_attrinfo_end (&cubthread::get_entry (), &m_attr_info);
-    m_class_oid = {NULL_PAGEID, NULL_SLOTID, NULL_VOLID};
+    m_class_oid = NULL_OID_INITIALIZER;
 
     m_err_total = 0;
     m_total_fails = 0;
