@@ -211,6 +211,8 @@ static void css_set_shutdown_timeout (int timeout);
 static int css_get_master_request (SOCKET master_fd);
 static int css_process_master_request (SOCKET master_fd);
 static void css_process_shutdown_request (SOCKET master_fd);
+static void css_send_reply_to_new_client_request (CSS_CONN_ENTRY * conn, unsigned short rid, int reason);
+static void css_refuse_connection_request (SOCKET new_fd, unsigned short rid, int reason, int error);
 static void css_process_new_client (SOCKET master_fd);
 static void css_process_get_server_ha_mode_request (SOCKET master_fd);
 static void css_process_change_server_ha_mode_request (SOCKET master_fd);
@@ -603,25 +605,75 @@ css_process_shutdown_request (SOCKET master_fd)
     }
 }
 
+static void
+css_send_reply_to_new_client_request (CSS_CONN_ENTRY * conn, unsigned short rid, int reason)
+{
+  char reply_buf[sizeof (int)];
+  int t;
+
+  // the first is reason.
+  t = htonl (reason);
+  memcpy (reply_buf, (char *) &t, sizeof (int));
+
+  css_send_data (conn, rid, reply_buf, (int) sizeof (reply_buf));
+}
+
+static void
+css_refuse_connection_request (SOCKET new_fd, unsigned short rid, int reason, int error)
+{
+  CSS_CONN_ENTRY temp_conn;
+  OR_ALIGNED_BUF (1024) a_buffer;
+  char *buffer;
+  char *area;
+  int length = 1024;
+  int r;
+
+  /* open a temporary connection to send a reply to client.
+   * Note that no name is given for its csect. also see css_is_temporary_conn_csect.
+   */
+
+  css_initialize_conn (&temp_conn, new_fd);
+  r = rmutex_initialize (&temp_conn.rmutex, RMUTEX_NAME_TEMP_CONN_ENTRY);
+  assert (r == NO_ERROR);
+
+#if defined (WINDOWS)
+  // WINDOWS style connection. see css_process_new_connection_request
+
+  NET_HEADER header = DEFAULT_HEADER_DATA;
+
+  r = css_read_header (&temp_conn, &header);
+  if (r != NO_ERRORS)
+    {
+      assert (r == NO_ERRORS);
+      return;
+    }
+#endif /* WINDOWS */
+
+  css_send_reply_to_new_client_request (&temp_conn, rid, reason);
+
+  buffer = OR_ALIGNED_BUF_START (a_buffer);
+
+  area = er_get_area_error (buffer, &length);
+
+  temp_conn.db_error = error;
+  css_send_error (&temp_conn, rid, area, length);
+  css_shutdown_conn (&temp_conn);
+  css_dealloc_conn_rmutex (&temp_conn);
+  er_clear ();
+}
+
 /*
  * css_process_new_client () -
  *   return:
  *   master_fd(in):
- *   read_fd_var(in/out):
- *   exception_fd_var(in/out):
  */
 static void
 css_process_new_client (SOCKET master_fd)
 {
   SOCKET new_fd;
-  int reason, r;
+  int error;
   CSS_CONN_ENTRY *conn;
   unsigned short rid;
-  CSS_CONN_ENTRY temp_conn;
-  char *area;
-  OR_ALIGNED_BUF (1024) a_buffer;
-  char *buffer;
-  int length = 1024;
 
   /* receive new socket descriptor from the master */
   new_fd = css_open_new_socket_from_master (master_fd, &rid);
@@ -630,56 +682,23 @@ css_process_new_client (SOCKET master_fd)
       return;
     }
 
-  buffer = OR_ALIGNED_BUF_START (a_buffer);
-
   if (prm_get_bool_value (PRM_ID_ACCESS_IP_CONTROL) == true && css_check_accessibility (new_fd) != NO_ERROR)
     {
-      /* open a temporary connection to send a reply to client.
-       * Note that no name is given for its csect. also see css_is_temporary_conn_csect.
-       */
-      css_initialize_conn (&temp_conn, new_fd);
-      r = rmutex_initialize (&temp_conn.rmutex, RMUTEX_NAME_TEMP_CONN_ENTRY);
-      assert (r == NO_ERROR);
-
-      reason = htonl (SERVER_INACCESSIBLE_IP);
-      css_send_data (&temp_conn, rid, (char *) &reason, (int) sizeof (int));
-
-      area = er_get_area_error (buffer, &length);
-
-      temp_conn.db_error = ER_INACCESSIBLE_IP;
-      css_send_error (&temp_conn, rid, area, length);
-      css_shutdown_conn (&temp_conn);
-      css_dealloc_conn_rmutex (&temp_conn);
-      er_clear ();
+      ASSERT_ERROR_AND_SET (error);
+      css_refuse_connection_request (new_fd, rid, SERVER_INACCESSIBLE_IP, error);
       return;
     }
 
   conn = css_make_conn (new_fd);
   if (conn == NULL)
     {
-      /* open a temporary connection to send a reply to client.
-       * Note that no name is given for its csect. also see css_is_temporary_conn_csect.
-       */
-      css_initialize_conn (&temp_conn, new_fd);
-      r = rmutex_initialize (&temp_conn.rmutex, RMUTEX_NAME_TEMP_CONN_ENTRY);
-      assert (r == NO_ERROR);
-
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CLIENTS_EXCEEDED, 1, NUM_NORMAL_TRANS);
-      reason = htonl (SERVER_CLIENTS_EXCEEDED);
-      css_send_data (&temp_conn, rid, (char *) &reason, (int) sizeof (int));
-
-      area = er_get_area_error (buffer, &length);
-
-      temp_conn.db_error = ER_CSS_CLIENTS_EXCEEDED;
-      css_send_error (&temp_conn, rid, area, length);
-      css_shutdown_conn (&temp_conn);
-      css_dealloc_conn_rmutex (&temp_conn);
-      er_clear ();
+      error = ER_CSS_CLIENTS_EXCEEDED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, NUM_NORMAL_TRANS);
+      css_refuse_connection_request (new_fd, rid, SERVER_CLIENTS_EXCEEDED, error);
       return;
     }
 
-  reason = htonl (SERVER_CONNECTED);
-  css_send_data (conn, rid, (char *) &reason, sizeof (int));
+  css_send_reply_to_new_client_request (conn, rid, SERVER_CONNECTED);
 
   if (css_Connect_handler)
     {
@@ -910,50 +929,17 @@ css_process_new_connection_request (void)
 
       if (prm_get_bool_value (PRM_ID_ACCESS_IP_CONTROL) == true && css_check_accessibility (new_fd) != NO_ERROR)
 	{
-	  css_initialize_conn (&new_conn, new_fd);
-	  r = rmutex_initialize (&new_conn.rmutex, RMUTEX_NAME_TEMP_CONN_ENTRY);
-	  assert (r == NO_ERROR);
-
-	  rc = css_read_header (&new_conn, &header);
-	  buffer_size = rid = 0;
-
-	  reason = htonl (SERVER_INACCESSIBLE_IP);
-	  css_send_data (&new_conn, rid, (char *) &reason, (int) sizeof (int));
-
-	  error_string = er_get_area_error (buffer, &length);
-	  new_conn.db_error = ER_INACCESSIBLE_IP;
-	  css_send_error (&new_conn, rid, error_string, length);
-	  css_shutdown_conn (&new_conn);
-	  css_dealloc_conn_rmutex (&new_conn);
-
-	  er_clear ();
-	  return -1;
+	  ASSERT_ERROR_AND_SET (error);
+	  css_refuse_connection_request (new_fd, 0, SERVER_INACCESSIBLE_IP, error);
+          return -1;
 	}
 
       conn = css_make_conn (new_fd);
       if (conn == NULL)
 	{
-	  /* 
-	   * all pre-allocated connection entries are being used now.
-	   * create a new entry and send error message throuth it.
-	   */
-	  css_initialize_conn (&new_conn, new_fd);
-	  r = rmutex_initialize (&new_conn.rmutex, RMUTEX_NAME_TEMP_CONN_ENTRY);
-	  assert (r == NO_ERROR);
-
-	  rc = css_read_header (&new_conn, &header);
-	  buffer_size = rid = 0;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CLIENTS_EXCEEDED, 1, NUM_NORMAL_TRANS);
-	  reason = htonl (SERVER_CLIENTS_EXCEEDED);
-	  css_send_data (&new_conn, rid, (char *) &reason, (int) sizeof (int));
-
-	  error_string = er_get_area_error (buffer, &length);
-	  new_conn.db_error = ER_CSS_CLIENTS_EXCEEDED;
-	  css_send_error (&new_conn, rid, error_string, length);
-	  css_shutdown_conn (&new_conn);
-	  css_dealloc_conn_rmutex (&new_conn);
-
-	  er_clear ();
+	  error = ER_CSS_CLIENTS_EXCEEDED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, NUM_NORMAL_TRANS);
+	  css_refuse_connection_request (new_fd, 0, SERVER_CLIENTS_EXCEEDED, error);
 	  return -1;
 	}
 
@@ -990,8 +976,7 @@ css_process_new_connection_request (void)
 	{
 	  if (reason == DATA_REQUEST)
 	    {
-	      reason = htonl (SERVER_CONNECTED);
-	      (void) css_send_data (conn, rid, (char *) &reason, sizeof (int));
+	      css_send_reply_to_new_client_request (conn, rid, SERVER_CONNECTED);
 
 	      if (css_Connect_handler)
 		{
@@ -1003,8 +988,8 @@ css_process_new_connection_request (void)
 	    }
 	  else
 	    {
-	      reason = htonl (SERVER_NOT_FOUND);
-	      (void) css_send_data (conn, rid, (char *) &reason, sizeof (int));
+	      css_send_reply_to_new_client_request (conn, rid, SERVER_NOT_FOUND);
+
 	      css_free_conn (conn);
 	    }
 	}
