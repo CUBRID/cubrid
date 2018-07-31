@@ -26,8 +26,6 @@
 #include <map>
 
 #include "db_value_converter.hpp"
-#include "dbtype_def.h"
-#include "heap_attrinfo.h"
 #include "loader_sr.hpp"
 #include "locator_sr.h"
 #include "thread_manager.hpp"
@@ -58,6 +56,7 @@ namespace cubload
   void
   server_loader::act_setup_class_command_spec (string_t **class_name, class_cmd_spec_t **cmd_spec)
   {
+    // TODO CBRD-21654 refactor this function, as well implement functionality to setup based on loaddb --table cmd option
     if (class_name == NULL || *class_name == NULL)
       {
 	return;
@@ -142,6 +141,7 @@ namespace cubload
   void
   server_loader::process_constants (constant_t *cons)
   {
+    // TODO CBRD-21654 refactor this function
     int attr_idx = 0;
     constant_t *c, *save;
 
@@ -244,6 +244,7 @@ namespace cubload
 	    break;
 
 	  case LDR_COLLECTION:
+	    // TODO CBRD-21654 add support for collections
 	    //(*ldr_act) (ldr_Current_context, "{", 1, LDR_COLLECTION);
 	    process_constants ((constant_t *) c->val);
 	    //ldr_act_attr (ldr_Current_context, NULL, 0, LDR_COLLECTION);

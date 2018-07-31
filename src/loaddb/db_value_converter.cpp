@@ -23,7 +23,6 @@
 
 #ident "$Id$"
 
-#include <cstring>
 #include <cassert>
 
 #include "common.hpp"
@@ -40,7 +39,6 @@
 #include "numeric_opfunc.h"
 #include "object_primitive.h"
 #include "object_representation.h"
-#include "porting.h"
 
 #define MAX_DIGITS_FOR_SHORT  5  // default for 16 bit signed shorts: 32767 (0x7FFF)
 #define MAX_DIGITS_FOR_INT    10 // default for 32 bit signed integers: 2147483647 (0x7FFFFFFF)
@@ -54,6 +52,8 @@ namespace cubload
   conv_func
   get_conv_func (int ldr_type, const tp_domain_t *domain)
   {
+    // TODO CBRD-21654 move this into a init funtion
+
     conv_func setters[DB_TYPE_LAST + 1][LDR_TYPE_MAX + 1];
 
     setters[DB_TYPE_CHAR][LDR_STR] = &to_db_char;

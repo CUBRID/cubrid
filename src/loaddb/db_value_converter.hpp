@@ -36,8 +36,7 @@ namespace cubload
   using db_value_t = DB_VALUE;
   using tp_domain_t = TP_DOMAIN;
   using codeset_t = INTL_CODESET;
-
-  typedef void (*conv_func) (const char *str, const tp_domain_t *domain, db_value_t *val);
+  typedef void (*conv_func) (const char *, const tp_domain_t *, db_value_t *);
 
   conv_func get_conv_func (int ldr_type, const tp_domain_t *domain);
 

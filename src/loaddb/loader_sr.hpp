@@ -28,7 +28,9 @@
 
 #include "common.hpp"
 #include "dbtype_def.h"
+#include "heap_attrinfo.h"
 #include "heap_file.h"
+#include "storage_common.h"
 
 namespace cubload
 {

@@ -74,8 +74,10 @@ namespace cubload
   driver::error (const location &loc, const std::string &msg)
   {
     m_loader->increment_err_total ();
+#if defined (SA_MODE)
     fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_SYNTAX_ERR), lineno (),
 	     m_scanner.YYText ());
+#endif // SA_MODE
   }
 
   int driver::lineno ()

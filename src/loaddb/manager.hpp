@@ -37,6 +37,7 @@ namespace cubload
 
   static const std::size_t DRIVER_POOL_SIZE = 1;
 
+  // TODO CBRD-21654 add class documentation
   class manager
   {
     public:
@@ -48,7 +49,6 @@ namespace cubload
 
       static manager &get_instance();
 
-      /////////// API ///////////
       void parse_batch (cubthread::entry &thread_ref, std::string &batch);
       int parse_file (cubthread::entry &thread_ref, std::string &file_name);
 

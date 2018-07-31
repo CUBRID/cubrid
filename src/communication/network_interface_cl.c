@@ -9987,7 +9987,7 @@ loaddb_load_object_file (const char *file_name)
 {
 #if defined(CS_MODE)
   int req_error;
-  int rc;
+  int rc = NO_ERROR;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
@@ -10011,6 +10011,7 @@ loaddb_load_object_file (const char *file_name)
       or_unpack_int (reply, &rc);
     }
 
+  return rc;
 #else /* CS_MODE */
   return NO_ERROR;
 #endif /* !CS_MODE */

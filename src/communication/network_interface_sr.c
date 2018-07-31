@@ -9473,6 +9473,7 @@ slocator_demote_class_lock (THREAD_ENTRY * thread_p, unsigned int rid, char *req
 void
 loaddb_init (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
+  // TODO CBRD-21654 add implementation
 }
 
 void
@@ -9484,8 +9485,10 @@ loaddb_load_object_file (THREAD_ENTRY * thread_p, unsigned int rid, char *reques
 
   or_unpack_string (request, &object_file_name);
 
-  cubload::manager & loaddb_manager = cubload::manager::get_instance ();
+  /* *INDENT-OFF* */
+  cubload::manager &loaddb_manager = cubload::manager::get_instance ();
   std::string object_file_name_str (object_file_name);
+  /* *INDENT-ON* */
 
   int ret = loaddb_manager.parse_file (*thread_p, object_file_name_str);
 
@@ -9498,9 +9501,11 @@ loaddb_load_object_file (THREAD_ENTRY * thread_p, unsigned int rid, char *reques
 void
 loaddb_load_batch (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
+  // TODO CBRD-21654 add implementation
 }
 
 void
 loaddb_destroy (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
+  // TODO CBRD-21654 add implementation
 }

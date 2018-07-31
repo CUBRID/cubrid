@@ -1572,6 +1572,7 @@ ldr_internal_error (LDR_CONTEXT * context)
 static void
 display_error_line (int adjust)
 {
+  // TODO CBRD-21654 get the line_no
   fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_LINE),
 	   /*ldr_driver->lineno () + */ adjust);
 }
@@ -4526,7 +4527,7 @@ check_commit (LDR_CONTEXT * context)
 	    {
 	      CHECK_ERR (err, ldr_assign_all_perm_oids ());
 	      CHECK_ERR (err, db_commit_transaction ());
-	      Last_committed_line = /*ldr_driver->lineno () - */ 1;
+	      Last_committed_line = /*ldr_driver->lineno () - */ 1;	// TODO CBRD-21654 get the line_no
 	      committed_instances = Total_objects + 1;
 	      display_error_line (-1);
 	      fprintf (stderr,
@@ -4561,7 +4562,7 @@ check_commit (LDR_CONTEXT * context)
 			     msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_COMMITTING));
 	      CHECK_ERR (err, ldr_assign_all_perm_oids ());
 	      CHECK_ERR (err, db_commit_transaction ());
-	      Last_committed_line = /*ldr_driver->lineno () - */ 1;
+	      Last_committed_line = /*ldr_driver->lineno () - */ 1;	// TODO CBRD-21654 get the line_no
 	      context->commit_counter = context->periodic_commit;
 
 	      /* Invoke post commit callback function */
