@@ -31,6 +31,12 @@
 #include <assert.h>
 #include <errno.h>
 
+#if !defined (WINDOWS)
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#endif /* !WINDOWS */
+
 #include "disk_manager.h"
 #include "porting.h"
 #include "system_parameter.h"
@@ -2194,8 +2200,8 @@ disk_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * extinfo, VOLID * 
 
   if (!extinfo->overwrite && fileio_is_volume_exist (extinfo->name))
     {
-      if ((disk_can_overwrite_data_volume (thread_p, extinfo->name, &can_overwrite) != NO_ERROR)
-	  || (can_overwrite == false))
+      if (disk_can_overwrite_data_volume (thread_p, extinfo->name, &can_overwrite) != NO_ERROR
+	  || can_overwrite == false)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_VOLUME_EXISTS, 1, extinfo->name);
 	  return ER_BO_VOLUME_EXISTS;
@@ -6130,6 +6136,7 @@ disk_can_overwrite_data_volume (THREAD_ENTRY * thread_p, const char *vol_label_p
   assert (vol_label_p != NULL && can_overwrite != NULL);
 
   *can_overwrite = false;
+
 #if !defined(CS_MODE)
   /* Is volume already mounted ? */
   vol_fd = fileio_find_volume_descriptor_with_label (vol_label_p);
@@ -6155,7 +6162,7 @@ disk_can_overwrite_data_volume (THREAD_ENTRY * thread_p, const char *vol_label_p
 
   /* Computes the number of bytes to read. */
   read_size = offsetof (DISK_VOLUME_HEADER, db_creation) + sizeof (((DISK_VOLUME_HEADER *) 0)->db_creation);
-  assert (read_size > (offsetof (DISK_VOLUME_HEADER, magic) + CUBRID_MAGIC_MAX_LENGTH));
+  assert (read_size > (off_t) (offsetof (DISK_VOLUME_HEADER, magic) + CUBRID_MAGIC_MAX_LENGTH));
   read_size += page_reserver_area;
 
   if (fstat (vol_fd, &stat_buffer) != 0)
@@ -6164,9 +6171,17 @@ disk_can_overwrite_data_volume (THREAD_ENTRY * thread_p, const char *vol_label_p
       goto end;
     }
 
-  if (stat_buffer.st_size < read_size)
+  // We will overwrite the file:
+  // 0 size or the creation timestamp of the file is older than that of db.
+  if (stat_buffer.st_size == 0)
     {
-      /* Is not a CUBRID file. It can't be  overwritten. */
+      // regard a failure happened during creation.
+      *can_overwrite = true;
+      goto end;
+    }
+  else if (stat_buffer.st_size < read_size)
+    {
+      /* Is not a CUBRID file. It can't be overwritten. */
       goto end;
     }
 
@@ -6178,8 +6193,8 @@ disk_can_overwrite_data_volume (THREAD_ENTRY * thread_p, const char *vol_label_p
     }
 
   /* Check whether the existing volume is leaked from previous database and can be overwritten. */
-  if ((strncmp (vhdr->magic, CUBRID_MAGIC_DATABASE_VOLUME, CUBRID_MAGIC_MAX_LENGTH) == 0)
-      && (log_Gl.hdr.db_creation > vhdr->db_creation))
+  if (strncmp (vhdr->magic, CUBRID_MAGIC_DATABASE_VOLUME, CUBRID_MAGIC_MAX_LENGTH) == 0
+      && log_Gl.hdr.db_creation > vhdr->db_creation)
     {
       /* Old CUBRID file. It can be overwritten. */
       *can_overwrite = true;
