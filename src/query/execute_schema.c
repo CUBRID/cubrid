@@ -236,7 +236,7 @@ static int create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *con
 					PT_NODE * column_names, PT_NODE * column_prefix_length,
 					PT_NODE * filter_predicate, int func_index_pos, int func_index_args_count,
 					PT_NODE * function_expr, PT_NODE * comment, DB_OBJECT * const obj,
-					int index_status, DO_INDEX do_index);
+					SM_INDEX_STATUS index_status, DO_INDEX do_index);
 static int update_locksets_for_multiple_rename (const char *class_name, int *num_mops, MOP * mop_set, int *num_names,
 						char **name_set, bool error_on_misssing_class);
 static int acquire_locks_for_multiple_rename (const PT_NODE * statement);
@@ -2691,7 +2691,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 			     const bool is_unique, PT_NODE * spec, PT_NODE * column_names,
 			     PT_NODE * column_prefix_length, PT_NODE * where_predicate, int func_index_pos,
 			     int func_index_args_count, PT_NODE * function_expr, PT_NODE * comment,
-			     DB_OBJECT * const obj, int index_status, DO_INDEX do_index)
+			     DB_OBJECT * const obj, SM_INDEX_STATUS index_status, DO_INDEX do_index)
 {
   int error = NO_ERROR;
   int i = 0, nnames = 0;
@@ -2878,8 +2878,10 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 		}
 	    }
 
+	  assert (index_status != SM_NO_INDEX);
+
 	  error = sm_add_constraint (obj, ctype, cname, (const char **) attnames, asc_desc, attrs_prefix_length, false,
-				     p_pred_index_info, func_index_info, comment_str, (SM_INDEX_STATUS) index_status);
+				     p_pred_index_info, func_index_info, comment_str, index_status);
 	}
       else
 	{
