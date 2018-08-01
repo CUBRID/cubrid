@@ -4814,6 +4814,13 @@ smt_change_constraint_status (SM_TEMPLATE * ctemplate, const char *index_name, S
       return error;
     }
 
+  cons = smt_find_constraint (ctemplate, index_name);
+  if (cons == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
   error = classobj_change_constraint_status (ctemplate->properties, cons, index_status);
   if (error != NO_ERROR)
     {
