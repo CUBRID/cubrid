@@ -15103,7 +15103,6 @@ do_alter_index_status (PARSER_CONTEXT * parser, const PT_NODE * statement)
   index_status = (SM_INDEX_STATUS) statement->info.index.index_status;
 
   cls = statement->info.index.indexed_class ? statement->info.index.indexed_class->info.spec.flat_entity_list : NULL;
-
   if (cls == NULL)
     {
       goto error_exit;
@@ -15111,11 +15110,9 @@ do_alter_index_status (PARSER_CONTEXT * parser, const PT_NODE * statement)
 
   class_name = cls->info.name.resolved;
   obj = db_find_class (class_name);
-
   if (obj == NULL)
     {
-      error = er_errid ();
-      assert (error != NO_ERROR);
+      ASSERT_ERROR_AND_SET (error);
       goto error_exit;
     }
 
@@ -15130,8 +15127,7 @@ do_alter_index_status (PARSER_CONTEXT * parser, const PT_NODE * statement)
   ctemplate = smt_edit_class_mop (obj, AU_INDEX);
   if (ctemplate == NULL)
     {
-      error = er_errid ();
-      assert (error != NO_ERROR);
+      ASSERT_ERROR_AND_SET (error);
       goto error_exit;
     }
 

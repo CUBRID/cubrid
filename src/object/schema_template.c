@@ -122,6 +122,9 @@ static int change_constraints_comment_partitioned_class (MOP obj, const char *in
 
 static MOP smt_find_owner_of_constraint (SM_TEMPLATE * ctemplate, const char *constraint_name);
 
+static int change_constraints_status_partitioned_class (MOP obj, const char *index_name, SM_INDEX_STATUS index_status);
+static SM_CLASS_CONSTRAINT *smt_find_constraint (SM_TEMPLATE * ctemplate, const char *constraint_name);
+
 /* TEMPLATE SEARCH FUNCTIONS */
 /*
  * These are used to walk over the template structures and extract information
@@ -4676,55 +4679,13 @@ smt_find_owner_of_constraint (SM_TEMPLATE * ctemplate, const char *constraint_na
 }
 
 static int
-change_constraint_status (SM_TEMPLATE * ctemplate, const char *index_name, SM_INDEX_STATUS index_status)
-{
-  int error = NO_ERROR;
-  SM_CLASS_CONSTRAINT *sm_constraint = NULL;
-  SM_CLASS_CONSTRAINT *sm_cons = NULL;
-  const char *property_type = NULL;
-
-  error = classobj_make_class_constraints (ctemplate->properties, ctemplate->attributes, &sm_cons);
-  if (error != NO_ERROR)
-    {
-      goto error_exit;
-    }
-  if (sm_cons == NULL)
-    {
-      error = ER_SM_CONSTRAINT_NOT_FOUND;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, index_name);
-      goto error_exit;
-    }
-
-  sm_constraint = classobj_find_constraint_by_name (sm_cons, index_name);
-  if (sm_constraint == NULL)
-    {
-      error = ER_SM_CONSTRAINT_NOT_FOUND;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, index_name);
-      goto error_exit;
-    }
-
-  property_type = classobj_map_constraint_to_property (sm_constraint->type);
-
-  error = classobj_change_constraint_status (ctemplate->properties, property_type, index_name, index_status);
-
-end:
-  if (sm_cons)
-    {
-      classobj_free_class_constraints (sm_cons);
-    }
-  return error;
-
-error_exit:
-  goto end;
-}
-
-static int
 change_constraints_status_partitioned_class (MOP obj, const char *index_name, SM_INDEX_STATUS index_status)
 {
   int error = NO_ERROR;
   int i, is_partition = 0;
   MOP *sub_partitions = NULL;
   SM_TEMPLATE *ctemplate = NULL;
+  SM_CLASS_CONSTRAINT *cons;
 
   error = sm_partitioned_class_type (obj, &is_partition, NULL, &sub_partitions);
   if (error != NO_ERROR)
@@ -4747,20 +4708,21 @@ change_constraints_status_partitioned_class (MOP obj, const char *index_name, SM
 
   for (i = 0; sub_partitions[i]; i++)
     {
-      if (sm_exist_index (sub_partitions[i], index_name, NULL) != NO_ERROR)
-	{
-	  continue;
-	}
-
       ctemplate = smt_edit_class_mop (sub_partitions[i], AU_INDEX);
       if (ctemplate == NULL)
 	{
-	  error = er_errid ();
-	  assert (error != NO_ERROR);
+	  ASSERT_ERROR_AND_SET (error);
 	  goto error_exit;
 	}
 
-      error = change_constraint_status (ctemplate, index_name, index_status);
+      cons = smt_find_constraint (ctemplate, index_name);
+      if (cons == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  goto error_exit;
+	}
+
+      error = classobj_change_constraint_status (ctemplate->properties, cons, index_status);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
@@ -4792,42 +4754,81 @@ error_exit:
   goto end;
 }
 
+static SM_CLASS_CONSTRAINT *
+smt_find_constraint (SM_TEMPLATE * ctemplate, const char *constraint_name)
+{
+  SM_CLASS_CONSTRAINT *cons_list = NULL, *cons = NULL;
+  SM_CLASS *class_;
 
+  assert (ctemplate != NULL && ctemplate->op != NULL);
+
+  if (au_fetch_class (ctemplate->op, &class_, AU_FETCH_READ, AU_INDEX) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return NULL;
+    }
+
+  cons_list = class_->constraints;
+  if (cons_list == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CONSTRAINT_NOT_FOUND, 1, constraint_name);
+      return NULL;
+    }
+
+  cons = classobj_find_constraint_by_name (cons_list, constraint_name);
+  if (cons == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CONSTRAINT_NOT_FOUND, 1, constraint_name);
+      return NULL;
+    }
+
+  return cons;
+}
 
 int
 smt_change_constraint_status (SM_TEMPLATE * ctemplate, const char *index_name, SM_INDEX_STATUS index_status)
 {
+  SM_CLASS_CONSTRAINT *cons = NULL;
+  SM_CLASS *class_;
   int error = NO_ERROR;
 
-  assert (ctemplate != NULL);
-  SM_CLASS_CONSTRAINT *pk;
+  assert (ctemplate != NULL && ctemplate->op != NULL);
 
-  /* Check if the current class has a Primary Key. */
-  pk = classobj_find_cons_primary_key (ctemplate->current->constraints);
+  cons = smt_find_constraint (ctemplate, index_name);
+  if (cons == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
 
-  if (pk != NULL && (strcmp (index_name, pk->name) == 0))
+  if (cons->type == SM_CONSTRAINT_PRIMARY_KEY)
     {
       error = ER_STATUS_CHANGE_NOT_ALLOWED_ON_PK;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, sm_ch_name ((MOBJ) ctemplate->current), pk->name);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, sm_ch_name ((MOBJ) ctemplate->current), cons->name);
       return error;
+    }
+  else if (cons->type == SM_CONSTRAINT_FOREIGN_KEY)
+    {
+      // TODO: set an error
+      return ER_FAILED;
+    }
+  else if (cons->type == SM_CONSTRAINT_NOT_NULL)
+    {
+      // TODO: set an error
+      return ER_FAILED;
     }
 
   error = change_constraints_status_partitioned_class (ctemplate->op, index_name, index_status);
   if (error != NO_ERROR)
     {
-      goto error_exit;
+      return error;
     }
 
-  error = change_constraint_status (ctemplate, index_name, index_status);
+  error = classobj_change_constraint_status (ctemplate->properties, cons, index_status);
   if (error != NO_ERROR)
     {
-      goto error_exit;
+      return error;
     }
 
-end:
   return error;
-
-  /* in order to show explicitly the error */
-error_exit:
-  goto end;
 }
