@@ -9991,6 +9991,14 @@ loaddb_load_object_file (const char *file_name)
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
+  // TODO: The current code assumes the file is local.
+  // When server and client is in a host and server can also access it, it is the best case.
+  // However, I don't think this is the only usage.
+  // It might be good to extend loaddb to support not only local files but remote ones.
+  // For local files, it is enough to just send the file name.
+  // For remote files, client reads it and sends contents to server.
+  // We may consider to adopt a qualifier: LOCAL or REMOTE.
+
   int request_size = length_const_string (file_name, NULL);
   char *request = (char *) malloc (request_size);
   if (request == NULL)
