@@ -4712,6 +4712,32 @@ error_exit:
   goto end;
 }
 
+static SM_CLASS_CONSTRAINT *
+smt_find_constraint (SM_TEMPLATE * ctemplate, const char *constraint_name)
+{
+  SM_CLASS_CONSTRAINT *cons_list = NULL, *cons = NULL;
+  SM_CLASS *class_;
+  assert (ctemplate != NULL && ctemplate->op != NULL);
+  if (au_fetch_class (ctemplate->op, &class_, AU_FETCH_READ, AU_INDEX) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return NULL;
+    }
+  cons_list = class_->constraints;
+  if (cons_list == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CONSTRAINT_NOT_FOUND, 1, constraint_name);
+      return NULL;
+    }
+  cons = classobj_find_constraint_by_name (cons_list, constraint_name);
+  if (cons == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CONSTRAINT_NOT_FOUND, 1, constraint_name);
+      return NULL;
+    }
+  return cons;
+}
+
 static int
 smt_is_change_status_allowed (SM_TEMPLATE * ctemplate, const char *index_name)
 {
@@ -4725,12 +4751,18 @@ smt_is_change_status_allowed (SM_TEMPLATE * ctemplate, const char *index_name)
   if (partition_type == DB_PARTITION_CLASS)
     {
       error = ER_STATUS_CHANGE_NOT_ALLOWED;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 3, sm_ch_name ((MOBJ) ctemplate->current), constraint->name,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 3, sm_ch_name ((MOBJ) ctemplate->current), index_name,
 	      "local index on a partition");
       return error;
     }
 
-  constraint = classobj_find_class_index (ctemplate->current, index_name);
+  constraint = smt_find_constraint (ctemplate, index_name);
+
+  if (constraint == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
 
   if (constraint != NULL)
     {
@@ -4773,7 +4805,7 @@ smt_change_constraint_status (SM_TEMPLATE * ctemplate, const char *index_name, S
   error = smt_is_change_status_allowed (ctemplate, index_name);
   if (error != NO_ERROR)
     {
-      goto error_exit;
+      return error;
     }
 
   error = change_constraints_status_partitioned_class (ctemplate->op, index_name, index_status);
