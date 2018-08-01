@@ -6267,10 +6267,15 @@ insert_stmt_value_clause
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| csql_query_without_values_query
+	| opt_with_clause
+	  csql_query_without_values_query
 		{{
 
-			PT_NODE *nls = pt_node_list (this_parser, PT_IS_SUBQUERY, $1);
+			PT_NODE *with_clause = $1;
+			PT_NODE *select_node = $2;
+			select_node->info.query.with = with_clause;			
+			PT_NODE *nls = pt_node_list (this_parser, PT_IS_SUBQUERY, select_node);	
+			
 			$$ = nls;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
