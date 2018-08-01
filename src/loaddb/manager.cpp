@@ -37,7 +37,8 @@ namespace cubload
   manager::manager ()
     : m_driver_pool (DRIVER_POOL_SIZE)
   {
-    m_worker_pool = cubthread::get_manager ()->create_worker_pool (DRIVER_POOL_SIZE, DRIVER_POOL_SIZE, NULL, 1, false);
+    m_worker_pool = cubthread::get_manager ()->create_worker_pool (DRIVER_POOL_SIZE, DRIVER_POOL_SIZE, "loaddb_workers",
+		    NULL, 1, false, true);
   }
 
   manager::~manager ()
