@@ -21084,7 +21084,7 @@ identifier
 		DBG_PRINT}}
 	| INVISIBLE
                {{
-                        PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+                       PT_NODE *p = parser_new_node (this_parser, PT_NAME);
                        if (p)
                          p->info.name.original = $1;
                        $$ = p;
@@ -21734,7 +21734,7 @@ identifier
 		DBG_PRINT}}
 	| VISIBLE
                {{
-                        PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+                       PT_NODE *p = parser_new_node (this_parser, PT_NAME);
                        if (p)
                          p->info.name.original = $1;
                        $$ = p;
