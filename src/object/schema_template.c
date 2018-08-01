@@ -4792,7 +4792,55 @@ error_exit:
   goto end;
 }
 
+static int
+smt_is_change_status_allowed (SM_TEMPLATE * ctemplate, const char *index_name)
+{
+  int error = NO_ERROR;
+  SM_CLASS_CONSTRAINT *constraint;
+  int partition_type;
 
+  /* Check if this class is a partitioned class. We do not allow index status change on partitions indexes. */
+  error = sm_partitioned_class_type (ctemplate->op, &partition_type, NULL, NULL);
+
+  if (partition_type == DB_PARTITION_CLASS)
+    {
+      error = ER_STATUS_CHANGE_NOT_ALLOWED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 3, sm_ch_name ((MOBJ) ctemplate->current), constraint->name,
+	      "local index on a partition");
+      return error;
+    }
+
+  constraint = classobj_find_class_index (ctemplate->current, index_name);
+
+  if (constraint != NULL)
+    {
+      switch (constraint->type)
+	{
+	case SM_CONSTRAINT_FOREIGN_KEY:
+	  error = ER_STATUS_CHANGE_NOT_ALLOWED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 3, sm_ch_name ((MOBJ) ctemplate->current), constraint->name,
+		  "foreign key");
+	  break;
+
+	case SM_CONSTRAINT_PRIMARY_KEY:
+	  error = ER_STATUS_CHANGE_NOT_ALLOWED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 3, sm_ch_name ((MOBJ) ctemplate->current), constraint->name,
+		  "primary key");
+	  break;
+
+	case SM_CONSTRAINT_NOT_NULL:
+	  error = ER_STATUS_CHANGE_NOT_ALLOWED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 3, sm_ch_name ((MOBJ) ctemplate->current), constraint->name,
+		  "NOT NULL constraint");
+	  break;
+
+	default:
+	  break;
+	}
+    }
+
+  return error;
+}
 
 int
 smt_change_constraint_status (SM_TEMPLATE * ctemplate, const char *index_name, SM_INDEX_STATUS index_status)
@@ -4800,16 +4848,11 @@ smt_change_constraint_status (SM_TEMPLATE * ctemplate, const char *index_name, S
   int error = NO_ERROR;
 
   assert (ctemplate != NULL);
-  SM_CLASS_CONSTRAINT *pk;
 
-  /* Check if the current class has a Primary Key. */
-  pk = classobj_find_cons_primary_key (ctemplate->current->constraints);
-
-  if (pk != NULL && (strcmp (index_name, pk->name) == 0))
+  error = smt_is_change_status_allowed (ctemplate, index_name);
+  if (error != NO_ERROR)
     {
-      error = ER_STATUS_CHANGE_NOT_ALLOWED_ON_PK;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, sm_ch_name ((MOBJ) ctemplate->current), pk->name);
-      return error;
+      goto error_exit;
     }
 
   error = change_constraints_status_partitioned_class (ctemplate->op, index_name, index_status);
