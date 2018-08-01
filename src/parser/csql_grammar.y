@@ -2754,16 +2754,16 @@ create_stmt
 						       MSGCAT_SET_PARSER_SYNTAX,
 						       MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
 				     }
-			     node->info.index.index_status = 1;
+			     node->info.index.index_status = SM_NORMAL_INDEX;
 			     if ($15)
 				     {
 					/* Invisible index. */
-					node->info.index.index_status = 2;
+					node->info.index.index_status = SM_INVISIBLE_INDEX;
 				     }
 			     else if ($14)
 				     {
 					/* Online index. */
-					node->info.index.index_status = 3;
+					node->info.index.index_status = SM_ONLINE_INDEX_BUILDING_IN_PROGRESS;
 				     }
 
 			     
@@ -3591,7 +3591,7 @@ alter_stmt
 			  {
 			    node->info.index.code = PT_CHANGE_INDEX_STATUS;
 			    node->info.index.index_name = $3;
-			    node->info.index.index_status = 2;
+			    node->info.index.index_status = SM_INVISIBLE_INDEX;
 
 			    if (node->info.index.index_name)
 			      {
@@ -3626,7 +3626,7 @@ alter_stmt
 			  {
 			    node->info.index.code = PT_CHANGE_INDEX_STATUS;
 			    node->info.index.index_name = $3;
-			    node->info.index.index_status = 1;
+			    node->info.index.index_status = SM_NORMAL_INDEX;
 
 			    if (node->info.index.index_name)
 			      {
@@ -8936,6 +8936,7 @@ unique_constraint
 				    node->info.index.indexed_class = NULL;
 				    node->info.index.column_names = sort_spec_cols;
 				    node->info.index.unique = 1;
+				    node->info.index.index_status = SM_NORMAL_INDEX;
 				  }
 			      }
 			  }
@@ -9699,6 +9700,7 @@ attr_index_def
 			node->info.index.indexed_class = NULL;
 			node->info.index.where = $4;
 			node->info.index.comment = $5;
+			node->info.index.index_status = SM_NORMAL_INDEX;
     		    
 			prefix_col_count =
 				parser_count_prefix_columns (col, &arg_count);
@@ -21082,7 +21084,7 @@ identifier
 		DBG_PRINT}}
 	| INVISIBLE
                {{
-                        PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+                       PT_NODE *p = parser_new_node (this_parser, PT_NAME);
                        if (p)
                          p->info.name.original = $1;
                        $$ = p;
@@ -21732,7 +21734,7 @@ identifier
 		DBG_PRINT}}
 	| VISIBLE
                {{
-                        PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+                       PT_NODE *p = parser_new_node (this_parser, PT_NAME);
                        if (p)
                          p->info.name.original = $1;
                        $$ = p;

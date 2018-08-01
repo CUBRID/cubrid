@@ -1927,30 +1927,32 @@ end:
 #endif
 
 /*
- * classobj_change_constraint_comment() - This function is used to change
- *                                        a constraint comment.
+ * classobj_change_constraint_comment() - This function is used to change a constraint comment.
  *   return: NO_ERROR on success, non-zero for ERROR
  *   properties(in): Class property list
- *   prop_type(in): Class property type
- *   index_name(in): the name of index
+ *   cons(in): constraint
  *   comment(in): new comment of property
  */
 int
-classobj_change_constraint_comment (DB_SEQ * properties, const char *prop_type, const char *index_name,
-				    const char *comment)
+classobj_change_constraint_comment (DB_SEQ * properties, SM_CLASS_CONSTRAINT *cons, const char *comment)
 {
-  DB_VALUE prop_val, cnstr_val, cvalue, new_val;
+  DB_VALUE prop_val, cnstr_val, curr_comment, new_comment;
   DB_SEQ *prop_seq, *idx_seq;
+  const char *property_type;
   int found = 0;
   int error = NO_ERROR;
   int len = 0;
 
+  assert (properties != NULL && cons != NULL);
+
   db_make_null (&prop_val);
   db_make_null (&cnstr_val);
-  db_make_null (&cvalue);
-  db_make_null (&new_val);
+  db_make_null (&curr_comment);
+  db_make_null (&new_comment);
 
-  found = classobj_get_prop (properties, prop_type, &prop_val);
+  property_type = classobj_map_constraint_to_property (cons->type);
+
+  found = classobj_get_prop (properties, property_type, &prop_val);
   if (found == 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
@@ -1959,7 +1961,7 @@ classobj_change_constraint_comment (DB_SEQ * properties, const char *prop_type, 
     }
 
   prop_seq = db_get_set (&prop_val);
-  found = classobj_get_prop (prop_seq, index_name, &cnstr_val);
+  found = classobj_get_prop (prop_seq, cons->name, &cnstr_val);
   if (found == 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
@@ -1971,23 +1973,23 @@ classobj_change_constraint_comment (DB_SEQ * properties, const char *prop_type, 
   len = set_size (idx_seq);
 
   /* comment stands at the end of the seq */
-  set_get_element (idx_seq, len - 1, &cvalue);
-  if (!DB_IS_NULL (&cvalue) && DB_VALUE_TYPE (&cvalue) != DB_TYPE_STRING)
+  set_get_element (idx_seq, len - 1, &curr_comment);
+  if (!DB_IS_NULL (&curr_comment) && DB_VALUE_TYPE (&curr_comment) != DB_TYPE_STRING)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
       error = ER_SM_INVALID_PROPERTY;
       goto end;
     }
 
-  db_make_string_by_const_str (&new_val, comment);
-  error = set_put_element (idx_seq, len - 1, &new_val);
+  db_make_string_by_const_str (&new_comment, comment);
+  error = set_put_element (idx_seq, len - 1, &new_comment);
   if (error != NO_ERROR)
     {
       goto end;
     }
 
   db_make_sequence (&cnstr_val, idx_seq);
-  found = classobj_put_prop (prop_seq, index_name, &cnstr_val);
+  found = classobj_put_prop (prop_seq, cons->name, &cnstr_val);
   if (found == 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
@@ -1996,7 +1998,7 @@ classobj_change_constraint_comment (DB_SEQ * properties, const char *prop_type, 
     }
 
   db_make_sequence (&prop_val, prop_seq);
-  found = classobj_put_prop (properties, prop_type, &prop_val);
+  found = classobj_put_prop (properties, property_type, &prop_val);
   if (found == 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
@@ -2007,8 +2009,8 @@ classobj_change_constraint_comment (DB_SEQ * properties, const char *prop_type, 
 end:
   pr_clear_value (&prop_val);
   pr_clear_value (&cnstr_val);
-  pr_clear_value (&cvalue);
-  pr_clear_value (&new_val);
+  pr_clear_value (&curr_comment);
+  pr_clear_value (&new_comment);
   return error;
 }
 
@@ -8482,21 +8484,25 @@ classobj_copy_default_expr (DB_DEFAULT_EXPR * dest, const DB_DEFAULT_EXPR * src)
 }
 
 int
-classobj_change_constraint_status (DB_SEQ * properties, const char *prop_type, const char *index_name,
-				   SM_INDEX_STATUS index_status)
+classobj_change_constraint_status (DB_SEQ * properties, SM_CLASS_CONSTRAINT *cons, SM_INDEX_STATUS index_status)
 {
-  DB_VALUE prop_val, cnstr_val, cvalue, new_val;
+  DB_VALUE prop_val, cnstr_val, curr_status, new_status;
   DB_SEQ *prop_seq, *idx_seq;
+  const char *property_type;
   int found = 0;
   int error = NO_ERROR;
   int len = 0;
 
+  assert (properties != NULL && cons != NULL);
+
   db_make_null (&prop_val);
   db_make_null (&cnstr_val);
-  db_make_null (&cvalue);
-  db_make_null (&new_val);
+  db_make_null (&curr_status);
+  db_make_null (&new_status);
 
-  found = classobj_get_prop (properties, prop_type, &prop_val);
+  property_type = classobj_map_constraint_to_property (cons->type);
+
+  found = classobj_get_prop (properties, property_type, &prop_val);
   if (found == 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
@@ -8505,7 +8511,7 @@ classobj_change_constraint_status (DB_SEQ * properties, const char *prop_type, c
     }
 
   prop_seq = db_get_set (&prop_val);
-  found = classobj_get_prop (prop_seq, index_name, &cnstr_val);
+  found = classobj_get_prop (prop_seq, cons->name, &cnstr_val);
   if (found == 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
@@ -8517,23 +8523,23 @@ classobj_change_constraint_status (DB_SEQ * properties, const char *prop_type, c
   len = set_size (idx_seq);
 
   /* status stands at the len - 2 of the seq */
-  set_get_element (idx_seq, len - 2, &cvalue);
-  if (!DB_IS_NULL (&cvalue) && DB_VALUE_TYPE (&cvalue) != DB_TYPE_INTEGER)
+  set_get_element (idx_seq, len - 2, &curr_status);
+  if (!DB_IS_NULL (&curr_status) && DB_VALUE_TYPE (&curr_status) != DB_TYPE_INTEGER)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
       error = ER_SM_INVALID_PROPERTY;
       goto end;
     }
 
-  db_make_int (&new_val, index_status);
-  error = set_put_element (idx_seq, len - 2, &new_val);
+  db_make_int (&new_status, index_status);
+  error = set_put_element (idx_seq, len - 2, &new_status);
   if (error != NO_ERROR)
     {
       goto end;
     }
 
   db_make_sequence (&cnstr_val, idx_seq);
-  found = classobj_put_prop (prop_seq, index_name, &cnstr_val);
+  found = classobj_put_prop (prop_seq, cons->name, &cnstr_val);
   if (found == 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
@@ -8542,7 +8548,7 @@ classobj_change_constraint_status (DB_SEQ * properties, const char *prop_type, c
     }
 
   db_make_sequence (&prop_val, prop_seq);
-  found = classobj_put_prop (properties, prop_type, &prop_val);
+  found = classobj_put_prop (properties, property_type, &prop_val);
   if (found == 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
@@ -8553,7 +8559,7 @@ classobj_change_constraint_status (DB_SEQ * properties, const char *prop_type, c
 end:
   pr_clear_value (&prop_val);
   pr_clear_value (&cnstr_val);
-  pr_clear_value (&cvalue);
-  pr_clear_value (&new_val);
+  pr_clear_value (&curr_status);
+  pr_clear_value (&new_status);
   return error;
 }
