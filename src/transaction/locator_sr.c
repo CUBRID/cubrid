@@ -13993,7 +13993,11 @@ locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *statement)
   assert (cubrid_env_var != NULL);
 
   strncpy (path, cubrid_env_var, PATH_MAX);
+#if defined (WINDOWS)
+  strncat (path, "/bin/ddl_proxy_client.exe", PATH_MAX);
+#else
   strncat (path, "/bin/ddl_proxy_client", PATH_MAX);
+#endif
 
   error = create_child_process (ddl_argv,
 			       1,
@@ -14054,6 +14058,8 @@ int
 locator_repl_end_tran (THREAD_ENTRY * thread_p, bool commit)
 {
   /* TODO */
+  xtran_server_commit (thread_p, false);
+
   return NO_ERROR;
 }
 
