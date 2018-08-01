@@ -953,7 +953,7 @@ extern int classobj_rename_constraint (DB_SEQ * properties, const char *prop_nam
 				       const char *new_name);
 #endif
 
-extern int classobj_change_constraint_comment (DB_SEQ * properties, const char *prop_type, const char *index_name,
+extern int classobj_change_constraint_comment (DB_SEQ * properties, SM_CLASS_CONSTRAINT *cons,
 					       const char *comment);
 
 extern int classobj_get_cached_constraint (SM_CONSTRAINT * constraints, SM_CONSTRAINT_TYPE type, BTID * id);
