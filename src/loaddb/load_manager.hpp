@@ -18,19 +18,19 @@
  */
 
 /*
- * manager.hpp - entry point for server side loaddb
+ * load_manager.hpp - entry point for server side loaddb
  */
 
-#ifndef _MANAGER_HPP_
-#define _MANAGER_HPP_
+#ifndef _LOAD_MANAGER_HPP_
+#define _LOAD_MANAGER_HPP_
 
 #ident "$Id$"
 
-#include "driver.hpp"
+#include "connection_defs.h"
+#include "load_driver.hpp"
 #include "resource_shared_pool.hpp"
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
-#include "connection_defs.h"
 
 namespace cubload
 {
@@ -86,4 +86,4 @@ namespace cubload
 
 } // namespace cubload
 
-#endif //_MANAGER_HPP_
+#endif /* _LOAD_MANAGER_HPP_ */

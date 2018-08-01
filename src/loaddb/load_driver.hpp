@@ -18,19 +18,19 @@
  */
 
 /*
- * driver.hpp - interface for loader lexer and parser
+ * load_driver.hpp - interface for loader lexer and parser
  */
 
-#ifndef _DRIVER_HPP_
-#define _DRIVER_HPP_
+#ifndef _LOAD_DRIVER_HPP_
+#define _LOAD_DRIVER_HPP_
 
 #ident "$Id$"
 
 #include <istream>
 
-#include "common.hpp"
-#include "grammar.hpp"
-#include "scanner.hpp"
+#include "load_common.hpp"
+#include "load_grammar.hpp"
+#include "load_scanner.hpp"
 
 namespace cubload
 {
@@ -117,7 +117,7 @@ namespace cubload
        *    TODO
        *    Normally all functionality from semantic_helper should be used only by grammar and not by both lexer & grammar,
        *    Since it is used now by both (legacy behaviour) it is included into driver. Later as improvement we can add a
-       *    subclass of cubload::parser (see grammar.hpp) and move functionality of this class into parser subclass.
+       *    subclass of cubload::parser (see load_grammar.hpp) and move functionality of this class into parser subclass.
        *
        * how to use
        *    Interaction with semantic_helper class is done through an instance of driver e.g.
@@ -215,4 +215,4 @@ namespace cubload
 
 } // namespace cubload
 
-#endif // _DRIVER_HPP_
+#endif /* _LOAD_DRIVER_HPP_ */

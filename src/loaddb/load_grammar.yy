@@ -18,7 +18,7 @@
  */
 
 /*
- * grammar.yy - loader grammar file
+ * load_grammar.yy - loader grammar file
  */
 
 %skeleton "lalr1.cc"
@@ -45,7 +45,7 @@
 
 %code requires {
 // This code will be copied into loader grammar header file
-#include "common.hpp"
+#include "load_common.hpp"
 
 namespace cubload
 {
@@ -59,7 +59,7 @@ namespace cubload
 #include <cstring>
 
 #include "dbtype_def.h"
-#include "driver.hpp"
+#include "load_driver.hpp"
 
 #undef yylex
 #define yylex driver_.get_scanner ().yylex

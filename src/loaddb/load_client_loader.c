@@ -18,7 +18,7 @@
  */
 
 /*
- * loader_cl.c - Database loader (Optimized version)
+ * load_client_loader.c - Database loader (Optimized version)
  */
 
 #ident "$Id$"
@@ -39,7 +39,7 @@
 #endif /* !WINDOWS */
 #include <errno.h>
 
-#include "loader_cl.h"
+#include "load_client_loader.h"
 
 #include "porting.h"
 #include "utility.h"
@@ -51,7 +51,7 @@
 #include "schema_manager.h"
 #include "object_accessor.h"
 #include "db.h"
-#include "loader_object_table.h"
+#include "load_object_table.h"
 #include "load_object.h"
 #include "work_space.h"
 #include "message_catalog.h"
@@ -66,7 +66,7 @@
 #include "transaction_cl.h"
 #include "locator_cl.h"
 #include "db_json.hpp"
-#include "db_value_converter.hpp"
+#include "load_db_value_converter.hpp"
 #include "dbtype_function.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
@@ -472,7 +472,6 @@ while (0)
  */
 #define LDR_MOP_TEMPOID_MAPS_PRESIZE 1000
 #define LDR_ARG_GROW_SIZE 128
-#define ENV_LOADDB_STATUS "LOADDB_STATUS"
 
 static void ldr_increment_err_count (LDR_CONTEXT * context, int i);
 static void ldr_clear_err_count (LDR_CONTEXT * context);

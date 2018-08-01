@@ -18,7 +18,7 @@
  */
 
 /*
- * loader_object_table.c - the object table for the loader
+ * load_object_table.c - the object table for the loader
  */
 
 #ident "$Id$"
@@ -29,15 +29,14 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "db.h"
+#include "load_object_table.h"
+#include "memory_alloc.h"
+#include "message_catalog.h"
+#include "oid.h"
 #include "porting.h"
 #include "utility.h"
-#include "oid.h"
 #include "work_space.h"
-#include "db.h"
-#include "message_catalog.h"
-#include "memory_alloc.h"
-
-#include "loader_object_table.h"
 
 CLASS_TABLE *Classes = NULL;
 

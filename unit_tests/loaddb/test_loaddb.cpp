@@ -24,8 +24,8 @@
 #include <sstream>
 #include <thread>
 
-#include "driver.hpp"
 #include "language_support.h"
+#include "load_driver.hpp"
 #include "test_loaddb.hpp"
 
 namespace test_loaddb

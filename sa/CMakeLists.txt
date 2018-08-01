@@ -331,16 +331,16 @@ set(SESSION_SOURCES
   ${SESSION_DIR}/session_sr.c
   )
 
-set(LOADER_SOURCES
+set(LOADDB_SOURCES
   ${BISON_loader_grammar_OUTPUT_SOURCE}
   ${FLEX_loader_lexer_OUTPUTS}
-  ${LOADDB_DIR}/db_value_converter.cpp
-  ${LOADDB_DIR}/common.cpp
-  ${LOADDB_DIR}/driver.cpp
-  ${LOADDB_DIR}/loaddb.c
-  ${LOADDB_DIR}/loader_cl.c
+  ${LOADDB_DIR}/load_client_loader.c
+  ${LOADDB_DIR}/load_common.cpp
+  ${LOADDB_DIR}/load_db.c
+  ${LOADDB_DIR}/load_db_value_converter.cpp
+  ${LOADDB_DIR}/load_driver.cpp
   ${LOADDB_DIR}/load_object.c
-  ${LOADDB_DIR}/loader_object_table.c
+  ${LOADDB_DIR}/load_object_table.c
   )
 
 if(UNIX)
@@ -411,7 +411,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${ES_SOURCES}
   ${SESSION_SOURCES}
   ${PROBES_OBJECT}
-  ${LOADER_SOURCES}
+  ${LOADDB_SOURCES}
   PROPERTIES LANGUAGE CXX
   )
 
@@ -450,7 +450,7 @@ add_library(cubridsa SHARED
   ${SESSION_SOURCES}
   ${PROBES_OBJECT}
   ${COMPAT_SOURCES_C}
-  ${LOADER_SOURCES}
+  ${LOADDB_SOURCES}
   )
 set_target_properties(cubridsa PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 

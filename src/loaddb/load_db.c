@@ -18,7 +18,7 @@
  */
 
 /*
- * loaddb.c - Main for database loader
+ * load_db.c - Main for database loader
  */
 
 #ident "$Id$"
@@ -39,12 +39,12 @@
 #include "porting.h"
 #include "db.h"
 #if defined (SA_MODE)
-#include "driver.hpp"
+#include "load_driver.hpp"
 #endif // SA_MODE
 #include "utility.h"
 #include "misc_string.h"
 #if defined (SA_MODE)
-#include "loader_cl.h"
+#include "load_client_loader.h"
 #endif // SA_MODE
 #include "load_object.h"
 #include "environment_variable.h"

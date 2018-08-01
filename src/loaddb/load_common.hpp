@@ -18,11 +18,11 @@
  */
 
 /*
- * common.hpp - common code used by loader
+ * load_common.hpp - common code used by loader
  */
 
-#ifndef _COMMON_HPP_
-#define _COMMON_HPP_
+#ifndef _LOAD_COMMON_HPP_
+#define _LOAD_COMMON_HPP_
 
 #ident "$Id$"
 
@@ -268,4 +268,4 @@ namespace cubload
   }
 } // namespace cubload
 
-#endif //_COMMON_HPP_
+#endif /* _LOAD_COMMON_HPP_ */

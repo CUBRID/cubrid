@@ -294,14 +294,14 @@ set(SESSION_SOURCES
   ${SESSION_DIR}/session_sr.c
   )
 
-set(LOADER_SOURCES
+set(LOADDB_SOURCES
   ${BISON_loader_grammar_OUTPUT_SOURCE}
   ${FLEX_loader_lexer_OUTPUTS}
-  ${LOADDB_DIR}/db_value_converter.cpp
-  ${LOADDB_DIR}/common.cpp
-  ${LOADDB_DIR}/driver.cpp
-  ${LOADDB_DIR}/manager.cpp
-  ${LOADDB_DIR}/loader_sr.cpp
+  ${LOADDB_DIR}/load_common.cpp
+  ${LOADDB_DIR}/load_db_value_converter.cpp
+  ${LOADDB_DIR}/load_driver.cpp
+  ${LOADDB_DIR}/load_manager.cpp
+  ${LOADDB_DIR}/load_server_loader.cpp
   )
 
 list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)
@@ -334,7 +334,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${EXECUTABLE_SOURCES}
   ${HEAPLAYER_SOURCES}
   ${JSP_SOURCES}
-  ${LOADER_SOURCES}
+  ${LOADDB_SOURCES}
   ${MONITOR_SOURCES}
   ${OBJECT_SOURCES}
   ${PARSER_SOURCES}
@@ -363,7 +363,7 @@ set (CUBRID_LIB_SOURCES
   ${EXECUTABLE_SOURCES}
   ${HEAPLAYER_SOURCES}
   ${JSP_SOURCES}
-  ${LOADER_SOURCES}
+  ${LOADDB_SOURCES}
   ${MONITOR_SOURCES}
   ${OBJECT_SOURCES}
   ${PROBES_OBJECT}

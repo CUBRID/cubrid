@@ -18,15 +18,15 @@
  */
 
 /*
- * loader_sr.cpp: Loader server definitions. Updated using design from fast loaddb prototype
+ * load_server_loader.cpp: Loader server definitions. Updated using design from fast loaddb prototype
  */
 
 #ident "$Id$"
 
 #include <map>
 
-#include "db_value_converter.hpp"
-#include "loader_sr.hpp"
+#include "load_db_value_converter.hpp"
+#include "load_server_loader.hpp"
 #include "locator_sr.h"
 #include "thread_manager.hpp"
 #include "transform.h"

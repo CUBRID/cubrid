@@ -18,24 +18,24 @@
  */
 
 /*
- * db_value_converter.cpp - conversion from string to DB_VALUE
+ * load_db_value_converter.cpp - conversion from string to DB_VALUE
  */
 
 #ident "$Id$"
 
 #include <cassert>
 
-#include "common.hpp"
 #include "db_date.h"
 #include "db_json.hpp"
-#include "db_value_converter.hpp"
 #if defined (SERVER_MODE)
 #include "dbtype.h"
-#endif
+#endif // SERVER_MODE
 #if defined (SA_MODE)
 #include "dbtype_function.h"
-#endif
+#endif // SA_MODE
 #include "language_support.h"
+#include "load_common.hpp"
+#include "load_db_value_converter.hpp"
 #include "numeric_opfunc.h"
 #include "object_primitive.h"
 #include "object_representation.h"

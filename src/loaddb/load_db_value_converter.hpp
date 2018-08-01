@@ -18,11 +18,11 @@
  */
 
 /*
- * db_value_converter.hpp - conversion from string to DB_VALUE
+ * load_db_value_converter.hpp - conversion from string to DB_VALUE
  */
 
-#ifndef _DB_VALUE_CONVERTER_HPP_
-#define _DB_VALUE_CONVERTER_HPP_
+#ifndef _LOAD_DB_VALUE_CONVERTER_HPP_
+#define _LOAD_DB_VALUE_CONVERTER_HPP_
 
 #ident "$Id$"
 
@@ -40,7 +40,7 @@ namespace cubload
 
   conv_func get_conv_func (int ldr_type, const tp_domain_t *domain);
 
-  // TODO CBRD-21654 reused conversion function in loader_cl.c source file
+  // TODO CBRD-21654 reused conversion function in load_client_loader.c source file
   void to_db_null (const char *str, const tp_domain_t *domain, db_value_t *val);
   void to_db_short (const char *str, const tp_domain_t *domain, db_value_t *val);
   void to_db_int (const char *str, const tp_domain_t *domain, db_value_t *val);
@@ -65,4 +65,4 @@ namespace cubload
 
 } // namespace cubload
 
-#endif // _DB_VALUE_CONVERTER_HPP_
+#endif /* _LOAD_DB_VALUE_CONVERTER_HPP_ */

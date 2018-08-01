@@ -18,18 +18,18 @@
  */
 
 /*
- * loader_sr.hpp: Loader server definitions. Updated using design from fast loaddb prototype
+ * load_server_loader.hpp: Loader server definitions. Updated using design from fast loaddb prototype
  */
 
-#ifndef _LOADER_SR_HPP_
-#define _LOADER_SR_HPP_
+#ifndef _LOAD_SERVER_LOADER_HPP_
+#define _LOAD_SERVER_LOADER_HPP_
 
 #ident "$Id$"
 
-#include "common.hpp"
 #include "dbtype_def.h"
 #include "heap_attrinfo.h"
 #include "heap_file.h"
+#include "load_common.hpp"
 #include "storage_common.h"
 
 namespace cubload
@@ -68,4 +68,4 @@ namespace cubload
   };
 
 } // namespace cubload
-#endif /* _LOADER_SR_HPP_ */
+#endif /* _LOAD_SERVER_LOADER_HPP_ */

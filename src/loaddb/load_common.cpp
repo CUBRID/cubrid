@@ -18,12 +18,12 @@
  */
 
 /*
- * common.cpp - common code used by loader
+ * load_common.cpp - common code used by loader
  */
 
 #ident "$Id$"
 
-#include "common.hpp"
+#include "load_common.hpp"
 #include "memory_alloc.h"
 
 namespace cubload

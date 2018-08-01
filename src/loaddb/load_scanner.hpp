@@ -18,11 +18,11 @@
  */
 
 /*
- * scanner.hpp - subclass of yyFlexLexer, provides the main scanner function.
+ * load_scanner.hpp - subclass of yyFlexLexer, provides the main scanner function.
  */
 
-#ifndef _SCANNER_HPP_
-#define _SCANNER_HPP_
+#ifndef _LOAD_SCANNER_HPP_
+#define _LOAD_SCANNER_HPP_
 
 #ident "$Id$"
 
@@ -31,8 +31,8 @@
 #endif
 #include <istream>
 
-#include "driver.hpp"
-#include "grammar.hpp"
+#include "load_driver.hpp"
+#include "load_grammar.hpp"
 
 namespace cubload
 {
@@ -55,7 +55,7 @@ namespace cubload
 
       /*
        * The main scanner function.
-       * See lexer.l file for method declaration
+       * See load_lexer.l file for method declaration
        */
       virtual int yylex (parser::semantic_type *yylval, parser::location_type *yylloc);
 
@@ -75,4 +75,4 @@ namespace cubload
   };
 } // namespace cubload
 
-#endif // _SCANNER_HPP_
+#endif /* _LOAD_SCANNER_HPP_ */

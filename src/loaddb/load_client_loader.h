@@ -18,18 +18,18 @@
  */
 
 /*
- * loader_cl.h: Loader client definitions. Updated using design from fast loaddb prototype
+ * load_client_loader.h: Loader client definitions. Updated using design from fast loaddb prototype
  */
 
-#ifndef _LOADER_CL_H_
-#define _LOADER_CL_H_
+#ifndef _LOAD_CLIENT_LOADER_H_
+#define _LOAD_CLIENT_LOADER_H_
 
 #ident "$Id$"
 
 //#include <stdint.h>
 
-#include "common.hpp"
 #include "dbdef.h"
+#include "load_common.hpp"
 #include "porting.h"
 
 #define NUM_LDR_TYPES (LDR_TYPE_MAX + 1)
@@ -121,4 +121,4 @@ extern bool ldr_is_ignore_class (const char *classname, size_t size);
 /* log functions */
 extern void print_log_msg (int verbose, const char *fmt, ...);
 
-#endif /* _LOADER_CL_H_ */
+#endif /* _LOAD_CLIENT_LOADER_H_ */

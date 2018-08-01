@@ -18,7 +18,7 @@
  */
 
 /*
- * manger.cpp - entry point for server side loaddb
+ * load_manger.cpp - entry point for server side loaddb
  */
 
 #ident "$Id$"
@@ -26,8 +26,8 @@
 #include <cassert>
 #include <sstream>
 
+#include "load_manager.hpp"
 #include "log_impl.h"
-#include "manager.hpp"
 #include "thread_worker_pool.hpp"
 #include "xserver_interface.h"
 

@@ -75,7 +75,7 @@
 #include "tz_support.h"
 #include "dbtype.h"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
-#include "manager.hpp"
+#include "load_manager.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))

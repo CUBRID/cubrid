@@ -23,7 +23,7 @@
 
 /*** C/C++ Declarations ***/
 %{
-#include "driver.hpp"
+#include "load_driver.hpp"
 
 #undef YY_DECL
 #define YY_DECL \
