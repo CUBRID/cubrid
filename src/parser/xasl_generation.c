@@ -57,6 +57,7 @@
 #include "semantic_check.h"
 #include "query_dump.h"
 #include "parser_support.h"
+#include "compile_context.h"
 
 #if defined(WINDOWS)
 #include "wintcp.h"

@@ -38,6 +38,7 @@
 #include "parser.h"
 #include "release_string.h"
 #include "parser.h"
+#include "xasl.h"
 
 /*
  * These #defines are used in conjunction with assert() to announce

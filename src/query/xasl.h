@@ -28,20 +28,21 @@
 
 #include <assert.h>
 
-#include "storage_common.h"
+#include "access_json_table.hpp"
 #include "memory_hash.h"
-#include "string_opfunc.h"
 #include "query_list.h"
 #include "regu_var.h"
+#include "storage_common.h"
+#include "string_opfunc.h"
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
+#include "external_sort.h"
+#include "heap_file.h"
 #if defined (ENABLE_COMPOSITE_LOCK)
 #include "lock_manager.h"
 #endif /* defined (ENABLE_COMPOSITE_LOCK) */
-#include "external_sort.h"
 #include "object_representation_sr.h"
 #include "scan_manager.h"
-#include "heap_file.h"
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
@@ -49,26 +50,7 @@
 struct binary_heap;
 #endif // SERVER_MODE || SA_MODE
 
-/*
- * COMPILE_CONTEXT cover from user input query string to generated xasl
- */
-typedef struct compile_context COMPILE_CONTEXT;
-struct compile_context
-{
-  XASL_NODE *xasl;
 
-  char *sql_user_text;		/* original query statement that user input */
-  int sql_user_text_len;	/* length of sql_user_text */
-
-  char *sql_hash_text;		/* rewrited query string which is used as hash key */
-
-  char *sql_plan_text;		/* plans for this query */
-  int sql_plan_alloc_size;	/* query_plan alloc size */
-  bool is_xasl_pinned_reference;	/* to pin xasl cache entry */
-  bool recompile_xasl_pinned;	/* whether recompile again after xasl cache entry has been pinned */
-  bool recompile_xasl;
-  SHA1Hash sha1;
-};
 
 /* XASL HEADER */
 /*
@@ -775,12 +757,6 @@ struct list_spec_node
   XASL_NODE *xasl_node;		/* the XASL node that contains the list file identifier */
 };
 
-typedef enum
-{
-  KILLSTMT_TRAN = 0,
-  KILLSTMT_QUERY = 1,
-} KILLSTMT_TYPE;
-
 struct showstmt_spec_node
 {
   SHOWSTMT_TYPE show_type;	/* show statement type */
@@ -834,6 +810,7 @@ union hybrid_node
   SET_SPEC_TYPE set_node;	/* set specification */
   METHOD_SPEC_TYPE method_node;	/* method specification */
   REGUVAL_LIST_SPEC_TYPE reguval_list_node;	/* reguval_list specification */
+  json_table_spec_node json_table_node;	/* json_table specification */
 };				/* class/list access specification */
 
 /*

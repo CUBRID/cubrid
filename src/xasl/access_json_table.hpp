@@ -24,14 +24,18 @@
 #ifndef _ACCESS_JSON_TABLE_H_
 #define _ACCESS_JSON_TABLE_H_
 
+#include <forward_list>
 #include <string>
 #include <vector>
 
-// forward declaration
+#include <cstdint>
+
+// forward declarations
 struct db_value;
 struct tp_domain;
+struct pred_expr;
 
-// todo: namespace cubxas::json_table
+// todo: namespace cubxasl::json_table
 enum class json_table_column_behavior
 {
   RETURN_NULL,
@@ -72,7 +76,25 @@ struct json_table_column
   function_type m_function;
 
   json_table_column ();
-  int evaluate (db_value &input);
+  int evaluate (const db_value &input, db_value &output);
+};
+
+struct json_table_nested_node
+{
+  std::string m_path;
+  std::forward_list<json_table_column> m_predicate_columns;   // columns part of scan predicate; also part of output
+  std::forward_list<json_table_column> m_output_columns;      // columns part of output only
+  pred_expr *m_predicate_expression;                           // predicate expression
+  std::forward_list<json_table_nested_node> m_nested_nodes;   // nested nodes
+
+  json_table_nested_node () = default;
+};
+
+struct json_table_spec_node
+{
+  json_table_nested_node *m_root_node;
+  std::uint32_t m_ordinality;
+  db_value *m_output_values;
 };
 
 #endif // _ACCESS_JSON_TABLE_H_

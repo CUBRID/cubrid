@@ -63,6 +63,7 @@
 #include "db.h"
 #include "db_query.h"
 #include "dbtype.h"
+#include "compile_context.h"
 #if defined (SA_MODE)
 #include "thread_manager.hpp"
 #endif // SA_MODE

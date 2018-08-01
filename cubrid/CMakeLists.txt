@@ -286,6 +286,14 @@ set(SESSION_SOURCES
   ${SESSION_DIR}/session_sr.c
   )
 
+set(XASL_SOURCES
+  ${XASL_DIR}/access_json_table.cpp
+  )
+set(XASL_HEADERS
+  ${XASL_DIR}/access_json_table.hpp
+  ${XASL_DIR}/compile_context.h
+  )
+
 list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)
 if(UNIX)
   list(APPEND BASE_SOURCES ${BASE_DIR}/cubrid_getopt_long.c)
@@ -324,6 +332,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${STORAGE_SOURCES}
   ${THREAD_SOURCES}
   ${TRANSACTION_SOURCES}
+  ${XASL_SOURCES}
   PROPERTIES LANGUAGE CXX
   )
 
@@ -352,6 +361,7 @@ set (CUBRID_LIB_SOURCES
   ${STREAM_SOURCES}
   ${THREAD_SOURCES}
   ${TRANSACTION_SOURCES}
+  ${XASL_SOURCES}
   )
 
 set (CUBRID_LIB_HEADERS
@@ -362,6 +372,7 @@ set (CUBRID_LIB_HEADERS
   ${REPLICATION_HEADERS}
   ${THREAD_HEADERS}
   ${STREAM_HEADERS}
+  ${XASL_HEADERS}
   )
 
 add_library(cubrid SHARED

@@ -23,10 +23,13 @@
 
 #include "access_json_table.hpp"
 
-#include "db_json.hpp"
+#include "arithmetic.h"
 #include "dbtype.h"
+#include "error_code.h"
 #include "error_manager.h"
 #include "object_primitive.h"
+
+#include <cassert>
 
 json_table_column_on_error::json_table_column_on_error (void)
   : m_behavior (json_table_column_behavior::RETURN_NULL)
@@ -100,7 +103,7 @@ json_table_column_on_empty::trigger (db_value &value_out)
 
     default:
       assert (false);
-      return error_code;
+      return ER_FAILED;
     }
 }
 
@@ -126,9 +129,16 @@ json_table_column::evaluate (const db_value &input, db_value &output)
 
   int error_code = NO_ERROR;
 
-  if (function_type == EXTRACT)
+  if (m_function == EXTRACT)
     {
-      error_code = db_json_extract_dbval (&input, m_path.c_str (), &output);
+      DB_VALUE temp_path_value;
+      db_make_string (&temp_path_value, const_cast<char *> (m_path.c_str ()));
+      error_code = db_json_extract_dbval (&input, &temp_path_value, &output);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  // fall through
+	}
     }
   else
     {
@@ -140,7 +150,7 @@ json_table_column::evaluate (const db_value &input, db_value &output)
     {
       error_code = m_on_error.trigger (error_code, output);
     }
-  else if (db_value_is_null (output))
+  else if (db_value_is_null (&output))
     {
       error_code = m_on_empty.trigger (output);
     }
@@ -150,10 +160,12 @@ json_table_column::evaluate (const db_value &input, db_value &output)
       return error_code;
     }
 
-  error_code = tp_value_cast (output, output, m_domain, false);
+  error_code = tp_value_cast (&output, &output, m_domain, false);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
       return error_code;
     }
+
+  return NO_ERROR;
 }

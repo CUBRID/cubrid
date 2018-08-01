@@ -1370,4 +1370,11 @@ enum
   REC_4BIT_TYPE_MAX = REC_RESERVED_TYPE_15
 };
 
+// TODO: move me in a proper place
+typedef enum
+{
+  KILLSTMT_TRAN = 0,
+  KILLSTMT_QUERY = 1,
+} KILLSTMT_TYPE;
+
 #endif /* _STORAGE_COMMON_H_ */

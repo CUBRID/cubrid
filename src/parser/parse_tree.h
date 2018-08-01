@@ -34,6 +34,7 @@
 #include <setjmp.h>
 #include <assert.h>
 
+#include "compile_context.h"
 #include "config.h"
 #include "jansson.h"
 #include "cursor.h"
@@ -41,7 +42,6 @@
 #include "message_catalog.h"
 #include "authenticate.h"
 #include "system_parameter.h"
-#include "xasl.h"
 
 #define MAX_PRINT_ERROR_CONTEXT_LENGTH 64
 
