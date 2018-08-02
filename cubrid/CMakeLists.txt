@@ -212,6 +212,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/query_executor.c
   ${QUERY_DIR}/query_manager.c
   ${QUERY_DIR}/query_opfunc.c
+  ${QUERY_DIR}/scan_json_table.cpp
   ${QUERY_DIR}/scan_manager.c
   ${QUERY_DIR}/serial.c
   ${QUERY_DIR}/set_scan.c
@@ -220,6 +221,9 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/string_opfunc.c
   ${QUERY_DIR}/vacuum.c
   ${QUERY_DIR}/xasl_cache.c
+  )
+set(QUERY_HEADERS
+  ${QUERY_DIR}/scan_json_table.hpp
   )
 
 set(OBJECT_SOURCES
@@ -369,6 +373,7 @@ set (CUBRID_LIB_HEADERS
   ${COMMUNICATION_HEADERS}
   ${COMPAT_HEADERS}
   ${MONITOR_HEADERS}
+  ${QUERY_HEADERS}
   ${REPLICATION_HEADERS}
   ${THREAD_HEADERS}
   ${STREAM_HEADERS}

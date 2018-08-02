@@ -181,32 +181,36 @@ set(OPTIMIZER_SOURCES
   )
 
 set(QUERY_SOURCES
+  ${QUERY_DIR}/arithmetic.c
+  ${QUERY_DIR}/crypt_opfunc.c
+  ${QUERY_DIR}/cursor.c
   ${QUERY_DIR}/execute_schema.c
   ${QUERY_DIR}/execute_statement.c
-  ${QUERY_DIR}/arithmetic.c
-  ${QUERY_DIR}/cursor.c
-  ${QUERY_DIR}/query_dump.c
-  ${QUERY_DIR}/query_evaluator.c
   ${QUERY_DIR}/fetch.c
   ${QUERY_DIR}/filter_pred_cache.c
   ${QUERY_DIR}/list_file.c
+  ${QUERY_DIR}/method_scan.c
   ${QUERY_DIR}/numeric_opfunc.c
+  ${QUERY_DIR}/partition.c
   ${QUERY_DIR}/query_cl.c
+  ${QUERY_DIR}/query_dump.c
+  ${QUERY_DIR}/query_evaluator.c
+  ${QUERY_DIR}/query_executor.c
   ${QUERY_DIR}/query_manager.c
+  ${QUERY_DIR}/query_opfunc.c
+  ${QUERY_DIR}/scan_json_table.cpp
   ${QUERY_DIR}/scan_manager.c
   ${QUERY_DIR}/serial.c
   ${QUERY_DIR}/set_scan.c
-  ${QUERY_DIR}/string_opfunc.c
-  ${QUERY_DIR}/method_scan.c
-  ${QUERY_DIR}/query_executor.c
   ${QUERY_DIR}/show_scan.c
-  ${QUERY_DIR}/partition.c
-  ${QUERY_DIR}/query_opfunc.c
-  ${QUERY_DIR}/xasl_to_stream.c
   ${QUERY_DIR}/stream_to_xasl.c
-  ${QUERY_DIR}/crypt_opfunc.c
+  ${QUERY_DIR}/string_opfunc.c
   ${QUERY_DIR}/vacuum.c
   ${QUERY_DIR}/xasl_cache.c
+  ${QUERY_DIR}/xasl_to_stream.c
+  )
+set(QUERY_HEADERS
+  ${QUERY_DIR}/scan_json_table.hpp
   )
 
 set(OBJECT_SOURCES
@@ -413,6 +417,7 @@ add_library(cubridsa SHARED
   ${COMMUNICATION_SOURCES}
   ${PARSER_SOURCES}
   ${OPTIMIZER_SOURCES}
+  ${QUERY_HEADERS}
   ${QUERY_SOURCES}
   ${OBJECT_SOURCES}
   ${JSP_SOURCES}

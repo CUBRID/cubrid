@@ -37,12 +37,12 @@
 #endif
 
 #include "btree.h"		/* TODO: for BTREE_SCAN */
-
-#include "oid.h"		/* for OID */
-#include "storage_common.h"	/* for PAGEID */
 #include "heap_file.h"		/* for HEAP_SCANCACHE */
 #include "method_scan.h"	/* for METHOD_SCAN_BUFFER */
+#include "oid.h"		/* for OID */
 #include "query_evaluator.h"
+#include "scan_json_table.hpp"
+#include "storage_common.h"	/* for PAGEID */
 
 /*
  *       	TYPEDEFS RELATED TO THE SCAN DATA STRUCTURES
@@ -331,6 +331,7 @@ struct scan_id_struct
     VA_SCAN_ID vaid;		/* Value Array Identifier */
     REGU_VALUES_SCAN_ID rvsid;	/* regu_variable list identifier */
     SHOWSTMT_SCAN_ID stsid;	/* show stmt identifier */
+    // JSON_TABLE_SCAN_ID jtid;
   } s;
 
   SCAN_STATS scan_stats;
