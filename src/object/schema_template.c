@@ -4717,24 +4717,29 @@ smt_find_constraint (SM_TEMPLATE * ctemplate, const char *constraint_name)
 {
   SM_CLASS_CONSTRAINT *cons_list = NULL, *cons = NULL;
   SM_CLASS *class_;
+
   assert (ctemplate != NULL && ctemplate->op != NULL);
+
   if (au_fetch_class (ctemplate->op, &class_, AU_FETCH_READ, AU_INDEX) != NO_ERROR)
     {
       ASSERT_ERROR ();
       return NULL;
     }
+
   cons_list = class_->constraints;
   if (cons_list == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CONSTRAINT_NOT_FOUND, 1, constraint_name);
       return NULL;
     }
+
   cons = classobj_find_constraint_by_name (cons_list, constraint_name);
   if (cons == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CONSTRAINT_NOT_FOUND, 1, constraint_name);
       return NULL;
     }
+
   return cons;
 }
 
@@ -4747,7 +4752,6 @@ smt_is_change_status_allowed (SM_TEMPLATE * ctemplate, const char *index_name)
 
   /* Check if this class is a partitioned class. We do not allow index status change on partitions indexes. */
   error = sm_partitioned_class_type (ctemplate->op, &partition_type, NULL, NULL);
-
   if (partition_type == DB_PARTITION_CLASS)
     {
       error = ER_STATUS_CHANGE_NOT_ALLOWED;
@@ -4757,41 +4761,37 @@ smt_is_change_status_allowed (SM_TEMPLATE * ctemplate, const char *index_name)
     }
 
   constraint = smt_find_constraint (ctemplate, index_name);
-
   if (constraint == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
       return error;
     }
 
-  if (constraint != NULL)
+  switch (constraint->type)
     {
-      switch (constraint->type)
-	{
-	case SM_CONSTRAINT_FOREIGN_KEY:
-	  error = ER_STATUS_CHANGE_NOT_ALLOWED;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 3, sm_ch_name ((MOBJ) ctemplate->current), constraint->name,
-		  "foreign key");
-	  break;
+    case SM_CONSTRAINT_FOREIGN_KEY:
+      error = ER_STATUS_CHANGE_NOT_ALLOWED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 3, sm_ch_name ((MOBJ) ctemplate->current), constraint->name,
+	      "foreign key");
+      return error;
 
-	case SM_CONSTRAINT_PRIMARY_KEY:
-	  error = ER_STATUS_CHANGE_NOT_ALLOWED;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 3, sm_ch_name ((MOBJ) ctemplate->current), constraint->name,
-		  "primary key");
-	  break;
+    case SM_CONSTRAINT_PRIMARY_KEY:
+      error = ER_STATUS_CHANGE_NOT_ALLOWED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 3, sm_ch_name ((MOBJ) ctemplate->current), constraint->name,
+	      "primary key");
+      return error;
 
-	case SM_CONSTRAINT_NOT_NULL:
-	  error = ER_STATUS_CHANGE_NOT_ALLOWED;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 3, sm_ch_name ((MOBJ) ctemplate->current), constraint->name,
-		  "NOT NULL constraint");
-	  break;
+    case SM_CONSTRAINT_NOT_NULL:
+      error = ER_STATUS_CHANGE_NOT_ALLOWED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 3, sm_ch_name ((MOBJ) ctemplate->current), constraint->name,
+	      "NOT NULL constraint");
+      return error;
 
-	default:
-	  break;
-	}
+    default:
+      break;
     }
 
-  return error;
+  return NO_ERROR;
 }
 
 int
@@ -4827,5 +4827,5 @@ smt_change_constraint_status (SM_TEMPLATE * ctemplate, const char *index_name, S
       return error;
     }
 
-  return error;
+  return NO_ERROR;
 }
