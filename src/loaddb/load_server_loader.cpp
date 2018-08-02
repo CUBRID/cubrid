@@ -55,7 +55,7 @@ namespace cubload
   }
 
   void
-  server_loader::act_setup_class_command_spec (string_t **class_name, class_cmd_spec_t **cmd_spec)
+  server_loader::act_setup_class_command_spec (string_type **class_name, class_command_spec_type **cmd_spec)
   {
     // TODO CBRD-21654 refactor this function, as well implement functionality to setup based on loaddb --table cmd option
     if (class_name == NULL || *class_name == NULL)
@@ -67,16 +67,16 @@ namespace cubload
 	return;
       }
 
-    class_cmd_spec_t *cmd_spec_ = *cmd_spec;
-    string_t *class_name_ = *class_name;
+    class_command_spec_type *cmd_spec_ = *cmd_spec;
+    string_type *class_name_ = *class_name;
 
     char *string = NULL;
     int alloced_string = 0;
     int attr_idx = 0;
-    string_t *attr;
+    string_type *attr;
     RECDES recdes;
-    scan_cache_t scan_cache;
-    std::map<std::string, attr_id_t> attr_name_to_id;
+    HEAP_SCANCACHE scan_cache;
+    std::map<std::string, ATTR_ID> attr_name_to_id;
     cubthread::entry &thread_ref = cubthread::get_entry ();
 
     LC_FIND_CLASSNAME found = xlocator_find_class_oid (&thread_ref, class_name_->val, &m_class_oid, IX_LOCK);
@@ -96,10 +96,10 @@ namespace cubload
 	alloced_string = 0;
 	string = NULL;
 
-	attr_id_t attr_id = m_attr_info.values[i].attrid;
+	ATTR_ID attr_id = m_attr_info.values[i].attrid;
 	or_get_attrname (&recdes, attr_id, &string, &alloced_string);
 
-	attr_name_to_id.insert (std::pair<std::string, attr_id_t> (std::string (string), attr_id));
+	attr_name_to_id.insert (std::pair<std::string, ATTR_ID> (std::string (string), attr_id));
 
 	if (string != NULL && alloced_string == 1)
 	  {
@@ -108,7 +108,7 @@ namespace cubload
       }
 
     // alloc attribute ids array
-    m_attr_ids = new attr_id_t[m_attr_info.num_values];
+    m_attr_ids = new ATTR_ID[m_attr_info.num_values];
 
     for (attr = cmd_spec_->attr_list; attr; attr = attr->next, attr_idx++)
       {
@@ -134,18 +134,18 @@ namespace cubload
   }
 
   void
-  server_loader::act_start_instance (int id, constant_t *cons)
+  server_loader::act_start_instance (int id, constant_type *cons)
   {
     // clear db values
     heap_attrinfo_clear_dbvalues (&m_attr_info);
   }
 
   void
-  server_loader::process_constants (constant_t *cons)
+  server_loader::process_constants (constant_type *cons)
   {
     // TODO CBRD-21654 refactor this function
     int attr_idx = 0;
-    constant_t *c, *save;
+    constant_type *c, *save;
 
     for (c = cons; c; c = save, attr_idx++)
       {
@@ -176,7 +176,7 @@ namespace cubload
 	  case LDR_STR:
 	  case LDR_NSTR:
 	  {
-	    string_t *str = (string_t *) c->val;
+	    string_type *str = (string_type *) c->val;
 	    conv_func func = get_conv_func (c->type, domain);
 
 	    if (func != NULL)
@@ -190,8 +190,8 @@ namespace cubload
 
 	  case LDR_MONETARY:
 	  {
-	    monetary_t *mon = (monetary_t *) c->val;
-	    string_t *str = mon->amount;
+	    monetary_type *mon = (monetary_type *) c->val;
+	    string_type *str = mon->amount;
 
 	    /* buffer size for monetary : numeric size + grammar currency symbol + string terminator */
 	    char full_mon_str[NUM_BUF_SIZE + 3 + 1];
@@ -231,7 +231,7 @@ namespace cubload
 	  case LDR_SYS_USER:
 	  case LDR_SYS_CLASS:
 	  {
-	    string_t *str = (string_t *) c->val;
+	    string_type *str = (string_type *) c->val;
 
 	    //conv_func func = get_conv_func (c->type, domain);
 	    //func (str->val, domain, &db_val);
@@ -242,13 +242,13 @@ namespace cubload
 
 	  case LDR_OID:
 	  case LDR_CLASS_OID:
-	    //ldr_process_object_ref ((object_ref_t *) c->val, c->type);
+	    //ldr_process_object_ref ((object_ref_type *) c->val, c->type);
 	    break;
 
 	  case LDR_COLLECTION:
 	    // TODO CBRD-21654 add support for collections
 	    //(*ldr_act) (ldr_Current_context, "{", 1, LDR_COLLECTION);
-	    process_constants ((constant_t *) c->val);
+	    process_constants ((constant_type *) c->val);
 	    //ldr_act_attr (ldr_Current_context, NULL, 0, LDR_COLLECTION);
 	    break;
 
@@ -269,7 +269,7 @@ namespace cubload
   server_loader::act_finish_line ()
   {
     int ret;
-    oid_t oid;
+    OID oid;
     int force_count = 0;
     int pruning_type = 0;
     int op_type = MULTI_ROW_INSERT;

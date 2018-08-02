@@ -42,8 +42,10 @@ namespace cubload
   {
     public:
       manager (const manager &copy) = delete;
+      manager (manager &&copy) = delete;
+
       manager &operator= (const manager &other) = delete;
-      manager &operator= (const manager &&other) = delete;
+      manager &operator= (manager &&other) = delete;
 
       ~manager ();
 
@@ -70,7 +72,7 @@ namespace cubload
 
       load_parse_task (manager &manager, std::string &batch, CSS_CONN_ENTRY conn_entry)
 	: m_manager (manager)
-	, m_batch (batch)
+	, m_batch (std::move (batch))
 	, m_conn_entry (conn_entry)
       {
 	//

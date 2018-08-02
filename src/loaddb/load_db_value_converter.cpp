@@ -50,7 +50,7 @@ namespace cubload
 {
 
   conv_func
-  get_conv_func (int ldr_type, const tp_domain_t *domain)
+  get_conv_func (int ldr_type, const TP_DOMAIN *domain)
   {
     // TODO CBRD-21654 move this into a init funtion
 
@@ -99,13 +99,13 @@ namespace cubload
   }
 
   void
-  to_db_null (const char *str, const tp_domain_t *domain, db_value_t *val)
+  to_db_null (const char *str, const TP_DOMAIN *domain, DB_VALUE *val)
   {
     db_make_null (val);
   }
 
   void
-  to_db_short (const char *str, const tp_domain_t *domain, db_value_t *val)
+  to_db_short (const char *str, const TP_DOMAIN *domain, DB_VALUE *val)
   {
     int result = 0;
     char *str_ptr;
@@ -144,7 +144,7 @@ namespace cubload
   }
 
   void
-  to_db_int (const char *str, const tp_domain_t *domain, db_value_t *val)
+  to_db_int (const char *str, const TP_DOMAIN *domain, DB_VALUE *val)
   {
     int result = 0;
     char *str_ptr;
@@ -180,7 +180,7 @@ namespace cubload
   }
 
   void
-  to_db_bigint (const char *str, const tp_domain_t *domain, db_value_t *val)
+  to_db_bigint (const char *str, const TP_DOMAIN *domain, DB_VALUE *val)
   {
     int result = 0;
     size_t str_len = strlen (str);
@@ -216,7 +216,7 @@ namespace cubload
   }
 
   void
-  to_db_char (const char *str, const tp_domain_t *domain, db_value_t *val)
+  to_db_char (const char *str, const TP_DOMAIN *domain, DB_VALUE *val)
   {
     int char_count = 0;
     int str_len = (int) strlen (str);
@@ -228,7 +228,7 @@ namespace cubload
 
     db_make_char (val, 1, (char *) "a", 1, LANG_SYS_CODESET, LANG_SYS_COLLATION);
 
-    intl_char_count ((unsigned char *) str, str_len, (codeset_t) codeset, &char_count);
+    intl_char_count ((unsigned char *) str, str_len, (INTL_CODESET) codeset, &char_count);
 
     if (char_count > precision)
       {
@@ -241,7 +241,7 @@ namespace cubload
 	const char *p;
 	int truncate_size;
 
-	intl_char_size ((unsigned char *) str, precision, (codeset_t) codeset, &truncate_size);
+	intl_char_size ((unsigned char *) str, precision, (INTL_CODESET) codeset, &truncate_size);
 
 	for (p = &str[truncate_size], safe = 1; p < &str[str_len]; p++)
 	  {
@@ -275,7 +275,7 @@ namespace cubload
   }
 
   void
-  to_db_varchar (const char *str, const tp_domain_t *domain, db_value_t *val)
+  to_db_varchar (const char *str, const TP_DOMAIN *domain, DB_VALUE *val)
   {
     int char_count = 0;
     int str_len = (int) strlen (str);
@@ -287,7 +287,7 @@ namespace cubload
 
     db_make_varchar (val, 1, (char *) "a", 1, LANG_SYS_CODESET, LANG_SYS_COLLATION);
 
-    intl_char_count ((unsigned char *) str, str_len, (codeset_t) codeset, &char_count);
+    intl_char_count ((unsigned char *) str, str_len, (INTL_CODESET) codeset, &char_count);
 
     if (char_count > precision)
       {
@@ -300,7 +300,7 @@ namespace cubload
 	const char *p;
 	int truncate_size;
 
-	intl_char_size ((unsigned char *) str, precision, (codeset_t) codeset, &truncate_size);
+	intl_char_size ((unsigned char *) str, precision, (INTL_CODESET) codeset, &truncate_size);
 	for (p = &str[truncate_size], safe = 1; p < &str[str_len]; p++)
 	  {
 	    if (*p != ' ')
@@ -333,7 +333,7 @@ namespace cubload
   }
 
   void
-  to_db_string (const char *str, const tp_domain_t *domain, db_value_t *val)
+  to_db_string (const char *str, const TP_DOMAIN *domain, DB_VALUE *val)
   {
     int ret = db_make_string (val, (char *) str);
 
@@ -344,7 +344,7 @@ namespace cubload
   }
 
   void
-  to_db_float (const char *str, const tp_domain_t *domain, db_value_t *val)
+  to_db_float (const char *str, const TP_DOMAIN *domain, DB_VALUE *val)
   {
     double d;
     char *str_ptr;
@@ -364,7 +364,7 @@ namespace cubload
   }
 
   void
-  to_db_double (const char *str, const tp_domain_t *domain, db_value_t *val)
+  to_db_double (const char *str, const TP_DOMAIN *domain, DB_VALUE *val)
   {
     double d;
     char *str_ptr;
@@ -384,7 +384,7 @@ namespace cubload
   }
 
   void
-  to_db_date (const char *str, const tp_domain_t *domain, db_value_t *val)
+  to_db_date (const char *str, const TP_DOMAIN *domain, DB_VALUE *val)
   {
     int ret;
 
@@ -398,7 +398,7 @@ namespace cubload
   }
 
   void
-  to_db_time (const char *str, const tp_domain_t *domain, db_value_t *val)
+  to_db_time (const char *str, const TP_DOMAIN *domain, DB_VALUE *val)
   {
     int ret;
 
@@ -412,7 +412,7 @@ namespace cubload
   }
 
   void
-  to_db_timeltz (const char *str, const tp_domain_t *domain, db_value_t *val)
+  to_db_timeltz (const char *str, const TP_DOMAIN *domain, DB_VALUE *val)
   {
     int ret;
     DB_TIMETZ timetz;
@@ -430,7 +430,7 @@ namespace cubload
   }
 
   void
-  to_db_timetz (const char *str, const tp_domain_t *domain, db_value_t *val)
+  to_db_timetz (const char *str, const TP_DOMAIN *domain, DB_VALUE *val)
   {
     int ret;
     bool has_zone;
@@ -449,7 +449,7 @@ namespace cubload
   }
 
   void
-  to_db_timestamp (const char *str, const tp_domain_t *domain, db_value_t *val)
+  to_db_timestamp (const char *str, const TP_DOMAIN *domain, DB_VALUE *val)
   {
     int ret;
 
@@ -463,7 +463,7 @@ namespace cubload
   }
 
   void
-  to_db_timestampltz (const char *str, const tp_domain_t *domain, db_value_t *val)
+  to_db_timestampltz (const char *str, const TP_DOMAIN *domain, DB_VALUE *val)
   {
     int ret;
 
@@ -477,7 +477,7 @@ namespace cubload
   }
 
   void
-  to_db_timestamptz (const char *str, const tp_domain_t *domain, db_value_t *val)
+  to_db_timestamptz (const char *str, const TP_DOMAIN *domain, DB_VALUE *val)
   {
     int ret;
     bool has_zone;
@@ -496,7 +496,7 @@ namespace cubload
   }
 
   void
-  to_db_datetime (const char *str, const tp_domain_t *domain, db_value_t *val)
+  to_db_datetime (const char *str, const TP_DOMAIN *domain, DB_VALUE *val)
   {
     int ret;
     DB_DATETIME datetime;
@@ -512,7 +512,7 @@ namespace cubload
   }
 
   void
-  to_db_datetimeltz (const char *str, const tp_domain_t *domain, db_value_t *val)
+  to_db_datetimeltz (const char *str, const TP_DOMAIN *domain, DB_VALUE *val)
   {
     int ret;
     DB_DATETIME datetime;
@@ -528,7 +528,7 @@ namespace cubload
   }
 
   void
-  to_db_datetimetz (const char *str, const tp_domain_t *domain, db_value_t *val)
+  to_db_datetimetz (const char *str, const TP_DOMAIN *domain, DB_VALUE *val)
   {
     int ret;
     bool has_zone;
@@ -550,7 +550,7 @@ namespace cubload
   }
 
   void
-  to_db_json (const char *str, const tp_domain_t *domain, db_value_t *val)
+  to_db_json (const char *str, const TP_DOMAIN *domain, DB_VALUE *val)
   {
     JSON_DOC *document = NULL;
     char *json_body = NULL;
@@ -569,7 +569,7 @@ namespace cubload
   }
 
   void
-  to_db_monetary (const char *str, const tp_domain_t *domain, db_value_t *val)
+  to_db_monetary (const char *str, const TP_DOMAIN *domain, DB_VALUE *val)
   {
     char *str_ptr;
     double amt;

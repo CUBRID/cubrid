@@ -103,69 +103,61 @@ namespace cubload
     LDR_STOP_AND_COMMIT_INTERRUPT
   };
 
-  struct LDR_STRING
+  struct string_type
   {
-    LDR_STRING *next;
-    LDR_STRING *last;
+    string_type *next;
+    string_type *last;
     char *val;
     size_t size;
     bool need_free_val;
     bool need_free_self;
   };
 
-  struct LDR_CONSTRUCTOR_SPEC
+  struct constructor_spec_type
   {
-    LDR_STRING *id_name;
-    LDR_STRING *arg_list;
+    string_type *id_name;
+    string_type *arg_list;
   };
 
-  struct LDR_CLASS_COMMAND_SPEC
+  struct class_command_spec_type
   {
     int qualifier;
-    LDR_STRING *attr_list;
-    LDR_CONSTRUCTOR_SPEC *ctor_spec;
+    string_type *attr_list;
+    constructor_spec_type *ctor_spec;
   };
 
-  struct LDR_CONSTANT
+  struct constant_type
   {
-    LDR_CONSTANT *next;
-    LDR_CONSTANT *last;
+    constant_type *next;
+    constant_type *last;
     void *val;
     int type;
     bool need_free;
   };
 
-  struct LDR_OBJECT_REF
+  struct object_ref_type
   {
-    LDR_STRING *class_id;
-    LDR_STRING *class_name;
-    LDR_STRING *instance_number;
+    string_type *class_id;
+    string_type *class_name;
+    string_type *instance_number;
   };
 
-  struct LDR_MONETARY_VALUE
+  struct monetary_type
   {
-    LDR_STRING *amount;
+    string_type *amount;
     int currency_type;
   };
-
-  // type aliases
-  using string_t = LDR_STRING;
-  using constant_t = LDR_CONSTANT;
-  using object_ref_t = LDR_OBJECT_REF;
-  using monetary_t = LDR_MONETARY_VALUE;
-  using ctor_spec_t = LDR_CONSTRUCTOR_SPEC;
-  using class_cmd_spec_t = LDR_CLASS_COMMAND_SPEC;
 
   class loader
   {
     public:
       virtual ~loader () = default;
 
-      virtual void act_setup_class_command_spec (string_t **class_name, class_cmd_spec_t **cmd_spec) = 0;
+      virtual void act_setup_class_command_spec (string_type **class_name, class_command_spec_type **cmd_spec) = 0;
       virtual void act_start_id (char *name) = 0;
       virtual void act_set_id (int id) = 0;
-      virtual void act_start_instance (int id, constant_t *cons) = 0;
-      virtual void process_constants (constant_t *cons) = 0;
+      virtual void act_start_instance (int id, constant_type *cons) = 0;
+      virtual void process_constants (constant_type *cons) = 0;
       virtual void act_finish_line () = 0;
       virtual void act_finish () = 0;
 
@@ -175,8 +167,8 @@ namespace cubload
   };
 
   ///////////////////// common global functions /////////////////////
-  void ldr_string_free (string_t **str);
-  void ldr_class_command_spec_free (class_cmd_spec_t **class_cmd_spec);
+  void ldr_string_free (string_type **str);
+  void ldr_class_command_spec_free (class_command_spec_type **class_cmd_spec);
 
   template <typename Func>
   int split (int batch_size, std::string &object_file_name, Func &&func);

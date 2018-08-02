@@ -92,7 +92,9 @@ static int Periodic_commit = 0;
 /* Don't ignore logging */
 static int Ignore_logging = 0;
 #if defined (SA_MODE)
-static int Interrupt_type = LDR_NO_INTERRUPT;
+/* *INDENT-OFF* */
+static int Interrupt_type = cubload::LDR_NO_INTERRUPT;
+/* *INDENT-ON* */
 #endif // SA_MODE
 static int schema_file_start_line = 1;
 static int index_file_start_line = 1;
@@ -817,7 +819,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
     {
       print_log_msg (1, "\nStart schema loading.\n");
 
-      /* 
+      /*
        * CUBRID 8.2 should be compatible with earlier versions of CUBRID.
        * Therefore, we do not perform user authentication when the loader
        * is executing by DBA group user.
@@ -892,11 +894,11 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 
       if (Ignore_logging)
 	{
-	  Interrupt_type = LDR_STOP_AND_COMMIT_INTERRUPT;
+	  Interrupt_type = cubload::LDR_STOP_AND_COMMIT_INTERRUPT;
 	}
       else
 	{
-	  Interrupt_type = LDR_STOP_AND_ABORT_INTERRUPT;
+	  Interrupt_type = cubload::LDR_STOP_AND_ABORT_INTERRUPT;
 	}
 
       if (Periodic_commit)
@@ -983,7 +985,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 			}
 
 		      util_log_write_errstr ("%s\n", db_error_string (3));
-		      /* 
+		      /*
 		       * don't allow the transaction to be committed at
 		       * this point, note that if we ever move to a scheme
 		       * where we write directly to the heap without the
@@ -1024,7 +1026,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 				}
 			      if (!ldr_update_statistics ())
 				{
-				  /* 
+				  /*
 				   * would it be faster to update statistics
 				   * before the first commit and just have a
 				   * single commit ?

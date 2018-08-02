@@ -69,6 +69,8 @@
 #include "load_db_value_converter.hpp"
 #include "dbtype_function.h"
 
+using namespace cubload;
+
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
@@ -318,7 +320,7 @@ struct LDR_CONTEXT
   int commit_counter;		/* periodic commit counter */
   int default_count;		/* the number of instances with */
   /* values */
-  constant_t *cons;		/* constant list for instance line */
+  constant_type *cons;		/* constant list for instance line */
 };
 
 char **ignore_class_list = NULL;
@@ -473,6 +475,35 @@ while (0)
 #define LDR_MOP_TEMPOID_MAPS_PRESIZE 1000
 #define LDR_ARG_GROW_SIZE 128
 
+/* Loader initialization and shutdown functions */
+static int ldr_finish (LDR_CONTEXT * context, int err);
+
+/* Action to initialize the parser context to deal with a new class */
+static void ldr_act_init_context (LDR_CONTEXT * context, const char *class_name, int len);
+
+static void ldr_act_attr (LDR_CONTEXT * context, const char *str, int len, cubload::LDR_TYPE type);
+
+/* Action to deal with attribute names and argument names */
+static int ldr_act_check_missing_non_null_attrs (LDR_CONTEXT * context);
+
+static void ldr_act_add_attr (LDR_CONTEXT * context, const char *attr_name, int len);
+
+/* Actions for object references */
+static void ldr_act_set_ref_class_id (LDR_CONTEXT * context, int id);
+static void ldr_act_set_ref_class (LDR_CONTEXT * context, char *name);
+static void ldr_act_set_instance_id (LDR_CONTEXT * context, int id);
+static DB_OBJECT *ldr_act_get_ref_class (LDR_CONTEXT * context);
+
+/* Special action for class, shared, default attributes */
+static void ldr_act_restrict_attributes (LDR_CONTEXT * context, cubload::LDR_ATTRIBUTE_TYPE type);
+
+/* Actions for constructor syntax */
+static int ldr_act_set_constructor (LDR_CONTEXT * context, const char *name);
+static int ldr_act_add_argument (LDR_CONTEXT * context, const char *name);
+
+static void ldr_act_set_skip_current_class (char *classname, size_t size);
+static bool ldr_is_ignore_class (const char *classname, size_t size);
+
 static void ldr_increment_err_count (LDR_CONTEXT * context, int i);
 static void ldr_clear_err_count (LDR_CONTEXT * context);
 static void ldr_clear_err_total (LDR_CONTEXT * context);
@@ -582,7 +613,7 @@ static int add_argument (LDR_CONTEXT * context);
 static void invalid_class_id_error (LDR_CONTEXT * context, int id);
 static int ldr_init_loader (LDR_CONTEXT * context);
 static void ldr_abort (void);
-static void ldr_process_object_ref (object_ref_t * ref, int type);
+static void ldr_process_object_ref (object_ref_type * ref, int type);
 static int ldr_act_add_class_all_attrs (LDR_CONTEXT * context, const char *class_name);
 static int ldr_json_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val);
 static int ldr_json_db_json (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att);
@@ -590,410 +621,416 @@ static int ldr_json_db_json (LDR_CONTEXT * context, const char *str, int len, SM
 /* default action */
 void (*ldr_act) (LDR_CONTEXT * context, const char *str, int len, LDR_TYPE type) = ldr_act_attr;
 
-void
-client_loader::act_setup_class_command_spec (string_t ** class_name_, class_cmd_spec_t ** cmd_spec_)
+/* *INDENT-OFF* */
+namespace cubload
 {
-  if (class_name_ == NULL || *class_name_ == NULL)
-    {
-      return;
-    }
-  if (cmd_spec_ == NULL || *cmd_spec_ == NULL)
-    {
-      return;
-    }
 
-  string_t *attr, *arg;
-  string_t *class_name = *class_name_;
-  class_cmd_spec_t *cmd_spec = *cmd_spec_;
+  void
+  client_loader::act_setup_class_command_spec (string_type **class_name_, class_command_spec_type **cmd_spec_)
+  {
+    if (class_name_ == NULL || *class_name_ == NULL)
+      {
+	return;
+      }
+    if (cmd_spec_ == NULL || *cmd_spec_ == NULL)
+      {
+	return;
+      }
 
-  ldr_act_set_skip_current_class (class_name->val, class_name->size);
-  ldr_act_init_context (ldr_Current_context, class_name->val, class_name->size);
+    string_type *attr, *arg;
+    string_type *class_name = *class_name_;
+    class_command_spec_type *cmd_spec = *cmd_spec_;
 
-  if (cmd_spec->qualifier != LDR_ATTRIBUTE_ANY)
-    {
-      ldr_act_restrict_attributes (ldr_Current_context, (LDR_ATTRIBUTE_TYPE) cmd_spec->qualifier);
-    }
+    ldr_act_set_skip_current_class (class_name->val, class_name->size);
+    ldr_act_init_context (ldr_Current_context, class_name->val, class_name->size);
 
-  for (attr = cmd_spec->attr_list; attr; attr = attr->next)
-    {
-      ldr_act_add_attr (ldr_Current_context, attr->val, attr->size);
-    }
+    if (cmd_spec->qualifier != LDR_ATTRIBUTE_ANY)
+      {
+	ldr_act_restrict_attributes (ldr_Current_context, (LDR_ATTRIBUTE_TYPE) cmd_spec->qualifier);
+      }
 
-  ldr_act_check_missing_non_null_attrs (ldr_Current_context);
+    for (attr = cmd_spec->attr_list; attr; attr = attr->next)
+      {
+	ldr_act_add_attr (ldr_Current_context, attr->val, attr->size);
+      }
 
-  if (cmd_spec->ctor_spec)
-    {
-      ldr_act_set_constructor (ldr_Current_context, cmd_spec->ctor_spec->id_name->val);
+    ldr_act_check_missing_non_null_attrs (ldr_Current_context);
 
-      for (arg = cmd_spec->ctor_spec->arg_list; arg; arg = arg->next)
-	{
-	  ldr_act_add_argument (ldr_Current_context, arg->val);
-	}
-    }
+    if (cmd_spec->ctor_spec)
+      {
+	ldr_act_set_constructor (ldr_Current_context, cmd_spec->ctor_spec->id_name->val);
 
-  ldr_class_command_spec_free (cmd_spec_);
-  ldr_string_free (class_name_);
-}
-
-/*
- * client_loader::act_start_id - Begin the specification of a class id assignment.
- *    return: void
- *    context(in/out): context
- *    name(in): class name
- */
-void
-client_loader::act_start_id (char *name)
-{
-  DB_OBJECT *class_;
-  bool is_ignore_class;
-
-  // moved from grammar file;
-  skip_current_class = false;
-
-  if (!ldr_Current_context->validation_only)
-    {
-      class_ = ldr_find_class (name);
-      if (class_ != NULL)
-	{
-	  ldr_Current_context->id_class = class_;
-	}
-      else
-	{
-	  is_ignore_class = ldr_is_ignore_class (name, strlen (name));
-	  if (!is_ignore_class)
-	    {
-	      display_error (0);
-	      CHECK_CONTEXT_VALIDITY (ldr_Current_context, true);
-	    }
-	  else if (er_errid () == ER_LC_UNKNOWN_CLASSNAME)
-	    {
-	      er_clear ();
-	    }
-	}
-    }
-}
-
-/*
- * client_loader::act_set_id - Assign an id number to a class.
- *    return: void
- *    context(in/out): context
- *    id(in): class id
- */
-void
-client_loader::act_set_id (int id)
-{
-  int err = NO_ERROR;
-
-  if (ldr_Current_context->id_class != NULL)
-    {
-      ldr_Current_context->inst_num = id;
-      CHECK_ERR (err, ldr_assign_class_id (ldr_Current_context->id_class, id));
-      ldr_Current_context->id_class = NULL;
-    }
-error_exit:
-  CHECK_CONTEXT_VALIDITY (ldr_Current_context, err != NO_ERROR);
-}
-
-/*
- * client_loader::act_start_instance - Finishes off the previous instance and resets the
- * context to deal with a new instance.
- *    return: void
- *    context(in/out): current context
- *    id(in): id of current instance.
- * Note:
- *    This is called when a new instance if found by the parser.
- */
-void
-client_loader::act_start_instance (int id, constant_t * cons)
-{
-  // moved from grammar file;
-  skip_current_instance = false;
-
-  CHECK_SKIP ();
-  if (ldr_Current_context->valid)
-    {
-
-      ldr_Current_context->inst_num = id;
-      if (cons)
-	{
-	  ldr_Current_context->cons = cons;
-	}
-
-      if (ldr_reset_context (ldr_Current_context) != NO_ERROR)
-	{
-	  display_error (-1);
-	}
-
-      ldr_Current_context->instance_started = 1;
-    }
-}
-
-void
-client_loader::process_constants (constant_t * cons)
-{
-  constant_t *c, *save;
-
-  CHECK_SKIP ();
-
-  if (cons != NULL && ldr_Current_context->num_attrs == 0)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDB_NO_CLASS_OR_NO_ATTRIBUTE, 0);
-      /* diplay the msg 1 time for each class */
-      if (ldr_Current_context->valid)
-	{
-	  display_error (0);
-	}
-      CHECK_CONTEXT_VALIDITY (ldr_Current_context, true);
-      ldr_abort ();
-      return;
-    }
-
-  for (c = cons; c; c = save)
-    {
-      save = c->next;
-
-      switch (c->type)
-	{
-	case LDR_NULL:
-	  (*ldr_act) (ldr_Current_context, NULL, 0, LDR_NULL);
-	  break;
-
-	case LDR_INT:
-	case LDR_FLOAT:
-	case LDR_DOUBLE:
-	case LDR_NUMERIC:
-	case LDR_DATE:
-	case LDR_TIME:
-	case LDR_TIMELTZ:
-	case LDR_TIMETZ:
-	case LDR_TIMESTAMP:
-	case LDR_TIMESTAMPLTZ:
-	case LDR_TIMESTAMPTZ:
-	case LDR_DATETIME:
-	case LDR_DATETIMELTZ:
-	case LDR_DATETIMETZ:
-	case LDR_STR:
-	case LDR_NSTR:
+	for (arg = cmd_spec->ctor_spec->arg_list; arg; arg = arg->next)
 	  {
-	    string_t *str = (string_t *) c->val;
-
-	    (*ldr_act) (ldr_Current_context, str->val, str->size, (LDR_TYPE) c->type);
-	    ldr_string_free (&str);
+	    ldr_act_add_argument (ldr_Current_context, arg->val);
 	  }
-	  break;
+      }
 
-	case LDR_MONETARY:
+    ldr_class_command_spec_free (cmd_spec_);
+    ldr_string_free (class_name_);
+  }
+
+  /*
+   * client_loader::act_start_id - Begin the specification of a class id assignment.
+   *    return: void
+   *    context(in/out): context
+   *    name(in): class name
+   */
+  void
+  client_loader::act_start_id (char *name)
+  {
+    DB_OBJECT *class_;
+    bool is_ignore_class;
+
+    // moved from grammar file;
+    skip_current_class = false;
+
+    if (!ldr_Current_context->validation_only)
+      {
+	class_ = ldr_find_class (name);
+	if (class_ != NULL)
 	  {
-	    monetary_t *mon = (monetary_t *) c->val;
-	    string_t *str = (string_t *) mon->amount;
-	    /* buffer size for monetary : numeric size + grammar currency symbol + string terminator */
-	    char full_mon_str[NUM_BUF_SIZE + 3 + 1];
-	    char *full_mon_str_p = full_mon_str;
-	    /* In Loader grammar always print symbol before value (position of currency symbol is not localized) */
-	    char *curr_str = intl_get_money_esc_ISO_symbol ((DB_CURRENCY) mon->currency_type);
-	    unsigned int full_mon_str_len = (strlen (str->val) + strlen (curr_str));
-
-	    if (full_mon_str_len >= sizeof (full_mon_str))
+	    ldr_Current_context->id_class = class_;
+	  }
+	else
+	  {
+	    is_ignore_class = ldr_is_ignore_class (name, strlen (name));
+	    if (!is_ignore_class)
 	      {
-		full_mon_str_p = (char *) malloc (full_mon_str_len + 1);
+		display_error (0);
+		CHECK_CONTEXT_VALIDITY (ldr_Current_context, true);
 	      }
-
-	    strcpy (full_mon_str_p, curr_str);
-	    strcat (full_mon_str_p, str->val);
-
-	    (*ldr_act) (ldr_Current_context, full_mon_str_p, strlen (full_mon_str_p), (LDR_TYPE) c->type);
-	    if (full_mon_str_p != full_mon_str)
+	    else if (er_errid () == ER_LC_UNKNOWN_CLASSNAME)
 	      {
-		free_and_init (full_mon_str_p);
+		er_clear ();
 	      }
-	    ldr_string_free (&str);
-	    free_and_init (mon);
 	  }
-	  break;
+      }
+  }
 
-	case LDR_BSTR:
-	case LDR_XSTR:
-	case LDR_ELO_INT:
-	case LDR_ELO_EXT:
-	case LDR_SYS_USER:
-	case LDR_SYS_CLASS:
+  /*
+   * client_loader::act_set_id - Assign an id number to a class.
+   *    return: void
+   *    context(in/out): context
+   *    id(in): class id
+   */
+  void
+  client_loader::act_set_id (int id)
+  {
+    int err = NO_ERROR;
+
+    if (ldr_Current_context->id_class != NULL)
+      {
+	ldr_Current_context->inst_num = id;
+	CHECK_ERR (err, ldr_assign_class_id (ldr_Current_context->id_class, id));
+	ldr_Current_context->id_class = NULL;
+      }
+  error_exit:
+    CHECK_CONTEXT_VALIDITY (ldr_Current_context, err != NO_ERROR);
+  }
+
+  /*
+   * client_loader::act_start_instance - Finishes off the previous instance and resets the
+   * context to deal with a new instance.
+   *    return: void
+   *    context(in/out): current context
+   *    id(in): id of current instance.
+   * Note:
+   *    This is called when a new instance if found by the parser.
+   */
+  void
+  client_loader::act_start_instance (int id, constant_type *cons)
+  {
+    // moved from grammar file;
+    skip_current_instance = false;
+
+    CHECK_SKIP ();
+    if (ldr_Current_context->valid)
+      {
+
+	ldr_Current_context->inst_num = id;
+	if (cons)
 	  {
-	    string_t *str = (string_t *) c->val;
-
-	    (*ldr_act) (ldr_Current_context, str->val, strlen (str->val), (LDR_TYPE) c->type);
-	    ldr_string_free (&str);
+	    ldr_Current_context->cons = cons;
 	  }
-	  break;
 
-	case LDR_OID:
-	case LDR_CLASS_OID:
-	  ldr_process_object_ref ((object_ref_t *) c->val, c->type);
-	  break;
+	if (ldr_reset_context (ldr_Current_context) != NO_ERROR)
+	  {
+	    display_error (-1);
+	  }
 
-	case LDR_COLLECTION:
-	  (*ldr_act) (ldr_Current_context, "{", 1, LDR_COLLECTION);
-	  process_constants ((constant_t *) c->val);
-	  ldr_act_attr (ldr_Current_context, NULL, 0, LDR_COLLECTION);
-	  break;
+	ldr_Current_context->instance_started = 1;
+      }
+  }
 
-	default:
-	  break;
-	}
+  void
+  client_loader::process_constants (constant_type *cons)
+  {
+    constant_type *c, *save;
 
-      if (c->need_free)
-	{
-	  free_and_init (c);
-	}
-    }
-}
+    CHECK_SKIP ();
 
-/*
- * client_loader::act_finish_line - Completes an instance line.
- *    return: void
- *    context(in/out): current context.
- * Note:
- *   If there are missing attributes/arguments an error is flagged. The
- *   instance is inserted if it is not a class attribute modification. If
- *   the flush interval has been reached, the current set of instances created
- *   are flushed.
- */
-void
-client_loader::act_finish_line ()
-{
-  int err = NO_ERROR;
+    if (cons != NULL && ldr_Current_context->num_attrs == 0)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDB_NO_CLASS_OR_NO_ATTRIBUTE, 0);
+	/* diplay the msg 1 time for each class */
+	if (ldr_Current_context->valid)
+	  {
+	    display_error (0);
+	  }
+	CHECK_CONTEXT_VALIDITY (ldr_Current_context, true);
+	ldr_abort ();
+	return;
+      }
 
-  CHECK_SKIP ();
-  if (ldr_Current_context->valid)
-    {
-      if (ldr_Current_context->next_attr < (ldr_Current_context->num_attrs + ldr_Current_context->arg_count))
-	{
-	  if (ldr_Current_context->arg_count && (ldr_Current_context->next_attr >= ldr_Current_context->arg_index))
+    for (c = cons; c; c = save)
+      {
+	save = c->next;
+
+	switch (c->type)
+	  {
+	  case LDR_NULL:
+	    (*ldr_act) (ldr_Current_context, NULL, 0, LDR_NULL);
+	    break;
+
+	  case LDR_INT:
+	  case LDR_FLOAT:
+	  case LDR_DOUBLE:
+	  case LDR_NUMERIC:
+	  case LDR_DATE:
+	  case LDR_TIME:
+	  case LDR_TIMELTZ:
+	  case LDR_TIMETZ:
+	  case LDR_TIMESTAMP:
+	  case LDR_TIMESTAMPLTZ:
+	  case LDR_TIMESTAMPTZ:
+	  case LDR_DATETIME:
+	  case LDR_DATETIMELTZ:
+	  case LDR_DATETIMETZ:
+	  case LDR_STR:
+	  case LDR_NSTR:
 	    {
-	      err = ER_LDR_MISSING_ARGUMENT;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2, ldr_Current_context->arg_count,
-		      ldr_Current_context->next_attr - ldr_Current_context->arg_index);
+	      string_type *str = (string_type *) c->val;
+
+	      (*ldr_act) (ldr_Current_context, str->val, str->size, (LDR_TYPE) c->type);
+	      ldr_string_free (&str);
 	    }
-	  else
+	    break;
+
+	  case LDR_MONETARY:
 	    {
-	      err = ER_LDR_MISSING_ATTRIBUTES;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2, ldr_Current_context->num_attrs,
-		      ldr_Current_context->next_attr);
-	    }
-	  LDR_INCREMENT_ERR_COUNT (ldr_Current_context, 1);
-	}
-    }
+	      monetary_type *mon = (monetary_type *) c->val;
+	      string_type *str = (string_type *) mon->amount;
+	      /* buffer size for monetary : numeric size + grammar currency symbol + string terminator */
+	      char full_mon_str[NUM_BUF_SIZE + 3 + 1];
+	      char *full_mon_str_p = full_mon_str;
+	      /* In Loader grammar always print symbol before value (position of currency symbol is not localized) */
+	      char *curr_str = intl_get_money_esc_ISO_symbol ((DB_CURRENCY) mon->currency_type);
+	      unsigned int full_mon_str_len = (strlen (str->val) + strlen (curr_str));
 
-  ldr_restore_pin_and_drop_obj (ldr_Current_context, ((ldr_Current_context->err_count != 0) || (err != NO_ERROR))
-				|| skip_current_instance);
-  CHECK_ERR (err, err);
-
-  if (ldr_Current_context->valid && !ldr_Current_context->err_count && !skip_current_instance)
-    {
-      if (ldr_Current_context->constructor)
-	{
-	  err = insert_meth_instance (ldr_Current_context);
-	}
-      else if (ldr_Current_context->attribute_type == LDR_ATTRIBUTE_ANY)
-	{
-	  err = insert_instance (ldr_Current_context);
-	}
-
-      if (err == NO_ERROR)
-	{
-	  if (ldr_Current_context->flush_interval
-	      && ldr_Current_context->inst_count >= ldr_Current_context->flush_interval)
-	    {
-	      err = ldr_assign_all_perm_oids ();
-	      if (err == NO_ERROR)
+	      if (full_mon_str_len >= sizeof (full_mon_str))
 		{
-		  if (!ldr_Current_context->validation_only)
-		    {
-		      ldr_flush (ldr_Current_context);
-		      err = er_errid ();
-		      if (err != NO_ERROR)
-			{
-			  /* flush failed */
-			  err = er_filter_errid (true);	/* ignore warning */
-			  if (err == NO_ERROR)
-			    {
-			      /* Flush error was ignored. Objects in workspace must be decached for later flush */
-			      ws_decache_all_instances (ldr_Current_context->cls);
-			    }
-			}
-		      CHECK_ERR (err, er_errid ());
-		    }
+		  full_mon_str_p = (char *) malloc (full_mon_str_len + 1);
 		}
-	      else
+
+	      strcpy (full_mon_str_p, curr_str);
+	      strcat (full_mon_str_p, str->val);
+
+	      (*ldr_act) (ldr_Current_context, full_mon_str_p, strlen (full_mon_str_p), (LDR_TYPE) c->type);
+	      if (full_mon_str_p != full_mon_str)
 		{
-		  LDR_INCREMENT_ERR_COUNT (ldr_Current_context, 1);
+		  free_and_init (full_mon_str_p);
 		}
+	      ldr_string_free (&str);
+	      free_and_init (mon);
 	    }
-	}
-      else
-	{
-	  LDR_INCREMENT_ERR_COUNT (ldr_Current_context, 1);
-	}
-    }
+	    break;
 
-error_exit:
-  if (ldr_Current_context->err_count || (err != NO_ERROR))
-    {
-      ldr_abort ();
-    }
-  ldr_Current_context->instance_started = 0;
-}
+	  case LDR_BSTR:
+	  case LDR_XSTR:
+	  case LDR_ELO_INT:
+	  case LDR_ELO_EXT:
+	  case LDR_SYS_USER:
+	  case LDR_SYS_CLASS:
+	    {
+	      string_type *str = (string_type *) c->val;
 
-/*
- * client_loader::act_finish -
- *    return:
- *    context():
- *    parse_error():
- */
-void
-client_loader::act_finish ()
-{
-  /* do not display duplicate error msg */
-  int err = er_filter_errid (false);
-  if (ldr_finish (ldr_Current_context, 0) && err == NO_ERROR)
-    {
-      display_error (-1);
-    }
-}
+	      (*ldr_act) (ldr_Current_context, str->val, strlen (str->val), (LDR_TYPE) c->type);
+	      ldr_string_free (&str);
+	    }
+	    break;
 
-/*
- * client_loader::load_failed_error - display load failed error
- *    return: void
- */
-void
-client_loader::load_failed_error ()
-{
-  display_error_line (0);
-  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_LOAD_FAIL));
-}
+	  case LDR_OID:
+	  case LDR_CLASS_OID:
+	    ldr_process_object_ref ((object_ref_type *) c->val, c->type);
+	    break;
 
-/*
- * client_loader::increment_err_total - increment err_total count of the given context
- *    return: void
- *    context(out): context
- */
-void
-client_loader::increment_err_total ()
-{
-  if (ldr_Current_context)
-    {
-      ldr_Current_context->err_total += 1;
-    }
-}
+	  case LDR_COLLECTION:
+	    (*ldr_act) (ldr_Current_context, "{", 1, LDR_COLLECTION);
+	    process_constants ((constant_type *) c->val);
+	    ldr_act_attr (ldr_Current_context, NULL, 0, LDR_COLLECTION);
+	    break;
 
-/*
- * client_loader::increment_fails - increment Total_fails count
- *    return: void
- */
-void
-client_loader::increment_fails ()
-{
-  Total_fails++;
+	  default:
+	    break;
+	  }
+
+	if (c->need_free)
+	  {
+	    free_and_init (c);
+	  }
+      }
+  }
+
+  /*
+   * client_loader::act_finish_line - Completes an instance line.
+   *    return: void
+   *    context(in/out): current context.
+   * Note:
+   *   If there are missing attributes/arguments an error is flagged. The
+   *   instance is inserted if it is not a class attribute modification. If
+   *   the flush interval has been reached, the current set of instances created
+   *   are flushed.
+   */
+  void
+  client_loader::act_finish_line ()
+  {
+    int err = NO_ERROR;
+
+    CHECK_SKIP ();
+    if (ldr_Current_context->valid)
+      {
+	if (ldr_Current_context->next_attr < (ldr_Current_context->num_attrs + ldr_Current_context->arg_count))
+	  {
+	    if (ldr_Current_context->arg_count && (ldr_Current_context->next_attr >= ldr_Current_context->arg_index))
+	      {
+		err = ER_LDR_MISSING_ARGUMENT;
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2, ldr_Current_context->arg_count,
+			ldr_Current_context->next_attr - ldr_Current_context->arg_index);
+	      }
+	    else
+	      {
+		err = ER_LDR_MISSING_ATTRIBUTES;
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2, ldr_Current_context->num_attrs,
+			ldr_Current_context->next_attr);
+	      }
+	    LDR_INCREMENT_ERR_COUNT (ldr_Current_context, 1);
+	  }
+      }
+
+    ldr_restore_pin_and_drop_obj (ldr_Current_context, ((ldr_Current_context->err_count != 0) || (err != NO_ERROR))
+				  || skip_current_instance);
+    CHECK_ERR (err, err);
+
+    if (ldr_Current_context->valid && !ldr_Current_context->err_count && !skip_current_instance)
+      {
+	if (ldr_Current_context->constructor)
+	  {
+	    err = insert_meth_instance (ldr_Current_context);
+	  }
+	else if (ldr_Current_context->attribute_type == LDR_ATTRIBUTE_ANY)
+	  {
+	    err = insert_instance (ldr_Current_context);
+	  }
+
+	if (err == NO_ERROR)
+	  {
+	    if (ldr_Current_context->flush_interval
+		&& ldr_Current_context->inst_count >= ldr_Current_context->flush_interval)
+	      {
+		err = ldr_assign_all_perm_oids ();
+		if (err == NO_ERROR)
+		  {
+		    if (!ldr_Current_context->validation_only)
+		      {
+			ldr_flush (ldr_Current_context);
+			err = er_errid ();
+			if (err != NO_ERROR)
+			  {
+			    /* flush failed */
+			    err = er_filter_errid (true);	/* ignore warning */
+			    if (err == NO_ERROR)
+			      {
+				/* Flush error was ignored. Objects in workspace must be decached for later flush */
+				ws_decache_all_instances (ldr_Current_context->cls);
+			      }
+			  }
+			CHECK_ERR (err, er_errid ());
+		      }
+		  }
+		else
+		  {
+		    LDR_INCREMENT_ERR_COUNT (ldr_Current_context, 1);
+		  }
+	      }
+	  }
+	else
+	  {
+	    LDR_INCREMENT_ERR_COUNT (ldr_Current_context, 1);
+	  }
+      }
+
+  error_exit:
+    if (ldr_Current_context->err_count || (err != NO_ERROR))
+      {
+	ldr_abort ();
+      }
+    ldr_Current_context->instance_started = 0;
+  }
+
+  /*
+   * client_loader::act_finish -
+   *    return:
+   *    context():
+   *    parse_error():
+   */
+  void
+  client_loader::act_finish ()
+  {
+    /* do not display duplicate error msg */
+    int err = er_filter_errid (false);
+    if (ldr_finish (ldr_Current_context, 0) && err == NO_ERROR)
+      {
+	display_error (-1);
+      }
+  }
+
+  /*
+   * client_loader::load_failed_error - display load failed error
+   *    return: void
+   */
+  void
+  client_loader::load_failed_error ()
+  {
+    display_error_line (0);
+    fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_LOAD_FAIL));
+  }
+
+  /*
+   * client_loader::increment_err_total - increment err_total count of the given context
+   *    return: void
+   *    context(out): context
+   */
+  void
+  client_loader::increment_err_total ()
+  {
+    if (ldr_Current_context)
+      {
+	ldr_Current_context->err_total += 1;
+      }
+  }
+
+  /*
+   * client_loader::increment_fails - increment Total_fails count
+   *    return: void
+   */
+  void
+  client_loader::increment_fails ()
+  {
+    Total_fails++;
+  }
 }
+/* *INDENT-ON* */
 
 /*
  * ldr_increment_err_count - increment err_count of the given context
@@ -1730,7 +1767,7 @@ is_internal_class (DB_OBJECT * class_)
  *    len(in): length of token
  *    type(in): Parser type
  */
-void
+static void
 ldr_act_attr (LDR_CONTEXT * context, const char *str, int len, LDR_TYPE type)
 {
   LDR_ATTDESC *attdesc;
@@ -4699,7 +4736,7 @@ error_exit:
  *    class_name():
  *    len():
  */
-void
+static void
 ldr_act_init_context (LDR_CONTEXT * context, const char *class_name, int len)
 {
   int err = NO_ERROR;
@@ -4809,7 +4846,7 @@ error_exit:
  * Note:
  *      xxx
  */
-int
+static int
 ldr_act_check_missing_non_null_attrs (LDR_CONTEXT * context)
 {
   int err = NO_ERROR;
@@ -4895,7 +4932,7 @@ error_exit:
  * Note:
  *      Determines the target type and sets the setter accordingly
  */
-void
+static void
 ldr_act_add_attr (LDR_CONTEXT * context, const char *attr_name, int len)
 {
   int err = NO_ERROR;
@@ -5219,7 +5256,7 @@ error_exit:
  *    context(in):
  *    type(in): type of attributes to expect
  */
-void
+static void
 ldr_act_restrict_attributes (LDR_CONTEXT * context, LDR_ATTRIBUTE_TYPE type)
 {
 
@@ -5281,7 +5318,7 @@ update_default_instances_stats (LDR_CONTEXT * context)
  *    context():
  *    err():
  */
-int
+static int
 ldr_finish (LDR_CONTEXT * context, int err)
 {
   int finish_error = NO_ERROR;
@@ -5537,7 +5574,7 @@ error_exit:
  *    calls to ldr_act_add_argument to specify any arguments that must be
  *    passed to the constructor method.
  */
-int
+static int
 ldr_act_set_constructor (LDR_CONTEXT * context, const char *name)
 {
   int err = NO_ERROR;
@@ -5661,7 +5698,7 @@ add_argument (LDR_CONTEXT * context)
  *    as the method expects because the domain validation will be
  *    done positionally according to the method signature in the schema.
  */
-int
+static int
 ldr_act_add_argument (LDR_CONTEXT * context, const char *name)
 {
   int err = NO_ERROR;
@@ -5742,7 +5779,7 @@ invalid_class_id_error (LDR_CONTEXT * context, int id)
  *    context(in/out): context
  *    name(in): class name
  */
-void
+static void
 ldr_act_set_ref_class (LDR_CONTEXT * context, char *name)
 {
   DB_OBJECT *mop;
@@ -5771,7 +5808,7 @@ ldr_act_set_ref_class (LDR_CONTEXT * context, char *name)
  *    context(in/out): context
  *    id(in): instance id for ref_class already set
  */
-void
+static void
 ldr_act_set_instance_id (LDR_CONTEXT * context, int id)
 {
   CHECK_SKIP ();
@@ -5798,7 +5835,7 @@ ldr_act_set_instance_id (LDR_CONTEXT * context, int id)
  *    Unlike act_set_ref_class, the class is identified through a previously
  *    assigned id number.
  */
-void
+static void
 ldr_act_set_ref_class_id (LDR_CONTEXT * context, int id)
 {
   DB_OBJECT *class_;
@@ -5820,7 +5857,7 @@ ldr_act_set_ref_class_id (LDR_CONTEXT * context, int id)
     }
 }
 
-DB_OBJECT *
+static DB_OBJECT *
 ldr_act_get_ref_class (LDR_CONTEXT * context)
 {
   RETURN_IF_NOT_VALID_WITH (context, NULL);
@@ -6210,7 +6247,7 @@ ldr_abort (void)
     }
 }
 
-void
+static void
 ldr_act_set_skip_current_class (char *classname, size_t size)
 {
   skip_current_class = ldr_is_ignore_class (classname, size);
@@ -6221,7 +6258,7 @@ ldr_act_set_skip_current_class (char *classname, size_t size)
     }
 }
 
-bool
+static bool
 ldr_is_ignore_class (const char *classname, size_t size)
 {
   int i;
@@ -6252,7 +6289,7 @@ ldr_is_ignore_class (const char *classname, size_t size)
 }
 
 static void
-ldr_process_object_ref (object_ref_t * ref, int type)
+ldr_process_object_ref (object_ref_type * ref, int type)
 {
   bool ignore_class = false;
   const char *class_name;

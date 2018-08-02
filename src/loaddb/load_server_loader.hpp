@@ -35,22 +35,17 @@
 namespace cubload
 {
 
-  using oid_t = OID;
-  using attr_id_t = ATTR_ID;
-  using scan_cache_t = HEAP_SCANCACHE;
-  using attr_info_t = HEAP_CACHE_ATTRINFO;
-
   class server_loader : public loader
   {
     public:
       server_loader ();
       ~server_loader () override;
 
-      void act_setup_class_command_spec (string_t **class_name, class_cmd_spec_t **cmd_spec) override;
+      void act_setup_class_command_spec (string_type **class_name, class_command_spec_type **cmd_spec) override;
       void act_start_id (char *name) override;
       void act_set_id (int id) override;
-      void act_start_instance (int id, constant_t *cons) override;
-      void process_constants (constant_t *cons) override;
+      void act_start_instance (int id, constant_type *cons) override;
+      void process_constants (constant_type *cons) override;
       void act_finish_line () override;
       void act_finish () override;
 
@@ -59,9 +54,9 @@ namespace cubload
       void increment_fails () override;
 
     private:
-      oid_t m_class_oid;
-      attr_id_t *m_attr_ids;
-      attr_info_t m_attr_info;
+      OID m_class_oid;
+      ATTR_ID *m_attr_ids;
+      HEAP_CACHE_ATTRINFO m_attr_info;
 
       int m_err_total;
       int m_total_fails;

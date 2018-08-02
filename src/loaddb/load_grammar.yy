@@ -36,11 +36,11 @@
 
 %union {
   int int_val;
-  string_t *string;
-  constant_t *constant;
-  object_ref_t *obj_ref;
-  ctor_spec_t *ctor_spec;
-  class_cmd_spec_t *cmd_spec;
+  string_type *string;
+  constant_type *constant;
+  object_ref_type *obj_ref;
+  constructor_spec_type *ctor_spec;
+  class_command_spec_type *cmd_spec;
 };
 
 %code requires {
