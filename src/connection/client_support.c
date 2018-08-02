@@ -276,7 +276,7 @@ css_send_req_to_server (char *host, int request, char *arg_buffer, int arg_buffe
   entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
 
   /* if the latest query status is committed, fetch won't be issued. */
-  assert (tran_was_latest_query_committed () || request != NET_SERVER_LS_GET_LIST_FILE_PAGE);
+  assert (!tran_was_latest_query_committed () || request != NET_SERVER_LS_GET_LIST_FILE_PAGE);
 
   css_Errno = css_send_req_with_2_buffers (entry->conn, request, &rid, arg_buffer, arg_buffer_size, data_buffer,
 					   data_buffer_size, reply_buffer, reply_size);
