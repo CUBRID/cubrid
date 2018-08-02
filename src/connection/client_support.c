@@ -48,6 +48,7 @@
 #include "error_manager.h"
 #include "client_support.h"
 #include "network_interface_cl.h"
+#include "network.h"
 
 static void (*css_Previous_sigpipe_handler) (int sig_no) = NULL;
 /* TODO: M2 - remove css_Errno */
@@ -181,8 +182,6 @@ css_send_request_to_server (char *host, int request, char *arg_buffer, int arg_b
     {
       entry->conn->set_tran_index (tm_Tran_index);
       entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
-      /* We can't send other request, if the latest query status is committed. */
-      assert (!tran_was_latest_query_committed ());
       css_Errno = css_send_request (entry->conn, (int) request, &rid, arg_buffer, (int) arg_buffer_size);
       if (css_Errno != NO_ERRORS)
 	{
@@ -227,8 +226,6 @@ css_send_request_to_server_with_buffer (char *host, int request, char *arg_buffe
     {
       entry->conn->set_tran_index (tm_Tran_index);
       entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
-      /* We can't send other request, if the latest query status is committed. */
-      assert (!tran_was_latest_query_committed ());
       css_Errno =
 	css_send_request_with_data_buffer (entry->conn, request, &rid, arg_buffer, arg_buffer_size, data_buffer,
 					   data_buffer_size);
@@ -276,8 +273,10 @@ css_send_req_to_server (char *host, int request, char *arg_buffer, int arg_buffe
     {
       entry->conn->set_tran_index (tm_Tran_index);
       entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
-      /* We can't send other request, if the latest query status is committed. */
-      assert (!tran_was_latest_query_committed ());
+
+      /* if the latest query status is committed, fetch won't be issued. */
+      assert (tran_was_latest_query_committed () || request != NET_SERVER_LS_GET_LIST_FILE_PAGE);
+
       css_Errno =
 	css_send_req_with_2_buffers (entry->conn, request, &rid, arg_buffer, arg_buffer_size, data_buffer,
 				     data_buffer_size, reply_buffer, reply_size);
@@ -327,8 +326,6 @@ css_send_req_to_server_with_large_data (char *host, int request, char *arg_buffe
     {
       entry->conn->transaction_id = tm_Tran_index;
       entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
-      /* We can't send other request, if the latest query status is committed. */
-      assert (!tran_was_latest_query_committed ());
       css_Errno =
 	css_send_req_with_large_buffer (entry->conn, request, &rid, arg_buffer, arg_buffer_size, data_buffer,
 					data_buffer_size, reply_buffer, reply_size);
@@ -381,8 +378,6 @@ css_send_req_to_server_2_data (char *host, int request, char *arg_buffer, int ar
     {
       entry->conn->set_tran_index (tm_Tran_index);
       entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
-      /* We can't send other request, if the latest query status is committed. */
-      assert (!tran_was_latest_query_committed ());
       css_Errno =
 	css_send_req_with_3_buffers (entry->conn, request, &rid, arg_buffer, arg_buffer_size, data1_buffer,
 				     data1_buffer_size, data2_buffer, data2_buffer_size, reply_buffer, reply_size);
@@ -422,8 +417,6 @@ css_send_req_to_server_no_reply (char *host, int request, char *arg_buffer, int 
     {
       entry->conn->set_tran_index (tm_Tran_index);
       entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
-      /* We can't send other request, if the latest query status is committed. */
-      assert (!tran_was_latest_query_committed ());
       css_Errno = css_send_request_no_reply (entry->conn, request, &rid, arg_buffer, arg_buffer_size);
       if (css_Errno == NO_ERRORS)
 	{
@@ -497,8 +490,6 @@ css_send_error_to_server (char *host, unsigned int eid, char *buffer, int buffer
     {
       entry->conn->set_tran_index (tm_Tran_index);
       entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
-      /* We can't send other request, if the latest query status is committed. */
-      assert (!tran_was_latest_query_committed ());
       entry->conn->db_error = er_errid ();
       css_Errno = css_send_error (entry->conn, CSS_RID_FROM_EID (eid), buffer, buffer_size);
       if (css_Errno == NO_ERRORS)
@@ -536,8 +527,6 @@ css_send_data_to_server (char *host, unsigned int eid, char *buffer, int buffer_
     {
       entry->conn->set_tran_index (tm_Tran_index);
       entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
-      /* We can't send other request, if the latest query status is committed. */
-      assert (!tran_was_latest_query_committed ());
       css_Errno = css_send_data (entry->conn, CSS_RID_FROM_EID (eid), buffer, buffer_size);
       if (css_Errno == NO_ERRORS)
 	{
