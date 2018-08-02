@@ -31,141 +31,148 @@
 
 #include <cassert>
 
-json_table_column_on_error::json_table_column_on_error (void)
-  : m_behavior (json_table_column_behavior::RETURN_NULL)
-  , m_default_value (NULL)
+namespace cubxasl
 {
-
-}
-
-int
-json_table_column_on_error::trigger (int error_code, db_value &value_out)
-{
-  assert (error_code != NO_ERROR);
-
-  (void) db_make_null (&value_out);
-
-  switch (m_behavior)
+  namespace json_table
+  {
+    column_on_error::column_on_error (void)
+      : m_behavior (column_behavior::RETURN_NULL)
+      , m_default_value (NULL)
     {
-    case json_table_column_behavior::RETURN_NULL:
-      er_clear ();
-      return NO_ERROR;
 
-    case json_table_column_behavior::THROW_ERROR:
-      // propagate error
-      ASSERT_ERROR ();
-      return error_code;
+    }
 
-    case json_table_column_behavior::DEFAULT_VALUE:
-      assert (m_default_value != NULL);
-      er_clear ();
-      if (pr_clone_value (m_default_value, &value_out) != NO_ERROR)
+    int
+    column_on_error::trigger (int error_code, db_value &value_out)
+    {
+      assert (error_code != NO_ERROR);
+
+      (void) db_make_null (&value_out);
+
+      switch (m_behavior)
 	{
+	case column_behavior::RETURN_NULL:
+	  er_clear ();
+	  return NO_ERROR;
+
+	case column_behavior::THROW_ERROR:
+	  // propagate error
+	  ASSERT_ERROR ();
+	  return error_code;
+
+	case column_behavior::DEFAULT_VALUE:
+	  assert (m_default_value != NULL);
+	  er_clear ();
+	  if (pr_clone_value (m_default_value, &value_out) != NO_ERROR)
+	    {
+	      assert (false);
+	    }
+	  return NO_ERROR;
+
+	default:
 	  assert (false);
+	  return error_code;
 	}
-      return NO_ERROR;
-
-    default:
-      assert (false);
-      return error_code;
     }
-}
 
-json_table_column_on_empty::json_table_column_on_empty (void)
-  : m_behavior (json_table_column_behavior::RETURN_NULL)
-  , m_default_value (NULL)
-{
-  //
-}
-
-int
-json_table_column_on_empty::trigger (db_value &value_out)
-{
-  (void) db_make_null (&value_out);
-
-  switch (m_behavior)
+    column_on_empty::column_on_empty (void)
+      : m_behavior (column_behavior::RETURN_NULL)
+      , m_default_value (NULL)
     {
-    case json_table_column_behavior::RETURN_NULL:
-      return NO_ERROR;
+      //
+    }
 
-    case json_table_column_behavior::THROW_ERROR:
-      // todo: set a proper error
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      return ER_FAILED;
+    int
+    column_on_empty::trigger (db_value &value_out)
+    {
+      (void) db_make_null (&value_out);
 
-    case json_table_column_behavior::DEFAULT_VALUE:
-      assert (m_default_value != NULL);
-      if (pr_clone_value (m_default_value, &value_out) != NO_ERROR)
+      switch (m_behavior)
 	{
+	case column_behavior::RETURN_NULL:
+	  return NO_ERROR;
+
+	case column_behavior::THROW_ERROR:
+	  // todo: set a proper error
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  return ER_FAILED;
+
+	case column_behavior::DEFAULT_VALUE:
+	  assert (m_default_value != NULL);
+	  if (pr_clone_value (m_default_value, &value_out) != NO_ERROR)
+	    {
+	      assert (false);
+	    }
+	  return NO_ERROR;
+
+	default:
 	  assert (false);
+	  return ER_FAILED;
 	}
-      return NO_ERROR;
-
-    default:
-      assert (false);
-      return ER_FAILED;
-    }
-}
-
-json_table_column::json_table_column (void)
-  : m_domain (NULL)
-  , m_path ()
-  , m_on_error ()
-  , m_on_empty ()
-  , m_output_value_pointer (NULL)
-  , m_function (EXTRACT)
-{
-  //
-}
-
-int
-json_table_column::evaluate (const db_value &input, db_value &output)
-{
-  if (db_value_is_null (&input))
-    {
-      // do we consider this empty case??
-      return m_on_empty.trigger (output);
     }
 
-  int error_code = NO_ERROR;
-
-  if (m_function == EXTRACT)
+    column::column (void)
+      : m_domain (NULL)
+      , m_path ()
+      , m_on_error ()
+      , m_on_empty ()
+      , m_output_value_pointer (NULL)
+      , m_function (EXTRACT)
     {
-      DB_VALUE temp_path_value;
-      db_make_string (&temp_path_value, const_cast<char *> (m_path.c_str ()));
-      error_code = db_json_extract_dbval (&input, &temp_path_value, &output);
+      //
+    }
+
+    int
+    column::evaluate (const db_value &input, db_value &output)
+    {
+      if (db_value_is_null (&input))
+	{
+	  // do we consider this empty case??
+	  return m_on_empty.trigger (output);
+	}
+
+      int error_code = NO_ERROR;
+
+      if (m_function == EXTRACT)
+	{
+	  DB_VALUE temp_path_value;
+	  db_make_string (&temp_path_value, const_cast<char *> (m_path.c_str ()));
+	  error_code = db_json_extract_dbval (&input, &temp_path_value, &output);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      // fall through
+	    }
+	}
+      else
+	{
+	  // what about exists??
+	  // todo
+	}
+
+      if (error_code != NO_ERROR)
+	{
+	  error_code = m_on_error.trigger (error_code, output);
+	}
+      else if (db_value_is_null (&output))
+	{
+	  error_code = m_on_empty.trigger (output);
+	}
+
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+
+      error_code = tp_value_cast (&output, &output, m_domain, false);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  // fall through
+	  return error_code;
 	}
-    }
-  else
-    {
-      // what about exists??
-      // todo
+
+      return NO_ERROR;
     }
 
-  if (error_code != NO_ERROR)
-    {
-      error_code = m_on_error.trigger (error_code, output);
-    }
-  else if (db_value_is_null (&output))
-    {
-      error_code = m_on_empty.trigger (output);
-    }
-
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = tp_value_cast (&output, &output, m_domain, false);
-  if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return error_code;
-    }
-
-  return NO_ERROR;
-}
+  } // namespace json_table
+} // namespace cubxasl

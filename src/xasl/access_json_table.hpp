@@ -35,66 +35,92 @@ struct db_value;
 struct tp_domain;
 struct pred_expr;
 
-// todo: namespace cubxasl::json_table
-enum class json_table_column_behavior
+namespace cubxasl
 {
-  RETURN_NULL,
-  THROW_ERROR,
-  DEFAULT_VALUE
-};
+  namespace json_table
+  {
+    enum class column_behavior
+    {
+      RETURN_NULL,
+      THROW_ERROR,
+      DEFAULT_VALUE
+    };
 
-struct json_table_column_on_error
-{
-  json_table_column_behavior m_behavior;
-  db_value *m_default_value;
+    enum class column_function
+    {
+      EXTRACT,
+      EXISTS
+    };
 
-  json_table_column_on_error ();
-  int trigger (int error_code, db_value &value_out);
-};
+    struct column_on_error
+    {
+      column_behavior m_behavior;
+      db_value *m_default_value;
 
-struct json_table_column_on_empty
-{
-  json_table_column_behavior m_behavior;
-  db_value *m_default_value;
+      column_on_error ();
+      int trigger (int error_code, db_value &value_out);
+    };
 
-  json_table_column_on_empty ();
-  int trigger (db_value &value_out);
-};
+    struct column_on_empty
+    {
+      column_behavior m_behavior;
+      db_value *m_default_value;
 
-struct json_table_column
-{
-  // there are two types of columns based on how they function: extract from path or exists at path
-  using function_type = bool;
-  static const function_type EXTRACT = true;
-  static const function_type EXISTS = false;
+      column_on_empty ();
+      int trigger (db_value &value_out);
+    };
 
-  tp_domain *m_domain;
-  std::string m_path;
-  json_table_column_on_error m_on_error;
-  json_table_column_on_empty m_on_empty;
-  db_value *m_output_value_pointer;
-  function_type m_function;
+    struct column
+    {
+      // there are two types of columns based on how they function: extract from path or exists at path
+      using function_type = bool;
+      static const function_type EXTRACT = true;
+      static const function_type EXISTS = false;
 
-  json_table_column ();
-  int evaluate (const db_value &input, db_value &output);
-};
+      tp_domain *m_domain;
+      std::string m_path;
+      column_on_error m_on_error;
+      column_on_empty m_on_empty;
+      db_value *m_output_value_pointer;
+      function_type m_function;
 
-struct json_table_nested_node
-{
-  std::string m_path;
-  std::forward_list<json_table_column> m_predicate_columns;   // columns part of scan predicate; also part of output
-  std::forward_list<json_table_column> m_output_columns;      // columns part of output only
-  pred_expr *m_predicate_expression;                           // predicate expression
-  std::forward_list<json_table_nested_node> m_nested_nodes;   // nested nodes
+      column ();
+      int evaluate (const db_value &input, db_value &output);
+    };
 
-  json_table_nested_node () = default;
-};
+    struct nested_node
+    {
+      std::string m_path;
+      std::forward_list<column> m_predicate_columns;   // columns part of scan predicate; also part of output
+      std::forward_list<column> m_output_columns;      // columns part of output only
+      pred_expr *m_predicate_expression;                           // predicate expression
+      std::forward_list<nested_node> m_nested_nodes;   // nested nodes
 
-struct json_table_spec_node
-{
-  json_table_nested_node *m_root_node;
-  std::uint32_t m_ordinality;
-  db_value *m_output_values;
-};
+      nested_node () = default;
+    };
+
+    struct spec_node
+    {
+      nested_node *m_root_node;
+      std::uint32_t m_ordinality;
+      db_value *m_output_values;
+    };
+
+  } // namespace json_table
+} // namespace cubxasl
+
+// to be used outside namespace
+using json_table_column_behavior = cubxasl::json_table::column_behavior;
+const json_table_column_behavior JSON_TABLE_RETURN_NULL = json_table_column_behavior::RETURN_NULL;
+const json_table_column_behavior JSON_TABLE_THROW_ERROR = json_table_column_behavior::THROW_ERROR;
+const json_table_column_behavior JSON_TABLE_DEFAULT_VALUE = json_table_column_behavior::DEFAULT_VALUE;
+
+using json_table_column_function = cubxasl::json_table::column_function;
+const json_table_column_function JSON_TABLE_EXTRACT = json_table_column_function::EXTRACT;
+const json_table_column_function JSON_TABLE_EXISTS = json_table_column_function::EXISTS;
+
+using json_table_column = cubxasl::json_table::column;
+using json_table_nested_node = cubxasl::json_table::nested_node;
+using json_table_spec_node = cubxasl::json_table::spec_node;
 
 #endif // _ACCESS_JSON_TABLE_H_
