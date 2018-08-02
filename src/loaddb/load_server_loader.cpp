@@ -85,6 +85,7 @@ namespace cubload
 	return;
       }
 
+    // We also need hfid here. Please see comment of server_loader::act_finish_line.
     heap_scancache_quick_start_with_class_oid (&thread_ref, &scan_cache, &m_class_oid);
     heap_attrinfo_start (&thread_ref, &m_class_oid, -1, NULL, &m_attr_info);
     heap_get_class_record (&thread_ref, &m_class_oid, &recdes, &scan_cache, PEEK);
@@ -282,6 +283,8 @@ namespace cubload
 	return;
       }
 
+    // FIXME - it should be heap_scancache_start_modify
+    // You also need to know its hfid.
     heap_scancache_quick_start_with_class_oid (&thread_ref, &scan_cache, &m_class_oid);
 
     ret = locator_attribute_info_force (&thread_ref, &scan_cache.node.hfid, &oid, &m_attr_info, NULL, 0,
@@ -290,9 +293,12 @@ namespace cubload
 					NULL, false);
     if (ret != NO_ERROR)
       {
+	// heap_scancache_end_modify ();
+	// FIXME - error handling(reporting)
 	return;
       }
 
+    // FIXME - it should be heap_scancache_end_modify
     ret = heap_scancache_end (&thread_ref, &scan_cache);
     if (ret != NO_ERROR)
       {
