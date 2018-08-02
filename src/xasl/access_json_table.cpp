@@ -23,7 +23,7 @@
 
 #include "access_json_table.hpp"
 
-#include "arithmetic.h"
+#include "db_json.hpp"
 #include "dbtype.h"
 #include "error_code.h"
 #include "error_manager.h"
@@ -123,25 +123,34 @@ namespace cubxasl
     }
 
     int
-    column::evaluate (const db_value &input, db_value &output)
+    column::evaluate (const JSON_DOC &input)
     {
-      if (db_value_is_null (&input))
+      assert (m_output_value_pointer != NULL);
+
+      pr_clear_value (m_output_value_pointer);
+      db_make_null (m_output_value_pointer);
+
+      if (db_json_get_type (&input) == DB_JSON_NULL)
 	{
 	  // do we consider this empty case??
-	  return m_on_empty.trigger (output);
+	  return m_on_empty.trigger (*m_output_value_pointer);
 	}
 
       int error_code = NO_ERROR;
 
       if (m_function == EXTRACT)
 	{
-	  DB_VALUE temp_path_value;
-	  db_make_string (&temp_path_value, const_cast<char *> (m_path.c_str ()));
-	  error_code = db_json_extract_dbval (&input, &temp_path_value, &output);
+	  JSON_DOC *docp = NULL;
+	  error_code = db_json_extract_document_from_path (&input, m_path.c_str (), docp);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
 	      // fall through
+	    }
+	  else if (db_make_json (m_output_value_pointer, NULL, docp, true) != NO_ERROR)
+	    {
+	      assert (false);
+	      return ER_FAILED;
 	    }
 	}
       else
@@ -152,19 +161,21 @@ namespace cubxasl
 
       if (error_code != NO_ERROR)
 	{
-	  error_code = m_on_error.trigger (error_code, output);
+	  assert (db_value_is_null (m_output_value_pointer));
+	  error_code = m_on_error.trigger (error_code, *m_output_value_pointer);
 	}
-      else if (db_value_is_null (&output))
+      else if (db_value_is_null (m_output_value_pointer))
 	{
-	  error_code = m_on_empty.trigger (output);
+	  error_code = m_on_empty.trigger (*m_output_value_pointer);
 	}
 
       if (error_code != NO_ERROR)
 	{
+	  // error was set
 	  return error_code;
 	}
 
-      error_code = tp_value_cast (&output, &output, m_domain, false);
+      error_code = tp_value_cast (m_output_value_pointer, m_output_value_pointer, m_domain, false);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();

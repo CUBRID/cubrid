@@ -34,6 +34,8 @@
 struct db_value;
 struct tp_domain;
 struct pred_expr;
+struct regu_variable_node;
+class JSON_DOC;
 
 namespace cubxasl
 {
@@ -85,7 +87,7 @@ namespace cubxasl
       function_type m_function;
 
       column ();
-      int evaluate (const db_value &input, db_value &output);
+      int evaluate (const JSON_DOC &input);
     };
 
     struct nested_node
@@ -104,6 +106,7 @@ namespace cubxasl
       nested_node *m_root_node;
       std::uint32_t m_ordinality;
       db_value *m_output_values;
+      regu_variable_node *m_json_reguvar;
     };
 
   } // namespace json_table

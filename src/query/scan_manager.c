@@ -3640,7 +3640,7 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   scan_init_scan_pred (&llsidp->scan_pred, regu_list_pred, pr,
 		       ((pr) ? eval_fnc (thread_p, pr, &single_node_type) : NULL));
 
-  /* regulator vairable list for other than predicates */
+  /* regulator variable list for other than predicates */
   llsidp->rest_regu_list = regu_list_rest;
 
   return NO_ERROR;
