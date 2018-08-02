@@ -330,7 +330,7 @@ return_error_to_client (THREAD_ENTRY * thread_p, unsigned int rid)
   OR_ALIGNED_BUF (1024) a_buffer;
   char *buffer;
   int length = 1024;
-  TRAN_STATE tran_state;
+  TRAN_STATE tran_state = TRAN_UNACTIVE_UNKNOWN;
 
   CSS_CONN_ENTRY *conn;
 
@@ -340,7 +340,10 @@ return_error_to_client (THREAD_ENTRY * thread_p, unsigned int rid)
   assert (conn != NULL);
 
   tdes = LOG_FIND_CURRENT_TDES (thread_p);
-  tran_state = tdes->state;
+  if (tdes != NULL)
+    {
+      tran_state = tdes->state;
+    }
   flag_abort = need_to_abort_tran (thread_p, &errid);
 
   /* check some errors which require special actions */
