@@ -18,7 +18,7 @@
  */
 
 /*
- * load_manger.cpp - entry point for server side loaddb
+ * load_manager.cpp - entry point for server side loaddb
  */
 
 #ident "$Id$"
@@ -106,3 +106,4 @@ namespace cubload
     m_manager.m_driver_pool.retire (*driver);
   }
 } // namespace cubload
+

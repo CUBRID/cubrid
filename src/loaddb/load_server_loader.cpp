@@ -275,6 +275,7 @@ namespace cubload
     HEAP_SCANCACHE scan_cache;
     cubthread::entry &thread_ref = cubthread::get_entry ();
 
+    // FIXME - Why do we lock and unlock class object for each row?
     ret = lock_object (&thread_ref, &m_class_oid, oid_Root_class_oid, IX_LOCK, LK_UNCOND_LOCK);
     if (ret != LK_GRANTED)
       {
@@ -298,6 +299,7 @@ namespace cubload
 	return;
       }
 
+    // FIXME - Why do we lock and unlock class object for each row?
     lock_unlock_object (&thread_ref, &m_class_oid, oid_Root_class_oid, IX_LOCK, true);
   }
 
