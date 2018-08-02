@@ -205,8 +205,7 @@ css_send_request_to_server (char *host, int request, char *arg_buffer, int arg_b
  *   return:
  *   host(in): name of the remote host
  *   request(in): the request to send to the server.
- *   arg_buffer(in): a packed buffer containing all the arguments to be
- *               sent to the server.
+ *   arg_buffer(in): a packed buffer containing all the arguments to be sent to the server.
  *   arg_buffer_size(in): The size of arg_buffer.
  *   data_buffer(in): enroll a data buffer to hold the resulting data.
  *   data_buffer_size(in): The size of the data buffer.
@@ -222,27 +221,25 @@ css_send_request_to_server_with_buffer (char *host, int request, char *arg_buffe
   unsigned short rid;
 
   entry = css_return_open_entry (host, &css_Client_anchor);
-  if (entry != NULL)
+  if (entry == NULL)
     {
-      entry->conn->set_tran_index (tm_Tran_index);
-      entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
-      css_Errno =
-	css_send_request_with_data_buffer (entry->conn, request, &rid, arg_buffer, arg_buffer_size, data_buffer,
-					   data_buffer_size);
-      if (css_Errno == NO_ERRORS)
-	{
-	  tm_Tran_invalidate_snapshot = 0;
-	  return (css_make_eid (entry->id, rid));
-	}
-      else
-	{
-	  css_remove_queued_connection_by_entry (entry, &css_Client_anchor);
-	  return 0;
-	}
+      css_Errno = SERVER_WAS_NOT_FOUND;
+      return 0;
     }
 
-  css_Errno = SERVER_WAS_NOT_FOUND;
-  return 0;
+  entry->conn->set_tran_index (tm_Tran_index);
+  entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
+
+  css_Errno = css_send_request_with_data_buffer (entry->conn, request, &rid, arg_buffer, arg_buffer_size, data_buffer,
+						 data_buffer_size);
+  if (css_Errno != NO_ERRORS)
+    {
+      css_remove_queued_connection_by_entry (entry, &css_Client_anchor);
+      return 0;
+    }
+
+  tm_Tran_invalidate_snapshot = 0;
+  return (css_make_eid (entry->id, rid));
 }
 
 /*
@@ -269,31 +266,28 @@ css_send_req_to_server (char *host, int request, char *arg_buffer, int arg_buffe
   unsigned short rid;
 
   entry = css_return_open_entry (host, &css_Client_anchor);
-  if (entry != NULL)
+  if (entry == NULL)
     {
-      entry->conn->set_tran_index (tm_Tran_index);
-      entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
-
-      /* if the latest query status is committed, fetch won't be issued. */
-      assert (tran_was_latest_query_committed () || request != NET_SERVER_LS_GET_LIST_FILE_PAGE);
-
-      css_Errno =
-	css_send_req_with_2_buffers (entry->conn, request, &rid, arg_buffer, arg_buffer_size, data_buffer,
-				     data_buffer_size, reply_buffer, reply_size);
-      if (css_Errno == NO_ERRORS)
-	{
-	  tm_Tran_invalidate_snapshot = 0;
-	  return (css_make_eid (entry->id, rid));
-	}
-      else
-	{
-	  css_remove_queued_connection_by_entry (entry, &css_Client_anchor);
-	  return 0;
-	}
+      css_Errno = SERVER_WAS_NOT_FOUND;
+      return 0;
     }
 
-  css_Errno = SERVER_WAS_NOT_FOUND;
-  return 0;
+  entry->conn->set_tran_index (tm_Tran_index);
+  entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
+
+  /* if the latest query status is committed, fetch won't be issued. */
+  assert (tran_was_latest_query_committed () || request != NET_SERVER_LS_GET_LIST_FILE_PAGE);
+
+  css_Errno = css_send_req_with_2_buffers (entry->conn, request, &rid, arg_buffer, arg_buffer_size, data_buffer,
+					   data_buffer_size, reply_buffer, reply_size);
+  if (css_Errno != NO_ERRORS)
+    {
+      css_remove_queued_connection_by_entry (entry, &css_Client_anchor);
+      return 0;
+    }
+
+  tm_Tran_invalidate_snapshot = 0;
+  return (css_make_eid (entry->id, rid));
 }
 
 #if 0
@@ -351,8 +345,7 @@ css_send_req_to_server_with_large_data (char *host, int request, char *arg_buffe
  *   return:
  *   host(in): name of the remote host
  *   request(in): the request to send to the server.
- *   arg_buffer(in): a packed buffer containing all the arguments to be
- *                   sent to the server.
+ *   arg_buffer(in): a packed buffer containing all the arguments to be sent to the server.
  *   arg_buffer_size(in): The size of arg_buffer.
  *   data1_buffer(in): additional data to send to the server
  *   data1_buffer_size(in): The size of the data buffer.
@@ -362,8 +355,7 @@ css_send_req_to_server_with_large_data (char *host, int request, char *arg_buffe
  *   reply_buffer_size(in): The size of the reply buffer.
  *
  * Note: This routine will allow the client to send a request and two data
- *       buffers to the server and also enroll a data buffer to be filled with
- *       returned data.
+ *       buffers to the server and also enroll a data buffer to be filled with returned data.
  */
 unsigned int
 css_send_req_to_server_2_data (char *host, int request, char *arg_buffer, int arg_buffer_size, char *data1_buffer,
@@ -374,32 +366,30 @@ css_send_req_to_server_2_data (char *host, int request, char *arg_buffer, int ar
   unsigned short rid;
 
   entry = css_return_open_entry (host, &css_Client_anchor);
-  if (entry != NULL)
+  if (entry == NULL)
     {
-      entry->conn->set_tran_index (tm_Tran_index);
-      entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
-      css_Errno =
-	css_send_req_with_3_buffers (entry->conn, request, &rid, arg_buffer, arg_buffer_size, data1_buffer,
-				     data1_buffer_size, data2_buffer, data2_buffer_size, reply_buffer, reply_size);
-      if (css_Errno == NO_ERRORS)
-	{
-	  tm_Tran_invalidate_snapshot = 0;
-	  return (css_make_eid (entry->id, rid));
-	}
-      else
-	{
-	  css_remove_queued_connection_by_entry (entry, &css_Client_anchor);
-	  return 0;
-	}
+      css_Errno = SERVER_WAS_NOT_FOUND;
+      return 0;
     }
 
-  css_Errno = SERVER_WAS_NOT_FOUND;
-  return 0;
+  entry->conn->set_tran_index (tm_Tran_index);
+  entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
+
+  css_Errno = css_send_req_with_3_buffers (entry->conn, request, &rid, arg_buffer, arg_buffer_size, data1_buffer,
+					   data1_buffer_size, data2_buffer, data2_buffer_size, reply_buffer,
+					   reply_size);
+  if (css_Errno != NO_ERRORS)
+    {
+      css_remove_queued_connection_by_entry (entry, &css_Client_anchor);
+      return 0;
+    }
+
+  tm_Tran_invalidate_snapshot = 0;
+  return (css_make_eid (entry->id, rid));
 }
 
 /*
- * css_send_req_to_server_no_reply() - send a data request to the server
- *                                     and receive no reply
+ * css_send_req_to_server_no_reply() - send a data request to the server and receive no reply
  *   return:
  *   host(in):
  *   request(in):
@@ -413,27 +403,24 @@ css_send_req_to_server_no_reply (char *host, int request, char *arg_buffer, int 
   unsigned short rid;
 
   entry = css_return_open_entry (host, &css_Client_anchor);
-  if (entry != NULL)
-    {
-      entry->conn->set_tran_index (tm_Tran_index);
-      entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
-      css_Errno = css_send_request_no_reply (entry->conn, request, &rid, arg_buffer, arg_buffer_size);
-      if (css_Errno == NO_ERRORS)
-	{
-	  tm_Tran_invalidate_snapshot = 0;
-	  return (css_make_eid (entry->id, rid));
-	}
-      else
-	{
-	  css_remove_queued_connection_by_entry (entry, &css_Client_anchor);
-	  return 0;
-	}
-    }
-  else
+  if (entry == NULL)
     {
       css_Errno = SERVER_WAS_NOT_FOUND;
       return 0;
     }
+
+  entry->conn->set_tran_index (tm_Tran_index);
+  entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
+
+  css_Errno = css_send_request_no_reply (entry->conn, request, &rid, arg_buffer, arg_buffer_size);
+  if (css_Errno != NO_ERRORS)
+    {
+      css_remove_queued_connection_by_entry (entry, &css_Client_anchor);
+      return 0;
+    }
+
+  tm_Tran_invalidate_snapshot = 0;
+  return (css_make_eid (entry->id, rid));
 }
 
 /*
@@ -486,27 +473,26 @@ css_send_error_to_server (char *host, unsigned int eid, char *buffer, int buffer
   assert (er_errid () != NO_ERROR);
 
   entry = css_return_open_entry (host, &css_Client_anchor);
-  if (entry != NULL)
+  if (entry == NULL)
     {
-      entry->conn->set_tran_index (tm_Tran_index);
-      entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
-      entry->conn->db_error = er_errid ();
-      css_Errno = css_send_error (entry->conn, CSS_RID_FROM_EID (eid), buffer, buffer_size);
-      if (css_Errno == NO_ERRORS)
-	{
-	  tm_Tran_invalidate_snapshot = 0;
-	  entry->conn->db_error = 0;
-	  return 0;
-	}
-      else
-	{
-	  css_remove_queued_connection_by_entry (entry, &css_Client_anchor);
-	  return css_Errno;
-	}
+      css_Errno = SERVER_WAS_NOT_FOUND;
+      return css_Errno;
     }
 
-  css_Errno = SERVER_WAS_NOT_FOUND;
-  return css_Errno;
+  entry->conn->set_tran_index (tm_Tran_index);
+  entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
+  entry->conn->db_error = er_errid ();
+
+  css_Errno = css_send_error (entry->conn, CSS_RID_FROM_EID (eid), buffer, buffer_size);
+  if (css_Errno != NO_ERRORS)
+    {
+      css_remove_queued_connection_by_entry (entry, &css_Client_anchor);
+      return css_Errno;
+    }
+
+  tm_Tran_invalidate_snapshot = 0;
+  entry->conn->db_error = 0;
+  return 0;
 }
 
 /*
@@ -523,25 +509,24 @@ css_send_data_to_server (char *host, unsigned int eid, char *buffer, int buffer_
   CSS_MAP_ENTRY *entry;
 
   entry = css_return_open_entry (host, &css_Client_anchor);
-  if (entry != NULL)
+  if (entry == NULL)
     {
-      entry->conn->set_tran_index (tm_Tran_index);
-      entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
-      css_Errno = css_send_data (entry->conn, CSS_RID_FROM_EID (eid), buffer, buffer_size);
-      if (css_Errno == NO_ERRORS)
-	{
-	  tm_Tran_invalidate_snapshot = 0;
-	  return 0;
-	}
-      else
-	{
-	  css_remove_queued_connection_by_entry (entry, &css_Client_anchor);
-	  return css_Errno;
-	}
+      css_Errno = SERVER_WAS_NOT_FOUND;
+      return css_Errno;
     }
 
-  css_Errno = SERVER_WAS_NOT_FOUND;
-  return css_Errno;
+  entry->conn->set_tran_index (tm_Tran_index);
+  entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
+
+  css_Errno = css_send_data (entry->conn, CSS_RID_FROM_EID (eid), buffer, buffer_size);
+  if (css_Errno != NO_ERRORS)
+    {
+      css_remove_queued_connection_by_entry (entry, &css_Client_anchor);
+      return css_Errno;
+    }
+
+  tm_Tran_invalidate_snapshot = 0;
+  return 0;
 }
 
 /*
