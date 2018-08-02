@@ -9685,6 +9685,8 @@ attr_index_def
 	  index_column_name_list
 	  opt_where_clause
 	  opt_comment_spec
+	  opt_with_online
+	  opt_invisible
 		{{
 			int arg_count = 0, prefix_col_count = 0;
 			PT_NODE* node = parser_new_node(this_parser, 
@@ -9741,6 +9743,21 @@ attr_index_def
 			      }
 			  }
 			node->info.index.column_names = col;
+			node->info.index.index_status = SM_NORMAL_INDEX;
+			if ($6 != NULL && $7 != NULL)
+				{
+					PT_ERRORm (this_parser, node,
+						MSGCAT_SET_PARSER_SYNTAX,
+						MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+				}
+			if ($6 != NULL)
+				{
+					node->info.index.index_status = SM_ONLINE_INDEX_BUILDING_IN_PROGRESS;
+				}
+			else if ($7 != NULL)
+				{
+					node->info.index.index_status = SM_INVISIBLE_INDEX;
+				}
 			$$ = node;
 
 		DBG_PRINT}}
