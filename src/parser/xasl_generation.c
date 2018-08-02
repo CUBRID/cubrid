@@ -17935,10 +17935,16 @@ pt_to_odku_info (PARSER_CONTEXT * parser, PT_NODE * insert, XASL_NODE * xasl)
       select_specs = NULL;
     }
 
-  odku->num_assigns = 0;
   assignments = insert->info.insert.odku_assignments;
+  error = pt_append_omitted_on_update_expr_assignments (parser, assignments, insert_spec);
+  if (error != NO_ERROR)
+    {
+      PT_INTERNAL_ERROR (parser, "odku on update insert error");
+      goto exit_on_error;
+    }
 
   /* init update attribute ids */
+  odku->num_assigns = 0;
   pt_init_assignments_helper (parser, &assignments_helper, assignments);
   while (pt_get_next_assignment (&assignments_helper) != NULL)
     {
