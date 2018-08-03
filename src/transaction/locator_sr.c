@@ -13966,6 +13966,19 @@ locator_prepare_rbr_apply (THREAD_ENTRY * thread_p, const int rbr_operation, OID
   return NO_ERROR;
 }
 
+int check_interrupt_callback (void *data)
+{
+  THREAD_ENTRY *thread_p = (THREAD_ENTRY *) data;
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  bool is_interrupt = false;
+  int error = logtb_find_interrupt (tran_index, &is_interrupt);
+  if (error || is_interrupt)
+    {
+      return 1;
+    }
+  return 0;
+}
+
 int
 locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *statement)
 {
@@ -14001,6 +14014,8 @@ locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *statement)
 
   error = create_child_process (ddl_argv,
 			       1,
+    check_interrupt_callback,
+    thread_p,
 			       NULL,
 			       NULL,
 			       NULL,
@@ -14051,14 +14066,23 @@ locator_repl_start_tran (THREAD_ENTRY * thread_p)
 
   logtb_set_current_tran_index (thread_p, tran_index);
 
+  /* this thread tran_index lock should be locked */
+  pthread_mutex_unlock (&thread_p->tran_index_lock);
+
   return NO_ERROR;
 }
 
 int
 locator_repl_end_tran (THREAD_ENTRY * thread_p, bool commit)
 {
-  /* TODO */
-  xtran_server_commit (thread_p, false);
+  if (commit)
+    {
+      xtran_server_commit (thread_p, false);
+    }
+  else
+    {
+      xtran_server_abort (thread_p);
+    }
 
   return NO_ERROR;
 }

@@ -27,9 +27,11 @@
 namespace test_replication_apply
 {
 
+  const char *test_db_name = "test_basic";
+
   void start_server_func (void)
     {
-      net_server_start ("basic");
+      net_server_start (test_db_name);
     }
 
 class test_sbr_task : public cubthread::entry_task
@@ -43,9 +45,15 @@ public:
   void
   execute (context_type &thread_ref)
   {
-    locator_repl_start_tran (&thread_ref);
-    locator_repl_apply_sbr (&thread_ref, m_statement.c_str ());
-    locator_repl_end_tran (&thread_ref, true);
+    int error = NO_ERROR;
+    error = locator_repl_start_tran (&thread_ref);
+    if (error != NO_ERROR)
+      {
+        return;
+      }
+    error = locator_repl_apply_sbr (&thread_ref, m_statement.c_str ());
+
+    locator_repl_end_tran (&thread_ref, (error == NO_ERROR) ? true : false);
   }
 
 private:
@@ -56,6 +64,35 @@ private:
   int test_apply_sbr (void)
   {
     int res = NO_ERROR;
+    char command[PATH_MAX];
+    char  *cubrid_databases_env_var;
+
+
+    strcpy (command, "cubrid service stop");
+    res = system (command);
+    assert (res != -1);
+
+    cubrid_databases_env_var = getenv ("CUBRID_DATABASES");
+    assert (cubrid_databases_env_var != NULL);
+    res = chdir (cubrid_databases_env_var);
+    assert (res == 0);
+
+    strcpy (command, "cubrid createdb -r ");
+    strcat (command, test_db_name);
+    strcat (command, " en_US");
+    res = system (command);
+    assert (res != -1);
+
+    /* to start cub_master process : */
+    strcpy (command, "cubrid service start");
+    res = system (command);
+    assert (res != -1);
+
+    /* previous command may have started server, stop it */
+    strcpy (command, "cubrid server stop ");
+    strcat (command, test_db_name);
+    res = system (command);
+    assert (res != -1);
 
     std::thread server_thread_start (start_server_func);
 
@@ -65,6 +102,12 @@ private:
 
     css_push_external_task (thread_arg, NULL, new test_sbr_task ("CREATE TABLE tt(i1 string);"));
 
+    sleep (10);
+
+    /* to stop cub_master, which stops the cub_server loop */    
+    strcpy (command, "cubrid service stop");
+    res = system (command);
+    assert (res != -1);
 
     server_thread_start.join ();
 
