@@ -43,9 +43,9 @@ namespace cubreplication
     return NO_ERROR;
   }
 
-  int log_generator::set_commit_repl (bool commit_tran_flag)
+  int log_generator::set_repl_state (stream_entry_header::TRAN_STATE state)
   {
-    m_stream_entry.set_commit_flag (commit_tran_flag);
+    m_stream_entry.set_state (state);
 
     return NO_ERROR;
   }
@@ -66,14 +66,14 @@ namespace cubreplication
   {
     m_stream_entry.pack ();
     m_stream_entry.reset ();
-    m_stream_entry.set_commit_flag (false);
+    m_stream_entry.set_state (stream_entry_header::ACTIVE);
 
     return NO_ERROR;
   }
 
   void log_generator::pack_group_commit_entry (void)
   {
-    static stream_entry gc_stream_entry (g_stream, MVCCID_NULL, true, true);
+    static stream_entry gc_stream_entry (g_stream, MVCCID_NULL, stream_entry_header::GROUP_COMMIT);
     gc_stream_entry.pack ();
   }
 
