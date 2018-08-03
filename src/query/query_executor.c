@@ -2243,7 +2243,7 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool final)
 	  db_private_free_and_init (thread_p, xasl->topn_items);
 	}
 
-      // clear trace stats
+      /* clear trace stats */
       memset (&xasl->orderby_stats, 0, sizeof (ORDERBY_STATS));
       memset (&xasl->groupby_stats, 0, sizeof (GROUPBY_STATS));
       memset (&xasl->xasl_stats, 0, sizeof (XASL_STATS));
