@@ -802,6 +802,11 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
       m_buf (" ");
       describe_comment (constraint.comment);
     }
+
+  if (constraint.index_status == SM_INVISIBLE_INDEX)
+    {
+      m_buf (" INVISIBLE");
+    }
 }
 
 /*
