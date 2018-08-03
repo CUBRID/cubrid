@@ -4657,8 +4657,8 @@ file_table_move_partial_sectors_to_header (THREAD_ENTRY * thread_p, PAGE_PTR pag
     {
       /* Remove copied entries. */
       save_lsa = *pgbuf_get_lsa (page_part_ftab_first);
-      file_extdata_remove_at (extdata_part_ftab_first, 0, n_items_to_move);
       file_log_extdata_remove (thread_p, extdata_part_ftab_first, page_part_ftab_first, 0, n_items_to_move);
+      file_extdata_remove_at (extdata_part_ftab_first, 0, n_items_to_move);
 
       file_log ("file_table_move_partial_sectors_to_header",
 		"removed %d items from first page partial table \n"
