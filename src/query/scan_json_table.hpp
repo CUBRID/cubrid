@@ -24,8 +24,6 @@
 #ifndef _SCAN_JSON_TABLE_HPP_
 #define _SCAN_JSON_TABLE_HPP_
 
-#include "query_evaluator.h"
-
 // forward definitions
 // access_json_table.hpp
 namespace cubxasl
@@ -38,10 +36,6 @@ namespace cubxasl
 }
 // db_json.hpp
 class JSON_DOC;
-// query_list.h
-struct qfile_list_id;
-struct qfile_list_scan_id;
-struct qfile_tuple_record;
 // scan_manager.h
 struct scan_id_struct;
 // thread_entry.hpp
@@ -58,11 +52,13 @@ namespace cubscan
     {
       public:
 
-	void init (scan_id_struct &sid, cubxasl::json_table::spec_node &spec);
+	void init (cubxasl::json_table::spec_node &spec);
 	void clear (void);
 
 	int open (cubthread::entry *thread_p);
 	void end (cubthread::entry *thread_p);
+
+	int next_row (cubthread::entry *thread_p, scan_id_struct &sid);
 
       private:
 	// scan_node
@@ -70,24 +66,12 @@ namespace cubscan
 	//  description
 	//    cubxasl::json_table::nested_node extended with m_eval_function. nested_node is common to client, while
 	//    PR_EVAL_FNC is restricted to server.
-	struct scan_node
-	{
-	  cubxasl::json_table::nested_node &m_nested_node;
-	  PR_EVAL_FNC m_eval_function;
-
-	  scan_node () = delete;
-	  scan_node (cubxasl::json_table::nested_node &nested_node);
-	};
-
-	int process_row (cubthread::entry *thread_p, const JSON_DOC &value, scan_node &node);
-	int process_doc (cubthread::entry *thread_p, const JSON_DOC &value, scan_node &node);
+	struct scan_node;
 
 	scan_id_struct *m_scanid;
 	cubxasl::json_table::spec_node *m_specp;
 	scan_node *m_scan_root;
-	qfile_list_id *m_list_file;
-	qfile_list_scan_id *m_list_scan;
-	qfile_tuple_record *m_tuple;
+	scan_node *m_scan_cursor;
     };
   } // namespace json_table
 } // namespace cubscan
