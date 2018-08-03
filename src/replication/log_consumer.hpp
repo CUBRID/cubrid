@@ -26,14 +26,22 @@
 #ifndef _LOG_CONSUMER_HPP_
 #define _LOG_CONSUMER_HPP_
 
-#include "packing_stream.hpp"
-#include "replication_stream_entry.hpp"
-#include "thread_daemon.hpp"
-#include "thread_task.hpp"
+#include "cubstream.hpp"
 #include "thread_manager.hpp"
 #include <chrono>
+#include <condition_variable>
 #include <cstddef>
 #include <queue>
+
+namespace cubthread
+{
+  class daemon;
+};
+
+namespace cubstream
+{
+  class multi_thread_stream;
+};
 
 namespace cubreplication
 {
@@ -41,17 +49,43 @@ namespace cubreplication
    * main class for consuming log packing stream entries;
    * it should be created only as a global instance
    */
-  class repl_applier_worker_context_manager;
-  class repl_applier_worker_task;
+  class stream_entry;
+  class applier_worker_task;
 
+  /*
+   * log_consumer : class intended as singleton for slave server
+   *
+   * Data members:
+   *  - a pointer to slave stream (currently it also creates it, but future code should have a higher level
+   *    object which aggregates both log_consumer and stream)
+   *  - a queue of replication stream entry objects; the queue is protected by a mutex
+   *  - m_apply_task_cv : condition variable used with m_queue_mutex to signal between consume daemon and
+   *    dispatch daemon (when first adds a new stream entry in the queue)
+   *  - m_is_stopped : flag to signal stopping of log_consumer; currently, the stopping is performed
+   *    by destructor of log_consumer, but in future code, a higher level objects will handle stopping
+   *    and destroy in separate steps;
+   *    stopping process needs to wait for daemons and thread pool to stop; consume daemon needs to wait
+   *    for stream to unblock from reading (so, we first signal the stop command to stream)
+   *
+   * Methods/daemons/threads:
+   *  - a daemon which "consumes" replication stream entries : create a new replication_stream_entry object,
+   *    prepares it (uses stream to receive and unpacks its header), and pushes to the queue
+   *  - a dispatch daemon which extracts replication stream entry from queue and builds applier_worker_task
+   *    objects; each applier_worker_task contains a list of stream_entries belonging to the same transaction;
+   *    when a group commit special stream entry is encoutered by dispatch daemon, all gathered commited
+   *    applier_worker_task are pushed to a worker thread pool (m_applier_workers_pool);
+   *    the remainder of applier_worker_task objects (not having coommit), are copied to next cycle (until next
+   *    group commit) : see dispatch_daemon_task::execute;
+   *  - a thread pool for applying applier_worker_task; all replication stream entries are unpacked
+   *    (the consumer daemon task is unpacking only the header) and then each replication object from a stream entry
+   *    is applied
+   */
   class log_consumer
   {
-      friend class prepare_stream_entry_task;
-      friend class apply_stream_entry_task;
     private:
-      std::queue<replication_stream_entry *> m_stream_entries;
+      std::queue<stream_entry *> m_stream_entries;
 
-      cubstream::packing_stream *m_stream;
+      cubstream::multi_thread_stream *m_stream;
 
       /* start append position */
       cubstream::stream_position m_start_position;
@@ -60,13 +94,11 @@ namespace cubreplication
 
       std::mutex m_queue_mutex;
 
-      cubthread::daemon *m_prepare_daemon;
+      cubthread::daemon *m_consumer_daemon;
 
-      cubthread::daemon *m_apply_daemon;
+      cubthread::daemon *m_dispatch_daemon;
 
       cubthread::entry_workpool *m_applier_workers_pool;
-
-      repl_applier_worker_context_manager *m_repl_applier_worker_context_manager;
 
       int m_applier_worker_threads_count;
 
@@ -79,37 +111,38 @@ namespace cubreplication
 
       bool m_is_stopped;
 
-    public:
-
+    private:
       log_consumer () :
+	m_stream (NULL),
+	m_consumer_daemon (NULL),
+	m_dispatch_daemon (NULL),
+	m_applier_workers_pool (NULL),
 	m_applier_worker_threads_count (100),
 	m_use_daemons (false),
 	m_started_tasks (0),
+	m_apply_task_ready (false),
 	m_is_stopped (false)
       {
       };
 
+    public:
+
       ~log_consumer ();
 
-      int push_entry (replication_stream_entry *entry);
+      void push_entry (stream_entry *entry);
 
-      int pop_entry (replication_stream_entry *&entry);
+      void pop_entry (stream_entry *&entry, bool &should_stop);
 
-      int fetch_stream_entry (replication_stream_entry *&entry);
+      int fetch_stream_entry (stream_entry *&entry);
 
       void start_daemons (void);
-      void execute_task (cubthread::entry &thread, repl_applier_worker_task *task);
+      void execute_task (applier_worker_task *task);
 
       static log_consumer *new_instance (const cubstream::stream_position &start_position, bool use_daemons = false);
 
-      cubstream::packing_stream *get_stream (void)
+      cubstream::multi_thread_stream *get_stream (void)
       {
 	return m_stream;
-      }
-
-      cubstream::stream_position &get_start_position ()
-      {
-	return m_start_position;
       }
 
       void end_one_task (void)
@@ -117,28 +150,14 @@ namespace cubreplication
 	m_started_tasks--;
       }
 
-      void wait_for_tasks (void)
-      {
-	while (m_started_tasks > 0)
-	  {
-	    thread_sleep (1);
-	  }
-      }
+      void wait_for_tasks (void);
 
       bool is_stopping (void)
       {
 	return m_is_stopped;
       }
 
-      void set_stop (void)
-      {
-	log_consumer::get_stream ()->set_stop ();
-
-	std::unique_lock<std::mutex> ulock (m_queue_mutex);
-	m_is_stopped = true;
-	ulock.unlock ();
-	m_apply_task_cv.notify_one ();
-      }
+      void set_stop (void);
 
   };
 

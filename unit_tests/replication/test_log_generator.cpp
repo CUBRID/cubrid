@@ -69,7 +69,7 @@ namespace test_replication
 
 
 
-  int move_buffers (cubstream::packing_stream *stream1, cubstream::packing_stream *stream2)
+  int move_buffers (cubstream::multi_thread_stream *stream1, cubstream::multi_thread_stream *stream2)
   {
     stream_mover test_stream_mover;
     cubstream::stream_position curr_pos;
@@ -162,15 +162,15 @@ namespace test_replication
     sbr1->set_statement ("CREATE TABLE t1 (i1 int)");
     sbr2->set_statement ("CREATE TABLE t2 (i1 int)");
 
-    rbr1->set_key_value (*my_thread, &key_value);
-    rbr1->copy_and_add_changed_value (*my_thread, 1, &new_att2_value);
-    rbr1->copy_and_add_changed_value (*my_thread, 2, &new_att1_value);
-    rbr1->copy_and_add_changed_value (*my_thread, 3, &new_att3_value);
+    rbr1->set_key_value (&key_value);
+    rbr1->copy_and_add_changed_value (1, &new_att2_value);
+    rbr1->copy_and_add_changed_value (2, &new_att1_value);
+    rbr1->copy_and_add_changed_value (3, &new_att3_value);
 
-    rbr2->set_key_value (*my_thread, &key_value);
-    rbr2->copy_and_add_changed_value (*my_thread, 1, &new_att1_value);
-    rbr2->copy_and_add_changed_value (*my_thread, 2, &new_att2_value);
-    rbr2->copy_and_add_changed_value (*my_thread, 3, &new_att3_value);
+    rbr2->set_key_value (&key_value);
+    rbr2->copy_and_add_changed_value (1, &new_att1_value);
+    rbr2->copy_and_add_changed_value (2, &new_att2_value);
+    rbr2->copy_and_add_changed_value (3, &new_att3_value);
 
     cubreplication::log_generator::create_stream (0);
 
@@ -187,12 +187,12 @@ namespace test_replication
     cubreplication::log_consumer *lc = cubreplication::log_consumer::new_instance (0);
 
     /* get stream from log_generator, get its buffer and attached it to log_consumer stream */
-    cubstream::packing_stream *lg_stream = lg->get_stream ();
-    cubstream::packing_stream *lc_stream = lc->get_stream ();
+    cubstream::multi_thread_stream *lg_stream = lg->get_stream ();
+    cubstream::multi_thread_stream *lc_stream = lc->get_stream ();
 
     move_buffers (lg_stream, lc_stream);
 
-    cubreplication::replication_stream_entry *se = NULL;
+    cubreplication::stream_entry *se = NULL;
 
     lc->fetch_stream_entry (se);
     se->unpack ();
@@ -224,10 +224,10 @@ namespace test_replication
     db_make_int (&new_att2_value, 100 + thread_p->tran_index);
     db_make_int (&new_att3_value, 1000 + thread_p->tran_index);
 
-    rbr->set_key_value (*thread_p, &key_value);
-    rbr->copy_and_add_changed_value (*thread_p, 1, &new_att2_value);
-    rbr->copy_and_add_changed_value (*thread_p, 2, &new_att1_value);
-    rbr->copy_and_add_changed_value (*thread_p, 3, &new_att3_value);
+    rbr->set_key_value (&key_value);
+    rbr->copy_and_add_changed_value (1, &new_att2_value);
+    rbr->copy_and_add_changed_value (2, &new_att1_value);
+    rbr->copy_and_add_changed_value (3, &new_att3_value);
 
     lg->append_repl_object (rbr);
   }
@@ -247,7 +247,7 @@ namespace test_replication
   {
     int n_tran_chunks = std::rand () % 5;
 
-    cubreplication::replication_stream_entry *se = lg->get_stream_entry ();
+    cubreplication::stream_entry *se = lg->get_stream_entry ();
 
     se->set_mvccid (thread_p->tran_index + 1);
 
@@ -342,7 +342,7 @@ namespace test_replication
 
     gen_repl_context_manager ctx_m1;
     cubthread::entry_workpool *gen_worker_pool =
-	    cub_th_m->create_worker_pool (GEN_THREAD_CNT, GEN_THREAD_CNT, &ctx_m1,
+	    cub_th_m->create_worker_pool (GEN_THREAD_CNT, GEN_THREAD_CNT, "test_pool", &ctx_m1,
 					  1,
 					  1);
     tasks_running = TASKS_CNT;
@@ -350,7 +350,7 @@ namespace test_replication
       {
 	gen_repl_task *task = new gen_repl_task (i);
 
-	cub_th_m->push_task (task->m_thread_entry, gen_worker_pool, task);
+	cub_th_m->push_task (gen_worker_pool, task);
       }
 
     lg->pack_group_commit_entry ();
@@ -364,8 +364,8 @@ namespace test_replication
 
     /* get stream from log_generator, get its buffer and attached it to log_consumer stream */
     std::cout << "Copying stream data from log_generator to log_consumer .... ";
-    cubstream::packing_stream *lg_stream = lg->get_stream ();
-    cubstream::packing_stream *lc_stream = lc->get_stream ();
+    cubstream::multi_thread_stream *lg_stream = lg->get_stream ();
+    cubstream::multi_thread_stream *lc_stream = lc->get_stream ();
 
     move_buffers (lg_stream, lc_stream);
 

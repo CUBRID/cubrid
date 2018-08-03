@@ -29,7 +29,6 @@
 #include "packable_object.hpp"
 #include "dbtype.h"
 #include "storage_common.h"
-#include "thread_compat.hpp"
 #include <vector>
 #include <string>
 
@@ -41,7 +40,9 @@ namespace cubreplication
   {
     REPL_UPDATE = 0,
     REPL_INSERT,
-    REPL_DELETE
+    REPL_DELETE,
+
+    REPL_UNKNOWN
   };
   typedef enum repl_entry_type REPL_ENTRY_TYPE;
 
@@ -57,7 +58,7 @@ namespace cubreplication
       std::string m_statement;
 
     public:
-      static const int ID = 1;
+      static const int PACKING_ID = 1;
 
       sbr_repl_entry ()
       {
@@ -97,10 +98,12 @@ namespace cubreplication
       std::vector <DB_VALUE> m_new_values;
 
     public:
-      static const int ID = 2;
+      static const int PACKING_ID = 2;
 
-      single_row_repl_entry ()
+      single_row_repl_entry () : m_type (REPL_UNKNOWN)
       {
+	m_class_name[0] = '\0';
+	db_value_clear (&m_key_value);
       };
 
       ~single_row_repl_entry ();
@@ -113,9 +116,9 @@ namespace cubreplication
 
       void set_class_name (const char *class_name);
 
-      void set_key_value (cubthread::entry &thread_entry, DB_VALUE *db_val);
+      void set_key_value (DB_VALUE *db_val);
 
-      void copy_and_add_changed_value (cubthread::entry &thread_entry, const int att_id, DB_VALUE *db_val);
+      void copy_and_add_changed_value (const int att_id, DB_VALUE *db_val);
 
       int pack (cubpacking::packer *serializator);
       int unpack (cubpacking::packer *serializator);

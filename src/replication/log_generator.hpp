@@ -26,15 +26,17 @@
 #ifndef _LOG_GENERATOR_HPP_
 #define _LOG_GENERATOR_HPP_
 
-
-#include "replication_object.hpp"
 #include "replication_stream_entry.hpp"
-#include "packing_stream.hpp"
-#include "thread_compat.hpp"
-#include <vector>
+
+namespace cubstream
+{
+  class multi_thread_stream;
+}
 
 namespace cubreplication
 {
+
+  class replication_object;
 
   /*
    * class for producing log stream entries
@@ -44,9 +46,9 @@ namespace cubreplication
   class log_generator
   {
     private:
-      replication_stream_entry m_stream_entry;
+      stream_entry m_stream_entry;
 
-      static cubstream::packing_stream *g_stream;
+      static cubstream::multi_thread_stream *g_stream;
 
       /* start append position of generator stream */
       static cubstream::stream_position g_start_append_position;
@@ -55,7 +57,7 @@ namespace cubreplication
 
       log_generator () : m_stream_entry (NULL) { };
 
-      log_generator (cubstream::packing_stream *stream) : m_stream_entry (stream) { };
+      log_generator (cubstream::multi_thread_stream *stream) : m_stream_entry (stream) { };
 
       ~log_generator ();
 
@@ -65,15 +67,15 @@ namespace cubreplication
 
       int append_repl_object (replication_object *object);
 
-      replication_stream_entry *get_stream_entry (void);
+      stream_entry *get_stream_entry (void);
 
       int pack_stream_entry (void);
 
-      static int pack_group_commit_entry (void);
+      static void pack_group_commit_entry (void);
 
       static int create_stream (const cubstream::stream_position &start_position);
 
-      static cubstream::packing_stream *get_stream (void)
+      static cubstream::multi_thread_stream *get_stream (void)
       {
 	return g_stream;
       };

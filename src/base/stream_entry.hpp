@@ -26,7 +26,7 @@
 
 #include "object_factory.hpp"
 #include "packer.hpp"
-#include "packing_stream.hpp"
+#include "multi_thread_stream.hpp"
 #include "error_manager.h"
 #include <mutex>
 #include <functional>
@@ -62,7 +62,7 @@ namespace cubstream
     protected:
       std::vector <PO *> m_packable_entries;
 
-      packing_stream *m_stream;
+      multi_thread_stream *m_stream;
 
       stream_position m_data_start_position;
 
@@ -111,7 +111,7 @@ namespace cubstream
 	return packed_amount;
       };
 
-      /* callback header-read function for entry (called with packing_stream::read_serial)
+      /* callback header-read function for entry (called with multi_thread_stream::read_serial)
        * 1. init packer
        * 2. unpack entry header
        * 3. saves start of data payload logical position in entry object (to be retrieved at unpack of entry)
@@ -195,7 +195,7 @@ namespace cubstream
 
       virtual packable_factory *get_builder () = 0;
 
-      entry (packing_stream *stream)
+      entry (multi_thread_stream *stream)
       {
 	m_stream = stream;
 	m_data_start_position = 0;
@@ -220,7 +220,7 @@ namespace cubstream
 	reset ();
       };
 
-      void set_stream (packing_stream *stream)
+      void set_stream (multi_thread_stream *stream)
       {
 	m_stream = stream;
       }

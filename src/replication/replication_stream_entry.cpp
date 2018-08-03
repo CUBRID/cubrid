@@ -32,52 +32,67 @@
 namespace cubreplication
 {
 
-  size_t replication_stream_entry::get_data_packed_size (void)
+  size_t stream_entry::get_data_packed_size (void)
   {
     return m_header.data_size;
   }
 
-  void replication_stream_entry::set_header_data_size (const size_t &data_size)
+  void stream_entry::set_header_data_size (const size_t &data_size)
   {
     m_header.data_size = (int) data_size;
   }
 
-  cubstream::entry<replication_object>::packable_factory *replication_stream_entry::get_builder ()
+  cubstream::entry<replication_object>::packable_factory *stream_entry::get_builder ()
   {
     static cubstream::entry<replication_object>::packable_factory replication_factory_po;
     static bool created = false;
 
     if (created == false)
       {
-	replication_factory_po.register_creator<sbr_repl_entry> (sbr_repl_entry::ID);
-	replication_factory_po.register_creator<single_row_repl_entry> (single_row_repl_entry::ID);
+	replication_factory_po.register_creator<sbr_repl_entry> (sbr_repl_entry::PACKING_ID);
+	replication_factory_po.register_creator<single_row_repl_entry> (single_row_repl_entry::PACKING_ID);
 	created = true;
       }
 
     return &replication_factory_po;
   }
 
-  int replication_stream_entry::pack_stream_entry_header ()
+  int stream_entry::pack_stream_entry_header ()
   {
     cubpacking::packer *serializator = get_packer ();
     unsigned int count_and_flags;
 
     m_header.count_replication_entries = (int) m_packable_entries.size ();
-    serializator->pack_bigint ((DB_BIGINT *) &m_header.prev_record);
-    serializator->pack_bigint ((DB_BIGINT *) &m_header.mvccid);
+    serializator->pack_bigint (&m_header.prev_record);
+    serializator->pack_bigint (&m_header.mvccid);
 
-    assert ((m_header.count_replication_entries & replication_stream_entry_header::COUNT_VALUE_MASK)
+    assert ((m_header.count_replication_entries & stream_entry_header::COUNT_VALUE_MASK)
 	    == m_header.count_replication_entries);
 
     count_and_flags = m_header.count_replication_entries;
+
     if (m_header.commit_flag)
       {
-	count_and_flags = count_and_flags | replication_stream_entry_header::COMMIT_FLAG;
+	assert (m_header.abort_flag == false);
+      }
+    if (m_header.abort_flag)
+      {
+	assert (m_header.commit_flag == false);
+      }
+
+    if (m_header.commit_flag)
+      {
+	count_and_flags = count_and_flags | stream_entry_header::COMMIT_FLAG;
+      }
+
+    if (m_header.abort_flag)
+      {
+	count_and_flags = count_and_flags | stream_entry_header::ABORT_FLAG;
       }
 
     if (m_header.group_commit_flag)
       {
-	count_and_flags = count_and_flags | replication_stream_entry_header::GROUP_COMMIT_FLAG;
+	count_and_flags = count_and_flags | stream_entry_header::GROUP_COMMIT_FLAG;
       }
 
     serializator->pack_int (count_and_flags);
@@ -86,37 +101,52 @@ namespace cubreplication
     return NO_ERROR;
   }
 
-  int replication_stream_entry::unpack_stream_entry_header ()
+  int stream_entry::unpack_stream_entry_header ()
   {
     cubpacking::packer *serializator = get_packer ();
     unsigned int count_and_flags;
 
-    serializator->unpack_bigint ((DB_BIGINT *) &m_header.prev_record);
-    serializator->unpack_bigint ((DB_BIGINT *) &m_header.mvccid);
+    serializator->unpack_bigint (&m_header.prev_record);
+    serializator->unpack_bigint (&m_header.mvccid);
     serializator->unpack_int ((int *) &count_and_flags);
-    if (count_and_flags & replication_stream_entry_header::COMMIT_FLAG)
+    if (count_and_flags & stream_entry_header::COMMIT_FLAG)
       {
 	m_header.commit_flag = true;
       }
-    if (count_and_flags & replication_stream_entry_header::GROUP_COMMIT_FLAG)
+
+    if (count_and_flags & stream_entry_header::ABORT_FLAG)
+      {
+	m_header.abort_flag = true;
+      }
+
+    if (m_header.commit_flag)
+      {
+	assert (m_header.abort_flag == false);
+      }
+    if (m_header.abort_flag)
+      {
+	assert (m_header.commit_flag == false);
+      }
+
+    if (count_and_flags & stream_entry_header::GROUP_COMMIT_FLAG)
       {
 	m_header.group_commit_flag = true;
       }
-    m_header.count_replication_entries = count_and_flags & replication_stream_entry_header::COUNT_VALUE_MASK;
+    m_header.count_replication_entries = count_and_flags & stream_entry_header::COUNT_VALUE_MASK;
     serializator->unpack_int (&m_header.data_size);
 
     return NO_ERROR;
   }
 
-  int replication_stream_entry::get_packable_entry_count_from_header (void)
+  int stream_entry::get_packable_entry_count_from_header (void)
   {
     return m_header.count_replication_entries;
   }
 
-  bool replication_stream_entry::is_equal (const cubstream::entry<replication_object> *other)
+  bool stream_entry::is_equal (const cubstream::entry<replication_object> *other)
   {
     size_t i;
-    const replication_stream_entry *other_t = dynamic_cast <const replication_stream_entry *> (other);
+    const stream_entry *other_t = dynamic_cast <const stream_entry *> (other);
 
     if (other_t == NULL)
       {
@@ -145,9 +175,9 @@ namespace cubreplication
     return true;
   }
 
-  size_t replication_stream_entry::compute_header_size (void)
+  size_t stream_entry::compute_header_size (void)
   {
-    replication_stream_entry_header e;
+    stream_entry_header e;
     cubpacking::packer serializator;
 
     size_t stream_entry_header_size = e.get_size (serializator);
@@ -156,6 +186,6 @@ namespace cubreplication
     return aligned_stream_entry_header_size;
   }
 
-  size_t replication_stream_entry::s_header_size = replication_stream_entry::compute_header_size ();
+  size_t stream_entry::s_header_size = stream_entry::compute_header_size ();
 
 } /* namespace cubreplication */

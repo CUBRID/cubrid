@@ -98,16 +98,15 @@ namespace cubreplication
     strncpy (m_class_name, class_name, sizeof (m_class_name) - 1);
   }
 
-  void single_row_repl_entry::set_key_value (cubthread::entry &thread_entry, DB_VALUE *db_val)
+  void single_row_repl_entry::set_key_value (DB_VALUE *db_val)
   {
     HL_HEAPID save_heapid;
-    save_heapid = db_change_private_heap (&thread_entry, 0);
+    save_heapid = db_change_private_heap (NULL, 0);
     pr_clone_value (db_val, &m_key_value);
-    (void) db_change_private_heap (&thread_entry, save_heapid);
+    (void) db_change_private_heap (NULL, save_heapid);
   }
 
-  void single_row_repl_entry::copy_and_add_changed_value (cubthread::entry &thread_entry, const int att_id,
-      DB_VALUE *db_val)
+  void single_row_repl_entry::copy_and_add_changed_value (const int att_id, DB_VALUE *db_val)
   {
     HL_HEAPID save_heapid;
 
@@ -116,9 +115,9 @@ namespace cubreplication
 
     changed_attributes.push_back (att_id);
 
-    save_heapid = db_change_private_heap (&thread_entry, 0);
+    save_heapid = db_change_private_heap (NULL, 0);
     pr_clone_value (db_val, &last_new_value);
-    (void) db_change_private_heap (&thread_entry, save_heapid);
+    (void) db_change_private_heap (NULL, save_heapid);
   }
 
   size_t single_row_repl_entry::get_packed_size (cubpacking::packer *serializator)
@@ -152,7 +151,7 @@ namespace cubreplication
   {
     size_t i;
 
-    serializator->pack_int (single_row_repl_entry::ID);
+    serializator->pack_int (single_row_repl_entry::PACKING_ID);
 
     serializator->pack_int ((int) m_type);
 
@@ -177,9 +176,11 @@ namespace cubreplication
     int count_new_values = 0;
     int i;
     int int_val;
+#if defined (SERVER_MODE)
     HL_HEAPID save_heapid;
 
     save_heapid = db_private_set_heapid_to_thread (NULL, 0);
+#endif
     /* create id */
     serializator->unpack_int (&int_val);
 
@@ -204,7 +205,9 @@ namespace cubreplication
 	serializator->unpack_db_value (&val);
       }
 
+#if defined (SERVER_MODE)
     db_private_set_heapid_to_thread (NULL, save_heapid);
+#endif
 
     return NO_ERROR;
   }
@@ -242,7 +245,7 @@ namespace cubreplication
 
   int sbr_repl_entry::pack (cubpacking::packer *serializator)
   {
-    serializator->pack_int (sbr_repl_entry::ID);
+    serializator->pack_int (sbr_repl_entry::PACKING_ID);
     serializator->pack_large_string (m_statement);
 
     return NO_ERROR;
