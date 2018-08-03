@@ -4670,7 +4670,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   char *sql_id = NULL;
   int error_code = NO_ERROR, all_error_code = NO_ERROR;
   int trace_slow_msec, trace_ioreads;
-  bool tran_abort = false;
+  bool tran_abort = false, has_xasl_entry = false;
 
   EXECUTION_INFO info = { NULL, NULL, NULL };
   QUERY_ID net_Deferred_end_queries[NET_DEFER_END_QUERIES_MAX], *p_net_Deferred_end_queries = net_Deferred_end_queries;
@@ -4821,6 +4821,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	      /* Remove transaction id from xasl cache entry before return_error_to_client, where current transaction
 	       * may be aborted. Otherwise, another transaction may be resumed and xasl_cache_entry_p may be removed by
 	       * that transaction, during class deletion. */
+	      has_xasl_entry = true;
 	      xcache_unfix (thread_p, xasl_cache_entry_p);
 	      xasl_cache_entry_p = NULL;
 	    }
@@ -4957,6 +4958,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 
   if (xasl_cache_entry_p != NULL)
     {
+      has_xasl_entry = true;
       xcache_unfix (thread_p, xasl_cache_entry_p);
       xasl_cache_entry_p = NULL;
     }
@@ -4980,8 +4982,16 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
       p_net_Deferred_end_queries[n_query_ids++] = query_id;
       if (error_code != NO_ERROR)
 	{
-	  tran_abort = true;
-	  assert (end_query_allowed == true);
+	  if (has_xasl_entry)
+	    {
+	      tran_abort = true;
+	      assert (end_query_allowed == true);
+	    }
+	  else
+	    {
+	      /* Do not abort the transaction, since XASL cache does not exists, so other fetch may be requested. */
+	      end_query_allowed = false;
+	    }
 	}
 
       stran_server_auto_commit_or_abort (thread_p, rid, p_net_Deferred_end_queries, n_query_ids,
