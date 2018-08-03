@@ -38,12 +38,12 @@ namespace cubreplication
   struct stream_entry_header
   {
     typedef enum
-      {
-        ACTIVE = 0,
-        COMMITTED,
-        ABORTED,
-        GROUP_COMMIT
-      } TRAN_STATE;
+    {
+      ACTIVE = 0,
+      COMMITTED,
+      ABORTED,
+      GROUP_COMMIT
+    } TRAN_STATE;
 
     const static unsigned STATE_BITS = 2;
 
@@ -63,7 +63,7 @@ namespace cubreplication
 	mvccid (MVCCID_NULL),
 	count_replication_entries (0),
 	data_size (0),
-        tran_state (ACTIVE)
+	tran_state (ACTIVE)
     {
     };
 

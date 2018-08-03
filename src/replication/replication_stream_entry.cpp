@@ -74,7 +74,7 @@ namespace cubreplication
     state_flags = state_flags << (32 - stream_entry_header::STATE_BITS);
 
     count_and_flags = m_header.count_replication_entries | state_flags;
-  
+
     serializator->pack_int (count_and_flags);
     serializator->pack_int (m_header.data_size);
 
