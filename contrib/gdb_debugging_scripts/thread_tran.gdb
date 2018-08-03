@@ -129,7 +129,7 @@ define thread_wp_print_info
 # Allocate an array to hold statistics for a worker pool
 #
 define thread_wp_stats_alloc
-  set $statsp = (cubperf::stat_value *) malloc (cubthread::Worker_pool_statdef.get_value_count () * sizeof (cubperf::stat_value))
+  set $statsp = (cubperf::stat_value *) malloc (cubthread::Worker_pool_statdef.m_value_count * sizeof (cubperf::stat_value))
   #output
   set $arg0 = $statsp
   end
@@ -144,7 +144,7 @@ define thread_wp_stats_add
   set $what = $arg0
   set $where = $arg1
   set $idx = 0
-  while $idx < cubthread::Worker_pool_statdef.get_value_count ()
+  while $idx < cubthread::Worker_pool_statdef.m_value_count
     set $where[$idx] = $where[$idx] + $what[$idx]
     set $idx = $idx + 1
     end
@@ -156,7 +156,7 @@ define thread_wp_stats_add
 define thread_wp_stats_print
   set $stats = $arg0
   set $idx = 0
-  while $idx < cubthread::Worker_pool_statdef.get_value_count ()
+  while $idx < cubthread::Worker_pool_statdef.m_value_count
     printf "%s: %d\n", cubthread::Worker_pool_statdef.get_value_name ($idx), $stats[$idx]
     set $idx = $idx + 1
     end
@@ -177,7 +177,7 @@ define thread_wp_collect_stats
 
   # init stats
   set $idx = 0
-  while $idx < cubthread::Worker_pool_statdef.get_value_count ()
+  while $idx < cubthread::Worker_pool_statdef.m_value_count
     set $stats[$idx] = 0
     set $idx = $idx + 1
     end
