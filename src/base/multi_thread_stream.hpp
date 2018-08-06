@@ -163,7 +163,7 @@ namespace cubstream
       void set_stop (void)
       {
 	m_is_stopped = true;
-        m_serial_read_cv.notify_one ();
+	m_serial_read_cv.notify_one ();
       }
   };
 

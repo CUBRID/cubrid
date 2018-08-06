@@ -266,8 +266,9 @@ namespace cubstream
     return (err < 0) ? err : read_bytes;
   }
 
-  int multi_thread_stream::read_partial (const stream_position first_pos, const size_t byte_count, size_t &actual_read_bytes,
-				    read_partial_func_t &read_partial_action)
+  int multi_thread_stream::read_partial (const stream_position first_pos, const size_t byte_count,
+					 size_t &actual_read_bytes,
+					 read_partial_func_t &read_partial_action)
   {
     int err = NO_ERROR;
     char *ptr;
@@ -324,14 +325,14 @@ namespace cubstream
       }
     if (m_last_committed_pos >= m_serial_read_wait_pos)
       {
-        signal_data_ready = true;
+	signal_data_ready = true;
       }
 
     ulock.unlock ();
 
     if (signal_data_ready)
       {
-        m_serial_read_cv.notify_one ();
+	m_serial_read_cv.notify_one ();
       }
 
     /* notify readers of the new completed position */
@@ -443,15 +444,15 @@ namespace cubstream
     std::unique_lock<std::mutex> local_lock (m_buffer_mutex);
     m_serial_read_wait_pos = m_read_position + amount;
     m_serial_read_cv.wait (local_lock,
-	                   [&] { return m_is_stopped || m_last_committed_pos >= m_serial_read_wait_pos; });
+			   [&] { return m_is_stopped || m_last_committed_pos >= m_serial_read_wait_pos; });
     m_serial_read_wait_pos = std::numeric_limits<stream_position>::max ();
     local_lock.unlock ();
 
     if (m_is_stopped)
       {
-        err = ER_STREAM_NO_MORE_DATA;
+	err = ER_STREAM_NO_MORE_DATA;
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_NO_MORE_DATA, 3, this->name ().c_str (), m_read_position, amount);
-        return err;
+	return err;
       }
 
     assert (m_read_position + amount <= m_last_committed_pos);
