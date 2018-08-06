@@ -4982,14 +4982,16 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
       p_net_Deferred_end_queries[n_query_ids++] = query_id;
       if (error_code != NO_ERROR)
 	{
-	  if (has_xasl_entry)
+	  if (error_code != ER_INTERRUPTED && has_xasl_entry)
 	    {
 	      tran_abort = true;
 	      assert (end_query_allowed == true);
 	    }
 	  else
 	    {
-	      /* Do not abort the transaction, since XASL cache does not exists, so other fetch may be requested. */
+	      /* Do not abort the transaction, since XASL cache does not exists, so other fetch may be requested.
+	       * Or, the execution was interrupted.
+	       */
 	      end_query_allowed = false;
 	    }
 	}
