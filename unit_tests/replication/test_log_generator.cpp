@@ -264,7 +264,7 @@ namespace test_replication
 	if (j == n_tran_chunks - 1)
 	  {
 	    /* commit entry : last commit or random */
-	    lg->set_commit_repl (true);
+	    lg->set_repl_state (cubreplication::stream_entry_header::COMMITTED);
 	  }
 	lg->pack_stream_entry ();
       }

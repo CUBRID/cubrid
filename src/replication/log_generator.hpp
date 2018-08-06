@@ -63,7 +63,7 @@ namespace cubreplication
 
       int start_tran_repl (MVCCID mvccid);
 
-      int set_commit_repl (bool commit_tran_flag);
+      int set_repl_state (stream_entry_header::TRAN_STATE state);
 
       int append_repl_object (replication_object *object);
 
