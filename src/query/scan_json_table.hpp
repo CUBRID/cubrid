@@ -24,6 +24,8 @@
 #ifndef _SCAN_JSON_TABLE_HPP_
 #define _SCAN_JSON_TABLE_HPP_
 
+#include <vector>
+
 // forward definitions
 // access_json_table.hpp
 namespace cubxasl
@@ -58,7 +60,7 @@ namespace cubscan
 	int open (cubthread::entry *thread_p);
 	void end (cubthread::entry *thread_p);
 
-	int next_row (cubthread::entry *thread_p, scan_id_struct &sid);
+	int next_scan (cubthread::entry *thread_p, scan_id_struct &sid);
 
       private:
 	// scan_node
@@ -67,11 +69,25 @@ namespace cubscan
 	//    cubxasl::json_table::nested_node extended with m_eval_function. nested_node is common to client, while
 	//    PR_EVAL_FNC is restricted to server.
 	struct scan_node;
+	struct cursor
+	{
+	  std::size_t m_row;
+	  std::size_t m_child;
+	  scan_node *node;
+	  JSON_DOC *input_doc;
+	  JSON_DOC *row_doc;
+	  JSON_DOC *process_doc;
+	  bool is_row_checked;
+	};
+	using scan_cursor = std::vector<cursor>;
+
+	int next_internal (cubthread::entry *thread_p, int depth, bool &success);
 
 	scan_id_struct *m_scanid;
 	cubxasl::json_table::spec_node *m_specp;
 	scan_node *m_scan_root;
-	scan_node *m_scan_cursor;
+	scan_cursor m_scan_cursor;
+	std::size_t m_scan_cursor_depth;
     };
   } // namespace json_table
 } // namespace cubscan

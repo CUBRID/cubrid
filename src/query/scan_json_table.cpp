@@ -40,61 +40,44 @@ namespace cubscan
       std::vector<scan_node *> m_children;
       scan_node *m_parent;
 
-      // cursor
-      std::size_t m_row_cursor;
-      std::size_t m_child_cursor;
-      bool m_is_before;
-      bool m_is_on_true_row;
-      JSON_DOC *m_json_document;
-
-      int open (cubthread::entry *thread_p, const JSON_DOC &json_doc)
-      {
-	// set document to process
-	int error_code = db_json_extract_document_from_path (&json_doc, m_xasl_node.m_path.c_str (), m_json_document);
-	if (error_code != NO_ERROR)
-	  {
-	    ASSERT_ERROR ();
-	    return error_code;
-	  }
-      }
-
-      int fetch_columns (std::forward_list<cubxasl::json_table::column> &columns)
+      int fetch_columns (const JSON_DOC &document, std::forward_list<cubxasl::json_table::column> &columns)
       {
 	int error_code = NO_ERROR;
 	for (auto col : columns)
 	  {
-	    error_code = col.evaluate (get_current_row_doc ());
+	    error_code = col.evaluate (document);
 	    if (error_code != NO_ERROR)
 	      {
 		ASSERT_ERROR ();
 		return error_code;
 	      }
 	  }
+	return NO_ERROR;
       }
 
-      int evaluate_current_row (cubthread::entry *thread_p, DB_LOGICAL &logical_output)
+      int evaluate (cubthread::entry *thread_p, const JSON_DOC &document, DB_LOGICAL &logical_output)
       {
 	logical_output = V_TRUE;
 
 	if (m_eval_function == NULL)
 	  {
+	    assert (m_xasl_node.m_predicate_columns.empty ());
 	    return NO_ERROR;
+	  }
+
+	int error_code = fetch_columns (document, m_xasl_node.m_predicate_columns);
+	if (error_code != NO_ERROR)
+	  {
+	    return error_code;
 	  }
 
 	logical_output = m_eval_function (thread_p, m_xasl_node.m_predicate_expression, NULL, NULL);
 	if (logical_output == V_ERROR)
 	  {
-	    int error_code;
 	    ASSERT_ERROR_AND_SET (error_code);
 	    return error_code;
 	  }
 	return NO_ERROR;
-      }
-
-      JSON_DOC &get_current_row_doc (void)
-      {
-	// todo: array
-	return *m_json_document;
       }
 
       std::size_t get_row_count (void)
@@ -102,103 +85,14 @@ namespace cubscan
 	// todo: array
 	return 1;
       }
-
-      int next_true_row (cubthread::entry *thread_p)
-      {
-	DB_LOGICAL logical_result;
-	int error_code;
-
-	while (m_row_cursor < get_row_count ())
-	  {
-	    error_code = evaluate_current_row (thread_p, logical_result);
-	    if (error_code != NO_ERROR)
-	      {
-		ASSERT_ERROR ();
-		return error_code;
-	      }
-	    if (logical_result == V_TRUE)
-	      {
-		// fetch output columns too
-		error_code = fetch_columns (m_xasl_node.m_output_columns);
-		if (error_code != NO_ERROR)
-		  {
-		    ASSERT_ERROR ();
-		    return error_code;
-		  }
-		m_is_on_true_row = true;
-		return NO_ERROR;
-	      }
-	    ++m_row_cursor;
-	  }
-      }
-
-      int process (cubthread::entry *thread_p, SCAN_CODE &scan_code, scan_node *&cursor_node)
-      {
-
-	int error_code;
-
-	// todo: move this part to increment
-
-
-	if (!m_is_on_true_row)
-	  {
-	    error_code = next_true_row (thread_p);
-	    if (error_code != NO_ERROR)
-	      {
-		ASSERT_ERROR ();
-		return error_code;
-	      }
-	    if (!m_is_on_true_row)
-	      {
-		// return to parent
-		cursor_node = m_parent;
-		return NO_ERROR;
-	      }
-	  }
-
-	// todo: return child
-	cursor_node = m_children[m_child_cursor];
-	error_code = cursor_node->open (thread_p, get_current_row_doc ());
-	if (error_code != NO_ERROR)
-	  {
-	    ASSERT_ERROR ();
-	    return error_code;
-	  }
-	return NO_ERROR;
-      }
-
-      void increment ()
-      {
-	if (m_is_before)
-	  {
-	    // init stuff
-	    m_row_cursor = 0;
-	    m_child_cursor = 0;
-	    m_is_on_true_row = false;
-	    m_is_before = false;
-	  }
-	else
-	  {
-	    // advance
-	    if (m_child_cursor < m_children.size())
-	      {
-		// advance child
-		m_child_cursor++;
-	      }
-	    else
-	      {
-		++m_row_cursor;
-		m_child_cursor = 0;
-		m_is_on_true_row = false;
-	      }
-	  }
-      }
     };
 
     void
     scanner::init (cubxasl::json_table::spec_node &spec)
     {
       m_specp = &spec;
+
+      // todo: build scan tree
     }
 
     void
@@ -228,9 +122,19 @@ namespace cubscan
 	  return ER_FAILED;
 	}
 
+      // build m_scan_cursor
+
+      m_scan_cursor[0].node = m_scan_root;
       if (db_value_type (value_p) == DB_TYPE_JSON)
 	{
-	  m_scan_root->open (thread_p, *db_get_json_document (value_p));
+	  error_code = db_json_extract_document_from_path (db_get_json_document (value_p),
+		       m_scan_root->m_xasl_node.m_path.c_str (),
+		       m_scan_cursor[0].input_doc);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return error_code;
+	    }
 	}
       else
 	{
@@ -243,7 +147,9 @@ namespace cubscan
 	      ASSERT_ERROR ();
 	      return error_code;
 	    }
-	  error_code = m_scan_root->open (thread_p, *db_get_json_document (&json_cast_value));
+	  error_code = db_json_extract_document_from_path (db_get_json_document (&json_cast_value),
+		       m_scan_root->m_xasl_node.m_path.c_str (),
+		       m_scan_cursor[0].input_doc);
 	  pr_clear_value (&json_cast_value);
 	  if (error_code != NO_ERROR)
 	    {
@@ -251,8 +157,6 @@ namespace cubscan
 	      return error_code;
 	    }
 	}
-
-      m_scan_cursor = m_scan_root;
 
       // todo
       return NO_ERROR;
@@ -265,40 +169,128 @@ namespace cubscan
     }
 
     int
-    scanner::next_row (cubthread::entry *thread_p, scan_id_struct &sid)
+    scanner::next_scan (cubthread::entry *thread_p, scan_id_struct &sid)
     {
-      if (m_scan_cursor == NULL)
+      bool success = true;
+      int error_code = next_internal (thread_p, 0, success);
+      if (error_code != NO_ERROR)
 	{
-	  assert (false);
-	  return ER_FAILED;
+	  ASSERT_ERROR ();
+	  return error_code;
 	}
-
-      // todo:
-      // I have complicated things too much, trying to resume from leaf nodes; traversal from root would be a better
-      // approach than doing this back and forth walking on scan nodes, with each node trying to keep its last state.
-      // we don't expect many levels on these scan trees, so there should be no performance concerns.
-      //
-      // cursor should maintain a list of positions for all processed nodes.
-      // scan_node->process will be called recursively. to reach a node, process calls will stack a number of times
-      // equal to node depth in scan tree. always.
-      //
-
-      int error_code = NO_ERROR;
-      SCAN_CODE scan_code = S_END;
-      while (true)
+      if (!success)
 	{
-	  if (scan_code == S_SUCCESS && m_scan_cursor->m_children.empty())
-	    {
-	      // found a row
-	      return NO_ERROR;
-	    }
-	  m_scan_cursor->increment ();
-	  error_code = m_scan_cursor->process (thread_p, scan_code, m_scan_cursor);
+	  // todo
+	  sid.status = S_ENDED;
+	}
+      return NO_ERROR;
+    }
+
+    int
+    scanner::next_internal (cubthread::entry *thread_p, int depth, bool &success)
+    {
+      int error_code = NO_ERROR;
+      DB_LOGICAL logical;
+
+      // check if cursor is already in child node
+      if (m_scan_cursor_depth > depth + 1)
+	{
+	  // advance to child
+	  error_code = next_internal (thread_p, depth + 1, success);
 	  if (error_code != NO_ERROR)
 	    {
 	      return error_code;
 	    }
+	  if (success)
+	    {
+	      return NO_ERROR;
+	    }
 	}
+
+      cursor &this_cursor = m_scan_cursor[depth];
+      assert (this_cursor.node != NULL);
+
+      // for each row
+      while (this_cursor.m_row < this_cursor.node->get_row_count ())
+	{
+	  if (!this_cursor.is_row_checked)
+	    {
+	      // todo: set this_cursor.process_doc to input_doc or row_doc
+	      // temporary: use input_doc.
+	      this_cursor.process_doc = this_cursor.input_doc;
+	      error_code = this_cursor.node->evaluate (thread_p, *this_cursor.process_doc, logical);
+	      if (error_code != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  return error_code;
+		}
+	      if (logical != V_TRUE)
+		{
+		  // we need another row
+		  this_cursor.m_row++;
+		  continue;
+		}
+	      this_cursor.is_row_checked = true;
+
+	      // fetch other columns too
+	      error_code = this_cursor.node->fetch_columns (*this_cursor.process_doc,
+			   this_cursor.node->m_xasl_node.m_output_columns);
+	      if (error_code != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  return error_code;
+		}
+
+	      // fall
+	    }
+
+	  if (this_cursor.node->m_children.empty ())
+	    {
+	      success = true;
+	      return NO_ERROR;
+	    }
+
+	  // create cursor for next child
+	  scan_node &next_node = *this_cursor.node->m_children[this_cursor.m_child];
+	  cursor &next_cursor = m_scan_cursor[depth + 1];
+	  next_cursor.is_row_checked = false;
+	  next_cursor.m_row = 0;
+	  next_cursor.m_child = 0;
+	  next_cursor.node = &next_node;
+
+	  error_code = db_json_extract_document_from_path (this_cursor.process_doc,
+		       next_node.m_xasl_node.m_path.c_str (),
+		       this_cursor.input_doc);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return error_code;
+	    }
+	  m_scan_cursor_depth++;
+
+	  error_code = next_internal (thread_p, depth + 1, success);
+	  if (error_code != NO_ERROR)
+	    {
+	      return error_code;
+	    }
+	  if (!success)
+	    {
+	      // try another child
+	      this_cursor.m_child++;
+	      continue;
+	    }
+
+	  // found a row
+	  return NO_ERROR;
+	}
+
+      // no more rows...
+      success = false;
+
+      // remove this cursor
+      m_scan_cursor_depth--;
+
+      return NO_ERROR;
     }
   } // namespace json_table
 } // namespace cubscan
