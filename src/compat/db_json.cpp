@@ -2126,6 +2126,9 @@ db_json_replace_token_special_chars (std::string &token,
 				     const std::unordered_map<std::string, std::string> &special_chars)
 {
   bool replaced = false;
+  size_t start = 0;
+  size_t end = 0;
+  size_t step = 1;
 
   // iterate character by character and detect special characters
   for (size_t token_idx = 0; token_idx < token.length (); /* incremented in for body */)
