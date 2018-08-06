@@ -89,7 +89,7 @@ static pthread_mutex_t gethostbyname_lock = PTHREAD_MUTEX_INITIALIZER;
 #define INADDR_NONE 0xffffffff
 #endif /* !INADDR_NONE */
 
-static const int css_Maximum_server_count = 50;
+static const int css_Maximum_server_count = 1000;
 
 #if !defined (WINDOWS)
 #define SET_NONBLOCKING(fd) { \
@@ -193,7 +193,7 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
   else
     {
 #ifdef HAVE_GETHOSTBYNAME_R
-# if defined (HAVE_GETHOSTBYNAME_R_GLIBC)
+#if defined (HAVE_GETHOSTBYNAME_R_GLIBC)
       struct hostent *hp, hent;
       int herr;
       char buf[1024];
@@ -204,7 +204,7 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
 	  return ER_BO_UNABLE_TO_FIND_HOSTNAME;
 	}
       memcpy ((void *) ip_addr, (void *) hent.h_addr, hent.h_length);
-# elif defined (HAVE_GETHOSTBYNAME_R_SOLARIS)
+#elif defined (HAVE_GETHOSTBYNAME_R_SOLARIS)
       struct hostent hent;
       int herr;
       char buf[1024];
@@ -215,7 +215,7 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
 	  return ER_BO_UNABLE_TO_FIND_HOSTNAME;
 	}
       memcpy ((void *) ip_addr, (void *) hent.h_addr, hent.h_length);
-# elif defined (HAVE_GETHOSTBYNAME_R_HOSTENT_DATA)
+#elif defined (HAVE_GETHOSTBYNAME_R_HOSTENT_DATA)
       struct hostent hent;
       struct hostent_data ht_data;
 
@@ -225,9 +225,9 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
 	  return ER_BO_UNABLE_TO_FIND_HOSTNAME;
 	}
       memcpy ((void *) ip_addr, (void *) hent.h_addr, hent.h_length);
-# else
-#   error "HAVE_GETHOSTBYNAME_R"
-# endif
+#else
+#error "HAVE_GETHOSTBYNAME_R"
+#endif
 #else /* HAVE_GETHOSTBYNAME_R */
       struct hostent *hp;
 
@@ -281,7 +281,7 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr, socklen_t * sl
   else
     {
 #ifdef HAVE_GETHOSTBYNAME_R
-# if defined (HAVE_GETHOSTBYNAME_R_GLIBC)
+#if defined (HAVE_GETHOSTBYNAME_R_GLIBC)
       struct hostent *hp, hent;
       int herr;
       char buf[1024];
@@ -292,7 +292,7 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr, socklen_t * sl
 	  return INVALID_SOCKET;
 	}
       memcpy ((void *) &tcp_saddr.sin_addr, (void *) hent.h_addr, hent.h_length);
-# elif defined (HAVE_GETHOSTBYNAME_R_SOLARIS)
+#elif defined (HAVE_GETHOSTBYNAME_R_SOLARIS)
       struct hostent hent;
       int herr;
       char buf[1024];
@@ -303,7 +303,7 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr, socklen_t * sl
 	  return INVALID_SOCKET;
 	}
       memcpy ((void *) &tcp_saddr.sin_addr, (void *) hent.h_addr, hent.h_length);
-# elif defined (HAVE_GETHOSTBYNAME_R_HOSTENT_DATA)
+#elif defined (HAVE_GETHOSTBYNAME_R_HOSTENT_DATA)
       struct hostent hent;
       struct hostent_data ht_data;
 
@@ -313,9 +313,9 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr, socklen_t * sl
 	  return INVALID_SOCKET;
 	}
       memcpy ((void *) &tcp_saddr.sin_addr, (void *) hent.h_addr, hent.h_length);
-# else
-#   error "HAVE_GETHOSTBYNAME_R"
-# endif
+#else
+#error "HAVE_GETHOSTBYNAME_R"
+#endif
 #else /* HAVE_GETHOSTBYNAME_R */
       struct hostent *hp;
       int r;
@@ -1071,7 +1071,7 @@ css_open_new_socket_from_master (SOCKET fd, unsigned short *rid)
  *   rid(in):
  */
 bool
-css_transfer_fd (SOCKET server_fd, SOCKET client_fd, unsigned short rid)
+css_transfer_fd (SOCKET server_fd, SOCKET client_fd, unsigned short rid, CSS_SERVER_REQUEST request_for_server)
 {
   int request;
   unsigned short req_id;
@@ -1081,7 +1081,7 @@ css_transfer_fd (SOCKET server_fd, SOCKET client_fd, unsigned short rid)
   static struct cmsghdr *cmptr = NULL;
 #endif /* LINUX || AIX */
 
-  request = htonl (SERVER_START_NEW_CLIENT);
+  request = htonl (request_for_server);
   if (send (server_fd, (char *) &request, sizeof (int), 0) < 0)
     {
       /* Master->Server link down. remove old link, and try again. */

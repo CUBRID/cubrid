@@ -24,8 +24,26 @@
 #include "thread_looper.hpp"
 #include "thread_waiter.hpp"
 
+#include "perf.hpp"
+
 namespace cubthread
 {
+  //////////////////////////////////////////////////////////////////////////
+  // statistics
+  //////////////////////////////////////////////////////////////////////////
+
+  static const cubperf::stat_id STAT_LOOPER_SLEEP_COUNT_AND_TIME = 0;
+  static cubperf::stat_id STAT_LOOPER_RESET_COUNT = 1;
+  static const cubperf::statset_definition Looper_statistics =
+  {
+    cubperf::stat_definition (STAT_LOOPER_SLEEP_COUNT_AND_TIME, cubperf::stat_definition::COUNTER_AND_TIMER,
+    "looper_sleep_count", "looper_sleep_time"),
+    cubperf::stat_definition (STAT_LOOPER_RESET_COUNT, cubperf::stat_definition::COUNTER, "looper_reset_count")
+  };
+
+  //////////////////////////////////////////////////////////////////////////
+  // looper implementation
+  //////////////////////////////////////////////////////////////////////////
 
   looper::looper ()
     : m_periods_count (0)
@@ -33,36 +51,66 @@ namespace cubthread
     , m_period_index (0)
     , m_stop (false)
     , m_was_woken_up (false)
+    , m_setup_period ()
     , m_start_execution_time ()
-    , m_sleep_count (0)
-    , m_sleep_time (0)
-    , m_reset_count (0)
+    , m_stats (*Looper_statistics.create_statset ())
+    , m_wait_type (INF_WAITS)
   {
     // infinite waits
-    m_setup_period = std::bind (&looper::setup_infinite_wait, *this, std::placeholders::_1, std::placeholders::_2);
+    m_setup_period = std::bind (&looper::setup_infinite_wait, std::ref (*this), std::placeholders::_1,
+				std::placeholders::_2);
   }
 
   looper::looper (const looper &other)
-    : m_periods_count (other.m_periods_count)
-    , m_periods ()
-    , m_period_index (0)
-    , m_stop (false)
-    , m_was_woken_up (false)
-    , m_setup_period (other.m_setup_period)
-    , m_start_execution_time (other.m_start_execution_time)
+    : looper ()
   {
+    m_periods_count = other.m_periods_count;
+    m_start_execution_time = other.m_start_execution_time;
     std::copy (std::begin (other.m_periods), std::end (other.m_periods), std::begin (m_periods));
+
+    // we need to use same target function, however for default setup function first argument must be this and not
+    // other
+    switch (other.m_wait_type)
+      {
+      case INF_WAITS:
+	// already bound to looper::setup_infinite_wait
+	break;
+      case FIXED_WAITS:
+	m_setup_period = std::bind (&looper::setup_fixed_waits, std::ref (*this), std::placeholders::_1,
+				    std::placeholders::_2);
+	break;
+      case INCREASING_WAITS:
+	m_setup_period = std::bind (&looper::setup_increasing_waits, std::ref (*this), std::placeholders::_1,
+				    std::placeholders::_2);
+	break;
+      case CUSTOM_WAITS:
+	m_setup_period = other.m_setup_period;    // just copy function
+	break;
+      default:
+	assert (false);
+	break;
+      }
   }
 
   looper::looper (const period_function &setup_period_function)
-    : m_periods_count (0)
-    , m_periods ()
-    , m_period_index (0)
-    , m_stop (false)
-    , m_was_woken_up (false)
-    , m_setup_period (setup_period_function)
-    , m_start_execution_time ()
+    : looper ()
   {
+    m_setup_period = setup_period_function;
+    m_wait_type = CUSTOM_WAITS;
+  }
+
+  looper::looper (const delta_time &fixed_period)
+    : looper ()
+  {
+    m_periods[0] = fixed_period;
+    m_setup_period = std::bind (&looper::setup_fixed_waits, std::ref (*this), std::placeholders::_1,
+				std::placeholders::_2);
+    m_wait_type = FIXED_WAITS;
+  }
+
+  looper::~looper (void)
+  {
+    delete &m_stats;
   }
 
   void
@@ -76,8 +124,7 @@ namespace cubthread
 
     assert (m_setup_period);
 
-    ++m_sleep_count;
-    std::chrono::system_clock::time_point start_sleep_timept = std::chrono::system_clock::now ();
+    cubperf::reset_timept (m_stats.m_timept);
 
     bool is_timed_wait = true;
     delta_time period = delta_time (0);
@@ -110,14 +157,14 @@ namespace cubthread
 
     // register start of the task execution time
     m_start_execution_time = std::chrono::system_clock::now ();
-    m_sleep_time += (std::chrono::nanoseconds (m_start_execution_time - start_sleep_timept)).count ();
+    Looper_statistics.time_and_increment (m_stats, STAT_LOOPER_SLEEP_COUNT_AND_TIME);
   }
 
   void
   looper::reset (void)
   {
     m_period_index = 0;
-    ++m_reset_count;
+    Looper_statistics.increment (m_stats, STAT_LOOPER_RESET_COUNT);
   }
 
   bool
@@ -175,13 +222,21 @@ namespace cubthread
   }
 
   void
-  looper::get_stats (stat_type *stats_out)
+  looper::get_stats (cubperf::stat_value *stats_out)
   {
-    int i = 0;
+    Looper_statistics.get_stat_values_with_converted_timers<std::chrono::microseconds> (m_stats, stats_out);
+  }
 
-    stats_out[i++] = m_sleep_count;
-    stats_out[i++] = m_sleep_time / 1000000;  // nano => milli
-    stats_out[i++] = m_reset_count;
+  std::size_t
+  looper::get_stats_value_count (void)
+  {
+    return Looper_statistics.get_value_count ();
+  }
+
+  const char *
+  looper::get_stat_name (std::size_t stat_index)
+  {
+    return Looper_statistics.get_value_name (stat_index);
   }
 
 } // namespace cubthread

@@ -26,15 +26,15 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/db_set.c
   ${COMPAT_DIR}/db_value_printer.cpp
   )
-set (COMPAT_HEADERS  
+set (COMPAT_HEADERS
   ${COMPAT_DIR}/dbtype_def.h
   ${COMPAT_DIR}/dbtype_function.i
   ${COMPAT_DIR}/dbtype_function.h
   )
 
 set(THREAD_SOURCES
-  ${THREAD_DIR}/thread.c
   ${THREAD_DIR}/critical_section.c
+  ${THREAD_DIR}/critical_section_tracker.cpp
   ${THREAD_DIR}/thread_daemon.cpp
   ${THREAD_DIR}/thread_entry.cpp
   ${THREAD_DIR}/thread_entry_task.cpp
@@ -44,6 +44,7 @@ set(THREAD_SOURCES
   ${THREAD_DIR}/thread_worker_pool.cpp
   )
 set(THREAD_HEADERS
+  ${THREAD_DIR}/critical_section_tracker.hpp
   ${THREAD_DIR}/thread_compat.hpp
   ${THREAD_DIR}/thread_daemon.hpp
   ${THREAD_DIR}/thread_entry.hpp
@@ -53,6 +54,20 @@ set(THREAD_HEADERS
   ${THREAD_DIR}/thread_manager.hpp
   ${THREAD_DIR}/thread_waiter.hpp
   ${THREAD_DIR}/thread_worker_pool.hpp
+  )
+
+set(STREAM_SOURCES
+  ${BASE_DIR}/cubstream.cpp
+  ${BASE_DIR}/packing_stream.cpp
+  ${BASE_DIR}/stream_entry.cpp
+  )
+set (STREAM_HEADERS
+  ${BASE_DIR}/bip_buffer.hpp
+  ${BASE_DIR}/collapsable_circular_queue.hpp
+  ${BASE_DIR}/cubstream.hpp
+  ${BASE_DIR}/packing_stream.hpp
+  ${BASE_DIR}/stream_entry.hpp
+  ${BASE_DIR}/stream_io.hpp
   )
 
 set(BASE_SOURCES
@@ -72,6 +87,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/error_manager.c
   ${BASE_DIR}/event_log.c
   ${BASE_DIR}/fault_injection.c
+  ${BASE_DIR}/fileline_location.cpp
   ${BASE_DIR}/fixed_alloc.c
   ${BASE_DIR}/ini_parser.c
   ${BASE_DIR}/intl_support.c
@@ -86,12 +102,15 @@ set(BASE_SOURCES
   ${BASE_DIR}/mprec.c
   ${BASE_DIR}/object_representation_sr.c
   ${BASE_DIR}/packer.cpp
+  ${BASE_DIR}/get_clockfreq.c
+  ${BASE_DIR}/perf.cpp
   ${BASE_DIR}/pinnable_buffer.cpp
   ${BASE_DIR}/pinning.cpp
-  ${BASE_DIR}/perf.c
   ${BASE_DIR}/perf_monitor.c
   ${BASE_DIR}/porting.c
+  ${BASE_DIR}/process_util.c
   ${BASE_DIR}/release_string.c
+  ${BASE_DIR}/resource_tracker.cpp
   ${BASE_DIR}/sha1.c
   ${BASE_DIR}/stack_dump.c
   ${BASE_DIR}/string_buffer.cpp
@@ -110,11 +129,16 @@ set (BASE_HEADERS
   ${BASE_DIR}/error_context.hpp
   ${BASE_DIR}/error_manager.h
   ${BASE_DIR}/extensible_array.hpp
+  ${BASE_DIR}/fileline_location.hpp
   ${BASE_DIR}/mem_block.hpp
   ${BASE_DIR}/packer.hpp
+  ${BASE_DIR}/perf.hpp
+  ${BASE_DIR}/perf_def.hpp
   ${BASE_DIR}/pinning.hpp
   ${BASE_DIR}/pinnable_buffer.hpp
   ${BASE_DIR}/packable_object.hpp
+  ${BASE_DIR}/process_util.h
+  ${BASE_DIR}/resource_tracker.hpp
   ${BASE_DIR}/string_buffer.hpp
   )
 
@@ -139,10 +163,39 @@ set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_interface_sr.c
   ${COMMUNICATION_DIR}/network_sr.c
   ${COMMUNICATION_DIR}/communication_channel.cpp
+  ${COMMUNICATION_DIR}/communication_server_channel.cpp
+  ${COMMUNICATION_DIR}/stream_transfer_receiver.cpp
+  ${COMMUNICATION_DIR}/stream_transfer_sender.cpp
   )
 
 set(COMMUNICATION_HEADERS
   ${COMMUNICATION_DIR}/communication_channel.hpp
+  ${COMMUNICATION_DIR}/communication_server_channel.hpp
+  ${COMMUNICATION_DIR}/stream_transfer_receiver.hpp
+  ${COMMUNICATION_DIR}/stream_transfer_sender.hpp
+  )
+
+set(MONITOR_SOURCES
+  ${MONITOR_DIR}/monitor_collect.cpp
+  ${MONITOR_DIR}/monitor_registration.cpp
+  ${MONITOR_DIR}/monitor_statistic.cpp
+  ${MONITOR_DIR}/monitor_transaction.cpp
+)
+
+set(MONITOR_HEADERS
+  ${MONITOR_DIR}/monitor_collect.hpp
+  ${MONITOR_DIR}/monitor_definition.hpp
+  ${MONITOR_DIR}/monitor_registration.hpp
+  ${MONITOR_DIR}/monitor_statistic.hpp
+  ${MONITOR_DIR}/monitor_transaction.hpp
+)
+
+set (REPLICATION_SOURCES
+  ${REPLICATION_DIR}/replication_master_senders_manager.cpp
+  )
+
+set (REPLICATION_HEADERS
+  ${REPLICATION_DIR}/replication_master_senders_manager.hpp
   )
 
 set(QUERY_SOURCES
@@ -233,11 +286,11 @@ set(SESSION_SOURCES
   ${SESSION_DIR}/session_sr.c
   )
 
+list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)
 if(UNIX)
   list(APPEND BASE_SOURCES ${BASE_DIR}/cubrid_getopt_long.c)
   list(APPEND BASE_SOURCES ${BASE_DIR}/variable_string.c)
   list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/tcp.c)
-  list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)
   list(APPEND STORAGE_SOURCES ${STORAGE_DIR}/es_owfs.c)
 else(UNIX)
   list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/wintcp.c)
@@ -252,23 +305,26 @@ set_source_files_properties(${COMPAT_DIR}/db_json.cpp PROPERTIES COMPILE_FLAGS -
 endif(UNIX)
 
 SET_SOURCE_FILES_PROPERTIES(
-  ${COMPAT_SOURCES}
-  ${THREAD_SOURCES}
   ${BASE_SOURCES}
-  ${HEAPLAYER_SOURCES}
+  ${COMMUNICATION_SOURCES}
+  ${COMPAT_SOURCES}
   ${CONNECTION_SOURCES}
   ${CONNECTION_TCP_SOURCE}
-  ${COMMUNICATION_SOURCES}
-  ${PARSER_SOURCES}
-  ${QUERY_SOURCES}
-  ${OBJECT_SOURCES}
-  ${JSP_SOURCES}
-  ${TRANSACTION_SOURCES}
-  ${STORAGE_SOURCES}
+  ${REPLICATION_SOURCES}
   ${ES_SOURCES}
   ${EXECUTABLE_SOURCES}
+  ${HEAPLAYER_SOURCES}
+  ${JSP_SOURCES}
+  ${MONITOR_SOURCES}
+  ${OBJECT_SOURCES}
+  ${PARSER_SOURCES}
+  ${PROBES_OBJECT}
+  ${QUERY_SOURCES}
   ${SESSION_SOURCES}
-  ${PROBES_OBJECT} PROPERTIES LANGUAGE CXX
+  ${STORAGE_SOURCES}
+  ${THREAD_SOURCES}
+  ${TRANSACTION_SOURCES}
+  PROPERTIES LANGUAGE CXX
   )
 
 SET_SOURCE_FILES_PROPERTIES(
@@ -277,28 +333,35 @@ SET_SOURCE_FILES_PROPERTIES(
   )
 
 set (CUBRID_LIB_SOURCES
-  ${COMPAT_SOURCES}
-  ${THREAD_SOURCES}
   ${BASE_SOURCES}
-  ${HEAPLAYER_SOURCES}
+  ${COMMUNICATION_SOURCES}
+  ${COMPAT_SOURCES}
   ${CONNECTION_SOURCES}
   ${CONNECTION_TCP_SOURCE}
-  ${COMMUNICATION_SOURCES}
-  ${QUERY_SOURCES}
-  ${OBJECT_SOURCES}
-  ${JSP_SOURCES}
-  ${TRANSACTION_SOURCES}
-  ${STORAGE_SOURCES}
+  ${REPLICATION_SOURCES}
   ${ES_SOURCES}
   ${EXECUTABLE_SOURCES}
-  ${SESSION_SOURCES}
+  ${HEAPLAYER_SOURCES}
+  ${JSP_SOURCES}
+  ${MONITOR_SOURCES}
+  ${OBJECT_SOURCES}
   ${PROBES_OBJECT}
+  ${QUERY_SOURCES}
+  ${SESSION_SOURCES}
+  ${STORAGE_SOURCES}
+  ${STREAM_SOURCES}
+  ${THREAD_SOURCES}
+  ${TRANSACTION_SOURCES}
   )
+
 set (CUBRID_LIB_HEADERS
   ${BASE_HEADERS}
   ${COMMUNICATION_HEADERS}
   ${COMPAT_HEADERS}
+  ${MONITOR_HEADERS}
+  ${REPLICATION_HEADERS}
   ${THREAD_HEADERS}
+  ${STREAM_HEADERS}
   )
 
 add_library(cubrid SHARED

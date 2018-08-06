@@ -23,12 +23,13 @@
 
 #ident "$Id$"
 
+#include "binaryheap.h"
 #include "filter_pred_cache.h"
 #include "lock_free.h"
 #include "query_executor.h"
 #include "stream_to_xasl.h"
 #include "system_parameter.h"
-#include "thread.h"
+#include "thread_manager.hpp"	// for thread_get_thread_entry_info
 
 typedef struct fpcache_ent FPCACHE_ENTRY;
 struct fpcache_ent

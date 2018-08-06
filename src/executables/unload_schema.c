@@ -2246,7 +2246,7 @@ ex_contains_object_reference (DB_VALUE * value)
 
 	      if (error)
 		{
-		  /* 
+		  /*
 		   * shouldn't happen, return 1 so we don't try to dump this
 		   * value
 		   */
@@ -2291,7 +2291,7 @@ emit_attribute_def (DB_ATTRIBUTE * attribute, ATTRIBUTE_QUALIFIER qualifier)
       }				/* case SHARED_ATTRIBUTE */
     case CLASS_ATTRIBUTE:
       {
-	/* 
+	/*
 	 * NOTE: The parser no longer recognizes a CLASS prefix for class
 	 * attributes, this will have been encoded in the surrounding
 	 * "ADD CLASS ATTRIBUTE" clause
@@ -2358,6 +2358,19 @@ emit_attribute_def (DB_ATTRIBUTE * attribute, ATTRIBUTE_QUALIFIER qualifier)
 	    }
 
 	  fprintf (output_file, ")");
+	}
+    }
+
+  if (attribute->on_update_default_expr != DB_DEFAULT_NONE)
+    {
+      const char *default_expr_type_str;
+
+      fprintf (output_file, " ON UPDATE ");
+
+      default_expr_type_str = db_default_expression_string (attribute->on_update_default_expr);
+      if (default_expr_type_str != NULL)
+	{
+	  fprintf (output_file, default_expr_type_str);
 	}
     }
 

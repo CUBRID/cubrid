@@ -61,7 +61,6 @@
 #include "boot_sr.h"
 #if !defined(SERVER_MODE)
 #include "boot_cl.h"
-#include "transaction_cl.h"
 #else /* !SERVER_MODE */
 #include "connection_defs.h"
 #include "connection_sr.h"
@@ -93,6 +92,8 @@
 #include "event_log.h"
 #include "tsc_timer.h"
 #include "vacuum.h"
+#include "thread_entry.hpp"
+#include "thread_manager.hpp"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -1416,6 +1417,8 @@ logpb_copy_log_header (THREAD_ENTRY * thread_p, LOG_HEADER * to_hdr, const LOG_H
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
   assert (to_hdr != NULL);
   assert (from_hdr != NULL);
+
+  to_hdr->was_copied = true;	// should be reset on first restart
 
   to_hdr->mvcc_next_id = from_hdr->mvcc_next_id;
 
@@ -4285,7 +4288,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	  if (entry->status == LOGWR_STATUS_WAIT)
 	    {
 	      entry->status = LOGWR_STATUS_FETCH;
-	      thread_wakeup_with_tran_index (entry->thread_p->tran_index, THREAD_LOGWR_RESUMED);
+	      logtb_wakeup_thread_with_tran_index (entry->thread_p->tran_index, THREAD_LOGWR_RESUMED);
 	    }
 	  entry = entry->next;
 	}
@@ -8345,7 +8348,7 @@ loop:
       /* wait until checkpoint process is finished */
 
       /* interrupt check */
-      if (thread_get_check_interrupt (thread_p) == true)
+      if (logtb_get_check_interrupt (thread_p) == true)
 	{
 	  if (logtb_is_interrupted (thread_p, true, &continue_check) == true)
 	    {

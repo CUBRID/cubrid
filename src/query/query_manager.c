@@ -40,7 +40,7 @@
 #if defined(ENABLE_SYSTEMTAP)
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
-#include "thread.h"
+#include "thread_entry.hpp"
 
 #if !defined (SERVER_MODE)
 
@@ -326,7 +326,7 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry
 	   * This may help us to quickly locate an available id.
 	   */
 	  assert (hint_query_id != 0);
-	  tran_entry_p->query_id_generator = hint_query_id;
+	  tran_entry_p->query_id_generator = (int) hint_query_id;
 	}
     }
   assert (usable == true);
@@ -1524,7 +1524,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 			    params.size, s ? s : "(null)");
 	      if (s)
 		{
-		  db_private_free (s, thread_p);
+		  db_private_free (thread_p, s);
 		}
 
 	      goto end;
@@ -2339,7 +2339,7 @@ qmgr_get_old_page (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_FILE * tfil
 
 	  /* interrupt check */
 #if defined (SERVER_MODE)
-	  if (thread_get_check_interrupt (thread_p) == true
+	  if (logtb_get_check_interrupt (thread_p) == true
 	      && logtb_is_interrupted_tran (thread_p, true, &dummy, tran_index) == true)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
@@ -2986,7 +2986,7 @@ qmgr_is_query_interrupted (THREAD_ENTRY * thread_p, QUERY_ID query_id)
       return true;
     }
 
-  return (thread_get_check_interrupt (thread_p) && logtb_is_interrupted_tran (thread_p, true, &dummy, tran_index));
+  return (logtb_get_check_interrupt (thread_p) && logtb_is_interrupted_tran (thread_p, true, &dummy, tran_index));
 }
 #endif /* SERVER_MODE */
 
@@ -3399,10 +3399,6 @@ struct drand48_data *
 qmgr_get_rand_buf (THREAD_ENTRY * thread_p)
 {
 #if defined(SERVER_MODE)
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
   return &thread_p->rand_buf;
 #else
   return &qmgr_rand_buf;

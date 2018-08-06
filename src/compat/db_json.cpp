@@ -80,6 +80,7 @@
 #include <vector>
 #include <stack>
 #include <memory>
+#include <climits>
 
 #include <cctype>
 
@@ -1631,7 +1632,8 @@ db_json_validate_json (const char *json_body)
 
 JSON_DOC *db_json_allocate_doc ()
 {
-  return new JSON_DOC ();
+  JSON_DOC *doc = new JSON_DOC();
+  return doc;
 }
 
 void db_json_delete_doc (JSON_DOC *&doc)
@@ -2074,12 +2076,10 @@ db_json_er_set_path_does_not_exist (const char *file_name, const int line_no, co
 
   // get the json body
   char *raw_json_body = db_json_get_raw_json_body_from_document (doc);
+  PRIVATE_UNIQUE_PTR<char> unique_ptr (raw_json_body, NULL);
 
   er_set (ER_ERROR_SEVERITY, file_name, line_no, ER_JSON_PATH_DOES_NOT_EXIST, 2,
 	  sql_path_string.c_str (), raw_json_body);
-
-  // we need to free json body in order to avoid mem leak
-  db_private_free (NULL, raw_json_body);
 
   return ER_JSON_PATH_DOES_NOT_EXIST;
 }
@@ -2125,26 +2125,36 @@ static void
 db_json_replace_token_special_chars (std::string &token,
 				     const std::unordered_map<std::string, std::string> &special_chars)
 {
-  size_t start = 0;
-  size_t end = 0;
-  size_t step = 1;
+  bool replaced = false;
 
-  while (start < token.length())
+  // iterate character by character and detect special characters
+  for (size_t token_idx = 0; token_idx < token.length (); /* incremented in for body */)
     {
-      step = 1;
-
-      // todo: this looks a little bit overkill; we need to reconsider
-      for (end = start + 1; end <= token.length(); end++)
+      replaced = false;
+      // compare with special characters
+      for (auto special_it = special_chars.begin (); special_it != special_chars.end (); ++special_it)
 	{
-	  const std::string &substring = token.substr (start, end - start);
-	  auto pair_iterator = special_chars.find (substring);
-
-	  if (pair_iterator != special_chars.end ())
+	  // compare special characters with sequence following token_it
+	  if (token_idx + special_it->first.length () <= token.length ())
 	    {
-	      token.replace (start, substring.length(), pair_iterator->second);
-	      step = substring.length();
-	      break;
+	      if (token.compare (token_idx, special_it->first.length (), special_it->first.c_str ()) == 0)
+		{
+		  // replace
+		  token.replace (token_idx, special_it->first.length (), special_it->second);
+		  // skip replaced
+		  token_idx += special_it->second.length ();
+
+		  replaced = true;
+		  // next loop
+		  break;
+		}
 	    }
+	}
+
+      if (!replaced)
+	{
+	  // no match; next character
+	  token_idx++;
 	}
 
       start += step;
@@ -2280,6 +2290,7 @@ db_json_convert_sql_path_to_pointer (const char *sql_path, std::string &json_poi
   json_pointer_out = "";
   for (unsigned int i = 0; i < tokens.size (); ++i)
     {
+      db_json_replace_token_special_chars (tokens[i], special_chars);
       json_pointer_out += "/" + tokens[i];
     }
 

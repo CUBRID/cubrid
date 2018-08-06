@@ -44,6 +44,7 @@
 #endif
 #include "log_comm.h"
 #include "dbtype_def.h"
+#include "db_admin.h"
 
 /* GLOBAL STATE */
 #define DB_CONNECTION_STATUS_NOT_CONNECTED      0
@@ -61,23 +62,6 @@ extern int db_Disable_modifications;
 #endif /* _DB_DISABLE_MODIFICATIONS_ */
 
 #if !defined(SERVER_MODE)
-#define DB_CLIENT_TYPE_DEFAULT          1
-#define DB_CLIENT_TYPE_CSQL             2
-#define DB_CLIENT_TYPE_READ_ONLY_CSQL   3
-#define DB_CLIENT_TYPE_BROKER           4
-#define DB_CLIENT_TYPE_READ_ONLY_BROKER 5
-#define DB_CLIENT_TYPE_SLAVE_ONLY_BROKER 6
-#define DB_CLIENT_TYPE_ADMIN_UTILITY    7
-#define DB_CLIENT_TYPE_ADMIN_CSQL       8
-#define DB_CLIENT_TYPE_LOG_COPIER       9
-#define DB_CLIENT_TYPE_LOG_APPLIER      10
-#define DB_CLIENT_TYPE_RW_BROKER_REPLICA_ONLY   11
-#define DB_CLIENT_TYPE_RO_BROKER_REPLICA_ONLY   12
-#define DB_CLIENT_TYPE_SO_BROKER_REPLICA_ONLY   13
-#define DB_CLIENT_TYPE_ADMIN_CSQL_WOS   14	/* admin csql that can write on standby */
-#define DB_CLIENT_TYPE_MAX              DB_CLIENT_TYPE_ADMIN_CSQL_WOS
-extern int db_Client_type;
-
 extern char db_Database_name[];
 extern char db_Program_name[];
 #endif /* !SERVER_MODE */

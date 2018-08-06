@@ -42,7 +42,6 @@
 #include "locator_sr.h"
 #include "object_primitive.h"
 #include "query_opfunc.h"
-#include "thread.h"
 #include "dbtype.h"
 
 #if !defined(SERVER_MODE)
@@ -1056,7 +1055,7 @@ scan_free_iscan_oid_buf_list (BTREE_ISCAN_OID_LIST * oid_list)
   /* Free entry. */
   rv = pthread_mutex_lock (&scan_Iscan_oid_buf_list_mutex);
   /* Is buffer at its full capacity? */
-  if (scan_Iscan_oid_buf_list_count < thread_num_worker_threads ())
+  if (scan_Iscan_oid_buf_list_count < MAX_NTRANS)
     {
       /* Add oid_list to scan_Iscan_oid_buf_list */
       oid_list->next_list = scan_Iscan_oid_buf_list;

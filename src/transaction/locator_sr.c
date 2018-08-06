@@ -51,12 +51,11 @@
 #include "fetch.h"
 #include "query_executor.h"
 #include "xasl_cache.h"
-#include "thread.h"
 #if defined(DMALLOC)
 #include "dmalloc.h"
 #endif /* DMALLOC */
-
 #include "dbtype.h"
+#include "thread_manager.hpp"	// for thread_get_thread_entry_info
 
 /* TODO : remove */
 extern bool catcls_Enable;
@@ -1714,7 +1713,7 @@ locator_print_class_name (THREAD_ENTRY * thread_p, FILE * outfp, const void *key
   int *class_no_p = (int *) args;
   LOCATOR_CLASSNAME_ACTION *action;
   const char *str_action;
-  int i;
+  size_t i;
   size_t key_size;
 
   assert (class_no_p != NULL);
@@ -5642,7 +5641,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		    {
 #if defined (SERVER_MODE)
 		      /* If not inserted by me, I must have lock. */
-		      assert (lock_has_lock_on_object (oid, class_oid, thread_get_current_tran_index (), X_LOCK) > 0);
+		      assert (lock_has_lock_on_object (oid, class_oid, logtb_get_current_tran_index (), X_LOCK) > 0);
 #endif /* SERVER_MODE */
 		    }
 		}
@@ -13654,11 +13653,11 @@ locator_decide_operation_type (LOCK lock_mode, LC_FETCH_VERSION_TYPE fetch_versi
 }
 
 /*
-* locator_get_lock_mode_from_op_type () - returns the lock mode that corresponds to the provided operation type.
-*
-* return	  : lock mode
-* lock_mode (in) : operation type
-*/
+ * locator_get_lock_mode_from_op_type () - returns the lock mode that corresponds to the provided operation type.
+ *
+ * return	  : lock mode
+ * lock_mode (in) : operation type
+ */
 LOCK
 locator_get_lock_mode_from_op_type (SCAN_OPERATION_TYPE op_type)
 {
@@ -13675,4 +13674,10 @@ locator_get_lock_mode_from_op_type (SCAN_OPERATION_TYPE op_type)
       assert (false);
       return NA_LOCK;
     }
+}
+
+int
+xlocator_demote_class_lock (THREAD_ENTRY * thread_p, const OID * class_oid, LOCK lock, LOCK * ex_lock)
+{
+  return lock_demote_class_lock (thread_p, class_oid, lock, ex_lock);
 }

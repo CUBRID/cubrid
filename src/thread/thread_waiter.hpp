@@ -24,6 +24,8 @@
 #ifndef _THREAD_WAITER_HPP_
 #define _THREAD_WAITER_HPP_
 
+#include "perf_def.hpp"
+
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -33,27 +35,25 @@
 #include <cassert>
 #include <cinttypes>
 
-// cubthread::waiter
-//
-//  description:
-//    usable to suspend thread and wait for a time or for wakeup request
-//
-//  how to use:
-//
-//    // Thread 1
-//    // this thread wants to wait indefinitely
-//    waiter_shared_variable->wait_inf ();
-//
-//    // Thread 2
-//    // wake Thread 1
-//    waiter_shared_variable->wakeup ();
-//
-//    // similarly, first thread can wait with timeout using wait_for or wait_until functions
-//
-
 namespace cubthread
 {
-
+  // cubthread::waiter
+  //
+  //  description:
+  //    usable to suspend thread and wait for a time or for wakeup request
+  //
+  //  how to use:
+  //
+  //    // Thread 1
+  //    // this thread wants to wait indefinitely
+  //    waiter_shared_variable->wait_inf ();
+  //
+  //    // Thread 2
+  //    // wake Thread 1
+  //    waiter_shared_variable->wakeup ();
+  //
+  //    // similarly, first thread can wait with timeout using wait_for or wait_until functions
+  //
   class waiter
   {
     public:
@@ -63,25 +63,15 @@ namespace cubthread
       void wakeup (void);                                             // wakeup waiter thread
 
       void wait_inf (void);                                           // wait until wakeup
-      template< class Rep, class Period >
-      bool wait_for (std::chrono::duration<Rep, Period> &delta);      // wait for period of time or until wakeup
+      bool wait_for (const std::chrono::system_clock::duration &delta);   // wait for period of time or until wakeup
       // returns true if woke up before timeout
-      template< class Clock, class Duration >
-      bool wait_until (std::chrono::time_point<Clock, Duration> &timeout_time); // wait until time or until wakeup
+      bool wait_until (const std::chrono::system_clock::time_point &timeout_time);  // wait until time or until wakeup
       // returns true if woke up before timeout
 
-      // stats count:
-      //   1. wakeup calls
-      //   2. locks on wakeup
-      //   3. awake calls
-      //   4. wait count
-      //   5. with timeout count
-      //   6. zero waits
-      //   7. wakeup delay time
-      static const std::size_t STAT_COUNT = 7;
-
-      using stat_type = std::uint64_t;
-      void get_stats (stat_type *stats_out);
+      // statistics
+      static std::size_t get_stats_value_count (void);
+      static const char *get_stat_name (std::size_t stat_index);
+      void get_stats (cubperf::stat_value *stats_out);
 
     private:
 
@@ -102,72 +92,83 @@ namespace cubthread
       status m_status;                    // current status
 
       // stats
-      using atomic_stat_type = std::atomic<stat_type>;
-      using clock_type = std::chrono::high_resolution_clock;
-      // counters
-      atomic_stat_type m_wakeup_count;
-      stat_type m_wakeup_lock_count;    // protected by mutex
-      stat_type m_awake_count;          // protected by mutex
-      stat_type m_wait_count;
-      stat_type m_timeout_count;        // protected by mutex
-      atomic_stat_type m_wait_zero;
-      // timers
-      stat_type m_wakeup_delay;         // protected by mutex
-      // helpers
-      clock_type::time_point m_awake_time;
-      bool m_was_awaken;
+      cubperf::statset &m_stats;
+      cubperf::atomic_stat_counter m_wakeup_calls;
+      bool m_was_awaken;                  // used for statistics
   };
 
-  /************************************************************************/
-  /* Template implementation                                              */
-  /************************************************************************/
-
-  template< class Rep, class Period >
-  bool
-  waiter::wait_for (std::chrono::duration<Rep, Period> &delta)
+  // cubthread::wait_duration
+  //
+  //  description:
+  template <class D>
+  struct wait_duration
   {
-    if (delta == std::chrono::duration<Rep, Period> (0))
+    D m_duration;
+    bool m_infinite;
+
+    wait_duration ()
+      : m_duration (0)
+      , m_infinite (true)
+    {
+      //
+    }
+
+    wait_duration (const D &duration)
+      : m_duration (duration)
+      , m_infinite (false)
+    {
+      //
+    }
+
+    const wait_duration &operator= (const D &duration)
+    {
+      m_duration = duration;
+      m_infinite = false;
+    }
+  };
+  using wait_seconds = wait_duration<std::chrono::seconds>;
+
+  template <typename D>
+  void condvar_wait (std::condition_variable &condvar, std::unique_lock<std::mutex> &lock,
+		     const wait_duration<D> &duration);
+  template <typename D, typename P>
+  bool condvar_wait (std::condition_variable &condvar, std::unique_lock<std::mutex> &lock,
+		     const wait_duration<D> &duration, P pred);
+
+  //////////////////////////////////////////////////////////////////////////
+  // template/inline implementation
+  //////////////////////////////////////////////////////////////////////////
+
+  template <typename D>
+  void
+  condvar_wait (std::condition_variable &condvar, std::unique_lock<std::mutex> &lock,
+		const wait_duration<D> &duration)
+  {
+    if (duration.m_infinite)
       {
-	++m_wait_zero;
+	condvar.wait (lock);
+      }
+    else
+      {
+	(void) condvar.wait_for (lock, duration.m_duration);
+      }
+  }
+
+  template <typename D, typename P>
+  bool
+  condvar_wait (std::condition_variable &condvar, std::unique_lock<std::mutex> &lock,
+		const wait_duration<D> &duration, P pred)
+  {
+    if (duration.m_infinite)
+      {
+	condvar.wait (lock, pred);
 	return true;
       }
-
-    bool ret;
-
-    std::unique_lock<std::mutex> lock (m_mutex);    // mutex is also locked
-    goto_sleep ();
-
-    ret = m_condvar.wait_for (lock, delta, [this] { return m_status == AWAKENING; });
-    if (!ret)
+    else
       {
-	++m_timeout_count;
+	return condvar.wait_for (lock, duration.m_duration, pred);
       }
-
-    run ();
-
-    // mutex is automatically unlocked
-    return ret;
   }
-
-  template<class Clock, class Duration>
-  bool
-  waiter::wait_until (std::chrono::time_point<Clock, Duration> &timeout_time)
-  {
-    std::unique_lock<std::mutex> lock (m_mutex);    // mutex is also locked
-    goto_sleep ();
-
-    bool ret = m_condvar.wait_until (lock, timeout_time, [this] { return m_status == AWAKENING; });
-    if (!ret)
-      {
-	++m_timeout_count;
-      }
-
-    run ();
-
-    // mutex is automatically unlocked
-    return ret;
-  }
-
 } // namespace cubthread
 
 #endif // _THREAD_WAITER_HPP_

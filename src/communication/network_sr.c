@@ -40,12 +40,10 @@
 #include "boot_sr.h"
 #include "network_interface_sr.h"
 #include "query_list.h"
-#include "thread.h"
 #include "critical_section.h"
 #include "release_string.h"
 #include "server_support.h"
 #include "connection_sr.h"
-#include "job_queue.h"
 #include "connection_error.h"
 #include "message_catalog.h"
 #include "log_impl.h"
@@ -53,9 +51,12 @@
 #include "event_log.h"
 #include "util_func.h"
 #include "tz_support.h"
-#if defined(WINDOWS)
+#if !defined(WINDOWS)
+#include "tcp.h"
+#else /* WINDOWS */
 #include "wintcp.h"
-#endif /* WINDOWS */
+#endif
+#include "thread_entry.hpp"
 #include "thread_manager.hpp"
 
 enum net_req_act
@@ -384,6 +385,22 @@ net_server_init (void)
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = slocator_upgrade_instances_domain;
   req_p->name = "NET_SERVER_LC_UPGRADE_INSTANCES_DOMAIN";
+
+  req_p = &net_Requests[NET_SERVER_LC_REPL_FORCE];
+  req_p->action_attribute = (CHECK_DB_MODIFICATION | SET_DIAGNOSTICS_INFO | IN_TRANSACTION);
+  req_p->processing_function = slocator_repl_force;
+  req_p->name = "NET_SERVER_LC_REPL_FORCE";
+
+  /* redistribute partition data */
+  req_p = &net_Requests[NET_SERVER_LC_REDISTRIBUTE_PARTITION_DATA];
+  req_p->action_attribute = IN_TRANSACTION;
+  req_p->processing_function = slocator_redistribute_partition_data;
+  req_p->name = "NET_SERVER_LC_REDISTRIBUTE_PARTITION_DATA";
+
+  req_p = &net_Requests[NET_SERVER_LC_DEMOTE_CLASS_LOCK];
+  req_p->action_attribute = IN_TRANSACTION;
+  req_p->processing_function = slocator_demote_class_lock;
+  req_p->name = "NET_SERVER_LC_DEMOTE_CLASS_LOCK";
 
   /* heap */
   req_p = &net_Requests[NET_SERVER_HEAP_CREATE];
@@ -816,11 +833,6 @@ net_server_init (void)
   req_p->processing_function = netsr_spacedb;
   req_p->name = "NET_SERVER_SPACEDB";
 
-  req_p = &net_Requests[NET_SERVER_LC_REPL_FORCE];
-  req_p->action_attribute = (CHECK_DB_MODIFICATION | SET_DIAGNOSTICS_INFO | IN_TRANSACTION);
-  req_p->processing_function = slocator_repl_force;
-  req_p->name = "NET_SERVER_LC_REPL_FORCE";
-
   /* checksumdb replication */
   req_p = &net_Requests[NET_SERVER_CHKSUM_REPL];
   req_p->action_attribute = IN_TRANSACTION;
@@ -833,11 +845,6 @@ net_server_init (void)
   req_p->processing_function = slogtb_does_active_user_exist;
   req_p->name = "NET_SERVER_AU_DOES_ACTIVE_USER_EXIST";
 
-  /* redistribute partition data */
-  req_p = &net_Requests[NET_SERVER_LC_REDISTRIBUTE_PARTITION_DATA];
-  req_p->action_attribute = IN_TRANSACTION;
-  req_p->processing_function = slocator_redistribute_partition_data;
-  req_p->name = "NET_SERVER_LC_REDISTRIBUTE_PARTITION_DATA";
 }
 
 #if defined(CUBRID_DEBUG)
@@ -920,12 +927,6 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
   int status = CSS_NO_ERRORS;
   int error_code;
   CSS_CONN_ENTRY *conn;
-#if !defined(NDEBUG)
-  int track_id;
-#endif
-#if defined (DIAG_DEVEL)
-  struct timeval diag_start_time, diag_end_time, diag_elapsed_time;
-#endif /* DIAG_DEVEL */
 
   if (buffer == NULL && size > 0)
     {
@@ -1007,13 +1008,6 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
 	  goto end;
 	}
     }
-#if defined (DIAG_DEVEL)
-  if (net_Requests[request].action_attribute & SET_DIAGNOSTICS_INFO)
-    {
-      perfmon_diag_set_value (diag_executediag, DIAG_OBJ_TYPE_CONN_CLI_REQUEST, 1, DIAG_VAL_SETTYPE_INC, NULL);
-      gettimeofday (&diag_start_time, NULL);
-    }
-#endif /* DIAG_DEVEL */
   if (net_Requests[request].action_attribute & IN_TRANSACTION)
     {
       conn->in_transaction = true;
@@ -1028,9 +1022,7 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
   assert (func != NULL);
   if (func)
     {
-#if !defined(NDEBUG)
-      track_id = thread_rc_track_enter (thread_p);
-#endif
+      thread_p->push_resource_tracks ();
 
       if (conn->invalidate_snapshot != 0)
 	{
@@ -1038,30 +1030,13 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
 	}
       (*func) (thread_p, rid, buffer, size);
 
-#if !defined(NDEBUG)
-      if (thread_rc_track_exit (thread_p, track_id) != NO_ERROR)
-	{
-	  assert_release (false);
-	}
-      assert (thread_p->count_private_allocators == 0);
-#endif
+      thread_p->pop_resource_tracks ();
 
       /* defence code: let other threads continue. */
       pgbuf_unfix_all (thread_p);
     }
 
   /* check the defined action attribute */
-#if defined (DIAG_DEVEL)
-  if (net_Requests[request].action_attribute & SET_DIAGNOSTICS_INFO)
-    {
-      gettimeofday (&diag_end_time, NULL);
-      perfmon_diff_timeval (&diag_elapsed_time, &diag_start_time, &diag_end_time);
-      if (request == NET_SERVER_QM_QUERY_EXECUTE || request == NET_SERVER_QM_QUERY_PREPARE_AND_EXECUTE)
-	{
-	  perfmon_diag_set_slow_query (diag_executediag, &diag_start_time, &diag_end_time, NULL);
-	}
-    }
-#endif /* DIAG_DEVEL */
   if (net_Requests[request].action_attribute & OUT_TRANSACTION)
     {
       conn->in_transaction = false;
@@ -1090,7 +1065,7 @@ net_server_conn_down (THREAD_ENTRY * thread_p, CSS_THREAD_ARG arg)
 {
   int tran_index;
   CSS_CONN_ENTRY *conn_p;
-  int prev_thrd_cnt, thrd_cnt;
+  size_t prev_thrd_cnt, thrd_cnt;
   bool continue_check;
   int client_id;
   int local_tran_index;
@@ -1108,26 +1083,26 @@ net_server_conn_down (THREAD_ENTRY * thread_p, CSS_THREAD_ARG arg)
   local_tran_index = thread_p->tran_index;
 
   conn_p = (CSS_CONN_ENTRY *) arg;
-  tran_index = conn_p->transaction_id;
+  tran_index = conn_p->get_tran_index ();
   client_id = conn_p->client_id;
 
-  thread_set_info (thread_p, client_id, 0, tran_index, NET_SERVER_SHUTDOWN);
+  css_set_thread_info (thread_p, client_id, 0, tran_index, NET_SERVER_SHUTDOWN);
   pthread_mutex_unlock (&thread_p->tran_index_lock);
 
   css_end_server_request (conn_p);
 
   /* avoid infinite waiting with xtran_wait_server_active_trans() */
-  thread_p->status = TS_CHECK;
+  thread_p->m_status = cubthread::entry::status::TS_CHECK;
 
 loop:
-  prev_thrd_cnt = thread_has_threads (thread_p, tran_index, client_id);
+  prev_thrd_cnt = css_count_transaction_worker_threads (thread_p, tran_index, client_id);
   if (prev_thrd_cnt > 0)
     {
       if (tran_index == NULL_TRAN_INDEX)
 	{
 	  /* the connected client does not yet finished boot_client_register */
 	  thread_sleep (50);	/* 50 msec */
-	  tran_index = conn_p->transaction_id;
+	  tran_index = conn_p->get_tran_index ();
 	}
       if (!logtb_is_interrupted_tran (thread_p, false, &continue_check, tran_index))
 	{
@@ -1137,17 +1112,12 @@ loop:
       /* never try to wake non TRAN_ACTIVE state trans. note that non-TRAN_ACTIVE trans will not be interrupted. */
       if (logtb_is_interrupted_tran (thread_p, false, &continue_check, tran_index))
 	{
-	  suspended_p = thread_find_entry_by_tran_index_except_me (tran_index);
+	  suspended_p = logtb_find_thread_by_tran_index_except_me (tran_index);
 	  if (suspended_p != NULL)
 	    {
-	      int r;
 	      bool wakeup_now = false;
 
-	      r = thread_lock_entry (suspended_p);
-	      if (r != NO_ERROR)
-		{
-		  return r;
-		}
+	      thread_lock_entry (suspended_p);
 
 	      if (suspended_p->check_interrupt)
 		{
@@ -1194,19 +1164,15 @@ loop:
 
 	      if (wakeup_now == true)
 		{
-		  r = thread_wakeup_already_had_mutex (suspended_p, THREAD_RESUME_DUE_TO_INTERRUPT);
+		  thread_wakeup_already_had_mutex (suspended_p, THREAD_RESUME_DUE_TO_INTERRUPT);
 		}
-	      r = thread_unlock_entry (suspended_p);
-
-	      if (r != NO_ERROR)
-		{
-		  return r;
-		}
+	      thread_unlock_entry (suspended_p);
 	    }
 	}
     }
 
-  while ((thrd_cnt = thread_has_threads (thread_p, tran_index, client_id)) >= prev_thrd_cnt && thrd_cnt > 0)
+  while ((thrd_cnt = css_count_transaction_worker_threads (thread_p, tran_index, client_id)) >= prev_thrd_cnt
+	 && thrd_cnt > 0)
     {
       /* Some threads may wait for data from the m-driver. It's possible from the fact that css_server_thread() is
        * responsible for receiving every data from which is sent by a client and all m-drivers. We must have chance to
@@ -1227,8 +1193,8 @@ loop:
     }
   css_free_conn (conn_p);
 
-  thread_set_info (thread_p, -1, 0, local_tran_index, -1);
-  thread_p->status = TS_RUN;
+  css_set_thread_info (thread_p, -1, 0, local_tran_index, -1);
+  thread_p->m_status = cubthread::entry::status::TS_RUN;
 
   return NO_ERROR;
 }
@@ -1308,9 +1274,6 @@ net_server_start (const char *server_name)
       goto end;
     }
 
-  er_init_access_log ();
-  event_log_init (server_name);
-
   net_server_init ();
   css_initialize_server_interfaces (net_server_request, net_server_conn_down);
 
@@ -1322,7 +1285,6 @@ net_server_start (const char *server_name)
   else
     {
       packed_name = css_pack_server_name (server_name, &name_length);
-      css_init_job_queue ();
 
       r = css_init (thread_p, packed_name, name_length, prm_get_integer_value (PRM_ID_TCP_PORT_ID));
       free_and_init (packed_name);
@@ -1338,19 +1300,17 @@ net_server_start (const char *server_name)
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 	    }
 
-	  xboot_shutdown_server (thread_get_thread_entry_info (), ER_THREAD_FINAL);
+	  xboot_shutdown_server (thread_p, ER_THREAD_FINAL);
 	}
       else
 	{
-	  (void) xboot_shutdown_server (thread_get_thread_entry_info (), ER_THREAD_FINAL);
+	  (void) xboot_shutdown_server (thread_p, ER_THREAD_FINAL);
 	}
 
 #if defined(CUBRID_DEBUG)
       net_server_histo_print ();
 #endif /* CUBRID_DEBUG */
 
-      thread_kill_all_workers ();
-      css_final_job_queue ();
       css_final_conn_list ();
       css_free_user_access_status ();
     }

@@ -28,6 +28,9 @@
 #include "thread_task.hpp"
 #include "thread_waiter.hpp"
 
+#include "perf_def.hpp"
+
+#include <string>
 #include <thread>
 
 #include <cinttypes>
@@ -85,7 +88,8 @@ namespace cubthread
       //
       template <typename Context>
       daemon (const looper &loop_pattern_arg, context_manager<Context> *context_manager_arg,
-	      task<Context> *exec);
+	      task<Context> *exec, const char *name);
+      daemon (const looper &loop_pattern_arg, task_without_context *exec_arg, const char *name);
       ~daemon();
 
       void wakeup (void);         // wakeup daemon thread
@@ -98,22 +102,33 @@ namespace cubthread
       // note: this applies only if looper wait pattern is of type INCREASING_PERIODS
 
       // statistics
-      using stat_type = std::uint64_t;
-
-      // all statistics:
-      // own stats: loop count, execute time, pause time = 3
-      // + looper stats
-      // + waiter stats
-      static const std::size_t STAT_COUNT = 3 + looper::STAT_COUNT + waiter::STAT_COUNT;
-
-      void get_stats (stat_type *stats_out);
+      static std::size_t get_stats_value_count (void);
+      static const char *get_stat_name (std::size_t stat_index);
+      void get_stats (cubperf::stat_value *stats_out);
 
     private:
+
+      // loop functions invoked by spawned daemon thread
+
+      // loop_with_context - after thread is spawned, it claims context from context manager and repeatedly executes
+      //                     task until stopped.
+      //
+      // note: context must implement interrupt_execution function
       template <typename Context>
-      static void loop (daemon *daemon_arg, context_manager<Context> *context_manager_arg,
-			task<Context> *exec_arg);     // daemon thread loop function
+      static void loop_with_context (daemon *daemon_arg, context_manager<Context> *context_manager_arg,
+				     task<Context> *exec_arg, const char *name);
+
+      // loop_without_context - just execute context-less task in a loop
+      static void loop_without_context (daemon *daemon_arg, task_without_context *exec_arg, const char *name);
 
       void pause (void);                                    // pause between tasks
+      // register statistics
+      void register_stat_start (void);
+      void register_stat_pause (void);
+      void register_stat_execute (void);
+
+      // create a set to store daemon statistic values
+      static cubperf::statset &create_statset (void);
 
       waiter m_waiter;        // thread waiter
       looper m_looper;        // thread looper
@@ -121,12 +136,10 @@ namespace cubthread
 
       std::thread m_thread;   // the actual daemon thread
 
-      // stats
-      stat_type m_loop_count;
-      stat_type m_execute_time;
-      stat_type m_pause_time;
+      std::string m_name;     // own name
 
-      // todo: m_log
+      // stats
+      cubperf::statset &m_stats;
   };
 
   /************************************************************************/
@@ -135,57 +148,44 @@ namespace cubthread
 
   template <typename Context>
   daemon::daemon (const looper &loop_pattern_arg, context_manager<Context> *context_manager_arg,
-		  task<Context> *exec)
+		  task<Context> *exec, const char *name /* = "" */)
     : m_waiter ()
     , m_looper (loop_pattern_arg)
     , m_func_on_stop ()
     , m_thread ()
-    , m_loop_count (0)
-    , m_execute_time (0)
-    , m_pause_time (0)
+    , m_name (name)
+    , m_stats (daemon::create_statset ())
   {
     // starts a thread to execute daemon::loop
-    m_thread = std::thread (daemon::loop<Context>, this, context_manager_arg, exec);
+    m_thread = std::thread (daemon::loop_with_context<Context>, this, context_manager_arg, exec, m_name.c_str ());
   }
 
   template <typename Context>
   void
-  daemon::loop (daemon *daemon_arg, context_manager<Context> *context_manager_arg, task<Context> *exec_arg)
+  daemon::loop_with_context (daemon *daemon_arg, context_manager<Context> *context_manager_arg,
+			     task<Context> *exec_arg, const char *name)
   {
+    (void) name;  // suppress unused parameter warning
+    // its purpose is to help visualize daemon thread stacks
+
     // create execution context
     Context &context = context_manager_arg->create_context ();
 
     // now that we have access to context we can set the callback function on stop
-    daemon_arg->m_func_on_stop = std::bind (&Context::interrupt_execution, std::ref (context));
+    daemon_arg->m_func_on_stop = std::bind (&context_manager<Context>::stop_execution, std::ref (*context_manager_arg),
+					    std::ref (context));
 
-    // loop until stopped
-    using clock_type = std::chrono::high_resolution_clock;
-
-    clock_type::time_point start_timept = clock_type::now ();
-    clock_type::time_point end_timept;
-    std::chrono::nanoseconds timediff_nano;
+    daemon_arg->register_stat_start ();
 
     while (!daemon_arg->m_looper.is_stopped ())
       {
-	++daemon_arg->m_loop_count;
-
 	// execute task
 	exec_arg->execute (context);
-
-	// gather execute stats
-	end_timept = clock_type::now ();
-	timediff_nano = end_timept - start_timept;
-	daemon_arg->m_execute_time += timediff_nano.count ();
-	start_timept = end_timept;
+	daemon_arg->register_stat_execute ();
 
 	// take a break
 	daemon_arg->pause ();
-
-	// gather pause stats
-	end_timept = clock_type::now ();
-	timediff_nano = end_timept - start_timept;
-	daemon_arg->m_pause_time += timediff_nano.count ();
-	start_timept = end_timept;
+	daemon_arg->register_stat_pause ();
       }
 
     // retire execution context

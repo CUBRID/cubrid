@@ -45,7 +45,7 @@ namespace mem
       pinnable_buffer ()
       {
 	m_storage = NULL;
-        m_end_ptr = NULL;
+	m_end_ptr = NULL;
       };
 
       pinnable_buffer (char *ptr, const size_t buf_size)

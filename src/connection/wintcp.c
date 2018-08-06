@@ -53,7 +53,7 @@
 #define HOST_ID_ARRAY_SIZE 8
 
 static const int css_Tcp_max_connect_tries = 3;
-static const int css_Maximum_server_count = 50;
+static const int css_Maximum_server_count = 1000;
 
 /* containing the last WSA error */
 static int css_Wsa_error = CSS_ER_WINSOCK_NOERROR;
@@ -506,7 +506,7 @@ css_open_new_socket_from_master (SOCKET fd, unsigned short *rid)
  *       "new-style" multiple port-id connection interface
  */
 bool
-css_transfer_fd (SOCKET server_fd, SOCKET client_fd, unsigned short rid)
+css_transfer_fd (SOCKET server_fd, SOCKET client_fd, unsigned short rid, CSS_SERVER_REQUEST request)
 {
   return false;
 }

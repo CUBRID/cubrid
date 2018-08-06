@@ -83,8 +83,10 @@
 #include "utility.h"
 #include "tz_support.h"
 #include "perf_monitor.h"
-
 #include "fault_injection.h"
+#if defined (SERVER_MODE)
+#include "thread_manager.hpp"	// for thread_get_thread_entry_info
+#endif // SERVER_MODE
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -401,6 +403,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_HA_CHECK_DISK_FAILURE_INTERVAL_IN_SECS "ha_check_disk_failure_interval"
 
+#define PRM_NAME_HA_UPDATE_HOSTNAME_INTERVAL_IN_MSEC "ha_update_hostname_interval_in_msecs"
+
 #define PRM_NAME_JAVA_STORED_PROCEDURE "java_stored_procedure"
 
 #define PRM_NAME_COMPAT_PRIMARY_KEY "compat_primary_key"
@@ -633,6 +637,13 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_CONNECTION_LOGGING "connection_logging"
 
 #define PRM_NAME_THREAD_LOGGING_FLAG "thread_logging_flag"
+
+#define PRM_NAME_LOG_QUERY_LISTS "log_query_lists"
+
+#define PRM_NAME_THREAD_CONNECTION_POOLING            "thread_connection_pooling"
+#define PRM_NAME_THREAD_CONNECTION_TIMEOUT_SECONDS    "thread_connection_timeout_seconds"
+#define PRM_NAME_THREAD_WORKER_POOLING                "thread_worker_pooling"
+#define PRM_NAME_THREAD_WORKER_TIMEOUT_SECONDS        "thread_worker_timeout_seconds"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
@@ -1531,6 +1542,10 @@ static int prm_ha_check_disk_failure_interval_in_secs_upper = INT_MAX;
 static int prm_ha_check_disk_failure_interval_in_secs_lower = 0;
 static unsigned int prm_ha_check_disk_failure_interval_in_secs_flag = 0;
 
+int PRM_HA_UPDATE_HOSTNAME_INTERVAL_IN_MSECS = HB_DEFAULT_UPDATE_HOSTNAME_INTERVAL_IN_MSECS;
+static int prm_ha_update_hostname_interval_in_msecs_default = HB_DEFAULT_UPDATE_HOSTNAME_INTERVAL_IN_MSECS;
+static unsigned int prm_ha_update_hostname_interval_in_msecs_flag = 0;
+
 bool PRM_JAVA_STORED_PROCEDURE = false;
 static bool prm_java_stored_procedure_default = false;
 static unsigned int prm_java_stored_procedure_flag = 0;
@@ -2095,6 +2110,30 @@ static unsigned int prm_connection_logging_flag = 0;
 int PRM_THREAD_LOGGING_FLAG = 0;
 static int prm_thread_logging_flag_default = 0;
 static unsigned int prm_thread_logging_flag_flag = 0;
+
+bool PRM_LOG_QUERY_LISTS = false;
+static bool prm_log_query_lists_default = false;
+static unsigned int prm_log_query_lists_flag = 0;
+
+bool PRM_THREAD_CONNECTION_POOLING = true;
+static bool prm_thread_connection_pooling_default = true;
+static unsigned int prm_thread_connection_pooling_flag = 0;
+
+int PRM_THREAD_CONNECTION_TIMEOUT_SECONDS = 300;
+static int prm_thread_connection_timeout_seconds_default = 300;
+static int prm_thread_connection_timeout_seconds_upper = 60 * 60;	// one hour
+static int prm_thread_connection_timeout_seconds_lower = -1;	// infinite
+static unsigned int prm_thread_connection_timeout_seconds_flag = 0;
+
+bool PRM_THREAD_WORKER_POOLING = true;
+static bool prm_thread_worker_pooling_default = true;
+static unsigned int prm_thread_worker_pooling_flag = 0;
+
+int PRM_THREAD_WORKER_TIMEOUT_SECONDS = 300;
+static int prm_thread_worker_timeout_seconds_default = 300;
+static int prm_thread_worker_timeout_seconds_upper = 60 * 60;	// one hour
+static int prm_thread_worker_timeout_seconds_lower = -1;	// infinite
+static unsigned int prm_thread_worker_timeout_seconds_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -3835,6 +3874,17 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) prm_msec_to_sec,
    (DUP_PRM_FUNC) prm_sec_to_msec},
+  {PRM_ID_HA_UPDATE_HOSTNAME_INTERVAL_IN_MSECS,
+   PRM_NAME_HA_UPDATE_HOSTNAME_INTERVAL_IN_MSEC,
+   (PRM_FOR_CLIENT | PRM_HIDDEN | PRM_FOR_HA),
+   PRM_INTEGER,
+   &prm_ha_update_hostname_interval_in_msecs_flag,
+   (void *) &prm_ha_update_hostname_interval_in_msecs_default,
+   (void *) &PRM_HA_UPDATE_HOSTNAME_INTERVAL_IN_MSECS,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
   {PRM_ID_JAVA_STORED_PROCEDURE,
    PRM_NAME_JAVA_STORED_PROCEDURE,
    (PRM_FOR_SERVER),
@@ -5335,6 +5385,63 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_thread_logging_flag_default,
    (void *) &PRM_THREAD_LOGGING_FLAG,
    (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_LOG_QUERY_LISTS,
+   PRM_NAME_LOG_QUERY_LISTS,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_log_query_lists_flag,
+   (void *) &prm_log_query_lists_default,
+   (void *) &PRM_LOG_QUERY_LISTS,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_THREAD_CONNECTION_POOLING,
+   PRM_NAME_THREAD_CONNECTION_POOLING,
+   (PRM_FOR_SERVER),
+   PRM_BOOLEAN,
+   &prm_thread_connection_pooling_flag,
+   (void *) &prm_thread_connection_pooling_default,
+   (void *) &PRM_THREAD_CONNECTION_POOLING,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_THREAD_CONNECTION_TIMEOUT_SECONDS,
+   PRM_NAME_THREAD_CONNECTION_TIMEOUT_SECONDS,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   &prm_thread_connection_timeout_seconds_flag,
+   (void *) &prm_thread_connection_timeout_seconds_default,
+   (void *) &PRM_THREAD_CONNECTION_TIMEOUT_SECONDS,
+   (void *) &prm_thread_connection_timeout_seconds_upper,
+   (void *) &prm_thread_connection_timeout_seconds_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_THREAD_WORKER_POOLING,
+   PRM_NAME_THREAD_WORKER_POOLING,
+   (PRM_FOR_SERVER),
+   PRM_BOOLEAN,
+   &prm_thread_worker_pooling_flag,
+   (void *) &prm_thread_worker_pooling_default,
+   (void *) &PRM_THREAD_WORKER_POOLING,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_THREAD_WORKER_TIMEOUT_SECONDS,
+   PRM_NAME_THREAD_WORKER_TIMEOUT_SECONDS,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   &prm_thread_worker_timeout_seconds_flag,
+   (void *) &prm_thread_worker_timeout_seconds_default,
+   (void *) &PRM_THREAD_WORKER_TIMEOUT_SECONDS,
+   (void *) &prm_thread_worker_timeout_seconds_upper,
+   (void *) &prm_thread_worker_timeout_seconds_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},

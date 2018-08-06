@@ -32,7 +32,7 @@
 #include "porting.h"
 #include "system_parameter.h"
 #if defined (SERVER_MODE) || defined (SA_MODE)
-#include "thread.h"
+#include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 #include <assert.h>

@@ -36,53 +36,61 @@
 #include <winsock2.h>
 #endif
 
-enum CHANNEL_TYPE
+namespace cubcomm
 {
-  NO_TYPE = 0,
-  INITIATOR,
-  LISTENER
-};
 
-class communication_channel
-{
-  public:
-    communication_channel (int max_timeout_in_ms = -1);
-    virtual ~communication_channel ();
+  /* TODO[arnia] this needs to be calculated a priori */
+  const std::size_t MTU = 1500;
 
-    /* only the move operation is permitted */
-    communication_channel (const communication_channel &comm) = delete;
-    communication_channel &operator= (const communication_channel &comm) = delete;
-    communication_channel (communication_channel &&comm);
-    communication_channel &operator= (communication_channel &&comm);
+  enum CHANNEL_TYPE
+  {
+    NO_TYPE = 0,
+    INITIATOR,
+    LISTENER
+  };
 
-    /* receive/send functions that use the created m_socket */
-    css_error_code recv (char *buffer, std::size_t &maxlen_in_recvlen_out);
-    css_error_code send (const std::string &message);
-    css_error_code send (const char *buffer, std::size_t length);
+  class channel
+  {
+    public:
+      channel (int max_timeout_in_ms = -1);
+      virtual ~channel ();
 
-    /* simple connect */
-    virtual css_error_code connect (const char *hostname, int port);
+      /* only the move operation is permitted */
+      channel (const channel &comm) = delete;
+      channel &operator= (const channel &comm) = delete;
+      channel (channel &&comm);
+      channel &operator= (channel &&comm);
 
-    /* creates a listener channel */
-    css_error_code accept (SOCKET socket);
+      /* receive/send functions that use the created m_socket */
+      css_error_code recv (char *buffer, std::size_t &maxlen_in_recvlen_out);
+      css_error_code send (const std::string &message);
+      css_error_code send (const char *buffer, std::size_t length);
 
-    /* this function waits for events such as EPOLLIN, EPOLLOUT,
-     * if (revents & EPOLLIN) != 0 it means that we have an "in" event
-     */
-    int wait_for (unsigned short int events, unsigned short int &revents);
+      /* simple connect */
+      virtual css_error_code connect (const char *hostname, int port);
 
-    bool is_connection_alive ();
-    SOCKET get_socket ();
-    void close_connection ();
+      /* creates a listener channel */
+      css_error_code accept (SOCKET socket);
 
-    /* this is the command that the non overridden connect will send */
-    int get_max_timeout_in_ms ();
+      /* this function waits for events such as EPOLLIN, EPOLLOUT,
+       * if (revents & EPOLLIN) != 0 it means that we have an "in" event
+       */
+      int wait_for (unsigned short int events, unsigned short int &revents);
 
-  protected:
-    const int m_max_timeout_in_ms;
-    CHANNEL_TYPE m_type;
-    SOCKET m_socket;
-};
+      bool is_connection_alive ();
+      SOCKET get_socket ();
+      void close_connection ();
+
+      /* this is the command that the non overridden connect will send */
+      int get_max_timeout_in_ms ();
+
+    protected:
+      const int m_max_timeout_in_ms;
+      CHANNEL_TYPE m_type;
+      SOCKET m_socket;
+  };
+
+} /* cubcomm namespace */
 
 #endif /* _COMMUNICATION_CHANNEL_HPP_ */
 

@@ -2523,23 +2523,24 @@ pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
   int error = NO_ERROR;
   unsigned int save_custom = parser->custom_print;
 
-/* *INDENT-OFF* */
-#if defined(NO_GCC_44) //temporary until evolve above gcc 4.4.7
-  string_buffer sb{
-    [&parser] (mem::block& block, size_t len)
+  /* *INDENT-OFF* */
+  string_buffer sb
+  {
+    [&parser] (mem::block &block, size_t len)
     {
       size_t dim = block.dim ? block.dim : 1;
-      for (; dim < block.dim + len; dim *= 2); //calc next power of 2 >= b.dim
-        mem::block b{dim, (char*) parser_alloc (parser, block.dim + len)};
+
+      for (; dim < block.dim + len; dim *= 2)	//calc next power of 2 >= b.dim+len
+	 ;
+
+      mem::block b { dim, (char *) parser_alloc (parser, dim) };
       memcpy (b.ptr, block.ptr, block.dim);
       block = std::move (b);
-    },
-    [](mem::block& block){} //no need to deallocate for parser_context
+    }, [](mem::block &block)
+    {
+    }				//no need to deallocate for parser_context
   };
-#else
-  string_buffer sb;
-#endif
-/* *INDENT-ON* */
+  /* *INDENT-ON* */
 
   db_value_printer printer (sb);
   if (val == NULL)
@@ -6779,6 +6780,14 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_varchar (parser, q, r1);
     }
 
+  if (p->info.attr_def.on_update != DB_DEFAULT_NONE)
+    {
+      const char *c = db_default_expression_string (p->info.attr_def.on_update);
+      q = pt_append_nulstring (parser, q, " on update ");
+      q = pt_append_nulstring (parser, q, c);
+      q = pt_append_nulstring (parser, q, " ");
+    }
+
   if (p->info.attr_def.auto_increment)
     {
       r1 = pt_print_bytes (parser, p->info.attr_def.auto_increment);
@@ -8485,7 +8494,6 @@ pt_init_data_default (PT_NODE * p)
   p->info.data_default.default_expr_type = DB_DEFAULT_NONE;
   return p;
 }
-
 
 /*
  * pt_print_data_default () -
@@ -14353,7 +14361,7 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 
   if (PT_SELECT_INFO_IS_FLAGED (p, PT_SELECT_INFO_IDX_SCHEMA))
     {
-      q = pt_append_nulstring (parser, q, "show index from  ");
+      q = pt_append_nulstring (parser, q, "show index from ");
       r1 = pt_print_bytes_spec_list (parser, p->info.query.q.select.from);
       q = pt_append_varchar (parser, q, r1);
       return q;
@@ -14365,13 +14373,22 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
       PT_NODE *from = p->info.query.q.select.from;
       if (from->info.spec.derived_table_type == PT_IS_SUBQUERY)
 	{
-	  char s[1000];
+	  char s[64];
 	  PT_NODE *subq = from->info.spec.derived_table;
+
 	  sprintf (s, "show %s columns from ", PT_SELECT_INFO_IS_FLAGED (p, PT_SELECT_INFO_COLS_SCHEMA) ? "" : "full");
 	  q = pt_append_nulstring (parser, q, s);
 
-	  r1 = pt_print_bytes_spec_list (parser, subq->info.query.q.select.from);
-	  q = pt_append_varchar (parser, q, r1);
+	  if (subq != NULL)
+	    {
+	      r1 = pt_print_bytes_spec_list (parser, subq->info.query.q.select.from);
+	      q = pt_append_varchar (parser, q, r1);
+	    }
+	  else
+	    {
+	      // immature parse tree probably due to an error.
+	      q = pt_append_nulstring (parser, q, "unknown");
+	    }
 
 	  where_list = p->info.query.q.select.where;
 	  if (where_list)

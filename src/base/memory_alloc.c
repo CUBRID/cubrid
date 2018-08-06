@@ -37,12 +37,16 @@
 #include "util_func.h"
 #include "error_manager.h"
 #include "intl_support.h"
+#include "resource_tracker.hpp"
 #include "customheaps.h"
 #if !defined (SERVER_MODE)
 #include "quick_fit.h"
 #endif /* SERVER_MODE */
 #if defined (SERVER_MODE)
-#include "thread.h"
+#include "thread_entry.hpp"
+#endif // SERVER_MODE
+#if defined (SERVER_MODE)
+#include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #endif // SERVER_MODE
 
 #define DEFAULT_OBSTACK_CHUNK_SIZE      32768	/* 1024 x 32 */
@@ -51,6 +55,10 @@
 extern unsigned int db_on_server;
 HL_HEAPID private_heap_id = 0;
 #endif /* SERVER_MODE */
+
+#if defined (SERVER_MODE)
+static HL_HEAPID db_private_get_heapid_from_thread (REFPTR (THREAD_ENTRY, thread_p));
+#endif // SERVER_MODE
 
 /*
  * ansisql_strcmp - String comparison according to ANSI SQL
@@ -309,7 +317,7 @@ db_clear_private_heap (THREAD_ENTRY * thread_p, HL_HEAPID heap_id)
   if (heap_id == 0)
     {
 #if defined (SERVER_MODE)
-      heap_id = css_get_private_heap (thread_p);
+      heap_id = db_private_get_heapid_from_thread (thread_p);
 #else /* SERVER_MODE */
       heap_id = private_heap_id;
 #endif /* SERVER_MODE */
@@ -332,7 +340,7 @@ db_change_private_heap (THREAD_ENTRY * thread_p, HL_HEAPID heap_id)
   HL_HEAPID old_heap_id;
 
 #if defined (SERVER_MODE)
-  old_heap_id = css_set_private_heap (thread_p, heap_id);
+  old_heap_id = db_private_set_heapid_to_thread (thread_p, heap_id);
 #else /* SERVER_MODE */
   old_heap_id = private_heap_id;
   if (db_on_server)
@@ -354,14 +362,14 @@ db_replace_private_heap (THREAD_ENTRY * thread_p)
   HL_HEAPID old_heap_id, heap_id;
 
 #if defined (SERVER_MODE)
-  old_heap_id = css_get_private_heap (thread_p);
+  old_heap_id = db_private_get_heapid_from_thread (thread_p);
 #else /* SERVER_MODE */
   old_heap_id = private_heap_id;
 #endif /* SERVER_MODE */
 
 #if defined (SERVER_MODE)
   heap_id = db_create_private_heap ();
-  css_set_private_heap (thread_p, heap_id);
+  db_private_set_heapid_to_thread (thread_p, heap_id);
 #else /* SERVER_MODE */
   if (db_on_server)
     {
@@ -383,7 +391,7 @@ db_destroy_private_heap (THREAD_ENTRY * thread_p, HL_HEAPID heap_id)
   if (heap_id == 0)
     {
 #if defined (SERVER_MODE)
-      heap_id = css_get_private_heap (thread_p);
+      heap_id = db_private_get_heapid_from_thread (thread_p);
 #else /* SERVER_MODE */
       heap_id = private_heap_id;
 #endif /* SERVER_MODE */
@@ -408,13 +416,13 @@ db_destroy_private_heap (THREAD_ENTRY * thread_p, HL_HEAPID heap_id)
 #if defined(WINDOWS)
 #if !defined(NDEBUG)
 void *
-db_private_alloc_release (void *thrd, size_t size, bool rc_track)
+db_private_alloc_release (THREAD_ENTRY * thrd, size_t size, bool rc_track)
 {
   return NULL;
 }
 #else
 void *
-db_private_alloc_debug (void *thrd, size_t size, bool rc_track, const char *caller_file, int caller_line)
+db_private_alloc_debug (THREAD_ENTRY * thrd, size_t size, bool rc_track, const char *caller_file, int caller_line)
 {
   return NULL;
 }
@@ -423,10 +431,10 @@ db_private_alloc_debug (void *thrd, size_t size, bool rc_track, const char *call
 
 #if !defined(NDEBUG)
 void *
-db_private_alloc_debug (void *thrd, size_t size, bool rc_track, const char *caller_file, int caller_line)
+db_private_alloc_debug (THREAD_ENTRY * thrd, size_t size, bool rc_track, const char *caller_file, int caller_line)
 #else /* NDEBUG */
 void *
-db_private_alloc_release (void *thrd, size_t size, bool rc_track)
+db_private_alloc_release (THREAD_ENTRY * thrd, size_t size, bool rc_track)
 #endif				/* NDEBUG */
 {
 #if !defined (CS_MODE)
@@ -447,7 +455,7 @@ db_private_alloc_release (void *thrd, size_t size, bool rc_track)
       return NULL;
     }
 
-  heap_id = (thrd ? ((THREAD_ENTRY *) thrd)->private_heap_id : css_get_private_heap (NULL));
+  heap_id = db_private_get_heapid_from_thread (thrd);
 
   if (heap_id)
     {
@@ -463,11 +471,11 @@ db_private_alloc_release (void *thrd, size_t size, bool rc_track)
     }
 
 #if !defined (NDEBUG)
-  if (rc_track)
+  if (rc_track && heap_id != 0)
     {
       if (ptr != NULL)
 	{
-	  thread_rc_track_meter ((THREAD_ENTRY *) thrd, caller_file, caller_line, 1, ptr, RC_VMEM, MGR_DEF);
+	  thread_get_thread_entry_info ()->get_alloc_tracker ().increment (caller_file, caller_line, ptr);
 	}
     }
 #endif /* !NDEBUG */
@@ -529,13 +537,14 @@ db_private_alloc_release (void *thrd, size_t size, bool rc_track)
 #if defined(WINDOWS)
 #if !defined(NDEBUG)
 void *
-db_private_realloc_release (void *thrd, void *ptr, size_t size, bool rc_track)
+db_private_realloc_release (THREAD_ENTRY * thrd, void *ptr, size_t size, bool rc_track)
 {
   return NULL;
 }
 #else
 void *
-db_private_realloc_debug (void *thrd, void *ptr, size_t size, bool rc_track, const char *caller_file, int caller_line)
+db_private_realloc_debug (THREAD_ENTRY * thrd, void *ptr, size_t size, bool rc_track, const char *caller_file,
+			  int caller_line)
 {
   return NULL;
 }
@@ -544,10 +553,11 @@ db_private_realloc_debug (void *thrd, void *ptr, size_t size, bool rc_track, con
 
 #if !defined(NDEBUG)
 void *
-db_private_realloc_debug (void *thrd, void *ptr, size_t size, bool rc_track, const char *caller_file, int caller_line)
+db_private_realloc_debug (THREAD_ENTRY * thrd, void *ptr, size_t size, bool rc_track, const char *caller_file,
+			  int caller_line)
 #else /* NDEBUG */
 void *
-db_private_realloc_release (void *thrd, void *ptr, size_t size, bool rc_track)
+db_private_realloc_release (THREAD_ENTRY * thrd, void *ptr, size_t size, bool rc_track)
 #endif				/* NDEBUG */
 {
 #if !defined (CS_MODE)
@@ -566,7 +576,7 @@ db_private_realloc_release (void *thrd, void *ptr, size_t size, bool rc_track)
       return NULL;
     }
 
-  heap_id = (thrd ? ((THREAD_ENTRY *) thrd)->private_heap_id : css_get_private_heap (NULL));
+  heap_id = db_private_get_heapid_from_thread (thrd);
 
   if (heap_id)
     {
@@ -582,17 +592,17 @@ db_private_realloc_release (void *thrd, void *ptr, size_t size, bool rc_track)
     }
 
 #if !defined (NDEBUG)
-  if (rc_track && new_ptr != ptr)
+  if (rc_track && heap_id != 0 && new_ptr != ptr)
     {
       /* remove old pointer from track meter */
       if (ptr != NULL)
 	{
-	  thread_rc_track_meter ((THREAD_ENTRY *) thrd, caller_file, caller_line, -1, ptr, RC_VMEM, MGR_DEF);
+	  thread_get_thread_entry_info ()->get_alloc_tracker ().decrement (ptr);
 	}
       /* add new pointer to track meter */
       if (new_ptr != NULL)
 	{
-	  thread_rc_track_meter ((THREAD_ENTRY *) thrd, caller_file, caller_line, 1, new_ptr, RC_VMEM, MGR_DEF);
+	  thread_get_thread_entry_info ()->get_alloc_tracker ().increment (caller_file, caller_line, new_ptr);
 	}
     }
 #endif /* !NDEBUG */
@@ -663,7 +673,7 @@ db_private_realloc_release (void *thrd, void *ptr, size_t size, bool rc_track)
  *   size(s): source string
  */
 char *
-db_private_strdup (void *thrd, const char *s)
+db_private_strdup (THREAD_ENTRY * thrd, const char *s)
 {
   char *cp;
   int len;
@@ -697,13 +707,13 @@ db_private_strdup (void *thrd, const char *s)
 #if defined(WINDOWS)
 #if !defined(NDEBUG)
 void
-db_private_free_release (void *thrd, void *ptr, bool rc_track)
+db_private_free_release (THREAD_ENTRY * thrd, void *ptr, bool rc_track)
 {
   return;
 }
 #else
 void
-db_private_free_debug (void *thrd, void *ptr, bool rc_track, const char *caller_file, int caller_line)
+db_private_free_debug (THREAD_ENTRY * thrd, void *ptr, bool rc_track, const char *caller_file, int caller_line)
 {
   return;
 }
@@ -712,10 +722,10 @@ db_private_free_debug (void *thrd, void *ptr, bool rc_track, const char *caller_
 
 #if !defined(NDEBUG)
 void
-db_private_free_debug (void *thrd, void *ptr, bool rc_track, const char *caller_file, int caller_line)
+db_private_free_debug (THREAD_ENTRY * thrd, void *ptr, bool rc_track, const char *caller_file, int caller_line)
 #else /* NDEBUG */
 void
-db_private_free_release (void *thrd, void *ptr, bool rc_track)
+db_private_free_release (THREAD_ENTRY * thrd, void *ptr, bool rc_track)
 #endif				/* NDEBUG */
 {
 #if defined (SERVER_MODE)
@@ -730,7 +740,7 @@ db_private_free_release (void *thrd, void *ptr, bool rc_track)
 #if defined (CS_MODE)
   db_ws_free (ptr);
 #elif defined (SERVER_MODE)
-  heap_id = (thrd ? ((THREAD_ENTRY *) thrd)->private_heap_id : css_get_private_heap (NULL));
+  heap_id = db_private_get_heapid_from_thread (thrd);
 
   if (heap_id)
     {
@@ -742,11 +752,11 @@ db_private_free_release (void *thrd, void *ptr, bool rc_track)
     }
 
 #if !defined (NDEBUG)
-  if (rc_track)
+  if (rc_track && heap_id != 0)
     {
       if (ptr != NULL)
 	{
-	  thread_rc_track_meter ((THREAD_ENTRY *) thrd, caller_file, caller_line, -1, ptr, RC_VMEM, MGR_DEF);
+	  thrd->get_alloc_tracker ().decrement (ptr);
 	}
     }
 #endif /* !NDEBUG */
@@ -792,7 +802,7 @@ db_private_free_release (void *thrd, void *ptr, bool rc_track)
 
 
 void *
-db_private_alloc_external (void *thrd, size_t size)
+db_private_alloc_external (THREAD_ENTRY * thrd, size_t size)
 {
 #if !defined(NDEBUG)
   return db_private_alloc_debug (thrd, size, true, __FILE__, __LINE__);
@@ -803,7 +813,7 @@ db_private_alloc_external (void *thrd, size_t size)
 
 
 void
-db_private_free_external (void *thrd, void *ptr)
+db_private_free_external (THREAD_ENTRY * thrd, void *ptr)
 {
 #if !defined(NDEBUG)
   db_private_free_debug (thrd, ptr, true, __FILE__, __LINE__);
@@ -814,7 +824,7 @@ db_private_free_external (void *thrd, void *ptr)
 
 
 void *
-db_private_realloc_external (void *thrd, void *ptr, size_t size)
+db_private_realloc_external (THREAD_ENTRY * thrd, void *ptr, size_t size)
 {
 #if !defined(NDEBUG)
   return db_private_realloc_debug (thrd, ptr, size, true, __FILE__, __LINE__);
@@ -852,7 +862,7 @@ os_malloc_release (size_t size, bool rc_track)
     {
       if (ptr != NULL)
 	{
-	  thread_rc_track_meter (NULL, caller_file, caller_line, 1, ptr, RC_VMEM, MGR_DEF);
+	  thread_get_thread_entry_info ()->get_alloc_tracker ().increment (caller_file, caller_line, ptr);
 	}
     }
 #endif /* !NDEBUG */
@@ -889,14 +899,13 @@ os_calloc_release (size_t n, size_t size, bool rc_track)
     {
       if (ptr != NULL)
 	{
-	  thread_rc_track_meter (NULL, caller_file, caller_line, 1, ptr, RC_VMEM, MGR_DEF);
+	  thread_get_thread_entry_info ()->get_alloc_tracker ().increment (caller_file, caller_line, ptr);
 	}
     }
 #endif /* !NDEBUG */
 
   return ptr;
 }
-
 
 /*
  * os_free () -
@@ -918,9 +927,53 @@ os_free_release (void *ptr, bool rc_track)
     {
       if (ptr != NULL)
 	{
-	  thread_rc_track_meter (NULL, caller_file, caller_line, -1, ptr, RC_VMEM, MGR_DEF);
+	  thread_get_thread_entry_info ()->get_alloc_tracker ().decrement (ptr);
 	}
     }
 #endif /* !NDEBUG */
 }
+
+#if defined (SERVER_MODE)
+/*
+ * db_private_get_heapid_from_thread () -
+ *   return: heap id
+ *   thread_p(in/out): thread local entry; output is never nil
+ */
+static HL_HEAPID
+db_private_get_heapid_from_thread (REFPTR (THREAD_ENTRY, thread_p))
+{
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+  assert (thread_p != NULL);
+
+  return thread_p->private_heap_id;
+}
+
+/*
+ * css_set_private_heap() -
+ *   return:
+ *   thread_p(in):
+ *   heap_id(in):
+ */
+HL_HEAPID
+db_private_set_heapid_to_thread (THREAD_ENTRY * thread_p, HL_HEAPID heap_id)
+{
+  HL_HEAPID old_heap_id = 0;
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  assert (thread_p != NULL);
+
+  old_heap_id = thread_p->private_heap_id;
+  thread_p->private_heap_id = heap_id;
+
+  return old_heap_id;
+}
+#endif // SERVER_MODE
+
 #endif

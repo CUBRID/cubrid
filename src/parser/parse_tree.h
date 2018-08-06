@@ -45,90 +45,45 @@
 
 #define MAX_PRINT_ERROR_CONTEXT_LENGTH 64
 
-#define PT_ERROR( parser, node, msg ) \
-    pt_frob_error( parser, node, msg )
+//this could be a variadic template function; directly use pt_frob_error() for formatted messages without catalog
+#define pt_cat_error(parser, node, setNo, msgNo, ...) \
+    pt_frob_error(parser, node, msgcat_message(MSGCAT_CATALOG_CUBRID, setNo, msgNo), ##__VA_ARGS__)
 
-#define PT_ERRORm(parser, node, setNo, msgNo) \
-    pt_frob_error(parser, node, \
-                  msgcat_message (MSGCAT_CATALOG_CUBRID, setNo, msgNo))
+#if 1				//not necessary anymore thanks to new pt_cat_error() and existing pt_frob_error()
+#define PT_ERROR(parser, node, msg) pt_frob_error(parser, node, msg)
+#define PT_ERRORc(parser, node, msg) pt_frob_error( parser, node, "%s", msg)
 
+#define PT_ERRORf(parser, node, msg, arg1) pt_frob_error(parser, node, msg, arg1)
+#define PT_ERRORf2(parser, node, msg, arg1, arg2) pt_frob_error(parser, node, msg, arg1, arg2)
+#define PT_ERRORf3(parser, node, msg, arg1, arg2, arg3) pt_frob_error(parser, node, msg, arg1, arg2, arg3)
+#define PT_ERRORf4(parser, node, msg, arg1, arg2, arg3, arg4) pt_frob_error(parser, node, msg, arg1, arg2, arg3, arg4)
+#define PT_ERRORf5(parser, node, msg, arg1, arg2, arg3, arg4, arg5) pt_frob_error(parser, node, msg, arg1, arg2, arg3, arg4, arg5)
 
-#define PT_ERRORc( parser, node, msg ) \
-    pt_frob_error( parser, node, "%s", msg )
+#define PT_ERRORm(parser, node, setNo, msgNo) pt_cat_error(parser, node, setNo, msgNo)
+#define PT_ERRORmf(parser, node, setNo, msgNo, arg1) pt_cat_error(parser, node, setNo, msgNo, arg1)
+#define PT_ERRORmf2(parser, node, setNo, msgNo, arg1, arg2) pt_cat_error(parser, node, setNo, msgNo, arg1, arg2)
+#define PT_ERRORmf3(parser, node, setNo, msgNo, arg1, arg2, arg3) pt_cat_error(parser, node, setNo, msgNo, arg1, arg2, arg3)
+#define PT_ERRORmf4(parser, node, setNo, msgNo, arg1, arg2, arg3, arg4) pt_cat_error(parser, node, setNo, msgNo, arg1, arg2, arg3, arg4)
+#define PT_ERRORmf5(parser, node, setNo, msgNo, arg1, arg2, arg3, arg4 , arg5) pt_cat_error(parser, node, setNo, msgNo, arg1, arg2, arg3, arg4, arg5)
+#endif
 
-#define PT_ERRORf( parser, node, msg, arg1) \
-    pt_frob_error( parser, node, msg, arg1 )
+//this could be a variadic template function; directly use pt_frob_warning() for formatted messages without catalog
+#define pt_cat_warning(parser, node, setNo, msgNo, ...) \
+    pt_frob_warning(parser, node, msgcat_message(MSGCAT_CATALOG_CUBRID, setNo, msgNo), ##__VA_ARGS__)
 
-#define PT_ERRORmf(parser, node, setNo, msgNo, arg1) \
-    PT_ERRORf(parser, node, \
-              msgcat_message (MSGCAT_CATALOG_CUBRID, setNo, msgNo), arg1)
+#if 1				//not necessary anymore thanks to pt_cat_warning() and existing pt_frob_warning()
+#define PT_WARNING( parser, node, msg ) pt_frob_warning(parser, node, msg)
+#define PT_WARNINGm(parser, node, setNo, msgNo) pt_cat_warning(parser, node, setNo, msgNo)
+#define PT_WARNINGc( parser, node, msg ) pt_frob_warning(parser, node, msg)
 
-#define PT_ERRORf2( parser, node, msg, arg1, arg2) \
-    pt_frob_error( parser, node, msg, arg1, arg2 )
+#define PT_WARNINGf( parser, node, msg, arg1) pt_cat_warning(parser, node, msg, arg1)
+#define PT_WARNINGf2( parser, node, msg, arg1, arg2) pt_cat_warning(parser, node, msg, arg1, arg2)
+#define PT_WARNINGf3( parser, node, msg, arg1, arg2, arg3) pt_cat_warning(parser, node, msg, arg1, arg2, arg3)
 
-#define PT_ERRORmf2(parser, node, setNo, msgNo, arg1, arg2) \
-    PT_ERRORf2(parser, node, \
-               msgcat_message (MSGCAT_CATALOG_CUBRID, setNo, msgNo), \
-               arg1, arg2)
-
-#define PT_ERRORf3( parser, node, msg, arg1, arg2, arg3) \
-    pt_frob_error( parser, node, msg, arg1, arg2, arg3 )
-
-#define PT_ERRORmf3(parser, node, setNo, msgNo, arg1, arg2, arg3) \
-    PT_ERRORf3(parser, node, \
-               msgcat_message (MSGCAT_CATALOG_CUBRID, setNo, msgNo), \
-               arg1, arg2, arg3)
-
-#define PT_ERRORf4( parser, node, msg, arg1, arg2, arg3, arg4) \
-    pt_frob_error( parser, node, msg, arg1, arg2, arg3, arg4 )
-
-#define PT_ERRORmf4(parser, node, setNo, msgNo, arg1, arg2, arg3, arg4) \
-    PT_ERRORf4(parser, node, \
-               msgcat_message (MSGCAT_CATALOG_CUBRID, setNo, msgNo), \
-               arg1, arg2, arg3, arg4)
-
-#define PT_ERRORf5( parser, node, msg, arg1, arg2, arg3, arg4, arg5) \
-    pt_frob_error( parser, node, msg, arg1, arg2, arg3, arg4 , arg5)
-
-#define PT_ERRORmf5(parser, node, setNo, msgNo, arg1, arg2, arg3, arg4 , \
-		    arg5) \
-    PT_ERRORf5(parser, node, \
-               msgcat_message (MSGCAT_CATALOG_CUBRID, setNo, msgNo), \
-               arg1, arg2, arg3, arg4 ,arg5)
-
-#define PT_WARNING( parser, node, msg ) \
-    pt_frob_warning( parser, node, msg )
-
-#define PT_WARNINGm(parser, node, setNo, msgNo) \
-    PT_WARNING(parser, node, \
-               msgcat_message (MSGCAT_CATALOG_CUBRID, setNo, msgNo))
-
-#define PT_WARNINGc( parser, node, msg ) \
-    PT_WARNING( parser, node, msg )
-
-#define PT_WARNINGf( parser, node, msg, arg1) \
-    pt_frob_warning( parser, node, msg, arg1 )
-
-#define PT_WARNINGmf(parser, node, setNo, msgNo, arg1) \
-    PT_WARNINGf(parser, node, \
-                msgcat_message (MSGCAT_CATALOG_CUBRID, setNo, msgNo), arg1)
-
-#define PT_WARNINGf2( parser, node, msg, arg1, arg2) \
-    pt_frob_warning( parser, node, msg, arg1, arg2 )
-
-#define PT_WARNINGmf2(parser, node, setNo, msgNo, arg1, arg2) \
-    PT_WARNINGf2(parser, node, \
-                 msgcat_message (MSGCAT_CATALOG_CUBRID, setNo, msgNo), \
-                 arg1, arg2)
-
-#define PT_WARNINGf3( parser, node, msg, arg1, arg2, arg3) \
-    pt_frob_warning( parser, node, msg, arg1, arg2, arg3 )
-
-#define PT_WARNINGmf3(parser, node, setNo, msgNo, arg1, arg2, arg3) \
-    PT_WARNINGf3(parser, node, \
-                 msgcat_message (MSGCAT_CATALOG_CUBRID, setNo, msgNo), \
-                 arg1, arg2, arg3)
-
+#define PT_WARNINGmf(parser, node, setNo, msgNo, arg1) pt_cat_warning(parser, node, setNo, msgNo, arg1)
+#define PT_WARNINGmf2(parser, node, setNo, msgNo, arg1, arg2) pt_cat_warning(parser, node, setNo, msgNo, arg1, arg2)
+#define PT_WARNINGmf3(parser, node, setNo, msgNo, arg1, arg2, arg3) pt_cat_warning(parser, node, setNo, msgNo, arg1, arg2, arg3)
+#endif
 
 #define PT_SET_JMP_ENV(parser) \
     do { \
@@ -1928,6 +1883,7 @@ struct pt_attr_def_info
 {
   PT_NODE *attr_name;		/* PT_NAME */
   PT_NODE *data_default;	/* PT_DATA_DEFAULT */
+  DB_DEFAULT_EXPR_TYPE on_update;
   PT_NODE *auto_increment;	/* PT_AUTO_INCREMENT */
   PT_NODE *ordering_info;	/* PT_ATTR_ORDERING */
   PT_NODE *comment;		/* PT_VALUE */
@@ -2284,7 +2240,7 @@ struct pt_expr_info
 #define PT_EXPR_INFO_TRANSITIVE    64	/* always true transitive join term ? */
 #define PT_EXPR_INFO_LEFT_OUTER   128	/* Oracle's left outer join operator */
 #define PT_EXPR_INFO_RIGHT_OUTER  256	/* Oracle's right outer join operator */
-#define PT_EXPR_INFO_COPYPUSH     512	/* term which is copy-pushed into the derived subquery ? is removed at the last 
+#define PT_EXPR_INFO_COPYPUSH     512	/* term which is copy-pushed into the derived subquery ? is removed at the last
 					 * rewrite stage of query optimizer */
 #if 1				/* unused anymore - DO NOT DELETE ME */
 #define PT_EXPR_INFO_FULL_RANGE  1024	/* non-null full RANGE term ? */
@@ -2297,7 +2253,7 @@ struct pt_expr_info
 
 #define PT_EXPR_INFO_CAST_COLL_MODIFIER 16384	/* CAST is for COLLATION modifier */
 
-#define PT_EXPR_INFO_GROUPBYNUM_LIMIT 32768	/* flag that marks if the expression resulted from a GROUP BY ... LIMIT 
+#define PT_EXPR_INFO_GROUPBYNUM_LIMIT 32768	/* flag that marks if the expression resulted from a GROUP BY ... LIMIT
 						 * statement */
   int flag;			/* flags */
 #define PT_EXPR_INFO_IS_FLAGED(e, f)    ((e)->info.expr.flag & (int) (f))
@@ -2810,7 +2766,7 @@ struct pt_query_info
 {
   int correlation_level;	/* for correlated subqueries */
   PT_MISC_TYPE all_distinct;	/* enum value is PT_ALL or PT_DISTINCT */
-  PT_MISC_TYPE is_subquery;	/* PT_IS_SUB_QUERY, PT_IS_UNION_QUERY, PT_IS_CTE_NON_REC_SUBQUERY, 
+  PT_MISC_TYPE is_subquery;	/* PT_IS_SUB_QUERY, PT_IS_UNION_QUERY, PT_IS_CTE_NON_REC_SUBQUERY,
 				 * PT_IS_CTE_REC_SUBQUERY or 0 */
   char is_view_spec;		/* 0 - normal, 1 - view query spec */
   char oids_included;		/* DB_NO_OIDS/0 DB_ROW_OIDS/1 */
@@ -3117,7 +3073,7 @@ union pt_data_value
 /* Info for the VALUE node */
 struct pt_value_info
 {
-  const char *text;		/* printed text of a value or of an expression folded to a value. NOTE: this is not the 
+  const char *text;		/* printed text of a value or of an expression folded to a value. NOTE: this is not the
 				 * actual value of the node. Use value in data_value instead. */
   PT_DATA_VALUE data_value;	/* see above UNION defs */
   DB_VALUE db_value;
@@ -3128,7 +3084,7 @@ struct pt_value_info
   bool print_charset;
   bool print_collation;
   bool has_cs_introducer;	/* 1 if charset introducer is used for string node e.g. _utf8'a'; 0 otherwise. */
-  bool is_collate_allowed;	/* 1 if this is a PT_VALUE allowed to have the COLLATE modifier (the grammar context in 
+  bool is_collate_allowed;	/* 1 if this is a PT_VALUE allowed to have the COLLATE modifier (the grammar context in
 				 * which is created allows it) */
   int coll_modifier;		/* collation modifier = collation + 1 */
   int host_var_index;		/* save the host_var index which it comes from. -1 means it is a normal value. it does
@@ -3505,7 +3461,7 @@ struct parser_node
   unsigned is_hidden_column:1;
   unsigned is_paren:1;
   unsigned with_rollup:1;	/* WITH ROLLUP clause for GROUP BY */
-  unsigned force_auto_parameterize:1;	/* forces a call to qo_do_auto_parameterize (); this is a special flag used for 
+  unsigned force_auto_parameterize:1;	/* forces a call to qo_do_auto_parameterize (); this is a special flag used for
 					 * processing ON DUPLICATE KEY UPDATE */
   unsigned do_not_fold:1;	/* disables constant folding on the node */
   unsigned is_cnf_start:1;
@@ -3697,7 +3653,7 @@ struct pt_coll_infer
   int coll_id;
   INTL_CODESET codeset;
   PT_COLL_COERC_LEV coerc_level;
-  bool can_force_cs;		/* used as a weak-modifier for collation coercibility (when node is a host variable). + 
+  bool can_force_cs;		/* used as a weak-modifier for collation coercibility (when node is a host variable). +
 				 * for auto-CAST expressions around numbers: initially the string data type of CAST is
 				 * created with system charset by generic type checking but that charset can be forced
 				 * to another charset (of another argument) if this flag is set */

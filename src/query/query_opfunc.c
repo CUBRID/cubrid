@@ -9595,7 +9595,7 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, REGU_
 	  goto error;
 	}
 
-      while (strlen (path_tmp) + 1 > len_result_path)
+      while ((int) strlen (path_tmp) + 1 > len_result_path)
 	{
 	  len_result_path += SYS_CONNECT_BY_PATH_MEM_STEP;
 	  db_private_free_and_init (thread_p, result_path);

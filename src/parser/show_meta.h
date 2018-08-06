@@ -67,6 +67,7 @@ typedef struct showstmt_metadata SHOWSTMT_METADATA;
 struct showstmt_metadata
 {
   SHOWSTMT_TYPE show_type;
+  bool only_for_dba;		/* dba is only allowed */
   const char *alias_print;	/* for pt_print_select */
   const SHOWSTMT_COLUMN *cols;	/* SHOWSTMT_COLUMN array */
   int num_cols;			/* size of cols array */

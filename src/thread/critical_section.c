@@ -23,25 +23,28 @@
 
 #ident "$Id$"
 
+#include "critical_section.h"
+
+#include "connection_defs.h"
+#include "connection_error.h"
 #include "config.h"
+#include "critical_section_tracker.hpp"
+#include "dbtype.h"
+#include "numeric_opfunc.h"
+#include "perf_monitor.h"
+#include "porting.h"
+#include "resource_tracker.hpp"
+#include "show_scan.h"
+#include "system_parameter.h"
+#include "thread_entry.hpp"
+#include "thread_manager.hpp"
+#include "tsc_timer.h"
 
 #include <stdio.h>
 #include <assert.h>
-#if !defined(WINDOWS)
-#include <sys/time.h>
-#endif /* !WINDOWS */
 
-#include "porting.h"
-#include "critical_section.h"
-#include "connection_defs.h"
-#include "thread.h"
-#include "connection_error.h"
-#include "perf_monitor.h"
-#include "system_parameter.h"
-#include "tsc_timer.h"
-#include "show_scan.h"
-#include "numeric_opfunc.h"
-#include "dbtype.h"
+// belongs to cubsync
+using namespace cubsync;
 
 #undef csect_initialize_critical_section
 #undef csect_finalize_critical_section
@@ -89,7 +92,18 @@ static const char *csect_Names[] = {
   "ACCESS_STATUS"
 };
 
-#define CSECT_NAME(c) ((c)->name ? (c)->name : "UNKNOWN")
+static const char *
+csect_name (SYNC_CRITICAL_SECTION * c)
+{
+  return c != NULL ? c->name : "UNKNOWN";
+}
+
+const char *
+csect_name_at (int cs_index)
+{
+  assert (cs_index >= 0 && cs_index < CRITICAL_SECTION_COUNT);
+  return csect_Names[cs_index];
+}
 
 /* 
  * Synchronization Primitives Statistics Monitor
@@ -304,7 +318,7 @@ csect_wait_on_writer_queue (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * cse
     {
       err = thread_suspend_with_other_mutex (thread_p, &csect->lock, timeout, to, THREAD_CSECT_WRITER_SUSPENDED);
 
-      if (DOES_THREAD_RESUME_DUE_TO_SHUTDOWN (thread_p))
+      if (thread_p->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT && thread_p->interrupted)
 	{
 	  /* check if i'm in the queue */
 	  prev_thread_p = csect->waiting_writers_queue;
@@ -373,7 +387,7 @@ csect_wait_on_promoter_queue (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * c
     {
       err = thread_suspend_with_other_mutex (thread_p, &csect->lock, timeout, to, THREAD_CSECT_PROMOTER_SUSPENDED);
 
-      if (DOES_THREAD_RESUME_DUE_TO_SHUTDOWN (thread_p))
+      if (thread_p->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT && thread_p->interrupted)
 	{
 	  /* check if i'm in the queue */
 	  prev_thread_p = csect->waiting_promoters_queue;
@@ -423,7 +437,7 @@ csect_wakeup_waiting_writer (SYNC_CRITICAL_SECTION * csect)
       csect->waiting_writers_queue = waiting_thread_p->next_wait_thrd;
       waiting_thread_p->next_wait_thrd = NULL;
 
-      error_code = thread_wakeup (waiting_thread_p, THREAD_CSECT_WRITER_RESUMED);
+      thread_wakeup (waiting_thread_p, THREAD_CSECT_WRITER_RESUMED);
     }
 
   return error_code;
@@ -442,7 +456,7 @@ csect_wakeup_waiting_promoter (SYNC_CRITICAL_SECTION * csect)
       csect->waiting_promoters_queue = waiting_thread_p->next_wait_thrd;
       waiting_thread_p->next_wait_thrd = NULL;
 
-      error_code = thread_wakeup (waiting_thread_p, THREAD_CSECT_PROMOTER_RESUMED);
+      thread_wakeup (waiting_thread_p, THREAD_CSECT_PROMOTER_RESUMED);
     }
 
   return error_code;
@@ -471,10 +485,7 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * c
       thread_p = thread_get_thread_entry_info ();
     }
 
-#if !defined (NDEBUG)
-  thread_rc_track_meter (thread_p, __FILE__, __LINE__, THREAD_TRACK_CSECT_ENTER_AS_WRITER, &(csect->cs_index), RC_CS,
-			 MGR_DEF);
-#endif /* NDEBUG */
+  thread_p->get_csect_tracker ().on_enter_as_writer (csect->cs_index);
 
   csect->stats->nenter++;
 
@@ -635,13 +646,13 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * c
     {
       if (csect->cs_index > 0)
 	{
-	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 2, CSECT_NAME (csect),
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 2, csect_name (csect),
 		  prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
 	}
       er_log_debug (ARG_FILE_LINE,
 		    "csect_enter_critical_section_as_reader: %6d.%06d"
 		    " %s total_enter %d ntotal_elapsed %d max_elapsed %d.%06d total_elapsed %d.06d\n", tv_diff.tv_sec,
-		    tv_diff.tv_usec, CSECT_NAME (csect), csect->stats->nenter, csect->stats->nwait,
+		    tv_diff.tv_usec, csect_name (csect), csect->stats->nenter, csect->stats->nwait,
 		    csect->stats->max_elapsed.tv_sec, csect->stats->max_elapsed.tv_usec,
 		    csect->stats->total_elapsed.tv_sec, csect->stats->total_elapsed.tv_usec);
     }
@@ -697,10 +708,7 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p, SYNC_CRITICAL_S
       thread_p = thread_get_thread_entry_info ();
     }
 
-#if !defined (NDEBUG)
-  thread_rc_track_meter (thread_p, __FILE__, __LINE__, THREAD_TRACK_CSECT_ENTER_AS_READER, &(csect->cs_index), RC_CS,
-			 MGR_DEF);
-#endif /* NDEBUG */
+  thread_p->get_csect_tracker ().on_enter_as_reader (csect->cs_index);
 
   csect->stats->nenter++;
 
@@ -858,12 +866,12 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p, SYNC_CRITICAL_S
     {
       if (csect->cs_index > 0)
 	{
-	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 2, CSECT_NAME (csect),
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 2, csect_name (csect),
 		  prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
 	}
       er_log_debug (ARG_FILE_LINE,
 		    "csect_enter_critical_section: %6d.%06d %s total_enter %d ntotal_elapsed %d max_elapsed %d.%06d"
-		    " total_elapsed %d.06d\n", tv_diff.tv_sec, tv_diff.tv_usec, CSECT_NAME (csect),
+		    " total_elapsed %d.06d\n", tv_diff.tv_sec, tv_diff.tv_usec, csect_name (csect),
 		    csect->stats->nenter, csect->stats->nwait, csect->stats->max_elapsed.tv_sec,
 		    csect->stats->max_elapsed.tv_usec, csect->stats->total_elapsed.tv_sec,
 		    csect->stats->total_elapsed.tv_usec);
@@ -920,9 +928,7 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * 
       thread_p = thread_get_thread_entry_info ();
     }
 
-#if !defined (NDEBUG)
-  thread_rc_track_meter (thread_p, __FILE__, __LINE__, THREAD_TRACK_CSECT_DEMOTE, &(csect->cs_index), RC_CS, MGR_DEF);
-#endif /* NDEBUG */
+  thread_p->get_csect_tracker ().on_demote (csect->cs_index);
 
   csect->stats->nenter++;
 
@@ -1121,12 +1127,12 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * 
     {
       if (csect->cs_index > 0)
 	{
-	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 2, CSECT_NAME (csect),
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 2, csect_name (csect),
 		  prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
 	}
       er_log_debug (ARG_FILE_LINE,
 		    "csect_demote_critical_section: %6d.%06d %s total_enter %d ntotal_elapsed %d max_elapsed %d.%06d"
-		    " total_elapsed %d.06d\n", tv_diff.tv_sec, tv_diff.tv_usec, CSECT_NAME (csect),
+		    " total_elapsed %d.06d\n", tv_diff.tv_sec, tv_diff.tv_usec, csect_name (csect),
 		    csect->stats->nenter, csect->stats->nwait, csect->stats->max_elapsed.tv_sec,
 		    csect->stats->max_elapsed.tv_usec, csect->stats->total_elapsed.tv_sec,
 		    csect->stats->total_elapsed.tv_usec);
@@ -1179,9 +1185,7 @@ csect_promote_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION *
       thread_p = thread_get_thread_entry_info ();
     }
 
-#if !defined (NDEBUG)
-  thread_rc_track_meter (thread_p, __FILE__, __LINE__, THREAD_TRACK_CSECT_PROMOTE, &(csect->cs_index), RC_CS, MGR_DEF);
-#endif /* NDEBUG */
+  thread_p->get_csect_tracker ().on_promote (csect->cs_index);
 
   csect->stats->nenter++;
 
@@ -1333,12 +1337,12 @@ csect_promote_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION *
     {
       if (csect->cs_index > 0)
 	{
-	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 2, CSECT_NAME (csect),
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 2, csect_name (csect),
 		  prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
 	}
       er_log_debug (ARG_FILE_LINE,
 		    "csect_promote_critical_section: %6d.%06d %s total_enter %d ntotal_elapsed %d max_elapsed %d.%06d"
-		    " total_elapsed %d.06d\n", tv_diff.tv_sec, tv_diff.tv_usec, CSECT_NAME (csect),
+		    " total_elapsed %d.06d\n", tv_diff.tv_sec, tv_diff.tv_usec, csect_name (csect),
 		    csect->stats->nenter, csect->stats->nwait, csect->stats->max_elapsed.tv_sec,
 		    csect->stats->max_elapsed.tv_usec, csect->stats->total_elapsed.tv_sec,
 		    csect->stats->total_elapsed.tv_usec);
@@ -1385,9 +1389,7 @@ csect_exit_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * cs
       thread_p = thread_get_thread_entry_info ();
     }
 
-#if !defined (NDEBUG)
-  thread_rc_track_meter (thread_p, __FILE__, __LINE__, THREAD_TRACK_CSECT_EXIT, &(csect->cs_index), RC_CS, MGR_DEF);
-#endif /* NDEBUG */
+  thread_p->get_csect_tracker ().on_exit (csect->cs_index);
 
   error_code = pthread_mutex_lock (&csect->lock);
   if (error_code != NO_ERROR)
@@ -1535,7 +1537,7 @@ csect_dump_statistics (FILE * fp)
       csect = &csectgl_Critical_sections[i];
 
       fprintf (fp, "%-23s |%10d |%10d |  %10d | %6ld.%06ld | %6ld.%06ld\n",
-	       CSECT_NAME (csect), csect->stats->nenter, csect->stats->nreenter,
+	       csect_name (csect), csect->stats->nenter, csect->stats->nreenter,
 	       csect->stats->nwait, csect->stats->max_elapsed.tv_sec, csect->stats->max_elapsed.tv_usec,
 	       csect->stats->total_elapsed.tv_sec, csect->stats->total_elapsed.tv_usec);
 
@@ -1664,7 +1666,7 @@ csect_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_values
       idx++;
 
       /* The name of the critical section */
-      db_make_string_by_const_str (&vals[idx], CSECT_NAME (csect));
+      db_make_string_by_const_str (&vals[idx], csect_name (csect));
       idx++;
 
       /* 'N readers', '1 writer', 'none' */
@@ -1705,7 +1707,7 @@ csect_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_values
 	}
       else
 	{
-	  thread_entry = thread_find_entry_by_tid (owner_tid);
+	  thread_entry = thread_get_manager ()->find_by_tid (owner_tid);
 	  if (thread_entry != NULL)
 	    {
 	      db_make_bigint (&vals[idx], thread_entry->index);
@@ -2162,7 +2164,7 @@ rmutex_lock (THREAD_ENTRY * thread_p, SYNC_RMUTEX * rmutex)
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
 
-  if (!thread_is_manager_initialized ())
+  if (cubthread::is_single_thread ())
     {
       /* Regard the resource is available, since system is working as a single thread. */
       return NO_ERROR;
@@ -2220,7 +2222,7 @@ rmutex_lock (THREAD_ENTRY * thread_p, SYNC_RMUTEX * rmutex)
 int
 rmutex_unlock (THREAD_ENTRY * thread_p, SYNC_RMUTEX * rmutex)
 {
-  if (!thread_is_manager_initialized ())
+  if (cubthread::is_single_thread ())
     {
       /* Regard the resource is available, since system is working as a single thread. */
       return NO_ERROR;
