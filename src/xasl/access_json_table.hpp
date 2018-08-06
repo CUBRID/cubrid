@@ -83,7 +83,8 @@ namespace cubxasl
       std::string m_path;
       column_on_error m_on_error;
       column_on_empty m_on_empty;
-      db_value *m_output_value_pointer;
+      db_value *m_output_value_pointer;   // todo: should match xasl->outptr_list value pointers
+      //       dig xasl_generation SYMBOL_INFO
       function_type m_function;
 
       column ();
@@ -104,8 +105,8 @@ namespace cubxasl
     struct spec_node
     {
       nested_node *m_root_node;
-      std::uint32_t m_ordinality;
-      db_value *m_output_values;
+      std::uint32_t m_ordinality; // todo: move cubxasl::json_table::nested_node or cubscan::json_table::scan_node
+      //db_value *m_output_values;  // maybe; or maybe use xasl
       regu_variable_node *m_json_reguvar;
     };
 

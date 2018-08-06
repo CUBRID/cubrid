@@ -74,16 +74,16 @@ namespace cubscan
 	  std::size_t m_row;
 	  std::size_t m_child;
 	  scan_node *node;
-	  JSON_DOC *input_doc;
-	  JSON_DOC *row_doc;
-	  JSON_DOC *process_doc;
-	  bool is_row_checked;
+	  JSON_DOC *input_doc;      // used for non-array / single row
+	  JSON_DOC *row_doc;        // used only for arrays and multiple rows
+	  JSON_DOC *process_doc;    // is either input_doc or row doc
+	  bool is_row_evaluated;
 	};
 	using scan_cursor = std::vector<cursor>;
 
 	int next_internal (cubthread::entry *thread_p, int depth, bool &success);
 
-	scan_id_struct *m_scanid;
+	//scan_id_struct *m_scanid;
 	cubxasl::json_table::spec_node *m_specp;
 	scan_node *m_scan_root;
 	scan_cursor m_scan_cursor;

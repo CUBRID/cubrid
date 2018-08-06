@@ -125,6 +125,8 @@ namespace cubxasl
     int
     column::evaluate (const JSON_DOC &input)
     {
+      // todo: should match MySQL behavior
+
       assert (m_output_value_pointer != NULL);
 
       pr_clear_value (m_output_value_pointer);
@@ -152,21 +154,21 @@ namespace cubxasl
 	      assert (false);
 	      return ER_FAILED;
 	    }
+	  if (error_code != NO_ERROR)
+	    {
+	      assert (db_value_is_null (m_output_value_pointer));
+	      error_code = m_on_error.trigger (error_code, *m_output_value_pointer);
+	    }
+	  else if (db_value_is_null (m_output_value_pointer))
+	    {
+	      error_code = m_on_empty.trigger (*m_output_value_pointer);
+	    }
+
 	}
       else
 	{
 	  // what about exists??
 	  // todo
-	}
-
-      if (error_code != NO_ERROR)
-	{
-	  assert (db_value_is_null (m_output_value_pointer));
-	  error_code = m_on_error.trigger (error_code, *m_output_value_pointer);
-	}
-      else if (db_value_is_null (m_output_value_pointer))
-	{
-	  error_code = m_on_empty.trigger (*m_output_value_pointer);
 	}
 
       if (error_code != NO_ERROR)

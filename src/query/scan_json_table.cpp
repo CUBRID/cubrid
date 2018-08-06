@@ -38,7 +38,7 @@ namespace cubscan
 
       PR_EVAL_FNC m_eval_function;
       std::vector<scan_node *> m_children;
-      scan_node *m_parent;
+      // scan_node *m_parent;
 
       int fetch_columns (const JSON_DOC &document, std::forward_list<cubxasl::json_table::column> &columns)
       {
@@ -93,6 +93,9 @@ namespace cubscan
       m_specp = &spec;
 
       // todo: build scan tree
+      // m_eval_function is generated based on eval_fnc (thread_p, nested_node.m_predicate_expression,
+      //   single_node_type);
+      // single_node_type is probably just a dummy field
     }
 
     void
@@ -210,10 +213,11 @@ namespace cubscan
       cursor &this_cursor = m_scan_cursor[depth];
       assert (this_cursor.node != NULL);
 
-      // for each row
+      // for each row X for each child
+      // todo: fix condition
       while (this_cursor.m_row < this_cursor.node->get_row_count ())
 	{
-	  if (!this_cursor.is_row_checked)
+	  if (!this_cursor.is_row_evaluated)
 	    {
 	      // todo: set this_cursor.process_doc to input_doc or row_doc
 	      // temporary: use input_doc.
@@ -230,7 +234,7 @@ namespace cubscan
 		  this_cursor.m_row++;
 		  continue;
 		}
-	      this_cursor.is_row_checked = true;
+	      this_cursor.is_row_evaluated = true;
 
 	      // fetch other columns too
 	      error_code = this_cursor.node->fetch_columns (*this_cursor.process_doc,
@@ -253,7 +257,7 @@ namespace cubscan
 	  // create cursor for next child
 	  scan_node &next_node = *this_cursor.node->m_children[this_cursor.m_child];
 	  cursor &next_cursor = m_scan_cursor[depth + 1];
-	  next_cursor.is_row_checked = false;
+	  next_cursor.is_row_evaluated = false;
 	  next_cursor.m_row = 0;
 	  next_cursor.m_child = 0;
 	  next_cursor.node = &next_node;
@@ -286,6 +290,8 @@ namespace cubscan
 
       // no more rows...
       success = false;
+
+      // todo: set columns values to NULL
 
       // remove this cursor
       m_scan_cursor_depth--;

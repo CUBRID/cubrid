@@ -331,7 +331,7 @@ struct scan_id_struct
     VA_SCAN_ID vaid;		/* Value Array Identifier */
     REGU_VALUES_SCAN_ID rvsid;	/* regu_variable list identifier */
     SHOWSTMT_SCAN_ID stsid;	/* show stmt identifier */
-    // JSON_TABLE_SCAN_ID jtid;
+    JSON_TABLE_SCAN_ID jtid;
   } s;
 
   SCAN_STATS scan_stats;
