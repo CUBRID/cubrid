@@ -114,9 +114,6 @@
 #define OR_UTIME_SIZE           4
 #define OR_DATE_SIZE            4
 
-#define OR_TIMETZ_SIZE		(OR_TIME_SIZE + sizeof (TZ_ID))
-#define OR_TIMETZ_TZID		4
-
 #define OR_DATETIME_SIZE        8
 #define OR_DATETIME_DATE        0
 #define OR_DATETIME_TIME        4
@@ -293,18 +290,6 @@
 
 #define OR_PUT_TIME(ptr, value) \
   OR_PUT_INT (ptr, *((DB_TIME *) (value)))
-
-#define OR_GET_TIMETZ(ptr, time_tz) \
-  do { \
-    (time_tz)->time = OR_GET_INT ((char *) (ptr)); \
-    (time_tz)->tz_id = OR_GET_INT (((char *) (ptr)) + OR_TIMETZ_TZID); \
-  } while (0)
-
-#define OR_PUT_TIMETZ(ptr, time_tz) \
-  do { \
-    OR_PUT_INT (((char *) ptr), (time_tz)->time); \
-    OR_PUT_INT (((char *) ptr) + OR_TIMETZ_TZID, (time_tz)->tz_id); \
-  } while (0)
 
 #define OR_GET_UTIME(ptr, value) \
   *((DB_UTIME *) (value)) = OR_GET_INT (ptr)
@@ -1420,7 +1405,6 @@ extern int or_put_bigint (OR_BUF * buf, DB_BIGINT num);
 extern int or_put_float (OR_BUF * buf, float num);
 extern int or_put_double (OR_BUF * buf, double num);
 extern int or_put_time (OR_BUF * buf, DB_TIME * timeval);
-extern int or_put_timetz (OR_BUF * buf, DB_TIMETZ * time_tz);
 extern int or_put_utime (OR_BUF * buf, DB_UTIME * timeval);
 extern int or_put_timestamptz (OR_BUF * buf, DB_TIMESTAMPTZ * ts_tz);
 extern int or_put_date (OR_BUF * buf, DB_DATE * date);
@@ -1451,7 +1435,6 @@ extern DB_BIGINT or_get_bigint (OR_BUF * buf, int *error);
 extern float or_get_float (OR_BUF * buf, int *error);
 extern double or_get_double (OR_BUF * buf, int *error);
 extern int or_get_time (OR_BUF * buf, DB_TIME * timeval);
-extern int or_get_timetz (OR_BUF * buf, DB_TIMETZ * time_tz);
 extern int or_get_utime (OR_BUF * buf, DB_UTIME * timeval);
 extern int or_get_timestamptz (OR_BUF * buf, DB_TIMESTAMPTZ * ts_tz);
 extern int or_get_date (OR_BUF * buf, DB_DATE * date);

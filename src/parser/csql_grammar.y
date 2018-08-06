@@ -25147,7 +25147,6 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_TO_DATETIME:
     case PT_TO_DATETIME_TZ:
     case PT_TO_TIMESTAMP_TZ:
-    case PT_TO_TIME_TZ:
       if (c < 1 || c > 3)
 	return NULL;
       a1 = args;

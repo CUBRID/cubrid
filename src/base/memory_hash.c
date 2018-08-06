@@ -631,18 +631,11 @@ mht_valhash (const void *key, const unsigned int ht_size)
 	  hash = mht_1str_pseudo_key (db_get_bit (val, &t_n), -1);
 	  break;
 	case DB_TYPE_TIME:
-	case DB_TYPE_TIMELTZ:
 	  {
 	    unsigned int *time = db_get_time (val);
 	    hash = (unsigned int) (*time);
 	    break;
 	  }
-	case DB_TYPE_TIMETZ:
-	  {
-	    DB_TIMETZ *time_tz = db_get_timetz (val);
-	    hash = (unsigned int) (time_tz->time);
-	  }
-	  break;
 	case DB_TYPE_TIMESTAMP:
 	case DB_TYPE_TIMESTAMPLTZ:
 	  {
@@ -2096,11 +2089,7 @@ mht_get_hash_number (const int ht_size, const DB_VALUE * val)
 	  hashcode = mht_get_shiftmult32 (val->data.date, ht_size);
 	  break;
 	case DB_TYPE_TIME:
-	case DB_TYPE_TIMELTZ:
 	  hashcode = mht_get_shiftmult32 (val->data.time, ht_size);
-	  break;
-	case DB_TYPE_TIMETZ:
-	  hashcode = mht_get_shiftmult32 (val->data.timetz.time, ht_size);
 	  break;
 	case DB_TYPE_TIMESTAMP:
 	case DB_TYPE_TIMESTAMPLTZ:

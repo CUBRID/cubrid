@@ -2293,7 +2293,6 @@ bind_value_print (char type, void *net_value, bool slow_log)
 	  write2_func ("%d-%d-%d %d:%d:%d.%03d", yr, mon, day, hh, mm, ss, ms);
       }
       break;
-    case CCI_U_TYPE_TIMETZ:
     case CCI_U_TYPE_TIMESTAMPTZ:
     case CCI_U_TYPE_DATETIMETZ:
       {
@@ -2307,11 +2306,7 @@ bind_value_print (char type, void *net_value, bool slow_log)
 	strncpy (tz_str, tz_str_p, tz_size);
 	tz_str[tz_size] = '\0';
 
-	if (type == CCI_U_TYPE_TIMETZ)
-	  {
-	    write2_func ("%d:%d:%d %s", hh, mm, ss, tz_str);
-	  }
-	else if (type == CCI_U_TYPE_TIMESTAMPTZ)
+	if (type == CCI_U_TYPE_TIMESTAMPTZ)
 	  {
 	    write2_func ("%d-%d-%d %d:%d:%d %s", yr, mon, day, hh, mm, ss, tz_str);
 	  }

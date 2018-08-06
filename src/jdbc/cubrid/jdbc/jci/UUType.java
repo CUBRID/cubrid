@@ -46,7 +46,6 @@ import cubrid.jdbc.driver.CUBRIDClob;
 import cubrid.jdbc.driver.CUBRIDBinaryString;
 import cubrid.sql.CUBRIDOID;
 import cubrid.sql.CUBRIDTimestamp;
-import cubrid.sql.CUBRIDTimetz;
 import cubrid.sql.CUBRIDTimestamptz;
 
 /**

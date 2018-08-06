@@ -447,8 +447,6 @@ static DB_VALUE ldr_float_tmpl;
 static DB_VALUE ldr_double_tmpl;
 static DB_VALUE ldr_date_tmpl;
 static DB_VALUE ldr_time_tmpl;
-static DB_VALUE ldr_timeltz_tmpl;
-static DB_VALUE ldr_timetz_tmpl;
 static DB_VALUE ldr_timestamp_tmpl;
 static DB_VALUE ldr_timestampltz_tmpl;
 static DB_VALUE ldr_timestamptz_tmpl;
@@ -550,10 +548,6 @@ static int ldr_date_elem (LDR_CONTEXT * context, const char *str, int len, DB_VA
 static int ldr_date_db_date (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att);
 static int ldr_time_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val);
 static int ldr_time_db_time (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att);
-static int ldr_timetz_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val);
-static int ldr_timeltz_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val);
-static int ldr_timetz_db_timetz (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att);
-static int ldr_timeltz_db_timeltz (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att);
 static int ldr_timestamp_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val);
 static int ldr_timestamp_db_timestamp (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att);
 static int ldr_timestamptz_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val);
@@ -1466,8 +1460,6 @@ ldr_act_attr (LDR_CONTEXT * context, const char *str, int len, LDR_TYPE type)
 	    }
 	  /* Check validity of date/time/timestamp string during validation */
 	case LDR_TIME:
-	case LDR_TIMELTZ:
-	case LDR_TIMETZ:
 	case LDR_DATE:
 	case LDR_TIMESTAMP:
 	case LDR_TIMESTAMPLTZ:
@@ -1534,8 +1526,6 @@ ldr_act_elem (LDR_CONTEXT * context, const char *str, int len, LDR_TYPE type)
 	  break;
 	  /* Check validity of date/time/timestamp string during validation */
 	case LDR_TIME:
-	case LDR_TIMELTZ:
-	case LDR_TIMETZ:
 	case LDR_DATE:
 	case LDR_TIMESTAMP:
 	case LDR_TIMESTAMPLTZ:
@@ -2879,95 +2869,6 @@ error_exit:
 }
 
 /*
- * ldr_timetz_elem -
- *    return:
- *    context():
- *    str():
- *    len():
- *    val():
- */
-static int
-ldr_timetz_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
-{
-  int err = NO_ERROR;
-  bool has_zone;
-
-  val->domain = ldr_timetz_tmpl.domain;
-  CHECK_PARSE_ERR (err, db_string_to_timetz (str, &val->data.timetz, &has_zone), context, DB_TYPE_TIMETZ, str);
-
-error_exit:
-  return err;
-}
-
-/*
- * ldr_timeltz_elem -
- *    return:
- *    context():
- *    str():
- *    len():
- *    val():
- */
-static int
-ldr_timeltz_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
-{
-  int err = NO_ERROR;
-
-  val->domain = ldr_timeltz_tmpl.domain;
-  CHECK_PARSE_ERR (err, db_string_to_timeltz (str, &val->data.time), context, DB_TYPE_TIMELTZ, str);
-
-error_exit:
-  return err;
-}
-
-/*
- * ldr_timetz_db_timetz -
- *    return:
- *    context():
- *    str():
- *    len():
- *    att():
- */
-static int
-ldr_timetz_db_timetz (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att)
-{
-  int err;
-  char *mem;
-  DB_VALUE val;
-
-  CHECK_ERR (err, ldr_timetz_elem (context, str, len, &val));
-  mem = context->mobj + att->offset;
-  CHECK_ERR (err, PRIM_SETMEM (att->domain->type, att->domain, mem, &val));
-  OBJ_SET_BOUND_BIT (context->mobj, att->storage_order);
-
-error_exit:
-  return err;
-}
-
-/*
- * ldr_timeltz_db_timeltz -
- *    return:
- *    context():
- *    str():
- *    len():
- *    att():
- */
-static int
-ldr_timeltz_db_timeltz (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * att)
-{
-  int err;
-  char *mem;
-  DB_VALUE val;
-
-  CHECK_ERR (err, ldr_timeltz_elem (context, str, len, &val));
-  mem = context->mobj + att->offset;
-  CHECK_ERR (err, PRIM_SETMEM (att->domain->type, att->domain, mem, &val));
-  OBJ_SET_BOUND_BIT (context->mobj, att->storage_order);
-
-error_exit:
-  return err;
-}
-
-/*
  * ldr_timestamp_elem -
  *    return:
  *    context():
@@ -3277,7 +3178,6 @@ ldr_check_date_time_conversion (const char *str, LDR_TYPE type)
 {
   int err = NO_ERROR;
   DB_TIME dummy_time;
-  DB_TIMETZ dummy_timetz;
   DB_DATE dummy_date;
   DB_TIMESTAMP dummy_timestamp;
   DB_TIMESTAMPTZ dummy_timestamptz;
@@ -3297,14 +3197,6 @@ ldr_check_date_time_conversion (const char *str, LDR_TYPE type)
     case LDR_TIME:
       current_type = DB_TYPE_TIME;
       err = db_string_to_time (str, &dummy_time);
-      break;
-    case LDR_TIMELTZ:
-      current_type = DB_TYPE_TIMELTZ;
-      err = db_string_to_timeltz (str, &dummy_time);
-      break;
-    case LDR_TIMETZ:
-      current_type = DB_TYPE_TIMETZ;
-      err = db_string_to_timetz (str, &dummy_timetz, &has_zone);
       break;
     case LDR_DATE:
       current_type = DB_TYPE_DATE;
@@ -4970,16 +4862,6 @@ ldr_act_add_attr (LDR_CONTEXT * context, const char *attr_name, int len)
       attdesc->setter[LDR_TIME] = &ldr_time_db_time;
       break;
 
-    case DB_TYPE_TIMELTZ:
-      attdesc->setter[LDR_STR] = &ldr_str_db_generic;
-      attdesc->setter[LDR_TIMELTZ] = &ldr_timeltz_db_timeltz;
-      break;
-
-    case DB_TYPE_TIMETZ:
-      attdesc->setter[LDR_STR] = &ldr_str_db_generic;
-      attdesc->setter[LDR_TIMETZ] = &ldr_timetz_db_timetz;
-      break;
-
     case DB_TYPE_TIMESTAMP:
       attdesc->setter[LDR_STR] = &ldr_str_db_generic;
       attdesc->setter[LDR_TIMESTAMP] = &ldr_timestamp_db_timestamp;
@@ -5797,7 +5679,6 @@ ldr_init_loader (LDR_CONTEXT * context)
 {
   int i;
   int err = NO_ERROR;
-  DB_TIMETZ timetz;
   DB_DATETIME datetime;
   DB_DATETIMETZ datetimetz;
   DB_TIMESTAMPTZ timestamptz;
@@ -5826,10 +5707,6 @@ ldr_init_loader (LDR_CONTEXT * context)
   db_make_double (&ldr_double_tmpl, (double) 0.0);
   db_make_date (&ldr_date_tmpl, 1, 1, 1996);
   db_make_time (&ldr_time_tmpl, 0, 0, 0);
-  timetz.time = 0;
-  timetz.tz_id = 0;
-  db_make_timeltz (&ldr_timeltz_tmpl, &(timetz.time));
-  db_make_timetz (&ldr_timetz_tmpl, &timetz);
   db_make_timestamp (&ldr_timestamp_tmpl, 0);
   timestamptz.timestamp = 0;
   timestamptz.tz_id = 0;
@@ -5866,8 +5743,6 @@ ldr_init_loader (LDR_CONTEXT * context)
   elem_converter[LDR_CLASS_OID] = &ldr_class_oid_elem;
   elem_converter[LDR_DATE] = &ldr_date_elem;
   elem_converter[LDR_TIME] = &ldr_time_elem;
-  elem_converter[LDR_TIMELTZ] = &ldr_timeltz_elem;
-  elem_converter[LDR_TIMETZ] = &ldr_timetz_elem;
   elem_converter[LDR_TIMESTAMP] = &ldr_timestamp_elem;
   elem_converter[LDR_TIMESTAMPLTZ] = &ldr_timestampltz_elem;
   elem_converter[LDR_TIMESTAMPTZ] = &ldr_timestamptz_elem;
@@ -6267,8 +6142,6 @@ ldr_process_constants (LDR_CONSTANT * cons)
 	case LDR_NUMERIC:
 	case LDR_DATE:
 	case LDR_TIME:
-	case LDR_TIMELTZ:
-	case LDR_TIMETZ:
 	case LDR_TIMESTAMP:
 	case LDR_TIMESTAMPLTZ:
 	case LDR_TIMESTAMPTZ:

@@ -94,7 +94,6 @@
 #define TIMEZONE_BUF_SIZE	64
 #define TIMESTAMPTZ_BUF_SIZE	(TIMESTAMP_BUF_SIZE + TIMEZONE_BUF_SIZE)
 #define DATETIMETZ_BUF_SIZE	(DATETIME_BUF_SIZE + TIMEZONE_BUF_SIZE)
-#define TIMETZ_BUF_SIZE		(TIME_BUF_SIZE + TIMEZONE_BUF_SIZE)
 
 /*
  *  For the trim operation, db_string_trim(), this operand specifies

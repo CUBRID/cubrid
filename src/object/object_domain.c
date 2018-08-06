@@ -262,8 +262,6 @@ TP_DOMAIN tp_Elo_domain = { NULL, NULL, &tp_Elo, DOMAIN_INIT };	/* todo: remove 
 TP_DOMAIN tp_Blob_domain = { NULL, NULL, &tp_Blob, DOMAIN_INIT };
 TP_DOMAIN tp_Clob_domain = { NULL, NULL, &tp_Clob, DOMAIN_INIT };
 TP_DOMAIN tp_Time_domain = { NULL, NULL, &tp_Time, DOMAIN_INIT4 (DB_TIME_PRECISION, 0) };
-TP_DOMAIN tp_Timetz_domain = { NULL, NULL, &tp_Timetz, DOMAIN_INIT4 (DB_TIMETZ_PRECISION, 0) };
-TP_DOMAIN tp_Timeltz_domain = { NULL, NULL, &tp_Timeltz, DOMAIN_INIT4 (DB_TIME_PRECISION, 0) };
 TP_DOMAIN tp_Utime_domain = { NULL, NULL, &tp_Utime, DOMAIN_INIT4 (DB_TIMESTAMP_PRECISION, 0) };
 TP_DOMAIN tp_Timestamptz_domain = { NULL, NULL, &tp_Timestamptz, DOMAIN_INIT4 (DB_TIMESTAMPTZ_PRECISION, 0) };
 TP_DOMAIN tp_Timestampltz_domain = { NULL, NULL, &tp_Timestampltz, DOMAIN_INIT4 (DB_TIMESTAMP_PRECISION, 0) };
@@ -367,8 +365,6 @@ static TP_DOMAIN *tp_Domains[] = {
   &tp_Datetimetz_domain,
   &tp_Datetimeltz_domain,
   &tp_Json_domain,
-  &tp_Timetz_domain,
-  &tp_Timeltz_domain,
   &tp_Null_domain,
   &tp_Null_domain,
   &tp_Null_domain,
@@ -410,71 +406,71 @@ static TP_DOMAIN *tp_Midxkey_domains[TP_NUM_MIDXKEY_DOMAIN_LIST + 1] = {
 static TP_DOMAIN *tp_Bigint_conv[] = {
   &tp_Bigint_domain, &tp_Integer_domain, &tp_Short_domain, &tp_Float_domain,
   &tp_Double_domain, &tp_Numeric_domain, &tp_Monetary_domain, &tp_Time_domain,
-  &tp_Timeltz_domain, NULL
+  NULL
 };
 
 static TP_DOMAIN *tp_Integer_conv[] = {
   &tp_Integer_domain, &tp_Bigint_domain, &tp_Short_domain, &tp_Float_domain,
   &tp_Double_domain, &tp_Numeric_domain, &tp_Monetary_domain,
-  &tp_Time_domain, &tp_Timeltz_domain, NULL
+  &tp_Time_domain, NULL
 };
 
 static TP_DOMAIN *tp_Short_conv[] = {
   &tp_Short_domain, &tp_Integer_domain, &tp_Bigint_domain, &tp_Float_domain,
   &tp_Double_domain, &tp_Numeric_domain, &tp_Monetary_domain,
-  &tp_Time_domain, &tp_Timeltz_domain, NULL
+  &tp_Time_domain, NULL
 };
 
 static TP_DOMAIN *tp_Float_conv[] = {
   &tp_Float_domain, &tp_Double_domain, &tp_Numeric_domain, &tp_Bigint_domain,
   &tp_Integer_domain, &tp_Short_domain, &tp_Monetary_domain,
-  &tp_Time_domain, &tp_Timeltz_domain, NULL
+  &tp_Time_domain, NULL
 };
 
 static TP_DOMAIN *tp_Double_conv[] = {
   &tp_Double_domain, &tp_Float_domain, &tp_Numeric_domain, &tp_Bigint_domain,
   &tp_Integer_domain, &tp_Short_domain, &tp_Monetary_domain,
-  &tp_Time_domain, &tp_Timeltz_domain, NULL
+  &tp_Time_domain, NULL
 };
 
 static TP_DOMAIN *tp_Numeric_conv[] = {
   &tp_Numeric_domain, &tp_Double_domain, &tp_Float_domain, &tp_Bigint_domain,
   &tp_Integer_domain, &tp_Short_domain, &tp_Monetary_domain,
-  &tp_Time_domain, &tp_Timeltz_domain, NULL
+  &tp_Time_domain, NULL
 };
 
 static TP_DOMAIN *tp_Monetary_conv[] = {
   &tp_Monetary_domain, &tp_Double_domain, &tp_Float_domain,
   &tp_Bigint_domain, &tp_Integer_domain,
-  &tp_Short_domain, &tp_Time_domain, &tp_Timeltz_domain, NULL
+  &tp_Short_domain, &tp_Time_domain, NULL
 };
 
 static TP_DOMAIN *tp_String_conv[] = {
   &tp_String_domain, &tp_Char_domain, &tp_VarNChar_domain, &tp_NChar_domain,
   &tp_Datetime_domain, &tp_Utime_domain, &tp_Time_domain,
   &tp_Date_domain, &tp_Datetimetz_domain, &tp_Timestamptz_domain,
-  &tp_Timetz_domain, NULL
+  NULL
 };
 
 static TP_DOMAIN *tp_Char_conv[] = {
   &tp_Char_domain, &tp_String_domain, &tp_NChar_domain, &tp_VarNChar_domain,
   &tp_Datetime_domain, &tp_Utime_domain, &tp_Time_domain,
   &tp_Date_domain, &tp_Datetimetz_domain, &tp_Timestamptz_domain,
-  &tp_Timetz_domain, NULL
+  NULL
 };
 
 static TP_DOMAIN *tp_NChar_conv[] = {
   &tp_NChar_domain, &tp_VarNChar_domain, &tp_Char_domain, &tp_String_domain,
   &tp_Datetime_domain, &tp_Utime_domain, &tp_Time_domain,
   &tp_Date_domain, &tp_Datetimetz_domain, &tp_Timestamptz_domain,
-  &tp_Timetz_domain, NULL
+  NULL
 };
 
 static TP_DOMAIN *tp_VarNChar_conv[] = {
   &tp_VarNChar_domain, &tp_NChar_domain, &tp_String_domain, &tp_Char_domain,
   &tp_Datetime_domain, &tp_Utime_domain, &tp_Time_domain,
   &tp_Date_domain, &tp_Datetimetz_domain, &tp_Timestamptz_domain,
-  &tp_Timetz_domain, NULL
+  NULL
 };
 
 static TP_DOMAIN *tp_Bit_conv[] = {
@@ -544,8 +540,7 @@ TP_DOMAIN **tp_Domain_conversion_matrix[] = {
   NULL,				/* DB_TYPE_TIMESTAMPLTZ */
   NULL,				/* DB_TYPE_DATETIMETZ */
   NULL,				/* DB_TYPE_DATETIMELTZ */
-  NULL,				/* DB_TYPE_TIMETZ */
-  NULL				/* DB_TYPE_TIMELTZ */
+  NULL				/* DB_TYPE_JSON */
 };
 
 #if defined (SERVER_MODE)
@@ -566,7 +561,6 @@ static const TP_DOMAIN *tp_domain_find_compatible (const TP_DOMAIN * src, const 
 static int tp_null_terminate (const DB_VALUE * src, char **strp, int str_len, bool * do_alloc);
 #endif
 static int tp_atotime (const DB_VALUE * src, DB_TIME * temp);
-static int tp_atotimetz (const DB_VALUE * src, DB_TIMETZ * temp, bool to_timeltz);
 static int tp_atodate (const DB_VALUE * src, DB_DATE * temp);
 static int tp_atoutime (const DB_VALUE * src, DB_UTIME * temp);
 static int tp_atotimestamptz (const DB_VALUE * src, DB_TIMESTAMPTZ * temp);
@@ -902,11 +896,7 @@ tp_get_fixed_precision (DB_TYPE domain_type)
       precision = DB_DATE_PRECISION;
       break;
     case DB_TYPE_TIME:
-    case DB_TYPE_TIMELTZ:
       precision = DB_TIME_PRECISION;
-      break;
-    case DB_TYPE_TIMETZ:
-      precision = DB_TIMETZ_PRECISION;
       break;
     case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPLTZ:
@@ -1541,8 +1531,6 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
     case DB_TYPE_TIME:
-    case DB_TYPE_TIMELTZ:
-    case DB_TYPE_TIMETZ:
     case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPTZ:
     case DB_TYPE_TIMESTAMPLTZ:
@@ -1959,8 +1947,6 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
     case DB_TYPE_TIME:
-    case DB_TYPE_TIMELTZ:
-    case DB_TYPE_TIMETZ:
     case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPLTZ:
     case DB_TYPE_TIMESTAMPTZ:
@@ -2585,7 +2571,7 @@ tp_domain_find_noparam (DB_TYPE type, bool is_desc)
   /* tp_domain_find_with_no_param */
   /* type : DB_TYPE_NULL DB_TYPE_INTEGER DB_TYPE_FLOAT DB_TYPE_DOUBLE DB_TYPE_ELO DB_TYPE_TIME DB_TYPE_BLOB
    * DB_TYPE_CLOB DB_TYPE_TIMESTAMP DB_TYPE_DATE DB_TYPE_DATETIME DB_TYPE_MONETARY DB_TYPE_SHORT DB_TYPE_BIGINT
-   * DB_TYPE_TIMESTAMPTZ DB_TYPE_TIMESTAMPLTZ DB_TYPE_DATETIMETZ DB_TYPE_DATETIMELTZ DB_TYPE_TIMETZ DB_TYPE_TIMELTZ */
+   * DB_TYPE_TIMESTAMPTZ DB_TYPE_TIMESTAMPLTZ DB_TYPE_DATETIMETZ DB_TYPE_DATETIMELTZ */
 
   for (dom = tp_domain_get_list (type, NULL); dom != NULL; dom = dom->next_list)
     {
@@ -3244,8 +3230,6 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 	case DB_TYPE_BLOB:
 	case DB_TYPE_CLOB:
 	case DB_TYPE_TIME:
-	case DB_TYPE_TIMELTZ:
-	case DB_TYPE_TIMETZ:
 	case DB_TYPE_TIMESTAMP:
 	case DB_TYPE_TIMESTAMPTZ:
 	case DB_TYPE_TIMESTAMPLTZ:
@@ -3578,8 +3562,6 @@ tp_domain_add (TP_DOMAIN ** dlist, TP_DOMAIN * domain)
 	    case DB_TYPE_BLOB:
 	    case DB_TYPE_CLOB:
 	    case DB_TYPE_TIME:
-	    case DB_TYPE_TIMELTZ:
-	    case DB_TYPE_TIMETZ:
 	    case DB_TYPE_TIMESTAMP:
 	    case DB_TYPE_TIMESTAMPTZ:
 	    case DB_TYPE_TIMESTAMPLTZ:
@@ -3724,8 +3706,6 @@ tp_domain_drop (TP_DOMAIN ** dlist, TP_DOMAIN * domain)
 	    case DB_TYPE_BLOB:
 	    case DB_TYPE_CLOB:
 	    case DB_TYPE_TIME:
-	    case DB_TYPE_TIMELTZ:
-	    case DB_TYPE_TIMETZ:
 	    case DB_TYPE_TIMESTAMP:
 	    case DB_TYPE_TIMESTAMPLTZ:
 	    case DB_TYPE_TIMESTAMPTZ:
@@ -4713,34 +4693,6 @@ tp_atotime (const DB_VALUE * src, DB_TIME * temp)
   int status = NO_ERROR;
 
   if (db_date_parse_time (strp, str_len, temp, &milisec) != NO_ERROR)
-    {
-      status = ER_FAILED;
-    }
-
-  return status;
-}
-
-/*
- * tp_atotimetz - coerce a string to a time with time zone.
- *    return: NO_ERROR or error code
- *    src(in): string DB_VALUE
- *    temp(out): time with TZ info container
- *    to_timeltz(in): flag that tells us if src will be converted to a timeltz
- *		      type
-
- * Note:
- *    Accepts strings that are not null terminated. Don't call this unless
- *    src is a string db_value.
- */
-static int
-tp_atotimetz (const DB_VALUE * src, DB_TIMETZ * temp, bool to_timeltz)
-{
-  char *strp = db_get_string (src);
-  int str_len = db_get_string_size (src);
-  int status = NO_ERROR;
-  bool dummy_has_zone;
-
-  if (db_string_to_timetz_ex (strp, str_len, to_timeltz, temp, &dummy_has_zone) != NO_ERROR)
     {
       status = ER_FAILED;
     }
@@ -6373,115 +6325,6 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    db_value_put_encoded_time (target, &time);
 	    break;
 	  }
-	case DB_TYPE_TIMETZ:
-	  {
-	    DB_TIMETZ *time_tz = db_get_timetz (src);
-	    db_value_put_encoded_time (target, &time_tz->time);
-	    break;
-	  }
-	case DB_TYPE_TIMELTZ:
-	  {
-	    DB_TIME *time = db_get_time (src);
-	    db_value_put_encoded_time (target, time);
-	    break;
-	  }
-	default:
-	  err = ER_FAILED;
-	  break;
-	}
-      break;
-
-    case DB_TYPE_TIMETZ:
-      switch (original_type)
-	{
-	case DB_TYPE_CHAR:
-	case DB_TYPE_VARCHAR:
-	case DB_TYPE_NCHAR:
-	case DB_TYPE_VARNCHAR:
-	  {
-	    DB_TIMETZ time_tz = { 0, 0 };
-
-	    if (tp_atotimetz (src, &time_tz, false) != NO_ERROR)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    db_make_timetz (target, &time_tz);
-	    break;
-	  }
-	case DB_TYPE_TIME:
-	case DB_TYPE_TIMELTZ:
-	  {
-	    DB_TIMETZ time_tz = { 0, 0 };
-	    DB_TIME *time = db_get_time (src);
-	    bool time_is_utc = (original_type == DB_TYPE_TIMELTZ) ? true : false;
-
-	    time_tz.time = *time;
-	    if (tz_create_session_tzid_for_time (time, time_is_utc, &time_tz.tz_id) != NO_ERROR)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-
-	    tz_tzid_convert_region_to_offset (&time_tz.tz_id);
-	    db_make_timetz (target, &time_tz);
-	    break;
-	  }
-	default:
-	  err = ER_FAILED;
-	  break;
-	}
-      break;
-
-    case DB_TYPE_TIMELTZ:
-      switch (original_type)
-	{
-	case DB_TYPE_CHAR:
-	case DB_TYPE_VARCHAR:
-	case DB_TYPE_NCHAR:
-	case DB_TYPE_VARNCHAR:
-	  {
-	    DB_TIMETZ time_tz = { 0, 0 };
-
-	    if (tp_atotimetz (src, &time_tz, true) != NO_ERROR)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    /* store only time part in UTC */
-	    db_make_timeltz (target, &time_tz.time);
-	    break;
-	  }
-	case DB_TYPE_TIMETZ:
-	  {
-	    DB_TIMETZ *time_tz = db_get_timetz (src);
-
-	    assert (tz_check_geographic_tz (&time_tz->tz_id) == NO_ERROR);
-
-	    /* copy time value (UTC) */
-	    db_make_timeltz (target, &time_tz->time);
-	    break;
-	  }
-	case DB_TYPE_TIME:
-	  {
-	    DB_TIME *time = db_get_time (src);
-	    DB_TIMETZ time_tz;
-
-	    if (tz_check_session_has_geographic_tz () != NO_ERROR)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-
-	    err = tz_create_timetz_from_ses (time, &time_tz);
-	    if (err != NO_ERROR)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    db_make_timeltz (target, time);
-	    break;
-	  }
 	default:
 	  err = ER_FAILED;
 	  break;
@@ -7217,7 +7060,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
   DB_DATETIME v_datetime;
   DB_DATETIMETZ v_datetimetz;
   DB_TIME v_time;
-  DB_TIMETZ v_timetz;
   DB_DATE v_date;
   DB_DATA_STATUS data_stat;
   DB_VALUE temp, *target;
@@ -8619,8 +8461,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  break;
 
 	case DB_TYPE_TIME:
-	case DB_TYPE_TIMELTZ:
-	case DB_TYPE_TIMETZ:
 	  status = DOMAIN_INCOMPATIBLE;
 	  break;
 
@@ -8721,8 +8561,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  break;
 
 	case DB_TYPE_TIME:
-	case DB_TYPE_TIMELTZ:
-	case DB_TYPE_TIMETZ:
 	  status = DOMAIN_INCOMPATIBLE;
 	  break;
 
@@ -8836,33 +8674,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
     case DB_TYPE_TIME:
       switch (original_type)
 	{
-	case DB_TYPE_TIMELTZ:
-	  {
-	    DB_TIME *time_utc_p;
-	    time_utc_p = db_get_time (src);
-
-	    if (tz_timeltz_to_local (time_utc_p, &v_time) != NO_ERROR)
-	      {
-		status = DOMAIN_ERROR;
-		break;
-	      }
-	    db_value_put_encoded_time (target, &v_time);
-	  }
-	  break;
-	case DB_TYPE_TIMETZ:
-	  {
-	    DB_TIMETZ *time_tz_p = db_get_timetz (src);
-
-	    if (tz_utc_timetz_to_local (&time_tz_p->time, &time_tz_p->tz_id, &v_time) != NO_ERROR)
-	      {
-		status = DOMAIN_ERROR;
-		break;
-	      }
-
-	    db_value_put_encoded_time (target, &v_time);
-	  }
-	  break;
-
 	case DB_TYPE_TIMESTAMP:
 	case DB_TYPE_TIMESTAMPLTZ:
 	  if (db_timestamp_decode_ses (db_get_timestamp (src), NULL, &v_time) != NO_ERROR)
@@ -8990,285 +8801,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    }
 
 	  if (db_make_time (target, hour, minute, second) != NO_ERROR)
-	    {
-	      return DOMAIN_ERROR;
-	    }
-	  break;
-	case DB_TYPE_ENUMERATION:
-	  {
-	    DB_VALUE varchar_val;
-	    if (tp_enumeration_to_varchar (src, &varchar_val) != NO_ERROR)
-	      {
-		status = DOMAIN_ERROR;
-		break;
-	      }
-	    status =
-	      tp_value_cast_internal (&varchar_val, target, desired_domain, coercion_mode, do_domain_select, false);
-	    break;
-	  }
-	default:
-	  status = DOMAIN_INCOMPATIBLE;
-	  break;
-	}
-      break;
-
-    case DB_TYPE_TIMELTZ:
-      switch (original_type)
-	{
-	case DB_TYPE_TIME:
-	  v_time = *(db_get_time (src));
-
-	  if (tz_check_session_has_geographic_tz () != NO_ERROR)
-	    {
-	      status = DOMAIN_ERROR;
-	      break;
-	    }
-
-	  if (tz_create_timetz_from_ses (db_get_time (src), &v_timetz) != NO_ERROR)
-	    {
-	      status = DOMAIN_ERROR;
-	      break;
-	    }
-	  db_make_timeltz (target, &v_timetz.time);
-	  break;
-	case DB_TYPE_TIMETZ:
-	  v_timetz = *(db_get_timetz (src));
-	  assert (tz_check_geographic_tz (&v_timetz.tz_id) == NO_ERROR);
-	  /* copy time value (UTC) */
-	  db_make_timeltz (target, &v_timetz.time);
-	  break;
-	case DB_TYPE_TIMESTAMP:
-	  db_timestamp_decode_utc (db_get_timestamp (src), NULL, &v_time);
-	  db_make_timeltz (target, &v_time);
-	  break;
-	case DB_TYPE_TIMESTAMPLTZ:
-	  db_timestamp_decode_utc (db_get_timestamp (src), NULL, &v_time);
-	  db_make_timeltz (target, &v_time);
-	  break;
-	case DB_TYPE_TIMESTAMPTZ:
-	  v_timestamptz = *db_get_timestamptz (src);
-	  db_timestamp_decode_utc (&v_timestamptz.timestamp, NULL, &v_time);
-	  db_make_timeltz (target, &v_time);
-	  break;
-	case DB_TYPE_DATETIME:
-	  /* convert to UTC */
-	  if (tz_create_datetimetz_from_ses (db_get_datetime (src), &v_datetimetz) != NO_ERROR)
-	    {
-	      status = DOMAIN_ERROR;
-	      break;
-	    }
-	  db_datetime_decode (&v_datetimetz.datetime, &month, &day, &year, &hour, &minute, &second, &millisecond);
-	  db_time_encode (&v_time, hour, minute, second);
-	  db_make_timeltz (target, &v_time);
-	  break;
-	case DB_TYPE_DATETIMELTZ:
-	  db_datetime_decode ((DB_DATETIME *) db_get_datetime (src), &month, &day, &year, &hour, &minute, &second,
-			      &millisecond);
-	  db_time_encode (&v_time, hour, minute, second);
-	  db_make_timeltz (target, &v_time);
-	  break;
-	case DB_TYPE_DATETIMETZ:
-	  /* copy time part (UTC) */
-	  v_datetimetz = *db_get_datetimetz (src);
-	  db_datetime_decode (&v_datetimetz.datetime, &month, &day, &year, &hour, &minute, &second, &millisecond);
-	  db_time_encode (&v_time, hour, minute, second);
-	  db_make_timeltz (target, &v_time);
-	  break;
-	case DB_TYPE_SHORT:
-	case DB_TYPE_INTEGER:
-	case DB_TYPE_BIGINT:
-	case DB_TYPE_MONETARY:
-	case DB_TYPE_FLOAT:
-	case DB_TYPE_DOUBLE:
-	  status =
-	    tp_value_cast_internal (src, &temp, tp_domain_resolve_default (DB_TYPE_TIME), coercion_mode,
-				    do_domain_select, preserve_domain);
-	  if (status != DOMAIN_COMPATIBLE)
-	    {
-	      break;
-	    }
-
-	  assert (DB_VALUE_TYPE (&temp) == DB_TYPE_TIME);
-
-	  if (tz_check_session_has_geographic_tz () != NO_ERROR)
-	    {
-	      status = DOMAIN_ERROR;
-	      break;
-	    }
-	  if (tz_create_timetz_from_ses (db_get_time (&temp), &v_timetz) != NO_ERROR)
-	    {
-	      status = DOMAIN_ERROR;
-	      break;
-	    }
-	  db_make_timeltz (target, &v_timetz.time);
-	  break;
-	case DB_TYPE_VARCHAR:
-	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
-	case DB_TYPE_VARNCHAR:
-	  if (tp_atotimetz (src, &v_timetz, true) == NO_ERROR)
-	    {
-	      db_time_decode (&v_timetz.time, &hour, &minute, &second);
-	      db_time_encode (&v_time, hour, minute, second);
-	    }
-	  else
-	    {
-	      return DOMAIN_ERROR;
-	    }
-	  db_make_timeltz (target, &v_time);
-	  break;
-	case DB_TYPE_ENUMERATION:
-	  {
-	    DB_VALUE varchar_val;
-	    if (tp_enumeration_to_varchar (src, &varchar_val) != NO_ERROR)
-	      {
-		status = DOMAIN_ERROR;
-		break;
-	      }
-	    status =
-	      tp_value_cast_internal (&varchar_val, target, desired_domain, coercion_mode, do_domain_select, false);
-	    break;
-	  }
-	default:
-	  status = DOMAIN_INCOMPATIBLE;
-	  break;
-	}
-      break;
-
-    case DB_TYPE_TIMETZ:
-      switch (original_type)
-	{
-	case DB_TYPE_TIME:
-	  if (tz_create_timetz_from_ses (db_get_time (src), &v_timetz) != NO_ERROR)
-	    {
-	      status = DOMAIN_ERROR;
-	      break;
-	    }
-
-	  db_make_timetz (target, &v_timetz);
-	  break;
-	case DB_TYPE_TIMELTZ:
-	  /* copy time value and store TZ of session */
-	  v_timetz.time = *(db_get_time (src));
-	  if (tz_create_session_tzid_for_time (&(v_timetz.time), true, &(v_timetz.tz_id)) != NO_ERROR)
-	    {
-	      status = DOMAIN_ERROR;
-	      break;
-	    }
-
-	  /* Convert region zone into offset zone for timetz type */
-	  tz_tzid_convert_region_to_offset (&v_timetz.tz_id);
-	  db_make_timetz (target, &v_timetz);
-	  break;
-	case DB_TYPE_TIMESTAMP:
-	case DB_TYPE_TIMESTAMPLTZ:
-	  {
-	    db_timestamp_decode_utc (db_get_timestamp (src), NULL, &v_time);
-	    if (tz_create_session_tzid_for_time (&v_time, true, &v_timetz.tz_id) != NO_ERROR)
-	      {
-		status = DOMAIN_ERROR;
-		break;
-	      }
-	    v_timetz.time = v_time;
-
-	    /* Convert region zone into offset zone for timetz type */
-	    tz_tzid_convert_region_to_offset (&v_timetz.tz_id);
-	    db_make_timetz (target, &v_timetz);
-	    break;
-	  }
-	case DB_TYPE_TIMESTAMPTZ:
-	  {
-	    v_timestamptz = *db_get_timestamptz (src);
-
-	    db_timestamp_decode_utc (&v_timestamptz.timestamp, NULL, &v_time);
-	    v_timetz.time = v_time;
-	    v_timetz.tz_id = v_timestamptz.tz_id;
-
-	    /* Convert region zone into offset zone for timetz type */
-	    tz_tzid_convert_region_to_offset (&v_timetz.tz_id);
-	    db_make_timetz (target, &v_timetz);
-	    break;
-	  }
-	case DB_TYPE_DATETIME:
-	  {
-	    if (tz_create_datetimetz_from_ses (db_get_datetime (src), &v_datetimetz) != NO_ERROR)
-	      {
-		status = DOMAIN_ERROR;
-		break;
-	      }
-
-	    db_datetime_decode (&v_datetimetz.datetime, &month, &day, &year, &hour, &minute, &second, &millisecond);
-	    db_time_encode (&v_time, hour, minute, second);
-	    v_timetz.time = v_time;
-	    v_timetz.tz_id = v_datetimetz.tz_id;
-
-	    /* Convert region zone into offset zone for timetz type */
-	    tz_tzid_convert_region_to_offset (&v_timetz.tz_id);
-	    db_make_timetz (target, &v_timetz);
-	    break;
-	  }
-	case DB_TYPE_DATETIMELTZ:
-	  {
-	    db_datetime_decode ((DB_DATETIME *) db_get_datetime (src), &month, &day, &year, &hour, &minute, &second,
-				&millisecond);
-	    db_time_encode (&v_time, hour, minute, second);
-	    if (tz_create_session_tzid_for_time (&v_time, true, &v_timetz.tz_id) != NO_ERROR)
-	      {
-		status = DOMAIN_ERROR;
-		break;
-	      }
-
-	    /* Convert region zone into offset zone for timetz type */
-	    tz_tzid_convert_region_to_offset (&v_timetz.tz_id);
-	    v_timetz.time = v_time;
-	    db_make_timetz (target, &v_timetz);
-	    break;
-	  }
-	case DB_TYPE_DATETIMETZ:
-	  {
-	    v_datetimetz = *db_get_datetimetz (src);
-	    db_datetime_decode (&v_datetimetz.datetime, &month, &day, &year, &hour, &minute, &second, &millisecond);
-	    db_time_encode (&v_time, hour, minute, second);
-	    v_timetz.time = v_time;
-	    v_timetz.tz_id = v_datetimetz.tz_id;
-
-	    /* Convert region zone into offset zone for timetz type */
-	    tz_tzid_convert_region_to_offset (&v_timetz.tz_id);
-	    db_make_timetz (target, &v_timetz);
-	    break;
-	  }
-	case DB_TYPE_SHORT:
-	case DB_TYPE_INTEGER:
-	case DB_TYPE_BIGINT:
-	case DB_TYPE_MONETARY:
-	case DB_TYPE_FLOAT:
-	case DB_TYPE_DOUBLE:
-	  status =
-	    tp_value_cast_internal (src, &temp, tp_domain_resolve_default (DB_TYPE_TIME), coercion_mode,
-				    do_domain_select, preserve_domain);
-	  if (status != DOMAIN_COMPATIBLE)
-	    {
-	      break;
-	    }
-
-	  assert (DB_VALUE_TYPE (&temp) == DB_TYPE_TIME);
-
-	  if (tz_create_timetz_from_ses (db_get_time (&temp), &v_timetz) != NO_ERROR)
-	    {
-	      status = DOMAIN_ERROR;
-	      break;
-	    }
-	  db_make_timetz (target, &v_timetz);
-	  break;
-	case DB_TYPE_VARCHAR:
-	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
-	case DB_TYPE_VARNCHAR:
-	  if (tp_atotimetz (src, &v_timetz, false) == NO_ERROR)
-	    {
-	      db_make_timetz (target, &v_timetz);
-	    }
-	  else
 	    {
 	      return DOMAIN_ERROR;
 	    }
@@ -9867,8 +9399,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 
 	case DB_TYPE_DATE:
 	case DB_TYPE_TIME:
-	case DB_TYPE_TIMETZ:
-	case DB_TYPE_TIMELTZ:
 	case DB_TYPE_TIMESTAMP:
 	case DB_TYPE_TIMESTAMPTZ:
 	case DB_TYPE_TIMESTAMPLTZ:
@@ -9894,20 +9424,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		break;
 	      case DB_TYPE_TIME:
 		db_time_to_string (new_string, max_size, (DB_TIME *) db_get_time (src));
-		break;
-	      case DB_TYPE_TIMETZ:
-		v_timetz = *db_get_timetz (src);
-		db_timetz_to_string (new_string, max_size, &v_timetz.time, &v_timetz.tz_id);
-		break;
-	      case DB_TYPE_TIMELTZ:
-		v_time = *db_get_time (src);
-		err = tz_create_session_tzid_for_time (&v_time, true, &ses_tz_id);
-		if (err != NO_ERROR)
-		  {
-		    break;
-		  }
-
-		db_timetz_to_string (new_string, max_size, &v_time, &ses_tz_id);
 		break;
 	      case DB_TYPE_TIMESTAMP:
 		db_timestamp_to_string (new_string, max_size, (DB_TIMESTAMP *) db_get_timestamp (src));
@@ -10230,8 +9746,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  case DB_TYPE_DATETIMELTZ:
 	  case DB_TYPE_DATE:
 	  case DB_TYPE_TIME:
-	  case DB_TYPE_TIMELTZ:
-	  case DB_TYPE_TIMETZ:
 	  case DB_TYPE_BIT:
 	  case DB_TYPE_VARBIT:
 	  case DB_TYPE_BLOB:
@@ -11776,8 +11290,6 @@ tp_valid_indextype (DB_TYPE type)
     case DB_TYPE_STRING:
     case DB_TYPE_OBJECT:
     case DB_TYPE_TIME:
-    case DB_TYPE_TIMETZ:
-    case DB_TYPE_TIMELTZ:
     case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPTZ:
     case DB_TYPE_TIMESTAMPLTZ:
