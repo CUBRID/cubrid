@@ -215,9 +215,10 @@ extern char db_Program_name[];
   CHECK_1ARG_RETURN_EXPR(obj1, DB_TYPE_UNKNOWN)
 
 extern int db_init (const char *program, int print_version, const char *dbname, const char *db_path,
-		    const char *vol_path, const char *log_path, const char *lob_path, const char *host_name,
-		    const bool overwrite, const char *comments, const char *addmore_vols_file, int npages,
-		    int desired_pagesize, int log_npages, int desired_log_page_size, const char *lang_charset);
+		    const char *vol_path, const char *log_path, const char *lob_path,
+		    const char *host_name, const bool overwrite, const char *comments, const char *addmore_vols_file,
+		    int npages, int desired_pagesize, int log_npages, int desired_log_page_size,
+		    const char *lang_charset);
 
 extern int db_parse_one_statement (DB_SESSION * session);
 #ifdef __cplusplus

@@ -4790,56 +4790,6 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1, const DB_VALUE * va
       d3 = (double) *db_get_time (value3);
       break;
 
-    case DB_TYPE_TIMELTZ:
-      er_status = tz_timeltz_to_local (db_get_time (value1), &time_local);
-      if (er_status == NO_ERROR)
-	{
-	  d1 = (double) time_local;
-	  er_status = tz_timeltz_to_local (db_get_time (value2), &time_local);
-	}
-
-      if (er_status == NO_ERROR)
-	{
-	  d2 = (double) time_local;
-	  er_status = tz_timeltz_to_local (db_get_time (value3), &time_local);
-	}
-
-      if (er_status == NO_ERROR)
-	{
-	  d3 = (double) time_local;
-	}
-      else
-	{
-	  RETURN_ERROR (er_status);
-	}
-      break;
-
-    case DB_TYPE_TIMETZ:
-      er_status = tz_utc_timetz_to_local (&db_get_timetz (value1)->time, &db_get_timetz (value1)->tz_id, &time_local);
-      if (er_status == NO_ERROR)
-	{
-	  d1 = (double) time_local;
-	  er_status =
-	    tz_utc_timetz_to_local (&db_get_timetz (value2)->time, &db_get_timetz (value2)->tz_id, &time_local);
-	}
-
-      if (er_status == NO_ERROR)
-	{
-	  d2 = (double) time_local;
-	  er_status =
-	    tz_utc_timetz_to_local (&db_get_timetz (value3)->time, &db_get_timetz (value3)->tz_id, &time_local);
-	}
-
-      if (er_status == NO_ERROR)
-	{
-	  d3 = (double) time_local;
-	}
-      else
-	{
-	  RETURN_ERROR (er_status);
-	}
-      break;
-
     case DB_TYPE_SHORT:
     case DB_TYPE_INTEGER:
     case DB_TYPE_FLOAT:
@@ -5188,8 +5138,6 @@ db_json_type_dbval (const DB_VALUE * json, DB_VALUE * type_res)
       const char *type;
       unsigned int length;
 
-      assert (db_get_json_raw_body (json) != NULL);
-
       type = db_json_get_type_as_str (db_get_json_document (json));
       length = strlen (type);
 
@@ -5281,9 +5229,8 @@ db_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * 
 {
   JSON_DOC *this_doc;
   const char *raw_path;
-  char *json_body;
   JSON_DOC *result_doc = NULL;
-  int error_code;
+  int error_code = NO_ERROR;
 
   if (DB_IS_NULL (json) || DB_IS_NULL (path))
     {
@@ -5302,8 +5249,7 @@ db_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * 
 
   if (result_doc != NULL)
     {
-      json_body = db_json_get_raw_json_body_from_document (result_doc);
-      db_make_json (json_res, json_body, result_doc, true);
+      db_make_json (json_res, result_doc, true);
     }
   else
     {

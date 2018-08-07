@@ -68,6 +68,7 @@
 #include "log_impl.h"
 #include "log_manager.h"
 #include "xserver_interface.h"
+#include "double_write_buffer.h"
 #endif /* SERVER_MODE */
 #if defined (LINUX)
 #include "stack_dump.h"
@@ -91,7 +92,6 @@
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
-
 
 #define ER_LOG_FILE_DIR	"server"
 #if !defined (CS_MODE)
@@ -629,8 +629,15 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_PB_NUM_PRIVATE_CHAINS "num_private_chains"
 #define PRM_NAME_PB_MONITOR_LOCKS "pgbuf_monitor_locks"
+#define PRM_NAME_PB_MAX_DEPTH_OF_SEARCHING_FOR_VICTIMS_IN_LRU_LIST "max_depth_of_searching_for_victims_in_lru_list"
 
 #define PRM_NAME_CTE_MAX_RECURSIONS "cte_max_recursions"
+
+#define PRM_NAME_DWB_SIZE "double_write_buffer_size"
+#define PRM_NAME_DWB_BLOCKS "double_write_buffer_blocks"
+#define PRM_NAME_ENABLE_DWB_FLUSH_THREAD "double_write_buffer_enable_flush_thread"
+#define PRM_NAME_ENABLE_DWB_CHECKSUM_THREAD "double_write_buffer_enable_checksum_thread"
+#define PRM_NAME_DWB_LOGGING "double_write_buffer_logging"
 
 #define PRM_NAME_JSON_LOG_ALLOCATIONS "json_log_allocations"
 
@@ -644,6 +651,9 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_THREAD_CONNECTION_TIMEOUT_SECONDS    "thread_connection_timeout_seconds"
 #define PRM_NAME_THREAD_WORKER_POOLING                "thread_worker_pooling"
 #define PRM_NAME_THREAD_WORKER_TIMEOUT_SECONDS        "thread_worker_timeout_seconds"
+
+#define PRM_NAME_REPL_GENERATOR_BUFFER_SIZE "replication_generator_buffer_size"
+#define PRM_NAME_REPL_CONSUMER_BUFFER_SIZE "replication_consumer_buffer_size"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
@@ -2134,6 +2144,41 @@ static int prm_thread_worker_timeout_seconds_default = 300;
 static int prm_thread_worker_timeout_seconds_upper = 60 * 60;	// one hour
 static int prm_thread_worker_timeout_seconds_lower = -1;	// infinite
 static unsigned int prm_thread_worker_timeout_seconds_flag = 0;
+
+unsigned int PRM_DWB_SIZE = 2 * 1024 * 1024;	/* 2M */
+static unsigned int prm_dwb_size_flag = 0;
+static unsigned int prm_dwb_size_default = (2 * 1024 * 1024);	/* 2M */
+static unsigned int prm_dwb_size_upper = (32 * 1024 * 1024);	/* 32M */
+static unsigned int prm_dwb_size_lower = 0;
+
+unsigned int PRM_DWB_BLOCKS = 2;
+static unsigned int prm_dwb_blocks_flag = 0;
+static unsigned int prm_dwb_blocks_default = 2;
+static unsigned int prm_dwb_blocks_upper = 32;
+static unsigned int prm_dwb_blocks_lower = 0;
+
+bool PRM_ENABLE_DWB_FLUSH_THREAD = true;
+static bool prm_enable_dwb_flush_thread_default = true;
+static unsigned int prm_enable_dwb_flush_thread_flag = 0;
+
+bool PRM_ENABLE_DWB_CHECKSUM_THREAD = true;
+static unsigned int prm_dwb_checksum_thread_flag = 0;
+static bool prm_enable_dwb_checksum_thread_default = true;
+static unsigned int prm_enable_dwb_checksum_thread_flag = 0;
+
+bool PRM_DWB_LOGGING = false;
+static bool prm_dwb_logging_default = false;
+static unsigned int prm_dwb_logging_flag = 0;
+
+UINT64 PRM_REPL_GENERATOR_BUFFER_SIZE = 10 * 1024 * 1024;
+static UINT64 prm_repl_generator_buffer_size_default = 10 * 1024 * 1024;
+static UINT64 prm_repl_generator_buffer_size_lower = 100 * 1024;
+static unsigned int prm_repl_generator_buffer_size_flag = 0;
+
+UINT64 PRM_REPL_CONSUMER_BUFFER_SIZE = 10 * 1024 * 1024;
+static UINT64 prm_repl_consumer_buffer_size_default = 10 * 1024 * 1024;
+static UINT64 prm_repl_consumer_buffer_size_lower = 100 * 1024;
+static unsigned int prm_repl_consumer_buffer_size_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5442,6 +5487,85 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_THREAD_WORKER_TIMEOUT_SECONDS,
    (void *) &prm_thread_worker_timeout_seconds_upper,
    (void *) &prm_thread_worker_timeout_seconds_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_REPL_GENERATOR_BUFFER_SIZE,
+   PRM_NAME_REPL_GENERATOR_BUFFER_SIZE,
+   (PRM_FOR_SERVER | PRM_SIZE_UNIT),
+   PRM_BIGINT,
+   &prm_repl_generator_buffer_size_flag,
+   (void *) &prm_repl_generator_buffer_size_default,
+   (void *) &PRM_REPL_GENERATOR_BUFFER_SIZE,
+   (void *) NULL, (void *) &prm_repl_generator_buffer_size_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_REPL_CONSUMER_BUFFER_SIZE,
+   PRM_NAME_REPL_CONSUMER_BUFFER_SIZE,
+   (PRM_FOR_SERVER | PRM_SIZE_UNIT),
+   PRM_BIGINT,
+   &prm_repl_consumer_buffer_size_flag,
+   (void *) &prm_repl_consumer_buffer_size_default,
+   (void *) &PRM_REPL_CONSUMER_BUFFER_SIZE,
+   (void *) NULL, (void *) &prm_repl_consumer_buffer_size_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_DWB_SIZE,
+   PRM_NAME_DWB_SIZE,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE),
+   PRM_INTEGER,
+   &prm_dwb_size_flag,
+   (void *) &prm_dwb_size_default,
+   (void *) &PRM_DWB_SIZE,
+   (void *) &prm_dwb_size_upper,
+   (void *) &prm_dwb_size_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_DWB_BLOCKS,
+   PRM_NAME_DWB_BLOCKS,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE),
+   PRM_INTEGER,
+   &prm_dwb_blocks_flag,
+   (void *) &prm_dwb_blocks_default,
+   (void *) &PRM_DWB_BLOCKS,
+   (void *) &prm_dwb_blocks_upper,
+   (void *) &prm_dwb_blocks_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_ENABLE_DWB_FLUSH_THREAD,
+   PRM_NAME_ENABLE_DWB_FLUSH_THREAD,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE),
+   PRM_BOOLEAN,
+   &prm_enable_dwb_flush_thread_flag,
+   (void *) &prm_enable_dwb_flush_thread_default,
+   (void *) &PRM_ENABLE_DWB_FLUSH_THREAD,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_ENABLE_DWB_CHECKSUM_THREAD,
+   PRM_NAME_ENABLE_DWB_CHECKSUM_THREAD,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE),
+   PRM_BOOLEAN,
+   &prm_dwb_checksum_thread_flag,
+   (void *) &prm_enable_dwb_checksum_thread_default,
+   (void *) &PRM_ENABLE_DWB_CHECKSUM_THREAD,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_DWB_LOGGING,
+   PRM_NAME_DWB_LOGGING,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE),
+   PRM_BOOLEAN,
+   &prm_dwb_logging_flag,
+   (void *) &prm_dwb_logging_default,
+   (void *) &PRM_DWB_LOGGING,
+   (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
@@ -9198,6 +9322,7 @@ sysprm_set_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag, bool du
 	}
       tz_set_tz_region_system (&tz_region_system);
     }
+
   /* Set the cached parsed session timezone region on the client */
 #if !defined(SERVER_MODE)
   if (sysprm_get_id (prm) == PRM_ID_TIMEZONE)

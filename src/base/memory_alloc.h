@@ -223,38 +223,55 @@ extern void db_clear_private_heap (THREAD_ENTRY * thread_p, HL_HEAPID heap_id);
 extern HL_HEAPID db_change_private_heap (THREAD_ENTRY * thread_p, HL_HEAPID heap_id);
 extern HL_HEAPID db_replace_private_heap (THREAD_ENTRY * thread_p);
 extern void db_destroy_private_heap (THREAD_ENTRY * thread_p, HL_HEAPID heap_id);
+
 #if !defined(NDEBUG)
 #define db_private_alloc(thrd, size) \
         db_private_alloc_debug(thrd, size, true, __FILE__, __LINE__)
-extern void *db_private_alloc_debug (THREAD_ENTRY * thrd, size_t size, bool rc_track, const char *caller_file,
-				     int caller_line);
 #define db_private_free(thrd, ptr) \
         db_private_free_debug(thrd, ptr, true, __FILE__, __LINE__)
-extern void db_private_free_debug (THREAD_ENTRY * thrd, void *ptr, bool rc_track, const char *caller_file,
-				   int caller_line);
 #define db_private_realloc(thrd, ptr, size) \
         db_private_realloc_debug(thrd, ptr, size, true, __FILE__, __LINE__)
-extern void *db_private_realloc_debug (THREAD_ENTRY * thrd, void *ptr, size_t size, bool rc_track,
-				       const char *caller_file, int caller_line);
-#else /* NDEBUG */
-#define db_private_alloc(thrd, size) \
-        db_private_alloc_release(thrd, size, false)
-extern void *db_private_alloc_release (THREAD_ENTRY * thrd, size_t size, bool rc_track);
-#define db_private_free(thrd, ptr) \
-        db_private_free_release(thrd, ptr, false)
-extern void db_private_free_release (THREAD_ENTRY * thrd, void *ptr, bool rc_track);
-#define db_private_realloc(thrd, ptr, size) \
-        db_private_realloc_release(thrd, ptr, size, false)
-extern void *db_private_realloc_release (THREAD_ENTRY * thrd, void *ptr, size_t size, bool rc_track);
-#endif /* NDEBUG */
 
 #ifdef __cplusplus
 extern "C"
 {
 #endif
+  extern void *db_private_alloc_debug (THREAD_ENTRY * thrd, size_t size, bool rc_track, const char *caller_file,
+				       int caller_line);
+  extern void db_private_free_debug (THREAD_ENTRY * thrd, void *ptr, bool rc_track, const char *caller_file,
+				     int caller_line);
+  extern void *db_private_realloc_debug (THREAD_ENTRY * thrd, void *ptr, size_t size, bool rc_track,
+					 const char *caller_file, int caller_line);
+#ifdef __cplusplus
+}
+#endif
 
+#else /* NDEBUG */
+#define db_private_alloc(thrd, size) \
+        db_private_alloc_release(thrd, size, false)
+#define db_private_free(thrd, ptr) \
+        db_private_free_release(thrd, ptr, false)
+#define db_private_realloc(thrd, ptr, size) \
+        db_private_realloc_release(thrd, ptr, size, false)
+
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+  extern void *db_private_alloc_release (THREAD_ENTRY * thrd, size_t size, bool rc_track);
+  extern void db_private_free_release (THREAD_ENTRY * thrd, void *ptr, bool rc_track);
+  extern void *db_private_realloc_release (THREAD_ENTRY * thrd, void *ptr, size_t size, bool rc_track);
+#ifdef __cplusplus
+}
+#endif
+#endif				/* NDEBUG */
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif
   extern char *db_private_strdup (THREAD_ENTRY * thrd, const char *s);
-
 #ifdef __cplusplus
 }
 #endif

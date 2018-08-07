@@ -65,6 +65,8 @@ namespace cubpacking
       size_t get_packed_bigint_size (size_t curr_offset);
       int pack_bigint (std::int64_t *value);
       int unpack_bigint (std::int64_t *value);
+      int pack_bigint (std::uint64_t *value);
+      int unpack_bigint (std::uint64_t *value);
 
       int pack_int_array (const int *array, const int count);
       int unpack_int_array (int *array, int &count);

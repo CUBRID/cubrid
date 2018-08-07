@@ -599,9 +599,9 @@ createdb (UTIL_FUNCTION_ARG * arg)
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
 
   db_login ("DBA", NULL);
-  status =
-    db_init (program_name, true, database_name, volume_path, NULL, log_path, lob_path, host_name, overwrite, comment,
-	     volume_spec_file_name, db_volume_pages, db_page_size, log_volume_pages, log_page_size, cubrid_charset);
+  status = db_init (program_name, true, database_name, volume_path, NULL, log_path, lob_path, host_name, overwrite,
+		    comment, volume_spec_file_name, db_volume_pages, db_page_size, log_volume_pages, log_page_size,
+		    cubrid_charset);
 
   if (status != NO_ERROR)
     {
@@ -1305,9 +1305,8 @@ copydb (UTIL_FUNCTION_ARG * arg)
 	  lob_path = strcpy (lob_pathbuf, s);
 	}
     }
-  if (boot_copy
-      (src_db_name, dest_db_name, db_path, log_path, lob_path, server_name, ext_path, control_file_name,
-       overwrite) != NO_ERROR)
+  if (boot_copy (src_db_name, dest_db_name, db_path, log_path, lob_path, server_name, ext_path, control_file_name,
+		 overwrite) != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       goto error_exit;

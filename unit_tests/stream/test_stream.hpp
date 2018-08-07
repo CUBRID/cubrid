@@ -21,7 +21,7 @@
 #define _TEST_STREAM_HPP_
 
 #include "packable_object.hpp"
-#include "packing_stream.hpp"
+#include "multi_thread_stream.hpp"
 #include "stream_entry.hpp"
 #include "thread_task.hpp"
 #include "thread_worker_pool.hpp"
@@ -150,7 +150,7 @@ namespace test_stream
     int data_size;
   };
 
-  class test_stream_entry : public cubstream::entry
+  class test_stream_entry : public cubstream::entry<cubpacking::packable_object>
   {
     private:
       test_stream_entry_header m_header;
@@ -158,11 +158,11 @@ namespace test_stream
       cubpacking::packer m_serializator;
 
     public:
-      test_stream_entry (cubstream::packing_stream *stream_p) : entry (stream_p) { };
+      test_stream_entry (cubstream::multi_thread_stream *stream_p) : entry (stream_p) { };
 
       packable_factory *get_builder ();
 
-      size_t get_header_size ()
+      size_t get_packed_header_size ()
       {
 	size_t header_size = 0;
 	cubpacking::packer *serializator = get_packer ();
@@ -237,7 +237,7 @@ namespace test_stream
 	return &m_serializator;
       };
 
-      bool is_equal (const cubstream::entry *other)
+      bool is_equal (const cubstream::entry<cubpacking::packable_object> *other)
       {
 	unsigned int i;
 	const test_stream_entry *other_t = dynamic_cast <const test_stream_entry *> (other);
@@ -285,7 +285,7 @@ namespace test_stream
       static test_stream_entry **g_entries;
       static test_stream_entry **g_unpacked_entries;
 
-      static cubstream::packing_stream *g_stream;
+      static cubstream::multi_thread_stream *g_stream;
 
       static volatile int g_packed_entries_cnt;
       static volatile int g_unpacked_entries_cnt;
@@ -297,6 +297,8 @@ namespace test_stream
 
       static std::bitset<1024> g_running_packers;
       static std::bitset<1024> g_running_readers;
+
+      static void update_stream_drop_position (void);
   };
 
   class stream_pack_task : public cubthread::task<cubthread::entry>

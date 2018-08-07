@@ -2228,6 +2228,11 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool is_final)
 
 	  db_private_free_and_init (thread_p, xasl->topn_items);
 	}
+
+      // clear trace stats
+      memset (&xasl->orderby_stats, 0, sizeof (ORDERBY_STATS));
+      memset (&xasl->groupby_stats, 0, sizeof (GROUPBY_STATS));
+      memset (&xasl->xasl_stats, 0, sizeof (XASL_STATS));
     }
 
   switch (xasl->type)
@@ -18545,8 +18550,6 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 		case DB_TYPE_TIMESTAMPTZ:
 		case DB_TYPE_TIMESTAMPLTZ:
 		case DB_TYPE_TIME:
-		case DB_TYPE_TIMETZ:
-		case DB_TYPE_TIMELTZ:
 		  break;
 
 		default:
@@ -21985,12 +21988,6 @@ qexec_schema_get_type_name_from_id (DB_TYPE id)
 
     case DB_TYPE_TIME:
       return "TIME";
-
-    case DB_TYPE_TIMETZ:
-      return "TIMETZ";
-
-    case DB_TYPE_TIMELTZ:
-      return "TIMELTZ";
 
     case DB_TYPE_TIMESTAMP:
       return "TIMESTAMP";

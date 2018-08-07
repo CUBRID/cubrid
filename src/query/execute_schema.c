@@ -10946,7 +10946,6 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
   const int MIN_DIGITS_FOR_SHORT = TP_SMALLINT_PRECISION;
   const int MIN_DIGITS_FOR_BIGINT = TP_BIGINT_PRECISION;
   const int MIN_CHARS_FOR_TIME = TP_TIME_AS_CHAR_LENGTH;
-  const int MIN_CHARS_FOR_TIMETZ = TP_TIMETZ_AS_CHAR_LENGTH;
   const int MIN_CHARS_FOR_DATE = TP_DATE_AS_CHAR_LENGTH;
   const int MIN_CHARS_FOR_DATETIME = TP_DATETIME_AS_CHAR_LENGTH;
   const int MIN_CHARS_FOR_DATETIMETZ = TP_DATETIMETZ_AS_CHAR_LENGTH;
@@ -11286,73 +11285,11 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
     case DB_TYPE_TIME:
       switch (new_type)
 	{
-	case DB_TYPE_TIMETZ:
-	case DB_TYPE_TIMELTZ:
-	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
-	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARCHAR:
 	case DB_TYPE_VARNCHAR:
 	  if (req_prec >= MIN_CHARS_FOR_TIME)
-	    {
-	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
-	    }
-	  else
-	    {
-	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
-	    }
-	  break;
-	case DB_TYPE_ENUMERATION:
-	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
-	  break;
-	default:
-	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
-	  break;
-	}
-      break;
-
-    case DB_TYPE_TIMETZ:
-      switch (new_type)
-	{
-	case DB_TYPE_TIME:
-	case DB_TYPE_TIMELTZ:
-	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
-	  break;
-	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
-	case DB_TYPE_VARCHAR:
-	case DB_TYPE_VARNCHAR:
-	  if (req_prec >= MIN_CHARS_FOR_TIMETZ)
-	    {
-	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
-	    }
-	  else
-	    {
-	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
-	    }
-	  break;
-	case DB_TYPE_ENUMERATION:
-	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
-	  break;
-	default:
-	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
-	  break;
-	}
-      break;
-
-    case DB_TYPE_TIMELTZ:
-      switch (new_type)
-	{
-	case DB_TYPE_TIME:
-	case DB_TYPE_TIMETZ:
-	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
-	  break;
-	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
-	case DB_TYPE_VARCHAR:
-	case DB_TYPE_VARNCHAR:
-	  if (req_prec >= MIN_CHARS_FOR_TIMETZ)
 	    {
 	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
 	    }
@@ -11407,8 +11344,6 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
       switch (new_type)
 	{
 	case DB_TYPE_TIME:
-	case DB_TYPE_TIMETZ:
-	case DB_TYPE_TIMELTZ:
 	case DB_TYPE_DATE:
 	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_PSEUDO_UPGRADE;
 	  break;
@@ -11445,8 +11380,6 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
       switch (new_type)
 	{
 	case DB_TYPE_TIME:
-	case DB_TYPE_TIMETZ:
-	case DB_TYPE_TIMELTZ:
 	case DB_TYPE_DATE:
 	case DB_TYPE_DATETIME:
 	case DB_TYPE_DATETIMELTZ:
@@ -11483,8 +11416,6 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
       switch (new_type)
 	{
 	case DB_TYPE_TIME:
-	case DB_TYPE_TIMETZ:
-	case DB_TYPE_TIMELTZ:
 	case DB_TYPE_DATE:
 	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_PSEUDO_UPGRADE;
 	  break;
@@ -11521,8 +11452,6 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
       switch (new_type)
 	{
 	case DB_TYPE_TIME:
-	case DB_TYPE_TIMETZ:
-	case DB_TYPE_TIMELTZ:
 	case DB_TYPE_DATE:
 	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_PSEUDO_UPGRADE;
 	  break;
@@ -11559,8 +11488,6 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
       switch (new_type)
 	{
 	case DB_TYPE_TIME:
-	case DB_TYPE_TIMETZ:
-	case DB_TYPE_TIMELTZ:
 	case DB_TYPE_DATE:
 	case DB_TYPE_TIMESTAMP:
 	case DB_TYPE_TIMESTAMPLTZ:
@@ -11597,8 +11524,6 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
       switch (new_type)
 	{
 	case DB_TYPE_TIME:
-	case DB_TYPE_TIMETZ:
-	case DB_TYPE_TIMELTZ:
 	case DB_TYPE_DATE:
 	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_PSEUDO_UPGRADE;
 	  break;
@@ -11643,8 +11568,6 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
 	case DB_TYPE_MONETARY:
 	case DB_TYPE_DATE:
 	case DB_TYPE_TIME:
-	case DB_TYPE_TIMETZ:
-	case DB_TYPE_TIMELTZ:
 	case DB_TYPE_DATETIME:
 	case DB_TYPE_DATETIMETZ:
 	case DB_TYPE_DATETIMELTZ:
@@ -11690,8 +11613,6 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
 	case DB_TYPE_MONETARY:
 	case DB_TYPE_DATE:
 	case DB_TYPE_TIME:
-	case DB_TYPE_TIMETZ:
-	case DB_TYPE_TIMELTZ:
 	case DB_TYPE_DATETIME:
 	case DB_TYPE_DATETIMETZ:
 	case DB_TYPE_DATETIMELTZ:
@@ -11730,8 +11651,6 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
 	case DB_TYPE_MONETARY:
 	case DB_TYPE_DATE:
 	case DB_TYPE_TIME:
-	case DB_TYPE_TIMETZ:
-	case DB_TYPE_TIMELTZ:
 	case DB_TYPE_DATETIME:
 	case DB_TYPE_DATETIMETZ:
 	case DB_TYPE_DATETIMELTZ:
@@ -11776,8 +11695,6 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
 	case DB_TYPE_MONETARY:
 	case DB_TYPE_DATE:
 	case DB_TYPE_TIME:
-	case DB_TYPE_TIMETZ:
-	case DB_TYPE_TIMELTZ:
 	case DB_TYPE_DATETIME:
 	case DB_TYPE_DATETIMETZ:
 	case DB_TYPE_DATETIMELTZ:
@@ -11898,8 +11815,6 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
 	case DB_TYPE_DATETIMETZ:
 	case DB_TYPE_DATETIMELTZ:
 	case DB_TYPE_TIME:
-	case DB_TYPE_TIMETZ:
-	case DB_TYPE_TIMELTZ:
 	case DB_TYPE_TIMESTAMP:
 	case DB_TYPE_TIMESTAMPTZ:
 	case DB_TYPE_TIMESTAMPLTZ:
@@ -12775,7 +12690,6 @@ get_hard_default_for_type (PT_TYPE_ENUM type)
   static const char *empty_datetime = "DATETIME '01/01/0001 00:00'";
   static const char *empty_dt_tz = "DATETIMETZ '01/01/0001 00:00 +00:00'";
   static const char *empty_dt_ltz = "DATETIMELTZ '01/01/0001 00:00 +00:00'";
-  static const char *empty_timetz = "TIMETZ '00:00 +00:00'";
   static const char *empty_json = "null";
 
   /* TODO : use db_value_domain_default instead, but make sure that db_value_domain_default is not using NULL DB_VALUE
@@ -12806,11 +12720,7 @@ get_hard_default_for_type (PT_TYPE_ENUM type)
       return empty_date;
 
     case PT_TYPE_TIME:
-    case PT_TYPE_TIMELTZ:
       return empty_time;
-
-    case PT_TYPE_TIMETZ:
-      return empty_timetz;
 
     case PT_TYPE_DATETIME:
       return empty_datetime;

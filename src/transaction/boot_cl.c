@@ -458,9 +458,8 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
   /* make new DB_INFO */
   hosts[0] = db_path_info->db_host;
   hosts[1] = NULL;
-  db =
-    cfg_new_db (client_credential->db_name, db_path_info->db_path, db_path_info->log_path, db_path_info->lob_path,
-		hosts);
+  db = cfg_new_db (client_credential->db_name, db_path_info->db_path, db_path_info->log_path, db_path_info->lob_path,
+		   hosts);
   if (db == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_DATABASE, 1, client_credential->db_name);
