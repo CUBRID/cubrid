@@ -36,6 +36,7 @@
 #include "virtual_object.h"
 #endif
 #include "work_space.h"
+#include "memory_alloc.h"
 
 #include <assert.h>
 #include <float.h>

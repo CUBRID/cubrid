@@ -71,6 +71,7 @@
 
 #include "dbi.h"
 #include "dbtype.h"
+#include "memory_alloc.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
