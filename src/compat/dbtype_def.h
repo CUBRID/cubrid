@@ -622,9 +622,6 @@ extern "C"
 /* This constant defines the default precision of DB_TYPE_TIME. */
 #define DB_TIME_PRECISION      8
 
-/* This constant defines the default precision of DB_TIMETZ_PRECISION. */
-#define DB_TIMETZ_PRECISION   DB_TIME_PRECISION
-
 /* This constant defines the default precision of DB_TYPE_DATE. */
 #define DB_DATE_PRECISION      10
 
@@ -740,10 +737,8 @@ extern "C"
     DB_TYPE_DATETIMETZ = 38,
     DB_TYPE_DATETIMELTZ = 39,
     DB_TYPE_JSON = 40,
-    /* Disabled types */
-    DB_TYPE_TIMETZ = 41,	/* internal use only - RESERVED */
-    DB_TYPE_TIMELTZ = 42,	/* internal use only - RESERVED */
-    /* end of disabled types */
+
+    /* aliases */
     DB_TYPE_LIST = DB_TYPE_SEQUENCE,
     DB_TYPE_SMALLINT = DB_TYPE_SHORT,	/* SQL SMALLINT */
     DB_TYPE_VARCHAR = DB_TYPE_STRING,	/* SQL CHAR(n) VARYING values */
@@ -784,12 +779,6 @@ extern "C"
   typedef unsigned int DB_TIME;
 
   typedef unsigned int TZ_ID;
-  typedef struct db_timetz DB_TIMETZ;
-  struct db_timetz
-  {
-    DB_TIME time;
-    TZ_ID tz_id;		/* zone id */
-  };
 
   /* Structure used for the representation of universal times. These are compatible with the Unix time_t definition. */
   typedef unsigned int DB_TIMESTAMP;
@@ -1090,7 +1079,6 @@ extern "C"
     void *p;
     DB_OBJECT *op;
     DB_TIME time;
-    DB_TIMETZ timetz;
     DB_DATE date;
     DB_TIMESTAMP utime;
     DB_TIMESTAMPTZ timestamptz;

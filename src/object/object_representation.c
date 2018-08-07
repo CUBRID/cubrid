@@ -2278,52 +2278,6 @@ or_get_time (OR_BUF * buf, DB_TIME * timeval)
 }
 
 /*
- * or_put_timetz - write a DB_TIMETZ to or buffer
- *    return: NO_ERROR or error code
- *    buf(in/out): or buffer
- *    time_tz(in): time value to write
- */
-int
-or_put_timetz (OR_BUF * buf, DB_TIMETZ * time_tz)
-{
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-
-  if ((buf->ptr + OR_TIMETZ_SIZE) > buf->endptr)
-    {
-      return (or_overflow (buf));
-    }
-  else
-    {
-      OR_PUT_TIMETZ (buf->ptr, time_tz);
-      buf->ptr += OR_TIMETZ_SIZE;
-    }
-  return NO_ERROR;
-}
-
-/*
- * or_get_timetz - read a DB_TIMETZ from or buffer
- *    return: NO_ERROR or error code
- *    buf(in/out): or buffer
- *    time_tz(out): pointer to DB_TIME value
- */
-int
-or_get_timetz (OR_BUF * buf, DB_TIMETZ * time_tz)
-{
-  ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
-
-  if ((buf->ptr + OR_TIMETZ_SIZE) > buf->endptr)
-    {
-      return or_underflow (buf);
-    }
-  else
-    {
-      OR_GET_TIMETZ (buf->ptr, time_tz);
-      buf->ptr += OR_TIMETZ_SIZE;
-    }
-  return NO_ERROR;
-}
-
-/*
  * or_put_utime - write a timestamp value to or buffer
  *    return: NO_ERROR or error code
  *    buf(in/out): or buffer
@@ -4971,8 +4925,6 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 	    case DB_TYPE_DOUBLE:
 	    case DB_TYPE_DATE:
 	    case DB_TYPE_TIME:
-	    case DB_TYPE_TIMETZ:
-	    case DB_TYPE_TIMELTZ:
 	    case DB_TYPE_TIMESTAMP:
 	    case DB_TYPE_TIMESTAMPTZ:
 	    case DB_TYPE_TIMESTAMPLTZ:
@@ -5303,8 +5255,6 @@ unpack_domain (OR_BUF * buf, int *is_null)
 	    case DB_TYPE_DOUBLE:
 	    case DB_TYPE_DATE:
 	    case DB_TYPE_TIME:
-	    case DB_TYPE_TIMETZ:
-	    case DB_TYPE_TIMELTZ:
 	    case DB_TYPE_TIMESTAMP:
 	    case DB_TYPE_TIMESTAMPTZ:
 	    case DB_TYPE_TIMESTAMPLTZ:

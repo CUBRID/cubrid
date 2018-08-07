@@ -93,12 +93,6 @@
 #define DB_MAKE_TIME(value, hour, minute, second) \
     db_make_time(value, hour, minute, second)
 
-#define DB_MAKE_TIMETZ(value, timetz_value) \
-    db_make_timetz(value, timetz_value)
-
-#define DB_MAKE_TIMELTZ(value, time_value) \
-    db_make_timeltz(value, time_value)
-
 #define DB_MAKE_ENCODED_TIME(value, time_value) \
     db_value_put_encoded_time(value, time_value)
 
@@ -195,7 +189,6 @@
 #define DB_GET_MIDXKEY(v) db_get_midxkey(v)
 #define DB_GET_POINTER(v) db_get_pointer(v)
 #define DB_GET_TIME(v) db_get_time(v)
-#define DB_GET_TIMETZ(v) db_get_timetz(v)
 #define DB_GET_TIMESTAMP(v) db_get_timestamp(v)
 #define DB_GET_TIMESTAMPTZ(v) db_get_timestamptz(v)
 #define DB_GET_DATETIME(v) db_get_datetime(v)
@@ -387,7 +380,6 @@ extern "C"
   extern DB_MIDXKEY *db_get_midxkey (const DB_VALUE * value);
   extern DB_C_POINTER db_get_pointer (const DB_VALUE * value);
   extern DB_TIME *db_get_time (const DB_VALUE * value);
-  extern DB_TIMETZ *db_get_timetz (const DB_VALUE * value);
   extern DB_TIMESTAMP *db_get_timestamp (const DB_VALUE * value);
   extern DB_TIMESTAMPTZ *db_get_timestamptz (const DB_VALUE * value);
   extern DB_DATETIME *db_get_datetime (const DB_VALUE * value);
@@ -422,8 +414,6 @@ extern "C"
   extern int db_make_double (DB_VALUE * value, const DB_C_DOUBLE num);
   extern int db_make_object (DB_VALUE * value, DB_C_OBJECT * obj);
   extern int db_make_midxkey (DB_VALUE * value, DB_MIDXKEY * midxkey);
-  extern int db_make_timetz (DB_VALUE * value, const DB_TIMETZ * timetz_value);
-  extern int db_make_timeltz (DB_VALUE * value, const DB_TIME * time_value);
   extern int db_make_timestamp (DB_VALUE * value, const DB_C_TIMESTAMP timeval);
   extern int db_make_timestampltz (DB_VALUE * value, const DB_C_TIMESTAMP ts_val);
   extern int db_make_timestamptz (DB_VALUE * value, const DB_C_TIMESTAMPTZ * ts_tz_val);

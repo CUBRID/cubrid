@@ -1380,7 +1380,6 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
   char *json_body = NULL;
   DB_TYPE type;
   int len;
-  DB_TIMETZ *time_tz;
   DB_DATETIMETZ *dt_tz;
   DB_TIMESTAMPTZ *ts_tz;
 
@@ -1451,17 +1450,6 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
     case DB_TYPE_TIME:
       db_time_to_string (buf, MAX_DISPLAY_COLUMN, db_get_time (value));
       CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "time '%s'", buf));
-      break;
-
-    case DB_TYPE_TIMELTZ:
-      db_timeltz_to_string (buf, MAX_DISPLAY_COLUMN, db_get_time (value));
-      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "timeltz '%s'", buf));
-      break;
-
-    case DB_TYPE_TIMETZ:
-      time_tz = db_get_timetz (value);
-      db_timetz_to_string (buf, MAX_DISPLAY_COLUMN, &time_tz->time, &time_tz->tz_id);
-      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "timetz '%s'", buf));
       break;
 
     case DB_TYPE_TIMESTAMP:
