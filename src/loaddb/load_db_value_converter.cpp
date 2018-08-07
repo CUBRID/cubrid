@@ -27,12 +27,7 @@
 
 #include "db_date.h"
 #include "db_json.hpp"
-#if defined (SERVER_MODE)
 #include "dbtype.h"
-#endif // SERVER_MODE
-#if defined (SA_MODE)
-#include "dbtype_function.h"
-#endif // SA_MODE
 #include "language_support.h"
 #include "load_common.hpp"
 #include "load_db_value_converter.hpp"
@@ -412,43 +407,6 @@ namespace cubload
   }
 
   void
-  to_db_timeltz (const char *str, const TP_DOMAIN *domain, DB_VALUE *val)
-  {
-    int ret;
-    DB_TIMETZ timetz;
-
-    timetz.time = 0;
-    timetz.tz_id = 0;
-
-    db_make_timeltz (val, & (timetz.time));
-
-    ret = db_string_to_timeltz (str, & (val->data.time));
-    if (ret != NO_ERROR)
-      {
-	// TODO CBRD-21654 handle error
-      }
-  }
-
-  void
-  to_db_timetz (const char *str, const TP_DOMAIN *domain, DB_VALUE *val)
-  {
-    int ret;
-    bool has_zone;
-    DB_TIMETZ timetz;
-
-    timetz.time = 0;
-    timetz.tz_id = 0;
-
-    db_make_timetz (val, &timetz);
-
-    ret = db_string_to_timetz (str, & (val->data.timetz), &has_zone);
-    if (ret != NO_ERROR)
-      {
-	// TODO CBRD-21654 handle error
-      }
-  }
-
-  void
   to_db_timestamp (const char *str, const TP_DOMAIN *domain, DB_VALUE *val)
   {
     int ret;
@@ -553,7 +511,6 @@ namespace cubload
   to_db_json (const char *str, const TP_DOMAIN *domain, DB_VALUE *val)
   {
     JSON_DOC *document = NULL;
-    char *json_body = NULL;
     int ret = NO_ERROR;
 
     ret = db_json_get_json_from_str (str, document);
@@ -563,9 +520,7 @@ namespace cubload
 	// TODO CBRD-21654 handle error
       }
 
-    json_body = db_private_strdup (NULL, str);
-
-    db_make_json (val, json_body, document, true);
+    db_make_json (val, document, true);
   }
 
   void

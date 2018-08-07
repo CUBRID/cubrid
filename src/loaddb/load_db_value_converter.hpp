@@ -49,8 +49,6 @@ namespace cubload
   void to_db_double (const char *str, const TP_DOMAIN *domain, DB_VALUE *val);
   void to_db_date (const char *str, const TP_DOMAIN *domain, DB_VALUE *val);
   void to_db_time (const char *str, const TP_DOMAIN *domain, DB_VALUE *val);
-  void to_db_timeltz (const char *str, const TP_DOMAIN *domain, DB_VALUE *val);
-  void to_db_timetz (const char *str, const TP_DOMAIN *domain, DB_VALUE *val);
   void to_db_timestamp (const char *str, const TP_DOMAIN *domain, DB_VALUE *val);
   void to_db_timestampltz (const char *str, const TP_DOMAIN *domain, DB_VALUE *val);
   void to_db_timestamptz (const char *str, const TP_DOMAIN *domain, DB_VALUE *val);

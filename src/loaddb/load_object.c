@@ -59,8 +59,6 @@
 #include "porting.h"
 #endif
 
-#include "dbtype.h"
-
 #define MIGRATION_CHUNK 4096
 static char migration_buffer[MIGRATION_CHUNK];
 

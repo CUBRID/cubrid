@@ -58,8 +58,6 @@ namespace cubload
     LDR_CLASS_OID,               /* Class object reference */
     LDR_DATE,
     LDR_TIME,
-    LDR_TIMELTZ,
-    LDR_TIMETZ,
     LDR_TIMESTAMP,
     LDR_TIMESTAMPLTZ,
     LDR_TIMESTAMPTZ,

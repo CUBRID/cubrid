@@ -211,8 +211,6 @@ namespace cubload
 	  case LDR_NUMERIC:
 	  case LDR_DATE:
 	  case LDR_TIME:
-	  case LDR_TIMELTZ:
-	  case LDR_TIMETZ:
 	  case LDR_TIMESTAMP:
 	  case LDR_TIMESTAMPLTZ:
 	  case LDR_TIMESTAMPTZ:

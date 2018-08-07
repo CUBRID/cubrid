@@ -25,49 +25,47 @@
 
 #include "config.h"
 
+#include <assert.h>
+#include <ctype.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdarg.h>
-#include <ctype.h>
 #include <string.h>
-#include <fcntl.h>
-#include <assert.h>
 #if defined (WINDOWS)
 #include <io.h>
 #else
 #include <unistd.h>
 #endif /* !WINDOWS */
-#include <errno.h>
 
-#include "load_client_loader.h"
-
-#include "porting.h"
-#include "utility.h"
-#include "dbi.h"
-#include "memory_alloc.h"
-#include "system_parameter.h"
-#include "network.h"
 #include "authenticate.h"
-#include "schema_manager.h"
-#include "object_accessor.h"
 #include "db.h"
-#include "load_object_table.h"
-#include "load_object.h"
-#include "work_space.h"
-#include "message_catalog.h"
-#include "locator_cl.h"
+#include "db_json.hpp"
+#include "dbi.h"
+#include "dbtype.h"
 #include "elo.h"
+#include "environment_variable.h"
+#include "execute_schema.h"
 #include "intl_support.h"
 #include "language_support.h"
-#include "environment_variable.h"
-#include "set_object.h"
-#include "trigger_manager.h"
-#include "execute_schema.h"
-#include "transaction_cl.h"
-#include "locator_cl.h"
-#include "db_json.hpp"
+#include "load_client_loader.h"
 #include "load_db_value_converter.hpp"
-#include "dbtype_function.h"
+#include "load_object.h"
+#include "load_object_table.h"
+#include "locator_cl.h"
+#include "memory_alloc.h"
+#include "message_catalog.h"
+#include "network.h"
+#include "object_accessor.h"
+#include "porting.h"
+#include "schema_manager.h"
+#include "set_object.h"
+#include "system_parameter.h"
+#include "transaction_cl.h"
+#include "trigger_manager.h"
+#include "utility.h"
+#include "work_space.h"
 
 using namespace cubload;
 
@@ -6423,7 +6421,6 @@ static int
 ldr_json_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
 {
   JSON_DOC *document = NULL;
-  char *json_body = NULL;
   int error_code = NO_ERROR;
 
   error_code = db_json_get_json_from_str (str, document);
@@ -6432,8 +6429,6 @@ ldr_json_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
       assert (document == NULL);
       return error_code;
     }
-
-  json_body = db_private_strdup (NULL, str);
 
   db_make_json (val, document, true);
   return NO_ERROR;
