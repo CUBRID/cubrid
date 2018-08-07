@@ -2379,6 +2379,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
   int start_record_block, end_record_block;
   char null_buffer[block_size + MAX_ALIGNMENT], *null_block;
   int max_num_blocks = LOG_PAGESIZE / block_size;
+  int last_checked_page_id = NULL_PAGEID;
 
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
   null_block = PTR_ALIGN (null_buffer, MAX_ALIGNMENT);
@@ -2453,48 +2454,10 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	    }
 	}
 
-#if !defined(NDEBUG)
-      er_log_debug (ARG_FILE_LINE, "logpb_recovery_analysis: log page %lld, checksum %d\n",
-		    log_page_p->hdr.logical_pageid, log_page_p->hdr.checksum);
-      if (prm_get_bool_value (PRM_ID_LOGPB_LOGGING_DEBUG))
-	{
-	  fileio_page_hexa_dump ((const char *) log_page_p, LOG_PAGESIZE);
-	}
-#endif /* !NDEBUG */
-
-      /* Check whether active log pages are corrupted. This may happen in case of partial page flush for instance. */
-      if (logpb_page_check_corruption (thread_p, log_page_p, &is_log_page_corrupted) != NO_ERROR)
-	{
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_analysis");
-	  return;
-	}
-
-      if (is_log_page_corrupted)
-	{
-	  if (logpb_is_page_in_archive (log_lsa.pageid))
-	    {
-	      /* Should not happen. */
-	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_analysis");
-	      return;
-	    }
-
-	  /* Set first corrupted record lsa, if a block is corrupted. */
-	  logpb_page_get_first_null_block_lsa (thread_p, log_page_p, &first_corrupted_rec_lsa);
-
-	  /* Found corrupted log page. */
-	  if (prm_get_bool_value (PRM_ID_LOGPB_LOGGING_DEBUG))
-	    {
-	      _er_log_debug (ARG_FILE_LINE,
-			     "logpb_recovery_analysis: log page %lld is corrupted due to partial flush.\n",
-			     (long long int) log_lsa.pageid);
-	    }
-	  logpb_dump_log_page_area (thread_p, log_page_p, 0, LOGAREA_SIZE);
-	}
-
       /* Check all log records in this phase */
       while (!LSA_ISNULL (&lsa) && lsa.pageid == log_lsa.pageid)
 	{
-	  /* 
+	  /*
 	   * If an offset is missing, it is because an incomplete log record was
 	   * archived. This log_record was completed later. Thus, we have to
 	   * find the offset by searching for the next log_record in the page
@@ -2517,6 +2480,50 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 		}
 	    }
 
+	  /* If the page changed, check whether is corrupted. */
+	  if (last_checked_page_id != log_lsa.pageid)
+	    {
+#if !defined(NDEBUG)
+	      er_log_debug (ARG_FILE_LINE, "logpb_recovery_analysis: log page %lld, checksum %d\n",
+			    log_page_p->hdr.logical_pageid, log_page_p->hdr.checksum);
+	      if (prm_get_bool_value (PRM_ID_LOGPB_LOGGING_DEBUG))
+		{
+		  fileio_page_hexa_dump ((const char *) log_page_p, LOG_PAGESIZE);
+		}
+#endif /* !NDEBUG */
+
+	      /* Check whether active log pages are corrupted. This may happen in case of partial page flush for instance. */
+	      if (logpb_page_check_corruption (thread_p, log_page_p, &is_log_page_corrupted) != NO_ERROR)
+		{
+		  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_analysis");
+		  return;
+		}
+
+	      if (is_log_page_corrupted)
+		{
+		  if (logpb_is_page_in_archive (log_lsa.pageid))
+		    {
+		      /* Should not happen. */
+		      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_analysis");
+		      return;
+		    }
+
+		  /* Set first corrupted record lsa, if a block is corrupted. */
+		  logpb_page_get_first_null_block_lsa (thread_p, log_page_p, &first_corrupted_rec_lsa);
+
+		  /* Found corrupted log page. */
+		  if (prm_get_bool_value (PRM_ID_LOGPB_LOGGING_DEBUG))
+		    {
+		      _er_log_debug (ARG_FILE_LINE,
+				     "logpb_recovery_analysis: log page %lld is corrupted due to partial flush.\n",
+				     (long long int) log_lsa.pageid);
+		    }
+		}
+
+	      /* Set last checked page id. */
+	      last_checked_page_id = log_lsa.pageid;
+	    }
+
 	  /* Find the log record */
 	  log_lsa.offset = lsa.offset;
 	  log_rec = LOG_GET_LOG_RECORD_HEADER (log_page_p, &log_lsa);
@@ -2524,6 +2531,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	  /* Check whether null LSA is reached. */
 	  if (!is_log_page_corrupted)
 	    {
+	      /* For safety reason. Normally, checksum must detect corrupted pages. */
 	      if (LSA_ISNULL (&log_rec->forw_lsa)
 		  && log_rec->type != LOG_END_OF_LOG && !logpb_is_page_in_archive (log_lsa.pageid))
 		{

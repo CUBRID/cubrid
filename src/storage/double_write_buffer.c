@@ -902,6 +902,7 @@ dwb_starts_structure_modification (THREAD_ENTRY * thread_p, UINT64 * current_pos
   unsigned int block_no;
   int error_code = NO_ERROR;
   unsigned int start_block_no, blocks_count;
+  DWB_BLOCK *helper_flush_block;
 
   assert (current_position_with_flags != NULL);
 
@@ -929,6 +930,15 @@ dwb_starts_structure_modification (THREAD_ENTRY * thread_p, UINT64 * current_pos
 #endif
 
   /* Since we set the modify structure flag, I'm the only thread that access the DWB. */
+  helper_flush_block = dwb_Global.helper_flush_block;
+  if (helper_flush_block != NULL)
+    {
+      /* All remaining blocks are flushed by me. */
+      (void) ATOMIC_TAS_ADDR (&dwb_Global.helper_flush_block, (DWB_BLOCK *) NULL);
+      dwb_log ("Structure modification, needs to flush DWB block = %d having version %lld\n",
+	       helper_flush_block->block_no, helper_flush_block->version);
+    }
+
   local_current_position_with_flags = ATOMIC_INC_64 (&dwb_Global.position_with_flags, 0ULL);
 
   /* Need to flush incomplete blocks, ordered by version. */
