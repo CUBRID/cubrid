@@ -4072,7 +4072,7 @@ fileio_os_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, size_t co
   return (ssize_t) nbytes;
 #elif defined (NDEBUG)
   /* release mode */
-  return pwrite (thread_p, vol_fd, io_page_p, count, offset);
+  return pwrite (vol_fd, io_page_p, count, offset);
 #else
   /* server debugging mode */
   return pwrite_with_injected_fault (thread_p, vol_fd, io_page_p, count, offset);
