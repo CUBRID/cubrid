@@ -42,8 +42,6 @@
 /* RESERVED_SIZE_IN_PAGE should be aligned */
 #define RESERVED_SIZE_IN_PAGE   sizeof(FILEIO_PAGE_RESERVED)
 
-#define IS_POWER_OF_2(x)        (((x) & ((x)-1)) == 0)
-
 static PGLENGTH db_Io_page_size = IO_DEFAULT_PAGE_SIZE;
 static PGLENGTH db_Log_page_size = IO_DEFAULT_PAGE_SIZE;
 static PGLENGTH db_User_page_size = IO_DEFAULT_PAGE_SIZE - RESERVED_SIZE_IN_PAGE;

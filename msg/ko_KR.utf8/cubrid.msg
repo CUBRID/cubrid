@@ -1302,7 +1302,9 @@ $ LOADDB
 1233 Reserved error for stream/replication.
 1234 Reserved error for stream/replication.
 1235 Reserved error for stream/replication.
-1236 Last Error
+1236 Double Write Buffer is disabled.
+
+1237 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):

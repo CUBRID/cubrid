@@ -1581,7 +1581,9 @@
 #define ER_STREAM_RESERVED_19                       -1234
 #define ER_STREAM_RESERVED_20                       -1235
 
-#define ER_LAST_ERROR                               -1236
+#define ER_DWB_DISABLED                             -1236
+
+#define ER_LAST_ERROR                               -1237
 
 /*
  * CAUTION!

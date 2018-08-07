@@ -67,9 +67,9 @@
 
 #define DB_VALUE_DOMAIN_TYPE(value)     db_value_domain_type(value)
 
-#define DB_VALUE_TYPE(value) db_value_type(value)
-#define DB_VALUE_PRECISION(value) db_value_precision(value)
-#define DB_VALUE_SCALE(value) db_value_scale(value)
+#define DB_VALUE_TYPE(value)            db_value_type(value)
+#define DB_VALUE_PRECISION(value)       db_value_precision(value)
+#define DB_VALUE_SCALE(value)           db_value_scale(value)
 
 #define DB_SET_COMPRESSED_STRING(value, compressed_string, compressed_size, compressed_need_clear) \
 	db_set_compressed_string(value, compressed_string, compressed_size, compressed_need_clear)
@@ -284,6 +284,8 @@ extern "C"
   extern bool db_is_json_doc_type (DB_TYPE type);
   extern char *db_get_json_raw_body (const DB_VALUE * value);
 
+  extern bool db_value_is_corrupted (const DB_VALUE * value);
+
 /* Use the inline version of the functions. */
 #include "dbtype_function.i"
 
@@ -291,4 +293,4 @@ extern "C"
 }
 #endif
 
-#endif				/* _DBTYPE_H_ */
+#endif /* _DBTYPE_H_ */

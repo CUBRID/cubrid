@@ -280,6 +280,7 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/oid.c
   ${STORAGE_DIR}/overflow_file.c
   ${STORAGE_DIR}/page_buffer.c
+  ${STORAGE_DIR}/double_write_buffer.c
   ${STORAGE_DIR}/statistics_sr.c
   ${STORAGE_DIR}/slotted_page.c
   ${STORAGE_DIR}/external_sort.c

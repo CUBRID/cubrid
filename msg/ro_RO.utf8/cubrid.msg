@@ -1302,7 +1302,9 @@ $ LOADDB
 1233 Reserved error for stream/replication.
 1234 Reserved error for stream/replication.
 1235 Reserved error for stream/replication.
-1236 Last Error
+1236 Double Write Buffer este dezactivat.
+
+1237 Ultima eroare
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %1$d):

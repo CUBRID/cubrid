@@ -133,6 +133,12 @@ namespace cubthread
     // i += waiter::STAT_COUNT;
   }
 
+  bool
+  daemon::is_running (void)
+  {
+    return m_waiter.is_running ();
+  }
+
   std::size_t
   daemon::get_stats_value_count (void)
   {

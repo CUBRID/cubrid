@@ -9097,6 +9097,7 @@ mr_setval_numeric (DB_VALUE * dest, const DB_VALUE * src, bool copy)
   int src_precision, src_scale;
   DB_C_NUMERIC src_numeric;
 
+  assert (!db_value_is_corrupted (src));
   if (src == NULL || DB_IS_NULL (src))
     {
       db_value_domain_init (dest, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
@@ -11074,6 +11075,7 @@ mr_setval_string (DB_VALUE * dest, const DB_VALUE * src, bool copy)
   int src_precision, src_length;
   char *src_str, *new_, *new_compressed_buf;
 
+  assert (!db_value_is_corrupted (src));
   if (src == NULL || (DB_IS_NULL (src) && db_value_precision (src) == 0))
     {
       error = db_value_domain_init (dest, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, 0);
@@ -12201,6 +12203,7 @@ mr_setval_char (DB_VALUE * dest, const DB_VALUE * src, bool copy)
   int src_precision, src_length;
   char *src_string, *new_;
 
+  assert (!db_value_is_corrupted (src));
   if (DB_IS_NULL (src))
     {
       DB_DOMAIN_INIT_CHAR (dest, TP_FLOATING_PRECISION_VALUE);
@@ -13039,6 +13042,7 @@ mr_setval_nchar (DB_VALUE * dest, const DB_VALUE * src, bool copy)
   int src_precision, src_length;
   char *src_string, *new_;
 
+  assert (!db_value_is_corrupted (src));
   if (src == NULL || (DB_IS_NULL (src) && db_value_precision (src) == 0))
     {
       db_value_domain_init (dest, DB_TYPE_NCHAR, TP_FLOATING_PRECISION_VALUE, 0);
@@ -13912,6 +13916,7 @@ mr_setval_varnchar (DB_VALUE * dest, const DB_VALUE * src, bool copy)
   int src_precision, src_length;
   char *src_str, *new_;
 
+  assert (!db_value_is_corrupted (src));
   if (src == NULL || (DB_IS_NULL (src) && db_get_string (src) == 0))
     {
       error = db_value_domain_init (dest, DB_TYPE_VARNCHAR, DB_DEFAULT_PRECISION, 0);
@@ -14988,6 +14993,7 @@ mr_setval_bit (DB_VALUE * dest, const DB_VALUE * src, bool copy)
   int src_precision, src_length, src_number_of_bits = 0;
   char *src_string, *new_;
 
+  assert (!db_value_is_corrupted (src));
   if (src == NULL || (DB_IS_NULL (src) && db_value_precision (src) == 0))
     {
       db_value_domain_init (dest, DB_TYPE_BIT, TP_FLOATING_PRECISION_VALUE, 0);
@@ -15806,6 +15812,7 @@ mr_setval_varbit (DB_VALUE * dest, const DB_VALUE * src, bool copy)
   int src_precision, src_length, src_bit_length;
   char *src_str, *new_;
 
+  assert (!db_value_is_corrupted (src));
   if (src == NULL || (DB_IS_NULL (src) && db_value_precision (src) == 0))
     {
       error = db_value_domain_init (dest, DB_TYPE_VARBIT, DB_DEFAULT_PRECISION, 0);

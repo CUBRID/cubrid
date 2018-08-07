@@ -73,6 +73,8 @@ namespace cubthread
       static const char *get_stat_name (std::size_t stat_index);
       void get_stats (cubperf::stat_value *stats_out);
 
+      bool is_running ();                                             // true, if running
+
     private:
 
       enum status       // waiter status

@@ -162,6 +162,8 @@ LSA_COPY (LOG_LSA * plsa1, const LOG_LSA * plsa2)
 #define IO_PAGESIZE             (db_io_page_size())
 #define DB_PAGESIZE             (db_page_size())
 
+#define IS_POWER_OF_2(x)        (((x) & ((x) - 1)) == 0)
+
 /*
  * Sector
  */
