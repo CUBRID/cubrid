@@ -99,7 +99,7 @@ namespace cubload
 	return;
       }
 
-    //  TODO CBRD-21654 xtran_server_abort in case of error
+    // TODO CBRD-21654 xtran_server_abort in case of error
 
     logtb_free_tran_index (&thread_ref, thread_ref.tran_index);
 

@@ -7108,7 +7108,7 @@ heap_scancache_end_when_scan_will_resume (THREAD_ENTRY * thread_p, HEAP_SCANCACH
  * best find space statistics for the heap are completely updated
  * with the ones stored in the scan cache.
  */
-void
+int
 heap_scancache_end_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache)
 {
   int ret;
@@ -7118,6 +7118,8 @@ heap_scancache_end_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache)
     {
       ret = heap_scancache_quick_end (thread_p, scan_cache);
     }
+
+  return ret;
 }
 
 /*

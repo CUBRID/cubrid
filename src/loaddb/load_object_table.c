@@ -130,7 +130,7 @@ realloc_instance_table (CLASS_TABLE * table, int newcount)
   INST_INFO *tmp_inst_info;
   int i;
 
-  /* 
+  /*
    * only do this if the new count is larger than the existing
    * table, shouldn't see this
    */
@@ -389,7 +389,7 @@ otable_prepare (void)
 
   for (table = Classes; table != NULL && !error; table = table->next)
     {
-      /* 
+      /*
        * If we already have an instance table, initialize the fields it
        * contains. This shouldn't be necessary.
        */

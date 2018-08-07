@@ -62,33 +62,62 @@ namespace cubload
       {
 	return;
       }
-    if (cmd_spec == NULL || *cmd_spec == NULL)
-      {
-	return;
-      }
 
-    class_command_spec_type *cmd_spec_ = *cmd_spec;
-    string_type *class_name_ = *class_name;
-
-    char *string = NULL;
-    int alloced_string = 0;
+    HFID hfid;
+    RECDES recdes;
     int attr_idx = 0;
     string_type *attr;
-    RECDES recdes;
+    char *string = NULL;
+    int error = NO_ERROR;
+    int alloced_string = 0;
     HEAP_SCANCACHE scan_cache;
+    string_type *class_name_ = *class_name;
     std::map<std::string, ATTR_ID> attr_name_to_id;
+
     cubthread::entry &thread_ref = cubthread::get_entry ();
 
     LC_FIND_CLASSNAME found = xlocator_find_class_oid (&thread_ref, class_name_->val, &m_class_oid, IX_LOCK);
     if (found != LC_CLASSNAME_EXIST)
       {
+	ldr_string_free (class_name);
+	ldr_class_command_spec_free (cmd_spec);
 	return;
       }
 
-    // We also need hfid here. Please see comment of server_loader::act_finish_line.
-    heap_scancache_quick_start_with_class_oid (&thread_ref, &scan_cache, &m_class_oid);
-    heap_attrinfo_start (&thread_ref, &m_class_oid, -1, NULL, &m_attr_info);
-    heap_get_class_record (&thread_ref, &m_class_oid, &recdes, &scan_cache, PEEK);
+    // we do not need anymore class_name
+    ldr_string_free (class_name);
+
+    error = heap_get_hfid_from_class_oid (&thread_ref, &m_class_oid, &hfid);
+    if (error != NO_ERROR)
+      {
+	// FIXME - error handling(reporting)
+	ldr_class_command_spec_free (cmd_spec);
+	return;
+      }
+
+    error = heap_scancache_start_modify (&thread_ref, &scan_cache, &hfid, &m_class_oid, SINGLE_ROW_INSERT, NULL);
+    if (error != NO_ERROR)
+      {
+	// FIXME - error handling(reporting)
+	ldr_class_command_spec_free (cmd_spec);
+	return;
+      }
+
+    error = heap_attrinfo_start (&thread_ref, &m_class_oid, -1, NULL, &m_attr_info);
+    if (error != NO_ERROR)
+      {
+	// FIXME - error handling(reporting)
+	ldr_class_command_spec_free (cmd_spec);
+	return;
+      }
+
+    SCAN_CODE scan_code = heap_get_class_record (&thread_ref, &m_class_oid, &recdes, &scan_cache, PEEK);
+    if (scan_code != S_SUCCESS)
+      {
+	// FIXME - error handling(reporting)
+	ldr_class_command_spec_free (cmd_spec);
+	return;
+      }
 
     // collect class attribute names
     for (int i = 0; i < m_attr_info.num_values; i++)
@@ -97,7 +126,13 @@ namespace cubload
 	string = NULL;
 
 	ATTR_ID attr_id = m_attr_info.values[i].attrid;
-	or_get_attrname (&recdes, attr_id, &string, &alloced_string);
+	error = or_get_attrname (&recdes, attr_id, &string, &alloced_string);
+	if (error != NO_ERROR)
+	  {
+	    // FIXME - error handling(reporting)
+	    ldr_class_command_spec_free (cmd_spec);
+	    return;
+	  }
 
 	attr_name_to_id.insert (std::pair<std::string, ATTR_ID> (std::string (string), attr_id));
 
@@ -107,19 +142,30 @@ namespace cubload
 	  }
       }
 
+    if (cmd_spec == NULL || *cmd_spec == NULL)
+      {
+	return;
+      }
+    class_command_spec_type *cmd_spec_ = *cmd_spec;
+
     // alloc attribute ids array
     m_attr_ids = new ATTR_ID[m_attr_info.num_values];
 
     for (attr = cmd_spec_->attr_list; attr; attr = attr->next, attr_idx++)
       {
-	m_attr_ids[attr_idx] = attr_name_to_id.at (std::string ((attr->val)));
+	m_attr_ids[attr_idx] = attr_name_to_id.at (std::string (attr->val));
+      }
+    ldr_class_command_spec_free (cmd_spec);
+
+    error = heap_scancache_end_modify (&thread_ref, &scan_cache);
+    if (error != NO_ERROR)
+      {
+	// FIXME - error handling(reporting)
+	return;
       }
 
-    heap_scancache_end (&thread_ref, &scan_cache);
-
-    // free
-    ldr_class_command_spec_free (cmd_spec);
-    ldr_string_free (class_name);
+    // lock class when batch starts, it will be unlocked on transaction commit/abort, see load_parse_task::execute
+    lock_object (&thread_ref, &m_class_oid, oid_Root_class_oid, IX_LOCK, LK_UNCOND_LOCK);
   }
 
   void
@@ -268,45 +314,45 @@ namespace cubload
   void
   server_loader::act_finish_line ()
   {
-    int ret;
     OID oid;
+    HFID hfid;
     int force_count = 0;
     int pruning_type = 0;
-    int op_type = MULTI_ROW_INSERT;
+    int error = NO_ERROR;
     HEAP_SCANCACHE scan_cache;
+    int op_type = MULTI_ROW_INSERT;
+
     cubthread::entry &thread_ref = cubthread::get_entry ();
 
-    // FIXME - Why do we lock and unlock class object for each row?
-    ret = lock_object (&thread_ref, &m_class_oid, oid_Root_class_oid, IX_LOCK, LK_UNCOND_LOCK);
-    if (ret != LK_GRANTED)
+    error = heap_get_hfid_from_class_oid (&thread_ref, &m_class_oid, &hfid);
+    if (error != NO_ERROR)
       {
-	return;
-      }
-
-    // FIXME - it should be heap_scancache_start_modify
-    // You also need to know its hfid.
-    heap_scancache_quick_start_with_class_oid (&thread_ref, &scan_cache, &m_class_oid);
-
-    ret = locator_attribute_info_force (&thread_ref, &scan_cache.node.hfid, &oid, &m_attr_info, NULL, 0,
-					LC_FLUSH_INSERT, op_type, &scan_cache, &force_count, false,
-					REPL_INFO_TYPE_RBR_NORMAL, pruning_type, NULL, NULL, NULL, UPDATE_INPLACE_NONE,
-					NULL, false);
-    if (ret != NO_ERROR)
-      {
-	// heap_scancache_end_modify ();
 	// FIXME - error handling(reporting)
 	return;
       }
 
-    // FIXME - it should be heap_scancache_end_modify
-    ret = heap_scancache_end (&thread_ref, &scan_cache);
-    if (ret != NO_ERROR)
+    error = heap_scancache_start_modify (&thread_ref, &scan_cache, &hfid, &m_class_oid, op_type, NULL);
+    if (error != NO_ERROR)
       {
+	// FIXME - error handling(reporting)
 	return;
       }
 
-    // FIXME - Why do we lock and unlock class object for each row?
-    lock_unlock_object (&thread_ref, &m_class_oid, oid_Root_class_oid, IX_LOCK, true);
+    error = locator_attribute_info_force (&thread_ref, &scan_cache.node.hfid, &oid, &m_attr_info, NULL, 0,
+					  LC_FLUSH_INSERT, op_type, &scan_cache, &force_count, false,
+					  REPL_INFO_TYPE_RBR_NORMAL, pruning_type, NULL, NULL, NULL,
+					  UPDATE_INPLACE_NONE, NULL, false);
+    if (error != NO_ERROR)
+      {
+	// FIXME - error handling(reporting)
+      }
+
+    error = heap_scancache_end_modify (&thread_ref, &scan_cache);
+    if (error != NO_ERROR)
+      {
+	// FIXME - error handling(reporting)
+	return;
+      }
   }
 
   void

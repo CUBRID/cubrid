@@ -1159,7 +1159,7 @@ select_set_domain (LDR_CONTEXT * context, TP_DOMAIN * domain, TP_DOMAIN ** set_d
   int err = NO_ERROR;
   TP_DOMAIN *best, *d;
 
-  /* 
+  /*
    * Must pick an appropriate set domain, probably we should pick
    * the most general if there are more than one possibilities.
    * In practice, this won't ever happen until we allow nested
@@ -1298,7 +1298,7 @@ check_class_domain (LDR_CONTEXT * context)
 	    }
 	}
 
-      /* 
+      /*
        * could make this more specific but not worth the trouble
        * right now, can only happen in internal trigger objects
        */
@@ -6091,7 +6091,7 @@ ldr_start (int periodic_commit)
  *    return: void
  * Note:
  *    Since there may be a pending instance that has not yet been inserted,
- *    you must always call ldr_finish to make sure this occurrs.
+ *    you must always call ldr_finish to make sure this occurs.
  *    If the caller detects an error and wishes to abort the load immediate,
  *    pass in non-zero and the pending instance will not be inserted.
  *    After this call, the loader cannot be used and the session
@@ -6364,7 +6364,7 @@ ldr_init_class_spec (const char *class_name)
 {
   ldr_act_init_context (ldr_Current_context, class_name, strlen (class_name));
 
-  /* 
+  /*
    * If there is no class or not authorized,
    * Error message is printed and ER_FAILED is returned.
    */
