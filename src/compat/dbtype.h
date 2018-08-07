@@ -282,6 +282,7 @@ extern "C"
   extern int db_convert_json_into_scalar (const DB_VALUE * src, DB_VALUE * dest);
   extern bool db_is_json_value_type (DB_TYPE type);
   extern bool db_is_json_doc_type (DB_TYPE type);
+  extern char *db_get_json_raw_body (const DB_VALUE * value);
 
 /* Use the inline version of the functions. */
 #include "dbtype_function.i"

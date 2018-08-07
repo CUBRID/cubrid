@@ -415,7 +415,6 @@ extern "C"
   extern int db_value_precision (const DB_VALUE * value);
   extern int db_value_scale (const DB_VALUE * value);
   extern JSON_DOC *db_get_json_document (const DB_VALUE * value);
-  extern char *db_get_json_raw_body (const DB_VALUE * value);
 
   extern int db_make_null (DB_VALUE * value);
   extern int db_make_int (DB_VALUE * value, const int num);
@@ -472,7 +471,7 @@ extern "C"
   extern void db_set_compressed_string (DB_VALUE * value, char *compressed_string,
 					int compressed_size, bool compressed_need_clear);
 
-  extern int db_make_json (DB_VALUE * value, char *json_body, JSON_DOC * json_document, bool need_clear);
+  extern int db_make_json (DB_VALUE * value, JSON_DOC * json_document, bool need_clear);
 
 #ifdef __cplusplus
 }

@@ -10445,7 +10445,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
       break;
     case DB_TYPE_JSON:
       {
-	char *str = NULL;
 	JSON_DOC *doc = NULL;
 
 	switch (original_type)
@@ -10461,23 +10460,10 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 
 	      assert (str_size >= 0);	/* if this isn't correct, we cannot rely on strlen */
 
-	      if (original_str != NULL)
-		{
-		  str = (char *) db_private_alloc (NULL, str_size + 1);
-		  if (str == NULL)
-		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, str_size + 1);
-		      return DOMAIN_ERROR;
-		    }
-		  memcpy (str, original_str, str_size);
-		  str[str_size] = '\0';
-		}
-
-	      error_code = db_json_get_json_from_str (str, doc);
+	      error_code = db_json_get_json_from_str (original_str, doc);
 	      if (error_code != NO_ERROR)
 		{
 		  assert (doc == NULL);
-		  db_private_free (NULL, str);
 		  return DOMAIN_ERROR;
 		}
 
@@ -10486,7 +10472,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		{
 		  ASSERT_ERROR ();
 		  db_json_delete_doc (doc);
-		  db_private_free (NULL, str);
 		  return DOMAIN_ERROR;
 		}
 	    }
@@ -10516,18 +10501,10 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 
 	if (status == DOMAIN_COMPATIBLE)
 	  {
-	    if (str == NULL)
-	      {
-		str = db_json_get_raw_json_body_from_document (doc);
-	      }
-	    db_make_json (target, str, doc, true);
+	    db_make_json (target, doc, true);
 	  }
 	else
 	  {
-	    if (str != NULL)
-	      {
-		db_private_free_and_init (NULL, str);
-	      }
 	    if (doc != NULL)
 	      {
 		db_json_delete_doc (doc);

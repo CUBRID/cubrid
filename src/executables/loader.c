@@ -5844,7 +5844,7 @@ ldr_init_loader (LDR_CONTEXT * context)
   db_make_elo (&ldr_blob_tmpl, DB_TYPE_BLOB, null_elo);
   db_make_elo (&ldr_clob_tmpl, DB_TYPE_CLOB, null_elo);
   db_make_bit (&ldr_bit_tmpl, 1, "0", 1);
-  db_make_json (&ldr_json_tmpl, NULL, NULL, false);
+  db_make_json (&ldr_json_tmpl, NULL, false);
 
   /* 
    * Set up the conversion functions for collection elements.  These
@@ -6497,7 +6497,7 @@ ldr_json_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
 
   json_body = db_private_strdup (NULL, str);
 
-  db_make_json (val, json_body, document, true);
+  db_make_json (val, document, true);
   return NO_ERROR;
 }
 

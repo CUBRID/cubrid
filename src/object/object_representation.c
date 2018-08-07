@@ -2709,7 +2709,7 @@ or_get_oid (OR_BUF * buf, OID * oid)
  *    length(in): length in bytes
  */
 int
-or_put_data (OR_BUF * buf, char *data, int length)
+or_put_data (OR_BUF * buf, const char *data, int length)
 {
   if ((buf->ptr + length) > buf->endptr)
     {
@@ -8625,7 +8625,7 @@ or_unpack_spacedb (char *ptr, SPACEDB_ALL * all, SPACEDB_ONEVOL ** vols, SPACEDB
  *  the length of the string to the buffer
  */
 int
-or_put_string_aligned_with_length (OR_BUF * buf, char *str)
+or_put_string_aligned_with_length (OR_BUF * buf, const char *str)
 {
   int len;
   int rc = NO_ERROR;

@@ -5188,8 +5188,6 @@ db_json_type_dbval (const DB_VALUE * json, DB_VALUE * type_res)
       const char *type;
       unsigned int length;
 
-      assert (db_get_json_raw_body (json) != NULL);
-
       type = db_json_get_type_as_str (db_get_json_document (json));
       length = strlen (type);
 
@@ -5281,9 +5279,8 @@ db_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * 
 {
   JSON_DOC *this_doc;
   const char *raw_path;
-  char *json_body;
   JSON_DOC *result_doc = NULL;
-  int error_code;
+  int error_code = NO_ERROR;
 
   if (DB_IS_NULL (json) || DB_IS_NULL (path))
     {
@@ -5302,8 +5299,7 @@ db_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * 
 
   if (result_doc != NULL)
     {
-      json_body = db_json_get_raw_json_body_from_document (result_doc);
-      db_make_json (json_res, json_body, result_doc, true);
+      db_make_json (json_res, result_doc, true);
     }
   else
     {

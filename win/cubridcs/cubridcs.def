@@ -955,3 +955,4 @@ EXPORTS
 ; other
 ;
   setobj_type
+  db_get_json_raw_body
