@@ -4754,7 +4754,7 @@ smt_is_change_status_allowed (SM_TEMPLATE * ctemplate, const char *index_name)
   error = sm_partitioned_class_type (ctemplate->op, &partition_type, NULL, NULL);
   if (partition_type == DB_PARTITION_CLASS)
     {
-      error = ER_STATUS_CHANGE_NOT_ALLOWED;
+      error = ER_SM_INDEX_STATUS_CHANGE_NOT_ALLOWED;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 3, sm_ch_name ((MOBJ) ctemplate->current), index_name,
 	      "local index on a partition");
       return error;
@@ -4770,19 +4770,19 @@ smt_is_change_status_allowed (SM_TEMPLATE * ctemplate, const char *index_name)
   switch (constraint->type)
     {
     case SM_CONSTRAINT_FOREIGN_KEY:
-      error = ER_STATUS_CHANGE_NOT_ALLOWED;
+      error = ER_SM_INDEX_STATUS_CHANGE_NOT_ALLOWED;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 3, sm_ch_name ((MOBJ) ctemplate->current), constraint->name,
 	      "foreign key");
       return error;
 
     case SM_CONSTRAINT_PRIMARY_KEY:
-      error = ER_STATUS_CHANGE_NOT_ALLOWED;
+      error = ER_SM_INDEX_STATUS_CHANGE_NOT_ALLOWED;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 3, sm_ch_name ((MOBJ) ctemplate->current), constraint->name,
 	      "primary key");
       return error;
 
     case SM_CONSTRAINT_NOT_NULL:
-      error = ER_STATUS_CHANGE_NOT_ALLOWED;
+      error = ER_SM_INDEX_STATUS_CHANGE_NOT_ALLOWED;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 3, sm_ch_name ((MOBJ) ctemplate->current), constraint->name,
 	      "NOT NULL constraint");
       return error;
