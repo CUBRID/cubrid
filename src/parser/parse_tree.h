@@ -1259,7 +1259,8 @@ typedef enum
   PT_REBUILD_INDEX,
   PT_ADD_INDEX_CLAUSE,
   PT_CHANGE_TABLE_COMMENT,
-  PT_CHANGE_INDEX_COMMENT
+  PT_CHANGE_INDEX_COMMENT,
+  PT_CHANGE_INDEX_STATUS
 } PT_ALTER_CODE;
 
 /* Codes for trigger event type */
@@ -1953,6 +1954,7 @@ struct pt_index_info
   int func_no_args;		/* number of arguments in the function index expression */
   bool reverse;			/* REVERSE */
   bool unique;			/* UNIQUE specified? */
+  SM_INDEX_STATUS index_status;	/* Index status : NORMAL / ONLINE / INVISIBLE */
 };
 
 /* CREATE USER INFO */

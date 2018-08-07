@@ -1303,8 +1303,9 @@ $ LOADDB
 1234 Reserved error for stream/replication.
 1235 Reserved error for stream/replication.
 1236 Double Write Buffer is disabled.
+1237 Cannot change status on %1$s because %2$s is a %3$s.
 
-1237 Son Hata
+1238 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):

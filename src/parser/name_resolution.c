@@ -6781,6 +6781,7 @@ pt_resolve_using_index (PARSER_CONTEXT * parser, PT_NODE * index, PT_NODE * from
   PT_NODE *spec, *range, *entity;
   DB_OBJECT *classop;
   SM_CLASS *class_;
+  SM_CLASS_CONSTRAINT *cons;
   int found = 0;
   int errid;
 
@@ -6833,12 +6834,26 @@ pt_resolve_using_index (PARSER_CONTEXT * parser, PT_NODE * index, PT_NODE * from
 
 		  return NULL;
 		}
-	      if (index->info.name.original && !classobj_find_class_index (class_, index->info.name.original))
+	      if (index->info.name.original != NULL)
 		{
-		  /* error; the index is not for the specified class */
-		  PT_ERRORmf (parser, index, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USING_INDEX_ERR_1,
-			      pt_short_print (parser, index));
-		  return NULL;
+		  cons = classobj_find_class_index (class_, index->info.name.original);
+		  if (cons == NULL)
+		    {
+		      /* error; the index is not for the specified class */
+		      PT_ERRORmf (parser, index, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USING_INDEX_ERR_1,
+				  pt_short_print (parser, index));
+		      return NULL;
+		    }
+		  else if (cons->index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+		    {
+		      // TODO: raise an error?
+		      return NULL;	// unusable index
+		    }
+		  else if (cons->index_status == SM_INVISIBLE_INDEX)
+		    {
+		      // TODO: raise an error?
+		      return NULL;	// unusable index
+		    }
 		}
 	      index->info.name.spec_id = spec->info.spec.id;
 	      index->info.name.meta_class = PT_INDEX_NAME;
@@ -6889,7 +6904,9 @@ pt_resolve_using_index (PARSER_CONTEXT * parser, PT_NODE * index, PT_NODE * from
 
 		  return NULL;
 		}
-	      if (classobj_find_class_index (class_, index->info.name.original))
+	      cons = classobj_find_class_index (class_, index->info.name.original);
+	      if (cons != NULL
+		  && (cons->index_status == SM_NORMAL_INDEX || cons->index_status == SM_ONLINE_INDEX_BUILDING_DONE))
 		{
 		  /* found the class; resolve index name */
 		  found++;
@@ -6897,6 +6914,7 @@ pt_resolve_using_index (PARSER_CONTEXT * parser, PT_NODE * index, PT_NODE * from
 		  index->info.name.spec_id = spec->info.spec.id;
 		  index->info.name.meta_class = PT_INDEX_NAME;
 		}
+	      // TODO: raise an error for such indexes??
 	    }
 	}
 

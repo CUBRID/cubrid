@@ -1303,8 +1303,9 @@ $ LOADDB
 1234 Reserved error for stream/replication.
 1235 Reserved error for stream/replication.
 1236 Double Write Buffer is disabled.
+1237 Cannot change status on %1$s because %2$s is a %3$s.
 
-1237 Dernière erreur
+1238 Dernière erreur
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Erreur dans le sous-système d'erreur (ligne %1$d):

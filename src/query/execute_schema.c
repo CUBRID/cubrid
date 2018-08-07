@@ -236,7 +236,7 @@ static int create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *con
 					PT_NODE * column_names, PT_NODE * column_prefix_length,
 					PT_NODE * filter_predicate, int func_index_pos, int func_index_args_count,
 					PT_NODE * function_expr, PT_NODE * comment, DB_OBJECT * const obj,
-					DO_INDEX do_index);
+					SM_INDEX_STATUS index_status, DO_INDEX do_index);
 static int update_locksets_for_multiple_rename (const char *class_name, int *num_mops, MOP * mop_set, int *num_names,
 						char **name_set, bool error_on_misssing_class);
 static int acquire_locks_for_multiple_rename (const PT_NODE * statement);
@@ -372,6 +372,8 @@ static SM_PARTITION *pt_node_to_partition_info (PARSER_CONTEXT * parser, PT_NODE
 static int do_save_all_indexes (MOP classmop, SM_CONSTRAINT_INFO ** saved_index_info_listpp);
 static int do_drop_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_save_info);
 static int do_recreate_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_save_info);
+
+static int do_alter_index_status (PARSER_CONTEXT * parser, const PT_NODE * statement);
 
 /*
  * Function Group :
@@ -1528,7 +1530,8 @@ do_alter_clause_drop_index (PARSER_CONTEXT * const parser, PT_NODE * const alter
 
   error_code =
     create_or_drop_index_helper (parser, alter->info.alter.constraint_list->info.name.original, (const bool) is_reverse,
-				 (const bool) is_unique, NULL, NULL, NULL, NULL, -1, 0, NULL, NULL, obj, DO_INDEX_DROP);
+				 (const bool) is_unique, NULL, NULL, NULL, NULL, -1, 0, NULL, NULL, obj,
+				 SM_NORMAL_INDEX, DO_INDEX_DROP);
   return error_code;
 }
 
@@ -2688,7 +2691,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 			     const bool is_unique, PT_NODE * spec, PT_NODE * column_names,
 			     PT_NODE * column_prefix_length, PT_NODE * where_predicate, int func_index_pos,
 			     int func_index_args_count, PT_NODE * function_expr, PT_NODE * comment,
-			     DB_OBJECT * const obj, DO_INDEX do_index)
+			     DB_OBJECT * const obj, SM_INDEX_STATUS index_status, DO_INDEX do_index)
 {
   int error = NO_ERROR;
   int i = 0, nnames = 0;
@@ -2875,9 +2878,10 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 		}
 	    }
 
-	  error =
-	    sm_add_constraint (obj, ctype, cname, (const char **) attnames, asc_desc, attrs_prefix_length, false,
-			       p_pred_index_info, func_index_info, comment_str);
+	  assert (index_status != SM_NO_INDEX);
+
+	  error = sm_add_constraint (obj, ctype, cname, (const char **) attnames, asc_desc, attrs_prefix_length, false,
+				     p_pred_index_info, func_index_info, comment_str, index_status);
 	}
       else
 	{
@@ -2959,7 +2963,7 @@ do_create_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 				 statement->info.index.prefix_length, statement->info.index.where,
 				 statement->info.index.func_pos, statement->info.index.func_no_args,
 				 statement->info.index.function_expr, statement->info.index.comment, obj,
-				 DO_INDEX_CREATE);
+				 statement->info.index.index_status, DO_INDEX_CREATE);
   return error;
 }
 
@@ -3028,7 +3032,8 @@ do_drop_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
     create_or_drop_index_helper (parser, index_name, (const bool) is_reverse, (const bool) is_unique,
 				 statement->info.index.indexed_class, statement->info.index.column_names, NULL, NULL,
 				 statement->info.index.func_pos, statement->info.index.func_no_args,
-				 statement->info.index.function_expr, NULL, obj, DO_INDEX_DROP);
+				 statement->info.index.function_expr, NULL, obj, statement->info.index.index_status,
+				 DO_INDEX_DROP);
 
   return error_code;
 }
@@ -3299,7 +3304,7 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
 
   error =
     sm_add_constraint (obj, original_ctype, index_name, (const char **) attnames, asc_desc, attrs_prefix_length, false,
-		       p_pred_index_info, func_index_info, comment_str);
+		       p_pred_index_info, func_index_info, comment_str, SM_NORMAL_INDEX);
   if (error != NO_ERROR)
     {
       goto error_exit;
@@ -3615,6 +3620,10 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
   else if (statement->info.index.code == PT_CHANGE_INDEX_COMMENT)
     {
       error = do_alter_index_comment (parser, statement);
+    }
+  else if (statement->info.index.code == PT_CHANGE_INDEX_STATUS)
+    {
+      error = do_alter_index_status (parser, statement);
     }
   else
     {
@@ -5387,9 +5396,9 @@ do_create_partition_constraint (PT_NODE * alter, SM_CLASS * root_class, SM_CLASS
 	    }
 
 	  error =
-	    sm_add_index (subclass_op, db_constraint_type (constraint), constraint->name, (const char **) namep,
-			  asc_desc, constraint->attrs_prefix_length, constraint->filter_predicate, new_func_index_info,
-			  constraint->comment);
+	    sm_add_constraint (subclass_op, db_constraint_type (constraint), constraint->name, (const char **) namep,
+			       asc_desc, constraint->attrs_prefix_length, false, constraint->filter_predicate,
+			       new_func_index_info, constraint->comment, SM_NORMAL_INDEX);
 	  if (error != NO_ERROR)
 	    {
 	      goto cleanup;
@@ -5441,9 +5450,9 @@ do_create_partition_constraint (PT_NODE * alter, SM_CLASS * root_class, SM_CLASS
 	    }
 
 	  error =
-	    sm_add_index (objs->op, db_constraint_type (constraint), constraint->name, (const char **) namep, asc_desc,
-			  constraint->attrs_prefix_length, constraint->filter_predicate, new_func_index_info,
-			  constraint->comment);
+	    sm_add_constraint (objs->op, db_constraint_type (constraint), constraint->name, (const char **) namep,
+			       asc_desc, constraint->attrs_prefix_length, false, constraint->filter_predicate,
+			       new_func_index_info, constraint->comment, SM_NORMAL_INDEX);
 	  if (error != NO_ERROR)
 	    {
 	      goto cleanup;
@@ -7523,9 +7532,9 @@ do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
 		      comment = (char *) PT_VALUE_GET_BYTES (cnstr->info.constraint.comment);
 		    }
 
-		  error =
-		    smt_add_constraint (ctemplate, constraint_type, constraint_name, (const char **) att_names,
-					asc_desc, class_attributes, NULL, NULL, NULL, comment);
+		  error = smt_add_constraint (ctemplate, constraint_type, constraint_name, (const char **) att_names,
+					      asc_desc, NULL, class_attributes, NULL, NULL, NULL, comment,
+					      SM_NORMAL_INDEX);
 
 		  free_and_init (constraint_name);
 		  free_and_init (asc_desc);
@@ -7592,10 +7601,9 @@ do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
 		      comment = (char *) PT_VALUE_GET_BYTES (cnstr->info.constraint.comment);
 		    }
 
-		  error =
-		    smt_add_constraint (ctemplate, DB_CONSTRAINT_PRIMARY_KEY, constraint_name,
-					(const char **) att_names, asc_desc, class_attributes, NULL, NULL, NULL,
-					comment);
+		  error = smt_add_constraint (ctemplate, DB_CONSTRAINT_PRIMARY_KEY, constraint_name,
+					      (const char **) att_names, asc_desc, NULL, class_attributes, NULL, NULL,
+					      NULL, comment, SM_NORMAL_INDEX);
 
 		  free_and_init (constraint_name);
 		  free_and_init (asc_desc);
@@ -9023,28 +9031,13 @@ do_recreate_renamed_class_indexes (const PARSER_CONTEXT * parser, const char *co
   /* add indexes */
   for (saved = index_save_info; saved != NULL; saved = saved->next)
     {
-      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY ((SM_CONSTRAINT_TYPE) saved->constraint_type))
-	{
-	  error =
-	    sm_add_constraint (classmop, saved->constraint_type, saved->name, (const char **) saved->att_names,
-			       saved->asc_desc, saved->prefix_length, 0, saved->filter_predicate,
-			       saved->func_index_info, saved->comment);
+      error = sm_add_constraint (classmop, saved->constraint_type, saved->name, (const char **) saved->att_names,
+				 saved->asc_desc, saved->prefix_length, false, saved->filter_predicate,
+				 saved->func_index_info, saved->comment, SM_NORMAL_INDEX);
 
-	  if (error != NO_ERROR)
-	    {
-	      goto error_exit;
-	    }
-	}
-      else
+      if (error != NO_ERROR)
 	{
-	  error =
-	    sm_add_index (classmop, saved->constraint_type, saved->name, (const char **) saved->att_names,
-			  saved->asc_desc, saved->prefix_length, saved->filter_predicate, saved->func_index_info,
-			  saved->comment);
-	  if (error != NO_ERROR)
-	    {
-	      goto error_exit;
-	    }
+	  goto error_exit;
 	}
     }
 
@@ -9150,16 +9143,15 @@ do_copy_indexes (PARSER_CONTEXT * parser, MOP classmop, SM_CLASS * src_class)
 
       if (c->func_index_info || c->filter_predicate)
 	{
-	  error =
-	    sm_add_index (classmop, constraint_type, new_cons_name, att_names, index_save_info->asc_desc,
-			  index_save_info->prefix_length, index_save_info->filter_predicate,
-			  index_save_info->func_index_info, index_save_info->comment);
+	  error = sm_add_constraint (classmop, constraint_type, new_cons_name, att_names, index_save_info->asc_desc,
+				     index_save_info->prefix_length, false, index_save_info->filter_predicate,
+				     index_save_info->func_index_info, index_save_info->comment, SM_NORMAL_INDEX);
 	}
       else
 	{
 	  error =
-	    sm_add_index (classmop, constraint_type, new_cons_name, att_names, c->asc_desc, c->attrs_prefix_length,
-			  c->filter_predicate, c->func_index_info, c->comment);
+	    sm_add_constraint (classmop, constraint_type, new_cons_name, att_names, c->asc_desc, c->attrs_prefix_length,
+			       false, c->filter_predicate, c->func_index_info, c->comment, SM_NORMAL_INDEX);
 	}
       if (error != NO_ERROR)
 	{
@@ -9512,11 +9504,10 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser, PT_NODE * const
 			  goto exit;
 			}
 
-		      error =
-			sm_add_constraint (class_mop, saved_constr->constraint_type, saved_constr->name,
-					   (const char **) saved_constr->att_names, saved_constr->asc_desc,
-					   saved_constr->prefix_length, false, saved_constr->filter_predicate,
-					   saved_constr->func_index_info, saved_constr->comment);
+		      error = sm_add_constraint (class_mop, saved_constr->constraint_type, saved_constr->name,
+						 (const char **) saved_constr->att_names, saved_constr->asc_desc,
+						 saved_constr->prefix_length, false, saved_constr->filter_predicate,
+						 saved_constr->func_index_info, saved_constr->comment, SM_NORMAL_INDEX);
 		      if (error != NO_ERROR)
 			{
 			  goto exit;
@@ -13267,30 +13258,20 @@ do_recreate_att_constraints (MOP class_mop, SM_CONSTRAINT_INFO * constr_info_lis
 
   for (constr = constr_info_list; constr != NULL; constr = constr->next)
     {
-      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY ((SM_CONSTRAINT_TYPE) constr->constraint_type))
+      if (SM_IS_CONSTRAINT_INDEX_FAMILY ((SM_CONSTRAINT_TYPE) constr->constraint_type))
 	{
 	  error =
 	    sm_add_constraint (class_mop, constr->constraint_type, constr->name, (const char **) constr->att_names,
-			       constr->asc_desc, constr->prefix_length, 0, constr->filter_predicate,
-			       constr->func_index_info, constr->comment);
+			       constr->asc_desc, constr->prefix_length, false, constr->filter_predicate,
+			       constr->func_index_info, constr->comment, SM_NORMAL_INDEX);
 
 	  if (error != NO_ERROR)
 	    {
 	      goto error_exit;
 	    }
 	}
-      else if (constr->constraint_type == DB_CONSTRAINT_INDEX || constr->constraint_type == DB_CONSTRAINT_REVERSE_INDEX)
-	{
-	  error =
-	    sm_add_index (class_mop, constr->constraint_type, constr->name, (const char **) constr->att_names,
-			  constr->asc_desc, constr->prefix_length, constr->filter_predicate, constr->func_index_info,
-			  constr->comment);
-	  if (error != NO_ERROR)
-	    {
-	      goto error_exit;
-	    }
-	}
     }
+
 error_exit:
   return error;
 }
@@ -14988,24 +14969,12 @@ do_recreate_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_save_info)
 
   for (saved = index_save_info; saved != NULL; saved = saved->next)
     {
-      if (SM_IS_CONSTRAINT_EXCEPT_INDEX_FAMILY ((SM_CONSTRAINT_TYPE) saved->constraint_type))
+      if (SM_IS_CONSTRAINT_INDEX_FAMILY ((SM_CONSTRAINT_TYPE) saved->constraint_type))
 	{
-	  error =
-	    sm_add_constraint (classmop, saved->constraint_type, saved->name, (const char **) saved->att_names,
-			       saved->asc_desc, saved->prefix_length, 0, saved->filter_predicate,
-			       saved->func_index_info, saved->comment);
+	  error = sm_add_constraint (classmop, saved->constraint_type, saved->name, (const char **) saved->att_names,
+				     saved->asc_desc, saved->prefix_length, false, saved->filter_predicate,
+				     saved->func_index_info, saved->comment, SM_NORMAL_INDEX);
 
-	  if (error != NO_ERROR)
-	    {
-	      goto error_exit;
-	    }
-	}
-      else
-	{
-	  error =
-	    sm_add_index (classmop, saved->constraint_type, saved->name, (const char **) saved->att_names,
-			  saved->asc_desc, saved->prefix_length, saved->filter_predicate, saved->func_index_info,
-			  saved->comment);
 	  if (error != NO_ERROR)
 	    {
 	      goto error_exit;
@@ -15022,4 +14991,92 @@ error_exit:
     }
 
   return error;
+}
+
+int
+do_alter_index_status (PARSER_CONTEXT * parser, const PT_NODE * statement)
+{
+  int error = NO_ERROR;
+  DB_OBJECT *obj;
+  PT_NODE *cls = NULL;
+  SM_TEMPLATE *ctemplate = NULL;
+  const char *class_name = NULL;
+  const char *index_name = NULL;
+  SM_INDEX_STATUS index_status;
+  bool do_rollback = false;
+
+  index_name = statement->info.index.index_name ? statement->info.index.index_name->info.name.original : NULL;
+
+  if (index_name == NULL)
+    {
+      goto error_exit;
+    }
+
+  index_status = (SM_INDEX_STATUS) statement->info.index.index_status;
+
+  cls = statement->info.index.indexed_class ? statement->info.index.indexed_class->info.spec.flat_entity_list : NULL;
+  if (cls == NULL)
+    {
+      goto error_exit;
+    }
+
+  class_name = cls->info.name.resolved;
+  obj = db_find_class (class_name);
+  if (obj == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto error_exit;
+    }
+
+  error = tran_system_savepoint (UNIQUE_SAVEPOINT_ALTER_INDEX);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  do_rollback = true;
+
+  ctemplate = smt_edit_class_mop (obj, AU_INDEX);
+  if (ctemplate == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto error_exit;
+    }
+
+  error = smt_change_constraint_status (ctemplate, index_name, index_status);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  /* classobj_free_template() is included in sm_update_class() */
+  error = sm_update_class (ctemplate, NULL);
+  if (error != NO_ERROR)
+    {
+      /* Even though sm_update() did not return NO_ERROR, ctemplate is already freed */
+      ctemplate = NULL;
+      goto error_exit;
+    }
+
+end:
+
+  return error;
+
+error_exit:
+  if (ctemplate != NULL)
+    {
+      /* smt_quit() always returns NO_ERROR */
+      smt_quit (ctemplate);
+    }
+
+  if (do_rollback == true)
+    {
+      if (do_rollback && error != ER_LK_UNILATERALLY_ABORTED)
+	{
+	  tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_ALTER_INDEX);
+	}
+    }
+  error = (error == NO_ERROR && (error = er_errid ()) == NO_ERROR) ? ER_FAILED : error;
+
+  goto end;
 }

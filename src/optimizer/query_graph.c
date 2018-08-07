@@ -6945,6 +6945,29 @@ qo_is_iss_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entry)
   return true;
 }
 
+static bool
+qo_is_usable_index (SM_CLASS_CONSTRAINT * constraint, QO_NODE * nodep)
+{
+  if (!SM_IS_CONSTRAINT_INDEX_FAMILY (constraint->type))
+    {
+      // not an index
+      return false;
+    }
+
+  if (constraint->index_status != SM_NORMAL_INDEX && constraint->index_status != SM_ONLINE_INDEX_BUILDING_DONE)
+    {
+      // building or invisible
+      return false;
+    }
+
+  if (constraint->filter_predicate != NULL && QO_NODE_USING_INDEX (nodep) == NULL)
+    {
+      return false;
+    }
+
+  return true;
+}
+
 /*
  * qo_find_node_indexes () -
  *   return:
@@ -7019,15 +7042,12 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
       n = 0;
       for (consp = constraints; consp; consp = consp->next)
 	{
-	  if (SM_IS_CONSTRAINT_INDEX_FAMILY (consp->type))
+	  if (qo_is_usable_index (consp, nodep))
 	    {
-	      if (consp->filter_predicate != NULL && QO_NODE_USING_INDEX (nodep) == NULL)
-		{
-		  continue;
-		}
 	      n++;
 	    }
 	}
+
       /* allocate room for the constraint indexes */
       /* we don't have apriori knowledge about which constraints will be applied, so allocate room for all of them */
       /* qo_alloc_index(env, n) will allocate QO_INDEX structure and QO_INDEX_ENTRY structure array */
@@ -7042,15 +7062,9 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
       /* for each constraint of the class */
       for (consp = constraints; consp; consp = consp->next)
 	{
-
-	  if (!SM_IS_CONSTRAINT_INDEX_FAMILY (consp->type))
+	  if (!qo_is_usable_index (consp, nodep))
 	    {
-	      continue;		/* neither INDEX nor UNIQUE constraint, skip */
-	    }
-
-	  if (consp->filter_predicate != NULL && QO_NODE_USING_INDEX (nodep) == NULL)
-	    {
-	      continue;
+	      continue;		// skip it
 	    }
 
 	  uip = QO_NODE_USING_INDEX (nodep);
