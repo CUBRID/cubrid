@@ -652,6 +652,9 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_THREAD_WORKER_POOLING                "thread_worker_pooling"
 #define PRM_NAME_THREAD_WORKER_TIMEOUT_SECONDS        "thread_worker_timeout_seconds"
 
+#define PRM_NAME_REPL_GENERATOR_BUFFER_SIZE "replication_generator_buffer_size"
+#define PRM_NAME_REPL_CONSUMER_BUFFER_SIZE "replication_consumer_buffer_size"
+
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
 #define PRM_VALUE_MIN "MIN"
@@ -2166,6 +2169,16 @@ static unsigned int prm_enable_dwb_checksum_thread_flag = 0;
 bool PRM_DWB_LOGGING = false;
 static bool prm_dwb_logging_default = false;
 static unsigned int prm_dwb_logging_flag = 0;
+
+UINT64 PRM_REPL_GENERATOR_BUFFER_SIZE = 10 * 1024 * 1024;
+static UINT64 prm_repl_generator_buffer_size_default = 10 * 1024 * 1024;
+static UINT64 prm_repl_generator_buffer_size_lower = 100 * 1024;
+static unsigned int prm_repl_generator_buffer_size_flag = 0;
+
+UINT64 PRM_REPL_CONSUMER_BUFFER_SIZE = 10 * 1024 * 1024;
+static UINT64 prm_repl_consumer_buffer_size_default = 10 * 1024 * 1024;
+static UINT64 prm_repl_consumer_buffer_size_lower = 100 * 1024;
+static unsigned int prm_repl_consumer_buffer_size_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5474,6 +5487,28 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_THREAD_WORKER_TIMEOUT_SECONDS,
    (void *) &prm_thread_worker_timeout_seconds_upper,
    (void *) &prm_thread_worker_timeout_seconds_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_REPL_GENERATOR_BUFFER_SIZE,
+   PRM_NAME_REPL_GENERATOR_BUFFER_SIZE,
+   (PRM_FOR_SERVER | PRM_SIZE_UNIT),
+   PRM_BIGINT,
+   &prm_repl_generator_buffer_size_flag,
+   (void *) &prm_repl_generator_buffer_size_default,
+   (void *) &PRM_REPL_GENERATOR_BUFFER_SIZE,
+   (void *) NULL, (void *) &prm_repl_generator_buffer_size_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_REPL_CONSUMER_BUFFER_SIZE,
+   PRM_NAME_REPL_CONSUMER_BUFFER_SIZE,
+   (PRM_FOR_SERVER | PRM_SIZE_UNIT),
+   PRM_BIGINT,
+   &prm_repl_consumer_buffer_size_flag,
+   (void *) &prm_repl_consumer_buffer_size_default,
+   (void *) &PRM_REPL_CONSUMER_BUFFER_SIZE,
+   (void *) NULL, (void *) &prm_repl_consumer_buffer_size_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},

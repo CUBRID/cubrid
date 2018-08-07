@@ -1293,6 +1293,7 @@ char *
 csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
 {
   char *result = NULL;
+  char *json_body = NULL;
   int len = 0;
 
   if (value == NULL)
@@ -1472,7 +1473,9 @@ csql_db_value_as_string (DB_VALUE * value, int *length, bool plain_string)
 	}
       break;
     case DB_TYPE_JSON:
-      result = duplicate_string (value->data.json.json_body);
+      json_body = db_get_json_raw_body (value);
+      result = duplicate_string (json_body);
+      db_private_free (NULL, json_body);
       if (result)
 	{
 	  len = strlen (result);

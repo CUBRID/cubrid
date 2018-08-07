@@ -1428,11 +1428,11 @@ extern int or_put_datetime (OR_BUF * buf, DB_DATETIME * datetimeval);
 extern int or_put_datetimetz (OR_BUF * buf, DB_DATETIMETZ * datetimetz);
 extern int or_put_monetary (OR_BUF * buf, DB_MONETARY * monetary);
 extern int or_put_string_aligned (OR_BUF * buf, char *string);
-extern int or_put_string_aligned_with_length (OR_BUF * buf, char *str);
+extern int or_put_string_aligned_with_length (OR_BUF * buf, const char *str);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int or_put_binary (OR_BUF * buf, DB_BINARY * binary);
 #endif
-extern int or_put_data (OR_BUF * buf, char *data, int length);
+extern int or_put_data (OR_BUF * buf, const char *data, int length);
 extern int or_put_oid (OR_BUF * buf, const OID * oid);
 extern int or_put_varbit (OR_BUF * buf, char *string, int bitlen);
 extern int or_packed_put_varbit (OR_BUF * buf, char *string, int bitlen);

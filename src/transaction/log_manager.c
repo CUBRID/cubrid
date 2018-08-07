@@ -1637,7 +1637,7 @@ loop:
 	    }
 	  else if (LOG_ISTRAN_ACTIVE (tdes) && abort_thread_running[i] == 0)
 	    {
-	      css_push_external_task (*thread_p, css_find_conn_by_tran_index (i), new log_abort_task (*tdes));
+	      css_push_external_task (css_find_conn_by_tran_index (i), new log_abort_task (*tdes));
 	      abort_thread_running[i] = 1;
 	      repeat_loop = true;
 	    }

@@ -25,6 +25,7 @@
 #define _DB_JSON_H_
 
 #include "error_manager.h"
+#include "object_representation.h"
 
 #if defined (__cplusplus)
 class JSON_DOC;
@@ -70,7 +71,8 @@ unsigned int db_json_get_depth (const JSON_DOC *doc);
 int db_json_extract_document_from_path (const JSON_DOC *document, const char *raw_path,
 					JSON_DOC *&result);
 char *db_json_get_raw_json_body_from_document (const JSON_DOC *doc);
-JSON_DOC *db_json_get_paths_for_search_func (const JSON_DOC *doc, const char *search_str, bool all);
+
+char *db_json_get_json_body_from_document (const JSON_DOC &doc);
 
 int db_json_add_member_to_object (JSON_DOC *doc, const char *name, const char *value);
 int db_json_add_member_to_object (JSON_DOC *doc, const char *name, int value);
@@ -84,6 +86,10 @@ void db_json_add_element_to_array (JSON_DOC *doc, const JSON_DOC *value);
 
 int db_json_get_json_from_str (const char *json_raw, JSON_DOC *&doc);
 JSON_DOC *db_json_get_copy_of_doc (const JSON_DOC *doc);
+
+int db_json_serialize (const JSON_DOC &doc, OR_BUF &buffer);
+std::size_t db_json_serialize_length (const JSON_DOC &doc);
+int db_json_deserialize (OR_BUF *buf, JSON_DOC *&doc);
 
 int db_json_insert_func (const JSON_DOC *doc_to_be_inserted, JSON_DOC &doc_destination, const char *raw_path);
 int db_json_replace_func (const JSON_DOC *new_value, JSON_DOC &doc, const char *raw_path);

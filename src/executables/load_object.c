@@ -1377,6 +1377,7 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
   int error = NO_ERROR;
   char buf[INTERNAL_BUFFER_SIZE];
   char *ptr;
+  char *json_body = NULL;
   DB_TYPE type;
   int len;
   DB_TIMETZ *time_tz;
@@ -1568,7 +1569,9 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
       break;
 
     case DB_TYPE_JSON:
-      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "'%s'", db_get_json_raw_body (value)));	//, strlen (db_get_json_raw_body (value)), NULL));
+      json_body = db_get_json_raw_body (value);
+      CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "'%s'", json_body));
+      db_private_free (NULL, json_body);
       break;
 
     default:

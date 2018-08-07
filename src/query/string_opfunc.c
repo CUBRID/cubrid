@@ -3122,8 +3122,7 @@ db_json_object (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	}
     }
 
-  str = db_json_get_raw_json_body_from_document (new_doc);
-  db_make_json (result, str, new_doc, true);
+  db_make_json (result, new_doc, true);
 
   return NO_ERROR;
 }
@@ -3194,8 +3193,7 @@ db_json_array (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	}
     }
 
-  str = db_json_get_raw_json_body_from_document (new_doc);
-  db_make_json (result, str, new_doc, true);
+  db_make_json (result, new_doc, true);
 
   return NO_ERROR;
 }
@@ -3267,8 +3265,7 @@ db_json_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	}
     }
 
-  str = db_json_get_raw_json_body_from_document (new_doc);
-  db_make_json (result, str, new_doc, true);
+  db_make_json (result, new_doc, true);
 
   return NO_ERROR;
 }
@@ -3278,7 +3275,6 @@ db_json_replace (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 {
   int i, error_code = NO_ERROR;
   JSON_DOC *new_doc = NULL;
-  char *str;
 
   db_make_null (result);
 
@@ -3339,8 +3335,7 @@ db_json_replace (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	}
     }
 
-  str = db_json_get_raw_json_body_from_document (new_doc);
-  db_make_json (result, str, new_doc, true);
+  db_make_json (result, new_doc, true);
 
   return NO_ERROR;
 }
@@ -3350,7 +3345,6 @@ db_json_set (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 {
   int i, error_code = NO_ERROR;
   JSON_DOC *new_doc = NULL;
-  char *str;
 
   db_make_null (result);
 
@@ -3411,8 +3405,7 @@ db_json_set (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	}
     }
 
-  str = db_json_get_raw_json_body_from_document (new_doc);
-  db_make_json (result, str, new_doc, true);
+  db_make_json (result, new_doc, true);
 
   return NO_ERROR;
 }
@@ -3476,8 +3469,7 @@ db_json_keys (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
       return error_code;
     }
 
-  str = db_json_get_raw_json_body_from_document (result_json);
-  db_make_json (result, str, result_json, true);
+  db_make_json (result, result_json, true);
 
   return NO_ERROR;
 }
@@ -3487,7 +3479,6 @@ db_json_remove (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 {
   int i, error_code;
   JSON_DOC *new_doc = NULL;
-  char *str;
 
   db_make_null (result);
 
@@ -3526,8 +3517,7 @@ db_json_remove (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	}
     }
 
-  str = db_json_get_raw_json_body_from_document (new_doc);
-  db_make_json (result, str, new_doc, true);
+  db_make_json (result, new_doc, true);
 
   return NO_ERROR;
 }
@@ -3596,8 +3586,7 @@ db_json_array_append (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	}
     }
 
-  str = db_json_get_raw_json_body_from_document (new_doc);
-  db_make_json (result, str, new_doc, true);
+  db_make_json (result, new_doc, true);
 
   return NO_ERROR;
 }
@@ -3615,7 +3604,6 @@ int
 db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 {
   int i;
-  char *str;
   int error_code;
   JSON_DOC *accumulator = NULL;
 
@@ -3664,8 +3652,7 @@ db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	}
     }
 
-  str = db_json_get_raw_json_body_from_document (accumulator);
-  db_make_json (result, str, accumulator, true);
+  db_make_json (result, accumulator, true);
 
   return NO_ERROR;
 }
@@ -3701,8 +3688,7 @@ db_json_get_all_paths (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
   result_json = db_json_allocate_doc ();
   error_code = db_json_get_all_paths_func (*new_doc, result_json);
 
-  str = db_json_get_raw_json_body_from_document (result_json);
-  db_make_json (result, str, result_json, true);
+  db_make_json (result, result_json, true);
 
   // delete new_doc
   db_json_delete_doc (new_doc);

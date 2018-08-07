@@ -235,6 +235,36 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/work_space.c
   )
 
+set (REPLICATION_HEADERS
+  ${REPLICATION_DIR}/log_generator.hpp
+  ${REPLICATION_DIR}/log_consumer.hpp
+  ${REPLICATION_DIR}/replication_master_senders_manager.hpp
+  ${REPLICATION_DIR}/replication_object.hpp
+  ${REPLICATION_DIR}/replication_stream_entry.hpp
+  )
+
+set(REPLICATION_SOURCES
+  ${REPLICATION_DIR}/log_consumer.cpp
+  ${REPLICATION_DIR}/log_generator.cpp
+  ${REPLICATION_DIR}/replication_object.cpp
+  ${REPLICATION_DIR}/replication_master_senders_manager.cpp  
+  ${REPLICATION_DIR}/replication_stream_entry.cpp
+  )
+
+set(STREAM_SOURCES
+  ${BASE_DIR}/cubstream.cpp
+  ${BASE_DIR}/multi_thread_stream.cpp
+  )
+
+set (STREAM_HEADERS
+  ${BASE_DIR}/bip_buffer.hpp
+  ${BASE_DIR}/collapsable_circular_queue.hpp
+  ${BASE_DIR}/cubstream.hpp
+  ${BASE_DIR}/multi_thread_stream.hpp
+  ${BASE_DIR}/stream_entry.hpp
+  ${BASE_DIR}/stream_io.hpp
+  )
+
 set(JSP_SOURCES
   ${JSP_DIR}/jsp_cl.c
   ${JSP_DIR}/jsp_sr.c
@@ -372,6 +402,8 @@ SET_SOURCE_FILES_PROPERTIES(
   ${OPTIMIZER_SOURCES}
   ${QUERY_SOURCES}
   ${OBJECT_SOURCES}
+  ${REPLICATION_SOURCES}
+  ${STREAM_SOURCES}  
   ${JSP_SOURCES}
   ${THREAD_SOURCES}
   ${TRANSACTION_SOURCES}
@@ -407,6 +439,10 @@ add_library(cubridsa SHARED
   ${OPTIMIZER_SOURCES}
   ${QUERY_SOURCES}
   ${OBJECT_SOURCES}
+  ${REPLICATION_HEADERS}
+  ${REPLICATION_SOURCES}
+  ${STREAM_HEADERS}  
+  ${STREAM_SOURCES}
   ${JSP_SOURCES}
   ${THREAD_SOURCES}
   ${TRANSACTION_SOURCES}

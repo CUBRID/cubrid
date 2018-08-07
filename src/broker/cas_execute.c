@@ -71,6 +71,7 @@
 
 #include "dbi.h"
 #include "dbtype.h"
+#include "memory_alloc.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -5081,13 +5082,14 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
       break;
     case DB_TYPE_JSON:
       {
-	const char *str;
+	char *str;
 	int bytes_size = 0;
 
-	str = val->data.json.json_body;
+	str = db_get_json_raw_body (val);
 	bytes_size = strlen (str);
 
 	add_res_data_string (net_buf, str, bytes_size, 0, CAS_SCHEMA_DEFAULT_CHARSET, &data_size);
+	db_private_free (NULL, str);
       }
       break;
     default:

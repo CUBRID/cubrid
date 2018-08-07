@@ -17,36 +17,37 @@
  *
  */
 
-/*
- * cubstream.cpp
- */
+#include "test_log_generator.hpp"
 
-#ident "$Id$"
+#include <iostream>
 
-#include "cubstream.hpp"
-#include "error_code.h"
-#include <algorithm>
-
-namespace cubstream
+template <typename Func, typename ... Args>
+int
+test_module (int &global_error, Func &&f, Args &&... args)
 {
+  std::cout << std::endl;
+  std::cout << "  start testing module ";
 
-  stream::stream ()
-  {
-    m_last_committed_pos = 0;
-    m_last_notified_committed_pos = 0;
-    m_read_position = 0;
-    m_last_dropable_pos = 0;
-    m_serial_read_wait_pos = 0;
+  int err = f (std::forward <Args> (args)...);
+  if (err == 0)
+    {
+      std::cout << "  test completed successfully" << std::endl;
+    }
+  else
+    {
+      std::cout << "  test failed" << std::endl;
+      global_error = global_error == 0 ? err : global_error;
+    }
+  return err;
+}
 
-    init (0);
-  }
+int main ()
+{
+  int global_error = 0;
 
-  int stream::init (const stream_position &start_position)
-  {
-    m_append_position = start_position;
-    m_read_position = start_position;
+  test_module (global_error, test_replication::test_log_generator1);
+  test_module (global_error, test_replication::test_log_generator2);
+  /* add more tests here */
 
-    return NO_ERROR;
-  }
-
-} /* namespace cubstream */
+  return global_error;
+}

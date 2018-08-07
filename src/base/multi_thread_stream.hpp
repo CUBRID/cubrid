@@ -18,27 +18,28 @@
  */
 
 /*
- * packing_stream.hpp
+ * multi_thread_stream.hpp
  */
 
 #ident "$Id$"
 
-#ifndef _PACKING_STREAM_HPP_
-#define _PACKING_STREAM_HPP_
+#ifndef _MULTI_THREAD_STREAM_HPP_
+#define _MULTI_THREAD_STREAM_HPP_
 
 #include "bip_buffer.hpp"
 #include "collapsable_circular_queue.hpp"
 #include "cubstream.hpp"
 #include "stream_io.hpp"
 
+#include <condition_variable>
 #include <mutex>
 #include <functional>
 #include <vector>
 
 namespace cubstream
 {
-  /* stream with capability to pack/unpack objects concurrently
-   * the read, read_partial, read_serial, write require a function argument to perform the packing/unpacking;
+  /* stream with capability to write/read concurrently
+   * the read, read_partial, read_serial, write require a function argument to perform custom write/read operation;
    * Interface:
    *
    * write (amount, write_function):
@@ -65,7 +66,7 @@ namespace cubstream
    *  get_data_from_pos/unlatch_read_data : internal methods used by read;
    *  wait_for_data : used by read when requested range is not yet produced
    */
-  class packing_stream : public stream
+  class multi_thread_stream : public stream
   {
     public:
       static const int BIP_BUFFER_READ_PAGES_COUNT = 64;
@@ -109,6 +110,10 @@ namespace cubstream
 
       stream_io *m_io;
 
+      /* serial read cv uses m_buffer_mutex */
+      std::condition_variable m_serial_read_cv;
+      bool m_is_stopped;
+
       /* stats counters */
       std::uint64_t m_stat_reserve_queue_spins;
       std::uint64_t m_stat_reserve_buffer_spins;
@@ -130,8 +135,8 @@ namespace cubstream
       int wait_for_data (const size_t amount, const STREAM_SKIP_MODE skip_mode);
 
     public:
-      packing_stream (const size_t buffer_capacity, const int max_appenders);
-      ~packing_stream ();
+      multi_thread_stream (const size_t buffer_capacity, const int max_appenders);
+      virtual ~multi_thread_stream ();
 
       int write (const size_t byte_count, write_func_t &write_action);
       int read_partial (const stream_position first_pos, const size_t byte_count, size_t &actual_read_bytes,
@@ -144,13 +149,24 @@ namespace cubstream
 	m_bip_buffer.set_reserve_margin (margin);
       };
 
+      void set_trigger_min_to_read_size (const size_t min_read_size)
+      {
+	m_trigger_min_to_read_size = min_read_size;
+      }
+
       /* fill factor : if < 1 : no need to flush or throttle the appenders ; if > 1 : need to flush and/or throttle */
       float stream_fill_factor (void)
       {
 	return ((float) m_append_position - (float) m_last_dropable_pos) / (float) m_trigger_flush_to_disk_size;
       };
+
+      void set_stop (void)
+      {
+	m_is_stopped = true;
+	m_serial_read_cv.notify_one ();
+      }
   };
 
 } /* namespace cubstream */
 
-#endif /* _PACKING_STREAM_HPP_ */
+#endif /* _MULTI_THREAD_STREAM_HPP_ */

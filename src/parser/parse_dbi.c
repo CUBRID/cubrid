@@ -579,6 +579,7 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
   DB_OBJECT *mop;
   DB_TYPE db_type;
   char buf[100];
+  char *json_body = NULL;
 
   assert (parser != NULL && val != NULL);
 
@@ -637,8 +638,9 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
       else
 	{
 	  result->data_type->type_enum = result->type_enum;
-	  result->info.value.data_value.str =
-	    pt_append_nulstring (parser, (PARSER_VARCHAR *) NULL, db_get_json_raw_body (val));
+	  json_body = db_get_json_raw_body (val);
+	  result->info.value.data_value.str = pt_append_nulstring (parser, (PARSER_VARCHAR *) NULL, json_body);
+	  db_private_free (NULL, json_body);
 	  if (db_get_json_schema (val) != NULL)
 	    {
 	      /* check valid schema */
@@ -2835,6 +2837,7 @@ pt_bind_helper (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val, int *da
   PT_NODE *dt;
   DB_TYPE val_type;
   PT_TYPE_ENUM pt_type;
+  char *json_body = NULL;
 
   assert (node != NULL && val != NULL);
 
@@ -2979,21 +2982,27 @@ pt_bind_helper (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val, int *da
       dt = parser_new_node (parser, PT_DATA_TYPE);
       if (dt)
 	{
-	  if (db_json_validate_json (val->data.json.json_body) != NO_ERROR)
+	  json_body = db_json_get_json_body_from_document (*val->data.json.document);
+	  if (db_json_validate_json (json_body) != NO_ERROR)
 	    {
 	      assert (false);
 	      parser_free_node (parser, dt);
 	      /* TODO: set a real error. */
 	      PT_INTERNAL_ERROR (parser, "json validation failed");
+	      db_private_free (NULL, json_body);
 	      return NULL;
 	    }
 	  /* valid schema */
 
 	  dt->type_enum = node->type_enum;
+	  db_private_free (NULL, json_body);
 
 	  /* save raw schema */
-	  dt->info.data_type.json_schema =
-	    pt_append_bytes (parser, NULL, val->data.json.json_body, strlen (val->data.json.json_body));
+	  if (val->data.json.schema_raw != NULL)
+	    {
+	      const char *schema_raw = val->data.json.schema_raw;
+	      dt->info.data_type.json_schema = pt_append_bytes (parser, NULL, schema_raw, strlen (schema_raw));
+	    }
 	}
       break;
 
@@ -3238,6 +3247,7 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
   int collation_id = LANG_COERCIBLE_COLL;
   INTL_CODESET codeset = LANG_COERCIBLE_CODESET;
   bool has_zone;
+  const char *json_body = NULL;
 
   assert (value->node_type == PT_VALUE);
   if (PT_HAS_COLLATION (value->type_enum) && value->data_type != NULL)
@@ -3557,10 +3567,9 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
     case PT_TYPE_JSON:
       db_value->domain.general_info.type = DB_TYPE_JSON;
       db_value->domain.general_info.is_null = 0;
-      db_value->data.json.json_body = db_private_strdup (NULL, (const char *) value->info.value.data_value.str->bytes);
-      if (db_json_get_json_from_str (db_value->data.json.json_body, db_value->data.json.document) != NO_ERROR)
+      json_body = (const char *) value->info.value.data_value.str->bytes;
+      if (db_json_get_json_from_str (json_body, db_value->data.json.document) != NO_ERROR)
 	{
-	  db_private_free (NULL, db_value->data.json.json_body);
 	  PT_ERRORmf (parser, value, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_INVALID_JSON,
 		      value->info.value.data_value.str->bytes);
 	  return (DB_VALUE *) NULL;
@@ -3568,15 +3577,6 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
 
       value->info.value.db_value_is_in_workspace = true;
       db_value->need_clear = true;
-      if (value->info.data_type.json_schema)
-	{
-	  db_value->data.json.schema_raw =
-	    db_private_strdup (NULL, (const char *) value->info.data_type.json_schema->bytes);
-	}
-      else
-	{
-	  db_value->data.json.schema_raw = NULL;
-	}
       *more_type_info_needed = (value->data_type == NULL);
       break;
 

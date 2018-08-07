@@ -2197,6 +2197,7 @@ mht_get_hash_number (const int ht_size, const DB_VALUE * val)
 
 		hashcode = MHT2STR_COLL (LANG_COLL_BINARY, (unsigned char *) json_body, len);
 		hashcode %= ht_size;
+		db_private_free (NULL, json_body);
 	      }
 	  }
 	  break;

@@ -37,10 +37,6 @@ extern "C"
 {
 #endif
 
-#if defined(WINDOWS)
-#define inline
-#endif
-
   struct es_list_head
   {
     struct es_list_head *next, *prev;

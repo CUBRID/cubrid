@@ -8115,7 +8115,7 @@ fileio_start_backup_thread (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * ses
   conn_p = css_get_current_conn_entry ();
   for (i = 1; i <= thread_info_p->act_r_threads; i++)
     {
-      css_push_external_task (*thread_p, conn_p, new fileio_read_backup_volume_task (session_p));
+      css_push_external_task (conn_p, new fileio_read_backup_volume_task (session_p));
     }
 
   /* work as write thread */
