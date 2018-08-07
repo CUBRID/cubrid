@@ -253,12 +253,12 @@ namespace cubthread
   }
 
   void
-  manager::push_task (entry &thread_p, entry_workpool *worker_pool_arg, entry_task *exec_p)
+  manager::push_task (entry_workpool *worker_pool_arg, entry_task *exec_p)
   {
     if (worker_pool_arg == NULL)
       {
 	// execute on this thread
-	exec_p->execute (thread_p);
+	exec_p->execute (get_entry ());
 	exec_p->retire ();
       }
     else
@@ -269,20 +269,19 @@ namespace cubthread
 #else // not SERVER_MODE = SA_MODE
 	assert (false);
 	// execute on this thread
-	exec_p->execute (thread_p);
+	exec_p->execute (get_entry ());
 	exec_p->retire ();
 #endif // not SERVER_MODE = SA_MODE
       }
   }
 
   void
-  manager::push_task_on_core (entry &thread_p, entry_workpool *worker_pool_arg, entry_task *exec_p,
-			      std::size_t core_hash)
+  manager::push_task_on_core (entry_workpool *worker_pool_arg, entry_task *exec_p, std::size_t core_hash)
   {
     if (worker_pool_arg == NULL)
       {
 	// execute on this thread
-	exec_p->execute (thread_p);
+	exec_p->execute (get_entry ());
 	exec_p->retire ();
       }
     else
@@ -293,7 +292,7 @@ namespace cubthread
 #else // not SERVER_MODE = SA_MODE
 	assert (false);
 	// execute on this thread
-	exec_p->execute (thread_p);
+	exec_p->execute (get_entry ());
 	exec_p->retire ();
 #endif // not SERVER_MODE = SA_MODE
       }
