@@ -44,9 +44,8 @@ namespace cubload
   driver::driver ()
 #if defined (SERVER_MODE)
     : m_loader (new server_loader ())
-#endif
-#if defined (SA_MODE)
-	: m_loader (new client_loader ())
+#elif defined (SA_MODE)
+    : m_loader (new client_loader ())
 #endif
     , m_scanner (*this, *m_loader)
     , m_parser (*this, *m_loader)

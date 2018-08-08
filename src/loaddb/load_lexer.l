@@ -18,7 +18,7 @@
  */
 
 /*
- * lexer.l - loader lexer file
+ * load_lexer.l - loader lexer file
  */
 
 /*** C/C++ Declarations ***/

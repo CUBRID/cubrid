@@ -152,7 +152,7 @@ namespace cubload
      * entered this can take the slower route. */
     if (str_len < MAX_DIGITS_FOR_INT || (str_len == MAX_DIGITS_FOR_INT && (str[0] == '0' || str[0] == '1')))
       {
-	result = parse_int (& (val->data.i), str, 10);
+	result = parse_int (&val->data.i, str, 10);
 	if (result != 0)
 	  {
 	    // TODO CBRD-21654 handle error
@@ -187,7 +187,7 @@ namespace cubload
      * entered this can take the slower route. */
     if (str_len < MAX_DIGITS_FOR_BIGINT || (str_len == MAX_DIGITS_FOR_BIGINT && str[0] != '9'))
       {
-	result = parse_bigint (& (val->data.bigint), str, 10);
+	result = parse_bigint (&val->data.bigint, str, 10);
 	if (result != 0)
 	  {
 	    // TODO CBRD-21654 handle error
@@ -385,7 +385,7 @@ namespace cubload
 
     db_make_date (val, 1, 1, 1996);
 
-    ret = db_string_to_date (str, & (val->data.date));
+    ret = db_string_to_date (str, &val->data.date);
     if (ret != NO_ERROR)
       {
 	// TODO CBRD-21654 handle error
@@ -399,7 +399,7 @@ namespace cubload
 
     db_make_time (val, 0, 0, 0);
 
-    ret = db_string_to_time (str, & (val->data.time));
+    ret = db_string_to_time (str, &val->data.time);
     if (ret != NO_ERROR)
       {
 	// TODO CBRD-21654 handle error
@@ -413,7 +413,7 @@ namespace cubload
 
     db_make_timestamp (val, 0);
 
-    ret = db_string_to_timestamp (str, & (val->data.utime));
+    ret = db_string_to_timestamp (str, &val->data.utime);
     if (ret != NO_ERROR)
       {
 	// TODO CBRD-21654 handle error
@@ -427,7 +427,7 @@ namespace cubload
 
     db_make_timestampltz (val, 0);
 
-    ret = db_string_to_timestampltz (str, & (val->data.utime));
+    ret = db_string_to_timestampltz (str, &val->data.utime);
     if (ret != NO_ERROR)
       {
 	// TODO CBRD-21654 handle error
@@ -446,7 +446,7 @@ namespace cubload
 
     db_make_timestamptz (val, &timestamptz);
 
-    ret = db_string_to_timestamptz (str, & (val->data.timestamptz), &has_zone);
+    ret = db_string_to_timestamptz (str, &val->data.timestamptz, &has_zone);
     if (ret != NO_ERROR)
       {
 	// TODO CBRD-21654 handle error
@@ -462,7 +462,7 @@ namespace cubload
     db_datetime_encode (&datetime, 1, 1, 1996, 0, 0, 0, 0);
     db_make_datetime (val, &datetime);
 
-    ret = db_string_to_datetime (str, & (val->data.datetime));
+    ret = db_string_to_datetime (str, &val->data.datetime);
     if (ret != NO_ERROR)
       {
 	// TODO CBRD-21654 handle error
@@ -476,9 +476,9 @@ namespace cubload
     DB_DATETIME datetime;
 
     db_datetime_encode (&datetime, 1, 1, 1996, 0, 0, 0, 0);
-    db_make_datetimeltz (val,  &datetime);
+    db_make_datetimeltz (val, &datetime);
 
-    ret = db_string_to_datetimeltz (str, & (val->data.datetime));
+    ret = db_string_to_datetimeltz (str, &val->data.datetime);
     if (ret != NO_ERROR)
       {
 	// TODO CBRD-21654 handle error
@@ -500,7 +500,7 @@ namespace cubload
 
     db_make_datetimetz (val, &datetimetz);
 
-    ret = db_string_to_datetimetz (str, & (val->data.datetimetz), &has_zone);
+    ret = db_string_to_datetimetz (str, &val->data.datetimetz, &has_zone);
     if (ret != NO_ERROR)
       {
 	// TODO CBRD-21654 handle error
@@ -534,8 +534,9 @@ namespace cubload
     const unsigned char *p = (const unsigned char *) str;
     const unsigned char *token = (const unsigned char *) str;
 
-    if (str_len >= 2 && intl_is_currency_symbol ((const char *) p, &currency_type, &symbol_size,
-	(CURRENCY_CHECK_MODE) (CURRENCY_CHECK_MODE_ESC_ISO | CURRENCY_CHECK_MODE_GRAMMAR)))
+    if (str_len >= 2
+	&& intl_is_currency_symbol ((const char *) p, &currency_type, &symbol_size,
+				    (CURRENCY_CHECK_MODE) (CURRENCY_CHECK_MODE_ESC_ISO | CURRENCY_CHECK_MODE_GRAMMAR)))
       {
 	token += symbol_size;
       }
