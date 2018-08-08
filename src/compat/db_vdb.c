@@ -3241,6 +3241,7 @@ db_close_session_local (DB_SESSION * session)
 
   parser->host_var_count = parser->auto_param_count = 0;
 
+  sm_fee_resident_classes_virtual_query_cache ();
   pt_free_orphans (session->parser);
   parser_free_parser (session->parser);
 
