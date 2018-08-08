@@ -322,6 +322,8 @@ namespace cubload
 
     cubthread::entry &thread_ref = cubthread::get_entry ();
 
+    // TODO: What about keeping "scancache" for the class? act_setup_command_spec may keep it.
+
     error = heap_get_hfid_from_class_oid (&thread_ref, &m_class_oid, &hfid);
     if (error != NO_ERROR)
       {
