@@ -57,9 +57,12 @@ namespace cubload
       OID m_class_oid;
       ATTR_ID *m_attr_ids;
       HEAP_CACHE_ATTRINFO m_attr_info;
+      HEAP_SCANCACHE m_scan_cache;
 
       int m_err_total;
       int m_total_fails;
+
+      bool m_scan_cache_started;
   };
 
 } // namespace cubload

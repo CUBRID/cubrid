@@ -39,8 +39,10 @@ namespace cubload
     : m_class_oid (NULL_OID_INITIALIZER)
     , m_attr_ids (NULL)
     , m_attr_info ()
+    , m_scan_cache ()
     , m_err_total (0)
     , m_total_fails (0)
+    , m_scan_cache_started (false)
   {
     //
   }
@@ -70,7 +72,6 @@ namespace cubload
     char *string = NULL;
     int error = NO_ERROR;
     int alloced_string = 0;
-    HEAP_SCANCACHE scan_cache;
     string_type *class_name_ = *class_name;
     std::map<std::string, ATTR_ID> attr_name_to_id;
 
@@ -95,13 +96,16 @@ namespace cubload
 	return;
       }
 
-    error = heap_scancache_start_modify (&thread_ref, &scan_cache, &hfid, &m_class_oid, SINGLE_ROW_INSERT, NULL);
+    error = heap_scancache_start_modify (&thread_ref, &m_scan_cache, &hfid, &m_class_oid, SINGLE_ROW_INSERT, NULL);
     if (error != NO_ERROR)
       {
 	// FIXME - error handling(reporting)
+	m_scan_cache_started = false;
 	ldr_class_command_spec_free (cmd_spec);
 	return;
       }
+
+    m_scan_cache_started = true;
 
     error = heap_attrinfo_start (&thread_ref, &m_class_oid, -1, NULL, &m_attr_info);
     if (error != NO_ERROR)
@@ -111,7 +115,7 @@ namespace cubload
 	return;
       }
 
-    SCAN_CODE scan_code = heap_get_class_record (&thread_ref, &m_class_oid, &recdes, &scan_cache, PEEK);
+    SCAN_CODE scan_code = heap_get_class_record (&thread_ref, &m_class_oid, &recdes, &m_scan_cache, PEEK);
     if (scan_code != S_SUCCESS)
       {
 	// FIXME - error handling(reporting)
@@ -156,13 +160,6 @@ namespace cubload
 	m_attr_ids[attr_idx] = attr_name_to_id.at (std::string (attr->val));
       }
     ldr_class_command_spec_free (cmd_spec);
-
-    error = heap_scancache_end_modify (&thread_ref, &scan_cache);
-    if (error != NO_ERROR)
-      {
-	// FIXME - error handling(reporting)
-	return;
-      }
 
     // lock class when batch starts, it will be unlocked on transaction commit/abort, see load_parse_task::execute
     lock_object (&thread_ref, &m_class_oid, oid_Root_class_oid, IX_LOCK, LK_UNCOND_LOCK);
@@ -313,41 +310,22 @@ namespace cubload
   server_loader::act_finish_line ()
   {
     OID oid;
-    HFID hfid;
     int force_count = 0;
     int pruning_type = 0;
     int error = NO_ERROR;
-    HEAP_SCANCACHE scan_cache;
     int op_type = MULTI_ROW_INSERT;
 
     cubthread::entry &thread_ref = cubthread::get_entry ();
 
-    // TODO: What about keeping "scancache" for the class? act_setup_command_spec may keep it.
-
-    error = heap_get_hfid_from_class_oid (&thread_ref, &m_class_oid, &hfid);
-    if (error != NO_ERROR)
+    if (!m_scan_cache_started)
       {
-	// FIXME - error handling(reporting)
 	return;
       }
 
-    error = heap_scancache_start_modify (&thread_ref, &scan_cache, &hfid, &m_class_oid, op_type, NULL);
-    if (error != NO_ERROR)
-      {
-	// FIXME - error handling(reporting)
-	return;
-      }
-
-    error = locator_attribute_info_force (&thread_ref, &scan_cache.node.hfid, &oid, &m_attr_info, NULL, 0,
-					  LC_FLUSH_INSERT, op_type, &scan_cache, &force_count, false,
+    error = locator_attribute_info_force (&thread_ref, &m_scan_cache.node.hfid, &oid, &m_attr_info, NULL, 0,
+					  LC_FLUSH_INSERT, op_type, &m_scan_cache, &force_count, false,
 					  REPL_INFO_TYPE_RBR_NORMAL, pruning_type, NULL, NULL, NULL,
 					  UPDATE_INPLACE_NONE, NULL, false);
-    if (error != NO_ERROR)
-      {
-	// FIXME - error handling(reporting)
-      }
-
-    error = heap_scancache_end_modify (&thread_ref, &scan_cache);
     if (error != NO_ERROR)
       {
 	// FIXME - error handling(reporting)
@@ -364,11 +342,19 @@ namespace cubload
 	m_attr_ids = NULL;
       }
 
-    heap_attrinfo_end (&cubthread::get_entry (), &m_attr_info);
-    m_class_oid = NULL_OID_INITIALIZER;
+    cubthread::entry &thread_ref = cubthread::get_entry ();
+
+    heap_attrinfo_end (&thread_ref, &m_attr_info);
+
+    if (m_scan_cache_started)
+      {
+	heap_scancache_end_modify (&thread_ref, &m_scan_cache);
+	m_scan_cache_started = false;
+      }
 
     m_err_total = 0;
     m_total_fails = 0;
+    m_class_oid = NULL_OID_INITIALIZER;
   }
 
   void
