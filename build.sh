@@ -245,7 +245,12 @@ function build_compile ()
 {
   # make
   print_check "Building"
-  # Add '-j' into MAKEFLAGS environment variable to specify the number of compile jobs to run simultaneously 
+  # Add '-j' into MAKEFLAGS environment variable to specify the number of compile jobs to run simultaneously
+  if [ -n "$MAKEFLAGS" -a -z "${MAKEFLAGS##*-j*}" ]; then
+    # Append '-l<num of cpu>' option into MAKEFLAGS if the '-j' option exists
+    NPROC=$(grep -c '^processor' /proc/cpuinfo)
+    export MAKEFLAGS="$MAKEFLAGS -l$NPROC"
+  fi
   cmake --build $build_dir
   [ $? -eq 0 ] && print_result "OK" || print_fatal "Building failed"
 }
