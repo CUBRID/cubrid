@@ -529,8 +529,6 @@ EXPORTS
     db_make_short
     db_make_string
     db_make_time
-    db_make_timeltz
-    db_make_timetz
     db_make_timestamp
     db_make_timestampltz
     db_make_timestamptz

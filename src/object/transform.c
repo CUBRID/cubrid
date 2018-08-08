@@ -390,7 +390,8 @@ static CT_ATTR ct_index_atts[] = {
   {"is_foreign_key", NULL_ATTRID, DB_TYPE_INTEGER},
   {"filter_expression", NULL_ATTRID, DB_TYPE_VARCHAR},
   {"have_function", NULL_ATTRID, DB_TYPE_INTEGER},
-  {"comment", NULL_ATTRID, DB_TYPE_VARCHAR}
+  {"comment", NULL_ATTRID, DB_TYPE_VARCHAR},
+  {"status", NULL_ATTRID, DB_TYPE_INTEGER}
 };
 
 static CT_ATTR ct_indexkey_atts[] = {

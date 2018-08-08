@@ -107,7 +107,8 @@ static int init_thread_system ()
 
   lf_initialize_transaction_systems (MAX_THREADS);
 
-  if (csect_initialize_static_critical_sections () != NO_ERROR)
+  error_code = csect_initialize_static_critical_sections ();
+  if (error_code != NO_ERROR)
     {
       assert (false);
       return error_code;

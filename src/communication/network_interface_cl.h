@@ -190,8 +190,9 @@ extern int boot_soft_rename (const char *old_db_name, const char *new_db_name, c
 			     const char *fileof_vols_and_renamepaths, bool newdb_overwrite, bool extern_rename,
 			     bool force_delete);
 extern int boot_copy (const char *from_dbname, const char *new_db_name, const char *new_db_path,
-		      const char *new_log_path, const char *new_lob_path, const char *new_db_server_host,
-		      const char *new_volext_path, const char *fileof_vols_and_copypaths, bool newdb_overwrite);
+		      const char *new_log_path, const char *new_lob_path,
+		      const char *new_db_server_host, const char *new_volext_path,
+		      const char *fileof_vols_and_copypaths, bool newdb_overwrite);
 extern int boot_emergency_patch (const char *db_name, bool recreate_log, DKNPAGES log_npages, const char *db_locale,
 				 FILE * out_fp);
 extern HA_SERVER_STATE boot_change_ha_mode (HA_SERVER_STATE state, bool force, int timeout);

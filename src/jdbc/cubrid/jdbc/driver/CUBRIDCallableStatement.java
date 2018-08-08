@@ -53,7 +53,6 @@ import java.util.Map;
 
 import cubrid.jdbc.jci.UErrorCode;
 import cubrid.jdbc.jci.UStatement;
-import cubrid.sql.CUBRIDTimetz;
 import cubrid.sql.CUBRIDTimestamptz;
 
 public class CUBRIDCallableStatement extends CUBRIDPreparedStatement implements
@@ -401,10 +400,6 @@ public class CUBRIDCallableStatement extends CUBRIDPreparedStatement implements
 		throw new SQLException(new UnsupportedOperationException());
 	}
 
-	public void setTimetz(String pName, CUBRIDTimetz x) throws SQLException {
-		throw new SQLException(new UnsupportedOperationException());
-	}
-
 	public void setTimestamp(String pName, Timestamp x) throws SQLException {
 		throw new SQLException(new UnsupportedOperationException());
 	}
@@ -447,11 +442,6 @@ public class CUBRIDCallableStatement extends CUBRIDPreparedStatement implements
 	}
 
 	public void setTime(String pName, Time x, Calendar cal) throws SQLException {
-		throw new SQLException(new UnsupportedOperationException());
-	}
-
-	public void setTimetz(String pName, CUBRIDTimetz x, Calendar cal)
-			throws SQLException {
 		throw new SQLException(new UnsupportedOperationException());
 	}
 

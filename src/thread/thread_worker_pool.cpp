@@ -26,6 +26,8 @@
 #include "error_manager.h"
 #include "perf.hpp"
 
+#include <sstream>
+
 #include <cstring>
 
 namespace cubthread
@@ -37,21 +39,21 @@ namespace cubthread
   static const cubperf::statset_definition Worker_pool_statdef =
   {
     cubperf::stat_definition (Wpstat_start_thread, cubperf::stat_definition::COUNTER_AND_TIMER,
-    "Counter_start_thread", "Timer_start_thread"),
+			      "Counter_start_thread", "Timer_start_thread"),
     cubperf::stat_definition (Wpstat_create_context, cubperf::stat_definition::COUNTER_AND_TIMER,
-    "Counter_create_context", "Timer_create_context"),
+			      "Counter_create_context", "Timer_create_context"),
     cubperf::stat_definition (Wpstat_execute_task, cubperf::stat_definition::COUNTER_AND_TIMER,
-    "Counter_execute_task", "Timer_execute_task"),
+			      "Counter_execute_task", "Timer_execute_task"),
     cubperf::stat_definition (Wpstat_retire_task, cubperf::stat_definition::COUNTER_AND_TIMER,
-    "Counter_retire_task", "Timer_retire_task"),
+			      "Counter_retire_task", "Timer_retire_task"),
     cubperf::stat_definition (Wpstat_found_in_queue, cubperf::stat_definition::COUNTER_AND_TIMER,
-    "Counter_found_task_in_queue", "Timer_found_task_in_queue"),
+			      "Counter_found_task_in_queue", "Timer_found_task_in_queue"),
     cubperf::stat_definition (Wpstat_wakeup_with_task, cubperf::stat_definition::COUNTER_AND_TIMER,
-    "Counter_wakeup_with_task", "Timer_wakeup_with_task"),
+			      "Counter_wakeup_with_task", "Timer_wakeup_with_task"),
     cubperf::stat_definition (Wpstat_recycle_context, cubperf::stat_definition::COUNTER_AND_TIMER,
-    "Counter_recycle_context", "Timer_recycle_context"),
+			      "Counter_recycle_context", "Timer_recycle_context"),
     cubperf::stat_definition (Wpstat_retire_context, cubperf::stat_definition::COUNTER_AND_TIMER,
-    "Counter_retire_context", "Timer_retire_context")
+			      "Counter_retire_context", "Timer_retire_context")
   };
 
   cubperf::statset &
@@ -113,6 +115,22 @@ namespace cubthread
     er_print_callstack (ARG_FILE_LINE, "%s - throws err = %d: %s\n", message, e.code (), e.what ());
     assert (false);
     throw e;
+  }
+
+  void
+  wp_er_log_stats (const char *header, cubperf::stat_value *statsp)
+  {
+    std::stringstream ss;
+
+    ss << "Worker pool statistics: " << header << std::endl;
+
+    for (std::size_t index = 0; index < Worker_pool_statdef.get_value_count (); index++)
+      {
+	ss << "\t" << Worker_pool_statdef.get_value_name (index) << ": ";
+	ss << statsp[index] << std::endl;
+      }
+
+    _er_log_debug (ARG_FILE_LINE, ss.str ().c_str ());
   }
 
 } // namespace cubthread

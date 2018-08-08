@@ -131,7 +131,6 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_INDEX_PREFIX:
     case T_TO_DATETIME_TZ:
     case T_TO_TIMESTAMP_TZ:
-    case T_TO_TIME_TZ:
 
       /* fetch lhs, rhs, and third value */
       if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
@@ -3649,17 +3648,6 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	  PRIM_SET_NULL (arithptr->value);
 	}
       else if (db_to_timestamp (peek_left, peek_right, peek_third, DB_TYPE_TIMESTAMPTZ, arithptr->value) != NO_ERROR)
-	{
-	  goto error;
-	}
-      break;
-
-    case T_TO_TIME_TZ:
-      if (DB_IS_NULL (peek_left))
-	{
-	  PRIM_SET_NULL (arithptr->value);
-	}
-      else if (db_to_time (peek_left, peek_right, peek_third, DB_TYPE_TIMETZ, arithptr->value) != NO_ERROR)
 	{
 	  goto error;
 	}

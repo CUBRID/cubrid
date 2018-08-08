@@ -19,7 +19,7 @@
 
 #include "test_stream.hpp"
 #include "object_representation.h"
-#include "packing_stream.hpp"
+#include "multi_thread_stream.hpp"
 #include "thread_compat.hpp"
 #include "thread_manager.hpp"
 #include "thread_task.hpp"
@@ -396,7 +396,7 @@ namespace test_stream
     long long rem_amount;
     int max_data_size = 500;
 
-    cubstream::packing_stream *my_stream = new cubstream::packing_stream (10 * 1024 * 1024, 100);
+    cubstream::multi_thread_stream *my_stream = new cubstream::multi_thread_stream (10 * 1024 * 1024, 100);
 
     cubstream::stream::write_func_t writer_func;
     writer_func = std::bind (&write_action, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
@@ -559,7 +559,7 @@ namespace test_stream
       }
 
     /* create a stream for packing and add pack objects to stream */
-    cubstream::packing_stream test_stream_for_pack (10 * 1024 * 1024, 10);
+    cubstream::multi_thread_stream test_stream_for_pack (10 * 1024 * 1024, 10);
 
     test_stream_entry se (&test_stream_for_pack);
 
@@ -567,7 +567,6 @@ namespace test_stream
       {
 	se.add_packable_entry (test_objects[i]);
       }
-    se.set_packable (true);
     res = se.pack ();
     if (res != 0)
       {
@@ -599,7 +598,7 @@ namespace test_stream
 
     /* create a new stream and copy buffers */
     std::cout << "  Testing packing/unpacking of objects using different streams. Copying stream contents." << std::endl;
-    cubstream::packing_stream test_stream_for_unpack (10 * 1024 * 1024, 10);
+    cubstream::multi_thread_stream test_stream_for_unpack (10 * 1024 * 1024, 10);
 
     cubstream::stream_position last_pos = test_stream_for_pack.get_last_committed_pos ();
     cubstream::stream_position curr_pos;
@@ -608,7 +607,7 @@ namespace test_stream
     size_t copy_chunk_size = test_stream_mover.get_buf_size ();
     int read_bytes, written_bytes;
 
-    for (curr_pos = 0; curr_pos <= last_pos;)
+    for (curr_pos = 0; curr_pos < last_pos;)
       {
 	copy_chunk_size = MIN (copy_chunk_size, last_pos - curr_pos);
 
@@ -669,7 +668,7 @@ namespace test_stream
     /* create objects */
     std::cout << "  Testing packing/unpacking of cubstream::entries with sub-objects using same stream" << std::endl;
     /* create a stream for packing and add pack objects to stream */
-    cubstream::packing_stream test_stream_for_pack (10 * 1024 * 1024, 10);
+    cubstream::multi_thread_stream test_stream_for_pack (10 * 1024 * 1024, 10);
     test_stream_for_pack.set_buffer_reserve_margin (100 * 1024);
 
     std::cout << "      Generating stream entries and objects...";
@@ -704,8 +703,6 @@ namespace test_stream
 	if (i < TEST_ENTRIES_CNT)
 	  {
 	    /* pack original entry */
-	    se_array[i]->set_packable (true);
-
 	    res = se_array[i]->pack ();
 	    if (res != 0)
 	      {
@@ -773,6 +770,15 @@ namespace test_stream
 	    while (stream_context_manager::g_pause_packer)
 	      {
 		std::this_thread::sleep_for (std::chrono::microseconds (100));
+
+                float stream_fill_factor = stream_context_manager::g_stream->stream_fill_factor ();
+	        if (stream_fill_factor < 0.45f && stream_context_manager::g_pause_packer)
+	          {
+		    std::cout << "     stream_pack_task : need resume producing;  stream_fill_factor:  " << stream_fill_factor << std::endl;
+
+		    stream_context_manager::g_pause_packer = false;
+	          }
+
 		if (stream_context_manager::g_stop_packer)
 		  {
 		    break;
@@ -871,6 +877,8 @@ namespace test_stream
 	delete se;
 
 	stream_context_manager::g_unpacked_entries_cnt++;
+
+        stream_context_manager::update_stream_drop_position ();
       }
 
     std::cout << "      End of unpacking thread " << std::endl;
@@ -892,7 +900,7 @@ namespace test_stream
 
     while (stream_context_manager::g_running_packers.any () && stream_context_manager::g_stop_packer == false)
       {
-	to_read = std::rand () % 1024;
+	to_read = 1 + std::rand () % 1024;
 
 	do
 	  {
@@ -918,6 +926,8 @@ namespace test_stream
 
 	stream_context_manager::g_read_positions[m_reader_id] = my_curr_pos;
 
+        stream_context_manager::update_stream_drop_position ();
+
 	//std::this_thread::sleep_for (std::chrono::microseconds (10));
       }
 
@@ -931,7 +941,7 @@ namespace test_stream
   test_stream_entry **stream_context_manager::g_unpacked_entries = NULL;
   int stream_context_manager::g_cnt_packing_entries_per_thread = 0;
   int stream_context_manager::g_cnt_unpacking_entries_per_thread = 0;
-  cubstream::packing_stream *stream_context_manager::g_stream = NULL;
+  cubstream::multi_thread_stream *stream_context_manager::g_stream = NULL;
 
   int stream_context_manager::g_pack_threads = 0;
   int stream_context_manager::g_unpack_threads = 0;
@@ -946,6 +956,18 @@ namespace test_stream
   std::bitset<1024> stream_context_manager::g_running_readers;
 
   cubstream::stream_position stream_context_manager::g_read_positions[200];
+
+  void stream_context_manager::update_stream_drop_position (void)
+    {
+      cubstream::stream_position drop_pos = stream_context_manager::g_stream->get_curr_read_position ();
+
+      for (int j = 0; j < stream_context_manager::g_read_byte_threads; j++)
+	{
+          drop_pos = MIN (drop_pos, stream_context_manager::g_read_positions[j]);
+	}
+      stream_context_manager::g_stream->set_last_dropable_pos (drop_pos);
+    }
+
 
   class stream_producer_throttling
   {
@@ -967,6 +989,8 @@ namespace test_stream
 	    m_prev_throttle_pos = pos;
 	    std::cout << "      Stream producer throttled position:  " << pos << " bytes: " << byte_count << std::endl;
 	    stream_context_manager::g_pause_packer = true;
+
+            stream_context_manager::update_stream_drop_position ();
 	  }
 
 	return NO_ERROR;
@@ -1002,7 +1026,7 @@ namespace test_stream
     private:
       cubstream::stream_position m_ready_pos;
   };
-
+#if 0
   class stream_fetcher
   {
     public:
@@ -1059,6 +1083,8 @@ namespace test_stream
       std::condition_variable c;
   };
 
+#endif
+
   stream_context_manager ctx_m1;
   stream_context_manager ctx_m2;
   stream_context_manager ctx_m3;
@@ -1082,13 +1108,12 @@ namespace test_stream
     /* create a stream for packing and add pack objects to stream */
     stream_producer_throttling stream_producer_throttling_handler;
     stream_ready_notifier stream_ready_notify_handler;
-    stream_fetcher stream_fetch_handler;
 
-    cubstream::packing_stream test_stream_for_pack (10 * 1024 * 1024, TEST_PACK_THREADS);
+    cubstream::multi_thread_stream test_stream_for_pack (10 * 1024 * 1024, TEST_PACK_THREADS);
     test_stream_for_pack.set_buffer_reserve_margin (100 * 1024);
     test_stream_for_pack.set_filled_stream_handler (stream_producer_throttling_handler.m_notify_func);
     test_stream_for_pack.set_ready_pos_handler (stream_ready_notify_handler.m_notify_func);
-    test_stream_for_pack.set_fetch_data_handler (stream_fetch_handler.m_fetch_func);
+
 
     std::cout << "      Generating stream entries and objects...";
     test_stream_entry *se_array[TEST_ENTRIES];
@@ -1132,24 +1157,22 @@ namespace test_stream
 		se_array[i]->add_packable_entry (obj);
 	      }
 	  }
-	se_array[i]->set_packable (true);
       }
     std::cout << "Done" << std::endl;
 
     stream_context_manager::g_stream = &test_stream_for_pack;
 
     cubthread::entry_workpool *packing_worker_pool =
-	    cub_th_m->create_worker_pool (stream_context_manager::g_pack_threads, stream_context_manager::g_pack_threads, &ctx_m1,
-					  1,
-					  false);
+	    cub_th_m->create_worker_pool (stream_context_manager::g_pack_threads,
+					  stream_context_manager::g_pack_threads, NULL, &ctx_m1, 1, false);
 
     cubthread::entry_workpool *unpacking_worker_pool =
-	    cub_th_m->create_worker_pool (stream_context_manager::g_unpack_threads, stream_context_manager::g_unpack_threads,
-					  &ctx_m2, 1, false);
+	    cub_th_m->create_worker_pool (stream_context_manager::g_unpack_threads,
+					  stream_context_manager::g_unpack_threads, NULL, &ctx_m2, 1, false);
 
     cubthread::entry_workpool *read_byte_worker_pool =
-	    cub_th_m->create_worker_pool (stream_context_manager::g_read_byte_threads, stream_context_manager::g_read_byte_threads,
-					  &ctx_m3, 1, false);
+	    cub_th_m->create_worker_pool (stream_context_manager::g_read_byte_threads,
+					  stream_context_manager::g_read_byte_threads, NULL, &ctx_m3, 1, false);
 
     for (i = 0; i < stream_context_manager::g_pack_threads; i++)
       {
@@ -1174,11 +1197,12 @@ namespace test_stream
 	read_byte_worker_pool->execute (read_byte_task);
       }
 
-    std::this_thread::sleep_for (std::chrono::seconds (15));
+    std::this_thread::sleep_for (std::chrono::seconds (30));
     stream_context_manager::g_stop_packer = true;
     stream_context_manager::g_pause_unpacker = false;
     std::cout << "      Stopping packers" << std::endl;
 
+    stream_context_manager::g_stream->set_stop ();
     while (stream_context_manager::g_running_packers.any ()
 	   || stream_context_manager::g_running_readers.any ())
       {

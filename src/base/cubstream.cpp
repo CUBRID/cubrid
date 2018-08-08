@@ -36,6 +36,7 @@ namespace cubstream
     m_last_notified_committed_pos = 0;
     m_read_position = 0;
     m_last_dropable_pos = 0;
+    m_serial_read_wait_pos = 0;
 
     init (0);
   }
@@ -43,6 +44,7 @@ namespace cubstream
   int stream::init (const stream_position &start_position)
   {
     m_append_position = start_position;
+    m_read_position = start_position;
 
     return NO_ERROR;
   }

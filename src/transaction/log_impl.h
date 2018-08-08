@@ -58,6 +58,10 @@
 #else // not SERVER_MODE = SA_MODE or CS_MODE
 #include "thread_compat.hpp"
 #endif // not SERVER_MODE = SA_MODE or CS_MODE
+#if defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))
+#include "log_generator.hpp"
+#endif // defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))
+
 
 #include <assert.h>
 #if defined(SOLARIS)
@@ -126,7 +130,7 @@ struct log_hdrpage
 				 * log because of such bad page, we could salvage the log starting at the offset
 				 * address, that is, at the next log record */
   short dummy1;			/* Dummy field for 8byte align */
-  int dummy2;			/* Dummy field for 8byte align */
+  int checksum;			/* checksum - currently CRC32 is used to check log page consistency. */
 };
 
 /* WARNING:
@@ -141,6 +145,14 @@ struct log_page
   LOG_HDRPAGE hdr;
   char area[1];
 };
+
+/* Uses 0xff to fills up the page, before writing in it. This helps recovery to detect the end of the log in
+ * case of log page corruption, caused by partial page flush. Thus, at recovery analysis, we can easily
+ * detect the last valid log record - the log record having NULL_LSA (0xff) in its forward address field.
+ * If we do not use 0xff, a corrupted log record will be considered valid at recovery, thus affecting
+ * the database consistency.
+ */
+#define LOG_PAGE_INIT_VALUE 0xff
 
 /*
  * This structure encapsulates various information and metrics related
@@ -195,8 +207,8 @@ struct log_header
   int avg_nlocks;		/* Average number of object locks */
   DKNPAGES npages;		/* Number of pages in the active log portion. Does not include the log header page. */
   INT8 db_charset;
-  INT8 dummy2;			/* Dummy fields for 8byte align */
-  INT8 dummy3;
+  bool was_copied;		/* set to true for copied database; should be reset on first server start */
+  INT8 dummy3;			/* Dummy fields for 8byte align */
   INT8 dummy4;
   LOG_PAGEID fpageid;		/* Logical pageid at physical location 1 in active log */
   LOG_LSA append_lsa;		/* Current append location */
@@ -250,7 +262,12 @@ struct log_header
      0, 0, 0,					 \
      /* db_charset */				 \
      0,						 \
-     0, 0, 0, 0,				 \
+     /* was_copied */                            \
+     false,                                      \
+     /* dummy INT8 for align */                  \
+     0, 0,                                       \
+     /* fpageid */                               \
+     0,				                 \
      /* append_lsa */                            \
      {NULL_PAGEID, NULL_OFFSET},                 \
      /* chkpt_lsa */                             \
@@ -309,7 +326,12 @@ struct log_header
      0, 0, 0,					 \
      /* db_charset */				 \
      0,						 \
-     0, 0, 0, 0,				 \
+     /* was_copied */                            \
+     false,                                      \
+     /* dummy INT8 for align */                  \
+     0, 0,                                       \
+     /* fpageid */                               \
+     0,				                 \
      /* append_lsa */                            \
      {NULL_PAGEID, NULL_OFFSET},                 \
      /* chkpt_lsa */                             \
@@ -473,6 +495,8 @@ enum LOG_HA_FILESTAT
 #define LOG_DBLOG_ARCHIVE_VOLID  (LOG_DBFIRST_VOLID - 20)
 /* Volid of copies */
 #define LOG_DBCOPY_VOLID         (LOG_DBFIRST_VOLID - 19)
+/* Volid of double write buffer */
+#define LOG_DBDWB_VOLID		 (LOG_DBFIRST_VOLID - 22)
 
 /*
  * Specify up to int bits of permanent status indicators.
@@ -1741,6 +1765,10 @@ struct log_tdes
   bool block_global_oldest_active_until_commit;
 
   LOG_RCV_TDES rcv;
+
+#if defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))
+  cubreplication::log_generator replication_log_generator;
+#endif
 };
 
 typedef struct log_addr_tdesarea LOG_ADDR_TDESAREA;
@@ -2283,6 +2311,9 @@ extern char *logtb_find_client_hostname (int tran_index);
 extern void logtb_set_current_user_active (THREAD_ENTRY * thread_p, bool is_user_active);
 extern int logtb_find_client_name_host_pid (int tran_index, char **client_prog_name, char **client_user_name,
 					    char **client_host_name, int *client_pid);
+#if !defined(NDEBUG)
+extern void logpb_debug_check_log_page (THREAD_ENTRY * thread_p, void *log_pgptr_ptr);
+#endif
 #if defined (SERVER_MODE)
 extern int logtb_find_client_tran_name_host_pid (int &tran_index, char **client_prog_name, char **client_user_name,
 						 char **client_host_name, int *client_pid);
@@ -2395,6 +2426,10 @@ extern bool logtb_check_class_for_rr_isolation_err (const OID * class_oid);
 extern void logpb_vacuum_reset_log_header_cache (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr);
 
 extern VACUUM_LOG_BLOCKID logpb_last_complete_blockid (void);
+extern int logpb_page_check_corruption (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, bool * is_page_corrupted);
+extern void logpb_dump_log_page_area (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int offset, int length);
+extern void logpb_page_get_first_null_block_lsa (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr,
+						 LOG_LSA * first_null_block_lsa);
 
 extern void logtb_slam_transaction (THREAD_ENTRY * thread_p, int tran_index);
 extern int xlogtb_kill_tran_index (THREAD_ENTRY * thread_p, int kill_tran_index, char *kill_user, char *kill_host,

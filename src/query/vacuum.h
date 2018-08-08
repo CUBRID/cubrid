@@ -346,4 +346,6 @@ extern int vacuum_rv_es_nop (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 #if defined (SERVER_MODE)
 extern void vacuum_notify_es_deleted (THREAD_ENTRY * thread_p, const char *uri);
 #endif /* SERVER_MODE */
+
+extern int vacuum_reset_data_after_copydb (THREAD_ENTRY * thread_p);
 #endif /* _VACUUM_H_ */

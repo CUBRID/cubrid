@@ -28,8 +28,13 @@
 #error Wrong module
 #endif // not SERVER_MODE and not SA_MODE
 
+// same module includes
 #include "thread_entry.hpp"
 #include "thread_task.hpp"
+#include "thread_waiter.hpp"
+
+// other module includes
+#include "base_flag.hpp"
 
 #include <mutex>
 #include <vector>
@@ -90,7 +95,7 @@ namespace cubthread
   //
   //     2. entry_workpool -
   //          entry_workpool *my_workpool = cubthread::get_manager ()->create_worker_pool (MAX_THREADS, MAX_JOBS);
-  //          cubthread::get_manager ()->push_task (*thread_p, entry_workpool, entry_task_p);
+  //          cubthread::get_manager ()->push_task (entry_workpool, entry_task_p);
   //          cubthread::get_manager ()->destroy_worker_pool (my_workpool);
   //
   class manager
@@ -113,20 +118,20 @@ namespace cubthread
       // create a entry_workpool with pool_size number of threads
       // notes: if there are not pool_size number of entries available, worker pool is not created and NULL is returned
       //        signature emulates worker_pool constructor signature
-      entry_workpool *create_worker_pool (std::size_t pool_size, std::size_t task_max_count,
+      entry_workpool *create_worker_pool (std::size_t pool_size, std::size_t task_max_count, const char *name,
 					  entry_manager *context_manager, std::size_t core_count,
-					  bool debug_logging, bool pool_threads = false, std::chrono::seconds wait_for_task_time = std::chrono::seconds (5));
+					  bool debug_logging, bool pool_threads = false,
+					  wait_seconds wait_for_task_time = std::chrono::seconds (5));
 
       // destroy worker pool
       void destroy_worker_pool (entry_workpool *&worker_pool_arg);
 
       // push task to worker pool created with this manager
       // if worker_pool_arg is NULL, the task is executed immediately
-      void push_task (entry &thread_p, entry_workpool *worker_pool_arg, entry_task *exec_p);
+      void push_task (entry_workpool *worker_pool_arg, entry_task *exec_p);
       // push task on the given core of entry worker pool.
       // read cubthread::worker_pool::execute_on_core for details.
-      void push_task_on_core (entry &thread_p, entry_workpool *worker_pool_arg, entry_task *exec_p,
-			      std::size_t core_hash);
+      void push_task_on_core (entry_workpool *worker_pool_arg, entry_task *exec_p, std::size_t core_hash);
 
       // try to execute task if there are available thread in worker pool
       // if worker_pool_arg is NULL, the task is executed immediately
@@ -186,7 +191,7 @@ namespace cubthread
       {
 	return m_all_entries;
       }
-    
+
       void set_max_thread_count_from_config ();
       void set_max_thread_count (std::size_t count);
 
@@ -246,6 +251,43 @@ namespace cubthread
       entry_manager *m_entry_manager;
       daemon_entry_manager *m_daemon_entry_manager;
   };
+
+  //////////////////////////////////////////////////////////////////////////
+  // thread logging flags
+  //
+  // TODO: complete thread logging for all modules
+  //
+  // How to use:
+  //
+  //    do_log = is_logging_configured (LOG_MANAGER);
+  //    if (do_log)
+  //      _er_log_debug (ARG_FILE_LINE, "something happens\n);
+  //
+  // Flags explained:
+  //
+  //    There are three types of flags to be used: manager, worker pool and daemons. For now, only worker pools are
+  //    actually logged, others are just declared for future extensions.
+  //
+  //    To activate a logging flag, should set the thread_logging_flag system parameter value to include flag.
+  //    For instance, to log connections, the bit for LOG_WORKER_POOL_CONNECTIONS should be set.
+  //
+  //////////////////////////////////////////////////////////////////////////
+  // system parameter flags for thread logging
+  // manager flags
+  const int LOG_MANAGER = 0x1;
+  const int LOG_MANAGER_ALL = 0xFF;          // reserved for thread manager
+
+  // worker pool flags
+  const int LOG_WORKER_POOL_VACUUM = 0x100;
+  const int LOG_WORKER_POOL_CONNECTIONS = 0x200;
+  const int LOG_WORKER_POOL_TRAN_WORKERS = 0x400;
+  const int LOG_WORKER_POOL_ALL = 0xFF00;    // reserved for thread worker pools
+
+  // daemons flags
+  const int LOG_DAEMON_VACUUM = 0x10000;
+  const int LOG_DAEMON_ALL = 0xFFFF0000;     // reserved for thread daemons
+
+  bool is_logging_configured (const int logging_flag);
 
   //////////////////////////////////////////////////////////////////////////
   // thread global functions
