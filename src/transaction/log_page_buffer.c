@@ -585,6 +585,7 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
   int i;
   LOG_GROUP_COMMIT_INFO *group_commit_info = &log_Gl.group_commit_info;
   LOGWR_INFO *writer_info = &log_Gl.writer_info;
+  size_t size;
 
   if (lzo_init () == LZO_E_OK)
     {				/* lzo library init */
@@ -655,40 +656,42 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
   log_Pb.num_buffers = prm_get_integer_value (PRM_ID_LOG_NBUFFERS);
 
   /* allocate a pointer array to point to each buffer */
-  log_Pb.buffers = (LOG_BUFFER *) malloc ((size_t) ((size_t) log_Pb.num_buffers * sizeof (*log_Pb.buffers)));
+  size = ((size_t) log_Pb.num_buffers * sizeof (*log_Pb.buffers));
+  log_Pb.buffers = (LOG_BUFFER *) malloc (size);
   if (log_Pb.buffers == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      log_Pb.num_buffers * sizeof (*log_Pb.buffers));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  log_Pb.pages_area = (LOG_PAGE *) malloc ((size_t) ((size_t) log_Pb.num_buffers * (LOG_PAGESIZE)));
+  size = ((size_t) log_Pb.num_buffers * (LOG_PAGESIZE));
+  log_Pb.pages_area = (LOG_PAGE *) malloc (size);
   if (log_Pb.pages_area == NULL)
     {
       free_and_init (log_Pb.buffers);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, log_Pb.num_buffers * (LOG_PAGESIZE));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
   /* Initialize every new buffer */
-  memset (log_Pb.pages_area, LOG_PAGE_INIT_VALUE, log_Pb.num_buffers * (LOG_PAGESIZE));
+  memset (log_Pb.pages_area, LOG_PAGE_INIT_VALUE, size);
   for (i = 0; i < log_Pb.num_buffers; i++)
     {
       logpb_initialize_log_buffer (&log_Pb.buffers[i],
 				   (LOG_PAGE *) ((char *) log_Pb.pages_area + (UINT64) i * (LOG_PAGESIZE)));
     }
 
-  log_Pb.header_page = (LOG_PAGE *) malloc (LOG_PAGESIZE);
+  size = LOG_PAGESIZE;
+  log_Pb.header_page = (LOG_PAGE *) malloc (size);
   if (log_Pb.header_page == NULL)
     {
       free_and_init (log_Pb.buffers);
       free_and_init (log_Pb.pages_area);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, LOG_PAGESIZE);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  memset (log_Pb.header_page, LOG_PAGE_INIT_VALUE, LOG_PAGESIZE);
+  memset (log_Pb.header_page, LOG_PAGE_INIT_VALUE, size);
   logpb_initialize_log_buffer (&log_Pb.header_buffer, log_Pb.header_page);
 
   error_code = logpb_initialize_flush_info ();
