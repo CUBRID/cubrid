@@ -169,7 +169,7 @@ namespace cubload
   {
     if (m_qstr_buf_pool_idx < QUOTED_STR_BUF_POOL_SIZE)
       {
-	m_qstr_buf_p = & (m_qstr_buf_pool[m_qstr_buf_pool_idx++][0]);
+	m_qstr_buf_p = &m_qstr_buf_pool[m_qstr_buf_pool_idx++][0];
 	m_use_qstr_buffer = false;
       }
     else
@@ -206,7 +206,7 @@ namespace cubload
       {
 	if (use_copy_buf_pool (str->size))
 	  {
-	    str->val = & (m_copy_buf_pool[m_copy_buf_pool_idx++][0]);
+	    str->val = &m_copy_buf_pool[m_copy_buf_pool_idx++][0];
 	    str->need_free_val = false;
 	  }
 	else
@@ -246,7 +246,7 @@ namespace cubload
 
     if (use_copy_buf_pool (str->size))
       {
-	str->val = & (m_copy_buf_pool[m_copy_buf_pool_idx++][0]);
+	str->val = &m_copy_buf_pool[m_copy_buf_pool_idx++][0];
 	str->need_free_val = false;
       }
     else
@@ -303,7 +303,7 @@ namespace cubload
 
     if (m_constant_pool_idx < CONSTANT_POOL_SIZE)
       {
-	con = & (m_constant_pool[m_constant_pool_idx++]);
+	con = &m_constant_pool[m_constant_pool_idx++];
 	con->need_free = false;
       }
     else
@@ -408,7 +408,7 @@ namespace cubload
 
     if (m_string_pool_idx < STRING_POOL_SIZE)
       {
-	str = & (m_string_pool[m_string_pool_idx++]);
+	str = &m_string_pool[m_string_pool_idx++];
 	str->need_free_self = false;
       }
     else

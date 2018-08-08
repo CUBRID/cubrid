@@ -80,7 +80,7 @@ namespace cubload
 	    ldr_string_free (&arg);
 	  }
 
-	ldr_string_free (& (class_cmd_spec_->ctor_spec->id_name));
+	ldr_string_free (&class_cmd_spec_->ctor_spec->id_name);
 	free_and_init (class_cmd_spec_->ctor_spec);
       }
 
