@@ -44,6 +44,7 @@ namespace cubreplication
 
   void master_senders_manager::init (cubstream::stream *stream)
   {
+#if defined (SERVER_MODE)
     int error_code = NO_ERROR;
     std::lock_guard<std::mutex> guard (mutex_for_singleton);
 
@@ -54,9 +55,9 @@ namespace cubreplication
 
     master_server_stream_senders.clear ();
     master_channels_supervisor_daemon = cubthread::get_manager ()->create_daemon (
-					  cubthread::looper (std::chrono::milliseconds (SUPERVISOR_DAEMON_DELAY_MS)),
-					  new master_senders_supervisor_task (),
-					  "supervisor_daemon");
+	cubthread::looper (std::chrono::milliseconds (SUPERVISOR_DAEMON_DELAY_MS)),
+	new master_senders_supervisor_task (),
+	"supervisor_daemon");
     g_minimum_successful_stream_position = 0;
     g_stream = stream;
 
@@ -64,6 +65,7 @@ namespace cubreplication
     assert (error_code == NO_ERROR);
 
     is_initialized = true;
+#endif
   }
 
   void master_senders_manager::add_stream_sender (cubstream::transfer_sender *sender)
@@ -77,6 +79,7 @@ namespace cubreplication
 
   void master_senders_manager::final ()
   {
+#if defined (SERVER_MODE)
     int error_code = NO_ERROR;
     std::lock_guard<std::mutex> guard (mutex_for_singleton);
 
@@ -103,6 +106,7 @@ namespace cubreplication
     assert (error_code == NO_ERROR);
 
     is_initialized = false;
+#endif
   }
 
   std::size_t master_senders_manager::get_number_of_stream_senders ()
@@ -120,6 +124,7 @@ namespace cubreplication
 
   void master_senders_manager::block_until_position_sent (cubstream::stream_position desired_position)
   {
+#if defined (SERVER_MODE)
     bool is_position_sent = false;
     const std::chrono::microseconds SLEEP_BETWEEN_SPINS (20);
 
@@ -140,6 +145,7 @@ namespace cubreplication
 
 	std::this_thread::sleep_for (SLEEP_BETWEEN_SPINS);
       }
+#endif
   }
 
   master_senders_manager::master_senders_supervisor_task::master_senders_supervisor_task ()
@@ -148,6 +154,7 @@ namespace cubreplication
 
   void master_senders_manager::master_senders_supervisor_task::execute (cubthread::entry &context)
   {
+#if defined (SERVER_MODE)
     static unsigned int check_conn_delay_counter = 0;
     bool promoted_to_write = false;
 
@@ -192,6 +199,7 @@ namespace cubreplication
       }
 
     check_conn_delay_counter++;
+#endif
   }
 
 } /* namespace cubreplication */

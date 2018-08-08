@@ -17,36 +17,16 @@
  *
  */
 
-/*
- * cubstream.cpp
- */
+#ifndef _TEST_LOG_GENERATOR_HPP_
+#define _TEST_LOG_GENERATOR_HPP_
 
-#ident "$Id$"
-
-#include "cubstream.hpp"
-#include "error_code.h"
-#include <algorithm>
-
-namespace cubstream
+namespace test_replication
 {
 
-  stream::stream ()
-  {
-    m_last_committed_pos = 0;
-    m_last_notified_committed_pos = 0;
-    m_read_position = 0;
-    m_last_dropable_pos = 0;
-    m_serial_read_wait_pos = 0;
+  int test_log_generator1 (void);
 
-    init (0);
-  }
+  int test_log_generator2 (void);
 
-  int stream::init (const stream_position &start_position)
-  {
-    m_append_position = start_position;
-    m_read_position = start_position;
+}
 
-    return NO_ERROR;
-  }
-
-} /* namespace cubstream */
+#endif /* _TEST_LOG_GENERATOR_HPP_ */

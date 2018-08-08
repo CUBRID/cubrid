@@ -17,8 +17,8 @@
  *
  */
 
+#include "test_log_generator.hpp"
 #include "test_replication_apply.hpp"
-
 #include <iostream>
 
 template <typename Func, typename ... Args>
@@ -45,7 +45,10 @@ int main ()
 {
   int global_error = 0;
 
+//  test_module (global_error, test_replication::test_log_generator1);
+//  test_module (global_error, test_replication::test_log_generator2);
   test_module (global_error, test_replication_apply::test_apply_sbr);
+
   /* add more tests here */
 
   return global_error;

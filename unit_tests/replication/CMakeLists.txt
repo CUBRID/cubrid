@@ -19,14 +19,16 @@ project (test_replication)
 
 set (TEST_REPLICATION_SRC
   test_main.cpp
+  test_log_generator.cpp    
   test_replication_apply.cpp
   )
 set (TEST_REPLICATION_H
+  test_log_generator.hpp
   test_replication_apply.hpp
   )
 SET_SOURCE_FILES_PROPERTIES(
   ${TEST_STREAM_SRC}
-  PROPERTIES LANGUAGE CXX
+  PROPERTIES LANGUAGE CXX  
   )
 
 add_executable(test_replication
@@ -57,4 +59,3 @@ elseif(WIN32)
 else()
   message( SEND_ERROR "Replication unit testing is for unix/windows")
 endif ()
-

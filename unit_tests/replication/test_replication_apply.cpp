@@ -100,7 +100,7 @@ private:
 
     cubthread::entry thread_arg;
 
-    css_push_external_task (thread_arg, NULL, new test_sbr_task ("CREATE TABLE tt(i1 string);"));
+    css_push_external_task (NULL, new test_sbr_task ("CREATE TABLE tt(i1 string);"));
 
     sleep (10);
 
