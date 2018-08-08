@@ -24,6 +24,10 @@
 #ifndef _LOAD_DRIVER_HPP_
 #define _LOAD_DRIVER_HPP_
 
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#error Wrong module
+#endif // not SERVER_MODE and not SA_MODE
+
 #ident "$Id$"
 
 #include <istream>

@@ -26,8 +26,6 @@
 
 #ident "$Id$"
 
-//#include <stdint.h>
-
 #include "dbdef.h"
 #include "load_common.hpp"
 #include "porting.h"

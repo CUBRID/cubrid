@@ -27,13 +27,12 @@
 
 #include "error_manager.h"
 #include "language_support.h"
-#if defined (SA_MODE)
-#include "load_client_loader.h"
-#endif // SA_MODE
 #include "load_driver.hpp"
 #if defined (SERVER_MODE)
 #include "load_server_loader.hpp"
-#endif // SERVER_MODE
+#elif defined (SA_MODE)
+#include "load_client_loader.h"
+#endif
 #include "memory_alloc.h"
 #include "message_catalog.h"
 #include "utility.h"
