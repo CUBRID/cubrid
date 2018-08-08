@@ -423,7 +423,7 @@ enum param_id
   PRM_ID_DWB_LOGGING,
 
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_DWB_SIZE
+  PRM_LAST_ID = PRM_ID_DWB_LOGGING
 };
 typedef enum param_id PARAM_ID;
 
