@@ -376,54 +376,6 @@ QO_PLAN_VTBL *all_vtbls[] = {
 #define DEFAULT_IN_SELECTIVITY (double) 0.01
 #define DEFAULT_RANGE_SELECTIVITY (double) 0.1
 
-/*
- * WARNING: Be sure to update qo_integral_type[] whenever there are
- * changes to the set of DB_TYPE values.
- */
-unsigned char qo_type_qualifiers[] = {
-  0,				/* DB_TYPE_NULL */
-  _INT + _NUM,			/* DB_TYPE_INTEGER */
-  _NUM,				/* DB_TYPE_FLOAT */
-  _NUM,				/* DB_TYPE_DOUBLE */
-  0,				/* DB_TYPE_STRING */
-  0,				/* DB_TYPE_OBJECT */
-  0,				/* DB_TYPE_SET */
-  0,				/* DB_TYPE_MULTISET */
-  0,				/* DB_TYPE_SEQUENCE */
-  0,				/* DB_TYPE_ELO */
-  _INT + _NUM,			/* DB_TYPE_TIME */
-  _INT + _NUM,			/* DB_TYPE_TIMESTAMP */
-  _INT + _NUM,			/* DB_TYPE_DATE */
-  _NUM,				/* DB_TYPE_MONETARY */
-  0,				/* DB_TYPE_VARIABLE */
-  0,				/* DB_TYPE_SUB */
-  0,				/* DB_TYPE_POINTER */
-  0,				/* DB_TYPE_ERROR */
-  _INT,				/* DB_TYPE_SHORT */
-  0,				/* DB_TYPE_VOBJ */
-  0,				/* DB_TYPE_OID */
-  0,				/* DB_TYPE_DB_VALUE */
-  0,				/* DB_TYPE_NUMERIC *//* FIXME */
-  0,				/* DB_TYPE_BIT */
-  0,				/* DB_TYPE_VARBIT */
-  0,				/* DB_TYPE_CHAR */
-  0,				/* DB_TYPE_NCHAR */
-  0,				/* DB_TYPE_VARNCHAR */
-  0,				/* DB_TYPE_RESULTSET */
-  0,				/* DB_TYPE_MIDXKEY */
-  0,				/* DB_TYPE_TABLE */
-  _INT + _NUM,			/* DB_TYPE_BIGINT */
-  _INT + _NUM,			/* DB_TYPE_DATETIME */
-  0,				/* DB_TYPE_BLOB */
-  0,				/* DB_TYPE_CLOB */
-  _INT + _NUM,			/* DB_TYPE_TIMESTAMPTZ */
-  _INT + _NUM,			/* DB_TYPE_TIMESTAMPLTZ */
-  _INT + _NUM,			/* DB_TYPE_DATETIMETZ */
-  _INT + _NUM,			/* DB_TYPE_DATETIMELTZ */
-  _INT + _NUM,			/* DB_TYPE_TIMETZ */
-  _INT + _NUM			/* DB_TYPE_TIMELTZ */
-};
-
 /* Structural equivalence classes for expressions */
 
 typedef enum PRED_CLASS

@@ -82,6 +82,7 @@
 #define FILEIO_VOLTMP_PREFIX         "_t"
 #define FILEIO_VOLINFO_SUFFIX        "_vinf"
 #define FILEIO_VOLLOCK_SUFFIX        "__lock"
+#define FILEIO_SUFFIX_DWB            "_dwb"
 #define FILEIO_MAX_SUFFIX_LENGTH     7
 
 typedef enum
@@ -155,6 +156,18 @@ typedef enum
   FILEIO_NOT_LOCKF
 } FILEIO_LOCKF_TYPE;
 
+typedef enum
+{
+  FILEIO_SYNC_ONLY,
+  FILEIO_SYNC_ALSO_FLUSH_DWB
+} FILEIO_SYNC_OPTION;
+
+typedef enum
+{
+  FILEIO_WRITE_DEFAULT_WRITE,	/* default write mode does compensate write including sync */
+  FILEIO_WRITE_NO_COMPENSATE_WRITE	/* skips */
+} FILEIO_WRITE_MODE;
+
 /* Reserved area of FILEIO_PAGE */
 typedef struct fileio_page_reserved FILEIO_PAGE_RESERVED;
 struct fileio_page_reserved
@@ -164,7 +177,8 @@ struct fileio_page_reserved
   INT16 volid;			/* Volume identifier where the page reside */
   unsigned char ptype;		/* Page type */
   unsigned char pflag_reserve_1;	/* unused - Reserved field */
-  INT64 p_reserve_2;		/* unused - Reserved field */
+  INT32 checksum;		/* Page checksum - currently CRC32 is used. */
+  INT32 p_reserve_2;		/* unused - Reserved field */
   INT64 p_reserve_3;		/* unused - Reserved field */
 };
 
@@ -392,7 +406,7 @@ extern int fileio_format (THREAD_ENTRY * thread_p, const char *db_fullname, cons
 #if !defined (CS_MODE)
 extern int fileio_expand_to (THREAD_ENTRY * threda_p, VOLID volid, DKNPAGES npages_toadd, DB_VOLTYPE voltype);
 #endif /* not CS_MODE */
-extern void *fileio_initialize_pages (THREAD_ENTRY * thread_p, int vdes, void *io_pgptr, DKNPAGES start_pageid,
+extern void *fileio_initialize_pages (THREAD_ENTRY * thread_p, int vdes, FILEIO_PAGE * io_pgptr, DKNPAGES start_pageid,
 				      DKNPAGES npages, size_t page_size, int kbytes_to_be_written_per_sec);
 extern void fileio_initialize_res (THREAD_ENTRY * thread_p, FILEIO_PAGE_RESERVED * prv_p);
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -409,14 +423,18 @@ extern int fileio_mount (THREAD_ENTRY * thread_p, const char *db_fullname, const
 extern void fileio_dismount (THREAD_ENTRY * thread_p, int vdes);
 extern void fileio_dismount_all (THREAD_ENTRY * thread_p);
 extern void *fileio_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_id, size_t page_size);
-extern void *fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_id, size_t page_size);
+extern void *fileio_write_or_add_to_dwb (THREAD_ENTRY * thread_p, int vol_fd, FILEIO_PAGE * io_page_p, PAGEID page_id,
+					 size_t page_size);
+extern void *fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_id, size_t page_size,
+			   FILEIO_WRITE_MODE write_mode);
 extern void *fileio_read_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p, PAGEID page_id, int num_pages,
 				size_t page_size);
 extern void *fileio_write_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p, PAGEID page_id, int num_pages,
-				 size_t page_size);
+				 size_t page_size, FILEIO_WRITE_MODE write_mode);
 extern void *fileio_writev (THREAD_ENTRY * thread_p, int vdes, void **arrayof_io_pgptr, PAGEID start_pageid,
 			    DKNPAGES npages, size_t page_size);
-extern int fileio_synchronize (THREAD_ENTRY * thread_p, int vdes, const char *vlabel);
+extern int fileio_synchronize (THREAD_ENTRY * thread_p, int vdes, const char *vlabel,
+			       FILEIO_SYNC_OPTION check_sync_dwb);
 extern int fileio_synchronize_all (THREAD_ENTRY * thread_p, bool include_log);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern void *fileio_read_user_area (THREAD_ENTRY * thread_p, int vdes, PAGEID pageid, off_t start_offset, size_t nbytes,
@@ -430,6 +448,7 @@ extern char *fileio_get_volume_label (VOLID volid, bool is_peek);
 extern char *fileio_get_volume_label_by_fd (int vol_fd, bool is_peek);
 extern VOLID fileio_find_volume_id_with_label (THREAD_ENTRY * thread_p, const char *vlabel);
 extern bool fileio_is_temp_volume (THREAD_ENTRY * thread_p, VOLID volid);
+extern bool fileio_is_permanent_volume_descriptor (THREAD_ENTRY * thread_p, int vol_fd);
 extern VOLID fileio_find_next_perm_volume (THREAD_ENTRY * thread_p, VOLID volid);
 extern VOLID fileio_find_previous_perm_volume (THREAD_ENTRY * thread_p, VOLID volid);
 extern VOLID fileio_find_previous_temp_volume (THREAD_ENTRY * thread_p, VOLID volid);
@@ -464,6 +483,7 @@ extern void fileio_make_backup_volume_info_name (char *backup_volinfo_name, cons
 						 const char *dbname);
 extern void fileio_make_backup_name (char *backup_name, const char *nopath_volname, const char *backup_path,
 				     FILEIO_BACKUP_LEVEL level, int unit_num);
+extern void fileio_make_dwb_name (char *dwb_name_p, const char *dwb_path_p, const char *db_name_p);
 extern void fileio_remove_all_backup (THREAD_ENTRY * thread_p, int level);
 extern FILEIO_BACKUP_SESSION *fileio_initialize_backup (const char *db_fullname, const char *backup_destination,
 							FILEIO_BACKUP_SESSION * session, FILEIO_BACKUP_LEVEL level,
@@ -541,4 +561,7 @@ extern FILEIO_RESTORE_PAGE_BITMAP *fileio_page_bitmap_list_find (FILEIO_RESTORE_
 extern void fileio_page_bitmap_list_add (FILEIO_RESTORE_PAGE_BITMAP_LIST * page_bitmap_list,
 					 FILEIO_RESTORE_PAGE_BITMAP * page_bitmap);
 extern void fileio_page_bitmap_list_destroy (FILEIO_RESTORE_PAGE_BITMAP_LIST * page_bitmap_list);
+extern int fileio_set_page_checksum (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page);
+extern int fileio_page_check_corruption (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, bool * is_page_corrupted);
+extern void fileio_page_hexa_dump (const char *data, int length);
 #endif /* _FILE_IO_H_ */

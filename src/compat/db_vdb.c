@@ -3467,12 +3467,7 @@ get_reasonable_predicate (DB_ATTRIBUTE * att)
       break;
 
     case DB_TYPE_TIME:
-    case DB_TYPE_TIMELTZ:
       cond = " = '09:30' ";
-      break;
-
-    case DB_TYPE_TIMETZ:
-      cond = " = '09:30 +00:00' ";
       break;
 
     case DB_TYPE_TIMESTAMP:

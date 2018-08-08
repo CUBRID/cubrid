@@ -338,7 +338,6 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
       break;
 
     case DB_TYPE_JSON:
-      value->data.json.json_body = NULL;
       value->data.json.document = NULL;
       value->data.json.schema_raw = NULL;
       break;
@@ -356,8 +355,6 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
     case DB_TYPE_TIME:
-    case DB_TYPE_TIMETZ:
-    case DB_TYPE_TIMELTZ:
     case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPTZ:
     case DB_TYPE_TIMESTAMPLTZ:
@@ -456,13 +453,7 @@ db_value_domain_min (DB_VALUE * value, const DB_TYPE type,
       value->domain.general_info.is_null = 1;	/* NULL ELO value */
       break;
     case DB_TYPE_TIME:
-    case DB_TYPE_TIMELTZ:
       value->data.time = DB_TIME_MIN;
-      value->domain.general_info.is_null = 0;
-      break;
-    case DB_TYPE_TIMETZ:
-      value->data.timetz.time = DB_TIME_MIN;
-      value->data.timetz.tz_id = *tz_get_utc_tz_id ();
       value->domain.general_info.is_null = 0;
       break;
     case DB_TYPE_TIMESTAMP:
@@ -560,7 +551,6 @@ db_value_domain_min (DB_VALUE * value, const DB_TYPE type,
     case DB_TYPE_JSON:
       value->domain.general_info.is_null = 1;
       value->need_clear = false;
-      value->data.json.json_body = NULL;
       break;
     default:
       error = ER_UCI_INVALID_DATA_TYPE;
@@ -629,13 +619,7 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type,
       value->domain.general_info.is_null = 1;	/* NULL ELO value */
       break;
     case DB_TYPE_TIME:
-    case DB_TYPE_TIMELTZ:
       value->data.time = DB_TIME_MAX;
-      value->domain.general_info.is_null = 0;
-      break;
-    case DB_TYPE_TIMETZ:
-      value->data.timetz.time = DB_TIME_MAX;
-      value->data.timetz.tz_id = *tz_get_utc_tz_id ();
       value->domain.general_info.is_null = 0;
       break;
     case DB_TYPE_TIMESTAMP:
@@ -741,7 +725,6 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type,
       /* case DB_TYPE_TABLE: internal use only */
     case DB_TYPE_JSON:
       value->domain.general_info.is_null = 1;
-      value->data.json.json_body = NULL;
       value->need_clear = false;
     default:
       error = ER_UCI_INVALID_DATA_TYPE;
@@ -808,13 +791,7 @@ db_value_domain_default (DB_VALUE * value, const DB_TYPE type,
       db_make_sequence (value, db_seq_create (NULL, NULL, 0));
       break;
     case DB_TYPE_TIME:
-    case DB_TYPE_TIMELTZ:
       value->data.time = DB_TIME_MIN;
-      value->domain.general_info.is_null = 0;
-      break;
-    case DB_TYPE_TIMETZ:
-      value->data.timetz.time = DB_TIME_MIN;
-      value->data.timetz.tz_id = *tz_get_utc_tz_id ();
       value->domain.general_info.is_null = 0;
       break;
     case DB_TYPE_TIMESTAMP:
@@ -1735,8 +1712,6 @@ db_type_to_db_domain (const DB_TYPE type)
     case DB_TYPE_FLOAT:
     case DB_TYPE_DOUBLE:
     case DB_TYPE_TIME:
-    case DB_TYPE_TIMETZ:
-    case DB_TYPE_TIMELTZ:
     case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPTZ:
     case DB_TYPE_TIMESTAMPLTZ:
@@ -1778,7 +1753,11 @@ db_type_to_db_domain (const DB_TYPE type)
     case DB_TYPE_TABLE:
       result = NULL;
       break;
+
       /* NO DEFAULT CASE!!!!! ALL TYPES MUST GET HANDLED HERE! */
+    default:
+      assert (0);
+      break;
     }
 
   return result;
@@ -2037,32 +2016,18 @@ transfer_bit_string (char *buf, int *xflen, int *outlen, const int buflen, const
 int
 db_get_deep_copy_of_json (const DB_JSON * src, DB_JSON * dst)
 {
-  char *raw_json_body = NULL, *raw_schema_body = NULL;
+  char *raw_schema_body = NULL;
   JSON_DOC *doc_copy = NULL;
 
   CHECK_2ARGS_ERROR (src, dst);
 
-  assert (dst->document == NULL && dst->json_body == NULL && dst->schema_raw == NULL);
-
-  raw_json_body = db_private_strdup (NULL, src->json_body);
-  if (raw_json_body == NULL && src->json_body != NULL)
-    {
-      ASSERT_ERROR ();
-      return er_errid ();
-    }
+  assert (dst->document == NULL && dst->schema_raw == NULL);
 
   raw_schema_body = db_private_strdup (NULL, src->schema_raw);
-  if (raw_schema_body == NULL && src->schema_raw != NULL)
-    {
-      ASSERT_ERROR ();
-      db_private_free (NULL, raw_json_body);
-      return er_errid ();
-    }
 
   doc_copy = db_json_get_copy_of_doc (src->document);
 
   dst->schema_raw = raw_schema_body;
-  dst->json_body = raw_json_body;
   dst->document = doc_copy;
 
   return NO_ERROR;
@@ -2075,7 +2040,6 @@ db_init_db_json_pointers (DB_JSON * val)
 
   val->schema_raw = NULL;
   val->document = NULL;
-  val->json_body = NULL;
 
   return NO_ERROR;
 }
@@ -4695,39 +4659,6 @@ valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * value_
 	  buffer_p = valcnv_append_string (buffer_p, line);
 	  break;
 
-	case DB_TYPE_TIMETZ:
-	  {
-	    DB_TIMETZ *time_tz;
-
-	    time_tz = db_get_timetz (value_p);
-	    cnt = db_timetz_to_string (line, VALCNV_TOO_BIG_TO_MATTER, &time_tz->time, &time_tz->tz_id);
-	    if (cnt == 0)
-	      {
-		return NULL;
-	      }
-	    buffer_p = valcnv_append_string (buffer_p, line);
-	    break;
-	  }
-
-	case DB_TYPE_TIMELTZ:
-	  {
-	    TZ_ID tz_id;
-	    DB_TIME *time;
-
-	    time = db_get_time (value_p);
-	    if (tz_create_session_tzid_for_time (time, true, &tz_id) != NO_ERROR)
-	      {
-		return NULL;
-	      }
-	    cnt = db_timetz_to_string (line, VALCNV_TOO_BIG_TO_MATTER, time, &tz_id);
-	    if (cnt == 0)
-	      {
-		return NULL;
-	      }
-	    buffer_p = valcnv_append_string (buffer_p, line);
-	    break;
-	  }
-
 	case DB_TYPE_TIMESTAMP:
 	  cnt = db_timestamp_to_string (line, VALCNV_TOO_BIG_TO_MATTER, db_get_timestamp (value_p));
 	  if (cnt == 0)
@@ -5131,3 +5062,82 @@ db_is_json_doc_type (DB_TYPE type)
       return false;
     }
 }
+
+char *
+db_get_json_raw_body (const DB_VALUE * value)
+{
+  return db_json_get_json_body_from_document (*value->data.json.document);
+}
+
+/*
+ * db_value_is_corrupted(): Check whether the db_value is corrupted
+ *
+ *   returns: true if corrupted, false otherwise.
+ *   value(in): the value to check
+ */
+bool
+db_value_is_corrupted (const DB_VALUE * value)
+{
+  if (value == NULL || DB_IS_NULL (value))
+    {
+      return false;
+    }
+
+  switch (value->domain.general_info.type)
+    {
+    case DB_TYPE_NUMERIC:
+      if (IS_INVALID_PRECISION (value->domain.numeric_info.precision, DB_MAX_NUMERIC_PRECISION))
+	{
+	  return true;
+	}
+      break;
+
+    case DB_TYPE_BIT:
+      if (IS_INVALID_PRECISION (value->domain.char_info.length, DB_MAX_BIT_PRECISION))
+	{
+	  return true;
+	}
+      break;
+
+    case DB_TYPE_VARBIT:
+      if (IS_INVALID_PRECISION (value->domain.char_info.length, DB_MAX_VARBIT_PRECISION))
+	{
+	  return true;
+	}
+      break;
+
+    case DB_TYPE_CHAR:
+      if (IS_INVALID_PRECISION (value->domain.char_info.length, DB_MAX_CHAR_PRECISION))
+	{
+	  return true;
+	}
+      break;
+
+    case DB_TYPE_NCHAR:
+      if (IS_INVALID_PRECISION (value->domain.char_info.length, DB_MAX_NCHAR_PRECISION))
+	{
+	  return true;
+	}
+      break;
+
+    case DB_TYPE_VARCHAR:
+      if (IS_INVALID_PRECISION (value->domain.char_info.length, DB_MAX_VARCHAR_PRECISION))
+	{
+	  return true;
+	}
+      break;
+
+    case DB_TYPE_VARNCHAR:
+      if (IS_INVALID_PRECISION (value->domain.char_info.length, DB_MAX_VARNCHAR_PRECISION))
+	{
+	  return true;
+	}
+      break;
+
+    default:
+      break;
+    }
+
+  return false;
+}
+

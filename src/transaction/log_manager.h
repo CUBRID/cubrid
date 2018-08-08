@@ -57,6 +57,7 @@ struct log_topop_range
 
 extern const char *log_to_string (LOG_RECTYPE type);
 extern bool log_is_in_crash_recovery (void);
+extern bool log_is_in_crash_recovery_and_not_yet_completes_redo (void);
 extern LOG_LSA *log_get_restart_lsa (void);
 extern LOG_LSA *log_get_crash_point_lsa (void);
 extern LOG_LSA *log_get_append_lsa (void);

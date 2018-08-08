@@ -187,8 +187,6 @@ void object_printer::describe_domain (/*const*/tp_domain &domain, class_descript
 	case DB_TYPE_BLOB:
 	case DB_TYPE_CLOB:
 	case DB_TYPE_TIME:
-	case DB_TYPE_TIMETZ:
-	case DB_TYPE_TIMELTZ:
 	case DB_TYPE_TIMESTAMP:
 	case DB_TYPE_TIMESTAMPTZ:
 	case DB_TYPE_TIMESTAMPLTZ:
@@ -801,6 +799,11 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
     {
       m_buf (" ");
       describe_comment (constraint.comment);
+    }
+
+  if (constraint.index_status == SM_INVISIBLE_INDEX)
+    {
+      m_buf (" INVISIBLE");
     }
 }
 

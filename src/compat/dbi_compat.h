@@ -49,6 +49,7 @@ extern "C"
 {
 #endif
 
+
 #define DB_TRUE 1
 #define DB_FALSE 0
 
@@ -187,15 +188,9 @@ extern "C"
 
 /* DB_TIME functions */
   extern int db_time_to_string (char *buf, int bufsize, DB_TIME * dbtime);
-  extern int db_timetz_to_string (char *buf, int bufsize, DB_TIME * dbtime, const TZ_ID * tz_id);
-  extern int db_timeltz_to_string (char *buf, int bufsize, DB_TIME * time);
   extern bool db_string_check_explicit_time (const char *str, int str_len);
   extern int db_string_to_time (const char *buf, DB_TIME * dbtime);
   extern int db_string_to_time_ex (const char *buf, int buf_len, DB_TIME * dbtime);
-  extern int db_string_to_timetz (const char *buf, DB_TIMETZ * time_tz, bool * has_zone);
-  extern int db_string_to_timetz_ex (const char *buf, int buf_len, DB_TIMETZ * time_tz, bool * has_zone);
-  extern int db_string_to_timeltz (const char *buf, DB_TIME * time);
-  extern int db_string_to_timeltz_ex (const char *buf, int buf_len, DB_TIME * time);
   extern int db_date_parse_time (char const *str, int str_len, DB_TIME * time, int *milisec);
 
 /* Unix-like functions */

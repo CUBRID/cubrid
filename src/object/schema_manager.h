@@ -92,15 +92,18 @@ extern const char *sm_Root_class_name;
 
 extern int sm_finish_class (SM_TEMPLATE * template_, MOP * classmop);
 extern int sm_update_class (SM_TEMPLATE * template_, MOP * classmop);
+extern int sm_update_class_with_auth (SM_TEMPLATE * template_, MOP * classmop, DB_AUTH auth);
 extern int sm_update_class_auto (SM_TEMPLATE * template_, MOP * classmop);
 extern int sm_delete_class_mop (MOP op, bool is_cascade_constraints);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int sm_delete_class (const char *name);
 #endif
 
+#if 0				// TODO - remove it
 extern int sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type, const char *constraint_name,
 			 const char **attnames, const int *asc_desc, const int *attrs_prefix_length,
 			 SM_PREDICATE_INFO * pred_info, SM_FUNCTION_INFO * fi_info, const char *comment);
+#endif
 extern int sm_get_index (MOP classop, const char *attname, BTID * index);
 extern char *sm_produce_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE constraint_type,
 					 const char **att_names, const int *asc_desc, const char *given_name);
@@ -111,7 +114,7 @@ extern char *sm_produce_constraint_name_tmpl (SM_TEMPLATE * tmpl, DB_CONSTRAINT_
 extern int sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *constraint_name,
 			      const char **att_names, const int *asc_desc, const int *attrs_prefix_length,
 			      int class_attributes, SM_PREDICATE_INFO * predicate_info, SM_FUNCTION_INFO * fi_info,
-			      const char *comment);
+			      const char *comment, SM_INDEX_STATUS index_status);
 extern int sm_drop_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *constraint_name,
 			       const char **att_names, bool class_attributes, bool mysql_index_name);
 extern int sm_drop_index (MOP classop, const char *constraint_name);

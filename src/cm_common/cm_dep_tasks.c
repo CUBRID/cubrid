@@ -2267,7 +2267,6 @@ _op_get_value_string (DB_VALUE * value)
   short sv;
   DB_TIMESTAMPTZ *ts_tz;
   DB_DATETIMETZ *dt_tz;
-  DB_TIMETZ *timetz_v;
   char str_buf[NUMERIC_MAX_STRING_SIZE];
 
   extern int db_get_string_length (const DB_VALUE * value);
@@ -2377,14 +2376,6 @@ _op_get_value_string (DB_VALUE * value)
     case DB_TYPE_TIME:
       time_v = db_get_time (value);
       db_time_to_string (result, 256, time_v);
-      break;
-    case DB_TYPE_TIMELTZ:
-      time_v = db_get_time (value);
-      db_timeltz_to_string (result, 256, time_v);
-      break;
-    case DB_TYPE_TIMETZ:
-      timetz_v = db_get_timetz (value);
-      db_timetz_to_string (result, 256, &timetz_v->time, &timetz_v->tz_id);
       break;
     case DB_TYPE_TIMESTAMP:
       timestamp_v = db_get_timestamp (value);

@@ -3436,12 +3436,7 @@ partition_decrement_value (DB_VALUE * val)
       return true;
 
     case DB_TYPE_TIME:
-    case DB_TYPE_TIMELTZ:
       val->data.time--;
-      return true;
-
-    case DB_TYPE_TIMETZ:
-      val->data.timetz.time--;
       return true;
 
     case DB_TYPE_TIMESTAMP:
