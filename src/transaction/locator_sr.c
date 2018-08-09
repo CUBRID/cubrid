@@ -7662,9 +7662,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
   MVCC_REC_HEADER mvcc_rec_header[2];
 /* #endif */
 
-#if defined(ENABLE_SYSTEMTAP)
   char *classname = NULL;
-#endif /* ENABLE_SYSTEMTAP */
 
   assert_release (class_oid != NULL);
   assert_release (!OID_ISNULL (class_oid));
