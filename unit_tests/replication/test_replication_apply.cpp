@@ -22,6 +22,7 @@
 #include "network.h"
 #include "server_support.h"
 #include "thread_entry_task.hpp"
+#include "thread_manager.hpp"
 #include <thread>
 
 namespace test_replication_apply
@@ -60,8 +61,33 @@ private:
   std::string m_statement;
 };
 
+class test_sbr_task_abort : public cubthread::entry_task
+{
+public:
+  test_sbr_task_abort (const char *statement)
+  : m_statement (statement)
+  {
+  }
 
-  int test_apply_sbr (void)
+  void
+  execute (context_type &thread_ref)
+  {
+    int error = NO_ERROR;
+    error = locator_repl_start_tran (&thread_ref);
+    if (error != NO_ERROR)
+      {
+        return;
+      }
+    error = locator_repl_apply_sbr (&thread_ref, m_statement.c_str ());
+
+    locator_repl_end_tran (&thread_ref, false);
+  }
+
+private:
+  std::string m_statement;
+};
+
+  int test_apply_sbr_internal (double wait_msec_before_shutdown)
   {
     int res = NO_ERROR;
     char command[PATH_MAX];
@@ -96,13 +122,16 @@ private:
 
     std::thread server_thread_start (start_server_func);
 
-    sleep (10);
+    /* wait for server startup */
+    thread_sleep (10 * 1000);
 
     cubthread::entry thread_arg;
 
     css_push_external_task (NULL, new test_sbr_task ("CREATE TABLE tt(i1 string);"));
+    css_push_external_task (NULL, new test_sbr_task_abort ("CREATE TABLE tt2(i1 string);"));
+    css_push_external_task (NULL, new test_sbr_task ("CREATE TABLE tt3(i1 string);"));
 
-    sleep (10);
+    thread_sleep (wait_msec_before_shutdown);
 
     /* to stop cub_master, which stops the cub_server loop */    
     strcpy (command, "cubrid service stop");
@@ -111,11 +140,17 @@ private:
 
     server_thread_start.join ();
 
-    return res;
+    return res != -1;
   }
 
  
+  int test_apply_sbr (void)
+    {
+      int res = test_apply_sbr_internal (1);
 
+      return res;
+     
+    }
 
  
 

@@ -14014,8 +14014,8 @@ locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *statement)
 
   error = create_child_process (ddl_argv,
 			       1,
-    check_interrupt_callback,
-    thread_p,
+                               check_interrupt_callback,
+                               thread_p,
 			       NULL,
 			       NULL,
 			       NULL,
@@ -14024,6 +14024,8 @@ locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *statement)
     {
       return error;
     }
+
+  _er_log_debug (ARG_FILE_LINE, "apply SBR: tran_index:%d, exit_status:%d, stmt:\n%s", tran_index, exit_status, statement);
 
   if (exit_status != 0)
     {
@@ -14075,14 +14077,22 @@ locator_repl_start_tran (THREAD_ENTRY * thread_p)
 int
 locator_repl_end_tran (THREAD_ENTRY * thread_p, bool commit)
 {
+  int saved_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
   if (commit)
     {
       xtran_server_commit (thread_p, false);
+      _er_log_debug (ARG_FILE_LINE, "replication_apply : tran_index :%d committed", saved_tran_index);
     }
   else
     {
       xtran_server_abort (thread_p);
+      _er_log_debug (ARG_FILE_LINE, "replication_apply : tran_index :%d aborted", saved_tran_index);
     }
+
+  logtb_release_tran_index (thread_p, saved_tran_index);
+
+  logtb_set_current_tran_index (thread_p, saved_tran_index);
 
   return NO_ERROR;
 }

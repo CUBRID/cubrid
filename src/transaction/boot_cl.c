@@ -1442,11 +1442,11 @@ error:
  */
 
 int
-boot_shutdown_client (bool is_er_final, BOOT_TRANSACTION_MODE transaction_mode)
+boot_shutdown_client (bool is_er_final, BOOT_CLIENT_TERMINATION_MODE termination_mode)
 {
   if (BOOT_IS_CLIENT_RESTARTED ())
     {
-      if (transaction_mode == BOOT_END_TRANSACTION)
+      if (termination_mode == BOOT_END_TRANSACTION)
         {
           /* 
            * wait for other server request to finish.

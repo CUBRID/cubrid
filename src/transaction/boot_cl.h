@@ -46,7 +46,7 @@ typedef enum
 {
   BOOT_END_TRANSACTION = 0,
   BOOT_KEEP_TRANSACTION
-} BOOT_TRANSACTION_MODE;
+} BOOT_CLIENT_TERMINATION_MODE;
 
 /* Volume assigned for new files/objects  (e.g., heap files) */
 extern VOLID boot_User_volid;
@@ -60,7 +60,7 @@ extern int boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, B
 				   PGLENGTH db_desired_pagesize, DKNPAGES log_npages, PGLENGTH db_desired_log_page_size,
 				   const char *lang_charset);
 extern int boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential);
-extern int boot_shutdown_client (bool is_er_final, BOOT_TRANSACTION_MODE transaction_mode);
+extern int boot_shutdown_client (bool is_er_final, BOOT_CLIENT_TERMINATION_MODE termination_mode);
 extern void boot_donot_shutdown_client_at_exit (void);
 extern void boot_server_die_or_changed (void);
 extern void boot_client_all_finalize (bool iserfinal);
