@@ -57,13 +57,21 @@ namespace cubload
   }
 
   void
-  server_loader::act_setup_class_command_spec (string_type **class_name, class_command_spec_type **cmd_spec)
+  server_loader::check_class (const char *class_name, int class_id)
+  {
+    //
+  }
+
+  int
+  server_loader::setup_class (const char *class_name)
+  {
+    return NO_ERROR;
+  }
+
+  void
+  server_loader::setup_class (string_type *class_name, class_command_spec_type *cmd_spec)
   {
     // TODO CBRD-21654 refactor this function, as well implement functionality to setup based on loaddb --table cmd option
-    if (class_name == NULL || *class_name == NULL)
-      {
-	return;
-      }
 
     HFID hfid;
     RECDES recdes;
@@ -72,27 +80,26 @@ namespace cubload
     char *string = NULL;
     int error = NO_ERROR;
     int alloced_string = 0;
-    string_type *class_name_ = *class_name;
     std::map<std::string, ATTR_ID> attr_name_to_id;
 
-    cubthread::entry &thread_ref = cubthread::get_entry ();
-
-    LC_FIND_CLASSNAME found = xlocator_find_class_oid (&thread_ref, class_name_->val, &m_class_oid, IX_LOCK);
-    if (found != LC_CLASSNAME_EXIST)
+    if (class_name == NULL || class_name->val == NULL)
       {
-	ldr_string_free (class_name);
-	ldr_class_command_spec_free (cmd_spec);
 	return;
       }
 
-    // we do not need anymore class_name
-    ldr_string_free (class_name);
+    cubthread::entry &thread_ref = cubthread::get_entry ();
+
+    LC_FIND_CLASSNAME found = xlocator_find_class_oid (&thread_ref, class_name->val, &m_class_oid, IX_LOCK);
+    if (found != LC_CLASSNAME_EXIST)
+      {
+	// FIXME - error handling(reporting)
+	return;
+      }
 
     error = heap_get_hfid_from_class_oid (&thread_ref, &m_class_oid, &hfid);
     if (error != NO_ERROR)
       {
 	// FIXME - error handling(reporting)
-	ldr_class_command_spec_free (cmd_spec);
 	return;
       }
 
@@ -101,7 +108,6 @@ namespace cubload
       {
 	// FIXME - error handling(reporting)
 	m_scan_cache_started = false;
-	ldr_class_command_spec_free (cmd_spec);
 	return;
       }
 
@@ -111,7 +117,6 @@ namespace cubload
     if (error != NO_ERROR)
       {
 	// FIXME - error handling(reporting)
-	ldr_class_command_spec_free (cmd_spec);
 	return;
       }
 
@@ -119,7 +124,6 @@ namespace cubload
     if (scan_code != S_SUCCESS)
       {
 	// FIXME - error handling(reporting)
-	ldr_class_command_spec_free (cmd_spec);
 	return;
       }
 
@@ -134,7 +138,6 @@ namespace cubload
 	if (error != NO_ERROR)
 	  {
 	    // FIXME - error handling(reporting)
-	    ldr_class_command_spec_free (cmd_spec);
 	    return;
 	  }
 
@@ -146,45 +149,56 @@ namespace cubload
 	  }
       }
 
-    if (cmd_spec == NULL || *cmd_spec == NULL)
+    if (cmd_spec == NULL)
       {
 	return;
       }
-    class_command_spec_type *cmd_spec_ = *cmd_spec;
 
     // alloc attribute ids array
     m_attr_ids = new ATTR_ID[m_attr_info.num_values];
 
-    for (attr = cmd_spec_->attr_list; attr; attr = attr->next, attr_idx++)
+    for (attr = cmd_spec->attr_list; attr; attr = attr->next, attr_idx++)
       {
 	m_attr_ids[attr_idx] = attr_name_to_id.at (std::string (attr->val));
       }
-    ldr_class_command_spec_free (cmd_spec);
 
     // lock class when batch starts, it will be unlocked on transaction commit/abort, see load_parse_task::execute
     lock_object (&thread_ref, &m_class_oid, oid_Root_class_oid, IX_LOCK, LK_UNCOND_LOCK);
   }
 
   void
-  server_loader::act_start_id (char *name)
+  server_loader::destroy ()
   {
+    if (m_attr_ids != NULL)
+      {
+	delete m_attr_ids;
+	m_attr_ids = NULL;
+      }
+
+    cubthread::entry &thread_ref = cubthread::get_entry ();
+
+    heap_attrinfo_end (&thread_ref, &m_attr_info);
+
+    if (m_scan_cache_started)
+      {
+	heap_scancache_end_modify (&thread_ref, &m_scan_cache);
+	m_scan_cache_started = false;
+      }
+
+    m_err_total = 0;
+    m_total_fails = 0;
+    m_class_oid = NULL_OID_INITIALIZER;
   }
 
   void
-  server_loader::act_set_id (int id)
-  {
-    // fetch class having id
-  }
-
-  void
-  server_loader::act_start_instance (int id, constant_type *cons)
+  server_loader::start_line (int object_id)
   {
     // clear db values
     heap_attrinfo_clear_dbvalues (&m_attr_info);
   }
 
   void
-  server_loader::process_constants (constant_type *cons)
+  server_loader::process_line (constant_type *cons)
   {
     // TODO CBRD-21654 refactor this function
     int attr_idx = 0;
@@ -225,7 +239,7 @@ namespace cubload
 		func (str->val, domain, &db_val);
 	      }
 
-	    ldr_string_free (&str);
+	    free_string (&str);
 	  }
 	  break;
 
@@ -240,7 +254,7 @@ namespace cubload
 
 	    /* In Loader grammar always print symbol before value (position of currency symbol is not localized) */
 	    char *curr_str = intl_get_money_esc_ISO_symbol ((DB_CURRENCY) mon->currency_type);
-	    unsigned int full_mon_str_len = (strlen (str->val) + strlen (curr_str));
+	    size_t full_mon_str_len = (strlen (str->val) + strlen (curr_str));
 
 	    if (full_mon_str_len >= sizeof (full_mon_str))
 	      {
@@ -260,7 +274,7 @@ namespace cubload
 	      {
 		free_and_init (full_mon_str_p);
 	      }
-	    ldr_string_free (&str);
+	    free_string (&str);
 	    free_and_init (mon);
 	  }
 	  break;
@@ -277,7 +291,7 @@ namespace cubload
 	    //conv_func func = get_conv_func (c->type, domain);
 	    //func (str->val, domain, &db_val);
 
-	    ldr_string_free (&str);
+	    free_string (&str);
 	  }
 	  break;
 
@@ -289,7 +303,7 @@ namespace cubload
 	  case LDR_COLLECTION:
 	    // TODO CBRD-21654 add support for collections
 	    //(*ldr_act) (ldr_Current_context, "{", 1, LDR_COLLECTION);
-	    process_constants ((constant_type *) c->val);
+	    process_line ((constant_type *) c->val);
 	    //ldr_act_attr (ldr_Current_context, NULL, 0, LDR_COLLECTION);
 	    break;
 
@@ -307,7 +321,7 @@ namespace cubload
   }
 
   void
-  server_loader::act_finish_line ()
+  server_loader::finish_line ()
   {
     OID oid;
     int force_count = 0;
@@ -331,30 +345,6 @@ namespace cubload
 	// FIXME - error handling(reporting)
 	return;
       }
-  }
-
-  void
-  server_loader::act_finish ()
-  {
-    if (m_attr_ids != NULL)
-      {
-	delete m_attr_ids;
-	m_attr_ids = NULL;
-      }
-
-    cubthread::entry &thread_ref = cubthread::get_entry ();
-
-    heap_attrinfo_end (&thread_ref, &m_attr_info);
-
-    if (m_scan_cache_started)
-      {
-	heap_scancache_end_modify (&thread_ref, &m_scan_cache);
-	m_scan_cache_started = false;
-      }
-
-    m_err_total = 0;
-    m_total_fails = 0;
-    m_class_oid = NULL_OID_INITIALIZER;
   }
 
   void

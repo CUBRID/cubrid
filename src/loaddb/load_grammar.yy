@@ -192,7 +192,7 @@ loader_start :
   }
   loader_lines
   {
-    loader_.act_finish ();
+    loader_.destroy ();
   }
   ;
 
@@ -231,7 +231,7 @@ one_line :
   instance_line
   {
     DBG_PRINT ("instance_line");
-    loader_.act_finish_line ();
+    loader_.finish_line ();
     driver_.get_semantic_helper ().reset_pool_indexes ();
   }
   ;
@@ -251,18 +251,20 @@ command_line :
 id_command :
   CMD_ID IDENTIFIER INT_LIT
   {
-    loader_.act_start_id ($2->val);
-    loader_.act_set_id (atoi ($3->val));
+    loader_.check_class ($2->val, atoi ($3->val));
 
-    ldr_string_free (&$2);
-    ldr_string_free (&$3);
+    free_string (&$2);
+    free_string (&$3);
   }
   ;
 
 class_command :
   CMD_CLASS IDENTIFIER class_command_spec
   {
-    loader_.act_setup_class_command_spec (&$2, &$3);
+    loader_.setup_class ($2, $3);
+
+    free_string (&$2);
+    free_class_command_spec (&$3);
   }
   ;
 
@@ -400,19 +402,19 @@ argument_name :
 instance_line :
   object_id
   {
-    loader_.act_start_instance ($1, NULL);
+    loader_.start_line ($1);
   }
   |
   object_id constant_list
   {
-    loader_.act_start_instance ($1, $2);
-    loader_.process_constants ($2);
+    loader_.start_line ($1);
+    loader_.process_line ($2);
   }
   |
   constant_list
   {
-    loader_.act_start_instance (-1, $1);
-    loader_.process_constants ($1);
+    loader_.start_line (-1);
+    loader_.process_line ($1);
   }
   ;
 

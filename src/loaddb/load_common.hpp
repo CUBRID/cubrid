@@ -151,13 +151,14 @@ namespace cubload
     public:
       virtual ~loader () = default;
 
-      virtual void act_setup_class_command_spec (string_type **class_name, class_command_spec_type **cmd_spec) = 0;
-      virtual void act_start_id (char *name) = 0;
-      virtual void act_set_id (int id) = 0;
-      virtual void act_start_instance (int id, constant_type *cons) = 0;
-      virtual void process_constants (constant_type *cons) = 0;
-      virtual void act_finish_line () = 0;
-      virtual void act_finish () = 0;
+      virtual void check_class (const char *class_name, int class_id) = 0;
+      virtual int setup_class (const char *class_name) = 0;
+      virtual void setup_class (string_type *class_name, class_command_spec_type *cmd_spec) = 0;
+      virtual void destroy () = 0;
+
+      virtual void start_line (int object_id) = 0;
+      virtual void process_line (constant_type *cons) = 0;
+      virtual void finish_line () = 0;
 
       virtual void load_failed_error () = 0;
       virtual void increment_err_total () = 0;
@@ -165,8 +166,8 @@ namespace cubload
   };
 
   ///////////////////// common global functions /////////////////////
-  void ldr_string_free (string_type **str);
-  void ldr_class_command_spec_free (class_command_spec_type **class_cmd_spec);
+  void free_string (string_type **str);
+  void free_class_command_spec (class_command_spec_type **class_cmd_spec);
 
   template <typename Func>
   int split (int batch_size, std::string &object_file_name, Func &&func);

@@ -224,7 +224,7 @@ namespace cubload
 
     if (!is_utf8_valid (str))
       {
-	ldr_string_free (&str);
+	free_string (&str);
 	return NULL;
       }
 
@@ -264,7 +264,7 @@ namespace cubload
 
     if (!is_utf8_valid (str))
       {
-	ldr_string_free (&str);
+	free_string (&str);
 	return NULL;
       }
 

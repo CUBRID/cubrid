@@ -39,13 +39,14 @@ namespace cubload
   class client_loader : public loader
   {
     public:
-      void act_setup_class_command_spec (string_type **class_name, class_command_spec_type **cmd_spec) override;
-      void act_start_id (char *name) override;
-      void act_set_id (int id) override;
-      void act_start_instance (int id, constant_type *cons) override;
-      void process_constants (constant_type *cons) override;
-      void act_finish_line () override;
-      void act_finish () override;
+      void check_class (const char *class_name, int class_id) override;
+      int setup_class (const char *class_name) override;
+      void setup_class (string_type *class_name, class_command_spec_type *cmd_spec) override;
+      void destroy () override;
+
+      void start_line (int object_id) override;
+      void process_line (constant_type *cons) override;
+      void finish_line () override;
 
       void load_failed_error () override;
       void increment_err_total () override;
@@ -55,18 +56,12 @@ namespace cubload
 /* *INDENT-ON* */
 
 /* Type aliases */
-typedef struct LDR_CONTEXT LDR_CONTEXT;
-
 typedef void (*LDR_POST_COMMIT_HANDLER) (int);
 typedef void (*LDR_POST_INTERRUPT_HANDLER) (int);
 
 /* Global variables */
 extern char **ignore_class_list;
 extern int ignore_class_num;
-extern bool skip_current_class;
-extern bool skip_current_instance;
-
-extern LDR_CONTEXT *ldr_Current_context;
 
 /* Functions */
 /* Loader initialization and shutdown functions */

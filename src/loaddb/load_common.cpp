@@ -42,7 +42,7 @@ namespace cubload
   }
 
   void
-  ldr_string_free (string_type **str)
+  free_string (string_type **str)
   {
     if (str == NULL || *str == NULL)
       {
@@ -63,7 +63,7 @@ namespace cubload
   }
 
   void
-  ldr_class_command_spec_free (class_command_spec_type **class_cmd_spec)
+  free_class_command_spec (class_command_spec_type **class_cmd_spec)
   {
     if (class_cmd_spec == NULL || *class_cmd_spec == NULL)
       {
@@ -77,16 +77,16 @@ namespace cubload
       {
 	for (arg = class_cmd_spec_->ctor_spec->arg_list; arg; arg = arg->next)
 	  {
-	    ldr_string_free (&arg);
+	    free_string (&arg);
 	  }
 
-	ldr_string_free (&class_cmd_spec_->ctor_spec->id_name);
+	free_string (&class_cmd_spec_->ctor_spec->id_name);
 	free_and_init (class_cmd_spec_->ctor_spec);
       }
 
     for (attr = class_cmd_spec_->attr_list; attr; attr = attr->next)
       {
-	ldr_string_free (&attr);
+	free_string (&attr);
       }
 
     free_and_init (class_cmd_spec_);
