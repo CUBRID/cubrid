@@ -2048,6 +2048,28 @@ sm_create_root (OID * rootclass_oid, HFID * rootclass_hfid)
   locator_add_root (rootclass_oid, (MOBJ) (&sm_Root_class));
 }
 
+/*
+* sm_fee_resident_classes_virtual_query_cache () - free virual query cache of resident classes
+*   return: none
+*/
+void
+sm_fee_resident_classes_virtual_query_cache (void)
+{
+  SM_CLASS *class_;
+  DB_OBJLIST *cl;
+
+  /* go through the resident class list and free anything attached to the class that wasn't allocated in the workspace,
+   * this is only the virtual_query_cache at this time */
+  for (cl = ws_Resident_classes; cl != NULL; cl = cl->next)
+    {
+      class_ = (SM_CLASS *) cl->op->object;
+      if (class_ != NULL && class_->virtual_query_cache != NULL)
+	{
+	  mq_free_virtual_query_cache (class_->virtual_query_cache);
+	  class_->virtual_query_cache = NULL;
+	}
+    }
+}
 
 /*
  * sm_final() - Called during the shutdown sequence
@@ -2074,17 +2096,7 @@ sm_final ()
       sm_free_descriptor (d);
     }
 
-  /* go through the resident class list and free anything attached to the class that wasn't allocated in the workspace, 
-   * this is only the virtual_query_cache at this time */
-  for (cl = ws_Resident_classes; cl != NULL; cl = cl->next)
-    {
-      class_ = (SM_CLASS *) cl->op->object;
-      if (class_ != NULL && class_->virtual_query_cache != NULL)
-	{
-	  mq_free_virtual_query_cache (class_->virtual_query_cache);
-	  class_->virtual_query_cache = NULL;
-	}
-    }
+  sm_fee_resident_classes_virtual_query_cache ();
 }
 
 /*

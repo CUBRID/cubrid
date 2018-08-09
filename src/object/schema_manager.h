@@ -280,6 +280,7 @@ extern void sm_free_descriptor (SM_DESCRIPTOR * desc);
 extern int sm_get_descriptor_component (MOP op, SM_DESCRIPTOR * desc, int for_update, SM_CLASS ** class_ptr,
 					SM_COMPONENT ** comp_ptr);
 
+extern void sm_fee_resident_classes_virtual_query_cache (void);
 
 /* Module control */
 extern void sm_final (void);
