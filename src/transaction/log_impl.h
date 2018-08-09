@@ -1733,7 +1733,9 @@ struct log_tdes
   int cur_repl_record;		/* # of replication records */
   int append_repl_recidx;	/* index of append replication records */
   int fl_mark_repl_recidx;	/* index of flush marked replication record at first */
+#if 1				//arnia
   struct log_repl *repl_records;	/* replication records */
+#endif
   LOG_LSA repl_insert_lsa;	/* insert or mvcc update target lsa */
   LOG_LSA repl_update_lsa;	/* in-place update target lsa */
   void *first_save_entry;	/* first save entry for the transaction */

@@ -838,10 +838,18 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
   int sp_success;
   int tran_index;
   LOCK lock_mode = NULL_LOCK;
+  LOG_TDES *tdes;
 
   assert_release (serial_class_oidp != NULL && !OID_ISNULL (serial_class_oidp));
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  tdes = LOG_FIND_TDES (tran_index);
+
+  if (tdes == NULL)
+    {
+      return ER_FAILED;
+    }
+
   lock_mode = lock_get_object_lock (serial_oidp, serial_class_oidp, tran_index);
 
   /* need to start topop for replication Replication will recognize and realize a special type of update for serial by
@@ -895,8 +903,16 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
   /* make replication log for the special type of update for serial */
   if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
     {
-      repl_log_insert (thread_p, serial_class_oidp, serial_oidp, LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE, key_val,
-		       REPL_INFO_TYPE_RBR_NORMAL);
+      if (tdes->suppress_replication == 0)
+	{
+	  ret =
+	    tdes->replication_log_generator.set_key_to_repl_object (key_val, serial_oidp, serial_class_oidp,
+								    &new_recdesc);
+	  if (ret != NO_ERROR)
+	    {
+	      assert (false);
+	    }
+	}
       repl_add_update_lsa (thread_p, serial_oidp);
 
       if (lock_mode != X_LOCK)

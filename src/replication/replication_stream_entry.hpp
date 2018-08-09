@@ -103,7 +103,7 @@ namespace cubreplication
 	m_header.tran_state = state;
       };
 
-      size_t get_packed_header_size ()
+      size_t get_packed_header_size () override
       {
 	return s_header_size;
       }

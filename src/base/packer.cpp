@@ -534,5 +534,35 @@ namespace cubpacking
     return NO_ERROR;
   }
 
+  std::size_t packer::get_packed_buffer_size (const char *stream, const std::size_t length, const std::size_t curr_offset)
+  {
+    std::size_t actual_length = 0;
+
+    if (stream != NULL)
+      {
+	actual_length = length;
+      }
+
+    std::size_t entry_size = OR_INT_SIZE + actual_length;
+
+    return DB_ALIGN (curr_offset, INT_ALIGNMENT) + entry_size - curr_offset;
+  }
+
+  int packer::pack_buffer_with_length (const char *stream, const std::size_t length)
+  {
+    align (INT_ALIGNMENT);
+    m_ptr = or_pack_stream (m_ptr, stream, length);
+
+    return NO_ERROR;
+  }
+
+  int packer::unpack_buffer_with_length (char *stream, const std::size_t length)
+  {
+    align (INT_ALIGNMENT);
+    m_ptr = or_unpack_stream (m_ptr, stream, length);
+
+    return NO_ERROR;
+  }
+
 
 } /* namespace cubpacking */

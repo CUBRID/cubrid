@@ -56,6 +56,8 @@
 #endif /* DMALLOC */
 #include "dbtype.h"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
+#include "replication_object.hpp"
+#include "log_generator.hpp"
 
 /* TODO : remove */
 extern bool catcls_Enable;
@@ -7366,6 +7368,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
     {
       COPY_OID (&class_oid, &attr_info->class_oid);
     }
+
   switch (operation)
     {
     case LC_FLUSH_UPDATE:
@@ -7444,7 +7447,6 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
       old_recdes = &copy_recdes;
 
       /* Fall through */
-
     case LC_FLUSH_INSERT:
     case LC_FLUSH_INSERT_PRUNE:
     case LC_FLUSH_INSERT_PRUNE_VERIFY:
@@ -7513,7 +7515,6 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
       error_code = ER_LC_BADFORCE_OPERATION;
       break;
     }
-
   return error_code;
 }
 
@@ -7713,13 +7714,11 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 	}
     }
 
-#if defined(ENABLE_SYSTEMTAP)
   if (heap_get_class_name (thread_p, class_oid, &classname) != NO_ERROR || classname == NULL)
     {
       ASSERT_ERROR_AND_SET (error_code);
       goto error;
     }
-#endif /* ENABLE_SYSTEMTAP */
 
   for (i = 0; i < num_btids; i++)
     {
@@ -7873,9 +7872,9 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 	  && !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
 	{
 	  error_code =
-	    repl_log_insert (thread_p, class_oid, inst_oid, datayn ? LOG_REPLICATION_DATA : LOG_REPLICATION_STATEMENT,
-			     is_insert ? RVREPL_DATA_INSERT : RVREPL_DATA_DELETE, key_dbvalue,
-			     REPL_INFO_TYPE_RBR_NORMAL);
+	    cubreplication::repl_log_insert_with_recdes (thread_p, classname,
+							 is_insert ? RVREPL_DATA_INSERT : RVREPL_DATA_DELETE,
+							 key_dbvalue, recdes);
 	}
       if (error_code != NO_ERROR)
 	{
@@ -8172,12 +8171,12 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
   MVCC_REC_HEADER mvcc_rec_header[2];
 /* #endif */
 #if defined(ENABLE_SYSTEMTAP)
-  char *classname = NULL;
   bool is_started = false;
 #endif /* ENABLE_SYSTEMTAP */
-  LOG_TDES *tdes;
+  LOG_TDES *tdes = NULL;
   LOG_LSA preserved_repl_lsa;
   int tran_index;
+  char *classname = NULL;
 
   assert_release (class_oid != NULL);
   assert_release (!OID_ISNULL (class_oid));
@@ -8273,13 +8272,11 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
       goto error;
     }
 
-#if defined(ENABLE_SYSTEMTAP)
   if (heap_get_class_name (thread_p, class_oid, &classname) != NO_ERROR || classname == NULL)
     {
       ASSERT_ERROR_AND_SET (error_code);
       goto error;
     }
-#endif /* ENABLE_SYSTEMTAP */
 
   for (i = 0; i < num_btids; i++)
     {
@@ -8629,6 +8626,12 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
     {
       assert (repl_info != NULL);
 
+      if (tdes == NULL)
+	{
+	  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+	  tdes = LOG_FIND_TDES (tran_index);
+	}
+
       if (repl_old_key == NULL)
 	{
 	  key_domain = NULL;
@@ -8659,9 +8662,13 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	      repl_old_key->data.midxkey.domain = key_domain;
 	    }
 
-	  error_code =
-	    repl_log_insert (thread_p, class_oid, oid, LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE, repl_old_key,
-			     (REPL_INFO_TYPE) repl_info->repl_info_type);
+#if defined (SERVER_MODE)
+	  if (tdes->suppress_replication == 0)
+	    {
+	      error_code =
+		tdes->replication_log_generator.set_key_to_repl_object (repl_old_key, oid, classname, new_recdes);
+	    }
+#endif
 	  if (repl_old_key == &old_dbvalue)
 	    {
 	      pr_clear_value (&old_dbvalue);
@@ -8669,9 +8676,13 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	}
       else
 	{
-	  error_code =
-	    repl_log_insert (thread_p, class_oid, oid, LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE, repl_old_key,
-			     (REPL_INFO_TYPE) repl_info->repl_info_type);
+#if defined (SERVER_MODE)
+	  if (tdes->suppress_replication == 0)
+	    {
+	      error_code =
+		tdes->replication_log_generator.set_key_to_repl_object (repl_old_key, oid, classname, new_recdes);
+	    }
+#endif
 	  pr_free_ext_value (repl_old_key);
 	  repl_old_key = NULL;
 	}
@@ -11566,14 +11577,14 @@ locator_decrease_catalog_count (THREAD_ENTRY * thread_p, OID * cls_oid)
 #endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
- * xrepl_set_info () -
+ * xrepl_statement () -
  *
  * return:
  *
  *   repl_info(in):
  */
 int
-xrepl_set_info (THREAD_ENTRY * thread_p, REPL_INFO * repl_info)
+xrepl_statement (THREAD_ENTRY * thread_p, REPL_INFO * repl_info)
 {
   int error_code = NO_ERROR;
 
@@ -11582,7 +11593,7 @@ xrepl_set_info (THREAD_ENTRY * thread_p, REPL_INFO * repl_info)
       switch (repl_info->repl_info_type)
 	{
 	case REPL_INFO_TYPE_SBR:
-	  error_code = repl_log_insert_statement (thread_p, (REPL_INFO_SBR *) repl_info->info);
+	  error_code = cubreplication::repl_log_insert_statement (thread_p, (REPL_INFO_SBR *) repl_info->info);
 	  break;
 	default:
 	  error_code = ER_REPL_ERROR;
@@ -12524,7 +12535,7 @@ xchksum_insert_repl_log_and_demote_table_lock (THREAD_ENTRY * thread_p, REPL_INF
 
   repl_start_flush_mark (thread_p);
 
-  error = xrepl_set_info (thread_p, repl_info);
+  error = xrepl_statement (thread_p, repl_info);
 
   repl_end_flush_mark (thread_p, false);
 

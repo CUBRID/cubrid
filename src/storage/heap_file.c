@@ -11092,6 +11092,8 @@ heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HE
   PR_TYPE *pr_type;		/* Primitive type array function structure */
   TP_DOMAIN_STATUS dom_status;
   int ret = NO_ERROR;
+  LOG_TDES *log_tdes = NULL;
+  THREAD_ENTRY *thread_p = NULL;
 
   /* 
    * check to make sure the attr_info has been used, should never be empty.
@@ -11168,7 +11170,24 @@ heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HE
     }
 
   value->state = HEAP_WRITTEN_ATTRVALUE;
+#if defined (SERVER_MODE)
+  thread_p = thread_get_thread_entry_info ();
+  assert (thread_p != NULL);
+  log_tdes = LOG_FIND_CURRENT_TDES (thread_p);
 
+  /* If suppress_replication flag is set, do not write replication log. */
+  if (log_tdes->suppress_replication == 0)
+    {
+      ret =
+	log_tdes->replication_log_generator.append_pending_repl_object (*thread_p, &attr_info->class_oid, inst_oid,
+									attrid, attr_val);
+      if (ret != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+    }
+
+#endif
   return ret;
 
 exit_on_error:

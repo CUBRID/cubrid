@@ -149,7 +149,7 @@ namespace test_packing
     return true;
   }
 
-  size_t po1::get_packed_size (cubpacking::packer *serializator)
+  size_t po1::get_packed_size (cubpacking::packer *serializator, std::size_t start_offset)
   {
     size_t entry_size = 0;
 

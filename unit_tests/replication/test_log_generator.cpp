@@ -142,12 +142,12 @@ namespace test_replication
 
     cubthread::entry *my_thread = thread_get_thread_entry_info ();
 
-    cubreplication::sbr_repl_entry *sbr1 = new cubreplication::sbr_repl_entry;
-    cubreplication::sbr_repl_entry *sbr2 = new cubreplication::sbr_repl_entry;
-    cubreplication::single_row_repl_entry *rbr1 =
-	    new cubreplication::single_row_repl_entry (cubreplication::REPL_UPDATE, "t1");
-    cubreplication::single_row_repl_entry *rbr2 =
-	    new cubreplication::single_row_repl_entry (cubreplication::REPL_INSERT, "t2");
+    cubreplication::sbr_repl_entry *sbr1 = new cubreplication::sbr_repl_entry ("CREATE TABLE t1 (i1 int)", "", "");
+    cubreplication::sbr_repl_entry *sbr2 = new cubreplication::sbr_repl_entry ("CREATE TABLE t2 (i1 int)", "", "");
+    cubreplication::changed_attrs_row_repl_entry *rbr1 =
+      new cubreplication::changed_attrs_row_repl_entry (cubreplication::REPL_UPDATE, "t1");
+    cubreplication::changed_attrs_row_repl_entry *rbr2 =
+      new cubreplication::changed_attrs_row_repl_entry (cubreplication::REPL_INSERT, "t2");
 
     DB_VALUE key_value;
     DB_VALUE new_att1_value;
@@ -158,9 +158,6 @@ namespace test_replication
     db_make_int (&new_att1_value, 2);
     db_make_char (&new_att2_value, 4, "test", 4, INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY);
     db_make_char (&new_att3_value, 5, "test2", 5, INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY);
-
-    sbr1->set_statement ("CREATE TABLE t1 (i1 int)");
-    sbr2->set_statement ("CREATE TABLE t2 (i1 int)");
 
     rbr1->set_key_value (&key_value);
     rbr1->copy_and_add_changed_value (1, &new_att2_value);
@@ -213,7 +210,7 @@ namespace test_replication
   {
     cubreplication::REPL_ENTRY_TYPE rbr_type = (cubreplication::REPL_ENTRY_TYPE) (std::rand () % 3);
 
-    cubreplication::single_row_repl_entry *rbr = new cubreplication::single_row_repl_entry (rbr_type, "t1");
+    cubreplication::changed_attrs_row_repl_entry *rbr = new cubreplication::changed_attrs_row_repl_entry (rbr_type, "t1");
 
     DB_VALUE key_value;
     DB_VALUE new_att1_value;
@@ -235,10 +232,11 @@ namespace test_replication
   void generate_sbr (cubthread::entry *thread_p, cubreplication::log_generator *lg, int tran_chunk, int tran_obj)
   {
     std::string statement = std::string ("T") + std::to_string (thread_p->tran_index) + std::string ("P") + std::to_string (
-				    tran_chunk)
+			      tran_chunk)
 			    + std::string ("O") + std::to_string (tran_obj);
 
-    cubreplication::sbr_repl_entry *sbr = new cubreplication::sbr_repl_entry (statement);
+    cubreplication::sbr_repl_entry *sbr = new cubreplication::sbr_repl_entry (statement.c_str (), "test_user",
+	"test_sys_prm_ctx");
 
     lg->append_repl_object (sbr);
   }
@@ -280,7 +278,7 @@ namespace test_replication
 
   };
 
-  std::atomic<int> tasks_running(0);
+  std::atomic<int> tasks_running (0);
 
   class gen_repl_task : public cubthread::entry_task
   {
@@ -288,7 +286,7 @@ namespace test_replication
       gen_repl_task (int tran_id)
       {
 	m_thread_entry.tran_index = tran_id;
-        m_lg = new cubreplication::log_generator (cubreplication::log_generator::get_stream ());
+	m_lg = new cubreplication::log_generator (cubreplication::log_generator::get_stream ());
       }
 
       void execute (cubthread::entry &thread_ref) override
@@ -331,7 +329,7 @@ namespace test_replication
     int res = 0;
 
     init_common_cubrid_modules ();
-    
+
     cubreplication::log_generator *lg = new cubreplication::log_generator;
     cubreplication::log_generator::create_stream (0);
 
@@ -342,9 +340,9 @@ namespace test_replication
 
     gen_repl_context_manager ctx_m1;
     cubthread::entry_workpool *gen_worker_pool =
-	    cub_th_m->create_worker_pool (GEN_THREAD_CNT, GEN_THREAD_CNT, "test_pool", &ctx_m1,
-					  1,
-					  1);
+      cub_th_m->create_worker_pool (GEN_THREAD_CNT, GEN_THREAD_CNT, "test_pool", &ctx_m1,
+				    1,
+				    1);
     tasks_running = TASKS_CNT;
     for (int i = 0; i < TASKS_CNT; i++)
       {

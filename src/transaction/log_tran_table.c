@@ -243,15 +243,19 @@ logtb_allocate_tdes_area (int num_indices)
    * each transaction descriptor, and keep the address of the area for
    * deallocation purposes at shutdown time.
    */
-  area_size = num_indices * sizeof (LOG_TDES) + sizeof (LOG_ADDR_TDESAREA);
-  area = (LOG_ADDR_TDESAREA *) malloc (area_size);
+  area = (LOG_ADDR_TDESAREA *) malloc (sizeof (LOG_ADDR_TDESAREA));
   if (area == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, area_size);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LOG_ADDR_TDESAREA));
       return NULL;
     }
 
-  area->tdesarea = ((LOG_TDES *) ((char *) area + sizeof (LOG_ADDR_TDESAREA)));
+  area->tdesarea = new LOG_TDES[num_indices];
+  if (area->tdesarea == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, num_indices * sizeof (LOG_TDES));
+      return NULL;
+    }
   area->next = log_Gl.trantable.area;
 
   /* 
@@ -348,6 +352,9 @@ logtb_expand_trantable (THREAD_ENTRY * thread_p, int num_new_indices)
   error_code = wfg_alloc_nodes (thread_p, total_indices);
   if (error_code != NO_ERROR)
     {
+      /* *INDENT-OFF* */
+      delete[] area->tdesarea;
+      /* *INDENT-ON* */
       free_and_init (area);
       goto error;
     }
@@ -361,6 +368,9 @@ logtb_expand_trantable (THREAD_ENTRY * thread_p, int num_new_indices)
 	(MVCCID *) realloc ((void *) mvcc_table->transaction_lowest_active_mvccids, total_indices * sizeof (MVCCID));
       if (mvcc_table->transaction_lowest_active_mvccids == NULL)
 	{
+	  /* *INDENT-OFF* */
+	  delete[] area->tdesarea;
+	  /* *INDENT-ON* */
 	  free_and_init (area);
 	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, total_indices * sizeof (MVCCID));
@@ -371,6 +381,9 @@ logtb_expand_trantable (THREAD_ENTRY * thread_p, int num_new_indices)
 
   if (qmgr_allocate_tran_entries (thread_p, total_indices) != NO_ERROR)
     {
+      /* *INDENT-OFF* */
+      delete[] area->tdesarea;
+      /* *INDENT-ON* */
       free_and_init (area);
       error_code = ER_FAILED;
       goto error;
@@ -681,6 +694,9 @@ logtb_undefine_trantable (THREAD_ENTRY * thread_p)
       while (area != NULL)
 	{
 	  log_Gl.trantable.area = area->next;
+	  /* *INDENT-OFF* */
+	  delete[] area->tdesarea;
+	  /* *INDENT-ON* */
 	  free_and_init (area);
 	  area = log_Gl.trantable.area;
 	}

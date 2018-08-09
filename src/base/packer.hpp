@@ -95,6 +95,10 @@ namespace cubpacking
       int pack_c_string (const char *str, const size_t str_size);
       int unpack_c_string (char *str, const size_t max_str_size);
 
+      std::size_t get_packed_buffer_size (const char *stream, const std::size_t length, const std::size_t curr_offset);
+      int pack_buffer_with_length (const char *stream, const std::size_t length);
+      int unpack_buffer_with_length (char *stream, const std::size_t length);
+
       const char *get_curr_ptr (void)
       {
 	return m_ptr;

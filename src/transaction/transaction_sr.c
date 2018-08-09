@@ -282,6 +282,8 @@ xtran_server_end_topop (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result, LOG_LS
 	{
 	  log_sysop_abort (thread_p);
 	  state = TRAN_UNACTIVE_ABORTED;
+
+	  tdes->replication_log_generator.abort_pending_repl_objects ();
 	}
       if (drop_transient_class)
 	{

@@ -361,15 +361,14 @@ logtb_initialize_mvcc_testing (int num_threads, THREAD_ENTRY ** thread_array)
       goto error;
     }
 
-  area_size = num_threads * sizeof (LOG_TDES) + sizeof (LOG_ADDR_TDESAREA);
-  area = (LOG_ADDR_TDESAREA *) malloc (area_size);
+  area = (LOG_ADDR_TDESAREA *) malloc (sizeof (LOG_ADDR_TDESAREA));
   if (area == NULL)
     {
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
     }
 
-  area->tdesarea = ((LOG_TDES *) ((char *) area + sizeof (LOG_ADDR_TDESAREA)));
+  area->tdesarea = new LOG_TDES[num_threads];
   area->next = NULL;
 
   /* 
@@ -406,6 +405,9 @@ error:
 
   if (log_Gl.trantable.area)
     {
+      /* *INDENT-OFF* */
+      delete[] log_Gl.trantable.area->tdesarea;
+      /* *INDENT-ON* */
       free_and_init (log_Gl.trantable.area);
     }
 
@@ -457,6 +459,9 @@ logtb_finalize_mvcc_testing (THREAD_ENTRY ** thread_array)
 
   if (log_Gl.trantable.area)
     {
+      /* *INDENT-OFF* */
+      delete[] log_Gl.trantable.area->tdesarea;
+      /* *INDENT-ON* */
       free_and_init (log_Gl.trantable.area);
     }
 }

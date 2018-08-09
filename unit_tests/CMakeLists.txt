@@ -94,11 +94,6 @@ if (UNIT_TESTS OR UNIT_TEST_DDL_CL)
   add_subdirectory(ddl_proxy_client)
 endif(UNIT_TESTS OR UNIT_TEST_DDL_CL)
 
-if (UNIT_TESTS OR UNIT_TEST_REPLICATION)
-  message("    replication_channels")
-  add_subdirectory(replication_channels)
-endif(UNIT_TESTS OR UNIT_TEST_REPLICATION)
-
 if (UNIT_TESTS OR UNIT_TEST_RESOURCE_TRACKER)
   message("    resource_tracker")
   add_subdirectory(resource_tracker)
