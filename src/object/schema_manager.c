@@ -391,7 +391,8 @@ static int flatten_subclasses (DB_OBJLIST * subclasses, MOP deleted_class);
 static void abort_subclasses (DB_OBJLIST * subclasses);
 static int update_subclasses (DB_OBJLIST * subclasses);
 static int lockhint_subclasses (SM_TEMPLATE * temp, SM_CLASS * class_);
-static int update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH auth);
+static int update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH auth,
+			 bool needs_hierarchy_lock);
 static int remove_class_triggers (MOP classop, SM_CLASS * class_);
 static int sm_drop_cascade_foreign_key (SM_CLASS * class_);
 static char *sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, const char **att_names,
@@ -12529,6 +12530,7 @@ lockhint_subclasses (SM_TEMPLATE * temp, SM_CLASS * class_)
  *   classmop(in): MOP of existing class (NULL if new class)
  *   auto_res(in): non-zero to enable auto-resolution of conflicts
  *   auth(in): the given authorization mode to modify class
+ *   needs_hierarchy_lock(in): lock sub/super classes?
  */
 
 /* NOTE: There were some problems when the transaction was unilaterally
@@ -12550,7 +12552,7 @@ lockhint_subclasses (SM_TEMPLATE * temp, SM_CLASS * class_)
  */
 
 static int
-update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH auth)
+update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH auth, bool needs_hierarchy_lock)
 {
   int error = NO_ERROR;
   int num_indexes;
@@ -12586,23 +12588,26 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
       goto end;
     }
 
-  /* pre-lock subclass lattice to the extent possible */
-  error = lockhint_subclasses (template_, class_);
-  if (error != NO_ERROR)
+  if (needs_hierarchy_lock)
     {
-      goto end;
-    }
+      /* pre-lock subclass lattice to the extent possible */
+      error = lockhint_subclasses (template_, class_);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
 
-  /* get write locks on all super classes */
-  if (class_ != NULL)
-    {
-      cursupers = class_->inheritance;
-    }
+      /* get write locks on all super classes */
+      if (class_ != NULL)
+	{
+	  cursupers = class_->inheritance;
+	}
 
-  error = lock_supers (template_, cursupers, &oldsupers, &newsupers);
-  if (error != NO_ERROR)
-    {
-      goto end;
+      error = lock_supers (template_, cursupers, &oldsupers, &newsupers);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
     }
 
   /* flatten template, store the pending template in the "new" field of the class in case we need it to make domain
@@ -12625,23 +12630,26 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
       goto end;
     }
 
-  /* get write locks on all subclasses */
-  if (class_ != NULL)
+  if (needs_hierarchy_lock)
     {
-      cursubs = class_->users;
-    }
-
-  error = lock_subclasses (template_, newsupers, cursubs, &newsubs);
-  if (error != NO_ERROR)
-    {
-      classobj_free_template (flat);
-      /* don't touch this class if we aborted ! */
-      if (class_ != NULL && error != ER_LK_UNILATERALLY_ABORTED)
+      /* get write locks on all subclasses */
+      if (class_ != NULL)
 	{
-	  class_->new_ = NULL;
+	  cursubs = class_->users;
 	}
 
-      goto end;
+      error = lock_subclasses (template_, newsupers, cursubs, &newsubs);
+      if (error != NO_ERROR)
+	{
+	  classobj_free_template (flat);
+	  /* don't touch this class if we aborted ! */
+	  if (class_ != NULL && error != ER_LK_UNILATERALLY_ABORTED)
+	    {
+	      class_->new_ = NULL;
+	    }
+
+	  goto end;
+	}
     }
 
   /* put the flattened definition in the class for use during subclass flattening */
@@ -12816,7 +12824,7 @@ error_return:
 int
 sm_finish_class (SM_TEMPLATE * template_, MOP * classmop)
 {
-  return update_class (template_, classmop, 0, AU_ALTER);
+  return update_class (template_, classmop, 0, AU_ALTER, true);
 }
 
 /*
@@ -12830,13 +12838,13 @@ sm_finish_class (SM_TEMPLATE * template_, MOP * classmop)
 int
 sm_update_class (SM_TEMPLATE * template_, MOP * classmop)
 {
-  return update_class (template_, classmop, 0, AU_ALTER);
+  return update_class (template_, classmop, 0, AU_ALTER, true);
 }
 
 int
-sm_update_class_with_auth (SM_TEMPLATE * template_, MOP * classmop, DB_AUTH auth)
+sm_update_class_with_auth (SM_TEMPLATE * template_, MOP * classmop, DB_AUTH auth, bool needs_hierarchy_lock)
 {
-  return update_class (template_, classmop, 0, auth);
+  return update_class (template_, classmop, 0, auth, needs_hierarchy_lock);
 }
 
 /*
@@ -12850,7 +12858,7 @@ sm_update_class_with_auth (SM_TEMPLATE * template_, MOP * classmop, DB_AUTH auth
 int
 sm_update_class_auto (SM_TEMPLATE * template_, MOP * classmop)
 {
-  return update_class (template_, classmop, 1, AU_ALTER);
+  return update_class (template_, classmop, 1, AU_ALTER, true);
 }
 
 /*
@@ -14567,6 +14575,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
   SM_TEMPLATE *def;
   MOP newmop = NULL;
   LOCK ex_lock = SCH_M_LOCK;
+  bool needs_hierarchy_lock;
 
   if (att_names == NULL)
     {
@@ -14665,7 +14674,8 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	  return error;
 	}
 
-      error = sm_update_class_with_auth (def, &newmop, auth);
+      needs_hierarchy_lock = DB_IS_CONSTRAINT_UNIQUE_FAMILY (constraint_type);
+      error = sm_update_class_with_auth (def, &newmop, auth, needs_hierarchy_lock);
       if (error != NO_ERROR)
 	{
 	  smt_quit (def);
@@ -14714,7 +14724,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	    }
 
 	  /* Update the class now. */
-	  error = sm_update_class_with_auth (def, &newmop, auth);
+	  error = sm_update_class_with_auth (def, &newmop, auth, needs_hierarchy_lock);
 	  if (error != NO_ERROR)
 	    {
 	      smt_quit (def);
