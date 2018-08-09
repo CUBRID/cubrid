@@ -359,7 +359,7 @@ static int allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclass
 			   const int *asc_desc, const int *attrs_prefix_length, int unique_pk, int not_null,
 			   int reverse, const char *constraint_name, BTID * index, OID * fk_refcls_oid,
 			   BTID * fk_refcls_pk_btid, const char *fk_name, SM_PREDICATE_INFO * filter_index,
-			   SM_FUNCTION_INFO * function_index);
+			   SM_FUNCTION_INFO * function_index, SM_INDEX_STATUS index_status);
 static int deallocate_index (SM_CLASS_CONSTRAINT * cons, BTID * index);
 static int rem_class_from_index (OID * oid, BTID * index, HFID * heap);
 static int check_fk_validity (MOP classop, SM_CLASS * class_, SM_ATTRIBUTE ** key_attrs, const int *asc_desc,
@@ -10044,13 +10044,14 @@ collect_hier_class_info (MOP classop, DB_OBJLIST * subclasses, const char *const
  *   fk_refcls_oid(in):
  *   fk_refcls_pk_btid(in):
  *   fk_name(in):
+ *   index_status(in):
  */
 
 static int
 allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_ATTRIBUTE ** attrs, const int *asc_desc,
 		const int *attrs_prefix_length, int unique_pk, int not_null, int reverse, const char *constraint_name,
 		BTID * index, OID * fk_refcls_oid, BTID * fk_refcls_pk_btid, const char *fk_name,
-		SM_PREDICATE_INFO * filter_index, SM_FUNCTION_INFO * function_index)
+		SM_PREDICATE_INFO * filter_index, SM_FUNCTION_INFO * function_index, SM_INDEX_STATUS index_status)
 {
   int error = NO_ERROR;
   DB_TYPE type;
@@ -10059,6 +10060,9 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_ATTR
   size_t attr_ids_size;
   OID *oids = NULL;
   HFID *hfids = NULL;
+  TP_DOMAIN *domain = NULL;
+  int max_classes, n_classes, has_instances;
+  DB_OBJLIST *sub;
 
   /* Count the attributes */
   for (i = 0, n_attrs = 0; attrs[i] != NULL; i++, n_attrs++)
@@ -10084,148 +10088,139 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_ATTR
 	}
     }
 
-  if (error == NO_ERROR)
+  if (error != NO_ERROR)
     {
-      TP_DOMAIN *domain = NULL;
+      return error;
+    }
 
-      if (function_index)
+  if (function_index)
+    {
+      if (function_index->attr_index_start == 0)
 	{
-	  if (function_index->attr_index_start == 0)
-	    {
-	      /* if this is a single column function index, the key domain is actually the domain of the function
-	       * result */
-	      domain = function_index->fi_domain;
-	    }
-	  else
-	    {
-	      domain =
-		construct_index_key_domain (function_index->attr_index_start, attrs, asc_desc, attrs_prefix_length,
-					    function_index->col_id, function_index->fi_domain);
-	    }
+	  /* if this is a single column function index, the key domain is actually the domain of the function
+	   * result */
+	  domain = function_index->fi_domain;
 	}
       else
 	{
-	  domain = construct_index_key_domain (n_attrs, attrs, asc_desc, attrs_prefix_length, -1, NULL);
-	}
-      if (domain == NULL)
-	{
-	  assert (er_errid () != NO_ERROR);
-	  error = er_errid ();
-	}
-      else
-	{
-	  int max_classes, n_classes, has_instances;
-	  DB_OBJLIST *sub;
-
-	  /* need to have macros for this !! */
-	  index->vfid.volid = boot_User_volid;
-
-	  /* Count maximum possible subclasses */
-	  max_classes = 1;	/* Start with 1 for the current class */
-	  for (sub = subclasses; sub != NULL; sub = sub->next)
-	    {
-	      max_classes++;
-	    }
-
-	  /* Allocate arrays to hold subclass information */
-	  attr_ids_size = max_classes * n_attrs * sizeof (int);
-	  attr_ids = (int *) malloc (attr_ids_size);
-	  if (attr_ids == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, attr_ids_size);
-	      goto mem_error;
-	    }
-
-	  oids = (OID *) malloc (max_classes * sizeof (OID));
-	  if (oids == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, max_classes * sizeof (OID));
-	      goto mem_error;
-	    }
-
-	  hfids = (HFID *) malloc (max_classes * sizeof (HFID));
-	  if (hfids == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, max_classes * sizeof (HFID));
-	      goto mem_error;
-	    }
-
-	  /* Enter the base class information into the arrays */
-	  n_classes = 0;
-	  COPY_OID (&oids[n_classes], WS_OID (classop));
-	  for (i = 0; i < n_attrs; i++)
-	    {
-	      attr_ids[i] = attrs[i]->id;
-	    }
-	  HFID_COPY (&hfids[n_classes], sm_ch_heap ((MOBJ) class_));
-	  n_classes++;
-
-	  /* If we're creating a UNIQUE B-tree or a FOREIGN KEY, we need to collect information from subclasses which
-	   * inherit the constraint */
-	  if (unique_pk || (fk_refcls_oid != NULL && !OID_ISNULL (fk_refcls_oid)))
-	    {
-	      error =
-		collect_hier_class_info (classop, subclasses, constraint_name, reverse, &n_classes, n_attrs, oids,
-					 attr_ids, hfids);
-	      if (error != NO_ERROR)
-		{
-		  goto gen_error;
-		}
-	    }
-
-	  /* Are there any populated classes for this index ? */
-	  has_instances = 0;
-	  for (i = 0; i < n_classes; i++)
-	    {
-	      if (!HFID_IS_NULL (&hfids[i]) && heap_has_instance (&hfids[i], &oids[i], false))
-		{
-		  /* in case of error and instances exist */
-		  has_instances = 1;
-		  break;
-		}
-	    }
-
-	  /* If there are no instances, then call btree_add_index() to create an empty index, otherwise call
-	   * btree_load_index () to load all of the instances (including applicable subclasses) into a new B-tree */
-	  // TODO: optimize has_instances case
-	  if (!has_instances || class_->constraints->index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
-	    {
-	      error = btree_add_index (index, domain, WS_OID (classop), attrs[0]->id, unique_pk);
-	    }
-	  /* If there are instances, load all of them (including applicable subclasses) into the new B-tree */
-	  else
-	    {
-	      if (function_index)
-		{
-		  error =
-		    btree_load_index (index, constraint_name, domain, oids, n_classes, n_attrs, attr_ids,
-				      (int *) attrs_prefix_length, hfids, unique_pk, not_null, fk_refcls_oid,
-				      fk_refcls_pk_btid, fk_name, SM_GET_FILTER_PRED_STREAM (filter_index),
-				      SM_GET_FILTER_PRED_STREAM_SIZE (filter_index), function_index->expr_stream,
-				      function_index->expr_stream_size, function_index->col_id,
-				      function_index->attr_index_start);
-		}
-	      else
-		{
-		  error =
-		    btree_load_index (index, constraint_name, domain, oids, n_classes, n_attrs, attr_ids,
-				      (int *) attrs_prefix_length, hfids, unique_pk, not_null, fk_refcls_oid,
-				      fk_refcls_pk_btid, fk_name, SM_GET_FILTER_PRED_STREAM (filter_index),
-				      SM_GET_FILTER_PRED_STREAM_SIZE (filter_index), NULL, -1, -1, -1);
-		}
-	    }
-
-	  free_and_init (attr_ids);
-	  free_and_init (oids);
-	  free_and_init (hfids);
+	  domain = construct_index_key_domain (function_index->attr_index_start, attrs, asc_desc, attrs_prefix_length,
+					       function_index->col_id, function_index->fi_domain);
 	}
     }
+  else
+    {
+      domain = construct_index_key_domain (n_attrs, attrs, asc_desc, attrs_prefix_length, -1, NULL);
+    }
+
+  if (domain == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  /* need to have macros for this !! */
+  index->vfid.volid = boot_User_volid;
+
+  /* Count maximum possible subclasses */
+  max_classes = 1;		/* Start with 1 for the current class */
+  for (sub = subclasses; sub != NULL; sub = sub->next)
+    {
+      max_classes++;
+    }
+
+  /* Allocate arrays to hold subclass information */
+  attr_ids_size = max_classes * n_attrs * sizeof (int);
+  attr_ids = (int *) malloc (attr_ids_size);
+  if (attr_ids == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, attr_ids_size);
+      goto mem_error;
+    }
+
+  oids = (OID *) malloc (max_classes * sizeof (OID));
+  if (oids == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, max_classes * sizeof (OID));
+      goto mem_error;
+    }
+
+  hfids = (HFID *) malloc (max_classes * sizeof (HFID));
+  if (hfids == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, max_classes * sizeof (HFID));
+      goto mem_error;
+    }
+
+  /* Enter the base class information into the arrays */
+  n_classes = 0;
+  COPY_OID (&oids[n_classes], WS_OID (classop));
+  for (i = 0; i < n_attrs; i++)
+    {
+      attr_ids[i] = attrs[i]->id;
+    }
+  HFID_COPY (&hfids[n_classes], sm_ch_heap ((MOBJ) class_));
+  n_classes++;
+
+  /* If we're creating a UNIQUE B-tree or a FOREIGN KEY, we need to collect information from subclasses which
+   * inherit the constraint */
+  if (unique_pk || (fk_refcls_oid != NULL && !OID_ISNULL (fk_refcls_oid)))
+    {
+      error = collect_hier_class_info (classop, subclasses, constraint_name, reverse, &n_classes, n_attrs, oids,
+				       attr_ids, hfids);
+      if (error != NO_ERROR)
+	{
+	  goto gen_error;
+	}
+    }
+
+  /* Are there any populated classes for this index ? */
+  has_instances = 0;
+  for (i = 0; i < n_classes; i++)
+    {
+      if (!HFID_IS_NULL (&hfids[i]) && heap_has_instance (&hfids[i], &oids[i], false))
+	{
+	  /* in case of error and instances exist */
+	  has_instances = 1;
+	  break;
+	}
+    }
+
+  /* If there are no instances, then call btree_add_index() to create an empty index, otherwise call
+   * btree_load_index () to load all of the instances (including applicable subclasses) into a new B-tree */
+  // TODO: optimize has_instances case
+  if (!has_instances || index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+    {
+      error = btree_add_index (index, domain, WS_OID (classop), attrs[0]->id, unique_pk);
+    }
+  /* If there are instances, load all of them (including applicable subclasses) into the new B-tree */
+  else
+    {
+      if (function_index)
+	{
+	  error = btree_load_index (index, constraint_name, domain, oids, n_classes, n_attrs, attr_ids,
+				    (int *) attrs_prefix_length, hfids, unique_pk, not_null, fk_refcls_oid,
+				    fk_refcls_pk_btid, fk_name, SM_GET_FILTER_PRED_STREAM (filter_index),
+				    SM_GET_FILTER_PRED_STREAM_SIZE (filter_index), function_index->expr_stream,
+				    function_index->expr_stream_size, function_index->col_id,
+				    function_index->attr_index_start);
+	}
+      else
+	{
+	  error = btree_load_index (index, constraint_name, domain, oids, n_classes, n_attrs, attr_ids,
+				    (int *) attrs_prefix_length, hfids, unique_pk, not_null, fk_refcls_oid,
+				    fk_refcls_pk_btid, fk_name, SM_GET_FILTER_PRED_STREAM (filter_index),
+				    SM_GET_FILTER_PRED_STREAM_SIZE (filter_index), NULL, -1, -1, -1);
+	}
+    }
+
+  free_and_init (attr_ids);
+  free_and_init (oids);
+  free_and_init (hfids);
 
   return error;
 
 mem_error:
-  assert (er_errid () != NO_ERROR);
-  error = er_errid ();
+  ASSERT_ERROR_AND_SET (error);
 
 gen_error:
   if (attr_ids != NULL)
@@ -10636,7 +10631,7 @@ allocate_unique_constraint (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRAINT 
 
 	  if (allocate_index (classop, class_, local_subclasses, con->attributes, asc_desc, con->attrs_prefix_length,
 			      unique_pk, not_null, reverse, con->name, &con->index_btid, NULL, NULL, NULL,
-			      con->filter_predicate, con->func_index_info))
+			      con->filter_predicate, con->func_index_info, con->index_status))
 	    {
 	      assert (er_errid () != NO_ERROR);
 	      return er_errid ();
@@ -10717,7 +10712,7 @@ allocate_foreign_key (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRAINT * con,
       if (allocate_index (classop, class_, subclasses, con->attributes, NULL, con->attrs_prefix_length,
 			  0 /* unique_pk */ , false, false, con->name, &con->index_btid,
 			  &(con->fk_info->ref_class_oid), &(con->fk_info->ref_class_pk_btid), con->fk_info->name,
-			  con->filter_predicate, con->func_index_info))
+			  con->filter_predicate, con->func_index_info, con->index_status))
 	{
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
@@ -10783,7 +10778,7 @@ allocate_disk_structures_index (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRA
 	  reverse = (con->type == SM_CONSTRAINT_INDEX) ? false : true;
 	  error = allocate_index (classop, class_, NULL, con->attributes, con->asc_desc, con->attrs_prefix_length,
 				  0 /* unique_pk */ , false, reverse, con->name, &con->index_btid, NULL, NULL, NULL,
-				  con->filter_predicate, con->func_index_info);
+				  con->filter_predicate, con->func_index_info, con->index_status);
 	}
       else if (con->type == SM_CONSTRAINT_FOREIGN_KEY)
 	{
