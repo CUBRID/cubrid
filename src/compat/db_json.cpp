@@ -1063,22 +1063,12 @@ static int
 db_json_get_json_from_str (const char *json_raw, JSON_DOC &doc, size_t json_raw_length)
 {
   int error_code = NO_ERROR;
-  const rapidjson::GenericDocument <JSON_ENCODING, JSON_PRIVATE_MEMPOOL> *result_doc = NULL;
   if (json_raw == NULL)
     {
       return NO_ERROR;
     }
-
-  if (json_raw_length == 0)
-    {
-      result_doc = &doc.Parse(json_raw);
-    }
-  else
-    {
-      result_doc = &doc.Parse(json_raw, json_raw_length);
-    }
   
-  if (result_doc->HasParseError ())
+  if (doc.Parse (json_raw, json_raw_length).HasParseError ())
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_JSON, 2,
 	      rapidjson::GetParseError_En (doc.GetParseError ()), doc.GetErrorOffset ());

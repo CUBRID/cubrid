@@ -3239,7 +3239,7 @@ db_json_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	case DB_TYPE_VARCHAR:
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARNCHAR:
-	  error_code = db_json_convert_string_and_call (db_get_string (arg[i + 1]),
+	  error_code = db_json_convert_string_and_call (db_get_string (arg[i + 1]), db_get_string_size (arg[i + 1]),
 							db_json_insert_func, *new_doc, db_get_string (arg[i]));
 	  break;
 
@@ -3310,7 +3310,7 @@ db_json_replace (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	case DB_TYPE_VARCHAR:
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARNCHAR:
-	  error_code = db_json_convert_string_and_call (db_get_string (arg[i + 1]),
+	  error_code = db_json_convert_string_and_call (db_get_string (arg[i + 1]), db_get_string_size (arg[i + 1]),
 							db_json_replace_func, *new_doc, db_get_string (arg[i]));
 	  break;
 
@@ -3380,7 +3380,7 @@ db_json_set (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	case DB_TYPE_VARCHAR:
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARNCHAR:
-	  error_code = db_json_convert_string_and_call (db_get_string (arg[i + 1]),
+	  error_code = db_json_convert_string_and_call (db_get_string (arg[i + 1]), db_get_string_size (arg[i + 1]),
 							db_json_set_func, *new_doc, db_get_string (arg[i]));
 	  break;
 
@@ -3447,7 +3447,8 @@ db_json_keys (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
-      error_code = db_json_keys_func (db_get_string (arg[0]), result_json, path.c_str (), db_get_string_size(arg[0]));
+      error_code = db_json_keys_func (db_get_string (arg[0]), result_json, path.c_str (),
+                                      db_get_string_size (arg[0]));
       break;
     case DB_TYPE_JSON:
       error_code = db_json_keys_func (*(db_get_json_document (arg[0])), result_json, path.c_str ());
@@ -3560,7 +3561,7 @@ db_json_array_append (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
       switch (DB_VALUE_DOMAIN_TYPE (arg[i + 1]))
 	{
 	case DB_TYPE_CHAR:
-	  error_code = db_json_convert_string_and_call (db_get_string (arg[i + 1]),
+	  error_code = db_json_convert_string_and_call (db_get_string (arg[i + 1]), db_get_string_size (arg[i + 1]),
 							db_json_array_append_func, *new_doc, db_get_string (arg[i]));
 	  break;
 
@@ -3631,7 +3632,8 @@ db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	case DB_TYPE_VARCHAR:
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARNCHAR:
-	  error_code = db_json_convert_string_and_call (db_get_string (arg[i]), db_json_merge_func, accumulator);
+	  error_code = db_json_convert_string_and_call (db_get_string (arg[i]), db_get_string_size (arg[i]),
+                                                        db_json_merge_func, accumulator);
 	  break;
 
 	case DB_TYPE_NULL:
@@ -28396,7 +28398,8 @@ db_value_to_json_doc (const DB_VALUE & value, REFPTR (JSON_DOC, json))
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
-      error_code = db_json_get_json_from_str (db_get_string (&value), json, db_get_string_size(&value));
+      error_code = db_json_get_json_from_str (db_get_string (&value), json,
+                                              db_get_string_size (&value));
       if (error_code != NO_ERROR)
 	{
 	  assert (json == NULL);

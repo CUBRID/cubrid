@@ -84,7 +84,7 @@ void db_json_add_element_to_array (JSON_DOC *doc, int value);
 void db_json_add_element_to_array (JSON_DOC *doc, double value);
 void db_json_add_element_to_array (JSON_DOC *doc, const JSON_DOC *value);
 
-int db_json_get_json_from_str (const char *json_raw, JSON_DOC *&doc, size_t json_raw_length = 0);
+int db_json_get_json_from_str (const char *json_raw, JSON_DOC *&doc, size_t json_raw_length);
 JSON_DOC *db_json_get_copy_of_doc (const JSON_DOC *doc);
 
 int db_json_serialize (const JSON_DOC &doc, OR_BUF &buffer);
@@ -134,12 +134,12 @@ bool db_json_doc_is_uncomparable (const JSON_DOC *doc);
 
 template <typename Fn, typename... Args>
 inline int
-db_json_convert_string_and_call (const char *json_raw, Fn &&func, Args &&... args)
+db_json_convert_string_and_call (const char *json_raw, size_t json_raw_length, Fn &&func, Args &&... args)
 {
   JSON_DOC *doc = NULL;
   int error_code;
 
-  error_code = db_json_get_json_from_str (json_raw, doc);
+  error_code = db_json_get_json_from_str (json_raw, doc, json_raw_length);
   if (error_code != NO_ERROR)
     {
       return error_code;
