@@ -9974,7 +9974,9 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 
 	      assert (str_size >= 0);	/* if this isn't correct, we cannot rely on strlen */
 
-	      error_code = db_json_get_json_from_str (original_str, doc);
+              std::string str_with_size(original_str, str_size);
+
+	      error_code = db_json_get_json_from_str (str_with_size.c_str(), doc);
 	      if (error_code != NO_ERROR)
 		{
 		  assert (doc == NULL);
