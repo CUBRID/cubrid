@@ -430,7 +430,7 @@ static int db_json_keys_func (const JSON_DOC &doc, JSON_DOC &result_json, const 
 
 STATIC_INLINE JSON_VALUE &db_json_doc_to_value (JSON_DOC &doc) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE const JSON_VALUE &db_json_doc_to_value (const JSON_DOC &doc) __attribute__ ((ALWAYS_INLINE));
-static int db_json_get_json_from_str (const char *json_raw, JSON_DOC &doc, size_t json_raw_length = 0);
+static int db_json_get_json_from_str (const char *json_raw, JSON_DOC &doc, size_t json_raw_length);
 static int db_json_add_json_value_to_object (JSON_DOC &doc, const char *name, JSON_VALUE &value);
 
 static int db_json_deserialize_doc_internal (OR_BUF *buf, JSON_VALUE &value, JSON_PRIVATE_MEMPOOL &doc_allocator);
@@ -1067,7 +1067,7 @@ db_json_get_json_from_str (const char *json_raw, JSON_DOC &doc, size_t json_raw_
     {
       return NO_ERROR;
     }
-  
+
   if (doc.Parse (json_raw, json_raw_length).HasParseError ())
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_JSON, 2,
