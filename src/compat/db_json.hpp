@@ -95,7 +95,7 @@ int db_json_insert_func (const JSON_DOC *doc_to_be_inserted, JSON_DOC &doc_desti
 int db_json_replace_func (const JSON_DOC *new_value, JSON_DOC &doc, const char *raw_path);
 int db_json_set_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path);
 int db_json_keys_func (const JSON_DOC &doc, JSON_DOC *&result_json, const char *raw_path);
-int db_json_keys_func (const char *json_raw, JSON_DOC *&result_json, const char *raw_path);
+int db_json_keys_func (const char *json_raw, JSON_DOC *&result_json, const char *raw_path, size_t json_raw_length);
 int db_json_array_append_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path);
 int db_json_remove_func (JSON_DOC &doc, const char *raw_path);
 int db_json_merge_func (const JSON_DOC *source, JSON_DOC *&dest);

@@ -2435,12 +2435,12 @@ db_json_keys_func (const JSON_DOC &doc, JSON_DOC *&result_json, const char *raw_
 }
 
 int
-db_json_keys_func (const char *json_raw, JSON_DOC *&result_json, const char *raw_path)
+db_json_keys_func (const char *json_raw, JSON_DOC *&result_json, const char *raw_path, size_t json_raw_length)
 {
   JSON_DOC doc;
   int error_code = NO_ERROR;
 
-  error_code = db_json_get_json_from_str (json_raw, doc);
+  error_code = db_json_get_json_from_str (json_raw, doc, json_raw_length);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR();

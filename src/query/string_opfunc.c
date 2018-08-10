@@ -3447,7 +3447,7 @@ db_json_keys (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
-      error_code = db_json_keys_func (db_get_string (arg[0]), result_json, path.c_str ());
+      error_code = db_json_keys_func (db_get_string (arg[0]), result_json, path.c_str (), db_get_string_size(arg[0]));
       break;
     case DB_TYPE_JSON:
       error_code = db_json_keys_func (*(db_get_json_document (arg[0])), result_json, path.c_str ());
@@ -28396,7 +28396,7 @@ db_value_to_json_doc (const DB_VALUE & value, REFPTR (JSON_DOC, json))
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
-      error_code = db_json_get_json_from_str (db_get_string (&value), json);
+      error_code = db_json_get_json_from_str (db_get_string (&value), json, db_get_string_size(&value));
       if (error_code != NO_ERROR)
 	{
 	  assert (json == NULL);

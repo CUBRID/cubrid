@@ -3495,8 +3495,9 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
     case PT_TYPE_JSON:
       db_value->domain.general_info.type = DB_TYPE_JSON;
       db_value->domain.general_info.is_null = 0;
-      json_body = (const char *) value->info.value.data_value.str->bytes;
-      if (db_json_get_json_from_str (json_body, db_value->data.json.document) != NO_ERROR)
+      json_body = (const char *) value->info.value.data_value.str->bytes; 
+      if (db_json_get_json_from_str (json_body, db_value->data.json.document, 
+        value->info.value.data_value.str->length) != NO_ERROR)
 	{
 	  PT_ERRORmf (parser, value, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_INVALID_JSON,
 		      value->info.value.data_value.str->bytes);
