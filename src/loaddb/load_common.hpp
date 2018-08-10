@@ -146,22 +146,94 @@ namespace cubload
     int currency_type;
   };
 
+  /*
+   * cubload::loader
+   *
+   * description
+   *    A pure virtual class that serves as an interface for inserting rows by the loaddb. Currently there are two
+   *    implementations of this class: server_loader and client_load.
+   *        * server_loader: A loader that is running on the cub_server on multi-threaded environment
+   *        * client_loader: Contains old loaddb code base and is running on SA mode (single threaded environment)
+   *
+   * how to use
+   *    Loader is used by the cubload::driver, which later is passed to the cubload::parser. The parser class will then
+   *    call specific functions on different grammar rules.
+   */
   class loader
   {
     public:
-      virtual ~loader () = default;
+      virtual ~loader () = default; // Destructor
 
+      /*
+       * Function to check a class, it is called when a line of the following form "%id foo 42" is reached
+       *    in loaddb object file (where class_name will be "foo" and class_id will be 42)
+       *
+       *    return: void
+       *    class_name(in): name of the class
+       *    class_id(in)  : id of the class
+       */
       virtual void check_class (const char *class_name, int class_id) = 0;
+
+      /*
+       * Function to set up a class and class attributes list. Should be used when loaddb object file doesn't contain
+       *     a %class line but instead "-t TABLE or --table=TABLE" parameter was passed to loaddb executable
+       *     In this case class attributes list and their order will be fetched from class schema representation
+       *
+       *    return: NO_ERROR in case of success or error code otherwise
+       *    class_name(in): name of the class pass to loaddb executable
+       */
       virtual int setup_class (const char *class_name) = 0;
+
+      /*
+       * Function to set up a class, class attributes and class constructor. It is called when a line of the following
+       *    form "%class foo (id, name)" is reached in loaddb object file
+       *
+       *    return: void
+       *    class_name(in): loader string type which contains name of the class
+       *    cmd_spec(in)  : class command specification which contains
+       *                        attribute list and class constructor specification
+       */
       virtual void setup_class (string_type *class_name, class_command_spec_type *cmd_spec) = 0;
+
+      /*
+       * Destroy function called when loader grammar reached the end of the loaddb object file
+       */
       virtual void destroy () = 0;
 
+      /*
+       * Function called by the loader grammar before every line with row data from loaddb object file.
+       *
+       *    return: void
+       *    object_id(in): id of the referenced object instance
+       */
       virtual void start_line (int object_id) = 0;
+
+      /*
+       * Process and inserts a row. constant_type contains the value and the type for each column from the row.
+       *
+       *    return: void
+       *    cons(in): array of constants
+       */
       virtual void process_line (constant_type *cons) = 0;
+
+      /*
+       * Called after process_line, should implement login for cleaning up data after insert if required.
+       */
       virtual void finish_line () = 0;
 
+      /*
+       * Display load failed error
+       */
       virtual void load_failed_error () = 0;
+
+      /*
+       * Increment total error counter
+       */
       virtual void increment_err_total () = 0;
+
+      /*
+       * Increment failures counter
+       */
       virtual void increment_fails () = 0;
   };
 
@@ -169,10 +241,25 @@ namespace cubload
   void free_string (string_type **str);
   void free_class_command_spec (class_command_spec_type **class_cmd_spec);
 
+  /*
+   * Splits a loaddb object file into batches of a given size.
+   *
+   *    return: NO_ERROR in case of success or ER_FAILED if file does not exists
+   *    batch_size(in)      : batch size
+   *    object_file_name(in): loaddb object file name (absolute path is required)
+   *    func(in)            : a function for handling/process a batch
+   */
   template <typename Func>
   int split (int batch_size, std::string &object_file_name, Func &&func);
 
+  /*
+   * Check if a given string starts with a given prefix
+   */
   bool starts_with (const std::string &str, const std::string &prefix);
+
+  /*
+   * Check if a given string ends with a given suffix
+   */
   bool ends_with (const std::string &str, const std::string &suffix);
 
 } // namespace cubload

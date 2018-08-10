@@ -73,10 +73,9 @@ extern bool No_oid_hint;
 
 #define LDR_MAX_ARGS 32
 
-#define LDR_INCREMENT_ERR_COUNT(context, i) \
-                                           ldr_increment_err_count(context, i)
-#define LDR_CLEAR_ERR_TOTAL(context)     ldr_clear_err_total(context)
-#define LDR_CLEAR_ERR_COUNT(context)     ldr_clear_err_count(context)
+#define LDR_INCREMENT_ERR_COUNT(context, i) ldr_increment_err_count(context, i)
+#define LDR_CLEAR_ERR_TOTAL(context)        ldr_clear_err_total(context)
+#define LDR_CLEAR_ERR_COUNT(context)        ldr_clear_err_count(context)
 
 /* filter out ignorable errid */
 #define FILTER_OUT_ERR_INTERNAL(err, expr)                              \
@@ -475,8 +474,6 @@ static int ldr_destroy (LDR_CONTEXT * context, int err);
 /* Action to initialize the parser context to deal with a new class */
 static void ldr_act_init_context (LDR_CONTEXT * context, const char *class_name, size_t len);
 
-static void ldr_act_attr (LDR_CONTEXT * context, const char *str, size_t len, cubload::LDR_TYPE type);
-
 /* Action to deal with attribute names and argument names */
 static int ldr_act_check_missing_non_null_attrs (LDR_CONTEXT * context);
 
@@ -489,7 +486,7 @@ static void ldr_act_set_instance_id (LDR_CONTEXT * context, int id);
 static DB_OBJECT *ldr_act_get_ref_class (LDR_CONTEXT * context);
 
 /* Special action for class, shared, default attributes */
-static void ldr_act_restrict_attributes (LDR_CONTEXT * context, cubload::LDR_ATTRIBUTE_TYPE type);
+static void ldr_act_restrict_attributes (LDR_CONTEXT * context, LDR_ATTRIBUTE_TYPE type);
 
 /* Actions for constructor syntax */
 static int ldr_act_set_constructor (LDR_CONTEXT * context, const char *name);
@@ -523,6 +520,7 @@ static int clist_init (void);
 static void clist_final (void);
 static int is_internal_class (DB_OBJECT * class_);
 static void ldr_act_elem (LDR_CONTEXT * context, const char *str, size_t len, LDR_TYPE type);
+static void ldr_act_attr (LDR_CONTEXT * context, const char *str, size_t len, LDR_TYPE type);
 static void ldr_act_meth (LDR_CONTEXT * context, const char *str, size_t len, LDR_TYPE type);
 static int ldr_mismatch (LDR_CONTEXT * context, const char *str, size_t len, SM_ATTRIBUTE * att);
 static int ldr_ignore (LDR_CONTEXT * context, const char *str, size_t len, SM_ATTRIBUTE * att);
@@ -619,12 +617,6 @@ void (*ldr_act) (LDR_CONTEXT * context, const char *str, size_t len, LDR_TYPE ty
 namespace cubload
 {
 
-  /*
-   * client_loader::check_class - Begin the specification of a class id assignment and assign an id number to a class.
-   *    return: void
-   *    class_name(in): name of the class
-   *    class_id(in)  : id of the class
-   */
   void
   client_loader::check_class (const char *class_name, int class_id)
   {
@@ -729,11 +721,6 @@ namespace cubload
       }
   }
 
-  /*
-   * client_loader::destroy -
-   *    return:
-   *    parse_error():
-   */
   void
   client_loader::destroy ()
   {
@@ -783,7 +770,7 @@ namespace cubload
 
     if (cons != NULL && ldr_Current_context->num_attrs == 0)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDB_NO_CLASS_OR_NO_ATTRIBUTE, 0);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_NO_CLASS_OR_NO_ATTRIBUTE, 0);
 	/* diplay the msg 1 time for each class */
 	if (ldr_Current_context->valid)
 	  {
@@ -986,10 +973,6 @@ namespace cubload
     ldr_Current_context->instance_started = 0;
   }
 
-  /*
-   * client_loader::load_failed_error - display load failed error
-   *    return: void
-   */
   void
   client_loader::load_failed_error ()
   {
@@ -997,10 +980,6 @@ namespace cubload
     fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_LOAD_FAIL));
   }
 
-  /*
-   * client_loader::increment_err_total - increment err_total count of the given context
-   *    return: void
-   */
   void
   client_loader::increment_err_total ()
   {
@@ -1010,10 +989,6 @@ namespace cubload
       }
   }
 
-  /*
-   * client_loader::increment_fails - increment Total_fails count
-   *    return: void
-   */
   void
   client_loader::increment_fails ()
   {

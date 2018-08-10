@@ -37,38 +37,86 @@ namespace cubload
 
   static const std::size_t DRIVER_POOL_SIZE = 1;
 
-  // TODO CBRD-21654 add class documentation
+  /*
+   * cubload::manager
+   *
+   * description
+   *    This class serves as an entry point to server side loaddb functionality. The class is a singleton class.
+   *    It has two main public function:
+   *        * parse_file : for parsing a loaddb object file directly on server if the file exists on the server machine
+   *        * parse_batch: when loaddb object file exists only on client machine, then client must send over
+   *                       the network batches from file and then these batches will be parsed by the server
+   *
+   *    The file is splitted into batches or batches are received over the network, then each batch is delegated to a
+   *    worker thread from a internal worker pool. The worker thread does the scanning/parsing and inserting of the data
+   *
+   * how to use
+   *    cubload::manager &manager = cubload::manager::get_instance ();
+   *
+   *    std::string file_name = "<file>"; // the absolute path of the loaddb object file
+   *    manager.parse_file (*thread_p, file_name);
+   *
+   *    or
+   *
+   *    std::string batch = "<batch>"; // get batch from client
+   *    manager.parse_batch (*thread_p, batch);
+   */
   class manager
   {
     public:
-      manager (const manager &copy) = delete;
-      manager (manager &&copy) = delete;
+      manager (manager &&copy) = delete; // Move c-tor: deleted
+      manager (const manager &copy) = delete; // Copy c-tor: deleted
 
-      manager &operator= (const manager &other) = delete;
-      manager &operator= (manager &&other) = delete;
+      manager &operator= (manager &&other) = delete; // Move operator: deleted
+      manager &operator= (const manager &other) = delete; // Copy operator: deleted
 
-      ~manager ();
+      ~manager (); // Destructor
 
+      /*
+       * Get manager singleton instance
+       */
       static manager &get_instance();
 
+      /*
+       * Parse a batch from loaddb object file on the the server
+       *
+       *    return: void
+       *    thread_ref(in): thread entry
+       *    batch(in)     : a batch from loaddb object
+       */
       void parse_batch (cubthread::entry &thread_ref, std::string &batch);
+
+      /*
+       * Parse loaddb object file entirely on the the server
+       *
+       *    return: NO_ERROR in case of success or ER_FAILED if file does not exists
+       *    thread_ref(in): thread entry
+       *    file_name(in) : loaddb object file name (absolute path is required)
+       */
       int parse_file (cubthread::entry &thread_ref, std::string &file_name);
 
     private:
+      manager (); // Default c-tor
+
       friend class load_parse_task;
 
       using driver_pool_t = resource_shared_pool<driver>;
-
-      manager ();
 
       driver_pool_t m_driver_pool;
       cubthread::entry_workpool *m_worker_pool;
   };
 
+  /*
+   * cubload::load_parse_task
+   *    extends cubthread::entry_task
+   *
+   * description
+   *    Loaddb worker thread task, which does parsing and inserting of data rows within a transaction
+   */
   class load_parse_task : public cubthread::entry_task
   {
     public:
-      load_parse_task () = delete;
+      load_parse_task () = delete; // Default c-tor: deleted.
 
       load_parse_task (manager &manager, std::string &batch, CSS_CONN_ENTRY conn_entry)
 	: m_manager (manager)
