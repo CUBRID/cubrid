@@ -60,6 +60,8 @@ namespace cubreplication
 
       stream_entry m_stream_entry;
 
+      bool m_is_initialized;
+
       static cubstream::multi_thread_stream *g_stream;
 
       /* start append position of generator stream */
@@ -69,7 +71,7 @@ namespace cubreplication
 
       log_generator () : log_generator (NULL) { };
 
-      log_generator (cubstream::multi_thread_stream *stream) : m_stream_entry (stream) { };
+      log_generator (cubstream::multi_thread_stream *stream) : m_stream_entry (stream), m_is_initialized (false) { };
 
       ~log_generator ();
 

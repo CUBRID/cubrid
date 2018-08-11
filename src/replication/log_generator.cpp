@@ -44,6 +44,7 @@ namespace cubreplication
 
   int log_generator::start_tran_repl (MVCCID mvccid)
   {
+    assert (m_is_initialized);
     m_stream_entry.set_mvccid (mvccid);
 
     return NO_ERROR;
@@ -209,9 +210,12 @@ namespace cubreplication
 
   int log_generator::pack_stream_entry (void)
   {
-    m_stream_entry.pack ();
-    m_stream_entry.reset ();
-    m_stream_entry.set_state (stream_entry_header::ACTIVE);
+    if (m_is_initialized)
+      {
+        m_stream_entry.pack ();
+        m_stream_entry.reset ();
+        m_stream_entry.set_state (stream_entry_header::ACTIVE);
+      }
 
     return NO_ERROR;
   }
@@ -242,6 +246,7 @@ namespace cubreplication
 	log_generator *lg = & (tdes->replication_log_generator);
 
 	lg->m_stream_entry.set_stream (log_generator::g_stream);
+        lg->m_is_initialized = true;
       }
 
     return NO_ERROR;
