@@ -751,20 +751,13 @@ int g_original_buffer_len;
 %type <node> insert_value_clause
 %type <node> insert_value_clause_list
 %type <node> insert_stmt_value_clause
-
-//these are for INSERT INTO t (with ... subquery)
-//it gives wrong answer if with comes before subquery in case of having parantheses
 %type <node> select_or_subquery_without_values_query_no_with_clause
 %type <node> csql_query_without_values_query_no_with_clause
 %type <node> select_expression_without_values_query_no_with_clause
-
-//these are for INSERT INTO T (values (...))
-//it gives a wrong answer if subquery cannot get derived to values_query
 %type <node> csql_query_copy_no_with_clause
 %type <node> select_expression_no_with_clause
 %type <node> select_or_subquery_no_with_clause
 %type <node> subquery_no_with_clause
-
 %type <node> insert_expression_value_clause
 %type <node> insert_value_list
 %type <node> insert_value
@@ -12530,21 +12523,7 @@ select_or_subquery
 	;
 
 select_or_subquery_no_with_clause
-	: select_stmt
-		{{
-
-			$$ = $1;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| subquery_no_with_clause
-		{{
-
-			$$ = $1;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| values_query
+	: values_query
 		{{
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
