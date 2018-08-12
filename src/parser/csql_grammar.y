@@ -754,16 +754,16 @@ int g_original_buffer_len;
 
 //these are for INSERT INTO t (with ... subquery)
 //it gives wrong answer if with comes before subquery in case of having parantheses
-%type <node> select_or_subquery_without_values_query_copy
-%type <node> csql_query_without_values_query_copy
-%type <node> select_expression_without_values_query_copy
+%type <node> select_or_subquery_without_values_query_no_with_clause
+%type <node> csql_query_without_values_query_no_with_clause
+%type <node> select_expression_without_values_query_no_with_clause
 
 //these are for INSERT INTO T (values (...))
 //it gives a wrong answer if subquery cannot get derived to values_query
-%type <node> csql_query_copy
-%type <node> select_expression_opt_with_copy
-%type <node> select_or_subquery_copy
-%type <node> subquery_copy
+%type <node> csql_query_copy_no_with_clause
+%type <node> select_expression_no_with_clause
+%type <node> select_or_subquery_no_with_clause
+%type <node> subquery_no_with_clause
 
 %type <node> insert_expression_value_clause
 %type <node> insert_value_list
@@ -6056,7 +6056,7 @@ insert_or_replace_stmt
 		DBG_PRINT}}
 	| insert_name_clause insert_stmt_value_clause into_clause_opt
 		{{
-			
+
 			PT_NODE *ins = $1;
 
 			if (ins)
@@ -6099,7 +6099,7 @@ insert_or_replace_stmt
 		DBG_PRINT}}
 	| insert_set_stmt into_clause_opt
 		{{
-			
+
 			PT_NODE *ins = $1;
 
 			if (ins)
@@ -6397,32 +6397,32 @@ insert_stmt_value_clause
 
 		DBG_PRINT}}
 	| opt_with_clause
-	  csql_query_without_values_query_copy
+	  csql_query_without_values_query_no_with_clause
 		{{
 
 			PT_NODE *with_clause = $1;
 			PT_NODE *select_node = $2;
-			select_node->info.query.with = with_clause;			
-			PT_NODE *nls = pt_node_list (this_parser, PT_IS_SUBQUERY, select_node);	
-			
+			select_node->info.query.with = with_clause;
+			PT_NODE *nls = pt_node_list (this_parser, PT_IS_SUBQUERY, select_node);
+
 			$$ = nls;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-		| '(' opt_with_clause
-	  csql_query_without_values_query_copy ')'
+	| '(' opt_with_clause
+	  csql_query_without_values_query_no_with_clause ')'
 		{{
 			PT_NODE *with_clause = $2;
 			PT_NODE *select_node = $3;
-			select_node->info.query.with = with_clause;			
-			PT_NODE *nls = pt_node_list (this_parser, PT_IS_SUBQUERY, select_node);	
-			
+			select_node->info.query.with = with_clause;
+			PT_NODE *nls = pt_node_list (this_parser, PT_IS_SUBQUERY, select_node);
+
 			$$ = nls;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
 	;
-	
+
 insert_expression_value_clause
 	: of_value_values insert_value_clause_list
 		{{
@@ -6563,7 +6563,7 @@ insert_value
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-			
+
 		DBG_PRINT}}
 	| DEFAULT
 		{{
@@ -11857,7 +11857,7 @@ csql_query
 		DBG_PRINT}}
 	;
 
-csql_query_copy
+csql_query_copy_no_with_clause
 	:
 		{{
 
@@ -11874,7 +11874,7 @@ csql_query_copy
 			parser_save_and_set_pseudoc (1);
 
 		DBG_PRINT}}
-	  select_expression_opt_with_copy
+	  select_expression_no_with_clause
 		{{
 
 			PT_NODE *node = $2;
@@ -12033,7 +12033,7 @@ csql_query_without_values_query
 		DBG_PRINT}}
 	;
 
-csql_query_without_values_query_copy
+csql_query_without_values_query_no_with_clause
 	:
 		{{
 
@@ -12050,7 +12050,7 @@ csql_query_without_values_query_copy
 			parser_save_and_set_pseudoc (1);
 
 		DBG_PRINT}}
-	  select_expression_without_values_query_copy
+	  select_expression_without_values_query_no_with_clause
 		{{
 
 			PT_NODE *node = $2;
@@ -12139,9 +12139,8 @@ select_expression_opt_with
 		DBG_PRINT}} 
 	;   
 
-select_expression_opt_with_copy
-	:
-	select_or_subquery_copy	
+select_expression_no_with_clause
+	: select_or_subquery_no_with_clause
 		{{
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -12301,7 +12300,7 @@ select_expression_without_values_query
             DBG_PRINT}}
      table_op select_or_subquery_without_values_query
      {{
-
+         
          PT_NODE *stmt = $8;
          PT_NODE *arg1 = $1;
          
@@ -12334,30 +12333,30 @@ select_expression_without_values_query
 		DBG_PRINT}}
 	;
 
-select_expression_without_values_query_copy
-	: select_expression_without_values_query_copy
+select_expression_without_values_query_no_with_clause
+	: select_expression_without_values_query_no_with_clause
     {{
         PT_NODE *node = $1;
-        parser_push_orderby_node (node);      
+        parser_push_orderby_node (node);
       }}
-    opt_orderby_clause 
+    opt_orderby_clause
     {{
-      
+
         PT_NODE *node = parser_pop_orderby_node ();
-        
+
         if (node && parser_cannot_cache)
         {
           node->info.query.reexecute = 1;
           node->info.query.do_cache = 0;
           node->info.query.do_not_cache = 1;
         }
-        
+
 
         if (parser_subquery_check == 0)
           PT_ERRORmf(this_parser, pt_top(this_parser),
                      MSGCAT_SET_PARSER_SEMANTIC,
                      MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "Subquery");
-        
+
         if (node)
         {
 
@@ -12378,25 +12377,25 @@ select_expression_without_values_query_copy
             }
           }
         }
-        
+
         parser_push_orderby_node (node);
-        
+
 		DBG_PRINT}}
       opt_select_limit_clause
       opt_for_update_clause
 		{{
-                        
+
 			PT_NODE *node = parser_pop_orderby_node ();
 			$<node>$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($<node>$, @$.buffer_pos)
-            
+
             DBG_PRINT}}
-     table_op select_or_subquery_without_values_query_copy
+     table_op select_or_subquery_without_values_query_no_with_clause
      {{
 
          PT_NODE *stmt = $8;
          PT_NODE *arg1 = $1;
-         
+
          if (stmt)
          {
 			    stmt->info.query.id = (UINTPTR) stmt;
@@ -12417,7 +12416,7 @@ select_expression_without_values_query_copy
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| select_or_subquery_without_values_query_copy
+	| select_or_subquery_without_values_query_no_with_clause
 		{{
 
 			$$ = $1;
@@ -12530,8 +12529,22 @@ select_or_subquery
 		DBG_PRINT}}
 	;
 
-select_or_subquery_copy
-	: values_query
+select_or_subquery_no_with_clause
+	: select_stmt
+		{{
+
+			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| subquery_no_with_clause
+		{{
+
+			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| values_query
 		{{
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -12555,7 +12568,7 @@ select_or_subquery_without_values_query
 		DBG_PRINT}}
 	;
 
-select_or_subquery_without_values_query_copy
+select_or_subquery_without_values_query_no_with_clause
 	: select_stmt
 		{{
 
@@ -12563,7 +12576,7 @@ select_or_subquery_without_values_query_copy
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| subquery_copy
+	| subquery_no_with_clause
 		{{
 
 			$$ = $1;
@@ -18822,8 +18835,8 @@ subquery
 		DBG_PRINT}}
 	;
 
-subquery_copy
-	: '(' csql_query_copy ')'
+subquery_no_with_clause
+	: '(' csql_query_copy_no_with_clause ')'
 		{{
 
 			PT_NODE *stmt = $2;
