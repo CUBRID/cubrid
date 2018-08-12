@@ -485,6 +485,11 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	}
 
+      if (statement->node_type == PT_CREATE_ENTITY)
+	{
+	  (void) parser_walk_tree (parser, statement, NULL, NULL, pt_resolve_cte_specs, NULL);
+	}
+
       return statement;
     }
 
