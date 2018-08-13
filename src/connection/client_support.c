@@ -247,8 +247,7 @@ css_send_request_to_server_with_buffer (char *host, int request, char *arg_buffe
  *   return:
  *   host(in): name of the remote host
  *   request(in): the request to send to the server.
- *   arg_buffer(in): a packed buffer containing all the arguments to be
- *               sent to the server.
+ *   arg_buffer(in): a packed buffer containing all the arguments to be sent to the server.
  *   arg_buffer_size(in): The size of arg_buffer.
  *   data_buffer(in): additional data to send to the server
  *   data_buffer_size(in): The size of the data buffer.

@@ -325,18 +325,16 @@ tran_commit (bool retain_lock)
 	case TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS:
 	case TRAN_UNACTIVE_UNILATERALLY_ABORTED:
 	  /* The commit failed */
-	  assert (er_errid () != NO_ERROR);
-	  error_code = er_errid ();
+	  ASSERT_ERROR_AND_SET (error_code);
 #if defined(CUBRID_DEBUG)
-	  er_log_debug (ARG_FILE_LINE, "tm_commit: Unable to commit. Transaction was aborted\n");
+	  er_log_debug (ARG_FILE_LINE, "tran_commit: Unable to commit. Transaction was aborted\n");
 #endif /* CUBRID_DEBUG */
 	  break;
 
 	case TRAN_UNACTIVE_UNKNOWN:
 	  if (!BOOT_IS_CLIENT_RESTARTED ())
 	    {
-	      assert (er_errid () != NO_ERROR);
-	      error_code = er_errid ();
+	      ASSERT_ERROR_AND_SET (error_code);
 	      break;
 	    }
 	  /* Fall Thru */
@@ -349,10 +347,9 @@ tran_commit (bool retain_lock)
 	case TRAN_UNACTIVE_2PC_ABORT_DECISION:
 	case TRAN_UNACTIVE_2PC_COMMIT_DECISION:
 	default:
-	  assert (er_errid () != NO_ERROR);
-	  error_code = er_errid ();
+	  ASSERT_ERROR_AND_SET (error_code);
 #if defined(CUBRID_DEBUG)
-	  er_log_debug (ARG_FILE_LINE, "tm_commit: Unknown commit state = %s at client\n", log_state_string (state));
+	  er_log_debug (ARG_FILE_LINE, "tran_commit: Unknown commit state = %s at client\n", log_state_string (state));
 #endif /* CUBRID_DEBUG */
 	  break;
 	}
@@ -364,7 +361,7 @@ tran_commit (bool retain_lock)
        * make the client to reconnect to the active server
        */
       db_Connect_status = DB_CONNECTION_STATUS_RESET;
-      er_log_debug (ARG_FILE_LINE, "tran_server_commit: DB_CONNECTION_STATUS_RESET\n");
+      er_log_debug (ARG_FILE_LINE, "tran_commit: DB_CONNECTION_STATUS_RESET\n");
     }
 
   /* Increment snapshot version in work space */
@@ -457,16 +454,15 @@ tran_abort (void)
 
       switch (state)
 	{
-	  /* Successful abort */
 	case TRAN_UNACTIVE_ABORTED:
 	case TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS:
+	  /* Successful abort */
 	  break;
 
 	case TRAN_UNACTIVE_UNKNOWN:
 	  if (!BOOT_IS_CLIENT_RESTARTED ())
 	    {
-	      assert (er_errid () != NO_ERROR);
-	      error_code = er_errid ();
+	      ASSERT_ERROR_AND_SET (error_code);
 	      break;
 	    }
 	  /* Fall Thru */
@@ -482,10 +478,9 @@ tran_abort (void)
 	case TRAN_UNACTIVE_2PC_COMMIT_DECISION:
 	case TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS:
 	default:
-	  assert (er_errid () != NO_ERROR);
-	  error_code = er_errid ();
+	  ASSERT_ERROR_AND_SET (error_code);
 #if defined(CUBRID_DEBUG)
-	  er_log_debug (ARG_FILE_LINE, "tm_abort: Unknown abort state = %s\n", log_state_string (state));
+	  er_log_debug (ARG_FILE_LINE, "tran_abort: Unknown abort state = %s\n", log_state_string (state));
 #endif /* CUBRID_DEBUG */
 	  break;
 	}

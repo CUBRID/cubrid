@@ -199,7 +199,7 @@ stran_server_abort_internal (THREAD_ENTRY * thread_p, unsigned int rid, bool * s
  *   should_conn_reset(in/out): reset on commit
  *
  * Note: This function must be called only when the query is executed with commit, soon after query execution.
- *      When we call this function, it is possible that transaction was aborted.
+ *       When we call this function, it is possible that transaction was aborted.
  */
 STATIC_INLINE void
 stran_server_auto_commit_or_abort (THREAD_ENTRY * thread_p, unsigned int rid, QUERY_ID * p_end_queries,
@@ -214,7 +214,7 @@ stran_server_auto_commit_or_abort (THREAD_ENTRY * thread_p, unsigned int rid, QU
 
   if (*end_query_allowed == false)
     {
-      er_log_debug (ARG_FILE_LINE, "ends_transaction_after_query_execution: active transaction.\n");
+      er_log_debug (ARG_FILE_LINE, "stran_server_auto_commit_or_abort: active transaction.\n");
       return;
     }
 
@@ -246,7 +246,7 @@ stran_server_auto_commit_or_abort (THREAD_ENTRY * thread_p, unsigned int rid, QU
     {
       /* Needs commit. */
       *tran_state = stran_server_commit_internal (thread_p, rid, false, should_conn_reset);
-      er_log_debug (ARG_FILE_LINE, "ends_transaction_after_query_execution: transaction committed. \n");
+      er_log_debug (ARG_FILE_LINE, "stran_server_auto_commit_or_abort: transaction committed. \n");
     }
   else
     {
@@ -257,7 +257,7 @@ stran_server_auto_commit_or_abort (THREAD_ENTRY * thread_p, unsigned int rid, QU
 	   * In this way, we can avoid abort request.
 	   */
 	  *tran_state = stran_server_abort_internal (thread_p, rid, should_conn_reset);
-	  er_log_debug (ARG_FILE_LINE, "ends_transaction_after_query_execution: transaction aborted. \n");
+	  er_log_debug (ARG_FILE_LINE, "stran_server_auto_commit_or_abort: transaction aborted. \n");
 	}
       else
 	{
@@ -4785,6 +4785,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   tran_state = tdes->state;
   has_updated = false;
 
+null_list:
 #if 0
   if (list_id == NULL && !CACHE_TIME_EQ (&clt_cache_time, &srv_cache_time))
 #else
@@ -4877,7 +4878,11 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	    }
 	  else
 	    {
-	      (void) return_error_to_client (thread_p, rid);
+	      // might be interrupted to fetch query result
+	      ASSERT_ERROR ();
+	      QFILE_FREE_AND_INIT_LIST_ID (list_id);
+
+	      goto null_list;
 	    }
 	}
     }
