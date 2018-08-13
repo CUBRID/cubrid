@@ -105,6 +105,7 @@ namespace cubthread
       static std::size_t get_stats_value_count (void);
       static const char *get_stat_name (std::size_t stat_index);
       void get_stats (cubperf::stat_value *stats_out);
+      bool is_running (void);    // true, if running
 
     private:
 

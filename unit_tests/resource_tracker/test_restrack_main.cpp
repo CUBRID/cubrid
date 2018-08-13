@@ -234,7 +234,7 @@ test_abort (void)
     rt.push_track ();
     for (std::size_t idx = 0; idx <= DEFAULT_MAX_ITEMS; idx++)
       {
-	rt.increment (ARG_FILE_LINE, idx);
+	rt.increment (ARG_FILE_LINE, (int) idx);
       }
     rt.pop_track ();
   }

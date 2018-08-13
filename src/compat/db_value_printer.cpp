@@ -36,6 +36,7 @@
 #include "virtual_object.h"
 #endif
 #include "work_space.h"
+#include "memory_alloc.h"
 
 #include <assert.h>
 #include <float.h>
@@ -202,16 +203,6 @@ void db_value_printer::describe_value (const db_value *value)
 	  describe_data (value);
 	  m_buf += '\'';
 	  break;
-	case DB_TYPE_TIMETZ:
-	  m_buf ("timetz '");
-	  describe_data (value);
-	  m_buf += '\'';
-	  break;
-	case DB_TYPE_TIMELTZ:
-	  m_buf ("timeltz '");
-	  describe_data (value);
-	  m_buf += '\'';
-	  break;
 	case DB_TYPE_TIMESTAMP:
 	  m_buf ("timestamp '");
 	  describe_data (value);
@@ -283,6 +274,7 @@ void db_value_printer::describe_data (const db_value *value)
   char *src, *pos, *end;
   double d;
   char line[1025];
+  char *json_body = NULL;
 
   if (DB_IS_NULL (value))
     {
@@ -412,7 +404,9 @@ void db_value_printer::describe_data (const db_value *value)
       break;
 
     case DB_TYPE_JSON:
-      m_buf ("%s", value->data.json.json_body);
+      json_body = db_get_json_raw_body (value);
+      m_buf ("%s", json_body);
+      db_private_free (NULL, json_body);
       break;
     case DB_TYPE_MIDXKEY:
       midxkey = db_get_midxkey (value);
@@ -460,20 +454,6 @@ void db_value_printer::describe_data (const db_value *value)
       (void) db_time_to_string (line, TOO_BIG_TO_MATTER, db_get_time (value));
       m_buf (line);
       break;
-    case DB_TYPE_TIMELTZ:
-      (void) db_timeltz_to_string (line, TOO_BIG_TO_MATTER, db_get_time (value));
-      m_buf (line);
-      break;
-
-    case DB_TYPE_TIMETZ:
-    {
-      DB_TIMETZ *time_tz;
-
-      time_tz = db_get_timetz (value);
-      (void) db_timetz_to_string (line, TOO_BIG_TO_MATTER, &time_tz->time, &time_tz->tz_id);
-      m_buf (line);
-    }
-    break;
 
     case DB_TYPE_TIMESTAMP:
       (void) db_utime_to_string (line, TOO_BIG_TO_MATTER, db_get_timestamp (value));

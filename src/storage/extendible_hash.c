@@ -787,13 +787,8 @@ eh_dump_key (DB_TYPE key_type, void *key, OID * value_ptr)
       break;
 
     case DB_TYPE_TIME:
-    case DB_TYPE_TIMELTZ:
       db_time_decode ((DB_TIME *) key, &hour, &minute, &second);
       fprintf (stdout, "key:%3d:%3d:%3d", hour, minute, second);
-      break;
-
-    case DB_TYPE_TIMETZ:
-      fprintf (stdout, "key:%d", ((DB_TIMETZ *) key)->time, ((DB_TIMETZ *) key)->tz_id);
       break;
 
     case DB_TYPE_TIMESTAMP:

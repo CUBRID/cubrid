@@ -82,7 +82,7 @@
 	 (c) == SM_ATTFLAG_REVERSE_UNIQUE ? SM_CONSTRAINT_REVERSE_UNIQUE : \
 	                                    SM_CONSTRAINT_REVERSE_INDEX)
 
-#define SM_MAP_CONSTRAINT_ATTFAG_TO_PROPERTY(c) \
+#define SM_MAP_CONSTRAINT_ATTFLAG_TO_PROPERTY(c) \
 	((c) == SM_ATTFLAG_UNIQUE         ? SM_PROPERTY_UNIQUE: \
 	 (c) == SM_ATTFLAG_PRIMARY_KEY    ? SM_PROPERTY_PRIMARY_KEY: \
 	 (c) == SM_ATTFLAG_FOREIGN_KEY    ? SM_PROPERTY_FOREIGN_KEY: \
@@ -92,9 +92,12 @@
 #define SM_MAP_CONSTRAINT_TO_ATTFLAG(c) \
 	((c) == DB_CONSTRAINT_UNIQUE         ? SM_ATTFLAG_UNIQUE: \
 	 (c) == DB_CONSTRAINT_PRIMARY_KEY    ? SM_ATTFLAG_PRIMARY_KEY: \
+	 (c) == DB_CONSTRAINT_NOT_NULL       ? SM_ATTFLAG_NON_NULL: \
 	 (c) == DB_CONSTRAINT_FOREIGN_KEY    ? SM_ATTFLAG_FOREIGN_KEY: \
+	 (c) == DB_CONSTRAINT_INDEX          ? SM_ATTFLAG_INDEX: \
 	 (c) == DB_CONSTRAINT_REVERSE_UNIQUE ? SM_ATTFLAG_REVERSE_UNIQUE: \
-	                                       SM_ATTFLAG_NON_NULL)
+	 (c) == DB_CONSTRAINT_REVERSE_INDEX  ? SM_ATTFLAG_REVERSE_INDEX: \
+	                                       SM_ATTFLAG_NONE)
 
 #define SM_MAP_DB_INDEX_CONSTRAINT_TO_SM_CONSTRAINT(c) \
 	((c) == DB_CONSTRAINT_UNIQUE         ? SM_CONSTRAINT_UNIQUE: \
@@ -503,6 +506,22 @@ struct sm_function_info
   int attr_index_start;
 };
 
+typedef enum
+{
+  SM_NO_INDEX = 0,
+  SM_NORMAL_INDEX = 1,
+  SM_INVISIBLE_INDEX = 2,
+  SM_ONLINE_INDEX_BUILDING_IN_PROGRESS = 3,
+  SM_ONLINE_INDEX_BUILDING_DONE = 4,
+
+  SM_RESERVED_INDEX_STATUS1 = 5,
+  SM_RESERVED_INDEX_STATUS2 = 6,
+  SM_RESERVED_INDEX_STATUS3 = 7,
+  SM_RESERVED_INDEX_STATUS4 = 8,
+  SM_RESERVED_INDEX_STATUS5 = 9,
+  SM_LAST_INDEX_STATUS = 10
+} SM_INDEX_STATUS;
+
 typedef struct sm_class_constraint SM_CLASS_CONSTRAINT;
 
 struct sm_class_constraint
@@ -521,6 +540,7 @@ struct sm_class_constraint
   SM_FUNCTION_INFO *func_index_info;
   const char *comment;
   SM_CONSTRAINT_EXTRA_FLAG extra_status;
+  SM_INDEX_STATUS index_status;
 };
 
 /*
@@ -921,13 +941,10 @@ extern void classobj_free_prop (DB_SEQ * properties);
 extern int classobj_put_prop (DB_SEQ * properties, const char *name, DB_VALUE * pvalue);
 extern int classobj_drop_prop (DB_SEQ * properties, const char *name);
 extern int classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *constraint_name,
-			       SM_ATTRIBUTE ** atts, const int *asc_desc, const BTID * id,
-			       SM_PREDICATE_INFO * filter_index_info, SM_FOREIGN_KEY_INFO * fk_info,
-			       char *shared_cons_name, SM_FUNCTION_INFO * func_index_info, const char *comment);
-extern int classobj_put_index_id (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *constraint_name,
-				  SM_ATTRIBUTE ** atts, const int *asc_desc, const int *attrs_prefix_length,
-				  const BTID * id, SM_PREDICATE_INFO * filter_index_info, SM_FOREIGN_KEY_INFO * fk_info,
-				  char *shared_cons_name, SM_FUNCTION_INFO * func_index_info, const char *comment);
+			       SM_ATTRIBUTE ** atts, const int *asc_desc, const int *attr_prefix_length,
+			       const BTID * id, SM_PREDICATE_INFO * filter_index_info, SM_FOREIGN_KEY_INFO * fk_info,
+			       char *shared_cons_name, SM_FUNCTION_INFO * func_index_info, const char *comment,
+			       SM_INDEX_STATUS index_status, bool attr_name_instead_of_id);
 extern int classobj_find_prop_constraint (DB_SEQ * properties, const char *prop_name, const char *cnstr_name,
 					  DB_VALUE * cnstr_val);
 
@@ -936,7 +953,7 @@ extern int classobj_rename_constraint (DB_SEQ * properties, const char *prop_nam
 				       const char *new_name);
 #endif
 
-extern int classobj_change_constraint_comment (DB_SEQ * properties, const char *prop_type, const char *index_name,
+extern int classobj_change_constraint_comment (DB_SEQ * properties, SM_CLASS_CONSTRAINT *cons,
 					       const char *comment);
 
 extern int classobj_get_cached_constraint (SM_CONSTRAINT * constraints, SM_CONSTRAINT_TYPE type, BTID * id);
@@ -1083,11 +1100,16 @@ extern bool classobj_is_pk_referred (MOP clsop, SM_FOREIGN_KEY_INFO * fk_info, b
 extern int classobj_check_index_exist (SM_CLASS_CONSTRAINT * constraints, char **out_shared_cons_name,
 				       const char *class_name, DB_CONSTRAINT_TYPE constraint_type,
 				       const char *constraint_name, const char **att_names, const int *asc_desc,
-				       SM_PREDICATE_INFO * filter_index, SM_FUNCTION_INFO * func_index_info);
+				       const SM_PREDICATE_INFO * filter_index,
+				       const SM_FUNCTION_INFO * func_index_info);
 extern void classobj_initialize_attributes (SM_ATTRIBUTE * attributes);
 extern int classobj_copy_default_expr (DB_DEFAULT_EXPR * dest, const DB_DEFAULT_EXPR * src);
 extern void classobj_initialize_methods (SM_METHOD * methods);
 extern SM_PARTITION *classobj_make_partition_info (void);
 extern void classobj_free_partition_info (SM_PARTITION * partition_info);
 extern SM_PARTITION *classobj_copy_partition_info (SM_PARTITION * partition_info);
+
+extern int classobj_change_constraint_status (DB_SEQ * properties, SM_CLASS_CONSTRAINT *cons,
+					      SM_INDEX_STATUS index_status);
+
 #endif /* _CLASS_OBJECT_H_ */

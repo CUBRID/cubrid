@@ -731,8 +731,8 @@ logwr_copy_necessary_log (LOG_PAGEID to_pageid)
 	    }
 	}
 
-      if (fileio_write_pages (NULL, bg_arv_info->vdes, (char *) log_pgptr, ar_phy_pageid, num_pages, LOG_PAGESIZE) ==
-	  NULL)
+      if (fileio_write_pages (NULL, bg_arv_info->vdes, (char *) log_pgptr, ar_phy_pageid, num_pages, LOG_PAGESIZE,
+			      FILEIO_WRITE_DEFAULT_WRITE) == NULL)
 	{
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_WRITE, 3, pageid, ar_phy_pageid,
 		  logwr_Gl.bg_archive_name);
@@ -936,7 +936,8 @@ logwr_flush_all_append_pages (void)
    * Make sure that all of the above log writes are synchronized with any
    * future log writes. That is, the pages should be stored on physical disk.
    */
-  if (need_sync == true && fileio_synchronize (NULL, logwr_Gl.append_vdes, logwr_Gl.active_name) == NULL_VOLDES)
+  if (need_sync == true
+      && fileio_synchronize (NULL, logwr_Gl.append_vdes, logwr_Gl.active_name, FILEIO_SYNC_ONLY) == NULL_VOLDES)
     {
       assert (er_errid () != NO_ERROR);
       return er_errid ();
@@ -945,7 +946,8 @@ logwr_flush_all_append_pages (void)
   /* It's for dual write. */
   if (need_sync == true && prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING))
     {
-      if (fileio_synchronize (NULL, logwr_Gl.bg_archive_info.vdes, logwr_Gl.bg_archive_name) == NULL_VOLDES)
+      if (fileio_synchronize (NULL, logwr_Gl.bg_archive_info.vdes, logwr_Gl.bg_archive_name,
+			      FILEIO_SYNC_ONLY) == NULL_VOLDES)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
@@ -1004,8 +1006,9 @@ logwr_flush_bgarv_header_page (void)
 
   phy_pageid = logwr_to_physical_pageid (log_pgptr->hdr.logical_pageid);
 
-  if (fileio_write (NULL, bg_arv_info->vdes, log_pgptr, phy_pageid, LOG_PAGESIZE) == NULL
-      || fileio_synchronize (NULL, bg_arv_info->vdes, logwr_Gl.bg_archive_name) == NULL_VOLDES)
+  if (fileio_write (NULL, bg_arv_info->vdes, log_pgptr, phy_pageid, LOG_PAGESIZE,
+		    FILEIO_WRITE_NO_COMPENSATE_WRITE) == NULL
+      || fileio_synchronize (NULL, bg_arv_info->vdes, logwr_Gl.bg_archive_name, FILEIO_SYNC_ONLY) == NULL_VOLDES)
     {
       if (er_errid () == ER_IO_WRITE_OUT_OF_SPACE)
 	{
@@ -1057,8 +1060,9 @@ logwr_flush_header_page (void)
   phy_pageid = logwr_to_physical_pageid (logical_pageid);
 
   /* logwr_Gl.append_vdes is only changed while starting or finishing or recovering server. So, log cs is not needed. */
-  if (fileio_write (NULL, logwr_Gl.append_vdes, logwr_Gl.loghdr_pgptr, phy_pageid, LOG_PAGESIZE) == NULL
-      || fileio_synchronize (NULL, logwr_Gl.append_vdes, logwr_Gl.active_name) == NULL_VOLDES)
+  if (fileio_write (NULL, logwr_Gl.append_vdes, logwr_Gl.loghdr_pgptr, phy_pageid, LOG_PAGESIZE,
+		    FILEIO_WRITE_NO_COMPENSATE_WRITE) == NULL
+      || fileio_synchronize (NULL, logwr_Gl.append_vdes, logwr_Gl.active_name, FILEIO_SYNC_ONLY) == NULL_VOLDES)
     {
 
       if (er_errid () == ER_IO_WRITE_OUT_OF_SPACE)
@@ -1187,7 +1191,7 @@ logwr_archive_active_log (void)
 	}
     }
 
-  if (fileio_write (NULL, vdes, malloc_arv_hdr_pgptr, 0, LOG_PAGESIZE) == NULL)
+  if (fileio_write (NULL, vdes, malloc_arv_hdr_pgptr, 0, LOG_PAGESIZE, FILEIO_WRITE_NO_COMPENSATE_WRITE) == NULL)
     {
       /* Error archiving header page into archive */
       error_code = ER_LOG_WRITE;
@@ -1239,7 +1243,8 @@ logwr_archive_active_log (void)
 	    }
 	}
 
-      if (fileio_write_pages (NULL, vdes, (char *) log_pgptr, ar_phy_pageid, num_pages, LOG_PAGESIZE) == NULL)
+      if (fileio_write_pages (NULL, vdes, (char *) log_pgptr, ar_phy_pageid, num_pages, LOG_PAGESIZE,
+			      FILEIO_WRITE_DEFAULT_WRITE) == NULL)
 	{
 	  error_code = ER_LOG_WRITE;
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_WRITE, 3, pageid, ar_phy_pageid, archive_name);

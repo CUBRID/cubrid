@@ -367,10 +367,6 @@ static bool is_analytic_function = false;
 
 #define PT_EMPTY INT_MAX
 
-#if defined(WINDOWS)
-#define inline
-#endif
-
 
 #define TO_NUMBER(a)			((UINTPTR)(a))
 #define FROM_NUMBER(a)			((PT_NODE*)(UINTPTR)(a))
@@ -647,8 +643,10 @@ int g_original_buffer_len;
 %type <number> of_avg_max_etc
 %type <number> of_leading_trailing_both
 %type <number> datetime_field
+%type <number> opt_invisible
 %type <number> opt_paren_plus
 %type <number> opt_with_fullscan
+%type <number> opt_with_online
 %type <number> comp_op
 %type <number> opt_of_all_some_any
 %type <number> set_op
@@ -753,9 +751,13 @@ int g_original_buffer_len;
 %type <node> insert_value_clause
 %type <node> insert_value_clause_list
 %type <node> insert_stmt_value_clause
-%type <node> select_or_subquery_without_values_query_copy
-%type <node> csql_query_without_values_query_copy
-%type <node> select_expression_without_values_query_copy
+%type <node> select_or_subquery_without_values_query_no_with_clause
+%type <node> csql_query_without_values_query_no_with_clause
+%type <node> select_expression_without_values_query_no_with_clause
+%type <node> csql_query_copy_no_with_clause
+%type <node> select_expression_no_with_clause
+%type <node> select_or_subquery_no_with_clause
+%type <node> subquery_no_with_clause
 %type <node> insert_expression_value_clause
 %type <node> insert_value_list
 %type <node> insert_value
@@ -1539,6 +1541,7 @@ int g_original_buffer_len;
 %token <cptr> INFINITE_
 %token <cptr> INSTANCES
 %token <cptr> INVALIDATE
+%token <cptr> INVISIBLE
 %token <cptr> ISNULL
 %token <cptr> KEYS
 %token <cptr> KILL
@@ -1565,6 +1568,7 @@ int g_original_buffer_len;
 %token <cptr> NTILE
 %token <cptr> NULLS
 %token <cptr> OFFSET
+%token <cptr> ONLINE
 %token <cptr> OPEN
 %token <cptr> OWNER
 %token <cptr> PAGE
@@ -1620,6 +1624,7 @@ int g_original_buffer_len;
 %token <cptr> VAR_POP
 %token <cptr> VAR_SAMP
 %token <cptr> VARIANCE
+%token <cptr> VISIBLE
 %token <cptr> VOLUME
 %token <cptr> WEEK
 %token <cptr> WITHIN
@@ -2647,6 +2652,8 @@ create_stmt
 	  index_column_name_list			/* 11 */
 	  opt_where_clause				/* 12 */
 	  opt_comment_spec				/* 13 */
+	  opt_with_online				/* 14 */
+	  opt_invisible					/* 15 */
 	{{
 
 			PT_NODE *node = parser_pop_hint_node ();
@@ -2764,6 +2771,27 @@ create_stmt
 			     node->info.index.where = $12;
 			     node->info.index.column_names = col;
 			     node->info.index.comment = $13;
+
+			     if ($14 && $15)
+				     {
+					/* We do not allow invisible and online index at the same time. */
+					PT_ERRORm (this_parser, node, 
+						       MSGCAT_SET_PARSER_SYNTAX,
+						       MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+				     }
+			     node->info.index.index_status = SM_NORMAL_INDEX;
+			     if ($15)
+				     {
+					/* Invisible index. */
+					node->info.index.index_status = SM_INVISIBLE_INDEX;
+				     }
+			     else if ($14)
+				     {
+					/* Online index. */
+					node->info.index.index_status = SM_ONLINE_INDEX_BUILDING_IN_PROGRESS;
+				     }
+
+			     
 			  }
 		      $$ = node;
 
@@ -3575,6 +3603,76 @@ alter_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| ALTER				/* 1 */
+	  INDEX				/* 2 */
+	  identifier			/* 3 */
+	  ON_				/* 4 */
+	  class_name			/* 5 */
+	  INVISIBLE			/* 6 */
+		{{
+			PT_NODE* node = parser_new_node(this_parser, PT_ALTER_INDEX);
+			
+			if (node)
+			  {
+			    node->info.index.code = PT_CHANGE_INDEX_STATUS;
+			    node->info.index.index_name = $3;
+			    node->info.index.index_status = SM_INVISIBLE_INDEX;
+
+			    if (node->info.index.index_name)
+			      {
+			        node->info.index.index_name->info.name.meta_class = PT_INDEX_NAME;
+			      }
+			
+			    if ($5 != NULL)
+			      {
+			        PT_NODE *ocs = parser_new_node(this_parser, PT_SPEC);
+			        ocs->info.spec.entity_name = $5;
+			        ocs->info.spec.only_all = PT_ONLY;
+			        ocs->info.spec.meta_class = PT_CLASS;
+			
+			        node->info.index.indexed_class = ocs;
+			      }
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| ALTER				/* 1 */
+	  INDEX				/* 2 */
+	  identifier			/* 3 */
+	  ON_				/* 4 */
+	  class_name			/* 5 */
+	  VISIBLE			/* 6 */
+		{{
+			PT_NODE* node = parser_new_node(this_parser, PT_ALTER_INDEX);
+			
+			if (node)
+			  {
+			    node->info.index.code = PT_CHANGE_INDEX_STATUS;
+			    node->info.index.index_name = $3;
+			    node->info.index.index_status = SM_NORMAL_INDEX;
+
+			    if (node->info.index.index_name)
+			      {
+			        node->info.index.index_name->info.name.meta_class = PT_INDEX_NAME;
+			      }
+			
+			    if ($5 != NULL)
+			      {
+			        PT_NODE *ocs = parser_new_node(this_parser, PT_SPEC);
+			        ocs->info.spec.entity_name = $5;
+			        ocs->info.spec.only_all = PT_ONLY;
+			        ocs->info.spec.meta_class = PT_CLASS;
+			
+			        node->info.index.indexed_class = ocs;
+			      }
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
 	| ALTER
 	  view_or_vclass
 	  class_name
@@ -4188,6 +4286,21 @@ only_class_name_list
 		DBG_PRINT}}
 	;
 
+opt_invisible
+	: /* empty */
+		{{
+ 			$$ = 0;
+		
+		DBG_PRINT}}
+	| INVISIBLE
+		{{
+		
+			$$ = 1;
+		
+		DBG_PRINT}}
+	;
+
+
 opt_with_fullscan
         : /* empty */
                 {{
@@ -4202,6 +4315,21 @@ opt_with_fullscan
 
                 DBG_PRINT}}
         ;
+
+opt_with_online
+	: /* empty */
+		{{
+
+			$$ = 0;
+		
+		DBG_PRINT}}
+	| WITH ONLINE
+		{{
+		
+			$$ = 1;
+		
+		DBG_PRINT}}
+	;
 
 opt_of_to_eq
 	: /* empty */
@@ -5921,7 +6049,7 @@ insert_or_replace_stmt
 		DBG_PRINT}}
 	| insert_name_clause insert_stmt_value_clause into_clause_opt
 		{{
-			
+
 			PT_NODE *ins = $1;
 
 			if (ins)
@@ -5964,7 +6092,7 @@ insert_or_replace_stmt
 		DBG_PRINT}}
 	| insert_set_stmt into_clause_opt
 		{{
-			
+
 			PT_NODE *ins = $1;
 
 			if (ins)
@@ -6262,32 +6390,32 @@ insert_stmt_value_clause
 
 		DBG_PRINT}}
 	| opt_with_clause
-	  csql_query_without_values_query_copy
+	  csql_query_without_values_query_no_with_clause
 		{{
 
 			PT_NODE *with_clause = $1;
 			PT_NODE *select_node = $2;
-			select_node->info.query.with = with_clause;			
-			PT_NODE *nls = pt_node_list (this_parser, PT_IS_SUBQUERY, select_node);	
-			
+			select_node->info.query.with = with_clause;
+			PT_NODE *nls = pt_node_list (this_parser, PT_IS_SUBQUERY, select_node);
+
 			$$ = nls;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
 	| '(' opt_with_clause
-	  csql_query_without_values_query_copy ')'
+	  csql_query_without_values_query_no_with_clause ')'
 		{{
 			PT_NODE *with_clause = $2;
 			PT_NODE *select_node = $3;
-			select_node->info.query.with = with_clause;			
-			PT_NODE *nls = pt_node_list (this_parser, PT_IS_SUBQUERY, select_node);	
-			
+			select_node->info.query.with = with_clause;
+			PT_NODE *nls = pt_node_list (this_parser, PT_IS_SUBQUERY, select_node);
+
 			$$ = nls;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
 	;
-	
+
 insert_expression_value_clause
 	: of_value_values insert_value_clause_list
 		{{
@@ -8850,6 +8978,7 @@ unique_constraint
 				    node->info.index.indexed_class = NULL;
 				    node->info.index.column_names = sort_spec_cols;
 				    node->info.index.unique = 1;
+				    node->info.index.index_status = SM_NORMAL_INDEX;
 				  }
 			      }
 			  }
@@ -9598,6 +9727,7 @@ attr_index_def
 	  index_column_name_list
 	  opt_where_clause
 	  opt_comment_spec
+	  opt_invisible
 		{{
 			int arg_count = 0, prefix_col_count = 0;
 			PT_NODE* node = parser_new_node(this_parser, 
@@ -9613,6 +9743,7 @@ attr_index_def
 			node->info.index.indexed_class = NULL;
 			node->info.index.where = $4;
 			node->info.index.comment = $5;
+			node->info.index.index_status = SM_NORMAL_INDEX;
     		    
 			prefix_col_count =
 				parser_count_prefix_columns (col, &arg_count);
@@ -9653,6 +9784,11 @@ attr_index_def
 			      }
 			  }
 			node->info.index.column_names = col;
+			node->info.index.index_status = SM_NORMAL_INDEX;
+			if ($6 != NULL)
+				{
+					node->info.index.index_status = SM_INVISIBLE_INDEX;
+				}
 			$$ = node;
 
 		DBG_PRINT}}
@@ -11714,6 +11850,94 @@ csql_query
 		DBG_PRINT}}
 	;
 
+csql_query_copy_no_with_clause
+	:
+		{{
+
+			parser_save_and_set_cannot_cache (false);
+			parser_save_and_set_ic (0);
+			parser_save_and_set_gc (0);
+			parser_save_and_set_oc (0);
+			parser_save_and_set_wjc (0);
+			parser_save_and_set_sysc (0);
+			parser_save_and_set_prc (0);
+			parser_save_and_set_cbrc (0);
+			parser_save_and_set_serc (1);
+			parser_save_and_set_sqc (1);
+			parser_save_and_set_pseudoc (1);
+
+		DBG_PRINT}}
+	  select_expression_no_with_clause
+		{{
+
+			PT_NODE *node = $2;
+			parser_push_orderby_node (node);
+
+		DBG_PRINT}}
+	  opt_orderby_clause
+		{{
+
+			PT_NODE *node = parser_pop_orderby_node ();
+
+			if (node && parser_cannot_cache)
+			  {
+			    node->info.query.reexecute = 1;
+			    node->info.query.do_cache = 0;
+			    node->info.query.do_not_cache = 1;
+			  }
+
+			parser_restore_cannot_cache ();
+			parser_restore_ic ();
+			parser_restore_gc ();
+			parser_restore_oc ();
+			parser_restore_wjc ();
+			parser_restore_sysc ();
+			parser_restore_prc ();
+			parser_restore_cbrc ();
+			parser_restore_serc ();
+			parser_restore_sqc ();
+			parser_restore_pseudoc ();
+
+			if (parser_subquery_check == 0)
+			    PT_ERRORmf(this_parser, pt_top(this_parser),
+				MSGCAT_SET_PARSER_SEMANTIC,
+				MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "Subquery");
+
+			if (node)
+			  {
+			    /* handle ORDER BY NULL */
+			    PT_NODE *order = node->info.query.order_by;
+			    if (order && order->info.sort_spec.expr
+				&& order->info.sort_spec.expr->node_type == PT_VALUE
+				&& order->info.sort_spec.expr->type_enum == PT_TYPE_NULL)
+			      {
+				if (!node->info.query.q.select.group_by)
+				  {
+				    PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					       MSGCAT_SEMANTIC_ORDERBYNULL_REQUIRES_GROUPBY);
+				  }
+				else
+				  {
+				    parser_free_tree (this_parser, node->info.query.order_by);
+				    node->info.query.order_by = NULL;
+				  }
+			      }
+			  }
+
+			parser_push_orderby_node (node);
+
+		DBG_PRINT}}
+	opt_select_limit_clause
+	opt_for_update_clause
+		{{
+
+			PT_NODE *node = parser_pop_orderby_node ();
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	;
+
 csql_query_without_values_query
 	:
 		{{
@@ -11802,7 +12026,7 @@ csql_query_without_values_query
 		DBG_PRINT}}
 	;
 
-csql_query_without_values_query_copy
+csql_query_without_values_query_no_with_clause
 	:
 		{{
 
@@ -11819,7 +12043,7 @@ csql_query_without_values_query_copy
 			parser_save_and_set_pseudoc (1);
 
 		DBG_PRINT}}
-	  select_expression_without_values_query_copy
+	  select_expression_without_values_query_no_with_clause
 		{{
 
 			PT_NODE *node = $2;
@@ -11907,6 +12131,15 @@ select_expression_opt_with
 
 		DBG_PRINT}} 
 	;   
+
+select_expression_no_with_clause
+	: select_or_subquery_no_with_clause
+		{{
+			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	;
 
 select_expression
 	: select_expression
@@ -12060,7 +12293,7 @@ select_expression_without_values_query
             DBG_PRINT}}
      table_op select_or_subquery_without_values_query
      {{
-
+         
          PT_NODE *stmt = $8;
          PT_NODE *arg1 = $1;
          
@@ -12093,30 +12326,30 @@ select_expression_without_values_query
 		DBG_PRINT}}
 	;
 
-select_expression_without_values_query_copy
-	: select_expression_without_values_query_copy
+select_expression_without_values_query_no_with_clause
+	: select_expression_without_values_query_no_with_clause
     {{
         PT_NODE *node = $1;
-        parser_push_orderby_node (node);      
+        parser_push_orderby_node (node);
       }}
-    opt_orderby_clause 
+    opt_orderby_clause
     {{
-      
+
         PT_NODE *node = parser_pop_orderby_node ();
-        
+
         if (node && parser_cannot_cache)
         {
           node->info.query.reexecute = 1;
           node->info.query.do_cache = 0;
           node->info.query.do_not_cache = 1;
         }
-        
+
 
         if (parser_subquery_check == 0)
           PT_ERRORmf(this_parser, pt_top(this_parser),
                      MSGCAT_SET_PARSER_SEMANTIC,
                      MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "Subquery");
-        
+
         if (node)
         {
 
@@ -12137,25 +12370,25 @@ select_expression_without_values_query_copy
             }
           }
         }
-        
+
         parser_push_orderby_node (node);
-        
+
 		DBG_PRINT}}
       opt_select_limit_clause
       opt_for_update_clause
 		{{
-                        
+
 			PT_NODE *node = parser_pop_orderby_node ();
 			$<node>$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($<node>$, @$.buffer_pos)
-            
+
             DBG_PRINT}}
-     table_op select_or_subquery_without_values_query_copy
+     table_op select_or_subquery_without_values_query_no_with_clause
      {{
 
          PT_NODE *stmt = $8;
          PT_NODE *arg1 = $1;
-         
+
          if (stmt)
          {
 			    stmt->info.query.id = (UINTPTR) stmt;
@@ -12176,7 +12409,7 @@ select_expression_without_values_query_copy
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| select_or_subquery_without_values_query_copy
+	| select_or_subquery_without_values_query_no_with_clause
 		{{
 
 			$$ = $1;
@@ -12289,6 +12522,14 @@ select_or_subquery
 		DBG_PRINT}}
 	;
 
+select_or_subquery_no_with_clause
+	: values_query
+		{{
+			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
+	;
+
 select_or_subquery_without_values_query
 	: select_stmt
 		{{
@@ -12306,8 +12547,15 @@ select_or_subquery_without_values_query
 		DBG_PRINT}}
 	;
 
-select_or_subquery_without_values_query_copy
+select_or_subquery_without_values_query_no_with_clause
 	: select_stmt
+		{{
+
+			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| subquery_no_with_clause
 		{{
 
 			$$ = $1;
@@ -18566,6 +18814,26 @@ subquery
 		DBG_PRINT}}
 	;
 
+subquery_no_with_clause
+	: '(' csql_query_copy_no_with_clause ')'
+		{{
+
+			PT_NODE *stmt = $2;
+
+			if (parser_within_join_condition)
+			  {
+			    PT_ERRORm (this_parser, stmt, MSGCAT_SET_PARSER_SYNTAX,
+				       MSGCAT_SYNTAX_JOIN_COND_SUBQ);
+			  }
+
+			if (stmt)
+			  stmt->info.query.is_subquery = PT_IS_SUBQUERY;
+			$$ = stmt;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	;
+
 
 path_expression
 	: path_header path_dot NONE		%dprec 6
@@ -21185,6 +21453,14 @@ identifier
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| INVISIBLE
+               {{
+                       PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+                       if (p)
+                         p->info.name.original = $1;
+                       $$ = p;
+                       PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+                DBG_PRINT}}
 	| JAVA
 		{{
 
@@ -21346,6 +21622,16 @@ identifier
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| ONLINE
+               {{
+
+                       PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+                       if (p)
+                         p->info.name.original = $1;
+                       $$ = p;
+                       PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+               DBG_PRINT}}
 	| OPEN
 		{{
 
@@ -21817,6 +22103,14 @@ identifier
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| VISIBLE
+               {{
+                       PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+                       if (p)
+                         p->info.name.original = $1;
+                       $$ = p;
+                       PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+                DBG_PRINT}}
 	| VOLUME
 		{{
 
@@ -25380,7 +25674,6 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_TO_DATETIME:
     case PT_TO_DATETIME_TZ:
     case PT_TO_TIMESTAMP_TZ:
-    case PT_TO_TIME_TZ:
       if (c < 1 || c > 3)
 	return NULL;
       a1 = args;

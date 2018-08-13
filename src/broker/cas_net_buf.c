@@ -579,22 +579,6 @@ net_arg_get_time (short *hh, short *mm, short *ss, void *arg)
 }
 
 void
-net_arg_get_timetz (short *hh, short *mm, short *ss, char **tz, int *tz_size, void *arg)
-{
-  int tmp_i;
-  char *cur_p = (char *) arg;
-
-  net_arg_get_time (hh, mm, ss, arg);
-
-  memcpy (&tmp_i, cur_p, NET_SIZE_INT);
-  /* skip dummy Y,M,D, milisecond values */
-  *tz_size = ntohl (tmp_i) - NET_SIZE_TIME - 4 * NET_SIZE_SHORT;
-  cur_p += NET_SIZE_INT + NET_SIZE_TIME + 4 * NET_SIZE_SHORT;
-
-  *tz = cur_p;
-}
-
-void
 net_arg_get_timestamp (short *yr, short *mon, short *day, short *hh, short *mm, short *ss, void *arg)
 {
   short tmp_s;

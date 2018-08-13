@@ -359,7 +359,7 @@ static int allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclass
 			   const int *asc_desc, const int *attrs_prefix_length, int unique_pk, int not_null,
 			   int reverse, const char *constraint_name, BTID * index, OID * fk_refcls_oid,
 			   BTID * fk_refcls_pk_btid, const char *fk_name, SM_PREDICATE_INFO * filter_index,
-			   SM_FUNCTION_INFO * function_index);
+			   SM_FUNCTION_INFO * function_index, SM_INDEX_STATUS index_status);
 static int deallocate_index (SM_CLASS_CONSTRAINT * cons, BTID * index);
 static int rem_class_from_index (OID * oid, BTID * index, HFID * heap);
 static int check_fk_validity (MOP classop, SM_CLASS * class_, SM_ATTRIBUTE ** key_attrs, const int *asc_desc,
@@ -391,7 +391,7 @@ static int flatten_subclasses (DB_OBJLIST * subclasses, MOP deleted_class);
 static void abort_subclasses (DB_OBJLIST * subclasses);
 static int update_subclasses (DB_OBJLIST * subclasses);
 static int lockhint_subclasses (SM_TEMPLATE * temp, SM_CLASS * class_);
-static int update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res);
+static int update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH auth);
 static int remove_class_triggers (MOP classop, SM_CLASS * class_);
 static int sm_drop_cascade_foreign_key (SM_CLASS * class_);
 static char *sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, const char **att_names,
@@ -405,7 +405,7 @@ static void sm_method_final (void);
 
 static int sm_check_index_exist (MOP classop, char **out_shared_cons_name, DB_CONSTRAINT_TYPE constraint_type,
 				 const char *constraint_name, const char **att_names, const int *asc_desc,
-				 SM_PREDICATE_INFO * filter_index, SM_FUNCTION_INFO * func_info);
+				 const SM_PREDICATE_INFO * filter_index, const SM_FUNCTION_INFO * func_info);
 
 static void sm_reset_descriptors (MOP class_);
 
@@ -449,6 +449,10 @@ static int update_fk_ref_partitioned_class (SM_TEMPLATE * ctemplate, SM_FOREIGN_
 static int flatten_partition_info (SM_TEMPLATE * def, SM_TEMPLATE * flat);
 static DB_OBJLIST *sm_fetch_all_objects_internal (DB_OBJECT * op, DB_FETCH_MODE purpose,
 						  LC_FETCH_VERSION_TYPE * force_fetch_version_type);
+
+static void sm_stats_remove_bt_stats_at_position (ATTR_STATS * attr_stats, int position);
+static void sm_stats_remove_online_index_stats (SM_CLASS * class_);
+
 /*
  * sc_set_current_schema()
  *      return: NO_ERROR if successful
@@ -3757,6 +3761,10 @@ sm_get_class_with_statistics (MOP classop)
 	    }
 	}
     }
+
+  /* Iterate through all constraints and check if there is any of them with online index build in progress. */
+  // TODO - why not filter it in server?
+  sm_stats_remove_online_index_stats (class_);
 
   return class_;
 }
@@ -9101,9 +9109,10 @@ flatten_properties (SM_TEMPLATE * def, SM_TEMPLATE * flat)
 			      /* unique indexes are shared indexes */
 			      BTID_COPY (&index_btid, &c->index_btid);
 			    }
-			  if (classobj_put_index
-			      (&(flat->properties), c->type, c->name, attrs, c->asc_desc, &index_btid,
-			       c->filter_predicate, c->fk_info, NULL, c->func_index_info, c->comment) != NO_ERROR)
+			  if (classobj_put_index (&flat->properties, c->type, c->name, attrs, c->asc_desc,
+						  c->attrs_prefix_length, &index_btid, c->filter_predicate, c->fk_info,
+						  NULL, c->func_index_info, c->comment, c->index_status, true)
+			      != NO_ERROR)
 			    {
 			      pr_clear_value (&cnstr_val);
 			      goto structure_error;
@@ -10017,9 +10026,6 @@ collect_hier_class_info (MOP classop, DB_OBJLIST * subclasses, const char *const
    (and probably the flattener as well) so we have all the information necessary
    to generate the disk structures before the call to
    install_new_representation and before the class is created.
-
-   allocate_index is also called directly by sm_add_index which for now
-   will be the only official way to add an index.
 */
 
 /*
@@ -10038,13 +10044,14 @@ collect_hier_class_info (MOP classop, DB_OBJLIST * subclasses, const char *const
  *   fk_refcls_oid(in):
  *   fk_refcls_pk_btid(in):
  *   fk_name(in):
+ *   index_status(in):
  */
 
 static int
 allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_ATTRIBUTE ** attrs, const int *asc_desc,
 		const int *attrs_prefix_length, int unique_pk, int not_null, int reverse, const char *constraint_name,
 		BTID * index, OID * fk_refcls_oid, BTID * fk_refcls_pk_btid, const char *fk_name,
-		SM_PREDICATE_INFO * filter_index, SM_FUNCTION_INFO * function_index)
+		SM_PREDICATE_INFO * filter_index, SM_FUNCTION_INFO * function_index, SM_INDEX_STATUS index_status)
 {
   int error = NO_ERROR;
   DB_TYPE type;
@@ -10053,6 +10060,9 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_ATTR
   size_t attr_ids_size;
   OID *oids = NULL;
   HFID *hfids = NULL;
+  TP_DOMAIN *domain = NULL;
+  int max_classes, n_classes, has_instances;
+  DB_OBJLIST *sub;
 
   /* Count the attributes */
   for (i = 0, n_attrs = 0; attrs[i] != NULL; i++, n_attrs++)
@@ -10078,147 +10088,139 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_ATTR
 	}
     }
 
-  if (error == NO_ERROR)
+  if (error != NO_ERROR)
     {
-      TP_DOMAIN *domain = NULL;
+      return error;
+    }
 
-      if (function_index)
+  if (function_index)
+    {
+      if (function_index->attr_index_start == 0)
 	{
-	  if (function_index->attr_index_start == 0)
-	    {
-	      /* if this is a single column function index, the key domain is actually the domain of the function
-	       * result */
-	      domain = function_index->fi_domain;
-	    }
-	  else
-	    {
-	      domain =
-		construct_index_key_domain (function_index->attr_index_start, attrs, asc_desc, attrs_prefix_length,
-					    function_index->col_id, function_index->fi_domain);
-	    }
+	  /* if this is a single column function index, the key domain is actually the domain of the function
+	   * result */
+	  domain = function_index->fi_domain;
 	}
       else
 	{
-	  domain = construct_index_key_domain (n_attrs, attrs, asc_desc, attrs_prefix_length, -1, NULL);
-	}
-      if (domain == NULL)
-	{
-	  assert (er_errid () != NO_ERROR);
-	  error = er_errid ();
-	}
-      else
-	{
-	  int max_classes, n_classes, has_instances;
-	  DB_OBJLIST *sub;
-
-	  /* need to have macros for this !! */
-	  index->vfid.volid = boot_User_volid;
-
-	  /* Count maximum possible subclasses */
-	  max_classes = 1;	/* Start with 1 for the current class */
-	  for (sub = subclasses; sub != NULL; sub = sub->next)
-	    {
-	      max_classes++;
-	    }
-
-	  /* Allocate arrays to hold subclass information */
-	  attr_ids_size = max_classes * n_attrs * sizeof (int);
-	  attr_ids = (int *) malloc (attr_ids_size);
-	  if (attr_ids == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, attr_ids_size);
-	      goto mem_error;
-	    }
-
-	  oids = (OID *) malloc (max_classes * sizeof (OID));
-	  if (oids == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, max_classes * sizeof (OID));
-	      goto mem_error;
-	    }
-
-	  hfids = (HFID *) malloc (max_classes * sizeof (HFID));
-	  if (hfids == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, max_classes * sizeof (HFID));
-	      goto mem_error;
-	    }
-
-	  /* Enter the base class information into the arrays */
-	  n_classes = 0;
-	  COPY_OID (&oids[n_classes], WS_OID (classop));
-	  for (i = 0; i < n_attrs; i++)
-	    {
-	      attr_ids[i] = attrs[i]->id;
-	    }
-	  HFID_COPY (&hfids[n_classes], sm_ch_heap ((MOBJ) class_));
-	  n_classes++;
-
-	  /* If we're creating a UNIQUE B-tree or a FOREIGN KEY, we need to collect information from subclasses which
-	   * inherit the constraint */
-	  if (unique_pk || (fk_refcls_oid != NULL && !OID_ISNULL (fk_refcls_oid)))
-	    {
-	      error =
-		collect_hier_class_info (classop, subclasses, constraint_name, reverse, &n_classes, n_attrs, oids,
-					 attr_ids, hfids);
-	      if (error != NO_ERROR)
-		{
-		  goto gen_error;
-		}
-	    }
-
-	  /* Are there any populated classes for this index ? */
-	  has_instances = 0;
-	  for (i = 0; i < n_classes; i++)
-	    {
-	      if (!HFID_IS_NULL (&hfids[i]) && heap_has_instance (&hfids[i], &oids[i], false))
-		{
-		  /* in case of error and instances exist */
-		  has_instances = 1;
-		  break;
-		}
-	    }
-
-	  /* If there are no instances, then call btree_add_index() to create an empty index, otherwise call
-	   * btree_load_index () to load all of the instances (including applicable subclasses) into a new B-tree */
-	  if (!has_instances)
-	    {
-	      error = btree_add_index (index, domain, WS_OID (classop), attrs[0]->id, unique_pk);
-	    }
-	  /* If there are instances, load all of them (including applicable subclasses) into the new B-tree */
-	  else
-	    {
-	      if (function_index)
-		{
-		  error =
-		    btree_load_index (index, constraint_name, domain, oids, n_classes, n_attrs, attr_ids,
-				      (int *) attrs_prefix_length, hfids, unique_pk, not_null, fk_refcls_oid,
-				      fk_refcls_pk_btid, fk_name, SM_GET_FILTER_PRED_STREAM (filter_index),
-				      SM_GET_FILTER_PRED_STREAM_SIZE (filter_index), function_index->expr_stream,
-				      function_index->expr_stream_size, function_index->col_id,
-				      function_index->attr_index_start);
-		}
-	      else
-		{
-		  error =
-		    btree_load_index (index, constraint_name, domain, oids, n_classes, n_attrs, attr_ids,
-				      (int *) attrs_prefix_length, hfids, unique_pk, not_null, fk_refcls_oid,
-				      fk_refcls_pk_btid, fk_name, SM_GET_FILTER_PRED_STREAM (filter_index),
-				      SM_GET_FILTER_PRED_STREAM_SIZE (filter_index), NULL, -1, -1, -1);
-		}
-	    }
-
-	  free_and_init (attr_ids);
-	  free_and_init (oids);
-	  free_and_init (hfids);
+	  domain = construct_index_key_domain (function_index->attr_index_start, attrs, asc_desc, attrs_prefix_length,
+					       function_index->col_id, function_index->fi_domain);
 	}
     }
+  else
+    {
+      domain = construct_index_key_domain (n_attrs, attrs, asc_desc, attrs_prefix_length, -1, NULL);
+    }
+
+  if (domain == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  /* need to have macros for this !! */
+  index->vfid.volid = boot_User_volid;
+
+  /* Count maximum possible subclasses */
+  max_classes = 1;		/* Start with 1 for the current class */
+  for (sub = subclasses; sub != NULL; sub = sub->next)
+    {
+      max_classes++;
+    }
+
+  /* Allocate arrays to hold subclass information */
+  attr_ids_size = max_classes * n_attrs * sizeof (int);
+  attr_ids = (int *) malloc (attr_ids_size);
+  if (attr_ids == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, attr_ids_size);
+      goto mem_error;
+    }
+
+  oids = (OID *) malloc (max_classes * sizeof (OID));
+  if (oids == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, max_classes * sizeof (OID));
+      goto mem_error;
+    }
+
+  hfids = (HFID *) malloc (max_classes * sizeof (HFID));
+  if (hfids == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, max_classes * sizeof (HFID));
+      goto mem_error;
+    }
+
+  /* Enter the base class information into the arrays */
+  n_classes = 0;
+  COPY_OID (&oids[n_classes], WS_OID (classop));
+  for (i = 0; i < n_attrs; i++)
+    {
+      attr_ids[i] = attrs[i]->id;
+    }
+  HFID_COPY (&hfids[n_classes], sm_ch_heap ((MOBJ) class_));
+  n_classes++;
+
+  /* If we're creating a UNIQUE B-tree or a FOREIGN KEY, we need to collect information from subclasses which
+   * inherit the constraint */
+  if (unique_pk || (fk_refcls_oid != NULL && !OID_ISNULL (fk_refcls_oid)))
+    {
+      error = collect_hier_class_info (classop, subclasses, constraint_name, reverse, &n_classes, n_attrs, oids,
+				       attr_ids, hfids);
+      if (error != NO_ERROR)
+	{
+	  goto gen_error;
+	}
+    }
+
+  /* Are there any populated classes for this index ? */
+  has_instances = 0;
+  for (i = 0; i < n_classes; i++)
+    {
+      if (!HFID_IS_NULL (&hfids[i]) && heap_has_instance (&hfids[i], &oids[i], false))
+	{
+	  /* in case of error and instances exist */
+	  has_instances = 1;
+	  break;
+	}
+    }
+
+  /* If there are no instances, then call btree_add_index() to create an empty index, otherwise call
+   * btree_load_index () to load all of the instances (including applicable subclasses) into a new B-tree */
+  // TODO: optimize has_instances case
+  if (!has_instances || index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+    {
+      error = btree_add_index (index, domain, WS_OID (classop), attrs[0]->id, unique_pk);
+    }
+  /* If there are instances, load all of them (including applicable subclasses) into the new B-tree */
+  else
+    {
+      if (function_index)
+	{
+	  error = btree_load_index (index, constraint_name, domain, oids, n_classes, n_attrs, attr_ids,
+				    (int *) attrs_prefix_length, hfids, unique_pk, not_null, fk_refcls_oid,
+				    fk_refcls_pk_btid, fk_name, SM_GET_FILTER_PRED_STREAM (filter_index),
+				    SM_GET_FILTER_PRED_STREAM_SIZE (filter_index), function_index->expr_stream,
+				    function_index->expr_stream_size, function_index->col_id,
+				    function_index->attr_index_start);
+	}
+      else
+	{
+	  error = btree_load_index (index, constraint_name, domain, oids, n_classes, n_attrs, attr_ids,
+				    (int *) attrs_prefix_length, hfids, unique_pk, not_null, fk_refcls_oid,
+				    fk_refcls_pk_btid, fk_name, SM_GET_FILTER_PRED_STREAM (filter_index),
+				    SM_GET_FILTER_PRED_STREAM_SIZE (filter_index), NULL, -1, -1, -1);
+	}
+    }
+
+  free_and_init (attr_ids);
+  free_and_init (oids);
+  free_and_init (hfids);
 
   return error;
 
 mem_error:
-  assert (er_errid () != NO_ERROR);
-  error = er_errid ();
+  ASSERT_ERROR_AND_SET (error);
 
 gen_error:
   if (attr_ids != NULL)
@@ -10629,7 +10631,7 @@ allocate_unique_constraint (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRAINT 
 
 	  if (allocate_index (classop, class_, local_subclasses, con->attributes, asc_desc, con->attrs_prefix_length,
 			      unique_pk, not_null, reverse, con->name, &con->index_btid, NULL, NULL, NULL,
-			      con->filter_predicate, con->func_index_info))
+			      con->filter_predicate, con->func_index_info, con->index_status))
 	    {
 	      assert (er_errid () != NO_ERROR);
 	      return er_errid ();
@@ -10710,7 +10712,7 @@ allocate_foreign_key (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRAINT * con,
       if (allocate_index (classop, class_, subclasses, con->attributes, NULL, con->attrs_prefix_length,
 			  0 /* unique_pk */ , false, false, con->name, &con->index_btid,
 			  &(con->fk_info->ref_class_oid), &(con->fk_info->ref_class_pk_btid), con->fk_info->name,
-			  con->filter_predicate, con->func_index_info))
+			  con->filter_predicate, con->func_index_info, con->index_status))
 	{
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
@@ -10776,7 +10778,7 @@ allocate_disk_structures_index (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRA
 	  reverse = (con->type == SM_CONSTRAINT_INDEX) ? false : true;
 	  error = allocate_index (classop, class_, NULL, con->attributes, con->asc_desc, con->attrs_prefix_length,
 				  0 /* unique_pk */ , false, reverse, con->name, &con->index_btid, NULL, NULL, NULL,
-				  con->filter_predicate, con->func_index_info);
+				  con->filter_predicate, con->func_index_info, con->index_status);
 	}
       else if (con->type == SM_CONSTRAINT_FOREIGN_KEY)
 	{
@@ -10798,9 +10800,9 @@ allocate_disk_structures_index (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRA
   /* Whether we allocated a BTID or not, always write the constraint info back out to the property list.  
    * This is where the promotion of attribute name references to ids references happens. 
    */
-  if (classobj_put_index_id (&(class_->properties), con->type, con->name, con->attributes, con->asc_desc,
-			     con->attrs_prefix_length, &(con->index_btid), con->filter_predicate, con->fk_info, NULL,
-			     con->func_index_info, con->comment) != NO_ERROR)
+  if (classobj_put_index (&(class_->properties), con->type, con->name, con->attributes, con->asc_desc,
+			  con->attrs_prefix_length, &(con->index_btid), con->filter_predicate, con->fk_info, NULL,
+			  con->func_index_info, con->comment, con->index_status, false) != NO_ERROR)
     {
       return error;
     }
@@ -11529,9 +11531,10 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 		}
 
 	      error =
-		classobj_put_index_id (&(flat->properties), con->type, con->name, con->attributes, con->asc_desc,
-				       con->attrs_prefix_length, &(con->index_btid), con->filter_predicate,
-				       con->fk_info, con->shared_cons_name, con->func_index_info, con->comment);
+		classobj_put_index (&(flat->properties), con->type, con->name, con->attributes, con->asc_desc,
+				    con->attrs_prefix_length, &(con->index_btid), con->filter_predicate,
+				    con->fk_info, con->shared_cons_name, con->func_index_info, con->comment,
+				    con->index_status, false);
 	      if (error != NO_ERROR)
 		{
 		  error = ER_SM_INVALID_PROPERTY;
@@ -11541,9 +11544,9 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 	  else if (con->type == SM_CONSTRAINT_INDEX || con->type == SM_CONSTRAINT_REVERSE_INDEX)
 	    {
 	      error =
-		classobj_put_index_id (&(flat->properties), con->type, con->name, con->attributes, con->asc_desc,
-				       con->attrs_prefix_length, &(con->index_btid), con->filter_predicate, NULL, NULL,
-				       con->func_index_info, con->comment);
+		classobj_put_index (&(flat->properties), con->type, con->name, con->attributes, con->asc_desc,
+				    con->attrs_prefix_length, &(con->index_btid), con->filter_predicate, NULL, NULL,
+				    con->func_index_info, con->comment, con->index_status, false);
 	      if (error != NO_ERROR)
 		{
 		  error = ER_SM_INVALID_PROPERTY;
@@ -12367,8 +12370,9 @@ sm_constraint_belongs_to_class (const SM_CLASS_CONSTRAINT * const con, MOP const
  *          SM_CONSTRAINT_REVERSE_UNIQUE,
  *          SM_CONSTRAINT_PRIMARY_KEY,
  *          SM_CONSTRAINT_FOREIGN_KEY
+ *          SM_CONSTRAINT_INDEX,
+ *          SM_CONSTRAINT_REVERSE_INDEX,
  *   sm_drop_index():
- *   sm_add_index():
  *          SM_CONSTRAINT_INDEX,
  *          SM_CONSTRAINT_REVERSE_INDEX,
  */
@@ -12499,7 +12503,7 @@ lockhint_subclasses (SM_TEMPLATE * temp, SM_CLASS * class_)
  *   template(in): schema template
  *   classmop(in): MOP of existing class (NULL if new class)
  *   auto_res(in): non-zero to enable auto-resolution of conflicts
- *   verify_oid(in): whether to verify object id
+ *   auth(in): the given authorization mode to modify class
  */
 
 /* NOTE: There were some problems when the transaction was unilaterally
@@ -12521,7 +12525,7 @@ lockhint_subclasses (SM_TEMPLATE * temp, SM_CLASS * class_)
  */
 
 static int
-update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res)
+update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH auth)
 {
   int error = NO_ERROR;
   int num_indexes;
@@ -12549,7 +12553,7 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res)
   if ((error == NO_ERROR) && (template_->op != NULL))
     {
       /* existing class, fetch it */
-      error = au_fetch_class (template_->op, &class_, AU_FETCH_UPDATE, AU_ALTER);
+      error = au_fetch_class (template_->op, &class_, AU_FETCH_UPDATE, auth);
     }
 
   if (error != NO_ERROR)
@@ -12767,15 +12771,12 @@ error_return:
 
   classobj_free_template (flat);
   abort_subclasses (newsubs);
-  if (error == ER_BTREE_UNIQUE_FAILED || error == ER_FK_INVALID || error == ER_SM_PRIMARY_KEY_EXISTS
-      || error == ER_NOT_NULL_DOES_NOT_ALLOW_NULL_VALUE || error == ER_SM_INVALID_UNIQUE_IDX_PARTITION)
+
+  if (error != ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED && error != ER_LK_UNILATERALLY_ABORTED)
     {
       (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_NAME);
     }
-  else
-    {
-      (void) tran_unilaterally_abort ();
-    }
+
   goto end;
 }
 
@@ -12790,7 +12791,7 @@ error_return:
 int
 sm_finish_class (SM_TEMPLATE * template_, MOP * classmop)
 {
-  return update_class (template_, classmop, 0);
+  return update_class (template_, classmop, 0, AU_ALTER);
 }
 
 /*
@@ -12804,7 +12805,13 @@ sm_finish_class (SM_TEMPLATE * template_, MOP * classmop)
 int
 sm_update_class (SM_TEMPLATE * template_, MOP * classmop)
 {
-  return update_class (template_, classmop, 0);
+  return update_class (template_, classmop, 0, AU_ALTER);
+}
+
+int
+sm_update_class_with_auth (SM_TEMPLATE * template_, MOP * classmop, DB_AUTH auth)
+{
+  return update_class (template_, classmop, 0, auth);
 }
 
 /*
@@ -12818,7 +12825,7 @@ sm_update_class (SM_TEMPLATE * template_, MOP * classmop)
 int
 sm_update_class_auto (SM_TEMPLATE * template_, MOP * classmop)
 {
-  return update_class (template_, classmop, 1);
+  return update_class (template_, classmop, 1, AU_ALTER);
 }
 
 /*
@@ -13322,6 +13329,8 @@ sm_exist_index (MOP classop, const char *idxname, BTID * btid)
   return ER_FAILED;
 }
 
+#if 0
+// TODO: leave it for reference. Remove it when we complete the task.
 /*
  * sm_add_index() - Adds an index to an attribute.
  *   return: NO_ERROR on success, non-zero for ERROR
@@ -13630,9 +13639,9 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type, const char *co
 
       /* modify the class to point at the new index */
       error =
-	classobj_put_index_id (&(class_->properties), constraint_type, constraint_name, attrs, asc_desc,
-			       attrs_prefix_length, &index, filter_index, NULL, out_shared_cons_name, function_index,
-			       comment);
+	classobj_put_index (&(class_->properties), constraint_type, constraint_name, attrs, asc_desc,
+			    attrs_prefix_length, &index, filter_index, NULL, out_shared_cons_name, function_index,
+			    comment, false);
       if (error != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -13767,6 +13776,7 @@ severe_error:
 
   return error;
 }
+#endif
 
 /*
  * sm_drop_index() - Removes an index for an attribute.
@@ -13774,9 +13784,7 @@ severe_error:
  *    index if one has been created.  !! This works now because
  *    sm_drop_index is the only way that we can remove indexes.  If
  *    index add/drop can ever be done during template processing, we'll
- *    have to make that code more aware of this.  I suspect that this
- *    will all get cleaned up during the migration to multi-column
- *    indexes.
+ *    have to make that code more aware of this.
  *   return: NO_ERROR on success, non-zero for ERROR
  *   classop(in): class object
  *   constraint_name(in): constraint name
@@ -14348,7 +14356,7 @@ sm_produce_constraint_name_tmpl (SM_TEMPLATE * tmpl, DB_CONSTRAINT_TYPE constrai
 static int
 sm_check_index_exist (MOP classop, char **out_shared_cons_name, DB_CONSTRAINT_TYPE constraint_type,
 		      const char *constraint_name, const char **att_names, const int *asc_desc,
-		      SM_PREDICATE_INFO * filter_index, SM_FUNCTION_INFO * func_info)
+		      const SM_PREDICATE_INFO * filter_index, const SM_FUNCTION_INFO * func_info)
 {
   int error = NO_ERROR;
   SM_CLASS *class_;
@@ -14368,6 +14376,141 @@ sm_check_index_exist (MOP classop, char **out_shared_cons_name, DB_CONSTRAINT_TY
 				     constraint_type, constraint_name, att_names, asc_desc, filter_index, func_info);
 }
 
+static int
+sm_add_secondary_index_on_partition (MOP classop, DB_CONSTRAINT_TYPE constraint_type,
+				     const char *constraint_name, const char **att_names, const int *asc_desc,
+				     const int *attrs_prefix_length, int class_attributes,
+				     SM_PREDICATE_INFO * filter_index, SM_FUNCTION_INFO * function_index,
+				     const char *comment, SM_INDEX_STATUS index_status, MOP * sub_partitions)
+{
+  int error, i;
+  bool set_savept = false;
+  SM_FUNCTION_INFO *new_func_index_info = NULL;
+  SM_PREDICATE_INFO *new_filter_index_info = NULL;
+  const char *class_name, *partition_name;
+
+  /* TODO: This will not work for online indexes from the point of view of concurrent transactions since the 
+   * global index will hold the lock until all the partitions finished loading.
+   * We need to let the partition loading to also demote the global table as well.
+   */
+
+  error = tran_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_INDEX);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+  set_savept = true;
+
+  if (function_index != NULL)
+    {
+      error = sm_save_function_index_info (&new_func_index_info, function_index);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+    }
+
+  if (filter_index != NULL)
+    {
+      error = sm_save_filter_index_info (&new_filter_index_info, filter_index);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+    }
+
+  for (i = 0; error == NO_ERROR && sub_partitions[i]; i++)
+    {
+      if (sm_exist_index (sub_partitions[i], constraint_name, NULL) == NO_ERROR)
+	{
+	  class_name = sm_get_ch_name (sub_partitions[i]);
+	  if (class_name == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (error);
+	    }
+	  else
+	    {
+	      error = ER_SM_INDEX_EXISTS;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, class_name, constraint_name);
+	    }
+	  break;
+	}
+
+      if (function_index != NULL)
+	{
+	  class_name = sm_get_ch_name (classop);
+	  if (class_name == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (error);
+	      break;
+	    }
+
+	  partition_name = sm_get_ch_name (sub_partitions[i]);
+	  if (partition_name == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (error);
+	      break;
+	    }
+
+	  /* make sure the expression is compiled using the appropriate name, the partition name */
+	  error = do_recreate_func_index_constr (NULL, NULL, new_func_index_info, NULL, class_name, partition_name);
+	  if (error != NO_ERROR)
+	    {
+	      goto end;
+	    }
+	}
+
+      if (filter_index != NULL)
+	{
+	  /* make sure the expression is compiled using the appropriate name, the partition name */
+	  if (new_filter_index_info->num_attrs > 0)
+	    {
+	      class_name = sm_get_ch_name (classop);
+	      if (class_name == NULL)
+		{
+		  ASSERT_ERROR_AND_SET (error);
+		  break;
+		}
+
+	      partition_name = sm_get_ch_name (sub_partitions[i]);
+	      if (partition_name == NULL)
+		{
+		  ASSERT_ERROR_AND_SET (error);
+		  break;
+		}
+
+	      error = do_recreate_filter_index_constr (NULL, new_filter_index_info, NULL, class_name, partition_name);
+	      if (error != NO_ERROR)
+		{
+		  goto end;
+		}
+	    }
+	}
+
+      error = sm_add_constraint (sub_partitions[i], constraint_type, constraint_name, att_names, asc_desc,
+				 attrs_prefix_length, class_attributes, new_filter_index_info, new_func_index_info,
+				 comment, index_status);
+    }
+
+end:
+  if (set_savept && error != NO_ERROR && error != ER_LK_UNILATERALLY_ABORTED)
+    {
+      (void) tran_abort_upto_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_INDEX);
+    }
+  if (new_func_index_info != NULL)
+    {
+      sm_free_function_index_info (new_func_index_info);
+      free_and_init (new_func_index_info);
+    }
+  if (new_filter_index_info != NULL)
+    {
+      sm_free_filter_index_info (new_filter_index_info);
+      free_and_init (new_filter_index_info);
+    }
+
+  return error;
+}
+
 /*
  * sm_add_constraint() - Add a constraint to the class.
  *   return: NO_ERROR on success, non-zero for ERROR
@@ -14383,6 +14526,7 @@ sm_check_index_exist (MOP classop, char **out_shared_cons_name, DB_CONSTRAINT_TY
  *     		class attributes. A false value indicates that the names
  *     		refer to instance attributes.
  *   comment(in): constraint comment
+ *   is_online_index(in):
  *
  *  Note: When adding NOT NULL constraint, this function doesn't check the
  *	  existing values of the attribute. To make sure NOT NULL constraint
@@ -14391,11 +14535,13 @@ sm_check_index_exist (MOP classop, char **out_shared_cons_name, DB_CONSTRAINT_TY
 int
 sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *constraint_name, const char **att_names,
 		   const int *asc_desc, const int *attrs_prefix_length, int class_attributes,
-		   SM_PREDICATE_INFO * filter_index, SM_FUNCTION_INFO * function_index, const char *comment)
+		   SM_PREDICATE_INFO * filter_index, SM_FUNCTION_INFO * function_index, const char *comment,
+		   SM_INDEX_STATUS index_status)
 {
   int error = NO_ERROR;
   SM_TEMPLATE *def;
   MOP newmop = NULL;
+  LOCK ex_lock = SCH_M_LOCK;
 
   if (att_names == NULL)
     {
@@ -14407,37 +14553,147 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
     {
     case DB_CONSTRAINT_INDEX:
     case DB_CONSTRAINT_REVERSE_INDEX:
-      error =
-	sm_add_index (classop, constraint_type, constraint_name, att_names, asc_desc, attrs_prefix_length, filter_index,
-		      function_index, comment);
-      break;
-
     case DB_CONSTRAINT_UNIQUE:
     case DB_CONSTRAINT_REVERSE_UNIQUE:
     case DB_CONSTRAINT_PRIMARY_KEY:
-      def = smt_edit_class_mop (classop, AU_ALTER);
-      if (def == NULL)
+      DB_AUTH auth;
+      bool is_secondary_index;
+
+      is_secondary_index = (constraint_type == DB_CONSTRAINT_INDEX || constraint_type == DB_CONSTRAINT_REVERSE_INDEX);
+
+      if (is_secondary_index)
 	{
-	  assert (er_errid () != NO_ERROR);
-	  error = er_errid ();
+	  auth = AU_INDEX;
 	}
       else
 	{
-	  error =
-	    smt_add_constraint (def, constraint_type, constraint_name, att_names, asc_desc, class_attributes, NULL,
-				filter_index, function_index, comment);
-	  if (error == NO_ERROR)
-	    {
-	      error = sm_update_class (def, &newmop);
-	    }
+	  auth = AU_ALTER;
+	}
 
-	  if (error == NO_ERROR)
-	    {
-	      error = sm_update_statistics (newmop, STATS_WITH_SAMPLING);
-	    }
-	  else
+      // TODO: secondary index on partition.
+
+      def = smt_edit_class_mop (classop, auth);
+      if (def == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  return error;
+	}
+
+      // create local indexes on partitions
+      if (is_secondary_index)
+	{
+	  MOP *sub_partitions = NULL;
+	  int partition_type;
+
+	  error = sm_partitioned_class_type (classop, &partition_type, NULL, &sub_partitions);
+	  if (error != NO_ERROR)
 	    {
 	      smt_quit (def);
+	      return error;
+	    }
+
+	  if (partition_type == DB_PARTITIONED_CLASS)
+	    {
+	      // prefix index is not allowed on partition
+	      for (int i = 0; attrs_prefix_length != NULL && att_names[i] != NULL; i++)
+		{
+		  if (attrs_prefix_length[i] != -1)
+		    {
+		      error = ER_SM_INDEX_PREFIX_LENGTH_ON_PARTITIONED_CLASS;
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+
+		      if (sub_partitions != NULL)
+			{
+			  free_and_init (sub_partitions);
+			}
+		      smt_quit (def);
+		      return error;
+		    }
+		}
+
+	      error = sm_add_secondary_index_on_partition (classop, constraint_type, constraint_name, att_names,
+							   asc_desc, attrs_prefix_length, class_attributes,
+							   filter_index, function_index, comment, index_status,
+							   sub_partitions);
+	      if (error != NO_ERROR)
+		{
+		  if (sub_partitions != NULL)
+		    {
+		      free_and_init (sub_partitions);
+		    }
+		  smt_quit (def);
+		  return error;
+		}
+	    }
+
+	  if (sub_partitions != NULL)
+	    {
+	      free_and_init (sub_partitions);
+	    }
+	}
+
+      error = smt_add_constraint (def, constraint_type, constraint_name, att_names, asc_desc, attrs_prefix_length,
+				  class_attributes, NULL, filter_index, function_index, comment, index_status);
+      if (error != NO_ERROR)
+	{
+	  smt_quit (def);
+	  return error;
+	}
+
+      error = sm_update_class_with_auth (def, &newmop, auth);
+      if (error != NO_ERROR)
+	{
+	  smt_quit (def);
+	  return error;
+	}
+
+      if (index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+	{
+	  /* Demote lock for online index. */
+	  error = locator_demote_class_lock (&newmop->oid_info.oid, IX_LOCK, &ex_lock);
+	  if (error != NO_ERROR)
+	    {
+	      smt_quit (def);
+	      return error;
+	    }
+
+	  // Load index phase.
+	  /* TODO For now, the index will be empty. */
+
+	  error = sm_update_statistics (newmop, STATS_WITH_SAMPLING);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+
+	  /* Promote the lock for online index. */
+	  def = smt_edit_class_mop (classop, auth);
+	  if (def == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (error);
+	      return error;
+	    }
+
+	  /* If we have an online index, we need to change the constraint to SM_ONLINE_INDEX_BUILDING_DONE, and 
+	   * add remove the old one from the property list. We also do not want to do some later checks.
+	   */
+
+	  // TODO: Why do we remove and add it rather than just change the property?
+	  error = smt_add_constraint (def, constraint_type, constraint_name, att_names, asc_desc, attrs_prefix_length,
+				      class_attributes, NULL, filter_index, function_index, comment,
+				      SM_ONLINE_INDEX_BUILDING_DONE);
+	  if (error != NO_ERROR)
+	    {
+	      smt_quit (def);
+	      return error;
+	    }
+
+	  /* Update the class now. */
+	  error = sm_update_class_with_auth (def, &newmop, auth);
+	  if (error != NO_ERROR)
+	    {
+	      smt_quit (def);
+	      return error;
 	    }
 	}
       break;
@@ -14446,31 +14702,30 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
       def = smt_edit_class_mop (classop, AU_ALTER);
       if (def == NULL)
 	{
-	  assert (er_errid () != NO_ERROR);
-	  error = er_errid ();
+	  ASSERT_ERROR_AND_SET (error);
+	  return error;
 	}
-      else
-	{
-	  error =
-	    smt_add_constraint (def, constraint_type, constraint_name, att_names, asc_desc, class_attributes, NULL,
-				filter_index, function_index, comment);
-	  if (error == NO_ERROR)
-	    {
-	      error = do_check_fk_constraints (def, NULL);
-	    }
-	  if (error == NO_ERROR)
-	    {
-	      error = sm_update_class (def, NULL);
-	    }
 
-	  if (error == NO_ERROR)
-	    {
-	      /* don't have to update stats for NOT NULL */
-	    }
-	  else
-	    {
-	      smt_quit (def);
-	    }
+      error = smt_add_constraint (def, constraint_type, constraint_name, att_names, asc_desc, attrs_prefix_length,
+				  class_attributes, NULL, filter_index, function_index, comment, index_status);
+      if (error != NO_ERROR)
+	{
+	  smt_quit (def);
+	  return error;
+	}
+
+      error = do_check_fk_constraints (def, NULL);
+      if (error != NO_ERROR)
+	{
+	  smt_quit (def);
+	  return error;
+	}
+
+      error = sm_update_class (def, NULL);
+      if (error != NO_ERROR)
+	{
+	  smt_quit (def);
+	  return error;
 	}
       break;
 
@@ -15388,9 +15643,9 @@ sm_truncate_class (MOP class_mop)
   /* Normal index must be created earlier than unique constraint or FK, because of shared btree case. */
   for (saved = index_save_info; saved != NULL; saved = saved->next)
     {
-      error =
-	sm_add_index (class_mop, saved->constraint_type, saved->name, (const char **) saved->att_names, saved->asc_desc,
-		      saved->prefix_length, saved->filter_predicate, saved->func_index_info, saved->comment);
+      error = sm_add_constraint (class_mop, saved->constraint_type, saved->name, (const char **) saved->att_names,
+				 saved->asc_desc, saved->prefix_length, false, saved->filter_predicate,
+				 saved->func_index_info, saved->comment, SM_NORMAL_INDEX);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
@@ -15400,10 +15655,9 @@ sm_truncate_class (MOP class_mop)
   /* PK must be created earlier than FK, because of self referencing case */
   for (saved = unique_save_info; saved != NULL; saved = saved->next)
     {
-      error =
-	sm_add_constraint (class_mop, saved->constraint_type, saved->name, (const char **) saved->att_names,
-			   saved->asc_desc, saved->prefix_length, 0, saved->filter_predicate, saved->func_index_info,
-			   saved->comment);
+      error = sm_add_constraint (class_mop, saved->constraint_type, saved->name, (const char **) saved->att_names,
+				 saved->asc_desc, saved->prefix_length, false, saved->filter_predicate,
+				 saved->func_index_info, saved->comment, SM_NORMAL_INDEX);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
@@ -15421,10 +15675,9 @@ sm_truncate_class (MOP class_mop)
 
   for (saved = fk_save_info; saved != NULL; saved = saved->next)
     {
-      error =
-	dbt_add_foreign_key (ctmpl, saved->name, (const char **) saved->att_names, saved->ref_cls_name,
-			     (const char **) saved->ref_attrs, saved->fk_delete_action, saved->fk_update_action,
-			     saved->comment);
+      error = dbt_add_foreign_key (ctmpl, saved->name, (const char **) saved->att_names, saved->ref_cls_name,
+				   (const char **) saved->ref_attrs, saved->fk_delete_action, saved->fk_update_action,
+				   saved->comment);
 
       if (error != NO_ERROR)
 	{
@@ -16017,4 +16270,73 @@ flatten_partition_info (SM_TEMPLATE * def, SM_TEMPLATE * flat)
     }
 
   return NO_ERROR;
+}
+
+/*
+ * sm_stats_remove_online_index_stats () - Removes the online index statistics from the statistics arrays.
+ * return        - void
+ * class_ (in)   - Class that requested the statistics.
+ *
+ * Here, we have to remove the stats regarding the possible btid that represents
+ * an online index build in progress.
+ */
+static void
+sm_stats_remove_online_index_stats (SM_CLASS * class_)
+{
+  SM_CLASS_CONSTRAINT *cons;
+  int i;
+  BTID online_index_btid = BTID_INITIALIZER;
+
+  for (cons = class_->constraints; cons != NULL; cons = cons->next)
+    {
+      /* Check if there is an online index currently being built or an invisible one. */
+      if (cons->index_status != SM_ONLINE_INDEX_BUILDING_IN_PROGRESS && cons->index_status != SM_INVISIBLE_INDEX)
+	{
+	  continue;
+	}
+
+      online_index_btid = cons->index_btid;
+
+      /* Iterate through all attributes. */
+      for (i = 0; i < class_->stats->n_attrs; i++)
+	{
+	  /* Iterate through all statistics for this attribute and find the one with the same BTID as the online index. */
+	  for (int j = 0; j < class_->stats->attr_stats[i].n_btstats; j++)
+	    {
+	      if (BTID_IS_EQUAL (&class_->stats->attr_stats[i].bt_stats[j].btid, &online_index_btid) == 1)
+		{
+		  sm_stats_remove_bt_stats_at_position (&class_->stats->attr_stats[i], j);
+		  break;
+		}
+	    }
+	}
+    }
+}
+
+static void
+sm_stats_remove_bt_stats_at_position (ATTR_STATS * attr_stats, int position)
+{
+  BTREE_STATS *to_be_moved;
+  int i;
+
+  /* This moves the statistic at the end and makes it unavailable by decrementing the n_btstats */
+  if (attr_stats->bt_stats[position].pkeys != NULL)
+    {
+      /* First free the partial keys. */
+      db_ws_free_and_init (attr_stats->bt_stats[position].pkeys);
+    }
+
+  to_be_moved = &attr_stats->bt_stats[position];
+
+  /* Move the other statistics on a position to the left. */
+  for (i = position; i < attr_stats->n_btstats - 1; i++)
+    {
+      attr_stats->bt_stats[i] = attr_stats->bt_stats[i + 1];
+    }
+
+  /* Set the last position on the cleared statistic. */
+  attr_stats->bt_stats[attr_stats->n_btstats - 1] = *to_be_moved;
+
+  /* Make it unavailable. */
+  attr_stats->n_btstats--;
 }

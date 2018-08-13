@@ -871,7 +871,6 @@ cfg_update_db (DB_INFO * db_info_p, const char *path, const char *logpath, const
 
       if (lobpath != NULL)
 	{
-
 	  if (db_info_p->lobpath != NULL)
 	    {
 	      free_and_init (db_info_p->lobpath);
@@ -899,6 +898,7 @@ cfg_update_db (DB_INFO * db_info_p, const char *path, const char *logpath, const
  *    name(in): database name
  *    path(in):
  *    logpath(in): log path
+ *    lobpath(in): lob path
  *    hosts(in):
  */
 DB_INFO *
@@ -908,7 +908,9 @@ cfg_new_db (const char *name, const char *path, const char *logpath, const char 
 
   db_info_p = (DB_INFO *) malloc (DB_SIZEOF (DB_INFO));
   if (db_info_p == NULL)
-    goto error;
+    {
+      goto error;
+    }
 
   db_info_p->pathname = NULL;
   db_info_p->logpath = NULL;
@@ -940,7 +942,9 @@ cfg_new_db (const char *name, const char *path, const char *logpath, const char 
 
   db_info_p->pathname = (path != NULL) ? strdup (path) : NULL;
   if (db_info_p->pathname == NULL)
-    goto error;
+    {
+      goto error;
+    }
 
   if (logpath == NULL)
     {
@@ -952,7 +956,9 @@ cfg_new_db (const char *name, const char *path, const char *logpath, const char 
     }
 
   if (db_info_p->logpath == NULL)
-    goto error;
+    {
+      goto error;
+    }
 
   if (lobpath != NULL)
     {
@@ -1022,9 +1028,9 @@ cfg_find_db_list (DB_INFO * db_info_list_p, const char *name)
  *    return: new database descriptor
  *    dir(in/out): pointer to directory list
  *    name(in): database name
- *    path(in): directory path
- *    logpath(in):
- *    host(in): server host name
+ *    path(in): directory path 
+ *    logpath(in): log path
+ *    lobpath(in): lob path
  */
 DB_INFO *
 cfg_add_db (DB_INFO ** dir, const char *name, const char *path, const char *logpath, const char *lobpath,
@@ -1090,14 +1096,13 @@ cfg_find_db (const char *db_name)
 	    {
 	      if (db_info_p->hosts != NULL)
 		{
-		  db_info_p =
-		    cfg_new_db (db_info_p->name, db_info_p->pathname, db_info_p->logpath, db_info_p->lobpath,
-				(const char **) db_info_p->hosts);
+		  db_info_p = cfg_new_db (db_info_p->name, db_info_p->pathname, db_info_p->logpath, db_info_p->lobpath,
+					  (const char **) db_info_p->hosts);
 		}
 	      else
 		{
-		  db_info_p =
-		    cfg_new_db (db_info_p->name, db_info_p->pathname, db_info_p->logpath, db_info_p->lobpath, NULL);
+		  db_info_p = cfg_new_db (db_info_p->name, db_info_p->pathname, db_info_p->logpath, db_info_p->lobpath,
+					  NULL);
 		}
 	    }
 	  cfg_free_directory (dir_info_p);
@@ -1124,7 +1129,7 @@ bool
 cfg_delete_db (DB_INFO ** dir_info_p, const char *name)
 {
   DB_INFO *db_info_p, *prev_info_p, *found_info_p;
-  int success = false;
+  bool success = false;
 
   for (db_info_p = *dir_info_p, found_info_p = NULL, prev_info_p = NULL; db_info_p != NULL && found_info_p == NULL;
        db_info_p = db_info_p->next)

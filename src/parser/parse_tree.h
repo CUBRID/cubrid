@@ -186,20 +186,16 @@
 	   ((t) == PT_TYPE_ENUMERATION)) ? true : false )
 
 #define PT_IS_DATE_TIME_WITH_TZ_TYPE(t) \
-        ( (((t) == PT_TYPE_TIMETZ)       || \
-	   ((t) == PT_TYPE_TIMELTZ)       || \
-	   ((t) == PT_TYPE_TIMESTAMPTZ)       || \
-	   ((t) == PT_TYPE_TIMESTAMPLTZ       || \
-	   ((t) == PT_TYPE_DATETIMETZ)  || \
-	   ((t) == PT_TYPE_DATETIMELTZ)) ? true : false )
+        ( ((t) == PT_TYPE_TIMESTAMPTZ  || \
+	   (t) == PT_TYPE_TIMESTAMPLTZ || \
+	   (t) == PT_TYPE_DATETIMETZ   || \
+	   (t) == PT_TYPE_DATETIMELTZ) ? true : false )
 
 #define PT_IS_DATE_TIME_TYPE(t) \
         ( (((t) == PT_TYPE_DATE)       || \
 	   ((t) == PT_TYPE_TIME)       || \
 	   ((t) == PT_TYPE_TIMESTAMP)  || \
 	   ((t) == PT_TYPE_DATETIME)   || \
-	   ((t) == PT_TYPE_TIMETZ)     || \
-	   ((t) == PT_TYPE_TIMELTZ)    || \
 	   ((t) == PT_TYPE_DATETIMETZ)   || \
 	   ((t) == PT_TYPE_DATETIMELTZ)  || \
 	   ((t) == PT_TYPE_TIMESTAMPTZ)  || \
@@ -216,8 +212,6 @@
 
 #define PT_HAS_TIME_PART(t) \
         ( (((t) == PT_TYPE_TIME)       || \
-	   ((t) == PT_TYPE_TIMETZ)     || \
-	   ((t) == PT_TYPE_TIMELTZ)    || \
 	   ((t) == PT_TYPE_TIMESTAMP)  || \
 	   ((t) == PT_TYPE_TIMESTAMPTZ)  || \
 	   ((t) == PT_TYPE_TIMESTAMPLTZ)  || \
@@ -226,9 +220,7 @@
 	   ((t) == PT_TYPE_DATETIMELTZ)) ? true : false )
 
 #define PT_IS_LTZ_TYPE(t) \
-  ((t) == PT_TYPE_TIMELTZ \
-   || (t) == PT_TYPE_TIMESTAMPLTZ \
-   || (t) == PT_TYPE_DATETIMELTZ)
+  ((t) == PT_TYPE_TIMESTAMPLTZ || (t) == PT_TYPE_DATETIMELTZ)
 
 #define PT_IS_PRIMITIVE_TYPE(t) \
         ( (((t) == PT_TYPE_OBJECT) || \
@@ -966,10 +958,6 @@ enum pt_type_enum
   PT_TYPE_DATETIMELTZ,
 
   PT_TYPE_MAX,
-
-  /* Disabled type : kept here to minimize code changes */
-  PT_TYPE_TIMETZ,
-  PT_TYPE_TIMELTZ,
 };
 typedef enum pt_type_enum PT_TYPE_ENUM;
 
@@ -1271,7 +1259,8 @@ typedef enum
   PT_REBUILD_INDEX,
   PT_ADD_INDEX_CLAUSE,
   PT_CHANGE_TABLE_COMMENT,
-  PT_CHANGE_INDEX_COMMENT
+  PT_CHANGE_INDEX_COMMENT,
+  PT_CHANGE_INDEX_STATUS
 } PT_ALTER_CODE;
 
 /* Codes for trigger event type */
@@ -1482,7 +1471,6 @@ typedef enum
   PT_FROM_TZ,
   PT_TO_DATETIME_TZ,
   PT_TO_TIMESTAMP_TZ,
-  PT_TO_TIME_TZ,
   PT_UTC_TIMESTAMP,
   PT_CRC32,
   PT_SCHEMA_DEF,
@@ -1966,6 +1954,7 @@ struct pt_index_info
   int func_no_args;		/* number of arguments in the function index expression */
   bool reverse;			/* REVERSE */
   bool unique;			/* UNIQUE specified? */
+  SM_INDEX_STATUS index_status;	/* Index status : NORMAL / ONLINE / INVISIBLE */
 };
 
 /* CREATE USER INFO */
@@ -2997,7 +2986,6 @@ typedef enum pt_time_zones
 
 /* typedefs for TIME and DATE */
 typedef long PT_TIME;
-typedef DB_TIMETZ PT_TIMETZ;
 typedef long PT_UTIME;
 typedef DB_TIMESTAMPTZ PT_TIMESTAMPTZ;
 typedef long PT_DATE;
@@ -3059,7 +3047,6 @@ union pt_data_value
   void *p;			/* what is this */
   DB_OBJECT *op;
   PT_TIME time;
-  PT_TIMETZ timetz;
   PT_DATE date;
   PT_UTIME utime;		/* used for TIMESTAMP and TIMESTAMPLTZ */
   PT_TIMESTAMPTZ timestamptz;

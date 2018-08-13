@@ -154,10 +154,10 @@ namespace mem
     protected:
       void init (const size_t capacity)
       {
-	m_capacity = (int) capacity;
-	m_buffer = new CCQ_SLOT[capacity];
+	m_capacity = MAX (2, (int) capacity);
+	m_buffer = new CCQ_SLOT[m_capacity];
 
-	std::memset (m_buffer, 0, capacity * sizeof (CCQ_SLOT));
+	std::memset (m_buffer, 0, m_capacity * sizeof (CCQ_SLOT));
 
 	m_head = 0;
 	m_tail = 0;

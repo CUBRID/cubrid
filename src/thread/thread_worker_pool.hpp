@@ -26,9 +26,11 @@
 
 // same module include
 #include "thread_task.hpp"
+#include "thread_waiter.hpp"
 
 // cubrid includes
 #include "perf_def.hpp"
+#include "extensible_array.hpp"
 
 // system includes
 #include <atomic>
@@ -39,10 +41,12 @@
 #include <memory>
 #include <mutex>
 #include <queue>
+#include <string>
 #include <system_error>
 #include <thread>
 
 #include <cassert>
+#include <cstring>
 
 namespace cubthread
 {
@@ -139,8 +143,8 @@ namespace cubthread
       class core;
 
       worker_pool (std::size_t pool_size, std::size_t task_max_count, context_manager_type &context_mgr,
-		   std::size_t core_count = 1, bool debug_logging = false, bool pool_threads = false,
-		   std::chrono::seconds wait_for_task_time = std::chrono::seconds (5));
+		   const char *name, std::size_t core_count = 1, bool debug_logging = false, bool pool_threads = false,
+		   wait_seconds wait_for_task_time = std::chrono::seconds (5));
       ~worker_pool ();
 
       // try to execute task; executes only if the maximum number of tasks is not reached.
@@ -159,6 +163,9 @@ namespace cubthread
       // stop worker pool; stop all running threads; discard any tasks in queue
       void stop_execution (void);
 
+      // start all worker threads to be ready for future tasks
+      void start_all_workers (void);
+
       // is_running = is not stopped; when created, a worker pool starts running.
       // worker is stopped after stop_execution () is called
       bool is_running (void) const;
@@ -175,11 +182,14 @@ namespace cubthread
       // note: the statistics are collected from all cores and all their workers adding up all local statistics
       void get_stats (cubperf::stat_value *stats_out) const;
 
+      // log stats to error log file
+      void er_log_stats (void) const;
+
       inline bool is_pooling_threads () const
       {
 	return m_pool_threads;
       }
-      inline const std::chrono::seconds &get_wait_for_task_time () const
+      inline const wait_seconds &get_wait_for_task_time () const
       {
 	return m_wait_for_task_time;
       }
@@ -248,7 +258,9 @@ namespace cubthread
       bool m_pool_threads;
 
       // transition time period between active and inactive
-      std::chrono::seconds m_wait_for_task_time;
+      wait_seconds m_wait_for_task_time;
+
+      std::string m_name;
   };
 
   // worker_pool<Context>::core
@@ -283,6 +295,9 @@ namespace cubthread
       // notify workers to stop; if any of core's workers are still running, outputs is_not_stopped = true
       void notify_stop (bool &is_not_stopped);
       void retire_queued_tasks (void);
+
+      void start_all_workers (void);
+
       // statistics
       void get_stats (cubperf::stat_value *sum_inout) const;
 
@@ -399,17 +414,38 @@ namespace cubthread
       // init
       void init_core (core_type &parent);
 
-      // start task execution on a new thread (push_time is provided by core)
+      // assign task (can be NULL) to running thread or start thread
       void assign_task (task<Context> *work_p, cubperf::time_point push_time);
+      // start thread for current worker
+      void start_thread (void);
       // run task on current thread (push_time is provided by core)
       void push_task_on_running_thread (task<Context> *work_p, cubperf::time_point push_time);
       // stop execution; if worker has a thread running, it outputs is_not_stopped = true
       void stop_execution (bool &is_not_stopped);
-      // map function to context (if context is available)
+
+      // map function to context (if a task is running and if context is available)
+      //
+      // note - sometimes a thread has a context assigned, but it is waiting for tasks. if that's the case, the
+      //        function will not be applied, since it is not considered a "running" context.
+      //
       template <typename Func, typename ... Args>
-      void map_context (bool &stop, Func &&func, Args &&... args);
+      void map_context_if_running (bool &stop, Func &&func, Args &&... args);
+
       // add own stats to given argument
       void get_stats (cubperf::stat_value *sum_inout) const;
+
+      std::mutex &get_mutex (void)
+      {
+	return m_task_mutex;
+      }
+      bool has_thread (void)
+      {
+	return m_has_thread;
+      }
+      void set_push_time_now (void)
+      {
+	m_push_time = cubperf::clock::now ();
+      }
 
     private:
 
@@ -479,6 +515,9 @@ namespace cubthread
   template <typename Func>
   void wp_call_func_throwing_system_error (const char *message, Func &func);
 
+  // dump worker pool statistics to error log
+  void wp_er_log_stats (const char *header, cubperf::stat_value *statsp);
+
   /************************************************************************/
   /* Template/inline implementation                                       */
   /************************************************************************/
@@ -489,8 +528,8 @@ namespace cubthread
 
   template <typename Context>
   worker_pool<Context>::worker_pool (std::size_t pool_size, std::size_t task_max_count,
-				     context_manager_type &context_mgr, std::size_t core_count, bool debug_log, bool pool_threads,
-				     std::chrono::seconds wait_for_task_time)
+				     context_manager_type &context_mgr, const char *name, std::size_t core_count,
+				     bool debug_log, bool pool_threads, wait_seconds wait_for_task_time)
     : m_max_workers (pool_size)
     , m_task_max_count (task_max_count)
     , m_task_count (0)
@@ -502,6 +541,7 @@ namespace cubthread
     , m_log (debug_log)
     , m_pool_threads (pool_threads)
     , m_wait_for_task_time (wait_for_task_time)
+    , m_name (name == NULL ? "" : name)
   {
     // initialize cores; we'll try to distribute pool evenly to all cores. if core count is not fully contained in
     // pool size, some cores will have one additional worker
@@ -631,6 +671,16 @@ namespace cubthread
   }
 
   template <typename Context>
+  void
+  worker_pool<Context>::start_all_workers (void)
+  {
+    for (std::size_t it = 0; it < m_core_count; it++)
+      {
+	m_core_array[it].start_all_workers ();
+      }
+  }
+
+  template <typename Context>
   bool
   worker_pool<Context>::is_running (void) const
   {
@@ -666,6 +716,22 @@ namespace cubthread
       {
 	m_core_array[it].get_stats (stats_out);
       }
+  }
+
+  template<typename Context>
+  void
+  worker_pool<Context>::er_log_stats (void) const
+  {
+    if (!m_log)
+      {
+	return;
+      }
+
+    const std::size_t MAX_SIZE = 32;
+    cubperf::stat_value stats[MAX_SIZE];
+    std::memset (stats, 0, sizeof (stats));
+    get_stats (stats);
+    wp_er_log_stats (m_name.c_str (), stats);
   }
 
   template <typename Context>
@@ -911,7 +977,7 @@ namespace cubthread
   {
     for (std::size_t it = 0; it < m_max_workers && !stop; it++)
       {
-	m_worker_array[it].map_context (stop, func, args...);
+	m_worker_array[it].map_context_if_running (stop, func, args...);
 	if (stop)
 	  {
 	    // stop mapping
@@ -928,6 +994,78 @@ namespace cubthread
     for (std::size_t it = 0; it < m_max_workers; it++)
       {
 	m_worker_array[it].stop_execution (is_not_stopped);
+      }
+  }
+
+  template <typename Context>
+  void
+  worker_pool<Context>::core::start_all_workers (void)
+  {
+    worker *refp = NULL;
+    const std::size_t AVAILABLE_STACK_DEFAULT_SIZE = 1024;
+    extensible_array<worker *, AVAILABLE_STACK_DEFAULT_SIZE> available_stack;
+
+    // how this works:
+    //
+    // we need to start all workers, but we need to consider the fact that some may be already running. what we need
+    // to do is process the available workers and start threads for all those that don't have a thread started.
+    //
+    // workers that already have threads are saved and added back after processing all available workers.
+    //
+    // NOTE: this function does not guarantee that at the end all workers have threads. workers that stop their threads
+    //       during processing available workers are not restarted. however, we end up starting all or almost all
+    //       threads, which is good enough.
+    //
+
+    while (true)
+      {
+	// processing is done in two steps:
+	//
+	//    1. retrieve worker from available workers holding workers mutex
+	//    2. verify if worker has a thread started
+	//        2.1. if it doesn't have a thread, start one
+	//        2.2. if it does have thread, save it to available_stack.
+	//
+
+	std::unique_lock<std::mutex> core_lock (m_workers_mutex);
+	if (m_available_count == 0)
+	  {
+	    break;
+	  }
+	refp = m_available_workers[--m_available_count];
+	core_lock.unlock ();
+
+	if (refp->has_thread ())
+	  {
+	    // stack to make available at the end
+	    available_stack.append (&refp, 1);
+
+	    // note: this worker's thread may stop soon or may have stopped already. this case is accepted.
+	  }
+	else
+	  {
+	    // this thread is already stopped and we can start its thread
+	    refp->set_push_time_now ();
+	    refp->start_thread ();
+	  }
+      }
+
+    // copy all workers having threads back to available array.
+    if (available_stack.get_size () > 0)
+      {
+	std::unique_lock<std::mutex> core_lock (m_workers_mutex);
+	if (m_available_count > 0)
+	  {
+	    // move current available to make room for older ones
+	    std::memmove (m_available_workers + available_stack.get_size (), m_available_workers,
+			  m_available_count * sizeof (worker *));
+	  }
+
+	// copy from stack at the beginning of m_available_workers
+	std::memcpy (m_available_workers, available_stack.get_array (), available_stack.get_memsize ());
+
+	// update available count
+	m_available_count += available_stack.get_size ();
       }
   }
 
@@ -1010,23 +1148,31 @@ namespace cubthread
 
 	assert (m_context_p == NULL);
 
-	// start thread.
-	//
-	// the next code tries to help visualizing any system errors that can occur during create or detach in debug
-	// mode
-	//
-	// release will basically be reduced to:
-	// std::thread (&worker::run, this).detach ();
-	//
-
-	std::thread t;
-
-	auto lambda_create = [&] (void) -> void { t = std::thread (&worker::run, this); };
-	auto lambda_detach = [&] (void) -> void { t.detach (); };
-
-	wp_call_func_throwing_system_error ("starting thread", lambda_create);
-	wp_call_func_throwing_system_error ("detaching thread", lambda_detach);
+	start_thread ();
       }
+  }
+
+  template <typename Context>
+  void
+  worker_pool<Context>::core::worker::start_thread (void)
+  {
+    assert (!m_has_thread);
+
+    //
+    // the next code tries to help visualizing any system errors that can occur during create or detach in debug
+    // mode
+    //
+    // release will basically be reduced to:
+    // std::thread (&worker::run, this).detach ();
+    //
+
+    std::thread t;
+
+    auto lambda_create = [&] (void) -> void { t = std::thread (&worker::run, this); };
+    auto lambda_detach = [&] (void) -> void { t.detach (); };
+
+    wp_call_func_throwing_system_error ("starting thread", lambda_create);
+    wp_call_func_throwing_system_error ("detaching thread", lambda_detach);
   }
 
   template <typename Context>
@@ -1138,6 +1284,10 @@ namespace cubthread
     // and retire task
     retire_current_task ();
 
+    // and recycle context before getting another task
+    m_parent_core->get_context_manager ().recycle_context (*m_context_p);
+    wp_worker_statset_time_and_increment (m_statistics, Wpstat_recycle_context);
+
     // notify core one task was finished
     m_parent_core->finished_task_notification ();
   }
@@ -1166,10 +1316,6 @@ namespace cubthread
 
 	    // it is safe to set here
 	    m_task_p = task_p;
-
-	    // we need to recycle context before reusing
-	    m_parent_core->get_context_manager ().recycle_context (*m_context_p);
-	    wp_worker_statset_time_and_increment (m_statistics, Wpstat_recycle_context);
 	    return true;
 	  }
 
@@ -1179,8 +1325,8 @@ namespace cubthread
 	  {
 	    // wait until a task is received or stopped ...
 	    // ... or time out
-	    m_task_cv.wait_for (ulock, m_parent_core->get_parent_pool ()->get_wait_for_task_time (),
-				[this] { return m_task_p != NULL || m_stop; });
+	    condvar_wait (m_task_cv, ulock, m_parent_core->get_parent_pool ()->get_wait_for_task_time (),
+			  [this] () -> bool { return m_task_p != NULL || m_stop; });
 	  }
 	else
 	  {
@@ -1218,10 +1364,6 @@ namespace cubthread
 	// found task
 	m_statistics.m_timept = m_push_time;
 	wp_worker_statset_time_and_increment (m_statistics, Wpstat_wakeup_with_task);
-
-	// we need to recycle context before reusing
-	m_parent_core->get_context_manager ().recycle_context (*m_context_p);
-	wp_worker_statset_time_and_increment (m_statistics, Wpstat_recycle_context);
 	return true;
       }
   }
@@ -1270,8 +1412,14 @@ namespace cubthread
   template <typename Context>
   template <typename Func, typename ... Args>
   void
-  worker_pool<Context>::core::worker::map_context (bool &stop, Func &&func, Args &&... args)
+  worker_pool<Context>::core::worker::map_context_if_running (bool &stop, Func &&func, Args &&... args)
   {
+    if (m_task_p == NULL)
+      {
+	// not running
+	return;
+      }
+
     Context *ctxp = m_context_p;
 
     if (ctxp != NULL)

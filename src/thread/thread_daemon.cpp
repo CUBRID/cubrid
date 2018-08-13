@@ -40,9 +40,9 @@ namespace cubthread
   static const cubperf::statset_definition Daemon_statistics =
   {
     cubperf::stat_definition (STAT_LOOP_EXECUTE_COUNT_AND_TIME, cubperf::stat_definition::COUNTER_AND_TIMER,
-    "daemon_loop_count", "daemon_execute_time"),
+			      "daemon_loop_count", "daemon_execute_time"),
     cubperf::stat_definition (STAT_LOOP_PAUSE_TIME, cubperf::stat_definition::TIMER,
-    "daemon_pause_time")
+			      "daemon_pause_time")
   };
 
   //////////////////////////////////////////////////////////////////////////
@@ -131,6 +131,12 @@ namespace cubthread
     // get waiter stats
     m_waiter.get_stats (&stats_out[i]);
     // i += waiter::STAT_COUNT;
+  }
+
+  bool
+  daemon::is_running (void)
+  {
+    return m_waiter.is_running ();
   }
 
   std::size_t
