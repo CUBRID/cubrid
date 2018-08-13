@@ -12130,10 +12130,93 @@ select_expression_opt_with
 			$$ = stmt;
 
 		DBG_PRINT}} 
-	;   
+	;
 
 select_expression_no_with_clause
-	: select_or_subquery_no_with_clause
+	: select_expression_no_with_clause
+	{{
+        PT_NODE *node = $1;
+        parser_push_orderby_node (node);      
+      }}
+    opt_orderby_clause 
+    {{
+
+        PT_NODE *node = parser_pop_orderby_node ();
+
+        if (node && parser_cannot_cache)
+        {
+          node->info.query.reexecute = 1;
+          node->info.query.do_cache = 0;
+          node->info.query.do_not_cache = 1;
+        }
+
+
+        if (parser_subquery_check == 0)
+          PT_ERRORmf(this_parser, pt_top(this_parser),
+                     MSGCAT_SET_PARSER_SEMANTIC,
+                     MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "Subquery");
+
+        if (node)
+        {
+
+         PT_NODE *order = node->info.query.order_by;
+          if (order && order->info.sort_spec.expr
+              && order->info.sort_spec.expr->node_type == PT_VALUE
+              && order->info.sort_spec.expr->type_enum == PT_TYPE_NULL)
+          {
+            if (!node->info.query.q.select.group_by)
+            {
+              PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+                         MSGCAT_SEMANTIC_ORDERBYNULL_REQUIRES_GROUPBY);
+            }
+            else
+            {
+              parser_free_tree (this_parser, node->info.query.order_by);
+              node->info.query.order_by = NULL;
+            }
+          }
+        }
+
+        parser_push_orderby_node (node);
+
+		DBG_PRINT}}
+      opt_select_limit_clause
+      opt_for_update_clause
+		{{
+
+			PT_NODE *node = parser_pop_orderby_node ();
+			$<node>$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($<node>$, @$.buffer_pos)
+
+            DBG_PRINT}}
+     table_op select_or_subquery_no_with_clause
+     {{
+
+         PT_NODE *stmt = $8;
+         PT_NODE *arg1 = $1;
+
+         if (stmt)
+         {
+			    stmt->info.query.id = (UINTPTR) stmt;
+			    stmt->info.query.q.union_.arg1 = $1;
+			    stmt->info.query.q.union_.arg2 = $9;
+			    
+			    if (arg1 != NULL
+			        && arg1->info.query.is_subquery != PT_IS_SUBQUERY
+			        && arg1->info.query.order_by != NULL)
+			      {
+			        PT_ERRORm (this_parser, stmt,
+			               MSGCAT_SET_PARSER_SYNTAX,
+			               MSGCAT_SYNTAX_INVALID_UNION_ORDERBY);
+			      }
+         }
+
+
+			$$ = stmt;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| select_or_subquery_no_with_clause
 		{{
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
