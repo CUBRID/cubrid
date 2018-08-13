@@ -6361,7 +6361,7 @@ ldr_json_elem (LDR_CONTEXT * context, const char *str, int len, DB_VALUE * val)
   char *json_body = NULL;
   int error_code = NO_ERROR;
 
-  error_code = db_json_get_json_from_str (str, document);
+  error_code = db_json_get_json_from_str (str, document, len);
   if (error_code != NO_ERROR)
     {
       assert (document == NULL);
