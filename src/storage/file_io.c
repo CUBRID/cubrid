@@ -11799,6 +11799,11 @@ static int
 fileio_compute_page_checksum (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, int *checksum_crc32)
 {
   int error_code = NO_ERROR, saved_checksum_crc32;
+  const int unit_size = 4096;
+  const int num_pages = IO_PAGESIZE / unit_size;
+  const int sample_nbytes = 16;
+  int sampling_offset;
+  char buf[num_pages * sample_nbytes * 3];
 
   assert (io_page != NULL && checksum_crc32 != NULL);
 
@@ -11809,7 +11814,30 @@ fileio_compute_page_checksum (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, in
   io_page->prv.checksum = 0;
 
   /* Computes the page checksum. */
+#if 1
+  char *p = buf;
+  for (int i = 0; i < num_pages; i++)
+    {
+      // first 
+      sampling_offset = (i * unit_size);
+      memcpy (p, ((char *) io_page) + sampling_offset, sample_nbytes);
+      p += sample_nbytes;
+
+      // middle 
+      sampling_offset = (i * unit_size) + (unit_size / 2) - (sample_nbytes / 2);
+      memcpy (p, ((char *) io_page) + sampling_offset, sample_nbytes);
+      p += sample_nbytes;
+
+      // last 
+      sampling_offset = (i * unit_size) + (unit_size - sample_nbytes);
+      memcpy (p, ((char *) io_page) + sampling_offset, sample_nbytes);
+      p += sample_nbytes;
+    }
+
+  error_code = crypt_crc32 (thread_p, (char *) buf, sizeof (buf), checksum_crc32);
+#else
   error_code = crypt_crc32 (thread_p, (char *) io_page, IO_PAGESIZE, checksum_crc32);
+#endif
 
   /* Restores the saved checksum */
   io_page->prv.checksum = saved_checksum_crc32;
