@@ -32,60 +32,56 @@ namespace cubscan
 {
   namespace json_table
   {
-    struct scanner::scan_node
+    int
+    scanner::fetch_columns (const JSON_DOC &document, std::forward_list<cubxasl::json_table::column> &columns)
     {
-      cubxasl::json_table::nested_node &m_xasl_node;
+      int error_code = NO_ERROR;
+      for (auto col : columns)
+	{
+	  error_code = col.evaluate (document);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR();
+	      return error_code;
+	    }
+	}
+      return NO_ERROR;
+    }
 
-      PR_EVAL_FNC m_eval_function;
-      std::vector<scan_node *> m_children;
-      // scan_node *m_parent;
+    int
+    scanner::evaluate (cubxasl::json_table::node &node, cubthread::entry *thread_p, const JSON_DOC &document,
+		       DB_LOGICAL &logical_output)
+    {
+      logical_output = V_TRUE;
+      PR_EVAL_FNC &m_eval_function = function_vector[node.m_id];
 
-      int fetch_columns (const JSON_DOC &document, std::forward_list<cubxasl::json_table::column> &columns)
-      {
-	int error_code = NO_ERROR;
-	for (auto col : columns)
-	  {
-	    error_code = col.evaluate (document);
-	    if (error_code != NO_ERROR)
-	      {
-		ASSERT_ERROR ();
-		return error_code;
-	      }
-	  }
-	return NO_ERROR;
-      }
+      if (m_eval_function == NULL)
+	{
+	  assert (node.m_predicate_columns.empty());
+	  return NO_ERROR;
+	}
 
-      int evaluate (cubthread::entry *thread_p, const JSON_DOC &document, DB_LOGICAL &logical_output)
-      {
-	logical_output = V_TRUE;
+      int error_code = fetch_columns (document, node.m_predicate_columns);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
 
-	if (m_eval_function == NULL)
-	  {
-	    assert (m_xasl_node.m_predicate_columns.empty ());
-	    return NO_ERROR;
-	  }
+      logical_output = m_eval_function (thread_p, node.m_predicate_expression, NULL, NULL);
+      if (logical_output == V_ERROR)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  return error_code;
+	}
+      return NO_ERROR;
+    }
 
-	int error_code = fetch_columns (document, m_xasl_node.m_predicate_columns);
-	if (error_code != NO_ERROR)
-	  {
-	    return error_code;
-	  }
-
-	logical_output = m_eval_function (thread_p, m_xasl_node.m_predicate_expression, NULL, NULL);
-	if (logical_output == V_ERROR)
-	  {
-	    ASSERT_ERROR_AND_SET (error_code);
-	    return error_code;
-	  }
-	return NO_ERROR;
-      }
-
-      std::size_t get_row_count (void)
-      {
-	// todo: array
-	return 1;
-      }
-    };
+    std::size_t
+    scanner::get_row_count (cubxasl::json_table::node &node)
+    {
+      // todo: array
+      return 1;
+    }
 
     void
     scanner::init (cubxasl::json_table::spec_node &spec)
@@ -131,7 +127,7 @@ namespace cubscan
       if (db_value_type (value_p) == DB_TYPE_JSON)
 	{
 	  error_code = db_json_extract_document_from_path (db_get_json_document (value_p),
-		       m_scan_root->m_xasl_node.m_path.c_str (),
+		       m_scan_root->m_path.c_str (),
 		       m_scan_cursor[0].input_doc);
 	  if (error_code != NO_ERROR)
 	    {
@@ -151,7 +147,7 @@ namespace cubscan
 	      return error_code;
 	    }
 	  error_code = db_json_extract_document_from_path (db_get_json_document (&json_cast_value),
-		       m_scan_root->m_xasl_node.m_path.c_str (),
+		       m_scan_root->m_path.c_str (),
 		       m_scan_cursor[0].input_doc);
 	  pr_clear_value (&json_cast_value);
 	  if (error_code != NO_ERROR)
@@ -215,14 +211,14 @@ namespace cubscan
 
       // for each row X for each child
       // todo: fix condition
-      while (this_cursor.m_row < this_cursor.node->get_row_count ())
+      while (this_cursor.m_row < get_row_count (*this_cursor.node))
 	{
 	  if (!this_cursor.is_row_evaluated)
 	    {
 	      // todo: set this_cursor.process_doc to input_doc or row_doc
 	      // temporary: use input_doc.
 	      this_cursor.process_doc = this_cursor.input_doc;
-	      error_code = this_cursor.node->evaluate (thread_p, *this_cursor.process_doc, logical);
+	      error_code = evaluate (*this_cursor.node, thread_p, *this_cursor.process_doc, logical);
 	      if (error_code != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
@@ -237,8 +233,7 @@ namespace cubscan
 	      this_cursor.is_row_evaluated = true;
 
 	      // fetch other columns too
-	      error_code = this_cursor.node->fetch_columns (*this_cursor.process_doc,
-			   this_cursor.node->m_xasl_node.m_output_columns);
+	      error_code = fetch_columns (*this_cursor.process_doc, this_cursor.node->m_output_columns);
 	      if (error_code != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
@@ -248,14 +243,14 @@ namespace cubscan
 	      // fall
 	    }
 
-	  if (this_cursor.node->m_children.empty ())
+	  if (this_cursor.node->m_nested_nodes.empty ())
 	    {
 	      success = true;
 	      return NO_ERROR;
 	    }
 
 	  // create cursor for next child
-	  scan_node &next_node = *this_cursor.node->m_children[this_cursor.m_child];
+	  cubxasl::json_table::node &next_node = *this_cursor.node->m_nested_nodes[this_cursor.m_child];
 	  cursor &next_cursor = m_scan_cursor[depth + 1];
 	  next_cursor.is_row_evaluated = false;
 	  next_cursor.m_row = 0;
@@ -263,7 +258,7 @@ namespace cubscan
 	  next_cursor.node = &next_node;
 
 	  error_code = db_json_extract_document_from_path (this_cursor.process_doc,
-		       next_node.m_xasl_node.m_path.c_str (),
+		       next_node.m_path.c_str (),
 		       this_cursor.input_doc);
 	  if (error_code != NO_ERROR)
 	    {

@@ -24,6 +24,7 @@
 #ifndef _SCAN_JSON_TABLE_HPP_
 #define _SCAN_JSON_TABLE_HPP_
 
+#include <forward_list>
 #include <vector>
 
 // forward definitions
@@ -33,7 +34,8 @@ namespace cubxasl
   namespace json_table
   {
     struct spec_node;
-    struct nested_node;
+    struct node;
+    struct column;
   }
 }
 // db_json.hpp
@@ -68,12 +70,11 @@ namespace cubscan
 	//  description
 	//    cubxasl::json_table::nested_node extended with m_eval_function. nested_node is common to client, while
 	//    PR_EVAL_FNC is restricted to server.
-	struct scan_node;
 	struct cursor
 	{
 	  std::size_t m_row;
 	  std::size_t m_child;
-	  scan_node *node;
+	  cubxasl::json_table::node *node;
 	  JSON_DOC *input_doc;      // used for non-array / single row
 	  JSON_DOC *row_doc;        // used only for arrays and multiple rows
 	  JSON_DOC *process_doc;    // is either input_doc or row doc
@@ -81,13 +82,21 @@ namespace cubscan
 	};
 	using scan_cursor = std::vector<cursor>;
 
+
+
+	int fetch_columns (const JSON_DOC &document, std::forward_list<cubxasl::json_table::column> &columns);
+	int evaluate (cubxasl::json_table::node &node, cubthread::entry *thread_p, const JSON_DOC &document,
+		      DB_LOGICAL &logical_output);
+	std::size_t get_row_count (cubxasl::json_table::node &node);
+
 	int next_internal (cubthread::entry *thread_p, int depth, bool &success);
 
 	//scan_id_struct *m_scanid;
 	cubxasl::json_table::spec_node *m_specp;
-	scan_node *m_scan_root;
+	cubxasl::json_table::node *m_scan_root;
 	scan_cursor m_scan_cursor;
 	std::size_t m_scan_cursor_depth;
+	std::vector<PR_EVAL_FNC> function_vector; // each node will have its associated function based on node.id
     };
   } // namespace json_table
 } // namespace cubscan

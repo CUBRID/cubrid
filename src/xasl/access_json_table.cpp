@@ -35,6 +35,7 @@ namespace cubxasl
 {
   namespace json_table
   {
+
     column_on_error::column_on_error (void)
       : m_behavior (column_behavior::RETURN_NULL)
       , m_default_value (NULL)

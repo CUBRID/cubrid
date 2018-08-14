@@ -37,6 +37,7 @@ struct pred_expr;
 struct regu_variable_node;
 class JSON_DOC;
 
+
 namespace cubxasl
 {
   namespace json_table
@@ -91,21 +92,22 @@ namespace cubxasl
       int evaluate (const JSON_DOC &input);
     };
 
-    struct nested_node
+    struct node
     {
       std::string m_path;
-      std::forward_list<column> m_predicate_columns;   // columns part of scan predicate; also part of output
-      std::forward_list<column> m_output_columns;      // columns part of output only
-      pred_expr *m_predicate_expression;                           // predicate expression
-      std::forward_list<nested_node> m_nested_nodes;   // nested nodes
+      std::uint32_t m_ordinality;                     // will be used to count the row ordinality
+      std::forward_list<column> m_predicate_columns;  // columns part of scan predicate; also part of output
+      std::forward_list<column> m_output_columns;     // columns part of output only
+      pred_expr *m_predicate_expression;              // predicate expression
+      std::forward_list<node> m_nested_nodes;         // nested nodes
+      size_t m_id;                                    // identifier for each node
 
-      nested_node () = default;
+      node() = default;
     };
 
     struct spec_node
     {
-      nested_node *m_root_node;
-      std::uint32_t m_ordinality; // todo: move cubxasl::json_table::nested_node or cubscan::json_table::scan_node
+      node *m_root_node;
       //db_value *m_output_values;  // maybe; or maybe use xasl
       regu_variable_node *m_json_reguvar;
     };
@@ -124,7 +126,7 @@ const json_table_column_function JSON_TABLE_EXTRACT = json_table_column_function
 const json_table_column_function JSON_TABLE_EXISTS = json_table_column_function::EXISTS;
 
 using json_table_column = cubxasl::json_table::column;
-using json_table_nested_node = cubxasl::json_table::nested_node;
+using json_table_node = cubxasl::json_table::node;
 using json_table_spec_node = cubxasl::json_table::spec_node;
 
 #endif // _ACCESS_JSON_TABLE_H_
