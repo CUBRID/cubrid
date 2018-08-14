@@ -430,7 +430,7 @@ static int db_json_keys_func (const JSON_DOC &doc, JSON_DOC &result_json, const 
 
 STATIC_INLINE JSON_VALUE &db_json_doc_to_value (JSON_DOC &doc) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE const JSON_VALUE &db_json_doc_to_value (const JSON_DOC &doc) __attribute__ ((ALWAYS_INLINE));
-static int db_json_get_json_from_str (const char *json_raw, JSON_DOC &doc);
+static int db_json_get_json_from_str (const char *json_raw, JSON_DOC &doc, size_t json_raw_length);
 static int db_json_add_json_value_to_object (JSON_DOC &doc, const char *name, JSON_VALUE &value);
 
 static int db_json_deserialize_doc_internal (OR_BUF *buf, JSON_VALUE &value, JSON_PRIVATE_MEMPOOL &doc_allocator);
@@ -1060,7 +1060,7 @@ db_json_contains_duplicate_keys (JSON_DOC &doc)
 }
 
 static int
-db_json_get_json_from_str (const char *json_raw, JSON_DOC &doc)
+db_json_get_json_from_str (const char *json_raw, JSON_DOC &doc, size_t json_raw_length)
 {
   int error_code = NO_ERROR;
   if (json_raw == NULL)
@@ -1068,7 +1068,7 @@ db_json_get_json_from_str (const char *json_raw, JSON_DOC &doc)
       return NO_ERROR;
     }
 
-  if (doc.Parse (json_raw).HasParseError ())
+  if (doc.Parse (json_raw, json_raw_length).HasParseError ())
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_JSON, 2,
 	      rapidjson::GetParseError_En (doc.GetParseError ()), doc.GetErrorOffset ());
@@ -1086,7 +1086,7 @@ db_json_get_json_from_str (const char *json_raw, JSON_DOC &doc)
 }
 
 int
-db_json_get_json_from_str (const char *json_raw, JSON_DOC *&doc)
+db_json_get_json_from_str (const char *json_raw, JSON_DOC *&doc, size_t json_raw_length)
 {
   int err;
 
@@ -1094,7 +1094,7 @@ db_json_get_json_from_str (const char *json_raw, JSON_DOC *&doc)
 
   doc = db_json_allocate_doc ();
 
-  err = db_json_get_json_from_str (json_raw, *doc);
+  err = db_json_get_json_from_str (json_raw, *doc, json_raw_length);
   if (err != NO_ERROR)
     {
       delete doc;
@@ -2425,12 +2425,12 @@ db_json_keys_func (const JSON_DOC &doc, JSON_DOC *&result_json, const char *raw_
 }
 
 int
-db_json_keys_func (const char *json_raw, JSON_DOC *&result_json, const char *raw_path)
+db_json_keys_func (const char *json_raw, JSON_DOC *&result_json, const char *raw_path, size_t json_raw_length)
 {
   JSON_DOC doc;
   int error_code = NO_ERROR;
 
-  error_code = db_json_get_json_from_str (json_raw, doc);
+  error_code = db_json_get_json_from_str (json_raw, doc, json_raw_length);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR();

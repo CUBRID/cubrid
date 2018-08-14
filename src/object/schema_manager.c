@@ -3727,38 +3727,43 @@ sm_get_class_with_statistics (MOP classop)
 	  return NULL;
 	}
     }
-  if (is_class && !OID_ISTEMP (WS_OID (classop)))
-    {
-      if (au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT) == NO_ERROR)
-	{
-	  if (class_->stats == NULL)
-	    {
-	      /* it's first time to get the statistics of this class */
-	      if (!OID_ISTEMP (WS_OID (classop)))
-		{
-		  /* make sure the class is flushed before asking for statistics, this handles the case where an index
-		   * has been added to the class but the catalog & statistics do not reflect this fact until the class
-		   * is flushed.  We might want to flush instances as well but that shouldn't affect the statistics ? */
-		  if (locator_flush_class (classop) != NO_ERROR)
-		    {
-		      return NULL;
-		    }
-		  class_->stats = stats_get_statistics (WS_OID (classop), 0);
-		}
-	    }
-	  else
-	    {
-	      CLASS_STATS *stats;
 
-	      /* to get the statistics to be updated, it send timestamp as uninitialized value */
-	      stats = stats_get_statistics (WS_OID (classop), class_->stats->time_stamp);
-	      /* if newly updated statistics are fetched, replace the old one */
-	      if (stats)
-		{
-		  stats_free_statistics (class_->stats);
-		  class_->stats = stats;
-		}
+  if (!is_class || OID_ISTEMP (WS_OID (classop)))
+    {
+      return NULL;
+    }
+
+  if (au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT) != NO_ERROR)
+    {
+      return NULL;
+    }
+
+  if (class_->stats == NULL)
+    {
+      /* it's first time to get the statistics of this class */
+      if (!OID_ISTEMP (WS_OID (classop)))
+	{
+	  /* make sure the class is flushed before asking for statistics, this handles the case where an index
+	   * has been added to the class but the catalog & statistics do not reflect this fact until the class
+	   * is flushed.  We might want to flush instances as well but that shouldn't affect the statistics ? */
+	  if (locator_flush_class (classop) != NO_ERROR)
+	    {
+	      return NULL;
 	    }
+	  class_->stats = stats_get_statistics (WS_OID (classop), 0);
+	}
+    }
+  else
+    {
+      CLASS_STATS *stats;
+
+      /* to get the statistics to be updated, it send timestamp as uninitialized value */
+      stats = stats_get_statistics (WS_OID (classop), class_->stats->time_stamp);
+      /* if newly updated statistics are fetched, replace the old one */
+      if (stats)
+	{
+	  stats_free_statistics (class_->stats);
+	  class_->stats = stats;
 	}
     }
 
@@ -16286,6 +16291,11 @@ sm_stats_remove_online_index_stats (SM_CLASS * class_)
   SM_CLASS_CONSTRAINT *cons;
   int i;
   BTID online_index_btid = BTID_INITIALIZER;
+
+  if (class_ == NULL)
+    {
+      return;
+    }
 
   for (cons = class_->constraints; cons != NULL; cons = cons->next)
     {
