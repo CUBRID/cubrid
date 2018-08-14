@@ -12845,6 +12845,11 @@ select_or_subquery_without_values_query_no_with_clause_copy
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| '(' values_query ')'
+		{{
+			$$ = $2;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
 	;
 
 values_query
