@@ -440,6 +440,7 @@ EXPORTS
     tran_set_query_timeout
     tran_get_tran_settings
     tran_was_latest_query_committed
+    tran_was_latest_query_aborted
     utility_get_generic_message
     util_make_ha_conf
     util_get_ha_mode_for_sa_utils
