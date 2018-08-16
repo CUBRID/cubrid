@@ -34,13 +34,14 @@
 #include <setjmp.h>
 #include <assert.h>
 
+#include "authenticate.h"
 #include "compile_context.h"
 #include "config.h"
-#include "jansson.h"
 #include "cursor.h"
-#include "string_opfunc.h"
+#include "jansson.h"
+#include "json_table_def.h"
 #include "message_catalog.h"
-#include "authenticate.h"
+#include "string_opfunc.h"
 #include "system_parameter.h"
 
 #define MAX_PRINT_ERROR_CONTEXT_LENGTH 64
@@ -1150,7 +1151,11 @@ typedef enum
 
   PT_IS_SHOWSTMT,		/* query is SHOWSTMT */
   PT_IS_CTE_REC_SUBQUERY,
-  PT_IS_CTE_NON_REC_SUBQUERY
+  PT_IS_CTE_NON_REC_SUBQUERY,
+
+  PT_DERIVED_JSON_TABLE,	// json table spec derivation
+
+  // todo: separate into relevant enumerations
 } PT_MISC_TYPE;
 
 /* Enumerated join type */
@@ -1699,6 +1704,10 @@ typedef struct pt_set_timezone_info PT_SET_TIMEZONE_INFO;
 
 typedef struct pt_flat_spec_info PT_FLAT_SPEC_INFO;
 
+typedef struct pt_json_table_info PT_JSON_TABLE_INFO;
+typedef struct pt_json_table_node_info PT_JSON_TABLE_NODE_INFO;
+typedef struct pt_json_table_column_info PT_JSON_TABLE_COLUMN_INFO;
+
 typedef PT_NODE *(*PT_NODE_FUNCTION) (PARSER_CONTEXT * p, PT_NODE * tree, void *arg);
 
 typedef PT_NODE *(*PT_NODE_WALK_FUNCTION) (PARSER_CONTEXT * p, PT_NODE * tree, void *arg, int *continue_walk);
@@ -2164,6 +2173,7 @@ struct pt_spec_info
   PT_NODE *flat_entity_list;	/* PT_NAME (list) resolved class's */
   PT_NODE *method_list;		/* PT_METHOD_CALL list with this entity as the target */
   PT_NODE *partition;		/* PT_NAME of the specified partition */
+  PT_NODE *json_table;		/* JSON TABLE definition tree */
   UINTPTR id;			/* entity spec unique id # */
   PT_MISC_TYPE only_all;	/* PT_ONLY or PT_ALL */
   PT_MISC_TYPE meta_class;	/* enum 0 or PT_META */
@@ -3252,6 +3262,28 @@ struct pt_insert_value_info
   int replace_names;		/* true if names in evaluated node need to be replaced */
 };
 
+struct pt_json_table_column_info
+{
+  // domain is stored in parser node
+  const char *path;
+  enum json_table_column_function func;
+  struct json_table_column_on_error on_error;
+  struct json_table_column_on_empty on_empty;
+};
+
+struct pt_json_table_node_info
+{
+  PT_NODE *columns;
+  PT_NODE *nested_path;
+  const char *path;
+};
+
+struct pt_json_table_info
+{
+  PT_NODE *expr;
+  PT_NODE *tree;
+};
+
 /* Info field of the basic NODE
   If 'xyz' is the name of the field, then the structure type should be
   struct PT_XYZ_INFO xyz;
@@ -3305,6 +3337,9 @@ union pt_statement_info
   PT_INSERT_INFO insert;
   PT_INSERT_VALUE_INFO insert_value;
   PT_ISOLATION_LVL_INFO isolation_lvl;
+  PT_JSON_TABLE_INFO json_table_info;
+  PT_JSON_TABLE_NODE_INFO json_table_node_info;
+  PT_JSON_TABLE_COLUMN_INFO json_table_column_info;
   PT_MERGE_INFO merge;
   PT_METHOD_CALL_INFO method_call;
   PT_METHOD_DEF_INFO method_def;

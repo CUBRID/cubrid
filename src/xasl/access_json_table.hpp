@@ -30,6 +30,8 @@
 
 #include <cstdint>
 
+#include "json_table_def.h"
+
 // forward declarations
 struct db_value;
 struct tp_domain;
@@ -42,50 +44,19 @@ namespace cubxasl
 {
   namespace json_table
   {
-    enum class column_behavior
-    {
-      RETURN_NULL,
-      THROW_ERROR,
-      DEFAULT_VALUE
-    };
-
-    enum class column_function
-    {
-      EXTRACT,
-      EXISTS,
-      ORDINALITY
-    };
-
-    struct column_on_error
-    {
-      column_behavior m_behavior;
-      db_value *m_default_value;
-
-      column_on_error ();
-      int trigger (int error_code, db_value &value_out);
-    };
-
-    struct column_on_empty
-    {
-      column_behavior m_behavior;
-      db_value *m_default_value;
-
-      column_on_empty ();
-      int trigger (db_value &value_out);
-    };
 
     struct column
     {
 	tp_domain *m_domain;
 	std::string m_path;
-	column_on_error m_on_error;
-	column_on_empty m_on_empty;
+	json_table_column_on_error m_on_error;
+	json_table_column_on_empty m_on_empty;
 	db_value *m_output_value_pointer;   // todo: should match xasl->outptr_list value pointers
 	//       dig xasl_generation SYMBOL_INFO
 
 	// there are three types of columns based on how they function:
 	// extract from path, exists at path or ordinality
-	column_function m_function;
+	json_table_column_function m_function;
 
 	column ();
 	int evaluate (const JSON_DOC &input);
@@ -93,6 +64,9 @@ namespace cubxasl
       private:
 	int evaluate_extract (const JSON_DOC &input);
 	int evaluate_exists (const JSON_DOC &input);
+
+	int trigger_on_error (int error_code, db_value &value_out);
+	int trigger_on_empty (db_value &value_out);
     };
 
     struct node
@@ -119,15 +93,6 @@ namespace cubxasl
 } // namespace cubxasl
 
 // to be used outside namespace
-using json_table_column_behavior = cubxasl::json_table::column_behavior;
-const json_table_column_behavior JSON_TABLE_RETURN_NULL = json_table_column_behavior::RETURN_NULL;
-const json_table_column_behavior JSON_TABLE_THROW_ERROR = json_table_column_behavior::THROW_ERROR;
-const json_table_column_behavior JSON_TABLE_DEFAULT_VALUE = json_table_column_behavior::DEFAULT_VALUE;
-
-using json_table_column_function = cubxasl::json_table::column_function;
-const json_table_column_function JSON_TABLE_EXTRACT = json_table_column_function::EXTRACT;
-const json_table_column_function JSON_TABLE_EXISTS = json_table_column_function::EXISTS;
-
 using json_table_column = cubxasl::json_table::column;
 using json_table_node = cubxasl::json_table::node;
 using json_table_spec_node = cubxasl::json_table::spec_node;

@@ -36,35 +36,28 @@ namespace cubxasl
   namespace json_table
   {
 
-    column_on_error::column_on_error (void)
-      : m_behavior (column_behavior::RETURN_NULL)
-      , m_default_value (NULL)
-    {
-
-    }
-
     int
-    column_on_error::trigger (int error_code, db_value &value_out)
+    column::trigger_on_error (int error_code, db_value &value_out)
     {
       assert (error_code != NO_ERROR);
 
       (void) db_make_null (&value_out);
 
-      switch (m_behavior)
+      switch (m_on_error.m_behavior)
 	{
-	case column_behavior::RETURN_NULL:
+	case JSON_TABLE_RETURN_NULL:
 	  er_clear ();
 	  return NO_ERROR;
 
-	case column_behavior::THROW_ERROR:
+	case JSON_TABLE_THROW_ERROR:
 	  // propagate error
 	  ASSERT_ERROR ();
 	  return error_code;
 
-	case column_behavior::DEFAULT_VALUE:
-	  assert (m_default_value != NULL);
+	case JSON_TABLE_DEFAULT_VALUE:
+	  assert (m_on_error.m_default_value != NULL);
 	  er_clear ();
-	  if (pr_clone_value (m_default_value, &value_out) != NO_ERROR)
+	  if (pr_clone_value (m_on_error.m_default_value, &value_out) != NO_ERROR)
 	    {
 	      assert (false);
 	    }
@@ -76,31 +69,24 @@ namespace cubxasl
 	}
     }
 
-    column_on_empty::column_on_empty (void)
-      : m_behavior (column_behavior::RETURN_NULL)
-      , m_default_value (NULL)
-    {
-      //
-    }
-
     int
-    column_on_empty::trigger (db_value &value_out)
+    column::trigger_on_empty (db_value &value_out)
     {
       (void) db_make_null (&value_out);
 
-      switch (m_behavior)
+      switch (m_on_empty.m_behavior)
 	{
-	case column_behavior::RETURN_NULL:
+	case JSON_TABLE_RETURN_NULL:
 	  return NO_ERROR;
 
-	case column_behavior::THROW_ERROR:
+	case JSON_TABLE_THROW_ERROR:
 	  // todo: set a proper error
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  return ER_FAILED;
 
-	case column_behavior::DEFAULT_VALUE:
-	  assert (m_default_value != NULL);
-	  if (pr_clone_value (m_default_value, &value_out) != NO_ERROR)
+	case JSON_TABLE_DEFAULT_VALUE:
+	  assert (m_on_empty.m_default_value != NULL);
+	  if (pr_clone_value (m_on_empty.m_default_value, &value_out) != NO_ERROR)
 	    {
 	      assert (false);
 	    }
@@ -118,7 +104,7 @@ namespace cubxasl
       , m_on_error ()
       , m_on_empty ()
       , m_output_value_pointer (NULL)
-      , m_function (column_function::EXTRACT)
+      , m_function (json_table_column_function::JSON_TABLE_EXTRACT)
     {
       //
     }
@@ -134,7 +120,7 @@ namespace cubxasl
 	{
 	  ASSERT_ERROR();
 	  assert (db_value_is_null (m_output_value_pointer));
-	  error_code = m_on_error.trigger (error_code, *m_output_value_pointer);
+	  error_code = trigger_on_error (error_code, *m_output_value_pointer);
 	  return ER_FAILED;
 	}
 
@@ -146,7 +132,7 @@ namespace cubxasl
 
       if (db_value_is_null (m_output_value_pointer))
 	{
-	  error_code = m_on_empty.trigger (*m_output_value_pointer);
+	  error_code = trigger_on_empty (*m_output_value_pointer);
 	}
 
       return error_code;
@@ -182,23 +168,17 @@ namespace cubxasl
       pr_clear_value (m_output_value_pointer);
       db_make_null (m_output_value_pointer);
 
-      if (db_json_get_type (&input) == DB_JSON_NULL)
-	{
-	  // do we consider this empty case??
-	  return m_on_empty.trigger (*m_output_value_pointer);
-	}
-
       int error_code = NO_ERROR;
 
       switch (m_function)
 	{
-	case column_function::EXTRACT:
+	case json_table_column_function::JSON_TABLE_EXTRACT:
 	  error_code = evaluate_extract (input);
 	  break;
-	case column_function::EXISTS:
+	case json_table_column_function::JSON_TALBE_EXISTS:
 	  error_code = evaluate_exists (input);
 	  break;
-	case column_function::ORDINALITY:
+	case json_table_column_function::JSON_TABLE_ORDINALITY:
 	  // todo: add function for ordinality
 	  break;
 	default:

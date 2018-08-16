@@ -247,6 +247,9 @@ static PT_NODE *pt_apply_kill (PARSER_CONTEXT * parser, PT_NODE * P, PT_NODE_FUN
 static PT_NODE *pt_apply_vacuum (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
 static PT_NODE *pt_apply_with_clause (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
 static PT_NODE *pt_apply_cte (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
+static PT_NODE *pt_apply_json_table (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
+static PT_NODE *pt_apply_json_table_node (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
+static PT_NODE *pt_apply_json_table_column (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
 
 static PARSER_APPLY_NODE_FUNC pt_apply_func_array[PT_NODE_NUMBER];
 
@@ -348,6 +351,9 @@ static PT_NODE *pt_init_kill (PT_NODE * p);
 static PT_NODE *pt_init_vacuum (PT_NODE * p);
 static PT_NODE *pt_init_with_clause (PT_NODE * p);
 static PT_NODE *pt_init_cte (PT_NODE * p);
+static PT_NODE *pt_init_json_table (PT_NODE * p);
+static PT_NODE *pt_init_json_table_node (PT_NODE * p);
+static PT_NODE *pt_init_json_table_column (PT_NODE * p);
 
 static PARSER_INIT_NODE_FUNC pt_init_func_array[PT_NODE_NUMBER];
 
@@ -455,6 +461,9 @@ static PARSER_VARCHAR *pt_print_insert_value (PARSER_CONTEXT * parser, PT_NODE *
 static PARSER_VARCHAR *pt_print_vacuum (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_with_clause (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_cte (PARSER_CONTEXT * parser, PT_NODE * p);
+static PARSER_VARCHAR *pt_print_json_table (PARSER_CONTEXT * parser, PT_NODE * p);
+static PARSER_VARCHAR *pt_print_json_table_node (PARSER_CONTEXT * parser, PT_NODE * p);
+static PARSER_VARCHAR *pt_print_json_table_column (PARSER_CONTEXT * parser, PT_NODE * p);
 #if defined(ENABLE_UNUSED_FUNCTION)
 static PT_NODE *pt_apply_use (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
 static PT_NODE *pt_init_use (PT_NODE * p);
@@ -18999,4 +19008,101 @@ pt_clean_tree_copy_info (PT_TREE_COPY_INFO * tree_copy_info)
       save_next = cte_info_it->next;
       free (cte_info_it);
     }
+}
+
+static PT_NODE *
+pt_init_json_table (PT_NODE * p)
+{
+  p->info.json_table_info.expr = NULL;
+  p->info.json_table_info.tree = NULL;
+  return p;
+}
+
+static PT_NODE *
+pt_apply_json_table (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+{
+  p->info.json_table_info.expr = g (parser, p->info.json_table_info.expr, arg);
+  p->info.json_table_info.tree = g (parser, p->info.json_table_info.tree, arg);
+  return p;
+}
+
+static PARSER_VARCHAR *
+pt_print_json_table (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  PARSER_VARCHAR *pstr = NULL;
+  PARSER_VARCHAR *substr = NULL;
+
+  // print format:
+  // json_table (.expr, .tree)
+
+  // 'json_table ('
+  pstr = pt_append_nulstring (parser, pstr, "json_table (");
+
+  // print expr
+  substr = pt_print_bytes (parser, p->info.json_table_info.expr);
+  pstr = pt_append_varchar (parser, pstr, substr);
+
+  // ', ' print tree
+  pstr = pt_append_nulstring (parser, pstr, ", ");
+  substr = pt_print_bytes (parser, p->info.json_table_info.tree);
+  pstr = pt_append_varchar (parser, pstr, substr);
+
+  // ')'
+  pstr = pt_append_nulstring (parser, pstr, ")");
+
+  return pstr;
+}
+
+static PT_NODE *
+pt_init_json_table_node (PT_NODE * p)
+{
+  p->info.json_table_node_info.columns = NULL;
+  p->info.json_table_node_info.nested_path = NULL;
+  p->info.json_table_node_info.path = NULL;
+  return p;
+}
+
+static PT_NODE *
+pt_apply_json_table_node (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+{
+  p->info.json_table_node_info.columns = g (parser, p->info.json_table_node_info.columns, arg);
+  p->info.json_table_node_info.nested_path = g (parser, p->info.json_table_node_info.nested_path, arg);
+  return p;
+}
+
+static PARSER_VARCHAR *
+pt_print_json_table_node (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  PARSER_VARCHAR *pstr = NULL;
+  PARSER_VARCHAR *substr = NULL;
+
+  // print format:
+  // .path columns (columns, nested paths)
+  return pstr;
+}
+
+static PT_NODE *
+pt_init_json_table_column (PT_NODE * p)
+{
+  p->info.json_table_column_info.path = NULL;
+  return p;
+}
+
+static PT_NODE *
+pt_apply_json_table_column (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+{
+  return p;
+}
+
+static PARSER_VARCHAR *
+pt_print_json_table_column (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  PARSER_VARCHAR *pstr = NULL;
+
+  // print format:
+  // name FOR ORDINALITY
+  // | name type PATH string path[on_error][on_empty]
+  // | name type EXISTS PATH string path
+
+  return pstr;
 }
