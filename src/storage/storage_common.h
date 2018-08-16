@@ -108,6 +108,7 @@ struct log_lsa
 };
 
 typedef struct log_lsa LOG_LSA;	/* Log address identifier */
+
 STATIC_INLINE void
 LSA_COPY (LOG_LSA * plsa1, const LOG_LSA * plsa2)
 {
@@ -115,22 +116,23 @@ LSA_COPY (LOG_LSA * plsa1, const LOG_LSA * plsa2)
   plsa1->offset = plsa2->offset;
 }
 
-#define LSA_SET_NULL(lsa_ptr)\
-  do {									      \
-    (lsa_ptr)->pageid = NULL_PAGEID;                                          \
-    (lsa_ptr)->offset = NULL_OFFSET;                                          \
-  } while(0)
+STATIC_INLINE void
+LSA_SET_NULL (LOG_LSA * lsa_ptr)
+{
+  lsa_ptr->pageid = NULL_PAGEID;
+  lsa_ptr->offset = NULL_OFFSET;
+}
+
+STATIC_INLINE void
+LSA_SET_TEMP_LSA (LOG_LSA * lsa_ptr)
+{
+  lsa_ptr->pageid = NULL_PAGEID - 1;
+  lsa_ptr->offset = NULL_OFFSET - 1;
+}
 
 #define LSA_INITIALIZER	{NULL_PAGEID, NULL_OFFSET}
 
 #define LSA_AS_ARGS(lsa_ptr) (long long int) (lsa_ptr)->pageid, (int) (lsa_ptr)->offset
-
-#define LSA_SET_INIT_NONTEMP(lsa_ptr) LSA_SET_NULL(lsa_ptr)
-#define LSA_SET_INIT_TEMP(lsa_ptr)\
-  do {									      \
-    (lsa_ptr)->pageid = NULL_PAGEID - 1;                                      \
-    (lsa_ptr)->offset = NULL_OFFSET - 1;                                      \
-  } while(0)
 
 #define LSA_ISNULL(lsa_ptr) ((lsa_ptr)->pageid == NULL_PAGEID)
 #define LSA_IS_INIT_NONTEMP(lsa_ptr) LSA_ISNULL(lsa_ptr)

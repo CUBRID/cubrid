@@ -748,7 +748,8 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
 	}
       if (ext_info->voltype == DB_PERMANENT_VOLTYPE)
 	{
-	  LSA_SET_INIT_TEMP (&init_with_temp_lsa);
+	  LSA_SET_TEMP_LSA (&init_with_temp_lsa);
+
 	  /* Flush all dirty pages and then invalidate them from page buffer pool. So that we can reset the recovery
 	   * information directly using the io module */
 

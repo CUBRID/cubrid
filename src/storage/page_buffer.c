@@ -3038,7 +3038,7 @@ pgbuf_flush_all_helper (THREAD_ENTRY * thread_p, VOLID volid, bool is_unfixed_on
       if (is_set_lsa_as_null)
 	{
 	  /* set PageLSA as NULL value */
-	  LSA_SET_INIT_NONTEMP (&bufptr->iopage_buffer->iopage.prv.lsa);
+	  fileio_init_lsa_of_page (&bufptr->iopage_buffer->iopage);
 	}
 
       /* flush */
@@ -4438,13 +4438,14 @@ pgbuf_set_lsa (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const LOG_LSA * lsa_ptr)
    */
   if (pgbuf_is_temporary_volume (bufptr->vpid.volid) == true)
     {
-      LSA_SET_INIT_TEMP (&bufptr->iopage_buffer->iopage.prv.lsa);
+      fileio_init_lsa_of_temp_page (&bufptr->iopage_buffer->iopage);
       if (logtb_is_current_active (thread_p))
 	{
 	  return NULL;
 	}
     }
-  LSA_COPY (&bufptr->iopage_buffer->iopage.prv.lsa, lsa_ptr);
+
+  fileio_set_page_lsa (&bufptr->iopage_buffer->iopage, lsa_ptr);
 
   /* 
    * If this is the first time the page is set dirty, record the new LSA
@@ -4500,7 +4501,7 @@ pgbuf_reset_temp_lsa (PAGE_PTR pgptr)
   PGBUF_BCB *bufptr;
 
   CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
-  LSA_SET_INIT_TEMP (&bufptr->iopage_buffer->iopage.prv.lsa);
+  fileio_init_lsa_of_temp_page (&bufptr->iopage_buffer->iopage);
 }
 
 /*
@@ -4728,7 +4729,7 @@ pgbuf_set_lsa_as_temporary (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
   CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
   assert (!VPID_ISNULL (&bufptr->vpid));
 
-  LSA_SET_INIT_TEMP (&bufptr->iopage_buffer->iopage.prv.lsa);
+  fileio_init_lsa_of_temp_page (&bufptr->iopage_buffer->iopage);
   pgbuf_set_dirty_buffer_ptr (thread_p, bufptr);
 }
 
@@ -4760,7 +4761,8 @@ pgbuf_set_lsa_as_permanent (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 	  restart_lsa = log_get_restart_lsa ();
 	}
 
-      LSA_COPY (&bufptr->iopage_buffer->iopage.prv.lsa, restart_lsa);
+      fileio_set_page_lsa (&bufptr->iopage_buffer->iopage, restart_lsa);
+
       pgbuf_set_dirty_buffer_ptr (thread_p, bufptr);
     }
 }
@@ -4970,7 +4972,7 @@ pgbuf_initialize_bcb_table (void)
       /* link BCB and iopage buffer */
       ioptr = PGBUF_FIND_IOPAGE_PTR (i);
 
-      LSA_SET_NULL (&ioptr->iopage.prv.lsa);
+      fileio_init_lsa_of_page (&ioptr->iopage);
 
       /* Init Page identifier */
       ioptr->iopage.prv.pageid = -1;
@@ -7714,7 +7716,7 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 	  /* Check iff the first time to access */
 	  if (!LSA_IS_INIT_TEMP (&bufptr->iopage_buffer->iopage.prv.lsa))
 	    {
-	      LSA_SET_INIT_TEMP (&bufptr->iopage_buffer->iopage.prv.lsa);
+	      fileio_init_lsa_of_temp_page (&bufptr->iopage_buffer->iopage);
 	      pgbuf_set_dirty_buffer_ptr (thread_p, bufptr);
 	    }
 	}
@@ -7750,11 +7752,11 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
       /* Don't need to read page from disk since it is a new page. */
       if (pgbuf_is_temporary_volume (vpid->volid) == true)
 	{
-	  LSA_SET_INIT_TEMP (&bufptr->iopage_buffer->iopage.prv.lsa);
+	  fileio_init_lsa_of_temp_page (&bufptr->iopage_buffer->iopage);
 	}
       else
 	{
-	  LSA_SET_INIT_NONTEMP (&bufptr->iopage_buffer->iopage.prv.lsa);
+	  fileio_init_lsa_of_page (&bufptr->iopage_buffer->iopage);
 	}
 
       /* perm volume */
@@ -10374,7 +10376,7 @@ static void
 pgbuf_scramble (FILEIO_PAGE * iopage)
 {
   MEM_REGION_INIT (iopage, IO_PAGESIZE);
-  LSA_SET_NULL (&iopage->prv.lsa);
+  fileio_init_lsa_of_page (iopage);
 
   /* Init Page identifier */
   iopage->prv.pageid = -1;

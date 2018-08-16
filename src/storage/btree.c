@@ -72,7 +72,6 @@
 
 #define BTREE_SPLIT_DEFAULT_PIVOT 0.5f
 #define DISK_PAGE_BITS  (DB_PAGESIZE * CHAR_BIT)	/* Num of bits per page */
-#define RESERVED_SIZE_IN_PAGE   sizeof(FILEIO_PAGE_RESERVED)
 
 #define BTREE_NODE_MAX_SPLIT_SIZE(thread_p, page_ptr) \
   (db_page_size() - spage_header_size() - spage_get_space_for_record(thread_p, (page_ptr), HEADER))

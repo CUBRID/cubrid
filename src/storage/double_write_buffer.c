@@ -1337,6 +1337,10 @@ STATIC_INLINE int
 dwb_slot_compute_checksum (THREAD_ENTRY * thread_p, DWB_SLOT * slot, bool mark_checksum_computed,
 			   bool * checksum_computed)
 {
+#if 1
+  *checksum_computed = true;
+  return NO_ERROR;
+#else
   int error_code = NO_ERROR;
   PERF_UTIME_TRACKER time_track;
 
@@ -1377,6 +1381,7 @@ dwb_slot_compute_checksum (THREAD_ENTRY * thread_p, DWB_SLOT * slot, bool mark_c
 
   *checksum_computed = true;
   return NO_ERROR;
+#endif
 }
 
 /*
@@ -1559,7 +1564,7 @@ dwb_create_blocks (THREAD_ENTRY * thread_p, unsigned int num_blocks, unsigned in
 	{
 	  io_page = (FILEIO_PAGE *) (blocks_write_buffer[i] + j * IO_PAGESIZE);
 
-	  fileio_initialize_res (thread_p, &io_page->prv);
+	  fileio_initialize_res (thread_p, io_page);
 	  dwb_initialize_slot (&slots[i][j], io_page, j, i);
 	}
 
@@ -1926,7 +1931,7 @@ dwb_slots_hash_insert (THREAD_ENTRY * thread_p, VPID * vpid, DWB_SLOT * slot, in
 	      /* Invalidate the old slot, if is in the same block. We want to avoid duplicates in block at flush. */
 	      assert (slots_hash_entry->slot->position_in_block < slot->position_in_block);
 	      VPID_SET_NULL (&slots_hash_entry->slot->vpid);
-	      fileio_initialize_res (thread_p, &(slots_hash_entry->slot->io_page->prv));
+	      fileio_initialize_res (thread_p, slots_hash_entry->slot->io_page);
 
 	      _er_log_debug (ARG_FILE_LINE,
 			     "Found same page with same LSA in same block - %d - at positions (%d, %d) \n",
@@ -2766,7 +2771,7 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, UINT64 * current_po
 	  assert (s1->position_in_block < DWB_BLOCK_NUM_PAGES);
 	  VPID_SET_NULL (&(block->slots[s1->position_in_block].vpid));
 
-	  fileio_initialize_res (thread_p, &(s1->io_page->prv));
+	  fileio_initialize_res (thread_p, s1->io_page);
 	}
 
       /* Check for WAL protocol. */
@@ -3148,9 +3153,10 @@ dwb_set_slot_data (THREAD_ENTRY * thread_p, DWB_SLOT * dwb_slot, FILEIO_PAGE * i
   else
     {
       /* Initialize page for consistency. */
-      fileio_initialize_res (thread_p, &(dwb_slot->io_page->prv));
+      fileio_initialize_res (thread_p, dwb_slot->io_page);
     }
 
+  assert (fileio_is_page_sane (io_page_p));
   LSA_COPY (&dwb_slot->lsa, &io_page_p->prv.lsa);
   VPID_SET (&dwb_slot->vpid, io_page_p->prv.volid, io_page_p->prv.pageid);
 }
@@ -3230,6 +3236,9 @@ dwb_get_next_block_for_flush (THREAD_ENTRY * thread_p, unsigned int *block_no)
 STATIC_INLINE bool
 dwb_block_has_all_checksums_computed (unsigned int block_no)
 {
+#if 1
+  return true;
+#else
   unsigned int block_checksum_start_position, block_checksum_element_position, element_position;
   bool found;
 
@@ -3251,6 +3260,7 @@ dwb_block_has_all_checksums_computed (unsigned int block_no)
     }
 
   return found;
+#endif
 }
 
 /*
@@ -3493,14 +3503,17 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
 	{
 	  /* Invalidate the slot to avoid flushing the same data twice. */
 	  VPID_SET_NULL (&dwb_slot->vpid);
-	  fileio_initialize_res (thread_p, &(dwb_slot->io_page->prv));
+	  fileio_initialize_res (thread_p, dwb_slot->io_page);
 	}
     }
 
   dwb_log ("dwb_add_page: added page = (%d,%d) on block (%d) position (%d)\n", vpid->volid, vpid->pageid,
 	   dwb_slot->block_no, dwb_slot->position_in_block);
+
+#if 0
   /* Reset checksum. */
   dwb_slot->io_page->prv.checksum = 0;
+#endif
 
   block = &dwb_Global.blocks[dwb_slot->block_no];
   count_wb_pages = ATOMIC_INC_32 (&block->count_wb_pages, 1);
@@ -3857,7 +3870,7 @@ dwb_check_data_page_is_sane (THREAD_ENTRY * thread_p, DWB_BLOCK * rcv_block, DWB
 	{
 	  /* The page in data volume is not corrupted. Do not overwrite its content - reset slot VPID. */
 	  VPID_SET_NULL (&p_dwb_ordered_slots[i].vpid);
-	  fileio_initialize_res (thread_p, &(p_dwb_ordered_slots[i].io_page->prv));
+	  fileio_initialize_res (thread_p, p_dwb_ordered_slots[i].io_page);
 	  continue;
 	}
 
@@ -4303,7 +4316,7 @@ start:
 
   iopage = (FILEIO_PAGE *) PTR_ALIGN (page_buf, MAX_ALIGNMENT);
   memset (iopage, 0, IO_MAX_PAGE_SIZE);
-  fileio_initialize_res (thread_p, &(iopage->prv));
+  fileio_initialize_res (thread_p, iopage);
 
   /* Check whether the initial block was flushed */
 check_flushed_blocks:
@@ -4636,6 +4649,9 @@ dwb_flush_block_helper (THREAD_ENTRY * thread_p)
 static int
 dwb_compute_checksums (THREAD_ENTRY * thread_p)
 {
+#if 1
+  return NO_ERROR;
+#else
   UINT64 position_with_flags;
   unsigned int num_block, start_block, end_block;
   bool block_slots_checksums_computed, block_needs_flush, checksum_computed;
@@ -4707,6 +4723,7 @@ start:
     }
 
   return NO_ERROR;
+#endif
 }
 
 /*
