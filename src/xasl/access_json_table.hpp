@@ -87,6 +87,7 @@ namespace cubxasl
       node *m_root_node;
       //db_value *m_output_values;  // maybe; or maybe use xasl
       regu_variable_node *m_json_reguvar;
+      std::size_t m_node_count;     // the total number of nodes
     };
 
   } // namespace json_table
