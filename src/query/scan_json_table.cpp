@@ -22,10 +22,8 @@
 #include "access_json_table.hpp"
 #include "db_json.hpp"
 #include "dbtype.h"
-#include "dbtype_def.h"
 #include "fetch.h"
 #include "object_primitive.h"
-#include "query_evaluator.h"
 #include "scan_manager.h"
 
 namespace cubscan
@@ -53,7 +51,7 @@ namespace cubscan
 		       DB_LOGICAL &logical_output)
     {
       logical_output = V_TRUE;
-      PR_EVAL_FNC &m_eval_function = function_vector[node.m_id];
+      PR_EVAL_FNC &m_eval_function = *function_vector[node.m_id];
 
       if (m_eval_function == NULL)
 	{
@@ -250,7 +248,7 @@ namespace cubscan
 	    }
 
 	  // create cursor for next child
-	  cubxasl::json_table::node &next_node = *this_cursor.node->m_nested_nodes[this_cursor.m_child];
+	  cubxasl::json_table::node &next_node = this_cursor.node->m_nested_nodes[this_cursor.m_child];
 	  cursor &next_cursor = m_scan_cursor[depth + 1];
 	  next_cursor.is_row_evaluated = false;
 	  next_cursor.m_row = 0;

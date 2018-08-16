@@ -27,6 +27,9 @@
 #include <forward_list>
 #include <vector>
 
+#include "dbtype_def.h"
+#include "query_evaluator.h"
+
 // forward definitions
 // access_json_table.hpp
 namespace cubxasl
@@ -42,6 +45,7 @@ namespace cubxasl
 class JSON_DOC;
 // scan_manager.h
 struct scan_id_struct;
+
 // thread_entry.hpp
 namespace cubthread
 {
@@ -82,8 +86,6 @@ namespace cubscan
 	};
 	using scan_cursor = std::vector<cursor>;
 
-
-
 	int fetch_columns (const JSON_DOC &document, std::forward_list<cubxasl::json_table::column> &columns);
 	int evaluate (cubxasl::json_table::node &node, cubthread::entry *thread_p, const JSON_DOC &document,
 		      DB_LOGICAL &logical_output);
@@ -96,7 +98,7 @@ namespace cubscan
 	cubxasl::json_table::node *m_scan_root;
 	scan_cursor m_scan_cursor;
 	std::size_t m_scan_cursor_depth;
-	std::vector<PR_EVAL_FNC> function_vector; // each node will have its associated function based on node.id
+	std::vector<PR_EVAL_FNC *> function_vector; // each node will have its associated function based on node.id
     };
   } // namespace json_table
 } // namespace cubscan

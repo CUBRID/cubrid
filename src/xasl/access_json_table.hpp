@@ -99,7 +99,7 @@ namespace cubxasl
       std::forward_list<column> m_predicate_columns;  // columns part of scan predicate; also part of output
       std::forward_list<column> m_output_columns;     // columns part of output only
       pred_expr *m_predicate_expression;              // predicate expression
-      std::forward_list<node> m_nested_nodes;         // nested nodes
+      std::vector<node> m_nested_nodes;               // nested nodes
       size_t m_id;                                    // identifier for each node
 
       node() = default;
