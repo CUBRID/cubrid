@@ -1106,7 +1106,6 @@ db_json_insert_func (const JSON_DOC *doc_to_be_inserted, JSON_DOC &doc_destinati
     }
 
   JSON_POINTER p (json_pointer_string.c_str ());
-  JSON_VALUE *json_parent_p;
 
   if (!p.IsValid ())
     {
@@ -1206,7 +1205,7 @@ db_json_set_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path)
     }
 
   JSON_POINTER p (json_pointer_string.c_str ());
-  JSON_VALUE *resulting_json, *resulting_json_parent;
+  JSON_VALUE *resulting_json;
 
   if (!p.IsValid ())
     {
@@ -1837,8 +1836,8 @@ db_json_split_path_by_delimiters (const std::string &path, const std::string &de
       tokens.push_back (substring);
     }
 
-  unsigned int tokens_size = tokens.size();
-  for (unsigned int i = 0; i < tokens_size; i++)
+  std::size_t tokens_size = tokens.size();
+  for (std::size_t i = 0; i < tokens_size; i++)
     {
       if (db_json_path_is_token_valid_array_index (tokens[i]))
 	{
