@@ -174,6 +174,7 @@ static SCAN_CODE scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID *
 static SCAN_CODE scan_next_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_showstmt_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
+static SCAN_CODE scan_next_json_table_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_value_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_handle_single_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id, QP_SCAN_FUNC next_scan);
@@ -3836,6 +3837,40 @@ scan_open_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 }
 
 /*
+* scan_open_json_table_scan () -
+*   return: NO_ERROR
+*   scan_id(out): Scan identifier
+*   grouped(in):
+*   single_fetch(in):
+*   join_dbval(in):
+*   val_list(in):
+*   vd(in):
+*/
+int
+scan_open_json_table_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
+			   /* fields of SCAN_ID */
+			   int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, VAL_LIST * val_list,
+			   VAL_DESCR * vd)
+{
+  JSON_TABLE_SCAN_ID *jtidp;
+  DB_TYPE single_node_type = DB_TYPE_NULL;
+
+  /* scan type is JSON_TABLE SCAN */
+  scan_id->type = S_JSON_TABLE_SCAN;
+
+  /* initialize SCAN_ID structure */
+  /* mvcc_select_lock_needed = false, fixed = true */
+  scan_init_scan_id (scan_id, false, S_SELECT, true, grouped, single_fetch, join_dbval, val_list, vd);
+
+  /* initialize JSON_TABLE_SCAN_ID structure */
+  jtidp = &scan_id->s.jtid;
+
+  jtidp->open (thread_p);
+
+  return NO_ERROR;
+}
+
+/*
  * scan_open_method_scan () -
  *   return: NO_ERROR, or ER_code
  *   scan_id(out): Scan identifier
@@ -3888,6 +3923,7 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   REGU_VALUE_LIST *regu_value_list = NULL;
   REGU_VARIABLE_LIST list_node = NULL;
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
+  JSON_TABLE_SCAN_ID *jtidp = NULL;
 
   switch (scan_id->type)
     {
@@ -4140,6 +4176,11 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
     case S_SET_SCAN:
       ssidp = &scan_id->s.ssid;
       db_make_null (&ssidp->set);
+      break;
+
+    case S_JSON_TABLE_SCAN:
+      jtidp = &scan_id->s.jtid;
+      // todo: what else to add here?
       break;
 
     case S_METHOD_SCAN:
@@ -4406,6 +4447,7 @@ scan_next_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
     case S_SHOWSTMT_SCAN:
     case S_SET_SCAN:
     case S_METHOD_SCAN:
+    case S_JSON_TABLE_SCAN:
     case S_VALUES_SCAN:
       return (s_id->position == S_BEFORE) ? S_SUCCESS : S_END;
 
@@ -4431,6 +4473,7 @@ scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   REGU_VALUES_SCAN_ID *rvsidp;
   SET_SCAN_ID *ssidp;
   KEY_VAL_RANGE *key_vals;
+  JSON_TABLE_SCAN_ID *jtidp;
   int i;
 
   if (scan_id == NULL)
@@ -4522,6 +4565,11 @@ scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
     case S_SET_SCAN:
       ssidp = &scan_id->s.ssid;
       pr_clear_value (&ssidp->set);
+      break;
+
+    case S_JSON_TABLE_SCAN:
+      jtidp = &scan_id->s.jtid;
+      jtidp->end (thread_p);
       break;
 
     case S_METHOD_SCAN:
@@ -4851,6 +4899,10 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
     case S_SET_SCAN:
       status = scan_next_set_scan (thread_p, scan_id);
+      break;
+
+    case S_JSON_TABLE_SCAN:
+      status = scan_next_json_table_scan (thread_p, scan_id);
       break;
 
     case S_METHOD_SCAN:
@@ -6500,6 +6552,39 @@ scan_next_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
     }				/* while ((qp_scan = ) == S_SUCCESS) */
 
   return qp_scan;
+}
+
+/*
+* scan_next_json_table_scan () - The scan is moved to the next json_table scan item.
+*   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR)
+*   scan_id(in/out): Scan identifier
+*
+* Note: If there are no more scan items, S_END is returned. If an error occurs, S_ERROR is returned.
+*/
+static SCAN_CODE
+scan_next_json_table_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
+{
+  JSON_TABLE_SCAN_ID *jtidp;
+  int error_code = NO_ERROR;
+
+  jtidp = &scan_id->s.jtid;
+
+  // the status of the scan will be put in scan_id->status
+  error_code = jtidp->next_scan (thread_p, *scan_id);
+
+  if (error_code != NO_ERROR)
+    {
+      // todo: handle the error_code
+      ASSERT_ERROR ();
+      return S_ERROR;
+    }
+
+  if (scan_id->status == S_ENDED)
+    {
+      return S_END;
+    }
+
+  return S_SUCCESS;
 }
 
 /*

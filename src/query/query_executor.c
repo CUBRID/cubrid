@@ -6576,6 +6576,15 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	}
       break;
 
+    case TARGET_JSON_TABLE:
+      /* open a json table based derived table scan */
+      if (scan_open_json_table_scan (thread_p, s_id, grouped, curr_spec->single_fetch, curr_spec->s_dbval, val_list,
+				     vd) != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+      break;
+
     case TARGET_METHOD:
       if (scan_open_method_scan (thread_p, s_id, grouped, curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,
 				 ACCESS_SPEC_METHOD_LIST_ID (curr_spec),
@@ -6660,6 +6669,11 @@ qexec_close_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec)
 	  break;
 	case TARGET_SET:
 	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_SETSCANS);
+	  break;
+	case TARGET_JSON_TABLE:
+	  /* currently do nothing 
+	     todo: check if here need to add something
+	   */
 	  break;
 	case TARGET_METHOD:
 	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_METHSCANS);

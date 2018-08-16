@@ -57,6 +57,7 @@ typedef enum
   S_INDX_SCAN,
   S_LIST_SCAN,
   S_SET_SCAN,
+  S_JSON_TABLE_SCAN,
   S_METHOD_SCAN,
   S_VALUES_SCAN,		/* regu_values_list scan */
   S_SHOWSTMT_SCAN,
@@ -424,6 +425,10 @@ extern int scan_open_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 			       VAL_DESCR * vd,
 			       /* fields of SET_SCAN_ID */
 			       REGU_VARIABLE * set_ptr, REGU_VARIABLE_LIST regu_list_pred, PRED_EXPR * pr);
+extern int scan_open_json_table_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
+				      /* fields of SCAN_ID */
+				      int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval,
+				      VAL_LIST * val_list, VAL_DESCR * vd);
 extern int scan_open_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				  /* fields of SCAN_ID */
 				  int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval,
