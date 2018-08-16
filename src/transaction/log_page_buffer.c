@@ -499,7 +499,7 @@ logpb_compute_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int 
   const int num_pages = LOG_PAGESIZE / unit_size;
   const int sample_nbytes = 16;
   int sampling_offset;
-  char buf[num_pages * sample_nbytes * 3];
+  char buf[num_pages * sample_nbytes * 2];
 
   assert (log_pgptr != NULL && checksum_crc32 != NULL);
 
@@ -515,11 +515,6 @@ logpb_compute_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int 
     {
       // first 
       sampling_offset = (i * unit_size);
-      memcpy (p, ((char *) log_pgptr) + sampling_offset, sample_nbytes);
-      p += sample_nbytes;
-
-      // middle 
-      sampling_offset = (i * unit_size) + (unit_size / 2) - (sample_nbytes / 2);
       memcpy (p, ((char *) log_pgptr) + sampling_offset, sample_nbytes);
       p += sample_nbytes;
 
