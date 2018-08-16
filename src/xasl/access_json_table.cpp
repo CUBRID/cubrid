@@ -118,9 +118,58 @@ namespace cubxasl
       , m_on_error ()
       , m_on_empty ()
       , m_output_value_pointer (NULL)
-      , m_function (EXTRACT)
+      , m_function (column_function::EXTRACT)
     {
       //
+    }
+
+    int
+    column::evaluate_extract (const JSON_DOC &input)
+    {
+      int error_code = NO_ERROR;
+      JSON_DOC *docp = NULL;
+
+      error_code = db_json_extract_document_from_path (&input, m_path.c_str(), docp);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR();
+	  assert (db_value_is_null (m_output_value_pointer));
+	  error_code = m_on_error.trigger (error_code, *m_output_value_pointer);
+	  return ER_FAILED;
+	}
+
+      if (db_make_json (m_output_value_pointer, NULL, docp, true) != NO_ERROR)
+	{
+	  assert (false);
+	  return ER_FAILED;
+	}
+
+      if (db_value_is_null (m_output_value_pointer))
+	{
+	  error_code = m_on_empty.trigger (*m_output_value_pointer);
+	}
+
+      return error_code;
+    }
+
+    int
+    column::evaluate_exists (const JSON_DOC &input)
+    {
+      int error_code = NO_ERROR;
+      bool result = false;
+
+      error_code = db_json_contains_path (&input, m_path.c_str(), result);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR();
+	  assert (db_value_is_null (m_output_value_pointer));
+	  return ER_FAILED;
+	}
+
+      // the result is an integer type (maybe use short)
+      db_make_int (m_output_value_pointer, result ? 1 : 0);
+
+      return error_code;
     }
 
     int
@@ -141,41 +190,19 @@ namespace cubxasl
 
       int error_code = NO_ERROR;
 
-      if (m_function == EXTRACT)
+      switch (m_function)
 	{
-	  JSON_DOC *docp = NULL;
-	  error_code = db_json_extract_document_from_path (&input, m_path.c_str (), docp);
-	  if (error_code != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	      // fall through
-	    }
-	  else if (db_make_json (m_output_value_pointer, NULL, docp, true) != NO_ERROR)
-	    {
-	      assert (false);
-	      return ER_FAILED;
-	    }
-	  if (error_code != NO_ERROR)
-	    {
-	      assert (db_value_is_null (m_output_value_pointer));
-	      error_code = m_on_error.trigger (error_code, *m_output_value_pointer);
-	    }
-	  else if (db_value_is_null (m_output_value_pointer))
-	    {
-	      error_code = m_on_empty.trigger (*m_output_value_pointer);
-	    }
-
-	}
-      else
-	{
-	  // what about exists??
-	  // todo
-	}
-
-      if (error_code != NO_ERROR)
-	{
-	  // error was set
-	  return error_code;
+	case column_function::EXTRACT:
+	  error_code = evaluate_extract (input);
+	  break;
+	case column_function::EXISTS:
+	  error_code = evaluate_exists (input);
+	  break;
+	case column_function::ORDINALITY:
+	  // todo: add function for ordinality
+	  break;
+	default:
+	  return ER_FAILED;
 	}
 
       error_code = tp_value_cast (m_output_value_pointer, m_output_value_pointer, m_domain, false);

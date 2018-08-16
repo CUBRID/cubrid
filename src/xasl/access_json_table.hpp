@@ -52,7 +52,8 @@ namespace cubxasl
     enum class column_function
     {
       EXTRACT,
-      EXISTS
+      EXISTS,
+      ORDINALITY
     };
 
     struct column_on_error
@@ -75,21 +76,23 @@ namespace cubxasl
 
     struct column
     {
-      // there are two types of columns based on how they function: extract from path or exists at path
-      using function_type = bool;
-      static const function_type EXTRACT = true;
-      static const function_type EXISTS = false;
+	tp_domain *m_domain;
+	std::string m_path;
+	column_on_error m_on_error;
+	column_on_empty m_on_empty;
+	db_value *m_output_value_pointer;   // todo: should match xasl->outptr_list value pointers
+	//       dig xasl_generation SYMBOL_INFO
 
-      tp_domain *m_domain;
-      std::string m_path;
-      column_on_error m_on_error;
-      column_on_empty m_on_empty;
-      db_value *m_output_value_pointer;   // todo: should match xasl->outptr_list value pointers
-      //       dig xasl_generation SYMBOL_INFO
-      function_type m_function;
+	// there are three types of columns based on how they function:
+	// extract from path, exists at path or ordinality
+	column_function m_function;
 
-      column ();
-      int evaluate (const JSON_DOC &input);
+	column ();
+	int evaluate (const JSON_DOC &input);
+
+      private:
+	int evaluate_extract (const JSON_DOC &input);
+	int evaluate_exists (const JSON_DOC &input);
     };
 
     struct node
