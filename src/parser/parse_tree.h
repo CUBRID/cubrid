@@ -905,6 +905,9 @@ enum pt_node_type
   PT_KILL_STMT,
   PT_VACUUM,
   PT_WITH_CLAUSE,
+  PT_JSON_TABLE,
+  PT_JSON_TABLE_NODE,
+  PT_JSON_TABLE_COLUMN,
 
   PT_NODE_NUMBER,		/* This is the number of node types */
   PT_LAST_NODE_NUMBER = PT_NODE_NUMBER
@@ -3264,17 +3267,18 @@ struct pt_insert_value_info
 
 struct pt_json_table_column_info
 {
+  const char *name;
   // domain is stored in parser node
   const char *path;
   enum json_table_column_function func;
-  struct json_table_column_on_error on_error;
-  struct json_table_column_on_empty on_empty;
+  struct json_table_column_behavior on_error;
+  struct json_table_column_behavior on_empty;
 };
 
 struct pt_json_table_node_info
 {
   PT_NODE *columns;
-  PT_NODE *nested_path;
+  PT_NODE *nested_paths;
   const char *path;
 };
 

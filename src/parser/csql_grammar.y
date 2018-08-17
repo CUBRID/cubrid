@@ -24,6 +24,7 @@
 
 
 %{/*%CODE_REQUIRES_START%*/
+#include "json_table_def.h"
 #include "parser.h"
 
 /* 
@@ -533,6 +534,7 @@ static PT_NODE * pt_create_date_value (PARSER_CONTEXT *parser,
 				       const char *str);
 static PT_NODE * pt_create_json_value (PARSER_CONTEXT *parser,
 				       const char *str);
+static void pt_jt_append_column_or_nested_node (PT_NODE * jt_node, PT_NODE * jt_col_or_nested);
 static void pt_value_set_charset_coll (PARSER_CONTEXT *parser,
 				       PT_NODE *node,
 				       const int codeset_id,
@@ -616,6 +618,7 @@ int g_original_buffer_len;
   container_3 c3;
   container_4 c4;
   container_10 c10;
+  struct json_table_column_behavior jtcb;
 }
 
 
@@ -1020,6 +1023,10 @@ int g_original_buffer_len;
 %type <node> limit_expr
 %type <node> limit_term
 %type <node> limit_factor
+%type <node> json_table_rule
+%type <node> json_table_node_rule
+%type <node> json_table_column_rule
+%type <node> json_table_column_list_rule
 /*}}}*/
 
 /* define rule type (cptr) */
@@ -1064,6 +1071,13 @@ int g_original_buffer_len;
 %type <c2> insert_assignment_list
 %type <c2> expression_queue
 %type <c2> of_cast_data_type
+/*}}}*/
+
+/* define rule type (json_table_column_behavior) */
+/*{{{*/
+%type <jtcb> json_table_column_behavior_rule
+%type <jtcb> json_table_on_error_rule_optional
+%type <jtcb> json_table_on_empty_rule_optional
 /*}}}*/
 
 /* Token define */
@@ -1179,6 +1193,7 @@ int g_original_buffer_len;
 %token END
 %token ENUM
 %token EQUALS
+%token ERROR_
 %token ESCAPE
 %token EVALUATE
 %token EXCEPT
@@ -1244,6 +1259,8 @@ int g_original_buffer_len;
 %token IS
 %token ISOLATION
 %token JOIN
+%token JSON
+%token JSON_TABLE
 %token KEY
 %token KEYLIMIT
 %token LANGUAGE
@@ -1284,6 +1301,7 @@ int g_original_buffer_len;
 %token NATIONAL
 %token NATURAL
 %token NCHAR
+%token NESTED
 %token NEXT
 %token NO
 %token NOT
@@ -1295,11 +1313,14 @@ int g_original_buffer_len;
 %token OF
 %token OFF_
 %token ON_
+%token ON_ERROR
+%token ON_EMPTY
 %token ONLY
 %token OPTIMIZATION
 %token OPTION
 %token OR
 %token ORDER
+%token ORDINALITY
 %token OUT_
 %token OUTER
 %token OUTPUT
@@ -1308,6 +1329,7 @@ int g_original_buffer_len;
 %token PARAMETERS
 %token PARTIAL
 %token PARTITION
+%token PATH
 %token POSITION
 %token PRECISION
 %token PREPARE
@@ -1444,7 +1466,6 @@ int g_original_buffer_len;
 %token YEAR_
 %token YEAR_MONTH
 %token ZONE
-%token JSON
 
 %token YEN_SIGN
 %token DOLLAR_SIGN
@@ -4625,6 +4646,16 @@ original_table_spec
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+        | json_table_rule AS identifier
+          {{
+            PT_NODE *ent = parser_new_node (this_parser, PT_SPEC);
+
+            ent->info.spec.derived_table = $1;  // json_table_rule
+            ent->info.spec.derived_table_type = PT_DERIVED_JSON_TABLE;
+            ent->info.spec.range_var = $3;      // identifier
+
+            $$ = ent;
+          DBG_PRINT}}
 	;
 
 opt_table_spec_index_hint
@@ -23166,7 +23197,128 @@ vacuum_stmt
 			$$ = node;
 		DBG_PRINT}}
 	;
-			
+
+  json_table_column_behavior_rule
+    : Null
+      {{
+        $$.m_behavior = JSON_TABLE_RETURN_NULL;
+        $$.m_default_value = NULL;
+      DBG_PRINT}}
+    | ERROR_
+      {{
+        $$.m_behavior = JSON_TABLE_THROW_ERROR;
+        $$.m_default_value = NULL;
+      DBG_PRINT}}
+    | DEFAULT CHAR_STRING
+      {{
+        $$.m_behavior = JSON_TABLE_DEFAULT_VALUE;
+        $$.m_default_value = parser_alloc (this_parser, sizeof (struct db_value));
+        db_make_string ($$.m_default_value, $2);
+      DBG_PRINT}}
+    ;
+
+  json_table_on_error_rule_optional
+    : /* empty */
+      {{
+        $$.m_behavior = JSON_TABLE_RETURN_NULL;
+        $$.m_default_value = NULL;
+      }}
+    | ON_ERROR json_table_column_behavior_rule
+      {{
+        $$ = $2;
+      DBG_PRINT}}
+    ;
+
+  json_table_on_empty_rule_optional
+    : /* empty */
+      {{
+        $$.m_behavior = JSON_TABLE_RETURN_NULL;
+        $$.m_default_value = NULL;
+      }}
+    | ON_EMPTY json_table_column_behavior_rule
+      {{
+        $$ = $2;
+      DBG_PRINT}}
+    ;
+
+  json_table_column_rule
+    : identifier For ORDINALITY
+      {{
+        PT_NODE *pt_col = parser_new_node (this_parser, PT_JSON_TABLE_COLUMN);
+        pt_col->info.json_table_column_info.name = $1;
+        pt_col->info.json_table_column_info.func = JSON_TABLE_ORDINALITY;
+        pt_col->type_enum = DB_TYPE_INTEGER;
+        $$ = pt_col;
+      DBG_PRINT}}
+    | identifier data_type PATH CHAR_STRING json_table_on_error_rule_optional json_table_on_empty_rule_optional
+    //        $1        $2   $3          $4                                $5                                $6
+      {{
+        PT_NODE *pt_col = parser_new_node (this_parser, PT_JSON_TABLE_COLUMN);
+        pt_col->info.json_table_column_info.name = $1;
+        pt_col->type_enum = TO_NUMBER (CONTAINER_AT_0 ($2));
+        pt_col->data_type = CONTAINER_AT_1 ($2);
+        pt_col->info.json_table_column_info.func = JSON_TABLE_EXTRACT;
+        pt_col->info.json_table_column_info.on_error = $5;
+        pt_col->info.json_table_column_info.on_empty = $6;
+      DBG_PRINT}}
+    | identifier data_type EXISTS PATH CHAR_STRING
+      {{
+        PT_NODE *pt_col = parser_new_node (this_parser, PT_JSON_TABLE_COLUMN);
+        pt_col->info.json_table_column_info.name = $1;
+        pt_col->type_enum = TO_NUMBER (CONTAINER_AT_0 ($2));
+        pt_col->data_type = CONTAINER_AT_1 ($2);
+        pt_col->info.json_table_column_info.func = JSON_TABLE_EXISTS;
+      DBG_PRINT}}
+    | NESTED json_table_column_list_rule
+      {{
+        $$ = $2;
+      DBG_PRINT}}
+    | NESTED PATH json_table_column_list_rule
+      {{
+        $$ = $3;
+      DBG_PRINT}}
+    ;
+
+  json_table_column_list_rule
+    : json_table_column_list_rule ',' json_table_column_rule
+      {{
+        pt_jt_append_column_or_nested_node ($1, $3);
+        $$ = $1;
+      DBG_PRINT}}
+    | json_table_column_rule
+      {{
+        PT_NODE *pt_jt_node = parser_new_node (this_parser, PT_JSON_TABLE_NODE);
+        pt_jt_append_column_or_nested_node (pt_jt_node, $1);
+        $$ = pt_jt_append_column_or_nested_node;
+      DBG_PRINT}}
+    ;
+
+  json_table_node_rule
+    : CHAR_STRING COLUMNS '(' json_table_column_list_rule ')'
+      {{
+        PT_NODE *jt_node = $4;
+        assert (jt_node != NULL);
+        assert (jt_node->node_type == PT_JSON_TABLE_NODE);
+
+        jt_node->info.json_table_node_info.path = $1;
+
+        $$ = jt_node;
+      DBG_PRINT}}
+    ;
+
+  json_table_rule
+    : JSON_TABLE '(' expression_ ',' json_table_node_rule ')'
+      {{
+        // $3 = expression_
+        // $5 = json_table_node_rule
+
+        PT_NODE *jt = parser_new_node (this_parser, PT_JSON_TABLE);
+        jt->info.json_table_info.expr = $3;
+        jt->info.json_table_info.tree = $5;
+
+        $$ = jt;
+      }}
+    ;
 
 %%
 
@@ -26211,4 +26363,21 @@ pt_create_json_value (PARSER_CONTEXT *parser, const char *str)
     }
 
   return node;
+}
+
+static void
+pt_jt_append_column_or_nested_node (PT_NODE * jt_node, PT_NODE * jt_col_or_nested)
+{
+  assert (jt_node != NULL && jt_node->node_type == PT_JSON_TABLE_NODE);
+  assert (jt_col_or_nested != NULL);
+
+  if (jt_col_or_nested->node_type == PT_JSON_TABLE_COLUMN)
+    {
+      (void) parser_append_node (jt_col_or_nested, jt_node->info.json_table_node_info.columns);
+    }
+  else
+    {
+      assert (jt_col_or_nested->node_type == PT_JSON_TABLE_NODE);
+      (void) parser_append_node (jt_col_or_nested, jt_node->info.json_table_node_info.nested_paths);
+    }
 }

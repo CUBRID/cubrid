@@ -29,7 +29,7 @@
 // forward definitions
 struct db_value;
 
-enum json_table_column_behavior
+enum json_table_column_behavior_type
 {
   JSON_TABLE_RETURN_NULL,
   JSON_TABLE_THROW_ERROR,
@@ -39,19 +39,13 @@ enum json_table_column_behavior
 enum json_table_column_function
 {
   JSON_TABLE_EXTRACT,
-  JSON_TALBE_EXISTS,
+  JSON_TABLE_EXISTS,
   JSON_TABLE_ORDINALITY
 };
 
-struct json_table_column_on_error
+struct json_table_column_behavior
 {
-  enum json_table_column_behavior m_behavior;
-  struct db_value *m_default_value;
-};
-
-struct json_table_column_on_empty
-{
-  enum json_table_column_behavior m_behavior;
+  enum json_table_column_behavior_type m_behavior;
   struct db_value *m_default_value;
 };
 

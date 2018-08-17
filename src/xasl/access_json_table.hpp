@@ -49,8 +49,8 @@ namespace cubxasl
     {
 	tp_domain *m_domain;
 	std::string m_path;
-	json_table_column_on_error m_on_error;
-	json_table_column_on_empty m_on_empty;
+	json_table_column_behavior m_on_error;
+	json_table_column_behavior m_on_empty;
 	db_value *m_output_value_pointer;   // todo: should match xasl->outptr_list value pointers
 	//       dig xasl_generation SYMBOL_INFO
 

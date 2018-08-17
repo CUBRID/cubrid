@@ -175,7 +175,7 @@ namespace cubxasl
 	case json_table_column_function::JSON_TABLE_EXTRACT:
 	  error_code = evaluate_extract (input);
 	  break;
-	case json_table_column_function::JSON_TALBE_EXISTS:
+	case json_table_column_function::JSON_TABLE_EXISTS:
 	  error_code = evaluate_exists (input);
 	  break;
 	case json_table_column_function::JSON_TABLE_ORDINALITY:

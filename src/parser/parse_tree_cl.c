@@ -5105,6 +5105,9 @@ pt_init_apply_f (void)
   pt_apply_func_array[PT_VACUUM] = pt_apply_vacuum;
   pt_apply_func_array[PT_WITH_CLAUSE] = pt_apply_with_clause;
   pt_apply_func_array[PT_CTE] = pt_apply_cte;
+  pt_apply_func_array[PT_JSON_TABLE] = pt_apply_json_table;
+  pt_apply_func_array[PT_JSON_TABLE_NODE] = pt_apply_json_table_node;
+  pt_apply_func_array[PT_JSON_TABLE_COLUMN] = pt_apply_json_table_column;
 
   pt_apply_f = pt_apply_func_array;
 }
@@ -5221,6 +5224,9 @@ pt_init_init_f (void)
   pt_init_func_array[PT_VACUUM] = pt_init_vacuum;
   pt_init_func_array[PT_WITH_CLAUSE] = pt_init_with_clause;
   pt_init_func_array[PT_CTE] = pt_init_cte;
+  pt_init_func_array[PT_JSON_TABLE] = pt_init_json_table;
+  pt_init_func_array[PT_JSON_TABLE_NODE] = pt_init_json_table_node;
+  pt_init_func_array[PT_JSON_TABLE_COLUMN] = pt_init_json_table_column;
 
   pt_init_f = pt_init_func_array;
 }
@@ -5335,6 +5341,9 @@ pt_init_print_f (void)
   pt_print_func_array[PT_VACUUM] = pt_print_vacuum;
   pt_print_func_array[PT_WITH_CLAUSE] = pt_print_with_clause;
   pt_print_func_array[PT_CTE] = pt_print_cte;
+  pt_print_func_array[PT_JSON_TABLE] = pt_print_json_table;
+  pt_print_func_array[PT_JSON_TABLE_NODE] = pt_print_json_table_node;
+  pt_print_func_array[PT_JSON_TABLE_COLUMN] = pt_print_json_table_column;
 
   pt_print_f = pt_print_func_array;
 }
@@ -19057,7 +19066,7 @@ static PT_NODE *
 pt_init_json_table_node (PT_NODE * p)
 {
   p->info.json_table_node_info.columns = NULL;
-  p->info.json_table_node_info.nested_path = NULL;
+  p->info.json_table_node_info.nested_paths = NULL;
   p->info.json_table_node_info.path = NULL;
   return p;
 }
@@ -19066,7 +19075,7 @@ static PT_NODE *
 pt_apply_json_table_node (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
 {
   p->info.json_table_node_info.columns = g (parser, p->info.json_table_node_info.columns, arg);
-  p->info.json_table_node_info.nested_path = g (parser, p->info.json_table_node_info.nested_path, arg);
+  p->info.json_table_node_info.nested_paths = g (parser, p->info.json_table_node_info.nested_paths, arg);
   return p;
 }
 
@@ -19084,7 +19093,13 @@ pt_print_json_table_node (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_init_json_table_column (PT_NODE * p)
 {
+  p->info.json_table_column_info.name = NULL;
   p->info.json_table_column_info.path = NULL;
+  p->info.json_table_column_info.func = JSON_TABLE_EXTRACT;
+  p->info.json_table_column_info.on_error.m_behavior = JSON_TABLE_RETURN_NULL;
+  p->info.json_table_column_info.on_error.m_default_value = NULL;
+  p->info.json_table_column_info.on_empty.m_behavior = JSON_TABLE_RETURN_NULL;
+  p->info.json_table_column_info.on_empty.m_default_value = NULL;
   return p;
 }
 
