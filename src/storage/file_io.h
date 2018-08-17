@@ -204,22 +204,22 @@ struct fileio_page
 };
 
 STATIC_INLINE FILEIO_PAGE_WATERMARK *
-fileio_get_page_watermark_pos (FILEIO_PAGE * io_page)
+fileio_get_page_watermark_pos (FILEIO_PAGE * io_page, PGLENGTH page_size)
 {
-  return (FILEIO_PAGE_WATERMARK *) (((char *) io_page) + (db_io_page_size () - sizeof (FILEIO_PAGE_WATERMARK)));
+  return (FILEIO_PAGE_WATERMARK *) (((char *) io_page) + (page_size - sizeof (FILEIO_PAGE_WATERMARK)));
 }
 
 STATIC_INLINE void
-fileio_init_lsa_of_page (FILEIO_PAGE * io_page)
+fileio_init_lsa_of_page (FILEIO_PAGE * io_page, PGLENGTH page_size)
 {
   LSA_SET_NULL (&io_page->prv.lsa);
 
-  FILEIO_PAGE_WATERMARK *prv2 = fileio_get_page_watermark_pos (io_page);
+  FILEIO_PAGE_WATERMARK *prv2 = fileio_get_page_watermark_pos (io_page, page_size);
   LSA_SET_NULL (&prv2->lsa);
 }
 
 STATIC_INLINE void
-fileio_init_lsa_of_temp_page (FILEIO_PAGE * io_page)
+fileio_init_lsa_of_temp_page (FILEIO_PAGE * io_page, PGLENGTH page_size)
 {
   LOG_LSA *lsa_ptr;
 
@@ -227,7 +227,7 @@ fileio_init_lsa_of_temp_page (FILEIO_PAGE * io_page)
   lsa_ptr->pageid = NULL_PAGEID - 1;
   lsa_ptr->offset = NULL_OFFSET - 1;
 
-  FILEIO_PAGE_WATERMARK *prv2 = fileio_get_page_watermark_pos (io_page);
+  FILEIO_PAGE_WATERMARK *prv2 = fileio_get_page_watermark_pos (io_page, page_size);
 
   lsa_ptr = &prv2->lsa;
   lsa_ptr->pageid = NULL_PAGEID - 1;
@@ -235,29 +235,29 @@ fileio_init_lsa_of_temp_page (FILEIO_PAGE * io_page)
 }
 
 STATIC_INLINE void
-fileio_reset_page_lsa (FILEIO_PAGE * io_page)
+fileio_reset_page_lsa (FILEIO_PAGE * io_page, PGLENGTH page_size)
 {
   LSA_SET_NULL (&io_page->prv.lsa);
 
-  FILEIO_PAGE_WATERMARK *prv2 = fileio_get_page_watermark_pos (io_page);
+  FILEIO_PAGE_WATERMARK *prv2 = fileio_get_page_watermark_pos (io_page, page_size);
 
   LSA_SET_NULL (&prv2->lsa);
 }
 
 STATIC_INLINE void
-fileio_set_page_lsa (FILEIO_PAGE * io_page, const LOG_LSA * lsa)
+fileio_set_page_lsa (FILEIO_PAGE * io_page, const LOG_LSA * lsa, PGLENGTH page_size)
 {
   LSA_COPY (&io_page->prv.lsa, lsa);
 
-  FILEIO_PAGE_WATERMARK *prv2 = fileio_get_page_watermark_pos (io_page);
+  FILEIO_PAGE_WATERMARK *prv2 = fileio_get_page_watermark_pos (io_page, page_size);
 
   LSA_COPY (&prv2->lsa, lsa);
 }
 
 STATIC_INLINE int
-fileio_is_page_sane (FILEIO_PAGE * io_page)
+fileio_is_page_sane (FILEIO_PAGE * io_page, PGLENGTH page_size)
 {
-  FILEIO_PAGE_WATERMARK *prv2 = fileio_get_page_watermark_pos (io_page);
+  FILEIO_PAGE_WATERMARK *prv2 = fileio_get_page_watermark_pos (io_page, page_size);
 
   return (LSA_EQ (&io_page->prv.lsa, &prv2->lsa));
 }
@@ -479,7 +479,7 @@ extern int fileio_expand_to (THREAD_ENTRY * threda_p, VOLID volid, DKNPAGES npag
 #endif /* not CS_MODE */
 extern void *fileio_initialize_pages (THREAD_ENTRY * thread_p, int vdes, FILEIO_PAGE * io_pgptr, DKNPAGES start_pageid,
 				      DKNPAGES npages, size_t page_size, int kbytes_to_be_written_per_sec);
-extern void fileio_initialize_res (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page);
+extern void fileio_initialize_res (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, PGLENGTH page_size);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern DKNPAGES fileio_truncate (VOLID volid, DKNPAGES npages_to_resize);
 #endif

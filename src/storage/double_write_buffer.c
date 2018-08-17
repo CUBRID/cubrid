@@ -1564,7 +1564,7 @@ dwb_create_blocks (THREAD_ENTRY * thread_p, unsigned int num_blocks, unsigned in
 	{
 	  io_page = (FILEIO_PAGE *) (blocks_write_buffer[i] + j * IO_PAGESIZE);
 
-	  fileio_initialize_res (thread_p, io_page);
+	  fileio_initialize_res (thread_p, io_page, IO_PAGESIZE);
 	  dwb_initialize_slot (&slots[i][j], io_page, j, i);
 	}
 
@@ -1931,7 +1931,7 @@ dwb_slots_hash_insert (THREAD_ENTRY * thread_p, VPID * vpid, DWB_SLOT * slot, in
 	      /* Invalidate the old slot, if is in the same block. We want to avoid duplicates in block at flush. */
 	      assert (slots_hash_entry->slot->position_in_block < slot->position_in_block);
 	      VPID_SET_NULL (&slots_hash_entry->slot->vpid);
-	      fileio_initialize_res (thread_p, slots_hash_entry->slot->io_page);
+	      fileio_initialize_res (thread_p, slots_hash_entry->slot->io_page, IO_PAGESIZE);
 
 	      _er_log_debug (ARG_FILE_LINE,
 			     "Found same page with same LSA in same block - %d - at positions (%d, %d) \n",
@@ -2771,7 +2771,7 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, UINT64 * current_po
 	  assert (s1->position_in_block < DWB_BLOCK_NUM_PAGES);
 	  VPID_SET_NULL (&(block->slots[s1->position_in_block].vpid));
 
-	  fileio_initialize_res (thread_p, s1->io_page);
+	  fileio_initialize_res (thread_p, s1->io_page, IO_PAGESIZE);
 	}
 
       /* Check for WAL protocol. */
@@ -3153,10 +3153,10 @@ dwb_set_slot_data (THREAD_ENTRY * thread_p, DWB_SLOT * dwb_slot, FILEIO_PAGE * i
   else
     {
       /* Initialize page for consistency. */
-      fileio_initialize_res (thread_p, dwb_slot->io_page);
+      fileio_initialize_res (thread_p, dwb_slot->io_page, IO_PAGESIZE);
     }
 
-  assert (fileio_is_page_sane (io_page_p));
+  assert (fileio_is_page_sane (io_page_p, IO_PAGESIZE));
   LSA_COPY (&dwb_slot->lsa, &io_page_p->prv.lsa);
   VPID_SET (&dwb_slot->vpid, io_page_p->prv.volid, io_page_p->prv.pageid);
 }
@@ -3503,7 +3503,7 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
 	{
 	  /* Invalidate the slot to avoid flushing the same data twice. */
 	  VPID_SET_NULL (&dwb_slot->vpid);
-	  fileio_initialize_res (thread_p, dwb_slot->io_page);
+	  fileio_initialize_res (thread_p, dwb_slot->io_page, IO_PAGESIZE);
 	}
     }
 
@@ -3870,7 +3870,7 @@ dwb_check_data_page_is_sane (THREAD_ENTRY * thread_p, DWB_BLOCK * rcv_block, DWB
 	{
 	  /* The page in data volume is not corrupted. Do not overwrite its content - reset slot VPID. */
 	  VPID_SET_NULL (&p_dwb_ordered_slots[i].vpid);
-	  fileio_initialize_res (thread_p, p_dwb_ordered_slots[i].io_page);
+	  fileio_initialize_res (thread_p, p_dwb_ordered_slots[i].io_page, IO_PAGESIZE);
 	  continue;
 	}
 
@@ -4316,7 +4316,7 @@ start:
 
   iopage = (FILEIO_PAGE *) PTR_ALIGN (page_buf, MAX_ALIGNMENT);
   memset (iopage, 0, IO_MAX_PAGE_SIZE);
-  fileio_initialize_res (thread_p, iopage);
+  fileio_initialize_res (thread_p, iopage, IO_PAGESIZE);
 
   /* Check whether the initial block was flushed */
 check_flushed_blocks:

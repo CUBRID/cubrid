@@ -2389,7 +2389,7 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p, const char *
     }
 
   memset ((char *) malloc_io_page_p, 0, page_size);
-  (void) fileio_initialize_res (thread_p, malloc_io_page_p);
+  (void) fileio_initialize_res (thread_p, malloc_io_page_p, page_size);
 
   vol_fd = fileio_create (thread_p, db_full_name_p, vol_label_p, vol_id, is_do_lock, is_do_sync);
   FI_TEST (thread_p, FI_TEST_FILE_IO_FORMAT, 0);
@@ -2598,7 +2598,7 @@ fileio_expand_to (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES size_npages, D
     }
 
   memset (io_page_p, 0, IO_PAGESIZE);
-  (void) fileio_initialize_res (thread_p, io_page_p);
+  (void) fileio_initialize_res (thread_p, io_page_p, IO_PAGESIZE);
 
   start_pageid = (PAGEID) (current_size / IO_PAGESIZE);
   last_pageid = ((PAGEID) (new_size / IO_PAGESIZE) - 1);
@@ -2846,7 +2846,7 @@ fileio_copy_volume (THREAD_ENTRY * thread_p, int from_vol_desc, DKNPAGES npages,
 	    }
 	  else
 	    {
-	      fileio_reset_page_lsa (malloc_io_page_p);
+	      fileio_reset_page_lsa (malloc_io_page_p, IO_PAGESIZE);
 	      if (fileio_write_or_add_to_dwb (thread_p, to_vol_desc, malloc_io_page_p, page_id, IO_PAGESIZE) == NULL)
 		{
 		  goto error;
@@ -2902,7 +2902,7 @@ fileio_reset_volume (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, DK
     {
       if (fileio_read (thread_p, vol_fd, malloc_io_page_p, page_id, IO_PAGESIZE) != NULL)
 	{
-	  fileio_set_page_lsa (malloc_io_page_p, reset_lsa_p);
+	  fileio_set_page_lsa (malloc_io_page_p, reset_lsa_p, IO_PAGESIZE);
 
 	  if (fileio_write_or_add_to_dwb (thread_p, vol_fd, malloc_io_page_p, page_id, IO_PAGESIZE) == NULL)
 	    {
@@ -4805,7 +4805,7 @@ fileio_write_user_area (THREAD_ENTRY * thread_p, int vol_fd, PAGEID page_id, off
 	  return NULL;
 	}
 
-      (void) fileio_initialize_res (thread_p, io_page_p);
+      (void) fileio_initialize_res (thread_p, io_page_p, IO_PAGESIZE);
       memcpy (io_page_p->page, area_p, nbytes);
 
       write_p = (void *) io_page_p;
@@ -9997,7 +9997,7 @@ fileio_fill_hole_during_restore (THREAD_ENTRY * thread_p, int *next_page_id_p, i
 	  return ER_FAILED;
 	}
       memset ((char *) malloc_io_pgptr, 0, IO_PAGESIZE);
-      (void) fileio_initialize_res (thread_p, malloc_io_pgptr);
+      (void) fileio_initialize_res (thread_p, malloc_io_pgptr, IO_PAGESIZE);
     }
 
   while (*next_page_id_p < stop_page_id)
@@ -11541,9 +11541,9 @@ fileio_os_sysconf (void)
  *   return:
  */
 void
-fileio_initialize_res (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page)
+fileio_initialize_res (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, PGLENGTH page_size)
 {
-  fileio_init_lsa_of_page (io_page);
+  fileio_init_lsa_of_page (io_page, page_size);
   io_page->prv.pageid = -1;
   io_page->prv.volid = -1;
 
@@ -11886,7 +11886,7 @@ fileio_page_check_corruption (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, bo
 #if 1
   assert (io_page != NULL && is_page_corrupted != NULL);
 
-  *is_page_corrupted = !fileio_is_page_sane (io_page);
+  *is_page_corrupted = !fileio_is_page_sane (io_page, IO_PAGESIZE);
 
   return NO_ERROR;
 #else
