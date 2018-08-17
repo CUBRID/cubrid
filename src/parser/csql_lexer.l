@@ -1575,7 +1575,7 @@ csql_yyerror (const char *s)
 	    }
 	  else
 	    {
-	      msg = s;
+	      msg = (char *) s;   // suppress warning; string will not be changed
 	    }
 	}
 

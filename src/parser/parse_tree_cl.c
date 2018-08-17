@@ -2542,7 +2542,7 @@ pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
       for (; dim < block.dim + len; dim *= 2)	//calc next power of 2 >= b.dim+len
 	 ;
 
-      mem::block b { dim, (char *) parser_alloc (parser, dim) };
+      mem::block b { dim, (char *) parser_alloc (parser, (const int) dim) };
       memcpy (b.ptr, block.ptr, block.dim);
       block = std::move (b);
     }, [](mem::block &block)

@@ -4342,7 +4342,7 @@ join_table_spec
 			PT_NODE *sopt = $3;
 			bool natural = false;
 
-			if ($4 == PT_JOIN_NONE)  
+			if ($4 == NULL)  
 			  {
 				/* Not exists ON condition, if it is outer join, report error */
 				if ($1 == PT_JOIN_LEFT_OUTER 
@@ -4386,7 +4386,7 @@ join_condition
 	: /* empty */
 		{{
 			parser_save_and_set_pseudoc (0);
-			$$ = PT_JOIN_NONE;   /* just return NULL */
+			$$ = NULL;   /* just return NULL */
 		DBG_PRINT}} 
 	| ON_
 		{{
@@ -4502,7 +4502,7 @@ original_table_spec
 			    if ($3)
 			      {
 				PT_NODE *hint = NULL, *alias = NULL;
-				char *qualifier_name = NULL;
+				const char *qualifier_name = NULL;
 
 				/* Get qualifier */
 				alias = CONTAINER_AT_0 ($2);
@@ -10333,7 +10333,7 @@ transaction_mode
 			if (tm && is)
 			  {
 			    PARSER_SAVE_ERR_CONTEXT (tm, @$.buffer_pos)
-			    async_ws_or_error =  TO_NUMBER (CONTAINER_AT_3 ($3));
+			    async_ws_or_error = (int) TO_NUMBER (CONTAINER_AT_3 ($3));
 			    if (async_ws_or_error < 0)
 			      {
 				PT_ERRORm(this_parser, tm, MSGCAT_SET_PARSER_SYNTAX,
@@ -10346,7 +10346,7 @@ transaction_mode
 			    tm->info.isolation_lvl.async_ws = async_ws_or_error;
 
 
-			    async_ws_or_error =  TO_NUMBER (CONTAINER_AT_3 ($5));
+			    async_ws_or_error = (int) TO_NUMBER (CONTAINER_AT_3 ($5));
 			    if (async_ws_or_error < 0)
 			      {
 				PT_ERRORm(this_parser, is, MSGCAT_SET_PARSER_SYNTAX,
@@ -10407,7 +10407,7 @@ transaction_mode
 		{{
 
 			PT_NODE *tm = parser_new_node (this_parser, PT_ISOLATION_LVL);
-			int async_ws_or_error =  TO_NUMBER (CONTAINER_AT_3 ($3));
+			int async_ws_or_error = (int) TO_NUMBER (CONTAINER_AT_3 ($3));
 
 			PARSER_SAVE_ERR_CONTEXT (tm, @$.buffer_pos)
 
@@ -12863,7 +12863,7 @@ to_param
 			if (val)
 			  {
 			    val->info.name.meta_class = PT_PARAMETER;
-			    val->info.name.spec_id = (long) val;
+			    val->info.name.spec_id = (UINTPTR) val;
 			    val->info.name.resolved = pt_makename ("out parameter");
 			  }
 
@@ -12879,7 +12879,7 @@ to_param
 			if (val)
 			  {
 			    val->info.name.meta_class = PT_PARAMETER;
-			    val->info.name.spec_id = (long) val;
+			    val->info.name.spec_id = (UINTPTR) val;
 			    val->info.name.resolved = pt_makename ("out parameter");
 			  }
 
