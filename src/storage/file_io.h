@@ -177,11 +177,7 @@ struct fileio_page_reserved
   INT16 volid;			/* Volume identifier where the page reside */
   unsigned char ptype;		/* Page type */
   unsigned char pflag_reserve_1;	/* unused - Reserved field */
-#if 1
-  INT32 dead_checksum;
-#else
-  INT32 checksum;		/* Page checksum - currently CRC32 is used. */
-#endif
+  INT32 p_reserve_1;
   INT32 p_reserve_2;		/* unused - Reserved field */
   INT64 p_reserve_3;		/* unused - Reserved field */
 };

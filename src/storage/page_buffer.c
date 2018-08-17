@@ -4798,6 +4798,7 @@ pgbuf_set_bcb_page_vpid (PGBUF_BCB * bufptr, bool force_set_vpid)
 
 	  bufptr->iopage_buffer->iopage.prv.ptype = '\0';
 	  bufptr->iopage_buffer->iopage.prv.pflag_reserve_1 = '\0';
+	  bufptr->iopage_buffer->iopage.prv.p_reserve_1 = 0;
 	  bufptr->iopage_buffer->iopage.prv.p_reserve_2 = 0;
 	  bufptr->iopage_buffer->iopage.prv.p_reserve_3 = 0;
 	}
@@ -4978,12 +4979,11 @@ pgbuf_initialize_bcb_table (void)
       ioptr->iopage.prv.pageid = -1;
       ioptr->iopage.prv.volid = -1;
 
-#if 1				/* do not delete me */
       ioptr->iopage.prv.ptype = '\0';
       ioptr->iopage.prv.pflag_reserve_1 = '\0';
+      ioptr->iopage.prv.p_reserve_1 = 0;
       ioptr->iopage.prv.p_reserve_2 = 0;
       ioptr->iopage.prv.p_reserve_3 = 0;
-#endif
 
       bufptr->iopage_buffer = ioptr;
       ioptr->bcb = bufptr;
@@ -10349,6 +10349,7 @@ pgbuf_check_bcb_page_vpid (PGBUF_BCB * bufptr, bool maybe_deallocated)
 		  && bufptr->vpid.volid == bufptr->iopage_buffer->iopage.prv.volid));
 
       assert (bufptr->iopage_buffer->iopage.prv.pflag_reserve_1 == '\0');
+      assert (bufptr->iopage_buffer->iopage.prv.p_reserve_1 == 0);
       assert (bufptr->iopage_buffer->iopage.prv.p_reserve_2 == 0);
       assert (bufptr->iopage_buffer->iopage.prv.p_reserve_3 == 0);
 
@@ -10384,6 +10385,7 @@ pgbuf_scramble (FILEIO_PAGE * iopage)
 
   iopage->prv.ptype = '\0';
   iopage->prv.pflag_reserve_1 = '\0';
+  iopage->prv.p_reserve_1 = 0;
   iopage->prv.p_reserve_2 = 0;
   iopage->prv.p_reserve_3 = 0;
 }
