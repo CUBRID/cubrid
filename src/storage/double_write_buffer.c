@@ -4221,7 +4221,7 @@ dwb_flush_force (THREAD_ENTRY * thread_p, bool * all_sync)
 {
   UINT64 initial_position_with_flags, current_position_with_flags, prev_position_with_flags;
   UINT64 initial_block_version, current_block_version;
-  unsigned int initial_block_no, current_block_no = DWB_NUM_TOTAL_BLOCKS;
+  unsigned int initial_block_no = 0, current_block_no = DWB_NUM_TOTAL_BLOCKS;
   char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   FILEIO_PAGE *iopage = NULL;
   VPID null_vpid = { NULL_VOLID, NULL_PAGEID };
