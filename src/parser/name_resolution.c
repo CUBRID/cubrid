@@ -877,6 +877,7 @@ pt_bind_spec_attrs (PARSER_CONTEXT * parser, PT_NODE * spec)
   /* get aliases if they are not present */
   if (PT_SPEC_IS_DERIVED (spec))
     {
+      // todo: json_table
       derived_table = spec_info->derived_table;
       if (spec_info->as_attr_list == NULL)
 	{
@@ -7255,6 +7256,7 @@ get_natural_join_attrs_from_pt_spec (PARSER_CONTEXT * parser, PT_NODE * node)
   db_attrs = NULL;
   natural_join_attrs = NULL;
 
+  // todo: json_table
   if (PT_SPEC_IS_ENTITY (node))
     {
       /* This is a table. */

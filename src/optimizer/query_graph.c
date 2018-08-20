@@ -2853,6 +2853,7 @@ is_dependent_table (PT_NODE * entity)
       /* this test is too pessimistic.  The argument must depend on a previous entity spec in the from list. 
        * >>>> FIXME some day <<<< 
        */
+      // todo: json_table
       if (entity->info.spec.derived_table_type == PT_IS_SET_EXPR	/* is cselect derived table of method */
 	  || entity->info.spec.derived_table_type == PT_IS_CSELECT
 	  || entity->info.spec.derived_table->info.query.correlation_level == 1)

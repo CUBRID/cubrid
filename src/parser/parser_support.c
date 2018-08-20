@@ -1019,6 +1019,7 @@ pt_find_aggregate_functions_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *
 	}
 
       /* don't get confused by uncorrelated, set-derived subqueries. */
+      // todo: json_table
       if (tree->info.query.correlation_level == 0 && (spec = tree->info.query.q.select.from)
 	  && spec->info.spec.derived_table && spec->info.spec.derived_table_type == PT_IS_SET_EXPR)
 	{

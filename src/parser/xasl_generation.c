@@ -12107,6 +12107,7 @@ pt_to_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_key_pa
   else if (PT_SPEC_IS_DERIVED (spec))
     {
       /* derived table index_part better be NULL here! */
+      // todo: json_table
       if (spec->info.spec.derived_table_type == PT_IS_SUBQUERY)
 	{
 	  access = pt_to_subquery_table_spec_list (parser, spec, spec->info.spec.derived_table, where_part);
