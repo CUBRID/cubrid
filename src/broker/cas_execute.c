@@ -316,6 +316,8 @@ static short encode_ext_type_to_short (T_BROKER_VERSION client_version, unsigned
 static int ux_get_generated_keys_server_insert (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf);
 static int ux_get_generated_keys_client_insert (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf);
 
+static bool do_commit_after_execute (const t_srv_handle & server_handle);
+
 static char cas_u_type[] = { 0,	/* 0 */
   CCI_U_TYPE_INT,		/* 1 */
   CCI_U_TYPE_FLOAT,		/* 2 */
@@ -1315,7 +1317,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
 
   db_get_cacheinfo (session, stmt_id, &srv_handle->use_plan_cache, &srv_handle->use_query_cache);
 
-  if (srv_handle->auto_commit_mode == TRUE && !srv_handle->has_result_set)
+  if (do_commit_after_execute (*srv_handle))
     {
       req_info->need_auto_commit = TRAN_AUTOCOMMIT;
     }
@@ -1642,7 +1644,7 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
   srv_handle->cur_result = (void *) srv_handle->q_result;
   srv_handle->cur_result_index = 1;
 
-  if (srv_handle->auto_commit_mode == TRUE && !srv_handle->has_result_set)
+  if (do_commit_after_execute (*srv_handle))
     {
       req_info->need_auto_commit = TRAN_AUTOCOMMIT;
     }
@@ -10289,4 +10291,51 @@ encode_ext_type_to_short (T_BROKER_VERSION client_version, unsigned char cas_typ
     }
 
   return ret_type;
+}
+
+//
+// do_commit_after_execute () - commit transaction immediately after executing query or queries.
+//
+// return             : true to commit, false otherwise
+// server_handle (in) : server handle
+//
+static bool
+do_commit_after_execute (const t_srv_handle & server_handle)
+{
+  // theoretically, when auto-commit is set to on, transactions should be committed automatically after query
+  // execution.
+  //
+  // in practice, "immediately" after execution can be different moments. ideally, from performance point of view,
+  // server commits transaction after query execution. however, that is not always possible.
+  //
+  // in some cases, the client does this commit. in other cases, even client cannot do commit (e.g. large result set),
+  // and commit comes when cursor reaches the end of result set.
+  //
+  // here, it is decided when client does the commit. the curent condition is no result set.
+  //
+  // IMPORTANT EXCEPTION: server commit must always be followed by a client commit! when result set is small (less than
+  //                      one page) and when other conditions are met too, server commits automatically.
+  //
+
+  if (!server_handle.auto_commit_mode == TRUE)
+    {
+      return false;
+    }
+
+  // safe-guard: do not commit an aborted query; this function should not be called for error cases.
+  assert (!tran_was_latest_query_aborted ());
+
+  if (tran_was_latest_query_committed ())
+    {
+      return true;
+    }
+
+  if (server_handle.has_result_set)
+    {
+      return false;
+    }
+  else
+    {
+      return true;
+    }
 }
