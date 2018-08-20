@@ -3583,7 +3583,7 @@ boot_register_client (BOOT_CLIENT_CREDENTIAL * client_credential, int client_loc
   if (client_credential->client_type == BOOT_CLIENT_DDL_PROXY)
     {
       assert (client_credential->desired_tran_index != NULL_TRAN_INDEX);
-      request_size += OR_INT_SIZE; /* desired_tran_index */
+      request_size += OR_INT_SIZE;	/* desired_tran_index */
     }
 
   request = (char *) malloc (request_size);

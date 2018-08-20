@@ -1595,7 +1595,7 @@ loop:
     {
       if (i != LOG_SYSTEM_TRAN_INDEX && (tdes = LOG_FIND_TDES (i)) != NULL && tdes->trid != NULL_TRANID)
 	{
-          assert (false);
+	  assert (false);
 	}
     }
 

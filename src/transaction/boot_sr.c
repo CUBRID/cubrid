@@ -3036,23 +3036,22 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
     {
       /* DDL proxy client has already a transaction */
       tran_index = client_credential->desired_tran_index;
-      if (tran_index != NULL_TRAN_INDEX
-          && logtb_find_thread_by_tran_index_except_me (tran_index) != NULL)
-        {
-          logtb_set_current_tran_index (thread_p, tran_index);
-        }
+      if (tran_index != NULL_TRAN_INDEX && logtb_find_thread_by_tran_index_except_me (tran_index) != NULL)
+	{
+	  logtb_set_current_tran_index (thread_p, tran_index);
+	}
       else
-        {
-          LOG_SET_CURRENT_TRAN_INDEX (thread_p, LOG_SYSTEM_TRAN_INDEX);
-          tran_index = NULL_TRAN_INDEX;
-        }
+	{
+	  LOG_SET_CURRENT_TRAN_INDEX (thread_p, LOG_SYSTEM_TRAN_INDEX);
+	  tran_index = NULL_TRAN_INDEX;
+	}
     }
   else
     {
       /* Assign a transaction index to the client */
       tran_index =
-        logtb_assign_tran_index (thread_p, NULL_TRANID, TRAN_ACTIVE, client_credential, tran_state, client_lock_wait,
-			         client_isolation);
+	logtb_assign_tran_index (thread_p, NULL_TRANID, TRAN_ACTIVE, client_credential, tran_state, client_lock_wait,
+				 client_isolation);
     }
 
 #if defined (SERVER_MODE)

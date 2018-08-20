@@ -884,13 +884,13 @@ db_restart (const char *program, int print_version, const char *volume)
       client_credential.preferred_hosts = db_Preferred_hosts;
       client_credential.connect_order = db_Connect_order;
       if (db_Client_type == BOOT_CLIENT_DDL_PROXY)
-        {
-          client_credential.desired_tran_index = db_get_override_tran_index ();
-        }
+	{
+	  client_credential.desired_tran_index = db_get_override_tran_index ();
+	}
       else
-        {
-          client_credential.desired_tran_index = NULL_TRAN_INDEX;
-        }
+	{
+	  client_credential.desired_tran_index = NULL_TRAN_INDEX;
+	}
 
       error = boot_restart_client (&client_credential);
       if (error != NO_ERROR)

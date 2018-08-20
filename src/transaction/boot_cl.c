@@ -1447,30 +1447,30 @@ boot_shutdown_client (bool is_er_final, BOOT_CLIENT_TERMINATION_MODE termination
   if (BOOT_IS_CLIENT_RESTARTED ())
     {
       if (termination_mode == BOOT_END_TRANSACTION)
-        {
-          /* 
-           * wait for other server request to finish.
-           * if db_shutdown() is called by signal handler or atexit handler,
-           * the server request may be running.
-           */
-          tran_wait_server_active_trans ();
+	{
+	  /*
+	   * wait for other server request to finish.
+	   * if db_shutdown() is called by signal handler or atexit handler,
+	   * the server request may be running.
+	   */
+	  tran_wait_server_active_trans ();
 
-          /* 
-           * Either Abort or commit the current transaction depending upon the value
-           * of the commit_on_shutdown system parameter.
-           */
-          if (tran_is_active_and_has_updated ())
+	  /*
+	   * Either Abort or commit the current transaction depending upon the value
+	   * of the commit_on_shutdown system parameter.
+	   */
+	  if (tran_is_active_and_has_updated ())
 	    {
 	      if (prm_get_bool_value (PRM_ID_COMMIT_ON_SHUTDOWN) != false)
-	        {
-	          (void) tran_commit (false);
-	        }
+		{
+		  (void) tran_commit (false);
+		}
 	      else
-	        {
-	          (void) tran_abort ();
-	        }
+		{
+		  (void) tran_abort ();
+		}
 	    }
-        }
+	}
       /* 
        * Make sure that we are still up. For example, if the server died, we do
        * not need to call the following stuff any longer.

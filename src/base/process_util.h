@@ -25,10 +25,10 @@
 #ifndef _PROCESS_UTIL_H_
 #define _PROCESS_UTIL_H_
 
-typedef int (* check_funct_t) (void *);
+typedef int (*check_funct_t) (void *);
 
 int
-create_child_process (const char *const argv[], int wait_flag, check_funct_t check_func, void *check_arg, const char *stdin_file, char *stdout_file,
-		      char *stderr_file, int *exit_status);
+create_child_process (const char *const argv[], int wait_flag, check_funct_t check_func, void *check_arg,
+		      const char *stdin_file, char *stdout_file, char *stderr_file, int *exit_status);
 
 #endif /* _PROCESS_UTIL_H_ */

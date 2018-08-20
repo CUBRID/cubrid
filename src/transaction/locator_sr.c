@@ -13686,9 +13686,9 @@ xlocator_demote_class_lock (THREAD_ENTRY * thread_p, const OID * class_oid, LOCK
 
 #if defined(SERVER_MODE)
 static int
-locator_prepare_rbr_apply (THREAD_ENTRY * thread_p, const int rbr_operation, OID *class_oid, OID *instance_oid,
-                           RECDES * old_recdes, RECDES * recdes, DB_VALUE * key_value,
-                           HEAP_SCANCACHE * force_scancache);
+locator_prepare_rbr_apply (THREAD_ENTRY * thread_p, const int rbr_operation, OID * class_oid, OID * instance_oid,
+			   RECDES * old_recdes, RECDES * recdes, DB_VALUE * key_value,
+			   HEAP_SCANCACHE * force_scancache);
 /*
  * locator_repl_apply () - prepare required info for each operation
  *
@@ -13700,8 +13700,8 @@ locator_prepare_rbr_apply (THREAD_ENTRY * thread_p, const int rbr_operation, OID
  *
  */
 int
-locator_repl_apply_rbr (THREAD_ENTRY * thread_p, const char *class_name, const int key_att_id, DB_VALUE *key_value,
-                        const std::vector<int> &att_ids, const std::vector<DB_VALUE *> &new_values)
+locator_repl_apply_rbr (THREAD_ENTRY * thread_p, const char *class_name, const int key_att_id, DB_VALUE * key_value,
+			const std::vector < int >&att_ids, const std::vector < DB_VALUE * >&new_values)
 {
   OID class_oid;
   OID instance_oid;
@@ -13759,7 +13759,7 @@ locator_repl_apply_rbr (THREAD_ENTRY * thread_p, const char *class_name, const i
 
   /* search key -> get OID and old RECDES (only for UPDATE) */
   error_code = locator_prepare_rbr_apply (thread_p, rbr_operation, &class_oid, &instance_oid, &old_recdes,
-                                          &new_recdes, key_value, &scan_cache);
+					  &new_recdes, key_value, &scan_cache);
   if (error_code != NO_ERROR)
     {
       goto exit;
@@ -13768,13 +13768,13 @@ locator_repl_apply_rbr (THREAD_ENTRY * thread_p, const char *class_name, const i
   /* set key and new values into attr_info */
   assert (att_ids.size () == new_values.size ());
 
-  for (int i = 0; i < att_ids.size () ; i++)
+  for (int i = 0; i < att_ids.size (); i++)
     {
       error_code = heap_attrinfo_set (NULL, att_ids[i], new_values[i], &attr_info);
       if (error_code != NO_ERROR)
-        {
-          goto exit;
-        }
+	{
+	  goto exit;
+	}
     }
 
   error_code = heap_attrinfo_set (NULL, key_att_id, key_value, &attr_info);
@@ -13792,67 +13792,67 @@ locator_repl_apply_rbr (THREAD_ENTRY * thread_p, const char *class_name, const i
 
   switch (rbr_operation)
     {
-      case LC_FLUSH_INSERT:
-      case LC_FLUSH_INSERT_PRUNE:
-      case LC_FLUSH_INSERT_PRUNE_VERIFY:
-	pruning_type = locator_area_op_to_pruning_type ((LC_COPYAREA_OPERATION) rbr_operation);
-	error_code =
-		locator_insert_force (thread_p, &hfid, &class_oid, &instance_oid, &new_recdes, has_index,
-				      SINGLE_ROW_INSERT, &scan_cache, &dummy_force_count, pruning_type, NULL, NULL,
-				      UPDATE_INPLACE_NONE);
+    case LC_FLUSH_INSERT:
+    case LC_FLUSH_INSERT_PRUNE:
+    case LC_FLUSH_INSERT_PRUNE_VERIFY:
+      pruning_type = locator_area_op_to_pruning_type ((LC_COPYAREA_OPERATION) rbr_operation);
+      error_code =
+	locator_insert_force (thread_p, &hfid, &class_oid, &instance_oid, &new_recdes, has_index,
+			      SINGLE_ROW_INSERT, &scan_cache, &dummy_force_count, pruning_type, NULL, NULL,
+			      UPDATE_INPLACE_NONE);
 
-	      if (error_code == NO_ERROR)
-		{
-		  /* monitor */
-		  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_INSERTS);
-		}
-	      break;
-
-	    case LC_FLUSH_UPDATE:
-	    case LC_FLUSH_UPDATE_PRUNE:
-	    case LC_FLUSH_UPDATE_PRUNE_VERIFY:
-	      pruning_type = locator_area_op_to_pruning_type ((LC_COPYAREA_OPERATION) rbr_operation);
-	      error_code =
-		locator_update_force (thread_p, &hfid, &class_oid, &instance_oid, NULL, &new_recdes, has_index,
-				      NULL, 0, SINGLE_ROW_UPDATE, &scan_cache, &dummy_force_count, false,
-				      REPL_INFO_TYPE_RBR_NORMAL, pruning_type, NULL, NULL, UPDATE_INPLACE_NONE, true);
-
-	      if (error_code == NO_ERROR)
-		{
-		  /* monitor */
-		  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_UPDATES);
-		}
-	      break;
-
-	    case LC_FLUSH_DELETE:
-	      error_code =
-		locator_delete_force (thread_p, &hfid, &instance_oid, has_index, SINGLE_ROW_DELETE, &scan_cache,
-				      &dummy_force_count, NULL, true);
-
-	      if (error_code == NO_ERROR)
-		{
-		  /* monitor */
-		  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DELETES);
-		}
-	      break;
-
-	    default:
-              /* TODO : error handling  */
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_BADFORCE_OPERATION, 4, rbr_operation, instance_oid.volid,
-		      instance_oid.pageid, instance_oid.slotid);
-	      error_code = ER_LC_BADFORCE_OPERATION;
-	      break;
-	    }			/* end-switch */
-
-      if (error_code != NO_ERROR)
+      if (error_code == NO_ERROR)
 	{
-	  assert (er_errid () != NO_ERROR);
-          /* TODO : error handling */
-	  //locator_repl_add_error_to_copyarea (reply_area, &reply_recdes, obj, &key_value, er_errid (), er_msg ());
-
-
-	  error_code = NO_ERROR;
+	  /* monitor */
+	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_INSERTS);
 	}
+      break;
+
+    case LC_FLUSH_UPDATE:
+    case LC_FLUSH_UPDATE_PRUNE:
+    case LC_FLUSH_UPDATE_PRUNE_VERIFY:
+      pruning_type = locator_area_op_to_pruning_type ((LC_COPYAREA_OPERATION) rbr_operation);
+      error_code =
+	locator_update_force (thread_p, &hfid, &class_oid, &instance_oid, NULL, &new_recdes, has_index,
+			      NULL, 0, SINGLE_ROW_UPDATE, &scan_cache, &dummy_force_count, false,
+			      REPL_INFO_TYPE_RBR_NORMAL, pruning_type, NULL, NULL, UPDATE_INPLACE_NONE, true);
+
+      if (error_code == NO_ERROR)
+	{
+	  /* monitor */
+	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_UPDATES);
+	}
+      break;
+
+    case LC_FLUSH_DELETE:
+      error_code =
+	locator_delete_force (thread_p, &hfid, &instance_oid, has_index, SINGLE_ROW_DELETE, &scan_cache,
+			      &dummy_force_count, NULL, true);
+
+      if (error_code == NO_ERROR)
+	{
+	  /* monitor */
+	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DELETES);
+	}
+      break;
+
+    default:
+      /* TODO : error handling  */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_BADFORCE_OPERATION, 4, rbr_operation, instance_oid.volid,
+	      instance_oid.pageid, instance_oid.slotid);
+      error_code = ER_LC_BADFORCE_OPERATION;
+      break;
+    }				/* end-switch */
+
+  if (error_code != NO_ERROR)
+    {
+      assert (er_errid () != NO_ERROR);
+      /* TODO : error handling */
+      //locator_repl_add_error_to_copyarea (reply_area, &reply_recdes, obj, &key_value, er_errid (), er_msg ());
+
+
+      error_code = NO_ERROR;
+    }
 
 exit:
   if (attr_info_inited)
@@ -13881,9 +13881,8 @@ exit:
  *   force_scancache(in):
  */
 static int
-locator_prepare_rbr_apply (THREAD_ENTRY * thread_p, const int rbr_operation, OID *class_oid, OID *instance_oid,
-                           RECDES * old_recdes, RECDES * recdes, DB_VALUE * key_value,
-                           HEAP_SCANCACHE * force_scancache)
+locator_prepare_rbr_apply (THREAD_ENTRY * thread_p, const int rbr_operation, OID * class_oid, OID * instance_oid,
+			   RECDES * old_recdes, RECDES * recdes, DB_VALUE * key_value, HEAP_SCANCACHE * force_scancache)
 {
   int error_code = NO_ERROR;
   int last_repr_id = -1;
@@ -13938,8 +13937,7 @@ locator_prepare_rbr_apply (THREAD_ENTRY * thread_p, const int rbr_operation, OID
     {
       assert (OID_ISNULL (instance_oid) != true);
 
-      scan =
-	heap_get_visible_version (thread_p, instance_oid, class_oid, old_recdes, force_scancache, PEEK, NULL_CHN);
+      scan = heap_get_visible_version (thread_p, instance_oid, class_oid, old_recdes, force_scancache, PEEK, NULL_CHN);
 
       if (scan != S_SUCCESS)
 	{
@@ -13966,7 +13964,8 @@ locator_prepare_rbr_apply (THREAD_ENTRY * thread_p, const int rbr_operation, OID
   return NO_ERROR;
 }
 
-int check_interrupt_callback (void *data)
+int
+check_interrupt_callback (void *data)
 {
   THREAD_ENTRY *thread_p = (THREAD_ENTRY *) data;
   int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -13992,15 +13991,15 @@ locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *statement)
 
   sprintf (tran_index_str, "%d", tran_index);
 
-  const char *ddl_argv[8] = {path,
-			     "-udba",
-			     db_name,
-			     "-c",
-			     statement,
-                             "-t",
-                             tran_index_str,
-			     NULL
-			    };
+  const char *ddl_argv[8] = { path,
+    "-udba",
+    db_name,
+    "-c",
+    statement,
+    "-t",
+    tran_index_str,
+    NULL
+  };
 
   cubrid_env_var = getenv ("CUBRID");
   assert (cubrid_env_var != NULL);
@@ -14012,20 +14011,14 @@ locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *statement)
   strncat (path, "/bin/ddl_proxy_client", PATH_MAX);
 #endif
 
-  error = create_child_process (ddl_argv,
-			       1,
-                               check_interrupt_callback,
-                               thread_p,
-			       NULL,
-			       NULL,
-			       NULL,
-			       &exit_status);
+  error = create_child_process (ddl_argv, 1, check_interrupt_callback, thread_p, NULL, NULL, NULL, &exit_status);
   if (error != NO_ERROR)
     {
       return error;
     }
 
-  _er_log_debug (ARG_FILE_LINE, "apply SBR: tran_index:%d, exit_status:%d, stmt:\n%s", tran_index, exit_status, statement);
+  _er_log_debug (ARG_FILE_LINE, "apply SBR: tran_index:%d, exit_status:%d, stmt:\n%s", tran_index, exit_status,
+		 statement);
 
   if (exit_status != 0)
     {
@@ -14042,14 +14035,14 @@ locator_repl_start_tran (THREAD_ENTRY * thread_p)
   /* TODO */
   static BOOT_CLIENT_CREDENTIAL applier_Client_credentials = {
     BOOT_CLIENT_LOG_APPLIER,	/* client_type */
-    NULL,				/* client_info */
-    NULL,				/* db_name */
-    NULL,				/* db_user */
-    NULL,				/* db_password */
-    (char *) "(repl_applier)",		/* program_name */
-    NULL,				/* login_name */
-    NULL,				/* host_name */
-    NULL,				/* preferred_hosts */
+    NULL,			/* client_info */
+    NULL,			/* db_name */
+    NULL,			/* db_user */
+    NULL,			/* db_password */
+    (char *) "(repl_applier)",	/* program_name */
+    NULL,			/* login_name */
+    NULL,			/* host_name */
+    NULL,			/* preferred_hosts */
     0,				/* connect_order */
     -1				/* process_id */
   };
