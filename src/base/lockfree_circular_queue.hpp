@@ -66,6 +66,9 @@ namespace lockfree
       //   Using its value after failed consumption is not safe.
       inline bool produce (const T &element);         // produce an element to queue; returns false on fail
       inline void force_produce (const T &element);   // force produce (loop until successful)
+
+      inline std::uint64_t get_consumer_cursor ();            // get consume cursor
+
       // note:
       //
       //    above functions are cloned by debug counterparts which track a history of executed low-level operations.
@@ -302,6 +305,13 @@ namespace lockfree
       {
 	std::this_thread::yield ();
       }
+  }
+
+  template<class T>
+  inline std::uint64_t
+  circular_queue<T>::get_consumer_cursor ()
+  {
+    return m_consume_cursor;
   }
 
   template<class T>

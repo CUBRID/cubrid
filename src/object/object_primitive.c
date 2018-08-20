@@ -446,55 +446,22 @@ static DB_VALUE_COMPARE_RESULT mr_cmpval_double (DB_VALUE * value1, DB_VALUE * v
 static void mr_initmem_time (void *mem, TP_DOMAIN * domain);
 static int mr_setmem_time (void *mem, TP_DOMAIN * domain, DB_VALUE * value);
 static int mr_getmem_time (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy);
-static int mr_getmem_timeltz (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy);
 static void mr_data_writemem_time (OR_BUF * buf, void *mem, TP_DOMAIN * domain);
 static void mr_data_readmem_time (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size);
 static void mr_initval_time (DB_VALUE * value, int precision, int scale);
-static void mr_initval_timeltz (DB_VALUE * value, int precision, int scale);
 static int mr_setval_time (DB_VALUE * dest, const DB_VALUE * src, bool copy);
-static int mr_setval_timeltz (DB_VALUE * dest, const DB_VALUE * src, bool copy);
 static int mr_data_writeval_time (OR_BUF * buf, DB_VALUE * value);
 static int mr_data_readval_time (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
 				 char *copy_buf, int copy_buf_len);
-static int mr_data_readval_timeltz (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
-				    char *copy_buf, int copy_buf_len);
-static DB_VALUE_COMPARE_RESULT mr_data_cmpdisk_timeltz (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion,
-							int total_order, int *start_colp);
-static DB_VALUE_COMPARE_RESULT mr_index_cmpdisk_timeltz (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion,
-							 int total_order, int *start_colp);
-static DB_VALUE_COMPARE_RESULT mr_cmpval_timeltz (DB_VALUE * value1, DB_VALUE * value2, int do_coercion,
-						  int total_order, int *start_colp, int collation);
 static int mr_index_writeval_time (OR_BUF * buf, DB_VALUE * value);
 static int mr_index_readval_time (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
 				  char *copy_buf, int copy_buf_len);
-static int mr_index_readval_timeltz (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
-				     char *copy_buf, int copy_buf_len);
 static DB_VALUE_COMPARE_RESULT mr_index_cmpdisk_time (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion,
 						      int total_order, int *start_colp);
 static DB_VALUE_COMPARE_RESULT mr_data_cmpdisk_time (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion,
 						     int total_order, int *start_colp);
 static DB_VALUE_COMPARE_RESULT mr_cmpval_time (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
 					       int *start_colp, int collation);
-
-static void mr_initmem_timetz (void *mem, TP_DOMAIN * domain);
-static int mr_setmem_timetz (void *mem, TP_DOMAIN * domain, DB_VALUE * value);
-static int mr_getmem_timetz (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy);
-static void mr_data_writemem_timetz (OR_BUF * buf, void *mem, TP_DOMAIN * domain);
-static void mr_data_readmem_timetz (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size);
-static void mr_initval_timetz (DB_VALUE * value, int precision, int scale);
-static int mr_setval_timetz (DB_VALUE * dest, const DB_VALUE * src, bool copy);
-static int mr_data_writeval_timetz (OR_BUF * buf, DB_VALUE * value);
-static int mr_data_readval_timetz (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
-				   char *copy_buf, int copy_buf_len);
-static int mr_index_writeval_timetz (OR_BUF * buf, DB_VALUE * value);
-static int mr_index_readval_timetz (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
-				    char *copy_buf, int copy_buf_len);
-static DB_VALUE_COMPARE_RESULT mr_index_cmpdisk_timetz (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion,
-							int total_order, int *start_colp);
-static DB_VALUE_COMPARE_RESULT mr_data_cmpdisk_timetz (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion,
-						       int total_order, int *start_colp);
-static DB_VALUE_COMPARE_RESULT mr_cmpval_timetz (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
-						 int *start_colp, int collation);
 
 static void mr_initmem_utime (void *mem, TP_DOMAIN * domain);
 static int mr_setmem_utime (void *mem, TP_DOMAIN * domain, DB_VALUE * value);
@@ -1104,60 +1071,6 @@ PR_TYPE tp_Time = {
 };
 
 PR_TYPE *tp_Type_time = &tp_Time;
-
-PR_TYPE tp_Timetz = {
-  "timetz", DB_TYPE_TIMETZ, 0, sizeof (DB_TIMETZ), OR_TIMETZ_SIZE, 4,
-  help_fprint_value,
-  help_sprint_value,
-  mr_initmem_timetz,
-  mr_initval_timetz,
-  mr_setmem_timetz,
-  mr_getmem_timetz,
-  mr_setval_timetz,
-  NULL,				/* data_lengthmem */
-  NULL,				/* data_lengthval */
-  mr_data_writemem_timetz,
-  mr_data_readmem_timetz,
-  mr_data_writeval_timetz,
-  mr_data_readval_timetz,
-  NULL,				/* index_lenghmem */
-  NULL,				/* index_lenghval */
-  mr_index_writeval_timetz,
-  mr_index_readval_timetz,
-  mr_index_cmpdisk_timetz,
-  NULL,				/* freemem */
-  mr_data_cmpdisk_timetz,
-  mr_cmpval_timetz
-};
-
-PR_TYPE *tp_Type_timetz = &tp_Timetz;
-
-PR_TYPE tp_Timeltz = {
-  "timeltz", DB_TYPE_TIMELTZ, 0, sizeof (DB_TIME), OR_TIME_SIZE, 4,
-  help_fprint_value,
-  help_sprint_value,
-  mr_initmem_time,
-  mr_initval_timeltz,
-  mr_setmem_time,
-  mr_getmem_timeltz,
-  mr_setval_timeltz,
-  NULL,				/* data_lengthmem */
-  NULL,				/* data_lengthval */
-  mr_data_writemem_time,
-  mr_data_readmem_time,
-  mr_data_writeval_time,
-  mr_data_readval_timeltz,
-  NULL,				/* index_lenghmem */
-  NULL,				/* index_lenghval */
-  mr_index_writeval_time,
-  mr_index_readval_timeltz,
-  mr_index_cmpdisk_timeltz,
-  NULL,				/* freemem */
-  mr_data_cmpdisk_timeltz,
-  mr_cmpval_timeltz
-};
-
-PR_TYPE *tp_Type_timeltz = &tp_Timeltz;
 
 PR_TYPE tp_Utime = {
   "timestamp", DB_TYPE_TIMESTAMP, 0, sizeof (DB_UTIME), OR_UTIME_SIZE, 4,
@@ -1879,8 +1792,6 @@ PR_TYPE *tp_Type_id_map[] = {
   &tp_Datetimetz,
   &tp_Datetimeltz,
   &tp_Json,
-  &tp_Timetz,
-  &tp_Timeltz
 };
 
 PR_TYPE tp_ResultSet = {
@@ -2047,10 +1958,6 @@ pr_clear_value (DB_VALUE * value)
     case DB_TYPE_JSON:
       if (value->need_clear)
 	{
-	  if (value->data.json.json_body != NULL)
-	    {
-	      db_private_free_and_init (NULL, value->data.json.json_body);
-	    }
 	  if (value->data.json.document != NULL)
 	    {
 	      db_json_delete_doc (value->data.json.document);
@@ -2064,7 +1971,6 @@ pr_clear_value (DB_VALUE * value)
 	}
       else
 	{
-	  value->data.json.json_body = NULL;
 	  value->data.json.document = NULL;
 	  value->data.json.schema_raw = NULL;
 	}
@@ -3456,14 +3362,6 @@ mr_getmem_time (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
   return NO_ERROR;
 }
 
-static int
-mr_getmem_timeltz (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
-{
-  (void) db_make_timeltz (value, (DB_TIME *) mem);
-  value->need_clear = false;
-  return NO_ERROR;
-}
-
 static void
 mr_data_writemem_time (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
 {
@@ -3492,15 +3390,6 @@ mr_initval_time (DB_VALUE * value, int precision, int scale)
   value->need_clear = false;
 }
 
-static void
-mr_initval_timeltz (DB_VALUE * value, int precision, int scale)
-{
-  DB_TIME tm = 0;
-
-  db_make_timeltz (value, &tm);
-  value->need_clear = false;
-}
-
 static int
 mr_setval_time (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 {
@@ -3513,22 +3402,6 @@ mr_setval_time (DB_VALUE * dest, const DB_VALUE * src, bool copy)
   else
     {
       error = db_value_put_encoded_time (dest, db_get_time (src));
-    }
-  return error;
-}
-
-static int
-mr_setval_timeltz (DB_VALUE * dest, const DB_VALUE * src, bool copy)
-{
-  int error;
-
-  if (DB_IS_NULL (src))
-    {
-      error = db_value_domain_init (dest, DB_TYPE_TIMELTZ, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-    }
-  else
-    {
-      error = db_make_timeltz (dest, db_get_time (src));
     }
   return error;
 }
@@ -3557,26 +3430,6 @@ mr_data_readval_time (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int si
 	{
 	  db_value_put_encoded_time (value, &tm);
 	}
-      value->need_clear = false;
-    }
-  return rc;
-}
-
-static int
-mr_data_readval_timeltz (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
-			 int copy_buf_len)
-{
-  DB_TIME tm;
-  int rc = NO_ERROR;
-
-  if (value == NULL)
-    {
-      rc = or_advance (buf, tp_Timeltz.disksize);
-    }
-  else
-    {
-      rc = or_get_time (buf, &tm);
-      db_make_timeltz (value, &tm);
       value->need_clear = false;
     }
   return rc;
@@ -3616,150 +3469,6 @@ mr_index_readval_time (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int s
   return rc;
 }
 
-static int
-mr_index_readval_timeltz (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
-			  int copy_buf_len)
-{
-  DB_TIME tm;
-  int rc = NO_ERROR;
-
-  if (value == NULL)
-    {
-      rc = or_advance (buf, tp_Timeltz.disksize);
-    }
-  else
-    {
-      rc = or_get_data (buf, (char *) (&tm), tp_Timeltz.disksize);
-      if (rc == NO_ERROR)
-	{
-	  db_make_timeltz (value, &tm);
-	}
-      value->need_clear = false;
-    }
-
-  return rc;
-}
-
-static DB_VALUE_COMPARE_RESULT
-mr_data_cmpdisk_timeltz (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
-{
-  DB_TIME t1, t2;
-  TZ_ID ses_tz_id1, ses_tz_id2;
-  DB_TIME t1_local, t2_local;
-  int error = NO_ERROR;
-
-  assert (domain != NULL);
-
-  /* TIME with LTZ compares the same as TIME */
-  OR_GET_TIME (mem1, &t1);
-  OR_GET_TIME (mem2, &t2);
-
-  error = tz_create_session_tzid_for_time (&t1, true, &ses_tz_id1);
-  if (error != NO_ERROR)
-    {
-      return DB_UNK;
-    }
-
-  error = tz_create_session_tzid_for_time (&t2, true, &ses_tz_id2);
-  if (error != NO_ERROR)
-    {
-      return DB_UNK;
-    }
-
-  error = tz_utc_timetz_to_local (&t1, &ses_tz_id1, &t1_local);
-  if (error != NO_ERROR)
-    {
-      return DB_UNK;
-    }
-
-  error = tz_utc_timetz_to_local (&t2, &ses_tz_id2, &t2_local);
-  if (error != NO_ERROR)
-    {
-      return DB_UNK;
-    }
-
-  return MR_CMP (t1_local, t2_local);
-}
-
-static DB_VALUE_COMPARE_RESULT
-mr_index_cmpdisk_timeltz (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
-{
-  DB_TIME t1, t2;
-  TZ_ID ses_tz_id1, ses_tz_id2;
-  DB_TIME t1_local, t2_local;
-  int error = NO_ERROR;
-
-  assert (domain != NULL);
-
-  COPYMEM (DB_TIME, &t1, mem1);
-  COPYMEM (DB_TIME, &t2, mem2);
-
-  error = tz_create_session_tzid_for_time (&t1, true, &ses_tz_id1);
-  if (error != NO_ERROR)
-    {
-      return DB_UNK;
-    }
-
-  error = tz_create_session_tzid_for_time (&t2, true, &ses_tz_id2);
-  if (error != NO_ERROR)
-    {
-      return DB_UNK;
-    }
-
-  error = tz_utc_timetz_to_local (&t1, &ses_tz_id1, &t1_local);
-  if (error != NO_ERROR)
-    {
-      return DB_UNK;
-    }
-
-  error = tz_utc_timetz_to_local (&t2, &ses_tz_id2, &t2_local);
-  if (error != NO_ERROR)
-    {
-      return DB_UNK;
-    }
-
-  return MR_CMP (t1_local, t2_local);
-}
-
-static DB_VALUE_COMPARE_RESULT
-mr_cmpval_timeltz (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
-		   int collation)
-{
-  const DB_TIME *t1, *t2;
-  TZ_ID ses_tz_id1, ses_tz_id2;
-  DB_TIME t1_local, t2_local;
-  int error = NO_ERROR;
-
-  t1 = db_get_time (value1);
-  t2 = db_get_time (value2);
-
-  error = tz_create_session_tzid_for_time (t1, true, &ses_tz_id1);
-  if (error != NO_ERROR)
-    {
-      return DB_UNK;
-    }
-
-  error = tz_create_session_tzid_for_time (t2, true, &ses_tz_id2);
-  if (error != NO_ERROR)
-    {
-      return DB_UNK;
-    }
-
-  error = tz_utc_timetz_to_local (t1, &ses_tz_id1, &t1_local);
-  if (error != NO_ERROR)
-    {
-      return DB_UNK;
-    }
-
-  error = tz_utc_timetz_to_local (t2, &ses_tz_id2, &t2_local);
-  if (error != NO_ERROR)
-    {
-      return DB_UNK;
-    }
-
-  return MR_CMP (t1_local, t2_local);
-}
-
 static DB_VALUE_COMPARE_RESULT
 mr_index_cmpdisk_time (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
 {
@@ -3795,237 +3504,6 @@ mr_cmpval_time (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
   t2 = db_get_time (value2);
 
   return MR_CMP (*t1, *t2);
-}
-
-/*
- * TYPE TIMETZ
- *
- * TIME type with Timezone
- *
- */
-
-static void
-mr_initmem_timetz (void *mem, TP_DOMAIN * domain)
-{
-  DB_TIMETZ *time_tz = (DB_TIMETZ *) mem;
-
-  time_tz->time = 0;
-  time_tz->tz_id = 0;
-}
-
-static int
-mr_setmem_timetz (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
-{
-  if (value == NULL)
-    {
-      mr_initmem_time (mem, domain);
-    }
-  else
-    {
-      *(DB_TIMETZ *) mem = *db_get_timetz (value);
-    }
-
-  return NO_ERROR;
-}
-
-static int
-mr_getmem_timetz (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
-{
-  (void) db_make_timetz (value, (DB_TIMETZ *) mem);
-  value->need_clear = false;
-  return NO_ERROR;
-}
-
-static void
-mr_data_writemem_timetz (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
-{
-  or_put_timetz (buf, (DB_TIMETZ *) mem);
-}
-
-static void
-mr_data_readmem_timetz (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
-{
-  if (mem == NULL)
-    {
-      or_advance (buf, tp_Timetz.disksize);
-    }
-  else
-    {
-      or_get_timetz (buf, (DB_TIMETZ *) mem);
-    }
-}
-
-static void
-mr_initval_timetz (DB_VALUE * value, int precision, int scale)
-{
-  DB_TIMETZ time_tz;
-
-  mr_initmem_timetz (&time_tz, NULL);
-  db_make_timetz (value, &time_tz);
-  value->need_clear = false;
-}
-
-static int
-mr_setval_timetz (DB_VALUE * dest, const DB_VALUE * src, bool copy)
-{
-  int error;
-
-  if (DB_IS_NULL (src))
-    {
-      error = db_value_domain_init (dest, DB_TYPE_TIMETZ, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-    }
-  else
-    {
-      error = db_make_timetz (dest, db_get_timetz (src));
-    }
-  return error;
-}
-
-static int
-mr_data_writeval_timetz (OR_BUF * buf, DB_VALUE * value)
-{
-  return or_put_timetz (buf, db_get_timetz (value));
-}
-
-static int
-mr_data_readval_timetz (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
-			int copy_buf_len)
-{
-  DB_TIMETZ time_tz;
-  int rc = NO_ERROR;
-
-  if (value == NULL)
-    {
-      rc = or_advance (buf, tp_Timetz.disksize);
-    }
-  else
-    {
-      rc = or_get_timetz (buf, &time_tz);
-      db_make_timetz (value, &time_tz);
-    }
-  return rc;
-}
-
-static int
-mr_index_writeval_timetz (OR_BUF * buf, DB_VALUE * value)
-{
-  DB_TIMETZ *time_tz;
-
-  time_tz = db_get_timetz (value);
-
-  return or_put_data (buf, (char *) time_tz, tp_Timetz.disksize);
-}
-
-static int
-mr_index_readval_timetz (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
-			 int copy_buf_len)
-{
-  DB_TIMETZ time_tz;
-  int rc = NO_ERROR;
-
-  if (value == NULL)
-    {
-      rc = or_advance (buf, tp_Timetz.disksize);
-    }
-  else
-    {
-      rc = or_get_data (buf, (char *) (&time_tz), tp_Timetz.disksize);
-      if (rc == NO_ERROR)
-	{
-	  db_make_timetz (value, &time_tz);
-	}
-    }
-
-  return rc;
-}
-
-static DB_VALUE_COMPARE_RESULT
-mr_index_cmpdisk_timetz (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
-{
-  DB_TIMETZ t1, t2;
-  DB_VALUE_COMPARE_RESULT ret_cmp;
-  int day1, day2;
-
-  assert (domain != NULL);
-
-  COPYMEM (DB_TIMETZ, &t1, mem1);
-  COPYMEM (DB_TIMETZ, &t2, mem2);
-
-  /* TIME with TZ compares as what point in time comes first relative to the current day */
-
-  day1 = get_day_from_timetz (&t1);
-  day2 = get_day_from_timetz (&t2);
-
-  /* If we are in the same UTC day we compare UTC times else we compare the days */
-  if (day1 == day2)
-    {
-      ret_cmp = MR_CMP (t1.time, t2.time);
-    }
-  else
-    {
-      ret_cmp = MR_CMP (day1, day2);
-    }
-
-  return ret_cmp;
-}
-
-static DB_VALUE_COMPARE_RESULT
-mr_data_cmpdisk_timetz (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
-{
-  DB_TIMETZ t1, t2;
-  DB_VALUE_COMPARE_RESULT ret_cmp;
-  int day1, day2;
-
-  assert (domain != NULL);
-
-  OR_GET_TIMETZ (mem1, &t1);
-  OR_GET_TIMETZ (mem2, &t2);
-
-  /* TIME with TZ compares as what point in time comes first relative to the current day */
-
-  day1 = get_day_from_timetz (&t1);
-  day2 = get_day_from_timetz (&t2);
-
-  /* If we are in the same UTC day we compare UTC times else we compare the days */
-  if (day1 == day2)
-    {
-      ret_cmp = MR_CMP (t1.time, t2.time);
-    }
-  else
-    {
-      ret_cmp = MR_CMP (day1, day2);
-    }
-
-  return ret_cmp;
-}
-
-static DB_VALUE_COMPARE_RESULT
-mr_cmpval_timetz (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp,
-		  int collation)
-{
-  const DB_TIMETZ *t1, *t2;
-  DB_VALUE_COMPARE_RESULT ret_cmp;
-  int day1, day2;
-
-  t1 = db_get_timetz (value1);
-  t2 = db_get_timetz (value2);
-
-  /* TIME with TZ compares as what point in time comes first relative to the current day */
-
-  day1 = get_day_from_timetz (t1);
-  day2 = get_day_from_timetz (t2);
-
-  /* If we are in the same UTC day we compare UTC times else we compare the days */
-  if (day1 == day2)
-    {
-      ret_cmp = MR_CMP (t1->time, t2->time);
-    }
-  else
-    {
-      ret_cmp = MR_CMP (day1, day2);
-    }
-
-  return ret_cmp;
 }
 
 /*
@@ -9102,6 +8580,7 @@ mr_setval_numeric (DB_VALUE * dest, const DB_VALUE * src, bool copy)
   int src_precision, src_scale;
   DB_C_NUMERIC src_numeric;
 
+  assert (!db_value_is_corrupted (src));
   if (src == NULL || DB_IS_NULL (src))
     {
       db_value_domain_init (dest, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
@@ -11079,6 +10558,7 @@ mr_setval_string (DB_VALUE * dest, const DB_VALUE * src, bool copy)
   int src_precision, src_length;
   char *src_str, *new_, *new_compressed_buf;
 
+  assert (!db_value_is_corrupted (src));
   if (src == NULL || (DB_IS_NULL (src) && db_value_precision (src) == 0))
     {
       error = db_value_domain_init (dest, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, 0);
@@ -12206,6 +11686,7 @@ mr_setval_char (DB_VALUE * dest, const DB_VALUE * src, bool copy)
   int src_precision, src_length;
   char *src_string, *new_;
 
+  assert (!db_value_is_corrupted (src));
   if (DB_IS_NULL (src))
     {
       DB_DOMAIN_INIT_CHAR (dest, TP_FLOATING_PRECISION_VALUE);
@@ -13044,6 +12525,7 @@ mr_setval_nchar (DB_VALUE * dest, const DB_VALUE * src, bool copy)
   int src_precision, src_length;
   char *src_string, *new_;
 
+  assert (!db_value_is_corrupted (src));
   if (src == NULL || (DB_IS_NULL (src) && db_value_precision (src) == 0))
     {
       db_value_domain_init (dest, DB_TYPE_NCHAR, TP_FLOATING_PRECISION_VALUE, 0);
@@ -13917,6 +13399,7 @@ mr_setval_varnchar (DB_VALUE * dest, const DB_VALUE * src, bool copy)
   int src_precision, src_length;
   char *src_str, *new_;
 
+  assert (!db_value_is_corrupted (src));
   if (src == NULL || (DB_IS_NULL (src) && db_get_string (src) == 0))
     {
       error = db_value_domain_init (dest, DB_TYPE_VARNCHAR, DB_DEFAULT_PRECISION, 0);
@@ -14993,6 +14476,7 @@ mr_setval_bit (DB_VALUE * dest, const DB_VALUE * src, bool copy)
   int src_precision, src_length, src_number_of_bits = 0;
   char *src_string, *new_;
 
+  assert (!db_value_is_corrupted (src));
   if (src == NULL || (DB_IS_NULL (src) && db_value_precision (src) == 0))
     {
       db_value_domain_init (dest, DB_TYPE_BIT, TP_FLOATING_PRECISION_VALUE, 0);
@@ -15811,6 +15295,7 @@ mr_setval_varbit (DB_VALUE * dest, const DB_VALUE * src, bool copy)
   int src_precision, src_length, src_bit_length;
   char *src_str, *new_;
 
+  assert (!db_value_is_corrupted (src));
   if (src == NULL || (DB_IS_NULL (src) && db_value_precision (src) == 0))
     {
       error = db_value_domain_init (dest, DB_TYPE_VARBIT, DB_DEFAULT_PRECISION, 0);
@@ -17124,7 +16609,6 @@ mr_initmem_json (void *mem, TP_DOMAIN * domain)
   if (json != NULL)
     {
       json->document = NULL;
-      json->json_body = NULL;
       json->schema_raw = NULL;
     }
   else
@@ -17138,9 +16622,9 @@ mr_setmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 {
   int error = NO_ERROR;
   DB_JSON *json;
+  JSON_DOC *doc;
 
   json = (DB_JSON *) memptr;
-
   if (json != NULL)
     {
       mr_freemem_json (memptr);
@@ -17150,11 +16634,18 @@ mr_setmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
       assert (false);
     }
 
-  if (value != NULL && (db_get_json_raw_body (value) != NULL) && (db_get_json_document (value) != NULL))
+  if (value == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  doc = db_get_json_document (value);
+  if (doc != NULL)
     {
       error = db_get_deep_copy_of_json (&value->data.json, json);
       if (error != NO_ERROR)
 	{
+	  ASSERT_ERROR ();
 	  return error;
 	}
     }
@@ -17166,7 +16657,6 @@ static int
 mr_getmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 {
   int error = NO_ERROR;
-  char *json_raw_body = NULL;
   const char *json_schema = NULL;
   DB_JSON *json, json_copy;
   JSON_DOC *new_doc = NULL;
@@ -17183,7 +16673,6 @@ mr_getmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 
   if (!copy)
     {
-      json_raw_body = json->json_body;
       json_schema = json->schema_raw;
       new_doc = json->document;
     }
@@ -17199,12 +16688,11 @@ mr_getmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 	{
 	  return error;
 	}
-      json_raw_body = json_copy.json_body;
       json_schema = json_copy.schema_raw;
       new_doc = json_copy.document;
     }
 
-  db_make_json (value, json_raw_body, new_doc, copy);
+  db_make_json (value, new_doc, copy);
   db_get_json_schema (value) = json_schema;
 
   return error;
@@ -17224,33 +16712,13 @@ mr_data_lengthmem_json (void *memptr, TP_DOMAIN * domain, int disk)
     {
       if (memptr != NULL)
 	{
-	  DB_VALUE json_body_value, schema_raw_value;
-	  unsigned int json_body_length = 0, schema_raw_length = 0;
-
 	  json = (DB_JSON *) memptr;
-	  if (json->json_body == NULL)
+	  if (json->document == NULL)
 	    {
-	      assert (json->document == NULL);
 	      return 0;
 	    }
-	  db_make_string (&json_body_value, json->json_body);
-	  json_body_length = mr_data_lengthval_string (&json_body_value, disk);
 
-	  if (json->schema_raw != NULL)
-	    {
-	      db_make_string_by_const_str (&schema_raw_value, json->schema_raw);
-	    }
-	  else
-	    {
-	      db_make_string_by_const_str (&schema_raw_value, "");
-	    }
-
-	  schema_raw_length = mr_data_lengthval_string (&schema_raw_value, disk);
-
-	  pr_clear_value (&schema_raw_value);
-	  pr_clear_value (&json_body_value);
-
-	  return json_body_length + schema_raw_length;
+	  return (int) db_json_serialize_length (*json->document);
 	}
     }
 
@@ -17260,53 +16728,37 @@ mr_data_lengthmem_json (void *memptr, TP_DOMAIN * domain, int disk)
 static void
 mr_data_writemem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
 {
-  DB_VALUE json_body, schema_raw;
   DB_JSON *json;
+  int rc = NO_ERROR;
 
   json = (DB_JSON *) memptr;
-
-  if (json == NULL)
+  if (json == NULL || json->document == NULL)
     {
       return;
     }
 
-  /* json body can be null, but it is treated by writeval */
-  db_make_string (&json_body, json->json_body);
-
-  if (json->schema_raw != NULL)
+  rc = db_json_serialize (*json->document, *buf);
+  if (rc != NO_ERROR)
     {
-      db_make_string_by_const_str (&schema_raw, json->schema_raw);
+      ASSERT_ERROR ();
     }
-  else
-    {
-      db_make_string_by_const_str (&schema_raw, "");
-    }
-
-  (*(tp_String.data_writeval)) (buf, &json_body);
-  (*(tp_String.data_writeval)) (buf, &schema_raw);
-
-  pr_clear_value (&json_body);
-  pr_clear_value (&schema_raw);
 }
 
 static void
 mr_data_readmem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
 {
-  int json_body_length, schema_length;
-  DB_VALUE json_body, schema_raw;
-  char *json_body_str = NULL, *schema_str = NULL;
   DB_JSON *json;
-  int rc;
+  int rc = NO_ERROR;
 
-  db_make_null (&json_body);
-  db_make_null (&schema_raw);
   json = (DB_JSON *) memptr;
-
   if (json == NULL)
     {
-      if (size)
+      if (size != 0)
 	{
-	  or_advance (buf, size);
+	  if (or_advance (buf, size) != NO_ERROR)
+	    {
+	      assert (false);
+	    }
 	}
       return;
     }
@@ -17323,36 +16775,12 @@ mr_data_readmem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
       return;
     }
 
-  (*(tp_String.data_readval)) (buf, &json_body, NULL, -1, false, NULL, 0);
-  (*(tp_String.data_readval)) (buf, &schema_raw, NULL, -1, false, NULL, 0);
-
-  json_body_length = db_get_string_size (&json_body);
-  schema_length = db_get_string_size (&schema_raw);
-
-  if (json_body_length <= 0)
+  rc = db_json_deserialize (buf, json->document);
+  if (rc != NO_ERROR)
     {
-      assert (false);
-      goto exit;
+      ASSERT_ERROR ();
+      db_json_delete_doc (json->document);
     }
-  else
-    {
-      json_body_str = db_get_string (&json_body);
-    }
-
-  if (schema_length > 0)
-    {
-      schema_str = db_get_string (&schema_raw);
-    }
-
-  json->json_body = db_private_strdup (NULL, json_body_str);
-  json->schema_raw = db_private_strdup (NULL, schema_str);
-
-  rc = db_json_get_json_from_str (json_body_str, json->document);
-  assert (rc == NO_ERROR);
-
-exit:
-  pr_clear_value (&json_body);
-  pr_clear_value (&schema_raw);
 }
 
 static void
@@ -17364,10 +16792,6 @@ mr_freemem_json (void *memptr)
 
   if (cur != NULL)
     {
-      if (cur->json_body != NULL)
-	{
-	  db_private_free_and_init (NULL, cur->json_body);
-	}
       if (cur->schema_raw != NULL)
 	{
 	  db_private_free (NULL, const_cast < char *>(cur->schema_raw));
@@ -17409,14 +16833,12 @@ mr_setval_json (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 
       if (copy)
 	{
-	  dest->data.json.json_body = db_private_strdup (NULL, src->data.json.json_body);
 	  dest->data.json.document = db_json_get_copy_of_doc (src->data.json.document);
 	  dest->data.json.schema_raw = db_private_strdup (NULL, src->data.json.schema_raw);
 	  dest->need_clear = true;
 	}
       else
 	{
-	  dest->data.json.json_body = src->data.json.json_body;
 	  dest->data.json.document = src->data.json.document;
 	  dest->data.json.schema_raw = src->data.json.schema_raw;
 	  dest->need_clear = false;
@@ -17429,54 +16851,27 @@ mr_setval_json (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 static int
 mr_data_lengthval_json (DB_VALUE * value, int disk)
 {
-  DB_VALUE json_body, schema_raw;
-  unsigned int json_body_length;
-  unsigned int raw_schema_length;
-
-  db_make_null (&json_body);
-  db_make_null (&schema_raw);
-
   if (!disk)
     {
       return tp_Json.size;
     }
 
-  if (value->data.json.json_body != NULL)
+  if (value->data.json.document != NULL)
     {
-      db_make_string (&json_body, value->data.json.json_body);
+      return (int) db_json_serialize_length (*value->data.json.document);
     }
   else
     {
       return 0;
     }
-  if (value->data.json.schema_raw != NULL)
-    {
-      db_make_string_by_const_str (&schema_raw, value->data.json.schema_raw);
-    }
-  else
-    {
-      db_make_string_by_const_str (&schema_raw, "");
-    }
-
-  json_body_length = mr_data_lengthval_string (&json_body, disk);
-  raw_schema_length = mr_data_lengthval_string (&schema_raw, disk);
-
-  pr_clear_value (&json_body);
-  pr_clear_value (&schema_raw);
-
-  return json_body_length + raw_schema_length;
 }
 
 static int
 mr_data_writeval_json (OR_BUF * buf, DB_VALUE * value)
 {
   int rc = NO_ERROR;
-  DB_VALUE json_body, schema_raw;
 
-  db_make_null (&json_body);
-  db_make_null (&schema_raw);
-
-  if (value->data.json.json_body == NULL || DB_IS_NULL (value))
+  if (value->data.json.document == NULL || DB_IS_NULL (value))
     {
       assert (false);
       return ER_FAILED;
@@ -17492,36 +16887,15 @@ mr_data_writeval_json (OR_BUF * buf, DB_VALUE * value)
 	   * of buffer overflow, leaking memory in the process,
 	   * we need to take care of it here
 	   */
-	  or_overflow (buf);
+	  (void) or_overflow (buf);
 	}
     }
 
-  db_make_string (&json_body, value->data.json.json_body);
-
-  if (value->data.json.schema_raw != NULL)
-    {
-      db_make_string_by_const_str (&schema_raw, value->data.json.schema_raw);
-    }
-  else
-    {
-      db_make_string_by_const_str (&schema_raw, "");
-    }
-
-  rc = (*(tp_String.data_writeval)) (buf, &json_body);
+  rc = db_json_serialize (*value->data.json.document, *buf);
   if (rc != NO_ERROR)
     {
-      goto exit;
+      ASSERT_ERROR ();
     }
-
-  rc = (*(tp_String.data_writeval)) (buf, &schema_raw);
-  if (rc != NO_ERROR)
-    {
-      goto exit;
-    }
-
-exit:
-  pr_clear_value (&json_body);
-  pr_clear_value (&schema_raw);
 
   return rc;
 }
@@ -17530,15 +16904,11 @@ static int
 mr_data_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
 		      int copy_buf_len)
 {
-  int rc = NO_ERROR;
-  DB_VALUE json_body, schema_raw;
   JSON_DOC *doc = NULL;
-  const char *json_raw = NULL;
-  char *json_raw_copy = NULL;
+  char *json_raw = NULL;
+  int rc = NO_ERROR;
 
   db_make_null (value);
-  db_make_null (&json_body);
-  db_make_null (&schema_raw);
 
   if (size == 0)
     {
@@ -17546,45 +16916,16 @@ mr_data_readval_json (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int si
       return NO_ERROR;
     }
 
-  rc = (*(tp_String.data_readval)) (buf, &json_body, NULL, -1, false, NULL, 0);
+  rc = db_json_deserialize (buf, doc);
   if (rc != NO_ERROR)
     {
-      goto exit;
+      ASSERT_ERROR ();
+      return rc;
     }
 
-  rc = (*(tp_String.data_readval)) (buf, &schema_raw, NULL, -1, false, NULL, 0);
-  if (rc != NO_ERROR)
-    {
-      goto exit;
-    }
+  db_make_json (value, doc, true);
 
-  assert (!DB_IS_NULL (&json_body));
-
-  json_raw = db_get_string (&json_body);
-
-  rc = db_json_get_json_from_str (json_raw, doc);
-  if (rc != NO_ERROR)
-    {
-      assert (false);
-      goto exit;
-    }
-  json_raw_copy = db_private_strdup (NULL, json_raw);
-  db_make_json (value, json_raw_copy, doc, true);
-
-  if (db_get_string_size (&schema_raw) > 0)
-    {
-      value->data.json.schema_raw = db_private_strdup (NULL, db_get_string (&schema_raw));
-    }
-  else
-    {
-      value->data.json.schema_raw = NULL;
-    }
-
-exit:
-  pr_clear_value (&json_body);
-  pr_clear_value (&schema_raw);
-
-  return rc;
+  return NO_ERROR;
 }
 
 static DB_VALUE_COMPARE_RESULT
@@ -17592,12 +16933,9 @@ mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
 {
   char *first, *second;
   OR_BUF first_buf, second_buf;
-  int first_uncomp_length, first_comp_length;
-  int second_uncomp_length, second_comp_length;
-  int rc;
-  char *first_json_body, *second_json_body;
   DB_VALUE json1, json2;
   JSON_DOC *doc1 = NULL, *doc2 = NULL;
+  int rc = NO_ERROR;
 
   DB_VALUE_COMPARE_RESULT res = DB_UNK;
 
@@ -17607,41 +16945,26 @@ mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
   or_init (&first_buf, first, 0);
   or_init (&second_buf, second, 0);
 
-  or_get_varchar_compression_lengths (&first_buf, &first_comp_length, &first_uncomp_length);
-  or_get_varchar_compression_lengths (&second_buf, &second_comp_length, &second_uncomp_length);
-
-  first_json_body = (char *) db_private_alloc (NULL, first_uncomp_length + 1);
-  second_json_body = (char *) db_private_alloc (NULL, second_uncomp_length + 1);
-
-  rc = pr_get_compressed_data_from_buffer (&first_buf, first_json_body, first_comp_length, first_uncomp_length);
+  rc = db_json_deserialize (&first_buf, doc1);
   if (rc != NO_ERROR)
     {
-      goto cleanup;
+      ASSERT_ERROR ();
+      return res;
     }
 
-  rc = pr_get_compressed_data_from_buffer (&second_buf, second_json_body, second_comp_length, second_uncomp_length);
+  rc = db_json_deserialize (&second_buf, doc2);
   if (rc != NO_ERROR)
     {
-      goto cleanup;
+      ASSERT_ERROR ();
+      return res;
     }
 
-  rc = db_json_get_json_from_str (first_json_body, doc1);
-  assert (rc == NO_ERROR && doc1 != NULL);
-  rc = db_json_get_json_from_str (second_json_body, doc2);
-  assert (rc == NO_ERROR && doc2 != NULL);
-
-  db_make_json (&json1, first_json_body, doc1, true);
-  db_make_json (&json2, second_json_body, doc2, true);
+  db_make_json (&json1, doc1, true);
+  db_make_json (&json2, doc2, true);
 
   res = mr_cmpval_json (&json1, &json2, do_coercion, total_order, 0, 0);
   pr_clear_value (&json1);
   pr_clear_value (&json2);
-
-  return res;
-
-cleanup:
-  db_private_free (NULL, first_json_body);
-  db_private_free (NULL, second_json_body);
 
   return res;
 }
@@ -17698,11 +17021,12 @@ mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
       /* force string comp */
       char *str1 = NULL, *str2 = NULL;
 
-      str1 = db_json_get_raw_json_body_from_document (doc1);
-      str2 = db_json_get_raw_json_body_from_document (doc2);
+      str1 = db_json_get_json_body_from_document (*doc1);
+      str2 = db_json_get_json_body_from_document (*doc2);
 
       db_make_string (&scalar_value1, str1);
       db_make_string (&scalar_value2, str2);
+
       scalar_value1.need_clear = true;
       scalar_value2.need_clear = true;
     }

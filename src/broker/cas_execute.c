@@ -71,6 +71,7 @@
 
 #include "dbi.h"
 #include "dbtype.h"
+#include "memory_alloc.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -240,8 +241,6 @@ static void add_res_data_datetimetz (T_NET_BUF * net_buf, short yr, short mon, s
 				     short ms, char *tz_str, unsigned char ext_type, int *net_size);
 static void add_res_data_time (T_NET_BUF * net_buf, short hh, short mm, short ss, unsigned char ext_type,
 			       int *net_size);
-static void add_res_data_timetz (T_NET_BUF * net_buf, short hh, short mm, short ss, char *tz_str,
-				 unsigned char ext_type, int *net_size);
 static void add_res_data_date (T_NET_BUF * net_buf, short yr, short mon, short day, unsigned char ext_type,
 			       int *net_size);
 static void add_res_data_object (T_NET_BUF * net_buf, T_OBJECT * obj, unsigned char ext_type, int *net_size);
@@ -352,8 +351,6 @@ static char cas_u_type[] = { 0,	/* 0 */
   CCI_U_TYPE_DATETIMETZ,	/* 38 */
   CCI_U_TYPE_DATETIMELTZ,	/* 39 */
   CCI_U_TYPE_STRING,		/* 40 */
-  CCI_U_TYPE_TIMETZ,		/* 41 */
-  CCI_U_TYPE_TIMETZ		/* 42 */
 };
 
 static T_FETCH_FUNC fetch_func[] = {
@@ -3397,12 +3394,6 @@ ux_set_utype_for_enum (char u_type)
 }
 
 void
-ux_set_utype_for_timetz (char u_type)
-{
-  cas_u_type[DB_TYPE_TIMETZ] = u_type;
-}
-
-void
 ux_set_utype_for_timestamptz (char u_type)
 {
   cas_u_type[DB_TYPE_TIMESTAMPTZ] = u_type;
@@ -3412,12 +3403,6 @@ void
 ux_set_utype_for_datetimetz (char u_type)
 {
   cas_u_type[DB_TYPE_DATETIMETZ] = u_type;
-}
-
-void
-ux_set_utype_for_timeltz (char u_type)
-{
-  cas_u_type[DB_TYPE_TIMELTZ] = u_type;
 }
 
 void
@@ -3868,10 +3853,6 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF 
 	{
 	  type = CCI_U_TYPE_TIMESTAMPTZ;
 	}
-      else if (desired_type == DB_TYPE_TIMETZ || desired_type == DB_TYPE_TIMELTZ)
-	{
-	  type = CCI_U_TYPE_TIMETZ;
-	}
     }
 
   net_arg_get_size (&data_size, net_value);
@@ -4117,37 +4098,6 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF 
 	short hh, mm, ss;
 	net_arg_get_time (&hh, &mm, &ss, net_value);
 	err_code = db_make_time (&db_val, hh, mm, ss);
-      }
-      break;
-    case CCI_U_TYPE_TIMETZ:
-      {
-	short hh, mm, ss;
-	DB_TIME time;
-	DB_TIMETZ time_tz;
-	TZ_REGION ses_tz_region;
-	char *tz_str_p;
-	int tz_size;
-
-	net_arg_get_timetz (&hh, &mm, &ss, &tz_str_p, &tz_size, net_value);
-	if (tz_size > CCI_TZ_SIZE)
-	  {
-	    return ERROR_INFO_SET (CAS_ER_TYPE_CONVERSION, CAS_ERROR_INDICATOR);
-	  }
-
-	err_code = db_time_encode (&time, hh, mm, ss);
-	if (err_code != NO_ERROR)
-	  {
-	    break;
-	  }
-
-	tz_get_session_tz_region (&ses_tz_region);
-
-	err_code = tz_create_timetz (&time, tz_str_p, tz_size, &ses_tz_region, &time_tz, NULL);
-	if (err_code != NO_ERROR)
-	  {
-	    break;
-	  }
-	err_code = db_make_timetz (&db_val, &time_tz);
       }
       break;
     case CCI_U_TYPE_TIMESTAMP:
@@ -4706,63 +4656,6 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 	add_res_data_time (net_buf, (short) hour, (short) minute, (short) second, ext_col_type, &data_size);
       }
       break;
-    case DB_TYPE_TIMELTZ:
-    case DB_TYPE_TIMETZ:
-      {
-	DB_TIME time_local, time_utc, *time_utc_p;
-	TZ_ID tz_id;
-	DB_TIMETZ *time_tz;
-	int err;
-	int hour, minute, second;
-	char tz_str[CCI_TZ_SIZE + 1];
-
-	if (db_value_type (val) == DB_TYPE_TIMELTZ)
-	  {
-	    time_utc_p = db_get_time (val);
-	    time_utc = *time_utc_p;
-	    err = tz_create_session_tzid_for_time (&time_utc, true, &tz_id);
-	    if (err != NO_ERROR)
-	      {
-		net_buf_cp_int (net_buf, -1, NULL);
-		data_size = NET_SIZE_INT;
-		break;
-	      }
-	  }
-	else
-	  {
-	    time_tz = db_get_timetz (val);
-	    time_utc = time_tz->time;
-	    tz_id = time_tz->tz_id;
-	  }
-
-	err = tz_utc_timetz_to_local (&time_utc, &tz_id, &time_local);
-	if (err != NO_ERROR)
-	  {
-	    net_buf_cp_int (net_buf, -1, NULL);
-	    data_size = NET_SIZE_INT;
-	    break;
-	  }
-
-	if (tz_id_to_str (&tz_id, tz_str, CCI_TZ_SIZE) < 0)
-	  {
-	    net_buf_cp_int (net_buf, -1, NULL);
-	    data_size = NET_SIZE_INT;
-	    break;
-	  }
-
-	db_time_decode (&time_local, &hour, &minute, &second);
-	if (client_support_tz == true)
-	  {
-	    add_res_data_timetz (net_buf, (short) hour, (short) minute, (short) second, tz_str, ext_col_type,
-				 &data_size);
-	  }
-	else
-	  {
-	    add_res_data_time (net_buf, (short) hour, (short) minute, (short) second, ext_col_type, &data_size);
-
-	  }
-      }
-      break;
     case DB_TYPE_TIMESTAMP:
       {
 	DB_TIMESTAMP *ts;
@@ -5081,13 +4974,14 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
       break;
     case DB_TYPE_JSON:
       {
-	const char *str;
+	char *str;
 	int bytes_size = 0;
 
-	str = val->data.json.json_body;
+	str = db_get_json_raw_body (val);
 	bytes_size = strlen (str);
 
 	add_res_data_string (net_buf, str, bytes_size, 0, CAS_SCHEMA_DEFAULT_CHARSET, &data_size);
+	db_private_free (NULL, str);
       }
       break;
     default:
@@ -6750,37 +6644,6 @@ add_res_data_time (T_NET_BUF * net_buf, short hh, short mm, short ss, unsigned c
   if (net_size)
     {
       *net_size = NET_SIZE_INT + (ext_type ? NET_BUF_TYPE_SIZE (net_buf) : 0) + NET_SIZE_TIME;
-    }
-}
-
-static void
-add_res_data_timetz (T_NET_BUF * net_buf, short hh, short mm, short ss, char *tz_str, unsigned char ext_type,
-		     int *net_size)
-{
-  int tz_size;
-
-  tz_size = strlen (tz_str);
-
-  if (ext_type)
-    {
-      net_buf_cp_int (net_buf, NET_BUF_TYPE_SIZE (net_buf) + NET_SIZE_TIME + tz_size + 1, NULL);
-      net_buf_cp_cas_type_and_charset (net_buf, ext_type, CAS_SCHEMA_DEFAULT_CHARSET);
-    }
-  else
-    {
-      net_buf_cp_int (net_buf, NET_SIZE_TIME + tz_size + 1, NULL);
-    }
-
-  net_buf_cp_short (net_buf, hh);
-  net_buf_cp_short (net_buf, mm);
-  net_buf_cp_short (net_buf, ss);
-
-  net_buf_cp_str (net_buf, tz_str, tz_size);
-  net_buf_cp_byte (net_buf, '\0');
-
-  if (net_size)
-    {
-      *net_size = (NET_SIZE_INT + (ext_type ? NET_BUF_TYPE_SIZE (net_buf) : 0) + NET_SIZE_TIME + tz_size + 1);
     }
 }
 

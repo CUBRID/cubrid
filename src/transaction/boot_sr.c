@@ -69,6 +69,8 @@
 #include "filter_pred_cache.h"
 #include "slotted_page.h"
 #include "thread_manager.hpp"
+#include "double_write_buffer.h"
+
 #if defined(SERVER_MODE)
 #include "connection_sr.h"
 #include "server_support.h"
@@ -2431,6 +2433,14 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
   oid_set_root (&boot_Db_parm->rootclass_oid);
 
+  /* Load and recover data pages before log recovery */
+  error_code = dwb_load_and_recover_pages (thread_p, log_path, log_prefix);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error;
+    }
+
   /* 
    * Now restart the recovery manager and execute any recovery actions
    */
@@ -2446,6 +2456,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
 #if defined(SERVER_MODE)
   pgbuf_daemons_init ();
+  dwb_daemons_init ();
 #endif /* SERVER_MODE */
 
   // after recovery we can boot vacuum
@@ -2763,6 +2774,7 @@ error:
 
 #if defined(SERVER_MODE)
   pgbuf_daemons_destroy ();
+  dwb_daemons_destroy ();
 #endif
 
   log_final (thread_p);
@@ -2912,6 +2924,9 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
 #endif
 
   log_final (thread_p);
+
+  /* Since all pages were flushed, now it's safe to destroy DWB. */
+  (void) dwb_destroy (thread_p);
 
   if (is_er_final == ER_ALL_FINAL)
     {
@@ -3714,33 +3729,24 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
  *
  * return : NO_ERROR if all OK, ER_ status otherwise
  *
- *   backup_path(in): Location where information volumes are
- *                    backed up. If NULL is given, the following
- *                    defaults are assumed to back up each
- *                    information volume:
- *                    - If file "fileof_vols_and_backup_paths" is
- *                      given, the path to backup each volume is
- *                      found in this file.
- *                    - All information volumes are backed up on
- *                      the same location where the log files are
- *                      located.
+ *   backup_path(in): Location where information volumes are backed up. If NULL is given, the following defaults 
+ *   		      are assumed to back up each information volume:
+ *                    - If file "fileof_vols_and_backup_paths" is given, the path to backup each volume is found in 
+ *                      this file.
+ *                    - All information volumes are backed up on the same location where the log files are located.
  *   backup_level(in): backup levels allowed: 0 - Full (default),
  *                     1 - Incremental1, 2 - Incremental
- *   deleted_unneeded_logarchives(in): Whetear to remove log archives that are
- *                                 not needed any longer to recovery from
- *                                 crashes when the backup just created is
- *                                 used.
+ *   deleted_unneeded_logarchives(in): Whether to remove log archives that are not needed any longer to recovery from 
+ *   				       crashes when the backup just created is used.
  *   backup_verbose_file(in): verbose mode file path
- *                    num_threads: number of threads
- *                    zip_method: compression method
- *                    zip_level: compression level
+ *   num_threads: number of threads
+ *   zip_method: compression method
+ *   zip_level: compression level
  *   sleep_msecs(in):
  *
- * Note: A fuzzy backup of the database is taken. The backup is written
- *       into the given backup_path location. If the backup_path
- *       location is omitted (i.e, NULL is given), the log path
- *       location which was specified at database creation is used to
- *       store the backup.
+ * Note: A fuzzy backup of the database is taken. The backup is written into the given backup_path location. 
+ *       If the backup_path location is omitted (i.e, NULL is given), the log path location which was specified at 
+ *       database creation is used to store the backup.
  */
 int
 xboot_backup (THREAD_ENTRY * thread_p, const char *backup_path, FILEIO_BACKUP_LEVEL backup_level,
@@ -3764,26 +3770,18 @@ xboot_backup (THREAD_ENTRY * thread_p, const char *backup_path, FILEIO_BACKUP_LE
  *   fromdb_name(in): The database from where the copy is made.
  *   newdb_name(in): Name of new database
  *   newdb_path(in): Directory where the new database will reside
- *   newlog_path(in): Directory where the log volumes of the new database
- *                    will reside
+ *   newlog_path(in): Directory where the log volumes of the new database will reside
+ *   newlob_path(in): Directory where the lob volumes of the new database will reside
  *   newdb_server_host(in): Server host where the new database reside
- *   new_volext_path(in): A path is included if all volumes are placed in one
- *                        place/directory. If NULL is given,
- *                        - If file "fileof_vols_and_wherepaths" is given, the
- *                          path is found in this file.
- *                        - Each volume is copied to same place where the
- *                          volume resides.
- *                      Note: This parameter should be NULL, if the above file
- *                            is given.
- *   fileof_vols_and_wherepaths(in): A file is given when the user decides to
- *                               control the copy/rename of the volume by
- *                               individual bases. That is, user decides to
- *                               spread the volumes over several locations and
- *                               or to label the volumes with specific names.
- *                               Each volume entry consists of:
- *                                 volid from_fullvolname to_fullvolname
- *   newdb_overwrite(in): Wheater to overwrite the new database if it already
- *                        exist.
+ *   new_volext_path(in): A path is included if all volumes are placed in one place/directory. If NULL is given,
+ *                        - If file "fileof_vols_and_wherepaths" is given, the path is found in this file.
+ *                        - Each volume is copied to same place where the volume resides.
+ *                      Note: This parameter should be NULL, if the above file is given.
+ *   fileof_vols_and_wherepaths(in): A file is given when the user decides to control the copy/rename of the volume by
+ *                               individual bases. That is, user decides to spread the volumes over several locations 
+ *                               and or to label the volumes with specific names.
+ *                               Each volume entry consists of: volid from_fullvolname to_fullvolname
+ *   newdb_overwrite(in): Whether to overwrite the new database if it already exist.
  */
 int
 xboot_copy (REFPTR (THREAD_ENTRY, thread_p), const char *from_dbname, const char *new_db_name, const char *new_db_path,
@@ -4394,6 +4392,7 @@ xboot_soft_rename (THREAD_ENTRY * thread_p, const char *old_db_name, const char 
 	{
 	  cfg_update_db (db, new_db_path, new_log_path, NULL, new_db_server_host);
 	}
+
       if (db == NULL || db->name == NULL || db->pathname == NULL || db->logpath == NULL || db->hosts == NULL)
 	{
 	  error_code = ER_FAILED;
@@ -4583,7 +4582,7 @@ xboot_delete (const char *db_name, bool force_delete, BOOT_SERVER_SHUTDOWN_MODE 
       dir = NULL;
     }
 
-  /* Now delete the database */
+  /* Now delete the database. Normally, DWB was already removed at database shutdown. */
   error_code = boot_remove_all_volumes (thread_p, boot_Db_full_name, log_path, log_prefix, false, force_delete);
   if (error_code == NO_ERROR)
     {
@@ -4704,8 +4703,8 @@ error_dirty_delete:
 static int
 boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL * client_credential,
 			 const char *db_comments, DKNPAGES db_npages, const char *file_addmore_vols,
-			 const char *log_path, const char *log_prefix, DKNPAGES log_npages, int client_lock_wait,
-			 TRAN_ISOLATION client_isolation)
+			 const char *log_path, const char *log_prefix, DKNPAGES log_npages,
+			 int client_lock_wait, TRAN_ISOLATION client_isolation)
 {
   int tran_index = NULL_TRAN_INDEX;
   VOLID db_volid = NULL_VOLID;
@@ -4751,6 +4750,14 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
   ext_info.max_writesize_in_sec = 0;
   ext_info.purpose = DB_PERMANENT_DATA_PURPOSE;
   ext_info.extend_npages = db_npages;
+
+  /* Create double write buffer if not already created. DWB creation must be done before first volume.
+   * DWB file is created on log_path.
+   */
+  if (dwb_create (thread_p, log_path, log_prefix) != NO_ERROR)
+    {
+      goto error;
+    }
 
   /* Format the first database volume */
   error_code = disk_format_first_volume (thread_p, boot_Db_full_name, db_comments, db_npages);
@@ -5897,7 +5904,7 @@ boot_dbparm_save_volume (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, VOLID voli
   /* flush the boot_Db_parm object. this is not necessary but it is recommended in order to mount every known volume
    * during restart. that may not be possible during media crash though. */
   heap_flush (thread_p, boot_Db_parm_oid);
-  fileio_synchronize (thread_p, fileio_get_volume_descriptor (boot_Db_parm_oid->volid), NULL);	/* label? */
+  fileio_synchronize (thread_p, fileio_get_volume_descriptor (boot_Db_parm_oid->volid), NULL, FILEIO_SYNC_ALSO_FLUSH_DWB);	/* label? */
 
 exit:
   return error_code;

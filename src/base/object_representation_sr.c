@@ -1825,6 +1825,9 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
   OR_ATTRIBUTE *att;
   OR_ATTRIBUTE *ptr = NULL;
   OR_INDEX *index;
+  DB_VALUE stat_val;
+
+  db_make_null (&stat_val);
 
   if (seq_size < 2)
     {
@@ -1834,7 +1837,7 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
 
   index = &(rep->indexes[rep->n_indexes]);
 
-  att_cnt = (seq_size - 2) / 2;
+  att_cnt = (seq_size - 3) / 2;
 
   index->atts = (OR_ATTRIBUTE **) malloc (sizeof (OR_ATTRIBUTE *) * att_cnt);
   if (index->atts == NULL)
@@ -1858,6 +1861,7 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
   index->attrs_prefix_length = NULL;
   index->filter_predicate = NULL;
   index->func_index_info = NULL;
+  index->index_status = OR_NO_INDEX;
 
   /* 
    * For each attribute ID in the set,
@@ -1899,16 +1903,20 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
     }
   index->btname = strdup (cons_name);
 
+  /* Get the index status. */
+  set_get_element_nocopy (constraint_seq, seq_size - 2, &stat_val);
+  index->index_status = (OR_INDEX_STATUS) (db_get_int (&stat_val));
+
   if (type == BTREE_FOREIGN_KEY)
     {
-      if (set_get_element_nocopy (constraint_seq, seq_size - 2, &att_val) == NO_ERROR)
+      if (set_get_element_nocopy (constraint_seq, seq_size - 3, &att_val) == NO_ERROR)
 	{
 	  or_install_btids_foreign_key (cons_name, db_get_set (&att_val), index);
 	}
     }
   else if (type == BTREE_PRIMARY_KEY)
     {
-      if (set_get_element_nocopy (constraint_seq, seq_size - 2, &att_val) == NO_ERROR)
+      if (set_get_element_nocopy (constraint_seq, seq_size - 3, &att_val) == NO_ERROR)
 	{
 	  if (DB_VALUE_TYPE (&att_val) == DB_TYPE_SEQUENCE)
 	    {
@@ -1918,7 +1926,7 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
     }
   else
     {
-      if (set_get_element_nocopy (constraint_seq, seq_size - 2, &att_val) == NO_ERROR)
+      if (set_get_element_nocopy (constraint_seq, seq_size - 3, &att_val) == NO_ERROR)
 	{
 	  if (DB_VALUE_TYPE (&att_val) == DB_TYPE_SEQUENCE)
 	    {
@@ -2143,7 +2151,7 @@ or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq, BTREE_T
   DB_VALUE id_val, att_val;
 
   /* Extract the first element of the sequence which is the encoded B-tree ID */
-  /* { btid, [attrID, asc_desc]+, {fk_info} or {key prefix length}, comment} */
+  /* { btid, [attrID, asc_desc]+, {fk_info} or {key prefix length}, status, comment} */
   seq_size = set_size (constraint_seq);
 
   if (set_get_element_nocopy (constraint_seq, 0, &id_val) != NO_ERROR)
@@ -4059,3 +4067,4 @@ error:
 
   return;
 }
+

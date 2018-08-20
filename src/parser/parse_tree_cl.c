@@ -2596,8 +2596,6 @@ pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
       break;
 
     case DB_TYPE_TIME:
-    case DB_TYPE_TIMETZ:
-    case DB_TYPE_TIMELTZ:
       /* csql & everyone else get time 'hh:mi:ss' */
       printer.describe_value (val);
       break;
@@ -3921,8 +3919,6 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "to_datetime_tz ";
     case PT_TO_TIMESTAMP_TZ:
       return "to_timestamp_tz ";
-    case PT_TO_TIME_TZ:
-      return "to_time_tz ";
     case PT_UTC_TIMESTAMP:
       return "utc_timestamp ";
     case PT_CRC32:
@@ -4144,10 +4140,6 @@ pt_show_type_enum (PT_TYPE_ENUM t)
       return "date";
     case PT_TYPE_TIME:
       return "time";
-    case PT_TYPE_TIMETZ:
-      return "timetz";
-    case PT_TYPE_TIMELTZ:
-      return "timeltz";
     case PT_TYPE_TIMESTAMP:
       return "timestamp";
     case PT_TYPE_TIMESTAMPTZ:
@@ -6401,6 +6393,15 @@ pt_print_alter_index (PARSER_CONTEXT * parser, PT_NODE * p)
       b = pt_append_nulstring (parser, b, " ");
     }
 
+  if (p->info.index.index_status == SM_INVISIBLE_INDEX)
+    {
+      b = pt_append_nulstring (parser, b, " INVISIBLE ");
+    }
+  else if (p->info.index.index_status == SM_NORMAL_INDEX)
+    {
+      b = pt_append_nulstring (parser, b, " VISIBLE ");
+    }
+
   if (p->info.index.code == PT_REBUILD_INDEX)
     {
       b = pt_append_nulstring (parser, b, "rebuild");
@@ -6730,8 +6731,6 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_TYPE_MONETARY:
     case PT_TYPE_DATE:
     case PT_TYPE_TIME:
-    case PT_TYPE_TIMETZ:
-    case PT_TYPE_TIMELTZ:
     case PT_TYPE_TIMESTAMP:
     case PT_TYPE_TIMESTAMPTZ:
     case PT_TYPE_TIMESTAMPLTZ:
@@ -7457,6 +7456,15 @@ pt_print_create_index (PARSER_CONTEXT * parser, PT_NODE * p)
       comment = pt_print_bytes (parser, p->info.index.comment);
       b = pt_append_nulstring (parser, b, " comment ");
       b = pt_append_varchar (parser, b, comment);
+    }
+
+  if (p->info.index.index_status == SM_INVISIBLE_INDEX)
+    {
+      b = pt_append_nulstring (parser, b, " INVISIBLE ");
+    }
+  else if (p->info.index.index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+    {
+      b = pt_append_nulstring (parser, b, " WITH ONLINE ");
     }
 
   parser->custom_print = saved_cp;
@@ -10519,7 +10527,6 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_TO_CHAR:
     case PT_TO_DATETIME_TZ:
     case PT_TO_TIMESTAMP_TZ:
-    case PT_TO_TIME_TZ:
       {
 	int flags;
 	bool has_user_format = false;
@@ -10553,10 +10560,6 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	else if (p->info.expr.op == PT_TO_TIMESTAMP_TZ)
 	  {
 	    q = pt_append_nulstring (parser, q, " to_timestamp_tz(");
-	  }
-	else if (p->info.expr.op == PT_TO_TIME_TZ)
-	  {
-	    q = pt_append_nulstring (parser, q, " to_time_tz(");
 	  }
 	else
 	  {
@@ -16536,8 +16539,6 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 
     case PT_TYPE_DATE:
     case PT_TYPE_TIME:
-    case PT_TYPE_TIMETZ:
-    case PT_TYPE_TIMELTZ:
     case PT_TYPE_TIMESTAMP:
     case PT_TYPE_TIMESTAMPTZ:
     case PT_TYPE_TIMESTAMPLTZ:
@@ -16558,12 +16559,6 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 	  break;
 	case PT_TYPE_TIME:
 	  q = pt_append_nulstring (parser, q, "time ");
-	  break;
-	case PT_TYPE_TIMETZ:
-	  q = pt_append_nulstring (parser, q, "timetz ");
-	  break;
-	case PT_TYPE_TIMELTZ:
-	  q = pt_append_nulstring (parser, q, "timeltz ");
 	  break;
 	case PT_TYPE_TIMESTAMP:
 	  q = pt_append_nulstring (parser, q, "timestamp ");
@@ -18074,7 +18069,6 @@ pt_is_const_expr_node (PT_NODE * node)
 	case PT_TO_NUMBER:
 	case PT_TO_DATETIME_TZ:
 	case PT_TO_TIMESTAMP_TZ:
-	case PT_TO_TIME_TZ:
 	  return (pt_is_const_expr_node (node->info.expr.arg1)
 		  && (node->info.expr.arg2 ? pt_is_const_expr_node (node->info.expr.arg2) : true)) ? true : false;
 	case PT_CURRENT_VALUE:
@@ -18581,7 +18575,6 @@ pt_is_allowed_as_function_index (const PT_NODE * expr)
     case PT_INET_NTOA:
     case PT_TO_DATETIME_TZ:
     case PT_TO_TIMESTAMP_TZ:
-    case PT_TO_TIME_TZ:
     case PT_CRC32:
     case PT_JSON_CONTAINS:
     case PT_JSON_TYPE:

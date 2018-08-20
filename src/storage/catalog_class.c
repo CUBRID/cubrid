@@ -2218,8 +2218,8 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 				  int is_foreign_key)
 {
   int seq_size;
-  DB_VALUE keys, svalue, val, avalue, *pvalue = NULL;
-  DB_SEQ *key_seq_p = NULL, *seq = NULL, *pred_seq = NULL, *prefix_seq = NULL;
+  DB_VALUE keys, svalue, val, avalue, *pvalue = NULL, *status_value = NULL;
+  DB_SEQ *key_seq_p = NULL, *seq = NULL, *pred_seq = NULL, *prefix_seq = NULL, *status_seq = NULL;
   int key_size, att_cnt;
   OR_VALUE *attrs, *key_attrs;
   DB_VALUE *attr_val_p;
@@ -2278,7 +2278,10 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
       /* the sequence of keys also includes the B+tree ID and the filter predicate expression in the first two
        * positions (0 and 1) */
       key_size = set_size (key_seq_p);
-      att_cnt = (key_size - 2) / 2;
+      att_cnt = (key_size - 3) / 2;
+
+      /* Get status. */
+      error = set_get_element (key_seq_p, key_size - 2, &attrs[11].value);
 
       /* comment */
       error = set_get_element (key_seq_p, key_size - 1, &attrs[10].value);
@@ -2291,7 +2294,7 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
       if (!is_primary_key && !is_foreign_key)
 	{
 	  /* prefix_length or filter index */
-	  error = set_get_element (key_seq_p, key_size - 2, &svalue);
+	  error = set_get_element (key_seq_p, key_size - 3, &svalue);
 	  if (error != NO_ERROR)
 	    {
 	      goto error;
@@ -2629,6 +2632,7 @@ error:
   pr_clear_value (&svalue);
   pr_clear_value (&val);
   pr_clear_value (&avalue);
+
   if (pvalue)
     {
       pr_free_ext_value (pvalue);

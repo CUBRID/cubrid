@@ -18550,8 +18550,6 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 		case DB_TYPE_TIMESTAMPTZ:
 		case DB_TYPE_TIMESTAMPLTZ:
 		case DB_TYPE_TIME:
-		case DB_TYPE_TIMETZ:
-		case DB_TYPE_TIMELTZ:
 		  break;
 
 		default:
@@ -21990,12 +21988,6 @@ qexec_schema_get_type_name_from_id (DB_TYPE id)
 
     case DB_TYPE_TIME:
       return "TIME";
-
-    case DB_TYPE_TIMETZ:
-      return "TIMETZ";
-
-    case DB_TYPE_TIMELTZ:
-      return "TIMELTZ";
 
     case DB_TYPE_TIMESTAMP:
       return "TIMESTAMP";

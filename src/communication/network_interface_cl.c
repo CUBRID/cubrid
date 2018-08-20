@@ -5194,16 +5194,30 @@ boot_soft_rename (const char *old_db_name, const char *new_db_name, const char *
 }
 
 /*
- * boot_copy -
+ * boot_copy () - copy the database to a new destination
  *
- * return:
+ * return : NO_ERROR if all OK, ER_ status otherwise
  *
- * NOTE:
+ *   fromdb_name(in): The database from where the copy is made.
+ *   newdb_name(in): Name of new database
+ *   newdb_path(in): Directory where the new database will reside
+ *   newlog_path(in): Directory where the log volumes of the new database will reside
+ *   new_lob_path(in): Directory where the lob volumes of the new database will reside
+ *   newdb_server_host(in): Server host where the new database reside
+ *   new_volext_path(in): A path is included if all volumes are placed in one place/directory. If NULL is given,
+ *                        - If file "fileof_vols_and_wherepaths" is given, the path is found in this file.
+ *                        - Each volume is copied to same place where the volume resides.
+ *                      Note: This parameter should be NULL, if the above file is given.
+ *   fileof_vols_and_wherepaths(in): A file is given when the user decides to control the copy/rename of the volume by
+ *                               individual bases. That is, user decides to spread the volumes over several locations and
+ *                               or to label the volumes with specific names.
+ *                               Each volume entry consists of: volid from_fullvolname to_fullvolname
+ *   newdb_overwrite(in): Whether to overwrite the new database if it already exist.
  */
 int
 boot_copy (const char *from_dbname, const char *new_db_name, const char *new_db_path, const char *new_log_path,
-	   const char *new_lob_path, const char *new_db_server_host, const char *new_volext_path,
-	   const char *fileof_vols_and_copypaths, bool new_db_overwrite)
+	   const char *new_lob_path, const char *new_db_server_host,
+	   const char *new_volext_path, const char *fileof_vols_and_copypaths, bool new_db_overwrite)
 {
 #if defined(CS_MODE)
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ONLY_IN_STANDALONE, 1, "copy database");
