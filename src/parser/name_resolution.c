@@ -2636,7 +2636,6 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 
     case PT_INSERT:
       scopestack.specs = node->info.insert.spec;
-
       bind_arg->scopes = &scopestack;
       spec_frame.next = bind_arg->spec_frames;
       spec_frame.extra_specs = NULL;

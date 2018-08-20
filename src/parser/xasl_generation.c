@@ -17137,7 +17137,7 @@ error:
  * node (in)   : Parser node containing sub-query.
  * with (in)   : with clause with built cte proc
  * type (in)   : XASL proc type.
- * 
+ *
  * NOTE: This function should not be used in the INSERT ... VALUES case.
  */
 static XASL_NODE *
