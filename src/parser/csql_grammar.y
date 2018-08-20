@@ -23260,6 +23260,7 @@ vacuum_stmt
         pt_col->info.json_table_column_info.func = JSON_TABLE_EXTRACT;
         pt_col->info.json_table_column_info.on_error = $5;
         pt_col->info.json_table_column_info.on_empty = $6;
+		$$ = pt_col;
       DBG_PRINT}}
     | identifier data_type EXISTS PATH CHAR_STRING
       {{
@@ -23268,6 +23269,7 @@ vacuum_stmt
         pt_col->type_enum = TO_NUMBER (CONTAINER_AT_0 ($2));
         pt_col->data_type = CONTAINER_AT_1 ($2);
         pt_col->info.json_table_column_info.func = JSON_TABLE_EXISTS;
+		$$ = pt_col;
       DBG_PRINT}}
     | NESTED json_table_column_list_rule
       {{
@@ -23289,7 +23291,7 @@ vacuum_stmt
       {{
         PT_NODE *pt_jt_node = parser_new_node (this_parser, PT_JSON_TABLE_NODE);
         pt_jt_append_column_or_nested_node (pt_jt_node, $1);
-        $$ = pt_jt_append_column_or_nested_node;
+        $$ = pt_jt_node;
       DBG_PRINT}}
     ;
 
