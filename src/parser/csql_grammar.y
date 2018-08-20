@@ -1861,8 +1861,17 @@ stmt_
 		{ $$ = $1; }
 	| do_stmt
 		{ $$ = $1; }
-	| esql_query_stmt
-		{ $$ = $1; }
+	| opt_with_clause
+	  esql_query_stmt 
+		{{
+			PT_NODE *with_clause = $1;
+			PT_NODE *stmt = $2;
+			if (stmt && with_clause)
+			  {
+			    stmt->info.query.with = with_clause;
+			  }
+			$$ = stmt;
+	  DBG_PRINT}}
 	| evaluate_stmt
 		{ $$ = $1; }
 	| prepare_stmt
@@ -11756,7 +11765,7 @@ opt_sp_in_out
 
 esql_query_stmt
 	: 	{ parser_select_level++; }
-	  csql_query
+	  csql_query_copy_no_with_clause
 		{{
 			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -13036,7 +13045,7 @@ opt_with_clause
 	;
 
 opt_recursive
-	: /* empty */
+		: /* empty */
 		{{
 			$$ = 0;
 
@@ -13419,7 +13428,7 @@ select_list
 		DBG_PRINT}}
 	;
 
-alias_enabled_expression_list_top
+alias_enabled_expression_list_top 
 	:	
 		{{
 
@@ -13448,7 +13457,7 @@ alias_enabled_expression_list_top
 
 alias_enabled_expression_list
 	: alias_enabled_expression_list  ',' alias_enabled_expression_
-		{{
+ 		{{
 
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
