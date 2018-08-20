@@ -23252,7 +23252,7 @@ vacuum_stmt
       DBG_PRINT}}
     | identifier data_type PATH CHAR_STRING json_table_on_error_rule_optional json_table_on_empty_rule_optional
     //        $1        $2   $3          $4                                $5                                $6
-      {{
+      {{		
         PT_NODE *pt_col = parser_new_node (this_parser, PT_JSON_TABLE_COLUMN);
         pt_col->info.json_table_column_info.name = $1;
         pt_col->type_enum = TO_NUMBER (CONTAINER_AT_0 ($2));
@@ -26375,11 +26375,11 @@ pt_jt_append_column_or_nested_node (PT_NODE * jt_node, PT_NODE * jt_col_or_neste
 
   if (jt_col_or_nested->node_type == PT_JSON_TABLE_COLUMN)
     {
-      (void) parser_append_node (jt_col_or_nested, jt_node->info.json_table_node_info.columns);
+      jt_node->info.json_table_node_info.columns = parser_append_node (jt_col_or_nested, jt_node->info.json_table_node_info.columns);
     }
   else
     {
       assert (jt_col_or_nested->node_type == PT_JSON_TABLE_NODE);
-      (void) parser_append_node (jt_col_or_nested, jt_node->info.json_table_node_info.nested_paths);
+      jt_node->info.json_table_node_info.nested_paths = parser_append_node (jt_col_or_nested, jt_node->info.json_table_node_info.nested_paths);
     }
 }
