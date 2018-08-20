@@ -2928,9 +2928,9 @@ db_get_row_count_cache (void)
 }
 
 /*
-* db_update_row_count_cache () - update the cached value of row count
-* return : void
-*/
+ * db_update_row_count_cache () - update the cached value of row count
+ * return : void
+ */
 void
 db_update_row_count_cache (const int row_count)
 {
@@ -2938,9 +2938,9 @@ db_update_row_count_cache (const int row_count)
 }
 
 /*
-* db_get_override_tran_index () -
-* return : tran index
-*/
+ * db_get_override_tran_index () -
+ * return : tran index
+ */
 int
 db_get_override_tran_index (void)
 {
@@ -2948,9 +2948,9 @@ db_get_override_tran_index (void)
 }
 
 /*
-* db_set_override_tran_index () -
-* return : void
-*/
+ * db_set_override_tran_index () -
+ * return : void
+ */
 void
 db_set_override_tran_index (int tran_index)
 {

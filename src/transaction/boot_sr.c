@@ -3064,9 +3064,8 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
   else
     {
       /* Assign a transaction index to the client */
-      tran_index =
-	logtb_assign_tran_index (thread_p, NULL_TRANID, TRAN_ACTIVE, client_credential, tran_state, client_lock_wait,
-				 client_isolation);
+      tran_index = logtb_assign_tran_index (thread_p, NULL_TRANID, TRAN_ACTIVE, client_credential, tran_state,
+					    client_lock_wait, client_isolation);
     }
 
 #if defined (SERVER_MODE)

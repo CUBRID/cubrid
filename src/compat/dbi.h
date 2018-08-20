@@ -754,7 +754,6 @@ extern "C"
   extern void db_clear_host_connected (void);
   extern char *db_get_database_version (void);
   extern int db_get_override_tran_index (void);
-  extern void db_restore_tran_index (void);
   extern void db_set_override_tran_index (int tran_index);
 #ifdef __cplusplus
 }

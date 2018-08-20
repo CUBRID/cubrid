@@ -13724,7 +13724,7 @@ locator_repl_apply_rbr (THREAD_ENTRY * thread_p, const char *class_name, const i
   bool scan_cache_inited = false;
   /* TODO : operation type : argument from RBR */
   int rbr_operation = LC_FLUSH_UPDATE;
-  /* TODO : prunning type : argument from RBR ?  */
+  /* TODO : prunning type : argument from RBR ? */
   int pruning_type = DB_NOT_PARTITIONED_CLASS;
   /* TODO : has_index : argument in RBR ? */
   int has_index = 0;
@@ -13850,7 +13850,6 @@ locator_repl_apply_rbr (THREAD_ENTRY * thread_p, const char *class_name, const i
       /* TODO : error handling */
       //locator_repl_add_error_to_copyarea (reply_area, &reply_recdes, obj, &key_value, er_errid (), er_msg ());
 
-
       error_code = NO_ERROR;
     }
 
@@ -13932,7 +13931,6 @@ locator_prepare_rbr_apply (THREAD_ENTRY * thread_p, const int rbr_operation, OID
 	}
     }
 
-
   if (LC_IS_FLUSH_UPDATE (rbr_operation) == true)
     {
       assert (OID_ISNULL (instance_oid) != true);
@@ -13971,10 +13969,12 @@ check_interrupt_callback (void *data)
   int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   bool is_interrupt = false;
   int error = logtb_find_interrupt (tran_index, &is_interrupt);
+
   if (error || is_interrupt)
     {
       return 1;
     }
+
   return 0;
 }
 
@@ -13982,7 +13982,6 @@ int
 locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *statement)
 {
   char path[PATH_MAX];
-  char *cubrid_env_var;
   static const char *db_name = boot_db_name ();
   int error = NO_ERROR;
   int exit_status;
@@ -13991,7 +13990,8 @@ locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *statement)
 
   sprintf (tran_index_str, "%d", tran_index);
 
-  const char *ddl_argv[8] = { path,
+  const char *ddl_argv[8] = {
+    path,
     "-udba",
     db_name,
     "-c",
@@ -14001,15 +14001,7 @@ locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *statement)
     NULL
   };
 
-  cubrid_env_var = getenv ("CUBRID");
-  assert (cubrid_env_var != NULL);
-
-  strncpy (path, cubrid_env_var, PATH_MAX);
-#if defined (WINDOWS)
-  strncat (path, "/bin/ddl_proxy_client.exe", PATH_MAX);
-#else
-  strncat (path, "/bin/ddl_proxy_client", PATH_MAX);
-#endif
+  envvar_bindir_file (path, PATH_MAX, "ddl_proxy_client");
 
   error = create_child_process (ddl_argv, 1, check_interrupt_callback, thread_p, NULL, NULL, NULL, &exit_status);
   if (error != NO_ERROR)
