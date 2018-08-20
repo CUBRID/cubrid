@@ -841,6 +841,7 @@ int g_original_buffer_len;
 %type <node> sp_param_def
 %type <node> esql_query_stmt
 %type <node> csql_query
+%type <node> csql_query_select_has_no_with_clause
 %type <node> csql_query_without_values_query
 %type <node> select_expression_opt_with
 %type <node> select_expression
@@ -11765,7 +11766,7 @@ opt_sp_in_out
 
 esql_query_stmt
 	: 	{ parser_select_level++; }
-	  csql_query_copy_no_with_clause
+	  csql_query_select_has_no_with_clause
 		{{
 			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -11792,6 +11793,94 @@ csql_query
 
 		DBG_PRINT}}
 	  select_expression_opt_with
+		{{
+
+			PT_NODE *node = $2;
+			parser_push_orderby_node (node);
+
+		DBG_PRINT}}
+	  opt_orderby_clause
+		{{
+
+			PT_NODE *node = parser_pop_orderby_node ();
+
+			if (node && parser_cannot_cache)
+			  {
+			    node->info.query.reexecute = 1;
+			    node->info.query.do_cache = 0;
+			    node->info.query.do_not_cache = 1;
+			  }
+
+			parser_restore_cannot_cache ();
+			parser_restore_ic ();
+			parser_restore_gc ();
+			parser_restore_oc ();
+			parser_restore_wjc ();
+			parser_restore_sysc ();
+			parser_restore_prc ();
+			parser_restore_cbrc ();
+			parser_restore_serc ();
+			parser_restore_sqc ();
+			parser_restore_pseudoc ();
+
+			if (parser_subquery_check == 0)
+			    PT_ERRORmf(this_parser, pt_top(this_parser),
+				MSGCAT_SET_PARSER_SEMANTIC,
+				MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "Subquery");
+
+			if (node)
+			  {
+			    /* handle ORDER BY NULL */
+			    PT_NODE *order = node->info.query.order_by;
+			    if (order && order->info.sort_spec.expr
+				&& order->info.sort_spec.expr->node_type == PT_VALUE
+				&& order->info.sort_spec.expr->type_enum == PT_TYPE_NULL)
+			      {
+				if (!node->info.query.q.select.group_by)
+				  {
+				    PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					       MSGCAT_SEMANTIC_ORDERBYNULL_REQUIRES_GROUPBY);
+				  }
+				else
+				  {
+				    parser_free_tree (this_parser, node->info.query.order_by);
+				    node->info.query.order_by = NULL;
+				  }
+			      }
+			  }
+
+			parser_push_orderby_node (node);
+
+		DBG_PRINT}}
+	opt_select_limit_clause
+	opt_for_update_clause
+		{{
+
+			PT_NODE *node = parser_pop_orderby_node ();
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	;
+
+csql_query_select_has_no_with_clause
+	:
+		{{
+
+			parser_save_and_set_cannot_cache (false);
+			parser_save_and_set_ic (0);
+			parser_save_and_set_gc (0);
+			parser_save_and_set_oc (0);
+			parser_save_and_set_wjc (0);
+			parser_save_and_set_sysc (0);
+			parser_save_and_set_prc (0);
+			parser_save_and_set_cbrc (0);
+			parser_save_and_set_serc (1);
+			parser_save_and_set_sqc (1);
+			parser_save_and_set_pseudoc (1);
+
+		DBG_PRINT}}
+	  select_expression
 		{{
 
 			PT_NODE *node = $2;
