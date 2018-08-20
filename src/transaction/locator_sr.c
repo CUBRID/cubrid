@@ -13990,7 +13990,7 @@ locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *statement)
   char tran_index_str[DB_BIGINT_PRECISION + 1] = { 0 };
   int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
-  ltoa (tran_index, tran_index_str, 10);
+  sprintf (tran_index_str, "%d", tran_index);
 
   const char *ddl_argv[8] = {path,
 			     "-udba",
