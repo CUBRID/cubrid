@@ -57,6 +57,7 @@
 #include "dbtype.h"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #include "process_util.h"
+#include "environment_variable.h"
 
 /* TODO : remove */
 extern bool catcls_Enable;
