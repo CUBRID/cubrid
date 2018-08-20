@@ -39,6 +39,8 @@ namespace cubscan
       JSON_DOC *m_row_doc;        // used only for arrays and multiple rows
       JSON_DOC *m_process_doc;    // is either input_doc or row doc
       bool m_is_row_evaluated;
+      bool m_need_expand;
+      JSON_ITERATOR *m_json_iterator;
     };
 
     int

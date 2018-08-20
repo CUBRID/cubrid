@@ -29,9 +29,11 @@
 #if defined (__cplusplus)
 class JSON_DOC;
 class JSON_VALIDATOR;
+class JSON_ITERATOR;
 #else
 typedef void JSON_DOC;
 typedef void JSON_VALIDATOR;
+typedef void JSON_ITERATOR;
 #endif
 
 #if defined (__cplusplus)
@@ -107,6 +109,10 @@ void db_json_delete_doc (JSON_DOC *&doc);
 void db_json_delete_validator (JSON_VALIDATOR *&validator);
 int db_json_validate_doc (JSON_VALIDATOR *validator, JSON_DOC *doc);
 bool db_json_are_validators_equal (JSON_VALIDATOR *val1, JSON_VALIDATOR *val2);
+
+const JSON_DOC *db_json_iterator_next (JSON_ITERATOR &json_itr);
+const JSON_DOC *db_json_iterator_get (JSON_ITERATOR &json_itr);
+bool db_json_iterator_has_next (JSON_ITERATOR &json_itr);
 
 DB_JSON_TYPE db_json_get_type (const JSON_DOC *doc);
 

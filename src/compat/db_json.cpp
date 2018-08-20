@@ -111,6 +111,98 @@ class JSON_DOC: public rapidjson::GenericDocument <JSON_ENCODING, JSON_PRIVATE_M
     static const int MAX_CHUNK_SIZE;
 };
 
+class JSON_ITERATOR
+{
+  public:
+    JSON_ITERATOR (const JSON_DOC &document) : document (&document) {}
+
+    virtual const JSON_VALUE *next() = 0;
+    virtual bool has_next() = 0;
+    virtual const JSON_VALUE *get() = 0;
+
+  protected:
+    const JSON_DOC *document;
+};
+
+class JSON_OBJECT_ITERATOR : JSON_ITERATOR
+{
+    JSON_OBJECT_ITERATOR (const JSON_DOC &document) : JSON_ITERATOR (document)
+    {
+      assert (document.IsObject());
+
+      iterator = document.MemberBegin();
+    }
+
+    const JSON_VALUE *next();
+    bool has_next();
+
+    const JSON_VALUE *get()
+    {
+      return &iterator->value;
+    }
+
+  private:
+    rapidjson::GenericMemberIterator<true, JSON_ENCODING, JSON_PRIVATE_MEMPOOL>::Iterator iterator;
+};
+
+class JSON_ARRAY_ITERATOR : JSON_ITERATOR
+{
+    JSON_ARRAY_ITERATOR (const JSON_DOC &document) : JSON_ITERATOR (document)
+    {
+      assert (document.IsArray());
+
+      iterator = document.GetArray().Begin();
+    }
+
+    const JSON_VALUE *next();
+    bool has_next();
+
+    const JSON_VALUE *get()
+    {
+      return iterator;
+    }
+
+  private:
+    rapidjson::GenericArray<true, JSON_VALUE>::ConstValueIterator iterator;
+};
+
+const JSON_VALUE *
+JSON_ARRAY_ITERATOR::next()
+{
+  if (!has_next())
+    {
+      return NULL;
+    }
+
+  return iterator++;
+}
+
+bool
+JSON_ARRAY_ITERATOR::has_next()
+{
+  return iterator != document->GetArray().End();
+}
+
+const JSON_VALUE *
+JSON_OBJECT_ITERATOR::next()
+{
+  if (!has_next())
+    {
+      return NULL;
+    }
+
+  const JSON_VALUE *value = &iterator->value;
+  ++iterator;
+
+  return value;
+}
+
+bool
+JSON_OBJECT_ITERATOR::has_next()
+{
+  return iterator != document->MemberEnd();
+}
+
 class JSON_VALIDATOR
 {
   public:
@@ -317,6 +409,8 @@ static int db_json_keys_func (const JSON_DOC &doc, JSON_DOC &result_json, const 
 
 STATIC_INLINE JSON_VALUE &db_json_doc_to_value (JSON_DOC &doc) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE const JSON_VALUE &db_json_doc_to_value (const JSON_DOC &doc) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE JSON_DOC &db_json_value_to_doc (JSON_VALUE &value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE const JSON_DOC &db_json_value_to_doc (const JSON_VALUE &value) __attribute__ ((ALWAYS_INLINE));
 static int db_json_get_json_from_str (const char *json_raw, JSON_DOC &doc);
 static int db_json_add_json_value_to_object (JSON_DOC &doc, const char *name, JSON_VALUE &value);
 
@@ -540,6 +634,36 @@ static const JSON_VALUE &
 db_json_doc_to_value (const JSON_DOC &doc)
 {
   return reinterpret_cast<const JSON_VALUE &> (doc);
+}
+
+static JSON_DOC &
+db_json_value_to_doc (JSON_VALUE &value)
+{
+  return reinterpret_cast<JSON_DOC &> (value);
+}
+
+static const JSON_DOC &
+db_json_value_to_doc (const JSON_VALUE &value)
+{
+  return reinterpret_cast<const JSON_DOC &> (value);
+}
+
+const JSON_DOC *
+db_json_iterator_next (JSON_ITERATOR &json_itr)
+{
+  return &db_json_value_to_doc (*json_itr.next());
+}
+
+const JSON_DOC *
+db_json_iterator_get (JSON_ITERATOR &json_itr)
+{
+  return &db_json_value_to_doc (*json_itr.get());
+}
+
+bool
+db_json_iterator_has_next (JSON_ITERATOR &json_itr)
+{
+  return json_itr.has_next();
 }
 
 bool

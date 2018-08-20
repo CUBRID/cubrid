@@ -42,6 +42,7 @@ namespace cubxasl
 }
 // db_json.hpp
 class JSON_DOC;
+class JSON_ITERATOR;
 // scan_manager.h
 struct scan_id_struct;
 
