@@ -276,13 +276,50 @@ namespace cubscan
     }
 
     int
+    scanner::set_next_cursor (const cursor &current_cursor, int next_depth)
+    {
+      int error_code = NO_ERROR;
+      cubxasl::json_table::node &next_node = current_cursor.m_node->m_nested_nodes[current_cursor.m_child];
+      cursor &next_cursor = m_scan_cursor[next_depth];
+      next_cursor.m_is_row_evaluated = false;
+      next_cursor.m_row = 0;
+      next_cursor.m_child = 0;
+      next_cursor.m_node = &next_node;
+
+      if (check_need_expand (next_node))
+	{
+	  const char *parent_path = get_parent_path (next_node);
+	  assert (parent_path != NULL);
+
+	  // set the input document and the iterator
+	  next_cursor.set_json_iterator (*current_cursor.m_process_doc, parent_path);
+	}
+      else
+	{
+	  error_code = db_json_extract_document_from_path (current_cursor.m_process_doc,
+		       // here we can use the unprocessed node path
+		       next_node.m_path.c_str(),
+		       next_cursor.m_input_doc);
+
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR();
+	      return error_code;
+	    }
+	}
+
+      return NO_ERROR;
+    }
+
+    int
     scanner::next_internal (cubthread::entry *thread_p, int depth, bool &success)
     {
       int error_code = NO_ERROR;
       DB_LOGICAL logical;
 
       // check if cursor is already in child node
-      if (m_scan_cursor_depth > depth + 1)
+      // todo: check later if '>' or '>='
+      if (m_scan_cursor_depth >= depth + 1)
 	{
 	  // advance to child
 	  error_code = next_internal (thread_p, depth + 1, success);
@@ -350,33 +387,11 @@ namespace cubscan
 	    }
 
 	  // create cursor for next child
-	  cubxasl::json_table::node &next_node = this_cursor.m_node->m_nested_nodes[this_cursor.m_child];
-	  cursor &next_cursor = m_scan_cursor[depth + 1];
-	  next_cursor.m_is_row_evaluated = false;
-	  next_cursor.m_row = 0;
-	  next_cursor.m_child = 0;
-	  next_cursor.m_node = &next_node;
-
-	  if (check_need_expand (next_node))
+	  error_code = set_next_cursor (this_cursor, depth + 1);
+	  if (error_code != NO_ERROR)
 	    {
-	      const char *parent_path = get_parent_path (next_node);
-	      assert (parent_path != NULL);
-
-	      // set the input document and the iterator
-	      next_cursor.set_json_iterator (*this_cursor.m_process_doc, parent_path);
-	    }
-	  else
-	    {
-	      error_code = db_json_extract_document_from_path (this_cursor.m_process_doc,
-			   // here we can use the unprocessed node path
-			   next_node.m_path.c_str(),
-			   next_cursor.m_input_doc);
-
-	      if (error_code != NO_ERROR)
-		{
-		  ASSERT_ERROR();
-		  return error_code;
-		}
+	      ASSERT_ERROR();
+	      return error_code;
 	    }
 
 	  // advance current level in tree
@@ -405,6 +420,13 @@ namespace cubscan
 
       // remove this cursor
       m_scan_cursor_depth--;
+
+      if (m_scan_cursor_depth >= 0)
+	{
+	  // advance row in parent when finished current branch
+	  cursor &parent = m_scan_cursor[m_scan_cursor_depth];
+	  parent.advance_row_cursor();
+	}
 
       return NO_ERROR;
     }
