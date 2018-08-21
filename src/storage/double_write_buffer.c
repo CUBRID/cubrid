@@ -4269,6 +4269,8 @@ start:
 	}
     }
 
+  initial_block_no = DWB_GET_BLOCK_NO_FROM_POSITION (initial_position_with_flags);
+
   if (DWB_GET_BLOCK_STATUS (initial_position_with_flags) == 0)
     {
       /* Check helper flush block. */
@@ -4282,7 +4284,6 @@ start:
       goto wait_for_helper_flush_block;
     }
 
-  initial_block_no = DWB_GET_BLOCK_NO_FROM_POSITION (initial_position_with_flags);
   while (!DWB_IS_BLOCK_WRITE_STARTED (initial_position_with_flags, initial_block_no))
     {
       /* Nothing to flush in this block, go to the previous block. */
