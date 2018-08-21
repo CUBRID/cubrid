@@ -113,6 +113,8 @@ bool db_json_are_validators_equal (JSON_VALIDATOR *val1, JSON_VALIDATOR *val2);
 const JSON_DOC *db_json_iterator_next (JSON_ITERATOR &json_itr);
 const JSON_DOC *db_json_iterator_get (JSON_ITERATOR &json_itr);
 bool db_json_iterator_has_next (JSON_ITERATOR &json_itr);
+size_t db_json_iterator_count_members (JSON_ITERATOR &json_itr);
+JSON_ITERATOR *db_json_create_iterator (const JSON_DOC &document);
 
 DB_JSON_TYPE db_json_get_type (const JSON_DOC *doc);
 

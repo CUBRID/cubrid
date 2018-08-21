@@ -119,13 +119,15 @@ class JSON_ITERATOR
     virtual const JSON_VALUE *next() = 0;
     virtual bool has_next() = 0;
     virtual const JSON_VALUE *get() = 0;
+    virtual size_t count_members() = 0;
 
   protected:
     const JSON_DOC *document;
 };
 
-class JSON_OBJECT_ITERATOR : JSON_ITERATOR
+class JSON_OBJECT_ITERATOR : public JSON_ITERATOR
 {
+  public:
     JSON_OBJECT_ITERATOR (const JSON_DOC &document) : JSON_ITERATOR (document)
     {
       assert (document.IsObject());
@@ -136,6 +138,12 @@ class JSON_OBJECT_ITERATOR : JSON_ITERATOR
     const JSON_VALUE *next();
     bool has_next();
 
+    size_t count_members()
+    {
+      assert (document->IsObject());
+      return document->MemberCount();
+    }
+
     const JSON_VALUE *get()
     {
       return &iterator->value;
@@ -145,8 +153,9 @@ class JSON_OBJECT_ITERATOR : JSON_ITERATOR
     rapidjson::GenericMemberIterator<true, JSON_ENCODING, JSON_PRIVATE_MEMPOOL>::Iterator iterator;
 };
 
-class JSON_ARRAY_ITERATOR : JSON_ITERATOR
+class JSON_ARRAY_ITERATOR : public JSON_ITERATOR
 {
+  public:
     JSON_ARRAY_ITERATOR (const JSON_DOC &document) : JSON_ITERATOR (document)
     {
       assert (document.IsArray());
@@ -157,6 +166,12 @@ class JSON_ARRAY_ITERATOR : JSON_ITERATOR
     const JSON_VALUE *next();
     bool has_next();
 
+    size_t count_members()
+    {
+      assert (document->IsArray());
+      return document->GetArray().Size();
+    }
+
     const JSON_VALUE *get()
     {
       return iterator;
@@ -164,6 +179,25 @@ class JSON_ARRAY_ITERATOR : JSON_ITERATOR
 
   private:
     rapidjson::GenericArray<true, JSON_VALUE>::ConstValueIterator iterator;
+};
+
+class JSON_ITERATOR_FACTORY
+{
+  public:
+    static JSON_ITERATOR *
+    create_json_iterator (const JSON_DOC &document)
+    {
+      if (document.IsObject())
+	{
+	  return new JSON_OBJECT_ITERATOR (document);
+	}
+      else if (document.IsArray())
+	{
+	  return new JSON_ARRAY_ITERATOR (document);
+	}
+
+      return NULL;
+    }
 };
 
 const JSON_VALUE *
@@ -664,6 +698,18 @@ bool
 db_json_iterator_has_next (JSON_ITERATOR &json_itr)
 {
   return json_itr.has_next();
+}
+
+size_t
+db_json_iterator_count_members (JSON_ITERATOR &json_itr)
+{
+  return json_itr.count_members();
+}
+
+JSON_ITERATOR *
+db_json_create_iterator (const JSON_DOC &document)
+{
+  return JSON_ITERATOR_FACTORY::create_json_iterator (document);
 }
 
 bool

@@ -81,7 +81,10 @@ namespace cubscan
 	int fetch_columns (const JSON_DOC &document, std::forward_list<cubxasl::json_table::column> &columns);
 	int evaluate (cubxasl::json_table::node &node, cubthread::entry *thread_p, const JSON_DOC &document,
 		      DB_LOGICAL &logical_output);
-	std::size_t get_row_count (cubxasl::json_table::node &node);
+	std::size_t get_row_count (cursor &cursor);
+	bool check_need_expand (const cubxasl::json_table::node &node);
+	bool str_ends_with (const std::string &str, const std::string &end);
+	const char *get_parent_path (const cubxasl::json_table::node &node);
 
 	int next_internal (cubthread::entry *thread_p, int depth, bool &success);
 
@@ -89,7 +92,7 @@ namespace cubscan
 	cubxasl::json_table::spec_node *m_specp;
 	cubxasl::json_table::node *m_scan_root;
 	cursor *m_scan_cursor;
-	std::size_t m_scan_cursor_depth;
+	std::size_t m_scan_cursor_depth;  // the current level where the cursor was left
 	PR_EVAL_FNC *m_eval_functions; // each node will have its associated function based on node.id
     };
   } // namespace json_table

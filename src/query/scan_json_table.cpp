@@ -36,12 +36,56 @@ namespace cubscan
       std::size_t m_child;
       cubxasl::json_table::node *m_node;
       JSON_DOC *m_input_doc;      // used for non-array / single row
-      JSON_DOC *m_row_doc;        // used only for arrays and multiple rows
-      JSON_DOC *m_process_doc;    // is either input_doc or row doc
+      const JSON_DOC *m_row_doc;        // used only for arrays and multiple rows
+      const JSON_DOC *m_process_doc;    // is either input_doc or row doc
       bool m_is_row_evaluated;
       bool m_need_expand;
       JSON_ITERATOR *m_json_iterator;
+
+      void advance_row_cursor();
+      void set_json_iterator (const JSON_DOC &document, const char *parent_path);
     };
+
+    void
+    scanner::cursor::advance_row_cursor()
+    {
+      // advance with row
+      m_row++;
+      m_is_row_evaluated = false;
+
+      if (m_need_expand)
+	{
+	  if (db_json_iterator_has_next (*m_json_iterator))
+	    {
+	      db_json_iterator_next (*m_json_iterator);
+	    }
+	}
+
+      // reset child to first branch
+      m_child = 0;
+    }
+
+    void
+    scanner::cursor::set_json_iterator (const JSON_DOC &document, const char *parent_path)
+    {
+      int error_code = NO_ERROR;
+
+      // extract the document from parent path
+      error_code = db_json_extract_document_from_path (&document, parent_path, m_input_doc);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR();
+	  return;
+	}
+
+      if (m_json_iterator != NULL)
+	{
+	  // avoid a memory leak
+	  delete m_json_iterator;
+	}
+
+      m_json_iterator = db_json_create_iterator (*m_input_doc);
+    }
 
     int
     scanner::fetch_columns (const JSON_DOC &document, std::forward_list<cubxasl::json_table::column> &columns)
@@ -88,9 +132,14 @@ namespace cubscan
     }
 
     std::size_t
-    scanner::get_row_count (cubxasl::json_table::node &node)
+    scanner::get_row_count (cursor &cursor)
     {
-      // todo: array
+      // if multiple rows ([*] or .*) count the number of members from parent path
+      if (cursor.m_need_expand)
+	{
+	  return db_json_iterator_count_members (*cursor.m_json_iterator);
+	}
+
       return 1;
     }
 
@@ -126,7 +175,7 @@ namespace cubscan
       error_code = fetch_peek_dbval (thread_p, m_specp->m_json_reguvar, NULL, NULL, NULL, NULL, &value_p);
       if (error_code != NO_ERROR)
 	{
-	  ASSERT_ERROR ();
+	  ASSERT_ERROR();
 	  return error_code;
 	}
       if (value_p == NULL || db_value_is_null (value_p))
@@ -141,11 +190,11 @@ namespace cubscan
       if (db_value_type (value_p) == DB_TYPE_JSON)
 	{
 	  error_code = db_json_extract_document_from_path (db_get_json_document (value_p),
-		       m_scan_root->m_path.c_str (),
+		       m_scan_root->m_path.c_str(),
 		       m_scan_cursor[0].m_input_doc);
 	  if (error_code != NO_ERROR)
 	    {
-	      ASSERT_ERROR ();
+	      ASSERT_ERROR();
 	      return error_code;
 	    }
 	}
@@ -157,16 +206,16 @@ namespace cubscan
 	  error_code = tp_value_cast (value_p, &json_cast_value, &tp_Json_domain, true);
 	  if (error_code != NO_ERROR)
 	    {
-	      ASSERT_ERROR ();
+	      ASSERT_ERROR();
 	      return error_code;
 	    }
 	  error_code = db_json_extract_document_from_path (db_get_json_document (&json_cast_value),
-		       m_scan_root->m_path.c_str (),
+		       m_scan_root->m_path.c_str(),
 		       m_scan_cursor[0].m_input_doc);
 	  pr_clear_value (&json_cast_value);
 	  if (error_code != NO_ERROR)
 	    {
-	      ASSERT_ERROR ();
+	      ASSERT_ERROR();
 	      return error_code;
 	    }
 	}
@@ -188,7 +237,7 @@ namespace cubscan
       int error_code = next_internal (thread_p, 0, success);
       if (error_code != NO_ERROR)
 	{
-	  ASSERT_ERROR ();
+	  ASSERT_ERROR();
 	  return error_code;
 	}
       if (!success)
@@ -197,6 +246,33 @@ namespace cubscan
 	  sid.status = S_ENDED;
 	}
       return NO_ERROR;
+    }
+
+    bool
+    scanner::str_ends_with (const std::string &str, const std::string &end)
+    {
+      return end.size() <= str.size() && str.compare (str.size() - end.size(), end.size(), end) == 0;
+    }
+
+    bool
+    scanner::check_need_expand (const cubxasl::json_table::node &node)
+    {
+      return str_ends_with (node.m_path, "[*]") || str_ends_with (node.m_path, ".*");
+    }
+
+    const char *
+    scanner::get_parent_path (const cubxasl::json_table::node &node)
+    {
+      if (str_ends_with (node.m_path, "[*]"))
+	{
+	  return node.m_path.substr (0, node.m_path.size() - 3).c_str();
+	}
+      else if (str_ends_with (node.m_path, ".*"))
+	{
+	  return node.m_path.substr (0, node.m_path.size() - 2).c_str();
+	}
+
+      return NULL;
     }
 
     int
@@ -220,18 +296,26 @@ namespace cubscan
 	    }
 	}
 
+      // get the cursor from the current depth
       cursor &this_cursor = m_scan_cursor[depth];
       assert (this_cursor.m_node != NULL);
 
-      // for each row X for each child
-      // todo: fix condition
-      while (this_cursor.m_row < get_row_count (*this_cursor.m_node))
+      // now we need to advance to a leaf level to compute a row
+      // iterate through nodes on the same level
+      while (this_cursor.m_row < get_row_count (this_cursor))
 	{
 	  if (!this_cursor.m_is_row_evaluated)
 	    {
-	      // todo: set this_cursor.process_doc to input_doc or row_doc
-	      // temporary: use input_doc.
-	      this_cursor.m_process_doc = this_cursor.m_input_doc;
+	      // if we need to expand continue to process where we left, else use the whole input_doc
+	      if (this_cursor.m_need_expand)
+		{
+		  this_cursor.m_process_doc = db_json_iterator_get (*this_cursor.m_json_iterator);
+		}
+	      else
+		{
+		  this_cursor.m_process_doc = this_cursor.m_input_doc;
+		}
+
 	      error_code = evaluate (*this_cursor.m_node, thread_p, *this_cursor.m_process_doc, logical);
 	      if (error_code != NO_ERROR)
 		{
@@ -241,7 +325,7 @@ namespace cubscan
 	      if (logical != V_TRUE)
 		{
 		  // we need another row
-		  this_cursor.m_row++;
+		  this_cursor.advance_row_cursor();
 		  continue;
 		}
 	      this_cursor.m_is_row_evaluated = true;
@@ -257,7 +341,8 @@ namespace cubscan
 	      // fall
 	    }
 
-	  if (this_cursor.m_node->m_nested_nodes.empty ())
+	  // if we are in a leaf node or we finished to evaluate all children
+	  if (this_cursor.m_child == this_cursor.m_node->m_nested_nodes.size())
 	    {
 	      success = true;
 	      return NO_ERROR;
@@ -271,14 +356,29 @@ namespace cubscan
 	  next_cursor.m_child = 0;
 	  next_cursor.m_node = &next_node;
 
-	  error_code = db_json_extract_document_from_path (this_cursor.m_process_doc,
-		       next_node.m_path.c_str (),
-		       this_cursor.m_input_doc);
-	  if (error_code != NO_ERROR)
+	  if (check_need_expand (next_node))
 	    {
-	      ASSERT_ERROR ();
-	      return error_code;
+	      const char *parent_path = get_parent_path (next_node);
+	      assert (parent_path != NULL);
+
+	      // set the input document and the iterator
+	      next_cursor.set_json_iterator (*this_cursor.m_process_doc, parent_path);
 	    }
+	  else
+	    {
+	      error_code = db_json_extract_document_from_path (this_cursor.m_process_doc,
+			   // here we can use the unprocessed node path
+			   next_node.m_path.c_str(),
+			   next_cursor.m_input_doc);
+
+	      if (error_code != NO_ERROR)
+		{
+		  ASSERT_ERROR();
+		  return error_code;
+		}
+	    }
+
+	  // advance current level in tree
 	  m_scan_cursor_depth++;
 
 	  error_code = next_internal (thread_p, depth + 1, success);
