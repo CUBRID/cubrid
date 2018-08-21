@@ -32,9 +32,8 @@
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
 #include "thread_worker_pool.hpp"
-#include "stream_transfer_receiver.hpp"
-#include "replication_master_senders_manager.hpp"
-#include "communication_server_channel.hpp"
+#include "replication_master_node.hpp"
+#include "replication_slave_node.hpp"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -834,18 +833,11 @@ css_process_master_hostname ()
 
   assert (hostname_length > 0 && ha_Server_state == HA_SERVER_STATE_STANDBY);
 
-#if 0
-  /* TODO[arnia] deactivate for now this new replication
-   * code and reactivate it later, when merging with razvan
-   */
-  //create slave replication channel and connect to hostname
-  error = chn.connect (ha_Server_master_hostname, css_Master_port_id);
-  if (error != NO_ERRORS)
+  error = cubreplication::slave_node::connect_to_master (ha_Server_master_hostname, css_Master_port_id);
+  if (error != NO_ERROR)
     {
-      assert (false);
       return error;
     }
-#endif
 
   er_log_debug (ARG_FILE_LINE, "css_process_master_hostname:" "connected to master_hostname:%s\n",
 		ha_Server_master_hostname);
@@ -1415,16 +1407,25 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
       css_Pipe_to_master = conn->fd;
       css_Master_conn = conn;
 
-#if !defined(WINDOWS)
       if (!HA_DISABLED ())
 	{
+	  if (ha_Server_state == HA_SERVER_STATE_ACTIVE)
+	    {
+	      cubreplication::master_node::init (server_name);
+	    }
+	  else if (ha_Server_state == HA_SERVER_STATE_STANDBY)
+	    {
+	      cubreplication::slave_node::init (server_name);
+	    }
+
+#if !defined(WINDOWS)
 	  status = hb_register_to_master (css_Master_conn, HB_PTYPE_SERVER);
 	  if (status != NO_ERROR)
 	    {
 	      fprintf (stderr, "failed to heartbeat register.\n");
 	    }
-	}
 #endif
+	}
 
       if (status == NO_ERROR)
 	{
@@ -1434,6 +1435,18 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
     }
 
 shutdown:
+  if (!HA_DISABLED ())
+    {
+      if (ha_Server_state == HA_SERVER_STATE_ACTIVE)
+	{
+	  cubreplication::master_node::final ();
+	}
+      else if (ha_Server_state == HA_SERVER_STATE_STANDBY)
+	{
+	  cubreplication::slave_node::final ();
+	}
+    }
+
   /* 
    * start to shutdown server
    */
@@ -2681,10 +2694,8 @@ xacl_reload (THREAD_ENTRY * thread_p)
 static void
 css_process_new_slave (SOCKET master_fd)
 {
-
   SOCKET new_fd;
   unsigned short rid;
-  cubcomm::channel chn;
 
   /* receive new socket descriptor from the master */
   new_fd = css_open_new_socket_from_master (master_fd, &rid);
@@ -2698,18 +2709,7 @@ css_process_new_slave (SOCKET master_fd)
 
   assert (ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE || ha_Server_state == HA_SERVER_STATE_ACTIVE);
 
-#if 0
-  /* TODO[arnia] deactivate for now this new replication
-   * code and reactivate it later, when merging with razvan
-   */
-  css_error_code rc = chn.accept (new_fd);
-  assert (rc == NO_ERRORS);
-
-  // *INDENT-OFF*
-  cubreplication::master_senders_manager::add_stream_sender
-    (new cubstream::transfer_sender (std::move (chn), cubreplication::master_senders_manager::get_stream ()));
-  // *INDENT-ON*
-#endif
+  cubreplication::master_node::new_slave (new_fd);
 }
 
 const char *

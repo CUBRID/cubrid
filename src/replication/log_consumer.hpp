@@ -87,11 +87,6 @@ namespace cubreplication
 
       cubstream::multi_thread_stream *m_stream;
 
-      /* start append position */
-      cubstream::stream_position m_start_position;
-
-      static log_consumer *global_log_consumer;
-
       std::mutex m_queue_mutex;
 
       cubthread::daemon *m_consumer_daemon;
@@ -112,6 +107,8 @@ namespace cubreplication
       bool m_is_stopped;
 
     private:
+
+    public:
       log_consumer () :
 	m_stream (NULL),
 	m_consumer_daemon (NULL),
@@ -125,8 +122,6 @@ namespace cubreplication
       {
       };
 
-    public:
-
       ~log_consumer ();
 
       void push_entry (stream_entry *entry);
@@ -138,7 +133,10 @@ namespace cubreplication
       void start_daemons (void);
       void execute_task (applier_worker_task *task);
 
-      static log_consumer *new_instance (const cubstream::stream_position &start_position, bool use_daemons = false);
+      void set_stream (cubstream::multi_thread_stream *stream)
+      {
+	m_stream = stream;
+      }
 
       cubstream::multi_thread_stream *get_stream (void)
       {
@@ -158,7 +156,6 @@ namespace cubreplication
       }
 
       void set_stop (void);
-
   };
 
 } /* namespace cubreplication */
