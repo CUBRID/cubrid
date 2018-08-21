@@ -164,6 +164,7 @@ static char *xts_process_cls_spec_type (char *ptr, const CLS_SPEC_TYPE * cls_spe
 static char *xts_process_list_spec_type (char *ptr, const LIST_SPEC_TYPE * list_spec);
 static char *xts_process_showstmt_spec_type (char *ptr, const SHOWSTMT_SPEC_TYPE * list_spec);
 static char *xts_process_set_spec_type (char *ptr, const SET_SPEC_TYPE * set_spec);
+static char *xts_process_json_table_spec_type (char *ptr, const json_table_spec_node * set_spec);
 static char *xts_process_method_spec_type (char *ptr, const METHOD_SPEC_TYPE * method_spec);
 static char *xts_process_rlist_spec_type (char *ptr, const LIST_SPEC_TYPE * list_spec);
 static char *xts_process_list_id (char *ptr, const QFILE_LIST_ID * list_id);
@@ -219,6 +220,7 @@ static int xts_sizeof_list_spec_type (const LIST_SPEC_TYPE * ptr);
 static int xts_sizeof_showstmt_spec_type (const SHOWSTMT_SPEC_TYPE * ptr);
 static int xts_sizeof_set_spec_type (const SET_SPEC_TYPE * ptr);
 static int xts_sizeof_method_spec_type (const METHOD_SPEC_TYPE * ptr);
+static int xts_sizeof_json_table_spec_type (const json_table_spec_node * ptr);
 static int xts_sizeof_list_id (const QFILE_LIST_ID * ptr);
 static int xts_sizeof_val_list (const VAL_LIST * ptr);
 static int xts_sizeof_regu_variable (const REGU_VARIABLE * ptr);
@@ -4420,6 +4422,10 @@ xts_process_access_spec_type (char *ptr, const ACCESS_SPEC_TYPE * access_spec)
       ptr = xts_process_method_spec_type (ptr, &ACCESS_SPEC_METHOD_SPEC (access_spec));
       break;
 
+    case TARGET_JSON_TABLE:
+      ptr = xts_process_json_table_spec_type (ptr, &ACCESS_SPEC_JSON_TABLE_SPEC (access_spec));
+      break;
+
     default:
       xts_Xasl_errcode = ER_QPROC_INVALID_XASLNODE;
       return NULL;
@@ -4751,6 +4757,27 @@ xts_process_set_spec_type (char *ptr, const SET_SPEC_TYPE * set_spec)
       return NULL;
     }
   ptr = or_pack_int (ptr, offset);
+
+  return ptr;
+}
+
+static char *
+xts_process_json_table_spec_type (char *ptr, const json_table_spec_node * json_table_spec)
+{
+  int offset;
+
+  // todo: where to generate cubxasl::json_table::node structure?
+
+  //ptr = or_pack_int(ptr, json_table_spec->m_node_count);
+  //offset = xts_save_json_table_scan_tree (ptr, json_table_spec, json_table_spec->m_node_count);
+
+  offset = xts_save_regu_variable (json_table_spec->m_json_reguvar);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+  // todo: complete here
 
   return ptr;
 }
@@ -6394,6 +6421,15 @@ xts_sizeof_access_spec_type (const ACCESS_SPEC_TYPE * access_spec)
       size += tmp_size;
       break;
 
+    case TARGET_JSON_TABLE:
+      tmp_size = xts_sizeof_json_table_spec_type (&ACCESS_SPEC_JSON_TABLE_SPEC (access_spec));
+      if (tmp_size == ER_FAILED)
+	{
+	  return ER_FAILED;
+	}
+      size += tmp_size;
+      break;
+
     default:
       xts_Xasl_errcode = ER_QPROC_INVALID_XASLNODE;
       return ER_FAILED;
@@ -6568,6 +6604,22 @@ xts_sizeof_method_spec_type (const METHOD_SPEC_TYPE * method_spec)
   size += (PTR_SIZE		/* method_regu_list */
 	   + PTR_SIZE		/* xasl_node */
 	   + PTR_SIZE);		/* method_sig_list */
+
+  return size;
+}
+
+/*
+* xts_sizeof_json_table_spec_type () -
+*   return:
+*   ptr(in)    :
+*/
+static int
+xts_sizeof_json_table_spec_type (const json_table_spec_node * json_table_spec)
+{
+  //todo: update this with json_table_node structure
+  int size = 0;
+
+  size += (PTR_SIZE);		/* regu_var */
 
   return size;
 }

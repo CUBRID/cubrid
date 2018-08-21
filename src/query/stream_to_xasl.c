@@ -194,6 +194,7 @@ static char *stx_build_rlist_spec_type (THREAD_ENTRY * thread_p, char *ptr, REGU
 					OUTPTR_LIST * outptr_list);
 static char *stx_build_set_spec_type (THREAD_ENTRY * thread_p, char *tmp, SET_SPEC_TYPE * ptr);
 static char *stx_build_method_spec_type (THREAD_ENTRY * thread_p, char *tmp, METHOD_SPEC_TYPE * ptr);
+static char *stx_build_json_table_spec_type (THREAD_ENTRY * thread_p, char *tmp, json_table_spec_node * ptr);
 static char *stx_build_val_list (THREAD_ENTRY * thread_p, char *tmp, VAL_LIST * ptr);
 #if defined(ENABLE_UNUSED_FUNCTION)
 static char *stx_build_db_value_list (THREAD_ENTRY * thread_p, char *tmp, QPROC_DB_VALUE_LIST ptr);
@@ -4564,6 +4565,10 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr, ACCESS_SPEC_TYPE
       ptr = stx_build_method_spec_type (thread_p, ptr, &ACCESS_SPEC_METHOD_SPEC (access_spec));
       break;
 
+    case TARGET_JSON_TABLE:
+      ptr = stx_build_json_table_spec_type (thread_p, ptr, &ACCESS_SPEC_JSON_TABLE_SPEC (access_spec));
+      break;
+
     default:
       stx_set_xasl_errcode (thread_p, ER_QPROC_INVALID_XASLNODE);
       return NULL;
@@ -5199,6 +5204,28 @@ stx_build_method_spec_type (THREAD_ENTRY * thread_p, char *ptr, METHOD_SPEC_TYPE
 	  return NULL;
 	}
     }
+
+  return ptr;
+}
+
+static char *
+stx_build_json_table_spec_type (THREAD_ENTRY * thread_p, char *ptr, json_table_spec_node * json_table_spec)
+{
+  int offset;
+  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      json_table_spec->m_json_reguvar = NULL;
+    }
+  else
+    {
+      json_table_spec->m_json_reguvar = stx_restore_regu_variable (thread_p, ptr);
+    }
+
+  json_table_spec->m_root_node = NULL;
+  json_table_spec->m_node_count = 0;
 
   return ptr;
 }

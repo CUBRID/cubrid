@@ -697,6 +697,7 @@ typedef enum
 {
   ACCESS_METHOD_SEQUENTIAL,	/* sequential scan access */
   ACCESS_METHOD_INDEX,		/* indexed access */
+  ACCESS_METHOD_JSON_TABLE,	/* json table scan access */
   ACCESS_METHOD_SCHEMA,		/* schema access */
   ACCESS_METHOD_SEQUENTIAL_RECORD_INFO,	/* sequential scan that will read record info */
   ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN,	/* sequential scan access that only scans pages without accessing record data */
@@ -863,6 +864,9 @@ union hybrid_node
 #define ACCESS_SPEC_METHOD_SPEC(ptr) \
         ((ptr)->s.method_node)
 
+#define ACCESS_SPEC_JSON_TABLE_SPEC(ptr) \
+        ((ptr)->s.json_table_node)
+
 #define ACCESS_SPEC_METHOD_XASL_NODE(ptr) \
         ((ptr)->s.method_node.xasl_node)
 
@@ -874,6 +878,15 @@ union hybrid_node
 
 #define ACCESS_SPEC_METHOD_LIST_ID(ptr) \
         (ACCESS_SPEC_METHOD_XASL_NODE(ptr)->list_id)
+
+#define ACCESS_SPEC_JSON_TABLE_ROOT_NODE(ptr) \
+        ((ptr)->s.json_table_node.m_root_node)
+
+#define ACCESS_SPEC_JSON_TABLE_REGU_VAR(ptr) \
+        ((ptr)->s.json_table_node.m_json_reguvar)
+
+#define ACCESS_SPEC_JSON_TABLE_M_NODE_COUNT(ptr) \
+        ((ptr)->s.json_table_node.m_node_count)
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 struct orderby_stat

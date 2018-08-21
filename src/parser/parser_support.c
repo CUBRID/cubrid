@@ -4811,6 +4811,12 @@ regu_spec_init (ACCESS_SPEC_TYPE * ptr, TARGET_TYPE type)
       ACCESS_SPEC_XASL_NODE (ptr) = NULL;
       ACCESS_SPEC_METHOD_SIG_LIST (ptr) = NULL;
     }
+  else if (type == TARGET_JSON_TABLE)
+    {
+      ACCESS_SPEC_JSON_TABLE_REGU_VAR (ptr) = NULL;
+      ACCESS_SPEC_JSON_TABLE_ROOT_NODE (ptr) = NULL;
+      ACCESS_SPEC_JSON_TABLE_M_NODE_COUNT (ptr) = 0;
+    }
   ptr->single_fetch = (QPROC_SINGLE_FETCH) false;
   ptr->s_dbval = NULL;
   ptr->next = NULL;

@@ -4544,6 +4544,22 @@ pt_make_class_access_spec (PARSER_CONTEXT * parser, PT_NODE * flat, DB_OBJECT * 
   return spec;
 }
 
+static ACCESS_SPEC_TYPE *
+pt_make_json_table_access_spec (REGU_VARIABLE * json_reguvar, PRED_EXPR * where_pred)
+{
+  ACCESS_SPEC_TYPE *spec;
+
+  spec = pt_make_access_spec (TARGET_JSON_TABLE, ACCESS_METHOD_JSON_TABLE, NULL, NULL, where_pred, NULL);
+
+  if (spec)
+    {
+      spec->s.json_table_node.m_root_node = NULL;
+      spec->s.json_table_node.m_json_reguvar = json_reguvar;
+      spec->s.json_table_node.m_node_count = 0;
+    }
+
+  return spec;
+}
 
 /*
  * pt_make_list_access_spec () - Create an initialized
@@ -11986,6 +12002,19 @@ pt_to_cselect_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE 
   return NULL;
 }
 
+static ACCESS_SPEC_TYPE *
+pt_to_json_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, REGU_VARIABLE * regu_var, PT_NODE * cselect,
+			    PT_NODE * src_derived_tbl, PT_NODE * where_p)
+{
+  ACCESS_SPEC_TYPE *access;
+
+  PRED_EXPR *where = pt_to_pred_expr (parser, where_p);
+
+  access = pt_make_json_table_access_spec (regu_var, where);
+
+  return access;
+}
+
 /*
  * pt_to_cte_table_spec_list () - Convert a PT_NODE CTE to an ACCESS_SPEC_LIST of representations
 				  of the classes to be selected from
@@ -12121,10 +12150,19 @@ pt_to_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_key_pa
 	{
 	  access = pt_to_showstmt_spec_list (parser, spec, where_part);
 	}
-      else
+      else if (spec->info.spec.derived_table_type == PT_IS_CSELECT)
 	{
 	  /* a CSELECT derived table */
 	  access = pt_to_cselect_table_spec_list (parser, spec, spec->info.spec.derived_table, src_derived_tbl);
+	}
+      else
+	{
+	  /* PT_JSON_DERIVED_TABLE derived table */
+	  assert (spec->info.spec.derived_table_type == PT_DERIVED_JSON_TABLE);
+	  access =
+	    pt_to_json_table_spec_list (parser, spec, NULL, spec->info.spec.derived_table, src_derived_tbl, where_part);
+
+	  // todo: where to create regu_var
 	}
     }
   else
