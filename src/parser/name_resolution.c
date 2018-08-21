@@ -128,6 +128,8 @@ static int pt_find_name_in_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NOD
 static int pt_check_unique_exposed (PARSER_CONTEXT * parser, const PT_NODE * p);
 static PT_NODE *pt_common_attribute (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE * q);
 static PT_NODE *pt_get_all_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * cls, PT_NODE * from);
+static PT_NODE *pt_get_all_json_table_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * json_table_node);
+static PT_NODE *pt_json_table_gather_attribs (PARSER_CONTEXT * parser, PT_NODE * json_table_node, int *continue_walk);
 static PT_NODE *pt_get_all_showstmt_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * derived_table);
 static void pt_get_attr_data_type (PARSER_CONTEXT * parser, DB_ATTRIBUTE * att, PT_NODE * attr);
 static PT_NODE *pt_unwhacked_spec (PARSER_CONTEXT * parser, PT_NODE * scope, PT_NODE * spec);
@@ -4324,6 +4326,34 @@ on_error:
     }
 
   return NULL;
+}
+
+static PT_NODE *
+pt_json_table_gather_attribs (PARSER_CONTEXT * parser, PT_NODE * json_table_column, void *args, int *continue_walk)
+{
+
+  PT_NODE **attribs = (PT_NODE **) args;
+
+  if (json_table_column->node_type == PT_JSON_TABLE_COLUMN)
+    {
+      PT_NODE *next_attr = pt_name (parser, json_table_column->info.json_table_column_info.name);
+      next_attr->type_enum = json_table_column->type_enum;
+
+      //integer does not have data_type, maybe strings?
+      assert (json_table_column->data_type == NULL);
+      *attribs = parser_append_node (next_attr, *attribs);
+    }
+
+  return json_table_column;
+}
+
+static PT_NODE *
+pt_get_all_json_table_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * json_table_node)
+{
+  PT_NODE *attribs = NULL;
+
+  parser_walk_tree (parser, json_table_node, NULL, NULL, pt_json_table_gather_attribs, &attribs);
+  return attribs;
 }
 
 /*
@@ -9787,6 +9817,16 @@ pt_get_attr_list_of_derived_table (PARSER_CONTEXT * parser, PT_MISC_TYPE derived
 	break;
       }
 
+    case PT_DERIVED_JSON_TABLE:
+      {
+	assert (derived_table->node_type == PT_JSON_TABLE);
+
+	PT_NODE *n = derived_table->info.json_table_info.tree;
+	as_attr_list = pt_get_all_json_table_attributes_and_types (parser, derived_table);
+
+	break;
+      }
+
     default:
       /* this can't happen since we removed MERGE/CSELECT from grammar */
       assert (derived_table_type == PT_IS_CSELECT);
@@ -9930,6 +9970,10 @@ pt_set_attr_list_types (PARSER_CONTEXT * parser, PT_NODE * as_attr_list, PT_MISC
 	    }
 	}
       break;
+
+    case PT_DERIVED_JSON_TABLE:
+      //nothing to do? Types already set during pt_json_table_gather_attribs ()
+      return;
 
     default:
       /* this can't happen since we removed MERGE/CSELECT from grammar */
