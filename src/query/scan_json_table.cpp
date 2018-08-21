@@ -344,6 +344,7 @@ namespace cubscan
 	  // if we are in a leaf node or we finished to evaluate all children
 	  if (this_cursor.m_child == this_cursor.m_node->m_nested_nodes.size())
 	    {
+	      this_cursor.advance_row_cursor();
 	      success = true;
 	      return NO_ERROR;
 	    }
