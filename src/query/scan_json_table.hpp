@@ -78,7 +78,8 @@ namespace cubscan
 	//    PR_EVAL_FNC is restricted to server.
 	struct cursor;
 
-	int fetch_columns (const JSON_DOC &document, std::forward_list<cubxasl::json_table::column> &columns);
+	int fetch_columns (const JSON_DOC &document, std::forward_list<cubxasl::json_table::column> &columns,
+			   const cubxasl::json_table::node &node);
 	int evaluate (cubxasl::json_table::node &node, cubthread::entry *thread_p, const JSON_DOC &document,
 		      DB_LOGICAL &logical_output);
 	std::size_t get_row_count (cursor &cursor);
@@ -86,6 +87,7 @@ namespace cubscan
 	bool str_ends_with (const std::string &str, const std::string &end);
 	const char *get_parent_path (const cubxasl::json_table::node &node);
 	int set_next_cursor (const cursor &current_cursor, int next_depth);
+	int set_input_document (cursor &cursor, const cubxasl::json_table::node &node, const JSON_DOC &document);
 
 	int next_internal (cubthread::entry *thread_p, int depth, bool &success);
 

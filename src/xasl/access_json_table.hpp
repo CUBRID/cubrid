@@ -59,11 +59,12 @@ namespace cubxasl
 	json_table_column_function m_function;
 
 	column ();
-	int evaluate (const JSON_DOC &input);
+	int evaluate (const JSON_DOC &input, size_t ordinality);
 
       private:
 	int evaluate_extract (const JSON_DOC &input);
 	int evaluate_exists (const JSON_DOC &input);
+	int evaluate_ordinality (size_t ordinality);
 
 	int trigger_on_error (int error_code, db_value &value_out);
 	int trigger_on_empty (db_value &value_out);
@@ -72,7 +73,8 @@ namespace cubxasl
     struct node
     {
       std::string m_path;
-      std::uint32_t m_ordinality;                     // will be used to count the row ordinality
+      size_t m_ordinality = 1;                        // will be used to count the row ordinality
+      // the counting needs to start from 1
       std::forward_list<column> m_predicate_columns;  // columns part of scan predicate; also part of output
       std::forward_list<column> m_output_columns;     // columns part of output only
       pred_expr *m_predicate_expression;              // predicate expression

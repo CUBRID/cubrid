@@ -53,6 +53,9 @@ namespace cubscan
       m_row++;
       m_is_row_evaluated = false;
 
+      // advance also with ordinality
+      m_node->m_ordinality++;
+
       if (m_need_expand)
 	{
 	  if (db_json_iterator_has_next (*m_json_iterator))
@@ -88,12 +91,13 @@ namespace cubscan
     }
 
     int
-    scanner::fetch_columns (const JSON_DOC &document, std::forward_list<cubxasl::json_table::column> &columns)
+    scanner::fetch_columns (const JSON_DOC &document, std::forward_list<cubxasl::json_table::column> &columns,
+			    const cubxasl::json_table::node &node)
     {
       int error_code = NO_ERROR;
       for (auto col : columns)
 	{
-	  error_code = col.evaluate (document);
+	  error_code = col.evaluate (document, node.m_ordinality);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR();
@@ -116,7 +120,7 @@ namespace cubscan
 	  return NO_ERROR;
 	}
 
-      int error_code = fetch_columns (document, node.m_predicate_columns);
+      int error_code = fetch_columns (document, node.m_predicate_columns, node);
       if (error_code != NO_ERROR)
 	{
 	  return error_code;
@@ -167,6 +171,7 @@ namespace cubscan
     scanner::open (cubthread::entry *thread_p)
     {
       int error_code = NO_ERROR;
+      const JSON_DOC *document = NULL;
 
       // so... we need to generate the whole list file
 
@@ -189,9 +194,9 @@ namespace cubscan
       m_scan_cursor[0].m_node = m_scan_root;
       if (db_value_type (value_p) == DB_TYPE_JSON)
 	{
-	  error_code = db_json_extract_document_from_path (db_get_json_document (value_p),
-		       m_scan_root->m_path.c_str(),
-		       m_scan_cursor[0].m_input_doc);
+	  document = db_get_json_document (value_p);
+
+	  error_code = set_input_document (m_scan_cursor[0], *m_scan_cursor[0].m_node, *document);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR();
@@ -209,9 +214,11 @@ namespace cubscan
 	      ASSERT_ERROR();
 	      return error_code;
 	    }
-	  error_code = db_json_extract_document_from_path (db_get_json_document (&json_cast_value),
-		       m_scan_root->m_path.c_str(),
-		       m_scan_cursor[0].m_input_doc);
+
+	  document = db_get_json_document (&json_cast_value);
+
+	  error_code = set_input_document (m_scan_cursor[0], *m_scan_cursor[0].m_node, *document);
+
 	  pr_clear_value (&json_cast_value);
 	  if (error_code != NO_ERROR)
 	    {
@@ -276,30 +283,25 @@ namespace cubscan
     }
 
     int
-    scanner::set_next_cursor (const cursor &current_cursor, int next_depth)
+    scanner::set_input_document (cursor &cursor, const cubxasl::json_table::node &node, const JSON_DOC &document)
     {
       int error_code = NO_ERROR;
-      cubxasl::json_table::node &next_node = current_cursor.m_node->m_nested_nodes[current_cursor.m_child];
-      cursor &next_cursor = m_scan_cursor[next_depth];
-      next_cursor.m_is_row_evaluated = false;
-      next_cursor.m_row = 0;
-      next_cursor.m_child = 0;
-      next_cursor.m_node = &next_node;
 
-      if (check_need_expand (next_node))
+      if (check_need_expand (node))
 	{
-	  const char *parent_path = get_parent_path (next_node);
+	  const char *parent_path = get_parent_path (node);
 	  assert (parent_path != NULL);
 
 	  // set the input document and the iterator
-	  next_cursor.set_json_iterator (*current_cursor.m_process_doc, parent_path);
+	  cursor.set_json_iterator (document, parent_path);
+	  cursor.m_need_expand = true;
 	}
       else
 	{
-	  error_code = db_json_extract_document_from_path (current_cursor.m_process_doc,
+	  error_code = db_json_extract_document_from_path (&document,
 		       // here we can use the unprocessed node path
-		       next_node.m_path.c_str(),
-		       next_cursor.m_input_doc);
+		       node.m_path.c_str(),
+		       cursor.m_input_doc);
 
 	  if (error_code != NO_ERROR)
 	    {
@@ -308,7 +310,21 @@ namespace cubscan
 	    }
 	}
 
-      return NO_ERROR;
+      return error_code;
+    }
+
+    int
+    scanner::set_next_cursor (const cursor &current_cursor, int next_depth)
+    {
+      cubxasl::json_table::node &next_node = current_cursor.m_node->m_nested_nodes[current_cursor.m_child];
+      cursor &next_cursor = m_scan_cursor[next_depth];
+      next_cursor.m_is_row_evaluated = false;
+      next_cursor.m_need_expand = false;
+      next_cursor.m_row = 0;
+      next_cursor.m_child = 0;
+      next_cursor.m_node = &next_node;
+
+      return set_input_document (next_cursor, next_node, *current_cursor.m_process_doc);
     }
 
     int
@@ -368,7 +384,8 @@ namespace cubscan
 	      this_cursor.m_is_row_evaluated = true;
 
 	      // fetch other columns too
-	      error_code = fetch_columns (*this_cursor.m_process_doc, this_cursor.m_node->m_output_columns);
+	      error_code = fetch_columns (*this_cursor.m_process_doc, this_cursor.m_node->m_output_columns,
+					  *this_cursor.m_node);
 	      if (error_code != NO_ERROR)
 		{
 		  ASSERT_ERROR ();

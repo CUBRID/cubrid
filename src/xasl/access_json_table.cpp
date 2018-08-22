@@ -159,7 +159,15 @@ namespace cubxasl
     }
 
     int
-    column::evaluate (const JSON_DOC &input)
+    column::evaluate_ordinality (size_t ordinality)
+    {
+      db_make_int (m_output_value_pointer, ordinality);
+
+      return NO_ERROR;
+    }
+
+    int
+    column::evaluate (const JSON_DOC &input, size_t ordinality)
     {
       // todo: should match MySQL behavior
 
@@ -179,7 +187,7 @@ namespace cubxasl
 	  error_code = evaluate_exists (input);
 	  break;
 	case json_table_column_function::JSON_TABLE_ORDINALITY:
-	  // todo: add function for ordinality
+	  error_code = evaluate_ordinality (ordinality);
 	  break;
 	default:
 	  return ER_FAILED;
