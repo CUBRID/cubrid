@@ -23274,11 +23274,11 @@ vacuum_stmt
         pt_col->info.json_table_column_info.func = JSON_TABLE_EXISTS;
         $$ = pt_col;
       DBG_PRINT}}
-    | NESTED json_table_column_list_rule
+    | NESTED json_table_node_rule
       {{
         $$ = $2;
       DBG_PRINT}}
-    | NESTED PATH json_table_column_list_rule
+    | NESTED PATH json_table_node_rule
       {{
         $$ = $3;
       DBG_PRINT}}
