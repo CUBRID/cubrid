@@ -4544,18 +4544,73 @@ pt_make_class_access_spec (PARSER_CONTEXT * parser, PT_NODE * flat, DB_OBJECT * 
   return spec;
 }
 
+static json_table_column &
+create_column (PT_JSON_TABLE_COLUMN_INFO * jt_column)
+{
+  json_table_column *col_result = new json_table_column ();
+  col_result->m_function = jt_column->func;
+
+  if (jt_column->path != NULL)
+    {
+      col_result->m_path = jt_column->path;
+    }
+
+  col_result->m_on_empty = jt_column->on_empty;
+  col_result->m_on_error = jt_column->on_error;
+
+  // todo:
+  // col_result->m_domain = ? ;
+  // col_result->m_output_value_pointer = ?
+
+  return *col_result;
+}
+
+static json_table_node *
+transform_to_json_table_spec_node_internal (PT_JSON_TABLE_NODE_INFO * jt_node_info, size_t & current_id)
+{
+  json_table_node *result = new json_table_node ();
+
+  // copy path
+  result->m_path = jt_node_info->path;
+  // after set the id, increment
+  result->m_id = current_id++;
+
+  // create columns
+  for (PT_NODE * cols_itr = jt_node_info->columns; cols_itr != NULL; cols_itr = cols_itr->next)
+    {
+      result->m_output_columns.emplace_front (create_column (&cols_itr->info.json_table_column_info));
+    }
+
+  // create children 
+  for (PT_NODE * nested_itr = jt_node_info->nested_paths; nested_itr != NULL; nested_itr = nested_itr->next)
+    {
+      result->m_nested_nodes.
+	emplace_back (*transform_to_json_table_spec_node_internal (&nested_itr->info.json_table_node_info, current_id));
+    }
+
+  return result;
+}
+
+static json_table_node *
+transform_to_json_table_spec_node (PT_JSON_TABLE_INFO * json_table, size_t & start_id)
+{
+  return transform_to_json_table_spec_node_internal (&json_table->tree->info.json_table_node_info, start_id);
+}
+
 static ACCESS_SPEC_TYPE *
-pt_make_json_table_access_spec (REGU_VARIABLE * json_reguvar, PRED_EXPR * where_pred)
+pt_make_json_table_access_spec (REGU_VARIABLE * json_reguvar, PRED_EXPR * where_pred, PT_JSON_TABLE_INFO * json_table)
 {
   ACCESS_SPEC_TYPE *spec;
+  size_t start_id = 0;
 
   spec = pt_make_access_spec (TARGET_JSON_TABLE, ACCESS_METHOD_JSON_TABLE, NULL, NULL, where_pred, NULL);
 
   if (spec)
     {
-      spec->s.json_table_node.m_root_node = NULL;
+      spec->s.json_table_node.m_root_node = transform_to_json_table_spec_node (json_table, start_id);
       spec->s.json_table_node.m_json_reguvar = json_reguvar;
-      spec->s.json_table_node.m_node_count = 0;
+      // each node will have its own incremental id, so we can count the nr of nodes based on this identifier
+      spec->s.json_table_node.m_node_count = start_id;
     }
 
   return spec;
@@ -12010,7 +12065,7 @@ pt_to_json_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, REGU_VARIAB
 
   PRED_EXPR *where = pt_to_pred_expr (parser, where_p);
 
-  access = pt_make_json_table_access_spec (regu_var, where);
+  access = pt_make_json_table_access_spec (regu_var, where, &cselect->info.json_table_info);
 
   return access;
 }
