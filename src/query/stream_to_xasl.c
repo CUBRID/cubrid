@@ -195,6 +195,8 @@ static char *stx_build_rlist_spec_type (THREAD_ENTRY * thread_p, char *ptr, REGU
 static char *stx_build_set_spec_type (THREAD_ENTRY * thread_p, char *tmp, SET_SPEC_TYPE * ptr);
 static char *stx_build_method_spec_type (THREAD_ENTRY * thread_p, char *tmp, METHOD_SPEC_TYPE * ptr);
 static char *stx_build_json_table_spec_type (THREAD_ENTRY * thread_p, char *tmp, json_table_spec_node * ptr);
+static char *stx_unpack_json_table_column (THREAD_ENTRY * thread_p, char *tmp, json_table_column ** ptr);
+static char *stx_unpack_json_table_node (THREAD_ENTRY * thread_p, char *tmp, json_table_node ** ptr);
 static char *stx_build_val_list (THREAD_ENTRY * thread_p, char *tmp, VAL_LIST * ptr);
 #if defined(ENABLE_UNUSED_FUNCTION)
 static char *stx_build_db_value_list (THREAD_ENTRY * thread_p, char *tmp, QPROC_DB_VALUE_LIST ptr);
@@ -5209,10 +5211,132 @@ stx_build_method_spec_type (THREAD_ENTRY * thread_p, char *ptr, METHOD_SPEC_TYPE
 }
 
 static char *
+stx_unpack_json_table_column (THREAD_ENTRY * thread_p, char *ptr, json_table_column ** jtc)
+{
+  int offset;
+  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  *jtc = new json_table_column;
+  json_table_column & jtc_ref = **jtc;
+
+  char *temp;
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      assert (false);
+      temp = NULL;
+    }
+  else
+    {
+      temp = stx_restore_string (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (temp == NULL)
+	{
+	  return NULL;
+	}
+      jtc_ref.m_path.assign (temp);
+      //does temp need to be deleted?
+    }
+
+  int temp_int;
+  ptr = or_unpack_int (ptr, &temp_int);
+  jtc_ref.m_on_error.m_behavior = (json_table_column_behavior_type) temp_int;
+
+  ptr = or_unpack_int (ptr, &temp_int);
+  jtc_ref.m_on_empty.m_behavior = (json_table_column_behavior_type) temp_int;
+
+  ptr = or_unpack_db_value (ptr, (DB_VALUE *) & jtc_ref.m_output_value_pointer);
+
+  ptr = or_unpack_int (ptr, &temp_int);
+  jtc_ref.m_function = (json_table_column_function) temp_int;
+
+  return ptr;
+}
+
+static char *
+stx_unpack_json_table_node (THREAD_ENTRY * thread_p, char *ptr, json_table_node ** jtn)
+{
+  int offset;
+  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+  *jtn = new json_table_node;
+
+  json_table_node & jtn_ref = **jtn;
+
+  char *temp;
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      assert (false);
+      temp = NULL;
+    }
+  else
+    {
+      temp = stx_restore_string (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (temp == NULL)
+	{
+	  return NULL;
+	}
+      jtn_ref.m_path.assign (temp);
+      //does temp need to be deleted?
+    }
+
+  int temp_int;
+  ptr = or_unpack_int (ptr, &temp_int);
+  jtn_ref.m_ordinality = (uint32_t) temp_int;
+
+  ptr = or_unpack_int (ptr, &temp_int);
+  for (int i = 0; i < temp_int; ++i)
+    {
+      json_table_column *jtc = NULL;
+      ptr = stx_unpack_json_table_column (thread_p, ptr, &jtc);
+      jtn_ref.m_predicate_columns.push_front (std::move (*jtc));
+    }
+
+  ptr = or_unpack_int (ptr, &temp_int);
+  for (int i = 0; i < temp_int; ++i)
+    {
+      json_table_column *jtc = NULL;
+      ptr = stx_unpack_json_table_column (thread_p, ptr, &jtc);
+      jtn_ref.m_output_columns.push_front (std::move (*jtc));
+    }
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      jtn_ref.m_predicate_expression = NULL;
+    }
+  else
+    {
+      jtn_ref.m_predicate_expression = stx_restore_pred_expr (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (jtn_ref.m_predicate_expression == NULL)
+	{
+	  return NULL;
+	}
+    }
+
+  ptr = or_unpack_int (ptr, &temp_int);
+  for (int i = 0; i < temp_int; ++i)
+    {
+      json_table_node *jtn_child = NULL;
+      ptr = stx_unpack_json_table_node (thread_p, ptr, &jtn_child);
+      jtn_ref.m_nested_nodes.push_back (std::move (*jtn_child));
+    }
+
+  ptr = or_unpack_int (ptr, &temp_int);
+  jtn_ref.m_id = (size_t) temp_int;
+
+
+
+  return ptr;
+}
+
+static char *
 stx_build_json_table_spec_type (THREAD_ENTRY * thread_p, char *ptr, json_table_spec_node * json_table_spec)
 {
   int offset;
   XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+
+  int m_node_count;
+  ptr = or_unpack_int (ptr, &m_node_count);
+  json_table_spec->m_node_count = (size_t) (m_node_count);
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -5221,11 +5345,14 @@ stx_build_json_table_spec_type (THREAD_ENTRY * thread_p, char *ptr, json_table_s
     }
   else
     {
-      json_table_spec->m_json_reguvar = stx_restore_regu_variable (thread_p, ptr);
+      json_table_spec->m_json_reguvar = stx_restore_regu_variable (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (json_table_spec->m_json_reguvar == NULL)
+	{
+	  return NULL;
+	}
     }
 
-  json_table_spec->m_root_node = NULL;
-  json_table_spec->m_node_count = 0;
+  ptr = stx_unpack_json_table_node (thread_p, ptr, &json_table_spec->m_root_node);
 
   return ptr;
 }

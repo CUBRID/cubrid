@@ -4762,14 +4762,101 @@ xts_process_set_spec_type (char *ptr, const SET_SPEC_TYPE * set_spec)
 }
 
 static char *
+xts_process_json_table_column (char *ptr, const json_table_column * json_table_column)
+{				//todo: seems to be necessary to add a save function to call this
+  int offset;
+
+  //save domain
+
+
+  //save path
+  offset = xts_save_string (json_table_column->m_path.c_str ());
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  //save on_error_behavior
+  ptr = or_pack_int (ptr, json_table_column->m_on_error.m_behavior);
+
+  //save on_empty_behavior
+  ptr = or_pack_int (ptr, json_table_column->m_on_empty.m_behavior);
+
+  //save db_value
+  offset = xts_save_db_value (json_table_column->m_output_value_pointer);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  //save json function
+  ptr = or_pack_int (ptr, json_table_column->m_function);
+
+  return ptr;
+}
+
+static char *
+xts_process_json_table_node (char *ptr, const json_table_node * json_table_node)
+{				//todo: seems to be necessary to add a save function to call this
+  int offset;
+
+  //save string
+  offset = xts_save_string (json_table_node->m_path.c_str ());
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  //save ordinality
+  ptr = or_pack_int (ptr, json_table_node->m_ordinality);
+
+  //save m_predicate_columns
+  int pred_sz = 0;
+for (auto & n:json_table_node->m_predicate_columns)
+    {
+      ptr = xts_process_json_table_column (ptr, &n);
+      ++pred_sz;
+    }
+  ptr = or_pack_int (ptr, pred_sz);
+
+  //save m_output_columns
+  int output_sz = 0;
+for (auto & n:json_table_node->m_output_columns)
+    {
+      ptr = xts_process_json_table_column (ptr, &n);
+    }
+  ptr = or_pack_int (ptr, output_sz);
+
+  //save pred_expr
+  offset = xts_save_pred_expr (json_table_node->m_predicate_expression);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+
+  //save nested nodes
+for (auto & n:json_table_node->m_nested_nodes)
+    {
+      ptr = xts_process_json_table_node (ptr, &n);
+    }
+  ptr = or_pack_int (ptr, json_table_node->m_nested_nodes.size ());
+
+  ptr = or_pack_int (ptr, json_table_node->m_id);
+
+  return ptr;
+}
+
+static char *
 xts_process_json_table_spec_type (char *ptr, const json_table_spec_node * json_table_spec)
 {
   int offset;
 
-  // todo: where to generate cubxasl::json_table::node structure?
-
-  //ptr = or_pack_int(ptr, json_table_spec->m_node_count);
-  //offset = xts_save_json_table_scan_tree (ptr, json_table_spec, json_table_spec->m_node_count);
+  ptr = or_pack_int (ptr, json_table_spec->m_node_count);
 
   offset = xts_save_regu_variable (json_table_spec->m_json_reguvar);
   if (offset == ER_FAILED)
@@ -4777,7 +4864,8 @@ xts_process_json_table_spec_type (char *ptr, const json_table_spec_node * json_t
       return NULL;
     }
   ptr = or_pack_int (ptr, offset);
-  // todo: complete here
+
+  ptr = xts_process_json_table_node (ptr, json_table_spec->m_root_node);
 
   return ptr;
 }
@@ -6619,7 +6707,9 @@ xts_sizeof_json_table_spec_type (const json_table_spec_node * json_table_spec)
   //todo: update this with json_table_node structure
   int size = 0;
 
-  size += (PTR_SIZE);		/* regu_var */
+  size += (PTR_SIZE		/* regu_var */
+	   + OR_INT_SIZE	/* json_table_node number */
+	   + PTR_SIZE);		/* json_table_node */
 
   return size;
 }

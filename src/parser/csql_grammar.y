@@ -23259,6 +23259,7 @@ vacuum_stmt
         pt_col->info.json_table_column_info.name = name->info.name.original;
         pt_col->type_enum = TO_NUMBER (CONTAINER_AT_0 ($2));
         pt_col->data_type = CONTAINER_AT_1 ($2);
+		pt_col->info.json_table_column_info.path=$4;
         pt_col->info.json_table_column_info.func = JSON_TABLE_EXTRACT;
         pt_col->info.json_table_column_info.on_error = $5;
         pt_col->info.json_table_column_info.on_empty = $6;
@@ -23271,6 +23272,7 @@ vacuum_stmt
         pt_col->info.json_table_column_info.name = name->info.name.original;
         pt_col->type_enum = TO_NUMBER (CONTAINER_AT_0 ($2));
         pt_col->data_type = CONTAINER_AT_1 ($2);
+		pt_col->info.json_table_column_info.path=$5;
         pt_col->info.json_table_column_info.func = JSON_TABLE_EXISTS;
         $$ = pt_col;
       DBG_PRINT}}
