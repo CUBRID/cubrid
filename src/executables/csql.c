@@ -215,6 +215,7 @@ static char *csql_get_external_command (SESSION_CMD cmd_no);
 static int csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg);
 static void csql_set_trace (const char *arg_str);
 static void csql_display_trace (void);
+static bool csql_is_auto_commit_requested (const CSQL_ARGUMENT * csql_arg);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 #if !defined(WINDOWS)
@@ -957,8 +958,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	  csql_arg->auto_commit = false;
 	}
 
-      fprintf (csql_Output_fp, "AUTOCOMMIT IS %s\n",
-	       (csql_arg->auto_commit && prm_get_bool_value (PRM_ID_CSQL_AUTO_COMMIT) ? "ON" : "OFF"));
+      fprintf (csql_Output_fp, "AUTOCOMMIT IS %s\n", (csql_is_auto_commit_requested (csql_arg) ? "ON" : "OFF"));
       break;
 
     case S_CMD_CHECKPOINT:
@@ -1049,7 +1049,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 
     case S_CMD_SCHEMA:
       csql_help_schema ((argument[0] == '\0') ? NULL : argument);
-      if (csql_arg->auto_commit && prm_get_bool_value (PRM_ID_CSQL_AUTO_COMMIT))
+      if (csql_is_auto_commit_requested (csql_arg))
 	{
 	  if (db_commit_transaction () < 0)
 	    {
@@ -1065,7 +1065,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 
     case S_CMD_TRIGGER:
       csql_help_trigger ((argument[0] == '\0') ? NULL : argument);
-      if (csql_arg->auto_commit && prm_get_bool_value (PRM_ID_CSQL_AUTO_COMMIT))
+      if (csql_is_auto_commit_requested (csql_arg))
 	{
 	  if (db_commit_transaction () < 0)
 	    {
@@ -1080,8 +1080,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       break;
 
     case S_CMD_INFO:
-      csql_help_info ((argument[0] == '\0') ? NULL : argument, csql_arg->auto_commit
-		      && prm_get_bool_value (PRM_ID_CSQL_AUTO_COMMIT));
+      csql_help_info ((argument[0] == '\0') ? NULL : argument, csql_is_auto_commit_requested (csql_arg));
       break;
 
     case S_CMD_DATABASE:
@@ -1849,7 +1848,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	   * Transaction should be aborted if an error occurs during
 	   * compilation on auto commit mode.
 	   */
-	  if (csql_arg->auto_commit && prm_get_bool_value (PRM_ID_CSQL_AUTO_COMMIT))
+	  if (csql_is_auto_commit_requested (csql_arg))
 	    {
 	      do_abort_transaction = true;
 	    }
@@ -1892,7 +1891,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
       attr_spec = db_get_query_type_list (session, stmt_id);
       stmt_type = (CUBRID_STMT_TYPE) db_get_statement_type (session, stmt_id);
 
-      if (db_set_statement_auto_commit (session, csql_arg->auto_commit) != NO_ERROR)
+      if (db_set_statement_auto_commit (session, csql_is_auto_commit_requested (csql_arg)) != NO_ERROR)
 	{
 	  csql_Error_code = CSQL_ERR_SQL_ERROR;
 	  goto error;
@@ -1902,8 +1901,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
       if (db_error < 0)
 	{
 	  csql_Error_code = CSQL_ERR_SQL_ERROR;
-	  if (csql_arg->auto_commit && prm_get_bool_value (PRM_ID_CSQL_AUTO_COMMIT)
-	      && stmt_type != CUBRID_STMT_ROLLBACK_WORK)
+	  if (csql_is_auto_commit_requested (csql_arg) && stmt_type != CUBRID_STMT_ROLLBACK_WORK)
 	    {
 	      do_abort_transaction = true;
 	    }
@@ -2014,7 +2012,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	  strncat (stmt_msg, time, sizeof (time));
 	}
 
-      if (csql_arg->auto_commit && prm_get_bool_value (PRM_ID_CSQL_AUTO_COMMIT) && stmt_type != CUBRID_STMT_COMMIT_WORK
+      if (csql_is_auto_commit_requested (csql_arg) && stmt_type != CUBRID_STMT_COMMIT_WORK
 	  && stmt_type != CUBRID_STMT_ROLLBACK_WORK)
 	{
 	  db_error = db_commit_transaction ();
@@ -3120,4 +3118,12 @@ end:
   db_update_row_count_cache (save_row_count);
 
   return;
+}
+
+static bool
+csql_is_auto_commit_requested (const CSQL_ARGUMENT * csql_arg)
+{
+  assert (csql_arg != NULL);
+
+  return csql_arg->auto_commit && prm_get_bool_value (PRM_ID_CSQL_AUTO_COMMIT);
 }
