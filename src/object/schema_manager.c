@@ -2050,11 +2050,11 @@ sm_create_root (OID * rootclass_oid, HFID * rootclass_hfid)
 }
 
 /*
-* sm_fee_resident_classes_virtual_query_cache () - free virual query cache of resident classes
-*   return: none
-*/
+ * sm_free_resident_classes_virtual_query_cache () - free virual query cache of resident classes
+ *   return: none
+ */
 void
-sm_fee_resident_classes_virtual_query_cache (void)
+sm_free_resident_classes_virtual_query_cache (void)
 {
   SM_CLASS *class_;
   DB_OBJLIST *cl;
@@ -2097,7 +2097,7 @@ sm_final ()
       sm_free_descriptor (d);
     }
 
-  sm_fee_resident_classes_virtual_query_cache ();
+  sm_free_resident_classes_virtual_query_cache ();
 }
 
 /*
@@ -2116,6 +2116,9 @@ sm_transaction_boundary (void)
 {
   /* reset any outstanding descriptor caches */
   sm_reset_descriptors (NULL);
+
+  /* free view cache */
+  sm_free_resident_classes_virtual_query_cache ();
 
   /* Could be resetting the transaction caches in each class too but the workspace is controlling that */
 }
