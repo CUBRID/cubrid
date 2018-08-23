@@ -126,6 +126,7 @@ namespace cubscan
 	  return error_code;
 	}
 
+      // what about the val_descr?
       logical_output = eval_function (thread_p, node.m_predicate_expression, NULL, NULL);
       if (logical_output == V_ERROR)
 	{
@@ -147,6 +148,34 @@ namespace cubscan
       return 1;
     }
 
+    size_t
+    scanner::get_tree_height (const cubxasl::json_table::node &node)
+    {
+      size_t max_child_height = 0;
+
+      for (const cubxasl::json_table::node &child : node.m_nested_nodes)
+	{
+	  max_child_height = MAX (max_child_height, get_tree_height (child));
+	}
+
+      return 1 + max_child_height;
+    }
+
+    void
+    scanner::init_eval_functions (const cubxasl::json_table::node &node)
+    {
+      pred_expr *pr = node.m_predicate_expression;
+      DB_TYPE single_node_type = DB_TYPE_NULL;
+
+      // set predicate function
+      m_eval_functions[node.m_id] = (pr) ? eval_fnc (NULL, pr, &single_node_type) : NULL;
+
+      for (const cubxasl::json_table::node &child : node.m_nested_nodes)
+	{
+	  init_eval_functions (child);
+	}
+    }
+
     void
     scanner::init (cubxasl::json_table::spec_node &spec)
     {
@@ -155,10 +184,13 @@ namespace cubscan
       assert (m_specp->m_node_count > 0);
 
       m_eval_functions = new PR_EVAL_FNC[m_specp->m_node_count];
-      m_scan_cursor = new cursor[m_specp->m_node_count];      // depth could be used instead of count
 
-      // todo:
+      m_tree_height = get_tree_height (*m_specp->m_root_node);
+
+      m_scan_cursor = new cursor[m_tree_height];
+
       // walk json table tree and initialize evaluation functions
+      init_eval_functions (*m_specp->m_root_node);
     }
 
     void
@@ -172,6 +204,8 @@ namespace cubscan
     {
       int error_code = NO_ERROR;
       const JSON_DOC *document = NULL;
+
+      m_scan_root = m_specp->m_root_node;
 
       // so... we need to generate the whole list file
 
@@ -308,6 +342,8 @@ namespace cubscan
 	      ASSERT_ERROR();
 	      return error_code;
 	    }
+
+	  cursor.m_need_expand = false;
 	}
 
       return error_code;

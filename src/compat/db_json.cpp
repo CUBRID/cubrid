@@ -114,15 +114,30 @@ class JSON_DOC: public rapidjson::GenericDocument <JSON_ENCODING, JSON_PRIVATE_M
 class JSON_ITERATOR
 {
   public:
-    JSON_ITERATOR (const JSON_DOC &document) : document (&document) {}
+    JSON_ITERATOR (const JSON_DOC &document) : document (&document), doc_itr (nullptr) {}
 
     virtual const JSON_VALUE *next() = 0;
     virtual bool has_next() = 0;
     virtual const JSON_VALUE *get() = 0;
     virtual size_t count_members() = 0;
 
+    const JSON_DOC *
+    get_value_to_doc()
+    {
+      if (doc_itr == nullptr)
+	{
+	  doc_itr = db_json_allocate_doc();
+	}
+
+      const JSON_VALUE *value = get();
+      doc_itr->CopyFrom (*value, doc_itr->GetAllocator());
+
+      return doc_itr;
+    }
+
   protected:
     const JSON_DOC *document;
+    JSON_DOC *doc_itr;
 };
 
 class JSON_OBJECT_ITERATOR : public JSON_ITERATOR
@@ -179,25 +194,6 @@ class JSON_ARRAY_ITERATOR : public JSON_ITERATOR
 
   private:
     rapidjson::GenericArray<true, JSON_VALUE>::ConstValueIterator iterator;
-};
-
-class JSON_ITERATOR_FACTORY
-{
-  public:
-    static JSON_ITERATOR *
-    create_json_iterator (const JSON_DOC &document)
-    {
-      if (document.IsObject())
-	{
-	  return new JSON_OBJECT_ITERATOR (document);
-	}
-      else if (document.IsArray())
-	{
-	  return new JSON_ARRAY_ITERATOR (document);
-	}
-
-      return NULL;
-    }
 };
 
 const JSON_VALUE *
@@ -443,8 +439,6 @@ static int db_json_keys_func (const JSON_DOC &doc, JSON_DOC &result_json, const 
 
 STATIC_INLINE JSON_VALUE &db_json_doc_to_value (JSON_DOC &doc) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE const JSON_VALUE &db_json_doc_to_value (const JSON_DOC &doc) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE JSON_DOC &db_json_value_to_doc (JSON_VALUE &value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE const JSON_DOC &db_json_value_to_doc (const JSON_VALUE &value) __attribute__ ((ALWAYS_INLINE));
 static int db_json_get_json_from_str (const char *json_raw, JSON_DOC &doc);
 static int db_json_add_json_value_to_object (JSON_DOC &doc, const char *name, JSON_VALUE &value);
 
@@ -670,28 +664,16 @@ db_json_doc_to_value (const JSON_DOC &doc)
   return reinterpret_cast<const JSON_VALUE &> (doc);
 }
 
-static JSON_DOC &
-db_json_value_to_doc (JSON_VALUE &value)
-{
-  return reinterpret_cast<JSON_DOC &> (value);
-}
-
-static const JSON_DOC &
-db_json_value_to_doc (const JSON_VALUE &value)
-{
-  return reinterpret_cast<const JSON_DOC &> (value);
-}
-
-const JSON_DOC *
+void
 db_json_iterator_next (JSON_ITERATOR &json_itr)
 {
-  return &db_json_value_to_doc (*json_itr.next());
+  json_itr.next();
 }
 
 const JSON_DOC *
 db_json_iterator_get (JSON_ITERATOR &json_itr)
 {
-  return &db_json_value_to_doc (*json_itr.get());
+  return json_itr.get_value_to_doc();
 }
 
 bool
@@ -709,7 +691,17 @@ db_json_iterator_count_members (JSON_ITERATOR &json_itr)
 JSON_ITERATOR *
 db_json_create_iterator (const JSON_DOC &document)
 {
-  return JSON_ITERATOR_FACTORY::create_json_iterator (document);
+  if (document.IsObject())
+    {
+      return new JSON_OBJECT_ITERATOR (document);
+    }
+  else if (document.IsArray())
+    {
+      return new JSON_ARRAY_ITERATOR (document);
+    }
+
+  assert (false);
+  return NULL;
 }
 
 bool
@@ -892,7 +884,6 @@ db_json_extract_document_from_path (const JSON_DOC *document, const char *raw_pa
 {
   int error_code = NO_ERROR;
   std::string json_pointer_string;
-  result = NULL;
 
   // path must be JSON pointer
   error_code = db_json_convert_sql_path_to_pointer (raw_path, json_pointer_string);
@@ -918,7 +909,11 @@ db_json_extract_document_from_path (const JSON_DOC *document, const char *raw_pa
 
   if (resulting_json != NULL)
     {
-      result = db_json_allocate_doc ();
+      if (result == NULL)
+	{
+	  result = db_json_allocate_doc();
+	}
+
       result->CopyFrom (*resulting_json, result->GetAllocator ());
     }
   else
