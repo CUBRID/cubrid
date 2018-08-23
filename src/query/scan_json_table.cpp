@@ -35,7 +35,7 @@ namespace cubscan
       std::size_t m_row;
       std::size_t m_child;
       cubxasl::json_table::node *m_node;
-      JSON_DOC *m_input_doc;      // used for non-array / single row
+      JSON_DOC *m_input_doc;            // used for non-array / single row
       const JSON_DOC *m_row_doc;        // used only for arrays and multiple rows
       const JSON_DOC *m_process_doc;    // is either input_doc or row doc
       bool m_is_row_evaluated;
@@ -83,11 +83,12 @@ namespace cubscan
 
       if (m_json_iterator != NULL)
 	{
-	  // avoid a memory leak
-	  delete m_json_iterator;
+	  db_json_reset_iterator (m_json_iterator, *m_input_doc);
 	}
-
-      m_json_iterator = db_json_create_iterator (*m_input_doc);
+      else
+	{
+	  m_json_iterator = db_json_create_iterator (*m_input_doc);
+	}
     }
 
     int
@@ -193,10 +194,26 @@ namespace cubscan
       init_eval_functions (*m_specp->m_root_node);
     }
 
+
+
     void
-    scanner::clear (void)
+    scanner::clear (xasl_node *xasl_p, bool is_final)
     {
-      m_specp = NULL;
+      // columns should be released everytime
+      m_specp->m_root_node->clear_columns();
+
+      // all json documents should be release depending on is_final
+      if (is_final)
+	{
+	  for (size_t i = 0; i < m_tree_height; ++i)
+	    {
+	      cursor &cursor = m_scan_cursor[i];
+	      db_json_delete_doc (cursor.m_input_doc);
+	      db_json_delete_json_iterator (cursor.m_json_iterator);
+	    }
+	}
+
+      // todo: not sure if cleared everything, need double check
     }
 
     int
@@ -261,7 +278,6 @@ namespace cubscan
 	    }
 	}
 
-      // todo
       return NO_ERROR;
     }
 

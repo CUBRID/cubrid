@@ -203,5 +203,24 @@ namespace cubxasl
       return NO_ERROR;
     }
 
+    void
+    node::clear_columns()
+    {
+      for (auto &column : m_predicate_columns)
+	{
+	  pr_clear_value (column.m_output_value_pointer);
+	}
+
+      for (auto &column : m_output_columns)
+	{
+	  pr_clear_value (column.m_output_value_pointer);
+	}
+
+      for (node &child : m_nested_nodes)
+	{
+	  child.clear_columns();
+	}
+    }
+
   } // namespace json_table
 } // namespace cubxasl
