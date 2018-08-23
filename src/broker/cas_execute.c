@@ -10320,7 +10320,7 @@ do_commit_after_execute (const t_srv_handle & server_handle)
   //                      one page) and when other conditions are met too, server commits automatically.
   //
 
-  if (!server_handle.auto_commit_mode == TRUE)
+  if (server_handle.auto_commit_mode != TRUE)
     {
       return false;
     }
