@@ -82,6 +82,8 @@ namespace cubxasl
       size_t m_id;                                    // identifier for each node
 
       node() = default;
+
+      void clear_columns();
     };
 
     struct spec_node

@@ -115,11 +115,19 @@ class JSON_ITERATOR
 {
   public:
     JSON_ITERATOR (const JSON_DOC &document) : document (&document), doc_itr (nullptr) {}
+    ~JSON_ITERATOR ()
+    {
+      if (doc_itr != nullptr)
+	{
+	  delete doc_itr;
+	}
+    }
 
     virtual const JSON_VALUE *next() = 0;
     virtual bool has_next() = 0;
     virtual const JSON_VALUE *get() = 0;
     virtual size_t count_members() = 0;
+    virtual void reset (const JSON_DOC &new_doc) = 0;
 
     const JSON_DOC *
     get_value_to_doc()
@@ -164,6 +172,14 @@ class JSON_OBJECT_ITERATOR : public JSON_ITERATOR
       return &iterator->value;
     }
 
+    void reset (const JSON_DOC &new_doc)
+    {
+      assert (new_doc.IsObject());
+
+      document = &new_doc;
+      iterator = new_doc.MemberBegin();
+    }
+
   private:
     rapidjson::GenericMemberIterator<true, JSON_ENCODING, JSON_PRIVATE_MEMPOOL>::Iterator iterator;
 };
@@ -190,6 +206,14 @@ class JSON_ARRAY_ITERATOR : public JSON_ITERATOR
     const JSON_VALUE *get()
     {
       return iterator;
+    }
+
+    void reset (const JSON_DOC &new_doc)
+    {
+      assert (new_doc.IsArray());
+
+      document = &new_doc;
+      iterator = new_doc.GetArray().Begin();
     }
 
   private:
@@ -688,6 +712,12 @@ db_json_iterator_count_members (JSON_ITERATOR &json_itr)
   return json_itr.count_members();
 }
 
+void
+db_json_reset_iterator (JSON_ITERATOR *&json_itr, const JSON_DOC &new_doc)
+{
+  json_itr->reset (new_doc);
+}
+
 JSON_ITERATOR *
 db_json_create_iterator (const JSON_DOC &document)
 {
@@ -702,6 +732,12 @@ db_json_create_iterator (const JSON_DOC &document)
 
   assert (false);
   return NULL;
+}
+
+void
+db_json_delete_json_iterator (JSON_ITERATOR *&json_itr)
+{
+  delete json_itr;
 }
 
 bool

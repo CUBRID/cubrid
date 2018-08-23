@@ -61,7 +61,7 @@ namespace cubscan
       public:
 
 	void init (cubxasl::json_table::spec_node &spec);
-	void clear (void);
+	void clear (xasl_node *xasl_p, bool is_final);
 
 	int open (cubthread::entry *thread_p);
 	void end (cubthread::entry *thread_p);
