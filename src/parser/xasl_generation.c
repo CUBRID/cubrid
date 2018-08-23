@@ -12210,14 +12210,20 @@ pt_to_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_key_pa
 	  /* a CSELECT derived table */
 	  access = pt_to_cselect_table_spec_list (parser, spec, spec->info.spec.derived_table, src_derived_tbl);
 	}
-      else
+      else if (spec->info.spec.derived_table_type == PT_DERIVED_JSON_TABLE)
 	{
 	  /* PT_JSON_DERIVED_TABLE derived table */
-	  assert (spec->info.spec.derived_table_type == PT_DERIVED_JSON_TABLE);
 	  access =
 	    pt_to_json_table_spec_list (parser, spec, NULL, spec->info.spec.derived_table, src_derived_tbl, where_part);
 
 	  // todo: where to create regu_var
+	}
+      else
+	{
+	  // unrecognized derived table type
+	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  return NULL;
 	}
     }
   else

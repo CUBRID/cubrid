@@ -26380,11 +26380,13 @@ pt_jt_append_column_or_nested_node (PT_NODE * jt_node, PT_NODE * jt_col_or_neste
 
   if (jt_col_or_nested->node_type == PT_JSON_TABLE_COLUMN)
     {
-      jt_node->info.json_table_node_info.columns = parser_append_node (jt_col_or_nested, jt_node->info.json_table_node_info.columns);
+      jt_node->info.json_table_node_info.columns =
+        parser_append_node (jt_col_or_nested, jt_node->info.json_table_node_info.columns);
     }
   else
     {
       assert (jt_col_or_nested->node_type == PT_JSON_TABLE_NODE);
-      jt_node->info.json_table_node_info.nested_paths = parser_append_node (jt_col_or_nested, jt_node->info.json_table_node_info.nested_paths);
+      jt_node->info.json_table_node_info.nested_paths =
+        parser_append_node (jt_col_or_nested, jt_node->info.json_table_node_info.nested_paths);
     }
 }

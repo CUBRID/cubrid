@@ -458,7 +458,7 @@ struct qo_segment
   bool class_attr;
   bool shared_attr;
 
-  /* is index term equatity expression? */
+  /* is index term equality expression? */
   bool index_term_eq_expr;
 
   /* 
@@ -471,7 +471,7 @@ struct qo_segment
    */
   QO_ATTR_INFO *info;
 
-  /* indexable terms to which this segment belings */
+  /* indexable terms to which this segment belongs */
   BITSET index_terms;
 
   /* The index of this segment in the corresponding Env's seg array. */

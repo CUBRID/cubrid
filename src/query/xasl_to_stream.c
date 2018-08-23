@@ -4800,6 +4800,9 @@ xts_process_json_table_column (char *ptr, const json_table_column * json_table_c
 static char *
 xts_process_json_table_node (char *ptr, const json_table_node * json_table_node)
 {				//todo: seems to be necessary to add a save function to call this
+// *INDENT-OFF*
+// for (it : list) cannot be correctly indented
+
   int offset;
 
   //save string
@@ -4815,7 +4818,7 @@ xts_process_json_table_node (char *ptr, const json_table_node * json_table_node)
 
   //save m_predicate_columns
   int pred_sz = 0;
-for (auto & n:json_table_node->m_predicate_columns)
+  for (auto & n : json_table_node->m_predicate_columns)
     {
       ptr = xts_process_json_table_column (ptr, &n);
       ++pred_sz;
@@ -4824,7 +4827,7 @@ for (auto & n:json_table_node->m_predicate_columns)
 
   //save m_output_columns
   int output_sz = 0;
-for (auto & n:json_table_node->m_output_columns)
+  for (auto & n : json_table_node->m_output_columns)
     {
       ptr = xts_process_json_table_column (ptr, &n);
     }
@@ -4838,9 +4841,8 @@ for (auto & n:json_table_node->m_output_columns)
     }
   ptr = or_pack_int (ptr, offset);
 
-
   //save nested nodes
-for (auto & n:json_table_node->m_nested_nodes)
+  for (auto & n : json_table_node->m_nested_nodes)
     {
       ptr = xts_process_json_table_node (ptr, &n);
     }
@@ -4849,6 +4851,9 @@ for (auto & n:json_table_node->m_nested_nodes)
   ptr = or_pack_int (ptr, json_table_node->m_id);
 
   return ptr;
+
+// *INDENT-ON*
+// for (it : list) cannot be correctly indented
 }
 
 static char *
