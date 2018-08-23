@@ -69,8 +69,8 @@ namespace cubreplication
       void execute (cubthread::entry &thread_ref) final
       {
 	for (std::vector<stream_entry *>::iterator it = m_repl_stream_entries.begin ();
-	it != m_repl_stream_entries.end ();
-	it++)
+	     it != m_repl_stream_entries.end ();
+	     it++)
 	  {
 	    stream_entry *curr_stream_entry = *it;
 
