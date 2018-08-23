@@ -164,6 +164,7 @@ static char *xts_process_cls_spec_type (char *ptr, const CLS_SPEC_TYPE * cls_spe
 static char *xts_process_list_spec_type (char *ptr, const LIST_SPEC_TYPE * list_spec);
 static char *xts_process_showstmt_spec_type (char *ptr, const SHOWSTMT_SPEC_TYPE * list_spec);
 static char *xts_process_set_spec_type (char *ptr, const SET_SPEC_TYPE * set_spec);
+static char *xts_process_json_table_column_behavior (char *ptr, const json_table_column_behavior * behavior);
 static char *xts_process_json_table_column (char *ptr, const json_table_column * json_table_col);
 static char *xts_process_json_table_node (char *ptr, const json_table_node * json_table_node);
 static char *xts_process_json_table_spec_type (char *ptr, const json_table_spec_node * set_spec);
@@ -222,6 +223,7 @@ static int xts_sizeof_list_spec_type (const LIST_SPEC_TYPE * ptr);
 static int xts_sizeof_showstmt_spec_type (const SHOWSTMT_SPEC_TYPE * ptr);
 static int xts_sizeof_set_spec_type (const SET_SPEC_TYPE * ptr);
 static int xts_sizeof_method_spec_type (const METHOD_SPEC_TYPE * ptr);
+static int xts_sizeof_json_table_column_behavior (const json_table_column_behavior * behavior);
 static int xts_sizeof_json_table_column (const json_table_column * ptr);
 static int xts_sizeof_json_table_node (const json_table_node * ptr);
 static int xts_sizeof_json_table_spec_type (const json_table_spec_node * ptr);
@@ -4851,28 +4853,25 @@ end:
 }
 
 static char *
+xts_process_json_table_column_behavior (char *ptr, const json_table_column_behavior * behavior)
+{
+  ptr = or_pack_int (ptr, behavior->m_behavior);
+  if (behavior->m_behavior == JSON_TABLE_DEFAULT_VALUE)
+    {
+      ptr = xts_process_db_value (ptr, behavior->m_default_value);
+    }
+  return ptr;
+}
+
+static char *
 xts_process_json_table_column (char *ptr, const json_table_column * json_table_column)
 {				//todo: seems to be necessary to add a save function to call this
   int offset;
 
-  // save domain
+  // save json function
+  ptr = or_pack_int (ptr, json_table_column->m_function);
 
-
-  // save path
-  offset = xts_save_string (json_table_column->m_path.c_str ());
-  if (offset == ER_FAILED)
-    {
-      return NULL;
-    }
-  ptr = or_pack_int (ptr, offset);
-
-  // save on_error_behavior
-  ptr = or_pack_int (ptr, json_table_column->m_on_error.m_behavior);
-
-  // save on_empty_behavior
-  ptr = or_pack_int (ptr, json_table_column->m_on_empty.m_behavior);
-
-  //save db_value
+  //save output db_value pointer
   offset = xts_save_db_value (json_table_column->m_output_value_pointer);
   if (offset == ER_FAILED)
     {
@@ -4880,8 +4879,32 @@ xts_process_json_table_column (char *ptr, const json_table_column * json_table_c
     }
   ptr = or_pack_int (ptr, offset);
 
-  // save json function
-  ptr = or_pack_int (ptr, json_table_column->m_function);
+  if (json_table_column->m_function == JSON_TABLE_ORDINALITY)
+    {
+      // nothing else required
+      return ptr;
+    }
+
+  // save domain
+  ptr = or_pack_domain (ptr, json_table_column->m_domain, 0, 0);
+
+  // save path
+  assert (json_table_column->m_path.size () > 0);
+  offset = xts_save_string (json_table_column->m_path.c_str ());
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  if (json_table_column->m_function == JSON_TABLE_EXISTS)
+    {
+      return ptr;
+    }
+
+  // save on_error_behavior
+  ptr = xts_process_json_table_column_behavior (ptr, &json_table_column->m_on_error);
+  ptr = xts_process_json_table_column_behavior (ptr, &json_table_column->m_on_empty);
 
   return ptr;
 }
@@ -6883,16 +6906,40 @@ xts_sizeof_method_spec_type (const METHOD_SPEC_TYPE * method_spec)
 }
 
 static int
+xts_sizeof_json_table_column_behavior (const json_table_column_behavior * behavior)
+{
+  int size = OR_INT_SIZE;	// json_table_column_behavior_type
+  if (behavior->m_behavior == JSON_TABLE_DEFAULT_VALUE)
+    {
+      size += xts_sizeof_db_value (behavior->m_default_value);
+    }
+  return size;
+}
+
+static int
 xts_sizeof_json_table_column (const json_table_column * json_table_column)
 {
   int size = 0;
 
-  size += (PTR_SIZE		/* m_domain */
-	   + PTR_SIZE		/* m_path */
-	   + OR_INT_SIZE	/* m_on_error */
-	   + OR_INT_SIZE	/* m_on_empty */
-	   + OR_INT_SIZE	/* m_function */
-	   + PTR_SIZE);		/* m_output_value_pointer */
+  size += OR_INT_SIZE /* m_function */ ;
+  size += PTR_SIZE;		/* m_output_value_pointer */
+
+  if (json_table_column->m_function == JSON_TABLE_ORDINALITY)
+    {
+      // that's all
+      return size;
+    }
+
+  size += PTR_SIZE;		/* m_domain */
+  size += PTR_SIZE;		/* m_path */
+
+  if (json_table_column->m_function == JSON_TABLE_EXISTS)
+    {
+      return size;
+    }
+
+  size += xts_sizeof_json_table_column_behavior (&json_table_column->m_on_error);
+  size += xts_sizeof_json_table_column_behavior (&json_table_column->m_on_empty);
 
   return size;
 }
@@ -6900,6 +6947,9 @@ xts_sizeof_json_table_column (const json_table_column * json_table_column)
 static int
 xts_sizeof_json_table_node (const json_table_node * jtn)
 {
+// *INDENT-OFF*
+// for (it : list)
+
   int size = 0;
 
   size += (PTR_SIZE		/* m_ordinality */
@@ -6908,27 +6958,32 @@ xts_sizeof_json_table_node (const json_table_node * jtn)
 	   + OR_INT_SIZE);	/* m_id */
 
   size += OR_INT_SIZE;		/*m_predicate_colums list size */
-for (auto & n:jtn->m_predicate_columns)
+  for (auto & n : jtn->m_predicate_columns)
     {
       size += xts_sizeof_json_table_column (&n);
     }
 
   size += OR_INT_SIZE;		/*m_output_colums list size */
-for (auto & n:jtn->m_output_columns)
+  for (auto & n : jtn->m_output_columns)
     {
       size += xts_sizeof_json_table_column (&n);
     }
 
   if (jtn->m_predicate_expression)
-    size += xts_sizeof_pred_expr (jtn->m_predicate_expression);
+    {
+      size += xts_sizeof_pred_expr (jtn->m_predicate_expression);
+    }
 
   size += OR_INT_SIZE;		/*m_nested_nodes size */
-for (auto & n:jtn->m_nested_nodes)
+  for (auto & n : jtn->m_nested_nodes)
     {
       size += xts_sizeof_json_table_node (&n);
     }
 
   return size;
+
+// *INDENT-ON*
+// for (it : list)
 }
 
 /*

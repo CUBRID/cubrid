@@ -292,6 +292,7 @@ int yybuffer_pos;
 [eE][lL][tT]								{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext); 
 										return ELT; }
+[eE][mM][pP][tT][yY]                                                    { begin_token(yytext);   return EMPTY; }
 [eE][nN][dD]								{ begin_token(yytext);   return END; }
 [eE][nN][uU][mM]							{ begin_token(yytext);	 return ENUM; }
 [eE][qQ][uU][aA][lL][sS]						{ begin_token(yytext);   return EQUALS; }
@@ -564,8 +565,6 @@ int yybuffer_pos;
 										csql_yylval.cptr = pt_makename(yytext);
 										return OFFSET; }
 [oO][nN]								{ begin_token(yytext);   return ON_; }
-[oO][nN][_][eE][rR][rR][oO][rR]                                         { begin_token(yytext);   return ON_ERROR; }
-[oO][nN][_][eE][mM][pP][tT][yY]                                         { begin_token(yytext);   return ON_EMPTY; }
 [oO][nN][lL][yY]							{ begin_token(yytext);   return ONLY; }
 [oO][pP][eE][nN]							{ begin_token(yytext);   
 										csql_yylval.cptr = pt_makename(yytext);

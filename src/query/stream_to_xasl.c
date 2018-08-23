@@ -195,6 +195,8 @@ static char *stx_build_rlist_spec_type (THREAD_ENTRY * thread_p, char *ptr, REGU
 static char *stx_build_set_spec_type (THREAD_ENTRY * thread_p, char *tmp, SET_SPEC_TYPE * ptr);
 static char *stx_build_method_spec_type (THREAD_ENTRY * thread_p, char *tmp, METHOD_SPEC_TYPE * ptr);
 static char *stx_build_json_table_spec_type (THREAD_ENTRY * thread_p, char *tmp, json_table_spec_node * ptr);
+static char *stx_unpack_json_table_column_behavior (THREAD_ENTRY * thread_p, char *ptr,
+						    json_table_column_behavior & behavior);
 static char *stx_unpack_json_table_column (THREAD_ENTRY * thread_p, char *tmp, json_table_column ** ptr);
 static char *stx_unpack_json_table_node (THREAD_ENTRY * thread_p, char *tmp, json_table_node ** ptr);
 static char *stx_build_val_list (THREAD_ENTRY * thread_p, char *tmp, VAL_LIST * ptr);
@@ -5211,10 +5213,55 @@ stx_build_method_spec_type (THREAD_ENTRY * thread_p, char *ptr, METHOD_SPEC_TYPE
 }
 
 static char *
+stx_unpack_json_table_column_behavior (THREAD_ENTRY * thread_p, char *ptr, json_table_column_behavior & behavior)
+{
+  int temp;
+  ptr = or_unpack_int (ptr, &temp);
+  behavior.m_behavior = (json_table_column_behavior_type) temp;
+
+  if (behavior.m_behavior == JSON_TABLE_DEFAULT_VALUE)
+    {
+      behavior.m_default_value = (DB_VALUE *) stx_alloc_struct (thread_p, sizeof (DB_VALUE));
+      ptr = stx_build_db_value (thread_p, ptr, behavior.m_default_value);
+    }
+
+  return ptr;
+}
+
+static char *
 stx_unpack_json_table_column (THREAD_ENTRY * thread_p, char *ptr, json_table_column & jtc)
 {
+  int temp_int;
   int offset;
   XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+
+  ptr = or_unpack_int (ptr, &temp_int);
+  jtc.m_function = (json_table_column_function) temp_int;
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      assert (false);
+      return NULL;
+    }
+  else
+    {
+      jtc.m_output_value_pointer = stx_restore_db_value (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (jtc.m_output_value_pointer == NULL)
+	{
+	  // todo: is this bad?
+	  assert (false);
+	  return NULL;
+	}
+    }
+
+  if (jtc.m_function == JSON_TABLE_ORDINALITY)
+    {
+      jtc.m_domain = &tp_Integer_domain;
+      return ptr;
+    }
+
+  ptr = or_unpack_domain (ptr, &jtc.m_domain, NULL);
 
   char *temp;
   ptr = or_unpack_int (ptr, &offset);
@@ -5234,17 +5281,13 @@ stx_unpack_json_table_column (THREAD_ENTRY * thread_p, char *ptr, json_table_col
       //does temp need to be deleted?
     }
 
-  int temp_int;
-  ptr = or_unpack_int (ptr, &temp_int);
-  jtc.m_on_error.m_behavior = (json_table_column_behavior_type) temp_int;
+  if (jtc.m_function == JSON_TABLE_EXISTS)
+    {
+      return ptr;
+    }
 
-  ptr = or_unpack_int (ptr, &temp_int);
-  jtc.m_on_empty.m_behavior = (json_table_column_behavior_type) temp_int;
-
-  ptr = or_unpack_db_value (ptr, (DB_VALUE *) & jtc.m_output_value_pointer);
-
-  ptr = or_unpack_int (ptr, &temp_int);
-  jtc.m_function = (json_table_column_function) temp_int;
+  ptr = stx_unpack_json_table_column_behavior (thread_p, ptr, jtc.m_on_error);
+  ptr = stx_unpack_json_table_column_behavior (thread_p, ptr, jtc.m_on_empty);
 
   return ptr;
 }

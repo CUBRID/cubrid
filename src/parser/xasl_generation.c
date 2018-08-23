@@ -4545,18 +4545,20 @@ pt_make_class_access_spec (PARSER_CONTEXT * parser, PT_NODE * flat, DB_OBJECT * 
 }
 
 static json_table_column &
-create_column (PT_JSON_TABLE_COLUMN_INFO * jt_column)
+pt_create_json_table_column (PARSER_CONTEXT * parser, PT_NODE * jt_column)
 {
-  json_table_column *col_result = new json_table_column ();
-  col_result->m_function = jt_column->func;
+  json_table_column *col_result = new json_table_column ();	// is this leaked?
 
-  if (jt_column->path != NULL)
+  col_result->m_function = jt_column->info.json_table_column_info.func;
+  col_result->m_domain = pt_xasl_node_to_domain (parser, jt_column);
+
+  if (jt_column->info.json_table_column_info.path != NULL)
     {
-      col_result->m_path = jt_column->path;
+      col_result->m_path = jt_column->info.json_table_column_info.path;
     }
 
-  col_result->m_on_empty = jt_column->on_empty;
-  col_result->m_on_error = jt_column->on_error;
+  col_result->m_on_empty = jt_column->info.json_table_column_info.on_empty;
+  col_result->m_on_error = jt_column->info.json_table_column_info.on_error;
 
   // todo:
   // col_result->m_domain = ? ;
@@ -4566,7 +4568,8 @@ create_column (PT_JSON_TABLE_COLUMN_INFO * jt_column)
 }
 
 static json_table_node *
-transform_to_json_table_spec_node_internal (PT_JSON_TABLE_NODE_INFO * jt_node_info, size_t & current_id)
+transform_to_json_table_spec_node_internal (PARSER_CONTEXT * parser, PT_JSON_TABLE_NODE_INFO * jt_node_info,
+					    size_t & current_id)
 {
   json_table_node *result = new json_table_node ();
 
@@ -4578,27 +4581,29 @@ transform_to_json_table_spec_node_internal (PT_JSON_TABLE_NODE_INFO * jt_node_in
   // create columns
   for (PT_NODE * cols_itr = jt_node_info->columns; cols_itr != NULL; cols_itr = cols_itr->next)
     {
-      result->m_output_columns.emplace_front (create_column (&cols_itr->info.json_table_column_info));
+      result->m_output_columns.emplace_front (pt_create_json_table_column (parser, cols_itr));
     }
 
   // create children 
   for (PT_NODE * nested_itr = jt_node_info->nested_paths; nested_itr != NULL; nested_itr = nested_itr->next)
     {
       result->m_nested_nodes.
-	emplace_back (*transform_to_json_table_spec_node_internal (&nested_itr->info.json_table_node_info, current_id));
+	emplace_back (*transform_to_json_table_spec_node_internal
+		      (parser, &nested_itr->info.json_table_node_info, current_id));
     }
 
   return result;
 }
 
 static json_table_node *
-transform_to_json_table_spec_node (PT_JSON_TABLE_INFO * json_table, size_t & start_id)
+transform_to_json_table_spec_node (PARSER_CONTEXT * parser, PT_JSON_TABLE_INFO * json_table, size_t & start_id)
 {
-  return transform_to_json_table_spec_node_internal (&json_table->tree->info.json_table_node_info, start_id);
+  return transform_to_json_table_spec_node_internal (parser, &json_table->tree->info.json_table_node_info, start_id);
 }
 
 static ACCESS_SPEC_TYPE *
-pt_make_json_table_access_spec (REGU_VARIABLE * json_reguvar, PRED_EXPR * where_pred, PT_JSON_TABLE_INFO * json_table)
+pt_make_json_table_access_spec (PARSER_CONTEXT * parser, REGU_VARIABLE * json_reguvar, PRED_EXPR * where_pred,
+				PT_JSON_TABLE_INFO * json_table)
 {
   ACCESS_SPEC_TYPE *spec;
   size_t start_id = 0;
@@ -4607,7 +4612,7 @@ pt_make_json_table_access_spec (REGU_VARIABLE * json_reguvar, PRED_EXPR * where_
 
   if (spec)
     {
-      spec->s.json_table_node.m_root_node = transform_to_json_table_spec_node (json_table, start_id);
+      spec->s.json_table_node.m_root_node = transform_to_json_table_spec_node (parser, json_table, start_id);
       spec->s.json_table_node.m_json_reguvar = json_reguvar;
       // each node will have its own incremental id, so we can count the nr of nodes based on this identifier
       spec->s.json_table_node.m_node_count = start_id;
@@ -12065,7 +12070,7 @@ pt_to_json_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, REGU_VARIAB
 
   PRED_EXPR *where = pt_to_pred_expr (parser, where_p);
 
-  access = pt_make_json_table_access_spec (regu_var, where, &cselect->info.json_table_info);
+  access = pt_make_json_table_access_spec (parser, regu_var, where, &cselect->info.json_table_info);
 
   return access;
 }

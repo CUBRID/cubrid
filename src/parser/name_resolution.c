@@ -4338,9 +4338,10 @@ pt_json_table_gather_attribs (PARSER_CONTEXT * parser, PT_NODE * json_table_colu
     {
       PT_NODE *next_attr = pt_name (parser, json_table_column->info.json_table_column_info.name);
       next_attr->type_enum = json_table_column->type_enum;
-
-      //integer does not have data_type, maybe strings?
-      assert (json_table_column->data_type == NULL);
+      if (json_table_column->data_type != NULL)
+	{
+	  next_attr->data_type = parser_copy_tree (parser, json_table_column->data_type);
+	}
       *attribs = parser_append_node (next_attr, *attribs);
     }
 

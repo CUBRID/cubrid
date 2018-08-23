@@ -541,6 +541,7 @@ typedef enum
    *                                      t  g  k   m
    *                                      h  e  e
    */
+  // todo: explain meaning of each flag
   QO_TC_PATH = 0x30,		/* 1 1 0 000 */
   QO_TC_JOIN = 0x11,		/* 0 1 0 001 */
   QO_TC_SARG = 0x02,		/* 0 0 0 010 */

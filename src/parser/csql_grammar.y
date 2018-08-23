@@ -89,7 +89,7 @@ extern int yybuffer_pos;
 %{
 #define YYMAXDEPTH	1000000
 
-/* #define PARSER_DEBUG */
+#define PARSER_DEBUG
 
 #include "config.h"
 
@@ -1190,6 +1190,7 @@ int g_original_buffer_len;
 %token EACH
 %token ELSE
 %token ELSEIF
+%token EMPTY
 %token END
 %token ENUM
 %token EQUALS
@@ -1313,8 +1314,6 @@ int g_original_buffer_len;
 %token OF
 %token OFF_
 %token ON_
-%token ON_ERROR
-%token ON_EMPTY
 %token ONLY
 %token OPTIMIZATION
 %token OPTION
@@ -23223,9 +23222,9 @@ vacuum_stmt
         $$.m_behavior = JSON_TABLE_RETURN_NULL;
         $$.m_default_value = NULL;
       }}
-    | ON_ERROR json_table_column_behavior_rule
+    | json_table_column_behavior_rule ON_ ERROR_
       {{
-        $$ = $2;
+        $$ = $1;
       DBG_PRINT}}
     ;
 
@@ -23235,9 +23234,9 @@ vacuum_stmt
         $$.m_behavior = JSON_TABLE_RETURN_NULL;
         $$.m_default_value = NULL;
       }}
-    | ON_EMPTY json_table_column_behavior_rule
+    | json_table_column_behavior_rule ON_ EMPTY
       {{
-        $$ = $2;
+        $$ = $1;
       DBG_PRINT}}
     ;
 
