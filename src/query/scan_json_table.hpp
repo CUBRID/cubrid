@@ -90,6 +90,8 @@ namespace cubscan
 	int set_input_document (cursor &cursor, const cubxasl::json_table::node &node, const JSON_DOC &document);
 	void init_eval_functions (const cubxasl::json_table::node &node);
 	size_t get_tree_height (const cubxasl::json_table::node &node);
+	void clear_columns (std::forward_list<cubxasl::json_table::column> &columns);
+	void clear_node_columns (cubxasl::json_table::node &node);
 
 	int next_internal (cubthread::entry *thread_p, int depth, bool &success);
 

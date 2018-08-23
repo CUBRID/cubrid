@@ -363,6 +363,22 @@ namespace cubscan
       return set_input_document (next_cursor, next_node, *current_cursor.m_process_doc);
     }
 
+    void
+    scanner::clear_columns (std::forward_list<cubxasl::json_table::column> &columns)
+    {
+      for (auto &column : columns)
+	{
+	  pr_clear_value (column.m_output_value_pointer);
+	}
+    }
+
+    void
+    scanner::clear_node_columns (cubxasl::json_table::node &node)
+    {
+      clear_columns (node.m_predicate_columns);
+      clear_columns (node.m_output_columns);
+    }
+
     int
     scanner::next_internal (cubthread::entry *thread_p, int depth, bool &success)
     {
@@ -469,7 +485,8 @@ namespace cubscan
       // no more rows...
       success = false;
 
-      // todo: set columns values to NULL
+      // set columns values to NULL
+      clear_node_columns (*this_cursor.m_node);
 
       // remove this cursor
       m_scan_cursor_depth--;
