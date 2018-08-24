@@ -493,6 +493,16 @@ typedef int TRANID;		/* Transaction identifier */
 #define COMPOSITE_LOCK(scan_op_type)	(scan_op_type != S_SELECT)
 #define READONLY_SCAN(scan_op_type)	(scan_op_type == S_SELECT)
 
+/* Online index states */
+#define ONLINE_INDEX_INSERT_FLAG  ((UINT64) (2<<62))
+#define ONLINE_INDEX_DELETE_FLAG  ((UINT64) (1<<62))
+#define ONLINE_INDEX_FLAG_MASK    ((UINT64) (3<<62))
+
+#define ONLINE_INDEX_HAS_INSERT_FLAG(mvccid) (mvccid & ONLINE_INDEX_INSERT_FLAG)
+#define ONLINE_INDEX_HAS_DELETE_FLAG(mvccid) (mvccid & ONLINE_INDEX_DELETE_FLAG)
+#define ONLINE_INDEX_IS_NORMAL_STATE(mvccid) (!(ONLINE_INDEX_HAS_INSERT_FLAG(mvccid)) && \
+                                              !(ONLINE_INDEX_HAS_DELETE_FLAG(mvccid)))
+
 typedef enum
 {
   LOCK_COMPAT_NO = 0,

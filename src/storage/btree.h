@@ -485,7 +485,12 @@ enum btree_op_purpose
   BTREE_OP_DELETE_VACUUM_INSID,	/* Remove only insert MVCCID for an object in b-tree. It is called by vacuum when the
 				 * object becomes visible to all running transactions. */
 
-  BTREE_OP_NOTIFY_VACUUM	/* Notify vacuum of an object in need of cleanup. */
+  BTREE_OP_NOTIFY_VACUUM,	/* Notify vacuum of an object in need of cleanup. */
+
+  /* Below purposes are used during online index loading. */
+  BTREE_OP_IB_INSERT,		/* Insert done by the Index Builder. */
+  BTREE_OP_TRAN_INSERT,		/* Insert done by a transaction. */
+  BTREE_OP_TRAN_DELETE		/* Delete done by a transaction. */
 };
 typedef enum btree_op_purpose BTREE_OP_PURPOSE;
 
@@ -516,6 +521,16 @@ struct btree_object_info
 };
 #define BTREE_OBJECT_INFO_INITIALIZER \
   { OID_INITIALIZER, OID_INITIALIZER, BTREE_MVCC_INFO_INITIALIZER }
+
+enum index_loading_state
+{
+  BTREE_INDEX_NO_FLAGS_NORMAL_ROW,	/* No flags set normal row. */
+  BTREE_INDEX_NO_ROW,		/* Deleted row */
+  BTREE_INDEX_DELETE_FLAG,	/* Delete flag set. */
+  BTREE_INDEX_INSERT_FLAG,	/* Insert flag set. */
+  BTREE_INDEX_UNK_FLAG		/* Unknown flag, it should not happen. */
+};
+typedef enum index_loading_state INDEX_LOADING_STATE;
 
 /* BTREE_RANGE_SCAN_PROCESS_KEY_FUNC -
  * btree_range_scan internal function that is called for each key that passes
@@ -723,5 +738,9 @@ extern DB_VALUE_COMPARE_RESULT btree_compare_key (DB_VALUE * key1, DB_VALUE * ke
 extern PERF_PAGE_TYPE btree_get_perf_btree_page_type (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr);
 
 extern void btree_dump_key (THREAD_ENTRY * thread_p, FILE * fp, DB_VALUE * key);
+
+extern int btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, OID * cls_oid,
+					  OID * oid, int *unique, BTREE_OP_PURPOSE purpose,
+					  MVCC_REC_HEADER * p_mvcc_rec_header);
 
 #endif /* _BTREE_H_ */
