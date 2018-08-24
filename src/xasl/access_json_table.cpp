@@ -203,6 +203,14 @@ namespace cubxasl
       return NO_ERROR;
     }
 
+    node::node (void)
+      : m_ordinality (1)
+      , m_predicate_expression (NULL)
+      , m_id (0)
+    {
+      //
+    }
+
     void
     node::clear_columns()
     {

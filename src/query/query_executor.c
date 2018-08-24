@@ -6584,9 +6584,8 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 
     case TARGET_JSON_TABLE:
       /* open a json table based derived table scan */
-      if (scan_open_json_table_scan
-	  (thread_p, s_id, curr_spec->s.json_table_node, grouped, curr_spec->single_fetch, curr_spec->s_dbval, val_list,
-	   vd) != NO_ERROR)
+      if (scan_open_json_table_scan (thread_p, s_id, grouped, curr_spec->single_fetch, curr_spec->s_dbval, val_list,
+				     vd) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}

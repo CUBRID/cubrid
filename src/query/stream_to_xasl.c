@@ -4587,6 +4587,12 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr, ACCESS_SPEC_TYPE
   memset (&access_spec->s_id, '\0', sizeof (SCAN_ID));
   access_spec->s_id.status = S_CLOSED;
 
+  if (access_spec->type == TARGET_JSON_TABLE)
+    {
+      // also initialize scan part; it is enough to call it once here, not on each query execution
+      access_spec->s_id.s.jtid.init (access_spec->s.json_table_node);
+    }
+
   access_spec->grouped_scan = false;
   access_spec->fixed_scan = false;
 
@@ -5317,8 +5323,6 @@ stx_unpack_json_table_node (THREAD_ENTRY * thread_p, char *ptr, json_table_node 
     }
 
   int temp_int;
-  ptr = or_unpack_int (ptr, &temp_int);
-  jtn.m_ordinality = (uint32_t) temp_int;
 
   ptr = or_unpack_int (ptr, &temp_int);
   for (int i = 0; i < temp_int; ++i)

@@ -72,15 +72,14 @@ namespace cubxasl
     struct node
     {
       std::string m_path;
-      size_t m_ordinality = 1;                        // will be used to count the row ordinality
-      // the counting needs to start from 1
+      size_t m_ordinality;                        // will be used to count the row ordinality
       std::vector<column> m_predicate_columns;  // columns part of scan predicate; also part of output
       std::vector<column> m_output_columns;     // columns part of output only
       pred_expr *m_predicate_expression;              // predicate expression
       std::vector<node> m_nested_nodes;               // nested nodes
       size_t m_id;                                    // identifier for each node
 
-      node() = default;
+      node (void);
 
       void clear_columns();
     };

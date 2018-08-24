@@ -12234,13 +12234,8 @@ pt_to_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_key_pa
       else if (spec->info.spec.derived_table_type == PT_DERIVED_JSON_TABLE)
 	{
 	  /* PT_JSON_DERIVED_TABLE derived table */
-
 	  access =
 	    pt_to_json_table_spec_list (parser, spec, spec->info.spec.derived_table, src_derived_tbl, where_part);
-
-
-
-	  // todo: where to create regu_var
 	}
       else
 	{

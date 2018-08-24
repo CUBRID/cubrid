@@ -199,7 +199,7 @@ namespace cubscan
     void
     scanner::clear (xasl_node *xasl_p, bool is_final)
     {
-      // columns should be released everytime
+      // columns should be released every time
       m_specp->m_root_node->clear_columns();
 
       // all json documents should be release depending on is_final
@@ -222,8 +222,6 @@ namespace cubscan
       int error_code = NO_ERROR;
       const JSON_DOC *document = NULL;
 
-      m_scan_root = m_specp->m_root_node;
-
       // so... we need to generate the whole list file
 
       // we need the starting value to expand into a list of records
@@ -242,7 +240,6 @@ namespace cubscan
 
       // build m_scan_cursor
 
-      m_scan_cursor[0].m_node = m_scan_root;
       if (db_value_type (value_p) == DB_TYPE_JSON)
 	{
 	  document = db_get_json_document (value_p);
@@ -259,16 +256,16 @@ namespace cubscan
 	  // we need json
 	  DB_VALUE json_cast_value;
 	  // todo: is this implicit or explicit?
-	  error_code = tp_value_cast (value_p, &json_cast_value, &tp_Json_domain, true);
-	  if (error_code != NO_ERROR)
+	  tp_domain_status status = tp_value_cast (value_p, &json_cast_value, &tp_Json_domain, false);
+	  if (status != DOMAIN_COMPATIBLE)
 	    {
-	      ASSERT_ERROR();
+	      ASSERT_ERROR_AND_SET (error_code);
 	      return error_code;
 	    }
 
 	  document = db_get_json_document (&json_cast_value);
 
-	  error_code = set_input_document (m_scan_cursor[0], *m_scan_cursor[0].m_node, *document);
+	  error_code = init_cursor (*document, *m_specp->m_root_node, m_scan_cursor[0]);
 
 	  pr_clear_value (&json_cast_value);
 	  if (error_code != NO_ERROR)
@@ -362,21 +359,26 @@ namespace cubscan
 	  cursor.m_need_expand = false;
 	}
 
-      return error_code;
+      return NO_ERROR;
+    }
+
+    int
+    scanner::init_cursor (const JSON_DOC &doc, cubxasl::json_table::node &node, cursor &cursor_out)
+    {
+      cursor_out.m_is_row_evaluated = false;
+      cursor_out.m_need_expand = false;
+      cursor_out.m_row = 0;
+      cursor_out.m_child = 0;
+      cursor_out.m_node = &node;
+      return set_input_document (cursor_out, node, doc);
     }
 
     int
     scanner::set_next_cursor (const cursor &current_cursor, int next_depth)
     {
-      cubxasl::json_table::node &next_node = current_cursor.m_node->m_nested_nodes[current_cursor.m_child];
-      cursor &next_cursor = m_scan_cursor[next_depth];
-      next_cursor.m_is_row_evaluated = false;
-      next_cursor.m_need_expand = false;
-      next_cursor.m_row = 0;
-      next_cursor.m_child = 0;
-      next_cursor.m_node = &next_node;
-
-      return set_input_document (next_cursor, next_node, *current_cursor.m_process_doc);
+      return init_cursor (*current_cursor.m_process_doc,
+			  current_cursor.m_node->m_nested_nodes[current_cursor.m_child],
+			  m_scan_cursor[next_depth]);
     }
 
     void
