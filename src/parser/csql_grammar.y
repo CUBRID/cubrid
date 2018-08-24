@@ -23315,8 +23315,17 @@ vacuum_stmt
         // $3 = expression_
         // $5 = json_table_node_rule
 
+		PT_NODE * expr = $3;
+
+		if (expr->type_enum == PT_TYPE_CHAR)
+			  {
+				PT_ERRORm (this_parser, expr, MSGCAT_SET_PARSER_SYNTAX,
+                               MSGCAT_RUNTIME_INVALID_JSON);
+
+			  }
+
         PT_NODE *jt = parser_new_node (this_parser, PT_JSON_TABLE);
-        jt->info.json_table_info.expr = $3;
+        jt->info.json_table_info.expr = expr;
         jt->info.json_table_info.tree = $5;
 
         $$ = jt;

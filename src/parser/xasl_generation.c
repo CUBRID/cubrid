@@ -12074,7 +12074,7 @@ pt_to_cselect_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE 
 }
 
 static ACCESS_SPEC_TYPE *
-pt_to_json_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, REGU_VARIABLE * regu_var, PT_NODE * cselect,
+pt_to_json_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * cselect,
 			    PT_NODE * src_derived_tbl, PT_NODE * where_p)
 {
   ACCESS_SPEC_TYPE *access;
@@ -12083,6 +12083,8 @@ pt_to_json_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, REGU_VARIAB
 
   TABLE_INFO *tbl_info = pt_find_table_info (spec->info.spec.id, parser->symbols->table_info);
   assert (tbl_info != NULL);
+
+  REGU_VARIABLE *regu_var = pt_to_regu_variable (parser, cselect->info.json_table_info.expr, UNBOX_AS_VALUE);
 
   access = pt_make_json_table_access_spec (parser, regu_var, where, &cselect->info.json_table_info, tbl_info);
 
@@ -12232,8 +12234,11 @@ pt_to_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_key_pa
       else if (spec->info.spec.derived_table_type == PT_DERIVED_JSON_TABLE)
 	{
 	  /* PT_JSON_DERIVED_TABLE derived table */
+
 	  access =
-	    pt_to_json_table_spec_list (parser, spec, NULL, spec->info.spec.derived_table, src_derived_tbl, where_part);
+	    pt_to_json_table_spec_list (parser, spec, spec->info.spec.derived_table, src_derived_tbl, where_part);
+
+
 
 	  // todo: where to create regu_var
 	}

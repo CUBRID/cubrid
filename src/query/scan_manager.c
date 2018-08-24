@@ -3847,7 +3847,7 @@ scan_open_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 *   vd(in):
 */
 int
-scan_open_json_table_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
+scan_open_json_table_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, json_table_spec_node & jtsn,
 			   /* fields of SCAN_ID */
 			   int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, VAL_LIST * val_list,
 			   VAL_DESCR * vd)
@@ -3865,6 +3865,7 @@ scan_open_json_table_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   /* initialize JSON_TABLE_SCAN_ID structure */
   jtidp = &scan_id->s.jtid;
 
+  jtidp->init (jtsn);
   jtidp->open (thread_p);
 
   return NO_ERROR;

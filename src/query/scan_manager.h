@@ -41,6 +41,7 @@
 #include "method_scan.h"	/* for METHOD_SCAN_BUFFER */
 #include "oid.h"		/* for OID */
 #include "query_evaluator.h"
+#include "access_json_table.hpp"
 #include "scan_json_table.hpp"
 #include "storage_common.h"	/* for PAGEID */
 
@@ -425,7 +426,7 @@ extern int scan_open_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 			       VAL_DESCR * vd,
 			       /* fields of SET_SCAN_ID */
 			       REGU_VARIABLE * set_ptr, REGU_VARIABLE_LIST regu_list_pred, PRED_EXPR * pr);
-extern int scan_open_json_table_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
+extern int scan_open_json_table_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, json_table_spec_node & jtsn,
 				      /* fields of SCAN_ID */
 				      int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval,
 				      VAL_LIST * val_list, VAL_DESCR * vd);
