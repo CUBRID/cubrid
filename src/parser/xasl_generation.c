@@ -4591,7 +4591,7 @@ transform_to_json_table_spec_node_internal (PARSER_CONTEXT * parser, PT_JSON_TAB
   // create columns
   for (PT_NODE * cols_itr = jt_node_info->columns; cols_itr != NULL; cols_itr = cols_itr->next)
     {
-      result->m_output_columns.emplace_front (pt_create_json_table_column (parser, cols_itr, tbl_info));
+      result->m_output_columns.emplace_back (pt_create_json_table_column (parser, cols_itr, tbl_info));
     }
 
   // create children 

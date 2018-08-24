@@ -24,7 +24,6 @@
 #ifndef _ACCESS_JSON_TABLE_H_
 #define _ACCESS_JSON_TABLE_H_
 
-#include <forward_list>
 #include <string>
 #include <vector>
 
@@ -75,8 +74,8 @@ namespace cubxasl
       std::string m_path;
       size_t m_ordinality = 1;                        // will be used to count the row ordinality
       // the counting needs to start from 1
-      std::forward_list<column> m_predicate_columns;  // columns part of scan predicate; also part of output
-      std::forward_list<column> m_output_columns;     // columns part of output only
+      std::vector<column> m_predicate_columns;  // columns part of scan predicate; also part of output
+      std::vector<column> m_output_columns;     // columns part of output only
       pred_expr *m_predicate_expression;              // predicate expression
       std::vector<node> m_nested_nodes;               // nested nodes
       size_t m_id;                                    // identifier for each node

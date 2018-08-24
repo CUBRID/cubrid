@@ -24,7 +24,7 @@
 #ifndef _SCAN_JSON_TABLE_HPP_
 #define _SCAN_JSON_TABLE_HPP_
 
-#include <forward_list>
+#include <vector>
 
 #include "dbtype_def.h"
 #include "query_evaluator.h"
@@ -78,7 +78,7 @@ namespace cubscan
 	//    PR_EVAL_FNC is restricted to server.
 	struct cursor;
 
-	int fetch_columns (const JSON_DOC &document, std::forward_list<cubxasl::json_table::column> &columns,
+	int fetch_columns (const JSON_DOC &document, std::vector<cubxasl::json_table::column> &columns,
 			   const cubxasl::json_table::node &node);
 	int evaluate (cubxasl::json_table::node &node, cubthread::entry *thread_p, const JSON_DOC &document,
 		      DB_LOGICAL &logical_output);
@@ -90,7 +90,7 @@ namespace cubscan
 	int set_input_document (cursor &cursor, const cubxasl::json_table::node &node, const JSON_DOC &document);
 	void init_eval_functions (const cubxasl::json_table::node &node);
 	size_t get_tree_height (const cubxasl::json_table::node &node);
-	void clear_columns (std::forward_list<cubxasl::json_table::column> &columns);
+	void clear_columns (std::vector<cubxasl::json_table::column> &columns);
 	void clear_node_columns (cubxasl::json_table::node &node);
 
 	int next_internal (cubthread::entry *thread_p, int depth, bool &success);

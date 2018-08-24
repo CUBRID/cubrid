@@ -5325,7 +5325,7 @@ stx_unpack_json_table_node (THREAD_ENTRY * thread_p, char *ptr, json_table_node 
     {
       json_table_column jtc;
       ptr = stx_unpack_json_table_column (thread_p, ptr, jtc);
-      jtn.m_predicate_columns.push_front (std::move (jtc));
+      jtn.m_predicate_columns.push_back (std::move (jtc));
     }
 
   ptr = or_unpack_int (ptr, &temp_int);
@@ -5333,7 +5333,7 @@ stx_unpack_json_table_node (THREAD_ENTRY * thread_p, char *ptr, json_table_node 
     {
       json_table_column jtc;
       ptr = stx_unpack_json_table_column (thread_p, ptr, jtc);
-      jtn.m_output_columns.push_front (std::move (jtc));
+      jtn.m_output_columns.push_back (std::move (jtc));
     }
 
   ptr = or_unpack_int (ptr, &offset);

@@ -4997,67 +4997,57 @@ end:
 static char *
 xts_process_json_table_node (char *ptr, const json_table_node * json_table_node)
 {				//todo: seems to be necessary to add a save function to call this
-// *INDENT-OFF*
-// for (it : list) cannot be correctly indented
+                                // *INDENT-OFF*
+                                // for (it : list) cannot be correctly indented
 
   int offset;
 
   // save string
   offset = xts_save_string (json_table_node->m_path.c_str ());
   if (offset == ER_FAILED)
-    {
-      return NULL;
-    }
+  {
+    return NULL;
+  }
   ptr = or_pack_int (ptr, offset);
 
   // save ordinality
   ptr = or_pack_int (ptr, json_table_node->m_ordinality);
 
   //save m_predicate_columns
-  int pred_sz = 0;
+  ptr = or_pack_int (ptr, json_table_node->m_predicate_columns.size());
   for (auto & col : json_table_node->m_predicate_columns)
-    {
-      ++pred_sz;
-    }
-  ptr = or_pack_int (ptr, pred_sz);
-  for (auto & col : json_table_node->m_predicate_columns)
-    {
-      ptr = xts_process_json_table_column (ptr, &col);
-    }
+  {
+    ptr = xts_process_json_table_column(ptr, &col);
+  }
 
   // save m_output_columns
-  int output_sz = 0;
+  ptr = or_pack_int (ptr, json_table_node->m_output_columns.size());
   for (auto & col : json_table_node->m_output_columns)
-    {
-      ++output_sz;
-    }
-  ptr = or_pack_int (ptr, output_sz);
-  for (auto & col : json_table_node->m_output_columns)
-    {
-      ptr = xts_process_json_table_column (ptr, &col);
-    }
+  {
+    ptr = xts_process_json_table_column (ptr, &col);
+  }
 
   // save pred_expr
   offset = xts_save_pred_expr (json_table_node->m_predicate_expression);
   if (offset == ER_FAILED)
-    {
-      return NULL;
-    }
+  {
+    return NULL;
+  }
   ptr = or_pack_int (ptr, offset);
 
   // save nested nodes
   ptr = or_pack_int (ptr, json_table_node->m_nested_nodes.size ());
   for (auto & n : json_table_node->m_nested_nodes)
-    {
-      ptr = xts_process_json_table_node (ptr, &n);
-    }
+  {
+    ptr = xts_process_json_table_node (ptr, &n);
+  }
 
   ptr = or_pack_int (ptr, json_table_node->m_id);
 
   return ptr;
 
-// *INDENT-ON*
-// for (it : list) cannot be correctly indented
+  // *INDENT-ON*
+  // for (it : list) cannot be correctly indented
 }
 
 static char *

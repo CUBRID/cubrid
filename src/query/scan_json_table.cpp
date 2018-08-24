@@ -92,7 +92,7 @@ namespace cubscan
     }
 
     int
-    scanner::fetch_columns (const JSON_DOC &document, std::forward_list<cubxasl::json_table::column> &columns,
+    scanner::fetch_columns (const JSON_DOC &document, std::vector<cubxasl::json_table::column> &columns,
 			    const cubxasl::json_table::node &node)
     {
       int error_code = NO_ERROR;
@@ -380,7 +380,7 @@ namespace cubscan
     }
 
     void
-    scanner::clear_columns (std::forward_list<cubxasl::json_table::column> &columns)
+    scanner::clear_columns (std::vector<cubxasl::json_table::column> &columns)
     {
       for (auto &column : columns)
 	{
