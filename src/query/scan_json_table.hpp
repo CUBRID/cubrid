@@ -85,7 +85,7 @@ namespace cubscan
 	std::size_t get_row_count (cursor &cursor);
 	bool check_need_expand (const cubxasl::json_table::node &node);
 	bool str_ends_with (const std::string &str, const std::string &end);
-	const char *get_parent_path (const cubxasl::json_table::node &node);
+	std::string get_parent_path (const cubxasl::json_table::node &node);
 	int set_next_cursor (const cursor &current_cursor, int next_depth);
 	int set_input_document (cursor &cursor, const cubxasl::json_table::node &node, const JSON_DOC &document);
 	void init_eval_functions (const cubxasl::json_table::node &node);

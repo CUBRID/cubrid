@@ -35,12 +35,12 @@ namespace cubscan
       std::size_t m_row;
       std::size_t m_child;
       cubxasl::json_table::node *m_node;
-      JSON_DOC *m_input_doc;            // used for non-array / single row
+      JSON_DOC *m_input_doc = NULL;            // used for non-array / single row
       const JSON_DOC *m_row_doc;        // used only for arrays and multiple rows
       const JSON_DOC *m_process_doc;    // is either input_doc or row doc
       bool m_is_row_evaluated;
       bool m_need_expand;
-      JSON_ITERATOR *m_json_iterator;
+      JSON_ITERATOR *m_json_iterator = NULL;
 
       void advance_row_cursor();
       void set_json_iterator (const JSON_DOC &document, const char *parent_path);
@@ -317,19 +317,19 @@ namespace cubscan
       return str_ends_with (node.m_path, "[*]") || str_ends_with (node.m_path, ".*");
     }
 
-    const char *
+    std::string
     scanner::get_parent_path (const cubxasl::json_table::node &node)
     {
       if (str_ends_with (node.m_path, "[*]"))
 	{
-	  return node.m_path.substr (0, node.m_path.size() - 3).c_str();
+	  return node.m_path.substr (0, node.m_path.size() - 3);
 	}
       else if (str_ends_with (node.m_path, ".*"))
 	{
-	  return node.m_path.substr (0, node.m_path.size() - 2).c_str();
+	  return node.m_path.substr (0, node.m_path.size() - 2);
 	}
 
-      return NULL;
+      return std::string();
     }
 
     int
@@ -339,11 +339,10 @@ namespace cubscan
 
       if (check_need_expand (node))
 	{
-	  const char *parent_path = get_parent_path (node);
-	  assert (parent_path != NULL);
+	  std::string parent_path = get_parent_path (node);
 
 	  // set the input document and the iterator
-	  cursor.set_json_iterator (document, parent_path);
+	  cursor.set_json_iterator (document, parent_path.c_str());
 	  cursor.m_need_expand = true;
 	}
       else
