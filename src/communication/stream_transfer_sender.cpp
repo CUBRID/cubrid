@@ -106,8 +106,8 @@ namespace cubstream
     cubthread::delta_time daemon_period = std::chrono::milliseconds (10);
 
     m_read_action_function =
-      std::bind (&transfer_sender::read_action, std::ref (*this), std::placeholders::_1,
-		 std::placeholders::_2);
+	    std::bind (&transfer_sender::read_action, std::ref (*this), std::placeholders::_1,
+		       std::placeholders::_2);
 
     m_sender_daemon = cubthread::get_manager ()->create_daemon_without_entry (daemon_period,
 		      new transfer_sender_task (*this),

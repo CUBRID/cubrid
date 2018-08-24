@@ -646,8 +646,10 @@ int g_original_buffer_len;
 %type <number> of_avg_max_etc
 %type <number> of_leading_trailing_both
 %type <number> datetime_field
+%type <number> opt_invisible
 %type <number> opt_paren_plus
 %type <number> opt_with_fullscan
+%type <number> opt_with_online
 %type <number> comp_op
 %type <number> opt_of_all_some_any
 %type <number> set_op
@@ -1552,6 +1554,7 @@ int g_original_buffer_len;
 %token <cptr> INFINITE_
 %token <cptr> INSTANCES
 %token <cptr> INVALIDATE
+%token <cptr> INVISIBLE
 %token <cptr> ISNULL
 %token <cptr> KEYS
 %token <cptr> KILL
@@ -1578,6 +1581,7 @@ int g_original_buffer_len;
 %token <cptr> NTILE
 %token <cptr> NULLS
 %token <cptr> OFFSET
+%token <cptr> ONLINE
 %token <cptr> OPEN
 %token <cptr> OWNER
 %token <cptr> PAGE
@@ -1633,6 +1637,7 @@ int g_original_buffer_len;
 %token <cptr> VAR_POP
 %token <cptr> VAR_SAMP
 %token <cptr> VARIANCE
+%token <cptr> VISIBLE
 %token <cptr> VOLUME
 %token <cptr> WEEK
 %token <cptr> WITHIN
@@ -2642,6 +2647,8 @@ create_stmt
 	  index_column_name_list			/* 11 */
 	  opt_where_clause				/* 12 */
 	  opt_comment_spec				/* 13 */
+	  opt_with_online				/* 14 */
+	  opt_invisible					/* 15 */
 	{{
 
 			PT_NODE *node = parser_pop_hint_node ();
@@ -2759,6 +2766,27 @@ create_stmt
 			     node->info.index.where = $12;
 			     node->info.index.column_names = col;
 			     node->info.index.comment = $13;
+
+			     if ($14 && $15)
+				     {
+					/* We do not allow invisible and online index at the same time. */
+					PT_ERRORm (this_parser, node, 
+						       MSGCAT_SET_PARSER_SYNTAX,
+						       MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+				     }
+			     node->info.index.index_status = SM_NORMAL_INDEX;
+			     if ($15)
+				     {
+					/* Invisible index. */
+					node->info.index.index_status = SM_INVISIBLE_INDEX;
+				     }
+			     else if ($14)
+				     {
+					/* Online index. */
+					node->info.index.index_status = SM_ONLINE_INDEX_BUILDING_IN_PROGRESS;
+				     }
+
+			     
 			  }
 		      $$ = node;
 
@@ -3570,6 +3598,76 @@ alter_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| ALTER				/* 1 */
+	  INDEX				/* 2 */
+	  identifier			/* 3 */
+	  ON_				/* 4 */
+	  class_name			/* 5 */
+	  INVISIBLE			/* 6 */
+		{{
+			PT_NODE* node = parser_new_node(this_parser, PT_ALTER_INDEX);
+			
+			if (node)
+			  {
+			    node->info.index.code = PT_CHANGE_INDEX_STATUS;
+			    node->info.index.index_name = $3;
+			    node->info.index.index_status = SM_INVISIBLE_INDEX;
+
+			    if (node->info.index.index_name)
+			      {
+			        node->info.index.index_name->info.name.meta_class = PT_INDEX_NAME;
+			      }
+			
+			    if ($5 != NULL)
+			      {
+			        PT_NODE *ocs = parser_new_node(this_parser, PT_SPEC);
+			        ocs->info.spec.entity_name = $5;
+			        ocs->info.spec.only_all = PT_ONLY;
+			        ocs->info.spec.meta_class = PT_CLASS;
+			
+			        node->info.index.indexed_class = ocs;
+			      }
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| ALTER				/* 1 */
+	  INDEX				/* 2 */
+	  identifier			/* 3 */
+	  ON_				/* 4 */
+	  class_name			/* 5 */
+	  VISIBLE			/* 6 */
+		{{
+			PT_NODE* node = parser_new_node(this_parser, PT_ALTER_INDEX);
+			
+			if (node)
+			  {
+			    node->info.index.code = PT_CHANGE_INDEX_STATUS;
+			    node->info.index.index_name = $3;
+			    node->info.index.index_status = SM_NORMAL_INDEX;
+
+			    if (node->info.index.index_name)
+			      {
+			        node->info.index.index_name->info.name.meta_class = PT_INDEX_NAME;
+			      }
+			
+			    if ($5 != NULL)
+			      {
+			        PT_NODE *ocs = parser_new_node(this_parser, PT_SPEC);
+			        ocs->info.spec.entity_name = $5;
+			        ocs->info.spec.only_all = PT_ONLY;
+			        ocs->info.spec.meta_class = PT_CLASS;
+			
+			        node->info.index.indexed_class = ocs;
+			      }
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
 	| ALTER
 	  view_or_vclass
 	  class_name
@@ -4183,6 +4281,21 @@ only_class_name_list
 		DBG_PRINT}}
 	;
 
+opt_invisible
+	: /* empty */
+		{{
+ 			$$ = 0;
+		
+		DBG_PRINT}}
+	| INVISIBLE
+		{{
+		
+			$$ = 1;
+		
+		DBG_PRINT}}
+	;
+
+
 opt_with_fullscan
         : /* empty */
                 {{
@@ -4197,6 +4310,21 @@ opt_with_fullscan
 
                 DBG_PRINT}}
         ;
+
+opt_with_online
+	: /* empty */
+		{{
+
+			$$ = 0;
+		
+		DBG_PRINT}}
+	| WITH ONLINE
+		{{
+		
+			$$ = 1;
+		
+		DBG_PRINT}}
+	;
 
 opt_of_to_eq
 	: /* empty */
@@ -8838,6 +8966,7 @@ unique_constraint
 				    node->info.index.indexed_class = NULL;
 				    node->info.index.column_names = sort_spec_cols;
 				    node->info.index.unique = 1;
+				    node->info.index.index_status = SM_NORMAL_INDEX;
 				  }
 			      }
 			  }
@@ -9586,6 +9715,7 @@ attr_index_def
 	  index_column_name_list
 	  opt_where_clause
 	  opt_comment_spec
+	  opt_invisible
 		{{
 			int arg_count = 0, prefix_col_count = 0;
 			PT_NODE* node = parser_new_node(this_parser, 
@@ -9601,6 +9731,7 @@ attr_index_def
 			node->info.index.indexed_class = NULL;
 			node->info.index.where = $4;
 			node->info.index.comment = $5;
+			node->info.index.index_status = SM_NORMAL_INDEX;
     		    
 			prefix_col_count =
 				parser_count_prefix_columns (col, &arg_count);
@@ -9641,6 +9772,11 @@ attr_index_def
 			      }
 			  }
 			node->info.index.column_names = col;
+			node->info.index.index_status = SM_NORMAL_INDEX;
+			if ($6 != NULL)
+				{
+					node->info.index.index_status = SM_INVISIBLE_INDEX;
+				}
 			$$ = node;
 
 		DBG_PRINT}}
@@ -20982,6 +21118,14 @@ identifier
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| INVISIBLE
+               {{
+                       PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+                       if (p)
+                         p->info.name.original = $1;
+                       $$ = p;
+                       PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+                DBG_PRINT}}
 	| JAVA
 		{{
 
@@ -21143,6 +21287,16 @@ identifier
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| ONLINE
+               {{
+
+                       PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+                       if (p)
+                         p->info.name.original = $1;
+                       $$ = p;
+                       PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+               DBG_PRINT}}
 	| OPEN
 		{{
 
@@ -21614,6 +21768,14 @@ identifier
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| VISIBLE
+               {{
+                       PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+                       if (p)
+                         p->info.name.original = $1;
+                       $$ = p;
+                       PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+                DBG_PRINT}}
 	| VOLUME
 		{{
 
@@ -25302,7 +25464,6 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_TO_DATETIME:
     case PT_TO_DATETIME_TZ:
     case PT_TO_TIMESTAMP_TZ:
-    case PT_TO_TIME_TZ:
       if (c < 1 || c > 3)
 	return NULL;
       a1 = args;

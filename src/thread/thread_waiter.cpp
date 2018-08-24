@@ -173,6 +173,14 @@ namespace cubthread
     return 1 + Waiter_statistics.get_value_count ();
   }
 
+  bool
+  waiter::is_running (void)
+  {
+    std::unique_lock<std::mutex> lock (m_mutex);    /* mutex is also locked */
+
+    return (m_status == RUNNING);
+  }
+
   const char *
   waiter::get_stat_name (std::size_t stat_index)
   {

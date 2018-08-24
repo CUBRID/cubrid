@@ -57,7 +57,6 @@ STATIC_INLINE DB_COLLECTION *db_get_set (const DB_VALUE * value) __attribute__ (
 STATIC_INLINE DB_MIDXKEY *db_get_midxkey (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_C_POINTER db_get_pointer (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_TIME *db_get_time (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE DB_TIMETZ *db_get_timetz (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_TIMESTAMP *db_get_timestamp (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_TIMESTAMPTZ *db_get_timestamptz (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_DATETIME *db_get_datetime (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
@@ -85,7 +84,6 @@ STATIC_INLINE DB_TYPE db_value_type (const DB_VALUE * value) __attribute__ ((ALW
 STATIC_INLINE int db_value_precision (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_value_scale (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE JSON_DOC *db_get_json_document (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE char *db_get_json_raw_body (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 
 STATIC_INLINE int db_make_db_char (DB_VALUE * value, INTL_CODESET codeset, const int collation_id, char *str,
 				   const int size) __attribute__ ((ALWAYS_INLINE));
@@ -96,8 +94,6 @@ STATIC_INLINE int db_make_float (DB_VALUE * value, const DB_C_FLOAT num) __attri
 STATIC_INLINE int db_make_double (DB_VALUE * value, const DB_C_DOUBLE num) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_object (DB_VALUE * value, DB_C_OBJECT * obj) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_midxkey (DB_VALUE * value, DB_MIDXKEY * midxkey) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_timetz (DB_VALUE * value, const DB_TIMETZ * timetz_value) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_timeltz (DB_VALUE * value, const DB_TIME * time_value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_timestamp (DB_VALUE * value, const DB_C_TIMESTAMP timeval) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_timestampltz (DB_VALUE * value, const DB_C_TIMESTAMP ts_val) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_timestamptz (DB_VALUE * value, const DB_C_TIMESTAMPTZ * ts_tz_val)
@@ -157,7 +153,7 @@ STATIC_INLINE int db_make_time (DB_VALUE * value, const int hour, const int minu
 STATIC_INLINE int db_make_date (DB_VALUE * value, const int month, const int day, const int year)
   __attribute__ ((ALWAYS_INLINE));
 
-STATIC_INLINE int db_make_json (DB_VALUE * value, char *json_body, JSON_DOC * json_document, bool need_clear)
+STATIC_INLINE int db_make_json (DB_VALUE * value, JSON_DOC * json_document, bool need_clear)
   __attribute__ ((ALWAYS_INLINE));
 
 STATIC_INLINE int db_get_compressed_size (DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
@@ -392,28 +388,11 @@ db_get_time (const DB_VALUE * value)
   CHECK_1ARG_NULL (value);
 #endif
 
-  assert (value->domain.general_info.type == DB_TYPE_TIME || value->domain.general_info.type == DB_TYPE_TIMELTZ);
+  assert (value->domain.general_info.type == DB_TYPE_TIME);
 
   // todo: Assess how to better handle const types, here we should return explicit values, not pointers. Same for below.
   return (DB_TIME *) (&value->data.time);
 }
-
-/*
- * db_get_timetz() -
- * return :
- * value(in):
- */
-DB_TIMETZ *
-db_get_timetz (const DB_VALUE * value)
-{
-#if defined (API_ACTIVE_CHECKS)
-  CHECK_1ARG_NULL (value);
-#endif
-  assert (value->domain.general_info.type == DB_TYPE_TIMETZ);
-
-  return ((DB_TIMETZ *) (&value->data.timetz));
-}
-
 
 /*
  * db_get_timestamp() -
@@ -1024,16 +1003,6 @@ db_get_json_document (const DB_VALUE * value)
   return value->data.json.document;
 }
 
-char *
-db_get_json_raw_body (const DB_VALUE * value)
-{
-#if defined (API_ACTIVE_CHECKS)
-  CHECK_1ARG_ZERO (value);
-#endif
-
-  return value->data.json.json_body;
-}
-
 /***********************************************************/
 /* db_make family of functions. */
 
@@ -1217,67 +1186,6 @@ db_make_midxkey (DB_VALUE * value, DB_MIDXKEY * midxkey)
   value->need_clear = false;
 
   return error;
-}
-
-/*
- * db_make_timetz() -
- * return :
- * value(out) :
- * hour(in):
- * min(in):
- * sec(in):
- */
-int
-db_make_timetz (DB_VALUE * value, const DB_TIMETZ * timetz_value)
-{
-#if defined (API_ACTIVE_CHECKS)
-  CHECK_1ARG_ERROR (value);
-#endif
-
-  value->domain.general_info.type = DB_TYPE_TIMETZ;
-  value->need_clear = false;
-  if (timetz_value)
-    {
-      value->data.timetz.time = timetz_value->time;
-      value->data.timetz.tz_id = timetz_value->tz_id;
-      value->domain.general_info.is_null = 0;
-    }
-  else
-    {
-      value->domain.general_info.is_null = 1;
-    }
-
-  return NO_ERROR;
-}
-
-/*
- * db_make_timeltz() -
- * return :
- * value(out) :
- * hour(in):
- * min(in):
- * sec(in):
- */
-int
-db_make_timeltz (DB_VALUE * value, const DB_TIME * time_value)
-{
-#if defined (API_ACTIVE_CHECKS)
-  CHECK_1ARG_ERROR (value);
-#endif
-
-  value->domain.general_info.type = DB_TYPE_TIMELTZ;
-  value->need_clear = false;
-  if (time_value)
-    {
-      value->data.time = *time_value;
-      value->domain.general_info.is_null = 0;
-    }
-  else
-    {
-      value->domain.general_info.is_null = 1;
-    }
-
-  return NO_ERROR;
 }
 
 /*
@@ -2213,7 +2121,7 @@ db_make_date (DB_VALUE * value, const int mon, const int day, const int year)
 }
 
 int
-db_make_json (DB_VALUE * value, char *json_body, JSON_DOC * json_document, bool need_clear)
+db_make_json (DB_VALUE * value, JSON_DOC * json_document, bool need_clear)
 {
 #if defined (API_ACTIVE_CHECKS)
   CHECK_1ARG_ERROR (value);
@@ -2228,7 +2136,6 @@ db_make_json (DB_VALUE * value, char *json_body, JSON_DOC * json_document, bool 
 
   value->domain.general_info.type = DB_TYPE_JSON;
   value->domain.general_info.is_null = 0;
-  value->data.json.json_body = json_body;
   value->data.json.document = json_document;
   value->data.json.schema_raw = NULL;
   value->need_clear = need_clear;

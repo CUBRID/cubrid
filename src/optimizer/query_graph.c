@@ -3207,7 +3207,6 @@ get_opcode_rank (PT_OP_TYPE opcode)
     case PT_INDEX_PREFIX:
     case PT_TO_DATETIME_TZ:
     case PT_TO_TIMESTAMP_TZ:
-    case PT_TO_TIME_TZ:
     case PT_CRC32:
     case PT_CONV_TZ:
       return RANK_EXPR_MEDIUM;
@@ -3788,7 +3787,6 @@ pt_is_pseudo_const (PT_NODE * expr)
 	case PT_TO_NUMBER:
 	case PT_TO_DATETIME_TZ:
 	case PT_TO_TIMESTAMP_TZ:
-	case PT_TO_TIME_TZ:
 	  return (pt_is_pseudo_const (expr->info.expr.arg1)
 		  && (expr->info.expr.arg2 ? pt_is_pseudo_const (expr->info.expr.arg2) : true)) ? true : false;
 	case PT_CURRENT_VALUE:
@@ -5471,11 +5469,7 @@ qo_data_compare (DB_DATA * data1, DB_DATA * data2, DB_TYPE type)
       result = ((data1->date < data2->date) ? -1 : ((data1->date > data2->date) ? 1 : 0));
       break;
     case DB_TYPE_TIME:
-    case DB_TYPE_TIMELTZ:
       result = ((data1->time < data2->time) ? -1 : ((data1->time > data2->time) ? 1 : 0));
-      break;
-    case DB_TYPE_TIMETZ:
-      result = ((data1->timetz.time < data2->timetz.time) ? -1 : ((data1->timetz.time > data2->timetz.time) ? 1 : 0));
       break;
 
     case DB_TYPE_TIMESTAMPLTZ:
@@ -6952,6 +6946,29 @@ qo_is_iss_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entry)
   return true;
 }
 
+static bool
+qo_is_usable_index (SM_CLASS_CONSTRAINT * constraint, QO_NODE * nodep)
+{
+  if (!SM_IS_CONSTRAINT_INDEX_FAMILY (constraint->type))
+    {
+      // not an index
+      return false;
+    }
+
+  if (constraint->index_status != SM_NORMAL_INDEX && constraint->index_status != SM_ONLINE_INDEX_BUILDING_DONE)
+    {
+      // building or invisible
+      return false;
+    }
+
+  if (constraint->filter_predicate != NULL && QO_NODE_USING_INDEX (nodep) == NULL)
+    {
+      return false;
+    }
+
+  return true;
+}
+
 /*
  * qo_find_node_indexes () -
  *   return:
@@ -7026,15 +7043,12 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
       n = 0;
       for (consp = constraints; consp; consp = consp->next)
 	{
-	  if (SM_IS_CONSTRAINT_INDEX_FAMILY (consp->type))
+	  if (qo_is_usable_index (consp, nodep))
 	    {
-	      if (consp->filter_predicate != NULL && QO_NODE_USING_INDEX (nodep) == NULL)
-		{
-		  continue;
-		}
 	      n++;
 	    }
 	}
+
       /* allocate room for the constraint indexes */
       /* we don't have apriori knowledge about which constraints will be applied, so allocate room for all of them */
       /* qo_alloc_index(env, n) will allocate QO_INDEX structure and QO_INDEX_ENTRY structure array */
@@ -7049,15 +7063,9 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
       /* for each constraint of the class */
       for (consp = constraints; consp; consp = consp->next)
 	{
-
-	  if (!SM_IS_CONSTRAINT_INDEX_FAMILY (consp->type))
+	  if (!qo_is_usable_index (consp, nodep))
 	    {
-	      continue;		/* neither INDEX nor UNIQUE constraint, skip */
-	    }
-
-	  if (consp->filter_predicate != NULL && QO_NODE_USING_INDEX (nodep) == NULL)
-	    {
-	      continue;
+	      continue;		// skip it
 	    }
 
 	  uip = QO_NODE_USING_INDEX (nodep);

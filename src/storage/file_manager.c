@@ -912,6 +912,8 @@ file_header_sanity_check (THREAD_ENTRY * thread_p, FILE_HEADER * fhead)
 #if !defined (NDEBUG)
   FILE_EXTENSIBLE_DATA *part_table;
   FILE_EXTENSIBLE_DATA *full_table;
+  FILE_VSID_COLLECTOR collector;
+  int iter_vsid;
 
   if (prm_get_bool_value (PRM_ID_FORCE_RESTART_TO_SKIP_RECOVERY))
     {
@@ -995,6 +997,23 @@ file_header_sanity_check (THREAD_ENTRY * thread_p, FILE_HEADER * fhead)
 	    }
 	  assert (FILE_IS_TEMPORARY (fhead) || fhead->n_sector_full == full_cnt);
 	}
+    }
+
+  if (file_table_collect_all_vsids (thread_p, (PAGE_PTR) fhead, &collector) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto exit;
+    }
+
+  for (iter_vsid = 0; iter_vsid < collector.n_vsids - 1; iter_vsid++)
+    {
+      /* A VSID can't appears twice in tables. */
+      assert (disk_compare_vsids (&collector.vsids[iter_vsid], &collector.vsids[iter_vsid + 1]) != 0);
+    }
+
+  if (collector.vsids != NULL)
+    {
+      db_private_free (thread_p, collector.vsids);
     }
 
 exit:
@@ -4661,8 +4680,8 @@ file_table_move_partial_sectors_to_header (THREAD_ENTRY * thread_p, PAGE_PTR pag
     {
       /* Remove copied entries. */
       save_lsa = *pgbuf_get_lsa (page_part_ftab_first);
-      file_extdata_remove_at (extdata_part_ftab_first, 0, n_items_to_move);
       file_log_extdata_remove (thread_p, extdata_part_ftab_first, page_part_ftab_first, 0, n_items_to_move);
+      file_extdata_remove_at (extdata_part_ftab_first, 0, n_items_to_move);
 
       file_log ("file_table_move_partial_sectors_to_header",
 		"removed %d items from first page partial table \n"

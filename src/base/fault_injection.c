@@ -58,15 +58,13 @@ FI_TEST_ITEM fi_Test_array[] = {
   {FI_TEST_FILE_IO_FORMAT, fi_handler_random_exit, FI_INIT_STATE},
   {FI_TEST_DISK_MANAGER_VOLUME_ADD, fi_handler_random_exit, FI_INIT_STATE},
   {FI_TEST_DISK_MANAGER_VOLUME_EXPAND, fi_handler_random_exit, FI_INIT_STATE},
-  {FI_TEST_FILE_MANAGER_UNDO_TRACKER_REGISTER, fi_handler_exit,
-   FI_INIT_STATE},
+  {FI_TEST_FILE_IO_WRITE_PARTS1, fi_handler_random_exit, FI_INIT_STATE},
+  {FI_TEST_FILE_IO_WRITE_PARTS2, fi_handler_random_exit, FI_INIT_STATE},
+  {FI_TEST_FILE_MANAGER_UNDO_TRACKER_REGISTER, fi_handler_exit, FI_INIT_STATE},
   {FI_TEST_BTREE_MANAGER_RANDOM_EXIT, fi_handler_random_exit, FI_INIT_STATE},
-  {FI_TEST_LOG_MANAGER_RANDOM_EXIT_AT_RUN_POSTPONE, fi_handler_random_exit,
-   FI_INIT_STATE},
-  {FI_TEST_LOG_MANAGER_RANDOM_EXIT_AT_END_SYSTEMOP, fi_handler_random_exit,
-   FI_INIT_STATE},
-  {FI_TEST_BTREE_MANAGER_PAGE_DEALLOC_FAIL, fi_handler_random_fail,
-   FI_INIT_STATE}
+  {FI_TEST_LOG_MANAGER_RANDOM_EXIT_AT_RUN_POSTPONE, fi_handler_random_exit, FI_INIT_STATE},
+  {FI_TEST_LOG_MANAGER_RANDOM_EXIT_AT_END_SYSTEMOP, fi_handler_random_exit, FI_INIT_STATE},
+  {FI_TEST_BTREE_MANAGER_PAGE_DEALLOC_FAIL, fi_handler_random_fail, FI_INIT_STATE}
 };
 
 FI_TEST_CODE fi_Group_none[] = {

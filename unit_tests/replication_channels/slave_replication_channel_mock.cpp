@@ -52,9 +52,7 @@ namespace slave
 
     for (int i = 0; i < NUM_MOCK_SLAVES; i++)
       {
-	cubthread::get_manager()->push_task (cubthread::get_entry (),
-					     workpool,
-					     new start_slaves_task ());
+	cubthread::get_manager()->push_task (workpool, new start_slaves_task ());
       }
 
     return NO_ERROR;

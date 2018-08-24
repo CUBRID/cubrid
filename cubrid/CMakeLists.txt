@@ -58,14 +58,13 @@ set(THREAD_HEADERS
 
 set(STREAM_SOURCES
   ${BASE_DIR}/cubstream.cpp
-  ${BASE_DIR}/packing_stream.cpp
-  ${BASE_DIR}/stream_entry.cpp
+  ${BASE_DIR}/multi_thread_stream.cpp
   )
 set (STREAM_HEADERS
   ${BASE_DIR}/bip_buffer.hpp
   ${BASE_DIR}/collapsable_circular_queue.hpp
   ${BASE_DIR}/cubstream.hpp
-  ${BASE_DIR}/packing_stream.hpp
+  ${BASE_DIR}/multi_thread_stream.hpp
   ${BASE_DIR}/stream_entry.hpp
   ${BASE_DIR}/stream_io.hpp
   )
@@ -190,12 +189,12 @@ set(MONITOR_HEADERS
   ${MONITOR_DIR}/monitor_transaction.hpp
 )
 
-set (REPLICATION_SOURCES
-  ${REPLICATION_DIR}/replication_master_senders_manager.cpp
-  )
-
 set (REPLICATION_HEADERS
+  ${REPLICATION_DIR}/log_generator.hpp
+  ${REPLICATION_DIR}/log_consumer.hpp
   ${REPLICATION_DIR}/replication_master_senders_manager.hpp
+  ${REPLICATION_DIR}/replication_object.hpp
+  ${REPLICATION_DIR}/replication_stream_entry.hpp
   )
 
 set(QUERY_SOURCES
@@ -234,6 +233,14 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/object_primitive.c
   ${OBJECT_DIR}/transform.c
   ${OBJECT_DIR}/object_domain.c
+  )
+  
+set(REPLICATION_SOURCES
+  ${REPLICATION_DIR}/log_consumer.cpp
+  ${REPLICATION_DIR}/log_generator.cpp
+  ${REPLICATION_DIR}/replication_object.cpp
+  ${REPLICATION_DIR}/replication_master_senders_manager.cpp  
+  ${REPLICATION_DIR}/replication_stream_entry.cpp
   )
 
 set(JSP_SOURCES
@@ -277,6 +284,7 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/oid.c
   ${STORAGE_DIR}/overflow_file.c
   ${STORAGE_DIR}/page_buffer.c
+  ${STORAGE_DIR}/double_write_buffer.c
   ${STORAGE_DIR}/statistics_sr.c
   ${STORAGE_DIR}/slotted_page.c
   ${STORAGE_DIR}/external_sort.c
@@ -322,7 +330,6 @@ SET_SOURCE_FILES_PROPERTIES(
   ${COMPAT_SOURCES}
   ${CONNECTION_SOURCES}
   ${CONNECTION_TCP_SOURCE}
-  ${REPLICATION_SOURCES}
   ${ES_SOURCES}
   ${EXECUTABLE_SOURCES}
   ${HEAPLAYER_SOURCES}
@@ -332,6 +339,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${PARSER_SOURCES}
   ${PROBES_OBJECT}
   ${QUERY_SOURCES}
+  ${REPLICATION_SOURCES}
   ${SESSION_SOURCES}
   ${STORAGE_SOURCES}
   ${THREAD_SOURCES}
@@ -351,7 +359,6 @@ set (CUBRID_LIB_SOURCES
   ${COMPAT_SOURCES}
   ${CONNECTION_SOURCES}
   ${CONNECTION_TCP_SOURCE}
-  ${REPLICATION_SOURCES}
   ${ES_SOURCES}
   ${EXECUTABLE_SOURCES}
   ${HEAPLAYER_SOURCES}
@@ -360,6 +367,7 @@ set (CUBRID_LIB_SOURCES
   ${OBJECT_SOURCES}
   ${PROBES_OBJECT}
   ${QUERY_SOURCES}
+  ${REPLICATION_SOURCES}  
   ${SESSION_SOURCES}
   ${STORAGE_SOURCES}
   ${STREAM_SOURCES}

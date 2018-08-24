@@ -255,7 +255,11 @@ namespace cuberr
   void
   context::deregister_thread_local (void)
   {
+#if defined (SERVER_MODE)
+    // safe-guard that stacks are not "leaked"
+    // ignore it for client (this is too late anyway)
     assert (m_stack.empty ());
+#endif // SERVER_MODE
 
     clear_all_levels ();
 

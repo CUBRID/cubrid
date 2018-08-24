@@ -6620,8 +6620,6 @@ pt_make_prim_data_type (PARSER_CONTEXT * parser, PT_TYPE_ENUM e)
     case PT_TYPE_DOUBLE:
     case PT_TYPE_DATE:
     case PT_TYPE_TIME:
-    case PT_TYPE_TIMETZ:
-    case PT_TYPE_TIMELTZ:
     case PT_TYPE_TIMESTAMP:
     case PT_TYPE_TIMESTAMPTZ:
     case PT_TYPE_TIMESTAMPLTZ:
@@ -7362,7 +7360,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 	      else if (node->info.expr.op == PT_TO_CHAR || node->info.expr.op == PT_TO_DATE
 		       || node->info.expr.op == PT_TO_TIME || node->info.expr.op == PT_TO_TIMESTAMP
 		       || node->info.expr.op == PT_TO_DATETIME || node->info.expr.op == PT_TO_DATETIME_TZ
-		       || node->info.expr.op == PT_TO_TIMESTAMP_TZ || node->info.expr.op == PT_TO_TIME_TZ)
+		       || node->info.expr.op == PT_TO_TIMESTAMP_TZ)
 		{
 		  r1 = pt_to_regu_variable (parser, node->info.expr.arg1, unbox);
 		  r2 = pt_to_regu_variable (parser, node->info.expr.arg2, unbox);
@@ -8725,13 +8723,6 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  parser_free_tree (parser, data_type);
 		  break;
 
-		case PT_TO_TIME_TZ:
-		  data_type = pt_make_prim_data_type (parser, PT_TYPE_TIMETZ);
-		  domain = pt_xasl_data_type_to_domain (parser, data_type);
-
-		  regu = pt_make_regu_arith (r1, r2, r3, T_TO_TIME_TZ, domain);
-		  parser_free_tree (parser, data_type);
-		  break;
 		case PT_UTC_TIMESTAMP:
 		  regu = pt_make_regu_arith (NULL, NULL, NULL, T_UTC_TIMESTAMP, domain);
 		  break;

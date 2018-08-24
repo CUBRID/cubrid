@@ -162,6 +162,8 @@ LSA_COPY (LOG_LSA * plsa1, const LOG_LSA * plsa2)
 #define IO_PAGESIZE             (db_io_page_size())
 #define DB_PAGESIZE             (db_page_size())
 
+#define IS_POWER_OF_2(x)        (((x) & ((x) - 1)) == 0)
+
 /*
  * Sector
  */
@@ -1041,7 +1043,6 @@ typedef enum
   T_FROM_TZ,
   T_TO_DATETIME_TZ,
   T_TO_TIMESTAMP_TZ,
-  T_TO_TIME_TZ,
   T_UTC_TIMESTAMP,
   T_CRC32,
   T_CURRENT_DATETIME,
@@ -1261,7 +1262,7 @@ extern const int SM_MAX_STRING_LENGTH;
  */
 typedef enum
 {
-
+  SM_ATTFLAG_NONE = 0,
   SM_ATTFLAG_INDEX = 1,		/* attribute has an index 0x01 */
   SM_ATTFLAG_UNIQUE = 2,	/* attribute has UNIQUE constraint 0x02 */
   SM_ATTFLAG_NON_NULL = 4,	/* attribute has NON_NULL constraint 0x04 */

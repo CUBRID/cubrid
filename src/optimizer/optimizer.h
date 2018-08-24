@@ -70,12 +70,6 @@
 #define QO_ERROR2(code, x, y)
 #endif /* USE_ER_SET */
 
-#define DB_INTEGRAL_TYPE(t)	(qo_type_qualifiers[(t)] & _INT)
-#define DB_NUMERIC_TYPE(t)	(qo_type_qualifiers[(t)] & _NUM)
-#define _INT	0x1
-#define _NUM	0x2
-
-
 /*
  * The PRM_OPTIMIZATION_LEVEL parameter actually encodes (at least) two
  * different pieces of information: the actual level of optimization
@@ -186,9 +180,6 @@ extern PT_NODE *mq_optimize (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern void *qo_malloc (QO_ENV *, unsigned, const char *, int);
 #endif
 extern void qo_abort (QO_ENV *, const char *, int);
-
-
-extern unsigned char qo_type_qualifiers[];
 
 extern double qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr);
 

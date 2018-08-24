@@ -100,9 +100,9 @@ set(BASE_SOURCES
   ${BASE_DIR}/packer.cpp
   ${BASE_DIR}/get_clockfreq.c
   ${BASE_DIR}/perf.cpp
+  ${BASE_DIR}/perf_monitor.c
   ${BASE_DIR}/pinnable_buffer.cpp
   ${BASE_DIR}/pinning.cpp
-  ${BASE_DIR}/perf_monitor.c
   ${BASE_DIR}/porting.c
   ${BASE_DIR}/release_string.c
   ${BASE_DIR}/resource_tracker.cpp
@@ -118,6 +118,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/variable_string.c
   ${BASE_DIR}/xml_parser.c
   )
+
 set(BASE_HEADERS
   ${BASE_DIR}/error_code.h
   ${BASE_DIR}/error_context.hpp
@@ -130,7 +131,7 @@ set(BASE_HEADERS
   ${BASE_DIR}/pinnable_buffer.hpp
   ${BASE_DIR}/packable_object.hpp
   ${BASE_DIR}/resource_tracker.hpp
-)
+  )
 
 set(HEAPLAYER_SOURCES
   ${HEAPLAYERS_DIR}/customheaps.cpp
