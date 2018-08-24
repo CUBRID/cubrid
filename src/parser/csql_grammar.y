@@ -23244,8 +23244,7 @@ vacuum_stmt
     : identifier For ORDINALITY
       {{
         PT_NODE *pt_col = parser_new_node (this_parser, PT_JSON_TABLE_COLUMN);
-        PT_NODE * name = $1;
-        pt_col->info.json_table_column_info.name = name->info.name.original;
+        pt_col->info.json_table_column_info.name = $1;
         pt_col->info.json_table_column_info.func = JSON_TABLE_ORDINALITY;
         pt_col->type_enum = DB_TYPE_INTEGER;
         $$ = pt_col;
@@ -23254,8 +23253,7 @@ vacuum_stmt
     //        $1        $2   $3          $4                                $5                                $6
       {{
         PT_NODE *pt_col = parser_new_node (this_parser, PT_JSON_TABLE_COLUMN);
-        PT_NODE * name = $1;
-        pt_col->info.json_table_column_info.name = name->info.name.original;
+        pt_col->info.json_table_column_info.name = $1;
         pt_col->type_enum = TO_NUMBER (CONTAINER_AT_0 ($2));
         pt_col->data_type = CONTAINER_AT_1 ($2);
         pt_col->info.json_table_column_info.path=$4;
@@ -23267,8 +23265,7 @@ vacuum_stmt
     | identifier data_type EXISTS PATH CHAR_STRING
       {{
         PT_NODE *pt_col = parser_new_node (this_parser, PT_JSON_TABLE_COLUMN);
-        PT_NODE * name = $1;
-        pt_col->info.json_table_column_info.name = name->info.name.original;
+        pt_col->info.json_table_column_info.name = $1;
         pt_col->type_enum = TO_NUMBER (CONTAINER_AT_0 ($2));
         pt_col->data_type = CONTAINER_AT_1 ($2);
         pt_col->info.json_table_column_info.path=$5;

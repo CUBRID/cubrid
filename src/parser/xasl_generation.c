@@ -4554,8 +4554,7 @@ pt_create_json_table_column (PARSER_CONTEXT * parser, PT_NODE * jt_column, TABLE
   // this doesn't work yet
   col_result->m_output_value_pointer =
     pt_index_value (tbl_info->value_list,
-		    pt_find_attribute (parser, pt_name (parser, jt_column->info.json_table_column_info.name),
-				       tbl_info->attribute_list));
+		    pt_find_attribute (parser, jt_column->info.json_table_column_info.name, tbl_info->attribute_list));
   if (col_result->m_output_value_pointer == NULL)
     {
       assert (false);
@@ -4598,9 +4597,8 @@ transform_to_json_table_spec_node_internal (PARSER_CONTEXT * parser, PT_JSON_TAB
   // create children 
   for (PT_NODE * nested_itr = jt_node_info->nested_paths; nested_itr != NULL; nested_itr = nested_itr->next)
     {
-      result->m_nested_nodes.
-	emplace_back (*transform_to_json_table_spec_node_internal
-		      (parser, &nested_itr->info.json_table_node_info, current_id, tbl_info));
+      result->m_nested_nodes.emplace_back (*transform_to_json_table_spec_node_internal
+					   (parser, &nested_itr->info.json_table_node_info, current_id, tbl_info));
     }
 
   return result;

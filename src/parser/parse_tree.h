@@ -3267,7 +3267,7 @@ struct pt_insert_value_info
 
 struct pt_json_table_column_info
 {
-  const char *name;
+  PT_NODE *name;
   // domain is stored in parser node
   const char *path;
   enum json_table_column_function func;
