@@ -4550,8 +4550,6 @@ pt_create_json_table_column (PARSER_CONTEXT * parser, PT_NODE * jt_column, TABLE
   json_table_column *col_result = new json_table_column ();	// is this leaked?
 
   col_result->m_function = jt_column->info.json_table_column_info.func;
-  // todo: store name in a pt_name
-  // this doesn't work yet
   col_result->m_output_value_pointer =
     pt_index_value (tbl_info->value_list,
 		    pt_find_attribute (parser, jt_column->info.json_table_column_info.name, tbl_info->attribute_list));
@@ -4569,10 +4567,6 @@ pt_create_json_table_column (PARSER_CONTEXT * parser, PT_NODE * jt_column, TABLE
 
   col_result->m_on_empty = jt_column->info.json_table_column_info.on_empty;
   col_result->m_on_error = jt_column->info.json_table_column_info.on_error;
-
-  // todo:
-  // col_result->m_domain = ? ;
-  // col_result->m_output_value_pointer = ?
 
   return *col_result;
 }
@@ -12203,7 +12197,6 @@ pt_to_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_key_pa
   else if (PT_SPEC_IS_DERIVED (spec))
     {
       /* derived table index_part better be NULL here! */
-      // todo: json_table
       if (spec->info.spec.derived_table_type == PT_IS_SUBQUERY)
 	{
 	  access = pt_to_subquery_table_spec_list (parser, spec, spec->info.spec.derived_table, where_part);

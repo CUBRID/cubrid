@@ -23409,7 +23409,7 @@ vacuum_stmt
         PT_NODE *pt_col = parser_new_node (this_parser, PT_JSON_TABLE_COLUMN);
         pt_col->info.json_table_column_info.name = $1;
         pt_col->info.json_table_column_info.func = JSON_TABLE_ORDINALITY;
-        pt_col->type_enum = DB_TYPE_INTEGER;
+        pt_col->type_enum = PT_TYPE_INTEGER;
         $$ = pt_col;
       DBG_PRINT}}
     | identifier data_type PATH CHAR_STRING json_table_on_error_rule_optional json_table_on_empty_rule_optional

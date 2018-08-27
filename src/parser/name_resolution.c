@@ -130,7 +130,8 @@ static PT_NODE *pt_common_attribute (PARSER_CONTEXT * parser, PT_NODE * p, PT_NO
 static PT_NODE *pt_get_all_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * cls, PT_NODE * from);
 static PT_NODE *pt_get_all_json_table_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * json_table_node,
 							    const char *json_table_alias);
-static PT_NODE *pt_json_table_gather_attribs (PARSER_CONTEXT * parser, PT_NODE * json_table_node, int *continue_walk);
+static PT_NODE *pt_json_table_gather_attribs (PARSER_CONTEXT * parser, PT_NODE * json_table_node, void *args,
+					      int *continue_walk);
 static PT_NODE *pt_get_all_showstmt_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * derived_table);
 static void pt_get_attr_data_type (PARSER_CONTEXT * parser, DB_ATTRIBUTE * att, PT_NODE * attr);
 static PT_NODE *pt_unwhacked_spec (PARSER_CONTEXT * parser, PT_NODE * scope, PT_NODE * spec);
@@ -4337,7 +4338,6 @@ pt_json_table_gather_attribs (PARSER_CONTEXT * parser, PT_NODE * json_table_colu
 
   if (json_table_column->node_type == PT_JSON_TABLE_COLUMN)
     {
-      // do not copy ? The column's name also needs its resolved property set
       PT_NODE *next_attr = json_table_column->info.json_table_column_info.name;
       next_attr->type_enum = json_table_column->type_enum;
       if (json_table_column->data_type != NULL)
@@ -4360,7 +4360,6 @@ pt_get_all_json_table_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * j
   for (PT_NODE * attr = attribs; attr; attr = attr->next)
     {
       assert (attr->info.name.resolved == NULL);
-
       attr->info.name.resolved = json_table_alias;
     }
   return attribs;
