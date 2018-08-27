@@ -4356,7 +4356,7 @@ pt_get_all_json_table_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * j
 {
   PT_NODE *attribs = NULL;
 
-  parser_walk_tree (parser, json_table_node, NULL, NULL, pt_json_table_gather_attribs, &attribs);
+  parser_walk_tree (parser, json_table_node, pt_json_table_gather_attribs, &attribs, NULL, NULL);
   for (PT_NODE * attr = attribs; attr; attr = attr->next)
     {
       assert (attr->info.name.resolved == NULL);
