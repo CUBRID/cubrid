@@ -124,7 +124,7 @@ namespace cubxasl
 	  return ER_FAILED;
 	}
 
-      if (db_make_json (m_output_value_pointer, NULL, docp, true) != NO_ERROR)
+      if (db_make_json (m_output_value_pointer, docp, true) != NO_ERROR)
 	{
 	  assert (false);
 	  return ER_FAILED;
