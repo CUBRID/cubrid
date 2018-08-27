@@ -194,6 +194,7 @@ EXPORTS
     db_2pc_start_transaction
     db_abort_to_savepoint
     db_abort_transaction
+    db_reset_latest_query_status
     db_add_argument
     db_add_attribute
     db_add_class_attribute

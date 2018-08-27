@@ -116,6 +116,7 @@ extern "C"
   extern int db_enable_modification (void);
   extern int db_commit_transaction (void);
   extern int db_abort_transaction (void);
+  extern int db_reset_latest_query_status (void);
   extern int db_commit_is_needed (void);
   extern int db_savepoint_transaction (const char *savepoint_name);
   extern int db_abort_to_savepoint (const char *savepoint_name);
@@ -651,6 +652,8 @@ extern "C"
   extern void db_invalidate_mvcc_snapshot_before_statement (void);
 
   extern void db_set_read_fetch_instance_version (LC_FETCH_VERSION_TYPE read_Fetch_Instance_Version);
+
+  extern int db_set_statement_auto_commit (DB_SESSION * session, bool auto_commit);
 
   extern int db_query_set_copy_tplvalue (DB_QUERY_RESULT * result, int copy);
 

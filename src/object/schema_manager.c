@@ -391,7 +391,8 @@ static int flatten_subclasses (DB_OBJLIST * subclasses, MOP deleted_class);
 static void abort_subclasses (DB_OBJLIST * subclasses);
 static int update_subclasses (DB_OBJLIST * subclasses);
 static int lockhint_subclasses (SM_TEMPLATE * temp, SM_CLASS * class_);
-static int update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH auth);
+static int update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH auth,
+			 bool needs_hierarchy_lock);
 static int remove_class_triggers (MOP classop, SM_CLASS * class_);
 static int sm_drop_cascade_foreign_key (SM_CLASS * class_);
 static char *sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, const char **att_names,
@@ -449,9 +450,12 @@ static int update_fk_ref_partitioned_class (SM_TEMPLATE * ctemplate, SM_FOREIGN_
 static int flatten_partition_info (SM_TEMPLATE * def, SM_TEMPLATE * flat);
 static DB_OBJLIST *sm_fetch_all_objects_internal (DB_OBJECT * op, DB_FETCH_MODE purpose,
 						  LC_FETCH_VERSION_TYPE * force_fetch_version_type);
+static int sm_flush_and_decache_objects_internal (MOP obj, MOP obj_class_mop, int decache);
 
 static void sm_stats_remove_bt_stats_at_position (ATTR_STATS * attr_stats, int position);
 static void sm_stats_remove_online_index_stats (SM_CLASS * class_);
+
+static void sm_free_resident_classes_virtual_query_cache (void);
 
 /*
  * sc_set_current_schema()
@@ -2047,6 +2051,28 @@ sm_create_root (OID * rootclass_oid, HFID * rootclass_hfid)
   locator_add_root (rootclass_oid, (MOBJ) (&sm_Root_class));
 }
 
+/*
+ * sm_free_resident_classes_virtual_query_cache () - free virual query cache of resident classes
+ *   return: none
+ */
+static void
+sm_free_resident_classes_virtual_query_cache (void)
+{
+  SM_CLASS *class_;
+  DB_OBJLIST *cl;
+
+  /* go through the resident class list and free anything attached to the class that wasn't allocated in the workspace,
+   * this is only the virtual_query_cache at this time */
+  for (cl = ws_Resident_classes; cl != NULL; cl = cl->next)
+    {
+      class_ = (SM_CLASS *) cl->op->object;
+      if (class_ != NULL && class_->virtual_query_cache != NULL)
+	{
+	  mq_free_virtual_query_cache (class_->virtual_query_cache);
+	  class_->virtual_query_cache = NULL;
+	}
+    }
+}
 
 /*
  * sm_final() - Called during the shutdown sequence
@@ -2073,17 +2099,7 @@ sm_final ()
       sm_free_descriptor (d);
     }
 
-  /* go through the resident class list and free anything attached to the class that wasn't allocated in the workspace, 
-   * this is only the virtual_query_cache at this time */
-  for (cl = ws_Resident_classes; cl != NULL; cl = cl->next)
-    {
-      class_ = (SM_CLASS *) cl->op->object;
-      if (class_ != NULL && class_->virtual_query_cache != NULL)
-	{
-	  mq_free_virtual_query_cache (class_->virtual_query_cache);
-	  class_->virtual_query_cache = NULL;
-	}
-    }
+  sm_free_resident_classes_virtual_query_cache ();
 }
 
 /*
@@ -2102,6 +2118,9 @@ sm_transaction_boundary (void)
 {
   /* reset any outstanding descriptor caches */
   sm_reset_descriptors (NULL);
+
+  /* free view cache */
+  sm_free_resident_classes_virtual_query_cache ();
 
   /* Could be resetting the transaction caches in each class too but the workspace is controlling that */
 }
@@ -5920,6 +5939,131 @@ sm_flush_objects (MOP obj)
 }
 
 /*
+ * sm_decache_mop() - Decache mop.
+ *   return: error code.
+ *   mop(in): mop
+ *   info(in): additional information, currently not used.
+ */
+int
+sm_decache_mop (MOP mop, void *info)
+{
+  if (WS_ISVID (mop))
+    {
+      vid_decache_instance (mop);
+    }
+  else
+    {
+      ws_decache (mop);
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * sm_decache_instances_after_query_executed_with_commit() - Decache class instances after query execution with commit.
+ *   return: error code
+ *   class_mop(in): class mop
+ */
+int
+sm_decache_instances_after_query_executed_with_commit (MOP class_mop)
+{
+  SM_CLASS *class_;
+  DB_OBJLIST class_list, *obj = NULL;
+  MOBJ class_obj;
+
+  assert (class_mop != NULL && !WS_ISDIRTY (class_mop) && !locator_is_root (class_mop));
+
+  class_list.op = class_mop;
+  class_list.next = NULL;
+
+  if (ws_find (class_mop, &class_obj) == WS_FIND_MOP_DELETED)
+    {
+      /* Should not happen. */
+      return ER_FAILED;
+    }
+
+  class_ = (SM_CLASS *) class_obj;
+  assert (class_ != NULL);
+  if (class_->partition != NULL && class_->users != NULL)
+    {
+      class_list.next = class_->users;
+    }
+
+  /* Decache instances. */
+  for (obj = &class_list; obj != NULL; obj = obj->next)
+    {
+      if (obj->op == NULL || obj->op->object == NULL || class_->flags & SM_CLASSFLAG_SYSTEM)
+	{
+	  continue;
+	}
+
+      (void) ws_map_class (obj->op, sm_decache_mop, NULL);
+    }
+
+  for (obj = &class_list; obj != NULL; obj = obj->next)
+    {
+      ws_disconnect_deleted_instances (obj->op);
+    }
+
+  return NO_ERROR;
+}
+
+static int
+sm_flush_and_decache_objects_internal (MOP obj, MOP obj_class_mop, int decache)
+{
+  int error = NO_ERROR;
+  SM_CLASS *class_;
+
+  if (locator_flush_class (obj_class_mop) != NO_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  class_ = (SM_CLASS *) locator_fetch_class (obj, DB_FETCH_READ);
+  if (class_ == NULL)
+    {
+      ERROR0 (error, ER_WS_NO_CLASS_FOR_INSTANCE);
+      return error;
+    }
+
+  switch (class_->class_type)
+    {
+    case SM_CLASS_CT:
+      if (obj == obj_class_mop && (class_->flags & SM_CLASSFLAG_SYSTEM))
+	{
+	  /* if system class, flush all dirty class */
+	  if (locator_flush_all_instances (sm_Root_class_mop, DONT_DECACHE) != NO_ERROR)
+	    {
+	      ASSERT_ERROR_AND_SET (error);
+	      return error;
+	    }
+	}
+
+      if (locator_flush_all_instances (obj_class_mop, decache) != NO_ERROR)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  return error;
+	}
+      break;
+
+    case SM_VCLASS_CT:
+      if (vid_flush_all_instances (obj, decache) != NO_ERROR)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  return error;
+	}
+      break;
+
+    case SM_ADT_CT:
+      /* what to do here?? */
+      break;
+    }
+
+  return error;
+}
+
+/*
  * sm_flush_and_decache_objects() - Flush all the instances of a particular
  *    class to the server. Optionally decache the instances of the class.
  *   return: NO_ERROR on success, non-zero for ERROR
@@ -5931,167 +6075,49 @@ int
 sm_flush_and_decache_objects (MOP obj, int decache)
 {
   int error = NO_ERROR, is_class = 0;
-  MOBJ mem;
   MOP obj_class_mop;
-  SM_CLASS *class_;
 
-  if (obj != NULL)
+  if (obj == NULL)
     {
-      is_class = locator_is_class (obj, DB_FETCH_READ);
-      if (is_class < 0)
-	{
-	  return is_class;
-	}
-      if (is_class)
-	{
-	  /* always make sure the class is flushed as well */
-	  if (locator_flush_class (obj) != NO_ERROR)
-	    {
-	      assert (er_errid () != NO_ERROR);
-	      return er_errid ();
-	    }
-
-	  class_ = (SM_CLASS *) locator_fetch_class (obj, DB_FETCH_READ);
-	  if (class_ == NULL)
-	    {
-	      ERROR0 (error, ER_WS_NO_CLASS_FOR_INSTANCE);
-	    }
-	  else
-	    {
-	      switch (class_->class_type)
-		{
-		case SM_CLASS_CT:
-		  if (class_->flags & SM_CLASSFLAG_SYSTEM)
-		    {
-		      /* if system class, flush all dirty class */
-		      if (locator_flush_all_instances (sm_Root_class_mop, DONT_DECACHE) != NO_ERROR)
-			{
-			  assert (er_errid () != NO_ERROR);
-			  error = er_errid ();
-			  break;
-			}
-		    }
-
-		  if (locator_flush_all_instances (obj, decache) != NO_ERROR)
-		    {
-		      assert (er_errid () != NO_ERROR);
-		      error = er_errid ();
-		    }
-		  break;
-
-		case SM_VCLASS_CT:
-		  if (vid_flush_all_instances (obj, decache) != NO_ERROR)
-		    {
-		      assert (er_errid () != NO_ERROR);
-		      error = er_errid ();
-		    }
-		  break;
-
-		case SM_ADT_CT:
-		  /* what to do here?? */
-		  break;
-		}
-	    }
-	}
-      else
-	{
-	  obj_class_mop = ws_class_mop (obj);
-	  if (obj_class_mop != NULL)
-	    {
-	      if (locator_flush_class (obj_class_mop) != NO_ERROR)
-		{
-		  assert (er_errid () != NO_ERROR);
-		  return er_errid ();
-		}
-
-	      class_ = (SM_CLASS *) locator_fetch_class (obj, DB_FETCH_READ);
-	      if (class_ == NULL)
-		{
-		  ERROR0 (error, ER_WS_NO_CLASS_FOR_INSTANCE);
-		}
-	      else
-		{
-		  obj_class_mop = ws_class_mop (obj);
-		  switch (class_->class_type)
-		    {
-		    case SM_CLASS_CT:
-		      if (locator_flush_all_instances (obj_class_mop, decache) != NO_ERROR)
-			{
-			  assert (er_errid () != NO_ERROR);
-			  error = er_errid ();
-			}
-		      break;
-
-		    case SM_VCLASS_CT:
-		      if (vid_flush_all_instances (obj, decache) != NO_ERROR)
-			{
-			  assert (er_errid () != NO_ERROR);
-			  error = er_errid ();
-			}
-		      break;
-
-		    case SM_ADT_CT:
-		      /* what to do here?? */
-		      break;
-		    }
-		}
-	    }
-	  else
-	    {
-	      error = au_fetch_instance (obj, &mem, AU_FETCH_READ, TM_TRAN_READ_FETCH_VERSION (), AU_SELECT);
-	      if (error == NO_ERROR)
-		{
-		  /* don't need to pin here, we only wanted to check authorization */
-		  obj_class_mop = ws_class_mop (obj);
-		  if (obj_class_mop != NULL)
-		    {
-		      if (locator_flush_class (obj_class_mop) != NO_ERROR)
-			{
-			  assert (er_errid () != NO_ERROR);
-			  return er_errid ();
-			}
-
-		      class_ = (SM_CLASS *) locator_fetch_class (obj, DB_FETCH_READ);
-		      if (class_ == NULL)
-			{
-			  ERROR0 (error, ER_WS_NO_CLASS_FOR_INSTANCE);
-			}
-		      else
-			{
-			  switch (class_->class_type)
-			    {
-			    case SM_CLASS_CT:
-			      if (locator_flush_all_instances (obj_class_mop, decache) != NO_ERROR)
-				{
-				  assert (er_errid () != NO_ERROR);
-				  error = er_errid ();
-				}
-			      break;
-
-			    case SM_VCLASS_CT:
-			      if (vid_flush_all_instances (obj, decache) != NO_ERROR)
-				{
-				  assert (er_errid () != NO_ERROR);
-				  error = er_errid ();
-				}
-			      break;
-
-			    case SM_ADT_CT:
-			      /* what to do here?? */
-			      break;
-			    }
-			}
-		    }
-		  else
-		    {
-		      ERROR0 (error, ER_WS_NO_CLASS_FOR_INSTANCE);
-		    }
-		}
-	    }
-	}
+      return NO_ERROR;
     }
 
-  return error;
+  is_class = locator_is_class (obj, DB_FETCH_READ);
+  if (is_class < 0)
+    {
+      return is_class;
+    }
+
+  if (is_class)
+    {
+      // class
+      return sm_flush_and_decache_objects_internal (obj, obj, decache);
+    }
+  else
+    {
+      // instance
+      obj_class_mop = ws_class_mop (obj);
+      if (obj_class_mop == NULL)
+	{
+	  MOBJ mem;
+
+	  error = au_fetch_instance (obj, &mem, AU_FETCH_READ, TM_TRAN_READ_FETCH_VERSION (), AU_SELECT);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+
+	  /* don't need to pin here, we only wanted to check authorization */
+	  obj_class_mop = ws_class_mop (obj);
+	  if (obj_class_mop == NULL)
+	    {
+	      ERROR0 (error, ER_WS_NO_CLASS_FOR_INSTANCE);
+	      return error;
+	    }
+	}
+
+      return sm_flush_and_decache_objects_internal (obj, obj_class_mop, decache);
+    }
 }
 
 /*
@@ -12509,6 +12535,7 @@ lockhint_subclasses (SM_TEMPLATE * temp, SM_CLASS * class_)
  *   classmop(in): MOP of existing class (NULL if new class)
  *   auto_res(in): non-zero to enable auto-resolution of conflicts
  *   auth(in): the given authorization mode to modify class
+ *   needs_hierarchy_lock(in): lock sub/super classes?
  */
 
 /* NOTE: There were some problems when the transaction was unilaterally
@@ -12530,7 +12557,7 @@ lockhint_subclasses (SM_TEMPLATE * temp, SM_CLASS * class_)
  */
 
 static int
-update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH auth)
+update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH auth, bool needs_hierarchy_lock)
 {
   int error = NO_ERROR;
   int num_indexes;
@@ -12566,23 +12593,26 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
       goto end;
     }
 
-  /* pre-lock subclass lattice to the extent possible */
-  error = lockhint_subclasses (template_, class_);
-  if (error != NO_ERROR)
+  if (needs_hierarchy_lock)
     {
-      goto end;
-    }
+      /* pre-lock subclass lattice to the extent possible */
+      error = lockhint_subclasses (template_, class_);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
 
-  /* get write locks on all super classes */
-  if (class_ != NULL)
-    {
-      cursupers = class_->inheritance;
-    }
+      /* get write locks on all super classes */
+      if (class_ != NULL)
+	{
+	  cursupers = class_->inheritance;
+	}
 
-  error = lock_supers (template_, cursupers, &oldsupers, &newsupers);
-  if (error != NO_ERROR)
-    {
-      goto end;
+      error = lock_supers (template_, cursupers, &oldsupers, &newsupers);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
     }
 
   /* flatten template, store the pending template in the "new" field of the class in case we need it to make domain
@@ -12605,23 +12635,26 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
       goto end;
     }
 
-  /* get write locks on all subclasses */
-  if (class_ != NULL)
+  if (needs_hierarchy_lock)
     {
-      cursubs = class_->users;
-    }
-
-  error = lock_subclasses (template_, newsupers, cursubs, &newsubs);
-  if (error != NO_ERROR)
-    {
-      classobj_free_template (flat);
-      /* don't touch this class if we aborted ! */
-      if (class_ != NULL && error != ER_LK_UNILATERALLY_ABORTED)
+      /* get write locks on all subclasses */
+      if (class_ != NULL)
 	{
-	  class_->new_ = NULL;
+	  cursubs = class_->users;
 	}
 
-      goto end;
+      error = lock_subclasses (template_, newsupers, cursubs, &newsubs);
+      if (error != NO_ERROR)
+	{
+	  classobj_free_template (flat);
+	  /* don't touch this class if we aborted ! */
+	  if (class_ != NULL && error != ER_LK_UNILATERALLY_ABORTED)
+	    {
+	      class_->new_ = NULL;
+	    }
+
+	  goto end;
+	}
     }
 
   /* put the flattened definition in the class for use during subclass flattening */
@@ -12796,7 +12829,7 @@ error_return:
 int
 sm_finish_class (SM_TEMPLATE * template_, MOP * classmop)
 {
-  return update_class (template_, classmop, 0, AU_ALTER);
+  return update_class (template_, classmop, 0, AU_ALTER, true);
 }
 
 /*
@@ -12810,13 +12843,13 @@ sm_finish_class (SM_TEMPLATE * template_, MOP * classmop)
 int
 sm_update_class (SM_TEMPLATE * template_, MOP * classmop)
 {
-  return update_class (template_, classmop, 0, AU_ALTER);
+  return update_class (template_, classmop, 0, AU_ALTER, true);
 }
 
 int
-sm_update_class_with_auth (SM_TEMPLATE * template_, MOP * classmop, DB_AUTH auth)
+sm_update_class_with_auth (SM_TEMPLATE * template_, MOP * classmop, DB_AUTH auth, bool needs_hierarchy_lock)
 {
-  return update_class (template_, classmop, 0, auth);
+  return update_class (template_, classmop, 0, auth, needs_hierarchy_lock);
 }
 
 /*
@@ -12830,7 +12863,7 @@ sm_update_class_with_auth (SM_TEMPLATE * template_, MOP * classmop, DB_AUTH auth
 int
 sm_update_class_auto (SM_TEMPLATE * template_, MOP * classmop)
 {
-  return update_class (template_, classmop, 1, AU_ALTER);
+  return update_class (template_, classmop, 1, AU_ALTER, true);
 }
 
 /*
@@ -14547,6 +14580,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
   SM_TEMPLATE *def;
   MOP newmop = NULL;
   LOCK ex_lock = SCH_M_LOCK;
+  bool needs_hierarchy_lock;
 
   if (att_names == NULL)
     {
@@ -14645,7 +14679,8 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	  return error;
 	}
 
-      error = sm_update_class_with_auth (def, &newmop, auth);
+      needs_hierarchy_lock = DB_IS_CONSTRAINT_UNIQUE_FAMILY (constraint_type);
+      error = sm_update_class_with_auth (def, &newmop, auth, needs_hierarchy_lock);
       if (error != NO_ERROR)
 	{
 	  smt_quit (def);
@@ -14694,7 +14729,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	    }
 
 	  /* Update the class now. */
-	  error = sm_update_class_with_auth (def, &newmop, auth);
+	  error = sm_update_class_with_auth (def, &newmop, auth, needs_hierarchy_lock);
 	  if (error != NO_ERROR)
 	    {
 	      smt_quit (def);

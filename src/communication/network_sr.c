@@ -1022,6 +1022,8 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
   assert (func != NULL);
   if (func)
     {
+      er_log_debug (ARG_FILE_LINE, "net_server_request(): request %s\n", net_Requests[request].name);
+
       thread_p->push_resource_tracks ();
 
       if (conn->invalidate_snapshot != 0)
