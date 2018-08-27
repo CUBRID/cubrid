@@ -39,7 +39,7 @@ namespace cubxasl
     int
     column::trigger_on_error (int error_code, db_value &value_out)
     {
-      assert (error_code != NO_ERROR);
+      //assert (error_code != NO_ERROR);
 
       (void) db_make_null (&value_out);
 
@@ -114,14 +114,20 @@ namespace cubxasl
     {
       int error_code = NO_ERROR;
       JSON_DOC *docp = NULL;
+      TP_DOMAIN_STATUS status_cast = TP_DOMAIN_STATUS::DOMAIN_COMPATIBLE;
 
       error_code = db_json_extract_document_from_path (&input, m_path.c_str(), docp);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR();
 	  assert (db_value_is_null (m_output_value_pointer));
-	  error_code = trigger_on_error (error_code, *m_output_value_pointer);
 	  return ER_FAILED;
+	}
+
+      if (docp == NULL)
+	{
+	  error_code = trigger_on_empty (*m_output_value_pointer);
+	  return error_code;
 	}
 
       if (db_make_json (m_output_value_pointer, docp, true) != NO_ERROR)
@@ -130,9 +136,16 @@ namespace cubxasl
 	  return ER_FAILED;
 	}
 
-      if (db_value_is_null (m_output_value_pointer))
+      status_cast = tp_value_cast (m_output_value_pointer, m_output_value_pointer, m_domain, false);
+
+      if (status_cast != TP_DOMAIN_STATUS::DOMAIN_COMPATIBLE)
 	{
-	  error_code = trigger_on_empty (*m_output_value_pointer);
+	  error_code = trigger_on_error (error_code, *m_output_value_pointer);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR();
+	      return error_code;
+	    }
 	}
 
       return error_code;
@@ -143,6 +156,7 @@ namespace cubxasl
     {
       int error_code = NO_ERROR;
       bool result = false;
+      TP_DOMAIN_STATUS status_cast = TP_DOMAIN_STATUS::DOMAIN_COMPATIBLE;
 
       error_code = db_json_contains_path (&input, m_path.c_str(), result);
       if (error_code != NO_ERROR)
@@ -155,13 +169,29 @@ namespace cubxasl
       // the result is an integer type (maybe use short)
       db_make_int (m_output_value_pointer, result ? 1 : 0);
 
+      status_cast = tp_value_cast (m_output_value_pointer, m_output_value_pointer, m_domain, false);
+
+      if (status_cast != TP_DOMAIN_STATUS::DOMAIN_COMPATIBLE)
+	{
+	  return ER_FAILED;
+	}
+
       return error_code;
     }
 
     int
     column::evaluate_ordinality (size_t ordinality)
     {
+      TP_DOMAIN_STATUS status_cast = TP_DOMAIN_STATUS::DOMAIN_COMPATIBLE;
+
       db_make_int (m_output_value_pointer, ordinality);
+
+      status_cast = tp_value_cast (m_output_value_pointer, m_output_value_pointer, m_domain, false);
+
+      if (status_cast != TP_DOMAIN_STATUS::DOMAIN_COMPATIBLE)
+	{
+	  return ER_FAILED;
+	}
 
       return NO_ERROR;
     }
@@ -191,13 +221,6 @@ namespace cubxasl
 	  break;
 	default:
 	  return ER_FAILED;
-	}
-
-      error_code = tp_value_cast (m_output_value_pointer, m_output_value_pointer, m_domain, false);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  return error_code;
 	}
 
       return NO_ERROR;

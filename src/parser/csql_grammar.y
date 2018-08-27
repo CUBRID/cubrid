@@ -89,7 +89,7 @@ extern int yybuffer_pos;
 %{
 #define YYMAXDEPTH	1000000
 
-#define PARSER_DEBUG
+
 
 #include "config.h"
 

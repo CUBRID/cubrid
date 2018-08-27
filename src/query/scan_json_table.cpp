@@ -50,9 +50,12 @@ namespace cubscan
 
     scanner::cursor::cursor (void)
       : m_input_doc (NULL)
+      , m_process_doc (NULL)
       , m_json_iterator (NULL)
       , m_child (0)
       , m_row (0)
+      , m_is_row_evaluated (false)
+      , m_need_expand (false)
     {
       //
     }

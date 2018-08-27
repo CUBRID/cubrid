@@ -1105,9 +1105,20 @@ db_json_contains_path (const JSON_DOC *document, const char *raw_path, bool &res
     }
 
   JSON_POINTER p (json_pointer_string.c_str());
+  const JSON_VALUE *resulting_json = NULL;
 
-  // the actual search of the path
-  result = p.IsValid();
+  if (!p.IsValid())
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
+      return ER_JSON_INVALID_PATH;
+    }
+
+  resulting_json = p.Get (*document);
+
+  if (resulting_json != NULL)
+    {
+      result = true;
+    }
 
   return NO_ERROR;
 }
