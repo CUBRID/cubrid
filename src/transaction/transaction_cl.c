@@ -1364,12 +1364,12 @@ tran_get_check_interrupt (void)
 
 enum LATEST_QUERY_STATUS
 {
-  // 000: default, none
+  // 0000: default, none
   // 1000: aborted
   // 1001: aborted, reset required
-  // 100: ended, not committed
-  // 110: ended, committed
-  // 111: ended, committed, reset required
+  // 0100: ended, not committed
+  // 0110: ended, committed
+  // 0111: ended, committed, reset required
   NONE = 0,
   ABORTED = 0x1000,
   QUERY_ENDED = 0x100,

@@ -12064,7 +12064,6 @@ PT_NODE *
 pt_has_name_oid (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   bool *has_name_oid = (bool *) arg;
-  PT_NODE *ui_node;
 
   switch (node->node_type)
     {

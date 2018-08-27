@@ -125,6 +125,7 @@ struct session_state
 
   bool is_trigger_involved;
   bool is_last_insert_id_generated;
+  bool auto_commit;
   DB_VALUE cur_insert_id;
   DB_VALUE last_insert_id;
   int row_count;
@@ -139,7 +140,6 @@ struct session_state
   int ref_count;
   TZ_REGION session_tz_region;
   int private_lru_index;
-  bool auto_commit;
 };
 
 /* session state manipulation functions */
@@ -3146,6 +3146,7 @@ int
 session_set_tran_auto_commit (THREAD_ENTRY * thread_p, bool auto_commit)
 {
   SESSION_STATE *state_p = NULL;
+
   state_p = session_get_session_state (thread_p);
   if (state_p == NULL)
     {

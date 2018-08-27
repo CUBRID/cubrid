@@ -455,6 +455,8 @@ static int sm_flush_and_decache_objects_internal (MOP obj, MOP obj_class_mop, in
 static void sm_stats_remove_bt_stats_at_position (ATTR_STATS * attr_stats, int position);
 static void sm_stats_remove_online_index_stats (SM_CLASS * class_);
 
+static void sm_free_resident_classes_virtual_query_cache (void);
+
 /*
  * sc_set_current_schema()
  *      return: NO_ERROR if successful
@@ -2053,7 +2055,7 @@ sm_create_root (OID * rootclass_oid, HFID * rootclass_hfid)
  * sm_free_resident_classes_virtual_query_cache () - free virual query cache of resident classes
  *   return: none
  */
-void
+static void
 sm_free_resident_classes_virtual_query_cache (void)
 {
   SM_CLASS *class_;
