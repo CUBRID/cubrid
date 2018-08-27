@@ -93,6 +93,7 @@ namespace cubscan
 	size_t get_tree_height (const cubxasl::json_table::node &node);
 	void clear_columns (std::vector<cubxasl::json_table::column> &columns);
 	void clear_node_columns (cubxasl::json_table::node &node);
+	void reset_ordinality (cubxasl::json_table::node &node);
 
 	int next_internal (cubthread::entry *thread_p, int depth, bool &success);
 

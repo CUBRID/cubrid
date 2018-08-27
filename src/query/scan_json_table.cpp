@@ -216,13 +216,12 @@ namespace cubscan
       init_eval_functions (*m_specp->m_root_node);
     }
 
-
-
     void
     scanner::clear (xasl_node *xasl_p, bool is_final)
     {
       // columns should be released every time
       m_specp->m_root_node->clear_columns();
+      reset_ordinality (*m_specp->m_root_node);
 
       // all json documents should be release depending on is_final
       if (is_final)
@@ -232,10 +231,14 @@ namespace cubscan
 	      cursor &cursor = m_scan_cursor[i];
 	      db_json_delete_doc (cursor.m_input_doc);
 	      db_json_delete_json_iterator (cursor.m_json_iterator);
+
+	      cursor.m_child = 0;
+	      cursor.m_row = 0;
+	      cursor.m_is_row_evaluated = false;
+	      cursor.m_need_expand = false;
 	    }
 	}
 
-      // todo: not sure if cleared everything, need double check
     }
 
     int
@@ -416,6 +419,16 @@ namespace cubscan
     {
       clear_columns (node.m_predicate_columns);
       clear_columns (node.m_output_columns);
+    }
+
+    void
+    scanner::reset_ordinality (cubxasl::json_table::node &node)
+    {
+      node.m_ordinality = 1;
+      for (cubxasl::json_table::node &child : node.m_nested_nodes)
+	{
+	  reset_ordinality (child);
+	}
     }
 
     int

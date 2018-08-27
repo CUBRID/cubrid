@@ -860,6 +860,7 @@ void
 db_json_delete_json_iterator (JSON_ITERATOR *&json_itr)
 {
   delete json_itr;
+  json_itr = NULL;
 }
 
 bool
