@@ -4858,7 +4858,7 @@ btree_initialize_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args)
   pgbuf_set_page_ptype (thread_p, page, PAGE_BTREE);
 
   spage_initialize (thread_p, page, UNANCHORED_KEEP_SEQUENCE, BTREE_MAX_ALIGN, DONT_SAFEGUARD_RVSPACE);
-  log_append_redo_data2 (thread_p, RVBT_GET_NEWPAGE, NULL, page, -1, 0, NULL);
+  log_append_undoredo_data2 (thread_p, RVBT_GET_NEWPAGE, NULL, page, -1, 0, 0, NULL, NULL);
   pgbuf_set_dirty (thread_p, page, DONT_FREE);
 
   return NO_ERROR;

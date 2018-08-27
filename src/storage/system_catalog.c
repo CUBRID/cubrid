@@ -630,7 +630,8 @@ catalog_initialize_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args)
       return ER_FAILED;
     }
 
-  log_append_redo_data2 (thread_p, RVCT_NEWPAGE, NULL, page, -1, sizeof (CATALOG_PAGE_HEADER), &page_header);
+  log_append_undoredo_data2 (thread_p, RVCT_NEWPAGE, NULL, page, -1, 0, sizeof (CATALOG_PAGE_HEADER), NULL,
+			     &page_header);
 
   pgbuf_set_dirty (thread_p, page, DONT_FREE);
   return NO_ERROR;
