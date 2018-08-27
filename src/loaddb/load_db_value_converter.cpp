@@ -512,8 +512,9 @@ namespace cubload
   {
     JSON_DOC *document = NULL;
     int ret = NO_ERROR;
+    size_t json_len = strlen (str);
 
-    ret = db_json_get_json_from_str (str, document);
+    ret = db_json_get_json_from_str (str, document, json_len);
     if (ret != NO_ERROR)
       {
 	assert (document == NULL);
