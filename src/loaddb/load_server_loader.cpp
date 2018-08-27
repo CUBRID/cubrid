@@ -28,15 +28,15 @@
 #include "load_db_value_converter.hpp"
 #include "load_server_loader.hpp"
 #include "locator_sr.h"
+#include "oid.h"
 #include "thread_manager.hpp"
-#include "transform.h"
 #include "xserver_interface.h"
 
 namespace cubload
 {
 
   server_loader::server_loader ()
-    : m_class_oid (NULL_OID_INITIALIZER)
+    : m_class_oid (OID_INITIALIZER)
     , m_attr_ids (NULL)
     , m_attr_info ()
     , m_scan_cache ()
@@ -187,7 +187,7 @@ namespace cubload
 
     m_err_total = 0;
     m_total_fails = 0;
-    m_class_oid = NULL_OID_INITIALIZER;
+    m_class_oid = OID_INITIALIZER;
   }
 
   void

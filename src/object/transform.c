@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -414,91 +414,91 @@ static CT_ATTR ct_partition_atts[] = {
 
 CT_CLASS ct_Class = {
   CT_CLASS_NAME,
-  NULL_OID_INITIALIZER,
+  OID_INITIALIZER,
   (sizeof (ct_class_atts) / sizeof (ct_class_atts[0])),
   ct_class_atts
 };
 
 CT_CLASS ct_Attribute = {
   CT_ATTRIBUTE_NAME,
-  NULL_OID_INITIALIZER,
+  OID_INITIALIZER,
   (sizeof (ct_attribute_atts) / sizeof (ct_attribute_atts[0])),
   ct_attribute_atts
 };
 
 CT_CLASS ct_Attrid = {
   NULL,
-  NULL_OID_INITIALIZER,
+  OID_INITIALIZER,
   (sizeof (ct_attrid_atts) / sizeof (ct_attrid_atts[0])),
   ct_attrid_atts
 };
 
 CT_CLASS ct_Domain = {
   CT_DOMAIN_NAME,
-  NULL_OID_INITIALIZER,
+  OID_INITIALIZER,
   (sizeof (ct_domain_atts) / sizeof (ct_domain_atts[0])),
   ct_domain_atts
 };
 
 CT_CLASS ct_Method = {
   CT_METHOD_NAME,
-  NULL_OID_INITIALIZER,
+  OID_INITIALIZER,
   (sizeof (ct_method_atts) / sizeof (ct_method_atts[0])),
   ct_method_atts
 };
 
 CT_CLASS ct_Methsig = {
   CT_METHSIG_NAME,
-  NULL_OID_INITIALIZER,
+  OID_INITIALIZER,
   (sizeof (ct_methsig_atts) / sizeof (ct_methsig_atts[0])),
   ct_methsig_atts
 };
 
 CT_CLASS ct_Metharg = {
   CT_METHARG_NAME,
-  NULL_OID_INITIALIZER,
+  OID_INITIALIZER,
   (sizeof (ct_metharg_atts) / sizeof (ct_metharg_atts[0])),
   ct_metharg_atts
 };
 
 CT_CLASS ct_Methfile = {
   CT_METHFILE_NAME,
-  NULL_OID_INITIALIZER,
+  OID_INITIALIZER,
   (sizeof (ct_methfile_atts) / sizeof (ct_methfile_atts[0])),
   ct_methfile_atts
 };
 
 CT_CLASS ct_Queryspec = {
   CT_QUERYSPEC_NAME,
-  NULL_OID_INITIALIZER,
+  OID_INITIALIZER,
   (sizeof (ct_queryspec_atts) / sizeof (ct_queryspec_atts[0])),
   ct_queryspec_atts
 };
 
 CT_CLASS ct_Partition = {
   CT_PARTITION_NAME,
-  NULL_OID_INITIALIZER,
+  OID_INITIALIZER,
   (sizeof (ct_partition_atts) / sizeof (ct_partition_atts[0])),
   ct_partition_atts
 };
 
 CT_CLASS ct_Resolution = {
   NULL,
-  NULL_OID_INITIALIZER,
+  OID_INITIALIZER,
   (sizeof (ct_resolution_atts) / sizeof (ct_resolution_atts[0])),
   ct_resolution_atts
 };
 
 CT_CLASS ct_Index = {
   CT_INDEX_NAME,
-  NULL_OID_INITIALIZER,
+  OID_INITIALIZER,
   (sizeof (ct_index_atts) / sizeof (ct_index_atts[0])),
   ct_index_atts
 };
 
 CT_CLASS ct_Indexkey = {
   CT_INDEXKEY_NAME,
-  NULL_OID_INITIALIZER,
+  OID_INITIALIZER,
   (sizeof (ct_indexkey_atts) / sizeof (ct_indexkey_atts[0])),
   ct_indexkey_atts
 };
@@ -570,7 +570,7 @@ tf_compile_meta_classes ()
 	    }
 	  else if (class_->mc_n_variable)
 	    {
-	      /* 
+	      /*
 	       * can't have fixed width attributes AFTER variable width
 	       * attributes
 	       */
@@ -578,7 +578,7 @@ tf_compile_meta_classes ()
 	    }
 	  else
 	    {
-	      /* 
+	      /*
 	       * need a domain for size calculations, since we don't use
 	       * any parameterized types this isn't necessary but we still must
 	       * have it to call tp_domain_isk_size().
@@ -601,7 +601,7 @@ tf_compile_meta_classes ()
 int
 tf_install_meta_classes ()
 {
-  /* 
+  /*
    * no longer making catalog entries, eventually build the meta-class object
    * here
    */

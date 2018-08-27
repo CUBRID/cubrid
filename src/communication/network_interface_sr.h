@@ -219,8 +219,8 @@ extern void schksum_insert_repl_log_and_demote_table_lock (THREAD_ENTRY * thread
 extern void slogtb_does_active_user_exist (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slocator_redistribute_partition_data (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 
-extern void loaddb_init (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-extern void loaddb_load_object_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-extern void loaddb_load_batch (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-extern void loaddb_destroy (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sloaddb_init (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sloaddb_load_object_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sloaddb_load_batch (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sloaddb_destroy (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 #endif /* _NETWORK_INTERFACE_SR_H_ */

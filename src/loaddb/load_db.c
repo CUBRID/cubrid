@@ -588,10 +588,14 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   /* set to static to avoid copiler warning (clobbered by longjump) */
   static FILE *schema_file = NULL;
   static FILE *index_file = NULL;
+
+  /* *INDENT-OFF* */
   static std::ifstream object_file;
 #if defined (SA_MODE)
   static cubload::driver driver;
 #endif // SA_MODE
+  /* *INDENT-ON* */
+
   FILE *error_file = NULL;
   int status = 0;
   int errors = 0;
@@ -747,7 +751,10 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
     }
   if (Object_file[0] != 0)
     {
+      /* *INDENT-OFF* */
       object_file.open (Object_file, std::fstream::in | std::fstream::binary);
+      /* *INDENT-ON* */
+
       if (!object_file.is_open () || !object_file.good ())
 	{
 	  msg_format = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_BAD_INFILE);
@@ -892,6 +899,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       /* set the flag to indicate what type of interrupts to raise If logging has been disabled set commit flag. If
        * logging is enabled set abort flag. */
 
+      /* *INDENT-OFF* */
       if (Ignore_logging)
 	{
 	  Interrupt_type = cubload::LDR_STOP_AND_COMMIT_INTERRUPT;
@@ -900,6 +908,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	{
 	  Interrupt_type = cubload::LDR_STOP_AND_ABORT_INTERRUPT;
 	}
+      /* *INDENT-ON* */
 
       if (Periodic_commit)
 	{
@@ -934,7 +943,11 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	  /* now do it for real if there were no errors and we aren't doing a simple syntax check */
 	  ldr_start (Periodic_commit);
 	  object_file.close ();
+
+	  /* *INDENT-OFF* */
 	  object_file.open (Object_file, std::fstream::in | std::fstream::binary);
+	  /* *INDENT-ON* */
+
 	  if (object_file.is_open ())
 	    {
 	      print_log_msg ((int) Verbose,

@@ -179,8 +179,6 @@ typedef struct tf_ct_class
 #define AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH (4)
 #define AUTO_INCREMENT_SERIAL_NAME_MAX_LENGTH ((DB_MAX_IDENTIFIER_LENGTH - 1) * 2 + AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH + 1)
 
-#define NULL_OID_INITIALIZER    {NULL_PAGEID, NULL_SLOTID, NULL_VOLID}
-
 /*
  * Metaclass definitions
  *    Static definitions of the meta classes.
