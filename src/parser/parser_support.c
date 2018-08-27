@@ -10039,6 +10039,7 @@ pt_make_query_describe_w_identifier (PARSER_CONTEXT * parser, PT_NODE * original
  *	     'BTREE' AS Index_type
  *	     "" AS Func,
  *           "" AS Comment,
+ *           "" AS Visible
  *    FROM <table> ORDER BY 3, 5;
  *
  *  Note: At execution, all empty fields will be replaced by values
@@ -10052,11 +10053,11 @@ pt_make_query_show_index (PARSER_CONTEXT * parser, PT_NODE * original_cls_id)
   PT_NODE *query = NULL;
   char lower_table_name[DB_MAX_IDENTIFIER_LENGTH];
   PT_NODE *value = NULL, *value_list = NULL;
-  DB_VALUE db_valuep[13];
+  DB_VALUE db_valuep[14];
   const char *aliases[] = {
     "Table", "Non_unique", "Key_name", "Seq_in_index", "Column_name",
     "Collation", "Cardinality", "Sub_part", "Packed", "Null", "Index_type",
-    "Func", "Comment"
+    "Func", "Comment", "Visible"
   };
   unsigned int i = 0;
 
@@ -10094,6 +10095,8 @@ pt_make_query_show_index (PARSER_CONTEXT * parser, PT_NODE * original_cls_id)
   db_value_domain_default (db_valuep + 11, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, 0, LANG_SYS_CODESET,
 			   LANG_SYS_COLLATION, NULL);
   db_make_varchar (db_valuep + 12, DB_DEFAULT_PRECISION, (const DB_C_CHAR) "", 0, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  db_value_domain_default (db_valuep + 13, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, 0, LANG_SYS_CODESET,
+			   LANG_SYS_COLLATION, NULL);
 
   for (i = 0; i < sizeof (db_valuep) / sizeof (db_valuep[0]); i++)
     {

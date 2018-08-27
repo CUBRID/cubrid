@@ -1102,7 +1102,18 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
     }
   else if (type == SM_CONSTRAINT_PRIMARY_KEY)
     {
-      if (fk_info != NULL)
+      SM_FOREIGN_KEY_INFO *fk;
+      int num_live_fk = 0;
+
+      for (fk = fk_info; fk != NULL; fk = fk->next)
+	{
+	  if (!fk->is_dropped)
+	    {
+	      num_live_fk++;
+	    }
+	}
+
+      if (0 < num_live_fk)
 	{
 	  // create subset sequence for all foreign key references
 	  DB_SEQ *fk_container = set_create_sequence (1);
@@ -1113,8 +1124,13 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
 	    }
 
 	  int fk_index = 0;
-	  for (SM_FOREIGN_KEY_INFO * fk = fk_info; fk; fk = fk->next)
+	  for (fk = fk_info; fk; fk = fk->next)
 	    {
+	      if (fk->is_dropped)
+		{
+		  continue;
+		}
+
 	      if (classobj_put_seq_and_iterate (fk_container, fk_index,
 						classobj_make_foreign_key_ref_seq (fk)) != NO_ERROR)
 		{
@@ -1122,6 +1138,7 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
 		  goto error;
 		}
 	    }
+	  assert (num_live_fk == fk_index);
 
 	  // put fk sequence into constraint sequence
 	  if (classobj_put_seq_and_iterate (constraint, constraint_seq_index, fk_container) != NO_ERROR)
@@ -1934,7 +1951,7 @@ end:
  *   comment(in): new comment of property
  */
 int
-classobj_change_constraint_comment (DB_SEQ * properties, SM_CLASS_CONSTRAINT *cons, const char *comment)
+classobj_change_constraint_comment (DB_SEQ * properties, SM_CLASS_CONSTRAINT * cons, const char *comment)
 {
   DB_VALUE prop_val, cnstr_val, curr_comment, new_comment;
   DB_SEQ *prop_seq, *idx_seq;
@@ -8484,7 +8501,7 @@ classobj_copy_default_expr (DB_DEFAULT_EXPR * dest, const DB_DEFAULT_EXPR * src)
 }
 
 int
-classobj_change_constraint_status (DB_SEQ * properties, SM_CLASS_CONSTRAINT *cons, SM_INDEX_STATUS index_status)
+classobj_change_constraint_status (DB_SEQ * properties, SM_CLASS_CONSTRAINT * cons, SM_INDEX_STATUS index_status)
 {
   DB_VALUE prop_val, cnstr_val, curr_status, new_status;
   DB_SEQ *prop_seq, *idx_seq;
