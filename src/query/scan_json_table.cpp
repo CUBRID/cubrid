@@ -190,6 +190,14 @@ namespace cubscan
 
       m_scan_cursor = new cursor[m_tree_height];
 
+      // init cursor nodes to left-most first branch
+      json_table_node *t = m_specp->m_root_node;
+      m_scan_cursor[0].m_node = t;
+      for (int i = 1; !t->m_nested_nodes.empty(); t = &t->m_nested_nodes[0], ++i)
+	{
+	  m_scan_cursor[i].m_node = t;
+	}
+
       // walk json table tree and initialize evaluation functions
       init_eval_functions (*m_specp->m_root_node);
     }
@@ -505,11 +513,10 @@ namespace cubscan
       // set columns values to NULL
       clear_node_columns (*this_cursor.m_node);
 
-      // remove this cursor
-      m_scan_cursor_depth--;
-
-      if (m_scan_cursor_depth >= 0)
+      if (m_scan_cursor_depth > 0)
 	{
+	  // remove this cursor
+	  m_scan_cursor_depth--;
 	  // advance row in parent when finished current branch
 	  cursor &parent = m_scan_cursor[m_scan_cursor_depth];
 	  parent.advance_row_cursor();
