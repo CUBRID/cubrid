@@ -35,16 +35,27 @@ namespace cubscan
       std::size_t m_row;
       std::size_t m_child;
       cubxasl::json_table::node *m_node;
-      JSON_DOC *m_input_doc = NULL;            // used for non-array / single row
+      JSON_DOC *m_input_doc;            // used for non-array / single row
       const JSON_DOC *m_row_doc;        // used only for arrays and multiple rows
       const JSON_DOC *m_process_doc;    // is either input_doc or row doc
       bool m_is_row_evaluated;
       bool m_need_expand;
-      JSON_ITERATOR *m_json_iterator = NULL;
+      JSON_ITERATOR *m_json_iterator;
 
       void advance_row_cursor();
       void set_json_iterator (const JSON_DOC &document, const char *parent_path);
+
+      cursor (void);
     };
+
+    scanner::cursor::cursor (void)
+      : m_input_doc (NULL)
+      , m_json_iterator (NULL)
+      , m_child (0)
+      , m_row (0)
+    {
+      //
+    }
 
     void
     scanner::cursor::advance_row_cursor()
