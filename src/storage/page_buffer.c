@@ -14213,10 +14213,6 @@ pgbuf_rv_new_page_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
     {
       pgbuf_set_page_ptype (thread_p, rcv->pgptr, set_page_type);
     }
-  else
-    {
-      assert (false);
-    }
 
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
   return NO_ERROR;
