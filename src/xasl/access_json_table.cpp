@@ -41,6 +41,7 @@ namespace cubxasl
     {
       //assert (error_code != NO_ERROR);
 
+      (void) pr_clear_value (&value_out);
       (void) db_make_null (&value_out);
 
       switch (m_on_error.m_behavior)
@@ -137,9 +138,9 @@ namespace cubxasl
 	}
 
       status_cast = tp_value_cast (m_output_value_pointer, m_output_value_pointer, m_domain, false);
-
       if (status_cast != TP_DOMAIN_STATUS::DOMAIN_COMPATIBLE)
 	{
+	  // todo - set error
 	  error_code = trigger_on_error (error_code, *m_output_value_pointer);
 	  if (error_code != NO_ERROR)
 	    {

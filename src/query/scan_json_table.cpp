@@ -103,7 +103,7 @@ namespace cubscan
 
 	  if (old_type != current_type)
 	    {
-	      delete m_json_iterator;
+	      delete m_json_iterator;    // todo: fixme
 	      m_json_iterator = db_json_create_iterator (*m_input_doc);
 	    }
 	  else

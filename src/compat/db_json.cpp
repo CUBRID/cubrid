@@ -186,7 +186,7 @@ class JSON_ITERATOR
       return doc_itr;
     }
 
-    DB_JSON_TYPE get_type_of_doc()
+    DB_JSON_TYPE get_type_of_doc () const
     {
       return current_type;
     }
@@ -884,7 +884,7 @@ db_json_reset_iterator (JSON_ITERATOR *&json_itr, const JSON_DOC &new_doc)
 }
 
 DB_JSON_TYPE
-db_json_iterator_get_type_of_doc (JSON_ITERATOR &json_itr)
+db_json_iterator_get_type_of_doc (const JSON_ITERATOR &json_itr)
 {
   return json_itr.get_type_of_doc();
 }
