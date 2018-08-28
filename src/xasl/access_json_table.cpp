@@ -39,8 +39,6 @@ namespace cubxasl
     int
     column::trigger_on_error (int error_code, db_value &value_out)
     {
-      //assert (error_code != NO_ERROR);
-
       (void) pr_clear_value (&value_out);
       (void) db_make_null (&value_out);
 
@@ -240,12 +238,14 @@ namespace cubxasl
     {
       for (auto &column : m_predicate_columns)
 	{
-	  pr_clear_value (column.m_output_value_pointer);
+	  (void)pr_clear_value (column.m_output_value_pointer);
+	  (void)db_make_null (column.m_output_value_pointer);
 	}
 
       for (auto &column : m_output_columns)
 	{
-	  pr_clear_value (column.m_output_value_pointer);
+	  (void)pr_clear_value (column.m_output_value_pointer);
+	  (void)db_make_null (column.m_output_value_pointer);
 	}
 
       for (node &child : m_nested_nodes)

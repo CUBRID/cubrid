@@ -86,6 +86,7 @@ namespace cubscan
     scanner::cursor::set_json_iterator (const JSON_DOC &document, const char *parent_path)
     {
       int error_code = NO_ERROR;
+      DB_JSON_TYPE input_doc_type = DB_JSON_TYPE::DB_JSON_UNKNOWN;
 
       // extract the document from parent path
       error_code = db_json_extract_document_from_path (&document, parent_path, m_input_doc);
@@ -93,6 +94,25 @@ namespace cubscan
 	{
 	  ASSERT_ERROR();
 	  return;
+	}
+
+      input_doc_type = db_json_get_type (m_input_doc);
+
+      if (m_need_expand)
+	{
+	  if ((scanner::str_ends_with (m_node->m_path, "[*]") && input_doc_type != DB_JSON_TYPE::DB_JSON_ARRAY) ||
+	      (scanner::str_ends_with (m_node->m_path, ".*") && input_doc_type != DB_JSON_TYPE::DB_JSON_OBJECT))
+	    {
+	      if (m_json_iterator != NULL)
+		{
+		  db_json_delete_json_iterator (m_json_iterator);
+		}
+
+	      // create empty iterator
+	      m_json_iterator = db_json_create_iterator (NULL);
+
+	      return;
+	    }
 	}
 
       if (m_json_iterator != NULL)
@@ -103,8 +123,8 @@ namespace cubscan
 
 	  if (old_type != current_type)
 	    {
-	      delete m_json_iterator;    // todo: fixme
-	      m_json_iterator = db_json_create_iterator (*m_input_doc);
+	      db_json_delete_json_iterator (m_json_iterator);
+	      m_json_iterator = db_json_create_iterator (m_input_doc);
 	    }
 	  else
 	    {
@@ -113,7 +133,7 @@ namespace cubscan
 	}
       else
 	{
-	  m_json_iterator = db_json_create_iterator (*m_input_doc);
+	  m_json_iterator = db_json_create_iterator (m_input_doc);
 	}
     }
 
@@ -388,9 +408,10 @@ namespace cubscan
 	{
 	  std::string parent_path = get_parent_path (node);
 
+	  cursor.m_need_expand = true;
+
 	  // set the input document and the iterator
 	  cursor.set_json_iterator (document, parent_path.c_str());
-	  cursor.m_need_expand = true;
 	}
       else
 	{
@@ -435,7 +456,8 @@ namespace cubscan
     {
       for (auto &column : columns)
 	{
-	  pr_clear_value (column.m_output_value_pointer);
+	  (void)pr_clear_value (column.m_output_value_pointer);
+	  (void)db_make_null (column.m_output_value_pointer);
 	}
     }
 
@@ -501,27 +523,34 @@ namespace cubscan
 		  this_cursor.m_process_doc = this_cursor.m_input_doc;
 		}
 
-	      error_code = evaluate (*this_cursor.m_node, thread_p, *this_cursor.m_process_doc, logical);
-	      if (error_code != NO_ERROR)
+	      if (this_cursor.m_process_doc != nullptr)
 		{
-		  ASSERT_ERROR ();
-		  return error_code;
-		}
-	      if (logical != V_TRUE)
-		{
-		  // we need another row
-		  this_cursor.advance_row_cursor();
-		  continue;
-		}
-	      this_cursor.m_is_row_evaluated = true;
+		  error_code = evaluate (*this_cursor.m_node, thread_p, *this_cursor.m_process_doc, logical);
+		  if (error_code != NO_ERROR)
+		    {
+		      ASSERT_ERROR();
+		      return error_code;
+		    }
+		  if (logical != V_TRUE)
+		    {
+		      // we need another row
+		      this_cursor.advance_row_cursor();
+		      continue;
+		    }
+		  this_cursor.m_is_row_evaluated = true;
 
-	      // fetch other columns too
-	      error_code = fetch_columns (*this_cursor.m_process_doc, this_cursor.m_node->m_output_columns,
-					  *this_cursor.m_node);
-	      if (error_code != NO_ERROR)
+		  // fetch other columns too
+		  error_code = fetch_columns (*this_cursor.m_process_doc, this_cursor.m_node->m_output_columns,
+					      *this_cursor.m_node);
+		  if (error_code != NO_ERROR)
+		    {
+		      ASSERT_ERROR();
+		      return error_code;
+		    }
+		}
+	      else
 		{
-		  ASSERT_ERROR ();
-		  return error_code;
+		  clear_node_columns (*this_cursor.m_node);
 		}
 
 	      // fall
@@ -575,7 +604,7 @@ namespace cubscan
 	  // advance row in parent when finished current branch
 	  cursor &parent = m_scan_cursor[m_scan_cursor_depth];
 
-	  if (parent.m_child < parent.m_node->m_nested_nodes.size())
+	  if (parent.m_child < parent.m_node->m_nested_nodes.size() - 1)
 	    {
 	      parent.m_child++;
 	    }
