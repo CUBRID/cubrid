@@ -153,6 +153,9 @@ class JSON_DOC: public rapidjson::GenericDocument <JSON_ENCODING, JSON_PRIVATE_M
 class JSON_ITERATOR
 {
   public:
+    // default ctor
+    JSON_ITERATOR() : document (nullptr), doc_itr (nullptr), current_type (DB_JSON_TYPE::DB_JSON_UNKNOWN) {}
+
     JSON_ITERATOR (const JSON_DOC &document) : document (&document), doc_itr (nullptr)
     {
       current_type = db_json_get_type (&document);
@@ -181,12 +184,18 @@ class JSON_ITERATOR
 	}
 
       const JSON_VALUE *value = get();
+
+      if (value == nullptr)
+	{
+	  return nullptr;
+	}
+
       doc_itr->CopyFrom (*value, doc_itr->GetAllocator());
 
       return doc_itr;
     }
 
-    DB_JSON_TYPE get_type_of_doc()
+    DB_JSON_TYPE get_type_of_doc() const
     {
       return current_type;
     }
@@ -213,6 +222,7 @@ class JSON_OBJECT_ITERATOR : public JSON_ITERATOR
     size_t count_members()
     {
       assert (document->IsObject());
+
       return document->MemberCount();
     }
 
@@ -249,6 +259,7 @@ class JSON_ARRAY_ITERATOR : public JSON_ITERATOR
     size_t count_members()
     {
       assert (document->IsArray());
+
       return document->GetArray().Size();
     }
 
@@ -300,6 +311,34 @@ class JSON_GENERIC_ELEM_ITERATOR : public JSON_ITERATOR
     {
       document = &new_doc;
     }
+};
+
+class JSON_EMPTY_ITERATOR : public JSON_ITERATOR
+{
+  public:
+    JSON_EMPTY_ITERATOR() {}
+
+    const JSON_VALUE *next()
+    {
+      return NULL;
+    }
+
+    bool has_next()
+    {
+      return false;
+    }
+
+    size_t count_members()
+    {
+      return 1;
+    }
+
+    const JSON_VALUE *get()
+    {
+      return NULL;
+    }
+
+    void reset (const JSON_DOC &new_doc) {}
 };
 
 const JSON_VALUE *
@@ -884,24 +923,28 @@ db_json_reset_iterator (JSON_ITERATOR *&json_itr, const JSON_DOC &new_doc)
 }
 
 DB_JSON_TYPE
-db_json_iterator_get_type_of_doc (JSON_ITERATOR &json_itr)
+db_json_iterator_get_type_of_doc (const JSON_ITERATOR &json_itr)
 {
   return json_itr.get_type_of_doc();
 }
 
 JSON_ITERATOR *
-db_json_create_iterator (const JSON_DOC &document)
+db_json_create_iterator (const JSON_DOC *document)
 {
-  if (document.IsObject())
+  if (document == NULL)
     {
-      return new JSON_OBJECT_ITERATOR (document);
+      return new JSON_EMPTY_ITERATOR();
     }
-  else if (document.IsArray())
+  else if (document->IsObject())
     {
-      return new JSON_ARRAY_ITERATOR (document);
+      return new JSON_OBJECT_ITERATOR (*document);
+    }
+  else if (document->IsArray())
+    {
+      return new JSON_ARRAY_ITERATOR (*document);
     }
 
-  return new JSON_GENERIC_ELEM_ITERATOR (document);
+  return new JSON_GENERIC_ELEM_ITERATOR (*document);
 }
 
 void
