@@ -153,7 +153,11 @@ class JSON_DOC: public rapidjson::GenericDocument <JSON_ENCODING, JSON_PRIVATE_M
 class JSON_ITERATOR
 {
   public:
-    JSON_ITERATOR (const JSON_DOC &document) : document (&document), doc_itr (nullptr) {}
+    JSON_ITERATOR (const JSON_DOC &document) : document (&document), doc_itr (nullptr)
+    {
+      current_type = db_json_get_type (&document);
+    }
+
     ~JSON_ITERATOR ()
     {
       if (doc_itr != nullptr)
@@ -182,9 +186,15 @@ class JSON_ITERATOR
       return doc_itr;
     }
 
+    DB_JSON_TYPE get_type_of_doc()
+    {
+      return current_type;
+    }
+
   protected:
     const JSON_DOC *document;
     JSON_DOC *doc_itr;
+    DB_JSON_TYPE current_type;
 };
 
 class JSON_OBJECT_ITERATOR : public JSON_ITERATOR
@@ -257,6 +267,39 @@ class JSON_ARRAY_ITERATOR : public JSON_ITERATOR
 
   private:
     rapidjson::GenericArray<true, JSON_VALUE>::ConstValueIterator iterator;
+};
+
+class JSON_GENERIC_ELEM_ITERATOR : public JSON_ITERATOR
+{
+  public:
+    JSON_GENERIC_ELEM_ITERATOR (const JSON_DOC &document) : JSON_ITERATOR (document)
+    {
+    }
+
+    const JSON_VALUE *next()
+    {
+      return NULL;
+    }
+
+    bool has_next()
+    {
+      return false;
+    }
+
+    size_t count_members()
+    {
+      return 1;
+    }
+
+    const JSON_VALUE *get()
+    {
+      return document;
+    }
+
+    void reset (const JSON_DOC &new_doc)
+    {
+      document = &new_doc;
+    }
 };
 
 const JSON_VALUE *
@@ -840,6 +883,12 @@ db_json_reset_iterator (JSON_ITERATOR *&json_itr, const JSON_DOC &new_doc)
   json_itr->reset (new_doc);
 }
 
+DB_JSON_TYPE
+db_json_iterator_get_type_of_doc (JSON_ITERATOR &json_itr)
+{
+  return json_itr.get_type_of_doc();
+}
+
 JSON_ITERATOR *
 db_json_create_iterator (const JSON_DOC &document)
 {
@@ -852,8 +901,7 @@ db_json_create_iterator (const JSON_DOC &document)
       return new JSON_ARRAY_ITERATOR (document);
     }
 
-  assert (false);
-  return NULL;
+  return new JSON_GENERIC_ELEM_ITERATOR (document);
 }
 
 void
@@ -1063,6 +1111,8 @@ db_json_extract_document_from_path (const JSON_DOC *document, const char *raw_pa
 
   // the json from the specified path
   resulting_json = p.Get (*document);
+
+  DB_JSON_TYPE type = db_json_get_type (document);
 
   if (resulting_json != NULL)
     {

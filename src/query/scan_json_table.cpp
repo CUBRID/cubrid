@@ -97,7 +97,19 @@ namespace cubscan
 
       if (m_json_iterator != NULL)
 	{
-	  db_json_reset_iterator (m_json_iterator, *m_input_doc);
+	  // we can reuse the iterator if it has the same type as the old one, otherwise we need to create a new one
+	  DB_JSON_TYPE old_type = db_json_iterator_get_type_of_doc (*m_json_iterator);
+	  DB_JSON_TYPE current_type = db_json_get_type (m_input_doc);
+
+	  if (old_type != current_type)
+	    {
+	      delete m_json_iterator;
+	      m_json_iterator = db_json_create_iterator (*m_input_doc);
+	    }
+	  else
+	    {
+	      db_json_reset_iterator (m_json_iterator, *m_input_doc);
+	    }
 	}
       else
 	{
@@ -435,6 +447,7 @@ namespace cubscan
     scanner::next_internal (cubthread::entry *thread_p, int depth, bool &success)
     {
       int error_code = NO_ERROR;
+      size_t total_rows_number = 0;
       DB_LOGICAL logical;
 
       // check if cursor is already in child node
@@ -457,9 +470,11 @@ namespace cubscan
       cursor &this_cursor = m_scan_cursor[depth];
       assert (this_cursor.m_node != NULL);
 
+      total_rows_number = get_row_count (this_cursor);
+
       // now we need to advance to a leaf level to compute a row
       // iterate through nodes on the same level
-      while (this_cursor.m_row < get_row_count (this_cursor))
+      while (this_cursor.m_row < total_rows_number)
 	{
 	  if (!this_cursor.m_is_row_evaluated)
 	    {
@@ -546,7 +561,15 @@ namespace cubscan
 	  m_scan_cursor_depth--;
 	  // advance row in parent when finished current branch
 	  cursor &parent = m_scan_cursor[m_scan_cursor_depth];
-	  parent.advance_row_cursor();
+
+	  if (parent.m_child < parent.m_node->m_nested_nodes.size())
+	    {
+	      parent.m_child++;
+	    }
+	  else
+	    {
+	      parent.advance_row_cursor();
+	    }
 	}
 
       return NO_ERROR;
