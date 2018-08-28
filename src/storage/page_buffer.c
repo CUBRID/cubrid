@@ -2098,7 +2098,7 @@ try_again:
     {
       /* this cannot be a new page or a deallocated page.
        * note: temporary pages are not strictly handled in regard with their deallocation status. */
-      assert ((fetch_mode != NEW_PAGE && fetch_mode != OLD_PAGE_DEALLOCATED) || pgbuf_is_lsa_temporary (pgptr));
+      assert (fetch_mode != NEW_PAGE || pgbuf_is_lsa_temporary (pgptr));
     }
 
   /* Record number of fetches in statistics */
@@ -14212,6 +14212,10 @@ pgbuf_rv_new_page_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   if (set_page_type != PAGE_UNKNOWN)
     {
       pgbuf_set_page_ptype (thread_p, rcv->pgptr, set_page_type);
+    }
+  else
+    {
+      assert (false);
     }
 
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
