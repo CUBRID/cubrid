@@ -3863,7 +3863,7 @@ scan_open_json_table_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, int group
   /* initialize JSON_TABLE_SCAN_ID structure */
   jtidp = &scan_id->s.jtid;
 
-  jtidp->open (thread_p);
+  // jtidp->open (thread_p); // nothing to do here
 
   return NO_ERROR;
 }
@@ -4325,6 +4325,7 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 
     case S_CLASS_ATTR_SCAN:
     case S_SET_SCAN:
+    case S_JSON_TABLE_SCAN:
       s_id->position = S_BEFORE;
       break;
 

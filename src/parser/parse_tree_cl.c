@@ -19017,6 +19017,7 @@ pt_init_json_table (PT_NODE * p)
 {
   p->info.json_table_info.expr = NULL;
   p->info.json_table_info.tree = NULL;
+  p->info.json_table_info.is_correlated = false;
   return p;
 }
 

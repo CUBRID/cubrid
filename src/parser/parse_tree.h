@@ -3273,6 +3273,7 @@ struct pt_json_table_info
 {
   PT_NODE *expr;
   PT_NODE *tree;
+  bool is_correlated;
 };
 
 /* Info field of the basic NODE

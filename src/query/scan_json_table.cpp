@@ -325,7 +325,19 @@ namespace cubscan
     scanner::next_scan (cubthread::entry *thread_p, scan_id_struct &sid)
     {
       bool success = true;
-      int error_code = next_internal (thread_p, 0, success);
+      int error_code = NO_ERROR;
+
+      if (sid.position == S_BEFORE)
+	{
+	  error_code = open (thread_p);
+	  if (error_code != NO_ERROR)
+	    {
+	      return error_code;
+	    }
+	  sid.position = S_ON;
+	}
+
+      error_code = next_internal (thread_p, 0, success);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR();
@@ -335,6 +347,7 @@ namespace cubscan
 	{
 	  // todo
 	  sid.status = S_ENDED;
+	  sid.position = S_AFTER;
 	}
       return NO_ERROR;
     }
