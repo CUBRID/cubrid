@@ -522,16 +522,6 @@ struct btree_object_info
 #define BTREE_OBJECT_INFO_INITIALIZER \
   { OID_INITIALIZER, OID_INITIALIZER, BTREE_MVCC_INFO_INITIALIZER }
 
-enum index_loading_state
-{
-  BTREE_INDEX_NO_FLAGS_NORMAL_ROW,	/* No flags set normal row. */
-  BTREE_INDEX_NO_ROW,		/* Deleted row */
-  BTREE_INDEX_DELETE_FLAG,	/* Delete flag set. */
-  BTREE_INDEX_INSERT_FLAG,	/* Insert flag set. */
-  BTREE_INDEX_UNK_FLAG		/* Unknown flag, it should not happen. */
-};
-typedef enum index_loading_state INDEX_LOADING_STATE;
-
 /* BTREE_RANGE_SCAN_PROCESS_KEY_FUNC -
  * btree_range_scan internal function that is called for each key that passes
  * range/filter checks.

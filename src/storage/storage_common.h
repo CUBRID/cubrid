@@ -494,12 +494,13 @@ typedef int TRANID;		/* Transaction identifier */
 #define READONLY_SCAN(scan_op_type)	(scan_op_type == S_SELECT)
 
 /* Online index states */
-#define ONLINE_INDEX_INSERT_FLAG  ((UINT64) (2<<62))
-#define ONLINE_INDEX_DELETE_FLAG  ((UINT64) (1<<62))
-#define ONLINE_INDEX_FLAG_MASK    ((UINT64) (3<<62))
+#define ONLINE_INDEX_INSERT_FLAG  0x400000000000000
+#define ONLINE_INDEX_DELETE_FLAG  0x800000000000000
+#define ONLINE_INDEX_FLAG_MASK    0xC00000000000000
 
 #define ONLINE_INDEX_HAS_INSERT_FLAG(mvccid) (mvccid & ONLINE_INDEX_INSERT_FLAG)
 #define ONLINE_INDEX_HAS_DELETE_FLAG(mvccid) (mvccid & ONLINE_INDEX_DELETE_FLAG)
+
 #define ONLINE_INDEX_IS_NORMAL_STATE(mvccid) (!(ONLINE_INDEX_HAS_INSERT_FLAG(mvccid)) && \
                                               !(ONLINE_INDEX_HAS_DELETE_FLAG(mvccid)))
 
