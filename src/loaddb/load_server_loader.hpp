@@ -55,6 +55,9 @@ namespace cubload
       void increment_fails () override;
 
     private:
+      void process_constant (constant_type *cons, int attr_idx);
+      void process_monetary_constant (constant_type *cons, TP_DOMAIN *domain, DB_VALUE *db_val);
+
       OID m_class_oid;
       ATTR_ID *m_attr_ids;
       HEAP_CACHE_ATTRINFO m_attr_info;

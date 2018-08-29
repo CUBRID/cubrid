@@ -32,8 +32,38 @@
 
 #include "error_code.h"
 
+#define NUM_LDR_TYPES (LDR_TYPE_MAX + 1)
+#define NUM_DB_TYPES (DB_TYPE_LAST + 1)
+
 namespace cubload
 {
+
+  /*
+   * loaddb executables command line arguments
+   */
+  struct load_args
+  {
+    char *volume;
+    char *input_file;
+    char *user_name;
+    char *password;
+    bool syntax_check;
+    bool load_only;
+    int estimated_size;
+    bool verbose;
+    bool disable_statistics;
+    int periodic_commit;
+    bool verbose_commit;
+    bool no_oid_hint;
+    char *schema_file;
+    char *index_file;
+    char *object_file;
+    char *error_file;
+    bool ignore_logging;
+    char *table_name;
+    char *ignore_class_file;
+    bool compare_storage_order;
+  };
 
   /*
    * These are the "types" of strings that the lexer recognizes.  The
@@ -45,7 +75,7 @@ namespace cubload
    * values in the instance line, over the previous loader.
    */
 
-  enum LDR_TYPE
+  enum data_type
   {
     LDR_NULL,
     LDR_INT,
@@ -79,14 +109,14 @@ namespace cubload
   };
 
   /*
-   * LDR_ATTRIBUTE_TYPE
+   * attribute_type
    *
    * attribute type identifiers for ldr_act_restrict_attributes().
    * These attributes are handled specially since there modify the class object
    * directly.
    */
 
-  enum LDR_ATTRIBUTE_TYPE
+  enum attribute_type
   {
     LDR_ATTRIBUTE_ANY = 0,
     LDR_ATTRIBUTE_SHARED,
@@ -94,7 +124,7 @@ namespace cubload
     LDR_ATTRIBUTE_DEFAULT
   };
 
-  enum LDR_INTERRUPT_TYPE
+  enum interrupt_type
   {
     LDR_NO_INTERRUPT,
     LDR_STOP_AND_ABORT_INTERRUPT,

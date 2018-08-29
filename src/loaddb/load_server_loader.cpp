@@ -200,124 +200,144 @@ namespace cubload
   void
   server_loader::process_line (constant_type *cons)
   {
-    // TODO CBRD-21654 refactor this function
     int attr_idx = 0;
     constant_type *c, *save;
 
     for (c = cons; c; c = save, attr_idx++)
       {
-	DB_VALUE db_val;
 	save = c->next;
-
-	TP_DOMAIN *domain = heap_locate_last_attrepr (m_attr_ids[attr_idx], &m_attr_info)->domain;
-
-	switch (c->type)
-	  {
-	  case LDR_NULL:
-	    to_db_null (NULL, NULL, &db_val);
-	    break;
-	  case LDR_INT:
-	  case LDR_FLOAT:
-	  case LDR_DOUBLE:
-	  case LDR_NUMERIC:
-	  case LDR_DATE:
-	  case LDR_TIME:
-	  case LDR_TIMESTAMP:
-	  case LDR_TIMESTAMPLTZ:
-	  case LDR_TIMESTAMPTZ:
-	  case LDR_DATETIME:
-	  case LDR_DATETIMELTZ:
-	  case LDR_DATETIMETZ:
-	  case LDR_STR:
-	  case LDR_NSTR:
-	  {
-	    string_type *str = (string_type *) c->val;
-	    conv_func func = get_conv_func (c->type, domain);
-
-	    if (func != NULL)
-	      {
-		func (str->val, domain, &db_val);
-	      }
-
-	    free_string (&str);
-	  }
-	  break;
-
-	  case LDR_MONETARY:
-	  {
-	    monetary_type *mon = (monetary_type *) c->val;
-	    string_type *str = mon->amount;
-
-	    /* buffer size for monetary : numeric size + grammar currency symbol + string terminator */
-	    char full_mon_str[NUM_BUF_SIZE + 3 + 1];
-	    char *full_mon_str_p = full_mon_str;
-
-	    /* In Loader grammar always print symbol before value (position of currency symbol is not localized) */
-	    char *curr_str = intl_get_money_esc_ISO_symbol ((DB_CURRENCY) mon->currency_type);
-	    size_t full_mon_str_len = (strlen (str->val) + strlen (curr_str));
-
-	    if (full_mon_str_len >= sizeof (full_mon_str))
-	      {
-		full_mon_str_p = (char *) malloc (full_mon_str_len + 1);
-	      }
-
-	    strcpy (full_mon_str_p, curr_str);
-	    strcat (full_mon_str_p, str->val);
-
-	    conv_func func = get_conv_func (c->type, domain);
-	    if (func != NULL)
-	      {
-		func (str->val, domain, &db_val);
-	      }
-
-	    if (full_mon_str_p != full_mon_str)
-	      {
-		free_and_init (full_mon_str_p);
-	      }
-	    free_string (&str);
-	    free_and_init (mon);
-	  }
-	  break;
-
-	  case LDR_BSTR:
-	  case LDR_XSTR:
-	  case LDR_ELO_INT:
-	  case LDR_ELO_EXT:
-	  case LDR_SYS_USER:
-	  case LDR_SYS_CLASS:
-	  {
-	    string_type *str = (string_type *) c->val;
-
-	    //conv_func func = get_conv_func (c->type, domain);
-	    //func (str->val, domain, &db_val);
-
-	    free_string (&str);
-	  }
-	  break;
-
-	  case LDR_OID:
-	  case LDR_CLASS_OID:
-	    //ldr_process_object_ref ((object_ref_type *) c->val, c->type);
-	    break;
-
-	  case LDR_COLLECTION:
-	    // TODO CBRD-21654 add support for collections
-	    //(*ldr_act) (ldr_Current_context, "{", 1, LDR_COLLECTION);
-	    process_line ((constant_type *) c->val);
-	    //ldr_act_attr (ldr_Current_context, NULL, 0, LDR_COLLECTION);
-	    break;
-
-	  default:
-	    break;
-	  }
-
-	if (c->need_free)
-	  {
-	    free_and_init (c);
-	  }
-
-	heap_attrinfo_set (&m_class_oid, m_attr_ids[attr_idx], &db_val, &m_attr_info);
+	process_constant (c, attr_idx);
       }
+  }
+
+  void
+  server_loader::process_constant (constant_type *cons, int attr_idx)
+  {
+    // TODO CBRD-21654 refactor this function
+    DB_VALUE db_val;
+    OR_ATTRIBUTE *attr = heap_locate_last_attrepr (m_attr_ids[attr_idx], &m_attr_info);
+
+    if (attr == NULL)
+      {
+	// TODO report an error
+	return;
+      }
+
+    switch (cons->type)
+      {
+      case LDR_NULL:
+	if (attr->is_notnull)
+	  {
+	    // TODO report an error
+	    return;
+	  }
+      case LDR_INT:
+      case LDR_FLOAT:
+      case LDR_DOUBLE:
+      case LDR_NUMERIC:
+      case LDR_DATE:
+      case LDR_TIME:
+      case LDR_TIMESTAMP:
+      case LDR_TIMESTAMPLTZ:
+      case LDR_TIMESTAMPTZ:
+      case LDR_DATETIME:
+      case LDR_DATETIMELTZ:
+      case LDR_DATETIMETZ:
+      case LDR_STR:
+      case LDR_NSTR:
+      {
+	string_type *str = (string_type *) cons->val;
+	conv_func &func = get_conv_func ((data_type) cons->type, attr->domain->type->id);
+
+	if (func != NULL)
+	  {
+	    func (str != NULL ? str->val : NULL, attr->domain, &db_val);
+	  }
+	else
+	  {
+	    // TODO report an error
+	    return;
+	  }
+
+	free_string (&str);
+      }
+      break;
+      case LDR_MONETARY:
+	process_monetary_constant (cons, attr->domain, &db_val);
+	break;
+      case LDR_BSTR:
+      case LDR_XSTR:
+      case LDR_ELO_INT:
+      case LDR_ELO_EXT:
+      case LDR_SYS_USER:
+      case LDR_SYS_CLASS:
+      {
+	string_type *str = (string_type *) cons->val;
+
+	//conv_func func = get_conv_func (cons->type, attr->domain->type->id);
+	//func (str->val, attr->domain, &db_val);
+
+	free_string (&str);
+      }
+      break;
+
+      case LDR_OID:
+      case LDR_CLASS_OID:
+	//ldr_process_object_ref ((object_ref_type *) cons->val, cons->type);
+	break;
+
+      case LDR_COLLECTION:
+	// TODO CBRD-21654 add support for collections
+	break;
+
+      default:
+	break;
+      }
+
+    if (cons->need_free)
+      {
+	free_and_init (cons);
+      }
+
+    heap_attrinfo_set (&m_class_oid, m_attr_ids[attr_idx], &db_val, &m_attr_info);
+  }
+
+  void
+  server_loader::process_monetary_constant (constant_type *cons, TP_DOMAIN *domain, DB_VALUE *db_val)
+  {
+    monetary_type *mon = (monetary_type *) cons->val;
+    string_type *str = mon->amount;
+
+    /* buffer size for monetary : numeric size + grammar currency symbol + string terminator */
+    char full_mon_str[NUM_BUF_SIZE + 3 + 1];
+    char *full_mon_str_p = full_mon_str;
+
+    /* In Loader grammar always print symbol before value (position of currency symbol is not localized) */
+    char *curr_str = intl_get_money_esc_ISO_symbol ((DB_CURRENCY) mon->currency_type);
+    size_t full_mon_str_len = (strlen (str->val) + strlen (curr_str));
+
+    if (full_mon_str_len >= sizeof (full_mon_str))
+      {
+	full_mon_str_p = (char *) malloc (full_mon_str_len + 1);
+      }
+
+    strcpy (full_mon_str_p, curr_str);
+    strcat (full_mon_str_p, str->val);
+
+    conv_func &func = get_conv_func ((data_type) cons->type, domain->type->id);
+    if (func != NULL)
+      {
+	func (str->val, domain, db_val);
+      }
+
+    if (full_mon_str_p != full_mon_str)
+      {
+	free_and_init (full_mon_str_p);
+      }
+
+    // free memory
+    free_string (&str);
+    free_and_init (mon);
   }
 
   void

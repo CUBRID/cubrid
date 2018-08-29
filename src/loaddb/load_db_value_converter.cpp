@@ -29,7 +29,6 @@
 #include "db_json.hpp"
 #include "dbtype.h"
 #include "language_support.h"
-#include "load_common.hpp"
 #include "load_db_value_converter.hpp"
 #include "numeric_opfunc.h"
 #include "object_primitive.h"
@@ -44,53 +43,81 @@
 namespace cubload
 {
 
-  conv_func
-  get_conv_func (int ldr_type, const TP_DOMAIN *domain)
+  // TODO CBRD-21654 reuse conversion function in load_client_loader.c source file
+  void to_db_null (const char *str, const TP_DOMAIN *domain, DB_VALUE *val);
+  void to_db_short (const char *str, const TP_DOMAIN *domain, DB_VALUE *val);
+  void to_db_int (const char *str, const TP_DOMAIN *domain, DB_VALUE *val);
+  void to_db_bigint (const char *str, const TP_DOMAIN *domain, DB_VALUE *val);
+  void to_db_char (const char *str, const TP_DOMAIN *domain, DB_VALUE *val);
+  void to_db_varchar (const char *str, const TP_DOMAIN *domain, DB_VALUE *val);
+  void to_db_string (const char *str, const TP_DOMAIN *domain, DB_VALUE *val);
+  void to_db_float (const char *str, const TP_DOMAIN *domain, DB_VALUE *val);
+  void to_db_double (const char *str, const TP_DOMAIN *domain, DB_VALUE *val);
+  void to_db_date (const char *str, const TP_DOMAIN *domain, DB_VALUE *val);
+  void to_db_time (const char *str, const TP_DOMAIN *domain, DB_VALUE *val);
+  void to_db_timestamp (const char *str, const TP_DOMAIN *domain, DB_VALUE *val);
+  void to_db_timestampltz (const char *str, const TP_DOMAIN *domain, DB_VALUE *val);
+  void to_db_timestamptz (const char *str, const TP_DOMAIN *domain, DB_VALUE *val);
+  void to_db_datetime (const char *str, const TP_DOMAIN *domain, DB_VALUE *val);
+  void to_db_datetimeltz (const char *str, const TP_DOMAIN *domain, DB_VALUE *val);
+  void to_db_datetimetz (const char *str, const TP_DOMAIN *domain, DB_VALUE *val);
+  void to_db_json (const char *str, const TP_DOMAIN *domain, DB_VALUE *val);
+  void to_db_monetary (const char *str, const TP_DOMAIN *domain, DB_VALUE *val);
+
+  using conv_setters = std::array<std::array<conv_func, NUM_LDR_TYPES>, NUM_DB_TYPES>;
+
+  static conv_setters init_setters ();
+  static conv_setters setters = init_setters ();
+
+  static conv_setters
+  init_setters ()
   {
-    // TODO CBRD-21654 move this into a init funtion
+    conv_setters setters_;
 
-    conv_func setters[DB_TYPE_LAST + 1][LDR_TYPE_MAX + 1];
+    for (int i = 0; i < NUM_DB_TYPES; i++)
+      {
+	setters_[i][LDR_NULL] = &to_db_null;
+      }
 
-    setters[DB_TYPE_CHAR][LDR_STR] = &to_db_char;
+    setters_[DB_TYPE_CHAR][LDR_STR] = &to_db_char;
+    setters_[DB_TYPE_VARCHAR][LDR_STR] = &to_db_varchar;
 
-    setters[DB_TYPE_VARCHAR][LDR_STR] = &to_db_varchar;
+    setters_[DB_TYPE_BIGINT][LDR_INT] = &to_db_bigint;
+    setters_[DB_TYPE_INTEGER][LDR_INT] = &to_db_int;
+    setters_[DB_TYPE_SHORT][LDR_INT] = &to_db_short;
 
-    setters[DB_TYPE_BIGINT][LDR_INT] = &to_db_bigint;
+    setters_[DB_TYPE_FLOAT][LDR_INT] = &to_db_float;
+    setters_[DB_TYPE_FLOAT][LDR_NUMERIC] = &to_db_float;
+    setters_[DB_TYPE_FLOAT][LDR_DOUBLE] = &to_db_float;
+    setters_[DB_TYPE_FLOAT][LDR_FLOAT] = &to_db_float;
 
-    setters[DB_TYPE_INTEGER][LDR_INT] = &to_db_int;
+    setters_[DB_TYPE_DOUBLE][LDR_INT] = &to_db_double;
+    setters_[DB_TYPE_DOUBLE][LDR_NUMERIC] = &to_db_double;
+    setters_[DB_TYPE_DOUBLE][LDR_DOUBLE] = &to_db_double;
+    setters_[DB_TYPE_DOUBLE][LDR_FLOAT] = &to_db_double;
 
-    setters[DB_TYPE_SHORT][LDR_INT] = &to_db_short;
+    setters_[DB_TYPE_JSON][LDR_STR] = &to_db_json;
+    setters_[DB_TYPE_MONETARY][LDR_MONETARY] = &to_db_monetary;
 
-    setters[DB_TYPE_FLOAT][LDR_INT] = &to_db_float;
-    setters[DB_TYPE_FLOAT][LDR_NUMERIC] = &to_db_float;
-    setters[DB_TYPE_FLOAT][LDR_DOUBLE] = &to_db_float;
-    setters[DB_TYPE_FLOAT][LDR_FLOAT] = &to_db_float;
+    setters_[DB_TYPE_DATE][LDR_DATE] = &to_db_date;
+    setters_[DB_TYPE_TIME][LDR_TIME] = &to_db_time;
 
-    setters[DB_TYPE_DOUBLE][LDR_INT] = &to_db_double;
-    setters[DB_TYPE_DOUBLE][LDR_NUMERIC] = &to_db_double;
-    setters[DB_TYPE_DOUBLE][LDR_DOUBLE] = &to_db_double;
-    setters[DB_TYPE_DOUBLE][LDR_FLOAT] = &to_db_double;
+    setters_[DB_TYPE_DATETIME][LDR_DATETIME] = &to_db_datetime;
+    setters_[DB_TYPE_DATETIMELTZ][LDR_DATETIMELTZ] = &to_db_datetimeltz;
+    setters_[DB_TYPE_DATETIMETZ][LDR_DATETIMETZ] = &to_db_datetimetz;
 
-    setters[DB_TYPE_DATE][LDR_DATE] = &to_db_date;
-    setters[DB_TYPE_TIME][LDR_TIME] = &to_db_time;
+    setters_[DB_TYPE_TIMESTAMP][LDR_STR] = &to_db_timestamp;
+    setters_[DB_TYPE_TIMESTAMP][LDR_TIMESTAMP] = &to_db_timestamp;
+    setters_[DB_TYPE_TIMESTAMPLTZ][LDR_TIMESTAMPLTZ] = &to_db_timestampltz;
+    setters_[DB_TYPE_TIMESTAMPTZ][LDR_TIMESTAMPTZ] = &to_db_timestamptz;
 
-    setters[DB_TYPE_TIMESTAMP][LDR_STR] = &to_db_timestamp;
-    setters[DB_TYPE_TIMESTAMP][LDR_TIMESTAMP] = &to_db_timestamp;
+    return setters_;
+  }
 
-    setters[DB_TYPE_TIMESTAMPLTZ][LDR_TIMESTAMPLTZ] = &to_db_timestampltz;
-
-    setters[DB_TYPE_TIMESTAMPTZ][LDR_TIMESTAMPTZ] = &to_db_timestamptz;
-
-    setters[DB_TYPE_DATETIME][LDR_DATETIME] = &to_db_datetime;
-
-    setters[DB_TYPE_DATETIMELTZ][LDR_DATETIMELTZ] = &to_db_datetimeltz;
-
-    setters[DB_TYPE_DATETIMETZ][LDR_DATETIMETZ] = &to_db_datetimetz;
-
-    setters[DB_TYPE_MONETARY][LDR_MONETARY] = &to_db_monetary;
-    setters[DB_TYPE_JSON][LDR_STR] = &to_db_json;
-
-    return setters[domain->type->id][ldr_type];
+  conv_func &
+  get_conv_func (const data_type ldr_type, const DB_TYPE db_type)
+  {
+    return setters[db_type][ldr_type];
   }
 
   void

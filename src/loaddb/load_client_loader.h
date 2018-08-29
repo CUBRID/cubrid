@@ -30,8 +30,6 @@
 #include "load_common.hpp"
 #include "porting.h"
 
-#define NUM_LDR_TYPES (LDR_TYPE_MAX + 1)
-
 /* *INDENT-OFF* */
 namespace cubload
 {
@@ -55,30 +53,12 @@ namespace cubload
 }
 /* *INDENT-ON* */
 
-/* Type aliases */
-typedef void (*LDR_POST_COMMIT_HANDLER) (int);
-typedef void (*LDR_POST_INTERRUPT_HANDLER) (int);
-
 /* Global variables */
 extern char **ignore_class_list;
 extern int ignore_class_num;
 
-/* Functions */
-/* Loader initialization and shutdown functions */
-extern int ldr_init (bool verbose);
-extern int ldr_start (int periodic_commit);
-extern int ldr_final (void);
-
-extern int ldr_init_class_spec (const char *class_name);
-
-/* Statistics updating/retrieving functions */
-extern void ldr_stats (int *errors, int *objects, int *defaults, int *lastcommit, int *fails);
-extern int ldr_update_statistics (void);
-
-/* Callback functions  */
-extern void ldr_register_post_commit_handler (LDR_POST_COMMIT_HANDLER handler, void *arg);
-extern void ldr_register_post_interrupt_handler (LDR_POST_INTERRUPT_HANDLER handler, void *ldr_jmp_buf);
-extern void ldr_interrupt_has_occurred (int type);
+/* start load functions */
+extern void ldr_load (cubload::load_args * args, int *status, bool * interrupted);
 
 /* log functions */
 extern void print_log_msg (int verbose, const char *fmt, ...);

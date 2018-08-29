@@ -28,6 +28,7 @@
 
 #include "dbtype_def.h"
 #include "intl_support.h"
+#include "load_common.hpp"
 #include "object_domain.h"
 
 namespace cubload
@@ -35,28 +36,7 @@ namespace cubload
 
   typedef void (*conv_func) (const char *, const TP_DOMAIN *, DB_VALUE *);
 
-  conv_func get_conv_func (int ldr_type, const TP_DOMAIN *domain);
-
-  // TODO CBRD-21654 reuse conversion function in load_client_loader.c source file
-  void to_db_null (const char *str, const TP_DOMAIN *domain, DB_VALUE *val);
-  void to_db_short (const char *str, const TP_DOMAIN *domain, DB_VALUE *val);
-  void to_db_int (const char *str, const TP_DOMAIN *domain, DB_VALUE *val);
-  void to_db_bigint (const char *str, const TP_DOMAIN *domain, DB_VALUE *val);
-  void to_db_char (const char *str, const TP_DOMAIN *domain, DB_VALUE *val);
-  void to_db_varchar (const char *str, const TP_DOMAIN *domain, DB_VALUE *val);
-  void to_db_string (const char *str, const TP_DOMAIN *domain, DB_VALUE *val);
-  void to_db_float (const char *str, const TP_DOMAIN *domain, DB_VALUE *val);
-  void to_db_double (const char *str, const TP_DOMAIN *domain, DB_VALUE *val);
-  void to_db_date (const char *str, const TP_DOMAIN *domain, DB_VALUE *val);
-  void to_db_time (const char *str, const TP_DOMAIN *domain, DB_VALUE *val);
-  void to_db_timestamp (const char *str, const TP_DOMAIN *domain, DB_VALUE *val);
-  void to_db_timestampltz (const char *str, const TP_DOMAIN *domain, DB_VALUE *val);
-  void to_db_timestamptz (const char *str, const TP_DOMAIN *domain, DB_VALUE *val);
-  void to_db_datetime (const char *str, const TP_DOMAIN *domain, DB_VALUE *val);
-  void to_db_datetimeltz (const char *str, const TP_DOMAIN *domain, DB_VALUE *val);
-  void to_db_datetimetz (const char *str, const TP_DOMAIN *domain, DB_VALUE *val);
-  void to_db_json (const char *str, const TP_DOMAIN *domain, DB_VALUE *val);
-  void to_db_monetary (const char *str, const TP_DOMAIN *domain, DB_VALUE *val);
+  conv_func &get_conv_func (const data_type ldr_type, const DB_TYPE db_type);
 
 } // namespace cubload
 
