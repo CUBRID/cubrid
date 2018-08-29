@@ -494,15 +494,62 @@ typedef int TRANID;		/* Transaction identifier */
 #define READONLY_SCAN(scan_op_type)	(scan_op_type == S_SELECT)
 
 /* Online index states */
-#define ONLINE_INDEX_INSERT_FLAG  0x400000000000000
-#define ONLINE_INDEX_DELETE_FLAG  0x800000000000000
-#define ONLINE_INDEX_FLAG_MASK    0xC00000000000000
+const MVCCID ONLINE_INDEX_INSERT_FLAG = 0x400000000000000;
+const MVCCID ONLINE_INDEX_DELETE_FLAG = 0x800000000000000;
+const MVCCID ONLINE_INDEX_FLAG_MASK = 0xC00000000000000;
+const MVCCID ONLINE_INDEX_MVCCID_MASK = ~ONLINE_INDEX_FLAG_MASK;
 
-#define ONLINE_INDEX_HAS_INSERT_FLAG(mvccid) (mvccid & ONLINE_INDEX_INSERT_FLAG)
-#define ONLINE_INDEX_HAS_DELETE_FLAG(mvccid) (mvccid & ONLINE_INDEX_DELETE_FLAG)
+static inline bool
+online_index_check_flags (MVCCID mvccid)
+{
+  // mvccid should always be MVCCID_ALL_VISIBLE
+  assert ((mvccid & ONLINE_INDEX_MVCCID_MASK) == MVCCID_ALL_VISIBLE);
+  // only one flag should be set at any time
+  assert ((mvccid & ONLINE_INDEX_FLAG_MASK) != ONLINE_INDEX_FLAG_MASK);
+}
 
-#define ONLINE_INDEX_IS_NORMAL_STATE(mvccid) (!(ONLINE_INDEX_HAS_INSERT_FLAG(mvccid)) && \
-                                              !(ONLINE_INDEX_HAS_DELETE_FLAG(mvccid)))
+static inline bool
+online_index_has_insert_flag (MVCCID mvccid)
+{
+  online_index_check_flags (mvccid);
+  return (mvccid & ONLINE_INDEX_INSERT_FLAG) != 0;
+}
+
+static inline bool
+online_index_has_delete_flag (MVCCID mvccid)
+{
+  online_index_check_flags (mvccid);
+  return (mvccid & ONLINE_INDEX_DELETE_FLAG) != 0;
+}
+
+static inline bool
+online_index_is_normal_state (MVCCID mvccid)
+{
+  online_index_check_flags (mvccid);
+  // no flag
+  return (mvccid & ONLINE_INDEX_FLAG_MASK) == 0;
+}
+
+static inline void
+online_index_set_insert_flag (MVCCID & mvccid)
+{
+  online_index_check_flags (mvccid);
+  mvccid = (mvccid & ONLINE_INDEX_MVCCID_MASK) | ONLINE_INDEX_INSERT_FLAG;
+}
+
+static inline void
+online_index_set_delete_flag (MVCCID & mvccid)
+{
+  online_index_check_flags (mvccid);
+  mvccid = (mvccid & ONLINE_INDEX_MVCCID_MASK) | ONLINE_INDEX_DELETE_FLAG;
+}
+
+static inline void
+online_index_set_normal_state (MVCCID & mvccid)
+{
+  online_index_check_flags (mvccid);
+  mvccid = mvccid & ONLINE_INDEX_MVCCID_MASK;
+}
 
 typedef enum
 {

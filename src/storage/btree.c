@@ -33369,15 +33369,12 @@ btree_key_online_index_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_
 	  /* This is the index builder, therefore if there is already an OID that matches the one that needs to be
 	   * inserted, then the already inserted one should have either DELETE_FLAG or INSERT_FLAG set.
 	   */
-	  assert (ONLINE_INDEX_HAS_INSERT_FLAG (btree_mvcc_info.insert_mvccid) ||
-		  ONLINE_INDEX_HAS_DELETE_FLAG (btree_mvcc_info.insert_mvccid));
+          online_index_check_flags (btree_mvcc_info.insert_mvccid);
 
-	  if (ONLINE_INDEX_HAS_INSERT_FLAG (btree_mvcc_info.insert_mvccid))
+	  if (online_index_has_insert_flag (btree_mvcc_info.insert_mvccid))
 	    {
 	      /* INSERT_FLAG is set. It means we have to remove the flag, according to the state machine. */
-
-	      assert (!(ONLINE_INDEX_HAS_DELETE_FLAG (btree_mvcc_info.insert_mvccid)));
-	      btree_mvcc_info.insert_mvccid &= (~ONLINE_INDEX_INSERT_FLAG);
+              online_index_set_normal_state (btree_mvcc_info.insert_mvccid);
 
 	      btree_online_index_change_state (thread_p, btid_int, &leaf_record, node_type, offset_to_object,
 					       btree_mvcc_info.insert_mvccid, &rv_undo_data, &rv_redo_data);
@@ -33391,7 +33388,7 @@ btree_key_online_index_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_
 	      *delete_helper = BTREE_DELETE_HELPER_INITIALIZER;
 
 	      /* TODO: This is not entirely safe. It needs to be checked when we add the transactional inserts. */
-	      assert (!(ONLINE_INDEX_HAS_INSERT_FLAG (btree_mvcc_info.insert_mvccid)));
+	      assert (!(online_index_has_insert_flag (btree_mvcc_info.insert_mvccid)));
 	      delete_helper->purpose = BTREE_OP_DELETE_OBJECT_PHYSICAL;
 	      delete_helper->rv_redo_data = insert_helper->rv_redo_data;
 	      delete_helper->rv_redo_data_ptr = insert_helper->rv_redo_data_ptr;
