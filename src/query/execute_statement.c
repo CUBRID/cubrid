@@ -3677,37 +3677,13 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       err = do_scope (parser, statement);
       break;
     case PT_DELETE:
-      if (statement->use_auto_commit)
-	{
-	  /* No active trigger is involved. Avoid lock and fetch request. */
-	  err = do_execute_delete (parser, statement);
-	}
-      else
-	{
-	  err = do_check_delete_trigger (parser, statement, do_execute_delete);
-	}
+      err = do_check_delete_trigger (parser, statement, do_execute_delete);
       break;
     case PT_INSERT:
-      if (statement->use_auto_commit)
-	{
-	  /* no active trigger is involved. Avoid lock and fetch request. */
-	  err = do_execute_insert (parser, statement);
-	}
-      else
-	{
-	  err = do_check_insert_trigger (parser, statement, do_execute_insert);
-	}
+      err = do_check_insert_trigger (parser, statement, do_execute_insert);
       break;
     case PT_UPDATE:
-      if (statement->use_auto_commit)
-	{
-	  /* no active trigger is involved. Avoid lock and fetch request. */
-	  err = do_execute_update (parser, statement);
-	}
-      else
-	{
-	  err = do_check_update_trigger (parser, statement, do_execute_update);
-	}
+      err = do_check_update_trigger (parser, statement, do_execute_update);
       break;
     case PT_MERGE:
       err = do_check_merge_trigger (parser, statement, do_execute_merge);
@@ -5990,7 +5966,16 @@ do_check_delete_trigger (PARSER_CONTEXT * parser, PT_NODE * statement, PT_DO_FUN
 	}
     }
 
-  error = check_trigger (TR_EVENT_STATEMENT_DELETE, do_func, parser, statement);
+  if (statement->use_auto_commit)
+    {
+      /* No active trigger is involved. Avoid lock and fetch request. */
+      error = do_func (parser, statement);
+    }
+  else
+    {
+      error = check_trigger (TR_EVENT_STATEMENT_DELETE, do_func, parser, statement);
+    }
+
   /* if the statement that contains joins with conditions deletes no record then we skip the deletion in the subsequent 
    * classes beacuse the original join would have deleted no record */
   if (error <= NO_ERROR)
@@ -5999,20 +5984,24 @@ do_check_delete_trigger (PARSER_CONTEXT * parser, PT_NODE * statement, PT_DO_FUN
     }
 
   affected_count = error;
-  node = statement->info.delete_.del_stmt_list;
-  while (node != NULL)
-    {
-      next = node->next;
-      node->next = NULL;
-      error = check_trigger (TR_EVENT_STATEMENT_DELETE, do_func, parser, node);
-      node->next = next;
-      if (error < NO_ERROR)
-	{
-	  return error;
-	}
-      affected_count += error;
 
-      node = node->next;
+  if (!statement->use_auto_commit)
+    {
+      node = statement->info.delete_.del_stmt_list;
+      while (node != NULL)
+	{
+	  next = node->next;
+	  node->next = NULL;
+	  error = check_trigger (TR_EVENT_STATEMENT_DELETE, do_func, parser, node);
+	  node->next = next;
+	  if (error < NO_ERROR)
+	    {
+	      return error;
+	    }
+	  affected_count += error;
+
+	  node = node->next;
+	}
     }
 
   return affected_count;
@@ -6033,7 +6022,15 @@ do_check_delete_trigger (PARSER_CONTEXT * parser, PT_NODE * statement, PT_DO_FUN
 int
 do_check_insert_trigger (PARSER_CONTEXT * parser, PT_NODE * statement, PT_DO_FUNC * do_func)
 {
-  return check_trigger (TR_EVENT_STATEMENT_INSERT, do_func, parser, statement);
+  if (statement->use_auto_commit)
+    {
+      /* no active trigger is involved. Avoid lock and fetch request. */
+      return do_func (parser, statement);
+    }
+  else
+    {
+      return check_trigger (TR_EVENT_STATEMENT_INSERT, do_func, parser, statement);
+    }
 }
 
 /*
@@ -6120,7 +6117,16 @@ do_check_update_trigger (PARSER_CONTEXT * parser, PT_NODE * statement, PT_DO_FUN
       return ER_BLOCK_NOWHERE_STMT;
     }
 
-  err = check_trigger (TR_EVENT_STATEMENT_UPDATE, do_func, parser, statement);
+  if (statement->use_auto_commit)
+    {
+      /* no active trigger is involved. Avoid lock and fetch request. */
+      err = do_func (parser, statement);
+    }
+  else
+    {
+      err = check_trigger (TR_EVENT_STATEMENT_UPDATE, do_func, parser, statement);
+    }
+
   return err;
 }
 
@@ -15114,7 +15120,16 @@ do_check_merge_trigger (PARSER_CONTEXT * parser, PT_NODE * statement, PT_DO_FUNC
       return ER_BLOCK_NOWHERE_STMT;
     }
 
-  err = check_merge_trigger (do_func, parser, statement);
+  if (statement->use_auto_commit)
+    {
+      /* no active trigger is involved. Avoid lock and fetch request. */
+      err = do_func (parser, statement);
+    }
+  else
+    {
+      err = check_merge_trigger (do_func, parser, statement);
+    }
+
   return err;
 }
 
