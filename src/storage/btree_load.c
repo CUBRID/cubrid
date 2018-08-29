@@ -4613,11 +4613,6 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
   /* Start extracting from heap. */
   for (;;)
     {
-      for (;;)
-	{
-	  ;
-	}
-
       attr_offset = cur_class * n_attrs;
       sc = heap_next (thread_p, &hfids[cur_class], &class_oids[cur_class], &cur_oid, &cur_record, scancache, true);
       if (sc == S_END)
