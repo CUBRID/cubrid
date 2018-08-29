@@ -2603,6 +2603,7 @@ struct pt_name_info
   PT_NODE *indx_key_limit;	/* key limits for index name */
   int coll_modifier;		/* collation modifier = collation + 1 */
   PT_RESERVED_NAME_ID reserved_id;	/* used to identify reserved name */
+  size_t json_table_column_index;	/* used only for json_table when retrieving columns attributes */
 };
 
 /*
@@ -3257,6 +3258,7 @@ struct pt_json_table_column_info
   PT_NODE *name;
   // domain is stored in parser node
   const char *path;
+  size_t index;			// will be used to store the columns in the correct order
   enum json_table_column_function func;
   struct json_table_column_behavior on_error;
   struct json_table_column_behavior on_empty;

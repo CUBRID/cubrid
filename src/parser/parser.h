@@ -63,6 +63,8 @@ extern "C"
     HIDDEN_CLASSOID_NAME
   } VIEW_HANDLING;
 
+  extern size_t json_table_column_count;
+
   extern PT_NODE **parser_main (PARSER_CONTEXT * p);
   extern void parser_final (void);
 

@@ -84,6 +84,7 @@ void csql_yyerror (const char *s);
 extern int g_msg[1024];
 extern int msg_ptr;
 extern int yybuffer_pos;
+extern size_t json_table_column_count;
 /*%CODE_END%*/%}
 
 %{
@@ -1725,6 +1726,7 @@ stmt
 	:
 		{{
 			msg_ptr = 0;
+			json_table_column_count = 0;
 
 			if (this_parser->original_buffer)
 			  {
@@ -23510,6 +23512,7 @@ int yycolumn_end = 0;
 int dot_flag = 0;
 
 int parser_function_code = PT_EMPTY;
+size_t json_table_column_count = 0;
 
 static PT_NODE *
 parser_make_expr_with_func (PARSER_CONTEXT * parser, FUNC_TYPE func_code,
@@ -26537,6 +26540,7 @@ pt_jt_append_column_or_nested_node (PT_NODE * jt_node, PT_NODE * jt_col_or_neste
 
   if (jt_col_or_nested->node_type == PT_JSON_TABLE_COLUMN)
     {
+	  jt_col_or_nested->info.json_table_column_info.index = json_table_column_count++;
       jt_node->info.json_table_node_info.columns =
         parser_append_node (jt_col_or_nested, jt_node->info.json_table_node_info.columns);
     }

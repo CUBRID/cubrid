@@ -54,6 +54,7 @@
 extern "C"
 {
   extern int parser_function_code;
+  extern size_t json_table_column_count;
 }
 
 #define PT_NAMES_HASH_SIZE                50
@@ -4357,6 +4358,21 @@ pt_get_all_json_table_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * j
   PT_NODE *attribs = NULL;
 
   parser_walk_tree (parser, json_table_node, pt_json_table_gather_attribs, &attribs, NULL, NULL);
+
+  std::vector < PT_NODE * >sorted_attrs (json_table_column_count, NULL);
+
+  for (PT_NODE * attr = attribs; attr; attr = attr->next)
+    {
+      size_t index = attr->info.name.json_table_column_index;
+      sorted_attrs[index] = attr;
+    }
+
+  for (int i = 0; i < json_table_column_count - 1; i++)
+    {
+      sorted_attrs[i]->next = sorted_attrs[i + 1];
+    }
+  sorted_attrs[json_table_column_count - 1]->next = NULL;
+
   for (PT_NODE * attr = attribs; attr; attr = attr->next)
     {
       assert (attr->info.name.resolved == NULL);
