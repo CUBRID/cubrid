@@ -1726,7 +1726,6 @@ stmt
 	:
 		{{
 			msg_ptr = 0;
-			json_table_column_count = 0;
 
 			if (this_parser->original_buffer)
 			  {
@@ -23477,6 +23476,7 @@ vacuum_stmt
   json_table_rule
     : JSON_TABLE '(' expression_ ',' json_table_node_rule ')'
       {{
+	    json_table_column_count = 0;
         // $3 = expression_
         // $5 = json_table_node_rule
         PT_NODE *jt = parser_new_node (this_parser, PT_JSON_TABLE);

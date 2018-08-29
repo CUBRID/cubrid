@@ -26,6 +26,7 @@
 #include "config.h"
 
 #include <assert.h>
+#include <unordered_map>
 
 #include "porting.h"
 #include "error_manager.h"
@@ -4341,6 +4342,7 @@ pt_json_table_gather_attribs (PARSER_CONTEXT * parser, PT_NODE * json_table_colu
     {
       PT_NODE *next_attr = json_table_column->info.json_table_column_info.name;
       next_attr->type_enum = json_table_column->type_enum;
+      next_attr->info.name.json_table_column_index = json_table_column->info.json_table_column_info.index;
       if (json_table_column->data_type != NULL)
 	{
 	  next_attr->data_type = parser_copy_tree (parser, json_table_column->data_type);
@@ -4359,7 +4361,7 @@ pt_get_all_json_table_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * j
 
   parser_walk_tree (parser, json_table_node, pt_json_table_gather_attribs, &attribs, NULL, NULL);
 
-  std::vector < PT_NODE * >sorted_attrs (json_table_column_count, NULL);
+  std::unordered_map < int, PT_NODE * >sorted_attrs;
 
   for (PT_NODE * attr = attribs; attr; attr = attr->next)
     {
@@ -4367,11 +4369,13 @@ pt_get_all_json_table_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * j
       sorted_attrs[index] = attr;
     }
 
-  for (int i = 0; i < json_table_column_count - 1; i++)
+  size_t columns_nr = sorted_attrs.size ();
+
+  for (int i = 0; i < columns_nr - 1; i++)
     {
       sorted_attrs[i]->next = sorted_attrs[i + 1];
     }
-  sorted_attrs[json_table_column_count - 1]->next = NULL;
+  sorted_attrs[columns_nr - 1]->next = NULL;
 
   for (PT_NODE * attr = attribs; attr; attr = attr->next)
     {

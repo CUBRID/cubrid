@@ -2603,7 +2603,7 @@ struct pt_name_info
   PT_NODE *indx_key_limit;	/* key limits for index name */
   int coll_modifier;		/* collation modifier = collation + 1 */
   PT_RESERVED_NAME_ID reserved_id;	/* used to identify reserved name */
-  size_t json_table_column_index;	/* used only for json_table when retrieving columns attributes */
+  size_t json_table_column_index;	/* will be used only for json_table to gather attributes in the correct order */
 };
 
 /*
