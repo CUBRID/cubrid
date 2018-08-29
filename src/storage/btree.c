@@ -1704,6 +1704,7 @@ STATIC_INLINE void btree_set_mvcc_insid (RECDES * rec, int mvcc_insid_offset, MV
 static void btree_record_remove_insid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * record,
 				       BTREE_NODE_TYPE node_type, int offset_to_object, char **rv_undo_data,
 				       char **rv_redo_data);
+static bool btree_is_class_oid_packed (BTID_INT * btid_int, RECDES *record, BTREE_NODE_TYPE node_type, bool is_first);
 
 void btree_online_index_change_state (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * record,
 				      BTREE_NODE_TYPE node_type, int offset_to_object, MVCCID new_ins_id,
@@ -20910,21 +20911,18 @@ btree_key_find_first_visible_row (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
       /* Clear flags */
       BTREE_OID_CLEAR_ALL_FLAGS (oid);
 
-      if (BTREE_IS_UNIQUE (btid_int->unique_pk))
+      if (btree_is_class_oid_packed (btid_int, rec, node_type, is_first))
+        {
+          /* Read class OID */
+	  if (or_get_oid (&buf, class_oid) != NO_ERROR)
+	    {
+	      goto error;
+	    }
+        }
+      else if (BTREE_IS_UNIQUE (btid_int->unique_pk))
 	{
-	  if (node_type == BTREE_OVERFLOW_NODE || !is_first || btree_leaf_is_flaged (rec, BTREE_LEAF_RECORD_CLASS_OID))
-	    {
-	      /* Read class OID */
-	      if (or_get_oid (&buf, class_oid) != NO_ERROR)
-		{
-		  goto error;
-		}
-	    }
-	  else
-	    {
-	      /* Class OID is top class OID */
-	      COPY_OID (class_oid, &btid_int->topclass_oid);
-	    }
+	  /* Class OID is top class OID */
+	  COPY_OID (class_oid, &btid_int->topclass_oid);
 	}
 
       /* Get MVCC information */
@@ -21769,9 +21767,7 @@ btree_check_valid_record (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * rec
 	  assert (false);
 	  return ER_FAILED;
 	}
-      if (BTREE_IS_UNIQUE (btid->unique_pk)
-	  && (node_type == BTREE_OVERFLOW_NODE || !is_first_oid
-	      || btree_leaf_is_flaged (recp, BTREE_LEAF_RECORD_CLASS_OID)))
+      if (btree_is_class_oid_packed (btid, recp, node_type, is_first_oid))
 	{
 	  /* Get and check class OID */
 	  if (or_get_oid (&buffer, &class_oid) != NO_ERROR)
@@ -32500,9 +32496,7 @@ btree_record_remove_insid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES 
   /* Skip object OID. */
   insert_mvccid_offset = offset_to_object + OR_OID_SIZE;
 
-  if (BTREE_IS_UNIQUE (btid_int->unique_pk)
-      && (node_type == BTREE_OVERFLOW_NODE || offset_to_object > 0
-	  || btree_leaf_is_flaged (record, BTREE_LEAF_RECORD_CLASS_OID)))
+  if (btree_is_class_oid_packed (btid_int, record, node_type, offset_to_object == 0))
     {
       /* Also class OID is stored. */
       insert_mvccid_offset += OR_OID_SIZE;
@@ -32721,9 +32715,7 @@ btree_record_add_delid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * r
   /* Compute offset to delete MVCCID. */
   /* Instance OID is always packed. */
   offset_to_delete_mvccid = offset_to_object + OR_OID_SIZE;
-  if (BTREE_IS_UNIQUE (btid_int->unique_pk)
-      && (node_type == BTREE_OVERFLOW_NODE || offset_to_object > 0
-	  || btree_leaf_is_flaged (record, BTREE_LEAF_RECORD_CLASS_OID)))
+  if (btree_is_class_oid_packed (btid_int, record, node_type, offset_to_object == 0))
     {
       /* Class OID is also packed. */
       offset_to_delete_mvccid += OR_OID_SIZE;
@@ -33438,9 +33430,7 @@ btree_online_index_change_state (THREAD_ENTRY * thread_p, BTID_INT * btid_int, R
   oid_ptr = record->data + offset_to_object;
 
   offset_to_insid_mvccid = offset_to_object + OR_OID_SIZE;
-  if (BTREE_IS_UNIQUE (btid_int->unique_pk)
-      && (node_type == BTREE_OVERFLOW_NODE || offset_to_object > 0
-	  || btree_leaf_is_flaged (record, BTREE_LEAF_RECORD_CLASS_OID)))
+  if (btree_is_class_oid_packed (btid_int, record, node_type, offset_to_object == 0))
     {
       /* Class OID is also packed. */
       offset_to_insid_mvccid += OR_OID_SIZE;
@@ -33682,4 +33672,42 @@ btree_record_remove_insid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES 
 #if !defined (NDEBUG)
   (void) btree_check_valid_record (thread_p, btid_int, record, node_type, NULL);
 #endif /* !NDEBUG */
+}
+
+//
+// btree_is_class_oid_packed () - is class OID packed with object?
+//
+// return         : true if class oid is packed, false otherwise
+// btid_int (in)  : b-tree info
+// record (in)    : record descriptor
+// node_type (in) : leaf/overflow node type
+// is_first (in)  : is object first in record?
+//
+static bool
+btree_is_class_oid_packed (BTID_INT * btid_int, RECDES *record, BTREE_NODE_TYPE node_type, bool is_first)
+{
+  // class oid is packed if:
+  // 1. index is unique and
+  // 2.1. is overflow node or
+  // 2.2. is not first in leaf record or
+  // 2.3. is first in leaf record and record is flagged with BTREE_LEAF_RECORD_CLASS_OID
+  if (!btid_int->unique_pk)
+    {
+      // not unique, no class is saved
+      return false;
+    }
+  // is unique
+  if (node_type == BTREE_OVERFLOW_NODE)
+    {
+      // all overflow objects save class
+      return true;
+    }
+  // is leaf
+  if (!is_first)
+    {
+      // non-first in leaf record saves class
+      return true;
+    }
+  // first saves class only if flagged
+  return btree_leaf_is_flaged (record, BTREE_LEAF_RECORD_CLASS_OID);
 }
