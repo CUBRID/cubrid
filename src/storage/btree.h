@@ -730,7 +730,6 @@ extern PERF_PAGE_TYPE btree_get_perf_btree_page_type (THREAD_ENTRY * thread_p, P
 extern void btree_dump_key (THREAD_ENTRY * thread_p, FILE * fp, DB_VALUE * key);
 
 extern int btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, OID * cls_oid,
-					  OID * oid, int *unique, BTREE_OP_PURPOSE purpose,
-					  MVCC_REC_HEADER * p_mvcc_rec_header);
+					  OID * oid, int *unique, BTREE_OP_PURPOSE purpose);
 
 #endif /* _BTREE_H_ */

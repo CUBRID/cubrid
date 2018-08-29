@@ -4697,7 +4697,7 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 
       /* Dispatch the insert operation */
       ret = btree_online_index_dispatcher (thread_p, btid_int, p_dbvalue, &class_oids[cur_class], &cur_oid, &unique,
-					   BTREE_OP_IB_INSERT, &mvcc_header);
+					   BTREE_OP_IB_INSERT);
       if (ret != NO_ERROR)
 	{
 	  break;

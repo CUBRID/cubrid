@@ -33223,7 +33223,7 @@ btree_get_perf_btree_page_type (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr)
 
 int
 btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, OID * class_oid, OID * oid,
-			       int *unique, BTREE_OP_PURPOSE purpose, MVCC_REC_HEADER * p_mvcc_rec_header)
+			       int *unique, BTREE_OP_PURPOSE purpose)
 {
   int error_code = NO_ERROR;
   BTID *btid;
@@ -33296,6 +33296,11 @@ btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_
       error_code = ER_FAILED;
       goto end;
     }
+
+  error_code =
+    btree_search_key_and_apply_functions (thread_p, btid, btid_int, key, root_function, &insert_helper,
+					  advance_function, &insert_helper, key_function, &insert_helper, &search_key,
+					  NULL);
 
 end:
   return error_code;
@@ -33413,9 +33418,6 @@ btree_key_online_index_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_
 	  ;			/* Fall through and do the usual case. */
 	}
     }
-
-  /* Safeguard. */
-  assert (offset_to_object == NOT_FOUND);
 
   /* Insert the object as the regular ones, with no states set. */
   error_code = btree_key_insert_new_object (thread_p, btid_int, key, leaf_page, search_key, restart, other_args);
