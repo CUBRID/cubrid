@@ -23,6 +23,7 @@
 
 #ident "$Id$"
 
+#include <array>
 #include <cassert>
 
 #include "db_date.h"
