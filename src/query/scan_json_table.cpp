@@ -307,6 +307,13 @@ namespace cubscan
 	      ASSERT_ERROR();
 	      return error_code;
 	    }
+
+	  error_code = init_cursor (*document, *m_specp->m_root_node, m_scan_cursor[0]);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return error_code;
+	    }
 	}
       else
 	{
@@ -355,6 +362,14 @@ namespace cubscan
 	      return error_code;
 	    }
 	  sid.position = S_ON;
+	  sid.status = S_STARTED;
+	}
+      else if (sid.position != S_ON)
+	{
+	  assert (false);
+	  sid.status = S_ENDED;
+	  sid.position = S_AFTER;
+	  return ER_FAILED;
 	}
 
       error_code = next_internal (thread_p, 0, success);
