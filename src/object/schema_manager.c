@@ -5982,8 +5982,16 @@ sm_decache_instances_after_query_executed_with_commit (MOP class_mop)
       return ER_FAILED;
     }
 
+  if (class_obj == NULL)
+    {
+      class_obj = locator_fetch_class (class_mop, DB_FETCH_READ);
+      if (class_obj == NULL)
+	{
+	  return ER_FAILED;
+	}
+    }
+
   class_ = (SM_CLASS *) class_obj;
-  assert (class_ != NULL);
   if (class_->partition != NULL && class_->users != NULL)
     {
       class_list.next = class_->users;
