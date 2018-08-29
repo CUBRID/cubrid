@@ -10567,6 +10567,7 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 	      node->info.query.reexecute = 1;
 	      node->info.query.do_cache = 0;
 	      node->info.query.do_not_cache = 1;
+	      node->info.query.has_system_class = 1;
 	    }
 
 	  if (node->node_type == PT_UPDATE || node->node_type == PT_DELETE || node->node_type == PT_INSERT

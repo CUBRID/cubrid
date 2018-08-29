@@ -51,6 +51,7 @@ EXPORTS
     db_Connect_status
     db_abort_to_savepoint
     db_abort_transaction
+    db_reset_latest_query_status
     db_add_argument
     db_add_class_method
     db_add_class_resolution
@@ -138,6 +139,7 @@ EXPORTS
     db_execute
     db_execute_and_keep_statement
     db_execute_statement
+    db_set_statement_auto_commit
     db_find_all_triggers
     db_find_class
     db_find_user
@@ -437,6 +439,8 @@ EXPORTS
     tran_is_in_libcas
     tran_set_query_timeout
     tran_get_tran_settings
+    tran_was_latest_query_committed
+    tran_was_latest_query_aborted
     utility_get_generic_message
     util_make_ha_conf
     util_get_ha_mode_for_sa_utils
