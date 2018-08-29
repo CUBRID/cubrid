@@ -227,6 +227,7 @@ namespace cubxasl
 
     node::node (void)
       : m_ordinality (1)
+      , m_need_inc_ordinality (true)
       , m_predicate_expression (NULL)
       , m_id (0)
     {

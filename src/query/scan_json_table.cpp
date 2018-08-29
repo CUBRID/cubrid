@@ -68,7 +68,10 @@ namespace cubscan
       m_is_row_evaluated = false;
 
       // advance also with ordinality
-      m_node->m_ordinality++;
+      if (m_node->m_need_inc_ordinality)
+	{
+	  m_node->m_ordinality++;
+	}
 
       if (m_need_expand)
 	{
@@ -339,6 +342,9 @@ namespace cubscan
 	    }
 	}
 
+      // if we gather expr from another table, for each row we need to reset the ordinality
+      reset_ordinality (*m_specp->m_root_node);
+
       return NO_ERROR;
     }
 
@@ -540,6 +546,8 @@ namespace cubscan
 
 	      if (this_cursor.m_process_doc != nullptr)
 		{
+		  this_cursor.m_node->m_need_inc_ordinality = true;
+
 		  error_code = evaluate (*this_cursor.m_node, thread_p, *this_cursor.m_process_doc, logical);
 		  if (error_code != NO_ERROR)
 		    {
@@ -566,6 +574,8 @@ namespace cubscan
 	      else
 		{
 		  clear_node_columns (*this_cursor.m_node);
+		  // if we can not expand this node we should not increase its ordinality
+		  this_cursor.m_node->m_need_inc_ordinality = false;
 		}
 
 	      // fall
