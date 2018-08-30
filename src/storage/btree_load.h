@@ -286,8 +286,8 @@ extern int btree_get_asc_desc (THREAD_ENTRY * thread_p, BTID * btid, int col_idx
  */
 
 /* Online index states */
-const MVCCID BTREE_ONLINE_INDEX_INSERT_FLAG = 0x400000000000000;
-const MVCCID BTREE_ONLINE_INDEX_DELETE_FLAG = 0x800000000000000;
+const MVCCID BTREE_ONLINE_INDEX_INSERT_FLAG = 0x400000000000003;	/* Include MVCCID_ALL_VISIBLE when we set a flag. */
+const MVCCID BTREE_ONLINE_INDEX_DELETE_FLAG = 0x800000000000003;	/* Include MVCCID_ALL_VISIBLE when we set a flag. */
 const MVCCID BTREE_ONLINE_INDEX_FLAG_MASK = 0xC00000000000000;
 const MVCCID BTREE_ONLINE_INDEX_MVCCID_MASK = ~0xC00000000000000;
 
@@ -303,21 +303,18 @@ btree_online_index_check_flags (MVCCID mvccid)
 static inline bool
 btree_online_index_has_insert_flag (MVCCID mvccid)
 {
-  btree_online_index_check_flags (mvccid);
   return (mvccid & BTREE_ONLINE_INDEX_INSERT_FLAG) != 0;
 }
 
 static inline bool
 btree_online_index_has_delete_flag (MVCCID mvccid)
 {
-  btree_online_index_check_flags (mvccid);
   return (mvccid & BTREE_ONLINE_INDEX_DELETE_FLAG) != 0;
 }
 
 static inline bool
 btree_online_index_is_normal_state (MVCCID mvccid)
 {
-  btree_online_index_check_flags (mvccid);
   // no flag
   return (mvccid & BTREE_ONLINE_INDEX_FLAG_MASK) == 0;
 }
@@ -325,21 +322,20 @@ btree_online_index_is_normal_state (MVCCID mvccid)
 static inline void
 btree_online_index_set_insert_flag (MVCCID & mvccid)
 {
-  btree_online_index_check_flags (mvccid);
   mvccid = (mvccid & BTREE_ONLINE_INDEX_MVCCID_MASK) | BTREE_ONLINE_INDEX_INSERT_FLAG;
+  btree_online_index_check_flags (mvccid);
 }
 
 static inline void
 btree_online_index_set_delete_flag (MVCCID & mvccid)
 {
-  btree_online_index_check_flags (mvccid);
   mvccid = (mvccid & BTREE_ONLINE_INDEX_MVCCID_MASK) | BTREE_ONLINE_INDEX_DELETE_FLAG;
+  btree_online_index_check_flags (mvccid);
 }
 
 static inline void
 btree_online_index_set_normal_state (MVCCID & mvccid)
 {
-  btree_online_index_check_flags (mvccid);
   mvccid = mvccid & BTREE_ONLINE_INDEX_MVCCID_MASK;
 }
 

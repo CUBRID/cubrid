@@ -33430,13 +33430,15 @@ btree_online_index_change_state (THREAD_ENTRY * thread_p, BTID_INT * btid_int, R
   if (btree_record_object_is_flagged (oid_ptr, BTREE_OID_HAS_MVCC_INSID))
     {
       /* We have MVCC_INSID. */
-      // if (new_ins_id != 0)
-      if (!btree_online_index_is_normal_state (new_ins_id))
+      if (!btree_online_index_is_normal_state (new_ins_id)
+	  || btree_is_fixed_size (btid_int, record, node_type, (offset_to_object == 0)))
 	{
+	  /* If we have any state set, except the normal state, set or if it a fixed size record. */
 	  btree_set_mvcc_insid (record, offset_to_insid_mvccid, &new_ins_id, rv_undo_data, rv_redo_data);
 	}
       else
 	{
+	  /* We have normal state of the record and the record is not a fixed size one. */
 	  /* This translates in removing the state. */
 	  btree_record_remove_insid (thread_p, btid_int, record, node_type, offset_to_object, rv_undo_data,
 				     rv_redo_data);
@@ -33701,18 +33703,9 @@ btree_is_class_oid_packed (BTID_INT * btid_int, RECDES * record, BTREE_NODE_TYPE
   return btree_leaf_is_flaged (record, BTREE_LEAF_RECORD_CLASS_OID);
 }
 
-static bool
+static inline bool
 btree_is_fixed_size (BTID_INT * btid_int, RECDES * record, BTREE_NODE_TYPE node_type, bool is_first)
 {
-  // FIXME -
-  //
-  // all rules for fixed size here
-  //
-  //  overflow
-  //      all
-  //
-  //  leaf
-  //      unique non-first
-  //      first if has overflow oids
-  // 
+  return ((node_type == BTREE_OVERFLOW_NODE) || (!is_first && BTREE_IS_UNIQUE (btid_int->unique_pk))
+	  || (is_first && btree_leaf_is_flaged (record, BTREE_LEAF_RECORD_OVERFLOW_OIDS)));
 }
