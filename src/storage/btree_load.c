@@ -4357,32 +4357,20 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 			  const char *fk_name, char *pred_stream, int pred_stream_size, char *func_pred_stream,
 			  int func_pred_stream_size, int func_col_id, int func_attr_index_start)
 {
-  LOG_TDES *tdes = NULL;
   int cur_class, attr_offset;
-  VPID root_vpid;
   BTID_INT btid_int;
   PRED_EXPR_WITH_CONTEXT *filter_pred = NULL;
   FUNCTION_INDEX_INFO func_index_info;
   DB_TYPE single_node_type = DB_TYPE_NULL;
   void *func_unpack_info = NULL;
-  bool has_fk;
-  BTID btid_global_stats = BTID_INITIALIZER;
-  OID *notification_class_oid;
   bool is_sysop_started = false;
   MVCC_SNAPSHOT *builder_snapshot = NULL;
   HEAP_SCANCACHE scan_cache;
   HEAP_CACHE_ATTRINFO attr_info;
-  SCAN_CODE sc = S_DOESNT_EXIST;
-  OID cur_oid;
-  RECDES cur_record;
-  BTREE_UNIQUE_STATS *unique_stat_info = NULL;
-  MVCC_REC_HEADER mvcc_rec_header;
   int ret = NO_ERROR;
-  LOCK new_lock = NULL_LOCK;
   LK_ENTRY *lock;
 
   func_index_info.expr = NULL;
-  OID_SET_NULL (&cur_oid);
 
   /* Check for robustness */
   if (!btid || !hfids || !class_oids || !attr_ids || !key_type)
@@ -4512,7 +4500,7 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   scan_cache.mvcc_snapshot = builder_snapshot;
 
   /* Check the lock. */
-  lock = lock_get_class_lock (thread_p, class_oids, thread_p->tran_index);
+  lock = lock_get_class_lock (thread_p, class_oids, thread_p->tran_index);  // ??
 
   /* Start the online index builder. */
   ret = online_index_builder (thread_p, &btid_int, hfids, class_oids, n_classes, attr_ids, n_attrs,

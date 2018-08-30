@@ -1706,6 +1706,14 @@ static void btree_record_remove_insid (THREAD_ENTRY * thread_p, BTID_INT * btid_
 				       char **rv_redo_data);
 static bool btree_is_class_oid_packed (BTID_INT * btid_int, RECDES * record, BTREE_NODE_TYPE node_type, bool is_first);
 static bool btree_is_fixed_size (BTID_INT * btid_int, RECDES * record, BTREE_NODE_TYPE node_type, bool is_first);
+static bool btree_is_insert_data_purpose (BTREE_OP_PURPOSE purpose);
+static bool btree_is_insert_object_purpose (BTREE_OP_PURPOSE purpose);
+static bool btree_is_insert_delid_purpose (BTREE_OP_PURPOSE purpose);
+static bool btree_is_delete_data_purpose (BTREE_OP_PURPOSE purpose);
+static bool btree_is_delete_object_purpose (BTREE_OP_PURPOSE purpose);
+static void btree_rv_log_delete_object (THREAD_ENTRY * thread_p, const BTREE_DELETE_HELPER & delete_helper,
+                                        LOG_DATA_ADDR & addr, int undo_length, int redo_length, const char * undo_data,
+                                        const char * redo_data);
 
 void btree_online_index_change_state (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * record,
 				      BTREE_NODE_TYPE node_type, int offset_to_object, MVCCID new_ins_id,
@@ -9032,39 +9040,8 @@ btree_delete_key_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR l
   assert (!BTREE_RV_HAS_DEBUG_INFO (delete_helper->leaf_addr.offset));
 
   /* Add logging. */
-  if (delete_helper->is_system_op_started)
-    {
-      /* We need undoredo logging. */
-
-      /* TODO: Add debugging info for undo. */
-      log_append_undoredo_data (thread_p, RVBT_RECORD_MODIFY_UNDOREDO, &delete_helper->leaf_addr, leaf_record.length, 0,
-				leaf_record.data, NULL);
-    }
-  else if (delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL)
-    {
-      /* Undo-redo logging. No actual redo data, since the record is removed completely (and only a flag saved in
-       * leaf_addr.offset is used. */
-      log_append_undoredo_data (thread_p, RVBT_DELETE_OBJECT_PHYSICAL, &delete_helper->leaf_addr,
-				delete_helper->rv_keyval_data_length, 0, delete_helper->rv_keyval_data, NULL);
-    }
-  else if (delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT)
-    {
-      log_append_compensate_with_undo_nxlsa (thread_p, RVBT_RECORD_MODIFY_COMPENSATE, pgbuf_get_vpid_ptr (leaf_pg),
-					     delete_helper->leaf_addr.offset, leaf_pg, 0, NULL,
-					     LOG_FIND_CURRENT_TDES (thread_p), &delete_helper->reference_lsa);
-    }
-  else if (delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED)
-    {
-      log_append_run_postpone (thread_p, RVBT_DELETE_OBJECT_PHYSICAL, &delete_helper->leaf_addr,
-			       pgbuf_get_vpid_ptr (leaf_pg), 0, NULL, &delete_helper->reference_lsa);
-    }
-  else				/* BTREE_OP_DELETE_VACUUM_OBJECT */
-    {
-      /* We now know everything is successfully executed. Vacuum no longer needs undo logging. */
-      assert (delete_helper->purpose == BTREE_OP_DELETE_VACUUM_OBJECT);
-      log_append_redo_data (thread_p, RVBT_DELETE_OBJECT_PHYSICAL, &delete_helper->leaf_addr, 0, NULL);
-    }
-  pgbuf_set_dirty (thread_p, leaf_pg, DONT_FREE);
+  btree_rv_log_delete_object (thread_p, *delete_helper, delete_helper->leaf_addr, leaf_record.length, 0,
+                              leaf_record.data, NULL);
 
   btree_delete_log (delete_helper, BTREE_DELETE_MODIFY_MSG ("removed key"),
 		    BTREE_DELETE_MODIFY_ARGS (thread_p, delete_helper, leaf_pg, &prev_lsa, true, search_key->slotid, 0,
@@ -9141,11 +9118,7 @@ btree_replace_first_oid_with_ovfl_oid (THREAD_ENTRY * thread_p, BTID_INT * btid,
   assert (delete_helper != NULL);
   assert (leaf_rec != NULL);
   assert (ovfl_vpid != NULL);
-  assert (delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED
-	  || delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL
-	  || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT
-	  || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD
-	  || delete_helper->purpose == BTREE_OP_DELETE_VACUUM_OBJECT);
+  assert (btree_is_delete_object_purpose (delete_helper->purpose));
   assert (delete_helper->rv_redo_data != NULL);
   assert (delete_helper->leaf_addr.offset != 0 && delete_helper->leaf_addr.pgptr == leaf_page);
 
@@ -10655,8 +10628,7 @@ btree_key_append_object_as_new_overflow (THREAD_ENTRY * thread_p, BTID_INT * bti
   assert (leaf_rec != NULL);
   assert (first_ovfl_vpid != NULL);
   assert (insert_helper->rv_redo_data != NULL && insert_helper->rv_redo_data_ptr != NULL);
-  assert (insert_helper->purpose == BTREE_OP_INSERT_NEW_OBJECT
-	  || insert_helper->purpose == BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE);
+  assert (btree_is_insert_object_purpose (insert_helper->purpose));
 
   save_sysop_started = insert_helper->is_system_op_started;
   if (!insert_helper->is_system_op_started)
@@ -10776,8 +10748,7 @@ btree_key_append_object_to_overflow (THREAD_ENTRY * thread_p, BTID_INT * btid_in
   assert (ovfl_page != NULL);
   assert (object_info != NULL);
   assert (insert_helper != NULL);
-  assert (insert_helper->purpose == BTREE_OP_INSERT_NEW_OBJECT
-	  || insert_helper->purpose == BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE);
+  assert (btree_is_insert_object_purpose (insert_helper->purpose));
 
   /* Prepare record. */
   ovfl_rec.type = REC_HOME;
@@ -26133,9 +26104,7 @@ btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
    * insert MVCCID. 2. Undo of physical delete. If an object is physically removed from b-tree and operation must be
    * undone, the object with all its additional information existing before delete must be inserted. 3. Logical delete, 
    * which inserts a delete MVCCID. */
-  assert (insert_helper->purpose == BTREE_OP_INSERT_NEW_OBJECT || insert_helper->purpose == BTREE_OP_INSERT_MVCC_DELID
-	  || insert_helper->purpose == BTREE_OP_INSERT_MARK_DELETED
-	  || insert_helper->purpose == BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE);
+  assert (btree_is_insert_data_purpose (insert_helper->purpose));
 
   /* Fixing root page. */
   insert_helper->is_root = true;
@@ -26529,8 +26498,7 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
   assert (key_count > 0 || node_type == BTREE_LEAF_NODE);
 
   /* Is new key possible? True if inserting new object or if undoing the removal of some key/object. */
-  is_new_key_possible = (insert_helper->purpose == BTREE_OP_INSERT_NEW_OBJECT
-			 || insert_helper->purpose == BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE);
+  is_new_key_possible = btree_is_insert_object_purpose (insert_helper->purpose);
 
   /* Split algorithm: There are two types of splits: root split and normal split. 1. Root split: If there is not enough 
    * space for new data in root, split it into three nodes: two nodes containing all previous entries and a new root
@@ -27096,8 +27064,7 @@ btree_key_insert_new_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VA
   assert (search_key->slotid > 0 && search_key->slotid <= btree_node_number_of_keys (thread_p, *leaf_page) + 1);
   assert (restart != NULL);
   assert (insert_helper != NULL);
-  assert (insert_helper->purpose == BTREE_OP_INSERT_NEW_OBJECT
-	  || insert_helper->purpose == BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE);
+  assert (btree_is_insert_object_purpose (insert_helper->purpose));
 
   /* Do not allow inserting a deleted object. It should never happen Insert new object should insert objects with no
    * delete MVCCID. Rollback of object physical removal, cannot reach here with a deleted object. There are three
@@ -27915,8 +27882,7 @@ btree_key_append_object_non_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int
   assert (leaf_record != NULL);
   assert (leaf_info != NULL);
   assert (btree_obj != NULL);
-  assert (insert_helper->purpose == BTREE_OP_INSERT_NEW_OBJECT
-	  || insert_helper->purpose == BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE);
+  assert (btree_is_insert_object_purpose (insert_helper->purpose));
   assert (insert_helper->rv_redo_data != NULL && insert_helper->rv_redo_data_ptr != NULL);
 
   if (BTREE_IS_UNIQUE (btid_int->unique_pk))
@@ -28301,8 +28267,7 @@ btree_key_append_object_into_ovf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
   assert (leaf_record != NULL);
   assert (leaf_record_info != NULL);
   assert (insert_helper != NULL);
-  assert (insert_helper->purpose == BTREE_OP_INSERT_NEW_OBJECT
-	  || insert_helper->purpose == BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE);
+  assert (btree_is_insert_object_purpose (insert_helper->purpose));
   assert (append_object != NULL);
 
   /* Is there enough space in existing overflow pages? */
@@ -29668,13 +29633,7 @@ btree_fix_root_for_delete (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
   assert (btid_int != NULL);
   assert (root_page != NULL && *root_page == NULL);
   assert (delete_helper != NULL);
-  assert (delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL
-	  || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT
-	  || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_DELID
-	  || delete_helper->purpose == BTREE_OP_DELETE_VACUUM_INSID
-	  || delete_helper->purpose == BTREE_OP_DELETE_VACUUM_OBJECT
-	  || delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED
-	  || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD);
+  assert (btree_is_delete_data_purpose (delete_helper->purpose));
 
   /* Root node is being fixed. */
   delete_helper->is_root = true;
@@ -30495,10 +30454,8 @@ btree_key_delete_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB
   assert (leaf_page != NULL && *leaf_page != NULL && pgbuf_get_latch_mode (*leaf_page) >= PGBUF_LATCH_WRITE);
   assert (search_key != NULL);
   assert (delete_helper != NULL);
-  assert (delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL
-	  || delete_helper->purpose == BTREE_OP_DELETE_VACUUM_OBJECT
-	  || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT
-	  || delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED);
+  assert (btree_is_delete_object_purpose (delete_helper->purpose)
+          && delete_helper->purpose != BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD);
 
   BTREE_PERF_TRACK_TRAVERSE_TIME (thread_p, delete_helper);
 
@@ -31042,10 +30999,8 @@ btree_leaf_record_replace_first_with_last (THREAD_ENTRY * thread_p, BTID_INT * b
   assert (last_class_oid != NULL);
   assert (last_mvcc_info != NULL);
   assert (offset_to_last_object > 0 && offset_to_last_object < leaf_record->length);
-  assert (delete_helper->purpose == BTREE_OP_DELETE_VACUUM_OBJECT
-	  || delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL
-	  || delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED
-	  || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT);
+  assert (btree_is_delete_object_purpose (delete_helper->purpose)
+          && delete_helper->purpose != BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD);
   assert (delete_helper->rv_redo_data != NULL && delete_helper->rv_redo_data_ptr != NULL);
 
 #if !defined (NDEBUG)
@@ -31078,38 +31033,9 @@ btree_leaf_record_replace_first_with_last (THREAD_ENTRY * thread_p, BTID_INT * b
 
   /* Log changes. */
   BTREE_RV_GET_DATA_LENGTH (delete_helper->rv_redo_data_ptr, delete_helper->rv_redo_data, rv_redo_data_length);
-  if (delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL)
-    {
-      /* Add undoredo log. */
-      assert (!delete_helper->is_system_op_started);
-      log_append_undoredo_data (thread_p, RVBT_DELETE_OBJECT_PHYSICAL, &delete_helper->leaf_addr,
-				delete_helper->rv_keyval_data_length, rv_redo_data_length,
-				delete_helper->rv_keyval_data, delete_helper->rv_redo_data);
-    }
-  else if (delete_helper->is_system_op_started)
-    {
-      BTREE_RV_GET_DATA_LENGTH (rv_undo_data_ptr, rv_undo_data, rv_undo_data_length);
-      log_append_undoredo_data (thread_p, RVBT_RECORD_MODIFY_UNDOREDO, &delete_helper->leaf_addr, rv_undo_data_length,
-				rv_redo_data_length, rv_undo_data, delete_helper->rv_redo_data);
-    }
-  else if (delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT)
-    {
-      log_append_compensate_with_undo_nxlsa (thread_p, RVBT_RECORD_MODIFY_COMPENSATE, pgbuf_get_vpid_ptr (leaf_page),
-					     delete_helper->leaf_addr.offset, leaf_page, rv_redo_data_length,
-					     delete_helper->rv_redo_data, LOG_FIND_CURRENT_TDES (thread_p),
-					     &delete_helper->reference_lsa);
-    }
-  else if (delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED)
-    {
-      log_append_run_postpone (thread_p, RVBT_RECORD_MODIFY_NO_UNDO, &delete_helper->leaf_addr,
-			       pgbuf_get_vpid_ptr (leaf_page), rv_redo_data_length, delete_helper->rv_redo_data,
-			       &delete_helper->reference_lsa);
-    }
-  else				/* BTREE_OP_DELETE_VACUUM_OBJECT */
-    {
-      log_append_redo_data (thread_p, RVBT_DELETE_OBJECT_PHYSICAL, &delete_helper->leaf_addr, rv_redo_data_length,
-			    delete_helper->rv_redo_data);
-    }
+  assert (!delete_helper->is_system_op_started || delete_helper->purpose != BTREE_OP_DELETE_OBJECT_PHYSICAL);
+  btree_rv_log_delete_object (thread_p, *delete_helper, delete_helper->leaf_addr, rv_undo_data_length,
+                              rv_redo_data_length, rv_undo_data_ptr, delete_helper->rv_redo_data);
 
   FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
 
@@ -31159,11 +31085,7 @@ btree_record_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE_
   assert (record != NULL);
   assert (search_key != NULL && search_key->result == BTREE_KEY_FOUND && search_key->slotid > 0);
   assert (addr != NULL && addr->offset != 0 && addr->pgptr == page);
-  assert (delete_helper->purpose == BTREE_OP_DELETE_VACUUM_OBJECT
-	  || delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL
-	  || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT
-	  || delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED
-	  || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD);
+  assert (btree_is_delete_object_purpose (delete_helper->purpose));
   assert (delete_helper->rv_redo_data != NULL && delete_helper->rv_redo_data_ptr != NULL);
 
   /* Safe guard: first object in leaf record cannot be handled here. */
@@ -31206,38 +31128,9 @@ btree_record_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE_
   /* Add logging. */
   BTREE_RV_GET_DATA_LENGTH (delete_helper->rv_redo_data_ptr, delete_helper->rv_redo_data, rv_redo_data_length);
   assert (rv_redo_data_length > 0);
-  if (delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL)
-    {
-      /* Add undo/redo logging. */
-      assert (!delete_helper->is_system_op_started);
-      log_append_undoredo_data (thread_p, RVBT_DELETE_OBJECT_PHYSICAL, addr, delete_helper->rv_keyval_data_length,
-				rv_redo_data_length, delete_helper->rv_keyval_data, delete_helper->rv_redo_data);
-    }
-  else if (delete_helper->is_system_op_started)
-    {
-      BTREE_RV_GET_DATA_LENGTH (rv_undo_data_ptr, rv_undo_data, rv_undo_data_length);
-      log_append_undoredo_data (thread_p, RVBT_RECORD_MODIFY_UNDOREDO, addr, rv_undo_data_length, rv_redo_data_length,
-				rv_undo_data, delete_helper->rv_redo_data);
-    }
-  else if (delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT
-	   || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD)
-    {
-      log_append_compensate_with_undo_nxlsa (thread_p, RVBT_RECORD_MODIFY_COMPENSATE, pgbuf_get_vpid_ptr (page),
-					     addr->offset, page, rv_redo_data_length, delete_helper->rv_redo_data,
-					     LOG_FIND_CURRENT_TDES (thread_p), &delete_helper->reference_lsa);
-    }
-  else if (delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED)
-    {
-      log_append_run_postpone (thread_p, RVBT_RECORD_MODIFY_NO_UNDO, addr, pgbuf_get_vpid_ptr (page),
-			       rv_redo_data_length, delete_helper->rv_redo_data, &delete_helper->reference_lsa);
-    }
-  else				/* BTREE_OP_DELETE_VACUUM_OBJECT */
-    {
-      assert (delete_helper->purpose == BTREE_OP_DELETE_VACUUM_OBJECT);
-      log_append_redo_data (thread_p, RVBT_RECORD_MODIFY_NO_UNDO, addr, rv_redo_data_length,
-			    delete_helper->rv_redo_data);
-    }
-
+  assert (!delete_helper->is_system_op_started || delete_helper->purpose != BTREE_OP_DELETE_OBJECT_PHYSICAL);
+  btree_rv_log_delete_object (thread_p, *delete_helper, *addr, rv_undo_data_length, rv_redo_data_length,
+                              rv_undo_data, delete_helper->rv_redo_data);
   FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
 
   /* Set page dirty. */
@@ -31403,11 +31296,7 @@ btree_overflow_remove_object (THREAD_ENTRY * thread_p, DB_VALUE * key, BTID_INT 
   assert (leaf_page != NULL);
   assert (leaf_record != NULL);
   assert (search_key != NULL && search_key->result == BTREE_KEY_FOUND && search_key->slotid > 0);
-  assert (delete_helper->purpose == BTREE_OP_DELETE_VACUUM_OBJECT
-	  || delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL
-	  || delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED
-	  || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT
-	  || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD);
+  assert (btree_is_delete_object_purpose (delete_helper->purpose));
 
   /* Read overflow record. */
   overflow_record.area_size = DB_PAGESIZE;
@@ -31574,11 +31463,7 @@ btree_leaf_remove_object (THREAD_ENTRY * thread_p, DB_VALUE * key, BTID_INT * bt
   assert (leaf_page != NULL);
   assert (leaf_record != NULL);
   assert (search_key != NULL && search_key->result == BTREE_KEY_FOUND && search_key->slotid > 0);
-  assert (delete_helper->purpose == BTREE_OP_DELETE_VACUUM_OBJECT
-	  || delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL
-	  || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT
-	  || delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED
-	  || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD);
+  assert (btree_is_delete_object_purpose (delete_helper->purpose));
 
 #if !defined (NDEBUG)
   (void) btree_check_valid_record (thread_p, btid_int, leaf_record, BTREE_LEAF_NODE, NULL);
@@ -32401,11 +32286,7 @@ btree_overflow_record_replace_object (THREAD_ENTRY * thread_p, BTID_INT * btid_i
   /* Assert expected arguments. */
   assert (btid_int != NULL);
   assert (delete_helper != NULL);
-  assert (delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED
-	  || delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL
-	  || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT
-	  || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD
-	  || delete_helper->purpose == BTREE_OP_DELETE_VACUUM_OBJECT
+  assert (btree_is_delete_object_purpose (delete_helper->purpose)
 	  || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_DELID);
   assert (overflow_page != NULL);
   assert (overflow_record != NULL);
@@ -33222,19 +33103,6 @@ btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_
   BTREE_ROOT_WITH_KEY_FUNCTION *root_function = NULL;
   BTREE_ADVANCE_WITH_KEY_FUNCTION *advance_function = NULL;
   BTREE_PROCESS_KEY_FUNCTION *key_function = NULL;
-  BTREE_MVCC_INFO mvcc_info = BTREE_MVCC_INFO_INITIALIZER;
-  short slot_id = 0;
-  PAGE_PTR leaf_page;
-  VPID page_id;
-  bool found_key = false;
-  RECDES record, index_record;
-  MVCC_REC_HEADER mvcc_index_record_header;
-  int offset_after_key;
-  bool dummy_clear_key;
-  char data_buffer[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
-  LEAF_REC leaf_info;
-  PAGE_PTR found_page = NULL;
-  int offset_to_found_object;
 
   /* Safe guards */
   assert (oid != NULL);
@@ -33254,7 +33122,6 @@ btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_
     }
 
   btid = btid_int->sys_btid;
-  *BTREE_INSERT_MVCC_INFO (&insert_helper) = mvcc_info;
 
   /* Is key NULL? */
   insert_helper.is_null = key == NULL || DB_IS_NULL (key) || btree_multicol_key_is_null (key);
@@ -33278,8 +33145,7 @@ btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_
     default:
       /* This should never happen until we add code for transaction operations. */
       assert (false);
-      error_code = ER_FAILED;
-      goto end;
+      return ER_FAILED;
     }
 
   error_code =
@@ -33287,7 +33153,6 @@ btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_
 					  advance_function, &insert_helper, key_function, &insert_helper, &search_key,
 					  NULL);
 
-end:
   return error_code;
 }
 
@@ -33312,7 +33177,6 @@ btree_key_online_index_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_
   BTREE_INSERT_HELPER *insert_helper = (BTREE_INSERT_HELPER *) other_args;
   int error_code = NO_ERROR;	/* Error code. */
   RECDES leaf_record;		/* Record descriptor for leaf key record. */
-  char data_buffer[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];	/* Data buffer used to copy record data. */
   LEAF_REC leaf_info;		/* Leaf record info. */
   int offset_after_key;		/* Offset in record data where packed key is ended. */
   bool dummy_clear_key;		/* Dummy field used as argument for btree_read_record. */
@@ -33708,4 +33572,120 @@ btree_is_fixed_size (BTID_INT * btid_int, RECDES * record, BTREE_NODE_TYPE node_
 {
   return ((node_type == BTREE_OVERFLOW_NODE) || (!is_first && BTREE_IS_UNIQUE (btid_int->unique_pk))
 	  || (is_first && btree_leaf_is_flaged (record, BTREE_LEAF_RECORD_OVERFLOW_OIDS)));
+}
+
+static bool
+btree_is_insert_data_purpose (BTREE_OP_PURPOSE purpose)
+{
+  switch (purpose)
+    {
+    case BTREE_OP_INSERT_NEW_OBJECT:
+    case BTREE_OP_INSERT_MVCC_DELID:
+    case BTREE_OP_INSERT_MARK_DELETED:
+    case BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE:
+      return true;
+    default:
+      return false;
+    }
+}
+
+static bool
+btree_is_insert_object_purpose (BTREE_OP_PURPOSE purpose)
+{
+  switch (purpose)
+    {
+    case BTREE_OP_INSERT_NEW_OBJECT:
+    case BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE:
+      return true;
+    default:
+      return false;
+    }
+}
+
+static bool
+btree_is_insert_delid_purpose (BTREE_OP_PURPOSE purpose)
+{
+  switch (purpose)
+    {
+    case BTREE_OP_INSERT_MVCC_DELID:
+    case BTREE_OP_INSERT_MARK_DELETED:
+      return true;
+    default:
+      return false;
+    }
+}
+
+static bool
+btree_is_delete_data_purpose (BTREE_OP_PURPOSE purpose)
+{
+  switch (purpose)
+    {
+    case BTREE_OP_DELETE_OBJECT_PHYSICAL:
+    case BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED:
+    case BTREE_OP_DELETE_UNDO_INSERT:
+    case BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD:
+    case BTREE_OP_DELETE_UNDO_INSERT_DELID:
+    case BTREE_OP_DELETE_VACUUM_OBJECT:
+    case BTREE_OP_DELETE_VACUUM_INSID:
+      return true;
+    default:
+      return false;
+    }
+}
+
+static bool
+btree_is_delete_object_purpose (BTREE_OP_PURPOSE purpose)
+{
+  switch (purpose)
+    {
+    case BTREE_OP_DELETE_OBJECT_PHYSICAL:
+    case BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED:
+    case BTREE_OP_DELETE_UNDO_INSERT:
+    case BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD:
+    case BTREE_OP_DELETE_VACUUM_OBJECT:
+      return true;
+    default:
+      return false;
+    }
+}
+
+static void
+btree_rv_log_delete_object (THREAD_ENTRY * thread_p, const BTREE_DELETE_HELPER & delete_helper, LOG_DATA_ADDR & addr,
+                            int undo_length, int redo_length, const char * undo_data, const char * redo_data)
+{
+  assert (btree_is_delete_object_purpose (delete_helper.purpose));
+
+  if (delete_helper.is_system_op_started)
+    {
+      // we need to log undoredo
+      log_append_undoredo_data (thread_p, RVBT_RECORD_MODIFY_UNDOREDO, &addr, undo_length, redo_length, undo_data,
+                                redo_data);
+    }
+  else
+    {
+    switch (delete_helper.purpose)
+      {
+      case BTREE_OP_DELETE_OBJECT_PHYSICAL:
+        log_append_undoredo_data (thread_p, RVBT_DELETE_OBJECT_PHYSICAL, &addr, delete_helper.rv_keyval_data_length,
+                                  redo_length, delete_helper.rv_keyval_data, redo_data);
+        break;
+      case BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED:
+        log_append_run_postpone (thread_p, RVBT_DELETE_OBJECT_PHYSICAL, &addr, pgbuf_get_vpid_ptr (addr.pgptr),
+                                 redo_length, redo_data, &delete_helper.reference_lsa);
+        break;
+      case BTREE_OP_DELETE_UNDO_INSERT:
+      case BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD:
+        log_append_compensate_with_undo_nxlsa (thread_p, RVBT_RECORD_MODIFY_COMPENSATE,
+                                               pgbuf_get_vpid_ptr (addr.pgptr), addr.offset, addr.pgptr, redo_length,
+                                               redo_data, LOG_FIND_CURRENT_TDES (thread_p),
+                                               &delete_helper.reference_lsa);
+        break;
+      case BTREE_OP_DELETE_VACUUM_OBJECT:
+        log_append_redo_data (thread_p, RVBT_DELETE_OBJECT_PHYSICAL, &addr, redo_length, redo_data);
+        break;
+      default:
+        assert (false);
+        break;
+      }
+    }
 }
