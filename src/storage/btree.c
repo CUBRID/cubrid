@@ -33103,19 +33103,6 @@ btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_
   BTREE_ROOT_WITH_KEY_FUNCTION *root_function = NULL;
   BTREE_ADVANCE_WITH_KEY_FUNCTION *advance_function = NULL;
   BTREE_PROCESS_KEY_FUNCTION *key_function = NULL;
-  BTREE_MVCC_INFO mvcc_info = BTREE_MVCC_INFO_INITIALIZER;
-  short slot_id = 0;
-  PAGE_PTR leaf_page;
-  VPID page_id;
-  bool found_key = false;
-  RECDES record, index_record;
-  MVCC_REC_HEADER mvcc_index_record_header;
-  int offset_after_key;
-  bool dummy_clear_key;
-  char data_buffer[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
-  LEAF_REC leaf_info;
-  PAGE_PTR found_page = NULL;
-  int offset_to_found_object;
 
   /* Safe guards */
   assert (oid != NULL);
@@ -33135,7 +33122,6 @@ btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_
     }
 
   btid = btid_int->sys_btid;
-  *BTREE_INSERT_MVCC_INFO (&insert_helper) = mvcc_info;
 
   /* Is key NULL? */
   insert_helper.is_null = key == NULL || DB_IS_NULL (key) || btree_multicol_key_is_null (key);
@@ -33159,8 +33145,7 @@ btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_
     default:
       /* This should never happen until we add code for transaction operations. */
       assert (false);
-      error_code = ER_FAILED;
-      goto end;
+      return ER_FAILED;
     }
 
   error_code =
@@ -33168,7 +33153,6 @@ btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_
 					  advance_function, &insert_helper, key_function, &insert_helper, &search_key,
 					  NULL);
 
-end:
   return error_code;
 }
 
@@ -33193,7 +33177,6 @@ btree_key_online_index_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_
   BTREE_INSERT_HELPER *insert_helper = (BTREE_INSERT_HELPER *) other_args;
   int error_code = NO_ERROR;	/* Error code. */
   RECDES leaf_record;		/* Record descriptor for leaf key record. */
-  char data_buffer[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];	/* Data buffer used to copy record data. */
   LEAF_REC leaf_info;		/* Leaf record info. */
   int offset_after_key;		/* Offset in record data where packed key is ended. */
   bool dummy_clear_key;		/* Dummy field used as argument for btree_read_record. */
