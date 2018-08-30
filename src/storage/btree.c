@@ -1704,7 +1704,7 @@ STATIC_INLINE void btree_set_mvcc_insid (RECDES * rec, int mvcc_insid_offset, MV
 static void btree_record_remove_insid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * record,
 				       BTREE_NODE_TYPE node_type, int offset_to_object, char **rv_undo_data,
 				       char **rv_redo_data);
-static bool btree_is_class_oid_packed (BTID_INT * btid_int, RECDES *record, BTREE_NODE_TYPE node_type, bool is_first);
+static bool btree_is_class_oid_packed (BTID_INT * btid_int, RECDES * record, BTREE_NODE_TYPE node_type, bool is_first);
 static bool btree_is_fixed_size (BTID_INT * btid_int, RECDES * record, BTREE_NODE_TYPE node_type, bool is_first);
 
 void btree_online_index_change_state (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * record,
@@ -20913,13 +20913,13 @@ btree_key_find_first_visible_row (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
       BTREE_OID_CLEAR_ALL_FLAGS (oid);
 
       if (btree_is_class_oid_packed (btid_int, rec, node_type, is_first))
-        {
-          /* Read class OID */
+	{
+	  /* Read class OID */
 	  if (or_get_oid (&buf, class_oid) != NO_ERROR)
 	    {
 	      goto error;
 	    }
-        }
+	}
       else if (BTREE_IS_UNIQUE (btid_int->unique_pk))
 	{
 	  /* Class OID is top class OID */
@@ -33370,12 +33370,12 @@ btree_key_online_index_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_
 	  /* This is the index builder, therefore if there is already an OID that matches the one that needs to be
 	   * inserted, then the already inserted one should have either DELETE_FLAG or INSERT_FLAG set.
 	   */
-          online_index_check_flags (btree_mvcc_info.insert_mvccid);
+	  btree_online_index_check_flags (btree_mvcc_info.insert_mvccid);
 
-	  if (online_index_has_insert_flag (btree_mvcc_info.insert_mvccid))
+	  if (btree_online_index_has_insert_flag (btree_mvcc_info.insert_mvccid))
 	    {
 	      /* INSERT_FLAG is set. It means we have to remove the flag, according to the state machine. */
-              online_index_set_normal_state (btree_mvcc_info.insert_mvccid);
+	      btree_online_index_set_normal_state (btree_mvcc_info.insert_mvccid);
 
 	      btree_online_index_change_state (thread_p, btid_int, &leaf_record, node_type, offset_to_object,
 					       btree_mvcc_info.insert_mvccid, &rv_undo_data, &rv_redo_data);
@@ -33385,21 +33385,19 @@ btree_key_online_index_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_
 	  else
 	    {
 	      /* DELETE_FLAG is set. It means we have to remove the OID from the key. */
-	      BTREE_DELETE_HELPER *delete_helper;
-	      *delete_helper = BTREE_DELETE_HELPER_INITIALIZER;
+	      BTREE_DELETE_HELPER delete_helper = BTREE_DELETE_HELPER_INITIALIZER;
 
 	      /* TODO: This is not entirely safe. It needs to be checked when we add the transactional inserts. */
-	      assert (!(online_index_has_insert_flag (btree_mvcc_info.insert_mvccid)));
-	      delete_helper->purpose = BTREE_OP_DELETE_OBJECT_PHYSICAL;
-	      delete_helper->rv_redo_data = insert_helper->rv_redo_data;
-	      delete_helper->rv_redo_data_ptr = insert_helper->rv_redo_data_ptr;
-	      delete_helper->is_system_op_started = insert_helper->is_system_op_started;
-	      delete_helper->rv_keyval_data_length = insert_helper->rv_keyval_data_length;
+	      assert (!(btree_online_index_has_insert_flag (btree_mvcc_info.insert_mvccid)));
+	      delete_helper.purpose = BTREE_OP_DELETE_OBJECT_PHYSICAL;
+	      delete_helper.rv_redo_data = insert_helper->rv_redo_data;
+	      delete_helper.rv_redo_data_ptr = insert_helper->rv_redo_data_ptr;
+	      delete_helper.is_system_op_started = insert_helper->is_system_op_started;
+	      delete_helper.rv_keyval_data_length = insert_helper->rv_keyval_data_length;
 
-	      error_code =
-		btree_record_remove_object (thread_p, btid_int, delete_helper, *leaf_page, &leaf_record, search_key,
-					    node_type, offset_to_object, &delete_helper->leaf_addr);
-
+	      error_code = btree_record_remove_object (thread_p, btid_int, &delete_helper, *leaf_page, &leaf_record,
+						       search_key, node_type, offset_to_object,
+						       &delete_helper.leaf_addr);
 	      return error_code;
 	    }
 	}
@@ -33441,7 +33439,7 @@ btree_online_index_change_state (THREAD_ENTRY * thread_p, BTID_INT * btid_int, R
     {
       /* We have MVCC_INSID. */
       // if (new_ins_id != 0)
-      if (!online_index_is_normal_state (new_ins_id))
+      if (!btree_online_index_is_normal_state (new_ins_id))
 	{
 	  btree_set_mvcc_insid (record, offset_to_insid_mvccid, &new_ins_id, rv_undo_data, rv_redo_data);
 	}
@@ -33714,6 +33712,8 @@ btree_is_class_oid_packed (BTID_INT * btid_int, RECDES * record, BTREE_NODE_TYPE
 static bool
 btree_is_fixed_size (BTID_INT * btid_int, RECDES * record, BTREE_NODE_TYPE node_type, bool is_first)
 {
+  // FIXME -
+  //
   // all rules for fixed size here
   //
   //  overflow
