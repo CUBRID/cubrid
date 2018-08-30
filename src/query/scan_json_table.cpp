@@ -549,6 +549,7 @@ namespace cubscan
 	      if (this_cursor.m_process_doc != nullptr)
 		{
 		  this_cursor.m_node->m_need_inc_ordinality = true;
+		  char *raw_json = db_json_get_json_body_from_document (*this_cursor.m_process_doc);
 
 		  // todo: split scan_pred into preds for columns
 		  error_code = evaluate (*this_cursor.m_node, thread_p, *this_cursor.m_process_doc, logical);
@@ -608,6 +609,23 @@ namespace cubscan
 	    {
 	      ASSERT_ERROR();
 	      return error_code;
+	    }
+
+	  cursor &next_cursor = m_scan_cursor[depth + 1];
+	  if (db_json_iterator_get_type (*next_cursor.m_json_iterator) == JSON_ITERATOR_TYPE::JSON_ITERATOR_EMPTY)
+	    {
+	      clear_node_columns (*next_cursor.m_node);
+
+	      if (this_cursor.m_child < this_cursor.m_node->m_nested_nodes.size() - 1)
+		{
+		  this_cursor.m_child++;
+		  continue;
+		}
+
+	      this_cursor.advance_row_cursor();
+
+	      success = true;
+	      return NO_ERROR;
 	    }
 
 	  // advance current level in tree

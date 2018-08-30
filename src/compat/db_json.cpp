@@ -154,7 +154,11 @@ class JSON_ITERATOR
 {
   public:
     // default ctor
-    JSON_ITERATOR() : document (nullptr), doc_itr (nullptr), current_type (DB_JSON_TYPE::DB_JSON_UNKNOWN) {}
+    JSON_ITERATOR() :
+      document (nullptr)
+      , doc_itr (nullptr)
+      , current_type (DB_JSON_TYPE::DB_JSON_UNKNOWN)
+      , json_itr_type (JSON_ITERATOR_TYPE::JSON_ITERATOR_UNKNOWN) {}
 
     JSON_ITERATOR (const JSON_DOC &document) : document (&document), doc_itr (nullptr)
     {
@@ -178,16 +182,16 @@ class JSON_ITERATOR
     const JSON_DOC *
     get_value_to_doc()
     {
-      if (doc_itr == nullptr)
-	{
-	  doc_itr = db_json_allocate_doc();
-	}
-
       const JSON_VALUE *value = get();
 
       if (value == nullptr)
 	{
 	  return nullptr;
+	}
+
+      if (doc_itr == nullptr)
+	{
+	  doc_itr = db_json_allocate_doc();
 	}
 
       doc_itr->CopyFrom (*value, doc_itr->GetAllocator());
@@ -200,10 +204,16 @@ class JSON_ITERATOR
       return current_type;
     }
 
+    JSON_ITERATOR_TYPE get_json_itr_type() const
+    {
+      return json_itr_type;
+    }
+
   protected:
     const JSON_DOC *document;
     JSON_DOC *doc_itr;
     DB_JSON_TYPE current_type;
+    JSON_ITERATOR_TYPE json_itr_type;
 };
 
 class JSON_OBJECT_ITERATOR : public JSON_ITERATOR
@@ -214,6 +224,7 @@ class JSON_OBJECT_ITERATOR : public JSON_ITERATOR
       assert (document.IsObject());
 
       iterator = document.MemberBegin();
+      json_itr_type = JSON_ITERATOR_TYPE::JSON_ITERATOR_OBJECT;
     }
 
     const JSON_VALUE *next();
@@ -251,6 +262,7 @@ class JSON_ARRAY_ITERATOR : public JSON_ITERATOR
       assert (document.IsArray());
 
       iterator = document.GetArray().Begin();
+      json_itr_type = JSON_ITERATOR_TYPE::JSON_ITERATOR_ARRAY;
     }
 
     const JSON_VALUE *next();
@@ -285,6 +297,7 @@ class JSON_GENERIC_ELEM_ITERATOR : public JSON_ITERATOR
   public:
     JSON_GENERIC_ELEM_ITERATOR (const JSON_DOC &document) : JSON_ITERATOR (document)
     {
+      json_itr_type = JSON_ITERATOR_TYPE::JSON_ITERATOR_GENERIC_ELEMENT;
     }
 
     const JSON_VALUE *next()
@@ -316,7 +329,10 @@ class JSON_GENERIC_ELEM_ITERATOR : public JSON_ITERATOR
 class JSON_EMPTY_ITERATOR : public JSON_ITERATOR
 {
   public:
-    JSON_EMPTY_ITERATOR() {}
+    JSON_EMPTY_ITERATOR()
+    {
+      json_itr_type = JSON_ITERATOR_TYPE::JSON_ITERATOR_EMPTY;
+    }
 
     const JSON_VALUE *next()
     {
@@ -330,7 +346,7 @@ class JSON_EMPTY_ITERATOR : public JSON_ITERATOR
 
     size_t count_members()
     {
-      return 1;
+      return 0;
     }
 
     const JSON_VALUE *get()
@@ -928,6 +944,12 @@ db_json_iterator_get_type_of_doc (const JSON_ITERATOR &json_itr)
   return json_itr.get_type_of_doc();
 }
 
+JSON_ITERATOR_TYPE
+db_json_iterator_get_type (const JSON_ITERATOR &json_itr)
+{
+  return json_itr.get_json_itr_type();
+}
+
 JSON_ITERATOR *
 db_json_create_iterator (const JSON_DOC *document)
 {
@@ -1132,6 +1154,12 @@ db_json_extract_document_from_path (const JSON_DOC *document, const char *raw_pa
 {
   int error_code = NO_ERROR;
   std::string json_pointer_string;
+
+  if (document == NULL)
+    {
+      result = NULL;
+      return NO_ERROR;
+    }
 
   // path must be JSON pointer
   error_code = db_json_convert_sql_path_to_pointer (raw_path, json_pointer_string);
