@@ -4865,7 +4865,7 @@ btree_get_new_page (THREAD_ENTRY * thread_p, BTID_INT * btid, VPID * vpid, VPID 
  * return        : NO_ERROR
  * thread_p (in) : thread entry
  * page (in)     : new b-tree page
- * args (in)     : ignored
+ * args (in)     : true or nil for undoredo logging; false for redo
  */
 int
 btree_initialize_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args)
@@ -4873,7 +4873,7 @@ btree_initialize_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args)
   pgbuf_set_page_ptype (thread_p, page, PAGE_BTREE);
 
   spage_initialize (thread_p, page, UNANCHORED_KEEP_SEQUENCE, BTREE_MAX_ALIGN, DONT_SAFEGUARD_RVSPACE);
-  log_append_redo_data2 (thread_p, RVBT_GET_NEWPAGE, NULL, page, -1, 0, NULL);
+  log_append_undoredo_data2 (thread_p, RVBT_GET_NEWPAGE, NULL, page, -1, 0, 0, NULL, NULL);
   pgbuf_set_dirty (thread_p, page, DONT_FREE);
 
   return NO_ERROR;
@@ -5433,7 +5433,6 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type, OI
   BTREE_ROOT_HEADER root_header_info, *root_header = NULL;
   VPID root_vpid;
   PAGE_PTR page_ptr = NULL;
-  unsigned short alignment;
 
   root_header = &root_header_info;
 
@@ -5459,13 +5458,6 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type, OI
       goto error;
     }
   pgbuf_check_page_ptype (thread_p, page_ptr, PAGE_BTREE);
-
-  alignment = BTREE_MAX_ALIGN;
-  if (btree_initialize_new_page (thread_p, page_ptr, (void *) &alignment) != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      goto error;
-    }
 
   /* form the root header information */
   root_header->node.split_info.pivot = 0.0f;

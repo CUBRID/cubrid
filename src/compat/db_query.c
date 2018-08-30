@@ -42,6 +42,7 @@
 #include "system_parameter.h"
 #include "xasl_generation.h"
 #include "network_interface_cl.h"
+#include "transaction_cl.h"
 #include "dbtype.h"
 
 #define DB_OID_INCLUDED(r)      ((r)->oid_included == true)
@@ -3358,7 +3359,19 @@ db_sqlx_debug_print_result (DB_QUERY_RESULT * result)
 int
 db_query_end (DB_QUERY_RESULT * result)
 {
-  return db_query_end_internal (result, true);
+  bool notify_server;
+
+  if (tran_was_latest_query_ended ())
+    {
+      /* Query ended with latest executed query. No need to notify server. */
+      notify_server = false;
+    }
+  else
+    {
+      notify_server = true;
+    }
+
+  return db_query_end_internal (result, notify_server);
 }
 
 /*
