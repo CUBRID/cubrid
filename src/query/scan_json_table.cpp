@@ -355,8 +355,10 @@ namespace cubscan
     }
 
     int
-    scanner::next_scan (cubthread::entry *thread_p, scan_id_struct &sid)
+    scanner::next_scan (cubthread::entry *thread_p, scan_id_struct &sid, FILTER_INFO &data_filter)
     {
+      // todo: add data_filter as data member
+
       bool success = true;
       int error_code = NO_ERROR;
 
@@ -378,7 +380,7 @@ namespace cubscan
 	  return ER_FAILED;
 	}
 
-      error_code = next_internal (thread_p, 0, success);
+      error_code = next_internal (thread_p, 0, success, data_filter);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR();
@@ -500,7 +502,7 @@ namespace cubscan
     }
 
     int
-    scanner::next_internal (cubthread::entry *thread_p, int depth, bool &success)
+    scanner::next_internal (cubthread::entry *thread_p, int depth, bool &success, FILTER_INFO &data_filter)
     {
       int error_code = NO_ERROR;
       size_t total_rows_number = 0;
@@ -511,7 +513,7 @@ namespace cubscan
       if (m_scan_cursor_depth >= depth + 1)
 	{
 	  // advance to child
-	  error_code = next_internal (thread_p, depth + 1, success);
+	  error_code = next_internal (thread_p, depth + 1, success, data_filter);
 	  if (error_code != NO_ERROR)
 	    {
 	      return error_code;
@@ -548,6 +550,7 @@ namespace cubscan
 		{
 		  this_cursor.m_node->m_need_inc_ordinality = true;
 
+		  // todo: split scan_pred into preds for columns
 		  error_code = evaluate (*this_cursor.m_node, thread_p, *this_cursor.m_process_doc, logical);
 		  if (error_code != NO_ERROR)
 		    {
@@ -565,6 +568,16 @@ namespace cubscan
 		  // fetch other columns too
 		  error_code = fetch_columns (*this_cursor.m_process_doc, this_cursor.m_node->m_output_columns,
 					      *this_cursor.m_node);
+
+		  // todo: use scan_pred only on nodes with predicates
+		  logical = eval_data_filter (thread_p, NULL, NULL, NULL, &data_filter);
+		  if (logical != V_TRUE)
+		    {
+		      // we need another row
+		      this_cursor.advance_row_cursor();
+		      continue;
+		    }
+
 		  if (error_code != NO_ERROR)
 		    {
 		      ASSERT_ERROR();
@@ -600,7 +613,7 @@ namespace cubscan
 	  // advance current level in tree
 	  m_scan_cursor_depth++;
 
-	  error_code = next_internal (thread_p, depth + 1, success);
+	  error_code = next_internal (thread_p, depth + 1, success, data_filter);
 	  if (error_code != NO_ERROR)
 	    {
 	      return error_code;

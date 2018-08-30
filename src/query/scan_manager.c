@@ -3848,7 +3848,7 @@ scan_open_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 */
 int
 scan_open_json_table_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, int grouped, QPROC_SINGLE_FETCH single_fetch,
-			   DB_VALUE * join_dbval, VAL_LIST * val_list, VAL_DESCR * vd)
+			   DB_VALUE * join_dbval, VAL_LIST * val_list, VAL_DESCR * vd, PRED_EXPR * pr)
 {
   JSON_TABLE_SCAN_ID *jtidp;
   DB_TYPE single_node_type = DB_TYPE_NULL;
@@ -3862,6 +3862,8 @@ scan_open_json_table_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, int group
 
   /* initialize JSON_TABLE_SCAN_ID structure */
   jtidp = &scan_id->s.jtid;
+
+  scan_init_scan_pred (&jtidp->scan_pred, NULL, pr, ((pr) ? eval_fnc (thread_p, pr, &single_node_type) : NULL));
 
   // jtidp->open (thread_p); // nothing to do here
 
@@ -6565,11 +6567,16 @@ scan_next_json_table_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 {
   JSON_TABLE_SCAN_ID *jtidp;
   int error_code = NO_ERROR;
+  FILTER_INFO data_filter;
 
   jtidp = &scan_id->s.jtid;
 
+  // init a filter to apply test predicate on output
+  scan_init_filter_info (&data_filter, &jtidp->scan_pred, NULL, scan_id->val_list, scan_id->vd, NULL, 0,
+			 NULL, NULL, NULL);
+
   // the status of the scan will be put in scan_id->status
-  error_code = jtidp->next_scan (thread_p, *scan_id);
+  error_code = jtidp->next_scan (thread_p, *scan_id, data_filter);
 
   if (error_code != NO_ERROR)
     {

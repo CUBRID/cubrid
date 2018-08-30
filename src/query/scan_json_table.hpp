@@ -66,9 +66,11 @@ namespace cubscan
 	int open (cubthread::entry *thread_p);
 	void end (cubthread::entry *thread_p);
 
-	int next_scan (cubthread::entry *thread_p, scan_id_struct &sid);
+	int next_scan (cubthread::entry *thread_p, scan_id_struct &sid, FILTER_INFO &data_filter);
 
 	scanner () = default;
+
+	SCAN_PRED scan_pred;
 
       private:
 	// scan_node
@@ -95,7 +97,7 @@ namespace cubscan
 	void clear_node_columns (cubxasl::json_table::node &node);
 	void reset_ordinality (cubxasl::json_table::node &node);
 
-	int next_internal (cubthread::entry *thread_p, int depth, bool &success);
+	int next_internal (cubthread::entry *thread_p, int depth, bool &success, FILTER_INFO &data_filter);
 
 	//scan_id_struct *m_scanid;
 	cubxasl::json_table::spec_node *m_specp;

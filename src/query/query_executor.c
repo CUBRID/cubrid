@@ -6590,7 +6590,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
     case TARGET_JSON_TABLE:
       /* open a json table based derived table scan */
       if (scan_open_json_table_scan (thread_p, s_id, grouped, curr_spec->single_fetch, curr_spec->s_dbval, val_list,
-				     vd) != NO_ERROR)
+				     vd, curr_spec->where_pred) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
@@ -13478,7 +13478,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
   bool instant_lock_mode_started = false;
   bool mvcc_select_lock_needed;
 
-  /* 
+  /*  
    * Pre_processing
    */
 

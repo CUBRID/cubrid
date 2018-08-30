@@ -1727,6 +1727,12 @@ stmt
 		{{
 			msg_ptr = 0;
 
+			// todo: find a better place to reset global
+			// This is needed when a json_table statement crashes after 
+			// it did increase the json_table_column_count but did not 
+			// arrive at the reset to 0 point because of a syntax error
+			json_table_column_count = 0;
+
 			if (this_parser->original_buffer)
 			  {
 			    int pos = @$.buffer_pos;
