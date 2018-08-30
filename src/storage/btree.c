@@ -1711,7 +1711,9 @@ static bool btree_is_insert_object_purpose (BTREE_OP_PURPOSE purpose);
 static bool btree_is_insert_delid_purpose (BTREE_OP_PURPOSE purpose);
 static bool btree_is_delete_data_purpose (BTREE_OP_PURPOSE purpose);
 static bool btree_is_delete_object_purpose (BTREE_OP_PURPOSE purpose);
-
+static void btree_rv_log_delete_object (THREAD_ENTRY * thread_p, const BTREE_DELETE_HELPER & delete_helper,
+                                        LOG_DATA_ADDR & addr, int undo_length, int redo_length, const char * undo_data,
+                                        const char * redo_data);
 
 void btree_online_index_change_state (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * record,
 				      BTREE_NODE_TYPE node_type, int offset_to_object, MVCCID new_ins_id,
@@ -9038,39 +9040,8 @@ btree_delete_key_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR l
   assert (!BTREE_RV_HAS_DEBUG_INFO (delete_helper->leaf_addr.offset));
 
   /* Add logging. */
-  if (delete_helper->is_system_op_started)
-    {
-      /* We need undoredo logging. */
-
-      /* TODO: Add debugging info for undo. */
-      log_append_undoredo_data (thread_p, RVBT_RECORD_MODIFY_UNDOREDO, &delete_helper->leaf_addr, leaf_record.length, 0,
-				leaf_record.data, NULL);
-    }
-  else if (delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL)
-    {
-      /* Undo-redo logging. No actual redo data, since the record is removed completely (and only a flag saved in
-       * leaf_addr.offset is used. */
-      log_append_undoredo_data (thread_p, RVBT_DELETE_OBJECT_PHYSICAL, &delete_helper->leaf_addr,
-				delete_helper->rv_keyval_data_length, 0, delete_helper->rv_keyval_data, NULL);
-    }
-  else if (delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT)
-    {
-      log_append_compensate_with_undo_nxlsa (thread_p, RVBT_RECORD_MODIFY_COMPENSATE, pgbuf_get_vpid_ptr (leaf_pg),
-					     delete_helper->leaf_addr.offset, leaf_pg, 0, NULL,
-					     LOG_FIND_CURRENT_TDES (thread_p), &delete_helper->reference_lsa);
-    }
-  else if (delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED)
-    {
-      log_append_run_postpone (thread_p, RVBT_DELETE_OBJECT_PHYSICAL, &delete_helper->leaf_addr,
-			       pgbuf_get_vpid_ptr (leaf_pg), 0, NULL, &delete_helper->reference_lsa);
-    }
-  else				/* BTREE_OP_DELETE_VACUUM_OBJECT */
-    {
-      /* We now know everything is successfully executed. Vacuum no longer needs undo logging. */
-      assert (delete_helper->purpose == BTREE_OP_DELETE_VACUUM_OBJECT);
-      log_append_redo_data (thread_p, RVBT_DELETE_OBJECT_PHYSICAL, &delete_helper->leaf_addr, 0, NULL);
-    }
-  pgbuf_set_dirty (thread_p, leaf_pg, DONT_FREE);
+  btree_rv_log_delete_object (thread_p, *delete_helper, delete_helper->leaf_addr, leaf_record.length, 0,
+                              leaf_record.data, NULL);
 
   btree_delete_log (delete_helper, BTREE_DELETE_MODIFY_MSG ("removed key"),
 		    BTREE_DELETE_MODIFY_ARGS (thread_p, delete_helper, leaf_pg, &prev_lsa, true, search_key->slotid, 0,
@@ -31062,38 +31033,9 @@ btree_leaf_record_replace_first_with_last (THREAD_ENTRY * thread_p, BTID_INT * b
 
   /* Log changes. */
   BTREE_RV_GET_DATA_LENGTH (delete_helper->rv_redo_data_ptr, delete_helper->rv_redo_data, rv_redo_data_length);
-  if (delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL)
-    {
-      /* Add undoredo log. */
-      assert (!delete_helper->is_system_op_started);
-      log_append_undoredo_data (thread_p, RVBT_DELETE_OBJECT_PHYSICAL, &delete_helper->leaf_addr,
-				delete_helper->rv_keyval_data_length, rv_redo_data_length,
-				delete_helper->rv_keyval_data, delete_helper->rv_redo_data);
-    }
-  else if (delete_helper->is_system_op_started)
-    {
-      BTREE_RV_GET_DATA_LENGTH (rv_undo_data_ptr, rv_undo_data, rv_undo_data_length);
-      log_append_undoredo_data (thread_p, RVBT_RECORD_MODIFY_UNDOREDO, &delete_helper->leaf_addr, rv_undo_data_length,
-				rv_redo_data_length, rv_undo_data, delete_helper->rv_redo_data);
-    }
-  else if (delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT)
-    {
-      log_append_compensate_with_undo_nxlsa (thread_p, RVBT_RECORD_MODIFY_COMPENSATE, pgbuf_get_vpid_ptr (leaf_page),
-					     delete_helper->leaf_addr.offset, leaf_page, rv_redo_data_length,
-					     delete_helper->rv_redo_data, LOG_FIND_CURRENT_TDES (thread_p),
-					     &delete_helper->reference_lsa);
-    }
-  else if (delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED)
-    {
-      log_append_run_postpone (thread_p, RVBT_RECORD_MODIFY_NO_UNDO, &delete_helper->leaf_addr,
-			       pgbuf_get_vpid_ptr (leaf_page), rv_redo_data_length, delete_helper->rv_redo_data,
-			       &delete_helper->reference_lsa);
-    }
-  else				/* BTREE_OP_DELETE_VACUUM_OBJECT */
-    {
-      log_append_redo_data (thread_p, RVBT_DELETE_OBJECT_PHYSICAL, &delete_helper->leaf_addr, rv_redo_data_length,
-			    delete_helper->rv_redo_data);
-    }
+  assert (!delete_helper->is_system_op_started || delete_helper->purpose != BTREE_OP_DELETE_OBJECT_PHYSICAL);
+  btree_rv_log_delete_object (thread_p, *delete_helper, delete_helper->leaf_addr, rv_undo_data_length,
+                              rv_redo_data_length, rv_undo_data_ptr, delete_helper->rv_redo_data);
 
   FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
 
@@ -31186,38 +31128,9 @@ btree_record_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE_
   /* Add logging. */
   BTREE_RV_GET_DATA_LENGTH (delete_helper->rv_redo_data_ptr, delete_helper->rv_redo_data, rv_redo_data_length);
   assert (rv_redo_data_length > 0);
-  if (delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL)
-    {
-      /* Add undo/redo logging. */
-      assert (!delete_helper->is_system_op_started);
-      log_append_undoredo_data (thread_p, RVBT_DELETE_OBJECT_PHYSICAL, addr, delete_helper->rv_keyval_data_length,
-				rv_redo_data_length, delete_helper->rv_keyval_data, delete_helper->rv_redo_data);
-    }
-  else if (delete_helper->is_system_op_started)
-    {
-      BTREE_RV_GET_DATA_LENGTH (rv_undo_data_ptr, rv_undo_data, rv_undo_data_length);
-      log_append_undoredo_data (thread_p, RVBT_RECORD_MODIFY_UNDOREDO, addr, rv_undo_data_length, rv_redo_data_length,
-				rv_undo_data, delete_helper->rv_redo_data);
-    }
-  else if (delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT
-	   || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD)
-    {
-      log_append_compensate_with_undo_nxlsa (thread_p, RVBT_RECORD_MODIFY_COMPENSATE, pgbuf_get_vpid_ptr (page),
-					     addr->offset, page, rv_redo_data_length, delete_helper->rv_redo_data,
-					     LOG_FIND_CURRENT_TDES (thread_p), &delete_helper->reference_lsa);
-    }
-  else if (delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED)
-    {
-      log_append_run_postpone (thread_p, RVBT_RECORD_MODIFY_NO_UNDO, addr, pgbuf_get_vpid_ptr (page),
-			       rv_redo_data_length, delete_helper->rv_redo_data, &delete_helper->reference_lsa);
-    }
-  else				/* BTREE_OP_DELETE_VACUUM_OBJECT */
-    {
-      assert (delete_helper->purpose == BTREE_OP_DELETE_VACUUM_OBJECT);
-      log_append_redo_data (thread_p, RVBT_RECORD_MODIFY_NO_UNDO, addr, rv_redo_data_length,
-			    delete_helper->rv_redo_data);
-    }
-
+  assert (!delete_helper->is_system_op_started || delete_helper->purpose != BTREE_OP_DELETE_OBJECT_PHYSICAL);
+  btree_rv_log_delete_object (thread_p, *delete_helper, *addr, rv_undo_data_length, rv_redo_data_length,
+                              rv_undo_data, delete_helper->rv_redo_data);
   FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
 
   /* Set page dirty. */
@@ -33757,5 +33670,46 @@ btree_is_delete_object_purpose (BTREE_OP_PURPOSE purpose)
       return true;
     default:
       return false;
+    }
+}
+
+static void
+btree_rv_log_delete_object (THREAD_ENTRY * thread_p, const BTREE_DELETE_HELPER & delete_helper, LOG_DATA_ADDR & addr,
+                            int undo_length, int redo_length, const char * undo_data, const char * redo_data)
+{
+  assert (btree_is_delete_object_purpose (delete_helper.purpose));
+
+  if (delete_helper.is_system_op_started)
+    {
+      // we need to log undoredo
+      log_append_undoredo_data (thread_p, RVBT_RECORD_MODIFY_UNDOREDO, &addr, undo_length, redo_length, undo_data,
+                                redo_data);
+    }
+  else
+    {
+    switch (delete_helper.purpose)
+      {
+      case BTREE_OP_DELETE_OBJECT_PHYSICAL:
+        log_append_undoredo_data (thread_p, RVBT_DELETE_OBJECT_PHYSICAL, &addr, delete_helper.rv_keyval_data_length,
+                                  redo_length, delete_helper.rv_keyval_data, redo_data);
+        break;
+      case BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED:
+        log_append_run_postpone (thread_p, RVBT_DELETE_OBJECT_PHYSICAL, &addr, pgbuf_get_vpid_ptr (addr.pgptr),
+                                 redo_length, redo_data, &delete_helper.reference_lsa);
+        break;
+      case BTREE_OP_DELETE_UNDO_INSERT:
+      case BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD:
+        log_append_compensate_with_undo_nxlsa (thread_p, RVBT_RECORD_MODIFY_COMPENSATE,
+                                               pgbuf_get_vpid_ptr (addr.pgptr), addr.offset, addr.pgptr, redo_length,
+                                               redo_data, LOG_FIND_CURRENT_TDES (thread_p),
+                                               &delete_helper.reference_lsa);
+        break;
+      case BTREE_OP_DELETE_VACUUM_OBJECT:
+        log_append_redo_data (thread_p, RVBT_DELETE_OBJECT_PHYSICAL, &addr, redo_length, redo_data);
+        break;
+      default:
+        assert (false);
+        break;
+      }
     }
 }
