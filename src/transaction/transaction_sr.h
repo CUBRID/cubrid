@@ -32,7 +32,7 @@
 #include "storage_common.h"
 #include "thread_compat.hpp"
 
-extern void tran_server_unilaterally_abort_tran (THREAD_ENTRY * thread_p);
+extern TRAN_STATE tran_server_unilaterally_abort_tran (THREAD_ENTRY * thread_p);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern TRAN_STATE tran_server_unilaterally_abort (THREAD_ENTRY * thread_p, int tran_index);
 #endif

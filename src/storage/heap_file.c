@@ -4089,7 +4089,7 @@ heap_vpid_init_new (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args)
       return ER_FAILED;
     }
 
-  log_append_redo_data (thread_p, RVHF_NEWPAGE, &addr, recdes.length, recdes.data);
+  log_append_undoredo_data (thread_p, RVHF_NEWPAGE, &addr, 0, recdes.length, NULL, recdes.data);
   pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
   return NO_ERROR;
 }

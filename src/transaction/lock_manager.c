@@ -6234,7 +6234,6 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
       return LK_NOTGRANTED_DUE_ERROR;
     }
 
-
   if (lock == NULL_LOCK)
     {
       return LK_GRANTED;

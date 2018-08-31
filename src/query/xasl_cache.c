@@ -934,9 +934,9 @@ xcache_find_xasl_id (THREAD_ENTRY * thread_p, const XASL_ID * xid, XASL_CACHE_EN
 	  /* No lock. */
 	  continue;
 	}
-      lock_result =
-	lock_scan (thread_p, &(*xcache_entry)->related_objects[oid_index].oid, LK_UNCOND_LOCK,
-		   (*xcache_entry)->related_objects[oid_index].lock);
+
+      lock_result = lock_object (thread_p, &(*xcache_entry)->related_objects[oid_index].oid, oid_Root_class_oid,
+				 (*xcache_entry)->related_objects[oid_index].lock, LK_UNCOND_LOCK);
       if (lock_result != LK_GRANTED)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);

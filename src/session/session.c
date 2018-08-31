@@ -125,6 +125,7 @@ struct session_state
 
   bool is_trigger_involved;
   bool is_last_insert_id_generated;
+  bool auto_commit;
   DB_VALUE cur_insert_id;
   DB_VALUE last_insert_id;
   int row_count;
@@ -279,6 +280,7 @@ session_state_init (void *st)
   session_p->ref_count = 0;
   session_p->trace_format = QUERY_TRACE_TEXT;
   session_p->private_lru_index = -1;
+  session_p->auto_commit = false;
 
   return NO_ERROR;
 }
@@ -2287,6 +2289,8 @@ session_dump_session (SESSION_STATE * session)
 
   fprintf (stdout, "\tROW_COUNT = %d\n", session->row_count);
 
+  fprintf (stdout, "\tAUTO_COMMIT = %d\n", session->auto_commit);
+
   fprintf (stdout, "\tSESSION VARIABLES\n");
   vcurent = session->session_variables;
   while (vcurent != NULL)
@@ -3129,4 +3133,27 @@ int
 session_get_private_lru_idx (const void *session_p)
 {
   return ((SESSION_STATE *) session_p)->private_lru_index;
+}
+
+/*
+ * session_set_tran_auto_commit () - set transaction auto commit state
+ *
+ *   return  : NO_ERROR or error code
+ *   thread_p(in)     : thread
+ *   auto_commit(in)  : auto commit
+ */
+int
+session_set_tran_auto_commit (THREAD_ENTRY * thread_p, bool auto_commit)
+{
+  SESSION_STATE *state_p = NULL;
+
+  state_p = session_get_session_state (thread_p);
+  if (state_p == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  state_p->auto_commit = auto_commit;
+
+  return NO_ERROR;
 }
