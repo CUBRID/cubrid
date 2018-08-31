@@ -26,6 +26,8 @@
 
 #ident "$Id$"
 
+#include "cubstream.hpp"
+
 namespace cubstream
 {
 

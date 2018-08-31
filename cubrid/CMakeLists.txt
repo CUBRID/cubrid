@@ -59,6 +59,7 @@ set(THREAD_HEADERS
 set(STREAM_SOURCES
   ${BASE_DIR}/cubstream.cpp
   ${BASE_DIR}/multi_thread_stream.cpp
+  ${BASE_DIR}/stream_file.cpp
   )
 set (STREAM_HEADERS
   ${BASE_DIR}/bip_buffer.hpp
@@ -67,6 +68,7 @@ set (STREAM_HEADERS
   ${BASE_DIR}/multi_thread_stream.hpp
   ${BASE_DIR}/stream_entry.hpp
   ${BASE_DIR}/stream_io.hpp
+  ${BASE_DIR}/stream_file.hpp
   )
 
 set(BASE_SOURCES
