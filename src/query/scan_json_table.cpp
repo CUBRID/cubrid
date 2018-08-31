@@ -572,9 +572,9 @@ namespace cubscan
 
 		  // todo: use scan_pred only on nodes with predicates
 		  logical = eval_data_filter (thread_p, NULL, NULL, NULL, &data_filter);
-		  if (logical != V_TRUE)
+
+		  if (logical == V_FALSE && this_cursor.m_child == this_cursor.m_node->m_nested_nodes.size())
 		    {
-		      // we need another row
 		      this_cursor.advance_row_cursor();
 		      continue;
 		    }
