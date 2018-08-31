@@ -4499,9 +4499,6 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   /* Assign the snapshot to the sort_args. */
   scan_cache.mvcc_snapshot = builder_snapshot;
 
-  /* Check the lock. */
-  lock = lock_get_class_lock (thread_p, class_oids, thread_p->tran_index);  // ??
-
   /* Start the online index builder. */
   ret = online_index_builder (thread_p, &btid_int, hfids, class_oids, n_classes, attr_ids, n_attrs,
 			      func_index_info, filter_pred, attrs_prefix_length, &attr_info, &scan_cache);
@@ -4685,7 +4682,7 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 
       /* Dispatch the insert operation */
       ret = btree_online_index_dispatcher (thread_p, btid_int, p_dbvalue, &class_oids[cur_class], &cur_oid, &unique,
-					   BTREE_OP_IB_INSERT);
+					   BTREE_OP_ONLINE_INDEX_IB_INSERT);
       if (ret != NO_ERROR)
 	{
 	  break;

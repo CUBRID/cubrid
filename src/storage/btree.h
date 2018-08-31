@@ -488,9 +488,10 @@ enum btree_op_purpose
   BTREE_OP_NOTIFY_VACUUM,	/* Notify vacuum of an object in need of cleanup. */
 
   /* Below purposes are used during online index loading. */
-  BTREE_OP_IB_INSERT,		/* Insert done by the Index Builder. */
-  BTREE_OP_TRAN_INSERT,		/* Insert done by a transaction. */
-  BTREE_OP_TRAN_DELETE		/* Delete done by a transaction. */
+  BTREE_OP_ONLINE_INDEX_IB_INSERT,	/* Insert done by the Index Builder. */
+  BTREE_OP_ONLINE_INDEX_IB_DELETE,	/* Delete done by the Index Builder. */
+  BTREE_OP_ONLINE_INDEX_TRAN_INSERT,	/* Insert done by a transaction. */
+  BTREE_OP_ONLINE_INDEX_TRAN_DELETE	/* Delete done by a transaction. */
 };
 typedef enum btree_op_purpose BTREE_OP_PURPOSE;
 
