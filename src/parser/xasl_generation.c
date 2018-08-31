@@ -17137,7 +17137,7 @@ error:
  * node (in)   : Parser node containing sub-query.
  * with (in)   : with clause with built cte proc
  * type (in)   : XASL proc type.
- * 
+ *
  * NOTE: This function should not be used in the INSERT ... VALUES case.
  */
 static XASL_NODE *
@@ -17460,7 +17460,6 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *value_clauses = NULL, *query = NULL, *val_list = NULL;
   PT_NODE *attr = NULL, *attrs = NULL;
   PT_NODE *non_null_attrs = NULL, *default_expr_attrs = NULL;
-  PT_NODE *with = NULL;
   MOBJ class_;
   OID *class_oid = NULL;
   DB_OBJECT *class_obj = NULL;
@@ -17538,12 +17537,9 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
       num_vals = pt_length_of_list (val_list);
     }
 
-  with = statement->info.insert.with;
-  pt_to_with_clause_xasl (parser, with);
-
   if (value_clauses->info.node_list.list_type == PT_IS_SUBQUERY)
     {
-      xasl = pt_make_aptr_parent_node (parser, value_clauses->info.node_list.list, with, INSERT_PROC);
+      xasl = pt_make_aptr_parent_node (parser, value_clauses->info.node_list.list, NULL, INSERT_PROC);
     }
   else
     {
@@ -17551,11 +17547,6 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
       int n;
       TABLE_INFO *ti;
 
-      if (with != NULL)
-	{
-	  /* Parser Error */
-	  assert (false);
-	}
       xasl = regu_xasl_node_alloc (INSERT_PROC);
       if (xasl == NULL)
 	{

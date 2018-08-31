@@ -2350,7 +2350,6 @@ struct pt_insert_info
   PT_NODE *waitsecs_hint;	/* lock timeout in seconds */
   PT_HINT_ENUM hint;		/* hint flag */
   PT_NODE *odku_assignments;	/* ON DUPLICATE KEY UPDATE assignments */
-  PT_NODE *with;		/* PT_WITH_CLAUSE */
   bool do_replace;		/* REPLACE statement was given */
   PT_NODE *insert_mode;		/* insert execution mode */
   PT_NODE *non_null_attrs;	/* attributes with not null constraint */

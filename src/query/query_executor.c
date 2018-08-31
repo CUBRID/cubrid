@@ -10801,13 +10801,10 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 
   if (!skip_aptr)
     {
-      for (XASL_NODE * crt = aptr; crt != NULL; crt = crt->next)
+      if (aptr && qexec_execute_mainblock (thread_p, aptr, xasl_state, NULL) != NO_ERROR)
 	{
-	  if (qexec_execute_mainblock (thread_p, crt, xasl_state, NULL) != NO_ERROR)
-	    {
-	      qexec_failure_line (__LINE__, xasl_state);
-	      return ER_FAILED;
-	    }
+	  qexec_failure_line (__LINE__, xasl_state);
+	  return ER_FAILED;
 	}
     }
 

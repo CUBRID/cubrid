@@ -12947,7 +12947,6 @@ pt_print_host_var (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_insert (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
 {
-  p->info.insert.with = g (parser, p->info.insert.with, arg);
   p->info.insert.spec = g (parser, p->info.insert.spec, arg);
   p->info.insert.attr_list = g (parser, p->info.insert.attr_list, arg);
   p->info.insert.value_clauses = g (parser, p->info.insert.value_clauses, arg);
