@@ -2248,6 +2248,7 @@ parser_init_node (PT_NODE * node)
       node->is_alias_enabled_expr = 0;
       node->is_wrapped_res_for_coll = 0;
       node->is_system_generated_stmt = 0;
+      node->use_auto_commit = 0;
       /* initialize node info field */
       memset (&(node->info), 0, sizeof (node->info));
 
@@ -8993,6 +8994,7 @@ pt_init_difference (PT_NODE * p)
   p->info.query.do_cache = 0;
   p->info.query.do_not_cache = 0;
   p->info.query.order_siblings = 0;
+  p->info.query.has_system_class = 0;
   p->info.query.hint = PT_HINT_NONE;
   p->info.query.qcache_hint = NULL;
   p->info.query.q.union_.select_list = 0;
@@ -13198,6 +13200,7 @@ pt_init_intersection (PT_NODE * p)
   p->info.query.reexecute = 0;
   p->info.query.do_not_cache = 0;
   p->info.query.order_siblings = 0;
+  p->info.query.has_system_class = 0;
   p->info.query.hint = PT_HINT_NONE;
   p->info.query.qcache_hint = NULL;
   p->info.query.q.union_.select_list = 0;
@@ -14336,6 +14339,7 @@ pt_init_select (PT_NODE * p)
   p->info.query.reexecute = 0;
   p->info.query.do_not_cache = 0;
   p->info.query.order_siblings = 0;
+  p->info.query.has_system_class = 0;
   p->info.query.hint = PT_HINT_NONE;
   p->info.query.qcache_hint = NULL;
   p->info.query.upd_del_class_cnt = 0;
@@ -15665,6 +15669,7 @@ pt_init_union_stmt (PT_NODE * p)
   p->info.query.reexecute = 0;
   p->info.query.do_not_cache = 0;
   p->info.query.order_siblings = 0;
+  p->info.query.has_system_class = 0;
   p->info.query.hint = PT_HINT_NONE;
   p->info.query.qcache_hint = NULL;
   p->info.query.q.union_.select_list = 0;

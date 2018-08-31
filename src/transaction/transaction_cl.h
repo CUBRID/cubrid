@@ -40,7 +40,6 @@
 #include "log_comm.h"
 #include "dbdef.h"
 
-
 #define TM_TRAN_INDEX()      (tm_Tran_index)
 #define TM_TRAN_ISOLATION()  (tm_Tran_isolation)
 #define TM_TRAN_ASYNC_WS()   (tm_Tran_async_ws)
@@ -70,6 +69,7 @@ extern void tran_cache_tran_settings (int tran_index, int lock_timeout, TRAN_ISO
 extern void tran_get_tran_settings (int *lock_timeout_in_msecs, TRAN_ISOLATION * tran_isolation, bool * async_ws);
 extern int tran_reset_wait_times (int wait_in_msecs);
 extern int tran_reset_isolation (TRAN_ISOLATION isolation, bool async_ws);
+extern int tran_flush_to_commit (void);
 extern int tran_commit (bool retain_lock);
 extern int tran_abort (void);
 extern int tran_unilaterally_abort (void);
@@ -97,4 +97,11 @@ extern void tran_end_libcas_function (void);
 extern bool tran_is_in_libcas (void);
 extern bool tran_set_check_interrupt (bool flag);
 extern bool tran_get_check_interrupt (void);
+
+extern void tran_set_latest_query_status (int end_query_result, int tran_state, int should_conn_reset);
+extern bool tran_was_latest_query_ended (void);
+extern bool tran_was_latest_query_committed (void);
+extern bool tran_was_latest_query_aborted (void);
+extern bool tran_is_reset_required (void);
+extern void tran_reset_latest_query_status (void);
 #endif /* _TRANSACTION_CL_H_ */

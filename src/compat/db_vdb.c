@@ -2721,6 +2721,7 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
   new_session->parser->set_host_var = 1;
 
   new_session->parser->is_holdable = session->parser->is_holdable;
+  new_session->parser->is_auto_commit = session->parser->is_auto_commit;
   return db_execute_and_keep_statement_local (new_session, 1, result);
 }
 
@@ -3944,4 +3945,145 @@ pt_has_modified_class_helper (PARSER_CONTEXT * parser, PT_NODE * node, void *arg
     }
 
   return node;
+}
+
+/*
+ * db_set_statement_auto_commit () - Init statement auto commit.
+ *
+ * return : error code.
+ * session(in): compiled session
+ * auto_commit(in): true, if auto commit
+ *
+ *  Note: This function filters out the statements that can't be executed with commit. In order to execute statement
+ *      with commit, the following condition must be satisfied: autocommit mode, no other communication with server
+ *      is needed after executing query with commit. Thus, if query with commit is executed, the broker can't send
+ *      other fetch, flush or requests to server. However, the client can send various requests before executing
+ *      query with commit. Considering this, the optimization can't be applied for queries executed broker side
+ *      (triggers, views involved), queries having OID included, multi statements. Currently, the optimization
+ *      is used for SELECT/UPDATE/DELETE/INSERT. In future, we have to consider optimization for other query type.
+ *      Also, additional filters may be added later in this functions.
+ */
+int
+db_set_statement_auto_commit (DB_SESSION * session, bool auto_commit)
+{
+  PT_NODE *statement;
+  int stmt_ndx;
+  bool has_name_oid = false;
+  int info_hints;
+  int error_code;
+  bool has_user_trigger;
+
+  assert (session != NULL);
+
+  /* check parameters */
+  if (session->dimension == 0 || session->statements == NULL)
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_IT_EMPTY_STATEMENT, 0);
+      return er_errid ();
+    }
+
+  stmt_ndx = session->stmt_ndx - 1;
+  statement = session->statements[stmt_ndx];
+  if (stmt_ndx < 0 || stmt_ndx >= session->dimension || statement == NULL)
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return er_errid ();
+    }
+
+  /* check if the statement is compiled and prepared */
+  if (session->stage[stmt_ndx] < StatementPreparedStage)
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_IT_INVALID_SESSION, 0);
+      return er_errid ();
+    }
+
+  /* Set parser auto commit. */
+  session->parser->is_auto_commit = auto_commit ? 1 : 0;
+
+  /* Init statement auto commit. */
+  statement->use_auto_commit = 0;
+
+  if (!auto_commit || !db_session_is_last_statement (session))
+    {
+      return NO_ERROR;
+    }
+
+  /* Check whether statement can uses auto commit. */
+  error_code = tr_has_user_trigger (&has_user_trigger);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  if (has_user_trigger)
+    {
+      /* Triggers must be excuted before commit. Disable optimization. */
+      return NO_ERROR;
+    }
+
+  /* Here you can add more statements, if you think that is safe to execute them with commit.
+   * For now, we care about optimizing most common queries.
+   */
+  switch (statement->node_type)
+    {
+    case PT_SELECT:
+      /* Check whether the optimization can be used. Disable it, if several broker/server requests are needed. */
+      if (!statement->info.query.oids_included && !statement->info.query.is_view_spec
+	  && !statement->info.query.has_system_class && statement->info.query.into_list == NULL)
+	{
+	  info_hints = (PT_HINT_SELECT_KEY_INFO | PT_HINT_SELECT_PAGE_INFO
+			| PT_HINT_SELECT_KEY_INFO | PT_HINT_SELECT_BTREE_NODE_INFO);
+	  if ((statement->info.query.q.select.hint & info_hints) == 0)
+	    {
+	      (void) parser_walk_tree (session->parser, statement->info.query.q.select.list, pt_has_name_oid,
+				       &has_name_oid, NULL, NULL);
+	      if (!has_name_oid)
+		{
+		  statement->use_auto_commit = 1;
+		}
+	    }
+	}
+      break;
+
+    case PT_INSERT:
+      /* Do not use optimization in case of insert execution on broker side */
+      if (statement->info.insert.execute_with_commit_allowed)
+	{
+	  statement->use_auto_commit = 1;
+	}
+      break;
+
+    case PT_UPDATE:
+      /* Do not use optimization in case of update execution on broker side */
+      if (statement->info.update.execute_with_commit_allowed)
+	{
+	  statement->use_auto_commit = 1;
+	}
+      break;
+
+    case PT_DELETE:
+      /* Do not use optimization in case of delete execution on broker side */
+      if (statement->info.delete_.execute_with_commit_allowed)
+	{
+	  /* If del_stmt_list is not null, we may need several broker/server requests */
+	  if (statement->info.delete_.del_stmt_list == NULL)
+	    {
+	      statement->use_auto_commit = 1;
+	    }
+	}
+      break;
+
+    case PT_MERGE:
+      if (statement->info.merge.flags & PT_MERGE_INFO_SERVER_OP)
+	{
+	  statement->use_auto_commit = 1;
+	}
+      break;
+
+      // TODO - what else? for instance, merge, other dmls, ddls.       
+    default:
+      break;
+    }
+
+  return NO_ERROR;
 }
