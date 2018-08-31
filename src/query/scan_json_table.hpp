@@ -97,7 +97,7 @@ namespace cubscan
 	void clear_node_columns (cubxasl::json_table::node &node);
 	void reset_ordinality (cubxasl::json_table::node &node);
 
-	int next_internal (cubthread::entry *thread_p, int depth, bool &success, FILTER_INFO &data_filter);
+	int next_internal (cubthread::entry *thread_p, int depth, bool &success);
 
 	//scan_id_struct *m_scanid;
 	cubxasl::json_table::spec_node *m_specp;
