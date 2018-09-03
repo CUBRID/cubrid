@@ -1162,7 +1162,7 @@ namespace cubthread
   void
   worker_pool<Context>::core::worker::start_thread (void)
   {
-    assert (!m_has_thread);
+    assert (m_has_thread);
 
     //
     // the next code tries to help visualizing any system errors that can occur during create or detach in debug
