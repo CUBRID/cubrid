@@ -21598,7 +21598,7 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
     }
 
   size_values = xasl->outptr_list->valptr_cnt;
-  assert (size_values == 13);
+  assert (size_values == 14);
   out_values = (DB_VALUE **) malloc (size_values * sizeof (DB_VALUE *));
   if (out_values == NULL)
     {
@@ -21684,6 +21684,9 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
       /* Comment */
       comment = (char *) or_get_constraint_comment (&class_record, index->btname);
       db_make_string (out_values[12], comment);
+
+      /* Visble */
+      db_make_string_by_const_str (out_values[13], (index->index_status == OR_INVISIBLE_INDEX) ? "NO" : "YES");
 
       if (index->func_index_info == NULL)
 	{
