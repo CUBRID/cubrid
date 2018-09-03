@@ -4584,7 +4584,7 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
   aligned_midxkey_buf = PTR_ALIGN (midxkey_buf, MAX_ALIGNMENT);
   db_make_null (&dbvalue);
   p_func_idx_info = func_idx_info.expr ? &func_idx_info : NULL;
-  filter_eval_fnc = (filter_pred) ? eval_fnc (thread_p, filter_pred->pred, &single_node_type) : NULL;
+  filter_eval_fnc = (filter_pred != NULL) ? eval_fnc (thread_p, filter_pred->pred, &single_node_type) : NULL;
 
   /* Get the first entry from heap. */
   cur_class = 0;
@@ -4606,7 +4606,7 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 
       if (sc == S_ERROR)
 	{
-	  ret = ER_FAILED;
+	  ASSERT_ERROR_AND_SET (ret);
 	  break;
 	}
 
