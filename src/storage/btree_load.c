@@ -4368,7 +4368,6 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   HEAP_SCANCACHE scan_cache;
   HEAP_CACHE_ATTRINFO attr_info;
   int ret = NO_ERROR;
-  LK_ENTRY *lock;
 
   func_index_info.expr = NULL;
 
