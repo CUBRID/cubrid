@@ -1727,12 +1727,6 @@ stmt
 		{{
 			msg_ptr = 0;
 
-			// todo: find a better place to reset global
-			// This is needed when a json_table statement crashes after 
-			// it did increase the json_table_column_count but did not 
-			// arrive at the reset to 0 point because of a syntax error
-			json_table_column_count = 0;
-
 			if (this_parser->original_buffer)
 			  {
 			    int pos = @$.buffer_pos;
@@ -23480,14 +23474,16 @@ vacuum_stmt
     ;
 
   json_table_rule
-    : JSON_TABLE '(' expression_ ',' json_table_node_rule ')'
-      {{
+    : {{
 	    json_table_column_count = 0;
+      }} 
+	JSON_TABLE '(' expression_ ',' json_table_node_rule ')'
+      {{
         // $3 = expression_
         // $5 = json_table_node_rule
         PT_NODE *jt = parser_new_node (this_parser, PT_JSON_TABLE);
-        jt->info.json_table_info.expr = $3;
-        jt->info.json_table_info.tree = $5;
+        jt->info.json_table_info.expr = $4;
+        jt->info.json_table_info.tree = $6;
 
         $$ = jt;
       }}
