@@ -12204,8 +12204,8 @@ csql_query_without_values_query_no_with_clause
 			parser_push_orderby_node (node);
 
 		DBG_PRINT}}
-	opt_select_limit_clause
-	opt_for_update_clause
+	  opt_select_limit_clause
+	  opt_for_update_clause
 		{{
 
 			PT_NODE *node = parser_pop_orderby_node ();
@@ -12264,9 +12264,8 @@ csql_query_without_values_and_single_subquery
 			parser_restore_pseudoc ();
 
 			if (parser_subquery_check == 0)
-			    PT_ERRORmf(this_parser, pt_top(this_parser),
-				MSGCAT_SET_PARSER_SEMANTIC,
-				MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "Subquery");
+			    PT_ERRORmf (this_parser, pt_top(this_parser), MSGCAT_SET_PARSER_SEMANTIC,
+				        MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "Subquery");
 
 			if (node)
 			  {
@@ -12292,8 +12291,8 @@ csql_query_without_values_and_single_subquery
 			parser_push_orderby_node (node);
 
 		DBG_PRINT}}
-	opt_select_limit_clause
-	opt_for_update_clause
+	  opt_select_limit_clause
+	  opt_for_update_clause
 		{{
 
 			PT_NODE *node = parser_pop_orderby_node ();
@@ -12323,69 +12322,70 @@ select_expression_opt_with
 
 select_expression_without_subquery
 	: select_expression_without_subquery
-	{{
-        PT_NODE *node = $1;
-        parser_push_orderby_node (node);      
-      }}
-    opt_orderby_clause 
-    {{
+		{{
+        		PT_NODE *node = $1;
+			parser_push_orderby_node (node);      
+	        }}
 
-        PT_NODE *node = parser_pop_orderby_node ();
+	  opt_orderby_clause 
+	        {{
 
-        if (node && parser_cannot_cache)
-        {
-          node->info.query.reexecute = 1;
-          node->info.query.do_cache = 0;
-          node->info.query.do_not_cache = 1;
-        }
+			PT_NODE *node = parser_pop_orderby_node ();
+
+			if (node && parser_cannot_cache)
+			  {
+			    node->info.query.reexecute = 1;
+			    node->info.query.do_cache = 0;
+			    node->info.query.do_not_cache = 1;
+			  }
 
 
-        if (parser_subquery_check == 0)
-          PT_ERRORmf(this_parser, pt_top(this_parser),
-                     MSGCAT_SET_PARSER_SEMANTIC,
-                     MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "Subquery");
+			if (parser_subquery_check == 0)
+			  PT_ERRORmf (this_parser, pt_top(this_parser), MSGCAT_SET_PARSER_SEMANTIC, 
+				      MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "Subquery");
 
-        if (node)
-        {
+			if (node)
+			  {
+			    PT_NODE *order = node->info.query.order_by;
+			    if (order && order->info.sort_spec.expr
+				&& order->info.sort_spec.expr->node_type == PT_VALUE
+				&& order->info.sort_spec.expr->type_enum == PT_TYPE_NULL)
+			      {
+				if (!node->info.query.q.select.group_by)
+				  {
+				    PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					       MSGCAT_SEMANTIC_ORDERBYNULL_REQUIRES_GROUPBY);
+				  }
+				else
+				  {
+				    parser_free_tree (this_parser, node->info.query.order_by);
+				    node->info.query.order_by = NULL;
+				  }
+			     }
+			  }
 
-         PT_NODE *order = node->info.query.order_by;
-          if (order && order->info.sort_spec.expr
-              && order->info.sort_spec.expr->node_type == PT_VALUE
-              && order->info.sort_spec.expr->type_enum == PT_TYPE_NULL)
-          {
-            if (!node->info.query.q.select.group_by)
-            {
-              PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-                         MSGCAT_SEMANTIC_ORDERBYNULL_REQUIRES_GROUPBY);
-            }
-            else
-            {
-              parser_free_tree (this_parser, node->info.query.order_by);
-              node->info.query.order_by = NULL;
-            }
-          }
-        }
-
-        parser_push_orderby_node (node);
+			parser_push_orderby_node (node);
 
 		DBG_PRINT}}
-      opt_select_limit_clause
-      opt_for_update_clause
+
+          opt_select_limit_clause
+          opt_for_update_clause
 		{{
 
 			PT_NODE *node = parser_pop_orderby_node ();
 			$<node>$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($<node>$, @$.buffer_pos)
 
-            DBG_PRINT}}
-     table_op select_or_values_query
-     {{
+                DBG_PRINT}}
 
-         PT_NODE *stmt = $8;
-         PT_NODE *arg1 = $1;
+          table_op select_or_values_query
+                {{
 
-         if (stmt)
-         {
+			PT_NODE *stmt = $8;
+			PT_NODE *arg1 = $1;
+
+			if (stmt)
+			  {
 			    stmt->info.query.id = (UINTPTR) stmt;
 			    stmt->info.query.q.union_.arg1 = $1;
 			    stmt->info.query.q.union_.arg2 = $9;
@@ -12398,7 +12398,7 @@ select_expression_without_subquery
 			               MSGCAT_SET_PARSER_SYNTAX,
 			               MSGCAT_SYNTAX_INVALID_UNION_ORDERBY);
 			      }
-         }
+			  }
 
 
 			$$ = stmt;
@@ -12415,69 +12415,68 @@ select_expression_without_subquery
 
 select_expression
 	: select_expression
-    {{
-        PT_NODE *node = $1;
-        parser_push_orderby_node (node);      
-      }}
-    opt_orderby_clause 
-    {{
+		{{
+			PT_NODE *node = $1;
+			parser_push_orderby_node (node);      
+		}}
+	  opt_orderby_clause 
+		{{
       
-        PT_NODE *node = parser_pop_orderby_node ();
+			PT_NODE *node = parser_pop_orderby_node ();
         
-        if (node && parser_cannot_cache)
-        {
-          node->info.query.reexecute = 1;
-          node->info.query.do_cache = 0;
-          node->info.query.do_not_cache = 1;
-        }
+			if (node && parser_cannot_cache)
+			  {
+			    node->info.query.reexecute = 1;
+			    node->info.query.do_cache = 0;
+			    node->info.query.do_not_cache = 1;
+			  }
         
 
-        if (parser_subquery_check == 0)
-          PT_ERRORmf(this_parser, pt_top(this_parser),
-                     MSGCAT_SET_PARSER_SEMANTIC,
-                     MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "Subquery");
+			if (parser_subquery_check == 0)
+			  PT_ERRORmf (this_parser, pt_top(this_parser), MSGCAT_SET_PARSER_SEMANTIC,
+				      MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "Subquery");
         
-        if (node)
-        {
+			if (node)
+			  {
 
-         PT_NODE *order = node->info.query.order_by;
-          if (order && order->info.sort_spec.expr
-              && order->info.sort_spec.expr->node_type == PT_VALUE
-              && order->info.sort_spec.expr->type_enum == PT_TYPE_NULL)
-          {
-            if (!node->info.query.q.select.group_by)
-            {
-              PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-                         MSGCAT_SEMANTIC_ORDERBYNULL_REQUIRES_GROUPBY);
-            }
-            else
-            {
-              parser_free_tree (this_parser, node->info.query.order_by);
-              node->info.query.order_by = NULL;
-            }
-          }
-        }
+			    PT_NODE *order = node->info.query.order_by;
+			    if (order && order->info.sort_spec.expr
+				&& order->info.sort_spec.expr->node_type == PT_VALUE
+				&& order->info.sort_spec.expr->type_enum == PT_TYPE_NULL)
+			      {
+				if (!node->info.query.q.select.group_by)
+				  {
+				    PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					       MSGCAT_SEMANTIC_ORDERBYNULL_REQUIRES_GROUPBY);
+				  }
+				else
+				  {
+				    parser_free_tree (this_parser, node->info.query.order_by);
+				    node->info.query.order_by = NULL;
+				  }
+			      }
+			  }
         
-        parser_push_orderby_node (node);
+			parser_push_orderby_node (node);
         
 		DBG_PRINT}}
-      opt_select_limit_clause
-      opt_for_update_clause
+	  opt_select_limit_clause
+	  opt_for_update_clause
 		{{
                         
 			PT_NODE *node = parser_pop_orderby_node ();
 			$<node>$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($<node>$, @$.buffer_pos)
             
-            DBG_PRINT}}
-     table_op select_or_subquery
-     {{
+		DBG_PRINT}}
+	  table_op select_or_subquery
+		{{
          
-         PT_NODE *stmt = $8;
-         PT_NODE *arg1 = $1;
+			PT_NODE *stmt = $8;
+			PT_NODE *arg1 = $1;
          
-         if (stmt)
-         {
+			if (stmt)
+			  {
 			    stmt->info.query.id = (UINTPTR) stmt;
 			    stmt->info.query.q.union_.arg1 = $1;
 			    stmt->info.query.q.union_.arg2 = $9;
@@ -12486,11 +12485,10 @@ select_expression
 			        && arg1->info.query.is_subquery != PT_IS_SUBQUERY
 			        && arg1->info.query.order_by != NULL)
 			      {
-			        PT_ERRORm (this_parser, stmt,
-			               MSGCAT_SET_PARSER_SYNTAX,
-			               MSGCAT_SYNTAX_INVALID_UNION_ORDERBY);
+			        PT_ERRORm (this_parser, stmt, MSGCAT_SET_PARSER_SYNTAX,
+			                   MSGCAT_SYNTAX_INVALID_UNION_ORDERBY);
 			      }
-         }
+			  }
 
 
 			$$ = stmt;
@@ -12508,69 +12506,67 @@ select_expression
 
 select_expression_without_values_query
 	: select_expression_without_values_query
-    {{
-        PT_NODE *node = $1;
-        parser_push_orderby_node (node);      
-      }}
-    opt_orderby_clause 
-    {{
+		{{
+			PT_NODE *node = $1;
+			parser_push_orderby_node (node);      
+		}}
+	  opt_orderby_clause 
+		{{
       
-        PT_NODE *node = parser_pop_orderby_node ();
+			PT_NODE *node = parser_pop_orderby_node ();
         
-        if (node && parser_cannot_cache)
-        {
-          node->info.query.reexecute = 1;
-          node->info.query.do_cache = 0;
-          node->info.query.do_not_cache = 1;
-        }
+			if (node && parser_cannot_cache)
+			  {
+			    node->info.query.reexecute = 1;
+			    node->info.query.do_cache = 0;
+			    node->info.query.do_not_cache = 1;
+			  }
         
+			if (parser_subquery_check == 0)
+			  PT_ERRORmf (this_parser, pt_top(this_parser), MSGCAT_SET_PARSER_SEMANTIC,
+				      MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "Subquery");
+        
+			if (node)
+			  {
 
-        if (parser_subquery_check == 0)
-          PT_ERRORmf(this_parser, pt_top(this_parser),
-                     MSGCAT_SET_PARSER_SEMANTIC,
-                     MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "Subquery");
+			    PT_NODE *order = node->info.query.order_by;
+			    if (order && order->info.sort_spec.expr
+				&& order->info.sort_spec.expr->node_type == PT_VALUE
+				&& order->info.sort_spec.expr->type_enum == PT_TYPE_NULL)
+			      {
+				if (!node->info.query.q.select.group_by)
+				  {
+				    PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					       MSGCAT_SEMANTIC_ORDERBYNULL_REQUIRES_GROUPBY);
+				  }
+				else
+				  {
+				    parser_free_tree (this_parser, node->info.query.order_by);
+				    node->info.query.order_by = NULL;
+				  }
+			      }
+			  }
         
-        if (node)
-        {
-
-         PT_NODE *order = node->info.query.order_by;
-          if (order && order->info.sort_spec.expr
-              && order->info.sort_spec.expr->node_type == PT_VALUE
-              && order->info.sort_spec.expr->type_enum == PT_TYPE_NULL)
-          {
-            if (!node->info.query.q.select.group_by)
-            {
-              PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-                         MSGCAT_SEMANTIC_ORDERBYNULL_REQUIRES_GROUPBY);
-            }
-            else
-            {
-              parser_free_tree (this_parser, node->info.query.order_by);
-              node->info.query.order_by = NULL;
-            }
-          }
-        }
-        
-        parser_push_orderby_node (node);
+			parser_push_orderby_node (node);
         
 		DBG_PRINT}}
-      opt_select_limit_clause
-      opt_for_update_clause
+	  opt_select_limit_clause
+	  opt_for_update_clause
 		{{
                         
 			PT_NODE *node = parser_pop_orderby_node ();
 			$<node>$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($<node>$, @$.buffer_pos)
             
-            DBG_PRINT}}
-     table_op select_or_subquery_without_values_query
-     {{
+		DBG_PRINT}}
+	  table_op select_or_subquery_without_values_query
+		{{
          
-         PT_NODE *stmt = $8;
-         PT_NODE *arg1 = $1;
+			PT_NODE *stmt = $8;
+			PT_NODE *arg1 = $1;
          
-         if (stmt)
-         {
+			if (stmt)
+			  {
 			    stmt->info.query.id = (UINTPTR) stmt;
 			    stmt->info.query.q.union_.arg1 = $1;
 			    stmt->info.query.q.union_.arg2 = $9;
@@ -12578,11 +12574,10 @@ select_expression_without_values_query
 			        && arg1->info.query.is_subquery != PT_IS_SUBQUERY
 			        && arg1->info.query.order_by != NULL)
 			      {
-			        PT_ERRORm (this_parser, stmt,
-			               MSGCAT_SET_PARSER_SYNTAX,
-			               MSGCAT_SYNTAX_INVALID_UNION_ORDERBY);
+			        PT_ERRORm (this_parser, stmt, MSGCAT_SET_PARSER_SYNTAX,
+			                   MSGCAT_SYNTAX_INVALID_UNION_ORDERBY);
 			      }
-         }
+			   }
 
 
 			$$ = stmt;
@@ -12600,69 +12595,67 @@ select_expression_without_values_query
 
 select_expression_without_values_query_no_with_clause
 	: select_expression_without_values_query_no_with_clause
-    {{
-        PT_NODE *node = $1;
-        parser_push_orderby_node (node);
-      }}
-    opt_orderby_clause
-    {{
+		{{
+			PT_NODE *node = $1;
+			parser_push_orderby_node (node);
+		}}
+	  opt_orderby_clause
+		{{
 
-        PT_NODE *node = parser_pop_orderby_node ();
+			PT_NODE *node = parser_pop_orderby_node ();
 
-        if (node && parser_cannot_cache)
-        {
-          node->info.query.reexecute = 1;
-          node->info.query.do_cache = 0;
-          node->info.query.do_not_cache = 1;
-        }
+			if (node && parser_cannot_cache)
+			  {
+			    node->info.query.reexecute = 1;
+			    node->info.query.do_cache = 0;
+			    node->info.query.do_not_cache = 1;
+			  }
 
+			if (parser_subquery_check == 0)
+			  PT_ERRORmf (this_parser, pt_top(this_parser), MSGCAT_SET_PARSER_SEMANTIC,
+				      MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "Subquery");
 
-        if (parser_subquery_check == 0)
-          PT_ERRORmf(this_parser, pt_top(this_parser),
-                     MSGCAT_SET_PARSER_SEMANTIC,
-                     MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "Subquery");
+			if (node)
+			  {
 
-        if (node)
-        {
+			    PT_NODE *order = node->info.query.order_by;
+			    if (order && order->info.sort_spec.expr
+				&& order->info.sort_spec.expr->node_type == PT_VALUE
+				&& order->info.sort_spec.expr->type_enum == PT_TYPE_NULL)
+			      {
+				if (!node->info.query.q.select.group_by)
+				  {
+				    PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					       MSGCAT_SEMANTIC_ORDERBYNULL_REQUIRES_GROUPBY);
+				  }
+				else
+				  {
+				    parser_free_tree (this_parser, node->info.query.order_by);
+				    node->info.query.order_by = NULL;
+				  }
+			      }
+			  }
 
-         PT_NODE *order = node->info.query.order_by;
-          if (order && order->info.sort_spec.expr
-              && order->info.sort_spec.expr->node_type == PT_VALUE
-              && order->info.sort_spec.expr->type_enum == PT_TYPE_NULL)
-          {
-            if (!node->info.query.q.select.group_by)
-            {
-              PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-                         MSGCAT_SEMANTIC_ORDERBYNULL_REQUIRES_GROUPBY);
-            }
-            else
-            {
-              parser_free_tree (this_parser, node->info.query.order_by);
-              node->info.query.order_by = NULL;
-            }
-          }
-        }
-
-        parser_push_orderby_node (node);
+			parser_push_orderby_node (node);
 
 		DBG_PRINT}}
-      opt_select_limit_clause
-      opt_for_update_clause
+	  opt_select_limit_clause
+	  opt_for_update_clause
 		{{
 
 			PT_NODE *node = parser_pop_orderby_node ();
 			$<node>$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($<node>$, @$.buffer_pos)
 
-            DBG_PRINT}}
-     table_op select_or_subquery_without_values_query_no_with_clause
-     {{
+		DBG_PRINT}}
+	  table_op select_or_subquery_without_values_query_no_with_clause
+		{{
 
-         PT_NODE *stmt = $8;
-         PT_NODE *arg1 = $1;
+			PT_NODE *stmt = $8;
+			PT_NODE *arg1 = $1;
 
-         if (stmt)
-         {
+			if (stmt)
+			  {
 			    stmt->info.query.id = (UINTPTR) stmt;
 			    stmt->info.query.q.union_.arg1 = $1;
 			    stmt->info.query.q.union_.arg2 = $9;
@@ -12670,11 +12663,10 @@ select_expression_without_values_query_no_with_clause
 			        && arg1->info.query.is_subquery != PT_IS_SUBQUERY
 			        && arg1->info.query.order_by != NULL)
 			      {
-			        PT_ERRORm (this_parser, stmt,
-			               MSGCAT_SET_PARSER_SYNTAX,
-			               MSGCAT_SYNTAX_INVALID_UNION_ORDERBY);
+			        PT_ERRORm (this_parser, stmt, MSGCAT_SET_PARSER_SYNTAX,
+			                   MSGCAT_SYNTAX_INVALID_UNION_ORDERBY);
 			      }
-         }
+			  }
 
 
 			$$ = stmt;
@@ -12692,81 +12684,79 @@ select_expression_without_values_query_no_with_clause
 
 select_expression_without_values_and_single_subquery
 	: select_expression_without_values_query_no_with_clause
-    {{
-        PT_NODE *node = $1;
-        parser_push_orderby_node (node);
-      }}
-    opt_orderby_clause
-    {{
+		{{
+			PT_NODE *node = $1;
+			parser_push_orderby_node (node);
+		}}
+	  opt_orderby_clause
+		{{
 
-        PT_NODE *node = parser_pop_orderby_node ();
+			PT_NODE *node = parser_pop_orderby_node ();
 
-        if (node && parser_cannot_cache)
-        {
-          node->info.query.reexecute = 1;
-          node->info.query.do_cache = 0;
-          node->info.query.do_not_cache = 1;
-        }
+			if (node && parser_cannot_cache)
+			  {
+			    node->info.query.reexecute = 1;
+			    node->info.query.do_cache = 0;
+			    node->info.query.do_not_cache = 1;
+			  }
 
 
-        if (parser_subquery_check == 0)
-          PT_ERRORmf(this_parser, pt_top(this_parser),
-                     MSGCAT_SET_PARSER_SEMANTIC,
-                     MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "Subquery");
+			if (parser_subquery_check == 0)
+			  PT_ERRORmf (this_parser, pt_top(this_parser), MSGCAT_SET_PARSER_SEMANTIC,
+				      MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "Subquery");
 
-        if (node)
-        {
+			if (node)
+			  {
 
-         PT_NODE *order = node->info.query.order_by;
-          if (order && order->info.sort_spec.expr
-              && order->info.sort_spec.expr->node_type == PT_VALUE
-              && order->info.sort_spec.expr->type_enum == PT_TYPE_NULL)
-          {
-            if (!node->info.query.q.select.group_by)
-            {
-              PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-                         MSGCAT_SEMANTIC_ORDERBYNULL_REQUIRES_GROUPBY);
-            }
-            else
-            {
-              parser_free_tree (this_parser, node->info.query.order_by);
-              node->info.query.order_by = NULL;
-            }
-          }
-        }
+			    PT_NODE *order = node->info.query.order_by;
+			    if (order && order->info.sort_spec.expr
+				&& order->info.sort_spec.expr->node_type == PT_VALUE
+				&& order->info.sort_spec.expr->type_enum == PT_TYPE_NULL)
+			      {
+				if (!node->info.query.q.select.group_by)
+				  {
+				    PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					       MSGCAT_SEMANTIC_ORDERBYNULL_REQUIRES_GROUPBY);
+				  }
+				else
+				  {
+				    parser_free_tree (this_parser, node->info.query.order_by);
+				    node->info.query.order_by = NULL;
+				  }
+			      }
+			  }
 
-        parser_push_orderby_node (node);
+			parser_push_orderby_node (node);
 
 		DBG_PRINT}}
-      opt_select_limit_clause
-      opt_for_update_clause
+	  opt_select_limit_clause
+	  opt_for_update_clause
 		{{
 
 			PT_NODE *node = parser_pop_orderby_node ();
 			$<node>$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($<node>$, @$.buffer_pos)
 
-            DBG_PRINT}}
-     table_op select_or_subquery_without_values_query_no_with_clause
-     {{
+		DBG_PRINT}}
+	  table_op select_or_subquery_without_values_query_no_with_clause
+		{{
 
-         PT_NODE *stmt = $8;
-         PT_NODE *arg1 = $1;
+			PT_NODE *stmt = $8;
+			PT_NODE *arg1 = $1;
 
-         if (stmt)
-         {
-			    stmt->info.query.id = (UINTPTR) stmt;
-			    stmt->info.query.q.union_.arg1 = $1;
-			    stmt->info.query.q.union_.arg2 = $9;
-			    if (arg1 != NULL
-			        && arg1->info.query.is_subquery != PT_IS_SUBQUERY
-			        && arg1->info.query.order_by != NULL)
-			      {
-			        PT_ERRORm (this_parser, stmt,
-			               MSGCAT_SET_PARSER_SYNTAX,
-			               MSGCAT_SYNTAX_INVALID_UNION_ORDERBY);
-			      }
-         }
+			if (stmt)
+			  {
+			     stmt->info.query.id = (UINTPTR) stmt;
+			     stmt->info.query.q.union_.arg1 = $1;
+			     stmt->info.query.q.union_.arg2 = $9;
+			     if (arg1 != NULL
+				 && arg1->info.query.is_subquery != PT_IS_SUBQUERY
+				 && arg1->info.query.order_by != NULL)
+			       {
+				 PT_ERRORm (this_parser, stmt, MSGCAT_SET_PARSER_SYNTAX,
+					    MSGCAT_SYNTAX_INVALID_UNION_ORDERBY);
+			       }
+			  }
 
 
 			$$ = stmt;
@@ -13113,8 +13103,8 @@ opt_with_clause
 
 		DBG_PRINT}}    
 	| WITH            /* $1 */
-	opt_recursive   /* $2 */
-	cte_definition_list   /* $3 */  
+	  opt_recursive   /* $2 */
+	  cte_definition_list   /* $3 */  
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_WITH_CLAUSE);
