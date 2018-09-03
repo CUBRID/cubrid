@@ -895,6 +895,8 @@ struct btree_delete_helper
       switch ((helper)->purpose) \
       { \
       case BTREE_OP_INSERT_NEW_OBJECT: \
+      case BTREE_OP_ONLINE_INDEX_IB_INSERT: \
+      case BTREE_OP_ONLINE_INDEX_TRAN_INSERT: \
 	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, PSTAT_BT_INSERT); \
 	break; \
       case BTREE_OP_INSERT_MVCC_DELID: \
@@ -935,6 +937,8 @@ struct btree_delete_helper
       switch ((helper)->purpose) \
       { \
       case BTREE_OP_INSERT_NEW_OBJECT: \
+      case BTREE_OP_ONLINE_INDEX_IB_INSERT: \
+      case BTREE_OP_ONLINE_INDEX_TRAN_INSERT: \
 	PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &(helper)->time_track, PSTAT_BT_INSERT_TRAVERSE); \
 	break; \
       case BTREE_OP_INSERT_MVCC_DELID: \
@@ -10697,7 +10701,7 @@ error:
   if (!save_sysop_started && insert_helper->is_system_op_started)
     {
       /* This might be a problem since compensate was not successfully executed. */
-      assert (insert_helper->purpose == BTREE_OP_INSERT_NEW_OBJECT);
+      assert (btree_is_insert_object_purpose (insert_helper->purpose));
       log_sysop_abort (thread_p);
       insert_helper->is_system_op_started = false;
     }
@@ -10794,7 +10798,7 @@ btree_key_append_object_to_overflow (THREAD_ENTRY * thread_p, BTID_INT * btid_in
   if (insert_helper->is_system_op_started)
     {
       /* Physical logging. */
-      assert (insert_helper->purpose == BTREE_OP_INSERT_NEW_OBJECT && BTREE_IS_UNIQUE (btid_int->unique_pk));
+      assert (btree_is_insert_object_purpose (insert_helper->purpose) && BTREE_IS_UNIQUE (btid_int->unique_pk));
       BTREE_RV_GET_DATA_LENGTH (rv_undo_data_ptr, rv_undo_data, rv_undo_data_length);
       log_append_undoredo_data (thread_p, RVBT_RECORD_MODIFY_UNDOREDO, &addr, rv_undo_data_length, rv_redo_data_length,
 				rv_undo_data, rv_redo_data);
@@ -10806,10 +10810,17 @@ btree_key_append_object_to_overflow (THREAD_ENTRY * thread_p, BTID_INT * btid_in
 					     addr.offset, ovfl_page, rv_redo_data_length, rv_redo_data,
 					     LOG_FIND_CURRENT_TDES (thread_p), &insert_helper->compensate_undo_nxlsa);
     }
+  else if (insert_helper->purpose == BTREE_OP_ONLINE_INDEX_IB_INSERT)
+    {
+      /* Redo logging. */
+      BTREE_RV_GET_DATA_LENGTH (rv_redo_data_ptr, rv_redo_data, rv_redo_data_length);
+      log_append_redo_data (thread_p, RVBT_RECORD_MODIFY_NO_UNDO, &insert_helper->leaf_addr, rv_redo_data_length,
+			    rv_redo_data);
+    }
   else				/* BTREE_OP_INSERT_NEW_OBJECT */
     {
       /* Logical undo logging. */
-      assert (insert_helper->purpose == BTREE_OP_INSERT_NEW_OBJECT);
+      assert (btree_is_insert_object_purpose (insert_helper->purpose));
       assert (!BTREE_IS_UNIQUE (btid_int->unique_pk));
       log_append_undoredo_data (thread_p, insert_helper->rcvindex, &addr, insert_helper->rv_keyval_data_length,
 				rv_redo_data_length, insert_helper->rv_keyval_data, rv_redo_data);
@@ -26046,9 +26057,9 @@ btree_insert_internal (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID
 			BTREE_INSERT_HELPER_MSG ("\t")
 			"\t" BTREE_ID_MSG "\n"
 			"\t" "%s: new stats = %d keys, %d objects, %d nulls.",
-			insert_helper.purpose == BTREE_OP_INSERT_NEW_OBJECT ? "Insert" : "MVCC Delete",
+			(btree_is_insert_object_purpose (insert_helper.purpose)) ? "Insert" : "MVCC Delete",
 			BTREE_INSERT_HELPER_AS_ARGS (&insert_helper), BTID_AS_ARGS (btid_int.sys_btid),
-			insert_helper.purpose == BTREE_OP_INSERT_NEW_OBJECT ?
+			(btree_is_insert_object_purpose (insert_helper.purpose)) ?
 			(insert_helper.is_unique_key_added_or_deleted ? "Added new key" : "Did not add new key") :
 			(insert_helper.is_unique_key_added_or_deleted) ? "Removed key" : "Did not remove key",
 			unique_stat_info->num_keys, unique_stat_info->num_oids, unique_stat_info->num_nulls);
@@ -26252,7 +26263,7 @@ btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
     }
 
   /* Purpose is BTREE_OP_INSERT_NEW_OBJECT. */
-  assert (insert_helper->purpose == BTREE_OP_INSERT_NEW_OBJECT);
+  assert (btree_is_insert_object_purpose (insert_helper->purpose));
 
   /* Check if key length is too big and if an overflow key file needs to be created. */
   key_len = btree_get_disk_size_of_key (key);
@@ -26370,6 +26381,8 @@ btree_get_max_new_data_size (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_
     {
     case BTREE_OP_INSERT_NEW_OBJECT:
     case BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE:
+    case BTREE_OP_ONLINE_INDEX_IB_INSERT:
+    case BTREE_OP_ONLINE_INDEX_TRAN_INSERT:
       if (known_to_be_found)
 	{
 	  /* Possible inserted data: 1. New object (consider maximum size including all info). 2. Link to overflow page 
@@ -26468,8 +26481,7 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
   assert (insert_helper != NULL);
 
 #if defined (SERVER_MODE)
-  if (LOG_ISRESTARTED ()
-      && (insert_helper->purpose == BTREE_OP_INSERT_NEW_OBJECT || insert_helper->purpose == BTREE_OP_INSERT_MVCC_DELID))
+  if (LOG_ISRESTARTED () && (btree_is_insert_data_purpose (insert_helper->purpose)))
     {
       /* vacuum will probably follow same path */
       pgbuf_notify_vacuum_follows (thread_p, *crt_page);
@@ -27077,7 +27089,8 @@ btree_key_insert_new_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VA
   /* Based on recovery index it is know if this is MVCC-like operation or not. Particularly important for vacuum. */
   /* Undo physical delete will add a compensate record and doesn't require undo recovery data. */
   /* Prepare undo data. */
-  if (insert_helper->purpose == BTREE_OP_INSERT_NEW_OBJECT)
+  if (insert_helper->purpose == BTREE_OP_INSERT_NEW_OBJECT
+      || insert_helper->purpose == BTREE_OP_ONLINE_INDEX_TRAN_INSERT)
     {
       insert_helper->rcvindex =
 	BTREE_MVCC_INFO_IS_INSID_NOT_ALL_VISIBLE (BTREE_INSERT_MVCC_INFO (insert_helper)) ? RVBT_MVCC_INSERT_OBJECT :
@@ -27374,12 +27387,20 @@ btree_key_insert_new_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE
 
       btree_insert_sysop_end (thread_p, insert_helper);
     }
-  else if (insert_helper->purpose == BTREE_OP_INSERT_NEW_OBJECT)
+  else if (insert_helper->purpose == BTREE_OP_INSERT_NEW_OBJECT
+	   || insert_helper->purpose == BTREE_OP_ONLINE_INDEX_TRAN_INSERT)
     {
       /* Undo/redo logging. */
       log_append_undoredo_data (thread_p, insert_helper->rcvindex, &insert_helper->leaf_addr,
 				insert_helper->rv_keyval_data_length, rv_redo_data_length,
 				insert_helper->rv_keyval_data, rv_redo_data);
+    }
+  else if (insert_helper->purpose == BTREE_OP_ONLINE_INDEX_IB_INSERT)
+    {
+      /* Redo logging. */
+      BTREE_RV_GET_DATA_LENGTH (rv_redo_data_ptr, rv_redo_data, rv_redo_data_length);
+      log_append_redo_data (thread_p, RVBT_RECORD_MODIFY_NO_UNDO, &insert_helper->leaf_addr, rv_redo_data_length,
+			    rv_redo_data);
     }
   else				/* BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE */
     {
@@ -27932,6 +27953,12 @@ btree_key_append_object_non_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 						 insert_helper->rv_redo_data, LOG_FIND_CURRENT_TDES (thread_p),
 						 &insert_helper->compensate_undo_nxlsa);
 	}
+      else if (insert_helper->purpose == BTREE_OP_ONLINE_INDEX_IB_INSERT)
+	{
+	  /* Redo logging. */
+	  log_append_redo_data (thread_p, RVBT_RECORD_MODIFY_NO_UNDO, &insert_helper->leaf_addr, rv_redo_data_length,
+				insert_helper->rv_redo_data);
+	}
       else			/* BTREE_OP_INSERT_NEW_OBJECT */
 	{
 	  /* Add logging. */
@@ -28122,7 +28149,7 @@ btree_key_relocate_last_into_ovf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
   assert (leaf_record_info != NULL);
   assert (offset_after_key > 0);
   assert (insert_helper != NULL);
-  assert (insert_helper->purpose == BTREE_OP_INSERT_NEW_OBJECT);
+  assert (btree_is_insert_object_purpose (insert_helper->purpose));
   assert (insert_helper->leaf_addr.offset != 0 && insert_helper->leaf_addr.pgptr == leaf);
 
   /* Relocate last object object in leaf record into an overflow page. */
@@ -32935,6 +32962,8 @@ btree_insert_sysop_end (THREAD_ENTRY * thread_p, BTREE_INSERT_HELPER * helper)
   switch (helper->purpose)
     {
     case BTREE_OP_INSERT_NEW_OBJECT:
+    case BTREE_OP_ONLINE_INDEX_IB_INSERT:
+    case BTREE_OP_ONLINE_INDEX_TRAN_INSERT:
       log_sysop_end_logical_undo (thread_p, helper->rcvindex, helper->leaf_addr.vfid, helper->rv_keyval_data_length,
 				  helper->rv_keyval_data);
       break;
@@ -32989,6 +33018,14 @@ btree_purpose_to_string (BTREE_OP_PURPOSE purpose)
       return "BTREE_OP_DELETE_VACUUM_INSID";
     case BTREE_OP_DELETE_VACUUM_OBJECT:
       return "BTREE_OP_DELETE_VACUUM_OBJECT";
+    case BTREE_OP_ONLINE_INDEX_TRAN_INSERT:
+      return "BTREE_OP_ONLINE_INDEX_TRAN_INSERT";
+    case BTREE_OP_ONLINE_INDEX_TRAN_DELETE:
+      return "case BTREE_OP_ONLINE_INDEX_TRAN_DELETE";
+    case BTREE_OP_ONLINE_INDEX_IB_INSERT:
+      return "BTREE_OP_ONLINE_INDEX_IB_INSERT";
+    case BTREE_OP_ONLINE_INDEX_IB_DELETE:
+      return "BTREE_OP_ONLINE_INDEX_IB_DELETE";
     default:
       assert (false);
       return "** UNKNOWN PURPOSE **";
