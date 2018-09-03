@@ -7788,10 +7788,21 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 		    }
 		}
 
-	      error_code =
-		btree_insert (thread_p, &btid, key_dbvalue, class_oid, inst_oid, op_type, unique_stat_info,
-			      &dummy_unique, p_mvcc_rec_header);
-
+	      if (index->index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+		{
+		  /* Online index is currently loading. */
+		  BTID_INT btid_int;
+		  btid_int.sys_btid = &btid;
+		  error_code =
+		    btree_online_index_dispatcher (thread_p, &btid_int, key_dbvalue, class_oid, inst_oid, &dummy_unique,
+						   BTREE_OP_ONLINE_INDEX_TRAN_INSERT);
+		}
+	      else
+		{
+		  error_code =
+		    btree_insert (thread_p, &btid, key_dbvalue, class_oid, inst_oid, op_type, unique_stat_info,
+				  &dummy_unique, p_mvcc_rec_header);
+		}
 #if defined(ENABLE_SYSTEMTAP)
 	      CUBRID_IDX_INSERT_END (classname, index->btname, (error_code != NO_ERROR));
 #endif /* ENABLE_SYSTEMTAP */
@@ -7804,10 +7815,22 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 
 	      if (use_mvcc == true)
 		{
-		  /* in MVCC logical deletion means MVCC DEL_ID insertion */
-		  error_code =
-		    btree_mvcc_delete (thread_p, &btid, key_dbvalue, class_oid, inst_oid, op_type, unique_stat_info,
-				       &dummy_unique, p_mvcc_rec_header);
+		  if (index->index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+		    {
+		      /* Online index is currently loading. */
+		      BTID_INT btid_int;
+		      btid_int.sys_btid = &btid;
+		      error_code =
+			btree_online_index_dispatcher (thread_p, &btid_int, key_dbvalue, class_oid, inst_oid,
+						       &dummy_unique, BTREE_OP_ONLINE_INDEX_TRAN_DELETE);
+		    }
+		  else
+		    {
+		      /* in MVCC logical deletion means MVCC DEL_ID insertion */
+		      error_code =
+			btree_mvcc_delete (thread_p, &btid, key_dbvalue, class_oid, inst_oid, op_type, unique_stat_info,
+					   &dummy_unique, p_mvcc_rec_header);
+		    }
 		}
 	      else
 		{
