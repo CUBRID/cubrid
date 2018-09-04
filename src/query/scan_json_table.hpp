@@ -100,7 +100,6 @@ namespace cubscan
 
 	int next_internal (cubthread::entry *thread_p, int depth, bool &success);
 
-	//scan_id_struct *m_scanid;
 	cubxasl::json_table::spec_node *m_specp;
 	cursor *m_scan_cursor;
 	size_t m_scan_cursor_depth;     // the current level where the cursor was left

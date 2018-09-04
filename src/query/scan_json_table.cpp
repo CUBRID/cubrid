@@ -156,7 +156,10 @@ namespace cubscan
 	      return error_code;
 	    }
 	}
+
+      return NO_ERROR;
     }
+
     std::size_t
     scanner::get_row_count (cursor &cursor)
     {
@@ -273,7 +276,8 @@ namespace cubscan
 	{
 	  // we need json
 	  DB_VALUE json_cast_value;
-	  // todo: is this implicit or explicit?
+
+	  // we should use explicit coercion, implicit coercion is not allowed between char and json
 	  tp_domain_status status = tp_value_cast (value_p, &json_cast_value, &tp_Json_domain, false);
 	  if (status != DOMAIN_COMPATIBLE)
 	    {
@@ -340,7 +344,6 @@ namespace cubscan
 	    }
 	  if (!success)
 	    {
-	      // todo
 	      sid.status = S_ENDED;
 	      sid.position = S_AFTER;
 	      break;
@@ -468,7 +471,6 @@ namespace cubscan
       size_t total_rows_number = 0;
 
       // check if cursor is already in child node
-      // todo: check later if '>' or '>='
       if (m_scan_cursor_depth >= depth + 1)
 	{
 	  // advance to child
