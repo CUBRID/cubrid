@@ -4767,91 +4767,6 @@ xts_process_set_spec_type (char *ptr, const SET_SPEC_TYPE * set_spec)
   return ptr;
 }
 
-static int
-xts_save_json_table_column (const json_table_column * jtc)
-{
-  int offset;
-  int size;
-  OR_ALIGNED_BUF (sizeof (*jtc) * 2) a_buf;
-  char *buf = OR_ALIGNED_BUF_START (a_buf);
-  char *buf_p = NULL;
-  bool is_buf_alloced = false;
-
-  if (jtc == NULL)
-    {
-      return NO_ERROR;
-    }
-
-  offset = xts_get_offset_visited_ptr (jtc);
-  if (offset != ER_FAILED)
-    {
-      return offset;
-    }
-
-  size = xts_sizeof_json_table_column (jtc);
-  if (size == ER_FAILED)
-    {
-      return ER_FAILED;
-    }
-
-  offset = xts_reserve_location_in_stream (size);
-  if (offset == ER_FAILED || xts_mark_ptr_visited (jtc, offset) == ER_FAILED)
-    {
-      return ER_FAILED;
-    }
-
-  if (size <= (int) OR_ALIGNED_BUF_SIZE (a_buf))
-    {
-      buf_p = buf;
-    }
-  else
-    {
-      buf_p = (char *) malloc (size);
-      if (buf_p == NULL)
-	{
-	  xts_Xasl_errcode = ER_OUT_OF_VIRTUAL_MEMORY;
-	  return ER_FAILED;
-	}
-
-      is_buf_alloced = true;
-    }
-
-  buf = xts_process_json_table_column (buf_p, jtc);
-  if (buf == NULL)
-    {
-      offset = ER_FAILED;
-      goto end;
-    }
-
-  assert (buf <= buf_p + size);
-
-  /*
-   * OR_DOUBLE_ALIGNED_SIZE may reserve more bytes
-   * suppress valgrind UMW (uninitialized memory write)
-   */
-#if !defined(NDEBUG)
-  do
-    {
-      int margin = size - CAST_BUFLEN (buf - buf_p);
-      if (margin > 0)
-	{
-	  memset (buf, 0, margin);
-	}
-    }
-  while (0);
-#endif
-
-  memcpy (&xts_Stream_buffer[offset], buf_p, size);
-
-end:
-  if (is_buf_alloced)
-    {
-      free_and_init (buf_p);
-    }
-
-  return offset;
-}
-
 static char *
 xts_process_json_table_column_behavior (char *ptr, const json_table_column_behavior * behavior)
 {
@@ -4865,7 +4780,7 @@ xts_process_json_table_column_behavior (char *ptr, const json_table_column_behav
 
 static char *
 xts_process_json_table_column (char *ptr, const json_table_column * json_table_column)
-{				//todo: seems to be necessary to add a save function to call this
+{
   int offset;
 
   // save json function
@@ -4909,91 +4824,6 @@ xts_process_json_table_column (char *ptr, const json_table_column * json_table_c
   return ptr;
 }
 
-static int
-xts_save_json_table_node (const json_table_node * jtn)
-{
-  int offset;
-  int size;
-  OR_ALIGNED_BUF (sizeof (*jtn) * 2) a_buf;
-  char *buf = OR_ALIGNED_BUF_START (a_buf);
-  char *buf_p = NULL;
-  bool is_buf_alloced = false;
-
-  if (jtn == NULL)
-    {
-      return NO_ERROR;
-    }
-
-  offset = xts_get_offset_visited_ptr (jtn);
-  if (offset != ER_FAILED)
-    {
-      return offset;
-    }
-
-  size = xts_sizeof_json_table_node (jtn);
-  if (size == ER_FAILED)
-    {
-      return ER_FAILED;
-    }
-
-  offset = xts_reserve_location_in_stream (size);
-  if (offset == ER_FAILED || xts_mark_ptr_visited (jtn, offset) == ER_FAILED)
-    {
-      return ER_FAILED;
-    }
-
-  if (size <= (int) OR_ALIGNED_BUF_SIZE (a_buf))
-    {
-      buf_p = buf;
-    }
-  else
-    {
-      buf_p = (char *) malloc (size);
-      if (buf_p == NULL)
-	{
-	  xts_Xasl_errcode = ER_OUT_OF_VIRTUAL_MEMORY;
-	  return ER_FAILED;
-	}
-
-      is_buf_alloced = true;
-    }
-
-  buf = xts_process_json_table_node (buf_p, jtn);
-  if (buf == NULL)
-    {
-      offset = ER_FAILED;
-      goto end;
-    }
-
-  assert (buf <= buf_p + size);
-
-  /*
-   * OR_DOUBLE_ALIGNED_SIZE may reserve more bytes
-   * suppress valgrind UMW (uninitialized memory write)
-   */
-#if !defined(NDEBUG)
-  do
-    {
-      int margin = size - CAST_BUFLEN (buf - buf_p);
-      if (margin > 0)
-	{
-	  memset (buf, 0, margin);
-	}
-    }
-  while (0);
-#endif
-
-  memcpy (&xts_Stream_buffer[offset], buf_p, size);
-
-end:
-  if (is_buf_alloced)
-    {
-      free_and_init (buf_p);
-    }
-
-  return offset;
-}
-
 // *INDENT-OFF*
 // for (it : list) cannot be correctly indented
 static char *
@@ -5005,30 +4835,30 @@ xts_process_json_table_node (char *ptr, const json_table_node * json_table_node)
   offset = xts_save_string (json_table_node->m_path.c_str ());
   if (offset == ER_FAILED)
     {
-    return NULL;
+      return NULL;
     }
   ptr = or_pack_int (ptr, offset);
   
   // save m_output_columns
   ptr = or_pack_int (ptr, (int) json_table_node->m_output_columns.size());
   for (auto & col : json_table_node->m_output_columns)
-  {
-    ptr = xts_process_json_table_column (ptr, &col);
-  }
+    {
+      ptr = xts_process_json_table_column (ptr, &col);
+    }
   // save nested nodes
   ptr = or_pack_int (ptr, (int) json_table_node->m_nested_nodes.size ());
   for (auto & n : json_table_node->m_nested_nodes)
-  {
-    ptr = xts_process_json_table_node (ptr, &n);
-  }
+    {
+      ptr = xts_process_json_table_node (ptr, &n);
+    }
 
   ptr = or_pack_int (ptr, (int) json_table_node->m_id);
 
   return ptr;
-
-  // for (it : list) cannot be correctly indented
 }
 // *INDENT-ON*
+
+// for (it : list) cannot be correctly indented
 
 static char *
 xts_process_json_table_spec_type (char *ptr, const json_table_spec_node * json_table_spec)
