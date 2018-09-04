@@ -6818,9 +6818,9 @@ static int update_savepoint_number = 0;
 static void unlink_list (PT_NODE * list);
 
 static QFILE_LIST_ID *get_select_list_to_update (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * column_names,
-						 PT_NODE * column_values, PT_NODE * where, PT_NODE * order_by,
-						 PT_NODE * orderby_for, PT_NODE * using_index, PT_NODE * class_specs,
-						 PT_NODE * update_stmt);
+						 PT_NODE * column_values, PT_NODE * with, PT_NODE * where,
+						 PT_NODE * order_by, PT_NODE * orderby_for, PT_NODE * using_index,
+						 PT_NODE * class_specs, PT_NODE * update_stmt);
 static int update_object_attribute (PARSER_CONTEXT * parser, DB_OTMPL * otemplate, PT_NODE * name,
 				    DB_ATTDESC * attr_desc, DB_VALUE * value);
 static int update_object_tuple (PARSER_CONTEXT * parser, CLIENT_UPDATE_INFO * assigns, int assigns_count,
@@ -6873,6 +6873,7 @@ unlink_list (PT_NODE * list)
  *   parser(in): Parser context
  *   from(in): Parse tree of an FROM class
  *   column_values(in): Column list in SELECT clause
+ *   with(in): WITH clause
  *   where(in): WHERE clause
  *   order_by(in): ORDER BY clause
  *   orderby_num(in): converted from ORDER BY with LIMIT
@@ -6883,8 +6884,8 @@ unlink_list (PT_NODE * list)
  */
 static QFILE_LIST_ID *
 get_select_list_to_update (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * column_names, PT_NODE * column_values,
-			   PT_NODE * where, PT_NODE * order_by, PT_NODE * orderby_for, PT_NODE * using_index,
-			   PT_NODE * class_specs, PT_NODE * update_stmt)
+			   PT_NODE * with, PT_NODE * where, PT_NODE * order_by, PT_NODE * orderby_for,
+			   PT_NODE * using_index, PT_NODE * class_specs, PT_NODE * update_stmt)
 {
   PT_NODE *statement = NULL;
   QFILE_LIST_ID *result = NULL;
@@ -6893,8 +6894,9 @@ get_select_list_to_update (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * co
   assert (parser->query_id == NULL_QUERY_ID);
 
   if (from && (from->node_type == PT_SPEC) && from->info.spec.range_var
-      && ((statement = pt_to_upd_del_query (parser, column_names, column_values, from, class_specs, where, using_index,
-					    order_by, orderby_for, 0 /* not server update */ , S_UPDATE)) != NULL))
+      && ((statement =
+	   pt_to_upd_del_query (parser, column_names, column_values, from, with, class_specs, where, using_index,
+				order_by, orderby_for, 0 /* not server update */ , S_UPDATE)) != NULL))
     {
       err = pt_copy_upddel_hints_to_select (parser, update_stmt, statement);
       if (err != NO_ERROR)
@@ -8493,9 +8495,10 @@ update_real_class (PARSER_CONTEXT * parser, PT_NODE * statement, bool savepoint_
 	      /* get the oid's and new values */
 	      oid_list =
 		get_select_list_to_update (parser, statement->info.update.spec, select_names, select_values,
-					   statement->info.update.search_cond, statement->info.update.order_by,
-					   statement->info.update.orderby_for, statement->info.update.using_index,
-					   statement->info.update.class_specs, statement);
+					   statement->info.update.with, statement->info.update.search_cond,
+					   statement->info.update.order_by, statement->info.update.orderby_for,
+					   statement->info.update.using_index, statement->info.update.class_specs,
+					   statement);
 
 	      /* restore tree structure */
 	      pt_restore_assignment_links (statement->info.update.assignment, links, -1);
@@ -9037,6 +9040,13 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  PT_NODE *assigns = statement->info.update.assignment;
 	  PT_NODE *from = statement->info.update.spec;
 
+	  if (statement->info.update.with != NULL)
+	    {
+	      /* client-side updates with CTEs are not supported for now */
+	      PT_INTERNAL_ERROR (parser, "update");
+	      break;
+	    }
+
 	  err = pt_append_omitted_on_update_expr_assignments (parser, assigns, from);
 	  if (err != NO_ERROR)
 	    {
@@ -9055,9 +9065,9 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  /* make sure that lhs->info.name.meta_class != PT_META_ATTR */
 	  select_statement =
 	    pt_to_upd_del_query (parser, select_names, select_values, statement->info.update.spec,
-				 statement->info.update.class_specs, statement->info.update.search_cond,
-				 statement->info.update.using_index, statement->info.update.order_by,
-				 statement->info.update.orderby_for, 0, S_UPDATE);
+				 statement->info.update.with, statement->info.update.class_specs,
+				 statement->info.update.search_cond, statement->info.update.using_index,
+				 statement->info.update.order_by, statement->info.update.orderby_for, 0, S_UPDATE);
 
 	  /* restore tree structure; pt_get_assignment_lists() */
 	  pt_restore_assignment_links (statement->info.update.assignment, links, -1);
@@ -9417,12 +9427,12 @@ select_delete_list (PARSER_CONTEXT * parser, QFILE_LIST_ID ** result_p, PT_NODE 
   int ret = NO_ERROR;
 
   assert (parser->query_id == NULL_QUERY_ID);
+  assert (delete_stmt->info.delete_.with == NULL);
 
-  statement = pt_to_upd_del_query (parser, NULL, NULL, delete_stmt->info.delete_.spec, delete_stmt->info.delete_.class_specs, delete_stmt->info.delete_.search_cond, delete_stmt->info.delete_.using_index, NULL, NULL, 0	/* not 
-																												 * server 
-																												 * update 
-																												 */ ,
-				   S_DELETE);
+  statement = pt_to_upd_del_query (parser, NULL, NULL, delete_stmt->info.delete_.spec, delete_stmt->info.delete_.with,
+				   delete_stmt->info.delete_.class_specs, delete_stmt->info.delete_.search_cond,
+				   delete_stmt->info.delete_.using_index, NULL, NULL,
+				   0 /* not server update */ , S_DELETE);
   if (statement != NULL)
     {
       ret = pt_copy_upddel_hints_to_select (parser, delete_stmt, statement);
@@ -10342,9 +10352,11 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 	  PT_NODE *select_statement;
 	  PT_DELETE_INFO *delete_info;
 
+	  assert (delete_info->with == NULL);
+
 	  delete_info = &statement->info.delete_;
 	  select_statement =
-	    pt_to_upd_del_query (parser, NULL, NULL, delete_info->spec, delete_info->class_specs,
+	    pt_to_upd_del_query (parser, NULL, NULL, delete_info->spec, delete_info->with, delete_info->class_specs,
 				 delete_info->search_cond, delete_info->using_index, NULL, NULL, 0, S_DELETE);
 	  err = pt_copy_upddel_hints_to_select (parser, statement, select_statement);
 	  if (err != NO_ERROR)
@@ -13405,6 +13417,7 @@ do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *values = NULL;
   PT_NODE *attr_list;
   PT_NODE *update = NULL;
+  PT_NODE *with = NULL;
   int save_au;
 
   if (statement == NULL || statement->node_type != PT_INSERT || statement->info.insert.spec == NULL
