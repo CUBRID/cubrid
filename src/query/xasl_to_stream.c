@@ -5009,36 +5009,21 @@ xts_process_json_table_node (char *ptr, const json_table_node * json_table_node)
     }
   ptr = or_pack_int (ptr, offset);
 
-  //save m_predicate_columns
-  ptr = or_pack_int (ptr, json_table_node->m_predicate_columns.size());
-  for (auto & col : json_table_node->m_predicate_columns)
-    {
-      ptr = xts_process_json_table_column(ptr, &col);
-    }
-
   // save m_output_columns
-  ptr = or_pack_int (ptr, json_table_node->m_output_columns.size());
+  ptr = or_pack_int (ptr, (int) json_table_node->m_output_columns.size());
   for (auto & col : json_table_node->m_output_columns)
   {
     ptr = xts_process_json_table_column (ptr, &col);
   }
 
-  // save pred_expr
-  offset = xts_save_pred_expr (json_table_node->m_predicate_expression);
-  if (offset == ER_FAILED)
-  {
-    return NULL;
-  }
-  ptr = or_pack_int (ptr, offset);
-
   // save nested nodes
-  ptr = or_pack_int (ptr, json_table_node->m_nested_nodes.size ());
+  ptr = or_pack_int (ptr, (int) json_table_node->m_nested_nodes.size ());
   for (auto & n : json_table_node->m_nested_nodes)
   {
     ptr = xts_process_json_table_node (ptr, &n);
   }
 
-  ptr = or_pack_int (ptr, json_table_node->m_id);
+  ptr = or_pack_int (ptr, (int) json_table_node->m_id);
 
   return ptr;
 
@@ -5052,7 +5037,7 @@ xts_process_json_table_spec_type (char *ptr, const json_table_spec_node * json_t
 {
   int offset;
 
-  ptr = or_pack_int (ptr, json_table_spec->m_node_count);
+  ptr = or_pack_int (ptr, (int) json_table_spec->m_node_count);
 
   offset = xts_save_regu_variable (json_table_spec->m_json_reguvar);
   if (offset == ER_FAILED)
@@ -6944,21 +6929,10 @@ xts_sizeof_json_table_node (const json_table_node * jtn)
 	   + PTR_SIZE		/* pred_expr */
 	   + OR_INT_SIZE);	/* m_id */
 
-  size += OR_INT_SIZE;		/*m_predicate_colums list size */
-  for (auto & n : jtn->m_predicate_columns)
-    {
-      size += xts_sizeof_json_table_column (&n);
-    }
-
   size += OR_INT_SIZE;		/*m_output_colums list size */
   for (auto & n : jtn->m_output_columns)
     {
       size += xts_sizeof_json_table_column (&n);
-    }
-
-  if (jtn->m_predicate_expression)
-    {
-      size += xts_sizeof_pred_expr (jtn->m_predicate_expression);
     }
 
   size += OR_INT_SIZE;		/*m_nested_nodes size */

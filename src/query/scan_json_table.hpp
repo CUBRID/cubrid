@@ -24,10 +24,10 @@
 #ifndef _SCAN_JSON_TABLE_HPP_
 #define _SCAN_JSON_TABLE_HPP_
 
-#include <vector>
-
 #include "dbtype_def.h"
 #include "query_evaluator.h"
+
+#include <vector>
 
 // forward definitions
 // access_json_table.hpp
@@ -60,10 +60,14 @@ namespace cubscan
     {
       public:
 
+	// initialize scanner
 	void init (cubxasl::json_table::spec_node &spec);
+	// clear scanner
 	void clear (xasl_node *xasl_p, bool is_final);
 
+	// open a new scan
 	int open (cubthread::entry *thread_p);
+	// end a scan
 	void end (cubthread::entry *thread_p);
 
 	int next_scan (cubthread::entry *thread_p, scan_id_struct &sid, FILTER_INFO &data_filter);
@@ -82,8 +86,6 @@ namespace cubscan
 
 	int fetch_columns (const JSON_DOC &document, std::vector<cubxasl::json_table::column> &columns,
 			   const cubxasl::json_table::node &node);
-	int evaluate (cubxasl::json_table::node &node, cubthread::entry *thread_p, const JSON_DOC &document,
-		      DB_LOGICAL &logical_output);
 	std::size_t get_row_count (cursor &cursor);
 	static bool check_need_expand (const cubxasl::json_table::node &node);
 	static bool str_ends_with (const std::string &str, const std::string &end);
@@ -91,7 +93,6 @@ namespace cubscan
 	int scanner::init_cursor (const JSON_DOC &doc, cubxasl::json_table::node &node, cursor &cursor_out);
 	int set_next_cursor (const cursor &current_cursor, int next_depth);
 	int set_input_document (cursor &cursor, const cubxasl::json_table::node &node, const JSON_DOC &document);
-	void init_eval_functions (const cubxasl::json_table::node &node);
 	size_t get_tree_height (const cubxasl::json_table::node &node);
 	void clear_columns (std::vector<cubxasl::json_table::column> &columns);
 	void clear_node_columns (cubxasl::json_table::node &node);
@@ -104,7 +105,6 @@ namespace cubscan
 	cursor *m_scan_cursor;
 	size_t m_scan_cursor_depth;     // the current level where the cursor was left
 	size_t m_tree_height;           // will be used to initialize cursor vector
-	PR_EVAL_FNC *m_eval_functions;  // each node will have its associated function based on node.id
     };
   } // namespace json_table
 } // namespace cubscan

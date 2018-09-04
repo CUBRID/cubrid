@@ -26,6 +26,8 @@
 #include "object_primitive.h"
 #include "scan_manager.h"
 
+#include <algorithm>
+
 namespace cubscan
 {
   namespace json_table
@@ -38,7 +40,7 @@ namespace cubscan
       JSON_DOC *m_input_doc;            // used for non-array / single row
       const JSON_DOC *m_row_doc;        // used only for arrays and multiple rows
       const JSON_DOC *m_process_doc;    // is either input_doc or row doc
-      bool m_is_row_evaluated;
+      bool m_is_row_fetched;
       bool m_need_expand;
       JSON_ITERATOR *m_json_iterator;
 
@@ -54,7 +56,7 @@ namespace cubscan
       , m_json_iterator (NULL)
       , m_child (0)
       , m_row (0)
-      , m_is_row_evaluated (false)
+      , m_is_row_fetched (false)
       , m_need_expand (false)
     {
       //
@@ -65,7 +67,7 @@ namespace cubscan
     {
       // advance with row
       m_row++;
-      m_is_row_evaluated = false;
+      m_is_row_fetched = false;
 
       // advance also with ordinality
       if (m_node->m_need_inc_ordinality)
@@ -157,35 +159,6 @@ namespace cubscan
       return NO_ERROR;
     }
 
-    int
-    scanner::evaluate (cubxasl::json_table::node &node, cubthread::entry *thread_p, const JSON_DOC &document,
-		       DB_LOGICAL &logical_output)
-    {
-      logical_output = V_TRUE;
-      PR_EVAL_FNC eval_function = *m_eval_functions[node.m_id];
-
-      if (eval_function == NULL)
-	{
-	  assert (node.m_predicate_columns.empty());
-	  return NO_ERROR;
-	}
-
-      int error_code = fetch_columns (document, node.m_predicate_columns, node);
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
-	}
-
-      // what about the val_descr?
-      logical_output = eval_function (thread_p, node.m_predicate_expression, NULL, NULL);
-      if (logical_output == V_ERROR)
-	{
-	  ASSERT_ERROR_AND_SET (error_code);
-	  return error_code;
-	}
-      return NO_ERROR;
-    }
-
     std::size_t
     scanner::get_row_count (cursor &cursor)
     {
@@ -205,25 +178,10 @@ namespace cubscan
 
       for (const cubxasl::json_table::node &child : node.m_nested_nodes)
 	{
-	  max_child_height = MAX (max_child_height, get_tree_height (child));
+	  max_child_height = std::max (max_child_height, get_tree_height (child));
 	}
 
       return 1 + max_child_height;
-    }
-
-    void
-    scanner::init_eval_functions (const cubxasl::json_table::node &node)
-    {
-      pred_expr *pr = node.m_predicate_expression;
-      DB_TYPE single_node_type = DB_TYPE_NULL;
-
-      // set predicate function
-      m_eval_functions[node.m_id] = (pr) ? eval_fnc (NULL, pr, &single_node_type) : NULL;
-
-      for (const cubxasl::json_table::node &child : node.m_nested_nodes)
-	{
-	  init_eval_functions (child);
-	}
     }
 
     void
@@ -232,8 +190,6 @@ namespace cubscan
       m_specp = &spec;
 
       assert (m_specp->m_node_count > 0);
-
-      m_eval_functions = new PR_EVAL_FNC[m_specp->m_node_count];
 
       m_tree_height = get_tree_height (*m_specp->m_root_node);
 
@@ -246,9 +202,6 @@ namespace cubscan
 	{
 	  m_scan_cursor[i].m_node = t;
 	}
-
-      // walk json table tree and initialize evaluation functions
-      init_eval_functions (*m_specp->m_root_node);
     }
 
     void
@@ -269,7 +222,7 @@ namespace cubscan
 
 	      cursor.m_child = 0;
 	      cursor.m_row = 0;
-	      cursor.m_is_row_evaluated = false;
+	      cursor.m_is_row_fetched = false;
 	      cursor.m_need_expand = false;
 	    }
 	}
@@ -468,7 +421,7 @@ namespace cubscan
     int
     scanner::init_cursor (const JSON_DOC &doc, cubxasl::json_table::node &node, cursor &cursor_out)
     {
-      cursor_out.m_is_row_evaluated = false;
+      cursor_out.m_is_row_fetched = false;
       cursor_out.m_need_expand = false;
       cursor_out.m_row = 0;
       cursor_out.m_child = 0;
@@ -497,7 +450,6 @@ namespace cubscan
     void
     scanner::clear_node_columns (cubxasl::json_table::node &node)
     {
-      clear_columns (node.m_predicate_columns);
       clear_columns (node.m_output_columns);
     }
 
@@ -516,7 +468,6 @@ namespace cubscan
     {
       int error_code = NO_ERROR;
       size_t total_rows_number = 0;
-      DB_LOGICAL logical;
 
       // check if cursor is already in child node
       // todo: check later if '>' or '>='
@@ -544,7 +495,7 @@ namespace cubscan
       // iterate through nodes on the same level
       while (this_cursor.m_row < total_rows_number)
 	{
-	  if (!this_cursor.m_is_row_evaluated)
+	  if (!this_cursor.m_is_row_fetched)
 	    {
 	      // if we need to expand continue to process where we left, else use the whole input_doc
 	      if (this_cursor.m_need_expand)
@@ -558,24 +509,6 @@ namespace cubscan
 
 	      if (this_cursor.m_process_doc != nullptr)
 		{
-		  this_cursor.m_node->m_need_inc_ordinality = true;
-		  char *raw_json = db_json_get_json_body_from_document (*this_cursor.m_process_doc);
-
-		  // todo: split scan_pred into preds for columns
-		  error_code = evaluate (*this_cursor.m_node, thread_p, *this_cursor.m_process_doc, logical);
-		  if (error_code != NO_ERROR)
-		    {
-		      ASSERT_ERROR();
-		      return error_code;
-		    }
-		  if (logical != V_TRUE)
-		    {
-		      // we need another row
-		      this_cursor.advance_row_cursor();
-		      continue;
-		    }
-		  this_cursor.m_is_row_evaluated = true;
-
 		  // fetch other columns too
 		  error_code = fetch_columns (*this_cursor.m_process_doc, this_cursor.m_node->m_output_columns,
 					      *this_cursor.m_node);
@@ -585,6 +518,9 @@ namespace cubscan
 		      ASSERT_ERROR();
 		      return error_code;
 		    }
+		  this_cursor.m_is_row_fetched = true;
+
+		  this_cursor.m_node->m_need_inc_ordinality = true;
 		}
 	      else
 		{

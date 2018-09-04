@@ -4361,7 +4361,7 @@ pt_get_all_json_table_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * j
 
   parser_walk_tree (parser, json_table_node, pt_json_table_gather_attribs, &attribs, NULL, NULL);
 
-  std::unordered_map < int, PT_NODE * >sorted_attrs;
+  std::unordered_map < size_t, PT_NODE * >sorted_attrs;
 
   for (PT_NODE * attr = attribs; attr; attr = attr->next)
     {
