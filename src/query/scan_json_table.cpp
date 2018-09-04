@@ -145,7 +145,7 @@ namespace cubscan
 			    const cubxasl::json_table::node &node)
     {
       int error_code = NO_ERROR;
-      for (auto col : columns)
+      for (auto &col : columns)
 	{
 	  error_code = col.evaluate (document, node.m_ordinality);
 	  if (error_code != NO_ERROR)
@@ -153,35 +153,6 @@ namespace cubscan
 	      ASSERT_ERROR();
 	      return error_code;
 	    }
-	}
-      return NO_ERROR;
-    }
-
-    int
-    scanner::evaluate (cubxasl::json_table::node &node, cubthread::entry *thread_p, const JSON_DOC &document,
-		       DB_LOGICAL &logical_output)
-    {
-      logical_output = V_TRUE;
-      PR_EVAL_FNC eval_function = *m_eval_functions[node.m_id];
-
-      if (eval_function == NULL)
-	{
-	  assert (node.m_predicate_columns.empty());
-	  return NO_ERROR;
-	}
-
-      int error_code = fetch_columns (document, node.m_predicate_columns, node);
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
-	}
-
-      // what about the val_descr?
-      logical_output = eval_function (thread_p, node.m_predicate_expression, NULL, NULL);
-      if (logical_output == V_ERROR)
-	{
-	  ASSERT_ERROR_AND_SET (error_code);
-	  return error_code;
 	}
       return NO_ERROR;
     }
@@ -212,28 +183,11 @@ namespace cubscan
     }
 
     void
-    scanner::init_eval_functions (const cubxasl::json_table::node &node)
-    {
-      pred_expr *pr = node.m_predicate_expression;
-      DB_TYPE single_node_type = DB_TYPE_NULL;
-
-      // set predicate function
-      m_eval_functions[node.m_id] = (pr) ? eval_fnc (NULL, pr, &single_node_type) : NULL;
-
-      for (const cubxasl::json_table::node &child : node.m_nested_nodes)
-	{
-	  init_eval_functions (child);
-	}
-    }
-
-    void
     scanner::init (cubxasl::json_table::spec_node &spec)
     {
       m_specp = &spec;
 
       assert (m_specp->m_node_count > 0);
-
-      m_eval_functions = new PR_EVAL_FNC[m_specp->m_node_count];
 
       m_tree_height = get_tree_height (*m_specp->m_root_node);
 
@@ -246,9 +200,6 @@ namespace cubscan
 	{
 	  m_scan_cursor[i].m_node = t;
 	}
-
-      // walk json table tree and initialize evaluation functions
-      init_eval_functions (*m_specp->m_root_node);
     }
 
     void
@@ -497,7 +448,6 @@ namespace cubscan
     void
     scanner::clear_node_columns (cubxasl::json_table::node &node)
     {
-      clear_columns (node.m_predicate_columns);
       clear_columns (node.m_output_columns);
     }
 
@@ -561,19 +511,6 @@ namespace cubscan
 		  this_cursor.m_node->m_need_inc_ordinality = true;
 		  char *raw_json = db_json_get_json_body_from_document (*this_cursor.m_process_doc);
 
-		  // todo: split scan_pred into preds for columns
-		  error_code = evaluate (*this_cursor.m_node, thread_p, *this_cursor.m_process_doc, logical);
-		  if (error_code != NO_ERROR)
-		    {
-		      ASSERT_ERROR();
-		      return error_code;
-		    }
-		  if (logical != V_TRUE)
-		    {
-		      // we need another row
-		      this_cursor.advance_row_cursor();
-		      continue;
-		    }
 		  this_cursor.m_is_row_evaluated = true;
 
 		  // fetch other columns too
@@ -672,6 +609,11 @@ namespace cubscan
 	}
 
       return NO_ERROR;
+    }
+
+    SCAN_PRED &scanner::get_predicate()
+    {
+      return scan_predicate;
     }
   } // namespace json_table
 } // namespace cubscan

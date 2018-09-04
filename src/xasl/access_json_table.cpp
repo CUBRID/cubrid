@@ -228,7 +228,6 @@ namespace cubxasl
     node::node (void)
       : m_ordinality (1)
       , m_need_inc_ordinality (true)
-      , m_predicate_expression (NULL)
       , m_id (0)
     {
       //
@@ -237,12 +236,6 @@ namespace cubxasl
     void
     node::clear_columns()
     {
-      for (auto &column : m_predicate_columns)
-	{
-	  (void)pr_clear_value (column.m_output_value_pointer);
-	  (void)db_make_null (column.m_output_value_pointer);
-	}
-
       for (auto &column : m_output_columns)
 	{
 	  (void)pr_clear_value (column.m_output_value_pointer);

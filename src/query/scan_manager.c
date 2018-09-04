@@ -3863,7 +3863,7 @@ scan_open_json_table_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, int group
   /* initialize JSON_TABLE_SCAN_ID structure */
   jtidp = &scan_id->s.jtid;
 
-  scan_init_scan_pred (&jtidp->scan_pred, NULL, pr, ((pr) ? eval_fnc (thread_p, pr, &single_node_type) : NULL));
+  scan_init_scan_pred (&jtidp->get_predicate (), NULL, pr, ((pr) ? eval_fnc (thread_p, pr, &single_node_type) : NULL));
 
   // jtidp->open (thread_p); // nothing to do here
 
@@ -6572,7 +6572,7 @@ scan_next_json_table_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   jtidp = &scan_id->s.jtid;
 
   // init a filter to apply test predicate on output
-  scan_init_filter_info (&data_filter, &jtidp->scan_pred, NULL, scan_id->val_list, scan_id->vd, NULL, 0,
+  scan_init_filter_info (&data_filter, &jtidp->get_predicate (), NULL, scan_id->val_list, scan_id->vd, NULL, 0,
 			 NULL, NULL, NULL);
 
   // the status of the scan will be put in scan_id->status

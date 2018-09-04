@@ -5329,29 +5329,7 @@ stx_unpack_json_table_node (THREAD_ENTRY * thread_p, char *ptr, json_table_node 
     {
       json_table_column jtc;
       ptr = stx_unpack_json_table_column (thread_p, ptr, jtc);
-      jtn.m_predicate_columns.push_back (std::move (jtc));
-    }
-
-  ptr = or_unpack_int (ptr, &temp_int);
-  for (int i = 0; i < temp_int; ++i)
-    {
-      json_table_column jtc;
-      ptr = stx_unpack_json_table_column (thread_p, ptr, jtc);
       jtn.m_output_columns.push_back (std::move (jtc));
-    }
-
-  ptr = or_unpack_int (ptr, &offset);
-  if (offset == 0)
-    {
-      jtn.m_predicate_expression = NULL;
-    }
-  else
-    {
-      jtn.m_predicate_expression = stx_restore_pred_expr (thread_p, &xasl_unpack_info->packed_xasl[offset]);
-      if (jtn.m_predicate_expression == NULL)
-	{
-	  return NULL;
-	}
     }
 
   ptr = or_unpack_int (ptr, &temp_int);
