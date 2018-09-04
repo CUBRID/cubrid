@@ -25905,7 +25905,7 @@ btree_insert_internal (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID
   /* Assert expected arguments. */
   assert (btid != NULL);
   assert (oid != NULL);
-  /* Assert class OID is valid or not required; not requied for undo delete */
+  /* Assert class OID is valid or not required; not required for undo delete */
   assert (purpose == BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE || (class_oid != NULL && !OID_ISNULL (class_oid)));
 
   PERF_UTIME_TRACKER_START (thread_p, &insert_helper.time_track);
@@ -33187,8 +33187,8 @@ btree_key_online_index_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_
   /* We are in leaf level now, and we must inspect if we have found the OID inside the key. */
   if (search_key->result == BTREE_KEY_FOUND)
     {
-      /*  We search the key for the OID. If we find it, we should find it with DELETE_FLAG set, therefore we must
-       *  delete it in place.
+      /* We search the key for the OID. If we find it, we should find it with DELETE_FLAG set, therefore we must
+       * delete it in place.
        */
 
       /* Get the record. */
