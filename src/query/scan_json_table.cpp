@@ -312,7 +312,7 @@ namespace cubscan
     int
     scanner::next_scan (cubthread::entry *thread_p, scan_id_struct &sid, FILTER_INFO &data_filter)
     {
-      bool success = true;
+      bool has_row = true;
       int error_code = NO_ERROR;
       DB_LOGICAL logical = V_FALSE;
 
@@ -336,13 +336,13 @@ namespace cubscan
 
       while (true)
 	{
-	  error_code = next_internal (thread_p, 0, success);
+	  error_code = next_internal (thread_p, 0, has_row);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR();
 	      return error_code;
 	    }
-	  if (!success)
+	  if (!has_row)
 	    {
 	      sid.status = S_ENDED;
 	      sid.position = S_AFTER;
@@ -465,7 +465,7 @@ namespace cubscan
     }
 
     int
-    scanner::next_internal (cubthread::entry *thread_p, int depth, bool &success)
+    scanner::next_internal (cubthread::entry *thread_p, int depth, bool &has_row)
     {
       int error_code = NO_ERROR;
       size_t total_rows_number = 0;
@@ -474,12 +474,12 @@ namespace cubscan
       if (m_scan_cursor_depth >= depth + 1)
 	{
 	  // advance to child
-	  error_code = next_internal (thread_p, depth + 1, success);
+	  error_code = next_internal (thread_p, depth + 1, has_row);
 	  if (error_code != NO_ERROR)
 	    {
 	      return error_code;
 	    }
-	  if (success)
+	  if (has_row)
 	    {
 	      return NO_ERROR;
 	    }
@@ -536,7 +536,7 @@ namespace cubscan
 	  if (this_cursor.m_child == this_cursor.m_node->m_nested_nodes.size())
 	    {
 	      this_cursor.advance_row_cursor();
-	      success = true;
+	      has_row = true;
 	      return NO_ERROR;
 	    }
 
@@ -561,19 +561,19 @@ namespace cubscan
 
 	      this_cursor.advance_row_cursor();
 
-	      success = true;
+	      has_row = true;
 	      return NO_ERROR;
 	    }
 
 	  // advance current level in tree
 	  m_scan_cursor_depth++;
 
-	  error_code = next_internal (thread_p, depth + 1, success);
+	  error_code = next_internal (thread_p, depth + 1, has_row);
 	  if (error_code != NO_ERROR)
 	    {
 	      return error_code;
 	    }
-	  if (!success)
+	  if (!has_row)
 	    {
 	      // try another child
 	      this_cursor.m_child++;
@@ -585,7 +585,7 @@ namespace cubscan
 	}
 
       // no more rows...
-      success = false;
+      has_row = false;
 
       // set columns values to NULL
       clear_node_columns (*this_cursor.m_node);

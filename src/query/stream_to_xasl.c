@@ -5284,7 +5284,6 @@ stx_unpack_json_table_column (THREAD_ENTRY * thread_p, char *ptr, json_table_col
 	  return NULL;
 	}
       jtc.m_path.assign (temp);
-      //does temp need to be deleted?
     }
 
   if (jtc.m_function == JSON_TABLE_EXISTS)
@@ -5319,7 +5318,6 @@ stx_unpack_json_table_node (THREAD_ENTRY * thread_p, char *ptr, json_table_node 
 	  return NULL;
 	}
       jtn.m_path.assign (temp);
-      //does temp need to be deleted?
     }
 
   int temp_int = 0;

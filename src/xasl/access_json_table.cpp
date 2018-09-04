@@ -182,16 +182,8 @@ namespace cubxasl
     column::evaluate_ordinality (size_t ordinality)
     {
       TP_DOMAIN_STATUS status_cast = TP_DOMAIN_STATUS::DOMAIN_COMPATIBLE;
-
+      assert (m_domain->type->id == DB_TYPE_INTEGER);
       db_make_int (m_output_value_pointer, ordinality);
-
-      status_cast = tp_value_cast (m_output_value_pointer, m_output_value_pointer, m_domain, false);
-
-      if (status_cast != TP_DOMAIN_STATUS::DOMAIN_COMPATIBLE)
-	{
-	  return ER_FAILED;
-	}
-
       return NO_ERROR;
     }
 
