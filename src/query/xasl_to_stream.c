@@ -5027,10 +5027,9 @@ xts_process_json_table_node (char *ptr, const json_table_node * json_table_node)
 
   return ptr;
 
-  // *INDENT-ON*
-
   // for (it : list) cannot be correctly indented
 }
+// *INDENT-ON*
 
 static char *
 xts_process_json_table_spec_type (char *ptr, const json_table_spec_node * json_table_spec)
