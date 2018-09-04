@@ -4544,31 +4544,28 @@ pt_make_class_access_spec (PARSER_CONTEXT * parser, PT_NODE * flat, DB_OBJECT * 
   return spec;
 }
 
-static json_table_column &
-pt_create_json_table_column (PARSER_CONTEXT * parser, PT_NODE * jt_column, TABLE_INFO * tbl_info)
+static void
+pt_create_json_table_column (PARSER_CONTEXT * parser, PT_NODE * jt_column, TABLE_INFO * tbl_info,
+			     json_table_column & col_result)
 {
-  json_table_column *col_result = new json_table_column ();	// is this leaked?
-
-  col_result->m_function = jt_column->info.json_table_column_info.func;
-  col_result->m_output_value_pointer =
+  col_result.m_function = jt_column->info.json_table_column_info.func;
+  col_result.m_output_value_pointer =
     pt_index_value (tbl_info->value_list,
 		    pt_find_attribute (parser, jt_column->info.json_table_column_info.name, tbl_info->attribute_list));
-  if (col_result->m_output_value_pointer == NULL)
+  if (col_result.m_output_value_pointer == NULL)
     {
       assert (false);
     }
 
-  col_result->m_domain = pt_xasl_node_to_domain (parser, jt_column);
+  col_result.m_domain = pt_xasl_node_to_domain (parser, jt_column);
 
   if (jt_column->info.json_table_column_info.path != NULL)
     {
-      col_result->m_path = jt_column->info.json_table_column_info.path;
+      col_result.m_path = jt_column->info.json_table_column_info.path;
     }
 
-  col_result->m_on_empty = jt_column->info.json_table_column_info.on_empty;
-  col_result->m_on_error = jt_column->info.json_table_column_info.on_error;
-
-  return *col_result;
+  col_result.m_on_empty = jt_column->info.json_table_column_info.on_empty;
+  col_result.m_on_error = jt_column->info.json_table_column_info.on_error;
 }
 
 static json_table_node *
@@ -4585,7 +4582,8 @@ transform_to_json_table_spec_node_internal (PARSER_CONTEXT * parser, PT_JSON_TAB
   // create columns
   for (PT_NODE * cols_itr = jt_node_info->columns; cols_itr != NULL; cols_itr = cols_itr->next)
     {
-      result->m_output_columns.emplace_back (pt_create_json_table_column (parser, cols_itr, tbl_info));
+      result->m_output_columns.emplace_back (json_table_column ());
+      pt_create_json_table_column (parser, cols_itr, tbl_info, *result->m_output_columns.rbegin ());
     }
 
   // create children 
