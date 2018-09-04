@@ -33315,9 +33315,15 @@ btree_key_online_index_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_
 	      delete_helper.rv_redo_data = PTR_ALIGN (rv_redo_data_buffer, BTREE_MAX_ALIGN);
 	      delete_helper.rv_redo_data_ptr = delete_helper.rv_redo_data;
 
+	      /* Error logging */
+	      delete_helper.log_operations = insert_helper->log_operations;
+	      delete_helper.printed_key = insert_helper->printed_key;
+	      delete_helper.printed_key_sha1 = insert_helper->printed_key_sha1;
+
 	      error_code = btree_key_remove_object (thread_p, key, btid_int, &delete_helper, *leaf_page, &record,
 						    &leaf_info, offset_after_key, search_key, &page_found, prev_page,
 						    node_type, offset_to_object);
+
 	      return error_code;
 	    }
 	}
@@ -33530,6 +33536,17 @@ btree_is_delete_object_purpose (BTREE_OP_PURPOSE purpose)
     }
 }
 
+//
+// btree_rv_log_delete_object () - log b-tree delete operation according to purpose
+//
+// thread_p (in)      : thread entry
+// delete_helper (in) : delete helper
+// addr (in)          : address for logging
+// undo_length (in)   : physical undo log size
+// redo_length (in)   : redo log size (is always physical)
+// undo_data (in)     : physical undo log
+// redo_data (in)     : redo log (is always physical)
+//
 static void
 btree_rv_log_delete_object (THREAD_ENTRY * thread_p, const BTREE_DELETE_HELPER & delete_helper, LOG_DATA_ADDR & addr,
 			    int undo_length, int redo_length, const char *undo_data, const char *redo_data)
@@ -33538,7 +33555,7 @@ btree_rv_log_delete_object (THREAD_ENTRY * thread_p, const BTREE_DELETE_HELPER &
 
   if (delete_helper.is_system_op_started)
     {
-      // we need to log undoredo
+      // we need to log undoredo physical
       log_append_undoredo_data (thread_p, RVBT_RECORD_MODIFY_UNDOREDO, &addr, undo_length, redo_length, undo_data,
 				redo_data);
     }
@@ -33548,6 +33565,7 @@ btree_rv_log_delete_object (THREAD_ENTRY * thread_p, const BTREE_DELETE_HELPER &
 	{
 	case BTREE_OP_DELETE_OBJECT_PHYSICAL:
 	case BTREE_OP_ONLINE_INDEX_TRAN_DELETE:
+	  // log undo logical, log redo physical
 	  log_append_undoredo_data (thread_p, RVBT_DELETE_OBJECT_PHYSICAL, &addr, delete_helper.rv_keyval_data_length,
 				    redo_length, delete_helper.rv_keyval_data, redo_data);
 	  break;
@@ -33573,6 +33591,17 @@ btree_rv_log_delete_object (THREAD_ENTRY * thread_p, const BTREE_DELETE_HELPER &
     }
 }
 
+//
+// btree_rv_log_insert_object () - log b-tree insert operation according to purpose
+//
+// thread_p (in)      : thread entry
+// insert_helper (in) : insert helper
+// addr (in)          : address for logging
+// undo_length (in)   : physical undo log size
+// redo_length (in)   : redo log size (is always physical)
+// undo_data (in)     : physical undo log
+// redo_data (in)     : redo log (is always physical)
+//
 static void
 btree_rv_log_insert_object (THREAD_ENTRY * thread_p, const BTREE_INSERT_HELPER & insert_helper, LOG_DATA_ADDR & addr,
 			    int undo_length, int redo_length, const char *undo_data, const char *redo_data)
