@@ -6926,6 +6926,7 @@ xts_sizeof_json_table_node (const json_table_node * jtn)
 	   + OR_INT_SIZE	/* m_path */
 	   + OR_INT_SIZE);	/* m_id */
 
+  size += OR_INT_SIZE;		/*m_output_colums list size */
   for (auto & n : jtn->m_output_columns)
     {
       size += xts_sizeof_json_table_column (&n);
