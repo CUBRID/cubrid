@@ -50,8 +50,7 @@ namespace cubxasl
 	std::string m_column_name;
 	json_table_column_behavior m_on_error;
 	json_table_column_behavior m_on_empty;
-	db_value *m_output_value_pointer;   // todo: should match xasl->outptr_list value pointers
-	//       dig xasl_generation SYMBOL_INFO
+	db_value *m_output_value_pointer;     // should match xasl->outptr_list value pointers
 
 	// there are three types of columns based on how they function:
 	// extract from path, exists at path or ordinality
@@ -72,11 +71,11 @@ namespace cubxasl
     struct node
     {
       std::string m_path;
-      size_t m_ordinality;                        // will be used to count the row ordinality
+      size_t m_ordinality;                    // will be used to count the row ordinality
       bool m_need_inc_ordinality;
-      std::vector<column> m_output_columns;     // columns part of output only
-      std::vector<node> m_nested_nodes;               // nested nodes
-      size_t m_id;                                    // identifier for each node
+      std::vector<column> m_output_columns;   // columns part of output only
+      std::vector<node> m_nested_nodes;       // nested nodes
+      size_t m_id;                            // identifier for each node
 
       node (void);
 
@@ -86,9 +85,8 @@ namespace cubxasl
     struct spec_node
     {
       node *m_root_node;
-      //db_value *m_output_values;  // maybe; or maybe use xasl
       regu_variable_node *m_json_reguvar;
-      std::size_t m_node_count;     // the total number of nodes
+      std::size_t m_node_count;               // the total number of nodes
     };
 
   } // namespace json_table

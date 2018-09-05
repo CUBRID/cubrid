@@ -175,7 +175,6 @@ namespace cubxasl
 	  return ER_FAILED;
 	}
 
-      // the result is an integer type (maybe use short)
       db_make_short (m_output_value_pointer, result ? 1 : 0);
 
       status_cast = tp_value_cast (m_output_value_pointer, m_output_value_pointer, m_domain, false);
