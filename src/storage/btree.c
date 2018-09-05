@@ -27411,14 +27411,16 @@ btree_key_insert_new_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE
   memcpy (rv_redo_data_ptr, record.data, record.length);
   rv_redo_data_ptr += record.length;
 
-
   /* We need to log previous lsa. */
   LSA_COPY (&prev_lsa, pgbuf_get_lsa (leaf_page));
 
   /* Add logging. */
-  BTREE_RV_GET_DATA_LENGTH (rv_redo_data_ptr, rv_redo_data, rv_redo_data_length);
+  rv_redo_data_length = CAST_BUFLEN (rv_redo_data_ptr - rv_redo_data);
+  assert (rv_redo_data_length < DB_PAGESIZE);
+
   btree_rv_log_insert_object (thread_p, *insert_helper, insert_helper->leaf_addr, 0, rv_redo_data_length, NULL,
 			      rv_redo_data);
+
   if (insert_helper->is_system_op_started)
     {
       // also end sysop
