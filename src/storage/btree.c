@@ -3592,7 +3592,7 @@ btree_add_mvccid (RECDES * rec, int oid_offset, int mvccid_offset, MVCCID mvccid
 
   /* Set MVCCID. */
   mvccid_dest_ptr = rec->data + mvccid_offset;
-  OR_PUT_MVCCID (mvccid_dest_ptr, mvccid);
+  OR_PUT_MVCCID (mvccid_dest_ptr, &mvccid);
 
   if (rv_redo_data_ptr != NULL && *rv_redo_data_ptr != NULL)
     {
