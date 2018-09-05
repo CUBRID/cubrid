@@ -34327,7 +34327,17 @@ end:
   return error_code;
 }
 
-
+//
+// btree_rv_log_insert_object () - log b-tree insert operation according to purpose
+//
+// thread_p (in)      : thread entry
+// insert_helper (in) : insert helper
+// addr (in)          : address for logging
+// undo_length (in)   : physical undo log size
+// redo_length (in)   : redo log size (is always physical)
+// undo_data (in)     : physical undo log
+// redo_data (in)     : redo log (is always physical)
+//
 static void
 btree_rv_log_insert_object (THREAD_ENTRY * thread_p, const BTREE_INSERT_HELPER & insert_helper, LOG_DATA_ADDR & addr,
 			    int undo_length, int redo_length, const char *undo_data, const char *redo_data)
@@ -34366,6 +34376,7 @@ btree_rv_log_insert_object (THREAD_ENTRY * thread_p, const BTREE_INSERT_HELPER &
 	}
     }
 }
+
 
 /*
  * btree_find_oid_with_page_and_record () - Find OID in leaf/overflow pages and output its position and the record.
