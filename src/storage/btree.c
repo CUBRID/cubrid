@@ -33129,15 +33129,13 @@ btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_
   switch (purpose)
     {
     case BTREE_OP_ONLINE_INDEX_IB_INSERT:
-      {
-	/* This is an insert done by the index builder. */
-	insert_helper.op_type = SINGLE_ROW_INSERT;
-	insert_helper.purpose = purpose;
-	root_function = btree_fix_root_for_insert;
-	advance_function = btree_split_node_and_advance;
-	key_function = btree_key_online_index_insert;
-	break;
-      }
+      /* This is an insert done by the index builder. */
+      insert_helper.op_type = SINGLE_ROW_INSERT;
+      insert_helper.purpose = purpose;
+      root_function = btree_fix_root_for_insert;
+      advance_function = btree_split_node_and_advance;
+      key_function = btree_key_online_index_insert;
+      break;
 
     default:
       /* This should never happen until we add code for transaction operations. */
