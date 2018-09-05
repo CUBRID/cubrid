@@ -37,8 +37,10 @@ namespace cubxasl
   {
 
     int
-    column::trigger_on_error (int error_code, db_value &value_out)
+    column::trigger_on_error (const JSON_DOC &input, const TP_DOMAIN_STATUS &status_cast, db_value &value_out)
     {
+      const char *value_out_domain = pr_type_name (DB_VALUE_DOMAIN_TYPE (&value_out));
+
       (void) pr_clear_value (&value_out);
       (void) db_make_null (&value_out);
 
@@ -49,9 +51,14 @@ namespace cubxasl
 	  return NO_ERROR;
 
 	case JSON_TABLE_THROW_ERROR:
-	  // propagate error
-	  ASSERT_ERROR ();
-	  return error_code;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_TABLE_ON_ERROR_INCOMP_DOMAIN, 5,
+		  db_json_get_json_body_from_document (input),
+		  m_path.c_str(),
+		  m_column_name.c_str(),
+		  value_out_domain,
+		  pr_type_name (TP_DOMAIN_TYPE (m_domain)));
+
+	  return ER_JSON_TABLE_ON_ERROR_INCOMP_DOMAIN;
 
 	case JSON_TABLE_DEFAULT_VALUE:
 	  assert (m_on_error.m_default_value != NULL);
@@ -64,13 +71,14 @@ namespace cubxasl
 
 	default:
 	  assert (false);
-	  return error_code;
+	  return ER_FAILED;
 	}
     }
 
     int
     column::trigger_on_empty (db_value &value_out)
     {
+      (void) pr_clear_value (&value_out);
       (void) db_make_null (&value_out);
 
       switch (m_on_empty.m_behavior)
@@ -79,9 +87,8 @@ namespace cubxasl
 	  return NO_ERROR;
 
 	case JSON_TABLE_THROW_ERROR:
-	  // todo: set a proper error
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  return ER_FAILED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_TABLE_ON_EMPTY_ERROR, 1, m_column_name.c_str());
+	  return ER_JSON_TABLE_ON_EMPTY_ERROR;
 
 	case JSON_TABLE_DEFAULT_VALUE:
 	  assert (m_on_empty.m_default_value != NULL);
@@ -100,6 +107,7 @@ namespace cubxasl
     column::column (void)
       : m_domain (NULL)
       , m_path ()
+      , m_column_name ()
       , m_on_error ()
       , m_on_empty ()
       , m_output_value_pointer (NULL)
@@ -126,6 +134,10 @@ namespace cubxasl
       if (docp == NULL)
 	{
 	  error_code = trigger_on_empty (*m_output_value_pointer);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR();
+	    }
 	  return error_code;
 	}
 
@@ -138,12 +150,10 @@ namespace cubxasl
       status_cast = tp_value_cast (m_output_value_pointer, m_output_value_pointer, m_domain, false);
       if (status_cast != TP_DOMAIN_STATUS::DOMAIN_COMPATIBLE)
 	{
-	  // todo - set error
-	  error_code = trigger_on_error (error_code, *m_output_value_pointer);
+	  error_code = trigger_on_error (input, status_cast, *m_output_value_pointer);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR();
-	      return error_code;
 	    }
 	}
 
@@ -166,7 +176,7 @@ namespace cubxasl
 	}
 
       // the result is an integer type (maybe use short)
-      db_make_int (m_output_value_pointer, result ? 1 : 0);
+      db_make_short (m_output_value_pointer, result ? 1 : 0);
 
       status_cast = tp_value_cast (m_output_value_pointer, m_output_value_pointer, m_domain, false);
 
@@ -190,8 +200,6 @@ namespace cubxasl
     int
     column::evaluate (const JSON_DOC &input, size_t ordinality)
     {
-      // todo: should match MySQL behavior
-
       assert (m_output_value_pointer != NULL);
 
       pr_clear_value (m_output_value_pointer);
