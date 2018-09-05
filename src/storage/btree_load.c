@@ -4417,7 +4417,7 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
     {
       if (stx_map_stream_to_filter_pred (thread_p, &filter_pred, pred_stream, pred_stream_size) != NO_ERROR)
 	{
-	  goto end;
+	  goto error;
 	}
     }
 
@@ -4431,7 +4431,7 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
       if (stx_map_stream_to_func_pred (thread_p, (FUNC_PRED **) (&func_index_info.expr), func_pred_stream,
 				       func_pred_stream_size, &func_unpack_info))
 	{
-	  goto end;
+	  goto error;
 	}
     }
 
@@ -4449,50 +4449,46 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   attr_offset = cur_class * n_attrs;
 
   /* Start scancache */
-  if (heap_scancache_start (thread_p, &scan_cache, &hfids[cur_class],
-			    &class_oids[cur_class], true, false, NULL) != NO_ERROR)
+  if (heap_scancache_start (thread_p, &scan_cache, &hfids[cur_class], &class_oids[cur_class], true, false,
+			    NULL) != NO_ERROR)
     {
-      goto end;
+      goto error;
     }
 
   if (heap_attrinfo_start (thread_p, &class_oids[cur_class], n_attrs, &attr_ids[attr_offset], &attr_info) != NO_ERROR)
     {
-      goto end;
+      goto error;
     }
 
-  if (filter_pred)
+  if (filter_pred != NULL)
     {
       if (heap_attrinfo_start (thread_p, &class_oids[cur_class], filter_pred->num_attrs_pred,
 			       filter_pred->attrids_pred, filter_pred->cache_pred) != NO_ERROR)
 	{
-	  goto end;
+	  goto error;
 	}
     }
 
   if (func_index_info.expr != NULL)
     {
-      if (heap_attrinfo_start (thread_p, &class_oids[cur_class], n_attrs,
-			       &attr_ids[attr_offset],
+      if (heap_attrinfo_start (thread_p, &class_oids[cur_class], n_attrs, &attr_ids[attr_offset],
 			       ((FUNC_PRED *) (&func_index_info.expr))->cache_attrinfo) != NO_ERROR)
 	{
-	  goto end;
+	  goto error;
 	}
     }
 
   if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
     {
       _er_log_debug (ARG_FILE_LINE, "DEBUG_BTREE: load start on class(%d, %d, %d), btid(%d, (%d, %d)).",
-		     class_oids[cur_class].volid,
-		     class_oids[cur_class].pageid,
-		     class_oids[cur_class].slotid, btid_int.sys_btid->root_pageid,
-		     btid_int.sys_btid->vfid.volid, btid_int.sys_btid->vfid.fileid);
+		     OID_AS_ARGS (&class_oids[cur_class]), BTID_AS_ARGS (btid_int.sys_btid));
     }
 
   /* Acquire snapshot!! */
   builder_snapshot = logtb_get_mvcc_snapshot (thread_p);
   if (builder_snapshot == NULL)
     {
-      goto end;
+      goto error;
     }
 
   /* Assign the snapshot to the sort_args. */
@@ -4501,10 +4497,9 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   /* Start the online index builder. */
   ret = online_index_builder (thread_p, &btid_int, hfids, class_oids, n_classes, attr_ids, n_attrs,
 			      func_index_info, filter_pred, attrs_prefix_length, &attr_info, &scan_cache);
-
   if (ret != NO_ERROR)
     {
-      goto end;
+      goto error;
     }
 
   heap_attrinfo_clear_dbvalues (&attr_info);
@@ -4512,20 +4507,21 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 
   /* Verify the tree. */
   btree_verify_tree (thread_p, &class_oids[0], &btid_int, bt_name);
-  if (filter_pred)
+
+  if (filter_pred != NULL)
     {
       /* to clear db values from dbvalue regu variable */
       qexec_clear_pred_context (thread_p, filter_pred, true);
+
+      if (filter_pred->unpack_info != NULL)
+	{
+	  stx_free_additional_buff (thread_p, filter_pred->unpack_info);
+	  stx_free_xasl_unpack_info (filter_pred->unpack_info);
+	  db_private_free_and_init (thread_p, filter_pred->unpack_info);
+	}
     }
 
-  if (filter_pred != NULL && filter_pred->unpack_info != NULL)
-    {
-      stx_free_additional_buff (thread_p, filter_pred->unpack_info);
-      stx_free_xasl_unpack_info (filter_pred->unpack_info);
-      db_private_free_and_init (thread_p, filter_pred->unpack_info);
-    }
-
-  if (func_unpack_info)
+  if (func_unpack_info != NULL)
     {
       stx_free_additional_buff (thread_p, func_unpack_info);
       stx_free_xasl_unpack_info (func_unpack_info);
@@ -4548,7 +4544,6 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   logpb_flush_pages_direct (thread_p);
   LOG_CS_EXIT (thread_p);
 
-
 end:
   /* TODO: Clear snapshot and reset lowest active mvccid. (both from global table and from snapshot) */
   /* Invalidate snapshot. */
@@ -4556,10 +4551,23 @@ end:
     {
       logtb_invalidate_snapshot_data (thread_p);
     }
+
   return btid;
+
+error:
+  // TODO: error handling
+  //       sysop abort
+
+  /* Invalidate snapshot. */
+  if (builder_snapshot != NULL)
+    {
+      logtb_invalidate_snapshot_data (thread_p);
+    }
+
+  return NULL;
 }
 
-int
+static int
 online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids, OID * class_oids, int n_classes,
 		      int *attrids, int n_attrs, FUNCTION_INDEX_INFO func_idx_info,
 		      PRED_EXPR_WITH_CONTEXT * filter_pred, int *attrs_prefix_length, HEAP_CACHE_ATTRINFO * attr_info,
@@ -4603,6 +4611,7 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 	}
 
       attr_offset = cur_class * n_attrs;
+
       sc = heap_next (thread_p, &hfids[cur_class], &class_oids[cur_class], &cur_oid, &cur_record, scancache, true);
       if (sc == S_END)
 	{
@@ -4641,7 +4650,7 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 	    }
 	  else if (ret != V_TRUE)
 	    {
-	      return NO_ERROR;
+	      continue;
 	    }
 	}
 
