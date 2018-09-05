@@ -9791,7 +9791,7 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	      break;
 	    }
 
-	  if (entity->info.spec.derived_table != NULL)
+	  if (entity->info.spec.derived_table != NULL || PT_SPEC_IS_CTE (entity))
 	    {
 	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UPDATE_DERIVED_TABLE);
 	      break;
