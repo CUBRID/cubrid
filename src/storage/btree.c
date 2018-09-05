@@ -33223,6 +33223,10 @@ btree_key_online_index_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_
 	btree_find_oid_with_page_and_record (thread_p, btid_int, &insert_helper->obj_info.oid, *leaf_page,
 					     insert_helper->purpose, NULL, &record, &leaf_info, offset_after_key,
 					     &page_found, &prev_page, &offset_to_object, &btree_mvcc_info, &new_record);
+      if (error_code != NO_ERROR)
+	{
+	  goto end;
+	}
 
       node_type = (page_found == *leaf_page) ? BTREE_LEAF_NODE : BTREE_OVERFLOW_NODE;
 
@@ -33677,11 +33681,9 @@ btree_find_oid_with_page_and_record (THREAD_ENTRY * thread_p, BTID_INT * btid_in
 {
   int error_code = NO_ERROR;
 
-  error_code =
-    btree_find_oid_and_its_page (thread_p, btid_int, oid, leaf_page,
-				 purpose, NULL, record, leaf_info, offset_after_key,
-				 found_page, prev_page, offset_to_object, object_mvcc_info);
-
+  error_code = btree_find_oid_and_its_page (thread_p, btid_int, oid, leaf_page, purpose, NULL, record, leaf_info,
+					    offset_after_key, found_page, prev_page, offset_to_object,
+					    object_mvcc_info);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
