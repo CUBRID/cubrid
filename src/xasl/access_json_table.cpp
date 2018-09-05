@@ -236,7 +236,7 @@ namespace cubxasl
 
       for (node &child : m_nested_nodes)
 	{
-	  child.clear_columns();
+	  child.clear_columns ();
 	}
     }
 

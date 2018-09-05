@@ -336,7 +336,7 @@ namespace cubscan
 
       while (true)
 	{
-	  error_code = next_internal (thread_p, 0, has_row);
+	  error_code = scan_next_internal (thread_p, 0, has_row);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR();
@@ -444,19 +444,13 @@ namespace cubscan
     }
 
     void
-    scanner::clear_columns (std::vector<cubxasl::json_table::column> &columns)
-    {
-      for (auto &column : columns)
-	{
-	  (void)pr_clear_value (column.m_output_value_pointer);
-	  (void)db_make_null (column.m_output_value_pointer);
-	}
-    }
-
-    void
     scanner::clear_node_columns (cubxasl::json_table::node &node)
     {
-      clear_columns (node.m_output_columns);
+      for (auto &column : node.m_output_columns)
+	{
+	  (void) pr_clear_value (column.m_output_value_pointer);
+	  (void) db_make_null (column.m_output_value_pointer);
+	}
     }
 
     void
@@ -470,7 +464,7 @@ namespace cubscan
     }
 
     int
-    scanner::next_internal (cubthread::entry *thread_p, int depth, bool &has_row)
+    scanner::scan_next_internal (cubthread::entry *thread_p, int depth, bool &has_row)
     {
       int error_code = NO_ERROR;
       size_t total_rows_number = 0;
@@ -479,7 +473,7 @@ namespace cubscan
       if (m_scan_cursor_depth >= depth + 1)
 	{
 	  // advance to child
-	  error_code = next_internal (thread_p, depth + 1, has_row);
+	  error_code = scan_next_internal (thread_p, depth + 1, has_row);
 	  if (error_code != NO_ERROR)
 	    {
 	      return error_code;
@@ -573,7 +567,7 @@ namespace cubscan
 	  // advance current level in tree
 	  m_scan_cursor_depth++;
 
-	  error_code = next_internal (thread_p, depth + 1, has_row);
+	  error_code = scan_next_internal (thread_p, depth + 1, has_row);
 	  if (error_code != NO_ERROR)
 	    {
 	      return error_code;

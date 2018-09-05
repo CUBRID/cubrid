@@ -131,34 +131,43 @@ namespace cubscan
 	scanner () = default;
 
       private:
-	// scan_node
-	//
-	//  description
-	//    cubxasl::json_table::nested_node extended with m_eval_function. nested_node is common to client, while
-	//    PR_EVAL_FNC is restricted to server.
+	// cursor used to track scanner progress and resume scan on each scan_next call; implementation in cpp file
 	struct cursor;
 
+	// fetch current node's columns values
 	int fetch_columns (const JSON_DOC &document, std::vector<cubxasl::json_table::column> &columns,
 			   const cubxasl::json_table::node &node);
+	// clear columns fetched values
+	void clear_node_columns (cubxasl::json_table::node &node);
+	// reset node ordinality (row number)
+	void reset_ordinality (cubxasl::json_table::node &node);
+
+	// get current node's row count
 	std::size_t get_row_count (cursor &cursor);
+
+	// todo - check_need_expand, str_ends_with, get_parent_path - move to node
 	static bool check_need_expand (const cubxasl::json_table::node &node);
 	static bool str_ends_with (const std::string &str, const std::string &end);
 	std::string get_parent_path (const cubxasl::json_table::node &node);
+
+	// cursor functions
 	int init_cursor (const JSON_DOC &doc, cubxasl::json_table::node &node, cursor &cursor_out);
 	int set_next_cursor (const cursor &current_cursor, int next_depth);
+
+	// to start scanning a node, an input document is set
 	int set_input_document (cursor &cursor, const cubxasl::json_table::node &node, const JSON_DOC &document);
+
+	// compute scan tree height; recursive function
 	size_t get_tree_height (const cubxasl::json_table::node &node);
-	void clear_columns (std::vector<cubxasl::json_table::column> &columns);
-	void clear_node_columns (cubxasl::json_table::node &node);
-	void reset_ordinality (cubxasl::json_table::node &node);
 
-	int next_internal (cubthread::entry *thread_p, int depth, bool &has_row);
+	// recursive scan next called on json table node / cursor
+	int scan_next_internal (cubthread::entry *thread_p, int depth, bool &has_row);
 
-	cubxasl::json_table::spec_node *m_specp;
-	cursor *m_scan_cursor;
-	size_t m_scan_cursor_depth;     // the current level where the cursor was left
-	size_t m_tree_height;           // will be used to initialize cursor vector
-	scan_pred m_scan_predicate;
+	cubxasl::json_table::spec_node *m_specp;    // pointer to json table spec node in XASL
+	cursor *m_scan_cursor;                      // cursor to keep track progress in each scan node
+	size_t m_scan_cursor_depth;                 // the current level where the cursor was left
+	size_t m_tree_height;                       // will be used to initialize cursor vector
+	scan_pred m_scan_predicate;                 // scan predicate to filter generated rows
     };
   } // namespace json_table
 } // namespace cubscan
