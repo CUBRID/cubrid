@@ -73,7 +73,7 @@
 #ifndef _SCAN_JSON_TABLE_HPP_
 #define _SCAN_JSON_TABLE_HPP_
 
-#include "dbtype_def.h"
+//#include "dbtype_def.h"
 #include "query_evaluator.h"
 
 #include <vector>
@@ -124,8 +124,7 @@ namespace cubscan
 	// returns error code or NO_ERROR
 	//
 	// sid (in/out) : status and position is updated based on the success of scan
-	// todo - remove data_filter
-	int next_scan (cubthread::entry *thread_p, scan_id_struct &sid, FILTER_INFO &data_filter);
+	int next_scan (cubthread::entry *thread_p, scan_id_struct &sid);
 
 	SCAN_PRED &get_predicate();
 
@@ -159,7 +158,7 @@ namespace cubscan
 	cursor *m_scan_cursor;
 	size_t m_scan_cursor_depth;     // the current level where the cursor was left
 	size_t m_tree_height;           // will be used to initialize cursor vector
-	SCAN_PRED scan_predicate;
+	scan_pred m_scan_predicate;
     };
   } // namespace json_table
 } // namespace cubscan

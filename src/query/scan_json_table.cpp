@@ -310,7 +310,7 @@ namespace cubscan
     }
 
     int
-    scanner::next_scan (cubthread::entry *thread_p, scan_id_struct &sid, FILTER_INFO &data_filter)
+    scanner::next_scan (cubthread::entry *thread_p, scan_id_struct &sid)
     {
       bool has_row = true;
       int error_code = NO_ERROR;
@@ -349,10 +349,15 @@ namespace cubscan
 	      break;
 	    }
 
-	  logical = eval_data_filter (thread_p, NULL, NULL, NULL, &data_filter);
+	  logical = m_scan_predicate.pr_eval_fnc (thread_p, m_scan_predicate.pred_expr, sid.vd, NULL);
 	  if (logical == V_TRUE)
 	    {
 	      break;
+	    }
+	  if (logical == V_ERROR)
+	    {
+	      ASSERT_ERROR_AND_SET (error_code);
+	      return error_code;
 	    }
 	}
 
@@ -612,7 +617,7 @@ namespace cubscan
 
     SCAN_PRED &scanner::get_predicate()
     {
-      return scan_predicate;
+      return m_scan_predicate;
     }
   } // namespace json_table
 } // namespace cubscan

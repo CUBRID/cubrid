@@ -3850,7 +3850,6 @@ int
 scan_open_json_table_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, int grouped, QPROC_SINGLE_FETCH single_fetch,
 			   DB_VALUE * join_dbval, VAL_LIST * val_list, VAL_DESCR * vd, PRED_EXPR * pr)
 {
-  JSON_TABLE_SCAN_ID *jtidp;
   DB_TYPE single_node_type = DB_TYPE_NULL;
 
   /* scan type is JSON_TABLE SCAN */
@@ -3860,12 +3859,9 @@ scan_open_json_table_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, int group
   /* mvcc_select_lock_needed = false, fixed = true */
   scan_init_scan_id (scan_id, false, S_SELECT, true, grouped, single_fetch, join_dbval, val_list, vd);
 
-  /* initialize JSON_TABLE_SCAN_ID structure */
-  jtidp = &scan_id->s.jtid;
-
-  scan_init_scan_pred (&jtidp->get_predicate (), NULL, pr, ((pr) ? eval_fnc (thread_p, pr, &single_node_type) : NULL));
-
-  // jtidp->open (thread_p); // nothing to do here
+  // scan_init_scan_pred
+  scan_init_scan_pred (&scan_id->s.jtid.get_predicate (), NULL, pr,
+		       ((pr) ? eval_fnc (thread_p, pr, &single_node_type) : NULL));
 
   return NO_ERROR;
 }
@@ -6565,22 +6561,13 @@ scan_next_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 static SCAN_CODE
 scan_next_json_table_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 {
-  JSON_TABLE_SCAN_ID *jtidp;
   int error_code = NO_ERROR;
-  FILTER_INFO data_filter;
-
-  jtidp = &scan_id->s.jtid;
-
-  // init a filter to apply test predicate on output
-  scan_init_filter_info (&data_filter, &jtidp->get_predicate (), NULL, scan_id->val_list, scan_id->vd, NULL, 0,
-			 NULL, NULL, NULL);
 
   // the status of the scan will be put in scan_id->status
-  error_code = jtidp->next_scan (thread_p, *scan_id, data_filter);
+  error_code = scan_id->s.jtid.next_scan (thread_p, *scan_id);
 
   if (error_code != NO_ERROR)
     {
-      // todo: handle the error_code
       ASSERT_ERROR ();
       return S_ERROR;
     }
