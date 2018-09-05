@@ -4564,6 +4564,8 @@ pt_create_json_table_column (PARSER_CONTEXT * parser, PT_NODE * jt_column, TABLE
       col_result.m_path = jt_column->info.json_table_column_info.path;
     }
 
+  col_result.m_column_name = jt_column->info.json_table_column_info.name->info.name.original;
+
   col_result.m_on_empty = jt_column->info.json_table_column_info.on_empty;
   col_result.m_on_error = jt_column->info.json_table_column_info.on_error;
 }

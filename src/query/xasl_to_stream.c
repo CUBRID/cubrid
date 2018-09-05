@@ -4812,6 +4812,15 @@ xts_process_json_table_column (char *ptr, const json_table_column * json_table_c
     }
   ptr = or_pack_int (ptr, offset);
 
+  // save column_name
+  assert (json_table_column->m_column_name.size () > 0);
+  offset = xts_save_string (json_table_column->m_column_name.c_str ());
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
   if (json_table_column->m_function == JSON_TABLE_EXISTS)
     {
       return ptr;
@@ -6732,6 +6741,7 @@ xts_sizeof_json_table_column (const json_table_column * json_table_column)
 
   size += PTR_SIZE;		/* m_domain */
   size += PTR_SIZE;		/* m_path */
+  size += PTR_SIZE;		/* m_column_name */
 
   if (json_table_column->m_function == JSON_TABLE_EXISTS)
     {

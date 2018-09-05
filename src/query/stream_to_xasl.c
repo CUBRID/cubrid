@@ -5286,6 +5286,22 @@ stx_unpack_json_table_column (THREAD_ENTRY * thread_p, char *ptr, json_table_col
       jtc.m_path.assign (temp);
     }
 
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      assert (false);
+      temp = NULL;
+    }
+  else
+    {
+      temp = stx_restore_string (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (temp == NULL)
+	{
+	  return NULL;
+	}
+      jtc.m_column_name.assign (temp);
+    }
+
   if (jtc.m_function == JSON_TABLE_EXISTS)
     {
       return ptr;

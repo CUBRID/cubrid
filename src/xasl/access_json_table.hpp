@@ -30,6 +30,7 @@
 #include <cstdint>
 
 #include "json_table_def.h"
+#include "object_domain.h"
 
 // forward declarations
 struct db_value;
@@ -46,6 +47,7 @@ namespace cubxasl
     {
 	tp_domain *m_domain;
 	std::string m_path;
+	std::string m_column_name;
 	json_table_column_behavior m_on_error;
 	json_table_column_behavior m_on_empty;
 	db_value *m_output_value_pointer;   // todo: should match xasl->outptr_list value pointers
@@ -63,7 +65,7 @@ namespace cubxasl
 	int evaluate_exists (const JSON_DOC &input);
 	int evaluate_ordinality (size_t ordinality);
 
-	int trigger_on_error (int error_code, db_value &value_out);
+	int trigger_on_error (const JSON_DOC &input, const TP_DOMAIN_STATUS &status_cast, db_value &value_out);
 	int trigger_on_empty (db_value &value_out);
     };
 
