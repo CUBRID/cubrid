@@ -9591,7 +9591,7 @@ pt_set_reserved_name_key_type (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 static void
 pt_bind_names_in_with_clause (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NAMES_ARG * bind_arg)
 {
-  PT_NODE *with;
+  PT_NODE *with = NULL;
   PT_NODE *curr_cte;
 
   switch (node->node_type)
