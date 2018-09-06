@@ -8764,7 +8764,7 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
   if (p->info.delete_.with != NULL)
     {
       r1 = pt_print_bytes_l (parser, p->info.delete_.with);
-      b = pt_append_varchar (parser, b, r1);
+      q = pt_append_varchar (parser, q, r1);
     }
 
   q = pt_append_nulstring (parser, q, "delete ");
