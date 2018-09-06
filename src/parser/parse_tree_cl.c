@@ -8761,6 +8761,12 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
   r1 = pt_print_bytes_l (parser, p->info.delete_.target_classes);
   r2 = pt_print_bytes_spec_list (parser, p->info.delete_.spec);
 
+  if (p->info.delete_.with != NULL)
+    {
+      r1 = pt_print_bytes_l (parser, p->info.delete_.with);
+      b = pt_append_varchar (parser, b, r1);
+    }
+
   q = pt_append_nulstring (parser, q, "delete ");
   if (p->info.delete_.hint != PT_HINT_NONE)
     {
@@ -15773,6 +15779,12 @@ static PARSER_VARCHAR *
 pt_print_update (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *b = NULL, *r1;
+
+  if (p->info.update.with != NULL)
+    {
+      r1 = pt_print_bytes_l (parser, p->info.update.with);
+      b = pt_append_varchar (parser, b, r1);
+    }
 
   b = pt_append_nulstring (parser, b, "update ");
 
