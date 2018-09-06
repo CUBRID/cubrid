@@ -4863,6 +4863,8 @@ xts_process_json_table_node (char *ptr, const json_table_node * json_table_node)
 
   ptr = or_pack_int (ptr, (int) json_table_node->m_id);
 
+  ptr = or_pack_int(ptr, (int)json_table_node->m_expand_type);
+
   return ptr;
 }
 // *INDENT-ON*
@@ -6764,7 +6766,8 @@ xts_sizeof_json_table_node (const json_table_node * jtn)
 
   size += (PTR_SIZE		/* m_ordinality */
 	   + OR_INT_SIZE	/* m_path */
-	   + OR_INT_SIZE);	/* m_id */
+	   + OR_INT_SIZE	/* m_id */
+           + OR_INT_SIZE);      /* m_expand_type */
 
   size += OR_INT_SIZE;		/*m_output_colums list size */
   for (auto & n : jtn->m_output_columns)

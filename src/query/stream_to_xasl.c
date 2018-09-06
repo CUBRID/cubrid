@@ -5357,6 +5357,9 @@ stx_unpack_json_table_node (THREAD_ENTRY * thread_p, char *ptr, json_table_node 
   ptr = or_unpack_int (ptr, &temp_int);
   jtn.m_id = (size_t) temp_int;
 
+  ptr = or_unpack_int (ptr, &temp_int);
+  jtn.m_expand_type = (json_table_expand_type) temp_int;
+
   return ptr;
 }
 

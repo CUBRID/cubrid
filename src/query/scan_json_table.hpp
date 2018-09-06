@@ -145,11 +145,6 @@ namespace cubscan
 	// get current node's row count
 	std::size_t get_row_count (cursor &cursor);
 
-	// todo - check_need_expand, str_ends_with, get_parent_path - move to node
-	static bool check_need_expand (const cubxasl::json_table::node &node);
-	static bool str_ends_with (const std::string &str, const std::string &end);
-	std::string get_parent_path (const cubxasl::json_table::node &node);
-
 	// cursor functions
 	int init_cursor (const JSON_DOC &doc, cubxasl::json_table::node &node, cursor &cursor_out);
 	int set_next_cursor (const cursor &current_cursor, int next_depth);

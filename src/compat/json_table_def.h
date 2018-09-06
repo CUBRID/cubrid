@@ -49,4 +49,11 @@ struct json_table_column_behavior
   struct db_value *m_default_value;
 };
 
+enum json_table_expand_type
+{
+  JSON_TABLE_ARRAY_EXPAND,
+  JSON_TABLE_OBJECT_EXPAND,
+  JSON_TABLE_NO_EXPAND
+};
+
 #endif // _JSON_TABLE_DEF_H_

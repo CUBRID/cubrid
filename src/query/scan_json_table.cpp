@@ -105,8 +105,10 @@ namespace cubscan
 
       if (m_need_expand)
 	{
-	  if ((scanner::str_ends_with (m_node->m_path, "[*]") && input_doc_type != DB_JSON_TYPE::DB_JSON_ARRAY) ||
-	      (scanner::str_ends_with (m_node->m_path, ".*") && input_doc_type != DB_JSON_TYPE::DB_JSON_OBJECT))
+	  if ((m_node->m_expand_type == json_table_expand_type::JSON_TABLE_ARRAY_EXPAND
+	       && input_doc_type != DB_JSON_TYPE::DB_JSON_ARRAY) ||
+	      (m_node->m_expand_type == json_table_expand_type::JSON_TABLE_OBJECT_EXPAND
+	       && input_doc_type != DB_JSON_TYPE::DB_JSON_OBJECT))
 	    {
 	      if (m_json_iterator != NULL)
 		{
@@ -349,6 +351,11 @@ namespace cubscan
 	      break;
 	    }
 
+	  if (m_scan_predicate.pred_expr == NULL)
+	    {
+	      break;
+	    }
+
 	  logical = m_scan_predicate.pr_eval_fnc (thread_p, m_scan_predicate.pred_expr, sid.vd, NULL);
 	  if (logical == V_TRUE)
 	    {
@@ -364,41 +371,14 @@ namespace cubscan
       return NO_ERROR;
     }
 
-    bool
-    scanner::str_ends_with (const std::string &str, const std::string &end)
-    {
-      return end.size() <= str.size() && str.compare (str.size() - end.size(), end.size(), end) == 0;
-    }
-
-    bool
-    scanner::check_need_expand (const cubxasl::json_table::node &node)
-    {
-      return str_ends_with (node.m_path, "[*]") || str_ends_with (node.m_path, ".*");
-    }
-
-    std::string
-    scanner::get_parent_path (const cubxasl::json_table::node &node)
-    {
-      if (str_ends_with (node.m_path, "[*]"))
-	{
-	  return node.m_path.substr (0, node.m_path.size() - 3);
-	}
-      else if (str_ends_with (node.m_path, ".*"))
-	{
-	  return node.m_path.substr (0, node.m_path.size() - 2);
-	}
-
-      return std::string();
-    }
-
     int
     scanner::set_input_document (cursor &cursor, const cubxasl::json_table::node &node, const JSON_DOC &document)
     {
       int error_code = NO_ERROR;
 
-      if (check_need_expand (node))
+      if (node.check_need_expand ())
 	{
-	  std::string parent_path = get_parent_path (node);
+	  std::string parent_path = node.m_path;
 
 	  cursor.m_need_expand = true;
 

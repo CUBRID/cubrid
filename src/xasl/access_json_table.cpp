@@ -225,9 +225,12 @@ namespace cubxasl
     }
 
     node::node (void)
-      : m_ordinality (1)
+      : m_path()
+      , m_ordinality (1)
       , m_need_inc_ordinality (true)
       , m_id (0)
+      , m_expand_type (json_table_expand_type::JSON_TABLE_NO_EXPAND)
+      , m_iterator (nullptr)
     {
       //
     }
@@ -244,6 +247,37 @@ namespace cubxasl
       for (node &child : m_nested_nodes)
 	{
 	  child.clear_columns ();
+	}
+    }
+
+    bool
+    node::str_ends_with (const std::string &str, const std::string &end)
+    {
+      return end.size() <= str.size() && str.compare (str.size() - end.size(), end.size(), end) == 0;
+    }
+
+    bool
+    node::check_need_expand() const
+    {
+      return m_expand_type != json_table_expand_type::JSON_TABLE_NO_EXPAND;
+    }
+
+    void
+    node::set_parent_path()
+    {
+      if (!check_need_expand())
+	{
+	  assert (false);
+	  return;
+	}
+
+      if (m_expand_type == json_table_expand_type::JSON_TABLE_ARRAY_EXPAND)
+	{
+	  m_path.assign (m_path.substr (0, m_path.size() - 3));
+	}
+      else if (m_expand_type == json_table_expand_type::JSON_TABLE_OBJECT_EXPAND)
+	{
+	  m_path.assign (m_path.substr (0, m_path.size() - 2));
 	}
     }
 

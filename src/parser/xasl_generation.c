@@ -4578,8 +4578,25 @@ transform_to_json_table_spec_node_internal (PARSER_CONTEXT * parser, PT_JSON_TAB
 
   // copy path
   result->m_path = jt_node_info->path;
+
   // after set the id, increment
   result->m_id = current_id++;
+
+  // set the expand type
+  if (json_table_node::str_ends_with (result->m_path, "[*]"))
+    {
+      result->m_expand_type = json_table_expand_type::JSON_TABLE_ARRAY_EXPAND;
+    }
+  else if (json_table_node::str_ends_with (result->m_path, ".*"))
+    {
+      result->m_expand_type = json_table_expand_type::JSON_TABLE_OBJECT_EXPAND;
+    }
+
+  if (result->check_need_expand ())
+    {
+      // trim the path to extract directly from this new path
+      result->set_parent_path ();
+    }
 
   // create columns
   for (PT_NODE * cols_itr = jt_node_info->columns; cols_itr != NULL; cols_itr = cols_itr->next)

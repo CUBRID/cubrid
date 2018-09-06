@@ -76,10 +76,16 @@ namespace cubxasl
       std::vector<column> m_output_columns;   // columns part of output only
       std::vector<node> m_nested_nodes;       // nested nodes
       size_t m_id;                            // identifier for each node
+      void *m_iterator;
+      json_table_expand_type m_expand_type;
 
       node (void);
 
       void clear_columns();
+
+      bool check_need_expand() const;
+      static bool str_ends_with(const std::string &str, const std::string &end);
+      void set_parent_path();
     };
 
     struct spec_node
