@@ -156,13 +156,10 @@ class JSON_ITERATOR
     // default ctor
     JSON_ITERATOR() :
       document (nullptr)
-      , doc_itr (nullptr)
-      , current_type (DB_JSON_TYPE::DB_JSON_UNKNOWN)
-      , json_itr_type (JSON_ITERATOR_TYPE::JSON_ITERATOR_UNKNOWN) {}
+      , doc_itr (nullptr) {}
 
     JSON_ITERATOR (const JSON_DOC &document) : document (&document), doc_itr (nullptr)
     {
-      current_type = db_json_get_type (&document);
     }
 
     ~JSON_ITERATOR ()
@@ -177,7 +174,7 @@ class JSON_ITERATOR
     virtual bool has_next() = 0;
     virtual const JSON_VALUE *get() = 0;
     virtual size_t count_members() = 0;
-    virtual void reset (const JSON_DOC &new_doc) = 0;
+    virtual void set (const JSON_DOC &new_doc) = 0;
 
     const JSON_DOC *
     get_value_to_doc()
@@ -199,32 +196,30 @@ class JSON_ITERATOR
       return doc_itr;
     }
 
-    DB_JSON_TYPE get_type_of_doc () const
+    void reset()
     {
-      return current_type;
+      document = nullptr;
     }
 
-    JSON_ITERATOR_TYPE get_json_itr_type() const
+    bool is_empty() const
     {
-      return json_itr_type;
+      return document == nullptr;
     }
 
   protected:
     const JSON_DOC *document;
     JSON_DOC *doc_itr;
-    DB_JSON_TYPE current_type;
-    JSON_ITERATOR_TYPE json_itr_type;
 };
 
 class JSON_OBJECT_ITERATOR : public JSON_ITERATOR
 {
   public:
+    JSON_OBJECT_ITERATOR() {}
     JSON_OBJECT_ITERATOR (const JSON_DOC &document) : JSON_ITERATOR (document)
     {
       assert (document.IsObject());
 
       iterator = document.MemberBegin();
-      json_itr_type = JSON_ITERATOR_TYPE::JSON_ITERATOR_OBJECT;
     }
 
     const JSON_VALUE *next();
@@ -232,6 +227,11 @@ class JSON_OBJECT_ITERATOR : public JSON_ITERATOR
 
     size_t count_members()
     {
+      if (document == nullptr)
+	{
+	  return 0;
+	}
+
       assert (document->IsObject());
 
       return document->MemberCount();
@@ -242,7 +242,7 @@ class JSON_OBJECT_ITERATOR : public JSON_ITERATOR
       return &iterator->value;
     }
 
-    void reset (const JSON_DOC &new_doc)
+    void set (const JSON_DOC &new_doc)
     {
       assert (new_doc.IsObject());
 
@@ -257,12 +257,12 @@ class JSON_OBJECT_ITERATOR : public JSON_ITERATOR
 class JSON_ARRAY_ITERATOR : public JSON_ITERATOR
 {
   public:
+    JSON_ARRAY_ITERATOR() {}
     JSON_ARRAY_ITERATOR (const JSON_DOC &document) : JSON_ITERATOR (document)
     {
       assert (document.IsArray());
 
       iterator = document.GetArray().Begin();
-      json_itr_type = JSON_ITERATOR_TYPE::JSON_ITERATOR_ARRAY;
     }
 
     const JSON_VALUE *next();
@@ -270,6 +270,11 @@ class JSON_ARRAY_ITERATOR : public JSON_ITERATOR
 
     size_t count_members()
     {
+      if (document == nullptr)
+	{
+	  return 0;
+	}
+
       assert (document->IsArray());
 
       return document->GetArray().Size();
@@ -280,7 +285,7 @@ class JSON_ARRAY_ITERATOR : public JSON_ITERATOR
       return iterator;
     }
 
-    void reset (const JSON_DOC &new_doc)
+    void set (const JSON_DOC &new_doc)
     {
       assert (new_doc.IsArray());
 
@@ -290,71 +295,6 @@ class JSON_ARRAY_ITERATOR : public JSON_ITERATOR
 
   private:
     rapidjson::GenericArray<true, JSON_VALUE>::ConstValueIterator iterator;
-};
-
-class JSON_GENERIC_ELEM_ITERATOR : public JSON_ITERATOR
-{
-  public:
-    JSON_GENERIC_ELEM_ITERATOR (const JSON_DOC &document) : JSON_ITERATOR (document)
-    {
-      json_itr_type = JSON_ITERATOR_TYPE::JSON_ITERATOR_GENERIC_ELEMENT;
-    }
-
-    const JSON_VALUE *next()
-    {
-      return NULL;
-    }
-
-    bool has_next()
-    {
-      return false;
-    }
-
-    size_t count_members()
-    {
-      return 1;
-    }
-
-    const JSON_VALUE *get()
-    {
-      return document;
-    }
-
-    void reset (const JSON_DOC &new_doc)
-    {
-      document = &new_doc;
-    }
-};
-
-class JSON_EMPTY_ITERATOR : public JSON_ITERATOR
-{
-  public:
-    JSON_EMPTY_ITERATOR()
-    {
-      json_itr_type = JSON_ITERATOR_TYPE::JSON_ITERATOR_EMPTY;
-    }
-
-    const JSON_VALUE *next()
-    {
-      return NULL;
-    }
-
-    bool has_next()
-    {
-      return false;
-    }
-
-    size_t count_members()
-    {
-      return 0;
-    }
-
-    const JSON_VALUE *get()
-    {
-      return NULL;
-    }
-
-    void reset (const JSON_DOC &new_doc) {}
 };
 
 const JSON_VALUE *
@@ -371,6 +311,11 @@ JSON_ARRAY_ITERATOR::next()
 bool
 JSON_ARRAY_ITERATOR::has_next()
 {
+  if (document == nullptr)
+    {
+      return false;
+    }
+
   return iterator != document->GetArray().End();
 }
 
@@ -391,6 +336,11 @@ JSON_OBJECT_ITERATOR::next()
 bool
 JSON_OBJECT_ITERATOR::has_next()
 {
+  if (document == nullptr)
+    {
+      return false;
+    }
+
   return iterator != document->MemberEnd();
 }
 
@@ -933,40 +883,36 @@ db_json_iterator_count_members (JSON_ITERATOR &json_itr)
 }
 
 void
-db_json_reset_iterator (JSON_ITERATOR *&json_itr, const JSON_DOC &new_doc)
+db_json_set_iterator (JSON_ITERATOR *&json_itr, const JSON_DOC &new_doc)
 {
-  json_itr->reset (new_doc);
+  json_itr->set (new_doc);
 }
 
-DB_JSON_TYPE
-db_json_iterator_get_type_of_doc (const JSON_ITERATOR &json_itr)
+void
+db_json_reset_iterator (JSON_ITERATOR *&json_itr)
 {
-  return json_itr.get_type_of_doc();
+  json_itr->reset();
 }
 
-JSON_ITERATOR_TYPE
-db_json_iterator_get_type (const JSON_ITERATOR &json_itr)
+bool
+db_json_iterator_is_empty (const JSON_ITERATOR &json_itr)
 {
-  return json_itr.get_json_itr_type();
+  return json_itr.is_empty();
 }
 
 JSON_ITERATOR *
-db_json_create_iterator (const JSON_DOC *document)
+db_json_create_iterator (const DB_JSON_TYPE &type)
 {
-  if (document == NULL)
+  if (type == DB_JSON_TYPE::DB_JSON_OBJECT)
     {
-      return new JSON_EMPTY_ITERATOR();
+      return new JSON_OBJECT_ITERATOR ();
     }
-  else if (document->IsObject())
+  else if (type == DB_JSON_TYPE::DB_JSON_ARRAY)
     {
-      return new JSON_OBJECT_ITERATOR (*document);
-    }
-  else if (document->IsArray())
-    {
-      return new JSON_ARRAY_ITERATOR (*document);
+      return new JSON_ARRAY_ITERATOR ();
     }
 
-  return new JSON_GENERIC_ELEM_ITERATOR (*document);
+  return NULL;
 }
 
 void

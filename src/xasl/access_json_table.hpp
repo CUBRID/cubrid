@@ -37,6 +37,7 @@ struct db_value;
 struct tp_domain;
 struct regu_variable_node;
 class JSON_DOC;
+class JSON_ITERATOR;
 
 namespace cubxasl
 {
@@ -76,7 +77,7 @@ namespace cubxasl
       std::vector<column> m_output_columns;   // columns part of output only
       std::vector<node> m_nested_nodes;       // nested nodes
       size_t m_id;                            // identifier for each node
-      void *m_iterator;
+      JSON_ITERATOR *m_iterator;
       json_table_expand_type m_expand_type;
 
       node (void);
@@ -84,8 +85,9 @@ namespace cubxasl
       void clear_columns();
 
       bool check_need_expand() const;
-      static bool str_ends_with(const std::string &str, const std::string &end);
+      static bool str_ends_with (const std::string &str, const std::string &end);
       void set_parent_path();
+      void init_iterator();
     };
 
     struct spec_node

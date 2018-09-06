@@ -142,6 +142,9 @@ namespace cubscan
 	// reset node ordinality (row number)
 	void reset_ordinality (cubxasl::json_table::node &node);
 
+	// init iterators considering the expansion type
+	void init_iterators (cubxasl::json_table::node &node);
+
 	// get current node's row count
 	std::size_t get_row_count (cursor &cursor);
 
