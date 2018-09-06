@@ -49,6 +49,8 @@ namespace cubstream
     m_stat_read_buffer_failed_cnt = 0;
 
     m_is_stopped = false;
+
+    m_stream_file = NULL;
   }
 
   multi_thread_stream::~multi_thread_stream ()
@@ -471,11 +473,11 @@ namespace cubstream
    * this must be in the same scope with a unlatch_read_data call (to make sure the read latch is released)
    * if portion of range is still in buffer, it reads the available amount, returning the actual read amount and
    * a read latch id
-   * if no range can be found in bip_buffer, the stream_io is used to provide the range from disk
+   * if no range can be found in bip_buffer, the stream_file is used to provide the range from disk
    * TODO: read_latch_page_idx type will change to account of reading from stream_file source.
    *
    *  1. if needed, wait for data to be committed
-   *  2. if part of range is not in bip_buffer, use stream_io to get range
+   *  2. if part of range is not in bip_buffer, use stream_file to get range
    *  3. acquire mutex
    *  4. bip_buffer.get_read_ranges : get available readable ranges from bip_buffer
    *  5. convert logical range into physical range
@@ -505,7 +507,7 @@ namespace cubstream
     if (req_start_pos < m_oldest_readable_position)
       {
 	m_stat_read_not_in_buffer_cnt++;
-	/* not in buffer anymore request it from stream_io */
+	/* not in buffer anymore request it from stream_file */
 	/* TODO[arnia] */
 	// m_io->read (req_start_pos, buf, amount);
 	return NULL;
@@ -532,7 +534,7 @@ namespace cubstream
     if (req_start_pos < m_oldest_readable_position)
       {
 	m_stat_read_not_in_buffer_cnt++;
-	/* not in buffer anymore request it from stream_io */
+	/* not in buffer anymore request it from stream_file */
 	/* TODO: */
 	// m_io->read (req_start_pos, buf, amount);
 	return NULL;

@@ -32,27 +32,112 @@
 #include <unistd.h>
 #endif
 #include "stream_file.hpp"
+#include "thread_entry_task.hpp"
+#include "thread_manager.hpp"
+#include "thread_looper.hpp"
 #include "porting.h"
 
 namespace cubstream
 {
 
-void stream_file::init (const std::string& base_name, const size_t file_size, const int print_digits)
+ class writer_daemon_task : public cubthread::entry_task
+  {
+    public:
+      writer_daemon_task (multi_thread_stream &stream_arg)
+	: m_stream (stream_arg),
+        m_stream_file (*stream_arg.get_stream_file ())
+      {
+        m_copy_to_buffer_func = std::bind (&writer_daemon_task::copy_to_buffer, std::ref (*this),
+				           std::placeholders::_1, std::placeholders::_2);
+      }
+
+      void execute (cubthread::entry &thread_ref) override
+      {
+        int err = NO_ERROR;
+
+        m_stream_file.wait_flush_signal ();
+
+        assert (m_stream.get_last_committed_pos () >= m_stream_file.get_flush_target_position ());
+
+        stream_position curr_pos = m_stream.get_last_dropable_pos ();
+        stream_position end_pos;
+
+        while (1)
+          {
+            end_pos = m_stream_file.get_flush_target_position ();
+            if (curr_pos >= end_pos || m_stream_file.is_stopped ())
+              {
+                break;
+              }
+
+            size_t amount_to_copy = MIN (end_pos - curr_pos, BUFFER_SIZE);
+
+            err = m_stream.read (curr_pos, amount_to_copy, m_copy_to_buffer_func);
+            if (err != NO_ERROR)
+              {
+                /* TODO: fatal error ?  */
+                break; 
+              }
+            err = m_stream_file.write (curr_pos, m_buffer, amount_to_copy);
+            if (err != NO_ERROR)
+              {
+                /* TODO: fatal error ?  */
+                break; 
+              }
+
+            curr_pos += amount_to_copy;
+
+            m_stream.set_last_dropable_pos (curr_pos);
+          }
+      }
+
+      int copy_to_buffer (char *ptr, const size_t byte_count)
+      {
+	memcpy (m_buffer, ptr, byte_count);
+	return (int) byte_count;
+      };
+
+    private:
+      static const int BUFFER_SIZE = 256 * 1024;
+
+      multi_thread_stream &m_stream;
+      stream_file &m_stream_file;
+
+      char m_buffer[BUFFER_SIZE];
+
+      cubstream::stream::read_func_t m_copy_to_buffer_func;
+  };
+
+
+void stream_file::init (const size_t file_size, const int print_digits)
 {
-  m_base_filename = base_name;
+  m_base_filename = m_stream.name ();
   m_desired_file_size = file_size;
   m_filename_digits_seqno = print_digits;
 
   m_curr_append_position = 0;
   m_curr_append_file_size = 0;
 
+  m_target_flush_position = 0;
+
   m_start_file_seqno = 1;
   m_curr_file_seqno = 1;
+
+#if defined (SERVER_MODE)
+  m_write_daemon = cubthread::get_manager ()->create_daemon (cubthread::delta_time (0),
+			new writer_daemon_task (m_stream),
+			"replication_stream_flush");
+#endif
 }
 
 void stream_file::finalize (void)
 {
   std::map<int,int>::iterator it;
+
+  m_is_stopped = true;
+  start_flush (0);
+
+  cubthread::get_manager ()->destroy_daemon (m_write_daemon);
 
   for (it = m_file_descriptors.begin (); it != m_file_descriptors.end (); it ++)
     {
@@ -110,10 +195,45 @@ int stream_file::get_file_seqno_from_stream_pos_ext (const stream_position &pos,
   return file_seqno;
 }
 
-int stream_file::create_files_to_pos (const stream_position &pos)
+int stream_file::create_files_in_range (const stream_position &start_pos, const stream_position &end_pos)
 {
-  /* TODO */
-  return write_internal (m_curr_append_position, NULL, pos - m_curr_append_position, WRITE_MODE_CREATE);
+  stream_position curr_pos;
+  size_t file_offset, rem_amount, available_amount_in_file;
+  int file_seqno;
+  int err = NO_ERROR;
+  const size_t BUFFER_SIZE = 4 * 1024;
+  char zero_buffer[BUFFER_SIZE] = { 0 };
+
+  curr_pos = start_pos;
+  rem_amount = end_pos - start_pos;
+
+  while (rem_amount > 0)
+    {
+      file_seqno = get_file_seqno_from_stream_pos_ext (curr_pos, available_amount_in_file, file_offset);
+      if (file_seqno < 0)
+        {
+          return ER_FAILED;
+        }
+
+      size_t rem_amount_this_file = MIN (rem_amount, available_amount_in_file);
+
+      while (rem_amount_this_file > 0)
+        {
+          size_t amount_to_write = MIN (BUFFER_SIZE, rem_amount_this_file);
+          size_t written_bytes = write_buffer (file_seqno, file_offset, zero_buffer, amount_to_write);
+          if (written_bytes != amount_to_write)
+            {
+              return ER_FAILED;
+            }
+          rem_amount_this_file -= amount_to_write;
+        }
+
+      rem_amount -= rem_amount_this_file;
+    }
+
+  m_curr_append_position = end_pos;
+
+  return NO_ERROR;
 }
 
 int stream_file::get_filename_with_position (char *filename, const size_t max_filename, const stream_position &pos)
@@ -142,6 +262,13 @@ int stream_file::open_file_seqno (const int file_seqno)
   int fd;
   char file_name [PATH_MAX];
   
+  auto it = m_file_descriptors.find (file_seqno);
+
+  if (it != m_file_descriptors.end ())
+    {
+      return it->second;
+    }
+
   get_filename_with_file_seqno (file_name, sizeof (file_name) - 1, file_seqno);
 
   fd = open_file (file_name);
@@ -196,12 +323,7 @@ size_t stream_file::read_buffer (const int file_seqno, const size_t file_offset,
   size_t actual_read;
   int fd;
 
-  fd = get_file_desc_from_file_seqno (file_seqno);
-
-  if (fd <= 0)
-    {
-      fd = open_file_seqno (file_seqno);
-    }
+  fd = open_file_seqno (file_seqno);
 
   if (fd <= 0)
     {
@@ -224,12 +346,7 @@ size_t stream_file::write_buffer (const int file_seqno, const size_t file_offset
   size_t actual_write;
   int fd;
 
-  fd = get_file_desc_from_file_seqno (file_seqno);
-
-  if (fd <= 0)
-    {
-      fd = open_file_seqno (file_seqno);
-    }
+  fd = open_file_seqno (file_seqno);
 
   if (fd <= 0)
     {
@@ -253,13 +370,17 @@ int stream_file::write (const stream_position &pos, const char *buf, const size_
   int file_seqno;
   int err = NO_ERROR;
 
-  if (pos + amount >= m_curr_append_position)
-    {
-      create_files_to_pos (pos + amount);
-    }
-
   curr_pos = pos;
   rem_amount = amount;
+
+  if (curr_pos > m_curr_append_position)
+    {
+      err = create_files_in_range (m_curr_append_position, curr_pos);
+      if (err != NO_ERROR)
+        {
+          return err;
+        }
+    }
 
   while (rem_amount > 0)
     {
@@ -285,24 +406,6 @@ int stream_file::write (const stream_position &pos, const char *buf, const size_
       curr_pos += current_to_write;
       buf += current_to_write;
     }
-
-  return NO_ERROR;
-}
-
-int stream_file::write_internal (const stream_position &pos, const char *buf, const size_t amount, const WRITE_MODE wr_mode)
-{
-  stream_position curr_pos;
-  size_t file_offset, rem_amount, available_amount_in_file;
-  int file_seqno;
-  int err = NO_ERROR;
-  char zero_buffer[4 * 1024] = { 0 };
-
-  curr_pos = pos;
-  rem_amount = amount;
-
-  file_seqno = get_file_seqno_from_stream_pos_ext (curr_pos, available_amount_in_file, file_offset);
-
-  /*TODO */
 
   return NO_ERROR;
 }

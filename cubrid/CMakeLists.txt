@@ -67,7 +67,6 @@ set (STREAM_HEADERS
   ${BASE_DIR}/cubstream.hpp
   ${BASE_DIR}/multi_thread_stream.hpp
   ${BASE_DIR}/stream_entry.hpp
-  ${BASE_DIR}/stream_io.hpp
   ${BASE_DIR}/stream_file.hpp
   )
 

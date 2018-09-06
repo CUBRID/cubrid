@@ -29,7 +29,6 @@
 #include "bip_buffer.hpp"
 #include "collapsable_circular_queue.hpp"
 #include "cubstream.hpp"
-#include "stream_io.hpp"
 
 #include <condition_variable>
 #include <mutex>
@@ -38,6 +37,7 @@
 
 namespace cubstream
 {
+  class stream_file;
   /* stream with capability to write/read concurrently
    * the read, read_partial, read_serial, write require a function argument to perform custom write/read operation;
    * Interface:
@@ -108,7 +108,7 @@ namespace cubstream
 
       std::mutex m_buffer_mutex;
 
-      stream_io *m_io;
+      stream_file *m_stream_file;
 
       /* serial read cv uses m_buffer_mutex */
       std::condition_variable m_serial_read_cv;
@@ -165,6 +165,8 @@ namespace cubstream
 	m_is_stopped = true;
 	m_serial_read_cv.notify_one ();
       }
+
+      stream_file *get_stream_file (void) { return m_stream_file; };
   };
 
 } /* namespace cubstream */

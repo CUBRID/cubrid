@@ -26,10 +26,14 @@
 #ifndef _STREAM_FILE_HPP_
 #define _STREAM_FILE_HPP_
 
-#include "stream_io.hpp"
 #include "multi_thread_stream.hpp"
 #include <map>
 
+
+namespace cubthread
+  {
+    class daemon;
+  }
 
 namespace cubstream
 {
@@ -46,10 +50,17 @@ typedef enum
  * there is a base file name (considered the name of stream), suffixed by a sequence number, generated incrementally
  * For instance: $CUBRID/logs/replica_0000, replica_0001, ... replica_0123
  * each file has a configured fixed size
- * The file having the filename of base has special purpose (maybe metainformation file ?)
- * 
+ * The file having the filename of base is reserved - (maybe metainformation file ?)
+ *
+ * Restrictions and usage:
+ * - a range of data is written only all previous ranges are written (we don't allow holes in written data)
+ * - active range is considered between a dropped position and append position; the active range is contiguous
+ * - read range must entirely be inside the active range
+ *
+ * TODOs:
+ * - resizing of physical files
  */
-class stream_file : public stream_io
+class stream_file
 {
 private:
   static const int DEFAULT_FILENAME_DIGITS = 4;
@@ -57,9 +68,11 @@ private:
   /* 100 MBytes */
   static const size_t DEFAULT_FILE_SIZE = 100 * 1024 * 1024;
 
+  multi_thread_stream &m_stream;
 
   /* largest stream position written to file */
   stream_position m_curr_append_position;
+
   /* TODO : size of last physical file - do we need it ? it may be computed from curr_append_position */
   size_t m_curr_append_file_size;
 
@@ -88,12 +101,20 @@ private:
   /* last/current file */
   int m_curr_file_seqno;
 
+  stream_position m_target_flush_position;
+
+  cubthread::daemon *m_write_daemon;
+  std::mutex m_flush_mutex;
+  std::condition_variable m_flush_cv;
+
+  bool m_is_stopped;
+
 protected:
   int get_file_desc_from_file_seqno (const int file_seqno);
   int get_file_seqno_from_stream_pos (const stream_position &pos);
   int get_file_seqno_from_stream_pos_ext (const stream_position &pos, size_t &amount, size_t &file_offset);
 
-  int create_files_to_pos (const stream_position &pos);
+  int create_files_in_range (const stream_position &start_pos, const stream_position &end_pos);
 
   int get_filename_with_position (char *filename, const size_t max_filename, const stream_position &pos);
   int get_filename_with_file_seqno (char *filename, const size_t max_filename, const int file_seqno);
@@ -107,14 +128,15 @@ protected:
   size_t read_buffer (const int file_seqno, const size_t file_offset, const char *buf, const size_t amount);
   size_t write_buffer (const int file_seqno, const size_t file_offset, const char *buf, const size_t amount);
 
-  int write_internal (const stream_position &pos, const char *buf, const size_t amount, const WRITE_MODE wr_mode);
-
 public:
-  stream_file (const std::string& base_name) { init (base_name); };
+  stream_file (multi_thread_stream &stream_arg, const size_t file_size = DEFAULT_FILE_SIZE,
+              const int print_digits = DEFAULT_FILENAME_DIGITS)
+    : m_stream (stream_arg) 
+    { init (file_size, print_digits); };
 
   ~stream_file () { finalize (); };
 
-  void init (const std::string& base_name, const size_t file_size = DEFAULT_FILE_SIZE,
+  void init (const size_t file_size = DEFAULT_FILE_SIZE,
              const int print_digits = DEFAULT_FILENAME_DIGITS);
 
   void finalize ();
@@ -122,6 +144,33 @@ public:
   int write (const stream_position &pos, const char *buf, const size_t amount);
 
   int read (const stream_position &pos, const char *buf, const size_t amount);
+
+  stream_position get_flush_target_position (void)
+    {
+      std::unique_lock<std::mutex> ulock (m_flush_mutex);
+      return m_target_flush_position;
+    }
+
+  void start_flush (const stream_position &target_position)
+  {
+    std::unique_lock<std::mutex> ulock (m_flush_mutex);
+    if (target_position != 0)
+      {
+        m_target_flush_position = target_position;
+      }
+    m_flush_cv.notify_one ();
+  }
+
+  void wait_flush_signal (void)
+  {
+    std::unique_lock<std::mutex> ulock (m_flush_mutex);
+    m_flush_cv.wait (ulock);
+  }
+
+  bool is_stopped (void)
+  {
+    return m_is_stopped;
+  }
 };
 
 } /*  namespace cubstream */
