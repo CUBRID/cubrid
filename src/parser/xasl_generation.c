@@ -20450,19 +20450,27 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
 
   if (xasl->aptr_list != NULL)
     {
-      xasl->n_oid_list = xasl->aptr_list->n_oid_list;
-      xasl->aptr_list->n_oid_list = 0;
+      XASL_NODE *last = xasl->aptr_list;
+      for (XASL_NODE * crt = xasl->aptr_list->next; crt; last = last->next, crt = crt->next)
+	{
+	  // CTE procs are before the BuildList and are empty of references
+	  assert (last->n_oid_list == 0);
+	  assert (last->dbval_cnt == 0);
+	}
 
-      xasl->class_oid_list = xasl->aptr_list->class_oid_list;
-      xasl->aptr_list->class_oid_list = NULL;
+      xasl->n_oid_list = last->n_oid_list;
+      last->n_oid_list = 0;
 
-      xasl->class_locks = xasl->aptr_list->class_locks;
-      xasl->aptr_list->class_locks = NULL;
+      xasl->class_oid_list = last->class_oid_list;
+      last->class_oid_list = NULL;
 
-      xasl->tcard_list = xasl->aptr_list->tcard_list;
-      xasl->aptr_list->tcard_list = NULL;
+      xasl->class_locks = last->class_locks;
+      last->class_locks = NULL;
 
-      xasl->dbval_cnt = xasl->aptr_list->dbval_cnt;
+      xasl->tcard_list = last->tcard_list;
+      last->tcard_list = NULL;
+
+      xasl->dbval_cnt = last->dbval_cnt;
     }
 
   xasl->query_alias = statement->alias_print;
