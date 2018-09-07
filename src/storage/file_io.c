@@ -3584,7 +3584,7 @@ pwrite_with_injected_fault (THREAD_ENTRY * thread_p, int fd, const void *buf, si
 {
   static bool init = false;
   const int mod_factor = 25000;
-  const int unit_size = 4096;
+  const int block_size = 4096;
   int count_blocks;
   ssize_t r, written_nbytes;
   off_t unit_offset;
@@ -3602,23 +3602,23 @@ pwrite_with_injected_fault (THREAD_ENTRY * thread_p, int fd, const void *buf, si
   if ((fi_partial_write1_on || fi_partial_write2_on) && ((rand () % mod_factor) == 0))
     {
       // simulate partial write
-      count_blocks = count / unit_size;
+      count_blocks = count / block_size;
       written_nbytes = 0;
       for (int i = 0; i < count_blocks; i++)
 	{
 	  if (fi_partial_write1_on)
 	    {
-	      unit_offset = i * unit_size;
+	      unit_offset = i * block_size;
 	    }
 	  else
 	    {
 	      // reverse order
-	      unit_offset = ((count_blocks - 1) - i) * unit_size;
+	      unit_offset = ((count_blocks - 1) - i) * block_size;
 	    }
 
-	  r = pwrite (fd, ((char *) buf) + unit_offset, unit_size, offset + unit_offset);
+	  r = pwrite (fd, ((char *) buf) + unit_offset, block_size, offset + unit_offset);
 	  written_nbytes += r;
-	  if (r != unit_size)
+	  if (r != block_size)
 	    {
 	      return written_nbytes;
 	    }

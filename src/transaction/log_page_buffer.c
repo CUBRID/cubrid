@@ -495,8 +495,8 @@ static int
 logpb_compute_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int *checksum_crc32)
 {
   int error_code = NO_ERROR, saved_checksum_crc32;
-  const int unit_size = 4096;
-  const int num_pages = LOG_PAGESIZE / unit_size;
+  const int block_size = 4096;
+  const int num_pages = LOG_PAGESIZE / block_size;
   const int sample_nbytes = 16;
   int sampling_offset;
   char buf[num_pages * sample_nbytes * 2];
@@ -509,26 +509,21 @@ logpb_compute_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int 
   /* Resets checksum to not affect the new computation. */
   log_pgptr->hdr.checksum = 0;
 
-#if 1				/* sampling */
   char *p = buf;
   for (int i = 0; i < num_pages; i++)
     {
       // first 
-      sampling_offset = (i * unit_size);
+      sampling_offset = (i * block_size);
       memcpy (p, ((char *) log_pgptr) + sampling_offset, sample_nbytes);
       p += sample_nbytes;
 
       // last 
-      sampling_offset = (i * unit_size) + (unit_size - sample_nbytes);
+      sampling_offset = (i * block_size) + (block_size - sample_nbytes);
       memcpy (p, ((char *) log_pgptr) + sampling_offset, sample_nbytes);
       p += sample_nbytes;
     }
 
   error_code = crypt_crc32 (thread_p, (char *) buf, sizeof (buf), checksum_crc32);
-#else
-  /* Computes the page checksum. */
-  error_code = crypt_crc32 (thread_p, (char *) log_pgptr, LOG_PAGESIZE, checksum_crc32);
-#endif
 
   /* Restores the saved checksum */
   log_pgptr->hdr.checksum = saved_checksum_crc32;
