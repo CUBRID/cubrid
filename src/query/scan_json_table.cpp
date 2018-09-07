@@ -43,7 +43,7 @@ namespace cubscan
       bool m_is_row_fetched;
 
       void advance_row_cursor();
-      void set_json_iterator (const JSON_DOC &document);
+      void start_json_iterator (void);
 
       cursor (void);
     };
@@ -84,38 +84,54 @@ namespace cubscan
     }
 
     void
-    scanner::cursor::set_json_iterator (const JSON_DOC &document)
+    scanner::cursor::start_json_iterator (void)
     {
-      int error_code = NO_ERROR;
-      DB_JSON_TYPE input_doc_type = DB_JSON_TYPE::DB_JSON_UNKNOWN;
-      JSON_DOC *result_doc = NULL;
+      // how it works:
+      //
+      // based on path definition, we have three cases
+      //
+      //    [*] - expect and array and expand its elements into rows
+      //    .*  - expect an object and the values of its members into rows
+      //        - all other paths will just generate one row based on the json object found at path
+      //
+      //    When array or object expansion must happen, if the input document does not match expected JSON type, no rows
+      //    will be generated. Expected types are DB_JSON_ARRAY of array expansion and DB_JSON_OBJECT for object
+      //    expansion.
 
-      // extract the document from parent path
-      error_code = db_json_extract_document_from_path (&document, m_node->m_path.c_str(), result_doc);
-      if (error_code != NO_ERROR)
+      switch (m_node->m_expand_type)
 	{
-	  ASSERT_ERROR();
-	  return;
-	}
+	case json_table_expand_type::JSON_TABLE_NO_EXPAND:
+	  // nothing to do;
+	  break;
 
-      input_doc_type = db_json_get_type (result_doc);
-
-      if (m_node->check_need_expand())
-	{
-	  if ((m_node->m_expand_type == json_table_expand_type::JSON_TABLE_ARRAY_EXPAND &&
-	       input_doc_type == DB_JSON_TYPE::DB_JSON_ARRAY) ||
-	      (m_node->m_expand_type == json_table_expand_type::JSON_TABLE_OBJECT_EXPAND &&
-	       input_doc_type == DB_JSON_TYPE::DB_JSON_OBJECT))
+	case json_table_expand_type::JSON_TABLE_ARRAY_EXPAND:
+	  // only DB_JSON_ARRAY can be expanded
+	  if (db_json_get_type (m_input_doc) == DB_JSON_ARRAY)
 	    {
-	      db_json_set_iterator (m_node->m_iterator, *result_doc);
+	      db_json_set_iterator (m_node->m_iterator, *m_input_doc);
 	    }
 	  else
 	    {
 	      db_json_reset_iterator (m_node->m_iterator);
 	    }
-	}
+	  break;
 
-      db_json_delete_doc (result_doc);
+	case json_table_expand_type::JSON_TABLE_OBJECT_EXPAND:
+	  // only DB_JSON_OBJECT can be expanded
+	  if (db_json_get_type (m_input_doc) == DB_JSON_OBJECT)
+	    {
+	      db_json_set_iterator (m_node->m_iterator, *m_input_doc);
+	    }
+	  else
+	    {
+	      db_json_reset_iterator (m_node->m_iterator);
+	    }
+	  break;
+
+	default:
+	  assert (false);
+	  break;
+	}
     }
 
     int
@@ -340,29 +356,19 @@ namespace cubscan
     }
 
     int
-    scanner::set_input_document (cursor &cursor, const cubxasl::json_table::node &node, const JSON_DOC &document)
+    scanner::set_input_document (cursor &cursor_arg, const cubxasl::json_table::node &node, const JSON_DOC &document)
     {
       int error_code = NO_ERROR;
 
-      if (node.check_need_expand ())
+      // extract input document
+      error_code = db_json_extract_document_from_path (&document, node.m_path.c_str (), cursor_arg.m_input_doc);
+      if (error_code != NO_ERROR)
 	{
-	  // set the input document and the iterator
-	  cursor.set_json_iterator (document);
+	  ASSERT_ERROR ();
+	  return error_code;
 	}
-      else
-	{
-	  error_code = db_json_extract_document_from_path (&document,
-		       // here we can use the unprocessed node path
-		       node.m_path.c_str(),
-		       cursor.m_input_doc);
-
-	  if (error_code != NO_ERROR)
-	    {
-	      ASSERT_ERROR();
-	      return error_code;
-	    }
-	}
-
+      // start cursor based on input document
+      cursor_arg.start_json_iterator ();
       return NO_ERROR;
     }
 
