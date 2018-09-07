@@ -496,10 +496,12 @@ logpb_compute_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int 
 {
   int error_code = NO_ERROR, saved_checksum_crc32;
   const int block_size = 4096;
-  const int num_pages = LOG_PAGESIZE / block_size;
+  const int max_num_pages = IO_MAX_PAGE_SIZE / block_size;
   const int sample_nbytes = 16;
   int sampling_offset;
-  char buf[num_pages * sample_nbytes * 2];
+  char buf[max_num_pages * sample_nbytes * 2];
+  const int num_pages = LOG_PAGESIZE / block_size;
+  const size_t sizeof_buf = num_pages * sample_nbytes * 2;
 
   assert (log_pgptr != NULL && checksum_crc32 != NULL);
 
@@ -523,7 +525,7 @@ logpb_compute_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int 
       p += sample_nbytes;
     }
 
-  error_code = crypt_crc32 (thread_p, (char *) buf, sizeof (buf), checksum_crc32);
+  error_code = crypt_crc32 (thread_p, (char *) buf, sizeof_buf, checksum_crc32);
 
   /* Restores the saved checksum */
   log_pgptr->hdr.checksum = saved_checksum_crc32;
