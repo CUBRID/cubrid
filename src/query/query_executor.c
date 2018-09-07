@@ -8678,11 +8678,13 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
       p_class_instance_lock_info = &class_instance_lock_info;
     }
 
-  if (qexec_execute_mainblock (thread_p, aptr, xasl_state, p_class_instance_lock_info) != NO_ERROR)
+  for (XASL_NODE * crt = aptr; crt != NULL && error == NO_ERROR; crt = crt->next)
     {
-      GOTO_EXIT_ON_ERROR;
+      if (qexec_execute_mainblock (thread_p, crt, xasl_state, p_class_instance_lock_info) != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
     }
-
 
   if (p_class_instance_lock_info && p_class_instance_lock_info->instances_locked)
     {
@@ -9616,9 +9618,12 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
       p_class_instance_lock_info = &class_instance_lock_info;
     }
 
-  if (qexec_execute_mainblock (thread_p, aptr, xasl_state, p_class_instance_lock_info) != NO_ERROR)
+  for (XASL_NODE * crt = aptr; crt != NULL; crt = crt->next)
     {
-      GOTO_EXIT_ON_ERROR;
+      if (qexec_execute_mainblock (thread_p, crt, xasl_state, p_class_instance_lock_info) != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
     }
 
   if (p_class_instance_lock_info && p_class_instance_lock_info->instances_locked)

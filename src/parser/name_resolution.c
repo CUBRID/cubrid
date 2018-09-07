@@ -2576,6 +2576,17 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 
     case PT_UPDATE:
       scopestack.specs = node->info.update.spec;
+      spec_frame.next = bind_arg->spec_frames;
+      spec_frame.extra_specs = NULL;
+
+      /* break links to current scopes to bind_names in the WITH_CLAUSE */
+      bind_arg->scopes = NULL;
+      bind_arg->spec_frames = NULL;
+      pt_bind_names_in_with_clause (parser, node, bind_arg);
+
+      bind_arg->spec_frames = spec_frame.next;
+
+      /* restore links to current scopes */
       bind_arg->scopes = &scopestack;
       spec_frame.next = bind_arg->spec_frames;
       spec_frame.extra_specs = NULL;
@@ -2599,6 +2610,16 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 
     case PT_DELETE:
       scopestack.specs = node->info.delete_.spec;
+      spec_frame.next = bind_arg->spec_frames;
+      spec_frame.extra_specs = NULL;
+
+      /* break links to current scopes to bind_names in the WITH_CLAUSE */
+      bind_arg->scopes = NULL;
+      bind_arg->spec_frames = NULL;
+      pt_bind_names_in_with_clause (parser, node, bind_arg);
+
+      bind_arg->spec_frames = spec_frame.next;
+
       bind_arg->scopes = &scopestack;
       spec_frame.next = bind_arg->spec_frames;
       spec_frame.extra_specs = NULL;
@@ -8182,6 +8203,7 @@ PT_NODE *
 pt_resolve_cte_specs (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   PT_NODE *cte_list, *with = NULL, *saved_with = NULL;
+  PT_NODE **with_p;
   PT_NODE *curr_cte, *previous_cte;
   PT_NODE *saved_curr_cte_next;
   int nested_with_count = 0;
@@ -8196,6 +8218,15 @@ pt_resolve_cte_specs (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
       with = node->info.query.with;
+      with_p = &node->info.query.with;
+      break;
+    case PT_UPDATE:
+      with = node->info.update.with;
+      with_p = &node->info.update.with;
+      break;
+    case PT_DELETE:
+      with = node->info.delete_.with;
+      with_p = &node->info.delete_.with;
       break;
 
     default:
@@ -8364,10 +8395,10 @@ pt_resolve_cte_specs (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
     }
 
   /* STEP 3: Resolve CTEs in the actual query */
-  saved_with = with;
-  node->info.query.with = NULL;
+  saved_with = *with_p;
+  *with_p = NULL;
   node = parser_walk_tree (parser, node, pt_resolve_spec_to_cte, cte_list, NULL, NULL);
-  node->info.query.with = saved_with;
+  *with_p = saved_with;
 
   /* all ok */
   return node;
@@ -9623,12 +9654,27 @@ pt_set_reserved_name_key_type (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 static void
 pt_bind_names_in_with_clause (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NAMES_ARG * bind_arg)
 {
-  PT_NODE *with;
+  PT_NODE *with = NULL;
   PT_NODE *curr_cte;
 
-  assert (PT_IS_QUERY_NODE_TYPE (node->node_type));
+  switch (node->node_type)
+    {
+    case PT_SELECT:
+    case PT_UNION:
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+      with = node->info.query.with;
+      break;
+    case PT_UPDATE:
+      with = node->info.update.with;
+      break;
+    case PT_DELETE:
+      with = node->info.delete_.with;
+      break;
+    default:
+      assert (false);
+    }
 
-  with = node->info.query.with;
   if (with == NULL)
     {
       /* nothing to do */
