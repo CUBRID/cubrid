@@ -30233,7 +30233,6 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
     {
       /* this can cause a lot of problems. but we need it to know that page was not fixed because not in buffer and not
        * because some error occurred. */
-      assert (!er_has_error ());
       er_clear ();
 
       /* Check merges. */
