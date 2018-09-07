@@ -2484,12 +2484,8 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	  if (last_checked_page_id != log_lsa.pageid)
 	    {
 #if !defined(NDEBUG)
-#if 1
-	      er_log_debug (ARG_FILE_LINE, "logpb_recovery_analysis: log page %lld\n", log_page_p->hdr.logical_pageid);
-#else
 	      er_log_debug (ARG_FILE_LINE, "logpb_recovery_analysis: log page %lld, checksum %d\n",
 			    log_page_p->hdr.logical_pageid, log_page_p->hdr.checksum);
-#endif
 	      if (prm_get_bool_value (PRM_ID_LOGPB_LOGGING_DEBUG))
 		{
 		  fileio_page_hexa_dump ((const char *) log_page_p, LOG_PAGESIZE);
