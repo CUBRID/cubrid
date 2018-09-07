@@ -243,10 +243,16 @@ namespace cubxasl
 	  (void)pr_clear_value (column.m_output_value_pointer);
 	  (void)db_make_null (column.m_output_value_pointer);
 	}
+    }
+
+    void
+    node::clear_tree (void)
+    {
+      clear_columns ();
 
       for (node &child : m_nested_nodes)
 	{
-	  child.clear_columns ();
+	  child.clear_tree ();
 	}
     }
 

@@ -154,11 +154,9 @@ class JSON_ITERATOR
 {
   public:
     // default ctor
-    JSON_ITERATOR() :
-      document (nullptr)
-      , doc_itr (nullptr) {}
-
-    JSON_ITERATOR (const JSON_DOC &document) : document (&document), doc_itr (nullptr)
+    JSON_ITERATOR()
+      : document (nullptr)
+      , doc_itr (nullptr)
     {
     }
 
@@ -170,10 +168,10 @@ class JSON_ITERATOR
 	}
     }
 
-    virtual const JSON_VALUE *next() = 0;
-    virtual bool has_next() = 0;
-    virtual const JSON_VALUE *get() = 0;
-    virtual size_t count_members() = 0;
+    virtual const JSON_VALUE *next () = 0;
+    virtual bool has_next () = 0;
+    virtual const JSON_VALUE *get () = 0;
+    virtual size_t count_members () = 0;
     virtual void set (const JSON_DOC &new_doc) = 0;
 
     const JSON_DOC *
@@ -215,12 +213,6 @@ class JSON_OBJECT_ITERATOR : public JSON_ITERATOR
 {
   public:
     JSON_OBJECT_ITERATOR() {}
-    JSON_OBJECT_ITERATOR (const JSON_DOC &document) : JSON_ITERATOR (document)
-    {
-      assert (document.IsObject());
-
-      iterator = document.MemberBegin();
-    }
 
     const JSON_VALUE *next();
     bool has_next();
@@ -258,12 +250,6 @@ class JSON_ARRAY_ITERATOR : public JSON_ITERATOR
 {
   public:
     JSON_ARRAY_ITERATOR() {}
-    JSON_ARRAY_ITERATOR (const JSON_DOC &document) : JSON_ITERATOR (document)
-    {
-      assert (document.IsArray());
-
-      iterator = document.GetArray().Begin();
-    }
 
     const JSON_VALUE *next();
     bool has_next();
@@ -1162,6 +1148,11 @@ db_json_contains_path (const JSON_DOC *document, const char *raw_path, bool &res
   int error_code = NO_ERROR;
   std::string json_pointer_string;
   result = false;
+
+  if (document == NULL)
+    {
+      return false;
+    }
 
   // path must be JSON pointer
   error_code = db_json_convert_sql_path_to_pointer (raw_path, json_pointer_string);
@@ -3316,7 +3307,7 @@ db_json_unpack_string_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_PRIVATE_MEM
     }
 
   // set the string directly from the buffer to avoid additional copy
-  value.SetString (buf->ptr, str_length - 1, doc_allocator);
+  value.SetString (buf->ptr, static_cast<rapidjson::SizeType> (str_length - 1), doc_allocator);
   // update the buffer pointer
   buf->ptr += str_length;
 

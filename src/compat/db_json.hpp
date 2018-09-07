@@ -65,15 +65,6 @@ enum class JSON_PATH_TYPE
   JSON_PATH_EMPTY
 };
 
-enum class JSON_ITERATOR_TYPE
-{
-  JSON_ITERATOR_ARRAY,
-  JSON_ITERATOR_OBJECT,
-  JSON_ITERATOR_GENERIC_ELEMENT,
-  JSON_ITERATOR_EMPTY,
-  JSON_ITERATOR_UNKNOWN
-};
-
 /* C functions */
 bool db_json_is_valid (const char *json_str);
 const char *db_json_get_type_as_str (const JSON_DOC *document);

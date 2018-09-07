@@ -134,9 +134,6 @@ namespace cubscan
 	// cursor used to track scanner progress and resume scan on each scan_next call; implementation in cpp file
 	struct cursor;
 
-	// fetch current node's columns values
-	int fetch_columns (const JSON_DOC &document, std::vector<cubxasl::json_table::column> &columns,
-			   const cubxasl::json_table::node &node);
 	// clear columns fetched values
 	void clear_node_columns (cubxasl::json_table::node &node);
 	// reset node ordinality (row number)
@@ -144,9 +141,6 @@ namespace cubscan
 
 	// init iterators considering the expansion type
 	void init_iterators (cubxasl::json_table::node &node);
-
-	// get current node's row count
-	std::size_t get_row_count (cursor &cursor);
 
 	// cursor functions
 	int init_cursor (const JSON_DOC &doc, cubxasl::json_table::node &node, cursor &cursor_out);
