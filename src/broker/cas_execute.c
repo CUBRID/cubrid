@@ -9622,11 +9622,10 @@ has_stmt_result_set (char stmt_type)
 static bool
 check_auto_commit_after_fetch_done (T_SRV_HANDLE * srv_handle)
 {
-  // scrollable cursor can also be closed with help of holdable cursor
   // To close an updatable cursor is dangerous since it lose locks and updating cursor is allowed before closing it.
 
   if (srv_handle->auto_commit_mode == TRUE && srv_handle->cur_result_index == srv_handle->num_q_result
-      && srv_handle->is_updatable == FALSE)
+      && srv_handle->forward_only_cursor == TRUE && srv_handle->is_updatable == FALSE)
     {
       return true;
     }
