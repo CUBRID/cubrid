@@ -116,10 +116,6 @@ namespace cubscan
 	      m_is_node_consumed = false;
 	      db_json_set_iterator (m_node->m_iterator, *m_input_doc);
 	    }
-	  else
-	    {
-	      db_json_reset_iterator (m_node->m_iterator);
-	    }
 	  break;
 
 	case json_table_expand_type::JSON_TABLE_OBJECT_EXPAND:
@@ -128,10 +124,6 @@ namespace cubscan
 	    {
 	      m_is_node_consumed = false;
 	      db_json_set_iterator (m_node->m_iterator, *m_input_doc);
-	    }
-	  else
-	    {
-	      db_json_reset_iterator (m_node->m_iterator);
 	    }
 	  break;
 
@@ -153,7 +145,7 @@ namespace cubscan
       // if we have an iterator, value is obtained from iterator. otherwise, use m_input_doc
       if (m_node->m_iterator != NULL)
 	{
-	  m_process_doc = db_json_iterator_get (*m_node->m_iterator);
+	  m_process_doc = db_json_iterator_get_document (*m_node->m_iterator);
 	}
       else
 	{
