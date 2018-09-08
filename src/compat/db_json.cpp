@@ -302,7 +302,9 @@ JSON_ARRAY_ITERATOR::has_next()
       return false;
     }
 
-  return iterator != document->GetArray().End();
+  rapidjson::GenericArray<true, JSON_VALUE>::ConstValueIterator end = document->GetArray ().End ();
+
+  return (iterator + 1) != end;
 }
 
 const JSON_VALUE *
@@ -327,7 +329,9 @@ JSON_OBJECT_ITERATOR::has_next()
       return false;
     }
 
-  return iterator != document->MemberEnd();
+  rapidjson::GenericMemberIterator<true, JSON_ENCODING, JSON_PRIVATE_MEMPOOL>::Iterator end = document->MemberEnd ();
+
+  return (iterator + 1) != end;
 }
 
 class JSON_VALIDATOR

@@ -39,6 +39,7 @@ namespace cubscan
       JSON_DOC *m_input_doc;            // used for non-array / single row
       const JSON_DOC *m_process_doc;    // is either input_doc or row doc
       bool m_is_row_fetched;
+      bool m_need_advance_row;
       bool m_is_node_consumed;
 
       void advance_row_cursor (void);
@@ -55,6 +56,7 @@ namespace cubscan
       , m_process_doc (NULL)
       , m_child (0)
       , m_is_row_fetched (false)
+      , m_need_advance_row (false)
       , m_is_node_consumed (false)
     {
       //
@@ -189,6 +191,7 @@ namespace cubscan
 	}
       m_process_doc = NULL;
       m_node->clear_columns ();
+      m_need_advance_row = false;
     }
 
     size_t
@@ -471,10 +474,18 @@ namespace cubscan
       assert (this_cursor.m_node != NULL);
 
       // loop through node's rows and children until all possible rows are generated
-      while (!this_cursor.m_is_node_consumed)
+      while (true)
 	{
 	  // note - do not loop without taking new action
 	  // an action is either advancing to new row or advancing to new child
+	  if (this_cursor.m_need_advance_row)
+	    {
+	      this_cursor.advance_row_cursor ();
+	      if (this_cursor.m_is_node_consumed)
+		{
+		  break;
+		}
+	    }
 
 	  // first things first, fetch current row
 	  error_code = this_cursor.fetch_row ();
@@ -487,9 +498,8 @@ namespace cubscan
 	  if (this_cursor.m_node->m_nested_nodes.empty ())
 	    {
 	      has_row = true;
-
-	      // before leaving, move cursor to next child
-	      this_cursor.advance_row_cursor();
+	      // next time, cursor will have to be incremented
+	      this_cursor.m_need_advance_row = true;
 	      return NO_ERROR;
 	    }
 
@@ -497,7 +507,7 @@ namespace cubscan
 	  if (this_cursor.m_child == this_cursor.m_node->m_nested_nodes.size ())
 	    {
 	      // advance to next row
-	      this_cursor.advance_row_cursor ();
+	      this_cursor.m_need_advance_row = true;
 	      continue;
 	    }
 
@@ -520,10 +530,6 @@ namespace cubscan
 		{
 		  return error_code;
 		}
-	    }
-	  else
-	    {
-
 	    }
 
 	  if (has_row)
