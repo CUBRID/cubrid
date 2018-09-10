@@ -8712,6 +8712,7 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_delete (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
 {
+  p->info.delete_.with = g (parser, p->info.delete_.with, arg);
   p->info.delete_.target_classes = g (parser, p->info.delete_.target_classes, arg);
   p->info.delete_.spec = g (parser, p->info.delete_.spec, arg);
   p->info.delete_.search_cond = g (parser, p->info.delete_.search_cond, arg);
@@ -8759,6 +8760,12 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
 
   r1 = pt_print_bytes_l (parser, p->info.delete_.target_classes);
   r2 = pt_print_bytes_spec_list (parser, p->info.delete_.spec);
+
+  if (p->info.delete_.with != NULL)
+    {
+      r1 = pt_print_bytes_l (parser, p->info.delete_.with);
+      q = pt_append_varchar (parser, q, r1);
+    }
 
   q = pt_append_nulstring (parser, q, "delete ");
   if (p->info.delete_.hint != PT_HINT_NONE)
@@ -15724,6 +15731,7 @@ pt_print_union_stmt (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_update (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
 {
+  p->info.update.with = g (parser, p->info.update.with, arg);
   p->info.update.spec = g (parser, p->info.update.spec, arg);
   p->info.update.assignment = g (parser, p->info.update.assignment, arg);
   p->info.update.search_cond = g (parser, p->info.update.search_cond, arg);
@@ -15771,6 +15779,12 @@ static PARSER_VARCHAR *
 pt_print_update (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *b = NULL, *r1;
+
+  if (p->info.update.with != NULL)
+    {
+      r1 = pt_print_bytes_l (parser, p->info.update.with);
+      b = pt_append_varchar (parser, b, r1);
+    }
 
   b = pt_append_nulstring (parser, b, "update ");
 
