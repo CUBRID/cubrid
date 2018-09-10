@@ -41,6 +41,7 @@ namespace cubscan
       bool m_is_row_fetched;
       bool m_need_advance_row;
       bool m_is_node_consumed;
+      bool m_row_was_expanded;
 
       void advance_row_cursor (void);
       void start_json_iterator (void);
@@ -57,7 +58,8 @@ namespace cubscan
       , m_child (0)
       , m_is_row_fetched (false)
       , m_need_advance_row (false)
-      , m_is_node_consumed (false)
+      , m_is_node_consumed (true)
+      , m_row_was_expanded (false)
     {
       //
     }
@@ -70,6 +72,12 @@ namespace cubscan
     void
     scanner::cursor::advance_row_cursor ()
     {
+      // don't advance again in row
+      m_need_advance_row = false;
+
+      // reset row expansion
+      m_row_was_expanded = false;
+
       if (m_node->m_iterator == NULL || !db_json_iterator_has_next (*m_node->m_iterator))
 	{
 	  end ();
@@ -116,6 +124,10 @@ namespace cubscan
 	      m_is_node_consumed = false;
 	      db_json_set_iterator (m_node->m_iterator, *m_input_doc);
 	    }
+	  else
+	    {
+	      m_is_node_consumed = true;
+	    }
 	  break;
 
 	case json_table_expand_type::JSON_TABLE_OBJECT_EXPAND:
@@ -124,6 +136,10 @@ namespace cubscan
 	    {
 	      m_is_node_consumed = false;
 	      db_json_set_iterator (m_node->m_iterator, *m_input_doc);
+	    }
+	  else
+	    {
+	      m_is_node_consumed = true;
 	    }
 	  break;
 
@@ -159,6 +175,8 @@ namespace cubscan
 	  return ER_FAILED;
 	}
 
+      //char *json_raw = db_json_get_json_body_from_document(*m_process_doc);
+
       int error_code = NO_ERROR;
       for (auto &col : m_node->m_output_columns)
 	{
@@ -183,7 +201,6 @@ namespace cubscan
 	}
       m_process_doc = NULL;
       m_node->clear_columns ();
-      m_need_advance_row = false;
     }
 
     size_t
@@ -319,7 +336,7 @@ namespace cubscan
     int
     scanner::next_scan (cubthread::entry *thread_p, scan_id_struct &sid)
     {
-      bool has_row = true;
+      bool has_row = false;
       int error_code = NO_ERROR;
       DB_LOGICAL logical = V_FALSE;
 
@@ -388,6 +405,9 @@ namespace cubscan
 	  ASSERT_ERROR ();
 	  return error_code;
 	}
+
+      //char *json_raw = db_json_get_json_body_from_document(*cursor_arg.m_input_doc);
+
       // start cursor based on input document
       cursor_arg.start_json_iterator ();
       return NO_ERROR;
@@ -459,8 +479,11 @@ namespace cubscan
 	  if (found_row_output)
 	    {
 	      // advance to new child
-	      this_cursor.m_child++;
 	      return NO_ERROR;
+	    }
+	  else
+	    {
+	      this_cursor.m_child++;
 	    }
 	}
 
@@ -468,7 +491,7 @@ namespace cubscan
       assert (this_cursor.m_node != NULL);
 
       // loop through node's rows and children until all possible rows are generated
-      while (true)
+      while (!this_cursor.m_is_node_consumed)
 	{
 	  // note - do not loop without taking new action
 	  // an action is either advancing to new row or advancing to new child
@@ -501,9 +524,16 @@ namespace cubscan
 	  // advance to current child
 	  if (this_cursor.m_child == this_cursor.m_node->m_nested_nodes.size ())
 	    {
-	      // advance to next row
+	      // next time, cursor will have to be incremented
 	      this_cursor.m_need_advance_row = true;
-	      continue;
+
+	      if (this_cursor.m_row_was_expanded)
+		{
+		  continue;
+		}
+
+	      found_row_output = true;
+	      return NO_ERROR;
 	    }
 
 	  // create cursor for next child
@@ -520,11 +550,19 @@ namespace cubscan
 	      // advance current level in tree
 	      m_scan_cursor_depth++;
 
+	      // expanded successfully on this level
+	      this_cursor.m_row_was_expanded = true;
+
 	      error_code = scan_next_internal (thread_p, depth + 1, found_row_output);
 	      if (error_code != NO_ERROR)
 		{
 		  return error_code;
 		}
+	    }
+	  else
+	    {
+	      this_cursor.m_child++;
+	      continue;
 	    }
 
 	  if (found_row_output)
