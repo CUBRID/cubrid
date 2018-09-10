@@ -16585,6 +16585,5 @@ error_return:
       free_and_init (hfids);
     }
 
-
   return error;
 }

@@ -32388,7 +32388,7 @@ btree_record_remove_insid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES 
   /* Skip object OID. */
   insert_mvccid_offset = offset_to_object + OR_OID_SIZE;
 
-  if (btree_is_class_oid_packed (btid_int, record, node_type, offset_to_object == 0))
+  if (btree_is_class_oid_packed (btid_int, record, node_type, (offset_to_object == 0)))
     {
       /* Also class OID is stored. */
       insert_mvccid_offset += OR_OID_SIZE;
@@ -32512,7 +32512,7 @@ btree_record_add_delid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * r
   /* Compute offset to delete MVCCID. */
   /* Instance OID is always packed. */
   offset_to_delete_mvccid = offset_to_object + OR_OID_SIZE;
-  if (btree_is_class_oid_packed (btid_int, record, node_type, offset_to_object == 0))
+  if (btree_is_class_oid_packed (btid_int, record, node_type, (offset_to_object == 0)))
     {
       /* Class OID is also packed. */
       offset_to_delete_mvccid += OR_OID_SIZE;
@@ -33123,7 +33123,7 @@ btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_
   btid = btid_int->sys_btid;
 
   /* Is key NULL? */
-  insert_helper.is_null = key == NULL || DB_IS_NULL (key) || btree_multicol_key_is_null (key);
+  insert_helper.is_null = (key == NULL || DB_IS_NULL (key) || btree_multicol_key_is_null (key));
 
   /* No unique indexes for now. */
   insert_helper.unique_stats_info = NULL;
@@ -33370,7 +33370,7 @@ btree_online_index_change_state (THREAD_ENTRY * thread_p, BTID_INT * btid_int, R
   oid_ptr = record->data + offset_to_object;
 
   offset_to_insid_mvccid = offset_to_object + OR_OID_SIZE;
-  if (btree_is_class_oid_packed (btid_int, record, node_type, offset_to_object == 0))
+  if (btree_is_class_oid_packed (btid_int, record, node_type, (offset_to_object == 0)))
     {
       /* Class OID is also packed. */
       offset_to_insid_mvccid += OR_OID_SIZE;
