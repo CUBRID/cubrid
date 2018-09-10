@@ -39,6 +39,7 @@ namespace cubscan
       JSON_DOC *m_input_doc;            // used for non-array / single row
       const JSON_DOC *m_process_doc;    // is either input_doc or row doc
       bool m_is_row_fetched;
+      bool m_need_advance_row;
       bool m_is_node_consumed;
 
       void advance_row_cursor (void);
@@ -55,6 +56,7 @@ namespace cubscan
       , m_process_doc (NULL)
       , m_child (0)
       , m_is_row_fetched (false)
+      , m_need_advance_row (false)
       , m_is_node_consumed (false)
     {
       //
@@ -66,7 +68,7 @@ namespace cubscan
     }
 
     void
-    scanner::cursor::advance_row_cursor()
+    scanner::cursor::advance_row_cursor ()
     {
       if (m_node->m_iterator == NULL || !db_json_iterator_has_next (*m_node->m_iterator))
 	{
@@ -114,10 +116,6 @@ namespace cubscan
 	      m_is_node_consumed = false;
 	      db_json_set_iterator (m_node->m_iterator, *m_input_doc);
 	    }
-	  else
-	    {
-	      db_json_reset_iterator (m_node->m_iterator);
-	    }
 	  break;
 
 	case json_table_expand_type::JSON_TABLE_OBJECT_EXPAND:
@@ -126,10 +124,6 @@ namespace cubscan
 	    {
 	      m_is_node_consumed = false;
 	      db_json_set_iterator (m_node->m_iterator, *m_input_doc);
-	    }
-	  else
-	    {
-	      db_json_reset_iterator (m_node->m_iterator);
 	    }
 	  break;
 
@@ -151,7 +145,7 @@ namespace cubscan
       // if we have an iterator, value is obtained from iterator. otherwise, use m_input_doc
       if (m_node->m_iterator != NULL)
 	{
-	  m_process_doc = db_json_iterator_get (*m_node->m_iterator);
+	  m_process_doc = db_json_iterator_get_document (*m_node->m_iterator);
 	}
       else
 	{
@@ -189,6 +183,7 @@ namespace cubscan
 	}
       m_process_doc = NULL;
       m_node->clear_columns ();
+      m_need_advance_row = false;
     }
 
     size_t
@@ -447,34 +442,44 @@ namespace cubscan
     }
 
     int
-    scanner::scan_next_internal (cubthread::entry *thread_p, int depth, bool &has_row)
+    scanner::scan_next_internal (cubthread::entry *thread_p, int depth, bool &found_row_output)
     {
       int error_code = NO_ERROR;
+      cursor &this_cursor = m_scan_cursor[depth];
 
       // check if cursor is already in child node
       if (m_scan_cursor_depth >= depth + 1)
 	{
 	  // advance to child
-	  error_code = scan_next_internal (thread_p, depth + 1, has_row);
+	  error_code = scan_next_internal (thread_p, depth + 1, found_row_output);
 	  if (error_code != NO_ERROR)
 	    {
 	      return error_code;
 	    }
-	  if (has_row)
+	  if (found_row_output)
 	    {
+	      // advance to new child
+	      this_cursor.m_child++;
 	      return NO_ERROR;
 	    }
 	}
 
       // get the cursor from the current depth
-      cursor &this_cursor = m_scan_cursor[depth];
       assert (this_cursor.m_node != NULL);
 
       // loop through node's rows and children until all possible rows are generated
-      while (!this_cursor.m_is_node_consumed)
+      while (true)
 	{
 	  // note - do not loop without taking new action
 	  // an action is either advancing to new row or advancing to new child
+	  if (this_cursor.m_need_advance_row)
+	    {
+	      this_cursor.advance_row_cursor ();
+	      if (this_cursor.m_is_node_consumed)
+		{
+		  break;
+		}
+	    }
 
 	  // first things first, fetch current row
 	  error_code = this_cursor.fetch_row ();
@@ -486,18 +491,18 @@ namespace cubscan
 	  // if this is leaf node, then we have a new complete row
 	  if (this_cursor.m_node->m_nested_nodes.empty ())
 	    {
-	      has_row = true;
-
-	      // before leaving, move cursor to next child
-	      this_cursor.advance_row_cursor();
+	      found_row_output = true;
+	      // next time, cursor will have to be incremented
+	      this_cursor.m_need_advance_row = true;
 	      return NO_ERROR;
 	    }
 
+	  // non-leaf
 	  // advance to current child
 	  if (this_cursor.m_child == this_cursor.m_node->m_nested_nodes.size ())
 	    {
 	      // advance to next row
-	      this_cursor.advance_row_cursor ();
+	      this_cursor.m_need_advance_row = true;
 	      continue;
 	    }
 
@@ -515,18 +520,14 @@ namespace cubscan
 	      // advance current level in tree
 	      m_scan_cursor_depth++;
 
-	      error_code = scan_next_internal (thread_p, depth + 1, has_row);
+	      error_code = scan_next_internal (thread_p, depth + 1, found_row_output);
 	      if (error_code != NO_ERROR)
 		{
 		  return error_code;
 		}
 	    }
-	  else
-	    {
 
-	    }
-
-	  if (has_row)
+	  if (found_row_output)
 	    {
 	      // found a row; scan is stopped
 	      return NO_ERROR;
@@ -535,12 +536,11 @@ namespace cubscan
 	    {
 	      // child could not generate a row. advance to next
 	      this_cursor.m_child++;
-	      return ER_FAILED;
 	    }
 	}
 
       // no more rows...
-      has_row = false;
+      found_row_output = false;
 
       if (m_scan_cursor_depth > 0)
 	{

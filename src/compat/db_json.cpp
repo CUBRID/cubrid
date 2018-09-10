@@ -115,6 +115,8 @@ typedef rapidjson::MemoryPoolAllocator <JSON_PRIVATE_ALLOCATOR> JSON_PRIVATE_MEM
 typedef rapidjson::GenericValue <JSON_ENCODING, JSON_PRIVATE_MEMPOOL> JSON_VALUE;
 typedef rapidjson::GenericPointer <JSON_VALUE> JSON_POINTER;
 typedef rapidjson::GenericStringBuffer<JSON_ENCODING, JSON_PRIVATE_ALLOCATOR> JSON_STRING_BUFFER;
+typedef rapidjson::GenericMemberIterator<true, JSON_ENCODING, JSON_PRIVATE_MEMPOOL>::Iterator JSON_MEMBER_ITERATOR;
+typedef rapidjson::GenericArray<true, JSON_VALUE>::ConstValueIterator JSON_VALUE_ITERATOR;
 
 class JSON_DOC: public rapidjson::GenericDocument <JSON_ENCODING, JSON_PRIVATE_MEMPOOL>
 {
@@ -150,184 +152,169 @@ class JSON_DOC: public rapidjson::GenericDocument <JSON_ENCODING, JSON_PRIVATE_M
 #endif // TODO_OPTIMIZE_JSON_BODY_STRING
 };
 
+// class JSON_ITERATOR - virtual interface to wrap array and object iterators
+//
 class JSON_ITERATOR
 {
   public:
     // default ctor
     JSON_ITERATOR()
-      : document (nullptr)
-      , doc_itr (nullptr)
+      : m_input_doc (nullptr)
+      , m_value_doc (nullptr)
     {
     }
 
     ~JSON_ITERATOR ()
     {
-      if (doc_itr != nullptr)
+      if (m_value_doc != nullptr)
 	{
-	  delete doc_itr;
+	  delete m_value_doc;
 	}
     }
 
-    virtual const JSON_VALUE *next () = 0;
+    // next iterator
+    virtual void next () = 0;
+    // does it have more values?
     virtual bool has_next () = 0;
+    // get current value
     virtual const JSON_VALUE *get () = 0;
-    virtual size_t count_members () = 0;
+    // set input document
     virtual void set (const JSON_DOC &new_doc) = 0;
 
+    // get a document from current iterator value
     const JSON_DOC *
-    get_value_to_doc()
+    get_value_to_doc ()
     {
-      const JSON_VALUE *value = get();
+      const JSON_VALUE *value = get ();
 
       if (value == nullptr)
 	{
 	  return nullptr;
 	}
 
-      if (doc_itr == nullptr)
+      if (m_value_doc == nullptr)
 	{
-	  doc_itr = db_json_allocate_doc();
+	  m_value_doc = db_json_allocate_doc ();
 	}
 
-      doc_itr->CopyFrom (*value, doc_itr->GetAllocator());
+      m_value_doc->CopyFrom (*value, m_value_doc->GetAllocator ());
 
-      return doc_itr;
+      return m_value_doc;
     }
 
-    void reset()
+    void reset ()
     {
-      document = nullptr;
+      m_input_doc = nullptr;            // clear input
     }
 
-    bool is_empty() const
+    bool is_empty () const
     {
-      return document == nullptr;
+      return m_input_doc == nullptr;    // no input
     }
 
   protected:
-    const JSON_DOC *document;
-    JSON_DOC *doc_itr;
+    const JSON_DOC *m_input_doc;      // document being iterated
+    JSON_DOC *m_value_doc;            // document that can store iterator "value"
 };
 
+// JSON Object iterator - iterates through object members
+//
 class JSON_OBJECT_ITERATOR : public JSON_ITERATOR
 {
   public:
-    JSON_OBJECT_ITERATOR() {}
+    JSON_OBJECT_ITERATOR () = default;
 
-    const JSON_VALUE *next();
-    bool has_next();
+    // advance to next member
+    void next ();
+    // has more members
+    bool has_next ();
 
-    size_t count_members()
+    // get current member value
+    const JSON_VALUE *get ()
     {
-      if (document == nullptr)
-	{
-	  return 0;
-	}
-
-      assert (document->IsObject());
-
-      return document->MemberCount();
+      return &m_iterator->value;
     }
 
-    const JSON_VALUE *get()
-    {
-      return &iterator->value;
-    }
-
+    // set input document and initialize iterator on first position
     void set (const JSON_DOC &new_doc)
     {
-      assert (new_doc.IsObject());
+      assert (new_doc.IsObject ());
 
-      document = &new_doc;
-      iterator = new_doc.MemberBegin();
+      m_input_doc = &new_doc;
+      m_iterator = new_doc.MemberBegin ();
     }
 
   private:
-    rapidjson::GenericMemberIterator<true, JSON_ENCODING, JSON_PRIVATE_MEMPOOL>::Iterator iterator;
+    JSON_MEMBER_ITERATOR m_iterator;
 };
 
+// JSON Array iterator - iterates through elements (values)
+//
 class JSON_ARRAY_ITERATOR : public JSON_ITERATOR
 {
   public:
-    JSON_ARRAY_ITERATOR() {}
+    JSON_ARRAY_ITERATOR () = default;
 
-    const JSON_VALUE *next();
-    bool has_next();
+    // next element
+    void next ();
+    // has more elements
+    bool has_next ();
 
-    size_t count_members()
+    const JSON_VALUE *get ()
     {
-      if (document == nullptr)
-	{
-	  return 0;
-	}
-
-      assert (document->IsArray());
-
-      return document->GetArray().Size();
-    }
-
-    const JSON_VALUE *get()
-    {
-      return iterator;
+      return m_iterator;
     }
 
     void set (const JSON_DOC &new_doc)
     {
-      assert (new_doc.IsArray());
+      assert (new_doc.IsArray ());
 
-      document = &new_doc;
-      iterator = new_doc.GetArray().Begin();
+      m_input_doc = &new_doc;
+      m_iterator = new_doc.GetArray ().Begin ();
     }
 
   private:
-    rapidjson::GenericArray<true, JSON_VALUE>::ConstValueIterator iterator;
+    JSON_VALUE_ITERATOR m_iterator;
 };
 
-const JSON_VALUE *
-JSON_ARRAY_ITERATOR::next()
+void
+JSON_ARRAY_ITERATOR::next ()
 {
-  if (!has_next())
-    {
-      return NULL;
-    }
-
-  return iterator++;
+  assert (has_next ());
+  m_iterator++;
 }
 
 bool
-JSON_ARRAY_ITERATOR::has_next()
+JSON_ARRAY_ITERATOR::has_next ()
 {
-  if (document == nullptr)
+  if (m_input_doc == nullptr)
     {
       return false;
     }
 
-  return iterator != document->GetArray().End();
+  JSON_VALUE_ITERATOR end = m_input_doc->GetArray ().End ();
+
+  return (m_iterator + 1) != end;
 }
 
-const JSON_VALUE *
-JSON_OBJECT_ITERATOR::next()
+void
+JSON_OBJECT_ITERATOR::next ()
 {
-  if (!has_next())
-    {
-      return NULL;
-    }
-
-  const JSON_VALUE *value = &iterator->value;
-  ++iterator;
-
-  return value;
+  assert (has_next ());
+  m_iterator++;
 }
 
 bool
 JSON_OBJECT_ITERATOR::has_next()
 {
-  if (document == nullptr)
+  if (m_input_doc == nullptr)
     {
       return false;
     }
 
-  return iterator != document->MemberEnd();
+  JSON_MEMBER_ITERATOR end = m_input_doc->MemberEnd ();
+
+  return (m_iterator + 1) != end;
 }
 
 class JSON_VALIDATOR
@@ -847,11 +834,11 @@ db_json_doc_to_value (const JSON_DOC &doc)
 void
 db_json_iterator_next (JSON_ITERATOR &json_itr)
 {
-  json_itr.next();
+  json_itr.next ();
 }
 
 const JSON_DOC *
-db_json_iterator_get (JSON_ITERATOR &json_itr)
+db_json_iterator_get_document (JSON_ITERATOR &json_itr)
 {
   return json_itr.get_value_to_doc();
 }
@@ -860,12 +847,6 @@ bool
 db_json_iterator_has_next (JSON_ITERATOR &json_itr)
 {
   return json_itr.has_next();
-}
-
-size_t
-db_json_iterator_count_members (JSON_ITERATOR &json_itr)
-{
-  return json_itr.count_members();
 }
 
 void
