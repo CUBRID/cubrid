@@ -68,7 +68,7 @@ namespace cubscan
     }
 
     void
-    scanner::cursor::advance_row_cursor()
+    scanner::cursor::advance_row_cursor ()
     {
       if (m_node->m_iterator == NULL || !db_json_iterator_has_next (*m_node->m_iterator))
 	{
@@ -442,27 +442,29 @@ namespace cubscan
     }
 
     int
-    scanner::scan_next_internal (cubthread::entry *thread_p, int depth, bool &has_row)
+    scanner::scan_next_internal (cubthread::entry *thread_p, int depth, bool &found_row_output)
     {
       int error_code = NO_ERROR;
+      cursor &this_cursor = m_scan_cursor[depth];
 
       // check if cursor is already in child node
       if (m_scan_cursor_depth >= depth + 1)
 	{
 	  // advance to child
-	  error_code = scan_next_internal (thread_p, depth + 1, has_row);
+	  error_code = scan_next_internal (thread_p, depth + 1, found_row_output);
 	  if (error_code != NO_ERROR)
 	    {
 	      return error_code;
 	    }
-	  if (has_row)
+	  if (found_row_output)
 	    {
+	      // advance to new child
+	      this_cursor.m_child++;
 	      return NO_ERROR;
 	    }
 	}
 
       // get the cursor from the current depth
-      cursor &this_cursor = m_scan_cursor[depth];
       assert (this_cursor.m_node != NULL);
 
       // loop through node's rows and children until all possible rows are generated
@@ -489,12 +491,13 @@ namespace cubscan
 	  // if this is leaf node, then we have a new complete row
 	  if (this_cursor.m_node->m_nested_nodes.empty ())
 	    {
-	      has_row = true;
+	      found_row_output = true;
 	      // next time, cursor will have to be incremented
 	      this_cursor.m_need_advance_row = true;
 	      return NO_ERROR;
 	    }
 
+	  // non-leaf
 	  // advance to current child
 	  if (this_cursor.m_child == this_cursor.m_node->m_nested_nodes.size ())
 	    {
@@ -517,14 +520,14 @@ namespace cubscan
 	      // advance current level in tree
 	      m_scan_cursor_depth++;
 
-	      error_code = scan_next_internal (thread_p, depth + 1, has_row);
+	      error_code = scan_next_internal (thread_p, depth + 1, found_row_output);
 	      if (error_code != NO_ERROR)
 		{
 		  return error_code;
 		}
 	    }
 
-	  if (has_row)
+	  if (found_row_output)
 	    {
 	      // found a row; scan is stopped
 	      return NO_ERROR;
@@ -533,12 +536,11 @@ namespace cubscan
 	    {
 	      // child could not generate a row. advance to next
 	      this_cursor.m_child++;
-	      return ER_FAILED;
 	    }
 	}
 
       // no more rows...
-      has_row = false;
+      found_row_output = false;
 
       if (m_scan_cursor_depth > 0)
 	{

@@ -153,7 +153,7 @@ namespace cubscan
 	size_t get_tree_height (const cubxasl::json_table::node &node);
 
 	// recursive scan next called on json table node / cursor
-	int scan_next_internal (cubthread::entry *thread_p, int depth, bool &has_row);
+	int scan_next_internal (cubthread::entry *thread_p, int depth, bool &found_row_output);
 
 	cubxasl::json_table::spec_node *m_specp;    // pointer to json table spec node in XASL
 	cursor *m_scan_cursor;                      // cursor to keep track progress in each scan node
