@@ -2734,6 +2734,7 @@ set_seg_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_
 	      *continue_walk = PT_STOP_WALK;
 	    }
 	}
+      break;
 
     case PT_JSON_TABLE:
       (void) parser_walk_tree (parser, tree->info.json_table_info.expr, set_seg_expr, arg, pt_continue_walk, NULL);
