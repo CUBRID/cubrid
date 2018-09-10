@@ -603,7 +603,9 @@ int yybuffer_pos;
 [pP][aA][sS][sS][wW][oO][rR][dD]					{ begin_token(yytext);   
 										csql_yylval.cptr = pt_makename(yytext);
 										return PASSWORD; }
-[pP][aA][tT][hH]                                                        {begin_token(yytext); return PATH; }
+[pP][aA][tT][hH]										{ begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+										return PATH; }
 [pP][eE][rR][cC][eE][nN][tT][_][rR][aA][nN][kK]				{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return PERCENT_RANK; }

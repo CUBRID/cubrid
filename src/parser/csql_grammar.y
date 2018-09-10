@@ -1342,7 +1342,6 @@ int g_original_buffer_len;
 %token PARAMETERS
 %token PARTIAL
 %token PARTITION
-%token PATH
 %token POSITION
 %token PRECISION
 %token PREPARE
@@ -1595,6 +1594,7 @@ int g_original_buffer_len;
 %token <cptr> OFFSET
 %token <cptr> ONLINE
 %token <cptr> OPEN
+%token <cptr> PATH
 %token <cptr> OWNER
 %token <cptr> PAGE
 %token <cptr> PARTITIONING
@@ -22090,6 +22090,16 @@ identifier
 
 		DBG_PRINT}}
 	| PASSWORD
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| PATH
 		{{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
