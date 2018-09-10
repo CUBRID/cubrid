@@ -398,6 +398,8 @@ static int sm_drop_cascade_foreign_key (SM_CLASS * class_);
 static char *sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, const char **att_names,
 					 const int *asc_desc);
 
+static int sm_load_online_index (SM_TEMPLATE * template_, MOP * classmop, const char *constraint_name);
+
 static const char *sm_locate_method_file (SM_CLASS * class_, const char *function);
 
 #if defined (WINDOWS)
@@ -10241,14 +10243,14 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_ATTR
 				    fk_refcls_pk_btid, fk_name, SM_GET_FILTER_PRED_STREAM (filter_index),
 				    SM_GET_FILTER_PRED_STREAM_SIZE (filter_index), function_index->expr_stream,
 				    function_index->expr_stream_size, function_index->col_id,
-				    function_index->attr_index_start);
+				    function_index->attr_index_start, index_status);
 	}
       else
 	{
 	  error = btree_load_index (index, constraint_name, domain, oids, n_classes, n_attrs, attr_ids,
 				    (int *) attrs_prefix_length, hfids, unique_pk, not_null, fk_refcls_oid,
 				    fk_refcls_pk_btid, fk_name, SM_GET_FILTER_PRED_STREAM (filter_index),
-				    SM_GET_FILTER_PRED_STREAM_SIZE (filter_index), NULL, -1, -1, -1);
+				    SM_GET_FILTER_PRED_STREAM_SIZE (filter_index), NULL, -1, -1, -1, index_status);
 	}
     }
 
@@ -12677,6 +12679,7 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
     {
       abort_subclasses (newsubs);
       classobj_free_template (flat);
+
       /* don't touch this class if we aborted ! */
       if (class_ != NULL && error != ER_LK_UNILATERALLY_ABORTED)
 	{
@@ -14697,16 +14700,13 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 
       if (index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
 	{
-	  /* Demote lock for online index. */
-	  error = locator_demote_class_lock (&newmop->oid_info.oid, IX_LOCK, &ex_lock);
+	  // Load index phase.
+	  error = sm_load_online_index (def, &newmop, constraint_name);
 	  if (error != NO_ERROR)
 	    {
 	      smt_quit (def);
 	      return error;
 	    }
-
-	  // Load index phase.
-	  /* TODO For now, the index will be empty. */
 
 	  error = sm_update_statistics (newmop, STATS_WITH_SAMPLING);
 	  if (error != NO_ERROR)
@@ -14723,7 +14723,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	    }
 
 	  /* If we have an online index, we need to change the constraint to SM_ONLINE_INDEX_BUILDING_DONE, and 
-	   * add remove the old one from the property list. We also do not want to do some later checks.
+	   * remove the old one from the property list. We also do not want to do some later checks.
 	   */
 
 	  // TODO: Why do we remove and add it rather than just change the property?
@@ -16392,4 +16392,198 @@ sm_stats_remove_bt_stats_at_position (ATTR_STATS * attr_stats, int position)
 
   /* Make it unavailable. */
   attr_stats->n_btstats--;
+}
+
+int
+sm_load_online_index (SM_TEMPLATE * template_, MOP * classmop, const char *constraint_name)
+{
+  SM_CLASS *class_ = NULL;
+  int error = NO_ERROR;
+  SM_CLASS_CONSTRAINT *con = NULL;
+  TP_DOMAIN *domain;
+  int i, n_attrs, n_classes, max_classes;
+  DB_TYPE type;
+  BTID *index;
+  DB_OBJLIST *subclasses, *sub;
+  int *attr_ids = NULL;
+  size_t attr_ids_size;
+  OID *oids = NULL;
+  HFID *hfids = NULL;
+  int reverse;
+  LOCK ex_lock = SCH_M_LOCK;
+
+  /* Fetch the class. */
+  error = au_fetch_class (template_->op, &class_, AU_FETCH_UPDATE, AU_ALTER);
+  if (error != NO_ERROR)
+    {
+      goto error_return;
+    }
+
+  /* Get subclasses. */
+  subclasses = class_->users;
+
+  /* Get the constraint on which we want to load the online index. */
+  con = classobj_find_constraint_by_name (class_->constraints, constraint_name);
+  if (con == NULL)
+    {
+      /* This should never happen. */
+      error = ER_FAILED;
+      goto error_return;
+    }
+
+  /* Safeguards. */
+  assert (con != NULL);
+  assert (con->index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS);
+
+  /* Count the attributes */
+  for (i = 0, n_attrs = 0; con->attributes[i] != NULL; i++, n_attrs++)
+    {
+      type = con->attributes[i]->type->id;
+      if (!tp_valid_indextype (type))
+	{
+	  error = ER_SM_INVALID_INDEX_TYPE;
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, pr_type_name (type));
+	}
+      else if (con->attrs_prefix_length && con->attrs_prefix_length[i] >= 0)
+	{
+	  if (!TP_IS_CHAR_TYPE (type) && !TP_IS_BIT_TYPE (type))
+	    {
+	      error = ER_SM_INVALID_INDEX_WITH_PREFIX_TYPE;
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, pr_type_name (type));
+	    }
+	  else if (((long) con->attributes[i]->domain->precision) < con->attrs_prefix_length[i])
+	    {
+	      error = ER_SM_INVALID_PREFIX_LENGTH;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PREFIX_LENGTH, 1, con->attrs_prefix_length[i]);
+	    }
+	}
+    }
+
+  if (error != NO_ERROR)
+    {
+      goto error_return;
+    }
+
+  if (con->func_index_info)
+    {
+      if (con->func_index_info->attr_index_start == 0)
+	{
+	  /* if this is a single column function index, the key domain is actually the domain of the function
+	   * result */
+	  domain = con->func_index_info->fi_domain;
+	}
+      else
+	{
+	  domain =
+	    construct_index_key_domain (con->func_index_info->attr_index_start, con->attributes, con->asc_desc,
+					con->attrs_prefix_length, con->func_index_info->col_id,
+					con->func_index_info->fi_domain);
+	}
+    }
+  else
+    {
+      domain = construct_index_key_domain (n_attrs, con->attributes, con->asc_desc, con->attrs_prefix_length, -1, NULL);
+    }
+
+  /* Count maximum possible subclasses */
+  max_classes = 1;		/* Start with 1 for the current class */
+  for (sub = subclasses; sub != NULL; sub = sub->next)
+    {
+      max_classes++;
+    }
+
+  /* Allocate arrays to hold subclass information */
+  attr_ids_size = max_classes * n_attrs * sizeof (int);
+  attr_ids = (int *) malloc (attr_ids_size);
+  if (attr_ids == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, attr_ids_size);
+      goto error_return;
+    }
+
+  oids = (OID *) malloc (max_classes * sizeof (OID));
+  if (oids == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, max_classes * sizeof (OID));
+      goto error_return;
+    }
+
+  hfids = (HFID *) malloc (max_classes * sizeof (HFID));
+  if (hfids == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, max_classes * sizeof (HFID));
+      goto error_return;
+    }
+
+  /* Enter the base class information into the arrays */
+  n_classes = 0;
+  COPY_OID (&oids[n_classes], WS_OID (*classmop));
+  for (i = 0; i < n_attrs; i++)
+    {
+      attr_ids[i] = con->attributes[i]->id;
+    }
+  HFID_COPY (&hfids[n_classes], sm_ch_heap ((MOBJ) class_));
+  n_classes++;
+
+  if (con->type == SM_CONSTRAINT_REVERSE_INDEX || con->type == SM_CONSTRAINT_REVERSE_UNIQUE)
+    {
+      reverse = 1;
+    }
+  else
+    {
+      reverse = 0;
+    }
+
+  /* Demote lock for online index. */
+  error = locator_demote_class_lock (&template_->op->oid_info.oid, IX_LOCK, &ex_lock);
+  if (error != NO_ERROR)
+    {
+      goto error_return;
+    }
+
+  if (con->func_index_info)
+    {
+      error = btree_load_index (&con->index_btid, constraint_name, domain, oids, n_classes, n_attrs, attr_ids,
+				(int *) con->attrs_prefix_length, hfids, 0, false, NULL,
+				NULL, NULL, SM_GET_FILTER_PRED_STREAM (con->filter_predicate),
+				SM_GET_FILTER_PRED_STREAM_SIZE (con->filter_predicate),
+				con->func_index_info->expr_stream, con->func_index_info->expr_stream_size,
+				con->func_index_info->col_id, con->func_index_info->attr_index_start,
+				con->index_status);
+    }
+  else
+    {
+      error = btree_load_index (&con->index_btid, constraint_name, domain, oids, n_classes, n_attrs, attr_ids,
+				(int *) con->attrs_prefix_length, hfids, 0, false, NULL,
+				NULL, NULL, SM_GET_FILTER_PRED_STREAM (con->filter_predicate),
+				SM_GET_FILTER_PRED_STREAM_SIZE (con->filter_predicate), NULL, -1, -1, -1,
+				con->index_status);
+    }
+
+  free_and_init (attr_ids);
+  free_and_init (oids);
+  free_and_init (hfids);
+
+  return error;
+
+error_return:
+  if (error != ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED && error != ER_LK_UNILATERALLY_ABORTED)
+    {
+      (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_NAME);
+    }
+
+  if (attr_ids != NULL)
+    {
+      free_and_init (attr_ids);
+    }
+  if (oids != NULL)
+    {
+      free_and_init (oids);
+    }
+  if (hfids != NULL)
+    {
+      free_and_init (hfids);
+    }
+
+  return error;
 }
