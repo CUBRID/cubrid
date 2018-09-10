@@ -16732,7 +16732,7 @@ mr_data_writemem_json (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
   int rc = NO_ERROR;
 
   json = (DB_JSON *) memptr;
-  if (json == NULL)
+  if (json == NULL || json->document == NULL)
     {
       return;
     }

@@ -10039,6 +10039,7 @@ pt_make_query_describe_w_identifier (PARSER_CONTEXT * parser, PT_NODE * original
  *	     'BTREE' AS Index_type
  *	     "" AS Func,
  *           "" AS Comment,
+ *           "" AS Visible
  *    FROM <table> ORDER BY 3, 5;
  *
  *  Note: At execution, all empty fields will be replaced by values
@@ -10052,11 +10053,11 @@ pt_make_query_show_index (PARSER_CONTEXT * parser, PT_NODE * original_cls_id)
   PT_NODE *query = NULL;
   char lower_table_name[DB_MAX_IDENTIFIER_LENGTH];
   PT_NODE *value = NULL, *value_list = NULL;
-  DB_VALUE db_valuep[13];
+  DB_VALUE db_valuep[14];
   const char *aliases[] = {
     "Table", "Non_unique", "Key_name", "Seq_in_index", "Column_name",
     "Collation", "Cardinality", "Sub_part", "Packed", "Null", "Index_type",
-    "Func", "Comment"
+    "Func", "Comment", "Visible"
   };
   unsigned int i = 0;
 
@@ -10094,6 +10095,8 @@ pt_make_query_show_index (PARSER_CONTEXT * parser, PT_NODE * original_cls_id)
   db_value_domain_default (db_valuep + 11, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, 0, LANG_SYS_CODESET,
 			   LANG_SYS_COLLATION, NULL);
   db_make_varchar (db_valuep + 12, DB_DEFAULT_PRECISION, (const DB_C_CHAR) "", 0, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  db_value_domain_default (db_valuep + 13, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, 0, LANG_SYS_CODESET,
+			   LANG_SYS_COLLATION, NULL);
 
   for (i = 0; i < sizeof (db_valuep) / sizeof (db_valuep[0]); i++)
     {
@@ -12050,4 +12053,42 @@ pt_get_default_expression_from_data_default_node (PARSER_CONTEXT * parser, PT_NO
 	    }
 	}
     }
+}
+
+/*
+ * pt_has_name_oid () - Check whether the node is oid name
+ *   return:
+ *   parser(in):
+ *   node(in):
+ *   arg(in):
+ *   continue_walk(in):
+ */
+PT_NODE *
+pt_has_name_oid (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  bool *has_name_oid = (bool *) arg;
+
+  switch (node->node_type)
+    {
+    case PT_NAME:
+      if (PT_IS_OID_NAME (node))
+	{
+	  *has_name_oid = true;
+	  *continue_walk = PT_STOP_WALK;
+	}
+      break;
+
+    case PT_DATA_TYPE:
+      if (node->type_enum == PT_TYPE_OBJECT)
+	{
+	  *has_name_oid = true;
+	  *continue_walk = PT_STOP_WALK;
+	}
+      break;
+
+    default:
+      break;
+    }
+
+  return node;
 }

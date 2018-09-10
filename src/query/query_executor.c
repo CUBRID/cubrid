@@ -8658,11 +8658,13 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
       p_class_instance_lock_info = &class_instance_lock_info;
     }
 
-  if (qexec_execute_mainblock (thread_p, aptr, xasl_state, p_class_instance_lock_info) != NO_ERROR)
+  for (XASL_NODE * crt = aptr; crt != NULL && error == NO_ERROR; crt = crt->next)
     {
-      GOTO_EXIT_ON_ERROR;
+      if (qexec_execute_mainblock (thread_p, crt, xasl_state, p_class_instance_lock_info) != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
     }
-
 
   if (p_class_instance_lock_info && p_class_instance_lock_info->instances_locked)
     {
@@ -9596,9 +9598,12 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
       p_class_instance_lock_info = &class_instance_lock_info;
     }
 
-  if (qexec_execute_mainblock (thread_p, aptr, xasl_state, p_class_instance_lock_info) != NO_ERROR)
+  for (XASL_NODE * crt = aptr; crt != NULL; crt = crt->next)
     {
-      GOTO_EXIT_ON_ERROR;
+      if (qexec_execute_mainblock (thread_p, crt, xasl_state, p_class_instance_lock_info) != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
     }
 
   if (p_class_instance_lock_info && p_class_instance_lock_info->instances_locked)
@@ -21593,7 +21598,7 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
     }
 
   size_values = xasl->outptr_list->valptr_cnt;
-  assert (size_values == 13);
+  assert (size_values == 14);
   out_values = (DB_VALUE **) malloc (size_values * sizeof (DB_VALUE *));
   if (out_values == NULL)
     {
@@ -21679,6 +21684,9 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
       /* Comment */
       comment = (char *) or_get_constraint_comment (&class_record, index->btname);
       db_make_string (out_values[12], comment);
+
+      /* Visble */
+      db_make_string_by_const_str (out_values[13], (index->index_status == OR_INVISIBLE_INDEX) ? "NO" : "YES");
 
       if (index->func_index_info == NULL)
 	{

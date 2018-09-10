@@ -9791,7 +9791,7 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	      break;
 	    }
 
-	  if (entity->info.spec.derived_table != NULL)
+	  if (entity->info.spec.derived_table != NULL || PT_SPEC_IS_CTE (entity))
 	    {
 	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UPDATE_DERIVED_TABLE);
 	      break;
@@ -10567,6 +10567,7 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 	      node->info.query.reexecute = 1;
 	      node->info.query.do_cache = 0;
 	      node->info.query.do_not_cache = 1;
+	      node->info.query.has_system_class = 1;
 	    }
 
 	  if (node->node_type == PT_UPDATE || node->node_type == PT_DELETE || node->node_type == PT_INSERT
