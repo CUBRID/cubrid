@@ -43,6 +43,9 @@ namespace test_stream
   /* testing of stream with packable objects and multiple cubstream:entry using multiple threads */
   int test_stream_mt (void);
 
+  /* testing of stream file */
+  int test_stream_file1 (void);
+
   int write_action (const cubstream::stream_position pos, char *ptr, const size_t byte_count);
 
   class stream_read_partial_context

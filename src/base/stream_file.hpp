@@ -90,6 +90,9 @@ private:
   /* base name of stream files; */
   std::string m_base_filename;
 
+  /* path for stream files location */
+  std::string m_base_path;
+
   /* number of digits in the sequence number suffixing the base name 
    * TODO : this should be used only as a nice priting of names, we should allow increasing sequence number
    * even if exceeds the digits in filename */
@@ -98,9 +101,6 @@ private:
   /* oldest avaiable file (old file may be removed to save disk space) */
   int m_start_file_seqno;
 
-  /* last/current file */
-  int m_curr_file_seqno;
-
   stream_position m_target_flush_position;
 
   cubthread::daemon *m_write_daemon;
@@ -108,6 +108,8 @@ private:
   std::condition_variable m_flush_cv;
 
   bool m_is_stopped;
+
+  static const int file_create_flags;
 
 protected:
   int get_file_desc_from_file_seqno (const int file_seqno);
@@ -119,9 +121,10 @@ protected:
   int get_filename_with_position (char *filename, const size_t max_filename, const stream_position &pos);
   int get_filename_with_file_seqno (char *filename, const size_t max_filename, const int file_seqno);
 
-  int open_file_seqno (const int file_seqno);
+  int open_file_seqno (const int file_seqno, int flags = 0);
+  int stream_file::close_file_seqno (int file_seqno, bool remove_physical = false);
 
-  int open_file (const char *file_path);
+  int open_file (const char *file_path, int flags = 0);
 
   int create_file (const char *file_path);
 
@@ -139,11 +142,20 @@ public:
   void init (const size_t file_size = DEFAULT_FILE_SIZE,
              const int print_digits = DEFAULT_FILENAME_DIGITS);
 
+  void set_path (const std::string &path)
+    {
+      m_base_path = path;
+    }
+
   void finalize ();
 
   int write (const stream_position &pos, const char *buf, const size_t amount);
 
   int read (const stream_position &pos, const char *buf, const size_t amount);
+
+  int drop_files_to_pos (const stream_position &drop_pos);
+
+  size_t get_desired_file_size (void) { return m_desired_file_size; }
 
   stream_position get_flush_target_position (void)
     {

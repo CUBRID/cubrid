@@ -20,6 +20,7 @@
 #include "test_stream.hpp"
 #include "object_representation.h"
 #include "multi_thread_stream.hpp"
+#include "stream_file.hpp"
 #include "thread_compat.hpp"
 #include "thread_manager.hpp"
 #include "thread_task.hpp"
@@ -1238,4 +1239,104 @@ namespace test_stream
     return res;
   }
 
+
+  int test_stream_file1 (void)
+  {
+    int res = 0;
+
+    init_common_cubrid_modules ();
+
+    cubstream::multi_thread_stream *my_stream = new cubstream::multi_thread_stream (10 * 1024 * 1024, 100);
+
+    my_stream->set_name ("my_test_stream");
+
+    cubstream::stream_file *my_stream_file = new cubstream::stream_file (*my_stream);
+
+    /* path is current folder */
+    system ("mkdir test_stream_folder");
+    my_stream_file->set_path ("test_stream_folder"); 
+
+
+    cubstream::stream::write_func_t writer_func;
+    writer_func = std::bind (&write_action, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
+
+    std::cout << "  Writing data to stream bytes" << std::endl;
+
+    size_t desired_amount = 5 * 1024 * 1024;
+    size_t written_amount;
+    size_t max_data_size = 1024;
+    cubstream::stream_position stream_pos = 0;
+
+    const size_t buffer_size = 1024;
+    char buffer[buffer_size];
+    for (int i = 0; i < buffer_size; i++)
+      {
+        buffer[i] =  std::rand () % 256;
+      }
+
+    /* writing in stream */
+    for (written_amount = 0; written_amount < desired_amount;)
+      {
+	res = my_stream_file->write (stream_pos, buffer, buffer_size);
+	if (res < 0)
+	  {
+	    assert (false);
+	    return res;
+	  }
+        written_amount = written_amount + buffer_size;
+      }
+
+    my_stream_file->drop_files_to_pos (MAX (written_amount, my_stream_file->get_desired_file_size ()));
+
+    delete my_stream_file;
+    delete my_stream;
+
+    return res;
+  }
+
+  int test_stream_file2 (void)
+  {
+    int res = 0;
+
+    init_common_cubrid_modules ();
+
+    cubstream::multi_thread_stream *my_stream = new cubstream::multi_thread_stream (10 * 1024 * 1024, 100);
+
+    my_stream->set_name ("my_test_stream");
+
+    cubstream::stream_file *my_stream_file = new cubstream::stream_file (*my_stream);
+
+    /* path is current folder */
+    my_stream_file->set_path ("test_stream_folder"); 
+
+
+
+    cubstream::stream::write_func_t writer_func;
+    writer_func = std::bind (&write_action, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
+
+    std::cout << "  Writing data to stream bytes" << std::endl;
+
+    size_t desired_amount = 5 * 1024 * 1024;
+    size_t rem_amount;
+    size_t max_data_size = 1024;
+    size_t writted_amount;
+    /* writing in stream */
+    for (rem_amount = desired_amount; rem_amount > 5;)
+      {
+	int amount = 5 + std::rand () % max_data_size;
+	rem_amount -= amount;
+
+	res = my_stream->write (amount, writer_func);
+	if (res <= 0)
+	  {
+	    assert (false);
+	    return res;
+	  }
+      }
+    writted_amount = desired_amount - rem_amount;
+
+
+
+    return res;
+  }
 }

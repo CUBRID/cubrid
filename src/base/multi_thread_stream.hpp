@@ -166,7 +166,9 @@ namespace cubstream
 	m_serial_read_cv.notify_one ();
       }
 
-      stream_file *get_stream_file (void) { return m_stream_file; };
+      void set_stream_file (stream_file *sf) { m_stream_file = sf; }
+
+      stream_file *get_stream_file (void) { return m_stream_file; }
   };
 
 } /* namespace cubstream */

@@ -137,6 +137,10 @@ namespace cubstream
 	m_ready_pos_handler = handler;
       }
 
+      void set_name (const std::string name)
+        {
+          m_stream_name = name;
+        }
       const std::string &name (void)
       {
 	return m_stream_name;

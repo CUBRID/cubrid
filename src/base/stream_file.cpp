@@ -32,6 +32,7 @@
 #include <unistd.h>
 #endif
 #include "stream_file.hpp"
+#include "error_manager.h"
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
 #include "thread_looper.hpp"
@@ -40,7 +41,9 @@
 namespace cubstream
 {
 
- class writer_daemon_task : public cubthread::entry_task
+  const int stream_file::file_create_flags = O_CREAT;
+
+  class writer_daemon_task : public cubthread::entry_task
   {
     public:
       writer_daemon_task (multi_thread_stream &stream_arg)
@@ -111,6 +114,8 @@ namespace cubstream
 
 void stream_file::init (const size_t file_size, const int print_digits)
 {
+  m_stream.set_stream_file (this);
+
   m_base_filename = m_stream.name ();
   m_desired_file_size = file_size;
   m_filename_digits_seqno = print_digits;
@@ -120,8 +125,7 @@ void stream_file::init (const size_t file_size, const int print_digits)
 
   m_target_flush_position = 0;
 
-  m_start_file_seqno = 1;
-  m_curr_file_seqno = 1;
+  m_start_file_seqno = 0;
 
 #if defined (SERVER_MODE)
   m_write_daemon = cubthread::get_manager ()->create_daemon (cubthread::delta_time (0),
@@ -173,12 +177,6 @@ int stream_file::get_file_seqno_from_stream_pos (const stream_position &pos)
       return -1;
     }
 
-  if (pos >= m_curr_append_position)
-    {
-      /* not yet produced */
-      return -1;
-    }
-
   file_seqno = (int) (pos / m_desired_file_size);
 
   return file_seqno;
@@ -207,10 +205,36 @@ int stream_file::create_files_in_range (const stream_position &start_pos, const 
   curr_pos = start_pos;
   rem_amount = end_pos - start_pos;
 
+  if (rem_amount == 0)
+    {
+      /* append in a new file case */
+      file_seqno = get_file_seqno_from_stream_pos_ext (curr_pos, available_amount_in_file, file_offset);
+      if (file_seqno < 0)
+        {
+          return ER_FAILED;
+        }
+
+      assert (file_offset == 0);
+
+      int dummy_fd = open_file_seqno (file_seqno, (file_offset == 0) ? file_create_flags : 0);
+      if (dummy_fd < 0)
+        {
+          return ER_FAILED;
+        }
+
+      return err;
+    }
+
   while (rem_amount > 0)
     {
       file_seqno = get_file_seqno_from_stream_pos_ext (curr_pos, available_amount_in_file, file_offset);
       if (file_seqno < 0)
+        {
+          return ER_FAILED;
+        }
+
+      int dummy_fd = open_file_seqno (file_seqno, (file_offset == 0) ? file_create_flags : 0);
+      if (dummy_fd < 0)
         {
           return ER_FAILED;
         }
@@ -231,11 +255,37 @@ int stream_file::create_files_in_range (const stream_position &start_pos, const 
       rem_amount -= rem_amount_this_file;
     }
 
-  m_curr_append_position = end_pos;
-
   return NO_ERROR;
 }
 
+
+int stream_file::drop_files_to_pos (const stream_position &drop_pos)
+{
+  stream_position curr_pos;
+  int err = NO_ERROR;
+
+  curr_pos = 0;
+
+  while (curr_pos < drop_pos)
+    {
+      size_t file_offset;
+      size_t amount_to_end_file;
+
+      int file_seqno = get_file_seqno_from_stream_pos_ext (curr_pos, amount_to_end_file, file_offset);
+
+      if (file_offset == 0 && amount_to_end_file <= drop_pos - curr_pos)
+        {
+          err = close_file_seqno (file_seqno, true);
+          if (err != NO_ERROR)
+            {
+              return err;
+            }
+        }
+      curr_pos += amount_to_end_file;
+    }
+
+  return err;
+}
 int stream_file::get_filename_with_position (char *filename, const size_t max_filename, const stream_position &pos)
 {
   int file_seqno;
@@ -253,43 +303,106 @@ int stream_file::get_filename_with_file_seqno (char *filename, const size_t max_
 {
   assert (file_seqno >= 0);
 
-  snprintf (filename, max_filename, "%s_%*d", m_base_filename.c_str (), m_filename_digits_seqno, file_seqno);
+  snprintf (filename, max_filename, "%s%c%s_%0*d", 
+            m_base_path.c_str (),
+            PATH_SEPARATOR,
+            m_base_filename.c_str (),
+            m_filename_digits_seqno,
+            file_seqno);
   return NO_ERROR;
 }
 
-int stream_file::open_file_seqno (const int file_seqno)
+int stream_file::open_file_seqno (const int file_seqno, int flags)
 {
   int fd;
   char file_name [PATH_MAX];
+  int err = NO_ERROR;
   
   auto it = m_file_descriptors.find (file_seqno);
 
   if (it != m_file_descriptors.end ())
     {
+      assert ((flags & file_create_flags) == 0);
       return it->second;
     }
 
   get_filename_with_file_seqno (file_name, sizeof (file_name) - 1, file_seqno);
 
-  fd = open_file (file_name);
+  fd = open_file (file_name, flags);
   if (fd < 0)
     {
-      return ER_FAILED;
+      assert ((flags & file_create_flags) != file_create_flags);
+
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANNOT_CREATE_VOL, 2, file_name, "");
+      return -1;
     }
 
   m_file_descriptors[file_seqno] = fd;
 
-  return NO_ERROR;
+  return fd;
 }
 
-int stream_file::open_file (const char *file_path)
+int stream_file::close_file_seqno (int file_seqno, bool remove_physical)
+{
+  char file_name[PATH_MAX];
+  auto it = m_file_descriptors.find (file_seqno);
+  int fd = -1;
+  int err = NO_ERROR;
+
+  if (it != m_file_descriptors.end ())
+    {
+      fd = it->second;
+    }
+  
+  if (fd == -1)
+    {
+      /* already closed */
+      if (remove_physical)
+        {
+          fd = open_file_seqno (file_seqno);
+          if (fd < 0)
+            {
+              ASSERT_ERROR_AND_SET (err);
+              return err;
+            }
+
+         assert (fd != -1);
+        }
+    }
+
+  if (fd == -1)
+    {
+      /* already closed, nothing to do */
+      assert (remove_physical == false);
+      return err;
+    }
+
+  if (remove_physical)
+    {
+      get_filename_with_file_seqno (file_name, sizeof (file_name) - 1, file_seqno);
+    }
+
+  assert (it != m_file_descriptors.end ());
+  m_file_descriptors.erase (it);
+
+  close (fd);
+
+  if (remove_physical)
+    {
+      ::remove (file_name);
+    }
+
+  return err;
+}
+
+int stream_file::open_file (const char *file_path, int flags)
 {
   int fd;
 
 #if defined (WINDOWS)
-  fd = open (file_path, O_RDWR | O_BINARY);
+  fd = open (file_path, O_RDWR | O_BINARY | flags);
 #else
-  fd = open (file_path, O_RDWR);
+  fd = open (file_path, O_RDWR | flags);
 #endif
 
   if (fd < 0)
@@ -355,7 +468,7 @@ size_t stream_file::write_buffer (const int file_seqno, const size_t file_offset
 
 #if defined (WINDOWS)  
   lseek (fd, (long ) file_offset, SEEK_SET);
-  actual_write = write (fd, buf, amount);
+  actual_write = ::write (fd, buf, amount);
 #else
   actual_write = pwrite (fd, buf, amount, file_offset);
 #endif
@@ -373,7 +486,7 @@ int stream_file::write (const stream_position &pos, const char *buf, const size_
   curr_pos = pos;
   rem_amount = amount;
 
-  if (curr_pos > m_curr_append_position)
+  if (curr_pos + amount > m_curr_append_position)
     {
       err = create_files_in_range (m_curr_append_position, curr_pos);
       if (err != NO_ERROR)
@@ -406,6 +519,8 @@ int stream_file::write (const stream_position &pos, const char *buf, const size_
       curr_pos += current_to_write;
       buf += current_to_write;
     }
+
+  m_curr_append_position += amount;
 
   return NO_ERROR;
 }

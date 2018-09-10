@@ -45,10 +45,13 @@ int main ()
 {
   int global_error = 0;
 
-  test_module (global_error, test_stream::test_stream1);
-  test_module (global_error, test_stream::test_stream2);
-  test_module (global_error, test_stream::test_stream3);
-  test_module (global_error, test_stream::test_stream_mt);
+  //test_module (global_error, test_stream::test_stream1);
+  //test_module (global_error, test_stream::test_stream2);
+  //test_module (global_error, test_stream::test_stream3);
+  //test_module (global_error, test_stream::test_stream_mt);
+
+  test_module (global_error, test_stream::test_stream_file1);
+  
   /* add more tests here */
 
   return global_error;
