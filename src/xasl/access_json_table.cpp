@@ -39,8 +39,6 @@ namespace cubxasl
     int
     column::trigger_on_error (const JSON_DOC &input, const TP_DOMAIN_STATUS &status_cast, db_value &value_out)
     {
-      const char *value_out_domain = pr_type_name (DB_VALUE_DOMAIN_TYPE (&value_out));
-
       (void) pr_clear_value (&value_out);
       (void) db_make_null (&value_out);
 
@@ -51,10 +49,17 @@ namespace cubxasl
 	  return NO_ERROR;
 
 	case JSON_TABLE_THROW_ERROR:
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_TABLE_ON_ERROR_INCOMP_DOMAIN, 5,
-		  db_json_get_json_body_from_document (input), m_path.c_str (), m_column_name.c_str (),
-		  value_out_domain, pr_type_name (TP_DOMAIN_TYPE (m_domain)));
+	{
+	  PRIVATE_UNIQUE_PTR<char> unique_ptr_json_body (db_json_get_raw_json_body_from_document (&input), NULL);
+
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_TABLE_ON_ERROR_INCOMP_DOMAIN, 4,
+		  unique_ptr_json_body.get(),
+		  m_path.c_str(),
+		  m_column_name.c_str(),
+		  pr_type_name (TP_DOMAIN_TYPE (m_domain)));
+
 	  return ER_JSON_TABLE_ON_ERROR_INCOMP_DOMAIN;
+	}
 
 	case JSON_TABLE_DEFAULT_VALUE:
 	  assert (m_on_error.m_default_value != NULL);

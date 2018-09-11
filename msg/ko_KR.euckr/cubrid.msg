@@ -1305,7 +1305,7 @@ $ LOADDB
 1236 Double Write Buffer is disabled.
 1237 Cannot change status on %1$s because %2$s is a %3$s.
 1238 Missing value for JSON_TABLE column '%1$s'.
-1239 Cannot coerce value from JSON "%1$s", at path "%2$s" for JSON_TABLE column "%3$s" of domain "%4$s" to domain "%5$s". 
+1239 Cannot coerce value from JSON "%1$s" at path "%2$s" to JSON_TABLE column "%3$s" of domain "%4$s". 
 
 1240 마지막 에러
 
