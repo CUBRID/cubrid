@@ -1076,7 +1076,6 @@ db_json_extract_document_from_path (const JSON_DOC *document, const char *raw_pa
 
   // path must be JSON pointer
   error_code = db_json_convert_sql_path_to_pointer (raw_path, json_pointer_string);
-
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -1128,6 +1127,7 @@ db_json_contains_path (const JSON_DOC *document, const char *raw_path, bool &res
 {
   int error_code = NO_ERROR;
   std::string json_pointer_string;
+
   result = false;
 
   if (document == NULL)
@@ -1137,7 +1137,6 @@ db_json_contains_path (const JSON_DOC *document, const char *raw_path, bool &res
 
   // path must be JSON pointer
   error_code = db_json_convert_sql_path_to_pointer (raw_path, json_pointer_string);
-
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -1154,7 +1153,6 @@ db_json_contains_path (const JSON_DOC *document, const char *raw_path, bool &res
     }
 
   resulting_json = p.Get (*document);
-
   if (resulting_json != NULL)
     {
       result = true;
@@ -1212,6 +1210,7 @@ db_json_add_json_value_to_object (JSON_DOC &doc, const char *name, JSON_VALUE &v
 
   key.SetString (name, (rapidjson::SizeType) strlen (name), doc.GetAllocator ());
   doc.AddMember (key, value, doc.GetAllocator ());
+
   return NO_ERROR;
 }
 
@@ -1219,6 +1218,7 @@ int
 db_json_add_member_to_object (JSON_DOC *doc, const char *name, const char *value)
 {
   JSON_VALUE val;
+
   val.SetString (value, (rapidjson::SizeType) strlen (value), doc->GetAllocator ());
 
   return db_json_add_json_value_to_object (*doc, name, val);
@@ -1228,6 +1228,7 @@ int
 db_json_add_member_to_object (JSON_DOC *doc, const char *name, int value)
 {
   JSON_VALUE val;
+
   val.SetInt (value);
 
   return db_json_add_json_value_to_object (*doc, name, val);
@@ -1254,6 +1255,7 @@ int
 db_json_add_member_to_object (JSON_DOC *doc, const char *name, double value)
 {
   JSON_VALUE val;
+
   val.SetDouble (value);
 
   return db_json_add_json_value_to_object (*doc, name, val);
@@ -1347,6 +1349,7 @@ static int
 db_json_get_json_from_str (const char *json_raw, JSON_DOC &doc, size_t json_raw_length)
 {
   int error_code = NO_ERROR;
+
   if (json_raw == NULL)
     {
       return NO_ERROR;
@@ -1540,7 +1543,6 @@ db_json_replace_func (const JSON_DOC *new_value, JSON_DOC &doc, const char *raw_
 
   // path must be JSON pointer
   error_code = db_json_convert_sql_path_to_pointer (raw_path, json_pointer_string);
-
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -1591,7 +1593,6 @@ db_json_set_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path)
 
   // path must be JSON pointer
   error_code = db_json_convert_sql_path_to_pointer (raw_path, json_pointer_string);
-
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -1608,7 +1609,6 @@ db_json_set_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path)
     }
 
   resulting_json = p.Get (doc);
-
   if (resulting_json != NULL)
     {
       // replace the old value with the new one if the path exists
@@ -1635,7 +1635,6 @@ db_json_remove_func (JSON_DOC &doc, const char *raw_path)
 
   // path must be JSON pointer
   error_code = db_json_convert_sql_path_to_pointer (raw_path, json_pointer_string);
-
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -1685,7 +1684,6 @@ db_json_array_append_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw
 
   // path must be JSON pointer
   error_code = db_json_convert_sql_path_to_pointer (raw_path, json_pointer_string);
-
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -1702,7 +1700,6 @@ db_json_array_append_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw
     }
 
   resulting_json = p.Get (doc);
-
   if (resulting_json == NULL)
     {
       return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, json_pointer_string, &doc);
@@ -1799,14 +1796,14 @@ db_json_merge_two_json_objects (JSON_DOC &dest, const JSON_DOC *source)
       // if the key is in both jsons
       if (dest.HasMember (name))
 	{
-	  if (dest [name].IsArray ())
+	  if (dest[name].IsArray ())
 	    {
-	      dest [name].GetArray ().PushBack (itr->value, dest.GetAllocator ());
+	      dest[name].GetArray ().PushBack (itr->value, dest.GetAllocator ());
 	    }
 	  else
 	    {
 	      db_json_value_wrap_as_array (dest[name], dest.GetAllocator ());
-	      dest [name].PushBack (itr->value, dest.GetAllocator ());
+	      dest[name].PushBack (itr->value, dest.GetAllocator ());
 	    }
 	}
       else
@@ -2194,7 +2191,7 @@ db_json_split_path_by_delimiters (const std::string &path, const std::string &de
     {
       if (path[end] == '"')
 	{
-	  std::size_t index_of_closing_quote = path.find_first_of ("\"", end+1);
+	  std::size_t index_of_closing_quote = path.find_first_of ("\"", end + 1);
 	  if (index_of_closing_quote == std::string::npos)
 	    {
 	      assert (false);
@@ -2251,6 +2248,8 @@ db_json_split_path_by_delimiters (const std::string &path, const std::string &de
 static bool
 db_json_sql_path_is_valid (std::string &sql_path)
 {
+  std::size_t end_bracket_offset;
+
   // skip leading white spaces
   db_json_normalize_path (sql_path);
   if (sql_path.empty ())
@@ -2273,8 +2272,7 @@ db_json_sql_path_is_valid (std::string &sql_path)
       switch (sql_path[i])
 	{
 	case '[':
-	{
-	  std::size_t end_bracket_offset = sql_path.find_first_of (']', ++i);
+	  end_bracket_offset = sql_path.find_first_of (']', ++i);
 	  if (end_bracket_offset == sql_path.npos)
 	    {
 	      // unacceptable
@@ -2288,8 +2286,7 @@ db_json_sql_path_is_valid (std::string &sql_path)
 	    }
 	  // move to ']'. i will be incremented.
 	  i = end_bracket_offset;
-	}
-	break;
+	  break;
 
 	case '.':
 	  i++;
@@ -2370,7 +2367,8 @@ db_json_er_set_path_does_not_exist (const char *file_name, const int line_no, co
 
 static int
 db_json_er_set_expected_other_type (const char *file_name, const int line_no, const std::string &path,
-				    const DB_JSON_TYPE &found_type, const DB_JSON_TYPE &expected_type, const DB_JSON_TYPE &expected_type_optional)
+				    const DB_JSON_TYPE &found_type, const DB_JSON_TYPE &expected_type,
+				    const DB_JSON_TYPE &expected_type_optional)
 {
   std::string sql_path_string;
   int error_code = NO_ERROR;
@@ -2521,7 +2519,8 @@ db_json_iszero (const unsigned char &ch)
   return ch == '0';
 }
 
-/* db_json_remove_leading_zeros_index () - Erase leading zeros from sql path index
+/*
+ * db_json_remove_leading_zeros_index () - Erase leading zeros from sql path index
  *
  * index (in)                : current object
  * example: $[000123] -> $[123]
@@ -2541,6 +2540,7 @@ db_json_remove_leading_zeros_index (std::string &index)
 
 /*
  * db_json_convert_sql_path_to_pointer ()
+ *
  * sql_path (in)
  * json_pointer_out (out): the result
  * An sql_path is converted to rapidjson standard path
@@ -2584,7 +2584,8 @@ db_json_convert_sql_path_to_pointer (const char *sql_path, std::string &json_poi
   return NO_ERROR;
 }
 
-/* db_json_get_paths_helper () - Recursive function to get the paths from a json object
+/*
+ * db_json_get_paths_helper () - Recursive function to get the paths from a json object
  *
  * obj (in)                : current object
  * sql_path (in)           : the path for the current object
@@ -2619,7 +2620,8 @@ db_json_get_paths_helper (const JSON_VALUE &obj, const std::string &sql_path, st
   paths.push_back (sql_path);
 }
 
-/* db_json_get_all_paths_func () - Returns the paths from a JSON document as a JSON array
+/*
+ * db_json_get_all_paths_func () - Returns the paths from a JSON document as a JSON array
  *
  * doc (in)                : json document
  * result_json (in)        : a json array that contains all the paths
@@ -2646,7 +2648,8 @@ db_json_get_all_paths_func (const JSON_DOC &doc, JSON_DOC *&result_json)
   return NO_ERROR;
 }
 
-/* db_json_keys_func () - Returns the keys from the top-level value of a JSON object as a JSON array
+/*
+ * db_json_keys_func () - Returns the keys from the top-level value of a JSON object as a JSON array
  *
  * return                  : error code
  * doc (in)                : json document
@@ -3032,8 +3035,10 @@ JSON_SERIALIZER::SaveSizePointers (char *ptr)
 {
   // save the current pointer
   m_size_pointers.push (ptr);
+
   // skip the size
   m_error = or_put_int (m_buffer, 0);
+
   return !HasError ();
 }
 
@@ -3239,21 +3244,22 @@ std::size_t
 db_json_serialize_length (const JSON_DOC &doc)
 {
   JSON_SERIALIZER_LENGTH jsl;
+
   doc.Accept (jsl);
 
   return jsl.GetLength ();
 }
 
 /*
-* db_json_or_buf_underflow () - Check if the buffer return underflow
-*
-* return            : error_code
-* buf (in)          : the buffer which contains the data
-* length (in)       : the length of the string that we want to retrieve
-*
-* We do this check separately because we want to avoid an additional memory copy when getting the data from the buffer
-* for storing it in the json document
-*/
+ * db_json_or_buf_underflow () - Check if the buffer return underflow
+ *
+ * return            : error_code
+ * buf (in)          : the buffer which contains the data
+ * length (in)       : the length of the string that we want to retrieve
+ *
+ * We do this check separately because we want to avoid an additional memory copy when getting the data from the buffer
+ * for storing it in the json document
+ */
 static int
 db_json_or_buf_underflow (OR_BUF *buf, size_t length)
 {
@@ -3261,6 +3267,7 @@ db_json_or_buf_underflow (OR_BUF *buf, size_t length)
     {
       return or_underflow (buf);
     }
+
   return NO_ERROR;
 }
 
