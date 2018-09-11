@@ -4368,6 +4368,8 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   HEAP_SCANCACHE scan_cache;
   HEAP_CACHE_ATTRINFO attr_info;
   int ret = NO_ERROR;
+  LOCK old_lock = SCH_M_LOCK;
+  LOCK new_lock = IX_LOCK;
 
   func_index_info.expr = NULL;
 
@@ -4494,11 +4496,25 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   /* Assign the snapshot to the sort_args. */
   scan_cache.mvcc_snapshot = builder_snapshot;
 
+  /* Demote the lock. */
+  ret = lock_demote_class_lock (thread_p, class_oids, new_lock, &old_lock);
+  if (ret != NO_ERROR)
+    {
+      goto error;
+    }
+
   /* Start the online index builder. */
   ret = online_index_builder (thread_p, &btid_int, hfids, class_oids, n_classes, attr_ids, n_attrs,
 			      func_index_info, filter_pred, attrs_prefix_length, &attr_info, &scan_cache);
   if (ret != NO_ERROR)
     {
+      goto error;
+    }
+
+  /* Promote the lock to SCH_M_LOCK */
+  if (lock_object (thread_p, class_oids, oid_Root_class_oid, SCH_M_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+    {
+      ASSERT_ERROR_AND_SET (ret);
       goto error;
     }
 
@@ -4544,8 +4560,8 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   logpb_flush_pages_direct (thread_p);
   LOG_CS_EXIT (thread_p);
 
-end:
-  /* TODO: Clear snapshot and reset lowest active mvccid. (both from global table and from snapshot) */
+
+  /* TODO: Is this all right? */
   /* Invalidate snapshot. */
   if (builder_snapshot != NULL)
     {
@@ -4588,6 +4604,7 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
   int unique = 0;
   int *p_prefix_length;
   char midxkey_buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_midxkey_buf;
+  char rec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
 
   aligned_midxkey_buf = PTR_ALIGN (midxkey_buf, MAX_ALIGNMENT);
   db_make_null (&dbvalue);
@@ -4605,7 +4622,15 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
   /* Start extracting from heap. */
   for (;;)
     {
+      for (;;)
+	{
+	  ;
+	}
+
       attr_offset = cur_class * n_attrs;
+
+      cur_record.data = PTR_ALIGN (rec_buf, BTREE_MAX_ALIGN);
+      cur_record.area_size = IO_MAX_PAGE_SIZE;
 
       sc = heap_next (thread_p, &hfids[cur_class], &class_oids[cur_class], &cur_oid, &cur_record, scancache, true);
       if (sc == S_END)
@@ -4690,7 +4715,7 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 
       /* Dispatch the insert operation */
       ret = btree_online_index_dispatcher (thread_p, btid_int, p_dbvalue, &class_oids[cur_class], &cur_oid, &unique,
-					   BTREE_OP_ONLINE_INDEX_IB_INSERT);
+					   BTREE_OP_ONLINE_INDEX_IB_INSERT, NULL);
       if (ret != NO_ERROR)
 	{
 	  break;
