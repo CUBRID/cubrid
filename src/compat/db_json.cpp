@@ -164,7 +164,7 @@ class JSON_ITERATOR
     {
     }
 
-    ~JSON_ITERATOR ()
+    virtual ~JSON_ITERATOR ()
     {
       if (m_value_doc != nullptr)
 	{
