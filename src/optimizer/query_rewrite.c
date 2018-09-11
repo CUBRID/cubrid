@@ -1356,7 +1356,6 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 		}
 
 	      /* if arg2 is derived alias col, get its corresponding constant column from derived-table */
-	      // todo: json_table
 	      if (spec && spec->info.spec.derived_table_type == PT_IS_SUBQUERY
 		  && (derived_table = spec->info.spec.derived_table) && derived_table->node_type == PT_SELECT)
 		{
@@ -5458,7 +5457,6 @@ qo_rewrite_outerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 		}
 	    }
 
-	  // todo: json_table
 	  if (spec->info.spec.derived_table && spec->info.spec.derived_table_type == PT_IS_SUBQUERY)
 	    {
 	      /* apply qo_rewrite_outerjoin() to derived table's subquery */
@@ -5582,7 +5580,6 @@ qo_rewrite_innerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 
       info.end = spec->info.spec.location;
 
-      // todo: json_table
       if (spec->info.spec.derived_table && spec->info.spec.derived_table_type == PT_IS_SUBQUERY)
 	{
 	  /* apply qo_rewrite_innerjoin() to derived table's subquery */
