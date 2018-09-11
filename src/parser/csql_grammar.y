@@ -90,7 +90,7 @@ extern size_t json_table_column_count;
 %{
 #define YYMAXDEPTH	1000000
 
-
+/* #define PARSER_DEBUG */
 
 #include "config.h"
 
