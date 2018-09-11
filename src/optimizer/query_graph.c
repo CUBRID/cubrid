@@ -1223,12 +1223,6 @@ build_path:
       (void) qo_add_term (entity->info.spec.path_conjuncts, entity->info.spec.meta_class, env);
     }
 
-  if (entity->info.spec.derived_table_type == PT_DERIVED_JSON_TABLE)
-    {
-      // what to do with entity->info.spec.derived_table->info.json_table_info.expr?
-      // (void) qo_add_term (entity->info.spec.derived_table->info.json_table_info.expr, PREDICATE_TERM, env);
-    }
-
   return node;
 }
 
