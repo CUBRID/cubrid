@@ -24126,11 +24126,18 @@ json_table_column_behavior_rule
         $$.m_behavior = JSON_TABLE_THROW_ERROR;
         $$.m_default_value = NULL;
       DBG_PRINT}}
-    | DEFAULT CHAR_STRING
+    | DEFAULT expression_       
       {{
+        PT_NODE * default_value = $2;
+        if (default_value->node_type != PT_VALUE)
+          {
+            PT_ERROR (this_parser, default_value, "invalid JSON_TABLE default");
+          }
+        DB_VALUE * temp = pt_value_to_db (this_parser, default_value);
         $$.m_behavior = JSON_TABLE_DEFAULT_VALUE;
-        $$.m_default_value = parser_alloc (this_parser, sizeof (struct db_value));
-        db_make_string ($$.m_default_value, $2);
+        $$.m_default_value = db_value_copy (temp);
+
+        parser_free_node(this_parser, default_value);
       DBG_PRINT}}
     ;
 
