@@ -359,7 +359,7 @@ jsp_start_server (const char *db_name, const char *path)
   jstring jstr_dbname, jstr_path, jstr_version, jstr_envroot;
   jobjectArray args;
   JavaVMInitArgs vm_arguments;
-  int vm_n_options = 3;
+  const int vm_n_options = 3;
   JavaVMOption options[vm_n_options];
   char classpath[PATH_MAX + 32], logging_prop[PATH_MAX + 32];
   char *loc_p, *locale;
