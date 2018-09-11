@@ -4633,7 +4633,7 @@ pt_make_json_table_spec_node_internal (PARSER_CONTEXT * parser, PT_JSON_TABLE_NO
 }
 
 //
-// pt_make_json_table_spec_node () - document me!
+// pt_make_json_table_spec_node () - create json table access tree
 //
 // return            : pointer to generated json_table_node
 // parser (in)       : parser context
@@ -4648,6 +4648,7 @@ pt_make_json_table_spec_node (PARSER_CONTEXT * parser, PT_JSON_TABLE_INFO * json
   json_table_node *root_node = new json_table_node ();
   pt_make_json_table_spec_node_internal (parser, &json_table->tree->info.json_table_node_info, start_id, tbl_info,
 					 *root_node);
+  return root_node;
 }
 
 //
