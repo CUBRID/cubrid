@@ -92,6 +92,8 @@ static void log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_typ
 static void log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * start_redolsa,
 				   LOG_LSA * end_redo_lsa, bool ismedia_crash, time_t * stopat,
 				   bool * did_incom_recovery, INT64 * num_redo_log_records);
+static bool log_recovery_needs_skip_redo (THREAD_ENTRY * thread_p, TRANID tran_id, LOG_RECTYPE log_rtype,
+					  LOG_RCVINDEX rcv_index, LOG_LSA * lsa);
 static void log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const LOG_LSA * end_redo_lsa,
 			       time_t * stopat);
 static void log_recovery_abort_interrupted_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
@@ -1505,6 +1507,8 @@ log_rv_analysis_sysop_end (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_l
 	  /* no undo */
 	  LSA_SET_NULL (&tdes->undo_nxlsa);
 	}
+      tdes->rcv.analysis_last_aborted_sysop_lsa = *log_lsa;
+      tdes->rcv.analysis_last_aborted_sysop_start_lsa = sysop_end->lastparent_lsa;
       break;
 
     case LOG_SYSOP_END_COMMIT:
@@ -2851,6 +2855,69 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 }
 
 /*
+ * log_recovery_needs_skip_redo - Check whether we need to skip redo.
+ *
+ * return: nothing
+ *
+ *   thread_p(in): Thread entry
+ *   tran_id(in) : Transaction id.
+ *   log_rtype(in): Log record type
+ *   rcvindex(in): Recovery index
+ *   lsa(in) : lsa to check
+ *
+ * NOTE: When logical redo logging is applied and the system crashes repeatedely, we need to
+ *     skip redo records already applied. This function check whether the redo must be skipped.
+ *     This function may set tdes->rcv.skip_redo_upto_lsa.
+ */
+static bool
+log_recovery_needs_skip_redo (THREAD_ENTRY * thread_p, TRANID tran_id, LOG_RECTYPE log_rtype, LOG_RCVINDEX rcv_index,
+			      LOG_LSA * lsa)
+{
+  int tran_index;
+  LOG_TDES *tdes = NULL;	/* Transaction descriptor */
+
+  assert (lsa != NULL);
+  tran_index = logtb_find_tran_index (thread_p, tran_id);
+  if (tran_index != NULL_TRAN_INDEX)
+    {
+      tdes = LOG_FIND_TDES (tran_index);
+      if (tdes != NULL)
+	{
+	  if (log_rtype == LOG_DBEXTERN_REDO_DATA)
+	    {
+	      /* logical redo logging */
+	      if (LSA_GT (&tdes->rcv.analysis_last_aborted_sysop_lsa, lsa)
+		  && LSA_LT (&tdes->rcv.analysis_last_aborted_sysop_start_lsa, lsa))
+		{
+		  /* Logical redo already applyed. Skip all redo records up to analysis_last_aborted_sysop_lsa. */
+		  tdes->rcv.skip_redo_upto_lsa = tdes->rcv.analysis_last_aborted_sysop_lsa;
+
+		  er_log_debug (ARG_FILE_LINE, "log_recovery_needs_skip_redo: LSA = %lld|%d, Rv_index = %s, "
+				"skip redo logging upto LSA = %lld|%d \n",
+				LSA_AS_ARGS (lsa), rv_rcvindex_string (rcv_index),
+				LSA_AS_ARGS (&tdes->rcv.skip_redo_upto_lsa));
+
+		  return true;
+		}
+	    }
+
+	  if (!LSA_ISNULL (&tdes->rcv.skip_redo_upto_lsa) && (LSA_LE (lsa, &tdes->rcv.skip_redo_upto_lsa)))
+	    {
+	      er_log_debug (ARG_FILE_LINE, "log_recovery_needs_skip_redo: LSA = %lld|%d, Rv_index = %s, "
+			    "skip redo logging upto LSA = %lld|%d \n",
+			    LSA_AS_ARGS (lsa), rv_rcvindex_string (rcv_index),
+			    LSA_AS_ARGS (&tdes->rcv.skip_redo_upto_lsa));
+
+	      return true;
+	    }
+	}
+    }
+
+  return false;
+}
+
+
+/*
  * log_recovery_redo - SCAN FORWARD REDOING DATA
  *
  * return: nothing
@@ -3133,6 +3200,12 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 	      rcv.pgptr = NULL;
 	      rcvindex = undoredo->data.rcvindex;
+
+	      if (log_recovery_needs_skip_redo (thread_p, tran_id, log_rtype, rcvindex, &rcv_lsa))
+		{
+		  break;
+		}
+
 	      /* If the page does not exit, there is nothing to redo */
 	      if (rcv_vpid.pageid != NULL_PAGEID && rcv_vpid.volid != NULL_VOLID)
 		{
@@ -3319,6 +3392,12 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 	      rcv.pgptr = NULL;
 	      rcvindex = redo->data.rcvindex;
+
+	      if (log_recovery_needs_skip_redo (thread_p, tran_id, log_rtype, rcvindex, &rcv_lsa))
+		{
+		  break;
+		}
+
 	      /* If the page does not exit, there is nothing to redo */
 	      if (rcv_vpid.pageid != NULL_PAGEID && rcv_vpid.volid != NULL_VOLID)
 		{
@@ -3413,6 +3492,11 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		}
 #endif /* !NDEBUG */
 
+	      if (log_recovery_needs_skip_redo (thread_p, tran_id, log_rtype, rcvindex, &rcv_lsa))
+		{
+		  break;
+		}
+
 	      log_rv_redo_record (thread_p, &log_lsa, log_pgptr, RV_fun[rcvindex].redofun, &rcv, &rcv_lsa, 0, NULL,
 				  NULL);
 	      break;
@@ -3437,6 +3521,12 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 	      rcv.pgptr = NULL;
 	      rcvindex = run_posp->data.rcvindex;
+
+	      if (log_recovery_needs_skip_redo (thread_p, tran_id, log_rtype, rcvindex, &rcv_lsa))
+		{
+		  break;
+		}
+
 	      /* If the page does not exit, there is nothing to redo */
 	      if (rcv_vpid.pageid != NULL_PAGEID && rcv_vpid.volid != NULL_VOLID)
 		{
@@ -3524,6 +3614,12 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
 	      rcv.pgptr = NULL;
 	      rcvindex = compensate->data.rcvindex;
+
+	      if (log_recovery_needs_skip_redo (thread_p, tran_id, log_rtype, rcvindex, &rcv_lsa))
+		{
+		  break;
+		}
+
 	      /* If the page does not exit, there is nothing to redo */
 	      if (rcv_vpid.pageid != NULL_PAGEID && rcv_vpid.volid != NULL_VOLID)
 		{
