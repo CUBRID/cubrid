@@ -175,8 +175,6 @@ namespace cubscan
 	  return ER_FAILED;
 	}
 
-      //char *json_raw = db_json_get_json_body_from_document(*m_process_doc);
-
       int error_code = NO_ERROR;
       for (auto &col : m_node->m_output_columns)
 	{
@@ -407,10 +405,17 @@ namespace cubscan
 	  return error_code;
 	}
 
-      //char *json_raw = db_json_get_json_body_from_document(*cursor_arg.m_input_doc);
+      if (cursor_arg.m_input_doc == nullptr)
+	{
+	  // cannot retrieve input_doc from path
+	  cursor_arg.m_is_node_consumed = true;
+	}
+      else
+	{
+	  // start cursor based on input document
+	  cursor_arg.start_json_iterator();
+	}
 
-      // start cursor based on input document
-      cursor_arg.start_json_iterator ();
       return NO_ERROR;
     }
 
