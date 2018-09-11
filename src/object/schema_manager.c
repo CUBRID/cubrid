@@ -14713,7 +14713,6 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	      return error;
 	    }
 
-	  /* Promote the lock for online index. */
 	  def = smt_edit_class_mop (classop, auth);
 	  if (def == NULL)
 	    {
@@ -16409,7 +16408,6 @@ sm_load_online_index (SM_TEMPLATE * template_, MOP * classmop, const char *const
   OID *oids = NULL;
   HFID *hfids = NULL;
   int reverse;
-  LOCK ex_lock = SCH_M_LOCK;
 
   /* Fetch the class. */
   error = au_fetch_class (template_->op, &class_, AU_FETCH_UPDATE, AU_ALTER);
@@ -16531,13 +16529,6 @@ sm_load_online_index (SM_TEMPLATE * template_, MOP * classmop, const char *const
   else
     {
       reverse = 0;
-    }
-
-  /* Demote lock for online index. */
-  error = locator_demote_class_lock (&template_->op->oid_info.oid, IX_LOCK, &ex_lock);
-  if (error != NO_ERROR)
-    {
-      goto error_return;
     }
 
   if (con->func_index_info)

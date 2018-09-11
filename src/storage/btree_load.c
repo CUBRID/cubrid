@@ -4380,14 +4380,6 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
       return NULL;
     }
 
-  /* 
-   * Start a TOP SYSTEM OPERATION.
-   * This top system operation will be either ABORTED (case of failure) or
-   * COMMITTED, so that the new file becomes kind of permanent.  This allows
-   * us to make use of un-used pages in the case of a bad init_pgcnt guess.
-   */
-  log_sysop_start (thread_p);
-  is_sysop_started = true;
   thread_p->push_resource_tracks ();
 
   btid_int.sys_btid = btid;
@@ -4545,16 +4537,6 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
     }
 
   thread_p->pop_resource_tracks ();
-  if (is_sysop_started)
-    {
-      /* todo: we have the option to commit & undo here. on undo, we can destroy the file directly. */
-      log_sysop_attach_to_outer (thread_p);
-      if (unique_pk)
-	{
-	  /* drop statistics if aborted */
-	  //log_append_undo_data2 (thread_p, RVBT_REMOVE_UNIQUE_STATS, NULL, NULL, NULL_OFFSET, sizeof (BTID), btid);
-	}
-    }
 
   LOG_CS_ENTER (thread_p);
   logpb_flush_pages_direct (thread_p);
@@ -4572,7 +4554,6 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 
 error:
   // TODO: error handling
-  //       sysop abort
 
   /* Invalidate snapshot. */
   if (builder_snapshot != NULL)
