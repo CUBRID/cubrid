@@ -1389,6 +1389,8 @@ qdump_function_type_string (FUNC_TYPE ftype)
       return "JSON_MERGE";
     case F_JSON_GET_ALL_PATHS:
       return "JSON_GET_ALL_PATHS";
+    case F_JSON_PRETTY:
+      return "JSON_PRETTY";
     default:
       return "***UNKNOWN***";
     }

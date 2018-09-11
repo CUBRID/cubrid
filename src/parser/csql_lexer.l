@@ -230,6 +230,7 @@ int yybuffer_pos;
 [jJ][sS][oO][nN][_][rR][eE][mM][oO][vV][eE]                             { begin_token(yytext);   return FUN_JSON_REMOVE;}
 [jJ][sS][oO][nN][_][aA][rR][rR][aA][yY][_][aA][pP][pP][eE][nN][dD]      { begin_token(yytext);   return FUN_JSON_ARRAY_APPEND;}
 [jJ][sS][oO][nN][_][gG][eE][tT][_][aA][lL][lL][_][pP][aA][tT][hH][sS]	{ begin_token(yytext);   return FUN_JSON_GET_ALL_PATHS;}
+[jJ][sS][oO][nN][_][pP][rR][eE][tT][tT][yY]			{ begin_token(yytext);   return FUN_JSON_PRETTY;}
 [jJ][sS][oO][nN][_][mM][eE][rR][gG][eE]                                 { begin_token(yytext);   return FUN_JSON_MERGE;}
 [cC][rR][eE][aA][tT][eE]						{ begin_token(yytext);   return CREATE; }
 [cC][rR][oO][sS][sS]							{ begin_token(yytext);   return CROSS; }

@@ -4061,6 +4061,8 @@ pt_show_function (FUNC_TYPE c)
       return "json_merge";
     case F_JSON_GET_ALL_PATHS:
       return "json_get_all_paths";
+    case F_JSON_PRETTY:
+      return "json_pretty";
     default:
       return "unknown function";
     }

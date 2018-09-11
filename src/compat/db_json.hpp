@@ -70,7 +70,7 @@ unsigned int db_json_get_length (const JSON_DOC *document);
 unsigned int db_json_get_depth (const JSON_DOC *doc);
 int db_json_extract_document_from_path (const JSON_DOC *document, const char *raw_path,
 					JSON_DOC *&result);
-char *db_json_get_raw_json_body_from_document (const JSON_DOC *doc);
+char *db_json_get_raw_json_body_from_document (const JSON_DOC *doc, bool print_pretty = false);
 
 char *db_json_get_json_body_from_document (const JSON_DOC &doc);
 
@@ -100,6 +100,7 @@ int db_json_array_append_func (const JSON_DOC *value, JSON_DOC &doc, const char 
 int db_json_remove_func (JSON_DOC &doc, const char *raw_path);
 int db_json_merge_func (const JSON_DOC *source, JSON_DOC *&dest);
 int db_json_get_all_paths_func (const JSON_DOC &doc, JSON_DOC *&result_json);
+int db_json_pretty_func (const JSON_DOC &doc, char *&result_str);
 
 int db_json_object_contains_key (JSON_DOC *obj, const char *key, int &result);
 const char *db_json_get_schema_raw_from_validator (JSON_VALIDATOR *val);

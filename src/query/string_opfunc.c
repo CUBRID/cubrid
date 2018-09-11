@@ -3664,7 +3664,6 @@ db_json_get_all_paths (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
   int error_code = NO_ERROR;
   JSON_DOC *new_doc = NULL;
   JSON_DOC *result_json = NULL;
-  char *str = NULL;
 
   db_make_null (result);
 
@@ -3690,6 +3689,45 @@ db_json_get_all_paths (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
   error_code = db_json_get_all_paths_func (*new_doc, result_json);
 
   db_make_json (result, result_json, true);
+
+  // delete new_doc
+  db_json_delete_doc (new_doc);
+
+  return NO_ERROR;
+}
+
+int
+db_json_pretty (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
+{
+  int error_code = NO_ERROR;
+  JSON_DOC *new_doc = NULL;
+  JSON_DOC *result_json = NULL;
+  char *str = NULL;
+
+  db_make_null (result);
+
+  if (num_args != 1)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  if (DB_IS_NULL (arg[0]))
+    {
+      return NO_ERROR;
+    }
+
+  error_code = db_value_to_json_doc (*arg[0], new_doc);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  error_code = db_json_pretty_func (*new_doc, str);
+
+  // direct assignement (no copy)
+  db_make_string (result, str);
 
   // delete new_doc
   db_json_delete_doc (new_doc);

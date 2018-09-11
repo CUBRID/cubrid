@@ -71,6 +71,7 @@
 #include "rapidjson/schema.h"
 #include "rapidjson/stringbuffer.h"
 #include "rapidjson/writer.h"
+#include "rapidjson/prettywriter.h"
 
 #include <sstream>
 
@@ -184,6 +185,7 @@ class JSON_BASE_HANDLER
 {
   public:
     JSON_BASE_HANDLER () {};
+    virtual ~JSON_BASE_HANDLER() {};
     typedef typename JSON_DOC::Ch Ch;
     typedef unsigned SizeType;
 
@@ -370,6 +372,43 @@ class JSON_SERIALIZER : public JSON_BASE_HANDLER
     OR_BUF *m_buffer;                       // buffer to serialize to
     std::stack<char *> m_size_pointers;     // stack used by nested arrays & objects to save starting pointer.
     // member/element count is saved at the end
+};
+
+class JSON_PRETTY_WRITTER : public JSON_BASE_HANDLER
+{
+  public:
+    JSON_PRETTY_WRITTER()
+      : m_buffer ()
+      , m_current_indent (0)
+      , m_indent_length (2)
+      , m_level_iterable (0)
+    {
+      // default ctor
+    }
+
+    ~JSON_PRETTY_WRITTER() = default;
+
+    bool Null();
+    bool Bool (bool b);
+    bool Int (int i);
+    bool Double (double d);
+    bool String (const Ch *str, SizeType length, bool copy);
+    bool StartObject();
+    bool Key (const Ch *str, SizeType length, bool copy);
+    bool StartArray();
+    bool EndObject (SizeType memberCount);
+    bool EndArray (SizeType elementCount);
+
+    std::string &ToString()
+    {
+      return m_buffer;
+    }
+
+  private:
+    std::string m_buffer;
+    unsigned int m_current_indent;
+    unsigned int m_indent_length;
+    unsigned int m_level_iterable;
 };
 
 const bool JSON_PRIVATE_ALLOCATOR::kNeedFree = true;
@@ -880,18 +919,27 @@ db_json_extract_document_from_path (const JSON_DOC *document, const char *raw_pa
 }
 
 char *
-db_json_get_raw_json_body_from_document (const JSON_DOC *doc)
+db_json_get_raw_json_body_from_document (const JSON_DOC *doc, bool print_pretty)
 {
+  if (print_pretty)
+    {
+      JSON_PRETTY_WRITTER json_pretty_writer;
+
+      doc->Accept (json_pretty_writer);
+
+      const char *json_raw = json_pretty_writer.ToString().c_str();
+
+      return db_private_strdup (NULL, json_pretty_writer.ToString().c_str());
+    }
+
   JSON_STRING_BUFFER buffer;
-  rapidjson::Writer <JSON_STRING_BUFFER> writer (buffer);
-  char *json_body;
+  rapidjson::Writer<JSON_STRING_BUFFER> json_default_writer (buffer);
 
-  buffer.Clear ();
+  buffer.Clear();
 
-  doc->Accept (writer);
-  json_body = db_private_strdup (NULL, buffer.GetString ());
+  doc->Accept (json_default_writer);
 
-  return json_body;
+  return db_private_strdup (NULL, buffer.GetString());
 }
 
 char *
@@ -2362,6 +2410,21 @@ db_json_get_all_paths_func (const JSON_DOC &doc, JSON_DOC *&result_json)
   return NO_ERROR;
 }
 
+/* db_json_pretty_func () - Returns the stringified version of a JSON document
+*
+* doc (in)                : json document
+* result_str (in)         : a string that contains the json in a pretty format
+*/
+int
+db_json_pretty_func (const JSON_DOC &doc, char *&result_str)
+{
+  assert (result_str == nullptr);
+
+  result_str = db_json_get_raw_json_body_from_document (&doc, true);
+
+  return NO_ERROR;
+}
+
 /* db_json_keys_func () - Returns the keys from the top-level value of a JSON object as a JSON array
  *
  * return                  : error code
@@ -2924,6 +2987,136 @@ bool JSON_SERIALIZER::EndArray (SizeType elementCount)
 {
   // overwrite the count
   SetSizePointers (elementCount);
+  return true;
+}
+
+bool JSON_PRETTY_WRITTER::Null()
+{
+  m_buffer.append (m_current_indent, ' ').append ("NULL");
+
+  if (m_level_iterable != 0)
+    {
+      m_buffer.append (",");
+    }
+
+  m_buffer.append ("\n");
+
+  return true;
+}
+
+bool JSON_PRETTY_WRITTER::Bool (bool b)
+{
+  m_buffer.append (m_current_indent, ' ').append (b ? "true" : "false");
+
+  if (m_level_iterable != 0)
+    {
+      m_buffer.append (",");
+    }
+
+  m_buffer.append ("\n");
+
+  return true;
+}
+
+bool JSON_PRETTY_WRITTER::Int (int i)
+{
+  m_buffer.append (m_current_indent, ' ').append (std::to_string (i));
+
+  if (m_level_iterable != 0)
+    {
+      m_buffer.append (",");
+    }
+
+  m_buffer.append ("\n");
+
+  return true;
+}
+
+bool JSON_PRETTY_WRITTER::Double (double d)
+{
+  m_buffer.append (m_current_indent, ' ').append (std::to_string (d));
+
+  if (m_level_iterable != 0)
+    {
+      m_buffer.append (",");
+    }
+
+  m_buffer.append ("\n");
+
+  return true;
+}
+
+bool JSON_PRETTY_WRITTER::String (const Ch *str, SizeType length, bool copy)
+{
+  m_buffer.append (m_current_indent, ' ').append (str);
+
+  if (m_level_iterable != 0)
+    {
+      m_buffer.append (",");
+    }
+
+  m_buffer.append ("\n");
+
+  return true;
+}
+
+bool JSON_PRETTY_WRITTER::StartObject()
+{
+  m_buffer.append (m_current_indent, ' ').append ("{").append ("\n");
+
+  m_current_indent += m_indent_length;
+  m_level_iterable++;
+
+  return true;
+}
+
+bool JSON_PRETTY_WRITTER::Key (const Ch *str, SizeType length, bool copy)
+{
+  m_buffer.append (m_current_indent, ' ').append (str);
+  return true;
+}
+
+bool JSON_PRETTY_WRITTER::StartArray()
+{
+  m_buffer.append (m_current_indent, ' ').append ("[").append ("\n");
+
+  m_current_indent += m_indent_length;
+  m_level_iterable++;
+
+  return true;
+}
+
+bool JSON_PRETTY_WRITTER::EndObject (SizeType memberCount)
+{
+  m_current_indent -= m_indent_length;
+  m_level_iterable--;
+
+  m_buffer.append (m_current_indent, ' ').append ("}");
+
+  if (m_level_iterable != 0)
+    {
+      m_buffer.append (",");
+    }
+
+  m_buffer.append ("\n");
+
+  return true;
+}
+
+bool JSON_PRETTY_WRITTER::EndArray (SizeType elementCount)
+{
+  m_current_indent -= m_indent_length;
+  m_level_iterable--;
+
+  m_buffer.append (m_current_indent, ' ').append ("]");
+
+  if (m_level_iterable != 0)
+    {
+      m_buffer.append (",");
+    }
+
+  m_buffer.append ("\n");
+
   return true;
 }
 

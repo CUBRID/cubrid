@@ -12174,7 +12174,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	  || node->info.function.function_type == F_JSON_ARRAY_APPEND
 	  || node->info.function.function_type == F_JSON_GET_ALL_PATHS
 	  || node->info.function.function_type == F_JSON_REPLACE || node->info.function.function_type == F_JSON_SET
-	  || node->info.function.function_type == F_JSON_KEYS)
+	  || node->info.function.function_type == F_JSON_KEYS || node->info.function.function_type == F_JSON_PRETTY)
 	{
 	  assert (dt == NULL);
 	  dt = pt_make_prim_data_type (parser, node->type_enum);
@@ -13148,6 +13148,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
       break;
 
     case F_JSON_GET_ALL_PATHS:
+    case F_JSON_PRETTY:
       {
 	PT_NODE *arg = arg_list;
 	bool is_supported = false;
@@ -13537,6 +13538,9 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	case F_JSON_MERGE:
 	case F_JSON_GET_ALL_PATHS:
 	  node->type_enum = PT_TYPE_JSON;
+	  break;
+	case F_JSON_PRETTY:
+	  node->type_enum = PT_TYPE_VARCHAR;
 	  break;
 	case PT_MEDIAN:
 	case PT_PERCENTILE_CONT:
@@ -20341,6 +20345,14 @@ pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_TYPE fcode, DB_VALUE 
       break;
     case F_JSON_GET_ALL_PATHS:
       error = db_json_get_all_paths (result, args, num_args);
+      if (error != NO_ERROR)
+	{
+	  PT_ERRORc (parser, NULL, er_msg ());
+	  return 0;
+	}
+      break;
+    case F_JSON_PRETTY:
+      error = db_json_pretty (result, args, num_args);
       if (error != NO_ERROR)
 	{
 	  PT_ERRORc (parser, NULL, er_msg ());

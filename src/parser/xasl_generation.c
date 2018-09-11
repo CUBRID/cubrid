@@ -6139,6 +6139,7 @@ pt_function_to_regu (PARSER_CONTEXT * parser, PT_NODE * function)
 	case F_JSON_ARRAY_APPEND:
 	case F_JSON_MERGE:
 	case F_JSON_GET_ALL_PATHS:
+	case F_JSON_PRETTY:
 	  result_type = pt_node_to_db_type (function);
 	  break;
 	default:
