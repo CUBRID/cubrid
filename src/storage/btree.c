@@ -34308,7 +34308,6 @@ btree_rv_log_delete_object (THREAD_ENTRY * thread_p, const BTREE_DELETE_HELPER &
       switch (delete_helper.purpose)
 	{
 	case BTREE_OP_DELETE_OBJECT_PHYSICAL:
-	case BTREE_OP_ONLINE_INDEX_TRAN_DELETE:
 	  // log undo logical, log redo physical
 	  log_append_undoredo_data (thread_p, RVBT_DELETE_OBJECT_PHYSICAL, &addr, delete_helper.rv_keyval_data_length,
 				    redo_length, delete_helper.rv_keyval_data, redo_data);
@@ -34369,7 +34368,6 @@ btree_rv_log_insert_object (THREAD_ENTRY * thread_p, const BTREE_INSERT_HELPER &
       switch (insert_helper.purpose)
 	{
 	case BTREE_OP_INSERT_NEW_OBJECT:
-	case BTREE_OP_ONLINE_INDEX_TRAN_INSERT:
 	  // undo logical, redo physical
 	  log_append_undoredo_data (thread_p, insert_helper.rcvindex, &addr, insert_helper.rv_keyval_data_length,
 				    redo_length, insert_helper.rv_keyval_data, redo_data);
