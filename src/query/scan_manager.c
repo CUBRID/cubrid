@@ -4359,7 +4359,7 @@ scan_next_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
     case S_HEAP_SCAN_RECORD_INFO:
     case S_HEAP_PAGE_SCAN:
       if (s_id->grouped)
-	{			
+	{
 	  /* grouped, fixed scan */
 	  if (s_id->direction == S_FORWARD)
 	    {

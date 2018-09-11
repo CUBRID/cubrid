@@ -19002,9 +19002,8 @@ pt_print_query_trace (PARSER_CONTEXT * parser, PT_NODE * p)
   return b;
 }
 
-/* pt_clean_tree_copy_info - deallocate memory used by a PT_TREE_COPY_INFO
- *
- *
+/*
+ * pt_clean_tree_copy_info () - deallocate memory used by a PT_TREE_COPY_INFO
  */
 static void
 pt_clean_tree_copy_info (PT_TREE_COPY_INFO * tree_copy_info)

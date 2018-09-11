@@ -4393,7 +4393,7 @@ pt_get_all_json_table_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * j
 
   size_t columns_nr = sorted_attrs.size ();
 
-  for (int i = 0; i < columns_nr - 1; i++)
+  for (unsigned int i = 0; i < columns_nr - 1; i++)
     {
       sorted_attrs[i]->next = sorted_attrs[i + 1];
     }
@@ -9860,67 +9860,61 @@ pt_get_attr_list_of_derived_table (PARSER_CONTEXT * parser, PT_MISC_TYPE derived
       break;
 
     case PT_IS_SUBQUERY:
-      {
-	/* must be a subquery derived table */
-	/* select_list must have passed star expansion */
-	PT_NODE *att, *col;
+      /* must be a subquery derived table */
+      /* select_list must have passed star expansion */
+      PT_NODE * att, *col;
 
-	select_list = pt_get_select_list (parser, derived_table);
-	if (!select_list)
-	  {
-	    return NULL;
-	  }
+      select_list = pt_get_select_list (parser, derived_table);
+      if (!select_list)
+	{
+	  return NULL;
+	}
 
-	for (att = select_list, i = 0; att; att = att->next, i++)
-	  {
-	    if (att->alias_print)
-	      {
-		col = pt_name (parser, att->alias_print);
-	      }
-	    else
-	      {
-		if (att->node_type == PT_NAME && att->info.name.original != NULL && att->info.name.original[0] != '\0')
-		  {
-		    col = pt_name (parser, att->info.name.original);
-		  }
-		else if (att->node_type == PT_VALUE && att->info.value.text != NULL && att->info.value.text[0] != '\0')
-		  {
-		    col = pt_name (parser, att->info.value.text);
-		  }
-		else if (att->node_type == PT_EXPR || att->node_type == PT_FUNCTION)
-		  {
-		    PARSER_VARCHAR *alias;
-		    alias = pt_print_bytes (parser, att);
-		    col = pt_name (parser, (const char *) alias->bytes);
-		  }
-		else
-		  {		/* generate column name */
-		    id = i;
-		    col = pt_name (parser, mq_generate_name (parser, derived_alias->info.name.original, &id));
-		  }
-	      }
+      for (att = select_list, i = 0; att; att = att->next, i++)
+	{
+	  if (att->alias_print)
+	    {
+	      col = pt_name (parser, att->alias_print);
+	    }
+	  else
+	    {
+	      if (att->node_type == PT_NAME && att->info.name.original != NULL && att->info.name.original[0] != '\0')
+		{
+		  col = pt_name (parser, att->info.name.original);
+		}
+	      else if (att->node_type == PT_VALUE && att->info.value.text != NULL && att->info.value.text[0] != '\0')
+		{
+		  col = pt_name (parser, att->info.value.text);
+		}
+	      else if (att->node_type == PT_EXPR || att->node_type == PT_FUNCTION)
+		{
+		  PARSER_VARCHAR *alias;
+		  alias = pt_print_bytes (parser, att);
+		  col = pt_name (parser, (const char *) alias->bytes);
+		}
+	      else
+		{		/* generate column name */
+		  id = i;
+		  col = pt_name (parser, mq_generate_name (parser, derived_alias->info.name.original, &id));
+		}
+	    }
 
-	    col->type_enum = att->type_enum;
-	    if (att->data_type)
-	      {
-		col->data_type = parser_copy_tree_list (parser, att->data_type);
-	      }
+	  col->type_enum = att->type_enum;
+	  if (att->data_type)
+	    {
+	      col->data_type = parser_copy_tree_list (parser, att->data_type);
+	    }
 
-	    as_attr_list = parser_append_node (col, as_attr_list);
-	  }
-	break;
-      }
+	  as_attr_list = parser_append_node (col, as_attr_list);
+	}
+      break;
 
     case PT_DERIVED_JSON_TABLE:
-      {
-	assert (derived_table->node_type == PT_JSON_TABLE);
+      assert (derived_table->node_type == PT_JSON_TABLE);
 
-	PT_NODE *n = derived_table->info.json_table_info.tree;
-	as_attr_list =
-	  pt_get_all_json_table_attributes_and_types (parser, derived_table, derived_alias->info.name.original);
-
-	break;
-      }
+      as_attr_list = pt_get_all_json_table_attributes_and_types (parser, derived_table,
+								 derived_alias->info.name.original);
+      break;
 
     default:
       /* this can't happen since we removed MERGE/CSELECT from grammar */
@@ -10067,7 +10061,7 @@ pt_set_attr_list_types (PARSER_CONTEXT * parser, PT_NODE * as_attr_list, PT_MISC
       break;
 
     case PT_DERIVED_JSON_TABLE:
-      //nothing to do? Types already set during pt_json_table_gather_attribs ()
+      // nothing to do? Types already set during pt_json_table_gather_attribs ()
       return;
 
     default:
