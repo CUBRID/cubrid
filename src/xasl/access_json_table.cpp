@@ -52,12 +52,8 @@ namespace cubxasl
 
 	case JSON_TABLE_THROW_ERROR:
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_TABLE_ON_ERROR_INCOMP_DOMAIN, 5,
-		  db_json_get_json_body_from_document (input),
-		  m_path.c_str(),
-		  m_column_name.c_str(),
-		  value_out_domain,
-		  pr_type_name (TP_DOMAIN_TYPE (m_domain)));
-
+		  db_json_get_json_body_from_document (input), m_path.c_str (), m_column_name.c_str (),
+		  value_out_domain, pr_type_name (TP_DOMAIN_TYPE (m_domain)));
 	  return ER_JSON_TABLE_ON_ERROR_INCOMP_DOMAIN;
 
 	case JSON_TABLE_DEFAULT_VALUE:
@@ -87,7 +83,7 @@ namespace cubxasl
 	  return NO_ERROR;
 
 	case JSON_TABLE_THROW_ERROR:
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_TABLE_ON_EMPTY_ERROR, 1, m_column_name.c_str());
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_TABLE_ON_EMPTY_ERROR, 1, m_column_name.c_str ());
 	  return ER_JSON_TABLE_ON_EMPTY_ERROR;
 
 	case JSON_TABLE_DEFAULT_VALUE:
@@ -123,10 +119,10 @@ namespace cubxasl
       JSON_DOC *docp = NULL;
       TP_DOMAIN_STATUS status_cast = TP_DOMAIN_STATUS::DOMAIN_COMPATIBLE;
 
-      error_code = db_json_extract_document_from_path (&input, m_path.c_str(), docp);
+      error_code = db_json_extract_document_from_path (&input, m_path.c_str (), docp);
       if (error_code != NO_ERROR)
 	{
-	  ASSERT_ERROR();
+	  ASSERT_ERROR ();
 	  assert (db_value_is_null (m_output_value_pointer));
 	  return ER_FAILED;
 	}
@@ -136,7 +132,7 @@ namespace cubxasl
 	  error_code = trigger_on_empty (*m_output_value_pointer);
 	  if (error_code != NO_ERROR)
 	    {
-	      ASSERT_ERROR();
+	      ASSERT_ERROR ();
 	    }
 	  return error_code;
 	}
@@ -153,7 +149,7 @@ namespace cubxasl
 	  error_code = trigger_on_error (input, status_cast, *m_output_value_pointer);
 	  if (error_code != NO_ERROR)
 	    {
-	      ASSERT_ERROR();
+	      ASSERT_ERROR ();
 	    }
 	}
 
@@ -167,10 +163,10 @@ namespace cubxasl
       bool result = false;
       TP_DOMAIN_STATUS status_cast = TP_DOMAIN_STATUS::DOMAIN_COMPATIBLE;
 
-      error_code = db_json_contains_path (&input, m_path.c_str(), result);
+      error_code = db_json_contains_path (&input, m_path.c_str (), result);
       if (error_code != NO_ERROR)
 	{
-	  ASSERT_ERROR();
+	  ASSERT_ERROR ();
 	  assert (db_value_is_null (m_output_value_pointer));
 	  return ER_FAILED;
 	}
@@ -225,7 +221,7 @@ namespace cubxasl
     }
 
     node::node (void)
-      : m_path()
+      : m_path ()
       , m_ordinality (1)
       , m_need_inc_ordinality (true)
       , m_id (0)
@@ -236,12 +232,12 @@ namespace cubxasl
     }
 
     void
-    node::clear_columns()
+    node::clear_columns ()
     {
       for (auto &column : m_output_columns)
 	{
-	  (void)pr_clear_value (column.m_output_value_pointer);
-	  (void)db_make_null (column.m_output_value_pointer);
+	  (void) pr_clear_value (column.m_output_value_pointer);
+	  (void) db_make_null (column.m_output_value_pointer);
 	}
     }
 
@@ -259,19 +255,19 @@ namespace cubxasl
     bool
     node::str_ends_with (const std::string &str, const std::string &end)
     {
-      return end.size() <= str.size() && str.compare (str.size() - end.size(), end.size(), end) == 0;
+      return end.size () <= str.size () && str.compare (str.size () - end.size (), end.size (), end) == 0;
     }
 
     bool
-    node::check_need_expand() const
+    node::check_need_expand () const
     {
       return m_expand_type != json_table_expand_type::JSON_TABLE_NO_EXPAND;
     }
 
     void
-    node::set_parent_path()
+    node::set_parent_path ()
     {
-      if (!check_need_expand())
+      if (!check_need_expand ())
 	{
 	  assert (false);
 	  return;
@@ -279,18 +275,18 @@ namespace cubxasl
 
       if (m_expand_type == json_table_expand_type::JSON_TABLE_ARRAY_EXPAND)
 	{
-	  m_path.assign (m_path.substr (0, m_path.size() - 3));
+	  m_path.assign (m_path.substr (0, m_path.size () - 3));
 	}
       else if (m_expand_type == json_table_expand_type::JSON_TABLE_OBJECT_EXPAND)
 	{
-	  m_path.assign (m_path.substr (0, m_path.size() - 2));
+	  m_path.assign (m_path.substr (0, m_path.size () - 2));
 	}
     }
 
     void
-    node::init_iterator()
+    node::init_iterator ()
     {
-      if (check_need_expand())
+      if (check_need_expand ())
 	{
 	  if (m_expand_type == json_table_expand_type::JSON_TABLE_ARRAY_EXPAND)
 	    {

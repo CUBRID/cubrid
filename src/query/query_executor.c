@@ -6459,6 +6459,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
 	  return ER_FAILED;
 	}			/* if */
+
       if (scan_type == S_HEAP_SCAN || scan_type == S_HEAP_SCAN_RECORD_INFO)
 	{
 	  if (scan_open_heap_scan (thread_p, s_id, mvcc_select_lock_needed, scan_op_type, fixed, grouped,
@@ -6643,55 +6644,66 @@ exit_on_error:
 static void
 qexec_close_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec)
 {
-  if (curr_spec)
+  if (curr_spec == NULL)
     {
-      /* monitoring */
-      switch (curr_spec->type)
-	{
-	case TARGET_CLASS:
-	  if (curr_spec->access == ACCESS_METHOD_SEQUENTIAL || curr_spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO
-	      || curr_spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN)
-	    {
-	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_SSCANS);
-	    }
-	  else if (IS_ANY_INDEX_ACCESS (curr_spec->access))
-	    {
-	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_ISCANS);
-	    }
-	  if (curr_spec->parts != NULL)
-	    {
-	      /* reset pruning info */
-	      db_private_free (thread_p, curr_spec->parts);
-	      curr_spec->parts = NULL;
-	      curr_spec->curent = NULL;
-	      curr_spec->pruned = false;
-	    }
-	  break;
-	case TARGET_CLASS_ATTR:
-	  break;
-	case TARGET_LIST:
-	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_LSCANS);
-	  break;
-	case TARGET_SHOWSTMT:
-	  /* do nothing */
-	  break;
-	case TARGET_REGUVAL_LIST:
-	  /* currently do nothing */
-	  break;
-	case TARGET_SET:
-	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_SETSCANS);
-	  break;
-	case TARGET_JSON_TABLE:
-	  /* currently do nothing 
-	     todo: check if here need to add something
-	   */
-	  break;
-	case TARGET_METHOD:
-	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_METHSCANS);
-	  break;
-	}
-      scan_close_scan (thread_p, &curr_spec->s_id);
+      return;
     }
+
+  /* monitoring */
+  switch (curr_spec->type)
+    {
+    case TARGET_CLASS:
+      if (curr_spec->access == ACCESS_METHOD_SEQUENTIAL || curr_spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO
+	  || curr_spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN)
+	{
+	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_SSCANS);
+	}
+      else if (IS_ANY_INDEX_ACCESS (curr_spec->access))
+	{
+	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_ISCANS);
+	}
+
+      if (curr_spec->parts != NULL)
+	{
+	  /* reset pruning info */
+	  db_private_free (thread_p, curr_spec->parts);
+	  curr_spec->parts = NULL;
+	  curr_spec->curent = NULL;
+	  curr_spec->pruned = false;
+	}
+      break;
+
+    case TARGET_CLASS_ATTR:
+      break;
+
+    case TARGET_LIST:
+      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_LSCANS);
+      break;
+
+    case TARGET_SHOWSTMT:
+      /* do nothing */
+      break;
+
+    case TARGET_REGUVAL_LIST:
+      /* currently do nothing */
+      break;
+
+    case TARGET_SET:
+      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_SETSCANS);
+      break;
+
+    case TARGET_JSON_TABLE:
+      /* currently do nothing 
+         todo: check if here need to add something
+       */
+      break;
+
+    case TARGET_METHOD:
+      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_METHSCANS);
+      break;
+    }
+
+  scan_close_scan (thread_p, &curr_spec->s_id);
 }
 
 /*

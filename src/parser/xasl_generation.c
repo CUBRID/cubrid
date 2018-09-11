@@ -4550,9 +4550,10 @@ pt_create_json_table_column (PARSER_CONTEXT * parser, PT_NODE * jt_column, TABLE
 			     json_table_column & col_result)
 {
   col_result.m_function = jt_column->info.json_table_column_info.func;
-  col_result.m_output_value_pointer =
-    pt_index_value (tbl_info->value_list,
-		    pt_find_attribute (parser, jt_column->info.json_table_column_info.name, tbl_info->attribute_list));
+  col_result.m_output_value_pointer = pt_index_value (tbl_info->value_list,
+						      pt_find_attribute (parser,
+									 jt_column->info.json_table_column_info.name,
+									 tbl_info->attribute_list));
   if (col_result.m_output_value_pointer == NULL)
     {
       assert (false);
@@ -12258,7 +12259,6 @@ pt_to_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_key_pa
 
   return access;
 }
-
 
 /*
  * pt_to_val_list () -

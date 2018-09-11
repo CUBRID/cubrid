@@ -19199,6 +19199,7 @@ pt_print_json_table_column_info (PARSER_CONTEXT * parser, PT_NODE * p, PARSER_VA
       // print FOR ORDINALITY
       pstr = pt_append_nulstring (parser, pstr, " FOR ORDINALITY");
       break;
+
     case json_table_column_function::JSON_TABLE_EXTRACT:
       // print type
       pstr = pt_append_nulstring (parser, pstr, " ");
@@ -19219,8 +19220,8 @@ pt_print_json_table_column_info (PARSER_CONTEXT * parser, PT_NODE * p, PARSER_VA
       pstr = pt_append_nulstring (parser, pstr, " [");
       pt_print_json_table_column_error_or_empty_behavior (parser, pstr, p->info.json_table_column_info.on_empty);
       pstr = pt_append_nulstring (parser, pstr, "]");
-
       break;
+
     case json_table_column_function::JSON_TABLE_EXISTS:
       // print type
       pstr = pt_append_nulstring (parser, pstr, " ");
@@ -19232,6 +19233,7 @@ pt_print_json_table_column_info (PARSER_CONTEXT * parser, PT_NODE * p, PARSER_VA
       // print path
       pstr = pt_append_nulstring (parser, pstr, p->info.json_table_column_info.path);
       break;
+
     default:
       /* should not be here */
       assert (false);

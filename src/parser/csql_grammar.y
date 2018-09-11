@@ -4813,15 +4813,18 @@ original_table_spec
 
 		DBG_PRINT}}
         | json_table_rule AS identifier
-          {{
-            PT_NODE *ent = parser_new_node (this_parser, PT_SPEC);
+		{{
+			PT_NODE *ent = parser_new_node (this_parser, PT_SPEC);
+			if (ent)
+			  {
+			    ent->info.spec.derived_table = $1;  // json_table_rule
+			    ent->info.spec.derived_table_type = PT_DERIVED_JSON_TABLE;
+			    ent->info.spec.range_var = $3;      // identifier
+			  }
+			$$ = ent;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-            ent->info.spec.derived_table = $1;  // json_table_rule
-            ent->info.spec.derived_table_type = PT_DERIVED_JSON_TABLE;
-            ent->info.spec.range_var = $3;      // identifier
-
-            $$ = ent;
-          DBG_PRINT}}
+		DBG_PRINT}}
 	;
 
 opt_table_spec_index_hint
@@ -24112,7 +24115,7 @@ vacuum_stmt
 		DBG_PRINT}}
 	;
 
-  json_table_column_behavior_rule
+json_table_column_behavior_rule
     : Null
       {{
         $$.m_behavior = JSON_TABLE_RETURN_NULL;
@@ -24131,31 +24134,31 @@ vacuum_stmt
       DBG_PRINT}}
     ;
 
-  json_table_on_error_rule_optional
+json_table_on_error_rule_optional
     : /* empty */
       {{
         $$.m_behavior = JSON_TABLE_RETURN_NULL;
         $$.m_default_value = NULL;
-      }}
+      DBG_PRINT}}
     | json_table_column_behavior_rule ON_ ERROR_
       {{
         $$ = $1;
       DBG_PRINT}}
     ;
 
-  json_table_on_empty_rule_optional
+json_table_on_empty_rule_optional
     : /* empty */
       {{
         $$.m_behavior = JSON_TABLE_RETURN_NULL;
         $$.m_default_value = NULL;
-      }}
+      DBG_PRINT}}
     | json_table_column_behavior_rule ON_ EMPTY
       {{
         $$ = $1;
       DBG_PRINT}}
     ;
 
-  json_table_column_rule
+json_table_column_rule
     : identifier For ORDINALITY
       {{
         PT_NODE *pt_col = parser_new_node (this_parser, PT_JSON_TABLE_COLUMN);
@@ -24197,7 +24200,7 @@ vacuum_stmt
       DBG_PRINT}}
     ;
 
-  json_table_column_list_rule
+json_table_column_list_rule
     : json_table_column_list_rule ',' json_table_column_rule
       {{
         pt_jt_append_column_or_nested_node ($1, $3);
@@ -24211,7 +24214,7 @@ vacuum_stmt
       DBG_PRINT}}
     ;
 
-  json_table_node_rule
+json_table_node_rule
     : CHAR_STRING COLUMNS '(' json_table_column_list_rule ')'
       {{
         PT_NODE *jt_node = $4;
@@ -24224,10 +24227,10 @@ vacuum_stmt
       DBG_PRINT}}
     ;
 
-  json_table_rule
+json_table_rule
     : {{
 	    json_table_column_count = 0;
-      }} 
+      DBG_PRINT}} 
 	JSON_TABLE '(' expression_ ',' json_table_node_rule ')'
       {{
         // $3 = expression_
@@ -24237,7 +24240,7 @@ vacuum_stmt
         jt->info.json_table_info.tree = $6;
 
         $$ = jt;
-      }}
+      DBG_PRINT}}
     ;
 
 %%
@@ -27213,11 +27216,9 @@ pt_set_collation_modifier (PARSER_CONTEXT *parser, PT_NODE *node,
     }
   else if (node->node_type == PT_EXPR)
     {
-      if (node->info.expr.op == PT_EVALUATE_VARIABLE
-	  || node->info.expr.op == PT_DEFINE_VARIABLE)
+      if (node->info.expr.op == PT_EVALUATE_VARIABLE || node->info.expr.op == PT_DEFINE_VARIABLE)
 	{
-	  PT_ERRORm (parser, coll_node, MSGCAT_SET_PARSER_SEMANTIC,
-		     MSGCAT_SEMANTIC_COLLATE_NOT_ALLOWED);
+	  PT_ERRORm (parser, coll_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_COLLATE_NOT_ALLOWED);
 	  return node;
 	}
       else if (node->info.expr.op == PT_CAST
@@ -27226,8 +27227,7 @@ pt_set_collation_modifier (PARSER_CONTEXT *parser, PT_NODE *node,
 	  LANG_COLLATION *lc_node = lang_get_collation (PT_GET_COLLATION_MODIFIER (node));
 	  if (lc_node->codeset != lang_coll->codeset)
 	    {
-	      PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-			   MSGCAT_SEMANTIC_CS_MATCH_COLLATE,
+	      PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CS_MATCH_COLLATE,
 			   lang_get_codeset_name (lc_node->codeset),
 			   lang_get_codeset_name (lang_coll->codeset));
 	      return node;
@@ -27239,16 +27239,14 @@ pt_set_collation_modifier (PARSER_CONTEXT *parser, PT_NODE *node,
 	  do_wrap_with_cast = true;
 	}
     }
-  else if (node->node_type == PT_NAME || node->node_type == PT_DOT_
-	   || node->node_type == PT_FUNCTION)
+  else if (node->node_type == PT_NAME || node->node_type == PT_DOT_ || node->node_type == PT_FUNCTION)
     {
       PT_SET_NODE_COLL_MODIFIER (node, lang_coll->coll.coll_id);
       do_wrap_with_cast = true;
     }
   else
     {
-      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-		 MSGCAT_SEMANTIC_COLLATE_NOT_ALLOWED);
+      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_COLLATE_NOT_ALLOWED);
       assert (do_wrap_with_cast == false);
     }
 
@@ -27273,7 +27271,6 @@ pt_create_json_value (PARSER_CONTEXT *parser, const char *str)
   PT_NODE *node = NULL;
 
   node = parser_new_node (parser, PT_VALUE);
-
   if (node)
     {
       node->type_enum = PT_TYPE_JSON;
@@ -27293,7 +27290,7 @@ pt_jt_append_column_or_nested_node (PT_NODE * jt_node, PT_NODE * jt_col_or_neste
 
   if (jt_col_or_nested->node_type == PT_JSON_TABLE_COLUMN)
     {
-	  jt_col_or_nested->info.json_table_column_info.index = json_table_column_count++;
+      jt_col_or_nested->info.json_table_column_info.index = json_table_column_count++;
       jt_node->info.json_table_node_info.columns =
         parser_append_node (jt_col_or_nested, jt_node->info.json_table_node_info.columns);
     }

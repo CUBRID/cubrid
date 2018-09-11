@@ -4356,7 +4356,6 @@ on_error:
 static PT_NODE *
 pt_json_table_gather_attribs (PARSER_CONTEXT * parser, PT_NODE * json_table_column, void *args, int *continue_walk)
 {
-
   PT_NODE **attribs = (PT_NODE **) args;
 
   if (json_table_column->node_type == PT_JSON_TABLE_COLUMN)

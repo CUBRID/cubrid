@@ -5222,6 +5222,7 @@ static char *
 stx_unpack_json_table_column_behavior (THREAD_ENTRY * thread_p, char *ptr, json_table_column_behavior & behavior)
 {
   int temp;
+
   ptr = or_unpack_int (ptr, &temp);
   behavior.m_behavior = (json_table_column_behavior_type) temp;
 

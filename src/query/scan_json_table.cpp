@@ -183,7 +183,7 @@ namespace cubscan
 	  error_code = col.evaluate (*m_process_doc, m_node->m_ordinality);
 	  if (error_code != NO_ERROR)
 	    {
-	      ASSERT_ERROR();
+	      ASSERT_ERROR ();
 	      return error_code;
 	    }
 	}
@@ -195,10 +195,12 @@ namespace cubscan
     scanner::cursor::end (void)
     {
       m_is_node_consumed = true;
+
       if (m_node->m_iterator != NULL)
 	{
 	  db_json_reset_iterator (m_node->m_iterator);
 	}
+
       m_process_doc = NULL;
       m_node->clear_columns ();
     }
@@ -230,7 +232,7 @@ namespace cubscan
       // init cursor nodes to left-most first branch
       json_table_node *t = m_specp->m_root_node;
       m_scan_cursor[0].m_node = t;
-      for (int i = 1; !t->m_nested_nodes.empty(); t = &t->m_nested_nodes[0], ++i)
+      for (int i = 1; !t->m_nested_nodes.empty (); t = &t->m_nested_nodes[0], ++i)
 	{
 	  m_scan_cursor[i].m_node = t;
 	}
@@ -258,7 +260,6 @@ namespace cubscan
 	      cursor.m_is_row_fetched = false;
 	    }
 	}
-
     }
 
     int
@@ -274,7 +275,7 @@ namespace cubscan
       error_code = fetch_peek_dbval (thread_p, m_specp->m_json_reguvar, NULL, NULL, NULL, NULL, &value_p);
       if (error_code != NO_ERROR)
 	{
-	  ASSERT_ERROR();
+	  ASSERT_ERROR ();
 	  return error_code;
 	}
       if (value_p == NULL || db_value_is_null (value_p))
@@ -316,7 +317,7 @@ namespace cubscan
 	  pr_clear_value (&json_cast_value);
 	  if (error_code != NO_ERROR)
 	    {
-	      ASSERT_ERROR();
+	      ASSERT_ERROR ();
 	      return error_code;
 	    }
 	}
@@ -363,7 +364,7 @@ namespace cubscan
 	  error_code = scan_next_internal (thread_p, 0, has_row);
 	  if (error_code != NO_ERROR)
 	    {
-	      ASSERT_ERROR();
+	      ASSERT_ERROR ();
 	      return error_code;
 	    }
 	  if (!has_row)
@@ -419,6 +420,7 @@ namespace cubscan
       cursor_out.m_is_row_fetched = false;
       cursor_out.m_child = 0;
       cursor_out.m_node = &node;
+
       return set_input_document (cursor_out, node, doc);
     }
 
@@ -443,7 +445,7 @@ namespace cubscan
     void
     scanner::init_iterators (cubxasl::json_table::node &node)
     {
-      node.init_iterator();
+      node.init_iterator ();
 
       for (cubxasl::json_table::node &child : node.m_nested_nodes)
 	{
@@ -455,6 +457,7 @@ namespace cubscan
     scanner::reset_ordinality (cubxasl::json_table::node &node)
     {
       node.m_ordinality = 1;
+
       for (cubxasl::json_table::node &child : node.m_nested_nodes)
 	{
 	  reset_ordinality (child);
@@ -540,7 +543,7 @@ namespace cubscan
 	  error_code = set_next_cursor (this_cursor, depth + 1);
 	  if (error_code != NO_ERROR)
 	    {
-	      ASSERT_ERROR();
+	      ASSERT_ERROR ();
 	      return error_code;
 	    }
 	  cursor &next_cursor = m_scan_cursor[depth + 1];
@@ -589,7 +592,7 @@ namespace cubscan
       return NO_ERROR;
     }
 
-    SCAN_PRED &scanner::get_predicate()
+    SCAN_PRED &scanner::get_predicate ()
     {
       return m_scan_predicate;
     }

@@ -4771,10 +4771,12 @@ static char *
 xts_process_json_table_column_behavior (char *ptr, const json_table_column_behavior * behavior)
 {
   ptr = or_pack_int (ptr, behavior->m_behavior);
+
   if (behavior->m_behavior == JSON_TABLE_DEFAULT_VALUE)
     {
       ptr = xts_process_db_value (ptr, behavior->m_default_value);
     }
+
   return ptr;
 }
 
@@ -4786,7 +4788,7 @@ xts_process_json_table_column (char *ptr, const json_table_column * json_table_c
   // save json function
   ptr = or_pack_int (ptr, json_table_column->m_function);
 
-  //save output db_value pointer
+  // save output db_value pointer
   offset = xts_save_db_value (json_table_column->m_output_value_pointer);
   if (offset == ER_FAILED)
     {
@@ -4833,8 +4835,6 @@ xts_process_json_table_column (char *ptr, const json_table_column * json_table_c
   return ptr;
 }
 
-// *INDENT-OFF*
-// for (it : list) cannot be correctly indented
 static char *
 xts_process_json_table_node (char *ptr, const json_table_node * json_table_node)
 {				//todo: seems to be necessary to add a save function to call this
@@ -4847,29 +4847,33 @@ xts_process_json_table_node (char *ptr, const json_table_node * json_table_node)
       return NULL;
     }
   ptr = or_pack_int (ptr, offset);
-  
+
   // save m_output_columns
-  ptr = or_pack_int (ptr, (int) json_table_node->m_output_columns.size());
-  for (auto & col : json_table_node->m_output_columns)
+  ptr = or_pack_int (ptr, (int) json_table_node->m_output_columns.size ());
+
+  // *INDENT-OFF*
+  for (auto &col : json_table_node->m_output_columns)
     {
       ptr = xts_process_json_table_column (ptr, &col);
     }
+  // *INDENT-ON*
+
   // save nested nodes
   ptr = or_pack_int (ptr, (int) json_table_node->m_nested_nodes.size ());
-  for (auto & n : json_table_node->m_nested_nodes)
+
+  // *INDENT-OFF*
+  for (auto &n : json_table_node->m_nested_nodes)
     {
       ptr = xts_process_json_table_node (ptr, &n);
     }
+  // *INDENT-ON*
 
   ptr = or_pack_int (ptr, (int) json_table_node->m_id);
 
-  ptr = or_pack_int(ptr, (int)json_table_node->m_expand_type);
+  ptr = or_pack_int (ptr, (int) json_table_node->m_expand_type);
 
   return ptr;
 }
-// *INDENT-ON*
-
-// for (it : list) cannot be correctly indented
 
 static char *
 xts_process_json_table_spec_type (char *ptr, const json_table_spec_node * json_table_spec)
@@ -6720,10 +6724,12 @@ static int
 xts_sizeof_json_table_column_behavior (const json_table_column_behavior * behavior)
 {
   int size = OR_INT_SIZE;	// json_table_column_behavior_type
+
   if (behavior->m_behavior == JSON_TABLE_DEFAULT_VALUE)
     {
       size += xts_sizeof_db_value (behavior->m_default_value);
     }
+
   return size;
 }
 
@@ -6732,7 +6738,7 @@ xts_sizeof_json_table_column (const json_table_column * json_table_column)
 {
   int size = 0;
 
-  size += OR_INT_SIZE /* m_function */ ;
+  size += OR_INT_SIZE;		/* m_function */
   size += PTR_SIZE;		/* m_output_value_pointer */
 
   if (json_table_column->m_function == JSON_TABLE_ORDINALITY)
@@ -6759,39 +6765,39 @@ xts_sizeof_json_table_column (const json_table_column * json_table_column)
 static int
 xts_sizeof_json_table_node (const json_table_node * jtn)
 {
-// *INDENT-OFF*
-// for (it : list)
-
   int size = 0;
 
   size += (PTR_SIZE		/* m_ordinality */
 	   + OR_INT_SIZE	/* m_path */
 	   + OR_INT_SIZE	/* m_id */
-           + OR_INT_SIZE);      /* m_expand_type */
+	   + OR_INT_SIZE);	/* m_expand_type */
 
-  size += OR_INT_SIZE;		/*m_output_colums list size */
-  for (auto & n : jtn->m_output_columns)
+  size += OR_INT_SIZE;		/* m_output_colums list size */
+
+  // *INDENT-OFF*
+  for (auto &n : jtn->m_output_columns)
     {
       size += xts_sizeof_json_table_column (&n);
     }
+  // *INDENT-ON*
 
-  size += OR_INT_SIZE;		/*m_nested_nodes size */
-  for (auto & n : jtn->m_nested_nodes)
+  size += OR_INT_SIZE;		/* m_nested_nodes size */
+
+  // *INDENT-OFF*
+  for (auto &n : jtn->m_nested_nodes)
     {
       size += xts_sizeof_json_table_node (&n);
     }
+  // *INDENT-ON*
 
   return size;
-
-// *INDENT-ON*
-// for (it : list)
 }
 
 /*
-* xts_sizeof_json_table_spec_type () -
-*   return:
-*   ptr(in)    :
-*/
+ * xts_sizeof_json_table_spec_type () -
+ *   return:
+ *   ptr(in)    :
+ */
 static int
 xts_sizeof_json_table_spec_type (const json_table_spec_node * json_table_spec)
 {
