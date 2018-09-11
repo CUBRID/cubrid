@@ -473,6 +473,13 @@ static PARSER_VARCHAR *pt_print_use (PARSER_CONTEXT * parser, PT_NODE * p);
 static int parser_print_user (char *user_text, int len);
 
 static void pt_clean_tree_copy_info (PT_TREE_COPY_INFO * tree_copy_info);
+static const char *pt_json_table_column_behavior_to_string (const json_table_column_behavior_type & behavior_type);
+static PARSER_VARCHAR *pt_print_json_table_column_error_or_empty_behavior (PARSER_CONTEXT * parser,
+									   PARSER_VARCHAR * pstr,
+									   const struct json_table_column_behavior
+									   &column_behavior);
+static PARSER_VARCHAR *pt_print_json_table_column_info (PARSER_CONTEXT * parser, PT_NODE * p, PARSER_VARCHAR * pstr);
+
 
 static PARSER_PRINT_NODE_FUNC pt_print_func_array[PT_NODE_NUMBER];
 
@@ -19088,6 +19095,8 @@ pt_print_json_table_node (PARSER_CONTEXT * parser, PT_NODE * p)
   // print format:
   // .path columns (.columns, .nested paths)
 
+  // todo - print columns and nested path in same order as defined by user...
+
   // print path
   pstr = pt_append_nulstring (parser, pstr, p->info.json_table_node_info.path);
 
@@ -19131,29 +19140,43 @@ pt_apply_json_table_column (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTI
   return p;
 }
 
-const char *
-get_behavior_as_str (const json_table_column_behavior_type & behavior_type)
+//
+// pt_json_table_column_behavior_to_string ()
+//
+// return             : stringify behavior
+// behavior_type (in) : behavior enum value
+//
+static const char *
+pt_json_table_column_behavior_to_string (const json_table_column_behavior_type & behavior_type)
 {
-  const char *result;
-
   switch (behavior_type)
     {
     case json_table_column_behavior_type::JSON_TABLE_RETURN_NULL:
-      result = "RETURN NULL";
+      return "RETURN NULL";
       break;
 
     case json_table_column_behavior_type::JSON_TABLE_DEFAULT_VALUE:
-      result = "DEFAULT VALUE";
+      return "DEFAULT VALUE";
       break;
 
     case json_table_column_behavior_type::JSON_TABLE_THROW_ERROR:
-      result = "THROW ERROR";
+      return "THROW ERROR";
       break;
-    }
 
-  return result;
+    default:
+      assert (false);
+      return "UNKNOWN BEHAVIOR";
+    }
 }
 
+//
+// pt_print_json_table_column_error_or_empty_behavior () - print json table column behavior
+//
+// return               : parser varchar
+// parser (in)          : parser context
+// pstr (in/out)        : parser varchar where printed column behavior is appended
+// column_behavior (in) : column behavior
+//
 static PARSER_VARCHAR *
 pt_print_json_table_column_error_or_empty_behavior (PARSER_CONTEXT * parser, PARSER_VARCHAR * pstr,
 						    const struct json_table_column_behavior &column_behavior)
@@ -19161,7 +19184,7 @@ pt_print_json_table_column_error_or_empty_behavior (PARSER_CONTEXT * parser, PAR
   PARSER_VARCHAR *substr = NULL;
 
   // print behavior type
-  pstr = pt_append_nulstring (parser, pstr, get_behavior_as_str (column_behavior.m_behavior));
+  pstr = pt_append_nulstring (parser, pstr, pt_json_table_column_behavior_to_string (column_behavior.m_behavior));
 
   if (column_behavior.m_behavior == json_table_column_behavior_type::JSON_TABLE_DEFAULT_VALUE)
     {
@@ -19174,11 +19197,21 @@ pt_print_json_table_column_error_or_empty_behavior (PARSER_CONTEXT * parser, PAR
   return pstr;
 }
 
+//
+// pt_print_json_table_column_info () - print json table column info
+//
+// return        : parser varchar
+// parser (in)   : parser context
+// p (in)        : print column
+// pstr (in/out) : parser varchar where printed column info is appended
+//
 static PARSER_VARCHAR *
 pt_print_json_table_column_info (PARSER_CONTEXT * parser, PT_NODE * p, PARSER_VARCHAR * pstr)
 {
   PARSER_VARCHAR *substr = NULL;
   const char *type = NULL;
+
+  assert (p->node_type == PT_JSON_TABLE_COLUMN);
 
   // print format:
   // name FOR ORDINALITY

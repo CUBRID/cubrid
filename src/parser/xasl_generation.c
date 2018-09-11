@@ -335,6 +335,16 @@ static ACCESS_SPEC_TYPE *pt_to_set_expr_table_spec_list (PARSER_CONTEXT * parser
 							 PT_NODE * where_part);
 static ACCESS_SPEC_TYPE *pt_to_cselect_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * cselect,
 							PT_NODE * src_derived_tbl);
+static ACCESS_SPEC_TYPE *pt_to_json_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * json_table,
+						     PT_NODE * src_derived_tbl, PT_NODE * where_p);
+static ACCESS_SPEC_TYPE *pt_make_json_table_access_spec (PARSER_CONTEXT * parser, REGU_VARIABLE * json_reguvar,
+							 PRED_EXPR * where_pred, PT_JSON_TABLE_INFO * json_table,
+							 TABLE_INFO * tbl_info);
+static json_table_node *pt_make_json_table_spec_node (PARSER_CONTEXT * parser, PT_JSON_TABLE_INFO * json_table,
+						      size_t & start_id, TABLE_INFO * tbl_info);
+static void pt_make_json_table_spec_node_internal (PARSER_CONTEXT * parser, PT_JSON_TABLE_NODE_INFO * jt_node_info,
+						   size_t & current_id, TABLE_INFO * tbl_info,
+						   json_table_node & result);
 static XASL_NODE *pt_find_xasl (XASL_NODE * list, XASL_NODE * match);
 static void pt_set_aptr (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NODE * xasl);
 static XASL_NODE *pt_append_scan (const XASL_NODE * to, const XASL_NODE * from);
@@ -4572,59 +4582,84 @@ pt_create_json_table_column (PARSER_CONTEXT * parser, PT_NODE * jt_column, TABLE
   col_result.m_on_error = jt_column->info.json_table_column_info.on_error;
 }
 
-static json_table_node *
-transform_to_json_table_spec_node_internal (PARSER_CONTEXT * parser, PT_JSON_TABLE_NODE_INFO * jt_node_info,
-					    size_t & current_id, TABLE_INFO * tbl_info)
+//
+// pt_make_json_table_spec_node_internal () - recursive function to generate json table access tree
+//
+// parser (in)         : parser context
+// jt_node_info (in)   : json table parser node info
+// current_id (in/out) : as input ID for this node, output next ID (after all nested nodes in current branch)
+// tbl_info (in)       : table info cache
+// result (out)        : a node in json table access tree based on json table node info
+//
+static void
+pt_make_json_table_spec_node_internal (PARSER_CONTEXT * parser, PT_JSON_TABLE_NODE_INFO * jt_node_info,
+				       size_t & current_id, TABLE_INFO * tbl_info, json_table_node & result)
 {
-  json_table_node *result = new json_table_node ();
-
   // copy path
-  result->m_path = jt_node_info->path;
+  result.m_path = jt_node_info->path;
 
   // after set the id, increment
-  result->m_id = current_id++;
+  result.m_id = current_id++;
 
   // set the expand type
-  if (json_table_node::str_ends_with (result->m_path, "[*]"))
+  if (json_table_node::str_ends_with (result.m_path, "[*]"))
     {
-      result->m_expand_type = json_table_expand_type::JSON_TABLE_ARRAY_EXPAND;
+      result.m_expand_type = json_table_expand_type::JSON_TABLE_ARRAY_EXPAND;
     }
-  else if (json_table_node::str_ends_with (result->m_path, ".*"))
+  else if (json_table_node::str_ends_with (result.m_path, ".*"))
     {
-      result->m_expand_type = json_table_expand_type::JSON_TABLE_OBJECT_EXPAND;
+      result.m_expand_type = json_table_expand_type::JSON_TABLE_OBJECT_EXPAND;
     }
 
-  if (result->check_need_expand ())
+  if (result.check_need_expand ())
     {
       // trim the path to extract directly from this new path
-      result->set_parent_path ();
+      result.set_parent_path ();
     }
 
   // create columns
   for (PT_NODE * cols_itr = jt_node_info->columns; cols_itr != NULL; cols_itr = cols_itr->next)
     {
-      result->m_output_columns.emplace_back (json_table_column ());
-      pt_create_json_table_column (parser, cols_itr, tbl_info, *result->m_output_columns.rbegin ());
+      result.m_output_columns.emplace_back ();
+      pt_create_json_table_column (parser, cols_itr, tbl_info, *result.m_output_columns.rbegin ());
     }
 
   // create children 
   for (PT_NODE * nested_itr = jt_node_info->nested_paths; nested_itr != NULL; nested_itr = nested_itr->next)
     {
-      result->m_nested_nodes.emplace_back (*transform_to_json_table_spec_node_internal
-					   (parser, &nested_itr->info.json_table_node_info, current_id, tbl_info));
+      pt_make_json_table_spec_node_internal (parser, &nested_itr->info.json_table_node_info, current_id, tbl_info,
+					     result.m_nested_nodes.back ());
     }
-
-  return result;
 }
 
+//
+// pt_make_json_table_spec_node () - document me!
+//
+// return            : pointer to generated json_table_node
+// parser (in)       : parser context
+// json_table (in)   : json table parser node info
+// start_id (in/out) : output total node count (root + nested)
+// tbl_info (in)     : table info cache
+//
 static json_table_node *
-transform_to_json_table_spec_node (PARSER_CONTEXT * parser, PT_JSON_TABLE_INFO * json_table, size_t & start_id,
-				   TABLE_INFO * tbl_info)
+pt_make_json_table_spec_node (PARSER_CONTEXT * parser, PT_JSON_TABLE_INFO * json_table, size_t & start_id,
+			      TABLE_INFO * tbl_info)
 {
-  return transform_to_json_table_spec_node_internal (parser, &json_table->tree->info.json_table_node_info, start_id,
-						     tbl_info);
+  json_table_node *root_node = new json_table_node ();
+  pt_make_json_table_spec_node_internal (parser, &json_table->tree->info.json_table_node_info, start_id, tbl_info,
+					 *root_node);
 }
 
+//
+// pt_make_json_table_access_spec () - make json access spec
+//
+// return            : pointer to access spec
+// parser (in)       : parser context
+// json_reguvar (in) : reguvar for json table expression
+// where_pred (in)   : json table scan filter predicate
+// json_table (in)   : json table parser node info
+// tbl_info (in)     : table info cache
+//
 static ACCESS_SPEC_TYPE *
 pt_make_json_table_access_spec (PARSER_CONTEXT * parser, REGU_VARIABLE * json_reguvar, PRED_EXPR * where_pred,
 				PT_JSON_TABLE_INFO * json_table, TABLE_INFO * tbl_info)
@@ -4636,7 +4671,7 @@ pt_make_json_table_access_spec (PARSER_CONTEXT * parser, REGU_VARIABLE * json_re
 
   if (spec)
     {
-      spec->s.json_table_node.m_root_node = transform_to_json_table_spec_node (parser, json_table, start_id, tbl_info);
+      spec->s.json_table_node.m_root_node = pt_make_json_table_spec_node (parser, json_table, start_id, tbl_info);
       spec->s.json_table_node.m_json_reguvar = json_reguvar;
       // each node will have its own incremental id, so we can count the nr of nodes based on this identifier
       spec->s.json_table_node.m_node_count = start_id;
