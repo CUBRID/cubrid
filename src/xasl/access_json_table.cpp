@@ -174,7 +174,6 @@ namespace cubxasl
       db_make_short (m_output_value_pointer, result ? 1 : 0);
 
       status_cast = tp_value_cast (m_output_value_pointer, m_output_value_pointer, m_domain, false);
-
       if (status_cast != TP_DOMAIN_STATUS::DOMAIN_COMPATIBLE)
 	{
 	  return ER_FAILED;
@@ -187,8 +186,11 @@ namespace cubxasl
     column::evaluate_ordinality (size_t ordinality)
     {
       TP_DOMAIN_STATUS status_cast = TP_DOMAIN_STATUS::DOMAIN_COMPATIBLE;
+
       assert (m_domain->type->id == DB_TYPE_INTEGER);
+
       db_make_int (m_output_value_pointer, ordinality);
+
       return NO_ERROR;
     }
 
@@ -217,7 +219,7 @@ namespace cubxasl
 	  return ER_FAILED;
 	}
 
-      return NO_ERROR;
+      return error_code;
     }
 
     node::node (void)
