@@ -33548,15 +33548,19 @@ btree_key_online_index_tran_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	  addr.pgptr = page_found;
 	  addr.vfid = &btid_int->sys_btid->vfid;
 
-	  error_code =
-	    btree_rv_save_keyval_for_undo (btid_int, key, BTREE_INSERT_CLASS_OID (insert_helper),
-					   BTREE_INSERT_OID (insert_helper), BTREE_INSERT_MVCC_INFO (insert_helper),
-					   insert_helper->purpose, rv_undo_data_bufalign,
-					   &rv_undo_data, &rv_undo_data_capacity, &rv_undo_data_length);
-	  if (error_code != NO_ERROR)
+	  if (insert_helper->purpose != BTREE_OP_ONLINE_INDEX_UNDO_TRAN_DELETE
+	      && insert_helper->purpose != BTREE_OP_ONLINE_INDEX_UNDO_TRAN_INSERT)
 	    {
-	      ASSERT_ERROR ();
-	      return error_code;
+	      error_code =
+		btree_rv_save_keyval_for_undo (btid_int, key, BTREE_INSERT_CLASS_OID (insert_helper),
+					       BTREE_INSERT_OID (insert_helper), BTREE_INSERT_MVCC_INFO (insert_helper),
+					       insert_helper->purpose, rv_undo_data_bufalign,
+					       &rv_undo_data, &rv_undo_data_capacity, &rv_undo_data_length);
+	      if (error_code != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  return error_code;
+		}
 	    }
 
 	  /* Redo logging. */
@@ -33648,7 +33652,6 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
   record.area_size = IO_MAX_PAGE_SIZE;
 
   char *rv_undo_data = NULL;
-  int rv_undo_data_length;
   int rv_undo_data_capacity = IO_MAX_PAGE_SIZE;
   char rv_undo_data_buffer[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
   char *rv_undo_data_bufalign = PTR_ALIGN (rv_undo_data_buffer, BTREE_MAX_ALIGN);
@@ -33716,19 +33719,23 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	      addr.vfid = &btid_int->sys_btid->vfid;
 
 	      delete_helper->rv_keyval_data = rv_undo_data_bufalign;
-	      error_code =
-		btree_rv_save_keyval_for_undo (btid_int, key, BTREE_DELETE_CLASS_OID (delete_helper),
-					       BTREE_DELETE_OID (delete_helper), BTREE_DELETE_MVCC_INFO (delete_helper),
-					       delete_helper->purpose, rv_undo_data_bufalign,
-					       &delete_helper->rv_keyval_data, &rv_undo_data_capacity,
-					       &delete_helper->rv_keyval_data_length);
 
-	      if (error_code != NO_ERROR)
+	      if (delete_helper->purpose != BTREE_OP_ONLINE_INDEX_UNDO_TRAN_DELETE
+		  && delete_helper->purpose != BTREE_OP_ONLINE_INDEX_UNDO_TRAN_INSERT)
 		{
-		  ASSERT_ERROR ();
-		  return error_code;
-		}
+		  error_code =
+		    btree_rv_save_keyval_for_undo (btid_int, key, BTREE_DELETE_CLASS_OID (delete_helper),
+						   BTREE_DELETE_OID (delete_helper),
+						   BTREE_DELETE_MVCC_INFO (delete_helper), delete_helper->purpose,
+						   rv_undo_data_bufalign, &delete_helper->rv_keyval_data,
+						   &rv_undo_data_capacity, &delete_helper->rv_keyval_data_length);
 
+		  if (error_code != NO_ERROR)
+		    {
+		      ASSERT_ERROR ();
+		      return error_code;
+		    }
+		}
 	      /* Redo logging. */
 	      if (node_type == BTREE_OVERFLOW_NODE)
 		{
@@ -33789,16 +33796,21 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	      delete_helper->leaf_addr.vfid = &btid_int->sys_btid->vfid;
 
 	      delete_helper->rv_keyval_data = rv_undo_data_bufalign;
-	      error_code =
-		btree_rv_save_keyval_for_undo (btid_int, key, BTREE_DELETE_CLASS_OID (delete_helper),
-					       BTREE_DELETE_OID (delete_helper), BTREE_DELETE_MVCC_INFO (delete_helper),
-					       delete_helper->purpose, rv_undo_data_bufalign,
-					       &delete_helper->rv_keyval_data, &rv_undo_data_capacity,
-					       &delete_helper->rv_keyval_data_length);
-	      if (error_code != NO_ERROR)
+
+	      if (delete_helper->purpose != BTREE_OP_ONLINE_INDEX_UNDO_TRAN_DELETE
+		  && delete_helper->purpose != BTREE_OP_ONLINE_INDEX_UNDO_TRAN_INSERT)
 		{
-		  ASSERT_ERROR ();
-		  return error_code;
+		  error_code =
+		    btree_rv_save_keyval_for_undo (btid_int, key, BTREE_DELETE_CLASS_OID (delete_helper),
+						   BTREE_DELETE_OID (delete_helper),
+						   BTREE_DELETE_MVCC_INFO (delete_helper), delete_helper->purpose,
+						   rv_undo_data_bufalign, &delete_helper->rv_keyval_data,
+						   &rv_undo_data_capacity, &delete_helper->rv_keyval_data_length);
+		  if (error_code != NO_ERROR)
+		    {
+		      ASSERT_ERROR ();
+		      return error_code;
+		    }
 		}
 
 	      /* Redo logging. */
@@ -33868,7 +33880,6 @@ btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_
   record.area_size = IO_MAX_PAGE_SIZE;
 
   char *rv_undo_data = NULL;
-  int rv_undo_data_length;
   int rv_undo_data_capacity = IO_MAX_PAGE_SIZE;
   char rv_undo_data_buffer[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
   char *rv_undo_data_bufalign = PTR_ALIGN (rv_undo_data_buffer, BTREE_MAX_ALIGN);
@@ -33950,16 +33961,21 @@ btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_
 	      delete_helper.leaf_addr.vfid = &btid_int->sys_btid->vfid;
 
 	      delete_helper.rv_keyval_data = rv_undo_data_bufalign;
-	      error_code =
-		btree_rv_save_keyval_for_undo (btid_int, key, BTREE_DELETE_CLASS_OID (&delete_helper),
-					       BTREE_DELETE_OID (&delete_helper),
-					       BTREE_DELETE_MVCC_INFO (&delete_helper), delete_helper.purpose,
-					       rv_undo_data_bufalign, &delete_helper.rv_keyval_data,
-					       &rv_undo_data_capacity, &delete_helper.rv_keyval_data_length);
-	      if (error_code != NO_ERROR)
+
+	      if (delete_helper.purpose != BTREE_OP_ONLINE_INDEX_UNDO_TRAN_DELETE
+		  && delete_helper.purpose != BTREE_OP_ONLINE_INDEX_UNDO_TRAN_INSERT)
 		{
-		  ASSERT_ERROR ();
-		  return error_code;
+		  error_code =
+		    btree_rv_save_keyval_for_undo (btid_int, key, BTREE_DELETE_CLASS_OID (&delete_helper),
+						   BTREE_DELETE_OID (&delete_helper),
+						   BTREE_DELETE_MVCC_INFO (&delete_helper), delete_helper.purpose,
+						   rv_undo_data_bufalign, &delete_helper.rv_keyval_data,
+						   &rv_undo_data_capacity, &delete_helper.rv_keyval_data_length);
+		  if (error_code != NO_ERROR)
+		    {
+		      ASSERT_ERROR ();
+		      return error_code;
+		    }
 		}
 
 	      /* Redo logging. */
@@ -33993,18 +34009,21 @@ btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_
 	      addr.vfid = &btid_int->sys_btid->vfid;
 
 	      insert_helper->rv_keyval_data = rv_undo_data_bufalign;
-	      error_code =
-		btree_rv_save_keyval_for_undo (btid_int, key, BTREE_INSERT_CLASS_OID (insert_helper),
-					       BTREE_INSERT_OID (insert_helper), BTREE_INSERT_MVCC_INFO (insert_helper),
-					       insert_helper->purpose, rv_undo_data_bufalign,
-					       &insert_helper->rv_keyval_data, &rv_undo_data_capacity,
-					       &insert_helper->rv_keyval_data_length);
-	      if (error_code != NO_ERROR)
+	      if (insert_helper->purpose != BTREE_OP_ONLINE_INDEX_UNDO_TRAN_DELETE
+		  && insert_helper->purpose != BTREE_OP_ONLINE_INDEX_UNDO_TRAN_INSERT)
 		{
-		  ASSERT_ERROR ();
-		  return error_code;
+		  error_code =
+		    btree_rv_save_keyval_for_undo (btid_int, key, BTREE_INSERT_CLASS_OID (insert_helper),
+						   BTREE_INSERT_OID (insert_helper),
+						   BTREE_INSERT_MVCC_INFO (insert_helper), insert_helper->purpose,
+						   rv_undo_data_bufalign, &insert_helper->rv_keyval_data,
+						   &rv_undo_data_capacity, &insert_helper->rv_keyval_data_length);
+		  if (error_code != NO_ERROR)
+		    {
+		      ASSERT_ERROR ();
+		      return error_code;
+		    }
 		}
-
 	      /* Redo logging. */
 	      if (node_type == BTREE_OVERFLOW_NODE)
 		{
@@ -34049,6 +34068,7 @@ btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_
   /* We did not find the object. We have to insert it with DELETE_FLAG set. */
   insert_helper->obj_info.mvcc_info.flags |= BTREE_OID_HAS_MVCC_INSID;
   btree_online_index_set_delete_flag_state (insert_helper->obj_info.mvcc_info.insert_mvccid);
+
   error_code = btree_key_insert_new_object (thread_p, btid_int, key, leaf_page, search_key, restart, other_args);
 
 end:

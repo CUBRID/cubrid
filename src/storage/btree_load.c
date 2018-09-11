@@ -4368,6 +4368,8 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   HEAP_SCANCACHE scan_cache;
   HEAP_CACHE_ATTRINFO attr_info;
   int ret = NO_ERROR;
+  LOCK old_lock = SCH_M_LOCK;
+  LOCK new_lock = IX_LOCK;
 
   func_index_info.expr = NULL;
 
@@ -4378,14 +4380,6 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
       return NULL;
     }
 
-  /* 
-   * Start a TOP SYSTEM OPERATION.
-   * This top system operation will be either ABORTED (case of failure) or
-   * COMMITTED, so that the new file becomes kind of permanent.  This allows
-   * us to make use of un-used pages in the case of a bad init_pgcnt guess.
-   */
-  log_sysop_start (thread_p);
-  is_sysop_started = true;
   thread_p->push_resource_tracks ();
 
   btid_int.sys_btid = btid;
@@ -4494,11 +4488,25 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   /* Assign the snapshot to the sort_args. */
   scan_cache.mvcc_snapshot = builder_snapshot;
 
+  /* Demote the lock. */
+  ret = lock_demote_class_lock (thread_p, class_oids, new_lock, &old_lock);
+  if (ret != NO_ERROR)
+    {
+      goto error;
+    }
+
   /* Start the online index builder. */
   ret = online_index_builder (thread_p, &btid_int, hfids, class_oids, n_classes, attr_ids, n_attrs,
 			      func_index_info, filter_pred, attrs_prefix_length, &attr_info, &scan_cache);
   if (ret != NO_ERROR)
     {
+      goto error;
+    }
+
+  /* Promote the lock to SCH_M_LOCK */
+  if (lock_object (thread_p, class_oids, oid_Root_class_oid, SCH_M_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+    {
+      ASSERT_ERROR_AND_SET (ret);
       goto error;
     }
 
@@ -4529,26 +4537,13 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
     }
 
   thread_p->pop_resource_tracks ();
-  if (is_sysop_started)
-    {
-      /* todo: we have the option to commit & undo here. on undo, we can destroy the file directly. */
-      log_sysop_attach_to_outer (thread_p);
-      if (unique_pk)
-	{
-	  /* drop statistics if aborted */
-	  //log_append_undo_data2 (thread_p, RVBT_REMOVE_UNIQUE_STATS, NULL, NULL, NULL_OFFSET, sizeof (BTID), btid);
-	}
-    }
 
   LOG_CS_ENTER (thread_p);
   logpb_flush_pages_direct (thread_p);
   LOG_CS_EXIT (thread_p);
 
-  /* Promote the lock to SCH_M_LOCK */
 
-
-end:
-  /* TODO: Clear snapshot and reset lowest active mvccid. (both from global table and from snapshot) */
+  /* TODO: Is this all right? */
   /* Invalidate snapshot. */
   if (builder_snapshot != NULL)
     {
@@ -4559,7 +4554,6 @@ end:
 
 error:
   // TODO: error handling
-  //       sysop abort
 
   /* Invalidate snapshot. */
   if (builder_snapshot != NULL)
@@ -4581,7 +4575,6 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
   RECDES cur_record;
   int cur_class;
   SCAN_CODE sc;
-  MVCC_REC_HEADER mvcc_header;
   FUNCTION_INDEX_INFO *p_func_idx_info;
   PR_EVAL_FNC filter_eval_fnc;
   DB_TYPE single_node_type = DB_TYPE_NULL;
@@ -4634,13 +4627,6 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
       /* Make sure the scan was a success. */
       assert (sc == S_SUCCESS);
       assert (!OID_ISNULL (&cur_oid));
-
-      /* Get the MVCC header. */
-      ret = or_mvcc_get_header (&cur_record, &mvcc_header);
-      if (ret != NO_ERROR)
-	{
-	  return ret;
-	}
 
       if (filter_pred)
 	{
@@ -4696,9 +4682,6 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 	  ret = ER_FAILED;
 	  break;
 	}
-
-      /* Clear mvcc flags. */
-      mvcc_header.mvcc_flag &= 0;
 
       /* Dispatch the insert operation */
       ret = btree_online_index_dispatcher (thread_p, btid_int, p_dbvalue, &class_oids[cur_class], &cur_oid, &unique,
