@@ -1682,7 +1682,6 @@ struct log_rcv_tdes
   LOG_LSA atomic_sysop_start_lsa;
   LOG_LSA analysis_last_aborted_sysop_lsa;	/* Used to recover logical redo opertaion. */
   LOG_LSA analysis_last_aborted_sysop_start_lsa;	/* Used to recover logical redo opertaion. */
-  LOG_LSA skip_redo_upto_lsa;	/* Used to recover logical redo opertaion. */
 };
 
 typedef struct log_tdes LOG_TDES;
