@@ -71,7 +71,6 @@
 #include "rapidjson/schema.h"
 #include "rapidjson/stringbuffer.h"
 #include "rapidjson/writer.h"
-#include "rapidjson/prettywriter.h"
 
 #include <sstream>
 
