@@ -53,9 +53,7 @@ namespace cubxasl
 	  PRIVATE_UNIQUE_PTR<char> unique_ptr_json_body (db_json_get_raw_json_body_from_document (&input), NULL);
 
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_TABLE_ON_ERROR_INCOMP_DOMAIN, 4,
-		  unique_ptr_json_body.get(),
-		  m_path.c_str(),
-		  m_column_name.c_str(),
+		  unique_ptr_json_body.get (), m_path.c_str (), m_column_name.c_str (),
 		  pr_type_name (TP_DOMAIN_TYPE (m_domain)));
 
 	  return ER_JSON_TABLE_ON_ERROR_INCOMP_DOMAIN;

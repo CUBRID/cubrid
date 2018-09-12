@@ -19153,15 +19153,12 @@ pt_json_table_column_behavior_to_string (const json_table_column_behavior_type &
     {
     case json_table_column_behavior_type::JSON_TABLE_RETURN_NULL:
       return "RETURN NULL";
-      break;
 
     case json_table_column_behavior_type::JSON_TABLE_DEFAULT_VALUE:
       return "DEFAULT VALUE";
-      break;
 
     case json_table_column_behavior_type::JSON_TABLE_THROW_ERROR:
       return "THROW ERROR";
-      break;
 
     default:
       assert (false);

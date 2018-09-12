@@ -126,7 +126,7 @@ namespace cubscan
 	// sid (in/out) : status and position is updated based on the success of scan
 	int next_scan (cubthread::entry *thread_p, scan_id_struct &sid);
 
-	SCAN_PRED &get_predicate();
+	SCAN_PRED &get_predicate ();
 
 	scanner () = default;
 

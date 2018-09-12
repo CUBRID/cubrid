@@ -416,7 +416,7 @@ namespace cubscan
       else
 	{
 	  // start cursor based on input document
-	  cursor_arg.start_json_iterator();
+	  cursor_arg.start_json_iterator ();
 	}
 
       return NO_ERROR;

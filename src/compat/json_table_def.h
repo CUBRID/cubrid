@@ -18,7 +18,7 @@
  */
 
 //
-// json_table.h - json table common definitions (cross modules)
+// json_table_def.h - json table common definitions (cross modules)
 //
 
 #ifndef _JSON_TABLE_DEF_H_

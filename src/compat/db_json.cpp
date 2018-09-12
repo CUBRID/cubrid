@@ -340,13 +340,13 @@ class JSON_VALIDATOR
 };
 
 /*
-* JSON_BASE_HANDLER - This class acts like a rapidjson Handler
-*
-* The Handler is used by the json document to make checks on all of its nodes
-* It is applied recursively by the Accept function and acts like a map functions
-* You should inherit this class each time you want a specific function to apply to all the nodes in the json document
-* and override only the methods that apply to the desired types of nodes
-*/
+ * JSON_BASE_HANDLER - This class acts like a rapidjson Handler
+ *
+ * The Handler is used by the json document to make checks on all of its nodes
+ * It is applied recursively by the Accept function and acts like a map functions
+ * You should inherit this class each time you want a specific function to apply to all the nodes in the json document
+ * and override only the methods that apply to the desired types of nodes
+ */
 class JSON_BASE_HANDLER
 {
   public:
