@@ -381,7 +381,6 @@ class JSON_PRETTY_WRITTER : public JSON_BASE_HANDLER
       : m_buffer ()
       , m_current_indent (0)
       , m_indent_length (2)
-      , m_level_iterable (0)
     {
       // default ctor
     }
@@ -405,10 +404,20 @@ class JSON_PRETTY_WRITTER : public JSON_BASE_HANDLER
     }
 
   private:
-    std::string m_buffer;
-    unsigned int m_current_indent;
-    unsigned int m_indent_length;
-    unsigned int m_level_iterable;
+
+    bool IsInsideIterable()
+    {
+      return !m_level_iterable.empty();
+    }
+
+    void WriteIndent();
+    void WriteTerminator();
+    void RemoveLastComma();
+
+    std::string m_buffer;                       // the buffer that stores the json
+    size_t m_current_indent;                    // number of white spaces for the current level
+    size_t m_indent_length;                     // number of white spaces of indent level
+    std::stack<DB_JSON_TYPE> m_level_iterable;  // keep track of the current iterable (ARRAY or OBJECT)
 };
 
 const bool JSON_PRIVATE_ALLOCATOR::kNeedFree = true;
@@ -926,8 +935,6 @@ db_json_get_raw_json_body_from_document (const JSON_DOC *doc, bool print_pretty)
       JSON_PRETTY_WRITTER json_pretty_writer;
 
       doc->Accept (json_pretty_writer);
-
-      const char *json_raw = json_pretty_writer.ToString().c_str();
 
       return db_private_strdup (NULL, json_pretty_writer.ToString().c_str());
     }
@@ -2990,98 +2997,120 @@ bool JSON_SERIALIZER::EndArray (SizeType elementCount)
   return true;
 }
 
-bool JSON_PRETTY_WRITTER::Null()
+void JSON_PRETTY_WRITTER::WriteIndent()
 {
-  m_buffer.append (m_current_indent, ' ').append ("NULL");
+  size_t indent = m_current_indent;
 
-  if (m_level_iterable != 0)
+  if (!m_level_iterable.empty() && m_level_iterable.top() == DB_JSON_TYPE::DB_JSON_OBJECT)
+    {
+      indent = 1;
+    }
+
+  m_buffer.append (indent, ' ');
+}
+
+void JSON_PRETTY_WRITTER::WriteTerminator()
+{
+  if (IsInsideIterable())
     {
       m_buffer.append (",");
     }
 
   m_buffer.append ("\n");
+}
+
+void JSON_PRETTY_WRITTER::RemoveLastComma()
+{
+  if (m_buffer[m_buffer.length() - 2] == ',')
+    {
+      m_buffer[m_buffer.length() - 2] = '\n';
+      m_buffer.pop_back();
+    }
+}
+
+bool JSON_PRETTY_WRITTER::Null()
+{
+  WriteIndent();
+
+  m_buffer.append ("NULL");
+
+  WriteTerminator();
 
   return true;
 }
 
 bool JSON_PRETTY_WRITTER::Bool (bool b)
 {
-  m_buffer.append (m_current_indent, ' ').append (b ? "true" : "false");
+  WriteIndent();
 
-  if (m_level_iterable != 0)
-    {
-      m_buffer.append (",");
-    }
+  m_buffer.append (b ? "true" : "false");
 
-  m_buffer.append ("\n");
+  WriteTerminator();
 
   return true;
 }
 
 bool JSON_PRETTY_WRITTER::Int (int i)
 {
-  m_buffer.append (m_current_indent, ' ').append (std::to_string (i));
+  WriteIndent();
 
-  if (m_level_iterable != 0)
-    {
-      m_buffer.append (",");
-    }
+  m_buffer.append (std::to_string (i));
 
-  m_buffer.append ("\n");
+  WriteTerminator();
 
   return true;
 }
 
 bool JSON_PRETTY_WRITTER::Double (double d)
 {
-  m_buffer.append (m_current_indent, ' ').append (std::to_string (d));
+  WriteIndent();
 
-  if (m_level_iterable != 0)
-    {
-      m_buffer.append (",");
-    }
+  m_buffer.append (std::to_string (d));
 
-  m_buffer.append ("\n");
+  WriteTerminator();
 
   return true;
 }
 
 bool JSON_PRETTY_WRITTER::String (const Ch *str, SizeType length, bool copy)
 {
-  m_buffer.append (m_current_indent, ' ').append (str);
+  WriteIndent();
 
-  if (m_level_iterable != 0)
-    {
-      m_buffer.append (",");
-    }
+  m_buffer.append ("\"").append (str).append ("\"");
 
-  m_buffer.append ("\n");
+  WriteTerminator();
 
   return true;
 }
 
 bool JSON_PRETTY_WRITTER::StartObject()
 {
-  m_buffer.append (m_current_indent, ' ').append ("{").append ("\n");
+  WriteIndent();
+
+  m_buffer.append ("{").append ("\n");
 
   m_current_indent += m_indent_length;
-  m_level_iterable++;
+  m_level_iterable.push (DB_JSON_TYPE::DB_JSON_OBJECT);
 
   return true;
 }
 
 bool JSON_PRETTY_WRITTER::Key (const Ch *str, SizeType length, bool copy)
 {
-  m_buffer.append (m_current_indent, ' ').append (str);
+  m_buffer.append (m_current_indent, ' ');
+  m_buffer.append ("\"").append (str).append ("\"").append (":");
+
   return true;
 }
 
 bool JSON_PRETTY_WRITTER::StartArray()
 {
-  m_buffer.append (m_current_indent, ' ').append ("[").append ("\n");
+  WriteIndent();
+
+  m_buffer.append ("[").append ("\n");
 
   m_current_indent += m_indent_length;
-  m_level_iterable++;
+  m_level_iterable.push (DB_JSON_TYPE::DB_JSON_ARRAY);
 
   return true;
 }
@@ -3089,16 +3118,13 @@ bool JSON_PRETTY_WRITTER::StartArray()
 bool JSON_PRETTY_WRITTER::EndObject (SizeType memberCount)
 {
   m_current_indent -= m_indent_length;
-  m_level_iterable--;
+  m_level_iterable.pop();
+
+  RemoveLastComma();
 
   m_buffer.append (m_current_indent, ' ').append ("}");
 
-  if (m_level_iterable != 0)
-    {
-      m_buffer.append (",");
-    }
-
-  m_buffer.append ("\n");
+  WriteTerminator();
 
   return true;
 }
@@ -3106,16 +3132,13 @@ bool JSON_PRETTY_WRITTER::EndObject (SizeType memberCount)
 bool JSON_PRETTY_WRITTER::EndArray (SizeType elementCount)
 {
   m_current_indent -= m_indent_length;
-  m_level_iterable--;
+  m_level_iterable.pop();
+
+  RemoveLastComma();
 
   m_buffer.append (m_current_indent, ' ').append ("]");
 
-  if (m_level_iterable != 0)
-    {
-      m_buffer.append (",");
-    }
-
-  m_buffer.append ("\n");
+  WriteTerminator();
 
   return true;
 }
