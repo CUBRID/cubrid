@@ -1658,8 +1658,7 @@ struct log_rec_2pc_start
 };
 
 /*
- * Log the acknowledgment from a participant that it received the commit/abort
- * decision
+ * Log the acknowledgment from a participant that it received the commit/abort decision
  */
 typedef struct log_rec_2pc_particp_ack LOG_REC_2PC_PARTICP_ACK;
 struct log_rec_2pc_particp_ack
@@ -1680,8 +1679,8 @@ struct log_rcv_tdes
    * executed atomically (all changes applied or all rollbacked) before executing finish all postpones. to know what
    * to abort, we remember the starting LSA of such operation. */
   LOG_LSA atomic_sysop_start_lsa;
-  LOG_LSA analysis_last_aborted_sysop_lsa;	/* Used to recover logical redo opertaion. */
-  LOG_LSA analysis_last_aborted_sysop_start_lsa;	/* Used to recover logical redo opertaion. */
+  LOG_LSA analysis_last_aborted_sysop_lsa;	/* Used to recover logical redo operation. */
+  LOG_LSA analysis_last_aborted_sysop_start_lsa;	/* Used to recover logical redo operation. */
 };
 
 typedef struct log_tdes LOG_TDES;

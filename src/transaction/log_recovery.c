@@ -2857,16 +2857,16 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 /*
  * log_recovery_needs_skip_logical_redo - Check whether we need to skip logical redo.
  *
- * return: nothing
+ * return: true if skip logical redo, false otherwise
  *
  *   thread_p(in): Thread entry
  *   tran_id(in) : Transaction id.
  *   log_rtype(in): Log record type
- *   rcvindex(in): Recovery index
+ *   rcv_index(in): Recovery index
  *   lsa(in) : lsa to check
  *
  * NOTE: When logical redo logging is applied and the system crashes repeatedely, we need to
- *     skip redo logical record already applied. This function check whether the logical redo must be skipped.
+ *       skip redo logical record already applied. This function check whether the logical redo must be skipped.
  */
 static bool
 log_recovery_needs_skip_logical_redo (THREAD_ENTRY * thread_p, TRANID tran_id, LOG_RECTYPE log_rtype,
@@ -2876,26 +2876,32 @@ log_recovery_needs_skip_logical_redo (THREAD_ENTRY * thread_p, TRANID tran_id, L
   LOG_TDES *tdes = NULL;	/* Transaction descriptor */
 
   assert (lsa != NULL);
-  tran_index = logtb_find_tran_index (thread_p, tran_id);
-  if (tran_index != NULL_TRAN_INDEX)
-    {
-      tdes = LOG_FIND_TDES (tran_index);
-      if (tdes != NULL)
-	{
-	  if (log_rtype == LOG_DBEXTERN_REDO_DATA)
-	    {
-	      /* logical redo logging */
-	      if (LSA_GT (&tdes->rcv.analysis_last_aborted_sysop_lsa, lsa)
-		  && LSA_LT (&tdes->rcv.analysis_last_aborted_sysop_start_lsa, lsa))
-		{
-		  /* Logical redo already applyed. */
-		  er_log_debug (ARG_FILE_LINE, "log_recovery_needs_skip_redo: LSA = %lld|%d, Rv_index = %s\n"
-				"skip redo logging upto LSA = %lld|%d \n",
-				LSA_AS_ARGS (lsa), rv_rcvindex_string (rcv_index));
 
-		  return true;
-		}
-	    }
+  tran_index = logtb_find_tran_index (thread_p, tran_id);
+  if (tran_index == NULL_TRAN_INDEX)
+    {
+      return false;
+    }
+
+  tdes = LOG_FIND_TDES (tran_index);
+  if (tdes == NULL)
+    {
+      return false;
+    }
+
+  if (log_rtype == LOG_DBEXTERN_REDO_DATA)
+    {
+      /* logical redo logging */
+      if (LSA_GT (&tdes->rcv.analysis_last_aborted_sysop_lsa, lsa)
+	  && LSA_LT (&tdes->rcv.analysis_last_aborted_sysop_start_lsa, lsa))
+	{
+	  /* Logical redo already applied. */
+	  er_log_debug (ARG_FILE_LINE, "log_recovery_needs_skip_logical_redo: LSA = %lld|%d, Rv_index = %s, "
+			"analysis_last_aborted_sysop_lsa = %lld|%d, analysis_last_aborted_sysop_start_lsa = %lld|%d\n",
+			LSA_AS_ARGS (lsa), rv_rcvindex_string (rcv_index),
+			LSA_AS_ARGS (&tdes->rcv.analysis_last_aborted_sysop_lsa),
+			LSA_AS_ARGS (&tdes->rcv.analysis_last_aborted_sysop_start_lsa));
+	  return true;
 	}
     }
 
