@@ -750,18 +750,6 @@ db_rewind_statement (DB_SESSION * session)
 }
 
 /*
- * db_session_is_last_statement() -
- * return:
- * session(in) :
- */
-int
-db_session_is_last_statement (DB_SESSION * session)
-{
-  assert (session->dimension > 0);
-  return session->dimension == session->stmt_ndx;
-}
-
-/*
  * db_set_client_cache_time() -
  * return:
  * session(in) :
@@ -4003,7 +3991,7 @@ db_set_statement_auto_commit (DB_SESSION * session, bool auto_commit)
   /* Init statement auto commit. */
   statement->use_auto_commit = 0;
 
-  if (!auto_commit || !db_session_is_last_statement (session))
+  if (!auto_commit || session->dimension > 1)
     {
       return NO_ERROR;
     }
