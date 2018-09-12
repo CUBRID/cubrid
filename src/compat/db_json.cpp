@@ -412,7 +412,7 @@ class JSON_PRETTY_WRITTER : public JSON_BASE_HANDLER
 
     void WriteIndent();
     void WriteTerminator();
-    void RemoveLastComma();
+    void Trim();
 
     std::string m_buffer;                       // the buffer that stores the json
     size_t m_current_indent;                    // number of white spaces for the current level
@@ -3019,11 +3019,17 @@ void JSON_PRETTY_WRITTER::WriteTerminator()
   m_buffer.append ("\n");
 }
 
-void JSON_PRETTY_WRITTER::RemoveLastComma()
+void JSON_PRETTY_WRITTER::Trim()
 {
-  if (m_buffer[m_buffer.length() - 2] == ',')
+  size_t index = m_buffer.length() - 2;
+
+  if (m_buffer[index] == ',')
     {
-      m_buffer[m_buffer.length() - 2] = '\n';
+      m_buffer[index] = '\n';
+      m_buffer.pop_back();
+    }
+  else if (m_buffer[index] == '{' || m_buffer[index] == '[')
+    {
       m_buffer.pop_back();
     }
 }
@@ -3120,9 +3126,14 @@ bool JSON_PRETTY_WRITTER::EndObject (SizeType memberCount)
   m_current_indent -= m_indent_length;
   m_level_iterable.pop();
 
-  RemoveLastComma();
+  Trim();
 
-  m_buffer.append (m_current_indent, ' ').append ("}");
+  if (memberCount != 0)
+    {
+      m_buffer.append (m_current_indent, ' ');
+    }
+
+  m_buffer.append ("}");
 
   WriteTerminator();
 
@@ -3134,9 +3145,14 @@ bool JSON_PRETTY_WRITTER::EndArray (SizeType elementCount)
   m_current_indent -= m_indent_length;
   m_level_iterable.pop();
 
-  RemoveLastComma();
+  Trim();
 
-  m_buffer.append (m_current_indent, ' ').append ("]");
+  if (elementCount != 0)
+    {
+      m_buffer.append (m_current_indent, ' ');
+    }
+
+  m_buffer.append ("]");
 
   WriteTerminator();
 
