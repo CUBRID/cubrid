@@ -3023,11 +3023,13 @@ void JSON_PRETTY_WRITTER::Trim()
 {
   size_t index = m_buffer.length() - 2;
 
+  // last comma
   if (m_buffer[index] == ',')
     {
       m_buffer[index] = '\n';
       m_buffer.pop_back();
     }
+  // empty array or object
   else if (m_buffer[index] == '{' || m_buffer[index] == '[')
     {
       m_buffer.pop_back();
