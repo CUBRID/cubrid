@@ -184,7 +184,7 @@ class JSON_BASE_HANDLER
 {
   public:
     JSON_BASE_HANDLER () {};
-    virtual ~JSON_BASE_HANDLER() {};
+    virtual ~JSON_BASE_HANDLER () = default;
     typedef typename JSON_DOC::Ch Ch;
     typedef unsigned SizeType;
 
@@ -374,7 +374,7 @@ class JSON_SERIALIZER : public JSON_BASE_HANDLER
 };
 
 /*
-* JSON_PRETTY_WRITTER - This class extends JSON_BASE_HANDLER
+* JSON_PRETTY_WRITER - This class extends JSON_BASE_HANDLER
 *
 * The JSON document accepts the Handler and walks the document with respect to the DB_JSON_TYPE.
 * The context is kept in the m_level_iterable stack which contains the value from the current level, which
@@ -390,18 +390,17 @@ class JSON_SERIALIZER : public JSON_BASE_HANDLER
 * - The key and the value of an object member are separated by a colon followed by a space (': ')
 * - An empty object or array is printed on a single line. No space is printed between the opening and closing brace
 */
-class JSON_PRETTY_WRITTER : public JSON_BASE_HANDLER
+class JSON_PRETTY_WRITER : public JSON_BASE_HANDLER
 {
   public:
-    JSON_PRETTY_WRITTER ()
+    JSON_PRETTY_WRITER ()
       : m_buffer ()
       , m_current_indent (0)
-      , m_indent_length (2)
     {
       // default ctor
     }
 
-    ~JSON_PRETTY_WRITTER () = default;
+    ~JSON_PRETTY_WRITER () = default;
 
     bool Null () override;
     bool Bool (bool b) override;
@@ -420,12 +419,28 @@ class JSON_PRETTY_WRITTER : public JSON_BASE_HANDLER
     }
 
   private:
-    void WriteIndent (bool is_key = false);
+    void WriteDelimiters (bool is_key = false);
+    void PushLevel (const DB_JSON_TYPE &type);
+    void PopLevel ();
+    void SetIndentOnNewLine ();
 
-    std::string m_buffer;                                         // the buffer that stores the json
-    size_t m_current_indent;                                      // number of white spaces for the current level
-    size_t m_indent_length;                                       // number of white spaces of indent level
-    std::stack<std::pair<DB_JSON_TYPE, bool> > m_level_iterable;  // keep track of the current iterable (ARRAY/OBJECT)
+    struct level_context
+    {
+      DB_JSON_TYPE type;
+      bool is_first;
+
+      level_context (DB_JSON_TYPE type, bool is_first)
+	: type (type)
+	, is_first (is_first)
+      {
+	//
+      }
+    };
+
+    std::string m_buffer;                         // the buffer that stores the json
+    size_t m_current_indent;                      // number of white spaces for the current level
+    static const size_t LEVEL_INDENT_UNIT = 2;    // number of white spaces of indent level
+    std::stack<level_context> m_level_stack;      // keep track of the current iterable (ARRAY/OBJECT)
 };
 
 const bool JSON_PRIVATE_ALLOCATOR::kNeedFree = true;
@@ -2421,18 +2436,16 @@ db_json_get_all_paths_func (const JSON_DOC &doc, JSON_DOC *&result_json)
 * doc (in)                : json document
 * result_str (in)         : a string that contains the json in a pretty format
 */
-int
+void
 db_json_pretty_func (const JSON_DOC &doc, char *&result_str)
 {
   assert (result_str == nullptr);
 
-  JSON_PRETTY_WRITTER json_pretty_writer;
+  JSON_PRETTY_WRITER json_pretty_writer;
 
   doc.Accept (json_pretty_writer);
 
   result_str = db_private_strdup (NULL, json_pretty_writer.ToString ().c_str ());
-
-  return NO_ERROR;
 }
 
 /* db_json_keys_func () - Returns the keys from the top-level value of a JSON object as a JSON array
@@ -3000,134 +3013,148 @@ bool JSON_SERIALIZER::EndArray (SizeType elementCount)
   return true;
 }
 
-void JSON_PRETTY_WRITTER::WriteIndent (bool is_key)
+void JSON_PRETTY_WRITER::WriteDelimiters (bool is_key)
 {
-  size_t indent = m_current_indent;
-
-  // inside an iterable (ARRAY or OBJECT)
-  if (!m_level_iterable.empty ())
+  // just a scalar, no indentation needed
+  if (m_level_stack.empty ())
     {
-      // just the key handles the comma or a element from an ARRAY
-      if (is_key || m_level_iterable.top ().first == DB_JSON_TYPE::DB_JSON_ARRAY)
-	{
-	  // not the first key or the first element from ARRAY
-	  if (m_level_iterable.top ().second == false)
-	    {
-	      m_buffer.append (",");
-	    }
-	  else
-	    {
-	      // update the flag for the first element
-	      m_level_iterable.top ().second = false;
-	    }
-
-	  m_buffer.append ("\n");
-	}
-      // in case of OBJECT, the value comes right after the key separated by one white space
-      else if (m_level_iterable.top ().first == DB_JSON_TYPE::DB_JSON_OBJECT)
-	{
-	  indent = 1;
-	}
+      return;
     }
 
-  // set the correct indentation
-  m_buffer.append (indent, ' ');
+  // there are 3 cases the current element can be
+  // 1) an element from an ARRAY
+  // 2) a key from an OBJECT
+  // 3) a value from an OBJECT
+  // when dealing with array elements, all elements except the first need to write a comma before writing his value
+  // when dealing with objects, all keys except the first need to write a comma before writing the current key value
+  if (is_key || m_level_stack.top ().type == DB_JSON_TYPE::DB_JSON_ARRAY)
+    {
+      // not the first key or the first element from ARRAY, so we need to separate elements
+      if (m_level_stack.top ().is_first == false)
+	{
+	  m_buffer.append (",");
+	}
+      else
+	{
+	  // for the first key or element skip the comma
+	  m_level_stack.top ().is_first = false;
+	}
+
+      SetIndentOnNewLine ();
+    }
+  else
+    {
+      // the case we are in an OBJECT and print a value
+      assert (m_level_stack.top ().type == DB_JSON_TYPE::DB_JSON_OBJECT);
+      m_buffer.append (" ");
+    }
 }
 
-bool JSON_PRETTY_WRITTER::Null ()
+void JSON_PRETTY_WRITER::PushLevel (const DB_JSON_TYPE &type)
 {
-  WriteIndent ();
+  // advance one level
+  m_current_indent += LEVEL_INDENT_UNIT;
+
+  // push the new context
+  m_level_stack.push (level_context (type, true));
+}
+
+void JSON_PRETTY_WRITER::PopLevel ()
+{
+  // reestablish the old context
+  m_current_indent -= LEVEL_INDENT_UNIT;
+  m_level_stack.pop ();
+}
+
+void JSON_PRETTY_WRITER::SetIndentOnNewLine ()
+{
+  m_buffer.append ("\n").append (m_current_indent, ' ');
+}
+
+bool JSON_PRETTY_WRITER::Null ()
+{
+  WriteDelimiters ();
 
   m_buffer.append ("NULL");
 
   return true;
 }
 
-bool JSON_PRETTY_WRITTER::Bool (bool b)
+bool JSON_PRETTY_WRITER::Bool (bool b)
 {
-  WriteIndent ();
+  WriteDelimiters ();
 
   m_buffer.append (b ? "true" : "false");
 
   return true;
 }
 
-bool JSON_PRETTY_WRITTER::Int (int i)
+bool JSON_PRETTY_WRITER::Int (int i)
 {
-  WriteIndent ();
+  WriteDelimiters ();
 
   m_buffer.append (std::to_string (i));
 
   return true;
 }
 
-bool JSON_PRETTY_WRITTER::Double (double d)
+bool JSON_PRETTY_WRITER::Double (double d)
 {
-  WriteIndent ();
+  WriteDelimiters ();
 
   m_buffer.append (std::to_string (d));
 
   return true;
 }
 
-bool JSON_PRETTY_WRITTER::String (const Ch *str, SizeType length, bool copy)
+bool JSON_PRETTY_WRITER::String (const Ch *str, SizeType length, bool copy)
 {
-  WriteIndent ();
+  WriteDelimiters ();
 
   m_buffer.append ("\"").append (str).append ("\"");
 
   return true;
 }
 
-bool JSON_PRETTY_WRITTER::StartObject ()
+bool JSON_PRETTY_WRITER::StartObject ()
 {
-  WriteIndent ();
+  WriteDelimiters ();
 
   m_buffer.append ("{");
 
-  // advance one level
-  m_current_indent += m_indent_length;
-
-  // push the new context
-  m_level_iterable.push (std::make_pair (DB_JSON_TYPE::DB_JSON_OBJECT, true));
+  PushLevel (DB_JSON_TYPE::DB_JSON_OBJECT);
 
   return true;
 }
 
-bool JSON_PRETTY_WRITTER::Key (const Ch *str, SizeType length, bool copy)
+bool JSON_PRETTY_WRITER::Key (const Ch *str, SizeType length, bool copy)
 {
-  WriteIndent (true);
+  WriteDelimiters (true);
 
   m_buffer.append ("\"").append (str).append ("\"").append (":");
 
   return true;
 }
 
-bool JSON_PRETTY_WRITTER::StartArray ()
+bool JSON_PRETTY_WRITER::StartArray ()
 {
-  WriteIndent ();
+  WriteDelimiters ();
 
   m_buffer.append ("[");
 
-  // advance one level
-  m_current_indent += m_indent_length;
-
-  // push the new context
-  m_level_iterable.push (std::make_pair (DB_JSON_TYPE::DB_JSON_ARRAY, true));
+  PushLevel (DB_JSON_TYPE::DB_JSON_ARRAY);
 
   return true;
 }
 
-bool JSON_PRETTY_WRITTER::EndObject (SizeType memberCount)
+bool JSON_PRETTY_WRITER::EndObject (SizeType memberCount)
 {
-  // reestablish the old context
-  m_current_indent -= m_indent_length;
-  m_level_iterable.pop ();
+  PopLevel ();
 
   if (memberCount != 0)
     {
       // go the next line and set the correct indentation
-      m_buffer.append ("\n").append (m_current_indent, ' ');
+      SetIndentOnNewLine ();
     }
 
   m_buffer.append ("}");
@@ -3135,16 +3162,14 @@ bool JSON_PRETTY_WRITTER::EndObject (SizeType memberCount)
   return true;
 }
 
-bool JSON_PRETTY_WRITTER::EndArray (SizeType elementCount)
+bool JSON_PRETTY_WRITER::EndArray (SizeType elementCount)
 {
-  // reestablish the old context
-  m_current_indent -= m_indent_length;
-  m_level_iterable.pop ();
+  PopLevel ();
 
   if (elementCount != 0)
     {
       // go the next line and set the correct indentation
-      m_buffer.append ("\n").append (m_current_indent, ' ');
+      SetIndentOnNewLine ();
     }
 
   m_buffer.append ("]");

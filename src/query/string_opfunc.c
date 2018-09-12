@@ -3724,7 +3724,7 @@ db_json_pretty (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
       return error_code;
     }
 
-  error_code = db_json_pretty_func (*new_doc, str);
+  db_json_pretty_func (*new_doc, str);
 
   // direct assignement (no copy)
   db_make_string (result, str);
