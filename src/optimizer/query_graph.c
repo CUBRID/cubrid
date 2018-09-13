@@ -3266,7 +3266,6 @@ get_expr_fcode_rank (FUNC_TYPE fcode)
     case F_JSON_REPLACE:
     case F_JSON_SET:
     case F_JSON_KEYS:
-    case F_JSON_PRETTY:
       return RANK_EXPR_LIGHT;
     case F_INSERT_SUBSTRING:
       return RANK_EXPR_MEDIUM;

@@ -3942,6 +3942,8 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "json_depth";
     case PT_JSON_SEARCH:
       return "json_search";
+    case PT_JSON_PRETTY:
+      return "json_pretty";
     default:
       return "unknown opcode";
     }
@@ -4061,8 +4063,6 @@ pt_show_function (FUNC_TYPE c)
       return "json_merge";
     case F_JSON_GET_ALL_PATHS:
       return "json_get_all_paths";
-    case F_JSON_PRETTY:
-      return "json_pretty";
     default:
       return "unknown function";
     }
@@ -10210,6 +10210,13 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, ", ");
       r3 = pt_print_bytes (parser, p->info.expr.arg3);
       q = pt_append_varchar (parser, q, r3);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+    case PT_JSON_PRETTY:
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+
+      q = pt_append_nulstring (parser, q, " json_pretty(");
+      q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
       break;
     case PT_POWER:
@@ -18141,6 +18148,7 @@ pt_is_const_expr_node (PT_NODE * node)
 	case PT_JSON_TYPE:
 	case PT_JSON_VALID:
 	case PT_JSON_DEPTH:
+	case PT_JSON_PRETTY:
 	  return pt_is_const_expr_node (node->info.expr.arg1);
 	case PT_COERCIBILITY:
 	  /* coercibility is always folded to constant */
@@ -18604,6 +18612,7 @@ pt_is_allowed_as_function_index (const PT_NODE * expr)
     case PT_JSON_LENGTH:
     case PT_JSON_DEPTH:
     case PT_JSON_SEARCH:
+    case PT_JSON_PRETTY:
       return true;
     case PT_TZ_OFFSET:
     default:

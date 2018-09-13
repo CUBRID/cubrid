@@ -5219,7 +5219,6 @@ pt_find_partition_column_count_func (PT_NODE * func, PT_NODE ** name_node)
     case F_JSON_ARRAY_APPEND:
     case F_JSON_MERGE:
     case F_JSON_GET_ALL_PATHS:
-    case F_JSON_PRETTY:
       break;
     default:
       return 0;			/* unsupported function */
@@ -15145,7 +15144,6 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *a
 	case F_JSON_ARRAY_APPEND:
 	case F_JSON_MERGE:
 	case F_JSON_GET_ALL_PATHS:
-	case F_JSON_PRETTY:
 	  /* valid expression, nothing to do */
 	  break;
 	default:

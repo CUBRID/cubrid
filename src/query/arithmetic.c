@@ -5225,6 +5225,23 @@ db_json_depth_dbval (DB_VALUE * json, DB_VALUE * res)
 }
 
 int
+db_json_pretty_dbval (DB_VALUE * json, DB_VALUE * res)
+{
+  if (DB_IS_NULL (json))
+    {
+      return db_make_null (res);
+    }
+  else
+    {
+      char *str = NULL;
+
+      db_json_pretty_func (*db_get_json_document (json), str);
+
+      return db_make_string (res, str);
+    }
+}
+
+int
 db_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * json_res)
 {
   JSON_DOC *this_doc;

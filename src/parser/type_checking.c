@@ -4932,6 +4932,31 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
 
       def->overloads_count = num;
       break;
+    case PT_JSON_PRETTY:
+      num = 0;
+
+      /* two overloads */
+
+      /* arg1 */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_JSON;
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_CHAR;
+      def->overloads[num++] = sig;
+
+      /* arg1 */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_CHAR;
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_CHAR;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
     default:
       return false;
     }
@@ -6921,6 +6946,7 @@ pt_is_symmetric_op (const PT_OP_TYPE op)
     case PT_JSON_LENGTH:
     case PT_JSON_DEPTH:
     case PT_JSON_SEARCH:
+    case PT_JSON_PRETTY:
       return false;
 
     default:
@@ -12174,7 +12200,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	  || node->info.function.function_type == F_JSON_ARRAY_APPEND
 	  || node->info.function.function_type == F_JSON_GET_ALL_PATHS
 	  || node->info.function.function_type == F_JSON_REPLACE || node->info.function.function_type == F_JSON_SET
-	  || node->info.function.function_type == F_JSON_KEYS || node->info.function.function_type == F_JSON_PRETTY)
+	  || node->info.function.function_type == F_JSON_KEYS)
 	{
 	  assert (dt == NULL);
 	  dt = pt_make_prim_data_type (parser, node->type_enum);
@@ -13148,7 +13174,6 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
       break;
 
     case F_JSON_GET_ALL_PATHS:
-    case F_JSON_PRETTY:
       {
 	PT_NODE *arg = arg_list;
 	bool is_supported = false;
@@ -13538,9 +13563,6 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	case F_JSON_MERGE:
 	case F_JSON_GET_ALL_PATHS:
 	  node->type_enum = PT_TYPE_JSON;
-	  break;
-	case F_JSON_PRETTY:
-	  node->type_enum = PT_TYPE_VARCHAR;
 	  break;
 	case PT_MEDIAN:
 	case PT_PERCENTILE_CONT:
@@ -16954,6 +16976,14 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1, "JSON_SEARCH");
       PT_ERRORc (parser, o1, er_msg ());
       return 0;
+    case PT_JSON_PRETTY:
+      error = db_json_pretty_dbval (arg1, result);
+      if (error != NO_ERROR)
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
+      break;
     case PT_POWER:
       error = db_power_dbval (result, arg1, arg2);
       if (error != NO_ERROR)
@@ -20345,14 +20375,6 @@ pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_TYPE fcode, DB_VALUE 
       break;
     case F_JSON_GET_ALL_PATHS:
       error = db_json_get_all_paths (result, args, num_args);
-      if (error != NO_ERROR)
-	{
-	  PT_ERRORc (parser, NULL, er_msg ());
-	  return 0;
-	}
-      break;
-    case F_JSON_PRETTY:
-      error = db_json_pretty (result, args, num_args);
       if (error != NO_ERROR)
 	{
 	  PT_ERRORc (parser, NULL, er_msg ());

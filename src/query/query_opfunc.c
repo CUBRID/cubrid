@@ -252,10 +252,6 @@ qdata_json_get_all_paths (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, V
 			  QFILE_TUPLE tuple);
 
 static int
-qdata_json_pretty (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-		   QFILE_TUPLE tuple);
-
-static int
 qdata_json_merge (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
 		  QFILE_TUPLE tuple);
 
@@ -6104,6 +6100,19 @@ qdata_json_type_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * dom
 }
 
 int
+qdata_json_pretty_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
+{
+  int error_code = db_json_pretty_dbval (dbval1_p, result_p);
+
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  return qdata_coerce_result_to_domain (result_p, domain_p);
+}
+
+int
 qdata_json_valid_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
 {
   int error_code = db_json_valid_dbval (dbval1_p, result_p);
@@ -8478,9 +8487,6 @@ qdata_evaluate_function (THREAD_ENTRY * thread_p, REGU_VARIABLE * function_p, VA
     case F_JSON_GET_ALL_PATHS:
       return qdata_json_get_all_paths (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
 
-    case F_JSON_PRETTY:
-      return qdata_json_pretty (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
-
     case F_JSON_MERGE:
       return qdata_json_merge (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
 
@@ -10226,13 +10232,6 @@ qdata_json_get_all_paths (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, V
 {
   return qdata_convert_operands_to_value_and_call (thread_p, function_p, val_desc_p,
 						   obj_oid_p, tuple, db_json_get_all_paths);
-}
-
-static int
-qdata_json_pretty (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-		   QFILE_TUPLE tuple)
-{
-  return qdata_convert_operands_to_value_and_call (thread_p, function_p, val_desc_p, obj_oid_p, tuple, db_json_pretty);
 }
 
 static int
