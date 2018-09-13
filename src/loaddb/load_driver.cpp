@@ -445,7 +445,7 @@ namespace cubload
   {
     char *invalid_pos = NULL;
 
-    if (intl_check_string (str->val, str->size, &invalid_pos, LANG_SYS_CODESET) != INTL_UTF8_VALID)
+    if (intl_check_string (str->val, (int) str->size, &invalid_pos, LANG_SYS_CODESET) != INTL_UTF8_VALID)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_CHAR, 1, invalid_pos - str->val);
 	return false;

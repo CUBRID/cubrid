@@ -68,11 +68,7 @@
 
 using namespace cubload;
 
-#define LDR_MAX_ARGS 32
-
-#define LDR_INCREMENT_ERR_COUNT(context, i) ldr_increment_err_count(context, i)
-#define LDR_CLEAR_ERR_TOTAL(context)        ldr_clear_err_total(context)
-#define LDR_CLEAR_ERR_COUNT(context)        ldr_clear_err_count(context)
+const std::size_t LDR_MAX_ARGS = 32;
 
 /* filter out ignorable errid */
 #define FILTER_OUT_ERR_INTERNAL(err, expr)                              \
@@ -198,8 +194,8 @@ typedef struct LDR_ATTDESC
   LDR_SETTER setter[NUM_LDR_TYPES];	/* Setter functions indexed by type */
 
   char *parser_str;		/* used as a holder to hold the parser strings when parsing method arguments. */
-  int parser_str_len;		/* Length of parser token string */
-  int parser_buf_len;		/* Length of parser token buffer */
+  size_t parser_str_len;		/* Length of parser token string */
+  size_t parser_buf_len;		/* Length of parser token buffer */
   data_type parser_type;	/* Used when parsing method arguments, to store */
   /* the type information. */
 
@@ -463,7 +459,7 @@ do                                            \
   {                                           \
     if (str[0] == '\"')                       \
       str++;                                  \
-    new_len = strlen (str);                   \
+    new_len = (int) strlen (str);                   \
     if (new_len && str[new_len-1] == '\"')   \
       new_len--;                              \
   }                                           \
@@ -933,7 +929,7 @@ namespace cubload
 		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2, ldr_Current_context->num_attrs,
 			ldr_Current_context->next_attr);
 	      }
-	    LDR_INCREMENT_ERR_COUNT (ldr_Current_context, 1);
+	    ldr_increment_err_count (ldr_Current_context, 1);
 	  }
       }
 
@@ -979,13 +975,13 @@ namespace cubload
 		  }
 		else
 		  {
-		    LDR_INCREMENT_ERR_COUNT (ldr_Current_context, 1);
+		    ldr_increment_err_count (ldr_Current_context, 1);
 		  }
 	      }
 	  }
 	else
 	  {
-	    LDR_INCREMENT_ERR_COUNT (ldr_Current_context, 1);
+	    ldr_increment_err_count (ldr_Current_context, 1);
 	  }
       }
 
@@ -1476,7 +1472,7 @@ ldr_clear_context (LDR_CONTEXT *context)
 
   /* verbose and periodic_commit are should be set out side this function */
 
-  LDR_CLEAR_ERR_COUNT (context);
+  ldr_clear_err_count (context);
 
   /* error_total should not be reset here */
 
@@ -1815,7 +1811,7 @@ ldr_act_attr (LDR_CONTEXT *context, const char *str, size_t len, data_type type)
 
 error_exit:
   context->next_attr += 1;
-  LDR_INCREMENT_ERR_COUNT (context, (err != NO_ERROR));
+  ldr_increment_err_count (context, (err != NO_ERROR));
 }
 
 /*
@@ -1890,7 +1886,7 @@ ldr_act_elem (LDR_CONTEXT *context, const char *str, size_t len, data_type type)
     }
 
 error_exit:
-  LDR_INCREMENT_ERR_COUNT (context, (err != NO_ERROR));
+  ldr_increment_err_count (context, (err != NO_ERROR));
 }
 
 /*
@@ -1960,7 +1956,7 @@ ldr_act_meth (LDR_CONTEXT *context, const char *str, size_t len, data_type type)
 
 error_exit:
   context->next_attr += 1;
-  LDR_INCREMENT_ERR_COUNT (context, (err != NO_ERROR));
+  ldr_increment_err_count (context, (err != NO_ERROR));
 }
 
 /*
@@ -2171,7 +2167,7 @@ ldr_act_class_attr (LDR_CONTEXT *context, const char *str, size_t len, data_type
 
 error_exit:
   context->next_attr += 1;
-  LDR_INCREMENT_ERR_COUNT (context, (err != NO_ERROR));
+  ldr_increment_err_count (context, (err != NO_ERROR));
 }
 
 /*
@@ -2189,7 +2185,7 @@ ldr_sys_user_db_generic (LDR_CONTEXT *context, const char *str, size_t len, SM_A
   fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_UNAUTHORIZED_CLASS),
 	   "db_user");
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-  LDR_INCREMENT_ERR_COUNT (context, 1);
+  ldr_increment_err_count (context, 1);
   return (ER_GENERIC_ERROR);
 }
 
@@ -2209,7 +2205,7 @@ ldr_sys_class_db_generic (LDR_CONTEXT *context, const char *str, size_t len, SM_
 	   "*system class*");
   CHECK_CONTEXT_VALIDITY (context, true);
 
-  LDR_INCREMENT_ERR_COUNT (context, 1);
+  ldr_increment_err_count (context, 1);
   return (NO_ERROR);
 }
 
@@ -2277,8 +2273,8 @@ ldr_int_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val)
       if (numeric_coerce_num_to_bigint (num.d.buf, 0, &tmp_bigint) != NO_ERROR)
 	{
 
-	  CHECK_PARSE_ERR (err, db_value_domain_init (val, DB_TYPE_NUMERIC, len, 0), context, DB_TYPE_BIGINT, str);
-	  CHECK_PARSE_ERR (err, db_value_put (val, DB_TYPE_C_CHAR, (char *) str, len), context, DB_TYPE_BIGINT, str);
+	  CHECK_PARSE_ERR (err, db_value_domain_init (val, DB_TYPE_NUMERIC, (int) len, 0), context, DB_TYPE_BIGINT, str);
+	  CHECK_PARSE_ERR (err, db_value_put (val, DB_TYPE_C_CHAR, (char *) str, (int) len), context, DB_TYPE_BIGINT, str);
 	}
       else
 	{
@@ -2530,7 +2526,7 @@ ldr_str_db_char (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE
 
   precision = att->domain->precision;
 
-  intl_char_count ((unsigned char *) str, len, (INTL_CODESET) att->domain->codeset, &char_count);
+  intl_char_count ((unsigned char *) str, (int) len, (INTL_CODESET) att->domain->codeset, &char_count);
 
   if (char_count > precision)
     {
@@ -2572,7 +2568,7 @@ ldr_str_db_char (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE
   val.data.ch.info.style = MEDIUM_STRING;
   val.data.ch.info.is_max_string = false;
   val.data.ch.info.compressed_need_clear = false;
-  val.data.ch.medium.size = len;
+  val.data.ch.medium.size = (int) len;
   val.data.ch.medium.buf = (char *) str;
   val.data.ch.medium.compressed_buf = NULL;
   val.data.ch.medium.compressed_size = 0;
@@ -2602,7 +2598,7 @@ ldr_str_db_varchar (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIB
   int char_count = 0;
 
   precision = att->domain->precision;
-  intl_char_count ((unsigned char *) str, len, (INTL_CODESET) att->domain->codeset, &char_count);
+  intl_char_count ((unsigned char *) str, (int) len, (INTL_CODESET) att->domain->codeset, &char_count);
 
   if (char_count > precision)
     {
@@ -2640,7 +2636,7 @@ ldr_str_db_varchar (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIB
 
   val.domain = ldr_varchar_tmpl.domain;
   val.domain.char_info.length = char_count;
-  val.data.ch.medium.size = len;
+  val.data.ch.medium.size = (int) len;
   val.data.ch.medium.buf = (char *) str;
   val.data.ch.info.style = MEDIUM_STRING;
   val.data.ch.info.is_max_string = false;
@@ -2694,18 +2690,18 @@ ldr_bstr_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val)
   DB_VALUE temp;
   TP_DOMAIN *domain_ptr, temp_domain;
 
-  dest_size = (len + 7) / 8;
+  dest_size = ((int) len + 7) / 8;
 
   CHECK_PTR (err, bstring = (char *) db_private_alloc (NULL, dest_size + 1));
 
-  if (qstr_bit_to_bin (bstring, dest_size, (char *) str, len) != len)
+  if (qstr_bit_to_bin (bstring, dest_size, (char *) str, (int) len) != len)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_DOMAIN_CONFLICT, 1,
 	      context->attrs[context->next_attr].att->header.name);
       CHECK_PARSE_ERR (err, ER_OBJ_DOMAIN_CONFLICT, context, DB_TYPE_BIT, str);
     }
 
-  db_make_varbit (&temp, TP_FLOATING_PRECISION_VALUE, bstring, len);
+  db_make_varbit (&temp, TP_FLOATING_PRECISION_VALUE, bstring, (int) len);
   temp.need_clear = true;
 
   GET_DOMAIN (context, domain);
@@ -2776,17 +2772,17 @@ ldr_xstr_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val)
 
   db_make_null (&temp);
 
-  dest_size = (len + 1) / 2;
+  dest_size = ((int) len + 1) / 2;
 
   CHECK_PTR (err, bstring = (char *) db_private_alloc (NULL, dest_size + 1));
 
-  if (qstr_hex_to_bin (bstring, dest_size, (char *) str, len) != len)
+  if (qstr_hex_to_bin (bstring, dest_size, (char *) str, (int) len) != (int) len)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_DOMAIN_CONFLICT, 1, ldr_attr_name (context));
       CHECK_PARSE_ERR (err, ER_OBJ_DOMAIN_CONFLICT, context, DB_TYPE_BIT, str);
     }
 
-  db_make_varbit (&temp, TP_FLOATING_PRECISION_VALUE, bstring, len * 4);
+  db_make_varbit (&temp, TP_FLOATING_PRECISION_VALUE, bstring, (int) len * 4);
   temp.need_clear = true;
 
   /* temp takes ownership of this piece of memory */
@@ -2856,7 +2852,7 @@ static int
 ldr_nstr_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val)
 {
 
-  db_make_varnchar (val, TP_FLOATING_PRECISION_VALUE, (const DB_C_NCHAR) (str), len, LANG_SYS_CODESET,
+  db_make_varnchar (val, TP_FLOATING_PRECISION_VALUE, (const DB_C_NCHAR) (str), (int) len, LANG_SYS_CODESET,
 		    LANG_SYS_COLLATION);
   return NO_ERROR;
 }
@@ -2906,11 +2902,11 @@ ldr_numeric_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *v
   int precision, scale;
   int err = NO_ERROR;
 
-  precision = len - 1 - (str[0] == '+' || str[0] == '-' || str[0] == '.');
-  scale = len - (int) strcspn (str, ".") - 1;
+  precision = (int) len - 1 - (str[0] == '+' || str[0] == '-' || str[0] == '.');
+  scale = (int) len - (int) strcspn (str, ".") - 1;
 
   CHECK_PARSE_ERR (err, db_value_domain_init (val, DB_TYPE_NUMERIC, precision, scale), context, DB_TYPE_NUMERIC, str);
-  CHECK_PARSE_ERR (err, db_value_put (val, DB_TYPE_C_CHAR, (char *) str, len), context, DB_TYPE_NUMERIC, str);
+  CHECK_PARSE_ERR (err, db_value_put (val, DB_TYPE_C_CHAR, (char *) str, (int) len), context, DB_TYPE_NUMERIC, str);
 
 error_exit:
   return err;
@@ -3641,7 +3637,7 @@ ldr_elo_ext_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *v
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
 
       /* reset the error count by adding -1, since this is not real error */
-      LDR_INCREMENT_ERR_COUNT (context, -1);
+      ldr_increment_err_count (context, -1);
       return (err);
     }
 
@@ -4198,7 +4194,7 @@ ldr_class_oid_db_object (LDR_CONTEXT *context, const char *str, size_t len, SM_A
     }
 
 error_exit:
-  LDR_INCREMENT_ERR_COUNT (context, (err != NO_ERROR));
+  ldr_increment_err_count (context, (err != NO_ERROR));
   return err;
 }
 
@@ -4247,7 +4243,7 @@ ldr_oid_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val)
     }
 
 error_exit:
-  LDR_INCREMENT_ERR_COUNT (context, (err != NO_ERROR));
+  ldr_increment_err_count (context, (err != NO_ERROR));
   return err;
 }
 
@@ -4511,7 +4507,7 @@ ldr_reset_context (LDR_CONTEXT *context)
       ws_class_has_object_dependencies (context->cls);
     }
   context->next_attr = 0;
-  LDR_CLEAR_ERR_COUNT (context);
+  ldr_clear_err_count (context);
 
 error_exit:
   CHECK_CONTEXT_VALIDITY (context, err != NO_ERROR);
@@ -4633,7 +4629,7 @@ error_exit:
       fprintf (stderr, "%s\n", db_error_string (3));
       committed_instances = (-1);
       CHECK_CONTEXT_VALIDITY (context, true);
-      LDR_INCREMENT_ERR_COUNT (context, 1);
+      ldr_increment_err_count (context, 1);
     }
   return err;
 }
@@ -5993,7 +5989,7 @@ ldr_init_loader (LDR_CONTEXT *context)
   ldr_clear_context (context);
   ldr_act_init_context (context, NULL, 0);
   ldr_Current_context = context;
-  LDR_CLEAR_ERR_TOTAL (context);
+  ldr_clear_err_total (context);
   context->validation_only = 0;
   context->valid = true;
   context->flush_total = 0;

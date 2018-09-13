@@ -25,14 +25,14 @@
 #define _LOAD_DB_VALUE_CONVERTER_HPP_
 
 #include "dbtype_def.h"
-#include "intl_support.h"
 #include "load_common.hpp"
-#include "object_domain.h"
+
+// forward declaration
+struct tp_domain;
 
 namespace cubload
 {
-
-  typedef void (*conv_func) (const char *, const TP_DOMAIN *, DB_VALUE *);
+  typedef void (*conv_func) (const char *, const tp_domain *, db_value *);
 
   conv_func &get_conv_func (const data_type ldr_type, const DB_TYPE db_type);
 
