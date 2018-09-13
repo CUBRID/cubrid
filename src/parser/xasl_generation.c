@@ -4627,6 +4627,7 @@ pt_make_json_table_spec_node_internal (PARSER_CONTEXT * parser, PT_JSON_TABLE_NO
   // create children 
   for (PT_NODE * nested_itr = jt_node_info->nested_paths; nested_itr != NULL; nested_itr = nested_itr->next)
     {
+      result.m_nested_nodes.emplace_back ();
       pt_make_json_table_spec_node_internal (parser, &nested_itr->info.json_table_node_info, current_id, tbl_info,
 					     result.m_nested_nodes.back ());
     }
