@@ -301,6 +301,7 @@ extern void tr_abort (TR_STATE * state);
 
 /* Transaction manager trigger hooks */
 
+extern int tr_has_user_trigger (bool * has_user_trigger);
 extern int tr_check_commit_triggers (DB_TRIGGER_TIME time);
 extern void tr_check_rollback_triggers (DB_TRIGGER_TIME time);
 #if defined(ENABLE_UNUSED_FUNCTION)
