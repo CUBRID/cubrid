@@ -226,30 +226,17 @@ namespace cubreplication
     gc_stream_entry.pack ();
   }
 
-  int log_generator::create_stream (const cubstream::stream_position &start_position)
+  void log_generator::set_global_stream (cubstream::multi_thread_stream *stream)
   {
-    log_generator::g_start_append_position = start_position;
-
-    /* TODO : stream should be created by a high level object together with log_generator */
-    /* create stream only for global instance */
-    INT64 buffer_size = prm_get_bigint_value (PRM_ID_REPL_GENERATOR_BUFFER_SIZE);
-    int num_max_appenders = log_Gl.trantable.num_total_indices + 1;
-
-    log_generator::g_stream = new cubstream::multi_thread_stream (buffer_size, num_max_appenders);
-    log_generator::g_stream->set_trigger_min_to_read_size (stream_entry::compute_header_size ());
-    log_generator::g_stream->init (log_generator::g_start_append_position);
-
     for (int i = 0; i < log_Gl.trantable.num_total_indices; i++)
       {
 	LOG_TDES *tdes = LOG_FIND_TDES (i);
 
 	log_generator *lg = & (tdes->replication_log_generator);
 
-	lg->m_stream_entry.set_stream (log_generator::g_stream);
-        lg->m_is_initialized = true;
+	lg->set_stream (stream);
       }
-
-    return NO_ERROR;
+    log_generator::g_stream = stream;
   }
 
   void log_generator::er_log_repl_obj (replication_object *obj, const char *message)
@@ -269,17 +256,13 @@ namespace cubreplication
 
   cubstream::multi_thread_stream *log_generator::g_stream = NULL;
 
-  cubstream::stream_position log_generator::g_start_append_position = 0;
-
   int
   repl_log_insert_with_recdes (THREAD_ENTRY *thread_p, const char *class_name,
 			       LOG_RCVINDEX rcvindex, DB_VALUE *key_dbvalue, RECDES *recdes)
   {
     int tran_index;
     LOG_TDES *tdes;
-    LOG_REPL_RECORD *repl_rec;
-    char *ptr;
-    int error = NO_ERROR, strlen;
+    int error = NO_ERROR;
 
     tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
     tdes = LOG_FIND_TDES (tran_index);
@@ -327,9 +310,7 @@ namespace cubreplication
   {
     int tran_index;
     LOG_TDES *tdes;
-    LOG_REPL_RECORD *repl_rec;
-    char *ptr;
-    int error = NO_ERROR, strlen1, strlen2, strlen3, strlen4;
+    int error = NO_ERROR;
 
     tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
     tdes = LOG_FIND_TDES (tran_index);
