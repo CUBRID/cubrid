@@ -37,16 +37,15 @@
 #include <array>
 
 #include <cassert>
+#include <cmath>
 
-#define MAX_DIGITS_FOR_SHORT  5  // default for 16 bit signed shorts: 32767 (0x7FFF)
-#define MAX_DIGITS_FOR_INT    10 // default for 32 bit signed integers: 2147483647 (0x7FFFFFFF)
-#define MAX_DIGITS_FOR_BIGINT 19 // default for 64 bit signed big integers: 9223372036854775807 (0x7FFFFFFFFFFFFFFF)
-
-#define ROUND(x) (int)((x) > 0 ? ((x) + .5) : ((x) - .5))
+const std::size_t MAX_DIGITS_FOR_SHORT = 5;   // default for 16 bit signed shorts: 32767 (0x7FFF)
+const std::size_t MAX_DIGITS_FOR_INT = 10;    // default for 32 bit signed integers: 2147483647 (0x7FFFFFFF)
+const std::size_t MAX_DIGITS_FOR_BIGINT = 19; // default for 64 bit signed big integers: 9223372036854775807
+                                              // (0x7FFFFFFFFFFFFFFF)
 
 namespace cubload
 {
-
   // TODO CBRD-21654 reuse conversion function in load_client_loader.c source file
   void to_db_null (const char *str, const tp_domain *domain, db_value *val);
   void to_db_short (const char *str, const tp_domain *domain, db_value *val);
@@ -153,7 +152,7 @@ namespace cubload
 	  }
 	else
 	  {
-	    val->data.sh = (short) ROUND (d);
+	    val->data.sh = (short) std::round (d);
 	  }
       }
     else
@@ -200,7 +199,7 @@ namespace cubload
 	  }
 	else
 	  {
-	    val->data.i = ROUND (d);
+	    val->data.i = (int) std::round (d);
 	  }
       }
   }
