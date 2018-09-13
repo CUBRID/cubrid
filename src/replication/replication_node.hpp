@@ -83,7 +83,7 @@ namespace cubreplication
 
     public:
 
-      ~replication_node ();
+      virtual ~replication_node ();
   };
 
 } /* namespace cubreplication */
