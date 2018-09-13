@@ -247,6 +247,20 @@ namespace cubxasl
     }
 
     void
+    node::clear_iterators ()
+    {
+      if (m_iterator != nullptr)
+	{
+	  db_json_clear_json_iterator (m_iterator);
+	}
+
+      for (node &child : m_nested_nodes)
+	{
+	  child.clear_iterators ();
+	}
+    }
+
+    void
     node::clear_tree (void)
     {
       clear_columns ();

@@ -124,6 +124,7 @@ void db_json_reset_iterator (JSON_ITERATOR *&json_itr);
 bool db_json_iterator_is_empty (const JSON_ITERATOR &json_itr);
 JSON_ITERATOR *db_json_create_iterator (const DB_JSON_TYPE &type);
 void db_json_delete_json_iterator (JSON_ITERATOR *&json_itr);
+void db_json_clear_json_iterator (JSON_ITERATOR *&json_itr);
 
 DB_JSON_TYPE db_json_get_type (const JSON_DOC *doc);
 

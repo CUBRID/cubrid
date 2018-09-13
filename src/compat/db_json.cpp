@@ -166,10 +166,7 @@ class JSON_ITERATOR
 
     virtual ~JSON_ITERATOR ()
     {
-      if (m_value_doc != nullptr)
-	{
-	  delete m_value_doc;
-	}
+      clear_content ();
     }
 
     // next iterator
@@ -210,6 +207,15 @@ class JSON_ITERATOR
     bool is_empty () const
     {
       return m_input_doc == nullptr;    // no input
+    }
+
+    // delete only the content of the JSON_ITERATOR for reuse
+    void clear_content ()
+    {
+      if (m_value_doc != nullptr)
+	{
+	  db_json_delete_doc (m_value_doc);
+	}
     }
 
   protected:
@@ -887,6 +893,12 @@ db_json_delete_json_iterator (JSON_ITERATOR *&json_itr)
 {
   delete json_itr;
   json_itr = NULL;
+}
+
+void
+db_json_clear_json_iterator (JSON_ITERATOR *&json_itr)
+{
+  json_itr->clear_content ();
 }
 
 bool
