@@ -218,10 +218,6 @@ namespace cubreplication
 
   log_consumer::~log_consumer ()
   {
-    assert (this == global_log_consumer);
-
-    global_log_consumer = NULL;
-
     /* TODO : move to external code (a higher level object) stop & destroy of log_consumer and stream */
 
     set_stop ();
@@ -234,8 +230,6 @@ namespace cubreplication
       }
 
     assert (m_stream_entries.empty ());
-
-    delete m_stream;
   }
 
   void log_consumer::push_entry (stream_entry *entry)
@@ -312,35 +306,6 @@ namespace cubreplication
     m_started_tasks++;
   }
 
-  log_consumer *log_consumer::new_instance (const cubstream::stream_position &start_position, bool use_daemons)
-  {
-    int error_code = NO_ERROR;
-
-    log_consumer *new_lc = new log_consumer ();
-
-    /* TODO : initializing stream should be performed outside log_consumer (a higher level object which aggregates
-     * both stream and log_consumer ; in such case, stream_position is no longer an attribute of log_consumer */
-    new_lc->m_start_position = start_position;
-
-    INT64 buffer_size = prm_get_bigint_value (PRM_ID_REPL_CONSUMER_BUFFER_SIZE);
-
-    /* consumer needs only one stream appender */
-    new_lc->m_stream = new cubstream::multi_thread_stream (buffer_size, 2);
-    new_lc->m_stream->set_trigger_min_to_read_size (stream_entry::compute_header_size ());
-    new_lc->m_stream->init (new_lc->m_start_position);
-
-    /* this is the global instance */
-    assert (global_log_consumer == NULL);
-    global_log_consumer = new_lc;
-
-    if (use_daemons)
-      {
-	new_lc->start_daemons ();
-      }
-
-    return new_lc;
-  }
-
   void log_consumer::wait_for_tasks (void)
   {
     while (m_started_tasks > 0)
@@ -359,5 +324,4 @@ namespace cubreplication
     m_apply_task_cv.notify_one ();
   }
 
-  log_consumer *log_consumer::global_log_consumer = NULL;
 } /* namespace cubreplication */
