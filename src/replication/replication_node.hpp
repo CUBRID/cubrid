@@ -47,7 +47,11 @@ namespace cubreplication
       int m_data_port;
 
     public:
-      node_definition (const char *hostname) : m_hostname (hostname), m_data_port (-1) {}
+      node_definition (const char *hostname)
+	: m_hostname (hostname),
+	  m_data_port (-1)
+      {
+      }
 
       void set_hostname (const char *hostname)
       {
@@ -76,7 +80,9 @@ namespace cubreplication
       /* a replication node has stream start position : this is read from persistent storage */
       virtual int apply_start_position (void);
 
-      replication_node (const char *name) : m_start_position (0), m_identity (name)
+      replication_node (const char *name)
+	: m_start_position (0),
+	  m_identity (name)
       {
 	m_stream = NULL;
       }

@@ -36,7 +36,10 @@ namespace cubreplication
     private:
       static master_node *g_instance;
 
-      master_node (const char *name) : replication_node (name) {}
+      master_node (const char *name)
+	: replication_node (name)
+      {
+      }
 
     public:
       static master_node *get_instance (const char *name);

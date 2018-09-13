@@ -49,15 +49,15 @@ namespace cubreplication
       cubstream::transfer_receiver *m_transfer_receiver;
 #endif
 
-      slave_node (const char *name):
-	replication_node (name),
-	m_lc (NULL)
+      slave_node (const char *name)
+	: replication_node (name)
+	, m_lc (NULL)
 #if defined (SERVER_MODE)
-	,
-	m_master_identity (""),
-	m_transfer_receiver (NULL)
+	, m_master_identity ("")
+	, m_transfer_receiver (NULL)
 #endif
-      { }
+      {
+      }
 
       ~slave_node ();
 
