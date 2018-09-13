@@ -24,8 +24,6 @@
 #ifndef _LOAD_OBJECT_H_
 #define _LOAD_OBJECT_H_
 
-#ident "$Id$"
-
 #include "dbtype_def.h"
 #include "class_object.h"
 

@@ -24,8 +24,6 @@
 #ifndef _LOAD_SERVER_LOADER_HPP_
 #define _LOAD_SERVER_LOADER_HPP_
 
-#ident "$Id$"
-
 #include "dbtype_def.h"
 #include "heap_attrinfo.h"
 #include "heap_file.h"

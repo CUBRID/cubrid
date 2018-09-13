@@ -24,8 +24,6 @@
 #ifndef _LOAD_SCANNER_HPP_
 #define _LOAD_SCANNER_HPP_
 
-#ident "$Id$"
-
 #if !defined (yyFlexLexerOnce)
 #include <FlexLexer.h>
 #endif

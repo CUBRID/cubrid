@@ -18,23 +18,19 @@
  */
 
 /*
- * load_client_loader.h: Loader client definitions. Updated using design from fast loaddb prototype
+ * load_sa_loader.hpp: Loader client definitions. Updated using design from fast loaddb prototype
  */
 
-#ifndef _LOAD_CLIENT_LOADER_H_
-#define _LOAD_CLIENT_LOADER_H_
+#ifndef _LOAD_SA_LOADER_HPP_
+#define _LOAD_SA_LOADER_HPP_
 
-#ident "$Id$"
-
-#include "dbdef.h"
 #include "load_common.hpp"
-#include "porting.h"
 
 /* *INDENT-OFF* */
 namespace cubload
 {
 
-  class client_loader : public loader
+  class sa_loader : public loader
   {
     public:
       void check_class (const char *class_name, int class_id) override;
@@ -58,9 +54,9 @@ extern char **ignore_class_list;
 extern int ignore_class_num;
 
 /* start load functions */
-extern void ldr_load (cubload::load_args * args, int *status, bool * interrupted);
+extern void ldr_load (cubload::load_args *args, int *status, bool *interrupted);
 
 /* log functions */
 extern void print_log_msg (int verbose, const char *fmt, ...);
 
-#endif /* _LOAD_CLIENT_LOADER_H_ */
+#endif /* _LOAD_SA_LOADER_HPP_ */

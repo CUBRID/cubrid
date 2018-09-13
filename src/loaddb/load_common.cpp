@@ -21,8 +21,6 @@
  * load_common.cpp - common code used by loader
  */
 
-#ident "$Id$"
-
 #include "load_common.hpp"
 #include "memory_alloc.h"
 

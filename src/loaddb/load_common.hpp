@@ -24,8 +24,6 @@
 #ifndef _LOAD_COMMON_HPP_
 #define _LOAD_COMMON_HPP_
 
-#ident "$Id$"
-
 #include <cassert>
 #include <cstddef>
 #include <fstream>
@@ -183,7 +181,7 @@ namespace cubload
    *    A pure virtual class that serves as an interface for inserting rows by the loaddb. Currently there are two
    *    implementations of this class: server_loader and client_load.
    *        * server_loader: A loader that is running on the cub_server on multi-threaded environment
-   *        * client_loader: Contains old loaddb code base and is running on SA mode (single threaded environment)
+   *        * sa_loader    : Contains old loaddb code base and is running on SA mode (single threaded environment)
    *
    * how to use
    *    Loader is used by the cubload::driver, which later is passed to the cubload::parser. The parser class will then

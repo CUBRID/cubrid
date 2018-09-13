@@ -21,8 +21,6 @@
  * load_manager.cpp - entry point for server side loaddb
  */
 
-#ident "$Id$"
-
 #include <cassert>
 #include <sstream>
 

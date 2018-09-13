@@ -21,8 +21,6 @@
  * load_db_value_converter.cpp - conversion from string to DB_VALUE
  */
 
-#ident "$Id$"
-
 #include <array>
 #include <cassert>
 
@@ -44,7 +42,7 @@
 namespace cubload
 {
 
-  // TODO CBRD-21654 reuse conversion function in load_client_loader.c source file
+  // TODO CBRD-21654 reuse conversion function in load_sa_loader.cpp source file
   void to_db_null (const char *str, const TP_DOMAIN *domain, DB_VALUE *val);
   void to_db_short (const char *str, const TP_DOMAIN *domain, DB_VALUE *val);
   void to_db_int (const char *str, const TP_DOMAIN *domain, DB_VALUE *val);

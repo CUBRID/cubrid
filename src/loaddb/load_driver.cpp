@@ -21,8 +21,6 @@
  * load_driver.cpp - interface for loader lexer and parser
  */
 
-#ident "$Id$"
-
 #include <cassert>
 
 #include "error_manager.h"
@@ -31,7 +29,7 @@
 #if defined (SERVER_MODE)
 #include "load_server_loader.hpp"
 #elif defined (SA_MODE)
-#include "load_client_loader.h"
+#include "load_sa_loader.hpp"
 #endif
 #include "memory_alloc.h"
 #include "message_catalog.h"
@@ -44,7 +42,7 @@ namespace cubload
 #if defined (SERVER_MODE)
     : m_loader (new server_loader ())
 #elif defined (SA_MODE)
-    : m_loader (new client_loader ())
+    : m_loader (new sa_loader ())
 #endif
     , m_scanner (*this, *m_loader)
     , m_parser (*this, *m_loader)

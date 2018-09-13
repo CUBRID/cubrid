@@ -24,8 +24,6 @@
 #ifndef _LOAD_DB_VALUE_CONVERTER_HPP_
 #define _LOAD_DB_VALUE_CONVERTER_HPP_
 
-#ident "$Id$"
-
 #include "dbtype_def.h"
 #include "intl_support.h"
 #include "load_common.hpp"

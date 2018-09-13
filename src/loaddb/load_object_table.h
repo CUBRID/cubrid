@@ -21,8 +21,6 @@
  * load_object_table.h: Object table definitions
  */
 
-#ident "$Id$"
-
 #ifndef _LOAD_OBJECT_TABLE_H_
 #define _LOAD_OBJECT_TABLE_H_
 

@@ -28,8 +28,6 @@
 #error Wrong module
 #endif // not SERVER_MODE and not SA_MODE
 
-#ident "$Id$"
-
 #include <istream>
 
 #include "load_common.hpp"

@@ -21,8 +21,6 @@
  * load_object.c: simplified object descriptions.
  */
 
-#ident "$Id$"
-
 #include "config.h"
 
 #include <stdio.h>

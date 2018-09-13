@@ -21,8 +21,6 @@
  * load_object_table.c - the object table for the loader
  */
 
-#ident "$Id$"
-
 #include "config.h"
 
 #include <stdio.h>

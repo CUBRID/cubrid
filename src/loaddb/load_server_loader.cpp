@@ -21,8 +21,6 @@
  * load_server_loader.cpp: Loader server definitions. Updated using design from fast loaddb prototype
  */
 
-#ident "$Id$"
-
 #include <map>
 
 #include "load_db_value_converter.hpp"

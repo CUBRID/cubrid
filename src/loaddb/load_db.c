@@ -21,8 +21,6 @@
  * load_db.c - Main for database loader
  */
 
-#ident "$Id$"
-
 #include "config.h"
 
 #include <stdio.h>
@@ -41,7 +39,7 @@
 #include "utility.h"
 #include "misc_string.h"
 #if defined (SA_MODE)
-#include "load_client_loader.h"
+#include "load_sa_loader.hpp"
 #endif // SA_MODE
 #include "load_object.h"
 #include "environment_variable.h"

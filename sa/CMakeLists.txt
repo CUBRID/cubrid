@@ -38,7 +38,7 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/db_admin.c
   ${COMPAT_DIR}/db_class.c
   ${COMPAT_DIR}/db_date.c
-  ${COMPAT_DIR}/db_elo.c 
+  ${COMPAT_DIR}/db_elo.c
   ${COMPAT_DIR}/db_info.c
   ${COMPAT_DIR}/db_json.cpp
   ${COMPAT_DIR}/db_macro.c
@@ -239,7 +239,7 @@ set(REPLICATION_SOURCES
   ${REPLICATION_DIR}/log_consumer.cpp
   ${REPLICATION_DIR}/log_generator.cpp
   ${REPLICATION_DIR}/replication_object.cpp
-  ${REPLICATION_DIR}/replication_master_senders_manager.cpp  
+  ${REPLICATION_DIR}/replication_master_senders_manager.cpp
   ${REPLICATION_DIR}/replication_stream_entry.cpp
   )
 
@@ -334,7 +334,7 @@ set(SESSION_SOURCES
 set(LOADDB_SOURCES
   ${BISON_loader_grammar_OUTPUT_SOURCE}
   ${FLEX_loader_lexer_OUTPUTS}
-  ${LOADDB_DIR}/load_client_loader.c
+  ${LOADDB_DIR}/load_sa_loader.cpp
   ${LOADDB_DIR}/load_common.cpp
   ${LOADDB_DIR}/load_db.c
   ${LOADDB_DIR}/load_db_value_converter.cpp
@@ -403,7 +403,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${QUERY_SOURCES}
   ${OBJECT_SOURCES}
   ${REPLICATION_SOURCES}
-  ${STREAM_SOURCES}  
+  ${STREAM_SOURCES}
   ${JSP_SOURCES}
   ${THREAD_SOURCES}
   ${TRANSACTION_SOURCES}
@@ -440,7 +440,7 @@ add_library(cubridsa SHARED
   ${OBJECT_SOURCES}
   ${REPLICATION_HEADERS}
   ${REPLICATION_SOURCES}
-  ${STREAM_HEADERS}  
+  ${STREAM_HEADERS}
   ${STREAM_SOURCES}
   ${JSP_SOURCES}
   ${THREAD_SOURCES}

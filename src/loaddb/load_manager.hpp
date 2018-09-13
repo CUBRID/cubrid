@@ -24,8 +24,6 @@
 #ifndef _LOAD_MANAGER_HPP_
 #define _LOAD_MANAGER_HPP_
 
-#ident "$Id$"
-
 #include "connection_defs.h"
 #include "load_driver.hpp"
 #include "resource_shared_pool.hpp"
