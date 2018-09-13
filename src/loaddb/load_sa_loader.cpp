@@ -121,7 +121,7 @@ const std::size_t LDR_MAX_ARGS = 32;
 #define CHECK_CONTEXT_VALIDITY(context, expr)                           \
   do {                                                                  \
     if ((expr)) {                                                       \
-      LDR_INCREMENT_ERR_COUNT(context, 1);                              \
+      ldr_increment_err_count (context, 1);                             \
       context->valid = false;                                           \
     }                                                                   \
   } while (0)
