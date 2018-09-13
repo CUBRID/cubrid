@@ -3701,7 +3701,6 @@ db_json_pretty (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 {
   int error_code = NO_ERROR;
   JSON_DOC *new_doc = NULL;
-  JSON_DOC *result_json = NULL;
   char *str = NULL;
 
   db_make_null (result);
@@ -3726,7 +3725,7 @@ db_json_pretty (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 
   db_json_pretty_func (*new_doc, str);
 
-  // direct assignement (no copy)
+  // direct assignment (no copy)
   db_make_string (result, str);
 
   // delete new_doc

@@ -374,22 +374,22 @@ class JSON_SERIALIZER : public JSON_BASE_HANDLER
 };
 
 /*
-* JSON_PRETTY_WRITER - This class extends JSON_BASE_HANDLER
-*
-* The JSON document accepts the Handler and walks the document with respect to the DB_JSON_TYPE.
-* The context is kept in the m_level_iterable stack which contains the value from the current level, which
-* can be ARRAY, OBJECT or SCALAR. In case we are in an iterable (ARRAY/OBJECT) we need to keep track if of the first
-* element because it's important for printing the delimiters.
-*
-* The formatting output respects the following rules:
-* - Each array element or object member appears on a separate line, indented by one additional level as
-*   compared to its parent
-* - Each level of indentation adds two leading spaces
-* - A comma separating individual array elements or object members is printed before the newline that
-*   separates the two elements or members
-* - The key and the value of an object member are separated by a colon followed by a space (': ')
-* - An empty object or array is printed on a single line. No space is printed between the opening and closing brace
-*/
+ * JSON_PRETTY_WRITER - This class extends JSON_BASE_HANDLER
+ *
+ * The JSON document accepts the Handler and walks the document with respect to the DB_JSON_TYPE.
+ * The context is kept in the m_level_iterable stack which contains the value from the current level, which
+ * can be ARRAY, OBJECT or SCALAR. In case we are in an iterable (ARRAY/OBJECT) we need to keep track if of the first
+ * element because it's important for printing the delimiters.
+ *
+ * The formatting output respects the following rules:
+ * - Each array element or object member appears on a separate line, indented by one additional level as
+ *   compared to its parent
+ * - Each level of indentation adds two leading spaces
+ * - A comma separating individual array elements or object members is printed before the newline that
+ *   separates the two elements or members
+ * - The key and the value of an object member are separated by a colon followed by a space (': ')
+ * - An empty object or array is printed on a single line. No space is printed between the opening and closing brace
+ */
 class JSON_PRETTY_WRITER : public JSON_BASE_HANDLER
 {
   public:
@@ -2369,7 +2369,8 @@ db_json_convert_sql_path_to_pointer (const char *sql_path, std::string &json_poi
   return NO_ERROR;
 }
 
-/* db_json_get_paths_helper () - Recursive function to get the paths from a json object
+/*
+ * db_json_get_paths_helper () - Recursive function to get the paths from a json object
  *
  * obj (in)                : current object
  * sql_path (in)           : the path for the current object
@@ -2404,7 +2405,8 @@ db_json_get_paths_helper (const JSON_VALUE &obj, const std::string &sql_path, st
   paths.push_back (sql_path);
 }
 
-/* db_json_get_all_paths_func () - Returns the paths from a JSON document as a JSON array
+/*
+ * db_json_get_all_paths_func () - Returns the paths from a JSON document as a JSON array
  *
  * doc (in)                : json document
  * result_json (in)        : a json array that contains all the paths
@@ -2431,11 +2433,12 @@ db_json_get_all_paths_func (const JSON_DOC &doc, JSON_DOC *&result_json)
   return NO_ERROR;
 }
 
-/* db_json_pretty_func () - Returns the stringified version of a JSON document
-*
-* doc (in)                : json document
-* result_str (in)         : a string that contains the json in a pretty format
-*/
+/*
+ * db_json_pretty_func () - Returns the stringified version of a JSON document
+ *
+ * doc (in)                : json document
+ * result_str (in)         : a string that contains the json in a pretty format
+ */
 void
 db_json_pretty_func (const JSON_DOC &doc, char *&result_str)
 {
@@ -2448,7 +2451,8 @@ db_json_pretty_func (const JSON_DOC &doc, char *&result_str)
   result_str = db_private_strdup (NULL, json_pretty_writer.ToString ().c_str ());
 }
 
-/* db_json_keys_func () - Returns the keys from the top-level value of a JSON object as a JSON array
+/*
+ * db_json_keys_func () - Returns the keys from the top-level value of a JSON object as a JSON array
  *
  * return                  : error code
  * doc (in)                : json document
