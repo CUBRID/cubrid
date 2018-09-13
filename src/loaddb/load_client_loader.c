@@ -70,11 +70,7 @@
 
 using namespace cubload;
 
-#define LDR_MAX_ARGS 32
-
-#define LDR_INCREMENT_ERR_COUNT(context, i) ldr_increment_err_count(context, i)
-#define LDR_CLEAR_ERR_TOTAL(context)        ldr_clear_err_total(context)
-#define LDR_CLEAR_ERR_COUNT(context)        ldr_clear_err_count(context)
+const std::size_t LDR_MAX_ARGS = 32;
 
 /* filter out ignorable errid */
 #define FILTER_OUT_ERR_INTERNAL(err, expr)                              \
@@ -935,7 +931,7 @@ namespace cubload
 		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2, ldr_Current_context->num_attrs,
 			ldr_Current_context->next_attr);
 	      }
-	    LDR_INCREMENT_ERR_COUNT (ldr_Current_context, 1);
+	    ldr_increment_err_count (ldr_Current_context, 1);
 	  }
       }
 
@@ -981,13 +977,13 @@ namespace cubload
 		  }
 		else
 		  {
-		    LDR_INCREMENT_ERR_COUNT (ldr_Current_context, 1);
+		    ldr_increment_err_count (ldr_Current_context, 1);
 		  }
 	      }
 	  }
 	else
 	  {
-	    LDR_INCREMENT_ERR_COUNT (ldr_Current_context, 1);
+	    ldr_increment_err_count (ldr_Current_context, 1);
 	  }
       }
 
@@ -1478,7 +1474,7 @@ ldr_clear_context (LDR_CONTEXT * context)
 
   /* verbose and periodic_commit are should be set out side this function */
 
-  LDR_CLEAR_ERR_COUNT (context);
+  ldr_clear_err_count (context);
 
   /* error_total should not be reset here */
 
@@ -1817,7 +1813,7 @@ ldr_act_attr (LDR_CONTEXT * context, const char *str, size_t len, data_type type
 
 error_exit:
   context->next_attr += 1;
-  LDR_INCREMENT_ERR_COUNT (context, (err != NO_ERROR));
+  ldr_increment_err_count (context, (err != NO_ERROR));
 }
 
 /*
@@ -1892,7 +1888,7 @@ ldr_act_elem (LDR_CONTEXT * context, const char *str, size_t len, data_type type
     }
 
 error_exit:
-  LDR_INCREMENT_ERR_COUNT (context, (err != NO_ERROR));
+  ldr_increment_err_count (context, (err != NO_ERROR));
 }
 
 /*
@@ -1962,7 +1958,7 @@ ldr_act_meth (LDR_CONTEXT * context, const char *str, size_t len, data_type type
 
 error_exit:
   context->next_attr += 1;
-  LDR_INCREMENT_ERR_COUNT (context, (err != NO_ERROR));
+  ldr_increment_err_count (context, (err != NO_ERROR));
 }
 
 /*
@@ -2171,7 +2167,7 @@ ldr_act_class_attr (LDR_CONTEXT * context, const char *str, size_t len, data_typ
 
 error_exit:
   context->next_attr += 1;
-  LDR_INCREMENT_ERR_COUNT (context, (err != NO_ERROR));
+  ldr_increment_err_count (context, (err != NO_ERROR));
 }
 
 /*
@@ -2189,7 +2185,7 @@ ldr_sys_user_db_generic (LDR_CONTEXT * context, const char *str, size_t len, SM_
   fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_UNAUTHORIZED_CLASS),
 	   "db_user");
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-  LDR_INCREMENT_ERR_COUNT (context, 1);
+  ldr_increment_err_count (context, 1);
   return (ER_GENERIC_ERROR);
 }
 
@@ -2209,7 +2205,7 @@ ldr_sys_class_db_generic (LDR_CONTEXT * context, const char *str, size_t len, SM
 	   "*system class*");
   CHECK_CONTEXT_VALIDITY (context, true);
 
-  LDR_INCREMENT_ERR_COUNT (context, 1);
+  ldr_increment_err_count (context, 1);
   return (NO_ERROR);
 }
 
@@ -3635,7 +3631,7 @@ ldr_elo_ext_elem (LDR_CONTEXT * context, const char *str, size_t len, DB_VALUE *
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
 
       /* reset the error count by adding -1, since this is not real error */
-      LDR_INCREMENT_ERR_COUNT (context, -1);
+      ldr_increment_err_count (context, -1);
       return (err);
     }
 
@@ -4175,7 +4171,7 @@ ldr_class_oid_db_object (LDR_CONTEXT * context, const char *str, size_t len, SM_
     }
 
 error_exit:
-  LDR_INCREMENT_ERR_COUNT (context, (err != NO_ERROR));
+  ldr_increment_err_count (context, (err != NO_ERROR));
   return err;
 }
 
@@ -4224,7 +4220,7 @@ ldr_oid_elem (LDR_CONTEXT * context, const char *str, size_t len, DB_VALUE * val
     }
 
 error_exit:
-  LDR_INCREMENT_ERR_COUNT (context, (err != NO_ERROR));
+  ldr_increment_err_count (context, (err != NO_ERROR));
   return err;
 }
 
@@ -4486,7 +4482,7 @@ ldr_reset_context (LDR_CONTEXT * context)
       ws_class_has_object_dependencies (context->cls);
     }
   context->next_attr = 0;
-  LDR_CLEAR_ERR_COUNT (context);
+  ldr_clear_err_count (context);
 
 error_exit:
   CHECK_CONTEXT_VALIDITY (context, err != NO_ERROR);
@@ -4608,7 +4604,7 @@ error_exit:
       fprintf (stderr, "%s\n", db_error_string (3));
       committed_instances = (-1);
       CHECK_CONTEXT_VALIDITY (context, true);
-      LDR_INCREMENT_ERR_COUNT (context, 1);
+      ldr_increment_err_count (context, 1);
     }
   return err;
 }
@@ -5960,7 +5956,7 @@ ldr_init_loader (LDR_CONTEXT * context)
   ldr_clear_context (context);
   ldr_act_init_context (context, NULL, 0);
   ldr_Current_context = context;
-  LDR_CLEAR_ERR_TOTAL (context);
+  ldr_clear_err_total (context);
   context->validation_only = 0;
   context->valid = true;
   context->flush_total = 0;

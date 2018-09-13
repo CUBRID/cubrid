@@ -747,21 +747,26 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       schema_file = NULL;
     }
 
-/*
+#if defined (SA_MODE)
+  ldr_load (&args, &status, &interrupted);
+#else // !SA_MODE = CS_MODE
+  /* TODO
   bool load_on_server = ldr_load_on_server ();
   if (load_on_server)
     {
       char object_file_abs_path[PATH_MAX];
       if (realpath (args.object_file, object_file_abs_path) != NULL)
-	{
-	  loaddb_load_object_file (object_file_abs_path);
-	}
+        {
+          loaddb_load_object_file (object_file_abs_path);
+        }
+      // in fact there is a longer story here
     }
-*/
-
-#if defined (SA_MODE)
-  ldr_load (&args, &status, &interrupted);
-#endif // SA_MODE
+  else
+    {
+      // probably some error
+    }
+  */
+#endif // !SA_MODE = CS_MODE
 
   /* if index file is specified, do index creation */
   if (!interrupted && index_file != NULL)
