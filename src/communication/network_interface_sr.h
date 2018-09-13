@@ -35,7 +35,7 @@
 #include "thread_compat.hpp"
 #include "xasl.h"
 
-extern void return_error_to_client (THREAD_ENTRY * thread_p, unsigned int rid);
+extern TRAN_STATE return_error_to_client (THREAD_ENTRY * thread_p, unsigned int rid);
 extern int server_ping_with_handshake (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void server_ping (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slocator_fetch (THREAD_ENTRY * thrd, unsigned int rid, char *request, int reqlen);

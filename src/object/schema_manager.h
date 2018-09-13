@@ -92,7 +92,7 @@ extern const char *sm_Root_class_name;
 
 extern int sm_finish_class (SM_TEMPLATE * template_, MOP * classmop);
 extern int sm_update_class (SM_TEMPLATE * template_, MOP * classmop);
-extern int sm_update_class_with_auth (SM_TEMPLATE * template_, MOP * classmop, DB_AUTH auth);
+extern int sm_update_class_with_auth (SM_TEMPLATE * template_, MOP * classmop, DB_AUTH auth, bool lock_hierarchy);
 extern int sm_update_class_auto (SM_TEMPLATE * template_, MOP * classmop);
 extern int sm_delete_class_mop (MOP op, bool is_cascade_constraints);
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -244,6 +244,8 @@ extern struct parser_context *sm_virtual_queries (struct parser_context *parser,
 
 
 extern int sm_flush_objects (MOP obj);
+extern int sm_decache_mop (MOP mop, void *info);
+extern int sm_decache_instances_after_query_executed_with_commit (MOP class_mop);
 extern int sm_flush_and_decache_objects (MOP obj, int decache);
 extern int sm_flush_for_multi_update (MOP class_mop);
 
@@ -278,6 +280,7 @@ extern void sm_free_descriptor (SM_DESCRIPTOR * desc);
 extern int sm_get_descriptor_component (MOP op, SM_DESCRIPTOR * desc, int for_update, SM_CLASS ** class_ptr,
 					SM_COMPONENT ** comp_ptr);
 
+extern void sm_fee_resident_classes_virtual_query_cache (void);
 
 /* Module control */
 extern void sm_final (void);

@@ -163,6 +163,13 @@ extern BTID *xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char
 				HFID * hfids, int unique_pk, int not_null_flag, OID * fk_refcls_oid,
 				BTID * fk_refcls_pk_btid, const char *fk_name, char *pred_stream, int pred_stream_size,
 				char *expr_stream, int expr_steram_size, int func_col_id, int func_attr_index_start);
+extern BTID *xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP_DOMAIN * key_type,
+				       OID * class_oids, int n_classes, int n_attrs, int *attr_ids,
+				       int *attrs_prefix_length, HFID * hfids, int unique_pk, int not_null_flag,
+				       OID * fk_refcls_oid, BTID * fk_refcls_pk_btid, const char *fk_name,
+				       char *pred_stream, int pred_stream_size, char *expr_stream, int expr_steram_size,
+				       int func_col_id, int func_attr_index_start);
+
 extern int xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid);
 extern BTREE_SEARCH xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE scan_op_type,
 					DB_VALUE * key, OID * class_oid, OID * oid, bool is_all_class_srch);
@@ -271,4 +278,6 @@ extern int xchksum_insert_repl_log_and_demote_table_lock (THREAD_ENTRY * thread_
 							  const OID * class_oidp);
 extern bool xlogtb_does_active_user_exist (THREAD_ENTRY * thread_p, const char *user_name);
 extern int xlocator_demote_class_lock (THREAD_ENTRY * thread_p, const OID * class_oid, LOCK lock, LOCK * ex_lock);
+extern bool xtran_should_connection_reset (THREAD_ENTRY * thread_p, bool has_updated);
+extern int xsession_set_tran_auto_commit (THREAD_ENTRY * thread_p, bool auto_commit);
 #endif /* _XSERVER_INTERFACE_H_ */
