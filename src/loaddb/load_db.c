@@ -503,7 +503,6 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   int au_save = 0;
   extern bool obt_Enable_autoincrement;
   char log_file_name[PATH_MAX];
-  char object_file_abs_path[PATH_MAX];
   const char *msg_format;
   obt_Enable_autoincrement = false;
   load_args args;
@@ -752,6 +751,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   bool load_on_server = ldr_load_on_server ();
   if (load_on_server)
     {
+      char object_file_abs_path[PATH_MAX];
       if (realpath (args.object_file, object_file_abs_path) != NULL)
 	{
 	  loaddb_load_object_file (object_file_abs_path);

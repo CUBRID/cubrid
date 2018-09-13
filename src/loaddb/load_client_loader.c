@@ -200,8 +200,8 @@ typedef struct LDR_ATTDESC
   LDR_SETTER setter[NUM_LDR_TYPES];	/* Setter functions indexed by type */
 
   char *parser_str;		/* used as a holder to hold the parser strings when parsing method arguments. */
-  int parser_str_len;		/* Length of parser token string */
-  int parser_buf_len;		/* Length of parser token buffer */
+  size_t parser_str_len;		/* Length of parser token string */
+  size_t parser_buf_len;		/* Length of parser token buffer */
   data_type parser_type;	/* Used when parsing method arguments, to store */
   /* the type information. */
 
@@ -465,7 +465,7 @@ do                                            \
   {                                           \
     if (str[0] == '\"')                       \
       str++;                                  \
-    new_len = strlen (str);                   \
+    new_len = (int) strlen (str);                   \
     if (new_len && str[new_len-1] == '\"')   \
       new_len--;                              \
   }                                           \
@@ -2277,8 +2277,8 @@ ldr_int_elem (LDR_CONTEXT * context, const char *str, size_t len, DB_VALUE * val
       if (numeric_coerce_num_to_bigint (num.d.buf, 0, &tmp_bigint) != NO_ERROR)
 	{
 
-	  CHECK_PARSE_ERR (err, db_value_domain_init (val, DB_TYPE_NUMERIC, len, 0), context, DB_TYPE_BIGINT, str);
-	  CHECK_PARSE_ERR (err, db_value_put (val, DB_TYPE_C_CHAR, (char *) str, len), context, DB_TYPE_BIGINT, str);
+	  CHECK_PARSE_ERR (err, db_value_domain_init (val, DB_TYPE_NUMERIC, (int) len, 0), context, DB_TYPE_BIGINT, str);
+	  CHECK_PARSE_ERR (err, db_value_put (val, DB_TYPE_C_CHAR, (char *) str, (int) len), context, DB_TYPE_BIGINT, str);
 	}
       else
 	{
@@ -2528,7 +2528,7 @@ ldr_str_db_char (LDR_CONTEXT * context, const char *str, size_t len, SM_ATTRIBUT
 
   precision = att->domain->precision;
 
-  intl_char_count ((unsigned char *) str, len, (INTL_CODESET) att->domain->codeset, &char_count);
+  intl_char_count ((unsigned char *) str, (int) len, (INTL_CODESET) att->domain->codeset, &char_count);
 
   if (char_count > precision)
     {
@@ -2568,7 +2568,7 @@ ldr_str_db_char (LDR_CONTEXT * context, const char *str, size_t len, SM_ATTRIBUT
   val.data.ch.info.style = MEDIUM_STRING;
   val.data.ch.info.is_max_string = false;
   val.data.ch.info.compressed_need_clear = false;
-  val.data.ch.medium.size = len;
+  val.data.ch.medium.size = (int) len;
   val.data.ch.medium.buf = (char *) str;
   val.data.ch.medium.compressed_buf = NULL;
   val.data.ch.medium.compressed_size = 0;
@@ -2598,7 +2598,7 @@ ldr_str_db_varchar (LDR_CONTEXT * context, const char *str, size_t len, SM_ATTRI
   int char_count = 0;
 
   precision = att->domain->precision;
-  intl_char_count ((unsigned char *) str, len, (INTL_CODESET) att->domain->codeset, &char_count);
+  intl_char_count ((unsigned char *) str, (int) len, (INTL_CODESET) att->domain->codeset, &char_count);
 
   if (char_count > precision)
     {
@@ -2634,7 +2634,7 @@ ldr_str_db_varchar (LDR_CONTEXT * context, const char *str, size_t len, SM_ATTRI
 
   val.domain = ldr_varchar_tmpl.domain;
   val.domain.char_info.length = char_count;
-  val.data.ch.medium.size = len;
+  val.data.ch.medium.size = (int) len;
   val.data.ch.medium.buf = (char *) str;
   val.data.ch.info.style = MEDIUM_STRING;
   val.data.ch.info.is_max_string = false;
@@ -2688,18 +2688,18 @@ ldr_bstr_elem (LDR_CONTEXT * context, const char *str, size_t len, DB_VALUE * va
   DB_VALUE temp;
   TP_DOMAIN *domain_ptr, temp_domain;
 
-  dest_size = (len + 7) / 8;
+  dest_size = ((int) len + 7) / 8;
 
   CHECK_PTR (err, bstring = (char *) db_private_alloc (NULL, dest_size + 1));
 
-  if (qstr_bit_to_bin (bstring, dest_size, (char *) str, len) != len)
+  if (qstr_bit_to_bin (bstring, dest_size, (char *) str, (int) len) != len)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_DOMAIN_CONFLICT, 1,
 	      context->attrs[context->next_attr].att->header.name);
       CHECK_PARSE_ERR (err, ER_OBJ_DOMAIN_CONFLICT, context, DB_TYPE_BIT, str);
     }
 
-  db_make_varbit (&temp, TP_FLOATING_PRECISION_VALUE, bstring, len);
+  db_make_varbit (&temp, TP_FLOATING_PRECISION_VALUE, bstring, (int) len);
   temp.need_clear = true;
 
   GET_DOMAIN (context, domain);
@@ -2770,17 +2770,17 @@ ldr_xstr_elem (LDR_CONTEXT * context, const char *str, size_t len, DB_VALUE * va
 
   db_make_null (&temp);
 
-  dest_size = (len + 1) / 2;
+  dest_size = ((int) len + 1) / 2;
 
   CHECK_PTR (err, bstring = (char *) db_private_alloc (NULL, dest_size + 1));
 
-  if (qstr_hex_to_bin (bstring, dest_size, (char *) str, len) != len)
+  if (qstr_hex_to_bin (bstring, dest_size, (char *) str, (int) len) != (int) len)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_DOMAIN_CONFLICT, 1, ldr_attr_name (context));
       CHECK_PARSE_ERR (err, ER_OBJ_DOMAIN_CONFLICT, context, DB_TYPE_BIT, str);
     }
 
-  db_make_varbit (&temp, TP_FLOATING_PRECISION_VALUE, bstring, len * 4);
+  db_make_varbit (&temp, TP_FLOATING_PRECISION_VALUE, bstring, (int) len * 4);
   temp.need_clear = true;
 
   /* temp takes ownership of this piece of memory */
@@ -2850,7 +2850,7 @@ static int
 ldr_nstr_elem (LDR_CONTEXT * context, const char *str, size_t len, DB_VALUE * val)
 {
 
-  db_make_varnchar (val, TP_FLOATING_PRECISION_VALUE, (const DB_C_NCHAR) (str), len, LANG_SYS_CODESET,
+  db_make_varnchar (val, TP_FLOATING_PRECISION_VALUE, (const DB_C_NCHAR) (str), (int) len, LANG_SYS_CODESET,
 		    LANG_SYS_COLLATION);
   return NO_ERROR;
 }
@@ -2900,11 +2900,11 @@ ldr_numeric_elem (LDR_CONTEXT * context, const char *str, size_t len, DB_VALUE *
   int precision, scale;
   int err = NO_ERROR;
 
-  precision = len - 1 - (str[0] == '+' || str[0] == '-' || str[0] == '.');
-  scale = len - (int) strcspn (str, ".") - 1;
+  precision = (int) len - 1 - (str[0] == '+' || str[0] == '-' || str[0] == '.');
+  scale = (int) len - (int) strcspn (str, ".") - 1;
 
   CHECK_PARSE_ERR (err, db_value_domain_init (val, DB_TYPE_NUMERIC, precision, scale), context, DB_TYPE_NUMERIC, str);
-  CHECK_PARSE_ERR (err, db_value_put (val, DB_TYPE_C_CHAR, (char *) str, len), context, DB_TYPE_NUMERIC, str);
+  CHECK_PARSE_ERR (err, db_value_put (val, DB_TYPE_C_CHAR, (char *) str, (int) len), context, DB_TYPE_NUMERIC, str);
 
 error_exit:
   return err;
