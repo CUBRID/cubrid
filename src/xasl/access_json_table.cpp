@@ -39,13 +39,13 @@ namespace cubxasl
     int
     column::trigger_on_error (const JSON_DOC &input, const TP_DOMAIN_STATUS &status_cast, db_value &value_out)
     {
-      (void) pr_clear_value (&value_out);
-      (void) db_make_null (&value_out);
+      (void)pr_clear_value (&value_out);
+      (void)db_make_null (&value_out);
 
       switch (m_on_error.m_behavior)
 	{
 	case JSON_TABLE_RETURN_NULL:
-	  er_clear ();
+	  er_clear();
 	  return NO_ERROR;
 
 	case JSON_TABLE_THROW_ERROR:
@@ -53,7 +53,7 @@ namespace cubxasl
 	  PRIVATE_UNIQUE_PTR<char> unique_ptr_json_body (db_json_get_raw_json_body_from_document (&input), NULL);
 
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_TABLE_ON_ERROR_INCOMP_DOMAIN, 4,
-		  unique_ptr_json_body.get (), m_path.c_str (), m_column_name.c_str (),
+		  unique_ptr_json_body.get(), m_path, m_column_name,
 		  pr_type_name (TP_DOMAIN_TYPE (m_domain)));
 
 	  return ER_JSON_TABLE_ON_ERROR_INCOMP_DOMAIN;
@@ -61,7 +61,7 @@ namespace cubxasl
 
 	case JSON_TABLE_DEFAULT_VALUE:
 	  assert (m_on_error.m_default_value != NULL);
-	  er_clear ();
+	  er_clear();
 	  if (pr_clone_value (m_on_error.m_default_value, &value_out) != NO_ERROR)
 	    {
 	      assert (false);
@@ -77,8 +77,8 @@ namespace cubxasl
     int
     column::trigger_on_empty (db_value &value_out)
     {
-      (void) pr_clear_value (&value_out);
-      (void) db_make_null (&value_out);
+      (void)pr_clear_value (&value_out);
+      (void)db_make_null (&value_out);
 
       switch (m_on_empty.m_behavior)
 	{
@@ -86,7 +86,7 @@ namespace cubxasl
 	  return NO_ERROR;
 
 	case JSON_TABLE_THROW_ERROR:
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_TABLE_ON_EMPTY_ERROR, 1, m_column_name.c_str ());
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_TABLE_ON_EMPTY_ERROR, 1, m_column_name);
 	  return ER_JSON_TABLE_ON_EMPTY_ERROR;
 
 	case JSON_TABLE_DEFAULT_VALUE:
@@ -105,10 +105,10 @@ namespace cubxasl
 
     column::column (void)
       : m_domain (NULL)
-      , m_path ()
-      , m_column_name ()
-      , m_on_error ()
-      , m_on_empty ()
+      , m_path()
+      , m_column_name()
+      , m_on_error()
+      , m_on_empty()
       , m_output_value_pointer (NULL)
       , m_function (json_table_column_function::JSON_TABLE_EXTRACT)
     {
@@ -122,10 +122,10 @@ namespace cubxasl
       JSON_DOC *docp = NULL;
       TP_DOMAIN_STATUS status_cast = TP_DOMAIN_STATUS::DOMAIN_COMPATIBLE;
 
-      error_code = db_json_extract_document_from_path (&input, m_path.c_str (), docp);
+      error_code = db_json_extract_document_from_path (&input, m_path, docp);
       if (error_code != NO_ERROR)
 	{
-	  ASSERT_ERROR ();
+	  ASSERT_ERROR();
 	  assert (db_value_is_null (m_output_value_pointer));
 	  return ER_FAILED;
 	}
@@ -135,7 +135,7 @@ namespace cubxasl
 	  error_code = trigger_on_empty (*m_output_value_pointer);
 	  if (error_code != NO_ERROR)
 	    {
-	      ASSERT_ERROR ();
+	      ASSERT_ERROR();
 	    }
 	  return error_code;
 	}
@@ -152,7 +152,7 @@ namespace cubxasl
 	  error_code = trigger_on_error (input, status_cast, *m_output_value_pointer);
 	  if (error_code != NO_ERROR)
 	    {
-	      ASSERT_ERROR ();
+	      ASSERT_ERROR();
 	    }
 	}
 
@@ -166,10 +166,10 @@ namespace cubxasl
       bool result = false;
       TP_DOMAIN_STATUS status_cast = TP_DOMAIN_STATUS::DOMAIN_COMPATIBLE;
 
-      error_code = db_json_contains_path (&input, m_path.c_str (), result);
+      error_code = db_json_contains_path (&input, m_path, result);
       if (error_code != NO_ERROR)
 	{
-	  ASSERT_ERROR ();
+	  ASSERT_ERROR();
 	  assert (db_value_is_null (m_output_value_pointer));
 	  return ER_FAILED;
 	}
@@ -226,7 +226,7 @@ namespace cubxasl
     }
 
     node::node (void)
-      : m_path ()
+      : m_path()
       , m_ordinality (1)
       , m_need_inc_ordinality (true)
       , m_id (0)
@@ -237,42 +237,42 @@ namespace cubxasl
     }
 
     void
-    node::clear_columns ()
+    node::clear_columns()
     {
-      for (auto &column : m_output_columns)
+      for (size_t i = 0; i < m_output_columns_sz; ++i)
 	{
-	  (void) pr_clear_value (column.m_output_value_pointer);
-	  (void) db_make_null (column.m_output_value_pointer);
+	  (void)pr_clear_value (m_output_columns[i].m_output_value_pointer);
+	  (void)db_make_null (m_output_columns[i].m_output_value_pointer);
 	}
     }
 
     void
     node::clear_tree (void)
     {
-      clear_columns ();
+      clear_columns();
 
-      for (node &child : m_nested_nodes)
+      for (size_t i = 0; i < m_nested_nodes_sz; ++i)
 	{
-	  child.clear_tree ();
+	  m_nested_nodes[i].clear_tree();
 	}
     }
 
     bool
     node::str_ends_with (const std::string &str, const std::string &end)
     {
-      return end.size () <= str.size () && str.compare (str.size () - end.size (), end.size (), end) == 0;
+      return end.size() <= str.size() && str.compare (str.size() - end.size(), end.size(), end) == 0;
     }
 
     bool
-    node::check_need_expand () const
+    node::check_need_expand() const
     {
       return m_expand_type != json_table_expand_type::JSON_TABLE_NO_EXPAND;
     }
 
     void
-    node::set_parent_path ()
+    node::set_parent_path()
     {
-      if (!check_need_expand ())
+      if (!check_need_expand())
 	{
 	  assert (false);
 	  return;
@@ -280,18 +280,28 @@ namespace cubxasl
 
       if (m_expand_type == json_table_expand_type::JSON_TABLE_ARRAY_EXPAND)
 	{
-	  m_path.assign (m_path.substr (0, m_path.size () - 3));
+	  std::string s (m_path);
+	  s.assign (s.substr (0, s.size() - 3));
+
+	  // will only shrink
+	  strcpy (m_path, s.c_str());
+	  m_path[s.size()] = 0;
 	}
       else if (m_expand_type == json_table_expand_type::JSON_TABLE_OBJECT_EXPAND)
 	{
-	  m_path.assign (m_path.substr (0, m_path.size () - 2));
+	  std::string s (m_path);
+	  s.assign (s.substr (0, s.size() - 2));
+
+	  // will only shrink
+	  strcpy (m_path, s.c_str());
+	  m_path[s.size()] = 0;
 	}
     }
 
     void
-    node::init_iterator ()
+    node::init_iterator()
     {
-      if (check_need_expand ())
+      if (check_need_expand())
 	{
 	  if (m_expand_type == json_table_expand_type::JSON_TABLE_ARRAY_EXPAND)
 	    {

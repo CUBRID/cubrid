@@ -1953,7 +1953,7 @@ qexec_clear_access_spec_list (XASL_NODE * xasl_p, THREAD_ENTRY * thread_p, ACCES
 	  pr_clear_value (&p->s_id.s.ssid.set);
 	  break;
 	case TARGET_JSON_TABLE:
-	  pg_cnt += qexec_clear_regu_var (xasl_p, p->s.json_table_node.m_json_reguvar, is_final);
+	  pg_cnt += qexec_clear_regu_var (xasl_p, p->s.json_table_spec_node.m_json_reguvar, is_final);
 	  break;
 	case TARGET_METHOD:
 	  pg_cnt += qexec_clear_regu_list (xasl_p, p->s.method_node.method_regu_list, is_final);

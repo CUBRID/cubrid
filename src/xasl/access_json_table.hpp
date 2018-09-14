@@ -47,8 +47,8 @@ namespace cubxasl
     struct column
     {
 	tp_domain *m_domain;
-	std::string m_path;
-	std::string m_column_name;
+	char *m_path;
+	char *m_column_name;
 	json_table_column_behavior m_on_error;
 	json_table_column_behavior m_on_empty;
 	db_value *m_output_value_pointer;     // should match xasl->outptr_list value pointers
@@ -71,11 +71,13 @@ namespace cubxasl
 
     struct node
     {
-      std::string m_path;
+      char *m_path;
       size_t m_ordinality;                    // will be used to count the row ordinality
       bool m_need_inc_ordinality;
-      std::vector<column> m_output_columns;   // columns part of output only
-      std::vector<node> m_nested_nodes;       // nested nodes
+      column *m_output_columns;   // columns part of output only
+      size_t m_output_columns_sz;
+      node *m_nested_nodes;       // nested nodes
+      size_t m_nested_nodes_sz;
       size_t m_id;                            // identifier for each node
       JSON_ITERATOR *m_iterator;
       json_table_expand_type m_expand_type;

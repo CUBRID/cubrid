@@ -812,7 +812,7 @@ union hybrid_node
   SET_SPEC_TYPE set_node;	/* set specification */
   METHOD_SPEC_TYPE method_node;	/* method specification */
   REGUVAL_LIST_SPEC_TYPE reguval_list_node;	/* reguval_list specification */
-  json_table_spec_node json_table_node;	/* json_table specification */
+  json_table_spec_node json_table_spec_node;	/* json_table specification */
 };				/* class/list access specification */
 
 /*
@@ -865,7 +865,7 @@ union hybrid_node
         ((ptr)->s.method_node)
 
 #define ACCESS_SPEC_JSON_TABLE_SPEC(ptr) \
-        ((ptr)->s.json_table_node)
+        ((ptr)->s.json_table_spec_node)
 
 #define ACCESS_SPEC_METHOD_XASL_NODE(ptr) \
         ((ptr)->s.method_node.xasl_node)
@@ -880,13 +880,13 @@ union hybrid_node
         (ACCESS_SPEC_METHOD_XASL_NODE(ptr)->list_id)
 
 #define ACCESS_SPEC_JSON_TABLE_ROOT_NODE(ptr) \
-        ((ptr)->s.json_table_node.m_root_node)
+        ((ptr)->s.json_table_spec_node.m_root_node)
 
 #define ACCESS_SPEC_JSON_TABLE_REGU_VAR(ptr) \
-        ((ptr)->s.json_table_node.m_json_reguvar)
+        ((ptr)->s.json_table_spec_node.m_json_reguvar)
 
 #define ACCESS_SPEC_JSON_TABLE_M_NODE_COUNT(ptr) \
-        ((ptr)->s.json_table_node.m_node_count)
+        ((ptr)->s.json_table_spec_node.m_node_count)
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 struct orderby_stat
