@@ -33211,8 +33211,8 @@ btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_
 
 	if (error_code == NO_ERROR && search_key.result == BTREE_KEY_NOTFOUND)
 	  {
-	    /*  We failed to find the object in the index. We must traverse again the btree and treat the operation
-	     *  as an insert with DELETE_FLAG set.
+	    /* We failed to find the object in the index. We must traverse again the btree and treat the operation
+	     * as an insert with DELETE_FLAG set.
 	     */
 	    insert_helper.purpose = purpose;
 	    insert_helper.op_type = SINGLE_ROW_INSERT;
@@ -33245,19 +33245,19 @@ btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_
   return error_code;
 }
 
- /*
-  * btree_key_online_index_insert () - BTREE_PROCESS_KEY_FUNCTION used for inserting a new object in b-tree during
-  *                                    online index loading.
-  *
-  * return         : Error code.
-  * thread_p (in)   : Thread entry.
-  * btid_int (in)   : B-tree info.
-  * key (int)       : Key info
-  * leaf_page (in)  : Pointer to the leaf page.
-  * search_key (in) : Search helper
-  * restart (in/out): Restart
-  * args (in/out)   : BTREE_INSERT_HELPER *.
-  */
+/*
+ * btree_key_online_index_IB_insert () - BTREE_PROCESS_KEY_FUNCTION used for inserting a new object in b-tree during
+ *                                       online index loading.
+ *
+ * return         : Error code.
+ * thread_p (in)   : Thread entry.
+ * btid_int (in)   : B-tree info.
+ * key (int)       : Key info
+ * leaf_page (in)  : Pointer to the leaf page.
+ * search_key (in) : Search helper
+ * restart (in/out): Restart
+ * args (in/out)   : BTREE_INSERT_HELPER *.
+ */
 int
 btree_key_online_index_IB_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
 				  PAGE_PTR * leaf_page, BTREE_SEARCH_KEY_HELPER * search_key, bool * restart,
@@ -33442,18 +33442,18 @@ end:
 }
 
 /*
-  * btree_key_online_index_tran_insert () - BTREE_PROCESS_KEY_FUNCTION used for inserting a new object
-                                             in b-tree during online index loading.
-  *
-  * return         : Error code.
-  * thread_p (in)   : Thread entry.
-  * btid_int (in)   : B-tree info.
-  * key (int)       : Key info
-  * leaf_page (in)  : Pointer to the leaf page.
-  * search_key (in) : Search helper
-  * restart (in/out): Restart
-  * args (in/out)   : BTREE_INSERT_HELPER *.
-  */
+ * btree_key_online_index_tran_insert () - BTREE_PROCESS_KEY_FUNCTION used for inserting a new object
+ *                                         in b-tree during online index loading.
+ *
+ * return         : Error code.
+ * thread_p (in)   : Thread entry.
+ * btid_int (in)   : B-tree info.
+ * key (int)       : Key info
+ * leaf_page (in)  : Pointer to the leaf page.
+ * search_key (in) : Search helper
+ * restart (in/out): Restart
+ * args (in/out)   : BTREE_INSERT_HELPER *.
+ */
 static int
 btree_key_online_index_tran_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
 				    PAGE_PTR * leaf_page, BTREE_SEARCH_KEY_HELPER * search_key, bool * restart,
@@ -33494,8 +33494,8 @@ btree_key_online_index_tran_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int
   /* We are in leaf level now, and we must inspect if we have found the OID inside the key. */
   if (search_key->result == BTREE_KEY_FOUND)
     {
-      /*  We search the key for the OID. If we find it, we should find it with DELETE_FLAG set, therefore we must
-       *  delete it in place.
+      /* We search the key for the OID. If we find it, we should find it with DELETE_FLAG set, therefore we must
+       * delete it in place.
        */
 
       /* Get the record. */
@@ -33576,7 +33576,6 @@ btree_key_online_index_tran_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	  btree_online_index_change_state (thread_p, btid_int, &new_record, node_type, offset_to_object,
 					   btree_mvcc_info.insert_mvccid, NULL, &rv_redo_data_ptr);
 
-
 	  if (spage_update (thread_p, page_found, slotid, &new_record) != SP_SUCCESS)
 	    {
 	      assert_release (false);
@@ -33595,7 +33594,6 @@ btree_key_online_index_tran_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	  pgbuf_set_dirty (thread_p, page_found, DONT_FREE);
 
 	  return error_code;
-
 	}
       else
 	{
@@ -33611,18 +33609,18 @@ end:
 }
 
 /*
-  * btree_key_online_index_tran_delete () - BTREE_PROCESS_KEY_FUNCTION used for deleting an object
-                                             in b-tree during online index loading.
-  *
-  * return         : Error code.
-  * thread_p (in)   : Thread entry.
-  * btid_int (in)   : B-tree info.
-  * key (int)       : Key info
-  * leaf_page (in)  : Pointer to the leaf page.
-  * search_key (in) : Search helper
-  * restart (in/out): Restart
-  * args (in/out)   : BTREE_INSERT_HELPER *.
-  */
+ * btree_key_online_index_tran_delete () - BTREE_PROCESS_KEY_FUNCTION used for deleting an object
+ *                                         in b-tree during online index loading.
+ *
+ * return         : Error code.
+ * thread_p (in)   : Thread entry.
+ * btid_int (in)   : B-tree info.
+ * key (int)       : Key info
+ * leaf_page (in)  : Pointer to the leaf page.
+ * search_key (in) : Search helper
+ * restart (in/out): Restart
+ * args (in/out)   : BTREE_INSERT_HELPER *.
+ */
 static int
 btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
 				    PAGE_PTR * leaf_page, BTREE_SEARCH_KEY_HELPER * search_key, bool * restart,
@@ -33821,8 +33819,6 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 						    node_type, offset_to_object);
 	      return error_code;
 	    }
-
-
 	}
       else
 	{
@@ -33839,18 +33835,18 @@ end:
 }
 
 /*
-  * btree_key_online_index_tran_insert_DF () -  BTREE_PROCESS_KEY_FUNCTION used for inserting a new object
-                                                with DELETE_FLAG set in b-tree during online index loading.
-  *
-  * return         : Error code.
-  * thread_p (in)   : Thread entry.
-  * btid_int (in)   : B-tree info.
-  * key (int)       : Key info
-  * leaf_page (in)  : Pointer to the leaf page.
-  * search_key (in) : Search helper
-  * restart (in/out): Restart
-  * args (in/out)   : BTREE_INSERT_HELPER *.
-  */
+ * btree_key_online_index_tran_insert_DF () -  BTREE_PROCESS_KEY_FUNCTION used for inserting a new object
+ *                                             with DELETE_FLAG set in b-tree during online index loading.
+ *
+ * return         : Error code.
+ * thread_p (in)   : Thread entry.
+ * btid_int (in)   : B-tree info.
+ * key (int)       : Key info
+ * leaf_page (in)  : Pointer to the leaf page.
+ * search_key (in) : Search helper
+ * restart (in/out): Restart
+ * args (in/out)   : BTREE_INSERT_HELPER *.
+ */
 static int
 btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
 				       PAGE_PTR * leaf_page, BTREE_SEARCH_KEY_HELPER * search_key, bool * restart,
@@ -33891,7 +33887,7 @@ btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_
   /* We are in leaf level now, and we must inspect if we have found the OID inside the key. */
   if (search_key->result == BTREE_KEY_FOUND)
     {
-      /*  We search the key for the OID. */
+      /* We search the key for the OID. */
 
       /* Get the record. */
       if (spage_get_record (thread_p, *leaf_page, search_key->slotid, &record, COPY) != S_SUCCESS)
@@ -34056,7 +34052,6 @@ btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_
 
 	      return error_code;
 	    }
-
 	}
       else
 	{
@@ -34574,7 +34569,7 @@ void
 btree_init_btid_int (BTID_INT * btid_int, BTID * btid, OID * class_oids, TP_DOMAIN * key_type)
 {
   btid_int->sys_btid = btid;
-  btid_int->unique_pk = 0;
+  btid_int->unique_pk = 0;	// FIXME
 
   btid_int->key_type = key_type;
   VFID_SET_NULL (&btid_int->ovfid);
