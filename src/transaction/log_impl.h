@@ -1767,10 +1767,11 @@ struct log_tdes
   bool block_global_oldest_active_until_commit;
 
   LOG_RCV_TDES rcv;
-
+  /* *INDENT-OFF* */
 #if defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))
   cubreplication::log_generator replication_log_generator;
 #endif
+  /* *INDENT-ON* */
 };
 
 typedef struct log_addr_tdesarea LOG_ADDR_TDESAREA;
