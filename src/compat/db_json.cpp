@@ -166,10 +166,7 @@ class JSON_ITERATOR
 
     virtual ~JSON_ITERATOR ()
     {
-      if (m_value_doc != nullptr)
-	{
-	  delete m_value_doc;
-	}
+      clear_content ();
     }
 
     // next iterator
@@ -210,6 +207,15 @@ class JSON_ITERATOR
     bool is_empty () const
     {
       return m_input_doc == nullptr;    // no input
+    }
+
+    // delete only the content of the JSON_ITERATOR for reuse
+    void clear_content ()
+    {
+      if (m_value_doc != nullptr)
+	{
+	  db_json_delete_doc (m_value_doc);
+	}
     }
 
   protected:
@@ -889,6 +895,12 @@ db_json_delete_json_iterator (JSON_ITERATOR *&json_itr)
   json_itr = NULL;
 }
 
+void
+db_json_clear_json_iterator (JSON_ITERATOR *&json_itr)
+{
+  json_itr->clear_content ();
+}
+
 bool
 db_json_is_valid (const char *json_str)
 {
@@ -1070,7 +1082,10 @@ db_json_extract_document_from_path (const JSON_DOC *document, const char *raw_pa
 
   if (document == NULL)
     {
-      result = NULL;
+      if (result != NULL)
+	{
+	  result->SetNull ();
+	}
       return NO_ERROR;
     }
 
@@ -1108,7 +1123,10 @@ db_json_extract_document_from_path (const JSON_DOC *document, const char *raw_pa
     }
   else
     {
-      result = NULL;
+      if (result != NULL)
+	{
+	  result->SetNull ();
+	}
     }
 
   return NO_ERROR;

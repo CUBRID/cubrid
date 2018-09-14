@@ -85,6 +85,7 @@ namespace cubxasl
       node (void);
 
       void clear_columns ();
+      void clear_iterators ();
       void clear_tree ();
 
       bool check_need_expand () const;

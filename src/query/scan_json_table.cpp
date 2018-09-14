@@ -256,11 +256,12 @@ namespace cubscan
 	    {
 	      cursor &cursor = m_scan_cursor[i];
 	      db_json_delete_doc (cursor.m_input_doc);
-	      //db_json_delete_json_iterator (cursor.m_json_iterator);
 
 	      cursor.m_child = 0;
 	      cursor.m_is_row_fetched = false;
 	    }
+
+	  m_specp->m_root_node->clear_iterators ();
 	}
     }
 
