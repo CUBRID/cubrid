@@ -33547,8 +33547,7 @@ btree_key_online_index_tran_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	  addr.pgptr = page_found;
 	  addr.vfid = &btid_int->sys_btid->vfid;
 
-	  if (insert_helper->purpose != BTREE_OP_ONLINE_INDEX_UNDO_TRAN_DELETE
-	      && insert_helper->purpose != BTREE_OP_ONLINE_INDEX_UNDO_TRAN_INSERT)
+	  if (insert_helper->purpose == BTREE_OP_ONLINE_INDEX_TRAN_INSERT)
 	    {
 	      error_code =
 		btree_rv_save_keyval_for_undo (btid_int, key, BTREE_INSERT_CLASS_OID (insert_helper),
@@ -33670,7 +33669,7 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	{
 	  assert_release (false);
 	  error_code = ER_FAILED;
-	  goto end;
+	  return error_code;
 	}
 
       /* Read the record. */
@@ -33680,7 +33679,7 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  goto end;
+	  return error_code;
 	}
 
       error_code =
@@ -33717,8 +33716,7 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 
 	      delete_helper->rv_keyval_data = rv_undo_data_bufalign;
 
-	      if (delete_helper->purpose != BTREE_OP_ONLINE_INDEX_UNDO_TRAN_DELETE
-		  && delete_helper->purpose != BTREE_OP_ONLINE_INDEX_UNDO_TRAN_INSERT)
+	      if (delete_helper->purpose == BTREE_OP_ONLINE_INDEX_TRAN_DELETE)
 		{
 		  error_code =
 		    btree_rv_save_keyval_for_undo (btid_int, key, BTREE_DELETE_CLASS_OID (delete_helper),
@@ -33794,8 +33792,7 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 
 	      delete_helper->rv_keyval_data = rv_undo_data_bufalign;
 
-	      if (delete_helper->purpose != BTREE_OP_ONLINE_INDEX_UNDO_TRAN_DELETE
-		  && delete_helper->purpose != BTREE_OP_ONLINE_INDEX_UNDO_TRAN_INSERT)
+	      if (delete_helper->purpose == BTREE_OP_ONLINE_INDEX_UNDO_TRAN_DELETE)
 		{
 		  error_code =
 		    btree_rv_save_keyval_for_undo (btid_int, key, BTREE_DELETE_CLASS_OID (delete_helper),
@@ -33828,9 +33825,6 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 
   /* We did not find the object. We have to restart the traverse and try to insert the object with DELETE_FLAG set. */
   search_key->result = BTREE_KEY_NOTFOUND;
-  return error_code;
-
-end:
   return error_code;
 }
 
@@ -33957,8 +33951,7 @@ btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_
 
 	      delete_helper.rv_keyval_data = rv_undo_data_bufalign;
 
-	      if (delete_helper.purpose != BTREE_OP_ONLINE_INDEX_UNDO_TRAN_DELETE
-		  && delete_helper.purpose != BTREE_OP_ONLINE_INDEX_UNDO_TRAN_INSERT)
+	      if (delete_helper.purpose == BTREE_OP_ONLINE_INDEX_TRAN_INSERT)
 		{
 		  error_code =
 		    btree_rv_save_keyval_for_undo (btid_int, key, BTREE_DELETE_CLASS_OID (&delete_helper),
@@ -34004,8 +33997,7 @@ btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_
 	      addr.vfid = &btid_int->sys_btid->vfid;
 
 	      insert_helper->rv_keyval_data = rv_undo_data_bufalign;
-	      if (insert_helper->purpose != BTREE_OP_ONLINE_INDEX_UNDO_TRAN_DELETE
-		  && insert_helper->purpose != BTREE_OP_ONLINE_INDEX_UNDO_TRAN_INSERT)
+	      if (insert_helper->purpose == BTREE_OP_ONLINE_INDEX_TRAN_INSERT)
 		{
 		  error_code =
 		    btree_rv_save_keyval_for_undo (btid_int, key, BTREE_INSERT_CLASS_OID (insert_helper),

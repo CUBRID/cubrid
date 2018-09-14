@@ -4506,7 +4506,8 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   /* Promote the lock to SCH_M_LOCK */
   if (lock_object (thread_p, class_oids, oid_Root_class_oid, SCH_M_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
     {
-      ASSERT_ERROR_AND_SET (ret);
+      /* We should always acquire the lock.  */
+      assert (false);
       goto error;
     }
 
