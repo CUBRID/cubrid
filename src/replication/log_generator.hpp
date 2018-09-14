@@ -93,6 +93,8 @@ namespace cubreplication
 
       void er_log_repl_obj (replication_object *obj, const char *message);
 
+      void check_commit_end_tran (void);
+
       static void pack_group_commit_entry (void);
 
       static cubstream::multi_thread_stream *get_global_stream (void)

@@ -35,7 +35,7 @@
 
 namespace cubreplication
 {
-  bool enable_log_generator_logging = false;
+  bool enable_log_generator_logging = true;
 
   log_generator::~log_generator ()
   {
@@ -61,7 +61,7 @@ namespace cubreplication
   {
     m_stream_entry.add_packable_entry (object);
 
-    er_log_repl_obj (object, "from append_repl_object(replication_object *)");
+    er_log_repl_obj (object, "log_generator::append_repl_object");
 
     return NO_ERROR;
   }
@@ -113,7 +113,7 @@ namespace cubreplication
 	m_pending_to_be_added.push_back (entry);
       }
 
-    er_log_repl_obj (entry, "from append_pending_repl_object(*)");
+    er_log_repl_obj (entry, "log_generator::append_pending_repl_object");
 
     return NO_ERROR;
   }
@@ -137,11 +137,11 @@ namespace cubreplication
 	    (*repl_obj_it)->set_key_value (key);
 
 	    (void) log_generator::append_repl_object (*repl_obj_it);
+            er_log_repl_obj (*repl_obj_it, "log_generator::set_key_to_repl_object");
+
 	    repl_obj_it = m_pending_to_be_added.erase (repl_obj_it);
 
 	    found = true;
-
-	    er_log_repl_obj (*repl_obj_it, "from set_key_to_repl_object(*)");
 
 	    break;
 	  }
@@ -162,7 +162,7 @@ namespace cubreplication
 
 	(void) log_generator::append_repl_object (entry);
 
-	er_log_repl_obj (entry, "from set_key_to_repl_object(*)");
+	er_log_repl_obj (entry, "log_generator::set_key_to_repl_object");
       }
 
     return NO_ERROR;
@@ -249,10 +249,17 @@ namespace cubreplication
       }
 
     obj->stringify (strb);
-    strb ("%s\n", message);
 
-    _er_log_debug (ARG_FILE_LINE, "%s", strb.get_buffer ());
+    _er_log_debug (ARG_FILE_LINE, "%s\n%s", message, strb.get_buffer ());
   }
+
+  void log_generator::check_commit_end_tran (void)
+    {
+#if !defined(NDEBUG)
+      /* check there are no pending replication objects */
+      assert (m_pending_to_be_added.size () == 0);
+#endif
+    }
 
   cubstream::multi_thread_stream *log_generator::g_stream = NULL;
 

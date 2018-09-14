@@ -5714,6 +5714,8 @@ log_commit (THREAD_ENTRY * thread_p, int tran_index, bool retain_lock)
       return TRAN_UNACTIVE_UNKNOWN;
     }
 
+  tdes->replication_log_generator.check_commit_end_tran ();
+
   if (!LOG_ISTRAN_ACTIVE (tdes) && !LOG_ISTRAN_2PC_PREPARE (tdes) && LOG_ISRESTARTED ())
     {
       /* May be a system error since transaction is not active.. cannot be committed */

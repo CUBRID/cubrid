@@ -63,7 +63,6 @@ namespace cubreplication
 
   bool single_row_repl_entry::is_equal (const packable_object *other)
   {
-    size_t i;
     const single_row_repl_entry *other_t = dynamic_cast<const single_row_repl_entry *> (other);
 
     if (other_t == NULL
@@ -110,7 +109,6 @@ namespace cubreplication
 
   int single_row_repl_entry::unpack (cubpacking::packer *serializator)
   {
-    int i;
     int int_val;
     HL_HEAPID save_heapid;
 
@@ -133,7 +131,8 @@ namespace cubreplication
   {
     char *key_to_string = pr_valstring (NULL, &m_key_value);
 
-    str ("type=%s key_dbvalue=%s table=%s\n", repl_entry_type_str[m_type], key_to_string,
+    str ("single_row_repl_entry(%s) key_type=%s key_dbvalue=%s table=%s\n", repl_entry_type_str[m_type],
+         pr_type_name (DB_VALUE_TYPE (&m_key_value)), key_to_string,
 	 m_class_name.c_str ());
 
     db_private_free (NULL, key_to_string);
@@ -220,7 +219,7 @@ namespace cubreplication
     (void) db_change_private_heap (my_thread, save_heapid);
   }
 
-  void changed_attrs_row_repl_entry::copy_and_add_changed_value (const int att_id,
+  void changed_attrs_row_repl_entry::copy_and_add_changed_value (const ATTR_ID att_id,
       DB_VALUE *db_val)
   {
     HL_HEAPID save_heapid;
@@ -322,7 +321,7 @@ namespace cubreplication
 
   bool changed_attrs_row_repl_entry::is_equal (const packable_object *other)
   {
-    size_t i;
+    std::size_t i;
     bool check = single_row_repl_entry::is_equal (other);
     const changed_attrs_row_repl_entry *other_t = NULL;
 
@@ -361,21 +360,21 @@ namespace cubreplication
 
   void changed_attrs_row_repl_entry::stringify (string_buffer &str)
   {
-    str ("changed_attrs_row_repl_entry:\n");
+    str ("changed_attrs_row_repl_entry::");
+    single_row_repl_entry::stringify (str);
 
     for (std::size_t i = 0; i < m_changed_attributes.size (); i++)
       {
 	char *key_to_string = pr_valstring (NULL, &m_new_values[i]);
 	assert (key_to_string != NULL);
 
-	str ("id=%d value=%s\n", m_changed_attributes[i], key_to_string);
+	str ("attr_id=%d type=%s value=%s\n", m_changed_attributes[i], pr_type_name (DB_VALUE_TYPE (&m_new_values[i])),
+              key_to_string);
 
 	db_private_free (NULL, key_to_string);
       }
 
     str ("inst oid: pageid:%d slotid:%d volid:%d\n", m_inst_oid.pageid, m_inst_oid.slotid, m_inst_oid.volid);
-
-    single_row_repl_entry::stringify (str);
   }
 
   changed_attrs_row_repl_entry::changed_attrs_row_repl_entry (REPL_ENTRY_TYPE type,
@@ -451,7 +450,6 @@ namespace cubreplication
 
   bool rec_des_row_repl_entry::is_equal (const packable_object *other)
   {
-    size_t i;
     bool check = single_row_repl_entry::is_equal (other);
     const rec_des_row_repl_entry *other_t = NULL;
 
@@ -520,14 +518,13 @@ namespace cubreplication
 
   void rec_des_row_repl_entry::stringify (string_buffer &str)
   {
-    str ("rec_des_row_repl_entry:\n");
+    str ("rec_des_row_repl_entry::");
+    single_row_repl_entry::stringify (str);
 
     if (m_rec_des.data != NULL)
       {
 	str ("recdes length=%d\n", m_rec_des.length);
       }
-
-    single_row_repl_entry::stringify (str);
   }
 
 } /* namespace cubreplication */
