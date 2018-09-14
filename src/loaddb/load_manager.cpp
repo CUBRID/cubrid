@@ -66,8 +66,10 @@ namespace cubload
   manager::parse_file (cubthread::entry &thread_ref, std::string &file_name)
   {
     int batch_size = 100000; // TODO CBRD-21654 get batch size from cub_admin loaddb
-    auto batch_handler = std::bind (&manager::parse_batch, std::ref (*this), std::ref (thread_ref),
-				    std::placeholders::_1);
+    std::function<void (std::string &)> batch_handler = [this, &thread_ref] (std::string &batch)
+    {
+      parse_batch (thread_ref, batch);
+    };
 
     return split (batch_size, file_name, batch_handler);
   }

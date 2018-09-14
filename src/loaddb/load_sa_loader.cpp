@@ -27,6 +27,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <fstream>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>

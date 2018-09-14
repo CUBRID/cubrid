@@ -24,11 +24,7 @@
 #ifndef _LOAD_COMMON_HPP_
 #define _LOAD_COMMON_HPP_
 
-#include <cassert>
-#include <cstddef>
-#include <fstream>
-
-#include "error_code.h"
+#include <functional>
 
 #define NUM_LDR_TYPES (LDR_TYPE_MAX + 1)
 #define NUM_DB_TYPES (DB_TYPE_LAST + 1)
@@ -277,8 +273,7 @@ namespace cubload
    *    object_file_name(in): loaddb object file name (absolute path is required)
    *    func(in)            : a function for handling/process a batch
    */
-  template <typename Func>
-  int split (int batch_size, std::string &object_file_name, Func &&func);
+  int split (int batch_size, std::string &object_file_name, std::function<void (std::string &)> &func);
 
   /*
    * Check if a given string starts with a given prefix
@@ -290,88 +285,6 @@ namespace cubload
    */
   bool ends_with (const std::string &str, const std::string &suffix);
 
-} // namespace cubload
-
-namespace cubload
-{
-
-  template <typename Func>
-  int
-  split (int batch_size, std::string &object_file_name, Func &&func)
-  {
-    int rows = 0;
-    std::string class_line;
-    std::string batch_buffer;
-    std::ifstream object_file (object_file_name, std::fstream::in);
-
-    if (!object_file)
-      {
-	// file does not exists on server, let client do the split operation
-	return ER_FAILED;
-      }
-
-    assert (batch_size > 0);
-
-    for (std::string line; std::getline (object_file, line);)
-      {
-	if (starts_with (line, "%id"))
-	  {
-	    // do nothing for now
-	    continue;
-	  }
-
-	if (starts_with (line, "%class"))
-	  {
-	    // store class line
-	    class_line = line;
-
-	    // close current batch
-	    func (batch_buffer);
-
-	    // rewind forward rows counter until batch is full
-	    for (; (rows % batch_size) != 0; rows++)
-	      ;
-
-	    // start new batch for the class
-	    batch_buffer.clear ();
-	    batch_buffer.append (class_line);
-	    batch_buffer.append ("\n");
-	    continue;
-	  }
-
-	// it is a line containing row data so append it
-	batch_buffer.append (line);
-
-	// it could be that a row is wrapped on the next line,
-	// this means that the row ends on the last line that does not end with '+' (plus) character
-	if (!ends_with (line, "+"))
-	  {
-	    // since std::getline eats end line character, add it back in order to make loaddb lexer happy
-	    batch_buffer.append ("\n");
-
-	    rows++;
-
-	    // check if we have a full batch
-	    if ((rows % batch_size) == 0)
-	      {
-		func (batch_buffer);
-
-		// start new batch for the class
-		batch_buffer.clear ();
-		batch_buffer.append (class_line);
-		batch_buffer.append ("\n");
-	      }
-	  }
-      }
-
-    // collect remaining rows
-    func (batch_buffer);
-    batch_buffer.clear ();
-
-    object_file.close ();
-
-    return NO_ERROR;
-  }
 } // namespace cubload
 
 #endif /* _LOAD_COMMON_HPP_ */
