@@ -750,6 +750,18 @@ db_rewind_statement (DB_SESSION * session)
 }
 
 /*
+ * db_session_is_last_statement() -
+ * return:
+ * session(in) :
+ */
+int
+db_session_is_last_statement (DB_SESSION * session)
+{
+  assert (session->dimension > 0);
+  return session->dimension == session->stmt_ndx;
+}
+
+/*
  * db_set_client_cache_time() -
  * return:
  * session(in) :
@@ -3960,6 +3972,7 @@ db_set_statement_auto_commit (DB_SESSION * session, bool auto_commit)
   int info_hints;
   int error_code;
   bool has_user_trigger;
+  int i;
 
   assert (session != NULL);
 
@@ -3991,9 +4004,22 @@ db_set_statement_auto_commit (DB_SESSION * session, bool auto_commit)
   /* Init statement auto commit. */
   statement->use_auto_commit = 0;
 
-  if (!auto_commit || session->dimension > 1)
+  if (!auto_commit || !db_session_is_last_statement (session))
     {
       return NO_ERROR;
+    }
+
+  if (session->dimension > 1 && !session->parser->is_holdable)
+    {
+      /* Search for select. */
+      for (i = 0; i < session->dimension; i++)
+	{
+	  if (session->statements[i]->node_type == PT_SELECT)
+	    {
+	      /* Avoid situation when the driver requests data after closing cursors. */
+	      return NO_ERROR;
+	    }
+	}
     }
 
   /* Check whether statement can uses auto commit. */
