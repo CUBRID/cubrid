@@ -282,7 +282,7 @@ namespace cubreplication
 
     serializator->unpack_int (&count_new_values);
 
-    for (std::size_t i = 0; i < count_new_values; i++)
+    for (std::size_t i = 0; (int) i < count_new_values; i++)
       {
 	DB_VALUE val;
 
