@@ -4507,6 +4507,7 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   if (lock_object (thread_p, class_oids, oid_Root_class_oid, SCH_M_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
     {
       /* We should always acquire the lock.  */
+      // FIXME - What will happen lock timeout??
       assert (false);
       goto error;
     }
@@ -4542,7 +4543,6 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   LOG_CS_ENTER (thread_p);
   logpb_flush_pages_direct (thread_p);
   LOG_CS_EXIT (thread_p);
-
 
   /* TODO: Is this all right? */
   /* Invalidate snapshot. */

@@ -34499,12 +34499,12 @@ btree_rv_keyval_undo_online_index_tran_delete (THREAD_ENTRY * thread_p, LOG_RCV 
   assert (!OID_ISNULL (&oid));
 
   /* Insert object and all its info. */
-  error_code =
-    btree_online_index_dispatcher (thread_p, &btid, &key, &cls_oid, &oid, &dummy_unique,
-				   BTREE_OP_ONLINE_INDEX_UNDO_TRAN_DELETE, &recv->reference_lsa);
+  error_code = btree_online_index_dispatcher (thread_p, &btid, &key, &cls_oid, &oid, &dummy_unique,
+					      BTREE_OP_ONLINE_INDEX_UNDO_TRAN_DELETE, &recv->reference_lsa);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
+      // FIXME - I don't think ER_INTERRUPTED is possible since it is a recovery function.
       assert (error_code == ER_BTREE_DUPLICATE_OID || error_code == ER_INTERRUPTED);
       return error_code;
     }
@@ -34540,16 +34540,17 @@ btree_rv_keyval_undo_online_index_tran_insert (THREAD_ENTRY * thread_p, LOG_RCV 
   datap = (char *) recv->data;
   datasize = recv->length;
   err = btree_rv_read_keyval_info_nocopy (thread_p, datap, datasize, &btid, &cls_oid, &oid, &dummy_mvcc_info, &key);
+  // FIXME - error handling
 
   assert (!OID_ISNULL (&oid));
 
   /* Undo insert: just delete object and all its information. */
-  err =
-    btree_online_index_dispatcher (thread_p, &btid, &key, &cls_oid, &oid, &dummy_unique,
-				   BTREE_OP_ONLINE_INDEX_UNDO_TRAN_INSERT, &recv->reference_lsa);
+  err = btree_online_index_dispatcher (thread_p, &btid, &key, &cls_oid, &oid, &dummy_unique,
+				       BTREE_OP_ONLINE_INDEX_UNDO_TRAN_INSERT, &recv->reference_lsa);
   if (err != NO_ERROR)
     {
       ASSERT_ERROR ();
+      // FIXME - I don't think ER_INTERRUPTED is possible since it is a recovery function.
       assert (err == ER_BTREE_UNKNOWN_KEY || err == NO_ERROR || err == ER_INTERRUPTED);
       return err;
     }
