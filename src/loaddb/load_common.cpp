@@ -28,6 +28,7 @@
 
 #include <cassert>
 #include <fstream>
+#include <string>
 
 namespace cubload
 {
