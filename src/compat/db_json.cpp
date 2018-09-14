@@ -1082,7 +1082,10 @@ db_json_extract_document_from_path (const JSON_DOC *document, const char *raw_pa
 
   if (document == NULL)
     {
-      result = NULL;
+      if (result != NULL)
+	{
+	  result->SetNull ();
+	}
       return NO_ERROR;
     }
 
@@ -1120,7 +1123,10 @@ db_json_extract_document_from_path (const JSON_DOC *document, const char *raw_pa
     }
   else
     {
-      result = NULL;
+      if (result != NULL)
+	{
+	  result->SetNull ();
+	}
     }
 
   return NO_ERROR;
