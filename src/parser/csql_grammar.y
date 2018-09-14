@@ -26495,7 +26495,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_JSON_VALID:
     case PT_JSON_LENGTH:
     case PT_JSON_DEPTH:
-	case PT_JSON_PRETTY:
+    case PT_JSON_PRETTY:
       if (c != 1)
         return NULL;
 
