@@ -486,7 +486,7 @@ size_t stream_file::read_buffer (const int file_seqno, const size_t file_offset,
   lseek (fd, (long) file_offset, SEEK_SET);
   actual_read = read (fd, buf, amount);
 #else
-  actual_read = pread (fd, buf, amount, file_offset);
+  actual_read = pread (fd, (void *) buf, amount, file_offset);
 #endif
 
   return actual_read;
