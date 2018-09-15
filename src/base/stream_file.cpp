@@ -418,7 +418,12 @@ int stream_file::close_file_seqno (int file_seqno, bool remove_physical)
   assert (it != m_file_descriptors.end ());
   m_file_descriptors.erase (it);
 
-  close (fd);
+  if (close (fd) != 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_TRYING_TO_REMOVE_PERMANENT_VOLUME, 1, file_name);
+      err = ER_BO_TRYING_TO_REMOVE_PERMANENT_VOLUME;
+      return err;
+    }
 
   if (remove_physical)
     {
@@ -438,7 +443,14 @@ int stream_file::open_file (const char *file_path, int flags)
   int fd;
 
 #if defined (WINDOWS)
-  fd = open (file_path, O_RDWR | O_BINARY | flags);
+  if ((flags & FILE_CREATE_FLAG) == FILE_CREATE_FLAG)
+    {
+      fd = _sopen (file_path, O_RDWR | O_CREAT | O_BINARY, _SH_DENYWR, 0600);
+    }
+  else
+    {
+      fd = open (file_path, O_RDWR | O_BINARY | flags);
+    }
 #else
   fd = open (file_path, O_RDWR | flags);
 #endif
