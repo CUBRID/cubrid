@@ -29,6 +29,7 @@
 #if defined (WINDOWS)
 #include <io.h>
 #else
+#include <fcntl.h>
 #include <unistd.h>
 #endif
 #include "stream_file.hpp"

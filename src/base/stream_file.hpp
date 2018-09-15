@@ -123,7 +123,7 @@ protected:
   int get_filename_with_file_seqno (char *filename, const size_t max_filename, const int file_seqno);
 
   int open_file_seqno (const int file_seqno, int flags = 0);
-  int stream_file::close_file_seqno (int file_seqno, bool remove_physical = false);
+  int close_file_seqno (int file_seqno, bool remove_physical = false);
 
   int open_file (const char *file_path, int flags = 0);
 
