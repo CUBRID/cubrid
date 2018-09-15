@@ -494,7 +494,7 @@ int stream_file::create_file (const char *file_path)
   return fd;
 }
 
-size_t stream_file::read_buffer (const int file_seqno, const size_t file_offset, const char *buf, const size_t amount)
+size_t stream_file::read_buffer (const int file_seqno, const size_t file_offset, char *buf, const size_t amount)
 {
   size_t actual_read;
   int fd;
@@ -509,7 +509,7 @@ size_t stream_file::read_buffer (const int file_seqno, const size_t file_offset,
 #if defined (WINDOWS)
   /* TODO : use Windows API for paralel reads */
   lseek (fd, (long) file_offset, SEEK_SET);
-  actual_read = read (fd, buf, amount);
+  actual_read = ::read (fd, buf, amount);
 #else
   actual_read = pread (fd, (void *) buf, amount, file_offset);
 #endif
@@ -601,7 +601,7 @@ int stream_file::write (const stream_position &pos, const char *buf, const size_
  * return : error code
  *
  */
-int stream_file::read (const stream_position &pos, const char *buf, const size_t amount)
+int stream_file::read (const stream_position &pos, char *buf, const size_t amount)
 {
   stream_position curr_pos;
   size_t available_amount_in_file, file_offset, rem_amount;

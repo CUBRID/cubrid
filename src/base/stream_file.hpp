@@ -131,7 +131,7 @@ protected:
 
   int create_file (const char *file_path);
 
-  size_t read_buffer (const int file_seqno, const size_t file_offset, const char *buf, const size_t amount);
+  size_t read_buffer (const int file_seqno, const size_t file_offset, char *buf, const size_t amount);
   size_t write_buffer (const int file_seqno, const size_t file_offset, const char *buf, const size_t amount);
 
   int stream_filled_func (const stream_position &last_saved_pos, const size_t available_to_save);
@@ -156,7 +156,7 @@ public:
 
   int write (const stream_position &pos, const char *buf, const size_t amount);
 
-  int read (const stream_position &pos, const char *buf, const size_t amount);
+  int read (const stream_position &pos, char *buf, const size_t amount);
 
   int drop_files_to_pos (const stream_position &drop_pos);
 
