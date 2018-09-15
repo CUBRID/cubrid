@@ -139,6 +139,10 @@ void stream_file::init (const size_t file_size, const int print_digits)
 
   m_start_file_seqno = 0;
 
+  m_filled_stream_handler = std::bind (&stream_file::stream_filled_func, std::ref (*this), std::placeholders::_1,
+                                       std::placeholders::_2);
+  m_stream.set_filled_stream_handler (m_filled_stream_handler);
+
 #if defined (SERVER_MODE)
   m_write_daemon = cubthread::get_manager ()->create_daemon (cubthread::delta_time (0),
 			new writer_daemon_task (m_stream),
@@ -216,36 +220,44 @@ int stream_file::get_file_seqno_from_stream_pos_ext (const stream_position &pos,
 int stream_file::create_files_in_range (const stream_position &start_pos, const stream_position &end_pos)
 {
   stream_position curr_pos;
-  size_t file_offset, rem_amount, available_amount_in_file;
+  size_t file_offset, hole_amount, available_amount_in_file;
   int file_seqno;
   int err = NO_ERROR;
   const size_t BUFFER_SIZE = 4 * 1024;
   char zero_buffer[BUFFER_SIZE] = { 0 };
 
   curr_pos = start_pos;
-  rem_amount = end_pos - start_pos;
+  hole_amount = start_pos - m_curr_append_position;
 
-  if (rem_amount == 0)
+  if (hole_amount == 0)
     {
-      /* append in a new file case (append) */
-      file_seqno = get_file_seqno_from_stream_pos_ext (curr_pos, available_amount_in_file, file_offset);
-      if (file_seqno < 0)
+      /* append in a new file(s) : files are created as empty (without filling with zero) */
+      while (curr_pos < end_pos)
         {
-          return ER_FAILED;
-        }
+          file_seqno = get_file_seqno_from_stream_pos_ext (curr_pos, available_amount_in_file, file_offset);
+          if (file_seqno < 0)
+            {
+              return ER_FAILED;
+            }
 
-      /* file_offset == 0 ==> this is a new file (we didn't written in it)
-       * file_offset > 0  ==> file is already created, make sure is opened */
-      int dummy_fd = open_file_seqno (file_seqno, (file_offset == 0) ? FILE_CREATE_FLAG : 0);
-      if (dummy_fd < 0)
-        {
-          return ER_FAILED;
+          /* file_offset == 0 ==> this is a new file (we didn't written in it)
+           * file_offset > 0  ==> file is already created, make sure it may be opened */
+          int dummy_fd = open_file_seqno (file_seqno, (file_offset == 0) ? FILE_CREATE_FLAG : 0);
+          if (dummy_fd < 0)
+            {
+              return ER_FAILED;
+            }
+
+          /* advance to next file */
+          curr_pos += available_amount_in_file;
         }
 
       return err;
     }
 
-  while (rem_amount > 0)
+  /* create files and fill them with zero : for range: m_curr_append_position < start_pos */
+  curr_pos = m_curr_append_position;
+  while (hole_amount > 0)
     {
       file_seqno = get_file_seqno_from_stream_pos_ext (curr_pos, available_amount_in_file, file_offset);
       if (file_seqno < 0)
@@ -259,7 +271,7 @@ int stream_file::create_files_in_range (const stream_position &start_pos, const 
           return ER_FAILED;
         }
 
-      size_t rem_amount_this_file = MIN (rem_amount, available_amount_in_file);
+      size_t rem_amount_this_file = MIN (hole_amount, available_amount_in_file);
 
       while (rem_amount_this_file > 0)
         {
@@ -272,7 +284,8 @@ int stream_file::create_files_in_range (const stream_position &start_pos, const 
           rem_amount_this_file -= amount_to_write;
         }
 
-      rem_amount -= rem_amount_this_file;
+      hole_amount -= rem_amount_this_file;
+      curr_pos += rem_amount_this_file;
     }
 
   return NO_ERROR;
@@ -544,7 +557,7 @@ int stream_file::write (const stream_position &pos, const char *buf, const size_
 
   if (curr_pos + amount > m_curr_append_position)
     {
-      err = create_files_in_range (m_curr_append_position, curr_pos);
+      err = create_files_in_range (curr_pos, curr_pos + amount);
       if (err != NO_ERROR)
         {
           return err;
@@ -585,6 +598,7 @@ int stream_file::write (const stream_position &pos, const char *buf, const size_
  * read
  *
  * reads into buffer buf an amount of size amount from the stream file starting from position pos
+ * return : error code
  *
  */
 int stream_file::read (const stream_position &pos, const char *buf, const size_t amount)
@@ -622,6 +636,12 @@ int stream_file::read (const stream_position &pos, const char *buf, const size_t
       buf += current_to_read;
     }
 
+  return NO_ERROR;
+}
+
+int stream_file::stream_filled_func (const stream_position &last_saved_pos, const size_t available_to_save)
+{
+  start_flush (last_saved_pos + available_to_save);
   return NO_ERROR;
 }
 

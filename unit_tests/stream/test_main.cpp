@@ -50,7 +50,16 @@ int main ()
   //test_module (global_error, test_stream::test_stream3);
   //test_module (global_error, test_stream::test_stream_mt);
 
-  test_module (global_error, test_stream::test_stream_file1);
+
+  /* Test write to stream file with various combinations   file_size, desired_amount, buffer_size */
+  test_module (global_error, test_stream::test_stream_file1, 16 * 1024, 256 * 1024, 1024);
+  
+  test_module (global_error, test_stream::test_stream_file1, 1024, 200 * 1024, 256 * 1024);
+
+  test_module (global_error, test_stream::test_stream_file1, 1024, 1024 * 1024, 256 * 1024);
+
+  /* Test write then read to stream with stream file:      stream_buffer_size, file_size, desired_amount */
+  test_module (global_error, test_stream::test_stream_file2, 256 * 1024, 1024, 1 * 1024 * 1024);
   
   /* add more tests here */
 

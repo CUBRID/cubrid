@@ -104,6 +104,8 @@ private:
 
   stream_position m_target_flush_position;
 
+  cubstream::stream::notify_func_t m_filled_stream_handler;
+
   cubthread::daemon *m_write_daemon;
   std::mutex m_flush_mutex;
   std::condition_variable m_flush_cv;
@@ -132,6 +134,8 @@ protected:
   size_t read_buffer (const int file_seqno, const size_t file_offset, const char *buf, const size_t amount);
   size_t write_buffer (const int file_seqno, const size_t file_offset, const char *buf, const size_t amount);
 
+  int stream_filled_func (const stream_position &last_saved_pos, const size_t available_to_save);
+
 public:
   stream_file (multi_thread_stream &stream_arg, const size_t file_size = DEFAULT_FILE_SIZE,
               const int print_digits = DEFAULT_FILENAME_DIGITS)
@@ -157,6 +161,18 @@ public:
   int drop_files_to_pos (const stream_position &drop_pos);
 
   size_t get_desired_file_size (void) { return m_desired_file_size; }
+
+  size_t get_max_available_from_pos (const stream_position &pos)
+    {
+      if (m_curr_append_position > pos)
+        {
+          return m_curr_append_position - pos;
+        }
+      else
+        {
+          return 0;
+        }
+    }
 
   stream_position get_flush_target_position (void)
     {

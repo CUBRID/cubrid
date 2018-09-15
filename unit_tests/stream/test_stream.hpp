@@ -44,8 +44,10 @@ namespace test_stream
   int test_stream_mt (void);
 
   /* testing of stream file */
-  int test_stream_file1 (void);
+  int test_stream_file1 (size_t file_size, size_t desired_amount, size_t buffer_size);
+  int test_stream_file2 (size_t stream_buffer_size, size_t file_size, size_t desired_amount);
 
+  
   int write_action (const cubstream::stream_position pos, char *ptr, const size_t byte_count);
 
   class stream_read_partial_context

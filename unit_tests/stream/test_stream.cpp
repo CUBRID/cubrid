@@ -1240,14 +1240,14 @@ namespace test_stream
   }
 
 
-  int test_stream_file1 (void)
+  int test_stream_file1 (size_t file_size, size_t desired_amount, size_t buffer_size)
   {
     int res = 0;
-    int file_size = 256 * 1024;
+    size_t stream_buffer_size = 1 * 1024 * 1024;
 
     init_common_cubrid_modules ();
 
-    cubstream::multi_thread_stream *my_stream = new cubstream::multi_thread_stream (10 * 1024 * 1024, 100);
+    cubstream::multi_thread_stream *my_stream = new cubstream::multi_thread_stream (stream_buffer_size, 100);
 
     my_stream->set_name ("my_test_stream");
 
@@ -1263,81 +1263,130 @@ namespace test_stream
 
     std::cout << "  Writing data to stream bytes" << std::endl;
 
-    size_t desired_amount = 5 * 1024 * 1024;
     size_t written_amount;
-    size_t max_data_size = 1024;
     cubstream::stream_position stream_pos = 0;
 
-    const size_t buffer_size = 1024;
-    char buffer[buffer_size];
-    for (int i = 0; i < buffer_size; i++)
+    char *buffer = new char [buffer_size];
+    if (buffer == NULL)
+      {
+        return -1;
+      }
+    for (int i = 0; i < (int) buffer_size; i++)
       {
         buffer[i] =  std::rand () % 256;
       }
 
-    /* writing in stream */
+    /* writing directly in stream file */
     for (written_amount = 0; written_amount < desired_amount;)
       {
-	res = my_stream_file->write (stream_pos, buffer, buffer_size);
+        int amount = std::rand () % buffer_size;
+        amount = (amount == 0) ? 10 : amount;
+	res = my_stream_file->write (stream_pos, buffer, amount);
 	if (res < 0)
 	  {
 	    assert (false);
 	    return res;
 	  }
-        written_amount = written_amount + buffer_size;
-        stream_pos += buffer_size;
+        written_amount = written_amount + amount;
+        stream_pos += amount;
       }
 
-    my_stream_file->drop_files_to_pos (MAX (written_amount, my_stream_file->get_desired_file_size ()));
+    my_stream_file->drop_files_to_pos (written_amount + my_stream_file->get_desired_file_size ());
 
     delete my_stream_file;
     delete my_stream;
-
+    delete[] buffer;
     return res;
   }
 
-  int test_stream_file2 (void)
+  static const char OBJ_BYTE = 0x55;
+  static const int OBJ_SIZE = 343;
+
+  int write_object (const cubstream::stream_position pos, char *ptr, const size_t byte_count)
+  {
+    int i;
+    char *start_ptr = ptr;
+
+    OR_PUT_INT (ptr, byte_count);
+    ptr += OR_INT_SIZE;
+
+    for (i = 0; i < (int) byte_count - OR_INT_SIZE; i++)
+      {
+	*ptr = OBJ_BYTE;
+	ptr++;
+      }
+
+    return (int) (ptr - start_ptr);
+  }
+
+  int read_object (char *ptr, const size_t byte_count)
+  {
+    int i;
+    char *start_ptr = ptr;
+    int read_byte_count;
+
+    read_byte_count = OR_GET_INT (ptr);
+    ptr += OR_INT_SIZE;
+
+    assert (byte_count == read_byte_count);
+
+    for (i = 0; i < (int) read_byte_count - OR_INT_SIZE; i++)
+      {
+	assert (*ptr == OBJ_BYTE);
+	ptr++;
+      }
+
+    return (int) (ptr - start_ptr);
+  }
+
+  int test_stream_file2 (size_t stream_buffer_size, size_t file_size, size_t desired_amount)
   {
     int res = 0;
 
     init_common_cubrid_modules ();
 
-    cubstream::multi_thread_stream *my_stream = new cubstream::multi_thread_stream (10 * 1024 * 1024, 100);
+    cubstream::multi_thread_stream *my_stream = new cubstream::multi_thread_stream (stream_buffer_size, 100);
 
     my_stream->set_name ("my_test_stream");
 
-    cubstream::stream_file *my_stream_file = new cubstream::stream_file (*my_stream);
+    cubstream::stream_file *my_stream_file = new cubstream::stream_file (*my_stream, file_size);
 
     /* path is current folder */
+    system ("mkdir test_stream_folder");
     my_stream_file->set_path ("test_stream_folder"); 
 
-
-
     cubstream::stream::write_func_t writer_func;
-    writer_func = std::bind (&write_action, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
+    cubstream::stream::read_func_t reader_func;
+    writer_func = std::bind (&write_object, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
+    reader_func = std::bind (&read_object, std::placeholders::_1, std::placeholders::_2);
 
     std::cout << "  Writing data to stream bytes" << std::endl;
 
-    size_t desired_amount = 5 * 1024 * 1024;
-    size_t rem_amount;
-    size_t max_data_size = 1024;
-    size_t writted_amount;
+    size_t written_amount;
     /* writing in stream */
-    for (rem_amount = desired_amount; rem_amount > 5;)
+    for (written_amount = 0; written_amount < desired_amount;)
       {
-	int amount = 5 + std::rand () % max_data_size;
-	rem_amount -= amount;
-
-	res = my_stream->write (amount, writer_func);
+	res = my_stream->write (OBJ_SIZE, writer_func);
 	if (res <= 0)
 	  {
 	    assert (false);
 	    return res;
 	  }
+        written_amount += res;
       }
-    writted_amount = desired_amount - rem_amount;
 
 
+    cubstream::stream_position pos = 0;
+    for (pos = 0; pos < written_amount; )
+      {
+	res = my_stream->read (pos, OBJ_SIZE, reader_func);
+	if (res <= 0)
+	  {
+	    assert (false);
+	    return res;
+	  }
+        pos += res;
+      }
 
     return res;
   }

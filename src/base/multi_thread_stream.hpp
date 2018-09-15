@@ -87,6 +87,14 @@ namespace cubstream
 	size_t written_bytes;
       };
 
+      struct stream_read_context
+      {
+        stream_read_context () : file_buffer (NULL) {}
+
+        char *file_buffer;
+        mem::buffer_latch_read_id read_latch_page_idx;
+      };
+
       mem::bip_buffer<BIP_BUFFER_READ_PAGES_COUNT> m_bip_buffer;
 
       /* oldest readable position : updated according to buffer availability:
@@ -129,8 +137,10 @@ namespace cubstream
       char *reserve_with_buffer (const size_t amount, stream_reserve_context *&reserved_context);
 
       char *get_data_from_pos (const stream_position &req_start_pos, const size_t amount,
-			       size_t &actual_read_bytes, mem::buffer_latch_read_id &read_latch_page_idx);
-      int unlatch_read_data (const mem::buffer_latch_read_id &read_latch_page_idx);
+			       size_t &actual_read_bytes, stream_read_context &read_context);
+      void unlatch_read_data (const mem::buffer_latch_read_id &read_latch_page_idx);
+      
+      void release_read_context (stream_read_context &read_context);
 
       int wait_for_data (const size_t amount, const STREAM_SKIP_MODE skip_mode);
 
