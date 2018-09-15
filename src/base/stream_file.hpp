@@ -48,7 +48,7 @@ typedef enum
  * class for handling reading/writing to files from a stream 
  * stream file consists of several physical files on disk;
  * there is a base file name (considered the name of stream), suffixed by a sequence number, generated incrementally
- * For instance: $CUBRID/logs/replica_0000, replica_0001, ... replica_0123
+ * For instance: $CUBRID_DATABASES/<dbname>/replica_0000, replica_0001, ... replica_0123
  * each file has a configured fixed size
  * The file having the filename of base is reserved - (maybe metainformation file ?)
  *
@@ -64,6 +64,7 @@ class stream_file
 {
 private:
   static const int DEFAULT_FILENAME_DIGITS = 4;
+  static const bool REMOVE_PHYSICAL_FILE = true;
   
   /* 100 MBytes */
   static const size_t DEFAULT_FILE_SIZE = 100 * 1024 * 1024;
@@ -109,7 +110,7 @@ private:
 
   bool m_is_stopped;
 
-  static const int file_create_flags;
+  static const int FILE_CREATE_FLAG;
 
 protected:
   int get_file_desc_from_file_seqno (const int file_seqno);

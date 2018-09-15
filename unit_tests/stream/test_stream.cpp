@@ -1243,6 +1243,7 @@ namespace test_stream
   int test_stream_file1 (void)
   {
     int res = 0;
+    int file_size = 256 * 1024;
 
     init_common_cubrid_modules ();
 
@@ -1250,7 +1251,7 @@ namespace test_stream
 
     my_stream->set_name ("my_test_stream");
 
-    cubstream::stream_file *my_stream_file = new cubstream::stream_file (*my_stream);
+    cubstream::stream_file *my_stream_file = new cubstream::stream_file (*my_stream, file_size, 2);
 
     /* path is current folder */
     system ("mkdir test_stream_folder");
@@ -1284,6 +1285,7 @@ namespace test_stream
 	    return res;
 	  }
         written_amount = written_amount + buffer_size;
+        stream_pos += buffer_size;
       }
 
     my_stream_file->drop_files_to_pos (MAX (written_amount, my_stream_file->get_desired_file_size ()));

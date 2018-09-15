@@ -41,8 +41,18 @@
 namespace cubstream
 {
 
-  const int stream_file::file_create_flags = O_CREAT;
+  const int stream_file::FILE_CREATE_FLAG = O_CREAT;
 
+  /* daemon task for writing stream contents to stream file
+   * The stream_file object has a m_target_flush_position; this is the target set by the stream
+   * and is the position which desired to be saved to file (all data up to this position)
+   * When 'execute' method starts will begin writting all data from 'last_dropped_pos" to m_target_flush_position
+   * last_dropped_pos is retrieved from stream by get_last_dropable_pos()
+   * To prevent contention on stream, a small buffer is used to read from stream into the buffer
+   * and then save to stream_file the contents of buffer
+   * while the loop in the execute is running the m_target_flush_position may be updated by the stream:
+   * in such case, the execution is continued until the updated target is achieved.
+   */
   class writer_daemon_task : public cubthread::entry_task
   {
     public:
@@ -101,6 +111,7 @@ namespace cubstream
       };
 
     private:
+      /* buffer of 256K */
       static const int BUFFER_SIZE = 256 * 1024;
 
       multi_thread_stream &m_stream;
@@ -193,6 +204,14 @@ int stream_file::get_file_seqno_from_stream_pos_ext (const stream_position &pos,
   return file_seqno;
 }
 
+/*
+ * create_files_in_range
+ *
+ * this is an utility function to create "zeroed" content (including missing files) for a range 
+ * of stream positions; it should not be needed in normal usage since writting should be done by appending
+ * previously written range
+ *
+ */
 int stream_file::create_files_in_range (const stream_position &start_pos, const stream_position &end_pos)
 {
   stream_position curr_pos;
@@ -207,16 +226,16 @@ int stream_file::create_files_in_range (const stream_position &start_pos, const 
 
   if (rem_amount == 0)
     {
-      /* append in a new file case */
+      /* append in a new file case (append) */
       file_seqno = get_file_seqno_from_stream_pos_ext (curr_pos, available_amount_in_file, file_offset);
       if (file_seqno < 0)
         {
           return ER_FAILED;
         }
 
-      assert (file_offset == 0);
-
-      int dummy_fd = open_file_seqno (file_seqno, (file_offset == 0) ? file_create_flags : 0);
+      /* file_offset == 0 ==> this is a new file (we didn't written in it)
+       * file_offset > 0  ==> file is already created, make sure is opened */
+      int dummy_fd = open_file_seqno (file_seqno, (file_offset == 0) ? FILE_CREATE_FLAG : 0);
       if (dummy_fd < 0)
         {
           return ER_FAILED;
@@ -233,7 +252,7 @@ int stream_file::create_files_in_range (const stream_position &start_pos, const 
           return ER_FAILED;
         }
 
-      int dummy_fd = open_file_seqno (file_seqno, (file_offset == 0) ? file_create_flags : 0);
+      int dummy_fd = open_file_seqno (file_seqno, (file_offset == 0) ? FILE_CREATE_FLAG : 0);
       if (dummy_fd < 0)
         {
           return ER_FAILED;
@@ -258,7 +277,13 @@ int stream_file::create_files_in_range (const stream_position &start_pos, const 
   return NO_ERROR;
 }
 
-
+/*
+ * drop_files_to_pos
+ *
+ * physically removes files exclusively used by range 0 -> drop_pos
+ * a file containing data after drop_pos is not removed
+ *
+ */
 int stream_file::drop_files_to_pos (const stream_position &drop_pos)
 {
   stream_position curr_pos;
@@ -275,7 +300,7 @@ int stream_file::drop_files_to_pos (const stream_position &drop_pos)
 
       if (file_offset == 0 && amount_to_end_file <= drop_pos - curr_pos)
         {
-          err = close_file_seqno (file_seqno, true);
+          err = close_file_seqno (file_seqno, REMOVE_PHYSICAL_FILE);
           if (err != NO_ERROR)
             {
               return err;
@@ -286,6 +311,7 @@ int stream_file::drop_files_to_pos (const stream_position &drop_pos)
 
   return err;
 }
+
 int stream_file::get_filename_with_position (char *filename, const size_t max_filename, const stream_position &pos)
 {
   int file_seqno;
@@ -322,7 +348,7 @@ int stream_file::open_file_seqno (const int file_seqno, int flags)
 
   if (it != m_file_descriptors.end ())
     {
-      assert ((flags & file_create_flags) == 0);
+      assert ((flags & FILE_CREATE_FLAG) == 0);
       return it->second;
     }
 
@@ -331,9 +357,8 @@ int stream_file::open_file_seqno (const int file_seqno, int flags)
   fd = open_file (file_name, flags);
   if (fd < 0)
     {
-      assert ((flags & file_create_flags) != file_create_flags);
-
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANNOT_CREATE_VOL, 2, file_name, "");
+      assert ((flags & FILE_CREATE_FLAG) != FILE_CREATE_FLAG);
       return -1;
     }
 
@@ -342,6 +367,13 @@ int stream_file::open_file_seqno (const int file_seqno, int flags)
   return fd;
 }
 
+/*
+ * close_file_seqno
+ *
+ * Closes the file descriptor associated to a file sequence
+ * if remove_physical flag is set it also physical removes the file
+ * 
+ */
 int stream_file::close_file_seqno (int file_seqno, bool remove_physical)
 {
   char file_name[PATH_MAX];
@@ -389,7 +421,12 @@ int stream_file::close_file_seqno (int file_seqno, bool remove_physical)
 
   if (remove_physical)
     {
-      ::remove (file_name);
+      if (::remove (file_name) != 0)
+        {
+          er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_TRYING_TO_REMOVE_PERMANENT_VOLUME, 1, file_name);
+          err = ER_BO_TRYING_TO_REMOVE_PERMANENT_VOLUME;
+          return err;
+        }
     }
 
   return err;
@@ -476,6 +513,12 @@ size_t stream_file::write_buffer (const int file_seqno, const size_t file_offset
   return actual_write;
 }
 
+/* 
+ * write
+ *
+ * writes the contents of buf of size amount into the stream file starting from position pos
+ *
+ */
 int stream_file::write (const stream_position &pos, const char *buf, const size_t amount)
 {
   stream_position curr_pos;
@@ -525,6 +568,12 @@ int stream_file::write (const stream_position &pos, const char *buf, const size_
   return NO_ERROR;
 }
 
+/* 
+ * read
+ *
+ * reads into buffer buf an amount of size amount from the stream file starting from position pos
+ *
+ */
 int stream_file::read (const stream_position &pos, const char *buf, const size_t amount)
 {
   stream_position curr_pos;
