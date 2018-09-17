@@ -40,7 +40,7 @@
 
 
 /* RESERVED_SIZE_IN_PAGE should be aligned */
-#define RESERVED_SIZE_IN_PAGE   sizeof(FILEIO_PAGE_RESERVED)
+#define RESERVED_SIZE_IN_PAGE   (sizeof (FILEIO_PAGE_RESERVED) + sizeof (FILEIO_PAGE_WATERMARK))
 
 static PGLENGTH db_Io_page_size = IO_DEFAULT_PAGE_SIZE;
 static PGLENGTH db_Log_page_size = IO_DEFAULT_PAGE_SIZE;
