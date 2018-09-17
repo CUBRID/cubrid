@@ -4043,7 +4043,7 @@ db_set_statement_auto_commit (DB_SESSION * session, bool auto_commit)
     case PT_SELECT:
       /* Check whether the optimization can be used. Disable it, if several broker/server requests are needed. */
       if (!statement->info.query.oids_included && !statement->info.query.is_view_spec
-	  && !statement->info.query.has_system_class && statement->info.query.into_list == NULL)
+	  && statement->info.query.into_list == NULL)
 	{
 	  info_hints = (PT_HINT_SELECT_KEY_INFO | PT_HINT_SELECT_PAGE_INFO
 			| PT_HINT_SELECT_KEY_INFO | PT_HINT_SELECT_BTREE_NODE_INFO);
