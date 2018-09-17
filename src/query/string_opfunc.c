@@ -3591,6 +3591,75 @@ db_json_array_append (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
   return NO_ERROR;
 }
 
+int
+db_json_array_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
+{
+  int i, error_code = NO_ERROR;
+  JSON_DOC *new_doc = NULL;
+  char *str = NULL;
+
+  db_make_null (result);
+
+  if (num_args < 3 || num_args % 2 == 0)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  if (DB_IS_NULL (arg[0]))
+    {
+      return NO_ERROR;
+    }
+
+  error_code = db_value_to_json_doc (*arg[0], new_doc);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  for (i = 1; i < num_args; i += 2)
+    {
+      if (DB_IS_NULL (arg[i]) || DB_IS_NULL (arg[i + 1]))
+	{
+	  db_json_delete_doc (new_doc);
+	  return db_make_null (result);
+	}
+
+      switch (DB_VALUE_DOMAIN_TYPE (arg[i + 1]))
+	{
+	case DB_TYPE_CHAR:
+	  error_code = db_json_convert_string_and_call (db_get_string (arg[i + 1]), db_get_string_size (arg[i + 1]),
+							db_json_array_insert_func, *new_doc, db_get_string (arg[i]));
+	  break;
+
+	case DB_TYPE_JSON:
+	  error_code = db_json_array_insert_func (arg[i + 1]->data.json.document, *new_doc, db_get_string (arg[i]));
+	  break;
+
+	case DB_TYPE_NULL:
+	  db_json_delete_doc (new_doc);
+	  return db_make_null (result);
+
+	default:
+	  db_json_delete_doc (new_doc);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
+	  return ER_QSTR_INVALID_DATA_TYPE;
+	}
+
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  db_json_delete_doc (new_doc);
+	  return error_code;
+	}
+    }
+
+  db_make_json (result, new_doc, true);
+
+  return NO_ERROR;
+}
+
 /*
  * db_json_merge ()
  * this function merges two by two json
