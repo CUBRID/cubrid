@@ -39,13 +39,13 @@ namespace cubxasl
     int
     column::trigger_on_error (const JSON_DOC &input, const TP_DOMAIN_STATUS &status_cast, db_value &value_out)
     {
-      (void)pr_clear_value (&value_out);
-      (void)db_make_null (&value_out);
+      (void) pr_clear_value (&value_out);
+      (void) db_make_null (&value_out);
 
       switch (m_on_error.m_behavior)
 	{
 	case JSON_TABLE_RETURN_NULL:
-	  er_clear();
+	  er_clear ();
 	  return NO_ERROR;
 
 	case JSON_TABLE_THROW_ERROR:
@@ -53,7 +53,7 @@ namespace cubxasl
 	  PRIVATE_UNIQUE_PTR<char> unique_ptr_json_body (db_json_get_raw_json_body_from_document (&input), NULL);
 
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_TABLE_ON_ERROR_INCOMP_DOMAIN, 4,
-		  unique_ptr_json_body.get(), m_path, m_column_name,
+		  unique_ptr_json_body.get (), m_path, m_column_name,
 		  pr_type_name (TP_DOMAIN_TYPE (m_domain)));
 
 	  return ER_JSON_TABLE_ON_ERROR_INCOMP_DOMAIN;
@@ -105,7 +105,6 @@ namespace cubxasl
 
     column::column (void)
       : m_domain (NULL)
-      , m_path ()
       , m_column_name ()
       , m_on_error ()
       , m_on_empty ()
@@ -125,7 +124,7 @@ namespace cubxasl
       error_code = db_json_extract_document_from_path (&input, m_path, docp);
       if (error_code != NO_ERROR)
 	{
-	  ASSERT_ERROR();
+	  ASSERT_ERROR ();
 	  assert (db_value_is_null (m_output_value_pointer));
 	  return ER_FAILED;
 	}
@@ -135,7 +134,7 @@ namespace cubxasl
 	  error_code = trigger_on_empty (*m_output_value_pointer);
 	  if (error_code != NO_ERROR)
 	    {
-	      ASSERT_ERROR();
+	      ASSERT_ERROR ();
 	    }
 	  return error_code;
 	}
@@ -152,7 +151,7 @@ namespace cubxasl
 	  error_code = trigger_on_error (input, status_cast, *m_output_value_pointer);
 	  if (error_code != NO_ERROR)
 	    {
-	      ASSERT_ERROR();
+	      ASSERT_ERROR ();
 	    }
 	}
 
@@ -169,7 +168,7 @@ namespace cubxasl
       error_code = db_json_contains_path (&input, m_path, result);
       if (error_code != NO_ERROR)
 	{
-	  ASSERT_ERROR();
+	  ASSERT_ERROR ();
 	  assert (db_value_is_null (m_output_value_pointer));
 	  return ER_FAILED;
 	}
@@ -240,8 +239,8 @@ namespace cubxasl
     {
       for (size_t i = 0; i < m_output_columns_size; ++i)
 	{
-	  (void)pr_clear_value (m_output_columns[i].m_output_value_pointer);
-	  (void)db_make_null (m_output_columns[i].m_output_value_pointer);
+	  (void) pr_clear_value (m_output_columns[i].m_output_value_pointer);
+	  (void) db_make_null (m_output_columns[i].m_output_value_pointer);
 	}
     }
 
@@ -262,30 +261,30 @@ namespace cubxasl
     void
     node::clear_tree (void)
     {
-      clear_columns();
+      clear_columns ();
 
       for (size_t i = 0; i < m_nested_nodes_size; ++i)
 	{
-	  m_nested_nodes[i].clear_tree();
+	  m_nested_nodes[i].clear_tree ();
 	}
     }
 
     bool
     node::str_ends_with (const std::string &str, const std::string &end)
     {
-      return end.size() <= str.size() && str.compare (str.size() - end.size(), end.size(), end) == 0;
+      return end.size () <= str.size () && str.compare (str.size () - end.size (), end.size (), end) == 0;
     }
 
     bool
-    node::check_need_expand() const
+    node::check_need_expand () const
     {
       return m_expand_type != json_table_expand_type::JSON_TABLE_NO_EXPAND;
     }
 
     void
-    node::set_parent_path()
+    node::set_parent_path ()
     {
-      if (!check_need_expand())
+      if (!check_need_expand ())
 	{
 	  assert (false);
 	  return;
@@ -294,28 +293,28 @@ namespace cubxasl
       if (m_expand_type == json_table_expand_type::JSON_TABLE_ARRAY_EXPAND)
 	{
 	  std::string s (m_path);
-	  s.assign (s.substr (0, s.size() - 3));
+	  s.assign (s.substr (0, s.size () - 3));
 
 	  // will only shrink
 
-	  strcpy (m_path, s.c_str());
-	  m_path[s.size()] = 0;
+	  strcpy (m_path, s.c_str ());
+	  m_path[s.size ()] = 0;
 	}
       else if (m_expand_type == json_table_expand_type::JSON_TABLE_OBJECT_EXPAND)
 	{
 	  std::string s (m_path);
-	  s.assign (s.substr (0, s.size() - 2));
+	  s.assign (s.substr (0, s.size () - 2));
 
 	  // will only shrink
-	  strcpy (m_path, s.c_str());
-	  m_path[s.size()] = 0;
+	  strcpy (m_path, s.c_str ());
+	  m_path[s.size ()] = 0;
 	}
     }
 
     void
-    node::init_iterator()
+    node::init_iterator ()
     {
-      if (check_need_expand())
+      if (check_need_expand ())
 	{
 	  if (m_expand_type == json_table_expand_type::JSON_TABLE_ARRAY_EXPAND)
 	    {
