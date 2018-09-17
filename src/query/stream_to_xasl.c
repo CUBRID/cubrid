@@ -1789,59 +1789,6 @@ stx_restore_access_spec_type (THREAD_ENTRY * thread_p, char **ptr, void *arg)
   return access_spec_type;
 }
 
-//static json_table_node*
-//stx_restore_json_table_node(THREAD_ENTRY * thread_p, char *ptr, int size)
-//{
-//  json_table_node *jt_nodes;
-//  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr(thread_p);
-//
-//  // 1. we don't need stx_get_struct_visited_ptr call
-//
-//  jt_nodes = (json_table_node *)stx_alloc_struct(thread_p, sizeof(json_table_node) * size);
-//  if (jt_nodes == NULL)
-//  {
-//    stx_set_xasl_errcode(thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-//    return NULL;
-//  }
-//
-//  // 2. no stx_mark_struct_visited call (no init)
-//
-//  for (int i = 0; i < size; ++i)
-//  {
-//      ptr = stx_unpack_json_table_node(thread_p, ptr, jt_nodes[i]);
-//  }
-//
-//  return jt_nodes;
-//
-//error:
-//  stx_set_xasl_errcode(thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-//  return NULL;
-//}
-//
-//static json_table_column*
-//stx_restore_json_table_column(THREAD_ENTRY * thread_p, char *ptr, int size)
-//{
-//
-//  json_table_column *jt_columns;
-//  int i, j, offset;
-//  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr(thread_p);
-//
-//  jt_columns = (json_table_column *)stx_alloc_struct(thread_p, sizeof(json_table_column) * size);
-//  // check?
-//
-//  for (i = 0; i < size; ++i)
-//  {
-//    ptr = stx_unpack_json_table_column(thread_p, ptr, jt_columns[i]);
-//  }
-//
-//  return jt_columns;
-//
-//error:
-//  stx_set_xasl_errcode(thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-//  return NULL;
-//}
-
-
 /*
  * stx_build_xasl_header () - Unpack XASL node header from buffer.
  *
@@ -5393,6 +5340,7 @@ stx_unpack_json_table_node (THREAD_ENTRY * thread_p, char *ptr, json_table_node 
 	{
 	  return NULL;
 	}
+      jtn->m_path = temp;
     }
 
   int temp_int = 0;

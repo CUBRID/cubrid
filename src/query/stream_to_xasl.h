@@ -52,10 +52,8 @@ stx_restore_json_table_struct (THREAD_ENTRY * thread_p, char *&ptr, T & target,
 
   int offset;
 
-  // this needs to be overwritten
   ptr = or_unpack_int (ptr, &offset);
 
-  // we don't need the output of this func call
   unpack_func (thread_p, &xasl_unpack_info->packed_xasl[offset], &target);
 }
 
