@@ -1299,6 +1299,14 @@ mq_substitute_select_in_statement (PARSER_CONTEXT * parser, PT_NODE * statement,
 	      PT_SELECT_INFO_SET_FLAG (statement, PT_SELECT_INFO_HAS_AGG);
 	    }
 	}
+
+      if (query_spec->info.query.is_view_spec)
+	{
+	  if (statement && statement->node_type == PT_SELECT)
+	    {
+	      PT_SELECT_INFO_SET_FLAG (statement, PT_SELECT_VIEW_SPEC_SUBSTITUTED);
+	    }
+	}
     }
 
   return statement;
