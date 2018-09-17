@@ -4573,7 +4573,7 @@ pt_create_json_table_column (PARSER_CONTEXT * parser, PT_NODE * jt_column, TABLE
 
   if (jt_column->info.json_table_column_info.path != NULL)
     {
-      col_result.m_path = (char *) jt_column->info.json_table_column_info.path;
+      col_result.m_path = jt_column->info.json_table_column_info.path;
     }
 
   col_result.m_column_name = (char *) jt_column->info.json_table_column_info.name->info.name.original;
@@ -4620,20 +4620,20 @@ pt_make_json_table_spec_node_internal (PARSER_CONTEXT * parser, PT_JSON_TABLE_NO
     }
 
   // create columns
-  result.m_output_columns_sz = 0;
-  for (itr = jt_node_info->columns; itr != NULL; itr = itr->next, ++result.m_output_columns_sz);
+  result.m_output_columns_size = 0;
+  for (itr = jt_node_info->columns; itr != NULL; itr = itr->next, ++result.m_output_columns_size);
   result.m_output_columns =
-    (json_table_column *) pt_alloc_packing_buf (sizeof (json_table_column) * result.m_output_columns_sz);
+    (json_table_column *) pt_alloc_packing_buf (sizeof (json_table_column) * result.m_output_columns_size);
   for (itr = jt_node_info->columns, i = 0; itr != NULL; itr = itr->next)
     {
       pt_create_json_table_column (parser, itr, tbl_info, result.m_output_columns[i]);
     }
 
   // create children 
-  result.m_nested_nodes_sz = 0;
-  for (itr = jt_node_info->nested_paths; itr != NULL; itr = itr->next, ++result.m_nested_nodes_sz);
+  result.m_nested_nodes_size = 0;
+  for (itr = jt_node_info->nested_paths; itr != NULL; itr = itr->next, ++result.m_nested_nodes_size);
   result.m_nested_nodes =
-    (json_table_node *) pt_alloc_packing_buf (sizeof (json_table_node) * result.m_output_columns_sz);
+    (json_table_node *) pt_alloc_packing_buf (sizeof (json_table_node) * result.m_output_columns_size);
   for (itr = jt_node_info->nested_paths; itr != NULL; itr = itr->next)
     {
       pt_make_json_table_spec_node_internal (parser, &itr->info.json_table_node_info, current_id, tbl_info,

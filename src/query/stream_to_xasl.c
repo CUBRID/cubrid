@@ -153,8 +153,6 @@ static OID *stx_restore_OID_array (THREAD_ENTRY * thread_p, char *ptr, int size)
 static METHOD_SIG_LIST *stx_restore_method_sig_list (THREAD_ENTRY * thread_p, char *ptr);
 static METHOD_SIG *stx_restore_method_sig (THREAD_ENTRY * thread_p, char *ptr, int size);
 static KEY_RANGE *stx_restore_key_range_array (THREAD_ENTRY * thread_p, char *ptr, int size);
-static json_table_column *stx_restore_json_table_column (THREAD_ENTRY * thread_p, char *ptr, int size);
-static json_table_node *stx_restore_json_table_node (THREAD_ENTRY * thread_p, char *ptr, int size);
 
 static char *stx_build_xasl_node (THREAD_ENTRY * thread_p, char *tmp, XASL_NODE * ptr);
 static char *stx_build_xasl_header (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE_HEADER * xasl_header);
@@ -177,8 +175,6 @@ static char *stx_build_delete_proc (THREAD_ENTRY * thread_p, char *tmp, DELETE_P
 static char *stx_build_insert_proc (THREAD_ENTRY * thread_p, char *tmp, INSERT_PROC_NODE * ptr);
 static char *stx_build_merge_proc (THREAD_ENTRY * thread_p, char *tmp, MERGE_PROC_NODE * ptr);
 static char *stx_build_cte_proc (THREAD_ENTRY * thread_p, char *tmp, CTE_PROC_NODE * ptr);
-static char *stx_build_json_table_node (THREAD_ENTRY * thread_p, char *tmp, CTE_PROC_NODE * ptr);
-static char *stx_build_json_table_column (THREAD_ENTRY * thread_p, char *tmp, CTE_PROC_NODE * ptr);
 static char *stx_build_outptr_list (THREAD_ENTRY * thread_p, char *tmp, OUTPTR_LIST * ptr);
 static char *stx_build_selupd_list (THREAD_ENTRY * thread_p, char *tmp, SELUPD_LIST * ptr);
 static char *stx_build_pred_expr (THREAD_ENTRY * thread_p, char *tmp, PRED_EXPR * ptr);
@@ -198,12 +194,10 @@ static char *stx_build_rlist_spec_type (THREAD_ENTRY * thread_p, char *ptr, REGU
 					OUTPTR_LIST * outptr_list);
 static char *stx_build_set_spec_type (THREAD_ENTRY * thread_p, char *tmp, SET_SPEC_TYPE * ptr);
 static char *stx_build_method_spec_type (THREAD_ENTRY * thread_p, char *tmp, METHOD_SPEC_TYPE * ptr);
-static char *stx_restore_method_spec_type (THREAD_ENTRY * thread_p, char *tmp, json_table_spec_node * ptr);
-static char *stx_build_json_table_spec_type (THREAD_ENTRY * thread_p, char *tmp, json_table_spec_node * ptr);
-static char *stx_unpack_json_table_column_behavior (THREAD_ENTRY * thread_p, char *ptr,
-						    json_table_column_behavior & behavior);
-static char *stx_unpack_json_table_column (THREAD_ENTRY * thread_p, char *tmp, json_table_column * jtc);
-static char *stx_unpack_json_table_node (THREAD_ENTRY * thread_p, char *tmp, json_table_node * jtn);
+static char *stx_unpack (THREAD_ENTRY * thread_p, char *tmp, json_table_column_behavior & behavior);
+static char *stx_build (THREAD_ENTRY * thread_p, char *tmp, json_table_spec_node & ptr);
+static char *stx_build (THREAD_ENTRY * thread_p, char *tmp, json_table_column & jtc);
+static char *stx_build (THREAD_ENTRY * thread_p, char *tmp, json_table_node & jtn);
 static char *stx_build_val_list (THREAD_ENTRY * thread_p, char *tmp, VAL_LIST * ptr);
 #if defined(ENABLE_UNUSED_FUNCTION)
 static char *stx_build_db_value_list (THREAD_ENTRY * thread_p, char *tmp, QPROC_DB_VALUE_LIST ptr);
@@ -236,6 +230,8 @@ static char *stx_alloc_struct (THREAD_ENTRY * thread_p, int size);
 static int stx_init_xasl_unpack_info (THREAD_ENTRY * thread_p, char *xasl_stream, int xasl_stream_size);
 static char *stx_build_regu_variable_list (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABLE_LIST * regu_var_list);
 
+
+template < typename T > static void stx_restore (THREAD_ENTRY * thread_p, char *&ptr, T & target);
 
 #if defined(ENABLE_UNUSED_FUNCTION)
 static char *stx_unpack_char (char *tmp, char *ptr);
@@ -4575,8 +4571,7 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr, ACCESS_SPEC_TYPE
       break;
 
     case TARGET_JSON_TABLE:
-      stx_restore_json_table_struct < json_table_spec_node > (thread_p, ptr, ACCESS_SPEC_JSON_TABLE_SPEC (access_spec),
-							      stx_build_json_table_spec_type);
+      stx_restore < json_table_spec_node > (thread_p, ptr, ACCESS_SPEC_JSON_TABLE_SPEC (access_spec));
       break;
 
     default:
@@ -5225,7 +5220,7 @@ stx_build_method_spec_type (THREAD_ENTRY * thread_p, char *ptr, METHOD_SPEC_TYPE
 }
 
 static char *
-stx_unpack_json_table_column_behavior (THREAD_ENTRY * thread_p, char *ptr, json_table_column_behavior & behavior)
+stx_unpack (THREAD_ENTRY * thread_p, char *ptr, json_table_column_behavior & behavior)
 {
   int temp;
 
@@ -5242,14 +5237,14 @@ stx_unpack_json_table_column_behavior (THREAD_ENTRY * thread_p, char *ptr, json_
 }
 
 static char *
-stx_unpack_json_table_column (THREAD_ENTRY * thread_p, char *ptr, json_table_column * jtc)
+stx_build (THREAD_ENTRY * thread_p, char *ptr, json_table_column & jtc)
 {
   int temp_int;
   int offset;
   XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_int (ptr, &temp_int);
-  jtc->m_function = (json_table_column_function) temp_int;
+  jtc.m_function = (json_table_column_function) temp_int;
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -5259,8 +5254,8 @@ stx_unpack_json_table_column (THREAD_ENTRY * thread_p, char *ptr, json_table_col
     }
   else
     {
-      jtc->m_output_value_pointer = stx_restore_db_value (thread_p, &xasl_unpack_info->packed_xasl[offset]);
-      if (jtc->m_output_value_pointer == NULL)
+      jtc.m_output_value_pointer = stx_restore_db_value (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (jtc.m_output_value_pointer == NULL)
 	{
 	  // todo: is this bad?
 	  assert (false);
@@ -5268,13 +5263,13 @@ stx_unpack_json_table_column (THREAD_ENTRY * thread_p, char *ptr, json_table_col
 	}
     }
 
-  if (jtc->m_function == JSON_TABLE_ORDINALITY)
+  if (jtc.m_function == JSON_TABLE_ORDINALITY)
     {
-      jtc->m_domain = &tp_Integer_domain;
+      jtc.m_domain = &tp_Integer_domain;
       return ptr;
     }
 
-  ptr = or_unpack_domain (ptr, &jtc->m_domain, NULL);
+  ptr = or_unpack_domain (ptr, &jtc.m_domain, NULL);
 
   char *temp;
   ptr = or_unpack_int (ptr, &offset);
@@ -5290,7 +5285,7 @@ stx_unpack_json_table_column (THREAD_ENTRY * thread_p, char *ptr, json_table_col
 	{
 	  return NULL;
 	}
-      jtc->m_path = temp;
+      jtc.m_path = temp;
     }
 
   ptr = or_unpack_int (ptr, &offset);
@@ -5306,22 +5301,22 @@ stx_unpack_json_table_column (THREAD_ENTRY * thread_p, char *ptr, json_table_col
 	{
 	  return NULL;
 	}
-      jtc->m_column_name = temp;
+      jtc.m_column_name = temp;
     }
 
-  if (jtc->m_function == JSON_TABLE_EXISTS)
+  if (jtc.m_function == JSON_TABLE_EXISTS)
     {
       return ptr;
     }
 
-  ptr = stx_unpack_json_table_column_behavior (thread_p, ptr, jtc->m_on_error);
-  ptr = stx_unpack_json_table_column_behavior (thread_p, ptr, jtc->m_on_empty);
+  ptr = stx_unpack (thread_p, ptr, jtc.m_on_error);
+  ptr = stx_unpack (thread_p, ptr, jtc.m_on_empty);
 
   return ptr;
 }
 
 static char *
-stx_unpack_json_table_node (THREAD_ENTRY * thread_p, char *ptr, json_table_node * jtn)
+stx_build (THREAD_ENTRY * thread_p, char *ptr, json_table_node & jtn)
 {
   int offset;
   XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
@@ -5340,69 +5335,66 @@ stx_unpack_json_table_node (THREAD_ENTRY * thread_p, char *ptr, json_table_node 
 	{
 	  return NULL;
 	}
-      jtn->m_path = temp;
+      jtn.m_path = temp;
     }
 
   int temp_int = 0;
 
   ptr = or_unpack_int (ptr, &temp_int);
-  jtn->m_output_columns_sz = (size_t) temp_int;
+  jtn.m_output_columns_size = (size_t) temp_int;
 
-  jtn->m_output_columns =
-    (json_table_column *) stx_alloc_struct (thread_p, sizeof (json_table_column) * jtn->m_output_columns_sz);
-  for (size_t i = 0; i < jtn->m_output_columns_sz; ++i)
+  jtn.m_output_columns =
+    (json_table_column *) stx_alloc_struct (thread_p, sizeof (json_table_column) * jtn.m_output_columns_size);
+  for (size_t i = 0; i < jtn.m_output_columns_size; ++i)
     {
-      stx_restore_json_table_struct < json_table_column > (thread_p, ptr, jtn->m_output_columns[i],
-							   stx_unpack_json_table_column);
+      stx_restore < json_table_column > (thread_p, ptr, jtn.m_output_columns[i]);
     }
 
   ptr = or_unpack_int (ptr, &temp_int);
-  jtn->m_nested_nodes_sz = (size_t) temp_int;
+  jtn.m_nested_nodes_size = (size_t) temp_int;
 
-  jtn->m_nested_nodes =
-    (json_table_node *) stx_alloc_struct (thread_p, sizeof (json_table_node) * jtn->m_nested_nodes_sz);
-  for (size_t i = 0; i < jtn->m_nested_nodes_sz; ++i)
+  jtn.m_nested_nodes =
+    (json_table_node *) stx_alloc_struct (thread_p, sizeof (json_table_node) * jtn.m_nested_nodes_size);
+  for (size_t i = 0; i < jtn.m_nested_nodes_size; ++i)
     {
-      stx_restore_json_table_struct < json_table_node > (thread_p, ptr, jtn->m_nested_nodes[i],
-							 stx_unpack_json_table_node);
+      stx_restore < json_table_node > (thread_p, ptr, jtn.m_nested_nodes[i]);
     }
 
   ptr = or_unpack_int (ptr, &temp_int);
-  jtn->m_id = (size_t) temp_int;
+  jtn.m_id = (size_t) temp_int;
 
   ptr = or_unpack_int (ptr, &temp_int);
-  jtn->m_expand_type = (json_table_expand_type) temp_int;
+  jtn.m_expand_type = (json_table_expand_type) temp_int;
 
   return ptr;
 }
 
 static char *
-stx_build_json_table_spec_type (THREAD_ENTRY * thread_p, char *ptr, json_table_spec_node * json_table_spec)
+stx_build (THREAD_ENTRY * thread_p, char *ptr, json_table_spec_node & json_table_spec)
 {
   int offset;
   XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
 
   int m_node_count;
   ptr = or_unpack_int (ptr, &m_node_count);
-  json_table_spec->m_node_count = (size_t) (m_node_count);
+  json_table_spec.m_node_count = (size_t) (m_node_count);
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
-      json_table_spec->m_json_reguvar = NULL;
+      json_table_spec.m_json_reguvar = NULL;
     }
   else
     {
-      json_table_spec->m_json_reguvar = stx_restore_regu_variable (thread_p, &xasl_unpack_info->packed_xasl[offset]);
-      if (json_table_spec->m_json_reguvar == NULL)
+      json_table_spec.m_json_reguvar = stx_restore_regu_variable (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (json_table_spec.m_json_reguvar == NULL)
 	{
 	  return NULL;
 	}
     }
 
-  json_table_spec->m_root_node = (json_table_node *) stx_alloc_struct (thread_p, sizeof (json_table_node));
-  stx_restore_json_table_struct < json_table_node > (thread_p, ptr, *json_table_spec->m_root_node,
-						     stx_unpack_json_table_node);
+  json_table_spec.m_root_node = (json_table_node *) stx_alloc_struct (thread_p, sizeof (json_table_node));
+  stx_restore < json_table_node > (thread_p, ptr, *json_table_spec.m_root_node);
 
   return ptr;
 }
@@ -7096,4 +7088,16 @@ stx_init_analytic_type_unserialized_fields (ANALYTIC_TYPE * analytic)
 
   /* curr_cnt */
   analytic->curr_cnt = 0;
+}
+
+template < typename T > static void
+stx_restore (THREAD_ENTRY * thread_p, char *&ptr, T & target)
+{
+  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
+
+  int offset;
+
+  ptr = or_unpack_int (ptr, &offset);
+
+  stx_build (thread_p, &xasl_unpack_info->packed_xasl[offset], target);
 }

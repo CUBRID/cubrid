@@ -118,6 +118,8 @@ static int xts_save_update_info (const UPDATE_PROC_NODE * ptr);
 static int xts_save_delete_info (const DELETE_PROC_NODE * ptr);
 static int xts_save_insert_info (const INSERT_PROC_NODE * ptr);
 #endif
+template < typename T > int xts_save (const T & t);
+
 static int xts_save_db_value_array (DB_VALUE ** ptr, int size);
 static int xts_save_int_array (int *ptr, int size);
 static int xts_save_hfid_array (HFID * ptr, int size);
@@ -4850,16 +4852,16 @@ xts_process (char *ptr, const json_table_node & jtn)
   ptr = or_pack_int (ptr, offset);
 
   // save m_output_columns
-  ptr = or_pack_int (ptr, (int) jtn.m_output_columns_sz);
-  for (size_t i = 0; i < jtn.m_output_columns_sz; ++i)
+  ptr = or_pack_int (ptr, (int) jtn.m_output_columns_size);
+  for (size_t i = 0; i < jtn.m_output_columns_size; ++i)
     {
       offset = xts_save < json_table_column > (jtn.m_output_columns[i]);
       ptr = or_pack_int (ptr, offset);
     }
 
   // save nested nodes
-  ptr = or_pack_int (ptr, (int) jtn.m_nested_nodes_sz);
-  for (size_t i = 0; i < jtn.m_nested_nodes_sz; ++i)
+  ptr = or_pack_int (ptr, (int) jtn.m_nested_nodes_size);
+  for (size_t i = 0; i < jtn.m_nested_nodes_size; ++i)
     {
       offset = xts_save < json_table_node > (jtn.m_nested_nodes[i]);
       ptr = or_pack_int (ptr, offset);
@@ -6778,7 +6780,7 @@ xts_sizeof (const json_table_node & jtn)
   //    size += xts_sizeof (jtn.m_output_columns[i]);
   //  }
 
-  size += OR_INT_SIZE;		/* m_nested_nodes_sz */
+  size += OR_INT_SIZE;		/* m_nested_nodes_size */
   size += PTR_SIZE;		/* m_nested_nodes */
   //for (size_t i = 0; i < jtn.m_nested_nodes_sz; ++i)
   //  {
@@ -7504,4 +7506,29 @@ xts_process_regu_variable_list (char *ptr, const REGU_VARIABLE_LIST regu_var_lis
   ptr = or_pack_int (ptr, offset);
 
   return ptr;
+}
+
+template < typename T > int static
+xts_save (const T & t)
+{
+  int packed_length;
+  char *ptr;
+
+  int offset = xts_get_offset_visited_ptr (&t);
+  if (offset != ER_FAILED)
+    {
+      return offset;
+    }
+
+  packed_length = xts_reserve_location_in_stream (xts_sizeof (t));
+
+  offset = xts_reserve_location_in_stream (packed_length);
+  if (offset == ER_FAILED || xts_mark_ptr_visited (&t, offset) == ER_FAILED)
+    {
+      return ER_FAILED;
+    }
+  ptr = &xts_Stream_buffer[offset];
+  ptr = xts_process (ptr, t);
+
+  return offset;
 }

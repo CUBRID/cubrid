@@ -179,7 +179,7 @@ namespace cubscan
 	}
 
       int error_code = NO_ERROR;
-      for (size_t i=0; i< m_node->m_output_columns_sz; ++i)
+      for (size_t i=0; i< m_node->m_output_columns_size; ++i)
 	{
 	  error_code = m_node->m_output_columns[i].evaluate (*m_process_doc, m_node->m_ordinality);
 	  if (error_code != NO_ERROR)
@@ -211,7 +211,7 @@ namespace cubscan
     {
       size_t max_child_height = 0;
 
-      for (size_t i = 0; i< node.m_nested_nodes_sz; ++i)
+      for (size_t i = 0; i< node.m_nested_nodes_size; ++i)
 	{
 	  const cubxasl::json_table::node &child = node.m_nested_nodes[i];
 	  max_child_height = std::max (max_child_height, get_tree_height (child));
@@ -234,7 +234,7 @@ namespace cubscan
       // init cursor nodes to left-most branch
       json_table_node *t = m_specp->m_root_node;
       m_scan_cursor[0].m_node = t;
-      for (int i = 1; t->m_nested_nodes_sz!=0; t = &t->m_nested_nodes[0], ++i)
+      for (int i = 1; t->m_nested_nodes_size!=0; t = &t->m_nested_nodes[0], ++i)
 	{
 	  m_scan_cursor[i].m_node = t;
 	}
@@ -445,7 +445,7 @@ namespace cubscan
     void
     scanner::clear_node_columns (cubxasl::json_table::node &node)
     {
-      for (size_t i = 0; i < node.m_output_columns_sz; ++i)
+      for (size_t i = 0; i < node.m_output_columns_size; ++i)
 	{
 	  (void) pr_clear_value (node.m_output_columns[i].m_output_value_pointer);
 	  (void) db_make_null (node.m_output_columns[i].m_output_value_pointer);
@@ -457,7 +457,7 @@ namespace cubscan
     {
       node.init_iterator ();
 
-      for (size_t i = 0; i < node.m_nested_nodes_sz; ++i)
+      for (size_t i = 0; i < node.m_nested_nodes_size; ++i)
 	{
 	  init_iterators (node.m_nested_nodes[i]);
 	}
@@ -468,7 +468,7 @@ namespace cubscan
     {
       node.m_ordinality = 1;
 
-      for (size_t i = 0; i < node.m_nested_nodes_sz; ++i)
+      for (size_t i = 0; i < node.m_nested_nodes_size; ++i)
 	{
 	  reset_ordinality (node.m_nested_nodes[i]);
 	}
@@ -525,7 +525,7 @@ namespace cubscan
 	    }
 
 	  // if this is leaf node, then we have a new complete row
-	  if (this_cursor.m_node->m_nested_nodes_sz == 0)
+	  if (this_cursor.m_node->m_nested_nodes_size == 0)
 	    {
 	      found_row_output = true;
 	      // next time, cursor will have to be incremented
@@ -535,7 +535,7 @@ namespace cubscan
 
 	  // non-leaf
 	  // advance to current child
-	  if (this_cursor.m_child == this_cursor.m_node->m_nested_nodes_sz)
+	  if (this_cursor.m_child == this_cursor.m_node->m_nested_nodes_size)
 	    {
 	      // next time, cursor will have to be incremented
 	      this_cursor.m_need_advance_row = true;

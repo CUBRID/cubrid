@@ -43,18 +43,4 @@ extern void stx_free_xasl_unpack_info (void *unpack_info_ptr);
 extern void stx_free_additional_buff (THREAD_ENTRY * thread_p, void *unpack_info_ptr);
 extern void stx_init_analytic_type_unserialized_fields (ANALYTIC_TYPE * analytic);
 
-
-template < typename T > static void
-stx_restore_json_table_struct (THREAD_ENTRY * thread_p, char *&ptr, T & target,
-			       std::function < char *(THREAD_ENTRY *, char *, T *) >unpack_func)
-{
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
-
-  int offset;
-
-  ptr = or_unpack_int (ptr, &offset);
-
-  unpack_func (thread_p, &xasl_unpack_info->packed_xasl[offset], &target);
-}
-
 #endif /* _STREAM_TO_XASL_H_ */

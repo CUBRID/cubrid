@@ -75,9 +75,9 @@ namespace cubxasl
       size_t m_ordinality;                    // will be used to count the row ordinality
       bool m_need_inc_ordinality;
       column *m_output_columns;   // columns part of output only
-      size_t m_output_columns_sz;
+      size_t m_output_columns_size;
       node *m_nested_nodes;       // nested nodes
-      size_t m_nested_nodes_sz;
+      size_t m_nested_nodes_size;
       size_t m_id;                            // identifier for each node
       JSON_ITERATOR *m_iterator;
       json_table_expand_type m_expand_type;

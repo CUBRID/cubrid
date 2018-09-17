@@ -3263,7 +3263,7 @@ struct pt_json_table_column_info
 {
   PT_NODE *name;
   // domain is stored in parser node
-  const char *path;
+  char *path;
   size_t index;			// will be used to store the columns in the correct order
   enum json_table_column_function func;
   struct json_table_column_behavior on_error;

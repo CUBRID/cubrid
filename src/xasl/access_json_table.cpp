@@ -238,7 +238,7 @@ namespace cubxasl
     void
     node::clear_columns()
     {
-      for (size_t i = 0; i < m_output_columns_sz; ++i)
+      for (size_t i = 0; i < m_output_columns_size; ++i)
 	{
 	  (void)pr_clear_value (m_output_columns[i].m_output_value_pointer);
 	  (void)db_make_null (m_output_columns[i].m_output_value_pointer);
@@ -253,7 +253,7 @@ namespace cubxasl
 	  db_json_clear_json_iterator (m_iterator);
 	}
 
-      for (size_t i = 0; i < m_nested_nodes_sz; ++i)
+      for (size_t i = 0; i < m_nested_nodes_size; ++i)
 	{
 	  m_nested_nodes[i].clear_iterators ();
 	}
@@ -264,7 +264,7 @@ namespace cubxasl
     {
       clear_columns();
 
-      for (size_t i = 0; i < m_nested_nodes_sz; ++i)
+      for (size_t i = 0; i < m_nested_nodes_size; ++i)
 	{
 	  m_nested_nodes[i].clear_tree();
 	}
