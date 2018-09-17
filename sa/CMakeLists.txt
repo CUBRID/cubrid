@@ -254,6 +254,7 @@ set(REPLICATION_SOURCES
 set(STREAM_SOURCES
   ${BASE_DIR}/cubstream.cpp
   ${BASE_DIR}/multi_thread_stream.cpp
+  ${BASE_DIR}/stream_file.cpp
   )
 
 set (STREAM_HEADERS
@@ -262,6 +263,7 @@ set (STREAM_HEADERS
   ${BASE_DIR}/cubstream.hpp
   ${BASE_DIR}/multi_thread_stream.hpp
   ${BASE_DIR}/stream_entry.hpp
+  ${BASE_DIR}/stream_file.hpp  
   )
 
 set(JSP_SOURCES
