@@ -442,6 +442,10 @@ namespace cubthread
       {
 	return m_has_thread;
       }
+      void set_has_thread (void)
+      {
+	m_has_thread = true;
+      }
       void set_push_time_now (void)
       {
 	m_push_time = cubperf::clock::now ();
@@ -1046,6 +1050,7 @@ namespace cubthread
 	  {
 	    // this thread is already stopped and we can start its thread
 	    refp->set_push_time_now ();
+	    refp->set_has_thread ();
 	    refp->start_thread ();
 	  }
       }
@@ -1144,6 +1149,7 @@ namespace cubthread
       }
     else
       {
+	m_has_thread = true;
 	ulock.unlock ();
 
 	assert (m_context_p == NULL);
@@ -1156,7 +1162,7 @@ namespace cubthread
   void
   worker_pool<Context>::core::worker::start_thread (void)
   {
-    assert (!m_has_thread);
+    assert (m_has_thread);
 
     //
     // the next code tries to help visualizing any system errors that can occur during create or detach in debug
@@ -1231,6 +1237,9 @@ namespace cubthread
   void
   worker_pool<Context>::core::worker::init_run (void)
   {
+    // safe-guard - we have a thread
+    assert (m_has_thread);
+
     // safe-guard - threads should [no longer] be available
     m_parent_core->check_worker_not_available (*this);
 
@@ -1241,9 +1250,6 @@ namespace cubthread
     // a context is required
     m_context_p = &m_parent_core->get_context_manager ().create_context ();
     wp_worker_statset_time_and_increment (m_statistics, Wpstat_create_context);
-
-    // will be set when thread decides to stop (there's no going back after this was set to true)
-    m_has_thread = true;
   }
 
   template <typename Context>

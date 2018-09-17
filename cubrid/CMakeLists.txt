@@ -193,8 +193,11 @@ set(MONITOR_HEADERS
 set (REPLICATION_HEADERS
   ${REPLICATION_DIR}/log_generator.hpp
   ${REPLICATION_DIR}/log_consumer.hpp
+  ${REPLICATION_DIR}/replication_master_node.hpp
   ${REPLICATION_DIR}/replication_master_senders_manager.hpp
+  ${REPLICATION_DIR}/replication_node.hpp
   ${REPLICATION_DIR}/replication_object.hpp
+  ${REPLICATION_DIR}/replication_slave_node.hpp
   ${REPLICATION_DIR}/replication_stream_entry.hpp
   )
 
@@ -236,7 +239,10 @@ set(REPLICATION_SOURCES
   ${REPLICATION_DIR}/log_consumer.cpp
   ${REPLICATION_DIR}/log_generator.cpp
   ${REPLICATION_DIR}/replication_object.cpp
-  ${REPLICATION_DIR}/replication_master_senders_manager.cpp  
+  ${REPLICATION_DIR}/replication_master_node.cpp
+  ${REPLICATION_DIR}/replication_master_senders_manager.cpp
+  ${REPLICATION_DIR}/replication_node.cpp
+  ${REPLICATION_DIR}/replication_slave_node.cpp
   ${REPLICATION_DIR}/replication_stream_entry.cpp
   )
 

@@ -50,9 +50,8 @@ namespace cubreplication
 
       static cubstream::multi_thread_stream *g_stream;
 
-      /* start append position of generator stream */
-      static cubstream::stream_position g_start_append_position;
-
+      /* overload, no implemention of new : prevent heap instantiation of this class */
+      void *operator new (size_t size);
     public:
 
       log_generator () : m_stream_entry (NULL) { };
@@ -73,12 +72,22 @@ namespace cubreplication
 
       static void pack_group_commit_entry (void);
 
-      static int create_stream (const cubstream::stream_position &start_position);
-
-      static cubstream::multi_thread_stream *get_stream (void)
+      static cubstream::multi_thread_stream *get_global_stream (void)
       {
 	return g_stream;
       };
+
+      cubstream::multi_thread_stream *get_stream (void)
+      {
+	return m_stream_entry.get_stream ();
+      };
+
+      static void set_global_stream (cubstream::multi_thread_stream *stream);
+
+      void set_stream (cubstream::multi_thread_stream *stream)
+      {
+	m_stream_entry.set_stream (stream);
+      }
   };
 
 } /* namespace cubreplication */

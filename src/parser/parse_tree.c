@@ -1206,6 +1206,7 @@ parser_create_parser (void)
   parser->is_system_generated_stmt = 0;
   parser->has_internal_error = 0;
   parser->max_print_len = 0;
+  parser->is_auto_commit = 0;
 
   return parser;
 }
