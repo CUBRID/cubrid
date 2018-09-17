@@ -157,6 +157,7 @@ namespace cubreplication
 #if defined (SERVER_MODE)
     static unsigned int check_conn_delay_counter = 0;
     bool promoted_to_write = false;
+    cubstream::stream_position min_position_send = 0;
 
     if (check_conn_delay_counter >
 	SUPERVISOR_DAEMON_CHECK_CONN_MS / SUPERVISOR_DAEMON_DELAY_MS)
@@ -184,6 +185,8 @@ namespace cubreplication
 	      }
 	    else
 	      {
+                cubstream::stream_position this_sender_pos = (*it)->get_last_sent_position ();
+                min_position_send = std::min (this_sender_pos, min_position_send);
 		++it;
 	      }
 	  }
@@ -196,6 +199,8 @@ namespace cubreplication
 	    rwlock_write_unlock (&master_senders_lock);
 	  }
 	check_conn_delay_counter = 0;
+
+        // TODO set min_position_send to last dropable
       }
 
     check_conn_delay_counter++;
