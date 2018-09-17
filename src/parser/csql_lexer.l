@@ -443,8 +443,8 @@ int yybuffer_pos;
 [jJ][sS][oO][nN][_][aA][rR][rR][aA][yY]                                 { begin_token(yytext);   return FUN_JSON_ARRAY;}
 [jJ][sS][oO][nN][_][iI][nN][sS][eE][rR][tT]                             { begin_token(yytext);   return FUN_JSON_INSERT;}
 [jJ][sS][oO][nN][_][rR][eE][pP][lL][aA][cC][eE]                         { begin_token(yytext);   return FUN_JSON_REPLACE;}
-[jJ][sS][oO][nN][_][sS][eE][tT]						{ begin_token(yytext);   return FUN_JSON_SET;}
-[jJ][sS][oO][nN][_][kK][eE][yY][sS]					{ begin_token(yytext);   return FUN_JSON_KEYS;}
+[jJ][sS][oO][nN][_][sS][eE][tT]											{ begin_token(yytext);   return FUN_JSON_SET;}
+[jJ][sS][oO][nN][_][kK][eE][yY][sS]										{ begin_token(yytext);   return FUN_JSON_KEYS;}
 [jJ][sS][oO][nN][_][rR][eE][mM][oO][vV][eE]                             { begin_token(yytext);   return FUN_JSON_REMOVE;}
 [jJ][sS][oO][nN][_][aA][rR][rR][aA][yY][_][aA][pP][pP][eE][nN][dD]      { begin_token(yytext);   return FUN_JSON_ARRAY_APPEND;}
 [jJ][sS][oO][nN][_][gG][eE][tT][_][aA][lL][lL][_][pP][aA][tT][hH][sS]	{ begin_token(yytext);   return FUN_JSON_GET_ALL_PATHS;}

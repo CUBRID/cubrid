@@ -3958,6 +3958,8 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "json_depth";
     case PT_JSON_SEARCH:
       return "json_search";
+    case PT_JSON_PRETTY:
+      return "json_pretty";
     default:
       return "unknown opcode";
     }
@@ -8786,6 +8788,12 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
   r1 = pt_print_bytes_l (parser, p->info.delete_.target_classes);
   r2 = pt_print_bytes_spec_list (parser, p->info.delete_.spec);
 
+  if (p->info.delete_.with != NULL)
+    {
+      r1 = pt_print_bytes_l (parser, p->info.delete_.with);
+      q = pt_append_varchar (parser, q, r1);
+    }
+
   q = pt_append_nulstring (parser, q, "delete ");
   if (p->info.delete_.hint != PT_HINT_NONE)
     {
@@ -10227,6 +10235,13 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, ", ");
       r3 = pt_print_bytes (parser, p->info.expr.arg3);
       q = pt_append_varchar (parser, q, r3);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+    case PT_JSON_PRETTY:
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+
+      q = pt_append_nulstring (parser, q, " json_pretty(");
+      q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
       break;
     case PT_POWER:
@@ -15799,6 +15814,12 @@ pt_print_update (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *b = NULL, *r1;
 
+  if (p->info.update.with != NULL)
+    {
+      r1 = pt_print_bytes_l (parser, p->info.update.with);
+      b = pt_append_varchar (parser, b, r1);
+    }
+
   b = pt_append_nulstring (parser, b, "update ");
 
   if (p->info.update.hint != PT_HINT_NONE)
@@ -18152,6 +18173,7 @@ pt_is_const_expr_node (PT_NODE * node)
 	case PT_JSON_TYPE:
 	case PT_JSON_VALID:
 	case PT_JSON_DEPTH:
+	case PT_JSON_PRETTY:
 	  return pt_is_const_expr_node (node->info.expr.arg1);
 	case PT_COERCIBILITY:
 	  /* coercibility is always folded to constant */
@@ -18615,6 +18637,7 @@ pt_is_allowed_as_function_index (const PT_NODE * expr)
     case PT_JSON_LENGTH:
     case PT_JSON_DEPTH:
     case PT_JSON_SEARCH:
+    case PT_JSON_PRETTY:
       return true;
     case PT_TZ_OFFSET:
     default:

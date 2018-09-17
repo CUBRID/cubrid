@@ -3972,6 +3972,7 @@ db_set_statement_auto_commit (DB_SESSION * session, bool auto_commit)
   int info_hints;
   int error_code;
   bool has_user_trigger;
+  int i;
 
   assert (session != NULL);
 
@@ -4008,7 +4009,20 @@ db_set_statement_auto_commit (DB_SESSION * session, bool auto_commit)
       return NO_ERROR;
     }
 
-  /* Check whether statement can uses auto commit. */
+  if (session->dimension > 1 && !session->parser->is_holdable)
+    {
+      /* Search for select. */
+      for (i = 0; i < session->dimension; i++)
+	{
+	  if (PT_IS_QUERY_NODE_TYPE (session->statements[i]->node_type))
+	    {
+	      /* Avoid situation when the driver requests data after closing cursors. */
+	      return NO_ERROR;
+	    }
+	}
+    }
+
+  /* Check whether statement can use auto commit. */
   error_code = tr_has_user_trigger (&has_user_trigger);
   if (error_code != NO_ERROR)
     {
@@ -4017,7 +4031,7 @@ db_set_statement_auto_commit (DB_SESSION * session, bool auto_commit)
 
   if (has_user_trigger)
     {
-      /* Triggers must be excuted before commit. Disable optimization. */
+      /* Triggers must be executed before commit. Disable optimization. */
       return NO_ERROR;
     }
 
@@ -4080,7 +4094,13 @@ db_set_statement_auto_commit (DB_SESSION * session, bool auto_commit)
 	}
       break;
 
-      // TODO - what else? for instance, merge, other dmls, ddls.       
+    case PT_UNION:
+    case PT_INTERSECTION:
+    case PT_DIFFERENCE:
+      // TODO- add optimization
+      break;
+
+      // TODO - what else? for instance, other dmls, ddls.
     default:
       break;
     }

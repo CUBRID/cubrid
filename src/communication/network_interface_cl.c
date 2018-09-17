@@ -5581,7 +5581,7 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
 		  int *attr_ids, int *attrs_prefix_length, HFID * hfids, int unique_pk, int not_null_flag,
 		  OID * fk_refcls_oid, BTID * fk_refcls_pk_btid, const char *fk_name, char *pred_stream,
 		  int pred_stream_size, char *expr_stream, int expr_stream_size, int func_col_id,
-		  int func_attr_index_start)
+		  int func_attr_index_start, SM_INDEX_STATUS index_status)
 {
 #if defined(CS_MODE)
   int error = NO_ERROR, req_error, request_size, domain_size;
@@ -5619,7 +5619,8 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
 		  + OR_OID_SIZE	/* fk_refcls_oid */
 		  + OR_BTID_ALIGNED_SIZE	/* fk_refcls_pk_btid */
 		  + or_packed_string_length (fk_name, &fk_strlen)	/* fk_name */
-		  + index_info_size /* filter predicate or function index stream size */ );
+		  + index_info_size	/* filter predicate or function index stream size */
+		  + OR_INT_SIZE /* Index status */ );
 
   request = (char *) malloc (request_size);
   if (request == NULL)
@@ -5692,6 +5693,8 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
     {
       ptr = or_pack_int (ptr, -1);	/* stream=NULL, stream_size=0 */
     }
+
+  ptr = or_pack_int (ptr, index_status);	/* Index status. */
 
   req_error =
     net_client_request (NET_SERVER_BTREE_LOADINDEX, request, request_size, reply, OR_ALIGNED_BUF_SIZE (a_reply),

@@ -340,7 +340,7 @@ static void log_cleanup_modified_class_list (THREAD_ENTRY * thread_p, LOG_TDES *
 
 static void log_append_compensate_internal (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VPID * vpid,
 					    PGLENGTH offset, PAGE_PTR pgptr, int length, const void *data,
-					    LOG_TDES * tdes, LOG_LSA * undo_nxlsa);
+					    LOG_TDES * tdes, const LOG_LSA * undo_nxlsa);
 
 STATIC_INLINE void log_sysop_end_random_exit (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void log_sysop_end_begin (THREAD_ENTRY * thread_p, int *tran_index_out, LOG_TDES ** tdes_out)
@@ -3017,7 +3017,7 @@ log_append_compensate (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VPI
 void
 log_append_compensate_with_undo_nxlsa (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VPID * vpid,
 				       PGLENGTH offset, PAGE_PTR pgptr, int length, const void *data, LOG_TDES * tdes,
-				       LOG_LSA * undo_nxlsa)
+				       const LOG_LSA * undo_nxlsa)
 {
   assert (undo_nxlsa != NULL);
 
@@ -3052,7 +3052,8 @@ log_append_compensate_with_undo_nxlsa (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcv
  */
 static void
 log_append_compensate_internal (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VPID * vpid, PGLENGTH offset,
-				PAGE_PTR pgptr, int length, const void *data, LOG_TDES * tdes, LOG_LSA * undo_nxlsa)
+				PAGE_PTR pgptr, int length, const void *data, LOG_TDES * tdes,
+				const LOG_LSA * undo_nxlsa)
 {
   LOG_REC_COMPENSATE *compensate;	/* Compensate log record */
   LOG_LSA prev_lsa;		/* LSA of next record to undo */
@@ -9134,7 +9135,7 @@ log_recreate (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logp
    * RESET RECOVERY INFORMATION ON ALL DATA VOLUMES
    */
 
-  LSA_SET_INIT_NONTEMP (&init_nontemp_lsa);
+  LSA_SET_NULL (&init_nontemp_lsa);
 
   for (volid = LOG_DBFIRST_VOLID; volid != NULL_VOLID; volid = fileio_find_next_perm_volume (thread_p, volid))
     {

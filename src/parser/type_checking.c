@@ -4823,7 +4823,7 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
 
       /* return type */
       sig.return_type.is_generic = false;
-      sig.return_type.val.type = PT_TYPE_CHAR;
+      sig.return_type.val.type = PT_TYPE_VARCHAR;
       def->overloads[num++] = sig;
 
       def->overloads_count = num;
@@ -4928,6 +4928,22 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       /* return type */
       sig.return_type.is_generic = false;
       sig.return_type.val.type = PT_TYPE_JSON;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+    case PT_JSON_PRETTY:
+      num = 0;
+
+      /* one overload */
+
+      /* arg1 */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_JSON;
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_VARCHAR;
       def->overloads[num++] = sig;
 
       def->overloads_count = num;
@@ -6921,6 +6937,7 @@ pt_is_symmetric_op (const PT_OP_TYPE op)
     case PT_JSON_LENGTH:
     case PT_JSON_DEPTH:
     case PT_JSON_SEARCH:
+    case PT_JSON_PRETTY:
       return false;
 
     default:
@@ -16950,6 +16967,14 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1, "JSON_SEARCH");
       PT_ERRORc (parser, o1, er_msg ());
       return 0;
+    case PT_JSON_PRETTY:
+      error = db_json_pretty_dbval (arg1, result);
+      if (error != NO_ERROR)
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
+      break;
     case PT_POWER:
       error = db_power_dbval (result, arg1, arg2);
       if (error != NO_ERROR)
