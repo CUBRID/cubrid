@@ -4628,12 +4628,8 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr, ACCESS_SPEC_TYPE
       break;
 
     case TARGET_JSON_TABLE:
-      //leak for now!
-      ACCESS_SPEC_JSON_TABLE_SPEC (access_spec) =
-	*stx_restore_json_table_struct < json_table_spec_node > (thread_p, ptr, 1, stx_build_json_table_spec_type);
-      //json_table_spec->m_root_node = stx_restore_json_table_struct<json_table_node>(thread_p, ptr, 1, stx_unpack_json_table_node);
-
-      //ptr = stx_build_json_table_spec_type (thread_p, ptr, &ACCESS_SPEC_JSON_TABLE_SPEC (access_spec));
+      stx_restore_json_table_struct < json_table_spec_node > (thread_p, ptr, ACCESS_SPEC_JSON_TABLE_SPEC (access_spec),
+							      stx_build_json_table_spec_type);
       break;
 
     default:
@@ -5403,18 +5399,25 @@ stx_unpack_json_table_node (THREAD_ENTRY * thread_p, char *ptr, json_table_node 
 
   ptr = or_unpack_int (ptr, &temp_int);
   jtn->m_output_columns_sz = (size_t) temp_int;
+
   jtn->m_output_columns =
-    stx_restore_json_table_struct < json_table_column > (thread_p, ptr, jtn->m_output_columns_sz,
-							 stx_unpack_json_table_column);
+    (json_table_column *) stx_alloc_struct (thread_p, sizeof (json_table_column) * jtn->m_output_columns_sz);
+  for (size_t i = 0; i < jtn->m_output_columns_sz; ++i)
+    {
+      stx_restore_json_table_struct < json_table_column > (thread_p, ptr, jtn->m_output_columns[i],
+							   stx_unpack_json_table_column);
+    }
 
   ptr = or_unpack_int (ptr, &temp_int);
   jtn->m_nested_nodes_sz = (size_t) temp_int;
 
-
-
   jtn->m_nested_nodes =
-    stx_restore_json_table_struct < json_table_node > (thread_p, ptr, jtn->m_nested_nodes_sz,
-						       stx_unpack_json_table_node);
+    (json_table_node *) stx_alloc_struct (thread_p, sizeof (json_table_node) * jtn->m_nested_nodes_sz);
+  for (size_t i = 0; i < jtn->m_nested_nodes_sz; ++i)
+    {
+      stx_restore_json_table_struct < json_table_node > (thread_p, ptr, jtn->m_nested_nodes[i],
+							 stx_unpack_json_table_node);
+    }
 
   ptr = or_unpack_int (ptr, &temp_int);
   jtn->m_id = (size_t) temp_int;
@@ -5449,8 +5452,9 @@ stx_build_json_table_spec_type (THREAD_ENTRY * thread_p, char *ptr, json_table_s
 	}
     }
 
-  json_table_spec->m_root_node =
-    stx_restore_json_table_struct < json_table_node > (thread_p, ptr, 1, stx_unpack_json_table_node);
+  json_table_spec->m_root_node = (json_table_node *) stx_alloc_struct (thread_p, sizeof (json_table_node));
+  stx_restore_json_table_struct < json_table_node > (thread_p, ptr, *json_table_spec->m_root_node,
+						     stx_unpack_json_table_node);
 
   return ptr;
 }

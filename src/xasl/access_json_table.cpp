@@ -77,8 +77,8 @@ namespace cubxasl
     int
     column::trigger_on_empty (db_value &value_out)
     {
-      (void)pr_clear_value (&value_out);
-      (void)db_make_null (&value_out);
+      (void) pr_clear_value (&value_out);
+      (void) db_make_null (&value_out);
 
       switch (m_on_empty.m_behavior)
 	{
@@ -105,10 +105,10 @@ namespace cubxasl
 
     column::column (void)
       : m_domain (NULL)
-      , m_path()
-      , m_column_name()
-      , m_on_error()
-      , m_on_empty()
+      , m_path ()
+      , m_column_name ()
+      , m_on_error ()
+      , m_on_empty ()
       , m_output_value_pointer (NULL)
       , m_function (json_table_column_function::JSON_TABLE_EXTRACT)
     {
@@ -226,14 +226,13 @@ namespace cubxasl
     }
 
     node::node (void)
-      : m_path()
-      , m_ordinality (1)
+      : m_ordinality (1)
       , m_need_inc_ordinality (true)
       , m_id (0)
       , m_expand_type (json_table_expand_type::JSON_TABLE_NO_EXPAND)
       , m_iterator (nullptr)
     {
-      //
+
     }
 
     void
@@ -254,9 +253,9 @@ namespace cubxasl
 	  db_json_clear_json_iterator (m_iterator);
 	}
 
-      for (node &child : m_nested_nodes)
+      for (size_t i = 0; i < m_nested_nodes_sz; ++i)
 	{
-	  child.clear_iterators ();
+	  m_nested_nodes[i].clear_iterators ();
 	}
     }
 
@@ -298,6 +297,7 @@ namespace cubxasl
 	  s.assign (s.substr (0, s.size() - 3));
 
 	  // will only shrink
+
 	  strcpy (m_path, s.c_str());
 	  m_path[s.size()] = 0;
 	}

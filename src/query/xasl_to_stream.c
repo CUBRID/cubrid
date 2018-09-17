@@ -4430,6 +4430,7 @@ xts_process_access_spec_type (char *ptr, const ACCESS_SPEC_TYPE * access_spec)
 
     case TARGET_JSON_TABLE:
       offset = xts_save < json_table_spec_node > (ACCESS_SPEC_JSON_TABLE_SPEC (access_spec));
+      ptr = or_pack_int (ptr, offset);
       break;
 
     default:
@@ -4837,7 +4838,7 @@ xts_process (char *ptr, const json_table_column & jtc)
 
 static char *
 xts_process (char *ptr, const json_table_node & jtn)
-{				//todo: seems to be necessary to add a save function to call this
+{
   int offset;
 
   // save string
@@ -6531,6 +6532,7 @@ xts_sizeof_access_spec_type (const ACCESS_SPEC_TYPE * access_spec)
       break;
 
     case TARGET_JSON_TABLE:
+      // only add offset?
       tmp_size = xts_sizeof (ACCESS_SPEC_JSON_TABLE_SPEC (access_spec));
       if (tmp_size == ER_FAILED)
 	{
@@ -6770,18 +6772,18 @@ xts_sizeof (const json_table_node & jtn)
 	   + OR_INT_SIZE);	/* m_expand_type */
 
   size += OR_INT_SIZE;		/* m_output_colums_sz */
-
-  for (size_t i = 0; i < jtn.m_output_columns_sz; ++i)
-    {
-      size += xts_sizeof (jtn.m_output_columns[i]);
-    }
+  size += PTR_SIZE;		/* m_output_colums */
+  //for (size_t i = 0; i < jtn.m_output_columns_sz; ++i)
+  //  {
+  //    size += xts_sizeof (jtn.m_output_columns[i]);
+  //  }
 
   size += OR_INT_SIZE;		/* m_nested_nodes_sz */
-
-  for (size_t i = 0; i < jtn.m_nested_nodes_sz; ++i)
-    {
-      size += xts_sizeof (jtn.m_nested_nodes[i]);
-    }
+  size += PTR_SIZE;		/* m_nested_nodes */
+  //for (size_t i = 0; i < jtn.m_nested_nodes_sz; ++i)
+  //  {
+  //    size += xts_sizeof (jtn.m_nested_nodes[i]);
+  //  }
 
   return size;
 }
@@ -6801,7 +6803,7 @@ xts_sizeof (const json_table_spec_node & json_table_spec)
 	   + OR_INT_SIZE	/* json_table_node number */
 	   + PTR_SIZE);		/* json_table_node */
 
-  size += xts_sizeof (*json_table_spec.m_root_node);
+  //size += xts_sizeof (*json_table_spec.m_root_node);
 
   return size;
 }
