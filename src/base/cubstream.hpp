@@ -77,8 +77,11 @@ namespace cubstream
       /* last position committed (filled) by appenders; can be read by readers */
       stream_position m_last_committed_pos;
 
-      /* last position notified as committed; used to send notifications */
+      /* last position notified as committed; used to send notifications to readers */
       stream_position m_last_notified_committed_pos;
+
+      /* drop position when last flushed was notified; used to send notifications to flusher (avoid spamming) */
+      stream_position m_drop_pos_last_flushed_notified;
 
       /* position to wait for in serial read */
       stream_position m_serial_read_wait_pos;
@@ -122,7 +125,7 @@ namespace cubstream
 	return m_last_dropable_pos;
       }
 
-      void set_last_dropable_pos (const stream_position &last_dropable_pos)
+      virtual void set_last_dropable_pos (const stream_position &last_dropable_pos)
       {
 	m_last_dropable_pos = last_dropable_pos;
       }

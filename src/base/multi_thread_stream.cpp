@@ -40,6 +40,8 @@ namespace cubstream
     /* TODO : system parameter */
     m_trigger_flush_to_disk_size = buffer_capacity / 2;
 
+    m_max_allowed_unflushed_reserved = 9 * buffer_capacity / 100;
+
     m_trigger_min_to_read_size = 16;
 
     m_stat_reserve_queue_spins = 0;
@@ -342,6 +344,7 @@ namespace cubstream
 	size_t committed_bytes = new_completed_position - m_last_notified_committed_pos;
 
 	err = m_ready_pos_handler (save_last_notified_commited_pos, committed_bytes);
+        m_last_notified_committed_pos = new_completed_position;
       }
 
     return err;
@@ -368,7 +371,22 @@ namespace cubstream
 
     assert (amount > 0);
 
+    if (m_append_position - m_last_dropable_pos > m_max_allowed_unflushed_reserved)
+      {
+        /* flush or reader are not keeping up with the writers */
+        wait_for_flush_or_readers ();
+      }
+
     m_buffer_mutex.lock ();
+
+    while (m_append_position - m_last_dropable_pos > m_max_allowed_unflushed_reserved)
+      {
+        m_buffer_mutex.unlock ();
+        /* flush or reader are not keeping up with the writers */
+        wait_for_flush_or_readers ();
+        m_buffer_mutex.lock ();
+      }
+
     while (1)
       {
 	reserved_context = m_reserved_positions.produce ();
@@ -401,21 +419,22 @@ namespace cubstream
 
     m_append_position += amount;
 
-    /* set pointer under mutex lock, a "commit" call may collapse until this slot */
+    /* set pointer under mutex lock, a "commit" call may collapse up to position of this slot */
     reserved_context->ptr = ptr;
     reserved_context->reserved_amount = amount;
     reserved_context->written_bytes = 0;
 
     float stream_fill = stream_fill_factor ();
-    stream_position drop_pos = m_last_dropable_pos;
-    size_t produced_since_drop = m_append_position - m_last_dropable_pos;
+    stream_position notify_flush_pos = m_last_committed_pos;
+    size_t produced_since_drop = notify_flush_pos - m_last_dropable_pos;
 
     m_buffer_mutex.unlock ();
 
     /* notify that stream content needs to be saved, otherwise it may be overwritten in bip_buffer */
-    if (m_filled_stream_handler && stream_fill >= 1.0f)
+    if (m_filled_stream_handler && stream_fill >= 1.0f && m_last_dropable_pos >= m_drop_pos_last_flushed_notified)
       {
-	m_filled_stream_handler (drop_pos, produced_since_drop);
+	m_filled_stream_handler (notify_flush_pos - produced_since_drop, produced_since_drop);
+        m_drop_pos_last_flushed_notified = m_last_dropable_pos + 1;
       }
 
     return ptr;
@@ -511,13 +530,15 @@ namespace cubstream
             return NULL;
           }
 
-        actual_read_bytes = m_stream_file->get_max_available_from_pos (req_start_pos);
+        size_t bytes_available_file = m_stream_file->get_max_available_from_pos (req_start_pos);
 
-	err = m_stream_file->read (req_start_pos, read_context.file_buffer, actual_read_bytes);
+	err = m_stream_file->read (req_start_pos, read_context.file_buffer, bytes_available_file);
         if (err != NO_ERROR)
           {
 	    return NULL;
           }
+
+        actual_read_bytes = bytes_available_file;
 
         return read_context.file_buffer;
       }
@@ -532,6 +553,10 @@ namespace cubstream
     if (amount_trail_a == 0 && amount_trail_b == 0)
       {
 	/* no readable regions */
+        assert (false);
+        /* TODO : set different error */
+        er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_NO_MORE_DATA, 3, this->name ().c_str (), req_start_pos,
+                amount);
 	m_stat_read_no_readable_pos_cnt++;
 	return NULL;
       }
@@ -549,13 +574,16 @@ namespace cubstream
             return NULL;
           }
 
-        actual_read_bytes = m_stream_file->get_max_available_from_pos (req_start_pos);
+        size_t bytes_available_file = m_stream_file->get_max_available_from_pos (req_start_pos);
 
-	err = m_stream_file->read (req_start_pos, read_context.file_buffer, actual_read_bytes);
+	err = m_stream_file->read (req_start_pos, read_context.file_buffer, bytes_available_file);
         if (err != NO_ERROR)
           {
+            ASSERT_ERROR ();
 	    return NULL;
           }
+
+        actual_read_bytes = bytes_available_file;
 
         return read_context.file_buffer;
       }
@@ -579,6 +607,7 @@ namespace cubstream
     if (err != NO_ERROR)
       {
 	m_stat_read_buffer_failed_cnt++;
+        /* TODO : set error */
 	return NULL;
       }
 
@@ -602,5 +631,20 @@ namespace cubstream
       {
         unlatch_read_data (read_context.read_latch_page_idx);
       }
+  }
+
+  void multi_thread_stream::wait_for_flush_or_readers (void)
+  {
+    std::unique_lock<std::mutex> local_lock (m_drop_pos_mutex);
+    m_drop_pos_cv.wait (local_lock, [&] { return m_is_stopped || 
+                                          (m_append_position - m_last_dropable_pos >
+                                           m_max_allowed_unflushed_reserved); });
+  }
+
+  void multi_thread_stream::set_last_dropable_pos (const stream_position &last_dropable_pos)
+    {
+      m_last_dropable_pos = last_dropable_pos;
+      m_drop_pos_cv.notify_one ();
     }
+
 } /* namespace cubstream */

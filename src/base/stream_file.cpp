@@ -87,15 +87,15 @@ namespace cubstream
             size_t amount_to_copy = MIN (end_pos - curr_pos, BUFFER_SIZE);
 
             err = m_stream.read (curr_pos, amount_to_copy, m_copy_to_buffer_func);
-            if (err != NO_ERROR)
+            if (err <= 0)
               {
-                /* TODO: fatal error ?  */
+                ASSERT_ERROR ();
                 break; 
               }
             err = m_stream_file.write (curr_pos, m_buffer, amount_to_copy);
             if (err != NO_ERROR)
               {
-                /* TODO: fatal error ?  */
+                ASSERT_ERROR ();
                 break; 
               }
 
@@ -142,6 +142,8 @@ void stream_file::init (const size_t file_size, const int print_digits)
   m_filled_stream_handler = std::bind (&stream_file::stream_filled_func, std::ref (*this), std::placeholders::_1,
                                        std::placeholders::_2);
   m_stream.set_filled_stream_handler (m_filled_stream_handler);
+
+  m_is_stopped = false;
 
 #if defined (SERVER_MODE)
   m_write_daemon = cubthread::get_manager ()->create_daemon (cubthread::delta_time (0),

@@ -111,16 +111,31 @@ namespace cubstream
        */
       size_t m_trigger_flush_to_disk_size;
 
+      /* the allowed range for difference (append_position - last_dropable): if the append continues beyond this range,
+       * we may loose unflushed (or un-read by all readers) data;
+       * normally, we can set this to buffer_capacity, but due to contiguous requirement of allocation, in practice,
+       * this limit si lower
+       * if this is set to zero, we can afford to loose data (unread and unflushed).
+       */
+      size_t m_max_allowed_unflushed_reserved;
+
+      /* mutex accessing/updating dropable position */
+      std::mutex m_drop_pos_mutex;
+
+      /* updating and waiting for dropable position cv uses m_drop_pos_mutex */
+      std::condition_variable m_drop_pos_cv;
+
       /* the minimum amount committed to stream which may be read (to avoid notifications in case of too small data) */
       size_t m_trigger_min_to_read_size;
 
+      /* mutex for reserve/reading for attached bip_buffer */
       std::mutex m_buffer_mutex;
-
-      stream_file *m_stream_file;
 
       /* serial read cv uses m_buffer_mutex */
       std::condition_variable m_serial_read_cv;
       bool m_is_stopped;
+
+      stream_file *m_stream_file;
 
       /* stats counters */
       std::uint64_t m_stat_reserve_queue_spins;
@@ -164,10 +179,15 @@ namespace cubstream
 	m_trigger_min_to_read_size = min_read_size;
       }
 
+      void set_max_allowed_unflushed_reserved (const size_t max_unflushed)
+      {
+        m_max_allowed_unflushed_reserved = max_unflushed;
+      }
+
       /* fill factor : if < 1 : no need to flush or throttle the appenders ; if > 1 : need to flush and/or throttle */
       float stream_fill_factor (void)
       {
-	return ((float) m_append_position - (float) m_last_dropable_pos) / (float) m_trigger_flush_to_disk_size;
+	return ((float) m_last_committed_pos - (float) m_last_dropable_pos) / (float) m_trigger_flush_to_disk_size;
       };
 
       void set_stop (void)
@@ -179,6 +199,9 @@ namespace cubstream
       void set_stream_file (stream_file *sf) { m_stream_file = sf; }
 
       stream_file *get_stream_file (void) { return m_stream_file; }
+
+      void wait_for_flush_or_readers (void);
+      void set_last_dropable_pos (const stream_position &last_dropable_pos);
   };
 
 } /* namespace cubstream */
