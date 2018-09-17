@@ -4681,10 +4681,10 @@ pt_make_json_table_access_spec (PARSER_CONTEXT * parser, REGU_VARIABLE * json_re
 
   if (spec)
     {
-      spec->s.json_table_spec_node.m_root_node = pt_make_json_table_spec_node (parser, json_table, start_id, tbl_info);
-      spec->s.json_table_spec_node.m_json_reguvar = json_reguvar;
+      spec->s.json_table_node.m_root_node = pt_make_json_table_spec_node (parser, json_table, start_id, tbl_info);
+      spec->s.json_table_node.m_json_reguvar = json_reguvar;
       // each node will have its own incremental id, so we can count the nr of nodes based on this identifier
-      spec->s.json_table_spec_node.m_node_count = start_id;
+      spec->s.json_table_node.m_node_count = start_id;
     }
 
   return spec;
