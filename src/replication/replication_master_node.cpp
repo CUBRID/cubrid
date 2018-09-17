@@ -81,5 +81,11 @@ namespace cubreplication
 #endif
   }
 
+  void master_node::update_senders_min_position (const cubstream::stream_position &pos)
+  {
+    g_instance->m_stream->set_last_dropable_pos (pos);
+  }
+
+
   master_node *master_node::g_instance = NULL;
 } /* namespace cubreplication */

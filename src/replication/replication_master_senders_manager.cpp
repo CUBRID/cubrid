@@ -23,6 +23,7 @@
  */
 
 #include "replication_master_senders_manager.hpp"
+#include "replication_master_node.hpp"
 
 #include <utility>
 #include "thread_manager.hpp"
@@ -200,7 +201,7 @@ namespace cubreplication
 	  }
 	check_conn_delay_counter = 0;
 
-        // TODO set min_position_send to last dropable
+        cubreplication::master_node::update_senders_min_position (min_position_send);
       }
 
     check_conn_delay_counter++;
