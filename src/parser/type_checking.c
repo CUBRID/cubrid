@@ -4935,7 +4935,7 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
     case PT_JSON_PRETTY:
       num = 0;
 
-      /* two overloads */
+      /* one overload */
 
       /* arg1 */
       sig.arg1_type.is_generic = false;
