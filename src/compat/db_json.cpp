@@ -1480,7 +1480,7 @@ db_json_array_shift_values (const JSON_DOC *value, JSON_DOC &doc, const std::str
 
   // add the value at the end of the array
   JSON_VALUE value_copy (*value, doc.GetAllocator ());
-  resulting_json_parent->GetArray().PushBack (value_copy, doc.GetAllocator ());
+  resulting_json_parent->GetArray ().PushBack (value_copy, doc.GetAllocator ());
 
   // move the value to its correct index by swapping adjacent values
   for (int i = resulting_json_parent->GetArray ().Size () - 1; i > last_token_index; --i)
@@ -1517,14 +1517,14 @@ db_json_array_insert_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw
 
   if (error_code != NO_ERROR)
     {
-      ASSERT_ERROR();
+      ASSERT_ERROR ();
       return error_code;
     }
 
-  JSON_POINTER p (json_pointer_string.c_str());
+  JSON_POINTER p (json_pointer_string.c_str ());
   JSON_VALUE *resulting_json = NULL;
 
-  if (!p.IsValid())
+  if (!p.IsValid ())
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
       return ER_JSON_INVALID_PATH;
