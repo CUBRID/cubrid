@@ -16399,7 +16399,6 @@ sm_load_online_index (SM_TEMPLATE * template_, MOP * classmop, const char *const
   TP_DOMAIN *domain;
   int i, n_attrs, n_classes, max_classes;
   DB_TYPE type;
-  BTID *index;
   DB_OBJLIST *subclasses, *sub;
   int *attr_ids = NULL;
   size_t attr_ids_size;

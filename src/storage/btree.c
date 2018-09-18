@@ -27525,7 +27525,6 @@ error:
   return error_code;
 }
 
-#if defined (SERVER_MODE)
 /*
  * btree_key_insert_does_leaf_need_split () - Check if there is not enough space in leaf node to handle new object.
  *
@@ -27560,7 +27559,6 @@ btree_key_insert_does_leaf_need_split (THREAD_ENTRY * thread_p, BTID_INT * btid_
       return (max_new_data_size > spage_max_space_for_new_record (thread_p, leaf_page));
     }
 }
-#endif /* SERVER_MODE */
 
 /*
  * btree_key_lock_and_append_object_unique () - Append new object into an existing unique index key.
@@ -33143,14 +33141,14 @@ btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_
   BTID *btid;
   /* Search key helper which will point to where data should inserted. */
   BTREE_SEARCH_KEY_HELPER search_key = BTREE_SEARCH_KEY_HELPER_INITIALIZER;
-  /* Insert helper. */
-  BTREE_INSERT_HELPER insert_helper = BTREE_INSERT_HELPER_INITIALIZER;
-  /* Delete helper, in case this is a delete operation. */
-  BTREE_DELETE_HELPER delete_helper = BTREE_DELETE_HELPER_INITIALIZER;
   /* Processing key function: can insert an object or just a delete MVCCID. */
   BTREE_ROOT_WITH_KEY_FUNCTION *root_function = NULL;
   BTREE_ADVANCE_WITH_KEY_FUNCTION *advance_function = NULL;
   BTREE_PROCESS_KEY_FUNCTION *key_function = NULL;
+  BTREE_HELPER helper;
+
+  helper.insert_helper = BTREE_INSERT_HELPER_INITIALIZER;
+  helper.delete_helper = BTREE_DELETE_HELPER_INITIALIZER;
 
   /* Safe guards */
   assert (oid != NULL);
@@ -33161,30 +33159,25 @@ btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_
 	  || purpose == BTREE_OP_ONLINE_INDEX_UNDO_TRAN_INSERT);
 
   /* Save OID, class OID and MVCC info in insert helper. */
-  COPY_OID (BTREE_INSERT_OID (&insert_helper), oid);
-  COPY_OID (BTREE_DELETE_OID (&delete_helper), oid);
+  COPY_OID (BTREE_INSERT_OID (&helper.insert_helper), oid);
+  COPY_OID (BTREE_DELETE_OID (&helper.delete_helper), oid);
   if (class_oid != NULL)
     {
-      COPY_OID (BTREE_INSERT_CLASS_OID (&insert_helper), class_oid);
-      COPY_OID (BTREE_DELETE_CLASS_OID (&delete_helper), class_oid);
+      COPY_OID (BTREE_INSERT_CLASS_OID (&helper.insert_helper), class_oid);
+      COPY_OID (BTREE_DELETE_CLASS_OID (&helper.delete_helper), class_oid);
     }
   else
     {
-      OID_SET_NULL (BTREE_INSERT_CLASS_OID (&insert_helper));
-      OID_SET_NULL (BTREE_DELETE_CLASS_OID (&delete_helper));
+      OID_SET_NULL (BTREE_INSERT_CLASS_OID (&helper.insert_helper));
+      OID_SET_NULL (BTREE_DELETE_CLASS_OID (&helper.delete_helper));
     }
 
   btid = btid_int->sys_btid;
 
-  /* Is key NULL? */
-  insert_helper.is_null = (key == NULL || DB_IS_NULL (key) || btree_multicol_key_is_null (key));
-
-  /* No unique indexes for now. */
-  insert_helper.unique_stats_info = NULL;
   if (undo_nxlsa != NULL)
     {
-      LSA_COPY (&insert_helper.compensate_undo_nxlsa, undo_nxlsa);
-      LSA_COPY (&delete_helper.reference_lsa, undo_nxlsa);
+      LSA_COPY (&helper.insert_helper.compensate_undo_nxlsa, undo_nxlsa);
+      LSA_COPY (&helper.delete_helper.reference_lsa, undo_nxlsa);
     }
 
   switch (purpose)
@@ -33192,8 +33185,8 @@ btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_
     case BTREE_OP_ONLINE_INDEX_IB_INSERT:
       {
 	/* This is an insert done by the index builder. */
-	insert_helper.op_type = SINGLE_ROW_INSERT;
-	insert_helper.purpose = purpose;
+	helper.insert_helper.op_type = SINGLE_ROW_INSERT;
+	helper.insert_helper.purpose = purpose;
 	root_function = btree_fix_root_for_insert;
 	advance_function = btree_split_node_and_advance;
 	key_function = btree_key_online_index_IB_insert;
@@ -33203,8 +33196,8 @@ btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_
     case BTREE_OP_ONLINE_INDEX_TRAN_INSERT:
     case BTREE_OP_ONLINE_INDEX_UNDO_TRAN_DELETE:
       {
-	insert_helper.op_type = SINGLE_ROW_INSERT;
-	insert_helper.purpose = purpose;
+	helper.insert_helper.op_type = SINGLE_ROW_INSERT;
+	helper.insert_helper.purpose = purpose;
 	root_function = btree_fix_root_for_insert;
 	advance_function = btree_split_node_and_advance;
 	key_function = btree_key_online_index_tran_insert;
@@ -33214,15 +33207,15 @@ btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_
     case BTREE_OP_ONLINE_INDEX_TRAN_DELETE:
     case BTREE_OP_ONLINE_INDEX_UNDO_TRAN_INSERT:
       {
-	delete_helper.op_type = SINGLE_ROW_DELETE;
-	delete_helper.purpose = purpose;
+	helper.delete_helper.op_type = SINGLE_ROW_DELETE;
+	helper.delete_helper.purpose = purpose;
 	root_function = btree_fix_root_for_delete;
 	advance_function = btree_merge_node_and_advance;
 	key_function = btree_key_online_index_tran_delete;
 
 	error_code =
-	  btree_search_key_and_apply_functions (thread_p, btid, btid_int, key, root_function, &delete_helper,
-						advance_function, &delete_helper, key_function, &delete_helper,
+	  btree_search_key_and_apply_functions (thread_p, btid, btid_int, key, root_function, &helper.delete_helper,
+						advance_function, &helper.delete_helper, key_function, &helper,
 						&search_key, NULL);
 
 	if (error_code == NO_ERROR && search_key.result == BTREE_KEY_NOTFOUND)
@@ -33230,11 +33223,11 @@ btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_
 	    /*  We failed to find the object in the index. We must traverse again the btree and treat the operation
 	     *  as an insert with DELETE_FLAG set.
 	     */
-	    insert_helper.purpose = purpose;
-	    insert_helper.op_type = SINGLE_ROW_INSERT;
-	    if (insert_helper.purpose == BTREE_OP_ONLINE_INDEX_TRAN_DELETE)
+	    helper.insert_helper.purpose = purpose;
+	    helper.insert_helper.op_type = SINGLE_ROW_INSERT;
+	    if (helper.delete_helper.purpose == BTREE_OP_ONLINE_INDEX_TRAN_DELETE)
 	      {
-		insert_helper.purpose = BTREE_OP_ONLINE_INDEX_TRAN_INSERT;
+		helper.insert_helper.purpose = BTREE_OP_ONLINE_INDEX_TRAN_INSERT;
 	      }
 	    root_function = btree_fix_root_for_insert;
 	    advance_function = btree_split_node_and_advance;
@@ -33248,14 +33241,14 @@ btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_
       }
 
     default:
-      /* This should never happen until we add code for transaction operations. */
+      /* This should never happen. */
       assert (false);
       return ER_FAILED;
     }
 
   error_code =
-    btree_search_key_and_apply_functions (thread_p, btid, btid_int, key, root_function, &insert_helper,
-					  advance_function, &insert_helper, key_function, &insert_helper, &search_key,
+    btree_search_key_and_apply_functions (thread_p, btid, btid_int, key, root_function, &helper.insert_helper,
+					  advance_function, &helper.insert_helper, key_function, &helper, &search_key,
 					  NULL);
 
   return error_code;
@@ -33279,7 +33272,7 @@ btree_key_online_index_IB_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
 				  PAGE_PTR * leaf_page, BTREE_SEARCH_KEY_HELPER * search_key, bool * restart,
 				  void *other_args)
 {
-  BTREE_INSERT_HELPER *insert_helper = (BTREE_INSERT_HELPER *) other_args;
+  BTREE_HELPER *helper = (BTREE_HELPER *) other_args;
   int error_code = NO_ERROR;	/* Error code. */
   RECDES record;		/* Record descriptor for leaf key record. */
   LEAF_REC leaf_info;		/* Leaf record info. */
@@ -33309,8 +33302,8 @@ btree_key_online_index_IB_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
   new_record.area_size = IO_MAX_PAGE_SIZE;
 
   /* Redo logging. */
-  insert_helper->rv_redo_data = rv_redo_data;
-  insert_helper->rv_redo_data_ptr = insert_helper->rv_redo_data;
+  helper->insert_helper.rv_redo_data = rv_redo_data;
+  helper->insert_helper.rv_redo_data_ptr = helper->insert_helper.rv_redo_data;
 
   /* We are in leaf level now, and we must inspect if we have found the OID inside the key. */
   if (search_key->result == BTREE_KEY_FOUND)
@@ -33338,8 +33331,8 @@ btree_key_online_index_IB_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
 	}
 
       error_code =
-	btree_find_oid_with_page_and_record (thread_p, btid_int, &insert_helper->obj_info.oid, *leaf_page,
-					     insert_helper->purpose, NULL, &record, &leaf_info, offset_after_key,
+	btree_find_oid_with_page_and_record (thread_p, btid_int, &helper->insert_helper.obj_info.oid, *leaf_page,
+					     helper->insert_helper.purpose, NULL, &record, &leaf_info, offset_after_key,
 					     &page_found, &prev_page, &offset_to_object, &btree_mvcc_info, &new_record);
       if (error_code != NO_ERROR)
 	{
@@ -33382,7 +33375,8 @@ btree_key_online_index_IB_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
 	      LOG_RV_RECORD_SET_MODIFY_MODE (&addr, LOG_RV_RECORD_UPDATE_PARTIAL);
 
 	      btree_online_index_change_state (thread_p, btid_int, &new_record, node_type, offset_to_object,
-					       btree_mvcc_info.insert_mvccid, NULL, &insert_helper->rv_redo_data_ptr);
+					       btree_mvcc_info.insert_mvccid, NULL,
+					       &helper->insert_helper.rv_redo_data_ptr);
 
 	      /* Add the logged info. */
 	      /* Update in page. */
@@ -33400,12 +33394,12 @@ btree_key_online_index_IB_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
 	      LSA_COPY (&prev_lsa, pgbuf_get_lsa (page_found));
 
 	      /* Logging. */
-	      BTREE_RV_GET_DATA_LENGTH (insert_helper->rv_redo_data_ptr, insert_helper->rv_redo_data,
+	      BTREE_RV_GET_DATA_LENGTH (helper->insert_helper.rv_redo_data_ptr, helper->insert_helper.rv_redo_data,
 					rv_redo_data_length);
 	      log_append_redo_data (thread_p, RVBT_RECORD_MODIFY_NO_UNDO, &addr, rv_redo_data_length,
-				    insert_helper->rv_redo_data);
+				    helper->insert_helper.rv_redo_data);
 
-	      btree_insert_log (insert_helper, "btree_key_online_index_insert %s", "todo");
+	      btree_insert_log (&helper->insert_helper, "btree_key_online_index_insert %s", "todo");
 
 	      FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
 
@@ -33415,18 +33409,16 @@ btree_key_online_index_IB_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
 	    }
 	  else
 	    {
-	      /* DELETE_FLAG is set. It means we have to remove the OID from the key. */
-	      BTREE_DELETE_HELPER delete_helper = BTREE_DELETE_HELPER_INITIALIZER;
-
 	      /* TODO: This is not entirely safe. It needs to be checked when we add the transactional inserts. */
 	      assert (btree_online_index_is_delete_flag_state (btree_mvcc_info.insert_mvccid));
 
-	      btree_insert_helper_to_delete_helper (insert_helper, &delete_helper);
-	      delete_helper.purpose = BTREE_OP_ONLINE_INDEX_IB_DELETE;
+	      btree_insert_helper_to_delete_helper (&helper->insert_helper, &helper->delete_helper);
+	      helper->delete_helper.purpose = BTREE_OP_ONLINE_INDEX_IB_DELETE;
 
-	      error_code = btree_key_remove_object (thread_p, key, btid_int, &delete_helper, *leaf_page, &record,
-						    &leaf_info, offset_after_key, search_key, &page_found, prev_page,
-						    node_type, offset_to_object);
+	      error_code =
+		btree_key_remove_object (thread_p, key, btid_int, &helper->delete_helper, *leaf_page, &record,
+					 &leaf_info, offset_after_key, search_key, &page_found, prev_page, node_type,
+					 offset_to_object);
 
 	      return error_code;
 	    }
@@ -33439,13 +33431,14 @@ btree_key_online_index_IB_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
 
 	  error_code =
 	    btree_key_append_object_non_unique (thread_p, btid_int, key, page_found, search_key, &new_record,
-						offset_after_key, &leaf_info, &insert_helper->obj_info, insert_helper);
+						offset_after_key, &leaf_info, &helper->insert_helper.obj_info,
+						&helper->insert_helper);
 	}
     }
   else
     {
       /* Key was not found, we must insert it. */
-      error_code = btree_key_insert_new_key (thread_p, btid_int, key, *leaf_page, insert_helper, search_key);
+      error_code = btree_key_insert_new_key (thread_p, btid_int, key, *leaf_page, &helper->insert_helper, search_key);
     }
 
 end:
@@ -33470,7 +33463,7 @@ btree_key_online_index_tran_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 				    PAGE_PTR * leaf_page, BTREE_SEARCH_KEY_HELPER * search_key, bool * restart,
 				    void *other_args)
 {
-  BTREE_INSERT_HELPER *insert_helper = (BTREE_INSERT_HELPER *) other_args;
+  BTREE_HELPER *helper = (BTREE_HELPER *) other_args;
   int error_code = NO_ERROR;	/* Error code. */
   RECDES record;		/* Record descriptor for leaf key record. */
   LEAF_REC leaf_info;		/* Leaf record info. */
@@ -33496,7 +33489,6 @@ btree_key_online_index_tran_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int
   new_record.area_size = IO_MAX_PAGE_SIZE;
 
   char *rv_undo_data = NULL;
-  int rv_undo_data_length;
   int rv_undo_data_capacity = IO_MAX_PAGE_SIZE;
   char rv_undo_data_buffer[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
   char *rv_undo_data_bufalign = PTR_ALIGN (rv_undo_data_buffer, BTREE_MAX_ALIGN);
@@ -33506,22 +33498,22 @@ btree_key_online_index_tran_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int
   char *rv_redo_data_ptr = rv_redo_data;
   int rv_redo_data_length = 0;
 
-  insert_helper->rv_redo_data = rv_redo_data;
-  insert_helper->rv_redo_data_ptr = insert_helper->rv_redo_data;
+  helper->insert_helper.rv_redo_data = rv_redo_data;
+  helper->insert_helper.rv_redo_data_ptr = helper->insert_helper.rv_redo_data;
 
-  insert_helper->leaf_addr.offset = search_key->slotid;
-  insert_helper->leaf_addr.pgptr = *leaf_page;
-  insert_helper->leaf_addr.vfid = &btid_int->sys_btid->vfid;
+  helper->insert_helper.leaf_addr.offset = search_key->slotid;
+  helper->insert_helper.leaf_addr.pgptr = *leaf_page;
+  helper->insert_helper.leaf_addr.vfid = &btid_int->sys_btid->vfid;
 
   /* Undo logging. */
-  if (insert_helper->purpose == BTREE_OP_ONLINE_INDEX_TRAN_INSERT)
+  if (helper->insert_helper.purpose == BTREE_OP_ONLINE_INDEX_TRAN_INSERT)
     {
       error_code =
-	btree_rv_save_keyval_for_undo (btid_int, key, BTREE_INSERT_CLASS_OID (insert_helper),
-				       BTREE_INSERT_OID (insert_helper), BTREE_INSERT_MVCC_INFO (insert_helper),
-				       insert_helper->purpose, rv_undo_data_bufalign,
-				       &insert_helper->rv_keyval_data, &rv_undo_data_capacity,
-				       &insert_helper->rv_keyval_data_length);
+	btree_rv_save_keyval_for_undo (btid_int, key, BTREE_INSERT_CLASS_OID (&helper->insert_helper),
+				       BTREE_INSERT_OID (&helper->insert_helper),
+				       BTREE_INSERT_MVCC_INFO (&helper->insert_helper), helper->insert_helper.purpose,
+				       rv_undo_data_bufalign, &helper->insert_helper.rv_keyval_data,
+				       &rv_undo_data_capacity, &helper->insert_helper.rv_keyval_data_length);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -33555,8 +33547,8 @@ btree_key_online_index_tran_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	}
 
       error_code =
-	btree_find_oid_with_page_and_record (thread_p, btid_int, &insert_helper->obj_info.oid, *leaf_page,
-					     insert_helper->purpose, NULL, &record, &leaf_info, offset_after_key,
+	btree_find_oid_with_page_and_record (thread_p, btid_int, &helper->insert_helper.obj_info.oid, *leaf_page,
+					     helper->insert_helper.purpose, NULL, &record, &leaf_info, offset_after_key,
 					     &page_found, &prev_page, &offset_to_object, &btree_mvcc_info, &new_record);
 
       node_type = (page_found == *leaf_page) ? BTREE_LEAF_NODE : BTREE_OVERFLOW_NODE;
@@ -33612,7 +33604,8 @@ btree_key_online_index_tran_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	  /* Logging. */
 	  BTREE_RV_GET_DATA_LENGTH (rv_redo_data_ptr, rv_redo_data, rv_redo_data_length);
 
-	  btree_rv_log_insert_object (thread_p, *insert_helper, addr, 0, rv_redo_data_length, NULL, rv_redo_data);
+	  btree_rv_log_insert_object (thread_p, helper->insert_helper, addr, 0, rv_redo_data_length, NULL,
+				      rv_redo_data);
 
 	  pgbuf_set_dirty (thread_p, page_found, DONT_FREE);
 
@@ -33627,13 +33620,14 @@ btree_key_online_index_tran_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 
 	  error_code =
 	    btree_key_append_object_non_unique (thread_p, btid_int, key, *leaf_page, search_key, &new_record,
-						offset_after_key, &leaf_info, &insert_helper->obj_info, insert_helper);
+						offset_after_key, &leaf_info, &helper->insert_helper.obj_info,
+						&helper->insert_helper);
 	}
     }
   else
     {
       /* Key was not found, we must insert it. */
-      error_code = btree_key_insert_new_key (thread_p, btid_int, key, *leaf_page, insert_helper, search_key);
+      error_code = btree_key_insert_new_key (thread_p, btid_int, key, *leaf_page, &helper->insert_helper, search_key);
     }
 
 end:
@@ -33658,7 +33652,7 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 				    PAGE_PTR * leaf_page, BTREE_SEARCH_KEY_HELPER * search_key, bool * restart,
 				    void *other_args)
 {
-  BTREE_DELETE_HELPER *delete_helper = (BTREE_DELETE_HELPER *) other_args;
+  BTREE_HELPER *helper = (BTREE_HELPER *) other_args;
   int error_code = NO_ERROR;	/* Error code. */
   RECDES record;		/* Record descriptor for leaf key record. */
   LEAF_REC leaf_info;		/* Leaf record info. */
@@ -33694,15 +33688,15 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
   char *rv_redo_data_ptr = rv_redo_data;
   int rv_redo_data_length = 0;
 
-  delete_helper->rv_keyval_data = rv_undo_data_bufalign;
-  if (delete_helper->purpose == BTREE_OP_ONLINE_INDEX_TRAN_DELETE)
+  helper->delete_helper.rv_keyval_data = rv_undo_data_bufalign;
+  if (helper->delete_helper.purpose == BTREE_OP_ONLINE_INDEX_TRAN_DELETE)
     {
       error_code =
-	btree_rv_save_keyval_for_undo (btid_int, key, BTREE_DELETE_CLASS_OID (delete_helper),
-				       BTREE_DELETE_OID (delete_helper),
-				       BTREE_DELETE_MVCC_INFO (delete_helper), delete_helper->purpose,
-				       rv_undo_data_bufalign, &delete_helper->rv_keyval_data,
-				       &rv_undo_data_capacity, &delete_helper->rv_keyval_data_length);
+	btree_rv_save_keyval_for_undo (btid_int, key, BTREE_DELETE_CLASS_OID (&helper->delete_helper),
+				       BTREE_DELETE_OID (&helper->delete_helper),
+				       BTREE_DELETE_MVCC_INFO (&helper->delete_helper), helper->delete_helper.purpose,
+				       rv_undo_data_bufalign, &helper->delete_helper.rv_keyval_data,
+				       &rv_undo_data_capacity, &helper->delete_helper.rv_keyval_data_length);
 
       if (error_code != NO_ERROR)
 	{
@@ -33711,9 +33705,9 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	}
     }
 
-  delete_helper->leaf_addr.offset = search_key->slotid;
-  delete_helper->leaf_addr.pgptr = *leaf_page;
-  delete_helper->leaf_addr.vfid = &btid_int->sys_btid->vfid;
+  helper->delete_helper.leaf_addr.offset = search_key->slotid;
+  helper->delete_helper.leaf_addr.pgptr = *leaf_page;
+  helper->delete_helper.leaf_addr.vfid = &btid_int->sys_btid->vfid;
 
   /* We are in leaf level now, and we must inspect if we have found the OID inside the key. */
   if (search_key->result == BTREE_KEY_FOUND)
@@ -33741,8 +33735,8 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	}
 
       error_code =
-	btree_find_oid_with_page_and_record (thread_p, btid_int, &delete_helper->object_info.oid, *leaf_page,
-					     delete_helper->purpose, NULL, &record, &leaf_info, offset_after_key,
+	btree_find_oid_with_page_and_record (thread_p, btid_int, &helper->delete_helper.object_info.oid, *leaf_page,
+					     helper->delete_helper.purpose, NULL, &record, &leaf_info, offset_after_key,
 					     &page_found, &prev_page, &offset_to_object, &btree_mvcc_info, &new_record);
 
       node_type = (page_found == *leaf_page) ? BTREE_LEAF_NODE : BTREE_OVERFLOW_NODE;
@@ -33764,9 +33758,9 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	    }
 
 	  /* Make sure logging is correct in case of OVFL. */
-	  delete_helper->leaf_addr.pgptr = page_found;
-	  delete_helper->leaf_addr.offset = slotid;
-	  delete_helper->leaf_addr.vfid = &btid_int->sys_btid->vfid;
+	  helper->delete_helper.leaf_addr.pgptr = page_found;
+	  helper->delete_helper.leaf_addr.offset = slotid;
+	  helper->delete_helper.leaf_addr.vfid = &btid_int->sys_btid->vfid;
 
 	  if (btree_online_index_is_insert_flag_state (btree_mvcc_info.insert_mvccid))
 	    {
@@ -33775,7 +33769,7 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	      /* Redo logging. */
 	      if (node_type == BTREE_OVERFLOW_NODE)
 		{
-		  BTREE_RV_SET_OVERFLOW_NODE (&delete_helper->leaf_addr);
+		  BTREE_RV_SET_OVERFLOW_NODE (&helper->delete_helper.leaf_addr);
 		}
 	      LOG_RV_RECORD_SET_MODIFY_MODE (&addr, LOG_RV_RECORD_UPDATE_PARTIAL);
 
@@ -33799,11 +33793,11 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	      /* Logging. */
 	      BTREE_RV_GET_DATA_LENGTH (rv_redo_data_ptr, rv_redo_data, rv_redo_data_length);
 
-	      delete_helper->rv_redo_data = rv_redo_data;
-	      delete_helper->rv_redo_data_ptr = rv_redo_data_ptr;
+	      helper->delete_helper.rv_redo_data = rv_redo_data;
+	      helper->delete_helper.rv_redo_data_ptr = rv_redo_data_ptr;
 
-	      btree_rv_log_delete_object (thread_p, *delete_helper, delete_helper->leaf_addr, 0, rv_redo_data_length,
-					  NULL, rv_redo_data);
+	      btree_rv_log_delete_object (thread_p, helper->delete_helper, helper->delete_helper.leaf_addr, 0,
+					  rv_redo_data_length, NULL, rv_redo_data);
 
 	      pgbuf_set_dirty (thread_p, page_found, DONT_FREE);
 
@@ -33814,9 +33808,10 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	      /* Normal state. We need to physically delete the object. */
 	      assert (btree_online_index_is_normal_state (btree_mvcc_info.insert_mvccid));
 
-	      error_code = btree_key_remove_object (thread_p, key, btid_int, delete_helper, *leaf_page, &new_record,
-						    &leaf_info, offset_after_key, search_key, &page_found, prev_page,
-						    node_type, offset_to_object);
+	      error_code =
+		btree_key_remove_object (thread_p, key, btid_int, &helper->delete_helper, *leaf_page, &new_record,
+					 &leaf_info, offset_after_key, search_key, &page_found, prev_page, node_type,
+					 offset_to_object);
 	      return error_code;
 	    }
 	}
@@ -33826,7 +33821,47 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	}
     }
 
-  /* We did not find the object. We have to restart the traverse and try to insert the object with DELETE_FLAG set. */
+  /*  We did not find the object. We have to check if there is enough space in the leaf for the object. If there is,
+   *  we insert it in place without any restarts.
+   */
+  btree_delete_helper_to_insert_helper (&helper->delete_helper, &helper->insert_helper);
+  if (btree_key_insert_does_leaf_need_split (thread_p, btid_int, *leaf_page, &helper->insert_helper, search_key) ==
+      false)
+    {
+      /* There is enough space. */
+
+      /* Set DELETE_FLAG in the helper structure. */
+      helper->insert_helper.obj_info.mvcc_info.flags |= BTREE_OID_HAS_MVCC_INSID;
+      btree_online_index_set_delete_flag_state (helper->insert_helper.obj_info.mvcc_info.insert_mvccid);
+
+      helper->insert_helper.leaf_addr.offset = search_key->slotid;
+      helper->insert_helper.leaf_addr.pgptr = *leaf_page;
+      helper->insert_helper.leaf_addr.vfid = &btid_int->sys_btid->vfid;
+
+      helper->insert_helper.rv_redo_data = rv_redo_data;
+      helper->insert_helper.rv_redo_data_ptr = helper->insert_helper.rv_redo_data;
+
+      helper->insert_helper.purpose = BTREE_OP_ONLINE_INDEX_TRAN_INSERT;
+
+      if (search_key->result == BTREE_KEY_FOUND)
+	{
+	  /* We found the key, but not the object. We append the object at the end of the key. */
+	  assert (search_key->result == BTREE_KEY_FOUND && offset_to_object == NOT_FOUND);
+	  error_code =
+	    btree_key_append_object_non_unique (thread_p, btid_int, key, *leaf_page, search_key, &new_record,
+						offset_after_key, &leaf_info, &helper->insert_helper.obj_info,
+						&helper->insert_helper);
+	}
+      else
+	{
+	  error_code =
+	    btree_key_insert_new_key (thread_p, btid_int, key, *leaf_page, &helper->insert_helper, search_key);
+	}
+
+      return error_code;
+    }
+
+  /* Not enough space. We have to restart the traverse and try to insert the object with DELETE_FLAG set. */
   search_key->result = BTREE_KEY_NOTFOUND;
   return error_code;
 }
@@ -33849,8 +33884,7 @@ btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_
 				       PAGE_PTR * leaf_page, BTREE_SEARCH_KEY_HELPER * search_key, bool * restart,
 				       void *other_args)
 {
-  BTREE_INSERT_HELPER *insert_helper = (BTREE_INSERT_HELPER *) other_args;
-  BTREE_DELETE_HELPER delete_helper = BTREE_DELETE_HELPER_INITIALIZER;
+  BTREE_HELPER *helper = (BTREE_HELPER *) other_args;
   int error_code = NO_ERROR;	/* Error code. */
   RECDES record;		/* Record descriptor for leaf key record. */
   LEAF_REC leaf_info;		/* Leaf record info. */
@@ -33886,15 +33920,15 @@ btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_
   int rv_redo_data_length = 0;
 
   /* Save the key for undo process. */
-  insert_helper->rv_keyval_data = rv_undo_data_bufalign;
-  if (insert_helper->purpose == BTREE_OP_ONLINE_INDEX_TRAN_INSERT)
+  helper->insert_helper.rv_keyval_data = rv_undo_data_bufalign;
+  if (helper->insert_helper.purpose == BTREE_OP_ONLINE_INDEX_TRAN_INSERT)
     {
       error_code =
-	btree_rv_save_keyval_for_undo (btid_int, key, BTREE_INSERT_CLASS_OID (insert_helper),
-				       BTREE_INSERT_OID (insert_helper),
-				       BTREE_INSERT_MVCC_INFO (insert_helper), insert_helper->purpose,
-				       rv_undo_data_bufalign, &insert_helper->rv_keyval_data,
-				       &rv_undo_data_capacity, &insert_helper->rv_keyval_data_length);
+	btree_rv_save_keyval_for_undo (btid_int, key, BTREE_INSERT_CLASS_OID (&helper->insert_helper),
+				       BTREE_INSERT_OID (&helper->insert_helper),
+				       BTREE_INSERT_MVCC_INFO (&helper->insert_helper), helper->insert_helper.purpose,
+				       rv_undo_data_bufalign, &helper->insert_helper.rv_keyval_data,
+				       &rv_undo_data_capacity, &helper->insert_helper.rv_keyval_data_length);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -33902,13 +33936,13 @@ btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_
 	}
     }
 
-  insert_helper->leaf_addr.offset = search_key->slotid;
-  insert_helper->leaf_addr.pgptr = *leaf_page;
-  insert_helper->leaf_addr.vfid = &btid_int->sys_btid->vfid;
+  helper->insert_helper.leaf_addr.offset = search_key->slotid;
+  helper->insert_helper.leaf_addr.pgptr = *leaf_page;
+  helper->insert_helper.leaf_addr.vfid = &btid_int->sys_btid->vfid;
 
   /* Redo logging. */
-  insert_helper->rv_redo_data = rv_redo_data;
-  insert_helper->rv_redo_data_ptr = insert_helper->rv_redo_data;
+  helper->insert_helper.rv_redo_data = rv_redo_data;
+  helper->insert_helper.rv_redo_data_ptr = helper->insert_helper.rv_redo_data;
 
   /* We are in leaf level now, and we must inspect if we have found the OID inside the key. */
   if (search_key->result == BTREE_KEY_FOUND)
@@ -33934,8 +33968,8 @@ btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_
 	}
 
       error_code =
-	btree_find_oid_with_page_and_record (thread_p, btid_int, &insert_helper->obj_info.oid, *leaf_page,
-					     insert_helper->purpose, NULL, &record, &leaf_info, offset_after_key,
+	btree_find_oid_with_page_and_record (thread_p, btid_int, &helper->insert_helper.obj_info.oid, *leaf_page,
+					     helper->insert_helper.purpose, NULL, &record, &leaf_info, offset_after_key,
 					     &page_found, &prev_page, &offset_to_object, &btree_mvcc_info, &new_record);
 
       node_type = (page_found == *leaf_page) ? BTREE_LEAF_NODE : BTREE_OVERFLOW_NODE;
@@ -33963,18 +33997,19 @@ btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_
 	      /* Normal state. We need to physically delete the object. */
 	      assert (btree_online_index_is_normal_state (btree_mvcc_info.insert_mvccid));
 
-	      btree_insert_helper_to_delete_helper (insert_helper, &delete_helper);
+	      btree_insert_helper_to_delete_helper (&helper->insert_helper, &helper->delete_helper);
 
-	      delete_helper.purpose = BTREE_OP_ONLINE_INDEX_TRAN_DELETE;
+	      helper->delete_helper.purpose = BTREE_OP_ONLINE_INDEX_TRAN_DELETE;
 
 	      /* Prepare logging. */
-	      delete_helper.leaf_addr.pgptr = page_found;
-	      delete_helper.leaf_addr.offset = slotid;
-	      delete_helper.leaf_addr.vfid = &btid_int->sys_btid->vfid;
+	      helper->delete_helper.leaf_addr.pgptr = page_found;
+	      helper->delete_helper.leaf_addr.offset = slotid;
+	      helper->delete_helper.leaf_addr.vfid = &btid_int->sys_btid->vfid;
 
-	      error_code = btree_key_remove_object (thread_p, key, btid_int, &delete_helper, *leaf_page, &record,
-						    &leaf_info, offset_after_key, search_key, &page_found, prev_page,
-						    node_type, offset_to_object);
+	      error_code =
+		btree_key_remove_object (thread_p, key, btid_int, &helper->delete_helper, *leaf_page, &record,
+					 &leaf_info, offset_after_key, search_key, &page_found, prev_page, node_type,
+					 offset_to_object);
 	      return error_code;
 	    }
 	  else
@@ -34016,7 +34051,8 @@ btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_
 	      /* Logging. */
 	      BTREE_RV_GET_DATA_LENGTH (rv_redo_data_ptr, rv_redo_data, rv_redo_data_length);
 
-	      btree_rv_log_insert_object (thread_p, *insert_helper, addr, 0, rv_redo_data_length, NULL, rv_redo_data);
+	      btree_rv_log_insert_object (thread_p, helper->insert_helper, addr, 0, rv_redo_data_length, NULL,
+					  rv_redo_data);
 
 	      pgbuf_set_dirty (thread_p, page_found, DONT_FREE);
 
@@ -34030,21 +34066,22 @@ btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_
 	  assert (search_key->result == BTREE_KEY_FOUND && offset_to_object == NOT_FOUND);
 
 	  /* We did not find the object. We have to insert it with DELETE_FLAG set. */
-	  insert_helper->obj_info.mvcc_info.flags |= BTREE_OID_HAS_MVCC_INSID;
-	  btree_online_index_set_delete_flag_state (insert_helper->obj_info.mvcc_info.insert_mvccid);
+	  helper->insert_helper.obj_info.mvcc_info.flags |= BTREE_OID_HAS_MVCC_INSID;
+	  btree_online_index_set_delete_flag_state (helper->insert_helper.obj_info.mvcc_info.insert_mvccid);
 
 	  error_code =
 	    btree_key_append_object_non_unique (thread_p, btid_int, key, *leaf_page, search_key, &new_record,
-						offset_after_key, &leaf_info, &insert_helper->obj_info, insert_helper);
+						offset_after_key, &leaf_info, &helper->insert_helper.obj_info,
+						&helper->insert_helper);
 	}
     }
   else
     {
       /* Key was not found, we must insert it. */
       /* We have to insert it with DELETE_FLAG set. */
-      insert_helper->obj_info.mvcc_info.flags |= BTREE_OID_HAS_MVCC_INSID;
-      btree_online_index_set_delete_flag_state (insert_helper->obj_info.mvcc_info.insert_mvccid);
-      error_code = btree_key_insert_new_key (thread_p, btid_int, key, *leaf_page, insert_helper, search_key);
+      helper->insert_helper.obj_info.mvcc_info.flags |= BTREE_OID_HAS_MVCC_INSID;
+      btree_online_index_set_delete_flag_state (helper->insert_helper.obj_info.mvcc_info.insert_mvccid);
+      error_code = btree_key_insert_new_key (thread_p, btid_int, key, *leaf_page, &helper->insert_helper, search_key);
     }
 
 end:
