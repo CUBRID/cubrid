@@ -14619,8 +14619,6 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	  auth = AU_ALTER;
 	}
 
-      // TODO: secondary index on partition.
-
       def = smt_edit_class_mop (classop, auth);
       if (def == NULL)
 	{
