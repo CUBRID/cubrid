@@ -1483,7 +1483,7 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
 	}
       else
 	{
-	  /* update_default exists and default_expr is either not DB_TYPE_ENUMERATION or not existent */
+	  /* update_default exists and default_expr is not a DEFAULT EXPRESSION or does not exist */
 	  valcnv_convert_value_to_string (attr_val_p);
 	  db_string_truncate (attr_val_p, DB_MAX_IDENTIFIER_LENGTH);
 	  default_str_val = db_get_string (attr_val_p);
