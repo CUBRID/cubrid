@@ -1370,6 +1370,7 @@ namespace test_stream
 	if (res <= 0)
 	  {
 	    assert (false);
+            res = -1;
 	    return res;
 	  }
         written_amount += res;
@@ -1383,10 +1384,13 @@ namespace test_stream
 	if (res <= 0)
 	  {
 	    assert (false);
+            res = -1;
 	    return res;
 	  }
         pos += res;
       }
+
+    res = 0;
 
     return res;
   }
