@@ -129,6 +129,7 @@ extern int qdata_bit_not_dbval (DB_VALUE * dbval, DB_VALUE * res, TP_DOMAIN * do
 extern int qdata_bit_and_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res, TP_DOMAIN * domain);
 extern int qdata_bit_or_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res, TP_DOMAIN * domain);
 extern int qdata_bit_xor_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res, TP_DOMAIN * domain);
+extern int qdata_json_arrayagg (DB_VALUE * dbval, DB_VALUE * res, TP_DOMAIN * domain);
 extern int qdata_bit_shift_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2, OPERATOR_TYPE op, DB_VALUE * res,
 				  TP_DOMAIN * domain);
 extern int qdata_divmod_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2, OPERATOR_TYPE op, DB_VALUE * res,

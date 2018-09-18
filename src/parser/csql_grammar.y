@@ -1551,6 +1551,7 @@ int g_original_buffer_len;
 %token <cptr> KEYS
 %token <cptr> KILL
 %token <cptr> JAVA
+%token <cptr> JSON_ARRAYAGG
 %token <cptr> JOB
 %token <cptr> LAG
 %token <cptr> LAST_VALUE
@@ -15954,6 +15955,22 @@ reserved_func
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| JSON_ARRAYAGG '(' expression_ ')'
+		{{
+
+			PT_NODE *node = parser_new_node (this_parser, PT_FUNCTION);
+
+			if (node)
+			  {
+			    node->info.function.function_type = PT_JSON_ARRAYAGG;
+				node->info.function.all_or_distinct = PT_ALL;
+			    node->info.function.arg_list = parser_make_link ($3, NULL);
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
 	| of_percentile '(' expression_ ')' WITHIN GROUP_ '(' ORDER BY sort_spec ')' opt_over_analytic_partition_by
 		{{
 		
@@ -22639,6 +22656,16 @@ identifier
 
 		DBG_PRINT}}
 	| WEEK
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| JSON_ARRAYAGG
 		{{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);

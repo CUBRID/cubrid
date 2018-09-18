@@ -6504,6 +6504,7 @@ qdata_aggregate_accumulator_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_A
     case PT_AGG_BIT_XOR:
     case PT_AVG:
     case PT_SUM:
+    case PT_JSON_ARRAYAGG:
       /* these functions only affect acc.value and new_acc can be treated as an ordinary value */
       error = qdata_aggregate_value_to_accumulator (thread_p, acc, acc_dom, func_type, func_domain, new_acc->value);
       break;
@@ -6753,6 +6754,13 @@ qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMUL
 
 	  /* done with squared */
 	  pr_clear_value (&squared);
+	}
+      break;
+
+    case PT_JSON_ARRAYAGG:
+      if (qdata_json_arrayagg (value, acc->value, domain->value_dom) != NO_ERROR)
+	{
+	  return ER_FAILED;
 	}
       break;
 
@@ -9567,6 +9575,23 @@ qdata_bit_shift_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, OPERATOR_TYPE o
 	{
 	  db_make_bigint (result_p, 0);
 	}
+    }
+
+  return NO_ERROR;
+}
+
+int
+qdata_json_arrayagg (DB_VALUE * dbval, DB_VALUE * res, TP_DOMAIN * domain)
+{
+  if ((domain != NULL && TP_DOMAIN_TYPE (domain) == DB_TYPE_NULL) || DB_IS_NULL (dbval))
+    {
+      return NO_ERROR;
+    }
+
+  int error_code = db_json_arrayagg_dbval (dbval, res);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
     }
 
   return NO_ERROR;

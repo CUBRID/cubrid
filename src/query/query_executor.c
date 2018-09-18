@@ -18285,7 +18285,8 @@ qexec_resolve_domains_for_group_by (BUILDLIST_PROC_NODE * buildlist, OUTPTR_LIST
 			  || group_agg->function == PT_COUNT || group_agg->function == PT_AVG
 			  || group_agg->function == PT_STDDEV || group_agg->function == PT_VARIANCE
 			  || group_agg->function == PT_STDDEV_POP || group_agg->function == PT_VAR_POP
-			  || group_agg->function == PT_STDDEV_SAMP || group_agg->function == PT_VAR_SAMP);
+			  || group_agg->function == PT_STDDEV_SAMP || group_agg->function == PT_VAR_SAMP
+			  || group_agg->function == PT_JSON_ARRAYAGG);
 		}
 
 	      g_agg_val_found = true;
@@ -18477,6 +18478,7 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 	    case PT_AGG_BIT_XOR:
 	    case PT_MIN:
 	    case PT_MAX:
+	    case PT_JSON_ARRAYAGG:
 	      agg_p->accumulator_domain.value_dom = agg_p->domain;
 	      agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
 	      break;
