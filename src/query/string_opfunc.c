@@ -3047,6 +3047,7 @@ db_json_object (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
   if (num_args % 2 != 0)
     {
       assert (false);		// should be caught earlier
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return ER_FAILED;
     }
 
@@ -3210,6 +3211,7 @@ db_json_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
   if (num_args < 3 || num_args % 2 == 0)
     {
       assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return ER_FAILED;
     }
 
@@ -3281,6 +3283,7 @@ db_json_replace (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
   if (num_args < 3 || num_args % 2 == 0)
     {
       assert_release (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return ER_FAILED;
     }
 
@@ -3351,6 +3354,7 @@ db_json_set (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
   if (num_args < 3 || num_args % 2 == 0)
     {
       assert_release (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return ER_FAILED;
     }
 
@@ -3424,6 +3428,7 @@ db_json_keys (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
   if (num_args > 2)
     {
       assert_release (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return ER_FAILED;
     }
 
@@ -3485,6 +3490,7 @@ db_json_remove (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
   if (num_args < 2)
     {
       assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return ER_FAILED;
     }
 
@@ -3534,6 +3540,7 @@ db_json_array_append (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
   if (num_args < 3 || num_args % 2 == 0)
     {
       assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return ER_FAILED;
     }
 
@@ -3603,6 +3610,7 @@ db_json_array_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
   if (num_args < 3 || num_args % 2 == 0)
     {
       assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return ER_FAILED;
     }
 
@@ -3740,6 +3748,7 @@ db_json_get_all_paths (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
   if (num_args != 1)
     {
       assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return ER_FAILED;
     }
 
