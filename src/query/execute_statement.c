@@ -17511,8 +17511,7 @@ do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** class
     }
 
   /* Check whether the statement can be executed with commit. */
-  if (statement->info.insert.server_allowed == SERVER_INSERT_IS_ALLOWED
-      && statement->info.insert.odku_assignments == NULL)
+  if (statement->info.insert.server_allowed == SERVER_INSERT_IS_ALLOWED)
     {
       /* Check statement insert trigger. */
       error = sm_class_has_triggers ((*class_)->info.name.db_object, &trigger_involved, TR_EVENT_STATEMENT_INSERT);
