@@ -29,6 +29,8 @@
 #include "error_code.h"
 #include "error_manager.h"
 
+#include <algorithm>  /* for std::min */
+
 namespace cubstream
 {
   multi_thread_stream::multi_thread_stream (const size_t buffer_capacity, const int max_appenders)
@@ -40,7 +42,9 @@ namespace cubstream
     /* TODO : system parameter */
     m_trigger_flush_to_disk_size = buffer_capacity / 2;
 
-    m_max_allowed_unflushed_reserved = 9 * buffer_capacity / 100;
+    m_max_allowed_unflushed_reserved = 80 * buffer_capacity / 100;
+
+    assert (m_max_allowed_unflushed_reserved > m_trigger_flush_to_disk_size);
 
     m_trigger_min_to_read_size = 16;
 
@@ -524,21 +528,22 @@ namespace cubstream
     if (req_start_pos < m_oldest_readable_position)
       {
 	m_stat_read_not_in_buffer_cnt++;
-        read_context.file_buffer = new char[amount];
+
+        size_t bytes_available_file = m_stream_file->get_max_available_from_pos (req_start_pos);
+        actual_read_bytes = std::min (bytes_available_file, amount);
+
+        read_context.file_buffer = new char[actual_read_bytes];
         if (read_context.file_buffer == NULL)
           {
             return NULL;
           }
 
-        size_t bytes_available_file = m_stream_file->get_max_available_from_pos (req_start_pos);
-
-	err = m_stream_file->read (req_start_pos, read_context.file_buffer, bytes_available_file);
+	err = m_stream_file->read (req_start_pos, read_context.file_buffer, actual_read_bytes);
         if (err != NO_ERROR)
           {
+            actual_read_bytes = 0;
 	    return NULL;
           }
-
-        actual_read_bytes = bytes_available_file;
 
         return read_context.file_buffer;
       }
@@ -568,22 +573,22 @@ namespace cubstream
     if (req_start_pos < m_oldest_readable_position)
       {
 	m_stat_read_not_in_buffer_cnt++;
-        read_context.file_buffer = new char[amount];
+
+        size_t bytes_available_file = m_stream_file->get_max_available_from_pos (req_start_pos);
+        actual_read_bytes = std::min (bytes_available_file, amount);
+
+        read_context.file_buffer = new char[actual_read_bytes];
         if (read_context.file_buffer == NULL)
           {
             return NULL;
           }
 
-        size_t bytes_available_file = m_stream_file->get_max_available_from_pos (req_start_pos);
-
-	err = m_stream_file->read (req_start_pos, read_context.file_buffer, bytes_available_file);
+	err = m_stream_file->read (req_start_pos, read_context.file_buffer, actual_read_bytes);
         if (err != NO_ERROR)
           {
             ASSERT_ERROR ();
 	    return NULL;
           }
-
-        actual_read_bytes = bytes_available_file;
 
         return read_context.file_buffer;
       }
@@ -637,7 +642,7 @@ namespace cubstream
   {
     std::unique_lock<std::mutex> local_lock (m_drop_pos_mutex);
     m_drop_pos_cv.wait (local_lock, [&] { return m_is_stopped || 
-                                          (m_append_position - m_last_dropable_pos >
+                                          (m_append_position - m_last_dropable_pos <
                                            m_max_allowed_unflushed_reserved); });
   }
 

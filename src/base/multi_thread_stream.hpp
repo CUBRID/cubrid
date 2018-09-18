@@ -87,9 +87,12 @@ namespace cubstream
 	size_t written_bytes;
       };
 
+      /* read context holds a file_buffer (used in case we read the data from stream_file) or a latch read
+       * (used when reading for stream's buffer) */
       struct stream_read_context
       {
-        stream_read_context () : file_buffer (NULL) {}
+        stream_read_context () : file_buffer (NULL), read_latch_page_idx (0) {}
+        ~stream_read_context () { assert (file_buffer == NULL); }
 
         char *file_buffer;
         mem::buffer_latch_read_id read_latch_page_idx;
