@@ -10327,13 +10327,9 @@ do_commit_after_execute (const t_srv_handle & server_handle)
   // safe-guard: do not commit an aborted query; this function should not be called for error cases.
   assert (!tran_was_latest_query_aborted ());
 
-  if (tran_was_latest_query_committed ())
-    {
-      return true;
-    }
-
   if (server_handle.has_result_set)
     {
+      /* Commit later (broker side or server side), after fetching the result. */
       return false;
     }
   else
