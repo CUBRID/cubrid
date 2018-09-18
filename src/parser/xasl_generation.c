@@ -4628,7 +4628,7 @@ pt_make_json_table_spec_node_internal (PARSER_CONTEXT * parser, PT_JSON_TABLE_NO
   result.m_output_columns =
     (json_table_column *) pt_alloc_packing_buf (sizeof (json_table_column) * result.m_output_columns_size);
 
-  for (itr = jt_node_info->columns, i = 0; itr != NULL; itr = itr->next)
+  for (itr = jt_node_info->columns, i = 0; itr != NULL; itr = itr->next, i++)
     {
       pt_create_json_table_column (parser, itr, tbl_info, result.m_output_columns[i]);
     }

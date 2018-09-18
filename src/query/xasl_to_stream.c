@@ -39,23 +39,7 @@
 #include "object_primitive.h"
 #include "work_space.h"
 #include "memory_alloc.h"
-
-/* memory alignment unit - to align stored XASL tree nodes */
-#define	ALIGN_UNIT	sizeof(double)
-#define	ALIGN_MASK	(ALIGN_UNIT - 1)
-#define MAKE_ALIGN(x)	(((x) & ~ALIGN_MASK) + (((x) & ALIGN_MASK) ? ALIGN_UNIT : 0))
-
-/* to limit size of XASL trees */
-#define	OFFSETS_PER_BLOCK	4096
-#define	START_PTR_PER_BLOCK	15
-#define MAX_PTR_BLOCKS		256
-#define PTR_BLOCK(ptr)  (((UINTPTR) ptr) / __WORDSIZE) % MAX_PTR_BLOCKS
-
-/*
- * the linear byte stream for store the given XASL tree is allocated
- * and expanded dynamically on demand by the following amount of bytes
- */
-#define	STREAM_EXPANSION_UNIT	(OFFSETS_PER_BLOCK * sizeof(int))
+#include "xasl_stream.hpp"
 
 #define    BYTE_SIZE        OR_INT_SIZE
 #define    LONG_SIZE        OR_INT_SIZE
@@ -64,8 +48,8 @@
 #define    pack_long        or_pack_int
 
 /* structure of a visited pointer constant */
-typedef struct visited_ptr VISITED_PTR;
-struct visited_ptr
+typedef struct xts_visited_ptr XTS_VISITED_PTR;
+struct xts_visited_ptr
 {
   const void *ptr;		/* a pointer constant */
   int offset;			/* offset where the node pointed by 'ptr' is stored */
@@ -77,7 +61,7 @@ static int xts_Stream_size = 0;	/* # of bytes allocated */
 static int xts_Free_offset_in_stream = 0;
 
 /* blocks of visited pointer constants */
-static VISITED_PTR *xts_Ptr_blocks[MAX_PTR_BLOCKS] = { 0 };
+static XTS_VISITED_PTR *xts_Ptr_blocks[MAX_PTR_BLOCKS] = { 0 };
 
 /* low-water-mark of visited pointers */
 static int xts_Ptr_lwm[MAX_PTR_BLOCKS] = { 0 };
@@ -118,7 +102,13 @@ static int xts_save_update_info (const UPDATE_PROC_NODE * ptr);
 static int xts_save_delete_info (const DELETE_PROC_NODE * ptr);
 static int xts_save_insert_info (const INSERT_PROC_NODE * ptr);
 #endif
-template < typename T > int xts_save (const T & t);
+// *INDENT-OFF*
+template <typename T>
+static int xts_save (const T & t);
+
+template <typename T>
+static void xts_debug_check (const T& t, char *pack_start, const char *pack_end);
+// *INDENT-ON*
 
 static int xts_save_db_value_array (DB_VALUE ** ptr, int size);
 static int xts_save_int_array (int *ptr, int size);
@@ -299,7 +289,7 @@ xts_map_xasl_to_stream (const XASL_NODE * xasl_tree, XASL_STREAM * stream)
     + sizeof (int);		/* [size of body data] */
 
   org_offset = offset;
-  offset = MAKE_ALIGN (offset);
+  offset = xasl_stream_make_align (offset);
 
   xts_reserve_location_in_stream (offset);
 
@@ -389,7 +379,7 @@ xts_map_filter_pred_to_stream (const PRED_EXPR_WITH_CONTEXT * pred, char **pred_
   offset = sizeof (int)		/* [size of header data] */
     + header_size		/* [header data] */
     + sizeof (int);		/* [size of body data] */
-  offset = MAKE_ALIGN (offset);
+  offset = xasl_stream_make_align (offset);
 
   xts_reserve_location_in_stream (offset);
 
@@ -455,7 +445,7 @@ xts_map_func_pred_to_stream (const FUNC_PRED * xasl_tree, char **xasl_stream, in
   offset = sizeof (int)		/* [size of header data] */
     + header_size		/* [header data] */
     + sizeof (int);		/* [size of body data] */
-  offset = MAKE_ALIGN (offset);
+  offset = xasl_stream_make_align (offset);
 
   xts_reserve_location_in_stream (offset);
 
@@ -4431,10 +4421,7 @@ xts_process_access_spec_type (char *ptr, const ACCESS_SPEC_TYPE * access_spec)
       break;
 
     case TARGET_JSON_TABLE:
-      // *INDENT-OFF*
-      offset = xts_save<json_table_spec_node> (ACCESS_SPEC_JSON_TABLE_SPEC (access_spec));
-      // *INDENT-ON*
-      ptr = or_pack_int (ptr, offset);
+      ptr = xts_process (ptr, ACCESS_SPEC_JSON_TABLE_SPEC (access_spec));
       break;
 
     default:
@@ -4789,6 +4776,7 @@ static char *
 xts_process (char *ptr, const json_table_column & jtc)
 {
   int offset;
+  char *start_ptr = ptr;
 
   // save json function
   ptr = or_pack_int (ptr, jtc.m_function);
@@ -4804,6 +4792,7 @@ xts_process (char *ptr, const json_table_column & jtc)
   if (jtc.m_function == JSON_TABLE_ORDINALITY)
     {
       // nothing else required
+      xts_debug_check (jtc, start_ptr, ptr);
       return ptr;
     }
 
@@ -4830,12 +4819,15 @@ xts_process (char *ptr, const json_table_column & jtc)
 
   if (jtc.m_function == JSON_TABLE_EXISTS)
     {
+      xts_debug_check (jtc, start_ptr, ptr);
       return ptr;
     }
 
   // save on_error_behavior
   ptr = xts_process_json_table_column_behavior (ptr, &jtc.m_on_error);
   ptr = xts_process_json_table_column_behavior (ptr, &jtc.m_on_empty);
+
+  xts_debug_check (jtc, start_ptr, ptr);
 
   return ptr;
 }
@@ -4844,6 +4836,7 @@ static char *
 xts_process (char *ptr, const json_table_node & jtn)
 {
   int offset;
+  char *start_ptr = ptr;
 
   // save string
   offset = xts_save_string (jtn.m_path);
@@ -4855,27 +4848,23 @@ xts_process (char *ptr, const json_table_node & jtn)
 
   // save m_output_columns
   ptr = or_pack_int (ptr, (int) jtn.m_output_columns_size);
-  // *INDENT-OFF*
   for (size_t i = 0; i < jtn.m_output_columns_size; ++i)
     {
-      offset = xts_save<json_table_column> (jtn.m_output_columns[i]);
-      ptr = or_pack_int (ptr, offset);
+      ptr = xts_process (ptr, jtn.m_output_columns[i]);
     }
-  // *INDENT-ON*
 
   // save nested nodes
   ptr = or_pack_int (ptr, (int) jtn.m_nested_nodes_size);
-  // *INDENT-OFF*
   for (size_t i = 0; i < jtn.m_nested_nodes_size; ++i)
     {
-      offset = xts_save<json_table_node> (jtn.m_nested_nodes[i]);
-      ptr = or_pack_int (ptr, offset);
+      ptr = xts_process (ptr, jtn.m_nested_nodes[i]);
     }
-  // *INDENT-ON*
 
   ptr = or_pack_int (ptr, (int) jtn.m_id);
 
   ptr = or_pack_int (ptr, (int) jtn.m_expand_type);
+
+  xts_debug_check (jtn, start_ptr, ptr);
 
   return ptr;
 }
@@ -4884,6 +4873,7 @@ static char *
 xts_process (char *ptr, const json_table_spec_node & json_table_spec)
 {
   int offset;
+  char *start_ptr = ptr;
 
   ptr = or_pack_int (ptr, (int) json_table_spec.m_node_count);
 
@@ -4894,10 +4884,9 @@ xts_process (char *ptr, const json_table_spec_node & json_table_spec)
     }
   ptr = or_pack_int (ptr, offset);
 
-  // *INDENT-OFF*
-  offset = xts_save<json_table_node> (*json_table_spec.m_root_node);
-  // *INDENT-ON*
-  ptr = or_pack_int (ptr, offset);
+  ptr = xts_process (ptr, *json_table_spec.m_root_node);
+
+  xts_debug_check (json_table_spec, start_ptr, ptr);
 
   return ptr;
 }
@@ -6542,7 +6531,6 @@ xts_sizeof_access_spec_type (const ACCESS_SPEC_TYPE * access_spec)
       break;
 
     case TARGET_JSON_TABLE:
-      // only add offset?
       tmp_size = xts_sizeof (ACCESS_SPEC_JSON_TABLE_SPEC (access_spec));
       if (tmp_size == ER_FAILED)
 	{
@@ -6736,7 +6724,7 @@ xts_sizeof_json_table_column_behavior (const json_table_column_behavior * behavi
 
   if (behavior->m_behavior == JSON_TABLE_DEFAULT_VALUE)
     {
-      size += xts_sizeof_db_value (behavior->m_default_value);
+      size += OR_VALUE_ALIGNED_SIZE (behavior->m_default_value);
     }
 
   return size;
@@ -6756,7 +6744,7 @@ xts_sizeof (const json_table_column & json_table_column)
       return size;
     }
 
-  size += PTR_SIZE;		/* m_domain */
+  size += or_packed_domain_size (json_table_column.m_domain, 0);	/* m_domain */
   size += PTR_SIZE;		/* m_path */
   size += PTR_SIZE;		/* m_column_name */
 
@@ -6776,24 +6764,23 @@ xts_sizeof (const json_table_node & jtn)
 {
   int size = 0;
 
-  size += (PTR_SIZE		/* m_ordinality */
-	   + OR_INT_SIZE	/* m_path */
-	   + OR_INT_SIZE	/* m_id */
-	   + OR_INT_SIZE);	/* m_expand_type */
+  size += PTR_SIZE;		// m_path
 
-  size += OR_INT_SIZE;		/* m_output_colums_sz */
-  size += PTR_SIZE;		/* m_output_colums */
-  //for (size_t i = 0; i < jtn.m_output_columns_sz; ++i)
-  //  {
-  //    size += xts_sizeof (jtn.m_output_columns[i]);
-  //  }
+  size += OR_INT_SIZE;		// m_output_columns_size
+  for (size_t i = 0; i < jtn.m_output_columns_size; ++i)
+    {
+      size += xts_sizeof (jtn.m_output_columns[i]);	// m_output_columns
+    }
 
-  size += OR_INT_SIZE;		/* m_nested_nodes_size */
-  size += PTR_SIZE;		/* m_nested_nodes */
-  //for (size_t i = 0; i < jtn.m_nested_nodes_sz; ++i)
-  //  {
-  //    size += xts_sizeof (jtn.m_nested_nodes[i]);
-  //  }
+  size += OR_INT_SIZE;		// m_nested_nodes_size
+  for (size_t i = 0; i < jtn.m_nested_nodes_size; ++i)
+    {
+      size += xts_sizeof (jtn.m_nested_nodes[i]);	// m_nested_nodes
+    }
+
+  size += OR_INT_SIZE;		// m_id
+
+  size += OR_INT_SIZE;		// expand type
 
   return size;
 }
@@ -6811,9 +6798,9 @@ xts_sizeof (const json_table_spec_node & json_table_spec)
   // reguvar needs to be set
   size += (PTR_SIZE		/* regu_var */
 	   + OR_INT_SIZE	/* json_table_node number */
-	   + PTR_SIZE);		/* json_table_node */
+    );				/* json_table_node */
 
-  //size += xts_sizeof (*json_table_spec.m_root_node);
+  size += xts_sizeof (*json_table_spec.m_root_node);
 
   return size;
 }
@@ -7345,23 +7332,23 @@ xts_mark_ptr_visited (const void *ptr, int offset)
   int new_lwm;
   int block_no;
 
-  block_no = PTR_BLOCK (ptr);
+  block_no = xasl_stream_get_ptr_block (ptr);
 
   new_lwm = xts_Ptr_lwm[block_no];
 
   if (xts_Ptr_max[block_no] == 0)
     {
       xts_Ptr_max[block_no] = START_PTR_PER_BLOCK;
-      xts_Ptr_blocks[block_no] = (VISITED_PTR *) malloc (sizeof (VISITED_PTR) * xts_Ptr_max[block_no]);
+      xts_Ptr_blocks[block_no] = (XTS_VISITED_PTR *) malloc (sizeof (XTS_VISITED_PTR) * xts_Ptr_max[block_no]);
     }
   else if (xts_Ptr_max[block_no] <= new_lwm)
     {
       xts_Ptr_max[block_no] *= 2;
       xts_Ptr_blocks[block_no] =
-	(VISITED_PTR *) realloc (xts_Ptr_blocks[block_no], sizeof (VISITED_PTR) * xts_Ptr_max[block_no]);
+	(XTS_VISITED_PTR *) realloc (xts_Ptr_blocks[block_no], sizeof (XTS_VISITED_PTR) * xts_Ptr_max[block_no]);
     }
 
-  if (xts_Ptr_blocks[block_no] == (VISITED_PTR *) NULL)
+  if (xts_Ptr_blocks[block_no] == (XTS_VISITED_PTR *) NULL)
     {
       xts_Xasl_errcode = ER_OUT_OF_VIRTUAL_MEMORY;
       return ER_FAILED;
@@ -7391,7 +7378,7 @@ xts_get_offset_visited_ptr (const void *ptr)
   int block_no;
   int element_no;
 
-  block_no = PTR_BLOCK (ptr);
+  block_no = xasl_stream_get_ptr_block (ptr);
 
   if (xts_Ptr_lwm[block_no] <= 0)
     {
@@ -7442,7 +7429,7 @@ xts_reserve_location_in_stream (int size)
   int grow;
   int org_size = size;
 
-  size = MAKE_ALIGN (size);
+  size = xasl_stream_make_align (size);
   needed = size - (xts_Stream_size - xts_Free_offset_in_stream);
 
   if (needed >= 0)
@@ -7516,7 +7503,17 @@ xts_process_regu_variable_list (char *ptr, const REGU_VARIABLE_LIST regu_var_lis
   return ptr;
 }
 
-template < typename T > int static
+// *INDENT-OFF*
+//
+// xts_save () - template function to pack structure into XASL stream buffer and save its offset
+//
+// template T - type having an overload of xts_sizeof and xts_process functions
+//
+// return : offset
+// t (in) : 
+//
+template <typename T>
+int static
 xts_save (const T & t)
 {
   int packed_length;
@@ -7540,3 +7537,50 @@ xts_save (const T & t)
 
   return offset;
 }
+
+template <typename T>
+static void
+xts_debug_check (const T& t, char * pack_start, const char * pack_end)
+{
+#if !defined (NDEBUG)
+
+  // check for common mistakes:
+  //
+  //  1. size underestimation:
+  //     buffer overflow may occur
+  //
+  //  2. pack_end does not match unpack_end
+  //     if unpack_end is not same as pack_end, building next structure will start at the wrong offset
+  //
+  //  3. data consistency
+  //     check original data is same as resulted data after pack/unpack
+  //
+
+  stx_init_xasl_unpack_info (NULL, xts_Stream_buffer, xts_Stream_size);
+
+  // check sizeof is correct
+  std::size_t buf_size = pack_end - pack_start;
+  std::size_t estimate_size = xts_sizeof (t);
+  assert (buf_size <= estimate_size);   // estimation should be accurate or pessimistic
+
+  // build object from packed data
+  T unpack_t;
+  char * unpack_end = stx_build (NULL, pack_start, unpack_t);
+  if (unpack_end != pack_end)
+    {
+      // this leads to build corruption
+      assert (false);
+    }
+
+  if (!xasl_stream_compare (t, unpack_t))
+    {
+      // data is not consistent
+      assert (false);
+    }
+
+  xasl_unpack_info* unpack_info = stx_get_xasl_unpack_info_ptr (NULL);
+  db_private_free_and_init (NULL, unpack_info);
+  stx_set_xasl_unpack_info_ptr (NULL, NULL);
+#endif // DEBUG
+}
+// *INDENT-ON*

@@ -345,10 +345,12 @@ set(SESSION_SOURCES
 
 set(XASL_SOURCES
   ${XASL_DIR}/access_json_table.cpp
+  ${XASL_DIR}/xasl_stream.cpp
   )
 set(XASL_HEADERS
   ${XASL_DIR}/access_json_table.hpp
   ${XASL_DIR}/compile_context.h
+  ${XASL_DIR}/xasl_stream.hpp
   )
 
 if(UNIX)

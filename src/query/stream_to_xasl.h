@@ -21,15 +21,11 @@
 #define _STREAM_TO_XASL_H_
 
 #if !defined (SERVER_MODE) && !defined (SA_MODE)
-#error Belongs to server module
+#error Belongs only to server or stand-alone modules.
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
 #include "thread_compat.hpp"
 #include "xasl.h"
-
-#if !defined (SERVER_MODE) && !defined (SA_MODE)
-#error Belongs only to server or stand-alone modules.
-#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
 extern int stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, XASL_NODE ** xasl_tree, bool use_xasl_clone,
 				   char *xasl_stream, int xasl_stream_size, void **xasl_unpack_info_ptr);
