@@ -483,7 +483,7 @@ stx_build (THREAD_ENTRY *thread_p, char *ptr, db_value &val)
   return stx_build_db_value (thread_p, ptr, &val);
 }
 
-static char *
+char *
 stx_unpack (THREAD_ENTRY *thread_p, char *ptr, json_table_column_behavior &behavior)
 {
   int temp;
