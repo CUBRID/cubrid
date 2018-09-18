@@ -16958,7 +16958,7 @@ reserved_func
 		    $$ = node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-		| FUN_JSON_REPLACE '(' expression_list ')'
+         | FUN_JSON_REPLACE '(' expression_list ')'
 		{{
 		    PT_NODE *args_list = $3;
 		    PT_NODE *node = NULL;
@@ -16977,7 +16977,7 @@ reserved_func
 		    $$ = node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-		| FUN_JSON_SET '(' expression_list ')'
+         | FUN_JSON_SET '(' expression_list ')'
 		{{
 		    PT_NODE *args_list = $3;
 		    PT_NODE *node = NULL;
@@ -16996,7 +16996,7 @@ reserved_func
 		    $$ = node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-		| FUN_JSON_KEYS '(' expression_list ')'
+         | FUN_JSON_KEYS '(' expression_list ')'
 		{{
 		    PT_NODE *args_list = $3;
 		    PT_NODE *node = NULL;
@@ -17034,7 +17034,7 @@ reserved_func
 		    $$ = node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-		| FUN_JSON_ARRAY_APPEND '(' expression_list ')'
+         | FUN_JSON_ARRAY_APPEND '(' expression_list ')'
 		{{
 		    PT_NODE *args_list = $3;
 		    PT_NODE *node = NULL;
@@ -17053,7 +17053,7 @@ reserved_func
 		    $$ = node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-		| FUN_JSON_ARRAY_INSERT '(' expression_list ')'
+         | FUN_JSON_ARRAY_INSERT '(' expression_list ')'
 		{{
 		    PT_NODE *args_list = $3;
 		    PT_NODE *node = NULL;
@@ -17072,7 +17072,7 @@ reserved_func
 		    $$ = node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-		| FUN_JSON_GET_ALL_PATHS '(' expression_list ')'
+         | FUN_JSON_GET_ALL_PATHS '(' expression_list ')'
 		{{
 		    PT_NODE *args_list = $3;
 		    PT_NODE *node = NULL;
