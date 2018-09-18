@@ -491,6 +491,7 @@ enum btree_op_purpose
   BTREE_OP_ONLINE_INDEX_IB_INSERT,	/* Insert done by the Index Builder. */
   BTREE_OP_ONLINE_INDEX_IB_DELETE,	/* Delete done by the Index Builder. */
   BTREE_OP_ONLINE_INDEX_TRAN_INSERT,	/* Insert done by a transaction. */
+  BTREE_OP_ONLINE_INDEX_TRAN_INSERT_DF,	/* Insert done by a transaction with DELETE_FLAG set. */
   BTREE_OP_ONLINE_INDEX_UNDO_TRAN_INSERT,	/* Undo an insert */
   BTREE_OP_ONLINE_INDEX_TRAN_DELETE,	/* Delete done by a transaction. */
   BTREE_OP_ONLINE_INDEX_UNDO_TRAN_DELETE	/* Undo a delete. */
