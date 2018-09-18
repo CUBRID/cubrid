@@ -4431,7 +4431,9 @@ xts_process_access_spec_type (char *ptr, const ACCESS_SPEC_TYPE * access_spec)
       break;
 
     case TARGET_JSON_TABLE:
-      offset = xts_save < json_table_spec_node > (ACCESS_SPEC_JSON_TABLE_SPEC (access_spec));
+      // *INDENT-OFF*
+      offset = xts_save<json_table_spec_node> (ACCESS_SPEC_JSON_TABLE_SPEC (access_spec));
+      // *INDENT-ON*
       ptr = or_pack_int (ptr, offset);
       break;
 
@@ -4853,19 +4855,23 @@ xts_process (char *ptr, const json_table_node & jtn)
 
   // save m_output_columns
   ptr = or_pack_int (ptr, (int) jtn.m_output_columns_size);
+  // *INDENT-OFF*
   for (size_t i = 0; i < jtn.m_output_columns_size; ++i)
     {
-      offset = xts_save < json_table_column > (jtn.m_output_columns[i]);
+      offset = xts_save<json_table_column> (jtn.m_output_columns[i]);
       ptr = or_pack_int (ptr, offset);
     }
+  // *INDENT-ON*
 
   // save nested nodes
   ptr = or_pack_int (ptr, (int) jtn.m_nested_nodes_size);
+  // *INDENT-OFF*
   for (size_t i = 0; i < jtn.m_nested_nodes_size; ++i)
     {
-      offset = xts_save < json_table_node > (jtn.m_nested_nodes[i]);
+      offset = xts_save<json_table_node> (jtn.m_nested_nodes[i]);
       ptr = or_pack_int (ptr, offset);
     }
+  // *INDENT-ON*
 
   ptr = or_pack_int (ptr, (int) jtn.m_id);
 
@@ -4888,7 +4894,9 @@ xts_process (char *ptr, const json_table_spec_node & json_table_spec)
     }
   ptr = or_pack_int (ptr, offset);
 
-  offset = xts_save < json_table_node > (*json_table_spec.m_root_node);
+  // *INDENT-OFF*
+  offset = xts_save<json_table_node> (*json_table_spec.m_root_node);
+  // *INDENT-ON*
   ptr = or_pack_int (ptr, offset);
 
   return ptr;

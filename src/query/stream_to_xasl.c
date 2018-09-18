@@ -230,9 +230,9 @@ static char *stx_alloc_struct (THREAD_ENTRY * thread_p, int size);
 static int stx_init_xasl_unpack_info (THREAD_ENTRY * thread_p, char *xasl_stream, int xasl_stream_size);
 static char *stx_build_regu_variable_list (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABLE_LIST * regu_var_list);
 
-// *INDENT-ON*
-template < typename T > static void stx_restore (THREAD_ENTRY * thread_p, char *&ptr, T & target);
 // *INDENT-OFF*
+template<typename T> static void stx_restore (THREAD_ENTRY * thread_p, char *&ptr, T & target);
+// *INDENT-ON*
 
 #if defined(ENABLE_UNUSED_FUNCTION)
 static char *stx_unpack_char (char *tmp, char *ptr);
@@ -4572,9 +4572,9 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr, ACCESS_SPEC_TYPE
       break;
 
     case TARGET_JSON_TABLE:
-      // *INDENT-ON*
-stx_restore < json_table_spec_node > (thread_p, ptr, ACCESS_SPEC_JSON_TABLE_SPEC (access_spec));
       // *INDENT-OFF*
+      stx_restore<json_table_spec_node> (thread_p, ptr, ACCESS_SPEC_JSON_TABLE_SPEC (access_spec));
+      // *INDENT-ON*
       break;
 
     default:
@@ -5324,8 +5324,8 @@ stx_build (THREAD_ENTRY * thread_p, char *ptr, json_table_node & jtn)
   int offset;
   int temp_int = 0;
   XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
-
   char *temp;
+
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
@@ -5342,27 +5342,27 @@ stx_build (THREAD_ENTRY * thread_p, char *ptr, json_table_node & jtn)
       jtn.m_path = temp;
     }
 
-  // *INDENT-ON*  
-ptr = or_unpack_int (ptr, &temp_int);
-jtn.m_output_columns_size = (size_t) temp_int;
+  // *INDENT-OFF*  
+  ptr = or_unpack_int (ptr, &temp_int);
+  jtn.m_output_columns_size = (size_t) temp_int;
 
-jtn.m_output_columns =
-  (json_table_column *) stx_alloc_struct (thread_p, sizeof (json_table_column) * jtn.m_output_columns_size);
-for (size_t i = 0; i < jtn.m_output_columns_size; ++i)
-  {
-    stx_restore < json_table_column > (thread_p, ptr, jtn.m_output_columns[i]);
-  }
+  jtn.m_output_columns =
+    (json_table_column *) stx_alloc_struct (thread_p, sizeof (json_table_column) * jtn.m_output_columns_size);
+  for (size_t i = 0; i < jtn.m_output_columns_size; ++i)
+    {
+      stx_restore<json_table_column> (thread_p, ptr, jtn.m_output_columns[i]);
+    }
 
-ptr = or_unpack_int (ptr, &temp_int);
-jtn.m_nested_nodes_size = (size_t) temp_int;
+  ptr = or_unpack_int (ptr, &temp_int);
+  jtn.m_nested_nodes_size = (size_t) temp_int;
 
-jtn.m_nested_nodes =
-  (json_table_node *) stx_alloc_struct (thread_p, sizeof (json_table_node) * jtn.m_nested_nodes_size);
-for (size_t i = 0; i < jtn.m_nested_nodes_size; ++i)
-  {
-    stx_restore < json_table_node > (thread_p, ptr, jtn.m_nested_nodes[i]);
-  }
-  // *INDENT-OFF*
+  jtn.m_nested_nodes =
+    (json_table_node *) stx_alloc_struct (thread_p, sizeof (json_table_node) * jtn.m_nested_nodes_size);
+  for (size_t i = 0; i < jtn.m_nested_nodes_size; ++i)
+    {
+      stx_restore<json_table_node> (thread_p, ptr, jtn.m_nested_nodes[i]);
+    }
+  // *INDENT-ON*
 
   ptr = or_unpack_int (ptr, &temp_int);
   jtn.m_id = (size_t) temp_int;
@@ -5398,10 +5398,10 @@ stx_build (THREAD_ENTRY * thread_p, char *ptr, json_table_spec_node & json_table
     }
 
   json_table_spec.m_root_node = (json_table_node *) stx_alloc_struct (thread_p, sizeof (json_table_node));
-  // *INDENT-ON*
 
-stx_restore < json_table_node > (thread_p, ptr, *json_table_spec.m_root_node);
   // *INDENT-OFF*
+  stx_restore<json_table_node> (thread_p, ptr, *json_table_spec.m_root_node);
+  // *INDENT-ON*
 
   return ptr;
 }

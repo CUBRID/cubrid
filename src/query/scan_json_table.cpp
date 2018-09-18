@@ -179,7 +179,7 @@ namespace cubscan
 	}
 
       int error_code = NO_ERROR;
-      for (size_t i=0; i< m_node->m_output_columns_size; ++i)
+      for (size_t i = 0; i < m_node->m_output_columns_size; ++i)
 	{
 	  error_code = m_node->m_output_columns[i].evaluate (*m_process_doc, m_node->m_ordinality);
 	  if (error_code != NO_ERROR)
@@ -211,7 +211,7 @@ namespace cubscan
     {
       size_t max_child_height = 0;
 
-      for (size_t i = 0; i< node.m_nested_nodes_size; ++i)
+      for (size_t i = 0; i < node.m_nested_nodes_size; ++i)
 	{
 	  const cubxasl::json_table::node &child = node.m_nested_nodes[i];
 	  max_child_height = std::max (max_child_height, get_tree_height (child));

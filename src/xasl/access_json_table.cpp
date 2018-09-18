@@ -61,7 +61,7 @@ namespace cubxasl
 
 	case JSON_TABLE_DEFAULT_VALUE:
 	  assert (m_on_error.m_default_value != NULL);
-	  er_clear();
+	  er_clear ();
 	  if (pr_clone_value (m_on_error.m_default_value, &value_out) != NO_ERROR)
 	    {
 	      assert (false);
@@ -235,7 +235,7 @@ namespace cubxasl
     }
 
     void
-    node::clear_columns()
+    node::clear_columns ()
     {
       for (size_t i = 0; i < m_output_columns_size; ++i)
 	{
