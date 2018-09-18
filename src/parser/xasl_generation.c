@@ -6969,7 +6969,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  || node->info.expr.op == PT_JSON_TYPE
 		  || node->info.expr.op == PT_JSON_EXTRACT || node->info.expr.op == PT_JSON_VALID
 		  || node->info.expr.op == PT_JSON_LENGTH || node->info.expr.op == PT_JSON_DEPTH
-		  || node->info.expr.op == PT_JSON_SEARCH)
+		  || node->info.expr.op == PT_JSON_SEARCH || node->info.expr.op == PT_JSON_PRETTY)
 		{
 		  r1 = pt_to_regu_variable (parser, node->info.expr.arg1, unbox);
 		  if ((node->info.expr.op == PT_CONCAT || node->info.expr.op == PT_JSON_LENGTH)
@@ -7463,6 +7463,9 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  break;
 		case PT_JSON_SEARCH:
 		  regu = pt_make_regu_arith (r1, r2, r3, T_JSON_SEARCH, domain);
+		  break;
+		case PT_JSON_PRETTY:
+		  regu = pt_make_regu_arith (r1, NULL, NULL, T_JSON_PRETTY, domain);
 		  break;
 		case PT_CONCAT_WS:
 		  regu = pt_make_regu_arith (r1, r2, r3, T_CONCAT_WS, domain);

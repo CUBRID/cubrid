@@ -4014,7 +4014,7 @@ db_set_statement_auto_commit (DB_SESSION * session, bool auto_commit)
       /* Search for select. */
       for (i = 0; i < session->dimension; i++)
 	{
-	  if (PT_IS_QUERY_NODE_TYPE (session->statements[i]->node_type))
+	  if (session->statements[i] != NULL && PT_IS_QUERY_NODE_TYPE (session->statements[i]->node_type))
 	    {
 	      /* Avoid situation when the driver requests data after closing cursors. */
 	      return NO_ERROR;
