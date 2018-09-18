@@ -3567,6 +3567,9 @@ db_json_array_append (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
       switch (DB_VALUE_DOMAIN_TYPE (arg[i + 1]))
 	{
 	case DB_TYPE_CHAR:
+	case DB_TYPE_VARCHAR:
+	case DB_TYPE_NCHAR:
+	case DB_TYPE_VARNCHAR:
 	  error_code = db_json_convert_string_and_call (db_get_string (arg[i + 1]), db_get_string_size (arg[i + 1]),
 							db_json_array_append_func, *new_doc, db_get_string (arg[i]));
 	  break;
@@ -3637,6 +3640,9 @@ db_json_array_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
       switch (DB_VALUE_DOMAIN_TYPE (arg[i + 1]))
 	{
 	case DB_TYPE_CHAR:
+	case DB_TYPE_VARCHAR:
+	case DB_TYPE_NCHAR:
+	case DB_TYPE_VARNCHAR:
 	  error_code = db_json_convert_string_and_call (db_get_string (arg[i + 1]), db_get_string_size (arg[i + 1]),
 							db_json_array_insert_func, *new_doc, db_get_string (arg[i]));
 	  break;

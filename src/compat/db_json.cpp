@@ -1535,7 +1535,6 @@ db_json_array_shift_values (const JSON_DOC *value, JSON_DOC &doc, const std::str
   int error_code = NO_ERROR;
   JSON_VALUE *resulting_json_parent = NULL;
 
-  // we don't need result_json_parent after this statement
   error_code = db_json_resolve_json_parent (doc, path, resulting_json_parent);
   if (error_code != NO_ERROR)
     {
