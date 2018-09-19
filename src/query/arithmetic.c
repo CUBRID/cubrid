@@ -5251,7 +5251,10 @@ db_json_arrayagg_dbval (DB_VALUE * json, DB_VALUE * json_res)
 
   if (DB_IS_NULL (json))
     {
-      return db_make_null (json_res);
+      // this case should not be possible because we already wrapped a NULL value into a JSON with type DB_JSON_NULL
+      assert (false);
+      db_make_null (json_res);
+      return ER_FAILED;
     }
 
   // get the current value
