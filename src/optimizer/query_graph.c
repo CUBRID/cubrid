@@ -7402,7 +7402,6 @@ qo_discover_indexes (QO_ENV * env)
   /* iterate over all nodes and find indexes for each node */
   for (i = 0; i < env->nnodes; i++)
     {
-
       nodep = QO_ENV_NODE (env, i);
       if (nodep->info)
 	{
@@ -7414,23 +7413,20 @@ qo_discover_indexes (QO_ENV * env)
 				    (PT_SPEC_FLAG_RECORD_INFO_SCAN | PT_SPEC_FLAG_PAGE_INFO_SCAN)))
 	    {
 	      qo_find_node_indexes (env, nodep);
-	      /* collect statistic information on discovered indexes */
-	      qo_get_index_info (env, nodep);
+	      if (0 < QO_NODE_INFO_N (nodep) && QO_NODE_INDEXES (nodep) != NULL)
+		{
+		  /* collect statistics if discovers an usable index */
+		  qo_get_index_info (env, nodep);
+		  continue;
+		}
+	      /* fall through */
 	    }
-	  else
-	    {
-	      QO_NODE_INDEXES (nodep) = NULL;
-	    }
-	}
-      else
-	{
-	  /* If the 'info' of node is NULL, then this is probably a derived table. Without the info, we don't have
-	   * class information to work with so we really can't do much so just skip the node. 
-	   */
-	  QO_NODE_INDEXES (nodep) = NULL;	/* this node will not use a index */
+	  /* fall through */
 	}
 
-    }				/* for (n = 0; n < env->nnodes; n++) */
+      /* this node will not use an index */
+      QO_NODE_INDEXES (nodep) = NULL;
+    }
 
   /* for each terms, look indexed segements and filter out the segments which don't actually contain any indexes */
   for (i = 0; i < env->nterms; i++)
