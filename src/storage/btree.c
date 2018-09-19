@@ -34583,7 +34583,6 @@ btree_rv_keyval_undo_online_index_tran_insert (THREAD_ENTRY * thread_p, LOG_RCV 
       ASSERT_ERROR ();
       return err;
     }
-  // FIXME - error handling
 
   assert (!OID_ISNULL (&oid));
 
