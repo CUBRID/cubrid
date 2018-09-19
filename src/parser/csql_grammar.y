@@ -15963,7 +15963,7 @@ reserved_func
 			if (node)
 			  {
 			    node->info.function.function_type = PT_JSON_ARRAYAGG;
-				node->info.function.all_or_distinct = PT_ALL;
+			    node->info.function.all_or_distinct = PT_ALL;
 			    node->info.function.arg_list = parser_make_link ($3, NULL);
 			  }
 

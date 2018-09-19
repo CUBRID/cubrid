@@ -2452,11 +2452,11 @@ db_json_pretty_func (const JSON_DOC &doc, char *&result_str)
 }
 
 /*
-* db_json_arrayagg_func () - Appends the value to the result_json
-*
-* value (in)              : value to append
-* result_json (in)        : the document where we want to append
-*/
+ * db_json_arrayagg_func () - Appends the value to the result_json
+ *
+ * value (in)              : value to append
+ * result_json (in)        : the document where we want to append
+ */
 int
 db_json_arrayagg_func (const JSON_DOC *value, JSON_DOC &result_json)
 {
