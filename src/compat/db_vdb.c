@@ -68,7 +68,6 @@ enum
 static struct timeb base_server_timeb = { 0, 0, 0, 0 };
 static struct timeb base_client_timeb = { 0, 0, 0, 0 };
 
-
 static int get_dimension_of (PT_NODE ** array);
 static DB_SESSION *db_open_local (void);
 static DB_SESSION *initialize_session (DB_SESSION * session);
@@ -94,7 +93,8 @@ static bool db_check_limit_need_recompile (PARSER_CONTEXT * parser, PT_NODE * st
 
 static DB_CLASS_MODIFICATION_STATUS pt_has_modified_class (PARSER_CONTEXT * parser, PT_NODE * statement);
 static PT_NODE *pt_has_modified_class_helper (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
-extern bool db_can_execute_statement_with_autocommit (PARSER_CONTEXT * parser, PT_NODE * statement);
+static bool db_can_execute_statement_with_autocommit (PARSER_CONTEXT * parser, PT_NODE * statement);
+
 /*
  * get_dimemsion_of() - returns the number of elements of a null-terminated
  *   pointer array
@@ -3968,10 +3968,8 @@ db_set_statement_auto_commit (DB_SESSION * session, bool auto_commit)
 {
   PT_NODE *statement;
   int stmt_ndx;
-  bool has_name_oid = false;
   int error_code;
   bool has_user_trigger;
-  int i;
 
   assert (session != NULL);
 
@@ -4011,7 +4009,7 @@ db_set_statement_auto_commit (DB_SESSION * session, bool auto_commit)
   if (session->dimension > 1 && !session->parser->is_holdable)
     {
       /* Search for select. */
-      for (i = 0; i < session->dimension; i++)
+      for (int i = 0; i < session->dimension; i++)
 	{
 	  if (session->statements[i] != NULL && PT_IS_QUERY_NODE_TYPE (session->statements[i]->node_type))
 	    {
@@ -4050,7 +4048,7 @@ db_set_statement_auto_commit (DB_SESSION * session, bool auto_commit)
  * statement(in): the statement
  *
  */
-bool
+static bool
 db_can_execute_statement_with_autocommit (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   bool has_name_oid = false;
@@ -4064,6 +4062,7 @@ db_can_execute_statement_with_autocommit (PARSER_CONTEXT * parser, PT_NODE * sta
    * For now, we care about optimizing most common queries.
    */
   can_execute_statement_with_commit = false;
+
   switch (statement->node_type)
     {
     case PT_SELECT:
@@ -4148,7 +4147,6 @@ db_can_execute_statement_with_autocommit (PARSER_CONTEXT * parser, PT_NODE * sta
 	      can_execute_statement_with_commit = true;
 	    }
 	}
-
       break;
 
       // TODO - what else? for instance, other dmls, ddls.
