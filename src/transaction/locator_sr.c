@@ -7791,10 +7791,8 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 	      if (index->index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
 		{
 		  /* Online index is currently loading. */
-		  BTID_INT btid_int;
-		  btid_int.sys_btid = &btid;
 		  error_code =
-		    btree_online_index_dispatcher (thread_p, &btid_int, key_dbvalue, class_oid, inst_oid, &dummy_unique,
+		    btree_online_index_dispatcher (thread_p, &btid, key_dbvalue, class_oid, inst_oid, &dummy_unique,
 						   BTREE_OP_ONLINE_INDEX_TRAN_INSERT, NULL);
 		}
 	      else
@@ -7818,10 +7816,8 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 		  if (index->index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
 		    {
 		      /* Online index is currently loading. */
-		      BTID_INT btid_int;
-		      btid_int.sys_btid = &btid;
 		      error_code =
-			btree_online_index_dispatcher (thread_p, &btid_int, key_dbvalue, class_oid, inst_oid,
+			btree_online_index_dispatcher (thread_p, &btid, key_dbvalue, class_oid, inst_oid,
 						       &dummy_unique, BTREE_OP_ONLINE_INDEX_TRAN_DELETE, NULL);
 		    }
 		  else
@@ -8489,11 +8485,8 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 		{
 		  if (index->index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
 		    {
-		      /* We have an online index loading on the current index. */
-		      btree_init_btid_int (&btid_int, &index->btid, class_oid, key_domain);
-
 		      error_code =
-			btree_online_index_dispatcher (thread_p, &btid_int, old_key, class_oid, oid, &dummy_unique,
+			btree_online_index_dispatcher (thread_p, &index->btid, old_key, class_oid, oid, &dummy_unique,
 						       BTREE_OP_ONLINE_INDEX_TRAN_DELETE, NULL);
 		      if (error_code != NO_ERROR)
 			{
@@ -8544,11 +8537,9 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 		      if (index->index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
 			{
 			  /* Online index loading on current index. */
-			  btree_init_btid_int (&btid_int, &index->btid, class_oid, key_domain);
-
 			  error_code =
-			    btree_online_index_dispatcher (thread_p, &btid_int, new_key, class_oid, oid, &dummy_unique,
-							   BTREE_OP_ONLINE_INDEX_TRAN_INSERT, NULL);
+			    btree_online_index_dispatcher (thread_p, &index->btid, new_key, class_oid, oid,
+							   &dummy_unique, BTREE_OP_ONLINE_INDEX_TRAN_INSERT, NULL);
 			}
 		      else
 			{
@@ -8569,12 +8560,11 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 			{
 			  /* Online index loading on current index. */
 			  /* This translates into a delete of the old key and an insert of the new key. */
-			  btree_init_btid_int (&btid_int, &index->btid, class_oid, key_domain);
 
 			  /* Delete old key. */
 			  error_code =
-			    btree_online_index_dispatcher (thread_p, &btid_int, old_key, class_oid, oid, &dummy_unique,
-							   BTREE_OP_ONLINE_INDEX_TRAN_DELETE, NULL);
+			    btree_online_index_dispatcher (thread_p, &index->btid, old_key, class_oid, oid,
+							   &dummy_unique, BTREE_OP_ONLINE_INDEX_TRAN_DELETE, NULL);
 			  if (error_code != NO_ERROR)
 			    {
 			      goto error;
@@ -8582,8 +8572,8 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 
 			  /* Insert new key. */
 			  error_code =
-			    btree_online_index_dispatcher (thread_p, &btid_int, new_key, class_oid, oid, &dummy_unique,
-							   BTREE_OP_ONLINE_INDEX_TRAN_INSERT, NULL);
+			    btree_online_index_dispatcher (thread_p, &index->btid, new_key, class_oid, oid,
+							   &dummy_unique, BTREE_OP_ONLINE_INDEX_TRAN_INSERT, NULL);
 			}
 		      else
 			{
