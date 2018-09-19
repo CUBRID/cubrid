@@ -426,6 +426,8 @@ stx_build (THREAD_ENTRY *thread_p, char *ptr, cubxasl::json_table::node &jtn)
 {
   int temp_int = 0;
 
+  jtn.m_iterator = nullptr;
+
   jtn.m_path = stx_restore_string (thread_p, ptr);
 
   ptr = or_unpack_int (ptr, &temp_int);

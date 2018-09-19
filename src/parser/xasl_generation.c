@@ -4604,6 +4604,9 @@ pt_make_json_table_spec_node_internal (PARSER_CONTEXT * parser, PT_JSON_TABLE_NO
   // after set the id, increment
   result.m_id = current_id++;
 
+  // by default expand type is none
+  result.m_expand_type = json_table_expand_type::JSON_TABLE_NO_EXPAND;
+
   // set the expand type
   if (json_table_node::str_ends_with (result.m_path, "[*]"))
     {
@@ -4639,9 +4642,9 @@ pt_make_json_table_spec_node_internal (PARSER_CONTEXT * parser, PT_JSON_TABLE_NO
     ;
 
   result.m_nested_nodes =
-    (json_table_node *) pt_alloc_packing_buf (sizeof (json_table_node) * result.m_output_columns_size);
+    (json_table_node *) pt_alloc_packing_buf (sizeof (json_table_node) * result.m_nested_nodes_size);
 
-  for (itr = jt_node_info->nested_paths; itr != NULL; itr = itr->next)
+  for (itr = jt_node_info->nested_paths, i = 0; itr != NULL; itr = itr->next, i++)
     {
       pt_make_json_table_spec_node_internal (parser, &itr->info.json_table_node_info, current_id, tbl_info,
 					     result.m_nested_nodes[i]);
