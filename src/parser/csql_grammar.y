@@ -1240,6 +1240,7 @@ int g_original_buffer_len;
 %token FUN_JSON_KEYS
 %token FUN_JSON_REMOVE
 %token FUN_JSON_ARRAY_APPEND
+%token FUN_JSON_ARRAY_INSERT
 %token FUN_JSON_GET_ALL_PATHS
 %token GENERAL
 %token GET
@@ -16992,7 +16993,7 @@ reserved_func
 		    $$ = node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-		| FUN_JSON_REPLACE '(' expression_list ')'
+         | FUN_JSON_REPLACE '(' expression_list ')'
 		{{
 		    PT_NODE *args_list = $3;
 		    PT_NODE *node = NULL;
@@ -17011,7 +17012,7 @@ reserved_func
 		    $$ = node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-		| FUN_JSON_SET '(' expression_list ')'
+         | FUN_JSON_SET '(' expression_list ')'
 		{{
 		    PT_NODE *args_list = $3;
 		    PT_NODE *node = NULL;
@@ -17030,7 +17031,7 @@ reserved_func
 		    $$ = node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-		| FUN_JSON_KEYS '(' expression_list ')'
+         | FUN_JSON_KEYS '(' expression_list ')'
 		{{
 		    PT_NODE *args_list = $3;
 		    PT_NODE *node = NULL;
@@ -17068,7 +17069,7 @@ reserved_func
 		    $$ = node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-		| FUN_JSON_ARRAY_APPEND '(' expression_list ')'
+         | FUN_JSON_ARRAY_APPEND '(' expression_list ')'
 		{{
 		    PT_NODE *args_list = $3;
 		    PT_NODE *node = NULL;
@@ -17087,7 +17088,26 @@ reserved_func
 		    $$ = node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-		| FUN_JSON_GET_ALL_PATHS '(' expression_list ')'
+         | FUN_JSON_ARRAY_INSERT '(' expression_list ')'
+		{{
+		    PT_NODE *args_list = $3;
+		    PT_NODE *node = NULL;
+                    int len;
+
+                    len = parser_count_list (args_list);
+		    node = parser_make_expr_with_func (this_parser, F_JSON_ARRAY_INSERT, args_list);
+		    if (len < 3 || len % 2 != 1)
+		    {
+			PT_ERRORmf (this_parser, args_list,
+				    MSGCAT_SET_PARSER_SEMANTIC,
+				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
+				    "json_array_insert");
+		    }
+
+		    $$ = node;
+		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
+         | FUN_JSON_GET_ALL_PATHS '(' expression_list ')'
 		{{
 		    PT_NODE *args_list = $3;
 		    PT_NODE *node = NULL;

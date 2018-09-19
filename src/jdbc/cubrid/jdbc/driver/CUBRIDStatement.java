@@ -383,7 +383,7 @@ public class CUBRIDStatement implements Statement {
 
 	public synchronized void setFetchSize(int rows) throws SQLException {
 		checkIsOpen();
-		if (rows <= 0) {
+		if (rows < 0) {
 			throw new IllegalArgumentException();
 		}
 		fetch_size = rows;

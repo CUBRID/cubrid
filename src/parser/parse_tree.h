@@ -2740,26 +2740,26 @@ struct pt_select_info
   unsigned single_table_opt:1;	/* hq optimized for single table */
 };
 
-#define PT_SELECT_INFO_ANSI_JOIN	1	/* has ANSI join? */
-#define PT_SELECT_INFO_ORACLE_OUTER	2	/* has Oracle's outer join operator? */
-#define PT_SELECT_INFO_DUMMY		4	/* is dummy (i.e., 'SELECT * FROM x') ? */
-#define PT_SELECT_INFO_HAS_AGG		8	/* has any type of aggregation? */
-#define PT_SELECT_INFO_HAS_ANALYTIC	16	/* has analytic functions */
-#define PT_SELECT_INFO_MULTI_UPDATE_AGG	32	/* is query for multi-table update using aggregate */
-#define PT_SELECT_INFO_IDX_SCHEMA	64	/* is show index query */
-#define PT_SELECT_INFO_COLS_SCHEMA	128	/* is show columns query */
-#define PT_SELECT_FULL_INFO_COLS_SCHEMA	256	/* is show columns query */
-#define PT_SELECT_INFO_IS_MERGE_QUERY	512	/* is a query of a merge stmt */
-#define	PT_SELECT_INFO_LIST_PUSHER	1024	/* dummy subquery that pushes a list file descriptor to be used at
-						 * server as its own result */
-#define PT_SELECT_INFO_NO_STRICT_OID_CHECK  2048	/* normally, only OIDs of updatable views are allowed in parse
+#define PT_SELECT_INFO_ANSI_JOIN	     0x01	/* has ANSI join? */
+#define PT_SELECT_INFO_ORACLE_OUTER	     0x02	/* has Oracle's outer join operator? */
+#define PT_SELECT_INFO_DUMMY		     0x04	/* is dummy (i.e., 'SELECT * FROM x') ? */
+#define PT_SELECT_INFO_HAS_AGG		     0x08	/* has any type of aggregation? */
+#define PT_SELECT_INFO_HAS_ANALYTIC	     0x10	/* has analytic functions */
+#define PT_SELECT_INFO_MULTI_UPDATE_AGG	     0x20	/* is query for multi-table update using aggregate */
+#define PT_SELECT_INFO_IDX_SCHEMA	     0x40	/* is show index query */
+#define PT_SELECT_INFO_COLS_SCHEMA	     0x80	/* is show columns query */
+#define PT_SELECT_FULL_INFO_COLS_SCHEMA	   0x0100	/* is show columns query */
+#define PT_SELECT_INFO_IS_MERGE_QUERY	   0x0200	/* is a query of a merge stmt */
+#define	PT_SELECT_INFO_LIST_PUSHER	   0x0400	/* dummy subquery that pushes a list file descriptor to be used at
+							 * server as its own result */
+#define PT_SELECT_INFO_NO_STRICT_OID_CHECK 0x0800	/* normally, only OIDs of updatable views are allowed in parse
 							 * trees; however, for MERGE and UPDATE we sometimes want to
 							 * allow OIDs of partially updatable views */
-#define PT_SELECT_INFO_IS_UPD_DEL_QUERY	4096	/* set if select was built for an UPDATE or DELETE statement */
-#define PT_SELECT_INFO_FOR_UPDATE	8192	/* FOR UPDATE clause is active */
-#define PT_SELECT_INFO_DISABLE_LOOSE_SCAN   16384	/* loose scan not possible on query */
-#define PT_SELECT_INFO_MVCC_LOCK_NEEDED	    32768	/* lock returned rows */
-#define PT_SELECT_INFO_READ_ONLY 65536	/* read-only system generated queries like show statement */
+#define PT_SELECT_INFO_IS_UPD_DEL_QUERY	   0x1000	/* set if select was built for an UPDATE or DELETE statement */
+#define PT_SELECT_INFO_FOR_UPDATE	   0x2000	/* FOR UPDATE clause is active */
+#define PT_SELECT_INFO_DISABLE_LOOSE_SCAN  0x4000	/* loose scan not possible on query */
+#define PT_SELECT_INFO_MVCC_LOCK_NEEDED	   0x8000	/* lock returned rows */
+#define PT_SELECT_INFO_READ_ONLY         0x010000	/* read-only system generated queries like show statement */
 
 #define PT_SELECT_INFO_IS_FLAGED(s, f)  \
           ((s)->info.query.q.select.flag & (f))

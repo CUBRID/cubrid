@@ -6925,14 +6925,11 @@ pt_resolve_using_index (PARSER_CONTEXT * parser, PT_NODE * index, PT_NODE * from
 				  pt_short_print (parser, index));
 		      return NULL;
 		    }
-		  else if (cons->index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+		  else if (cons->index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS
+			   || cons->index_status == SM_INVISIBLE_INDEX)
 		    {
-		      // TODO: raise an error?
-		      return NULL;	// unusable index
-		    }
-		  else if (cons->index_status == SM_INVISIBLE_INDEX)
-		    {
-		      // TODO: raise an error?
+		      PT_ERRORmf (parser, index, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USING_INDEX_ERR_1,
+				  pt_short_print (parser, index));
 		      return NULL;	// unusable index
 		    }
 		}
