@@ -6448,10 +6448,8 @@ stx_init_analytic_type_unserialized_fields (ANALYTIC_TYPE * analytic)
   analytic->curr_cnt = 0;
 }
 
-// *INDENT-OFF*
 char *
 stx_build (THREAD_ENTRY * thread_p, char *ptr, regu_variable_node & reguvar)
 {
   return stx_build_regu_variable (thread_p, ptr, &reguvar);
 }
-// *INDENT-ON*

@@ -21,6 +21,9 @@
 //  XASL stream - common interface for xasl_to_stream and stream_to_xasl
 //
 
+#ifndef _XASL_STREAM_HPP_
+#define _XASL_STREAM_HPP_
+
 #include "thread_compat.hpp"
 #include "xasl.h"
 
@@ -210,3 +213,5 @@ static void stx_alloc_array (THREAD_ENTRY *thread_p, T *&ptr, std::size_t count)
 {
   ptr = (T *) stx_alloc_struct (thread_p, (int) (count * sizeof (T)));
 }
+
+#endif // _XASL_STREAM_HPP_

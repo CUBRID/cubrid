@@ -102,12 +102,13 @@ static int xts_save_update_info (const UPDATE_PROC_NODE * ptr);
 static int xts_save_delete_info (const DELETE_PROC_NODE * ptr);
 static int xts_save_insert_info (const INSERT_PROC_NODE * ptr);
 #endif
+
 // *INDENT-OFF*
 template <typename T>
-static int xts_save (const T & t);
+static int xts_save (const T &t);
 
 template <typename T>
-static void xts_debug_check (const T& t, char *pack_start, const char *pack_end);
+static void xts_debug_check (const T &t, char *pack_start, const char *pack_end);
 // *INDENT-ON*
 
 static int xts_save_db_value_array (DB_VALUE ** ptr, int size);
@@ -7514,7 +7515,7 @@ xts_process_regu_variable_list (char *ptr, const REGU_VARIABLE_LIST regu_var_lis
 //
 template <typename T>
 int static
-xts_save (const T & t)
+xts_save (const T &t)
 {
   int packed_length;
   char *ptr;
@@ -7540,7 +7541,7 @@ xts_save (const T & t)
 
 template <typename T>
 static void
-xts_debug_check (const T& t, char * pack_start, const char * pack_end)
+xts_debug_check (const T &t, char *pack_start, const char *pack_end)
 {
 #if !defined (NDEBUG)
 
