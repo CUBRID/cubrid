@@ -7728,8 +7728,14 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
       /* propagate to children */
       arg1 = node->info.query.q.union_.arg1;
       arg2 = node->info.query.q.union_.arg2;
-      arg1->info.query.has_outer_spec = node->info.query.has_outer_spec;
-      arg2->info.query.has_outer_spec = node->info.query.has_outer_spec;
+      if (arg1 != NULL)
+	{
+	  arg1->info.query.has_outer_spec = node->info.query.has_outer_spec;
+	}
+      if (arg2 != NULL)
+	{
+	  arg2->info.query.has_outer_spec = node->info.query.has_outer_spec;
+	}
 
       /* rewrite limit clause as numbering expression and add it to the corresponding predicate */
       if (node->info.query.limit && node->info.query.rewrite_limit)
