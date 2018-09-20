@@ -17072,7 +17072,7 @@ reserved_func
 		    $$ = node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-		| expression_ RIGHT_ARROW CHAR_STRING
+		| identifier RIGHT_ARROW CHAR_STRING
 		{{
 			PT_NODE * matcher = parser_new_node (this_parser, PT_VALUE);
 
