@@ -32,12 +32,12 @@ namespace cubstream
 
   stream::stream ()
   {
+    m_append_position = 0;
+    m_read_position = 0 ;
     m_last_committed_pos = 0;
     m_last_notified_committed_pos = 0;
-    m_drop_pos_last_flushed_notified = 0;
-    m_read_position = 0;
-    m_last_dropable_pos = 0;
     m_serial_read_wait_pos = 0;
+    m_last_dropable_pos = 0;
 
     init (0);
   }

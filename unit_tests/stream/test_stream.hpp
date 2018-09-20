@@ -47,6 +47,13 @@ namespace test_stream
   int test_stream_file1 (size_t file_size, size_t desired_amount, size_t buffer_size);
   int test_stream_file2 (size_t stream_buffer_size, size_t file_size, size_t desired_amount);
 
+  int test_stream_file_mt (const int pack_threads,
+                           const int unpack_threads,
+                           const int read_bytes_threads,
+                           const size_t stream_buffer_size,
+                           const size_t file_size,
+                           const int test_duration);
+
   
   int write_action (const cubstream::stream_position pos, char *ptr, const size_t byte_count);
 
@@ -304,6 +311,8 @@ namespace test_stream
       static std::bitset<1024> g_running_readers;
 
       static void update_stream_drop_position (void);
+
+      static bool update_drop_pos_from_readers;
   };
 
   class stream_pack_task : public cubthread::task<cubthread::entry>

@@ -39,6 +39,8 @@
 #include "thread_looper.hpp"
 #include "porting.h"
 
+#include <iostream>
+
 namespace cubstream
 {
 
@@ -68,41 +70,41 @@ namespace cubstream
       void execute (cubthread::entry &thread_ref) override
       {
         int err = NO_ERROR;
-
-        m_stream_file.wait_flush_signal ();
-
-        assert (m_stream.get_last_committed_pos () >= m_stream_file.get_flush_target_position ());
-
-        stream_position curr_pos = m_stream.get_last_dropable_pos ();
+        stream_position curr_pos;
         stream_position end_pos;
 
-        while (1)
-          {
-            end_pos = m_stream_file.get_flush_target_position ();
-            if (curr_pos >= end_pos || m_stream_file.is_stopped ())
-              {
-                break;
-              }
+        m_stream_file.wait_flush_signal (curr_pos, end_pos);
 
-            size_t amount_to_copy = MIN (end_pos - curr_pos, BUFFER_SIZE);
+        assert (m_stream.get_last_committed_pos () >= end_pos);
 
-            err = m_stream.read (curr_pos, amount_to_copy, m_copy_to_buffer_func);
-            if (err <= 0)
-              {
-                ASSERT_ERROR ();
-                break; 
-              }
-            err = m_stream_file.write (curr_pos, m_buffer, amount_to_copy);
-            if (err != NO_ERROR)
-              {
-                ASSERT_ERROR ();
-                break; 
-              }
+        if (curr_pos >= end_pos || m_stream_file.is_stopped ())
+        {
+          return;
+        }
 
-            curr_pos += amount_to_copy;
+        m_stream_file.set_ack_start_flush_position (curr_pos);
 
-            m_stream.set_last_dropable_pos (curr_pos);
-          }
+        size_t amount_to_copy = MIN (end_pos - curr_pos, BUFFER_SIZE);
+
+        std::cout << "      Flushing :" << curr_pos << " , " << amount_to_copy << " bytes" << std::endl;
+
+        err = m_stream.read (curr_pos, amount_to_copy, m_copy_to_buffer_func);
+        if (err <= 0)
+        {
+          ASSERT_ERROR ();
+          return; 
+        }
+        
+        err = m_stream_file.write (curr_pos, m_buffer, amount_to_copy);
+        if (err != NO_ERROR)
+        {
+          ASSERT_ERROR ();
+          return; 
+        }
+
+        curr_pos += amount_to_copy;
+
+        m_stream.set_last_dropable_pos (curr_pos);
       }
 
       int copy_to_buffer (char *ptr, const size_t byte_count)
@@ -136,6 +138,7 @@ void stream_file::init (const size_t file_size, const int print_digits)
   m_curr_append_file_size = 0;
 
   m_target_flush_position = 0;
+  m_ack_start_flush_position = 0;
 
   m_start_file_seqno = 0;
 
@@ -157,7 +160,7 @@ void stream_file::finalize (void)
   std::map<int,int>::iterator it;
 
   m_is_stopped = true;
-  start_flush (0);
+  start_flush (0, 0);
 
   cubthread::get_manager ()->destroy_daemon (m_write_daemon);
 
@@ -283,8 +286,11 @@ int stream_file::create_files_in_range (const stream_position &start_pos, const 
             {
               return ER_FAILED;
             }
-          rem_amount_this_file -= amount_to_write;
+          rem_amount_this_file -= written_bytes;
+          file_offset += written_bytes;
         }
+
+      rem_amount_this_file = MIN (hole_amount, available_amount_in_file);
 
       hole_amount -= rem_amount_this_file;
       curr_pos += rem_amount_this_file;
@@ -496,6 +502,11 @@ int stream_file::create_file (const char *file_path)
   return fd;
 }
 
+/*
+ * read_buffer : reads from file identified by "file_seqno" from offset "file_offet" into the buffer "buf" 
+ *               an amount of "amount" bytes
+ * return : number of bytes actually read
+ */
 size_t stream_file::read_buffer (const int file_seqno, const size_t file_offset, char *buf, const size_t amount)
 {
   size_t actual_read;
@@ -519,6 +530,10 @@ size_t stream_file::read_buffer (const int file_seqno, const size_t file_offset,
   return actual_read;
 }
 
+/*
+ * write_buffer : write in file identified by "file_seqno" at offset "file_offet" the buffer "buf" of size "amount"
+ * return : number of bytes actually written
+ */
 size_t stream_file::write_buffer (const int file_seqno, const size_t file_offset, const char *buf, const size_t amount)
 {
   size_t actual_write;
@@ -643,7 +658,7 @@ int stream_file::read (const stream_position &pos, char *buf, const size_t amoun
 
 int stream_file::stream_filled_func (const stream_position &last_saved_pos, const size_t available_to_save)
 {
-  start_flush (last_saved_pos + available_to_save);
+  start_flush (last_saved_pos, last_saved_pos + available_to_save);
   return NO_ERROR;
 }
 

@@ -80,9 +80,6 @@ namespace cubstream
       /* last position notified as committed; used to send notifications to readers */
       stream_position m_last_notified_committed_pos;
 
-      /* drop position when last flushed was notified; used to send notifications to flusher (avoid spamming) */
-      stream_position m_drop_pos_last_flushed_notified;
-
       /* position to wait for in serial read */
       stream_position m_serial_read_wait_pos;
 

@@ -102,7 +102,14 @@ private:
   /* oldest avaiable file (old file may be removed to save disk space) */
   int m_start_file_seqno;
 
+  /* last position which must be flushed */
   stream_position m_target_flush_position;
+
+  /* position acknowledged as by stream file from were it starts the flush;
+   * it corresponds to dropable position when last flushed was notified; used to avoid spamming of flusher */
+  stream_position m_ack_start_flush_position;
+
+  stream_position m_req_start_flush_position;
 
   cubstream::stream::notify_func_t m_filled_stream_handler;
 
@@ -174,26 +181,33 @@ public:
         }
     }
 
-  stream_position get_flush_target_position (void)
-    {
-      std::unique_lock<std::mutex> ulock (m_flush_mutex);
-      return m_target_flush_position;
-    }
+  stream_position get_ack_start_flush_position (void)
+  {
+    return m_ack_start_flush_position;
+  }
 
-  void start_flush (const stream_position &target_position)
+  void set_ack_start_flush_position (const stream_position &pos)
+  {
+    m_ack_start_flush_position = pos + 1;
+  }
+
+  void start_flush (const stream_position &start_position, const stream_position &target_position)
   {
     std::unique_lock<std::mutex> ulock (m_flush_mutex);
     if (target_position != 0)
       {
+        m_req_start_flush_position = start_position;
         m_target_flush_position = target_position;
       }
     m_flush_cv.notify_one ();
   }
 
-  void wait_flush_signal (void)
+  void wait_flush_signal (stream_position &start_position, stream_position &target_position)
   {
     std::unique_lock<std::mutex> ulock (m_flush_mutex);
     m_flush_cv.wait (ulock);
+    start_position = m_req_start_flush_position;
+    target_position = m_target_flush_position;
   }
 
   bool is_stopped (void)

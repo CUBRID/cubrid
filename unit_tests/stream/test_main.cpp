@@ -61,7 +61,19 @@ int main ()
   test_module (global_error, test_stream::test_stream_file1, 1024, 1024 * 1024, 256 * 1024);
 #endif
   /* Test write then read to stream with stream file:      stream_buffer_size, file_size, desired_amount */
-  test_module (global_error, test_stream::test_stream_file2, 256 * 1024, 1024, 1 * 1024 * 1024);
+  //test_module (global_error, test_stream::test_stream_file2, 256 * 1024, 1024, 1 * 1024 * 1024);
+
+
+  /* MT test with multiple writers/readers and stream file: */
+  test_module (global_error, test_stream::test_stream_file_mt, 
+    2,  /* pack_threads */
+    1,  /* unpack_threads (serial) : this should be 0 or 1 (we cannot read serail with multiple threads) */
+    2,                /* read threads (byte) */
+    2 * 1024 * 1024,  /* BIP buffer size (stream buffer) */
+    100 * 1024 * 1024,  /* stream file size (chunk) */
+    120                /* duration (seconds) */
+    );
+  
   
   /* add more tests here */
 

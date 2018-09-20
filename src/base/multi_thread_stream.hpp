@@ -197,12 +197,14 @@ namespace cubstream
       {
 	m_is_stopped = true;
 	m_serial_read_cv.notify_one ();
+        m_drop_pos_cv.notify_one ();
       }
 
       void set_stream_file (stream_file *sf) { m_stream_file = sf; }
 
       stream_file *get_stream_file (void) { return m_stream_file; }
 
+      void wake_up_flusher (float fill_factor);
       void wait_for_flush_or_readers (void);
       void set_last_dropable_pos (const stream_position &last_dropable_pos);
   };

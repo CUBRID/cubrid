@@ -429,17 +429,10 @@ namespace cubstream
     reserved_context->written_bytes = 0;
 
     float stream_fill = stream_fill_factor ();
-    stream_position notify_flush_pos = m_last_committed_pos;
-    size_t produced_since_drop = notify_flush_pos - m_last_dropable_pos;
 
     m_buffer_mutex.unlock ();
 
-    /* notify that stream content needs to be saved, otherwise it may be overwritten in bip_buffer */
-    if (m_filled_stream_handler && stream_fill >= 1.0f && m_last_dropable_pos >= m_drop_pos_last_flushed_notified)
-      {
-	m_filled_stream_handler (notify_flush_pos - produced_since_drop, produced_since_drop);
-        m_drop_pos_last_flushed_notified = m_last_dropable_pos + 1;
-      }
+    wake_up_flusher (stream_fill);
 
     return ptr;
   }
@@ -638,17 +631,39 @@ namespace cubstream
       }
   }
 
+  void multi_thread_stream::wake_up_flusher (float fill_factor)
+  {
+    /* make sure we wake up flusher (if any) */
+    if (m_filled_stream_handler
+        && fill_factor > 1.0f
+        && m_last_dropable_pos >= m_stream_file->get_ack_start_flush_position ())
+      {
+	m_filled_stream_handler (m_last_dropable_pos, m_last_committed_pos - m_last_dropable_pos);
+      }
+  }
+
+  /* 
+   *  wait_for_flush_or_readers : waits until stream has enough free space made by flusher (or set of readers)
+   *                              This should be called by only writer threads
+   */
   void multi_thread_stream::wait_for_flush_or_readers (void)
   {
+    /* set fill factor to force a flush */
+    wake_up_flusher (2.0f);
+
     std::unique_lock<std::mutex> local_lock (m_drop_pos_mutex);
-    m_drop_pos_cv.wait (local_lock, [&] { return m_is_stopped || 
-                                          (m_append_position - m_last_dropable_pos <
-                                           m_max_allowed_unflushed_reserved); });
+    m_drop_pos_cv.wait (local_lock,
+                            [&] { return m_is_stopped || 
+                                 (m_append_position - m_last_dropable_pos <
+                                  m_max_allowed_unflushed_reserved); });
   }
 
   void multi_thread_stream::set_last_dropable_pos (const stream_position &last_dropable_pos)
     {
+      std::unique_lock<std::mutex> local_lock (m_drop_pos_mutex);
       m_last_dropable_pos = last_dropable_pos;
+      local_lock.unlock ();
+
       m_drop_pos_cv.notify_one ();
     }
 
