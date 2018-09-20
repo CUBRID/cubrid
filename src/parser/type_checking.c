@@ -12977,6 +12977,47 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
       break;
 
+    case PT_JSON_OBJECTAGG:
+      {
+	// we will have 2 arguments (key, value)
+	// the key needs to be STRING type and the value can be any type compatible with JSON type
+
+	// check key
+	PT_NODE *key = arg_list;
+	PT_NODE *value = arg_list->next;
+
+	if (!PT_IS_STRING_TYPE (key->type_enum))
+	  {
+	    arg_type = PT_TYPE_NONE;
+	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
+			 pt_show_function (fcode), pt_show_type_enum (key->type_enum));
+	    break;
+	  }
+
+	// check value
+	bool is_supported = pt_is_json_value_type (value->type_enum);
+	if (!is_supported)
+	  {
+	    arg_type = PT_TYPE_NONE;
+	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
+			 pt_show_function (fcode), pt_show_type_enum (value->type_enum));
+	    break;
+	  }
+
+	/* cast value to json */
+	arg_list->next = pt_wrap_with_cast_op (parser, value, PT_TYPE_JSON, 0, 0, NULL);
+	if (arg_list->next == NULL)
+	  {
+	    return node;
+	  }
+
+	arg_type = PT_TYPE_JSON;
+	node->info.function.arg_list = arg_list;
+	// JSON_OBJECTAGG requires 2 arguments
+	check_agg_single_arg = false;
+      }
+      break;
+
     case F_JSON_OBJECT:
       {
 	PT_TYPE_ENUM unsupported_type;
@@ -13551,6 +13592,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  node->data_type = NULL;
 
 	  break;
+	case PT_JSON_OBJECTAGG:
 	case F_JSON_OBJECT:
 	case F_JSON_ARRAY:
 	case F_JSON_INSERT:

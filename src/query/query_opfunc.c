@@ -6760,6 +6760,13 @@ qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMUL
 	}
       break;
 
+    case PT_JSON_OBJECTAGG:
+      /*if (db_json_object_dbval(value, acc->value) != NO_ERROR)
+         {
+         return ER_FAILED;
+         } */
+      break;
+
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
       return ER_FAILED;
@@ -6869,12 +6876,33 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
       /* eliminate null values */
       if (DB_IS_NULL (&dbval))
 	{
-	  if ((agg_p->function == PT_COUNT || agg_p->function == PT_COUNT_STAR) && DB_IS_NULL (accumulator->value))
+	  /*
+	   * for JSON_OBJECTAGG we need to include keep track of key-value pairs
+	   * the key can not be NULL so this will throw an error
+	   * the value can be NULL and we will wrap this into a JSON with DB_JSON_NULL type
+	   */
+	  if (agg_p->function == PT_JSON_OBJECTAGG)
 	    {
-	      /* we might get a NULL count if aggregating with hash table and group has only one tuple; correct that */
-	      db_make_int (accumulator->value, 0);
+	      // the current value is for a key and it should not be NULL
+	      if (i % 2 == 0)
+		{
+		  return ER_FAILED;
+		}
+	      else
+		{
+		  // this creates a new JSON_DOC with the type DB_JSON_NULL
+		  db_make_json (&dbval, db_json_allocate_doc (), true);
+		}
 	    }
-	  continue;
+	  else
+	    {
+	      if ((agg_p->function == PT_COUNT || agg_p->function == PT_COUNT_STAR) && DB_IS_NULL (accumulator->value))
+		{
+		  /* we might get a NULL count if aggregating with hash table and group has only one tuple; correct that */
+		  db_make_int (accumulator->value, 0);
+		}
+	      continue;
+	    }
 	}
 
       /* 

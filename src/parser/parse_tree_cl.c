@@ -4021,6 +4021,8 @@ pt_show_function (FUNC_TYPE c)
       return "percentile_cont";
     case PT_PERCENTILE_DISC:
       return "percentile_disc";
+    case PT_JSON_OBJECTAGG:
+      return "json_objectagg";
 
     case F_SEQUENCE:
       return "sequence";
