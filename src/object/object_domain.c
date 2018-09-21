@@ -7188,7 +7188,10 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		  ASSERT_ERROR ();
 		  return DOMAIN_ERROR;
 		}
-	      pr_clone_value ((DB_VALUE *) src, dest);
+	      if (src != dest)
+		{
+		  pr_clone_value (src, dest);
+		}
 	      pr_clear_value (&src_replacement);
 	      return (status);
 	    default:

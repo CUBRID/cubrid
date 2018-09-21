@@ -4810,6 +4810,12 @@ regu_spec_init (ACCESS_SPEC_TYPE * ptr, TARGET_TYPE type)
       ACCESS_SPEC_XASL_NODE (ptr) = NULL;
       ACCESS_SPEC_METHOD_SIG_LIST (ptr) = NULL;
     }
+  else if (type == TARGET_JSON_TABLE)
+    {
+      ACCESS_SPEC_JSON_TABLE_REGU_VAR (ptr) = NULL;
+      ACCESS_SPEC_JSON_TABLE_ROOT_NODE (ptr) = NULL;
+      ACCESS_SPEC_JSON_TABLE_M_NODE_COUNT (ptr) = 0;
+    }
   ptr->single_fetch = (QPROC_SINGLE_FETCH) false;
   ptr->s_dbval = NULL;
   ptr->next = NULL;
@@ -9096,7 +9102,7 @@ pt_make_query_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
       for (; dim < block.dim + len; dim *= 2) // calc next power of 2 >= b.dim+len
 	;
 
-      mem::block b{ dim, (char *) parser_alloc (parser, dim) };
+      mem::block b{ dim, (char *) parser_alloc (parser, (const int) dim) };
       memcpy (b.ptr, block.ptr, block.dim); // copy old content
       block = std::move (b);
     },

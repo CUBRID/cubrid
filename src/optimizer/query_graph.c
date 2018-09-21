@@ -2728,7 +2728,11 @@ set_seg_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_
 	      *continue_walk = PT_STOP_WALK;
 	    }
 	}
+      break;
 
+    case PT_JSON_TABLE:
+      (void) parser_walk_tree (parser, tree->info.json_table_info.expr, set_seg_expr, arg, pt_continue_walk, NULL);
+      *continue_walk = PT_LIST_WALK;
       break;
 
     default:
@@ -2848,20 +2852,30 @@ qo_is_equi_join_term (QO_TERM * term)
 static bool
 is_dependent_table (PT_NODE * entity)
 {
-  if (entity->info.spec.derived_table)
+  if (entity->info.spec.derived_table == NULL)
     {
-      /* this test is too pessimistic.  The argument must depend on a previous entity spec in the from list. 
-       * >>>> FIXME some day <<<< 
-       */
-      if (entity->info.spec.derived_table_type == PT_IS_SET_EXPR	/* is cselect derived table of method */
-	  || entity->info.spec.derived_table_type == PT_IS_CSELECT
-	  || entity->info.spec.derived_table->info.query.correlation_level == 1)
-	{
-	  return true;
-	}
+      return false;
     }
 
-  return false;
+  /* this test is too pessimistic.  The argument must depend on a previous entity spec in the from list. 
+   * >>>> FIXME some day <<<< 
+   *
+   * is this still a thing?
+   */
+  switch (entity->info.spec.derived_table_type)
+    {
+    case PT_IS_SET_EXPR:
+    case PT_IS_CSELECT:
+      return true;
+
+    case PT_DERIVED_JSON_TABLE:
+      return true;
+
+    case PT_IS_SUBQUERY:
+    default:
+      // what else?
+      return entity->info.spec.derived_table->info.query.correlation_level == 1;
+    }
 }
 
 /*
