@@ -204,8 +204,8 @@ namespace cubstream
 
       stream_file *get_stream_file (void) { return m_stream_file; }
 
-      void wake_up_flusher (float fill_factor);
-      void wait_for_flush_or_readers (void);
+      void wake_up_flusher (float fill_factor, const stream_position &start_flush_pos, const size_t flush_amount);
+      void wait_for_flush_or_readers (const stream_position &last_commit_pos, const stream_position &last_append_pos);
       void set_last_dropable_pos (const stream_position &last_dropable_pos);
   };
 

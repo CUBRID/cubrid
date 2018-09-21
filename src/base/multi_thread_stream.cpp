@@ -378,7 +378,7 @@ namespace cubstream
     if (m_append_position - m_last_dropable_pos > m_max_allowed_unflushed_reserved)
       {
         /* flush or reader are not keeping up with the writers */
-        wait_for_flush_or_readers ();
+        wait_for_flush_or_readers (m_last_committed_pos, m_append_position);
       }
 
     m_buffer_mutex.lock ();
@@ -387,7 +387,7 @@ namespace cubstream
       {
         m_buffer_mutex.unlock ();
         /* flush or reader are not keeping up with the writers */
-        wait_for_flush_or_readers ();
+        wait_for_flush_or_readers (m_last_committed_pos, m_append_position);
         m_buffer_mutex.lock ();
       }
 
@@ -428,11 +428,13 @@ namespace cubstream
     reserved_context->reserved_amount = amount;
     reserved_context->written_bytes = 0;
 
-    float stream_fill = stream_fill_factor ();
+    stream_position start_flush_pos = m_last_dropable_pos;
+    stream_position end_flush_pos = m_last_committed_pos;
 
     m_buffer_mutex.unlock ();
 
-    wake_up_flusher (stream_fill);
+    float stream_fill = (float) (end_flush_pos - start_flush_pos) / (float) m_trigger_flush_to_disk_size;
+    wake_up_flusher (stream_fill, start_flush_pos, end_flush_pos - start_flush_pos);
 
     return ptr;
   }
@@ -631,14 +633,18 @@ namespace cubstream
       }
   }
 
-  void multi_thread_stream::wake_up_flusher (float fill_factor)
+  void multi_thread_stream::wake_up_flusher (float fill_factor, const stream_position &start_flush_pos,
+                                             const size_t flush_amount)
   {
-    /* make sure we wake up flusher (if any) */
+    /* wake up flusher (if any) :
+     * fill_factor : ratio of flush to disk trigger size occupied in the stream buffer
+     * start_flush_pos >= m_stream_file->get_ack_start_flush_position : current start flush position should be
+     * greater than the position with which the stream_file flush thread has already started to flush */
     if (m_filled_stream_handler
         && fill_factor > 1.0f
-        && m_last_dropable_pos >= m_stream_file->get_ack_start_flush_position ())
+        && start_flush_pos >= m_stream_file->get_ack_start_flush_position ())
       {
-	m_filled_stream_handler (m_last_dropable_pos, m_last_committed_pos - m_last_dropable_pos);
+	m_filled_stream_handler (start_flush_pos, flush_amount);
       }
   }
 
@@ -646,15 +652,17 @@ namespace cubstream
    *  wait_for_flush_or_readers : waits until stream has enough free space made by flusher (or set of readers)
    *                              This should be called by only writer threads
    */
-  void multi_thread_stream::wait_for_flush_or_readers (void)
+  void multi_thread_stream::wait_for_flush_or_readers (const stream_position &last_commit_pos,
+                                                       const stream_position &last_append_pos)
   {
     /* set fill factor to force a flush */
-    wake_up_flusher (2.0f);
+    wake_up_flusher (2.0f, last_commit_pos, last_commit_pos - m_last_dropable_pos);
 
     std::unique_lock<std::mutex> local_lock (m_drop_pos_mutex);
+    /* wait until flusher advances m_last_dropable_pos */
     m_drop_pos_cv.wait (local_lock,
                             [&] { return m_is_stopped || 
-                                 (m_append_position - m_last_dropable_pos <
+                                 (last_append_pos - m_last_dropable_pos <
                                   m_max_allowed_unflushed_reserved); });
   }
 
