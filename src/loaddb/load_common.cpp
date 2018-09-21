@@ -86,7 +86,7 @@ namespace cubload
   }
 
   int
-  split (int batch_size, std::string &object_file_name, std::function<void (std::string &)> &func)
+  split (int batch_size, std::string &object_file_name, batch_handler &handler, int &total_batches)
   {
     int rows = 0;
     std::string class_line;
@@ -101,6 +101,8 @@ namespace cubload
 
     assert (batch_size > 0);
 
+    total_batches = 0;
+
     for (std::string line; std::getline (object_file, line);)
       {
 	if (starts_with (line, "%id"))
@@ -111,20 +113,17 @@ namespace cubload
 
 	if (starts_with (line, "%class"))
 	  {
-	    // store class line
-	    class_line = line;
+	    // in case of class line collect remaining for current class
+	    // and start new batch for the new class
+	    handle_batch (class_line, batch_buffer, total_batches, handler);
 
-	    // close current batch
-	    func (batch_buffer);
+	    // store new class line
+	    class_line = line;
 
 	    // rewind forward rows counter until batch is full
 	    for (; (rows % batch_size) != 0; rows++)
 	      ;
 
-	    // start new batch for the class
-	    batch_buffer.clear ();
-	    batch_buffer.append (class_line);
-	    batch_buffer.append ("\n");
 	    continue;
 	  }
 
@@ -143,23 +142,38 @@ namespace cubload
 	    // check if we have a full batch
 	    if ((rows % batch_size) == 0)
 	      {
-		func (batch_buffer);
-
-		// start new batch for the class
-		batch_buffer.clear ();
-		batch_buffer.append (class_line);
-		batch_buffer.append ("\n");
+		handle_batch (class_line, batch_buffer, total_batches, handler);
 	      }
 	  }
       }
 
     // collect remaining rows
-    func (batch_buffer);
-    batch_buffer.clear ();
+    handle_batch (class_line, batch_buffer, total_batches, handler);
 
     object_file.close ();
 
     return NO_ERROR;
+  }
+
+  void
+  handle_batch (std::string &class_line, std::string &batch, int &total_batches, batch_handler &handler)
+  {
+    if (batch.empty () || class_line.empty ())
+      {
+	return;
+      }
+
+    std::string buffer;
+    buffer.reserve (class_line.size() + buffer.size() + 1); // 1 is for \n character
+
+    buffer.append (class_line);
+    buffer.append ("\n");
+    buffer.append (batch);
+
+    handler (buffer, ++total_batches);
+
+    // prepare to start new batch for the class
+    batch.clear ();
   }
 
   bool

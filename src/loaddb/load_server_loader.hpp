@@ -33,10 +33,13 @@
 namespace cubload
 {
 
+  // forward declaration
+  class session;
+
   class server_loader : public loader
   {
     public:
-      server_loader ();
+      explicit server_loader (session *session);
       ~server_loader () override;
 
       void check_class (const char *class_name, int class_id) override;
@@ -48,23 +51,22 @@ namespace cubload
       void process_line (constant_type *cons) override;
       void finish_line () override;
 
-      void load_failed_error () override;
-      void increment_err_total () override;
-      void increment_fails () override;
+      void on_error () override;
+      void on_failure () override;
 
     private:
       void process_constant (constant_type *cons, int attr_idx);
-      void process_monetary_constant (constant_type *cons, TP_DOMAIN *domain, DB_VALUE *db_val);
+      void process_monetary_constant (constant_type *cons, tp_domain *domain, db_value *db_val);
 
       OID m_class_oid;
+
       ATTR_ID *m_attr_ids;
-      HEAP_CACHE_ATTRINFO m_attr_info;
-      HEAP_SCANCACHE m_scan_cache;
+      heap_cache_attrinfo m_attr_info;
 
-      int m_err_total;
-      int m_total_fails;
-
+      heap_scancache m_scan_cache;
       bool m_scan_cache_started;
+
+      session *m_session;
   };
 
 } // namespace cubload

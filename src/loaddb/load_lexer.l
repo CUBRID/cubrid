@@ -24,6 +24,8 @@
 /*** C/C++ Declarations ***/
 %{
 #include "load_driver.hpp"
+#include "load_grammar.hpp"
+#include "load_scanner.hpp"
 
 #undef YY_DECL
 #define YY_DECL \

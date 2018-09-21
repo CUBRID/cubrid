@@ -140,6 +140,10 @@ struct session_state
   int ref_count;
   TZ_REGION session_tz_region;
   int private_lru_index;
+
+  /* *INDENT-OFF* */
+  cubload::session *loaddb_session;
+  /* *INDENT-ON* */
 };
 
 /* session state manipulation functions */
@@ -281,6 +285,7 @@ session_state_init (void *st)
   session_p->trace_format = QUERY_TRACE_TEXT;
   session_p->private_lru_index = -1;
   session_p->auto_commit = false;
+  session_p->loaddb_session = NULL;
 
   return NO_ERROR;
 }
@@ -694,7 +699,7 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id)
       return ER_FAILED;
     }
 
-  /* inserted key might have been incremented; if last_session_id was not modified in the meantime, store the new value 
+  /* inserted key might have been incremented; if last_session_id was not modified in the meantime, store the new value
    */
   ATOMIC_CAS_32 (&sessions.last_session_id, next_session_id, *id);
 
@@ -3154,6 +3159,38 @@ session_set_tran_auto_commit (THREAD_ENTRY * thread_p, bool auto_commit)
     }
 
   state_p->auto_commit = auto_commit;
+
+  return NO_ERROR;
+}
+
+int
+session_set_loaddb_session (THREAD_ENTRY * thread_p, cubload::session * loaddb_session)
+{
+  SESSION_STATE *state_p = NULL;
+
+  state_p = session_get_session_state (thread_p);
+  if (state_p == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  state_p->loaddb_session = loaddb_session;
+
+  return NO_ERROR;
+}
+
+int
+session_get_loaddb_session (THREAD_ENTRY * thread_p, cubload::session ** loaddb_session)
+{
+  SESSION_STATE *state_p = NULL;
+
+  state_p = session_get_session_state (thread_p);
+  if (state_p == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  *loaddb_session = state_p->loaddb_session;
 
   return NO_ERROR;
 }

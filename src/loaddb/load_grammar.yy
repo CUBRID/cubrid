@@ -60,6 +60,7 @@ namespace cubload
 
 #include "dbtype_def.h"
 #include "load_driver.hpp"
+#include "load_scanner.hpp"
 
 #undef yylex
 #define yylex driver_.get_scanner ().yylex
@@ -788,5 +789,5 @@ monetary :
 void
 cubload::parser::error (const parser::location_type& l, const std::string& m)
 {
-  driver_.error (l, m);
+  driver_.parser_error (l, m);
 }

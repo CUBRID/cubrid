@@ -21,30 +21,24 @@
  * load_driver.cpp - interface for loader lexer and parser
  */
 
-#include <cassert>
+#include "load_driver.hpp"
 
 #include "error_manager.h"
 #include "language_support.h"
-#include "load_driver.hpp"
-#if defined (SERVER_MODE)
-#include "load_server_loader.hpp"
-#elif defined (SA_MODE)
-#include "load_sa_loader.hpp"
-#endif
+#include "load_common.hpp"
+#include "load_scanner.hpp"
 #include "memory_alloc.h"
 #include "message_catalog.h"
 #include "utility.h"
 
+#include <cassert>
+
 namespace cubload
 {
 
-  driver::driver ()
-#if defined (SERVER_MODE)
-    : m_loader (new server_loader ())
-#elif defined (SA_MODE)
-    : m_loader (new sa_loader ())
-#endif
-    , m_scanner (*this, *m_loader)
+  driver::driver (loader *loader)
+    : m_loader (loader)
+    , m_scanner (new scanner (*this))
     , m_parser (*this, *m_loader)
     , m_semantic_helper (*this)
   {
@@ -53,13 +47,14 @@ namespace cubload
 
   driver::~driver ()
   {
+    delete m_scanner;
     delete m_loader;
   }
 
   int
   driver::parse (std::istream &iss)
   {
-    m_scanner.switch_streams (&iss);
+    m_scanner->switch_streams (&iss);
 
     m_semantic_helper.reset ();
 
@@ -67,24 +62,33 @@ namespace cubload
   }
 
   void
-  driver::error (const location &loc, const std::string &msg)
+  driver::scanner_error (const std::string &msg)
   {
-    m_loader->increment_err_total ();
-#if defined (SA_MODE)
-    fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_SYNTAX_ERR), lineno (),
-	     m_scanner.YYText ());
-#endif // SA_MODE
+    m_loader->on_failure ();
   }
 
-  int driver::lineno ()
+  void
+  driver::parser_error (const location &loc, const std::string &msg)
   {
-    return m_scanner.lineno ();
+    m_loader->on_error ();
+  }
+
+  int
+  driver::scanner_lineno ()
+  {
+    return m_scanner->lineno ();
+  }
+
+  const char *
+  driver::scanner_text ()
+  {
+    return m_scanner->YYText ();
   }
 
   scanner &
   driver::get_scanner ()
   {
-    return m_scanner;
+    return *m_scanner;
   }
 
   driver::semantic_helper &
@@ -98,6 +102,9 @@ namespace cubload
    */
   driver::semantic_helper::semantic_helper (const driver &parent_driver)
     : m_parent_driver (parent_driver)
+    , m_string_pool {}
+    , m_copy_buf_pool {}
+    , m_constant_pool {}
     , m_qstr_buf_pool {}
   {
     initialize ();
@@ -132,9 +139,9 @@ namespace cubload
 	    if (m_qstr_buffer == NULL)
 	      {
 		alloc_qstr_buffer (MAX_QUOTED_STR_BUF_SIZE * 2);
-
 		if (m_qstr_buffer == NULL)
 		  {
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_MEMORY_ERROR, 0);
 		    return;
 		  }
 	      }
@@ -174,6 +181,11 @@ namespace cubload
 	if (m_qstr_buffer == NULL)
 	  {
 	    alloc_qstr_buffer (MAX_QUOTED_STR_BUF_SIZE);
+	    if (m_qstr_buffer == NULL)
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_MEMORY_ERROR, 0);
+		return;
+	      }
 	  }
 
 	m_qstr_buf_p = m_qstr_buffer;
@@ -209,12 +221,18 @@ namespace cubload
 	else
 	  {
 	    str->val = (char *) malloc (m_qstr_buf_idx);
+	    if (str->val == NULL)
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_MEMORY_ERROR, 0);
+	      }
+
 	    str->need_free_val = true;
 	  }
       }
 
     if (str->val == NULL)
       {
+	free_string (&str);
 	return NULL;
       }
 
@@ -238,8 +256,8 @@ namespace cubload
 	return NULL;
       }
 
-    str->size = (std::size_t) m_parent_driver.m_scanner.YYLeng ();
-    const char *text = m_parent_driver.m_scanner.YYText ();
+    str->size = (std::size_t) m_parent_driver.m_scanner->YYLeng ();
+    const char *text = m_parent_driver.m_scanner->YYText ();
 
     if (use_copy_buf_pool (str->size))
       {
@@ -249,11 +267,17 @@ namespace cubload
     else
       {
 	str->val = (char *) malloc (str->size + 1);
+	if (str->val == NULL)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_MEMORY_ERROR, 0);
+	  }
+
 	str->need_free_val = true;
       }
 
     if (str->val == NULL)
       {
+	free_string (&str);
 	return NULL;
       }
 
@@ -273,9 +297,11 @@ namespace cubload
   driver::semantic_helper::make_constructor_spec (string_type *id_name, string_type *arg_list)
   {
     constructor_spec_type *spec = alloc_ldr_type<constructor_spec_type> ();
-
-    spec->id_name= id_name;
-    spec->arg_list = arg_list;
+    if (spec != NULL)
+      {
+	spec->id_name= id_name;
+	spec->arg_list = arg_list;
+      }
 
     return spec;
   }
@@ -285,10 +311,12 @@ namespace cubload
       constructor_spec_type *ctor_spec)
   {
     class_command_spec_type *spec = alloc_ldr_type<class_command_spec_type> ();
-
-    spec->qualifier = qualifier;
-    spec->attr_list = attr_list;
-    spec->ctor_spec = ctor_spec;
+    if (spec != NULL)
+      {
+	spec->qualifier = qualifier;
+	spec->attr_list = attr_list;
+	spec->ctor_spec = ctor_spec;
+      }
 
     return spec;
   }
@@ -306,6 +334,11 @@ namespace cubload
     else
       {
 	con = alloc_ldr_type<constant_type> ();
+	if (con == NULL)
+	  {
+	    return NULL;
+	  }
+
 	con->need_free = true;
       }
 
@@ -411,6 +444,11 @@ namespace cubload
     else
       {
 	str = alloc_ldr_type<string_type> ();
+	if (str == NULL)
+	  {
+	    return NULL;
+	  }
+
 	str->need_free_self = true;
       }
 
@@ -421,10 +459,12 @@ namespace cubload
   driver::semantic_helper::make_object_ref ()
   {
     object_ref_type *ref = alloc_ldr_type<object_ref_type> ();
-
-    ref->class_id = NULL;
-    ref->class_name = NULL;
-    ref->instance_number = NULL;
+    if (ref != NULL)
+      {
+	ref->class_id = NULL;
+	ref->class_name = NULL;
+	ref->instance_number = NULL;
+      }
 
     return ref;
   }
@@ -433,9 +473,11 @@ namespace cubload
   driver::semantic_helper::make_monetary_value (int currency_type, string_type *amount)
   {
     monetary_type *mon_value = alloc_ldr_type<monetary_type> ();
-
-    mon_value->amount = amount;
-    mon_value->currency_type = currency_type;
+    if (mon_value != NULL)
+      {
+	mon_value->amount = amount;
+	mon_value->currency_type = currency_type;
+      }
 
     return mon_value;
   }
@@ -465,15 +507,23 @@ namespace cubload
   {
     m_qstr_buffer_size = size;
     m_qstr_buffer = (char *) malloc (size);
-    assert (m_qstr_buffer != NULL);
   }
 
   void
   driver::semantic_helper::realloc_qstr_buffer (std::size_t new_size)
   {
-    m_qstr_buffer_size = new_size;
-    m_qstr_buffer = (char *) realloc (m_qstr_buffer, m_qstr_buffer_size);
-    assert (m_qstr_buffer != NULL);
+    char *new_qstr_buffer = (char *) realloc (m_qstr_buffer, new_size);
+    if (new_qstr_buffer != NULL)
+      {
+	m_qstr_buffer_size = new_size;
+	m_qstr_buffer = new_qstr_buffer;
+      }
+    else
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_MEMORY_ERROR, 0);
+	// avoid leak, free previously allocated memory
+	free (m_qstr_buffer);
+      }
   }
 
   void
@@ -504,9 +554,15 @@ namespace cubload
   {
     T *ptr = (T *) malloc (sizeof (T));
 
-    assert (ptr != NULL);
-
-    return ptr;
+    if (ptr != NULL)
+      {
+	return ptr;
+      }
+    else
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_MEMORY_ERROR, 0);
+	return NULL;
+      }
   };
 
   template<typename T>

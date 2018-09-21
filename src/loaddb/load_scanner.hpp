@@ -24,13 +24,13 @@
 #ifndef _LOAD_SCANNER_HPP_
 #define _LOAD_SCANNER_HPP_
 
+#include "load_driver.hpp"
+#include "load_grammar.hpp"
+
 #if !defined (yyFlexLexerOnce)
 #include <FlexLexer.h>
 #endif
 #include <istream>
-
-#include "load_driver.hpp"
-#include "load_grammar.hpp"
 
 namespace cubload
 {
@@ -38,10 +38,9 @@ namespace cubload
   class scanner : public yyFlexLexer
   {
     public:
-      explicit scanner (driver &driver, loader &loader)
+      explicit scanner (driver &driver)
 	: yyFlexLexer ()
 	, driver_ (driver)
-	, loader_ (loader)
       {
 	//
       };
@@ -57,19 +56,17 @@ namespace cubload
        */
       virtual int yylex (parser::semantic_type *yylval, parser::location_type *yylloc);
 
-      /**
+      /*
        * Lexer error function
        * @param msg a description of the lexer error.
        */
       void LexerError (const char *msg) override
       {
-	loader_.load_failed_error ();
-	loader_.increment_fails ();
+	driver_.scanner_error (msg);
       }
 
     private:
       driver &driver_;
-      loader &loader_;
   };
 } // namespace cubload
 

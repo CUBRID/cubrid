@@ -21,26 +21,27 @@
  * load_server_loader.cpp: Loader server definitions. Updated using design from fast loaddb prototype
  */
 
-#include <map>
+#include "load_server_loader.hpp"
 
 #include "load_db_value_converter.hpp"
-#include "load_server_loader.hpp"
+#include "load_session.hpp"
 #include "locator_sr.h"
 #include "oid.h"
 #include "thread_manager.hpp"
 #include "xserver_interface.h"
 
+#include <map>
+
 namespace cubload
 {
 
-  server_loader::server_loader ()
+  server_loader::server_loader (session *session)
     : m_class_oid (OID_INITIALIZER)
     , m_attr_ids (NULL)
     , m_attr_info ()
     , m_scan_cache ()
-    , m_err_total (0)
-    , m_total_fails (0)
     , m_scan_cache_started (false)
+    , m_session (session)
   {
     //
   }
@@ -71,8 +72,8 @@ namespace cubload
   {
     // TODO CBRD-21654 refactor this function, as well implement functionality to setup based on loaddb --table cmd option
 
-    HFID hfid;
-    RECDES recdes;
+    hfid hfid;
+    recdes recdes;
     int attr_idx = 0;
     string_type *attr;
     char *string = NULL;
@@ -183,8 +184,6 @@ namespace cubload
 	m_scan_cache_started = false;
       }
 
-    m_err_total = 0;
-    m_total_fails = 0;
     m_class_oid = OID_INITIALIZER;
   }
 
@@ -198,6 +197,11 @@ namespace cubload
   void
   server_loader::process_line (constant_type *cons)
   {
+    if (m_session->aborted ())
+      {
+	return;
+      }
+
     int attr_idx = 0;
     constant_type *c, *save;
 
@@ -212,8 +216,8 @@ namespace cubload
   server_loader::process_constant (constant_type *cons, int attr_idx)
   {
     // TODO CBRD-21654 refactor this function
-    DB_VALUE db_val;
-    OR_ATTRIBUTE *attr = heap_locate_last_attrepr (m_attr_ids[attr_idx], &m_attr_info);
+    db_value db_val;
+    or_attribute *attr = heap_locate_last_attrepr (m_attr_ids[attr_idx], &m_attr_info);
 
     if (attr == NULL)
       {
@@ -301,7 +305,7 @@ namespace cubload
   }
 
   void
-  server_loader::process_monetary_constant (constant_type *cons, TP_DOMAIN *domain, DB_VALUE *db_val)
+  server_loader::process_monetary_constant (constant_type *cons, tp_domain *domain, db_value *db_val)
   {
     monetary_type *mon = (monetary_type *) cons->val;
     string_type *str = mon->amount;
@@ -341,6 +345,11 @@ namespace cubload
   void
   server_loader::finish_line ()
   {
+    if (m_session->aborted ())
+      {
+	return;
+      }
+
     OID oid;
     int force_count = 0;
     int pruning_type = 0;
@@ -366,20 +375,19 @@ namespace cubload
   }
 
   void
-  server_loader::load_failed_error ()
+  server_loader::on_error ()
   {
-    //
+    m_session->error ();
+    // TODO CBRD-21654 implement equivalent of
+    // fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_SYNTAX_ERR),
+    //          scanner_lineno (), scanner_text ());
+    // on SERVER_MODE
   }
 
   void
-  server_loader::increment_err_total ()
+  server_loader::on_failure ()
   {
-    m_err_total++;
-  }
-
-  void
-  server_loader::increment_fails ()
-  {
-    m_total_fails++;
+    // TODO CBRD-21654 implement equivalent of ldr_load_failed_error on SERVER_MODE
+    m_session->abort ();
   }
 } // namespace cubload

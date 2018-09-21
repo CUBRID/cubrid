@@ -28,11 +28,10 @@
 #error Wrong module
 #endif // not SERVER_MODE and not SA_MODE
 
-#include <istream>
-
 #include "load_common.hpp"
 #include "load_grammar.hpp"
-#include "load_scanner.hpp"
+
+#include <istream>
 
 namespace cubload
 {
@@ -44,6 +43,9 @@ namespace cubload
   static const std::size_t CONSTANT_POOL_SIZE = 1024;
   static const std::size_t QUOTED_STR_BUF_POOL_SIZE = 512;
   static const std::size_t MAX_QUOTED_STR_BUF_SIZE = 32 * 1024;
+
+  // forward declaration
+  class scanner;
 
   /*
    * cubload::driver
@@ -73,7 +75,7 @@ namespace cubload
   {
     public:
       // Default constructor.
-      driver ();
+      explicit driver (loader *loader);
 
       // Copy constructor (disabled).
       driver (const driver &copy) = delete;
@@ -87,21 +89,27 @@ namespace cubload
       // Parse functions
       int parse (std::istream &iss);
 
-      /**
+      /*
        * Syntax error functions
        * @param loc where the syntax error is found.
        * @param msg a description of the syntax error.
        */
-      void error (const location &loc, const std::string &msg);
+      void parser_error (const location &loc, const std::string &msg);
 
-      // Returns line number through scanner
-      int lineno ();
+      /*
+       * Lexer error function
+       * @param msg a description of the lexer error.
+       */
+      void scanner_error (const std::string &msg);
+
+      int scanner_lineno (); // Returns line number through scanner
+      const char *scanner_text(); // Returns text matched by the current token through scanner
 
       scanner &get_scanner ();
 
     private:
       loader *m_loader;
-      scanner m_scanner;
+      scanner *m_scanner;
       parser m_parser;
 
     private:

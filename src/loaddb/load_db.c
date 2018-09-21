@@ -501,6 +501,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   int au_save = 0;
   extern bool obt_Enable_autoincrement;
   char log_file_name[PATH_MAX];
+  char object_file_abs_path[PATH_MAX];
   const char *msg_format;
   obt_Enable_autoincrement = false;
   load_args args;
@@ -684,6 +685,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       print_log_msg (1, "%s\n", db_error_string (3));
       util_log_write_errstr ("%s\n", db_error_string (3));
       status = 3;
+      db_end_session ();
       db_shutdown ();
       goto error_return;
     }
@@ -709,6 +711,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	  msg_format = "Error occurred during schema loading." "Aborting current transaction...\n";
 	  util_log_write_errstr (msg_format);
 	  status = 3;
+	  db_end_session ();
 	  db_shutdown ();
 	  print_log_msg (1, " done.\n\nRestart loaddb with '-%c %s:%d' option\n", LOAD_SCHEMA_FILE_S, args.schema_file,
 			 schema_file_start_line);
@@ -734,6 +737,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	  if (ldr_compare_storage_order (schema_file) != NO_ERROR)
 	    {
 	      status = 3;
+	      db_end_session ();
 	      db_shutdown ();
 	      print_log_msg (1, "\nAborting current transaction...\n");
 	      goto error_return;
@@ -748,22 +752,34 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 #if defined (SA_MODE)
   ldr_load (&args, &status, &interrupted);
 #else // !SA_MODE = CS_MODE
-  /* TODO
-     bool load_on_server = ldr_load_on_server ();
-     if (load_on_server)
-     {
-     char object_file_abs_path[PATH_MAX];
-     if (realpath (args.object_file, object_file_abs_path) != NULL)
-     {
-     loaddb_load_object_file (object_file_abs_path);
-     }
-     // in fact there is a longer story here
-     }
-     else
-     {
-     // probably some error
-     }
-   */
+  //bool load_on_server = ldr_load_on_server ();
+  //if (load_on_server)
+  //  {
+  /* *INDENT-OFF* */
+  if (realpath (args.object_file, object_file_abs_path) != NULL)
+    {
+      int total_batches;
+
+      loaddb_init ();
+
+      int ret = loaddb_load_object_file (object_file_abs_path, &total_batches);
+      if (ret == ER_FAILED)
+	{
+	  int batch_size = 100000;
+	  std::string object_file_abs_path_ (object_file_abs_path);
+
+	  batch_handler handler = [] (std::string &batch, int batch_id)
+	  {
+	    loaddb_load_batch (batch, batch_id);
+	  };
+
+	  cubload::split (batch_size, object_file_abs_path_, handler, total_batches);
+	}
+
+      loaddb_destroy (total_batches);
+    }
+  /* *INDENT-ON* */
+  //  }
 #endif // !SA_MODE = CS_MODE
 
   /* if index file is specified, do index creation */
@@ -776,6 +792,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	  msg_format = "Error occurred during index loading." "Aborting current transaction...\n";
 	  util_log_write_errstr (msg_format);
 	  status = 3;
+	  db_end_session ();
 	  db_shutdown ();
 	  print_log_msg (1, " done.\n\nRestart loaddb with '-%c %s:%d' option\n", LOAD_INDEX_FILE_S, args.index_file,
 			 index_file_start_line);
@@ -799,6 +816,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
     }
 
   print_log_msg ((int) args.verbose, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_CLOSING));
+  (void) db_end_session ();
   (void) db_shutdown ();
 
   free_ignoreclasslist ();

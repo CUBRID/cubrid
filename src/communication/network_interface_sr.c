@@ -76,7 +76,8 @@
 #include "dbtype.h"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #include "compile_context.h"
-#include "load_manager.hpp"
+#include "load_session.hpp"
+#include "session.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -113,7 +114,6 @@ static int er_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, in
 static void event_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, UINT64 * diff_stats);
 static void event_log_many_ioreads (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, UINT64 * diff_stats);
 static void event_log_temp_expand_pages (THREAD_ENTRY * thread_p, EXECUTION_INFO * info);
-
 
 /*
  * stran_server_commit_internal - commit transaction on server.
@@ -477,7 +477,6 @@ check_client_capabilities (THREAD_ENTRY * thread_p, int client_cap, int rel_comp
 
   return client_cap;
 }
-
 
 /*
  * server_ping - return that the server is alive
@@ -862,7 +861,6 @@ slocator_fetch_all (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
       free_and_init (desc_ptr);
     }
 }
-
 
 /*
  * slocator_does_exist -
@@ -1885,8 +1883,6 @@ slogtb_set_suppress_repl_on_transaction (THREAD_ENTRY * thread_p, unsigned int r
   (void) or_pack_int (reply, NO_ERROR);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
-
-
 
 /*
  * slogtb_reset_wait_msecs -
@@ -3439,7 +3435,6 @@ sboot_add_volume_extension (THREAD_ENTRY * thread_p, unsigned int rid, char *req
   (void) or_pack_int (reply, (int) volid);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
-
 
 /*
  * sboot_check_db_consistency -
@@ -5101,7 +5096,6 @@ er_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, UIN
       info->sql_plan_text = NULL;
       stat_buf[0] = '\0';
     }
-
 
   if (info->sql_hash_text == NULL
       || qmgr_get_sql_id (thread_p, &sql_id, info->sql_hash_text, strlen (info->sql_hash_text)) != NO_ERROR)
@@ -8015,7 +8009,6 @@ sboot_compact_stop (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
-
 /*
  * ses_posix_create_file -
  *
@@ -8263,7 +8256,6 @@ ses_posix_rename_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), new_path,
 				     path_size);
 }
-
 
 /*
  * ses_posix_read_file -
@@ -9618,12 +9610,27 @@ slocator_demote_class_lock (THREAD_ENTRY * thread_p, unsigned int rid, char *req
 void
 sloaddb_init (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  // TODO CBRD-21654 add implementation
+  int ret;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  SESSION_ID session_id;
+
+  session_get_session_id (thread_p, &session_id);
+
+  /* *INDENT-OFF* */
+  ret = session_set_loaddb_session (thread_p, new cubload::session (session_id));
+  /* *INDENT-ON* */
+
+  or_pack_int (reply, ret);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 void
 sloaddb_load_object_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
+  char *ptr;
+  int ret;
+  int batch_total;
   char *object_file_name;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
@@ -9631,26 +9638,68 @@ sloaddb_load_object_file (THREAD_ENTRY * thread_p, unsigned int rid, char *reque
   or_unpack_string (request, &object_file_name);
 
   /* *INDENT-OFF* */
-  cubload::manager &loaddb_manager = cubload::manager::get_instance ();
+  cubload::session *session = NULL;
   std::string object_file_name_str (object_file_name);
   /* *INDENT-ON* */
 
-  int ret = loaddb_manager.parse_file (*thread_p, object_file_name_str);
+  session_get_loaddb_session (thread_p, &session);
+  assert (session != NULL);
+  ret = session->load_file (*thread_p, object_file_name_str, batch_total);
 
   db_private_free (thread_p, object_file_name);
 
-  or_pack_int (reply, ret);
+  ptr = or_pack_int (reply, ret);
+  or_pack_int (ptr, batch_total);
+
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 void
 sloaddb_load_batch (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  // TODO CBRD-21654 add implementation
+  char *ptr;
+  char *batch;
+  int batch_id;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  ptr = or_unpack_string (request, &batch);
+  or_unpack_int (ptr, &batch_id);
+
+  /* *INDENT-OFF* */
+  cubload::session *session = NULL;
+  std::string batch_str (batch);
+  /* *INDENT-ON* */
+
+  session_get_loaddb_session (thread_p, &session);
+  assert (session != NULL);
+  session->load_batch (*thread_p, batch_str, batch_id);
+
+  db_private_free (thread_p, batch);
+
+  or_pack_int (reply, 0);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 void
 sloaddb_destroy (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  // TODO CBRD-21654 add implementation
+  int batch_total;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  /* *INDENT-OFF* */
+  cubload::session *session = NULL;
+  /* *INDENT-ON* */
+
+  or_unpack_int (request, &batch_total);
+
+  session_get_loaddb_session (thread_p, &session);
+  assert (session != NULL);
+
+  session->wait_for_completion (batch_total);
+  delete session;
+  session_set_loaddb_session (thread_p, NULL);
+
+  or_pack_int (reply, 0);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }

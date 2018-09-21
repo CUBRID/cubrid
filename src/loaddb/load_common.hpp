@@ -32,6 +32,8 @@
 namespace cubload
 {
 
+  using batch_handler = std::function<void (std::string &, int)>;
+
   /*
    * loaddb executables command line arguments
    */
@@ -246,19 +248,14 @@ namespace cubload
       virtual void finish_line () = 0;
 
       /*
-       * Display load failed error
+       * Error handling function
        */
-      virtual void load_failed_error () = 0;
+      virtual void on_error () = 0;
 
       /*
-       * Increment total error counter
+       * Failure handling function
        */
-      virtual void increment_err_total () = 0;
-
-      /*
-       * Increment failures counter
-       */
-      virtual void increment_fails () = 0;
+      virtual void on_failure () = 0;
   };
 
   ///////////////////// common global functions /////////////////////
@@ -271,9 +268,12 @@ namespace cubload
    *    return: NO_ERROR in case of success or ER_FAILED if file does not exists
    *    batch_size(in)      : batch size
    *    object_file_name(in): loaddb object file name (absolute path is required)
-   *    func(in)            : a function for handling/process a batch
+   *    handler(in)         : a function for handling/process a batch
+   *    total_batches(out)  : the total number of batches as of result of split operation
    */
-  int split (int batch_size, std::string &object_file_name, std::function<void (std::string &)> &func);
+  int split (int batch_size, std::string &object_file_name, batch_handler &handler, int &total_batches);
+
+  void handle_batch (std::string &class_line, std::string &batch, int &total_batches, batch_handler &handler);
 
   /*
    * Check if a given string starts with a given prefix

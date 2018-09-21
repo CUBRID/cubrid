@@ -42,16 +42,15 @@ namespace cubload
       void process_line (constant_type *cons) override;
       void finish_line () override;
 
-      void load_failed_error () override;
-      void increment_err_total () override;
-      void increment_fails () override;
+      void on_error () override;
+      void on_failure () override;
   };
 }
 /* *INDENT-ON* */
 
 /* Global variables */
-extern char **ignore_class_list;
 extern int ignore_class_num;
+extern char **ignore_class_list;
 
 /* start load functions */
 extern void ldr_load (cubload::load_args *args, int *status, bool *interrupted);

@@ -223,7 +223,6 @@ length_const_string (const char *cstring, int *strlen)
   return or_packed_string_length (cstring, strlen);
 }
 
-
 /*
  * length_string_with_null_padding - calculate length with null padding
  *
@@ -820,7 +819,7 @@ locator_fetch_lockset (LC_LOCKSET * lockset, LC_COPYAREA ** fetch_copyarea)
       *fetch_copyarea = NULL;
     }
 
-  /* 
+  /*
    * We will not need to send the lockset structure any more. We do not
    * need to receive the classes and objects in the lockset structure
    * any longer
@@ -1318,7 +1317,7 @@ locator_assign_oid_batch (LC_OIDSET * oidset)
   char *buffer, *ptr;
   int req_error;
 
-  /* 
+  /*
    * Build a buffer in which to send and receive the goobers.  We'll
    * reuse the same buffer to receive the data as we used to send it.
    * First word is reserved for the return code.
@@ -2497,7 +2496,7 @@ tran_server_commit (bool retain_lock)
       ptr = or_unpack_int (ptr, &should_conn_reset);
       if (should_conn_reset != 0 && log_does_allow_replication ())
 	{
-	  /* 
+	  /*
 	   * fail-back action
 	   * make the client to reconnect to the active server
 	   */
@@ -2553,7 +2552,7 @@ tran_server_abort (void)
       ptr = or_unpack_int (ptr, &should_conn_reset);
       if (should_conn_reset != 0 && log_does_allow_replication ())
 	{
-	  /* 
+	  /*
 	   * fail-back action
 	   * make the client to reconnect to the active server
 	   */
@@ -3359,7 +3358,6 @@ acl_reload ()
   return NO_ERROR;
 #endif /* !CS_MODE */
 }
-
 
 /*
  * acl_dump -
@@ -6390,7 +6388,6 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream)
 #endif /* !CS_MODE */
 }
 
-
 /*
  * qmgr_execute_query - Send a SERVER_QM_EXECUTE request to the server
  *
@@ -6464,7 +6461,7 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
 	}
     }
 
-  /* pack XASL file id (XASL_ID), number of parameter values, size of the send data, and query execution mode flag as a 
+  /* pack XASL file id (XASL_ID), number of parameter values, size of the send data, and query execution mode flag as a
    * request data */
   ptr = request;
   OR_PACK_XASL_ID (ptr, xasl_id);
@@ -7096,7 +7093,7 @@ serial_get_next_value (DB_VALUE * value, OID * oid_p, int cached_num, int num_al
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  /* 
+  /*
    * If a client wants to generate AUTO_INCREMENT value during client-side
    * insertion, a server should update LAST_INSERT_ID on a session.
    */
@@ -7385,7 +7382,6 @@ catalog_check_rep_dir (OID * class_id, OID * rep_dir_p)
   return success;
 #endif /* !CS_MODE */
 }
-
 
 /*
  * thread_kill_tran_index -
@@ -9317,7 +9313,6 @@ es_posix_rename_file (const char *src_path, const char *metaname, char *new_path
 #endif
 }
 
-
 /*
  * es_posix_get_file_size () - get the size of an esternal file
  *
@@ -9652,7 +9647,7 @@ tran_lock_rep_read (LOCK lock_rr_tran)
 }
 
 /*
- * boot_get_server_timezone_checksum () - get the timezone checksum from the 
+ * boot_get_server_timezone_checksum () - get the timezone checksum from the
  *					  server
  *
  * return : error code or no error
@@ -10034,7 +10029,7 @@ locator_demote_class_lock (const OID * class_oid, LOCK lock, LOCK * ex_lock)
 }
 
 int
-loaddb_load_object_file (const char *file_name)
+loaddb_init ()
 {
 #if defined(CS_MODE)
   int req_error;
@@ -10042,13 +10037,27 @@ loaddb_load_object_file (const char *file_name)
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  // TODO: The current code assumes the file is local.
-  // When server and client is in a host and server can also access it, it is the best case.
-  // However, I don't think this is the only usage.
-  // It might be good to extend loaddb to support not only local files but remote ones.
-  // For local files, it is enough to just send the file name.
-  // For remote files, client reads it and sends contents to server.
-  // We may consider to adopt a qualifier: LOCAL or REMOTE.
+  req_error = net_client_request (NET_SERVER_LD_INIT, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      or_unpack_int (reply, &rc);
+    }
+
+  return rc;
+#else /* CS_MODE */
+  return NO_ERROR;
+#endif /* !CS_MODE */
+}
+
+int
+loaddb_load_object_file (const char *file_name, int *batch_total)
+{
+#if defined(CS_MODE)
+  char *ptr;
+  int req_error;
+  int rc = NO_ERROR;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
 
   int request_size = length_const_string (file_name, NULL);
   char *request = (char *) malloc (request_size);
@@ -10065,6 +10074,70 @@ loaddb_load_object_file (const char *file_name)
 
   free_and_init (request);
 
+  if (!req_error)
+    {
+      ptr = or_unpack_int (reply, &rc);
+      or_unpack_int (ptr, batch_total);
+    }
+
+  return rc;
+#else /* CS_MODE */
+  return NO_ERROR;
+#endif /* !CS_MODE */
+}
+
+int
+loaddb_load_batch (std::string & batch, int batch_id)
+{
+#if defined(CS_MODE)
+  char *ptr;
+  int req_error;
+  int rc = NO_ERROR;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  int request_size = length_const_string (batch.c_str (), NULL) + OR_INT_SIZE;
+  char *request = (char *) malloc (request_size);
+  if (request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, request_size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  ptr = pack_const_string (request, batch.c_str ());
+  or_pack_int (ptr, batch_id);
+
+  req_error = net_client_request (NET_SERVER_LD_LOAD_BATCH, request, request_size, reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+
+  free_and_init (request);
+
+  if (!req_error)
+    {
+      or_unpack_int (reply, &rc);
+    }
+
+  return rc;
+#else /* CS_MODE */
+  return NO_ERROR;
+#endif /* !CS_MODE */
+}
+
+int
+loaddb_destroy (int batch_total)
+{
+#if defined(CS_MODE)
+  int req_error;
+  int rc = NO_ERROR;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
+  char *request = OR_ALIGNED_BUF_START (a_request);
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  or_pack_int (request, batch_total);
+
+  req_error = net_client_request (NET_SERVER_LD_DESTROY, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       or_unpack_int (reply, &rc);

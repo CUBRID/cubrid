@@ -330,7 +330,7 @@ static LDR_CONTEXT *ldr_Current_context = NULL;
 static LDR_CONTEXT ldr_Context;
 
 // Global driver instance for client loader
-static driver ldr_Driver;
+static driver *ldr_Driver;
 
 /*
  * ldr_Hint_locks
@@ -516,7 +516,12 @@ static int ldr_act_add_argument (LDR_CONTEXT *context, const char *name);
 static void ldr_act_set_skip_current_class (char *class_name, size_t size);
 static bool ldr_is_ignore_class (const char *class_name, size_t size);
 
+/* error handling functions */
+static void ldr_increment_err_total ();
+static void ldr_increment_fails (void);
+static void ldr_load_failed_error (void);
 static void ldr_increment_err_count (LDR_CONTEXT *context, int i);
+
 static void ldr_clear_err_count (LDR_CONTEXT *context);
 static void ldr_clear_err_total (LDR_CONTEXT *context);
 static const char *ldr_class_name (LDR_CONTEXT *context);
@@ -995,28 +1000,56 @@ namespace cubload
   }
 
   void
-  sa_loader::load_failed_error ()
+  sa_loader::on_error ()
   {
-    display_error_line (0);
-    fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_LOAD_FAIL));
+    ldr_increment_err_total ();
+    fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_SYNTAX_ERR),
+	     ldr_Driver->scanner_lineno (), ldr_Driver->scanner_text ());
   }
 
   void
-  sa_loader::increment_err_total ()
+  sa_loader::on_failure ()
   {
-    if (ldr_Current_context)
-      {
-	ldr_Current_context->err_total += 1;
-      }
-  }
-
-  void
-  sa_loader::increment_fails ()
-  {
-    Total_fails++;
+    ldr_load_failed_error ();
+    ldr_increment_fails ();
   }
 }
 /* *INDENT-ON* */
+
+/*
+ * ldr_load_failed_error - display load failed error
+ *    return: void
+ */
+static void
+ldr_load_failed_error ()
+{
+  display_error_line (0);
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_LOAD_FAIL));
+}
+
+/*
+ * ldr_increment_err_total - increment err_total count of the given context
+ *    return: void
+ *    context(out): context
+ */
+static void
+ldr_increment_err_total ()
+{
+  if (ldr_Current_context)
+    {
+      ldr_Current_context->err_total += 1;
+    }
+}
+
+/*
+ * ldr_increment_fails - increment Total_fails count
+ *    return: void
+ */
+static void
+ldr_increment_fails ()
+{
+  Total_fails++;
+}
 
 /*
  * ldr_increment_err_count - increment err_count of the given context
@@ -1592,7 +1625,7 @@ static void
 display_error_line (int adjust)
 {
   fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_LINE),
-	   ldr_Driver.lineno () + adjust);
+	   ldr_Driver->scanner_lineno () + adjust);
 }
 
 /*
@@ -4572,7 +4605,7 @@ check_commit (LDR_CONTEXT *context)
 	    {
 	      CHECK_ERR (err, ldr_assign_all_perm_oids ());
 	      CHECK_ERR (err, db_commit_transaction ());
-	      Last_committed_line = ldr_Driver.lineno () - 1;
+	      Last_committed_line = ldr_Driver->scanner_lineno () - 1;
 	      committed_instances = Total_objects + 1;
 	      display_error_line (-1);
 	      fprintf (stderr,
@@ -4607,7 +4640,7 @@ check_commit (LDR_CONTEXT *context)
 			     msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_COMMITTING));
 	      CHECK_ERR (err, ldr_assign_all_perm_oids ());
 	      CHECK_ERR (err, db_commit_transaction ());
-	      Last_committed_line = ldr_Driver.lineno () - 1;
+	      Last_committed_line = ldr_Driver->scanner_lineno () - 1;
 	      context->commit_counter = context->args->periodic_commit;
 
 	      /* Invoke post commit callback function */
@@ -6142,8 +6175,11 @@ ldr_load (load_args *args, int *status, bool *interrupted)
   int fails = 0;
   int lastcommit = 0;
   int ldr_init_ret = NO_ERROR;
+
+  // TODO CBRD-21654
   /* *INDENT-OFF* */
   std::ifstream object_file (args->object_file);
+  ldr_Driver = new driver (new cubload::sa_loader ());
   /* *INDENT-ON* */
 
   locator_Dont_check_foreign_key = true;
@@ -6153,7 +6189,6 @@ ldr_load (load_args *args, int *status, bool *interrupted)
   /* set the flag to indicate what type of interrupts to raise If logging has been disabled set commit flag. If
    * logging is enabled set abort flag. */
 
-  /* *INDENT-OFF* */
   if (args->ignore_logging)
     {
       ldr_Interrupt_type = LDR_STOP_AND_COMMIT_INTERRUPT;
@@ -6162,7 +6197,6 @@ ldr_load (load_args *args, int *status, bool *interrupted)
     {
       ldr_Interrupt_type = LDR_STOP_AND_ABORT_INTERRUPT;
     }
-  /* *INDENT-ON* */
 
   if (args->periodic_commit)
     {
@@ -6179,7 +6213,7 @@ ldr_load (load_args *args, int *status, bool *interrupted)
 	{
 	  ldr_init_ret = ldr_init_class_spec (args->table_name);
 	}
-      ldr_Driver.parse (object_file);
+      ldr_Driver->parse (object_file);
       ldr_stats (&errors, &objects, &defaults, &lastcommit, &fails);
     }
   else
@@ -6239,7 +6273,7 @@ ldr_load (load_args *args, int *status, bool *interrupted)
 		  ldr_init_class_spec (args->table_name);
 		}
 
-	      ldr_Driver.parse (object_file);
+	      ldr_Driver->parse (object_file);
 	      ldr_stats (&errors, &objects, &defaults, &lastcommit, &fails);
 
 	      if (errors)
@@ -6311,6 +6345,11 @@ ldr_load (load_args *args, int *status, bool *interrupted)
 
   ldr_final ();
 
+  if (ldr_Driver != NULL)
+    {
+      delete ldr_Driver;
+      ldr_Driver = NULL;
+    }
   if (object_file.is_open ())
     {
       object_file.close ();

@@ -407,5 +407,8 @@ extern int netcl_spacedb (SPACEDB_ALL * spaceall, SPACEDB_ONEVOL ** spacevols, S
 
 extern int locator_demote_class_lock (const OID * class_oid, LOCK lock, LOCK * ex_lock);
 
-extern int loaddb_load_object_file (const char *file_name);
+extern int loaddb_init ();
+extern int loaddb_load_object_file (const char *file_name, int *batch_total);
+extern int loaddb_load_batch (std::string & batch, int batch_id);
+extern int loaddb_destroy (int batch_total);
 #endif /* _NETWORK_INTERFACE_CL_H_ */
