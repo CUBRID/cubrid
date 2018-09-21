@@ -21,8 +21,6 @@
  * load_object.c: simplified object descriptions.
  */
 
-#ident "$Id$"
-
 #include "config.h"
 
 #include <stdio.h>
@@ -59,8 +57,6 @@
 #include "porting.h"
 #endif
 
-#include "dbtype.h"
-
 #define MIGRATION_CHUNK 4096
 static char migration_buffer[MIGRATION_CHUNK];
 
@@ -81,7 +77,6 @@ static int itoa_print (TEXT_OUTPUT * tout, DB_BIGINT value, int base);
 static int fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value);
 static void init_load_err_filter (void);
 static void default_clear_err_filter (void);
-
 
 /*
  * make_desc_obj - Makes an object descriptor for a particular class.
@@ -134,7 +129,6 @@ make_desc_obj (SM_CLASS * class_)
   return obj;
 }
 
-
 /*
  * desc_free - Frees the storage for an object descriptor.
  *    return: none
@@ -164,7 +158,6 @@ desc_free (DESC_OBJ * obj)
     }
   free_and_init (obj);
 }
-
 
 /*
  * object_disk_size - Calculates the total number of bytes required for the
@@ -241,7 +234,6 @@ re_check:
   return (size);
 }
 
-
 /*
  * put_varinfo - Writes the variable offset table for an object defined by
  * an object descriptor structure.
@@ -310,7 +302,6 @@ put_varinfo (OR_BUF * buf, DESC_OBJ * obj, int offset_size)
     }
 }
 
-
 /*
  * put_attributes - Writes the attribute values for an object defined by
  * an object descriptor structure.
@@ -341,7 +332,7 @@ put_attributes (OR_BUF * buf, DESC_OBJ * obj)
 	}
     }
 
-  /* 
+  /*
    * Write fixed attribute values, if unbound, leave zero or garbage
    * it doesn't matter, if the attribute is bound, set the appropriate
    * bit in the bound bit array
@@ -401,7 +392,7 @@ put_attributes (OR_BUF * buf, DESC_OBJ * obj)
   if (bits != NULL)
     {
       or_put_data (buf, bits, bsize);
-      /* 
+      /*
        * We do not need the bits array anymore, lets free it now.
        * the pr_data_writeval() function can perform a longjmp()
        * back to the calling function if we get an overflow,
@@ -440,7 +431,6 @@ error:
     }
   or_abort (buf);
 }
-
 
 /*
  * text_print_flush - flush TEXT_OUTPUT contents to file
@@ -522,7 +512,6 @@ exit_on_error:
   goto exit_on_end;
 }
 
-
 /*
  * desc_obj_to_disk - transforms the object into a disk record for eventual
  * storage.
@@ -602,7 +591,7 @@ desc_obj_to_disk (DESC_OBJ * obj, RECDES * record, bool * index_flag)
     {
       assert (false);		/* impossible case */
 
-      /* 
+      /*
        * error, currently can only be from buffer overflow
        * might be nice to store the "size guess" from the class
        * SHOULD BE USING TF_STATUS LIKE tf_mem_to_disk, need to
@@ -616,7 +605,6 @@ desc_obj_to_disk (DESC_OBJ * obj, RECDES * record, bool * index_flag)
   *index_flag = has_index;
   return (error);
 }
-
 
 /*
  * get_desc_current - reads the disk representation of an object and constructs
@@ -708,7 +696,6 @@ get_desc_current (OR_BUF * buf, SM_CLASS * class_, DESC_OBJ * obj, int bound_bit
     }
 }
 
-
 /*
  * find_current_attribute - locates an attribute definition in a class.
  *    return: attribute structure
@@ -729,7 +716,6 @@ find_current_attribute (SM_CLASS * class_, int id)
     }
   return NULL;
 }
-
 
 /*
  * get_desc_old - loads the disk representation of an object into an object
@@ -827,8 +813,7 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bo
       padded_size = DB_ATT_ALIGN (fixed_size);
       or_advance (buf, (padded_size - fixed_size));
 
-
-      /* 
+      /*
        * sigh, we now have to process the bound bits in much the same way as the
        * attributes above, it would be nice if these could be done in parallel
        * but we don't have the fixed size of the old representation so we
@@ -882,7 +867,7 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bo
 	    }
 	}
 
-      /* 
+      /*
        * initialize new values
        */
       for (i = 0, att = class_->attributes; att != NULL; i++, att = (SM_ATTRIBUTE *) att->header.next)
@@ -897,7 +882,7 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bo
 	    }
 	  if (found == NULL)
 	    {
-	      /* 
+	      /*
 	       * formerly used copy_value which converted MOP values to OID
 	       * values, is this really necessary ?
 	       */
@@ -929,7 +914,6 @@ abort_on_error:
     }
   or_abort (buf);
 }
-
 
 /*
  * desc_disk_to_obj - similar to tf_disk_to_mem except that it builds an
@@ -1033,7 +1017,6 @@ desc_disk_to_obj (MOP classop, SM_CLASS * class_, RECDES * record, DESC_OBJ * ob
   return error;
 }
 
-
 /*
  * fprint_set - Print the contents of a real DB_SET (not a set descriptor).
  *    return: void
@@ -1124,7 +1107,7 @@ exit_on_error:
 static int
 bfmt_print (int bfmt, const DB_VALUE * the_db_bit, char *string, int max_size)
 {
-  /* 
+  /*
    * Description:
    */
   int length = 0;
@@ -1255,7 +1238,7 @@ print_quoted_str (TEXT_OUTPUT * tout, char *str, int len, int max_token_len)
 	  write_len = CAST_STRLEN (internal_quote_p - p + 1);
 	  CHECK_PRINT_ERROR (text_print (tout, p, write_len, NULL));
 	  left_nbytes -= (write_len + 1);
-	  /* 
+	  /*
 	   * write internal "'" as "''", check for still has something to
 	   * work
 	   */
@@ -1615,7 +1598,6 @@ exit_on_error:
   CHECK_EXIT_ERROR (error);
   goto exit_on_end;
 }
-
 
 /*
  * desc_value_fprint - Print a description of the given value.

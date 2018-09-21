@@ -18,14 +18,19 @@
  */
 
 /*
- * driver.cpp - interface for loader lexer and parser
+ * load_driver.cpp - interface for loader lexer and parser
  */
 
 #include <cassert>
 
-#include "driver.hpp"
 #include "error_manager.h"
 #include "language_support.h"
+#include "load_driver.hpp"
+#if defined (SERVER_MODE)
+#include "load_server_loader.hpp"
+#elif defined (SA_MODE)
+#include "load_sa_loader.hpp"
+#endif
 #include "memory_alloc.h"
 #include "message_catalog.h"
 #include "utility.h"
@@ -34,8 +39,13 @@ namespace cubload
 {
 
   driver::driver ()
-    : m_scanner ()
-    , m_parser (*this)
+#if defined (SERVER_MODE)
+    : m_loader (new server_loader ())
+#elif defined (SA_MODE)
+    : m_loader (new sa_loader ())
+#endif
+    , m_scanner (*this, *m_loader)
+    , m_parser (*this, *m_loader)
     , m_semantic_helper (*this)
   {
     //
@@ -43,7 +53,7 @@ namespace cubload
 
   driver::~driver ()
   {
-    //
+    delete m_loader;
   }
 
   int
@@ -59,9 +69,11 @@ namespace cubload
   void
   driver::error (const location &loc, const std::string &msg)
   {
-    ldr_increment_err_total (ldr_Current_context);
+    m_loader->increment_err_total ();
+#if defined (SA_MODE)
     fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_SYNTAX_ERR), lineno (),
 	     m_scanner.YYText ());
+#endif // SA_MODE
   }
 
   int driver::lineno ()
@@ -137,16 +149,16 @@ namespace cubload
     m_qstr_buf_p[m_qstr_buf_idx++] = c;
   }
 
-  string_t *
-  driver::semantic_helper::append_string_list (string_t *head, string_t *tail)
+  string_type *
+  driver::semantic_helper::append_string_list (string_type *head, string_type *tail)
   {
-    return append_list<string_t> (head, tail);
+    return append_list<string_type> (head, tail);
   }
 
-  constant_t *
-  driver::semantic_helper::append_constant_list (constant_t *head, constant_t *tail)
+  constant_type *
+  driver::semantic_helper::append_constant_list (constant_type *head, constant_type *tail)
   {
-    return append_list<constant_t> (head, tail);
+    return append_list<constant_type> (head, tail);
   }
 
   void
@@ -154,7 +166,7 @@ namespace cubload
   {
     if (m_qstr_buf_pool_idx < QUOTED_STR_BUF_POOL_SIZE)
       {
-	m_qstr_buf_p = & (m_qstr_buf_pool[m_qstr_buf_pool_idx++][0]);
+	m_qstr_buf_p = &m_qstr_buf_pool[m_qstr_buf_pool_idx++][0];
 	m_use_qstr_buffer = false;
       }
     else
@@ -171,10 +183,10 @@ namespace cubload
     m_qstr_buf_idx = 0;
   }
 
-  string_t *
+  string_type *
   driver::semantic_helper::make_string_by_buffer ()
   {
-    string_t *str = make_string ();
+    string_type *str = make_string ();
     if (str == NULL)
       {
 	return NULL;
@@ -191,7 +203,7 @@ namespace cubload
       {
 	if (use_copy_buf_pool (str->size))
 	  {
-	    str->val = & (m_copy_buf_pool[m_copy_buf_pool_idx++][0]);
+	    str->val = &m_copy_buf_pool[m_copy_buf_pool_idx++][0];
 	    str->need_free_val = false;
 	  }
 	else
@@ -210,17 +222,17 @@ namespace cubload
 
     if (!is_utf8_valid (str))
       {
-	ldr_string_free (&str);
+	free_string (&str);
 	return NULL;
       }
 
     return str;
   }
 
-  string_t *
+  string_type *
   driver::semantic_helper::make_string_by_yytext ()
   {
-    string_t *str = make_string ();
+    string_type *str = make_string ();
     if (str == NULL)
       {
 	return NULL;
@@ -231,7 +243,7 @@ namespace cubload
 
     if (use_copy_buf_pool (str->size))
       {
-	str->val = & (m_copy_buf_pool[m_copy_buf_pool_idx++][0]);
+	str->val = &m_copy_buf_pool[m_copy_buf_pool_idx++][0];
 	str->need_free_val = false;
       }
     else
@@ -250,28 +262,29 @@ namespace cubload
 
     if (!is_utf8_valid (str))
       {
-	ldr_string_free (&str);
+	free_string (&str);
 	return NULL;
       }
 
     return str;
   }
 
-  ctor_spec_t *
-  driver::semantic_helper::make_constructor_spec (string_t *idname, string_t *arg_list)
+  constructor_spec_type *
+  driver::semantic_helper::make_constructor_spec (string_type *id_name, string_type *arg_list)
   {
-    ctor_spec_t *spec = alloc_ldr_type<ctor_spec_t> ();
+    constructor_spec_type *spec = alloc_ldr_type<constructor_spec_type> ();
 
-    spec->idname = idname;
+    spec->id_name= id_name;
     spec->arg_list = arg_list;
 
     return spec;
   }
 
-  class_cmd_spec_t *
-  driver::semantic_helper::make_class_command_spec (int qualifier, string_t *attr_list, ctor_spec_t *ctor_spec)
+  class_command_spec_type *
+  driver::semantic_helper::make_class_command_spec (int qualifier, string_type *attr_list,
+      constructor_spec_type *ctor_spec)
   {
-    class_cmd_spec_t *spec = alloc_ldr_type<class_cmd_spec_t> ();
+    class_command_spec_type *spec = alloc_ldr_type<class_command_spec_type> ();
 
     spec->qualifier = qualifier;
     spec->attr_list = attr_list;
@@ -280,19 +293,19 @@ namespace cubload
     return spec;
   }
 
-  constant_t *
+  constant_type *
   driver::semantic_helper::make_constant (int type, void *val)
   {
-    constant_t *con = NULL;
+    constant_type *con = NULL;
 
     if (m_constant_pool_idx < CONSTANT_POOL_SIZE)
       {
-	con = & (m_constant_pool[m_constant_pool_idx++]);
+	con = &m_constant_pool[m_constant_pool_idx++];
 	con->need_free = false;
       }
     else
       {
-	con = alloc_ldr_type<constant_t> ();
+	con = alloc_ldr_type<constant_type> ();
 	con->need_free = true;
       }
 
@@ -302,31 +315,53 @@ namespace cubload
     return con;
   }
 
-  object_ref_t *
-  driver::semantic_helper::make_object_ref_by_class_id (string_t *class_id)
+  object_ref_type *
+  driver::semantic_helper::make_object_ref_by_class_id (string_type *class_id)
   {
-    object_ref_t *ref = make_object_ref ();
+    object_ref_type *ref = make_object_ref ();
 
     ref->class_id = class_id;
 
     return ref;
   }
 
-  object_ref_t *
-  driver::semantic_helper::make_object_ref_by_class_name (string_t *class_name)
+  object_ref_type *
+  driver::semantic_helper::make_object_ref_by_class_name (string_type *class_name)
   {
-    object_ref_t *ref = make_object_ref ();
+    object_ref_type *ref = make_object_ref ();
 
     ref->class_name = class_name;
 
     return ref;
   }
 
-  constant_t *
-  driver::semantic_helper::make_monetary_constant (int currency_type, string_t *amount)
+  constant_type *
+  driver::semantic_helper::make_monetary_constant (int currency_type, string_type *amount)
   {
-    monetary_t *mon_value = make_monetary_value (currency_type, amount);
+    monetary_type *mon_value = make_monetary_value (currency_type, amount);
     return make_constant (LDR_MONETARY, mon_value);
+  }
+
+  constant_type *
+  driver::semantic_helper::make_real (string_type *str)
+  {
+    if (str == NULL || str->val == NULL)
+      {
+	return NULL;
+      }
+
+    if (strchr (str->val, 'F') != NULL || strchr (str->val, 'f') != NULL)
+      {
+	return make_constant (LDR_FLOAT, str);
+      }
+    else if (strchr (str->val, 'E') != NULL || strchr (str->val, 'e') != NULL)
+      {
+	return make_constant (LDR_DOUBLE, str);
+      }
+    else
+      {
+	return make_constant (LDR_NUMERIC, str);
+      }
   }
 
   void
@@ -363,29 +398,29 @@ namespace cubload
     m_qstr_buffer_size = 0;
   }
 
-  string_t *
+  string_type *
   driver::semantic_helper::make_string ()
   {
-    string_t *str = NULL;
+    string_type *str = NULL;
 
     if (m_string_pool_idx < STRING_POOL_SIZE)
       {
-	str = & (m_string_pool[m_string_pool_idx++]);
+	str = &m_string_pool[m_string_pool_idx++];
 	str->need_free_self = false;
       }
     else
       {
-	str = alloc_ldr_type<string_t> ();
+	str = alloc_ldr_type<string_type> ();
 	str->need_free_self = true;
       }
 
     return str;
   }
 
-  object_ref_t *
+  object_ref_type *
   driver::semantic_helper::make_object_ref ()
   {
-    object_ref_t *ref = alloc_ldr_type<object_ref_t> ();
+    object_ref_type *ref = alloc_ldr_type<object_ref_type> ();
 
     ref->class_id = NULL;
     ref->class_name = NULL;
@@ -394,10 +429,10 @@ namespace cubload
     return ref;
   }
 
-  monetary_t *
-  driver::semantic_helper::make_monetary_value (int currency_type, string_t *amount)
+  monetary_type *
+  driver::semantic_helper::make_monetary_value (int currency_type, string_type *amount)
   {
-    monetary_t *mon_value = alloc_ldr_type<monetary_t> ();
+    monetary_type *mon_value = alloc_ldr_type<monetary_type> ();
 
     mon_value->amount = amount;
     mon_value->currency_type = currency_type;
@@ -406,11 +441,11 @@ namespace cubload
   }
 
   bool
-  driver::semantic_helper::is_utf8_valid (string_t *str)
+  driver::semantic_helper::is_utf8_valid (string_type *str)
   {
     char *invalid_pos = NULL;
 
-    if (intl_check_string (str->val, str->size, &invalid_pos, LANG_SYS_CODESET) != INTL_UTF8_VALID)
+    if (intl_check_string (str->val, (int) str->size, &invalid_pos, LANG_SYS_CODESET) != INTL_UTF8_VALID)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_CHAR, 1, invalid_pos - str->val);
 	return false;

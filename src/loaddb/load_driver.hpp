@@ -18,36 +18,32 @@
  */
 
 /*
- * driver.hpp - interface for loader lexer and parser
+ * load_driver.hpp - interface for loader lexer and parser
  */
 
-#ifndef _DRIVER_HPP_
-#define _DRIVER_HPP_
+#ifndef _LOAD_DRIVER_HPP_
+#define _LOAD_DRIVER_HPP_
+
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#error Wrong module
+#endif // not SERVER_MODE and not SA_MODE
 
 #include <istream>
 
-#include "loader.h"
-#include "loader_grammar.hpp"
-#include "scanner.hpp"
+#include "load_common.hpp"
+#include "load_grammar.hpp"
+#include "load_scanner.hpp"
 
 namespace cubload
 {
 
   // Constants sizes
-  const std::size_t STRING_POOL_SIZE = 1024;
-  const std::size_t MAX_COPY_BUF_SIZE = 256;
-  const std::size_t COPY_BUF_POOL_SIZE = 512;
-  const std::size_t CONSTANT_POOL_SIZE = 1024;
-  const std::size_t QUOTED_STR_BUF_POOL_SIZE = 512;
-  const std::size_t MAX_QUOTED_STR_BUF_SIZE = 32 * 1024;
-
-  // type aliases
-  using string_t = LDR_STRING;
-  using constant_t = LDR_CONSTANT;
-  using object_ref_t = LDR_OBJECT_REF;
-  using monetary_t = LDR_MONETARY_VALUE;
-  using ctor_spec_t = LDR_CONSTRUCTOR_SPEC;
-  using class_cmd_spec_t = LDR_CLASS_COMMAND_SPEC;
+  static const std::size_t STRING_POOL_SIZE = 1024;
+  static const std::size_t MAX_COPY_BUF_SIZE = 256;
+  static const std::size_t COPY_BUF_POOL_SIZE = 512;
+  static const std::size_t CONSTANT_POOL_SIZE = 1024;
+  static const std::size_t QUOTED_STR_BUF_POOL_SIZE = 512;
+  static const std::size_t MAX_QUOTED_STR_BUF_SIZE = 32 * 1024;
 
   /*
    * cubload::driver
@@ -104,6 +100,7 @@ namespace cubload
       scanner &get_scanner ();
 
     private:
+      loader *m_loader;
       scanner m_scanner;
       parser m_parser;
 
@@ -122,18 +119,18 @@ namespace cubload
        *    TODO
        *    Normally all functionality from semantic_helper should be used only by grammar and not by both lexer & grammar,
        *    Since it is used now by both (legacy behaviour) it is included into driver. Later as improvement we can add a
-       *    subclass of cubload::parser (see loader_grammar.hpp) and move functionality of this class into parser subclass.
+       *    subclass of cubload::parser (see load_grammar.hpp) and move functionality of this class into parser subclass.
        *
        * how to use
        *    Interaction with semantic_helper class is done through an instance of driver e.g.
        *
        *    cubload::driver driver;
-       *    LDR_CONSTANT *null_const = driver.get_semantic_helper ()->make_constant (LDR_NULL, NULL);
+       *    constant_type *null_const = driver.get_semantic_helper ()->make_constant (LDR_NULL, NULL);
        */
       class semantic_helper
       {
 	public:
-	  semantic_helper (const driver &parent_driver);
+	  explicit semantic_helper (const driver &parent_driver);
 
 	  // Copy constructor (disabled).
 	  semantic_helper (const semantic_helper &copy) = delete;
@@ -145,20 +142,22 @@ namespace cubload
 	  virtual ~semantic_helper ();
 
 	  void append_char (char c);
-	  string_t *append_string_list (string_t *head, string_t *tail);
-	  constant_t *append_constant_list (constant_t *head, constant_t *tail);
+	  string_type *append_string_list (string_type *head, string_type *tail);
+	  constant_type *append_constant_list (constant_type *head, constant_type *tail);
 
 	  void set_quoted_string_buffer ();
-	  string_t *make_string_by_buffer ();
-	  string_t *make_string_by_yytext ();
+	  string_type *make_string_by_buffer ();
+	  string_type *make_string_by_yytext ();
 
-	  ctor_spec_t *make_constructor_spec (string_t *idname, string_t *arg_list);
-	  class_cmd_spec_t *make_class_command_spec (int qualifier, string_t *attr_list, ctor_spec_t *ctor_spec);
+	  constructor_spec_type *make_constructor_spec (string_type *id_name, string_type *arg_list);
+	  class_command_spec_type *make_class_command_spec (int qualifier, string_type *attr_list,
+	      constructor_spec_type *ctor_spec);
 
-	  constant_t *make_constant (int type, void *val);
-	  object_ref_t *make_object_ref_by_class_id (string_t *class_id);
-	  object_ref_t *make_object_ref_by_class_name (string_t *class_name);
-	  constant_t *make_monetary_constant (int currency_type, string_t *amount);
+	  constant_type *make_constant (int type, void *val);
+	  object_ref_type *make_object_ref_by_class_id (string_type *class_id);
+	  object_ref_type *make_object_ref_by_class_name (string_type *class_name);
+	  constant_type *make_monetary_constant (int currency_type, string_type *amount);
+	  constant_type *make_real (string_type *str);
 
 	  void reset_pool_indexes ();
 	  bool in_instance_line ();
@@ -172,7 +171,7 @@ namespace cubload
 	  bool m_in_instance_line;
 
 	  std::size_t m_string_pool_idx;
-	  string_t m_string_pool[STRING_POOL_SIZE];
+	  string_type m_string_pool[STRING_POOL_SIZE];
 
 	  // buffer pool for copying yytext and qstr_buffer
 	  std::size_t m_copy_buf_pool_idx;
@@ -180,7 +179,7 @@ namespace cubload
 
 	  // constant pool
 	  std::size_t m_constant_pool_idx;
-	  constant_t m_constant_pool[CONSTANT_POOL_SIZE];
+	  constant_type m_constant_pool[CONSTANT_POOL_SIZE];
 
 	  // quoted string buffer pool
 	  char *m_qstr_buffer; // using when pool overflow
@@ -192,10 +191,10 @@ namespace cubload
 	  std::size_t m_qstr_buffer_size;
 
 	  /* private functions */
-	  string_t *make_string ();
-	  object_ref_t *make_object_ref ();
-	  monetary_t *make_monetary_value (int currency_type, string_t *amount);
-	  bool is_utf8_valid (string_t *str);
+	  string_type *make_string ();
+	  object_ref_type *make_object_ref ();
+	  monetary_type *make_monetary_value (int currency_type, string_type *amount);
+	  bool is_utf8_valid (string_type *str);
 	  bool use_copy_buf_pool (std::size_t str_size);
 	  void alloc_qstr_buffer (std::size_t size);
 	  void realloc_qstr_buffer (std::size_t new_size);
@@ -219,4 +218,4 @@ namespace cubload
 
 } // namespace cubload
 
-#endif // _DRIVER_HPP_
+#endif /* _LOAD_DRIVER_HPP_ */

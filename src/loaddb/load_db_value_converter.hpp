@@ -17,28 +17,25 @@
  *
  */
 
-
 /*
- * loader_disk.h: loader transformer disk access module
+ * load_db_value_converter.hpp - conversion from string to DB_VALUE
  */
 
-#ifndef _LOADER_DISK_H_
-#define _LOADER_DISK_H_
+#ifndef _LOAD_DB_VALUE_CONVERTER_HPP_
+#define _LOAD_DB_VALUE_CONVERTER_HPP_
 
-#ident "$Id$"
+#include "dbtype_def.h"
+#include "load_common.hpp"
 
-#include "load_object.h"
+// forward declaration
+struct tp_domain;
 
-/* Module control */
-extern int disk_init (void);
-extern void disk_final (void);
+namespace cubload
+{
+  typedef void (*conv_func) (const char *, const tp_domain *, db_value *);
 
-/* Instance operations */
-extern int disk_reserve_instance (MOP classop, OID * oid);
-extern int disk_insert_instance (MOP classop, DESC_OBJ * obj, OID * oid);
-extern int disk_update_instance (MOP classop, DESC_OBJ * obj, OID * oid);
-#if defined (ENABLE_UNUSED_FUNCTION)
-extern int disk_insert_instance_using_mobj (MOP classop, MOBJ classobj, MOBJ obj, OID * oid);
-extern int disk_update_instance_using_mobj (MOP classop, MOBJ classobj, MOBJ obj, OID * oid);
-#endif
-#endif /* _LOADER_DISK_H_ */
+  conv_func &get_conv_func (const data_type ldr_type, const DB_TYPE db_type);
+
+} // namespace cubload
+
+#endif /* _LOAD_DB_VALUE_CONVERTER_HPP_ */

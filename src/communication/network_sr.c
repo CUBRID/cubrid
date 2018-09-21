@@ -833,6 +833,23 @@ net_server_init (void)
   req_p->processing_function = netsr_spacedb;
   req_p->name = "NET_SERVER_SPACEDB";
 
+  /* loaddb server requests */
+  req_p = &net_Requests[NET_SERVER_LD_INIT];
+  req_p->processing_function = sloaddb_init;
+  req_p->name = "NET_SERVER_LD_INIT";
+
+  req_p = &net_Requests[NET_SERVER_LD_LOAD_OBJECT_FILE];
+  req_p->processing_function = sloaddb_load_object_file;
+  req_p->name = "NET_SERVER_LD_LOAD_OBJECT_FILE";
+
+  req_p = &net_Requests[NET_SERVER_LD_LOAD_BATCH];
+  req_p->processing_function = sloaddb_load_batch;
+  req_p->name = "NET_SERVER_LD_LOAD_BATCH";
+
+  req_p = &net_Requests[NET_SERVER_LD_DESTROY];
+  req_p->processing_function = sloaddb_destroy;
+  req_p->name = "NET_SERVER_LD_DESTROY";
+
   /* checksumdb replication */
   req_p = &net_Requests[NET_SERVER_CHKSUM_REPL];
   req_p->action_attribute = IN_TRANSACTION;

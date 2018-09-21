@@ -18,17 +18,16 @@
  */
 
 /*
- * loader_lexer.l - loader lexer file
+ * load_lexer.l - loader lexer file
  */
 
 /*** C/C++ Declarations ***/
 %{
-#include "driver.hpp"
+#include "load_driver.hpp"
 
 #undef YY_DECL
-#define YY_DECL                                                                                                \
-  int cubload::scanner::yylex (cubload::parser::semantic_type* yylval, cubload::parser::location_type* yylloc, \
-			       cubload::driver &driver_)
+#define YY_DECL \
+  int cubload::scanner::yylex (cubload::parser::semantic_type* yylval, cubload::parser::location_type* yylloc)
 
 /* typedef to make the returns for the tokens shorter */
 using token = cubload::parser::token;
@@ -57,6 +56,7 @@ using token = cubload::parser::token;
 %option noyywrap
 %option nounput
 %option noinput
+%option nounistd
 
 %option yyclass="cubload::scanner"
 
@@ -215,7 +215,7 @@ using token = cubload::parser::token;
 
 [0-9]+: {
     PRINT ("OID %s\n", yytext);
-    yylval->intval = atoi (yytext);
+    yylval->int_val = atoi (yytext);
     return token::OID_;
 }
 

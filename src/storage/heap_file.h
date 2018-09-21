@@ -98,7 +98,7 @@
  */
 
 /* Heap MVCC delete informations. This structure keep informations about
- * the current row. 
+ * the current row.
  */
 typedef struct heap_mvcc_delete_info HEAP_MVCC_DELETE_INFO;
 struct heap_mvcc_delete_info
@@ -134,7 +134,7 @@ struct heap_scancache
   int debug_initpattern;	/* A pattern which indicates that the structure has been initialized */
   HEAP_SCANCACHE_NODE node;	/* current scanned heap file information */
   LOCK page_latch;		/* Indicates the latch/lock to be acquired on heap pages. Its value may be NULL_LOCK
-				 * when it is secure to skip lock on heap pages. For example, the class of the heap has 
+				 * when it is secure to skip lock on heap pages. For example, the class of the heap has
 				 * been locked with either S_LOCK, SIX_LOCK, or X_LOCK */
   bool cache_last_fix_page;	/* Indicates if page buffers and memory are cached (left fixed) */
   PGBUF_WATCHER page_watcher;
@@ -283,7 +283,7 @@ struct heap_operation_context
   /* logical operation output */
   OID res_oid;			/* object identifier (if operation generates one) */
   bool is_logical_old;		/* true if initial record was not REC_ASSIGN_ADDRESS */
-  bool is_redistribute_insert_with_delid;	/* true if the insert is due to a partition redistribute data operation 
+  bool is_redistribute_insert_with_delid;	/* true if the insert is due to a partition redistribute data operation
 						 * and has a valid delid */
 
   /* Performance stat dump. */

@@ -26,14 +26,10 @@ set(EXECUTABLE_SOURCES
   ${EXECUTABLES_DIR}/util_cs.c
   ${EXECUTABLES_DIR}/util_common.c
   ${EXECUTABLES_DIR}/compactdb.c
-  ${EXECUTABLES_DIR}/loaddb.c
   ${EXECUTABLES_DIR}/unloaddb.c
-  ${EXECUTABLES_DIR}/load_object.c
   ${EXECUTABLES_DIR}/unload_object.c
   ${EXECUTABLES_DIR}/unload_schema.c
   ${EXECUTABLES_DIR}/file_hash.c
-  ${EXECUTABLES_DIR}/loader.c
-  ${EXECUTABLES_DIR}/loader_object_table.c
   )
 
 set(COMPAT_SOURCES
@@ -42,7 +38,7 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/db_admin.c
   ${COMPAT_DIR}/db_class.c
   ${COMPAT_DIR}/db_date.c
-  ${COMPAT_DIR}/db_elo.c 
+  ${COMPAT_DIR}/db_elo.c
   ${COMPAT_DIR}/db_info.c
   ${COMPAT_DIR}/db_json.cpp
   ${COMPAT_DIR}/db_macro.c
@@ -243,7 +239,7 @@ set(REPLICATION_SOURCES
   ${REPLICATION_DIR}/log_consumer.cpp
   ${REPLICATION_DIR}/log_generator.cpp
   ${REPLICATION_DIR}/replication_object.cpp
-  ${REPLICATION_DIR}/replication_master_senders_manager.cpp  
+  ${REPLICATION_DIR}/replication_master_senders_manager.cpp
   ${REPLICATION_DIR}/replication_stream_entry.cpp
   )
 
@@ -335,10 +331,16 @@ set(SESSION_SOURCES
   ${SESSION_DIR}/session_sr.c
   )
 
-set(LOADER_SOURCES
+set(LOADDB_SOURCES
   ${BISON_loader_grammar_OUTPUT_SOURCE}
   ${FLEX_loader_lexer_OUTPUTS}
-  ${LOADDB_DIR}/driver.cpp
+  ${LOADDB_DIR}/load_sa_loader.cpp
+  ${LOADDB_DIR}/load_common.cpp
+  ${LOADDB_DIR}/load_db.c
+  ${LOADDB_DIR}/load_db_value_converter.cpp
+  ${LOADDB_DIR}/load_driver.cpp
+  ${LOADDB_DIR}/load_object.c
+  ${LOADDB_DIR}/load_object_table.c
   )
 
 if(UNIX)
@@ -369,14 +371,10 @@ SET_SOURCE_FILES_PROPERTIES(
   ${EXECUTABLES_DIR}/util_cs.c
   ${EXECUTABLES_DIR}/util_common.c
   ${EXECUTABLES_DIR}/compactdb.c
-  ${EXECUTABLES_DIR}/loaddb.c
   ${EXECUTABLES_DIR}/unloaddb.c
-  ${EXECUTABLES_DIR}/load_object.c
   ${EXECUTABLES_DIR}/unload_object.c
   ${EXECUTABLES_DIR}/unload_schema.c
   ${EXECUTABLES_DIR}/file_hash.c
-  ${EXECUTABLES_DIR}/loader.c
-  ${EXECUTABLES_DIR}/loader_object_table.c
   ${COMPAT_SOURCES}
   ${BASE_SOURCES}
   ${HEAPLAYER_SOURCES}
@@ -405,7 +403,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${QUERY_SOURCES}
   ${OBJECT_SOURCES}
   ${REPLICATION_SOURCES}
-  ${STREAM_SOURCES}  
+  ${STREAM_SOURCES}
   ${JSP_SOURCES}
   ${THREAD_SOURCES}
   ${TRANSACTION_SOURCES}
@@ -413,7 +411,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${ES_SOURCES}
   ${SESSION_SOURCES}
   ${PROBES_OBJECT}
-  ${LOADER_SOURCES}
+  ${LOADDB_SOURCES}
   PROPERTIES LANGUAGE CXX
   )
 
@@ -442,7 +440,7 @@ add_library(cubridsa SHARED
   ${OBJECT_SOURCES}
   ${REPLICATION_HEADERS}
   ${REPLICATION_SOURCES}
-  ${STREAM_HEADERS}  
+  ${STREAM_HEADERS}
   ${STREAM_SOURCES}
   ${JSP_SOURCES}
   ${THREAD_SOURCES}
@@ -452,7 +450,7 @@ add_library(cubridsa SHARED
   ${SESSION_SOURCES}
   ${PROBES_OBJECT}
   ${COMPAT_SOURCES_C}
-  ${LOADER_SOURCES}
+  ${LOADDB_SOURCES}
   )
 set_target_properties(cubridsa PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 
@@ -508,6 +506,7 @@ if(UNIX)
   # target_link_libraries(cubridsa LINK_PRIVATE -Wl,-whole-archive cas ${EP_LIBS} -Wl,-no-whole-archive)
   target_link_libraries(cubridsa LINK_PUBLIC ${CURSES_LIBRARIES} ${CMAKE_DL_LIBS})
 endif(UNIX)
+
 add_dependencies(cubridsa gen_csql_grammar gen_csql_lexer gen_loader_grammar gen_loader_lexer)
 #add_dependencies(cubridsa ${EP_TARGETS})
 
@@ -520,7 +519,6 @@ install(TARGETS cubridsa
   RUNTIME DESTINATION ${CUBRID_BINDIR} COMPONENT Library
   LIBRARY DESTINATION ${CUBRID_LIBDIR} COMPONENT Library
   )
-
 
 # install pdb files for debugging on windows
 if(WIN32)

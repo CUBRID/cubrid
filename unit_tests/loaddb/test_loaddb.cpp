@@ -24,20 +24,25 @@
 #include <sstream>
 #include <thread>
 
-#include "driver.hpp"
 #include "language_support.h"
+#include "load_driver.hpp"
 #include "test_loaddb.hpp"
 
 namespace test_loaddb
 {
   static const int num_threads = 50;
+  cubload::driver driver;
 
   void parse (cubload::driver &driver)
   {
     std::string s = "%id [foo] 44\n"
 		    "%class [foo] ([id] [name])\n"
+		    "%class bar (code \"name\" \"event\")\n"
 		    "@44 1 @foo 2\n"
-		    "1 '2' '3 4' 3.14159265F\n"
+		    "1 '2' '3 4' 3.14159265F 1e10\n"
+		    "\"double quoted string in instance line\"\n"
+		    "'aaaa' + \n" // instance line spans over multiple lines
+		    "'bbbb'\n"
 		    "'a' 'aaa' 'bbb' 'c' NULL 'NULL' $2.0F\n"
 		    "1 1 1 1815 '2017-12-22 12:10:21' '2017-12-22' '12:10:21' 1\n";
 
@@ -52,16 +57,20 @@ namespace test_loaddb
     lang_set_charset_lang ("en_US.iso88591");
 
     std::thread threads[num_threads];
-    cubload::driver driver;
+    cubload::driver *drivers[num_threads];
 
     for (int i = 0; i < num_threads; ++i)
       {
-	threads[i] = std::thread (parse, std::ref (driver));
+	cubload::driver *driver = new cubload::driver ();
+	drivers[i] = driver;
+
+	threads[i] = std::thread (parse, std::ref (*driver));
       }
 
     for (int i = 0; i < num_threads; ++i)
       {
 	threads[i].join ();
+	delete drivers[i];
       }
   }
 

@@ -24,10 +24,6 @@ set(EXECUTABLE_SOURCES
   ${EXECUTABLES_DIR}/csql_session.c
   ${EXECUTABLES_DIR}/csql_support.c
   ${EXECUTABLES_DIR}/file_hash.c
-  ${EXECUTABLES_DIR}/load_object.c
-  ${EXECUTABLES_DIR}/loaddb.c
-  ${EXECUTABLES_DIR}/loader.c
-  ${EXECUTABLES_DIR}/loader_object_table.c
   ${EXECUTABLES_DIR}/unload_object.c
   ${EXECUTABLES_DIR}/unload_schema.c
   ${EXECUTABLES_DIR}/unloaddb.c
@@ -246,10 +242,10 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/es_posix.c
   )
 
-set(LOADER_SOURCES
-  ${BISON_loader_grammar_OUTPUT_SOURCE}
-  ${FLEX_loader_lexer_OUTPUTS}
-  ${LOADDB_DIR}/driver.cpp
+set(LOADDB_SOURCES
+  ${LOADDB_DIR}/load_common.cpp
+  ${LOADDB_DIR}/load_db.c
+  ${LOADDB_DIR}/load_object.c
   )
 
 list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)
@@ -288,10 +284,6 @@ SET_SOURCE_FILES_PROPERTIES(
   ${EXECUTABLES_DIR}/csql_session.c
   ${EXECUTABLES_DIR}/csql_support.c
   ${EXECUTABLES_DIR}/file_hash.c
-  ${EXECUTABLES_DIR}/load_object.c
-  ${EXECUTABLES_DIR}/loaddb.c
-  ${EXECUTABLES_DIR}/loader.c
-  ${EXECUTABLES_DIR}/loader_object_table.c
   ${EXECUTABLES_DIR}/unload_object.c
   ${EXECUTABLES_DIR}/unload_schema.c
   ${EXECUTABLES_DIR}/unloaddb.c
@@ -329,7 +321,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${STORAGE_SOURCES}
   ${ES_SOURCES}
   ${PROBES_OBJECT}
-  ${LOADER_SOURCES}
+  ${LOADDB_SOURCES}
   PROPERTIES LANGUAGE CXX
   )
 SET_SOURCE_FILES_PROPERTIES(
@@ -361,7 +353,7 @@ add_library(cubridcs SHARED
   ${STORAGE_SOURCES}
   ${ES_SOURCES}
   ${PROBES_OBJECT}
-  ${LOADER_SOURCES}
+  ${LOADDB_SOURCES}
   )
 set_target_properties(cubridcs PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 
@@ -397,7 +389,6 @@ else(UNIX)
 endif(UNIX)
 
 add_dependencies(cubridcs gen_csql_grammar gen_csql_lexer gen_loader_grammar gen_loader_lexer)
-
 add_dependencies(cubridcs ${EP_TARGETS})
 
 if(ENABLE_SYSTEMTAP)
@@ -409,7 +400,6 @@ install(TARGETS cubridcs
   RUNTIME DESTINATION ${CUBRID_BINDIR} COMPONENT Library
   LIBRARY DESTINATION ${CUBRID_LIBDIR} COMPONENT Library
   )
-
 
 # install pdb files for debugging on windows
 if(WIN32)

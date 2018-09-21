@@ -403,4 +403,6 @@ extern int log_does_active_user_exist (const char *user_name, bool * existed);
 extern int netcl_spacedb (SPACEDB_ALL * spaceall, SPACEDB_ONEVOL ** spacevols, SPACEDB_FILES * spacefiles);
 
 extern int locator_demote_class_lock (const OID * class_oid, LOCK lock, LOCK * ex_lock);
+
+extern int loaddb_load_object_file (const char *file_name);
 #endif /* _NETWORK_INTERFACE_CL_H_ */

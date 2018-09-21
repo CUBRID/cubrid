@@ -18,50 +18,44 @@
  */
 
 /*
- * scanner.hpp - subclass of yyFlexLexer, provides the main scanner function.
+ * load_scanner.hpp - subclass of yyFlexLexer, provides the main scanner function.
  */
 
-#ifndef _SCANNER_HPP_
-#define _SCANNER_HPP_
+#ifndef _LOAD_SCANNER_HPP_
+#define _LOAD_SCANNER_HPP_
 
 #if !defined (yyFlexLexerOnce)
 #include <FlexLexer.h>
 #endif
 #include <istream>
 
-#include "loader_grammar.hpp"
+#include "load_driver.hpp"
+#include "load_grammar.hpp"
 
 namespace cubload
 {
 
-  // forward declaration
-  class driver;
-
   class scanner : public yyFlexLexer
   {
     public:
-      // Default constructor.
-      scanner () : yyFlexLexer ()
+      explicit scanner (driver &driver, loader &loader)
+	: yyFlexLexer ()
+	, driver_ (driver)
+	, loader_ (loader)
       {
-      };
-
-      /**
-       * Constructor (invokes constructor from parent class)
-       * @param arg_yyin input stream used for scanning
-       */
-      scanner (std::istream *arg_yyin) : yyFlexLexer (arg_yyin)
-      {
+	//
       };
 
       virtual ~scanner ()
       {
+	//
       };
 
       /*
        * The main scanner function.
-       * See loader_lexer.l file for method declaration
+       * See load_lexer.l file for method declaration
        */
-      virtual int yylex (parser::semantic_type *yylval, parser::location_type *yylloc, driver &driver);
+      virtual int yylex (parser::semantic_type *yylval, parser::location_type *yylloc);
 
       /**
        * Lexer error function
@@ -69,10 +63,14 @@ namespace cubload
        */
       void LexerError (const char *msg) override
       {
-	ldr_load_failed_error ();
-	ldr_increment_fails ();
+	loader_.load_failed_error ();
+	loader_.increment_fails ();
       }
+
+    private:
+      driver &driver_;
+      loader &loader_;
   };
 } // namespace cubload
 
-#endif // _SCANNER_HPP_
+#endif /* _LOAD_SCANNER_HPP_ */

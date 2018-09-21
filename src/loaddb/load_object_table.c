@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -18,10 +18,8 @@
  */
 
 /*
- * loader_object_table.c - the object table for the loader
+ * load_object_table.c - the object table for the loader
  */
-
-#ident "$Id$"
 
 #include "config.h"
 
@@ -29,15 +27,14 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "db.h"
+#include "load_object_table.h"
+#include "memory_alloc.h"
+#include "message_catalog.h"
+#include "oid.h"
 #include "porting.h"
 #include "utility.h"
-#include "oid.h"
 #include "work_space.h"
-#include "db.h"
-#include "message_catalog.h"
-#include "memory_alloc.h"
-
-#include "loader_object_table.h"
 
 CLASS_TABLE *Classes = NULL;
 
@@ -80,7 +77,6 @@ otable_find_class (MOP class_)
   return (table);
 }
 
-
 /*
  * flush_class_tables - Free storage for all the class tables.
  *    return: void
@@ -102,7 +98,6 @@ flush_class_tables ()
   Classes = NULL;
 }
 
-
 /*
  * init_instance_table - Initialized the contents of an instance array
  * within a class table.
@@ -121,7 +116,6 @@ init_instance_table (CLASS_TABLE * table)
     }
 }
 
-
 /*
  * realloc_instance_table - Extends the instance array within a CLASS_TABLE.
  *    return: NO_ERROR if successful, error code otherwise
@@ -134,7 +128,7 @@ realloc_instance_table (CLASS_TABLE * table, int newcount)
   INST_INFO *tmp_inst_info;
   int i;
 
-  /* 
+  /*
    * only do this if the new count is larger than the existing
    * table, shouldn't see this
    */
@@ -159,7 +153,6 @@ realloc_instance_table (CLASS_TABLE * table, int newcount)
   return NO_ERROR;
 }
 
-
 /*
  * grow_instance_table - extends the instance array in a CLASS_TABLE to be
  * at least as large as the instance id given.
@@ -172,7 +165,6 @@ grow_instance_table (CLASS_TABLE * table, int id)
 {
   return realloc_instance_table (table, id + 1000);
 }
-
 
 /*
  * otable_find - Searches the class table for an instance with the given id.
@@ -189,7 +181,6 @@ otable_find (CLASS_TABLE * table, int id)
     }
   return NULL;
 }
-
 
 /*
  * otable_insert - This inserts a new entry in the instance array of a class
@@ -223,7 +214,6 @@ otable_insert (CLASS_TABLE * table, OID * instance, int id)
     }
   return error;
 }
-
 
 /*
  * otable_reserve - This is used to reserve an element for this instance id.
@@ -269,7 +259,6 @@ otable_reserve (CLASS_TABLE * table, OID * instance, int id)
   return error;
 }
 
-
 /*
  * otable_class_att_ref - This is used to mark an instance to indicate it is
  * referenced by a class attribute. The instance element is flagged with
@@ -290,7 +279,6 @@ otable_class_att_ref (INST_INFO * inst)
   return;
 }
 
-
 /*
  * otable_update - This is used to mark an existing instance element in a
  * class table as being inserted.
@@ -307,7 +295,6 @@ otable_update (CLASS_TABLE * table, int id)
     }
   return NO_ERROR;
 }
-
 
 /*
  * otable_map_reserved - maps over all the reserved elements in the class
@@ -342,7 +329,6 @@ otable_map_reserved (OTABLE_MAPFUNC mapfunc, int stop_on_error)
   return error;
 }
 
-
 /*
  * otable_set_presize - set the estimated instance table size to a specific
  * value.
@@ -365,7 +351,6 @@ otable_set_presize (CLASS_TABLE * table, int id)
     }
 }
 
-
 /*
  * otable_init - initialize the class table module
  *    return: void
@@ -376,7 +361,6 @@ otable_init (void)
   Classes = NULL;
   return NO_ERROR;
 }
-
 
 /*
  * otable_prepare - set up the instance tables
@@ -403,7 +387,7 @@ otable_prepare (void)
 
   for (table = Classes; table != NULL && !error; table = table->next)
     {
-      /* 
+      /*
        * If we already have an instance table, initialize the fields it
        * contains. This shouldn't be necessary.
        */
@@ -414,7 +398,6 @@ otable_prepare (void)
     }
   return error;
 }
-
 
 /*
  * otable_final - shutdown the class table module
