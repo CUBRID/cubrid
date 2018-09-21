@@ -192,7 +192,7 @@ public:
   int start_flush (const stream_position &start_position, const size_t amount_to_flush)
   {
     std::unique_lock<std::mutex> ulock (m_flush_mutex);
-    if (start_position != 0)
+    if (amount_to_flush != 0)
       {
         m_req_start_flush_position = start_position;
         m_target_flush_position = start_position + amount_to_flush;

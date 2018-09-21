@@ -537,6 +537,8 @@ namespace cubstream
         if (err != NO_ERROR)
           {
             actual_read_bytes = 0;
+            ASSERT_ERROR ();
+            release_read_context (read_context);
 	    return NULL;
           }
 
@@ -558,6 +560,7 @@ namespace cubstream
         er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_NO_MORE_DATA, 3, this->name ().c_str (), req_start_pos,
                 amount);
 	m_stat_read_no_readable_pos_cnt++;
+        release_read_context (read_context);
 	return NULL;
       }
 
@@ -582,6 +585,7 @@ namespace cubstream
         if (err != NO_ERROR)
           {
             ASSERT_ERROR ();
+            release_read_context (read_context);
 	    return NULL;
           }
 
@@ -607,6 +611,7 @@ namespace cubstream
     if (err != NO_ERROR)
       {
 	m_stat_read_buffer_failed_cnt++;
+        release_read_context (read_context);
         /* TODO : set error */
 	return NULL;
       }
@@ -656,7 +661,7 @@ namespace cubstream
                                                        const stream_position &last_append_pos)
   {
     /* set fill factor to force a flush */
-    wake_up_flusher (2.0f, last_commit_pos, last_commit_pos - m_last_dropable_pos);
+    wake_up_flusher (2.0f, m_last_dropable_pos, last_commit_pos - m_last_dropable_pos);
 
     std::unique_lock<std::mutex> local_lock (m_drop_pos_mutex);
     /* wait until flusher advances m_last_dropable_pos */
