@@ -68,9 +68,16 @@ namespace cubreplication
       void *operator new (size_t size);
     public:
 
-      log_generator () : log_generator (NULL) { };
+      log_generator ()
+	: log_generator (NULL)
+      {
+      };
 
-      log_generator (cubstream::multi_thread_stream *stream) : m_stream_entry (stream), m_is_initialized (false) { };
+      log_generator (cubstream::multi_thread_stream *stream)
+	: m_stream_entry (stream),
+	  m_is_initialized (false)
+      {
+      };
 
       ~log_generator ();
 
@@ -81,10 +88,8 @@ namespace cubreplication
       int append_repl_object (replication_object *object);
       int append_pending_repl_object (cubthread::entry &thread_entry, const OID *class_oid, const OID *inst_oid,
 				      ATTR_ID col_id, DB_VALUE *value);
-      int set_key_to_repl_object (DB_VALUE *key, const OID *inst_oid, char *class_name,
-				  RECDES *optional_recdes);
-      int set_key_to_repl_object (DB_VALUE *key, const OID *inst_oid,
-				  const OID *class_oid, RECDES *optional_recdes);
+      int set_key_to_repl_object (DB_VALUE *key, const OID *inst_oid, char *class_name, RECDES *optional_recdes);
+      int set_key_to_repl_object (DB_VALUE *key, const OID *inst_oid, const OID *class_oid, RECDES *optional_recdes);
       void abort_pending_repl_objects ();
 
       stream_entry *get_stream_entry (void);
@@ -112,7 +117,7 @@ namespace cubreplication
       void set_stream (cubstream::multi_thread_stream *stream)
       {
 	m_stream_entry.set_stream (stream);
-        m_is_initialized = true;
+	m_is_initialized = true;
       }
   };
 

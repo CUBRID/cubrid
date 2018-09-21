@@ -32,13 +32,11 @@
 
 namespace cubreplication
 {
-  static const char *repl_entry_type_str[] = {"update",
-					      "insert",
-					      "delete"
-					     };
+  static const char *repl_entry_type_str[] = { "update", "insert", "delete" };
 
-  single_row_repl_entry::single_row_repl_entry (const REPL_ENTRY_TYPE type, const char *class_name) :  m_type (type),
-    m_class_name (class_name)
+  single_row_repl_entry::single_row_repl_entry (const REPL_ENTRY_TYPE type, const char *class_name)
+    : m_type (type),
+      m_class_name (class_name)
   {
   }
 
@@ -132,15 +130,17 @@ namespace cubreplication
     char *key_to_string = pr_valstring (NULL, &m_key_value);
 
     str ("single_row_repl_entry(%s) key_type=%s key_dbvalue=%s table=%s\n", repl_entry_type_str[m_type],
-         pr_type_name (DB_VALUE_TYPE (&m_key_value)), key_to_string,
+	 pr_type_name (DB_VALUE_TYPE (&m_key_value)), key_to_string,
 	 m_class_name.c_str ());
 
     db_private_free (NULL, key_to_string);
   }
 
   /////////////////////////////////
-  sbr_repl_entry::sbr_repl_entry (const char *statement, const char *user,
-				  const char *sys_prm_ctx) : m_statement (statement), m_db_user (user), m_sys_prm_context (sys_prm_ctx)
+  sbr_repl_entry::sbr_repl_entry (const char *statement, const char *user, const char *sys_prm_ctx)
+    : m_statement (statement),
+      m_db_user (user),
+      m_sys_prm_context (sys_prm_ctx)
   {
   }
 
@@ -154,8 +154,7 @@ namespace cubreplication
   {
     const sbr_repl_entry *other_t = dynamic_cast<const sbr_repl_entry *> (other);
 
-    if (other_t == NULL
-	|| m_statement != other_t->m_statement)
+    if (other_t == NULL || m_statement != other_t->m_statement)
       {
 	return false;
       }
@@ -219,8 +218,7 @@ namespace cubreplication
     (void) db_change_private_heap (my_thread, save_heapid);
   }
 
-  void changed_attrs_row_repl_entry::copy_and_add_changed_value (const ATTR_ID att_id,
-      DB_VALUE *db_val)
+  void changed_attrs_row_repl_entry::copy_and_add_changed_value (const ATTR_ID att_id, DB_VALUE *db_val)
   {
     HL_HEAPID save_heapid;
 
@@ -369,7 +367,7 @@ namespace cubreplication
 	assert (key_to_string != NULL);
 
 	str ("attr_id=%d type=%s value=%s\n", m_changed_attributes[i], pr_type_name (DB_VALUE_TYPE (&m_new_values[i])),
-              key_to_string);
+	     key_to_string);
 
 	db_private_free (NULL, key_to_string);
       }
@@ -377,9 +375,9 @@ namespace cubreplication
     str ("inst oid: pageid:%d slotid:%d volid:%d\n", m_inst_oid.pageid, m_inst_oid.slotid, m_inst_oid.volid);
   }
 
-  changed_attrs_row_repl_entry::changed_attrs_row_repl_entry (REPL_ENTRY_TYPE type,
-      const char *class_name,
-      const OID *inst_oid) : single_row_repl_entry (type, class_name)
+  changed_attrs_row_repl_entry::changed_attrs_row_repl_entry (REPL_ENTRY_TYPE type, const char *class_name,
+      const OID *inst_oid)
+    : single_row_repl_entry (type, class_name)
   {
     if (inst_oid != NULL)
       {
@@ -460,8 +458,7 @@ namespace cubreplication
 
     other_t = dynamic_cast<const rec_des_row_repl_entry *> (other);
 
-    if (other_t == NULL ||
-	m_type != other_t->m_type)
+    if (other_t == NULL || m_type != other_t->m_type)
       {
 	return false;
       }
@@ -471,10 +468,10 @@ namespace cubreplication
 	return true;
       }
 
-    if (m_rec_des.length != other_t->m_rec_des.length ||
-	m_rec_des.area_size != other_t->m_rec_des.area_size ||
-	m_rec_des.type != other_t->m_rec_des.type ||
-	memcmp (m_rec_des.data, other_t->m_rec_des.data, m_rec_des.length) != 0)
+    if (m_rec_des.length != other_t->m_rec_des.length
+	|| m_rec_des.area_size != other_t->m_rec_des.area_size
+	|| m_rec_des.type != other_t->m_rec_des.type
+	|| memcmp (m_rec_des.data, other_t->m_rec_des.data, m_rec_des.length) != 0)
       {
 	return false;
       }
@@ -482,9 +479,8 @@ namespace cubreplication
     return true;
   }
 
-  rec_des_row_repl_entry::rec_des_row_repl_entry (REPL_ENTRY_TYPE type,
-      const char *class_name,
-      RECDES *rec_des) : single_row_repl_entry (type, class_name)
+  rec_des_row_repl_entry::rec_des_row_repl_entry (REPL_ENTRY_TYPE type, const char *class_name, RECDES *rec_des)
+    : single_row_repl_entry (type, class_name)
   {
     if (type != cubreplication::REPL_ENTRY_TYPE::REPL_DELETE)
       {

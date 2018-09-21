@@ -142,8 +142,7 @@ namespace cubreplication
       changed_attrs_row_repl_entry () = default;
       ~changed_attrs_row_repl_entry ();
 
-      void copy_and_add_changed_value (const ATTR_ID att_id,
-				       DB_VALUE *db_val);
+      void copy_and_add_changed_value (const ATTR_ID att_id, DB_VALUE *db_val);
 
       virtual int pack (cubpacking::packer *serializator) override final;
       virtual int unpack (cubpacking::packer *serializator) override final;
@@ -154,9 +153,8 @@ namespace cubreplication
 
       inline bool compare_inst_oid (const OID *other)
       {
-	return m_inst_oid.pageid == other->pageid &&
-	       m_inst_oid.slotid == other->slotid &&
-	       m_inst_oid.volid == other->volid;
+	return (m_inst_oid.pageid == other->pageid && m_inst_oid.slotid == other->slotid
+		&& m_inst_oid.volid == other->volid);
       }
 
     private:

@@ -104,13 +104,12 @@ namespace cubreplication
 	    return ER_FAILED;
 	  }
 
-	entry = new changed_attrs_row_repl_entry (cubreplication::REPL_ENTRY_TYPE::REPL_UPDATE,
-	    class_name,
-	    inst_oid);
-	entry->copy_and_add_changed_value (col_id,
-					   value);
+	entry = new changed_attrs_row_repl_entry (cubreplication::REPL_ENTRY_TYPE::REPL_UPDATE, class_name, inst_oid);
+	entry->copy_and_add_changed_value (col_id, value);
 
 	m_pending_to_be_added.push_back (entry);
+
+	// FIXME - free class_name
       }
 
     er_log_repl_obj (entry, "log_generator::append_pending_repl_object");
@@ -137,7 +136,7 @@ namespace cubreplication
 	    (*repl_obj_it)->set_key_value (key);
 
 	    (void) log_generator::append_repl_object (*repl_obj_it);
-            er_log_repl_obj (*repl_obj_it, "log_generator::set_key_to_repl_object");
+	    er_log_repl_obj (*repl_obj_it, "log_generator::set_key_to_repl_object");
 
 	    repl_obj_it = m_pending_to_be_added.erase (repl_obj_it);
 
@@ -156,9 +155,9 @@ namespace cubreplication
 	  }
 
 	cubreplication::rec_des_row_repl_entry *entry = new cubreplication::rec_des_row_repl_entry (
-	  cubreplication::REPL_ENTRY_TYPE::REPL_UPDATE,
-	  class_name,
-	  optional_recdes);
+		cubreplication::REPL_ENTRY_TYPE::REPL_UPDATE,
+		class_name,
+		optional_recdes);
 
 	(void) log_generator::append_repl_object (entry);
 
@@ -212,9 +211,9 @@ namespace cubreplication
   {
     if (m_is_initialized)
       {
-        m_stream_entry.pack ();
-        m_stream_entry.reset ();
-        m_stream_entry.set_state (stream_entry_header::ACTIVE);
+	m_stream_entry.pack ();
+	m_stream_entry.reset ();
+	m_stream_entry.set_state (stream_entry_header::ACTIVE);
       }
 
     return NO_ERROR;
@@ -254,12 +253,12 @@ namespace cubreplication
   }
 
   void log_generator::check_commit_end_tran (void)
-    {
+  {
 #if !defined(NDEBUG)
-      /* check there are no pending replication objects */
-      assert (m_pending_to_be_added.size () == 0);
+    /* check there are no pending replication objects */
+    assert (m_pending_to_be_added.size () == 0);
 #endif
-    }
+  }
 
   cubstream::multi_thread_stream *log_generator::g_stream = NULL;
 
@@ -333,7 +332,7 @@ namespace cubreplication
       }
 
     cubreplication::sbr_repl_entry *new_sbr =
-      new cubreplication::sbr_repl_entry (repl_info->stmt_text, repl_info->db_user, repl_info->sys_prm_context);
+	    new cubreplication::sbr_repl_entry (repl_info->stmt_text, repl_info->db_user, repl_info->sys_prm_context);
 
     tdes->replication_log_generator.append_repl_object (new_sbr);
 
