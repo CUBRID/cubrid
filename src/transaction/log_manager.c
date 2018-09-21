@@ -9135,7 +9135,7 @@ log_recreate (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logp
    * RESET RECOVERY INFORMATION ON ALL DATA VOLUMES
    */
 
-  LSA_SET_INIT_NONTEMP (&init_nontemp_lsa);
+  LSA_SET_NULL (&init_nontemp_lsa);
 
   for (volid = LOG_DBFIRST_VOLID; volid != NULL_VOLID; volid = fileio_find_next_perm_volume (thread_p, volid))
     {

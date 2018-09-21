@@ -1584,8 +1584,10 @@
 #define ER_DWB_DISABLED                             -1236
 
 #define ER_SM_INDEX_STATUS_CHANGE_NOT_ALLOWED       -1237
+#define ER_JSON_TABLE_ON_EMPTY_ERROR                -1238
+#define ER_JSON_TABLE_ON_ERROR_INCOMP_DOMAIN        -1239
 
-#define ER_LAST_ERROR                               -1238
+#define ER_LAST_ERROR                               -1240
 
 /*
  * CAUTION!

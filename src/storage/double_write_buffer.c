@@ -43,11 +43,6 @@
 #define DWB_MAX_SIZE			    (32 * 1024 * 1024)
 #define DWB_MIN_BLOCKS			    1
 #define DWB_MAX_BLOCKS			    32
-#define DWB_CHECKSUM_ELEMENT_NO_BITS	    64
-#define DWB_CHECKSUM_ELEMENT_LOG2_NO_BITS   6
-#define DWB_CHECKSUM_ELEMENT_ALL_BITS	    0xffffffffffffffff
-#define DWB_CHECKSUM_ELEMENT_NO_FROM_SLOT_POS(bit_pos) ((bit_pos) >> DWB_CHECKSUM_ELEMENT_LOG2_NO_BITS)
-#define DWB_CHECKSUM_ELEMENT_BIT_FROM_SLOT_POS(bit_pos) ((bit_pos) & (DWB_CHECKSUM_ELEMENT_NO_BITS - 1))
 
 /* The total number of blocks. */
 #define DWB_NUM_TOTAL_BLOCKS	   (dwb_Global.num_blocks)
@@ -60,9 +55,6 @@
 
 /* LOG2 from total number of blocks. */
 #define DWB_LOG2_BLOCK_NUM_PAGES	   (dwb_Global.log2_num_block_pages)
-
-/* The number of checksum elements in each block  */
-#define DWB_CHECKSUM_NUM_ELEMENTS_IN_BLOCK   (dwb_Global.checksum_info->num_checksum_elements_in_block)
 
 
 /* Position mask. */
@@ -166,56 +158,6 @@
 #define DWB_GET_NEXT_BLOCK_NO(block_no) \
   ((block_no) == (DWB_NUM_TOTAL_BLOCKS - 1) ? 0 : ((block_no) + 1))
 
-/* Get DWB checksum start position for a block. */
-#define DWB_BLOCK_GET_CHECKSUM_START_POSITION(block_no) \
-  (DWB_CHECKSUM_NUM_ELEMENTS_IN_BLOCK * (block_no))
-
-/* Get DWB requested checksum element. */
-#define DWB_GET_REQUESTED_CHECKSUMS_ELEMENT(position) \
-  (ATOMIC_INC_64 (&dwb_Global.checksum_info->requested_checksums[position], 0ULL))
-
-/* Add value to DWB requested checksum element. */
-#define DWB_ADD_TO_REQUESTED_CHECKSUMS_ELEMENT(position, value) \
-  (assert ((ATOMIC_INC_64 (&dwb_Global.checksum_info->requested_checksums[position], 0ULL) & (value)) == 0), \
-   ATOMIC_INC_64 (&dwb_Global.checksum_info->requested_checksums[position], value))
-
-/* Check whether a value was added to requested checksum element. */
-#define DWB_IS_ADDED_TO_REQUESTED_CHECKSUMS_ELEMENT(position, value) \
-  ((DWB_GET_REQUESTED_CHECKSUMS_ELEMENT (element_position) & (value)) == (value))
-
-/* Reset a DWB requested checksum element. */
-#define DWB_RESET_REQUESTED_CHECKSUMS_ELEMENT(position) \
-  (ATOMIC_TAS_64 (&dwb_Global.checksum_info->requested_checksums[position], 0ULL))
-
-/* Get DWB computed checksum element. */
-#define DWB_GET_COMPUTED_CHECKSUMS_ELEMENT(position) \
-  (ATOMIC_INC_64 (&dwb_Global.checksum_info->computed_checksums[position], 0ULL))
-
-/* Add value to DWB computed checksum element. */
-#define DWB_ADD_TO_COMPUTED_CHECKSUMS_ELEMENT(position, value) \
-  (assert ((ATOMIC_INC_64 (&dwb_Global.checksum_info->computed_checksums[position], 0ULL) & (value)) == 0), \
-  ATOMIC_INC_64 (&dwb_Global.checksum_info->computed_checksums[position], value))
-
-/* Check whether a value was added to computed checksum element. */
-#define DWB_IS_ADDED_TO_COMPUTED_CHECKSUMS_ELEMENT(position, value) \
-  ((DWB_GET_COMPUTED_CHECKSUMS_ELEMENT (element_position) & (value)) == (value))
-
-/* Reset a DWB computed checksum element. */
-#define DWB_RESET_COMPUTED_CHECKSUMS_ELEMENT(position) \
-  (ATOMIC_TAS_64 (&dwb_Global.checksum_info->computed_checksums[position], 0ULL))
-
-/* Get DWB completed checksum element. */
-#define DWB_GET_COMPLETED_CHECKSUMS_ELEMENT(position) \
-  (ATOMIC_INC_64 (&dwb_Global.checksum_info->completed_checksums_mask[position], 0ULL))
-
-/* Get DWB position in checksums element. */
-#define DWB_GET_POSITION_IN_CHECKSUMS_ELEMENT(element_pos) \
-  (ATOMIC_INC_32 (&dwb_Global.checksum_info->positions[element_pos], 0))
-
-/* Reset position in DWB checksums element. */
-#define DWB_RESET_POSITION_IN_CHECKSUMS_ELEMENT(element_pos) \
-  (ATOMIC_TAS_32 (&dwb_Global.checksum_info->positions[element_pos], 0))
-
 /* Get block version. */
 #define DWB_GET_BLOCK_VERSION(block) \
   (ATOMIC_INC_64 (&block->version, 0ULL))
@@ -227,13 +169,6 @@ struct double_write_wait_queue_entry
   void *data;			/* The data field. */
   DWB_WAIT_QUEUE_ENTRY *next;	/* The next queue entry field. */
 };
-
-/* Slot checksum status. */
-typedef enum
-{
-  DWB_SLOT_CHECKSUM_NOT_COMPUTED,	/* The checksum for data contained in slot was not computed. */
-  DWB_SLOT_CHECKSUM_COMPUTED	/* The checksum for data contained in slot was computed. */
-} DWB_SLOT_CHECKSUM_STATUS;
 
 /* DWB queue.  */
 typedef struct double_write_wait_queue DWB_WAIT_QUEUE;
@@ -247,19 +182,6 @@ struct double_write_wait_queue
   int free_count;		/* Count free list elements. */
 };
 #define DWB_WAIT_QUEUE_INITIALIZER	{NULL, NULL, NULL, 0, 0}
-
-/* DWB checksum information. Used to allow parallel computation of checksums. */
-typedef struct dwb_checksum_info DWB_CHECKSUM_INFO;
-struct dwb_checksum_info
-{
-  volatile UINT64 *requested_checksums;	/* Bits array - 1 for each slot requiring checksum computation. */
-  volatile UINT64 *computed_checksums;	/* Bits array - 1 for each slot having checksum computed. */
-  volatile UINT64 *completed_checksums_mask;	/* Bits array - mask for block having all checksums computed. */
-  volatile int *positions;	/* Positions in checksum arrays, used to search bits faster. */
-  unsigned int length;		/* The length of checksum bits arrays. */
-  unsigned int num_checksum_elements_in_block;	/* The number of checksum elements in each block */
-};
-
 
 /* Flush volume status. */
 typedef enum
@@ -333,8 +255,6 @@ struct double_write_buffer
   volatile unsigned int blocks_flush_counter;	/* The blocks flush counter. */
   volatile unsigned int next_block_to_flush;	/* Next block to flush */
 
-  DWB_CHECKSUM_INFO *checksum_info;	/* The checksum info. */
-
   pthread_mutex_t mutex;	/* The mutex to protect the wait queue. */
   DWB_WAIT_QUEUE wait_queue;	/* The wait queue, used when the DWB structure changed. */
 
@@ -360,7 +280,6 @@ static DOUBLE_WRITE_BUFFER dwb_Global = {
   0,				/* log2_num_block_pages */
   0,				/* blocks_flush_counter */
   0,				/* next_block_to_flush */
-  NULL,				/* checksum_info */
   PTHREAD_MUTEX_INITIALIZER,	/* mutex */
   DWB_WAIT_QUEUE_INITIALIZER,	/* wait_queue */
   0,				/* position_with_flags */
@@ -445,30 +364,9 @@ STATIC_INLINE void dwb_initialize_block (DWB_BLOCK * block, unsigned int block_n
 STATIC_INLINE int dwb_create_blocks (THREAD_ENTRY * thread_p, unsigned int num_blocks, unsigned int num_block_pages,
 				     DWB_BLOCK ** p_blocks) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void dwb_finalize_block (DWB_BLOCK * block) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void dwb_initialize_checksum_info (DWB_CHECKSUM_INFO * checksum_info, UINT64 * requested_checksums,
-						 UINT64 * computed_checksums, int *positions,
-						 UINT64 * completed_checksums_mask, unsigned int checksum_length,
-						 unsigned int num_checksum_elements_in_block)
-  __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int dwb_create_checksum_info (THREAD_ENTRY * thread_p, unsigned int num_blocks,
-					    unsigned int num_block_pages, DWB_CHECKSUM_INFO ** p_checksum_info)
-  __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void dwb_add_checksum_computation_request (THREAD_ENTRY * thread_p, unsigned int block_no,
-							 unsigned int position_in_block)
-  __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void dwb_mark_checksum_computed (THREAD_ENTRY * thread_p, unsigned int block_no,
-					       unsigned int position_in_block) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void dwb_finalize_checksum_info (DWB_CHECKSUM_INFO * checksum_info) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE bool dwb_needs_speedup_checksum_computation (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int dwb_slot_compute_checksum (THREAD_ENTRY * thread_p, DWB_SLOT * slot, bool mark_checksum_computed,
-					     bool * checksum_computed) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int dwb_create_internal (THREAD_ENTRY * thread_p, const char *dwb_volume_name,
 				       UINT64 * current_position_with_flags) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void dwb_get_next_block_for_flush (THREAD_ENTRY * thread_p, unsigned int *block_no)
-  __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE bool dwb_block_has_all_checksums_computed (unsigned int block_no);
-STATIC_INLINE int dwb_compute_block_checksums (THREAD_ENTRY * thread_p, DWB_BLOCK * block,
-					       bool * block_slots_checksum_computed, bool * block_needs_flush)
   __attribute__ ((ALWAYS_INLINE));
 
 /* Slots hash functions. */
@@ -487,20 +385,16 @@ STATIC_INLINE int dwb_slots_hash_delete (THREAD_ENTRY * thread_p, DWB_SLOT * slo
 #if defined (SERVER_MODE)
 static cubthread::daemon *dwb_flush_block_daemon = NULL;
 static cubthread::daemon *dwb_flush_block_helper_daemon = NULL;
-static cubthread::daemon *dwb_checkum_computation_daemon = NULL;
 #endif
 // *INDENT-ON*
 
 static bool dwb_is_flush_block_daemon_available (void);
 static bool dwb_is_flush_block_helper_daemon_available (void);
-static bool dwb_is_checksum_computation_daemon_available (void);
 
 static bool dwb_flush_block_daemon_is_running (void);
 static bool dwb_flush_block_helper_daemon_is_running (void);
-static bool dwb_checksum_computation_daemon_is_running (void);
 
 static int dwb_flush_block_helper (THREAD_ENTRY * thread_p);
-static int dwb_compute_checksums (THREAD_ENTRY * thread_p);
 static int dwb_flush_next_block (THREAD_ENTRY * thread_p);
 
 #if !defined (NDEBUG)
@@ -921,8 +815,7 @@ dwb_starts_structure_modification (THREAD_ENTRY * thread_p, UINT64 * current_pos
   while (!ATOMIC_CAS_64 (&dwb_Global.position_with_flags, local_current_position_with_flags, new_position_with_flags));
 
 #if defined(SERVER_MODE)
-  while (dwb_flush_block_daemon_is_running () || dwb_flush_block_helper_daemon_is_running ()
-	 || dwb_checksum_computation_daemon_is_running ())
+  while (dwb_flush_block_daemon_is_running () || dwb_flush_block_helper_daemon_is_running ())
     {
       /* Can't modify structure while flush thread can access DWB. */
       thread_sleep (20);
@@ -1035,348 +928,6 @@ dwb_initialize_slot (DWB_SLOT * slot, FILEIO_PAGE * io_page, unsigned int positi
 
   slot->position_in_block = position_in_block;
   slot->block_no = block_no;
-  slot->checksum_status = DWB_SLOT_CHECKSUM_NOT_COMPUTED;
-}
-
-/*
- * dwb_initialize_checksum_info () - Initialize checksum info.
- *
- * return : Nothing.
- * checksum_info (in/out) : The checksum info.
- * requested_checksums (in) : Bits array containing checksum requests for slot data.
- * computed_checksums (in): Bits array containing computed checksums for slot data.
- * positions (in): Positions in checksum arrays.
- * completed_checksums_mask(in): Mask for block having all checksums computed.
- * checksum_length(in): The length of checksum bits arrays.
- * num_checksum_elements_in_block(in): The number of checksum elements in each block.
- */
-STATIC_INLINE void
-dwb_initialize_checksum_info (DWB_CHECKSUM_INFO * checksum_info, UINT64 * requested_checksums,
-			      UINT64 * computed_checksums, int *positions, UINT64 * completed_checksums_mask,
-			      unsigned int checksum_length, unsigned int num_checksum_elements_in_block)
-{
-  assert (checksum_info != NULL);
-
-  checksum_info->requested_checksums = requested_checksums;
-  checksum_info->computed_checksums = computed_checksums;
-  checksum_info->positions = positions;
-  checksum_info->completed_checksums_mask = completed_checksums_mask;
-  checksum_info->length = checksum_length;
-  checksum_info->num_checksum_elements_in_block = num_checksum_elements_in_block;
-}
-
-/*
- * dwb_create_checksum_info () - Create checksum info.
- *
- * return   : Error code.
- * thread_p (in) : The thread entry.
- * num_blocks(in): The number of blocks.
- * num_block_pages(in): The number of block pages.
- * p_checksum_info(out): The created checksum info.
- */
-STATIC_INLINE int
-dwb_create_checksum_info (THREAD_ENTRY * thread_p, unsigned int num_blocks, unsigned int num_block_pages,
-			  DWB_CHECKSUM_INFO ** p_checksum_info)
-{
-  UINT64 *requested_checksums = NULL, *computed_checksums = NULL, *completed_checksums_mask = NULL;
-  int *positions = NULL;
-  unsigned int checksum_length, num_checksum_elements_in_block;
-  unsigned int i, num_pages2;
-  DWB_CHECKSUM_INFO *checksum_info = NULL;
-  int error_code;
-
-  checksum_info = (DWB_CHECKSUM_INFO *) malloc (sizeof (DWB_CHECKSUM_INFO));
-  if (checksum_info == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DWB_CHECKSUM_INFO));
-      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-      goto exit_on_error;
-    }
-
-  num_checksum_elements_in_block = (DB_ALIGN (num_block_pages, DWB_CHECKSUM_ELEMENT_NO_BITS)
-				    / DWB_CHECKSUM_ELEMENT_NO_BITS);
-  checksum_length = num_checksum_elements_in_block * num_blocks;
-
-  /* requested_checksums */
-  requested_checksums = (UINT64 *) malloc (checksum_length * sizeof (UINT64));
-  if (requested_checksums == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, checksum_length * sizeof (UINT64));
-      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-      goto exit_on_error;
-    }
-  memset (requested_checksums, 0, checksum_length * sizeof (UINT64));
-
-  /* computed_checksums */
-  computed_checksums = (UINT64 *) malloc (checksum_length * sizeof (UINT64));
-  if (computed_checksums == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, checksum_length * sizeof (UINT64));
-      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-      goto exit_on_error;
-    }
-  memset (computed_checksums, 0, checksum_length * sizeof (UINT64));
-
-  /* positions */
-  positions = (int *) malloc (checksum_length * sizeof (int));
-  if (positions == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, checksum_length * sizeof (int));
-      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-      goto exit_on_error;
-    }
-  memset (positions, 0, checksum_length * sizeof (int));
-
-  /* completed_checksums_mask */
-  completed_checksums_mask = (UINT64 *) malloc (num_checksum_elements_in_block * sizeof (UINT64));
-  if (completed_checksums_mask == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      num_checksum_elements_in_block * sizeof (UINT64));
-      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-      goto exit_on_error;
-    }
-
-  for (num_pages2 = num_block_pages, i = 0; num_pages2 >= DWB_CHECKSUM_ELEMENT_NO_BITS;
-       num_pages2 -= DWB_CHECKSUM_ELEMENT_NO_BITS, i++)
-    {
-      completed_checksums_mask[i] = DWB_CHECKSUM_ELEMENT_ALL_BITS;
-    }
-  if (num_pages2 > 0)
-    {
-      assert (num_pages2 < DWB_CHECKSUM_ELEMENT_NO_BITS && i < num_checksum_elements_in_block);
-      completed_checksums_mask[i] = (1 << num_pages2) - 1;
-    }
-
-  /* init checksum_info */
-  dwb_initialize_checksum_info (checksum_info, requested_checksums, computed_checksums,
-				positions, completed_checksums_mask, checksum_length, num_checksum_elements_in_block);
-
-  *p_checksum_info = checksum_info;
-
-  return NO_ERROR;
-
-exit_on_error:
-  if (completed_checksums_mask != NULL)
-    {
-      free_and_init (completed_checksums_mask);
-    }
-
-  if (positions != NULL)
-    {
-      free_and_init (positions);
-    }
-
-  if (requested_checksums != NULL)
-    {
-      free_and_init (requested_checksums);
-    }
-
-  if (computed_checksums != NULL)
-    {
-      free_and_init (computed_checksums);
-    }
-
-  if (checksum_info != NULL)
-    {
-      free_and_init (checksum_info);
-    }
-
-  return error_code;
-}
-
-/*
- * dwb_add_checksum_computation_request () - Add a checksum computation request.
- *
- * return   : Nothing.
- * thread_p(in): The thread entry.
- * block_no(in): The block number.
- * position_in_block(in): The position in block, where checksum computation is requested.
- */
-STATIC_INLINE void
-dwb_add_checksum_computation_request (THREAD_ENTRY * thread_p, unsigned int block_no, unsigned int position_in_block)
-{
-  unsigned int element_position;
-  UINT64 value;
-
-  assert (block_no < DWB_NUM_TOTAL_BLOCKS && position_in_block < DWB_BLOCK_NUM_PAGES);
-
-  element_position = (DWB_BLOCK_GET_CHECKSUM_START_POSITION (block_no)
-		      + DWB_CHECKSUM_ELEMENT_NO_FROM_SLOT_POS (position_in_block));
-
-  value = 1ULL << DWB_CHECKSUM_ELEMENT_BIT_FROM_SLOT_POS (position_in_block);
-
-  assert (!DWB_IS_ADDED_TO_COMPUTED_CHECKSUMS_ELEMENT (element_position, value));
-
-  DWB_ADD_TO_REQUESTED_CHECKSUMS_ELEMENT (element_position, value);
-}
-
-/*
- * dwb_mark_checksum_computed () - Mark checksum computed into bits array.
- *
- * return   : Nothing.
- * thread_p(in): The thread entry.
- * block_no(in): The block number.
- * position_in_block(in): The position in block.
- */
-STATIC_INLINE void
-dwb_mark_checksum_computed (THREAD_ENTRY * thread_p, unsigned int block_no, unsigned int position_in_block)
-{
-  unsigned int element_position;
-  UINT64 value;
-
-  assert (block_no < DWB_NUM_TOTAL_BLOCKS && position_in_block < DWB_BLOCK_NUM_PAGES);
-
-  element_position = (DWB_BLOCK_GET_CHECKSUM_START_POSITION (block_no)
-		      + DWB_CHECKSUM_ELEMENT_NO_FROM_SLOT_POS (position_in_block));
-
-  value = 1ULL << DWB_CHECKSUM_ELEMENT_BIT_FROM_SLOT_POS (position_in_block);
-
-  assert (DWB_IS_ADDED_TO_REQUESTED_CHECKSUMS_ELEMENT (element_position, value));
-
-  DWB_ADD_TO_COMPUTED_CHECKSUMS_ELEMENT (element_position, value);
-}
-
-/*
- * dwb_finalize_checksum_info () - Finalize checksum info.
- *
- * return   : Nothing.
- * checksum_info (in/out) : The checksum info.
- */
-STATIC_INLINE void
-dwb_finalize_checksum_info (DWB_CHECKSUM_INFO * checksum_info)
-{
-  assert (checksum_info != NULL);
-
-  if (checksum_info->requested_checksums != NULL)
-    {
-      free_and_init (checksum_info->requested_checksums);
-    }
-
-  if (checksum_info->computed_checksums != NULL)
-    {
-      free_and_init (checksum_info->computed_checksums);
-    }
-
-  if (checksum_info->positions != NULL)
-    {
-      free_and_init (checksum_info->positions);
-    }
-
-  if (checksum_info->completed_checksums_mask != NULL)
-    {
-      free_and_init (checksum_info->completed_checksums_mask);
-    }
-}
-
-/*
- * dwb_needs_speedup_checksum_computation () - Check whether checksum computation is too slow.
- *
- * return   : Error code.
- * thread_p (in) : thread entry
- *
- *  Note: This function checks whether checksum thread remains behind. Currently, we consider that it remains
- *    behind if at least three pages are waiting for checksum computation. This computation is relative, since
- *    while computing, the checksum thread may advance.
- */
-STATIC_INLINE bool
-dwb_needs_speedup_checksum_computation (THREAD_ENTRY * thread_p)
-{
-#define DWB_CHECKSUM_REQUESTS_THRESHOLD 16
-  int position_in_checksum_element, position;
-  UINT64 requested_checksums_elem, bit_mask;
-  unsigned int element_position, num_elements, counter;
-
-  num_elements = DWB_CHECKSUM_NUM_ELEMENTS_IN_BLOCK * DWB_NUM_TOTAL_BLOCKS;
-
-  counter = 0;
-  for (element_position = 0; element_position < num_elements; element_position++)
-    {
-      requested_checksums_elem = DWB_GET_REQUESTED_CHECKSUMS_ELEMENT (element_position);
-      position_in_checksum_element = DWB_GET_POSITION_IN_CHECKSUMS_ELEMENT (element_position);
-      if (position_in_checksum_element >= DWB_CHECKSUM_ELEMENT_NO_BITS)
-	{
-	  continue;
-	}
-
-      bit_mask = 1ULL << position_in_checksum_element;
-      for (position = position_in_checksum_element; position < DWB_CHECKSUM_ELEMENT_NO_BITS; position++)
-	{
-	  if ((requested_checksums_elem & bit_mask) == 0)
-	    {
-	      /* Stop searching bits */
-	      break;
-	    }
-
-	  counter++;
-	  bit_mask = bit_mask << 1;
-	}
-
-      /* Check counter after each element. */
-      if (counter >= DWB_CHECKSUM_REQUESTS_THRESHOLD)
-	{
-	  return true;
-	}
-    }
-
-  return false;
-
-#undef DWB_CHECKSUM_REQUESTS_THRESHOLD
-}
-
-/*
- * dwb_slot_compute_checksum () - Compute checksum for page contained in a slot.
- *
- * return   : Error code
- * thread_p (in) : Thread entry.
- * slot(in/out): DWB slot
- * mark_checksum_computed(in): True, if computed checksum must be marked in bits array.
- * checksum_computed(out): True, if checksum is computed now.
- */
-STATIC_INLINE int
-dwb_slot_compute_checksum (THREAD_ENTRY * thread_p, DWB_SLOT * slot, bool mark_checksum_computed,
-			   bool * checksum_computed)
-{
-  int error_code = NO_ERROR;
-  PERF_UTIME_TRACKER time_track;
-
-  assert (slot != NULL);
-
-  *checksum_computed = false;
-  if (!ATOMIC_CAS_32 (&slot->checksum_status, DWB_SLOT_CHECKSUM_NOT_COMPUTED, DWB_SLOT_CHECKSUM_COMPUTED))
-    {
-      /* Already computed */
-      return NO_ERROR;
-    }
-
-  PERF_UTIME_TRACKER_START (thread_p, &time_track);
-
-  if (!VPID_ISNULL (&slot->vpid))
-    {
-      error_code = fileio_set_page_checksum (thread_p, slot->io_page);
-      if (error_code != NO_ERROR)
-	{
-	  assert (false);
-	  /* Restore it. */
-	  ATOMIC_TAS_32 (&slot->checksum_status, DWB_SLOT_CHECKSUM_NOT_COMPUTED);
-	  return error_code;
-	}
-    }
-  else
-    {
-      /* The slot page will not be written on data volume. */
-      assert (slot->io_page->prv.checksum == 0);
-    }
-
-  PERF_UTIME_TRACKER_TIME (thread_p, &time_track, PSTAT_DWB_PAGE_CHECKSUM_TIME_COUNTERS);
-
-  if (mark_checksum_computed)
-    {
-      dwb_mark_checksum_computed (thread_p, slot->block_no, slot->position_in_block);
-    }
-
-  *checksum_computed = true;
-  return NO_ERROR;
 }
 
 /*
@@ -1559,7 +1110,7 @@ dwb_create_blocks (THREAD_ENTRY * thread_p, unsigned int num_blocks, unsigned in
 	{
 	  io_page = (FILEIO_PAGE *) (blocks_write_buffer[i] + j * IO_PAGESIZE);
 
-	  fileio_initialize_res (thread_p, &io_page->prv);
+	  fileio_initialize_res (thread_p, io_page, IO_PAGESIZE);
 	  dwb_initialize_slot (&slots[i][j], io_page, j, i);
 	}
 
@@ -1644,7 +1195,6 @@ dwb_create_internal (THREAD_ENTRY * thread_p, const char *dwb_volume_name, UINT6
   unsigned int i, num_pages, num_block_pages;
   int vdes = NULL_VOLDES;
   DWB_BLOCK *blocks = NULL;
-  DWB_CHECKSUM_INFO *checksum_info = NULL;
   DWB_SLOTS_HASH *slots_hash = NULL;
   UINT64 new_position_with_flags;
 
@@ -1686,12 +1236,6 @@ dwb_create_internal (THREAD_ENTRY * thread_p, const char *dwb_volume_name, UINT6
       goto exit_on_error;
     }
 
-  error_code = dwb_create_checksum_info (thread_p, num_blocks, num_block_pages, &checksum_info);
-  if (error_code != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
   error_code = dwb_create_slots_hash (thread_p, &slots_hash);
   if (error_code != NO_ERROR)
     {
@@ -1705,7 +1249,6 @@ dwb_create_internal (THREAD_ENTRY * thread_p, const char *dwb_volume_name, UINT6
   dwb_Global.log2_num_block_pages = (unsigned int) (log ((float) num_block_pages) / log ((float) 2));
   dwb_Global.blocks_flush_counter = 0;
   dwb_Global.next_block_to_flush = 0;
-  dwb_Global.checksum_info = checksum_info;
   pthread_mutex_init (&dwb_Global.mutex, NULL);
   dwb_init_wait_queue (&dwb_Global.wait_queue);
   dwb_Global.slots_hash = slots_hash;
@@ -1738,12 +1281,6 @@ exit_on_error:
 	  dwb_finalize_block (&blocks[i]);
 	}
       free_and_init (blocks);
-    }
-
-  if (checksum_info != NULL)
-    {
-      dwb_finalize_checksum_info (checksum_info);
-      free_and_init (checksum_info);
     }
 
   if (slots_hash != NULL)
@@ -1926,7 +1463,7 @@ dwb_slots_hash_insert (THREAD_ENTRY * thread_p, VPID * vpid, DWB_SLOT * slot, in
 	      /* Invalidate the old slot, if is in the same block. We want to avoid duplicates in block at flush. */
 	      assert (slots_hash_entry->slot->position_in_block < slot->position_in_block);
 	      VPID_SET_NULL (&slots_hash_entry->slot->vpid);
-	      fileio_initialize_res (thread_p, &(slots_hash_entry->slot->io_page->prv));
+	      fileio_initialize_res (thread_p, slots_hash_entry->slot->io_page, IO_PAGESIZE);
 
 	      _er_log_debug (ARG_FILE_LINE,
 			     "Found same page with same LSA in same block - %d - at positions (%d, %d) \n",
@@ -1998,12 +1535,6 @@ dwb_destroy_internal (THREAD_ENTRY * thread_p, UINT64 * current_position_with_fl
 	  dwb_finalize_block (&dwb_Global.blocks[block_no]);
 	}
       free_and_init (dwb_Global.blocks);
-    }
-
-  if (dwb_Global.checksum_info != NULL)
-    {
-      dwb_finalize_checksum_info (dwb_Global.checksum_info);
-      free_and_init (dwb_Global.checksum_info);
     }
 
   if (dwb_Global.slots_hash != NULL)
@@ -2712,7 +2243,6 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, UINT64 * current_po
   int error_code = NO_ERROR;
   DWB_SLOT *p_dwb_ordered_slots = NULL;
   unsigned int i, ordered_slots_length;
-  unsigned int block_checksum_element_position, block_checksum_start_position, element_position;
   PERF_UTIME_TRACKER time_track;
   int num_pages;
   unsigned int current_block_to_flush, next_block_to_flush;
@@ -2766,7 +2296,7 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, UINT64 * current_po
 	  assert (s1->position_in_block < DWB_BLOCK_NUM_PAGES);
 	  VPID_SET_NULL (&(block->slots[s1->position_in_block].vpid));
 
-	  fileio_initialize_res (thread_p, &(s1->io_page->prv));
+	  fileio_initialize_res (thread_p, s1->io_page, IO_PAGESIZE);
 	}
 
       /* Check for WAL protocol. */
@@ -2914,21 +2444,6 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, UINT64 * current_po
   if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_FLUSHED_BLOCK_VOLUMES))
     {
       perfmon_db_flushed_block_volumes (thread_p, block->count_flush_volumes_info);
-    }
-
-  if (prm_get_bool_value (PRM_ID_ENABLE_DWB_CHECKSUM_THREAD) == true)
-    {
-      block_checksum_start_position = DWB_BLOCK_GET_CHECKSUM_START_POSITION (block->block_no);
-
-      for (block_checksum_element_position = 0; block_checksum_element_position < DWB_CHECKSUM_NUM_ELEMENTS_IN_BLOCK;
-	   block_checksum_element_position++)
-	{
-	  element_position = block_checksum_start_position + block_checksum_element_position;
-
-	  DWB_RESET_REQUESTED_CHECKSUMS_ELEMENT (element_position);
-	  DWB_RESET_COMPUTED_CHECKSUMS_ELEMENT (element_position);
-	  DWB_RESET_POSITION_IN_CHECKSUMS_ELEMENT (element_position);
-	}
     }
 
 #if defined (SERVER_MODE)
@@ -3119,8 +2634,6 @@ start:
 
   assert ((*p_dwb_slot)->position_in_block == position_in_current_block);
 
-  ATOMIC_TAS_32 (&(*p_dwb_slot)->checksum_status, DWB_SLOT_CHECKSUM_NOT_COMPUTED);
-
   return NO_ERROR;
 }
 
@@ -3148,9 +2661,10 @@ dwb_set_slot_data (THREAD_ENTRY * thread_p, DWB_SLOT * dwb_slot, FILEIO_PAGE * i
   else
     {
       /* Initialize page for consistency. */
-      fileio_initialize_res (thread_p, &(dwb_slot->io_page->prv));
+      fileio_initialize_res (thread_p, dwb_slot->io_page, IO_PAGESIZE);
     }
 
+  assert (fileio_is_page_sane (io_page_p, IO_PAGESIZE));
   LSA_COPY (&dwb_slot->lsa, &io_page_p->prv.lsa);
   VPID_SET (&dwb_slot->vpid, io_page_p->prv.volid, io_page_p->prv.pageid);
 }
@@ -3181,222 +2695,18 @@ dwb_init_slot (DWB_SLOT * slot)
 STATIC_INLINE void
 dwb_get_next_block_for_flush (THREAD_ENTRY * thread_p, unsigned int *block_no)
 {
-  unsigned int block_checksum_start_position, block_checksum_element_position, element_position;
-  bool found;
-
   assert (block_no != NULL);
 
   *block_no = DWB_NUM_TOTAL_BLOCKS;
 
-  /* First, check whether the next block can be flushed. Then check whether its whole slots checksum were computed. */
+  /* check whether the next block can be flushed. */
   if (dwb_Global.blocks[dwb_Global.next_block_to_flush].count_wb_pages != DWB_BLOCK_NUM_PAGES)
     {
       /* Next block is not full yet. */
       return;
     }
 
-  found = true;
-  if (prm_get_bool_value (PRM_ID_ENABLE_DWB_CHECKSUM_THREAD) == true)
-    {
-      block_checksum_start_position = DWB_BLOCK_GET_CHECKSUM_START_POSITION (dwb_Global.next_block_to_flush);
-
-      for (block_checksum_element_position = 0; block_checksum_element_position < DWB_CHECKSUM_NUM_ELEMENTS_IN_BLOCK;
-	   block_checksum_element_position++)
-	{
-	  element_position = block_checksum_start_position + block_checksum_element_position;
-
-	  if (DWB_GET_COMPUTED_CHECKSUMS_ELEMENT (element_position)
-	      != DWB_GET_COMPLETED_CHECKSUMS_ELEMENT (block_checksum_element_position))
-	    {
-	      /* Needs to compute all checksums before flush. */
-	      found = false;
-	      break;
-	    }
-	}
-    }
-
-  if (found)
-    {
-      *block_no = dwb_Global.next_block_to_flush;
-    }
-}
-
-/*
- * dwb_block_has_all_checksums_computed(): Checks whether the block has all checksum computed.
- *
- * returns: True, if all block checksums computed.
- * block_no(out): The block number.
- */
-STATIC_INLINE bool
-dwb_block_has_all_checksums_computed (unsigned int block_no)
-{
-  unsigned int block_checksum_start_position, block_checksum_element_position, element_position;
-  bool found;
-
-  /* First, search for blocks that must be flushed, to avoid delays caused by checksum computation in other block. */
-  found = true;
-  block_checksum_start_position = DWB_BLOCK_GET_CHECKSUM_START_POSITION (block_no);
-
-  for (block_checksum_element_position = 0; block_checksum_element_position < DWB_CHECKSUM_NUM_ELEMENTS_IN_BLOCK;
-       block_checksum_element_position++)
-    {
-      element_position = block_checksum_start_position + block_checksum_element_position;
-
-      if (DWB_GET_COMPUTED_CHECKSUMS_ELEMENT (element_position)
-	  != DWB_GET_COMPLETED_CHECKSUMS_ELEMENT (block_checksum_element_position))
-	{
-	  found = false;
-	  break;
-	}
-    }
-
-  return found;
-}
-
-/*
- * dwb_compute_block_checksums(): Computes checksums for requested slots in specified block.
- *
- * returns: Error code.
- * thread_p (in): The thread entry.
- * block(int): The DWB block.
- * block_slots_checksum_computed (out); True, if checksums of some slots in block are computed.
- * block_needs_flush (out): True, if block needs flush - checksum of all slots computed.
- */
-STATIC_INLINE int
-dwb_compute_block_checksums (THREAD_ENTRY * thread_p, DWB_BLOCK * block, bool * block_slots_checksum_computed,
-			     bool * block_needs_flush)
-{
-  UINT64 computed_slots_checksum_elem, requested_checksums_elem, bit_mask, computed_checksum_bits;
-  int error_code = NO_ERROR, position_in_checksum_element, position;
-  unsigned int block_checksum_start_position, block_checksum_element_position;
-  unsigned int element_position, slot_position, slot_base;
-  bool checksum_computed, slots_checksum_computed, all_slots_checksum_computed;
-  UINT64 block_version;
-
-  assert (block != NULL);
-
-  slots_checksum_computed = false;
-  all_slots_checksum_computed = true;
-  block_checksum_start_position = DWB_BLOCK_GET_CHECKSUM_START_POSITION (block->block_no);
-  block_version = DWB_GET_BLOCK_VERSION (block);
-
-  for (block_checksum_element_position = 0; block_checksum_element_position < DWB_CHECKSUM_NUM_ELEMENTS_IN_BLOCK;
-       block_checksum_element_position++)
-    {
-      element_position = block_checksum_start_position + block_checksum_element_position;
-
-      while (true)
-	{
-	  requested_checksums_elem = DWB_GET_REQUESTED_CHECKSUMS_ELEMENT (element_position);
-	  computed_slots_checksum_elem = DWB_GET_COMPUTED_CHECKSUMS_ELEMENT (element_position);
-	  position_in_checksum_element = DWB_GET_POSITION_IN_CHECKSUMS_ELEMENT (element_position);
-
-	  /* Before checksum computation, check whether the block was flushed. */
-	  if (DWB_GET_BLOCK_VERSION (block) != block_version)
-	    {
-	      dwb_log ("Can't computed checksums for block %d. Block version updated from %lld to %lld.\n",
-		       block->block_no, block_version, DWB_GET_BLOCK_VERSION (block));
-	      break;
-	    }
-
-	  if (requested_checksums_elem == 0ULL || requested_checksums_elem == computed_slots_checksum_elem)
-	    {
-	      /* There are no other slots available for checksum computation. */
-	      break;
-	    }
-
-	  /* The checksum bits modified meanwhile, we needs to compute new checksum. */
-	  if (position_in_checksum_element >= DWB_CHECKSUM_ELEMENT_NO_BITS)
-	    {
-	      break;
-	    }
-
-	  slot_base = block_checksum_element_position * DWB_CHECKSUM_ELEMENT_NO_BITS;
-	  bit_mask = 1ULL << position_in_checksum_element;
-	  computed_checksum_bits = 0;
-
-	  for (position = position_in_checksum_element; position < DWB_CHECKSUM_ELEMENT_NO_BITS; position++)
-	    {
-	      if ((requested_checksums_elem & bit_mask) == 0)
-		{
-		  /* Stop searching bits */
-		  break;
-		}
-
-	      slot_position = slot_base + position;
-	      assert (slot_position < DWB_BLOCK_NUM_PAGES);
-
-	      error_code = dwb_slot_compute_checksum (thread_p, &block->slots[slot_position], false,
-						      &checksum_computed);
-	      if (error_code != NO_ERROR)
-		{
-		  dwb_log_error ("Can't compute checksum for slot %d in block %d\n",
-				 block->slots[slot_position].position_in_block, block->block_no);
-		  return error_code;
-		}
-
-	      /* Add the bit, if checksum was computed by me. */
-	      if (checksum_computed)
-		{
-		  computed_checksum_bits |= bit_mask;
-		  slots_checksum_computed = true;
-		}
-
-	      bit_mask = bit_mask << 1;
-	    }
-
-	  /* Update computed bits */
-	  if (computed_checksum_bits == 0)
-	    {
-	      break;
-	    }
-	  else
-	    {
-	      /* Check that no other transaction computed the current slot checksum. */
-	      assert (DWB_IS_ADDED_TO_REQUESTED_CHECKSUMS_ELEMENT (element_position, computed_checksum_bits));
-	      assert (!DWB_IS_ADDED_TO_COMPUTED_CHECKSUMS_ELEMENT (element_position, computed_checksum_bits));
-
-	      /* Update start bit position, if possible */
-	      do
-		{
-		  position_in_checksum_element = DWB_GET_POSITION_IN_CHECKSUMS_ELEMENT (element_position);
-		  if (position_in_checksum_element >= position)
-		    {
-		      /* Other transaction advanced before me, nothing to do. */
-		      break;
-		    }
-		}
-	      while (!ATOMIC_CAS_32 (&dwb_Global.checksum_info->positions[element_position],
-				     position_in_checksum_element, position));
-
-	      assert (DWB_GET_BLOCK_VERSION (block) == block_version);
-
-	      DWB_ADD_TO_COMPUTED_CHECKSUMS_ELEMENT (element_position, computed_checksum_bits);
-
-	      dwb_log ("Successfully computed checksums for slots %d in block %d having version = %lld\n",
-		       computed_checksum_bits, block->block_no, block_version);
-	    }
-	}
-
-      if (DWB_GET_COMPUTED_CHECKSUMS_ELEMENT (element_position)
-	  != DWB_GET_COMPLETED_CHECKSUMS_ELEMENT (block_checksum_element_position))
-	{
-	  /* The checksum was not computed for all block slots. */
-	  all_slots_checksum_computed = false;
-	}
-    }
-
-  if (block_slots_checksum_computed)
-    {
-      *block_slots_checksum_computed = slots_checksum_computed;
-    }
-
-  if (block_needs_flush)
-    {
-      *block_needs_flush = all_slots_checksum_computed;
-    }
-
-  return NO_ERROR;
+  *block_no = dwb_Global.next_block_to_flush;
 }
 
 /*
@@ -3444,8 +2754,7 @@ dwb_set_data_on_next_slot (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, boo
  * vpid(in): Page identifier.
  * p_dwb_slot(in/out): DWB slot where the page content must be added.
  *
- *  Note: This thread may decide to compute checksum, in case that checksum thread remains behind.
- *        Also, this thread may flush the block, if flush thread is not available or we are in stand alone.
+ *  Note: thread may flush the block, if flush thread is not available or we are in stand alone.
  */
 int
 dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB_SLOT ** p_dwb_slot)
@@ -3454,7 +2763,6 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
   int error_code = NO_ERROR, inserted;
   DWB_BLOCK *block = NULL;
   DWB_SLOT *dwb_slot = NULL;
-  bool checksum_computed;
   bool needs_flush;
 
   assert (p_dwb_slot != NULL && (io_page_p != NULL || (*p_dwb_slot)->io_page != NULL) && vpid != NULL);
@@ -3493,14 +2801,12 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
 	{
 	  /* Invalidate the slot to avoid flushing the same data twice. */
 	  VPID_SET_NULL (&dwb_slot->vpid);
-	  fileio_initialize_res (thread_p, &(dwb_slot->io_page->prv));
+	  fileio_initialize_res (thread_p, dwb_slot->io_page, IO_PAGESIZE);
 	}
     }
 
   dwb_log ("dwb_add_page: added page = (%d,%d) on block (%d) position (%d)\n", vpid->volid, vpid->pageid,
 	   dwb_slot->block_no, dwb_slot->position_in_block);
-  /* Reset checksum. */
-  dwb_slot->io_page->prv.checksum = 0;
 
   block = &dwb_Global.blocks[dwb_slot->block_no];
   count_wb_pages = ATOMIC_INC_32 (&block->count_wb_pages, 1);
@@ -3513,34 +2819,6 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
   else
     {
       needs_flush = true;
-    }
-
-  if (prm_get_bool_value (PRM_ID_ENABLE_DWB_CHECKSUM_THREAD) == true)
-    {
-      dwb_add_checksum_computation_request (thread_p, block->block_no, dwb_slot->position_in_block);
-
-#if defined (SERVER_MODE)
-      if (dwb_is_checksum_computation_daemon_available ())
-	{
-	  /* Wake up checksum thread to compute checksum. */
-	  dwb_checkum_computation_daemon->wakeup ();
-	}
-
-      if (dwb_needs_speedup_checksum_computation (thread_p))
-#endif /* SERVER_MODE */
-	{
-	  /* Speed up checksum computation, if is too slow. */
-	  error_code = dwb_slot_compute_checksum (thread_p, dwb_slot, true, &checksum_computed);
-	  if (error_code != NO_ERROR)
-	    {
-	      dwb_log_error ("Can't compute checksum for slot %d in block %d\n",
-			     dwb_slot->position_in_block, dwb_slot->block_no);
-	      return error_code;
-	    }
-
-	  dwb_log ("Successfully computed checksums for slots %d in block %d\n",
-		   dwb_slot->position_in_block, dwb_slot->block_no);
-	}
     }
 
   if (needs_flush == false)
@@ -3557,7 +2835,7 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
 #if defined (SERVER_MODE)
   /*
    * Wake ups flush block thread to flush the current block. The current block will be flushed after flushing the
-   * previous block and after all slots checksum of current block were computed by checksum threads.
+   * previous block.
    */
   if (dwb_is_flush_block_daemon_available ())
     {
@@ -3566,23 +2844,6 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
 
       return NO_ERROR;
     }
-
-  /* This thread must flush the block, but has to compute checksums first. */
-  if (!dwb_block_has_all_checksums_computed (block->block_no))
-    {
-      /* Computes checksum. Checksum thread may also computes checksums but for different block pages. */
-      error_code = dwb_compute_block_checksums (thread_p, block, NULL, &needs_flush);
-      if (error_code != NO_ERROR)
-	{
-	  assert (false);
-	  return error_code;
-	}
-
-      /* All checksums computed. */
-      assert (needs_flush == true);
-    }
-#else
-  assert (dwb_block_has_all_checksums_computed (block->block_no));
 #endif /* SERVER_MODE */
 
   /* Flush all pages from current block */
@@ -3734,7 +2995,6 @@ dwb_debug_check_dwb (THREAD_ENTRY * thread_p, DWB_SLOT * p_dwb_ordered_slots, un
 	  error_code = fileio_page_check_corruption (thread_p, p_dwb_ordered_slots[i - 1].io_page, &is_page_corrupted);
 	  if (error_code != NO_ERROR)
 	    {
-	      /* Error in checksum computation. */
 	      return error_code;
 	    }
 
@@ -3746,7 +3006,6 @@ dwb_debug_check_dwb (THREAD_ENTRY * thread_p, DWB_SLOT * p_dwb_ordered_slots, un
 	  error_code = fileio_page_check_corruption (thread_p, p_dwb_ordered_slots[i].io_page, &is_page_corrupted);
 	  if (error_code != NO_ERROR)
 	    {
-	      /* Error in checksum computation. */
 	      return error_code;
 	    }
 
@@ -3849,7 +3108,6 @@ dwb_check_data_page_is_sane (THREAD_ENTRY * thread_p, DWB_BLOCK * rcv_block, DWB
       error_code = fileio_page_check_corruption (thread_p, iopage, &is_page_corrupted);
       if (error_code != NO_ERROR)
 	{
-	  /* Error in checksum computation. */
 	  return error_code;
 	}
 
@@ -3857,7 +3115,7 @@ dwb_check_data_page_is_sane (THREAD_ENTRY * thread_p, DWB_BLOCK * rcv_block, DWB
 	{
 	  /* The page in data volume is not corrupted. Do not overwrite its content - reset slot VPID. */
 	  VPID_SET_NULL (&p_dwb_ordered_slots[i].vpid);
-	  fileio_initialize_res (thread_p, &(p_dwb_ordered_slots[i].io_page->prv));
+	  fileio_initialize_res (thread_p, p_dwb_ordered_slots[i].io_page, IO_PAGESIZE);
 	  continue;
 	}
 
@@ -3865,7 +3123,6 @@ dwb_check_data_page_is_sane (THREAD_ENTRY * thread_p, DWB_BLOCK * rcv_block, DWB
       error_code = fileio_page_check_corruption (thread_p, p_dwb_ordered_slots[i].io_page, &is_page_corrupted);
       if (error_code != NO_ERROR)
 	{
-	  /* Error in checksum computation. */
 	  return error_code;
 	}
 
@@ -4304,7 +3561,7 @@ start:
 
   iopage = (FILEIO_PAGE *) PTR_ALIGN (page_buf, MAX_ALIGNMENT);
   memset (iopage, 0, IO_MAX_PAGE_SIZE);
-  fileio_initialize_res (thread_p, &(iopage->prv));
+  fileio_initialize_res (thread_p, iopage, IO_PAGESIZE);
 
   /* Check whether the initial block was flushed */
 check_flushed_blocks:
@@ -4629,88 +3886,6 @@ dwb_flush_block_helper (THREAD_ENTRY * thread_p)
 }
 
 /*
- * dwb_compute_checksums (): Computes checksum for requested slots.
- *
- * returns: Error code.
- * thread_p (in): The thread entry.
- */
-static int
-dwb_compute_checksums (THREAD_ENTRY * thread_p)
-{
-  UINT64 position_with_flags;
-  unsigned int num_block, start_block, end_block;
-  bool block_slots_checksums_computed, block_needs_flush, checksum_computed;
-  int error_code = NO_ERROR;
-
-start:
-  position_with_flags = ATOMIC_INC_64 (&dwb_Global.position_with_flags, 0ULL);
-
-  if (!DWB_IS_CREATED (position_with_flags) || DWB_IS_MODIFYING_STRUCTURE (position_with_flags))
-    {
-      return NO_ERROR;
-    }
-
-  start_block = dwb_Global.next_block_to_flush;
-  if (ATOMIC_INC_32 (&dwb_Global.blocks_flush_counter, 0) > 0)
-    {
-      if (start_block != dwb_Global.next_block_to_flush)
-	{
-	  /* Try again, next_block_to_flush has changed. */
-	  goto start;
-	}
-
-      start_block = DWB_GET_NEXT_BLOCK_NO (start_block);
-    }
-
-  if (!dwb_block_has_all_checksums_computed (start_block))
-    {
-      /* Compute only for the block that must be flushed first, to avoid delays. */
-      end_block = start_block + 1;
-    }
-  else
-    {
-      end_block = dwb_Global.num_blocks;
-    }
-
-  /* Compute checksums and/or flush the block. */
-  checksum_computed = false;
-  for (num_block = start_block; num_block < end_block; num_block++)
-    {
-      error_code = dwb_compute_block_checksums (thread_p, &dwb_Global.blocks[num_block],
-						&block_slots_checksums_computed, &block_needs_flush);
-      if (error_code != NO_ERROR)
-	{
-	  assert (false);
-	  return error_code;
-	}
-
-#if defined(SERVER_MODE)
-      if (block_needs_flush)
-	{
-	  if (dwb_is_flush_block_daemon_available ())
-	    {
-	      /* Wakeup the thread to flush the block. */
-	      dwb_flush_block_daemon->wakeup ();
-	    }
-	}
-#endif /* SERVER_MODE */
-
-      if (block_slots_checksums_computed)
-	{
-	  checksum_computed = true;
-	}
-    }
-
-  if (checksum_computed)
-    {
-      /* Check again whether we can compute other checksums, requested meanwhile by concurrent transaction. */
-      goto start;
-    }
-
-  return NO_ERROR;
-}
-
-/*
  * dwb_read_page () - Reads page from DWB.
  *
  * return   : Error code.
@@ -4834,30 +4009,6 @@ class dwb_flush_block_helper_daemon_task: public cubthread::entry_task
     }
 };
 
-// class dwb_checksum_computation_daemon_task
-//
-//  description:
-//    dwb checksum computation daemon task
-//
-class dwb_checksum_computation_daemon_task: public cubthread::entry_task
-{
-  public:
-    void execute (cubthread::entry &thread_ref) override
-    {
-      if (!BO_IS_SERVER_RESTARTED ())
-        {
-	  // wait for boot to finish
-	  return;
-        }
-
-      /* flush pages as long as necessary */
-      if (prm_get_bool_value (PRM_ID_ENABLE_DWB_CHECKSUM_THREAD) == true)
-        {
-	  dwb_compute_checksums (&thread_ref);
-        }
-    }
-};
-
 /*
  * dwb_flush_block_daemon_init () - initialize DWB flush block daemon thread
  */
@@ -4883,18 +4034,6 @@ dwb_flush_block_helper_daemon_init ()
 }
 
 /*
- * dwb_checksum_computation_daemon_init () - initialize DWB checksum computation daemon thread
- */
-void
-dwb_checksum_computation_daemon_init ()
-{
-  cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (20));
-  dwb_checksum_computation_daemon_task *daemon_task = new dwb_checksum_computation_daemon_task ();
-
-  dwb_checkum_computation_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task);
-}
-
-/*
  * dwb_daemons_init () - initialize DWB daemon threads
  */
 void
@@ -4902,7 +4041,6 @@ dwb_daemons_init ()
 {
   dwb_flush_block_daemon_init ();
   dwb_flush_block_helper_daemon_init ();
-  dwb_checksum_computation_daemon_init ();
 }
 
 /*
@@ -4913,7 +4051,6 @@ dwb_daemons_destroy ()
 {
   cubthread::get_manager ()->destroy_daemon (dwb_flush_block_daemon);
   cubthread::get_manager ()->destroy_daemon (dwb_flush_block_helper_daemon);
-  cubthread::get_manager ()->destroy_daemon (dwb_checkum_computation_daemon);
 }
 #endif /* SERVER_MODE */
 // *INDENT-ON*
@@ -4947,21 +4084,6 @@ dwb_is_flush_block_helper_daemon_available (void)
 }
 
 /*
- * dwb_is_checksum_computation_daemon_available () - Check whether checksum computation daemon is available
- *
- *   return: true, if checksum computation thread is available, false otherwise
- */
-static bool
-dwb_is_checksum_computation_daemon_available (void)
-{
-#if defined (SERVER_MODE)
-  return dwb_checkum_computation_daemon != NULL;
-#else
-  return false;
-#endif
-}
-
-/*
  * dwb_flush_block_daemon_is_running () - Check whether flush block daemon is running
  *
  *   return: true, if flush block thread is running
@@ -4986,21 +4108,6 @@ dwb_flush_block_helper_daemon_is_running (void)
 {
 #if defined (SERVER_MODE)
   return ((dwb_flush_block_helper_daemon != NULL) && (dwb_flush_block_helper_daemon->is_running ()));
-#else
-  return false;
-#endif /* SERVER_MODE */
-}
-
-/*
- * dwb_checksum_computation_daemon_is_running () - Check whether checksum computation daemon is running
- *
- *   return: true, if checksum computation thread is running
- */
-static bool
-dwb_checksum_computation_daemon_is_running (void)
-{
-#if defined (SERVER_MODE)
-  return ((dwb_checkum_computation_daemon != NULL) && (dwb_checkum_computation_daemon->is_running ()));
 #else
   return false;
 #endif /* SERVER_MODE */

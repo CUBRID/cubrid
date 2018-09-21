@@ -574,8 +574,6 @@ static int fileio_synchronize_bg_archive_volume (THREAD_ENTRY * thread_p);
 static void fileio_page_bitmap_set (FILEIO_RESTORE_PAGE_BITMAP * page_bitmap, int page_id);
 static bool fileio_page_bitmap_is_set (FILEIO_RESTORE_PAGE_BITMAP * page_bitmap, int page_id);
 static void fileio_page_bitmap_dump (FILE * out_fp, const FILEIO_RESTORE_PAGE_BITMAP * page_bitmap);
-static int fileio_compute_page_checksum (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, int *checksum_crc32);
-static int fileio_page_has_valid_checksum (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, bool * has_valid_checksum);
 
 static int
 fileio_increase_flushed_page_count (int npages)
@@ -2387,7 +2385,7 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p, const char *
     }
 
   memset ((char *) malloc_io_page_p, 0, page_size);
-  (void) fileio_initialize_res (thread_p, &(malloc_io_page_p->prv));
+  (void) fileio_initialize_res (thread_p, malloc_io_page_p, page_size);
 
   vol_fd = fileio_create (thread_p, db_full_name_p, vol_label_p, vol_id, is_do_lock, is_do_sync);
   FI_TEST (thread_p, FI_TEST_FILE_IO_FORMAT, 0);
@@ -2596,7 +2594,7 @@ fileio_expand_to (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES size_npages, D
     }
 
   memset (io_page_p, 0, IO_PAGESIZE);
-  (void) fileio_initialize_res (thread_p, &(io_page_p->prv));
+  (void) fileio_initialize_res (thread_p, io_page_p, IO_PAGESIZE);
 
   start_pageid = (PAGEID) (current_size / IO_PAGESIZE);
   last_pageid = ((PAGEID) (new_size / IO_PAGESIZE) - 1);
@@ -2844,7 +2842,7 @@ fileio_copy_volume (THREAD_ENTRY * thread_p, int from_vol_desc, DKNPAGES npages,
 	    }
 	  else
 	    {
-	      LSA_SET_NULL (&malloc_io_page_p->prv.lsa);
+	      fileio_reset_page_lsa (malloc_io_page_p, IO_PAGESIZE);
 	      if (fileio_write_or_add_to_dwb (thread_p, to_vol_desc, malloc_io_page_p, page_id, IO_PAGESIZE) == NULL)
 		{
 		  goto error;
@@ -2900,7 +2898,8 @@ fileio_reset_volume (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, DK
     {
       if (fileio_read (thread_p, vol_fd, malloc_io_page_p, page_id, IO_PAGESIZE) != NULL)
 	{
-	  LSA_COPY (&malloc_io_page_p->prv.lsa, reset_lsa_p);
+	  fileio_set_page_lsa (malloc_io_page_p, reset_lsa_p, IO_PAGESIZE);
+
 	  if (fileio_write_or_add_to_dwb (thread_p, vol_fd, malloc_io_page_p, page_id, IO_PAGESIZE) == NULL)
 	    {
 	      success = ER_FAILED;
@@ -3585,7 +3584,7 @@ pwrite_with_injected_fault (THREAD_ENTRY * thread_p, int fd, const void *buf, si
 {
   static bool init = false;
   const int mod_factor = 25000;
-  const int unit_size = 4096;
+  const int block_size = 4096;
   int count_blocks;
   ssize_t r, written_nbytes;
   off_t unit_offset;
@@ -3603,23 +3602,23 @@ pwrite_with_injected_fault (THREAD_ENTRY * thread_p, int fd, const void *buf, si
   if ((fi_partial_write1_on || fi_partial_write2_on) && ((rand () % mod_factor) == 0))
     {
       // simulate partial write
-      count_blocks = count / unit_size;
+      count_blocks = count / block_size;
       written_nbytes = 0;
       for (int i = 0; i < count_blocks; i++)
 	{
 	  if (fi_partial_write1_on)
 	    {
-	      unit_offset = i * unit_size;
+	      unit_offset = i * block_size;
 	    }
 	  else
 	    {
 	      // reverse order
-	      unit_offset = ((count_blocks - 1) - i) * unit_size;
+	      unit_offset = ((count_blocks - 1) - i) * block_size;
 	    }
 
-	  r = pwrite (fd, ((char *) buf) + unit_offset, unit_size, offset + unit_offset);
+	  r = pwrite (fd, ((char *) buf) + unit_offset, block_size, offset + unit_offset);
 	  written_nbytes += r;
-	  if (r != unit_size)
+	  if (r != block_size)
 	    {
 	      return written_nbytes;
 	    }
@@ -3645,7 +3644,7 @@ pwrite_with_injected_fault (THREAD_ENTRY * thread_p, int fd, const void *buf, si
 		  fileio_page_hexa_dump ((const char *) buf, count);
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
-		  /* Verify checksum correctness before the crash, for proper recovery purpose. */
+		  /* Verify page correctness before the crash, for proper recovery purpose. */
 		  if (fileio_is_permanent_volume_descriptor (thread_p, fd))
 		    {
 		      /* Permanent data volume. */
@@ -4802,7 +4801,7 @@ fileio_write_user_area (THREAD_ENTRY * thread_p, int vol_fd, PAGEID page_id, off
 	  return NULL;
 	}
 
-      (void) fileio_initialize_res (thread_p, &(io_page_p->prv));
+      (void) fileio_initialize_res (thread_p, io_page_p, IO_PAGESIZE);
       memcpy (io_page_p->page, area_p, nbytes);
 
       write_p = (void *) io_page_p;
@@ -9994,7 +9993,7 @@ fileio_fill_hole_during_restore (THREAD_ENTRY * thread_p, int *next_page_id_p, i
 	  return ER_FAILED;
 	}
       memset ((char *) malloc_io_pgptr, 0, IO_PAGESIZE);
-      (void) fileio_initialize_res (thread_p, &(malloc_io_pgptr->prv));
+      (void) fileio_initialize_res (thread_p, malloc_io_pgptr, IO_PAGESIZE);
     }
 
   while (*next_page_id_p < stop_page_id)
@@ -11538,19 +11537,17 @@ fileio_os_sysconf (void)
  *   return:
  */
 void
-fileio_initialize_res (THREAD_ENTRY * thread_p, FILEIO_PAGE_RESERVED * prv_p)
+fileio_initialize_res (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, PGLENGTH page_size)
 {
-  LSA_SET_NULL (&(prv_p->lsa));
-  prv_p->pageid = -1;
-  prv_p->volid = -1;
+  fileio_init_lsa_of_page (io_page, page_size);
+  io_page->prv.pageid = -1;
+  io_page->prv.volid = -1;
 
-  /* Clears checksum for debug purpose. */
-  prv_p->checksum = 0;
-
-  prv_p->ptype = '\0';
-  prv_p->pflag_reserve_1 = '\0';
-  prv_p->p_reserve_2 = 0;
-  prv_p->p_reserve_3 = 0;
+  io_page->prv.ptype = '\0';
+  io_page->prv.pflag_reserve_1 = '\0';
+  io_page->prv.p_reserve_1 = 0;
+  io_page->prv.p_reserve_2 = 0;
+  io_page->prv.p_reserve_3 = 0;
 }
 
 
@@ -11787,84 +11784,6 @@ fileio_page_bitmap_dump (FILE * out_fp, const FILEIO_RESTORE_PAGE_BITMAP * page_
 }
 
 /*
- * fileio_compute_page_checksum - Computes data page checksum.
- *   return: error code
- *   thread_p (in) : thread entry
- *   io_page (in) : page pointer
- *   checksum_crc32 (out): computed checksum
- *
- *   Note: Currently CRC32 is used as checksum.
- */
-static int
-fileio_compute_page_checksum (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, int *checksum_crc32)
-{
-  int error_code = NO_ERROR, saved_checksum_crc32;
-
-  assert (io_page != NULL && checksum_crc32 != NULL);
-
-  /* Save the old page checksum. */
-  saved_checksum_crc32 = io_page->prv.checksum;
-
-  /* Resets checksum to not affect the new computation. */
-  io_page->prv.checksum = 0;
-
-  /* Computes the page checksum. */
-  error_code = crypt_crc32 (thread_p, (char *) io_page, IO_PAGESIZE, checksum_crc32);
-
-  /* Restores the saved checksum */
-  io_page->prv.checksum = saved_checksum_crc32;
-
-  return error_code;
-}
-
-/*
- * fileio_page_has_valid_checksum - Check whether the page checksum is valid.
- *   return: error code
- *   thread_p (in): thread entry
- *   io_page (in): the page
- *   has_valid_checksum (out): true, if has valid checksum.
- */
-static int
-fileio_page_has_valid_checksum (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, bool * has_valid_checksum)
-{
-  int checksum_crc32, error_code = NO_ERROR;
-
-  assert (io_page != NULL && has_valid_checksum != NULL);
-
-  error_code = fileio_compute_page_checksum (thread_p, io_page, &checksum_crc32);
-  if (error_code == NO_ERROR)
-    {
-      *has_valid_checksum = (checksum_crc32 == io_page->prv.checksum);
-    }
-
-  return error_code;
-}
-
-/* 
- * fileio_set_page_checksum - Set page checksum.
- *   return: error code
- *   thread_p (in): thread entry
- *   io_page (in): page
- *
- *   Note: Currently CRC32 is used as checksum.
- */
-int
-fileio_set_page_checksum (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page)
-{
-  int checksum_crc32, error_code = NO_ERROR;
-
-  assert (io_page != NULL);
-
-  error_code = fileio_compute_page_checksum (thread_p, io_page, &checksum_crc32);
-  if (error_code == NO_ERROR)
-    {
-      io_page->prv.checksum = checksum_crc32;
-    }
-
-  return error_code;
-}
-
-/*
  * fileio_page_check_corruption - Check whether the page is corrupted.
  *   return: error code
  *   thread_p (in): thread entry
@@ -11874,23 +11793,9 @@ fileio_set_page_checksum (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page)
 int
 fileio_page_check_corruption (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, bool * is_page_corrupted)
 {
-  int error_code;
-  bool has_valid_checksum;
-
   assert (io_page != NULL && is_page_corrupted != NULL);
 
-  if (io_page->prv.checksum == 0)
-    {
-      /* The checksum was disabled. */
-      *is_page_corrupted = false;
-      return NO_ERROR;
-    }
+  *is_page_corrupted = !fileio_is_page_sane (io_page, IO_PAGESIZE);
 
-  error_code = fileio_page_has_valid_checksum (thread_p, io_page, &has_valid_checksum);
-  if (error_code == NO_ERROR)
-    {
-      *is_page_corrupted = !has_valid_checksum;
-    }
-
-  return error_code;
+  return NO_ERROR;
 }

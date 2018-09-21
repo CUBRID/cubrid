@@ -177,9 +177,15 @@ struct fileio_page_reserved
   INT16 volid;			/* Volume identifier where the page reside */
   unsigned char ptype;		/* Page type */
   unsigned char pflag_reserve_1;	/* unused - Reserved field */
-  INT32 checksum;		/* Page checksum - currently CRC32 is used. */
+  INT32 p_reserve_1;
   INT32 p_reserve_2;		/* unused - Reserved field */
   INT64 p_reserve_3;		/* unused - Reserved field */
+};
+
+typedef struct fileio_page_watermark FILEIO_PAGE_WATERMARK;
+struct fileio_page_watermark
+{
+  LOG_LSA lsa;			/* duplication of prv.lsa */
 };
 
 /* The FILEIO_PAGE */
@@ -188,8 +194,69 @@ struct fileio_page
 {
   FILEIO_PAGE_RESERVED prv;	/* System page area. Reserved */
   char page[1];			/* The user page area */
+
+  // You cannot directly access prv2 like page_ptr.prv2, since it does not point to the real location */
+  FILEIO_PAGE_WATERMARK prv2;	/* system page area. It should be located at the end of page. */
 };
 
+STATIC_INLINE FILEIO_PAGE_WATERMARK *
+fileio_get_page_watermark_pos (FILEIO_PAGE * io_page, PGLENGTH page_size)
+{
+  return (FILEIO_PAGE_WATERMARK *) (((char *) io_page) + (page_size - sizeof (FILEIO_PAGE_WATERMARK)));
+}
+
+STATIC_INLINE void
+fileio_init_lsa_of_page (FILEIO_PAGE * io_page, PGLENGTH page_size)
+{
+  LSA_SET_NULL (&io_page->prv.lsa);
+
+  FILEIO_PAGE_WATERMARK *prv2 = fileio_get_page_watermark_pos (io_page, page_size);
+  LSA_SET_NULL (&prv2->lsa);
+}
+
+STATIC_INLINE void
+fileio_init_lsa_of_temp_page (FILEIO_PAGE * io_page, PGLENGTH page_size)
+{
+  LOG_LSA *lsa_ptr;
+
+  lsa_ptr = &io_page->prv.lsa;
+  lsa_ptr->pageid = NULL_PAGEID - 1;
+  lsa_ptr->offset = NULL_OFFSET - 1;
+
+  FILEIO_PAGE_WATERMARK *prv2 = fileio_get_page_watermark_pos (io_page, page_size);
+
+  lsa_ptr = &prv2->lsa;
+  lsa_ptr->pageid = NULL_PAGEID - 1;
+  lsa_ptr->offset = NULL_OFFSET - 1;
+}
+
+STATIC_INLINE void
+fileio_reset_page_lsa (FILEIO_PAGE * io_page, PGLENGTH page_size)
+{
+  LSA_SET_NULL (&io_page->prv.lsa);
+
+  FILEIO_PAGE_WATERMARK *prv2 = fileio_get_page_watermark_pos (io_page, page_size);
+
+  LSA_SET_NULL (&prv2->lsa);
+}
+
+STATIC_INLINE void
+fileio_set_page_lsa (FILEIO_PAGE * io_page, const LOG_LSA * lsa, PGLENGTH page_size)
+{
+  LSA_COPY (&io_page->prv.lsa, lsa);
+
+  FILEIO_PAGE_WATERMARK *prv2 = fileio_get_page_watermark_pos (io_page, page_size);
+
+  LSA_COPY (&prv2->lsa, lsa);
+}
+
+STATIC_INLINE int
+fileio_is_page_sane (FILEIO_PAGE * io_page, PGLENGTH page_size)
+{
+  FILEIO_PAGE_WATERMARK *prv2 = fileio_get_page_watermark_pos (io_page, page_size);
+
+  return (LSA_EQ (&io_page->prv.lsa, &prv2->lsa));
+}
 
 typedef struct fileio_backup_page FILEIO_BACKUP_PAGE;
 struct fileio_backup_page
@@ -408,7 +475,7 @@ extern int fileio_expand_to (THREAD_ENTRY * threda_p, VOLID volid, DKNPAGES npag
 #endif /* not CS_MODE */
 extern void *fileio_initialize_pages (THREAD_ENTRY * thread_p, int vdes, FILEIO_PAGE * io_pgptr, DKNPAGES start_pageid,
 				      DKNPAGES npages, size_t page_size, int kbytes_to_be_written_per_sec);
-extern void fileio_initialize_res (THREAD_ENTRY * thread_p, FILEIO_PAGE_RESERVED * prv_p);
+extern void fileio_initialize_res (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, PGLENGTH page_size);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern DKNPAGES fileio_truncate (VOLID volid, DKNPAGES npages_to_resize);
 #endif

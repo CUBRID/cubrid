@@ -30,9 +30,11 @@
 #if defined (__cplusplus)
 class JSON_DOC;
 class JSON_VALIDATOR;
+class JSON_ITERATOR;
 #else
 typedef void JSON_DOC;
 typedef void JSON_VALIDATOR;
+typedef void JSON_ITERATOR;
 #endif
 
 #if defined (__cplusplus)
@@ -70,6 +72,7 @@ unsigned int db_json_get_length (const JSON_DOC *document);
 unsigned int db_json_get_depth (const JSON_DOC *doc);
 int db_json_extract_document_from_path (const JSON_DOC *document, const char *raw_path,
 					JSON_DOC *&result);
+int db_json_contains_path (const JSON_DOC *document, const char *raw_path, bool &result);
 char *db_json_get_raw_json_body_from_document (const JSON_DOC *doc);
 
 char *db_json_get_json_body_from_document (const JSON_DOC &doc);
@@ -97,9 +100,12 @@ int db_json_set_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path
 int db_json_keys_func (const JSON_DOC &doc, JSON_DOC *&result_json, const char *raw_path);
 int db_json_keys_func (const char *json_raw, JSON_DOC *&result_json, const char *raw_path, size_t json_raw_length);
 int db_json_array_append_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path);
+int db_json_array_insert_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path);
 int db_json_remove_func (JSON_DOC &doc, const char *raw_path);
 int db_json_merge_func (const JSON_DOC *source, JSON_DOC *&dest);
 int db_json_get_all_paths_func (const JSON_DOC &doc, JSON_DOC *&result_json);
+void db_json_pretty_func (const JSON_DOC &doc, char *&result_str);
+int db_json_arrayagg_func (const JSON_DOC *value, JSON_DOC &result_json);
 
 int db_json_object_contains_key (JSON_DOC *obj, const char *key, int &result);
 const char *db_json_get_schema_raw_from_validator (JSON_VALIDATOR *val);
@@ -112,6 +118,16 @@ void db_json_delete_doc (JSON_DOC *&doc);
 void db_json_delete_validator (JSON_VALIDATOR *&validator);
 int db_json_validate_doc (JSON_VALIDATOR *validator, JSON_DOC *doc);
 bool db_json_are_validators_equal (JSON_VALIDATOR *val1, JSON_VALIDATOR *val2);
+
+void db_json_iterator_next (JSON_ITERATOR &json_itr);
+const JSON_DOC *db_json_iterator_get_document (JSON_ITERATOR &json_itr);
+bool db_json_iterator_has_next (JSON_ITERATOR &json_itr);
+void db_json_set_iterator (JSON_ITERATOR *&json_itr, const JSON_DOC &new_doc);
+void db_json_reset_iterator (JSON_ITERATOR *&json_itr);
+bool db_json_iterator_is_empty (const JSON_ITERATOR &json_itr);
+JSON_ITERATOR *db_json_create_iterator (const DB_JSON_TYPE &type);
+void db_json_delete_json_iterator (JSON_ITERATOR *&json_itr);
+void db_json_clear_json_iterator (JSON_ITERATOR *&json_itr);
 
 DB_JSON_TYPE db_json_get_type (const JSON_DOC *doc);
 

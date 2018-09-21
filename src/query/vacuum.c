@@ -2649,7 +2649,7 @@ vacuum_push_task (THREAD_ENTRY * thread_p, const VACUUM_DATA_ENTRY & data_entry,
   vacuum_convert_thread_to_worker (thread_p, worker_p, save_type);
   assert (save_type == thread_type::TT_VACUUM_MASTER);
 #endif // SA_MODE
-  (void) thread_p;    // not used
+  (void) thread_p;		// not used
   if (vacuum_Data.shutdown_requested)
     {
       // stop pushing tasks; worker pool may be stopped already

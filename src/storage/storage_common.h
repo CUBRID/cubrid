@@ -108,6 +108,7 @@ struct log_lsa
 };
 
 typedef struct log_lsa LOG_LSA;	/* Log address identifier */
+
 STATIC_INLINE void
 LSA_COPY (LOG_LSA * plsa1, const LOG_LSA * plsa2)
 {
@@ -115,22 +116,23 @@ LSA_COPY (LOG_LSA * plsa1, const LOG_LSA * plsa2)
   plsa1->offset = plsa2->offset;
 }
 
-#define LSA_SET_NULL(lsa_ptr)\
-  do {									      \
-    (lsa_ptr)->pageid = NULL_PAGEID;                                          \
-    (lsa_ptr)->offset = NULL_OFFSET;                                          \
-  } while(0)
+STATIC_INLINE void
+LSA_SET_NULL (LOG_LSA * lsa_ptr)
+{
+  lsa_ptr->pageid = NULL_PAGEID;
+  lsa_ptr->offset = NULL_OFFSET;
+}
+
+STATIC_INLINE void
+LSA_SET_TEMP_LSA (LOG_LSA * lsa_ptr)
+{
+  lsa_ptr->pageid = NULL_PAGEID - 1;
+  lsa_ptr->offset = NULL_OFFSET - 1;
+}
 
 #define LSA_INITIALIZER	{NULL_PAGEID, NULL_OFFSET}
 
 #define LSA_AS_ARGS(lsa_ptr) (long long int) (lsa_ptr)->pageid, (int) (lsa_ptr)->offset
-
-#define LSA_SET_INIT_NONTEMP(lsa_ptr) LSA_SET_NULL(lsa_ptr)
-#define LSA_SET_INIT_TEMP(lsa_ptr)\
-  do {									      \
-    (lsa_ptr)->pageid = NULL_PAGEID - 1;                                      \
-    (lsa_ptr)->offset = NULL_OFFSET - 1;                                      \
-  } while(0)
 
 #define LSA_ISNULL(lsa_ptr) ((lsa_ptr)->pageid == NULL_PAGEID)
 #define LSA_IS_INIT_NONTEMP(lsa_ptr) LSA_ISNULL(lsa_ptr)
@@ -1057,6 +1059,7 @@ typedef enum
   T_JSON_LENGTH,
   T_JSON_DEPTH,
   T_JSON_SEARCH,
+  T_JSON_PRETTY,
 } OPERATOR_TYPE;		/* arithmetic operator types */
 
 typedef enum
@@ -1074,6 +1077,7 @@ typedef enum
   PT_RANK,
   PT_DENSE_RANK,
   PT_NTILE,
+  PT_JSON_ARRAYAGG,
   PT_TOP_AGG_FUNC,
   /* only aggregate functions should be below PT_TOP_AGG_FUNC */
 
@@ -1093,7 +1097,7 @@ typedef enum
   F_SET, F_MULTISET, F_SEQUENCE, F_VID, F_GENERIC, F_CLASS_OF,
   F_INSERT_SUBSTRING, F_ELT, F_JSON_OBJECT, F_JSON_ARRAY, F_JSON_MERGE,
   F_JSON_INSERT, F_JSON_REMOVE, F_JSON_ARRAY_APPEND, F_JSON_GET_ALL_PATHS,
-  F_JSON_REPLACE, F_JSON_SET, F_JSON_KEYS,
+  F_JSON_REPLACE, F_JSON_SET, F_JSON_KEYS, F_JSON_ARRAY_INSERT,
 
   /* only for FIRST_VALUE. LAST_VALUE, NTH_VALUE analytic functions */
   PT_FIRST_VALUE, PT_LAST_VALUE, PT_NTH_VALUE,
@@ -1370,5 +1374,12 @@ enum
   REC_4BIT_USED_TYPE_MAX = REC_DELETED_WILL_REUSE,
   REC_4BIT_TYPE_MAX = REC_RESERVED_TYPE_15
 };
+
+// TODO: move me in a proper place
+typedef enum
+{
+  KILLSTMT_TRAN = 0,
+  KILLSTMT_QUERY = 1,
+} KILLSTMT_TYPE;
 
 #endif /* _STORAGE_COMMON_H_ */

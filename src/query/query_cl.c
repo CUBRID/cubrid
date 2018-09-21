@@ -31,9 +31,12 @@
 #include <stdlib.h>
 
 #include "query_cl.h"
+
+#include "compile_context.h"
 #include "optimizer.h"
 #include "network_interface_cl.h"
 #include "transaction_cl.h"
+#include "xasl.h"
 
 /*
  * prepare_query () - Prepares a query for later (and repetitive)

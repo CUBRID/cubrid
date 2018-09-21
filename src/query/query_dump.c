@@ -1343,6 +1343,8 @@ qdump_function_type_string (FUNC_TYPE ftype)
       return "PERCENTILE_CONT";
     case PT_PERCENTILE_DISC:
       return "PERCENTILE_DISC";
+    case PT_JSON_ARRAYAGG:
+      return "JSON_ARRAYAGG";
     case F_TABLE_SET:
       return "F_TABLE_SET";
     case F_TABLE_MULTISET:
@@ -1385,6 +1387,8 @@ qdump_function_type_string (FUNC_TYPE ftype)
       return "JSON_REMOVE";
     case F_JSON_ARRAY_APPEND:
       return "JSON_ARRAY_APPEND";
+    case F_JSON_ARRAY_INSERT:
+      return "JSON_ARRAY_INSERT";
     case F_JSON_MERGE:
       return "JSON_MERGE";
     case F_JSON_GET_ALL_PATHS:

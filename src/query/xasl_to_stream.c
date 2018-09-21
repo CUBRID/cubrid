@@ -39,23 +39,7 @@
 #include "object_primitive.h"
 #include "work_space.h"
 #include "memory_alloc.h"
-
-/* memory alignment unit - to align stored XASL tree nodes */
-#define	ALIGN_UNIT	sizeof(double)
-#define	ALIGN_MASK	(ALIGN_UNIT - 1)
-#define MAKE_ALIGN(x)	(((x) & ~ALIGN_MASK) + (((x) & ALIGN_MASK) ? ALIGN_UNIT : 0))
-
-/* to limit size of XASL trees */
-#define	OFFSETS_PER_BLOCK	4096
-#define	START_PTR_PER_BLOCK	15
-#define MAX_PTR_BLOCKS		256
-#define PTR_BLOCK(ptr)  (((UINTPTR) ptr) / __WORDSIZE) % MAX_PTR_BLOCKS
-
-/*
- * the linear byte stream for store the given XASL tree is allocated
- * and expanded dynamically on demand by the following amount of bytes
- */
-#define	STREAM_EXPANSION_UNIT	(OFFSETS_PER_BLOCK * sizeof(int))
+#include "xasl_stream.hpp"
 
 #define    BYTE_SIZE        OR_INT_SIZE
 #define    LONG_SIZE        OR_INT_SIZE
@@ -64,8 +48,8 @@
 #define    pack_long        or_pack_int
 
 /* structure of a visited pointer constant */
-typedef struct visited_ptr VISITED_PTR;
-struct visited_ptr
+typedef struct xts_visited_ptr XTS_VISITED_PTR;
+struct xts_visited_ptr
 {
   const void *ptr;		/* a pointer constant */
   int offset;			/* offset where the node pointed by 'ptr' is stored */
@@ -77,7 +61,7 @@ static int xts_Stream_size = 0;	/* # of bytes allocated */
 static int xts_Free_offset_in_stream = 0;
 
 /* blocks of visited pointer constants */
-static VISITED_PTR *xts_Ptr_blocks[MAX_PTR_BLOCKS] = { 0 };
+static XTS_VISITED_PTR *xts_Ptr_blocks[MAX_PTR_BLOCKS] = { 0 };
 
 /* low-water-mark of visited pointers */
 static int xts_Ptr_lwm[MAX_PTR_BLOCKS] = { 0 };
@@ -118,6 +102,15 @@ static int xts_save_update_info (const UPDATE_PROC_NODE * ptr);
 static int xts_save_delete_info (const DELETE_PROC_NODE * ptr);
 static int xts_save_insert_info (const INSERT_PROC_NODE * ptr);
 #endif
+
+// *INDENT-OFF*
+template <typename T>
+static int xts_save (const T &t);
+
+template <typename T>
+static void xts_debug_check (const T &t, char *pack_start, const char *pack_end);
+// *INDENT-ON*
+
 static int xts_save_db_value_array (DB_VALUE ** ptr, int size);
 static int xts_save_int_array (int *ptr, int size);
 static int xts_save_hfid_array (HFID * ptr, int size);
@@ -129,6 +122,9 @@ static int xts_save_upddel_class_info_array (const UPDDEL_CLASS_INFO * classes, 
 static int xts_save_update_assignment_array (const UPDATE_ASSIGNMENT * assigns, int nelements);
 static int xts_save_odku_info (const ODKU_INFO * odku_info);
 
+static char *xts_process (char *ptr, const json_table_column & json_table_col);
+static char *xts_process (char *ptr, const json_table_node & json_table_node);
+static char *xts_process (char *ptr, const json_table_spec_node & set_spec);
 static char *xts_process_xasl_node (char *ptr, const XASL_NODE * xasl);
 static char *xts_process_xasl_header (char *ptr, const XASL_NODE_HEADER header);
 static char *xts_process_filter_pred_node (char *ptr, const PRED_EXPR_WITH_CONTEXT * pred);
@@ -164,6 +160,7 @@ static char *xts_process_cls_spec_type (char *ptr, const CLS_SPEC_TYPE * cls_spe
 static char *xts_process_list_spec_type (char *ptr, const LIST_SPEC_TYPE * list_spec);
 static char *xts_process_showstmt_spec_type (char *ptr, const SHOWSTMT_SPEC_TYPE * list_spec);
 static char *xts_process_set_spec_type (char *ptr, const SET_SPEC_TYPE * set_spec);
+static char *xts_process_json_table_column_behavior (char *ptr, const json_table_column_behavior * behavior);
 static char *xts_process_method_spec_type (char *ptr, const METHOD_SPEC_TYPE * method_spec);
 static char *xts_process_rlist_spec_type (char *ptr, const LIST_SPEC_TYPE * list_spec);
 static char *xts_process_list_id (char *ptr, const QFILE_LIST_ID * list_id);
@@ -185,6 +182,9 @@ static char *xts_process_method_sig (char *ptr, const METHOD_SIG * method_sig, i
 static char *xts_process_connectby_proc (char *ptr, const CONNECTBY_PROC_NODE * connectby_proc);
 static char *xts_process_regu_value_list (char *ptr, const REGU_VALUE_LIST * regu_value_list);
 
+static int xts_sizeof (const json_table_column & ptr);
+static int xts_sizeof (const json_table_node & ptr);
+static int xts_sizeof (const json_table_spec_node & ptr);
 static int xts_sizeof_xasl_node (const XASL_NODE * ptr);
 static int xts_sizeof_filter_pred_node (const PRED_EXPR_WITH_CONTEXT * ptr);
 static int xts_sizeof_func_pred (const FUNC_PRED * ptr);
@@ -219,6 +219,7 @@ static int xts_sizeof_list_spec_type (const LIST_SPEC_TYPE * ptr);
 static int xts_sizeof_showstmt_spec_type (const SHOWSTMT_SPEC_TYPE * ptr);
 static int xts_sizeof_set_spec_type (const SET_SPEC_TYPE * ptr);
 static int xts_sizeof_method_spec_type (const METHOD_SPEC_TYPE * ptr);
+static int xts_sizeof_json_table_column_behavior (const json_table_column_behavior * behavior);
 static int xts_sizeof_list_id (const QFILE_LIST_ID * ptr);
 static int xts_sizeof_val_list (const VAL_LIST * ptr);
 static int xts_sizeof_regu_variable (const REGU_VARIABLE * ptr);
@@ -289,7 +290,7 @@ xts_map_xasl_to_stream (const XASL_NODE * xasl_tree, XASL_STREAM * stream)
     + sizeof (int);		/* [size of body data] */
 
   org_offset = offset;
-  offset = MAKE_ALIGN (offset);
+  offset = xasl_stream_make_align (offset);
 
   xts_reserve_location_in_stream (offset);
 
@@ -379,7 +380,7 @@ xts_map_filter_pred_to_stream (const PRED_EXPR_WITH_CONTEXT * pred, char **pred_
   offset = sizeof (int)		/* [size of header data] */
     + header_size		/* [header data] */
     + sizeof (int);		/* [size of body data] */
-  offset = MAKE_ALIGN (offset);
+  offset = xasl_stream_make_align (offset);
 
   xts_reserve_location_in_stream (offset);
 
@@ -445,7 +446,7 @@ xts_map_func_pred_to_stream (const FUNC_PRED * xasl_tree, char **xasl_stream, in
   offset = sizeof (int)		/* [size of header data] */
     + header_size		/* [header data] */
     + sizeof (int);		/* [size of body data] */
-  offset = MAKE_ALIGN (offset);
+  offset = xasl_stream_make_align (offset);
 
   xts_reserve_location_in_stream (offset);
 
@@ -4357,7 +4358,7 @@ xts_process_access_spec_type (char *ptr, const ACCESS_SPEC_TYPE * access_spec)
   ptr = or_pack_int (ptr, access_spec->access);
 
   if (access_spec->access == ACCESS_METHOD_SEQUENTIAL || access_spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO
-      || access_spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN)
+      || access_spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN || access_spec->access == ACCESS_METHOD_JSON_TABLE)
     {
       ptr = or_pack_int (ptr, 0);
     }
@@ -4418,6 +4419,10 @@ xts_process_access_spec_type (char *ptr, const ACCESS_SPEC_TYPE * access_spec)
 
     case TARGET_METHOD:
       ptr = xts_process_method_spec_type (ptr, &ACCESS_SPEC_METHOD_SPEC (access_spec));
+      break;
+
+    case TARGET_JSON_TABLE:
+      ptr = xts_process (ptr, ACCESS_SPEC_JSON_TABLE_SPEC (access_spec));
       break;
 
     default:
@@ -4751,6 +4756,138 @@ xts_process_set_spec_type (char *ptr, const SET_SPEC_TYPE * set_spec)
       return NULL;
     }
   ptr = or_pack_int (ptr, offset);
+
+  return ptr;
+}
+
+static char *
+xts_process_json_table_column_behavior (char *ptr, const json_table_column_behavior * behavior)
+{
+  ptr = or_pack_int (ptr, behavior->m_behavior);
+
+  if (behavior->m_behavior == JSON_TABLE_DEFAULT_VALUE)
+    {
+      ptr = xts_process_db_value (ptr, behavior->m_default_value);
+    }
+
+  return ptr;
+}
+
+static char *
+xts_process (char *ptr, const json_table_column & jtc)
+{
+  int offset;
+  char *start_ptr = ptr;
+
+  // save json function
+  ptr = or_pack_int (ptr, jtc.m_function);
+
+  // save output db_value pointer
+  offset = xts_save_db_value (jtc.m_output_value_pointer);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  if (jtc.m_function == JSON_TABLE_ORDINALITY)
+    {
+      // nothing else required
+      xts_debug_check (jtc, start_ptr, ptr);
+      return ptr;
+    }
+
+  // save domain
+  ptr = or_pack_domain (ptr, jtc.m_domain, 0, 0);
+
+  // save path
+  assert (jtc.m_path != NULL && strlen (jtc.m_path) > 0);
+  offset = xts_save_string (jtc.m_path);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  // save column_name
+  assert (jtc.m_column_name != NULL && strlen (jtc.m_column_name) > 0);
+  offset = xts_save_string (jtc.m_column_name);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  if (jtc.m_function == JSON_TABLE_EXISTS)
+    {
+      xts_debug_check (jtc, start_ptr, ptr);
+      return ptr;
+    }
+
+  // save on_error_behavior
+  ptr = xts_process_json_table_column_behavior (ptr, &jtc.m_on_error);
+  ptr = xts_process_json_table_column_behavior (ptr, &jtc.m_on_empty);
+
+  xts_debug_check (jtc, start_ptr, ptr);
+
+  return ptr;
+}
+
+static char *
+xts_process (char *ptr, const json_table_node & jtn)
+{
+  int offset;
+  char *start_ptr = ptr;
+
+  // save string
+  offset = xts_save_string (jtn.m_path);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  // save m_output_columns
+  ptr = or_pack_int (ptr, (int) jtn.m_output_columns_size);
+  for (size_t i = 0; i < jtn.m_output_columns_size; ++i)
+    {
+      ptr = xts_process (ptr, jtn.m_output_columns[i]);
+    }
+
+  // save nested nodes
+  ptr = or_pack_int (ptr, (int) jtn.m_nested_nodes_size);
+  for (size_t i = 0; i < jtn.m_nested_nodes_size; ++i)
+    {
+      ptr = xts_process (ptr, jtn.m_nested_nodes[i]);
+    }
+
+  ptr = or_pack_int (ptr, (int) jtn.m_id);
+
+  ptr = or_pack_int (ptr, (int) jtn.m_expand_type);
+
+  xts_debug_check (jtn, start_ptr, ptr);
+
+  return ptr;
+}
+
+static char *
+xts_process (char *ptr, const json_table_spec_node & json_table_spec)
+{
+  int offset;
+  char *start_ptr = ptr;
+
+  ptr = or_pack_int (ptr, (int) json_table_spec.m_node_count);
+
+  offset = xts_save_regu_variable (json_table_spec.m_json_reguvar);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  ptr = xts_process (ptr, *json_table_spec.m_root_node);
+
+  xts_debug_check (json_table_spec, start_ptr, ptr);
 
   return ptr;
 }
@@ -6394,6 +6531,15 @@ xts_sizeof_access_spec_type (const ACCESS_SPEC_TYPE * access_spec)
       size += tmp_size;
       break;
 
+    case TARGET_JSON_TABLE:
+      tmp_size = xts_sizeof (ACCESS_SPEC_JSON_TABLE_SPEC (access_spec));
+      if (tmp_size == ER_FAILED)
+	{
+	  return ER_FAILED;
+	}
+      size += tmp_size;
+      break;
+
     default:
       xts_Xasl_errcode = ER_QPROC_INVALID_XASLNODE;
       return ER_FAILED;
@@ -6568,6 +6714,94 @@ xts_sizeof_method_spec_type (const METHOD_SPEC_TYPE * method_spec)
   size += (PTR_SIZE		/* method_regu_list */
 	   + PTR_SIZE		/* xasl_node */
 	   + PTR_SIZE);		/* method_sig_list */
+
+  return size;
+}
+
+static int
+xts_sizeof_json_table_column_behavior (const json_table_column_behavior * behavior)
+{
+  int size = OR_INT_SIZE;	// json_table_column_behavior_type
+
+  if (behavior->m_behavior == JSON_TABLE_DEFAULT_VALUE)
+    {
+      size += OR_VALUE_ALIGNED_SIZE (behavior->m_default_value);
+    }
+
+  return size;
+}
+
+static int
+xts_sizeof (const json_table_column & json_table_column)
+{
+  int size = 0;
+
+  size += OR_INT_SIZE;		/* m_function */
+  size += PTR_SIZE;		/* m_output_value_pointer */
+
+  if (json_table_column.m_function == JSON_TABLE_ORDINALITY)
+    {
+      // that's all
+      return size;
+    }
+
+  size += or_packed_domain_size (json_table_column.m_domain, 0);	/* m_domain */
+  size += PTR_SIZE;		/* m_path */
+  size += PTR_SIZE;		/* m_column_name */
+
+  if (json_table_column.m_function == JSON_TABLE_EXISTS)
+    {
+      return size;
+    }
+
+  size += xts_sizeof_json_table_column_behavior (&json_table_column.m_on_error);
+  size += xts_sizeof_json_table_column_behavior (&json_table_column.m_on_empty);
+
+  return size;
+}
+
+static int
+xts_sizeof (const json_table_node & jtn)
+{
+  int size = 0;
+
+  size += PTR_SIZE;		// m_path
+
+  size += OR_INT_SIZE;		// m_output_columns_size
+  for (size_t i = 0; i < jtn.m_output_columns_size; ++i)
+    {
+      size += xts_sizeof (jtn.m_output_columns[i]);	// m_output_columns
+    }
+
+  size += OR_INT_SIZE;		// m_nested_nodes_size
+  for (size_t i = 0; i < jtn.m_nested_nodes_size; ++i)
+    {
+      size += xts_sizeof (jtn.m_nested_nodes[i]);	// m_nested_nodes
+    }
+
+  size += OR_INT_SIZE;		// m_id
+
+  size += OR_INT_SIZE;		// expand type
+
+  return size;
+}
+
+/*
+ * xts_sizeof_json_table_spec_type () -
+ *   return:
+ *   ptr(in)    :
+ */
+static int
+xts_sizeof (const json_table_spec_node & json_table_spec)
+{
+  int size = 0;
+
+  // reguvar needs to be set
+  size += (PTR_SIZE		/* regu_var */
+	   + OR_INT_SIZE	/* json_table_node number */
+    );				/* json_table_node */
+
+  size += xts_sizeof (*json_table_spec.m_root_node);
 
   return size;
 }
@@ -7099,23 +7333,23 @@ xts_mark_ptr_visited (const void *ptr, int offset)
   int new_lwm;
   int block_no;
 
-  block_no = PTR_BLOCK (ptr);
+  block_no = xasl_stream_get_ptr_block (ptr);
 
   new_lwm = xts_Ptr_lwm[block_no];
 
   if (xts_Ptr_max[block_no] == 0)
     {
       xts_Ptr_max[block_no] = START_PTR_PER_BLOCK;
-      xts_Ptr_blocks[block_no] = (VISITED_PTR *) malloc (sizeof (VISITED_PTR) * xts_Ptr_max[block_no]);
+      xts_Ptr_blocks[block_no] = (XTS_VISITED_PTR *) malloc (sizeof (XTS_VISITED_PTR) * xts_Ptr_max[block_no]);
     }
   else if (xts_Ptr_max[block_no] <= new_lwm)
     {
       xts_Ptr_max[block_no] *= 2;
       xts_Ptr_blocks[block_no] =
-	(VISITED_PTR *) realloc (xts_Ptr_blocks[block_no], sizeof (VISITED_PTR) * xts_Ptr_max[block_no]);
+	(XTS_VISITED_PTR *) realloc (xts_Ptr_blocks[block_no], sizeof (XTS_VISITED_PTR) * xts_Ptr_max[block_no]);
     }
 
-  if (xts_Ptr_blocks[block_no] == (VISITED_PTR *) NULL)
+  if (xts_Ptr_blocks[block_no] == (XTS_VISITED_PTR *) NULL)
     {
       xts_Xasl_errcode = ER_OUT_OF_VIRTUAL_MEMORY;
       return ER_FAILED;
@@ -7145,7 +7379,7 @@ xts_get_offset_visited_ptr (const void *ptr)
   int block_no;
   int element_no;
 
-  block_no = PTR_BLOCK (ptr);
+  block_no = xasl_stream_get_ptr_block (ptr);
 
   if (xts_Ptr_lwm[block_no] <= 0)
     {
@@ -7196,7 +7430,7 @@ xts_reserve_location_in_stream (int size)
   int grow;
   int org_size = size;
 
-  size = MAKE_ALIGN (size);
+  size = xasl_stream_make_align (size);
   needed = size - (xts_Stream_size - xts_Free_offset_in_stream);
 
   if (needed >= 0)
@@ -7269,3 +7503,85 @@ xts_process_regu_variable_list (char *ptr, const REGU_VARIABLE_LIST regu_var_lis
 
   return ptr;
 }
+
+// *INDENT-OFF*
+//
+// xts_save () - template function to pack structure into XASL stream buffer and save its offset
+//
+// template T - type having an overload of xts_sizeof and xts_process functions
+//
+// return : offset
+// t (in) : 
+//
+template <typename T>
+int static
+xts_save (const T &t)
+{
+  int packed_length;
+  char *ptr;
+
+  int offset = xts_get_offset_visited_ptr (&t);
+  if (offset != ER_FAILED)
+    {
+      return offset;
+    }
+
+  packed_length = xts_reserve_location_in_stream (xts_sizeof (t));
+
+  offset = xts_reserve_location_in_stream (packed_length);
+  if (offset == ER_FAILED || xts_mark_ptr_visited (&t, offset) == ER_FAILED)
+    {
+      return ER_FAILED;
+    }
+  ptr = &xts_Stream_buffer[offset];
+  ptr = xts_process (ptr, t);
+
+  return offset;
+}
+
+template <typename T>
+static void
+xts_debug_check (const T &t, char *pack_start, const char *pack_end)
+{
+#if !defined (NDEBUG)
+
+  // check for common mistakes:
+  //
+  //  1. size underestimation:
+  //     buffer overflow may occur
+  //
+  //  2. pack_end does not match unpack_end
+  //     if unpack_end is not same as pack_end, building next structure will start at the wrong offset
+  //
+  //  3. data consistency
+  //     check original data is same as resulted data after pack/unpack
+  //
+
+  stx_init_xasl_unpack_info (NULL, xts_Stream_buffer, xts_Stream_size);
+
+  // check sizeof is correct
+  std::size_t buf_size = pack_end - pack_start;
+  std::size_t estimate_size = xts_sizeof (t);
+  assert (buf_size <= estimate_size);   // estimation should be accurate or pessimistic
+
+  // build object from packed data
+  T unpack_t;
+  char * unpack_end = stx_build (NULL, pack_start, unpack_t);
+  if (unpack_end != pack_end)
+    {
+      // this leads to build corruption
+      assert (false);
+    }
+
+  if (!xasl_stream_compare (t, unpack_t))
+    {
+      // data is not consistent
+      assert (false);
+    }
+
+  xasl_unpack_info* unpack_info = stx_get_xasl_unpack_info_ptr (NULL);
+  db_private_free_and_init (NULL, unpack_info);
+  stx_set_xasl_unpack_info_ptr (NULL, NULL);
+#endif // DEBUG
+}
+// *INDENT-ON*

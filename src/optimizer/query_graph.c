@@ -2728,7 +2728,11 @@ set_seg_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_
 	      *continue_walk = PT_STOP_WALK;
 	    }
 	}
+      break;
 
+    case PT_JSON_TABLE:
+      (void) parser_walk_tree (parser, tree->info.json_table_info.expr, set_seg_expr, arg, pt_continue_walk, NULL);
+      *continue_walk = PT_LIST_WALK;
       break;
 
     default:
@@ -2848,20 +2852,30 @@ qo_is_equi_join_term (QO_TERM * term)
 static bool
 is_dependent_table (PT_NODE * entity)
 {
-  if (entity->info.spec.derived_table)
+  if (entity->info.spec.derived_table == NULL)
     {
-      /* this test is too pessimistic.  The argument must depend on a previous entity spec in the from list. 
-       * >>>> FIXME some day <<<< 
-       */
-      if (entity->info.spec.derived_table_type == PT_IS_SET_EXPR	/* is cselect derived table of method */
-	  || entity->info.spec.derived_table_type == PT_IS_CSELECT
-	  || entity->info.spec.derived_table->info.query.correlation_level == 1)
-	{
-	  return true;
-	}
+      return false;
     }
 
-  return false;
+  /* this test is too pessimistic.  The argument must depend on a previous entity spec in the from list. 
+   * >>>> FIXME some day <<<< 
+   *
+   * is this still a thing?
+   */
+  switch (entity->info.spec.derived_table_type)
+    {
+    case PT_IS_SET_EXPR:
+    case PT_IS_CSELECT:
+      return true;
+
+    case PT_DERIVED_JSON_TABLE:
+      return true;
+
+    case PT_IS_SUBQUERY:
+    default:
+      // what else?
+      return entity->info.spec.derived_table->info.query.correlation_level == 1;
+    }
 }
 
 /*
@@ -3260,6 +3274,7 @@ get_expr_fcode_rank (FUNC_TYPE fcode)
     case F_JSON_ARRAY:
     case F_JSON_REMOVE:
     case F_JSON_ARRAY_APPEND:
+    case F_JSON_ARRAY_INSERT:
     case F_JSON_MERGE:
     case F_JSON_GET_ALL_PATHS:
     case F_JSON_INSERT:
@@ -7402,7 +7417,6 @@ qo_discover_indexes (QO_ENV * env)
   /* iterate over all nodes and find indexes for each node */
   for (i = 0; i < env->nnodes; i++)
     {
-
       nodep = QO_ENV_NODE (env, i);
       if (nodep->info)
 	{
@@ -7414,23 +7428,20 @@ qo_discover_indexes (QO_ENV * env)
 				    (PT_SPEC_FLAG_RECORD_INFO_SCAN | PT_SPEC_FLAG_PAGE_INFO_SCAN)))
 	    {
 	      qo_find_node_indexes (env, nodep);
-	      /* collect statistic information on discovered indexes */
-	      qo_get_index_info (env, nodep);
+	      if (0 < QO_NODE_INFO_N (nodep) && QO_NODE_INDEXES (nodep) != NULL)
+		{
+		  /* collect statistics if discovers an usable index */
+		  qo_get_index_info (env, nodep);
+		  continue;
+		}
+	      /* fall through */
 	    }
-	  else
-	    {
-	      QO_NODE_INDEXES (nodep) = NULL;
-	    }
-	}
-      else
-	{
-	  /* If the 'info' of node is NULL, then this is probably a derived table. Without the info, we don't have
-	   * class information to work with so we really can't do much so just skip the node. 
-	   */
-	  QO_NODE_INDEXES (nodep) = NULL;	/* this node will not use a index */
+	  /* fall through */
 	}
 
-    }				/* for (n = 0; n < env->nnodes; n++) */
+      /* this node will not use an index */
+      QO_NODE_INDEXES (nodep) = NULL;
+    }
 
   /* for each terms, look indexed segements and filter out the segments which don't actually contain any indexes */
   for (i = 0; i < env->nterms; i++)

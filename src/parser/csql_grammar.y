@@ -24,6 +24,7 @@
 
 
 %{/*%CODE_REQUIRES_START%*/
+#include "json_table_def.h"
 #include "parser.h"
 
 /* 
@@ -83,6 +84,7 @@ void csql_yyerror (const char *s);
 extern int g_msg[1024];
 extern int msg_ptr;
 extern int yybuffer_pos;
+extern size_t json_table_column_count;
 /*%CODE_END%*/%}
 
 %{
@@ -317,6 +319,7 @@ static FUNCTION_MAP functions[] = {
   {"json_length", PT_JSON_LENGTH},
   {"json_depth", PT_JSON_DEPTH},
   {"json_search", PT_JSON_SEARCH},
+  {"json_pretty", PT_JSON_PRETTY},
 };
 
 
@@ -533,6 +536,7 @@ static PT_NODE * pt_create_date_value (PARSER_CONTEXT *parser,
 				       const char *str);
 static PT_NODE * pt_create_json_value (PARSER_CONTEXT *parser,
 				       const char *str);
+static void pt_jt_append_column_or_nested_node (PT_NODE * jt_node, PT_NODE * jt_col_or_nested);
 static void pt_value_set_charset_coll (PARSER_CONTEXT *parser,
 				       PT_NODE *node,
 				       const int codeset_id,
@@ -616,6 +620,7 @@ int g_original_buffer_len;
   container_3 c3;
   container_4 c4;
   container_10 c10;
+  struct json_table_column_behavior jtcb;
 }
 
 
@@ -1033,6 +1038,10 @@ int g_original_buffer_len;
 %type <node> limit_expr
 %type <node> limit_term
 %type <node> limit_factor
+%type <node> json_table_rule
+%type <node> json_table_node_rule
+%type <node> json_table_column_rule
+%type <node> json_table_column_list_rule
 /*}}}*/
 
 /* define rule type (cptr) */
@@ -1077,6 +1086,13 @@ int g_original_buffer_len;
 %type <c2> insert_assignment_list
 %type <c2> expression_queue
 %type <c2> of_cast_data_type
+/*}}}*/
+
+/* define rule type (json_table_column_behavior) */
+/*{{{*/
+%type <jtcb> json_table_column_behavior_rule
+%type <jtcb> json_table_on_error_rule_optional
+%type <jtcb> json_table_on_empty_rule_optional
 /*}}}*/
 
 /* Token define */
@@ -1189,9 +1205,11 @@ int g_original_buffer_len;
 %token EACH
 %token ELSE
 %token ELSEIF
+%token EMPTY
 %token END
 %token ENUM
 %token EQUALS
+%token ERROR_
 %token ESCAPE
 %token EVALUATE
 %token EXCEPT
@@ -1222,6 +1240,7 @@ int g_original_buffer_len;
 %token FUN_JSON_KEYS
 %token FUN_JSON_REMOVE
 %token FUN_JSON_ARRAY_APPEND
+%token FUN_JSON_ARRAY_INSERT
 %token FUN_JSON_GET_ALL_PATHS
 %token GENERAL
 %token GET
@@ -1257,6 +1276,8 @@ int g_original_buffer_len;
 %token IS
 %token ISOLATION
 %token JOIN
+%token JSON
+%token JSON_TABLE
 %token KEY
 %token KEYLIMIT
 %token LANGUAGE
@@ -1297,6 +1318,7 @@ int g_original_buffer_len;
 %token NATIONAL
 %token NATURAL
 %token NCHAR
+%token NESTED
 %token NEXT
 %token NO
 %token NOT
@@ -1313,6 +1335,7 @@ int g_original_buffer_len;
 %token OPTION
 %token OR
 %token ORDER
+%token ORDINALITY
 %token OUT_
 %token OUTER
 %token OUTPUT
@@ -1457,7 +1480,6 @@ int g_original_buffer_len;
 %token YEAR_
 %token YEAR_MONTH
 %token ZONE
-%token JSON
 
 %token YEN_SIGN
 %token DOLLAR_SIGN
@@ -1550,6 +1572,7 @@ int g_original_buffer_len;
 %token <cptr> KEYS
 %token <cptr> KILL
 %token <cptr> JAVA
+%token <cptr> JSON_ARRAYAGG
 %token <cptr> JOB
 %token <cptr> LAG
 %token <cptr> LAST_VALUE
@@ -1574,6 +1597,7 @@ int g_original_buffer_len;
 %token <cptr> OFFSET
 %token <cptr> ONLINE
 %token <cptr> OPEN
+%token <cptr> PATH
 %token <cptr> OWNER
 %token <cptr> PAGE
 %token <cptr> PARTITIONING
@@ -4487,7 +4511,7 @@ join_table_spec
 			PT_NODE *sopt = $3;
 			bool natural = false;
 
-			if ($4 == PT_JOIN_NONE)  
+			if ($4 == NULL)  
 			  {
 				/* Not exists ON condition, if it is outer join, report error */
 				if ($1 == PT_JOIN_LEFT_OUTER 
@@ -4531,7 +4555,7 @@ join_condition
 	: /* empty */
 		{{
 			parser_save_and_set_pseudoc (0);
-			$$ = PT_JOIN_NONE;   /* just return NULL */
+			$$ = NULL;   /* just return NULL */
 		DBG_PRINT}} 
 	| ON_
 		{{
@@ -4647,7 +4671,7 @@ original_table_spec
 			    if ($3)
 			      {
 				PT_NODE *hint = NULL, *alias = NULL;
-				char *qualifier_name = NULL;
+				const char *qualifier_name = NULL;
 
 				/* Get qualifier */
 				alias = CONTAINER_AT_0 ($2);
@@ -4786,6 +4810,19 @@ original_table_spec
 			    ent->info.spec.as_attr_list = CONTAINER_AT_1 ($5);
 
 			    parser_remove_dummy_select (&ent);
+			  }
+			$$ = ent;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+        | json_table_rule AS identifier
+		{{
+			PT_NODE *ent = parser_new_node (this_parser, PT_SPEC);
+			if (ent)
+			  {
+			    ent->info.spec.derived_table = $1;  // json_table_rule
+			    ent->info.spec.derived_table_type = PT_DERIVED_JSON_TABLE;
+			    ent->info.spec.range_var = $3;      // identifier
 			  }
 			$$ = ent;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -10493,7 +10530,7 @@ transaction_mode
 			if (tm && is)
 			  {
 			    PARSER_SAVE_ERR_CONTEXT (tm, @$.buffer_pos)
-			    async_ws_or_error =  TO_NUMBER (CONTAINER_AT_3 ($3));
+			    async_ws_or_error = (int) TO_NUMBER (CONTAINER_AT_3 ($3));
 			    if (async_ws_or_error < 0)
 			      {
 				PT_ERRORm(this_parser, tm, MSGCAT_SET_PARSER_SYNTAX,
@@ -10506,7 +10543,7 @@ transaction_mode
 			    tm->info.isolation_lvl.async_ws = async_ws_or_error;
 
 
-			    async_ws_or_error =  TO_NUMBER (CONTAINER_AT_3 ($5));
+			    async_ws_or_error = (int) TO_NUMBER (CONTAINER_AT_3 ($5));
 			    if (async_ws_or_error < 0)
 			      {
 				PT_ERRORm(this_parser, is, MSGCAT_SET_PARSER_SYNTAX,
@@ -10567,7 +10604,7 @@ transaction_mode
 		{{
 
 			PT_NODE *tm = parser_new_node (this_parser, PT_ISOLATION_LVL);
-			int async_ws_or_error =  TO_NUMBER (CONTAINER_AT_3 ($3));
+			int async_ws_or_error = (int) TO_NUMBER (CONTAINER_AT_3 ($3));
 
 			PARSER_SAVE_ERR_CONTEXT (tm, @$.buffer_pos)
 
@@ -13689,7 +13726,7 @@ to_param
 			if (val)
 			  {
 			    val->info.name.meta_class = PT_PARAMETER;
-			    val->info.name.spec_id = (long) val;
+			    val->info.name.spec_id = (UINTPTR) val;
 			    val->info.name.resolved = pt_makename ("out parameter");
 			  }
 
@@ -13705,7 +13742,7 @@ to_param
 			if (val)
 			  {
 			    val->info.name.meta_class = PT_PARAMETER;
-			    val->info.name.spec_id = (long) val;
+			    val->info.name.spec_id = (UINTPTR) val;
 			    val->info.name.resolved = pt_makename ("out parameter");
 			  }
 
@@ -15953,6 +15990,22 @@ reserved_func
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| JSON_ARRAYAGG '(' expression_ ')'
+		{{
+
+			PT_NODE *node = parser_new_node (this_parser, PT_FUNCTION);
+
+			if (node)
+			  {
+			    node->info.function.function_type = PT_JSON_ARRAYAGG;
+			    node->info.function.all_or_distinct = PT_ALL;
+			    node->info.function.arg_list = parser_make_link ($3, NULL);
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
 	| of_percentile '(' expression_ ')' WITHIN GROUP_ '(' ORDER BY sort_spec ')' opt_over_analytic_partition_by
 		{{
 		
@@ -16957,7 +17010,7 @@ reserved_func
 		    $$ = node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-		| FUN_JSON_REPLACE '(' expression_list ')'
+         | FUN_JSON_REPLACE '(' expression_list ')'
 		{{
 		    PT_NODE *args_list = $3;
 		    PT_NODE *node = NULL;
@@ -16976,7 +17029,7 @@ reserved_func
 		    $$ = node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-		| FUN_JSON_SET '(' expression_list ')'
+         | FUN_JSON_SET '(' expression_list ')'
 		{{
 		    PT_NODE *args_list = $3;
 		    PT_NODE *node = NULL;
@@ -16995,7 +17048,7 @@ reserved_func
 		    $$ = node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-		| FUN_JSON_KEYS '(' expression_list ')'
+         | FUN_JSON_KEYS '(' expression_list ')'
 		{{
 		    PT_NODE *args_list = $3;
 		    PT_NODE *node = NULL;
@@ -17033,7 +17086,7 @@ reserved_func
 		    $$ = node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-		| FUN_JSON_ARRAY_APPEND '(' expression_list ')'
+         | FUN_JSON_ARRAY_APPEND '(' expression_list ')'
 		{{
 		    PT_NODE *args_list = $3;
 		    PT_NODE *node = NULL;
@@ -17052,7 +17105,26 @@ reserved_func
 		    $$ = node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-		| FUN_JSON_GET_ALL_PATHS '(' expression_list ')'
+         | FUN_JSON_ARRAY_INSERT '(' expression_list ')'
+		{{
+		    PT_NODE *args_list = $3;
+		    PT_NODE *node = NULL;
+                    int len;
+
+                    len = parser_count_list (args_list);
+		    node = parser_make_expr_with_func (this_parser, F_JSON_ARRAY_INSERT, args_list);
+		    if (len < 3 || len % 2 != 1)
+		    {
+			PT_ERRORmf (this_parser, args_list,
+				    MSGCAT_SET_PARSER_SEMANTIC,
+				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
+				    "json_array_insert");
+		    }
+
+		    $$ = node;
+		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
+         | FUN_JSON_GET_ALL_PATHS '(' expression_list ')'
 		{{
 		    PT_NODE *args_list = $3;
 		    PT_NODE *node = NULL;
@@ -17070,6 +17142,22 @@ reserved_func
 
 		    $$ = node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
+		| identifier RIGHT_ARROW CHAR_STRING
+		{{
+			PT_NODE * matcher = parser_new_node (this_parser, PT_VALUE);
+
+			if (matcher)
+			  {
+			    matcher->type_enum = PT_TYPE_CHAR;
+			    matcher->info.value.string_type = ' ';
+			    matcher->info.value.data_value.str =
+			      pt_append_bytes (this_parser, NULL, $3, strlen ($3));
+			    PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, matcher);
+			  }
+
+			PT_NODE *expr = parser_make_expression (this_parser, PT_JSON_EXTRACT, $1, matcher, NULL);
+			$$ = expr;
 		DBG_PRINT}}
 	;
 
@@ -22068,6 +22156,16 @@ identifier
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| PATH
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
 	| PERCENT_RANK
 		{{
 
@@ -22638,6 +22736,16 @@ identifier
 
 		DBG_PRINT}}
 	| WEEK
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| JSON_ARRAYAGG
 		{{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -23767,7 +23875,8 @@ json_literal
 			$$ = val;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)	
                 
-                DBG_PRINT}};
+                DBG_PRINT}}
+
 create_as_clause
 	: opt_replace AS csql_query
 		{{
@@ -24069,7 +24178,141 @@ vacuum_stmt
 			$$ = node;
 		DBG_PRINT}}
 	;
-			
+
+json_table_column_behavior_rule
+    : Null
+      {{
+        $$.m_behavior = JSON_TABLE_RETURN_NULL;
+        $$.m_default_value = NULL;
+      DBG_PRINT}}
+    | ERROR_
+      {{
+        $$.m_behavior = JSON_TABLE_THROW_ERROR;
+        $$.m_default_value = NULL;
+      DBG_PRINT}}
+    | DEFAULT expression_       
+      {{
+        PT_NODE * default_value = $2;
+        if (default_value->node_type != PT_VALUE)
+          {
+            PT_ERROR (this_parser, default_value, "invalid JSON_TABLE default");
+          }
+        DB_VALUE * temp = pt_value_to_db (this_parser, default_value);
+        $$.m_behavior = JSON_TABLE_DEFAULT_VALUE;
+        $$.m_default_value = db_value_copy (temp);
+
+        parser_free_node(this_parser, default_value);
+      DBG_PRINT}}
+    ;
+
+json_table_on_error_rule_optional
+    : /* empty */
+      {{
+        $$.m_behavior = JSON_TABLE_RETURN_NULL;
+        $$.m_default_value = NULL;
+      DBG_PRINT}}
+    | json_table_column_behavior_rule ON_ ERROR_
+      {{
+        $$ = $1;
+      DBG_PRINT}}
+    ;
+
+json_table_on_empty_rule_optional
+    : /* empty */
+      {{
+        $$.m_behavior = JSON_TABLE_RETURN_NULL;
+        $$.m_default_value = NULL;
+      DBG_PRINT}}
+    | json_table_column_behavior_rule ON_ EMPTY
+      {{
+        $$ = $1;
+      DBG_PRINT}}
+    ;
+
+json_table_column_rule
+    : identifier For ORDINALITY
+      {{
+        PT_NODE *pt_col = parser_new_node (this_parser, PT_JSON_TABLE_COLUMN);
+        pt_col->info.json_table_column_info.name = $1;
+        pt_col->info.json_table_column_info.func = JSON_TABLE_ORDINALITY;
+        pt_col->type_enum = PT_TYPE_INTEGER;
+        $$ = pt_col;
+      DBG_PRINT}}
+    | identifier data_type PATH CHAR_STRING json_table_on_error_rule_optional json_table_on_empty_rule_optional
+    //        $1        $2   $3          $4                                $5                                $6
+      {{
+        PT_NODE *pt_col = parser_new_node (this_parser, PT_JSON_TABLE_COLUMN);
+        pt_col->info.json_table_column_info.name = $1;
+        pt_col->type_enum = TO_NUMBER (CONTAINER_AT_0 ($2));
+        pt_col->data_type = CONTAINER_AT_1 ($2);
+        pt_col->info.json_table_column_info.path=$4;
+        pt_col->info.json_table_column_info.func = JSON_TABLE_EXTRACT;
+        pt_col->info.json_table_column_info.on_error = $5;
+        pt_col->info.json_table_column_info.on_empty = $6;
+        $$ = pt_col;
+      DBG_PRINT}}
+    | identifier data_type EXISTS PATH CHAR_STRING
+      {{
+        PT_NODE *pt_col = parser_new_node (this_parser, PT_JSON_TABLE_COLUMN);
+        pt_col->info.json_table_column_info.name = $1;
+        pt_col->type_enum = TO_NUMBER (CONTAINER_AT_0 ($2));
+        pt_col->data_type = CONTAINER_AT_1 ($2);
+        pt_col->info.json_table_column_info.path=$5;
+        pt_col->info.json_table_column_info.func = JSON_TABLE_EXISTS;
+        $$ = pt_col;
+      DBG_PRINT}}
+    | NESTED json_table_node_rule
+      {{
+        $$ = $2;
+      DBG_PRINT}}
+    | NESTED PATH json_table_node_rule
+      {{
+        $$ = $3;
+      DBG_PRINT}}
+    ;
+
+json_table_column_list_rule
+    : json_table_column_list_rule ',' json_table_column_rule
+      {{
+        pt_jt_append_column_or_nested_node ($1, $3);
+        $$ = $1;
+      DBG_PRINT}}
+    | json_table_column_rule
+      {{
+        PT_NODE *pt_jt_node = parser_new_node (this_parser, PT_JSON_TABLE_NODE);
+        pt_jt_append_column_or_nested_node (pt_jt_node, $1);
+        $$ = pt_jt_node;
+      DBG_PRINT}}
+    ;
+
+json_table_node_rule
+    : CHAR_STRING COLUMNS '(' json_table_column_list_rule ')'
+      {{
+        PT_NODE *jt_node = $4;
+        assert (jt_node != NULL);
+        assert (jt_node->node_type == PT_JSON_TABLE_NODE);
+
+        jt_node->info.json_table_node_info.path = $1;
+
+        $$ = jt_node;
+      DBG_PRINT}}
+    ;
+
+json_table_rule
+    : {{
+	    json_table_column_count = 0;
+      DBG_PRINT}} 
+	JSON_TABLE '(' expression_ ',' json_table_node_rule ')'
+      {{
+        // $3 = expression_
+        // $5 = json_table_node_rule
+        PT_NODE *jt = parser_new_node (this_parser, PT_JSON_TABLE);
+        jt->info.json_table_info.expr = $4;
+        jt->info.json_table_info.tree = $6;
+
+        $$ = jt;
+      DBG_PRINT}}
+    ;
 
 %%
 
@@ -24096,6 +24339,7 @@ int yycolumn_end = 0;
 int dot_flag = 0;
 
 int parser_function_code = PT_EMPTY;
+size_t json_table_column_count = 0;
 
 static PT_NODE *
 parser_make_expr_with_func (PARSER_CONTEXT * parser, FUNC_TYPE func_code,
@@ -26494,6 +26738,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_JSON_VALID:
     case PT_JSON_LENGTH:
     case PT_JSON_DEPTH:
+    case PT_JSON_PRETTY:
       if (c != 1)
         return NULL;
 
@@ -27043,11 +27288,9 @@ pt_set_collation_modifier (PARSER_CONTEXT *parser, PT_NODE *node,
     }
   else if (node->node_type == PT_EXPR)
     {
-      if (node->info.expr.op == PT_EVALUATE_VARIABLE
-	  || node->info.expr.op == PT_DEFINE_VARIABLE)
+      if (node->info.expr.op == PT_EVALUATE_VARIABLE || node->info.expr.op == PT_DEFINE_VARIABLE)
 	{
-	  PT_ERRORm (parser, coll_node, MSGCAT_SET_PARSER_SEMANTIC,
-		     MSGCAT_SEMANTIC_COLLATE_NOT_ALLOWED);
+	  PT_ERRORm (parser, coll_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_COLLATE_NOT_ALLOWED);
 	  return node;
 	}
       else if (node->info.expr.op == PT_CAST
@@ -27056,8 +27299,7 @@ pt_set_collation_modifier (PARSER_CONTEXT *parser, PT_NODE *node,
 	  LANG_COLLATION *lc_node = lang_get_collation (PT_GET_COLLATION_MODIFIER (node));
 	  if (lc_node->codeset != lang_coll->codeset)
 	    {
-	      PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-			   MSGCAT_SEMANTIC_CS_MATCH_COLLATE,
+	      PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CS_MATCH_COLLATE,
 			   lang_get_codeset_name (lc_node->codeset),
 			   lang_get_codeset_name (lang_coll->codeset));
 	      return node;
@@ -27069,16 +27311,14 @@ pt_set_collation_modifier (PARSER_CONTEXT *parser, PT_NODE *node,
 	  do_wrap_with_cast = true;
 	}
     }
-  else if (node->node_type == PT_NAME || node->node_type == PT_DOT_
-	   || node->node_type == PT_FUNCTION)
+  else if (node->node_type == PT_NAME || node->node_type == PT_DOT_ || node->node_type == PT_FUNCTION)
     {
       PT_SET_NODE_COLL_MODIFIER (node, lang_coll->coll.coll_id);
       do_wrap_with_cast = true;
     }
   else
     {
-      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-		 MSGCAT_SEMANTIC_COLLATE_NOT_ALLOWED);
+      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_COLLATE_NOT_ALLOWED);
       assert (do_wrap_with_cast == false);
     }
 
@@ -27103,7 +27343,6 @@ pt_create_json_value (PARSER_CONTEXT *parser, const char *str)
   PT_NODE *node = NULL;
 
   node = parser_new_node (parser, PT_VALUE);
-
   if (node)
     {
       node->type_enum = PT_TYPE_JSON;
@@ -27113,4 +27352,24 @@ pt_create_json_value (PARSER_CONTEXT *parser, const char *str)
     }
 
   return node;
+}
+
+static void
+pt_jt_append_column_or_nested_node (PT_NODE * jt_node, PT_NODE * jt_col_or_nested)
+{
+  assert (jt_node != NULL && jt_node->node_type == PT_JSON_TABLE_NODE);
+  assert (jt_col_or_nested != NULL);
+
+  if (jt_col_or_nested->node_type == PT_JSON_TABLE_COLUMN)
+    {
+      jt_col_or_nested->info.json_table_column_info.index = json_table_column_count++;
+      jt_node->info.json_table_node_info.columns =
+        parser_append_node (jt_col_or_nested, jt_node->info.json_table_node_info.columns);
+    }
+  else
+    {
+      assert (jt_col_or_nested->node_type == PT_JSON_TABLE_NODE);
+      jt_node->info.json_table_node_info.nested_paths =
+        parser_append_node (jt_col_or_nested, jt_node->info.json_table_node_info.nested_paths);
+    }
 }

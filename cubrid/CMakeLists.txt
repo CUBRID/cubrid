@@ -79,7 +79,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/condition_handler.c
   ${BASE_DIR}/databases_file.c
   ${BASE_DIR}/dtoa.c
-  ${BASE_DIR}/dynamic_array.c	
+  ${BASE_DIR}/dynamic_array.c
   ${BASE_DIR}/encryption.c
   ${BASE_DIR}/environment_variable.c
   ${BASE_DIR}/error_context.cpp
@@ -211,6 +211,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/query_executor.c
   ${QUERY_DIR}/query_manager.c
   ${QUERY_DIR}/query_opfunc.c
+  ${QUERY_DIR}/scan_json_table.cpp
   ${QUERY_DIR}/scan_manager.c
   ${QUERY_DIR}/serial.c
   ${QUERY_DIR}/set_scan.c
@@ -219,6 +220,9 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/string_opfunc.c
   ${QUERY_DIR}/vacuum.c
   ${QUERY_DIR}/xasl_cache.c
+  )
+set(QUERY_HEADERS
+  ${QUERY_DIR}/scan_json_table.hpp
   )
 
 set(OBJECT_SOURCES
@@ -230,12 +234,12 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/transform.c
   ${OBJECT_DIR}/object_domain.c
   )
-  
+
 set(REPLICATION_SOURCES
   ${REPLICATION_DIR}/log_consumer.cpp
   ${REPLICATION_DIR}/log_generator.cpp
   ${REPLICATION_DIR}/replication_object.cpp
-  ${REPLICATION_DIR}/replication_master_senders_manager.cpp  
+  ${REPLICATION_DIR}/replication_master_senders_manager.cpp
   ${REPLICATION_DIR}/replication_stream_entry.cpp
   )
 
@@ -294,6 +298,16 @@ set(SESSION_SOURCES
   ${SESSION_DIR}/session_sr.c
   )
 
+set(XASL_SOURCES
+  ${XASL_DIR}/access_json_table.cpp
+  ${XASL_DIR}/xasl_stream.cpp
+  )
+set(XASL_HEADERS
+  ${XASL_DIR}/access_json_table.hpp
+  ${XASL_DIR}/compile_context.h
+  ${XASL_DIR}/xasl_stream.hpp
+  )
+
 set(LOADDB_SOURCES
   ${BISON_loader_grammar_OUTPUT_SOURCE}
   ${FLEX_loader_lexer_OUTPUTS}
@@ -345,6 +359,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${STORAGE_SOURCES}
   ${THREAD_SOURCES}
   ${TRANSACTION_SOURCES}
+  ${XASL_SOURCES}
   PROPERTIES LANGUAGE CXX
   )
 
@@ -368,12 +383,13 @@ set (CUBRID_LIB_SOURCES
   ${OBJECT_SOURCES}
   ${PROBES_OBJECT}
   ${QUERY_SOURCES}
-  ${REPLICATION_SOURCES}  
+  ${REPLICATION_SOURCES}
   ${SESSION_SOURCES}
   ${STORAGE_SOURCES}
   ${STREAM_SOURCES}
   ${THREAD_SOURCES}
   ${TRANSACTION_SOURCES}
+  ${XASL_SOURCES}
   )
 
 set (CUBRID_LIB_HEADERS
@@ -381,9 +397,11 @@ set (CUBRID_LIB_HEADERS
   ${COMMUNICATION_HEADERS}
   ${COMPAT_HEADERS}
   ${MONITOR_HEADERS}
+  ${QUERY_HEADERS}
   ${REPLICATION_HEADERS}
   ${THREAD_HEADERS}
   ${STREAM_HEADERS}
+  ${XASL_HEADERS}
   )
 
 add_library(cubrid SHARED
@@ -433,7 +451,7 @@ if(AT_LEAST_ONE_UNIT_TEST)
     ${CUBRID_LIB_HEADERS}
     )
 
-  target_compile_definitions(cubrid-win-lib PRIVATE 
+  target_compile_definitions(cubrid-win-lib PRIVATE
     SERVER_MODE
     ${COMMON_DEFS}
     )
@@ -467,18 +485,18 @@ install(TARGETS cubrid
 
 install(FILES
   ${COMPAT_DIR}/dbi_compat.h
-  DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header  
+  DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
   RENAME dbi.h
   )
 install(FILES
   ${COMPAT_DIR}/dbtype_def.h
   ${COMPAT_DIR}/dbtype_function.h
-  DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header  
+  DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
   )
 install(FILES
   ${BASE_DIR}/error_code.h
-  DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header  
-  )  
+  DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
+  )
 
 # install pdb files for debugging on windows
 if(WIN32)

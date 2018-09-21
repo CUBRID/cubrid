@@ -68,7 +68,6 @@ enum
 static struct timeb base_server_timeb = { 0, 0, 0, 0 };
 static struct timeb base_client_timeb = { 0, 0, 0, 0 };
 
-
 static int get_dimension_of (PT_NODE ** array);
 static DB_SESSION *db_open_local (void);
 static DB_SESSION *initialize_session (DB_SESSION * session);
@@ -94,6 +93,7 @@ static bool db_check_limit_need_recompile (PARSER_CONTEXT * parser, PT_NODE * st
 
 static DB_CLASS_MODIFICATION_STATUS pt_has_modified_class (PARSER_CONTEXT * parser, PT_NODE * statement);
 static PT_NODE *pt_has_modified_class_helper (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
+static bool db_can_execute_statement_with_autocommit (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 /*
  * get_dimemsion_of() - returns the number of elements of a null-terminated
@@ -3968,8 +3968,6 @@ db_set_statement_auto_commit (DB_SESSION * session, bool auto_commit)
 {
   PT_NODE *statement;
   int stmt_ndx;
-  bool has_name_oid = false;
-  int info_hints;
   int error_code;
   bool has_user_trigger;
 
@@ -4008,7 +4006,20 @@ db_set_statement_auto_commit (DB_SESSION * session, bool auto_commit)
       return NO_ERROR;
     }
 
-  /* Check whether statement can uses auto commit. */
+  if (session->dimension > 1 && !session->parser->is_holdable)
+    {
+      /* Search for select. */
+      for (int i = 0; i < session->dimension; i++)
+	{
+	  if (session->statements[i] != NULL && PT_IS_QUERY_NODE_TYPE (session->statements[i]->node_type))
+	    {
+	      /* Avoid situation when the driver requests data after closing cursors. */
+	      return NO_ERROR;
+	    }
+	}
+    }
+
+  /* Check whether statement can use auto commit. */
   error_code = tr_has_user_trigger (&has_user_trigger);
   if (error_code != NO_ERROR)
     {
@@ -4017,29 +4028,56 @@ db_set_statement_auto_commit (DB_SESSION * session, bool auto_commit)
 
   if (has_user_trigger)
     {
-      /* Triggers must be excuted before commit. Disable optimization. */
+      /* Triggers must be executed before commit. Disable optimization. */
       return NO_ERROR;
     }
+
+  if (db_can_execute_statement_with_autocommit (session->parser, statement))
+    {
+      statement->use_auto_commit = 1;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * db_can_execute_statement_with_autocommit () - Check whether the statement can be executed with commit.
+ *
+ * return : true, if the statement can be executed with commit.
+ * parser(in): the parser
+ * statement(in): the statement
+ *
+ */
+static bool
+db_can_execute_statement_with_autocommit (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  bool has_name_oid = false;
+  int info_hints;
+  PT_NODE *arg1, *arg2;
+  bool can_execute_statement_with_commit;
+
+  assert (parser != NULL && statement != NULL);
 
   /* Here you can add more statements, if you think that is safe to execute them with commit.
    * For now, we care about optimizing most common queries.
    */
+  can_execute_statement_with_commit = false;
+
   switch (statement->node_type)
     {
     case PT_SELECT:
       /* Check whether the optimization can be used. Disable it, if several broker/server requests are needed. */
-      if (!statement->info.query.oids_included && !statement->info.query.is_view_spec
-	  && !statement->info.query.has_system_class && statement->info.query.into_list == NULL)
+      if (!statement->info.query.oids_included && statement->info.query.into_list == NULL)
 	{
 	  info_hints = (PT_HINT_SELECT_KEY_INFO | PT_HINT_SELECT_PAGE_INFO
 			| PT_HINT_SELECT_KEY_INFO | PT_HINT_SELECT_BTREE_NODE_INFO);
 	  if ((statement->info.query.q.select.hint & info_hints) == 0)
 	    {
-	      (void) parser_walk_tree (session->parser, statement->info.query.q.select.list, pt_has_name_oid,
+	      (void) parser_walk_tree (parser, statement->info.query.q.select.list, pt_has_name_oid,
 				       &has_name_oid, NULL, NULL);
 	      if (!has_name_oid)
 		{
-		  statement->use_auto_commit = 1;
+		  can_execute_statement_with_commit = true;
 		}
 	    }
 	}
@@ -4049,7 +4087,7 @@ db_set_statement_auto_commit (DB_SESSION * session, bool auto_commit)
       /* Do not use optimization in case of insert execution on broker side */
       if (statement->info.insert.execute_with_commit_allowed)
 	{
-	  statement->use_auto_commit = 1;
+	  can_execute_statement_with_commit = true;
 	}
       break;
 
@@ -4057,7 +4095,7 @@ db_set_statement_auto_commit (DB_SESSION * session, bool auto_commit)
       /* Do not use optimization in case of update execution on broker side */
       if (statement->info.update.execute_with_commit_allowed)
 	{
-	  statement->use_auto_commit = 1;
+	  can_execute_statement_with_commit = true;
 	}
       break;
 
@@ -4068,7 +4106,7 @@ db_set_statement_auto_commit (DB_SESSION * session, bool auto_commit)
 	  /* If del_stmt_list is not null, we may need several broker/server requests */
 	  if (statement->info.delete_.del_stmt_list == NULL)
 	    {
-	      statement->use_auto_commit = 1;
+	      can_execute_statement_with_commit = true;
 	    }
 	}
       break;
@@ -4076,14 +4114,45 @@ db_set_statement_auto_commit (DB_SESSION * session, bool auto_commit)
     case PT_MERGE:
       if (statement->info.merge.flags & PT_MERGE_INFO_SERVER_OP)
 	{
-	  statement->use_auto_commit = 1;
+	  can_execute_statement_with_commit = true;
 	}
       break;
 
-      // TODO - what else? for instance, merge, other dmls, ddls.       
+    case PT_UNION:
+    case PT_INTERSECTION:
+    case PT_DIFFERENCE:
+      arg1 = statement->info.query.q.union_.arg1;
+      arg2 = statement->info.query.q.union_.arg2;
+
+      /* At least one argument must be not null to enable the optimization. */
+      if (arg1 != NULL)
+	{
+	  if (arg2 != NULL)
+	    {
+	      if (db_can_execute_statement_with_autocommit (parser, arg1)
+		  && db_can_execute_statement_with_autocommit (parser, arg2))
+		{
+		  can_execute_statement_with_commit = true;
+		}
+	    }
+	  else if (db_can_execute_statement_with_autocommit (parser, arg1))
+	    {
+	      can_execute_statement_with_commit = true;
+	    }
+	}
+      else if (arg2 != NULL)
+	{
+	  if (db_can_execute_statement_with_autocommit (parser, arg2))
+	    {
+	      can_execute_statement_with_commit = true;
+	    }
+	}
+      break;
+
+      // TODO - what else? for instance, other dmls, ddls.
     default:
       break;
     }
 
-  return NO_ERROR;
+  return can_execute_statement_with_commit;
 }

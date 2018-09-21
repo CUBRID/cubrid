@@ -48,6 +48,9 @@
 #include "parse_tree.h"
 #include "xasl.h"
 
+// forward definitions
+struct compile_context;
+
 /* killtran supporting structures and functions */
 typedef struct one_tran_info ONE_TRAN_INFO;
 struct one_tran_info
@@ -216,7 +219,7 @@ extern BTREE_SEARCH btree_find_multi_uniques (OID * class_oid, int pruning_type,
 					      int count, SCAN_OPERATION_TYPE op_type, OID ** oids, int *oids_count);
 extern int btree_class_test_unique (char *buf, int buf_size);
 extern int qfile_get_list_file_page (QUERY_ID query_id, VOLID volid, PAGEID pageid, char *buffer, int *buffer_size);
-extern int qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream);
+extern int qmgr_prepare_query (struct compile_context *context, XASL_STREAM * stream);
 
 extern QFILE_LIST_ID *qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt,
 					  const DB_VALUE * dbvals, QUERY_FLAG flag, CACHE_TIME * clt_cache_time,

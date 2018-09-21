@@ -57,6 +57,7 @@
 #include "semantic_check.h"
 #include "query_dump.h"
 #include "parser_support.h"
+#include "compile_context.h"
 
 #if defined(WINDOWS)
 #include "wintcp.h"
@@ -334,6 +335,16 @@ static ACCESS_SPEC_TYPE *pt_to_set_expr_table_spec_list (PARSER_CONTEXT * parser
 							 PT_NODE * where_part);
 static ACCESS_SPEC_TYPE *pt_to_cselect_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * cselect,
 							PT_NODE * src_derived_tbl);
+static ACCESS_SPEC_TYPE *pt_to_json_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * json_table,
+						     PT_NODE * src_derived_tbl, PT_NODE * where_p);
+static ACCESS_SPEC_TYPE *pt_make_json_table_access_spec (PARSER_CONTEXT * parser, REGU_VARIABLE * json_reguvar,
+							 PRED_EXPR * where_pred, PT_JSON_TABLE_INFO * json_table,
+							 TABLE_INFO * tbl_info);
+static json_table_node *pt_make_json_table_spec_node (PARSER_CONTEXT * parser, PT_JSON_TABLE_INFO * json_table,
+						      size_t & start_id, TABLE_INFO * tbl_info);
+static void pt_make_json_table_spec_node_internal (PARSER_CONTEXT * parser, PT_JSON_TABLE_NODE_INFO * jt_node_info,
+						   size_t & current_id, TABLE_INFO * tbl_info,
+						   json_table_node & result);
 static XASL_NODE *pt_find_xasl (XASL_NODE * list, XASL_NODE * match);
 static void pt_set_aptr (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NODE * xasl);
 static XASL_NODE *pt_append_scan (const XASL_NODE * to, const XASL_NODE * from);
@@ -4544,6 +4555,150 @@ pt_make_class_access_spec (PARSER_CONTEXT * parser, PT_NODE * flat, DB_OBJECT * 
   return spec;
 }
 
+static void
+pt_create_json_table_column (PARSER_CONTEXT * parser, PT_NODE * jt_column, TABLE_INFO * tbl_info,
+			     json_table_column & col_result)
+{
+  col_result.m_function = jt_column->info.json_table_column_info.func;
+  col_result.m_output_value_pointer = pt_index_value (tbl_info->value_list,
+						      pt_find_attribute (parser,
+									 jt_column->info.json_table_column_info.name,
+									 tbl_info->attribute_list));
+  if (col_result.m_output_value_pointer == NULL)
+    {
+      assert (false);
+    }
+
+  col_result.m_domain = pt_xasl_node_to_domain (parser, jt_column);
+
+  if (jt_column->info.json_table_column_info.path != NULL)
+    {
+      col_result.m_path = jt_column->info.json_table_column_info.path;
+    }
+
+  col_result.m_column_name = (char *) jt_column->info.json_table_column_info.name->info.name.original;
+
+  col_result.m_on_empty = jt_column->info.json_table_column_info.on_empty;
+  col_result.m_on_error = jt_column->info.json_table_column_info.on_error;
+}
+
+//
+// pt_make_json_table_spec_node_internal () - recursive function to generate json table access tree
+//
+// parser (in)         : parser context
+// jt_node_info (in)   : json table parser node info
+// current_id (in/out) : as input ID for this node, output next ID (after all nested nodes in current branch)
+// tbl_info (in)       : table info cache
+// result (out)        : a node in json table access tree based on json table node info
+//
+static void
+pt_make_json_table_spec_node_internal (PARSER_CONTEXT * parser, PT_JSON_TABLE_NODE_INFO * jt_node_info,
+				       size_t & current_id, TABLE_INFO * tbl_info, json_table_node & result)
+{
+  size_t i = 0;
+  PT_NODE *itr;
+
+  // copy path
+  result.m_path = (char *) jt_node_info->path;
+
+  // after set the id, increment
+  result.m_id = current_id++;
+
+  // by default expand type is none
+  result.m_expand_type = json_table_expand_type::JSON_TABLE_NO_EXPAND;
+
+  // set the expand type
+  if (json_table_node::str_ends_with (result.m_path, "[*]"))
+    {
+      result.m_expand_type = json_table_expand_type::JSON_TABLE_ARRAY_EXPAND;
+    }
+  else if (json_table_node::str_ends_with (result.m_path, ".*"))
+    {
+      result.m_expand_type = json_table_expand_type::JSON_TABLE_OBJECT_EXPAND;
+    }
+
+  if (result.check_need_expand ())
+    {
+      // trim the path to extract directly from this new path
+      result.set_parent_path ();
+    }
+
+  // create columns
+  result.m_output_columns_size = 0;
+  for (itr = jt_node_info->columns; itr != NULL; itr = itr->next, ++result.m_output_columns_size)
+    ;
+
+  result.m_output_columns =
+    (json_table_column *) pt_alloc_packing_buf (sizeof (json_table_column) * result.m_output_columns_size);
+
+  for (itr = jt_node_info->columns, i = 0; itr != NULL; itr = itr->next, i++)
+    {
+      pt_create_json_table_column (parser, itr, tbl_info, result.m_output_columns[i]);
+    }
+
+  // create children 
+  result.m_nested_nodes_size = 0;
+  for (itr = jt_node_info->nested_paths; itr != NULL; itr = itr->next, ++result.m_nested_nodes_size)
+    ;
+
+  result.m_nested_nodes =
+    (json_table_node *) pt_alloc_packing_buf (sizeof (json_table_node) * result.m_nested_nodes_size);
+
+  for (itr = jt_node_info->nested_paths, i = 0; itr != NULL; itr = itr->next, i++)
+    {
+      pt_make_json_table_spec_node_internal (parser, &itr->info.json_table_node_info, current_id, tbl_info,
+					     result.m_nested_nodes[i]);
+    }
+}
+
+//
+// pt_make_json_table_spec_node () - create json table access tree
+//
+// return            : pointer to generated json_table_node
+// parser (in)       : parser context
+// json_table (in)   : json table parser node info
+// start_id (in/out) : output total node count (root + nested)
+// tbl_info (in)     : table info cache
+//
+static json_table_node *
+pt_make_json_table_spec_node (PARSER_CONTEXT * parser, PT_JSON_TABLE_INFO * json_table, size_t & start_id,
+			      TABLE_INFO * tbl_info)
+{
+  json_table_node *root_node = (json_table_node *) pt_alloc_packing_buf (sizeof (json_table_node));
+  pt_make_json_table_spec_node_internal (parser, &json_table->tree->info.json_table_node_info, start_id, tbl_info,
+					 *root_node);
+  return root_node;
+}
+
+//
+// pt_make_json_table_access_spec () - make json access spec
+//
+// return            : pointer to access spec
+// parser (in)       : parser context
+// json_reguvar (in) : reguvar for json table expression
+// where_pred (in)   : json table scan filter predicate
+// json_table (in)   : json table parser node info
+// tbl_info (in)     : table info cache
+//
+static ACCESS_SPEC_TYPE *
+pt_make_json_table_access_spec (PARSER_CONTEXT * parser, REGU_VARIABLE * json_reguvar, PRED_EXPR * where_pred,
+				PT_JSON_TABLE_INFO * json_table, TABLE_INFO * tbl_info)
+{
+  ACCESS_SPEC_TYPE *spec;
+  size_t start_id = 0;
+
+  spec = pt_make_access_spec (TARGET_JSON_TABLE, ACCESS_METHOD_JSON_TABLE, NULL, NULL, where_pred, NULL);
+
+  if (spec)
+    {
+      spec->s.json_table_node.m_root_node = pt_make_json_table_spec_node (parser, json_table, start_id, tbl_info);
+      spec->s.json_table_node.m_json_reguvar = json_reguvar;
+      // each node will have its own incremental id, so we can count the nr of nodes based on this identifier
+      spec->s.json_table_node.m_node_count = start_id;
+    }
+
+  return spec;
+}
 
 /*
  * pt_make_list_access_spec () - Create an initialized
@@ -6137,6 +6292,7 @@ pt_function_to_regu (PARSER_CONTEXT * parser, PT_NODE * function)
 	case F_JSON_KEYS:
 	case F_JSON_REMOVE:
 	case F_JSON_ARRAY_APPEND:
+	case F_JSON_ARRAY_INSERT:
 	case F_JSON_MERGE:
 	case F_JSON_GET_ALL_PATHS:
 	  result_type = pt_node_to_db_type (function);
@@ -6969,7 +7125,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  || node->info.expr.op == PT_JSON_TYPE
 		  || node->info.expr.op == PT_JSON_EXTRACT || node->info.expr.op == PT_JSON_VALID
 		  || node->info.expr.op == PT_JSON_LENGTH || node->info.expr.op == PT_JSON_DEPTH
-		  || node->info.expr.op == PT_JSON_SEARCH)
+		  || node->info.expr.op == PT_JSON_SEARCH || node->info.expr.op == PT_JSON_PRETTY)
 		{
 		  r1 = pt_to_regu_variable (parser, node->info.expr.arg1, unbox);
 		  if ((node->info.expr.op == PT_CONCAT || node->info.expr.op == PT_JSON_LENGTH)
@@ -7463,6 +7619,9 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  break;
 		case PT_JSON_SEARCH:
 		  regu = pt_make_regu_arith (r1, r2, r3, T_JSON_SEARCH, domain);
+		  break;
+		case PT_JSON_PRETTY:
+		  regu = pt_make_regu_arith (r1, NULL, NULL, T_JSON_PRETTY, domain);
 		  break;
 		case PT_CONCAT_WS:
 		  regu = pt_make_regu_arith (r1, r2, r3, T_CONCAT_WS, domain);
@@ -11977,6 +12136,24 @@ pt_to_cselect_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE 
   return NULL;
 }
 
+static ACCESS_SPEC_TYPE *
+pt_to_json_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * json_table,
+			    PT_NODE * src_derived_tbl, PT_NODE * where_p)
+{
+  ACCESS_SPEC_TYPE *access;
+
+  PRED_EXPR *where = pt_to_pred_expr (parser, where_p);
+
+  TABLE_INFO *tbl_info = pt_find_table_info (spec->info.spec.id, parser->symbols->table_info);
+  assert (tbl_info != NULL);
+
+  REGU_VARIABLE *regu_var = pt_to_regu_variable (parser, json_table->info.json_table_info.expr, UNBOX_AS_VALUE);
+
+  access = pt_make_json_table_access_spec (parser, regu_var, where, &json_table->info.json_table_info, tbl_info);
+
+  return access;
+}
+
 /*
  * pt_to_cte_table_spec_list () - Convert a PT_NODE CTE to an ACCESS_SPEC_LIST of representations
 				  of the classes to be selected from
@@ -12111,10 +12288,23 @@ pt_to_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_key_pa
 	{
 	  access = pt_to_showstmt_spec_list (parser, spec, where_part);
 	}
-      else
+      else if (spec->info.spec.derived_table_type == PT_IS_CSELECT)
 	{
 	  /* a CSELECT derived table */
 	  access = pt_to_cselect_table_spec_list (parser, spec, spec->info.spec.derived_table, src_derived_tbl);
+	}
+      else if (spec->info.spec.derived_table_type == PT_DERIVED_JSON_TABLE)
+	{
+	  /* PT_JSON_DERIVED_TABLE derived table */
+	  access =
+	    pt_to_json_table_spec_list (parser, spec, spec->info.spec.derived_table, src_derived_tbl, where_part);
+	}
+      else
+	{
+	  // unrecognized derived table type
+	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  return NULL;
 	}
     }
   else
@@ -12128,7 +12318,6 @@ pt_to_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_key_pa
 
   return access;
 }
-
 
 /*
  * pt_to_val_list () -

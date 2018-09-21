@@ -49,14 +49,14 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/db_value_printer.cpp
   ${COMPAT_DIR}/db_vdb.c
   ${COMPAT_DIR}/db_virt.c
-  ${COMPAT_DIR}/dbtype_function.c 
+  ${COMPAT_DIR}/dbtype_function.c
   )
 
 set(COMPAT_SOURCES_C
   ${COMPAT_DIR}/dbtype_function.c
   )
-  
-set (COMPAT_HEADERS  
+
+set (COMPAT_HEADERS
   ${COMPAT_DIR}/dbtype_def.h
   ${COMPAT_DIR}/dbtype_function.h
   ${COMPAT_DIR}/dbtype_function.i
@@ -242,6 +242,16 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/es_posix.c
   )
 
+set(XASL_SOURCES
+  ${XASL_DIR}/access_json_table.cpp
+  ${XASL_DIR}/xasl_stream.cpp
+  )
+set(XASL_HEADERS
+  ${XASL_DIR}/access_json_table.hpp
+  ${XASL_DIR}/compile_context.h
+  ${XASL_DIR}/xasl_stream.hpp
+  )
+
 set(LOADDB_SOURCES
   ${LOADDB_DIR}/load_common.cpp
   ${LOADDB_DIR}/load_db.c
@@ -321,6 +331,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${STORAGE_SOURCES}
   ${ES_SOURCES}
   ${PROBES_OBJECT}
+  ${XASL_SOURCES}
   ${LOADDB_SOURCES}
   PROPERTIES LANGUAGE CXX
   )
@@ -329,7 +340,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${CSQL_GRAMMAR_OUTPUT}
   ${CSQL_LEXER_OUTPUT}
   ${ESQL_GRAMMAR_OUTPUT}
-  ${ESQL_LEXER_OUTPUT} 
+  ${ESQL_LEXER_OUTPUT}
   ${COMPAT_SOURCES_C}
   PROPERTIES LANGUAGE C
   )
@@ -353,6 +364,8 @@ add_library(cubridcs SHARED
   ${STORAGE_SOURCES}
   ${ES_SOURCES}
   ${PROBES_OBJECT}
+  ${XASL_SOURCES}
+  ${XASL_HEADERS}
   ${LOADDB_SOURCES}
   )
 set_target_properties(cubridcs PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
