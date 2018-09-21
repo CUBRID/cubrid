@@ -44,6 +44,7 @@ namespace cubthread
     context.type = TT_WORKER;
 #if defined (SERVER_MODE)
     context.m_status = entry::status::TS_RUN;
+    context.shutdown = false;
 #endif // SERVER_MODE
 
     context.get_error_context ().register_thread_local ();
@@ -83,7 +84,9 @@ namespace cubthread
     context.tran_index = NULL_TRAN_INDEX;    // clear transaction ID
 #if defined (SERVER_MODE)
     context.resume_status = THREAD_RESUME_NONE;
+    context.shutdown = false;
 #endif // SERVER_MODE
+
     on_recycle (context);
   }
 
