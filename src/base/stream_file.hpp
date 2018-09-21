@@ -111,7 +111,7 @@ private:
 
   stream_position m_req_start_flush_position;
 
-  cubstream::stream::notify_func_t m_filled_stream_handler;
+  cubstream::stream::notify_func_t m_start_flush_handler;
 
   cubthread::daemon *m_write_daemon;
   std::mutex m_flush_mutex;
@@ -140,8 +140,6 @@ protected:
 
   size_t read_buffer (const int file_seqno, const size_t file_offset, char *buf, const size_t amount);
   size_t write_buffer (const int file_seqno, const size_t file_offset, const char *buf, const size_t amount);
-
-  int stream_filled_func (const stream_position &last_saved_pos, const size_t available_to_save);
 
 public:
   stream_file (multi_thread_stream &stream_arg, const size_t file_size = DEFAULT_FILE_SIZE,
@@ -191,15 +189,17 @@ public:
     m_ack_start_flush_position = pos + 1;
   }
 
-  void start_flush (const stream_position &start_position, const stream_position &target_position)
+  int start_flush (const stream_position &start_position, const size_t amount_to_flush)
   {
     std::unique_lock<std::mutex> ulock (m_flush_mutex);
-    if (target_position != 0)
+    if (start_position != 0)
       {
         m_req_start_flush_position = start_position;
-        m_target_flush_position = target_position;
+        m_target_flush_position = start_position + amount_to_flush;
       }
     m_flush_cv.notify_one ();
+
+    return NO_ERROR;
   }
 
   void wait_flush_signal (stream_position &start_position, stream_position &target_position)

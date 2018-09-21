@@ -139,12 +139,13 @@ void stream_file::init (const size_t file_size, const int print_digits)
 
   m_target_flush_position = 0;
   m_ack_start_flush_position = 0;
+  m_req_start_flush_position = 0;
 
   m_start_file_seqno = 0;
 
-  m_filled_stream_handler = std::bind (&stream_file::stream_filled_func, std::ref (*this), std::placeholders::_1,
-                                       std::placeholders::_2);
-  m_stream.set_filled_stream_handler (m_filled_stream_handler);
+  m_start_flush_handler = std::bind (&stream_file::start_flush, std::ref (*this), std::placeholders::_1,
+                                     std::placeholders::_2);
+  m_stream.set_filled_stream_handler (m_start_flush_handler);
 
   m_is_stopped = false;
 
@@ -653,12 +654,6 @@ int stream_file::read (const stream_position &pos, char *buf, const size_t amoun
       buf += current_to_read;
     }
 
-  return NO_ERROR;
-}
-
-int stream_file::stream_filled_func (const stream_position &last_saved_pos, const size_t available_to_save)
-{
-  start_flush (last_saved_pos, last_saved_pos + available_to_save);
   return NO_ERROR;
 }
 
