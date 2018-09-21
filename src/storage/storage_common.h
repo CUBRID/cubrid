@@ -1077,6 +1077,7 @@ typedef enum
   PT_RANK,
   PT_DENSE_RANK,
   PT_NTILE,
+  PT_JSON_ARRAYAGG,
   PT_TOP_AGG_FUNC,
   /* only aggregate functions should be below PT_TOP_AGG_FUNC */
 

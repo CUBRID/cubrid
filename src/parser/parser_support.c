@@ -675,7 +675,7 @@ pt_is_aggregate_function (PARSER_CONTEXT * parser, const PT_NODE * node)
 	      || function_type == PT_AGG_BIT_AND || function_type == PT_AGG_BIT_OR || function_type == PT_AGG_BIT_XOR
 	      || function_type == PT_GROUP_CONCAT || function_type == PT_MEDIAN || function_type == PT_PERCENTILE_CONT
 	      || function_type == PT_PERCENTILE_DISC || function_type == PT_CUME_DIST
-	      || function_type == PT_PERCENT_RANK))
+	      || function_type == PT_PERCENT_RANK || function_type == PT_JSON_ARRAYAGG))
 	{
 	  return true;
 	}
