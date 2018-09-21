@@ -13691,7 +13691,7 @@ locator_prepare_rbr_apply (THREAD_ENTRY * thread_p, const int rbr_operation, OID
 			   RECDES * old_recdes, RECDES * recdes, DB_VALUE * key_value,
 			   HEAP_SCANCACHE * force_scancache);
 /*
- * locator_repl_apply () - prepare required info for each operation
+ * locator_repl_apply_rbr () - prepare required info for each operation
  *
  * return: NO_ERROR if all OK, ER_ status otherwise
  *

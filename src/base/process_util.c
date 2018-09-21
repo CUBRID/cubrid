@@ -169,7 +169,7 @@ create_child_process (const char *const argv[], int wait_flag, check_funct_t che
       DWORD status = 0;
       if (check_func != NULL)
 	{
-	  do
+	  while (1)
 	    {
 	      status = WaitForSingleObject (proc_info.hProcess, 10);
 	      if (status == WAIT_FAILED)
@@ -190,7 +190,6 @@ create_child_process (const char *const argv[], int wait_flag, check_funct_t che
 		  break;
 		}
 	    }
-	  while (1);
 	}
       else
 	{
