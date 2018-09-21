@@ -17109,6 +17109,22 @@ reserved_func
 		    $$ = node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
+		| identifier RIGHT_ARROW CHAR_STRING
+		{{
+			PT_NODE * matcher = parser_new_node (this_parser, PT_VALUE);
+
+			if (matcher)
+			  {
+			    matcher->type_enum = PT_TYPE_CHAR;
+			    matcher->info.value.string_type = ' ';
+			    matcher->info.value.data_value.str =
+			      pt_append_bytes (this_parser, NULL, $3, strlen ($3));
+			    PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, matcher);
+			  }
+
+			PT_NODE *expr = parser_make_expression (this_parser, PT_JSON_EXTRACT, $1, matcher, NULL);
+			$$ = expr;
+		DBG_PRINT}}
 	;
 
 of_cume_dist_percent_rank_function
