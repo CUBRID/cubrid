@@ -28,6 +28,7 @@
 
 #include "multi_thread_stream.hpp"
 #include <map>
+#include <iostream>
 
 
 namespace cubthread
@@ -197,6 +198,7 @@ public:
         m_req_start_flush_position = start_position;
         m_target_flush_position = start_position + amount_to_flush;
       }
+    std::cout << "start_flush m_req_start_flush_position:" << m_req_start_flush_position << " m_target_flush_position:" << m_target_flush_position << std::endl;
     m_flush_cv.notify_one ();
 
     return NO_ERROR;
@@ -206,6 +208,7 @@ public:
   {
     std::unique_lock<std::mutex> ulock (m_flush_mutex);
     m_flush_cv.wait (ulock);
+    std::cout << "wait_flush_signal start_position:" << start_position << " target_position:" << target_position << std::endl;
     start_position = m_req_start_flush_position;
     target_position = m_target_flush_position;
   }
