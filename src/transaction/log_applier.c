@@ -3026,6 +3026,7 @@ la_get_item_pk_value (LA_ITEM * item)
 static LA_ITEM *
 la_make_repl_item (LOG_PAGE * log_pgptr, int log_type, int tranid, LOG_LSA * lsa)
 {
+#if 0     // todo - remove all log applier
   int error = NO_ERROR;
   LA_ITEM *item = NULL;
   LOG_REC_REPLICATION *repl_log;
@@ -3155,6 +3156,8 @@ error_return:
 
       free_and_init (item);
     }
+
+#endif  // todo - remove all log applier
 
   return NULL;
 }
