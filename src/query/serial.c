@@ -861,10 +861,8 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
       log_sysop_start (thread_p);
     }
 
-  if (lock_mode != X_LOCK && !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
-    {
-      repl_start_flush_mark (thread_p);
-    }
+  // todo - why was repl_start_flush_mark used here?
+  // http://jira.cubrid.org/browse/CBRD-22340
 
   new_copyarea_length = DB_PAGESIZE;
   new_recdesc.data = PTR_ALIGN (copyarea_buf, MAX_ALIGNMENT);
@@ -913,12 +911,9 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
 	      assert (false);
 	    }
 	}
-      repl_add_update_lsa (thread_p, serial_oidp);
 
-      if (lock_mode != X_LOCK)
-	{
-	  repl_end_flush_mark (thread_p, false);
-	}
+      // todo - why was repl_end_flush_mark used here?
+      // http://jira.cubrid.org/browse/CBRD-22340
     }
 
   if (lock_mode != X_LOCK)

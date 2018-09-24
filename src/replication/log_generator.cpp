@@ -264,7 +264,7 @@ namespace cubreplication
 
   int
   repl_log_insert_with_recdes (THREAD_ENTRY *thread_p, const char *class_name,
-			       LOG_RCVINDEX rcvindex, DB_VALUE *key_dbvalue, RECDES *recdes)
+			       cubreplication::REPL_ENTRY_TYPE rbr_type, DB_VALUE *key_dbvalue, RECDES *recdes)
   {
     int tran_index;
     LOG_TDES *tdes;
@@ -283,28 +283,12 @@ namespace cubreplication
 	return NO_ERROR;
       }
 
-    cubreplication::REPL_ENTRY_TYPE new_rbr_type;
     cubreplication::single_row_repl_entry *new_rbr;
-
-    switch (rcvindex)
-      {
-      case RVREPL_DATA_INSERT:
-	new_rbr_type = cubreplication::REPL_ENTRY_TYPE::REPL_INSERT;
-	break;
-      case RVREPL_DATA_UPDATE:
-	assert (false);
-	break;
-      case RVREPL_DATA_DELETE:
-	new_rbr_type = cubreplication::REPL_ENTRY_TYPE::REPL_DELETE;
-	break;
-      default:
-	assert (false);
-      }
 
     char *ptr_to_packed_key_value_size = NULL;
     int packed_key_len = 0;
 
-    new_rbr = new cubreplication::rec_des_row_repl_entry (new_rbr_type, class_name, recdes);
+    new_rbr = new cubreplication::rec_des_row_repl_entry (rbr_type, class_name, recdes);
     new_rbr->set_key_value (key_dbvalue);
 
     tdes->replication_log_generator.append_repl_object (new_rbr);

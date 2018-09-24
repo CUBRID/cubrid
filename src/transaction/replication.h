@@ -48,7 +48,7 @@ typedef enum
   REPL_INFO_TYPE_RBR_END	/* row-based end */
 } REPL_INFO_TYPE;
 
-typedef struct repl_info REPL_INFO;
+typedef struct repl_info REPL_INFO;   // todo - remove me
 struct repl_info
 {
   char *info;
@@ -56,7 +56,8 @@ struct repl_info
   bool need_replication;
 };
 
-struct REPL_INFO_SBR
+typedef struct repl_info_sbr REPL_INFO_SBR;
+struct repl_info_sbr
 {
   int statement_type;
   char *name;
@@ -70,21 +71,7 @@ struct REPL_INFO_SBR
  */
 
 #if defined(SERVER_MODE) || defined(SA_MODE)
-/* for replication, declare replication log dump function */
-extern void repl_data_insert_log_dump (FILE * fp, int length, void *data);
-#if defined (ENABLE_UNUSED_FUNCTION)
-extern void repl_data_udpate_log_dump (FILE * fp, int length, void *data);
-extern void repl_data_delete_log_dump (FILE * fp, int length, void *data);
-#endif
-extern void repl_schema_log_dump (FILE * fp, int length, void *data);
-extern void repl_log_send (void);
-extern int repl_add_update_lsa (THREAD_ENTRY * thread_p, const OID * inst_oid);
-extern void repl_start_flush_mark (THREAD_ENTRY * thread_p);
-extern void repl_end_flush_mark (THREAD_ENTRY * thread_p, bool need_undo);
 extern int repl_log_abort_after_lsa (LOG_TDES * tdes, LOG_LSA * start_lsa);
-#if defined(CUBRID_DEBUG)
-extern void repl_debug_info ();
-#endif /* CUBRID_DEBUG */
 #endif /* SERVER_MODE || SA_MODE */
 
 #endif /* _REPLICATION_H_ */

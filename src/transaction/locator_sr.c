@@ -5890,17 +5890,6 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	}
       isold_object = update_context.is_logical_old;
 
-      /* 
-       * for replication,
-       * We have to set UPDATE LSA number to the log info.
-       * The target log info was already created when the locator_update_index
-       */
-      if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true
-	  && repl_info.need_replication == true)
-	{
-	  repl_add_update_lsa (thread_p, oid);
-	}
-
 #if defined(ENABLE_UNUSED_FUNCTION)
       if (isold_object == false)
 	{
@@ -7869,10 +7858,12 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
       if (need_replication && index->type == BTREE_PRIMARY_KEY && error_code == NO_ERROR
 	  && !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
 	{
+          // *INDENT-OFF*
+          cubreplication::repl_entry_type repl_type =
+            is_insert ? cubreplication::REPL_INSERT : cubreplication::REPL_UPDATE;
 	  error_code =
-	    cubreplication::repl_log_insert_with_recdes (thread_p, classname,
-							 is_insert ? RVREPL_DATA_INSERT : RVREPL_DATA_DELETE,
-							 key_dbvalue, recdes);
+	    cubreplication::repl_log_insert_with_recdes (thread_p, classname, repl_type, key_dbvalue, recdes);
+          // *INDENT-ON*
 	}
       if (error_code != NO_ERROR)
 	{
@@ -8172,7 +8163,6 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
   bool is_started = false;
 #endif /* ENABLE_SYSTEMTAP */
   LOG_TDES *tdes = NULL;
-  LOG_LSA preserved_repl_lsa;
   int tran_index;
   char *classname = NULL;
 
@@ -8189,8 +8179,6 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
       mvccid = logtb_get_current_mvccid (thread_p);
     }
 #endif /* SERVER_MODE */
-
-  LSA_SET_NULL (&preserved_repl_lsa);
 
   db_make_null (&new_dbvalue);
   db_make_null (&old_dbvalue);
@@ -8530,28 +8518,10 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	      tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 	      tdes = LOG_FIND_TDES (tran_index);
 
-	      if (pk_btid_index == i)
-		{
-		  /* 
-		   * save lsa before it is overwritten by FK action. No need
-		   * to consider in-place update (repl_update_lsa) since it updates
-		   * index first and then updates heap
-		   */
-		  LSA_COPY (&preserved_repl_lsa, &tdes->repl_insert_lsa);
-		  LSA_SET_NULL (&tdes->repl_insert_lsa);
-		}
-
 	      error_code = locator_check_primary_key_update (thread_p, index, old_key);
 	      if (error_code != NO_ERROR)
 		{
 		  goto error;
-		}
-
-	      if (pk_btid_index == i)
-		{
-		  /* restore repl_insert_lsa */
-		  assert (LSA_ISNULL (&tdes->repl_insert_lsa));
-		  LSA_COPY (&tdes->repl_insert_lsa, &preserved_repl_lsa);
 		}
 	    }
 
@@ -12516,49 +12486,10 @@ locator_is_exist_class_name_entry (THREAD_ENTRY * thread_p, LOCATOR_CLASSNAME_EN
 int
 xchksum_insert_repl_log_and_demote_table_lock (THREAD_ENTRY * thread_p, REPL_INFO * repl_info, const OID * class_oidp)
 {
-  LOG_TDES *tdes;
-  int error = NO_ERROR;
-
-  tdes = LOG_FIND_CURRENT_TDES (thread_p);
-  if (tdes == NULL)
-    {
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1,
-	      LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-
-      return ER_LOG_UNKNOWN_TRANINDEX;
-    }
-
-  /* need to start a topop to make sure the repl log is inserted in a correct order */
-  log_sysop_start (thread_p);
-
-  repl_start_flush_mark (thread_p);
-
-  error = xrepl_statement (thread_p, repl_info);
-
-  repl_end_flush_mark (thread_p, false);
-
-  if (error != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      log_sysop_abort (thread_p);
-    }
-  else
-    {
-      /* manually append repl info */
-      log_append_repl_info (thread_p, tdes, false);
-
-      log_sysop_commit (thread_p);
-    }
-
-#if defined (SERVER_MODE)
-  /* demote S-lock to IS-lock to allow blocking writers to resume. This will not hurt transactional consistencies of
-   * checksumdb. */
-  lock_demote_read_class_lock_for_checksumdb (thread_p, tdes->tran_index, class_oidp);
-
-  assert (lock_get_object_lock (class_oidp, oid_Root_class_oid, tdes->tran_index) == IS_LOCK);
-#endif /* SERVER_MODE */
-
-  return error;
+  // todo - implement this on new replication system
+  // http://jira.cubrid.org/browse/CBRD-22339
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+  return ER_FAILED;
 }
 
 /*
