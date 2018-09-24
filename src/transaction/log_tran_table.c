@@ -1527,11 +1527,6 @@ logtb_free_tran_index (THREAD_ENTRY * thread_p, int tran_index)
     }
 
   logtb_clear_tdes (thread_p, tdes);
-  if (tdes->repl_records)
-    {
-      free_and_init (tdes->repl_records);
-    }
-  tdes->num_repl_records = 0;
   if (tdes->topops.max != 0)
     {
       free_and_init (tdes->topops.stack);
@@ -1892,14 +1887,6 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
     }
   tdes->modified_class_list = NULL;
 
-  for (i = 0; i < tdes->cur_repl_record; i++)
-    {
-      if (tdes->repl_records[i].repl_data)
-	{
-	  free_and_init (tdes->repl_records[i].repl_data);
-	}
-    }
-
   save_heap_id = db_change_private_heap (thread_p, 0);
   for (i = 0; i < tdes->num_exec_queries && i < MAX_NUM_EXEC_QUERY_HISTORY; i++)
     {
@@ -1920,11 +1907,6 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
     }
   (void) db_change_private_heap (thread_p, save_heap_id);
 
-  tdes->cur_repl_record = 0;
-  tdes->append_repl_recidx = -1;
-  tdes->fl_mark_repl_recidx = -1;
-  LSA_SET_NULL (&tdes->repl_insert_lsa);
-  LSA_SET_NULL (&tdes->repl_update_lsa);
   tdes->first_save_entry = NULL;
   tdes->query_timeout = 0;
   tdes->query_start_time = 0;
@@ -1999,13 +1981,6 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->max_unique_btrees = 0;
   tdes->tran_unique_stats = NULL;
   tdes->num_transient_classnames = 0;
-  tdes->num_repl_records = 0;
-  tdes->cur_repl_record = 0;
-  tdes->append_repl_recidx = -1;
-  tdes->fl_mark_repl_recidx = -1;
-  tdes->repl_records = NULL;
-  LSA_SET_NULL (&tdes->repl_insert_lsa);
-  LSA_SET_NULL (&tdes->repl_update_lsa);
   tdes->first_save_entry = NULL;
   tdes->suppress_replication = 0;
   RB_INIT (&tdes->lob_locator_root);
@@ -7122,73 +7097,42 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
       db_make_int (&vals[idx], tdes->num_transient_classnames);
       idx++;
 
+      // todo - replace fields with new system values
+      // -->
       /* Repl_max_records */
-      db_make_int (&vals[idx], tdes->num_repl_records);
+      db_make_int (&vals[idx], 0);
       idx++;
 
       /* Repl_records */
-      ptr_val = tdes->repl_records;
-      if (ptr_val == NULL)
-	{
-	  db_make_null (&vals[idx]);
-	}
-      else
-	{
-	  snprintf (buf, sizeof (buf), "0x%08" PRIx64, (UINT64) ptr_val);
-	  error = db_make_string_copy (&vals[idx], buf);
-	  if (error != NO_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
-	}
+      db_make_null (&vals[idx]);
       idx++;
 
       /* Repl_current_index */
-      db_make_int (&vals[idx], tdes->cur_repl_record);
+      db_make_int (&vals[idx], 0);
       idx++;
 
       /* Repl_append_index */
-      db_make_int (&vals[idx], tdes->append_repl_recidx);
+      db_make_int (&vals[idx], 0);
       idx++;
 
       /* Repl_flush_marked_index */
-      db_make_int (&vals[idx], tdes->fl_mark_repl_recidx);
+      db_make_int (&vals[idx], 0);
       idx++;
 
       /* Repl_insert_lsa */
-      lsa_to_string (buf, sizeof (buf), &tdes->repl_insert_lsa);
-      error = db_make_string_copy (&vals[idx], buf);
+      db_make_null (&vals[idx]);
       idx++;
-      if (error != NO_ERROR)
-	{
-	  goto exit_on_error;
-	}
 
       /* Repl_update_lsa */
-      lsa_to_string (buf, sizeof (buf), &tdes->repl_update_lsa);
-      error = db_make_string_copy (&vals[idx], buf);
+      db_make_null (&vals[idx]);
       idx++;
-      if (error != NO_ERROR)
-	{
-	  goto exit_on_error;
-	}
+      
 
       /* First_save_entry */
-      ptr_val = tdes->first_save_entry;
-      if (ptr_val == NULL)
-	{
-	  db_make_null (&vals[idx]);
-	}
-      else
-	{
-	  snprintf (buf, sizeof (buf), "0x%08" PRIx64, (UINT64) ptr_val);
-	  error = db_make_string_copy (&vals[idx], buf);
-	  if (error != NO_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
-	}
+      db_make_null (&vals[idx]);
       idx++;
+      // <--
+      // todo - replace fields with new system values
 
       /* Tran_unique_stats */
       ptr_val = tdes->tran_unique_stats;

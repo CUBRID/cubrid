@@ -8657,15 +8657,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
     }
   else
     {
-      /* 
-       * clear repl_insert_lsa to make sure that FK action
-       * does not overwrite the original update's target lsa.
-       */
-      tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-      tdes = LOG_FIND_TDES (tran_index);
-
-      LSA_SET_NULL (&tdes->repl_insert_lsa);
-
+      // todo - handle no pk case
       /* No need to replicate this record since there is no primary key */
       if (repl_info != NULL)
 	{

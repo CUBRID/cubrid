@@ -484,9 +484,9 @@ log_to_string (LOG_RECTYPE type)
       return "LOG_END_OF_LOG";
 
     case LOG_REPLICATION_DATA:
-      return "LOG_REPLICATION_DATA";
+      return "LOG_REPLICATION_DATA [OBSOLETE]";
     case LOG_REPLICATION_STATEMENT:
-      return "LOG_REPLICATION_STATEMENT";
+      return "LOG_REPLICATION_STATEMENT [OBSOLETE]";
 
     case LOG_SYSOP_ATOMIC_START:
       return "LOG_SYSOP_ATOMIC_START";
@@ -2168,19 +2168,6 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_
     {
       pgbuf_notify_vacuum_follows (thread_p, addr->pgptr);
     }
-
-  if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p) && log_does_allow_replication () == true)
-    {
-      if (rcvindex == RVHF_UPDATE || rcvindex == RVOVF_CHANGE_LINK || rcvindex == RVHF_UPDATE_NOTIFY_VACUUM
-	  || rcvindex == RVHF_INSERT_NEWHOME)
-	{
-	  LSA_COPY (&tdes->repl_update_lsa, &tdes->tail_lsa);
-	}
-      else if (rcvindex == RVHF_INSERT || rcvindex == RVHF_MVCC_INSERT)
-	{
-	  LSA_COPY (&tdes->repl_insert_lsa, &tdes->tail_lsa);
-	}
-    }
 }
 
 /*
@@ -2421,18 +2408,6 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
 	{
 	  assert (false);
 	  return;
-	}
-    }
-
-  if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p) && log_does_allow_replication () == true)
-    {
-      if (rcvindex == RVHF_UPDATE || rcvindex == RVOVF_CHANGE_LINK || rcvindex == RVHF_UPDATE_NOTIFY_VACUUM)
-	{
-	  LSA_COPY (&tdes->repl_update_lsa, &tdes->tail_lsa);
-	}
-      else if (rcvindex == RVHF_INSERT || rcvindex == RVHF_MVCC_INSERT)
-	{
-	  LSA_COPY (&tdes->repl_insert_lsa, &tdes->tail_lsa);
 	}
     }
 }
@@ -4562,60 +4537,7 @@ log_append_sysop_end (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_EN
 static void
 log_append_repl_info_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_commit, int with_lock)
 {
-  LOG_REPL_RECORD *repl_rec;
-  LOG_REC_REPLICATION *log;
-  LOG_PRIOR_NODE *node;
-
-  if (tdes->append_repl_recidx == -1	/* the first time */
-      || is_commit)
-    {
-      tdes->append_repl_recidx = 0;
-    }
-
-  /* there is any replication info */
-  while (tdes->append_repl_recidx < tdes->cur_repl_record)
-    {
-      repl_rec = (LOG_REPL_RECORD *) (&(tdes->repl_records[tdes->append_repl_recidx]));
-
-      if ((repl_rec->repl_type == LOG_REPLICATION_DATA || repl_rec->repl_type == LOG_REPLICATION_STATEMENT)
-	  && ((is_commit && repl_rec->must_flush != LOG_REPL_DONT_NEED_FLUSH)
-	      || repl_rec->must_flush == LOG_REPL_NEED_FLUSH))
-	{
-	  node =
-	    prior_lsa_alloc_and_copy_data (thread_p, repl_rec->repl_type, RV_NOT_DEFINED, NULL, repl_rec->length,
-					   repl_rec->repl_data, 0, NULL);
-	  if (node == NULL)
-	    {
-	      assert (false);
-	      continue;
-	    }
-
-	  log = (LOG_REC_REPLICATION *) node->data_header;
-	  if (repl_rec->rcvindex == RVREPL_DATA_DELETE || repl_rec->rcvindex == RVREPL_STATEMENT)
-	    {
-	      LSA_SET_NULL (&log->lsa);
-	    }
-	  else
-	    {
-	      LSA_COPY (&log->lsa, &repl_rec->lsa);
-	    }
-	  log->length = repl_rec->length;
-	  log->rcvindex = repl_rec->rcvindex;
-
-	  if (with_lock == LOG_PRIOR_LSA_WITH_LOCK)
-	    {
-	      (void) prior_lsa_next_record_with_lock (thread_p, node, tdes);
-	    }
-	  else
-	    {
-	      (void) prior_lsa_next_record (thread_p, node, tdes);
-	    }
-
-	  repl_rec->must_flush = LOG_REPL_DONT_NEED_FLUSH;
-	}
-
-      tdes->append_repl_recidx++;
-    }
+  // todo: where this is used, we should write replication entries to replication log
 }
 
 void
@@ -6958,48 +6880,7 @@ log_dump_record_transaction_finish (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_
 static LOG_PAGE *
 log_dump_record_replication (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
-  LOG_REC_REPLICATION *repl_log;
-  int length;
-  const char *type;
-  void (*dump_function) (FILE *, int, void *);
-
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*repl_log), log_lsa, log_page_p);
-  repl_log = (LOG_REC_REPLICATION *) ((char *) log_page_p->area + log_lsa->offset);
-  fprintf (out_fp, ", Target log lsa = %lld|%d\n", LSA_AS_ARGS (&repl_log->lsa));
-  length = repl_log->length;
-
-  LOG_READ_ADD_ALIGN (thread_p, sizeof (*repl_log), log_lsa, log_page_p);
-
-  switch (repl_log->rcvindex)
-    {
-    case RVREPL_DATA_INSERT:
-      type = "RVREPL_DATA_INSERT";
-      dump_function = log_repl_data_dump;
-      break;
-    case RVREPL_DATA_UPDATE_START:
-      type = "RVREPL_DATA_UPDATE_START";
-      dump_function = log_repl_data_dump;
-      break;
-    case RVREPL_DATA_UPDATE:
-      type = "RVREPL_DATA_UPDATE";
-      dump_function = log_repl_data_dump;
-      break;
-    case RVREPL_DATA_UPDATE_END:
-      type = "RVREPL_DATA_UPDATE_END";
-      dump_function = log_repl_data_dump;
-      break;
-    case RVREPL_DATA_DELETE:
-      type = "RVREPL_DATA_DELETE";
-      dump_function = log_repl_data_dump;
-      break;
-    default:
-      type = "RVREPL_SCHEMA";
-      dump_function = log_repl_schema_dump;
-      break;
-    }
-  fprintf (out_fp, "T[%s] ", type);
-
-  log_dump_data (thread_p, out_fp, length, log_lsa, log_page_p, dump_function, NULL);
+  fprintf (out_fp, " replication log records are obsolete.\n");
   return log_page_p;
 }
 
