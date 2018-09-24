@@ -5272,6 +5272,53 @@ db_json_pretty_dbval (DB_VALUE * json, DB_VALUE * res)
 }
 
 int
+db_json_arrayagg_dbval (DB_VALUE * json, DB_VALUE * json_res)
+{
+  JSON_DOC *this_doc;
+  const char *raw_path;
+  JSON_DOC *result_doc = NULL;
+  int error_code = NO_ERROR;
+
+  if (DB_IS_NULL (json))
+    {
+      // this case should not be possible because we already wrapped a NULL value into a JSON with type DB_JSON_NULL
+      assert (false);
+      db_make_null (json_res);
+      return ER_FAILED;
+    }
+
+  // get the current value
+  this_doc = db_get_json_document (json);
+
+  // append to existing document
+  // allocate only first time
+  if (DB_IS_NULL (json_res))
+    {
+      result_doc = db_json_allocate_doc ();
+      db_make_json (json_res, result_doc, true);
+    }
+  else
+    {
+      result_doc = db_get_json_document (json_res);
+    }
+
+  error_code = db_json_arrayagg_func (this_doc, *result_doc);
+  if (error_code != NO_ERROR)
+    {
+      assert (result_doc == NULL);
+      return error_code;
+    }
+
+  if (result_doc == NULL)
+    {
+      db_make_null (json_res);
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+int
 db_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * json_res)
 {
   JSON_DOC *this_doc;

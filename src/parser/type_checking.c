@@ -12994,6 +12994,30 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
       break;
 
+    case PT_JSON_ARRAYAGG:
+      {
+	bool is_supported = pt_is_json_value_type (arg_list->type_enum);
+
+	if (!is_supported)
+	  {
+	    arg_type = PT_TYPE_NONE;
+	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
+			 pt_show_function (fcode), pt_show_type_enum (arg_list->type_enum));
+	    break;
+	  }
+
+	/* cast arg_list to json */
+	arg_list = pt_wrap_with_cast_op (parser, arg_list, PT_TYPE_JSON, 0, 0, NULL);
+	if (arg_list == NULL)
+	  {
+	    return node;
+	  }
+
+	arg_type = PT_TYPE_JSON;
+	node->info.function.arg_list = arg_list;
+      }
+      break;
+
     case F_JSON_OBJECT:
       {
 	PT_TYPE_ENUM unsupported_type;
@@ -13568,6 +13592,8 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  node->data_type = NULL;
 
 	  break;
+
+	case PT_JSON_ARRAYAGG:
 	case F_JSON_OBJECT:
 	case F_JSON_ARRAY:
 	case F_JSON_INSERT:

@@ -771,13 +771,13 @@ namespace test_stream
 	      {
 		std::this_thread::sleep_for (std::chrono::microseconds (100));
 
-                float stream_fill_factor = stream_context_manager::g_stream->stream_fill_factor ();
-	        if (stream_fill_factor < 0.45f && stream_context_manager::g_pause_packer)
-	          {
+		float stream_fill_factor = stream_context_manager::g_stream->stream_fill_factor ();
+		if (stream_fill_factor < 0.45f && stream_context_manager::g_pause_packer)
+		  {
 		    std::cout << "     stream_pack_task : need resume producing;  stream_fill_factor:  " << stream_fill_factor << std::endl;
 
 		    stream_context_manager::g_pause_packer = false;
-	          }
+		  }
 
 		if (stream_context_manager::g_stop_packer)
 		  {
@@ -878,7 +878,7 @@ namespace test_stream
 
 	stream_context_manager::g_unpacked_entries_cnt++;
 
-        stream_context_manager::update_stream_drop_position ();
+	stream_context_manager::update_stream_drop_position ();
       }
 
     std::cout << "      End of unpacking thread " << std::endl;
@@ -926,7 +926,7 @@ namespace test_stream
 
 	stream_context_manager::g_read_positions[m_reader_id] = my_curr_pos;
 
-        stream_context_manager::update_stream_drop_position ();
+	stream_context_manager::update_stream_drop_position ();
 
 	//std::this_thread::sleep_for (std::chrono::microseconds (10));
       }
@@ -958,15 +958,15 @@ namespace test_stream
   cubstream::stream_position stream_context_manager::g_read_positions[200];
 
   void stream_context_manager::update_stream_drop_position (void)
-    {
-      cubstream::stream_position drop_pos = stream_context_manager::g_stream->get_curr_read_position ();
+  {
+    cubstream::stream_position drop_pos = stream_context_manager::g_stream->get_curr_read_position ();
 
-      for (int j = 0; j < stream_context_manager::g_read_byte_threads; j++)
-	{
-          drop_pos = MIN (drop_pos, stream_context_manager::g_read_positions[j]);
-	}
-      stream_context_manager::g_stream->set_last_dropable_pos (drop_pos);
-    }
+    for (int j = 0; j < stream_context_manager::g_read_byte_threads; j++)
+      {
+	drop_pos = MIN (drop_pos, stream_context_manager::g_read_positions[j]);
+      }
+    stream_context_manager::g_stream->set_last_dropable_pos (drop_pos);
+  }
 
 
   class stream_producer_throttling
@@ -990,7 +990,7 @@ namespace test_stream
 	    std::cout << "      Stream producer throttled position:  " << pos << " bytes: " << byte_count << std::endl;
 	    stream_context_manager::g_pause_packer = true;
 
-            stream_context_manager::update_stream_drop_position ();
+	    stream_context_manager::update_stream_drop_position ();
 	  }
 
 	return NO_ERROR;

@@ -1078,6 +1078,7 @@ typedef enum
   PT_RANK,
   PT_DENSE_RANK,
   PT_NTILE,
+  PT_JSON_ARRAYAGG,
   PT_TOP_AGG_FUNC,
   /* only aggregate functions should be below PT_TOP_AGG_FUNC */
 
@@ -1374,5 +1375,12 @@ enum
   REC_4BIT_USED_TYPE_MAX = REC_DELETED_WILL_REUSE,
   REC_4BIT_TYPE_MAX = REC_RESERVED_TYPE_15
 };
+
+// TODO: move me in a proper place
+typedef enum
+{
+  KILLSTMT_TRAN = 0,
+  KILLSTMT_QUERY = 1,
+} KILLSTMT_TYPE;
 
 #endif /* _STORAGE_COMMON_H_ */

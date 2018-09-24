@@ -1304,8 +1304,10 @@ $ LOADDB
 1235 Reserved error for stream/replication.
 1236 Double Write Buffer is disabled.
 1237 Cannot change status on %1$s because %2$s is a %3$s.
+1238 Missing value for JSON_TABLE column '%1$s'.
+1239 Cannot coerce value from JSON "%1$s" at path "%2$s" to JSON_TABLE column "%3$s" of domain "%4$s". 
 
-1238 ラストエラー
+1240 ラストエラー
 
 $set 6 MSGCAT_SET_INTERNAL
 1 エラーサブシステムにエラー発生(ライン %1$d):

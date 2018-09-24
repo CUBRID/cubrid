@@ -6514,6 +6514,7 @@ qdata_aggregate_accumulator_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_A
     case PT_AGG_BIT_XOR:
     case PT_AVG:
     case PT_SUM:
+    case PT_JSON_ARRAYAGG:
       /* these functions only affect acc.value and new_acc can be treated as an ordinary value */
       error = qdata_aggregate_value_to_accumulator (thread_p, acc, acc_dom, func_type, func_domain, new_acc->value);
       break;
@@ -6766,6 +6767,13 @@ qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMUL
 	}
       break;
 
+    case PT_JSON_ARRAYAGG:
+      if (db_json_arrayagg_dbval (value, acc->value) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+      break;
+
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
       return ER_FAILED;
@@ -6875,12 +6883,24 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
       /* eliminate null values */
       if (DB_IS_NULL (&dbval))
 	{
-	  if ((agg_p->function == PT_COUNT || agg_p->function == PT_COUNT_STAR) && DB_IS_NULL (accumulator->value))
+	  /*
+	   * for JSON_ARRAYAGG we need to include also NULL values in the result set
+	   * so we need to construct a NULL JSON value
+	   */
+	  if (agg_p->function == PT_JSON_ARRAYAGG)
 	    {
-	      /* we might get a NULL count if aggregating with hash table and group has only one tuple; correct that */
-	      db_make_int (accumulator->value, 0);
+	      // this creates a new JSON_DOC with the type DB_JSON_NULL
+	      db_make_json (&dbval, db_json_allocate_doc (), true);
 	    }
-	  continue;
+	  else
+	    {
+	      if ((agg_p->function == PT_COUNT || agg_p->function == PT_COUNT_STAR) && DB_IS_NULL (accumulator->value))
+		{
+		  /* we might get a NULL count if aggregating with hash table and group has only one tuple; correct that */
+		  db_make_int (accumulator->value, 0);
+		}
+	      continue;
+	    }
 	}
 
       /* 
