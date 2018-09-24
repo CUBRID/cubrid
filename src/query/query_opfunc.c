@@ -6509,8 +6509,16 @@ qdata_aggregate_accumulator_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_A
     case PT_AVG:
     case PT_SUM:
     case PT_JSON_ARRAYAGG:
-      /* these functions only affect acc.value and new_acc can be treated as an ordinary value */
-      error = qdata_aggregate_value_to_accumulator (thread_p, acc, acc_dom, func_type, func_domain, new_acc->value);
+      /* these functions only affect acc.value and new_acc can be treated as an ordinary value 
+       * for all these functions the second argument is null and we will expect this behavior
+       * only JSON_OBJECTAGG has 2 arguments
+       */
+      error =
+	qdata_aggregate_value_to_accumulator (thread_p, acc, acc_dom, func_type, func_domain, new_acc->value, NULL);
+      break;
+
+      // todo: handle this case
+    case PT_JSON_OBJECTAGG:
       break;
 
     case PT_STDDEV:
@@ -6583,11 +6591,12 @@ qdata_aggregate_accumulator_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_A
  *   func_type(in): function type
  *   func_domain(in): function domain
  *   value(in): value
+ *   value_next(int): value of the second argument; used only for JSON_OBJECTAGG
  */
 int
 qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMULATOR * acc,
 				      AGGREGATE_ACCUMULATOR_DOMAIN * domain, FUNC_TYPE func_type,
-				      TP_DOMAIN * func_domain, DB_VALUE * value)
+				      TP_DOMAIN * func_domain, DB_VALUE * value, DB_VALUE * value_next)
 {
   DB_VALUE squared;
   bool copy_operator = false;
@@ -6596,6 +6605,19 @@ qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMUL
   if (DB_IS_NULL (value))
     {
       return NO_ERROR;
+    }
+
+  if (func_type != PT_JSON_OBJECTAGG)
+    {
+      assert (value_next == NULL || DB_IS_NULL (value_next));
+    }
+  else
+    {
+      assert (value_next != NULL);
+      if (DB_IS_NULL (value_next))
+	{
+	  return NO_ERROR;
+	}
     }
 
   coll_id = domain->value_dom->collation_id;
@@ -6767,11 +6789,12 @@ qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMUL
 	  return ER_FAILED;
 	}
       break;
+
     case PT_JSON_OBJECTAGG:
-      /*if (db_json_object_dbval(value, acc->value) != NO_ERROR)
-         {
-         return ER_FAILED;
-         } */
+      if (db_json_objectagg_dbval (value, value_next, acc->value) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
       break;
 
     default:
@@ -6823,6 +6846,7 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
   AGGREGATE_TYPE *agg_p;
   AGGREGATE_ACCUMULATOR *accumulator;
   DB_VALUE dbval, *percentile_val = NULL;
+  DB_VALUE dbval_next_arg;
   PR_TYPE *pr_type_p;
   DB_TYPE dbval_type;
   OR_BUF buf;
@@ -6831,6 +6855,7 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
   AGGREGATE_PERCENTILE_INFO *percentile = NULL;
 
   db_make_null (&dbval);
+  db_make_null (&dbval_next_arg);
 
   for (agg_p = agg_list_p, i = 0; agg_p != NULL; agg_p = agg_p->next, i++)
     {
@@ -6880,6 +6905,15 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	  return ER_FAILED;
 	}
 
+      if (agg_p->function == PT_JSON_OBJECTAGG)
+	{
+	  /* fetch the second operand value */
+	  if (fetch_copy_dbval (thread_p, &agg_p->operand2, val_desc_p, NULL, NULL, NULL, &dbval_next_arg) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	}
+
       /* eliminate null values */
       if (DB_IS_NULL (&dbval))
 	{
@@ -6895,20 +6929,11 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	  /*
 	   * for JSON_OBJECTAGG we need to include keep track of key-value pairs
 	   * the key can not be NULL so this will throw an error
-	   * the value can be NULL and we will wrap this into a JSON with DB_JSON_NULL type
+	   * the value can be NULL and we will wrap this into a JSON with DB_JSON_NULL type in the next statement
 	   */
 	  else if (agg_p->function == PT_JSON_OBJECTAGG)
 	    {
-	      // the current value is for a key and it should not be NULL
-	      if (i % 2 == 0)
-		{
-		  return ER_FAILED;
-		}
-	      else
-		{
-		  // this creates a new JSON_DOC with the type DB_JSON_NULL
-		  db_make_json (&dbval, db_json_allocate_doc (), true);
-		}
+	      return ER_FAILED;
 	    }
 	  else
 	    {
@@ -6919,6 +6944,22 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 		}
 	      continue;
 	    }
+	}
+
+      /*
+       * for JSON_OBJECTAGG, we wrap the second argument with a null JSON  
+       */
+      if (DB_IS_NULL (&dbval_next_arg) && agg_p->function == PT_JSON_OBJECTAGG)
+	{
+	  db_make_json (&dbval_next_arg, db_json_allocate_doc (), true);
+	}
+
+      // todo: delete this
+      // just for debug purpose :)
+      char *pp;
+      if (agg_p->function == PT_JSON_OBJECTAGG)
+	{
+	  pp = db_json_get_raw_json_body_from_document (dbval_next_arg.data.json.document);
 	}
 
       /* 
@@ -7141,13 +7182,16 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	{
 	  /* aggregate value */
 	  error = qdata_aggregate_value_to_accumulator (thread_p, accumulator, &agg_p->accumulator_domain,
-							agg_p->function, agg_p->domain, &dbval);
+							agg_p->function, agg_p->domain, &dbval, &dbval_next_arg);
 
 	  /* increment tuple count */
 	  accumulator->curr_cnt++;
 
 	  /* clear value */
 	  pr_clear_value (&dbval);
+
+	  /* clear second value */
+	  pr_clear_value (&dbval_next_arg);
 
 	  /* handle error */
 	  if (error != NO_ERROR)

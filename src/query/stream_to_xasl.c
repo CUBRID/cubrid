@@ -5608,6 +5608,13 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
       return NULL;
     }
 
+  /* operand2 */
+  ptr = stx_build_regu_variable (thread_p, ptr, &aggregate->operand2);
+  if (ptr == NULL)
+    {
+      return NULL;
+    }
+
   /* list_id */
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)

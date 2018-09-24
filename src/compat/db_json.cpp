@@ -2878,6 +2878,31 @@ db_json_arrayagg_func (const JSON_DOC *value, JSON_DOC &result_json)
 }
 
 /*
+* db_json_arrayagg_func () - Inserts a (key, value) pair in the result_json
+*
+* key_str (in)            : the key string
+* val_doc (in)            : the value document
+* result_json (in)        : the document where we want to insert
+*/
+int
+db_json_objectagg_func (const char *key_str, const JSON_DOC *val_doc, JSON_DOC &result_json)
+{
+  DB_JSON_TYPE result_json_type = db_json_get_type (&result_json);
+
+  // only the first time the result_json will have DB_JSON_NULL type
+  if (result_json_type == DB_JSON_TYPE::DB_JSON_NULL)
+    {
+      result_json.SetObject ();
+    }
+
+  assert (result_json.IsObject ());
+
+  db_json_add_member_to_object (&result_json, key_str, val_doc);
+
+  return NO_ERROR;
+}
+
+/*
  * db_json_keys_func () - Returns the keys from the top-level value of a JSON object as a JSON array
  *
  * return                  : error code

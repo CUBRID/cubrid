@@ -5229,6 +5229,12 @@ xts_process_aggregate_type (char *ptr, const AGGREGATE_TYPE * aggregate)
       return NULL;
     }
 
+  ptr = xts_process_regu_variable (ptr, &aggregate->operand2);
+  if (ptr == NULL)
+    {
+      return NULL;
+    }
+
   if (aggregate->list_id == NULL)
     {
       ptr = or_pack_int (ptr, 0);
@@ -7036,6 +7042,13 @@ xts_sizeof_aggregate_type (const AGGREGATE_TYPE * aggregate)
 	   + OR_INT_SIZE);	/* opr_dbtype */
 
   tmp_size = xts_sizeof_regu_variable (&aggregate->operand);
+  if (tmp_size == ER_FAILED)
+    {
+      return ER_FAILED;
+    }
+  size += tmp_size;
+
+  tmp_size = xts_sizeof_regu_variable (&aggregate->operand2);
   if (tmp_size == ER_FAILED)
     {
       return ER_FAILED;

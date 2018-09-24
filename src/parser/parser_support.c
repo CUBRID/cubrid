@@ -4471,6 +4471,7 @@ regu_agg_init (AGGREGATE_TYPE * ptr)
   ptr->function = (FUNC_TYPE) 0;
   ptr->option = (QUERY_OPTIONS) 0;
   regu_var_init (&ptr->operand);
+  regu_var_init (&ptr->operand2);
   ptr->list_id = NULL;
   ptr->sort_list = NULL;
   memset (&ptr->info, 0, sizeof (AGGREGATE_SPECIFIC_FUNCTION_INFO));

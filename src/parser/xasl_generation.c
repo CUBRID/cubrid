@@ -3537,6 +3537,7 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 {
   bool is_agg = 0;
   REGU_VARIABLE *regu = NULL, *scan_regu = NULL;
+  REGU_VARIABLE *regu_next = NULL, *scan_regu_next = NULL;
   REGU_VARIABLE *percentile_regu = NULL;
   AGGREGATE_TYPE *aggregate_list;
   AGGREGATE_INFO *info = (AGGREGATE_INFO *) arg;
@@ -3642,6 +3643,18 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 		{
 		  return NULL;
 		}
+
+	      if (aggregate_list->function == PT_JSON_OBJECTAGG)
+		{
+		  regu_next = pt_to_regu_variable (parser, tree->info.function.arg_list->next, UNBOX_AS_VALUE);
+
+		  scan_regu_next = pt_to_regu_variable (parser, tree->info.function.arg_list->next, UNBOX_AS_VALUE);
+
+		  if (!regu_next || !scan_regu_next)
+		    {
+		      return NULL;
+		    }
+		}
 	    }
 	  else
 	    {
@@ -3743,6 +3756,16 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 		  aggregate_list->operand.domain = pt_xasl_node_to_domain (parser, tree->info.function.arg_list);
 		  aggregate_list->operand.value.dbvalptr = value_list->valp->val;
 
+		  // todo: figure out how to construct here the second operand !!!
+		  // and what other things we need to do
+		  if (aggregate_list->function == PT_JSON_OBJECTAGG)
+		    {
+		      aggregate_list->operand2.type = TYPE_CONSTANT;
+		      aggregate_list->operand2.domain =
+			pt_xasl_node_to_domain (parser, tree->info.function.arg_list->next);
+		      aggregate_list->operand2.value.dbvalptr = value_list->valp->next->val;
+		    }
+
 		  regu_list->value.value.pos_descr.pos_no = info->out_list->valptr_cnt;
 
 		  update_value_list_out_list_regu_list (info, value_list, out_list, regu_list, regu);
@@ -3783,6 +3806,11 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	    {
 	      /* handle the buildvalue case, simply uses regu as the operand */
 	      aggregate_list->operand = *regu;
+
+	      if (aggregate_list->function == PT_JSON_OBJECTAGG)
+		{
+		  aggregate_list->operand2 = *regu_next;
+		}
 	    }
 	}
       else
