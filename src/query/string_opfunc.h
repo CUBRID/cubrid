@@ -186,6 +186,7 @@ extern int db_string_position (const DB_VALUE * sub_string, const DB_VALUE * src
 extern int db_string_substring (const MISC_OPERAND substr_operand, const DB_VALUE * src_string,
 				const DB_VALUE * start_position, const DB_VALUE * extraction_length,
 				DB_VALUE * sub_string);
+extern int db_string_quote (const DB_VALUE * src_string, DB_VALUE * res);
 extern int db_string_repeat (const DB_VALUE * src_string, const DB_VALUE * count, DB_VALUE * result);
 extern int db_string_substring_index (DB_VALUE * src_string, DB_VALUE * delim_string, const DB_VALUE * count,
 				      DB_VALUE * result);

@@ -1888,6 +1888,70 @@ db_string_substring (const MISC_OPERAND substr_operand, const DB_VALUE * src_str
 }
 
 /*
+ * db_string_quote - escape a string and surround it with quotes 
+ *   return: If success, return 0.
+ *   src(in): str
+ *   res(out): quoted string
+ * Note:
+ */
+int
+db_string_quote (const DB_VALUE * str, DB_VALUE * res)
+{
+  if (DB_IS_NULL (str))
+    {
+      return db_make_null (res);
+    }
+  else
+    {
+      char *src_str = db_get_string (str);
+      int src_size = db_get_string_size (str);
+      int dest_crt_pos;
+      int src_last_pos;
+
+      // special characters
+      std::vector < int >special_idx;
+      for (int i = 0; i < src_size; ++i)
+	{
+	  //todo: treat multi-byte utf? investigate
+	  if (src_str[i] == '"' || src_str[i] == '\\')
+	    {
+	      special_idx.push_back (i);
+	    }
+	}
+      int dest_size = src_size + special_idx.size () + 2;
+      char *result = (char *) db_private_alloc (NULL, dest_size);
+      if (result == NULL)
+	{
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      result[0] = '"';
+      dest_crt_pos = 1;
+      src_last_pos = 0;
+      for (int i = 0; i < special_idx.size (); ++i)
+	{
+	  int len = special_idx[i] - src_last_pos;
+	  memcpy (&result[dest_crt_pos], &src_str[src_last_pos], len);
+	  dest_crt_pos += len;
+	  result[dest_crt_pos] = '\\';
+	  ++dest_crt_pos;
+	  src_last_pos = special_idx[i];
+	}
+      memcpy (&result[dest_crt_pos], &src_str[src_last_pos], src_size - src_last_pos);
+      result[dest_size - 1] = '"';
+
+
+      db_make_null (res);
+      DB_TYPE result_type = DB_TYPE_VARNCHAR;
+      qstr_make_typed_string (result_type, res, DB_VALUE_PRECISION (res), result,
+			      (const int) dest_size, db_get_string_codeset (str), db_get_string_collation (str));
+
+      res->need_clear = true;
+      return NO_ERROR;
+    }
+}
+
+/*
  * db_string_repeat
  *
  * Arguments:
