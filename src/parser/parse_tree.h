@@ -34,14 +34,15 @@
 #include <setjmp.h>
 #include <assert.h>
 
-#include "config.h"
-#include "jansson.h"
-#include "cursor.h"
-#include "string_opfunc.h"
-#include "message_catalog.h"
 #include "authenticate.h"
+#include "compile_context.h"
+#include "config.h"
+#include "cursor.h"
+#include "jansson.h"
+#include "json_table_def.h"
+#include "message_catalog.h"
+#include "string_opfunc.h"
 #include "system_parameter.h"
-#include "xasl.h"
 
 #define MAX_PRINT_ERROR_CONTEXT_LENGTH 64
 
@@ -896,6 +897,9 @@ enum pt_node_type
   PT_KILL_STMT,
   PT_VACUUM,
   PT_WITH_CLAUSE,
+  PT_JSON_TABLE,
+  PT_JSON_TABLE_NODE,
+  PT_JSON_TABLE_COLUMN,
 
   PT_NODE_NUMBER,		/* This is the number of node types */
   PT_LAST_NODE_NUMBER = PT_NODE_NUMBER
@@ -1138,7 +1142,11 @@ typedef enum
 
   PT_IS_SHOWSTMT,		/* query is SHOWSTMT */
   PT_IS_CTE_REC_SUBQUERY,
-  PT_IS_CTE_NON_REC_SUBQUERY
+  PT_IS_CTE_NON_REC_SUBQUERY,
+
+  PT_DERIVED_JSON_TABLE,	// json table spec derivation
+
+  // todo: separate into relevant enumerations
 } PT_MISC_TYPE;
 
 /* Enumerated join type */
@@ -1688,6 +1696,10 @@ typedef struct pt_set_timezone_info PT_SET_TIMEZONE_INFO;
 
 typedef struct pt_flat_spec_info PT_FLAT_SPEC_INFO;
 
+typedef struct pt_json_table_info PT_JSON_TABLE_INFO;
+typedef struct pt_json_table_node_info PT_JSON_TABLE_NODE_INFO;
+typedef struct pt_json_table_column_info PT_JSON_TABLE_COLUMN_INFO;
+
 typedef PT_NODE *(*PT_NODE_FUNCTION) (PARSER_CONTEXT * p, PT_NODE * tree, void *arg);
 
 typedef PT_NODE *(*PT_NODE_WALK_FUNCTION) (PARSER_CONTEXT * p, PT_NODE * tree, void *arg, int *continue_walk);
@@ -2156,6 +2168,7 @@ struct pt_spec_info
   PT_NODE *flat_entity_list;	/* PT_NAME (list) resolved class's */
   PT_NODE *method_list;		/* PT_METHOD_CALL list with this entity as the target */
   PT_NODE *partition;		/* PT_NAME of the specified partition */
+  PT_NODE *json_table;		/* JSON TABLE definition tree */
   UINTPTR id;			/* entity spec unique id # */
   PT_MISC_TYPE only_all;	/* PT_ONLY or PT_ALL */
   PT_MISC_TYPE meta_class;	/* enum 0 or PT_META */
@@ -2594,6 +2607,7 @@ struct pt_name_info
   PT_NODE *indx_key_limit;	/* key limits for index name */
   int coll_modifier;		/* collation modifier = collation + 1 */
   PT_RESERVED_NAME_ID reserved_id;	/* used to identify reserved name */
+  size_t json_table_column_index;	/* will be used only for json_table to gather attributes in the correct order */
 };
 
 /*
@@ -3246,6 +3260,31 @@ struct pt_insert_value_info
   int replace_names;		/* true if names in evaluated node need to be replaced */
 };
 
+struct pt_json_table_column_info
+{
+  PT_NODE *name;
+  // domain is stored in parser node
+  char *path;
+  size_t index;			// will be used to store the columns in the correct order
+  enum json_table_column_function func;
+  struct json_table_column_behavior on_error;
+  struct json_table_column_behavior on_empty;
+};
+
+struct pt_json_table_node_info
+{
+  PT_NODE *columns;
+  PT_NODE *nested_paths;
+  const char *path;
+};
+
+struct pt_json_table_info
+{
+  PT_NODE *expr;
+  PT_NODE *tree;
+  bool is_correlated;
+};
+
 /* Info field of the basic NODE
   If 'xyz' is the name of the field, then the structure type should be
   struct PT_XYZ_INFO xyz;
@@ -3299,6 +3338,9 @@ union pt_statement_info
   PT_INSERT_INFO insert;
   PT_INSERT_VALUE_INFO insert_value;
   PT_ISOLATION_LVL_INFO isolation_lvl;
+  PT_JSON_TABLE_INFO json_table_info;
+  PT_JSON_TABLE_NODE_INFO json_table_node_info;
+  PT_JSON_TABLE_COLUMN_INFO json_table_column_info;
   PT_MERGE_INFO merge;
   PT_METHOD_CALL_INFO method_call;
   PT_METHOD_DEF_INFO method_def;

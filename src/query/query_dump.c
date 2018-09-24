@@ -1343,6 +1343,8 @@ qdump_function_type_string (FUNC_TYPE ftype)
       return "PERCENTILE_CONT";
     case PT_PERCENTILE_DISC:
       return "PERCENTILE_DISC";
+    case PT_JSON_ARRAYAGG:
+      return "JSON_ARRAYAGG";
     case PT_JSON_OBJECTAGG:
       return "JSON_OBJECTAGG";
     case F_TABLE_SET:

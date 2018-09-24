@@ -6508,6 +6508,7 @@ qdata_aggregate_accumulator_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_A
     case PT_AGG_BIT_XOR:
     case PT_AVG:
     case PT_SUM:
+    case PT_JSON_ARRAYAGG:
       /* these functions only affect acc.value and new_acc can be treated as an ordinary value */
       error = qdata_aggregate_value_to_accumulator (thread_p, acc, acc_dom, func_type, func_domain, new_acc->value);
       break;
@@ -6760,6 +6761,12 @@ qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMUL
 	}
       break;
 
+    case PT_JSON_ARRAYAGG:
+      if (db_json_arrayagg_dbval (value, acc->value) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+      break;
     case PT_JSON_OBJECTAGG:
       /*if (db_json_object_dbval(value, acc->value) != NO_ERROR)
          {
@@ -6877,11 +6884,20 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
       if (DB_IS_NULL (&dbval))
 	{
 	  /*
+	   * for JSON_ARRAYAGG we need to include also NULL values in the result set
+	   * so we need to construct a NULL JSON value
+	   */
+	  if (agg_p->function == PT_JSON_ARRAYAGG)
+	    {
+	      // this creates a new JSON_DOC with the type DB_JSON_NULL
+	      db_make_json (&dbval, db_json_allocate_doc (), true);
+	    }
+	  /*
 	   * for JSON_OBJECTAGG we need to include keep track of key-value pairs
 	   * the key can not be NULL so this will throw an error
 	   * the value can be NULL and we will wrap this into a JSON with DB_JSON_NULL type
 	   */
-	  if (agg_p->function == PT_JSON_OBJECTAGG)
+	  else if (agg_p->function == PT_JSON_OBJECTAGG)
 	    {
 	      // the current value is for a key and it should not be NULL
 	      if (i % 2 == 0)

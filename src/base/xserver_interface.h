@@ -49,6 +49,9 @@
 #include "storage_common.h"
 #include "thread_compat.hpp"
 
+// forward definitions
+struct compile_context;
+
 extern int xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH_INFO * db_path_info,
 				    bool db_overwrite, const char *file_addmore_vols, volatile DKNPAGES db_npages,
 				    PGLENGTH db_desired_pagesize, volatile DKNPAGES xlog_npages,
@@ -201,7 +204,7 @@ extern int xqfile_get_list_file_page (THREAD_ENTRY * thread_p, QUERY_ID query_id
 				      char *page_bufp, int *page_sizep);
 
 /* new query interface */
-extern int xqmgr_prepare_query (THREAD_ENTRY * thrd, COMPILE_CONTEXT * ctx, XASL_STREAM * stream);
+extern int xqmgr_prepare_query (THREAD_ENTRY * thrd, compile_context * ctx, XASL_STREAM * stream);
 
 extern QFILE_LIST_ID *xqmgr_execute_query (THREAD_ENTRY * thrd, const XASL_ID * xasl_id, QUERY_ID * query_idp,
 					   int dbval_cnt, void *data, QUERY_FLAG * flagp, CACHE_TIME * clt_cache_time,

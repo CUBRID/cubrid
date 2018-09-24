@@ -1884,6 +1884,9 @@ qexec_clear_access_spec_list (XASL_NODE * xasl_p, THREAD_ENTRY * thread_p, ACCES
 	case S_SET_SCAN:
 	  pg_cnt += qexec_clear_regu_list (xasl_p, p->s_id.s.ssid.scan_pred.regu_list, is_final);
 	  break;
+	case S_JSON_TABLE_SCAN:
+	  p->s_id.s.jtid.clear (xasl_p, is_final);
+	  break;
 	case S_SHOWSTMT_SCAN:
 	  break;
 	case S_METHOD_SCAN:
@@ -1948,6 +1951,9 @@ qexec_clear_access_spec_list (XASL_NODE * xasl_p, THREAD_ENTRY * thread_p, ACCES
 
 	  pg_cnt += qexec_clear_regu_var (xasl_p, p->s_id.s.ssid.set_ptr, is_final);
 	  pr_clear_value (&p->s_id.s.ssid.set);
+	  break;
+	case TARGET_JSON_TABLE:
+	  pg_cnt += qexec_clear_regu_var (xasl_p, p->s.json_table_node.m_json_reguvar, is_final);
 	  break;
 	case TARGET_METHOD:
 	  pg_cnt += qexec_clear_regu_list (xasl_p, p->s.method_node.method_regu_list, is_final);
@@ -6453,6 +6459,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
 	  return ER_FAILED;
 	}			/* if */
+
       if (scan_type == S_HEAP_SCAN || scan_type == S_HEAP_SCAN_RECORD_INFO)
 	{
 	  if (scan_open_heap_scan (thread_p, s_id, mvcc_select_lock_needed, scan_op_type, fixed, grouped,
@@ -6581,6 +6588,15 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	}
       break;
 
+    case TARGET_JSON_TABLE:
+      /* open a json table based derived table scan */
+      if (scan_open_json_table_scan (thread_p, s_id, grouped, curr_spec->single_fetch, curr_spec->s_dbval, val_list,
+				     vd, curr_spec->where_pred) != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+      break;
+
     case TARGET_METHOD:
       if (scan_open_method_scan (thread_p, s_id, grouped, curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,
 				 ACCESS_SPEC_METHOD_LIST_ID (curr_spec),
@@ -6628,50 +6644,66 @@ exit_on_error:
 static void
 qexec_close_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec)
 {
-  if (curr_spec)
+  if (curr_spec == NULL)
     {
-      /* monitoring */
-      switch (curr_spec->type)
-	{
-	case TARGET_CLASS:
-	  if (curr_spec->access == ACCESS_METHOD_SEQUENTIAL || curr_spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO
-	      || curr_spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN)
-	    {
-	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_SSCANS);
-	    }
-	  else if (IS_ANY_INDEX_ACCESS (curr_spec->access))
-	    {
-	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_ISCANS);
-	    }
-	  if (curr_spec->parts != NULL)
-	    {
-	      /* reset pruning info */
-	      db_private_free (thread_p, curr_spec->parts);
-	      curr_spec->parts = NULL;
-	      curr_spec->curent = NULL;
-	      curr_spec->pruned = false;
-	    }
-	  break;
-	case TARGET_CLASS_ATTR:
-	  break;
-	case TARGET_LIST:
-	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_LSCANS);
-	  break;
-	case TARGET_SHOWSTMT:
-	  /* do nothing */
-	  break;
-	case TARGET_REGUVAL_LIST:
-	  /* currently do nothing */
-	  break;
-	case TARGET_SET:
-	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_SETSCANS);
-	  break;
-	case TARGET_METHOD:
-	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_METHSCANS);
-	  break;
-	}
-      scan_close_scan (thread_p, &curr_spec->s_id);
+      return;
     }
+
+  /* monitoring */
+  switch (curr_spec->type)
+    {
+    case TARGET_CLASS:
+      if (curr_spec->access == ACCESS_METHOD_SEQUENTIAL || curr_spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO
+	  || curr_spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN)
+	{
+	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_SSCANS);
+	}
+      else if (IS_ANY_INDEX_ACCESS (curr_spec->access))
+	{
+	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_ISCANS);
+	}
+
+      if (curr_spec->parts != NULL)
+	{
+	  /* reset pruning info */
+	  db_private_free (thread_p, curr_spec->parts);
+	  curr_spec->parts = NULL;
+	  curr_spec->curent = NULL;
+	  curr_spec->pruned = false;
+	}
+      break;
+
+    case TARGET_CLASS_ATTR:
+      break;
+
+    case TARGET_LIST:
+      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_LSCANS);
+      break;
+
+    case TARGET_SHOWSTMT:
+      /* do nothing */
+      break;
+
+    case TARGET_REGUVAL_LIST:
+      /* currently do nothing */
+      break;
+
+    case TARGET_SET:
+      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_SETSCANS);
+      break;
+
+    case TARGET_JSON_TABLE:
+      /* currently do nothing 
+         todo: check if here need to add something
+       */
+      break;
+
+    case TARGET_METHOD:
+      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_METHSCANS);
+      break;
+    }
+
+  scan_close_scan (thread_p, &curr_spec->s_id);
 }
 
 /*
@@ -13463,7 +13495,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
   bool instant_lock_mode_started = false;
   bool mvcc_select_lock_needed;
 
-  /* 
+  /*  
    * Pre_processing
    */
 
@@ -18286,7 +18318,7 @@ qexec_resolve_domains_for_group_by (BUILDLIST_PROC_NODE * buildlist, OUTPTR_LIST
 			  || group_agg->function == PT_STDDEV || group_agg->function == PT_VARIANCE
 			  || group_agg->function == PT_STDDEV_POP || group_agg->function == PT_VAR_POP
 			  || group_agg->function == PT_STDDEV_SAMP || group_agg->function == PT_VAR_SAMP
-			  || group_agg->function == PT_JSON_OBJECTAGG);
+			  || group_agg->function == PT_JSON_ARRAYAGG || group_agg->function == PT_JSON_OBJECTAGG);
 		}
 
 	      g_agg_val_found = true;
@@ -18478,6 +18510,7 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 	    case PT_AGG_BIT_XOR:
 	    case PT_MIN:
 	    case PT_MAX:
+	    case PT_JSON_ARRAYAGG:
 	    case PT_JSON_OBJECTAGG:
 	      agg_p->accumulator_domain.value_dom = agg_p->domain;
 	      agg_p->accumulator_domain.value2_dom = &tp_Null_domain;

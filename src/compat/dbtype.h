@@ -293,4 +293,4 @@ extern "C"
 }
 #endif
 
-#endif /* _DBTYPE_H_ */
+#endif				/* _DBTYPE_H_ */
