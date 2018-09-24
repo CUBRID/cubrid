@@ -5225,36 +5225,6 @@ db_json_depth_dbval (DB_VALUE * json, DB_VALUE * res)
 }
 
 int
-db_json_quote_dbval (DB_VALUE * str, DB_VALUE * res)
-{
-  if (DB_IS_NULL (str))
-    {
-      return db_make_null (res);
-    }
-  else
-    {
-      size_t quoted_size;
-      int error_code = NO_ERROR;
-      JSON_DOC *result_doc = NULL;
-      DB_VALUE quoted_str;
-      error_code = db_string_quote (str, &quoted_str);
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
-	}
-
-      quoted_size = db_get_string_size (&quoted_str);
-      error_code = db_json_get_json_from_str (db_get_string (&quoted_str), result_doc, quoted_size);
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
-	}
-
-      return db_make_json (res, result_doc, true);
-    }
-}
-
-int
 db_json_pretty_dbval (DB_VALUE * json, DB_VALUE * res)
 {
   if (DB_IS_NULL (json))

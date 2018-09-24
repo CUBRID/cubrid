@@ -1909,7 +1909,9 @@ db_string_quote (const DB_VALUE * str, DB_VALUE * res)
       int src_last_pos;
 
       // special characters
-      std::vector < int >special_idx;
+      // *INDENT-OFF*
+      std::vector<int> special_idx;
+      // *INDENT-ON*
       for (int i = 0; i < src_size; ++i)
 	{
 	  //todo: treat multi-byte utf? investigate
@@ -1942,7 +1944,7 @@ db_string_quote (const DB_VALUE * str, DB_VALUE * res)
 
 
       db_make_null (res);
-      DB_TYPE result_type = DB_TYPE_VARNCHAR;
+      DB_TYPE result_type = DB_TYPE_CHAR;
       qstr_make_typed_string (result_type, res, DB_VALUE_PRECISION (res), result,
 			      (const int) dest_size, db_get_string_codeset (str), db_get_string_collation (str));
 

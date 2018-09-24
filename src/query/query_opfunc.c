@@ -6144,7 +6144,7 @@ qdata_json_depth_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * do
 int
 qdata_json_quote_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
 {
-  return db_json_quote_dbval (dbval1_p, result_p);
+  return db_string_quote (dbval1_p, result_p);
 }
 
 int

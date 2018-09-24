@@ -4871,7 +4871,7 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
 
       /* return type */
       sig.return_type.is_generic = false;
-      sig.return_type.val.type = PT_TYPE_JSON;
+      sig.return_type.val.type = PT_TYPE_CHAR;
       def->overloads[num++] = sig;
 
       def->overloads_count = num;
@@ -17015,7 +17015,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	}
       break;
     case PT_JSON_QUOTE:
-      error = db_json_quote_dbval (arg1, result);
+      error = db_string_quote (arg1, result);
       if (error != NO_ERROR)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
