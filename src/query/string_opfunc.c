@@ -292,9 +292,12 @@ static int db_value_to_json_doc (const DB_VALUE & value, REFPTR (JSON_DOC, json)
 #define DIGIT(c) ((c) >= '0' && (c) <= '9')
 
 /* same as characters in get_next_format */
-#define PUNCTUATIONAL(c) ((c) == '-' || (c) == '/' || (c) == ',' || (c) == '.' \
+#define PUNCTUATIONAL(c) ((c) == '"' || (c) == '\\' || (c) == ',' || (c) == '.' \
 			  || (c) == ';' || (c) == ':' || (c) == ' ' \
 			  || (c) == '\t' || (c) == '\n')
+
+/* character that need escaping when making Json String */
+#define ESCAPE_CHAR(c) (c <= 0x1f || (c) == '"' || (c) == '\\')
 
 /* concatenate a char to s */
 #define STRCHCAT(s, c) \
@@ -1908,14 +1911,13 @@ db_string_quote (const DB_VALUE * str, DB_VALUE * res)
       int dest_crt_pos;
       int src_last_pos;
 
-      // special characters
       // *INDENT-OFF*
       std::vector<int> special_idx;
       // *INDENT-ON*
       for (int i = 0; i < src_size; ++i)
 	{
-	  //todo: treat multi-byte utf? investigate
-	  if (src_str[i] == '"' || src_str[i] == '\\')
+	  unsigned char uc = (unsigned char) src_str[i];
+	  if (ESCAPE_CHAR (uc))
 	    {
 	      special_idx.push_back (i);
 	    }
@@ -1941,7 +1943,6 @@ db_string_quote (const DB_VALUE * str, DB_VALUE * res)
 	}
       memcpy (&result[dest_crt_pos], &src_str[src_last_pos], src_size - src_last_pos);
       result[dest_size - 1] = '"';
-
 
       db_make_null (res);
       DB_TYPE result_type = DB_TYPE_CHAR;
