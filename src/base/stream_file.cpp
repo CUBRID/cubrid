@@ -131,7 +131,7 @@ void stream_file::init (const size_t file_size, const int print_digits)
   m_stream.set_stream_file (this);
 
   m_base_filename = m_stream.name ();
-  m_desired_file_size = file_size;
+  m_desired_volume_size = file_size;
   m_filename_digits_seqno = print_digits;
 
   m_append_position = 0;
@@ -140,7 +140,7 @@ void stream_file::init (const size_t file_size, const int print_digits)
   m_ack_start_flush_position = 0;
   m_req_start_flush_position = 0;
 
-  m_start_file_seqno = 0;
+  m_start_vol_seqno = 0;
 
   m_start_flush_handler = std::bind (&stream_file::start_flush, std::ref (*this), std::placeholders::_1,
                                      std::placeholders::_2);
@@ -164,6 +164,7 @@ void stream_file::finalize (void)
 
   cubthread::get_manager ()->destroy_daemon (m_write_daemon);
 
+  std::unique_lock<std::mutex> ulock (m_file_descriptor_mutex);
   for (it = m_file_descriptors.begin (); it != m_file_descriptors.end (); it ++)
     {
       assert (it->second > 0);
@@ -172,11 +173,12 @@ void stream_file::finalize (void)
   m_file_descriptors.clear ();
 }
 
-int stream_file::get_file_desc_from_file_seqno (const int file_seqno)
+int stream_file::get_file_desc_from_vol_seqno (const int vol_seqno)
 {
   std::map<int,int>::iterator it;
 
-  it = m_file_descriptors.find (file_seqno);
+  std::unique_lock<std::mutex> ulock (m_file_descriptor_mutex);
+  it = m_file_descriptors.find (vol_seqno);
   if (it != m_file_descriptors.end ())
     {
       return it->second;
@@ -185,12 +187,12 @@ int stream_file::get_file_desc_from_file_seqno (const int file_seqno)
   return -1;
 }
 
-int stream_file::get_file_seqno_from_stream_pos (const stream_position &pos)
+int stream_file::get_vol_seqno_from_stream_pos (const stream_position &pos)
 {
   stream_position start_available_pos;
-  int file_seqno;
+  int vol_seqno;
 
-  start_available_pos = m_start_file_seqno * m_desired_file_size;
+  start_available_pos = m_start_vol_seqno * m_desired_volume_size;
 
   if (pos < start_available_pos)
     {
@@ -198,35 +200,35 @@ int stream_file::get_file_seqno_from_stream_pos (const stream_position &pos)
       return -1;
     }
 
-  file_seqno = (int) (pos / m_desired_file_size);
+  vol_seqno = (int) (pos / m_desired_volume_size);
 
-  return file_seqno;
+  return vol_seqno;
 }
 
-int stream_file::get_file_seqno_from_stream_pos_ext (const stream_position &pos, size_t &amount, size_t &file_offset)
+int stream_file::get_vol_seqno_from_stream_pos_ext (const stream_position &pos, size_t &amount, size_t &vol_offset)
 {
-  int file_seqno = get_file_seqno_from_stream_pos (pos);
+  int vol_seqno = get_vol_seqno_from_stream_pos (pos);
   
-  file_offset = pos - file_seqno * m_desired_file_size;
+  vol_offset = pos - vol_seqno * m_desired_volume_size;
 
-  amount = (file_seqno + 1) * m_desired_file_size - pos;
+  amount = (vol_seqno + 1) * m_desired_volume_size - pos;
 
-  return file_seqno;
+  return vol_seqno;
 }
 
 /*
- * create_files_in_range
+ * create_volumes_in_range
  *
- * this is an utility function to create "zeroed" content (including missing files) for a range 
+ * this is an utility function to create "zeroed" content (including missing volumes) for a range 
  * of stream positions; it should not be needed in normal usage since writting should be done by appending
  * previously written range
  *
  */
-int stream_file::create_files_in_range (const stream_position &start_pos, const stream_position &end_pos)
+int stream_file::create_volumes_in_range (const stream_position &start_pos, const stream_position &end_pos)
 {
   stream_position curr_pos;
-  size_t file_offset, hole_amount, available_amount_in_file;
-  int file_seqno;
+  size_t volume_offset, hole_amount, available_amount_in_volume;
+  int vol_seqno;
   int err = NO_ERROR;
   const size_t BUFFER_SIZE = 4 * 1024;
   char zero_buffer[BUFFER_SIZE] = { 0 };
@@ -236,77 +238,77 @@ int stream_file::create_files_in_range (const stream_position &start_pos, const 
 
   if (hole_amount == 0)
     {
-      /* append in a new file(s) : files are created as empty (without filling with zero) */
+      /* append in a new volume(s) : volumes are created as empty (without filling with zero) */
       while (curr_pos < end_pos)
         {
-          file_seqno = get_file_seqno_from_stream_pos_ext (curr_pos, available_amount_in_file, file_offset);
-          if (file_seqno < 0)
+          vol_seqno = get_vol_seqno_from_stream_pos_ext (curr_pos, available_amount_in_volume, volume_offset);
+          if (vol_seqno < 0)
             {
               return ER_FAILED;
             }
 
-          /* file_offset == 0 ==> this is a new file (we didn't written in it)
-           * file_offset > 0  ==> file is already created, make sure it may be opened */
-          int dummy_fd = open_file_seqno (file_seqno, (file_offset == 0) ? FILE_CREATE_FLAG : 0);
+          /* volume_offset == 0 ==> this is a new volume (we didn't written in it)
+           * volume_offset > 0  ==> volume is already created, make sure it may be opened */
+          int dummy_fd = open_vol_seqno (vol_seqno, (volume_offset == 0) ? FILE_CREATE_FLAG : 0);
           if (dummy_fd < 0)
             {
               return ER_FAILED;
             }
 
-          /* advance to next file */
-          curr_pos += available_amount_in_file;
+          /* advance to next volume */
+          curr_pos += available_amount_in_volume;
         }
 
       return err;
     }
 
-  /* create files and fill them with zero : for range: m_append_position < start_pos */
+  /* create volumes and fill them with zero : for range: m_append_position < start_pos */
   curr_pos = m_append_position;
   while (hole_amount > 0)
     {
-      file_seqno = get_file_seqno_from_stream_pos_ext (curr_pos, available_amount_in_file, file_offset);
-      if (file_seqno < 0)
+      vol_seqno = get_vol_seqno_from_stream_pos_ext (curr_pos, available_amount_in_volume, volume_offset);
+      if (vol_seqno < 0)
         {
           return ER_FAILED;
         }
 
-      int dummy_fd = open_file_seqno (file_seqno, (file_offset == 0) ? FILE_CREATE_FLAG : 0);
+      int dummy_fd = open_vol_seqno (vol_seqno, (volume_offset == 0) ? FILE_CREATE_FLAG : 0);
       if (dummy_fd < 0)
         {
           return ER_FAILED;
         }
 
-      size_t rem_amount_this_file = MIN (hole_amount, available_amount_in_file);
+      size_t rem_amount_this_volume = std::min (hole_amount, available_amount_in_volume);
 
-      while (rem_amount_this_file > 0)
+      while (rem_amount_this_volume > 0)
         {
-          size_t amount_to_write = MIN (BUFFER_SIZE, rem_amount_this_file);
-          size_t written_bytes = write_buffer (file_seqno, file_offset, zero_buffer, amount_to_write);
+          size_t amount_to_write = std::min (BUFFER_SIZE, rem_amount_this_volume);
+          size_t written_bytes = write_buffer (vol_seqno, volume_offset, zero_buffer, amount_to_write);
           if (written_bytes != amount_to_write)
             {
               return ER_FAILED;
             }
-          rem_amount_this_file -= written_bytes;
-          file_offset += written_bytes;
+          rem_amount_this_volume -= written_bytes;
+          volume_offset += written_bytes;
         }
 
-      rem_amount_this_file = MIN (hole_amount, available_amount_in_file);
+      rem_amount_this_volume = std::min (hole_amount, available_amount_in_volume);
 
-      hole_amount -= rem_amount_this_file;
-      curr_pos += rem_amount_this_file;
+      hole_amount -= rem_amount_this_volume;
+      curr_pos += rem_amount_this_volume;
     }
 
   return NO_ERROR;
 }
 
 /*
- * drop_files_to_pos
+ * drop_volumes_to_pos
  *
  * physically removes files exclusively used by range 0 -> drop_pos
  * a file containing data after drop_pos is not removed
  *
  */
-int stream_file::drop_files_to_pos (const stream_position &drop_pos)
+int stream_file::drop_volumes_to_pos (const stream_position &drop_pos)
 {
   stream_position curr_pos;
   int err = NO_ERROR;
@@ -315,58 +317,64 @@ int stream_file::drop_files_to_pos (const stream_position &drop_pos)
 
   while (curr_pos < drop_pos)
     {
-      size_t file_offset;
-      size_t amount_to_end_file;
+      size_t volume_offset;
+      size_t amount_to_end_volume;
 
-      int file_seqno = get_file_seqno_from_stream_pos_ext (curr_pos, amount_to_end_file, file_offset);
+      int vol_seqno = get_vol_seqno_from_stream_pos_ext (curr_pos, amount_to_end_volume, volume_offset);
 
-      if (file_offset == 0 && amount_to_end_file <= drop_pos - curr_pos)
+      if (volume_offset == 0 && amount_to_end_volume <= drop_pos - curr_pos)
         {
-          err = close_file_seqno (file_seqno, REMOVE_PHYSICAL_FILE);
+          err = close_vol_seqno (vol_seqno, REMOVE_PHYSICAL_FILE);
           if (err != NO_ERROR)
             {
               return err;
             }
         }
-      curr_pos += amount_to_end_file;
+      curr_pos += amount_to_end_volume;
     }
 
   return err;
 }
 
-int stream_file::get_filename_with_position (char *filename, const size_t max_filename, const stream_position &pos)
+int stream_file::get_vol_filename_with_position (char *filename, const size_t max_filename, const stream_position &pos)
 {
-  int file_seqno;
+  int vol_seqno;
 
-  file_seqno = get_file_seqno_from_stream_pos (pos);
-  if (file_seqno > 0)
+  vol_seqno = get_vol_seqno_from_stream_pos (pos);
+  if (vol_seqno > 0)
     {
-      return get_filename_with_file_seqno (filename, max_filename, file_seqno);
+      return get_vol_filename_with_vol_seqno (filename, max_filename, vol_seqno);
     }
 
   return ER_FAILED;
 }
 
-int stream_file::get_filename_with_file_seqno (char *filename, const size_t max_filename, const int file_seqno)
+int stream_file::get_vol_filename_with_vol_seqno (char *filename, const size_t max_filename, const int vol_seqno)
 {
-  assert (file_seqno >= 0);
+  assert (vol_seqno >= 0);
 
   snprintf (filename, max_filename, "%s%c%s_%0*d", 
             m_base_path.c_str (),
             PATH_SEPARATOR,
             m_base_filename.c_str (),
             m_filename_digits_seqno,
-            file_seqno);
+            vol_seqno);
   return NO_ERROR;
 }
 
-int stream_file::open_file_seqno (const int file_seqno, int flags)
+/*
+ * open_vol_seqno
+ *
+ * returns the file description of volume or opens it, if not already open and caches the descriptor
+ */
+int stream_file::open_vol_seqno (const int vol_seqno, int flags)
 {
   int fd;
   char file_name [PATH_MAX];
   int err = NO_ERROR;
   
-  auto it = m_file_descriptors.find (file_seqno);
+  std::unique_lock<std::mutex> ulock (m_file_descriptor_mutex);
+  auto it = m_file_descriptors.find (vol_seqno);
 
   if (it != m_file_descriptors.end ())
     {
@@ -374,7 +382,9 @@ int stream_file::open_file_seqno (const int file_seqno, int flags)
       return it->second;
     }
 
-  get_filename_with_file_seqno (file_name, sizeof (file_name) - 1, file_seqno);
+  ulock.unlock ();
+
+  get_vol_filename_with_vol_seqno (file_name, sizeof (file_name) - 1, vol_seqno);
 
   fd = open_file (file_name, flags);
   if (fd < 0)
@@ -384,25 +394,28 @@ int stream_file::open_file_seqno (const int file_seqno, int flags)
       return -1;
     }
 
-  m_file_descriptors[file_seqno] = fd;
+  ulock.lock ();
+  m_file_descriptors[vol_seqno] = fd;
+  ulock.unlock ();
 
   return fd;
 }
 
 /*
- * close_file_seqno
+ * close_vol_seqno
  *
  * Closes the file descriptor associated to a file sequence
  * if remove_physical flag is set it also physical removes the file
  * 
  */
-int stream_file::close_file_seqno (int file_seqno, bool remove_physical)
+int stream_file::close_vol_seqno (const int vol_seqno, bool remove_physical)
 {
   char file_name[PATH_MAX];
-  auto it = m_file_descriptors.find (file_seqno);
   int fd = -1;
   int err = NO_ERROR;
 
+  std::unique_lock<std::mutex> ulock (m_file_descriptor_mutex);
+  auto it = m_file_descriptors.find (vol_seqno);
   if (it != m_file_descriptors.end ())
     {
       fd = it->second;
@@ -410,10 +423,12 @@ int stream_file::close_file_seqno (int file_seqno, bool remove_physical)
   
   if (fd == -1)
     {
+      ulock.unlock ();
       /* already closed */
       if (remove_physical)
         {
-          fd = open_file_seqno (file_seqno);
+          /* reopen for the purpose of physical remove (to make sure it still exists) */
+          fd = open_vol_seqno (vol_seqno);
           if (fd < 0)
             {
               ASSERT_ERROR_AND_SET (err);
@@ -433,11 +448,18 @@ int stream_file::close_file_seqno (int file_seqno, bool remove_physical)
 
   if (remove_physical)
     {
-      get_filename_with_file_seqno (file_name, sizeof (file_name) - 1, file_seqno);
+      get_vol_filename_with_vol_seqno (file_name, sizeof (file_name) - 1, vol_seqno);
     }
+
+  if (!ulock.owns_lock ())
+  {
+    ulock.lock ();
+    it = m_file_descriptors.find (vol_seqno);
+  }
 
   assert (it != m_file_descriptors.end ());
   m_file_descriptors.erase (it);
+  ulock.unlock ();
 
   if (close (fd) != 0)
     {
@@ -503,16 +525,16 @@ int stream_file::create_file (const char *file_path)
 }
 
 /*
- * read_buffer : reads from file identified by "file_seqno" from offset "file_offet" into the buffer "buf" 
+ * read_buffer : reads from volume identified by "vol_seqno" from offset "volume_offset" into the buffer "buf" 
  *               an amount of "amount" bytes
  * return : number of bytes actually read
  */
-size_t stream_file::read_buffer (const int file_seqno, const size_t file_offset, char *buf, const size_t amount)
+size_t stream_file::read_buffer (const int vol_seqno, const size_t volume_offset, char *buf, const size_t amount)
 {
   size_t actual_read;
   int fd;
 
-  fd = open_file_seqno (file_seqno);
+  fd = open_vol_seqno (vol_seqno);
 
   if (fd <= 0)
     {
@@ -521,25 +543,25 @@ size_t stream_file::read_buffer (const int file_seqno, const size_t file_offset,
 
 #if defined (WINDOWS)
   /* TODO : use Windows API for paralel reads */
-  lseek (fd, (long) file_offset, SEEK_SET);
+  lseek (fd, (long) volume_offset, SEEK_SET);
   actual_read = ::read (fd, buf, amount);
 #else
-  actual_read = pread (fd, (void *) buf, amount, file_offset);
+  actual_read = pread (fd, (void *) buf, amount, volume_offset);
 #endif
 
   return actual_read;
 }
 
 /*
- * write_buffer : write in file identified by "file_seqno" at offset "file_offet" the buffer "buf" of size "amount"
+ * write_buffer : write in volume identified by "vol_seqno" at offset "volume_offset" the buffer "buf" of size "amount"
  * return : number of bytes actually written
  */
-size_t stream_file::write_buffer (const int file_seqno, const size_t file_offset, const char *buf, const size_t amount)
+size_t stream_file::write_buffer (const int vol_seqno, const size_t volume_offset, const char *buf, const size_t amount)
 {
   size_t actual_write;
   int fd;
 
-  fd = open_file_seqno (file_seqno);
+  fd = open_vol_seqno (vol_seqno);
 
   if (fd <= 0)
     {
@@ -547,10 +569,10 @@ size_t stream_file::write_buffer (const int file_seqno, const size_t file_offset
     }
 
 #if defined (WINDOWS)  
-  lseek (fd, (long ) file_offset, SEEK_SET);
+  lseek (fd, (long ) volume_offset, SEEK_SET);
   actual_write = ::write (fd, buf, amount);
 #else
-  actual_write = pwrite (fd, buf, amount, file_offset);
+  actual_write = pwrite (fd, buf, amount, volume_offset);
 #endif
 
   return actual_write;
@@ -565,8 +587,8 @@ size_t stream_file::write_buffer (const int file_seqno, const size_t file_offset
 int stream_file::write (const stream_position &pos, const char *buf, const size_t amount)
 {
   stream_position curr_pos;
-  size_t file_offset, rem_amount, available_amount_in_file;
-  int file_seqno;
+  size_t vol_offset, rem_amount, available_amount_in_volume;
+  int vol_seqno;
   int err = NO_ERROR;
 
   curr_pos = pos;
@@ -579,7 +601,7 @@ int stream_file::write (const stream_position &pos, const char *buf, const size_
 
   if (curr_pos + amount > m_append_position)
     {
-      err = create_files_in_range (curr_pos, curr_pos + amount);
+      err = create_volumes_in_range (curr_pos, curr_pos + amount);
       if (err != NO_ERROR)
         {
           return err;
@@ -591,16 +613,16 @@ int stream_file::write (const stream_position &pos, const char *buf, const size_
       size_t current_to_write;
       size_t actual_write;
 
-      file_seqno = get_file_seqno_from_stream_pos_ext (curr_pos, available_amount_in_file, file_offset);
-      if (file_seqno < 0)
+      vol_seqno = get_vol_seqno_from_stream_pos_ext (curr_pos, available_amount_in_volume, vol_offset);
+      if (vol_seqno < 0)
         {
           /* TODO[arnia] : not found */
           return ER_FAILED;
         }
 
-      current_to_write = MIN (available_amount_in_file, rem_amount);
+      current_to_write = std::min (available_amount_in_volume, rem_amount);
 
-      actual_write = write_buffer (file_seqno, file_offset, buf, current_to_write);
+      actual_write = write_buffer (vol_seqno, vol_offset, buf, current_to_write);
       if (actual_write < current_to_write)
         {
           return ER_FAILED;
@@ -634,8 +656,8 @@ int stream_file::write (const stream_position &pos, const char *buf, const size_
 int stream_file::read (const stream_position &pos, char *buf, const size_t amount)
 {
   stream_position curr_pos;
-  size_t available_amount_in_file, file_offset, rem_amount;
-  int file_seqno;
+  size_t available_amount_in_volume, volume_offset, rem_amount;
+  int vol_seqno;
   int err = NO_ERROR;
 
   curr_pos = pos;
@@ -646,16 +668,16 @@ int stream_file::read (const stream_position &pos, char *buf, const size_t amoun
       size_t current_to_read;
       size_t actual_read;
 
-      file_seqno = get_file_seqno_from_stream_pos_ext (curr_pos, available_amount_in_file, file_offset);
-      if (file_seqno < 0)
+      vol_seqno = get_vol_seqno_from_stream_pos_ext (curr_pos, available_amount_in_volume, volume_offset);
+      if (vol_seqno < 0)
         {
           /* TODO[arnia] : not found */
           return ER_FAILED;
         }
 
-      current_to_read = MIN (available_amount_in_file, rem_amount);
+      current_to_read = MIN (available_amount_in_volume, rem_amount);
 
-      actual_read = read_buffer (file_seqno, file_offset, buf, current_to_read);
+      actual_read = read_buffer (vol_seqno, volume_offset, buf, current_to_read);
       if (actual_read < current_to_read)
         {
           return ER_FAILED;
@@ -674,13 +696,13 @@ void stream_file::check_file (void)
   stream_position pos = 0;
   while (pos < m_append_position)
   {
-    int file_seqno = get_file_seqno_from_stream_pos (pos);
-    int file_id = get_file_desc_from_file_seqno (file_seqno);
-    if (file_id <= 0)
+    int vol_seqno = get_vol_seqno_from_stream_pos (pos);
+    int fd = get_file_desc_from_vol_seqno (vol_seqno);
+    if (fd <= 0)
       {
         assert (false);
       }
-    pos += m_desired_file_size;
+    pos += m_desired_volume_size;
   }
 }
 

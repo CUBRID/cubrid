@@ -1303,7 +1303,7 @@ namespace test_stream
         stream_pos += amount;
       }
 
-    my_stream_file->drop_files_to_pos (written_amount + my_stream_file->get_desired_file_size ());
+    my_stream_file->drop_volumes_to_pos (written_amount + my_stream_file->get_volume_size ());
 
     delete my_stream_file;
     delete my_stream;
@@ -1592,7 +1592,7 @@ namespace test_stream
 
     std::cout << "Done" << std::endl;
 
-    my_stream_file->drop_files_to_pos (stream_context_manager::g_stream->get_last_dropable_pos () + my_stream_file->get_desired_file_size ());
+    my_stream_file->drop_volumes_to_pos (stream_context_manager::g_stream->get_last_dropable_pos () + my_stream_file->get_volume_size ());
 
     delete my_stream_file;
 
