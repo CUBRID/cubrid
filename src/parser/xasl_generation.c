@@ -3542,6 +3542,7 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
   AGGREGATE_TYPE *aggregate_list;
   AGGREGATE_INFO *info = (AGGREGATE_INFO *) arg;
   REGU_VARIABLE_LIST scan_regu_list;
+  REGU_VARIABLE_LIST scan_regu_next_list;
   REGU_VARIABLE_LIST out_list;
   REGU_VARIABLE_LIST regu_list;
   REGU_VARIABLE_LIST regu_temp;
@@ -3768,7 +3769,15 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 
 		  regu_list->value.value.pos_descr.pos_no = info->out_list->valptr_cnt;
 
+		  if (aggregate_list->function == PT_JSON_OBJECTAGG)
+		    {
+		      regu_list->next->value.value.pos_descr.pos_no = info->out_list->valptr_cnt + 1;
+		    }
+
 		  update_value_list_out_list_regu_list (info, value_list, out_list, regu_list, regu);
+
+		  // store the current size
+		  size_t info_out_list_size = info->out_list->valptr_cnt;
 
 		  /* append regu to info->scan_regu_list */
 		  scan_regu_list = regu_varlist_alloc ();
@@ -3780,9 +3789,42 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 		      return NULL;
 		    }
 
-		  scan_regu->vfetch_to = pt_index_value (info->value_list, info->out_list->valptr_cnt - 1);
+		  // get the corresponding index of the last element (added in the update function above)
+		  scan_regu->vfetch_to = pt_index_value (info->value_list, info_out_list_size - 1);
 		  scan_regu_list->next = NULL;
 		  scan_regu_list->value = *scan_regu;
+
+		  if (aggregate_list->function == PT_JSON_OBJECTAGG)
+		    {
+		      // actually JSON_OBJECTAGG has 2 arguments in value_list so we need the next element
+		      scan_regu_next->vfetch_to = pt_index_value (info->value_list, info_out_list_size);
+
+		      scan_regu_next_list = regu_varlist_alloc ();
+		      if (!scan_regu_next_list)
+			{
+			  PT_ERROR (parser, tree,
+				    msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
+						    MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+			  return NULL;
+			}
+
+		      scan_regu_next_list->next = NULL;
+		      scan_regu_next_list->value = *scan_regu_next;
+		      scan_regu_list->next = scan_regu_next_list;
+
+		      info->out_list->valptr_cnt++;
+
+		      REGU_VARIABLE_LIST out_list_next = regu_varlist_alloc ();
+		      out_list_next->next = NULL;
+		      out_list_next->value = *regu_next;
+
+		      regu_temp = info->out_list->valptrp;
+		      while (regu_temp->next)
+			{
+			  regu_temp = regu_temp->next;
+			}
+		      regu_temp->next = out_list_next;
+		    }
 
 		  regu_temp = info->scan_regu_list;
 		  while (regu_temp->next)
@@ -25718,7 +25760,7 @@ update_value_list_out_list_regu_list (AGGREGATE_INFO * info, VAL_LIST * value_li
 	  && value_list != NULL && out_list != NULL && regu_list != NULL && regu != NULL);
 
   /* append value holder to value_list */
-  info->value_list->val_cnt++;
+  info->value_list->val_cnt += value_list->val_cnt;
 
   value_temp = info->value_list->valp;
   while (value_temp->next)

@@ -468,6 +468,7 @@ struct aggregate_list_node
   DB_TYPE original_opr_dbtype;	/* Original operand values data type */
   REGU_VARIABLE operand;	/* operand */
   REGU_VARIABLE operand2;	/* operand for second argument */
+  //REGU_VARIABLE_LIST operands;  /* list of operands */
   QFILE_LIST_ID *list_id;	/* used for distinct handling */
   int flag_agg_optimize;
   BTID btid;
