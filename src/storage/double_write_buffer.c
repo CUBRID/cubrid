@@ -4112,4 +4112,3 @@ dwb_flush_block_helper_daemon_is_running (void)
   return false;
 #endif /* SERVER_MODE */
 }
-

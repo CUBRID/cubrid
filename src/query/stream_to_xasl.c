@@ -31,92 +31,11 @@
 #include <string.h>
 #include <assert.h>
 
+#include "stream_to_xasl.h"
+
 #include "dbtype.h"
 #include "error_manager.h"
-#include "stream_to_xasl.h"
-#include "thread_manager.hpp"
-
-/* memory alignment unit - to align stored XASL tree nodes */
-#define	ALIGN_UNIT	sizeof(double)
-#define	ALIGN_MASK	(ALIGN_UNIT - 1)
-#define MAKE_ALIGN(x)	(((x) & ~ALIGN_MASK) + \
-                         (((x) & ALIGN_MASK) ? ALIGN_UNIT : 0))
-
-/* to limit size of XASL trees */
-#define	OFFSETS_PER_BLOCK	256
-#define	START_PTR_PER_BLOCK	15
-#define MAX_PTR_BLOCKS		256
-
-#define PTR_BLOCK(ptr)  (((UINTPTR) ptr) / sizeof(UINTPTR)) % MAX_PTR_BLOCKS
-
-/*
- * the linear byte stream for store the given XASL tree is allocated
- * and expanded dynamically on demand by the following amount of bytes
- */
-#define	STREAM_EXPANSION_UNIT	(OFFSETS_PER_BLOCK * sizeof(int))
-#define BUFFER_EXPANSION 4
-
-#define BOUND_VAL (1 << ((OR_INT_SIZE * 8) - 2))
-
-/* structure of a visited pointer constant */
-typedef struct visited_ptr VISITED_PTR;
-struct visited_ptr
-{
-  const void *ptr;		/* a pointer constant */
-  void *str;			/* where the struct pointed by 'ptr' is stored */
-};
-
-/* structure for additional memory during filtered predicate unpacking */
-typedef struct unpack_extra_buf UNPACK_EXTRA_BUF;
-struct unpack_extra_buf
-{
-  char *buff;
-  UNPACK_EXTRA_BUF *next;
-};
-
-/* structure to hold information needed during packing */
-typedef struct xasl_unpack_info XASL_UNPACK_INFO;
-struct xasl_unpack_info
-{
-  char *packed_xasl;		/* ptr to packed xasl tree */
-#if defined (SERVER_MODE)
-  THREAD_ENTRY *thrd;		/* used for private allocation */
-#endif				/* SERVER_MODE */
-
-  /* blocks of visited pointer constants */
-  VISITED_PTR *ptr_blocks[MAX_PTR_BLOCKS];
-
-  char *alloc_buf;		/* alloced buf */
-
-  int packed_size;		/* packed xasl tree size */
-
-  /* low-water-mark of visited pointers */
-  int ptr_lwm[MAX_PTR_BLOCKS];
-
-  /* max number of visited pointers */
-  int ptr_max[MAX_PTR_BLOCKS];
-
-  int alloc_size;		/* alloced buf size */
-
-  /* list of additional buffers allocated during xasl unpacking */
-  UNPACK_EXTRA_BUF *additional_buffers;
-  /* 1 if additional buffers should be tracked */
-  int track_allocated_bufers;
-
-  bool use_xasl_clone;		/* true, if uses xasl clone */
-};
-
-#if !defined(SERVER_MODE)
-static XASL_UNPACK_INFO *xasl_unpack_info;
-static int stx_Xasl_errcode = NO_ERROR;
-#endif /* !SERVER_MODE */
-
-static int stx_get_xasl_errcode (THREAD_ENTRY * thread_p);
-static void stx_set_xasl_errcode (THREAD_ENTRY * thread_p, int errcode);
-static XASL_UNPACK_INFO *stx_get_xasl_unpack_info_ptr (THREAD_ENTRY * thread_p);
-#if defined(SERVER_MODE)
-static void stx_set_xasl_unpack_info_ptr (THREAD_ENTRY * thread_p, XASL_UNPACK_INFO * ptr);
-#endif /* SERVER_MODE */
+#include "xasl_stream.hpp"
 
 static ACCESS_SPEC_TYPE *stx_restore_access_spec_type (THREAD_ENTRY * thread_p, char **ptr, void *arg);
 static AGGREGATE_TYPE *stx_restore_aggregate_type (THREAD_ENTRY * thread_p, char *ptr);
@@ -137,7 +56,6 @@ static REGU_VARIABLE *stx_restore_regu_variable (THREAD_ENTRY * thread_p, char *
 static REGU_VARIABLE_LIST stx_restore_regu_variable_list (THREAD_ENTRY * thread_p, char *ptr);
 static REGU_VARLIST_LIST stx_restore_regu_varlist_list (THREAD_ENTRY * thread_p, char *ptr);
 static SORT_LIST *stx_restore_sort_list (THREAD_ENTRY * thread_p, char *ptr);
-static char *stx_restore_string (THREAD_ENTRY * thread_p, char *ptr);
 static VAL_LIST *stx_restore_val_list (THREAD_ENTRY * thread_p, char *ptr);
 static DB_VALUE *stx_restore_db_value (THREAD_ENTRY * thread_p, char *ptr);
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -202,14 +120,12 @@ static char *stx_build_regu_variable (THREAD_ENTRY * thread_p, char *tmp, REGU_V
 static char *stx_unpack_regu_variable_value (THREAD_ENTRY * thread_p, char *tmp, REGU_VARIABLE * ptr);
 static char *stx_build_attr_descr (THREAD_ENTRY * thread_p, char *tmp, ATTR_DESCR * ptr);
 static char *stx_build_pos_descr (char *tmp, QFILE_TUPLE_VALUE_POSITION * ptr);
-static char *stx_build_db_value (THREAD_ENTRY * thread_p, char *tmp, DB_VALUE * ptr);
 static char *stx_build_arith_type (THREAD_ENTRY * thread_p, char *tmp, ARITH_TYPE * ptr);
 static char *stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *tmp, AGGREGATE_TYPE * ptr);
 static char *stx_build_function_type (THREAD_ENTRY * thread_p, char *tmp, FUNCTION_TYPE * ptr);
 static char *stx_build_analytic_type (THREAD_ENTRY * thread_p, char *tmp, ANALYTIC_TYPE * ptr);
 static char *stx_build_analytic_eval_type (THREAD_ENTRY * thread_p, char *tmp, ANALYTIC_EVAL_TYPE * ptr);
 static char *stx_build_srlist_id (THREAD_ENTRY * thread_p, char *tmp, QFILE_SORTED_LIST_ID * ptr);
-static char *stx_build_string (THREAD_ENTRY * thread_p, char *tmp, char *ptr);
 static char *stx_build_sort_list (THREAD_ENTRY * thread_p, char *tmp, SORT_LIST * ptr);
 static char *stx_build_connectby_proc (THREAD_ENTRY * thread_p, char *tmp, CONNECTBY_PROC_NODE * ptr);
 
@@ -219,13 +135,7 @@ static char *stx_build_regu_value_list (THREAD_ENTRY * thread_p, char *ptr, REGU
 					TP_DOMAIN * domain);
 static void stx_init_regu_variable (REGU_VARIABLE * regu);
 
-static int stx_mark_struct_visited (THREAD_ENTRY * thread_p, const void *ptr, void *str);
-static void *stx_get_struct_visited_ptr (THREAD_ENTRY * thread_p, const void *ptr);
-static void stx_free_visited_ptrs (THREAD_ENTRY * thread_p);
-static char *stx_alloc_struct (THREAD_ENTRY * thread_p, int size);
-static int stx_init_xasl_unpack_info (THREAD_ENTRY * thread_p, char *xasl_stream, int xasl_stream_size);
 static char *stx_build_regu_variable_list (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABLE_LIST * regu_var_list);
-
 
 #if defined(ENABLE_UNUSED_FUNCTION)
 static char *stx_unpack_char (char *tmp, char *ptr);
@@ -256,7 +166,7 @@ stx_map_stream_to_xasl_node_header (THREAD_ENTRY * thread_p, XASL_NODE_HEADER * 
   offset = OR_INT_SIZE +	/* xasl stream header size */
     xasl_stream_header_size +	/* xasl stream header data */
     OR_INT_SIZE;		/* xasl stream body size */
-  offset = MAKE_ALIGN (offset);
+  offset = xasl_stream_make_align (offset);
   ptr = xasl_stream + offset;
   OR_UNPACK_XASL_NODE_HEADER (ptr, xasl_header_p);
   return NO_ERROR;
@@ -303,7 +213,7 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, XASL_NODE ** xasl_tree, bool us
   offset = sizeof (int)		/* [size of header data] */
     + header_size		/* [header data] */
     + sizeof (int);		/* [size of body data] */
-  offset = MAKE_ALIGN (offset);
+  offset = xasl_stream_make_align (offset);
 
   /* restore XASL tree from body data of the stream buffer */
   xasl = stx_restore_xasl_node (thread_p, xasl_stream + offset);
@@ -379,7 +289,7 @@ stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p, PRED_EXPR_WITH_CONTEXT *
   offset = sizeof (int)		/* [size of header data] */
     + header_size		/* [header data] */
     + sizeof (int);		/* [size of body data] */
-  offset = MAKE_ALIGN (offset);
+  offset = xasl_stream_make_align (offset);
 
   /* restore XASL tree from body data of the stream buffer */
   pwc = stx_restore_filter_pred_node (thread_p, pred_stream + offset);
@@ -439,7 +349,7 @@ stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p, FUNC_PRED ** xasl, char *x
   offset = sizeof (int)		/* [size of header data] */
     + header_size		/* [header data] */
     + sizeof (int);		/* [size of body data] */
-  offset = MAKE_ALIGN (offset);
+  offset = xasl_stream_make_align (offset);
 
   /* restore XASL tree from body data of the stream buffer */
   p_xasl = stx_restore_func_pred (thread_p, xasl_stream + offset);
@@ -1392,51 +1302,6 @@ stx_restore_method_sig (THREAD_ENTRY * thread_p, char *ptr, int count)
   return method_sig;
 }
 
-static char *
-stx_restore_string (THREAD_ENTRY * thread_p, char *ptr)
-{
-  char *string;
-  int length;
-
-  if (ptr == NULL)
-    {
-      return NULL;
-    }
-
-  string = (char *) stx_get_struct_visited_ptr (thread_p, ptr);
-  if (string != NULL)
-    {
-      return string;
-    }
-
-  length = OR_GET_INT (ptr);
-
-  if (length == -1)
-    {
-      /* unpack null-string */
-      assert (string == NULL);
-    }
-  else
-    {
-      assert_release (length > 0);
-
-      string = (char *) stx_alloc_struct (thread_p, length);
-      if (string == NULL)
-	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return NULL;
-	}
-
-      if (stx_mark_struct_visited (thread_p, ptr, string) == ER_FAILED
-	  || stx_build_string (thread_p, ptr, string) == NULL)
-	{
-	  return NULL;
-	}
-    }
-
-  return string;
-}
-
 static DB_VALUE **
 stx_restore_db_value_array_extra (THREAD_ENTRY * thread_p, char *ptr, int nelements, int total_nelements)
 {
@@ -2363,20 +2228,8 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
   ptr = or_unpack_int (ptr, &tmp);
   xasl->iscan_oid_order = (bool) tmp;
 
-  ptr = or_unpack_int (ptr, &offset);
-  if (offset == 0)
-    {
-      assert (false);
-      xasl->query_alias = NULL;
-    }
-  else
-    {
-      xasl->query_alias = stx_restore_string (thread_p, &xasl_unpack_info->packed_xasl[offset]);
-      if (xasl->query_alias == NULL)
-	{
-	  goto error;
-	}
-    }
+  xasl->query_alias = stx_restore_string (thread_p, ptr);
+  assert (xasl->query_alias != NULL);
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -2602,18 +2455,15 @@ stx_build_method_sig (THREAD_ENTRY * thread_p, char *ptr, METHOD_SIG * method_si
   int num_args, n;
   XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
 
-  ptr = or_unpack_int (ptr, &offset);
-  assert (offset > 0);
-  method_sig->method_name = stx_restore_string (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+  method_sig->method_name = stx_restore_string (thread_p, ptr);
   if (method_sig->method_name == NULL)
     {
+      assert (false);
       goto error;
     }
 
-  ptr = or_unpack_int (ptr, &offset);
-  assert (offset > 0);
   /* is can be null */
-  method_sig->class_name = stx_restore_string (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+  method_sig->class_name = stx_restore_string (thread_p, ptr);
 
   ptr = or_unpack_int (ptr, (int *) &method_sig->method_type);
   ptr = or_unpack_int (ptr, &method_sig->num_method_args);
@@ -4564,6 +4414,10 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr, ACCESS_SPEC_TYPE
       ptr = stx_build_method_spec_type (thread_p, ptr, &ACCESS_SPEC_METHOD_SPEC (access_spec));
       break;
 
+    case TARGET_JSON_TABLE:
+      ptr = stx_build (thread_p, ptr, ACCESS_SPEC_JSON_TABLE_SPEC (access_spec));
+      break;
+
     default:
       stx_set_xasl_errcode (thread_p, ER_QPROC_INVALID_XASLNODE);
       return NULL;
@@ -4577,6 +4431,12 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr, ACCESS_SPEC_TYPE
   /* access_spec_type->s_id not sent to server */
   memset (&access_spec->s_id, '\0', sizeof (SCAN_ID));
   access_spec->s_id.status = S_CLOSED;
+
+  if (access_spec->type == TARGET_JSON_TABLE)
+    {
+      // also initialize scan part; it is enough to call it once here, not on each query execution
+      access_spec->s_id.s.jtid.init (access_spec->s.json_table_node);
+    }
 
   access_spec->grouped_scan = false;
   access_spec->fixed_scan = false;
@@ -5541,14 +5401,6 @@ stx_build_pos_descr (char *ptr, QFILE_TUPLE_VALUE_POSITION * position_descr)
 }
 
 static char *
-stx_build_db_value (THREAD_ENTRY * thread_p, char *ptr, DB_VALUE * value)
-{
-  ptr = or_unpack_db_value (ptr, value);
-
-  return ptr;
-}
-
-static char *
 stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr, ARITH_TYPE * arith_type)
 {
   int tmp, offset;
@@ -6124,20 +5976,6 @@ stx_build_srlist_id (THREAD_ENTRY * thread_p, char *ptr, QFILE_SORTED_LIST_ID * 
 }
 
 static char *
-stx_build_string (THREAD_ENTRY * thread_p, char *ptr, char *string)
-{
-  int offset;
-
-  ptr = or_unpack_int (ptr, &offset);
-  assert_release (offset > 0);
-
-  (void) memcpy (string, ptr, offset);
-  ptr += offset;
-
-  return ptr;
-}
-
-static char *
 stx_build_sort_list (THREAD_ENTRY * thread_p, char *ptr, SORT_LIST * sort_list)
 {
   int tmp, offset;
@@ -6554,290 +6392,6 @@ stx_init_regu_variable (REGU_VARIABLE * regu)
   REGU_VARIABLE_XASL (regu) = NULL;
 }
 
-/*
- * stx_mark_struct_visited () -
- *   return: if successful, return NO_ERROR, otherwise
- *           ER_FAILED and error code is set to xasl_errcode
- *   ptr(in)    : pointer constant to be marked visited
- *   str(in)    : where the struct pointed by 'ptr' is stored
- *
- * Note: mark the given pointer constant as visited to avoid
- * duplicated storage of a struct which is pointed by more than one node
- */
-static int
-stx_mark_struct_visited (THREAD_ENTRY * thread_p, const void *ptr, void *str)
-{
-  int new_lwm;
-  int block_no;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
-
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
-
-  block_no = PTR_BLOCK (ptr);
-  new_lwm = xasl_unpack_info->ptr_lwm[block_no];
-
-  if (xasl_unpack_info->ptr_max[block_no] == 0)
-    {
-      xasl_unpack_info->ptr_max[block_no] = START_PTR_PER_BLOCK;
-      xasl_unpack_info->ptr_blocks[block_no] =
-	(VISITED_PTR *) db_private_alloc (thread_p, sizeof (VISITED_PTR) * xasl_unpack_info->ptr_max[block_no]);
-    }
-  else if (xasl_unpack_info->ptr_max[block_no] <= new_lwm)
-    {
-      xasl_unpack_info->ptr_max[block_no] *= 2;
-      xasl_unpack_info->ptr_blocks[block_no] =
-	(VISITED_PTR *) db_private_realloc (thread_p, xasl_unpack_info->ptr_blocks[block_no],
-					    sizeof (VISITED_PTR) * xasl_unpack_info->ptr_max[block_no]);
-    }
-
-  if (xasl_unpack_info->ptr_blocks[block_no] == (VISITED_PTR *) NULL)
-    {
-      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-      return ER_FAILED;
-    }
-
-  xasl_unpack_info->ptr_blocks[block_no][new_lwm].ptr = ptr;
-  xasl_unpack_info->ptr_blocks[block_no][new_lwm].str = str;
-
-  xasl_unpack_info->ptr_lwm[block_no]++;
-
-  return NO_ERROR;
-}
-
-/*
- * stx_get_struct_visited_ptr () -
- *   return: if the ptr is already visited, the offset of
- *           position where the node pointed by 'ptr' is stored,
- *           otherwise, ER_FAILED (xasl_errcode is NOT set)
- *   ptr(in)    : pointer constant to be checked if visited or not
- *
- * Note: check if the node pointed by `ptr` is already stored or
- * not to avoid multiple store of the same node
- */
-static void *
-stx_get_struct_visited_ptr (THREAD_ENTRY * thread_p, const void *ptr)
-{
-  int block_no;
-  int element_no;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
-
-  block_no = PTR_BLOCK (ptr);
-
-  if (xasl_unpack_info->ptr_lwm[block_no] <= 0)
-    {
-      return NULL;
-    }
-
-  for (element_no = 0; element_no < xasl_unpack_info->ptr_lwm[block_no]; element_no++)
-    {
-      if (ptr == xasl_unpack_info->ptr_blocks[block_no][element_no].ptr)
-	{
-	  return (xasl_unpack_info->ptr_blocks[block_no][element_no].str);
-	}
-    }
-
-  return NULL;
-}
-
-/*
- * stx_free_visited_ptrs () -
- *   return:
- *
- * Note: free memory allocated to manage visited ptr constants
- */
-static void
-stx_free_visited_ptrs (THREAD_ENTRY * thread_p)
-{
-  int i;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
-
-  for (i = 0; i < MAX_PTR_BLOCKS; i++)
-    {
-      xasl_unpack_info->ptr_lwm[i] = 0;
-      xasl_unpack_info->ptr_max[i] = 0;
-      if (xasl_unpack_info->ptr_blocks[i])
-	{
-	  db_private_free_and_init (thread_p, xasl_unpack_info->ptr_blocks[i]);
-	  xasl_unpack_info->ptr_blocks[i] = (VISITED_PTR *) 0;
-	}
-    }
-}
-
-/*
- * stx_alloc_struct () -
- *   return:
- *   size(in)   : # of bytes of the node
- *
- * Note: allocate storage for structures pointed to from the xasl tree.
- */
-static char *
-stx_alloc_struct (THREAD_ENTRY * thread_p, int size)
-{
-  char *ptr;
-  XASL_UNPACK_INFO *xasl_unpack_info = stx_get_xasl_unpack_info_ptr (thread_p);
-
-  if (!size)
-    {
-      return NULL;
-    }
-
-  size = MAKE_ALIGN (size);	/* alignment */
-  if (size > xasl_unpack_info->alloc_size)
-    {				/* need to alloc */
-      int p_size;
-
-      p_size = MAX (size, xasl_unpack_info->packed_size);
-      p_size = MAKE_ALIGN (p_size);	/* alignment */
-      ptr = (char *) db_private_alloc (thread_p, p_size);
-      if (ptr == NULL)
-	{
-	  return NULL;		/* error */
-	}
-      xasl_unpack_info->alloc_size = p_size;
-      xasl_unpack_info->alloc_buf = ptr;
-      if (xasl_unpack_info->track_allocated_bufers)
-	{
-	  UNPACK_EXTRA_BUF *add_buff = NULL;
-	  add_buff = (UNPACK_EXTRA_BUF *) db_private_alloc (thread_p, sizeof (UNPACK_EXTRA_BUF));
-	  if (add_buff == NULL)
-	    {
-	      db_private_free_and_init (thread_p, ptr);
-	      return NULL;
-	    }
-	  add_buff->buff = ptr;
-	  add_buff->next = NULL;
-
-	  if (xasl_unpack_info->additional_buffers == NULL)
-	    {
-	      xasl_unpack_info->additional_buffers = add_buff;
-	    }
-	  else
-	    {
-	      add_buff->next = xasl_unpack_info->additional_buffers;
-	      xasl_unpack_info->additional_buffers = add_buff;
-	    }
-	}
-    }
-
-  /* consume alloced buffer */
-  ptr = xasl_unpack_info->alloc_buf;
-  xasl_unpack_info->alloc_size -= size;
-  xasl_unpack_info->alloc_buf += size;
-
-  return ptr;
-}
-
-/*
- * stx_init_xasl_unpack_info () -
- *   return:
- *   xasl_stream(in)    : pointer to xasl stream
- *   xasl_stream_size(in)       :
- *
- * Note: initialize the xasl pack information.
- */
-static int
-stx_init_xasl_unpack_info (THREAD_ENTRY * thread_p, char *xasl_stream, int xasl_stream_size)
-{
-  int n;
-#if defined(SERVER_MODE)
-  XASL_UNPACK_INFO *xasl_unpack_info;
-#endif /* SERVER_MODE */
-  int head_offset, body_offset;
-
-#define UNPACK_SCALE 3		/* TODO: assume */
-
-  head_offset = sizeof (XASL_UNPACK_INFO);
-  head_offset = MAKE_ALIGN (head_offset);
-  body_offset = xasl_stream_size * UNPACK_SCALE;
-  body_offset = MAKE_ALIGN (body_offset);
-#if defined(SERVER_MODE)
-  xasl_unpack_info = (XASL_UNPACK_INFO *) db_private_alloc (thread_p, head_offset + body_offset);
-  stx_set_xasl_unpack_info_ptr (thread_p, xasl_unpack_info);
-#else /* SERVER_MODE */
-  xasl_unpack_info = (XASL_UNPACK_INFO *) db_private_alloc (NULL, head_offset + body_offset);
-#endif /* SERVER_MODE */
-  if (xasl_unpack_info == NULL)
-    {
-      return ER_FAILED;
-    }
-  xasl_unpack_info->packed_xasl = xasl_stream;
-  xasl_unpack_info->packed_size = xasl_stream_size;
-  for (n = 0; n < MAX_PTR_BLOCKS; ++n)
-    {
-      xasl_unpack_info->ptr_blocks[n] = (VISITED_PTR *) 0;
-      xasl_unpack_info->ptr_lwm[n] = 0;
-      xasl_unpack_info->ptr_max[n] = 0;
-    }
-  xasl_unpack_info->alloc_size = xasl_stream_size * UNPACK_SCALE;
-  xasl_unpack_info->alloc_buf = (char *) xasl_unpack_info + head_offset;
-  xasl_unpack_info->additional_buffers = NULL;
-  xasl_unpack_info->track_allocated_bufers = 0;
-#if defined (SERVER_MODE)
-  xasl_unpack_info->thrd = thread_p;
-#endif /* SERVER_MODE */
-
-  return NO_ERROR;
-}
-
-/*
- * stx_get_xasl_unpack_info_ptr () -
- *   return:
- */
-static XASL_UNPACK_INFO *
-stx_get_xasl_unpack_info_ptr (THREAD_ENTRY * thread_p)
-{
-#if defined(SERVER_MODE)
-  return (XASL_UNPACK_INFO *) thread_p->xasl_unpack_info_ptr;
-#else /* SERVER_MODE */
-  return (XASL_UNPACK_INFO *) xasl_unpack_info;
-#endif /* SERVER_MODE */
-}
-
-#if defined(SERVER_MODE)
-/*
- * stx_set_xasl_unpack_info_ptr () -
- *   return:
- *   ptr(in)    :
- */
-static void
-stx_set_xasl_unpack_info_ptr (THREAD_ENTRY * thread_p, XASL_UNPACK_INFO * ptr)
-{
-  thread_p->xasl_unpack_info_ptr = ptr;
-}
-#endif /* SERVER_MODE */
-
-/*
- * stx_get_xasl_errcode () -
- *   return:
- */
-static int
-stx_get_xasl_errcode (THREAD_ENTRY * thread_p)
-{
-#if defined(SERVER_MODE)
-  return thread_p->xasl_errcode;
-#else /* SERVER_MODE */
-  return stx_Xasl_errcode;
-#endif /* SERVER_MODE */
-}
-
-/*
- * stx_set_xasl_errcode () -
- *   return:
- *   errcode(in)        :
- */
-static void
-stx_set_xasl_errcode (THREAD_ENTRY * thread_p, int errcode)
-{
-#if defined(SERVER_MODE)
-  thread_p->xasl_errcode = errcode;
-#else /* SERVER_MODE */
-  stx_Xasl_errcode = errcode;
-#endif /* SERVER_MODE */
-}
-
 #if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * stx_unpack_char () -
@@ -6892,4 +6446,10 @@ stx_init_analytic_type_unserialized_fields (ANALYTIC_TYPE * analytic)
 
   /* curr_cnt */
   analytic->curr_cnt = 0;
+}
+
+char *
+stx_build (THREAD_ENTRY * thread_p, char *ptr, regu_variable_node & reguvar)
+{
+  return stx_build_regu_variable (thread_p, ptr, &reguvar);
 }

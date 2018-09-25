@@ -487,7 +487,7 @@ set(THREAD_DIR               ${CMAKE_SOURCE_DIR}/src/thread)
 set(TOOLS_DIR                ${CMAKE_SOURCE_DIR}/src/tools)
 set(TRANSACTION_DIR          ${CMAKE_SOURCE_DIR}/src/transaction)
 set(WIN_TOOLS_DIR            ${CMAKE_SOURCE_DIR}/src/win_tools)
-
+set(XASL_DIR                 ${CMAKE_SOURCE_DIR}/src/xasl)
 
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 include_directories(
@@ -513,6 +513,7 @@ include_directories(
   src/thread
   src/tools
   src/transaction
+  src/xasl
   )
 
 include(CheckFunctionExists)

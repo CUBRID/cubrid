@@ -247,6 +247,16 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/es.c
   ${STORAGE_DIR}/es_posix.c
   )
+  
+set(XASL_SOURCES
+  ${XASL_DIR}/access_json_table.cpp
+  ${XASL_DIR}/xasl_stream.cpp
+  )
+set(XASL_HEADERS
+  ${XASL_DIR}/access_json_table.hpp
+  ${XASL_DIR}/compile_context.h
+  ${XASL_DIR}/xasl_stream.hpp
+  )
 
 list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)
 if(UNIX)
@@ -325,6 +335,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${STORAGE_SOURCES}
   ${ES_SOURCES}
   ${PROBES_OBJECT}
+  ${XASL_SOURCES}
   PROPERTIES LANGUAGE CXX
   )
 SET_SOURCE_FILES_PROPERTIES(
@@ -358,6 +369,8 @@ add_library(cubridcs SHARED
   ${STORAGE_SOURCES}
   ${ES_SOURCES}
   ${PROBES_OBJECT}
+  ${XASL_SOURCES}
+  ${XASL_HEADERS}
   )
 set_target_properties(cubridcs PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 
