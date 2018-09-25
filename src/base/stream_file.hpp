@@ -73,10 +73,7 @@ private:
   multi_thread_stream &m_stream;
 
   /* largest stream position written to file */
-  stream_position m_curr_append_position;
-
-  /* TODO : size of last physical file - do we need it ? it may be computed from curr_append_position */
-  size_t m_curr_append_file_size;
+  stream_position m_append_position;
 
   /* mapping of file sequence to OS file descriptor */
   std::map<int, int> m_file_descriptors;
@@ -142,6 +139,8 @@ protected:
   size_t read_buffer (const int file_seqno, const size_t file_offset, char *buf, const size_t amount);
   size_t write_buffer (const int file_seqno, const size_t file_offset, const char *buf, const size_t amount);
 
+  void check_file (void);
+
 public:
   stream_file (multi_thread_stream &stream_arg, const size_t file_size = DEFAULT_FILE_SIZE,
               const int print_digits = DEFAULT_FILENAME_DIGITS)
@@ -170,9 +169,9 @@ public:
 
   size_t get_max_available_from_pos (const stream_position &pos)
     {
-      if (m_curr_append_position > pos)
+      if (m_append_position > pos)
         {
-          return m_curr_append_position - pos;
+          return m_append_position - pos;
         }
       else
         {
@@ -193,13 +192,17 @@ public:
   int start_flush (const stream_position &start_position, const size_t amount_to_flush)
   {
     std::unique_lock<std::mutex> ulock (m_flush_mutex);
-    if (amount_to_flush != 0)
+    if (amount_to_flush != 0 && start_position >= m_append_position)
       {
         m_req_start_flush_position = start_position;
         m_target_flush_position = start_position + amount_to_flush;
+
+        assert (m_req_start_flush_position < m_target_flush_position);
+        assert (m_req_start_flush_position >= m_append_position);
+
+        std::cout << "start_flush m_req_start_flush_position:" << m_req_start_flush_position << " m_target_flush_position:" << m_target_flush_position << std::endl;
+        m_flush_cv.notify_one ();
       }
-    std::cout << "start_flush m_req_start_flush_position:" << m_req_start_flush_position << " m_target_flush_position:" << m_target_flush_position << std::endl;
-    m_flush_cv.notify_one ();
 
     return NO_ERROR;
   }
@@ -207,10 +210,13 @@ public:
   void wait_flush_signal (stream_position &start_position, stream_position &target_position)
   {
     std::unique_lock<std::mutex> ulock (m_flush_mutex);
-    m_flush_cv.wait (ulock);
-    std::cout << "wait_flush_signal start_position:" << start_position << " target_position:" << target_position << std::endl;
+    m_flush_cv.wait (ulock, [&] { return m_is_stopped || 
+                                  (m_target_flush_position > 0 && m_req_start_flush_position >= m_append_position); });
+
     start_position = m_req_start_flush_position;
     target_position = m_target_flush_position;
+    std::cout << "wait_flush_signal start_position:" << start_position << " target_position:" << target_position << std::endl;
+    assert (start_position >= m_append_position);
   }
 
   bool is_stopped (void)

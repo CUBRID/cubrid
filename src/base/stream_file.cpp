@@ -134,8 +134,7 @@ void stream_file::init (const size_t file_size, const int print_digits)
   m_desired_file_size = file_size;
   m_filename_digits_seqno = print_digits;
 
-  m_curr_append_position = 0;
-  m_curr_append_file_size = 0;
+  m_append_position = 0;
 
   m_target_flush_position = 0;
   m_ack_start_flush_position = 0;
@@ -233,7 +232,7 @@ int stream_file::create_files_in_range (const stream_position &start_pos, const 
   char zero_buffer[BUFFER_SIZE] = { 0 };
 
   curr_pos = start_pos;
-  hole_amount = start_pos - m_curr_append_position;
+  hole_amount = start_pos - m_append_position;
 
   if (hole_amount == 0)
     {
@@ -261,8 +260,8 @@ int stream_file::create_files_in_range (const stream_position &start_pos, const 
       return err;
     }
 
-  /* create files and fill them with zero : for range: m_curr_append_position < start_pos */
-  curr_pos = m_curr_append_position;
+  /* create files and fill them with zero : for range: m_append_position < start_pos */
+  curr_pos = m_append_position;
   while (hole_amount > 0)
     {
       file_seqno = get_file_seqno_from_stream_pos_ext (curr_pos, available_amount_in_file, file_offset);
@@ -573,7 +572,12 @@ int stream_file::write (const stream_position &pos, const char *buf, const size_
   curr_pos = pos;
   rem_amount = amount;
 
-  if (curr_pos + amount > m_curr_append_position)
+  stream_position stream_last_committed = m_stream.get_last_committed_pos ();
+  assert (m_append_position + amount <= stream_last_committed);
+
+  assert (m_append_position + amount <= m_stream.get_last_committed_pos ());
+
+  if (curr_pos + amount > m_append_position)
     {
       err = create_files_in_range (curr_pos, curr_pos + amount);
       if (err != NO_ERROR)
@@ -607,7 +611,9 @@ int stream_file::write (const stream_position &pos, const char *buf, const size_
       buf += current_to_write;
     }
 
-  m_curr_append_position += amount;
+  m_append_position += amount;
+
+  check_file ();
 
   return NO_ERROR;
 }
@@ -655,6 +661,21 @@ int stream_file::read (const stream_position &pos, char *buf, const size_t amoun
     }
 
   return NO_ERROR;
+}
+
+void stream_file::check_file (void)
+{
+  stream_position pos = 0;
+  while (pos < m_append_position)
+  {
+    int file_seqno = get_file_seqno_from_stream_pos (pos);
+    int file_id = get_file_desc_from_file_seqno (file_seqno);
+    if (file_id <= 0)
+      {
+        assert (false);
+      }
+    pos += m_desired_file_size;
+  }
 }
 
 } /* namespace cubstream */
