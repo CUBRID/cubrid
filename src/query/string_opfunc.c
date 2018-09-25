@@ -292,7 +292,7 @@ static int db_value_to_json_doc (const DB_VALUE & value, REFPTR (JSON_DOC, json)
 #define DIGIT(c) ((c) >= '0' && (c) <= '9')
 
 /* same as characters in get_next_format */
-#define PUNCTUATIONAL(c) ((c) == '"' || (c) == '\\' || (c) == ',' || (c) == '.' \
+#define PUNCTUATIONAL(c) ((c) == '-' || (c) == '/' || (c) == ',' || (c) == '.' \
 			  || (c) == ';' || (c) == ':' || (c) == ' ' \
 			  || (c) == '\t' || (c) == '\n')
 
