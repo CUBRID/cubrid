@@ -5217,6 +5217,7 @@ pt_find_partition_column_count_func (PT_NODE * func, PT_NODE ** name_node)
     case F_JSON_KEYS:
     case F_JSON_REMOVE:
     case F_JSON_ARRAY_APPEND:
+    case F_JSON_ARRAY_INSERT:
     case F_JSON_MERGE:
     case F_JSON_GET_ALL_PATHS:
       break;
@@ -10006,6 +10007,16 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
       if (node)
 	{
 	  pt_coerce_insert_values (parser, node);
+	}
+      break;
+
+    case PT_JSON_TABLE:
+      if (node->info.json_table_info.expr->type_enum != PT_TYPE_JSON
+	  && node->info.json_table_info.expr->type_enum != PT_TYPE_CHAR)
+	{
+	  // todo: can this be improved to hint that we are talking about json_table's expression
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_WANT_TYPE,
+		      pt_show_type_enum (PT_TYPE_JSON));
 	}
       break;
 
@@ -15142,6 +15153,7 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *a
 	case F_JSON_KEYS:
 	case F_JSON_REMOVE:
 	case F_JSON_ARRAY_APPEND:
+	case F_JSON_ARRAY_INSERT:
 	case F_JSON_MERGE:
 	case F_JSON_GET_ALL_PATHS:
 	  /* valid expression, nothing to do */

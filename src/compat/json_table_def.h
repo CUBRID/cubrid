@@ -17,28 +17,43 @@
  *
  */
 
-/*
- * Query processor main interface
- */
+//
+// json_table_def.h - json table common definitions (cross modules)
+//
 
-#ifndef _QUERY_CL_H_
-#define _QUERY_CL_H_
+#ifndef _JSON_TABLE_DEF_H_
+#define _JSON_TABLE_DEF_H_
 
-#include "parse_tree.h"
+// note - this is included in C compiled files
 
-#if defined (SERVER_MODE)
-#error Does not belong to server module
-#endif /* defined (SERVER_MODE) */
+// forward definitions
+struct db_value;
 
-// forward definition
-struct compile_context;
-struct xasl_stream;
+enum json_table_column_behavior_type
+{
+  JSON_TABLE_RETURN_NULL,
+  JSON_TABLE_THROW_ERROR,
+  JSON_TABLE_DEFAULT_VALUE
+};
 
-extern int prepare_query (compile_context * context, xasl_stream * stream);
-extern int execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int var_cnt, const DB_VALUE * varptr,
-			  QFILE_LIST_ID ** list_idp, QUERY_FLAG flag, CACHE_TIME * clt_cache_time,
-			  CACHE_TIME * srv_cache_time);
-extern int prepare_and_execute_query (char *stream, int stream_size, QUERY_ID * query_id, int var_cnt,
-				      DB_VALUE * varptr, QFILE_LIST_ID ** result, QUERY_FLAG flag);
+enum json_table_column_function
+{
+  JSON_TABLE_EXTRACT,
+  JSON_TABLE_EXISTS,
+  JSON_TABLE_ORDINALITY
+};
 
-#endif /* _QUERY_CL_H_ */
+struct json_table_column_behavior
+{
+  enum json_table_column_behavior_type m_behavior;
+  struct db_value *m_default_value;
+};
+
+enum json_table_expand_type
+{
+  JSON_TABLE_ARRAY_EXPAND,
+  JSON_TABLE_OBJECT_EXPAND,
+  JSON_TABLE_NO_EXPAND
+};
+
+#endif // _JSON_TABLE_DEF_H_

@@ -5140,4 +5140,3 @@ db_value_is_corrupted (const DB_VALUE * value)
 
   return false;
 }
-

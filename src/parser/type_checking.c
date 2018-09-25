@@ -7728,8 +7728,14 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
       /* propagate to children */
       arg1 = node->info.query.q.union_.arg1;
       arg2 = node->info.query.q.union_.arg2;
-      arg1->info.query.has_outer_spec = node->info.query.has_outer_spec;
-      arg2->info.query.has_outer_spec = node->info.query.has_outer_spec;
+      if (arg1 != NULL)
+	{
+	  arg1->info.query.has_outer_spec = node->info.query.has_outer_spec;
+	}
+      if (arg2 != NULL)
+	{
+	  arg2->info.query.has_outer_spec = node->info.query.has_outer_spec;
+	}
 
       /* rewrite limit clause as numbering expression and add it to the corresponding predicate */
       if (node->info.query.limit && node->info.query.rewrite_limit)
@@ -12189,6 +12195,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	  || node->info.function.function_type == F_JSON_INSERT || node->info.function.function_type == F_JSON_REMOVE
 	  || node->info.function.function_type == F_JSON_MERGE
 	  || node->info.function.function_type == F_JSON_ARRAY_APPEND
+	  || node->info.function.function_type == F_JSON_ARRAY_INSERT
 	  || node->info.function.function_type == F_JSON_GET_ALL_PATHS
 	  || node->info.function.function_type == F_JSON_REPLACE || node->info.function.function_type == F_JSON_SET
 	  || node->info.function.function_type == F_JSON_KEYS)
@@ -12970,6 +12977,30 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
       break;
 
+    case PT_JSON_ARRAYAGG:
+      {
+	bool is_supported = pt_is_json_value_type (arg_list->type_enum);
+
+	if (!is_supported)
+	  {
+	    arg_type = PT_TYPE_NONE;
+	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
+			 pt_show_function (fcode), pt_show_type_enum (arg_list->type_enum));
+	    break;
+	  }
+
+	/* cast arg_list to json */
+	arg_list = pt_wrap_with_cast_op (parser, arg_list, PT_TYPE_JSON, 0, 0, NULL);
+	if (arg_list == NULL)
+	  {
+	    return node;
+	  }
+
+	arg_type = PT_TYPE_JSON;
+	node->info.function.arg_list = arg_list;
+      }
+      break;
+
     case F_JSON_OBJECT:
       {
 	PT_TYPE_ENUM unsupported_type;
@@ -13080,6 +13111,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
     case F_JSON_REPLACE:
     case F_JSON_SET:
     case F_JSON_ARRAY_APPEND:
+    case F_JSON_ARRAY_INSERT:
       {
 	PT_TYPE_ENUM unsupported_type;
 	unsigned int index = 0;
@@ -13543,6 +13575,8 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  node->data_type = NULL;
 
 	  break;
+
+	case PT_JSON_ARRAYAGG:
 	case F_JSON_OBJECT:
 	case F_JSON_ARRAY:
 	case F_JSON_INSERT:
@@ -13551,6 +13585,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	case F_JSON_KEYS:
 	case F_JSON_REMOVE:
 	case F_JSON_ARRAY_APPEND:
+	case F_JSON_ARRAY_INSERT:
 	case F_JSON_MERGE:
 	case F_JSON_GET_ALL_PATHS:
 	  node->type_enum = PT_TYPE_JSON;
@@ -20350,6 +20385,14 @@ pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_TYPE fcode, DB_VALUE 
       break;
     case F_JSON_ARRAY_APPEND:
       error = db_json_array_append (result, args, num_args);
+      if (error != NO_ERROR)
+	{
+	  PT_ERRORc (parser, NULL, er_msg ());
+	  return 0;
+	}
+      break;
+    case F_JSON_ARRAY_INSERT:
+      error = db_json_array_insert (result, args, num_args);
       if (error != NO_ERROR)
 	{
 	  PT_ERRORc (parser, NULL, er_msg ());

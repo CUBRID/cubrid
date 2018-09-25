@@ -1767,7 +1767,7 @@ struct log_tdes
   LOG_RCV_TDES rcv;
 
 #if defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))
-  cubreplication::log_generator replication_log_generator;
+    cubreplication::log_generator replication_log_generator;
 #endif
 };
 
