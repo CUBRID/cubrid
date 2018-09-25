@@ -610,9 +610,15 @@ int stream_file::write (const stream_position &pos, const char *buf, const size_
       curr_pos += current_to_write;
       buf += current_to_write;
     }
-
+  
+  /* get flush mutex while incrementing append_position:
+   * this is not mandatory, but we only need to protect the assertions from start_flush and wait_flush_signal
+   * if we give up the mutex here, we also need to give up assertions involving m_append_position in those methods */
+  std::unique_lock<std::mutex> ulock (m_flush_mutex);
   m_append_position += amount;
+  ulock.unlock ();
 
+  /* TODO : only in debug mode */
   check_file ();
 
   return NO_ERROR;

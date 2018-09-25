@@ -191,8 +191,13 @@ public:
 
   int start_flush (const stream_position &start_position, const size_t amount_to_flush)
   {
+    if (amount_to_flush == 0 || start_position < m_append_position)
+    {
+      return NO_ERROR;
+    }
+
     std::unique_lock<std::mutex> ulock (m_flush_mutex);
-    if (amount_to_flush != 0 && start_position >= m_append_position)
+    if (amount_to_flush > 0 && start_position >= m_append_position)
       {
         m_req_start_flush_position = start_position;
         m_target_flush_position = start_position + amount_to_flush;
@@ -210,6 +215,7 @@ public:
   void wait_flush_signal (stream_position &start_position, stream_position &target_position)
   {
     std::unique_lock<std::mutex> ulock (m_flush_mutex);
+    /* check again against m_append_position : it may change after the previous loop of flush daemon  */
     m_flush_cv.wait (ulock, [&] { return m_is_stopped || 
                                   (m_target_flush_position > 0 && m_req_start_flush_position >= m_append_position); });
 
