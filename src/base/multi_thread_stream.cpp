@@ -30,7 +30,6 @@
 #include "error_manager.h"
 
 #include <algorithm>  /* for std::min */
-#include <iostream>
 
 namespace cubstream
 {
@@ -650,7 +649,6 @@ namespace cubstream
         && fill_factor > 1.0f
         && start_flush_pos >= m_stream_file->get_ack_start_flush_position ())
       {
-        std::cout << "wake_up_flusher fill_factor:" << fill_factor << " start_flush_pos:" << start_flush_pos << " flush_amount:" << flush_amount << std::endl;
 	m_filled_stream_handler (start_flush_pos, flush_amount);
       }
   }
@@ -664,7 +662,6 @@ namespace cubstream
   {
     /* set fill factor to force a flush */
     std::unique_lock<std::mutex> local_lock (m_drop_pos_mutex);
-    std::cout << "wait_for_flush_or_readers last_commit_pos:" << last_commit_pos << " last_append_pos:" << last_append_pos << std::endl;
     wake_up_flusher (2.0f, m_last_dropable_pos, last_commit_pos - m_last_dropable_pos);
 
     /* wait until flusher advances m_last_dropable_pos */
