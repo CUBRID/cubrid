@@ -28,8 +28,6 @@
 
 #include "multi_thread_stream.hpp"
 #include <map>
-#include <iostream>
-
 
 namespace cubthread
   {
@@ -200,7 +198,6 @@ public:
         assert (m_req_start_flush_position < m_target_flush_position);
         assert (m_req_start_flush_position >= m_append_position);
 
-        std::cout << "start_flush m_req_start_flush_position:" << m_req_start_flush_position << " m_target_flush_position:" << m_target_flush_position << std::endl;
         m_flush_cv.notify_one ();
       }
 
@@ -216,7 +213,6 @@ public:
 
     start_position = m_req_start_flush_position;
     target_position = m_target_flush_position;
-    std::cout << "wait_flush_signal start_position:" << start_position << " target_position:" << target_position << std::endl;
     assert (start_position >= m_append_position);
   }
 
