@@ -48,7 +48,7 @@ typedef enum
   REPL_INFO_TYPE_RBR_END	/* row-based end */
 } REPL_INFO_TYPE;
 
-typedef struct repl_info REPL_INFO;   // todo - remove me
+typedef struct repl_info REPL_INFO;	// todo - remove me
 struct repl_info
 {
   char *info;

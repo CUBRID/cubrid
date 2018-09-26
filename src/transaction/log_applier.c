@@ -417,15 +417,15 @@ static void la_init_ha_apply_info (LA_HA_APPLY_INFO * ha_apply_info);
 static LOG_PHY_PAGEID la_log_phypageid (LOG_PAGEID logical_pageid);
 static int la_log_io_open (const char *vlabel, int flags, int mode);
 static int la_log_io_read (char *vname, int vdes, void *io_pgptr, LOG_PHY_PAGEID pageid, int pagesize);
-static int la_log_io_read_with_max_retries (char *vname, int vdes, void *io_pgptr, LOG_PHY_PAGEID pageid, int pagesize,
-					    int retries);
+static int la_log_io_read_with_max_retries (char *vname, int vdes,
+					    void *io_pgptr, LOG_PHY_PAGEID pageid, int pagesize, int retries);
 static int la_find_archive_num (int *arv_log_num, LOG_PAGEID pageid);
 static int la_get_range_of_archive (int arv_log_num, LOG_PAGEID * fpageid, DKNPAGES * npages);
 static int la_log_fetch_from_archive (LOG_PAGEID pageid, char *data);
 static int la_log_fetch (LOG_PAGEID pageid, LA_CACHE_BUFFER * cache_buffer);
 static int la_expand_cache_log_buffer (LA_CACHE_PB * cache_pb, int slb_cnt, int slb_size);
-static LA_CACHE_BUFFER *la_cache_buffer_replace (LA_CACHE_PB * cache_pb, LOG_PAGEID pageid, int io_pagesize,
-						 int buffer_size);
+static LA_CACHE_BUFFER *la_cache_buffer_replace (LA_CACHE_PB * cache_pb,
+						 LOG_PAGEID pageid, int io_pagesize, int buffer_size);
 static LA_CACHE_BUFFER *la_get_page_buffer (LOG_PAGEID pageid);
 static LOG_PAGE *la_get_page (LOG_PAGEID pageid);
 static void la_release_page_buffer (LOG_PAGEID pageid);
@@ -459,8 +459,8 @@ static int la_does_page_exist (LOG_PAGEID pageid);
 static int la_init_repl_lists (bool need_realloc);
 static bool la_is_repl_lists_empty ();
 static LA_APPLY *la_find_apply_list (int tranid);
-static void la_log_copy_fromlog (char *rec_type, char *area, int length, LOG_PAGEID log_pageid, PGLENGTH log_offset,
-				 LOG_PAGE * log_pgptr);
+static void la_log_copy_fromlog (char *rec_type, char *area, int length,
+				 LOG_PAGEID log_pageid, PGLENGTH log_offset, LOG_PAGE * log_pgptr);
 static LA_ITEM *la_new_repl_item (LOG_LSA * lsa, LOG_LSA * target_lsa);
 static void la_add_repl_item (LA_APPLY * apply, LA_ITEM * item);
 
@@ -477,21 +477,24 @@ static void la_clear_all_repl_and_commit_list (void);
 static int la_set_repl_log (LOG_PAGE * log_pgptr, int log_type, int tranid, LOG_LSA * lsa);
 static int la_add_node_into_la_commit_list (int tranid, LOG_LSA * lsa, int type, time_t eot_time);
 static time_t la_retrieve_eot_time (LOG_PAGE * pgptr, LOG_LSA * lsa);
-static int la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL * def, DB_VALUE * key,
-			   int offset_size);
+static int la_get_current (OR_BUF * buf, SM_CLASS * sm_class,
+			   int bound_bit_flag, DB_OTMPL * def, DB_VALUE * key, int offset_size);
 static void la_make_room_for_mvcc_insid (RECDES * recdes);
 static int la_disk_to_obj (MOBJ classobj, RECDES * record, DB_OTMPL * def, DB_VALUE * key);
-static char *la_get_zipped_data (char *undo_data, int undo_length, bool is_diff, bool is_undo_zip, bool is_overflow,
-				 char **rec_type, char **data, int *length);
-static int la_get_undoredo_diff (LOG_PAGE ** pgptr, LOG_PAGEID * pageid, PGLENGTH * offset, bool * is_undo_zip,
-				 char **undo_data, int *undo_length);
-static int la_get_log_data (LOG_RECORD_HEADER * lrec, LOG_LSA * lsa, LOG_PAGE * pgptr, unsigned int match_rcvindex,
+static char *la_get_zipped_data (char *undo_data, int undo_length,
+				 bool is_diff, bool is_undo_zip,
+				 bool is_overflow, char **rec_type, char **data, int *length);
+static int la_get_undoredo_diff (LOG_PAGE ** pgptr, LOG_PAGEID * pageid,
+				 PGLENGTH * offset, bool * is_undo_zip, char **undo_data, int *undo_length);
+static int la_get_log_data (LOG_RECORD_HEADER * lrec, LOG_LSA * lsa,
+			    LOG_PAGE * pgptr, unsigned int match_rcvindex,
 			    unsigned int *rcvindex, void **logs, char **rec_type, char **data, int *d_length);
 static int la_get_overflow_recdes (LOG_RECORD_HEADER * lrec, void *logs, RECDES * recdes, unsigned int rcvindex);
-static int la_get_next_update_log (LOG_RECORD_HEADER * prev_lrec, LOG_PAGE * pgptr, void **logs, char **rec_type,
-				   char **data, int *d_length);
-static int la_get_relocation_recdes (LOG_RECORD_HEADER * lrec, LOG_PAGE * pgptr, unsigned int match_rcvindex,
-				     void **logs, char **rec_type, RECDES * recdes);
+static int la_get_next_update_log (LOG_RECORD_HEADER * prev_lrec,
+				   LOG_PAGE * pgptr, void **logs, char **rec_type, char **data, int *d_length);
+static int la_get_relocation_recdes (LOG_RECORD_HEADER * lrec,
+				     LOG_PAGE * pgptr,
+				     unsigned int match_rcvindex, void **logs, char **rec_type, RECDES * recdes);
 static int la_get_recdes (LOG_LSA * lsa, LOG_PAGE * pgptr, RECDES * recdes, unsigned int *rcvindex, char *rec_type);
 
 static int la_apply_delete_log (LA_ITEM * item);
@@ -518,8 +521,8 @@ static int la_unlock_dbname (int *lockf_vdes, char *db_name, bool clear_owner);
 
 static void la_shutdown (void);
 
-static int la_remove_archive_logs (const char *db_name, int last_deleted_arv_num, int nxarv_num,
-				   int max_arv_count_to_delete);
+static int la_remove_archive_logs (const char *db_name,
+				   int last_deleted_arv_num, int nxarv_num, int max_arv_count_to_delete);
 
 static LA_ITEM *la_get_next_repl_item (LA_ITEM * item, bool is_long_trans, LOG_LSA * last_lsa);
 static LA_ITEM *la_get_next_repl_item_from_list (LA_ITEM * item);
@@ -662,8 +665,8 @@ la_log_io_read (char *vname, int vdes, void *io_pgptr, LOG_PHY_PAGEID pageid, in
  *     reads a predefined size of page from the disk
  */
 static int
-la_log_io_read_with_max_retries (char *vname, int vdes, void *io_pgptr, LOG_PHY_PAGEID pageid, int pagesize,
-				 int retries)
+la_log_io_read_with_max_retries (char *vname, int vdes, void *io_pgptr,
+				 LOG_PHY_PAGEID pageid, int pagesize, int retries)
 {
   int nbytes;
   int remain_bytes = pagesize;
@@ -815,8 +818,8 @@ la_find_archive_num (int *arv_log_num, LOG_PAGEID pageid)
       guess_num = pageid / la_Info.act_log.log_hdr->npages;
       if (guess_num >= la_Info.act_log.log_hdr->nxarv_num)
 	{
-	  fileio_make_log_archive_name (arv_log_path, la_Info.log_path, la_Info.act_log.log_hdr->prefix_name,
-					guess_num);
+	  fileio_make_log_archive_name (arv_log_path, la_Info.log_path,
+					la_Info.act_log.log_hdr->prefix_name, guess_num);
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LOG_MOUNT_FAIL, 1, arv_log_path);
 	  guess_num = la_Info.act_log.log_hdr->nxarv_num - 1;
 	}
@@ -833,8 +836,8 @@ la_find_archive_num (int *arv_log_num, LOG_PAGEID pageid)
   guess_num = MAX (guess_num, left);
   do
     {
-      if (la_Info.arv_log.log_vdes != NULL_VOLDES && la_Info.arv_log.log_hdr != NULL
-	  && guess_num == la_Info.arv_log.log_hdr->arv_num)
+      if (la_Info.arv_log.log_vdes != NULL_VOLDES
+	  && la_Info.arv_log.log_hdr != NULL && guess_num == la_Info.arv_log.log_hdr->arv_num)
 	{
 	  log_hdr = la_Info.arv_log.log_hdr;
 	  fpageid = log_hdr->fpageid;
@@ -923,8 +926,8 @@ log_reopen:
   if (la_Info.arv_log.log_vdes == NULL_VOLDES)
     {
       /* make archive_name */
-      fileio_make_log_archive_name (la_Info.arv_log.path, la_Info.log_path, la_Info.act_log.log_hdr->prefix_name,
-				    la_Info.arv_log.arv_num);
+      fileio_make_log_archive_name (la_Info.arv_log.path, la_Info.log_path,
+				    la_Info.act_log.log_hdr->prefix_name, la_Info.arv_log.arv_num);
 
       error = check_reinit_copylog ();
       if (error != NO_ERROR)
@@ -939,16 +942,16 @@ log_reopen:
       la_Info.arv_log.log_vdes = fileio_open (la_Info.arv_log.path, O_RDONLY, 0);
       if (la_Info.arv_log.log_vdes == NULL_VOLDES)
 	{
-	  er_log_debug (ARG_FILE_LINE, "cannot open %s archive for %lld page.", la_Info.arv_log.path,
-			(long long int) pageid);
+	  er_log_debug (ARG_FILE_LINE,
+			"cannot open %s archive for %lld page.", la_Info.arv_log.path, (long long int) pageid);
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_MOUNT_FAIL, 1, la_Info.arv_log.path);
 	  return ER_LOG_MOUNT_FAIL;
 	}
 #if defined (LA_VERBOSE_DEBUG)
       else
 	{
-	  er_log_debug (ARG_FILE_LINE, "archive (%s) has been opened for %lld page", la_Info.arv_log.path,
-			(long long int) pageid);
+	  er_log_debug (ARG_FILE_LINE,
+			"archive (%s) has been opened for %lld page", la_Info.arv_log.path, (long long int) pageid);
 	}
 #endif
     }
@@ -965,12 +968,13 @@ log_reopen:
     }
 
   if (la_Info.arv_log.log_hdr == NULL
-      || strncmp (la_Info.arv_log.log_hdr->magic, CUBRID_MAGIC_LOG_ARCHIVE, CUBRID_MAGIC_MAX_LENGTH) != 0
-      || la_Info.arv_log.log_hdr->arv_num != la_Info.arv_log.arv_num)
+      || strncmp (la_Info.arv_log.log_hdr->magic, CUBRID_MAGIC_LOG_ARCHIVE,
+		  CUBRID_MAGIC_MAX_LENGTH) != 0 || la_Info.arv_log.log_hdr->arv_num != la_Info.arv_log.arv_num)
     {
       error =
-	la_log_io_read_with_max_retries (la_Info.arv_log.path, la_Info.arv_log.log_vdes, la_Info.arv_log.hdr_page, 0,
-					 la_Info.act_log.db_logpagesize, 10);
+	la_log_io_read_with_max_retries (la_Info.arv_log.path,
+					 la_Info.arv_log.log_vdes,
+					 la_Info.arv_log.hdr_page, 0, la_Info.act_log.db_logpagesize, 10);
       if (error != NO_ERROR)
 	{
 	  if (error == ER_PB_BAD_PAGEID)
@@ -992,9 +996,10 @@ log_reopen:
 
 
   error =
-    la_log_io_read_with_max_retries (la_Info.arv_log.path, la_Info.arv_log.log_vdes, data,
-				     (pageid - la_Info.arv_log.log_hdr->fpageid + 1), la_Info.act_log.db_logpagesize,
-				     10);
+    la_log_io_read_with_max_retries (la_Info.arv_log.path,
+				     la_Info.arv_log.log_vdes, data,
+				     (pageid -
+				      la_Info.arv_log.log_hdr->fpageid + 1), la_Info.act_log.db_logpagesize, 10);
 
   if (error != NO_ERROR)
     {
@@ -1062,8 +1067,8 @@ la_log_fetch (LOG_PAGEID pageid, LA_CACHE_BUFFER * cache_buffer)
 	{
 	  /* read from the active log file */
 	  error =
-	    la_log_io_read (la_Info.act_log.path, la_Info.act_log.log_vdes, &cache_buffer->logpage, phy_pageid,
-			    la_Info.act_log.db_logpagesize);
+	    la_log_io_read (la_Info.act_log.path, la_Info.act_log.log_vdes,
+			    &cache_buffer->logpage, phy_pageid, la_Info.act_log.db_logpagesize);
 	  if (error != NO_ERROR)
 	    {
 	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_LOG_READ, 3, pageid, phy_pageid, la_Info.act_log.path);
@@ -1389,8 +1394,8 @@ la_decache_page_buffers (LOG_PAGEID from, LOG_PAGEID to)
     {
       cache_buffer = cache_pb->log_buffer[i];
 
-      if ((cache_buffer->pageid == NULL_PAGEID) || (cache_buffer->pageid == 0) || (cache_buffer->pageid < from)
-	  || (cache_buffer->pageid > to))
+      if ((cache_buffer->pageid == NULL_PAGEID) || (cache_buffer->pageid == 0)
+	  || (cache_buffer->pageid < from) || (cache_buffer->pageid > to))
 	{
 	  continue;
 	}
@@ -1504,10 +1509,10 @@ la_get_ha_apply_info (const char *log_path, const char *prefix_name, LA_HA_APPLY
 	    " FROM %s WHERE db_name = ? and copied_log_path = ? ;", CT_HA_APPLY_INFO_NAME);
 
   in_value_idx = 0;
-  db_make_varchar (&in_value[in_value_idx++], 255, (char *) prefix_name, strlen (prefix_name), LANG_SYS_CODESET,
-		   LANG_SYS_COLLATION);
-  db_make_varchar (&in_value[in_value_idx++], 4096, (char *) log_path, strlen (log_path), LANG_SYS_CODESET,
-		   LANG_SYS_COLLATION);
+  db_make_varchar (&in_value[in_value_idx++], 255, (char *) prefix_name,
+		   strlen (prefix_name), LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  db_make_varchar (&in_value[in_value_idx++], 4096, (char *) log_path,
+		   strlen (log_path), LANG_SYS_CODESET, LANG_SYS_COLLATION);
   assert_release (in_value_idx == LA_IN_VALUE_COUNT);
 
   res = db_execute_with_values (query_buf, &result, &query_error, in_value_idx, &in_value[0]);
@@ -1731,15 +1736,16 @@ la_insert_ha_apply_info (DB_DATETIME * creation_time)
   in_value_idx = 0;
 
   /* 1. db_name */
-  db_make_varchar (&in_value[in_value_idx++], 255, act_log->log_hdr->prefix_name,
+  db_make_varchar (&in_value[in_value_idx++], 255,
+		   act_log->log_hdr->prefix_name,
 		   strlen (act_log->log_hdr->prefix_name), LANG_SYS_CODESET, LANG_SYS_COLLATION);
 
   /* 2. db_creation time */
   db_make_datetime (&in_value[in_value_idx++], creation_time);
 
   /* 3. copied_log_path */
-  db_make_varchar (&in_value[in_value_idx++], 4096, la_Info.log_path, strlen (la_Info.log_path), LANG_SYS_CODESET,
-		   LANG_SYS_COLLATION);
+  db_make_varchar (&in_value[in_value_idx++], 4096, la_Info.log_path,
+		   strlen (la_Info.log_path), LANG_SYS_CODESET, LANG_SYS_COLLATION);
 
   /* 4 ~ 5. committed_lsa */
   db_make_bigint (&in_value[in_value_idx++], la_Info.committed_lsa.pageid);
@@ -1819,10 +1825,11 @@ la_update_ha_apply_info_start_time (void)
 	    CT_HA_APPLY_INFO_NAME);
 
   in_value_idx = 0;
-  db_make_varchar (&in_value[in_value_idx++], 255, act_log->log_hdr->prefix_name,
+  db_make_varchar (&in_value[in_value_idx++], 255,
+		   act_log->log_hdr->prefix_name,
 		   strlen (act_log->log_hdr->prefix_name), LANG_SYS_CODESET, LANG_SYS_COLLATION);
-  db_make_varchar (&in_value[in_value_idx++], 4096, la_Info.log_path, strlen (la_Info.log_path), LANG_SYS_CODESET,
-		   LANG_SYS_COLLATION);
+  db_make_varchar (&in_value[in_value_idx++], 4096, la_Info.log_path,
+		   strlen (la_Info.log_path), LANG_SYS_CODESET, LANG_SYS_COLLATION);
   assert (in_value_idx == LA_IN_VALUE_COUNT);
 
   res = la_update_query_execute_with_values (query_buf, in_value_idx, &in_value[0], true);
@@ -1862,12 +1869,13 @@ la_update_ha_apply_info_log_record_time (time_t new_time)
   db_make_datetime (&in_value[in_value_idx++], &datetime);
 
   /* 2. db_name */
-  db_make_varchar (&in_value[in_value_idx++], 255, la_Info.act_log.log_hdr->prefix_name,
+  db_make_varchar (&in_value[in_value_idx++], 255,
+		   la_Info.act_log.log_hdr->prefix_name,
 		   strlen (la_Info.act_log.log_hdr->prefix_name), LANG_SYS_CODESET, LANG_SYS_COLLATION);
 
   /* 3. copied_log_path */
-  db_make_varchar (&in_value[in_value_idx++], 4096, la_Info.log_path, strlen (la_Info.log_path), LANG_SYS_CODESET,
-		   LANG_SYS_COLLATION);
+  db_make_varchar (&in_value[in_value_idx++], 4096, la_Info.log_path,
+		   strlen (la_Info.log_path), LANG_SYS_CODESET, LANG_SYS_COLLATION);
   assert_release (in_value_idx == LA_IN_VALUE_COUNT);
 
   res = la_update_query_execute_with_values (query_buf, in_value_idx, &in_value[0], true);
@@ -2127,12 +2135,13 @@ la_update_ha_last_applied_info (void)
   db_make_bigint (&in_value[in_value_idx++], la_Info.fail_counter);
 
   /* 21. db_name */
-  db_make_varchar (&in_value[in_value_idx++], 255, la_Info.act_log.log_hdr->prefix_name,
+  db_make_varchar (&in_value[in_value_idx++], 255,
+		   la_Info.act_log.log_hdr->prefix_name,
 		   strlen (la_Info.act_log.log_hdr->prefix_name), LANG_SYS_CODESET, LANG_SYS_COLLATION);
 
   /* 22. copied_log_path */
-  db_make_varchar (&in_value[in_value_idx++], 4096, la_Info.log_path, strlen (la_Info.log_path), LANG_SYS_CODESET,
-		   LANG_SYS_COLLATION);
+  db_make_varchar (&in_value[in_value_idx++], 4096, la_Info.log_path,
+		   strlen (la_Info.log_path), LANG_SYS_CODESET, LANG_SYS_COLLATION);
   assert_release (in_value_idx == LA_IN_VALUE_COUNT);
 
   res = la_update_query_execute_with_values (query_buf, in_value_idx, &in_value[0], true);
@@ -2172,14 +2181,15 @@ la_delete_ha_apply_info (void)
 
   act_log = &la_Info.act_log;
 
-  snprintf (query_buf, sizeof (query_buf), "DELETE FROM %s WHERE db_name = ? AND copied_log_path = ?",
-	    CT_HA_APPLY_INFO_NAME);
+  snprintf (query_buf, sizeof (query_buf),
+	    "DELETE FROM %s WHERE db_name = ? AND copied_log_path = ?", CT_HA_APPLY_INFO_NAME);
 
   in_value_idx = 0;
-  db_make_varchar (&in_value[in_value_idx++], 255, act_log->log_hdr->prefix_name,
+  db_make_varchar (&in_value[in_value_idx++], 255,
+		   act_log->log_hdr->prefix_name,
 		   strlen (act_log->log_hdr->prefix_name), LANG_SYS_CODESET, LANG_SYS_COLLATION);
-  db_make_varchar (&in_value[in_value_idx++], 4096, la_Info.log_path, strlen (la_Info.log_path), LANG_SYS_CODESET,
-		   LANG_SYS_COLLATION);
+  db_make_varchar (&in_value[in_value_idx++], 4096, la_Info.log_path,
+		   strlen (la_Info.log_path), LANG_SYS_CODESET, LANG_SYS_COLLATION);
   assert (in_value_idx == LA_IN_VALUE_COUNT);
 
   res = la_update_query_execute_with_values (query_buf, in_value_idx, &in_value[0], true);
@@ -2473,8 +2483,8 @@ la_init_cache_log_buffer (LA_CACHE_PB * cache_pb, int slb_cnt, int slb_size)
     }
 
   cache_pb->hash_table =
-    mht_create ("log applier cache log buffer hash table", cache_pb->num_buffers * 8, mht_logpageidhash,
-		mht_compare_logpageids_are_equal);
+    mht_create ("log applier cache log buffer hash table",
+		cache_pb->num_buffers * 8, mht_logpageidhash, mht_compare_logpageids_are_equal);
   if (cache_pb->hash_table == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, cache_pb->num_buffers * 8);
@@ -2588,9 +2598,11 @@ la_find_log_pagesize (LA_ACT_LOG * act_log, const char *logpath, const char *dbn
 	  char err_msg[ERR_MSG_SIZE];
 
 	  la_applier_need_shutdown = true;
-	  snprintf (err_msg, sizeof (err_msg) - 1, "Active log file(%s) charset is not valid (%s), expecting %s.",
-		    act_log->path, lang_charset_cubrid_name ((INTL_CODESET) act_log->log_hdr->db_charset),
-		    lang_charset_cubrid_name (lang_charset ()));
+	  snprintf (err_msg, sizeof (err_msg) - 1,
+		    "Active log file(%s) charset is not valid (%s), expecting %s.",
+		    act_log->path,
+		    lang_charset_cubrid_name ((INTL_CODESET) act_log->
+					      log_hdr->db_charset), lang_charset_cubrid_name (lang_charset ()));
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, err_msg);
 	  return ER_LOC_INIT;
 	}
@@ -2678,8 +2690,8 @@ la_does_page_exist (LOG_PAGEID pageid)
   log_buffer = la_get_page_buffer (pageid);
   if (log_buffer != NULL)
     {
-      if (log_buffer->pageid == pageid && log_buffer->logpage.hdr.logical_pageid == pageid
-	  && log_buffer->logpage.hdr.offset > NULL_OFFSET)
+      if (log_buffer->pageid == pageid
+	  && log_buffer->logpage.hdr.logical_pageid == pageid && log_buffer->logpage.hdr.offset > NULL_OFFSET)
 	{
 	  log_exist = log_buffer->in_archive ? LA_PAGE_EXST_IN_ARCHIVE_LOG : LA_PAGE_EXST_IN_ACTIVE_LOG;
 
@@ -2892,8 +2904,8 @@ la_add_apply_list (int tranid)
  *   log_pageid, log_offset, and log_pgptr are set as a side effect.
  */
 static void
-la_log_copy_fromlog (char *rec_type, char *area, int length, LOG_PAGEID log_pageid, PGLENGTH log_offset,
-		     LOG_PAGE * log_pgptr)
+la_log_copy_fromlog (char *rec_type, char *area, int length,
+		     LOG_PAGEID log_pageid, PGLENGTH log_offset, LOG_PAGE * log_pgptr)
 {
   int rec_length = (int) sizeof (INT16);
   int copy_length;		/* Length to copy into area */
@@ -3026,7 +3038,7 @@ la_get_item_pk_value (LA_ITEM * item)
 static LA_ITEM *
 la_make_repl_item (LOG_PAGE * log_pgptr, int log_type, int tranid, LOG_LSA * lsa)
 {
-#if 0     // todo - remove all log applier
+#if 0				// todo - remove all log applier
   int error = NO_ERROR;
   LA_ITEM *item = NULL;
   LOG_REC_REPLICATION *repl_log;
@@ -3157,7 +3169,7 @@ error_return:
       free_and_init (item);
     }
 
-#endif  // todo - remove all log applier
+#endif // todo - remove all log applier
 
   return NULL;
 }
@@ -3505,8 +3517,8 @@ la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL 
       vars = (int *) malloc (DB_SIZEOF (int) * sm_class->variable_count);
       if (vars == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		  DB_SIZEOF (int) * sm_class->variable_count);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		  1, DB_SIZEOF (int) * sm_class->variable_count);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
       offset = or_get_offset_internal (buf, &rc, offset_size);
@@ -3572,8 +3584,8 @@ la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL 
 
   /* process variable length column */
   v_start = buf->ptr;
-  for (i = sm_class->fixed_count, j = 0; i < sm_class->att_count && j < sm_class->variable_count;
-       i++, j++, att = (SM_ATTRIBUTE *) att->header.next)
+  for (i = sm_class->fixed_count, j = 0;
+       i < sm_class->att_count && j < sm_class->variable_count; i++, j++, att = (SM_ATTRIBUTE *) att->header.next)
     {
       (*(att->type->data_readval)) (buf, &value, att->domain, vars[j], true, NULL, 0);
       v_start += vars[j];
@@ -3711,8 +3723,8 @@ la_disk_to_obj (MOBJ classobj, RECDES * record, DB_OTMPL * def, DB_VALUE * key)
  *   return: error code
  */
 char *
-la_get_zipped_data (char *undo_data, int undo_length, bool is_diff, bool is_undo_zip, bool is_overflow, char **rec_type,
-		    char **data, int *length)
+la_get_zipped_data (char *undo_data, int undo_length, bool is_diff,
+		    bool is_undo_zip, bool is_overflow, char **rec_type, char **data, int *length)
 {
   int redo_length = 0;
   int rec_len = 0;
@@ -3788,8 +3800,8 @@ la_get_zipped_data (char *undo_data, int undo_length, bool is_diff, bool is_undo
  *   return: next log page pointer
  */
 int
-la_get_undoredo_diff (LOG_PAGE ** pgptr, LOG_PAGEID * pageid, PGLENGTH * offset, bool * is_undo_zip, char **undo_data,
-		      int *undo_length)
+la_get_undoredo_diff (LOG_PAGE ** pgptr, LOG_PAGEID * pageid,
+		      PGLENGTH * offset, bool * is_undo_zip, char **undo_data, int *undo_length)
 {
   int error = NO_ERROR;
 
@@ -3857,8 +3869,9 @@ la_get_undoredo_diff (LOG_PAGE ** pgptr, LOG_PAGEID * pageid, PGLENGTH * offset,
  *              given log record
  */
 static int
-la_get_log_data (LOG_RECORD_HEADER * lrec, LOG_LSA * lsa, LOG_PAGE * pgptr, unsigned int match_rcvindex,
-		 unsigned int *rcvindex, void **logs, char **rec_type, char **data, int *d_length)
+la_get_log_data (LOG_RECORD_HEADER * lrec, LOG_LSA * lsa, LOG_PAGE * pgptr,
+		 unsigned int match_rcvindex, unsigned int *rcvindex,
+		 void **logs, char **rec_type, char **data, int *d_length)
 {
   LOG_PAGE *pg;
   PGLENGTH offset;
@@ -4212,8 +4225,9 @@ la_get_overflow_recdes (LOG_RECORD_HEADER * log_record, void *logs, RECDES * rec
 
 	  memset (ovf_list_data, 0, DB_SIZEOF (LA_OVF_PAGE_LIST));
 	  error =
-	    la_get_log_data (current_log_record, &current_lsa, current_log_page, rcvindex, NULL, &log_info, NULL,
-			     &ovf_list_data->data, &ovf_list_data->length);
+	    la_get_log_data (current_log_record, &current_lsa,
+			     current_log_page, rcvindex, NULL, &log_info,
+			     NULL, &ovf_list_data->data, &ovf_list_data->length);
 
 	  if (error == NO_ERROR && log_info && ovf_list_data->data)
 	    {
@@ -4304,8 +4318,8 @@ la_get_overflow_recdes (LOG_RECORD_HEADER * log_record, void *logs, RECDES * rec
  *      record, it should fetch the real UPDATE log record to be processed.
  */
 static int
-la_get_next_update_log (LOG_RECORD_HEADER * prev_lrec, LOG_PAGE * pgptr, void **logs, char **rec_type, char **data,
-			int *d_length)
+la_get_next_update_log (LOG_RECORD_HEADER * prev_lrec, LOG_PAGE * pgptr,
+			void **logs, char **rec_type, char **data, int *d_length)
 {
   LOG_PAGE *pg;
   LOG_LSA lsa;
@@ -4383,7 +4397,9 @@ la_get_next_update_log (LOG_RECORD_HEADER * prev_lrec, LOG_PAGE * pgptr, void **
 		  temp_length = undoredo->rlength;
 		  length = GET_ZIP_LEN (undoredo->rlength);
 
-		  if ((undoredo->data.rcvindex == RVHF_UPDATE || undoredo->data.rcvindex == RVHF_UPDATE_NOTIFY_VACUUM)
+		  if ((undoredo->data.rcvindex == RVHF_UPDATE
+		       || undoredo->data.rcvindex ==
+		       RVHF_UPDATE_NOTIFY_VACUUM)
 		      && undoredo->data.pageid == prev_log->data.pageid
 		      && undoredo->data.offset == prev_log->data.offset && undoredo->data.volid == prev_log->data.volid)
 		    {
@@ -4425,8 +4441,8 @@ la_get_next_update_log (LOG_RECORD_HEADER * prev_lrec, LOG_PAGE * pgptr, void **
 			    }
 
 			  *data =
-			    la_get_zipped_data (undo_data, undo_length, is_diff, is_undo_zip, false, rec_type, data,
-						&length);
+			    la_get_zipped_data (undo_data, undo_length,
+						is_diff, is_undo_zip, false, rec_type, data, &length);
 			  if (*data == NULL)
 			    {
 			      assert (er_errid () != NO_ERROR);
@@ -4463,8 +4479,8 @@ la_get_next_update_log (LOG_RECORD_HEADER * prev_lrec, LOG_PAGE * pgptr, void **
 }
 
 static int
-la_get_relocation_recdes (LOG_RECORD_HEADER * lrec, LOG_PAGE * pgptr, unsigned int match_rcvindex, void **logs,
-			  char **rec_type, RECDES * recdes)
+la_get_relocation_recdes (LOG_RECORD_HEADER * lrec, LOG_PAGE * pgptr,
+			  unsigned int match_rcvindex, void **logs, char **rec_type, RECDES * recdes)
 {
   LOG_RECORD_HEADER *tmp_lrec;
   unsigned int rcvindex;
@@ -4485,8 +4501,8 @@ la_get_relocation_recdes (LOG_RECORD_HEADER * lrec, LOG_PAGE * pgptr, unsigned i
       else
 	{
 	  error =
-	    la_get_log_data (tmp_lrec, &lsa, pg, RVHF_INSERT_NEWHOME, &rcvindex, logs, rec_type, &recdes->data,
-			     &recdes->length);
+	    la_get_log_data (tmp_lrec, &lsa, pg, RVHF_INSERT_NEWHOME,
+			     &rcvindex, logs, rec_type, &recdes->data, &recdes->length);
 	}
       la_release_page_buffer (lsa.pageid);
     }
@@ -4693,8 +4709,8 @@ la_flush_repl_items (bool immediate)
 		}
 
 	      er_stack_push ();
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, la_err_code, 4, class_name, pkey_str, flush_err->error_code,
-		      server_err_msg);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, la_err_code, 4,
+		      class_name, pkey_str, flush_err->error_code, server_err_msg);
 	      er_stack_pop ();
 
 	      la_Info.fail_counter++;
@@ -4703,8 +4719,8 @@ la_flush_repl_items (bool immediate)
 		{
 		  snprintf (buf, sizeof (buf),
 			    "applylogdb will reconnect to server due to a failure in flushing changes. "
-			    "class: %s, key: %s, server error: %d, %s", class_name, pkey_str, flush_err->error_code,
-			    server_err_msg);
+			    "class: %s, key: %s, server error: %d, %s",
+			    class_name, pkey_str, flush_err->error_code, server_err_msg);
 		  er_stack_push ();
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, buf);
 		  er_stack_pop ();
@@ -4803,8 +4819,9 @@ la_repl_add_object (MOP classop, LA_ITEM * item, RECDES * recdes)
 
   has_index = classobj_class_has_indexes (class_);
 
-  error = ws_add_to_repl_obj_list (class_oid, item->packed_key_value, item->packed_key_value_length, recdes,
-				   operation, has_index);
+  error =
+    ws_add_to_repl_obj_list (class_oid, item->packed_key_value,
+			     item->packed_key_value_length, recdes, operation, has_index);
   return error;
 }
 
@@ -4849,8 +4866,8 @@ la_apply_delete_log (LA_ITEM * item)
 	    {
 	      sb.clear ();
 	      help_sprint_value (&item->key, sb);
-	      snprintf (sql_log_err, sizeof (sql_log_err), "failed to write SQL log. class: %s, key: %s",
-			item->class_name, sb.get_buffer ());
+	      snprintf (sql_log_err, sizeof (sql_log_err),
+			"failed to write SQL log. class: %s, key: %s", item->class_name, sb.get_buffer ());
 
 	      er_stack_push ();
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, sql_log_err);
@@ -4871,12 +4888,13 @@ la_apply_delete_log (LA_ITEM * item)
       sb.clear ();
       help_sprint_value (la_get_item_pk_value (item), sb);
 #if defined (LA_VERBOSE_DEBUG)
-      er_log_debug (ARG_FILE_LINE, "apply_delete : error %d %s\n\tclass %s key %s\n", error, er_msg (),
-		    item->class_name, sb.get_buffer ());
+      er_log_debug (ARG_FILE_LINE,
+		    "apply_delete : error %d %s\n\tclass %s key %s\n", error,
+		    er_msg (), item->class_name, sb.get_buffer ());
 #endif
       er_stack_push ();
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_FAILED_TO_APPLY_DELETE, 4, item->class_name, sb.get_buffer (),
-	      error, "internal client error.");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_HA_LA_FAILED_TO_APPLY_DELETE, 4, item->class_name, sb.get_buffer (), error, "internal client error.");
       er_stack_pop ();
 
       la_Info.fail_counter++;
@@ -4943,8 +4961,8 @@ la_apply_update_log (LA_ITEM * item)
 
       goto end;
     }
-  if (rcvindex != RVHF_UPDATE && rcvindex != RVOVF_CHANGE_LINK && rcvindex != RVHF_MVCC_INSERT
-      && rcvindex != RVHF_UPDATE_NOTIFY_VACUUM && rcvindex != RVHF_INSERT_NEWHOME)
+  if (rcvindex != RVHF_UPDATE && rcvindex != RVOVF_CHANGE_LINK
+      && rcvindex != RVHF_MVCC_INSERT && rcvindex != RVHF_UPDATE_NOTIFY_VACUUM && rcvindex != RVHF_INSERT_NEWHOME)
     {
       er_log_debug (ARG_FILE_LINE, "apply_update : rcvindex = %d\n", rcvindex);
       error = ER_FAILED;
@@ -5019,8 +5037,8 @@ la_apply_update_log (LA_ITEM * item)
 	{
 	  sb.clear ();
 	  help_sprint_value (la_get_item_pk_value (item), sb);
-	  snprintf (sql_log_err, sizeof (sql_log_err), "failed to write SQL log. class: %s, key: %s", item->class_name,
-		    sb.get_buffer ());
+	  snprintf (sql_log_err, sizeof (sql_log_err),
+		    "failed to write SQL log. class: %s, key: %s", item->class_name, sb.get_buffer ());
 
 	  er_stack_push ();
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, sql_log_err);
@@ -5034,12 +5052,13 @@ end:
       sb.clear ();
       help_sprint_value (la_get_item_pk_value (item), sb);
 #if defined (LA_VERBOSE_DEBUG)
-      er_log_debug (ARG_FILE_LINE, "apply_update : error %d %s\n\tclass %s key %s\n", error, er_msg (),
-		    item->class_name, sb.get_buffer ());
+      er_log_debug (ARG_FILE_LINE,
+		    "apply_update : error %d %s\n\tclass %s key %s\n", error,
+		    er_msg (), item->class_name, sb.get_buffer ());
 #endif
       er_stack_push ();
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_FAILED_TO_APPLY_UPDATE, 4, item->class_name, sb.get_buffer (),
-	      error, "internal client error.");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_HA_LA_FAILED_TO_APPLY_UPDATE, 4, item->class_name, sb.get_buffer (), error, "internal client error.");
       er_stack_pop ();
 
       la_Info.fail_counter++;
@@ -5202,8 +5221,8 @@ la_apply_insert_log (LA_ITEM * item)
 	{
 	  sb.clear ();
 	  help_sprint_value (la_get_item_pk_value (item), sb);
-	  snprintf (sql_log_err, sizeof (sql_log_err), "failed to write SQL log. class: %s, key: %s", item->class_name,
-		    sb.get_buffer ());
+	  snprintf (sql_log_err, sizeof (sql_log_err),
+		    "failed to write SQL log. class: %s, key: %s", item->class_name, sb.get_buffer ());
 
 	  er_stack_push ();
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, sql_log_err);
@@ -5217,12 +5236,13 @@ end:
       sb.clear ();
       help_sprint_value (la_get_item_pk_value (item), sb);
 #if defined (LA_VERBOSE_DEBUG)
-      er_log_debug (ARG_FILE_LINE, "apply_insert : error %d %s\n\tclass %s key %s\n", error, er_msg (),
-		    item->class_name, sb.get_buffer ());
+      er_log_debug (ARG_FILE_LINE,
+		    "apply_insert : error %d %s\n\tclass %s key %s\n", error,
+		    er_msg (), item->class_name, sb.get_buffer ());
 #endif
       er_stack_push ();
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_FAILED_TO_APPLY_INSERT, 4, item->class_name, sb.get_buffer (),
-	      error, "internal client error.");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_HA_LA_FAILED_TO_APPLY_INSERT, 4, item->class_name, sb.get_buffer (), error, "internal client error.");
       er_stack_pop ();
 
       la_Info.fail_counter++;
@@ -5415,11 +5435,14 @@ la_apply_statement_log (LA_ITEM * item)
        * Special alter statement, non partitioned -> partitioned is the same.
        * Also, the result of statement-based DML replication may be affected by user
        */
-      if ((item->item_type == CUBRID_STMT_CREATE_CLASS || item->item_type == CUBRID_STMT_CREATE_SERIAL
-	   || item->item_type == CUBRID_STMT_CREATE_STORED_PROCEDURE || item->item_type == CUBRID_STMT_CREATE_TRIGGER
-	   || item->item_type == CUBRID_STMT_ALTER_CLASS || item->item_type == CUBRID_STMT_INSERT
-	   || item->item_type == CUBRID_STMT_DELETE || item->item_type == CUBRID_STMT_UPDATE)
-	  && (item->db_user != NULL && item->db_user[0] != '\0'))
+      if ((item->item_type == CUBRID_STMT_CREATE_CLASS
+	   || item->item_type == CUBRID_STMT_CREATE_SERIAL
+	   || item->item_type == CUBRID_STMT_CREATE_STORED_PROCEDURE
+	   || item->item_type == CUBRID_STMT_CREATE_TRIGGER
+	   || item->item_type == CUBRID_STMT_ALTER_CLASS
+	   || item->item_type == CUBRID_STMT_INSERT
+	   || item->item_type == CUBRID_STMT_DELETE
+	   || item->item_type == CUBRID_STMT_UPDATE) && (item->db_user != NULL && item->db_user[0] != '\0'))
 	{
 	  user = au_find_user (item->db_user);
 	  if (user == NULL)
@@ -5456,11 +5479,11 @@ la_apply_statement_log (LA_ITEM * item)
       /* write sql log */
       if (la_enable_sql_logging)
 	{
-	  if (sl_write_statement_sql (item->class_name, item->db_user, item->item_type, stmt_text, item->ha_sys_prm) !=
-	      NO_ERROR)
+	  if (sl_write_statement_sql
+	      (item->class_name, item->db_user, item->item_type, stmt_text, item->ha_sys_prm) != NO_ERROR)
 	    {
-	      snprintf (sql_log_err, sizeof (sql_log_err), "failed to write SQL log. class: %s, stmt: %s",
-			item->class_name, stmt_text);
+	      snprintf (sql_log_err, sizeof (sql_log_err),
+			"failed to write SQL log. class: %s, stmt: %s", item->class_name, stmt_text);
 
 	      er_stack_push ();
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, sql_log_err);
@@ -5546,8 +5569,8 @@ la_apply_statement_log (LA_ITEM * item)
       er_log_debug (ARG_FILE_LINE, "apply_statement : error %d class %s stmt %s\n", error, item->class_name, stmt_text);
 #endif
       er_stack_push ();
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_FAILED_TO_APPLY_STATEMENT, 3, item->class_name, stmt_text,
-	      error, error_msg);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_HA_LA_FAILED_TO_APPLY_STATEMENT, 3, item->class_name, stmt_text, error, error_msg);
       er_stack_pop ();
 
       la_Info.fail_counter++;
@@ -5646,8 +5669,8 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
 		  break;
 
 		default:
-		  er_log_debug (ARG_FILE_LINE, "apply_repl_log : log_type %d item_type %d\n", item->log_type,
-				item->item_type);
+		  er_log_debug (ARG_FILE_LINE,
+				"apply_repl_log : log_type %d item_type %d\n", item->log_type, item->item_type);
 
 		  assert_release (false);
 		}
@@ -5692,8 +5715,8 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
 		}
 	      else if (la_ignore_on_error (errid) == false && la_retry_on_error (errid) == true)
 		{
-		  snprintf (buf, sizeof (buf), "attempts to try applying failed replication log again. (error:%d)",
-			    errid);
+		  snprintf (buf, sizeof (buf),
+			    "attempts to try applying failed replication log again. (error:%d)", errid);
 		  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, buf);
 
 		  /* try it again */
@@ -5900,8 +5923,9 @@ la_get_next_repl_item_from_log (LA_ITEM * item, LOG_LSA * last_lsa)
 	}
       if (!LSA_EQ (&curr_lsa, &prev_repl_lsa) && prev_repl_log_record->trid == curr_log_record->trid)
 	{
-	  if (LSA_GT (&curr_lsa, last_lsa) || curr_log_record->type == LOG_COMMIT || curr_log_record->type == LOG_ABORT
-	      || LSA_GE (&curr_lsa, &la_Info.act_log.log_hdr->eof_lsa))
+	  if (LSA_GT (&curr_lsa, last_lsa)
+	      || curr_log_record->type == LOG_COMMIT
+	      || curr_log_record->type == LOG_ABORT || LSA_GE (&curr_lsa, &la_Info.act_log.log_hdr->eof_lsa))
 	    {
 	      break;
 	    }
@@ -5945,15 +5969,18 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
 	{
 	  la_applier_need_shutdown = true;
 
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_INVALID_REPL_LOG_RECORD, 10, final->pageid, final->offset,
-		  lrec->forw_lsa.pageid, lrec->forw_lsa.offset, lrec->back_lsa.pageid, lrec->back_lsa.offset,
-		  lrec->trid, lrec->prev_tranlsa.pageid, lrec->prev_tranlsa.offset, lrec->type);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_HA_LA_INVALID_REPL_LOG_RECORD, 10, final->pageid,
+		  final->offset, lrec->forw_lsa.pageid, lrec->forw_lsa.offset,
+		  lrec->back_lsa.pageid, lrec->back_lsa.offset, lrec->trid,
+		  lrec->prev_tranlsa.pageid, lrec->prev_tranlsa.offset, lrec->type);
 	  return ER_LOG_PAGE_CORRUPTED;
 	}
     }
 
-  if ((lrec->type != LOG_END_OF_LOG && lrec->type != LOG_DUMMY_HA_SERVER_STATE) && lrec->trid != LOG_SYSTEM_TRANID
-      && LSA_ISNULL (&lrec->prev_tranlsa))
+  if ((lrec->type != LOG_END_OF_LOG
+       && lrec->type != LOG_DUMMY_HA_SERVER_STATE)
+      && lrec->trid != LOG_SYSTEM_TRANID && LSA_ISNULL (&lrec->prev_tranlsa))
     {
       apply = la_add_apply_list (lrec->trid);
       if (apply == NULL)
@@ -5984,8 +6011,8 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
       if (la_does_page_exist (final->pageid + 1) && la_does_page_exist (final->pageid) == LA_PAGE_EXST_IN_ARCHIVE_LOG)
 	{
 	  /* when we meet the END_OF_LOG of archive file, skip log page */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_UNEXPECTED_EOF_IN_ARCHIVE_LOG, 2, final->pageid,
-		  final->offset);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_HA_LA_UNEXPECTED_EOF_IN_ARCHIVE_LOG, 2, final->pageid, final->offset);
 	  final->pageid++;
 	  final->offset = 0;
 	}
@@ -6061,8 +6088,8 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
 		    case ER_LK_UNILATERALLY_ABORTED:
 		      break;
 		    default:
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_COMM_ERROR, 1,
-			      "cannot connect with server");
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_NET_SERVER_COMM_ERROR, 1, "cannot connect with server");
 		      return error;
 		    }
 		}
@@ -6105,7 +6132,8 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
       break;
 
     case LOG_DUMMY_CRASH_RECOVERY:
-      snprintf (buffer, sizeof (buffer), "process log record (type:%d). skip this log record. LSA: %lld|%d",
+      snprintf (buffer, sizeof (buffer),
+		"process log record (type:%d). skip this log record. LSA: %lld|%d",
 		lrec->type, (long long int) final->pageid, (int) final->offset);
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, buffer);
 
@@ -6127,8 +6155,10 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
 	{
 	  if (la_Info.db_lockf_vdes != NULL_VOLDES)
 	    {
-	      snprintf (buffer, sizeof (buffer), "the state of HA server (%s@%s) is changed to %s", la_slave_db_name,
-			la_peer_host, css_ha_server_state_string ((HA_SERVER_STATE) ha_server_state->state));
+	      snprintf (buffer, sizeof (buffer),
+			"the state of HA server (%s@%s) is changed to %s",
+			la_slave_db_name, la_peer_host,
+			css_ha_server_state_string ((HA_SERVER_STATE) ha_server_state->state));
 	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, buffer);
 
 	      la_Info.is_role_changed = true;
@@ -6157,7 +6187,8 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
     {
       if (la_does_page_exist (final->pageid) == LA_PAGE_EXST_IN_ARCHIVE_LOG)
 	{
-	  snprintf (buffer, sizeof (buffer), "process last log record in archive. LSA: %lld|%d",
+	  snprintf (buffer, sizeof (buffer),
+		    "process last log record in archive. LSA: %lld|%d",
 		    (long long int) final->pageid, (int) final->offset);
 	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, buffer);
 
@@ -6165,8 +6196,10 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
 	  final->offset = 0;
 	}
 
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_INVALID_REPL_LOG_RECORD, 10, final->pageid, final->offset,
-	      lrec->forw_lsa.pageid, lrec->forw_lsa.offset, lrec->back_lsa.pageid, lrec->back_lsa.offset, lrec->trid,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ER_HA_LA_INVALID_REPL_LOG_RECORD, 10, final->pageid,
+	      final->offset, lrec->forw_lsa.pageid, lrec->forw_lsa.offset,
+	      lrec->back_lsa.pageid, lrec->back_lsa.offset, lrec->trid,
 	      lrec->prev_tranlsa.pageid, lrec->prev_tranlsa.offset, lrec->type);
 
       return ER_LOG_PAGE_CORRUPTED;
@@ -6235,8 +6268,11 @@ la_change_state (void)
 
   if (la_Info.last_server_state != la_Info.act_log.log_hdr->ha_server_state)
     {
-      sprintf (buffer, "change the state of HA server (%s@%s) from '%s' to '%s'", la_slave_db_name, la_peer_host,
-	       css_ha_server_state_string ((HA_SERVER_STATE) la_Info.last_server_state),
+      sprintf (buffer,
+	       "change the state of HA server (%s@%s) from '%s' to '%s'",
+	       la_slave_db_name, la_peer_host,
+	       css_ha_server_state_string ((HA_SERVER_STATE) la_Info.
+					   last_server_state),
 	       css_ha_server_state_string ((HA_SERVER_STATE) la_Info.act_log.log_hdr->ha_server_state));
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, buffer);
     }
@@ -6329,9 +6365,12 @@ la_change_state (void)
       error = boot_notify_ha_log_applier_state ((HA_LOG_APPLIER_STATE) new_state);
       if (error == NO_ERROR)
 	{
-	  snprintf (buffer, sizeof (buffer), "change log apply state from '%s' to '%s'. last committed LSA: %lld|%d",
-		    css_ha_applier_state_string ((HA_LOG_APPLIER_STATE) la_Info.apply_state),
-		    css_ha_applier_state_string ((HA_LOG_APPLIER_STATE) new_state),
+	  snprintf (buffer, sizeof (buffer),
+		    "change log apply state from '%s' to '%s'. last committed LSA: %lld|%d",
+		    css_ha_applier_state_string ((HA_LOG_APPLIER_STATE)
+						 la_Info.apply_state),
+		    css_ha_applier_state_string ((HA_LOG_APPLIER_STATE)
+						 new_state),
 		    (long long int) la_Info.committed_lsa.pageid, (int) la_Info.committed_lsa.offset);
 	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, buffer);
 
@@ -6339,8 +6378,10 @@ la_change_state (void)
 	}
       else
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_FAILED_TO_CHANGE_STATE, 2,
-		  css_ha_applier_state_string ((HA_LOG_APPLIER_STATE) la_Info.apply_state),
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_HA_LA_FAILED_TO_CHANGE_STATE, 2,
+		  css_ha_applier_state_string ((HA_LOG_APPLIER_STATE) la_Info.
+					       apply_state),
 		  css_ha_applier_state_string ((HA_LOG_APPLIER_STATE) new_state));
 	}
     }
@@ -6383,7 +6424,8 @@ la_log_commit (bool update_commit_time)
     {
       la_Info.fail_counter++;
 
-      er_log_debug (ARG_FILE_LINE, "log applied but cannot update last committed LSA (%d|%d)",
+      er_log_debug (ARG_FILE_LINE,
+		    "log applied but cannot update last committed LSA (%d|%d)",
 		    la_Info.committed_lsa.pageid, la_Info.committed_lsa.offset);
       if (res == ER_NET_CANT_CONNECT_SERVER || res == ER_OBJ_NO_CONNECT)
 	{
@@ -6459,9 +6501,10 @@ la_check_mem_size (void)
        * vmem size is more than max_mem_size
        * or grow more than 2 times
        */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_EXCEED_MAX_MEM_SIZE, 7, (vsize / ONE_K), la_Info.max_mem_size,
-	      (la_Info.start_vsize / ONE_K), la_Info.required_lsa.pageid, la_Info.required_lsa.offset,
-	      la_Info.committed_lsa.pageid, la_Info.committed_lsa.offset);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_EXCEED_MAX_MEM_SIZE,
+	      7, (vsize / ONE_K), la_Info.max_mem_size,
+	      (la_Info.start_vsize / ONE_K), la_Info.required_lsa.pageid,
+	      la_Info.required_lsa.offset, la_Info.committed_lsa.pageid, la_Info.committed_lsa.offset);
       error = ER_HA_LA_EXCEED_MAX_MEM_SIZE;
     }
 
@@ -6966,9 +7009,10 @@ la_print_log_arv_header (const char *database_name, LOG_ARV_HEADER * hdr, bool v
  *   page_num: test page number
  */
 int
-la_log_page_check (const char *database_name, const char *log_path, INT64 page_num, bool check_applied_info,
-		   bool check_copied_info, bool check_replica_info, bool verbose, LOG_LSA * copied_eof_lsa,
-		   LOG_LSA * copied_append_lsa, LOG_LSA * applied_final_lsa)
+la_log_page_check (const char *database_name, const char *log_path,
+		   INT64 page_num, bool check_applied_info,
+		   bool check_copied_info, bool check_replica_info,
+		   bool verbose, LOG_LSA * copied_eof_lsa, LOG_LSA * copied_append_lsa, LOG_LSA * applied_final_lsa)
 {
   int error = NO_ERROR;
   int res;
@@ -7124,8 +7168,8 @@ check_applied_info_end:
 	{
 	  /* read from the active log file */
 	  error =
-	    la_log_io_read (la_Info.act_log.path, la_Info.act_log.log_vdes, logpage, la_log_phypageid (page_num),
-			    la_Info.act_log.db_logpagesize);
+	    la_log_io_read (la_Info.act_log.path, la_Info.act_log.log_vdes,
+			    logpage, la_log_phypageid (page_num), la_Info.act_log.db_logpagesize);
 	}
 
       if (error != NO_ERROR)
@@ -7141,9 +7185,10 @@ check_applied_info_end:
 	    {
 	      la_print_log_arv_header (database_name, la_Info.arv_log.log_hdr, verbose);
 	    }
-	  printf ("Log page %lld (phy: %lld pageid: %lld, offset %d)\n", (long long int) page_num,
-		  (long long int) la_log_phypageid (page_num), (long long int) logpage->hdr.logical_pageid,
-		  logpage->hdr.offset);
+	  printf ("Log page %lld (phy: %lld pageid: %lld, offset %d)\n",
+		  (long long int) page_num,
+		  (long long int) la_log_phypageid (page_num),
+		  (long long int) logpage->hdr.logical_pageid, logpage->hdr.offset);
 
 	  if (logpage->hdr.offset < 0)
 	    {
@@ -7159,9 +7204,11 @@ check_applied_info_end:
 	    {
 	      lrec = LOG_GET_LOG_RECORD_HEADER (logpage, &lsa);
 
-	      printf ("offset:%04ld (tid:%d bck p:%lld,o:%ld frw p:%lld,o:%ld type:%d)\n", lsa.offset, lrec->trid,
-		      (long long int) lrec->back_lsa.pageid, lrec->back_lsa.offset,
-		      (long long int) lrec->forw_lsa.pageid, lrec->forw_lsa.offset, lrec->type);
+	      printf
+		("offset:%04ld (tid:%d bck p:%lld,o:%ld frw p:%lld,o:%ld type:%d)\n",
+		 lsa.offset, lrec->trid,
+		 (long long int) lrec->back_lsa.pageid, lrec->back_lsa.offset,
+		 (long long int) lrec->forw_lsa.pageid, lrec->forw_lsa.offset, lrec->type);
 	      LSA_COPY (&lsa, &lrec->forw_lsa);
 	    }
 	}
@@ -7272,13 +7319,14 @@ la_remove_archive_logs (const char *db_name, int last_deleted_arv_num, int nxarv
 	}
       if (first_arv_num_to_delete == last_arv_num_to_delete)
 	{
-	  log_dump_log_info (la_Info.loginf_path, false, catmsg, first_arv_num_to_delete, archive_name,
-			     last_arv_num_to_delete, archive_name, info_reason);
+	  log_dump_log_info (la_Info.loginf_path, false, catmsg,
+			     first_arv_num_to_delete, archive_name, last_arv_num_to_delete, archive_name, info_reason);
 	}
       else
 	{
 	  fileio_make_log_archive_name (archive_name_first, la_Info.log_path, db_name, first_arv_num_to_delete);
-	  log_dump_log_info (la_Info.loginf_path, false, catmsg, first_arv_num_to_delete, archive_name_first,
+	  log_dump_log_info (la_Info.loginf_path, false, catmsg,
+			     first_arv_num_to_delete, archive_name_first,
 			     last_arv_num_to_delete, archive_name, info_reason);
 	}
       return last_arv_num_to_delete;
@@ -7454,8 +7502,8 @@ la_need_filter_out (LA_ITEM * item)
   filter = &la_Info.repl_filter;
 
   if (filter->type == REPL_FILTER_NONE
-      || (item->log_type == LOG_REPLICATION_STATEMENT && item->item_type != CUBRID_STMT_TRUNCATE)
-      || strcasecmp (item->class_name, CT_SERIAL_NAME) == 0)
+      || (item->log_type == LOG_REPLICATION_STATEMENT
+	  && item->item_type != CUBRID_STMT_TRUNCATE) || strcasecmp (item->class_name, CT_SERIAL_NAME) == 0)
     {
       return false;
     }
@@ -7801,8 +7849,8 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
     }
 
   error =
-    la_check_duplicated (la_Info.log_path, la_slave_db_name, &la_Info.log_path_lockf_vdes,
-			 &la_Info.last_deleted_archive_num);
+    la_check_duplicated (la_Info.log_path, la_slave_db_name,
+			 &la_Info.log_path_lockf_vdes, &la_Info.last_deleted_archive_num);
   if (error != NO_ERROR)
     {
       return error;
@@ -7872,16 +7920,17 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
       error = la_create_repl_filter ();
       if (error != NO_ERROR)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_REPL_FILTER_GENERIC, 1,
-		  "failed to initialize replication filters");
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		  ER_HA_LA_REPL_FILTER_GENERIC, 1, "failed to initialize replication filters");
 	  return error;
 	}
 
       la_print_repl_filter_info ();
     }
 
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_STARTED, 6, la_Info.required_lsa.pageid,
-	  la_Info.required_lsa.offset, la_Info.committed_lsa.pageid, la_Info.committed_lsa.offset,
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_STARTED, 6,
+	  la_Info.required_lsa.pageid, la_Info.required_lsa.offset,
+	  la_Info.committed_lsa.pageid, la_Info.committed_lsa.offset,
 	  la_Info.committed_rep_lsa.pageid, la_Info.committed_rep_lsa.offset);
 
   /* initialize final_lsa */
@@ -7941,7 +7990,8 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 	  if (max_arv_count_to_delete > 0)
 	    {
 	      la_Info.last_deleted_archive_num =
-		la_remove_archive_logs (la_slave_db_name, la_Info.last_deleted_archive_num,
+		la_remove_archive_logs (la_slave_db_name,
+					la_Info.last_deleted_archive_num,
 					la_Info.act_log.log_hdr->nxarv_num, max_arv_count_to_delete);
 	      if (la_Info.last_deleted_archive_num >= 0)
 		{
@@ -7995,11 +8045,12 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 
 	      if (LSA_GE (&la_Info.final_lsa, &la_Info.committed_lsa))
 		{
-		  er_log_debug (ARG_FILE_LINE, "lowest required page id is %lld",
-				(long long int) la_Info.committed_lsa.pageid);
+		  er_log_debug (ARG_FILE_LINE,
+				"lowest required page id is %lld", (long long int) la_Info.committed_lsa.pageid);
 
 		  error = la_log_commit (false);
-		  if (error == ER_NET_CANT_CONNECT_SERVER || error == ER_OBJ_NO_CONNECT
+		  if (error == ER_NET_CANT_CONNECT_SERVER
+		      || error == ER_OBJ_NO_CONNECT
 		      || error == ER_LC_PARTIALLY_FAILED_TO_FLUSH || error == ER_LC_FAILED_TO_FLUSH_REPL_ITEMS)
 		    {
 		      la_shutdown ();
@@ -8035,8 +8086,8 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 	      /* it can be happend when log file is not synced yet */
 	      if (final_log_hdr.ha_file_status != LOG_HA_FILESTAT_SYNCHRONIZED)
 		{
-		  er_log_debug (ARG_FILE_LINE, "requested pageid (%lld) is not yet exist",
-				(long long int) la_Info.final_lsa.pageid);
+		  er_log_debug (ARG_FILE_LINE,
+				"requested pageid (%lld) is not yet exist", (long long int) la_Info.final_lsa.pageid);
 		  usleep (300 * 1000);
 		  continue;
 		}
@@ -8051,8 +8102,8 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 		  continue;
 		}
 
-	      er_log_debug (ARG_FILE_LINE, "requested pageid (%lld) may be corrupted ",
-			    (long long int) la_Info.final_lsa.pageid);
+	      er_log_debug (ARG_FILE_LINE,
+			    "requested pageid (%lld) may be corrupted ", (long long int) la_Info.final_lsa.pageid);
 
 	      if (retry_count++ < LA_GET_PAGE_RETRY_COUNT)
 		{
@@ -8077,24 +8128,33 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 	      if (log_buf->logpage.hdr.offset < 0)
 		{
 		  la_invalidate_page_buffer (log_buf);
-		  if ((final_log_hdr.ha_file_status == LOG_HA_FILESTAT_SYNCHRONIZED)
-		      && ((la_Info.final_lsa.pageid + 1) <= final_log_hdr.eof_lsa.pageid)
+		  if ((final_log_hdr.ha_file_status ==
+		       LOG_HA_FILESTAT_SYNCHRONIZED)
+		      && ((la_Info.final_lsa.pageid + 1) <=
+			  final_log_hdr.eof_lsa.pageid)
 		      && (la_does_page_exist (la_Info.final_lsa.pageid + 1) != LA_PAGE_DOESNOT_EXIST))
 		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_INVALID_REPL_LOG_PAGEID_OFFSET, 10,
-			      log_buf->logpage.hdr.logical_pageid, log_buf->logpage.hdr.offset,
-			      la_Info.final_lsa.pageid, la_Info.final_lsa.offset, final_log_hdr.append_lsa.pageid,
-			      final_log_hdr.append_lsa.offset, final_log_hdr.eof_lsa.pageid,
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+			      ER_HA_LA_INVALID_REPL_LOG_PAGEID_OFFSET, 10,
+			      log_buf->logpage.hdr.logical_pageid,
+			      log_buf->logpage.hdr.offset,
+			      la_Info.final_lsa.pageid,
+			      la_Info.final_lsa.offset,
+			      final_log_hdr.append_lsa.pageid,
+			      final_log_hdr.append_lsa.offset,
+			      final_log_hdr.eof_lsa.pageid,
 			      final_log_hdr.eof_lsa.offset, final_log_hdr.ha_file_status, la_Info.is_end_of_record);
 
 		      /* make sure to target page does not exist */
-		      if (la_does_page_exist (la_Info.final_lsa.pageid) == LA_PAGE_DOESNOT_EXIST
-			  && la_Info.final_lsa.pageid < final_log_hdr.eof_lsa.pageid)
+		      if (la_does_page_exist (la_Info.final_lsa.pageid) ==
+			  LA_PAGE_DOESNOT_EXIST && la_Info.final_lsa.pageid < final_log_hdr.eof_lsa.pageid)
 			{
-			  er_log_debug (ARG_FILE_LINE, "skip this page (pageid=%lld/%lld/%lld)",
-					(long long int) la_Info.final_lsa.pageid,
-					(long long int) final_log_hdr.eof_lsa.pageid,
-					(long long int) final_log_hdr.append_lsa.pageid);
+			  er_log_debug (ARG_FILE_LINE,
+					"skip this page (pageid=%lld/%lld/%lld)",
+					(long long int) la_Info.final_lsa.
+					pageid,
+					(long long int) final_log_hdr.eof_lsa.
+					pageid, (long long int) final_log_hdr.append_lsa.pageid);
 			  /* skip it */
 			  la_Info.final_lsa.pageid++;
 			  la_Info.final_lsa.offset = 0;
@@ -8103,8 +8163,10 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 		    }
 
 #if defined (LA_VERBOSE_DEBUG)
-		  er_log_debug (ARG_FILE_LINE, "refetch this page... (pageid=%lld/%lld/%lld)",
-				(long long int) la_Info.final_lsa.pageid, (long long int) final_log_hdr.eof_lsa.pageid,
+		  er_log_debug (ARG_FILE_LINE,
+				"refetch this page... (pageid=%lld/%lld/%lld)",
+				(long long int) la_Info.final_lsa.pageid,
+				(long long int) final_log_hdr.eof_lsa.pageid,
 				(long long int) final_log_hdr.append_lsa.pageid);
 #endif
 		  /* wait a moment and retry it */
@@ -8118,11 +8180,15 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 	    }
 	  else
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_INVALID_REPL_LOG_PAGEID_OFFSET, 10,
-		      log_buf->logpage.hdr.logical_pageid, log_buf->logpage.hdr.offset, la_Info.final_lsa.pageid,
-		      la_Info.final_lsa.offset, final_log_hdr.append_lsa.pageid, final_log_hdr.append_lsa.offset,
-		      final_log_hdr.eof_lsa.pageid, final_log_hdr.eof_lsa.offset, final_log_hdr.ha_file_status,
-		      la_Info.is_end_of_record);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+		      ER_HA_LA_INVALID_REPL_LOG_PAGEID_OFFSET, 10,
+		      log_buf->logpage.hdr.logical_pageid,
+		      log_buf->logpage.hdr.offset, la_Info.final_lsa.pageid,
+		      la_Info.final_lsa.offset,
+		      final_log_hdr.append_lsa.pageid,
+		      final_log_hdr.append_lsa.offset,
+		      final_log_hdr.eof_lsa.pageid,
+		      final_log_hdr.eof_lsa.offset, final_log_hdr.ha_file_status, la_Info.is_end_of_record);
 
 	      la_invalidate_page_buffer (log_buf);
 	      /* TODO: continue? error ? just sleep and continue? */
@@ -8151,8 +8217,10 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 #if defined (LA_VERBOSE_DEBUG)
 		  er_log_debug (ARG_FILE_LINE,
 				"this page is grater than eof_lsa. (%lld|%d) > eof (%lld|%d). appended (%lld|%d)",
-				(long long int) la_Info.final_lsa.pageid, la_Info.final_lsa.offset,
-				(long long int) final_log_hdr.eof_lsa.pageid, final_log_hdr.eof_lsa.offset,
+				(long long int) la_Info.final_lsa.pageid,
+				la_Info.final_lsa.offset,
+				(long long int) final_log_hdr.eof_lsa.pageid,
+				final_log_hdr.eof_lsa.offset,
 				(long long int) final_log_hdr.append_lsa.pageid, final_log_hdr.append_lsa.offset);
 #endif
 		  la_Info.is_end_of_record = true;
@@ -8242,7 +8310,8 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 	  if (error != NO_ERROR)
 	    {
 	      /* check connection error */
-	      if (error == ER_NET_CANT_CONNECT_SERVER || error == ER_OBJ_NO_CONNECT
+	      if (error == ER_NET_CANT_CONNECT_SERVER
+		  || error == ER_OBJ_NO_CONNECT
 		  || error == ER_LC_PARTIALLY_FAILED_TO_FLUSH || error == ER_LC_FAILED_TO_FLUSH_REPL_ITEMS)
 		{
 		  la_shutdown ();
@@ -8260,7 +8329,8 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 
 	  /* check and change state */
 	  error = la_change_state ();
-	  if (error == ER_NET_CANT_CONNECT_SERVER || error == ER_OBJ_NO_CONNECT
+	  if (error == ER_NET_CANT_CONNECT_SERVER
+	      || error == ER_OBJ_NO_CONNECT
 	      || error == ER_LC_PARTIALLY_FAILED_TO_FLUSH || error == ER_LC_FAILED_TO_FLUSH_REPL_ITEMS)
 	    {
 	      la_shutdown ();
@@ -8381,8 +8451,8 @@ la_delay_replica (time_t eot_time)
 
 	      snprintf (buffer, sizeof (buffer),
 			"applylogdb paused since it reached a log record committed on master at %s or later.\n"
-			"Adjust or remove %s and restart applylogdb to resume", replica_time_bound_str,
-			prm_get_name (PRM_ID_HA_REPLICA_TIME_BOUND));
+			"Adjust or remove %s and restart applylogdb to resume",
+			replica_time_bound_str, prm_get_name (PRM_ID_HA_REPLICA_TIME_BOUND));
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, buffer);
 
 	      /* applylogdb waits indefinitely */
