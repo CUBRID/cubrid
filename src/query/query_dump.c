@@ -1895,9 +1895,13 @@ qdump_print_aggregate_expression (AGGREGATE_TYPE * aggptr)
 
   fprintf (foutput, "%s ", qdump_option_string (aggptr->option));
 
-  if (!qdump_print_value (&aggptr->operand))
+  REGU_VARIABLE_LIST operand = NULL;
+  for (operand = aggptr->operands; operand != NULL; operand = operand->next)
     {
-      return false;
+      if (!qdump_print_value (&operand->value))
+	{
+	  return false;
+	}
     }
 
   if (!qdump_print_list_id (aggptr->list_id))

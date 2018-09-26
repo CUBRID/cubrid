@@ -5601,15 +5601,7 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
   aggregate->opr_dbtype = (DB_TYPE) tmp;
   aggregate->original_opr_dbtype = aggregate->opr_dbtype;
 
-  /* operand */
-  ptr = stx_build_regu_variable (thread_p, ptr, &aggregate->operand);
-  if (ptr == NULL)
-    {
-      return NULL;
-    }
-
-  /* operand2 */
-  ptr = stx_build_regu_variable (thread_p, ptr, &aggregate->operand2);
+  ptr = stx_build_regu_variable_list (thread_p, ptr, &aggregate->operands);
   if (ptr == NULL)
     {
       return NULL;

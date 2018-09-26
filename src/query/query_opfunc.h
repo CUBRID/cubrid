@@ -92,7 +92,11 @@ extern int qdata_json_depth_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_
 extern int qdata_initialize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_list, QUERY_ID query_id);
 extern int qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMULATOR * acc,
 						 AGGREGATE_ACCUMULATOR_DOMAIN * domain, FUNC_TYPE func_type,
-						 TP_DOMAIN * func_domain, DB_VALUE * value, DB_VALUE * value_next);
+						 TP_DOMAIN * func_domain, DB_VALUE * value);
+extern int qdata_aggregate_multiple_values_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMULATOR * acc,
+							   AGGREGATE_ACCUMULATOR_DOMAIN * domain, FUNC_TYPE func_type,
+							   TP_DOMAIN * func_domain,
+							   std::vector < DB_VALUE * >&db_values);
 extern int qdata_aggregate_accumulator_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMULATOR * acc,
 						       AGGREGATE_ACCUMULATOR_DOMAIN * acc_dom, FUNC_TYPE func_type,
 						       TP_DOMAIN * func_domain, AGGREGATE_ACCUMULATOR * new_acc);

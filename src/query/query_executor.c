@@ -2043,7 +2043,7 @@ qexec_clear_agg_list (XASL_NODE * xasl_p, AGGREGATE_TYPE * list, bool is_final)
 	    }
 	}
 
-      pg_cnt += qexec_clear_regu_var (xasl_p, &p->operand, is_final);
+      pg_cnt += qexec_clear_regu_variable_list (xasl_p, p->operands, is_final);
       p->domain = p->original_domain;
       p->opr_dbtype = p->original_opr_dbtype;
     }
@@ -18261,14 +18261,16 @@ qexec_resolve_domains_for_group_by (BUILDLIST_PROC_NODE * buildlist, OUTPTR_LIST
 	      continue;
 	    }
 
-	  assert (group_agg->operand.type == TYPE_CONSTANT);
+	  REGU_VARIABLE operand = group_agg->operands->value;
 
-	  if ((TP_DOMAIN_TYPE (group_agg->operand.domain) == DB_TYPE_VARIABLE
-	       || TP_DOMAIN_COLLATION_FLAG (group_agg->operand.domain) != TP_DOMAIN_COLL_NORMAL)
-	      && group_agg->operand.value.dbvalptr == val_list_ref_dbvalue)
+	  assert (operand.type == TYPE_CONSTANT);
+
+	  if ((TP_DOMAIN_TYPE (operand.domain) == DB_TYPE_VARIABLE
+	       || TP_DOMAIN_COLLATION_FLAG (operand.domain) != TP_DOMAIN_COLL_NORMAL)
+	      && operand.value.dbvalptr == val_list_ref_dbvalue)
 	    {
 	      /* update domain of aggregate's operand */
-	      group_agg->operand.domain = ref_domain;
+	      operand.domain = ref_domain;
 	      group_agg->opr_dbtype = TP_DOMAIN_TYPE (ref_domain);
 
 	      if (TP_DOMAIN_TYPE (group_agg->domain) == DB_TYPE_VARIABLE
@@ -18461,7 +18463,7 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 	}
 
       /* fetch function operand */
-      if (fetch_peek_dbval (thread_p, &agg_p->operand, &xasl_state->vd, NULL, NULL, NULL, &dbval) != NO_ERROR)
+      if (fetch_peek_dbval (thread_p, &agg_p->operands->value, &xasl_state->vd, NULL, NULL, NULL, &dbval) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -18593,13 +18595,13 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 		  break;
 
 		default:
-		  assert (agg_p->operand.type == TYPE_CONSTANT || agg_p->operand.type == TYPE_DBVAL
-			  || agg_p->operand.type == TYPE_INARITH);
+		  assert (agg_p->operands->value.type == TYPE_CONSTANT || agg_p->operands->value.type == TYPE_DBVAL
+			  || agg_p->operands->value.type == TYPE_INARITH);
 
 		  /* try to cast dbval to double, datetime then time */
 		  tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DOUBLE);
 
-		  if (REGU_VARIABLE_IS_FLAGED (&agg_p->operand, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
+		  if (REGU_VARIABLE_IS_FLAGED (&agg_p->operands->value, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
 		    {
 		      save_heapid = db_change_private_heap (thread_p, 0);
 		    }

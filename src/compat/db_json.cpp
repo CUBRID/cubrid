@@ -2903,6 +2903,20 @@ db_json_objectagg_func (const char *key_str, const JSON_DOC *val_doc, JSON_DOC &
 }
 
 /*
+* db_json_objectagg_func () - Inserts a JSON_OBJECT with possibly multiple members in the result_json
+*
+* object_doc (in)         : the JSON_OBJECT that we want to insert
+* result_json (in)        : the document where we want to insert
+*/
+void
+db_json_objectagg_func (const JSON_DOC &object_doc, JSON_DOC &result_json)
+{
+  assert (result_json.IsObject());
+
+  db_json_merge_two_json_objects (result_json, &object_doc);
+}
+
+/*
  * db_json_keys_func () - Returns the keys from the top-level value of a JSON object as a JSON array
  *
  * return                  : error code

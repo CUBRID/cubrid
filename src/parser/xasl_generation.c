@@ -240,12 +240,34 @@ static REGU_VARIABLE *pt_to_regu_reserved_name (PARSER_CONTEXT * parser, PT_NODE
 static int pt_reserved_id_to_valuelist_index (PARSER_CONTEXT * parser, PT_RESERVED_NAME_ID reserved_id);
 static void pt_mark_spec_list_for_update_clause (PARSER_CONTEXT * parser, PT_NODE * statement, PT_SPEC_FLAG spec_flag);
 
+static void pt_append_value_list_to_info (AGGREGATE_INFO * info, VAL_LIST * value_list);
+static void pt_append_regu_list_to_head (REGU_VARIABLE_LIST head, REGU_VARIABLE_LIST regu_list);
+static void pt_append_single_regu_to_info_out_list (AGGREGATE_INFO * info, REGU_VARIABLE_LIST out_list,
+						    REGU_VARIABLE * regu);
+
 static void update_value_list_out_list_regu_list (AGGREGATE_INFO * info, VAL_LIST * value_list,
 						  REGU_VARIABLE_LIST out_list, REGU_VARIABLE_LIST regu_list,
 						  REGU_VARIABLE * regu);
 
+static void update_value_list_out_list_regu_list (AGGREGATE_INFO * info, VAL_LIST * value_list,
+						  REGU_VARIABLE_LIST out_list, REGU_VARIABLE_LIST regu_list,
+						  std::vector < REGU_VARIABLE * >&regu_var_vector);
+
+static int update_info_scan_regu_list (AGGREGATE_INFO * info, std::vector < REGU_VARIABLE * >&scan_regu_var_vector);
+
 static PT_NODE *pt_alloc_value_list_out_list_regu_list (PARSER_CONTEXT * parser, PT_NODE * node, VAL_LIST ** value_list,
 							REGU_VARIABLE_LIST * out_list, REGU_VARIABLE_LIST * regu_list);
+
+static PT_NODE *pt_create_value_list_from_args (PARSER_CONTEXT * parser, PT_NODE * node, VAL_LIST ** value_list);
+
+static PT_NODE *pt_create_regu_list_from_args (PARSER_CONTEXT * parser, PT_NODE * node, VAL_LIST * value_list,
+					       REGU_VARIABLE_LIST * regu_list);
+
+static PT_NODE *pt_create_operands_from_args (PARSER_CONTEXT * parser, PT_NODE * node, VAL_LIST * value_list,
+					      REGU_VARIABLE_LIST * operands);
+static int pt_create_operands_from_args (std::vector < REGU_VARIABLE * >&regu_vector, REGU_VARIABLE_LIST * operands);
+
+static void pt_set_regu_list_pos_descr_from_idx (REGU_VARIABLE_LIST & regu_list, size_t starting_index);
 
 static PT_NODE *pt_fix_interpolation_aggregate_function_order_by (PARSER_CONTEXT * parser, PT_NODE * node);
 static int pt_fix_buildlist_aggregate_cume_dist_percent_rank (PARSER_CONTEXT * parser, PT_NODE * node,
@@ -3543,15 +3565,19 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
   AGGREGATE_INFO *info = (AGGREGATE_INFO *) arg;
   REGU_VARIABLE_LIST scan_regu_list;
   REGU_VARIABLE_LIST scan_regu_next_list;
-  REGU_VARIABLE_LIST out_list;
+  REGU_VARIABLE_LIST out_list = NULL;
   REGU_VARIABLE_LIST regu_list;
   REGU_VARIABLE_LIST regu_temp;
   VAL_LIST *value_list;
   MOP classop;
   PT_NODE *group_concat_sep_node_save = NULL;
   PT_NODE *pointer = NULL;
+  PT_NODE *pointer_result = NULL;
   PT_NODE *pt_val = NULL;
   PT_NODE *percentile = NULL;
+
+  std::vector < REGU_VARIABLE * >regu_var_vector;
+  std::vector < REGU_VARIABLE * >scan_regu_var_vector;
 
   *continue_walk = PT_CONTINUE_WALK;
 
@@ -3636,25 +3662,20 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	{
 	  if (aggregate_list->function != PT_CUME_DIST && aggregate_list->function != PT_PERCENT_RANK)
 	    {
-	      regu = pt_to_regu_variable (parser, tree->info.function.arg_list, UNBOX_AS_VALUE);
-
-	      scan_regu = pt_to_regu_variable (parser, tree->info.function.arg_list, UNBOX_AS_VALUE);
-
-	      if (!regu || !scan_regu)
+	      for (PT_NODE * arg = tree->info.function.arg_list; arg != NULL; arg = arg->next)
 		{
-		  return NULL;
-		}
+		  // make regu vars from function arguments
+		  regu = pt_to_regu_variable (parser, arg, UNBOX_AS_VALUE);
+		  scan_regu = pt_to_regu_variable (parser, arg, UNBOX_AS_VALUE);
 
-	      if (aggregate_list->function == PT_JSON_OBJECTAGG)
-		{
-		  regu_next = pt_to_regu_variable (parser, tree->info.function.arg_list->next, UNBOX_AS_VALUE);
-
-		  scan_regu_next = pt_to_regu_variable (parser, tree->info.function.arg_list->next, UNBOX_AS_VALUE);
-
-		  if (!regu_next || !scan_regu_next)
+		  if (!regu || !scan_regu)
 		    {
 		      return NULL;
 		    }
+
+		  // store them
+		  regu_var_vector.emplace_back (regu);
+		  scan_regu_var_vector.emplace_back (scan_regu);
 		}
 	    }
 	  else
@@ -3665,6 +3686,9 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 		{
 		  return NULL;
 		}
+
+	      // insert also in the regu_var_vector to ensure compatibility
+	      regu_var_vector.emplace_back (regu);
 	    }
 
 	  aggregate_list->domain = pt_xasl_node_to_domain (parser, tree);
@@ -3742,116 +3766,77 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 		  pt_val->info.value.data_value.i = 0;
 		  parser_append_node (pt_val, info->out_names);
 
-		  pointer =
-		    pt_alloc_value_list_out_list_regu_list (parser, tree->info.function.arg_list, &value_list,
-							    &out_list, &regu_list);
-		  if (pointer == NULL)
+		  // for each element from arg_list we create a corresponding node in the value_list
+		  pointer_result = pt_create_value_list_from_args (parser, tree->info.function.arg_list, &value_list);
+		  if (pointer_result == NULL)
 		    {
-		      PT_ERROR (parser, tree,
-				msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
-						MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+		      PT_ERROR (parser, tree, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
+							      MSGCAT_SEMANTIC_OUT_OF_MEMORY));
 		      return NULL;
 		    }
 
-		  aggregate_list->operand.type = TYPE_CONSTANT;
-		  aggregate_list->operand.domain = pt_xasl_node_to_domain (parser, tree->info.function.arg_list);
-		  aggregate_list->operand.value.dbvalptr = value_list->valp->val;
-
-		  // todo: figure out how to construct here the second operand !!!
-		  // and what other things we need to do
-		  if (aggregate_list->function == PT_JSON_OBJECTAGG)
+		  pointer_result = pt_create_regu_list_from_args (parser, tree->info.function.arg_list,
+								  value_list, &regu_list);
+		  if (pointer_result == NULL)
 		    {
-		      aggregate_list->operand2.type = TYPE_CONSTANT;
-		      aggregate_list->operand2.domain =
-			pt_xasl_node_to_domain (parser, tree->info.function.arg_list->next);
-		      aggregate_list->operand2.value.dbvalptr = value_list->valp->next->val;
-		    }
-
-		  regu_list->value.value.pos_descr.pos_no = info->out_list->valptr_cnt;
-
-		  if (aggregate_list->function == PT_JSON_OBJECTAGG)
-		    {
-		      regu_list->next->value.value.pos_descr.pos_no = info->out_list->valptr_cnt + 1;
-		    }
-
-		  update_value_list_out_list_regu_list (info, value_list, out_list, regu_list, regu);
-
-		  // store the current size
-		  size_t info_out_list_size = info->out_list->valptr_cnt;
-
-		  /* append regu to info->scan_regu_list */
-		  scan_regu_list = regu_varlist_alloc ();
-		  if (!scan_regu_list)
-		    {
-		      PT_ERROR (parser, tree,
-				msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
-						MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+		      PT_ERROR (parser, tree, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
+							      MSGCAT_SEMANTIC_OUT_OF_MEMORY));
 		      return NULL;
 		    }
 
-		  // get the corresponding index of the last element (added in the update function above)
-		  scan_regu->vfetch_to = pt_index_value (info->value_list, info_out_list_size - 1);
-		  scan_regu_list->next = NULL;
-		  scan_regu_list->value = *scan_regu;
-
-		  if (aggregate_list->function == PT_JSON_OBJECTAGG)
+		  pointer_result = pt_create_operands_from_args (parser, tree->info.function.arg_list, value_list,
+								 &aggregate_list->operands);
+		  if (pointer_result == NULL)
 		    {
-		      // actually JSON_OBJECTAGG has 2 arguments in value_list so we need the next element
-		      scan_regu_next->vfetch_to = pt_index_value (info->value_list, info_out_list_size);
-
-		      scan_regu_next_list = regu_varlist_alloc ();
-		      if (!scan_regu_next_list)
-			{
-			  PT_ERROR (parser, tree,
-				    msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
-						    MSGCAT_SEMANTIC_OUT_OF_MEMORY));
-			  return NULL;
-			}
-
-		      scan_regu_next_list->next = NULL;
-		      scan_regu_next_list->value = *scan_regu_next;
-		      scan_regu_list->next = scan_regu_next_list;
-
-		      info->out_list->valptr_cnt++;
-
-		      REGU_VARIABLE_LIST out_list_next = regu_varlist_alloc ();
-		      out_list_next->next = NULL;
-		      out_list_next->value = *regu_next;
-
-		      regu_temp = info->out_list->valptrp;
-		      while (regu_temp->next)
-			{
-			  regu_temp = regu_temp->next;
-			}
-		      regu_temp->next = out_list_next;
+		      PT_ERROR (parser, tree, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
+							      MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+		      return NULL;
 		    }
 
-		  regu_temp = info->scan_regu_list;
-		  while (regu_temp->next)
+		  // this regu_list has the TYPE_POSITION type so we need to set the corresponding indexes for elements
+		  pt_set_regu_list_pos_descr_from_idx (regu_list, info->out_list->valptr_cnt);
+
+		  // until now we have constructed the value_list, regu_list and out_list
+		  // they are based on the current aggregate node information and we need to append them to the global
+		  // information, i.e in info
+		  update_value_list_out_list_regu_list (info, value_list, out_list, regu_list, regu_var_vector);
+
+		  // also we need to update the scan_regu_list from info
+		  if (update_info_scan_regu_list (info, scan_regu_var_vector) != NO_ERROR)
 		    {
-		      regu_temp = regu_temp->next;
+		      PT_ERROR (parser, tree, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
+							      MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+		      return NULL;
 		    }
-		  regu_temp->next = scan_regu_list;
 		}
 	      else
 		{
+		  assert (regu_var_vector.size () == 1);
+
 		  /* for buildlist CUME_DIST/PERCENT_RANK, we have special treatment */
 		  if (pt_fix_buildlist_aggregate_cume_dist_percent_rank (parser, tree->info.function.order_by, info,
 									 regu) != NO_ERROR)
 		    {
 		      return NULL;
 		    }
-		  aggregate_list->operand = *regu;
+
+		  if (pt_create_operands_from_args (regu_var_vector, &aggregate_list->operands) != NO_ERROR)
+		    {
+		      PT_ERROR (parser, tree, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
+							      MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+		      return NULL;
+		    }
 		}
 	    }
 	  else
 	    {
-	      /* handle the buildvalue case, simply uses regu as the operand */
-	      aggregate_list->operand = *regu;
-
-	      if (aggregate_list->function == PT_JSON_OBJECTAGG)
+	      // handle the buildvalue case, simply uses regu as the operand
+	      // for each operand set its correspondent regu
+	      if (pt_create_operands_from_args (regu_var_vector, &aggregate_list->operands) != NO_ERROR)
 		{
-		  aggregate_list->operand2 = *regu_next;
+		  PT_ERROR (parser, tree, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
+							  MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+		  return NULL;
 		}
 	    }
 	}
@@ -3868,7 +3853,7 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	  aggregate_list->opr_dbtype = DB_TYPE_INTEGER;
 
 	  /* hack.  we need to pack some domain even though we don't need one, so we'll pack the int. */
-	  aggregate_list->operand.domain = &tp_Integer_domain;
+	  aggregate_list->operands->value.domain = &tp_Integer_domain;
 	}
 
       /* record the value for pt_to_regu_variable to use in "out arith" */
@@ -25738,6 +25723,54 @@ pt_set_limit_optimization_flags (PARSER_CONTEXT * parser, QO_PLAN * qo_plan, XAS
   return NO_ERROR;
 }
 
+static void
+pt_append_value_list_to_info (AGGREGATE_INFO * info, VAL_LIST * value_list)
+{
+  assert (info != NULL && info->value_list != NULL && value_list != NULL);
+
+  // increase the size with the number of elements in the value_list
+  info->value_list->val_cnt += value_list->val_cnt;
+
+  QPROC_DB_VALUE_LIST value_temp = NULL;
+
+  // get the end of the list
+  for (value_temp = info->value_list->valp; value_temp->next != NULL; value_temp = value_temp->next);
+
+  assert (value_temp != NULL);
+
+  // append to the end
+  value_temp->next = value_list->valp;
+}
+
+static void
+pt_append_regu_list_to_head (REGU_VARIABLE_LIST head, REGU_VARIABLE_LIST regu_list)
+{
+  assert (head != NULL && regu_list != NULL);
+
+  REGU_VARIABLE_LIST regu_temp = NULL;
+
+  // get the end of the list
+  for (regu_temp = head; regu_temp->next != NULL; regu_temp = regu_temp->next);
+
+  assert (regu_temp != NULL);
+
+  // append to the end
+  regu_temp->next = regu_list;
+}
+
+static void
+pt_append_single_regu_to_info_out_list (AGGREGATE_INFO * info, REGU_VARIABLE_LIST out_list, REGU_VARIABLE * regu)
+{
+  assert (info != NULL && info->out_list != NULL && out_list != NULL && regu != NULL);
+
+  // increase the size
+  info->out_list->valptr_cnt++;
+  out_list->next = NULL;
+  out_list->value = *regu;
+
+  pt_append_regu_list_to_head (info->out_list->valptrp, out_list);
+}
+
 /*
  * update_value_list_out_list_regu_list () - 
  *                   update the related lists for pt_to_aggregate_node
@@ -25753,41 +25786,82 @@ static void
 update_value_list_out_list_regu_list (AGGREGATE_INFO * info, VAL_LIST * value_list, REGU_VARIABLE_LIST out_list,
 				      REGU_VARIABLE_LIST regu_list, REGU_VARIABLE * regu)
 {
-  QPROC_DB_VALUE_LIST value_temp = NULL;
-  REGU_VARIABLE_LIST regu_temp = NULL;
+  pt_append_value_list_to_info (info, value_list);
 
-  assert (info != NULL && info->value_list != NULL && info->out_list != NULL && info->regu_list != NULL
-	  && value_list != NULL && out_list != NULL && regu_list != NULL && regu != NULL);
+  pt_append_single_regu_to_info_out_list (info, out_list, regu);
 
-  /* append value holder to value_list */
-  info->value_list->val_cnt += value_list->val_cnt;
+  pt_append_regu_list_to_head (info->regu_list, regu_list);
+}
 
-  value_temp = info->value_list->valp;
-  while (value_temp->next)
+static void
+update_value_list_out_list_regu_list (AGGREGATE_INFO * info, VAL_LIST * value_list, REGU_VARIABLE_LIST out_list,
+				      REGU_VARIABLE_LIST regu_list, std::vector < REGU_VARIABLE * >&regu_var_vector)
+{
+  pt_append_value_list_to_info (info, value_list);
+
+  pt_append_regu_list_to_head (info->regu_list, regu_list);
+
+  REGU_VARIABLE_LIST last_out_list = NULL;
+
+  // get the end of the list
+  for (last_out_list = info->out_list->valptrp; last_out_list->next != NULL; last_out_list = last_out_list->next);
+
+  assert (last_out_list != NULL);
+
+  // the out_list should be null and here we will do the allocation
+  assert (out_list == NULL);
+
+for (REGU_VARIABLE * &regu:regu_var_vector)
     {
-      value_temp = value_temp->next;
+      out_list = regu_varlist_alloc ();
+      out_list->next = NULL;
+      out_list->value = *regu;
+
+      // append it
+      last_out_list->next = out_list;
+      // increase size
+      info->out_list->valptr_cnt++;
+
+      // advance
+      last_out_list = last_out_list->next;
     }
-  value_temp->next = value_list->valp;
+}
 
-  /* append out_list to info->out_list */
-  info->out_list->valptr_cnt++;
-  out_list->next = NULL;
-  out_list->value = *regu;
+static int
+update_info_scan_regu_list (AGGREGATE_INFO * info, std::vector < REGU_VARIABLE * >&scan_regu_var_vector)
+{
+  REGU_VARIABLE_LIST tail = NULL;
+  REGU_VARIABLE_LIST scan_regu_list = NULL;
+  // start fetching for the last scan_regu_var_vector.size() elements
+  size_t index = info->value_list->val_cnt - scan_regu_var_vector.size ();
 
-  regu_temp = info->out_list->valptrp;
-  while (regu_temp->next)
+  // get the end of the list
+  for (tail = info->scan_regu_list; tail->next != NULL; tail = tail->next);
+
+  assert (tail != NULL);
+
+for (REGU_VARIABLE * &scan_regu:scan_regu_var_vector)
     {
-      regu_temp = regu_temp->next;
-    }
-  regu_temp->next = out_list;
+      // get the value from the value_list
+      scan_regu->vfetch_to = pt_index_value (info->value_list, index++);
 
-  /* append regu to info->regu_list */
-  regu_temp = info->regu_list;
-  while (regu_temp->next)
-    {
-      regu_temp = regu_temp->next;
+      scan_regu_list = regu_varlist_alloc ();
+      if (!scan_regu_list)
+	{
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      scan_regu_list->next = NULL;
+      scan_regu_list->value = *scan_regu;
+
+      // append it
+      tail->next = scan_regu_list;
+
+      // advance
+      tail = tail->next;
     }
-  regu_temp->next = regu_list;
+
+  return NO_ERROR;
 }
 
 /*
@@ -25850,6 +25924,154 @@ end:
     }
 
   return node;
+}
+
+/*
+* pt_create_value_list_from_args () -
+* parser (in)         :
+* node (in)           :
+* value_list (in/out) :
+*/
+static PT_NODE *
+pt_create_value_list_from_args (PARSER_CONTEXT * parser, PT_NODE * node, VAL_LIST ** value_list)
+{
+  *value_list = pt_make_val_list (parser, node);
+
+  if (*value_list == NULL)
+    {
+      node = NULL;
+    }
+
+  return node;
+}
+
+/*
+* pt_create_regu_list_from_args () -
+* parser (in)         :
+* node (in)           :
+* value_list (in)     :
+* regu_list (in/out)  :
+*/
+static PT_NODE *
+pt_create_regu_list_from_args (PARSER_CONTEXT * parser, PT_NODE * node, VAL_LIST * value_list,
+			       REGU_VARIABLE_LIST * regu_list)
+{
+  int *attr_offsets = NULL;
+  bool out_of_memory = false;
+
+  attr_offsets = pt_make_identity_offsets (node);
+  if (attr_offsets == NULL)
+    {
+      out_of_memory = true;
+      goto end;
+    }
+
+  *regu_list = pt_to_position_regu_variable_list (parser, node, value_list, attr_offsets);
+  if (*regu_list == NULL)
+    {
+      out_of_memory = true;
+      goto end;
+    }
+
+end:
+  if (attr_offsets != NULL)
+    {
+      free_and_init (attr_offsets);
+    }
+
+  if (out_of_memory)
+    {
+      /* on error, return NULL The error should be reported by the caller */
+      node = NULL;
+    }
+
+  return node;
+}
+
+
+static PT_NODE *
+pt_create_operands_from_args (PARSER_CONTEXT * parser, PT_NODE * node, VAL_LIST * value_list,
+			      REGU_VARIABLE_LIST * operands)
+{
+  assert (*operands == NULL);
+
+  size_t value_list_size = value_list->val_cnt;
+  QPROC_DB_VALUE_LIST crt_val = value_list->valp;
+  PT_NODE *crt_node = node;
+  REGU_VARIABLE_LIST crt_operand = *operands;
+  REGU_VARIABLE_LIST last = NULL;
+
+  for (size_t i = 0; i < value_list_size; i++, crt_val = crt_val->next, crt_node = crt_node->next)
+    {
+      REGU_VARIABLE_LIST crt_operand = regu_varlist_alloc ();
+      if (crt_operand == NULL)
+	{
+	  return NULL;
+	}
+
+      crt_operand->value.type = TYPE_CONSTANT;
+      crt_operand->value.domain = pt_xasl_node_to_domain (parser, crt_node);
+      crt_operand->value.value.dbvalptr = crt_val->val;
+
+      // set head
+      if (*operands == NULL)
+	{
+	  *operands = crt_operand;
+	  last = *operands;
+	}
+      // append
+      else
+	{
+	  last->next = crt_operand;
+	  last = last->next;
+	}
+    }
+
+  return node;
+}
+
+static int
+pt_create_operands_from_args (std::vector < REGU_VARIABLE * >&regu_vector, REGU_VARIABLE_LIST * operands)
+{
+  assert (*operands == NULL);
+
+  REGU_VARIABLE_LIST crt_operand = *operands;
+  REGU_VARIABLE_LIST last = NULL;
+
+for (REGU_VARIABLE * &regu:regu_vector)
+    {
+      REGU_VARIABLE_LIST crt_operand = regu_varlist_alloc ();
+      if (crt_operand == NULL)
+	{
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      crt_operand->value = *regu;
+
+      // set head
+      if (*operands == NULL)
+	{
+	  *operands = crt_operand;
+	  last = *operands;
+	}
+      // append
+      else
+	{
+	  last->next = crt_operand;
+	  last = last->next;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+static void
+pt_set_regu_list_pos_descr_from_idx (REGU_VARIABLE_LIST & regu_list, size_t starting_index)
+{
+  for (REGU_VARIABLE_LIST crt_regu = regu_list; crt_regu != NULL; crt_regu = crt_regu->next)
+    {
+      crt_regu->value.value.pos_descr.pos_no = starting_index++;
+    }
 }
 
 /*

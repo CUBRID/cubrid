@@ -5339,6 +5339,33 @@ db_json_objectagg_dbval (DB_VALUE * json_key, DB_VALUE * json_val, DB_VALUE * js
 }
 
 int
+db_json_objectagg_dbval (DB_VALUE * json_object, DB_VALUE * json_res)
+{
+  // this case should not be possible because we did the checking before
+  // also the method should be called after we already created the json_res (in the first iteration)
+  if (DB_IS_NULL (json_object) || DB_IS_NULL (json_res))
+    {
+      assert (false);
+      db_make_null (json_res);
+      return ER_FAILED;
+    }
+
+  JSON_DOC *object_doc = NULL;
+  JSON_DOC *result_doc = NULL;
+
+  // get the object document
+  object_doc = db_get_json_document (json_object);
+
+  assert (db_value_domain_type (json_res) == DB_TYPE_JSON);
+
+  // get the resulting json document
+  result_doc = db_get_json_document (json_res);
+
+  db_json_objectagg_func (*object_doc, *result_doc);
+  return NO_ERROR;
+}
+
+int
 db_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * json_res)
 {
   JSON_DOC *this_doc;
