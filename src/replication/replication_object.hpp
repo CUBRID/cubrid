@@ -47,7 +47,6 @@ namespace cubreplication
 
     REPL_UNKNOWN
   };
-  typedef enum repl_entry_type REPL_ENTRY_TYPE;
 
   class replication_object : public cubpacking::packable_object
   {
@@ -93,7 +92,7 @@ namespace cubreplication
       virtual bool is_equal (const cubpacking::packable_object *other);
 
       void set_key_value (const DB_VALUE &db_val);
-      single_row_repl_entry (const REPL_ENTRY_TYPE type, const char *class_name);
+      single_row_repl_entry (const repl_entry_type type, const char *class_name);
       single_row_repl_entry () = default;
 
     protected:
@@ -105,7 +104,7 @@ namespace cubreplication
 
       void stringify (string_buffer &str) override;
 
-      REPL_ENTRY_TYPE m_type;
+      repl_entry_type m_type;
       std::string m_class_name;
       DB_VALUE m_key_value;
 
@@ -117,7 +116,7 @@ namespace cubreplication
     public:
       static const int PACKING_ID = 3;
 
-      rec_des_row_repl_entry (REPL_ENTRY_TYPE type, const char *class_name, const RECDES &rec_des);
+      rec_des_row_repl_entry (repl_entry_type type, const char *class_name, const RECDES &rec_des);
 
       rec_des_row_repl_entry () = default;
       ~rec_des_row_repl_entry ();
@@ -138,7 +137,7 @@ namespace cubreplication
     public:
       static const int PACKING_ID = 4;
 
-      changed_attrs_row_repl_entry (REPL_ENTRY_TYPE type, const char *class_name, const OID *inst_oid = NULL);
+      changed_attrs_row_repl_entry (repl_entry_type type, const char *class_name, const OID *inst_oid = NULL);
 
       changed_attrs_row_repl_entry () = default;
       ~changed_attrs_row_repl_entry ();

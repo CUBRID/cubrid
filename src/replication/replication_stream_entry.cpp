@@ -44,18 +44,16 @@ namespace cubreplication
 
   cubstream::entry<replication_object>::packable_factory *stream_entry::get_builder ()
   {
-    // todo - make this thread safe
-    static cubstream::entry<replication_object>::packable_factory replication_factory_po;
-    static bool created = false;
+    return s_replication_factory_po;
+  }
 
-    if (created == false)
-      {
-	replication_factory_po.register_creator<sbr_repl_entry> (sbr_repl_entry::PACKING_ID);
-	replication_factory_po.register_creator<single_row_repl_entry> (single_row_repl_entry::PACKING_ID);
-	replication_factory_po.register_creator<rec_des_row_repl_entry> (rec_des_row_repl_entry::PACKING_ID);
-	replication_factory_po.register_creator<changed_attrs_row_repl_entry> (changed_attrs_row_repl_entry::PACKING_ID);
-	created = true;
-      }
+  cubstream::entry<replication_object>::packable_factory *stream_entry::create_builder ()
+  {
+    static cubstream::entry<replication_object>::packable_factory replication_factory_po;
+    replication_factory_po.register_creator<sbr_repl_entry> (sbr_repl_entry::PACKING_ID);
+    replication_factory_po.register_creator<single_row_repl_entry> (single_row_repl_entry::PACKING_ID);
+    replication_factory_po.register_creator<rec_des_row_repl_entry> (rec_des_row_repl_entry::PACKING_ID);
+    replication_factory_po.register_creator<changed_attrs_row_repl_entry> (changed_attrs_row_repl_entry::PACKING_ID);
 
     return &replication_factory_po;
   }
@@ -152,4 +150,6 @@ namespace cubreplication
 
   size_t stream_entry::s_header_size = stream_entry::compute_header_size ();
 
+  cubstream::entry<replication_object>::packable_factory *stream_entry::s_replication_factory_po =
+	  stream_entry::create_builder ();
 } /* namespace cubreplication */

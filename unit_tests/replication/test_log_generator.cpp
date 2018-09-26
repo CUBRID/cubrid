@@ -145,9 +145,9 @@ namespace test_replication
     cubreplication::sbr_repl_entry *sbr1 = new cubreplication::sbr_repl_entry ("CREATE TABLE t1 (i1 int)", "", "");
     cubreplication::sbr_repl_entry *sbr2 = new cubreplication::sbr_repl_entry ("CREATE TABLE t2 (i1 int)", "", "");
     cubreplication::changed_attrs_row_repl_entry *rbr1 =
-      new cubreplication::changed_attrs_row_repl_entry (cubreplication::REPL_UPDATE, "t1");
+	    new cubreplication::changed_attrs_row_repl_entry (cubreplication::REPL_UPDATE, "t1");
     cubreplication::changed_attrs_row_repl_entry *rbr2 =
-      new cubreplication::changed_attrs_row_repl_entry (cubreplication::REPL_INSERT, "t2");
+	    new cubreplication::changed_attrs_row_repl_entry (cubreplication::REPL_INSERT, "t2");
 
     DB_VALUE key_value;
     DB_VALUE new_att1_value;
@@ -186,7 +186,7 @@ namespace test_replication
 
     lg.pack_stream_entry ();
 
-    cubreplication::log_consumer *lc = new cubreplication::log_consumer (); 
+    cubreplication::log_consumer *lc = new cubreplication::log_consumer ();
     lc->set_stream (created_stream_lc);
 
     /* get stream from log_generator, get its buffer and attached it to log_consumer stream */
@@ -216,7 +216,7 @@ namespace test_replication
 
   void generate_rbr (cubthread::entry *thread_p, cubreplication::log_generator *lg)
   {
-    cubreplication::REPL_ENTRY_TYPE rbr_type = (cubreplication::REPL_ENTRY_TYPE) (std::rand () % 3);
+    cubreplication::repl_entry_type rbr_type = (cubreplication::repl_entry_type) (std::rand () % 3);
 
     cubreplication::changed_attrs_row_repl_entry *rbr = new cubreplication::changed_attrs_row_repl_entry (rbr_type, "t1");
 
@@ -240,7 +240,7 @@ namespace test_replication
   void generate_sbr (cubthread::entry *thread_p, cubreplication::log_generator *lg, int tran_chunk, int tran_obj)
   {
     std::string statement = std::string ("T") + std::to_string (thread_p->tran_index) + std::string ("P") + std::to_string (
-			      tran_chunk)
+				    tran_chunk)
 			    + std::string ("O") + std::to_string (tran_obj);
 
     cubreplication::sbr_repl_entry *sbr = new cubreplication::sbr_repl_entry (statement.c_str (), "test_user",
@@ -295,7 +295,7 @@ namespace test_replication
       {
 	m_thread_entry.tran_index = tran_id;
 
-        m_lg.set_stream (cubreplication::log_generator::get_global_stream ());
+	m_lg.set_stream (cubreplication::log_generator::get_global_stream ());
       }
 
       void execute (cubthread::entry &thread_ref) override
@@ -336,7 +336,7 @@ namespace test_replication
     int res = 0;
 
     init_common_cubrid_modules ();
-    
+
     cubstream::multi_thread_stream *created_stream_lg = new cubstream::multi_thread_stream (100 * 1024 * 1024, 10);
     created_stream_lg->init (0);
 
@@ -347,14 +347,14 @@ namespace test_replication
 
     cubreplication::log_consumer *lc = new cubreplication::log_consumer();
     lc->set_stream (created_stream_lc);
-    
+
     std::cout << "Starting generating replication data .... ";
 
     gen_repl_context_manager ctx_m1;
     cubthread::entry_workpool *gen_worker_pool =
-      cub_th_m->create_worker_pool (GEN_THREAD_CNT, GEN_THREAD_CNT, "test_pool", &ctx_m1,
-				    1,
-				    1);
+	    cub_th_m->create_worker_pool (GEN_THREAD_CNT, GEN_THREAD_CNT, "test_pool", &ctx_m1,
+					  1,
+					  1);
     tasks_running = TASKS_CNT;
     for (int i = 0; i < TASKS_CNT; i++)
       {
