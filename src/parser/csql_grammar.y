@@ -1509,6 +1509,7 @@ int g_original_buffer_len;
 
 %token DOT
 %token RIGHT_ARROW
+%token DOUBLE_RIGHT_ARROW
 %token STRCAT
 %token COMP_NOT_EQ
 %token COMP_GE
@@ -17144,9 +17145,9 @@ reserved_func
 		    $$ = node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-		| identifier RIGHT_ARROW CHAR_STRING
+         | identifier RIGHT_ARROW CHAR_STRING
 		{{
-			PT_NODE * matcher = parser_new_node (this_parser, PT_VALUE);
+			PT_NODE *matcher = parser_new_node (this_parser, PT_VALUE);
 
 			if (matcher)
 			  {
@@ -17158,6 +17159,24 @@ reserved_func
 			  }
 
 			PT_NODE *expr = parser_make_expression (this_parser, PT_JSON_EXTRACT, $1, matcher, NULL);
+			$$ = expr;
+		DBG_PRINT}}
+         | identifier DOUBLE_RIGHT_ARROW CHAR_STRING
+		{{
+			PT_NODE *matcher = parser_new_node (this_parser, PT_VALUE);
+
+			if (matcher)
+			  {
+			    matcher->type_enum = PT_TYPE_CHAR;
+			    matcher->info.value.string_type = ' ';
+			    matcher->info.value.data_value.str =
+			      pt_append_bytes (this_parser, NULL, $3, strlen ($3));
+			    PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, matcher);
+			  }
+
+			PT_NODE *extract_expr = parser_make_expression (this_parser, PT_JSON_EXTRACT, $1, matcher, NULL);			
+			PT_NODE *expr = parser_make_expression (this_parser, PT_JSON_EXTRACT, extract_expr, NULL, NULL);
+
 			$$ = expr;
 		DBG_PRINT}}
 	;
