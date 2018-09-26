@@ -5455,6 +5455,9 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char f
 	}
     }
 
+  /* Be sure that cursor is closed, if query executed with commit and not holdable. */
+  assert (!tran_was_latest_query_committed () || srv_handle->is_holdable == true || err_code == DB_CURSOR_END);
+
   if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V5))
     {
       net_buf_cp_byte (net_buf, fetch_end_flag);
