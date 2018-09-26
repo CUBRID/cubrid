@@ -91,11 +91,14 @@ namespace cubstream
        * (used when reading for stream's buffer) */
       struct stream_read_context
       {
-        stream_read_context () : file_buffer (NULL), read_latch_page_idx (0) {}
-        ~stream_read_context () { assert (file_buffer == NULL); }
+	stream_read_context () : file_buffer (NULL), read_latch_page_idx (0) {}
+	~stream_read_context ()
+	{
+	  assert (file_buffer == NULL);
+	}
 
-        char *file_buffer;
-        mem::buffer_latch_read_id read_latch_page_idx;
+	char *file_buffer;
+	mem::buffer_latch_read_id read_latch_page_idx;
       };
 
       mem::bip_buffer<BIP_BUFFER_READ_PAGES_COUNT> m_bip_buffer;
@@ -157,7 +160,7 @@ namespace cubstream
       char *get_data_from_pos (const stream_position &req_start_pos, const size_t amount,
 			       size_t &actual_read_bytes, stream_read_context &read_context);
       void unlatch_read_data (const mem::buffer_latch_read_id &read_latch_page_idx);
-      
+
       void release_read_context (stream_read_context &read_context);
 
       int wait_for_data (const size_t amount, const STREAM_SKIP_MODE skip_mode);
@@ -184,7 +187,7 @@ namespace cubstream
 
       void set_max_allowed_unflushed_reserved (const size_t max_unflushed)
       {
-        m_max_allowed_unflushed_reserved = max_unflushed;
+	m_max_allowed_unflushed_reserved = max_unflushed;
       }
 
       /* fill factor : if < 1 : no need to flush or throttle the appenders ; if > 1 : need to flush and/or throttle */
@@ -197,12 +200,18 @@ namespace cubstream
       {
 	m_is_stopped = true;
 	m_serial_read_cv.notify_one ();
-        m_drop_pos_cv.notify_one ();
+	m_drop_pos_cv.notify_one ();
       }
 
-      void set_stream_file (stream_file *sf) { m_stream_file = sf; }
+      void set_stream_file (stream_file *sf)
+      {
+	m_stream_file = sf;
+      }
 
-      stream_file *get_stream_file (void) { return m_stream_file; }
+      stream_file *get_stream_file (void)
+      {
+	return m_stream_file;
+      }
 
       void wake_up_flusher (float fill_factor, const stream_position &start_flush_pos, const size_t flush_amount);
       void wait_for_flush_or_readers (const stream_position &last_commit_pos, const stream_position &last_append_pos);

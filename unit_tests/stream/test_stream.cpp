@@ -772,13 +772,13 @@ namespace test_stream
 	      {
 		std::this_thread::sleep_for (std::chrono::microseconds (100));
 
-                float stream_fill_factor = stream_context_manager::g_stream->stream_fill_factor ();
-	        if (stream_fill_factor < 0.45f && stream_context_manager::g_pause_packer)
-	          {
+		float stream_fill_factor = stream_context_manager::g_stream->stream_fill_factor ();
+		if (stream_fill_factor < 0.45f && stream_context_manager::g_pause_packer)
+		  {
 		    std::cout << "     stream_pack_task : need resume producing;  stream_fill_factor:  " << stream_fill_factor << std::endl;
 
 		    stream_context_manager::g_pause_packer = false;
-	          }
+		  }
 
 		if (stream_context_manager::g_stop_packer)
 		  {
@@ -879,7 +879,7 @@ namespace test_stream
 
 	stream_context_manager::g_unpacked_entries_cnt++;
 
-        stream_context_manager::update_stream_drop_position ();
+	stream_context_manager::update_stream_drop_position ();
       }
 
     std::cout << "      End of unpacking thread " << std::endl;
@@ -927,7 +927,7 @@ namespace test_stream
 
 	stream_context_manager::g_read_positions[m_reader_id] = my_curr_pos;
 
-        stream_context_manager::update_stream_drop_position ();
+	stream_context_manager::update_stream_drop_position ();
 
 	//std::this_thread::sleep_for (std::chrono::microseconds (10));
       }
@@ -960,20 +960,20 @@ namespace test_stream
   cubstream::stream_position stream_context_manager::g_read_positions[200];
 
   void stream_context_manager::update_stream_drop_position (void)
-    {
-      if (stream_context_manager::update_drop_pos_from_readers == false)
-        {
-          return;
-        }
+  {
+    if (stream_context_manager::update_drop_pos_from_readers == false)
+      {
+	return;
+      }
 
-      cubstream::stream_position drop_pos = stream_context_manager::g_stream->get_curr_read_position ();
+    cubstream::stream_position drop_pos = stream_context_manager::g_stream->get_curr_read_position ();
 
-      for (int j = 0; j < stream_context_manager::g_read_byte_threads; j++)
-	{
-          drop_pos = MIN (drop_pos, stream_context_manager::g_read_positions[j]);
-	}
-      stream_context_manager::g_stream->set_last_dropable_pos (drop_pos);
-    }
+    for (int j = 0; j < stream_context_manager::g_read_byte_threads; j++)
+      {
+	drop_pos = MIN (drop_pos, stream_context_manager::g_read_positions[j]);
+      }
+    stream_context_manager::g_stream->set_last_dropable_pos (drop_pos);
+  }
 
 
   class stream_producer_throttling
@@ -997,7 +997,7 @@ namespace test_stream
 	    std::cout << "      Stream producer throttled position:  " << pos << " bytes: " << byte_count << std::endl;
 	    stream_context_manager::g_pause_packer = true;
 
-            stream_context_manager::update_stream_drop_position ();
+	    stream_context_manager::update_stream_drop_position ();
 	  }
 
 	return NO_ERROR;
@@ -1132,7 +1132,8 @@ namespace test_stream
     stream_context_manager::g_unpacked_entries = se_unpacked_array;
 
     stream_context_manager::g_cnt_packing_entries_per_thread = TEST_ENTRIES / TEST_PACK_THREADS;
-    stream_context_manager::g_cnt_unpacking_entries_per_thread = (TEST_UNPACK_THREADS == 0) ? 1 : (TEST_ENTRIES / TEST_UNPACK_THREADS);
+    stream_context_manager::g_cnt_unpacking_entries_per_thread = (TEST_UNPACK_THREADS == 0) ? 1 :
+	(TEST_ENTRIES / TEST_UNPACK_THREADS);
     stream_context_manager::g_pack_threads = TEST_PACK_THREADS;
     stream_context_manager::g_unpack_threads = TEST_UNPACK_THREADS;
     stream_context_manager::g_read_byte_threads = TEST_READ_BYTE_THREADS;
@@ -1267,7 +1268,7 @@ namespace test_stream
 
     /* path is current folder */
     system ("mkdir test_stream_folder");
-    my_stream_file->set_path ("test_stream_folder"); 
+    my_stream_file->set_path ("test_stream_folder");
 
 
     cubstream::stream::write_func_t writer_func;
@@ -1281,26 +1282,26 @@ namespace test_stream
     char *buffer = new char [buffer_size];
     if (buffer == NULL)
       {
-        return -1;
+	return -1;
       }
     for (int i = 0; i < (int) buffer_size; i++)
       {
-        buffer[i] =  std::rand () % 256;
+	buffer[i] =  std::rand () % 256;
       }
 
     /* writing directly in stream file */
     for (written_amount = 0; written_amount < desired_amount;)
       {
-        int amount = std::rand () % buffer_size;
-        amount = (amount == 0) ? 10 : amount;
+	int amount = std::rand () % buffer_size;
+	amount = (amount == 0) ? 10 : amount;
 	res = my_stream_file->write (stream_pos, buffer, amount);
 	if (res < 0)
 	  {
 	    assert (false);
 	    return res;
 	  }
-        written_amount = written_amount + amount;
-        stream_pos += amount;
+	written_amount = written_amount + amount;
+	stream_pos += amount;
       }
 
     my_stream_file->drop_volumes_to_pos (written_amount + my_stream_file->get_volume_size ());
@@ -1365,7 +1366,7 @@ namespace test_stream
 
     /* path is current folder */
     system ("mkdir test_stream_folder");
-    my_stream_file->set_path ("test_stream_folder"); 
+    my_stream_file->set_path ("test_stream_folder");
 
     cubstream::stream::write_func_t writer_func;
     cubstream::stream::read_func_t reader_func;
@@ -1382,10 +1383,10 @@ namespace test_stream
 	if (res <= 0)
 	  {
 	    assert (false);
-            res = -1;
+	    res = -1;
 	    return res;
 	  }
-        written_amount += res;
+	written_amount += res;
       }
 
 
@@ -1396,10 +1397,10 @@ namespace test_stream
 	if (res <= 0)
 	  {
 	    assert (false);
-            res = -1;
+	    res = -1;
 	    return res;
 	  }
-        pos += res;
+	pos += res;
       }
 
     res = 0;
@@ -1412,11 +1413,11 @@ namespace test_stream
   }
 
   int test_stream_file_mt (const int pack_threads,
-                           const int unpack_threads,
-                           const int read_bytes_threads,
-                           const size_t stream_buffer_size,
-                           const size_t file_size,
-                           const int test_duration)
+			   const int unpack_threads,
+			   const int read_bytes_threads,
+			   const size_t stream_buffer_size,
+			   const size_t file_size,
+			   const int test_duration)
   {
 #define TEST_PACK_THREADS (pack_threads)
 #define TEST_UNPACK_THREADS (unpack_threads)
@@ -1431,7 +1432,7 @@ namespace test_stream
 
     /* create objects */
     std::cout << "  Testing packing/unpacking of cubstream::entries with sub-objects using same"
-              " stream and multithreading and stream_file attached to stream"
+	      " stream and multithreading and stream_file attached to stream"
 	      << std::endl;
     /* create a stream for packing and add pack objects to stream */
     stream_ready_notifier stream_ready_notify_handler;
@@ -1444,7 +1445,7 @@ namespace test_stream
 
     /* path is current folder */
     system ("mkdir test_stream_folder");
-    my_stream_file->set_path ("test_stream_folder"); 
+    my_stream_file->set_path ("test_stream_folder");
 
     //test_stream_for_pack.set_ready_pos_handler (stream_ready_notify_handler.m_notify_func);
 
@@ -1459,7 +1460,8 @@ namespace test_stream
     stream_context_manager::g_unpacked_entries = se_unpacked_array;
 
     stream_context_manager::g_cnt_packing_entries_per_thread = TEST_ENTRIES / TEST_PACK_THREADS;
-    stream_context_manager::g_cnt_unpacking_entries_per_thread = (TEST_UNPACK_THREADS == 0) ? 1 : TEST_ENTRIES / TEST_UNPACK_THREADS;
+    stream_context_manager::g_cnt_unpacking_entries_per_thread = (TEST_UNPACK_THREADS == 0) ? 1 : TEST_ENTRIES /
+	TEST_UNPACK_THREADS;
     stream_context_manager::g_pack_threads = TEST_PACK_THREADS;
     stream_context_manager::g_unpack_threads = TEST_UNPACK_THREADS;
     stream_context_manager::g_read_byte_threads = TEST_READ_BYTE_THREADS;
@@ -1504,19 +1506,19 @@ namespace test_stream
 
     cubthread::entry_workpool *unpacking_worker_pool  = NULL;
     if (stream_context_manager::g_unpack_threads > 0)
-    {
-      unpacking_worker_pool =
-	cub_th_m->create_worker_pool (stream_context_manager::g_unpack_threads,
-					    stream_context_manager::g_unpack_threads, NULL, &ctx_m2, 1, false);
-    }
+      {
+	unpacking_worker_pool =
+		cub_th_m->create_worker_pool (stream_context_manager::g_unpack_threads,
+					      stream_context_manager::g_unpack_threads, NULL, &ctx_m2, 1, false);
+      }
 
     cubthread::entry_workpool *read_byte_worker_pool = NULL;
     if (stream_context_manager::g_read_byte_threads > 0)
-    {
-      read_byte_worker_pool =
-	cub_th_m->create_worker_pool (stream_context_manager::g_read_byte_threads,
-					    stream_context_manager::g_read_byte_threads, NULL, &ctx_m3, 1, false);
-    }
+      {
+	read_byte_worker_pool =
+		cub_th_m->create_worker_pool (stream_context_manager::g_read_byte_threads,
+					      stream_context_manager::g_read_byte_threads, NULL, &ctx_m3, 1, false);
+      }
 
     for (i = 0; i < stream_context_manager::g_pack_threads; i++)
       {
@@ -1557,24 +1559,24 @@ namespace test_stream
 
     packing_worker_pool->stop_execution ();
     if (stream_context_manager::g_unpack_threads > 0)
-    {
-      unpacking_worker_pool->stop_execution ();
-    }
+      {
+	unpacking_worker_pool->stop_execution ();
+      }
     if (stream_context_manager::g_read_byte_threads > 0)
-    {
-      read_byte_worker_pool->stop_execution ();
-    }
+      {
+	read_byte_worker_pool->stop_execution ();
+      }
 
     /* wait for thread manager thread to end */
     cub_th_m->destroy_worker_pool (packing_worker_pool);
     if (stream_context_manager::g_unpack_threads > 0)
-    {
-      cub_th_m->destroy_worker_pool (unpacking_worker_pool);
-    }
+      {
+	cub_th_m->destroy_worker_pool (unpacking_worker_pool);
+      }
     if (stream_context_manager::g_read_byte_threads > 0)
-    {
-      cub_th_m->destroy_worker_pool (read_byte_worker_pool);
-    }
+      {
+	cub_th_m->destroy_worker_pool (read_byte_worker_pool);
+      }
 
 
     for (i = 0; i < TEST_ENTRIES; i++)
@@ -1592,7 +1594,8 @@ namespace test_stream
 
     std::cout << "Done" << std::endl;
 
-    my_stream_file->drop_volumes_to_pos (stream_context_manager::g_stream->get_last_dropable_pos () + my_stream_file->get_volume_size ());
+    my_stream_file->drop_volumes_to_pos (stream_context_manager::g_stream->get_last_dropable_pos () +
+					 my_stream_file->get_volume_size ());
 
     delete my_stream_file;
 

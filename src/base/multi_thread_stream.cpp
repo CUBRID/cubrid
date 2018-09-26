@@ -137,7 +137,7 @@ namespace cubstream
 	local_buffer = new char[byte_count];
 
 	memcpy (local_buffer, ptr, actual_read_bytes);
-        release_read_context (read_context);
+	release_read_context (read_context);
 
 	ptr = get_data_from_pos (next_pos, byte_count - actual_read_bytes, next_actual_read_bytes, read_context);
 	if (ptr == NULL || next_actual_read_bytes != byte_count - actual_read_bytes)
@@ -146,8 +146,8 @@ namespace cubstream
 
 	    if (ptr != NULL)
 	      {
-                release_read_context (read_context);
-              }
+		release_read_context (read_context);
+	      }
 
 	    delete [] local_buffer;
 	    return err;
@@ -157,7 +157,7 @@ namespace cubstream
 
 	memcpy (local_buffer + actual_read_bytes, ptr, next_actual_read_bytes);
 
-        release_read_context (read_context);
+	release_read_context (read_context);
 	ptr = local_buffer;
       }
 
@@ -165,7 +165,7 @@ namespace cubstream
 
     if (ptr != local_buffer)
       {
-        release_read_context (read_context);
+	release_read_context (read_context);
       }
     else
       {
@@ -348,7 +348,7 @@ namespace cubstream
 	size_t committed_bytes = new_completed_position - m_last_notified_committed_pos;
 
 	err = m_ready_pos_handler (save_last_notified_commited_pos, committed_bytes);
-        m_last_notified_committed_pos = new_completed_position;
+	m_last_notified_committed_pos = new_completed_position;
       }
 
     return err;
@@ -377,18 +377,18 @@ namespace cubstream
 
     if (m_append_position - m_last_dropable_pos > m_max_allowed_unflushed_reserved)
       {
-        /* flush or reader are not keeping up with the writers */
-        wait_for_flush_or_readers (m_last_committed_pos, m_append_position);
+	/* flush or reader are not keeping up with the writers */
+	wait_for_flush_or_readers (m_last_committed_pos, m_append_position);
       }
 
     m_buffer_mutex.lock ();
 
     while (m_append_position - m_last_dropable_pos > m_max_allowed_unflushed_reserved)
       {
-        m_buffer_mutex.unlock ();
-        /* flush or reader are not keeping up with the writers */
-        wait_for_flush_or_readers (m_last_committed_pos, m_append_position);
-        m_buffer_mutex.lock ();
+	m_buffer_mutex.unlock ();
+	/* flush or reader are not keeping up with the writers */
+	wait_for_flush_or_readers (m_last_committed_pos, m_append_position);
+	m_buffer_mutex.lock ();
       }
 
     while (1)
@@ -524,25 +524,25 @@ namespace cubstream
       {
 	m_stat_read_not_in_buffer_cnt++;
 
-        size_t bytes_available_file = m_stream_file->get_max_available_from_pos (req_start_pos);
-        actual_read_bytes = std::min (bytes_available_file, amount);
+	size_t bytes_available_file = m_stream_file->get_max_available_from_pos (req_start_pos);
+	actual_read_bytes = std::min (bytes_available_file, amount);
 
-        read_context.file_buffer = new char[actual_read_bytes];
-        if (read_context.file_buffer == NULL)
-          {
-            return NULL;
-          }
+	read_context.file_buffer = new char[actual_read_bytes];
+	if (read_context.file_buffer == NULL)
+	  {
+	    return NULL;
+	  }
 
 	err = m_stream_file->read (req_start_pos, read_context.file_buffer, actual_read_bytes);
-        if (err != NO_ERROR)
-          {
-            actual_read_bytes = 0;
-            ASSERT_ERROR ();
-            release_read_context (read_context);
+	if (err != NO_ERROR)
+	  {
+	    actual_read_bytes = 0;
+	    ASSERT_ERROR ();
+	    release_read_context (read_context);
 	    return NULL;
-          }
+	  }
 
-        return read_context.file_buffer;
+	return read_context.file_buffer;
       }
 
     std::unique_lock<std::mutex> ulock (m_buffer_mutex);
@@ -555,12 +555,12 @@ namespace cubstream
     if (amount_trail_a == 0 && amount_trail_b == 0)
       {
 	/* no readable regions */
-        assert (false);
-        /* TODO : set different error */
-        er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_NO_MORE_DATA, 3, this->name ().c_str (), req_start_pos,
-                amount);
+	assert (false);
+	/* TODO : set different error */
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_NO_MORE_DATA, 3, this->name ().c_str (), req_start_pos,
+		amount);
 	m_stat_read_no_readable_pos_cnt++;
-        release_read_context (read_context);
+	release_read_context (read_context);
 	return NULL;
       }
 
@@ -572,24 +572,24 @@ namespace cubstream
       {
 	m_stat_read_not_in_buffer_cnt++;
 
-        size_t bytes_available_file = m_stream_file->get_max_available_from_pos (req_start_pos);
-        actual_read_bytes = std::min (bytes_available_file, amount);
+	size_t bytes_available_file = m_stream_file->get_max_available_from_pos (req_start_pos);
+	actual_read_bytes = std::min (bytes_available_file, amount);
 
-        read_context.file_buffer = new char[actual_read_bytes];
-        if (read_context.file_buffer == NULL)
-          {
-            return NULL;
-          }
+	read_context.file_buffer = new char[actual_read_bytes];
+	if (read_context.file_buffer == NULL)
+	  {
+	    return NULL;
+	  }
 
 	err = m_stream_file->read (req_start_pos, read_context.file_buffer, actual_read_bytes);
-        if (err != NO_ERROR)
-          {
-            ASSERT_ERROR ();
-            release_read_context (read_context);
+	if (err != NO_ERROR)
+	  {
+	    ASSERT_ERROR ();
+	    release_read_context (read_context);
 	    return NULL;
-          }
+	  }
 
-        return read_context.file_buffer;
+	return read_context.file_buffer;
       }
 
     if (m_last_committed_pos - req_start_pos <= amount_trail_b)
@@ -611,8 +611,8 @@ namespace cubstream
     if (err != NO_ERROR)
       {
 	m_stat_read_buffer_failed_cnt++;
-        release_read_context (read_context);
-        /* TODO : set error */
+	release_read_context (read_context);
+	/* TODO : set error */
 	return NULL;
       }
 
@@ -629,36 +629,36 @@ namespace cubstream
   {
     if (read_context.file_buffer != NULL)
       {
-        delete[] read_context.file_buffer;
-        read_context.file_buffer = NULL;
+	delete[] read_context.file_buffer;
+	read_context.file_buffer = NULL;
       }
     else
       {
-        unlatch_read_data (read_context.read_latch_page_idx);
+	unlatch_read_data (read_context.read_latch_page_idx);
       }
   }
 
   void multi_thread_stream::wake_up_flusher (float fill_factor, const stream_position &start_flush_pos,
-                                             const size_t flush_amount)
+      const size_t flush_amount)
   {
     /* wake up flusher (if any) :
      * fill_factor : ratio of flush to disk trigger size occupied in the stream buffer
      * start_flush_pos >= m_stream_file->get_ack_start_flush_position : current start flush position should be
      * greater than the position with which the stream_file flush thread has already started to flush */
     if (m_filled_stream_handler
-        && fill_factor > 1.0f
-        && start_flush_pos >= m_stream_file->get_ack_start_flush_position ())
+	&& fill_factor > 1.0f
+	&& start_flush_pos >= m_stream_file->get_ack_start_flush_position ())
       {
 	m_filled_stream_handler (start_flush_pos, flush_amount);
       }
   }
 
-  /* 
+  /*
    *  wait_for_flush_or_readers : waits until stream has enough free space made by flusher (or set of readers)
    *                              This should be called by only writer threads
    */
   void multi_thread_stream::wait_for_flush_or_readers (const stream_position &last_commit_pos,
-                                                       const stream_position &last_append_pos)
+      const stream_position &last_append_pos)
   {
     /* set fill factor to force a flush */
     std::unique_lock<std::mutex> local_lock (m_drop_pos_mutex);
@@ -666,18 +666,19 @@ namespace cubstream
 
     /* wait until flusher advances m_last_dropable_pos */
     m_drop_pos_cv.wait (local_lock,
-                            [&] { return m_is_stopped || 
-                                 (last_append_pos - m_last_dropable_pos <
-                                  m_max_allowed_unflushed_reserved); });
+			[&] { return m_is_stopped ||
+				     (last_append_pos - m_last_dropable_pos <
+				      m_max_allowed_unflushed_reserved);
+			    });
   }
 
   void multi_thread_stream::set_last_dropable_pos (const stream_position &last_dropable_pos)
-    {
-      std::unique_lock<std::mutex> local_lock (m_drop_pos_mutex);
-      m_last_dropable_pos = last_dropable_pos;
-      local_lock.unlock ();
+  {
+    std::unique_lock<std::mutex> local_lock (m_drop_pos_mutex);
+    m_last_dropable_pos = last_dropable_pos;
+    local_lock.unlock ();
 
-      m_drop_pos_cv.notify_one ();
-    }
+    m_drop_pos_cv.notify_one ();
+  }
 
 } /* namespace cubstream */
