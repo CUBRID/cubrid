@@ -4815,14 +4815,14 @@ original_table_spec
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-        | json_table_rule AS identifier
+	| JSON_TABLE json_table_rule AS identifier
 		{{
 			PT_NODE *ent = parser_new_node (this_parser, PT_SPEC);
 			if (ent)
 			  {
-			    ent->info.spec.derived_table = $1;  // json_table_rule
+			    ent->info.spec.derived_table = $2;  // json_table_rule
 			    ent->info.spec.derived_table_type = PT_DERIVED_JSON_TABLE;
-			    ent->info.spec.range_var = $3;      // identifier
+			    ent->info.spec.range_var = $4;      // identifier
 			  }
 			$$ = ent;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -24302,13 +24302,11 @@ json_table_rule
     : {{
 	    json_table_column_count = 0;
       DBG_PRINT}} 
-	JSON_TABLE '(' expression_ ',' json_table_node_rule ')'
+	'(' expression_ ',' json_table_node_rule ')'
       {{
-        // $3 = expression_
-        // $5 = json_table_node_rule
         PT_NODE *jt = parser_new_node (this_parser, PT_JSON_TABLE);
-        jt->info.json_table_info.expr = $4;
-        jt->info.json_table_info.tree = $6;
+        jt->info.json_table_info.expr = $3;
+        jt->info.json_table_info.tree = $5;
 
         $$ = jt;
       DBG_PRINT}}
