@@ -74,11 +74,11 @@ namespace cubreplication
     return true;
   }
 
-  void single_row_repl_entry::set_key_value (DB_VALUE *db_val)
+  void single_row_repl_entry::set_key_value (const DB_VALUE &db_val)
   {
     HL_HEAPID save_heapid;
     save_heapid = db_change_private_heap (NULL, 0);
-    pr_clone_value (db_val, &m_key_value);
+    pr_clone_value (&db_val, &m_key_value);
     (void) db_change_private_heap (NULL, save_heapid);
   }
 
@@ -218,7 +218,7 @@ namespace cubreplication
     (void) db_change_private_heap (my_thread, save_heapid);
   }
 
-  void changed_attrs_row_repl_entry::copy_and_add_changed_value (const ATTR_ID att_id, DB_VALUE *db_val)
+  void changed_attrs_row_repl_entry::copy_and_add_changed_value (const ATTR_ID att_id, const DB_VALUE &db_val)
   {
     HL_HEAPID save_heapid;
 
@@ -235,7 +235,7 @@ namespace cubreplication
     m_changed_attributes.push_back (att_id);
 
     save_heapid = db_change_private_heap (NULL, 0);
-    pr_clone_value (db_val, &last_new_value);
+    pr_clone_value (&db_val, &last_new_value);
     (void) db_change_private_heap (NULL, save_heapid);
   }
 
@@ -479,29 +479,19 @@ namespace cubreplication
     return true;
   }
 
-  rec_des_row_repl_entry::rec_des_row_repl_entry (REPL_ENTRY_TYPE type, const char *class_name, RECDES *rec_des)
+  rec_des_row_repl_entry::rec_des_row_repl_entry (REPL_ENTRY_TYPE type, const char *class_name, const RECDES &rec_des)
     : single_row_repl_entry (type, class_name)
   {
-    if (type != cubreplication::REPL_ENTRY_TYPE::REPL_DELETE)
+    m_rec_des.length = rec_des.length;
+    m_rec_des.area_size = rec_des.area_size;
+    m_rec_des.type = rec_des.type;
+
+    m_rec_des.data = (char *) malloc (m_rec_des.length);
+    if (m_rec_des.data == NULL)
       {
-	assert (rec_des != NULL);
-
-	m_rec_des.length = rec_des->length;
-	m_rec_des.area_size = rec_des->area_size;
-	m_rec_des.type = rec_des->type;
-
-	m_rec_des.data = (char *) malloc (m_rec_des.length);
-	if (m_rec_des.data == NULL)
-	  {
-	    assert (false);
-	  }
-	memcpy (m_rec_des.data, rec_des->data, m_rec_des.length);
+	assert (false);
       }
-    else
-      {
-	memset (&m_rec_des, 0, sizeof (m_rec_des));
-      }
-
+    memcpy (m_rec_des.data, rec_des.data, m_rec_des.length);
   }
 
   rec_des_row_repl_entry::~rec_des_row_repl_entry ()

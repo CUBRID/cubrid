@@ -35,44 +35,81 @@
 
 namespace cubreplication
 {
-  bool enable_log_generator_logging = true;
+  static bool enable_log_generator_logging = true;
 
   log_generator::~log_generator ()
   {
     m_stream_entry.destroy_objects ();
   }
 
-  int log_generator::start_tran_repl (MVCCID mvccid)
+  int
+  log_generator::start_tran_repl (MVCCID mvccid)
   {
-    assert (m_is_initialized);
+    assert (m_has_stream);
     m_stream_entry.set_mvccid (mvccid);
 
     return NO_ERROR;
   }
 
-  int log_generator::set_repl_state (stream_entry_header::TRAN_STATE state)
+  void
+  log_generator::add_statement (repl_info_sbr &stmt_info)
   {
-    m_stream_entry.set_state (state);
+    if (is_replication_disabled ())
+      {
+	return;
+      }
 
-    return NO_ERROR;
+    sbr_repl_entry *repl_obj = new sbr_repl_entry (stmt_info.stmt_text, stmt_info.db_user, stmt_info.sys_prm_context);
+    append_repl_object (*repl_obj);
   }
 
-  int log_generator::append_repl_object (replication_object *object)
+  void
+  log_generator::add_delete_row (const DB_VALUE &key, const char *classname)
   {
-    m_stream_entry.add_packable_entry (object);
+    if (is_row_replication_disabled ())
+      {
+	return;
+      }
 
-    er_log_repl_obj (object, "log_generator::append_repl_object");
+    single_row_repl_entry *repl_obj = new single_row_repl_entry (REPL_DELETE, classname);
+    repl_obj->set_key_value (key);
+    append_repl_object (*repl_obj);
+  }
 
-    return NO_ERROR;
+  void
+  log_generator::add_insert_row (const DB_VALUE &key, const char *classname, const RECDES &record)
+  {
+    if (is_row_replication_disabled ())
+      {
+	return;
+      }
+
+    rec_des_row_repl_entry *repl_obj = new rec_des_row_repl_entry (REPL_INSERT, classname, record);
+    repl_obj->set_key_value (key);
+    append_repl_object (*repl_obj);
+  }
+
+  void
+  log_generator::append_repl_object (replication_object &object)
+  {
+    m_stream_entry.add_packable_entry (&object);
+
+    er_log_repl_obj (&object, "log_generator::append_repl_object");
   }
 
   /* in case inst_oid is not found, create a new entry and append it to pending,
    * else, add value and col_id to it
    * later, when setting key_dbvalue to it, move it to m_stream_entry
    */
-  int log_generator::append_pending_repl_object (cubthread::entry &thread_entry, const OID *class_oid,
-      const OID *inst_oid, ATTR_ID col_id, DB_VALUE *value)
+  int
+  log_generator::add_attribute_change (cubthread::entry &thread_entry, const OID *class_oid, const OID *inst_oid,
+				       ATTR_ID col_id, const DB_VALUE &value)
   {
+    if (is_row_replication_disabled ())
+      {
+	return NO_ERROR;
+      }
+
     changed_attrs_row_repl_entry *entry = NULL;
     char *class_name = NULL;
 
@@ -109,10 +146,10 @@ namespace cubreplication
 
 	m_pending_to_be_added.push_back (entry);
 
-	// FIXME - free class_name
+	free (class_name);
       }
 
-    er_log_repl_obj (entry, "log_generator::append_pending_repl_object");
+    er_log_repl_obj (entry, "log_generator::add_attribute_change");
 
     return NO_ERROR;
   }
@@ -121,9 +158,15 @@ namespace cubreplication
    * it means we are in a special case where update uses recdes, instead
    * of changed db values
    */
-  int log_generator::set_key_to_repl_object (DB_VALUE *key, const OID *inst_oid,
-      char *class_name, RECDES *optional_recdes)
+  int
+  log_generator::add_update_row (const DB_VALUE &key, const OID *inst_oid, char *class_name,
+				 const RECDES *optional_recdes)
   {
+    if (is_row_replication_disabled ())
+      {
+	return NO_ERROR;
+      }
+
     bool found = false;
 
     assert (inst_oid != NULL);
@@ -135,7 +178,7 @@ namespace cubreplication
 	  {
 	    (*repl_obj_it)->set_key_value (key);
 
-	    (void) log_generator::append_repl_object (*repl_obj_it);
+	    append_repl_object (**repl_obj_it);
 	    er_log_repl_obj (*repl_obj_it, "log_generator::set_key_to_repl_object");
 
 	    repl_obj_it = m_pending_to_be_added.erase (repl_obj_it);
@@ -154,12 +197,11 @@ namespace cubreplication
 	    return ER_FAILED;
 	  }
 
-	cubreplication::rec_des_row_repl_entry *entry = new cubreplication::rec_des_row_repl_entry (
-		cubreplication::REPL_ENTRY_TYPE::REPL_UPDATE,
-		class_name,
-		optional_recdes);
+	cubreplication::rec_des_row_repl_entry *entry =
+		new cubreplication::rec_des_row_repl_entry (cubreplication::REPL_ENTRY_TYPE::REPL_UPDATE, class_name,
+		    *optional_recdes);
 
-	(void) log_generator::append_repl_object (entry);
+	append_repl_object (*entry);
 
 	er_log_repl_obj (entry, "log_generator::set_key_to_repl_object");
       }
@@ -168,9 +210,15 @@ namespace cubreplication
   }
 
   /* first fetch the class name, then set key */
-  int log_generator::set_key_to_repl_object (DB_VALUE *key, const OID *inst_oid,
-      const OID *class_oid, RECDES *optional_recdes)
+  int
+  log_generator::add_update_row (const DB_VALUE &key, const OID *inst_oid, const OID *class_oid,
+				 const RECDES *optional_recdes)
   {
+    if (is_row_replication_disabled ())
+      {
+	return NO_ERROR;
+      }
+
     char *class_name;
     int rc;
 
@@ -180,7 +228,7 @@ namespace cubreplication
 	return ER_FAILED;
       }
 
-    rc = set_key_to_repl_object (key, inst_oid, class_name, optional_recdes);
+    rc = add_update_row (key, inst_oid, class_name, optional_recdes);
     free (class_name);
 
     if (rc != NO_ERROR)
@@ -192,8 +240,9 @@ namespace cubreplication
     return NO_ERROR;
   }
 
-  /* in case of error, abort all pending repl objects */
-  void log_generator::abort_pending_repl_objects ()
+  /* in case of error, abort all pending replication objects */
+  void
+  log_generator::abort_pending_repl_objects (void)
   {
     for (changed_attrs_row_repl_entry *entry : m_pending_to_be_added)
       {
@@ -207,25 +256,25 @@ namespace cubreplication
     return &m_stream_entry;
   }
 
-  int log_generator::pack_stream_entry (void)
+  void
+  log_generator::pack_stream_entry (void)
   {
-    if (m_is_initialized)
-      {
-	m_stream_entry.pack ();
-	m_stream_entry.reset ();
-	m_stream_entry.set_state (stream_entry_header::ACTIVE);
-      }
-
-    return NO_ERROR;
+    assert (m_has_stream);
+    m_stream_entry.pack ();
+    m_stream_entry.reset ();
+    // reset state
+    m_stream_entry.set_state (stream_entry_header::ACTIVE);
   }
 
-  void log_generator::pack_group_commit_entry (void)
+  void
+  log_generator::pack_group_commit_entry (void)
   {
-    static stream_entry gc_stream_entry (g_stream, MVCCID_NULL, stream_entry_header::GROUP_COMMIT);
+    static stream_entry gc_stream_entry (s_stream, MVCCID_NULL, stream_entry_header::GROUP_COMMIT);
     gc_stream_entry.pack ();
   }
 
-  void log_generator::set_global_stream (cubstream::multi_thread_stream *stream)
+  void
+  log_generator::set_global_stream (cubstream::multi_thread_stream *stream)
   {
     for (int i = 0; i < log_Gl.trantable.num_total_indices; i++)
       {
@@ -235,10 +284,11 @@ namespace cubreplication
 
 	lg->set_stream (stream);
       }
-    log_generator::g_stream = stream;
+    log_generator::s_stream = stream;
   }
 
-  void log_generator::er_log_repl_obj (replication_object *obj, const char *message)
+  void
+  log_generator::er_log_repl_obj (replication_object *obj, const char *message)
   {
     string_buffer strb;
 
@@ -252,79 +302,69 @@ namespace cubreplication
     _er_log_debug (ARG_FILE_LINE, "%s\n%s", message, strb.get_buffer ());
   }
 
-  void log_generator::check_commit_end_tran (void)
+  void
+  log_generator::check_commit_end_tran (void)
   {
-#if !defined(NDEBUG)
     /* check there are no pending replication objects */
     assert (m_pending_to_be_added.size () == 0);
+  }
+
+  void
+  log_generator::on_transaction_finish (stream_entry_header::TRAN_STATE state)
+  {
+    if (HA_DISABLED ())
+      {
+	return;
+      }
+
+    m_stream_entry.set_state (state);
+    pack_stream_entry ();
+  }
+
+  void
+  log_generator::on_transaction_commit (void)
+  {
+    on_transaction_finish (stream_entry_header::TRAN_STATE::COMMITTED);
+  }
+
+  void
+  log_generator::on_transaction_abort (void)
+  {
+    on_transaction_finish (stream_entry_header::TRAN_STATE::ABORTED);
+  }
+
+  void
+  log_generator::clear_transaction (void)
+  {
+    if (is_replication_disabled ())
+      {
+	return;
+      }
+
+    m_is_row_replication_disabled = false;
+  }
+
+  bool
+  log_generator::is_replication_disabled ()
+  {
+#if defined (SERVER_MODE)
+    return !log_does_allow_replication ();
+#else
+    return true;
 #endif
   }
 
-  cubstream::multi_thread_stream *log_generator::g_stream = NULL;
-
-  int
-  repl_log_insert_with_recdes (THREAD_ENTRY *thread_p, const char *class_name,
-			       cubreplication::REPL_ENTRY_TYPE rbr_type, DB_VALUE *key_dbvalue, RECDES *recdes)
+  bool
+  log_generator::is_row_replication_disabled ()
   {
-    int tran_index;
-    LOG_TDES *tdes;
-    int error = NO_ERROR;
-
-    tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-    tdes = LOG_FIND_TDES (tran_index);
-    if (tdes == NULL)
-      {
-	return ER_FAILED;
-      }
-
-    /* If suppress_replication flag is set, do not write replication log. */
-    if (tdes->suppress_replication != 0)
-      {
-	return NO_ERROR;
-      }
-
-    cubreplication::single_row_repl_entry *new_rbr;
-
-    char *ptr_to_packed_key_value_size = NULL;
-    int packed_key_len = 0;
-
-    new_rbr = new cubreplication::rec_des_row_repl_entry (rbr_type, class_name, recdes);
-    new_rbr->set_key_value (key_dbvalue);
-
-    tdes->replication_log_generator.append_repl_object (new_rbr);
-    return error;
+    return is_replication_disabled () || m_is_row_replication_disabled;
   }
 
-  int
-  repl_log_insert_statement (THREAD_ENTRY *thread_p, REPL_INFO_SBR *repl_info)
+  void
+  log_generator::set_row_replication_disabled (bool disable_if_true)
   {
-    int tran_index;
-    LOG_TDES *tdes;
-    int error = NO_ERROR;
-
-    tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-    tdes = LOG_FIND_TDES (tran_index);
-    if (tdes == NULL)
-      {
-	return ER_FAILED;
-      }
-
-    /* If suppress_replication flag is set, do not write replication log. */
-    if (tdes->suppress_replication != 0)
-      {
-	return NO_ERROR;
-      }
-
-    cubreplication::sbr_repl_entry *new_sbr =
-	    new cubreplication::sbr_repl_entry (repl_info->stmt_text, repl_info->db_user, repl_info->sys_prm_context);
-
-    tdes->replication_log_generator.append_repl_object (new_sbr);
-
-    er_log_debug (ARG_FILE_LINE,
-		  "repl_log_insert_statement: repl_info_sbr { type %d, name %s, stmt_txt %s, user %s, "
-		  "sys_prm_context %s }\n", repl_info->statement_type, repl_info->name, repl_info->stmt_text,
-		  repl_info->db_user, repl_info->sys_prm_context);
-
-    return error;
+    m_is_row_replication_disabled = disable_if_true;
   }
+
+  cubstream::multi_thread_stream *log_generator::s_stream = NULL;
 } /* namespace cubreplication */

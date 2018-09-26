@@ -1915,7 +1915,6 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   tdes->waiting_for_res = NULL;
   tdes->tran_abort_reason = TRAN_NORMAL;
   tdes->num_exec_queries = 0;
-  tdes->suppress_replication = 0;
 
   logtb_tran_clear_update_stats (&tdes->log_upd_stats);
 
@@ -1936,6 +1935,8 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   LSA_SET_NULL (&tdes->rcv.tran_start_postpone_lsa);
   LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
   LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
+
+  tdes->replication_log_generator.clear_transaction ();
 }
 
 /*
@@ -1982,7 +1983,6 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->tran_unique_stats = NULL;
   tdes->num_transient_classnames = 0;
   tdes->first_save_entry = NULL;
-  tdes->suppress_replication = 0;
   RB_INIT (&tdes->lob_locator_root);
   tdes->query_timeout = 0;
   tdes->query_start_time = 0;
@@ -3291,8 +3291,7 @@ logtb_is_interrupted_tran (THREAD_ENTRY * thread_p, bool clear, bool * continue_
 }
 
 /*
- * xlogtb_set_suppress_repl_on_transaction - set or unset suppress_replication flag
- *                                           on transaction descriptor
+ * xlogtb_set_suppress_repl_on_transaction - if set is true, disable row based replication. if set is false, enable it.
  *
  * return: nothing
  *
@@ -3305,8 +3304,7 @@ xlogtb_set_suppress_repl_on_transaction (THREAD_ENTRY * thread_p, int set)
 }
 
 /*
- * logtb_set_suppress_repl_on_transaction - set or unset suppress_replication flag
- *                                          on transaction descriptor
+ * logtb_set_suppress_repl_on_transaction - if set is true, disable row based replication. if set is false, enable it.
  *
  * return: false is returned when the tran_index is not associated
  *              with a transaction
@@ -3324,10 +3322,7 @@ logtb_set_suppress_repl_on_transaction (THREAD_ENTRY * thread_p, int tran_index,
       tdes = LOG_FIND_TDES (tran_index);
       if (tdes != NULL && tdes->trid != NULL_TRANID)
 	{
-	  if (tdes->suppress_replication != set)
-	    {
-	      tdes->suppress_replication = set;
-	    }
+	  tdes->replication_log_generator.set_row_replication_disabled (set != 0);
 	  return true;
 	}
     }
@@ -7126,7 +7121,7 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
       /* Repl_update_lsa */
       db_make_null (&vals[idx]);
       idx++;
-      
+
 
       /* First_save_entry */
       db_make_null (&vals[idx]);
@@ -7194,7 +7189,7 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
       idx++;
 
       /* Suppress_replication */
-      db_make_int (&vals[idx], tdes->suppress_replication);
+      db_make_int (&vals[idx], tdes->replication_log_generator.is_row_replication_disabled ()? 1 : 0);
       idx++;
 
       /* Query_timeout */
@@ -7721,4 +7716,12 @@ logtb_get_check_interrupt (THREAD_ENTRY * thread_p)
 #else // not SERVER_MODE = SA_MODE
   return tran_get_check_interrupt ();
 #endif // not SERVER_MODE = SA_MODE
+}
+
+LOG_TDES *
+logtb_get_tdes (THREAD_ENTRY * thread_p)
+{
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  assert (tdes != NULL);
+  return tdes;
 }

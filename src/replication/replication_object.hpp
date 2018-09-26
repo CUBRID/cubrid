@@ -86,16 +86,17 @@ namespace cubreplication
   class single_row_repl_entry : public replication_object
   {
     public:
+      static const int PACKING_ID = 2;
+
       int apply () override;
 
       virtual bool is_equal (const cubpacking::packable_object *other);
 
-      void set_key_value (DB_VALUE *db_val);
+      void set_key_value (const DB_VALUE &db_val);
+      single_row_repl_entry (const REPL_ENTRY_TYPE type, const char *class_name);
+      single_row_repl_entry () = default;
 
     protected:
-      single_row_repl_entry (const REPL_ENTRY_TYPE type, const char *class_name);
-
-      single_row_repl_entry () = default;
       virtual ~single_row_repl_entry ();
 
       virtual int pack (cubpacking::packer *serializator);
@@ -114,19 +115,19 @@ namespace cubreplication
   class rec_des_row_repl_entry : public single_row_repl_entry
   {
     public:
-      static const int PACKING_ID = 2;
+      static const int PACKING_ID = 3;
 
-      rec_des_row_repl_entry (REPL_ENTRY_TYPE type, const char *class_name, RECDES *rec_des);
+      rec_des_row_repl_entry (REPL_ENTRY_TYPE type, const char *class_name, const RECDES &rec_des);
 
       rec_des_row_repl_entry () = default;
       ~rec_des_row_repl_entry ();
 
-      virtual int pack (cubpacking::packer *serializator) override final;
-      virtual int unpack (cubpacking::packer *serializator) override final;
-      virtual std::size_t get_packed_size (cubpacking::packer *serializator, std::size_t start_offset = 0) override final;
+      virtual int pack (cubpacking::packer *serializator) final;
+      virtual int unpack (cubpacking::packer *serializator) final;
+      virtual std::size_t get_packed_size (cubpacking::packer *serializator, std::size_t start_offset = 0) final;
 
-      bool is_equal (const cubpacking::packable_object *other) override final;
-      void stringify (string_buffer &str) override final;
+      bool is_equal (const cubpacking::packable_object *other) final;
+      void stringify (string_buffer &str) final;
 
     private:
       RECDES m_rec_des;
@@ -135,14 +136,14 @@ namespace cubreplication
   class changed_attrs_row_repl_entry : public single_row_repl_entry
   {
     public:
-      static const int PACKING_ID = 3;
+      static const int PACKING_ID = 4;
 
       changed_attrs_row_repl_entry (REPL_ENTRY_TYPE type, const char *class_name, const OID *inst_oid = NULL);
 
       changed_attrs_row_repl_entry () = default;
       ~changed_attrs_row_repl_entry ();
 
-      void copy_and_add_changed_value (const ATTR_ID att_id, DB_VALUE *db_val);
+      void copy_and_add_changed_value (const ATTR_ID att_id, const DB_VALUE &db_val);
 
       virtual int pack (cubpacking::packer *serializator) override final;
       virtual int unpack (cubpacking::packer *serializator) override final;

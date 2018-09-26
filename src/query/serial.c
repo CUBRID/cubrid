@@ -901,15 +901,10 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
   /* make replication log for the special type of update for serial */
   if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
     {
-      if (tdes->suppress_replication == 0)
+      ret = tdes->replication_log_generator.add_update_row (*key_val, serial_oidp, serial_class_oidp, &new_recdesc);
+      if (ret != NO_ERROR)
 	{
-	  ret =
-	    tdes->replication_log_generator.set_key_to_repl_object (key_val, serial_oidp, serial_class_oidp,
-								    &new_recdesc);
-	  if (ret != NO_ERROR)
-	    {
-	      assert (false);
-	    }
+	  assert (false);
 	}
 
       // todo - why was repl_end_flush_mark used here?

@@ -1702,8 +1702,6 @@ struct log_tdes
   int num_transient_classnames;	/* # of transient classnames by this transaction */
   void *first_save_entry;	/* first save entry for the transaction */
 
-  int suppress_replication;	/* suppress writing replication logs when flag is set */
-
   struct lob_rb_root lob_locator_root;	/* all LOB locators to be created or delete during a transaction */
 
   INT64 query_timeout;		/* a query should be executed before query_timeout time. */
@@ -2243,6 +2241,7 @@ extern bool logtb_am_i_sole_tran (THREAD_ENTRY * thread_p);
 extern void logtb_i_am_not_sole_tran (THREAD_ENTRY * thread_p);
 #endif
 extern bool logtb_am_i_dba_client (THREAD_ENTRY * thread_p);
+extern LOG_TDES *logtb_get_tdes (THREAD_ENTRY * thread_p);
 extern int logtb_assign_tran_index (THREAD_ENTRY * thread_p, TRANID trid, TRAN_STATE state,
 				    const BOOT_CLIENT_CREDENTIAL * client_credential, TRAN_STATE * current_state,
 				    int wait_msecs, TRAN_ISOLATION isolation);

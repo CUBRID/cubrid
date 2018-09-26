@@ -7858,12 +7858,14 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
       if (need_replication && index->type == BTREE_PRIMARY_KEY && error_code == NO_ERROR
 	  && !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
 	{
-          // *INDENT-OFF*
-          cubreplication::repl_entry_type repl_type =
-            is_insert ? cubreplication::REPL_INSERT : cubreplication::REPL_UPDATE;
-	  error_code =
-	    cubreplication::repl_log_insert_with_recdes (thread_p, classname, repl_type, key_dbvalue, recdes);
-          // *INDENT-ON*
+	  if (is_insert)
+	    {
+	      logtb_get_tdes (thread_p)->replication_log_generator.add_insert_row (*key_dbvalue, classname, *recdes);
+	    }
+	  else			// is delete
+	    {
+	      logtb_get_tdes (thread_p)->replication_log_generator.add_delete_row (*key_dbvalue, classname);
+	    }
 	}
       if (error_code != NO_ERROR)
 	{
@@ -8630,13 +8632,9 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	      repl_old_key->data.midxkey.domain = key_domain;
 	    }
 
-#if defined (SERVER_MODE)
-	  if (tdes->suppress_replication == 0)
-	    {
-	      error_code =
-		tdes->replication_log_generator.set_key_to_repl_object (repl_old_key, oid, classname, new_recdes);
-	    }
-#endif
+	  error_code = tdes->replication_log_generator.add_update_row (*repl_old_key, oid, classname, new_recdes);
+	  assert (error_code == NO_ERROR);
+
 	  if (repl_old_key == &old_dbvalue)
 	    {
 	      pr_clear_value (&old_dbvalue);
@@ -8644,13 +8642,9 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	}
       else
 	{
-#if defined (SERVER_MODE)
-	  if (tdes->suppress_replication == 0)
-	    {
-	      error_code =
-		tdes->replication_log_generator.set_key_to_repl_object (repl_old_key, oid, classname, new_recdes);
-	    }
-#endif
+	  error_code = tdes->replication_log_generator.add_update_row (*repl_old_key, oid, classname, new_recdes);
+	  assert (error_code == NO_ERROR);
+
 	  pr_free_ext_value (repl_old_key);
 	  repl_old_key = NULL;
 	}
@@ -11553,7 +11547,7 @@ xrepl_statement (THREAD_ENTRY * thread_p, REPL_INFO * repl_info)
       switch (repl_info->repl_info_type)
 	{
 	case REPL_INFO_TYPE_SBR:
-	  error_code = cubreplication::repl_log_insert_statement (thread_p, (REPL_INFO_SBR *) repl_info->info);
+	  logtb_get_tdes (thread_p)->replication_log_generator.add_statement (*(REPL_INFO_SBR *) repl_info->info);
 	  break;
 	default:
 	  error_code = ER_REPL_ERROR;
