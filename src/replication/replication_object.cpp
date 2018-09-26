@@ -34,7 +34,7 @@ namespace cubreplication
 {
   static const char *repl_entry_type_str[] = { "update", "insert", "delete" };
 
-  single_row_repl_entry::single_row_repl_entry (const REPL_ENTRY_TYPE type, const char *class_name)
+  single_row_repl_entry::single_row_repl_entry (const repl_entry_type type, const char *class_name)
     : m_type (type),
       m_class_name (class_name)
   {
@@ -114,7 +114,7 @@ namespace cubreplication
 
     /* RBR type */
     serializator->unpack_int (&int_val);
-    m_type = (REPL_ENTRY_TYPE) int_val;
+    m_type = (repl_entry_type) int_val;
 
     serializator->unpack_string (m_class_name);
 
@@ -375,7 +375,7 @@ namespace cubreplication
     str ("inst oid: pageid:%d slotid:%d volid:%d\n", m_inst_oid.pageid, m_inst_oid.slotid, m_inst_oid.volid);
   }
 
-  changed_attrs_row_repl_entry::changed_attrs_row_repl_entry (REPL_ENTRY_TYPE type, const char *class_name,
+  changed_attrs_row_repl_entry::changed_attrs_row_repl_entry (repl_entry_type type, const char *class_name,
       const OID *inst_oid)
     : single_row_repl_entry (type, class_name)
   {
@@ -463,7 +463,7 @@ namespace cubreplication
 	return false;
       }
 
-    if (m_type == cubreplication::REPL_ENTRY_TYPE::REPL_DELETE)
+    if (m_type == cubreplication::repl_entry_type::REPL_DELETE)
       {
 	return true;
       }
@@ -479,10 +479,10 @@ namespace cubreplication
     return true;
   }
 
-  rec_des_row_repl_entry::rec_des_row_repl_entry (REPL_ENTRY_TYPE type, const char *class_name, RECDES *rec_des)
+  rec_des_row_repl_entry::rec_des_row_repl_entry (repl_entry_type type, const char *class_name, RECDES *rec_des)
     : single_row_repl_entry (type, class_name)
   {
-    if (type != cubreplication::REPL_ENTRY_TYPE::REPL_DELETE)
+    if (type != cubreplication::repl_entry_type::REPL_DELETE)
       {
 	assert (rec_des != NULL);
 

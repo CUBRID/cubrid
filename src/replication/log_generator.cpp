@@ -104,7 +104,7 @@ namespace cubreplication
 	    return ER_FAILED;
 	  }
 
-	entry = new changed_attrs_row_repl_entry (cubreplication::REPL_ENTRY_TYPE::REPL_UPDATE, class_name, inst_oid);
+	entry = new changed_attrs_row_repl_entry (cubreplication::repl_entry_type::REPL_UPDATE, class_name, inst_oid);
 	entry->copy_and_add_changed_value (col_id, value);
 
 	m_pending_to_be_added.push_back (entry);
@@ -155,7 +155,7 @@ namespace cubreplication
 	  }
 
 	cubreplication::rec_des_row_repl_entry *entry = new cubreplication::rec_des_row_repl_entry (
-		cubreplication::REPL_ENTRY_TYPE::REPL_UPDATE,
+		cubreplication::repl_entry_type::REPL_UPDATE,
 		class_name,
 		optional_recdes);
 
@@ -264,7 +264,7 @@ namespace cubreplication
 
   int
   repl_log_insert_with_recdes (THREAD_ENTRY *thread_p, const char *class_name,
-			       cubreplication::REPL_ENTRY_TYPE rbr_type, DB_VALUE *key_dbvalue, RECDES *recdes)
+			       cubreplication::repl_entry_type rbr_type, DB_VALUE *key_dbvalue, RECDES *recdes)
   {
     int tran_index;
     LOG_TDES *tdes;

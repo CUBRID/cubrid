@@ -216,7 +216,7 @@ namespace test_replication
 
   void generate_rbr (cubthread::entry *thread_p, cubreplication::log_generator *lg)
   {
-    cubreplication::REPL_ENTRY_TYPE rbr_type = (cubreplication::REPL_ENTRY_TYPE) (std::rand () % 3);
+    cubreplication::repl_entry_type rbr_type = (cubreplication::repl_entry_type) (std::rand () % 3);
 
     cubreplication::changed_attrs_row_repl_entry *rbr = new cubreplication::changed_attrs_row_repl_entry (rbr_type, "t1");
 

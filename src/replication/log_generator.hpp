@@ -64,9 +64,6 @@ namespace cubreplication
 
       static cubstream::multi_thread_stream *g_stream;
 
-      /* overload, no implementation of new: prevent heap instantiation of this class */
-      void *operator new (size_t size);
-
     public:
 
       log_generator ()
@@ -123,8 +120,8 @@ namespace cubreplication
   };
 
   int repl_log_insert_with_recdes (THREAD_ENTRY *thread_p, const char *class_name,
-                                   cubreplication::REPL_ENTRY_TYPE rbr_type, DB_VALUE * key_dbvalue, RECDES *recdes);
-  int repl_log_insert_statement (THREAD_ENTRY *thread_p, repl_info_sbr *repl_info);
+                                   cubreplication::repl_entry_type rbr_type, DB_VALUE * key_dbvalue, RECDES *recdes);
+  int repl_log_insert_statement (THREAD_ENTRY *thread_p, REPL_INFO_SBR *repl_info);
 
 } /* namespace cubreplication */
 
