@@ -296,7 +296,7 @@ namespace cubreplication
   }
 
   int
-  repl_log_insert_statement (THREAD_ENTRY *thread_p, REPL_INFO_SBR *repl_info)
+  repl_log_insert_statement (THREAD_ENTRY *thread_p, repl_info_sbr *repl_info)
   {
     int tran_index;
     LOG_TDES *tdes;
