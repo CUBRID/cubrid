@@ -149,5 +149,6 @@ namespace cubreplication
 
   size_t stream_entry::s_header_size = stream_entry::compute_header_size ();
 
-  cubstream::entry<replication_object>::packable_factory *stream_entry::s_replication_factory_po = stream_entry::create_builder ();
+  cubstream::entry<replication_object>::packable_factory *stream_entry::s_replication_factory_po =
+	  stream_entry::create_builder ();
 } /* namespace cubreplication */
