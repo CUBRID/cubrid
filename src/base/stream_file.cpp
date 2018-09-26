@@ -261,7 +261,7 @@ int stream_file::create_volumes_in_range (const stream_position &start_pos, cons
           if (vol_seqno < 0)
             {
               err = ER_STREAM_FILE_INVALID_WRITE;
-              er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2, curr_pos, 0);
+              er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 3, m_stream.name ().c_str (), curr_pos, 0);
               return err;
             }
 
@@ -289,7 +289,7 @@ int stream_file::create_volumes_in_range (const stream_position &start_pos, cons
       if (vol_seqno < 0)
         {
           err = ER_STREAM_FILE_INVALID_WRITE;
-          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2, curr_pos, 0);
+          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 3, m_stream.name ().c_str (), curr_pos, 0);
           return err;
         }
 
@@ -648,7 +648,7 @@ int stream_file::write (const stream_position &pos, const char *buf, const size_
       && pos < m_drop_position)
   {
     err = ER_STREAM_FILE_INVALID_WRITE;
-    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2, pos, amount);
+    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 3, m_stream.name ().c_str (), pos, amount);
     return err;
   }
   else if (m_drop_position == std::numeric_limits<stream_position>::max ())
@@ -686,7 +686,7 @@ int stream_file::write (const stream_position &pos, const char *buf, const size_
       if (vol_seqno < 0)
         {
           err = ER_STREAM_FILE_INVALID_WRITE;
-          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2, curr_pos, 0);
+          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 3, m_stream.name ().c_str (), curr_pos, 0);
           return err;
         }
 
@@ -737,7 +737,7 @@ int stream_file::read (const stream_position &pos, char *buf, const size_t amoun
   if (pos + amount > m_append_position)
     {
       err = ER_STREAM_FILE_INVALID_READ;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2, pos, amount);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 3, m_stream.name ().c_str (), pos, amount);
       return err;
     }
 
@@ -750,7 +750,7 @@ int stream_file::read (const stream_position &pos, char *buf, const size_t amoun
       if (vol_seqno < 0)
         {
           err = ER_STREAM_FILE_INVALID_READ;
-          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2, curr_pos, 0);
+          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 3, m_stream.name ().c_str (), curr_pos, 0);
           return err;
         }
 
