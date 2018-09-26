@@ -96,7 +96,7 @@ namespace cubstream
 
     if (written_bytes < 0)
       {
-	err = ER_FAILED;
+	ASSERT_ERROR_AND_SET (err);
       }
 
     return (err < 0) ? err : written_bytes;
@@ -125,7 +125,7 @@ namespace cubstream
     ptr = get_data_from_pos (first_pos, byte_count, actual_read_bytes, read_context);
     if (ptr == NULL)
       {
-	err = ER_FAILED;
+	ASSERT_ERROR_AND_SET (err);
 	return err;
       }
 
@@ -142,7 +142,7 @@ namespace cubstream
 	ptr = get_data_from_pos (next_pos, byte_count - actual_read_bytes, next_actual_read_bytes, read_context);
 	if (ptr == NULL || next_actual_read_bytes != byte_count - actual_read_bytes)
 	  {
-	    err = ER_FAILED;
+	    ASSERT_ERROR_AND_SET (err);
 
 	    if (ptr != NULL)
 	      {
@@ -218,7 +218,7 @@ namespace cubstream
     ptr = get_data_from_pos (to_read_pos, amount, actual_read_bytes, read_context);
     if (ptr == NULL)
       {
-	err = ER_FAILED;
+	ASSERT_ERROR_AND_SET (err);
 	return err;
       }
 
@@ -235,7 +235,7 @@ namespace cubstream
 	ptr = get_data_from_pos (next_pos, amount - actual_read_bytes, next_actual_read_bytes, read_context);
 	if (ptr == NULL || next_actual_read_bytes != amount - actual_read_bytes)
 	  {
-	    err = ER_FAILED;
+	    ASSERT_ERROR_AND_SET (err);
 
 	    if (ptr != NULL)
 	      {
@@ -285,7 +285,7 @@ namespace cubstream
     ptr = get_data_from_pos (first_pos, byte_count, contiguous_bytes_in_buffer, read_context);
     if (ptr == NULL)
       {
-	err = ER_FAILED;
+	ASSERT_ERROR_AND_SET (err);
 	return err;
       }
 
@@ -598,13 +598,13 @@ namespace cubstream
 	 * this includes case when B does not exit - from start of buffer) */
 	ptr = (char *) ptr_trail_b + amount_trail_b - (m_last_committed_pos - req_start_pos);
 	assert (ptr_trail_b + amount_trail_b > ptr);
-	actual_read_bytes = MIN ((int) amount, ptr_trail_b + amount_trail_b - ptr);
+	actual_read_bytes = std::min ((long long) amount, ptr_trail_b + amount_trail_b - ptr);
       }
     else
       {
 	ptr = (char *) ptr_trail_a + amount_trail_a - (m_last_committed_pos - req_start_pos - amount_trail_b);
 	assert (ptr_trail_a + amount_trail_a > ptr);
-	actual_read_bytes = MIN ((int) amount, ptr_trail_a + amount_trail_a - ptr);
+	actual_read_bytes = std::min ((long long) amount, ptr_trail_a + amount_trail_a - ptr);
       }
 
     err = m_bip_buffer.start_read (ptr, actual_read_bytes, read_context.read_latch_page_idx);

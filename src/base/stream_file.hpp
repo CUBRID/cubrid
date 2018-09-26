@@ -67,6 +67,12 @@ private:
   /* largest stream position written to file */
   stream_position m_append_position;
 
+  /* position of the last drop (no data before this is available) */
+  stream_position m_drop_position;
+  /* oldest avaiable volume (old volume may be removed to save disk space) */
+  int m_start_vol_seqno;
+  std::mutex m_drop_files_mutex;
+
   /* mapping of file sequence to OS file descriptor */
   std::map<int, int> m_file_descriptors;
   std::mutex m_file_descriptor_mutex;
@@ -89,9 +95,6 @@ private:
    * TODO : this should be used only as a nice priting of names, we should allow increasing sequence number
    * even if exceeds the digits in filename */
   int m_filename_digits_seqno;
-
-  /* oldest avaiable volume (old volume may be removed to save disk space) */
-  int m_start_vol_seqno;
 
   /* last position which must be flushed */
   stream_position m_target_flush_position;
@@ -119,7 +122,6 @@ protected:
 
   int create_volumes_in_range (const stream_position &start_pos, const stream_position &end_pos);
 
-  int get_vol_filename_with_position (char *filename, const size_t max_filename, const stream_position &pos);
   int get_vol_filename_with_vol_seqno (char *filename, const size_t max_filename, const int vol_seqno);
 
   int open_vol_seqno (const int vol_seqno, int flags = 0);
