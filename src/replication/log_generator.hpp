@@ -52,7 +52,25 @@ namespace cubreplication
    * class for producing log stream entries
    * only a global instance (per template class) is allowed
    *
-   * todo - a more comprehensive description of replication log generation
+   * The log_generator has an instance in each transaction descriptor.
+   * It stores replication objects into a stream_entry.
+   * Transactions append replication data by using dedicate interface:
+   *  add_statement, add_delete_row, add_insert_row, add_update_row, add_attribute_change
+   * Some of these methods (add_update_row, add_attribute_change) may not add final
+   * replication objects; in such case a special storage is used for "pending replication objects";
+   * this is the case when record descriptor or DB_VALUEs are changed in heap, and later, in request processing
+   * the index key is updated : this transforms a "pending" replication object into a final replication object.
+   *
+   * From point of view of replication, transaction is finalized by:
+   *  on_transaction_commit, on_transaction_abort
+   * These fills transaction information (state, MVCCID) and packs all replication objects into replication stream.
+   *
+   * The replication stream is set at two levels:
+   *  set_stream : this is a private instance method which sets the stream into the the aggregate
+   *               stream_entry object of log_generator. The design of the CUBRID stream code requires that each
+   *               stream_entry instance has its own stream reference (there may be multiple flavours of stream_entry)
+   *  set_global_stream  : this is a static public method which sets stream for each instance of log_generator
+   *                       (of each log transaction descriptor). This is called at replication_node level.
    */
 
   class log_generator
@@ -125,16 +143,17 @@ namespace cubreplication
 
       static void set_global_stream (cubstream::multi_thread_stream *stream);
 
+      void set_row_replication_disabled (bool disable_if_true);
+      bool is_row_replication_disabled (void);
+
+    private:
+
       void set_stream (cubstream::multi_thread_stream *stream)
       {
 	m_stream_entry.set_stream (stream);
 	m_has_stream = true;
       }
 
-      void set_row_replication_disabled (bool disable_if_true);
-      bool is_row_replication_disabled (void);
-
-    private:
       void set_tran_repl_info (MVCCID mvccid, stream_entry_header::TRAN_STATE state);
 
       char *get_classname (const OID &class_oid);     // todo - optimize this step
