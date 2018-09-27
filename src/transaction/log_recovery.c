@@ -5335,12 +5335,10 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
   LOG_REC_CHKPT *chkpt;		/* Checkpoint log record */
   LOG_REC_2PC_START *start_2pc;	/* A 2PC start log record */
   LOG_REC_2PC_PREPCOMMIT *prepared;	/* A 2PC prepare to commit */
-  LOG_REC_REPLICATION *repl_log;
 
   int undo_length;		/* Undo length */
   int redo_length;		/* Redo length */
   unsigned int nobj_locks;
-  int repl_log_length;
   size_t size;
 
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
@@ -5635,13 +5633,8 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
 
     case LOG_REPLICATION_DATA:
     case LOG_REPLICATION_STATEMENT:
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_REPLICATION), &log_lsa, log_pgptr);
-
-      repl_log = (LOG_REC_REPLICATION *) ((char *) log_pgptr->area + log_lsa.offset);
-      repl_log_length = (int) GET_ZIP_LEN (repl_log->length);
-
-      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_REPLICATION), &log_lsa, log_pgptr);
-      LOG_READ_ADD_ALIGN (thread_p, repl_log_length, &log_lsa, log_pgptr);
+      // obsolete
+      assert (false);
       break;
 
     case LOG_DUMMY_HA_SERVER_STATE:

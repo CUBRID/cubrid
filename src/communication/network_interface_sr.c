@@ -7574,7 +7574,7 @@ srepl_set_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int re
 
       if (success == NO_ERROR)
 	{
-	  success = xrepl_set_info (thread_p, &repl_info);
+	  success = xrepl_statement (thread_p, &repl_info);
 	}
     }
 

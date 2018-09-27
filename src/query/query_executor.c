@@ -12304,10 +12304,8 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
       lock_start_instant_lock_mode (tran_index);
     }
 
-  if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
-    {
-      repl_start_flush_mark (thread_p);
-    }
+  // todo - why was repl_start_flush_mark used here?
+  // http://jira.cubrid.org/browse/CBRD-22340
 
   tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
   curr_mvcc_info = &tdes->mvccinfo;
@@ -12542,10 +12540,9 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
       scan_cache_inited = false;
     }
 
-  if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
-    {
-      repl_end_flush_mark (thread_p, false);
-    }
+  // todo - why was repl_end_flush_mark used here?
+  // http://jira.cubrid.org/browse/CBRD-22340
+
   if (savepoint_used)
     {
       if (lock_is_instant_lock_mode (tran_index))
@@ -12584,10 +12581,8 @@ exit_on_error:
       scan_cache_inited = false;
     }
 
-  if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
-    {
-      repl_end_flush_mark (thread_p, true);
-    }
+  // todo - why was repl_end_flush_mark used here?
+  // http://jira.cubrid.org/browse/CBRD-22340
 
   if (savepoint_used)
     {

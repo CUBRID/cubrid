@@ -146,12 +146,16 @@ typedef enum
 
   RVLOG_OUTSIDE_LOGICAL_REDO_NOOP = 97,
 
+  // -->
+  // old replication based on transaction log is obsolete
   RVREPL_DATA_INSERT = 98,
   RVREPL_DATA_UPDATE = 99,
   RVREPL_DATA_DELETE = 100,
   RVREPL_STATEMENT = 101,
   RVREPL_DATA_UPDATE_START = 102,
   RVREPL_DATA_UPDATE_END = 103,
+  // old replication based on transaction log is obsolete
+  // <--
 
   RVVAC_COMPLETE = 104,
   RVVAC_START_JOB = 105,

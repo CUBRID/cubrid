@@ -306,11 +306,9 @@ namespace cubstream
 	return total_size;
       };
 
-      int add_packable_entry (PO *entry)
+      void add_packable_entry (PO *entry)
       {
 	m_packable_entries.push_back (entry);
-
-	return NO_ERROR;
       };
 
       PO *get_object_at (int pos)

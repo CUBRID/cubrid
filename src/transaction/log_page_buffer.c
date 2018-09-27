@@ -3562,17 +3562,17 @@ prior_lsa_gen_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_RECTYP
       node->data_header_length = sizeof (LOG_REC_SYSOP_END);
       break;
 
-    case LOG_REPLICATION_DATA:
-    case LOG_REPLICATION_STATEMENT:
-      node->data_header_length = sizeof (LOG_REC_REPLICATION);
-      break;
-
     case LOG_2PC_START:
       node->data_header_length = sizeof (LOG_REC_2PC_START);
       break;
 
     case LOG_END_CHKPT:
       node->data_header_length = sizeof (LOG_REC_CHKPT);
+      break;
+
+    case LOG_REPLICATION_DATA:
+    case LOG_REPLICATION_STATEMENT:
+      assert (false);
       break;
 
     default:
@@ -3693,14 +3693,17 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY * thread_p, LOG_RECTYPE rec_type, LO
     case LOG_2PC_COMMIT_INFORM_PARTICPS:
     case LOG_2PC_ABORT_INFORM_PARTICPS:
     case LOG_SYSOP_END:
-    case LOG_REPLICATION_DATA:
-    case LOG_REPLICATION_STATEMENT:
     case LOG_2PC_START:
     case LOG_START_CHKPT:
     case LOG_SYSOP_ATOMIC_START:
       assert (rlength == 0 && rdata == NULL);
 
       error_code = prior_lsa_gen_record (thread_p, node, rec_type, ulength, udata);
+      break;
+
+    case LOG_REPLICATION_DATA:
+    case LOG_REPLICATION_STATEMENT:
+      assert (false);
       break;
 
     default:

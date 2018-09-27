@@ -243,15 +243,19 @@ logtb_allocate_tdes_area (int num_indices)
    * each transaction descriptor, and keep the address of the area for
    * deallocation purposes at shutdown time.
    */
-  area_size = num_indices * sizeof (LOG_TDES) + sizeof (LOG_ADDR_TDESAREA);
-  area = (LOG_ADDR_TDESAREA *) malloc (area_size);
+  area = (LOG_ADDR_TDESAREA *) malloc (sizeof (LOG_ADDR_TDESAREA));
   if (area == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, area_size);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LOG_ADDR_TDESAREA));
       return NULL;
     }
 
-  area->tdesarea = ((LOG_TDES *) ((char *) area + sizeof (LOG_ADDR_TDESAREA)));
+  area->tdesarea = new LOG_TDES[num_indices];
+  if (area->tdesarea == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, num_indices * sizeof (LOG_TDES));
+      return NULL;
+    }
   area->next = log_Gl.trantable.area;
 
   /* 
@@ -348,6 +352,9 @@ logtb_expand_trantable (THREAD_ENTRY * thread_p, int num_new_indices)
   error_code = wfg_alloc_nodes (thread_p, total_indices);
   if (error_code != NO_ERROR)
     {
+      /* *INDENT-OFF* */
+      delete[] area->tdesarea;
+      /* *INDENT-ON* */
       free_and_init (area);
       goto error;
     }
@@ -361,6 +368,9 @@ logtb_expand_trantable (THREAD_ENTRY * thread_p, int num_new_indices)
 	(MVCCID *) realloc ((void *) mvcc_table->transaction_lowest_active_mvccids, total_indices * sizeof (MVCCID));
       if (mvcc_table->transaction_lowest_active_mvccids == NULL)
 	{
+	  /* *INDENT-OFF* */
+	  delete[] area->tdesarea;
+	  /* *INDENT-ON* */
 	  free_and_init (area);
 	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, total_indices * sizeof (MVCCID));
@@ -371,6 +381,9 @@ logtb_expand_trantable (THREAD_ENTRY * thread_p, int num_new_indices)
 
   if (qmgr_allocate_tran_entries (thread_p, total_indices) != NO_ERROR)
     {
+      /* *INDENT-OFF* */
+      delete[] area->tdesarea;
+      /* *INDENT-ON* */
       free_and_init (area);
       error_code = ER_FAILED;
       goto error;
@@ -681,6 +694,9 @@ logtb_undefine_trantable (THREAD_ENTRY * thread_p)
       while (area != NULL)
 	{
 	  log_Gl.trantable.area = area->next;
+	  /* *INDENT-OFF* */
+	  delete[] area->tdesarea;
+	  /* *INDENT-ON* */
 	  free_and_init (area);
 	  area = log_Gl.trantable.area;
 	}
@@ -1511,11 +1527,6 @@ logtb_free_tran_index (THREAD_ENTRY * thread_p, int tran_index)
     }
 
   logtb_clear_tdes (thread_p, tdes);
-  if (tdes->repl_records)
-    {
-      free_and_init (tdes->repl_records);
-    }
-  tdes->num_repl_records = 0;
   if (tdes->topops.max != 0)
     {
       free_and_init (tdes->topops.stack);
@@ -1876,14 +1887,6 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
     }
   tdes->modified_class_list = NULL;
 
-  for (i = 0; i < tdes->cur_repl_record; i++)
-    {
-      if (tdes->repl_records[i].repl_data)
-	{
-	  free_and_init (tdes->repl_records[i].repl_data);
-	}
-    }
-
   save_heap_id = db_change_private_heap (thread_p, 0);
   for (i = 0; i < tdes->num_exec_queries && i < MAX_NUM_EXEC_QUERY_HISTORY; i++)
     {
@@ -1904,11 +1907,6 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
     }
   (void) db_change_private_heap (thread_p, save_heap_id);
 
-  tdes->cur_repl_record = 0;
-  tdes->append_repl_recidx = -1;
-  tdes->fl_mark_repl_recidx = -1;
-  LSA_SET_NULL (&tdes->repl_insert_lsa);
-  LSA_SET_NULL (&tdes->repl_update_lsa);
   tdes->first_save_entry = NULL;
   tdes->query_timeout = 0;
   tdes->query_start_time = 0;
@@ -1917,7 +1915,6 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   tdes->waiting_for_res = NULL;
   tdes->tran_abort_reason = TRAN_NORMAL;
   tdes->num_exec_queries = 0;
-  tdes->suppress_replication = 0;
 
   logtb_tran_clear_update_stats (&tdes->log_upd_stats);
 
@@ -1938,6 +1935,8 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   LSA_SET_NULL (&tdes->rcv.tran_start_postpone_lsa);
   LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
   LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
+
+  tdes->replication_log_generator.clear_transaction ();
 }
 
 /*
@@ -1983,15 +1982,7 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->max_unique_btrees = 0;
   tdes->tran_unique_stats = NULL;
   tdes->num_transient_classnames = 0;
-  tdes->num_repl_records = 0;
-  tdes->cur_repl_record = 0;
-  tdes->append_repl_recidx = -1;
-  tdes->fl_mark_repl_recidx = -1;
-  tdes->repl_records = NULL;
-  LSA_SET_NULL (&tdes->repl_insert_lsa);
-  LSA_SET_NULL (&tdes->repl_update_lsa);
   tdes->first_save_entry = NULL;
-  tdes->suppress_replication = 0;
   RB_INIT (&tdes->lob_locator_root);
   tdes->query_timeout = 0;
   tdes->query_start_time = 0;
@@ -3300,8 +3291,7 @@ logtb_is_interrupted_tran (THREAD_ENTRY * thread_p, bool clear, bool * continue_
 }
 
 /*
- * xlogtb_set_suppress_repl_on_transaction - set or unset suppress_replication flag
- *                                           on transaction descriptor
+ * xlogtb_set_suppress_repl_on_transaction - if set is true, disable row based replication. if set is false, enable it.
  *
  * return: nothing
  *
@@ -3314,8 +3304,7 @@ xlogtb_set_suppress_repl_on_transaction (THREAD_ENTRY * thread_p, int set)
 }
 
 /*
- * logtb_set_suppress_repl_on_transaction - set or unset suppress_replication flag
- *                                          on transaction descriptor
+ * logtb_set_suppress_repl_on_transaction - if set is true, disable row based replication. if set is false, enable it.
  *
  * return: false is returned when the tran_index is not associated
  *              with a transaction
@@ -3333,10 +3322,7 @@ logtb_set_suppress_repl_on_transaction (THREAD_ENTRY * thread_p, int tran_index,
       tdes = LOG_FIND_TDES (tran_index);
       if (tdes != NULL && tdes->trid != NULL_TRANID)
 	{
-	  if (tdes->suppress_replication != set)
-	    {
-	      tdes->suppress_replication = set;
-	    }
+	  tdes->replication_log_generator.set_row_replication_disabled (set != 0);
 	  return true;
 	}
     }
@@ -7106,73 +7092,42 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
       db_make_int (&vals[idx], tdes->num_transient_classnames);
       idx++;
 
+      // todo - replace fields with new system values
+      // -->
       /* Repl_max_records */
-      db_make_int (&vals[idx], tdes->num_repl_records);
+      db_make_int (&vals[idx], 0);
       idx++;
 
       /* Repl_records */
-      ptr_val = tdes->repl_records;
-      if (ptr_val == NULL)
-	{
-	  db_make_null (&vals[idx]);
-	}
-      else
-	{
-	  snprintf (buf, sizeof (buf), "0x%08" PRIx64, (UINT64) ptr_val);
-	  error = db_make_string_copy (&vals[idx], buf);
-	  if (error != NO_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
-	}
+      db_make_null (&vals[idx]);
       idx++;
 
       /* Repl_current_index */
-      db_make_int (&vals[idx], tdes->cur_repl_record);
+      db_make_int (&vals[idx], 0);
       idx++;
 
       /* Repl_append_index */
-      db_make_int (&vals[idx], tdes->append_repl_recidx);
+      db_make_int (&vals[idx], 0);
       idx++;
 
       /* Repl_flush_marked_index */
-      db_make_int (&vals[idx], tdes->fl_mark_repl_recidx);
+      db_make_int (&vals[idx], 0);
       idx++;
 
       /* Repl_insert_lsa */
-      lsa_to_string (buf, sizeof (buf), &tdes->repl_insert_lsa);
-      error = db_make_string_copy (&vals[idx], buf);
+      db_make_null (&vals[idx]);
       idx++;
-      if (error != NO_ERROR)
-	{
-	  goto exit_on_error;
-	}
 
       /* Repl_update_lsa */
-      lsa_to_string (buf, sizeof (buf), &tdes->repl_update_lsa);
-      error = db_make_string_copy (&vals[idx], buf);
+      db_make_null (&vals[idx]);
       idx++;
-      if (error != NO_ERROR)
-	{
-	  goto exit_on_error;
-	}
+
 
       /* First_save_entry */
-      ptr_val = tdes->first_save_entry;
-      if (ptr_val == NULL)
-	{
-	  db_make_null (&vals[idx]);
-	}
-      else
-	{
-	  snprintf (buf, sizeof (buf), "0x%08" PRIx64, (UINT64) ptr_val);
-	  error = db_make_string_copy (&vals[idx], buf);
-	  if (error != NO_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
-	}
+      db_make_null (&vals[idx]);
       idx++;
+      // <--
+      // todo - replace fields with new system values
 
       /* Tran_unique_stats */
       ptr_val = tdes->tran_unique_stats;
@@ -7234,7 +7189,7 @@ logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg
       idx++;
 
       /* Suppress_replication */
-      db_make_int (&vals[idx], tdes->suppress_replication);
+      db_make_int (&vals[idx], tdes->replication_log_generator.is_row_replication_disabled ()? 1 : 0);
       idx++;
 
       /* Query_timeout */
@@ -7761,4 +7716,12 @@ logtb_get_check_interrupt (THREAD_ENTRY * thread_p)
 #else // not SERVER_MODE = SA_MODE
   return tran_get_check_interrupt ();
 #endif // not SERVER_MODE = SA_MODE
+}
+
+LOG_TDES *
+logtb_get_tdes (THREAD_ENTRY * thread_p)
+{
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  assert (tdes != NULL);
+  return tdes;
 }

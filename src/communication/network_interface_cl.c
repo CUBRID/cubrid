@@ -8520,7 +8520,7 @@ repl_set_info (REPL_INFO * repl_info)
   int r = ER_FAILED;
 
   THREAD_ENTRY *thread_p = enter_server ();
-  r = xrepl_set_info (thread_p, repl_info);
+  r = xrepl_statement (thread_p, repl_info);
   exit_server (*thread_p);
   return r;
 #endif /* !CS_MODE */

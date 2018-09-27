@@ -11092,6 +11092,8 @@ heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HE
   PR_TYPE *pr_type;		/* Primitive type array function structure */
   TP_DOMAIN_STATUS dom_status;
   int ret = NO_ERROR;
+  LOG_TDES *log_tdes = NULL;
+  THREAD_ENTRY *thread_p = NULL;
 
   /* 
    * check to make sure the attr_info has been used, should never be empty.
@@ -11168,6 +11170,9 @@ heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HE
     }
 
   value->state = HEAP_WRITTEN_ATTRVALUE;
+
+  logtb_get_tdes (thread_p)->replication_log_generator.add_attribute_change (attr_info->class_oid, *inst_oid, attrid,
+									     *attr_val);
 
   return ret;
 

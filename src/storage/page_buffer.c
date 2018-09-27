@@ -13641,11 +13641,13 @@ retry:
 
   private_idx = PGBUF_PRIVATE_LIST_FROM_LRU_INDEX (lru_cand_idx);
 
+#if 0
   er_log_debug (ARG_FILE_LINE, "pgbuf_assign_private_lru_id: "
 		"%s ID %d will use private LRU %d (LRU_idx:%d). "
 		"List has %d assigned sessions and %d pages\n",
 		(is_vacuum) ? "Vacuum worker" : "Session",
 		id, private_idx, lru_cand_idx, quota->private_lru_session_cnt[private_idx], cnt_lru);
+#endif
 
   if (lru_cand_zero_sessions != -1)
     {

@@ -42,7 +42,7 @@ namespace cubpacking
       virtual bool is_equal (const packable_object *other) = 0;
 
       /* used at packing to get info on how much memory to reserve */
-      virtual size_t get_packed_size (packer *serializator) = 0;
+      virtual std::size_t get_packed_size (packer *serializator, std::size_t start_offset = 0) = 0;
   };
 
 } /* namespace cubpacking */

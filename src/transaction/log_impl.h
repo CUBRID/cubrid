@@ -604,8 +604,8 @@ enum log_rectype
   LOG_DUMMY_FILLPAGE_FORARCHIVE = 38,	/* Indicates logical end of current page so it could be archived safely. No-op
 					 * This record is not generated no more. It's kept for backward compatibility. */
 #endif
-  LOG_REPLICATION_DATA = 39,	/* Replication log for insert, delete or update */
-  LOG_REPLICATION_STATEMENT = 40,	/* Replication log for schema, index, trigger or system catalog updates */
+  LOG_REPLICATION_DATA = 39,	/* obsolete */
+  LOG_REPLICATION_STATEMENT = 40,	/* obsolete */
 #if 0
   LOG_UNLOCK_COMMIT = 41,	/* for repl_agent to guarantee the order of */
   LOG_UNLOCK_ABORT = 42,	/* transaction commit, we append the unlock info. before calling lock_unlock_all() */
@@ -708,15 +708,6 @@ struct log_rec_mvcc_redo
 {
   LOG_REC_REDO redo;		/* Location of recovery data */
   MVCCID mvccid;		/* MVCC Identifier for transaction */
-};
-
-/* replication log structure */
-typedef struct log_rec_replication LOG_REC_REPLICATION;
-struct log_rec_replication
-{
-  LOG_LSA lsa;
-  int length;
-  int rcvindex;
 };
 
 /* Log the time of termination of transaction */
@@ -1461,14 +1452,6 @@ struct mvcctable
   { MVCC_STATUS_INITIALIZER, NULL, NULL, 0, PTHREAD_MUTEX_INITIALIZER }
 #endif
 
-enum log_repl_flush
-{
-  LOG_REPL_DONT_NEED_FLUSH = -1,	/* no flush */
-  LOG_REPL_COMMIT_NEED_FLUSH = 0,	/* log must be flushed at commit */
-  LOG_REPL_NEED_FLUSH = 1	/* log must be flushed at commit and rollback */
-};
-typedef enum log_repl_flush LOG_REPL_FLUSH;
-
 /* Definitions used to identify MVCC log records. Used by log manager and
  * vacuum.
  */
@@ -1498,18 +1481,6 @@ typedef enum log_repl_flush LOG_REPL_FLUSH;
 #define LOG_IS_VACUUM_DATA_BUFFER_RECOVERY(rcvindex) \
   (((rcvindex) == RVVAC_LOG_BLOCK_APPEND || (rcvindex) == RVVAC_LOG_BLOCK_SAVE) \
    && log_Gl.rcv_phase == LOG_RECOVERY_REDO_PHASE)
-
-typedef struct log_repl LOG_REPL_RECORD;
-struct log_repl
-{
-  LOG_RECTYPE repl_type;	/* LOG_REPLICATION_DATA or LOG_REPLICATION_SCHEMA */
-  LOG_RCVINDEX rcvindex;
-  OID inst_oid;
-  LOG_LSA lsa;
-  char *repl_data;		/* the content of the replication log record */
-  int length;
-  LOG_REPL_FLUSH must_flush;
-};
 
 /* Information of database external redo log records */
 typedef struct log_rec_dbout_redo LOG_REC_DBOUT_REDO;
@@ -1729,16 +1700,7 @@ struct log_tdes
   MODIFIED_CLASS_ENTRY *modified_class_list;	/* List of classes made dirty. */
 
   int num_transient_classnames;	/* # of transient classnames by this transaction */
-  int num_repl_records;		/* # of replication records */
-  int cur_repl_record;		/* # of replication records */
-  int append_repl_recidx;	/* index of append replication records */
-  int fl_mark_repl_recidx;	/* index of flush marked replication record at first */
-  struct log_repl *repl_records;	/* replication records */
-  LOG_LSA repl_insert_lsa;	/* insert or mvcc update target lsa */
-  LOG_LSA repl_update_lsa;	/* in-place update target lsa */
   void *first_save_entry;	/* first save entry for the transaction */
-
-  int suppress_replication;	/* suppress writing replication logs when flag is set */
 
   struct lob_rb_root lob_locator_root;	/* all LOB locators to be created or delete during a transaction */
 
@@ -1765,10 +1727,11 @@ struct log_tdes
   bool block_global_oldest_active_until_commit;
 
   LOG_RCV_TDES rcv;
-
+  /* *INDENT-OFF* */
 #if defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))
   cubreplication::log_generator replication_log_generator;
 #endif
+  /* *INDENT-ON* */
 };
 
 typedef struct log_addr_tdesarea LOG_ADDR_TDESAREA;
@@ -2278,6 +2241,7 @@ extern bool logtb_am_i_sole_tran (THREAD_ENTRY * thread_p);
 extern void logtb_i_am_not_sole_tran (THREAD_ENTRY * thread_p);
 #endif
 extern bool logtb_am_i_dba_client (THREAD_ENTRY * thread_p);
+extern LOG_TDES *logtb_get_tdes (THREAD_ENTRY * thread_p);
 extern int logtb_assign_tran_index (THREAD_ENTRY * thread_p, TRANID trid, TRAN_STATE state,
 				    const BOOT_CLIENT_CREDENTIAL * client_credential, TRAN_STATE * current_state,
 				    int wait_msecs, TRAN_ISOLATION isolation);
