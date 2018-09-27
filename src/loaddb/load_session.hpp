@@ -49,17 +49,17 @@ namespace cubload
   class session;
 
   /*
-  * cubload::load_task
+  * cubload::load_worker
   *    extends cubthread::entry_task
   *
   * description
   *    Loaddb worker thread task, which does parsing and inserting of data rows within a transaction
   */
-  class load_task : public cubthread::entry_task
+  class load_worker : public cubthread::entry_task
   {
     public:
-      load_task () = delete; // Default c-tor: deleted.
-      load_task (std::string &batch, int batch_id, session *session, css_conn_entry conn_entry);
+      load_worker () = delete; // Default c-tor: deleted.
+      load_worker (std::string &batch, int batch_id, session *session, css_conn_entry conn_entry);
 
       void execute (context_type &thread_ref) final;
 
@@ -112,9 +112,10 @@ namespace cubload
 
       void wait_for_completion (int max_batch_id);
 
-      void error ();
-      void abort ();
+      void abort (std::string &&err_msg);
       bool aborted ();
+
+      void inc_total_objects ();
 
     private:
       void notify_waiting_threads ();
@@ -123,14 +124,13 @@ namespace cubload
 
       struct stats
       {
-	std::atomic_int errors;
-	std::atomic_int objects;
+	std::atomic_int total_objects;
 	std::atomic_int defaults;
 	std::atomic_int failures;
 	std::atomic_int last_commit;
       };
 
-      friend class load_task;
+      friend class load_worker;
 
       std::mutex m_commit_mutex;
       std::condition_variable m_commit_cond_var;

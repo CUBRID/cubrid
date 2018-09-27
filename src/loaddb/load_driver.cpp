@@ -61,18 +61,6 @@ namespace cubload
     return m_parser.parse ();
   }
 
-  void
-  driver::scanner_error (const std::string &msg)
-  {
-    m_loader->on_failure ();
-  }
-
-  void
-  driver::parser_error (const location &loc, const std::string &msg)
-  {
-    m_loader->on_error ();
-  }
-
   int
   driver::scanner_lineno ()
   {

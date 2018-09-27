@@ -998,21 +998,6 @@ namespace cubload
       }
     ldr_Current_context->instance_started = 0;
   }
-
-  void
-  sa_loader::on_error ()
-  {
-    ldr_increment_err_total ();
-    fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_SYNTAX_ERR),
-	     ldr_Driver->scanner_lineno (), ldr_Driver->scanner_text ());
-  }
-
-  void
-  sa_loader::on_failure ()
-  {
-    ldr_load_failed_error ();
-    ldr_increment_fails ();
-  }
 }
 /* *INDENT-ON* */
 

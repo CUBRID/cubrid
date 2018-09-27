@@ -89,21 +89,8 @@ namespace cubload
       // Parse functions
       int parse (std::istream &iss);
 
-      /*
-       * Syntax error functions
-       * @param loc where the syntax error is found.
-       * @param msg a description of the syntax error.
-       */
-      void parser_error (const location &loc, const std::string &msg);
-
-      /*
-       * Lexer error function
-       * @param msg a description of the lexer error.
-       */
-      void scanner_error (const std::string &msg);
-
       int scanner_lineno (); // Returns line number through scanner
-      const char *scanner_text(); // Returns text matched by the current token through scanner
+      const char *scanner_text (); // Returns text matched by the current token through scanner
 
       scanner &get_scanner ();
 

@@ -28,6 +28,7 @@
 #include "heap_attrinfo.h"
 #include "heap_file.h"
 #include "load_common.hpp"
+#include "load_error_manager.hpp"
 #include "storage_common.h"
 
 namespace cubload
@@ -42,6 +43,8 @@ namespace cubload
       explicit server_loader (session *session);
       ~server_loader () override;
 
+      void set_error_manager (error_manager *error_manager);
+
       void check_class (const char *class_name, int class_id) override;
       int setup_class (const char *class_name) override;
       void setup_class (string_type *class_name, class_command_spec_type *cmd_spec) override;
@@ -50,9 +53,6 @@ namespace cubload
       void start_line (int object_id) override;
       void process_line (constant_type *cons) override;
       void finish_line () override;
-
-      void on_error () override;
-      void on_failure () override;
 
     private:
       void process_constant (constant_type *cons, int attr_idx);
@@ -63,10 +63,11 @@ namespace cubload
       ATTR_ID *m_attr_ids;
       heap_cache_attrinfo m_attr_info;
 
-      heap_scancache m_scan_cache;
-      bool m_scan_cache_started;
+      heap_scancache m_scancache;
+      bool m_scancache_started;
 
       session *m_session;
+      error_manager *m_error_manager;
   };
 
 } // namespace cubload

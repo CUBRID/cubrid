@@ -41,9 +41,6 @@ namespace cubload
       void start_line (int object_id) override;
       void process_line (constant_type *cons) override;
       void finish_line () override;
-
-      void on_error () override;
-      void on_failure () override;
   };
 }
 /* *INDENT-ON* */

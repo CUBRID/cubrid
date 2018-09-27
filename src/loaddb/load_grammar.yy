@@ -29,8 +29,8 @@
 %locations
 %no-lines
 
-%parse-param { driver &driver_ }
-%parse-param { loader &loader_ }
+%parse-param { driver &m_driver }
+%parse-param { loader &m_loader }
 
 %define parse.assert
 
@@ -63,7 +63,7 @@ namespace cubload
 #include "load_scanner.hpp"
 
 #undef yylex
-#define yylex driver_.get_scanner ().yylex
+#define yylex m_driver.get_scanner ().yylex
 
 /*#define PARSER_DEBUG*/
 
@@ -193,7 +193,7 @@ loader_start :
   }
   loader_lines
   {
-    loader_.destroy ();
+    m_loader.destroy ();
   }
   ;
 
@@ -213,12 +213,12 @@ line :
   one_line NL
   {
     DBG_PRINT ("one_line");
-    driver_.get_semantic_helper ().set_in_instance_line (true);
+    m_driver.get_semantic_helper ().set_in_instance_line (true);
   }
   |
   NL
   {
-    driver_.get_semantic_helper ().set_in_instance_line (true);
+    m_driver.get_semantic_helper ().set_in_instance_line (true);
   }
   ;
 
@@ -226,14 +226,14 @@ one_line :
   command_line
   {
     DBG_PRINT ("command_line");
-    driver_.get_semantic_helper ().reset_pool_indexes ();
+    m_driver.get_semantic_helper ().reset_pool_indexes ();
   }
   |
   instance_line
   {
     DBG_PRINT ("instance_line");
-    loader_.finish_line ();
-    driver_.get_semantic_helper ().reset_pool_indexes ();
+    m_loader.finish_line ();
+    m_driver.get_semantic_helper ().reset_pool_indexes ();
   }
   ;
 
@@ -252,7 +252,7 @@ command_line :
 id_command :
   CMD_ID IDENTIFIER INT_LIT
   {
-    loader_.check_class ($2->val, atoi ($3->val));
+    m_loader.check_class ($2->val, atoi ($3->val));
 
     free_string (&$2);
     free_string (&$3);
@@ -262,7 +262,7 @@ id_command :
 class_command :
   CMD_CLASS IDENTIFIER class_command_spec
   {
-    loader_.setup_class ($2, $3);
+    m_loader.setup_class ($2, $3);
 
     free_string (&$2);
     free_class_command_spec (&$3);
@@ -273,25 +273,25 @@ class_command_spec :
   attribute_list
   {
     DBG_PRINT ("attribute_list");
-    $$ = driver_.get_semantic_helper ().make_class_command_spec (LDR_ATTRIBUTE_ANY, $1, NULL);
+    $$ = m_driver.get_semantic_helper ().make_class_command_spec (LDR_ATTRIBUTE_ANY, $1, NULL);
   }
   |
   attribute_list constructor_spec
   {
     DBG_PRINT ("attribute_list constructor_spec");
-    $$ = driver_.get_semantic_helper ().make_class_command_spec (LDR_ATTRIBUTE_ANY, $1, $2);
+    $$ = m_driver.get_semantic_helper ().make_class_command_spec (LDR_ATTRIBUTE_ANY, $1, $2);
   }
   |
   attribute_list_qualifier attribute_list
   {
     DBG_PRINT ("attribute_list_qualifier attribute_list");
-    $$ = driver_.get_semantic_helper ().make_class_command_spec ($1, $2, NULL);
+    $$ = m_driver.get_semantic_helper ().make_class_command_spec ($1, $2, NULL);
   }
   |
   attribute_list_qualifier attribute_list constructor_spec
   {
     DBG_PRINT ("attribute_list_qualifier attribute_list constructor_spec");
-    $$ = driver_.get_semantic_helper ().make_class_command_spec ($1, $2, $3);
+    $$ = m_driver.get_semantic_helper ().make_class_command_spec ($1, $2, $3);
   }
   ;
 
@@ -331,19 +331,19 @@ attribute_names :
   attribute_name
   {
     DBG_PRINT ("attribute_name");
-    $$ = driver_.get_semantic_helper ().append_string_list (NULL, $1);
+    $$ = m_driver.get_semantic_helper ().append_string_list (NULL, $1);
   }
   |
   attribute_names attribute_name
   {
     DBG_PRINT ("attribute_names attribute_name");
-    $$ = driver_.get_semantic_helper ().append_string_list ($1, $2);
+    $$ = m_driver.get_semantic_helper ().append_string_list ($1, $2);
   }
   |
   attribute_names COMMA attribute_name
   {
     DBG_PRINT ("attribute_names COMMA attribute_name");
-    $$ = driver_.get_semantic_helper ().append_string_list ($1, $3);
+    $$ = m_driver.get_semantic_helper ().append_string_list ($1, $3);
   }
   ;
 
@@ -357,7 +357,7 @@ attribute_name :
 constructor_spec :
   CMD_CONSTRUCTOR IDENTIFIER constructor_argument_list
   {
-    $$ = driver_.get_semantic_helper ().make_constructor_spec ($2, $3);
+    $$ = m_driver.get_semantic_helper ().make_constructor_spec ($2, $3);
   }
   ;
 
@@ -377,19 +377,19 @@ argument_names :
   argument_name
   {
     DBG_PRINT ("argument_name");
-    $$ = driver_.get_semantic_helper ().append_string_list (NULL, $1);
+    $$ = m_driver.get_semantic_helper ().append_string_list (NULL, $1);
   }
   |
   argument_names argument_name
   {
     DBG_PRINT ("argument_names argument_name");
-    $$ = driver_.get_semantic_helper ().append_string_list ($1, $2);
+    $$ = m_driver.get_semantic_helper ().append_string_list ($1, $2);
   }
   |
   argument_names COMMA argument_name
   {
     DBG_PRINT ("argument_names COMMA argument_name");
-    $$ = driver_.get_semantic_helper ().append_string_list ($1, $3);
+    $$ = m_driver.get_semantic_helper ().append_string_list ($1, $3);
   }
   ;
 
@@ -403,19 +403,19 @@ argument_name :
 instance_line :
   object_id
   {
-    loader_.start_line ($1);
+    m_loader.start_line ($1);
   }
   |
   object_id constant_list
   {
-    loader_.start_line ($1);
-    loader_.process_line ($2);
+    m_loader.start_line ($1);
+    m_loader.process_line ($2);
   }
   |
   constant_list
   {
-    loader_.start_line (-1);
-    loader_.process_line ($1);
+    m_loader.start_line (-1);
+    m_loader.process_line ($1);
   }
   ;
 
@@ -430,13 +430,13 @@ constant_list :
   constant
   {
     DBG_PRINT ("constant");
-    $$ = driver_.get_semantic_helper ().append_constant_list (NULL, $1);
+    $$ = m_driver.get_semantic_helper ().append_constant_list (NULL, $1);
   }
   |
   constant_list constant
   {
     DBG_PRINT ("constant_list constant");
-    $$ = driver_.get_semantic_helper ().append_constant_list ($1, $2);
+    $$ = m_driver.get_semantic_helper ().append_constant_list ($1, $2);
   }
   ;
 
@@ -454,16 +454,16 @@ constant :
   | sql2_datetime            { $$ = $1; }
   | sql2_datetimeltz         { $$ = $1; }
   | sql2_datetimetz          { $$ = $1; }
-  | NULL_                    { $$ = driver_.get_semantic_helper ().make_constant (LDR_NULL, NULL); }
-  | TIME_LIT4                { $$ = driver_.get_semantic_helper ().make_constant (LDR_TIME, $1); }
-  | TIME_LIT42               { $$ = driver_.get_semantic_helper ().make_constant (LDR_TIME, $1); }
-  | TIME_LIT3                { $$ = driver_.get_semantic_helper ().make_constant (LDR_TIME, $1); }
-  | TIME_LIT31               { $$ = driver_.get_semantic_helper ().make_constant (LDR_TIME, $1); }
-  | TIME_LIT2                { $$ = driver_.get_semantic_helper ().make_constant (LDR_TIME, $1); }
-  | TIME_LIT1                { $$ = driver_.get_semantic_helper ().make_constant (LDR_TIME, $1); }
-  | INT_LIT                  { $$ = driver_.get_semantic_helper ().make_constant (LDR_INT, $1); }
-  | REAL_LIT                 { $$ = driver_.get_semantic_helper ().make_real ($1); }
-  | DATE_LIT2                { $$ = driver_.get_semantic_helper ().make_constant (LDR_DATE, $1); }
+  | NULL_                    { $$ = m_driver.get_semantic_helper ().make_constant (LDR_NULL, NULL); }
+  | TIME_LIT4                { $$ = m_driver.get_semantic_helper ().make_constant (LDR_TIME, $1); }
+  | TIME_LIT42               { $$ = m_driver.get_semantic_helper ().make_constant (LDR_TIME, $1); }
+  | TIME_LIT3                { $$ = m_driver.get_semantic_helper ().make_constant (LDR_TIME, $1); }
+  | TIME_LIT31               { $$ = m_driver.get_semantic_helper ().make_constant (LDR_TIME, $1); }
+  | TIME_LIT2                { $$ = m_driver.get_semantic_helper ().make_constant (LDR_TIME, $1); }
+  | TIME_LIT1                { $$ = m_driver.get_semantic_helper ().make_constant (LDR_TIME, $1); }
+  | INT_LIT                  { $$ = m_driver.get_semantic_helper ().make_constant (LDR_INT, $1); }
+  | REAL_LIT                 { $$ = m_driver.get_semantic_helper ().make_real ($1); }
+  | DATE_LIT2                { $$ = m_driver.get_semantic_helper ().make_constant (LDR_DATE, $1); }
   | monetary                 { $$ = $1; }
   | object_reference         { $$ = $1; }
   | set_constant             { $$ = $1; }
@@ -473,121 +473,121 @@ constant :
 ansi_string :
   Quote SQS_String_Body
   {
-    $$ = driver_.get_semantic_helper ().make_constant (LDR_STR, $2);
+    $$ = m_driver.get_semantic_helper ().make_constant (LDR_STR, $2);
   }
   ;
 
 nchar_string :
   NQuote SQS_String_Body
   {
-    $$ = driver_.get_semantic_helper ().make_constant (LDR_NSTR, $2);
+    $$ = m_driver.get_semantic_helper ().make_constant (LDR_NSTR, $2);
   }
   ;
 
 dq_string
   :DQuote DQS_String_Body
   {
-    $$ = driver_.get_semantic_helper ().make_constant (LDR_STR, $2);
+    $$ = m_driver.get_semantic_helper ().make_constant (LDR_STR, $2);
   }
   ;
 
 sql2_date :
   DATE_ Quote SQS_String_Body
   {
-    $$ = driver_.get_semantic_helper ().make_constant (LDR_DATE, $3);
+    $$ = m_driver.get_semantic_helper ().make_constant (LDR_DATE, $3);
   }
   ;
 
 sql2_time :
   TIME Quote SQS_String_Body
   {
-    $$ = driver_.get_semantic_helper ().make_constant (LDR_TIME, $3);
+    $$ = m_driver.get_semantic_helper ().make_constant (LDR_TIME, $3);
   }
   ;
 
 sql2_timestamp :
   TIMESTAMP Quote SQS_String_Body
   {
-    $$ = driver_.get_semantic_helper ().make_constant (LDR_TIMESTAMP, $3);
+    $$ = m_driver.get_semantic_helper ().make_constant (LDR_TIMESTAMP, $3);
   }
   ;
 
 sql2_timestampltz :
   TIMESTAMPLTZ Quote SQS_String_Body
   {
-    $$ = driver_.get_semantic_helper ().make_constant (LDR_TIMESTAMPLTZ, $3);
+    $$ = m_driver.get_semantic_helper ().make_constant (LDR_TIMESTAMPLTZ, $3);
   }
   ;
 
 sql2_timestamptz :
   TIMESTAMPTZ Quote SQS_String_Body
   {
-    $$ = driver_.get_semantic_helper ().make_constant (LDR_TIMESTAMPTZ, $3);
+    $$ = m_driver.get_semantic_helper ().make_constant (LDR_TIMESTAMPTZ, $3);
   }
   ;
 
 utime :
   UTIME Quote SQS_String_Body
   {
-    $$ = driver_.get_semantic_helper ().make_constant (LDR_TIMESTAMP, $3);
+    $$ = m_driver.get_semantic_helper ().make_constant (LDR_TIMESTAMP, $3);
   }
   ;
 
 sql2_datetime :
   DATETIME Quote SQS_String_Body
   {
-    $$ = driver_.get_semantic_helper ().make_constant (LDR_DATETIME, $3);
+    $$ = m_driver.get_semantic_helper ().make_constant (LDR_DATETIME, $3);
   }
   ;
 
 sql2_datetimeltz :
   DATETIMELTZ Quote SQS_String_Body
   {
-    $$ = driver_.get_semantic_helper ().make_constant (LDR_DATETIMELTZ, $3);
+    $$ = m_driver.get_semantic_helper ().make_constant (LDR_DATETIMELTZ, $3);
   }
   ;
 
 sql2_datetimetz :
   DATETIMETZ Quote SQS_String_Body
   {
-    $$ = driver_.get_semantic_helper ().make_constant (LDR_DATETIMETZ, $3);
+    $$ = m_driver.get_semantic_helper ().make_constant (LDR_DATETIMETZ, $3);
   }
   ;
 
 bit_string :
   BQuote SQS_String_Body
   {
-    $$ = driver_.get_semantic_helper ().make_constant (LDR_BSTR, $2);
+    $$ = m_driver.get_semantic_helper ().make_constant (LDR_BSTR, $2);
   }
   |
   XQuote SQS_String_Body
   {
-    $$ = driver_.get_semantic_helper ().make_constant (LDR_XSTR, $2);
+    $$ = m_driver.get_semantic_helper ().make_constant (LDR_XSTR, $2);
   }
   ;
 
 object_reference :
   OBJECT_REFERENCE class_identifier
   {
-    $$ = driver_.get_semantic_helper ().make_constant (LDR_CLASS_OID, $2);
+    $$ = m_driver.get_semantic_helper ().make_constant (LDR_CLASS_OID, $2);
   }
   |
   OBJECT_REFERENCE class_identifier instance_number
   {
     $2->instance_number = $3;
-    $$ = driver_.get_semantic_helper ().make_constant (LDR_OID, $2);
+    $$ = m_driver.get_semantic_helper ().make_constant (LDR_OID, $2);
   }
   ;
 
 class_identifier:
   INT_LIT
   {
-    $$ = driver_.get_semantic_helper ().make_object_ref_by_class_id ($1);
+    $$ = m_driver.get_semantic_helper ().make_object_ref_by_class_id ($1);
   }
   |
   IDENTIFIER
   {
-    $$ = driver_.get_semantic_helper ().make_object_ref_by_class_name ($1);
+    $$ = m_driver.get_semantic_helper ().make_object_ref_by_class_name ($1);
   }
   ;
 
@@ -601,12 +601,12 @@ instance_number :
 set_constant :
   SET_START_BRACE SET_END_BRACE
   {
-    $$ = driver_.get_semantic_helper ().make_constant (LDR_COLLECTION, NULL);
+    $$ = m_driver.get_semantic_helper ().make_constant (LDR_COLLECTION, NULL);
   }
   |
   SET_START_BRACE set_elements SET_END_BRACE
   {
-    $$ = driver_.get_semantic_helper ().make_constant (LDR_COLLECTION, $2);
+    $$ = m_driver.get_semantic_helper ().make_constant (LDR_COLLECTION, $2);
   }
   ;
 
@@ -614,38 +614,38 @@ set_elements:
   constant
   {
     DBG_PRINT ("constant");
-    $$ = driver_.get_semantic_helper ().append_constant_list (NULL, $1);
+    $$ = m_driver.get_semantic_helper ().append_constant_list (NULL, $1);
   }
   |
   set_elements constant
   {
     DBG_PRINT ("set_elements constant");
-    $$ = driver_.get_semantic_helper ().append_constant_list ($1, $2);
+    $$ = m_driver.get_semantic_helper ().append_constant_list ($1, $2);
   }
   |
   set_elements COMMA constant
   {
     DBG_PRINT ("set_elements COMMA constant");
-    $$ = driver_.get_semantic_helper ().append_constant_list ($1, $3);
+    $$ = m_driver.get_semantic_helper ().append_constant_list ($1, $3);
   }
   |
   set_elements NL constant
   {
     DBG_PRINT ("set_elements NL constant");
-    $$ = driver_.get_semantic_helper ().append_constant_list ($1, $3);
+    $$ = m_driver.get_semantic_helper ().append_constant_list ($1, $3);
   }
   |
   set_elements COMMA NL constant
   {
     DBG_PRINT ("set_elements COMMA NL constant");
-    $$ = driver_.get_semantic_helper ().append_constant_list ($1, $4);
+    $$ = m_driver.get_semantic_helper ().append_constant_list ($1, $4);
   }
   ;
 
 system_object_reference :
   ref_type Quote SQS_String_Body
   {
-    $$ = driver_.get_semantic_helper ().make_constant ($1, $3);
+    $$ = m_driver.get_semantic_helper ().make_constant ($1, $3);
   }
   ;
 
@@ -659,127 +659,127 @@ ref_type :
 monetary :
   DOLLAR_SYMBOL REAL_LIT
   {
-    $$ = driver_.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_DOLLAR, $2);
+    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_DOLLAR, $2);
   }
   |
   YEN_SYMBOL REAL_LIT
   {
-    $$ = driver_.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_YEN, $2);
+    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_YEN, $2);
   }
   |
   WON_SYMBOL REAL_LIT
   {
-    $$ = driver_.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_WON, $2);
+    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_WON, $2);
   }
   |
   TURKISH_LIRA_CURRENCY REAL_LIT
   {
-    $$ = driver_.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_TL, $2);
+    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_TL, $2);
   }
   |
   BACKSLASH REAL_LIT
   {
-    $$ = driver_.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_WON, $2);
+    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_WON, $2);
   }
   |
   BRITISH_POUND_SYMBOL REAL_LIT
   {
-    $$ = driver_.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_BRITISH_POUND, $2);
+    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_BRITISH_POUND, $2);
   }
   |
   CAMBODIAN_RIEL_SYMBOL REAL_LIT
   {
-    $$ = driver_.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_CAMBODIAN_RIEL, $2);
+    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_CAMBODIAN_RIEL, $2);
   }
   |
   CHINESE_RENMINBI_SYMBOL REAL_LIT
   {
-    $$ = driver_.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_CHINESE_RENMINBI, $2);
+    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_CHINESE_RENMINBI, $2);
   }
   |
   INDIAN_RUPEE_SYMBOL REAL_LIT
   {
-    $$ = driver_.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_INDIAN_RUPEE, $2);
+    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_INDIAN_RUPEE, $2);
   }
   |
   RUSSIAN_RUBLE_SYMBOL REAL_LIT
   {
-    $$ = driver_.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_RUSSIAN_RUBLE, $2);
+    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_RUSSIAN_RUBLE, $2);
   }
   |
   AUSTRALIAN_DOLLAR_SYMBOL REAL_LIT
   {
-    $$ = driver_.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_AUSTRALIAN_DOLLAR, $2);
+    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_AUSTRALIAN_DOLLAR, $2);
   }
   |
   CANADIAN_DOLLAR_SYMBOL REAL_LIT
   {
-    $$ = driver_.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_CANADIAN_DOLLAR, $2);
+    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_CANADIAN_DOLLAR, $2);
   }
   |
   BRASILIAN_REAL_SYMBOL REAL_LIT
   {
-    $$ = driver_.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_BRASILIAN_REAL, $2);
+    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_BRASILIAN_REAL, $2);
   }
   |
   ROMANIAN_LEU_SYMBOL REAL_LIT
   {
-    $$ = driver_.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_ROMANIAN_LEU, $2);
+    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_ROMANIAN_LEU, $2);
   }
   |
   EURO_SYMBOL REAL_LIT
   {
-    $$ = driver_.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_EURO, $2);
+    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_EURO, $2);
   }
   |
   SWISS_FRANC_SYMBOL REAL_LIT
   {
-    $$ = driver_.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_SWISS_FRANC, $2);
+    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_SWISS_FRANC, $2);
   }
   |
   DANISH_KRONE_SYMBOL REAL_LIT
   {
-    $$ = driver_.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_DANISH_KRONE, $2);
+    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_DANISH_KRONE, $2);
   }
   |
   NORWEGIAN_KRONE_SYMBOL REAL_LIT
   {
-    $$ = driver_.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_NORWEGIAN_KRONE, $2);
+    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_NORWEGIAN_KRONE, $2);
   }
   |
   BULGARIAN_LEV_SYMBOL REAL_LIT
   {
-    $$ = driver_.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_BULGARIAN_LEV, $2);
+    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_BULGARIAN_LEV, $2);
   }
   |
   VIETNAMESE_DONG_SYMBOL REAL_LIT
   {
-    $$ = driver_.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_VIETNAMESE_DONG, $2);
+    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_VIETNAMESE_DONG, $2);
   }
   |
   CZECH_KORUNA_SYMBOL REAL_LIT
   {
-    $$ = driver_.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_CZECH_KORUNA, $2);
+    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_CZECH_KORUNA, $2);
   }
   |
   POLISH_ZLOTY_SYMBOL REAL_LIT
   {
-    $$ = driver_.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_POLISH_ZLOTY, $2);
+    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_POLISH_ZLOTY, $2);
   }
   |
   SWEDISH_KRONA_SYMBOL REAL_LIT
   {
-    $$ = driver_.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_SWEDISH_KRONA, $2);
+    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_SWEDISH_KRONA, $2);
   }
   |
   CROATIAN_KUNA_SYMBOL REAL_LIT
   {
-    $$ = driver_.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_CROATIAN_KUNA, $2);
+    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_CROATIAN_KUNA, $2);
   }
   |
   SERBIAN_DINAR_SYMBOL REAL_LIT
   {
-    $$ = driver_.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_SERBIAN_DINAR, $2);
+    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_SERBIAN_DINAR, $2);
   }
   ;
 %%
@@ -789,5 +789,6 @@ monetary :
 void
 cubload::parser::error (const parser::location_type& l, const std::string& m)
 {
-  driver_.parser_error (l, m);
+  // TODO CBRD-22254 pass error_manager reference so syntax error can be reported
+  // m_loader.on_error ();
 }

@@ -316,6 +316,7 @@ set(LOADDB_SOURCES
   ${LOADDB_DIR}/load_driver.cpp
   ${LOADDB_DIR}/load_session.cpp
   ${LOADDB_DIR}/load_server_loader.cpp
+  ${LOADDB_DIR}/load_error_manager.cpp
   )
 
 list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)

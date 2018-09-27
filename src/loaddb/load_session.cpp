@@ -25,6 +25,7 @@
 
 #include "error_manager.h"
 #include "load_common.hpp"
+#include "load_error_manager.hpp"
 #include "log_impl.h"
 #include "xserver_interface.h"
 
@@ -34,7 +35,7 @@
 namespace cubload
 {
 
-  load_task::load_task (std::string &batch, int batch_id, session *session, css_conn_entry conn_entry)
+  load_worker::load_worker (std::string &batch, int batch_id, session *session, css_conn_entry conn_entry)
     : m_batch (std::move (batch))
     , m_batch_id (batch_id)
     , m_session (session)
@@ -44,7 +45,7 @@ namespace cubload
   }
 
   void
-  load_task::execute (cubthread::entry &thread_ref)
+  load_worker::execute (cubthread::entry &thread_ref)
   {
     if (m_session->aborted ())
       {
@@ -54,7 +55,7 @@ namespace cubload
     driver *driver = m_session->m_driver_pool->claim ();
     if (driver == NULL)
       {
-	m_session->abort ();
+	m_session->abort (""); // TODO CBRD-22254 add proper error id
 	assert (false);
 	return;
       }
@@ -75,7 +76,7 @@ namespace cubload
     if (m_session->aborted () || ret != 0 || er_errid_if_has_error () != NO_ERROR)
       {
 	// if a batch transaction was aborted then abort entire loaddb session
-	m_session->abort ();
+	m_session->abort (""); // TODO CBRD-22254 add proper error id
 
 	xtran_server_abort (&thread_ref);
       }
@@ -85,6 +86,8 @@ namespace cubload
 	m_session->wait_for_previous_batch (m_batch_id);
 
 	xtran_server_commit (&thread_ref, false);
+
+	m_session->m_stats.last_commit = m_batch_id * m_session->m_batch_size;
       }
 
     // free transaction index
@@ -105,14 +108,19 @@ namespace cubload
     , m_worker_pool (NULL)
     , m_drivers (NULL)
     , m_driver_pool (NULL)
-    , m_stats {{0}, {0}, {0}, {0}, {0}}
+    , m_stats {{0}, {0}, {0}, {0}}
   {
     void *raw_memory = operator new[] (DRIVER_POOL_SIZE * sizeof (driver));
     m_drivers = static_cast<driver *> (raw_memory);
 
     for (size_t i = 0; i < DRIVER_POOL_SIZE; ++i)
       {
-	new (&m_drivers[i]) driver (new server_loader (this));
+	driver *driver_ptr = &m_drivers[i];
+	server_loader *loader = new server_loader (this);
+	new (driver_ptr) driver (loader);
+
+	error_manager *err_mng = new error_manager (*this, driver_ptr->get_scanner ());
+	loader->set_error_manager (err_mng);
       }
 
     m_driver_pool = new resource_shared_pool<driver> (m_drivers, DRIVER_POOL_SIZE);
@@ -178,7 +186,7 @@ namespace cubload
   }
 
   void
-  session::abort ()
+  session::abort (std::string &&err_msg)
   {
     if (m_aborted.exchange (true))
       {
@@ -187,12 +195,6 @@ namespace cubload
       }
 
     std::unique_lock<std::mutex> ulock (m_completion_mutex);
-
-    // check again after lock is acquired
-    if (m_aborted)
-      {
-	return;
-      }
 
     m_stats.failures++;
 
@@ -207,9 +209,9 @@ namespace cubload
   }
 
   void
-  session::error ()
+  session::inc_total_objects ()
   {
-    m_stats.errors++;
+    m_stats.total_objects++;
   }
 
   void
@@ -229,7 +231,7 @@ namespace cubload
 	return;
       }
 
-    m_worker_pool->execute (new load_task (batch, batch_id, this, *thread_ref.conn_entry));
+    m_worker_pool->execute (new load_worker (batch, batch_id, this, *thread_ref.conn_entry));
   }
 
   int

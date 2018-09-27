@@ -164,7 +164,7 @@ namespace cubload
       }
 
     std::string buffer;
-    buffer.reserve (class_line.size() + buffer.size() + 1); // 1 is for \n character
+    buffer.reserve (class_line.size () + buffer.size () + 1); // 1 is for \n character
 
     buffer.append (class_line);
     buffer.append ("\n");
