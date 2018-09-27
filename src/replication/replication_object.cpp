@@ -395,13 +395,10 @@ namespace cubreplication
   }
 
   changed_attrs_row_repl_entry::changed_attrs_row_repl_entry (repl_entry_type type, const char *class_name,
-      const OID *inst_oid)
+      const OID &inst_oid)
     : single_row_repl_entry (type, class_name)
   {
-    if (inst_oid != NULL)
-      {
-	m_inst_oid = *inst_oid;
-      }
+    m_inst_oid = inst_oid;
   }
 
   int

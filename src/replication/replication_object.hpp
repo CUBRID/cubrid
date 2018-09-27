@@ -137,7 +137,7 @@ namespace cubreplication
     public:
       static const int PACKING_ID = 4;
 
-      changed_attrs_row_repl_entry (repl_entry_type type, const char *class_name, const OID *inst_oid = NULL);
+      changed_attrs_row_repl_entry (repl_entry_type type, const char *class_name, const OID &inst_oid);
 
       changed_attrs_row_repl_entry () = default;
       ~changed_attrs_row_repl_entry ();
@@ -151,10 +151,10 @@ namespace cubreplication
       bool is_equal (const cubpacking::packable_object *other) override final;
       void stringify (string_buffer &str) override final;
 
-      inline bool compare_inst_oid (const OID *other)
+      inline bool compare_inst_oid (const OID &other)
       {
-	return (m_inst_oid.pageid == other->pageid && m_inst_oid.slotid == other->slotid
-		&& m_inst_oid.volid == other->volid);
+	return (m_inst_oid.pageid == other.pageid && m_inst_oid.slotid == other.slotid
+		&& m_inst_oid.volid == other.volid);
       }
 
     private:

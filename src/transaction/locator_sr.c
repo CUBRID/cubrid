@@ -7651,7 +7651,9 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
   MVCC_REC_HEADER mvcc_rec_header[2];
 /* #endif */
 
+#if defined(ENABLE_SYSTEMTAP)
   char *classname = NULL;
+#endif /* ENABLE_SYSTEMTAP */
 
   assert_release (class_oid != NULL);
   assert_release (!OID_ISNULL (class_oid));
@@ -7701,11 +7703,13 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 	}
     }
 
+#if defined(ENABLE_SYSTEMTAP)
   if (heap_get_class_name (thread_p, class_oid, &classname) != NO_ERROR || classname == NULL)
     {
       ASSERT_ERROR_AND_SET (error_code);
       goto error;
     }
+#endif /* ENABLE_SYSTEMTAP */
 
   for (i = 0; i < num_btids; i++)
     {
@@ -7860,11 +7864,11 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 	{
 	  if (is_insert)
 	    {
-	      logtb_get_tdes (thread_p)->replication_log_generator.add_insert_row (*key_dbvalue, classname, *recdes);
+	      logtb_get_tdes (thread_p)->replication_log_generator.add_insert_row (*key_dbvalue, *class_oid, *recdes);
 	    }
 	  else			// is delete
 	    {
-	      logtb_get_tdes (thread_p)->replication_log_generator.add_delete_row (*key_dbvalue, classname);
+	      logtb_get_tdes (thread_p)->replication_log_generator.add_delete_row (*key_dbvalue, *class_oid);
 	    }
 	}
       if (error_code != NO_ERROR)
@@ -8162,11 +8166,11 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
   MVCC_REC_HEADER mvcc_rec_header[2];
 /* #endif */
 #if defined(ENABLE_SYSTEMTAP)
+  char *classname = NULL;
   bool is_started = false;
 #endif /* ENABLE_SYSTEMTAP */
   LOG_TDES *tdes = NULL;
   int tran_index;
-  char *classname = NULL;
 
   assert_release (class_oid != NULL);
   assert_release (!OID_ISNULL (class_oid));
@@ -8260,11 +8264,13 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
       goto error;
     }
 
+#if defined(ENABLE_SYSTEMTAP)
   if (heap_get_class_name (thread_p, class_oid, &classname) != NO_ERROR || classname == NULL)
     {
       ASSERT_ERROR_AND_SET (error_code);
       goto error;
     }
+#endif /* ENABLE_SYSTEMTAP */
 
   for (i = 0; i < num_btids; i++)
     {
@@ -8602,6 +8608,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	  tdes = LOG_FIND_TDES (tran_index);
 	}
 
+      assert (oid != NULL);
       if (repl_old_key == NULL)
 	{
 	  key_domain = NULL;
@@ -8632,8 +8639,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	      repl_old_key->data.midxkey.domain = key_domain;
 	    }
 
-	  error_code = tdes->replication_log_generator.add_update_row (*repl_old_key, oid, classname, new_recdes);
-	  assert (error_code == NO_ERROR);
+	  tdes->replication_log_generator.add_update_row (*repl_old_key, *oid, *class_oid, new_recdes);
 
 	  if (repl_old_key == &old_dbvalue)
 	    {
@@ -8642,8 +8648,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	}
       else
 	{
-	  error_code = tdes->replication_log_generator.add_update_row (*repl_old_key, oid, classname, new_recdes);
-	  assert (error_code == NO_ERROR);
+	  tdes->replication_log_generator.add_update_row (*repl_old_key, *oid, *class_oid, new_recdes);
 
 	  pr_free_ext_value (repl_old_key);
 	  repl_old_key = NULL;

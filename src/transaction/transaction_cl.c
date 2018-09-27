@@ -1410,7 +1410,7 @@ tran_set_latest_query_status (int end_query_result, int tran_state, int should_c
       tm_Tran_latest_query_status |= LATEST_QUERY_STATUS::ABORTED;
     }
 
-  if (should_conn_reset == true)
+  if (should_conn_reset != 0)
     {
       assert (tran_state == TRAN_UNACTIVE_COMMITTED || tran_state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS
 	      || tran_state == TRAN_UNACTIVE_ABORTED || tran_state == TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS);

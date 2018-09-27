@@ -97,15 +97,11 @@ namespace cubreplication
       void add_statement (repl_info_sbr &stmt_info);
 
       // row-based replication
-      void add_delete_row (const DB_VALUE &key, const char *classname);
-      void add_insert_row (const DB_VALUE &key, const char *classname, const RECDES &record);
-      int add_update_row (const DB_VALUE &key, const OID *inst_oid, char *class_name,
-			  const RECDES *optional_recdes);
-      int add_update_row (const DB_VALUE &key, const OID *inst_oid, const OID *class_oid,
-			  const RECDES *optional_recdes);
-      int add_attribute_change (cubthread::entry &thread_entry, const OID *class_oid, const OID *inst_oid,
-				ATTR_ID col_id, const DB_VALUE &value);
-
+      void add_delete_row (const DB_VALUE &key, const OID &class_oid);
+      void add_insert_row (const DB_VALUE &key, const OID &class_oid, const RECDES &record);
+      void add_update_row (const DB_VALUE &key, const OID &inst_oid, const OID &class_oid,
+			   const RECDES *optional_recdes);
+      void add_attribute_change (const OID &class_oid, const OID &inst_oid, ATTR_ID col_id, const DB_VALUE &value);
 
       void abort_pending_repl_objects ();
 
@@ -141,6 +137,8 @@ namespace cubreplication
       bool is_row_replication_disabled (void);
 
     private:
+
+      char *get_classname (const OID &class_oid);     // todo - optimize this step
 
       // common point for transaction commit/abort; replication entries are logged
       void on_transaction_finish (stream_entry_header::TRAN_STATE state);

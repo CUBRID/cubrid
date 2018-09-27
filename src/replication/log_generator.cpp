@@ -21,17 +21,17 @@
  * log_generator.cpp
  */
 
-#ident "$Id$"
-
 #include "log_generator.hpp"
-#include "replication_stream_entry.hpp"
-#include "multi_thread_stream.hpp"
-#include "log_impl.h"
-#include "heap_file.h"
-#include "system_parameter.h"
+
 #include "error_manager.h"
-#include "string_buffer.hpp"
+#include "heap_file.h"
+#include "log_impl.h"
+#include "multi_thread_stream.hpp"
 #include "replication.h"
+#include "replication_stream_entry.hpp"
+#include "string_buffer.hpp"
+#include "system_parameter.h"
+#include "thread_manager.hpp"
 
 namespace cubreplication
 {
@@ -64,29 +64,37 @@ namespace cubreplication
   }
 
   void
-  log_generator::add_delete_row (const DB_VALUE &key, const char *classname)
+  log_generator::add_delete_row (const DB_VALUE &key, const OID &class_oid)
   {
     if (is_row_replication_disabled ())
       {
 	return;
       }
+
+    char *classname = get_classname (class_oid);
 
     single_row_repl_entry *repl_obj = new single_row_repl_entry (REPL_DELETE, classname);
     repl_obj->set_key_value (key);
     append_repl_object (*repl_obj);
+
+    free (classname);
   }
 
   void
-  log_generator::add_insert_row (const DB_VALUE &key, const char *classname, const RECDES &record)
+  log_generator::add_insert_row (const DB_VALUE &key, const OID &class_oid, const RECDES &record)
   {
     if (is_row_replication_disabled ())
       {
 	return;
       }
 
+    char *classname = get_classname (class_oid);
+
     rec_des_row_repl_entry *repl_obj = new rec_des_row_repl_entry (REPL_INSERT, classname, record);
     repl_obj->set_key_value (key);
     append_repl_object (*repl_obj);
+
+    free (classname);
   }
 
   void
@@ -101,22 +109,17 @@ namespace cubreplication
    * else, add value and col_id to it
    * later, when setting key_dbvalue to it, move it to m_stream_entry
    */
-  int
-  log_generator::add_attribute_change (cubthread::entry &thread_entry, const OID *class_oid, const OID *inst_oid,
-				       ATTR_ID col_id, const DB_VALUE &value)
+  void
+  log_generator::add_attribute_change (const OID &class_oid, const OID &inst_oid, ATTR_ID col_id,
+				       const DB_VALUE &value)
   {
     if (is_row_replication_disabled ())
       {
-	return NO_ERROR;
+	return;
       }
 
     changed_attrs_row_repl_entry *entry = NULL;
     char *class_name = NULL;
-
-    if (inst_oid == NULL)
-      {
-	return NO_ERROR;
-      }
 
     for (auto &repl_obj : m_pending_to_be_added)
       {
@@ -135,11 +138,7 @@ namespace cubreplication
       {
 	int error_code = NO_ERROR;
 
-	if (heap_get_class_name (&thread_entry, class_oid, &class_name) != NO_ERROR || class_name == NULL)
-	  {
-	    assert (false);
-	    return ER_FAILED;
-	  }
+	char *class_name = get_classname (class_oid);
 
 	entry = new changed_attrs_row_repl_entry (cubreplication::repl_entry_type::REPL_UPDATE, class_name, inst_oid);
 	entry->copy_and_add_changed_value (col_id, value);
@@ -150,38 +149,33 @@ namespace cubreplication
       }
 
     er_log_repl_obj (entry, "log_generator::add_attribute_change");
-
-    return NO_ERROR;
   }
 
-  /* set key_dbvalue to inst_oid associated entry and, if not found,
-   * it means we are in a special case where update uses recdes, instead
-   * of changed db values
-   */
-  int
-  log_generator::add_update_row (const DB_VALUE &key, const OID *inst_oid, char *class_name,
+  /* first fetch the class name, then set key */
+  void
+  log_generator::add_update_row (const DB_VALUE &key, const OID &inst_oid, const OID &class_oid,
 				 const RECDES *optional_recdes)
   {
     if (is_row_replication_disabled ())
       {
-	return NO_ERROR;
+	return;
       }
 
+    char *class_name = get_classname (class_oid);
     bool found = false;
 
-    assert (inst_oid != NULL);
-
-    for (auto repl_obj_it = m_pending_to_be_added.begin ();
-	 repl_obj_it != m_pending_to_be_added.end (); ++repl_obj_it)
+    for (auto repl_obj_it = m_pending_to_be_added.begin (); repl_obj_it != m_pending_to_be_added.end (); ++repl_obj_it)
       {
-	if ((*repl_obj_it)->compare_inst_oid (inst_oid))
+	changed_attrs_row_repl_entry *repl_obj = *repl_obj_it;
+	if (repl_obj->compare_inst_oid (inst_oid))
 	  {
-	    (*repl_obj_it)->set_key_value (key);
+	    repl_obj->set_key_value (key);
 
-	    append_repl_object (**repl_obj_it);
-	    er_log_repl_obj (*repl_obj_it, "log_generator::set_key_to_repl_object");
+	    append_repl_object (*repl_obj);
+	    er_log_repl_obj (repl_obj, "log_generator::set_key_to_repl_object");
 
-	    repl_obj_it = m_pending_to_be_added.erase (repl_obj_it);
+	    // remove
+	    (void) m_pending_to_be_added.erase (repl_obj_it);
 
 	    found = true;
 
@@ -191,11 +185,7 @@ namespace cubreplication
 
     if (!found)
       {
-	if (optional_recdes == NULL)
-	  {
-	    assert (false);
-	    return ER_FAILED;
-	  }
+	assert (optional_recdes != NULL);
 
 	cubreplication::rec_des_row_repl_entry *entry =
 		new cubreplication::rec_des_row_repl_entry (cubreplication::repl_entry_type::REPL_UPDATE, class_name,
@@ -206,38 +196,21 @@ namespace cubreplication
 	er_log_repl_obj (entry, "log_generator::set_key_to_repl_object");
       }
 
-    return NO_ERROR;
+    free (class_name);
   }
 
-  /* first fetch the class name, then set key */
-  int
-  log_generator::add_update_row (const DB_VALUE &key, const OID *inst_oid, const OID *class_oid,
-				 const RECDES *optional_recdes)
+  char *
+  log_generator::get_classname (const OID &class_oid)
   {
-    if (is_row_replication_disabled ())
-      {
-	return NO_ERROR;
-      }
-
-    char *class_name;
-    int rc;
-
-    if (heap_get_class_name (NULL, class_oid, &class_name) != NO_ERROR || class_name == NULL)
+    char *classname = NULL;
+    cubthread::entry *thread_p = &cubthread::get_entry ();
+    bool save = logtb_set_check_interrupt (thread_p, false);
+    if (heap_get_class_name (thread_p, &class_oid, &classname) != NO_ERROR || classname == NULL)
       {
 	assert (false);
-	return ER_FAILED;
       }
-
-    rc = add_update_row (key, inst_oid, class_name, optional_recdes);
-    free (class_name);
-
-    if (rc != NO_ERROR)
-      {
-	assert (false);
-	return rc;
-      }
-
-    return NO_ERROR;
+    (void) logtb_set_check_interrupt (thread_p, save);
+    return classname;
   }
 
   /* in case of error, abort all pending replication objects */
@@ -312,7 +285,7 @@ namespace cubreplication
   void
   log_generator::on_transaction_finish (stream_entry_header::TRAN_STATE state)
   {
-    if (HA_DISABLED ())
+    if (is_replication_disabled ())
       {
 	return;
       }
