@@ -59,8 +59,14 @@ namespace cubstream
       static const int DEFAULT_FILENAME_DIGITS = 4;
       static const bool REMOVE_PHYSICAL_FILE = true;
 
+      static const int STRICT_APPEND_MODE = 1;
+      static const int UNCONTIGUOUS_APPEND_MODE = 0;
+
       /* 100 MBytes */
       static const size_t DEFAULT_VOLUME_SIZE = 100 * 1024 * 1024;
+
+      /* if enabled all writes must be in succession of append_position */
+      bool m_strict_append_mode;
 
       multi_thread_stream &m_stream;
 
@@ -157,6 +163,10 @@ namespace cubstream
 	m_base_path = path;
       }
 
+      void set_append_mode (int mode)
+      {
+	m_strict_append_mode = mode;
+      }
       void finalize ();
 
       int write (const stream_position &pos, const char *buf, const size_t amount);

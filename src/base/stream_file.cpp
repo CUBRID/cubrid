@@ -130,6 +130,8 @@ namespace cubstream
   {
     m_stream.set_stream_file (this);
 
+    m_strict_append_mode = UNCONTIGUOUS_APPEND_MODE;
+
     m_base_filename = m_stream.name ();
     m_desired_volume_size = file_size;
     m_filename_digits_seqno = print_digits;
@@ -638,6 +640,7 @@ namespace cubstream
   int stream_file::write (const stream_position &pos, const char *buf, const size_t amount)
   {
     stream_position curr_pos;
+    stream_position force_drop_pos = 0;
     size_t vol_offset, rem_amount, available_amount_in_volume;
     int vol_seqno;
     int err = NO_ERROR;
@@ -658,6 +661,28 @@ namespace cubstream
       }
     drop_lock.unlock ();
 
+    std::unique_lock<std::mutex> flush_lock (m_flush_mutex);
+    if (m_strict_append_mode == STRICT_APPEND_MODE && pos != m_append_position)
+      {
+	err = ER_STREAM_FILE_INVALID_WRITE;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 3, m_stream.name ().c_str (), pos, amount);
+	return err;
+      }
+
+    if (pos > m_append_position && m_append_position > 0)
+      {
+	/* writing to a position larger than append,
+	 * we need to drop all up to new position since we cannot guarantee reading valid data */
+	assert (m_strict_append_mode == UNCONTIGUOUS_APPEND_MODE);
+	m_append_position = pos;
+	force_drop_pos = m_append_position;
+      }
+    flush_lock.unlock ();
+
+    if (force_drop_pos)
+      {
+	drop_volumes_to_pos (force_drop_pos);
+      }
 
     curr_pos = pos;
     rem_amount = amount;
@@ -706,9 +731,9 @@ namespace cubstream
     /* get flush mutex while incrementing append_position:
      * this is not mandatory, but we only need to protect the assertions from start_flush and wait_flush_signal
      * if we give up the mutex here, we also need to give up assertions involving m_append_position in those methods */
-    std::unique_lock<std::mutex> ulock (m_flush_mutex);
+    flush_lock.lock ();
     m_append_position += amount;
-    ulock.unlock ();
+    flush_lock.unlock ();
 
     /* TODO : only in debug mode */
     check_file ();
