@@ -84,8 +84,6 @@ namespace cubreplication
 
       ~log_generator ();
 
-      int start_tran_repl (MVCCID mvccid);
-
       // act when trasaction is committed; replication entries are logged
       void on_transaction_commit (void);
       // act when transaction is aborted; replication entries are logged
@@ -137,6 +135,7 @@ namespace cubreplication
       bool is_row_replication_disabled (void);
 
     private:
+      void set_tran_repl_info (MVCCID mvccid, stream_entry_header::TRAN_STATE state);
 
       char *get_classname (const OID &class_oid);     // todo - optimize this step
 

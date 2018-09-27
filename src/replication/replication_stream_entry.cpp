@@ -64,6 +64,8 @@ namespace cubreplication
     unsigned int count_and_flags;
     unsigned int state_flags;
 
+    assert (m_header.mvccid != MVCCID_NULL);
+
     m_header.count_replication_entries = (int) m_packable_entries.size ();
     serializator->pack_bigint (&m_header.prev_record);
     serializator->pack_bigint (&m_header.mvccid);

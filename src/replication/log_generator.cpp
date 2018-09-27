@@ -42,13 +42,12 @@ namespace cubreplication
     m_stream_entry.destroy_objects ();
   }
 
-  int
-  log_generator::start_tran_repl (MVCCID mvccid)
+  void
+  log_generator::set_tran_repl_info (MVCCID mvccid, stream_entry_header::TRAN_STATE state)
   {
     assert (m_has_stream);
     m_stream_entry.set_mvccid (mvccid);
-
-    return NO_ERROR;
+    m_stream_entry.set_state (state);
   }
 
   void
@@ -233,6 +232,7 @@ namespace cubreplication
   log_generator::pack_stream_entry (void)
   {
     assert (m_has_stream);
+
     m_stream_entry.pack ();
     m_stream_entry.reset ();
     // reset state
@@ -290,7 +290,11 @@ namespace cubreplication
 	return;
       }
 
-    m_stream_entry.set_state (state);
+    cubthread::entry *thread_p = &cubthread::get_entry ();
+    int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+    LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
+
+    set_tran_repl_info (tdes->mvccinfo.id, state);
     pack_stream_entry ();
   }
 
