@@ -2932,7 +2932,7 @@ db_json_objectagg_func (const JSON_DOC &object_doc, JSON_DOC &result_json)
 
   db_json_merge_two_json_objects (result_json, &object_doc);
 
-  return object_doc.MemberCount();
+  return object_doc.MemberCount ();
 }
 
 /*
