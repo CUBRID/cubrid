@@ -2855,11 +2855,13 @@ db_json_pretty_func (const JSON_DOC &doc, char *&result_str)
 /*
  * db_json_arrayagg_func () - Appends the value to the result_json
  *
+ * return                  : if expand = true return json_value array size, else return error_code
  * value (in)              : value to append
  * result_json (in)        : the document where we want to append
+ * expand (in)             : expand will be true only when aggregate 2 accumulators
  */
 int
-db_json_arrayagg_func (const JSON_DOC *value, JSON_DOC &result_json)
+db_json_arrayagg_func (const JSON_DOC *value, JSON_DOC &result_json, bool expand)
 {
   DB_JSON_TYPE result_json_type = db_json_get_type (&result_json);
 
@@ -2870,6 +2872,20 @@ db_json_arrayagg_func (const JSON_DOC *value, JSON_DOC &result_json)
     }
 
   assert (result_json.IsArray ());
+
+  if (expand)
+    {
+      assert (db_json_get_type (value) == DB_JSON_TYPE::DB_JSON_ARRAY);
+
+      // append each element in the result_json
+      for (auto it = value->GetArray ().begin (); it != value->GetArray ().end (); ++it)
+	{
+	  JSON_VALUE value_copy (*it, result_json.GetAllocator ());
+	  result_json.PushBack (value_copy, result_json.GetAllocator ());
+	}
+
+      return value->GetArray ().Size ();
+    }
 
   JSON_VALUE value_copy (*value, result_json.GetAllocator ());
   result_json.PushBack (value_copy, result_json.GetAllocator ());
@@ -2905,15 +2921,18 @@ db_json_objectagg_func (const char *key_str, const JSON_DOC *val_doc, JSON_DOC &
 /*
 * db_json_objectagg_func () - Inserts a JSON_OBJECT with possibly multiple members in the result_json
 *
+* return                  : the member count of the object_doc (it will be used by the accumulator)
 * object_doc (in)         : the JSON_OBJECT that we want to insert
 * result_json (in)        : the document where we want to insert
 */
-void
+int
 db_json_objectagg_func (const JSON_DOC &object_doc, JSON_DOC &result_json)
 {
-  assert (result_json.IsObject());
+  assert (result_json.IsObject () && object_doc.IsObject ());
 
   db_json_merge_two_json_objects (result_json, &object_doc);
+
+  return object_doc.MemberCount();
 }
 
 /*

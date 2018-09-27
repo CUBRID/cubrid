@@ -240,6 +240,7 @@ static REGU_VARIABLE *pt_to_regu_reserved_name (PARSER_CONTEXT * parser, PT_NODE
 static int pt_reserved_id_to_valuelist_index (PARSER_CONTEXT * parser, PT_RESERVED_NAME_ID reserved_id);
 static void pt_mark_spec_list_for_update_clause (PARSER_CONTEXT * parser, PT_NODE * statement, PT_SPEC_FLAG spec_flag);
 
+/* *INDENT-OFF* */
 static void pt_append_value_list_to_info (AGGREGATE_INFO * info, VAL_LIST * value_list);
 static void pt_append_regu_list_to_head (REGU_VARIABLE_LIST head, REGU_VARIABLE_LIST regu_list);
 static void pt_append_single_regu_to_info_out_list (AGGREGATE_INFO * info, REGU_VARIABLE_LIST out_list,
@@ -251,9 +252,9 @@ static void update_value_list_out_list_regu_list (AGGREGATE_INFO * info, VAL_LIS
 
 static void update_value_list_out_list_regu_list (AGGREGATE_INFO * info, VAL_LIST * value_list,
 						  REGU_VARIABLE_LIST out_list, REGU_VARIABLE_LIST regu_list,
-						  std::vector < REGU_VARIABLE * >&regu_var_vector);
+						  std::vector<REGU_VARIABLE *> & regu_var_vector);
 
-static int update_info_scan_regu_list (AGGREGATE_INFO * info, std::vector < REGU_VARIABLE * >&scan_regu_var_vector);
+static int update_info_scan_regu_list (AGGREGATE_INFO * info, std::vector<REGU_VARIABLE *> & scan_regu_var_vector);
 
 static PT_NODE *pt_alloc_value_list_out_list_regu_list (PARSER_CONTEXT * parser, PT_NODE * node, VAL_LIST ** value_list,
 							REGU_VARIABLE_LIST * out_list, REGU_VARIABLE_LIST * regu_list);
@@ -265,9 +266,10 @@ static PT_NODE *pt_create_regu_list_from_args (PARSER_CONTEXT * parser, PT_NODE 
 
 static PT_NODE *pt_create_operands_from_args (PARSER_CONTEXT * parser, PT_NODE * node, VAL_LIST * value_list,
 					      REGU_VARIABLE_LIST * operands);
-static int pt_create_operands_from_args (std::vector < REGU_VARIABLE * >&regu_vector, REGU_VARIABLE_LIST * operands);
+static int pt_create_operands_from_args (std::vector<REGU_VARIABLE *> & regu_vector, REGU_VARIABLE_LIST * operands);
 
 static void pt_set_regu_list_pos_descr_from_idx (REGU_VARIABLE_LIST & regu_list, size_t starting_index);
+/* *INDENT-ON* */
 
 static PT_NODE *pt_fix_interpolation_aggregate_function_order_by (PARSER_CONTEXT * parser, PT_NODE * node);
 static int pt_fix_buildlist_aggregate_cume_dist_percent_rank (PARSER_CONTEXT * parser, PT_NODE * node,
@@ -3576,8 +3578,10 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
   PT_NODE *pt_val = NULL;
   PT_NODE *percentile = NULL;
 
-  std::vector < REGU_VARIABLE * >regu_var_vector;
-  std::vector < REGU_VARIABLE * >scan_regu_var_vector;
+  /* *INDENT-OFF* */
+  std::vector<REGU_VARIABLE *> regu_var_vector;
+  std::vector<REGU_VARIABLE *> scan_regu_var_vector;
+  /* *INDENT-ON* */
 
   *continue_walk = PT_CONTINUE_WALK;
 
@@ -25723,6 +25727,8 @@ pt_set_limit_optimization_flags (PARSER_CONTEXT * parser, QO_PLAN * qo_plan, XAS
   return NO_ERROR;
 }
 
+/* *INDENT-OFF* */
+
 static void
 pt_append_value_list_to_info (AGGREGATE_INFO * info, VAL_LIST * value_list)
 {
@@ -25795,7 +25801,7 @@ update_value_list_out_list_regu_list (AGGREGATE_INFO * info, VAL_LIST * value_li
 
 static void
 update_value_list_out_list_regu_list (AGGREGATE_INFO * info, VAL_LIST * value_list, REGU_VARIABLE_LIST out_list,
-				      REGU_VARIABLE_LIST regu_list, std::vector < REGU_VARIABLE * >&regu_var_vector)
+				      REGU_VARIABLE_LIST regu_list, std::vector<REGU_VARIABLE *> & regu_var_vector)
 {
   pt_append_value_list_to_info (info, value_list);
 
@@ -25811,7 +25817,7 @@ update_value_list_out_list_regu_list (AGGREGATE_INFO * info, VAL_LIST * value_li
   // the out_list should be null and here we will do the allocation
   assert (out_list == NULL);
 
-for (REGU_VARIABLE * &regu:regu_var_vector)
+  for (REGU_VARIABLE *&regu : regu_var_vector)
     {
       out_list = regu_varlist_alloc ();
       out_list->next = NULL;
@@ -25828,7 +25834,7 @@ for (REGU_VARIABLE * &regu:regu_var_vector)
 }
 
 static int
-update_info_scan_regu_list (AGGREGATE_INFO * info, std::vector < REGU_VARIABLE * >&scan_regu_var_vector)
+update_info_scan_regu_list (AGGREGATE_INFO * info, std::vector<REGU_VARIABLE *> & scan_regu_var_vector)
 {
   REGU_VARIABLE_LIST tail = NULL;
   REGU_VARIABLE_LIST scan_regu_list = NULL;
@@ -25840,7 +25846,7 @@ update_info_scan_regu_list (AGGREGATE_INFO * info, std::vector < REGU_VARIABLE *
 
   assert (tail != NULL);
 
-for (REGU_VARIABLE * &scan_regu:scan_regu_var_vector)
+  for (REGU_VARIABLE *&scan_regu : scan_regu_var_vector)
     {
       // get the value from the value_list
       scan_regu->vfetch_to = pt_index_value (info->value_list, index++);
@@ -25864,6 +25870,8 @@ for (REGU_VARIABLE * &scan_regu:scan_regu_var_vector)
   return NO_ERROR;
 }
 
+/* *INDENT-ON* */
+
 /*
  * pt_alloc_value_list_out_list_regu_list () -
  * parser (in)  :
@@ -25876,51 +25884,24 @@ static PT_NODE *
 pt_alloc_value_list_out_list_regu_list (PARSER_CONTEXT * parser, PT_NODE * node, VAL_LIST ** value_list,
 					REGU_VARIABLE_LIST * out_list, REGU_VARIABLE_LIST * regu_list)
 {
-  int *attr_offsets = NULL;
-  bool out_of_memory = false;
+  PT_NODE *result = NULL;
 
-  assert (node != NULL && value_list != NULL && out_list != NULL && regu_list != NULL);
-
-  /* begin alloc */
-  attr_offsets = pt_make_identity_offsets (node);
-  if (attr_offsets == NULL)
+  result = pt_create_value_list_from_args (parser, node, value_list);
+  if (!result)
     {
-      out_of_memory = true;
-      goto end;
+      return result;
     }
 
-  *value_list = pt_make_val_list (parser, node);
-  if (*value_list == NULL)
+  result = pt_create_regu_list_from_args (parser, node, *value_list, regu_list);
+  if (!result)
     {
-      out_of_memory = true;
-      goto end;
-    }
-
-  *regu_list = pt_to_position_regu_variable_list (parser, node, *value_list, attr_offsets);
-  if (*regu_list == NULL)
-    {
-      out_of_memory = true;
-      goto end;
+      return result;
     }
 
   *out_list = regu_varlist_alloc ();
   if (*out_list == NULL)
     {
-      out_of_memory = true;
-      goto end;
-    }
-
-end:
-
-  if (attr_offsets != NULL)
-    {
-      free_and_init (attr_offsets);
-    }
-
-  if (out_of_memory)
-    {
-      /* on error, return NULL The error should be reported by the caller */
-      node = NULL;
+      return NULL;
     }
 
   return node;
@@ -25935,6 +25916,8 @@ end:
 static PT_NODE *
 pt_create_value_list_from_args (PARSER_CONTEXT * parser, PT_NODE * node, VAL_LIST ** value_list)
 {
+  assert (node != NULL && value_list != NULL);
+
   *value_list = pt_make_val_list (parser, node);
 
   if (*value_list == NULL)
@@ -25956,6 +25939,8 @@ static PT_NODE *
 pt_create_regu_list_from_args (PARSER_CONTEXT * parser, PT_NODE * node, VAL_LIST * value_list,
 			       REGU_VARIABLE_LIST * regu_list)
 {
+  assert (node != NULL && value_list != NULL && regu_list != NULL);
+
   int *attr_offsets = NULL;
   bool out_of_memory = false;
 
@@ -26030,15 +26015,17 @@ pt_create_operands_from_args (PARSER_CONTEXT * parser, PT_NODE * node, VAL_LIST 
   return node;
 }
 
+/* *INDENT-OFF* */
+
 static int
-pt_create_operands_from_args (std::vector < REGU_VARIABLE * >&regu_vector, REGU_VARIABLE_LIST * operands)
+pt_create_operands_from_args (std::vector<REGU_VARIABLE *> & regu_vector, REGU_VARIABLE_LIST * operands)
 {
   assert (*operands == NULL);
 
   REGU_VARIABLE_LIST crt_operand = *operands;
   REGU_VARIABLE_LIST last = NULL;
 
-for (REGU_VARIABLE * &regu:regu_vector)
+  for (REGU_VARIABLE *&regu : regu_vector)
     {
       REGU_VARIABLE_LIST crt_operand = regu_varlist_alloc ();
       if (crt_operand == NULL)
@@ -26064,6 +26051,8 @@ for (REGU_VARIABLE * &regu:regu_vector)
 
   return NO_ERROR;
 }
+
+/* *INDENT-ON* */
 
 static void
 pt_set_regu_list_pos_descr_from_idx (REGU_VARIABLE_LIST & regu_list, size_t starting_index)

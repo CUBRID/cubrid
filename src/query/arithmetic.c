@@ -5242,11 +5242,12 @@ db_json_pretty_dbval (DB_VALUE * json, DB_VALUE * res)
 }
 
 int
-db_json_arrayagg_dbval (DB_VALUE * json, DB_VALUE * json_res)
+db_json_arrayagg_dbval (DB_VALUE * json, DB_VALUE * json_res, bool expand)
 {
   JSON_DOC *this_doc;
   JSON_DOC *result_doc = NULL;
-  int error_code = NO_ERROR;
+  int result_code = NO_ERROR;
+  int json_array_size = 0;
 
   if (DB_IS_NULL (json))
     {
@@ -5271,11 +5272,13 @@ db_json_arrayagg_dbval (DB_VALUE * json, DB_VALUE * json_res)
       result_doc = db_get_json_document (json_res);
     }
 
-  error_code = db_json_arrayagg_func (this_doc, *result_doc);
-  if (error_code != NO_ERROR)
+  result_code = db_json_arrayagg_func (this_doc, *result_doc, expand);
+
+  // we have an error
+  if (result_code < 0)
     {
       assert (result_doc == NULL);
-      return error_code;
+      return result_code;
     }
 
   if (result_doc == NULL)
@@ -5284,7 +5287,7 @@ db_json_arrayagg_dbval (DB_VALUE * json, DB_VALUE * json_res)
       return ER_FAILED;
     }
 
-  return NO_ERROR;
+  return result_code;
 }
 
 int
@@ -5338,6 +5341,13 @@ db_json_objectagg_dbval (DB_VALUE * json_key, DB_VALUE * json_val, DB_VALUE * js
   return NO_ERROR;
 }
 
+/*
+* db_json_objectagg_dbval () - Inserts a JSON_OBJECT with possibly multiple members in the result_json
+*
+* return                  : the member count of the object_doc (it will be used by the accumulator) or error_code
+* json_object (in)        : the JSON_OBJECT that we want to insert
+* json_res (in)           : the DB_VALUE that contains the document where we want to insert
+*/
 int
 db_json_objectagg_dbval (DB_VALUE * json_object, DB_VALUE * json_res)
 {
@@ -5361,8 +5371,7 @@ db_json_objectagg_dbval (DB_VALUE * json_object, DB_VALUE * json_res)
   // get the resulting json document
   result_doc = db_get_json_document (json_res);
 
-  db_json_objectagg_func (*object_doc, *result_doc);
-  return NO_ERROR;
+  return db_json_objectagg_func (*object_doc, *result_doc);
 }
 
 int

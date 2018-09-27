@@ -6508,13 +6508,31 @@ qdata_aggregate_accumulator_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_A
     case PT_AGG_BIT_XOR:
     case PT_AVG:
     case PT_SUM:
-    case PT_JSON_ARRAYAGG:
-      // for JSON_OBJECTAGG expect to have in value already a JSON_OBJECT and we need to insert all members
-      // in the acc.value
-    case PT_JSON_OBJECTAGG:
       // these functions only affect acc.value and new_acc can be treated as an ordinary value
       error = qdata_aggregate_value_to_accumulator (thread_p, acc, acc_dom, func_type, func_domain, new_acc->value);
       break;
+
+      // for JSON_OBJECTAGG expect to have in value already a JSON_OBJECT and we need to insert all members
+      // in the acc.value
+      // also we need to return without adding the new_acc value count because this is done in a later stage
+    case PT_JSON_OBJECTAGG:
+      return qdata_aggregate_value_to_accumulator (thread_p, acc, acc_dom, func_type, func_domain, new_acc->value);
+
+    case PT_JSON_ARRAYAGG:
+      {
+	int result_code = db_json_arrayagg_dbval (new_acc->value, acc->value, true);
+
+	// it means we encountered an error
+	if (result_code < 0)
+	  {
+	    return result_code;
+	  }
+
+	// increase tuple count
+	acc->curr_cnt += result_code;
+
+	return NO_ERROR;
+      }
 
     case PT_STDDEV:
     case PT_STDDEV_POP:
@@ -6773,11 +6791,21 @@ qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMUL
       break;
 
       // we assume that here we will insert a JSON_OBJECT into acc->value
+      // this case will be triggered only when we want to accumulate another accumulator in the current one
+      // because we already counted one tuple at the current accumulator we need to restablish the correct count
     case PT_JSON_OBJECTAGG:
-      if (db_json_objectagg_dbval (value, acc->value) != NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
+      {
+	int result_code = db_json_objectagg_dbval (value, acc->value);
+
+	// in this case it means that we encountered an error
+	if (result_code < 0)
+	  {
+	    return ER_FAILED;
+	  }
+
+	// otherwise we return the member count of the value that we want to insert into acc->value
+	acc->curr_cnt += result_code;
+      }
       break;
 
     default:
@@ -6810,10 +6838,12 @@ qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMUL
   return NO_ERROR;
 }
 
+/* *INDENT-OFF* */
+
 int
 qdata_aggregate_multiple_values_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMULATOR * acc,
 						AGGREGATE_ACCUMULATOR_DOMAIN * domain, FUNC_TYPE func_type,
-						TP_DOMAIN * func_domain, std::vector < DB_VALUE * >&db_values)
+						TP_DOMAIN * func_domain, std::vector<DB_VALUE *> & db_values)
 {
   // we have only one argument so aggregate only the first db_value
   if (db_values.size () == 1)
@@ -6822,7 +6852,7 @@ qdata_aggregate_multiple_values_to_accumulator (THREAD_ENTRY * thread_p, AGGREGA
     }
 
   // maybe this condition will be changed in the future based on the future arguments conditions
-for (DB_VALUE * &db_value:db_values)
+  for (DB_VALUE *&db_value : db_values)
     {
       if (DB_IS_NULL (db_value))
 	{
@@ -6846,6 +6876,8 @@ for (DB_VALUE * &db_value:db_values)
 
   return NO_ERROR;
 }
+
+/* *INDENT-ON* */
 
 /*
  * qdata_evaluate_aggregate_list () -
@@ -6872,8 +6904,11 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
   char *disk_repr_p = NULL;
   int dbval_size, i, error;
   AGGREGATE_PERCENTILE_INFO *percentile = NULL;
-  std::vector < DB_VALUE * >db_values;
   DB_VALUE *db_value_p = NULL;
+
+  /* *INDENT-OFF* */
+  std::vector<DB_VALUE *> db_values;
+  /* *INDENT-ON* */
 
   (void) db_make_null (&dbval);
   (void) pr_clear_value (&dbval);
@@ -7208,11 +7243,13 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	  /* increment tuple count */
 	  accumulator->curr_cnt++;
 
+          /* *INDENT-OFF* */
 	  /* clear values */
-	for (DB_VALUE * &db_value:db_values)
+	  for (DB_VALUE *&db_value : db_values)
 	    {
 	      pr_clear_value (db_value);
 	    }
+          /* *INDENT-ON* */
 
 	  /* handle error */
 	  if (error != NO_ERROR)
