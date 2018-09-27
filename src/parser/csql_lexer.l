@@ -913,6 +913,7 @@ int yybuffer_pos;
 
 "->"									{ begin_token(yytext);   return RIGHT_ARROW; }
 "."										{ begin_token(yytext);   return DOT; }
+"->>"									{ begin_token(yytext);   return DOUBLE_RIGHT_ARROW; }
 "||"									{ 
 									  begin_token(yytext);   
 									  if (!prm_get_bool_value (PRM_ID_PIPES_AS_CONCAT))
