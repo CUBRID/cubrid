@@ -39,6 +39,7 @@
 #include "thread_looper.hpp"
 #include "porting.h"
 
+#include <cstdio>     /* for std::remove */
 #include <limits>     /* for std::numeric_limits */
 
 
@@ -497,7 +498,7 @@ namespace cubstream
 
     if (remove_physical)
       {
-	if (::remove (file_name) != 0)
+	if (std::remove (file_name) != 0)
 	  {
 	    er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_TRYING_TO_REMOVE_PERMANENT_VOLUME, 1,
 				 file_name);
