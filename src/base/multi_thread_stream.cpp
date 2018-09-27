@@ -42,9 +42,9 @@ namespace cubstream
     /* TODO : system parameter */
     m_trigger_flush_to_disk_size = buffer_capacity / 2;
 
-    m_max_allowed_unflushed_reserved = 80 * buffer_capacity / 100;
+    m_max_allowed_dirty = 80 * buffer_capacity / 100;
 
-    assert (m_max_allowed_unflushed_reserved > m_trigger_flush_to_disk_size);
+    assert (m_max_allowed_dirty > m_trigger_flush_to_disk_size);
 
     m_trigger_min_to_read_size = 16;
 
@@ -356,17 +356,19 @@ namespace cubstream
 
   /*
    * Reserve phase of append:
-   *  1. queue->produce : tries adds slot in queue (further data is filled later);
+   *  1. check if enough space to reserve; if not - wait for flush or all readers
+   *  2. queue->produce : tries adds slot in queue (further data is filled later);
    *     it repeats this steps until successful
-   *  2. buffer->reserve : tries to reserve the amount in buffer;
+   *  3. buffer->reserve : tries to reserve the amount in buffer;
    *     if unsuccessful, reverts the first step (still under mutex), release the mutex and restarts from (1)
    *     (this allows other threads to unlatch reads, advance commit pointer - to unblock the situation)
-   *  3. increase the m_append_position of stream
-   *  4. init/fills-in reserve context data (reserved position, reserved pointer, amount)
-   *  5. release mutex
-   *  6. if needed, notifies m_filled_stream_handler that too much data was appended since drop position
-   *     drop_position is a logical position in past of stream; this is set by an aggregator of "interested" clients
-   *     of stream data and instructs the stream up to which position is safe to drop the data;
+   *  4. increase the m_append_position of stream
+   *  5. init/fills-in reserve context data (reserved position, reserved pointer, amount)
+   *  6. release mutex
+   *  7. if needed, notifies m_filled_stream_handler that too much data was appended since recycle position
+   *     m_last_recyclable_pos is a logical position in past of stream;
+   *     this is set by an aggregator of "interested" clients of stream data and instructs the stream up to
+   *     which position is safe to recycle the data;
    *     the interested clients may be : normal readers or the readers which saves the data to disk (for persistence)
    */
   char *multi_thread_stream::reserve_with_buffer (const size_t amount, stream_reserve_context *&reserved_context)
@@ -375,7 +377,7 @@ namespace cubstream
 
     assert (amount > 0);
 
-    if (m_append_position - m_last_dropable_pos > m_max_allowed_unflushed_reserved)
+    if (m_append_position - m_last_recyclable_pos > m_max_allowed_dirty)
       {
 	/* flush or reader are not keeping up with the writers */
 	wait_for_flush_or_readers (m_last_committed_pos, m_append_position);
@@ -383,7 +385,7 @@ namespace cubstream
 
     m_buffer_mutex.lock ();
 
-    while (m_append_position - m_last_dropable_pos > m_max_allowed_unflushed_reserved)
+    while (m_append_position - m_last_recyclable_pos > m_max_allowed_dirty)
       {
 	m_buffer_mutex.unlock ();
 	/* flush or reader are not keeping up with the writers */
@@ -428,7 +430,7 @@ namespace cubstream
     reserved_context->reserved_amount = amount;
     reserved_context->written_bytes = 0;
 
-    stream_position start_flush_pos = m_last_dropable_pos;
+    stream_position start_flush_pos = m_last_recyclable_pos;
     stream_position end_flush_pos = m_last_committed_pos;
 
     m_buffer_mutex.unlock ();
@@ -661,24 +663,27 @@ namespace cubstream
       const stream_position &last_append_pos)
   {
     /* set fill factor to force a flush */
-    std::unique_lock<std::mutex> local_lock (m_drop_pos_mutex);
-    wake_up_flusher (2.0f, m_last_dropable_pos, last_commit_pos - m_last_dropable_pos);
+    std::unique_lock<std::mutex> local_lock (m_recyclable_pos_mutex);
+    wake_up_flusher (2.0f, m_last_recyclable_pos, last_commit_pos - m_last_recyclable_pos);
 
-    /* wait until flusher advances m_last_dropable_pos */
-    m_drop_pos_cv.wait (local_lock,
-			[&] { return m_is_stopped ||
-				     (last_append_pos - m_last_dropable_pos <
-				      m_max_allowed_unflushed_reserved);
-			    });
+    /* wait until flusher/senders advances m_last_recyclable_pos */
+    m_recyclable_pos_cv.wait (local_lock,
+			      [&] { return m_is_stopped ||
+					   (last_append_pos - m_last_recyclable_pos <
+					    m_max_allowed_dirty);
+				  });
   }
 
-  void multi_thread_stream::set_last_dropable_pos (const stream_position &last_dropable_pos)
+  void multi_thread_stream::set_last_recyclable_pos (const stream_position &pos)
   {
-    std::unique_lock<std::mutex> local_lock (m_drop_pos_mutex);
-    m_last_dropable_pos = last_dropable_pos;
-    local_lock.unlock ();
+    std::unique_lock<std::mutex> local_lock (m_recyclable_pos_mutex);
+    if (pos > m_last_recyclable_pos)
+      {
+	m_last_recyclable_pos = pos;
+	local_lock.unlock ();
 
-    m_drop_pos_cv.notify_one ();
+	m_recyclable_pos_cv.notify_one ();
+      }
   }
 
 } /* namespace cubstream */

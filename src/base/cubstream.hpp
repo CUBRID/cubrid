@@ -83,10 +83,11 @@ namespace cubstream
       /* position to wait for in serial read */
       stream_position m_serial_read_wait_pos;
 
-      /* last position which may be dropped (the underlying memory associated may be recycled)
-       * is checked by stream notify (e.g. flush to disk), and set by external clients;
+      /*
+       * last position which may be recycled (the underlying memory associated may be recycled)
+       * is checked by stream notify (e.g. flush to disk), and updated by flusher/external clients;
        */
-      stream_position m_last_dropable_pos;
+      stream_position m_last_recyclable_pos;
 
       std::string m_stream_name;
 
@@ -117,14 +118,14 @@ namespace cubstream
 	return m_last_committed_pos;
       }
 
-      const stream_position &get_last_dropable_pos (void)
+      const stream_position &get_last_recyclable_pos (void)
       {
-	return m_last_dropable_pos;
+	return m_last_recyclable_pos;
       }
 
-      virtual void set_last_dropable_pos (const stream_position &last_dropable_pos)
+      virtual void set_last_recyclable_pos (const stream_position &pos)
       {
-	m_last_dropable_pos = last_dropable_pos;
+	m_last_recyclable_pos = pos;
       }
 
       void set_filled_stream_handler (notify_func_t handler)
@@ -138,9 +139,9 @@ namespace cubstream
       }
 
       void set_name (const std::string name)
-        {
-          m_stream_name = name;
-        }
+      {
+	m_stream_name = name;
+      }
       const std::string &name (void)
       {
 	return m_stream_name;

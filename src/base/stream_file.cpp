@@ -103,7 +103,7 @@ namespace cubstream
 
 	curr_pos += amount_to_copy;
 
-	m_stream.set_last_dropable_pos (curr_pos);
+	m_stream.set_last_recyclable_pos (curr_pos);
       }
 
       int copy_to_buffer (char *ptr, const size_t byte_count)
@@ -500,7 +500,7 @@ namespace cubstream
 	if (::remove (file_name) != 0)
 	  {
 	    er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_TRYING_TO_REMOVE_PERMANENT_VOLUME, 1,
-                                 file_name);
+				 file_name);
 	    err = ER_BO_TRYING_TO_REMOVE_PERMANENT_VOLUME;
 	    return err;
 	  }

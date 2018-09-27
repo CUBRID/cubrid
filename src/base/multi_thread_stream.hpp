@@ -117,19 +117,19 @@ namespace cubstream
        */
       size_t m_trigger_flush_to_disk_size;
 
-      /* the allowed range for difference (append_position - last_dropable): if the append continues beyond this range,
-       * we may loose unflushed (or un-read by all readers) data;
+      /* the allowed range for difference (append_position - m_last_recyclable_pos):
+       * if the append continues beyond this range, we may loose unflushed (or un-read by all readers) data;
        * normally, we can set this to buffer_capacity, but due to contiguous requirement of allocation, in practice,
-       * this limit si lower
+       * this limit is lower;
        * if this is set to zero, we can afford to loose data (unread and unflushed).
        */
-      size_t m_max_allowed_unflushed_reserved;
+      size_t m_max_allowed_dirty;
 
-      /* mutex accessing/updating dropable position */
-      std::mutex m_drop_pos_mutex;
+      /* mutex accessing/updating recyclable position */
+      std::mutex m_recyclable_pos_mutex;
 
-      /* updating and waiting for dropable position cv uses m_drop_pos_mutex */
-      std::condition_variable m_drop_pos_cv;
+      /* updating and waiting for recyclable position cv uses m_recyclable_pos_mutex */
+      std::condition_variable m_recyclable_pos_cv;
 
       /* the minimum amount committed to stream which may be read (to avoid notifications in case of too small data) */
       size_t m_trigger_min_to_read_size;
@@ -185,22 +185,22 @@ namespace cubstream
 	m_trigger_min_to_read_size = min_read_size;
       }
 
-      void set_max_allowed_unflushed_reserved (const size_t max_unflushed)
+      void set_max_allowed_dirty (const size_t max_dirty)
       {
-	m_max_allowed_unflushed_reserved = max_unflushed;
+	m_max_allowed_dirty = max_dirty;
       }
 
       /* fill factor : if < 1 : no need to flush or throttle the appenders ; if > 1 : need to flush and/or throttle */
       float stream_fill_factor (void)
       {
-	return ((float) m_last_committed_pos - (float) m_last_dropable_pos) / (float) m_trigger_flush_to_disk_size;
+	return ((float) m_last_committed_pos - (float) m_last_recyclable_pos) / (float) m_trigger_flush_to_disk_size;
       };
 
       void set_stop (void)
       {
 	m_is_stopped = true;
 	m_serial_read_cv.notify_one ();
-	m_drop_pos_cv.notify_one ();
+	m_recyclable_pos_cv.notify_one ();
       }
 
       void set_stream_file (stream_file *sf)
@@ -215,7 +215,7 @@ namespace cubstream
 
       void wake_up_flusher (float fill_factor, const stream_position &start_flush_pos, const size_t flush_amount);
       void wait_for_flush_or_readers (const stream_position &last_commit_pos, const stream_position &last_append_pos);
-      void set_last_dropable_pos (const stream_position &last_dropable_pos);
+      void set_last_recyclable_pos (const stream_position &pos);
   };
 
 } /* namespace cubstream */

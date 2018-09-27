@@ -972,7 +972,7 @@ namespace test_stream
       {
 	drop_pos = MIN (drop_pos, stream_context_manager::g_read_positions[j]);
       }
-    stream_context_manager::g_stream->set_last_dropable_pos (drop_pos);
+    stream_context_manager::g_stream->set_last_recyclable_pos (drop_pos);
   }
 
 
@@ -1594,7 +1594,7 @@ namespace test_stream
 
     std::cout << "Done" << std::endl;
 
-    my_stream_file->drop_volumes_to_pos (stream_context_manager::g_stream->get_last_dropable_pos () +
+    my_stream_file->drop_volumes_to_pos (stream_context_manager::g_stream->get_last_recyclable_pos () +
 					 my_stream_file->get_volume_size ());
 
     delete my_stream_file;
