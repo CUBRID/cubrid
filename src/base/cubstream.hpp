@@ -52,7 +52,7 @@ namespace cubstream
       typedef std::function<int (char *, const size_t, size_t &)> read_partial_func_t;
       typedef std::function<int (const stream_position &, char *, const size_t, size_t &)> read_prepare_func_t;
       typedef std::function<int (const stream_position &, char *, const size_t)> write_func_t;
-      typedef std::function<int (const stream_position &, const size_t)> notify_func_t;
+      typedef std::function<void (const stream_position &, const size_t)> notify_func_t;
 
     protected:
       /* callback functions: */

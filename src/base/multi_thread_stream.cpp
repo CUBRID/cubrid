@@ -92,7 +92,7 @@ namespace cubstream
 
     reserve_context->written_bytes = written_bytes;
 
-    err = commit_append (reserve_context);
+    commit_append (reserve_context);
 
     if (written_bytes < 0)
       {
@@ -304,12 +304,11 @@ namespace cubstream
    *  3. notifies the m_ready_pos_handler handler that new amount is ready to be read
    *     (only if threshold is reached compared to previous notified position)
    */
-  int multi_thread_stream::commit_append (stream_reserve_context *reserve_context)
+  void multi_thread_stream::commit_append (stream_reserve_context *reserve_context)
   {
     stream_reserve_context *last_used_context = NULL;
     bool collapsed_reserve;
     char *ptr_commit;
-    int err = NO_ERROR;
     stream_position new_completed_position = reserve_context->start_pos + reserve_context->reserved_amount;
     bool signal_data_ready = false;
 
@@ -347,11 +346,9 @@ namespace cubstream
 	stream_position save_last_notified_commited_pos = m_last_notified_committed_pos;
 	size_t committed_bytes = new_completed_position - m_last_notified_committed_pos;
 
-	err = m_ready_pos_handler (save_last_notified_commited_pos, committed_bytes);
+	m_ready_pos_handler (save_last_notified_commited_pos, committed_bytes);
 	m_last_notified_committed_pos = new_completed_position;
       }
-
-    return err;
   }
 
   /*

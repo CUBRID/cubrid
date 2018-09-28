@@ -153,7 +153,7 @@ namespace cubstream
 
     protected:
       /* should be called when serialization of a stream entry ends */
-      int commit_append (stream_reserve_context *reserve_context);
+      void commit_append (stream_reserve_context *reserve_context);
 
       char *reserve_with_buffer (const size_t amount, stream_reserve_context *&reserved_context);
 
