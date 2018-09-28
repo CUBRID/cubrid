@@ -2848,31 +2848,48 @@ db_json_convert_sql_path_to_pointer (const char *sql_path, std::string &json_poi
   return NO_ERROR;
 }
 
-extern int db_string_like (const DB_VALUE *src_string, const DB_VALUE *pattern, const DB_VALUE *esc_char,
-			   int *result);
 
-static int db_string_like (const char *str, const char *pattern, const char *esc_char, int *result)
+static int
+db_string_like (const char *str, const char *pattern, const char *esc_char, int *result)
 {
   // todo: find a way to don't do copies
-
   int error_code = NO_ERROR;
 
-  DB_VALUE temp1;
-  db_make_null (&temp1);
-  error_code = db_make_string_copy (&temp1, str);
+  DB_VALUE str_val;
+  DB_VALUE pattern_val;
+  DB_VALUE escape_val;
 
-  DB_VALUE temp2;
-  db_make_null (&temp2);
-  error_code = db_make_string_copy (&temp2, pattern);
+  db_make_null (&str_val);
+  error_code = db_make_string_copy (&str_val, str);
+  if (error_code)
+    {
+      db_value_clear (&str_val);
+      return error_code;
+    }
 
-  DB_VALUE temp3;
-  db_make_null (&temp3);
-  error_code = db_make_string_copy (&temp3, esc_char);
+  db_make_null (&pattern_val);
+  error_code = db_make_string_copy (&pattern_val, pattern);
+  if (error_code)
+    {
+      db_value_clear (&str_val);
+      db_value_clear (&pattern_val);
+      return error_code;
+    }
 
-  error_code = db_string_like (&temp1, &temp2, &temp3, result);
-  db_value_clear (&temp1);
-  db_value_clear (&temp2);
-  db_value_clear (&temp3);
+  db_make_null (&escape_val);
+  error_code = db_make_string_copy (&escape_val, esc_char);
+  if (error_code)
+    {
+      db_value_clear (&str_val);
+      db_value_clear (&pattern_val);
+      db_value_clear (&escape_val);
+      return error_code;
+    }
+
+  error_code = db_string_like (&str_val, &pattern_val, &escape_val, result);
+  db_value_clear (&str_val);
+  db_value_clear (&pattern_val);
+  db_value_clear (&escape_val);
 
   return error_code;
 }

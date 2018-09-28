@@ -12997,11 +12997,6 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
       }
       break;
 
-    case F_JSON_SEARCH:
-
-      //whatever.. do some checks
-      break;
-
     case F_JSON_OBJECT:
       {
 	PT_TYPE_ENUM unsupported_type;
@@ -13212,6 +13207,49 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
       }
       break;
 
+    case F_JSON_SEARCH:
+      {
+	PT_TYPE_ENUM unsupported_type;
+	PT_NODE *arg = arg_list;
+	bool is_supported = false;
+	is_supported = pt_is_json_doc_type (arg->type_enum);
+	if (!is_supported)
+	  {
+	    arg_type = PT_TYPE_NONE;
+	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
+			 pt_show_function (fcode), pt_show_type_enum (arg->type_enum));
+	    break;
+	  }
+
+	arg = arg->next;
+	unsigned int index = 1;
+	while (arg)
+	  {
+	    if (index < 4)
+	      {
+		is_supported = PT_IS_STRING_TYPE (arg->type_enum) || arg->type_enum == PT_TYPE_MAYBE
+		  || arg->type_enum == PT_TYPE_NULL || arg->type_enum == PT_TYPE_NA;
+	      }
+	    else
+	      {
+		is_supported = pt_is_json_path (arg->type_enum);
+	      }
+
+	    if (!is_supported)
+	      {
+		unsupported_type = arg->type_enum;
+		arg_type = PT_TYPE_NONE;
+		PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
+			     pt_show_function (fcode), pt_show_type_enum (unsupported_type));
+		break;
+	      }
+
+	    ++index;
+	    arg = arg->next;
+	  }
+      }
+      break;
+
     case F_JSON_KEYS:
       {
 	// should have maximum 2 parameters
@@ -13228,7 +13266,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 		is_supported = pt_is_json_doc_type (arg->type_enum);
 		break;
 	      case 1:
-		is_supported = pt_is_json_path (arg->type_enum);;
+		is_supported = pt_is_json_path (arg->type_enum);
 		break;
 	      default:
 		/* Should not happen */
@@ -13589,8 +13627,6 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	case F_JSON_ARRAY_INSERT:
 	case F_JSON_MERGE:
 	case F_JSON_GET_ALL_PATHS:
-	  node->type_enum = PT_TYPE_JSON;
-	  break;
 	case F_JSON_SEARCH:
 	  node->type_enum = PT_TYPE_JSON;
 	  break;

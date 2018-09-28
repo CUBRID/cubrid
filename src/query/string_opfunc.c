@@ -3741,15 +3741,23 @@ db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
   return NO_ERROR;
 }
 
-int
-db_json_search_dbval (DB_VALUE * result, DB_VALUE * args[], int num_args)
-{
-  // arg0 doc
-  // arg1 all
-  // arg2 pattern
-  // arg3 escape thing
-  // arg4+ starting path
+/*
+ * db_json_search_dbval ()
+ * function that finds paths of json_values that match a pattern
+ * result (out): json string or json array if there are more paths that match
+ * args (in): the arguments for the merge function
+ *            arg0 json_doc     
+ *            arg1 or/all
+ *            arg2 pattern
+ *            arg3 escape char
+ *            arg4+ starting path
+ * num_args (in)
+ */
 
+/* *INDENT-OFF* */
+int
+db_json_search_dbval (DB_VALUE * result, DB_VALUE * args[], const int num_args)
+{
   int error_code = NO_ERROR;
 
   if (num_args < 3)
@@ -3783,7 +3791,7 @@ db_json_search_dbval (DB_VALUE * result, DB_VALUE * args[], int num_args)
       esc_char = db_get_string (args[3]);
     }
 
-  std::vector < std::string > starting_paths;
+  std::vector<std::string> starting_paths;
   for (int i = 4; i < num_args; ++i)
     {
       starting_paths.push_back (db_get_string (args[i]));
@@ -3793,7 +3801,7 @@ db_json_search_dbval (DB_VALUE * result, DB_VALUE * args[], int num_args)
       starting_paths.push_back ("$");
     }
 
-  std::vector < std::string > paths;
+  std::vector<std::string> paths;
   db_json_search_func (doc, pattern, esc_char, find_all, starting_paths, paths);
 
   JSON_DOC *result_json = nullptr;
@@ -3826,6 +3834,7 @@ for (auto & path:paths)
 
   return db_make_json (result, result_json, true);
 }
+/* *INDENT-ON* */
 
 int
 db_json_get_all_paths (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
