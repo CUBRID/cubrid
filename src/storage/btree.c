@@ -33353,142 +33353,142 @@ btree_key_online_index_IB_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
   /* We are in leaf level now, and we must inspect if we have found the OID inside the key. */
   if (search_key->result == BTREE_KEY_FOUND)
     {
-      /* We search the key for the OID. If we find it, we should find it with DELETE_FLAG set, therefore we must
-       * delete it in place.
-       */
 
-      /* Get the record. */
-      if (spage_get_record (thread_p, *leaf_page, search_key->slotid, &record, COPY) != S_SUCCESS)
+      if (BTREE_IS_UNIQUE (btid_int->unique_pk))
 	{
-	  assert_release (false);
-	  error_code = ER_FAILED;
-	  return error_code;
-	}
-
-      /* Read the record. */
-      error_code =
-	btree_read_record (thread_p, btid_int, *leaf_page, &record, NULL, &leaf_info, BTREE_LEAF_NODE,
-			   &dummy_clear_key, &offset_after_key, PEEK_KEY_VALUE, NULL);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  return error_code;
-	}
-
-      error_code =
-	btree_find_oid_with_page_and_record (thread_p, btid_int, &helper->insert_helper.obj_info.oid, *leaf_page,
-					     helper->insert_helper.purpose, NULL, &record, &leaf_info, offset_after_key,
-					     &page_found, &prev_page, &offset_to_object, &btree_mvcc_info, &new_record);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  return error_code;
-	}
-
-      node_type = (page_found == *leaf_page) ? BTREE_LEAF_NODE : BTREE_OVERFLOW_NODE;
-
-      if (node_type == BTREE_OVERFLOW_NODE)
-	{
-	  slotid = 1;
+	  error_code =
+	    btree_key_lock_and_append_object_unique (thread_p, btid_int, key, leaf_page, restart, search_key,
+						     &helper->insert_helper, &record);
 	}
       else
 	{
-	  slotid = search_key->slotid;
-	}
-
-      if (offset_to_object != NOT_FOUND)
-	{
-	  /* Inspect the key and its MVCC_INFO. */
-	  /* This is the index builder, therefore if there is already an OID that matches the one that needs to be
-	   * inserted, then the already inserted one should have either DELETE_FLAG or INSERT_FLAG set.
+	  /* We search the key for the OID. If we find it, we should find it with DELETE_FLAG set, therefore we must
+	   * delete it in place.
 	   */
-	  btree_online_index_check_state (btree_mvcc_info.insert_mvccid);
 
-	  if (btree_online_index_is_insert_flag_state (btree_mvcc_info.insert_mvccid))
+	  /* Get the record. */
+	  if (spage_get_record (thread_p, *leaf_page, search_key->slotid, &record, COPY) != S_SUCCESS)
 	    {
-	      /* INSERT_FLAG is set. It means we have to remove the flag, according to the state machine. */
-	      btree_online_index_set_normal_state (btree_mvcc_info.insert_mvccid);
+	      assert_release (false);
+	      error_code = ER_FAILED;
+	      return error_code;
+	    }
 
-	      /* Prepare logging data. */
-	      addr.offset = slotid;
-	      addr.pgptr = page_found;
-	      addr.vfid = &btid_int->sys_btid->vfid;
+	  /* Read the record. */
+	  error_code =
+	    btree_read_record (thread_p, btid_int, *leaf_page, &record, NULL, &leaf_info, BTREE_LEAF_NODE,
+			       &dummy_clear_key, &offset_after_key, PEEK_KEY_VALUE, NULL);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return error_code;
+	    }
 
-	      if (node_type == BTREE_OVERFLOW_NODE)
+	  error_code =
+	    btree_find_oid_with_page_and_record (thread_p, btid_int, &helper->insert_helper.obj_info.oid, *leaf_page,
+						 helper->insert_helper.purpose, NULL, &record, &leaf_info,
+						 offset_after_key, &page_found, &prev_page, &offset_to_object,
+						 &btree_mvcc_info, &new_record);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return error_code;
+	    }
+
+	  node_type = (page_found == *leaf_page) ? BTREE_LEAF_NODE : BTREE_OVERFLOW_NODE;
+
+	  if (node_type == BTREE_OVERFLOW_NODE)
+	    {
+	      slotid = 1;
+	    }
+	  else
+	    {
+	      slotid = search_key->slotid;
+	    }
+
+	  if (offset_to_object != NOT_FOUND)
+	    {
+	      /* Inspect the key and its MVCC_INFO. */
+	      /* This is the index builder, therefore if there is already an OID that matches the one that needs to be
+	       * inserted, then the already inserted one should have either DELETE_FLAG or INSERT_FLAG set.
+	       */
+	      btree_online_index_check_state (btree_mvcc_info.insert_mvccid);
+
+	      if (btree_online_index_is_insert_flag_state (btree_mvcc_info.insert_mvccid))
 		{
-		  BTREE_RV_SET_OVERFLOW_NODE (&addr);
-		}
-	      LOG_RV_RECORD_SET_MODIFY_MODE (&addr, LOG_RV_RECORD_UPDATE_PARTIAL);
+		  /* INSERT_FLAG is set. It means we have to remove the flag, according to the state machine. */
+		  btree_online_index_set_normal_state (btree_mvcc_info.insert_mvccid);
 
-	      btree_online_index_change_state (thread_p, btid_int, &new_record, node_type, offset_to_object,
-					       btree_mvcc_info.insert_mvccid, NULL,
-					       &helper->insert_helper.rv_redo_data_ptr);
+		  /* Prepare logging data. */
+		  addr.offset = slotid;
+		  addr.pgptr = page_found;
+		  addr.vfid = &btid_int->sys_btid->vfid;
 
-	      /* Add the logged info. */
-	      /* Update in page. */
-	      if (spage_update (thread_p, page_found, slotid, &new_record) != SP_SUCCESS)
-		{
-		  /* Unexpected. */
-		  assert_release (false);
-		  error_code = ER_FAILED;
+		  if (node_type == BTREE_OVERFLOW_NODE)
+		    {
+		      BTREE_RV_SET_OVERFLOW_NODE (&addr);
+		    }
+		  LOG_RV_RECORD_SET_MODIFY_MODE (&addr, LOG_RV_RECORD_UPDATE_PARTIAL);
+
+		  btree_online_index_change_state (thread_p, btid_int, &new_record, node_type, offset_to_object,
+						   btree_mvcc_info.insert_mvccid, NULL,
+						   &helper->insert_helper.rv_redo_data_ptr);
+
+		  /* Add the logged info. */
+		  /* Update in page. */
+		  if (spage_update (thread_p, page_found, slotid, &new_record) != SP_SUCCESS)
+		    {
+		      /* Unexpected. */
+		      assert_release (false);
+		      error_code = ER_FAILED;
+		      return error_code;
+		    }
+
+		  FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
+
+		  /* We need to log previous lsa. */
+		  LSA_COPY (&prev_lsa, pgbuf_get_lsa (page_found));
+
+		  /* Logging. */
+		  BTREE_RV_GET_DATA_LENGTH (helper->insert_helper.rv_redo_data_ptr, helper->insert_helper.rv_redo_data,
+					    rv_redo_data_length);
+		  log_append_redo_data (thread_p, RVBT_RECORD_MODIFY_NO_UNDO, &addr, rv_redo_data_length,
+					helper->insert_helper.rv_redo_data);
+
+		  btree_insert_log (&helper->insert_helper, "btree_key_online_index_insert %s", "todo");
+
+		  FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
+
+		  pgbuf_set_dirty (thread_p, page_found, DONT_FREE);
+
 		  return error_code;
 		}
+	      else
+		{
+		  assert (btree_online_index_is_delete_flag_state (btree_mvcc_info.insert_mvccid));
 
-	      FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
+		  btree_insert_helper_to_delete_helper (&helper->insert_helper, &helper->delete_helper);
+		  helper->delete_helper.purpose = BTREE_OP_ONLINE_INDEX_IB_DELETE;
 
-	      /* We need to log previous lsa. */
-	      LSA_COPY (&prev_lsa, pgbuf_get_lsa (page_found));
+		  error_code =
+		    btree_key_remove_object (thread_p, key, btid_int, &helper->delete_helper, *leaf_page, &record,
+					     &leaf_info, offset_after_key, search_key, &page_found, prev_page,
+					     node_type, offset_to_object);
 
-	      /* Logging. */
-	      BTREE_RV_GET_DATA_LENGTH (helper->insert_helper.rv_redo_data_ptr, helper->insert_helper.rv_redo_data,
-					rv_redo_data_length);
-	      log_append_redo_data (thread_p, RVBT_RECORD_MODIFY_NO_UNDO, &addr, rv_redo_data_length,
-				    helper->insert_helper.rv_redo_data);
-
-	      btree_insert_log (&helper->insert_helper, "btree_key_online_index_insert %s", "todo");
-
-	      FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
-
-	      pgbuf_set_dirty (thread_p, page_found, DONT_FREE);
-
-	      return error_code;
+		  return error_code;
+		}
 	    }
 	  else
 	    {
-	      assert (btree_online_index_is_delete_flag_state (btree_mvcc_info.insert_mvccid));
-
-	      btree_insert_helper_to_delete_helper (&helper->insert_helper, &helper->delete_helper);
-	      helper->delete_helper.purpose = BTREE_OP_ONLINE_INDEX_IB_DELETE;
-
-	      error_code =
-		btree_key_remove_object (thread_p, key, btid_int, &helper->delete_helper, *leaf_page, &record,
-					 &leaf_info, offset_after_key, search_key, &page_found, prev_page, node_type,
-					 offset_to_object);
-
-	      return error_code;
-	    }
-	}
-      else
-	{
-	  /* Key was found but the object wasn't. We must append the object to the current key. */
-	  /* Safeguards. */
-	  assert (search_key->result == BTREE_KEY_FOUND && offset_to_object == NOT_FOUND);
-
-	  if (BTREE_IS_UNIQUE (btid_int->unique_pk))
-	    {
-	      error_code =
-		btree_key_lock_and_append_object_unique (thread_p, btid_int, key, leaf_page, restart, search_key,
-							 &helper->insert_helper, &new_record);
-	    }
-	  else
-	    {
+	      /* Key was found but the object wasn't. We must append the object to the current key. */
+	      /* Safeguards. */
+	      assert (search_key->result == BTREE_KEY_FOUND && offset_to_object == NOT_FOUND);
 	      error_code =
 		btree_key_append_object_non_unique (thread_p, btid_int, key, *leaf_page, search_key, &new_record,
 						    offset_after_key, &leaf_info, &helper->insert_helper.obj_info,
 						    &helper->insert_helper);
+
 	    }
-
-
 	}
     }
   else
