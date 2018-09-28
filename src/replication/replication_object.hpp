@@ -87,7 +87,7 @@ namespace cubreplication
     public:
       static const int PACKING_ID = 2;
 
-      int apply () override;
+      virtual int apply () override;
 
       virtual bool is_equal (const cubpacking::packable_object *other);
 
@@ -121,6 +121,8 @@ namespace cubreplication
       rec_des_row_repl_entry () = default;
       ~rec_des_row_repl_entry ();
 
+      int apply () override;
+
       virtual int pack (cubpacking::packer *serializator) final;
       virtual int unpack (cubpacking::packer *serializator) final;
       virtual std::size_t get_packed_size (cubpacking::packer *serializator, std::size_t start_offset = 0) final;
@@ -143,6 +145,8 @@ namespace cubreplication
       ~changed_attrs_row_repl_entry ();
 
       void copy_and_add_changed_value (const ATTR_ID att_id, const DB_VALUE &db_val);
+
+      int apply () override;
 
       virtual int pack (cubpacking::packer *serializator) override final;
       virtual int unpack (cubpacking::packer *serializator) override final;

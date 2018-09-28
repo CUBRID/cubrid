@@ -13632,7 +13632,8 @@ locator_prepare_rbr_apply (THREAD_ENTRY * thread_p, const int rbr_operation, OID
  *
  */
 int
-locator_repl_apply_rbr (THREAD_ENTRY * thread_p, const char *class_name, const int key_att_id, DB_VALUE * key_value,
+locator_repl_apply_rbr (THREAD_ENTRY * thread_p, const int rbr_operation, const char *class_name,
+                        const int key_att_id, DB_VALUE * key_value,
 			const std::vector < int >&att_ids, const std::vector < DB_VALUE * >&new_values)
 {
   OID class_oid;
@@ -13654,8 +13655,6 @@ locator_repl_apply_rbr (THREAD_ENTRY * thread_p, const char *class_name, const i
   bool need_locking = false;
   HEAP_SCANCACHE scan_cache;
   bool scan_cache_inited = false;
-  /* TODO : operation type : argument from RBR */
-  int rbr_operation = LC_FLUSH_UPDATE;
   /* TODO : prunning type : argument from RBR ? */
   int pruning_type = DB_NOT_PARTITIONED_CLASS;
   /* TODO : has_index : argument in RBR ? */

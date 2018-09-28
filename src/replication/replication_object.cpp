@@ -30,6 +30,8 @@
 #include "object_primitive.h"
 #include "string_buffer.hpp"
 
+#include "locator_sr.h"
+
 namespace cubreplication
 {
   static const char *repl_entry_type_str[] = { "update", "insert", "delete" };
@@ -56,8 +58,19 @@ namespace cubreplication
   int
   single_row_repl_entry::apply (void)
   {
-    /* TODO */
-    return NO_ERROR;
+    int err = NO_ERROR;
+#if defined (SERVER_MODE)
+    assert (m_type == REPL_DELETE);
+
+    cubthread::entry &my_thread = cubthread::get_entry ();
+
+    std::vector <int> dummy_int_vector;
+    std::vector <DB_VALUE *> dummy_val_vector;
+
+    err = locator_repl_apply_rbr (&my_thread, LC_FLUSH_DELETE, m_class_name.c_str (), 0, &m_key_value,
+                                  dummy_int_vector, dummy_val_vector);
+#endif
+    return err;
   }
 
   bool
@@ -154,8 +167,14 @@ namespace cubreplication
   int
   sbr_repl_entry::apply (void)
   {
-    /* TODO */
-    return NO_ERROR;
+    int err = NO_ERROR;
+#if defined (SERVER_MODE)
+    cubthread::entry &my_thread = cubthread::get_entry ();
+    err = locator_repl_apply_sbr (&my_thread, m_db_user.c_str (),
+                                  m_sys_prm_context.empty () ? NULL : m_sys_prm_context.c_str (),
+                                  m_statement.c_str ());
+#endif
+    return err;
   }
 
   bool
@@ -163,7 +182,10 @@ namespace cubreplication
   {
     const sbr_repl_entry *other_t = dynamic_cast<const sbr_repl_entry *> (other);
 
-    if (other_t == NULL || m_statement != other_t->m_statement)
+    if (other_t == NULL
+        || m_statement != other_t->m_statement
+        || m_db_user != other_t->m_db_user
+        || m_sys_prm_context != other_t->m_sys_prm_context)
       {
 	return false;
       }
@@ -252,6 +274,13 @@ namespace cubreplication
     pr_clone_value (&db_val, &last_new_value);
     (void) db_change_private_heap (NULL, save_heapid);
   }
+
+  int
+  changed_attrs_row_repl_entry::apply (void)
+    {
+      /* TODO */
+      return NO_ERROR;
+    }
 
   int
   changed_attrs_row_repl_entry::pack (cubpacking::packer *serializator)
@@ -400,6 +429,13 @@ namespace cubreplication
   {
     m_inst_oid = inst_oid;
   }
+
+  int
+  rec_des_row_repl_entry::apply (void)
+    {
+      /* TODO */
+      return NO_ERROR;
+    }
 
   int
   rec_des_row_repl_entry::pack (cubpacking::packer *serializator)
