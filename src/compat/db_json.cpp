@@ -644,6 +644,8 @@ static void db_json_copy_doc (JSON_DOC &dest, const JSON_DOC *src);
 
 static void db_json_get_paths_helper (const JSON_VALUE &obj, const std::string &sql_path,
 				      std::vector<std::string> &paths);
+static int db_json_search_helper (const JSON_VALUE &obj, const char *pattern, const char *esc_char, bool find_all,
+				  const std::string &sql_path, bool &found, std::vector<std::string> &paths);
 static void db_json_normalize_path (std::string &path_string);
 static void db_json_remove_leading_zeros_index (std::string &index);
 static bool db_json_isspace (const unsigned char &ch);
@@ -1795,6 +1797,56 @@ db_json_remove_func (JSON_DOC &doc, const char *raw_path)
 }
 
 /*
+ * db_json_search_func () - Find json values that match the pattern and gather their paths
+ *
+ * return                  : error code
+ * doc (in)                : json document
+ * pattern (in)            : pattern to match against
+ * esc_char (in)           : escape sequence used to match the pattern
+ * starting_paths (in)     : prefixes used in the search
+ * paths (out)             : full paths found
+ */
+int
+db_json_search_func (JSON_DOC &doc, const char *pattern,const char *esc_char, bool find_all,
+		     std::vector<std::string> &starting_paths,
+		     std::vector<std::string> &paths)
+{
+  for (auto &starting_path : starting_paths)
+    {
+      JSON_DOC *resolved = nullptr;
+      int error_code = db_json_extract_document_from_path (&doc, starting_path.c_str(), resolved);
+      if (error_code)
+	{
+	  return error_code;
+	}
+
+      if (resolved == nullptr)
+	{
+	  continue;
+	}
+
+      bool found = false;
+      error_code = db_json_search_helper (*resolved, pattern, esc_char, find_all, starting_path, found, paths);
+      if (error_code)
+	{
+	  return error_code;
+	}
+
+      if (found && !find_all)
+	{
+	  break;
+	}
+    }
+
+  for (auto &path : paths)
+    {
+      path = "\"" + path + "\"";
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * db_json_array_append_func () - Append the value to the end of the indicated array within a JSON document
  *
  * return                  : error code
@@ -2794,6 +2846,121 @@ db_json_convert_sql_path_to_pointer (const char *sql_path, std::string &json_poi
     }
 
   return NO_ERROR;
+}
+
+extern int db_string_like (const DB_VALUE *src_string, const DB_VALUE *pattern, const DB_VALUE *esc_char,
+			   int *result);
+
+static int db_string_like (const char *str, const char *pattern, const char *esc_char, int *result)
+{
+  // todo: find a way to don't do copies
+
+  int error_code = NO_ERROR;
+
+  DB_VALUE temp1;
+  db_make_null (&temp1);
+  error_code = db_make_string_copy (&temp1, str);
+
+  DB_VALUE temp2;
+  db_make_null (&temp2);
+  error_code = db_make_string_copy (&temp2, pattern);
+
+  DB_VALUE temp3;
+  db_make_null (&temp3);
+  error_code = db_make_string_copy (&temp3, esc_char);
+
+  error_code = db_string_like (&temp1, &temp2, &temp3, result);
+  db_value_clear (&temp1);
+  db_value_clear (&temp2);
+  db_value_clear (&temp3);
+
+  return error_code;
+}
+
+/*
+* db_json_get_paths_helper () - Recursive function to get the paths from a json object
+*
+* obj (in)                : current object
+* sql_path (in)           : the path for the current object
+* paths (in)              : vector where we will store all the paths
+*/
+static int
+db_json_search_helper (const JSON_VALUE &obj, const char *pattern, const char *esc_char, bool find_all,
+		       const std::string &sql_path, bool &found,
+		       std::vector<std::string> &paths)
+{
+  int error_code = NO_ERROR;
+
+  if (obj.IsArray())
+    {
+      int count = 0;
+
+      for (auto it = obj.GetArray().begin(); it != obj.GetArray().end(); ++it)
+	{
+	  std::stringstream ss;
+	  ss << sql_path << "[" << count++ << "]";
+
+	  if (!it->IsArray() && !it->IsObject())
+	    {
+	      int match;
+	      error_code = db_string_like (it->GetString(), pattern, esc_char, &match);
+	      if (error_code)
+		{
+		  return error_code;
+		}
+
+	      if (match == V_TRUE)
+		{
+		  found = true;
+		  paths.push_back (ss.str());
+		}
+	    }
+	  else
+	    {
+	      error_code = db_json_search_helper (*it, pattern, esc_char, find_all,  ss.str(), found, paths);
+	    }
+
+	  if (found && !find_all)
+	    {
+	      return error_code;
+	    }
+	}
+    }
+  else if (obj.IsObject())
+    {
+      for (auto it = obj.MemberBegin(); it != obj.MemberEnd(); ++it)
+	{
+	  std::stringstream ss;
+	  ss << sql_path << '.' << it->name.GetString();
+
+	  if (!it->value.IsArray() && !it->value.IsObject())
+	    {
+	      int match;
+	      error_code = db_string_like (it->value.GetString(), pattern, esc_char, &match);
+	      if (error_code)
+		{
+		  return error_code;
+		}
+
+	      if (match == V_TRUE)
+		{
+		  found = true;
+		  paths.push_back (ss.str());
+		}
+	    }
+	  else
+	    {
+	      error_code = db_json_search_helper (it->value, pattern, esc_char, find_all, ss.str(), found, paths);
+	    }
+
+	  if (found && !find_all)
+	    {
+	      return error_code;
+	    }
+	}
+    }
+
+  return error_code;
 }
 
 /*

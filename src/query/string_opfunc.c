@@ -3742,6 +3742,92 @@ db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 }
 
 int
+db_json_search_dbval (DB_VALUE * result, DB_VALUE * args[], int num_args)
+{
+  // arg0 doc
+  // arg1 all
+  // arg2 pattern
+  // arg3 escape thing
+  // arg4+ starting path
+
+  int error_code = NO_ERROR;
+
+  if (num_args < 3)
+    {
+      db_make_null (result);
+      return NO_ERROR;
+    }
+
+  if (DB_IS_NULL (args[0]))
+    {
+      return db_make_null (result);
+    }
+
+  JSON_DOC & doc = *db_get_json_document (args[0]);
+  char *find_all_str = db_get_string (args[1]);
+  bool find_all = false;
+
+  if (strcmp (find_all_str, "all") == 0)
+    {
+      find_all = true;
+    }
+  if (!find_all && strcmp (find_all_str, "one"))
+    {
+      // error wrong argument
+    }
+
+  const char *pattern = db_get_string (args[2]);
+  const char *esc_char = nullptr;
+  if (num_args >= 4)
+    {
+      esc_char = db_get_string (args[3]);
+    }
+
+  std::vector < std::string > starting_paths;
+  for (int i = 4; i < num_args; ++i)
+    {
+      starting_paths.push_back (db_get_string (args[i]));
+    }
+  if (starting_paths.empty ())
+    {
+      starting_paths.push_back ("$");
+    }
+
+  std::vector < std::string > paths;
+  db_json_search_func (doc, pattern, esc_char, find_all, starting_paths, paths);
+
+  JSON_DOC *result_json = nullptr;
+
+  if (paths.size () == 1)
+    {
+      error_code = db_json_get_json_from_str (paths[0].c_str (), result_json, paths[0].length ());
+      if (error_code)
+	{
+	  return error_code;
+	}
+      return db_make_json (result, result_json, true);
+    }
+
+  result_json = db_json_allocate_doc ();
+for (auto & path:paths)
+    {
+      JSON_DOC *json_array_elem = nullptr;
+
+      error_code = db_json_get_json_from_str (path.c_str (), json_array_elem, path.length ());
+      if (error_code)
+	{
+	  return error_code;
+	}
+
+      db_json_add_element_to_array (result_json, json_array_elem);
+
+      db_json_delete_doc (json_array_elem);
+    }
+
+  return db_make_json (result, result_json, true);
+}
+
+int
 db_json_get_all_paths (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 {
   int error_code = NO_ERROR;

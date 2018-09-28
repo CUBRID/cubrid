@@ -8517,6 +8517,8 @@ qdata_evaluate_function (THREAD_ENTRY * thread_p, REGU_VARIABLE * function_p, VA
     case F_JSON_ARRAY_INSERT:
       return qdata_json_array_insert (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
 
+      // add support of F_JSON_SEARCH
+
     case F_JSON_GET_ALL_PATHS:
       return qdata_json_get_all_paths (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
 

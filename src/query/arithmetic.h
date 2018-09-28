@@ -73,6 +73,7 @@ extern int db_json_type_dbval (const DB_VALUE * json, DB_VALUE * type);
 extern int db_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * json_res);
 extern int db_json_valid_dbval (const DB_VALUE * json, DB_VALUE * type_res);
 extern int db_json_length_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * res);
+//extern int db_json_search_dbval (const DB_VALUE * json, DB_VALUE * pattern, DB_VALUE * res);
 extern int db_json_depth_dbval (DB_VALUE * json, DB_VALUE * res);
 extern int db_json_unquote_dbval (DB_VALUE * json, DB_VALUE * res);
 extern int db_json_pretty_dbval (DB_VALUE * json, DB_VALUE * res);

@@ -5209,6 +5209,7 @@ db_json_length_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * r
     }
 }
 
+
 int
 db_json_depth_dbval (DB_VALUE * json, DB_VALUE * res)
 {

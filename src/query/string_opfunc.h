@@ -183,6 +183,7 @@ extern int db_string_chr (DB_VALUE * res, DB_VALUE * dbval1, DB_VALUE * dbval2);
 extern int db_string_instr (const DB_VALUE * src_string, const DB_VALUE * sub_string, const DB_VALUE * start_pos,
 			    DB_VALUE * result);
 extern int db_string_position (const DB_VALUE * sub_string, const DB_VALUE * src_string, DB_VALUE * result);
+extern int db_json_search_dbval (DB_VALUE * result, DB_VALUE * args[], int num_args);
 extern int db_string_substring (const MISC_OPERAND substr_operand, const DB_VALUE * src_string,
 				const DB_VALUE * start_position, const DB_VALUE * extraction_length,
 				DB_VALUE * sub_string);

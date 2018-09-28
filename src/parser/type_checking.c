@@ -4928,26 +4928,6 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
 
       def->overloads_count = num;
       break;
-    case PT_JSON_SEARCH:
-      num = 0;
-
-      /* arg1 */
-      sig.arg1_type.is_generic = false;
-      sig.arg1_type.val.type = PT_TYPE_JSON;
-      /* arg2 */
-      sig.arg2_type.is_generic = false;
-      sig.arg2_type.val.type = PT_TYPE_CHAR;
-      /* arg3 */
-      sig.arg3_type.is_generic = false;
-      sig.arg3_type.val.type = PT_TYPE_CHAR;
-
-      /* return type */
-      sig.return_type.is_generic = false;
-      sig.return_type.val.type = PT_TYPE_JSON;
-      def->overloads[num++] = sig;
-
-      def->overloads_count = num;
-      break;
     case PT_JSON_PRETTY:
       num = 0;
 
@@ -12210,7 +12190,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
       if (node->info.function.function_type == F_ELT || node->info.function.function_type == F_INSERT_SUBSTRING
 	  || node->info.function.function_type == F_JSON_OBJECT || node->info.function.function_type == F_JSON_ARRAY
 	  || node->info.function.function_type == F_JSON_INSERT || node->info.function.function_type == F_JSON_REMOVE
-	  || node->info.function.function_type == F_JSON_MERGE
+	  || node->info.function.function_type == F_JSON_MERGE || node->info.function.function_type == F_JSON_SEARCH
 	  || node->info.function.function_type == F_JSON_ARRAY_APPEND
 	  || node->info.function.function_type == F_JSON_ARRAY_INSERT
 	  || node->info.function.function_type == F_JSON_GET_ALL_PATHS
@@ -13018,6 +12998,11 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
       }
       break;
 
+    case F_JSON_SEARCH:
+
+      //whatever.. do some checks
+      break;
+
     case F_JSON_OBJECT:
       {
 	PT_TYPE_ENUM unsupported_type;
@@ -13605,6 +13590,9 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	case F_JSON_ARRAY_INSERT:
 	case F_JSON_MERGE:
 	case F_JSON_GET_ALL_PATHS:
+	  node->type_enum = PT_TYPE_JSON;
+	  break;
+	case F_JSON_SEARCH:
 	  node->type_enum = PT_TYPE_JSON;
 	  break;
 	case PT_MEDIAN:
@@ -17022,11 +17010,14 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  return 0;
 	}
       break;
-    case PT_JSON_SEARCH:
-      error = ER_DB_UNIMPLEMENTED;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1, "JSON_SEARCH");
-      PT_ERRORc (parser, o1, er_msg ());
-      return 0;
+      //case PT_JSON_SEARCH:
+      //  error = db_json_search_dbval (arg1, arg2, result);
+      //  if (error != NO_ERROR)
+      //{
+      //  PT_ERRORc (parser, o1, er_msg ());
+      //  return 0;
+      //}
+      //  break;
     case PT_JSON_PRETTY:
       error = db_json_pretty_dbval (arg1, result);
       if (error != NO_ERROR)
@@ -20426,6 +20417,14 @@ pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_TYPE fcode, DB_VALUE 
       break;
     case F_JSON_MERGE:
       error = db_json_merge (result, args, num_args);
+      if (error != NO_ERROR)
+	{
+	  PT_ERRORc (parser, NULL, er_msg ());
+	  return 0;
+	}
+      break;
+    case F_JSON_SEARCH:
+      error = db_json_search_dbval (result, args, num_args);
       if (error != NO_ERROR)
 	{
 	  PT_ERRORc (parser, NULL, er_msg ());
