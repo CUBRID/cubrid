@@ -17130,11 +17130,11 @@ reserved_func
 		{{
 		    PT_NODE *args_list = $3;
 		    PT_NODE *node = NULL;
-			int len = parser_count_list (args_list);
-			node = parser_make_expr_with_func (this_parser, F_JSON_SEARCH, args_list);		    
+		    int len = parser_count_list (args_list);
+		    node = parser_make_expr_with_func (this_parser, F_JSON_SEARCH, args_list);		    
 
-			if (len < 3)
-			  {
+		    if (len < 3)
+		      {
 			    PT_ERRORmf (this_parser, args_list,
 			    	    MSGCAT_SET_PARSER_SEMANTIC,
 			    	    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
