@@ -119,7 +119,7 @@ extern int xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * oid,
 extern int xlocator_check_fk_validity (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid, TP_DOMAIN * key_type,
 				       int n_attrs, int *attr_ids, OID * pk_cls_oid, BTID * pk_btid, char *fk_name);
 extern LOG_LSA *xrepl_log_get_append_lsa (void);
-extern int xrepl_set_info (THREAD_ENTRY * thread_p, REPL_INFO * repl_info);
+extern int xrepl_statement (THREAD_ENTRY * thread_p, REPL_INFO * repl_info);
 
 extern int xheap_create (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oid, bool reuse_oid);
 extern int xheap_destroy (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid);
@@ -271,4 +271,6 @@ extern int xchksum_insert_repl_log_and_demote_table_lock (THREAD_ENTRY * thread_
 							  const OID * class_oidp);
 extern bool xlogtb_does_active_user_exist (THREAD_ENTRY * thread_p, const char *user_name);
 extern int xlocator_demote_class_lock (THREAD_ENTRY * thread_p, const OID * class_oid, LOCK lock, LOCK * ex_lock);
+extern bool xtran_should_connection_reset (THREAD_ENTRY * thread_p, bool has_updated);
+extern int xsession_set_tran_auto_commit (THREAD_ENTRY * thread_p, bool auto_commit);
 #endif /* _XSERVER_INTERFACE_H_ */

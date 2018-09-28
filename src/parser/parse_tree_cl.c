@@ -2239,6 +2239,7 @@ parser_init_node (PT_NODE * node)
       node->is_alias_enabled_expr = 0;
       node->is_wrapped_res_for_coll = 0;
       node->is_system_generated_stmt = 0;
+      node->use_auto_commit = 0;
       /* initialize node info field */
       memset (&(node->info), 0, sizeof (node->info));
 
@@ -8711,6 +8712,7 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_delete (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
 {
+  p->info.delete_.with = g (parser, p->info.delete_.with, arg);
   p->info.delete_.target_classes = g (parser, p->info.delete_.target_classes, arg);
   p->info.delete_.spec = g (parser, p->info.delete_.spec, arg);
   p->info.delete_.search_cond = g (parser, p->info.delete_.search_cond, arg);
@@ -8758,6 +8760,12 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
 
   r1 = pt_print_bytes_l (parser, p->info.delete_.target_classes);
   r2 = pt_print_bytes_spec_list (parser, p->info.delete_.spec);
+
+  if (p->info.delete_.with != NULL)
+    {
+      r1 = pt_print_bytes_l (parser, p->info.delete_.with);
+      q = pt_append_varchar (parser, q, r1);
+    }
 
   q = pt_append_nulstring (parser, q, "delete ");
   if (p->info.delete_.hint != PT_HINT_NONE)
@@ -8975,6 +8983,7 @@ pt_init_difference (PT_NODE * p)
   p->info.query.do_cache = 0;
   p->info.query.do_not_cache = 0;
   p->info.query.order_siblings = 0;
+  p->info.query.has_system_class = 0;
   p->info.query.hint = PT_HINT_NONE;
   p->info.query.qcache_hint = NULL;
   p->info.query.q.union_.select_list = 0;
@@ -13180,6 +13189,7 @@ pt_init_intersection (PT_NODE * p)
   p->info.query.reexecute = 0;
   p->info.query.do_not_cache = 0;
   p->info.query.order_siblings = 0;
+  p->info.query.has_system_class = 0;
   p->info.query.hint = PT_HINT_NONE;
   p->info.query.qcache_hint = NULL;
   p->info.query.q.union_.select_list = 0;
@@ -14318,6 +14328,7 @@ pt_init_select (PT_NODE * p)
   p->info.query.reexecute = 0;
   p->info.query.do_not_cache = 0;
   p->info.query.order_siblings = 0;
+  p->info.query.has_system_class = 0;
   p->info.query.hint = PT_HINT_NONE;
   p->info.query.qcache_hint = NULL;
   p->info.query.upd_del_class_cnt = 0;
@@ -15647,6 +15658,7 @@ pt_init_union_stmt (PT_NODE * p)
   p->info.query.reexecute = 0;
   p->info.query.do_not_cache = 0;
   p->info.query.order_siblings = 0;
+  p->info.query.has_system_class = 0;
   p->info.query.hint = PT_HINT_NONE;
   p->info.query.qcache_hint = NULL;
   p->info.query.q.union_.select_list = 0;
@@ -15719,6 +15731,7 @@ pt_print_union_stmt (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_update (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
 {
+  p->info.update.with = g (parser, p->info.update.with, arg);
   p->info.update.spec = g (parser, p->info.update.spec, arg);
   p->info.update.assignment = g (parser, p->info.update.assignment, arg);
   p->info.update.search_cond = g (parser, p->info.update.search_cond, arg);
@@ -15766,6 +15779,12 @@ static PARSER_VARCHAR *
 pt_print_update (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *b = NULL, *r1;
+
+  if (p->info.update.with != NULL)
+    {
+      r1 = pt_print_bytes_l (parser, p->info.update.with);
+      b = pt_append_varchar (parser, b, r1);
+    }
 
   b = pt_append_nulstring (parser, b, "update ");
 

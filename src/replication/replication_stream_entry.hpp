@@ -86,6 +86,10 @@ namespace cubreplication
       stream_entry_header m_header;
       cubpacking::packer m_serializator;
 
+      static cubstream::entry<replication_object>::packable_factory *s_replication_factory_po;
+
+      static cubstream::entry<replication_object>::packable_factory *create_builder ();
+
     public:
       stream_entry (cubstream::multi_thread_stream *stream_p)
 	: entry (stream_p),
@@ -103,7 +107,7 @@ namespace cubreplication
 	m_header.tran_state = state;
       };
 
-      size_t get_packed_header_size ()
+      size_t get_packed_header_size () override
       {
 	return s_header_size;
       }

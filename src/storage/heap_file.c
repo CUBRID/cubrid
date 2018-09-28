@@ -4089,7 +4089,7 @@ heap_vpid_init_new (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args)
       return ER_FAILED;
     }
 
-  log_append_redo_data (thread_p, RVHF_NEWPAGE, &addr, recdes.length, recdes.data);
+  log_append_undoredo_data (thread_p, RVHF_NEWPAGE, &addr, 0, recdes.length, NULL, recdes.data);
   pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
   return NO_ERROR;
 }
@@ -11092,6 +11092,8 @@ heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HE
   PR_TYPE *pr_type;		/* Primitive type array function structure */
   TP_DOMAIN_STATUS dom_status;
   int ret = NO_ERROR;
+  LOG_TDES *log_tdes = NULL;
+  THREAD_ENTRY *thread_p = NULL;
 
   /* 
    * check to make sure the attr_info has been used, should never be empty.
@@ -11168,6 +11170,9 @@ heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HE
     }
 
   value->state = HEAP_WRITTEN_ATTRVALUE;
+
+  logtb_get_tdes (thread_p)->replication_log_generator.add_attribute_change (attr_info->class_oid, *inst_oid, attrid,
+									     *attr_val);
 
   return ret;
 

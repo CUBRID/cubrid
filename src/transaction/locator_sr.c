@@ -56,6 +56,8 @@
 #endif /* DMALLOC */
 #include "dbtype.h"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
+#include "replication_object.hpp"
+#include "log_generator.hpp"
 #include "process_util.h"
 #include "environment_variable.h"
 
@@ -5890,17 +5892,6 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	}
       isold_object = update_context.is_logical_old;
 
-      /* 
-       * for replication,
-       * We have to set UPDATE LSA number to the log info.
-       * The target log info was already created when the locator_update_index
-       */
-      if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true
-	  && repl_info.need_replication == true)
-	{
-	  repl_add_update_lsa (thread_p, oid);
-	}
-
 #if defined(ENABLE_UNUSED_FUNCTION)
       if (isold_object == false)
 	{
@@ -7368,6 +7359,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
     {
       COPY_OID (&class_oid, &attr_info->class_oid);
     }
+
   switch (operation)
     {
     case LC_FLUSH_UPDATE:
@@ -7446,7 +7438,6 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
       old_recdes = &copy_recdes;
 
       /* Fall through */
-
     case LC_FLUSH_INSERT:
     case LC_FLUSH_INSERT_PRUNE:
     case LC_FLUSH_INSERT_PRUNE_VERIFY:
@@ -7515,7 +7506,6 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
       error_code = ER_LC_BADFORCE_OPERATION;
       break;
     }
-
   return error_code;
 }
 
@@ -7874,10 +7864,14 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
       if (need_replication && index->type == BTREE_PRIMARY_KEY && error_code == NO_ERROR
 	  && !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
 	{
-	  error_code =
-	    repl_log_insert (thread_p, class_oid, inst_oid, datayn ? LOG_REPLICATION_DATA : LOG_REPLICATION_STATEMENT,
-			     is_insert ? RVREPL_DATA_INSERT : RVREPL_DATA_DELETE, key_dbvalue,
-			     REPL_INFO_TYPE_RBR_NORMAL);
+	  if (is_insert)
+	    {
+	      logtb_get_tdes (thread_p)->replication_log_generator.add_insert_row (*key_dbvalue, *class_oid, *recdes);
+	    }
+	  else			// is delete
+	    {
+	      logtb_get_tdes (thread_p)->replication_log_generator.add_delete_row (*key_dbvalue, *class_oid);
+	    }
 	}
       if (error_code != NO_ERROR)
 	{
@@ -8177,8 +8171,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
   char *classname = NULL;
   bool is_started = false;
 #endif /* ENABLE_SYSTEMTAP */
-  LOG_TDES *tdes;
-  LOG_LSA preserved_repl_lsa;
+  LOG_TDES *tdes = NULL;
   int tran_index;
 
   assert_release (class_oid != NULL);
@@ -8194,8 +8187,6 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
       mvccid = logtb_get_current_mvccid (thread_p);
     }
 #endif /* SERVER_MODE */
-
-  LSA_SET_NULL (&preserved_repl_lsa);
 
   db_make_null (&new_dbvalue);
   db_make_null (&old_dbvalue);
@@ -8537,28 +8528,10 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	      tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 	      tdes = LOG_FIND_TDES (tran_index);
 
-	      if (pk_btid_index == i)
-		{
-		  /* 
-		   * save lsa before it is overwritten by FK action. No need
-		   * to consider in-place update (repl_update_lsa) since it updates
-		   * index first and then updates heap
-		   */
-		  LSA_COPY (&preserved_repl_lsa, &tdes->repl_insert_lsa);
-		  LSA_SET_NULL (&tdes->repl_insert_lsa);
-		}
-
 	      error_code = locator_check_primary_key_update (thread_p, index, old_key);
 	      if (error_code != NO_ERROR)
 		{
 		  goto error;
-		}
-
-	      if (pk_btid_index == i)
-		{
-		  /* restore repl_insert_lsa */
-		  assert (LSA_ISNULL (&tdes->repl_insert_lsa));
-		  LSA_COPY (&tdes->repl_insert_lsa, &preserved_repl_lsa);
 		}
 	    }
 
@@ -8631,6 +8604,13 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
     {
       assert (repl_info != NULL);
 
+      if (tdes == NULL)
+	{
+	  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+	  tdes = LOG_FIND_TDES (tran_index);
+	}
+
+      assert (oid != NULL);
       if (repl_old_key == NULL)
 	{
 	  key_domain = NULL;
@@ -8661,9 +8641,8 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	      repl_old_key->data.midxkey.domain = key_domain;
 	    }
 
-	  error_code =
-	    repl_log_insert (thread_p, class_oid, oid, LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE, repl_old_key,
-			     (REPL_INFO_TYPE) repl_info->repl_info_type);
+	  tdes->replication_log_generator.add_update_row (*repl_old_key, *oid, *class_oid, new_recdes);
+
 	  if (repl_old_key == &old_dbvalue)
 	    {
 	      pr_clear_value (&old_dbvalue);
@@ -8671,24 +8650,15 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	}
       else
 	{
-	  error_code =
-	    repl_log_insert (thread_p, class_oid, oid, LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE, repl_old_key,
-			     (REPL_INFO_TYPE) repl_info->repl_info_type);
+	  tdes->replication_log_generator.add_update_row (*repl_old_key, *oid, *class_oid, new_recdes);
+
 	  pr_free_ext_value (repl_old_key);
 	  repl_old_key = NULL;
 	}
     }
   else
     {
-      /* 
-       * clear repl_insert_lsa to make sure that FK action
-       * does not overwrite the original update's target lsa.
-       */
-      tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-      tdes = LOG_FIND_TDES (tran_index);
-
-      LSA_SET_NULL (&tdes->repl_insert_lsa);
-
+      // todo - handle no pk case
       /* No need to replicate this record since there is no primary key */
       if (repl_info != NULL)
 	{
@@ -11568,14 +11538,14 @@ locator_decrease_catalog_count (THREAD_ENTRY * thread_p, OID * cls_oid)
 #endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
- * xrepl_set_info () -
+ * xrepl_statement () -
  *
  * return:
  *
  *   repl_info(in):
  */
 int
-xrepl_set_info (THREAD_ENTRY * thread_p, REPL_INFO * repl_info)
+xrepl_statement (THREAD_ENTRY * thread_p, REPL_INFO * repl_info)
 {
   int error_code = NO_ERROR;
 
@@ -11584,7 +11554,7 @@ xrepl_set_info (THREAD_ENTRY * thread_p, REPL_INFO * repl_info)
       switch (repl_info->repl_info_type)
 	{
 	case REPL_INFO_TYPE_SBR:
-	  error_code = repl_log_insert_statement (thread_p, (REPL_INFO_SBR *) repl_info->info);
+	  logtb_get_tdes (thread_p)->replication_log_generator.add_statement (*(REPL_INFO_SBR *) repl_info->info);
 	  break;
 	default:
 	  error_code = ER_REPL_ERROR;
@@ -12509,49 +12479,10 @@ locator_is_exist_class_name_entry (THREAD_ENTRY * thread_p, LOCATOR_CLASSNAME_EN
 int
 xchksum_insert_repl_log_and_demote_table_lock (THREAD_ENTRY * thread_p, REPL_INFO * repl_info, const OID * class_oidp)
 {
-  LOG_TDES *tdes;
-  int error = NO_ERROR;
-
-  tdes = LOG_FIND_CURRENT_TDES (thread_p);
-  if (tdes == NULL)
-    {
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1,
-	      LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-
-      return ER_LOG_UNKNOWN_TRANINDEX;
-    }
-
-  /* need to start a topop to make sure the repl log is inserted in a correct order */
-  log_sysop_start (thread_p);
-
-  repl_start_flush_mark (thread_p);
-
-  error = xrepl_set_info (thread_p, repl_info);
-
-  repl_end_flush_mark (thread_p, false);
-
-  if (error != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      log_sysop_abort (thread_p);
-    }
-  else
-    {
-      /* manually append repl info */
-      log_append_repl_info (thread_p, tdes, false);
-
-      log_sysop_commit (thread_p);
-    }
-
-#if defined (SERVER_MODE)
-  /* demote S-lock to IS-lock to allow blocking writers to resume. This will not hurt transactional consistencies of
-   * checksumdb. */
-  lock_demote_read_class_lock_for_checksumdb (thread_p, tdes->tran_index, class_oidp);
-
-  assert (lock_get_object_lock (class_oidp, oid_Root_class_oid, tdes->tran_index) == IS_LOCK);
-#endif /* SERVER_MODE */
-
-  return error;
+  // todo - implement this on new replication system
+  // http://jira.cubrid.org/browse/CBRD-22339
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+  return ER_FAILED;
 }
 
 /*

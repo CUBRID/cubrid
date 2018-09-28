@@ -17,23 +17,38 @@
  *
  */
 
+/*
+ * replication_master_node.hpp
+ */
 
+#ident "$Id$"
 
-#ifndef _TEST_LOG_GENERATOR_HPP_
-#define _TEST_LOG_GENERATOR_HPP_
+#ifndef _REPLICATION_MASTER_NODE_HPP_
+#define _REPLICATION_MASTER_NODE_HPP_
 
-namespace test_replication
+#include "replication_node.hpp"
+
+namespace cubreplication
 {
 
-/* disable log generator tests 
- * since interface of log_generator changed to high-level objects, it is not possible to simulate master node state 
- */
-#if 0
-  int test_log_generator1 (void);
+  class master_node : public replication_node
+  {
+    private:
+      static master_node *g_instance;
 
-  int test_log_generator2 (void);
-#endif /* disable unit test code */
+      master_node (const char *name)
+	: replication_node (name)
+      {
+      }
 
-}
+    public:
+      static master_node *get_instance (const char *name);
 
-#endif /* _TEST_LOG_GENERATOR_HPP_ */
+      static void init (const char *name);
+      static void new_slave (int fd);
+      static void final (void);
+  };
+
+} /* namespace cubreplication */
+
+#endif /* _REPLICATION_MASTER_NODE_HPP_ */

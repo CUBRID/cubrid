@@ -38,6 +38,9 @@
 #include "db_date.h"
 #include "dbtype.h"
 
+#if defined (__cplusplus)
+#include "packer.hpp"
+#endif
 
 /* RESERVED_SIZE_IN_PAGE should be aligned */
 #define RESERVED_SIZE_IN_PAGE   sizeof(FILEIO_PAGE_RESERVED)
@@ -415,3 +418,40 @@ btid_to_string (char *buf, int buf_size, BTID * btid)
   buf[buf_size - 1] = 0;
   return buf;
 }
+
+/* *INDENT-OFF* */
+#if defined (__cplusplus)
+int recdes::pack (cubpacking::packer *packer)
+{
+  int rc = NO_ERROR;
+
+  rc = packer->pack_buffer_with_length (data, length);
+  if (rc != NO_ERROR)
+    {
+      assert (false);
+      return rc;
+    }
+
+  return NO_ERROR;
+}
+
+int recdes::unpack (cubpacking::packer *packer)
+{
+  int rc = NO_ERROR;
+
+  rc = packer->unpack_buffer_with_length (data, length);
+  if (rc != NO_ERROR)
+    {
+      assert (false);
+      return rc;
+    }
+
+  return NO_ERROR;
+}
+
+std::size_t recdes::get_packed_size (cubpacking::packer *packer, std::size_t curr_offset)
+{
+  return packer->get_packed_buffer_size (data, length, curr_offset);
+}
+#endif
+/* *INDENT-ON* */

@@ -356,3 +356,16 @@ xsession_clear_query_entry_info (THREAD_ENTRY * thread_p, const QUERY_ID query_i
 {
   return session_clear_query_entry_info (thread_p, query_id);
 }
+
+/*
+ * xsession_set_tran_auto_commit () - set transaction auto commit state
+ *
+ *   return  : NO_ERROR or error code
+ *   thread_p(in)     : thread
+ *   auto_commit(in)  : auto commit
+ */
+int
+xsession_set_tran_auto_commit (THREAD_ENTRY * thread_p, bool auto_commit)
+{
+  return session_set_tran_auto_commit (thread_p, auto_commit);
+}

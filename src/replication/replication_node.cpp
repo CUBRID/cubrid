@@ -17,23 +17,28 @@
  *
  */
 
-
-
-#ifndef _TEST_LOG_GENERATOR_HPP_
-#define _TEST_LOG_GENERATOR_HPP_
-
-namespace test_replication
-{
-
-/* disable log generator tests 
- * since interface of log_generator changed to high-level objects, it is not possible to simulate master node state 
+/*
+ * replication_node.cpp
  */
-#if 0
-  int test_log_generator1 (void);
 
-  int test_log_generator2 (void);
-#endif /* disable unit test code */
+#ident "$Id$"
 
-}
+#include "replication_node.hpp"
+#include "multi_thread_stream.hpp"
+#include "error_code.h"
 
-#endif /* _TEST_LOG_GENERATOR_HPP_ */
+namespace cubreplication
+{
+  replication_node::~replication_node ()
+  {
+    delete m_stream;
+    m_stream = NULL;
+  }
+
+  int replication_node::apply_start_position (void)
+  {
+    /* TODO set m_start_position from recovery log ? */
+    return NO_ERROR;
+  }
+
+} /* namespace cubreplication */

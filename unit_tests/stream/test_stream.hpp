@@ -117,7 +117,7 @@ namespace test_stream
 
       bool is_equal (const packable_object *other);
 
-      size_t get_packed_size (cubpacking::packer *serializator);
+      std::size_t get_packed_size (cubpacking::packer *serializator, std::size_t start_offset = 0);
 
       void generate_obj (void);
   };
@@ -137,7 +137,7 @@ namespace test_stream
 
       bool is_equal (const packable_object *other);
 
-      size_t get_packed_size (cubpacking::packer *serializator);
+      size_t get_packed_size (cubpacking::packer *serializator, std::size_t start_offset = 0);
 
       void generate_obj (void);
   };
