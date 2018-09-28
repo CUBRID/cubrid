@@ -79,32 +79,35 @@ namespace cubstream
 
 	assert (m_stream.get_last_committed_pos () >= end_pos);
 
-	if (curr_pos >= end_pos || m_stream_file.is_stopped ())
+	while (curr_pos < end_pos)
 	  {
-	    return;
+	    if (m_stream_file.is_stopped ())
+	      {
+		return;
+	      }
+
+	    m_stream_file.set_ack_start_flush_position (curr_pos);
+
+	    size_t amount_to_copy = MIN (end_pos - curr_pos, BUFFER_SIZE);
+
+	    err = m_stream.read (curr_pos, amount_to_copy, m_copy_to_buffer_func);
+	    if (err <= 0)
+	      {
+		ASSERT_ERROR ();
+		return;
+	      }
+
+	    err = m_stream_file.write (curr_pos, m_buffer, amount_to_copy);
+	    if (err != NO_ERROR)
+	      {
+		ASSERT_ERROR ();
+		return;
+	      }
+
+	    curr_pos += amount_to_copy;
+
+	    m_stream.set_last_recyclable_pos (curr_pos);
 	  }
-
-	m_stream_file.set_ack_start_flush_position (curr_pos);
-
-	size_t amount_to_copy = MIN (end_pos - curr_pos, BUFFER_SIZE);
-
-	err = m_stream.read (curr_pos, amount_to_copy, m_copy_to_buffer_func);
-	if (err <= 0)
-	  {
-	    ASSERT_ERROR ();
-	    return;
-	  }
-
-	err = m_stream_file.write (curr_pos, m_buffer, amount_to_copy);
-	if (err != NO_ERROR)
-	  {
-	    ASSERT_ERROR ();
-	    return;
-	  }
-
-	curr_pos += amount_to_copy;
-
-	m_stream.set_last_recyclable_pos (curr_pos);
       }
 
       int copy_to_buffer (char *ptr, const size_t byte_count)
@@ -649,6 +652,7 @@ namespace cubstream
     if (m_drop_position != std::numeric_limits<stream_position>::max ()
 	&& pos < m_drop_position)
       {
+	assert (false);
 	err = ER_STREAM_FILE_INVALID_WRITE;
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 3, m_stream.name ().c_str (), pos, amount);
 	return err;
@@ -664,6 +668,7 @@ namespace cubstream
     std::unique_lock<std::mutex> flush_lock (m_flush_mutex);
     if (m_strict_append_mode == STRICT_APPEND_MODE && pos != m_append_position)
       {
+	assert (false);
 	err = ER_STREAM_FILE_INVALID_WRITE;
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 3, m_stream.name ().c_str (), pos, amount);
 	return err;
@@ -760,6 +765,7 @@ namespace cubstream
 
     if (pos + amount > m_append_position)
       {
+	assert (false);
 	err = ER_STREAM_FILE_INVALID_READ;
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 3, m_stream.name ().c_str (), pos, amount);
 	return err;
