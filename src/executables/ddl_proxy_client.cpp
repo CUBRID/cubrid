@@ -42,6 +42,7 @@ typedef struct
   const char *command;
   const char *out_file_name;
   const char *tran_index;
+  const char *sys_param;
 } DDL_CLIENT_ARGUMENT;
 
 static void
@@ -82,6 +83,7 @@ static int start_ddl_proxy_client (const char *program_name, DDL_CLIENT_ARGUMENT
   DB_SESSION *session = NULL;
   int rc = NO_ERROR;
   int override_tran_index = NULL_TRAN_INDEX;
+  char sql_log_err[LINE_MAX];
 
   if (args->tran_index != NULL)
     {
@@ -95,6 +97,18 @@ static int start_ddl_proxy_client (const char *program_name, DDL_CLIENT_ARGUMENT
     {
       ASSERT_ERROR ();
       return rc;
+    }
+
+  if (args->sys_param != NULL)
+    {
+      er_stack_push ();
+      int error = db_set_system_parameters_for_ha_repl (args->sys_param);
+      if (error != NO_ERROR)
+        {
+	  snprintf (sql_log_err, sizeof (sql_log_err), "failed to change sys prm: %s", args->sys_param);
+          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, sql_log_err);
+	}
+      er_stack_pop (); 
     }
 
   if (args->command != NULL)
@@ -186,6 +200,7 @@ main (int argc, char *argv[])
     {DDL_PROXY_OUTPUT_FILE_L, 1, 0, DDL_PROXY_OUTPUT_FILE_S},
     {DDL_PROXY_COMMAND_L, 1, 0, DDL_PROXY_COMMAND_S},
     {DDL_PROXY_TRAN_INDEX_L, 1, 0, DDL_PROXY_TRAN_INDEX_S},
+    {DDL_PROXY_SYS_PARAM_L, 1, 0, DDL_PROXY_SYS_PARAM_S},
     {VERSION_L, 0, 0, VERSION_S},
     {0, 0, 0, 0}
   };
@@ -247,6 +262,14 @@ main (int argc, char *argv[])
 	  arguments.tran_index = strdup (optarg);
 	  break;
 
+	case DDL_PROXY_SYS_PARAM_S:
+	  if (arguments.sys_param != NULL)
+	    {
+	      free ((void *) arguments.sys_param);
+	    }
+	  arguments.sys_param = strdup (optarg);
+	  break;
+
 	case VERSION_S:
 	  utility_print (MSGCAT_UTIL_GENERIC_VERSION, UTIL_DDL_PROXY_CLIENT, PRODUCT_STRING);
 	  goto exit_on_end;
@@ -293,6 +316,10 @@ exit_on_end:
   if (arguments.tran_index != NULL)
     {
       free ((void *) arguments.tran_index);
+    }
+  if (arguments.sys_param != NULL)
+    {
+      free ((void *) arguments.sys_param);
     }
 
   return error;

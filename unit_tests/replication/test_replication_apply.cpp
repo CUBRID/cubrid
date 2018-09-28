@@ -52,7 +52,7 @@ public:
       {
         return;
       }
-    error = locator_repl_apply_sbr (&thread_ref, m_statement.c_str ());
+    error = locator_repl_apply_sbr (&thread_ref, NULL, NULL, m_statement.c_str ());
 
     locator_repl_end_tran (&thread_ref, (error == NO_ERROR) ? true : false);
   }
@@ -78,7 +78,7 @@ public:
       {
         return;
       }
-    error = locator_repl_apply_sbr (&thread_ref, m_statement.c_str ());
+    error = locator_repl_apply_sbr (&thread_ref, NULL, NULL, m_statement.c_str ());
 
     locator_repl_end_tran (&thread_ref, false);
   }
