@@ -4636,7 +4636,6 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
   RECDES cur_record;
   int cur_class;
   SCAN_CODE sc;
-  MVCC_REC_HEADER mvcc_header;
   FUNCTION_INDEX_INFO *p_func_idx_info;
   PR_EVAL_FNC filter_eval_fnc;
   DB_TYPE single_node_type = DB_TYPE_NULL;
@@ -4663,15 +4662,10 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 
   /* Do not let the page fixed after an extract. */
   scancache->cache_last_fix_page = false;
-  //db_private_free_and_init(NULL, class_oids);
+
   /* Start extracting from heap. */
   for (;;)
     {
-
-      for (;;)
-	{
-	  ;
-	}
 
       /* Scan from heap and insert into the index. */
       attr_offset = cur_class * n_attrs;
