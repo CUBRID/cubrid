@@ -319,7 +319,6 @@ static FUNCTION_MAP functions[] = {
   {"json_unquote", PT_JSON_UNQUOTE},
   {"json_length", PT_JSON_LENGTH},
   {"json_depth", PT_JSON_DEPTH},
-  {"json_search", PT_JSON_SEARCH},
   {"json_pretty", PT_JSON_PRETTY},
 };
 
@@ -17130,18 +17129,7 @@ reserved_func
          | FUN_JSON_SEARCH '(' expression_list ')'
 		{{
 		    PT_NODE *args_list = $3;
-		    PT_NODE *node = NULL;
-                    int len;
-
-                    len = parser_count_list (args_list);
-		    node = parser_make_expr_with_func (this_parser, F_JSON_SEARCH, args_list);
-		    //if (len < 3 || len % 2 != 1)
-		    //{
-			//PT_ERRORmf (this_parser, args_list,
-			//	    MSGCAT_SET_PARSER_SEMANTIC,
-			//	    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
-			//	    "json_array_insert");
-		    //}
+		    PT_NODE *node = parser_make_expr_with_func (this_parser, F_JSON_SEARCH, args_list);		    
 
 		    $$ = node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -26785,19 +26773,6 @@ parser_keyword_func (const char *name, PT_NODE * args)
       a1->next = NULL;
 
       node = parser_make_expression (this_parser, key->op, a1, NULL, NULL);
-      return node;
-    case PT_JSON_SEARCH:
-      if (c != 3)
-	return NULL;
-
-      a1 = args;
-      a2 = a1->next;
-      a3 = a2->next;
-      a1->next = NULL;
-      a2->next = NULL;
-      a3->next = NULL;
-
-      node = parser_make_expression (this_parser, key->op, a1, a2, a3);
       return node;
     case PT_STRCMP:
       if (c != 2)

@@ -1059,7 +1059,6 @@ typedef enum
   T_JSON_UNQUOTE,
   T_JSON_LENGTH,
   T_JSON_DEPTH,
-  T_JSON_SEARCH,
   T_JSON_PRETTY,
 } OPERATOR_TYPE;		/* arithmetic operator types */
 

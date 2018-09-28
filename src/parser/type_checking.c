@@ -6933,7 +6933,6 @@ pt_is_symmetric_op (const PT_OP_TYPE op)
     case PT_JSON_LENGTH:
     case PT_JSON_DEPTH:
     case PT_JSON_UNQUOTE:
-    case PT_JSON_SEARCH:
     case PT_JSON_PRETTY:
       return false;
 
@@ -17010,14 +17009,6 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  return 0;
 	}
       break;
-      //case PT_JSON_SEARCH:
-      //  error = db_json_search_dbval (arg1, arg2, result);
-      //  if (error != NO_ERROR)
-      //{
-      //  PT_ERRORc (parser, o1, er_msg ());
-      //  return 0;
-      //}
-      //  break;
     case PT_JSON_PRETTY:
       error = db_json_pretty_dbval (arg1, result);
       if (error != NO_ERROR)
