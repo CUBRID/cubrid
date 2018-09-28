@@ -140,6 +140,7 @@ EXPORTS
     db_execute_and_keep_statement
     db_execute_statement
     db_set_statement_auto_commit
+    db_set_system_parameters_for_ha_repl
     db_find_all_triggers
     db_find_class
     db_find_user
@@ -395,6 +396,8 @@ EXPORTS
     er_clear
     er_final
     er_init
+    er_stack_push
+    er_stack_pop
     er_set
     getopt
     getopt_long
