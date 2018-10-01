@@ -317,7 +317,7 @@ static FUNCTION_MAP functions[] = {
   {"json_extract", PT_JSON_EXTRACT},
   {"json_valid", PT_JSON_VALID},
   {"json_unquote", PT_JSON_UNQUOTE},
-  {"json_length", PT_JSON_LENGTH},  
+  {"json_length", PT_JSON_LENGTH},
   {"json_depth", PT_JSON_DEPTH},
   {"json_search", PT_JSON_SEARCH},
   {"json_pretty", PT_JSON_PRETTY},
