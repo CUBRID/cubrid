@@ -67,8 +67,6 @@ enum class JSON_PATH_TYPE
 };
 
 /* C functions */
-extern int db_string_like (const DB_VALUE *src_string, const DB_VALUE *pattern, const DB_VALUE *esc_char, int *result);
-
 bool db_json_is_valid (const char *json_str);
 const char *db_json_get_type_as_str (const JSON_DOC *document);
 unsigned int db_json_get_length (const JSON_DOC *document);
