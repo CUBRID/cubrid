@@ -6878,15 +6878,15 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
   AGGREGATE_PERCENTILE_INFO *percentile = NULL;
   DB_VALUE *db_value_p = NULL;
 
-  /* *INDENT-OFF* */
-  std::vector<DB_VALUE *> db_values;
-  /* *INDENT-ON* */
-
   (void) db_make_null (&dbval);
   (void) pr_clear_value (&dbval);
 
   for (agg_p = agg_list_p, i = 0; agg_p != NULL; agg_p = agg_p->next, i++)
     {
+      /* *INDENT-OFF* */
+      std::vector<DB_VALUE *> db_values;
+      /* *INDENT-ON* */
+
       /* determine accumulator */
       accumulator = (alt_acc_list != NULL ? &alt_acc_list[i] : &agg_p->accumulator);
 
