@@ -6512,27 +6512,11 @@ qdata_aggregate_accumulator_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_A
       error = qdata_aggregate_value_to_accumulator (thread_p, acc, acc_dom, func_type, func_domain, new_acc->value);
       break;
 
-      // for JSON_OBJECTAGG expect to have in value already a JSON_OBJECT and we need to insert all members
-      // in the acc.value
-      // also we need to return without adding the new_acc value count because this is done in a later stage
-    case PT_JSON_OBJECTAGG:
-      return qdata_aggregate_value_to_accumulator (thread_p, acc, acc_dom, func_type, func_domain, new_acc->value);
-
+      // for these two situations we just need to merge
     case PT_JSON_ARRAYAGG:
-      {
-	int result_code = db_json_arrayagg_dbval (new_acc->value, acc->value, true);
-
-	// it means we encountered an error
-	if (result_code < 0)
-	  {
-	    return result_code;
-	  }
-
-	// increase tuple count
-	acc->curr_cnt += result_code;
-
-	return NO_ERROR;
-      }
+    case PT_JSON_OBJECTAGG:
+      error = db_json_aggregate_dbval_merge (new_acc->value, acc->value);
+      break;
 
     case PT_STDDEV:
     case PT_STDDEV_POP:
@@ -6784,28 +6768,10 @@ qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMUL
       break;
 
     case PT_JSON_ARRAYAGG:
-      if (db_json_arrayagg_dbval (value, acc->value) != NO_ERROR)
+      if (db_json_arrayagg_dbval_accumulate (value, acc->value) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
-      break;
-
-      // we assume that here we will insert a JSON_OBJECT into acc->value
-      // this case will be triggered only when we want to accumulate another accumulator in the current one
-      // because we already counted one tuple at the current accumulator we need to restablish the correct count
-    case PT_JSON_OBJECTAGG:
-      {
-	int result_code = db_json_objectagg_dbval (value, acc->value);
-
-	// in this case it means that we encountered an error
-	if (result_code < 0)
-	  {
-	    return ER_FAILED;
-	  }
-
-	// otherwise we return the member count of the value that we want to insert into acc->value
-	acc->curr_cnt += result_code;
-      }
       break;
 
     default:
@@ -6863,7 +6829,7 @@ qdata_aggregate_multiple_values_to_accumulator (THREAD_ENTRY * thread_p, AGGREGA
   switch (func_type)
     {
     case PT_JSON_OBJECTAGG:
-      if (db_json_objectagg_dbval (db_values[0], db_values[1], acc->value) != NO_ERROR)
+      if (db_json_objectagg_dbval_accumulate (db_values[0], db_values[1], acc->value) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}

@@ -5242,11 +5242,11 @@ db_json_pretty_dbval (DB_VALUE * json, DB_VALUE * res)
 }
 
 int
-db_json_arrayagg_dbval (DB_VALUE * json, DB_VALUE * json_res, bool expand)
+db_json_arrayagg_dbval_accumulate (DB_VALUE * json, DB_VALUE * json_res)
 {
   JSON_DOC *this_doc;
   JSON_DOC *result_doc = NULL;
-  int result_code = NO_ERROR;
+  int error_code = NO_ERROR;
   int json_array_size = 0;
 
   if (DB_IS_NULL (json))
@@ -5272,13 +5272,12 @@ db_json_arrayagg_dbval (DB_VALUE * json, DB_VALUE * json_res, bool expand)
       result_doc = db_get_json_document (json_res);
     }
 
-  result_code = db_json_arrayagg_func (this_doc, *result_doc, expand);
+  error_code = db_json_arrayagg_func_accumulate (this_doc, *result_doc);
 
-  // we have an error
-  if (result_code < 0)
+  if (error_code != NO_ERROR)
     {
       assert (result_doc == NULL);
-      return result_code;
+      return error_code;
     }
 
   if (result_doc == NULL)
@@ -5287,11 +5286,19 @@ db_json_arrayagg_dbval (DB_VALUE * json, DB_VALUE * json_res, bool expand)
       return ER_FAILED;
     }
 
-  return result_code;
+  return error_code;
 }
 
+/*
+* db_json_objectagg_dbval_accumulate () - Construct a Member (key-value pair) and add it in the result_json
+*
+* return                  : error_code
+* json_key (in)           : the key of the pair
+* json_val (in)           : the value of the pair
+* json_res (in)           : the DB_VALUE that contains the document where we want to insert
+*/
 int
-db_json_objectagg_dbval (DB_VALUE * json_key, DB_VALUE * json_val, DB_VALUE * json_res)
+db_json_objectagg_dbval_accumulate (DB_VALUE * json_key, DB_VALUE * json_val, DB_VALUE * json_res)
 {
   JSON_DOC *val_doc;
   const char *key_str = NULL;
@@ -5325,7 +5332,7 @@ db_json_objectagg_dbval (DB_VALUE * json_key, DB_VALUE * json_val, DB_VALUE * js
       result_doc = db_get_json_document (json_res);
     }
 
-  error_code = db_json_objectagg_func (key_str, val_doc, *result_doc);
+  error_code = db_json_objectagg_func_accumulate (key_str, val_doc, *result_doc);
   if (error_code != NO_ERROR)
     {
       assert (result_doc == NULL);
@@ -5342,36 +5349,39 @@ db_json_objectagg_dbval (DB_VALUE * json_key, DB_VALUE * json_val, DB_VALUE * js
 }
 
 /*
-* db_json_objectagg_dbval () - Inserts a JSON_OBJECT with possibly multiple members in the result_json
+* db_json_aggregate_dbval_merge () - Inserts a JSON_OBJECT/JSON_ARRAY with possibly multiple members in the result_json
 *
-* return                  : the member count of the object_doc (it will be used by the accumulator) or error_code
-* json_object (in)        : the JSON_OBJECT that we want to insert
+* return                  : error_code
+* json (in)               : the JSON_OBJECT/JSON_ARRAY that we want to insert
 * json_res (in)           : the DB_VALUE that contains the document where we want to insert
 */
 int
-db_json_objectagg_dbval (DB_VALUE * json_object, DB_VALUE * json_res)
+db_json_aggregate_dbval_merge (DB_VALUE * json, DB_VALUE * json_res)
 {
   // this case should not be possible because we did the checking before
   // also the method should be called after we already created the json_res (in the first iteration)
-  if (DB_IS_NULL (json_object) || DB_IS_NULL (json_res))
+  if (DB_IS_NULL (json) || DB_IS_NULL (json_res))
     {
       assert (false);
       db_make_null (json_res);
       return ER_FAILED;
     }
 
-  JSON_DOC *object_doc = NULL;
+  JSON_DOC *current_doc = NULL;
   JSON_DOC *result_doc = NULL;
 
-  // get the object document
-  object_doc = db_get_json_document (json_object);
+  // get the current document that we want to insert
+  current_doc = db_get_json_document (json);
 
   assert (db_value_domain_type (json_res) == DB_TYPE_JSON);
 
   // get the resulting json document
   result_doc = db_get_json_document (json_res);
 
-  return db_json_objectagg_func (*object_doc, *result_doc);
+  // merge the two jsons
+  db_json_merge_func (current_doc, result_doc);
+
+  return NO_ERROR;
 }
 
 int
