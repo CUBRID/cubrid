@@ -3789,11 +3789,11 @@ db_json_search_dbval (DB_VALUE * result, DB_VALUE * args[], const int num_args)
       return ER_QSTR_INVALID_DATA_TYPE;
     }
 
-  const char *pattern = db_get_string (args[2]);
-  const char *esc_char = nullptr;
+  DB_VALUE *pattern = args[2];
+  DB_VALUE *esc_char = nullptr;
   if (num_args >= 4)
     {
-      esc_char = db_get_string (args[3]);
+      esc_char = args[3];
     }
 
   std::vector<std::string> starting_paths;

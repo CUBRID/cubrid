@@ -58,6 +58,7 @@
 
 #include "dbtype.h"
 #include "memory_alloc.h"
+#include "string_opfunc.h"
 #include "system_parameter.h"
 
 // we define COPY in storage_common.h, but so does rapidjson in its headers. We don't need the definition from storage
@@ -644,7 +645,8 @@ static void db_json_copy_doc (JSON_DOC &dest, const JSON_DOC *src);
 
 static void db_json_get_paths_helper (const JSON_VALUE &obj, const std::string &sql_path,
 				      std::vector<std::string> &paths);
-static int db_json_search_helper (const JSON_VALUE &obj, const char *pattern, const char *esc_char, bool find_all,
+static int db_json_search_helper (const JSON_VALUE &obj, const DB_VALUE *pattern, const DB_VALUE *esc_char,
+				  bool find_all,
 				  const std::string &sql_path, bool &found, std::vector<std::string> &paths);
 static void db_json_normalize_path (std::string &path_string);
 static void db_json_remove_leading_zeros_index (std::string &index);
@@ -1807,7 +1809,7 @@ db_json_remove_func (JSON_DOC &doc, const char *raw_path)
  * paths (out)             : full paths found
  */
 int
-db_json_search_func (JSON_DOC &doc, const char *pattern,const char *esc_char, bool find_all,
+db_json_search_func (JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALUE *esc_char, bool find_all,
 		     std::vector<std::string> &starting_paths, std::vector<std::string> &paths)
 {
   for (auto &starting_path : starting_paths)
@@ -2847,49 +2849,6 @@ db_json_convert_sql_path_to_pointer (const char *sql_path, std::string &json_poi
   return NO_ERROR;
 }
 
-
-static int
-db_string_like (const char *str, const char *pattern, const char *esc_char, int *result)
-{
-  int error_code = NO_ERROR;
-
-  DB_VALUE str_val;
-  DB_VALUE pattern_val;
-  DB_VALUE escape_val;
-
-  db_make_null (&str_val);
-  error_code = db_make_string (&str_val, (char *) str);
-  if (error_code)
-    {
-      return error_code;
-    }
-
-  db_make_null (&pattern_val);
-  error_code = db_make_string (&pattern_val, (char *) pattern);
-  if (error_code)
-    {
-      db_value_clear (&str_val);
-      return error_code;
-    }
-
-  db_make_null (&escape_val);
-  error_code = db_make_string (&escape_val, (char *) esc_char);
-  if (error_code)
-    {
-      db_value_clear (&str_val);
-      db_value_clear (&pattern_val);
-      return error_code;
-    }
-
-  // db_string_like does not change the strings of the 3 db_values
-  error_code = db_string_like (&str_val, &pattern_val, &escape_val, result);
-  db_value_clear (&str_val);
-  db_value_clear (&pattern_val);
-  db_value_clear (&escape_val);
-
-  return error_code;
-}
-
 /*
  * db_json_get_paths_helper () - Recursive function to get the paths from a json object matching a pattern
  *
@@ -2901,24 +2860,33 @@ db_string_like (const char *str, const char *pattern, const char *esc_char, int 
  * paths (out)             : the paths found, whose pointed values match the pattern
  */
 static int
-db_json_search_helper (const JSON_VALUE &obj, const char *pattern, const char *esc_char, bool find_all,
+db_json_search_helper (const JSON_VALUE &obj, const DB_VALUE *pattern, const DB_VALUE *esc_char, bool find_all,
 		       const std::string &sql_path, bool &found, std::vector<std::string> &paths)
 {
   int error_code = NO_ERROR;
 
-  if (obj.IsArray())
+  if (obj.IsArray ())
     {
       int count = 0;
 
-      for (auto it = obj.GetArray().begin(); it != obj.GetArray().end(); ++it)
+      for (auto it = obj.GetArray ().begin (); it != obj.GetArray ().end (); ++it)
 	{
 	  std::stringstream ss;
 	  ss << sql_path << "[" << count++ << "]";
 
-	  if (!it->IsArray() && !it->IsObject())
+	  if (!it->IsArray () && !it->IsObject ())
 	    {
+	      const char *json_str = it->GetString ();
+	      DB_VALUE str_val;
+	      db_make_null (&str_val);
+	      error_code = db_make_string (&str_val, (char *)json_str);
+	      if (error_code)
+		{
+		  return error_code;
+		}
+
 	      int match;
-	      error_code = db_string_like (it->GetString(), pattern, esc_char, &match);
+	      error_code = db_string_like (&str_val, pattern, esc_char, &match);
 	      if (error_code)
 		{
 		  return error_code;
@@ -2927,12 +2895,12 @@ db_json_search_helper (const JSON_VALUE &obj, const char *pattern, const char *e
 	      if (match == V_TRUE)
 		{
 		  found = true;
-		  paths.push_back (ss.str());
+		  paths.push_back (ss.str ());
 		}
 	    }
 	  else
 	    {
-	      error_code = db_json_search_helper (*it, pattern, esc_char, find_all,  ss.str(), found, paths);
+	      error_code = db_json_search_helper (*it, pattern, esc_char, find_all,  ss.str (), found, paths);
 	    }
 
 	  if (found && !find_all)
@@ -2941,17 +2909,26 @@ db_json_search_helper (const JSON_VALUE &obj, const char *pattern, const char *e
 	    }
 	}
     }
-  else if (obj.IsObject())
+  else if (obj.IsObject ())
     {
-      for (auto it = obj.MemberBegin(); it != obj.MemberEnd(); ++it)
+      for (auto it = obj.MemberBegin (); it != obj.MemberEnd (); ++it)
 	{
 	  std::stringstream ss;
 	  ss << sql_path << '.' << it->name.GetString();
 
-	  if (!it->value.IsArray() && !it->value.IsObject())
+	  if (!it->value.IsArray () && !it->value.IsObject ())
 	    {
+	      const char *json_str = it->value.GetString ();
+	      DB_VALUE str_val;
+	      db_make_null (&str_val);
+	      error_code = db_make_string (&str_val, (char *)json_str);
+	      if (error_code)
+		{
+		  return error_code;
+		}
+
 	      int match;
-	      error_code = db_string_like (it->value.GetString(), pattern, esc_char, &match);
+	      error_code = db_string_like (&str_val, pattern, esc_char, &match);
 	      if (error_code)
 		{
 		  return error_code;
@@ -2960,12 +2937,12 @@ db_json_search_helper (const JSON_VALUE &obj, const char *pattern, const char *e
 	      if (match == V_TRUE)
 		{
 		  found = true;
-		  paths.push_back (ss.str());
+		  paths.push_back (ss.str ());
 		}
 	    }
 	  else
 	    {
-	      error_code = db_json_search_helper (it->value, pattern, esc_char, find_all, ss.str(), found, paths);
+	      error_code = db_json_search_helper (it->value, pattern, esc_char, find_all, ss.str (), found, paths);
 	    }
 
 	  if (found && !find_all)
