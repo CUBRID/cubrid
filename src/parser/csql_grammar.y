@@ -317,7 +317,7 @@ static FUNCTION_MAP functions[] = {
   {"json_extract", PT_JSON_EXTRACT},
   {"json_valid", PT_JSON_VALID},
   {"json_unquote", PT_JSON_UNQUOTE},
-  {"json_length", PT_JSON_LENGTH},
+  {"json_length", PT_JSON_LENGTH},  
   {"json_depth", PT_JSON_DEPTH},
   {"json_search", PT_JSON_SEARCH},
   {"json_pretty", PT_JSON_PRETTY},
@@ -1242,6 +1242,7 @@ int g_original_buffer_len;
 %token FUN_JSON_REMOVE
 %token FUN_JSON_ARRAY_APPEND
 %token FUN_JSON_ARRAY_INSERT
+%token FUN_JSON_CONTAINS_PATH
 %token FUN_JSON_GET_ALL_PATHS
 %token GENERAL
 %token GET
@@ -16969,6 +16970,25 @@ reserved_func
 				    MSGCAT_SET_PARSER_SEMANTIC,
 				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
 				    "json_array");
+		    }
+
+		    $$ = node;
+		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
+		| FUN_JSON_CONTAINS_PATH '(' expression_list ')'
+		{{
+		    PT_NODE *args_list = $3;
+		    PT_NODE *node = NULL;
+		    int len;
+
+		    len = parser_count_list (args_list);
+		    node = parser_make_expr_with_func (this_parser, F_JSON_CONTAINS_PATH, args_list);
+		    if (len < 3)
+		    {
+			PT_ERRORmf (this_parser, args_list,
+				    MSGCAT_SET_PARSER_SEMANTIC,
+				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
+				    "json_contains_path");
 		    }
 
 		    $$ = node;

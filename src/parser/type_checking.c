@@ -12213,6 +12213,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	  || node->info.function.function_type == F_JSON_MERGE
 	  || node->info.function.function_type == F_JSON_ARRAY_APPEND
 	  || node->info.function.function_type == F_JSON_ARRAY_INSERT
+	  || node->info.function.function_type == F_JSON_CONTAINS_PATH
 	  || node->info.function.function_type == F_JSON_GET_ALL_PATHS
 	  || node->info.function.function_type == F_JSON_REPLACE || node->info.function.function_type == F_JSON_SET
 	  || node->info.function.function_type == F_JSON_KEYS)
@@ -13174,6 +13175,52 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
       }
       break;
 
+    case F_JSON_CONTAINS_PATH:
+      {
+	PT_TYPE_ENUM unsupported_type;
+	unsigned int index = 1;
+	bool is_supported = false;
+	PT_NODE *arg = arg_list;
+
+	is_supported = pt_is_json_doc_type (arg->type_enum);
+	if (!is_supported)
+	  {
+	    arg_type = PT_TYPE_NONE;
+	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
+			 pt_show_function (fcode), pt_show_type_enum (arg->type_enum));
+	    break;
+	  }
+
+	arg = arg->next;
+	while (arg)
+	  {
+	    if (index > 1)
+	      {
+		is_supported = pt_is_json_path (arg->type_enum);
+	      }
+	    else
+	      {
+		is_supported = pt_is_json_doc_type (arg->type_enum);
+	      }
+
+	    if (!is_supported)
+	      {
+		unsupported_type = arg->type_enum;
+		break;
+	      }
+
+	    arg = arg->next;
+	    index++;
+	  }
+	if (!is_supported)
+	  {
+	    arg_type = PT_TYPE_NONE;
+	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
+			 pt_show_function (fcode), pt_show_type_enum (unsupported_type));
+	  }
+      }
+      break;
+
     case F_JSON_REMOVE:
       {
 	PT_TYPE_ENUM unsupported_type;
@@ -13606,6 +13653,9 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	case F_JSON_MERGE:
 	case F_JSON_GET_ALL_PATHS:
 	  node->type_enum = PT_TYPE_JSON;
+	  break;
+	case F_JSON_CONTAINS_PATH:
+	  node->type_enum = PT_TYPE_INTEGER;
 	  break;
 	case PT_MEDIAN:
 	case PT_PERCENTILE_CONT:
@@ -20418,6 +20468,14 @@ pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_TYPE fcode, DB_VALUE 
       break;
     case F_JSON_ARRAY_INSERT:
       error = db_json_array_insert (result, args, num_args);
+      if (error != NO_ERROR)
+	{
+	  PT_ERRORc (parser, NULL, er_msg ());
+	  return 0;
+	}
+      break;
+    case F_JSON_CONTAINS_PATH:
+      error = db_json_contains_path (result, args, num_args);
       if (error != NO_ERROR)
 	{
 	  PT_ERRORc (parser, NULL, er_msg ());
