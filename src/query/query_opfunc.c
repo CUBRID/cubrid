@@ -6815,18 +6815,18 @@ qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMUL
 int
 qdata_aggregate_multiple_values_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMULATOR * acc,
 						AGGREGATE_ACCUMULATOR_DOMAIN * domain, FUNC_TYPE func_type,
-						TP_DOMAIN * func_domain, std::vector<DB_VALUE *> & db_values)
+						TP_DOMAIN * func_domain, std::vector<DB_VALUE> & db_values)
 {
   // we have only one argument so aggregate only the first db_value
   if (db_values.size () == 1)
     {
-      return qdata_aggregate_value_to_accumulator (thread_p, acc, domain, func_type, func_domain, db_values[0]);
+      return qdata_aggregate_value_to_accumulator (thread_p, acc, domain, func_type, func_domain, &db_values[0]);
     }
 
   // maybe this condition will be changed in the future based on the future arguments conditions
-  for (DB_VALUE *&db_value : db_values)
+  for (DB_VALUE &db_value : db_values)
     {
-      if (DB_IS_NULL (db_value))
+      if (DB_IS_NULL (&db_value))
 	{
 	  return NO_ERROR;
 	}
@@ -6835,7 +6835,7 @@ qdata_aggregate_multiple_values_to_accumulator (THREAD_ENTRY * thread_p, AGGREGA
   switch (func_type)
     {
     case PT_JSON_OBJECTAGG:
-      if (db_json_objectagg_dbval_accumulate (db_values[0], db_values[1], acc->value) != NO_ERROR)
+      if (db_json_objectagg_dbval_accumulate (&db_values[0], &db_values[1], acc->value) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -6869,7 +6869,7 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 {
   AGGREGATE_TYPE *agg_p;
   AGGREGATE_ACCUMULATOR *accumulator;
-  DB_VALUE dbval, *percentile_val = NULL;
+  DB_VALUE *percentile_val = NULL;
   PR_TYPE *pr_type_p;
   DB_TYPE dbval_type;
   OR_BUF buf;
@@ -6878,13 +6878,10 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
   AGGREGATE_PERCENTILE_INFO *percentile = NULL;
   DB_VALUE *db_value_p = NULL;
 
-  (void) db_make_null (&dbval);
-  (void) pr_clear_value (&dbval);
-
   for (agg_p = agg_list_p, i = 0; agg_p != NULL; agg_p = agg_p->next, i++)
     {
       /* *INDENT-OFF* */
-      std::vector<DB_VALUE *> db_values;
+      std::vector<DB_VALUE> db_values;
       /* *INDENT-ON* */
 
       /* determine accumulator */
@@ -6928,25 +6925,22 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
       REGU_VARIABLE_LIST operand = NULL;
       for (operand = agg_p->operands; operand != NULL; operand = operand->next)
 	{
-	  if (fetch_copy_dbval (thread_p, &operand->value, val_desc_p, NULL, NULL, NULL, &dbval) != NO_ERROR)
+	  // create an empty value
+	  db_values.emplace_back ();
+
+	  // fetch it
+	  if (fetch_copy_dbval (thread_p, &operand->value, val_desc_p, NULL, NULL, NULL,
+				&db_values.back ()) != NO_ERROR)
 	    {
 	      return ER_FAILED;
 	    }
-
-	  db_values.emplace_back (pr_copy_value (&dbval));
-
-	  // because we copy the value we need to set the flag of need_clear
-	  db_values.back ()->need_clear = true;
-
-	  (void) pr_clear_value (&dbval);
-	  (void) db_make_null (&dbval);
 	}
 
       /* 
        * eliminate null values
        * consider only the first argument, because for the rest will depend on the function
        */
-      db_value_p = db_values[0];
+      db_value_p = &db_values[0];
       if (DB_IS_NULL (db_value_p))
 	{
 	  /*
@@ -6983,9 +6977,9 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
        */
       if (agg_p->function == PT_JSON_OBJECTAGG)
 	{
-	  if (DB_IS_NULL (db_values[1]))
+	  if (DB_IS_NULL (&db_values[1]))
 	    {
-	      db_make_json (db_values[1], db_json_allocate_doc (), true);
+	      db_make_json (&db_values[1], db_json_allocate_doc (), true);
 	    }
 	}
 
@@ -7217,9 +7211,9 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 
           /* *INDENT-OFF* */
 	  /* clear values */
-	  for (DB_VALUE *&db_value : db_values)
+	  for (DB_VALUE &db_value : db_values)
 	    {
-	      pr_clear_value (db_value);
+	      pr_clear_value (&db_value);
 	    }
           /* *INDENT-ON* */
 

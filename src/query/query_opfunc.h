@@ -99,7 +99,7 @@ extern int qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p, AGGREG
 extern int qdata_aggregate_multiple_values_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMULATOR * acc,
                                                            AGGREGATE_ACCUMULATOR_DOMAIN * domain, FUNC_TYPE func_type,
                                                            TP_DOMAIN * func_domain,
-                                                           std::vector<DB_VALUE *> & db_values);
+                                                           std::vector<DB_VALUE> & db_values);
 /* *INDENT-ON* */
 
 extern int qdata_aggregate_accumulator_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMULATOR * acc,
