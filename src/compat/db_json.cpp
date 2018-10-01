@@ -2852,7 +2852,6 @@ db_json_convert_sql_path_to_pointer (const char *sql_path, std::string &json_poi
 static int
 db_string_like (const char *str, const char *pattern, const char *esc_char, int *result)
 {
-  // todo: find a way to don't do copies
   int error_code = NO_ERROR;
 
   DB_VALUE str_val;
@@ -2860,32 +2859,30 @@ db_string_like (const char *str, const char *pattern, const char *esc_char, int 
   DB_VALUE escape_val;
 
   db_make_null (&str_val);
-  error_code = db_make_string_copy (&str_val, str);
+  error_code = db_make_string (&str_val, (char *) str);
   if (error_code)
     {
-      db_value_clear (&str_val);
       return error_code;
     }
 
   db_make_null (&pattern_val);
-  error_code = db_make_string_copy (&pattern_val, pattern);
+  error_code = db_make_string (&pattern_val, (char *) pattern);
   if (error_code)
     {
       db_value_clear (&str_val);
-      db_value_clear (&pattern_val);
       return error_code;
     }
 
   db_make_null (&escape_val);
-  error_code = db_make_string_copy (&escape_val, esc_char);
+  error_code = db_make_string (&escape_val, (char *) esc_char);
   if (error_code)
     {
       db_value_clear (&str_val);
       db_value_clear (&pattern_val);
-      db_value_clear (&escape_val);
       return error_code;
     }
 
+  // db_string_like does not change the strings of the 3 db_values
   error_code = db_string_like (&str_val, &pattern_val, &escape_val, result);
   db_value_clear (&str_val);
   db_value_clear (&pattern_val);
@@ -2895,16 +2892,18 @@ db_string_like (const char *str, const char *pattern, const char *esc_char, int 
 }
 
 /*
-* db_json_get_paths_helper () - Recursive function to get the paths from a json object
-*
-* obj (in)                : current object
-* sql_path (in)           : the path for the current object
-* paths (in)              : vector where we will store all the paths
-*/
+ * db_json_get_paths_helper () - Recursive function to get the paths from a json object matching a pattern
+ *
+ * obj (in)                : current object
+ * pattern (in)            : the pattern to search for
+ * esc_char (in)           : esc_char used to find values that match the pattern
+ * find_all (in)           : whether to continue search after finding a match
+ * sql_path (in)           : current path in the json search tree
+ * paths (out)             : the paths found, whose pointed values match the pattern
+ */
 static int
 db_json_search_helper (const JSON_VALUE &obj, const char *pattern, const char *esc_char, bool find_all,
-		       const std::string &sql_path, bool &found,
-		       std::vector<std::string> &paths)
+		       const std::string &sql_path, bool &found, std::vector<std::string> &paths)
 {
   int error_code = NO_ERROR;
 
