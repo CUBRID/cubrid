@@ -1095,6 +1095,32 @@ db_json_get_depth (const JSON_DOC *doc)
   return db_json_value_get_depth (doc);
 }
 
+/*
+ * db_json_unquote ()
+ * skip escaping for JSON_DOC strings
+ */
+
+int
+db_json_unquote (const JSON_DOC &doc, char *&result_str)
+{
+  assert (result_str == nullptr);
+
+  if (!doc.IsString())
+    {
+      result_str = db_json_get_raw_json_body_from_document (&doc);
+    }
+  else
+    {
+      result_str = db_private_strdup (NULL, doc.GetString());
+
+      if (result_str == nullptr)
+	{
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+    }
+  return NO_ERROR;
+}
+
 static unsigned int
 db_json_value_get_depth (const JSON_VALUE *doc)
 {
