@@ -1808,8 +1808,7 @@ db_json_remove_func (JSON_DOC &doc, const char *raw_path)
  */
 int
 db_json_search_func (JSON_DOC &doc, const char *pattern,const char *esc_char, bool find_all,
-		     std::vector<std::string> &starting_paths,
-		     std::vector<std::string> &paths)
+		     std::vector<std::string> &starting_paths, std::vector<std::string> &paths)
 {
   for (auto &starting_path : starting_paths)
     {
