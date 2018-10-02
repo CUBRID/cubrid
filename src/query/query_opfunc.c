@@ -6932,6 +6932,7 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	  if (fetch_copy_dbval (thread_p, &operand->value, val_desc_p, NULL, NULL, NULL,
 				&db_values.back ()) != NO_ERROR)
 	    {
+	      pr_clear_value_vector (db_values);
 	      return ER_FAILED;
 	    }
 	}
@@ -6959,6 +6960,7 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	   */
 	  else if (agg_p->function == PT_JSON_OBJECTAGG)
 	    {
+	      pr_clear_value_vector (db_values);
 	      return ER_FAILED;
 	    }
 	  else
@@ -6999,7 +7001,7 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	      error = qdata_update_agg_interpolation_func_value_and_domain (agg_p, db_value_p);
 	      if (error != NO_ERROR)
 		{
-		  pr_clear_value (db_value_p);
+		  pr_clear_value_vector (db_values);
 		  return ER_FAILED;
 		}
 	    }
@@ -7009,7 +7011,7 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 
 	  if (pr_type_p == NULL)
 	    {
-	      pr_clear_value (db_value_p);
+	      pr_clear_value_vector (db_values);
 	      return ER_FAILED;
 	    }
 
@@ -7024,25 +7026,25 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 		  assert (error != ER_TF_BUFFER_OVERFLOW);
 
 		  db_private_free_and_init (thread_p, disk_repr_p);
-		  pr_clear_value (db_value_p);
+		  pr_clear_value_vector (db_values);
 		  return ER_FAILED;
 		}
 	    }
 	  else
 	    {
-	      pr_clear_value (db_value_p);
+	      pr_clear_value_vector (db_values);
 	      return ER_FAILED;
 	    }
 
 	  if (qfile_add_item_to_list (thread_p, disk_repr_p, dbval_size, agg_p->list_id) != NO_ERROR)
 	    {
 	      db_private_free_and_init (thread_p, disk_repr_p);
-	      pr_clear_value (db_value_p);
+	      pr_clear_value_vector (db_values);
 	      return ER_FAILED;
 	    }
 
 	  db_private_free_and_init (thread_p, disk_repr_p);
-	  pr_clear_value (db_value_p);
+	  pr_clear_value_vector (db_values);
 
 	  /* for PERCENTILE funcs, we have to check percentile value */
 	  if (agg_p->function != PT_PERCENTILE_CONT && agg_p->function != PT_PERCENTILE_DISC)
@@ -7142,7 +7144,7 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2,
 				  qdump_function_type_string (agg_p->function), "DOUBLE, DATETIME, TIME");
 
-			  pr_clear_value (db_value_p);
+			  pr_clear_value_vector (db_values);
 			  return error;
 			}
 
@@ -7154,14 +7156,14 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 		  error = pr_clone_value (db_value_p, agg_p->accumulator.value);
 		  if (error != NO_ERROR)
 		    {
-		      pr_clear_value (db_value_p);
+		      pr_clear_value_vector (db_values);
 		      return error;
 		    }
 		}
 	    }
 
 	  /* clear value */
-	  pr_clear_value (db_value_p);
+	  pr_clear_value_vector (db_values);
 
 	  /* percentile value check */
 	  if (agg_p->function == PT_PERCENTILE_CONT || agg_p->function == PT_PERCENTILE_DISC)
@@ -7192,7 +7194,7 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	  agg_p->accumulator.curr_cnt++;
 
 	  /* clear value */
-	  pr_clear_value (db_value_p);
+	  pr_clear_value_vector (db_values);
 
 	  /* check error */
 	  if (error != NO_ERROR)

@@ -242,8 +242,9 @@ static void pt_mark_spec_list_for_update_clause (PARSER_CONTEXT * parser, PT_NOD
 
 static void pt_aggregate_info_append_value_list (AGGREGATE_INFO * info, VAL_LIST * value_list);
 
-static void update_aggregate_info (AGGREGATE_INFO * info, VAL_LIST * value_list, REGU_VARIABLE_LIST regu_position_list,
-				   REGU_VARIABLE_LIST regu_constant_list);
+static void pt_aggregate_info_update_value_and_reguvar_lists (AGGREGATE_INFO * info, VAL_LIST * value_list,
+							      REGU_VARIABLE_LIST regu_position_list,
+							      REGU_VARIABLE_LIST regu_constant_list);
 
 static void pt_aggregate_info_update_scan_regu_list (AGGREGATE_INFO * info, REGU_VARIABLE_LIST scan_regu_list);
 
@@ -3782,7 +3783,8 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 		  // until now we have constructed the value_list, regu_list and out_list
 		  // they are based on the current aggregate node information and we need to append them to the global
 		  // information, i.e in info
-		  update_aggregate_info (info, value_list, regu_position_list, regu_constant_list);
+		  pt_aggregate_info_update_value_and_reguvar_lists (info, value_list, regu_position_list,
+								    regu_constant_list);
 
 		  // also we need to update the scan_regu_list from info
 		  pt_aggregate_info_update_scan_regu_list (info, scan_regu_constant_list);
@@ -3890,7 +3892,8 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	      /* fix count for list position */
 	      regu_position_list->value.value.pos_descr.pos_no = info->out_list->valptr_cnt;
 
-	      update_aggregate_info (info, value_list, regu_position_list, regu_constant_list);
+	      pt_aggregate_info_update_value_and_reguvar_lists (info, value_list, regu_position_list,
+								regu_constant_list);
 	    }
 	  else
 	    {
@@ -4005,7 +4008,7 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	  // insert also in the regu_constant_list to ensure compatibility
 	  pt_add_regu_var_to_list (&regu_constant_list, to_add);
 
-	  update_aggregate_info (info, value_list, regu_position_list, regu_constant_list);
+	  pt_aggregate_info_update_value_and_reguvar_lists (info, value_list, regu_position_list, regu_constant_list);
 	}
       *continue_walk = PT_LIST_WALK;
     }
@@ -25740,15 +25743,16 @@ pt_aggregate_info_append_value_list (AGGREGATE_INFO * info, VAL_LIST * value_lis
 }
 
 /*
-* update_aggregate_info () - Merges the arguments in the aggregate info corresponding lists
+* pt_aggregate_info_update_value_and_reguvar_lists () - Merges the arguments in the aggregate info corresponding lists
 * info                (in/out)  :
 * value_list          (in)      :
 * regu_position_list  (in)      :
 * regu_constant_list  (in)      :
 */
 static void
-update_aggregate_info (AGGREGATE_INFO * info, VAL_LIST * value_list, REGU_VARIABLE_LIST regu_position_list,
-		       REGU_VARIABLE_LIST regu_constant_list)
+pt_aggregate_info_update_value_and_reguvar_lists (AGGREGATE_INFO * info, VAL_LIST * value_list,
+						  REGU_VARIABLE_LIST regu_position_list,
+						  REGU_VARIABLE_LIST regu_constant_list)
 {
   pt_aggregate_info_append_value_list (info, value_list);
 
@@ -25763,7 +25767,7 @@ update_aggregate_info (AGGREGATE_INFO * info, VAL_LIST * value_list, REGU_VARIAB
 }
 
 /*
-* update_aggregate_info () - Merges scan_regu_list in the aggregate info->scan_regu_list
+* pt_aggregate_info_update_scan_regu_list () - Merges scan_regu_list in the aggregate info->scan_regu_list
 * info                (in/out)  :
 * scan_regu_list      (in)      :
 */
