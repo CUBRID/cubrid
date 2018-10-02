@@ -254,10 +254,11 @@ static PT_NODE *pt_make_regu_list_from_value_list (PARSER_CONTEXT * parser, PT_N
 						   REGU_VARIABLE_LIST * regu_list);
 
 static int pt_make_constant_regu_list_from_val_list (PARSER_CONTEXT * parser, VAL_LIST * value_list,
+						     REGU_VARIABLE_LIST * regu_list);
+
 /* *INDENT-OFF* */
 static void pt_set_regu_list_pos_descr_from_idx (REGU_VARIABLE_LIST & regu_list, size_t starting_index);
 /* *INDENT-ON* */
-						     REGU_VARIABLE_LIST * regu_list);
 
 static PT_NODE *pt_fix_interpolation_aggregate_function_order_by (PARSER_CONTEXT * parser, PT_NODE * node);
 static int pt_fix_buildlist_aggregate_cume_dist_percent_rank (PARSER_CONTEXT * parser, PT_NODE * node,
