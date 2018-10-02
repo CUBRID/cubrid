@@ -1788,6 +1788,11 @@ static int btree_oi_key_insert_object_unique (THREAD_ENTRY * thread_p, BTID_INT 
 					      PAGE_PTR * leaf, bool * restart, BTREE_SEARCH_KEY_HELPER * search_key,
 					      BTREE_INSERT_HELPER * insert_helper);
 
+static int btree_key_lock_first_object_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
+					       PAGE_PTR * leaf, bool * restart, BTREE_SEARCH_KEY_HELPER * search_key,
+					       BTREE_INSERT_HELPER * insert_helper, RECDES * leaf_record,
+					       BTREE_FIND_UNIQUE_HELPER * find_unique_helper);
+
 
 /*
  * btree_fix_root_with_info () - Fix b-tree root page and output its VPID, header and b-tree info if requested.
@@ -27606,13 +27611,6 @@ btree_key_lock_and_append_object_unique (THREAD_ENTRY * thread_p, BTID_INT * bti
   int max_visible_oids = 1;	/* Used to check visible OID's for REPEATABLE READ isolation. */
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;	/* Used to check visibility for REPEATABLE READ isolation. */
   int num_visible = 0;		/* Used to count number of visible objects. */
-  bool is_online_index = false;
-
-#if defined (SERVER_MODE)
-  LOG_LSA saved_leaf_lsa;	/* Save page LSA before locking the first object in record. If LSA is changed, it is no 
-				 * longer guaranteed that page has enough space for new key/object. We need to be
-				 * conservative and check it. */
-#endif /* SERVER_MODE */
 
   /* Assert expected arguments. */
   assert (btid_int != NULL && BTREE_IS_UNIQUE (btid_int->unique_pk));
@@ -27628,124 +27626,77 @@ btree_key_lock_and_append_object_unique (THREAD_ENTRY * thread_p, BTID_INT * bti
 				      logtb_get_current_tran_index (), X_LOCK) > 0);
 #endif /* SERVER_MODE */
 
-  /* Insert object in the beginning of leaf record if unique constraint is not violated. Step 1: Protect key by
-   * locking its first object. Every transaction that insert or delete objects will follow this rule. So, the inserter
-   * must first lock the first object, check its status and decide if insert is possible or if it would violation
-   * unique constraint.  After locking the first object, if it is deleted and committed, then unique constraint would
-   * not be violated. Otherwise, if the object is not deleted (and nobody else is trying to delete it), inserting new
-   * object is no longer accepted.  Use btree_key_find_and_lock_unique_of_unique to find and lock the first object.
-   * Step 2: Once the first object is locked and it is established that unique constraint is preserved, adding object
-   * to key record can be done.  Because the first object is always considered last key version, inserting new object
-   * must be done in the beginning of leaf record. So, the current first object must be relocated (it simulates a
-   * regular insert and follows the regular insert rules).  Then, the first object is replaced with new object. */
-
-#if defined (SERVER_MODE)
-  /* Transfer locked object from insert helper to find unique helper. */
-  COPY_OID (&find_unique_helper.locked_oid, &insert_helper->saved_locked_oid);
-  COPY_OID (&find_unique_helper.locked_class_oid, &insert_helper->saved_locked_class_oid);
-
-  LSA_COPY (&saved_leaf_lsa, pgbuf_get_lsa (*leaf));
-#endif /* SERVER_MODE */
-
-  is_online_index = btree_is_online_index_loading (insert_helper->purpose);
-  find_unique_helper.lock_mode = X_LOCK;
-
-  if (is_online_index)
+  /* Do preliminary checks to determine an early out in case of unique constraint violation. 
+   * If everything checks out, this returns with NO_ERROR and locks the first object in the key.
+   */
+  error_code =
+    btree_key_lock_first_object_unique (thread_p, btid_int, key, leaf, restart, search_key, insert_helper, leaf_record,
+					&find_unique_helper);
+  if (error_code != NO_ERROR)
     {
-      error_code =
-	btree_oi_key_get_and_lock_first_object (thread_p, btid_int, key, leaf, search_key, restart,
-						&find_unique_helper);
-    }
-  else
-    {
-      error_code =
-	btree_key_find_and_lock_unique_of_unique (thread_p, btid_int, key, leaf, search_key, restart,
-						  &find_unique_helper);
-    }
-#if defined (SERVER_MODE)
-  /* Transfer locked object from find unique helper to insert helper. */
-  COPY_OID (&insert_helper->saved_locked_oid, &find_unique_helper.locked_oid);
-  COPY_OID (&insert_helper->saved_locked_class_oid, &find_unique_helper.locked_class_oid);
-#endif /* SERVER_MODE */
-
-  if (error_code != NO_ERROR || *restart)
-    {
-      /* Error occurred or failed to lock key object and keep a relevant leaf node. Return now. */
+      ASSERT_ERROR ();
       return error_code;
     }
-  /* No error, object was locked and key leaf node is held. */
-  assert (*leaf != NULL);
 
-  /* Slot ID and page pointer may have changed. Update insert_helper->leaf_addr. */
-  insert_helper->leaf_addr.offset = search_key->slotid;
-  insert_helper->leaf_addr.pgptr = *leaf;
-
-#if defined (SERVER_MODE)
-  if (!LSA_EQ (&saved_leaf_lsa, pgbuf_get_lsa (*leaf)))
+  if (error_code == NO_ERROR && *restart)
     {
-      /* Does leaf need split? */
-      if (btree_key_insert_does_leaf_need_split (thread_p, btid_int, *leaf, insert_helper, search_key))
-	{
-	  /* We need to go back from top and split leaf. */
-	  *restart = true;
-	  return NO_ERROR;
-	}
-    }
-#endif /* SERVER_MODE */
-
-  if (search_key->result != BTREE_KEY_FOUND)
-    {
-      /* Key was deleted or vacuumed. */
-      /* Insert key directly. */
-      return btree_key_insert_new_key (thread_p, btid_int, key, *leaf, insert_helper, search_key);
+      return error_code;
     }
 
-  if (!find_unique_helper.found_object && logtb_find_current_isolation (thread_p) >= TRAN_REPEATABLE_READ)
-    {
-      /* This could be an object deleted but still visible to me. */
-      /* The problem is reading the object next time. Old object, even if it was deleted, on the next read will be
-       * visible to me. This object is inserted by me, so it is also visible to me. This means I will see two different 
-       * objects that have this key, which is obviously a violation of unique constraint. READ COMMITTED doesn't have
-       * this problem, since on the next statement it will refresh its snapshot and old object will no longer be
-       * visible (even if it was with this snapshot). */
-      /* TODO: Is this required in STAND ALONE? */
+  /* No visible objects or isolation not >= RR */
 
-      /* Get current key record. */
-      if (spage_get_record (thread_p, *leaf, search_key->slotid, leaf_record, COPY) != S_SUCCESS)
+  /* Unique constraint may be violated if there is already a visible object and if this is not recovery
+   * (BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE). Unique constraint is violated in this case, except if op_type is
+   * MULTI-ROW-UPDATE. In this case, a duplicate key can be allowed, as long as it will be deleted until the end of
+   * query execution (this is checked with unique_stats_info). Even in this case, never allow more than two visible
+   * objects. If HA is enabled, never allow more than one visible object. */
+
+  if (find_unique_helper.found_object && (insert_helper->purpose == BTREE_OP_INSERT_NEW_OBJECT))
+    {
+      mvcc_snapshot_dirty.snapshot_fnc = mvcc_satisfies_dirty;
+
+      if (insert_helper->is_unique_multi_update)
 	{
-	  assert_release (false);
-	  return ER_FAILED;
-	}
+	  /* This should be MULTI-ROW-UPDATE. Get key record and count visible objects. */
+
+	  /* Get current key record. */
+	  if (spage_get_record (thread_p, *leaf, search_key->slotid, leaf_record, COPY) != S_SUCCESS)
+	    {
+	      assert_release (false);
+	      return ER_FAILED;
+	    }
 
 #if !defined (NDEBUG)
-      (void) btree_check_valid_record (thread_p, btid_int, leaf_record, BTREE_LEAF_NODE, key);
+	  (void) btree_check_valid_record (thread_p, btid_int, leaf_record, BTREE_LEAF_NODE, key);
 #endif
 
-      /* Read record. */
-      error_code =
-	btree_read_record (thread_p, btid_int, *leaf, leaf_record, NULL, &leaf_info, BTREE_LEAF_NODE, &dummy_clear_key,
-			   &offset_after_key, PEEK_KEY_VALUE, NULL);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  return error_code;
-	}
-      /* Don't repeat key record read. */
-      is_key_record_read = true;
+	  /* Read record. */
+	  error_code =
+	    btree_read_record (thread_p, btid_int, *leaf, leaf_record, NULL, &leaf_info, BTREE_LEAF_NODE,
+			       &dummy_clear_key, &offset_after_key, PEEK_KEY_VALUE, NULL);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return error_code;
+	    }
+	  /* Don't repeat key record read. */
+	  is_key_record_read = true;
 
-      /* Count visible objects considering transaction snapshot. */
-      mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
-      error_code =
-	btree_get_num_visible_from_leaf_and_ovf (thread_p, btid_int, leaf_record, offset_after_key, &leaf_info,
-						 &max_visible_oids, mvcc_snapshot, &num_visible);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  return error_code;
+	  /* Count visible (not dirty) objects. */
+	  error_code =
+	    btree_get_num_visible_from_leaf_and_ovf (thread_p, btid_int, leaf_record, offset_after_key, &leaf_info,
+						     NULL, &mvcc_snapshot_dirty, &num_visible);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return error_code;
+	    }
 	}
-      else if (num_visible > 0)
+
+      /* Should we consider this a unique constraint violation? */
+      if (!insert_helper->is_unique_multi_update || num_visible > 1)
 	{
-	  /* Unique constraint violation. */
+	  /* Not multi-update operation or there would be more than two objects visible. Unique constraint violation. */
 	  if (prm_get_bool_value (PRM_ID_UNIQUE_ERROR_KEY_VALUE))
 	    {
 	      char *keyval = pr_valstring (thread_p, key);
@@ -27765,110 +27716,28 @@ btree_key_lock_and_append_object_unique (THREAD_ENTRY * thread_p, BTID_INT * bti
 	      return ER_BTREE_UNIQUE_FAILED;
 	    }
 	}
-    }
-  /* No visible objects or isolation not >= RR */
+      else if (insert_helper->is_ha_enabled)
+	{
+	  /* When HA is enabled, unique constraint can never be violated. */
+	  error_code = ER_REPL_MULTI_UPDATE_UNIQUE_VIOLATION;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+	  return error_code;
+	}
 
-  /* Unique constraint may be violated if there is already a visible object and if this is not recovery
-   * (BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE). Unique constraint is violated in this case, except if op_type is
-   * MULTI-ROW-UPDATE. In this case, a duplicate key can be allowed, as long as it will be deleted until the end of
-   * query execution (this is checked with unique_stats_info). Even in this case, never allow more than two visible
-   * objects. If HA is enabled, never allow more than one visible object. */
-  if (is_online_index)
-    {
-      /* Call unique insert function for online index. */
-      error_code =
-	btree_oi_key_insert_object_unique (thread_p, btid_int, key, leaf, restart, search_key, insert_helper);
-      return error_code;
+
+      /* Cannot consider this a new key. */
+      insert_helper->is_unique_key_added_or_deleted = false;
+#if defined (SERVER_MODE)
+      /* We don't want to unlock the object we will relocate. Others cannot delete it until we are finished. */
+      OID_SET_NULL (&insert_helper->saved_locked_oid);
+#endif
     }
   else
     {
-      if (find_unique_helper.found_object && (insert_helper->purpose == BTREE_OP_INSERT_NEW_OBJECT))
-	{
-	  mvcc_snapshot_dirty.snapshot_fnc = mvcc_satisfies_dirty;
-
-	  if (insert_helper->is_unique_multi_update)
-	    {
-	      /* This should be MULTI-ROW-UPDATE. Get key record and count visible objects. */
-
-	      /* Get current key record. */
-	      if (spage_get_record (thread_p, *leaf, search_key->slotid, leaf_record, COPY) != S_SUCCESS)
-		{
-		  assert_release (false);
-		  return ER_FAILED;
-		}
-
-#if !defined (NDEBUG)
-	      (void) btree_check_valid_record (thread_p, btid_int, leaf_record, BTREE_LEAF_NODE, key);
-#endif
-
-	      /* Read record. */
-	      error_code =
-		btree_read_record (thread_p, btid_int, *leaf, leaf_record, NULL, &leaf_info, BTREE_LEAF_NODE,
-				   &dummy_clear_key, &offset_after_key, PEEK_KEY_VALUE, NULL);
-	      if (error_code != NO_ERROR)
-		{
-		  ASSERT_ERROR ();
-		  return error_code;
-		}
-	      /* Don't repeat key record read. */
-	      is_key_record_read = true;
-
-	      /* Count visible (not dirty) objects. */
-	      error_code =
-		btree_get_num_visible_from_leaf_and_ovf (thread_p, btid_int, leaf_record, offset_after_key, &leaf_info,
-							 NULL, &mvcc_snapshot_dirty, &num_visible);
-	      if (error_code != NO_ERROR)
-		{
-		  ASSERT_ERROR ();
-		  return error_code;
-		}
-	    }
-
-	  /* Should we consider this a unique constraint violation? */
-	  if (!insert_helper->is_unique_multi_update || num_visible > 1)
-	    {
-	      /* Not multi-update operation or there would be more than two objects visible. Unique constraint violation. */
-	      if (prm_get_bool_value (PRM_ID_UNIQUE_ERROR_KEY_VALUE))
-		{
-		  char *keyval = pr_valstring (thread_p, key);
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UNIQUE_VIOLATION_WITHKEY, 1,
-			  (keyval == NULL) ? "(null)" : keyval);
-		  if (keyval != NULL)
-		    {
-		      db_private_free (thread_p, keyval);
-		    }
-		  return ER_UNIQUE_VIOLATION_WITHKEY;
-		}
-	      else
-		{
-		  /* Object already exists. Unique constraint violation. */
-		  BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_p, key, BTREE_INSERT_OID (insert_helper),
-						    BTREE_INSERT_CLASS_OID (insert_helper), btid_int->sys_btid, NULL);
-		  return ER_BTREE_UNIQUE_FAILED;
-		}
-	    }
-	  else if (insert_helper->is_ha_enabled)
-	    {
-	      /* When HA is enabled, unique constraint can never be violated. */
-	      error_code = ER_REPL_MULTI_UPDATE_UNIQUE_VIOLATION;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
-	      return error_code;
-	    }
-
-
-	  /* Cannot consider this a new key. */
-	  insert_helper->is_unique_key_added_or_deleted = false;
-#if defined (SERVER_MODE)
-	  /* We don't want to unlock the object we will relocate. Others cannot delete it until we are finished. */
-	  OID_SET_NULL (&insert_helper->saved_locked_oid);
-#endif
-	}
-      else
-	{
-	  /* All existing objects are deleted. Proceed */
-	  insert_helper->is_unique_key_added_or_deleted = true;
-	}
+      /* All existing objects are deleted. Proceed */
+      insert_helper->is_unique_key_added_or_deleted = true;
     }
+
   /* Unique constraint not violated (yet). */
   /* New object can be inserted. */
 
@@ -33335,6 +33204,11 @@ btree_key_online_index_IB_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
   char rec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
   char new_rec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
   RECDES new_record;
+  bool is_unique = BTREE_IS_UNIQUE (btid_int->unique_pk);
+  BTREE_OBJECT_INFO first_object;
+  BTREE_FIND_UNIQUE_HELPER find_unique_helper = BTREE_FIND_UNIQUE_HELPER_INITIALIZER;
+  bool is_first_object = false;
+  bool unique_constraint = false;
 
   record.data = PTR_ALIGN (rec_buf, BTREE_MAX_ALIGN);
   record.area_size = IO_MAX_PAGE_SIZE;
@@ -33354,147 +33228,226 @@ btree_key_online_index_IB_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
   if (search_key->result == BTREE_KEY_FOUND)
     {
 
-      if (BTREE_IS_UNIQUE (btid_int->unique_pk))
+      /* We search the key for the OID. If we find it, we should find it with DELETE_FLAG set, therefore we must
+       * delete it in place.
+       */
+
+      /* Get the record. */
+      if (spage_get_record (thread_p, *leaf_page, search_key->slotid, &record, COPY) != S_SUCCESS)
+	{
+	  assert_release (false);
+	  error_code = ER_FAILED;
+	  return error_code;
+	}
+
+      /* Read the record. */
+      error_code =
+	btree_read_record (thread_p, btid_int, *leaf_page, &record, NULL, &leaf_info, BTREE_LEAF_NODE,
+			   &dummy_clear_key, &offset_after_key, PEEK_KEY_VALUE, NULL);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+
+      /* If we have an unique index loading, we need to lock the first object in the key. */
+      if (is_unique)
 	{
 	  error_code =
-	    btree_key_lock_and_append_object_unique (thread_p, btid_int, key, leaf_page, restart, search_key,
-						     &helper->insert_helper, &record);
+	    btree_key_lock_first_object_unique (thread_p, btid_int, key, leaf_page, restart, search_key,
+						&helper->insert_helper, &record, &find_unique_helper);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return error_code;
+	    }
+
+	  if (error_code == NO_ERROR && *restart)
+	    {
+	      return NO_ERROR;
+	    }
+
+	}
+
+      error_code =
+	btree_find_oid_with_page_and_record (thread_p, btid_int, &helper->insert_helper.obj_info.oid, *leaf_page,
+					     helper->insert_helper.purpose, NULL, &record, &leaf_info,
+					     offset_after_key, &page_found, &prev_page, &offset_to_object,
+					     &btree_mvcc_info, &new_record);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto end;
+	}
+
+      if (offset_to_object == 0)
+	{
+	  is_first_object = true;
+	}
+
+      node_type = (page_found == *leaf_page) ? BTREE_LEAF_NODE : BTREE_OVERFLOW_NODE;
+
+      if (node_type == BTREE_OVERFLOW_NODE)
+	{
+	  slotid = 1;
 	}
       else
 	{
-	  /* We search the key for the OID. If we find it, we should find it with DELETE_FLAG set, therefore we must
-	   * delete it in place.
+	  slotid = search_key->slotid;
+	}
+
+      if (offset_to_object != NOT_FOUND)
+	{
+	  /* Inspect the object and its MVCC_INFO. */
+	  /* This is the index builder, therefore if there is already an OID that matches the one that needs to be
+	   * inserted, then the already inserted one should have either DELETE_FLAG or INSERT_FLAG set.
 	   */
+	  btree_online_index_check_state (btree_mvcc_info.insert_mvccid);
 
-	  /* Get the record. */
-	  if (spage_get_record (thread_p, *leaf_page, search_key->slotid, &record, COPY) != S_SUCCESS)
+	  if (btree_online_index_is_insert_flag_state (btree_mvcc_info.insert_mvccid))
 	    {
-	      assert_release (false);
-	      error_code = ER_FAILED;
-	      return error_code;
-	    }
+	      /* INSERT_FLAG is set. It means we have to remove the flag, according to the state machine. */
+	      btree_online_index_set_normal_state (btree_mvcc_info.insert_mvccid);
 
-	  /* Read the record. */
-	  error_code =
-	    btree_read_record (thread_p, btid_int, *leaf_page, &record, NULL, &leaf_info, BTREE_LEAF_NODE,
-			       &dummy_clear_key, &offset_after_key, PEEK_KEY_VALUE, NULL);
-	  if (error_code != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	      return error_code;
-	    }
+	      /* Prepare logging data. */
+	      addr.offset = slotid;
+	      addr.pgptr = page_found;
+	      addr.vfid = &btid_int->sys_btid->vfid;
 
-	  error_code =
-	    btree_find_oid_with_page_and_record (thread_p, btid_int, &helper->insert_helper.obj_info.oid, *leaf_page,
-						 helper->insert_helper.purpose, NULL, &record, &leaf_info,
-						 offset_after_key, &page_found, &prev_page, &offset_to_object,
-						 &btree_mvcc_info, &new_record);
-	  if (error_code != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	      return error_code;
-	    }
+	      if (node_type == BTREE_OVERFLOW_NODE)
+		{
+		  BTREE_RV_SET_OVERFLOW_NODE (&addr);
+		}
+	      LOG_RV_RECORD_SET_MODIFY_MODE (&addr, LOG_RV_RECORD_UPDATE_PARTIAL);
 
-	  node_type = (page_found == *leaf_page) ? BTREE_LEAF_NODE : BTREE_OVERFLOW_NODE;
+	      btree_online_index_change_state (thread_p, btid_int, &new_record, node_type, offset_to_object,
+					       btree_mvcc_info.insert_mvccid, NULL,
+					       &helper->insert_helper.rv_redo_data_ptr);
 
-	  if (node_type == BTREE_OVERFLOW_NODE)
-	    {
-	      slotid = 1;
+	      /* Add the logged info. */
+	      /* Update in page. */
+	      if (spage_update (thread_p, page_found, slotid, &new_record) != SP_SUCCESS)
+		{
+		  /* Unexpected. */
+		  assert_release (false);
+		  error_code = ER_FAILED;
+		  goto end;
+		}
+
+	      FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
+
+	      /* We need to log previous lsa. */
+	      LSA_COPY (&prev_lsa, pgbuf_get_lsa (page_found));
+
+	      /* Logging. */
+	      BTREE_RV_GET_DATA_LENGTH (helper->insert_helper.rv_redo_data_ptr, helper->insert_helper.rv_redo_data,
+					rv_redo_data_length);
+	      log_append_redo_data (thread_p, RVBT_RECORD_MODIFY_NO_UNDO, &addr, rv_redo_data_length,
+				    helper->insert_helper.rv_redo_data);
+
+	      btree_insert_log (&helper->insert_helper, "btree_key_online_index_insert %s", "todo");
+
+	      FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
+
+	      pgbuf_set_dirty (thread_p, page_found, DONT_FREE);
+
+	      goto end;
 	    }
 	  else
 	    {
-	      slotid = search_key->slotid;
-	    }
+	      assert (btree_online_index_is_delete_flag_state (btree_mvcc_info.insert_mvccid));
 
-	  if (offset_to_object != NOT_FOUND)
+	      btree_insert_helper_to_delete_helper (&helper->insert_helper, &helper->delete_helper);
+	      helper->delete_helper.purpose = BTREE_OP_ONLINE_INDEX_IB_DELETE;
+
+	      error_code =
+		btree_key_remove_object (thread_p, key, btid_int, &helper->delete_helper, *leaf_page, &record,
+					 &leaf_info, offset_after_key, search_key, &page_found, prev_page,
+					 node_type, offset_to_object);
+
+	      goto end;
+	    }
+	}
+      else
+	{
+	  /* Key was found but the object wasn't. We must append the object to the current key. */
+	  /* Safeguards. */
+	  assert (search_key->result == BTREE_KEY_FOUND && offset_to_object == NOT_FOUND);
+
+	  /* For unique indexes, call unique function. */
+	  if (is_unique)
 	    {
-	      /* Inspect the key and its MVCC_INFO. */
-	      /* This is the index builder, therefore if there is already an OID that matches the one that needs to be
-	       * inserted, then the already inserted one should have either DELETE_FLAG or INSERT_FLAG set.
+	      /* Get first object info */
+	      error_code = btree_leaf_get_first_object (btid_int, &record, &first_object.oid, &first_object.class_oid,
+							&first_object.mvcc_info);
+
+	      /*  If the first object is visible, we have an unique constraint violation, since we already have 
+	       *  a visible object in the key.
 	       */
-	      btree_online_index_check_state (btree_mvcc_info.insert_mvccid);
 
-	      if (btree_online_index_is_insert_flag_state (btree_mvcc_info.insert_mvccid))
+	      if (btree_online_index_is_insert_flag_state (first_object.mvcc_info.insert_mvccid)
+		  || btree_online_index_is_normal_state (first_object.mvcc_info.insert_mvccid))
 		{
-		  /* INSERT_FLAG is set. It means we have to remove the flag, according to the state machine. */
-		  btree_online_index_set_normal_state (btree_mvcc_info.insert_mvccid);
-
-		  /* Prepare logging data. */
-		  addr.offset = slotid;
-		  addr.pgptr = page_found;
-		  addr.vfid = &btid_int->sys_btid->vfid;
-
-		  if (node_type == BTREE_OVERFLOW_NODE)
-		    {
-		      BTREE_RV_SET_OVERFLOW_NODE (&addr);
-		    }
-		  LOG_RV_RECORD_SET_MODIFY_MODE (&addr, LOG_RV_RECORD_UPDATE_PARTIAL);
-
-		  btree_online_index_change_state (thread_p, btid_int, &new_record, node_type, offset_to_object,
-						   btree_mvcc_info.insert_mvccid, NULL,
-						   &helper->insert_helper.rv_redo_data_ptr);
-
-		  /* Add the logged info. */
-		  /* Update in page. */
-		  if (spage_update (thread_p, page_found, slotid, &new_record) != SP_SUCCESS)
-		    {
-		      /* Unexpected. */
-		      assert_release (false);
-		      error_code = ER_FAILED;
-		      return error_code;
-		    }
-
-		  FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
-
-		  /* We need to log previous lsa. */
-		  LSA_COPY (&prev_lsa, pgbuf_get_lsa (page_found));
-
-		  /* Logging. */
-		  BTREE_RV_GET_DATA_LENGTH (helper->insert_helper.rv_redo_data_ptr, helper->insert_helper.rv_redo_data,
-					    rv_redo_data_length);
-		  log_append_redo_data (thread_p, RVBT_RECORD_MODIFY_NO_UNDO, &addr, rv_redo_data_length,
-					helper->insert_helper.rv_redo_data);
-
-		  btree_insert_log (&helper->insert_helper, "btree_key_online_index_insert %s", "todo");
-
-		  FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
-
-		  pgbuf_set_dirty (thread_p, page_found, DONT_FREE);
-
-		  return error_code;
+		  unique_constraint = true;
+		  goto end;
 		}
-	      else
-		{
-		  assert (btree_online_index_is_delete_flag_state (btree_mvcc_info.insert_mvccid));
 
-		  btree_insert_helper_to_delete_helper (&helper->insert_helper, &helper->delete_helper);
-		  helper->delete_helper.purpose = BTREE_OP_ONLINE_INDEX_IB_DELETE;
+	      /* First object in key mustn't be visible. */
+	      assert (btree_online_index_is_delete_flag_state (first_object.mvcc_info.insert_mvccid));
 
-		  error_code =
-		    btree_key_remove_object (thread_p, key, btid_int, &helper->delete_helper, *leaf_page, &record,
-					     &leaf_info, offset_after_key, search_key, &page_found, prev_page,
-					     node_type, offset_to_object);
-
-		  return error_code;
-		}
+	      error_code = btree_key_append_object_unique (thread_p, btid_int, key, *leaf_page, search_key, &record,
+							   &leaf_info, offset_after_key, &helper->insert_helper,
+							   &first_object);
 	    }
 	  else
 	    {
-	      /* Key was found but the object wasn't. We must append the object to the current key. */
-	      /* Safeguards. */
-	      assert (search_key->result == BTREE_KEY_FOUND && offset_to_object == NOT_FOUND);
 	      error_code =
 		btree_key_append_object_non_unique (thread_p, btid_int, key, *leaf_page, search_key, &new_record,
 						    offset_after_key, &leaf_info, &helper->insert_helper.obj_info,
 						    &helper->insert_helper);
-
 	    }
 	}
+
     }
   else
     {
       /* Key was not found, we must insert it. */
       error_code = btree_key_insert_new_key (thread_p, btid_int, key, *leaf_page, &helper->insert_helper, search_key);
+    }
+
+end:
+  /* In case of Unique index, the IB has to unlock the first object that it may had locked. */
+#if defined (SERVER_MODE)
+  if (!OID_ISNULL (&find_unique_helper.locked_oid))
+    {
+      assert (lock_has_lock_on_object
+	      (&find_unique_helper.locked_oid, &find_unique_helper.locked_class_oid, logtb_get_current_tran_index (),
+	       X_LOCK));
+      lock_unlock_object (thread_p, &find_unique_helper.locked_oid, &find_unique_helper.locked_class_oid, X_LOCK,
+			  false);
+    }
+#endif /* SERVER_MODE */
+
+  if (is_unique && unique_constraint)
+    {
+      if (prm_get_bool_value (PRM_ID_UNIQUE_ERROR_KEY_VALUE))
+	{
+	  char *keyval = pr_valstring (thread_p, key);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UNIQUE_VIOLATION_WITHKEY, 1,
+		  (keyval == NULL) ? "(null)" : keyval);
+	  if (keyval != NULL)
+	    {
+	      db_private_free (thread_p, keyval);
+	    }
+	  return ER_UNIQUE_VIOLATION_WITHKEY;
+	}
+      else
+	{
+	  /* Object already exists. Unique constraint violation. */
+	  BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_p, key, BTREE_INSERT_OID (&helper->insert_helper),
+					    BTREE_INSERT_CLASS_OID (&helper->insert_helper), btid_int->sys_btid, NULL);
+	  return ER_BTREE_UNIQUE_FAILED;
+	}
     }
 
   return error_code;
@@ -33534,6 +33487,12 @@ btree_key_online_index_tran_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int
   LOG_LSA prev_lsa;
 
   LOG_DATA_ADDR addr;
+
+  BTREE_FIND_UNIQUE_HELPER find_unique_helper = BTREE_FIND_UNIQUE_HELPER_INITIALIZER;
+  bool is_first_object = false;
+  bool unique_constraint = false;
+  bool is_unique = BTREE_IS_UNIQUE (btid_int->unique_pk);
+  BTREE_OBJECT_INFO first_object;
 
   char rec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
   record.data = PTR_ALIGN (rec_buf, BTREE_MAX_ALIGN);
@@ -33602,6 +33561,25 @@ btree_key_online_index_tran_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	  return error_code;
 	}
 
+      /* If we have an unique index loading, we need to lock the first object in the key. */
+      if (is_unique)
+	{
+	  error_code =
+	    btree_key_lock_first_object_unique (thread_p, btid_int, key, leaf_page, restart, search_key,
+						&helper->insert_helper, &record, &find_unique_helper);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return error_code;
+	    }
+
+	  if (error_code == NO_ERROR && *restart)
+	    {
+	      return error_code;
+	    }
+
+	}
+
       error_code =
 	btree_find_oid_with_page_and_record (thread_p, btid_int, &helper->insert_helper.obj_info.oid, *leaf_page,
 					     helper->insert_helper.purpose, NULL, &record, &leaf_info, offset_after_key,
@@ -33611,6 +33589,11 @@ btree_key_online_index_tran_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	{
 	  ASSERT_ERROR ();
 	  return error_code;
+	}
+
+      if (offset_to_object == 0)
+	{
+	  is_first_object = true;
 	}
 
       node_type = (page_found == *leaf_page) ? BTREE_LEAF_NODE : BTREE_OVERFLOW_NODE;
@@ -33648,6 +33631,91 @@ btree_key_online_index_tran_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	  /* Set the new state to INSERT_FLAG. */
 	  btree_online_index_set_insert_flag_state (btree_mvcc_info.insert_mvccid);
 
+	  /*  If we have an unique index, setting a flag to INSERT_FLAG will make the object visible.
+	   *  This means it must be brought onto the first position, since the only visible object in a key
+	   *  must be placed as the first object.
+	   */
+	  if (is_unique)
+	    {
+	      if (!is_first_object)
+		{
+		  /* Get the first object in key and check if it is visible. If so, throw a unique constraint violation. */
+		  error_code =
+		    btree_leaf_get_first_object (btid_int, &record, &first_object.oid, &first_object.class_oid,
+						 &first_object.mvcc_info);
+		  if (error_code != NO_ERROR)
+		    {
+		      ASSERT_ERROR ();
+		      return error_code;
+		    }
+
+		  if (btree_online_index_is_insert_flag_state (first_object.mvcc_info.insert_mvccid)
+		      || btree_online_index_is_normal_state (first_object.mvcc_info.insert_mvccid))
+		    {
+		      /* This is a visible object. We have to throw an error. */
+		      unique_constraint = true;
+		      goto end;
+		    }
+
+		  assert (btree_online_index_is_delete_flag_state (first_object.mvcc_info.insert_mvccid));
+
+		  /*  At this moment we found the object, it is not the first one, and all other objects
+		   *  in the key have DELETE_FLAG set, meaning they are invisible. Now a transactions wants
+		   *  to insert the object and will change the state to INSERT_FLAG, meaning that the object is now
+		   *  visible. So we have to bring it to the first position in the key, while also rellocating that
+		   *  first object to the end. We have to save two objects for undo.
+		   */
+
+		  /* Set INSERT_FLAG in insert_helper. */
+		  /* Set DELETE_FLAG in the helper structure. */
+		  helper->insert_helper.obj_info.mvcc_info.flags |= BTREE_OID_HAS_MVCC_INSID;
+		  btree_online_index_set_insert_flag_state (helper->insert_helper.obj_info.mvcc_info.insert_mvccid);
+
+		  char *rv_keyval_data_buf_local = NULL;
+		  int rv_keyval_data_capacity_local = IO_MAX_PAGE_SIZE;
+
+		  /* TODO: Add new function for undo-ing. */
+		  helper->insert_helper.rcvindex = RVBT_MVCC_INSERT_OBJECT_UNQ;
+		  if (helper->insert_helper.rv_keyval_data_length <= IO_MAX_PAGE_SIZE)
+		    {
+		      /* Undo data uses preallocated data buffer. */
+		      rv_keyval_data_buf_local = helper->insert_helper.rv_keyval_data;
+		    }
+		  else
+		    {
+		      /* Undo data was reallocated and its capacity matches its size. */
+		      rv_keyval_data_capacity_local = helper->insert_helper.rv_keyval_data_length;
+		    }
+		  error_code =
+		    btree_rv_save_keyval_for_undo_two_objects (btid_int, key, &helper->insert_helper.obj_info,
+							       &first_object, helper->insert_helper.purpose,
+							       rv_keyval_data_buf_local,
+							       &helper->insert_helper.rv_keyval_data,
+							       &rv_keyval_data_capacity_local,
+							       &helper->insert_helper.rv_keyval_data_length);
+		  if (error_code != NO_ERROR)
+		    {
+		      ASSERT_ERROR ();
+		      return error_code;
+		    }
+
+		  /* We can now append the new object. */
+		  error_code =
+		    btree_key_append_object_unique (thread_p, btid_int, key, page_found, search_key, &record,
+						    &leaf_info, offset_after_key, &helper->insert_helper,
+						    &first_object);
+
+		  return error_code;
+		}
+	      else
+		{
+		  /*  The object we want to insert is the first one.
+		   *  Fall through.
+		   */
+		  ;
+		}
+	    }
+
 	  /* Change the state of the record. */
 	  btree_online_index_change_state (thread_p, btid_int, &new_record, node_type, offset_to_object,
 					   btree_mvcc_info.insert_mvccid, NULL, &rv_redo_data_ptr);
@@ -33678,16 +33746,52 @@ btree_key_online_index_tran_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	  /* Safeguards. */
 	  assert (search_key->result == BTREE_KEY_FOUND && offset_to_object == NOT_FOUND);
 
-	  error_code =
-	    btree_key_append_object_non_unique (thread_p, btid_int, key, *leaf_page, search_key, &new_record,
-						offset_after_key, &leaf_info, &helper->insert_helper.obj_info,
-						&helper->insert_helper);
+	  if (is_unique)
+	    {
+	      error_code =
+		btree_key_append_object_unique (thread_p, btid_int, key, page_found, search_key, &record,
+						&leaf_info, offset_after_key, &helper->insert_helper, &first_object);
+	    }
+	  else
+	    {
+	      error_code =
+		btree_key_append_object_non_unique (thread_p, btid_int, key, *leaf_page, search_key, &new_record,
+						    offset_after_key, &leaf_info, &helper->insert_helper.obj_info,
+						    &helper->insert_helper);
+	    }
+	  return error_code;
 	}
     }
   else
     {
       /* Key was not found, we must insert it. */
       error_code = btree_key_insert_new_key (thread_p, btid_int, key, *leaf_page, &helper->insert_helper, search_key);
+      return error_code;
+    }
+
+  assert (!unique_constraint);
+end:
+
+  if (is_unique && unique_constraint)
+    {
+      if (prm_get_bool_value (PRM_ID_UNIQUE_ERROR_KEY_VALUE))
+	{
+	  char *keyval = pr_valstring (thread_p, key);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UNIQUE_VIOLATION_WITHKEY, 1,
+		  (keyval == NULL) ? "(null)" : keyval);
+	  if (keyval != NULL)
+	    {
+	      db_private_free (thread_p, keyval);
+	    }
+	  return ER_UNIQUE_VIOLATION_WITHKEY;
+	}
+      else
+	{
+	  /* Object already exists. Unique constraint violation. */
+	  BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_p, key, BTREE_INSERT_OID (&helper->insert_helper),
+					    BTREE_INSERT_CLASS_OID (&helper->insert_helper), btid_int->sys_btid, NULL);
+	  return ER_BTREE_UNIQUE_FAILED;
+	}
     }
 
   return error_code;
@@ -34898,6 +35002,7 @@ btree_oi_key_insert_object_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
   char *rv_redo_data_ptr = rv_redo_data;
   int rv_redo_data_length = 0;
   LOG_LSA prev_lsa;
+  bool is_index_builder = false;
 
   leaf_record.data = PTR_ALIGN (rec_buf, BTREE_MAX_ALIGN);
   leaf_record.area_size = IO_MAX_PAGE_SIZE;
@@ -34935,6 +35040,11 @@ btree_oi_key_insert_object_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
       is_first_object = true;
     }
 
+  if (insert_helper->purpose == BTREE_OP_ONLINE_INDEX_IB_INSERT)
+    {
+      is_index_builder = true;
+    }
+
   assert (lock_has_lock_on_object
 	  (&first_object.oid, &first_object.class_oid, logtb_get_current_tran_index (), X_LOCK));
 
@@ -34942,20 +35052,23 @@ btree_oi_key_insert_object_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
   switch (insert_helper->purpose)
     {
     case BTREE_OP_ONLINE_INDEX_IB_INSERT:
-      /* This is an insert done by the Index Builder. */
       if (is_first_object)
 	{
-	  /* First object in the key is the same as the one IB needs to insert. */
+	  /* First object in the key is the same as the one we want to insert. */
 	  if (btree_online_index_is_normal_state (first_object.mvcc_info.insert_mvccid))
 	    {
 	      /* Constraint violation */
+	      /* Actually, this should never happen so catch it with an assert. */
+	      assert (false);
 	      goto unique_constraint_error;
 	    }
 	  else
 	    {
 	      if (btree_online_index_is_insert_flag_state (first_object.mvcc_info.insert_mvccid))
 		{
-		  /* INSERT_FLAG set. IB must change the state to NORMAL_STATE. */
+		  /* INSERT_FLAG set. */
+		  /* IB must change the state to NORMAL_STATE. */
+		  assert (is_index_builder);
 		  btree_online_index_set_normal_state (first_object.mvcc_info.insert_mvccid);
 
 		  LOG_DATA_ADDR addr;
@@ -34996,8 +35109,11 @@ btree_oi_key_insert_object_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 		}
 	      else
 		{
-		  /* DELETE_FLAG set. We must remove it from the key. */
+		  /* DELETE_FLAG set. */
 		  assert (btree_online_index_is_delete_flag_state (first_object.mvcc_info.insert_mvccid));
+
+		  /* IB must remove it from the key. */
+
 		  btree_insert_helper_to_delete_helper (insert_helper, &delete_helper);
 
 		  error_code =
@@ -35013,8 +35129,11 @@ btree_oi_key_insert_object_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	  /* First object in the key is different than the one IB needs to insert. */
 	  if (btree_online_index_is_delete_flag_state (first_object.mvcc_info.insert_mvccid))
 	    {
-	      /* First object is not visible, we can proceed with the usual unique append. */
-	      /* This is the index builder, so we do not need undo logging. */
+	      /*  First object is not visible which means all objects in this key are not visible.
+	       *  However, we must check if the key holds the object we want to insert, since it might have
+	       *  been inserted with DELETE_FLAG set.
+	       */
+
 	      error_code =
 		btree_key_append_object_unique (thread_p, btid_int, key, *leaf, search_key, &leaf_record, &leaf_info,
 						offset_after_key, insert_helper, &first_object);
@@ -35031,14 +35150,40 @@ btree_oi_key_insert_object_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 	}
       break;
 
+    case BTREE_OP_ONLINE_INDEX_TRAN_INSERT:
+    case BTREE_OP_ONLINE_INDEX_TRAN_INSERT_DF:
+      /*  Insert done by a concurrent transaction. */
+      /*  The object we want to insert is already locked by the transaction and we also have the first
+       *  object in the key locked. Now we have to decide if we can insert the object or not. 
+       */
+      if (is_first_object)
+	{
+	  /* The first object in the key is the same as the transaction wants to insert. */
+	}
+      else
+	{
+	  /* The first objects is different than the one the transaction wants to insert. */
+	}
+
+      break;
+
+      //case BTREE_OP_ONLINE_INDEX_TRAN_INSERT_DF:
+
+      /*  Insert done by a concurrent transaction, but with DELETE_FLAG set.
+       *
+       */
+
     default:
       /* We should never reach this. */
       assert (false);
       return ER_FAILED;
     }
 
-  /* Unlock the first object. */
-  lock_remove_object_lock (thread_p, &first_object.oid, &first_object.class_oid, X_LOCK);
+  /* Unlock the first object if the IB locked it. Transactions will unlock it at commit. */
+  if (insert_helper->purpose == BTREE_OP_ONLINE_INDEX_IB_INSERT)
+    {
+      lock_remove_object_lock (thread_p, &first_object.oid, &first_object.class_oid, X_LOCK);
+    }
 
   return error_code;
 
@@ -35063,4 +35208,182 @@ unique_constraint_error:
 					BTREE_INSERT_CLASS_OID (insert_helper), btid_int->sys_btid, NULL);
       return ER_BTREE_UNIQUE_FAILED;
     }
+}
+
+static int
+btree_key_lock_first_object_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, PAGE_PTR * leaf,
+				    bool * restart, BTREE_SEARCH_KEY_HELPER * search_key,
+				    BTREE_INSERT_HELPER * insert_helper, RECDES * leaf_record,
+				    BTREE_FIND_UNIQUE_HELPER * find_unique_helper)
+{
+  int error_code = NO_ERROR;	/* Error code. */
+  LEAF_REC leaf_info;		/* Leaf record info. */
+  int offset_after_key;		/* Offset in record where packed key ends. */
+  bool dummy_clear_key;		/* Dummy */
+  /* Used by btree_key_find_and_lock_unique. */
+  bool is_key_record_read = false;	/* Set to true when key record is read (btree_read_record function was called). */
+  int max_visible_oids = 1;	/* Used to check visible OID's for REPEATABLE READ isolation. */
+  MVCC_SNAPSHOT *mvcc_snapshot = NULL;	/* Used to check visibility for REPEATABLE READ isolation. */
+  int num_visible = 0;		/* Used to count number of visible objects. */
+  bool is_online_index = false;
+
+#if defined (SERVER_MODE)
+  LOG_LSA saved_leaf_lsa;	/* Save page LSA before locking the first object in record. If LSA is changed, it is no 
+				 * longer guaranteed that page has enough space for new key/object. We need to be
+				 * conservative and check it. */
+#endif /* SERVER_MODE */
+
+  /* Assert expected arguments. */
+  assert (btid_int != NULL && BTREE_IS_UNIQUE (btid_int->unique_pk));
+  assert (key != NULL);
+  assert (leaf != NULL);
+  assert (restart != NULL);
+  assert (search_key != NULL && search_key->result == BTREE_KEY_FOUND);
+  assert (insert_helper->rv_redo_data != NULL && insert_helper->rv_redo_data_ptr != NULL);
+  assert (btree_is_insert_object_purpose (insert_helper->purpose));
+#if defined (SERVER_MODE)
+  assert (log_is_in_crash_recovery ()
+	  || lock_has_lock_on_object (BTREE_INSERT_OID (insert_helper), BTREE_INSERT_CLASS_OID (insert_helper),
+				      logtb_get_current_tran_index (), X_LOCK) > 0);
+#endif /* SERVER_MODE */
+
+  /* Insert object in the beginning of leaf record if unique constraint is not violated. Step 1: Protect key by
+   * locking its first object. Every transaction that insert or delete objects will follow this rule. So, the inserter
+   * must first lock the first object, check its status and decide if insert is possible or if it would violation
+   * unique constraint.  After locking the first object, if it is deleted and committed, then unique constraint would
+   * not be violated. Otherwise, if the object is not deleted (and nobody else is trying to delete it), inserting new
+   * object is no longer accepted.  Use btree_key_find_and_lock_unique_of_unique to find and lock the first object.
+   * Step 2: Once the first object is locked and it is established that unique constraint is preserved, adding object
+   * to key record can be done.  Because the first object is always considered last key version, inserting new object
+   * must be done in the beginning of leaf record. So, the current first object must be relocated (it simulates a
+   * regular insert and follows the regular insert rules).  Then, the first object is replaced with new object. */
+
+#if defined (SERVER_MODE)
+  /* Transfer locked object from insert helper to find unique helper. */
+  COPY_OID (&find_unique_helper->locked_oid, &insert_helper->saved_locked_oid);
+  COPY_OID (&find_unique_helper->locked_class_oid, &insert_helper->saved_locked_class_oid);
+
+  LSA_COPY (&saved_leaf_lsa, pgbuf_get_lsa (*leaf));
+#endif /* SERVER_MODE */
+
+  is_online_index = btree_is_online_index_loading (insert_helper->purpose);
+  find_unique_helper->lock_mode = X_LOCK;
+
+  if (is_online_index)
+    {
+      error_code =
+	btree_oi_key_get_and_lock_first_object (thread_p, btid_int, key, leaf, search_key, restart, find_unique_helper);
+    }
+  else
+    {
+      error_code =
+	btree_key_find_and_lock_unique_of_unique (thread_p, btid_int, key, leaf, search_key, restart,
+						  find_unique_helper);
+    }
+#if defined (SERVER_MODE)
+  /* Transfer locked object from find unique helper to insert helper. */
+  COPY_OID (&insert_helper->saved_locked_oid, &find_unique_helper->locked_oid);
+  COPY_OID (&insert_helper->saved_locked_class_oid, &find_unique_helper->locked_class_oid);
+#endif /* SERVER_MODE */
+
+  if (error_code != NO_ERROR || *restart)
+    {
+      /* Error occurred or failed to lock key object and keep a relevant leaf node. Return now. */
+      return error_code;
+    }
+  /* No error, object was locked and key leaf node is held. */
+  assert (*leaf != NULL);
+
+  /* Slot ID and page pointer may have changed. Update insert_helper->leaf_addr. */
+  insert_helper->leaf_addr.offset = search_key->slotid;
+  insert_helper->leaf_addr.pgptr = *leaf;
+
+#if defined (SERVER_MODE)
+  if (!LSA_EQ (&saved_leaf_lsa, pgbuf_get_lsa (*leaf)))
+    {
+      /* Does leaf need split? */
+      if (btree_key_insert_does_leaf_need_split (thread_p, btid_int, *leaf, insert_helper, search_key))
+	{
+	  /* We need to go back from top and split leaf. */
+	  *restart = true;
+	  return NO_ERROR;
+	}
+    }
+#endif /* SERVER_MODE */
+
+  if (search_key->result != BTREE_KEY_FOUND)
+    {
+      /* Key was deleted or vacuumed. */
+      /* Insert key directly. */
+      return btree_key_insert_new_key (thread_p, btid_int, key, *leaf, insert_helper, search_key);
+    }
+
+  if (!find_unique_helper->found_object && logtb_find_current_isolation (thread_p) >= TRAN_REPEATABLE_READ)
+    {
+      /* This could be an object deleted but still visible to me. */
+      /* The problem is reading the object next time. Old object, even if it was deleted, on the next read will be
+       * visible to me. This object is inserted by me, so it is also visible to me. This means I will see two different 
+       * objects that have this key, which is obviously a violation of unique constraint. READ COMMITTED doesn't have
+       * this problem, since on the next statement it will refresh its snapshot and old object will no longer be
+       * visible (even if it was with this snapshot). */
+      /* TODO: Is this required in STAND ALONE? */
+
+      /* Get current key record. */
+      if (spage_get_record (thread_p, *leaf, search_key->slotid, leaf_record, COPY) != S_SUCCESS)
+	{
+	  assert_release (false);
+	  return ER_FAILED;
+	}
+
+#if !defined (NDEBUG)
+      (void) btree_check_valid_record (thread_p, btid_int, leaf_record, BTREE_LEAF_NODE, key);
+#endif
+
+      /* Read record. */
+      error_code =
+	btree_read_record (thread_p, btid_int, *leaf, leaf_record, NULL, &leaf_info, BTREE_LEAF_NODE, &dummy_clear_key,
+			   &offset_after_key, PEEK_KEY_VALUE, NULL);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+      /* Don't repeat key record read. */
+      is_key_record_read = true;
+
+      /* Count visible objects considering transaction snapshot. */
+      mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
+      error_code =
+	btree_get_num_visible_from_leaf_and_ovf (thread_p, btid_int, leaf_record, offset_after_key, &leaf_info,
+						 &max_visible_oids, mvcc_snapshot, &num_visible);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+      else if (num_visible > 0)
+	{
+	  /* Unique constraint violation. */
+	  if (prm_get_bool_value (PRM_ID_UNIQUE_ERROR_KEY_VALUE))
+	    {
+	      char *keyval = pr_valstring (thread_p, key);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UNIQUE_VIOLATION_WITHKEY, 1,
+		      (keyval == NULL) ? "(null)" : keyval);
+	      if (keyval != NULL)
+		{
+		  db_private_free (thread_p, keyval);
+		}
+	      return ER_UNIQUE_VIOLATION_WITHKEY;
+	    }
+	  else
+	    {
+	      /* Object already exists. Unique constraint violation. */
+	      BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_p, key, BTREE_INSERT_OID (insert_helper),
+						BTREE_INSERT_CLASS_OID (insert_helper), btid_int->sys_btid, NULL);
+	      return ER_BTREE_UNIQUE_FAILED;
+	    }
+	}
+    }
+
+  return error_code;
 }
