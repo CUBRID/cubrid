@@ -1233,16 +1233,17 @@ int g_original_buffer_len;
 %token FULL
 %token FUNCTION
 %token FUN_JSON_ARRAY
-%token FUN_JSON_OBJECT
-%token FUN_JSON_MERGE
-%token FUN_JSON_INSERT
-%token FUN_JSON_REPLACE
-%token FUN_JSON_SET
-%token FUN_JSON_KEYS
-%token FUN_JSON_REMOVE
 %token FUN_JSON_ARRAY_APPEND
 %token FUN_JSON_ARRAY_INSERT
 %token FUN_JSON_GET_ALL_PATHS
+%token FUN_JSON_INSERT
+%token FUN_JSON_KEYS
+%token FUN_JSON_MERGE
+%token FUN_JSON_MERGE_PRESERVE
+%token FUN_JSON_OBJECT
+%token FUN_JSON_REMOVE
+%token FUN_JSON_REPLACE
+%token FUN_JSON_SET
 %token GENERAL
 %token GET
 %token GLOBAL
@@ -16988,6 +16989,25 @@ reserved_func
 				    MSGCAT_SET_PARSER_SEMANTIC,
 				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
 				    "json_merge");
+		    }
+
+		    $$ = node;
+		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
+		| FUN_JSON_MERGE_PRESERVE '(' expression_list ')'
+		{{
+		    PT_NODE *args_list = $3;
+		    PT_NODE *node = NULL;
+                    int len;
+
+                    len = parser_count_list (args_list);
+		    node = parser_make_expr_with_func (this_parser, F_JSON_MERGE, args_list);
+		    if (len < 2)
+		    {
+			PT_ERRORmf (this_parser, args_list,
+				    MSGCAT_SET_PARSER_SEMANTIC,
+				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
+				    "json_merge_preserve");
 		    }
 
 		    $$ = node;
