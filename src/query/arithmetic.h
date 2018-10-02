@@ -78,6 +78,6 @@ extern int db_json_unquote_dbval (DB_VALUE * json, DB_VALUE * res);
 extern int db_json_pretty_dbval (DB_VALUE * json, DB_VALUE * res);
 extern int db_json_arrayagg_dbval_accumulate (DB_VALUE * dbval, DB_VALUE * res);
 extern int db_json_objectagg_dbval_accumulate (DB_VALUE * json_key, DB_VALUE * json_val, DB_VALUE * json_res);
-extern int db_json_aggregate_dbval_merge (DB_VALUE * json, DB_VALUE * json_res);
+extern int db_json_merge (DB_VALUE * json, DB_VALUE * json_res);
 extern int db_least_or_greatest (DB_VALUE * arg1, DB_VALUE * arg2, DB_VALUE * result, bool least);
 #endif /* _ARITHMETIC_H_ */

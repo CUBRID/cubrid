@@ -39,6 +39,7 @@
 #include "thread_compat.hpp"
 
 #ifdef __cplusplus
+#include <vector>
 class string_buffer;
 #endif
 
@@ -338,6 +339,12 @@ extern "C"
 #endif
 
   extern int pr_clear_value (DB_VALUE * var);
+
+#if defined __cplusplus
+  /* *INDENT-OFF* */
+  void pr_clear_value_vector (std::vector<DB_VALUE> &value_vector);
+  /* *INDENT-ON* */
+#endif
 
 #ifdef __cplusplus
 }

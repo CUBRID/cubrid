@@ -6521,7 +6521,7 @@ qdata_aggregate_accumulator_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_A
       // for these two situations we just need to merge
     case PT_JSON_ARRAYAGG:
     case PT_JSON_OBJECTAGG:
-      error = db_json_aggregate_dbval_merge (new_acc->value, acc->value);
+      error = db_json_merge (new_acc->value, acc->value);
       break;
 
     case PT_STDDEV:
@@ -7209,13 +7209,8 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	  /* increment tuple count */
 	  accumulator->curr_cnt++;
 
-          /* *INDENT-OFF* */
 	  /* clear values */
-	  for (DB_VALUE &db_value : db_values)
-	    {
-	      pr_clear_value (&db_value);
-	    }
-          /* *INDENT-ON* */
+	  pr_clear_value_vector (db_values);
 
 	  /* handle error */
 	  if (error != NO_ERROR)

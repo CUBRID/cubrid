@@ -5268,7 +5268,6 @@ db_json_arrayagg_dbval_accumulate (DB_VALUE * json, DB_VALUE * json_res)
   JSON_DOC *this_doc;
   JSON_DOC *result_doc = NULL;
   int error_code = NO_ERROR;
-  int json_array_size = 0;
 
   if (DB_IS_NULL (json))
     {
@@ -5293,13 +5292,7 @@ db_json_arrayagg_dbval_accumulate (DB_VALUE * json, DB_VALUE * json_res)
       result_doc = db_get_json_document (json_res);
     }
 
-  error_code = db_json_arrayagg_func_accumulate (this_doc, *result_doc);
-
-  if (error_code != NO_ERROR)
-    {
-      assert (result_doc == NULL);
-      return error_code;
-    }
+  db_json_arrayagg_func_accumulate (this_doc, *result_doc);
 
   if (result_doc == NULL)
     {
@@ -5353,12 +5346,7 @@ db_json_objectagg_dbval_accumulate (DB_VALUE * json_key, DB_VALUE * json_val, DB
       result_doc = db_get_json_document (json_res);
     }
 
-  error_code = db_json_objectagg_func_accumulate (key_str, val_doc, *result_doc);
-  if (error_code != NO_ERROR)
-    {
-      assert (result_doc == NULL);
-      return error_code;
-    }
+  db_json_objectagg_func_accumulate (key_str, val_doc, *result_doc);
 
   if (result_doc == NULL)
     {
@@ -5370,14 +5358,14 @@ db_json_objectagg_dbval_accumulate (DB_VALUE * json_key, DB_VALUE * json_val, DB
 }
 
 /*
-* db_json_aggregate_dbval_merge () - Inserts a JSON_OBJECT/JSON_ARRAY with possibly multiple members in the result_json
+* db_json_merge () - Inserts a JSON_OBJECT/JSON_ARRAY with possibly multiple members in the result_json
 *
 * return                  : error_code
 * json (in)               : the JSON_OBJECT/JSON_ARRAY that we want to insert
 * json_res (in)           : the DB_VALUE that contains the document where we want to insert
 */
 int
-db_json_aggregate_dbval_merge (DB_VALUE * json, DB_VALUE * json_res)
+db_json_merge (DB_VALUE * json, DB_VALUE * json_res)
 {
   // this case should not be possible because we did the checking before
   // also the method should be called after we already created the json_res (in the first iteration)

@@ -240,32 +240,24 @@ static REGU_VARIABLE *pt_to_regu_reserved_name (PARSER_CONTEXT * parser, PT_NODE
 static int pt_reserved_id_to_valuelist_index (PARSER_CONTEXT * parser, PT_RESERVED_NAME_ID reserved_id);
 static void pt_mark_spec_list_for_update_clause (PARSER_CONTEXT * parser, PT_NODE * statement, PT_SPEC_FLAG spec_flag);
 
-/* *INDENT-OFF* */
-static void pt_append_value_list_to_info (AGGREGATE_INFO * info, VAL_LIST * value_list);
-static void pt_append_single_regu_to_info_out_list (AGGREGATE_INFO * info, REGU_VARIABLE_LIST out_list,
-						    REGU_VARIABLE * regu);
+static void pt_aggregate_info_append_value_list (AGGREGATE_INFO * info, VAL_LIST * value_list);
 
-static void update_value_list_out_list_regu_list (AGGREGATE_INFO * info, VAL_LIST * value_list,
-						  REGU_VARIABLE_LIST out_list, REGU_VARIABLE_LIST regu_list,
-						  REGU_VARIABLE * regu);
+static void update_aggregate_info (AGGREGATE_INFO * info, VAL_LIST * value_list, REGU_VARIABLE_LIST regu_position_list,
+				   REGU_VARIABLE_LIST regu_constant_list);
 
-static void update_value_list_out_list_regu_list (AGGREGATE_INFO * info, VAL_LIST * value_list,
-						  REGU_VARIABLE_LIST out_list, REGU_VARIABLE_LIST regu_list,
-						  REGU_VARIABLE_LIST regu_var_list);
+static void pt_aggregate_info_update_scan_regu_list (AGGREGATE_INFO * info, REGU_VARIABLE_LIST scan_regu_list);
 
-static void update_info_scan_regu_list (AGGREGATE_INFO * info, REGU_VARIABLE_LIST scan_regu_var_list);
-
-static PT_NODE *pt_alloc_value_list_regu_list (PARSER_CONTEXT * parser, PT_NODE * node, VAL_LIST ** value_list,
-                                               REGU_VARIABLE_LIST * regu_list);
+static PT_NODE *pt_node_list_to_value_and_reguvar_list (PARSER_CONTEXT * parser, PT_NODE * node, VAL_LIST ** value_list,
+							REGU_VARIABLE_LIST * regu_position_list);
 
 static PT_NODE *pt_make_regu_list_from_value_list (PARSER_CONTEXT * parser, PT_NODE * node, VAL_LIST * value_list,
-					           REGU_VARIABLE_LIST * regu_list);
+						   REGU_VARIABLE_LIST * regu_list);
 
 static int pt_make_constant_regu_list_from_val_list (PARSER_CONTEXT * parser, VAL_LIST * value_list,
-                                                     REGU_VARIABLE_LIST * operands);
-
+/* *INDENT-OFF* */
 static void pt_set_regu_list_pos_descr_from_idx (REGU_VARIABLE_LIST & regu_list, size_t starting_index);
 /* *INDENT-ON* */
+						     REGU_VARIABLE_LIST * regu_list);
 
 static PT_NODE *pt_fix_interpolation_aggregate_function_order_by (PARSER_CONTEXT * parser, PT_NODE * node);
 static int pt_fix_buildlist_aggregate_cume_dist_percent_rank (PARSER_CONTEXT * parser, PT_NODE * node,
@@ -540,8 +532,8 @@ static int pt_split_pred_regu_list (PARSER_CONTEXT * parser, const VAL_LIST * va
 				    REGU_VARIABLE_LIST * prior_regu_list_rest,
 				    REGU_VARIABLE_LIST * prior_regu_list_pred, bool split_prior);
 
-static void pt_add_regu_var_to_list (REGU_VARIABLE_LIST * regu_list_dst, REGU_VARIABLE_LIST regu_list_node);
-static void pt_add_regu_var_list_to_list (REGU_VARIABLE_LIST * regu_list_dst, REGU_VARIABLE_LIST regu_list);
+static void pt_add_regu_var_to_list (REGU_VARIABLE_LIST * destination, REGU_VARIABLE_LIST source);
+static void pt_merge_regu_var_lists (REGU_VARIABLE_LIST * destination, REGU_VARIABLE_LIST source);
 
 static PRED_REGU_VARIABLE_P_LIST pt_get_pred_regu_variable_p_list (const PRED_EXPR * pred, int *err);
 
@@ -3565,17 +3557,20 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
   REGU_VARIABLE_LIST scan_regu_list;
   REGU_VARIABLE_LIST scan_regu_next_list;
   REGU_VARIABLE_LIST out_list = NULL;
-  REGU_VARIABLE_LIST regu_list;
   REGU_VARIABLE_LIST regu_temp;
   VAL_LIST *value_list;
   MOP classop;
   PT_NODE *group_concat_sep_node_save = NULL;
   PT_NODE *pointer = NULL;
-  PT_NODE *pointer_result = NULL;
   PT_NODE *pt_val = NULL;
   PT_NODE *percentile = NULL;
-  REGU_VARIABLE_LIST regu_var_list;
-  REGU_VARIABLE_LIST scan_regu_var_list;
+
+  // it contains a list of positions
+  REGU_VARIABLE_LIST regu_position_list;
+  // it contains a list of constants, which will be used for the operands
+  REGU_VARIABLE_LIST regu_constant_list;
+
+  REGU_VARIABLE_LIST scan_regu_constant_list;
   int error_code = NO_ERROR;
 
   *continue_walk = PT_CONTINUE_WALK;
@@ -3661,13 +3656,13 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	{
 	  if (aggregate_list->function != PT_CUME_DIST && aggregate_list->function != PT_PERCENT_RANK)
 	    {
-	      regu_var_list = pt_to_regu_variable_list (parser, tree->info.function.arg_list, UNBOX_AS_VALUE,
-							NULL, NULL);
-
-	      scan_regu_var_list = pt_to_regu_variable_list (parser, tree->info.function.arg_list, UNBOX_AS_VALUE,
+	      regu_constant_list = pt_to_regu_variable_list (parser, tree->info.function.arg_list, UNBOX_AS_VALUE,
 							     NULL, NULL);
 
-	      if (!regu_var_list || !scan_regu_var_list)
+	      scan_regu_constant_list = pt_to_regu_variable_list (parser, tree->info.function.arg_list, UNBOX_AS_VALUE,
+								  NULL, NULL);
+
+	      if (!regu_constant_list || !scan_regu_constant_list)
 		{
 		  return NULL;
 		}
@@ -3684,8 +3679,8 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	      REGU_VARIABLE_LIST to_add = regu_varlist_alloc ();
 	      to_add->value = *regu;
 
-	      // insert also in the regu_var_list to ensure compatibility
-	      pt_add_regu_var_to_list (&regu_var_list, to_add);
+	      // insert also in the regu_constant_list to ensure compatibility
+	      pt_add_regu_var_to_list (&regu_constant_list, to_add);
 	    }
 
 	  aggregate_list->domain = pt_xasl_node_to_domain (parser, tree);
@@ -3764,10 +3759,8 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 		  parser_append_node (pt_val, info->out_names);
 
 		  // for each element from arg_list we create a corresponding node in the value_list and regu_list
-		  pointer_result = pt_alloc_value_list_regu_list (parser, tree->info.function.arg_list,
-								  &value_list, &regu_list);
-
-		  if (pointer_result == NULL)
+		  if (pt_node_list_to_value_and_reguvar_list (parser, tree->info.function.arg_list,
+							      &value_list, &regu_position_list) == NULL)
 		    {
 		      PT_ERROR (parser, tree, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
 							      MSGCAT_SEMANTIC_OUT_OF_MEMORY));
@@ -3783,19 +3776,19 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 		    }
 
 		  // this regu_list has the TYPE_POSITION type so we need to set the corresponding indexes for elements
-		  pt_set_regu_list_pos_descr_from_idx (regu_list, info->out_list->valptr_cnt);
+		  pt_set_regu_list_pos_descr_from_idx (regu_position_list, info->out_list->valptr_cnt);
 
 		  // until now we have constructed the value_list, regu_list and out_list
 		  // they are based on the current aggregate node information and we need to append them to the global
 		  // information, i.e in info
-		  update_value_list_out_list_regu_list (info, value_list, out_list, regu_list, regu_var_list);
+		  update_aggregate_info (info, value_list, regu_position_list, regu_constant_list);
 
 		  // also we need to update the scan_regu_list from info
-		  update_info_scan_regu_list (info, scan_regu_var_list);
+		  pt_aggregate_info_update_scan_regu_list (info, scan_regu_constant_list);
 		}
 	      else
 		{
-		  assert (regu_var_list != NULL && regu_var_list->next == NULL);
+		  assert (regu_constant_list != NULL && regu_constant_list->next == NULL);
 
 		  /* for buildlist CUME_DIST/PERCENT_RANK, we have special treatment */
 		  if (pt_fix_buildlist_aggregate_cume_dist_percent_rank (parser, tree->info.function.order_by, info,
@@ -3804,13 +3797,13 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 		      return NULL;
 		    }
 
-		  aggregate_list->operands = regu_var_list;
+		  aggregate_list->operands = regu_constant_list;
 		}
 	    }
 	  else
 	    {
 	      // handle the buildvalue case, simply uses regu as the operand
-	      aggregate_list->operands = regu_var_list;
+	      aggregate_list->operands = regu_constant_list;
 	    }
 	}
       else
@@ -3849,6 +3842,12 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	      return NULL;
 	    }
 
+	  REGU_VARIABLE_LIST to_add = regu_varlist_alloc ();
+	  to_add->value = *regu;
+
+	  // insert also in the regu_constant_list to ensure compatibility
+	  pt_add_regu_var_to_list (&regu_constant_list, to_add);
+
 	  /* build list */
 	  if (!PT_IS_CONST (percentile) && info->out_list != NULL && info->value_list != NULL
 	      && info->regu_list != NULL)
@@ -3866,8 +3865,7 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	      info->out_names = parser_append_node (pointer, info->out_names);
 
 	      /* put percentile in value_list, out_list and regu_list */
-	      pointer = pt_alloc_value_list_regu_list (parser, pointer, &value_list, &regu_list);
-	      if (pointer == NULL || (out_list = regu_varlist_alloc ()) != NULL)
+	      if (pt_node_list_to_value_and_reguvar_list (parser, pointer, &value_list, &regu_position_list) == NULL)
 		{
 		  PT_ERROR (parser, percentile,
 			    msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
@@ -3889,9 +3887,9 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	      aggregate_list->info.percentile.percentile_reguvar = percentile_regu;
 
 	      /* fix count for list position */
-	      regu_list->value.value.pos_descr.pos_no = info->out_list->valptr_cnt;
+	      regu_position_list->value.value.pos_descr.pos_no = info->out_list->valptr_cnt;
 
-	      update_value_list_out_list_regu_list (info, value_list, out_list, regu_list, regu);
+	      update_aggregate_info (info, value_list, regu_position_list, regu_constant_list);
 	    }
 	  else
 	    {
@@ -3983,8 +3981,7 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	  /* append the name on the out list */
 	  info->out_names = parser_append_node (pointer, info->out_names);
 
-	  pointer = pt_alloc_value_list_regu_list (parser, pointer, &value_list, &regu_list);
-	  if (pointer == NULL || (out_list = regu_varlist_alloc ()) != NULL)
+	  if (pt_node_list_to_value_and_reguvar_list (parser, pointer, &value_list, &regu_position_list) == NULL)
 	    {
 	      PT_ERROR (parser, tree,
 			msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
@@ -3993,7 +3990,7 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	    }
 
 	  /* fix count for list position */
-	  regu_list->value.value.pos_descr.pos_no = info->out_list->valptr_cnt;
+	  regu_position_list->value.value.pos_descr.pos_no = info->out_list->valptr_cnt;
 
 	  regu = pt_to_regu_variable (parser, tree, UNBOX_AS_VALUE);
 	  if (regu == NULL)
@@ -4001,7 +3998,13 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	      return NULL;
 	    }
 
-	  update_value_list_out_list_regu_list (info, value_list, out_list, regu_list, regu);
+	  REGU_VARIABLE_LIST to_add = regu_varlist_alloc ();
+	  to_add->value = *regu;
+
+	  // insert also in the regu_constant_list to ensure compatibility
+	  pt_add_regu_var_to_list (&regu_constant_list, to_add);
+
+	  update_aggregate_info (info, value_list, regu_position_list, regu_constant_list);
 	}
       *continue_walk = PT_LIST_WALK;
     }
@@ -22155,55 +22158,40 @@ pt_get_var_regu_variable_p_list (const REGU_VARIABLE * regu, bool is_prior, int 
 
 /*
  * pt_add_regu_var_to_list () - adds a regu list node to another regu list
- *    return:
- *  regu_list_dst(in/out):
- *  regu_list_node(in/out):
+ *  return:
+ *  destination (in/out)  :
+ *  source (in/out)       :
  */
 static void
-pt_add_regu_var_to_list (REGU_VARIABLE_LIST * regu_list_dst, REGU_VARIABLE_LIST regu_list_node)
+pt_add_regu_var_to_list (REGU_VARIABLE_LIST * destination, REGU_VARIABLE_LIST source)
 {
-  REGU_VARIABLE_LIST rl;
+  source->next = NULL;
 
-  regu_list_node->next = NULL;
-
-  if (!*regu_list_dst)
-    {
-      *regu_list_dst = regu_list_node;
-    }
-  else
-    {
-      rl = *regu_list_dst;
-      while (rl->next)
-	{
-	  rl = rl->next;
-	}
-      rl->next = regu_list_node;
-    }
+  pt_merge_regu_var_lists (destination, source);
 }
 
 /*
-* pt_add_regu_var_list_to_list () - adds a regu list to another regu list 
-*                                 - use this function when regu_list has more elements
-*    return:
-*  regu_list_dst (in/out):
-*  regu_list (in/out):
+* pt_merge_regu_var_lists () - appends the source to the end of the destination regu var list
+*  return:
+*  destination (in/out):
+*  source (in/out):
 */
 static void
-pt_add_regu_var_list_to_list (REGU_VARIABLE_LIST * regu_list_dst, REGU_VARIABLE_LIST regu_list)
+pt_merge_regu_var_lists (REGU_VARIABLE_LIST * destination, REGU_VARIABLE_LIST source)
 {
-  REGU_VARIABLE_LIST rl;
+  REGU_VARIABLE_LIST itr;
 
-  if (!*regu_list_dst)
+  if ((*destination) == NULL)
     {
-      *regu_list_dst = regu_list;
+      *destination = source;
     }
   else
     {
       // get the end of the list
-      for (rl = *regu_list_dst; rl->next != NULL; rl = rl->next);
+      for (itr = *destination; itr->next != NULL; itr = itr->next);
 
       // append it
-      rl->next = regu_list;
+      itr->next = source;
     }
 }
 
@@ -25725,10 +25713,14 @@ pt_set_limit_optimization_flags (PARSER_CONTEXT * parser, QO_PLAN * qo_plan, XAS
   return NO_ERROR;
 }
 
-/* *INDENT-OFF* */
-
+/*
+* pt_aggregate_info_append_value_list () - Appends the value_list in the aggregate info->value_list, increasing also
+*                                          the val_cnt
+* info        (in/out)  :
+* value_list  (in)      :      
+*/
 static void
-pt_append_value_list_to_info (AGGREGATE_INFO * info, VAL_LIST * value_list)
+pt_aggregate_info_append_value_list (AGGREGATE_INFO * info, VAL_LIST * value_list)
 {
   assert (info != NULL && info->value_list != NULL && value_list != NULL);
 
@@ -25746,110 +25738,67 @@ pt_append_value_list_to_info (AGGREGATE_INFO * info, VAL_LIST * value_list)
   value_temp->next = value_list->valp;
 }
 
+/*
+* update_aggregate_info () - Merges the arguments in the aggregate info corresponding lists
+* info                (in/out)  :
+* value_list          (in)      :
+* regu_position_list  (in)      :
+* regu_constant_list  (in)      :
+*/
 static void
-pt_append_single_regu_to_info_out_list (AGGREGATE_INFO * info, REGU_VARIABLE_LIST out_list, REGU_VARIABLE * regu)
+update_aggregate_info (AGGREGATE_INFO * info, VAL_LIST * value_list, REGU_VARIABLE_LIST regu_position_list,
+		       REGU_VARIABLE_LIST regu_constant_list)
 {
-  assert (info != NULL && info->out_list != NULL && out_list != NULL && regu != NULL);
+  pt_aggregate_info_append_value_list (info, value_list);
 
-  // increase the size
-  info->out_list->valptr_cnt++;
-  out_list->next = NULL;
-  out_list->value = *regu;
+  pt_merge_regu_var_lists (&info->regu_list, regu_position_list);
 
-  pt_add_regu_var_list_to_list (&info->out_list->valptrp, out_list);
+  pt_merge_regu_var_lists (&info->out_list->valptrp, regu_constant_list);
+
+  // also increment list count
+  size_t regu_constant_list_size = 0;
+  for (REGU_VARIABLE_LIST ptr = regu_constant_list; ptr != NULL; ptr = ptr->next, regu_constant_list_size++);
+  info->out_list->valptr_cnt += regu_constant_list_size;
 }
 
 /*
- * update_value_list_out_list_regu_list () - 
- *                   update the related lists for pt_to_aggregate_node
- *
- * return :
- * info (in/out)  :
- * value_list (in) :
- * out_list (in)    :
- * regu_list (in)    :
- * regu (in)    :
- */
+* update_aggregate_info () - Merges scan_regu_list in the aggregate info->scan_regu_list
+* info                (in/out)  :
+* scan_regu_list      (in)      :
+*/
 static void
-update_value_list_out_list_regu_list (AGGREGATE_INFO * info, VAL_LIST * value_list, REGU_VARIABLE_LIST out_list,
-				      REGU_VARIABLE_LIST regu_list, REGU_VARIABLE * regu)
-{
-  pt_append_value_list_to_info (info, value_list);
-
-  pt_append_single_regu_to_info_out_list (info, out_list, regu);
-
-  pt_add_regu_var_list_to_list (&info->regu_list, regu_list);
-}
-
-static void
-update_value_list_out_list_regu_list (AGGREGATE_INFO * info, VAL_LIST * value_list, REGU_VARIABLE_LIST out_list,
-				      REGU_VARIABLE_LIST regu_list, REGU_VARIABLE_LIST regu_var_list)
-{
-  pt_append_value_list_to_info (info, value_list);
-
-  pt_add_regu_var_list_to_list (&info->regu_list, regu_list);
-
-  REGU_VARIABLE_LIST last_out_list = NULL;
-
-  // get the end of the list
-  for (last_out_list = info->out_list->valptrp; last_out_list->next != NULL; last_out_list = last_out_list->next);
-
-  assert (last_out_list != NULL);
-
-  // the out_list should be null and here we will do the allocation
-  assert (out_list == NULL);
-
-  for (REGU_VARIABLE_LIST crt_regu_var = regu_var_list; crt_regu_var != NULL; crt_regu_var = crt_regu_var->next)
-    {
-      out_list = regu_varlist_alloc ();
-      out_list->next = NULL;
-      out_list->value = crt_regu_var->value;
-
-      // append it
-      last_out_list->next = out_list;
-      // increase size
-      info->out_list->valptr_cnt++;
-
-      // advance
-      last_out_list = last_out_list->next;
-    }
-}
-
-static void
-update_info_scan_regu_list (AGGREGATE_INFO * info, REGU_VARIABLE_LIST scan_regu_var_list)
+pt_aggregate_info_update_scan_regu_list (AGGREGATE_INFO * info, REGU_VARIABLE_LIST scan_regu_list)
 {
   REGU_VARIABLE_LIST tail = NULL;
-  size_t scan_regu_var_list_size = 0;
+  size_t scan_regu_list_size = 0;
   size_t index = 0;
-  
+
   // calculate the size of scan_regu_var_list
-  for (tail = scan_regu_var_list; tail != NULL; tail = tail->next, scan_regu_var_list_size++);
+  for (tail = scan_regu_list; tail != NULL; tail = tail->next, scan_regu_list_size++);
 
   // start fetching for the last scan_regu_var_list_size elements
-  index = info->value_list->val_cnt - scan_regu_var_list_size;
+  index = info->value_list->val_cnt - scan_regu_list_size;
 
-  for (REGU_VARIABLE_LIST itr = scan_regu_var_list; itr != NULL; itr = itr->next)
+  for (REGU_VARIABLE_LIST itr = scan_regu_list; itr != NULL; itr = itr->next)
     {
       // get the value from the value_list
       itr->value.vfetch_to = pt_index_value (info->value_list, index++);
     }
 
-  // append scan_regu_var_list to info
-  pt_add_regu_var_list_to_list (&info->scan_regu_list, scan_regu_var_list);
+  // append scan_regu_list to info
+  pt_merge_regu_var_lists (&info->scan_regu_list, scan_regu_list);
 }
 
-/* *INDENT-ON* */
-
 /*
- * pt_alloc_value_list_regu_list () -
- * parser (in)            :
- * node (in)              :
- * value_list (in/out)    :
- * regu_list (in/out)     :
+ * pt_node_list_to_value_and_reguvar_list () - Constructs the value_list and regu_position_list from node
+ * parser               (in)      :
+ * node                 (in)      :
+ * value_list           (in/out)  :
+ * regu_position_list   (in/out)  :
  */
 static PT_NODE *
-pt_alloc_value_list_regu_list (PARSER_CONTEXT * parser, PT_NODE * node, VAL_LIST ** value_list,
-			       REGU_VARIABLE_LIST * regu_list)
+pt_node_list_to_value_and_reguvar_list (PARSER_CONTEXT * parser, PT_NODE * node, VAL_LIST ** value_list,
+					REGU_VARIABLE_LIST * regu_position_list)
 {
   assert (node != NULL && value_list != NULL);
 
@@ -25860,7 +25809,7 @@ pt_alloc_value_list_regu_list (PARSER_CONTEXT * parser, PT_NODE * node, VAL_LIST
       return NULL;
     }
 
-  if (pt_make_regu_list_from_value_list (parser, node, *value_list, regu_list) == NULL)
+  if (pt_make_regu_list_from_value_list (parser, node, *value_list, regu_position_list) == NULL)
     {
       return NULL;
     }
@@ -25963,6 +25912,7 @@ pt_set_regu_list_pos_descr_from_idx (REGU_VARIABLE_LIST & regu_list, size_t star
 {
   for (REGU_VARIABLE_LIST crt_regu = regu_list; crt_regu != NULL; crt_regu = crt_regu->next)
     {
+      assert (crt_regu->value.type == TYPE_POSITION);
       crt_regu->value.value.pos_descr.pos_no = starting_index++;
     }
 }
