@@ -459,7 +459,7 @@ class JSON_WALKER
     }
 
     virtual int
-    CallOnKeyIterate (JSON_VALUE::MemberIterator &it)
+    CallOnKeyIterate (JSON_VALUE &key)
     {
       // do nothing
       return NO_ERROR;
@@ -505,7 +505,7 @@ class JSON_SEARCHER : public JSON_WALKER
     int CallBefore (JSON_VALUE &value) override;
     int CallAfter (JSON_VALUE &value) override;
     int CallOnArrayIterate () override;
-    int CallOnKeyIterate (JSON_VALUE::MemberIterator &it) override;
+    int CallOnKeyIterate (JSON_VALUE &key) override;
 
     std::stack<unsigned int> m_index;
     std::vector <std::string> path_items;
@@ -829,10 +829,10 @@ int JSON_SEARCHER::CallAfter (JSON_VALUE &value)
   return error_code;
 }
 
-int JSON_SEARCHER::CallOnKeyIterate (JSON_VALUE::MemberIterator &it)
+int JSON_SEARCHER::CallOnKeyIterate (JSON_VALUE &key)
 {
   std::string path_item = ".";
-  path_item += it->name.GetString ();
+  path_item += key.GetString ();
 
   path_items.back () = path_item;
   return NO_ERROR;
@@ -3451,7 +3451,7 @@ JSON_WALKER::WalkValue (JSON_VALUE &value)
     {
       for (auto it = value.MemberBegin (); it != value.MemberEnd (); ++it)
 	{
-	  CallOnKeyIterate (it);
+	  CallOnKeyIterate (it->name);
 	  error_code = WalkValue (it->value);
 	  if (error_code != NO_ERROR)
 	    {
