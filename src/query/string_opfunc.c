@@ -3742,15 +3742,12 @@ db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 }
 
 /*
+ * JSON_SEARCH (json_doc, one/all, pattern [, escape_char, path_1,... path_n])
+ *
  * db_json_search_dbval ()
- * function that finds paths of json_values that match a pattern
+ * function that finds paths of json_values that match the pattern argument
  * result (out): json string or json array if there are more paths that match
  * args (in): the arguments for the json_search function
- *            arg0 json_doc     
- *            arg1 or/all
- *            arg2 pattern
- *            arg3 escape char
- *            arg4+ starting path
  * num_args (in)
  */
 
@@ -3762,8 +3759,8 @@ db_json_search_dbval (DB_VALUE * result, DB_VALUE * args[], const int num_args)
 
   if (num_args < 3)
     {
-      db_make_null (result);
-      return NO_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_FAILED;
     }
 
   for (int i = 0; i < num_args; ++i)
@@ -3785,7 +3782,7 @@ db_json_search_dbval (DB_VALUE * result, DB_VALUE * args[], const int num_args)
     }
   if (!find_all && strcmp (find_all_str, "one"))
     {
-      er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
       return ER_QSTR_INVALID_DATA_TYPE;
     }
 

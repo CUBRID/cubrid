@@ -13209,6 +13209,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
     case F_JSON_SEARCH:
       {
+	// JSON_SEARCH (json_doc, one_or_all, pattern, [esc_charr, path_1, ... path_n])
 	PT_TYPE_ENUM unsupported_type;
 	PT_NODE *arg = arg_list;
 	bool is_supported = false;
@@ -13232,6 +13233,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	      }
 	    else
 	      {
+		// args[4+] can be only paths 
 		is_supported = pt_is_json_path (arg->type_enum);
 	      }
 
