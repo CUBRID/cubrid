@@ -813,6 +813,12 @@ struct rvfun RV_fun[] = {
    btree_rv_redo_record_modify,
    btree_rv_keyval_dump,
    log_rv_dump_hexa},
+  {RVBT_ONLINE_INDEX_INSERT_OBJECT_UNQ,
+   "RVBT_ONLINE_INDEX_INSERT_OBJECT_UNQ",
+   btree_rv_keyval_oi_undo_insert_unique,
+   btree_rv_redo_record_modify,
+   btree_rv_keyval_dump,
+   log_rv_dump_hexa},
 
 };
 

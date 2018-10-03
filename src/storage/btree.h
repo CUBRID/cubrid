@@ -738,5 +738,6 @@ extern int btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID * btid, 
 
 extern int btree_rv_keyval_undo_online_index_tran_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 extern int btree_rv_keyval_undo_online_index_tran_delete (THREAD_ENTRY * thread_p, LOG_RCV * recv);
+extern int btree_rv_keyval_oi_undo_insert_unique (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 
 #endif /* _BTREE_H_ */
