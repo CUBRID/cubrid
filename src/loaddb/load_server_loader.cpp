@@ -24,6 +24,7 @@
 #include "load_server_loader.hpp"
 
 #include "load_db_value_converter.hpp"
+#include "load_scanner.hpp"
 #include "load_session.hpp"
 #include "locator_sr.h"
 #include "oid.h"
@@ -53,6 +54,11 @@ namespace cubload
       {
 	delete m_attr_ids;
 	m_attr_ids = NULL;
+      }
+    if (m_error_manager != NULL)
+      {
+	delete m_error_manager;
+	m_error_manager = NULL;
       }
   }
 
@@ -359,10 +365,10 @@ namespace cubload
       }
 
     OID oid;
+    int error;
     int force_count = 0;
     int pruning_type = 0;
-    int error = NO_ERROR;
-    int op_type = MULTI_ROW_INSERT;
+    int op_type = SINGLE_ROW_INSERT;
 
     cubthread::entry &thread_ref = cubthread::get_entry ();
 
@@ -383,4 +389,78 @@ namespace cubload
 
     m_session->inc_total_objects ();
   }
+
+  /*
+   * server_error_manager functions definition
+   */
+  server_error_manager::server_error_manager (session &session, scanner &scanner)
+    : m_session (session)
+    , m_scanner (scanner)
+  {
+    m_scanner.set_error_manager (this);
+  }
+
+  void
+  server_error_manager::abort_session (std::string &err_msg)
+  {
+    m_session.abort (std::forward<std::string> (err_msg));
+  }
+
+  void
+  server_error_manager::on_error (MSGCAT_LOADDB_MSG msg_id, bool include_line_msg, ...)
+  {
+    va_list ap;
+    std::string err_msg_line;
+
+    if (include_line_msg)
+      {
+	err_msg_line = format (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_LINE),
+			       m_scanner.lineno () - 1);
+      }
+
+    va_start (ap, include_line_msg);
+    std::string err_msg = format (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, msg_id), &ap);
+    va_end (ap);
+
+    if (!err_msg_line.empty ())
+      {
+	err_msg_line.append (err_msg);
+	abort_session (err_msg_line);
+      }
+    else
+      {
+	abort_session (err_msg);
+      }
+  }
+
+  void
+  server_error_manager::on_syntax_error ()
+  {
+    on_error (LOADDB_MSG_SYNTAX_ERR, false, m_scanner.lineno (), m_scanner.YYText ());
+  }
+
+  std::string
+  server_error_manager::format (const char *fmt, ...)
+  {
+    va_list ap;
+
+    va_start (ap, fmt);
+    std::string msg = format (fmt, &ap);
+    va_end (ap);
+
+    return msg;
+  }
+
+  std::string
+  server_error_manager::format (const char *fmt, va_list *ap)
+  {
+    // Determine required size
+    int size = vsnprintf (NULL, 0, fmt, *ap) + 1; // +1  for '\0'
+    std::unique_ptr<char[]> msg (new char[size]);
+
+    vsnprintf (msg.get (), (size_t) size, fmt, *ap);
+
+    return std::string (msg.get (), msg.get () + size - 1);
+  }
+
 } // namespace cubload

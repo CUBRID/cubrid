@@ -25,7 +25,6 @@
 
 #include "error_manager.h"
 #include "load_common.hpp"
-#include "load_error_manager.hpp"
 #include "log_impl.h"
 #include "xserver_interface.h"
 
@@ -108,7 +107,7 @@ namespace cubload
     , m_worker_pool (NULL)
     , m_drivers (NULL)
     , m_driver_pool (NULL)
-    , m_stats {{0}, {0}, {0}, {0}}
+    , m_stats ()
   {
     void *raw_memory = operator new[] (DRIVER_POOL_SIZE * sizeof (driver));
     m_drivers = static_cast<driver *> (raw_memory);
@@ -119,7 +118,7 @@ namespace cubload
 	server_loader *loader = new server_loader (this);
 	new (driver_ptr) driver (loader);
 
-	error_manager *err_mng = new error_manager (*this, driver_ptr->get_scanner ());
+	error_manager *err_mng = new server_error_manager (*this, driver_ptr->get_scanner ());
 	loader->set_error_manager (err_mng);
       }
 
@@ -197,6 +196,7 @@ namespace cubload
     std::unique_lock<std::mutex> ulock (m_completion_mutex);
 
     m_stats.failures++;
+    m_stats.error_message = std::move (err_msg);
 
     // notify waiting threads that session was aborted
     notify_waiting_threads ();
@@ -243,6 +243,12 @@ namespace cubload
     };
 
     return split (m_batch_size, file_name, handler, total_batches);
+  }
+
+  stats
+  session::get_stats ()
+  {
+    return m_stats;
   }
 
 } // namespace cubload

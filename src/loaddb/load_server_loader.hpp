@@ -28,14 +28,16 @@
 #include "heap_attrinfo.h"
 #include "heap_file.h"
 #include "load_common.hpp"
-#include "load_error_manager.hpp"
+#include "message_catalog.h"
 #include "storage_common.h"
+#include "utility.h"
 
 namespace cubload
 {
 
   // forward declaration
   class session;
+  class scanner;
 
   class server_loader : public loader
   {
@@ -70,5 +72,23 @@ namespace cubload
       error_manager *m_error_manager;
   };
 
+  class server_error_manager : public error_manager
+  {
+    public:
+      server_error_manager (session &session, scanner &scanner);
+      ~server_error_manager () override = default;
+
+      void on_syntax_error () override;
+      void on_error (MSGCAT_LOADDB_MSG msg_id, bool include_line_msg, ...) override;
+
+    private:
+      session &m_session;
+      scanner &m_scanner;
+
+      std::string format (const char *fmt, ...);
+      std::string format (const char *fmt, va_list *ap);
+
+      void abort_session (std::string &err_msg);
+  };
 } // namespace cubload
 #endif /* _LOAD_SERVER_LOADER_HPP_ */

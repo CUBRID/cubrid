@@ -25,7 +25,6 @@
 #define _LOAD_SCANNER_HPP_
 
 #include "load_driver.hpp"
-#include "load_error_manager.hpp"
 #include "load_grammar.hpp"
 #include "utility.h"
 
@@ -72,6 +71,17 @@ namespace cubload
 	  }
 
 	m_error_manager->on_error (LOADDB_MSG_LOAD_FAIL, true);
+      }
+
+      void ParserError ()
+      {
+	assert (m_error_manager != NULL);
+	if (m_error_manager == NULL)
+	  {
+	    return;
+	  }
+
+	m_error_manager->on_syntax_error ();
       }
 
       void set_error_manager (error_manager *error_manager)

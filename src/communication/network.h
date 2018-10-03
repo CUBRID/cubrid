@@ -236,14 +236,15 @@ enum net_server_request
   NET_SERVER_LD_INIT,
   NET_SERVER_LD_LOAD_OBJECT_FILE,
   NET_SERVER_LD_LOAD_BATCH,
+  NET_SERVER_LD_FETCH_STATS,
   NET_SERVER_LD_DESTROY,
 
-  /* 
+  /*
    * This is the last entry. It is also used for the end of an
    * array of statistics information on client/server communication.
    */
   NET_SERVER_REQUEST_END,
-  /* 
+  /*
    * This request number must be preserved.
    */
   NET_SERVER_PING_WITH_HANDSHAKE = 999,

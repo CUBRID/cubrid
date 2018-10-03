@@ -48,11 +48,11 @@
 #include "execute_schema.h"
 #include "intl_support.h"
 #include "language_support.h"
-#include "load_sa_loader.hpp"
 #include "load_db_value_converter.hpp"
 #include "load_driver.hpp"
 #include "load_object.h"
 #include "load_object_table.h"
+#include "load_sa_loader.hpp"
 #include "locator_cl.h"
 #include "memory_alloc.h"
 #include "message_catalog.h"
@@ -519,7 +519,6 @@ static bool ldr_is_ignore_class (const char *class_name, size_t size);
 /* error handling functions */
 static void ldr_increment_err_total ();
 static void ldr_increment_fails (void);
-static void ldr_load_failed_error (void);
 static void ldr_increment_err_count (LDR_CONTEXT *context, int i);
 
 static void ldr_clear_err_count (LDR_CONTEXT *context);
@@ -998,19 +997,35 @@ namespace cubload
       }
     ldr_Current_context->instance_started = 0;
   }
+
+  /*
+   * sa_error_manager functions definition
+   */
+  void
+  sa_error_manager::on_syntax_error ()
+  {
+    ldr_increment_err_total ();
+    //fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_SYNTAX_ERR),
+    //     ldr_Driver->scanner_lineno (), ldr_Driver->scanner_text ());
+  }
+
+  void
+  sa_error_manager::on_error (MSGCAT_LOADDB_MSG msg_id, bool include_line_msg, ...)
+  {
+    if (include_line_msg)
+      {
+	display_error_line (0);
+      }
+
+    va_list ap;
+    va_start (ap, include_line_msg);
+    fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, msg_id), ap);
+    va_end (ap);
+
+    ldr_increment_fails ();
+  }
 }
 /* *INDENT-ON* */
-
-/*
- * ldr_load_failed_error - display load failed error
- *    return: void
- */
-static void
-ldr_load_failed_error ()
-{
-  display_error_line (0);
-  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_LOAD_FAIL));
-}
 
 /*
  * ldr_increment_err_total - increment err_total count of the given context
@@ -6164,7 +6179,7 @@ ldr_load (load_args *args, int *status, bool *interrupted)
   // TODO CBRD-21654
   /* *INDENT-OFF* */
   std::ifstream object_file (args->object_file);
-  ldr_Driver = new driver (new cubload::sa_loader ());
+  ldr_Driver = new driver (new sa_loader ());
   /* *INDENT-ON* */
 
   locator_Dont_check_foreign_key = true;

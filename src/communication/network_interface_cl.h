@@ -47,6 +47,7 @@
 #include "log_impl.h"
 #include "parse_tree.h"
 #include "xasl.h"
+#include "load_common.hpp"
 
 // forward definitions
 struct compile_context;
@@ -410,5 +411,6 @@ extern int locator_demote_class_lock (const OID * class_oid, LOCK lock, LOCK * e
 extern int loaddb_init ();
 extern int loaddb_load_object_file (const char *file_name, int *batch_total);
 extern int loaddb_load_batch (std::string & batch, int batch_id);
+extern int loaddb_fetch_stats (cubload::stats * stats);
 extern int loaddb_destroy (int batch_total);
 #endif /* _NETWORK_INTERFACE_CL_H_ */

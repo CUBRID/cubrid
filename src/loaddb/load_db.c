@@ -776,6 +776,22 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	  cubload::split (batch_size, object_file_abs_path_, handler, total_batches);
 	}
 
+      int i = 0;
+      while (i <= 10)
+	{
+	  cubload::stats stats;
+	  loaddb_fetch_stats (&stats);
+
+	  if (stats.failures >= 1)
+	    {
+	      fprintf (stderr, "%s", stats.error_message.c_str ());
+	      exit (-1);
+	    }
+
+	  sleep (1);
+	  i++;
+	}
+
       loaddb_destroy (total_batches);
     }
   /* *INDENT-ON* */

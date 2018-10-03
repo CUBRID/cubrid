@@ -10124,6 +10124,54 @@ loaddb_load_batch (std::string & batch, int batch_id)
 }
 
 int
+loaddb_fetch_stats (cubload::stats * stats)
+{
+#if defined(CS_MODE)
+  char *ptr = NULL;
+  char *data_reply = NULL;
+  int data_reply_size = 0;
+  int error_code = NO_ERROR;
+  OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  error_code = net_client_request2 (NET_SERVER_LD_FETCH_STATS, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
+				    &data_reply, &data_reply_size);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  ptr = or_unpack_int (reply, &data_reply_size);
+  or_unpack_int (ptr, &error_code);
+
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  INT64 total_objects;
+  ptr = or_unpack_int64 (data_reply, &total_objects);
+  stats->total_objects.store (total_objects);
+
+  INT64 last_commit;
+  ptr = or_unpack_int64 (ptr, &last_commit);
+  stats->last_commit.store (last_commit);
+
+  int failures;
+  ptr = or_unpack_int (ptr, &failures);
+  stats->failures.store (failures);
+
+  char *error_message;
+  or_unpack_string (ptr, &error_message);
+  stats->error_message = error_message;
+
+  return 0;
+#else /* CS_MODE */
+  return NO_ERROR;
+#endif /* !CS_MODE */
+}
+
+int
 loaddb_destroy (int batch_total)
 {
 #if defined(CS_MODE)

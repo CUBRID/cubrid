@@ -9682,6 +9682,53 @@ sloaddb_load_batch (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 }
 
 void
+sloaddb_fetch_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  int error_code = NO_ERROR;
+  char *ptr = NULL;
+  char *data_reply = NULL;
+  int data_reply_length = 0;
+  OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  /* *INDENT-OFF* */
+  cubload::session *session = NULL;
+  /* *INDENT-ON* */
+
+  session_get_loaddb_session (thread_p, &session);
+  assert (session != NULL);
+
+  /* *INDENT-OFF* */
+  cubload::stats loaddb_stats = session->get_stats ();
+  /* *INDENT-ON* */
+
+  data_reply_length =
+    or_packed_string_length (loaddb_stats.error_message.c_str (), NULL) + OR_INT64_SIZE + OR_INT64_SIZE + OR_INT_SIZE;
+  data_reply = (char *) malloc (data_reply_length);
+  if (data_reply == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, data_reply_length);
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  ptr = or_pack_int (reply, data_reply_length);
+  or_pack_int (ptr, error_code);
+
+  ptr = or_pack_int64 (data_reply, loaddb_stats.total_objects.load ());
+  ptr = or_pack_int64 (ptr, loaddb_stats.last_commit.load ());
+  ptr = or_pack_int (ptr, loaddb_stats.failures.load ());
+  or_pack_string (ptr, loaddb_stats.error_message.c_str ());
+
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), data_reply,
+				     data_reply_length);
+
+  if (data_reply != NULL)
+    {
+      free_and_init (data_reply);
+    }
+}
+
+void
 sloaddb_destroy (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   int batch_total;

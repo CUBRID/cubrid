@@ -789,6 +789,5 @@ monetary :
 void
 cubload::parser::error (const parser::location_type& l, const std::string& m)
 {
-  // TODO CBRD-22254 pass error_manager reference so syntax error can be reported
-  // m_loader.on_error ();
+  m_driver.syntax_error ();
 }

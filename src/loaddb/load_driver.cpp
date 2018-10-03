@@ -61,16 +61,16 @@ namespace cubload
     return m_parser.parse ();
   }
 
+  void
+  driver::syntax_error ()
+  {
+    m_scanner->ParserError ();
+  }
+
   int
   driver::scanner_lineno ()
   {
     return m_scanner->lineno ();
-  }
-
-  const char *
-  driver::scanner_text ()
-  {
-    return m_scanner->YYText ();
   }
 
   scanner &

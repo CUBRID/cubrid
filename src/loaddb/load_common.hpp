@@ -24,6 +24,9 @@
 #ifndef _LOAD_COMMON_HPP_
 #define _LOAD_COMMON_HPP_
 
+#include "utility.h"
+
+#include <atomic>
 #include <functional>
 
 #define NUM_LDR_TYPES (LDR_TYPE_MAX + 1)
@@ -170,6 +173,59 @@ namespace cubload
   {
     string_type *amount;
     int currency_type;
+  };
+
+  struct stats
+  {
+    // Default constructor
+    stats ()
+      : defaults (0)
+      , total_objects (0)
+      , last_commit (0)
+      , failures (0)
+      , error_message()
+    {
+      //
+    }
+
+    // Copy constructor
+    stats (const stats &copy)
+      : defaults (copy.defaults.load ())
+      , total_objects (copy.total_objects.load ())
+      , last_commit (copy.last_commit.load ())
+      , failures (copy.failures.load ())
+      , error_message (copy.error_message)
+    {
+      //
+    }
+
+    // Assignment operator
+    stats &operator= (const stats &other)
+    {
+      this->defaults.exchange (other.defaults);
+      this->total_objects.exchange (other.total_objects);
+      this->last_commit.exchange (other.last_commit);
+      this->failures.exchange (other.failures);
+      this->error_message = other.error_message;
+
+      return *this;
+    }
+
+    std::atomic_int defaults;
+    std::atomic_long total_objects;
+    std::atomic_long last_commit;
+    std::atomic_int failures;
+    std::string error_message;
+  };
+
+  class error_manager
+  {
+    public:
+      virtual ~error_manager () = default; // Destructor
+
+      virtual void on_syntax_error ()  = 0;
+
+      virtual void on_error (MSGCAT_LOADDB_MSG msg_id, bool include_line_msg, ...) = 0;
   };
 
   /*

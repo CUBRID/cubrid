@@ -42,6 +42,16 @@ namespace cubload
       void process_line (constant_type *cons) override;
       void finish_line () override;
   };
+
+  class sa_error_manager : public error_manager
+  {
+    public:
+      sa_error_manager () = default;
+      ~sa_error_manager () override = default;
+
+      void on_syntax_error () override;
+      void on_error (MSGCAT_LOADDB_MSG msg_id, bool include_line_msg, ...) override;
+  };
 }
 /* *INDENT-ON* */
 

@@ -43,7 +43,7 @@
 namespace cubload
 {
 
-  static const std::size_t DRIVER_POOL_SIZE = 4;
+  static const std::size_t DRIVER_POOL_SIZE = 1;
 
   // forward declaration
   class session;
@@ -110,6 +110,8 @@ namespace cubload
        */
       int load_file (cubthread::entry &thread_ref, std::string &file_name, int &total_batches);
 
+      stats get_stats ();
+
       void wait_for_completion (int max_batch_id);
 
       void abort (std::string &&err_msg);
@@ -121,14 +123,6 @@ namespace cubload
       void notify_waiting_threads ();
       void notify_batch_done (int batch_id);
       void wait_for_previous_batch (int batch_id);
-
-      struct stats
-      {
-	std::atomic_int total_objects;
-	std::atomic_int defaults;
-	std::atomic_int failures;
-	std::atomic_int last_commit;
-      };
 
       friend class load_worker;
 

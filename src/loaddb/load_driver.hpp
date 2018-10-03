@@ -89,8 +89,8 @@ namespace cubload
       // Parse functions
       int parse (std::istream &iss);
 
+      void syntax_error ();
       int scanner_lineno (); // Returns line number through scanner
-      const char *scanner_text (); // Returns text matched by the current token through scanner
 
       scanner &get_scanner ();
 
