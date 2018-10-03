@@ -2015,7 +2015,7 @@ db_json_merge_two_json_objects (JSON_VALUE &dest, const JSON_VALUE *source, JSON
 	  if (patch)
 	    {
 	      // if the second argument value is DB_JSON_NULL, remove that member
-	      if (itr->value.IsNull())
+	      if (itr->value.IsNull ())
 		{
 		  dest.RemoveMember (name);
 		}
@@ -2027,9 +2027,9 @@ db_json_merge_two_json_objects (JSON_VALUE &dest, const JSON_VALUE *source, JSON
 	    }
 	  else
 	    {
-	      if (dest[name].IsArray())
+	      if (dest[name].IsArray ())
 		{
-		  dest[name].GetArray().PushBack (itr->value, allocator);
+		  dest[name].GetArray ().PushBack (itr->value, allocator);
 		}
 	      else
 		{
@@ -2281,7 +2281,7 @@ db_json_merge_func (const JSON_DOC *source, JSON_DOC *&dest, bool patch)
 
   if (patch)
     {
-      db_json_merge_func_patch (source, *dest, dest->GetAllocator());
+      db_json_merge_func_patch (source, *dest, dest->GetAllocator ());
     }
   else
     {
