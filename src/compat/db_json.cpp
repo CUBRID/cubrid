@@ -637,8 +637,10 @@ static const char *db_json_get_string_from_value (const JSON_VALUE *doc);
 static char *db_json_copy_string_from_value (const JSON_VALUE *doc);
 static char *db_json_get_bool_as_str_from_value (const JSON_VALUE *doc);
 static char *db_json_bool_to_string (bool b);
-static void db_json_merge_two_json_objects (JSON_VALUE &first, const JSON_VALUE *second,
-    JSON_PRIVATE_MEMPOOL &allocator, bool patch = false);
+static void db_json_merge_two_json_objects_preserve (const JSON_VALUE *source, JSON_VALUE &dest,
+    JSON_PRIVATE_MEMPOOL &allocator);
+static void db_json_merge_two_json_objects_patch (const JSON_VALUE *source, JSON_VALUE &dest,
+    JSON_PRIVATE_MEMPOOL &allocator);
 static void db_json_merge_two_json_arrays (JSON_DOC &array1, const JSON_DOC *array2);
 static void db_json_merge_two_json_by_array_wrapping (JSON_DOC &j1, const JSON_DOC *j2);
 static void db_json_copy_doc (JSON_DOC &dest, const JSON_DOC *src);
@@ -1984,18 +1986,17 @@ db_json_get_type_of_value (const JSON_VALUE *val)
 }
 
 /*
- * db_json_merge_two_json_objects () - Merge the source object into the destination object
- *
- * return                  : error code
- * dest (in)               : json where to merge
- * source (in)             : json to merge
- * patch (in)              : (true/false) preserve or not the duplicate keys
- * example                 : let dest = '{"a" : "b"}'
- *                           let source = '{"c" : "d"}'
- *                           after JSON_MERGE(dest, source), dest = {"a" : "b", "c" : "d"}
- */
+* db_json_merge_two_json_objects_patch () - Merge the source object into the destination object handling duplicate keys
+*
+* return                  : error code
+* dest (in)               : json where to merge
+* source (in)             : json to merge
+* example                 : let dest = '{"a" : "b"}'
+*                           let source = '{"a" : 3}'
+*                           after JSON_MERGE_PATCH (dest, source), dest = {"a" : 3}
+*/
 void
-db_json_merge_two_json_objects (JSON_VALUE &dest, const JSON_VALUE *source, JSON_PRIVATE_MEMPOOL &allocator, bool patch)
+db_json_merge_two_json_objects_patch (const JSON_VALUE *source, JSON_VALUE &dest, JSON_PRIVATE_MEMPOOL &allocator)
 {
   JSON_VALUE source_copy;
 
@@ -2012,30 +2013,62 @@ db_json_merge_two_json_objects (JSON_VALUE &dest, const JSON_VALUE *source, JSON
       // if the key is in both jsons
       if (dest.HasMember (name))
 	{
-	  if (patch)
+	  // if the second argument value is DB_JSON_NULL, remove that member
+	  if (itr->value.IsNull ())
 	    {
-	      // if the second argument value is DB_JSON_NULL, remove that member
-	      if (itr->value.IsNull ())
-		{
-		  dest.RemoveMember (name);
-		}
-	      else
-		{
-		  // recursively merge_patch with the current values from both JSON_OBJECTs
-		  db_json_merge_func_patch (&itr->value, dest[name], allocator);
-		}
+	      dest.RemoveMember (name);
 	    }
 	  else
 	    {
-	      if (dest[name].IsArray ())
-		{
-		  dest[name].GetArray ().PushBack (itr->value, allocator);
-		}
-	      else
-		{
-		  db_json_value_wrap_as_array (dest[name], allocator);
-		  dest[name].PushBack (itr->value, allocator);
-		}
+	      // recursively merge_patch with the current values from both JSON_OBJECTs
+	      db_json_merge_func_patch (&itr->value, dest[name], allocator);
+	    }
+	}
+      else
+	{
+	  dest.AddMember (itr->name, itr->value, allocator);
+	}
+    }
+}
+
+/*
+ * db_json_merge_two_json_objects_preserve () - Merge the source object into the destination object,
+ *                                              preserving duplicate keys (adding their values in a JSON_ARRAY)
+ *
+ * return                  : error code
+ * dest (in)               : json where to merge
+ * source (in)             : json to merge
+ * patch (in)              : (true/false) preserve or not the duplicate keys
+ * example                 : let dest = '{"a" : "b"}'
+ *                           let source = '{"c" : "d"}'
+ *                           after JSON_MERGE (dest, source), dest = {"a" : "b", "c" : "d"}
+ */
+void
+db_json_merge_two_json_objects_preserve (const JSON_VALUE *source, JSON_VALUE &dest, JSON_PRIVATE_MEMPOOL &allocator)
+{
+  JSON_VALUE source_copy;
+
+  assert (dest.IsObject () && source->IsObject ());
+
+  // create a copy for the source json
+  source_copy.CopyFrom (*source, allocator);
+
+  // iterate through each member from the source json and insert it into the dest
+  for (JSON_VALUE::MemberIterator itr = source_copy.MemberBegin (); itr != source_copy.MemberEnd (); ++itr)
+    {
+      const char *name = itr->name.GetString ();
+
+      // if the key is in both jsons
+      if (dest.HasMember (name))
+	{
+	  if (dest[name].IsArray ())
+	    {
+	      dest[name].GetArray ().PushBack (itr->value, allocator);
+	    }
+	  else
+	    {
+	      db_json_value_wrap_as_array (dest[name], allocator);
+	      dest[name].PushBack (itr->value, allocator);
 	    }
 	}
       else
@@ -2221,7 +2254,7 @@ db_json_merge_func_preserve (const JSON_DOC *source, JSON_DOC &dest)
     {
       if (dest_type == DB_JSON_OBJECT)
 	{
-	  db_json_merge_two_json_objects (dest, source, dest.GetAllocator ());
+	  db_json_merge_two_json_objects_preserve (source, dest, dest.GetAllocator ());
 	}
       else if (dest_type == DB_JSON_ARRAY)
 	{
@@ -2250,7 +2283,7 @@ db_json_merge_func_patch (const JSON_VALUE *source, JSON_VALUE &dest, JSON_PRIVA
     }
   else
     {
-      db_json_merge_two_json_objects (dest, source, allocator, true);
+      db_json_merge_two_json_objects_patch (source, dest, allocator);
     }
 }
 
