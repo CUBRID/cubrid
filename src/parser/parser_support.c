@@ -12076,6 +12076,15 @@ pt_has_name_oid (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *contin
 
   switch (node->node_type)
     {
+    case PT_EXPR:
+    case PT_FUNCTION:
+      if (node->type_enum != PT_TYPE_OBJECT)
+	{
+	  /* Stop advancing in tree, if node is expr or function */
+	  *continue_walk = PT_LIST_WALK;
+	}
+      break;
+
     case PT_NAME:
       if (PT_IS_OID_NAME (node))
 	{
