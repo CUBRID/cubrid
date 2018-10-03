@@ -9040,13 +9040,6 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  PT_NODE *assigns = statement->info.update.assignment;
 	  PT_NODE *from = statement->info.update.spec;
 
-	  if (statement->info.update.with != NULL)
-	    {
-	      /* client-side updates with CTEs are not supported for now */
-	      PT_INTERNAL_ERROR (parser, "update");
-	      break;
-	    }
-
 	  err = pt_append_omitted_on_update_expr_assignments (parser, assigns, from);
 	  if (err != NO_ERROR)
 	    {
@@ -13448,6 +13441,8 @@ do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto cleanup;
     }
 
+  // force Client-side
+  statement->info.insert.server_allowed = SERVER_INSERT_IS_NOT_ALLOWED;
   if (statement->info.insert.server_allowed != SERVER_INSERT_IS_ALLOWED)
     {
       goto cleanup;

@@ -18987,10 +18987,9 @@ pt_mark_spec_list_for_update_clause (PARSER_CONTEXT * parser, PT_NODE * statemen
 
 /*
  * pt_to_with_clause_xasl () - Creates xasl for ctes nodes of the with clause
- *                    
- *   return:
+ *
  *   parser(in): context
- *   statement(in): select parse tree
+ *   with(in): with-clause containing ctes
  *   spec_flag(in): spec flag: PT_SPEC_FLAG_UPDATE or PT_SPEC_FLAG_DELETE
  */
 void
@@ -19053,7 +19052,17 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names, PT_NODE * 
   statement = parser_new_node (parser, PT_SELECT);
   if (statement != NULL)
     {
-      pt_to_with_clause_xasl (parser, with);
+      if (server_op)
+	{
+	  if (with != NULL)
+	    {
+	      pt_to_with_clause_xasl (parser, with);
+	    }
+	}
+      else
+	{
+	  statement->info.query.with = with;
+	}
 
       /* this is an internally built query */
       PT_SELECT_INFO_SET_FLAG (statement, PT_SELECT_INFO_IS_UPD_DEL_QUERY);

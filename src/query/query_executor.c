@@ -1105,10 +1105,14 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	{
 	  OID *class_oid = NULL;
 
-	  if (xasl->aptr_list && xasl->aptr_list->type == BUILDLIST_PROC
-	      && xasl->aptr_list->proc.buildlist.push_list_id)
+	  XASL_NODE *aptr = xasl->aptr_list;
+	  if (aptr)
 	    {
-	      class_oid = &ACCESS_SPEC_CLS_OID (xasl->aptr_list->spec_list);
+	      for (XASL_NODE * crt = aptr->next; crt; crt = crt->next, aptr = aptr->next);
+	    }
+	  if (aptr && aptr->type == BUILDLIST_PROC && aptr->proc.buildlist.push_list_id)
+	    {
+	      class_oid = &ACCESS_SPEC_CLS_OID (aptr->spec_list);
 	    }
 
 	  ret =
@@ -8664,6 +8668,14 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 
   /* lock classes which this query will update */
   aptr = xasl->aptr_list;
+  if (aptr != NULL)
+    {
+      for (XASL_NODE * crt = aptr->next; crt; aptr = aptr->next, crt = crt->next)
+	{
+	  // assert there is never the situation that a CTE_PROC is after another type of PROC
+	  assert (!(aptr->type != CTE_PROC && crt->type == CTE_PROC));
+	}
+    }
   error = qexec_set_class_locks (thread_p, aptr, update->classes, update->num_classes, internal_classes);
   if (error != NO_ERROR)
     {
@@ -8690,6 +8702,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
       p_class_instance_lock_info = &class_instance_lock_info;
     }
 
+  aptr = xasl->aptr_list;
   for (XASL_NODE * crt = aptr; crt != NULL && error == NO_ERROR; crt = crt->next)
     {
       if (qexec_execute_mainblock (thread_p, crt, xasl_state, p_class_instance_lock_info) != NO_ERROR)
@@ -9603,13 +9616,19 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
     }
 
   /* lock classes from which this query will delete */
-  error = qexec_set_class_locks (thread_p, xasl->aptr_list, delete_->classes, delete_->num_classes, internal_classes);
+  aptr = xasl->aptr_list;
+  if (aptr != NULL)
+    {
+      for (XASL_NODE * crt = aptr->next; crt; aptr = aptr->next, crt = crt->next)
+	{
+	  assert (!(aptr->type != CTE_PROC && crt->type == CTE_PROC));
+	}
+    }
+  error = qexec_set_class_locks (thread_p, aptr, delete_->classes, delete_->num_classes, internal_classes);
   if (error != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }
-
-  aptr = xasl->aptr_list;
 
   error =
     prepare_mvcc_reev_data (thread_p, aptr, xasl_state, mvcc_reev_class_cnt, delete_->mvcc_reev_classes,
@@ -9630,6 +9649,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
       p_class_instance_lock_info = &class_instance_lock_info;
     }
 
+  aptr = xasl->aptr_list;
   for (XASL_NODE * crt = aptr; crt != NULL; crt = crt->next)
     {
       if (qexec_execute_mainblock (thread_p, crt, xasl_state, p_class_instance_lock_info) != NO_ERROR)
