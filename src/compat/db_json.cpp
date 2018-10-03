@@ -801,7 +801,7 @@ int JSON_SEARCHER::CallAfter (JSON_VALUE &value)
 
       if (match)
 	{
-	  std::string_stream full_path;
+	  std::stringstream full_path;
 	  full_path << "\"" << m_starting_path;
 	  for (const auto &item : path_items)
 	    {
