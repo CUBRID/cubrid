@@ -208,6 +208,7 @@ extern int db_json_remove (DB_VALUE * result, DB_VALUE * arg[], int const num_ar
 extern int db_json_array_append (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
 extern int db_json_array_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
 extern int db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
+extern int db_json_merge_patch (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
 extern int db_json_get_all_paths (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
 extern int db_json_pretty (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
 

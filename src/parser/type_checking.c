@@ -12211,6 +12211,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	  || node->info.function.function_type == F_JSON_OBJECT || node->info.function.function_type == F_JSON_ARRAY
 	  || node->info.function.function_type == F_JSON_INSERT || node->info.function.function_type == F_JSON_REMOVE
 	  || node->info.function.function_type == F_JSON_MERGE
+	  || node->info.function.function_type == F_JSON_MERGE_PATCH
 	  || node->info.function.function_type == F_JSON_ARRAY_APPEND
 	  || node->info.function.function_type == F_JSON_ARRAY_INSERT
 	  || node->info.function.function_type == F_JSON_GET_ALL_PATHS
@@ -13093,6 +13094,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
       break;
 
     case F_JSON_MERGE:
+    case F_JSON_MERGE_PATCH:
       {
 	PT_TYPE_ENUM unsupported_type;
 	bool is_supported;
@@ -13604,6 +13606,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	case F_JSON_ARRAY_APPEND:
 	case F_JSON_ARRAY_INSERT:
 	case F_JSON_MERGE:
+	case F_JSON_MERGE_PATCH:
 	case F_JSON_GET_ALL_PATHS:
 	  node->type_enum = PT_TYPE_JSON;
 	  break;
@@ -20345,6 +20348,7 @@ pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_TYPE fcode, DB_VALUE 
 	  return 0;
 	}
       break;
+
     case F_ELT:
       error = db_string_elt (result, args, num_args);
       if (error != NO_ERROR)
@@ -20352,99 +20356,67 @@ pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_TYPE fcode, DB_VALUE 
 	  return 0;
 	}
       break;
+
     case F_JSON_OBJECT:
       error = db_json_object (result, args, num_args);
-      if (error != NO_ERROR)
-	{
-	  PT_ERRORc (parser, NULL, er_msg ());
-	  return 0;
-	}
       break;
+
     case F_JSON_ARRAY:
       error = db_json_array (result, args, num_args);
-      if (error != NO_ERROR)
-	{
-	  PT_ERRORc (parser, NULL, er_msg ());
-	  return 0;
-	}
       break;
+
     case F_JSON_INSERT:
       error = db_json_insert (result, args, num_args);
-      if (error != NO_ERROR)
-	{
-	  PT_ERRORc (parser, NULL, er_msg ());
-	  return 0;
-	}
       break;
+
     case F_JSON_REPLACE:
       error = db_json_replace (result, args, num_args);
-      if (error != NO_ERROR)
-	{
-	  PT_ERRORc (parser, NULL, er_msg ());
-	  return 0;
-	}
       break;
+
     case F_JSON_SET:
       error = db_json_set (result, args, num_args);
-      if (error != NO_ERROR)
-	{
-	  PT_ERRORc (parser, NULL, er_msg ());
-	  return 0;
-	}
       break;
+
     case F_JSON_KEYS:
       error = db_json_keys (result, args, num_args);
-      if (error != NO_ERROR)
-	{
-	  PT_ERRORc (parser, NULL, er_msg ());
-	  return 0;
-	}
       break;
+
     case F_JSON_REMOVE:
       error = db_json_remove (result, args, num_args);
-      if (error != NO_ERROR)
-	{
-	  PT_ERRORc (parser, NULL, er_msg ());
-	  return 0;
-	}
       break;
+
     case F_JSON_ARRAY_APPEND:
       error = db_json_array_append (result, args, num_args);
-      if (error != NO_ERROR)
-	{
-	  PT_ERRORc (parser, NULL, er_msg ());
-	  return 0;
-	}
       break;
+
     case F_JSON_ARRAY_INSERT:
       error = db_json_array_insert (result, args, num_args);
-      if (error != NO_ERROR)
-	{
-	  PT_ERRORc (parser, NULL, er_msg ());
-	  return 0;
-	}
       break;
+
     case F_JSON_MERGE:
       error = db_json_merge (result, args, num_args);
-      if (error != NO_ERROR)
-	{
-	  PT_ERRORc (parser, NULL, er_msg ());
-	  return 0;
-	}
       break;
+
+    case F_JSON_MERGE_PATCH:
+      error = db_json_merge_patch (result, args, num_args);
+      break;
+
     case F_JSON_GET_ALL_PATHS:
       error = db_json_get_all_paths (result, args, num_args);
-      if (error != NO_ERROR)
-	{
-	  PT_ERRORc (parser, NULL, er_msg ());
-	  return 0;
-	}
       break;
+
     default:
       /* a supported function doesn't have const folding code */
       assert (false);
       break;
     }
+
+  if (error != NO_ERROR)
+    {
+      PT_ERRORc (parser, NULL, er_msg ());
+      return 0;
+    }
+
   return 1;
 }
 
