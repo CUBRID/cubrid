@@ -13439,8 +13439,6 @@ do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto cleanup;
     }
 
-  // force Client-side
-  statement->info.insert.server_allowed = SERVER_INSERT_IS_NOT_ALLOWED;
   if (statement->info.insert.server_allowed != SERVER_INSERT_IS_ALLOWED)
     {
       goto cleanup;

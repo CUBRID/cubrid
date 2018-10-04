@@ -18993,7 +18993,6 @@ pt_mark_spec_list_for_update_clause (PARSER_CONTEXT * parser, PT_NODE * statemen
  *
  *   parser(in): context
  *   with(in): with-clause containing ctes
- *   spec_flag(in): spec flag: PT_SPEC_FLAG_UPDATE or PT_SPEC_FLAG_DELETE
  */
 void
 pt_to_with_clause_xasl (PARSER_CONTEXT * parser, PT_NODE * with)
