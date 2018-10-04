@@ -47,6 +47,7 @@
 #include "log_impl.h"
 #include "parse_tree.h"
 #include "xasl.h"
+#include "timezone_lib_common.h"
 
 // forward definitions
 struct compile_context;

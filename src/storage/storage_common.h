@@ -1122,16 +1122,6 @@ typedef enum
 /* QUERY                                                                */
 /************************************************************************/
 
-/*
- * CACHE TIME RELATED DEFINITIONS
- */
-typedef struct cache_time CACHE_TIME;
-struct cache_time
-{
-  int sec;
-  int usec;
-};
-
 #define CACHE_TIME_AS_ARGS(ct)	(ct)->sec, (ct)->usec
 
 #define CACHE_TIME_EQ(T1, T2) \
