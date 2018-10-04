@@ -3726,18 +3726,18 @@ db_json_contains_path (DB_VALUE * result, DB_VALUE * arg[], const int num_args)
 
       if (find_all && !exists)
 	{
-	  error_code = db_make_int (result, false);
+	  error_code = db_make_int (result, (int) false);
 	  return error_code;
 	}
       if (!find_all && exists)
 	{
-	  error_code = db_make_int (result, true);
+	  error_code = db_make_int (result, (int) true);
 	  return error_code;
 	}
     }
 
   // if we have not returned early last search is decisive 
-  error_code = db_make_int (result, exists);
+  error_code = db_make_int (result, (int) exists);
   return error_code;
 }
 
