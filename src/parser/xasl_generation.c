@@ -16771,7 +16771,7 @@ parser_generate_xasl_proc (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * qu
 	  if (query->info.query.xasl && query->info.query.id == node->info.query.id)
 	    {
 	      // claim it's never used
-	      assert_release (false);
+	      assert (false);
 
 	      /* found cached query xasl */
 	      node->info.query.xasl = query->info.query.xasl;
@@ -17388,29 +17388,8 @@ pt_make_aptr_parent_node (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * wit
 		  namelist = pt_get_select_list (parser, node);
 		}
 
-	      /* append aptr after cte procs */
-	      if (cte != NULL)
-		{
-		  XASL_NODE *cte_xasl = (XASL_NODE *) cte->info.cte.xasl;
-		  XASL_NODE *last_aptr = cte_xasl;
-		  xasl->aptr_list = cte_xasl;
-
-		  cte = cte->next;
-		  while (cte != NULL)
-		    {
-		      cte_xasl = (XASL_NODE *) cte->info.cte.xasl;
-		      last_aptr->next = cte_xasl;
-		      cte = cte->next;
-		      last_aptr = last_aptr->next;
-		    }
-
-		  last_aptr->next = aptr;
-		}
-	      else
-		{
-		  xasl->aptr_list = aptr;
-		}
 	      aptr->next = NULL;
+              xasl->aptr_list = aptr;
 
 	      xasl->val_list = pt_make_val_list (parser, namelist);
 	      if (xasl->val_list != NULL)
@@ -19054,18 +19033,8 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names, PT_NODE * 
   statement = parser_new_node (parser, PT_SELECT);
   if (statement != NULL)
     {
-      if (server_op)
-	{
-	  if (with != NULL)
-	    {
-	      pt_to_with_clause_xasl (parser, with);
-	    }
-	}
-      else
-	{
-	  statement->info.query.with = with;
-	}
-
+      statement->info.query.with = with;
+      
       /* this is an internally built query */
       PT_SELECT_INFO_SET_FLAG (statement, PT_SELECT_INFO_IS_UPD_DEL_QUERY);
 
