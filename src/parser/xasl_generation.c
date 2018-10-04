@@ -16770,6 +16770,9 @@ parser_generate_xasl_proc (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * qu
 	{
 	  if (query->info.query.xasl && query->info.query.id == node->info.query.id)
 	    {
+	      // claim it's never used
+	      assert (false);
+
 	      /* found cached query xasl */
 	      node->info.query.xasl = query->info.query.xasl;
 	      node->info.query.correlation_level = query->info.query.correlation_level;

@@ -10347,8 +10347,6 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 
 	  delete_info = &statement->info.delete_;
 
-	  assert (delete_info->with == NULL);
-
 	  select_statement =
 	    pt_to_upd_del_query (parser, NULL, NULL, delete_info->spec, delete_info->with, delete_info->class_specs,
 				 delete_info->search_cond, delete_info->using_index, NULL, NULL, 0, S_DELETE);
