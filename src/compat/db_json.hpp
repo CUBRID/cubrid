@@ -107,6 +107,7 @@ void db_json_delete_validator (JSON_VALIDATOR *&validator);
 int db_json_validate_doc (JSON_VALIDATOR *validator, JSON_DOC *doc);
 bool db_json_are_validators_equal (JSON_VALIDATOR *val1, JSON_VALIDATOR *val2);
 
+
 DB_JSON_TYPE db_json_get_type (const JSON_DOC *doc);
 
 int db_json_get_int_from_document (const JSON_DOC *doc);
