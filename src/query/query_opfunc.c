@@ -6148,6 +6148,12 @@ qdata_json_quote_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * do
 }
 
 int
+qdata_json_unquote_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
+{
+  return db_json_unquote_dbval (dbval1_p, result_p);
+}
+
+int
 qdata_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * json_res, TP_DOMAIN * domain_p)
 {
   return db_json_extract_dbval (json, path, json_res);

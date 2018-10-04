@@ -5225,6 +5225,27 @@ db_json_depth_dbval (DB_VALUE * json, DB_VALUE * res)
 }
 
 int
+db_json_unquote_dbval (DB_VALUE * json, DB_VALUE * res)
+{
+  if (DB_IS_NULL (json))
+    {
+      return db_make_null (res);
+    }
+  else
+    {
+      char *str = NULL;
+
+      int er = db_json_unquote (*db_get_json_document (json), str);
+      if (er)
+	{
+	  return er;
+	}
+
+      return db_make_string (res, str);
+    }
+}
+
+int
 db_json_pretty_dbval (DB_VALUE * json, DB_VALUE * res)
 {
   if (DB_IS_NULL (json))
