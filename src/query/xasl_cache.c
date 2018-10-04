@@ -23,19 +23,21 @@
 
 #ident "$Id$"
 
-#include <assert.h>
-
-#include "config.h"
-
 #include "xasl_cache.h"
+
+#include "binaryheap.h"
+#include "compile_context.h"
+#include "config.h"
+#include "list_file.h"
 #include "perf_monitor.h"
 #include "query_executor.h"
-#include "list_file.h"
-#include "binaryheap.h"
-#include "statistics_sr.h"
-#include "thread.h"
 #include "query_manager.h"
+#include "statistics_sr.h"
 #include "stream_to_xasl.h"
+#include "thread_entry.hpp"
+#include "thread_manager.hpp"
+
+#include <assert.h>
 
 #define XCACHE_ENTRY_MARK_DELETED	    ((INT32) 0x80000000)
 #define XCACHE_ENTRY_TO_BE_RECOMPILED	    ((INT32) 0x40000000)
@@ -49,7 +51,7 @@
 
 #if defined (SERVER_MODE)
 #define XCACHE_ENTRY_DELETED_BY_ME \
-  ((XCACHE_ENTRY_MARK_DELETED | XCACHE_ENTRY_FIX_COUNT_MASK) - thread_get_current_tran_index ())
+  ((XCACHE_ENTRY_MARK_DELETED | XCACHE_ENTRY_FIX_COUNT_MASK) - logtb_get_current_tran_index ())
 #else	/* !SERVER_MODE */		   /* SA_MODE */
 #define XCACHE_ENTRY_DELETED_BY_ME (XCACHE_ENTRY_MARK_DELETED | XCACHE_ENTRY_FIX_COUNT_MASK)
 #endif /* SA_MODE */
@@ -932,9 +934,9 @@ xcache_find_xasl_id (THREAD_ENTRY * thread_p, const XASL_ID * xid, XASL_CACHE_EN
 	  /* No lock. */
 	  continue;
 	}
-      lock_result =
-	lock_scan (thread_p, &(*xcache_entry)->related_objects[oid_index].oid, LK_UNCOND_LOCK,
-		   (*xcache_entry)->related_objects[oid_index].lock);
+
+      lock_result = lock_object (thread_p, &(*xcache_entry)->related_objects[oid_index].oid, oid_Root_class_oid,
+				 (*xcache_entry)->related_objects[oid_index].lock, LK_UNCOND_LOCK);
       if (lock_result != LK_GRANTED)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
@@ -1320,7 +1322,7 @@ xcache_need_cleanup (void)
  * xcache_entry (out) : XASL cache entry.
  */
 int
-xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_STREAM * stream,
+xcache_insert (THREAD_ENTRY * thread_p, const compile_context * context, XASL_STREAM * stream,
 	       int n_oid, const OID * class_oids, const int *class_locks, const int *tcards,
 	       XASL_CACHE_ENTRY ** xcache_entry)
 {

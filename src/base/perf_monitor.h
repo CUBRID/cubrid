@@ -31,13 +31,12 @@
 #include "connection_defs.h"
 #include "dbtype_def.h"
 #endif /* SERVER_MODE */
+#if defined (SERVER_MODE) || defined (SA_MODE)
+#include "log_impl.h"
+#endif // SERVER_MODE or SA_MODE
 #include "memory_alloc.h"
 #include "storage_common.h"
-#if defined (SERVER_MODE)
-#include "thread.h"
-#else
 #include "thread_compat.hpp"
-#endif
 #include "tsc_timer.h"
 
 #include <assert.h>
@@ -55,23 +54,30 @@
 #define SH_MODE 0644
 
 /* Statistics activation flags */
+typedef enum
+{
+  PERFMON_ACTIVATION_FLAG_DEFAULT = 0,
+  PERFMON_ACTIVATION_FLAG_DETAILED_BTREE_PAGE = 1,
+  PERFMON_ACTIVATION_FLAG_MVCC_SNAPSHOT = 2,
+  PERFMON_ACTIVATION_FLAG_LOCK_OBJECT = 4,
+  PERFMON_ACTIVATION_FLAG_PB_HASH_ANCHOR = 8,
+  PERFMON_ACTIVATION_FLAG_PB_VICTIMIZATION = 16,
+  PERFMON_ACTIVATION_FLAG_THREAD = 32,
+  PERFMON_ACTIVATION_FLAG_DAEMONS = 64,
+  PERFMON_ACTIVATION_FLAG_FLUSHED_BLOCK_VOLUMES = 128,
 
-#define PERFMON_ACTIVE_DEFAULT                    0
-#define PERFMON_ACTIVE_DETAILED_BTREE_PAGE        1
-#define PERFMON_ACTIVE_MVCC_SNAPSHOT              2
-#define PERFMON_ACTIVE_LOCK_OBJECT                4
-#define PERFMON_ACTIVE_PB_HASH_ANCHOR             8
-#define PERFMON_ACTIVE_PB_VICTIMIZATION           16
-#define PERFMON_ACTIVE_MAX_VALUE                  31	/* must update when adding new conditions */
+  /* must update when adding new conditions */
+  PERFMON_ACTIVATION_FLAG_LAST = PERFMON_ACTIVATION_FLAG_FLUSHED_BLOCK_VOLUMES,
+
+  PERFMON_ACTIVATION_FLAG_MAX_VALUE = (PERFMON_ACTIVATION_FLAG_LAST << 1) - 1
+} PERFMON_ACTIVATION_FLAG;
 
 /* PERF_MODULE_TYPE x PERF_PAGE_TYPE x PAGE_FETCH_MODE x HOLDER_LATCH_MODE x COND_FIX_TYPE */
 #define PERF_PAGE_FIX_COUNTERS \
-  ((PERF_MODULE_CNT) * (PERF_PAGE_CNT) * (PERF_PAGE_MODE_CNT) \
-   * (PERF_HOLDER_LATCH_CNT) * (PERF_CONDITIONAL_FIX_CNT))
+  ((PERF_MODULE_CNT) * (PERF_PAGE_CNT) * (PERF_PAGE_MODE_CNT) * (PERF_HOLDER_LATCH_CNT) * (PERF_CONDITIONAL_FIX_CNT))
 
 #define PERF_PAGE_PROMOTE_COUNTERS \
-  ((PERF_MODULE_CNT) * (PERF_PAGE_CNT) * (PERF_PROMOTE_CONDITION_CNT) \
-  * (PERF_HOLDER_LATCH_CNT) * (2 /* success */))
+  ((PERF_MODULE_CNT) * (PERF_PAGE_CNT) * (PERF_PROMOTE_CONDITION_CNT) * (PERF_HOLDER_LATCH_CNT) * (2 /* success */))
 
 /* PERF_MODULE_TYPE x PAGE_TYPE x DIRTY_OR_CLEAN x DIRTY_OR_CLEAN x READ_OR_WRITE_OR_MIX */
 #define PERF_PAGE_UNFIX_COUNTERS \
@@ -80,41 +86,32 @@
 #define PERF_PAGE_LOCK_TIME_COUNTERS PERF_PAGE_FIX_COUNTERS
 
 #define PERF_PAGE_HOLD_TIME_COUNTERS \
-    ((PERF_MODULE_CNT) * (PERF_PAGE_CNT) * (PERF_PAGE_MODE_CNT) \
-   * (PERF_HOLDER_LATCH_CNT))
+  ((PERF_MODULE_CNT) * (PERF_PAGE_CNT) * (PERF_PAGE_MODE_CNT) * (PERF_HOLDER_LATCH_CNT))
 
 #define PERF_PAGE_FIX_TIME_COUNTERS PERF_PAGE_FIX_COUNTERS
 
-#define PERF_PAGE_FIX_STAT_OFFSET(module,page_type,page_found_mode,latch_mode,\
-				  cond_type) \
-  ((module) * (PERF_PAGE_CNT) * (PERF_PAGE_MODE_CNT) * (PERF_HOLDER_LATCH_CNT) \
-    * (PERF_CONDITIONAL_FIX_CNT) \
-    + (page_type) * (PERF_PAGE_MODE_CNT) * (PERF_HOLDER_LATCH_CNT) \
-       * (PERF_CONDITIONAL_FIX_CNT) \
+#define PERF_PAGE_FIX_STAT_OFFSET(module,page_type,page_found_mode,latch_mode,cond_type) \
+  ((module) * (PERF_PAGE_CNT) * (PERF_PAGE_MODE_CNT) * (PERF_HOLDER_LATCH_CNT) * (PERF_CONDITIONAL_FIX_CNT) \
+    + (page_type) * (PERF_PAGE_MODE_CNT) * (PERF_HOLDER_LATCH_CNT) * (PERF_CONDITIONAL_FIX_CNT) \
     + (page_found_mode) * (PERF_HOLDER_LATCH_CNT) * (PERF_CONDITIONAL_FIX_CNT) \
     + (latch_mode) * (PERF_CONDITIONAL_FIX_CNT) + (cond_type))
 
-#define PERF_PAGE_PROMOTE_STAT_OFFSET(module,page_type,promote_cond, \
-				      holder_latch,success) \
-  ((module) * (PERF_PAGE_CNT) * (PERF_PROMOTE_CONDITION_CNT) \
-    * (PERF_HOLDER_LATCH_CNT) * 2 /* success */ \
-    + (page_type) * (PERF_PROMOTE_CONDITION_CNT) * (PERF_HOLDER_LATCH_CNT) \
-    * 2 /* success */ \
+#define PERF_PAGE_PROMOTE_STAT_OFFSET(module,page_type,promote_cond,holder_latch,success) \
+  ((module) * (PERF_PAGE_CNT) * (PERF_PROMOTE_CONDITION_CNT) * (PERF_HOLDER_LATCH_CNT) * 2 /* success */ \
+    + (page_type) * (PERF_PROMOTE_CONDITION_CNT) * (PERF_HOLDER_LATCH_CNT) * 2 /* success */ \
     + (promote_cond) * (PERF_HOLDER_LATCH_CNT) * 2 /* success */ \
     + (holder_latch) * 2 /* success */ \
     + success)
 
-#define PERF_PAGE_UNFIX_STAT_OFFSET(module,page_type,buf_dirty,\
-				    dirtied_by_holder,holder_latch) \
-  ((module) * (PERF_PAGE_CNT) * 2 * 2 * (PERF_HOLDER_LATCH_CNT) + \
-   (page_type) * 2 * 2 * (PERF_HOLDER_LATCH_CNT) + \
-   (buf_dirty) * 2 * (PERF_HOLDER_LATCH_CNT) + \
-   (dirtied_by_holder) * (PERF_HOLDER_LATCH_CNT) + (holder_latch))
+#define PERF_PAGE_UNFIX_STAT_OFFSET(module,page_type,buf_dirty,dirtied_by_holder,holder_latch) \
+  ((module) * (PERF_PAGE_CNT) * 2 * 2 * (PERF_HOLDER_LATCH_CNT) \
+   + (page_type) * 2 * 2 * (PERF_HOLDER_LATCH_CNT) \
+   + (buf_dirty) * 2 * (PERF_HOLDER_LATCH_CNT) \
+   + (dirtied_by_holder) * (PERF_HOLDER_LATCH_CNT) \
+   + (holder_latch))
 
-#define PERF_PAGE_LOCK_TIME_OFFSET(module,page_type,page_found_mode,latch_mode,\
-				  cond_type) \
-	PERF_PAGE_FIX_STAT_OFFSET(module,page_type,page_found_mode,latch_mode,\
-				  cond_type)
+#define PERF_PAGE_LOCK_TIME_OFFSET(module,page_type,page_found_mode,latch_mode,cond_type) \
+  PERF_PAGE_FIX_STAT_OFFSET (module, page_type, page_found_mode, latch_mode, cond_type)
 
 #define PERF_PAGE_HOLD_TIME_OFFSET(module,page_type,page_found_mode,latch_mode)\
   ((module) * (PERF_PAGE_CNT) * (PERF_PAGE_MODE_CNT) * (PERF_HOLDER_LATCH_CNT) \
@@ -122,20 +119,18 @@
     + (page_found_mode) * (PERF_HOLDER_LATCH_CNT) \
     + (latch_mode))
 
-#define PERF_PAGE_FIX_TIME_OFFSET(module,page_type,page_found_mode,latch_mode,\
-				  cond_type) \
-	PERF_PAGE_FIX_STAT_OFFSET(module,page_type,page_found_mode,latch_mode,\
-				  cond_type)
+#define PERF_PAGE_FIX_TIME_OFFSET(module,page_type,page_found_mode,latch_mode,cond_type) \
+  PERF_PAGE_FIX_STAT_OFFSET (module, page_type, page_found_mode, latch_mode, cond_type)
 
 #define PERF_MVCC_SNAPSHOT_COUNTERS \
-  (PERF_SNAPSHOT_CNT * PERF_SNAPSHOT_RECORD_TYPE_CNT \
-   * PERF_SNAPSHOT_VISIBILITY_CNT)
+  (PERF_SNAPSHOT_CNT * PERF_SNAPSHOT_RECORD_TYPE_CNT * PERF_SNAPSHOT_VISIBILITY_CNT)
 
 #define PERF_MVCC_SNAPSHOT_OFFSET(snapshot,rec_type,visibility) \
   ((snapshot) * PERF_SNAPSHOT_RECORD_TYPE_CNT * PERF_SNAPSHOT_VISIBILITY_CNT \
    + (rec_type) * PERF_SNAPSHOT_VISIBILITY_CNT + (visibility))
 
 #define PERF_OBJ_LOCK_STAT_COUNTERS (SCH_M_LOCK + 1)
+#define PERF_DWB_FLUSHED_BLOCK_VOLUMES_CNT 10
 
 #define SAFE_DIV(a, b) ((b) == 0 ? 0 : (a) / (b))
 
@@ -155,7 +150,7 @@ extern int log_Tran_index;	/* Index onto transaction table for current thread of
 #if defined (SERVER_MODE)
 #if !defined(LOG_FIND_THREAD_TRAN_INDEX)
 #define LOG_FIND_THREAD_TRAN_INDEX(thrd) \
-  ((thrd) ? (thrd)->tran_index : thread_get_current_tran_index())
+  ((thrd) ? (thrd)->tran_index : logtb_get_current_tran_index())
 #endif
 #else
 #if !defined(LOG_FIND_THREAD_TRAN_INDEX)
@@ -555,6 +550,8 @@ typedef enum
   PSTAT_PB_NUM_SKIPPED_ALREADY_FLUSHED,
   PSTAT_PB_NUM_SKIPPED_FIXED_OR_HOT,
   PSTAT_PB_COMPENSATE_FLUSH,
+  PSTAT_PB_ASSIGN_DIRECT_BCB,
+  PSTAT_PB_WAKE_FLUSH_WAITER,
   /* allocate and victim assignments */
   PSTAT_PB_ALLOC_BCB,
   PSTAT_PB_ALLOC_BCB_SEARCH_VICTIM,
@@ -563,6 +560,9 @@ typedef enum
   PSTAT_PB_ALLOC_BCB_PRIORITIZE_VACUUM,
   PSTAT_PB_VICTIM_USE_INVALID_BCB,
   /* direct assignments */
+  PSTAT_PB_VICTIM_SEARCH_OWN_PRIVATE_LISTS,
+  PSTAT_PB_VICTIM_SEARCH_OTHERS_PRIVATE_LISTS,
+  PSTAT_PB_VICTIM_SEARCH_SHARED_LISTS,
   PSTAT_PB_VICTIM_ASSIGN_DIRECT_VACUUM_VOID,
   PSTAT_PB_VICTIM_ASSIGN_DIRECT_VACUUM_LRU,
   PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH,
@@ -590,6 +590,18 @@ typedef enum
   PSTAT_PB_LFCQ_LRU_PRV_GET_BIG,
   PSTAT_PB_LFCQ_LRU_SHR_GET_CALLS,
   PSTAT_PB_LFCQ_LRU_SHR_GET_EMPTY,
+
+  /* DWB statistics */
+  PSTAT_DWB_FLUSH_BLOCK_TIME_COUNTERS,
+  PSTAT_DWB_FLUSH_BLOCK_HELPER_TIME_COUNTERS,
+  PSTAT_DWB_FLUSH_BLOCK_COND_WAIT,
+  PSTAT_DWB_FLUSH_BLOCK_SORT_TIME_COUNTERS,
+  PSTAT_DWB_FLUSH_BLOCK_REMOVE_HASH_ENTRIES,
+  PSTAT_DWB_PAGE_CHECKSUM_TIME_COUNTERS,
+  PSTAT_DWB_WAIT_FLUSH_BLOCK_TIME_COUNTERS,
+  PSTAT_DWB_WAIT_FLUSH_BLOCK_HELPER_TIME_COUNTERS,
+  PSTAT_DWB_FLUSH_FORCE_TIME_COUNTERS,
+
   /* peeked stats */
   PSTAT_PB_WAIT_THREADS_HIGH_PRIO,
   PSTAT_PB_WAIT_THREADS_LOW_PRIO,
@@ -610,8 +622,11 @@ typedef enum
   PSTAT_PBX_FIX_TIME_COUNTERS,
   PSTAT_MVCC_SNAPSHOT_COUNTERS,
   PSTAT_OBJ_LOCK_TIME_COUNTERS,
+  PSTAT_THREAD_STATS,
+  PSTAT_THREAD_DAEMON_STATS,
+  PSTAT_DWB_FLUSHED_BLOCK_NUM_VOLUMES,
 
-  PSTAT_COUNT = PSTAT_OBJ_LOCK_TIME_COUNTERS + 1
+  PSTAT_COUNT
 } PERF_STAT_ID;
 
 /* All globals on statistics will be here. */
@@ -1293,106 +1308,6 @@ extern int perfmon_get_stats (void);
 extern int perfmon_get_global_stats (void);
 #endif /* CS_MODE || SA_MODE */
 
-#if defined (DIAG_DEVEL)
-#if defined(SERVER_MODE)
-
-enum t_diag_obj_type
-{
-  DIAG_OBJ_TYPE_QUERY_OPEN_PAGE = 0,
-  DIAG_OBJ_TYPE_QUERY_OPENED_PAGE = 1,
-  DIAG_OBJ_TYPE_QUERY_SLOW_QUERY = 2,
-  DIAG_OBJ_TYPE_QUERY_FULL_SCAN = 3,
-  DIAG_OBJ_TYPE_CONN_CLI_REQUEST = 4,
-  DIAG_OBJ_TYPE_CONN_ABORTED_CLIENTS = 5,
-  DIAG_OBJ_TYPE_CONN_CONN_REQ = 6,
-  DIAG_OBJ_TYPE_CONN_CONN_REJECT = 7,
-  DIAG_OBJ_TYPE_BUFFER_PAGE_READ = 8,
-  DIAG_OBJ_TYPE_BUFFER_PAGE_WRITE = 9,
-  DIAG_OBJ_TYPE_LOCK_DEADLOCK = 10,
-  DIAG_OBJ_TYPE_LOCK_REQUEST = 11
-};
-typedef enum t_diag_obj_type T_DIAG_OBJ_TYPE;
-
-enum t_diag_value_settype
-{
-  DIAG_VAL_SETTYPE_INC,
-  DIAG_VAL_SETTYPE_DEC,
-  DIAG_VAL_SETTYPE_SET
-};
-typedef enum t_diag_value_settype T_DIAG_VALUE_SETTYPE;
-
-typedef int (*T_DO_FUNC) (int value, T_DIAG_VALUE_SETTYPE settype, char *err_buf);
-
-typedef struct t_diag_object_table T_DIAG_OBJECT_TABLE;
-struct t_diag_object_table
-{
-  char typestring[32];
-  T_DIAG_OBJ_TYPE type;
-  T_DO_FUNC func;
-};
-
-STATIC_INLINE void perfmon_diag_set_value (bool diag_exec_flag, T_DIAG_OBJ_TYPE item_type, int value,
-					   T_DIAG_VALUE_SETTYPE set_type, char *err_buf)
-  __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void perfmon_diag_set_slow_query (bool diag_exec_flag, struct timeval *start_time,
-						struct timeval *end_time, char *err_buf)
-  __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void perfmon_diag_set_full_scan (bool diag_exec_flag, char *err_buf, XASL_NODE * xasl,
-					       ACCESS_SPEC_TYPE * spec) __attribute__ ((ALWAYS_INLINE));
-
-STATIC_INLINE void
-perfmon_diag_set_value (bool diag_exec_flag, T_DIAG_OBJ_TYPE item_type, int value, T_DIAG_VALUE_SETTYPE set_type,
-			char *err_buf)
-{
-  if (diag_exec_flag == false)
-    {
-      return;
-    }
-
-  set_diag_value (item_type, value, set_type, err_buf);
-}
-
-STATIC_INLINE void
-perfmon_diag_set_slow_query (bool diag_exec_flag, struct timeval *start_time, struct timeval *end_time, char *err_buf)
-{
-  struct timeval result = { 0, 0 };
-
-  if (diag_exec_flag == false)
-    {
-      return;
-    }
-
-  perfmon_add_timeval (&result, start_time, end_time);
-  if (result.tv_sec >= diag_long_query_time)
-    {
-      set_diag_value (DIAG_OBJ_TYPE_QUERY_SLOW_QUERY, 1, DIAG_VAL_SETTYPE_INC, err_buf);
-    }
-}
-
-STATIC_INLINE void
-perfmon_diag_set_full_scan (bool diag_exec_flag, char *err_buf, XASL_NODE * xasl, ACCESS_SPEC_TYPE * spec)
-{
-  if (diag_exec_flag == false)
-    {
-      return;
-    }
-
-  if ((XASL_TYPE (xasl) == BUILDLIST_PROC || XASL_TYPE (xasl) == BUILDVALUE_PROC)
-      && ACCESS_SPEC_ACCESS (spec) == SEQUENTIAL)
-    {
-      set_diag_value (DIAG_OBJ_TYPE_QUERY_FULL_SCAN, 1, DIAG_VAL_SETTYPE_INC, err_buf);
-    }
-}
-
-extern int diag_long_query_time;
-extern bool diag_executediag;
-
-extern bool init_diag_mgr (const char *server_name, int num_thread, char *err_buf);
-extern void close_diag_mgr (void);
-extern bool set_diag_value (T_DIAG_OBJ_TYPE type, int value, T_DIAG_VALUE_SETTYPE settype, char *err_buf);
-#endif /* SERVER_MODE */
-#endif /* DIAG_DEVEL */
-
 STATIC_INLINE void
 perfmon_diff_timeval (struct timeval *elapsed, struct timeval *start, struct timeval *end)
 {
@@ -1536,6 +1451,7 @@ extern void perfmon_pbx_hold_acquire_time (THREAD_ENTRY * thread_p, int page_typ
 extern void perfmon_pbx_fix_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, int latch_mode,
 					  int cond_type, UINT64 amount);
 extern void perfmon_mvcc_snapshot (THREAD_ENTRY * thread_p, int snapshot, int rec_type, int visibility);
+extern void perfmon_db_flushed_block_volumes (THREAD_ENTRY * thread_p, int num_volumes);
 
 #endif /* SERVER_MODE || SA_MODE */
 

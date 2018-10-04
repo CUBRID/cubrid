@@ -74,5 +74,8 @@ extern int db_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, 
 extern int db_json_valid_dbval (const DB_VALUE * json, DB_VALUE * type_res);
 extern int db_json_length_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * res);
 extern int db_json_depth_dbval (DB_VALUE * json, DB_VALUE * res);
+extern int db_json_unquote_dbval (DB_VALUE * json, DB_VALUE * res);
+extern int db_json_pretty_dbval (DB_VALUE * json, DB_VALUE * res);
+extern int db_json_arrayagg_dbval (DB_VALUE * dbval, DB_VALUE * res);
 extern int db_least_or_greatest (DB_VALUE * arg1, DB_VALUE * arg2, DB_VALUE * result, bool least);
 #endif /* _ARITHMETIC_H_ */

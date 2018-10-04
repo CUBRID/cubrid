@@ -30,7 +30,11 @@
 #error Does not belong to server module
 #endif /* defined (SERVER_MODE) */
 
-extern int prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream);
+// forward definition
+struct compile_context;
+struct xasl_stream;
+
+extern int prepare_query (compile_context * context, xasl_stream * stream);
 extern int execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int var_cnt, const DB_VALUE * varptr,
 			  QFILE_LIST_ID ** list_idp, QUERY_FLAG flag, CACHE_TIME * clt_cache_time,
 			  CACHE_TIME * srv_cache_time);

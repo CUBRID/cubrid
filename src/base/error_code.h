@@ -1559,7 +1559,35 @@
 #define ER_JSON_RESERVED_ERROR_8                    -1213
 #define ER_JSON_RESERVED_ERROR_9                    -1214
 
-#define ER_LAST_ERROR                               -1215
+#define ER_STREAM_NO_MORE_DATA                      -1215
+#define ER_STREAM_UNPACKING_INV_OBJ_ID              -1216
+#define ER_STREAM_RESERVED_2                        -1217
+#define ER_STREAM_RESERVED_3                        -1218
+#define ER_STREAM_RESERVED_4                        -1219
+#define ER_STREAM_RESERVED_5                        -1220
+#define ER_STREAM_RESERVED_6                        -1221
+#define ER_STREAM_RESERVED_7                        -1222
+#define ER_STREAM_RESERVED_8                        -1223
+#define ER_STREAM_RESERVED_9                        -1224
+#define ER_STREAM_RESERVED_10                       -1225
+#define ER_STREAM_RESERVED_11                       -1226
+#define ER_STREAM_RESERVED_12                       -1227
+#define ER_STREAM_RESERVED_13                       -1228
+#define ER_STREAM_RESERVED_14                       -1229
+#define ER_STREAM_RESERVED_15                       -1230
+#define ER_STREAM_RESERVED_16                       -1231
+#define ER_STREAM_RESERVED_17                       -1232
+#define ER_STREAM_RESERVED_18                       -1233
+#define ER_STREAM_RESERVED_19                       -1234
+#define ER_STREAM_RESERVED_20                       -1235
+
+#define ER_DWB_DISABLED                             -1236
+
+#define ER_SM_INDEX_STATUS_CHANGE_NOT_ALLOWED       -1237
+#define ER_JSON_TABLE_ON_EMPTY_ERROR                -1238
+#define ER_JSON_TABLE_ON_ERROR_INCOMP_DOMAIN        -1239
+
+#define ER_LAST_ERROR                               -1240
 
 /*
  * CAUTION!

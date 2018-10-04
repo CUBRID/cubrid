@@ -257,6 +257,7 @@ extern LF_TRAN_SYSTEM global_unique_stats_Ts;
 extern LF_TRAN_SYSTEM hfid_table_Ts;
 extern LF_TRAN_SYSTEM xcache_Ts;
 extern LF_TRAN_SYSTEM fpcache_Ts;
+extern LF_TRAN_SYSTEM dwb_slots_Ts;
 
 extern int lf_initialize_transaction_systems (int max_threads);
 extern void lf_destroy_transaction_systems (void);
@@ -398,43 +399,6 @@ struct lf_hash_table_iterator
 extern void lf_hash_create_iterator (LF_HASH_TABLE_ITERATOR * iterator, LF_TRAN_ENTRY * tran_entry,
 				     LF_HASH_TABLE * table);
 extern void *lf_hash_iterate (LF_HASH_TABLE_ITERATOR * it);
-
-/*
- * Lock-free Circular Queue
- */
-
-/* Lock-free Circular Queue is actually an array of entries, where the last
- * entry in the array is considered as preceding the first entry in the array.
- * The two ends of the queue are stored (consume_cursor and produce_cursor).
- * New entries are "produced" at the end of the queue, while "consumers" will
- * pop entries from the consume_cursor of the queue.
- *
- * The queue has a fixed maximum capacity. When there is no more room for new
- * entries, the push function will return false.
- *
- * The size for entry data must be fixed.
- */
-typedef struct lock_free_circular_queue LOCK_FREE_CIRCULAR_QUEUE;
-struct lock_free_circular_queue
-{
-  char *data;
-  volatile UINT64 *entry_state;
-  int data_size;
-  volatile UINT64 consume_cursor;
-  volatile UINT64 produce_cursor;
-  UINT64 capacity;
-};
-
-extern bool lf_circular_queue_is_full (LOCK_FREE_CIRCULAR_QUEUE * queue);
-extern bool lf_circular_queue_is_empty (LOCK_FREE_CIRCULAR_QUEUE * queue);
-extern int lf_circular_queue_approx_size (LOCK_FREE_CIRCULAR_QUEUE * queue);
-extern bool lf_circular_queue_produce (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data);
-extern bool lf_circular_queue_consume (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data);
-extern void *lf_circular_queue_async_peek (LOCK_FREE_CIRCULAR_QUEUE * queue);
-extern bool lf_circular_queue_async_push_ahead (LOCK_FREE_CIRCULAR_QUEUE * queue, void *data);
-extern LOCK_FREE_CIRCULAR_QUEUE *lf_circular_queue_create (unsigned int capacity, int data_size);
-extern void lf_circular_queue_destroy (LOCK_FREE_CIRCULAR_QUEUE * queue);
-extern void lf_circular_queue_async_reset (LOCK_FREE_CIRCULAR_QUEUE * queue);
 
 /* lock free bitmap */
 extern int lf_bitmap_init (LF_BITMAP * bitmap, LF_BITMAP_STYLE style, int entries_cnt, float usage_threshold);

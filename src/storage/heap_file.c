@@ -60,11 +60,8 @@
 #if defined(ENABLE_SYSTEMTAP)
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
-#if defined (SA_MODE)
-#include "transaction_cl.h"	/* for interrupt */
-#endif /* defined (SA_MODE) */
-#include "thread.h"
 #include "dbtype.h"
+#include "thread_manager.hpp"	// for thread_get_thread_entry_info
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -1383,7 +1380,7 @@ heap_classrepr_initialize_cache (void)
       goto exit_on_error;
     }
   lock_entry = heap_Classrepr_cache.lock_table;
-  for (i = 0; i < thread_num_total_threads (); i++)
+  for (i = 0; i < (int) thread_num_total_threads (); i++)
     {
       OID_SET_NULL (&lock_entry[i].class_oid);
       lock_entry[i].lock_next = NULL;
@@ -4093,7 +4090,7 @@ heap_vpid_init_new (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args)
       return ER_FAILED;
     }
 
-  log_append_redo_data (thread_p, RVHF_NEWPAGE, &addr, recdes.length, recdes.data);
+  log_append_undoredo_data (thread_p, RVHF_NEWPAGE, &addr, 0, recdes.length, NULL, recdes.data);
   pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
   return NO_ERROR;
 }
@@ -8619,7 +8616,7 @@ heap_does_exist (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid)
 
   PGBUF_INIT_WATCHER (&pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
 
-  old_check_interrupt = thread_set_check_interrupt (thread_p, false);
+  old_check_interrupt = logtb_set_check_interrupt (thread_p, false);
   old_wait_msec = xlogtb_reset_wait_msecs (thread_p, LK_INFINITE_WAIT);
 
   if (HEAP_ISVALID_OID (thread_p, oid) != DISK_VALID)
@@ -8726,7 +8723,7 @@ exit_on_end:
       pgbuf_ordered_unfix (thread_p, &pg_watcher);
     }
 
-  (void) thread_set_check_interrupt (thread_p, old_check_interrupt);
+  (void) logtb_set_check_interrupt (thread_p, old_check_interrupt);
   (void) xlogtb_reset_wait_msecs (thread_p, old_wait_msec);
 
   return doesexist;
@@ -8743,7 +8740,7 @@ exit_on_end:
 bool
 heap_is_object_not_null (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid)
 {
-  bool old_check_interrupt = thread_set_check_interrupt (thread_p, false);
+  bool old_check_interrupt = logtb_set_check_interrupt (thread_p, false);
   bool doesexist = false;
   HEAP_SCANCACHE scan_cache;
   SCAN_CODE scan = S_SUCCESS;
@@ -8802,7 +8799,7 @@ heap_is_object_not_null (THREAD_ENTRY * thread_p, OID * class_oid, const OID * o
   doesexist = heap_does_exist (thread_p, oid_Root_class_oid, class_oid);
 
 exit_on_end:
-  (void) thread_set_check_interrupt (thread_p, old_check_interrupt);
+  (void) logtb_set_check_interrupt (thread_p, old_check_interrupt);
 
   if (is_scancache_started)
     {
@@ -16437,7 +16434,7 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
 
 	      free_and_init (classname);
 
-	      if (db_make_varchar (&key_val, DB_MAX_IDENTIFIER_LENGTH, serial_name, strlen (serial_name),
+	      if (db_make_varchar (&key_val, DB_MAX_IDENTIFIER_LENGTH, serial_name, (int) strlen (serial_name),
 				   LANG_SYS_CODESET, LANG_SYS_COLLATION) != NO_ERROR)
 		{
 		  ret = ER_FAILED;

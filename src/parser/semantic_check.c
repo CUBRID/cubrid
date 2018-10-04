@@ -911,11 +911,7 @@ pt_check_compatible_node_for_orderby (PARSER_CONTEXT * parser, PT_NODE * order, 
 
   if (PT_IS_DATE_TIME_TYPE (type1) && PT_IS_DATE_TIME_TYPE (type2))
     {
-      if ((type1 == PT_TYPE_TIME && type2 != PT_TYPE_TIME) || (type1 != PT_TYPE_TIME && type2 == PT_TYPE_TIME)
-	  || (type1 == PT_TYPE_TIMELTZ && type2 != PT_TYPE_TIMELTZ) || (type1 != PT_TYPE_TIMELTZ
-									&& type2 == PT_TYPE_TIMELTZ)
-	  || (type1 == PT_TYPE_TIMETZ && type2 != PT_TYPE_TIMETZ) || (type1 != PT_TYPE_TIMETZ
-								      && type2 == PT_TYPE_TIMETZ))
+      if ((type1 == PT_TYPE_TIME && type2 != PT_TYPE_TIME) || (type1 != PT_TYPE_TIME && type2 == PT_TYPE_TIME))
 	{
 	  return false;
 	}
@@ -1054,8 +1050,6 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 	case PT_TYPE_BIT:
 	case PT_TYPE_VARBIT:
 	case PT_TYPE_TIME:
-	case PT_TYPE_TIMELTZ:
-	case PT_TYPE_TIMETZ:
 	case PT_TYPE_SET:
 	case PT_TYPE_MULTISET:
 	case PT_TYPE_SEQUENCE:
@@ -1069,8 +1063,6 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
       break;
     case PT_TYPE_TIME:
-    case PT_TYPE_TIMELTZ:
-    case PT_TYPE_TIMETZ:
       switch (cast_type)
 	{
 	case PT_TYPE_INTEGER:
@@ -1192,8 +1184,6 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 	case PT_TYPE_NUMERIC:
 	case PT_TYPE_DATE:
 	case PT_TYPE_TIME:
-	case PT_TYPE_TIMELTZ:
-	case PT_TYPE_TIMETZ:
 	case PT_TYPE_TIMESTAMP:
 	case PT_TYPE_TIMESTAMPTZ:
 	case PT_TYPE_TIMESTAMPLTZ:
@@ -1236,8 +1226,6 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 	case PT_TYPE_VARBIT:
 	case PT_TYPE_DATE:
 	case PT_TYPE_TIME:
-	case PT_TYPE_TIMELTZ:
-	case PT_TYPE_TIMETZ:
 	case PT_TYPE_TIMESTAMP:
 	case PT_TYPE_TIMESTAMPTZ:
 	case PT_TYPE_TIMESTAMPLTZ:
@@ -5229,6 +5217,7 @@ pt_find_partition_column_count_func (PT_NODE * func, PT_NODE ** name_node)
     case F_JSON_KEYS:
     case F_JSON_REMOVE:
     case F_JSON_ARRAY_APPEND:
+    case F_JSON_ARRAY_INSERT:
     case F_JSON_MERGE:
     case F_JSON_GET_ALL_PATHS:
       break;
@@ -5437,7 +5426,6 @@ pt_find_partition_column_count (PT_NODE * expr, PT_NODE ** name_node)
     case PT_NEW_TIME:
     case PT_TO_DATETIME_TZ:
     case PT_TO_TIMESTAMP_TZ:
-    case PT_TO_TIME_TZ:
     case PT_UTC_TIMESTAMP:
     case PT_CONV_TZ:
       break;
@@ -5893,8 +5881,6 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 	case PT_TYPE_SMALLINT:
 	case PT_TYPE_DATE:
 	case PT_TYPE_TIME:
-	case PT_TYPE_TIMELTZ:
-	case PT_TYPE_TIMETZ:
 	case PT_TYPE_TIMESTAMP:
 	case PT_TYPE_TIMESTAMPTZ:
 	case PT_TYPE_TIMESTAMPLTZ:
@@ -5952,8 +5938,6 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 	case PT_TYPE_SMALLINT:
 	case PT_TYPE_DATE:
 	case PT_TYPE_TIME:
-	case PT_TYPE_TIMELTZ:
-	case PT_TYPE_TIMETZ:
 	case PT_TYPE_TIMESTAMP:
 	case PT_TYPE_TIMESTAMPTZ:
 	case PT_TYPE_TIMESTAMPLTZ:
@@ -7719,12 +7703,9 @@ pt_type_cast_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_NODE 
  * copy the default values from the original table
  *
  * NOTE: there are two ways attrs is constructed at this point:
- *  - stmt: create view (attr_list) as select... and the attrs will be created
- * directly from the statement
- *  - stmt: create view as select... and the attrs will be created from the
- * query's select list
- * In both cases, each attribute in attrs will correspond to the column in the
- * select list at the same index
+ *  - stmt: create view (attr_list) as select... and the attrs will be created directly from the statement
+ *  - stmt: create view as select... and the attrs will be created from the query's select list
+ * In both cases, each attribute in attrs will correspond to the column in the select list at the same index
  */
 static PT_NODE *
 pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_NODE * attrs)
@@ -7740,131 +7721,145 @@ pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_N
   int flag = 0;
   bool has_user_format;
 
-  /* Import default value from referenced table for those attributes in the the view that have no default value. */
+  /* Import default value and on update default expr from referenced table 
+   * for those attributes in the the view that don't have them. */
   for (attr = attrs, col = columns; attr && col; attr = attr->next, col = col->next)
     {
-      if (!attr->info.attr_def.data_default)
+      if (attr->info.attr_def.data_default != NULL && attr->info.attr_def.on_update != DB_DEFAULT_NONE)
 	{
-	  if (col->node_type == PT_NAME)
+	  /* default values are overwritten */
+	  continue;
+	}
+      if (col->node_type != PT_NAME)
+	{
+	  continue;
+	}
+      if (col->info.name.spec_id == 0)
+	{
+	  continue;
+	}
+
+      spec = (PT_NODE *) col->info.name.spec_id;
+      entity_name = spec->info.spec.entity_name;
+      if (entity_name == NULL || !PT_IS_NAME_NODE (entity_name))
+	{
+	  continue;
+	}
+
+      obj = entity_name->info.name.db_object;
+      if (obj == NULL)
+	{
+	  continue;
+	}
+
+      col_attr = db_get_attribute_force (obj, col->info.name.original);
+      if (col_attr == NULL)
+	{
+	  continue;
+	}
+
+      if (attr->info.attr_def.on_update == DB_DEFAULT_NONE)
+	{
+	  attr->info.attr_def.on_update = col_attr->on_update_default_expr;
+	}
+
+      if (attr->info.attr_def.data_default == NULL)
+	{
+	  if (DB_IS_NULL (&col_attr->default_value.value)
+	      && (col_attr->default_value.default_expr.default_expr_type == DB_DEFAULT_NONE))
 	    {
-	      /* found matching column */
-	      if (col->info.name.spec_id == 0)
+	      /* don't create any default node if default value is null unless default expression type is not
+	       * DB_DEFAULT_NONE */
+	      continue;
+	    }
+
+	  if (col_attr->default_value.default_expr.default_expr_type == DB_DEFAULT_NONE)
+	    {
+	      default_value = pt_dbval_to_value (parser, &col_attr->default_value.value);
+	      if (default_value == NULL)
 		{
-		  continue;
-		}
-	      spec = (PT_NODE *) col->info.name.spec_id;
-	      entity_name = spec->info.spec.entity_name;
-	      if (entity_name == NULL || !PT_IS_NAME_NODE (entity_name))
-		{
-		  continue;
-		}
-	      obj = entity_name->info.name.db_object;
-	      if (!obj)
-		{
-		  continue;
-		}
-	      col_attr = db_get_attribute_force (obj, col->info.name.original);
-	      if (!col_attr)
-		{
-		  continue;
+		  PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+		  goto error;
 		}
 
-	      if (DB_IS_NULL (&col_attr->default_value.value)
-		  && (col_attr->default_value.default_expr.default_expr_type == DB_DEFAULT_NONE))
+	      default_data = parser_new_node (parser, PT_DATA_DEFAULT);
+	      if (default_data == NULL)
 		{
-		  /* don't create any default node if default value is null unless default expression type is not
-		   * DB_DEFAULT_NONE */
-		  continue;
+		  parser_free_tree (parser, default_value);
+		  PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+		  goto error;
+		}
+	      default_data->info.data_default.default_value = default_value;
+	      default_data->info.data_default.shared = PT_DEFAULT;
+	      default_data->info.data_default.default_expr_type = DB_DEFAULT_NONE;
+	    }
+	  else
+	    {
+	      default_op_value = parser_new_node (parser, PT_EXPR);
+	      if (default_op_value == NULL)
+		{
+		  PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+		  goto error;
 		}
 
-	      if (col_attr->default_value.default_expr.default_expr_type == DB_DEFAULT_NONE)
-		{
-		  default_value = pt_dbval_to_value (parser, &col_attr->default_value.value);
-		  if (!default_value)
-		    {
-		      PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-		      goto error;
-		    }
+	      default_op_value->info.expr.op =
+		pt_op_type_from_default_expr_type (col_attr->default_value.default_expr.default_expr_type);
 
-		  default_data = parser_new_node (parser, PT_DATA_DEFAULT);
-		  if (!default_data)
-		    {
-		      parser_free_tree (parser, default_value);
-		      PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-		      goto error;
-		    }
-		  default_data->info.data_default.default_value = default_value;
-		  default_data->info.data_default.shared = PT_DEFAULT;
-		  default_data->info.data_default.default_expr_type = DB_DEFAULT_NONE;
+	      if (col_attr->default_value.default_expr.default_expr_op != T_TO_CHAR)
+		{
+		  default_value = default_op_value;
 		}
 	      else
 		{
-		  default_op_value = parser_new_node (parser, PT_EXPR);
-		  if (default_op_value != NULL)
+		  PT_NODE *arg1, *arg2, *arg3;
+
+		  arg1 = default_op_value;
+		  has_user_format = col_attr->default_value.default_expr.default_expr_format ? 1 : 0;
+		  arg2 = pt_make_string_value (parser, col_attr->default_value.default_expr.default_expr_format);
+		  if (arg2 == NULL)
 		    {
-		      default_op_value->info.expr.op =
-			pt_op_type_from_default_expr_type (col_attr->default_value.default_expr.default_expr_type);
-
-		      if (col_attr->default_value.default_expr.default_expr_op != T_TO_CHAR)
-			{
-			  default_value = default_op_value;
-			}
-		      else
-			{
-			  PT_NODE *arg1, *arg2, *arg3;
-			  arg1 = default_op_value;
-			  has_user_format = col_attr->default_value.default_expr.default_expr_format ? 1 : 0;
-			  arg2 = pt_make_string_value (parser,
-						       col_attr->default_value.default_expr.default_expr_format);
-			  if (arg2 == NULL)
-			    {
-			      parser_free_tree (parser, default_op_value);
-			      PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-			      goto error;
-			    }
-
-			  arg3 = parser_new_node (parser, PT_VALUE);
-			  if (arg3 == NULL)
-			    {
-			      parser_free_tree (parser, default_op_value);
-			      parser_free_tree (parser, arg2);
-			    }
-			  arg3->type_enum = PT_TYPE_INTEGER;
-			  lang_str = prm_get_string_value (PRM_ID_INTL_DATE_LANG);
-			  lang_set_flag_from_lang (lang_str, has_user_format, 0, &flag);
-			  arg3->info.value.data_value.i = (long) flag;
-
-			  default_value = parser_make_expression (parser, PT_TO_CHAR, arg1, arg2, arg3);
-			  if (default_value == NULL)
-			    {
-			      parser_free_tree (parser, default_op_value);
-			      parser_free_tree (parser, arg2);
-			      parser_free_tree (parser, arg3);
-			      PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-			      goto error;
-			    }
-			}
-		    }
-		  else
-		    {
+		      parser_free_tree (parser, default_op_value);
 		      PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
 		      goto error;
 		    }
 
-		  default_data = parser_new_node (parser, PT_DATA_DEFAULT);
-		  if (!default_data)
+		  arg3 = parser_new_node (parser, PT_VALUE);
+		  if (arg3 == NULL)
 		    {
-		      parser_free_tree (parser, default_value);
+		      parser_free_tree (parser, default_op_value);
+		      parser_free_tree (parser, arg2);
+		    }
+		  arg3->type_enum = PT_TYPE_INTEGER;
+		  lang_str = prm_get_string_value (PRM_ID_INTL_DATE_LANG);
+		  lang_set_flag_from_lang (lang_str, has_user_format, 0, &flag);
+		  arg3->info.value.data_value.i = (long) flag;
+
+		  default_value = parser_make_expression (parser, PT_TO_CHAR, arg1, arg2, arg3);
+		  if (default_value == NULL)
+		    {
+		      parser_free_tree (parser, default_op_value);
+		      parser_free_tree (parser, arg2);
+		      parser_free_tree (parser, arg3);
 		      PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
 		      goto error;
 		    }
-		  default_data->info.data_default.default_value = default_value;
-		  default_data->info.data_default.shared = PT_DEFAULT;
-		  default_data->info.data_default.default_expr_type =
-		    col_attr->default_value.default_expr.default_expr_type;
 		}
-	      attr->info.attr_def.data_default = default_data;
+
+	      default_data = parser_new_node (parser, PT_DATA_DEFAULT);
+	      if (default_data == NULL)
+		{
+		  parser_free_tree (parser, default_value);
+		  PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+		  goto error;
+		}
+
+	      default_data->info.data_default.default_value = default_value;
+	      default_data->info.data_default.shared = PT_DEFAULT;
+	      default_data->info.data_default.default_expr_type =
+		col_attr->default_value.default_expr.default_expr_type;
 	    }
+
+	  attr->info.attr_def.data_default = default_data;
 	}
     }
 
@@ -9797,7 +9792,7 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	      break;
 	    }
 
-	  if (entity->info.spec.derived_table != NULL)
+	  if (entity->info.spec.derived_table != NULL || PT_SPEC_IS_CTE (entity))
 	    {
 	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UPDATE_DERIVED_TABLE);
 	      break;
@@ -10012,6 +10007,16 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
       if (node)
 	{
 	  pt_coerce_insert_values (parser, node);
+	}
+      break;
+
+    case PT_JSON_TABLE:
+      if (node->info.json_table_info.expr->type_enum != PT_TYPE_JSON
+	  && node->info.json_table_info.expr->type_enum != PT_TYPE_CHAR)
+	{
+	  // todo: can this be improved to hint that we are talking about json_table's expression
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_WANT_TYPE,
+		      pt_show_type_enum (PT_TYPE_JSON));
 	}
       break;
 
@@ -10573,6 +10578,7 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 	      node->info.query.reexecute = 1;
 	      node->info.query.do_cache = 0;
 	      node->info.query.do_not_cache = 1;
+	      node->info.query.has_system_class = 1;
 	    }
 
 	  if (node->node_type == PT_UPDATE || node->node_type == PT_DELETE || node->node_type == PT_INSERT
@@ -15028,7 +15034,6 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *a
 	case PT_FROM_TZ:
 	case PT_TO_DATETIME_TZ:
 	case PT_TO_TIMESTAMP_TZ:
-	case PT_TO_TIME_TZ:
 	case PT_CONV_TZ:
 	  /* valid expression, nothing to do */
 	  break;
@@ -15148,6 +15153,7 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *a
 	case F_JSON_KEYS:
 	case F_JSON_REMOVE:
 	case F_JSON_ARRAY_APPEND:
+	case F_JSON_ARRAY_INSERT:
 	case F_JSON_MERGE:
 	case F_JSON_GET_ALL_PATHS:
 	  /* valid expression, nothing to do */

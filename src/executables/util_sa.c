@@ -69,6 +69,7 @@
 #endif
 
 #include "dbtype.h"
+#include "thread_manager.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -598,9 +599,9 @@ createdb (UTIL_FUNCTION_ARG * arg)
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
 
   db_login ("DBA", NULL);
-  status =
-    db_init (program_name, true, database_name, volume_path, NULL, log_path, lob_path, host_name, overwrite, comment,
-	     volume_spec_file_name, db_volume_pages, db_page_size, log_volume_pages, log_page_size, cubrid_charset);
+  status = db_init (program_name, true, database_name, volume_path, NULL, log_path, lob_path, host_name, overwrite,
+		    comment, volume_spec_file_name, db_volume_pages, db_page_size, log_volume_pages, log_page_size,
+		    cubrid_charset);
 
   if (status != NO_ERROR)
     {
@@ -1304,9 +1305,8 @@ copydb (UTIL_FUNCTION_ARG * arg)
 	  lob_path = strcpy (lob_pathbuf, s);
 	}
     }
-  if (boot_copy
-      (src_db_name, dest_db_name, db_path, log_path, lob_path, server_name, ext_path, control_file_name,
-       overwrite) != NO_ERROR)
+  if (boot_copy (src_db_name, dest_db_name, db_path, log_path, lob_path, server_name, ext_path, control_file_name,
+		 overwrite) != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       goto error_exit;
@@ -1441,6 +1441,7 @@ diagdb (UTIL_FUNCTION_ARG * arg)
   FILE *outfp = NULL;
   bool is_emergency = false;
   DIAGDUMP_TYPE diag;
+  THREAD_ENTRY *thread_p;
 
   db_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
   if (db_name == NULL)
@@ -1503,53 +1504,55 @@ diagdb (UTIL_FUNCTION_ARG * arg)
       goto print_diag_usage;
     }
 
+  thread_p = thread_get_thread_entry_info ();
+
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_FILE_TABLES)
     {
       /* this dumps the allocated file stats */
       fprintf (outfp, "\n*** DUMP OF FILE STATISTICS ***\n");
-      (void) file_tracker_dump (NULL, outfp);
+      (void) file_tracker_dump (thread_p, outfp);
     }
 
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_FILE_CAPACITIES)
     {
       /* this dumps the allocated file stats */
       fprintf (outfp, "\n*** DUMP OF FILE DESCRIPTIONS ***\n");
-      (void) file_tracker_dump_all_capacities (NULL, outfp);
+      (void) file_tracker_dump_all_capacities (thread_p, outfp);
     }
 
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_HEAP_CAPACITIES)
     {
       /* this dumps lower level info about capacity of all heaps */
       fprintf (outfp, "\n*** DUMP CAPACITY OF ALL HEAPS ***\n");
-      (void) file_tracker_dump_all_heap_capacities (NULL, outfp);
+      (void) file_tracker_dump_all_heap_capacities (thread_p, outfp);
     }
 
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_INDEX_CAPACITIES)
     {
       /* this dumps lower level info about capacity of all indices */
       fprintf (outfp, "\n*** DUMP CAPACITY OF ALL INDICES ***\n");
-      (void) file_tracker_dump_all_btree_capacities (NULL, outfp);
+      (void) file_tracker_dump_all_btree_capacities (thread_p, outfp);
     }
 
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_CLASSNAMES)
     {
       /* this dumps the known classnames */
       fprintf (outfp, "\n*** DUMP CLASSNAMES ***\n");
-      locator_dump_class_names (NULL, outfp);
+      locator_dump_class_names (thread_p, outfp);
     }
 
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_DISK_BITMAPS)
     {
       /* this dumps lower level info about the disk */
       fprintf (outfp, "\n*** DUMP OF DISK STATISTICS ***\n");
-      disk_dump_all (NULL, outfp);
+      disk_dump_all (thread_p, outfp);
     }
 
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_CATALOG)
     {
       /* this dumps the content of catalog */
       fprintf (outfp, "\n*** DUMP OF CATALOG ***\n");
-      catalog_dump (NULL, outfp, 1);
+      catalog_dump (thread_p, outfp, 1);
     }
 
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_LOG)
@@ -1614,7 +1617,7 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 	  goto print_diag_usage;
 	}
       fprintf (outfp, "\n*** DUMP OF LOG ***\n");
-      xlog_dump (NULL, outfp, isforward, start_logpageid, dump_npages, desired_tranid);
+      xlog_dump (thread_p, outfp, isforward, start_logpageid, dump_npages, desired_tranid);
     }
 
   if (diag == DIAGDUMP_ALL || diag == DIAGDUMP_HEAP)
@@ -1623,7 +1626,7 @@ diagdb (UTIL_FUNCTION_ARG * arg)
       /* this dumps the contents of all heaps */
       dump_records = utility_get_option_bool_value (arg_map, DIAG_DUMP_RECORDS_S);
       fprintf (outfp, "\n*** DUMP OF ALL HEAPS ***\n");
-      (void) file_tracker_dump_all_heap (NULL, outfp, dump_records);
+      (void) file_tracker_dump_all_heap (thread_p, outfp, dump_records);
     }
 
   db_shutdown ();
@@ -2718,6 +2721,7 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
   int part_tables_used = 0;
   int part_tables_alloced = 0;
   bool need_manual_sync = false;
+  THREAD_ENTRY *thread_p;
 
   assert (db_name != NULL);
   assert (db_obs_coll_cnt != NULL);
@@ -2726,13 +2730,15 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
   *db_obs_coll_cnt = 0;
   *new_sys_coll_cnt = 0;
 
+  thread_p = thread_get_thread_entry_info ();
+
   /* read all collations from DB : id, name, checksum */
-  db_status = catcls_get_db_collation (NULL, &db_collations, &db_coll_cnt);
+  db_status = catcls_get_db_collation (thread_p, &db_collations, &db_coll_cnt);
   if (db_status != NO_ERROR)
     {
       if (db_collations != NULL)
 	{
-	  db_private_free (NULL, db_collations);
+	  db_private_free (thread_p, db_collations);
 	}
       status = EXIT_FAILURE;
       goto exit;
@@ -3012,7 +3018,7 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 			    {
 			      vclass_names_alloced = 1 + DB_MAX_IDENTIFIER_LENGTH;
 			    }
-			  vclass_names = (char *) db_private_realloc (NULL, vclass_names, 2 * vclass_names_alloced);
+			  vclass_names = (char *) db_private_realloc (thread_p, vclass_names, 2 * vclass_names_alloced);
 
 			  if (vclass_names == NULL)
 			    {
@@ -3039,7 +3045,7 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 			    {
 			      part_tables_alloced = 1 + DB_MAX_IDENTIFIER_LENGTH;
 			    }
-			  part_tables = (char *) db_private_realloc (NULL, part_tables, 2 * part_tables_alloced);
+			  part_tables = (char *) db_private_realloc (thread_p, part_tables, 2 * part_tables_alloced);
 
 			  if (part_tables == NULL)
 			    {
@@ -3354,13 +3360,13 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 exit:
   if (vclass_names != NULL)
     {
-      db_private_free (NULL, vclass_names);
+      db_private_free (thread_p, vclass_names);
       vclass_names = NULL;
     }
 
   if (part_tables != NULL)
     {
-      db_private_free (NULL, part_tables);
+      db_private_free (thread_p, part_tables);
       part_tables = NULL;
     }
 
@@ -3377,7 +3383,7 @@ exit:
     }
   if (db_collations != NULL)
     {
-      db_private_free (NULL, db_collations);
+      db_private_free (thread_p, db_collations);
     }
 
   return status;
@@ -3895,13 +3901,12 @@ error_exit:
 int
 gen_tz (UTIL_FUNCTION_ARG * arg)
 {
-#define CHECKSUM_SIZE 32
   UTIL_ARG_MAP *arg_map = NULL;
   char *input_path = NULL;
   char *tz_gen_mode = NULL;
   TZ_GEN_TYPE tz_gen_type = TZ_GEN_TYPE_NEW;
   int exit_status = EXIT_SUCCESS;
-  char checksum[CHECKSUM_SIZE + 1];
+  char checksum[TZ_CHECKSUM_SIZE + 1];
   bool need_db_shutdown = false;
   bool er_inited = false;
   DB_INFO *dir = NULL;
@@ -3984,7 +3989,7 @@ gen_tz (UTIL_FUNCTION_ARG * arg)
   er_inited = true;
 
   memset (checksum, 0, sizeof (checksum));
-  if (timezone_compile_data (input_path, tz_gen_type, db_name, checksum) != NO_ERROR)
+  if (timezone_compile_data (input_path, tz_gen_type, db_name, NULL, checksum) != NO_ERROR)
     {
       exit_status = EXIT_FAILURE;
       goto exit;
@@ -4076,7 +4081,6 @@ print_gen_tz_usage:
   fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GEN_TZ, GEN_TZ_MSG_USAGE),
 	   basename (arg->argv0), basename (arg->argv0));
   return EXIT_FAILURE;
-#undef CHECKSUM_SIZE
 }
 
 /*

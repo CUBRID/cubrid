@@ -56,7 +56,6 @@
 #include "query_manager.h"
 #include "transaction_sr.h"
 #include "release_string.h"
-#include "thread.h"
 #include "critical_section.h"
 #include "statistics.h"
 #include "chartype.h"
@@ -75,6 +74,8 @@
 #include "object_primitive.h"
 #include "tz_support.h"
 #include "dbtype.h"
+#include "thread_manager.hpp"	// for thread_get_thread_entry_info
+#include "compile_context.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -86,8 +87,20 @@
 #define STATDUMP_BUF_SIZE (2 * 16 * 1024)
 #define QUERY_INFO_BUF_SIZE (2048 + STATDUMP_BUF_SIZE)
 
+#define NET_DEFER_END_QUERIES_MAX 10
+
 /* This file is only included in the server.  So set the on_server flag on */
 unsigned int db_on_server = 1;
+
+STATIC_INLINE TRAN_STATE stran_server_commit_internal (THREAD_ENTRY * thread_p, unsigned int rid, bool retain_lock,
+						       bool * should_conn_reset) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE TRAN_STATE stran_server_abort_internal (THREAD_ENTRY * thread_p, unsigned int rid, bool retain_lock,
+						      bool * should_conn_reset) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void stran_server_auto_commit_or_abort (THREAD_ENTRY * thread_p, unsigned int rid,
+						      QUERY_ID * p_end_queries, int n_query_ids, bool need_abort,
+						      bool has_updated, bool * end_query_allowed,
+						      TRAN_STATE * tran_state, bool * should_conn_reset)
+  __attribute__ ((ALWAYS_INLINE));
 
 static bool need_to_abort_tran (THREAD_ENTRY * thread_p, int *errid);
 static int server_capabilities (void);
@@ -100,6 +113,160 @@ static void event_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info
 static void event_log_many_ioreads (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, UINT64 * diff_stats);
 static void event_log_temp_expand_pages (THREAD_ENTRY * thread_p, EXECUTION_INFO * info);
 
+
+/*
+ * stran_server_commit_internal - commit transaction on server.
+ *
+ * return:
+ *
+ *   thread_p(in): thred entry.
+ *   rid(in): request id.
+ *   retain_lock(in): true, if retains lock.
+ *   should_conn_reset(out): reset on commit.
+ *
+ * NOTE: This function must be called at transaction commit.
+ */
+STATIC_INLINE TRAN_STATE
+stran_server_commit_internal (THREAD_ENTRY * thread_p, unsigned int rid, bool retain_lock, bool * should_conn_reset)
+{
+  bool has_updated;
+  TRAN_STATE state;
+
+  assert (should_conn_reset != NULL);
+  has_updated = logtb_has_updated (thread_p);
+
+  state = xtran_server_commit (thread_p, retain_lock);
+
+  net_cleanup_server_queues (rid);
+
+  if (state != TRAN_UNACTIVE_COMMITTED && state != TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)
+    {
+      /* Likely the commit failed.. somehow */
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  *should_conn_reset = xtran_should_connection_reset (thread_p, has_updated);
+
+  return state;
+}
+
+/*
+ * stran_server_abort_internal - abort transaction on server.
+ *
+ * return:
+ *
+ *   thread_p(in): thred entry.
+ *   rid(in): request id.
+ *   should_conn_reset(out): reset on commit.
+ *
+ * NOTE: This function must be called at transaction abort.
+ */
+STATIC_INLINE TRAN_STATE
+stran_server_abort_internal (THREAD_ENTRY * thread_p, unsigned int rid, bool * should_conn_reset)
+{
+  TRAN_STATE state;
+  bool has_updated;
+
+  has_updated = logtb_has_updated (thread_p);
+
+  state = xtran_server_abort (thread_p);
+
+  net_cleanup_server_queues (rid);
+
+  if (state != TRAN_UNACTIVE_ABORTED && state != TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS)
+    {
+      /* Likely the abort failed.. somehow */
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  *should_conn_reset = xtran_should_connection_reset (thread_p, has_updated);
+
+  return state;
+}
+
+/*
+ * stran_server_auto_commit_or_abort - do server-side auto-commit or abort
+ *
+ * return: nothing
+ *
+ *   thread_p(in): thread entry
+ *   rid(in): request id
+ *   p_end_queries(in): queries to end
+ *   n_query_ids(in): the number of queries to end
+ *   need_abort(in): true, if need to abort
+ *   has_updated(in):true, if has updated before abort
+ *   end_query_allowed(in/out): true, if end query is allowed
+ *   tran_state(in/out): transaction state
+ *   should_conn_reset(in/out): reset on commit
+ *
+ * Note: This function must be called only when the query is executed with commit, soon after query execution.
+ *       When we call this function, it is possible that transaction was aborted.
+ */
+STATIC_INLINE void
+stran_server_auto_commit_or_abort (THREAD_ENTRY * thread_p, unsigned int rid, QUERY_ID * p_end_queries,
+				   int n_query_ids, bool need_abort, bool has_updated, bool * end_query_allowed,
+				   TRAN_STATE * tran_state, bool * should_conn_reset)
+{
+  int error_code, all_error_code, i;
+
+  assert (tran_state != NULL && should_conn_reset != NULL && end_query_allowed != NULL);
+
+  *should_conn_reset = false;
+
+  if (*end_query_allowed == false)
+    {
+      er_log_debug (ARG_FILE_LINE, "stran_server_auto_commit_or_abort: active transaction.\n");
+      return;
+    }
+
+  /* We commit/abort transaction, after ending queries. */
+  all_error_code = NO_ERROR;
+  if ((*tran_state != TRAN_UNACTIVE_ABORTED) && (*tran_state != TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS))
+    {
+      /* If not already aborted, ends the queries. */
+      for (i = 0; i < n_query_ids; i++)
+	{
+	  if (p_end_queries[i] > 0)
+	    {
+	      error_code = xqmgr_end_query (thread_p, p_end_queries[i]);
+	      if (error_code != NO_ERROR)
+		{
+		  all_error_code = error_code;
+		  /* Continue to try to close as many queries as possible. */
+		}
+	    }
+	}
+    }
+
+  if (all_error_code != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+      *end_query_allowed = false;
+    }
+  else if (need_abort == false)
+    {
+      /* Needs commit. */
+      *tran_state = stran_server_commit_internal (thread_p, rid, false, should_conn_reset);
+      er_log_debug (ARG_FILE_LINE, "stran_server_auto_commit_or_abort: transaction committed. \n");
+    }
+  else
+    {
+      /* Needs abort. */
+      if ((*tran_state != TRAN_UNACTIVE_ABORTED) && (*tran_state != TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS))
+	{
+	  /* We have an error and the transaction was not aborted. Since is auto commit transaction, we can abort it.
+	   * In this way, we can avoid abort request.
+	   */
+	  *tran_state = stran_server_abort_internal (thread_p, rid, should_conn_reset);
+	  er_log_debug (ARG_FILE_LINE, "stran_server_auto_commit_or_abort: transaction aborted. \n");
+	}
+      else
+	{
+	  /* Transaction was already aborted. */
+	  *should_conn_reset = xtran_should_connection_reset (thread_p, has_updated);
+	}
+    }
+}
 
 /*
  * need_to_abort_tran - check whether the transaction should be aborted
@@ -148,13 +315,13 @@ need_to_abort_tran (THREAD_ENTRY * thread_p, int *errid)
 /*
  * return_error_to_client -
  *
- * return:
+ * return: state of operation
  *
  *   rid(in):
  *
  * NOTE:
  */
-void
+TRAN_STATE
 return_error_to_client (THREAD_ENTRY * thread_p, unsigned int rid)
 {
   LOG_TDES *tdes;
@@ -164,6 +331,7 @@ return_error_to_client (THREAD_ENTRY * thread_p, unsigned int rid)
   OR_ALIGNED_BUF (1024) a_buffer;
   char *buffer;
   int length = 1024;
+  TRAN_STATE tran_state = TRAN_UNACTIVE_UNKNOWN;
 
   CSS_CONN_ENTRY *conn;
 
@@ -173,6 +341,10 @@ return_error_to_client (THREAD_ENTRY * thread_p, unsigned int rid)
   assert (conn != NULL);
 
   tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  if (tdes != NULL)
+    {
+      tran_state = tdes->state;
+    }
   flag_abort = need_to_abort_tran (thread_p, &errid);
 
   /* check some errors which require special actions */
@@ -187,7 +359,7 @@ return_error_to_client (THREAD_ENTRY * thread_p, unsigned int rid)
     {
       /* need to hide the previous error, ER_LK_UNILATERALLY_ABORTED to rollback the current transaction. */
       er_stack_push ();
-      tran_server_unilaterally_abort_tran (thread_p);
+      tran_state = tran_server_unilaterally_abort_tran (thread_p);
       er_stack_pop ();
     }
 
@@ -209,6 +381,8 @@ return_error_to_client (THREAD_ENTRY * thread_p, unsigned int rid)
     {
       tdes->tran_abort_reason = TRAN_NORMAL;
     }
+
+  return tran_state;
 }
 
 /*
@@ -380,7 +554,7 @@ server_ping_with_handshake (THREAD_ENTRY * thread_p, unsigned int rid, char *req
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DIFFERENT_BIT_PLATFORM, 2, rel_bit_platform (),
 	      client_bit_platform);
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
       status = CSS_UNPLANNED_SHUTDOWN;
     }
 
@@ -388,7 +562,7 @@ server_ping_with_handshake (THREAD_ENTRY * thread_p, unsigned int rid, char *req
   if (client_release == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_HAND_SHAKE, 1, client_host);
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
       status = CSS_UNPLANNED_SHUTDOWN;
     }
 
@@ -402,12 +576,12 @@ server_ping_with_handshake (THREAD_ENTRY * thread_p, unsigned int rid, char *req
 				 &compat, client_host) != client_capabilities)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_HAND_SHAKE, 1, client_host);
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
   if (compat == REL_NOT_COMPATIBLE)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DIFFERENT_RELEASE, 2, server_release, client_release);
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
       status = CSS_UNPLANNED_SHUTDOWN;
     }
 
@@ -415,7 +589,7 @@ server_ping_with_handshake (THREAD_ENTRY * thread_p, unsigned int rid, char *req
   if (css_increment_num_conn ((BOOT_CLIENT_TYPE) client_type) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CLIENTS_EXCEEDED, 1, NUM_NORMAL_TRANS);
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
       status = CSS_UNPLANNED_SHUTDOWN;
     }
   else
@@ -483,7 +657,7 @@ slocator_fetch (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int re
 
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   if (copy_area != NULL)
@@ -560,7 +734,7 @@ slocator_get_class (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
   success = xlocator_get_class (thread_p, &class_oid, class_chn, &oid, lock, prefetching, &copy_area);
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   if (copy_area != NULL)
@@ -645,7 +819,7 @@ slocator_fetch_all (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   if (copy_area != NULL)
@@ -734,7 +908,7 @@ slocator_does_exist (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 
   if (doesexist == LC_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   if (copy_area != NULL)
@@ -802,7 +976,7 @@ slocator_notify_isolation_incons (THREAD_ENTRY * thread_p, unsigned int rid, cha
   success = xlocator_notify_isolation_incons (thread_p, &copy_area);
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   if (copy_area != NULL)
@@ -936,7 +1110,7 @@ slocator_repl_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 
 	  if (success != NO_ERROR && success != ER_LC_PARTIALLY_FAILED_TO_FLUSH)
 	    {
-	      return_error_to_client (thread_p, rid);
+	      (void) return_error_to_client (thread_p, rid);
 	    }
 
 	  css_send_reply_and_2_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply),
@@ -1066,7 +1240,7 @@ slocator_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int re
 
 	  if (success != NO_ERROR && success != ER_LC_PARTIALLY_FAILED_TO_FLUSH)
 	    {
-	      return_error_to_client (thread_p, rid);
+	      (void) return_error_to_client (thread_p, rid);
 	    }
 
 	  css_send_reply_and_2_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply),
@@ -1137,7 +1311,7 @@ slocator_fetch_lockset (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
   if ((lockset == NULL) || (lockset->length <= 0))
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
       ptr = or_pack_int (reply, 0);
       ptr = or_pack_int (ptr, 0);
       ptr = or_pack_int (ptr, 0);
@@ -1158,7 +1332,7 @@ slocator_fetch_lockset (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
       if (success != NO_ERROR)
 	{
-	  return_error_to_client (thread_p, rid);
+	  (void) return_error_to_client (thread_p, rid);
 	}
 
       if (copy_area != NULL)
@@ -1270,7 +1444,7 @@ slocator_fetch_all_reference_lockset (THREAD_ENTRY * thread_p, unsigned int rid,
 
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   if (lockset != NULL && lockset->length > 0)
@@ -1282,7 +1456,7 @@ slocator_fetch_all_reference_lockset (THREAD_ENTRY * thread_p, unsigned int rid,
 
       if (!packed)
 	{
-	  return_error_to_client (thread_p, rid);
+	  (void) return_error_to_client (thread_p, rid);
 	  success = ER_FAILED;
 	}
     }
@@ -1363,7 +1537,7 @@ slocator_find_class_oid (THREAD_ENTRY * thread_p, unsigned int rid, char *reques
 
   if (found == LC_CLASSNAME_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   ptr = or_pack_int (reply, found);
@@ -1414,7 +1588,7 @@ slocator_reserve_classnames (THREAD_ENTRY * thread_p, unsigned int rid, char *re
 
   if (reserved == LC_CLASSNAME_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   (void) or_pack_int (reply, reserved);
@@ -1452,7 +1626,7 @@ slocator_get_reserved_class_name_oid (THREAD_ENTRY * thread_p, unsigned int rid,
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
   else
     {
@@ -1486,7 +1660,7 @@ slocator_delete_class_name (THREAD_ENTRY * thread_p, unsigned int rid, char *req
   deleted = xlocator_delete_class_name (thread_p, classname);
   if (deleted == LC_CLASSNAME_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   (void) or_pack_int (reply, deleted);
@@ -1521,7 +1695,7 @@ slocator_rename_class_name (THREAD_ENTRY * thread_p, unsigned int rid, char *req
   renamed = xlocator_rename_class_name (thread_p, oldname, newname, &class_oid);
   if (renamed == LC_CLASSNAME_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   (void) or_pack_int (reply, renamed);
@@ -1560,7 +1734,7 @@ slocator_assign_oid (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	     ? NO_ERROR : ER_FAILED);
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   ptr = or_pack_int (reply, success);
@@ -1596,7 +1770,7 @@ sqst_server_get_statistics (THREAD_ENTRY * thread_p, unsigned int rid, char *req
   buffer = xstats_get_statistics_from_server (thread_p, &classoid, timestamp, &buffer_length);
   if (buffer == NULL && buffer_length < 0)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
       buffer_length = 0;
     }
 
@@ -1764,7 +1938,7 @@ slogtb_reset_isolation (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
   if (error_code != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   (void) or_pack_int (reply, error_code);
@@ -1910,7 +2084,7 @@ slog_add_lob_locator (THREAD_ENTRY * thread_p, unsigned int rid, char *request, 
   error = xlog_add_lob_locator (thread_p, locator, state);
   if (error != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   or_pack_int (reply, error);
@@ -1946,7 +2120,7 @@ slog_change_state_of_locator (THREAD_ENTRY * thread_p, unsigned int rid, char *r
   error = xlog_change_state_of_locator (thread_p, locator, new_locator, state);
   if (error != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   or_pack_int (reply, error);
@@ -1978,7 +2152,7 @@ slog_drop_lob_locator (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   error = xlog_drop_lob_locator (thread_p, locator);
   if (error != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   or_pack_int (reply, error);
@@ -2006,7 +2180,7 @@ sacl_reload (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqle
   error = xacl_reload (thread_p);
   if (error != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   (void) or_pack_errcode (reply, error);
@@ -2198,7 +2372,7 @@ shf_create (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen
   error = xheap_create (thread_p, &hfid, &class_oid, (bool) reuse_oid);
   if (error != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   ptr = or_pack_errcode (reply, error);
@@ -2231,7 +2405,7 @@ shf_destroy (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqle
   error = xheap_destroy (thread_p, &hfid, NULL);
   if (error != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   (void) or_pack_errcode (reply, error);
@@ -2266,7 +2440,7 @@ shf_destroy_when_new (THREAD_ENTRY * thread_p, unsigned int rid, char *request, 
   error = xheap_destroy_newly_created (thread_p, &hfid, &class_oid);
   if (error != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   (void) or_pack_errcode (reply, error);
@@ -2307,7 +2481,7 @@ shf_heap_reclaim_addresses (THREAD_ENTRY * thread_p, unsigned int rid, char *req
   error = xheap_reclaim_addresses (thread_p, &hfid);
   if (error != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   (void) or_pack_errcode (reply, error);
@@ -2335,14 +2509,10 @@ stran_server_commit (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 {
   TRAN_STATE state;
   int xretain_lock;
-  bool retain_lock, reset_on_commit = false;
+  bool retain_lock, should_conn_reset = false;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr;
-  HA_SERVER_STATE ha_state;
-  int client_type;
-  char *hostname;
-  bool has_updated;
   int row_count = DB_ROW_COUNT_NOT_SET;
   int n_query_ids = 0, i = 0;
   QUERY_ID query_id;
@@ -2361,84 +2531,15 @@ stran_server_commit (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	}
     }
 
-
   retain_lock = (bool) xretain_lock;
-
-  has_updated = logtb_has_updated (thread_p);
 
   /* set row count */
   xsession_set_row_count (thread_p, row_count);
 
-  state = xtran_server_commit (thread_p, retain_lock);
-
-  net_cleanup_server_queues (rid);
-
-  if (state != TRAN_UNACTIVE_COMMITTED && state != TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)
-    {
-      /* Likely the commit failed.. somehow */
-      return_error_to_client (thread_p, rid);
-    }
+  state = stran_server_commit_internal (thread_p, rid, retain_lock, &should_conn_reset);
 
   ptr = or_pack_int (reply, (int) state);
-  client_type = logtb_find_current_client_type (thread_p);
-  hostname = logtb_find_current_client_hostname (thread_p);
-  ha_state = css_ha_server_state ();
-  if (has_updated && ha_state == HA_SERVER_STATE_TO_BE_STANDBY && BOOT_NORMAL_CLIENT_TYPE (client_type))
-    {
-      reset_on_commit = true;
-      er_log_debug (ARG_FILE_LINE,
-		    "stran_server_commit(): " "(has_updated && to-be-standby && normal client) "
-		    "DB_CONNECTION_STATUS_RESET\n");
-    }
-  else if (ha_state == HA_SERVER_STATE_STANDBY)
-    {
-      /* be aware that the order of if conditions is important */
-      if (BOOT_CSQL_CLIENT_TYPE (client_type))
-	{
-	  thread_p->conn_entry->reset_on_commit = false;
-	}
-      else if (client_type == BOOT_CLIENT_BROKER)
-	{
-	  reset_on_commit = true;
-	  er_log_debug (ARG_FILE_LINE,
-			"stran_server_commit(): " "(standby && read-write broker) " "DB_CONNECTION_STATUS_RESET\n");
-	}
-      else if (BOOT_NORMAL_CLIENT_TYPE (client_type) && thread_p->conn_entry->reset_on_commit == true)
-	{
-	  reset_on_commit = true;
-	  thread_p->conn_entry->reset_on_commit = false;
-	  er_log_debug (ARG_FILE_LINE,
-			"stran_server_commit: " "(standby && conn->reset_on_commit && normal client) "
-			"DB_CONNECTION_STATUS_RESET\n");
-	}
-      else if (BOOT_BROKER_AND_DEFAULT_CLIENT_TYPE (client_type) && css_is_ha_repl_delayed () == true)
-	{
-	  if (thread_p->conn_entry->ignore_repl_delay == false)
-	    {
-	      reset_on_commit = true;
-	      er_log_debug (ARG_FILE_LINE,
-			    "stran_server_commit: " "(standby && replication delay " "&& broker and default client) "
-			    "DB_CONNECTION_STATUS_RESET\n");
-	    }
-	  thread_p->conn_entry->reset_on_commit = false;
-	}
-    }
-  else if (ha_state == HA_SERVER_STATE_ACTIVE && client_type == BOOT_CLIENT_SLAVE_ONLY_BROKER)
-    {
-      reset_on_commit = true;
-      er_log_debug (ARG_FILE_LINE,
-		    "stran_server_commit(): " "(active && slave only broker) " "DB_CONNECTION_STATUS_RESET\n");
-    }
-  else if (ha_state == HA_SERVER_STATE_MAINTENANCE
-	   && !BOOT_IS_ALLOWED_CLIENT_TYPE_IN_MT_MODE (hostname, boot_Host_name, client_type))
-    {
-      reset_on_commit = true;
-      er_log_debug (ARG_FILE_LINE,
-		    "stran_server_commit(): " "(maintenance && remote normal client type) "
-		    "DB_CONNECTION_STATUS_RESET\n");
-    }
-
-  ptr = or_pack_int (ptr, (int) reset_on_commit);
+  ptr = or_pack_int (ptr, (int) should_conn_reset);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
@@ -2458,88 +2559,17 @@ void
 stran_server_abort (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   TRAN_STATE state;
-  int reset_on_commit = false;
+  bool should_conn_reset = false, has_updated;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr;
-  HA_SERVER_STATE ha_state;
-  int client_type;
-  char *hostname;
-  bool has_updated;
 
   has_updated = logtb_has_updated (thread_p);
 
-  state = xtran_server_abort (thread_p);
-
-  net_cleanup_server_queues (rid);
-
-  if (state != TRAN_UNACTIVE_ABORTED && state != TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS)
-    {
-      /* Likely the abort failed.. somehow */
-      return_error_to_client (thread_p, rid);
-    }
+  state = stran_server_abort_internal (thread_p, rid, &should_conn_reset);
 
   ptr = or_pack_int (reply, state);
-  client_type = logtb_find_current_client_type (thread_p);
-  hostname = logtb_find_current_client_hostname (thread_p);
-  ha_state = css_ha_server_state ();
-  if (has_updated && ha_state == HA_SERVER_STATE_TO_BE_STANDBY && BOOT_NORMAL_CLIENT_TYPE (client_type))
-    {
-      reset_on_commit = true;
-      er_log_debug (ARG_FILE_LINE,
-		    "stran_server_abort(): " "(has_updated && to-be-standby && normal client) "
-		    "DB_CONNECTION_STATUS_RESET\n");
-    }
-  else if (ha_state == HA_SERVER_STATE_STANDBY)
-    {
-      /* be aware that the order of if conditions is important */
-      if (BOOT_CSQL_CLIENT_TYPE (client_type))
-	{
-	  thread_p->conn_entry->reset_on_commit = false;
-	}
-      else if (client_type == BOOT_CLIENT_BROKER)
-	{
-	  reset_on_commit = true;
-	  er_log_debug (ARG_FILE_LINE,
-			"stran_server_abort(): " "(standby && read-write broker) " "DB_CONNECTION_STATUS_RESET\n");
-	}
-      else if (BOOT_NORMAL_CLIENT_TYPE (client_type) && thread_p->conn_entry->reset_on_commit == true)
-	{
-	  reset_on_commit = true;
-	  thread_p->conn_entry->reset_on_commit = false;
-	  er_log_debug (ARG_FILE_LINE,
-			"stran_server_abort(): " "(standby && conn->reset_on_commit && normal client) "
-			"DB_CONNECTION_STATUS_RESET\n");
-
-	}
-      else if (BOOT_BROKER_AND_DEFAULT_CLIENT_TYPE (client_type) && css_is_ha_repl_delayed () == true)
-	{
-	  if (thread_p->conn_entry->ignore_repl_delay == false)
-	    {
-	      reset_on_commit = true;
-	      er_log_debug (ARG_FILE_LINE,
-			    "stran_server_abort(): " "(standby && replication delay " "&& default and broker client) "
-			    "DB_CONNECTION_STATUS_RESET\n");
-	    }
-	  thread_p->conn_entry->reset_on_commit = false;
-	}
-    }
-  else if (ha_state == HA_SERVER_STATE_ACTIVE && client_type == BOOT_CLIENT_SLAVE_ONLY_BROKER)
-    {
-      reset_on_commit = true;
-      er_log_debug (ARG_FILE_LINE,
-		    "stran_server_abort(): " "(active && slave only broker) " "DB_CONNECTION_STATUS_RESET\n");
-    }
-  else if (ha_state == HA_SERVER_STATE_MAINTENANCE
-	   && !BOOT_IS_ALLOWED_CLIENT_TYPE_IN_MT_MODE (hostname, boot_Host_name, client_type))
-    {
-      reset_on_commit = true;
-      er_log_debug (ARG_FILE_LINE,
-		    "stran_server_abort(): " "(maintenance && remote normal client type) "
-		    "DB_CONNECTION_STATUS_RESET\n");
-    }
-
-  ptr = or_pack_int (ptr, (int) reset_on_commit);
+  ptr = or_pack_int (ptr, (int) should_conn_reset);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
@@ -2590,7 +2620,7 @@ stran_server_start_topop (THREAD_ENTRY * thread_p, unsigned int rid, char *reque
   success = (xtran_server_start_topop (thread_p, &topop_lsa) == NO_ERROR) ? NO_ERROR : ER_FAILED;
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   ptr = or_pack_int (reply, success);
@@ -2656,7 +2686,7 @@ stran_server_savepoint (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   success = (xtran_server_savepoint (thread_p, savept_name, &topop_lsa) == NO_ERROR) ? NO_ERROR : ER_FAILED;
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   ptr = or_pack_int (reply, success);
@@ -2691,7 +2721,7 @@ stran_server_partial_abort (THREAD_ENTRY * thread_p, unsigned int rid, char *req
   if (state != TRAN_UNACTIVE_ABORTED)
     {
       /* Likely the abort failed.. somehow */
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   ptr = or_pack_int (reply, (int) state);
@@ -2807,7 +2837,7 @@ stran_server_set_global_tran_info (THREAD_ENTRY * thread_p, unsigned int rid, ch
   success = (xtran_server_set_global_tran_info (thread_p, gtrid, info, size) == NO_ERROR) ? NO_ERROR : ER_FAILED;
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   (void) or_pack_int (reply, success);
@@ -2853,7 +2883,7 @@ stran_server_get_global_tran_info (THREAD_ENTRY * thread_p, unsigned int rid, ch
   success = (xtran_server_get_global_tran_info (thread_p, gtrid, buffer, size) == NO_ERROR) ? NO_ERROR : ER_FAILED;
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
       size = 0;
     }
 
@@ -2885,7 +2915,7 @@ stran_server_2pc_start (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   gtrid = xtran_server_2pc_start (thread_p);
   if (gtrid < 0)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   (void) or_pack_int (reply, gtrid);
@@ -2914,7 +2944,7 @@ stran_server_2pc_prepare (THREAD_ENTRY * thread_p, unsigned int rid, char *reque
   if (state != TRAN_UNACTIVE_2PC_PREPARE && state != TRAN_UNACTIVE_COMMITTED)
     {
       /* the prepare failed. */
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   (void) or_pack_int (reply, state);
@@ -2951,7 +2981,7 @@ stran_server_2pc_recovery_prepared (THREAD_ENTRY * thread_p, unsigned int rid, c
   count = xtran_server_2pc_recovery_prepared (thread_p, gtrids, size);
   if (count < 0 || count > size)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   reply_size = OR_INT_SIZE + (OR_INT_SIZE * size);
@@ -2998,7 +3028,7 @@ stran_server_2pc_attach_global_tran (THREAD_ENTRY * thread_p, unsigned int rid, 
   tran_index = xtran_server_2pc_attach_global_tran (thread_p, gtrid);
   if (tran_index == NULL_TRAN_INDEX)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   (void) or_pack_int (reply, tran_index);
@@ -3030,7 +3060,7 @@ stran_server_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, unsigned int rid,
   if (state != TRAN_UNACTIVE_2PC_PREPARE && state != TRAN_UNACTIVE_COMMITTED)
     {
       /* Likely the prepare failed.. somehow */
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   (void) or_pack_int (reply, state);
@@ -3064,7 +3094,7 @@ stran_lock_rep_read (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   ptr = or_pack_int (reply, success);
@@ -3137,7 +3167,7 @@ sboot_initialize_server (THREAD_ENTRY * thread_p, unsigned int rid, char *reques
 			     client_lock_wait, client_isolation);
   if (tran_index == NULL_TRAN_INDEX)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   ptr = or_pack_int (reply, tran_index);
@@ -3193,18 +3223,11 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   ptr = or_unpack_int (ptr, &xint);
   client_isolation = (TRAN_ISOLATION) xint;
 
-#if defined(DIAG_DEVEL) && defined(SERVER_MODE)
-  perfmon_diag_set_value (diag_executediag, DIAG_OBJ_TYPE_CONN_CONN_REQ, 1, DIAG_VAL_SETTYPE_INC, NULL);
-#endif
-
   tran_index = xboot_register_client (thread_p, &client_credential, client_lock_wait, client_isolation, &tran_state,
 				      &server_credential);
   if (tran_index == NULL_TRAN_INDEX)
     {
-#if defined(DIAG_DEVEL) && defined(SERVER_MODE)
-      perfmon_diag_set_value (diag_executediag, DIAG_OBJ_TYPE_CONN_CONN_REJECT, 1, DIAG_VAL_SETTYPE_INC, NULL);
-#endif
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
       area = NULL;
       area_size = 0;
     }
@@ -3228,7 +3251,7 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
       area = (char *) db_private_alloc (thread_p, area_size);
       if (area == NULL)
 	{
-	  return_error_to_client (thread_p, rid);
+	  (void) return_error_to_client (thread_p, rid);
 	  area_size = 0;
 	}
       else
@@ -3356,7 +3379,7 @@ sboot_backup (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reql
 
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   /* 
@@ -3409,7 +3432,7 @@ sboot_add_volume_extension (THREAD_ENTRY * thread_p, unsigned int rid, char *req
 
   if (volid == NULL_VOLID)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   (void) or_pack_int (reply, (int) volid);
@@ -3467,7 +3490,7 @@ sboot_check_db_consistency (THREAD_ENTRY * thread_p, unsigned int rid, char *req
 
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
 function_exit:
@@ -3600,7 +3623,7 @@ sboot_change_ha_mode (THREAD_ENTRY * thread_p, unsigned int rid, char *request, 
       if (css_change_ha_server_state (thread_p, state, force, timeout, false) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_FROM_SERVER, 1, "Cannot change server HA mode");
-	  return_error_to_client (thread_p, rid);
+	  (void) return_error_to_client (thread_p, rid);
 	}
       else
 	{
@@ -3640,7 +3663,7 @@ sboot_notify_ha_log_applier_state (THREAD_ENTRY * thread_p, unsigned int rid, ch
       if (status != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_FROM_SERVER, 1, "Error in log applier state");
-	  return_error_to_client (thread_p, rid);
+	  (void) return_error_to_client (thread_p, rid);
 	}
     }
   else
@@ -3677,7 +3700,7 @@ sqst_update_statistics (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   error = xstats_update_statistics (thread_p, &classoid, (with_fullscan ? STATS_WITH_FULLSCAN : STATS_WITH_SAMPLING));
   if (error != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   (void) or_pack_errcode (reply, error);
@@ -3708,7 +3731,7 @@ sqst_update_all_statistics (THREAD_ENTRY * thread_p, unsigned int rid, char *req
   error = xstats_update_all_statistics (thread_p, (with_fullscan ? STATS_WITH_FULLSCAN : STATS_WITH_SAMPLING));
   if (error != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   (void) or_pack_errcode (reply, error);
@@ -3747,7 +3770,7 @@ sbtree_add_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
   return_btid = xbtree_add_index (thread_p, &btid, key_type, &class_oid, attr_id, unique_pk, 0, 0, 0);
   if (return_btid == NULL)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
       ptr = or_pack_int (reply, er_errid ());
     }
   else
@@ -3792,6 +3815,7 @@ sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int
   int index_info_type;
   char *expr_stream = NULL;
   int csserror;
+  int index_status = 0;
 
   ptr = or_unpack_btid (request, &btid);
   ptr = or_unpack_string_nocopy (ptr, &bt_name);
@@ -3803,14 +3827,14 @@ sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int
   ptr = or_unpack_oid_array (ptr, n_classes, &class_oids);
   if (ptr == NULL)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
       goto end;
     }
 
   ptr = or_unpack_int_array (ptr, (n_classes * n_attrs), &attr_ids);
   if (ptr == NULL)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
       goto end;
     }
 
@@ -3819,7 +3843,7 @@ sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int
       ptr = or_unpack_int_array (ptr, n_attrs, &attr_prefix_lengths);
       if (ptr == NULL)
 	{
-	  return_error_to_client (thread_p, rid);
+	  (void) return_error_to_client (thread_p, rid);
 	  goto end;
 	}
     }
@@ -3827,7 +3851,7 @@ sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int
   ptr = or_unpack_hfid_array (ptr, n_classes, &hfids);
   if (ptr == NULL)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
       goto end;
     }
 
@@ -3875,14 +3899,27 @@ sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int
       break;
     }
 
-  return_btid =
-    xbtree_load_index (thread_p, &btid, bt_name, key_type, class_oids, n_classes, n_attrs, attr_ids,
-		       attr_prefix_lengths, hfids, unique_pk, not_null_flag, &fk_refcls_oid, &fk_refcls_pk_btid,
-		       fk_name, pred_stream, pred_stream_size, expr_stream, expr_stream_size, func_col_id,
-		       func_attr_index_start);
+  ptr = or_unpack_int (ptr, &index_status);	/* Get index status. */
+
+  if (index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+    {
+      return_btid =
+	xbtree_load_online_index (thread_p, &btid, bt_name, key_type, class_oids, n_classes, n_attrs, attr_ids,
+				  attr_prefix_lengths, hfids, unique_pk, not_null_flag, &fk_refcls_oid,
+				  &fk_refcls_pk_btid, fk_name, pred_stream, pred_stream_size, expr_stream,
+				  expr_stream_size, func_col_id, func_attr_index_start);
+    }
+  else
+    {
+      return_btid =
+	xbtree_load_index (thread_p, &btid, bt_name, key_type, class_oids, n_classes, n_attrs, attr_ids,
+			   attr_prefix_lengths, hfids, unique_pk, not_null_flag, &fk_refcls_oid, &fk_refcls_pk_btid,
+			   fk_name, pred_stream, pred_stream_size, expr_stream, expr_stream_size, func_col_id,
+			   func_attr_index_start);
+    }
   if (return_btid == NULL)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
 end:
@@ -3953,7 +3990,7 @@ sbtree_delete_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   success = (xbtree_delete_index (thread_p, &btid) == NO_ERROR) ? NO_ERROR : ER_FAILED;
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   (void) or_pack_int (reply, (int) success);
@@ -3989,7 +4026,7 @@ slocator_remove_class_from_index (THREAD_ENTRY * thread_p, unsigned int rid, cha
   success = (xlocator_remove_class_from_index (thread_p, &oid, &btid, &hfid) == NO_ERROR) ? NO_ERROR : ER_FAILED;
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   (void) or_pack_int (reply, (int) success);
@@ -4034,7 +4071,7 @@ sbtree_find_unique_internal (THREAD_ENTRY * thread_p, unsigned int rid, char *re
   success = xbtree_find_unique (thread_p, &btid, S_SELECT_WITH_LOCK, &key, &class_oid, &oid, false);
   if (success == BTREE_ERROR_OCCURRED)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   /* free storage if the key was a string */
@@ -4165,7 +4202,7 @@ cleanup:
 
   if (error != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
       ptr = or_pack_int (OR_ALIGNED_BUF_START (a_reply), 0);
       ptr = or_pack_int (ptr, error);
       ptr = or_pack_int (ptr, 0);
@@ -4196,7 +4233,7 @@ sbtree_class_test_unique (THREAD_ENTRY * thread_p, unsigned int rid, char *reque
 
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   (void) or_pack_int (reply, (int) success);
@@ -4229,7 +4266,7 @@ sdk_totalpgs (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reql
   npages = xdisk_get_total_numpages (thread_p, volid);
   if (npages < 0)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   (void) or_pack_int (reply, npages);
@@ -4262,7 +4299,7 @@ sdk_freepgs (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqle
   npages = xdisk_get_free_numpages (thread_p, volid);
   if (npages < 0)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   (void) or_pack_int (reply, npages);
@@ -4295,7 +4332,7 @@ sdk_remarks (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqle
   remark = xdisk_get_remarks (thread_p, (VOLID) int_volid);
   if (remark == NULL)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
       area_length = 0;
       area = NULL;
     }
@@ -4305,7 +4342,7 @@ sdk_remarks (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqle
       area = (char *) db_private_alloc (thread_p, area_length);
       if (area == NULL)
 	{
-	  return_error_to_client (thread_p, rid);
+	  (void) return_error_to_client (thread_p, rid);
 	  area_length = 0;
 	}
       else
@@ -4355,7 +4392,7 @@ sdk_vlabel (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen
 
   if (xdisk_get_fullname (thread_p, (VOLID) int_volid, vol_fullname) == NULL)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
       area_length = 0;
       area = NULL;
     }
@@ -4365,7 +4402,7 @@ sdk_vlabel (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen
       area = (char *) db_private_alloc (thread_p, area_length);
       if (area == NULL)
 	{
-	  return_error_to_client (thread_p, rid);
+	  (void) return_error_to_client (thread_p, rid);
 	  area_length = 0;
 	}
       else
@@ -4420,7 +4457,7 @@ sqfile_get_list_file_page (THREAD_ENTRY * thread_p, unsigned int rid, char *requ
   error = xqfile_get_list_file_page (thread_p, query_id, volid, pageid, aligned_page_buf, &page_size);
   if (error != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
       goto empty_page;
     }
 
@@ -4546,7 +4583,7 @@ sqmgr_prepare_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
 
       ptr = or_pack_int (reply, 0);
       ptr = or_pack_int (ptr, error);
@@ -4626,12 +4663,13 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   PAGE_PTR page_ptr;
   char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_page_buf;
   QUERY_FLAG query_flag;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 4 + OR_PTR_ALIGNED_SIZE + OR_CACHE_TIME_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 7 + OR_PTR_ALIGNED_SIZE + OR_CACHE_TIME_SIZE) a_reply;
   CACHE_TIME clt_cache_time;
   CACHE_TIME srv_cache_time;
   int query_timeout;
   XASL_CACHE_ENTRY *xasl_cache_entry_p = NULL;
   char data_buf[EXECUTE_QUERY_MAX_ARGUMENT_DATA_SIZE + MAX_ALIGNMENT], *aligned_data_buf = NULL;
+  bool has_updated;
 
   int response_time = 0;
 
@@ -4645,11 +4683,17 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   UINT64 *current_stats = NULL;
   UINT64 *diff_stats = NULL;
   char *sql_id = NULL;
-  int error_code = NO_ERROR;
+  int error_code = NO_ERROR, all_error_code = NO_ERROR;
   int trace_slow_msec, trace_ioreads;
-  bool tran_abort = false;
+  bool tran_abort = false, has_xasl_entry = false;
 
   EXECUTION_INFO info = { NULL, NULL, NULL };
+  QUERY_ID net_Deferred_end_queries[NET_DEFER_END_QUERIES_MAX], *p_net_Deferred_end_queries = net_Deferred_end_queries;
+  int n_query_ids = 0, i = 0;
+  bool end_query_allowed, should_conn_reset;
+  LOG_TDES *tdes;
+  TRAN_STATE tran_state;
+  bool is_tran_auto_commit;
 
   trace_slow_msec = prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS);
   trace_ioreads = prm_get_integer_value (PRM_ID_SQL_TRACE_IOREADS);
@@ -4687,6 +4731,31 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   ptr = or_unpack_int (ptr, &query_flag);
   OR_UNPACK_CACHE_TIME (ptr, &clt_cache_time);
   ptr = or_unpack_int (ptr, &query_timeout);
+
+  is_tran_auto_commit = IS_TRAN_AUTO_COMMIT (query_flag);
+  xsession_set_tran_auto_commit (thread_p, is_tran_auto_commit);
+
+  if (IS_QUERY_EXECUTE_WITH_COMMIT (query_flag))
+    {
+      ptr = or_unpack_int (ptr, &n_query_ids);
+      if (n_query_ids + 1 > NET_DEFER_END_QUERIES_MAX)
+	{
+	  p_net_Deferred_end_queries = (QUERY_ID *) malloc ((n_query_ids + 1) * sizeof (QUERY_ID));
+	  if (p_net_Deferred_end_queries == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      (size_t) (n_query_ids + 1) * sizeof (QUERY_ID));
+	      css_send_abort_to_client (thread_p->conn_entry, rid);
+	      return;
+	    }
+	}
+
+      for (i = 0; i < n_query_ids; i++)
+	{
+	  ptr = or_unpack_ptr (ptr, p_net_Deferred_end_queries + i);
+	}
+    }
+
   if (IS_QUERY_EXECUTED_WITHOUT_DATA_BUFFERS (query_flag))
     {
       assert (data_size < EXECUTE_QUERY_MAX_ARGUMENT_DATA_SIZE);
@@ -4713,28 +4782,32 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   CACHE_TIME_RESET (&srv_cache_time);
 
   /* call the server routine of query execute */
-  list_id =
-    xqmgr_execute_query (thread_p, &xasl_id, &query_id, dbval_cnt, data, &query_flag, &clt_cache_time, &srv_cache_time,
-			 query_timeout, &xasl_cache_entry_p);
+  list_id = xqmgr_execute_query (thread_p, &xasl_id, &query_id, dbval_cnt, data, &query_flag, &clt_cache_time,
+				 &srv_cache_time, query_timeout, &xasl_cache_entry_p);
 
-  if (data && data != aligned_data_buf)
+  if (data != NULL && data != aligned_data_buf)
     {
       free_and_init (data);
     }
 
-  if (xasl_cache_entry_p)
+  if (xasl_cache_entry_p != NULL)
     {
       info = xasl_cache_entry_p->sql_info;
     }
 
+  end_query_allowed = IS_QUERY_EXECUTE_WITH_COMMIT (query_flag);
+  tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  tran_state = tdes->state;
+  has_updated = false;
+
+null_list:
 #if 0
   if (list_id == NULL && !CACHE_TIME_EQ (&clt_cache_time, &srv_cache_time))
 #else
   if (list_id == NULL)
 #endif
     {
-      assert (er_errid () != NO_ERROR);
-      error_code = er_errid ();
+      ASSERT_ERROR_AND_SET (error_code);
 
       if (error_code != NO_ERROR)
 	{
@@ -4756,82 +4829,94 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	    }
 	}
 
-      if (xasl_cache_entry_p)
+      tran_abort = need_to_abort_tran (thread_p, &error_code);
+      if (tran_abort)
 	{
-	  tran_abort = need_to_abort_tran (thread_p, &error_code);
-	  if (tran_abort == true)
+	  if (xasl_cache_entry_p != NULL)
 	    {
 	      /* Remove transaction id from xasl cache entry before return_error_to_client, where current transaction
-	       * may be aborted. Otherwise, another transaction may be resumed and xasl_cache_entry_p may be removed by 
+	       * may be aborted. Otherwise, another transaction may be resumed and xasl_cache_entry_p may be removed by
 	       * that transaction, during class deletion. */
+	      has_xasl_entry = true;
 	      xcache_unfix (thread_p, xasl_cache_entry_p);
 	      xasl_cache_entry_p = NULL;
 	    }
 	}
 
-      return_error_to_client (thread_p, rid);
+      if (IS_QUERY_EXECUTE_WITH_COMMIT (query_flag))
+	{
+	  /* Get has update before aborting transaction. */
+	  has_updated = logtb_has_updated (thread_p);
+	}
+
+      tran_state = return_error_to_client (thread_p, rid);
     }
 
   page_size = 0;
   page_ptr = NULL;
-  if (list_id)
+  if (list_id != NULL)
     {
       /* get the first page of the list file */
       if (VPID_ISNULL (&(list_id->first_vpid)))
 	{
+	  // Note that not all list files have a page, for instance, insert.
 	  page_ptr = NULL;
 	}
       else
 	{
 	  page_ptr = qmgr_get_old_page (thread_p, &(list_id->first_vpid), list_id->tfile_vfid);
-	}
 
-      if (page_ptr)
-	{
-	  /* calculate page size */
-	  if (QFILE_GET_TUPLE_COUNT (page_ptr) == -2 || QFILE_GET_OVERFLOW_PAGE_ID (page_ptr) != NULL_PAGEID)
+	  if (page_ptr != NULL)
 	    {
-	      page_size = DB_PAGESIZE;
+	      /* calculate page size */
+	      if (QFILE_GET_TUPLE_COUNT (page_ptr) == -2 || QFILE_GET_OVERFLOW_PAGE_ID (page_ptr) != NULL_PAGEID)
+		{
+		  page_size = DB_PAGESIZE;
+		}
+	      else
+		{
+		  int offset = QFILE_GET_LAST_TUPLE_OFFSET (page_ptr);
+
+		  page_size = (offset + QFILE_GET_TUPLE_LENGTH (page_ptr + offset));
+		}
+
+	      memcpy (aligned_page_buf, page_ptr, page_size);
+	      qmgr_free_old_page_and_init (thread_p, page_ptr, list_id->tfile_vfid);
+	      page_ptr = aligned_page_buf;
+
+	      /* for now, allow end query if there is only one page */
+	      if (list_id->page_cnt != 1)
+		{
+		  // This execution request is followed by fetch.
+		  end_query_allowed = false;
+		}
 	    }
 	  else
 	    {
-	      int offset = QFILE_GET_LAST_TUPLE_OFFSET (page_ptr);
+	      // might be interrupted to fetch query result
+	      ASSERT_ERROR ();
+	      QFILE_FREE_AND_INIT_LIST_ID (list_id);
 
-	      page_size = (offset + QFILE_GET_TUPLE_LENGTH (page_ptr + offset));
+	      goto null_list;
 	    }
-
-	  memcpy (aligned_page_buf, page_ptr, page_size);
-	  qmgr_free_old_page_and_init (thread_p, page_ptr, list_id->tfile_vfid);
-	  page_ptr = aligned_page_buf;
-	}
-      else
-	{
-	  return_error_to_client (thread_p, rid);
 	}
     }
 
   replydata_size = list_id ? or_listid_length (list_id) : 0;
-  if (replydata_size)
+  if (0 < replydata_size)
     {
       /* pack list file id as a reply data */
       replydata = (char *) db_private_alloc (thread_p, replydata_size);
-      if (replydata)
+      if (replydata != NULL)
 	{
 	  (void) or_pack_listid (replydata, list_id);
 	}
       else
 	{
 	  replydata_size = 0;
-	  return_error_to_client (thread_p, rid);
+	  (void) return_error_to_client (thread_p, rid);
 	}
     }
-
-  /* pack 'QUERY_END' as a first argument of the reply */
-  ptr = or_pack_int (reply, QUERY_END);
-  /* pack size of list file id to return as a second argument of the reply */
-  ptr = or_pack_int (ptr, replydata_size);
-  /* pack size of a page to return as a third argumnet of the reply */
-  ptr = or_pack_int (ptr, page_size);
 
   /* We may release the xasl cache entry when the transaction aborted. To refer the contents of the freed entry for
    * the case will cause defects. */
@@ -4891,18 +4976,64 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	}
     }
 
-  if (xasl_cache_entry_p)
+  if (xasl_cache_entry_p != NULL)
     {
+      has_xasl_entry = true;
       xcache_unfix (thread_p, xasl_cache_entry_p);
       xasl_cache_entry_p = NULL;
     }
 
+  /* pack 'QUERY_END' as a first argument of the reply */
+  ptr = or_pack_int (reply, QUERY_END);
+  /* pack size of list file id to return as a second argument of the reply */
+  ptr = or_pack_int (ptr, replydata_size);
+  /* pack size of a page to return as a third argumnet of the reply */
+  ptr = or_pack_int (ptr, page_size);
   ptr = or_pack_int (ptr, queryinfo_string_length);
 
   /* query id to return as a fourth argument of the reply */
   ptr = or_pack_ptr (ptr, query_id);
   /* result cache created time */
   OR_PACK_CACHE_TIME (ptr, &srv_cache_time);
+
+  if (IS_QUERY_EXECUTE_WITH_COMMIT (query_flag))
+    {
+      /* Try to end transaction and pack the result. */
+      p_net_Deferred_end_queries[n_query_ids++] = query_id;
+      if (error_code != NO_ERROR)
+	{
+	  if (error_code != ER_INTERRUPTED && has_xasl_entry)
+	    {
+	      tran_abort = true;
+	      assert (end_query_allowed == true);
+	    }
+	  else
+	    {
+	      /* Do not abort the transaction, since XASL cache does not exists, so other fetch may be requested.
+	       * Or, the execution was interrupted.
+	       */
+	      end_query_allowed = false;
+	    }
+	}
+
+      stran_server_auto_commit_or_abort (thread_p, rid, p_net_Deferred_end_queries, n_query_ids,
+					 tran_abort, has_updated, &end_query_allowed, &tran_state, &should_conn_reset);
+      /* pack end query result */
+      if (end_query_allowed == true)
+	{
+	  /* query ended */
+	  ptr = or_pack_int (ptr, NO_ERROR);
+	}
+      else
+	{
+	  /* query not ended */
+	  ptr = or_pack_int (ptr, !NO_ERROR);
+	}
+
+      /* pack commit/abart/active result */
+      ptr = or_pack_int (ptr, (int) tran_state);
+      ptr = or_pack_int (ptr, (int) should_conn_reset);
+    }
 
 #if !defined(NDEBUG)
   /* suppress valgrind UMW error */
@@ -4913,16 +5044,20 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 				       replydata_size, page_ptr, page_size, queryinfo_string, queryinfo_string_length);
 
   /* free QFILE_LIST_ID duplicated by xqmgr_execute_query() */
-  if (replydata)
+  if (replydata != NULL)
     {
       db_private_free_and_init (thread_p, replydata);
     }
-  if (list_id)
+  if (list_id != NULL)
     {
       QFILE_FREE_AND_INIT_LIST_ID (list_id);
     }
 
 exit:
+  if (p_net_Deferred_end_queries != net_Deferred_end_queries)
+    {
+      free_and_init (p_net_Deferred_end_queries);
+    }
   if (base_stats != NULL)
     {
       free_and_init (base_stats);
@@ -5153,6 +5288,7 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char
   char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_page_buf;
   QUERY_FLAG flag;
   int query_timeout;
+  bool is_tran_auto_commit;
 
   aligned_page_buf = PTR_ALIGN (page_buf, MAX_ALIGNMENT);
 
@@ -5190,6 +5326,9 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char
 	}
     }
 
+  is_tran_auto_commit = IS_TRAN_AUTO_COMMIT (flag);
+  xsession_set_tran_auto_commit (thread_p, is_tran_auto_commit);
+
   /* 
    * After this point, xqmgr_prepare_and_execute_query has assumed
    * responsibility for freeing xasl_stream...
@@ -5209,7 +5348,7 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char
 
   if (q_result == NULL)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
       listid_length = 0;
     }
   else
@@ -5258,7 +5397,7 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char
 	   */
 	  if (er_errid () < 0)
 	    {
-	      return_error_to_client (thread_p, rid);
+	      (void) return_error_to_client (thread_p, rid);
 	      listid_length = 0;
 	    }
 	  /* if query type is not select, page ptr can be null */
@@ -5365,7 +5504,7 @@ sqmgr_end_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int r
     }
   if (all_error_code != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   (void) or_pack_int (reply, all_error_code);
@@ -5398,7 +5537,7 @@ sqmgr_drop_all_query_plans (THREAD_ENTRY * thread_p, unsigned int rid, char *req
   status = xqmgr_drop_all_query_plans (thread_p);
   if (status != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   /* pack status (DB_IN32) as a reply */
@@ -5639,7 +5778,7 @@ sserial_get_current_value (THREAD_ENTRY * thread_p, unsigned int rid, char *requ
 
   if (buffer == NULL)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
       buffer_length = 0;
     }
   else
@@ -5711,7 +5850,7 @@ sserial_get_next_value (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
   if (buffer == NULL)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
   else
     {
@@ -5913,7 +6052,7 @@ sct_check_rep_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int
   success = xcatalog_check_rep_dir (thread_p, &classoid, &rep_dir);
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   assert (success != NO_ERROR || !OID_ISNULL (&rep_dir));
@@ -5944,7 +6083,7 @@ xs_send_method_call_info_to_client (THREAD_ENTRY * thread_p, QFILE_LIST_ID * lis
   OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  rid = thread_get_comm_request_id (thread_p);
+  rid = css_get_comm_request_id (thread_p);
   length = or_listid_length ((void *) list_id);
   length += or_method_sig_list_length ((void *) method_sig_list);
   ptr = or_pack_int (reply, (int) METHOD_CALL);
@@ -6006,7 +6145,7 @@ xs_receive_data_from_client_with_timeout (THREAD_ENTRY * thread_p, char **area, 
     {
       free_and_init (*area);
     }
-  rid = thread_get_comm_request_id (thread_p);
+  rid = css_get_comm_request_id (thread_p);
 
   rc = css_receive_data_from_client_with_timeout (thread_p->conn_entry, rid, area, (int *) datasize, timeout);
 
@@ -6053,7 +6192,7 @@ xs_send_action_to_client (THREAD_ENTRY * thread_p, VACOMM_BUFFER_CLIENT_ACTION a
       return ER_FAILED;
     }
 
-  rid = thread_get_comm_request_id (thread_p);
+  rid = css_get_comm_request_id (thread_p);
   (void) or_pack_int (reply, (int) action);
   if (css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_INT_SIZE))
     {
@@ -6084,7 +6223,7 @@ slocator_assign_oid_batch (THREAD_ENTRY * thread_p, unsigned int rid, char *requ
   oidset = locator_unpack_oid_set_to_new (thread_p, request + OR_INT_SIZE);
   if (oidset == NULL)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
       return;
     }
 
@@ -6106,7 +6245,7 @@ slocator_assign_oid_batch (THREAD_ENTRY * thread_p, unsigned int rid, char *requ
 
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   css_send_data_to_client (thread_p->conn_entry, rid, request, reqlen);
@@ -6191,7 +6330,7 @@ slocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, unsigned int rid, ch
     }
   if (allfind != LC_CLASSNAME_EXIST)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   if ((LOCK) lock_rr_tran != NULL_LOCK)
@@ -6201,7 +6340,7 @@ slocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, unsigned int rid, ch
 	{
 	  allfind = LC_CLASSNAME_ERROR;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  return_error_to_client (thread_p, rid);
+	  (void) return_error_to_client (thread_p, rid);
 	}
     }
 
@@ -6214,7 +6353,7 @@ slocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, unsigned int rid, ch
 
       if (!packed)
 	{
-	  return_error_to_client (thread_p, rid);
+	  (void) return_error_to_client (thread_p, rid);
 	  allfind = LC_CLASSNAME_ERROR;
 	}
     }
@@ -6318,7 +6457,7 @@ slocator_fetch_lockhint_classes (THREAD_ENTRY * thread_p, unsigned int rid, char
 
   if ((lockhint == NULL) || (lockhint->length <= 0))
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
       ptr = or_pack_int (reply, 0);
       ptr = or_pack_int (ptr, 0);
       ptr = or_pack_int (ptr, 0);
@@ -6338,7 +6477,7 @@ slocator_fetch_lockhint_classes (THREAD_ENTRY * thread_p, unsigned int rid, char
       success = xlocator_fetch_lockhint_classes (thread_p, lockhint, &copy_area);
       if (success != NO_ERROR)
 	{
-	  return_error_to_client (thread_p, rid);
+	  (void) return_error_to_client (thread_p, rid);
 	}
 
       if (copy_area != NULL)
@@ -6423,11 +6562,11 @@ sthread_kill_tran_index (THREAD_ENTRY * thread_p, unsigned int rid, char *reques
   ptr = or_unpack_string_nocopy (ptr, &kill_host);
   ptr = or_unpack_int (ptr, &kill_pid);
 
-  success = (xthread_kill_tran_index (thread_p, kill_tran_index, kill_user, kill_host, kill_pid)
+  success = (xlogtb_kill_tran_index (thread_p, kill_tran_index, kill_user, kill_host, kill_pid)
 	     == NO_ERROR) ? NO_ERROR : ER_FAILED;
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   ptr = or_pack_int (reply, success);
@@ -6466,15 +6605,14 @@ sthread_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, unsigned int rid, char 
   for (i = 0; i < num_tran_index; i++)
     {
       success =
-	xthread_kill_or_interrupt_tran (thread_p, tran_index_list[i], (bool) is_dba_group_member,
-					(bool) interrupt_only);
+	xlogtb_kill_or_interrupt_tran (thread_p, tran_index_list[i], (bool) is_dba_group_member, (bool) interrupt_only);
       if (success == NO_ERROR)
 	{
 	  num_killed_tran++;
 	}
       else if (success == ER_KILL_TR_NOT_ALLOWED)
 	{
-	  return_error_to_client (thread_p, rid);
+	  (void) return_error_to_client (thread_p, rid);
 	  break;
 	}
       else
@@ -6705,7 +6843,7 @@ xcallback_console_print (THREAD_ENTRY * thread_p, char *print_str)
   char *ptr;
   char *databuf;
 
-  rid = thread_get_comm_request_id (thread_p);
+  rid = css_get_comm_request_id (thread_p);
   data_len = or_packed_string_length (print_str, &print_len);
 
   ptr = or_pack_int (reply, (int) CONSOLE_OUTPUT);
@@ -6762,7 +6900,7 @@ xio_send_user_prompt_to_client (THREAD_ENTRY * thread_p, FILEIO_REMOTE_PROMPT_TY
   char *ptr;
   char *databuf;
 
-  rid = thread_get_comm_request_id (thread_p);
+  rid = css_get_comm_request_id (thread_p);
   /* need to know length of prompt string we are sending */
   prompt_length = (or_packed_string_length (prompt, &strlen1) + or_packed_string_length (failure_prompt, &strlen2)
 		   + OR_INT_SIZE * 2 + or_packed_string_length (secondary_prompt, &strlen3) + OR_INT_SIZE);
@@ -6816,7 +6954,7 @@ xlog_send_log_pages_to_client (THREAD_ENTRY * thread_p, char *logpg_area, int ar
   unsigned int rid, rc;
   char *ptr;
 
-  rid = thread_get_comm_request_id (thread_p);
+  rid = css_get_comm_request_id (thread_p);
 
   /* 
    * Client side caller must be expecting a reply/callback followed
@@ -6910,7 +7048,7 @@ shf_get_class_num_objs_and_pages (THREAD_ENTRY * thread_p, unsigned int rid, cha
 
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   ptr = or_pack_int (reply, (int) success);
@@ -6950,7 +7088,7 @@ sbtree_get_statistics (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   success = btree_get_stats (thread_p, &stat_info, STATS_WITH_SAMPLING);
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   ptr = or_pack_int (reply, success);
@@ -6991,7 +7129,7 @@ sbtree_get_key_type (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   error = xbtree_get_key_type (thread_p, btid, &key_type);
   if (error != NO_ERROR && er_errid () != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   if (key_type != NULL)
@@ -7118,7 +7256,7 @@ exit:
 
 error_exit:
   buffer_length = 0;
-  return_error_to_client (thread_p, rid);
+  (void) return_error_to_client (thread_p, rid);
 
   goto exit;
 }
@@ -7174,7 +7312,7 @@ sprm_server_get_force_parameters (THREAD_ENTRY * thread_p, unsigned int rid, cha
   change_values = xsysprm_get_force_server_parameters ();
   if (change_values == NULL)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   area_size = sysprm_packed_assign_values_length (change_values, 0);
@@ -7182,7 +7320,7 @@ sprm_server_get_force_parameters (THREAD_ENTRY * thread_p, unsigned int rid, cha
   if (area == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) area_size);
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
       area_size = 0;
     }
   ptr = or_pack_int (reply, area_size);
@@ -7353,7 +7491,7 @@ shf_has_instance (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
 
   if (r == -1)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   ptr = or_pack_int (reply, (int) r);
@@ -7517,7 +7655,7 @@ slocator_check_fk_validity (THREAD_ENTRY * thread_p, unsigned int rid, char *req
   ptr = or_unpack_int_array (ptr, n_attrs, &attr_ids);
   if (ptr == NULL)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
       goto end;
     }
 
@@ -7528,7 +7666,7 @@ slocator_check_fk_validity (THREAD_ENTRY * thread_p, unsigned int rid, char *req
   if (xlocator_check_fk_validity (thread_p, &class_oid, &hfid, key_type, n_attrs, attr_ids, &pk_cls_oid, &pk_btid,
 				  fk_name) != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
 end:
@@ -7577,7 +7715,7 @@ slogwr_get_log_pages (THREAD_ENTRY * thread_p, unsigned int rid, char *request, 
   error = xlogwr_get_log_pages (thread_p, first_pageid, mode);
   if (error == ER_INTERRUPTED)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   if (error == ER_NET_DATA_RECEIVE_TIMEDOUT)
@@ -7622,91 +7760,91 @@ sboot_compact_db (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
   ptr = or_unpack_int (request, &n_classes);
   if (ptr == NULL)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
       return;
     }
 
   ptr = or_unpack_oid_array (ptr, n_classes, &class_oids);
   if (ptr == NULL)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
       return;
     }
 
   ptr = or_unpack_int (ptr, &space_to_process);
   if (ptr == NULL)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
       return;
     }
 
   ptr = or_unpack_int (ptr, &instance_lock_timeout);
   if (ptr == NULL)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
       return;
     }
 
   ptr = or_unpack_int (ptr, &class_lock_timeout);
   if (ptr == NULL)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
       return;
     }
 
   ptr = or_unpack_int (ptr, &delete_old_repr);
   if (ptr == NULL)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
       return;
     }
 
   ptr = or_unpack_oid (ptr, &last_processed_class_oid);
   if (ptr == NULL)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
       return;
     }
 
   ptr = or_unpack_oid (ptr, &last_processed_oid);
   if (ptr == NULL)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
       return;
     }
 
   ptr = or_unpack_int_array (ptr, n_classes, &total_objects);
   if (ptr == NULL)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
       return;
     }
 
   ptr = or_unpack_int_array (ptr, n_classes, &failed_objects);
   if (ptr == NULL)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
       return;
     }
 
   ptr = or_unpack_int_array (ptr, n_classes, &modified_objects);
   if (ptr == NULL)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
       return;
     }
 
   ptr = or_unpack_int_array (ptr, n_classes, &big_objects);
   if (ptr == NULL)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
       return;
     }
 
   ptr = or_unpack_int_array (ptr, n_classes, &ids_repr);
   if (ptr == NULL)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
       return;
     }
 
@@ -7717,7 +7855,7 @@ sboot_compact_db (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
 
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   reply_size = OR_OID_SIZE * 2 + OR_INT_SIZE * (5 * n_classes + 1);
@@ -7801,14 +7939,14 @@ sboot_heap_compact (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
   ptr = or_unpack_oid (request, &class_oid);
   if (ptr == NULL)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
       return;
     }
 
   success = xboot_heap_compact (thread_p, &class_oid);
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   or_pack_int (reply, success);
@@ -7840,7 +7978,7 @@ sboot_compact_start (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   success = xboot_compact_start (thread_p);
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   or_pack_int (reply, success);
@@ -7869,7 +8007,7 @@ sboot_compact_stop (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
   success = xboot_compact_stop (thread_p);
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   or_pack_int (reply, success);
@@ -7901,7 +8039,7 @@ ses_posix_create_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   ret = xes_posix_create_file (new_path);
   if (ret != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
   else
     {
@@ -7955,7 +8093,7 @@ ses_posix_write_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, 
       ret = xes_posix_write_file (path, buf, count, offset);
       if (ret != NO_ERROR)
 	{
-	  return_error_to_client (thread_p, rid);
+	  (void) return_error_to_client (thread_p, rid);
 	}
 
       ptr = or_pack_int64 (reply, (INT64) ret);
@@ -8006,7 +8144,7 @@ ses_posix_read_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
       ret = xes_posix_read_file (path, buf, count, offset);
       if (ret != NO_ERROR)
 	{
-	  return_error_to_client (thread_p, rid);
+	  (void) return_error_to_client (thread_p, rid);
 	}
 
       ptr = or_pack_int64 (reply, (INT64) ret);
@@ -8041,7 +8179,7 @@ ses_posix_delete_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   ret = xes_posix_delete_file (path);
   if (ret != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   ptr = or_pack_int (reply, ret);
@@ -8074,7 +8212,7 @@ ses_posix_copy_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   ret = xes_posix_copy_file (src_path, metaname, new_path);
   if (ret != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
   else
     {
@@ -8113,7 +8251,7 @@ ses_posix_rename_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   ret = xes_posix_rename_file (src_path, metaname, new_path);
   if (ret != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
   else
     {
@@ -8152,7 +8290,7 @@ ses_posix_get_file_size (THREAD_ENTRY * thread_p, unsigned int rid, char *reques
   file_size = xes_posix_get_file_size (path);
   if (file_size < 0)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   ptr = or_pack_int64 (reply, (INT64) file_size);
@@ -8188,7 +8326,7 @@ slocator_upgrade_instances_domain (THREAD_ENTRY * thread_p, unsigned int rid, ch
 
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   ptr = or_pack_int (reply, success);
@@ -8238,7 +8376,7 @@ ssession_find_or_create_session (THREAD_ENTRY * thread_p, unsigned int rid, char
       error = xsession_create_new (thread_p, &id);
       if (error != NO_ERROR)
 	{
-	  return_error_to_client (thread_p, rid);
+	  (void) return_error_to_client (thread_p, rid);
 	}
     }
 
@@ -8251,7 +8389,7 @@ ssession_find_or_create_session (THREAD_ENTRY * thread_p, unsigned int rid, char
       if (error != NO_ERROR)
 	{
 	  error = sysprm_set_error ((SYSPRM_ERR) error, NULL);
-	  return_error_to_client (thread_p, rid);
+	  (void) return_error_to_client (thread_p, rid);
 	}
     }
 
@@ -8293,7 +8431,7 @@ ssession_find_or_create_session (THREAD_ENTRY * thread_p, unsigned int rid, char
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) area_size);
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	  area_size = 0;
-	  return_error_to_client (thread_p, rid);
+	  (void) return_error_to_client (thread_p, rid);
 	}
     }
 
@@ -8374,7 +8512,7 @@ ssession_set_row_count (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   err = xsession_set_row_count (thread_p, row_count);
   if (err != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   ptr = or_pack_int (reply, err);
@@ -8401,7 +8539,7 @@ ssession_get_row_count (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   err = xsession_get_row_count (thread_p, &row_count);
   if (err != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   ptr = or_pack_int (reply, row_count);
@@ -8433,7 +8571,7 @@ ssession_get_last_insert_id (THREAD_ENTRY * thread_p, unsigned int rid, char *re
   err = xsession_get_last_insert_id (thread_p, &lid, (bool) update_last_insert_id);
   if (err != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
       data_size = 0;
       goto end;
     }
@@ -8443,7 +8581,7 @@ ssession_get_last_insert_id (THREAD_ENTRY * thread_p, unsigned int rid, char *re
   data_reply = (char *) db_private_alloc (thread_p, data_size);
   if (data_reply == NULL)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
       err = ER_FAILED;
       data_size = 0;
       goto end;
@@ -8482,7 +8620,7 @@ ssession_reset_cur_insert_id (THREAD_ENTRY * thread_p, unsigned int rid, char *r
   err = xsession_reset_cur_insert_id (thread_p);
   if (err != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   ptr = or_pack_int (reply, err);
@@ -8566,7 +8704,7 @@ ssession_create_prepared_statement (THREAD_ENTRY * thread_p, unsigned int rid, c
   return;
 
 error:
-  return_error_to_client (thread_p, rid);
+  (void) return_error_to_client (thread_p, rid);
   or_pack_int (reply, err);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 
@@ -8669,7 +8807,7 @@ error:
   ptr = or_pack_int (ptr, 0);
   or_pack_int (ptr, err);
 
-  return_error_to_client (thread_p, rid);
+  (void) return_error_to_client (thread_p, rid);
 
   err =
     css_send_reply_and_data_to_client (thread_p->conn_entry, rid, OR_ALIGNED_BUF_START (a_reply),
@@ -8710,7 +8848,7 @@ ssession_delete_prepared_statement (THREAD_ENTRY * thread_p, unsigned int rid, c
   or_unpack_string_nocopy (request, &name);
   if (name == NULL)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
       err = ER_FAILED;
     }
   else
@@ -8718,7 +8856,7 @@ ssession_delete_prepared_statement (THREAD_ENTRY * thread_p, unsigned int rid, c
       err = xsession_delete_prepared_statement (thread_p, name);
       if (err != NO_ERROR)
 	{
-	  return_error_to_client (thread_p, rid);
+	  (void) return_error_to_client (thread_p, rid);
 	}
     }
 
@@ -8745,7 +8883,7 @@ slogin_user (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqle
   or_unpack_string_nocopy (request, &username);
   if (username == NULL)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
       err = ER_FAILED;
     }
   else
@@ -8753,7 +8891,7 @@ slogin_user (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqle
       err = xlogin_user (thread_p, username);
       if (err != NO_ERROR)
 	{
-	  return_error_to_client (thread_p, rid);
+	  (void) return_error_to_client (thread_p, rid);
 	}
     }
 
@@ -8834,7 +8972,7 @@ cleanup:
 
   if (err != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   css_send_data_to_client (thread_p->conn_entry, rid, OR_ALIGNED_BUF_START (a_reply), OR_ALIGNED_BUF_SIZE (a_reply));
@@ -8867,7 +9005,7 @@ ssession_get_session_variable (THREAD_ENTRY * thread_p, unsigned int rid, char *
   err = xsession_get_session_variable (thread_p, &name, &result);
   if (err != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   size = or_db_value_size (&result);
@@ -8879,7 +9017,7 @@ ssession_get_session_variable (THREAD_ENTRY * thread_p, unsigned int rid, char *
   else
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) size);
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
       size = 0;
       err = ER_FAILED;
     }
@@ -8921,7 +9059,7 @@ svacuum (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 
   if (err != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   /* Send error code as reply */
@@ -8955,7 +9093,7 @@ slogtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p, unsigned int rid, char *reque
 
   if (err != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   css_send_data_to_client (thread_p->conn_entry, rid, OR_ALIGNED_BUF_START (a_reply), OR_ALIGNED_BUF_SIZE (a_reply));
@@ -9030,7 +9168,7 @@ cleanup:
 
   if (err != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   css_send_data_to_client (thread_p->conn_entry, rid, OR_ALIGNED_BUF_START (a_reply), OR_ALIGNED_BUF_SIZE (a_reply));
@@ -9156,7 +9294,7 @@ sboot_get_locales_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   else
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) size);
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
       size = 0;
       err = ER_FAILED;
     }
@@ -9207,7 +9345,7 @@ sboot_get_timezone_checksum (THREAD_ENTRY * thread_p, unsigned int rid, char *re
   else
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
       size = 0;
       err = ER_FAILED;
     }
@@ -9326,7 +9464,7 @@ slocator_redistribute_partition_data (THREAD_ENTRY * thread_p, unsigned int rid,
   if (nr_oids < 1)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_PARTITION_REQUEST, 0);
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
       success = ER_INVALID_PARTITION_REQUEST;
       goto end;
     }
@@ -9335,7 +9473,7 @@ slocator_redistribute_partition_data (THREAD_ENTRY * thread_p, unsigned int rid,
   if (oid_list == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, nr_oids * sizeof (OID));
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
       success = ER_OUT_OF_VIRTUAL_MEMORY;
       goto end;
     }
@@ -9354,7 +9492,7 @@ slocator_redistribute_partition_data (THREAD_ENTRY * thread_p, unsigned int rid,
 
   if (success != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
 end:
@@ -9432,7 +9570,7 @@ netsr_spacedb (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int req
   else
     {
       /* error */
-      return_error_to_client (thread_p, rid);
+      (void) return_error_to_client (thread_p, rid);
     }
 
   /* send result to client */
@@ -9450,4 +9588,29 @@ netsr_spacedb (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int req
     {
       db_private_free_and_init (thread_p, data_reply);
     }
+}
+
+void
+slocator_demote_class_lock (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  int error;
+  OID class_oid;
+  LOCK lock, ex_lock;
+  char *ptr;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  ptr = or_unpack_oid (request, &class_oid);
+  ptr = or_unpack_lock (ptr, &lock);
+
+  error = xlocator_demote_class_lock (thread_p, &class_oid, lock, &ex_lock);
+
+  if (error != NO_ERROR)
+    {
+      return_error_to_client (thread_p, rid);
+    }
+
+  ptr = or_pack_int (reply, error);
+  ptr = or_pack_lock (ptr, ex_lock);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }

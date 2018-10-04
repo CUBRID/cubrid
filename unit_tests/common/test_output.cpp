@@ -29,12 +29,12 @@
 namespace test_common
 {
 
-static std::mutex stc_cout_mutex;    // global
-void
-sync_cout (const std::string &str)
-{
-  std::lock_guard<std::mutex> lock (stc_cout_mutex);
-  std::cout << str.c_str ();
-}
+  static std::mutex stc_cout_mutex;    // global
+  void
+  sync_cout (const std::string &str)
+  {
+    std::lock_guard<std::mutex> lock (stc_cout_mutex);
+    std::cout << str.c_str ();
+  }
 
 } // namespace test_common

@@ -57,6 +57,7 @@
 #include "semantic_check.h"
 #include "query_dump.h"
 #include "parser_support.h"
+#include "compile_context.h"
 
 #if defined(WINDOWS)
 #include "wintcp.h"
@@ -226,6 +227,7 @@ static int pt_create_iss_range (INDX_INFO * indx_infop, TP_DOMAIN * domain);
 static int pt_init_pred_expr_context (PARSER_CONTEXT * parser, PT_NODE * predicate, PT_NODE * spec,
 				      PRED_EXPR_WITH_CONTEXT * pred_expr);
 static bool validate_regu_key_function_index (REGU_VARIABLE * regu_var);
+static void pt_to_with_clause_xasl (PARSER_CONTEXT * parser, PT_NODE * with);
 static XASL_NODE *pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_null_attrs);
 static XASL_NODE *pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * non_null_attrs,
 					   PT_NODE * default_expr_attrs);
@@ -333,6 +335,16 @@ static ACCESS_SPEC_TYPE *pt_to_set_expr_table_spec_list (PARSER_CONTEXT * parser
 							 PT_NODE * where_part);
 static ACCESS_SPEC_TYPE *pt_to_cselect_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * cselect,
 							PT_NODE * src_derived_tbl);
+static ACCESS_SPEC_TYPE *pt_to_json_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * json_table,
+						     PT_NODE * src_derived_tbl, PT_NODE * where_p);
+static ACCESS_SPEC_TYPE *pt_make_json_table_access_spec (PARSER_CONTEXT * parser, REGU_VARIABLE * json_reguvar,
+							 PRED_EXPR * where_pred, PT_JSON_TABLE_INFO * json_table,
+							 TABLE_INFO * tbl_info);
+static json_table_node *pt_make_json_table_spec_node (PARSER_CONTEXT * parser, PT_JSON_TABLE_INFO * json_table,
+						      size_t & start_id, TABLE_INFO * tbl_info);
+static void pt_make_json_table_spec_node_internal (PARSER_CONTEXT * parser, PT_JSON_TABLE_NODE_INFO * jt_node_info,
+						   size_t & current_id, TABLE_INFO * tbl_info,
+						   json_table_node & result);
 static XASL_NODE *pt_find_xasl (XASL_NODE * list, XASL_NODE * match);
 static void pt_set_aptr (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NODE * xasl);
 static XASL_NODE *pt_append_scan (const XASL_NODE * to, const XASL_NODE * from);
@@ -376,7 +388,7 @@ static int pt_spec_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NOD
 static int pt_serial_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NODE * serial, OID ** oid_listp,
 					     int **lock_listp, int **tcard_listp, int *nump, int *sizep);
 static PT_NODE *parser_generate_xasl_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-static XASL_NODE *pt_make_aptr_parent_node (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE type);
+static XASL_NODE *pt_make_aptr_parent_node (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * with, PROC_TYPE type);
 static int pt_to_constraint_pred (PARSER_CONTEXT * parser, XASL_NODE * xasl, PT_NODE * spec, PT_NODE * non_null_attrs,
 				  PT_NODE * attr_list, int attr_offset);
 static XASL_NODE *pt_to_fetch_as_scan_proc (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * join_term,
@@ -515,8 +527,6 @@ static PRED_REGU_VARIABLE_P_LIST pt_get_pred_regu_variable_p_list (const PRED_EX
 static PRED_REGU_VARIABLE_P_LIST pt_get_var_regu_variable_p_list (const REGU_VARIABLE * regu, bool is_prior, int *err);
 
 static XASL_NODE *pt_plan_single_table_hq_iterations (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NODE * xasl);
-
-static void pt_init_precision_and_scale (DB_VALUE * value, PT_NODE * node);
 
 static SORT_LIST *pt_to_order_siblings_by (PARSER_CONTEXT * parser, XASL_NODE * xasl, XASL_NODE * connect_by_xasl);
 static SORT_LIST *pt_agg_orderby_to_sort_list (PARSER_CONTEXT * parser, PT_NODE * order_list, PT_NODE * agg_args_list);
@@ -3369,7 +3379,6 @@ pt_to_method_sig_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * s
   return sig_list;
 }
 
-
 /*
  * pt_make_val_list () - Makes a val list with a DB_VALUE place holder
  *                       for every attribute on an attribute list
@@ -3396,21 +3405,16 @@ pt_make_val_list (PARSER_CONTEXT * parser, PT_NODE * attribute_list)
 
   for (attribute = attribute_list; attribute != NULL; attribute = attribute->next)
     {
+      // init regu
       dbval_list = regu_dbvallist_alloc ();
-      if (dbval_list && regu_dbval_type_init (dbval_list->val, pt_node_to_db_type (attribute)))
-	{
-	  pt_init_precision_and_scale (dbval_list->val, attribute);
-	  dbval_list->dom = pt_xasl_node_to_domain (parser, attribute);
+      // init value with expected type
+      pt_data_type_init_value (attribute, dbval_list->val);
+      dbval_list->dom = pt_xasl_node_to_domain (parser, attribute);
 
-	  value_list->val_cnt++;
-	  (*dbval_list_tail) = dbval_list;
-	  dbval_list_tail = &dbval_list->next;
-	  dbval_list->next = NULL;
-	}
-      else
-	{
-	  return NULL;
-	}
+      value_list->val_cnt++;
+      (*dbval_list_tail) = dbval_list;
+      dbval_list_tail = &dbval_list->next;
+      dbval_list->next = NULL;
     }
 
   return value_list;
@@ -4551,6 +4555,150 @@ pt_make_class_access_spec (PARSER_CONTEXT * parser, PT_NODE * flat, DB_OBJECT * 
   return spec;
 }
 
+static void
+pt_create_json_table_column (PARSER_CONTEXT * parser, PT_NODE * jt_column, TABLE_INFO * tbl_info,
+			     json_table_column & col_result)
+{
+  col_result.m_function = jt_column->info.json_table_column_info.func;
+  col_result.m_output_value_pointer = pt_index_value (tbl_info->value_list,
+						      pt_find_attribute (parser,
+									 jt_column->info.json_table_column_info.name,
+									 tbl_info->attribute_list));
+  if (col_result.m_output_value_pointer == NULL)
+    {
+      assert (false);
+    }
+
+  col_result.m_domain = pt_xasl_node_to_domain (parser, jt_column);
+
+  if (jt_column->info.json_table_column_info.path != NULL)
+    {
+      col_result.m_path = jt_column->info.json_table_column_info.path;
+    }
+
+  col_result.m_column_name = (char *) jt_column->info.json_table_column_info.name->info.name.original;
+
+  col_result.m_on_empty = jt_column->info.json_table_column_info.on_empty;
+  col_result.m_on_error = jt_column->info.json_table_column_info.on_error;
+}
+
+//
+// pt_make_json_table_spec_node_internal () - recursive function to generate json table access tree
+//
+// parser (in)         : parser context
+// jt_node_info (in)   : json table parser node info
+// current_id (in/out) : as input ID for this node, output next ID (after all nested nodes in current branch)
+// tbl_info (in)       : table info cache
+// result (out)        : a node in json table access tree based on json table node info
+//
+static void
+pt_make_json_table_spec_node_internal (PARSER_CONTEXT * parser, PT_JSON_TABLE_NODE_INFO * jt_node_info,
+				       size_t & current_id, TABLE_INFO * tbl_info, json_table_node & result)
+{
+  size_t i = 0;
+  PT_NODE *itr;
+
+  // copy path
+  result.m_path = (char *) jt_node_info->path;
+
+  // after set the id, increment
+  result.m_id = current_id++;
+
+  // by default expand type is none
+  result.m_expand_type = json_table_expand_type::JSON_TABLE_NO_EXPAND;
+
+  // set the expand type
+  if (json_table_node::str_ends_with (result.m_path, "[*]"))
+    {
+      result.m_expand_type = json_table_expand_type::JSON_TABLE_ARRAY_EXPAND;
+    }
+  else if (json_table_node::str_ends_with (result.m_path, ".*"))
+    {
+      result.m_expand_type = json_table_expand_type::JSON_TABLE_OBJECT_EXPAND;
+    }
+
+  if (result.check_need_expand ())
+    {
+      // trim the path to extract directly from this new path
+      result.set_parent_path ();
+    }
+
+  // create columns
+  result.m_output_columns_size = 0;
+  for (itr = jt_node_info->columns; itr != NULL; itr = itr->next, ++result.m_output_columns_size)
+    ;
+
+  result.m_output_columns =
+    (json_table_column *) pt_alloc_packing_buf (sizeof (json_table_column) * result.m_output_columns_size);
+
+  for (itr = jt_node_info->columns, i = 0; itr != NULL; itr = itr->next, i++)
+    {
+      pt_create_json_table_column (parser, itr, tbl_info, result.m_output_columns[i]);
+    }
+
+  // create children 
+  result.m_nested_nodes_size = 0;
+  for (itr = jt_node_info->nested_paths; itr != NULL; itr = itr->next, ++result.m_nested_nodes_size)
+    ;
+
+  result.m_nested_nodes =
+    (json_table_node *) pt_alloc_packing_buf (sizeof (json_table_node) * result.m_nested_nodes_size);
+
+  for (itr = jt_node_info->nested_paths, i = 0; itr != NULL; itr = itr->next, i++)
+    {
+      pt_make_json_table_spec_node_internal (parser, &itr->info.json_table_node_info, current_id, tbl_info,
+					     result.m_nested_nodes[i]);
+    }
+}
+
+//
+// pt_make_json_table_spec_node () - create json table access tree
+//
+// return            : pointer to generated json_table_node
+// parser (in)       : parser context
+// json_table (in)   : json table parser node info
+// start_id (in/out) : output total node count (root + nested)
+// tbl_info (in)     : table info cache
+//
+static json_table_node *
+pt_make_json_table_spec_node (PARSER_CONTEXT * parser, PT_JSON_TABLE_INFO * json_table, size_t & start_id,
+			      TABLE_INFO * tbl_info)
+{
+  json_table_node *root_node = (json_table_node *) pt_alloc_packing_buf (sizeof (json_table_node));
+  pt_make_json_table_spec_node_internal (parser, &json_table->tree->info.json_table_node_info, start_id, tbl_info,
+					 *root_node);
+  return root_node;
+}
+
+//
+// pt_make_json_table_access_spec () - make json access spec
+//
+// return            : pointer to access spec
+// parser (in)       : parser context
+// json_reguvar (in) : reguvar for json table expression
+// where_pred (in)   : json table scan filter predicate
+// json_table (in)   : json table parser node info
+// tbl_info (in)     : table info cache
+//
+static ACCESS_SPEC_TYPE *
+pt_make_json_table_access_spec (PARSER_CONTEXT * parser, REGU_VARIABLE * json_reguvar, PRED_EXPR * where_pred,
+				PT_JSON_TABLE_INFO * json_table, TABLE_INFO * tbl_info)
+{
+  ACCESS_SPEC_TYPE *spec;
+  size_t start_id = 0;
+
+  spec = pt_make_access_spec (TARGET_JSON_TABLE, ACCESS_METHOD_JSON_TABLE, NULL, NULL, where_pred, NULL);
+
+  if (spec)
+    {
+      spec->s.json_table_node.m_root_node = pt_make_json_table_spec_node (parser, json_table, start_id, tbl_info);
+      spec->s.json_table_node.m_json_reguvar = json_reguvar;
+      // each node will have its own incremental id, so we can count the nr of nodes based on this identifier
+      spec->s.json_table_node.m_node_count = start_id;
+    }
+
+  return spec;
+}
 
 /*
  * pt_make_list_access_spec () - Create an initialized
@@ -6144,6 +6292,7 @@ pt_function_to_regu (PARSER_CONTEXT * parser, PT_NODE * function)
 	case F_JSON_KEYS:
 	case F_JSON_REMOVE:
 	case F_JSON_ARRAY_APPEND:
+	case F_JSON_ARRAY_INSERT:
 	case F_JSON_MERGE:
 	case F_JSON_GET_ALL_PATHS:
 	  result_type = pt_node_to_db_type (function);
@@ -6540,8 +6689,6 @@ pt_make_prim_data_type (PARSER_CONTEXT * parser, PT_TYPE_ENUM e)
     case PT_TYPE_DOUBLE:
     case PT_TYPE_DATE:
     case PT_TYPE_TIME:
-    case PT_TYPE_TIMETZ:
-    case PT_TYPE_TIMELTZ:
     case PT_TYPE_TIMESTAMP:
     case PT_TYPE_TIMESTAMPTZ:
     case PT_TYPE_TIMESTAMPLTZ:
@@ -6975,14 +7122,14 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  || node->info.expr.op == PT_ADDTIME || node->info.expr.op == PT_DEFINE_VARIABLE
 		  || node->info.expr.op == PT_CHR || node->info.expr.op == PT_CLOB_TO_CHAR
 		  || node->info.expr.op == PT_INDEX_PREFIX || node->info.expr.op == PT_FROM_TZ
-		  || node->info.expr.op == PT_JSON_TYPE
+		  || node->info.expr.op == PT_JSON_TYPE || node->info.expr.op == PT_JSON_UNQUOTE
 		  || node->info.expr.op == PT_JSON_EXTRACT || node->info.expr.op == PT_JSON_VALID
 		  || node->info.expr.op == PT_JSON_LENGTH || node->info.expr.op == PT_JSON_DEPTH
-		  || node->info.expr.op == PT_JSON_SEARCH)
+		  || node->info.expr.op == PT_JSON_SEARCH || node->info.expr.op == PT_JSON_PRETTY)
 		{
 		  r1 = pt_to_regu_variable (parser, node->info.expr.arg1, unbox);
-		  if ((node->info.expr.op == PT_CONCAT || node->info.expr.op == PT_JSON_LENGTH)
-		      && node->info.expr.arg2 == NULL)
+		  if ((node->info.expr.op == PT_CONCAT || node->info.expr.op == PT_JSON_LENGTH
+		       || node->info.expr.op == PT_JSON_UNQUOTE) && node->info.expr.arg2 == NULL)
 		    {
 		      r2 = NULL;
 		    }
@@ -7282,7 +7429,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 	      else if (node->info.expr.op == PT_TO_CHAR || node->info.expr.op == PT_TO_DATE
 		       || node->info.expr.op == PT_TO_TIME || node->info.expr.op == PT_TO_TIMESTAMP
 		       || node->info.expr.op == PT_TO_DATETIME || node->info.expr.op == PT_TO_DATETIME_TZ
-		       || node->info.expr.op == PT_TO_TIMESTAMP_TZ || node->info.expr.op == PT_TO_TIME_TZ)
+		       || node->info.expr.op == PT_TO_TIMESTAMP_TZ)
 		{
 		  r1 = pt_to_regu_variable (parser, node->info.expr.arg1, unbox);
 		  r2 = pt_to_regu_variable (parser, node->info.expr.arg2, unbox);
@@ -7470,8 +7617,14 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		case PT_JSON_DEPTH:
 		  regu = pt_make_regu_arith (r1, NULL, NULL, T_JSON_DEPTH, domain);
 		  break;
+		case PT_JSON_UNQUOTE:
+		  regu = pt_make_regu_arith (r1, NULL, NULL, T_JSON_UNQUOTE, domain);
+		  break;
 		case PT_JSON_SEARCH:
 		  regu = pt_make_regu_arith (r1, r2, r3, T_JSON_SEARCH, domain);
+		  break;
+		case PT_JSON_PRETTY:
+		  regu = pt_make_regu_arith (r1, NULL, NULL, T_JSON_PRETTY, domain);
 		  break;
 		case PT_CONCAT_WS:
 		  regu = pt_make_regu_arith (r1, r2, r3, T_CONCAT_WS, domain);
@@ -8645,13 +8798,6 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  parser_free_tree (parser, data_type);
 		  break;
 
-		case PT_TO_TIME_TZ:
-		  data_type = pt_make_prim_data_type (parser, PT_TYPE_TIMETZ);
-		  domain = pt_xasl_data_type_to_domain (parser, data_type);
-
-		  regu = pt_make_regu_arith (r1, r2, r3, T_TO_TIME_TZ, domain);
-		  parser_free_tree (parser, data_type);
-		  break;
 		case PT_UTC_TIMESTAMP:
 		  regu = pt_make_regu_arith (NULL, NULL, NULL, T_UTC_TIMESTAMP, domain);
 		  break;
@@ -11993,6 +12139,24 @@ pt_to_cselect_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE 
   return NULL;
 }
 
+static ACCESS_SPEC_TYPE *
+pt_to_json_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * json_table,
+			    PT_NODE * src_derived_tbl, PT_NODE * where_p)
+{
+  ACCESS_SPEC_TYPE *access;
+
+  PRED_EXPR *where = pt_to_pred_expr (parser, where_p);
+
+  TABLE_INFO *tbl_info = pt_find_table_info (spec->info.spec.id, parser->symbols->table_info);
+  assert (tbl_info != NULL);
+
+  REGU_VARIABLE *regu_var = pt_to_regu_variable (parser, json_table->info.json_table_info.expr, UNBOX_AS_VALUE);
+
+  access = pt_make_json_table_access_spec (parser, regu_var, where, &json_table->info.json_table_info, tbl_info);
+
+  return access;
+}
+
 /*
  * pt_to_cte_table_spec_list () - Convert a PT_NODE CTE to an ACCESS_SPEC_LIST of representations
 				  of the classes to be selected from
@@ -12127,10 +12291,23 @@ pt_to_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_key_pa
 	{
 	  access = pt_to_showstmt_spec_list (parser, spec, where_part);
 	}
-      else
+      else if (spec->info.spec.derived_table_type == PT_IS_CSELECT)
 	{
 	  /* a CSELECT derived table */
 	  access = pt_to_cselect_table_spec_list (parser, spec, spec->info.spec.derived_table, src_derived_tbl);
+	}
+      else if (spec->info.spec.derived_table_type == PT_DERIVED_JSON_TABLE)
+	{
+	  /* PT_JSON_DERIVED_TABLE derived table */
+	  access =
+	    pt_to_json_table_spec_list (parser, spec, spec->info.spec.derived_table, src_derived_tbl, where_part);
+	}
+      else
+	{
+	  // unrecognized derived table type
+	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  return NULL;
 	}
     }
   else
@@ -12144,7 +12321,6 @@ pt_to_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_key_pa
 
   return access;
 }
-
 
 /*
  * pt_to_val_list () -
@@ -17143,25 +17319,37 @@ error:
 
 /*
  * pt_make_aptr_parent_node () - Builds a BUILDLIST proc for the query node and
- *				 attaches it as the aptr to the xasl node.
+ *				 attaches it as the aptr to the xasl node after the
+ *				 CTE proc nodes.
  *				 A list scan spec from the aptr's list file is
  *				 attached to the xasl node.
  *
  * return      : XASL node.
  * parser (in) : Parser context.
  * node (in)   : Parser node containing sub-query.
+ * with (in)   : with clause with built cte proc
  * type (in)   : XASL proc type.
  *
  * NOTE: This function should not be used in the INSERT ... VALUES case.
  */
 static XASL_NODE *
-pt_make_aptr_parent_node (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE type)
+pt_make_aptr_parent_node (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * with, PROC_TYPE type)
 {
   XASL_NODE *aptr = NULL;
   XASL_NODE *xasl = NULL;
+  PT_NODE *cte = NULL;
   REGU_VARIABLE_LIST regu_attributes;
 
   xasl = regu_xasl_node_alloc (type);
+
+  assert (with == NULL || with->node_type == PT_WITH_CLAUSE);
+
+  if (with != NULL)
+    {
+      assert (with->info.with_clause.cte_definition_list != NULL);
+      cte = with->info.with_clause.cte_definition_list;
+    }
+
   if (xasl != NULL && node != NULL)
     {
       if (PT_IS_QUERY_NODE_TYPE (node->node_type))
@@ -17197,8 +17385,29 @@ pt_make_aptr_parent_node (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE typ
 		  namelist = pt_get_select_list (parser, node);
 		}
 
+	      /* append aptr after cte procs */
+	      if (cte != NULL)
+		{
+		  XASL_NODE *cte_xasl = (XASL_NODE *) cte->info.cte.xasl;
+		  XASL_NODE *last_aptr = cte_xasl;
+		  xasl->aptr_list = cte_xasl;
+
+		  cte = cte->next;
+		  while (cte != NULL)
+		    {
+		      cte_xasl = (XASL_NODE *) cte->info.cte.xasl;
+		      last_aptr->next = cte_xasl;
+		      cte = cte->next;
+		      last_aptr = last_aptr->next;
+		    }
+
+		  last_aptr->next = aptr;
+		}
+	      else
+		{
+		  xasl->aptr_list = aptr;
+		}
 	      aptr->next = NULL;
-	      xasl->aptr_list = aptr;
 
 	      xasl->val_list = pt_make_val_list (parser, namelist);
 	      if (xasl->val_list != NULL)
@@ -17485,7 +17694,7 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
       return NULL;
     }
 
-  error = check_for_default_expr (parser, attrs, &default_expr_attrs, class_obj);
+  error = pt_find_omitted_default_expr (parser, class_obj, attrs, &default_expr_attrs);
   if (error != NO_ERROR)
     {
       return NULL;
@@ -17522,7 +17731,7 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (value_clauses->info.node_list.list_type == PT_IS_SUBQUERY)
     {
-      xasl = pt_make_aptr_parent_node (parser, value_clauses->info.node_list.list, INSERT_PROC);
+      xasl = pt_make_aptr_parent_node (parser, value_clauses->info.node_list.list, NULL, INSERT_PROC);
     }
   else
     {
@@ -17943,10 +18152,16 @@ pt_to_odku_info (PARSER_CONTEXT * parser, PT_NODE * insert, XASL_NODE * xasl)
       select_specs = NULL;
     }
 
-  odku->num_assigns = 0;
   assignments = insert->info.insert.odku_assignments;
+  error = pt_append_omitted_on_update_expr_assignments (parser, assignments, insert_spec);
+  if (error != NO_ERROR)
+    {
+      PT_INTERNAL_ERROR (parser, "odku on update insert error");
+      goto exit_on_error;
+    }
 
   /* init update attribute ids */
+  odku->num_assigns = 0;
   pt_init_assignments_helper (parser, &assignments_helper, assignments);
   while (pt_get_next_assignment (&assignments_helper) != NULL)
     {
@@ -18771,12 +18986,45 @@ pt_mark_spec_list_for_update_clause (PARSER_CONTEXT * parser, PT_NODE * statemen
 }
 
 /*
+ * pt_to_with_clause_xasl () - Creates xasl for ctes nodes of the with clause
+ *                    
+ *   return:
+ *   parser(in): context
+ *   statement(in): select parse tree
+ *   spec_flag(in): spec flag: PT_SPEC_FLAG_UPDATE or PT_SPEC_FLAG_DELETE
+ */
+void
+pt_to_with_clause_xasl (PARSER_CONTEXT * parser, PT_NODE * with)
+{
+  PT_NODE *old_query_list = xasl_Supp_info.query_list;
+
+  /* add dummy node at the head of list */
+  xasl_Supp_info.query_list = parser_new_node (parser, PT_SELECT);
+  if (xasl_Supp_info.query_list == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "out of memory");
+      xasl_Supp_info.query_list = old_query_list;
+      return;
+    }
+
+  xasl_Supp_info.query_list->info.query.xasl = NULL;
+
+  /* XASL cache related information */
+  pt_init_xasl_supp_info ();
+
+  parser_walk_tree (parser, with, parser_generate_xasl_pre, NULL, parser_generate_xasl_post, &xasl_Supp_info);
+  parser_free_tree (parser, xasl_Supp_info.query_list);
+  xasl_Supp_info.query_list = old_query_list;
+}
+
+/*
  * pt_to_upd_del_query () - Creates a query based on the given select list,
  * 	from list, and where clause
  *   return: PT_NODE *, query statement or NULL if error
  *   parser(in):
  *   select_list(in):
  *   from(in):
+ *   with(in):
  *   class_specs(in):
  *   where(in):
  *   using_index(in):
@@ -18794,7 +19042,7 @@ pt_mark_spec_list_for_update_clause (PARSER_CONTEXT * parser, PT_NODE * statemen
  */
 PT_NODE *
 pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names, PT_NODE * select_list, PT_NODE * from,
-		     PT_NODE * class_specs, PT_NODE * where, PT_NODE * using_index, PT_NODE * order_by,
+		     PT_NODE * with, PT_NODE * class_specs, PT_NODE * where, PT_NODE * using_index, PT_NODE * order_by,
 		     PT_NODE * orderby_for, int server_op, SCAN_OPERATION_TYPE scan_op_type)
 {
   PT_NODE *statement = NULL, *from_temp = NULL, *node = NULL;
@@ -18805,6 +19053,8 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names, PT_NODE * 
   statement = parser_new_node (parser, PT_SELECT);
   if (statement != NULL)
     {
+      pt_to_with_clause_xasl (parser, with);
+
       /* this is an internally built query */
       PT_SELECT_INFO_SET_FLAG (statement, PT_SELECT_INFO_IS_UPD_DEL_QUERY);
 
@@ -19130,6 +19380,7 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *aptr_statement = NULL;
   PT_NODE *from;
   PT_NODE *where;
+  PT_NODE *with;
   PT_NODE *using_index;
   PT_NODE *class_specs;
   PT_NODE *cl_name_node;
@@ -19148,6 +19399,7 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
   where = statement->info.delete_.search_cond;
   using_index = statement->info.delete_.using_index;
   class_specs = statement->info.delete_.class_specs;
+  with = statement->info.delete_.with;
 
   if (from && from->node_type == PT_SPEC && from->info.spec.range_var)
     {
@@ -19237,7 +19489,7 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
 
       if (((aptr_statement =
-	    pt_to_upd_del_query (parser, NULL, select_list, from, class_specs, where, using_index, NULL, NULL, 1,
+	    pt_to_upd_del_query (parser, NULL, select_list, from, with, class_specs, where, using_index, NULL, NULL, 1,
 				 S_DELETE)) == NULL)
 	  || pt_copy_upddel_hints_to_select (parser, statement, aptr_statement) != NO_ERROR
 	  || ((aptr_statement = mq_translate (parser, aptr_statement)) == NULL))
@@ -19308,7 +19560,7 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  goto error_return;
 	}
 
-      xasl = pt_make_aptr_parent_node (parser, aptr_statement, DELETE_PROC);
+      xasl = pt_make_aptr_parent_node (parser, aptr_statement, with, DELETE_PROC);
       if (xasl == NULL)
 	{
 	  goto error_return;
@@ -19556,19 +19808,27 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* list of class OIDs used in this XASL */
       if (xasl->aptr_list != NULL)
 	{
-	  xasl->n_oid_list = xasl->aptr_list->n_oid_list;
-	  xasl->aptr_list->n_oid_list = 0;
+	  XASL_NODE *last = xasl->aptr_list;
+	  for (XASL_NODE * crt = xasl->aptr_list->next; crt; last = last->next, crt = crt->next)
+	    {
+	      // CTE procs are before the BuildList and are empty of references
+	      assert (last->n_oid_list == 0);
+	      assert (last->dbval_cnt == 0);
+	    }
 
-	  xasl->class_oid_list = xasl->aptr_list->class_oid_list;
-	  xasl->aptr_list->class_oid_list = NULL;
+	  xasl->n_oid_list = last->n_oid_list;
+	  last->n_oid_list = 0;
 
-	  xasl->class_locks = xasl->aptr_list->class_locks;
-	  xasl->aptr_list->class_locks = NULL;
+	  xasl->class_oid_list = last->class_oid_list;
+	  last->class_oid_list = NULL;
 
-	  xasl->tcard_list = xasl->aptr_list->tcard_list;
-	  xasl->aptr_list->tcard_list = NULL;
+	  xasl->class_locks = last->class_locks;
+	  last->class_locks = NULL;
 
-	  xasl->dbval_cnt = xasl->aptr_list->dbval_cnt;
+	  xasl->tcard_list = last->tcard_list;
+	  last->tcard_list = NULL;
+
+	  xasl->dbval_cnt = last->dbval_cnt;
 	}
     }
   if (xasl)
@@ -19721,6 +19981,7 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
   int num_cond_reev_classes = 0;
   PT_NODE *from = NULL;
   PT_NODE *where = NULL;
+  PT_NODE *with = NULL;
   PT_NODE *using_index = NULL;
   PT_NODE *class_specs = NULL;
   int cl = 0, cls_idx = 0, num_vals = 0, num_consts = 0;
@@ -19758,6 +20019,7 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
   class_specs = statement->info.update.class_specs;
   order_by = statement->info.update.order_by;
   orderby_for = statement->info.update.orderby_for;
+  with = statement->info.update.with;
 
   /* flush all classes */
   p = from;
@@ -19786,6 +20048,13 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
     }
 
   if (from == NULL || from->node_type != PT_SPEC || from->info.spec.range_var == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "update");
+      goto cleanup;
+    }
+
+  error = pt_append_omitted_on_update_expr_assignments (parser, assigns, from);
+  if (error != NO_ERROR)
     {
       PT_INTERNAL_ERROR (parser, "update");
       goto cleanup;
@@ -19821,7 +20090,7 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
     }
 
   aptr_statement =
-    pt_to_upd_del_query (parser, select_names, select_values, from, class_specs, where, using_index, order_by,
+    pt_to_upd_del_query (parser, select_names, select_values, from, with, class_specs, where, using_index, order_by,
 			 orderby_for, 1, S_UPDATE);
   /* restore assignment list here because we need to iterate through assignments later */
   pt_restore_assignment_links (statement->info.update.assignment, links, -1);
@@ -19924,7 +20193,7 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
       goto cleanup;
     }
 
-  xasl = pt_make_aptr_parent_node (parser, aptr_statement, UPDATE_PROC);
+  xasl = pt_make_aptr_parent_node (parser, aptr_statement, with, UPDATE_PROC);
   if (xasl == NULL || xasl->aptr_list == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -20373,19 +20642,27 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
 
   if (xasl->aptr_list != NULL)
     {
-      xasl->n_oid_list = xasl->aptr_list->n_oid_list;
-      xasl->aptr_list->n_oid_list = 0;
+      XASL_NODE *last = xasl->aptr_list;
+      for (XASL_NODE * crt = xasl->aptr_list->next; crt; last = last->next, crt = crt->next)
+	{
+	  // CTE procs are before the BuildList and are empty of references
+	  assert (last->n_oid_list == 0);
+	  assert (last->dbval_cnt == 0);
+	}
 
-      xasl->class_oid_list = xasl->aptr_list->class_oid_list;
-      xasl->aptr_list->class_oid_list = NULL;
+      xasl->n_oid_list = last->n_oid_list;
+      last->n_oid_list = 0;
 
-      xasl->class_locks = xasl->aptr_list->class_locks;
-      xasl->aptr_list->class_locks = NULL;
+      xasl->class_oid_list = last->class_oid_list;
+      last->class_oid_list = NULL;
 
-      xasl->tcard_list = xasl->aptr_list->tcard_list;
-      xasl->aptr_list->tcard_list = NULL;
+      xasl->class_locks = last->class_locks;
+      last->class_locks = NULL;
 
-      xasl->dbval_cnt = xasl->aptr_list->dbval_cnt;
+      xasl->tcard_list = last->tcard_list;
+      last->tcard_list = NULL;
+
+      xasl->dbval_cnt = last->dbval_cnt;
     }
 
   xasl->query_alias = statement->alias_print;
@@ -20420,6 +20697,210 @@ cleanup:
   return xasl;
 }
 
+/*
+ * pt_find_omitted_default_expr() - Builds a list of attributes that have a default expression and are not found
+ *                                  in the specified attributes list
+ *   return: Error code
+ *   parser(in/out): Parser context
+ *   class_obj(in):
+ *   specified_attrs(in): the list of attributes that are not to be considered
+ *   default_expr_attrs(out):
+ */
+int
+pt_find_omitted_default_expr (PARSER_CONTEXT * parser, DB_OBJECT * class_obj, PT_NODE * specified_attrs,
+			      PT_NODE ** default_expr_attrs)
+{
+  SM_CLASS *cls;
+  SM_ATTRIBUTE *att;
+  int error = NO_ERROR;
+  PT_NODE *new_attr = NULL, *node = NULL;
+
+  if (default_expr_attrs == NULL)
+    {
+      assert (default_expr_attrs != NULL);
+      return ER_FAILED;
+    }
+
+  error = au_fetch_class_force (class_obj, &cls, AU_FETCH_READ);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  for (att = cls->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
+    {
+      /* skip if attribute has auto_increment */
+      if (att->auto_increment != NULL)
+	{
+	  continue;
+	}
+
+      /* skip if a value has already been specified for this attribute */
+      for (node = specified_attrs; node != NULL; node = node->next)
+	{
+	  if (!pt_str_compare (pt_get_name (node), att->header.name, CASE_INSENSITIVE))
+	    {
+	      break;
+	    }
+	}
+      if (node != NULL)
+	{
+	  continue;
+	}
+
+      /* add attribute to default_expr_attrs list */
+      new_attr = parser_new_node (parser, PT_NAME);
+      if (new_attr == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "allocate new node");
+	  return ER_FAILED;
+	}
+
+      new_attr->info.name.original = att->header.name;
+
+      if (*default_expr_attrs != NULL)
+	{
+	  new_attr->next = *default_expr_attrs;
+	  *default_expr_attrs = new_attr;
+	}
+      else
+	{
+	  *default_expr_attrs = new_attr;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * pt_append_omitted_on_update_expr_assignments() - Appends assignment expressions that have a default on update
+ *                                                  expression and are not found in the specified attributes list
+ *   return: Error code
+ *   parser(in/out): Parser context
+ *   assigns(in/out): assignment expr list
+ *   from(in):
+ */
+int
+pt_append_omitted_on_update_expr_assignments (PARSER_CONTEXT * parser, PT_NODE * assigns, PT_NODE * from)
+{
+  int error = NO_ERROR;
+
+  for (PT_NODE * p = from; p != NULL; p = p->next)
+    {
+      if ((p->info.spec.flag & PT_SPEC_FLAG_UPDATE) == 0)
+	{
+	  continue;
+	}
+
+      UINTPTR spec_id = p->info.spec.id;
+      PT_NODE *cl_name_node = p->info.spec.flat_entity_list;
+      DB_OBJECT *class_obj = cl_name_node->info.name.db_object;
+      SM_CLASS *cls;
+      SM_ATTRIBUTE *att;
+      PT_NODE *new_lhs_of_assign = NULL;
+      PT_NODE *default_expr_attrs = NULL;
+      PT_ASSIGNMENTS_HELPER assign_helper;
+
+      error = au_fetch_class_force (class_obj, &cls, AU_FETCH_READ);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      for (att = cls->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
+	{
+	  if (att->on_update_default_expr == DB_DEFAULT_NONE)
+	    {
+	      continue;
+	    }
+
+	  pt_init_assignments_helper (parser, &assign_helper, assigns);
+
+	  /* skip if already in the assign-list */
+	  PT_NODE *att_name_node = NULL;
+
+	  while ((att_name_node = pt_get_next_assignment (&assign_helper)) != NULL)
+	    {
+	      if (!pt_str_compare (att_name_node->info.name.original, att->header.name, CASE_INSENSITIVE)
+		  && att_name_node->info.name.spec_id == spec_id)
+		{
+		  break;
+		}
+	    }
+	  if (att_name_node != NULL)
+	    {
+	      continue;
+	    }
+
+	  /* add attribute to default_expr_attrs list */
+	  new_lhs_of_assign = parser_new_node (parser, PT_NAME);
+	  if (new_lhs_of_assign == NULL)
+	    {
+	      if (default_expr_attrs != NULL)
+		{
+		  parser_free_tree (parser, default_expr_attrs);
+		}
+	      PT_INTERNAL_ERROR (parser, "allocate new node");
+	      return ER_FAILED;
+	    }
+	  new_lhs_of_assign->info.name.original = att->header.name;
+	  new_lhs_of_assign->info.name.resolved = cls->header.ch_name;
+	  new_lhs_of_assign->info.name.spec_id = spec_id;
+
+	  PT_OP_TYPE op = pt_op_type_from_default_expr_type (att->on_update_default_expr);
+	  PT_NODE *new_rhs_of_assign = parser_make_expression (parser, op, NULL, NULL, NULL);
+	  if (new_rhs_of_assign == NULL)
+	    {
+	      if (new_lhs_of_assign != NULL)
+		{
+		  parser_free_node (parser, new_lhs_of_assign);
+		}
+	      if (default_expr_attrs != NULL)
+		{
+		  parser_free_tree (parser, default_expr_attrs);
+		}
+	      PT_INTERNAL_ERROR (parser, "allocate new node");
+	      return ER_FAILED;
+	    }
+
+	  PT_NODE *assign_expr = parser_make_expression (parser, PT_ASSIGN, new_lhs_of_assign, new_rhs_of_assign, NULL);
+	  if (assign_expr == NULL)
+	    {
+	      if (new_lhs_of_assign != NULL)
+		{
+		  parser_free_node (parser, new_lhs_of_assign);
+		}
+	      if (new_rhs_of_assign != NULL)
+		{
+		  parser_free_node (parser, new_rhs_of_assign);
+		}
+	      if (default_expr_attrs != NULL)
+		{
+		  parser_free_tree (parser, default_expr_attrs);
+		}
+	      PT_INTERNAL_ERROR (parser, "allocate new node");
+	      return ER_FAILED;
+	    }
+
+	  if (default_expr_attrs != NULL)
+	    {
+	      assign_expr->next = default_expr_attrs;
+	      default_expr_attrs = assign_expr;
+	    }
+	  else
+	    {
+	      default_expr_attrs = assign_expr;
+	    }
+	}
+
+      if (default_expr_attrs != NULL)
+	{
+	  parser_append_node (default_expr_attrs, assigns);
+	}
+    }
+
+  return NO_ERROR;
+}
 
 /*
  * parser_generate_xasl_pre () - builds xasl for query nodes,
@@ -21836,65 +22317,6 @@ parser_generate_do_stmt_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
     }
 
   return xasl;
-}
-
-/*
- * pt_init_precision_and_scale () -
- *   return:
- *   value(in):
- *   node(in):
- */
-static void
-pt_init_precision_and_scale (DB_VALUE * value, PT_NODE * node)
-{
-  PT_NODE *dt;
-  DB_TYPE domain_type;
-
-  if (!value || !node)
-    {
-      return;
-    }
-
-  CAST_POINTER_TO_NODE (node);
-
-  if (node->data_type == NULL)
-    {
-      return;
-    }
-
-  dt = node->data_type;
-  domain_type = pt_type_enum_to_db (dt->type_enum);
-
-  switch (domain_type)
-    {
-    case DB_TYPE_VARCHAR:
-    case DB_TYPE_CHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
-    case DB_TYPE_BIT:
-    case DB_TYPE_VARBIT:
-      value->domain.char_info.length = dt->info.data_type.precision;
-      break;
-
-    case DB_TYPE_NUMERIC:
-      value->domain.numeric_info.precision = dt->info.data_type.precision;
-      value->domain.numeric_info.scale = dt->info.data_type.dec_precision;
-      break;
-    case DB_TYPE_JSON:
-      if (dt->info.data_type.json_schema)
-	{
-	  value->data.json.schema_raw = db_private_strdup (NULL, (const char *) dt->info.data_type.json_schema->bytes);
-	  value->need_clear = true;
-	}
-      else
-	{
-	  value->data.json.schema_raw = NULL;
-	}
-      break;
-
-    default:
-      ;				/* Do nothing. This suppresses compiler's warnings. */
-    }
 }
 
 /*
@@ -24083,6 +24505,13 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
       goto cleanup;
     }
 
+  error = pt_append_omitted_on_update_expr_assignments (parser, assigns, from);
+  if (error != NO_ERROR)
+    {
+      PT_INTERNAL_ERROR (parser, "merge update");
+      goto cleanup;
+    }
+
   /* make a copy of assignment list to be able to iterate later */
   copy_assigns = parser_copy_tree_list (parser, info->update.assignment);
 
@@ -24137,7 +24566,7 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
       goto cleanup;
     }
 
-  xasl = pt_make_aptr_parent_node (parser, aptr_statement, UPDATE_PROC);
+  xasl = pt_make_aptr_parent_node (parser, aptr_statement, NULL, UPDATE_PROC);
   if (xasl == NULL || xasl->aptr_list == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -24626,7 +25055,7 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
   num_default_expr = pt_length_of_list (default_expr_attrs);
   num_vals = pt_length_of_select_list (pt_get_select_list (parser, aptr_statement), EXCLUDE_HIDDEN_COLUMNS);
 
-  xasl = pt_make_aptr_parent_node (parser, aptr_statement, INSERT_PROC);
+  xasl = pt_make_aptr_parent_node (parser, aptr_statement, NULL, INSERT_PROC);
   if (xasl == NULL || xasl->aptr_list == NULL)
     {
       assert (er_errid () != NO_ERROR);

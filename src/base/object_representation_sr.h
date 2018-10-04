@@ -67,6 +67,7 @@ struct or_attribute
   int position;			/* storage position (list index) */
   OID classoid;			/* source class object id */
 
+  DB_DEFAULT_EXPR_TYPE on_update_expr;	/* on update default expr type */
   OR_DEFAULT_VALUE default_value;	/* default value */
   OR_DEFAULT_VALUE current_default_value;	/* default value */
   BTID *btids;			/* B-tree ID's for indexes and constraints */
@@ -122,6 +123,22 @@ struct or_function_index
 				 * atts member */
 };
 
+typedef enum
+{
+  OR_NO_INDEX = 0,
+  OR_NORMAL_INDEX = 1,
+  OR_INVISIBLE_INDEX = 2,
+  OR_ONLINE_INDEX_BUILDING_IN_PROGRESS = 3,
+
+  OR_RESERVED_INDEX_STATUS1 = 4,
+  OR_RESERVED_INDEX_STATUS2 = 5,
+  OR_RESERVED_INDEX_STATUS3 = 6,
+  OR_RESERVED_INDEX_STATUS4 = 7,
+  OR_RESERVED_INDEX_STATUS5 = 8,
+  OR_RESERVED_INDEX_STATUS6 = 9,
+  OR_LAST_INDEX_STATUS = 10
+} OR_INDEX_STATUS;
+
 typedef struct or_index OR_INDEX;
 struct or_index
 {
@@ -136,6 +153,7 @@ struct or_index
   BTREE_TYPE type;		/* btree type */
   int n_atts;			/* Number of associated attributes */
   BTID btid;			/* btree ID */
+  OR_INDEX_STATUS index_status;
 };
 
 typedef struct or_partition OR_PARTITION;

@@ -174,18 +174,11 @@ extern "C"
 				    const TZ_REGION * default_tz_region, DB_TIMESTAMPTZ * ts_tz,
 				    const char **end_tz_str);
   extern int tz_create_datetimetz_from_ses (const DB_DATETIME * dt, DB_DATETIMETZ * dt_tz);
-  extern int tz_create_timetz (const DB_TIME * time, const char *tz_str, const int tz_size,
-			       const TZ_REGION * default_tz_region, DB_TIMETZ * time_tz, const char **end_tz_str);
-  extern int tz_create_timetz_ext (const DB_TIME * time, const char *timezone, int len_timezone, DB_TIMETZ * time_tz);
-  extern int tz_create_timetz_from_ses (const DB_TIME * time, DB_TIMETZ * time_tz);
   extern int tz_utc_datetimetz_to_local (const DB_DATETIME * dt_utc, const TZ_ID * tz_id, DB_DATETIME * dt_local);
   extern int tz_datetimeltz_to_local (const DB_DATETIME * dt_ltz, DB_DATETIME * dt_local);
-  extern int tz_utc_timetz_to_local (const DB_TIME * time_utc, const TZ_ID * tz_id, DB_TIME * time_local);
-  extern int tz_timeltz_to_local (const DB_TIME * time_ltz, DB_TIME * time_local);
   extern int tz_id_to_str (const TZ_ID * tz_id, char *tz_str, const int tz_str_size);
   extern int tz_datetimetz_fix_zone (const DB_DATETIMETZ * src_dt_tz, DB_DATETIMETZ * dest_dt_tz);
   extern int tz_timestamptz_fix_zone (const DB_TIMESTAMPTZ * src_ts_tz, DB_TIMESTAMPTZ * dest_ts_tz);
-  extern int tz_timetz_fix_zone (const DB_TIMETZ * src_time_tz, DB_TIMETZ * dest_time_tz);
   extern int tz_conv_tz_datetime_w_region (const DB_DATETIME * src_dt, const TZ_REGION * src_tz_region,
 					   const TZ_REGION * dest_tz_region, DB_DATETIME * dest_dt,
 					   TZ_ID * src_tz_id_out, TZ_ID * dest_tz_id_out);
@@ -197,16 +190,12 @@ extern "C"
 			       int *tzh, int *tzm);
   extern int tz_create_datetimetz_from_offset (const DB_DATETIME * dt, const int tzh, const int tzm,
 					       DB_DATETIMETZ * dt_tz);
-  extern int tz_create_timetz_from_offset (const DB_TIME * time, const int tzh, const int tzm, DB_TIMETZ * time_tz);
   extern int tz_create_timestamptz_from_offset (const DB_DATE * date, const DB_TIME * time, const int tzh,
 						const int tzm, DB_TIMESTAMPTZ * timestamp_tz);
   extern int tz_get_best_match_zone (const char *name, int *size);
   extern int tz_create_datetimetz_from_zoneid_and_tzd (const DB_DATETIME * dt, TZ_REGION * default_tz_region,
 						       const int zone_id, const char *tzd, const int tzd_len,
 						       bool is_time_tz, DB_DATETIMETZ * dt_tz);
-  extern int tz_create_timetz_from_zoneid_and_tzd (const DB_TIME * time, TZ_REGION * default_tz_region,
-						   const int zone_id, const char *tzd, const int tzd_len,
-						   DB_TIMETZ * time_tz);
   extern int tz_create_timestamptz_from_zoneid_and_tzd (const DB_DATE * date, const DB_TIME * time,
 							TZ_REGION * default_tz_region, const int zone_id,
 							const char *tzd, const int tzd_len,
@@ -239,7 +228,6 @@ extern "C"
 					    DB_DATETIMETZ * dest_dt_tz);
   extern int tz_create_datetimetz_from_parts (const int m, const int d, const int y, const int h, const int mi,
 					      const int s, const int ms, const TZ_ID * tz_id, DB_DATETIMETZ * dt_tz);
-  extern int get_day_from_timetz (const DB_TIMETZ * timetz);
   extern int conv_tz (void *, const void *, DB_TYPE);
 #ifdef __cplusplus
 }

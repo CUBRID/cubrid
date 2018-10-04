@@ -57,6 +57,7 @@ struct log_topop_range
 
 extern const char *log_to_string (LOG_RECTYPE type);
 extern bool log_is_in_crash_recovery (void);
+extern bool log_is_in_crash_recovery_and_not_yet_completes_redo (void);
 extern LOG_LSA *log_get_restart_lsa (void);
 extern LOG_LSA *log_get_crash_point_lsa (void);
 extern LOG_LSA *log_get_append_lsa (void);
@@ -121,7 +122,7 @@ extern void log_append_compensate (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvinde
 				   PAGE_PTR pgptr, int length, const void *data, LOG_TDES * tdes);
 extern void log_append_compensate_with_undo_nxlsa (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VPID * vpid,
 						   PGLENGTH offset, PAGE_PTR pgptr, int length, const void *data,
-						   LOG_TDES * tdes, LOG_LSA * undo_nxlsa);
+						   LOG_TDES * tdes, const LOG_LSA * undo_nxlsa);
 extern void log_append_ha_server_state (THREAD_ENTRY * thread_p, int state);
 extern void log_append_empty_record (THREAD_ENTRY * thread_p, LOG_RECTYPE logrec_type, LOG_DATA_ADDR * addr);
 extern void log_skip_logging_set_lsa (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr);
@@ -207,5 +208,8 @@ extern void log_wakeup_checkpoint_daemon ();
 extern void log_wakeup_log_flush_daemon ();
 
 extern bool log_is_log_flush_daemon_available ();
+#if defined (SERVER_MODE)
+extern void log_flush_daemon_get_stats (UINT64 * statsp);
+#endif // SERVER_MODE
 
 #endif /* _LOG_MANAGER_H_ */

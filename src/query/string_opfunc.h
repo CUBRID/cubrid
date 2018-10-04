@@ -35,7 +35,7 @@
 #include "language_support.h"
 #include "numeric_opfunc.h"
 #include "object_domain.h"
-#include "regex38a.h"
+#include "libregex38a/regex38a.h"
 #include "thread_compat.hpp"
 
 #define QSTR_IS_CHAR(s)          (((s)==DB_TYPE_CHAR) || \
@@ -94,7 +94,6 @@
 #define TIMEZONE_BUF_SIZE	64
 #define TIMESTAMPTZ_BUF_SIZE	(TIMESTAMP_BUF_SIZE + TIMEZONE_BUF_SIZE)
 #define DATETIMETZ_BUF_SIZE	(DATETIME_BUF_SIZE + TIMEZONE_BUF_SIZE)
-#define TIMETZ_BUF_SIZE		(TIME_BUF_SIZE + TIMEZONE_BUF_SIZE)
 
 /*
  *  For the trim operation, db_string_trim(), this operand specifies
@@ -207,8 +206,10 @@ extern int db_json_set (DB_VALUE * result, DB_VALUE * arg[], const int num_args)
 extern int db_json_keys (DB_VALUE * result, DB_VALUE * arg[], const int num_args);
 extern int db_json_remove (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
 extern int db_json_array_append (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
+extern int db_json_array_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
 extern int db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
 extern int db_json_get_all_paths (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
+extern int db_json_pretty (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern int db_string_byte_length (const DB_VALUE * string, DB_VALUE * byte_count);

@@ -48,6 +48,9 @@
 #include "parse_tree.h"
 #include "xasl.h"
 
+// forward definitions
+struct compile_context;
+
 /* killtran supporting structures and functions */
 typedef struct one_tran_info ONE_TRAN_INFO;
 struct one_tran_info
@@ -190,8 +193,9 @@ extern int boot_soft_rename (const char *old_db_name, const char *new_db_name, c
 			     const char *fileof_vols_and_renamepaths, bool newdb_overwrite, bool extern_rename,
 			     bool force_delete);
 extern int boot_copy (const char *from_dbname, const char *new_db_name, const char *new_db_path,
-		      const char *new_log_path, const char *new_lob_path, const char *new_db_server_host,
-		      const char *new_volext_path, const char *fileof_vols_and_copypaths, bool newdb_overwrite);
+		      const char *new_log_path, const char *new_lob_path,
+		      const char *new_db_server_host, const char *new_volext_path,
+		      const char *fileof_vols_and_copypaths, bool newdb_overwrite);
 extern int boot_emergency_patch (const char *db_name, bool recreate_log, DKNPAGES log_npages, const char *db_locale,
 				 FILE * out_fp);
 extern HA_SERVER_STATE boot_change_ha_mode (HA_SERVER_STATE state, bool force, int timeout);
@@ -205,7 +209,7 @@ extern int btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_t
 			     int n_attrs, int *attr_ids, int *attrs_prefix_length, HFID * hfids, int unique_pk,
 			     int not_null_flag, OID * fk_refcls_oid, BTID * fk_refcls_pk_btid, const char *fk_name,
 			     char *pred_stream, int pred_stream_size, char *expr_stream, int expr_stream_size,
-			     int func_col_id, int func_attr_index_start);
+			     int func_col_id, int func_attr_index_start, SM_INDEX_STATUS index_status);
 extern int btree_delete_index (BTID * btid);
 extern int locator_log_force_nologging (void);
 extern int locator_remove_class_from_index (OID * oid, BTID * btid, HFID * hfid);
@@ -215,7 +219,7 @@ extern BTREE_SEARCH btree_find_multi_uniques (OID * class_oid, int pruning_type,
 					      int count, SCAN_OPERATION_TYPE op_type, OID ** oids, int *oids_count);
 extern int btree_class_test_unique (char *buf, int buf_size);
 extern int qfile_get_list_file_page (QUERY_ID query_id, VOLID volid, PAGEID pageid, char *buffer, int *buffer_size);
-extern int qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream);
+extern int qmgr_prepare_query (struct compile_context *context, XASL_STREAM * stream);
 
 extern QFILE_LIST_ID *qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt,
 					  const DB_VALUE * dbvals, QUERY_FLAG flag, CACHE_TIME * clt_cache_time,
@@ -400,4 +404,6 @@ extern int chksum_insert_repl_log_and_demote_table_lock (REPL_INFO * repl_info, 
 extern int log_does_active_user_exist (const char *user_name, bool * existed);
 
 extern int netcl_spacedb (SPACEDB_ALL * spaceall, SPACEDB_ONEVOL ** spacevols, SPACEDB_FILES * spacefiles);
+
+extern int locator_demote_class_lock (const OID * class_oid, LOCK lock, LOCK * ex_lock);
 #endif /* _NETWORK_INTERFACE_CL_H_ */

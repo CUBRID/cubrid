@@ -41,7 +41,7 @@
 #include "statistics_sr.h"
 #include "partition_sr.h"
 #include "object_primitive.h"
-#include "thread.h"
+#include "thread_manager.hpp"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -332,7 +332,7 @@ static PAGE_PTR catalog_get_representation_record_after_search (THREAD_ENTRY * t
 								OID * rep_dir_p, int *out_repr_count_p,
 								bool lookup_hash);
 static int catalog_adjust_directory_count (THREAD_ENTRY * thread_p, PAGE_PTR page_p, RECDES * record_p, int delta);
-static void catalog_delete_key (OID * class_id_p, REPR_ID repr_id);
+static void catalog_delete_key (THREAD_ENTRY * thread_p, OID * class_id_p, REPR_ID repr_id);
 static char *catalog_find_representation_item_position (INT16 repr_id, int repr_cnt, char *repr_p, int *out_position_p);
 static int catalog_insert_representation_item (THREAD_ENTRY * thread_p, RECDES * record_p, OID * rep_dir_p);
 static int catalog_drop_directory (THREAD_ENTRY * thread_p, PAGE_PTR page_p, RECDES * record_p, OID * oid_p,
@@ -357,7 +357,7 @@ static int catalog_fixup_missing_class_info (THREAD_ENTRY * thread_p, OID * clas
 static DISK_ISVALID catalog_check_class_consistency (THREAD_ENTRY * thread_p, OID * class_oid);
 static void catalog_dump_disk_attribute (DISK_ATTR * atr);
 static void catalog_dump_representation (DISK_REPR * dr);
-static void catalog_clear_hash_table (void);
+static void catalog_clear_hash_table (THREAD_ENTRY * thread_p);
 
 static void catalog_put_page_header (char *rec_p, CATALOG_PAGE_HEADER * header_p);
 static void catalog_get_disk_representation (DISK_REPR * disk_repr_p, char *rec_p);
@@ -621,7 +621,8 @@ catalog_initialize_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args)
       return ER_FAILED;
     }
 
-  log_append_redo_data2 (thread_p, RVCT_NEWPAGE, NULL, page, -1, sizeof (CATALOG_PAGE_HEADER), &page_header);
+  log_append_undoredo_data2 (thread_p, RVCT_NEWPAGE, NULL, page, -1, 0, sizeof (CATALOG_PAGE_HEADER), NULL,
+			     &page_header);
 
   pgbuf_set_dirty (thread_p, page, DONT_FREE);
   return NO_ERROR;
@@ -1948,9 +1949,9 @@ catalog_adjust_directory_count (THREAD_ENTRY * thread_p, PAGE_PTR page_p, RECDES
 }
 
 static void
-catalog_delete_key (OID * class_id_p, REPR_ID repr_id)
+catalog_delete_key (THREAD_ENTRY * thread_p, OID * class_id_p, REPR_ID repr_id)
 {
-  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (NULL, THREAD_TS_CATALOG);
+  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_CATALOG);
   CATALOG_KEY catalog_key;
 
   catalog_key.page_id = class_id_p->pageid;
@@ -2120,7 +2121,7 @@ catalog_put_representation_item (THREAD_ENTRY * thread_p, OID * class_id_p, CATA
 	  page_id.volid = CATALOG_GET_REPR_ITEM_PAGEID_VOLID (repr_p);
 	  slot_id = CATALOG_GET_REPR_ITEM_SLOTID (repr_p);
 
-	  catalog_delete_key (class_id_p, repr_item_p->repr_id);
+	  catalog_delete_key (thread_p, class_id_p, repr_item_p->repr_id);
 	  catalog_put_repr_item_to_record (repr_p, repr_item_p);
 
 	  /* save #repr */
@@ -2404,7 +2405,7 @@ catalog_drop_representation_item (THREAD_ENTRY * thread_p, OID * class_id_p, CAT
   repr_item_p->page_id.volid = CATALOG_GET_REPR_ITEM_PAGEID_VOLID (repr_p);
   repr_item_p->slot_id = CATALOG_GET_REPR_ITEM_SLOTID (repr_p);
 
-  catalog_delete_key (class_id_p, repr_item_p->repr_id);
+  catalog_delete_key (thread_p, class_id_p, repr_item_p->repr_id);
 
   if (repr_count > 1)
     {
@@ -3454,7 +3455,7 @@ catalog_drop_all_representation_and_class (THREAD_ENTRY * thread_p, OID * class_
       page_id.volid = CATALOG_GET_REPR_ITEM_PAGEID_VOLID (repr_p);
       slot_id = CATALOG_GET_REPR_ITEM_SLOTID (repr_p);
 
-      catalog_delete_key (class_id_p, repr_id);
+      catalog_delete_key (thread_p, class_id_p, repr_id);
 
       if (catalog_drop_representation_class_from_page (thread_p, &vpid, &page_p, &page_id, slot_id) != NO_ERROR)
 	{
@@ -3482,7 +3483,7 @@ catalog_drop_all_representation_and_class (THREAD_ENTRY * thread_p, OID * class_
   catalog_update_max_space (&vpid, new_space);
   recdes_free_data_area (&record);
 
-  catalog_delete_key (class_id_p, CATALOG_DIR_REPR_KEY);
+  catalog_delete_key (thread_p, class_id_p, CATALOG_DIR_REPR_KEY);
   catalog_end_access_with_dir_oid (thread_p, &catalog_access_info, NO_ERROR);
 
   return NO_ERROR;
@@ -3584,7 +3585,7 @@ catalog_drop_old_representations (THREAD_ENTRY * thread_p, OID * class_id_p)
 
       if (repr_id != NULL_REPRID && repr_id != last_repr.repr_id)
 	{
-	  catalog_delete_key (class_id_p, repr_id);
+	  catalog_delete_key (thread_p, class_id_p, repr_id);
 
 	  if (catalog_drop_representation_class_from_page (thread_p, &vpid, &page_p, &page_id, slot_id) != NO_ERROR)
 	    {
@@ -5133,9 +5134,9 @@ catalog_dump (THREAD_ENTRY * thread_p, FILE * fp, int dump_flag)
 }
 
 static void
-catalog_clear_hash_table (void)
+catalog_clear_hash_table (THREAD_ENTRY * thread_p)
 {
-  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (NULL, THREAD_TS_CATALOG);
+  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_CATALOG);
 
   lf_hash_clear (t_entry, &catalog_Hash_table);
 }
@@ -5156,7 +5157,7 @@ catalog_rv_new_page_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
 
   aligned_data = PTR_ALIGN (data, MAX_ALIGNMENT);
 
-  catalog_clear_hash_table ();
+  catalog_clear_hash_table (thread_p);
 
   (void) pgbuf_set_page_ptype (thread_p, recv_p->pgptr, PAGE_CATALOG);
 
@@ -5192,7 +5193,7 @@ catalog_rv_insert_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
   RECDES record;
   int success;
 
-  catalog_clear_hash_table ();
+  catalog_clear_hash_table (thread_p);
 
   slot_id = recv_p->offset;
 
@@ -5225,7 +5226,7 @@ catalog_rv_insert_undo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
 {
   PGSLOTID slot_id;
 
-  catalog_clear_hash_table ();
+  catalog_clear_hash_table (thread_p);
 
   slot_id = recv_p->offset;
   (void) spage_delete_for_recovery (thread_p, recv_p->pgptr, slot_id);
@@ -5244,7 +5245,7 @@ catalog_rv_delete_redo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
 {
   PGSLOTID slot_id;
 
-  catalog_clear_hash_table ();
+  catalog_clear_hash_table (thread_p);
 
   slot_id = recv_p->offset;
   (void) spage_delete (thread_p, recv_p->pgptr, slot_id);
@@ -5657,7 +5658,7 @@ exit:
 int
 catalog_rv_delete_undo (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
 {
-  catalog_clear_hash_table ();
+  catalog_clear_hash_table (thread_p);
   return catalog_rv_insert_redo (thread_p, recv_p);
 }
 
@@ -5674,7 +5675,7 @@ catalog_rv_update (THREAD_ENTRY * thread_p, LOG_RCV * recv_p)
   PGSLOTID slot_id;
   RECDES record;
 
-  catalog_clear_hash_table ();
+  catalog_clear_hash_table (thread_p);
 
   slot_id = recv_p->offset;
 
@@ -5702,7 +5703,7 @@ catalog_rv_ovf_page_logical_insert_undo (THREAD_ENTRY * thread_p, LOG_RCV * recv
 {
   VPID *vpid_p;
 
-  catalog_clear_hash_table ();
+  catalog_clear_hash_table (thread_p);
 
   vpid_p = (VPID *) recv_p->data;
   return file_dealloc (thread_p, &catalog_Id.vfid, vpid_p, FILE_CATALOG);

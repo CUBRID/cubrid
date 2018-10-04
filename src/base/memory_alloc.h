@@ -42,6 +42,11 @@
 #include <stdint.h>
 #endif
 
+#if defined (__cplusplus)
+#include <memory>
+#include <functional>
+#endif
+
 /* Ceiling of positive division */
 #define CEIL_PTVDIV(dividend, divisor) \
         (((dividend) == 0) ? 0 : (((dividend) - 1) / (divisor)) + 1)
@@ -218,44 +223,67 @@ extern void db_clear_private_heap (THREAD_ENTRY * thread_p, HL_HEAPID heap_id);
 extern HL_HEAPID db_change_private_heap (THREAD_ENTRY * thread_p, HL_HEAPID heap_id);
 extern HL_HEAPID db_replace_private_heap (THREAD_ENTRY * thread_p);
 extern void db_destroy_private_heap (THREAD_ENTRY * thread_p, HL_HEAPID heap_id);
+
 #if !defined(NDEBUG)
 #define db_private_alloc(thrd, size) \
         db_private_alloc_debug(thrd, size, true, __FILE__, __LINE__)
-extern void *db_private_alloc_debug (void *thrd, size_t size, bool rc_track, const char *caller_file, int caller_line);
 #define db_private_free(thrd, ptr) \
         db_private_free_debug(thrd, ptr, true, __FILE__, __LINE__)
-extern void db_private_free_debug (void *thrd, void *ptr, bool rc_track, const char *caller_file, int caller_line);
 #define db_private_realloc(thrd, ptr, size) \
         db_private_realloc_debug(thrd, ptr, size, true, __FILE__, __LINE__)
-extern void *db_private_realloc_debug (void *thrd, void *ptr, size_t size, bool rc_track, const char *caller_file,
-				       int caller_line);
-#else /* NDEBUG */
-#define db_private_alloc(thrd, size) \
-        db_private_alloc_release(thrd, size, false)
-extern void *db_private_alloc_release (void *thrd, size_t size, bool rc_track);
-#define db_private_free(thrd, ptr) \
-        db_private_free_release(thrd, ptr, false)
-extern void db_private_free_release (void *thrd, void *ptr, bool rc_track);
-#define db_private_realloc(thrd, ptr, size) \
-        db_private_realloc_release(thrd, ptr, size, false)
-extern void *db_private_realloc_release (void *thrd, void *ptr, size_t size, bool rc_track);
-#endif /* NDEBUG */
 
 #ifdef __cplusplus
 extern "C"
 {
 #endif
+  extern void *db_private_alloc_debug (THREAD_ENTRY * thrd, size_t size, bool rc_track, const char *caller_file,
+				       int caller_line);
+  extern void db_private_free_debug (THREAD_ENTRY * thrd, void *ptr, bool rc_track, const char *caller_file,
+				     int caller_line);
+  extern void *db_private_realloc_debug (THREAD_ENTRY * thrd, void *ptr, size_t size, bool rc_track,
+					 const char *caller_file, int caller_line);
+#ifdef __cplusplus
+}
+#endif
 
-  extern char *db_private_strdup (void *thrd, const char *s);
+#else /* NDEBUG */
+#define db_private_alloc(thrd, size) \
+        db_private_alloc_release(thrd, size, false)
+#define db_private_free(thrd, ptr) \
+        db_private_free_release(thrd, ptr, false)
+#define db_private_realloc(thrd, ptr, size) \
+        db_private_realloc_release(thrd, ptr, size, false)
 
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+  extern void *db_private_alloc_release (THREAD_ENTRY * thrd, size_t size, bool rc_track);
+  extern void db_private_free_release (THREAD_ENTRY * thrd, void *ptr, bool rc_track);
+  extern void *db_private_realloc_release (THREAD_ENTRY * thrd, void *ptr, size_t size, bool rc_track);
+#ifdef __cplusplus
+}
+#endif
+#endif				/* NDEBUG */
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+  extern char *db_private_strdup (THREAD_ENTRY * thrd, const char *s);
 #ifdef __cplusplus
 }
 #endif
 
 /* for external package */
-extern void *db_private_alloc_external (void *thrd, size_t size);
-extern void db_private_free_external (void *thrd, void *ptr);
-extern void *db_private_realloc_external (void *thrd, void *ptr, size_t size);
+extern void *db_private_alloc_external (THREAD_ENTRY * thrd, size_t size);
+extern void db_private_free_external (THREAD_ENTRY * thrd, void *ptr);
+extern void *db_private_realloc_external (THREAD_ENTRY * thrd, void *ptr, size_t size);
+
+#if defined (SERVER_MODE)
+extern HL_HEAPID db_private_set_heapid_to_thread (THREAD_ENTRY * thread_p, HL_HEAPID heap_id);
+#endif // SERVER_MODE
 
 extern HL_HEAPID db_create_fixed_heap (int req_size, int recs_per_chunk);
 extern void db_destroy_fixed_heap (HL_HEAPID heap_id);
@@ -290,5 +318,81 @@ enum
 #define private_user2hl_ptr(ptr) \
   (PRIVATE_MALLOC_HEADER *)((char *)(ptr) - PRIVATE_MALLOC_HEADER_ALIGNED_SIZE)
 #endif /* SA_MODE */
+
+
+#if defined (__cplusplus)
+// *INDENT-OFF*
+template <class T> 
+class PRIVATE_UNIQUE_PTR_DELETER
+{
+  public:
+    PRIVATE_UNIQUE_PTR_DELETER ()
+      : thread_p (NULL) 
+      { 
+      }
+
+    PRIVATE_UNIQUE_PTR_DELETER (THREAD_ENTRY * thread_p)
+      : thread_p (thread_p)
+      {
+      }
+
+    void operator () (T * ptr) const
+      {
+        if (ptr != NULL)
+          {
+	    db_private_free (thread_p, ptr);
+          }
+      }
+
+  private:
+    THREAD_ENTRY * thread_p;
+};
+
+template <class T> 
+class PRIVATE_UNIQUE_PTR
+{
+  public:
+    PRIVATE_UNIQUE_PTR (T * ptr, THREAD_ENTRY * thread_p)
+      {
+        smart_ptr = std::unique_ptr<T, PRIVATE_UNIQUE_PTR_DELETER <T> >
+          (ptr, PRIVATE_UNIQUE_PTR_DELETER <T> (thread_p));
+      }
+
+    T *get ()
+      {
+        return smart_ptr.get ();
+      }
+
+    T *release ()
+      {
+        return smart_ptr.release ();
+      }
+
+    void swap (PRIVATE_UNIQUE_PTR <T> &other)
+      {
+        smart_ptr.swap (other.smart_ptr);
+      }
+
+    void reset (T *ptr)
+      {
+        smart_ptr.reset (ptr);
+      }
+
+    T *operator-> () const
+      {
+        return smart_ptr.get();
+      }
+
+    T &operator* () const
+      {
+        return *smart_ptr.get();
+      }
+
+  private:
+    std::unique_ptr <T, PRIVATE_UNIQUE_PTR_DELETER <T> >smart_ptr;
+};
+// *INDENT-ON*
+
+#endif /* cplusplus */
 
 #endif /* _MEMORY_ALLOC_H_ */

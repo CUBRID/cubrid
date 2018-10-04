@@ -71,15 +71,17 @@ namespace test_thread
   void
   run (std::size_t max_threads)
   {
-    cubthread::manager thread_manager (max_threads);
+    cubthread::manager thread_mgr;
 
-    auto *dummy_pool = thread_manager.create_worker_pool (1, 1);
-    thread_manager.destroy_worker_pool (dummy_pool);
+    thread_mgr.init_entries (max_threads);
 
-    auto *daemon = thread_manager.create_daemon (cubthread::looper (), new dummy_exec ());
+    auto *dummy_pool = thread_mgr.create_worker_pool (1, 1, NULL, NULL, 1, false);
+    thread_mgr.destroy_worker_pool (dummy_pool);
+
+    auto *daemon = thread_mgr.create_daemon (cubthread::looper (), new dummy_exec ());
     // give daemon a chance to loop
     std::this_thread::sleep_for (std::chrono::duration<std::size_t> (1));
-    thread_manager.destroy_daemon (daemon);
+    thread_mgr.destroy_daemon (daemon);
 
     std::cout << "  test_manager successful" << std::endl;
   }

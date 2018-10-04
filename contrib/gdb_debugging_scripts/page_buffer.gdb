@@ -8,9 +8,13 @@
 #
 # Prints all holders of any pages.
 #
+# Prerequisites:
+#   thread_num_total in thread_tran.gdb
+#
 define pgbuf_print_holders
   set $i = 0
-  while $i < thread_Manager.num_total
+  thread_num_total $num_total_threads
+  while $i < $num_total_threads
     if pgbuf_Pool.thrd_holder_info[$i].thrd_hold_list != 0
       print $i
       print pgbuf_Pool.thrd_holder_info[$i]
@@ -41,7 +45,8 @@ define pgbuf_print_holders
 #
 define pgbuf_print_holders_and_waiters
   set $i = 0
-  while $i < thread_Manager.num_total
+  thread_num_total $num_total_threads
+  while $i < $num_total_threads
     if pgbuf_Pool.thrd_holder_info[$i].thrd_hold_list != 0
       printf "Holder: %d.\n", $i
       set $phold = pgbuf_Pool.thrd_holder_info[$i].thrd_hold_list
@@ -71,7 +76,8 @@ define pgbuf_print_holders_and_waiters
 #
 define find_page_holders
   set $i=0
-  while $i < thread_Manager.num_total
+  thread_num_total $num_total_threads
+  while $i < $num_total_threads
     if pgbuf_Pool.thrd_holder_info[$i].thrd_hold_list != 0
       set $th = pgbuf_Pool.thrd_holder_info[$i].thrd_hold_list
       while $th != 0
@@ -205,7 +211,8 @@ define pgbuf_print_alloc_bcb_waits
   set $i = 0
   
   printf "Direct victim array: \n"
-  while $i < thread_Manager.num_total
+  thread_num_total $num_total_threads
+  while $i < $num_total_threads
     if pgbuf_Pool.direct_victims.bcb_victims[$i] != 0
       printf "(thr = %d, bcb = %p) \n", $i, pgbuf_Pool.direct_victims.bcb_victims[$i]
     end

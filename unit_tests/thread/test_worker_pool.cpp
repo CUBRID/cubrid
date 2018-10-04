@@ -28,53 +28,73 @@
 #include "thread_task.hpp"
 #include "thread_worker_pool.hpp"
 
-#if defined (NO_GCC_44)
 #include <atomic>
 #include <chrono>
 #include <iostream>
 
 namespace test_thread
 {
-
-  typedef cubthread::worker_pool<int> test_worker_pool_type;
-  static int Context = 0;
-
-  class test_work : public cubthread::contextual_task<int>
+  class test_context
   {
-      int &create_context (void)
+    public:
+
+      test_context (void)
       {
-	return Context;
+	//
       }
-      void retire_context (int &)
+
+      void interrupt_execution (void)
       {
+	// do nothing
       }
   };
 
-  class dummy_work : public test_work
+  class test_context_manager : public cubthread::context_manager<test_context>
   {
     public:
-      void execute (int &)
+
+      context_type &
+      create_context (void) final      // create a new thread context; cannot fail
       {
-	test_common::sync_cout ("dummy test\n");
+	return * (new context_type);
+      }
+
+      void
+      retire_context (context_type &context) final      // retire the thread context
+      {
+	delete &context;
       }
   };
 
-  class start_end_work : public test_work
+  class test_task : public cubthread::task<test_context>
+  {
+      void execute (context_type &context)
+      {
+	(void) context;  // suppress unused parameter
+	test_common::sync_cout ("test\n");
+      }
+  };
+
+  using test_worker_pool_type = cubthread::worker_pool<test_context>;
+
+  class start_end_task : public cubthread::task<test_context>
   {
     public:
-      void execute (int &)
+      void execute (context_type &context)
       {
+	(void) context;  // suppress unused parameter
 	test_common::sync_cout ("start\n");
-	std::this_thread::sleep_for (std::chrono::duration<int> (1));
+	std::this_thread::sleep_for (std::chrono::seconds (1));
 	test_common::sync_cout ("end\n");
       }
   };
 
-  class inc_work : public test_work
+  class inc_work : public cubthread::task<test_context>
   {
     public:
-      void execute (int &)
+      void execute (context_type &context)
       {
+	(void) context;  // suppress unused parameter
 	if (++m_count % 1000 == 0)
 	  {
 	    test_common::sync_cout ("10k increments\n");
@@ -84,32 +104,34 @@ namespace test_thread
     private:
       static std::atomic<size_t> m_count;
   };
-  std::atomic<size_t> inc_work::m_count = 0;
+  std::atomic<size_t> inc_work::m_count = { 0 };
 
   int
   test_one_thread_pool (void)
   {
-    test_worker_pool_type pool (1, 1);
-    pool.execute (new dummy_work ());
-    pool.execute (new dummy_work ());
+    test_context_manager ctx_mgr;
+    test_worker_pool_type pool (1, 1, ctx_mgr, NULL, 1, false);
+    pool.execute (new test_task ());
+    pool.execute (new test_task ());
 
-    std::this_thread::sleep_for (std::chrono::duration<int> (1));
-    pool.execute (new dummy_work ());
+    std::this_thread::sleep_for (std::chrono::seconds (1));
+    pool.execute (new test_task ());
 
-    std::this_thread::sleep_for (std::chrono::duration<int> (1));
-    pool.stop ();
+    std::this_thread::sleep_for (std::chrono::seconds (1));
+    pool.stop_execution ();
     return 0;
   }
 
   int
   test_two_threads_pool (void)
   {
-    test_worker_pool_type pool (2, 16);
+    test_context_manager ctx_mgr;
+    test_worker_pool_type pool (2, 16, ctx_mgr, NULL, 1, false);
 
-    pool.execute (new start_end_work ());
-    pool.execute (new start_end_work ());
+    pool.execute (new start_end_task ());
+    pool.execute (new start_end_task ());
 
-    pool.stop ();
+    pool.stop_execution ();
 
     return 0;
   }
@@ -117,12 +139,13 @@ namespace test_thread
   int
   test_stress (void)
   {
+    test_context_manager ctx_mgr;
     size_t nthreads = std::thread::hardware_concurrency ();
     nthreads = nthreads == 0 ? 24 : nthreads;
 
     nthreads *= 4;
 
-    test_worker_pool_type workpool (nthreads, nthreads * 16);
+    test_worker_pool_type workpool (nthreads, nthreads * 16, ctx_mgr, NULL, 1, false);
 
     auto start_time = std::chrono::high_resolution_clock::now ();
     for (int i = 0; i < 10000; i++)
@@ -132,7 +155,7 @@ namespace test_thread
     auto end_time = std::chrono::high_resolution_clock::now ();
 
     std::cout << "  duration - " << std::chrono::duration<double> (end_time - start_time).count () << std::endl;
-    workpool.stop ();
+    workpool.stop_execution ();
     return 0;
   }
 
@@ -146,16 +169,3 @@ namespace test_thread
   }
 
 } // namespace test_thread
-
-#else // GCC 4.4
-
-namespace test_thread
-{
-  int
-  test_worker_pool (void)
-  {
-    return 0;
-  }
-} // namespace test_thread
-
-#endif // GCC 4.4

@@ -1825,6 +1825,9 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
   OR_ATTRIBUTE *att;
   OR_ATTRIBUTE *ptr = NULL;
   OR_INDEX *index;
+  DB_VALUE stat_val;
+
+  db_make_null (&stat_val);
 
   if (seq_size < 2)
     {
@@ -1834,7 +1837,7 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
 
   index = &(rep->indexes[rep->n_indexes]);
 
-  att_cnt = (seq_size - 2) / 2;
+  att_cnt = (seq_size - 3) / 2;
 
   index->atts = (OR_ATTRIBUTE **) malloc (sizeof (OR_ATTRIBUTE *) * att_cnt);
   if (index->atts == NULL)
@@ -1858,6 +1861,7 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
   index->attrs_prefix_length = NULL;
   index->filter_predicate = NULL;
   index->func_index_info = NULL;
+  index->index_status = OR_NO_INDEX;
 
   /* 
    * For each attribute ID in the set,
@@ -1899,16 +1903,20 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
     }
   index->btname = strdup (cons_name);
 
+  /* Get the index status. */
+  set_get_element_nocopy (constraint_seq, seq_size - 2, &stat_val);
+  index->index_status = (OR_INDEX_STATUS) (db_get_int (&stat_val));
+
   if (type == BTREE_FOREIGN_KEY)
     {
-      if (set_get_element_nocopy (constraint_seq, seq_size - 2, &att_val) == NO_ERROR)
+      if (set_get_element_nocopy (constraint_seq, seq_size - 3, &att_val) == NO_ERROR)
 	{
 	  or_install_btids_foreign_key (cons_name, db_get_set (&att_val), index);
 	}
     }
   else if (type == BTREE_PRIMARY_KEY)
     {
-      if (set_get_element_nocopy (constraint_seq, seq_size - 2, &att_val) == NO_ERROR)
+      if (set_get_element_nocopy (constraint_seq, seq_size - 3, &att_val) == NO_ERROR)
 	{
 	  if (DB_VALUE_TYPE (&att_val) == DB_TYPE_SEQUENCE)
 	    {
@@ -1918,7 +1926,7 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
     }
   else
     {
-      if (set_get_element_nocopy (constraint_seq, seq_size - 2, &att_val) == NO_ERROR)
+      if (set_get_element_nocopy (constraint_seq, seq_size - 3, &att_val) == NO_ERROR)
 	{
 	  if (DB_VALUE_TYPE (&att_val) == DB_TYPE_SEQUENCE)
 	    {
@@ -2143,7 +2151,7 @@ or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq, BTREE_T
   DB_VALUE id_val, att_val;
 
   /* Extract the first element of the sequence which is the encoded B-tree ID */
-  /* { btid, [attrID, asc_desc]+, {fk_info} or {key prefix length}, comment} */
+  /* { btid, [attrID, asc_desc]+, {fk_info} or {key prefix length}, status, comment} */
   seq_size = set_size (constraint_seq);
 
   if (set_get_element_nocopy (constraint_seq, 0, &id_val) != NO_ERROR)
@@ -2489,6 +2497,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
 
       /* get the default expression. */
       classobj_initialize_default_expr (&att->current_default_value.default_expr);
+      att->on_update_expr = DB_DEFAULT_NONE;
       if (properties_val_len > 0)
 	{
 	  db_make_null (&properties_val);
@@ -2575,6 +2584,14 @@ or_get_current_representation (RECDES * record, int do_indexes)
 		    (DB_DEFAULT_EXPR_TYPE) db_get_int (&def_expr);
 		}
 	    }
+	  pr_clear_value (&def_expr);
+
+	  if (att_props != NULL && classobj_get_prop (att_props, "update_default", &def_expr) > 0)
+	    {
+	      /* simple expressions like SYS_DATE */
+	      assert (DB_VALUE_TYPE (&def_expr) == DB_TYPE_INTEGER);
+	      att->on_update_expr = (DB_DEFAULT_EXPR_TYPE) db_get_int (&def_expr);
+	    }
 
 	  pr_clear_value (&def_expr);
 	  pr_clear_value (&properties_val);
@@ -2617,6 +2634,8 @@ or_get_current_representation (RECDES * record, int do_indexes)
       att->current_default_value.val_length = 0;
       att->current_default_value.value = NULL;
       classobj_initialize_default_expr (&att->current_default_value.default_expr);
+      att->on_update_expr = DB_DEFAULT_NONE;
+
       OR_GET_OID (ptr + ORC_ATT_CLASS_OFFSET, &oid);
       att->classoid = oid;	/* structure copy */
 
@@ -2691,6 +2710,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
       att->default_value.val_length = 0;
       att->default_value.value = NULL;
       classobj_initialize_default_expr (&att->default_value.default_expr);
+      att->on_update_expr = DB_DEFAULT_NONE;
       att->current_default_value.val_length = 0;
       att->current_default_value.value = NULL;
       classobj_initialize_default_expr (&att->current_default_value.default_expr);

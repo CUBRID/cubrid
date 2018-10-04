@@ -84,7 +84,12 @@ set(BASE_SOURCES
   ${BASE_DIR}/uca_support.c
   ${BASE_DIR}/unicode_support.c
   ${BASE_DIR}/memory_hash.c
+  ${BASE_DIR}/packer.cpp
+  ${BASE_DIR}/get_clockfreq.c
+  ${BASE_DIR}/perf.cpp
   ${BASE_DIR}/perf_monitor.c
+  ${BASE_DIR}/pinnable_buffer.cpp
+  ${BASE_DIR}/pinning.cpp
   ${BASE_DIR}/ini_parser.c
   ${BASE_DIR}/system_parameter.c
   ${BASE_DIR}/fault_injection.c
@@ -106,8 +111,9 @@ set(BASE_SOURCES
   ${BASE_DIR}/cubrid_getopt_long.c
   ${BASE_DIR}/binaryheap.c
   ${BASE_DIR}/tsc_timer.c
-  ${BASE_DIR}/perf.c
   ${BASE_DIR}/lock_free.c
+  ${BASE_DIR}/fileline_location.cpp
+  ${BASE_DIR}/resource_tracker.cpp
   ${BASE_DIR}/tz_compile.c
   ${BASE_DIR}/tz_support.c
   )
@@ -115,6 +121,14 @@ set(BASE_HEADERS
   ${BASE_DIR}/error_code.h
   ${BASE_DIR}/error_context.hpp
   ${BASE_DIR}/error_manager.h
+  ${BASE_DIR}/fileline_location.hpp
+  ${BASE_DIR}/packer.hpp
+  ${BASE_DIR}/perf.hpp
+  ${BASE_DIR}/perf_def.hpp
+  ${BASE_DIR}/pinning.hpp
+  ${BASE_DIR}/pinnable_buffer.hpp
+  ${BASE_DIR}/packable_object.hpp
+  ${BASE_DIR}/resource_tracker.hpp
 )
 
 set(HEAPLAYER_SOURCES
@@ -167,32 +181,36 @@ set(OPTIMIZER_SOURCES
   )
 
 set(QUERY_SOURCES
+  ${QUERY_DIR}/arithmetic.c
+  ${QUERY_DIR}/crypt_opfunc.c
+  ${QUERY_DIR}/cursor.c
   ${QUERY_DIR}/execute_schema.c
   ${QUERY_DIR}/execute_statement.c
-  ${QUERY_DIR}/arithmetic.c
-  ${QUERY_DIR}/cursor.c
-  ${QUERY_DIR}/query_dump.c
-  ${QUERY_DIR}/query_evaluator.c
   ${QUERY_DIR}/fetch.c
   ${QUERY_DIR}/filter_pred_cache.c
   ${QUERY_DIR}/list_file.c
+  ${QUERY_DIR}/method_scan.c
   ${QUERY_DIR}/numeric_opfunc.c
+  ${QUERY_DIR}/partition.c
   ${QUERY_DIR}/query_cl.c
+  ${QUERY_DIR}/query_dump.c
+  ${QUERY_DIR}/query_evaluator.c
+  ${QUERY_DIR}/query_executor.c
   ${QUERY_DIR}/query_manager.c
+  ${QUERY_DIR}/query_opfunc.c
+  ${QUERY_DIR}/scan_json_table.cpp
   ${QUERY_DIR}/scan_manager.c
   ${QUERY_DIR}/serial.c
   ${QUERY_DIR}/set_scan.c
-  ${QUERY_DIR}/string_opfunc.c
-  ${QUERY_DIR}/method_scan.c
-  ${QUERY_DIR}/query_executor.c
   ${QUERY_DIR}/show_scan.c
-  ${QUERY_DIR}/partition.c
-  ${QUERY_DIR}/query_opfunc.c
-  ${QUERY_DIR}/xasl_to_stream.c
   ${QUERY_DIR}/stream_to_xasl.c
-  ${QUERY_DIR}/crypt_opfunc.c
+  ${QUERY_DIR}/string_opfunc.c
   ${QUERY_DIR}/vacuum.c
   ${QUERY_DIR}/xasl_cache.c
+  ${QUERY_DIR}/xasl_to_stream.c
+  )
+set(QUERY_HEADERS
+  ${QUERY_DIR}/scan_json_table.hpp
   )
 
 set(OBJECT_SOURCES
@@ -221,17 +239,49 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/work_space.c
   )
 
+set (REPLICATION_HEADERS
+  ${REPLICATION_DIR}/log_generator.hpp
+  ${REPLICATION_DIR}/log_consumer.hpp
+  ${REPLICATION_DIR}/replication_master_senders_manager.hpp
+  ${REPLICATION_DIR}/replication_object.hpp
+  ${REPLICATION_DIR}/replication_stream_entry.hpp
+  )
+
+set(REPLICATION_SOURCES
+  ${REPLICATION_DIR}/log_consumer.cpp
+  ${REPLICATION_DIR}/log_generator.cpp
+  ${REPLICATION_DIR}/replication_object.cpp
+  ${REPLICATION_DIR}/replication_master_senders_manager.cpp  
+  ${REPLICATION_DIR}/replication_stream_entry.cpp
+  )
+
+set(STREAM_SOURCES
+  ${BASE_DIR}/cubstream.cpp
+  ${BASE_DIR}/multi_thread_stream.cpp
+  )
+
+set (STREAM_HEADERS
+  ${BASE_DIR}/bip_buffer.hpp
+  ${BASE_DIR}/collapsable_circular_queue.hpp
+  ${BASE_DIR}/cubstream.hpp
+  ${BASE_DIR}/multi_thread_stream.hpp
+  ${BASE_DIR}/stream_entry.hpp
+  ${BASE_DIR}/stream_io.hpp
+  )
+
 set(JSP_SOURCES
   ${JSP_DIR}/jsp_cl.c
   ${JSP_DIR}/jsp_sr.c
   )
 
 set(THREAD_SOURCES
+  ${THREAD_DIR}/critical_section_tracker.cpp
   ${THREAD_DIR}/thread_entry.cpp
   ${THREAD_DIR}/thread_entry_task.cpp
   ${THREAD_DIR}/thread_manager.cpp
   )
 set(THREAD_HEADERS
+  ${THREAD_DIR}/critical_section_tracker.hpp
   ${THREAD_DIR}/thread_compat.hpp
   ${THREAD_DIR}/thread_entry.hpp
   ${THREAD_DIR}/thread_manager.hpp
@@ -277,6 +327,7 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/oid.c
   ${STORAGE_DIR}/overflow_file.c
   ${STORAGE_DIR}/page_buffer.c
+  ${STORAGE_DIR}/double_write_buffer.c
   ${STORAGE_DIR}/statistics_cl.c
   ${STORAGE_DIR}/statistics_sr.c
   ${STORAGE_DIR}/slotted_page.c
@@ -290,6 +341,16 @@ set(STORAGE_SOURCES
 set(SESSION_SOURCES
   ${SESSION_DIR}/session.c
   ${SESSION_DIR}/session_sr.c
+  )
+
+set(XASL_SOURCES
+  ${XASL_DIR}/access_json_table.cpp
+  ${XASL_DIR}/xasl_stream.cpp
+  )
+set(XASL_HEADERS
+  ${XASL_DIR}/access_json_table.hpp
+  ${XASL_DIR}/compile_context.h
+  ${XASL_DIR}/xasl_stream.hpp
   )
 
 if(UNIX)
@@ -355,6 +416,8 @@ SET_SOURCE_FILES_PROPERTIES(
   ${OPTIMIZER_SOURCES}
   ${QUERY_SOURCES}
   ${OBJECT_SOURCES}
+  ${REPLICATION_SOURCES}
+  ${STREAM_SOURCES}  
   ${JSP_SOURCES}
   ${THREAD_SOURCES}
   ${TRANSACTION_SOURCES}
@@ -362,6 +425,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${ES_SOURCES}
   ${SESSION_SOURCES}
   ${PROBES_OBJECT}
+  ${XASL_SOURCES}
   PROPERTIES LANGUAGE CXX
   )
 
@@ -388,8 +452,13 @@ add_library(cubridsa SHARED
   ${COMMUNICATION_SOURCES}
   ${PARSER_SOURCES}
   ${OPTIMIZER_SOURCES}
+  ${QUERY_HEADERS}
   ${QUERY_SOURCES}
   ${OBJECT_SOURCES}
+  ${REPLICATION_HEADERS}
+  ${REPLICATION_SOURCES}
+  ${STREAM_HEADERS}  
+  ${STREAM_SOURCES}
   ${JSP_SOURCES}
   ${THREAD_SOURCES}
   ${TRANSACTION_SOURCES}
@@ -398,6 +467,8 @@ add_library(cubridsa SHARED
   ${SESSION_SOURCES}
   ${PROBES_OBJECT}
   ${COMPAT_SOURCES_C}
+  ${XASL_SOURCES}
+  ${XASL_HEADERS}
   )
 set_target_properties(cubridsa PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 
@@ -425,17 +496,35 @@ if(WIN32)
   target_link_libraries(cubridsa LINK_PRIVATE ws2_32 ${JVM_LIBS})
   set_target_properties(cubridsa PROPERTIES LINK_FLAGS "/DEF:\"${CMAKE_SOURCE_DIR}/win/cubridsa/cubridsa.def\"" LINK_FLAGS_RELEASE "/NODEFAULTLIB:libcmt.lib" LINK_FLAGS_DEBUG "/NODEFAULTLIB:msvcrt.lib")
 endif(WIN32)
-target_include_directories(cubridsa PRIVATE ${CMAKE_SOURCE_DIR}/src/heaplayers/util ${JAVA_INC} ${EP_INCLUDES})
 if(UNIX)
-  target_link_libraries(cubridsa LINK_PRIVATE -Wl,-whole-archive cas ${EP_LIBS} -Wl,-no-whole-archive)
-  target_link_libraries(cubridsa LINK_PUBLIC ${CURSES_LIBRARIES} ${CMAKE_DL_LIBS})
-else(UNIX)
-  target_link_libraries(cubridsa LINK_PRIVATE cas ${EP_LIBS})
+target_external_dependencies(cubridsa
+  LIBNCURSES
+  )
 endif(UNIX)
-
+target_external_dependencies(cubridsa
+  LIBEXPAT
+  LIBJANSSON
+  LIBGPG_ERROR
+  LIBGCRYPT
+  LIBLZO
+  LIBEXPAT
+  LIBREGEX
+  LIBEDIT
+  )
+target_include_directories(cubridsa PRIVATE
+  ${CMAKE_SOURCE_DIR}/src/heaplayers/util  # this looks ugly
+  ${JAVA_INC}
+  )
+target_link_libraries(cubridsa LINK_PRIVATE
+    cas
+  )
+if(UNIX)
+  # find out what this means:
+  # target_link_libraries(cubridsa LINK_PRIVATE -Wl,-whole-archive cas ${EP_LIBS} -Wl,-no-whole-archive)
+  target_link_libraries(cubridsa LINK_PUBLIC ${CURSES_LIBRARIES} ${CMAKE_DL_LIBS})
+endif(UNIX)
 add_dependencies(cubridsa gen_csql_grammar gen_csql_lexer gen_loader_grammar gen_loader_lexer)
-
-add_dependencies(cubridsa ${EP_TARGETS})
+#add_dependencies(cubridsa ${EP_TARGETS})
 
 if(ENABLE_SYSTEMTAP)
   target_include_directories(cubridsa PRIVATE ${CMAKE_BINARY_DIR})

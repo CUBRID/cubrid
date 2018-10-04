@@ -60,9 +60,14 @@
 #include "tz_support.h"
 #include "db_date.h"
 #include "dbtype.h"
+#if defined (SERVER_MODE)
+#include "server_support.h"
+#endif // SERVER_MODE
 #if defined (SA_MODE)
 #include "transaction_cl.h"	/* for interrupt */
 #endif /* defined (SA_MODE) */
+#include "thread_entry.hpp"
+#include "thread_manager.hpp"
 
 #define RMUTEX_NAME_TDES_TOPOP "TDES_TOPOP"
 
@@ -117,6 +122,8 @@ static BOOT_CLIENT_CREDENTIAL log_Client_credential = {
   -1				/* process_id */
 };
 
+static const unsigned int LOGTB_RETRY_SLAM_MAX_TIMES = 10;
+
 static int logtb_expand_trantable (THREAD_ENTRY * thread_p, int num_new_indices);
 static int logtb_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid, TRAN_STATE state,
 				      const BOOT_CLIENT_CREDENTIAL * client_credential, TRAN_STATE * current_state,
@@ -167,6 +174,10 @@ static void logtb_free_tran_mvcc_info (LOG_TDES * tdes);
 static int logtb_allocate_snapshot_data (THREAD_ENTRY * thread_p, MVCC_SNAPSHOT * snapshot);
 
 static int logtb_assign_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info, MVCCID mvcc_subid);
+
+static int logtb_check_kill_tran_auth (THREAD_ENTRY * thread_p, int tran_id, bool * has_authorization);
+static void logtb_find_thread_entry_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, int tran_index,
+					     bool except_me, REFPTR (THREAD_ENTRY, found_ptr));
 
 /*
  * logtb_realloc_topops_stack - realloc stack of top system operations
@@ -2524,7 +2535,7 @@ int
 logtb_find_client_tran_name_host_pid (int &tran_index, char **client_prog_name, char **client_user_name,
 				      char **client_host_name, int *client_pid)
 {
-  tran_index = thread_get_current_tran_index ();
+  tran_index = logtb_get_current_tran_index ();
   return logtb_find_client_name_host_pid (tran_index, client_prog_name, client_user_name, client_host_name, client_pid);
 }
 #endif // SERVER_MODE
@@ -3081,6 +3092,12 @@ bool
 logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, bool set)
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
+
+  if (tran_index == LOG_SYSTEM_TRAN_INDEX)
+    {
+      assert (false);
+      return false;
+    }
 
   if (log_Gl.trantable.area != NULL)
     {
@@ -3993,12 +4010,12 @@ logtb_tran_update_all_global_unique_stats (THREAD_ENTRY * thread_p)
   /* We have to disable interrupt while reflecting unique stats. Please notice that the transaction is still in
    * TRAN_ACTIVE state and it may be previously interrupted but user eventually issues commit. The transaction should
    * successfully complete commit in spite of interrupt. */
-  old_check_interrupt = thread_set_check_interrupt (thread_p, false);
+  old_check_interrupt = logtb_set_check_interrupt (thread_p, false);
 
   error_code =
     mht_map_no_key (thread_p, tdes->log_upd_stats.unique_stats_hash, logtb_tran_update_delta_hash_func, thread_p);
 
-  (void) thread_set_check_interrupt (thread_p, old_check_interrupt);
+  (void) logtb_set_check_interrupt (thread_p, old_check_interrupt);
 
   return error_code;
 }
@@ -6750,6 +6767,10 @@ logtb_reflect_global_unique_stats_to_btree (THREAD_ENTRY * thread_p)
     {
       return NO_ERROR;
     }
+
+  // reflecting stats should not be interrupted
+  bool save_check_interrupt = logtb_set_check_interrupt (thread_p, false);
+
   lf_hash_create_iterator (&it, t_entry, &log_Gl.unique_stats_table.unique_stats_hash);
   for (stats = (GLOBAL_UNIQUE_STATS *) lf_hash_iterate (&it); stats != NULL;
        stats = (GLOBAL_UNIQUE_STATS *) lf_hash_iterate (&it))
@@ -6760,13 +6781,22 @@ logtb_reflect_global_unique_stats_to_btree (THREAD_ENTRY * thread_p)
 	  error = btree_reflect_global_unique_statistics (thread_p, stats, false);
 	  if (error != NO_ERROR)
 	    {
-	      return error;
+	      ASSERT_ERROR ();
+
+	      // must unlock entry
+	      pthread_mutex_unlock (&stats->mutex);
+
+	      // finish transaction
+	      lf_tran_end_with_mb (t_entry);
+	      break;
 	    }
 	  LSA_SET_NULL (&stats->last_log_lsa);
 	}
     }
 
-  return NO_ERROR;
+  (void) logtb_set_check_interrupt (thread_p, save_check_interrupt);
+
+  return error;
 }
 
 /*
@@ -7353,4 +7383,383 @@ logtb_check_class_for_rr_isolation_err (const OID * class_oid)
     }
 
   return false;
+}
+
+void
+logtb_slam_transaction (THREAD_ENTRY * thread_p, int tran_index)
+{
+  logtb_set_tran_index_interrupt (thread_p, tran_index, true);
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CONN_SHUTDOWN, 0);
+#if defined (SERVER_MODE)
+  css_shutdown_conn_by_tran_index (tran_index);
+#endif // SERVER_MODE
+}
+
+/*
+ * logtb_check_kill_tran_auth () - User who is not DBA can kill only own transaction
+ *   return: NO_ERROR or error code
+ *   thread_p(in):
+ *   tran_id(in):
+ *   has_authorization(out):
+ */
+static int
+logtb_check_kill_tran_auth (THREAD_ENTRY * thread_p, int tran_id, bool * has_authorization)
+{
+  char *tran_client_name;
+  char *current_client_name;
+
+  assert (has_authorization);
+
+  *has_authorization = false;
+
+  if (logtb_am_i_dba_client (thread_p) == true)
+    {
+      *has_authorization = true;
+      return NO_ERROR;
+    }
+
+  tran_client_name = logtb_find_client_name (tran_id);
+  current_client_name = logtb_find_current_client_name (thread_p);
+
+  if (tran_client_name == NULL || current_client_name == NULL)
+    {
+      return ER_CSS_KILL_UNKNOWN_TRANSACTION;
+    }
+
+  if (strcasecmp (tran_client_name, current_client_name) == 0)
+    {
+      *has_authorization = true;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * xlogtb_kill_tran_index() - Kill given transaction.
+ *   return:
+ *   kill_tran_index(in):
+ *   kill_user(in):
+ *   kill_host(in):
+ *   kill_pid(id):
+ */
+int
+xlogtb_kill_tran_index (THREAD_ENTRY * thread_p, int kill_tran_index, char *kill_user_p, char *kill_host_p,
+			int kill_pid)
+{
+  char *slam_progname_p;	/* Client program name for tran */
+  char *slam_user_p;		/* Client user name for tran */
+  char *slam_host_p;		/* Client host for tran */
+  int slam_pid;			/* Client process id for tran */
+  bool signaled = false;
+  int error_code = NO_ERROR;
+  bool killed = false;
+  size_t i;
+
+  if (kill_tran_index == NULL_TRAN_INDEX || kill_user_p == NULL || kill_host_p == NULL || strcmp (kill_user_p, "") == 0
+      || strcmp (kill_host_p, "") == 0)
+    {
+      /* 
+       * Not enough information to kill specific transaction..
+       *
+       * For now.. I am setting an er_set..since I have so many files out..and
+       * I cannot compile more junk..
+       */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_KILL_BAD_INTERFACE, 0);
+      return ER_CSS_KILL_BAD_INTERFACE;
+    }
+
+  if (kill_tran_index == LOG_SYSTEM_TRAN_INDEX)
+    {
+      // cannot kill system transaction; not even if this is dba
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_KILL_TR_NOT_ALLOWED, 1, kill_tran_index);
+      return ER_KILL_TR_NOT_ALLOWED;
+    }
+
+  signaled = false;
+  for (i = 0; i < LOGTB_RETRY_SLAM_MAX_TIMES && error_code == NO_ERROR && !killed; i++)
+    {
+      if (logtb_find_client_name_host_pid (kill_tran_index, &slam_progname_p, &slam_user_p, &slam_host_p, &slam_pid) !=
+	  NO_ERROR)
+	{
+	  if (signaled == false)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_KILL_UNKNOWN_TRANSACTION, 4, kill_tran_index,
+		      kill_user_p, kill_host_p, kill_pid);
+	      error_code = ER_CSS_KILL_UNKNOWN_TRANSACTION;
+	    }
+	  else
+	    {
+	      killed = true;
+	    }
+	  break;
+	}
+
+      if (kill_pid == slam_pid && strcmp (kill_user_p, slam_user_p) == 0 && strcmp (kill_host_p, slam_host_p) == 0)
+	{
+	  logtb_slam_transaction (thread_p, kill_tran_index);
+	  signaled = true;
+	}
+      else
+	{
+	  if (signaled == false)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_KILL_DOES_NOTMATCH, 8, kill_tran_index, kill_user_p,
+		      kill_host_p, kill_pid, kill_tran_index, slam_user_p, slam_host_p, slam_pid);
+	      error_code = ER_CSS_KILL_DOES_NOTMATCH;
+	    }
+	  else
+	    {
+	      killed = true;
+	    }
+	  break;
+	}
+      thread_sleep_for (std::chrono::seconds (1));
+    }
+
+  if (error_code == NO_ERROR && !killed)
+    {
+      error_code = ER_FAILED;	/* timeout */
+    }
+
+  return error_code;
+}
+
+/*
+ * xlogtb_kill_or_interrupt_tran() -
+ *   return:
+ *   thread_p(in):
+ *   tran_index(in):
+ *   is_dba_group_member(in):
+ *   kill_query_only(in):
+ */
+int
+xlogtb_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_index, bool is_dba_group_member, bool interrupt_only)
+{
+  int error;
+  bool interrupt, has_authorization;
+  bool is_trx_exists;
+  KILLSTMT_TYPE kill_type;
+  size_t i;
+
+  if (tran_index == LOG_SYSTEM_TRAN_INDEX)
+    {
+      // cannot kill system transaction; not even if this is dba
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_KILL_TR_NOT_ALLOWED, 1, tran_index);
+      return ER_KILL_TR_NOT_ALLOWED;
+    }
+
+  if (!is_dba_group_member)
+    {
+      error = logtb_check_kill_tran_auth (thread_p, tran_index, &has_authorization);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      if (has_authorization == false)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_KILL_TR_NOT_ALLOWED, 1, tran_index);
+	  return ER_KILL_TR_NOT_ALLOWED;
+	}
+    }
+
+  is_trx_exists = logtb_set_tran_index_interrupt (thread_p, tran_index, true);
+
+  kill_type = interrupt_only ? KILLSTMT_QUERY : KILLSTMT_TRAN;
+  if (kill_type == KILLSTMT_TRAN)
+    {
+#if defined (SERVER_MODE)
+      css_shutdown_conn_by_tran_index (tran_index);
+#endif // SERVER_MODE
+    }
+
+  for (i = 0; i < LOGTB_RETRY_SLAM_MAX_TIMES; i++)
+    {
+      thread_sleep_for (std::chrono::seconds (1));
+
+      if (logtb_find_interrupt (tran_index, &interrupt) != NO_ERROR)
+	{
+	  break;
+	}
+      if (interrupt == false)
+	{
+	  break;
+	}
+    }
+
+  if (i == LOGTB_RETRY_SLAM_MAX_TIMES)
+    {
+      return ER_FAILED;		/* timeout */
+    }
+
+  if (is_trx_exists == false)
+    {
+      /* 
+       * Note that the following error will be ignored by
+       * sthread_kill_or_interrupt_tran().
+       */
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+//
+// logtb_find_thread_entry_mapfunc - function mapped over thread manager's entries to find thread belonging to given
+//                                   transaction index
+//
+// thread_ref (in)   : thread entry
+// stop_mapper (out) : output true to stop mapping
+// tran_index (in)   : searched transaction index
+// except_me (in)    : true to accept current transaction, false otherwise
+// found_ptr (out)   : saves pointer to found thread entry
+//
+static void
+logtb_find_thread_entry_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, int tran_index, bool except_me,
+				 REFPTR (THREAD_ENTRY, found_ptr))
+{
+  if (thread_ref.tran_index != tran_index)
+    {
+      // not this
+      return;
+    }
+  if (except_me && thread_ref.is_on_current_thread ())
+    {
+      // not me
+      return;
+    }
+  // found
+  found_ptr = &thread_ref;
+  stop_mapper = true;		// stop searching
+}
+
+//
+// logtb_find_thread_by_tran_index - find thread entry by transaction index
+//
+// return          : NULL or pointer to found thread
+// tran_index (in) : searched transaction index
+//
+THREAD_ENTRY *
+logtb_find_thread_by_tran_index (int tran_index)
+{
+  THREAD_ENTRY *found_thread = NULL;
+  thread_get_manager ()->map_entries (logtb_find_thread_entry_mapfunc, tran_index, false, found_thread);
+  return found_thread;
+}
+
+//
+// thread_find_entry_by_tran_index_except_me - find thread entry by transaction index; ignore current thread
+//
+// return          : NULL or pointer to found thread
+// tran_index (in) : searched transaction index
+//
+THREAD_ENTRY *
+logtb_find_thread_by_tran_index_except_me (int tran_index)
+{
+  THREAD_ENTRY *found_thread = NULL;
+  thread_get_manager ()->map_entries (logtb_find_thread_entry_mapfunc, tran_index, true, found_thread);
+  return found_thread;
+}
+
+#if defined (SERVER_MODE)
+//
+// logtb_wakeup_thread_with_tran_index - find thread by transaction index and wake it
+//
+// tran_index (in)    : searched transaction index
+// resume_reason (in) : the reason thread is resumed
+void
+logtb_wakeup_thread_with_tran_index (int tran_index, thread_resume_suspend_status resume_reason)
+{
+  // find thread with transaction index; ignore current thread
+  THREAD_ENTRY *thread_p = logtb_find_thread_by_tran_index_except_me (tran_index);
+  if (thread_p == NULL)
+    {
+      // not found
+      return;
+    }
+
+  thread_wakeup (thread_p, resume_reason);
+}
+#endif // SERVER_MODE
+
+/*
+ * logtb_get_current_tran_index() - get transaction index of current thread
+ *   return:
+ */
+int
+logtb_get_current_tran_index (void)
+{
+  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+  assert (thread_p != NULL);
+
+  return thread_p->tran_index;
+}
+
+/*
+ * logtb_set_current_tran_index - set transaction index on current thread
+ */
+void
+logtb_set_current_tran_index (THREAD_ENTRY * thread_p, int tran_index)
+{
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+  thread_p->tran_index = tran_index;
+}
+
+/*
+ * logtb_set_check_interrupt() -
+ *   return:
+ *   flag(in):
+ */
+bool
+logtb_set_check_interrupt (THREAD_ENTRY * thread_p, bool flag)
+{
+#if defined (SERVER_MODE)
+  bool old_val = true;
+
+  if (BO_IS_SERVER_RESTARTED ())
+    {
+      if (thread_p == NULL)
+	{
+	  thread_p = thread_get_thread_entry_info ();
+	}
+
+      /* safe guard: vacuum workers should not check for interrupt */
+      assert (flag == false || !VACUUM_IS_THREAD_VACUUM (thread_p));
+      old_val = thread_p->check_interrupt;
+      thread_p->check_interrupt = flag;
+    }
+
+  return old_val;
+#else // not SERVER_MODE = SA_MODE
+  return tran_set_check_interrupt (flag);
+#endif // not SERVER_MODE = SA_MODE
+}
+
+/*
+ * logtb_get_check_interrupt() -
+ *   return:
+ */
+bool
+logtb_get_check_interrupt (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  bool ret_val = true;
+
+  if (BO_IS_SERVER_RESTARTED ())
+    {
+      if (thread_p == NULL)
+	{
+	  thread_p = thread_get_thread_entry_info ();
+	}
+
+      ret_val = thread_p->check_interrupt;
+    }
+
+  return ret_val;
+#else // not SERVER_MODE = SA_MODE
+  return tran_get_check_interrupt ();
+#endif // not SERVER_MODE = SA_MODE
 }

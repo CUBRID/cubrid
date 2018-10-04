@@ -31,6 +31,12 @@
 #include <assert.h>
 #include <errno.h>
 
+#if !defined (WINDOWS)
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#endif /* !WINDOWS */
+
 #include "disk_manager.h"
 #include "porting.h"
 #include "system_parameter.h"
@@ -49,13 +55,10 @@
 #include "fault_injection.h"
 #include "vacuum.h"
 #include "dbtype.h"
-#include "thread.h"
 #include "thread_daemon.hpp"
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
-#if defined (SA_MODE)
-#include "transaction_cl.h"	/* for interrupt */
-#endif /* defined (SA_MODE) */
+#include "double_write_buffer.h"
 
 /************************************************************************/
 /* Define structures, globals, and macro's                              */
@@ -362,6 +365,7 @@ static void disk_vhdr_dump (FILE * fp, const DISK_VOLUME_HEADER * vhdr);
 
 STATIC_INLINE void disk_verify_volume_header (THREAD_ENTRY * thread_p, PAGE_PTR pgptr) __attribute__ ((ALWAYS_INLINE));
 static bool disk_check_volume_exist (THREAD_ENTRY * thread_p, VOLID volid, void *arg);
+static int disk_can_overwrite_data_volume (THREAD_ENTRY * thread_p, const char *vol_label_p, bool * can_overwrite);
 
 /************************************************************************/
 /* Disk sector table section                                            */
@@ -527,7 +531,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
   addr.vfid = NULL;
 
   if ((strlen (vol_fullname) + 1 > DB_MAX_PATH_LENGTH)
-      || (DB_PAGESIZE < (SSIZEOF (DISK_VOLUME_HEADER) + strlen (vol_fullname) + 1)))
+      || (DB_PAGESIZE < (PGLENGTH) (SSIZEOF (DISK_VOLUME_HEADER) + strlen (vol_fullname) + 1)))
     {
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG, 3, NULL, vol_fullname,
 	      strlen (vol_fullname) + 1, DB_MAX_PATH_LENGTH);
@@ -717,9 +721,22 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
       /* todo: understand what this code is supposed to do */
       PAGE_PTR pgptr = NULL;	/* Page pointer */
       LOG_LSA init_with_temp_lsa;	/* A lsa for temporary purposes */
+      bool flushed;
 
       /* Flush the pages so that the log is forced */
       (void) pgbuf_flush_all (thread_p, volid);
+
+      /* Flush dwb also */
+      error_code = dwb_flush_force (thread_p, &flushed);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit;
+	}
+
+      /* TODO: Does it hold??
+       * assert (flushed == true);
+       */
 
       for (vpid.volid = volid, vpid.pageid = DISK_VOLHEADER_PAGE; vpid.pageid <= vhdr->sys_lastpage; vpid.pageid++)
 	{
@@ -732,7 +749,8 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
 	}
       if (ext_info->voltype == DB_PERMANENT_VOLTYPE)
 	{
-	  LSA_SET_INIT_TEMP (&init_with_temp_lsa);
+	  LSA_SET_TEMP_LSA (&init_with_temp_lsa);
+
 	  /* Flush all dirty pages and then invalidate them from page buffer pool. So that we can reset the recovery
 	   * information directly using the io module */
 
@@ -758,7 +776,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
   /* Flush all pages that were formatted. This is not needed, but it is done for security reasons to identify the volume
    * in case of a system crash. Note that the identification may not be possible during media crashes */
   (void) pgbuf_flush_all (thread_p, volid);
-  (void) fileio_synchronize (thread_p, vdes, vol_fullname);
+  (void) fileio_synchronize (thread_p, vdes, vol_fullname, FILEIO_SYNC_ALSO_FLUSH_DWB);
 
   fault_inject_random_crash ();
 
@@ -1646,7 +1664,7 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
   DKNSECTS nsect_temp_extended = 0;
 #endif /* SERVER_MODE */
 
-  bool check_interrupt = thread_get_check_interrupt (thread_p);
+  bool check_interrupt = logtb_get_check_interrupt (thread_p);
   bool continue_check = false;
   int error_code = NO_ERROR;
 
@@ -1676,7 +1694,7 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
    *       Permanent volumes for temporary data purpose can only be added by user and are never extended.
    */
 
-  assert (disk_Cache->owner_extend == thread_get_current_entry_index ());
+  assert (disk_Cache->owner_extend == thread_get_entry_index (thread_p));
 
   /* expand */
   /* what is the desired remaining free after expand? */
@@ -1709,9 +1727,9 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
 
       log_sysop_start (thread_p);
 
-      (void) thread_set_check_interrupt (thread_p, false);
+      (void) logtb_set_check_interrupt (thread_p, false);
       error_code = disk_volume_expand (thread_p, extend_info->volid_extend, voltype, to_expand, &nsect_free_new);
-      (void) thread_set_check_interrupt (thread_p, check_interrupt);
+      (void) logtb_set_check_interrupt (thread_p, check_interrupt);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -1793,9 +1811,9 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
       volext.nsect_total = DISK_SECTS_ROUND_UP (volext.nsect_total);
 
       /* add new volume */
-      (void) thread_set_check_interrupt (thread_p, false);
+      (void) logtb_set_check_interrupt (thread_p, false);
       error_code = disk_add_volume (thread_p, &volext, &volid_new, &nsect_free_new);
-      (void) thread_set_check_interrupt (thread_p, check_interrupt);
+      (void) logtb_set_check_interrupt (thread_p, check_interrupt);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -2084,6 +2102,7 @@ disk_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * extinfo, VOLID * 
   VOLID volid;
   DKNSECTS nsect_part_max;
   int error_code = NO_ERROR;
+  bool can_overwrite;
 
   /* how it works:
    *
@@ -2183,8 +2202,12 @@ disk_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * extinfo, VOLID * 
 
   if (!extinfo->overwrite && fileio_is_volume_exist (extinfo->name))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_VOLUME_EXISTS, 1, extinfo->name);
-      return ER_BO_VOLUME_EXISTS;
+      if (disk_can_overwrite_data_volume (thread_p, extinfo->name, &can_overwrite) != NO_ERROR
+	  || can_overwrite == false)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_VOLUME_EXISTS, 1, extinfo->name);
+	  return ER_BO_VOLUME_EXISTS;
+	}
     }
 
   log_sysop_start (thread_p);
@@ -4108,7 +4131,7 @@ disk_is_page_sector_reserved_with_debug_crash (THREAD_ENTRY * thread_p, VOLID vo
   bool old_check_interrupt;
   int old_wait_msecs;
 
-  old_check_interrupt = thread_set_check_interrupt (thread_p, false);
+  old_check_interrupt = logtb_set_check_interrupt (thread_p, false);
   old_wait_msecs = xlogtb_reset_wait_msecs (thread_p, LK_INFINITE_WAIT);
 
   if (fileio_get_volume_descriptor (volid) == NULL_VOLDES || pageid < 0)
@@ -4150,7 +4173,7 @@ disk_is_page_sector_reserved_with_debug_crash (THREAD_ENTRY * thread_p, VOLID vo
 
 exit:
   xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
-  (void) thread_set_check_interrupt (thread_p, old_check_interrupt);
+  (void) logtb_set_check_interrupt (thread_p, old_check_interrupt);
 
   if (page_volheader)
     {
@@ -4295,14 +4318,14 @@ error:
       if (purpose == DB_TEMPORARY_DATA_PURPOSE)
 	{
 	  /* nothing was logged. we need to revert any partial allocations we may have made. */
-	  bool save_check_interrupt = thread_set_check_interrupt (thread_p, false);
+	  bool save_check_interrupt = logtb_set_check_interrupt (thread_p, false);
 
 	  qsort (reserved_sectors, nreserved, sizeof (VSID), disk_compare_vsids);
 	  if (disk_unreserve_ordered_sectors_without_csect (thread_p, purpose, nreserved, reserved_sectors) != NO_ERROR)
 	    {
 	      assert_release (false);
 	    }
-	  (void) thread_set_check_interrupt (thread_p, save_check_interrupt);
+	  (void) logtb_set_check_interrupt (thread_p, save_check_interrupt);
 	}
 
       /* we'll need to remove reservations for the rest of sectors (that were not allocated from disk). but first,
@@ -4432,7 +4455,7 @@ disk_reserve_from_cache (THREAD_ENTRY * thread_p, DISK_RESERVE_CONTEXT * context
     }
 
   assert (context->n_cache_reserve_remaining > 0);
-  assert (extend_info->owner_reserve == thread_get_current_entry_index ());
+  assert (extend_info->owner_reserve == thread_get_entry_index (thread_p));
 
   if (extend_info->nsect_free > context->n_cache_reserve_remaining)
     {
@@ -6091,6 +6114,101 @@ disk_check_volume_exist (THREAD_ENTRY * thread_p, VOLID volid, void *arg)
       vol_infop->exists = true;
     }
   return true;
+}
+
+/*
+ * disk_can_overwrite_data_volume() - check whether data volume can be overwritten
+ *
+ * return : error code
+ * thread_p(in) : thread entry
+ * vol_label_p(in) : volume label
+ * can_overwrite(out) : true, if the volume can be overwritten
+ */
+static int
+disk_can_overwrite_data_volume (THREAD_ENTRY * thread_p, const char *vol_label_p, bool * can_overwrite)
+{
+  char data_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *data;
+  DISK_VOLUME_HEADER *vhdr;
+  int vol_fd = NULL_VOLDES;
+  off_t read_size;
+  size_t page_reserver_area;
+  int error_code = NO_ERROR;
+  struct stat stat_buffer;
+
+  assert (vol_label_p != NULL && can_overwrite != NULL);
+
+  *can_overwrite = false;
+
+#if !defined(CS_MODE)
+  /* Is volume already mounted ? */
+  vol_fd = fileio_find_volume_descriptor_with_label (vol_label_p);
+  if (vol_fd != NULL_VOLDES)
+    {
+      /* Can't overwrite the mounted volume. */
+      return NO_ERROR;
+    }
+#endif /* !CS_MODE */
+
+  data = PTR_ALIGN (data_buf, MAX_ALIGNMENT);
+  page_reserver_area = offsetof (FILEIO_PAGE, page);
+  vhdr = (DISK_VOLUME_HEADER *) (data + page_reserver_area);
+
+  /* Check the existence of the file by opening the file */
+  vol_fd = fileio_open (vol_label_p, O_RDONLY, 0);
+  if (vol_fd == NULL_VOLDES)
+    {
+      /* Someone deleted the volume. It can be written. */
+      *can_overwrite = true;
+      return NO_ERROR;
+    }
+
+  /* Computes the number of bytes to read. */
+  read_size = offsetof (DISK_VOLUME_HEADER, db_creation) + sizeof (((DISK_VOLUME_HEADER *) 0)->db_creation);
+  assert (read_size > (off_t) (offsetof (DISK_VOLUME_HEADER, magic) + CUBRID_MAGIC_MAX_LENGTH));
+  read_size += page_reserver_area;
+
+  if (fstat (vol_fd, &stat_buffer) != 0)
+    {
+      error_code = ER_FAILED;
+      goto end;
+    }
+
+  // We will overwrite the file:
+  // 0 size or the creation timestamp of the file is older than that of db.
+  if (stat_buffer.st_size == 0)
+    {
+      // regard a failure happened during creation.
+      *can_overwrite = true;
+      goto end;
+    }
+  else if (stat_buffer.st_size < read_size)
+    {
+      /* Is not a CUBRID file. It can't be overwritten. */
+      goto end;
+    }
+
+  /* Read block flush size bytes at offset 0. */
+  if (fileio_read (thread_p, vol_fd, data, 0, read_size) == NULL)
+    {
+      error_code = ER_FAILED;
+      goto end;
+    }
+
+  /* Check whether the existing volume is leaked from previous database and can be overwritten. */
+  if (strncmp (vhdr->magic, CUBRID_MAGIC_DATABASE_VOLUME, CUBRID_MAGIC_MAX_LENGTH) == 0
+      && log_Gl.hdr.db_creation > vhdr->db_creation)
+    {
+      /* Old CUBRID file. It can be overwritten. */
+      *can_overwrite = true;
+    }
+
+end:
+  if (vol_fd != NULL_VOLDES)
+    {
+      fileio_close (vol_fd);
+    }
+
+  return error_code;
 }
 
 /*

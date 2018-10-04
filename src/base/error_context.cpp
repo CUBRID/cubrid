@@ -255,7 +255,11 @@ namespace cuberr
   void
   context::deregister_thread_local (void)
   {
+#if defined (SERVER_MODE)
+    // safe-guard that stacks are not "leaked"
+    // ignore it for client (this is too late anyway)
     assert (m_stack.empty ());
+#endif // SERVER_MODE
 
     clear_all_levels ();
 
@@ -331,10 +335,9 @@ namespace cuberr
 	assert (false);
 	static context emergency_context (false, false);
 #if defined (SERVER_MODE)
-	auto thread_mgr_p = cubthread::get_manager ();
-	if (thread_mgr_p != NULL)
+	if (cubthread::get_manager () != NULL)
 	  {
-	    return thread_mgr_p->get_entry ().get_error_context ();
+	    return cubthread::get_entry ().get_error_context ();
 	  }
 #endif // SERVER_MODE
 	return emergency_context;

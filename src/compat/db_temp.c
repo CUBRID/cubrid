@@ -277,7 +277,7 @@ dbt_add_attribute (DB_CTMPL * def, const char *name, const char *domain, DB_VALU
   CHECK_3ARGS_ERROR (def, name, domain);
   CHECK_MODIFICATION_ERROR ();
 
-  error = smt_add_attribute_w_dflt (def, name, domain, (DB_DOMAIN *) 0, default_value, ID_ATTRIBUTE, NULL, NULL);
+  error = smt_add_attribute_w_dflt (def, name, domain, (DB_DOMAIN *) 0, default_value, ID_ATTRIBUTE, NULL, NULL, NULL);
 
   return (error);
 }
@@ -299,7 +299,8 @@ dbt_add_shared_attribute (DB_CTMPL * def, const char *name, const char *domain, 
   CHECK_3ARGS_ERROR (def, name, domain);
   CHECK_MODIFICATION_ERROR ();
 
-  error = smt_add_attribute_w_dflt (def, name, domain, (DB_DOMAIN *) 0, default_value, ID_SHARED_ATTRIBUTE, NULL, NULL);
+  error =
+    smt_add_attribute_w_dflt (def, name, domain, (DB_DOMAIN *) 0, default_value, ID_SHARED_ATTRIBUTE, NULL, NULL, NULL);
 
   return (error);
 }
@@ -321,7 +322,8 @@ dbt_add_class_attribute (DB_CTMPL * def, const char *name, const char *domain, D
   CHECK_3ARGS_ERROR (def, name, domain);
   CHECK_MODIFICATION_ERROR ();
 
-  error = smt_add_attribute_w_dflt (def, name, domain, (DB_DOMAIN *) 0, default_value, ID_CLASS_ATTRIBUTE, NULL, NULL);
+  error =
+    smt_add_attribute_w_dflt (def, name, domain, (DB_DOMAIN *) 0, default_value, ID_CLASS_ATTRIBUTE, NULL, NULL, NULL);
 
   return (error);
 }
@@ -443,9 +445,8 @@ dbt_add_constraint (DB_CTMPL * def, DB_CONSTRAINT_TYPE constraint_type, const ch
 	}
       else
 	{
-	  error =
-	    smt_add_constraint (def, constraint_type, name, attnames, NULL, class_attributes, NULL, NULL, NULL,
-				comment);
+	  error = smt_add_constraint (def, constraint_type, name, attnames, NULL, NULL, class_attributes, NULL, NULL,
+				      NULL, comment, SM_NORMAL_INDEX);
 	  free_and_init (name);
 	}
     }
@@ -543,8 +544,8 @@ dbt_add_foreign_key (DB_CTMPL * def, const char *constraint_name, const char **a
     }
   else
     {
-      error =
-	smt_add_constraint (def, DB_CONSTRAINT_FOREIGN_KEY, name, attnames, NULL, 0, &fk_info, NULL, NULL, comment);
+      error = smt_add_constraint (def, DB_CONSTRAINT_FOREIGN_KEY, name, attnames, NULL, NULL, 0, &fk_info, NULL, NULL,
+				  comment, SM_NORMAL_INDEX);
       free_and_init (name);
     }
 

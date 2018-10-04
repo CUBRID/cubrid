@@ -457,7 +457,7 @@ extern int ws_area_init (void);
 extern void ws_area_final (void);
 
 /* MOP allocation functions */
-extern MOP ws_mop (OID * oid, MOP class_mop);
+extern MOP ws_mop (const OID * oid, MOP class_mop);
 extern MOP ws_mop_if_exists (OID * oid);
 extern MOP ws_vmop (MOP class_mop, int flags, DB_VALUE * keys);
 extern bool ws_rehash_vmop (MOP mop, MOBJ class_obj, DB_VALUE * newkey);

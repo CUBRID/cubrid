@@ -27,11 +27,20 @@ set (TEST_INCLUDES
   ${CMAKE_CURRENT_SOURCE_DIR}/common  # todo: find a better solution
   )
 
-option (UNIT_TEST_MEMORY_ALLOC  "Unit testing for memory allocation")
+option (UNIT_TEST_MEMORY_ALLOC  "Unit testing: memory allocation")
 option (UNIT_TEST_STRING_BUFFER "Unit testing: string buffer with format")
 option (UNIT_TEST_LOCKFREE "Unit testing: lockfree module")
 option (UNIT_TEST_THREAD "Unit testing: thread module")
+option (UNIT_TEST_REPLICATION "Unit testing: replication")
+option (UNIT_TEST_PACKING "Unit testing: packing")
+option (UNIT_TEST_STREAM "Unit testing: stream")
 option (UNIT_TEST_COMM_CHN "Unit testing: communication channel module")
+option (UNIT_TEST_TRANS_CHN "Unit testing: transfer channel module")
+option (UNIT_TEST_DDL_CL "Unit testing: ddl proxy client module")
+option (UNIT_TEST_REPLICATION "Unit testing: replication channels module")
+option (UNIT_TEST_RESOURCE_TRACKER "Unit testing: resource tracker")
+option (UNIT_TEST_MONITOR "Unit testing: monitor")
+
 
 message("  unit_tests/...")
 
@@ -64,3 +73,48 @@ if (UNIT_TESTS OR UNIT_TEST_COMM_CHN)
   message("    communication_channel")
   add_subdirectory(communication_channel)
 endif(UNIT_TESTS OR UNIT_TEST_COMM_CHN)
+
+if (UNIT_TESTS OR UNIT_TEST_PACKING)
+  message("    packing")
+  add_subdirectory(packing)
+endif(UNIT_TESTS OR UNIT_TEST_PACKING)
+
+if (UNIT_TESTS OR UNIT_TEST_TRANS_CHN)
+  message("    transfer_channel")
+  add_subdirectory(transfer_channel)
+endif(UNIT_TESTS OR UNIT_TEST_TRANS_CHN)
+
+if (UNIT_TESTS OR UNIT_TEST_OBJECT_FACTORY)
+  message("    object_factory")
+  add_subdirectory(object_factory)
+endif(UNIT_TESTS OR UNIT_TEST_OBJECT_FACTORY)
+
+if (UNIT_TESTS OR UNIT_TEST_DDL_CL)
+  message("    ddl_proxy_client")
+  add_subdirectory(ddl_proxy_client)
+endif(UNIT_TESTS OR UNIT_TEST_DDL_CL)
+
+if (UNIT_TESTS OR UNIT_TEST_REPLICATION)
+  message("    replication_channels")
+  add_subdirectory(replication_channels)
+endif(UNIT_TESTS OR UNIT_TEST_REPLICATION)
+
+if (UNIT_TESTS OR UNIT_TEST_RESOURCE_TRACKER)
+  message("    resource_tracker")
+  add_subdirectory(resource_tracker)
+endif(UNIT_TESTS OR UNIT_TEST_RESOURCE_TRACKER)
+
+if (UNIT_TESTS OR UNIT_TEST_STREAM)
+  message("    stream")
+  add_subdirectory(stream)
+endif(UNIT_TESTS OR UNIT_TEST_STREAM)
+
+if (UNIT_TESTS OR UNIT_TEST_MONITOR)
+  message("    monitor")
+  add_subdirectory(monitor)
+endif(UNIT_TESTS OR UNIT_TEST_MONITOR)
+
+if (UNIT_TESTS OR UNIT_TEST_REPLICATION)
+  message("    replication")
+  add_subdirectory(replication)
+endif(UNIT_TESTS OR UNIT_TEST_REPLICATION)

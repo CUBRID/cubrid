@@ -675,7 +675,7 @@ pt_is_aggregate_function (PARSER_CONTEXT * parser, const PT_NODE * node)
 	      || function_type == PT_AGG_BIT_AND || function_type == PT_AGG_BIT_OR || function_type == PT_AGG_BIT_XOR
 	      || function_type == PT_GROUP_CONCAT || function_type == PT_MEDIAN || function_type == PT_PERCENTILE_CONT
 	      || function_type == PT_PERCENTILE_DISC || function_type == PT_CUME_DIST
-	      || function_type == PT_PERCENT_RANK))
+	      || function_type == PT_PERCENT_RANK || function_type == PT_JSON_ARRAYAGG))
 	{
 	  return true;
 	}
@@ -722,7 +722,7 @@ pt_is_expr_wrapped_function (PARSER_CONTEXT * parser, const PT_NODE * node)
 	  || function_type == F_JSON_ARRAY || function_type == F_JSON_INSERT || function_type == F_JSON_REMOVE
 	  || function_type == F_JSON_MERGE || function_type == F_JSON_ARRAY_APPEND
 	  || function_type == F_JSON_GET_ALL_PATHS || function_type == F_JSON_REPLACE || function_type == F_JSON_SET
-	  || function_type == F_JSON_KEYS)
+	  || function_type == F_JSON_KEYS || function_type == F_JSON_ARRAY_INSERT)
 	{
 	  return true;
 	}
@@ -4810,6 +4810,12 @@ regu_spec_init (ACCESS_SPEC_TYPE * ptr, TARGET_TYPE type)
       ACCESS_SPEC_XASL_NODE (ptr) = NULL;
       ACCESS_SPEC_METHOD_SIG_LIST (ptr) = NULL;
     }
+  else if (type == TARGET_JSON_TABLE)
+    {
+      ACCESS_SPEC_JSON_TABLE_REGU_VAR (ptr) = NULL;
+      ACCESS_SPEC_JSON_TABLE_ROOT_NODE (ptr) = NULL;
+      ACCESS_SPEC_JSON_TABLE_M_NODE_COUNT (ptr) = 0;
+    }
   ptr->single_fetch = (QPROC_SINGLE_FETCH) false;
   ptr->s_dbval = NULL;
   ptr->next = NULL;
@@ -8706,6 +8712,16 @@ pt_make_query_showstmt (PARSER_CONTEXT * parser, unsigned int type, PT_NODE * ar
 
   /* get show column info */
   meta = showstmt_get_metadata ((SHOWSTMT_TYPE) type);
+
+  if (meta->only_for_dba)
+    {
+      if (!au_is_dba_group_member (Au_user))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, meta->alias_print);
+	  return NULL;
+	}
+    }
+
   orderby = meta->orderby;
   num_orderby = meta->num_orderby;
 
@@ -8928,7 +8944,7 @@ pt_make_query_show_columns (PARSER_CONTEXT * parser, PT_NODE * original_cls_id, 
   sub_query->info.query.q.select.list = value_list;
   value_list = NULL;
 
-  from_item = pt_add_table_name_to_from_list (parser, sub_query, lower_table_name, NULL, DB_AUTH_SELECT);
+  from_item = pt_add_table_name_to_from_list (parser, sub_query, lower_table_name, NULL, DB_AUTH_NONE);
   if (from_item == NULL)
     {
       goto error;
@@ -9077,27 +9093,24 @@ pt_make_query_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
   assert (table_name != NULL);
   assert (table_name->node_type == PT_NAME);
 
-/* *INDENT-OFF* */
-#if defined(NO_GCC_44) //temporary until evolve above gcc 4.4.7
+  /* *INDENT-OFF* */
   string_buffer strbuf {
-    [&parser] (mem::block& block, size_t len)
+    [&parser] (mem::block &block, size_t len)
     {
       size_t dim = block.dim ? block.dim : 1;
 
-      // calc next power of 2 >= b.dim
-      for (; dim < block.dim + len; dim *= 2)
-        ;
+      for (; dim < block.dim + len; dim *= 2) // calc next power of 2 >= b.dim+len
+	;
 
-      mem::block b{dim, (char *) parser_alloc (parser, block.dim + len)};
-      memcpy (b.ptr, block.ptr, block.dim);
+      mem::block b{ dim, (char *) parser_alloc (parser, (const int) dim) };
+      memcpy (b.ptr, block.ptr, block.dim); // copy old content
       block = std::move (b);
     },
-    [](mem::block& block){} //no need to deallocate for parser_context
+    [](mem::block &block) //no need to deallocate for parser_context
+    {
+    }
   };
-#else
-  string_buffer strbuf;
-#endif
-/* *INDENT-ON* */
+  /* *INDENT-ON* */
 
   pt_help_show_create_table (parser, table_name, strbuf);
   if (strbuf.len () == 0)
@@ -9119,8 +9132,7 @@ pt_make_query_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
    */
   pt_add_string_col_to_sel_list (parser, select, table_name->info.name.original, "TABLE");
   pt_add_string_col_to_sel_list (parser, select, strbuf.get_buffer (), "CREATE TABLE");
-
-  (void) pt_add_table_name_to_from_list (parser, select, "db_root", NULL, DB_AUTH_SELECT);
+  pt_add_table_name_to_from_list (parser, select, "db_root", NULL, DB_AUTH_SELECT);
   return select;
 }
 
@@ -10033,6 +10045,7 @@ pt_make_query_describe_w_identifier (PARSER_CONTEXT * parser, PT_NODE * original
  *	     'BTREE' AS Index_type
  *	     "" AS Func,
  *           "" AS Comment,
+ *           "" AS Visible
  *    FROM <table> ORDER BY 3, 5;
  *
  *  Note: At execution, all empty fields will be replaced by values
@@ -10046,11 +10059,11 @@ pt_make_query_show_index (PARSER_CONTEXT * parser, PT_NODE * original_cls_id)
   PT_NODE *query = NULL;
   char lower_table_name[DB_MAX_IDENTIFIER_LENGTH];
   PT_NODE *value = NULL, *value_list = NULL;
-  DB_VALUE db_valuep[13];
+  DB_VALUE db_valuep[14];
   const char *aliases[] = {
     "Table", "Non_unique", "Key_name", "Seq_in_index", "Column_name",
     "Collation", "Cardinality", "Sub_part", "Packed", "Null", "Index_type",
-    "Func", "Comment"
+    "Func", "Comment", "Visible"
   };
   unsigned int i = 0;
 
@@ -10088,6 +10101,8 @@ pt_make_query_show_index (PARSER_CONTEXT * parser, PT_NODE * original_cls_id)
   db_value_domain_default (db_valuep + 11, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, 0, LANG_SYS_CODESET,
 			   LANG_SYS_COLLATION, NULL);
   db_make_varchar (db_valuep + 12, DB_DEFAULT_PRECISION, (const DB_C_CHAR) "", 0, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  db_value_domain_default (db_valuep + 13, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, 0, LANG_SYS_CODESET,
+			   LANG_SYS_COLLATION, NULL);
 
   for (i = 0; i < sizeof (db_valuep) / sizeof (db_valuep[0]); i++)
     {
@@ -10103,7 +10118,7 @@ pt_make_query_show_index (PARSER_CONTEXT * parser, PT_NODE * original_cls_id)
   query->info.query.q.select.list = value_list;
   value_list = NULL;
 
-  from_item = pt_add_table_name_to_from_list (parser, query, lower_table_name, NULL, DB_AUTH_SELECT);
+  from_item = pt_add_table_name_to_from_list (parser, query, lower_table_name, NULL, DB_AUTH_NONE);
   if (from_item == NULL)
     {
       goto error;
@@ -12044,4 +12059,42 @@ pt_get_default_expression_from_data_default_node (PARSER_CONTEXT * parser, PT_NO
 	    }
 	}
     }
+}
+
+/*
+ * pt_has_name_oid () - Check whether the node is oid name
+ *   return:
+ *   parser(in):
+ *   node(in):
+ *   arg(in):
+ *   continue_walk(in):
+ */
+PT_NODE *
+pt_has_name_oid (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  bool *has_name_oid = (bool *) arg;
+
+  switch (node->node_type)
+    {
+    case PT_NAME:
+      if (PT_IS_OID_NAME (node))
+	{
+	  *has_name_oid = true;
+	  *continue_walk = PT_STOP_WALK;
+	}
+      break;
+
+    case PT_DATA_TYPE:
+      if (node->type_enum == PT_TYPE_OBJECT)
+	{
+	  *has_name_oid = true;
+	  *continue_walk = PT_STOP_WALK;
+	}
+      break;
+
+    default:
+      break;
+    }
+
+  return node;
 }

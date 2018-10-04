@@ -2728,7 +2728,11 @@ set_seg_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_
 	      *continue_walk = PT_STOP_WALK;
 	    }
 	}
+      break;
 
+    case PT_JSON_TABLE:
+      (void) parser_walk_tree (parser, tree->info.json_table_info.expr, set_seg_expr, arg, pt_continue_walk, NULL);
+      *continue_walk = PT_LIST_WALK;
       break;
 
     default:
@@ -2848,20 +2852,30 @@ qo_is_equi_join_term (QO_TERM * term)
 static bool
 is_dependent_table (PT_NODE * entity)
 {
-  if (entity->info.spec.derived_table)
+  if (entity->info.spec.derived_table == NULL)
     {
-      /* this test is too pessimistic.  The argument must depend on a previous entity spec in the from list. 
-       * >>>> FIXME some day <<<< 
-       */
-      if (entity->info.spec.derived_table_type == PT_IS_SET_EXPR	/* is cselect derived table of method */
-	  || entity->info.spec.derived_table_type == PT_IS_CSELECT
-	  || entity->info.spec.derived_table->info.query.correlation_level == 1)
-	{
-	  return true;
-	}
+      return false;
     }
 
-  return false;
+  /* this test is too pessimistic.  The argument must depend on a previous entity spec in the from list. 
+   * >>>> FIXME some day <<<< 
+   *
+   * is this still a thing?
+   */
+  switch (entity->info.spec.derived_table_type)
+    {
+    case PT_IS_SET_EXPR:
+    case PT_IS_CSELECT:
+      return true;
+
+    case PT_DERIVED_JSON_TABLE:
+      return true;
+
+    case PT_IS_SUBQUERY:
+    default:
+      // what else?
+      return entity->info.spec.derived_table->info.query.correlation_level == 1;
+    }
 }
 
 /*
@@ -3206,7 +3220,6 @@ get_opcode_rank (PT_OP_TYPE opcode)
     case PT_INDEX_PREFIX:
     case PT_TO_DATETIME_TZ:
     case PT_TO_TIMESTAMP_TZ:
-    case PT_TO_TIME_TZ:
     case PT_CRC32:
     case PT_CONV_TZ:
       return RANK_EXPR_MEDIUM;
@@ -3261,6 +3274,7 @@ get_expr_fcode_rank (FUNC_TYPE fcode)
     case F_JSON_ARRAY:
     case F_JSON_REMOVE:
     case F_JSON_ARRAY_APPEND:
+    case F_JSON_ARRAY_INSERT:
     case F_JSON_MERGE:
     case F_JSON_GET_ALL_PATHS:
     case F_JSON_INSERT:
@@ -3787,7 +3801,6 @@ pt_is_pseudo_const (PT_NODE * expr)
 	case PT_TO_NUMBER:
 	case PT_TO_DATETIME_TZ:
 	case PT_TO_TIMESTAMP_TZ:
-	case PT_TO_TIME_TZ:
 	  return (pt_is_pseudo_const (expr->info.expr.arg1)
 		  && (expr->info.expr.arg2 ? pt_is_pseudo_const (expr->info.expr.arg2) : true)) ? true : false;
 	case PT_CURRENT_VALUE:
@@ -5470,11 +5483,7 @@ qo_data_compare (DB_DATA * data1, DB_DATA * data2, DB_TYPE type)
       result = ((data1->date < data2->date) ? -1 : ((data1->date > data2->date) ? 1 : 0));
       break;
     case DB_TYPE_TIME:
-    case DB_TYPE_TIMELTZ:
       result = ((data1->time < data2->time) ? -1 : ((data1->time > data2->time) ? 1 : 0));
-      break;
-    case DB_TYPE_TIMETZ:
-      result = ((data1->timetz.time < data2->timetz.time) ? -1 : ((data1->timetz.time > data2->timetz.time) ? 1 : 0));
       break;
 
     case DB_TYPE_TIMESTAMPLTZ:
@@ -6951,6 +6960,29 @@ qo_is_iss_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entry)
   return true;
 }
 
+static bool
+qo_is_usable_index (SM_CLASS_CONSTRAINT * constraint, QO_NODE * nodep)
+{
+  if (!SM_IS_CONSTRAINT_INDEX_FAMILY (constraint->type))
+    {
+      // not an index
+      return false;
+    }
+
+  if (constraint->index_status != SM_NORMAL_INDEX && constraint->index_status != SM_ONLINE_INDEX_BUILDING_DONE)
+    {
+      // building or invisible
+      return false;
+    }
+
+  if (constraint->filter_predicate != NULL && QO_NODE_USING_INDEX (nodep) == NULL)
+    {
+      return false;
+    }
+
+  return true;
+}
+
 /*
  * qo_find_node_indexes () -
  *   return:
@@ -7025,15 +7057,12 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
       n = 0;
       for (consp = constraints; consp; consp = consp->next)
 	{
-	  if (SM_IS_CONSTRAINT_INDEX_FAMILY (consp->type))
+	  if (qo_is_usable_index (consp, nodep))
 	    {
-	      if (consp->filter_predicate != NULL && QO_NODE_USING_INDEX (nodep) == NULL)
-		{
-		  continue;
-		}
 	      n++;
 	    }
 	}
+
       /* allocate room for the constraint indexes */
       /* we don't have apriori knowledge about which constraints will be applied, so allocate room for all of them */
       /* qo_alloc_index(env, n) will allocate QO_INDEX structure and QO_INDEX_ENTRY structure array */
@@ -7048,15 +7077,9 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
       /* for each constraint of the class */
       for (consp = constraints; consp; consp = consp->next)
 	{
-
-	  if (!SM_IS_CONSTRAINT_INDEX_FAMILY (consp->type))
+	  if (!qo_is_usable_index (consp, nodep))
 	    {
-	      continue;		/* neither INDEX nor UNIQUE constraint, skip */
-	    }
-
-	  if (consp->filter_predicate != NULL && QO_NODE_USING_INDEX (nodep) == NULL)
-	    {
-	      continue;
+	      continue;		// skip it
 	    }
 
 	  uip = QO_NODE_USING_INDEX (nodep);
@@ -7394,7 +7417,6 @@ qo_discover_indexes (QO_ENV * env)
   /* iterate over all nodes and find indexes for each node */
   for (i = 0; i < env->nnodes; i++)
     {
-
       nodep = QO_ENV_NODE (env, i);
       if (nodep->info)
 	{
@@ -7406,23 +7428,20 @@ qo_discover_indexes (QO_ENV * env)
 				    (PT_SPEC_FLAG_RECORD_INFO_SCAN | PT_SPEC_FLAG_PAGE_INFO_SCAN)))
 	    {
 	      qo_find_node_indexes (env, nodep);
-	      /* collect statistic information on discovered indexes */
-	      qo_get_index_info (env, nodep);
+	      if (0 < QO_NODE_INFO_N (nodep) && QO_NODE_INDEXES (nodep) != NULL)
+		{
+		  /* collect statistics if discovers an usable index */
+		  qo_get_index_info (env, nodep);
+		  continue;
+		}
+	      /* fall through */
 	    }
-	  else
-	    {
-	      QO_NODE_INDEXES (nodep) = NULL;
-	    }
-	}
-      else
-	{
-	  /* If the 'info' of node is NULL, then this is probably a derived table. Without the info, we don't have
-	   * class information to work with so we really can't do much so just skip the node. 
-	   */
-	  QO_NODE_INDEXES (nodep) = NULL;	/* this node will not use a index */
+	  /* fall through */
 	}
 
-    }				/* for (n = 0; n < env->nnodes; n++) */
+      /* this node will not use an index */
+      QO_NODE_INDEXES (nodep) = NULL;
+    }
 
   /* for each terms, look indexed segements and filter out the segments which don't actually contain any indexes */
   for (i = 0; i < env->nterms; i++)

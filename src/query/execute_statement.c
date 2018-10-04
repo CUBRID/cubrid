@@ -3347,7 +3347,7 @@ end:
       error = ER_LK_UNILATERALLY_ABORTED;
     }
 
-  if (error == ER_LK_UNILATERALLY_ABORTED)
+  if (error == ER_LK_UNILATERALLY_ABORTED || tran_was_latest_query_aborted ())
     {
       (void) tran_abort_only_client (false);
     }
@@ -3801,7 +3801,7 @@ end:
       err = ER_LK_UNILATERALLY_ABORTED;
     }
 
-  if (err == ER_LK_UNILATERALLY_ABORTED)
+  if (err == ER_LK_UNILATERALLY_ABORTED || tran_was_latest_query_aborted ())
     {
       (void) tran_abort_only_client (false);
     }
@@ -3998,8 +3998,7 @@ static int extract_bt_idx (const char *str);
 static int make_cst_item_value (DB_OBJECT * obj, const char *str, DB_VALUE * db_val);
 
 /*
- * do_update_stats() - Updates the statistics of a list of classes
- *		       or ALL classes
+ * do_update_stats() - Updates the statistics of a list of classes or ALL classes
  *   return: Error code
  *   parser(in): Parser context
  *   statement(in/out): Parse tree of a update statistics statement
@@ -4007,68 +4006,78 @@ static int make_cst_item_value (DB_OBJECT * obj, const char *str, DB_VALUE * db_
 int
 do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
-  PT_NODE *cls = NULL;
   int error = NO_ERROR;
-  DB_OBJECT *obj;
 
   CHECK_MODIFICATION_ERROR ();
 
   if (statement->info.update_stats.all_classes > 0)
     {
-      if (statement->info.update_stats.with_fullscan)
+      // ALL CLASSES
+      if (!au_is_dba_group_member (Au_user))
 	{
-	  assert (statement->info.update_stats.with_fullscan == 1);
-	  error = sm_update_all_statistics (STATS_WITH_FULLSCAN);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, "update statistics on all classes");
+	  return ER_AU_DBA_ONLY;
 	}
-      else
-	{
-	  assert (statement->info.update_stats.with_fullscan == 0);
-	  error = sm_update_all_statistics (STATS_WITH_SAMPLING);
-	}
+
+      error = sm_update_all_statistics (statement->info.update_stats.with_fullscan
+					? STATS_WITH_FULLSCAN : STATS_WITH_SAMPLING);
+      return error;
     }
   else if (statement->info.update_stats.all_classes < 0)
     {
-      if (statement->info.update_stats.with_fullscan)
+      // CATALOG CLASSES
+      if (!au_is_dba_group_member (Au_user))
 	{
-	  assert (statement->info.update_stats.with_fullscan == 1);
-	  error = sm_update_all_catalog_statistics (STATS_WITH_FULLSCAN);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, "update statistics on catalog classes");
+	  return ER_AU_DBA_ONLY;
 	}
-      else
-	{
-	  assert (statement->info.update_stats.with_fullscan == 0);
-	  error = sm_update_all_catalog_statistics (STATS_WITH_SAMPLING);
-	}
+
+      error = sm_update_all_catalog_statistics (statement->info.update_stats.with_fullscan
+						? STATS_WITH_FULLSCAN : STATS_WITH_SAMPLING);
+      return error;
     }
   else
     {
+      // CLASS LISTS
+
+      PT_NODE *cls = NULL;
+      DB_OBJECT *class_mop;
+
+      // fetch classes and check authorization
       for (cls = statement->info.update_stats.class_list; cls != NULL && error == NO_ERROR; cls = cls->next)
 	{
-	  obj = db_find_class (cls->info.name.original);
-	  if (obj)
+	  class_mop = db_find_class (cls->info.name.original);
+	  if (class_mop != NULL)
 	    {
-	      cls->info.name.db_object = obj;
+	      cls->info.name.db_object = class_mop;
 	      pt_check_user_owns_class (parser, cls);
 	    }
 	  else
 	    {
-	      assert (er_errid () != NO_ERROR);
-	      return er_errid ();
+	      ASSERT_ERROR_AND_SET (error);
+	      return error;
 	    }
 
-	  if (statement->info.update_stats.with_fullscan)
+	  error = au_check_authorization (class_mop, AU_ALTER);
+	  if (error != NO_ERROR)
 	    {
-	      assert (statement->info.update_stats.with_fullscan == 1);
-	      error = sm_update_statistics (obj, STATS_WITH_FULLSCAN);
+	      // set an error since only warning was set.
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_ALTER_FAILURE, 0);
+	      return error;
 	    }
-	  else
-	    {
-	      assert (statement->info.update_stats.with_fullscan == 0);
-	      error = sm_update_statistics (obj, STATS_WITH_SAMPLING);
-	    }
-	}			/* for (cls = ...) */
+	}
+
+      // update stats
+      for (cls = statement->info.update_stats.class_list; cls != NULL && error == NO_ERROR; cls = cls->next)
+	{
+	  class_mop = cls->info.name.db_object;
+
+	  error = sm_update_statistics (class_mop, (statement->info.update_stats.with_fullscan
+						    ? STATS_WITH_FULLSCAN : STATS_WITH_SAMPLING));
+	}
+
+      return error;
     }
-
-  return error;
 }
 
 /*
@@ -5957,7 +5966,16 @@ do_check_delete_trigger (PARSER_CONTEXT * parser, PT_NODE * statement, PT_DO_FUN
 	}
     }
 
-  error = check_trigger (TR_EVENT_STATEMENT_DELETE, do_func, parser, statement);
+  if (statement->use_auto_commit)
+    {
+      /* No active trigger is involved. Avoid lock and fetch request. */
+      error = do_func (parser, statement);
+    }
+  else
+    {
+      error = check_trigger (TR_EVENT_STATEMENT_DELETE, do_func, parser, statement);
+    }
+
   /* if the statement that contains joins with conditions deletes no record then we skip the deletion in the subsequent 
    * classes beacuse the original join would have deleted no record */
   if (error <= NO_ERROR)
@@ -5966,20 +5984,24 @@ do_check_delete_trigger (PARSER_CONTEXT * parser, PT_NODE * statement, PT_DO_FUN
     }
 
   affected_count = error;
-  node = statement->info.delete_.del_stmt_list;
-  while (node != NULL)
-    {
-      next = node->next;
-      node->next = NULL;
-      error = check_trigger (TR_EVENT_STATEMENT_DELETE, do_func, parser, node);
-      node->next = next;
-      if (error < NO_ERROR)
-	{
-	  return error;
-	}
-      affected_count += error;
 
-      node = node->next;
+  if (!statement->use_auto_commit)
+    {
+      node = statement->info.delete_.del_stmt_list;
+      while (node != NULL)
+	{
+	  next = node->next;
+	  node->next = NULL;
+	  error = check_trigger (TR_EVENT_STATEMENT_DELETE, do_func, parser, node);
+	  node->next = next;
+	  if (error < NO_ERROR)
+	    {
+	      return error;
+	    }
+	  affected_count += error;
+
+	  node = node->next;
+	}
     }
 
   return affected_count;
@@ -6000,7 +6022,15 @@ do_check_delete_trigger (PARSER_CONTEXT * parser, PT_NODE * statement, PT_DO_FUN
 int
 do_check_insert_trigger (PARSER_CONTEXT * parser, PT_NODE * statement, PT_DO_FUNC * do_func)
 {
-  return check_trigger (TR_EVENT_STATEMENT_INSERT, do_func, parser, statement);
+  if (statement->use_auto_commit)
+    {
+      /* no active trigger is involved. Avoid lock and fetch request. */
+      return do_func (parser, statement);
+    }
+  else
+    {
+      return check_trigger (TR_EVENT_STATEMENT_INSERT, do_func, parser, statement);
+    }
 }
 
 /*
@@ -6087,7 +6117,16 @@ do_check_update_trigger (PARSER_CONTEXT * parser, PT_NODE * statement, PT_DO_FUN
       return ER_BLOCK_NOWHERE_STMT;
     }
 
-  err = check_trigger (TR_EVENT_STATEMENT_UPDATE, do_func, parser, statement);
+  if (statement->use_auto_commit)
+    {
+      /* no active trigger is involved. Avoid lock and fetch request. */
+      err = do_func (parser, statement);
+    }
+  else
+    {
+      err = check_trigger (TR_EVENT_STATEMENT_UPDATE, do_func, parser, statement);
+    }
+
   return err;
 }
 
@@ -6779,9 +6818,9 @@ static int update_savepoint_number = 0;
 static void unlink_list (PT_NODE * list);
 
 static QFILE_LIST_ID *get_select_list_to_update (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * column_names,
-						 PT_NODE * column_values, PT_NODE * where, PT_NODE * order_by,
-						 PT_NODE * orderby_for, PT_NODE * using_index, PT_NODE * class_specs,
-						 PT_NODE * update_stmt);
+						 PT_NODE * column_values, PT_NODE * with, PT_NODE * where,
+						 PT_NODE * order_by, PT_NODE * orderby_for, PT_NODE * using_index,
+						 PT_NODE * class_specs, PT_NODE * update_stmt);
 static int update_object_attribute (PARSER_CONTEXT * parser, DB_OTMPL * otemplate, PT_NODE * name,
 				    DB_ATTDESC * attr_desc, DB_VALUE * value);
 static int update_object_tuple (PARSER_CONTEXT * parser, CLIENT_UPDATE_INFO * assigns, int assigns_count,
@@ -6834,6 +6873,7 @@ unlink_list (PT_NODE * list)
  *   parser(in): Parser context
  *   from(in): Parse tree of an FROM class
  *   column_values(in): Column list in SELECT clause
+ *   with(in): WITH clause
  *   where(in): WHERE clause
  *   order_by(in): ORDER BY clause
  *   orderby_num(in): converted from ORDER BY with LIMIT
@@ -6844,8 +6884,8 @@ unlink_list (PT_NODE * list)
  */
 static QFILE_LIST_ID *
 get_select_list_to_update (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * column_names, PT_NODE * column_values,
-			   PT_NODE * where, PT_NODE * order_by, PT_NODE * orderby_for, PT_NODE * using_index,
-			   PT_NODE * class_specs, PT_NODE * update_stmt)
+			   PT_NODE * with, PT_NODE * where, PT_NODE * order_by, PT_NODE * orderby_for,
+			   PT_NODE * using_index, PT_NODE * class_specs, PT_NODE * update_stmt)
 {
   PT_NODE *statement = NULL;
   QFILE_LIST_ID *result = NULL;
@@ -6854,8 +6894,9 @@ get_select_list_to_update (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * co
   assert (parser->query_id == NULL_QUERY_ID);
 
   if (from && (from->node_type == PT_SPEC) && from->info.spec.range_var
-      && ((statement = pt_to_upd_del_query (parser, column_names, column_values, from, class_specs, where, using_index,
-					    order_by, orderby_for, 0 /* not server update */ , S_UPDATE)) != NULL))
+      && ((statement =
+	   pt_to_upd_del_query (parser, column_names, column_values, from, with, class_specs, where, using_index,
+				order_by, orderby_for, 0 /* not server update */ , S_UPDATE)) != NULL))
     {
       err = pt_copy_upddel_hints_to_select (parser, update_stmt, statement);
       if (err != NO_ERROR)
@@ -8126,6 +8167,11 @@ update_at_server (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * statement, 
 
       query_flag = DEFAULT_EXEC_MODE;
 
+      if (parser->is_auto_commit)
+	{
+	  query_flag |= TRAN_AUTO_COMMIT;
+	}
+
       AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization checking for method */
 
       error =
@@ -8152,7 +8198,16 @@ update_at_server (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * statement, 
 	      for (cl_name_node = spec->info.spec.flat_entity_list; cl_name_node && error == NO_ERROR;
 		   cl_name_node = cl_name_node->next)
 		{
-		  error = sm_flush_and_decache_objects (cl_name_node->info.name.db_object, true);
+		  if (statement->use_auto_commit && tran_was_latest_query_committed ())
+		    {
+		      /* Nothing to flush. Avoids flush, since may fetch the class. */
+		      error = sm_decache_instances_after_query_executed_with_commit (cl_name_node->info.name.db_object);
+		    }
+		  else
+		    {
+		      error = sm_flush_and_decache_objects (cl_name_node->info.name.db_object, true);
+		    }
+
 		}
 	      spec = spec->next;
 	    }
@@ -8440,9 +8495,10 @@ update_real_class (PARSER_CONTEXT * parser, PT_NODE * statement, bool savepoint_
 	      /* get the oid's and new values */
 	      oid_list =
 		get_select_list_to_update (parser, statement->info.update.spec, select_names, select_values,
-					   statement->info.update.search_cond, statement->info.update.order_by,
-					   statement->info.update.orderby_for, statement->info.update.using_index,
-					   statement->info.update.class_specs, statement);
+					   statement->info.update.with, statement->info.update.search_cond,
+					   statement->info.update.order_by, statement->info.update.orderby_for,
+					   statement->info.update.using_index, statement->info.update.class_specs,
+					   statement);
 
 	      /* restore tree structure */
 	      pt_restore_assignment_links (statement->info.update.assignment, links, -1);
@@ -8688,7 +8744,7 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
   int err;
   PT_NODE *flat, *not_nulls, *lhs, *spec = NULL;
   DB_OBJECT *class_obj;
-  int has_trigger, has_unique, au_save, has_virt = 0;
+  int has_trigger, has_unique, has_any_update_trigger, au_save, has_virt = 0;
   bool server_update;
 
   if (parser == NULL || statement == NULL)
@@ -8741,6 +8797,7 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
        * virtual */
       spec = statement->info.update.spec;
       has_trigger = 0;
+      has_any_update_trigger = 0;
       while (spec && !has_trigger && err == NO_ERROR)
 	{
 	  if (spec->info.spec.flag & PT_SPEC_FLAG_UPDATE)
@@ -8750,6 +8807,19 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      assert (class_obj);	/* safeguard */
 	      /* the presence of a proxy trigger should force the update to be performed through the workspace */
 	      err = sm_class_has_triggers (class_obj, &has_trigger, TR_EVENT_UPDATE);
+
+	      if (err == NO_ERROR)
+		{
+		  if (has_trigger)
+		    {
+		      has_any_update_trigger = has_trigger;
+		    }
+		  else if (!has_any_update_trigger)
+		    {
+		      /* Check for statement delete triggerrs. */
+		      err = sm_class_has_triggers (class_obj, &has_any_update_trigger, TR_EVENT_STATEMENT_UPDATE);
+		    }
+		}
 
 	      if (!has_virt)
 		{
@@ -8790,6 +8860,10 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  lhs = lhs->info.expr.arg1;
 	}
       statement->info.update.server_update = server_update;
+      if (server_update && !has_any_update_trigger)
+	{
+	  statement->info.update.execute_with_commit_allowed = 1;
+	}
 
       /* if we are updating class attributes, not need to prepare */
       if (lhs->info.name.meta_class == PT_META_ATTR)
@@ -8963,10 +9037,25 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  PT_NODE **links = NULL;
 	  int no_vals = 0, no_consts = 0;
 
-	  err =
-	    pt_get_assignment_lists (parser, &select_names, &select_values, &const_names, &const_values, &no_vals,
-				     &no_consts, statement->info.update.assignment, &links);
+	  PT_NODE *assigns = statement->info.update.assignment;
+	  PT_NODE *from = statement->info.update.spec;
 
+	  if (statement->info.update.with != NULL)
+	    {
+	      /* client-side updates with CTEs are not supported for now */
+	      PT_INTERNAL_ERROR (parser, "update");
+	      break;
+	    }
+
+	  err = pt_append_omitted_on_update_expr_assignments (parser, assigns, from);
+	  if (err != NO_ERROR)
+	    {
+	      PT_INTERNAL_ERROR (parser, "update");
+	      break;		/* stop while loop if error */
+	    }
+
+	  err = pt_get_assignment_lists (parser, &select_names, &select_values, &const_names, &const_values, &no_vals,
+					 &no_consts, statement->info.update.assignment, &links);
 	  if (err != NO_ERROR)
 	    {
 	      PT_INTERNAL_ERROR (parser, "update");
@@ -8976,9 +9065,9 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  /* make sure that lhs->info.name.meta_class != PT_META_ATTR */
 	  select_statement =
 	    pt_to_upd_del_query (parser, select_names, select_values, statement->info.update.spec,
-				 statement->info.update.class_specs, statement->info.update.search_cond,
-				 statement->info.update.using_index, statement->info.update.order_by,
-				 statement->info.update.orderby_for, 0, S_UPDATE);
+				 statement->info.update.with, statement->info.update.class_specs,
+				 statement->info.update.search_cond, statement->info.update.using_index,
+				 statement->info.update.order_by, statement->info.update.orderby_for, 0, S_UPDATE);
 
 	  /* restore tree structure; pt_get_assignment_lists() */
 	  pt_restore_assignment_links (statement->info.update.assignment, links, -1);
@@ -9107,25 +9196,6 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  int query_flag = DEFAULT_EXEC_MODE;
 
-	  /* flush necessary objects before execute */
-	  spec = statement->info.update.spec;
-	  while (spec)
-	    {
-	      if (spec->info.spec.flag & PT_SPEC_FLAG_UPDATE)
-		{
-		  err = sm_flush_objects (spec->info.spec.flat_entity_list->info.name.db_object);
-		  if (err != NO_ERROR)
-		    {
-		      break;	/* stop while loop if error */
-		    }
-		}
-	      spec = spec->next;
-	    }
-	  if (err != NO_ERROR)
-	    {
-	      break;
-	    }
-
 	  query_flag |= NOT_FROM_RESULT_CACHE;
 	  query_flag |= RESULT_CACHE_INHIBITED;
 
@@ -9134,13 +9204,48 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      query_flag |= XASL_CACHE_PINNED_REFERENCE;
 	    }
 
+	  if (statement->use_auto_commit)
+	    {
+	      query_flag |= EXECUTE_QUERY_WITH_COMMIT;
+	    }
+
+	  if (parser->is_auto_commit)
+	    {
+	      query_flag |= TRAN_AUTO_COMMIT;
+	    }
+
 	  if (prm_get_bool_value (PRM_ID_QUERY_TRACE) == true && parser->query_trace == true)
 	    {
 	      do_set_trace_to_query_flag (&query_flag);
 	      do_send_plan_trace_to_session (parser);
 	    }
 
+	  // When a transaction is under auto-commit mode, flush all dirty objects to server.
+	  // Otherwise, flush associated objects.
+	  if (statement->use_auto_commit)
+	    {
+	      err = tran_flush_to_commit ();
+	    }
+	  else
+	    {
+	      /* flush necessary objects before execute */
+	      for (spec = statement->info.update.spec; spec != NULL && err == NO_ERROR; spec = spec->next)
+		{
+		  if (spec->info.spec.flag & PT_SPEC_FLAG_UPDATE)
+		    {
+		      err = sm_flush_objects (spec->info.spec.flat_entity_list->info.name.db_object);
+		    }
+		}
+	    }
+
+	  if (err != NO_ERROR)
+	    {
+	      // flush error
+	      break;
+	    }
+
 	  AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization checking for method */
+
 	  assert (parser->query_id == NULL_QUERY_ID);
 	  list_id = NULL;
 
@@ -9153,9 +9258,10 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	      qo_do_auto_parameterize (parser, statement->info.update.orderby_for);
 	    }
-	  err =
-	    execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
-			   parser->host_variables, &list_id, query_flag, NULL, NULL);
+
+	  err = execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
+			       parser->host_variables, &list_id, query_flag, NULL, NULL);
+
 	  AU_RESTORE (au_save);
 	  if (err != NO_ERROR)
 	    {
@@ -9216,7 +9322,15 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 			{
 			  flat = spec->info.spec.flat_entity_list;
 			  class_obj = (flat) ? flat->info.name.db_object : NULL;
-			  err = sm_flush_and_decache_objects (class_obj, true);
+			  if (statement->use_auto_commit && tran_was_latest_query_committed ())
+			    {
+			      /* Nothing to flush. Avoids flush, since may fetch the class. */
+			      err = sm_decache_instances_after_query_executed_with_commit (class_obj);
+			    }
+			  else
+			    {
+			      err = sm_flush_and_decache_objects (class_obj, true);
+			    }
 			}
 
 		      spec = spec->next;
@@ -9246,7 +9360,7 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      flat = spec->info.spec.flat_entity_list;
 	      class_obj = (flat) ? flat->info.name.db_object : NULL;
 
-	      if (class_obj)
+	      if (class_obj && (statement->use_auto_commit == false || !tran_was_latest_query_committed ()))
 		{
 		  err = db_is_vclass (class_obj);
 		  if (err > 0)
@@ -9313,12 +9427,12 @@ select_delete_list (PARSER_CONTEXT * parser, QFILE_LIST_ID ** result_p, PT_NODE 
   int ret = NO_ERROR;
 
   assert (parser->query_id == NULL_QUERY_ID);
+  assert (delete_stmt->info.delete_.with == NULL);
 
-  statement = pt_to_upd_del_query (parser, NULL, NULL, delete_stmt->info.delete_.spec, delete_stmt->info.delete_.class_specs, delete_stmt->info.delete_.search_cond, delete_stmt->info.delete_.using_index, NULL, NULL, 0	/* not 
-																												 * server 
-																												 * update 
-																												 */ ,
-				   S_DELETE);
+  statement = pt_to_upd_del_query (parser, NULL, NULL, delete_stmt->info.delete_.spec, delete_stmt->info.delete_.with,
+				   delete_stmt->info.delete_.class_specs, delete_stmt->info.delete_.search_cond,
+				   delete_stmt->info.delete_.using_index, NULL, NULL,
+				   0 /* not server update */ , S_DELETE);
   if (statement != NULL)
     {
       ret = pt_copy_upddel_hints_to_select (parser, delete_stmt, statement);
@@ -9695,6 +9809,11 @@ build_xasl_for_server_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       query_flag = DEFAULT_EXEC_MODE;
 
+      if (parser->is_auto_commit)
+	{
+	  query_flag |= TRAN_AUTO_COMMIT;
+	}
+
       AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization checking for method */
 
       error =
@@ -9721,7 +9840,15 @@ build_xasl_for_server_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      if (node->info.spec.flag & PT_SPEC_FLAG_DELETE)
 		{
 		  class_obj = node->info.spec.flat_entity_list->info.name.db_object;
-		  error = sm_flush_and_decache_objects (class_obj, true);
+		  if (statement->use_auto_commit && tran_was_latest_query_committed ())
+		    {
+		      /* Nothing to flush. Avoids flush, since may fetch the class. */
+		      error = sm_decache_instances_after_query_executed_with_commit (class_obj);
+		    }
+		  else
+		    {
+		      error = sm_flush_and_decache_objects (class_obj, true);
+		    }
 		}
 
 	      node = node->next;
@@ -9992,7 +10119,7 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
   int err;
   PT_NODE *flat;
   DB_OBJECT *class_obj;
-  int has_trigger, au_save;
+  int has_trigger, au_save, has_any_delete_trigger;
   bool server_delete, has_virt_obj;
   PT_NODE *node = NULL;
   PT_NODE *save_stmt = statement;
@@ -10048,6 +10175,7 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
       AU_SAVE_AND_DISABLE (au_save);	/* because sm_class_has_trigger() calls au_fetch_class() */
       has_virt_obj = false;
       has_trigger = 0;
+      has_any_delete_trigger = 0;
       node = (PT_NODE *) statement->info.delete_.spec;
       while (node && err == NO_ERROR && !has_trigger)
 	{
@@ -10067,6 +10195,19 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 		  class_obj = NULL;
 		}
 	      err = sm_class_has_triggers (class_obj, &has_trigger, TR_EVENT_DELETE);
+
+	      if (err == NO_ERROR)
+		{
+		  if (has_trigger)
+		    {
+		      has_any_delete_trigger = has_trigger;
+		    }
+		  else if (!has_any_delete_trigger)
+		    {
+		      /* Check for statement delete triggerrs. */
+		      err = sm_class_has_triggers (class_obj, &has_any_delete_trigger, TR_EVENT_STATEMENT_DELETE);
+		    }
+		}
 	    }
 
 	  node = node->next;
@@ -10086,6 +10227,10 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
       server_delete = (!has_trigger && !has_virt_obj);
 
       statement->info.delete_.server_delete = server_delete;
+      if (server_delete && !has_any_delete_trigger)
+	{
+	  statement->info.delete_.execute_with_commit_allowed = 1;
+	}
 
       stream.xasl_id = NULL;
       if (server_delete)
@@ -10208,8 +10353,11 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 	  PT_DELETE_INFO *delete_info;
 
 	  delete_info = &statement->info.delete_;
+
+	  assert (delete_info->with == NULL);
+
 	  select_statement =
-	    pt_to_upd_del_query (parser, NULL, NULL, delete_info->spec, delete_info->class_specs,
+	    pt_to_upd_del_query (parser, NULL, NULL, delete_info->spec, delete_info->with, delete_info->class_specs,
 				 delete_info->search_cond, delete_info->using_index, NULL, NULL, 0, S_DELETE);
 	  err = pt_copy_upddel_hints_to_select (parser, statement, select_statement);
 	  if (err != NO_ERROR)
@@ -10338,33 +10486,28 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* Server-side deletion or OID list deletion case: execute the prepared(stored) XASL (DELETE_PROC or SELECT
        * statement) */
 
-      node = statement->info.delete_.spec;
-
-      while (node && err == NO_ERROR)
-	{
-	  flat = node->info.spec.flat_entity_list;
-	  if (flat != NULL)
-	    {
-	      /* flush necessary objects before execute */
-	      err = sm_flush_objects (flat->info.name.db_object);
-	      if (err != NO_ERROR)
-		{
-		  break;
-		}
-	    }
-	  node = node->next;
-	}
-
       /* Request that the server executes the stored XASL, which is the execution plan of the prepared query, with the
        * host variables given by users as parameter values for the query. As a result, query id and result file id
        * (QFILE_LIST_ID) will be returned. do_prepare_delete() has saved the XASL file id (XASL_ID) in
        * 'statement->xasl_id' */
+
       query_flag = DEFAULT_EXEC_MODE;
       query_flag |= NOT_FROM_RESULT_CACHE;
       query_flag |= RESULT_CACHE_INHIBITED;
+
       if (parser->is_xasl_pinned_reference)
 	{
 	  query_flag |= XASL_CACHE_PINNED_REFERENCE;
+	}
+
+      if (statement->use_auto_commit)
+	{
+	  query_flag |= EXECUTE_QUERY_WITH_COMMIT;
+	}
+
+      if (parser->is_auto_commit)
+	{
+	  query_flag |= TRAN_AUTO_COMMIT;
 	}
 
       if (prm_get_bool_value (PRM_ID_QUERY_TRACE) == true && parser->query_trace == true)
@@ -10373,12 +10516,37 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  do_send_plan_trace_to_session (parser);
 	}
 
+      // When a transaction is under auto-commit mode, flush all dirty objects to server.
+      // Otherwise, flush associated objects.
+      if (statement->use_auto_commit)
+	{
+	  err = tran_flush_to_commit ();
+	}
+      else
+	{
+	  for (node = statement->info.delete_.spec; node && err == NO_ERROR; node = node->next)
+	    {
+	      flat = node->info.spec.flat_entity_list;
+	      if (flat != NULL)
+		{
+		  /* flush necessary objects before execute */
+		  err = sm_flush_objects (flat->info.name.db_object);
+		}
+	    }
+	}
+
+      if (err != NO_ERROR)
+	{
+	  // flush error
+	  break;
+	}
+
       AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization checking for method */
+
       assert (parser->query_id == NULL_QUERY_ID);
       list_id = NULL;
-      err =
-	execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
-		       parser->host_variables, &list_id, query_flag, NULL, NULL);
+      err = execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
+			   parser->host_variables, &list_id, query_flag, NULL, NULL);
 
       AU_RESTORE (au_save);
 
@@ -10435,7 +10603,15 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 		      flat = node->info.spec.flat_entity_list;
 		      class_obj = (flat) ? flat->info.name.db_object : NULL;
 
-		      err2 = sm_flush_and_decache_objects (class_obj, true);
+		      if (statement->use_auto_commit && tran_was_latest_query_committed ())
+			{
+			  /* Nothing to flush. Avoids flush, since may fetch the class. */
+			  err2 = sm_decache_instances_after_query_executed_with_commit (class_obj);
+			}
+		      else
+			{
+			  err2 = sm_flush_and_decache_objects (class_obj, true);
+			}
 		    }
 
 		  node = node->next;
@@ -10447,6 +10623,7 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	  regu_free_listid (list_id);
 	}
+
       /* end the query; reset query_id and call qmgr_end_query() */
       pt_end_query (parser, query_id_self);
 
@@ -10465,7 +10642,7 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      flat = node->info.spec.flat_entity_list;
 	      class_obj = (flat) ? flat->info.name.db_object : NULL;
 
-	      if (class_obj)
+	      if (class_obj && (statement->use_auto_commit == false || !tran_was_latest_query_committed ()))
 		{
 		  err = db_is_vclass (class_obj);
 		  if (err > 0)
@@ -10886,6 +11063,11 @@ do_insert_at_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  query_flag |= TRIGGER_IS_INVOLVED;
 	}
 
+      if (parser->is_auto_commit)
+	{
+	  query_flag |= TRAN_AUTO_COMMIT;
+	}
+
       assert (stream.buffer_size > 0);
 
       AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization checking for method */
@@ -10910,7 +11092,15 @@ do_insert_at_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  MOP class_obj = statement->info.insert.spec->info.spec.flat_entity_list->info.name.db_object;
 
-	  error = sm_flush_and_decache_objects (class_obj, true);
+	  if (statement->use_auto_commit && tran_was_latest_query_committed ())
+	    {
+	      /* Nothing to flush. Avoids flush, since may fetch the class. */
+	      error = sm_decache_instances_after_query_executed_with_commit (class_obj);
+	    }
+	  else
+	    {
+	      error = sm_flush_and_decache_objects (class_obj, true);
+	    }
 	}
 
       if (parser->return_generated_keys)
@@ -10936,77 +11126,6 @@ do_insert_at_server (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       return error;
     }
-}
-
-/*
- * check_for_default_expr() - Builds a list of attributes that have a default
- *			      expression and are not found in the specified
- *			      attributes list
- *   return: Error code
- *   parser(in/out): Parser context
- *   specified_attrs(in): the list of attributes that are not to be considered
- *   default_expr_attrs(out):
- *   class_obj(in):
- */
-int
-check_for_default_expr (PARSER_CONTEXT * parser, PT_NODE * specified_attrs, PT_NODE ** default_expr_attrs,
-			DB_OBJECT * class_obj)
-{
-  SM_CLASS *cls;
-  SM_ATTRIBUTE *att;
-  int error = NO_ERROR;
-  PT_NODE *new_ = NULL, *node = NULL;
-
-  assert (default_expr_attrs != NULL);
-  if (default_expr_attrs == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  error = au_fetch_class_force (class_obj, &cls, AU_FETCH_READ);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-  for (att = cls->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
-    {
-      /* skip if attribute has auto_increment */
-      if (att->auto_increment != NULL)
-	{
-	  continue;
-	}
-      /* skip if a value has already been specified for this attribute */
-      for (node = specified_attrs; node != NULL; node = node->next)
-	{
-	  if (!pt_str_compare (pt_get_name (node), att->header.name, CASE_INSENSITIVE))
-	    {
-	      break;
-	    }
-	}
-      if (node != NULL)
-	{
-	  continue;
-	}
-
-      /* add attribute to default_expr_attrs list */
-      new_ = parser_new_node (parser, PT_NAME);
-      if (new_ == NULL)
-	{
-	  PT_INTERNAL_ERROR (parser, "allocate new node");
-	  return ER_FAILED;
-	}
-      new_->info.name.original = att->header.name;
-      if (*default_expr_attrs != NULL)
-	{
-	  new_->next = *default_expr_attrs;
-	  *default_expr_attrs = new_;
-	}
-      else
-	{
-	  *default_expr_attrs = new_;
-	}
-    }
-  return NO_ERROR;
 }
 
 /*
@@ -13299,6 +13418,7 @@ do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *values = NULL;
   PT_NODE *attr_list;
   PT_NODE *update = NULL;
+  PT_NODE *with = NULL;
   int save_au;
 
   if (statement == NULL || statement->node_type != PT_INSERT || statement->info.insert.spec == NULL
@@ -13401,13 +13521,25 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   query_flag |= NOT_FROM_RESULT_CACHE;
   query_flag |= RESULT_CACHE_INHIBITED;
+
   if (parser->return_generated_keys)
     {
       query_flag |= RETURN_GENERATED_KEYS;
     }
+
   if (parser->is_xasl_pinned_reference)
     {
       query_flag |= XASL_CACHE_PINNED_REFERENCE;
+    }
+
+  if (statement->use_auto_commit)
+    {
+      query_flag |= EXECUTE_QUERY_WITH_COMMIT;
+    }
+
+  if (parser->is_auto_commit)
+    {
+      query_flag |= TRAN_AUTO_COMMIT;
     }
 
   if (prm_get_bool_value (PRM_ID_QUERY_TRACE) == true && parser->query_trace == true)
@@ -13416,12 +13548,28 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
       do_send_plan_trace_to_session (parser);
     }
 
+  if (ws_need_flush ())
+    {
+      if (statement->use_auto_commit)
+	{
+	  // When a transaction is under auto-commit mode, flush all dirty objects to server.
+	  err = tran_flush_to_commit ();
+	  if (err != NO_ERROR)
+	    {
+	      return err;
+	    }
+	  /* Nothing to flush. However ws_Num_dirty_mop is not 0 sometimes. We may reset ws_Num_dirty_mop to 0,
+	   * if flushed without errors, but is not necessary. Before sending data to the server, we check that
+	   * the transaction was not finalized, in case of execution with commit.
+	   */
+	}
+    }
+
   assert (parser->query_id == NULL_QUERY_ID);
   list_id = NULL;
 
-  err =
-    execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
-		   parser->host_variables, &list_id, query_flag, NULL, NULL);
+  err = execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
+		       parser->host_variables, &list_id, query_flag, NULL, NULL);
 
   /* free returned QFILE_LIST_ID */
   if (list_id)
@@ -13792,6 +13940,11 @@ do_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       query_flag |= DONT_COLLECT_EXEC_STATS;
     }
 
+  if (parser->is_auto_commit)
+    {
+      query_flag |= TRAN_AUTO_COMMIT;
+    }
+
 #if defined(CUBRID_DEBUG)
   PT_NODE_PRINT_TO_ALIAS (parser, statement, PT_CONVERT_RANGE);
 #endif
@@ -14146,6 +14299,10 @@ do_execute_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       query_flag |= XASL_CACHE_PINNED_REFERENCE;
     }
+  if (parser->is_auto_commit)
+    {
+      query_flag |= TRAN_AUTO_COMMIT;
+    }
 
   if (query_trace == true)
     {
@@ -14311,6 +14468,32 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (parser->dont_collect_exec_stats)
     {
       query_flag |= DONT_COLLECT_EXEC_STATS;
+    }
+
+  if (statement->use_auto_commit)
+    {
+      query_flag |= EXECUTE_QUERY_WITH_COMMIT;
+
+      if (ws_need_flush ())
+	{
+	  if (tm_Use_OID_preflush)
+	    {
+	      (void) locator_assign_all_permanent_oids ();
+	    }
+
+	  /* Flush all dirty objects */
+	  /* Flush virtual objects first so that locator_all_flush doesn't see any */
+	  err = locator_all_flush ();
+	  if (err != NO_ERROR)
+	    {
+	      return err;
+	    }
+	}
+    }
+
+  if (parser->is_auto_commit)
+    {
+      query_flag |= TRAN_AUTO_COMMIT;
     }
 
   if (query_trace == true)
@@ -14738,6 +14921,11 @@ do_execute_do (PARSER_CONTEXT * parser, PT_NODE * statement)
   query_flag |= NOT_FROM_RESULT_CACHE;
   query_flag |= RESULT_CACHE_INHIBITED;
 
+  if (parser->is_auto_commit)
+    {
+      query_flag |= TRAN_AUTO_COMMIT;
+    }
+
   pt_null_etc (statement);
 
   /* generate statement's XASL */
@@ -14946,7 +15134,16 @@ do_check_merge_trigger (PARSER_CONTEXT * parser, PT_NODE * statement, PT_DO_FUNC
       return ER_BLOCK_NOWHERE_STMT;
     }
 
-  err = check_merge_trigger (do_func, parser, statement);
+  if (statement->use_auto_commit)
+    {
+      /* no active trigger is involved. Avoid lock and fetch request. */
+      err = do_func (parser, statement);
+    }
+  else
+    {
+      err = check_merge_trigger (do_func, parser, statement);
+    }
+
   return err;
 }
 
@@ -15465,7 +15662,7 @@ exit:
   if (list_id != NULL)
     {
       regu_free_listid (list_id);
-      if (upd_query_id != NULL_QUERY_ID)
+      if (upd_query_id != NULL_QUERY_ID && !tran_was_latest_query_ended ())
 	{
 	  qmgr_end_query (upd_query_id);
 	}
@@ -15476,7 +15673,7 @@ exit:
       if (ins_select_stmt->etc != NULL)
 	{
 	  regu_free_listid ((QFILE_LIST_ID *) ins_select_stmt->etc);
-	  if (ins_query_id != NULL_QUERY_ID)
+	  if (ins_query_id != NULL_QUERY_ID && !tran_was_latest_query_ended ())
 	    {
 	      qmgr_end_query (ins_query_id);
 	    }
@@ -15711,9 +15908,8 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       parser->print_type_ambiguity = 0;
       PT_NODE_PRINT_TO_ALIAS (parser, statement, (PT_CONVERT_RANGE | PT_PRINT_QUOTES | PT_PRINT_USER));
       contextp->sql_hash_text = (char *) statement->alias_print;
-      err =
-	SHA1Compute ((unsigned char *) contextp->sql_hash_text, (unsigned) strlen (contextp->sql_hash_text),
-		     &contextp->sha1);
+      err = SHA1Compute ((unsigned char *) contextp->sql_hash_text, (unsigned) strlen (contextp->sql_hash_text),
+			 &contextp->sha1);
       if (err != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -15749,9 +15945,8 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  if (statement->info.merge.insert.value_clauses)
 	    {
-	      err =
-		check_for_default_expr (parser, statement->info.merge.insert.attr_list, &default_expr_attrs,
-					flat->info.name.db_object);
+	      err = pt_find_omitted_default_expr (parser, flat->info.name.db_object,
+						  statement->info.merge.insert.attr_list, &default_expr_attrs);
 	      if (err != NO_ERROR)
 		{
 		  statement->use_plan_cache = 0;
@@ -15986,13 +16181,6 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  goto exit;
 	}
 
-      /* flush necessary objects before execute */
-      err = sm_flush_objects (class_obj);
-      if (err != NO_ERROR)
-	{
-	  goto exit;
-	}
-
       if (parser->is_xasl_pinned_reference)
 	{
 	  query_flag |= XASL_CACHE_PINNED_REFERENCE;
@@ -16001,7 +16189,39 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       query_flag |= NOT_FROM_RESULT_CACHE;
       query_flag |= RESULT_CACHE_INHIBITED;
 
+      if (statement->use_auto_commit)
+	{
+	  query_flag |= EXECUTE_QUERY_WITH_COMMIT;
+	}
+
+      if (parser->is_auto_commit)
+	{
+	  query_flag |= TRAN_AUTO_COMMIT;
+	}
+
+      if (ws_need_flush ())
+	{
+	  // When a transaction is under auto-commit mode, flush all dirty objects to server.
+	  // Otherwise, flush associated objects.
+
+	  if (statement->use_auto_commit)
+	    {
+	      err = tran_flush_to_commit ();
+	    }
+	  else
+	    {
+	      err = sm_flush_objects (class_obj);
+	    }
+
+	  if (err != NO_ERROR)
+	    {
+	      // flush error
+	      goto exit;
+	    }
+	}
+
       AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization checking for method */
+
       if (statement->info.merge.insert.value_clauses)
 	{
 	  obt_begin_insert_values ();
@@ -16010,9 +16230,9 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       assert (parser->query_id == NULL_QUERY_ID);
       list_id = NULL;
 
-      err =
-	execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
-		       parser->host_variables, &list_id, query_flag, NULL, NULL);
+      err = execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
+			   parser->host_variables, &list_id, query_flag, NULL, NULL);
+
       AU_RESTORE (au_save);
       if (err != NO_ERROR)
 	{
@@ -16024,7 +16244,16 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  if (list_id->tuple_cnt > 0)
 	    {
-	      err = sm_flush_and_decache_objects (class_obj, true);
+	      if (statement->use_auto_commit && tran_was_latest_query_committed ())
+		{
+		  /* Nothing to flush. Avoids flush, since may fetch the class. */
+		  err = sm_decache_instances_after_query_executed_with_commit (class_obj);
+		}
+	      else
+		{
+		  err = sm_flush_and_decache_objects (class_obj, true);
+		}
+
 	    }
 	  if (err >= NO_ERROR)
 	    {
@@ -16033,6 +16262,7 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  regu_free_listid (list_id);
 	  list_id = NULL;
 	}
+
       /* end the query; reset query_id and call qmgr_end_query() */
       pt_end_query (parser, query_id_self);
     }
@@ -16247,7 +16477,7 @@ exit:
       if (ins_select_stmt->etc != NULL)
 	{
 	  regu_free_listid ((QFILE_LIST_ID *) ins_select_stmt->etc);
-	  if (ins_query_id != NULL_QUERY_ID)
+	  if (ins_query_id != NULL_QUERY_ID && !tran_was_latest_query_ended ())
 	    {
 	      qmgr_end_query (ins_query_id);
 	    }
@@ -17269,6 +17499,7 @@ do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** class
   int error = NO_ERROR;
   int upd_has_uniques = 0;
   bool has_default_values_list = false;
+  int trigger_involved = 0;
   *update = NULL;
 
   /* Check if server allows an insert. */
@@ -17279,6 +17510,22 @@ do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** class
       goto exit;
     }
 
+  /* Check whether the statement can be executed with commit. */
+  if (statement->info.insert.server_allowed == SERVER_INSERT_IS_ALLOWED)
+    {
+      /* Check statement insert trigger. */
+      error = sm_class_has_triggers ((*class_)->info.name.db_object, &trigger_involved, TR_EVENT_STATEMENT_INSERT);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit;
+	}
+
+      if (!trigger_involved)
+	{
+	  statement->info.insert.execute_with_commit_allowed = 1;
+	}
+    }
 
   /* Check non null attrs. */
   if (values->info.node_list.list_type == PT_IS_DEFAULT_VALUE)
@@ -17286,12 +17533,8 @@ do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** class
       has_default_values_list = true;
     }
 
-  error =
-    check_missing_non_null_attrs (parser, statement->info.insert.spec, statement->info.insert.attr_list,
-				  has_default_values_list);
-
-
-
+  error = check_missing_non_null_attrs (parser, statement->info.insert.spec, statement->info.insert.attr_list,
+					has_default_values_list);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -17303,24 +17546,24 @@ do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** class
   if (statement->info.insert.odku_assignments != NULL)
     {
       *update = do_create_odku_stmt (parser, statement);
-
       if (*update == NULL)
 	{
 	  error = ER_FAILED;
 	  goto exit;
 	}
+
       if (statement->info.insert.server_allowed == SERVER_INSERT_IS_ALLOWED)
 	{
 	  int server_allowed = 0;
-	  error =
-	    is_server_update_allowed (parser, &statement->info.insert.odku_non_null_attrs, &upd_has_uniques,
-				      &server_allowed, *update);
 
+	  error = is_server_update_allowed (parser, &statement->info.insert.odku_non_null_attrs, &upd_has_uniques,
+					    &server_allowed, *update);
 	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
 	      goto exit;
 	    }
+
 	  if (!server_allowed)
 	    {
 	      statement->info.insert.server_allowed = SERVER_INSERT_IS_NOT_ALLOWED;
@@ -17338,7 +17581,6 @@ do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** class
       int allowed = 0;
 
       error = is_replace_or_odku_allowed ((*class_)->info.name.db_object, &allowed);
-
       if (error != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -17353,7 +17595,7 @@ do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** class
 	}
     }
 
-  /* fetch the class for instance write purpose */
+  /* fetch the class for instance write purpose - IX_LOCK */
   if (!locator_fetch_class ((*class_)->info.name.db_object, DB_FETCH_CLREAD_INSTWRITE))
     {
       ASSERT_ERROR_AND_SET (error);

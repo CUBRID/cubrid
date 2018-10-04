@@ -17,7 +17,6 @@
  *
  */
 
-
 /*
  * disk_manager.h - Disk managment module (at server)
  */

@@ -28,43 +28,29 @@
 
 #include <assert.h>
 
-#include "storage_common.h"
+#include "access_json_table.hpp"
 #include "memory_hash.h"
-#include "string_opfunc.h"
 #include "query_list.h"
 #include "regu_var.h"
+#include "storage_common.h"
+#include "string_opfunc.h"
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
+#include "external_sort.h"
+#include "heap_file.h"
 #if defined (ENABLE_COMPOSITE_LOCK)
 #include "lock_manager.h"
 #endif /* defined (ENABLE_COMPOSITE_LOCK) */
-#include "external_sort.h"
-#include "binaryheap.h"
 #include "object_representation_sr.h"
 #include "scan_manager.h"
-#include "heap_file.h"
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
-/*
- * COMPILE_CONTEXT cover from user input query string to generated xasl
- */
-typedef struct compile_context COMPILE_CONTEXT;
-struct compile_context
-{
-  XASL_NODE *xasl;
+#if defined (SERVER_MODE) || defined (SA_MODE)
+// forward definition
+struct binary_heap;
+#endif // SERVER_MODE || SA_MODE
 
-  char *sql_user_text;		/* original query statement that user input */
-  int sql_user_text_len;	/* length of sql_user_text */
 
-  char *sql_hash_text;		/* rewrited query string which is used as hash key */
-
-  char *sql_plan_text;		/* plans for this query */
-  int sql_plan_alloc_size;	/* query_plan alloc size */
-  bool is_xasl_pinned_reference;	/* to pin xasl cache entry */
-  bool recompile_xasl_pinned;	/* whether recompile again after xasl cache entry has been pinned */
-  bool recompile_xasl;
-  SHA1Hash sha1;
-};
 
 /* XASL HEADER */
 /*
@@ -701,6 +687,7 @@ typedef enum
   TARGET_CLASS_ATTR,
   TARGET_LIST,
   TARGET_SET,
+  TARGET_JSON_TABLE,
   TARGET_METHOD,
   TARGET_REGUVAL_LIST,
   TARGET_SHOWSTMT
@@ -710,6 +697,7 @@ typedef enum
 {
   ACCESS_METHOD_SEQUENTIAL,	/* sequential scan access */
   ACCESS_METHOD_INDEX,		/* indexed access */
+  ACCESS_METHOD_JSON_TABLE,	/* json table scan access */
   ACCESS_METHOD_SCHEMA,		/* schema access */
   ACCESS_METHOD_SEQUENTIAL_RECORD_INFO,	/* sequential scan that will read record info */
   ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN,	/* sequential scan access that only scans pages without accessing record data */
@@ -771,12 +759,6 @@ struct list_spec_node
   XASL_NODE *xasl_node;		/* the XASL node that contains the list file identifier */
 };
 
-typedef enum
-{
-  KILLSTMT_TRAN = 0,
-  KILLSTMT_QUERY = 1,
-} KILLSTMT_TYPE;
-
 struct showstmt_spec_node
 {
   SHOWSTMT_TYPE show_type;	/* show statement type */
@@ -830,6 +812,7 @@ union hybrid_node
   SET_SPEC_TYPE set_node;	/* set specification */
   METHOD_SPEC_TYPE method_node;	/* method specification */
   REGUVAL_LIST_SPEC_TYPE reguval_list_node;	/* reguval_list specification */
+  json_table_spec_node json_table_node;	/* json_table specification */
 };				/* class/list access specification */
 
 /*
@@ -881,6 +864,9 @@ union hybrid_node
 #define ACCESS_SPEC_METHOD_SPEC(ptr) \
         ((ptr)->s.method_node)
 
+#define ACCESS_SPEC_JSON_TABLE_SPEC(ptr) \
+        ((ptr)->s.json_table_node)
+
 #define ACCESS_SPEC_METHOD_XASL_NODE(ptr) \
         ((ptr)->s.method_node.xasl_node)
 
@@ -892,6 +878,15 @@ union hybrid_node
 
 #define ACCESS_SPEC_METHOD_LIST_ID(ptr) \
         (ACCESS_SPEC_METHOD_XASL_NODE(ptr)->list_id)
+
+#define ACCESS_SPEC_JSON_TABLE_ROOT_NODE(ptr) \
+        ((ptr)->s.json_table_node.m_root_node)
+
+#define ACCESS_SPEC_JSON_TABLE_REGU_VAR(ptr) \
+        ((ptr)->s.json_table_node.m_json_reguvar)
+
+#define ACCESS_SPEC_JSON_TABLE_M_NODE_COUNT(ptr) \
+        ((ptr)->s.json_table_node.m_node_count)
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 struct orderby_stat
@@ -925,7 +920,7 @@ struct xasl_stat
 struct topn_tuples
 {
   SORT_LIST *sort_items;	/* sort items position in tuple and sort order */
-  BINARY_HEAP *heap;		/* heap used to hold top-n tuples */
+  struct binary_heap *heap;	/* heap used to hold top-n tuples */
   TOPN_TUPLE *tuples;		/* actual tuples stored in memory */
   int values_count;		/* number of values in a tuple */
   UINT64 total_size;		/* size in bytes of stored tuples */

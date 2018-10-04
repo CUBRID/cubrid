@@ -49,17 +49,19 @@
 #include "storage_common.h"
 #include "thread_compat.hpp"
 
-extern int xboot_initialize_server (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL * client_credential,
-				    BOOT_DB_PATH_INFO * db_path_info, bool db_overwrite, const char *file_addmore_vols,
-				    volatile DKNPAGES db_npages, PGLENGTH db_desired_pagesize,
-				    volatile DKNPAGES xlog_npages, PGLENGTH db_desired_log_page_size,
-				    OID * rootclass_oid, HFID * rootclass_hfid, int client_lock_wait,
-				    TRAN_ISOLATION client_isolation);
+// forward definitions
+struct compile_context;
+
+extern int xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH_INFO * db_path_info,
+				    bool db_overwrite, const char *file_addmore_vols, volatile DKNPAGES db_npages,
+				    PGLENGTH db_desired_pagesize, volatile DKNPAGES xlog_npages,
+				    PGLENGTH db_desired_log_page_size, OID * rootclass_oid, HFID * rootclass_hfid,
+				    int client_lock_wait, TRAN_ISOLATION client_isolation);
 extern const char *xboot_get_server_session_key (void);
 extern int xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_credential,
 				  int client_lock_wait, TRAN_ISOLATION client_isolation, TRAN_STATE * tran_state,
 				  BOOT_SERVER_CREDENTIAL * server_credential);
-extern int xboot_unregister_client (THREAD_ENTRY * thread_p, int tran_index);
+extern int xboot_unregister_client (REFPTR (THREAD_ENTRY, thread_p), int tran_index);
 extern int xboot_backup (THREAD_ENTRY * thread_p, const char *backup_path, FILEIO_BACKUP_LEVEL backup_level,
 			 bool delete_unneeded_logarchives, const char *backup_verbose_file, int num_threads,
 			 FILEIO_ZIP_METHOD zip_method, FILEIO_ZIP_LEVEL zip_level, int skip_activelog, int sleep_msecs);
@@ -164,6 +166,13 @@ extern BTID *xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char
 				HFID * hfids, int unique_pk, int not_null_flag, OID * fk_refcls_oid,
 				BTID * fk_refcls_pk_btid, const char *fk_name, char *pred_stream, int pred_stream_size,
 				char *expr_stream, int expr_steram_size, int func_col_id, int func_attr_index_start);
+extern BTID *xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP_DOMAIN * key_type,
+				       OID * class_oids, int n_classes, int n_attrs, int *attr_ids,
+				       int *attrs_prefix_length, HFID * hfids, int unique_pk, int not_null_flag,
+				       OID * fk_refcls_oid, BTID * fk_refcls_pk_btid, const char *fk_name,
+				       char *pred_stream, int pred_stream_size, char *expr_stream, int expr_steram_size,
+				       int func_col_id, int func_attr_index_start);
+
 extern int xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid);
 extern BTREE_SEARCH xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE scan_op_type,
 					DB_VALUE * key, OID * class_oid, OID * oid, bool is_all_class_srch);
@@ -195,7 +204,7 @@ extern int xqfile_get_list_file_page (THREAD_ENTRY * thread_p, QUERY_ID query_id
 				      char *page_bufp, int *page_sizep);
 
 /* new query interface */
-extern int xqmgr_prepare_query (THREAD_ENTRY * thrd, COMPILE_CONTEXT * ctx, XASL_STREAM * stream);
+extern int xqmgr_prepare_query (THREAD_ENTRY * thrd, compile_context * ctx, XASL_STREAM * stream);
 
 extern QFILE_LIST_ID *xqmgr_execute_query (THREAD_ENTRY * thrd, const XASL_ID * xasl_id, QUERY_ID * query_idp,
 					   int dbval_cnt, void *data, QUERY_FLAG * flagp, CACHE_TIME * clt_cache_time,
@@ -271,4 +280,7 @@ extern int xsession_clear_query_entry_info (THREAD_ENTRY * thread_p, const QUERY
 extern int xchksum_insert_repl_log_and_demote_table_lock (THREAD_ENTRY * thread_p, REPL_INFO * repl_info,
 							  const OID * class_oidp);
 extern bool xlogtb_does_active_user_exist (THREAD_ENTRY * thread_p, const char *user_name);
+extern int xlocator_demote_class_lock (THREAD_ENTRY * thread_p, const OID * class_oid, LOCK lock, LOCK * ex_lock);
+extern bool xtran_should_connection_reset (THREAD_ENTRY * thread_p, bool has_updated);
+extern int xsession_set_tran_auto_commit (THREAD_ENTRY * thread_p, bool auto_commit);
 #endif /* _XSERVER_INTERFACE_H_ */

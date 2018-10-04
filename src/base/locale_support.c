@@ -6254,7 +6254,6 @@ locale_dump (void *data, LOCALE_FILE * lf, int dl_settings, int start_value, int
       printf ("Time format: %s\n", lld->time_format);
       printf ("Datetime format: %s\n", lld->datetime_format);
       printf ("Timestamp format: %s\n", lld->timestamp_format);
-      printf ("Time_tz format: %s\n", lld->timetz_format);
       printf ("Datetime_tz format: %s\n", lld->datetimetz_format);
       printf ("Timestamp_tz format: %s\n", lld->timestamptz_format);
 

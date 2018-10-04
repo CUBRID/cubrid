@@ -38,6 +38,15 @@
 #include "memory_alloc.h"
 #include "server_interface.h"
 #endif /* !SERVER_MODE */
+#include "thread_worker_pool.hpp"
+#if defined (SERVER_MODE)
+#include "thread_daemon.hpp"
+#endif // SERVER_MODE
+#if defined (SERVER_MODE) || defined (SA_MODE)
+#include "thread_manager.hpp"	// for thread_get_thread_entry_info
+#endif // SERVER_MODE or SA_MODE
+
+#include <cstring>
 
 #if defined(SERVER_MODE)
 #include <string.h>
@@ -59,11 +68,11 @@
 #if defined (SERVER_MODE) || defined (SA_MODE)
 #include <string.h>
 
-#include "thread.h"
 #include "log_impl.h"
 #include "session.h"
 #include "error_manager.h"
 #include "log_manager.h"
+#include "server_support.h"
 #include "system_parameter.h"
 #include "xserver_interface.h"
 #include "heap_file.h"
@@ -110,11 +119,14 @@ static int f_load_Time_data_page_hold_acquire_time (void);
 static int f_load_Time_data_page_fix_acquire_time (void);
 static int f_load_Num_mvcc_snapshot_ext (void);
 static int f_load_Time_obj_lock_acquire_time (void);
+static int f_load_Num_dwb_flushed_block_volumes (void);
 static int f_load_Time_get_snapshot_acquire_time (void);
 static int f_load_Count_get_snapshot_retry (void);
 static int f_load_Time_tran_complete_time (void);
 static int f_load_Time_get_oldest_mvcc_acquire_time (void);
 static int f_load_Count_get_oldest_mvcc_retry (void);
+static int f_load_thread_stats (void);
+static int f_load_thread_daemon_stats (void);
 
 static void f_dump_in_file_Num_data_page_fix_ext (FILE *, const UINT64 * stat_vals);
 static void f_dump_in_file_Num_data_page_promote_ext (FILE *, const UINT64 * stat_vals);
@@ -125,6 +137,9 @@ static void f_dump_in_file_Time_data_page_hold_acquire_time (FILE *, const UINT6
 static void f_dump_in_file_Time_data_page_fix_acquire_time (FILE *, const UINT64 * stat_vals);
 static void f_dump_in_file_Num_mvcc_snapshot_ext (FILE *, const UINT64 * stat_vals);
 static void f_dump_in_file_Time_obj_lock_acquire_time (FILE *, const UINT64 * stat_vals);
+static void f_dump_in_file_thread_stats (FILE * f, const UINT64 * stat_vals);
+static void f_dump_in_file_thread_daemon_stats (FILE * f, const UINT64 * stat_vals);
+static void f_dump_in_file_Num_dwb_flushed_block_volumes (FILE *, const UINT64 * stat_vals);
 
 static void f_dump_in_buffer_Num_data_page_fix_ext (char **, const UINT64 * stat_vals, int *remaining_size);
 static void f_dump_in_buffer_Num_data_page_promote_ext (char **, const UINT64 * stat_vals, int *remaining_size);
@@ -135,6 +150,9 @@ static void f_dump_in_buffer_Time_data_page_hold_acquire_time (char **, const UI
 static void f_dump_in_buffer_Time_data_page_fix_acquire_time (char **, const UINT64 * stat_vals, int *remaining_size);
 static void f_dump_in_buffer_Num_mvcc_snapshot_ext (char **, const UINT64 * stat_vals, int *remaining_size);
 static void f_dump_in_buffer_Time_obj_lock_acquire_time (char **, const UINT64 * stat_vals, int *remaining_size);
+static void f_dump_in_buffer_thread_stats (char **s, const UINT64 * stat_vals, int *remaining_size);
+static void f_dump_in_buffer_thread_daemon_stats (char **s, const UINT64 * stat_vals, int *remaining_size);
+static void f_dump_in_buffer_Num_dwb_flushed_block_volumes (char **s, const UINT64 * stat_vals, int *remaining_size);
 
 static void perfmon_stat_dump_in_file_fix_page_array_stat (FILE *, const UINT64 * stats_ptr);
 static void perfmon_stat_dump_in_file_promote_page_array_stat (FILE *, const UINT64 * stats_ptr);
@@ -143,6 +161,8 @@ static void perfmon_stat_dump_in_file_page_lock_time_array_stat (FILE *, const U
 static void perfmon_stat_dump_in_file_page_hold_time_array_stat (FILE *, const UINT64 * stats_ptr);
 static void perfmon_stat_dump_in_file_page_fix_time_array_stat (FILE *, const UINT64 * stats_ptr);
 static void perfmon_stat_dump_in_file_snapshot_array_stat (FILE *, const UINT64 * stats_ptr);
+static void perfmon_stat_dump_in_file_thread_stats (FILE * stream, const UINT64 * stats_ptr);
+static void perfmon_stat_dump_in_file_thread_daemon_stats (FILE * stream, const UINT64 * stats_ptr);
 
 static void perfmon_stat_dump_in_buffer_fix_page_array_stat (const UINT64 * stats_ptr, char **s, int *remaining_size);
 static void perfmon_stat_dump_in_buffer_promote_page_array_stat (const UINT64 * stats_ptr, char **s,
@@ -155,8 +175,17 @@ static void perfmon_stat_dump_in_buffer_page_hold_time_array_stat (const UINT64 
 static void perfmon_stat_dump_in_buffer_page_fix_time_array_stat (const UINT64 * stats_ptr, char **s,
 								  int *remaining_size);
 static void perfmon_stat_dump_in_buffer_snapshot_array_stat (const UINT64 * stats_ptr, char **s, int *remaining_size);
+static void perfmon_stat_dump_in_buffer_thread_stats (const UINT64 * stats_ptr, char **s, int *remaining_size);
+static void perfmon_stat_dump_in_buffer_thread_daemon_stats (const UINT64 * stats_ptr, char **s, int *remaining_size);
+
 static void perfmon_print_timer_to_file (FILE * stream, int stat_index, UINT64 * stats_ptr);
 static void perfmon_print_timer_to_buffer (char **s, int stat_index, UINT64 * stats_ptr, int *remained_size);
+
+STATIC_INLINE size_t thread_stats_count (void) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE size_t perfmon_thread_daemon_stats_count (void) __attribute__ ((ALWAYS_INLINE));
+#if defined (SERVER_MODE)
+static void perfmon_peek_thread_daemon_stats (UINT64 * stats);
+#endif // SERVER_MODE
 
 PSTAT_GLOBAL pstat_Global;
 
@@ -446,6 +475,8 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_NUM_SKIPPED_ALREADY_FLUSHED, "Num_data_page_skipped_flush_already_flushed"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_NUM_SKIPPED_FIXED_OR_HOT, "Num_data_page_skipped_flush_fixed_or_hot"),
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_PB_COMPENSATE_FLUSH, "compensate_flush"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_PB_ASSIGN_DIRECT_BCB, "assign_direct_bcb"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_PB_WAKE_FLUSH_WAITER, "wake_flush_waiter"),
   /* allocate and victim assignments */
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_PB_ALLOC_BCB, "alloc_bcb"),
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_PB_ALLOC_BCB_SEARCH_VICTIM, "alloc_bcb_search_victim"),
@@ -454,6 +485,11 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_ALLOC_BCB_PRIORITIZE_VACUUM, "Num_alloc_bcb_prioritize_vacuum"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_USE_INVALID_BCB, "Num_victim_use_invalid_bcb"),
   /* direct assignments */
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_PB_VICTIM_SEARCH_OWN_PRIVATE_LISTS,
+				     "alloc_bcb_get_victim_search_own_private_list"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_PB_VICTIM_SEARCH_OTHERS_PRIVATE_LISTS,
+				     "alloc_bcb_get_victim_search_others_private_list"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_PB_VICTIM_SEARCH_SHARED_LISTS, "alloc_bcb_get_victim_search_shared_list"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_ASSIGN_DIRECT_VACUUM_VOID, "Num_victim_assign_direct_vacuum_void"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_ASSIGN_DIRECT_VACUUM_LRU, "Num_victim_assign_direct_vacuum_lru"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_VICTIM_ASSIGN_DIRECT_FLUSH, "Num_victim_assign_direct_flush"),
@@ -483,6 +519,18 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_LFCQ_LRU_PRV_GET_BIG, "Num_lfcq_prv_get_big"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_LFCQ_LRU_SHR_GET_CALLS, "Num_lfcq_shr_get_total_calls"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PB_LFCQ_LRU_SHR_GET_EMPTY, "Num_lfcq_shr_get_empty"),
+
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_DWB_FLUSH_BLOCK_TIME_COUNTERS, "Time_DWB_flush_block_time"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_DWB_FLUSH_BLOCK_HELPER_TIME_COUNTERS, "Time_DWB_flush_block_helper_time"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_DWB_FLUSH_BLOCK_COND_WAIT, "Time_DWB_flush_block_cond_wait_time"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_DWB_FLUSH_BLOCK_SORT_TIME_COUNTERS, "Time_DWB_flush_block_sort_time"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_DWB_FLUSH_BLOCK_REMOVE_HASH_ENTRIES, "Time_DWB_flush_remove_hash_entries"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_DWB_PAGE_CHECKSUM_TIME_COUNTERS, "Time_DWB_checksum_time"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_DWB_WAIT_FLUSH_BLOCK_TIME_COUNTERS, "Time_DWB_wait_flush_block_time"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_DWB_WAIT_FLUSH_BLOCK_HELPER_TIME_COUNTERS,
+				     "Time_DWB_wait_flush_block_helper_time"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_DWB_FLUSH_FORCE_TIME_COUNTERS, "Time_DWB_flush_force_time"),
+
   /* peeked stats */
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_WAIT_THREADS_HIGH_PRIO, "Num_alloc_bcb_wait_threads_high_priority"),
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_WAIT_THREADS_LOW_PRIO, "Num_alloc_bcb_wait_threads_low_priority"),
@@ -523,7 +571,16 @@ PSTAT_METADATA pstat_Metadata[] = {
 			       &f_load_Num_mvcc_snapshot_ext),
   PSTAT_METADATA_INIT_COMPLEX (PSTAT_OBJ_LOCK_TIME_COUNTERS, "Time_obj_lock_acquire_time",
 			       &f_dump_in_file_Time_obj_lock_acquire_time, &f_dump_in_buffer_Time_obj_lock_acquire_time,
-			       &f_load_Time_obj_lock_acquire_time)
+			       &f_load_Time_obj_lock_acquire_time),
+  PSTAT_METADATA_INIT_COMPLEX (PSTAT_THREAD_STATS, "Thread_stats_counters_timers", &f_dump_in_file_thread_stats,
+			       &f_dump_in_buffer_thread_stats, &f_load_thread_stats),
+  PSTAT_METADATA_INIT_COMPLEX (PSTAT_THREAD_DAEMON_STATS, "Thread_pgbuf_daemon_stats_counters_timers",
+			       &f_dump_in_file_thread_daemon_stats, &f_dump_in_buffer_thread_daemon_stats,
+			       &f_load_thread_daemon_stats),
+  PSTAT_METADATA_INIT_COMPLEX (PSTAT_DWB_FLUSHED_BLOCK_NUM_VOLUMES, "Num_dwb_flushed_block_volumes",
+			       &f_dump_in_file_Num_dwb_flushed_block_volumes,
+			       &f_dump_in_buffer_Num_dwb_flushed_block_volumes,
+			       &f_load_Num_dwb_flushed_block_volumes)
 };
 
 STATIC_INLINE void perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, const int offset,
@@ -543,6 +600,7 @@ STATIC_INLINE const char *perfmon_stat_promote_cond_name (const int cond_type) _
 STATIC_INLINE const char *perfmon_stat_snapshot_name (const int snapshot) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE const char *perfmon_stat_snapshot_record_type (const int rec_type) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE const char *perfmon_stat_lock_mode_name (const int lock_mode) __attribute__ ((ALWAYS_INLINE));
+static const char *perfmon_stat_thread_stat_name (size_t index);
 
 STATIC_INLINE void perfmon_get_peek_stats (UINT64 * stats) __attribute__ ((ALWAYS_INLINE));
 
@@ -855,1027 +913,6 @@ exit:
 }
 
 #endif /* CS_MODE || SA_MODE */
-
-#if defined (DIAG_DEVEL)
-#if defined(SERVER_MODE)
-#if defined(WINDOWS)
-#define SERVER_SHM_CREATE(SHM_KEY, SIZE, HANDLE_PTR)    \
-        server_shm_create(SHM_KEY, SIZE, HANDLE_PTR)
-#define SERVER_SHM_OPEN(SHM_KEY, HANDLE_PTR)            \
-        server_shm_open(SHM_KEY, HANDLE_PTR)
-#define SERVER_SHM_DETACH(PTR, HMAP)	\
-        do {				\
-          if (HMAP != NULL) {		\
-            UnmapViewOfFile(PTR);	\
-            CloseHandle(HMAP);		\
-          }				\
-        } while (0)
-#else /* WINDOWS */
-#define SERVER_SHM_CREATE(SHM_KEY, SIZE, HANDLE_PTR)    \
-        server_shm_create(SHM_KEY, SIZE)
-#define SERVER_SHM_OPEN(SHM_KEY, HANDLE_PTR)            \
-        server_shm_open(SHM_KEY)
-#define SERVER_SHM_DETACH(PTR, HMAP)    shmdt(PTR)
-#endif /* WINDOWS */
-
-#define SERVER_SHM_DESTROY(SHM_KEY)     \
-        server_shm_destroy(SHM_KEY)
-
-#define CHECK_DIAG_OBJ_FUNC_THREAD_MGR_INIT(ERR_BUF) \
-    do { \
-        if (thread_is_manager_initialized() == false) {\
-            if (ERR_BUF) strcpy(ERR_BUF, "thread mgr is not initialized");\
-            return -1;\
-        }\
-    } while(0)
-
-#define CHECK_SHM() \
-    do { \
-        if (g_ShmServer == NULL) return -1; \
-    } while(0)
-
-#define CUBRID_KEY_GEN_ID 0x08
-#define DIAG_SERVER_MAGIC_NUMBER 07115
-
-/* Global variables */
-bool diag_executediag;
-int diag_long_query_time;
-
-static int ShmPort;
-static T_SHM_DIAG_INFO_SERVER *g_ShmServer = NULL;
-
-#if defined(WINDOWS)
-static HANDLE shm_map_object;
-#endif /* WINDOWS */
-
-/* Diag value modification function */
-static int diag_val_set_query_open_page (int value, T_DIAG_VALUE_SETTYPE settype, char *err_buf);
-static int diag_val_set_query_opened_page (int value, T_DIAG_VALUE_SETTYPE settype, char *err_buf);
-static int diag_val_set_buffer_page_read (int value, T_DIAG_VALUE_SETTYPE settype, char *err_buf);
-static int diag_val_set_buffer_page_write (int value, T_DIAG_VALUE_SETTYPE settype, char *err_buf);
-static int diag_val_set_conn_aborted_clients (int value, T_DIAG_VALUE_SETTYPE settype, char *err_buf);
-static int diag_val_set_conn_cli_request (int value, T_DIAG_VALUE_SETTYPE settype, char *err_buf);
-static int diag_val_set_query_slow_query (int value, T_DIAG_VALUE_SETTYPE settype, char *err_buf);
-static int diag_val_set_lock_deadlock (int value, T_DIAG_VALUE_SETTYPE settype, char *err_buf);
-static int diag_val_set_lock_request (int value, T_DIAG_VALUE_SETTYPE settype, char *err_buf);
-static int diag_val_set_query_full_scan (int value, T_DIAG_VALUE_SETTYPE settype, char *err_buf);
-static int diag_val_set_conn_conn_req (int value, T_DIAG_VALUE_SETTYPE settype, char *err_buf);
-static int diag_val_set_conn_conn_reject (int value, T_DIAG_VALUE_SETTYPE settype, char *err_buf);
-
-static int server_shm_destroy (int shm_key);
-static bool diag_sm_isopened (void);
-static bool init_server_diag_value (T_SHM_DIAG_INFO_SERVER * shm_server);
-static bool init_diag_sm (const char *server_name, int num_thread, char *err_buf);
-static bool rm_diag_sm (void);
-
-static char *trim_line (char *str);
-static int create_shm_key_file (int port, char *vol_dir, const char *servername);
-static int read_diag_system_config (DIAG_SYS_CONFIG * config, char *err_buf);
-static int get_volumedir (char *vol_dir, const char *dbname);
-static int get_server_shmid (char *dir, const char *dbname);
-
-
-#if defined(WINDOWS)
-static void shm_key_to_name (int shm_key, char *name_str);
-static void *server_shm_create (int shm_key, int size, HANDLE * hOut);
-static void *server_shm_open (int shm_key, HANDLE * hOut);
-#else /* WINDOWS */
-static void *server_shm_create (int shm_key, int size);
-static void *server_shm_open (int shm_key);
-#endif /* WINDOWS */
-
-T_DIAG_OBJECT_TABLE diag_obj_list[] = {
-  {"open_page", DIAG_OBJ_TYPE_QUERY_OPEN_PAGE, diag_val_set_query_open_page},
-  {"opened_page", DIAG_OBJ_TYPE_QUERY_OPENED_PAGE, diag_val_set_query_opened_page},
-  {"slow_query", DIAG_OBJ_TYPE_QUERY_SLOW_QUERY, diag_val_set_query_slow_query},
-  {"full_scan", DIAG_OBJ_TYPE_QUERY_FULL_SCAN, diag_val_set_query_full_scan},
-  {"cli_request", DIAG_OBJ_TYPE_CONN_CLI_REQUEST, diag_val_set_conn_cli_request},
-  {"aborted_client", DIAG_OBJ_TYPE_CONN_ABORTED_CLIENTS, diag_val_set_conn_aborted_clients},
-  {"conn_req", DIAG_OBJ_TYPE_CONN_CONN_REQ, diag_val_set_conn_conn_req},
-  {"conn_reject", DIAG_OBJ_TYPE_CONN_CONN_REJECT, diag_val_set_conn_conn_reject},
-  {"buffer_page_read", DIAG_OBJ_TYPE_BUFFER_PAGE_READ, diag_val_set_buffer_page_read},
-  {"buffer_page_write", DIAG_OBJ_TYPE_BUFFER_PAGE_WRITE, diag_val_set_buffer_page_write},
-  {"lock_deadlock", DIAG_OBJ_TYPE_LOCK_DEADLOCK, diag_val_set_lock_deadlock},
-  {"lock_request", DIAG_OBJ_TYPE_LOCK_REQUEST, diag_val_set_lock_request}
-};
-
-/* function definition */
-/*
- * trim_line()
- *    return: char *
- *    str(in):
- */
-static char *
-trim_line (char *str)
-{
-  char *p;
-  char *s;
-
-  if (str == NULL)
-    return (str);
-
-  for (s = str; *s != '\0' && (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r'); s++)
-    ;
-  if (*s == '\0')
-    {
-      *str = '\0';
-      return (str);
-    }
-
-  /* *s must be a non-white char */
-  for (p = s; *p != '\0'; p++)
-    ;
-  for (p--; *p == ' ' || *p == '\t' || *p == '\n' || *p == '\r'; p--)
-    ;
-  *++p = '\0';
-
-  if (s != str)
-    {
-      memcpy (str, s, strlen (s) + 1);
-    }
-
-  return (str);
-}
-
-/*
- * create_shm_key_file()
- *    return: int
- *    port(in):
- *    vol_dir(in):
- *    servername(in):
- */
-static int
-create_shm_key_file (int port, char *vol_dir, const char *servername)
-{
-  FILE *keyfile;
-  char keyfilepath[PATH_MAX];
-
-  if (!vol_dir || !servername)
-    {
-      return -1;
-    }
-
-  sprintf (keyfilepath, "%s/%s_shm.key", vol_dir, servername);
-  keyfile = fopen (keyfilepath, "w+");
-  if (keyfile)
-    {
-      fprintf (keyfile, "%x", port);
-      fclose (keyfile);
-      return 1;
-    }
-
-  return -1;
-}
-
-/*
- * read_diag_system_config()
- *    return: int
- *    config(in):
- *    err_buf(in):
- */
-static int
-read_diag_system_config (DIAG_SYS_CONFIG * config, char *err_buf)
-{
-  FILE *conf_file;
-  char cbuf[1024], file_path[PATH_MAX];
-  char *cubrid_home;
-  char ent_name[128], ent_val[128];
-
-  if (config == NULL)
-    {
-      return -1;
-    }
-
-  /* Initialize config data */
-  config->Executediag = 0;
-  config->server_long_query_time = 0;
-
-  cubrid_home = envvar_root ();
-
-  if (cubrid_home == NULL)
-    {
-      if (err_buf)
-	{
-	  strcpy (err_buf, "Environment variable CUBRID is not set.");
-	}
-      return -1;
-    }
-
-  envvar_confdir_file (file_path, PATH_MAX, "cm.conf");
-
-  conf_file = fopen (file_path, "r");
-
-  if (conf_file == NULL)
-    {
-      if (err_buf)
-	{
-	  sprintf (err_buf, "File(%s) open error.", file_path);
-	}
-      return -1;
-    }
-
-  while (fgets (cbuf, sizeof (cbuf), conf_file))
-    {
-      char format[1024];
-
-      trim_line (cbuf);
-      if (cbuf[0] == '\0' || cbuf[0] == '#')
-	{
-	  continue;
-	}
-
-      snprintf (format, sizeof (format), "%%%ds %%%ds", (int) sizeof (ent_name), (int) sizeof (ent_val));
-      if (sscanf (cbuf, format, ent_name, ent_val) < 2)
-	{
-	  continue;
-	}
-
-      if (strcasecmp (ent_name, "Execute_diag") == 0)
-	{
-	  if (strcasecmp (ent_val, "ON") == 0)
-	    {
-	      config->Executediag = 1;
-	    }
-	  else
-	    {
-	      config->Executediag = 0;
-	    }
-	}
-      else if (strcasecmp (ent_name, "server_long_query_time") == 0)
-	{
-	  config->server_long_query_time = atoi (ent_val);
-	}
-    }
-
-  fclose (conf_file);
-  return 1;
-}
-
-/*
- * get_volumedir()
- *    return: int
- *    vol_dir(in):
- *    dbname(in):
- *    err_buf(in):
- */
-static int
-get_volumedir (char *vol_dir, const char *dbname)
-{
-  FILE *databases_txt;
-#if !defined (DO_NOT_USE_CUBRIDENV)
-  const char *envpath;
-#endif
-  char db_txt[PATH_MAX];
-  char cbuf[PATH_MAX * 2];
-  char volname[MAX_SERVER_NAMELENGTH];
-
-  if (vol_dir == NULL || dbname == NULL)
-    {
-      return -1;
-    }
-
-#if !defined (DO_NOT_USE_CUBRIDENV)
-  envpath = envvar_get ("DATABASES");
-  if (envpath == NULL || strlen (envpath) == 0)
-    {
-      return -1;
-    }
-
-  sprintf (db_txt, "%s/%s", envpath, DATABASES_FILENAME);
-#else
-  envvar_vardir_file (db_txt, PATH_MAX, DATABASES_FILENAME);
-#endif
-  databases_txt = fopen (db_txt, "r");
-  if (databases_txt == NULL)
-    {
-      return -1;
-    }
-
-  while (fgets (cbuf, sizeof (cbuf), databases_txt))
-    {
-      char format[1024];
-      snprintf (format, sizeof (format), "%%%ds %%%ds %%*s %%*s", (int) sizeof (volname), PATH_MAX);
-
-      if (sscanf (cbuf, format, volname, vol_dir) < 2)
-	continue;
-
-      if (strcmp (volname, dbname) == 0)
-	{
-	  fclose (databases_txt);
-	  return 1;
-	}
-    }
-
-  fclose (databases_txt);
-  return -1;
-}
-
-/*
- * get_server_shmid()
- *    return: int
- *    dir(in):
- *    dbname(in):
- */
-static int
-get_server_shmid (char *dir, const char *dbname)
-{
-  int shm_key = 0;
-  char vol_full_path[PATH_MAX];
-  char *p;
-
-  sprintf (vol_full_path, "%s/%s", dir, dbname);
-  for (p = vol_full_path; *p; p++)
-    {
-      shm_key = 31 * shm_key + (*p);
-    }
-  shm_key &= 0x00ffffff;
-
-  return shm_key;
-}
-
-#if defined(WINDOWS)
-
-/*
- * shm_key_to_name()
- *    return: none
- *    shm_key(in):
- *    name_str(in):
- */
-static void
-shm_key_to_name (int shm_key, char *name_str)
-{
-  sprintf (name_str, "cubrid_shm_%d", shm_key);
-}
-
-/*
- * server_shm_create()
- *    return: void*
- *    shm_key(in):
- *    size(in):
- *    hOut(in):
- */
-static void *
-server_shm_create (int shm_key, int size, HANDLE * hOut)
-{
-  LPVOID lpvMem = NULL;
-  HANDLE hMapObject = NULL;
-  char shm_name[64];
-
-  *hOut = NULL;
-
-  shm_key_to_name (shm_key, shm_name);
-
-  hMapObject = CreateFileMapping (INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, size, shm_name);
-  if (hMapObject == NULL)
-    {
-      return NULL;
-    }
-
-  if (GetLastError () == ERROR_ALREADY_EXISTS)
-    {
-      CloseHandle (hMapObject);
-      return NULL;
-    }
-
-  lpvMem = MapViewOfFile (hMapObject, FILE_MAP_WRITE, 0, 0, 0);
-  if (lpvMem == NULL)
-    {
-      CloseHandle (hMapObject);
-      return NULL;
-    }
-
-  *hOut = hMapObject;
-  return lpvMem;
-}
-
-/*
- * server_shm_open()
- *    return: void *
- *    shm_key(in):
- *    hOut(in):
- */
-static void *
-server_shm_open (int shm_key, HANDLE * hOut)
-{
-  LPVOID lpvMem = NULL;		/* address of shared memory */
-  HANDLE hMapObject = NULL;
-  char shm_name[64];
-
-  *hOut = NULL;
-
-  shm_key_to_name (shm_key, shm_name);
-
-  hMapObject = OpenFileMapping (FILE_MAP_WRITE,	/* read/write access */
-				FALSE,	/* inherit flag */
-				shm_name);	/* name of map object */
-  if (hMapObject == NULL)
-    {
-      return NULL;
-    }
-
-  /* Get a pointer to the file-mapped shared memory. */
-  lpvMem = MapViewOfFile (hMapObject,	/* object to map view of */
-			  FILE_MAP_WRITE,	/* read/write access */
-			  0,	/* high offset: map from */
-			  0,	/* low offset: beginning */
-			  0);	/* default: map entire file */
-  if (lpvMem == NULL)
-    {
-      CloseHandle (hMapObject);
-      return NULL;
-    }
-
-  *hOut = hMapObject;
-  return lpvMem;
-}
-
-#else /* WINDOWS */
-
-/*
- * server_shm_create()
- *    return: void *
- *    shm_key(in):
- *    size(in):
- */
-static void *
-server_shm_create (int shm_key, int size)
-{
-  int mid;
-  void *p;
-
-  if (size <= 0 || shm_key <= 0)
-    {
-      return NULL;
-    }
-
-  mid = shmget (shm_key, size, IPC_CREAT | IPC_EXCL | SH_MODE);
-
-  if (mid == -1)
-    {
-      return NULL;
-    }
-  p = shmat (mid, (char *) 0, 0);
-
-  if (p == (void *) -1)
-    {
-      return NULL;
-    }
-
-  return p;
-}
-
-/*
- * server_shm_open()
- *    return: void *
- *    shm_key(in):
- */
-static void *
-server_shm_open (int shm_key)
-{
-  int mid;
-  void *p;
-
-  if (shm_key < 0)
-    {
-      return NULL;
-    }
-  mid = shmget (shm_key, 0, SHM_RDONLY);
-
-  if (mid == -1)
-    return NULL;
-
-  p = shmat (mid, (char *) 0, SHM_RDONLY);
-
-  if (p == (void *) -1)
-    {
-      return NULL;
-    }
-  return p;
-}
-#endif /* WINDOWS */
-
-/*
- * server_shm_destroy() -
- *    return: int
- *    shm_key(in):
- */
-static int
-server_shm_destroy (int shm_key)
-{
-#if !defined(WINDOWS)
-  int mid;
-
-  mid = shmget (shm_key, 0, SH_MODE);
-
-  if (mid == -1)
-    {
-      return -1;
-    }
-
-  if (shmctl (mid, IPC_RMID, 0) == -1)
-    {
-      return -1;
-    }
-#endif /* WINDOWS */
-  return 0;
-}
-
-/*
- * diag_sm_isopened() -
- *    return : bool
- */
-static bool
-diag_sm_isopened (void)
-{
-  return (g_ShmServer == NULL) ? false : true;
-}
-
-/*
- * init_server_diag_value() -
- *    return : bool
- *    shm_server(in):
- */
-static bool
-init_server_diag_value (T_SHM_DIAG_INFO_SERVER * shm_server)
-{
-  int i, thread_num;
-
-  if (!shm_server)
-    return false;
-
-  thread_num = shm_server->num_thread;
-  for (i = 0; i < thread_num; i++)
-    {
-      shm_server->thread[i].query_open_page = 0;
-      shm_server->thread[i].query_opened_page = 0;
-      shm_server->thread[i].query_slow_query = 0;
-      shm_server->thread[i].query_full_scan = 0;
-      shm_server->thread[i].conn_cli_request = 0;
-      shm_server->thread[i].conn_aborted_clients = 0;
-      shm_server->thread[i].conn_conn_req = 0;
-      shm_server->thread[i].conn_conn_reject = 0;
-      shm_server->thread[i].buffer_page_write = 0;
-      shm_server->thread[i].buffer_page_read = 0;
-      shm_server->thread[i].lock_deadlock = 0;
-      shm_server->thread[i].lock_request = 0;
-    }
-
-  return true;
-}
-
-/*
- * init_diag_sm()
- *    return: bool
- *    server_name(in):
- *    num_thread(in):
- *    err_buf(in):
- */
-static bool
-init_diag_sm (const char *server_name, int num_thread, char *err_buf)
-{
-  DIAG_SYS_CONFIG config_diag;
-  char vol_dir[PATH_MAX];
-  int i;
-
-  if (server_name == NULL)
-    {
-      goto init_error;
-    }
-  if (read_diag_system_config (&config_diag, err_buf) != 1)
-    {
-      goto init_error;
-    }
-  if (!config_diag.Executediag)
-    {
-      goto init_error;
-    }
-  if (get_volumedir (vol_dir, server_name) == -1)
-    {
-      goto init_error;
-    }
-
-  ShmPort = get_server_shmid (vol_dir, server_name);
-
-  if (ShmPort == -1)
-    {
-      goto init_error;
-    }
-
-  g_ShmServer =
-    (T_SHM_DIAG_INFO_SERVER *) SERVER_SHM_CREATE (ShmPort, sizeof (T_SHM_DIAG_INFO_SERVER), &shm_map_object);
-
-  for (i = 0; (i < 5 && !g_ShmServer); i++)
-    {
-      if (errno == EEXIST)
-	{
-	  T_SHM_DIAG_INFO_SERVER *shm = (T_SHM_DIAG_INFO_SERVER *) SERVER_SHM_OPEN (ShmPort,
-										    &shm_map_object);
-	  if (shm != NULL)
-	    {
-	      if ((shm->magic_key == DIAG_SERVER_MAGIC_NUMBER) && (shm->servername)
-		  && strcmp (shm->servername, server_name) == 0)
-		{
-		  SERVER_SHM_DETACH ((void *) shm, shm_map_object);
-		  SERVER_SHM_DESTROY (ShmPort);
-		  g_ShmServer =
-		    (T_SHM_DIAG_INFO_SERVER *) SERVER_SHM_CREATE (ShmPort, sizeof (T_SHM_DIAG_INFO_SERVER),
-								  &shm_map_object);
-		  break;
-		}
-	      else
-		SERVER_SHM_DETACH ((void *) shm, shm_map_object);
-	    }
-
-	  ShmPort++;
-	  g_ShmServer =
-	    (T_SHM_DIAG_INFO_SERVER *) SERVER_SHM_CREATE (ShmPort, sizeof (T_SHM_DIAG_INFO_SERVER), &shm_map_object);
-	}
-      else
-	{
-	  break;
-	}
-    }
-
-  if (g_ShmServer == NULL)
-    {
-      if (err_buf)
-	{
-	  strcpy (err_buf, strerror (errno));
-	}
-      goto init_error;
-    }
-
-  diag_long_query_time = config_diag.server_long_query_time;
-  diag_executediag = (config_diag.Executediag == 0) ? false : true;
-
-  if (diag_long_query_time < 1)
-    {
-      diag_long_query_time = DB_INT32_MAX;
-    }
-
-  strcpy (g_ShmServer->servername, server_name);
-  g_ShmServer->num_thread = num_thread;
-  g_ShmServer->magic_key = DIAG_SERVER_MAGIC_NUMBER;
-
-  init_server_diag_value (g_ShmServer);
-
-  if (create_shm_key_file (ShmPort, vol_dir, server_name) == -1)
-    {
-      if (err_buf)
-	{
-	  strcpy (err_buf, strerror (errno));
-	}
-      SERVER_SHM_DETACH ((void *) g_ShmServer, shm_map_object);
-      SERVER_SHM_DESTROY (ShmPort);
-      goto init_error;
-    }
-
-  return true;
-
-init_error:
-  g_ShmServer = NULL;
-  diag_executediag = false;
-  diag_long_query_time = DB_INT32_MAX;
-  return false;
-}
-
-/*
- * rm_diag_sm()
- *    return: bool
- *
- */
-static bool
-rm_diag_sm (void)
-{
-  if (diag_sm_isopened () == true)
-    {
-      SERVER_SHM_DESTROY (ShmPort);
-      return true;
-    }
-
-  return false;
-}
-
-/*
- * diag_val_set_query_open_page()
- *    return: int
- *    value(in):
- *    settype(in):
- *    err_buf(in):
- *
- */
-static int
-diag_val_set_query_open_page (int value, T_DIAG_VALUE_SETTYPE settype, char *err_buf)
-{
-  int thread_index;
-
-  CHECK_SHM ();
-  CHECK_DIAG_OBJ_FUNC_THREAD_MGR_INIT (err_buf);
-  thread_index = THREAD_GET_CURRENT_ENTRY_INDEX (NULL);
-
-  if (settype == DIAG_VAL_SETTYPE_INC)
-    {
-      g_ShmServer->thread[thread_index].query_open_page += value;
-    }
-  else if (settype == DIAG_VAL_SETTYPE_SET)
-    {
-      g_ShmServer->thread[thread_index].query_open_page = value;
-    }
-  else if (settype == DIAG_VAL_SETTYPE_DEC)
-    {
-      g_ShmServer->thread[thread_index].query_open_page -= value;
-    }
-
-  return 0;
-}
-
-/*
- * diag_val_set_query_opened_page()
- *    return: int
- *    value(in):
- *    settype(in):
- *    err_buf(in):
- *
- */
-static int
-diag_val_set_query_opened_page (int value, T_DIAG_VALUE_SETTYPE settype, char *err_buf)
-{
-  int thread_index;
-
-  CHECK_SHM ();
-  CHECK_DIAG_OBJ_FUNC_THREAD_MGR_INIT (err_buf);
-  thread_index = THREAD_GET_CURRENT_ENTRY_INDEX (NULL);
-
-  g_ShmServer->thread[thread_index].query_opened_page += value;
-
-  return 0;
-}
-
-/*
- * diag_val_set_buffer_page_read()
- *    return: int
- *    value(in):
- *    settype(in):
- *    err_buf(in):
- *
- */
-static int
-diag_val_set_buffer_page_read (int value, T_DIAG_VALUE_SETTYPE settype, char *err_buf)
-{
-  int thread_index;
-
-  CHECK_SHM ();
-  CHECK_DIAG_OBJ_FUNC_THREAD_MGR_INIT (err_buf);
-  thread_index = THREAD_GET_CURRENT_ENTRY_INDEX (NULL);
-
-  g_ShmServer->thread[thread_index].buffer_page_read += value;
-
-  return 0;
-}
-
-/*
- * diag_val_set_buffer_page_write()
- *    return: int
- *    value(in):
- *    settype(in):
- *    err_buf(in):
- *
- */
-static int
-diag_val_set_buffer_page_write (int value, T_DIAG_VALUE_SETTYPE settype, char *err_buf)
-{
-  int thread_index;
-
-  CHECK_SHM ();
-  CHECK_DIAG_OBJ_FUNC_THREAD_MGR_INIT (err_buf);
-  thread_index = THREAD_GET_CURRENT_ENTRY_INDEX (NULL);
-
-  g_ShmServer->thread[thread_index].buffer_page_write += value;
-
-  return 0;
-}
-
-
-/*
- * diag_val_set_conn_aborted_clients()
- *    return: int
- *    value(in):
- *    settype(in):
- *    err_buf(in):
- *
- */
-static int
-diag_val_set_conn_aborted_clients (int value, T_DIAG_VALUE_SETTYPE settype, char *err_buf)
-{
-  int thread_index;
-  CHECK_SHM ();
-  CHECK_DIAG_OBJ_FUNC_THREAD_MGR_INIT (err_buf);
-  thread_index = THREAD_GET_CURRENT_ENTRY_INDEX (NULL);
-
-  g_ShmServer->thread[thread_index].conn_aborted_clients += value;
-
-  return 0;
-}
-
-/*
- * diag_val_set_conn_cli_request()
- *    return: int
- *    value(in):
- *    settype(in):
- *    err_buf(in):
- *
- */
-static int
-diag_val_set_conn_cli_request (int value, T_DIAG_VALUE_SETTYPE settype, char *err_buf)
-{
-  int thread_index;
-  CHECK_SHM ();
-  CHECK_DIAG_OBJ_FUNC_THREAD_MGR_INIT (err_buf);
-  thread_index = THREAD_GET_CURRENT_ENTRY_INDEX (NULL);
-
-  g_ShmServer->thread[thread_index].conn_cli_request += value;
-
-  return 0;
-}
-
-/*
- * diag_val_set_query_slow_query()
- *    return: int
- *    value(in):
- *    settype(in):
- *    err_buf(in):
- *
- */
-static int
-diag_val_set_query_slow_query (int value, T_DIAG_VALUE_SETTYPE settype, char *err_buf)
-{
-  int thread_index;
-  CHECK_SHM ();
-  CHECK_DIAG_OBJ_FUNC_THREAD_MGR_INIT (err_buf);
-  thread_index = THREAD_GET_CURRENT_ENTRY_INDEX (NULL);
-
-  g_ShmServer->thread[thread_index].query_slow_query += value;
-
-  return 0;
-}
-
-/*
- * diag_val_set_lock_deadlock()
- *    return: int
- *    value(in):
- *    settype(in):
- *    err_buf(in):
- *
- */
-static int
-diag_val_set_lock_deadlock (int value, T_DIAG_VALUE_SETTYPE settype, char *err_buf)
-{
-  int thread_index;
-  CHECK_SHM ();
-  CHECK_DIAG_OBJ_FUNC_THREAD_MGR_INIT (err_buf);
-  thread_index = THREAD_GET_CURRENT_ENTRY_INDEX (NULL);
-
-  g_ShmServer->thread[thread_index].lock_deadlock += value;
-
-  return 0;
-}
-
-/*
- * diag_val_set_lock_request()
- *    return: int
- *    value(in):
- *    settype(in):
- *    err_buf(in):
- */
-static int
-diag_val_set_lock_request (int value, T_DIAG_VALUE_SETTYPE settype, char *err_buf)
-{
-  int thread_index;
-  CHECK_SHM ();
-  CHECK_DIAG_OBJ_FUNC_THREAD_MGR_INIT (err_buf);
-  thread_index = THREAD_GET_CURRENT_ENTRY_INDEX (NULL);
-
-  g_ShmServer->thread[thread_index].lock_request += value;
-
-  return 0;
-}
-
-/*
- * diag_val_set_query_full_scan()
- *    return: int
- *    value(in):
- *    settype(in):
- *    err_buf(in):
- */
-static int
-diag_val_set_query_full_scan (int value, T_DIAG_VALUE_SETTYPE settype, char *err_buf)
-{
-  int thread_index;
-  CHECK_SHM ();
-  CHECK_DIAG_OBJ_FUNC_THREAD_MGR_INIT (err_buf);
-  thread_index = THREAD_GET_CURRENT_ENTRY_INDEX (NULL);
-
-  g_ShmServer->thread[thread_index].query_full_scan += value;
-
-  return 0;
-}
-
-/*
- * diag_val_set_conn_conn_req()
- *    return: int
- *    value(in):
- *    settype(in):
- *    err_buf(in):
- */
-static int
-diag_val_set_conn_conn_req (int value, T_DIAG_VALUE_SETTYPE settype, char *err_buf)
-{
-  int thread_index;
-  CHECK_SHM ();
-  CHECK_DIAG_OBJ_FUNC_THREAD_MGR_INIT (err_buf);
-  thread_index = THREAD_GET_CURRENT_ENTRY_INDEX (NULL);
-
-  g_ShmServer->thread[thread_index].conn_conn_req += value;
-
-  return 0;
-}
-
-/*
- * diag_val_set_conn_conn_reject()
- *    return: int
- *    value(in):
- *    settype(in):
- *    err_buf(in):
- */
-static int
-diag_val_set_conn_conn_reject (int value, T_DIAG_VALUE_SETTYPE settype, char *err_buf)
-{
-  int thread_index;
-  CHECK_SHM ();
-  CHECK_DIAG_OBJ_FUNC_THREAD_MGR_INIT (err_buf);
-  thread_index = THREAD_GET_CURRENT_ENTRY_INDEX (NULL);
-
-  g_ShmServer->thread[thread_index].conn_conn_reject += value;
-
-  return 0;
-}
-
-/* Interface function */
-/*
- * init_diag_mgr()
- *    return: bool
- *    server_name(in):
- *    num_thread(in):
- *    err_buf(in):
- */
-bool
-init_diag_mgr (const char *server_name, int num_thread, char *err_buf)
-{
-  if (init_diag_sm (server_name, num_thread, err_buf) == false)
-    return false;
-
-  return true;
-}
-
-/*
- * close_diag_mgr()
- *    return: none
- */
-void
-close_diag_mgr (void)
-{
-  rm_diag_sm ();
-}
-
-/*
- * set_diag_value() -
- *    return: bool
- *    type(in):
- *    value(in):
- *    settype(in):
- *    err_buf(in):
- */
-bool
-set_diag_value (T_DIAG_OBJ_TYPE type, int value, T_DIAG_VALUE_SETTYPE settype, char *err_buf)
-{
-  T_DO_FUNC task_func;
-
-  if (diag_executediag == false)
-    return false;
-
-  task_func = diag_obj_list[type].func;
-
-  if (task_func (value, settype, err_buf) < 0)
-    {
-      return false;
-    }
-  else
-    {
-      return true;
-    }
-}
-#endif /* SERVER_MODE */
-#endif /* DIAG_DEVEL */
 
 #if defined(SERVER_MODE) || defined(SA_MODE)
 
@@ -2218,6 +1255,26 @@ perfmon_mvcc_snapshot (THREAD_ENTRY * thread_p, int snapshot, int rec_type, int 
   perfmon_add_stat_at_offset (thread_p, PSTAT_MVCC_SNAPSHOT_COUNTERS, offset, 1);
 }
 
+/*
+ *   perfmon_db_flushed_block_volumes - 
+ *   return: none
+ */
+void
+perfmon_db_flushed_block_volumes (THREAD_ENTRY * thread_p, int num_volumes)
+{
+  int offset;
+
+  assert (num_volumes >= 0);
+  if (num_volumes < PERF_DWB_FLUSHED_BLOCK_VOLUMES_CNT)
+    {
+      offset = num_volumes;
+    }
+  else
+    {
+      offset = PERF_DWB_FLUSHED_BLOCK_VOLUMES_CNT - 1;
+    }
+  perfmon_add_stat_at_offset (thread_p, PSTAT_DWB_FLUSHED_BLOCK_NUM_VOLUMES, offset, 1);
+}
 #endif /* SERVER_MODE || SA_MODE */
 
 int
@@ -2714,7 +1771,10 @@ perfmon_server_calc_stats (UINT64 * stats)
 		    &(stats[pstat_Metadata[PSTAT_PB_LFCQ_BIG_PRV_NUM].start_offset]),
 		    &(stats[pstat_Metadata[PSTAT_PB_LFCQ_PRV_NUM].start_offset]),
 		    &(stats[pstat_Metadata[PSTAT_PB_LFCQ_SHR_NUM].start_offset]));
-#endif
+
+  css_get_thread_stats (&stats[pstat_Metadata[PSTAT_THREAD_STATS].start_offset]);
+  perfmon_peek_thread_daemon_stats (stats);
+#endif // SERVER_MODE
 
   for (i = 0; i < PSTAT_COUNT; i++)
     {
@@ -3749,6 +2809,78 @@ perfmon_stat_dump_in_file_obj_lock_array_stat (FILE * stream, const UINT64 * sta
 }
 
 /*
+ * perfmon_stat_dump_in_buffer_obj_lock_array_stat () -
+ *
+ * stats_ptr(in): start of array values
+ * s(in/out): output string (NULL if not used)
+ * remaining_size(in/out): remaining size in string s (NULL if not used)
+ * 
+ */
+static void
+perfmon_stat_dump_in_buffer_flushed_block_volumes_array_stat (const UINT64 * stats_ptr, char **s, int *remaining_size)
+{
+  unsigned int flushed_block_volumes;
+  UINT64 counter = 0;
+  int ret;
+  char buffer[15];
+
+  assert (remaining_size != NULL);
+  assert (s != NULL);
+
+  if (*s != NULL)
+    {
+      for (flushed_block_volumes = (unsigned int) 0;
+	   flushed_block_volumes < (unsigned int) PERF_DWB_FLUSHED_BLOCK_VOLUMES_CNT; flushed_block_volumes++)
+	{
+	  counter = stats_ptr[flushed_block_volumes];
+	  if (counter == 0)
+	    {
+	      continue;
+	    }
+
+	  sprintf (buffer, "%d Volumes", flushed_block_volumes);
+	  ret = snprintf (*s, *remaining_size, "%-15s = %16llu\n", buffer, (long long unsigned int) counter);
+	  *remaining_size -= ret;
+	  *s += ret;
+	  if (*remaining_size <= 0)
+	    {
+	      return;
+	    }
+	}
+    }
+}
+
+/*
+ * perfmon_stat_dump_in_file_flushed_block_volumes_array_stat () -
+ *
+ * stream(in): output file
+ * stats_ptr(in): start of array values
+ * 
+ */
+static void
+perfmon_stat_dump_in_file_flushed_block_volumes_array_stat (FILE * stream, const UINT64 * stats_ptr)
+{
+  int flushed_block_volumes;
+  UINT64 counter = 0;
+  char buffer[15];
+
+  assert (stream != NULL);
+
+  for (flushed_block_volumes = (unsigned int) 0;
+       flushed_block_volumes < (unsigned int) PERF_DWB_FLUSHED_BLOCK_VOLUMES_CNT; flushed_block_volumes++)
+    {
+      counter = stats_ptr[flushed_block_volumes];
+      if (counter == 0)
+	{
+	  continue;
+	}
+
+      sprintf (buffer, "%d Volumes", flushed_block_volumes);
+      fprintf (stream, "%-15s = %16llu\n", buffer, (long long unsigned int) counter);
+    }
+}
+
+/*
  * perfmon_stat_dump_in_buffer_snapshot_array_stat () -
  *
  * stats_ptr(in): start of array values
@@ -4074,7 +3206,7 @@ perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, const in
  * f_load_Num_data_page_fix_ext () - Get the number of values for Num_data_page_fix_ext statistic
  * 
  */
-int
+static int
 f_load_Num_data_page_fix_ext (void)
 {
   return PERF_PAGE_FIX_COUNTERS;
@@ -4084,7 +3216,7 @@ f_load_Num_data_page_fix_ext (void)
  * f_load_Num_data_page_promote_ext () - Get the number of values for Num_data_page_promote_ext statistic
  * 
  */
-int
+static int
 f_load_Num_data_page_promote_ext (void)
 {
   return PERF_PAGE_PROMOTE_COUNTERS;
@@ -4094,7 +3226,7 @@ f_load_Num_data_page_promote_ext (void)
  * f_load_Num_data_page_promote_time_ext () - Get the number of values for Num_data_page_promote_time_ext statistic
  * 
  */
-int
+static int
 f_load_Num_data_page_promote_time_ext (void)
 {
   return PERF_PAGE_PROMOTE_COUNTERS;
@@ -4104,7 +3236,7 @@ f_load_Num_data_page_promote_time_ext (void)
  * f_load_Num_data_page_unfix_ext () - Get the number of values for Num_data_page_unfix_ext statistic
  * 
  */
-int
+static int
 f_load_Num_data_page_unfix_ext (void)
 {
   return PERF_PAGE_UNFIX_COUNTERS;
@@ -4114,7 +3246,7 @@ f_load_Num_data_page_unfix_ext (void)
  * f_load_Time_data_page_lock_acquire_time () - Get the number of values for Time_data_page_lock_acquire_time statistic
  * 
  */
-int
+static int
 f_load_Time_data_page_lock_acquire_time (void)
 {
   return PERF_PAGE_LOCK_TIME_COUNTERS;
@@ -4124,7 +3256,7 @@ f_load_Time_data_page_lock_acquire_time (void)
  * f_load_Time_data_page_hold_acquire_time () - Get the number of values for Time_data_page_hold_acquire_time statistic
  * 
  */
-int
+static int
 f_load_Time_data_page_hold_acquire_time (void)
 {
   return PERF_PAGE_HOLD_TIME_COUNTERS;
@@ -4134,7 +3266,7 @@ f_load_Time_data_page_hold_acquire_time (void)
  * f_load_Time_data_page_fix_acquire_time () - Get the number of values for Time_data_page_fix_acquire_time statistic
  * 
  */
-int
+static int
 f_load_Time_data_page_fix_acquire_time (void)
 {
   return PERF_PAGE_FIX_TIME_COUNTERS;
@@ -4144,7 +3276,7 @@ f_load_Time_data_page_fix_acquire_time (void)
  * f_load_Num_mvcc_snapshot_ext () - Get the number of values for Num_mvcc_snapshot_ext statistic
  * 
  */
-int
+static int
 f_load_Num_mvcc_snapshot_ext (void)
 {
   return PERF_MVCC_SNAPSHOT_COUNTERS;
@@ -4154,17 +3286,27 @@ f_load_Num_mvcc_snapshot_ext (void)
  * f_load_Time_obj_lock_acquire_time () - Get the number of values for Time_obj_lock_acquire_time statistic
  * 
  */
-int
+static int
 f_load_Time_obj_lock_acquire_time (void)
 {
   return PERF_OBJ_LOCK_STAT_COUNTERS;
 }
 
 /*
+ * f_load_Num_dwb_flushed_block_volumes () - Get the number of values for Num_dwb_flushed_block_volumes statistic
+ * 
+ */
+static int
+f_load_Num_dwb_flushed_block_volumes (void)
+{
+  return PERF_DWB_FLUSHED_BLOCK_VOLUMES_CNT;
+}
+
+/*
  * f_load_Time_get_snapshot_acquire_time () - Get the number of values for Time_get_snapshot_acquire_time statistic
  * 
  */
-int
+static int
 f_load_Time_get_snapshot_acquire_time (void)
 {
   return PERF_MODULE_CNT;
@@ -4174,7 +3316,7 @@ f_load_Time_get_snapshot_acquire_time (void)
  * f_load_Count_get_snapshot_retry () - Get the number of values for Count_get_snapshot_retry statistic
  * 
  */
-int
+static int
 f_load_Count_get_snapshot_retry (void)
 {
   return PERF_MODULE_CNT;
@@ -4184,7 +3326,7 @@ f_load_Count_get_snapshot_retry (void)
  * f_load_Time_tran_complete_time () - Get the number of values for Time_tran_complete_time statistic
  * 
  */
-int
+static int
 f_load_Time_tran_complete_time (void)
 {
   return PERF_MODULE_CNT;
@@ -4195,7 +3337,7 @@ f_load_Time_tran_complete_time (void)
  *						 statistic
  * 
  */
-int
+static int
 f_load_Time_get_oldest_mvcc_acquire_time (void)
 {
   return PERF_MODULE_CNT;
@@ -4205,7 +3347,7 @@ f_load_Time_get_oldest_mvcc_acquire_time (void)
  * f_load_Count_get_oldest_mvcc_retry () - Get the number of values for Count_get_oldest_mvcc_retry statistic
  * 
  */
-int
+static int
 f_load_Count_get_oldest_mvcc_retry (void)
 {
   return PERF_MODULE_CNT;
@@ -4217,7 +3359,7 @@ f_load_Count_get_oldest_mvcc_retry (void)
  * stat_vals (in): statistics buffer
  * 
  */
-void
+static void
 f_dump_in_file_Num_data_page_fix_ext (FILE * f, const UINT64 * stat_vals)
 {
   perfmon_stat_dump_in_file_fix_page_array_stat (f, stat_vals);
@@ -4229,7 +3371,7 @@ f_dump_in_file_Num_data_page_fix_ext (FILE * f, const UINT64 * stat_vals)
  * stat_vals (in): statistics buffer
  * 
  */
-void
+static void
 f_dump_in_file_Num_data_page_promote_ext (FILE * f, const UINT64 * stat_vals)
 {
   perfmon_stat_dump_in_file_promote_page_array_stat (f, stat_vals);
@@ -4242,7 +3384,7 @@ f_dump_in_file_Num_data_page_promote_ext (FILE * f, const UINT64 * stat_vals)
  * stat_vals (in): statistics buffer
  * 
  */
-void
+static void
 f_dump_in_file_Num_data_page_promote_time_ext (FILE * f, const UINT64 * stat_vals)
 {
   perfmon_stat_dump_in_file_promote_page_array_stat (f, stat_vals);
@@ -4255,7 +3397,7 @@ f_dump_in_file_Num_data_page_promote_time_ext (FILE * f, const UINT64 * stat_val
  * stat_vals (in): statistics buffer
  * 
  */
-void
+static void
 f_dump_in_file_Num_data_page_unfix_ext (FILE * f, const UINT64 * stat_vals)
 {
   perfmon_stat_dump_in_file_unfix_page_array_stat (f, stat_vals);
@@ -4268,7 +3410,7 @@ f_dump_in_file_Num_data_page_unfix_ext (FILE * f, const UINT64 * stat_vals)
  * stat_vals (in): statistics buffer
  * 
  */
-void
+static void
 f_dump_in_file_Time_data_page_lock_acquire_time (FILE * f, const UINT64 * stat_vals)
 {
   perfmon_stat_dump_in_file_page_lock_time_array_stat (f, stat_vals);
@@ -4281,7 +3423,7 @@ f_dump_in_file_Time_data_page_lock_acquire_time (FILE * f, const UINT64 * stat_v
  * stat_vals (in): statistics buffer
  * 
  */
-void
+static void
 f_dump_in_file_Time_data_page_hold_acquire_time (FILE * f, const UINT64 * stat_vals)
 {
   perfmon_stat_dump_in_file_page_hold_time_array_stat (f, stat_vals);
@@ -4294,7 +3436,7 @@ f_dump_in_file_Time_data_page_hold_acquire_time (FILE * f, const UINT64 * stat_v
  * stat_vals (in): statistics buffer
  * 
  */
-void
+static void
 f_dump_in_file_Time_data_page_fix_acquire_time (FILE * f, const UINT64 * stat_vals)
 {
   perfmon_stat_dump_in_file_page_fix_time_array_stat (f, stat_vals);
@@ -4307,10 +3449,10 @@ f_dump_in_file_Time_data_page_fix_acquire_time (FILE * f, const UINT64 * stat_va
  * stat_vals (in): statistics buffer
  * 
  */
-void
+static void
 f_dump_in_file_Num_mvcc_snapshot_ext (FILE * f, const UINT64 * stat_vals)
 {
-  if (pstat_Global.activation_flag & PERFMON_ACTIVE_MVCC_SNAPSHOT)
+  if (pstat_Global.activation_flag & PERFMON_ACTIVATION_FLAG_MVCC_SNAPSHOT)
     {
       perfmon_stat_dump_in_file_mvcc_snapshot_array_stat (f, stat_vals);
     }
@@ -4323,12 +3465,28 @@ f_dump_in_file_Num_mvcc_snapshot_ext (FILE * f, const UINT64 * stat_vals)
  * stat_vals (in): statistics buffer
  * 
  */
-void
+static void
 f_dump_in_file_Time_obj_lock_acquire_time (FILE * f, const UINT64 * stat_vals)
 {
-  if (pstat_Global.activation_flag & PERFMON_ACTIVE_LOCK_OBJECT)
+  if (pstat_Global.activation_flag & PERFMON_ACTIVATION_FLAG_LOCK_OBJECT)
     {
       perfmon_stat_dump_in_file_obj_lock_array_stat (f, stat_vals);
+    }
+}
+
+/*
+ * f_dump_in_file_Num_dwb_flushed_block_volumes () - Write in file the values for Num_dwb_flushed_block_volumes
+ *						  statistic
+ * f (out): File handle
+ * stat_vals (in): statistics buffer
+ * 
+ */
+static void
+f_dump_in_file_Num_dwb_flushed_block_volumes (FILE * f, const UINT64 * stat_vals)
+{
+  if (pstat_Global.activation_flag & PERFMON_ACTIVATION_FLAG_FLUSHED_BLOCK_VOLUMES)
+    {
+      perfmon_stat_dump_in_file_flushed_block_volumes_array_stat (f, stat_vals);
     }
 }
 
@@ -4340,7 +3498,7 @@ f_dump_in_file_Time_obj_lock_acquire_time (FILE * f, const UINT64 * stat_vals)
  * remaining_size (in): size of input buffer
  * 
  */
-void
+static void
 f_dump_in_buffer_Num_data_page_fix_ext (char **s, const UINT64 * stat_vals, int *remaining_size)
 {
   perfmon_stat_dump_in_buffer_fix_page_array_stat (stat_vals, s, remaining_size);
@@ -4354,7 +3512,7 @@ f_dump_in_buffer_Num_data_page_fix_ext (char **s, const UINT64 * stat_vals, int 
  * remaining_size (in): size of input buffer
  * 
  */
-void
+static void
 f_dump_in_buffer_Num_data_page_promote_ext (char **s, const UINT64 * stat_vals, int *remaining_size)
 {
   perfmon_stat_dump_in_buffer_promote_page_array_stat (stat_vals, s, remaining_size);
@@ -4368,7 +3526,7 @@ f_dump_in_buffer_Num_data_page_promote_ext (char **s, const UINT64 * stat_vals, 
  * remaining_size (in): size of input buffer
  * 
  */
-void
+static void
 f_dump_in_buffer_Num_data_page_promote_time_ext (char **s, const UINT64 * stat_vals, int *remaining_size)
 {
   perfmon_stat_dump_in_buffer_promote_page_array_stat (stat_vals, s, remaining_size);
@@ -4382,7 +3540,7 @@ f_dump_in_buffer_Num_data_page_promote_time_ext (char **s, const UINT64 * stat_v
  * remaining_size (in): size of input buffer
  * 
  */
-void
+static void
 f_dump_in_buffer_Num_data_page_unfix_ext (char **s, const UINT64 * stat_vals, int *remaining_size)
 {
   perfmon_stat_dump_in_buffer_unfix_page_array_stat (stat_vals, s, remaining_size);
@@ -4397,7 +3555,7 @@ f_dump_in_buffer_Num_data_page_unfix_ext (char **s, const UINT64 * stat_vals, in
  * remaining_size (in): size of input buffer
  * 
  */
-void
+static void
 f_dump_in_buffer_Time_data_page_lock_acquire_time (char **s, const UINT64 * stat_vals, int *remaining_size)
 {
   perfmon_stat_dump_in_buffer_page_lock_time_array_stat (stat_vals, s, remaining_size);
@@ -4412,7 +3570,7 @@ f_dump_in_buffer_Time_data_page_lock_acquire_time (char **s, const UINT64 * stat
  * remaining_size (in): size of input buffer
  * 
  */
-void
+static void
 f_dump_in_buffer_Time_data_page_hold_acquire_time (char **s, const UINT64 * stat_vals, int *remaining_size)
 {
   perfmon_stat_dump_in_buffer_page_hold_time_array_stat (stat_vals, s, remaining_size);
@@ -4427,7 +3585,7 @@ f_dump_in_buffer_Time_data_page_hold_acquire_time (char **s, const UINT64 * stat
  * remaining_size (in): size of input buffer
  * 
  */
-void
+static void
 f_dump_in_buffer_Time_data_page_fix_acquire_time (char **s, const UINT64 * stat_vals, int *remaining_size)
 {
   perfmon_stat_dump_in_buffer_page_fix_time_array_stat (stat_vals, s, remaining_size);
@@ -4441,10 +3599,10 @@ f_dump_in_buffer_Time_data_page_fix_acquire_time (char **s, const UINT64 * stat_
  * remaining_size (in): size of input buffer
  * 
  */
-void
+static void
 f_dump_in_buffer_Num_mvcc_snapshot_ext (char **s, const UINT64 * stat_vals, int *remaining_size)
 {
-  if (pstat_Global.activation_flag & PERFMON_ACTIVE_MVCC_SNAPSHOT)
+  if (pstat_Global.activation_flag & PERFMON_ACTIVATION_FLAG_MVCC_SNAPSHOT)
     {
       perfmon_stat_dump_in_buffer_mvcc_snapshot_array_stat (stat_vals, s, remaining_size);
     }
@@ -4458,12 +3616,29 @@ f_dump_in_buffer_Num_mvcc_snapshot_ext (char **s, const UINT64 * stat_vals, int 
  * remaining_size (in): size of input buffer
  * 
  */
-void
+static void
 f_dump_in_buffer_Time_obj_lock_acquire_time (char **s, const UINT64 * stat_vals, int *remaining_size)
 {
-  if (pstat_Global.activation_flag & PERFMON_ACTIVE_LOCK_OBJECT)
+  if (pstat_Global.activation_flag & PERFMON_ACTIVATION_FLAG_LOCK_OBJECT)
     {
       perfmon_stat_dump_in_buffer_obj_lock_array_stat (stat_vals, s, remaining_size);
+    }
+}
+
+/*
+ * f_dump_in_buffer_Num_dwb_flushed_block_volumes () - Write to a buffer the values for Num_dwb_flushed_block_volumes
+ *					       statistic
+ * s (out): Buffer to write to
+ * stat_vals (in): statistics buffer
+ * remaining_size (in): size of input buffer
+ * 
+ */
+static void
+f_dump_in_buffer_Num_dwb_flushed_block_volumes (char **s, const UINT64 * stat_vals, int *remaining_size)
+{
+  if (pstat_Global.activation_flag & PERFMON_ACTIVATION_FLAG_FLUSHED_BLOCK_VOLUMES)
+    {
+      perfmon_stat_dump_in_buffer_fix_page_array_stat (stat_vals, s, remaining_size);
     }
 }
 
@@ -4664,3 +3839,373 @@ perfmon_print_timer_to_buffer (char **s, int stat_index, UINT64 * stats_ptr, int
   *remained_size -= ret;
   *s += ret;
 }
+
+// *INDENT-OFF*
+//////////////////////////////////////////////////////////////////////////
+// thread workers section
+//////////////////////////////////////////////////////////////////////////
+
+// note - current monitor implementation requires a single point to manage all statistics meta information (stats
+//        count and names). this prevents us from isolating statistics management per each module, because some
+//        modules are restricted to server only, while the monitor implementation is same for server and client.
+//
+//        ideally, meta information should be fetched from server and not necessarily known from start by client.
+//        this would prevent any miss-matches between server and clients and better module encapsulation. performance
+//        monitor would only store the values and collect from all modules rather than keeping extended information
+//        on each module (like it does now with page buffer, thread and others)
+//
+//        for now, we are forced to duplicate here some information about thread workers and daemons that is normally
+//        restricted to server
+//
+
+// NOTE - should match cubthread::Worker_pool_statdef
+const char *perfmon_Portable_worker_stat_names [] =
+  {
+    "Counter_start_thread",
+    "Timer_start_thread",
+    "Counter_create_context",
+    "Timer_create_context",
+    "Counter_execute_task",
+    "Timer_execute_task",
+    "Counter_retire_task",
+    "Timer_retire_task",
+    "Counter_found_task_in_queue",
+    "Timer_found_task_in_queue",
+    "Counter_wakeup_with_task",
+    "Timer_wakeup_with_task",
+    "Counter_recycle_context",
+    "Timer_recycle_context",
+    "Counter_retire_context",
+    "Timer_retire_context"
+  };
+static const size_t PERFMON_PORTABLE_WORKER_STAT_COUNT =
+  sizeof (perfmon_Portable_worker_stat_names) / sizeof (const char *);
+
+static size_t
+thread_stats_count (void)
+{
+#if defined (SERVER_MODE)
+  assert (PERFMON_PORTABLE_WORKER_STAT_COUNT == cubthread::wp_worker_statset_get_count ());
+  static bool check_names = true;
+  if (check_names)
+    {
+      for (size_t index = 0; index < PERFMON_PORTABLE_WORKER_STAT_COUNT; index++)
+        {
+          if (std::strcmp (perfmon_Portable_worker_stat_names[index], cubthread::wp_worker_statset_get_name (index)) != 0)
+            {
+              assert (false);
+              _er_log_debug (ARG_FILE_LINE,
+                             "Warning - Monitoring thread worker statistics; statistics name not matching for %zu\n"
+                             "\t\tperfmon name = %s\n" "\t\tdaemon name = %s\n", index,
+                             perfmon_Portable_worker_stat_names[index], cubthread::wp_worker_statset_get_name (index));
+            }
+        }
+      check_names = false;
+    }
+#endif // SERVER_MODE
+  return PERFMON_PORTABLE_WORKER_STAT_COUNT;
+}
+
+static int
+f_load_thread_stats (void)
+{
+  return (int) thread_stats_count ();
+}
+
+static const char *
+perfmon_stat_thread_stat_name (size_t index)
+{
+  return perfmon_Portable_worker_stat_names[index];
+}
+
+/*
+ * f_dump_in_file_thread_stats () - Write in file the values for thread statistic
+ *
+ * f (out): File handle
+ * stat_vals (in): statistics buffer
+ * 
+ */
+static void
+f_dump_in_file_thread_stats (FILE * f, const UINT64 * stat_vals)
+{
+  if (pstat_Global.activation_flag & PERFMON_ACTIVATION_FLAG_THREAD)
+    {
+      perfmon_stat_dump_in_file_thread_stats (f, stat_vals);
+    }
+}
+
+/*
+ * perfmon_stat_dump_in_file_thread_stats () -
+ *
+ * stream(in): output file
+ * stats_ptr(in): start of array values
+ * 
+ */
+static void
+perfmon_stat_dump_in_file_thread_stats (FILE * stream, const UINT64 * stats_ptr)
+{
+  UINT64 value = 0;
+
+  assert (stream != NULL);
+
+  for (size_t it = 0; it < thread_stats_count (); it++)
+    {
+      value = stats_ptr[it];
+      if (value == 0)
+	{
+	  continue;
+	}
+      fprintf (stream, "%-10s = %16llu\n", perfmon_stat_thread_stat_name (it), (long long unsigned int) value);
+    }
+}
+
+/*
+ * f_dump_in_buffer_thread_stats () - Write to a buffer the values for thread statistic
+ * s (out): Buffer to write to
+ * stat_vals (in): statistics buffer
+ * remaining_size (in): size of input buffer
+ * 
+ */
+static void
+f_dump_in_buffer_thread_stats (char **s, const UINT64 * stat_vals, int *remaining_size)
+{
+  if (pstat_Global.activation_flag & PERFMON_ACTIVATION_FLAG_THREAD)
+    {
+      perfmon_stat_dump_in_buffer_thread_stats (stat_vals, s, remaining_size);
+    }
+}
+
+/*
+ * perfmon_stat_dump_in_buffer_thread_stats () -
+ *
+ * stats_ptr(in): start of array values
+ * s(in/out): output string (NULL if not used)
+ * remaining_size(in/out): remaining size in string s (NULL if not used)
+ * 
+ */
+static void
+perfmon_stat_dump_in_buffer_thread_stats (const UINT64 * stats_ptr, char **s, int *remaining_size)
+{
+  UINT64 value = 0;
+  int ret;
+
+  assert (s != NULL);
+  assert (remaining_size != NULL);
+
+  for (size_t it = 0; it < thread_stats_count (); it++)
+    {
+      value = stats_ptr[it];
+      if (value == 0)
+	{
+	  continue;
+	}
+      ret = snprintf (*s, *remaining_size, "%-10s = %16llu\n", perfmon_stat_thread_stat_name (it),
+                      (long long unsigned int) value);
+
+      *remaining_size -= ret;
+      *s += ret;
+      if (*remaining_size <= 0)
+	{
+	  return;
+	}
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Thread daemons section
+//////////////////////////////////////////////////////////////////////////
+
+// NOTE - should match cubthread::daemon + cubthread::looper + cubthread::waiter statistics
+static const char *perfmon_Portable_daemon_stat_names [] =
+{
+  // daemon
+  "daemon_loop_count",
+  "daemon_execute_time",
+  "daemon_pause_time",
+
+  // looper
+  "looper_sleep_count",
+  "looper_sleep_time",
+  "looper_reset_count",
+
+  // waiter
+  "waiter_wakeup_count",
+  "waiter_lock_wakeup_count",
+  "waiter_sleep_count",
+  "waiter_timeout_count",
+  "waiter_no_sleep_count",
+  "waiter_awake_count",
+  "waiter_wakeup_delay_time",
+
+  // todo - probably has to be moved to thread_daemon.hpp
+};
+static const size_t PERFMON_PORTABLE_DAEMON_STAT_COUNT =
+  sizeof (perfmon_Portable_daemon_stat_names) / sizeof (const char *);
+
+static const char *perfmon_Portable_daemon_names [] =
+{
+  "Page_flush_daemon_thread",
+  "Page_post_flush_daemon_thread",
+  "Page_flush_control_daemon_thread",
+  "Page_maintenance_daemon_thread",
+  "Deadlock_detect_daemon_thread",
+  "Log_flush_daemon_thread",
+};
+static const size_t PERFMON_PORTABLE_DAEMON_COUNT = sizeof (perfmon_Portable_daemon_names) / sizeof (const char *);
+
+static size_t
+perfmon_per_daemon_stat_count (void)
+{
+#if defined (SERVER_MODE) && !defined (NDEBUG)
+  assert (PERFMON_PORTABLE_DAEMON_STAT_COUNT == cubthread::daemon::get_stats_value_count ());
+
+  static bool check_names = true;
+  if (check_names)
+    {
+      for (size_t index = 0; index < PERFMON_PORTABLE_DAEMON_STAT_COUNT; index++)
+        {
+          if (std::strcmp (perfmon_Portable_daemon_stat_names[index], cubthread::daemon::get_stat_name (index)) != 0)
+            {
+              assert (false);
+              _er_log_debug (ARG_FILE_LINE,
+                             "Warning - Monitoring daemon statistics; statistics name not matching for %zu\n"
+                             "\t\tperfmon name = %s\n" "\t\tdaemon name = %s\n", index,
+                             perfmon_Portable_daemon_stat_names[index], cubthread::daemon::get_stat_name (index));
+            }
+        }
+      check_names = false;
+    }
+#endif // SERVER_MODE and DEBUG
+  return PERFMON_PORTABLE_DAEMON_STAT_COUNT;
+}
+
+static size_t
+perfmon_thread_daemon_stats_count (void)
+{
+  return PERFMON_PORTABLE_DAEMON_COUNT * perfmon_per_daemon_stat_count ();
+}
+
+static const char *
+perfmon_thread_daemon_name (size_t index)
+{
+  assert (index < PERFMON_PORTABLE_DAEMON_STAT_COUNT);
+  return perfmon_Portable_daemon_stat_names[index];
+}
+
+static int
+f_load_thread_daemon_stats (void)
+{
+  return (int) perfmon_thread_daemon_stats_count ();
+}
+
+/*
+ * f_dump_in_file_thread_daemon_stats () - Write in file the values for daemon statistic
+ *
+ * f (out): File handle
+ * stat_vals (in): statistics buffer
+ * 
+ */
+static void
+f_dump_in_file_thread_daemon_stats (FILE * f, const UINT64 * stat_vals)
+{
+  if (pstat_Global.activation_flag & PERFMON_ACTIVATION_FLAG_DAEMONS)
+    {
+      perfmon_stat_dump_in_file_thread_daemon_stats (f, stat_vals);
+    }
+}
+
+/*
+ * perfmon_stat_dump_in_file_thread_daemon_stats () -
+ *
+ * stream(in): output file
+ * stats_ptr(in): start of array values
+ * 
+ */
+static void
+perfmon_stat_dump_in_file_thread_daemon_stats (FILE * stream, const UINT64 * stats_ptr)
+{
+  UINT64 value = 0;
+
+  assert (stream != NULL);
+
+  for (size_t daemon_it = 0; daemon_it < PERFMON_PORTABLE_DAEMON_COUNT; daemon_it++)
+    {
+      for (size_t stat_it = 0; stat_it < perfmon_per_daemon_stat_count (); stat_it++)
+	{
+	  value = stats_ptr[daemon_it * perfmon_per_daemon_stat_count () + stat_it];
+          fprintf (stream, "%s.%s = %16llu\n", perfmon_Portable_daemon_names[daemon_it],
+                   perfmon_thread_daemon_name (stat_it), (long long unsigned int) value);
+	}
+    }
+}
+
+/*
+ * f_dump_in_buffer_thread_daemon_stats () - Write to a buffer the values for daemon statistics
+ *
+ * s (out): Buffer to write to
+ * stat_vals (in): statistics buffer
+ * remaining_size (in): size of input buffer
+ * 
+ */
+static void
+f_dump_in_buffer_thread_daemon_stats (char **s, const UINT64 * stat_vals, int *remaining_size)
+{
+  if (pstat_Global.activation_flag & PERFMON_ACTIVATION_FLAG_DAEMONS)
+    {
+      perfmon_stat_dump_in_buffer_thread_daemon_stats (stat_vals, s, remaining_size);
+    }
+}
+
+/*
+ * perfmon_stat_dump_in_buffer_thread_daemon_stats () -
+ *
+ * stats_ptr(in): start of array values
+ * s(in/out): output string (NULL if not used)
+ * remaining_size(in/out): remaining size in string s (NULL if not used)
+ * 
+ */
+static void
+perfmon_stat_dump_in_buffer_thread_daemon_stats (const UINT64 * stats_ptr, char **s, int *remaining_size)
+{
+  UINT64 value = 0;
+  int ret;
+
+  assert (s != NULL);
+  assert (remaining_size != NULL);
+
+  for (size_t daemon_it = 0; daemon_it < PERFMON_PORTABLE_DAEMON_COUNT; daemon_it++)
+    {
+      for (size_t stat_it = 0; stat_it < perfmon_per_daemon_stat_count (); stat_it++)
+	{
+	  value = stats_ptr[daemon_it * perfmon_per_daemon_stat_count () + stat_it];
+          ret = snprintf (*s, *remaining_size, "%s.%s = %16llu\n", perfmon_Portable_daemon_names[daemon_it],
+                          perfmon_thread_daemon_name (stat_it), (long long unsigned int) value);
+
+	  *remaining_size -= ret;
+	  *s += ret;
+	  if (*remaining_size <= 0)
+	    {
+	      return;
+	    }
+	}
+    }
+}
+
+#if defined (SERVER_MODE)
+static void
+perfmon_peek_thread_daemon_stats (UINT64 * stats)
+{
+  UINT64 *statsp = &stats[pstat_Metadata[PSTAT_THREAD_DAEMON_STATS].start_offset];
+  pgbuf_daemons_get_stats (statsp);	// 4 x daemons
+  statsp += 4 * perfmon_per_daemon_stat_count ();
+
+  // get deadlock stats
+  lock_deadlock_detect_daemon_get_stats (statsp);
+  statsp += perfmon_per_daemon_stat_count ();
+
+  // get log flush stats
+  log_flush_daemon_get_stats (statsp);
+  statsp += perfmon_per_daemon_stat_count ();
+}
+#endif // SERVER_MODE
+// *INDENT-ON*

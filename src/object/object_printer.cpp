@@ -186,8 +186,6 @@ void object_printer::describe_domain (/*const*/tp_domain &domain, class_descript
 	case DB_TYPE_BLOB:
 	case DB_TYPE_CLOB:
 	case DB_TYPE_TIME:
-	case DB_TYPE_TIMETZ:
-	case DB_TYPE_TIMELTZ:
 	case DB_TYPE_TIMESTAMP:
 	case DB_TYPE_TIMESTAMPTZ:
 	case DB_TYPE_TIMESTAMPLTZ:
@@ -548,6 +546,15 @@ void object_printer::describe_attribute (const struct db_object &cls, const sm_a
 	      m_buf (")");
 	    }
 	}
+
+      if (attribute.on_update_default_expr != DB_DEFAULT_NONE)
+	{
+	  const char *default_expr_type_str;
+
+	  m_buf (" ON UPDATE ");
+	  default_expr_type_str = db_default_expression_string (attribute.on_update_default_expr);
+	  m_buf ("%s", default_expr_type_str);
+	}
     }
   else if (attribute.header.name_space == ID_CLASS_ATTRIBUTE)
     {
@@ -791,6 +798,11 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
     {
       m_buf (" ");
       describe_comment (constraint.comment);
+    }
+
+  if (constraint.index_status == SM_INVISIBLE_INDEX)
+    {
+      m_buf (" INVISIBLE");
     }
 }
 

@@ -65,9 +65,9 @@
 
 #define DB_VALUE_DOMAIN_TYPE(value)     db_value_domain_type(value)
 
-#define DB_VALUE_TYPE(value) db_value_type(value)
-#define DB_VALUE_PRECISION(value) db_value_precision(value)
-#define DB_VALUE_SCALE(value) db_value_scale(value)
+#define DB_VALUE_TYPE(value)            db_value_type(value)
+#define DB_VALUE_PRECISION(value)       db_value_precision(value)
+#define DB_VALUE_SCALE(value)           db_value_scale(value)
 
 #define DB_SET_COMPRESSED_STRING(value, compressed_string, compressed_size, compressed_need_clear) \
 	db_set_compressed_string(value, compressed_string, compressed_size, compressed_need_clear)
@@ -170,6 +170,7 @@ extern "C"
   extern int db_value_equal (const DB_VALUE * value1, const DB_VALUE * value2);
   extern int db_value_compare (const DB_VALUE * value1, const DB_VALUE * value2);
   extern int db_value_domain_init (DB_VALUE * value, DB_TYPE type, const int precision, const int scale);
+  extern void db_value_domain_init_default (DB_VALUE * value, const DB_TYPE type);
   extern int db_value_domain_min (DB_VALUE * value, DB_TYPE type, const int precision, const int scale,
 				  const int codeset, const int collation_id, const DB_ENUMERATION * enumeration);
   extern int db_value_domain_max (DB_VALUE * value, DB_TYPE type, const int precision, const int scale,
@@ -274,6 +275,9 @@ extern "C"
   extern int db_convert_json_into_scalar (const DB_VALUE * src, DB_VALUE * dest);
   extern bool db_is_json_value_type (DB_TYPE type);
   extern bool db_is_json_doc_type (DB_TYPE type);
+  extern char *db_get_json_raw_body (const DB_VALUE * value);
+
+  extern bool db_value_is_corrupted (const DB_VALUE * value);
 
 /* Use the inline version of the functions. */
 #include "dbtype_function.i"

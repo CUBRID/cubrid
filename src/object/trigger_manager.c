@@ -4546,15 +4546,7 @@ value_as_boolean (DB_VALUE * value)
       status = (db_get_double (value) == 0) ? false : true;
       break;
     case DB_TYPE_TIME:
-    case DB_TYPE_TIMELTZ:
       status = (*db_get_time (value) == 0) ? false : true;
-      break;
-    case DB_TYPE_TIMETZ:
-      {
-	DB_TIMETZ *time_tz = db_get_timetz (value);
-
-	status = (time_tz->time == 0) ? false : true;
-      }
       break;
     case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPLTZ:
@@ -5154,7 +5146,7 @@ run_user_triggers (DB_TRIGGER_EVENT event, DB_TRIGGER_TIME time)
   /* check the cache */
   if (!tr_User_triggers_valid)
     {
-      if (tr_update_user_cache ())
+      if (tr_update_user_cache () != NO_ERROR)
 	{
 	  ASSERT_ERROR_AND_SET (error);
 	  return error;
@@ -5665,6 +5657,54 @@ int
 tr_after (TR_STATE * state)
 {
   return tr_after_object (state, NULL, NULL);
+}
+
+/*
+ * tr_has_user_trigger() - Check whether has a trigger to execute at commit|rollback
+ *    return: error code
+ * has_user_trigger(out): true, if has user trigger to execute, otherwise false
+ */
+int
+tr_has_user_trigger (bool * has_user_trigger)
+{
+  TR_TRIGLIST *t;
+  int error = NO_ERROR;
+  bool has_user_trigger_local;
+
+  assert (has_user_trigger != NULL);
+  if (!TR_EXECUTION_ENABLED)
+    {
+      *has_user_trigger = false;
+      return NO_ERROR;
+    }
+
+  if (tr_Deferred_activities)
+    {
+      *has_user_trigger = true;
+      return NO_ERROR;
+    }
+
+  if (!tr_User_triggers_valid)
+    {
+      if (tr_update_user_cache () != NO_ERROR)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  return error;
+	}
+    }
+
+  has_user_trigger_local = false;
+  for (t = tr_User_triggers; t != NULL; t = t->next)
+    {
+      if (t->trigger->status == TR_STATUS_ACTIVE)
+	{
+	  has_user_trigger_local = true;
+	  break;
+	}
+    }
+
+  *has_user_trigger = has_user_trigger_local;
+  return NO_ERROR;
 }
 
 /*

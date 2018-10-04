@@ -132,8 +132,8 @@ extern REGU_VARIABLE *pt_make_regu_arith (const REGU_VARIABLE * arg1, const REGU
 extern TP_DOMAIN *pt_xasl_type_enum_to_domain (const PT_TYPE_ENUM type);
 extern TP_DOMAIN *pt_xasl_node_to_domain (PARSER_CONTEXT * parser, const PT_NODE * node);
 extern PT_NODE *pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names, PT_NODE * select_list,
-				     PT_NODE * from, PT_NODE * class_specs, PT_NODE * where, PT_NODE * using_index,
-				     PT_NODE * order_by, PT_NODE * orderby_for, int server_op,
+				     PT_NODE * from, PT_NODE * with, PT_NODE * class_specs, PT_NODE * where,
+				     PT_NODE * using_index, PT_NODE * order_by, PT_NODE * orderby_for, int server_op,
 				     SCAN_OPERATION_TYPE scan_op_type);
 extern XASL_NODE *pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * node);
 extern PRED_EXPR_WITH_CONTEXT *pt_to_pred_with_context (PARSER_CONTEXT * parser, PT_NODE * filter_pred, PT_NODE * spec);
@@ -182,4 +182,8 @@ extern XASL_NODE *pt_to_merge_xasl (PARSER_CONTEXT * parser, PT_NODE * statement
 extern int pt_copy_upddel_hints_to_select (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * select_stmt);
 extern PT_NODE *pt_set_orderby_for_sort_limit_plan (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * name_list);
 extern SORT_NULLS pt_to_null_ordering (PT_NODE * sort_spec);
+
+extern int pt_find_omitted_default_expr (PARSER_CONTEXT * parser, DB_OBJECT * class_obj, PT_NODE * specified_attrs,
+					 PT_NODE ** default_expr_attrs);
+extern int pt_append_omitted_on_update_expr_assignments (PARSER_CONTEXT * parser, PT_NODE * assigns, PT_NODE * from);
 #endif /* _XASL_GENERATION_H_ */

@@ -78,8 +78,13 @@
 #include <locale>
 #include <unordered_map>
 #include <vector>
+#include <stack>
+#include <memory>
+#include <climits>
 
 #include <cctype>
+
+#define TODO_OPTIMIZE_JSON_BODY_STRING true
 
 #if defined GetObject
 /* stupid windows and their definitions; GetObject is defined as GetObjectW or GetObjectA */
@@ -95,20 +100,228 @@ class JSON_PRIVATE_ALLOCATOR
     static void Free (void *ptr);
 };
 
+#if TODO_OPTIMIZE_JSON_BODY_STRING
+struct JSON_RAW_STRING_DELETER
+{
+  void operator() (char *p) const
+  {
+    db_private_free (NULL, p);
+  }
+};
+#endif // TODO_OPTIMIZE_JSON_BODY_STRING
+
 typedef rapidjson::UTF8 <> JSON_ENCODING;
 typedef rapidjson::MemoryPoolAllocator <JSON_PRIVATE_ALLOCATOR> JSON_PRIVATE_MEMPOOL;
 typedef rapidjson::GenericValue <JSON_ENCODING, JSON_PRIVATE_MEMPOOL> JSON_VALUE;
 typedef rapidjson::GenericPointer <JSON_VALUE> JSON_POINTER;
 typedef rapidjson::GenericStringBuffer<JSON_ENCODING, JSON_PRIVATE_ALLOCATOR> JSON_STRING_BUFFER;
+typedef rapidjson::GenericMemberIterator<true, JSON_ENCODING, JSON_PRIVATE_MEMPOOL>::Iterator JSON_MEMBER_ITERATOR;
+typedef rapidjson::GenericArray<true, JSON_VALUE>::ConstValueIterator JSON_VALUE_ITERATOR;
 
 class JSON_DOC: public rapidjson::GenericDocument <JSON_ENCODING, JSON_PRIVATE_MEMPOOL>
 {
   public:
     bool IsLeaf ();
 
+#if TODO_OPTIMIZE_JSON_BODY_STRING
+    /* TODO:
+    In the future, it will be better if instead of constructing the json_body each time we need it,
+    we can have a boolean flag which indicates if the json_body is up to date or not.
+    We will set the flag to false when we apply functions that modify the JSON_DOC (like json_set, json_insert etc.)
+    If we apply functions that only retrieves values from JSON_DOC, the flag will remain unmodified
+
+    When we need the json_body, we will traverse only once the json "tree" and update the json_body and also the flag,
+    so next time we will get the json_body in O(1)
+
+    const std::string &GetJsonBody () const
+    {
+      return json_body;
+    }
+
+    template<typename T>
+    void SetJsonBody (T &&body) const
+    {
+      json_body = std::forward<T> (body);
+    }
+    */
+#endif // TODO_OPTIMIZE_JSON_BODY_STRING
   private:
     static const int MAX_CHUNK_SIZE;
+#if TODO_OPTIMIZE_JSON_BODY_STRING
+    /* mutable std::string json_body; */
+#endif // TODO_OPTIMIZE_JSON_BODY_STRING
 };
+
+// class JSON_ITERATOR - virtual interface to wrap array and object iterators
+//
+class JSON_ITERATOR
+{
+  public:
+    // default ctor
+    JSON_ITERATOR ()
+      : m_input_doc (nullptr)
+      , m_value_doc (nullptr)
+    {
+    }
+
+    virtual ~JSON_ITERATOR ()
+    {
+      clear_content ();
+    }
+
+    // next iterator
+    virtual void next () = 0;
+    // does it have more values?
+    virtual bool has_next () = 0;
+    // get current value
+    virtual const JSON_VALUE *get () = 0;
+    // set input document
+    virtual void set (const JSON_DOC &new_doc) = 0;
+
+    // get a document from current iterator value
+    const JSON_DOC *
+    get_value_to_doc ()
+    {
+      const JSON_VALUE *value = get ();
+
+      if (value == nullptr)
+	{
+	  return nullptr;
+	}
+
+      if (m_value_doc == nullptr)
+	{
+	  m_value_doc = db_json_allocate_doc ();
+	}
+
+      m_value_doc->CopyFrom (*value, m_value_doc->GetAllocator ());
+
+      return m_value_doc;
+    }
+
+    void reset ()
+    {
+      m_input_doc = nullptr;            // clear input
+    }
+
+    bool is_empty () const
+    {
+      return m_input_doc == nullptr;    // no input
+    }
+
+    // delete only the content of the JSON_ITERATOR for reuse
+    void clear_content ()
+    {
+      if (m_value_doc != nullptr)
+	{
+	  db_json_delete_doc (m_value_doc);
+	}
+    }
+
+  protected:
+    const JSON_DOC *m_input_doc;      // document being iterated
+    JSON_DOC *m_value_doc;            // document that can store iterator "value"
+};
+
+// JSON Object iterator - iterates through object members
+//
+class JSON_OBJECT_ITERATOR : public JSON_ITERATOR
+{
+  public:
+    JSON_OBJECT_ITERATOR () = default;
+
+    // advance to next member
+    void next ();
+    // has more members
+    bool has_next ();
+
+    // get current member value
+    const JSON_VALUE *get ()
+    {
+      return &m_iterator->value;
+    }
+
+    // set input document and initialize iterator on first position
+    void set (const JSON_DOC &new_doc)
+    {
+      assert (new_doc.IsObject ());
+
+      m_input_doc = &new_doc;
+      m_iterator = new_doc.MemberBegin ();
+    }
+
+  private:
+    JSON_MEMBER_ITERATOR m_iterator;
+};
+
+// JSON Array iterator - iterates through elements (values)
+//
+class JSON_ARRAY_ITERATOR : public JSON_ITERATOR
+{
+  public:
+    JSON_ARRAY_ITERATOR () = default;
+
+    // next element
+    void next ();
+    // has more elements
+    bool has_next ();
+
+    const JSON_VALUE *get ()
+    {
+      return m_iterator;
+    }
+
+    void set (const JSON_DOC &new_doc)
+    {
+      assert (new_doc.IsArray ());
+
+      m_input_doc = &new_doc;
+      m_iterator = new_doc.GetArray ().Begin ();
+    }
+
+  private:
+    JSON_VALUE_ITERATOR m_iterator;
+};
+
+void
+JSON_ARRAY_ITERATOR::next ()
+{
+  assert (has_next ());
+  m_iterator++;
+}
+
+bool
+JSON_ARRAY_ITERATOR::has_next ()
+{
+  if (m_input_doc == nullptr)
+    {
+      return false;
+    }
+
+  JSON_VALUE_ITERATOR end = m_input_doc->GetArray ().End ();
+
+  return (m_iterator + 1) != end;
+}
+
+void
+JSON_OBJECT_ITERATOR::next ()
+{
+  assert (has_next ());
+  m_iterator++;
+}
+
+bool
+JSON_OBJECT_ITERATOR::has_next ()
+{
+  if (m_input_doc == nullptr)
+    {
+      return false;
+    }
+
+  JSON_MEMBER_ITERATOR end = m_input_doc->MemberEnd ();
+
+  return (m_iterator + 1) != end;
+}
 
 class JSON_VALIDATOR
 {
@@ -133,73 +346,74 @@ class JSON_VALIDATOR
 };
 
 /*
-* JSON_BASE_HANDLER - This class acts like a rapidjson Handler
-*
-* The Handler is used by the json document to make checks on all of its nodes
-* It is applied recursively by the Accept function and acts like a map functions
-* You should inherit this class each time you want a specific function to apply to all the nodes in the json document
-* and override only the methods that apply to the desired types of nodes
-*/
+ * JSON_BASE_HANDLER - This class acts like a rapidjson Handler
+ *
+ * The Handler is used by the json document to make checks on all of its nodes
+ * It is applied recursively by the Accept function and acts like a map functions
+ * You should inherit this class each time you want a specific function to apply to all the nodes in the json document
+ * and override only the methods that apply to the desired types of nodes
+ */
 class JSON_BASE_HANDLER
 {
   public:
-    JSON_BASE_HANDLER() {};
+    JSON_BASE_HANDLER () {};
+    virtual ~JSON_BASE_HANDLER () = default;
     typedef typename JSON_DOC::Ch Ch;
     typedef unsigned SizeType;
 
-    bool Null()
+    virtual bool Null ()
     {
       return true;
     }
-    bool Bool (bool b)
+    virtual bool Bool (bool b)
     {
       return true;
     }
-    bool Int (int i)
+    virtual bool Int (int i)
     {
       return true;
     }
-    bool Uint (unsigned i)
+    virtual bool Uint (unsigned i)
     {
       return true;
     }
-    bool Int64 (int64_t i)
+    virtual bool Int64 (int64_t i)
     {
       return true;
     }
-    bool Uint64 (uint64_t i)
+    virtual bool Uint64 (uint64_t i)
     {
       return true;
     }
-    bool Double (double d)
+    virtual bool Double (double d)
     {
       return true;
     }
-    bool RawNumber (const Ch *str, SizeType length, bool copy)
+    virtual bool RawNumber (const Ch *str, SizeType length, bool copy)
     {
       return true;
     }
-    bool String (const Ch *str, SizeType length, bool copy)
+    virtual bool String (const Ch *str, SizeType length, bool copy)
     {
       return true;
     }
-    bool StartObject()
+    virtual bool StartObject ()
     {
       return true;
     }
-    bool Key (const Ch *str, SizeType length, bool copy)
+    virtual bool Key (const Ch *str, SizeType length, bool copy)
     {
       return true;
     }
-    bool EndObject (SizeType memberCount)
+    virtual bool EndObject (SizeType memberCount)
     {
       return true;
     }
-    bool StartArray()
+    virtual bool StartArray ()
     {
       return true;
     }
-    bool EndArray (SizeType elementCount)
+    virtual bool EndArray (SizeType elementCount)
     {
       return true;
     }
@@ -219,8 +433,8 @@ class JSON_WALKER
 
   protected:
     // we should not instantiate this class, but extend it
-    JSON_WALKER() {}
-    virtual ~JSON_WALKER() {}
+    JSON_WALKER () {}
+    virtual ~JSON_WALKER () {}
 
     virtual int
     CallBefore (JSON_VALUE &value)
@@ -251,10 +465,155 @@ class JSON_DUPLICATE_KEYS_CHECKER : public JSON_WALKER
 {
   public:
     JSON_DUPLICATE_KEYS_CHECKER () {}
-    ~JSON_DUPLICATE_KEYS_CHECKER() {}
+    ~JSON_DUPLICATE_KEYS_CHECKER () {}
 
   private:
     int CallBefore (JSON_VALUE &value);
+};
+
+class JSON_SERIALIZER_LENGTH : public JSON_BASE_HANDLER
+{
+  public:
+    JSON_SERIALIZER_LENGTH () : m_length (0) {}
+    ~JSON_SERIALIZER_LENGTH () {}
+
+    std::size_t GetLength () const
+    {
+      return m_length;
+    }
+
+    std::size_t GetTypePackedSize (void) const
+    {
+      return OR_INT_SIZE;
+    }
+
+    std::size_t GetStringPackedSize (const char *str) const
+    {
+      return or_packed_string_length (str, NULL);
+    }
+
+    bool Null ();
+    bool Bool (bool b);
+    bool Int (int i);
+    bool Double (double d);
+    bool String (const Ch *str, SizeType length, bool copy);
+    bool StartObject ();
+    bool Key (const Ch *str, SizeType length, bool copy);
+    bool StartArray ();
+    bool EndObject (SizeType memberCount);
+    bool EndArray (SizeType elementCount);
+
+  private:
+    std::size_t m_length;
+};
+
+class JSON_SERIALIZER : public JSON_BASE_HANDLER
+{
+  public:
+    JSON_SERIALIZER (OR_BUF &buffer)
+      : m_buffer (&buffer)
+      , m_size_pointers ()
+    {
+    }
+    ~JSON_SERIALIZER () {}
+
+    bool Null ();
+    bool Bool (bool b);
+    bool Int (int i);
+    bool Double (double d);
+    bool String (const Ch *str, SizeType length, bool copy);
+    bool StartObject ();
+    bool Key (const Ch *str, SizeType length, bool copy);
+    bool StartArray ();
+    bool EndObject (SizeType memberCount);
+    bool EndArray (SizeType elementCount);
+
+  private:
+    bool SaveSizePointers (char *ptr);
+    void SetSizePointers (SizeType size);
+
+    bool PackType (const DB_JSON_TYPE &type);
+    bool PackString (const char *str);
+
+    bool HasError ()
+    {
+      return m_error != NO_ERROR;
+    }
+
+    int m_error;                            // internal error code
+    OR_BUF *m_buffer;                       // buffer to serialize to
+    std::stack<char *> m_size_pointers;     // stack used by nested arrays & objects to save starting pointer.
+    // member/element count is saved at the end
+};
+
+/*
+ * JSON_PRETTY_WRITER - This class extends JSON_BASE_HANDLER
+ *
+ * The JSON document accepts the Handler and walks the document with respect to the DB_JSON_TYPE.
+ * The context is kept in the m_level_iterable stack which contains the value from the current level, which
+ * can be ARRAY, OBJECT or SCALAR. In case we are in an iterable (ARRAY/OBJECT) we need to keep track if of the first
+ * element because it's important for printing the delimiters.
+ *
+ * The formatting output respects the following rules:
+ * - Each array element or object member appears on a separate line, indented by one additional level as
+ *   compared to its parent
+ * - Each level of indentation adds two leading spaces
+ * - A comma separating individual array elements or object members is printed before the newline that
+ *   separates the two elements or members
+ * - The key and the value of an object member are separated by a colon followed by a space (': ')
+ * - An empty object or array is printed on a single line. No space is printed between the opening and closing brace
+ */
+class JSON_PRETTY_WRITER : public JSON_BASE_HANDLER
+{
+  public:
+    JSON_PRETTY_WRITER ()
+      : m_buffer ()
+      , m_current_indent (0)
+    {
+      // default ctor
+    }
+
+    ~JSON_PRETTY_WRITER () = default;
+
+    bool Null () override;
+    bool Bool (bool b) override;
+    bool Int (int i) override;
+    bool Double (double d) override;
+    bool String (const Ch *str, SizeType length, bool copy) override;
+    bool StartObject () override;
+    bool Key (const Ch *str, SizeType length, bool copy) override;
+    bool StartArray () override;
+    bool EndObject (SizeType memberCount) override;
+    bool EndArray (SizeType elementCount) override;
+
+    std::string &ToString ()
+    {
+      return m_buffer;
+    }
+
+  private:
+    void WriteDelimiters (bool is_key = false);
+    void PushLevel (const DB_JSON_TYPE &type);
+    void PopLevel ();
+    void SetIndentOnNewLine ();
+
+    struct level_context
+    {
+      DB_JSON_TYPE type;
+      bool is_first;
+
+      level_context (DB_JSON_TYPE type, bool is_first)
+	: type (type)
+	, is_first (is_first)
+      {
+	//
+      }
+    };
+
+    std::string m_buffer;                         // the buffer that stores the json
+    size_t m_current_indent;                      // number of white spaces for the current level
+    static const size_t LEVEL_INDENT_UNIT = 2;    // number of white spaces of indent level
+    std::stack<level_context> m_level_stack;      // keep track of the current iterable (ARRAY/OBJECT)
 };
 
 const bool JSON_PRIVATE_ALLOCATOR::kNeedFree = true;
@@ -263,8 +622,7 @@ const int JSON_DOC::MAX_CHUNK_SIZE = 64 * 1024; /* TODO does 64K serve our needs
 static std::vector<std::pair<std::string, std::string> > uri_fragment_conversions =
 {
   std::make_pair ("~", "~0"),
-  std::make_pair ("/", "~1"),
-  std::make_pair (" ", "%20")
+  std::make_pair ("/", "~1")
 };
 static const char *db_Json_pointer_delimiters = "/";
 static const char *db_Json_sql_path_delimiters = "$.[]\"";
@@ -310,26 +668,37 @@ static const char *db_json_get_json_type_as_str (const DB_JSON_TYPE &json_type);
 static int db_json_er_set_expected_other_type (const char *file_name, const int line_no, const std::string &path,
     const DB_JSON_TYPE &found_type, const DB_JSON_TYPE &expected_type,
     const DB_JSON_TYPE &expected_type_optional = DB_JSON_NULL);
+static int db_json_array_shift_values (const JSON_DOC *value, JSON_DOC &doc, const std::string &path);
+static int db_json_resolve_json_parent (JSON_DOC &doc, const std::string &path, JSON_VALUE *&resulting_json_parent);
 static int db_json_insert_helper (const JSON_DOC *value, JSON_DOC &doc, JSON_POINTER &p, const std::string &path);
 static int db_json_contains_duplicate_keys (JSON_DOC &doc);
 static int db_json_keys_func (const JSON_DOC &doc, JSON_DOC &result_json, const char *raw_path);
 
 STATIC_INLINE JSON_VALUE &db_json_doc_to_value (JSON_DOC &doc) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE const JSON_VALUE &db_json_doc_to_value (const JSON_DOC &doc) __attribute__ ((ALWAYS_INLINE));
-static int db_json_get_json_from_str (const char *json_raw, JSON_DOC &doc);
+static int db_json_get_json_from_str (const char *json_raw, JSON_DOC &doc, size_t json_raw_length);
 static int db_json_add_json_value_to_object (JSON_DOC &doc, const char *name, JSON_VALUE &value);
+
+static int db_json_deserialize_doc_internal (OR_BUF *buf, JSON_VALUE &value, JSON_PRIVATE_MEMPOOL &doc_allocator);
+
+static int db_json_or_buf_underflow (OR_BUF *buf, size_t length);
+static int db_json_unpack_string_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_PRIVATE_MEMPOOL &doc_allocator);
+static int db_json_unpack_int_to_value (OR_BUF *buf, JSON_VALUE &value);
+static int db_json_unpack_bool_to_value (OR_BUF *buf, JSON_VALUE &value);
+static int db_json_unpack_object_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_PRIVATE_MEMPOOL &doc_allocator);
+static int db_json_unpack_array_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_PRIVATE_MEMPOOL &doc_allocator);
 
 int JSON_DUPLICATE_KEYS_CHECKER::CallBefore (JSON_VALUE &value)
 {
   std::vector<const char *> inserted_keys;
 
-  if (value.IsObject())
+  if (value.IsObject ())
     {
-      for (auto it = value.MemberBegin(); it != value.MemberEnd(); ++it)
+      for (auto it = value.MemberBegin (); it != value.MemberEnd (); ++it)
 	{
-	  const char *current_key = it->name.GetString();
+	  const char *current_key = it->name.GetString ();
 
-	  for (unsigned int i = 0; i < inserted_keys.size(); i++)
+	  for (unsigned int i = 0; i < inserted_keys.size (); i++)
 	    {
 	      if (strcmp (current_key, inserted_keys[i]) == 0)
 		{
@@ -541,6 +910,70 @@ db_json_doc_to_value (const JSON_DOC &doc)
   return reinterpret_cast<const JSON_VALUE &> (doc);
 }
 
+void
+db_json_iterator_next (JSON_ITERATOR &json_itr)
+{
+  json_itr.next ();
+}
+
+const JSON_DOC *
+db_json_iterator_get_document (JSON_ITERATOR &json_itr)
+{
+  return json_itr.get_value_to_doc ();
+}
+
+bool
+db_json_iterator_has_next (JSON_ITERATOR &json_itr)
+{
+  return json_itr.has_next ();
+}
+
+void
+db_json_set_iterator (JSON_ITERATOR *&json_itr, const JSON_DOC &new_doc)
+{
+  json_itr->set (new_doc);
+}
+
+void
+db_json_reset_iterator (JSON_ITERATOR *&json_itr)
+{
+  json_itr->reset ();
+}
+
+bool
+db_json_iterator_is_empty (const JSON_ITERATOR &json_itr)
+{
+  return json_itr.is_empty ();
+}
+
+JSON_ITERATOR *
+db_json_create_iterator (const DB_JSON_TYPE &type)
+{
+  if (type == DB_JSON_TYPE::DB_JSON_OBJECT)
+    {
+      return new JSON_OBJECT_ITERATOR ();
+    }
+  else if (type == DB_JSON_TYPE::DB_JSON_ARRAY)
+    {
+      return new JSON_ARRAY_ITERATOR ();
+    }
+
+  return NULL;
+}
+
+void
+db_json_delete_json_iterator (JSON_ITERATOR *&json_itr)
+{
+  delete json_itr;
+  json_itr = NULL;
+}
+
+void
+db_json_clear_json_iterator (JSON_ITERATOR *&json_itr)
+{
+  json_itr->clear_content ();
+}
+
 bool
 db_json_is_valid (const char *json_str)
 {
@@ -611,8 +1044,6 @@ db_json_get_json_type_as_str (const DB_JSON_TYPE &json_type)
     case DB_JSON_BOOL:
       return "BOOLEAN";
     default:
-      /* we shouldn't get here */
-      assert (false);
       return "UNKNOWN";
     }
 }
@@ -654,7 +1085,7 @@ db_json_get_length (const JSON_DOC *document)
 }
 
 /*
- * json_depth()
+ * json_depth ()
  * one array or one object increases the depth by 1
  */
 
@@ -662,6 +1093,32 @@ unsigned int
 db_json_get_depth (const JSON_DOC *doc)
 {
   return db_json_value_get_depth (doc);
+}
+
+/*
+ * db_json_unquote ()
+ * skip escaping for JSON_DOC strings
+ */
+
+int
+db_json_unquote (const JSON_DOC &doc, char *&result_str)
+{
+  assert (result_str == nullptr);
+
+  if (!doc.IsString())
+    {
+      result_str = db_json_get_raw_json_body_from_document (&doc);
+    }
+  else
+    {
+      result_str = db_private_strdup (NULL, doc.GetString());
+
+      if (result_str == nullptr)
+	{
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+    }
+  return NO_ERROR;
 }
 
 static unsigned int
@@ -721,11 +1178,18 @@ db_json_extract_document_from_path (const JSON_DOC *document, const char *raw_pa
 {
   int error_code = NO_ERROR;
   std::string json_pointer_string;
-  result = NULL;
+
+  if (document == NULL)
+    {
+      if (result != NULL)
+	{
+	  result->SetNull ();
+	}
+      return NO_ERROR;
+    }
 
   // path must be JSON pointer
   error_code = db_json_convert_sql_path_to_pointer (raw_path, json_pointer_string);
-
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -745,14 +1209,70 @@ db_json_extract_document_from_path (const JSON_DOC *document, const char *raw_pa
   // the json from the specified path
   resulting_json = p.Get (*document);
 
+  DB_JSON_TYPE type = db_json_get_type (document);
+
   if (resulting_json != NULL)
     {
-      result = db_json_allocate_doc ();
+      if (result == NULL)
+	{
+	  result = db_json_allocate_doc ();
+	}
+
       result->CopyFrom (*resulting_json, result->GetAllocator ());
     }
   else
     {
-      result = NULL;
+      if (result != NULL)
+	{
+	  result->SetNull ();
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * db_json_contains_path () - Checks if the document contains data at given path
+ *
+ * return                  : error code
+ * document (in)           : document where to search
+ * raw_path (in)           : check path
+ * result (out)            : true/false
+ */
+int
+db_json_contains_path (const JSON_DOC *document, const char *raw_path, bool &result)
+{
+  int error_code = NO_ERROR;
+  std::string json_pointer_string;
+
+  result = false;
+
+  if (document == NULL)
+    {
+      return false;
+    }
+
+  // path must be JSON pointer
+  error_code = db_json_convert_sql_path_to_pointer (raw_path, json_pointer_string);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  JSON_POINTER p (json_pointer_string.c_str ());
+  const JSON_VALUE *resulting_json = NULL;
+
+  if (!p.IsValid ())
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
+      return ER_JSON_INVALID_PATH;
+    }
+
+  resulting_json = p.Get (*document);
+  if (resulting_json != NULL)
+    {
+      result = true;
     }
 
   return NO_ERROR;
@@ -762,15 +1282,29 @@ char *
 db_json_get_raw_json_body_from_document (const JSON_DOC *doc)
 {
   JSON_STRING_BUFFER buffer;
-  rapidjson::Writer <JSON_STRING_BUFFER> writer (buffer);
-  char *json_body;
+  rapidjson::Writer<JSON_STRING_BUFFER> json_default_writer (buffer);
 
   buffer.Clear ();
 
-  doc->Accept (writer);
-  json_body = db_private_strdup (NULL, buffer.GetString ());
+  doc->Accept (json_default_writer);
 
-  return json_body;
+  return db_private_strdup (NULL, buffer.GetString ());
+}
+
+char *
+db_json_get_json_body_from_document (const JSON_DOC &doc)
+{
+#if TODO_OPTIMIZE_JSON_BODY_STRING
+  /* TODO
+  std::string json_body (std::unique_ptr<char, JSON_RAW_STRING_DELETER>
+  		 (db_json_get_raw_json_body_from_document (&doc), JSON_RAW_STRING_DELETER ()).get ());
+
+  doc.SetJsonBody (json_body);
+  return doc.GetJsonBody ().c_str ();
+  */
+#endif // TODO_OPTIMIZE_JSON_BODY_STRING
+
+  return db_json_get_raw_json_body_from_document (&doc);
 }
 
 static int
@@ -778,9 +1312,9 @@ db_json_add_json_value_to_object (JSON_DOC &doc, const char *name, JSON_VALUE &v
 {
   JSON_VALUE key;
 
-  if (!doc.IsObject())
+  if (!doc.IsObject ())
     {
-      doc.SetObject();
+      doc.SetObject ();
     }
 
   if (doc.HasMember (name))
@@ -789,8 +1323,9 @@ db_json_add_json_value_to_object (JSON_DOC &doc, const char *name, JSON_VALUE &v
       return ER_JSON_DUPLICATE_KEY;
     }
 
-  key.SetString (name, (rapidjson::SizeType) strlen (name), doc.GetAllocator());
-  doc.AddMember (key, value, doc.GetAllocator());
+  key.SetString (name, (rapidjson::SizeType) strlen (name), doc.GetAllocator ());
+  doc.AddMember (key, value, doc.GetAllocator ());
+
   return NO_ERROR;
 }
 
@@ -798,6 +1333,7 @@ int
 db_json_add_member_to_object (JSON_DOC *doc, const char *name, const char *value)
 {
   JSON_VALUE val;
+
   val.SetString (value, (rapidjson::SizeType) strlen (value), doc->GetAllocator ());
 
   return db_json_add_json_value_to_object (*doc, name, val);
@@ -807,6 +1343,7 @@ int
 db_json_add_member_to_object (JSON_DOC *doc, const char *name, int value)
 {
   JSON_VALUE val;
+
   val.SetInt (value);
 
   return db_json_add_json_value_to_object (*doc, name, val);
@@ -833,6 +1370,7 @@ int
 db_json_add_member_to_object (JSON_DOC *doc, const char *name, double value)
 {
   JSON_VALUE val;
+
   val.SetDouble (value);
 
   return db_json_add_json_value_to_object (*doc, name, val);
@@ -916,22 +1454,23 @@ db_json_contains_duplicate_keys (JSON_DOC &doc)
   error_code = dup_keys_checker.WalkDocument (doc);
   if (error_code != NO_ERROR)
     {
-      ASSERT_ERROR();
+      ASSERT_ERROR ();
     }
 
   return error_code;
 }
 
 static int
-db_json_get_json_from_str (const char *json_raw, JSON_DOC &doc)
+db_json_get_json_from_str (const char *json_raw, JSON_DOC &doc, size_t json_raw_length)
 {
   int error_code = NO_ERROR;
+
   if (json_raw == NULL)
     {
       return NO_ERROR;
     }
 
-  if (doc.Parse (json_raw).HasParseError ())
+  if (doc.Parse (json_raw, json_raw_length).HasParseError ())
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_JSON, 2,
 	      rapidjson::GetParseError_En (doc.GetParseError ()), doc.GetErrorOffset ());
@@ -941,7 +1480,7 @@ db_json_get_json_from_str (const char *json_raw, JSON_DOC &doc)
   error_code = db_json_contains_duplicate_keys (doc);
   if (error_code != NO_ERROR)
     {
-      ASSERT_ERROR();
+      ASSERT_ERROR ();
       return error_code;
     }
 
@@ -949,7 +1488,7 @@ db_json_get_json_from_str (const char *json_raw, JSON_DOC &doc)
 }
 
 int
-db_json_get_json_from_str (const char *json_raw, JSON_DOC *&doc)
+db_json_get_json_from_str (const char *json_raw, JSON_DOC *&doc, size_t json_raw_length)
 {
   int err;
 
@@ -957,7 +1496,7 @@ db_json_get_json_from_str (const char *json_raw, JSON_DOC *&doc)
 
   doc = db_json_allocate_doc ();
 
-  err = db_json_get_json_from_str (json_raw, *doc);
+  err = db_json_get_json_from_str (json_raw, *doc, json_raw_length);
   if (err != NO_ERROR)
     {
       delete doc;
@@ -973,6 +1512,12 @@ db_json_get_copy_of_doc (const JSON_DOC *doc)
   JSON_DOC *new_doc = db_json_allocate_doc ();
 
   new_doc->CopyFrom (*doc, new_doc->GetAllocator ());
+
+#if TODO_OPTIMIZE_JSON_BODY_STRING
+  /* TODO
+  new_doc->SetJsonBody (doc->GetJsonBody ());
+  */
+#endif // TODO_OPTIMIZE_JSON_BODY_STRING
 
   return new_doc;
 }
@@ -991,7 +1536,7 @@ db_json_copy_doc (JSON_DOC &dest, const JSON_DOC *src)
 }
 
 static int
-db_json_insert_helper (const JSON_DOC *value, JSON_DOC &doc, JSON_POINTER &p, const std::string &path)
+db_json_resolve_json_parent (JSON_DOC &doc, const std::string &path, JSON_VALUE *&resulting_json_parent)
 {
   std::size_t found = path.find_last_of ("/");
   if (found == std::string::npos)
@@ -1001,15 +1546,15 @@ db_json_insert_helper (const JSON_DOC *value, JSON_DOC &doc, JSON_POINTER &p, co
     }
 
   // parent pointer
-  const JSON_POINTER pointer_parent (path.substr (0, found).c_str());
-  if (!pointer_parent.IsValid())
+  JSON_POINTER pointer_parent (path.substr (0, found).c_str ());
+  if (!pointer_parent.IsValid ())
     {
       /* this shouldn't happen */
       assert (false);
       return ER_FAILED;
     }
 
-  JSON_VALUE *resulting_json_parent = pointer_parent.Get (doc);
+  resulting_json_parent = pointer_parent.Get (doc);
   // the parent does not exist
   if (resulting_json_parent == NULL)
     {
@@ -1038,9 +1583,27 @@ db_json_insert_helper (const JSON_DOC *value, JSON_DOC &doc, JSON_POINTER &p, co
       return db_json_er_set_expected_other_type (ARG_FILE_LINE, path, parent_json_type, DB_JSON_ARRAY);
     }
 
-  // put the value at the specified path
-  p.Set (doc, *value, doc.GetAllocator());
   return NO_ERROR;
+}
+
+static int
+db_json_insert_helper (const JSON_DOC *value, JSON_DOC &doc, JSON_POINTER &p, const std::string &path)
+{
+  int error_code = NO_ERROR;
+  JSON_VALUE *resulting_json_parent = NULL;
+
+  // we don't need result_json_parent after this statement
+  error_code = db_json_resolve_json_parent (doc, path, resulting_json_parent);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  // put the value at the specified path
+  p.Set (doc, *value, doc.GetAllocator ());
+
+  return error_code;
 }
 
 /*
@@ -1073,7 +1636,6 @@ db_json_insert_func (const JSON_DOC *doc_to_be_inserted, JSON_DOC &doc_destinati
     }
 
   JSON_POINTER p (json_pointer_string.c_str ());
-  JSON_VALUE *json_parent_p;
 
   if (!p.IsValid ())
     {
@@ -1114,7 +1676,6 @@ db_json_replace_func (const JSON_DOC *new_value, JSON_DOC &doc, const char *raw_
 
   // path must be JSON pointer
   error_code = db_json_convert_sql_path_to_pointer (raw_path, json_pointer_string);
-
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -1165,7 +1726,6 @@ db_json_set_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path)
 
   // path must be JSON pointer
   error_code = db_json_convert_sql_path_to_pointer (raw_path, json_pointer_string);
-
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -1173,7 +1733,7 @@ db_json_set_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path)
     }
 
   JSON_POINTER p (json_pointer_string.c_str ());
-  JSON_VALUE *resulting_json, *resulting_json_parent;
+  JSON_VALUE *resulting_json = NULL;
 
   if (!p.IsValid ())
     {
@@ -1182,7 +1742,6 @@ db_json_set_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path)
     }
 
   resulting_json = p.Get (doc);
-
   if (resulting_json != NULL)
     {
       // replace the old value with the new one if the path exists
@@ -1209,7 +1768,6 @@ db_json_remove_func (JSON_DOC &doc, const char *raw_path)
 
   // path must be JSON pointer
   error_code = db_json_convert_sql_path_to_pointer (raw_path, json_pointer_string);
-
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -1259,7 +1817,6 @@ db_json_array_append_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw
 
   // path must be JSON pointer
   error_code = db_json_convert_sql_path_to_pointer (raw_path, json_pointer_string);
-
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -1276,7 +1833,6 @@ db_json_array_append_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw
     }
 
   resulting_json = p.Get (doc);
-
   if (resulting_json == NULL)
     {
       return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, json_pointer_string, &doc);
@@ -1296,6 +1852,85 @@ db_json_array_append_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw
   resulting_json->PushBack (value_copy, doc.GetAllocator ());
 
   return NO_ERROR;
+}
+
+static int
+db_json_array_shift_values (const JSON_DOC *value, JSON_DOC &doc, const std::string &path)
+{
+  int error_code = NO_ERROR;
+  JSON_VALUE *resulting_json_parent = NULL;
+
+  error_code = db_json_resolve_json_parent (doc, path, resulting_json_parent);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  assert (resulting_json_parent != NULL && resulting_json_parent->IsArray ());
+
+  int last_token_index = std::stoi (path.substr (path.find_last_of ("/") + 1));
+
+  // add the value at the end of the array
+  JSON_VALUE value_copy (*value, doc.GetAllocator ());
+  resulting_json_parent->GetArray ().PushBack (value_copy, doc.GetAllocator ());
+
+  // move the value to its correct index by swapping adjacent values
+  for (int i = resulting_json_parent->GetArray ().Size () - 1; i > last_token_index; --i)
+    {
+      resulting_json_parent->GetArray ()[i].Swap (resulting_json_parent->GetArray ()[i - 1]);
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * db_json_array_insert_func () - Insert the value to the path from the indicated array within a JSON document
+ *
+ * return                  : error code
+ * value (in)              : the value to be added in the array
+ * doc (in)                : json document
+ * raw_path (in)           : specified path
+ */
+int
+db_json_array_insert_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path)
+{
+  int error_code = NO_ERROR;
+  std::string json_pointer_string;
+
+  if (value == NULL)
+    {
+      // unexpected
+      assert (false);
+      return ER_FAILED;
+    }
+
+  // path must be JSON pointer
+  error_code = db_json_convert_sql_path_to_pointer (raw_path, json_pointer_string);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  JSON_POINTER p (json_pointer_string.c_str ());
+  JSON_VALUE *resulting_json = NULL;
+
+  if (!p.IsValid ())
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
+      return ER_JSON_INVALID_PATH;
+    }
+
+  resulting_json = p.Get (doc);
+  if (resulting_json != NULL)
+    {
+      // need to shift any following values to the right
+      return db_json_array_shift_values (value, doc, json_pointer_string);
+    }
+
+  // here starts the INSERTION part
+  return db_json_insert_helper (value, doc, p, json_pointer_string);
 }
 
 DB_JSON_TYPE
@@ -1373,14 +2008,14 @@ db_json_merge_two_json_objects (JSON_DOC &dest, const JSON_DOC *source)
       // if the key is in both jsons
       if (dest.HasMember (name))
 	{
-	  if (dest [name].IsArray ())
+	  if (dest[name].IsArray ())
 	    {
-	      dest [name].GetArray ().PushBack (itr->value, dest.GetAllocator ());
+	      dest[name].GetArray ().PushBack (itr->value, dest.GetAllocator ());
 	    }
 	  else
 	    {
 	      db_json_value_wrap_as_array (dest[name], dest.GetAllocator ());
-	      dest [name].PushBack (itr->value, dest.GetAllocator ());
+	      dest[name].PushBack (itr->value, dest.GetAllocator ());
 	    }
 	}
       else
@@ -1490,7 +2125,8 @@ db_json_validate_json (const char *json_body)
 
 JSON_DOC *db_json_allocate_doc ()
 {
-  return new JSON_DOC ();
+  JSON_DOC *doc = new JSON_DOC ();
+  return doc;
 }
 
 void db_json_delete_doc (JSON_DOC *&doc)
@@ -1767,7 +2403,7 @@ db_json_split_path_by_delimiters (const std::string &path, const std::string &de
     {
       if (path[end] == '"')
 	{
-	  std::size_t index_of_closing_quote = path.find_first_of ("\"", end+1);
+	  std::size_t index_of_closing_quote = path.find_first_of ("\"", end + 1);
 	  if (index_of_closing_quote == std::string::npos)
 	    {
 	      assert (false);
@@ -1803,8 +2439,8 @@ db_json_split_path_by_delimiters (const std::string &path, const std::string &de
       tokens.push_back (substring);
     }
 
-  unsigned int tokens_size = tokens.size();
-  for (unsigned int i = 0; i < tokens_size; i++)
+  std::size_t tokens_size = tokens.size ();
+  for (std::size_t i = 0; i < tokens_size; i++)
     {
       if (db_json_path_is_token_valid_array_index (tokens[i]))
 	{
@@ -1824,6 +2460,8 @@ db_json_split_path_by_delimiters (const std::string &path, const std::string &de
 static bool
 db_json_sql_path_is_valid (std::string &sql_path)
 {
+  std::size_t end_bracket_offset;
+
   // skip leading white spaces
   db_json_normalize_path (sql_path);
   if (sql_path.empty ())
@@ -1846,8 +2484,7 @@ db_json_sql_path_is_valid (std::string &sql_path)
       switch (sql_path[i])
 	{
 	case '[':
-	{
-	  std::size_t end_bracket_offset = sql_path.find_first_of (']', ++i);
+	  end_bracket_offset = sql_path.find_first_of (']', ++i);
 	  if (end_bracket_offset == sql_path.npos)
 	    {
 	      // unacceptable
@@ -1861,8 +2498,7 @@ db_json_sql_path_is_valid (std::string &sql_path)
 	    }
 	  // move to ']'. i will be incremented.
 	  i = end_bracket_offset;
-	}
-	break;
+	  break;
 
 	case '.':
 	  i++;
@@ -1933,28 +2569,27 @@ db_json_er_set_path_does_not_exist (const char *file_name, const int line_no, co
 
   // get the json body
   char *raw_json_body = db_json_get_raw_json_body_from_document (doc);
+  PRIVATE_UNIQUE_PTR<char> unique_ptr (raw_json_body, NULL);
 
   er_set (ER_ERROR_SEVERITY, file_name, line_no, ER_JSON_PATH_DOES_NOT_EXIST, 2,
 	  sql_path_string.c_str (), raw_json_body);
-
-  // we need to free json body in order to avoid mem leak
-  db_private_free (NULL, raw_json_body);
 
   return ER_JSON_PATH_DOES_NOT_EXIST;
 }
 
 static int
 db_json_er_set_expected_other_type (const char *file_name, const int line_no, const std::string &path,
-				    const DB_JSON_TYPE &found_type, const DB_JSON_TYPE &expected_type, const DB_JSON_TYPE &expected_type_optional)
+				    const DB_JSON_TYPE &found_type, const DB_JSON_TYPE &expected_type,
+				    const DB_JSON_TYPE &expected_type_optional)
 {
   std::string sql_path_string;
   int error_code = NO_ERROR;
 
   // the path must be SQL path
-  error_code = db_json_convert_pointer_to_sql_path (path.c_str(), sql_path_string);
+  error_code = db_json_convert_pointer_to_sql_path (path.c_str (), sql_path_string);
   if (error_code != NO_ERROR)
     {
-      ASSERT_ERROR();
+      ASSERT_ERROR ();
       return error_code;
     }
 
@@ -1968,30 +2603,58 @@ db_json_er_set_expected_other_type (const char *file_name, const int line_no, co
     }
 
   er_set (ER_ERROR_SEVERITY, file_name, line_no, ER_JSON_EXPECTED_OTHER_TYPE, 3,
-	  sql_path_string.c_str(), expected_type_str.c_str(), found_type_str);
+	  sql_path_string.c_str (), expected_type_str.c_str (), found_type_str);
 
   return ER_JSON_EXPECTED_OTHER_TYPE;
 }
 
 /*
-* db_json_replace_token_special_chars ()
-* token (in)
-* special_chars (in)
-* this function does the special characters replacements in a token based on mapper
-* Example: object~1name -> object/name
-*/
+ * db_json_replace_token_special_chars ()
+ * token (in)
+ * special_chars (in)
+ * this function does the special characters replacements in a token based on mapper
+ * Example: object~1name -> object/name
+ */
 static void
 db_json_replace_token_special_chars (std::string &token,
 				     const std::unordered_map<std::string, std::string> &special_chars)
 {
-  for (auto it = special_chars.begin (); it != special_chars.end (); ++it)
+  bool replaced = false;
+  size_t start = 0;
+  size_t end = 0;
+  size_t step = 1;
+
+  // iterate character by character and detect special characters
+  for (size_t token_idx = 0; token_idx < token.length (); /* incremented in for body */)
     {
-      size_t pos = 0;
-      while ((pos = token.find (it->first, pos)) != std::string::npos)
+      replaced = false;
+      // compare with special characters
+      for (auto special_it = special_chars.begin (); special_it != special_chars.end (); ++special_it)
 	{
-	  token.replace (pos, it->first.length (), it->second);
-	  pos += it->second.length ();
+	  // compare special characters with sequence following token_it
+	  if (token_idx + special_it->first.length () <= token.length ())
+	    {
+	      if (token.compare (token_idx, special_it->first.length (), special_it->first.c_str ()) == 0)
+		{
+		  // replace
+		  token.replace (token_idx, special_it->first.length (), special_it->second);
+		  // skip replaced
+		  token_idx += special_it->second.length ();
+
+		  replaced = true;
+		  // next loop
+		  break;
+		}
+	    }
 	}
+
+      if (!replaced)
+	{
+	  // no match; next character
+	  token_idx++;
+	}
+
+      start += step;
     }
 }
 
@@ -2068,19 +2731,20 @@ db_json_iszero (const unsigned char &ch)
   return ch == '0';
 }
 
-/* db_json_remove_leading_zeros_index () - Erase leading zeros from sql path index
-*
-* index (in)                : current object
-* example: $[000123] -> $[123]
-*/
+/*
+ * db_json_remove_leading_zeros_index () - Erase leading zeros from sql path index
+ *
+ * index (in)                : current object
+ * example: $[000123] -> $[123]
+ */
 static void
 db_json_remove_leading_zeros_index (std::string &index)
 {
   // trim leading zeros
-  auto first_non_zero = std::find_if_not (index.begin(), index.end(), db_json_iszero);
-  index.erase (index.begin(), first_non_zero);
+  auto first_non_zero = std::find_if_not (index.begin (), index.end (), db_json_iszero);
+  index.erase (index.begin (), first_non_zero);
 
-  if (index.empty())
+  if (index.empty ())
     {
       index = "0";
     }
@@ -2088,6 +2752,7 @@ db_json_remove_leading_zeros_index (std::string &index)
 
 /*
  * db_json_convert_sql_path_to_pointer ()
+ *
  * sql_path (in)
  * json_pointer_out (out): the result
  * An sql_path is converted to rapidjson standard path
@@ -2124,13 +2789,15 @@ db_json_convert_sql_path_to_pointer (const char *sql_path, std::string &json_poi
   json_pointer_out = "";
   for (unsigned int i = 0; i < tokens.size (); ++i)
     {
+      db_json_replace_token_special_chars (tokens[i], special_chars);
       json_pointer_out += "/" + tokens[i];
     }
 
   return NO_ERROR;
 }
 
-/* db_json_get_paths_helper () - Recursive function to get the paths from a json object
+/*
+ * db_json_get_paths_helper () - Recursive function to get the paths from a json object
  *
  * obj (in)                : current object
  * sql_path (in)           : the path for the current object
@@ -2165,7 +2832,8 @@ db_json_get_paths_helper (const JSON_VALUE &obj, const std::string &sql_path, st
   paths.push_back (sql_path);
 }
 
-/* db_json_get_all_paths_func () - Returns the paths from a JSON document as a JSON array
+/*
+ * db_json_get_all_paths_func () - Returns the paths from a JSON document as a JSON array
  *
  * doc (in)                : json document
  * result_json (in)        : a json array that contains all the paths
@@ -2192,7 +2860,51 @@ db_json_get_all_paths_func (const JSON_DOC &doc, JSON_DOC *&result_json)
   return NO_ERROR;
 }
 
-/* db_json_keys_func () - Returns the keys from the top-level value of a JSON object as a JSON array
+/*
+ * db_json_pretty_func () - Returns the stringified version of a JSON document
+ *
+ * doc (in)                : json document
+ * result_str (in)         : a string that contains the json in a pretty format
+ */
+void
+db_json_pretty_func (const JSON_DOC &doc, char *&result_str)
+{
+  assert (result_str == nullptr);
+
+  JSON_PRETTY_WRITER json_pretty_writer;
+
+  doc.Accept (json_pretty_writer);
+
+  result_str = db_private_strdup (NULL, json_pretty_writer.ToString ().c_str ());
+}
+
+/*
+ * db_json_arrayagg_func () - Appends the value to the result_json
+ *
+ * value (in)              : value to append
+ * result_json (in)        : the document where we want to append
+ */
+int
+db_json_arrayagg_func (const JSON_DOC *value, JSON_DOC &result_json)
+{
+  DB_JSON_TYPE result_json_type = db_json_get_type (&result_json);
+
+  // only the first time the result_json will have DB_JSON_NULL type
+  if (result_json_type == DB_JSON_TYPE::DB_JSON_NULL)
+    {
+      result_json.SetArray ();
+    }
+
+  assert (result_json.IsArray ());
+
+  JSON_VALUE value_copy (*value, result_json.GetAllocator ());
+  result_json.PushBack (value_copy, result_json.GetAllocator ());
+
+  return NO_ERROR;
+}
+
+/*
+ * db_json_keys_func () - Returns the keys from the top-level value of a JSON object as a JSON array
  *
  * return                  : error code
  * doc (in)                : json document
@@ -2237,7 +2949,7 @@ db_json_keys_func (const JSON_DOC &doc, JSON_DOC &result_json, const char *raw_p
 	{
 	  JSON_VALUE val;
 
-	  val.SetString (it->name.GetString(), result_json.GetAllocator ());
+	  val.SetString (it->name.GetString (), result_json.GetAllocator ());
 	  result_json.PushBack (val, result_json.GetAllocator ());
 	}
     }
@@ -2249,26 +2961,26 @@ int
 db_json_keys_func (const JSON_DOC &doc, JSON_DOC *&result_json, const char *raw_path)
 {
   assert (result_json == NULL);
-  result_json = db_json_allocate_doc();
+  result_json = db_json_allocate_doc ();
 
   return db_json_keys_func (doc, *result_json, raw_path);
 }
 
 int
-db_json_keys_func (const char *json_raw, JSON_DOC *&result_json, const char *raw_path)
+db_json_keys_func (const char *json_raw, JSON_DOC *&result_json, const char *raw_path, size_t json_raw_length)
 {
   JSON_DOC doc;
   int error_code = NO_ERROR;
-  error_code = db_json_get_json_from_str (json_raw, doc);
 
+  error_code = db_json_get_json_from_str (json_raw, doc, json_raw_length);
   if (error_code != NO_ERROR)
     {
-      ASSERT_ERROR();
+      ASSERT_ERROR ();
       return error_code;
     }
 
   assert (result_json == NULL);
-  result_json = db_json_allocate_doc();
+  result_json = db_json_allocate_doc ();
 
   return db_json_keys_func (doc, *result_json, raw_path);
 }
@@ -2282,7 +2994,7 @@ db_json_value_has_numeric_type (const JSON_VALUE *doc)
 /*
  *  The following rules define containment:
  *  A candidate scalar is contained in a target scalar if and only if they are comparable and are equal.
- *  Two scalar values are comparable if they have the same JSON_TYPE() types,
+ *  Two scalar values are comparable if they have the same JSON_TYPE () types,
  *  with the exception that values of types INTEGER and DOUBLE are also comparable to each other.
  *
  *  A candidate array is contained in a target array if and only if
@@ -2490,6 +3202,7 @@ db_json_path_is_token_valid_array_index (const std::string &str, std::size_t sta
 	  return false;
 	}
     }
+
   // all are digits; this is a valid array index
   return true;
 }
@@ -2570,4 +3283,675 @@ JSON_WALKER::WalkValue (JSON_VALUE &value)
     }
 
   return NO_ERROR;
+}
+
+bool
+JSON_SERIALIZER::SaveSizePointers (char *ptr)
+{
+  // save the current pointer
+  m_size_pointers.push (ptr);
+
+  // skip the size
+  m_error = or_put_int (m_buffer, 0);
+
+  return !HasError ();
+}
+
+void
+JSON_SERIALIZER::SetSizePointers (SizeType size)
+{
+  char *buf = m_size_pointers.top ();
+  m_size_pointers.pop ();
+
+  assert (buf >= m_buffer->buffer && buf < m_buffer->ptr);
+
+  // overwrite that pointer with the correct size
+  or_pack_int (buf, (int) size);
+}
+
+bool JSON_SERIALIZER::PackType (const DB_JSON_TYPE &type)
+{
+  m_error = or_put_int (m_buffer, static_cast<int> (type));
+  return !HasError ();
+}
+
+bool JSON_SERIALIZER::PackString (const char *str)
+{
+  m_error = or_put_string_aligned_with_length (m_buffer, str);
+  return !HasError ();
+}
+
+bool JSON_SERIALIZER_LENGTH::Null ()
+{
+  m_length += GetTypePackedSize ();
+  return true;
+}
+
+bool JSON_SERIALIZER::Null ()
+{
+  return PackType (DB_JSON_NULL);
+}
+
+bool JSON_SERIALIZER_LENGTH::Bool (bool b)
+{
+  // the encode will be TYPE|VALUE, where TYPE is int and value is int (0 or 1)
+  m_length += GetTypePackedSize () + OR_INT_SIZE;
+  return true;
+}
+
+bool JSON_SERIALIZER::Bool (bool b)
+{
+  if (!PackType (DB_JSON_BOOL))
+    {
+      return false;
+    }
+
+  m_error = or_put_int (m_buffer, b ? 1 : 0);
+  return !HasError ();
+}
+
+bool JSON_SERIALIZER_LENGTH::Int (int i)
+{
+  // the encode will be TYPE|VALUE, where TYPE is int and value is int
+  m_length += GetTypePackedSize () + OR_INT_SIZE;
+  return true;
+}
+
+bool JSON_SERIALIZER::Int (int i)
+{
+  if (!PackType (DB_JSON_INT))
+    {
+      return false;
+    }
+
+  m_error = or_put_int (m_buffer, i);
+  return !HasError ();
+}
+
+bool JSON_SERIALIZER_LENGTH::Double (double d)
+{
+  // the encode will be TYPE|VALUE, where TYPE is int and value is double
+  m_length += GetTypePackedSize () + OR_DOUBLE_SIZE;
+  return true;
+}
+
+bool JSON_SERIALIZER::Double (double d)
+{
+  if (!PackType (DB_JSON_DOUBLE))
+    {
+      return false;
+    }
+
+  m_error = or_put_double (m_buffer, d);
+  return !HasError ();
+}
+
+bool JSON_SERIALIZER_LENGTH::String (const Ch *str, SizeType length, bool copy)
+{
+  m_length += GetTypePackedSize () + GetStringPackedSize (str);
+  return true;
+}
+
+bool JSON_SERIALIZER::String (const Ch *str, SizeType length, bool copy)
+{
+  return PackType (DB_JSON_STRING) && PackString (str);
+}
+
+bool JSON_SERIALIZER_LENGTH::Key (const Ch *str, SizeType length, bool copy)
+{
+  // we encode directly the key because we know we are dealing with object
+  m_length += GetStringPackedSize (str);
+  return true;
+}
+
+bool JSON_SERIALIZER::Key (const Ch *str, SizeType length, bool copy)
+{
+  return PackString (str);
+}
+
+bool JSON_SERIALIZER_LENGTH::StartObject ()
+{
+  m_length += GetTypePackedSize ();
+  m_length += OR_INT_SIZE;
+  return true;
+}
+
+bool JSON_SERIALIZER::StartObject ()
+{
+  if (!PackType (DB_JSON_OBJECT))
+    {
+      return false;
+    }
+
+  // add pointer to stack, because we need to come back to overwrite this pointer with the correct size
+  // we will know that in EndObject function
+  return SaveSizePointers (m_buffer->ptr);
+}
+
+bool JSON_SERIALIZER_LENGTH::StartArray ()
+{
+  m_length += GetTypePackedSize ();
+  m_length += OR_INT_SIZE;
+  return true;
+}
+
+bool JSON_SERIALIZER::StartArray ()
+{
+  if (!PackType (DB_JSON_ARRAY))
+    {
+      return false;
+    }
+
+  // add pointer to stack, because we need to come back to overwrite this pointer with the correct size
+  // we will know that in EndObject function
+  return SaveSizePointers (m_buffer->ptr);
+}
+
+bool JSON_SERIALIZER_LENGTH::EndObject (SizeType memberCount)
+{
+  return true;
+}
+
+bool JSON_SERIALIZER::EndObject (SizeType memberCount)
+{
+  // overwrite the count
+  SetSizePointers (memberCount);
+  return true;
+}
+
+bool JSON_SERIALIZER_LENGTH::EndArray (SizeType elementCount)
+{
+  return true;
+}
+
+bool JSON_SERIALIZER::EndArray (SizeType elementCount)
+{
+  // overwrite the count
+  SetSizePointers (elementCount);
+  return true;
+}
+
+void JSON_PRETTY_WRITER::WriteDelimiters (bool is_key)
+{
+  // just a scalar, no indentation needed
+  if (m_level_stack.empty ())
+    {
+      return;
+    }
+
+  // there are 3 cases the current element can be
+  // 1) an element from an ARRAY
+  // 2) a key from an OBJECT
+  // 3) a value from an OBJECT
+  // when dealing with array elements, all elements except the first need to write a comma before writing his value
+  // when dealing with objects, all keys except the first need to write a comma before writing the current key value
+  if (is_key || m_level_stack.top ().type == DB_JSON_TYPE::DB_JSON_ARRAY)
+    {
+      // not the first key or the first element from ARRAY, so we need to separate elements
+      if (m_level_stack.top ().is_first == false)
+	{
+	  m_buffer.append (",");
+	}
+      else
+	{
+	  // for the first key or element skip the comma
+	  m_level_stack.top ().is_first = false;
+	}
+
+      SetIndentOnNewLine ();
+    }
+  else
+    {
+      // the case we are in an OBJECT and print a value
+      assert (m_level_stack.top ().type == DB_JSON_TYPE::DB_JSON_OBJECT);
+      m_buffer.append (" ");
+    }
+}
+
+void JSON_PRETTY_WRITER::PushLevel (const DB_JSON_TYPE &type)
+{
+  // advance one level
+  m_current_indent += LEVEL_INDENT_UNIT;
+
+  // push the new context
+  m_level_stack.push (level_context (type, true));
+}
+
+void JSON_PRETTY_WRITER::PopLevel ()
+{
+  // reestablish the old context
+  m_current_indent -= LEVEL_INDENT_UNIT;
+  m_level_stack.pop ();
+}
+
+void JSON_PRETTY_WRITER::SetIndentOnNewLine ()
+{
+  m_buffer.append ("\n").append (m_current_indent, ' ');
+}
+
+bool JSON_PRETTY_WRITER::Null ()
+{
+  WriteDelimiters ();
+
+  m_buffer.append ("NULL");
+
+  return true;
+}
+
+bool JSON_PRETTY_WRITER::Bool (bool b)
+{
+  WriteDelimiters ();
+
+  m_buffer.append (b ? "true" : "false");
+
+  return true;
+}
+
+bool JSON_PRETTY_WRITER::Int (int i)
+{
+  WriteDelimiters ();
+
+  m_buffer.append (std::to_string (i));
+
+  return true;
+}
+
+bool JSON_PRETTY_WRITER::Double (double d)
+{
+  WriteDelimiters ();
+
+  m_buffer.append (std::to_string (d));
+
+  return true;
+}
+
+bool JSON_PRETTY_WRITER::String (const Ch *str, SizeType length, bool copy)
+{
+  WriteDelimiters ();
+
+  m_buffer.append ("\"").append (str).append ("\"");
+
+  return true;
+}
+
+bool JSON_PRETTY_WRITER::StartObject ()
+{
+  WriteDelimiters ();
+
+  m_buffer.append ("{");
+
+  PushLevel (DB_JSON_TYPE::DB_JSON_OBJECT);
+
+  return true;
+}
+
+bool JSON_PRETTY_WRITER::Key (const Ch *str, SizeType length, bool copy)
+{
+  WriteDelimiters (true);
+
+  m_buffer.append ("\"").append (str).append ("\"").append (":");
+
+  return true;
+}
+
+bool JSON_PRETTY_WRITER::StartArray ()
+{
+  WriteDelimiters ();
+
+  m_buffer.append ("[");
+
+  PushLevel (DB_JSON_TYPE::DB_JSON_ARRAY);
+
+  return true;
+}
+
+bool JSON_PRETTY_WRITER::EndObject (SizeType memberCount)
+{
+  PopLevel ();
+
+  if (memberCount != 0)
+    {
+      // go the next line and set the correct indentation
+      SetIndentOnNewLine ();
+    }
+
+  m_buffer.append ("}");
+
+  return true;
+}
+
+bool JSON_PRETTY_WRITER::EndArray (SizeType elementCount)
+{
+  PopLevel ();
+
+  if (elementCount != 0)
+    {
+      // go the next line and set the correct indentation
+      SetIndentOnNewLine ();
+    }
+
+  m_buffer.append ("]");
+
+  return true;
+}
+
+/*
+ * db_json_serialize () - serialize a json document
+ *
+ * return     : pair (buffer, length)
+ * doc (in)   : the document that we want to serialize
+ *
+ * buffer will contain the json serialized
+ * length is the buffer size (we can not use strlen!)
+ */
+int
+db_json_serialize (const JSON_DOC &doc, OR_BUF &buffer)
+{
+  JSON_SERIALIZER js (buffer);
+  int error_code = NO_ERROR;
+
+  if (!doc.Accept (js))
+    {
+      error_code = ER_TF_BUFFER_OVERFLOW;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_OVERFLOW, 0);
+    }
+
+  return error_code;
+}
+
+std::size_t
+db_json_serialize_length (const JSON_DOC &doc)
+{
+  JSON_SERIALIZER_LENGTH jsl;
+
+  doc.Accept (jsl);
+
+  return jsl.GetLength ();
+}
+
+/*
+ * db_json_or_buf_underflow () - Check if the buffer return underflow
+ *
+ * return            : error_code
+ * buf (in)          : the buffer which contains the data
+ * length (in)       : the length of the string that we want to retrieve
+ *
+ * We do this check separately because we want to avoid an additional memory copy when getting the data from the buffer
+ * for storing it in the json document
+ */
+static int
+db_json_or_buf_underflow (OR_BUF *buf, size_t length)
+{
+  if ((buf->ptr + length) > buf->endptr)
+    {
+      return or_underflow (buf);
+    }
+
+  return NO_ERROR;
+}
+
+static int
+db_json_unpack_string_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_PRIVATE_MEMPOOL &doc_allocator)
+{
+  size_t str_length;
+  int rc = NO_ERROR;
+
+  // get the string length
+  str_length = or_get_int (buf, &rc);
+  if (rc != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_OVERFLOW, 0);
+      return rc;
+    }
+
+  rc = db_json_or_buf_underflow (buf, str_length);
+  if (rc != NO_ERROR)
+    {
+      // we need to assert error here because or_underflow sets the error unlike or_overflow
+      // which only returns the error code
+      ASSERT_ERROR ();
+      return rc;
+    }
+
+  // set the string directly from the buffer to avoid additional copy
+  value.SetString (buf->ptr, static_cast<rapidjson::SizeType> (str_length - 1), doc_allocator);
+  // update the buffer pointer
+  buf->ptr += str_length;
+
+  // still need to take care of the alignment
+  rc = or_align (buf, INT_ALIGNMENT);
+  if (rc != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_OVERFLOW, 0);
+      return rc;
+    }
+
+  return NO_ERROR;
+}
+
+static int
+db_json_unpack_int_to_value (OR_BUF *buf, JSON_VALUE &value)
+{
+  int rc = NO_ERROR;
+  int int_value;
+
+  // unpack int
+  int_value = or_get_int (buf, &rc);
+  if (rc != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_OVERFLOW, 0);
+      return rc;
+    }
+
+  value.SetInt (int_value);
+
+  return NO_ERROR;
+}
+
+static int
+db_json_unpack_double_to_value (OR_BUF *buf, JSON_VALUE &value)
+{
+  int rc = NO_ERROR;
+  double double_value;
+
+  // unpack double
+  double_value = or_get_double (buf, &rc);
+  if (rc != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_OVERFLOW, 0);
+      return rc;
+    }
+
+  value.SetDouble (double_value);
+
+  return NO_ERROR;
+}
+
+static int
+db_json_unpack_bool_to_value (OR_BUF *buf, JSON_VALUE &value)
+{
+  int rc = NO_ERROR;
+  int int_value;
+
+  int_value = or_get_int (buf, &rc); // it can be 0 or 1
+  if (rc != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_OVERFLOW, 0);
+      return rc;
+    }
+
+  assert (int_value == 0 || int_value == 1);
+
+  value.SetBool (int_value == 1 ? true : false);
+
+  return NO_ERROR;
+}
+
+static int
+db_json_unpack_object_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_PRIVATE_MEMPOOL &doc_allocator)
+{
+  int rc = NO_ERROR;
+  int size;
+
+  value.SetObject ();
+
+  // get the member count of the object
+  size = or_get_int (buf, &rc);
+  if (rc != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_OVERFLOW, 0);
+      return rc;
+    }
+
+  // for each key-value pair we need to deserialize the value
+  for (int i = 0; i < size; i++)
+    {
+      // get the key
+      JSON_VALUE key;
+      rc = db_json_unpack_string_to_value (buf, key, doc_allocator);
+      if (rc != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return rc;
+	}
+
+      // get the value
+      JSON_VALUE child;
+      rc = db_json_deserialize_doc_internal (buf, child, doc_allocator);
+      if (rc != NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_OVERFLOW, 0);
+	  return rc;
+	}
+
+      value.AddMember (key, child, doc_allocator);
+    }
+
+  return NO_ERROR;
+}
+
+static int
+db_json_unpack_array_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_PRIVATE_MEMPOOL &doc_allocator)
+{
+  int rc = NO_ERROR;
+  int size;
+
+  value.SetArray ();
+
+  // get the member count of the array
+  size = or_get_int (buf, &rc);
+  if (rc != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_OVERFLOW, 0);
+      return rc;
+    }
+
+  // for each member we need to deserialize it
+  for (int i = 0; i < size; i++)
+    {
+      JSON_VALUE child;
+      rc = db_json_deserialize_doc_internal (buf, child, doc_allocator);
+      if (rc != NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_OVERFLOW, 0);
+	  return rc;
+	}
+
+      value.PushBack (child, doc_allocator);
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * db_json_deserialize_doc_internal () - this is where the deserialization actually happens
+ *
+ * return             : error_code
+ * buf (in)           : the buffer which contains the json serialized
+ * doc_allocator (in) : the allocator used to create json "tree"
+ * value (in)         : the current value from the json document
+ */
+static int
+db_json_deserialize_doc_internal (OR_BUF *buf, JSON_VALUE &value, JSON_PRIVATE_MEMPOOL &doc_allocator)
+{
+  DB_JSON_TYPE json_type;
+  int rc = NO_ERROR;
+
+  // get the json scalar value
+  json_type = static_cast<DB_JSON_TYPE> (or_get_int (buf, &rc));
+  if (rc != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return rc;
+    }
+
+  switch (json_type)
+    {
+    case DB_JSON_INT:
+      rc = db_json_unpack_int_to_value (buf, value);
+      break;
+
+    case DB_JSON_DOUBLE:
+      rc = db_json_unpack_double_to_value (buf, value);
+      break;
+
+    case DB_JSON_STRING:
+      rc = db_json_unpack_string_to_value (buf, value, doc_allocator);
+      break;
+
+    case DB_JSON_BOOL:
+      rc = db_json_unpack_bool_to_value (buf, value);
+      break;
+
+    case DB_JSON_NULL:
+      value.SetNull ();
+      break;
+
+    case DB_JSON_OBJECT:
+      rc = db_json_unpack_object_to_value (buf, value, doc_allocator);
+      break;
+
+    case DB_JSON_ARRAY:
+      rc = db_json_unpack_array_to_value (buf, value, doc_allocator);
+      break;
+
+    default:
+      /* we shouldn't get here */
+      assert (false);
+      return ER_FAILED;
+    }
+
+  if (rc != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+    }
+
+  return rc;
+}
+
+/*
+ * db_json_deserialize () - deserialize a json reconstructing the object from a buffer
+ *
+ * return        : error code
+ * json_raw (in) : buffer of the json serialized
+ * doc (in)      : json document deserialized
+ */
+int
+db_json_deserialize (OR_BUF *buf, JSON_DOC *&doc)
+{
+  int error_code = NO_ERROR;
+
+  // create the document that we want to reconstruct
+  doc = db_json_allocate_doc ();
+
+  // the conversion from JSON_DOC to JSON_VALUE is needed because we want a refference to current node
+  // from json "tree" while iterating
+  error_code = db_json_deserialize_doc_internal (buf, db_json_doc_to_value (*doc), doc->GetAllocator ());
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      db_json_delete_doc (doc);
+    }
+
+  return error_code;
 }

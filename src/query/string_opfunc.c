@@ -3049,6 +3049,7 @@ db_json_object (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
   if (num_args % 2 != 0)
     {
       assert (false);		// should be caught earlier
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return ER_FAILED;
     }
 
@@ -3124,8 +3125,7 @@ db_json_object (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	}
     }
 
-  str = db_json_get_raw_json_body_from_document (new_doc);
-  db_make_json (result, str, new_doc, true);
+  db_make_json (result, new_doc, true);
 
   return NO_ERROR;
 }
@@ -3196,8 +3196,7 @@ db_json_array (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	}
     }
 
-  str = db_json_get_raw_json_body_from_document (new_doc);
-  db_make_json (result, str, new_doc, true);
+  db_make_json (result, new_doc, true);
 
   return NO_ERROR;
 }
@@ -3214,6 +3213,7 @@ db_json_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
   if (num_args < 3 || num_args % 2 == 0)
     {
       assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return ER_FAILED;
     }
 
@@ -3243,7 +3243,7 @@ db_json_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	case DB_TYPE_VARCHAR:
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARNCHAR:
-	  error_code = db_json_convert_string_and_call (db_get_string (arg[i + 1]),
+	  error_code = db_json_convert_string_and_call (db_get_string (arg[i + 1]), db_get_string_size (arg[i + 1]),
 							db_json_insert_func, *new_doc, db_get_string (arg[i]));
 	  break;
 
@@ -3269,8 +3269,7 @@ db_json_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	}
     }
 
-  str = db_json_get_raw_json_body_from_document (new_doc);
-  db_make_json (result, str, new_doc, true);
+  db_make_json (result, new_doc, true);
 
   return NO_ERROR;
 }
@@ -3280,13 +3279,13 @@ db_json_replace (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 {
   int i, error_code = NO_ERROR;
   JSON_DOC *new_doc = NULL;
-  char *str;
 
   db_make_null (result);
 
   if (num_args < 3 || num_args % 2 == 0)
     {
       assert_release (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return ER_FAILED;
     }
 
@@ -3316,7 +3315,7 @@ db_json_replace (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	case DB_TYPE_VARCHAR:
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARNCHAR:
-	  error_code = db_json_convert_string_and_call (db_get_string (arg[i + 1]),
+	  error_code = db_json_convert_string_and_call (db_get_string (arg[i + 1]), db_get_string_size (arg[i + 1]),
 							db_json_replace_func, *new_doc, db_get_string (arg[i]));
 	  break;
 
@@ -3341,8 +3340,7 @@ db_json_replace (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	}
     }
 
-  str = db_json_get_raw_json_body_from_document (new_doc);
-  db_make_json (result, str, new_doc, true);
+  db_make_json (result, new_doc, true);
 
   return NO_ERROR;
 }
@@ -3352,13 +3350,13 @@ db_json_set (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 {
   int i, error_code = NO_ERROR;
   JSON_DOC *new_doc = NULL;
-  char *str;
 
   db_make_null (result);
 
   if (num_args < 3 || num_args % 2 == 0)
     {
       assert_release (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return ER_FAILED;
     }
 
@@ -3388,7 +3386,7 @@ db_json_set (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	case DB_TYPE_VARCHAR:
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARNCHAR:
-	  error_code = db_json_convert_string_and_call (db_get_string (arg[i + 1]),
+	  error_code = db_json_convert_string_and_call (db_get_string (arg[i + 1]), db_get_string_size (arg[i + 1]),
 							db_json_set_func, *new_doc, db_get_string (arg[i]));
 	  break;
 
@@ -3413,8 +3411,7 @@ db_json_set (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	}
     }
 
-  str = db_json_get_raw_json_body_from_document (new_doc);
-  db_make_json (result, str, new_doc, true);
+  db_make_json (result, new_doc, true);
 
   return NO_ERROR;
 }
@@ -3433,6 +3430,7 @@ db_json_keys (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
   if (num_args > 2)
     {
       assert_release (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return ER_FAILED;
     }
 
@@ -3456,7 +3454,7 @@ db_json_keys (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
-      error_code = db_json_keys_func (db_get_string (arg[0]), result_json, path.c_str ());
+      error_code = db_json_keys_func (db_get_string (arg[0]), result_json, path.c_str (), db_get_string_size (arg[0]));
       break;
     case DB_TYPE_JSON:
       error_code = db_json_keys_func (*(db_get_json_document (arg[0])), result_json, path.c_str ());
@@ -3478,8 +3476,7 @@ db_json_keys (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
       return error_code;
     }
 
-  str = db_json_get_raw_json_body_from_document (result_json);
-  db_make_json (result, str, result_json, true);
+  db_make_json (result, result_json, true);
 
   return NO_ERROR;
 }
@@ -3489,13 +3486,13 @@ db_json_remove (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 {
   int i, error_code;
   JSON_DOC *new_doc = NULL;
-  char *str;
 
   db_make_null (result);
 
   if (num_args < 2)
     {
       assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return ER_FAILED;
     }
 
@@ -3528,8 +3525,7 @@ db_json_remove (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	}
     }
 
-  str = db_json_get_raw_json_body_from_document (new_doc);
-  db_make_json (result, str, new_doc, true);
+  db_make_json (result, new_doc, true);
 
   return NO_ERROR;
 }
@@ -3546,6 +3542,7 @@ db_json_array_append (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
   if (num_args < 3 || num_args % 2 == 0)
     {
       assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return ER_FAILED;
     }
 
@@ -3572,7 +3569,10 @@ db_json_array_append (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
       switch (DB_VALUE_DOMAIN_TYPE (arg[i + 1]))
 	{
 	case DB_TYPE_CHAR:
-	  error_code = db_json_convert_string_and_call (db_get_string (arg[i + 1]),
+	case DB_TYPE_VARCHAR:
+	case DB_TYPE_NCHAR:
+	case DB_TYPE_VARNCHAR:
+	  error_code = db_json_convert_string_and_call (db_get_string (arg[i + 1]), db_get_string_size (arg[i + 1]),
 							db_json_array_append_func, *new_doc, db_get_string (arg[i]));
 	  break;
 
@@ -3598,8 +3598,80 @@ db_json_array_append (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	}
     }
 
-  str = db_json_get_raw_json_body_from_document (new_doc);
-  db_make_json (result, str, new_doc, true);
+  db_make_json (result, new_doc, true);
+
+  return NO_ERROR;
+}
+
+int
+db_json_array_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
+{
+  int i, error_code = NO_ERROR;
+  JSON_DOC *new_doc = NULL;
+  char *str = NULL;
+
+  db_make_null (result);
+
+  if (num_args < 3 || num_args % 2 == 0)
+    {
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_FAILED;
+    }
+
+  if (DB_IS_NULL (arg[0]))
+    {
+      return NO_ERROR;
+    }
+
+  error_code = db_value_to_json_doc (*arg[0], new_doc);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  for (i = 1; i < num_args; i += 2)
+    {
+      if (DB_IS_NULL (arg[i]) || DB_IS_NULL (arg[i + 1]))
+	{
+	  db_json_delete_doc (new_doc);
+	  return db_make_null (result);
+	}
+
+      switch (DB_VALUE_DOMAIN_TYPE (arg[i + 1]))
+	{
+	case DB_TYPE_CHAR:
+	case DB_TYPE_VARCHAR:
+	case DB_TYPE_NCHAR:
+	case DB_TYPE_VARNCHAR:
+	  error_code = db_json_convert_string_and_call (db_get_string (arg[i + 1]), db_get_string_size (arg[i + 1]),
+							db_json_array_insert_func, *new_doc, db_get_string (arg[i]));
+	  break;
+
+	case DB_TYPE_JSON:
+	  error_code = db_json_array_insert_func (arg[i + 1]->data.json.document, *new_doc, db_get_string (arg[i]));
+	  break;
+
+	case DB_TYPE_NULL:
+	  db_json_delete_doc (new_doc);
+	  return db_make_null (result);
+
+	default:
+	  db_json_delete_doc (new_doc);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
+	  return ER_QSTR_INVALID_DATA_TYPE;
+	}
+
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  db_json_delete_doc (new_doc);
+	  return error_code;
+	}
+    }
+
+  db_make_json (result, new_doc, true);
 
   return NO_ERROR;
 }
@@ -3617,7 +3689,6 @@ int
 db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 {
   int i;
-  char *str;
   int error_code;
   JSON_DOC *accumulator = NULL;
 
@@ -3645,7 +3716,8 @@ db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	case DB_TYPE_VARCHAR:
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARNCHAR:
-	  error_code = db_json_convert_string_and_call (db_get_string (arg[i]), db_json_merge_func, accumulator);
+	  error_code = db_json_convert_string_and_call (db_get_string (arg[i]), db_get_string_size (arg[i]),
+							db_json_merge_func, accumulator);
 	  break;
 
 	case DB_TYPE_NULL:
@@ -3666,8 +3738,7 @@ db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	}
     }
 
-  str = db_json_get_raw_json_body_from_document (accumulator);
-  db_make_json (result, str, accumulator, true);
+  db_make_json (result, accumulator, true);
 
   return NO_ERROR;
 }
@@ -3678,13 +3749,13 @@ db_json_get_all_paths (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
   int error_code = NO_ERROR;
   JSON_DOC *new_doc = NULL;
   JSON_DOC *result_json = NULL;
-  char *str = NULL;
 
   db_make_null (result);
 
   if (num_args != 1)
     {
       assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return ER_FAILED;
     }
 
@@ -3703,8 +3774,7 @@ db_json_get_all_paths (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
   result_json = db_json_allocate_doc ();
   error_code = db_json_get_all_paths_func (*new_doc, result_json);
 
-  str = db_json_get_raw_json_body_from_document (result_json);
-  db_make_json (result, str, result_json, true);
+  db_make_json (result, result_json, true);
 
   // delete new_doc
   db_json_delete_doc (new_doc);
@@ -6392,7 +6462,7 @@ db_find_string_in_in_set (const DB_VALUE * needle, const DB_VALUE * stack, DB_VA
   const char *stack_str = NULL;
   const char *needle_str = NULL;
   int cmp, coll_id, matched_stack_size;
-  const char *stack_ptr, *elem_start;
+  const char *stack_ptr, *stack_end, *elem_start;
 
   if (DB_IS_NULL (needle) || DB_IS_NULL (stack))
     {
@@ -6434,6 +6504,7 @@ db_find_string_in_in_set (const DB_VALUE * needle, const DB_VALUE * stack, DB_VA
 
   stack_str = db_get_string (stack);
   stack_size = db_get_string_size (stack);
+
   needle_str = db_get_string (needle);
   needle_size = db_get_string_size (needle);
 
@@ -6443,14 +6514,10 @@ db_find_string_in_in_set (const DB_VALUE * needle, const DB_VALUE * stack, DB_VA
       goto match_not_found;
     }
 
-  elem_start = stack_ptr = stack_str;
-
-  for (;;)
+  for (elem_start = stack_ptr = stack_str, stack_end = stack_str + stack_size; stack_ptr <= stack_end; ++stack_ptr)
     {
-      if (*stack_ptr == ',' || stack_ptr >= stack_str + stack_size)
+      if (stack_ptr == stack_end || *stack_ptr == ',')
 	{
-	  assert (stack_ptr <= stack_str + stack_size);
-
 	  if (stack_ptr == elem_start)
 	    {
 	      if (needle_size == 0)
@@ -6465,9 +6532,8 @@ db_find_string_in_in_set (const DB_VALUE * needle, const DB_VALUE * stack, DB_VA
 	      /* check using collation */
 	      if (needle_size > 0)
 		{
-		  cmp =
-		    QSTR_MATCH (coll_id, (const unsigned char *) elem_start, CAST_BUFLEN (stack_ptr - elem_start),
-				(const unsigned char *) needle_str, needle_size, NULL, false, &matched_stack_size);
+		  cmp = QSTR_MATCH (coll_id, (const unsigned char *) elem_start, CAST_BUFLEN (stack_ptr - elem_start),
+				    (const unsigned char *) needle_str, needle_size, NULL, false, &matched_stack_size);
 		  if (cmp == 0 && matched_stack_size == CAST_BUFLEN (stack_ptr - elem_start))
 		    {
 		      db_make_int (result, position);
@@ -6476,17 +6542,8 @@ db_find_string_in_in_set (const DB_VALUE * needle, const DB_VALUE * stack, DB_VA
 		}
 	    }
 
-	  if (stack_ptr >= stack_str + stack_size)
-	    {
-	      break;
-	    }
-
 	  position++;
-	  elem_start = ++stack_ptr;
-	}
-      else
-	{
-	  stack_ptr++;
+	  elem_start = stack_ptr + 1;
 	}
     }
 
@@ -6765,30 +6822,6 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result, c
       result_type = DB_TYPE_TIME;
       break;
 
-    case DB_TYPE_TIMELTZ:
-      error = tz_timeltz_to_local (db_get_time (left), &ltime);
-      if (error != NO_ERROR)
-	{
-	  goto error_return;
-	}
-      left_is_datetime = false;
-      result_type = DB_TYPE_TIMELTZ;
-      break;
-
-    case DB_TYPE_TIMETZ:
-      {
-	DB_TIMETZ *time_tz_p = db_get_timetz (left);
-	error = tz_utc_timetz_to_local (&time_tz_p->time, &time_tz_p->tz_id, &ltime);
-	if (error != NO_ERROR)
-	  {
-	    goto error_return;
-	  }
-	left_is_datetime = false;
-	tz_id = time_tz_p->tz_id;
-	result_type = DB_TYPE_TIMETZ;
-	break;
-      }
-
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
       error = ER_QSTR_INVALID_DATA_TYPE;
@@ -6927,51 +6960,6 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result, c
 	}
       db_make_time (result, rhour, rminute, rsecond);
       break;
-
-    case DB_TYPE_TIMELTZ:
-      {
-	DB_TIMETZ time_tz;
-	DB_TIME time_res;
-	if (left_is_datetime)
-	  {
-	    /* the result type can be DATETIME only if the first argument is a TIME */
-	    assert (false);
-	    db_make_null (result);
-	  }
-
-	(void) db_time_encode (&time_res, rhour, rminute, rsecond);
-	error = tz_create_timetz_from_ses (&time_res, &time_tz);
-	if (error != NO_ERROR)
-	  {
-	    goto error_return;
-	  }
-	db_make_timeltz (result, &time_tz.time);
-	break;
-      }
-
-    case DB_TYPE_TIMETZ:
-      {
-	DB_TIMETZ time_tz;
-	DB_TIME time_res;
-	TZ_REGION tz_region;
-
-	if (left_is_datetime)
-	  {
-	    /* the result type can be DATETIME only if the first argument is a TIME */
-	    assert (false);
-	    db_make_null (result);
-	  }
-
-	(void) db_time_encode (&time_res, rhour, rminute, rsecond);
-	tz_id_to_region (&tz_id, &tz_region);
-	error = tz_create_timetz (&time_res, NULL, 0, &tz_region, &time_tz, NULL);
-	if (error != NO_ERROR)
-	  {
-	    goto error_return;
-	  }
-	db_make_timetz (result, &time_tz);
-	break;
-      }
 
     case DB_TYPE_VARCHAR:
       codeset = TP_DOMAIN_CODESET (domain);
@@ -11755,58 +11743,6 @@ db_time_format (const DB_VALUE * src_value, const DB_VALUE * format, const DB_VA
       }
       break;
 
-    case DB_TYPE_TIMETZ:
-      {
-	DB_TIMETZ *time_tz;
-	DB_TIME time_local;
-
-	time_tz = db_get_timetz (time_value);
-
-	error_status = tz_utc_timetz_to_local (&time_tz->time, &time_tz->tz_id, &time_local);
-	if (error_status != NO_ERROR)
-	  {
-	    goto error;
-	  }
-
-	db_time_decode (&time_local, &h, &mi, &s);
-	error_status = tz_explain_tz_id (&time_tz->tz_id, tzr, TZR_SIZE + 1, tzd, TZ_DS_STRING_SIZE + 1, &tzh, &tzm);
-	if (error_status != NO_ERROR)
-	  {
-	    goto error;
-	  }
-	is_valid_tz = true;
-      }
-      break;
-
-    case DB_TYPE_TIMELTZ:
-      {
-	TZ_ID tz_id;
-	DB_TIME time_local;
-
-	t_p = db_get_time (time_value);
-
-	error_status = tz_create_session_tzid_for_time (t_p, true, &tz_id);
-	if (error_status != NO_ERROR)
-	  {
-	    goto error;
-	  }
-
-	error_status = tz_utc_timetz_to_local (t_p, &tz_id, &time_local);
-	if (error_status != NO_ERROR)
-	  {
-	    goto error;
-	  }
-
-	db_time_decode (&time_local, &h, &mi, &s);
-	error_status = tz_explain_tz_id (&tz_id, tzr, TZR_SIZE + 1, tzd, TZ_DS_STRING_SIZE + 1, &tzh, &tzm);
-	if (error_status != NO_ERROR)
-	  {
-	    goto error;
-	  }
-	is_valid_tz = true;
-      }
-      break;
-
     case DB_TYPE_STRING:
     case DB_TYPE_VARNCHAR:
     case DB_TYPE_CHAR:
@@ -11814,7 +11750,6 @@ db_time_format (const DB_VALUE * src_value, const DB_VALUE * format, const DB_VA
       {
 	DB_VALUE tm;
 	TP_DOMAIN *tp_time = db_type_to_db_domain (DB_TYPE_TIME);
-	TP_DOMAIN *tp_timetz = db_type_to_db_domain (DB_TYPE_TIMETZ);
 	bool is_time = false;
 
 	if (tp_value_cast (time_value, &tm, tp_time, false) == DOMAIN_COMPATIBLE)
@@ -11823,28 +11758,7 @@ db_time_format (const DB_VALUE * src_value, const DB_VALUE * format, const DB_VA
 	    is_time = true;
 	  }
 
-	if (tp_value_cast (time_value, &tm, tp_timetz, false) == DOMAIN_COMPATIBLE)
-	  {
-	    DB_TIMETZ time_tz;
-	    DB_TIME time_local;
-
-	    time_tz = *db_get_timetz (&tm);
-	    if (tz_explain_tz_id (&time_tz.tz_id, tzr, TZR_SIZE + 1, tzd, TZ_DS_STRING_SIZE + 1, &tzh, &tzm) ==
-		NO_ERROR)
-	      {
-		is_valid_tz = true;
-	      }
-	    if (is_time == false)
-	      {
-		error_status = tz_utc_timetz_to_local (&time_tz.time, &time_tz.tz_id, &time_local);
-		if (error_status != NO_ERROR)
-		  {
-		    goto error;
-		  }
-		db_time_decode (&time_local, &h, &mi, &s);
-	      }
-	  }
-	else if (is_time == false)
+	if (is_time == false)
 	  {
 	    error_status = ER_QSTR_INVALID_DATA_TYPE;
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
@@ -13712,7 +13626,7 @@ db_to_time (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALU
   assert (src_str != (DB_VALUE *) NULL);
   assert (result_time != (DB_VALUE *) NULL);
   assert (date_lang != (DB_VALUE *) NULL);
-  assert (type == DB_TYPE_TIME || type == DB_TYPE_TIMETZ);
+  assert (type == DB_TYPE_TIME);
 
   if (DB_IS_NULL (src_str))
     {
@@ -13772,28 +13686,15 @@ db_to_time (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALU
   if (no_user_format)
     {
       DB_TIME time_tmp;
-      DB_TIMETZ timetz_tmp;
       const char *default_format_str;
 
       /* try default CUBRID format first */
-      if (type == DB_TYPE_TIME)
-	{
-	  if (NO_ERROR == db_string_to_time_ex ((const char *) cs, CAST_BUFLEN (last_src - cs), &time_tmp))
-	    {
-	      db_value_put_encoded_time (result_time, &time_tmp);
-	      goto exit;
-	    }
-	}
-      else
-	{
-	  bool has_zone;
+      assert (type == DB_TYPE_TIME);
 
-	  if (db_string_to_timetz_ex ((const char *) cs, CAST_BUFLEN (last_src - cs), false, &timetz_tmp, &has_zone)
-	      == NO_ERROR)
-	    {
-	      db_make_timetz (result_time, &timetz_tmp);
-	      goto exit;
-	    }
+      if (NO_ERROR == db_string_to_time_ex ((const char *) cs, CAST_BUFLEN (last_src - cs), &time_tmp))
+	{
+	  db_value_put_encoded_time (result_time, &time_tmp);
+	  goto exit;
 	}
 
       /* error parsing CUBRID default format, try the locale format, if any */
@@ -14227,46 +14128,7 @@ db_to_time (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VALU
       goto exit;
     }
 
-  if (type == DB_TYPE_TIME)
-    {
-      db_make_time (result_time, hour, minute, second);
-    }
-  else
-    {
-      DB_TIMETZ db_timetz;
-      DB_TIME db_time;
-
-      db_time_encode (&db_time, hour, minute, second);
-      if (set_tzh == true || set_tzm == true)
-	{
-	  error_status = tz_create_timetz_from_offset (&db_time, tzh, tzm, &db_timetz);
-	  if (error_status != NO_ERROR)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-	      goto exit;
-	    }
-	}
-      else
-	{
-	  TZ_REGION session_tz_region;
-	  const char *dst = NULL;
-
-	  tz_get_session_tz_region (&session_tz_region);
-	  if (len_tzd > 0)
-	    {
-	      assert (start_tzd >= 0);
-	      dst = initial_buf_str + start_tzd;
-	    }
-	  error_status =
-	    tz_create_timetz_from_zoneid_and_tzd (&db_time, &session_tz_region, zone_id, dst, len_tzd, &db_timetz);
-	  if (error_status != NO_ERROR)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-	      goto exit;
-	    }
-	}
-      db_make_timetz (result_time, &db_timetz);
-    }
+  db_make_time (result_time, hour, minute, second);
 
 exit:
   if (do_free_buf_str)
@@ -16787,32 +16649,6 @@ date_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const DB_
 	  result_len = retval;
 	  break;
 
-	case DB_TYPE_TIMETZ:
-	  {
-	    DB_TIMETZ tm_tz;
-	    result_buf = (char *) db_private_alloc (NULL, TIMETZ_BUF_SIZE);
-	    if (result_buf == NULL)
-	      {
-		error_status = ER_OUT_OF_VIRTUAL_MEMORY;
-		return error_status;
-	      }
-	    tm_tz = *db_get_timetz (src_value);
-	    retval = db_timetz_to_string (result_buf, TIMETZ_BUF_SIZE, &tm_tz.time, &tm_tz.tz_id);
-	    result_len = retval;
-	  }
-	  break;
-
-	case DB_TYPE_TIMELTZ:
-	  result_buf = (char *) db_private_alloc (NULL, TIMETZ_BUF_SIZE);
-	  if (result_buf == NULL)
-	    {
-	      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
-	      return error_status;
-	    }
-	  retval = db_timeltz_to_string (result_buf, TIMETZ_BUF_SIZE, db_get_time (src_value));
-	  result_len = retval;
-	  break;
-
 	case DB_TYPE_TIMESTAMPTZ:
 	  {
 	    DB_TIMESTAMPTZ tsmp_tz;
@@ -17025,40 +16861,6 @@ date_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const DB_
 		goto exit;
 	      }
 	    db_datetime_decode (&dt_local, &month, &day, &year, &hour, &minute, &second, &millisecond);
-	  }
-	  break;
-	case DB_TYPE_TIMETZ:
-	  {
-	    DB_TIMETZ tm_tz;
-	    DB_TIME tm_local;
-
-	    tm_tz = *db_get_timetz (src_value);
-	    tz_id = tm_tz.tz_id;
-	    error_status = tz_utc_timetz_to_local (&tm_tz.time, &tm_tz.tz_id, &tm_local);
-	    if (error_status != NO_ERROR)
-	      {
-		goto exit;
-	      }
-	    db_time_decode (&tm_local, &hour, &minute, &second);
-	  }
-	  break;
-	case DB_TYPE_TIMELTZ:
-	  {
-	    DB_TIME *tm, tm_local;
-
-	    tm = db_get_time (src_value);
-	    error_status = tz_create_session_tzid_for_time (tm, true, &tz_id);
-
-	    if (error_status != NO_ERROR)
-	      {
-		goto exit;
-	      }
-	    error_status = tz_utc_timetz_to_local (tm, &tz_id, &tm_local);
-	    if (error_status != NO_ERROR)
-	      {
-		goto exit;
-	      }
-	    db_time_decode (&tm_local, &hour, &minute, &second);
 	  }
 	  break;
 	case DB_TYPE_TIMESTAMPTZ:
@@ -19524,7 +19326,7 @@ get_next_format (char *sp, const INTL_CODESET codeset, DB_TYPE str_type, int *fo
   switch (char_tolower (*sp))
     {
     case 'y':
-      if (str_type == DB_TYPE_TIME || str_type == DB_TYPE_TIMETZ)
+      if (str_type == DB_TYPE_TIME)
 	{
 	  return DT_INVALID;
 	}
@@ -19547,7 +19349,7 @@ get_next_format (char *sp, const INTL_CODESET codeset, DB_TYPE str_type, int *fo
 	}
 
     case 'd':
-      if (str_type == DB_TYPE_TIME || str_type == DB_TYPE_TIMETZ)
+      if (str_type == DB_TYPE_TIME)
 	{
 	  return DT_INVALID;
 	}
@@ -19578,7 +19380,7 @@ get_next_format (char *sp, const INTL_CODESET codeset, DB_TYPE str_type, int *fo
 	}
 
     case 'c':
-      if (str_type == DB_TYPE_TIME || str_type == DB_TYPE_TIMETZ)
+      if (str_type == DB_TYPE_TIME)
 	{
 	  return DT_INVALID;
 	}
@@ -19595,7 +19397,7 @@ get_next_format (char *sp, const INTL_CODESET codeset, DB_TYPE str_type, int *fo
 	}
 
     case 'q':
-      if (str_type == DB_TYPE_TIME || str_type == DB_TYPE_TIMETZ)
+      if (str_type == DB_TYPE_TIME)
 	{
 	  return DT_INVALID;
 	}
@@ -19605,19 +19407,19 @@ get_next_format (char *sp, const INTL_CODESET codeset, DB_TYPE str_type, int *fo
       return DT_Q;
 
     case 'm':
-      if (str_type != DB_TYPE_TIME && str_type != DB_TYPE_TIMETZ && strncasecmp (sp, "mm", 2) == 0)
+      if (str_type != DB_TYPE_TIME && strncasecmp (sp, "mm", 2) == 0)
 	{
 	  *format_length += 2;
 	  *next_pos = sp + *format_length;
 	  return DT_MM;
 	}
-      else if (str_type != DB_TYPE_TIME && str_type != DB_TYPE_TIMETZ && strncasecmp (sp, "month", 5) == 0)
+      else if (str_type != DB_TYPE_TIME && strncasecmp (sp, "month", 5) == 0)
 	{
 	  *format_length += 5;
 	  *next_pos = sp + *format_length;
 	  return DT_MONTH;
 	}
-      else if (str_type != DB_TYPE_TIME && str_type != DB_TYPE_TIMETZ && strncasecmp (sp, "mon", 3) == 0)
+      else if (str_type != DB_TYPE_TIME && strncasecmp (sp, "mon", 3) == 0)
 	{
 	  *format_length += 3;
 	  *next_pos = sp + *format_length;
@@ -20655,8 +20457,6 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const D
       }
 
     case DB_TYPE_TIME:
-    case DB_TYPE_TIMELTZ:
-    case DB_TYPE_TIMETZ:
       /* should not reach here */
       assert (0);
       break;
@@ -21668,8 +21468,6 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
       }
 
     case DB_TYPE_TIME:
-    case DB_TYPE_TIMELTZ:
-    case DB_TYPE_TIMETZ:
       /* should not reach here */
       assert (0);
       break;
@@ -22903,10 +22701,6 @@ db_str_to_date (const DB_VALUE * str, const DB_VALUE * format, const DB_VALUE * 
 	{
 	  res_type = DB_TYPE_DATETIME;
 	}
-      else if (type == TIMETZ_SPECIFIER)
-	{
-	  res_type = DB_TYPE_TIMETZ;
-	}
       else if (type == DATETIMETZ_SPECIFIER)
 	{
 	  res_type = DB_TYPE_DATETIMETZ;
@@ -23698,8 +23492,7 @@ db_str_to_date (const DB_VALUE * str, const DB_VALUE * format, const DB_VALUE * 
 	}
     }
 
-  if (res_type == DB_TYPE_TIME || res_type == DB_TYPE_DATETIME || res_type == DB_TYPE_DATETIMETZ
-      || res_type == DB_TYPE_TIMETZ)
+  if (res_type == DB_TYPE_TIME || res_type == DB_TYPE_DATETIME || res_type == DB_TYPE_DATETIMETZ)
     {
       if ((am != -1 && h > 12) || (am == -1 && h > 23))
 	{
@@ -23847,8 +23640,7 @@ write_results:
 	}
     }
 
-  if (res_type == DB_TYPE_TIME || res_type == DB_TYPE_DATETIME || res_type == DB_TYPE_DATETIMETZ
-      || res_type == DB_TYPE_TIMETZ)
+  if (res_type == DB_TYPE_TIME || res_type == DB_TYPE_DATETIME || res_type == DB_TYPE_DATETIMETZ)
     {
       if (h < 0 || mi < 0 || s < 0)
 	{
@@ -23872,32 +23664,16 @@ write_results:
 
       db_make_datetime (result, &db_datetime);
     }
-  else if (res_type == DB_TYPE_DATETIMETZ || res_type == DB_TYPE_TIMETZ)
+  else if (res_type == DB_TYPE_DATETIMETZ)
     {
       DB_DATETIME db_datetime;
       DB_DATETIMETZ db_datetimetz;
-      DB_TIME db_time;
-      DB_TIMETZ db_timetz;
 
-      if (res_type == DB_TYPE_DATETIMETZ)
-	{
-	  db_datetime_encode (&db_datetime, m, d, y, h, mi, s, ms);
-	}
-      else
-	{
-	  db_time_encode (&db_time, h, mi, s);
-	}
+      db_datetime_encode (&db_datetime, m, d, y, h, mi, s, ms);
 
       if (set_tzh == true || set_tzm == true)
 	{
-	  if (res_type == DB_TYPE_DATETIMETZ)
-	    {
-	      error_status = tz_create_datetimetz_from_offset (&db_datetime, tzh, tzm, &db_datetimetz);
-	    }
-	  else
-	    {
-	      error_status = tz_create_timetz_from_offset (&db_time, tzh, tzm, &db_timetz);
-	    }
+	  error_status = tz_create_datetimetz_from_offset (&db_datetime, tzh, tzm, &db_datetimetz);
 	  if (error_status != NO_ERROR)
 	    {
 	      goto conversion_error;
@@ -23914,31 +23690,15 @@ write_results:
 	      dst = sstr + start_tzd;
 	    }
 	  tz_get_session_tz_region (&session_tz_region);
-	  if (res_type == DB_TYPE_DATETIMETZ)
-	    {
-	      error_status =
-		tz_create_datetimetz_from_zoneid_and_tzd (&db_datetime, &session_tz_region, zone_id, dst, len_tzd,
-							  false, &db_datetimetz);
-	    }
-	  else
-	    {
-	      error_status =
-		tz_create_timetz_from_zoneid_and_tzd (&db_time, &session_tz_region, zone_id, dst, len_tzd, &db_timetz);
-	    }
-
+	  error_status = tz_create_datetimetz_from_zoneid_and_tzd (&db_datetime, &session_tz_region, zone_id, dst,
+								   len_tzd, false, &db_datetimetz);
 	  if (error_status != NO_ERROR)
 	    {
 	      goto conversion_error;
 	    }
 	}
-      if (res_type == DB_TYPE_DATETIMETZ)
-	{
-	  db_make_datetimetz (result, &db_datetimetz);
-	}
-      else
-	{
-	  db_make_timetz (result, &db_timetz);
-	}
+
+      db_make_datetimetz (result, &db_datetimetz);
     }
 
 error:
@@ -25325,37 +25085,10 @@ db_get_time_from_dbvalue (const DB_VALUE * src_date, int *hour, int *minute, int
       }
 
     case DB_TYPE_TIME:
-    case DB_TYPE_TIMELTZ:
-    case DB_TYPE_TIMETZ:
       {
 	DB_TIME *time_p;
-	DB_TIME time_local;
-	DB_TIMETZ *time_tz_p;
 
-	if (arg_type == DB_TYPE_TIMELTZ)
-	  {
-	    time_p = db_get_time (src_date);
-	    if (tz_timeltz_to_local (time_p, &time_local) != NO_ERROR)
-	      {
-		er_clear ();
-		return ER_FAILED;
-	      }
-	    time_p = &time_local;
-	  }
-	else if (arg_type == DB_TYPE_TIMETZ)
-	  {
-	    time_tz_p = db_get_timetz (src_date);
-	    if (tz_utc_timetz_to_local (&time_tz_p->time, &time_tz_p->tz_id, &time_local) != NO_ERROR)
-	      {
-		er_clear ();
-		return ER_FAILED;
-	      }
-	    time_p = &time_local;
-	  }
-	else
-	  {
-	    time_p = db_get_time (src_date);
-	  }
+	time_p = db_get_time (src_date);
 
 	db_time_decode (time_p, hour, minute, second);
 	return NO_ERROR;
@@ -28200,10 +27933,9 @@ db_string_extract_dbval (const MISC_OPERAND extr_operand, DB_VALUE * dbval_p, DB
 {
   DB_TYPE dbval_type;
   DB_DATE date;
-  DB_TIME time, *time_p;
+  DB_TIME time;
   DB_UTIME *utime;
   DB_DATETIME datetime, *datetime_p;
-  DB_TIMETZ *time_tz_p;
   DB_TIMESTAMPTZ *ts_tz_p;
   DB_DATETIMETZ *dt_tz_p;
   int extvar[NUM_MISC_OPERANDS];
@@ -28219,27 +27951,6 @@ db_string_extract_dbval (const MISC_OPERAND extr_operand, DB_VALUE * dbval_p, DB
     {
     case DB_TYPE_TIME:
       time = *db_get_time (dbval_p);
-      db_time_decode (&time, &extvar[HOUR], &extvar[MINUTE], &extvar[SECOND]);
-      break;
-
-    case DB_TYPE_TIMELTZ:
-      time_p = db_get_time (dbval_p);
-      err = tz_timeltz_to_local (time_p, &time);
-      if (err != NO_ERROR)
-	{
-	  break;
-	}
-
-      db_time_decode (&time, &extvar[HOUR], &extvar[MINUTE], &extvar[SECOND]);
-      break;
-
-    case DB_TYPE_TIMETZ:
-      time_tz_p = db_get_timetz (dbval_p);
-      err = tz_utc_timetz_to_local (&time_tz_p->time, &time_tz_p->tz_id, &time);
-      if (err != NO_ERROR)
-	{
-	  break;
-	}
       db_time_decode (&time, &extvar[HOUR], &extvar[MINUTE], &extvar[SECOND]);
       break;
 
@@ -28771,7 +28482,7 @@ db_value_to_json_doc (const DB_VALUE & value, REFPTR (JSON_DOC, json))
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
-      error_code = db_json_get_json_from_str (db_get_string (&value), json);
+      error_code = db_json_get_json_from_str (db_get_string (&value), json, db_get_string_size (&value));
       if (error_code != NO_ERROR)
 	{
 	  assert (json == NULL);

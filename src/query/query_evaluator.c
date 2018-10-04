@@ -38,8 +38,8 @@
 #include "xasl.h"
 #include "dbtype.h"
 #include "query_executor.h"
-#include "thread.h"
 #include "dbtype.h"
+#include "thread_entry.hpp"
 
 #define UNKNOWN_CARD   -2	/* Unknown cardinality of a set member */
 
@@ -2537,6 +2537,8 @@ eval_pred_rlike7 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID *
 PR_EVAL_FNC
 eval_fnc (THREAD_ENTRY * thread_p, PRED_EXPR * pr, DB_TYPE * single_node_type)
 {
+  // todo - thread_p is never used
+
   COMP_EVAL_TERM *et_comp;
   ALSM_EVAL_TERM *et_alsm;
 

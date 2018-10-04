@@ -48,7 +48,6 @@
 #include "lock_free.h"
 #include "object_primitive.h"
 #include "dbtype.h"
-#include "thread.h"
 #include "thread_daemon.hpp"
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
@@ -126,6 +125,7 @@ struct session_state
 
   bool is_trigger_involved;
   bool is_last_insert_id_generated;
+  bool auto_commit;
   DB_VALUE cur_insert_id;
   DB_VALUE last_insert_id;
   int row_count;
@@ -175,7 +175,7 @@ static LF_ENTRY_DESCRIPTOR session_state_Descriptor = {
 /* the active sessions storage */
 static ACTIVE_SESSIONS sessions = { LF_HASH_TABLE_INITIALIZER, LF_FREELIST_INITIALIZER, 0, 0 };
 
-static int session_remove_expired_sessions ();
+static int session_remove_expired_sessions (THREAD_ENTRY * thread_p);
 
 static int session_check_timeout (SESSION_STATE * session_p, SESSION_INFO * active_sessions, bool * remove);
 
@@ -280,6 +280,7 @@ session_state_init (void *st)
   session_p->ref_count = 0;
   session_p->trace_format = QUERY_TRACE_TEXT;
   session_p->private_lru_index = -1;
+  session_p->auto_commit = false;
 
   return NO_ERROR;
 }
@@ -512,7 +513,7 @@ class session_control_daemon_task : public cubthread::entry_task
 	  return;
 	}
 
-      session_remove_expired_sessions ();
+      session_remove_expired_sessions (&thread_ref);
     }
 };
 #endif /* SERVER_MODE */
@@ -530,7 +531,7 @@ session_control_daemon_init ()
   session_control_daemon_task *daemon_task = new session_control_daemon_task ();
 
   // create session control daemon thread
-  session_Control_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task);
+  session_Control_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "session_control");
 }
 #endif /* SERVER_MODE */
 
@@ -906,10 +907,10 @@ session_check_session (THREAD_ENTRY * thread_p, const SESSION_ID id)
  *   return      : NO_ERROR or error code
  */
 static int
-session_remove_expired_sessions ()
+session_remove_expired_sessions (THREAD_ENTRY * thread_p)
 {
 #define EXPIRED_SESSION_BUFFER_SIZE 1024
-  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (NULL, THREAD_TS_SESSIONS);
+  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_SESSIONS);
   LF_HASH_TABLE_ITERATOR it;
   SESSION_STATE *state = NULL;
   int err = NO_ERROR, success = 0;
@@ -943,6 +944,7 @@ session_remove_expired_sessions ()
 	  if (session_check_timeout (state, &active_sessions, &is_expired) != NO_ERROR)
 	    {
 	      pthread_mutex_unlock (&state->mutex);
+	      lf_tran_end_with_mb (t_entry);
 	      err = ER_FAILED;
 	      goto exit_on_end;
 	    }
@@ -1381,7 +1383,7 @@ session_get_session_id (THREAD_ENTRY * thread_p, SESSION_ID * id)
   assert (id != NULL);
 
 #if !defined(SERVER_MODE)
-  *id = thread_get_current_session_id ();
+  *id = db_Session_id;
 
   return NO_ERROR;
 #else
@@ -2287,6 +2289,8 @@ session_dump_session (SESSION_STATE * session)
 
   fprintf (stdout, "\tROW_COUNT = %d\n", session->row_count);
 
+  fprintf (stdout, "\tAUTO_COMMIT = %d\n", session->auto_commit);
+
   fprintf (stdout, "\tSESSION VARIABLES\n");
   vcurent = session->session_variables;
   while (vcurent != NULL)
@@ -3129,4 +3133,27 @@ int
 session_get_private_lru_idx (const void *session_p)
 {
   return ((SESSION_STATE *) session_p)->private_lru_index;
+}
+
+/*
+ * session_set_tran_auto_commit () - set transaction auto commit state
+ *
+ *   return  : NO_ERROR or error code
+ *   thread_p(in)     : thread
+ *   auto_commit(in)  : auto commit
+ */
+int
+session_set_tran_auto_commit (THREAD_ENTRY * thread_p, bool auto_commit)
+{
+  SESSION_STATE *state_p = NULL;
+
+  state_p = session_get_session_state (thread_p);
+  if (state_p == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  state_p->auto_commit = auto_commit;
+
+  return NO_ERROR;
 }

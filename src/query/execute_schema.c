@@ -146,6 +146,7 @@ enum
   P_NAME = 0,			/* name of attribute */
   P_NOT_NULL,			/* constraint NOT NULL */
   P_DEFAULT_VALUE,		/* DEFAULT VALUE of attribute */
+  P_ON_UPDATE_EXPR,		/* ON UPADTE default of attribute */
   P_CONSTR_CHECK,		/* constraint CHECK */
   P_DEFFERABLE,			/* DEFFERABLE */
   P_ORDER,			/* ORDERING definition */
@@ -235,7 +236,7 @@ static int create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *con
 					PT_NODE * column_names, PT_NODE * column_prefix_length,
 					PT_NODE * filter_predicate, int func_index_pos, int func_index_args_count,
 					PT_NODE * function_expr, PT_NODE * comment, DB_OBJECT * const obj,
-					DO_INDEX do_index);
+					SM_INDEX_STATUS index_status, DO_INDEX do_index);
 static int update_locksets_for_multiple_rename (const char *class_name, int *num_mops, MOP * mop_set, int *num_names,
 						char **name_set, bool error_on_misssing_class);
 static int acquire_locks_for_multiple_rename (const PT_NODE * statement);
@@ -284,6 +285,8 @@ static void reset_att_property_structure (SM_ATTR_PROP_CHG * attr_chg_properties
 static bool is_att_prop_set (const int prop, const int value);
 
 static int get_att_order_from_def (PT_NODE * attribute, bool * ord_first, const char **ord_after_name);
+
+static int check_default_on_update_clause (PARSER_CONTEXT * parser, PT_NODE * attribute);
 
 static int get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE ** default_value,
 				     const char *classname);
@@ -369,6 +372,8 @@ static SM_PARTITION *pt_node_to_partition_info (PARSER_CONTEXT * parser, PT_NODE
 static int do_save_all_indexes (MOP classmop, SM_CONSTRAINT_INFO ** saved_index_info_listpp);
 static int do_drop_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_save_info);
 static int do_recreate_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_save_info);
+
+static int do_alter_index_status (PARSER_CONTEXT * parser, const PT_NODE * statement);
 
 /*
  * Function Group :
@@ -1525,7 +1530,8 @@ do_alter_clause_drop_index (PARSER_CONTEXT * const parser, PT_NODE * const alter
 
   error_code =
     create_or_drop_index_helper (parser, alter->info.alter.constraint_list->info.name.original, (const bool) is_reverse,
-				 (const bool) is_unique, NULL, NULL, NULL, NULL, -1, 0, NULL, NULL, obj, DO_INDEX_DROP);
+				 (const bool) is_unique, NULL, NULL, NULL, NULL, -1, 0, NULL, NULL, obj,
+				 SM_NORMAL_INDEX, DO_INDEX_DROP);
   return error_code;
 }
 
@@ -2685,7 +2691,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 			     const bool is_unique, PT_NODE * spec, PT_NODE * column_names,
 			     PT_NODE * column_prefix_length, PT_NODE * where_predicate, int func_index_pos,
 			     int func_index_args_count, PT_NODE * function_expr, PT_NODE * comment,
-			     DB_OBJECT * const obj, DO_INDEX do_index)
+			     DB_OBJECT * const obj, SM_INDEX_STATUS index_status, DO_INDEX do_index)
 {
   int error = NO_ERROR;
   int i = 0, nnames = 0;
@@ -2872,9 +2878,10 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 		}
 	    }
 
-	  error =
-	    sm_add_constraint (obj, ctype, cname, (const char **) attnames, asc_desc, attrs_prefix_length, false,
-			       p_pred_index_info, func_index_info, comment_str);
+	  assert (index_status != SM_NO_INDEX);
+
+	  error = sm_add_constraint (obj, ctype, cname, (const char **) attnames, asc_desc, attrs_prefix_length, false,
+				     p_pred_index_info, func_index_info, comment_str, index_status);
 	}
       else
 	{
@@ -2956,7 +2963,7 @@ do_create_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 				 statement->info.index.prefix_length, statement->info.index.where,
 				 statement->info.index.func_pos, statement->info.index.func_no_args,
 				 statement->info.index.function_expr, statement->info.index.comment, obj,
-				 DO_INDEX_CREATE);
+				 statement->info.index.index_status, DO_INDEX_CREATE);
   return error;
 }
 
@@ -3025,7 +3032,8 @@ do_drop_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
     create_or_drop_index_helper (parser, index_name, (const bool) is_reverse, (const bool) is_unique,
 				 statement->info.index.indexed_class, statement->info.index.column_names, NULL, NULL,
 				 statement->info.index.func_pos, statement->info.index.func_no_args,
-				 statement->info.index.function_expr, NULL, obj, DO_INDEX_DROP);
+				 statement->info.index.function_expr, NULL, obj, statement->info.index.index_status,
+				 DO_INDEX_DROP);
 
   return error_code;
 }
@@ -3296,7 +3304,7 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
 
   error =
     sm_add_constraint (obj, original_ctype, index_name, (const char **) attnames, asc_desc, attrs_prefix_length, false,
-		       p_pred_index_info, func_index_info, comment_str);
+		       p_pred_index_info, func_index_info, comment_str, SM_NORMAL_INDEX);
   if (error != NO_ERROR)
     {
       goto error_exit;
@@ -3612,6 +3620,10 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
   else if (statement->info.index.code == PT_CHANGE_INDEX_COMMENT)
     {
       error = do_alter_index_comment (parser, statement);
+    }
+  else if (statement->info.index.code == PT_CHANGE_INDEX_STATUS)
+    {
+      error = do_alter_index_status (parser, statement);
     }
   else
     {
@@ -5384,9 +5396,9 @@ do_create_partition_constraint (PT_NODE * alter, SM_CLASS * root_class, SM_CLASS
 	    }
 
 	  error =
-	    sm_add_index (subclass_op, db_constraint_type (constraint), constraint->name, (const char **) namep,
-			  asc_desc, constraint->attrs_prefix_length, constraint->filter_predicate, new_func_index_info,
-			  constraint->comment);
+	    sm_add_constraint (subclass_op, db_constraint_type (constraint), constraint->name, (const char **) namep,
+			       asc_desc, constraint->attrs_prefix_length, false, constraint->filter_predicate,
+			       new_func_index_info, constraint->comment, SM_NORMAL_INDEX);
 	  if (error != NO_ERROR)
 	    {
 	      goto cleanup;
@@ -5438,9 +5450,9 @@ do_create_partition_constraint (PT_NODE * alter, SM_CLASS * root_class, SM_CLASS
 	    }
 
 	  error =
-	    sm_add_index (objs->op, db_constraint_type (constraint), constraint->name, (const char **) namep, asc_desc,
-			  constraint->attrs_prefix_length, constraint->filter_predicate, new_func_index_info,
-			  constraint->comment);
+	    sm_add_constraint (objs->op, db_constraint_type (constraint), constraint->name, (const char **) namep,
+			       asc_desc, constraint->attrs_prefix_length, false, constraint->filter_predicate,
+			       new_func_index_info, constraint->comment, SM_NORMAL_INDEX);
 	  if (error != NO_ERROR)
 	    {
 	      goto cleanup;
@@ -6910,8 +6922,7 @@ get_attr_name (PT_NODE * attribute)
  *   ctemplate(in/out): Class template
  *   attribute(in/out): Attribute to add
  *   constraints(in/out): the constraints of the class
- *   error_on_not_normal(in): whether to flag an error on class and shared
- *                            attributes or not
+ *   error_on_not_normal(in): whether to flag an error on class and shared attributes or not
  *
  * Note : The class object is modified
  */
@@ -6923,6 +6934,7 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
   int meta, shared;
   DB_VALUE stack_value;
   DB_VALUE *default_value = &stack_value;
+  DB_DEFAULT_EXPR_TYPE on_update_expr = DB_DEFAULT_NONE;
   int error = NO_ERROR;
   TP_DOMAIN *attr_db_domain;
   MOP auto_increment_obj = NULL;
@@ -7006,6 +7018,12 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
       goto error_exit;
     }
 
+  error = check_default_on_update_clause (parser, attribute);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
   error = get_att_order_from_def (attribute, &add_first, &add_after_attr);
   if (error != NO_ERROR)
     {
@@ -7025,12 +7043,12 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
       name_space = ID_ATTRIBUTE;
     }
 
+  on_update_expr = attribute->info.attr_def.on_update;
   pt_get_default_expression_from_data_default_node (parser, attribute->info.attr_def.data_default, &default_expr);
   default_value = &stack_value;
 
-  error =
-    smt_add_attribute_w_dflt_w_order (ctemplate, attr_name, NULL, attr_db_domain, default_value, name_space, add_first,
-				      add_after_attr, &default_expr, NULL);
+  error = smt_add_attribute_w_dflt_w_order (ctemplate, attr_name, NULL, attr_db_domain, default_value, name_space,
+					    add_first, add_after_attr, &default_expr, &on_update_expr, NULL);
 
   db_value_clear (&stack_value);
 
@@ -7108,6 +7126,7 @@ do_add_attribute_from_select_column (PARSER_CONTEXT * parser, DB_CTMPL * ctempla
   const char *attr_name;
   MOP class_obj = NULL;
   DB_DEFAULT_EXPR *default_expr = NULL;
+  DB_DEFAULT_EXPR_TYPE *on_update_default_expr = NULL;
 
   db_make_null (&default_value);
 
@@ -7151,7 +7170,8 @@ do_add_attribute_from_select_column (PARSER_CONTEXT * parser, DB_CTMPL * ctempla
 	  goto error_exit;
 	}
 
-      error = sm_att_default_value (class_obj, column->attr_name, &default_value, &default_expr);
+      error = sm_att_default_value (class_obj, column->attr_name, &default_value, &default_expr,
+				    &on_update_default_expr);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
@@ -7159,7 +7179,7 @@ do_add_attribute_from_select_column (PARSER_CONTEXT * parser, DB_CTMPL * ctempla
     }
 
   error = smt_add_attribute_w_dflt (ctemplate, attr_name, NULL, column->domain, &default_value, ID_ATTRIBUTE,
-				    default_expr, NULL);
+				    default_expr, on_update_default_expr, NULL);
   if (error != NO_ERROR)
     {
       goto error_exit;
@@ -7512,9 +7532,9 @@ do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
 		      comment = (char *) PT_VALUE_GET_BYTES (cnstr->info.constraint.comment);
 		    }
 
-		  error =
-		    smt_add_constraint (ctemplate, constraint_type, constraint_name, (const char **) att_names,
-					asc_desc, class_attributes, NULL, NULL, NULL, comment);
+		  error = smt_add_constraint (ctemplate, constraint_type, constraint_name, (const char **) att_names,
+					      asc_desc, NULL, class_attributes, NULL, NULL, NULL, comment,
+					      SM_NORMAL_INDEX);
 
 		  free_and_init (constraint_name);
 		  free_and_init (asc_desc);
@@ -7581,10 +7601,9 @@ do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
 		      comment = (char *) PT_VALUE_GET_BYTES (cnstr->info.constraint.comment);
 		    }
 
-		  error =
-		    smt_add_constraint (ctemplate, DB_CONSTRAINT_PRIMARY_KEY, constraint_name,
-					(const char **) att_names, asc_desc, class_attributes, NULL, NULL, NULL,
-					comment);
+		  error = smt_add_constraint (ctemplate, DB_CONSTRAINT_PRIMARY_KEY, constraint_name,
+					      (const char **) att_names, asc_desc, NULL, class_attributes, NULL, NULL,
+					      NULL, comment, SM_NORMAL_INDEX);
 
 		  free_and_init (constraint_name);
 		  free_and_init (asc_desc);
@@ -9012,28 +9031,13 @@ do_recreate_renamed_class_indexes (const PARSER_CONTEXT * parser, const char *co
   /* add indexes */
   for (saved = index_save_info; saved != NULL; saved = saved->next)
     {
-      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY ((SM_CONSTRAINT_TYPE) saved->constraint_type))
-	{
-	  error =
-	    sm_add_constraint (classmop, saved->constraint_type, saved->name, (const char **) saved->att_names,
-			       saved->asc_desc, saved->prefix_length, 0, saved->filter_predicate,
-			       saved->func_index_info, saved->comment);
+      error = sm_add_constraint (classmop, saved->constraint_type, saved->name, (const char **) saved->att_names,
+				 saved->asc_desc, saved->prefix_length, false, saved->filter_predicate,
+				 saved->func_index_info, saved->comment, SM_NORMAL_INDEX);
 
-	  if (error != NO_ERROR)
-	    {
-	      goto error_exit;
-	    }
-	}
-      else
+      if (error != NO_ERROR)
 	{
-	  error =
-	    sm_add_index (classmop, saved->constraint_type, saved->name, (const char **) saved->att_names,
-			  saved->asc_desc, saved->prefix_length, saved->filter_predicate, saved->func_index_info,
-			  saved->comment);
-	  if (error != NO_ERROR)
-	    {
-	      goto error_exit;
-	    }
+	  goto error_exit;
 	}
     }
 
@@ -9139,16 +9143,15 @@ do_copy_indexes (PARSER_CONTEXT * parser, MOP classmop, SM_CLASS * src_class)
 
       if (c->func_index_info || c->filter_predicate)
 	{
-	  error =
-	    sm_add_index (classmop, constraint_type, new_cons_name, att_names, index_save_info->asc_desc,
-			  index_save_info->prefix_length, index_save_info->filter_predicate,
-			  index_save_info->func_index_info, index_save_info->comment);
+	  error = sm_add_constraint (classmop, constraint_type, new_cons_name, att_names, index_save_info->asc_desc,
+				     index_save_info->prefix_length, false, index_save_info->filter_predicate,
+				     index_save_info->func_index_info, index_save_info->comment, SM_NORMAL_INDEX);
 	}
       else
 	{
 	  error =
-	    sm_add_index (classmop, constraint_type, new_cons_name, att_names, c->asc_desc, c->attrs_prefix_length,
-			  c->filter_predicate, c->func_index_info, c->comment);
+	    sm_add_constraint (classmop, constraint_type, new_cons_name, att_names, c->asc_desc, c->attrs_prefix_length,
+			       false, c->filter_predicate, c->func_index_info, c->comment, SM_NORMAL_INDEX);
 	}
       if (error != NO_ERROR)
 	{
@@ -9501,11 +9504,10 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser, PT_NODE * const
 			  goto exit;
 			}
 
-		      error =
-			sm_add_constraint (class_mop, saved_constr->constraint_type, saved_constr->name,
-					   (const char **) saved_constr->att_names, saved_constr->asc_desc,
-					   saved_constr->prefix_length, false, saved_constr->filter_predicate,
-					   saved_constr->func_index_info, saved_constr->comment);
+		      error = sm_add_constraint (class_mop, saved_constr->constraint_type, saved_constr->name,
+						 (const char **) saved_constr->att_names, saved_constr->asc_desc,
+						 saved_constr->prefix_length, false, saved_constr->filter_predicate,
+						 saved_constr->func_index_info, saved_constr->comment, SM_NORMAL_INDEX);
 		      if (error != NO_ERROR)
 			{
 			  goto exit;
@@ -10081,6 +10083,12 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 	      || is_att_prop_set (attr_chg_prop->p[P_TYPE], ATT_CHG_TYPE_PSEUDO_UPGRADE));
     }
 
+  error = check_default_on_update_clause (parser, attribute);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+
   /* default value: for CLASS and SHARED attributes this changes the value itself of the atribute */
   error = get_att_default_from_def (parser, attribute, &default_value, NULL);
   if (error != NO_ERROR)
@@ -10106,10 +10114,10 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
       goto exit;
     }
 
-  error =
-    smt_change_attribute_w_dflt_w_order (ctemplate, attr_name, new_name, NULL, attr_db_domain,
-					 attr_chg_prop->name_space, new_default, &new_default_expr, change_first,
-					 change_after_attr, &found_att);
+  error = smt_change_attribute_w_dflt_w_order (ctemplate, attr_name, new_name, NULL, attr_db_domain,
+					       attr_chg_prop->name_space, new_default, &new_default_expr,
+					       attribute->info.attr_def.on_update, change_first, change_after_attr,
+					       &found_att);
   if (error != NO_ERROR)
     {
       goto exit;
@@ -10147,6 +10155,17 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
       if (found_att->properties != NULL)
 	{
 	  classobj_drop_prop (found_att->properties, "default_expr");
+	}
+    }
+
+  /* on update expression */
+  if (is_att_prop_set (attr_chg_prop->p[P_ON_UPDATE_EXPR], ATT_CHG_PROPERTY_LOST))
+    {
+      found_att->on_update_default_expr = DB_DEFAULT_NONE;
+
+      if (found_att->properties != NULL)
+	{
+	  classobj_drop_prop (found_att->properties, "update_default");
 	}
     }
 
@@ -10433,6 +10452,17 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
       || att->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
     {
       attr_chg_properties->p[P_DEFAULT_VALUE] |= ATT_CHG_PROPERTY_PRESENT_OLD;
+    }
+
+  /* ON UPDATE expr */
+  attr_chg_properties->p[P_ON_UPDATE_EXPR] = 0;
+  if (attr_def->info.attr_def.on_update != DB_DEFAULT_NONE)
+    {
+      attr_chg_properties->p[P_ON_UPDATE_EXPR] |= ATT_CHG_PROPERTY_PRESENT_NEW;
+    }
+  if (att->on_update_default_expr != DB_DEFAULT_NONE)
+    {
+      attr_chg_properties->p[P_ON_UPDATE_EXPR] |= ATT_CHG_PROPERTY_PRESENT_OLD;
     }
 
   /* DEFFERABLE : not supported, just mark as checked */
@@ -10916,7 +10946,6 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
   const int MIN_DIGITS_FOR_SHORT = TP_SMALLINT_PRECISION;
   const int MIN_DIGITS_FOR_BIGINT = TP_BIGINT_PRECISION;
   const int MIN_CHARS_FOR_TIME = TP_TIME_AS_CHAR_LENGTH;
-  const int MIN_CHARS_FOR_TIMETZ = TP_TIMETZ_AS_CHAR_LENGTH;
   const int MIN_CHARS_FOR_DATE = TP_DATE_AS_CHAR_LENGTH;
   const int MIN_CHARS_FOR_DATETIME = TP_DATETIME_AS_CHAR_LENGTH;
   const int MIN_CHARS_FOR_DATETIMETZ = TP_DATETIMETZ_AS_CHAR_LENGTH;
@@ -11256,73 +11285,11 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
     case DB_TYPE_TIME:
       switch (new_type)
 	{
-	case DB_TYPE_TIMETZ:
-	case DB_TYPE_TIMELTZ:
-	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
-	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARCHAR:
 	case DB_TYPE_VARNCHAR:
 	  if (req_prec >= MIN_CHARS_FOR_TIME)
-	    {
-	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
-	    }
-	  else
-	    {
-	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
-	    }
-	  break;
-	case DB_TYPE_ENUMERATION:
-	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
-	  break;
-	default:
-	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
-	  break;
-	}
-      break;
-
-    case DB_TYPE_TIMETZ:
-      switch (new_type)
-	{
-	case DB_TYPE_TIME:
-	case DB_TYPE_TIMELTZ:
-	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
-	  break;
-	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
-	case DB_TYPE_VARCHAR:
-	case DB_TYPE_VARNCHAR:
-	  if (req_prec >= MIN_CHARS_FOR_TIMETZ)
-	    {
-	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
-	    }
-	  else
-	    {
-	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
-	    }
-	  break;
-	case DB_TYPE_ENUMERATION:
-	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
-	  break;
-	default:
-	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
-	  break;
-	}
-      break;
-
-    case DB_TYPE_TIMELTZ:
-      switch (new_type)
-	{
-	case DB_TYPE_TIME:
-	case DB_TYPE_TIMETZ:
-	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
-	  break;
-	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
-	case DB_TYPE_VARCHAR:
-	case DB_TYPE_VARNCHAR:
-	  if (req_prec >= MIN_CHARS_FOR_TIMETZ)
 	    {
 	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
 	    }
@@ -11377,8 +11344,6 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
       switch (new_type)
 	{
 	case DB_TYPE_TIME:
-	case DB_TYPE_TIMETZ:
-	case DB_TYPE_TIMELTZ:
 	case DB_TYPE_DATE:
 	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_PSEUDO_UPGRADE;
 	  break;
@@ -11415,8 +11380,6 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
       switch (new_type)
 	{
 	case DB_TYPE_TIME:
-	case DB_TYPE_TIMETZ:
-	case DB_TYPE_TIMELTZ:
 	case DB_TYPE_DATE:
 	case DB_TYPE_DATETIME:
 	case DB_TYPE_DATETIMELTZ:
@@ -11453,8 +11416,6 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
       switch (new_type)
 	{
 	case DB_TYPE_TIME:
-	case DB_TYPE_TIMETZ:
-	case DB_TYPE_TIMELTZ:
 	case DB_TYPE_DATE:
 	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_PSEUDO_UPGRADE;
 	  break;
@@ -11491,8 +11452,6 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
       switch (new_type)
 	{
 	case DB_TYPE_TIME:
-	case DB_TYPE_TIMETZ:
-	case DB_TYPE_TIMELTZ:
 	case DB_TYPE_DATE:
 	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_PSEUDO_UPGRADE;
 	  break;
@@ -11529,8 +11488,6 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
       switch (new_type)
 	{
 	case DB_TYPE_TIME:
-	case DB_TYPE_TIMETZ:
-	case DB_TYPE_TIMELTZ:
 	case DB_TYPE_DATE:
 	case DB_TYPE_TIMESTAMP:
 	case DB_TYPE_TIMESTAMPLTZ:
@@ -11567,8 +11524,6 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
       switch (new_type)
 	{
 	case DB_TYPE_TIME:
-	case DB_TYPE_TIMETZ:
-	case DB_TYPE_TIMELTZ:
 	case DB_TYPE_DATE:
 	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_PSEUDO_UPGRADE;
 	  break;
@@ -11613,8 +11568,6 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
 	case DB_TYPE_MONETARY:
 	case DB_TYPE_DATE:
 	case DB_TYPE_TIME:
-	case DB_TYPE_TIMETZ:
-	case DB_TYPE_TIMELTZ:
 	case DB_TYPE_DATETIME:
 	case DB_TYPE_DATETIMETZ:
 	case DB_TYPE_DATETIMELTZ:
@@ -11660,8 +11613,6 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
 	case DB_TYPE_MONETARY:
 	case DB_TYPE_DATE:
 	case DB_TYPE_TIME:
-	case DB_TYPE_TIMETZ:
-	case DB_TYPE_TIMELTZ:
 	case DB_TYPE_DATETIME:
 	case DB_TYPE_DATETIMETZ:
 	case DB_TYPE_DATETIMELTZ:
@@ -11700,8 +11651,6 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
 	case DB_TYPE_MONETARY:
 	case DB_TYPE_DATE:
 	case DB_TYPE_TIME:
-	case DB_TYPE_TIMETZ:
-	case DB_TYPE_TIMELTZ:
 	case DB_TYPE_DATETIME:
 	case DB_TYPE_DATETIMETZ:
 	case DB_TYPE_DATETIMELTZ:
@@ -11746,8 +11695,6 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
 	case DB_TYPE_MONETARY:
 	case DB_TYPE_DATE:
 	case DB_TYPE_TIME:
-	case DB_TYPE_TIMETZ:
-	case DB_TYPE_TIMELTZ:
 	case DB_TYPE_DATETIME:
 	case DB_TYPE_DATETIMETZ:
 	case DB_TYPE_DATETIMELTZ:
@@ -11868,8 +11815,6 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
 	case DB_TYPE_DATETIMETZ:
 	case DB_TYPE_DATETIMELTZ:
 	case DB_TYPE_TIME:
-	case DB_TYPE_TIMETZ:
-	case DB_TYPE_TIMELTZ:
 	case DB_TYPE_TIMESTAMP:
 	case DB_TYPE_TIMESTAMPTZ:
 	case DB_TYPE_TIMESTAMPLTZ:
@@ -12389,6 +12334,108 @@ get_att_order_from_def (PT_NODE * attribute, bool * ord_first, const char **ord_
   return NO_ERROR;
 }
 
+static int
+check_default_on_update_clause (PARSER_CONTEXT * parser, PT_NODE * attribute)
+{
+  int error = NO_ERROR;
+  PT_TYPE_ENUM desired_type = attribute->type_enum;
+  DB_DEFAULT_EXPR_TYPE on_update_expr_type = attribute->info.attr_def.on_update;
+  PT_NODE *temp_ptval = NULL;
+
+  if (on_update_expr_type == DB_DEFAULT_NONE)
+    {
+      return error;
+    }
+
+  PT_OP_TYPE op = pt_op_type_from_default_expr_type (on_update_expr_type);
+
+  PT_NODE *on_update_default_expr = parser_make_expression (parser, op, NULL, NULL, NULL);
+  if (on_update_default_expr == NULL)
+    {
+      PT_ERRORm (parser, attribute, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      return ER_FAILED;
+    }
+
+  on_update_default_expr = pt_semantic_type (parser, on_update_default_expr, NULL);
+  if (on_update_default_expr == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  on_update_default_expr = pt_semantic_check (parser, on_update_default_expr);
+  if (on_update_default_expr == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  on_update_default_expr->buffer_pos = attribute->buffer_pos;
+  on_update_default_expr->line_number = attribute->line_number;
+  on_update_default_expr->column_number = attribute->column_number;
+
+  DB_VALUE on_update_val;
+  db_make_null (&on_update_val);
+
+  pt_evaluate_tree_having_serial (parser, on_update_default_expr, &on_update_val, 1);
+  temp_ptval = pt_dbval_to_value (parser, &on_update_val);
+  if (temp_ptval == NULL)
+    {
+      pt_report_to_ersys (parser, PT_SEMANTIC);
+      error = er_errid ();
+
+      pr_clear_value (&on_update_val);
+      if (on_update_default_expr != NULL)
+	{
+	  parser_free_node (parser, on_update_default_expr);
+	}
+      return error;
+    }
+
+  error = pt_coerce_value_for_default_value (parser, temp_ptval, temp_ptval, desired_type, attribute->data_type,
+					     on_update_expr_type);
+
+  if (pt_has_error (parser))
+    {
+      /* forget previous one to set the better error */
+      pt_reset_error (parser);
+    }
+
+  if (error != NO_ERROR)
+    {
+      const char *data_type_print;
+      if (attribute->data_type != NULL)
+	{
+	  data_type_print = pt_short_print (parser, attribute->data_type);
+	}
+      else
+	{
+	  data_type_print = pt_show_type_enum ((PT_TYPE_ENUM) desired_type);
+	}
+
+      if (error == ER_IT_DATA_OVERFLOW)
+	{
+	  PT_ERRORmf2 (parser, attribute, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO,
+		       pt_short_print (parser, on_update_default_expr), data_type_print);
+	}
+      else
+	{
+	  PT_ERRORmf2 (parser, attribute, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
+		       pt_short_print (parser, on_update_default_expr), data_type_print);
+	}
+    }
+
+  pr_clear_value (&on_update_val);
+  if (temp_ptval != NULL)
+    {
+      parser_free_node (parser, temp_ptval);
+    }
+  if (on_update_default_expr != NULL)
+    {
+      parser_free_node (parser, on_update_default_expr);
+    }
+
+  return error;
+}
+
 /*
  * get_att_default_from_def() - Retrieves the default value property from the
  *				attribute definition node
@@ -12643,7 +12690,6 @@ get_hard_default_for_type (PT_TYPE_ENUM type)
   static const char *empty_datetime = "DATETIME '01/01/0001 00:00'";
   static const char *empty_dt_tz = "DATETIMETZ '01/01/0001 00:00 +00:00'";
   static const char *empty_dt_ltz = "DATETIMELTZ '01/01/0001 00:00 +00:00'";
-  static const char *empty_timetz = "TIMETZ '00:00 +00:00'";
   static const char *empty_json = "null";
 
   /* TODO : use db_value_domain_default instead, but make sure that db_value_domain_default is not using NULL DB_VALUE
@@ -12674,11 +12720,7 @@ get_hard_default_for_type (PT_TYPE_ENUM type)
       return empty_date;
 
     case PT_TYPE_TIME:
-    case PT_TYPE_TIMELTZ:
       return empty_time;
-
-    case PT_TYPE_TIMETZ:
-      return empty_timetz;
 
     case PT_TYPE_DATETIME:
       return empty_datetime;
@@ -13216,30 +13258,20 @@ do_recreate_att_constraints (MOP class_mop, SM_CONSTRAINT_INFO * constr_info_lis
 
   for (constr = constr_info_list; constr != NULL; constr = constr->next)
     {
-      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY ((SM_CONSTRAINT_TYPE) constr->constraint_type))
+      if (SM_IS_CONSTRAINT_INDEX_FAMILY ((SM_CONSTRAINT_TYPE) constr->constraint_type))
 	{
 	  error =
 	    sm_add_constraint (class_mop, constr->constraint_type, constr->name, (const char **) constr->att_names,
-			       constr->asc_desc, constr->prefix_length, 0, constr->filter_predicate,
-			       constr->func_index_info, constr->comment);
+			       constr->asc_desc, constr->prefix_length, false, constr->filter_predicate,
+			       constr->func_index_info, constr->comment, SM_NORMAL_INDEX);
 
 	  if (error != NO_ERROR)
 	    {
 	      goto error_exit;
 	    }
 	}
-      else if (constr->constraint_type == DB_CONSTRAINT_INDEX || constr->constraint_type == DB_CONSTRAINT_REVERSE_INDEX)
-	{
-	  error =
-	    sm_add_index (class_mop, constr->constraint_type, constr->name, (const char **) constr->att_names,
-			  constr->asc_desc, constr->prefix_length, constr->filter_predicate, constr->func_index_info,
-			  constr->comment);
-	  if (error != NO_ERROR)
-	    {
-	      goto error_exit;
-	    }
-	}
     }
+
 error_exit:
   return error;
 }
@@ -13289,6 +13321,12 @@ check_change_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE *
   if (ctemplate->current->users != NULL && ctemplate->partition == NULL)
     {
       attr_chg_prop->class_has_subclass = true;
+    }
+
+  error = check_default_on_update_clause (parser, attribute);
+  if (error != NO_ERROR)
+    {
+      goto exit;
     }
 
   error = get_att_default_from_def (parser, attribute, &ptr_def, NULL);
@@ -14931,24 +14969,12 @@ do_recreate_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_save_info)
 
   for (saved = index_save_info; saved != NULL; saved = saved->next)
     {
-      if (SM_IS_CONSTRAINT_EXCEPT_INDEX_FAMILY ((SM_CONSTRAINT_TYPE) saved->constraint_type))
+      if (SM_IS_CONSTRAINT_INDEX_FAMILY ((SM_CONSTRAINT_TYPE) saved->constraint_type))
 	{
-	  error =
-	    sm_add_constraint (classmop, saved->constraint_type, saved->name, (const char **) saved->att_names,
-			       saved->asc_desc, saved->prefix_length, 0, saved->filter_predicate,
-			       saved->func_index_info, saved->comment);
+	  error = sm_add_constraint (classmop, saved->constraint_type, saved->name, (const char **) saved->att_names,
+				     saved->asc_desc, saved->prefix_length, false, saved->filter_predicate,
+				     saved->func_index_info, saved->comment, SM_NORMAL_INDEX);
 
-	  if (error != NO_ERROR)
-	    {
-	      goto error_exit;
-	    }
-	}
-      else
-	{
-	  error =
-	    sm_add_index (classmop, saved->constraint_type, saved->name, (const char **) saved->att_names,
-			  saved->asc_desc, saved->prefix_length, saved->filter_predicate, saved->func_index_info,
-			  saved->comment);
 	  if (error != NO_ERROR)
 	    {
 	      goto error_exit;
@@ -14965,4 +14991,92 @@ error_exit:
     }
 
   return error;
+}
+
+int
+do_alter_index_status (PARSER_CONTEXT * parser, const PT_NODE * statement)
+{
+  int error = NO_ERROR;
+  DB_OBJECT *obj;
+  PT_NODE *cls = NULL;
+  SM_TEMPLATE *ctemplate = NULL;
+  const char *class_name = NULL;
+  const char *index_name = NULL;
+  SM_INDEX_STATUS index_status;
+  bool do_rollback = false;
+
+  index_name = statement->info.index.index_name ? statement->info.index.index_name->info.name.original : NULL;
+
+  if (index_name == NULL)
+    {
+      goto error_exit;
+    }
+
+  index_status = (SM_INDEX_STATUS) statement->info.index.index_status;
+
+  cls = statement->info.index.indexed_class ? statement->info.index.indexed_class->info.spec.flat_entity_list : NULL;
+  if (cls == NULL)
+    {
+      goto error_exit;
+    }
+
+  class_name = cls->info.name.resolved;
+  obj = db_find_class (class_name);
+  if (obj == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto error_exit;
+    }
+
+  error = tran_system_savepoint (UNIQUE_SAVEPOINT_ALTER_INDEX);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  do_rollback = true;
+
+  ctemplate = smt_edit_class_mop (obj, AU_INDEX);
+  if (ctemplate == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto error_exit;
+    }
+
+  error = smt_change_constraint_status (ctemplate, index_name, index_status);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  /* classobj_free_template() is included in sm_update_class() */
+  error = sm_update_class (ctemplate, NULL);
+  if (error != NO_ERROR)
+    {
+      /* Even though sm_update() did not return NO_ERROR, ctemplate is already freed */
+      ctemplate = NULL;
+      goto error_exit;
+    }
+
+end:
+
+  return error;
+
+error_exit:
+  if (ctemplate != NULL)
+    {
+      /* smt_quit() always returns NO_ERROR */
+      smt_quit (ctemplate);
+    }
+
+  if (do_rollback == true)
+    {
+      if (do_rollback && error != ER_LK_UNILATERALLY_ABORTED)
+	{
+	  tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_ALTER_INDEX);
+	}
+    }
+  error = (error == NO_ERROR && (error = er_errid ()) == NO_ERROR) ? ER_FAILED : error;
+
+  goto end;
 }

@@ -458,9 +458,8 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
   /* make new DB_INFO */
   hosts[0] = db_path_info->db_host;
   hosts[1] = NULL;
-  db =
-    cfg_new_db (client_credential->db_name, db_path_info->db_path, db_path_info->log_path, db_path_info->lob_path,
-		hosts);
+  db = cfg_new_db (client_credential->db_name, db_path_info->db_path, db_path_info->log_path, db_path_info->lob_path,
+		   hosts);
   if (db == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_DATABASE, 1, client_credential->db_name);
@@ -595,6 +594,9 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
 	}
       goto error_exit;
     }
+
+  // create session
+  (void) db_find_or_create_session (client_credential->db_user, client_credential->program_name);
 
   oid_set_root (&rootclass_oid);
   OID_INIT_TEMPID ();
@@ -2677,6 +2679,12 @@ boot_define_index (MOP class_mop)
       return error_code;
     }
 
+  error_code = smt_add_attribute (def, "status", "integer", NULL);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
   error_code = sm_update_class (def, NULL);
   if (error_code != NO_ERROR)
     {
@@ -4734,7 +4742,8 @@ boot_define_view_index (void)
     {"is_foreign_key", "varchar(3)"},
     {"filter_expression", "varchar(255)"},
     {"have_function", "varchar(3)"},
-    {"comment", "varchar(1024)"}
+    {"comment", "varchar(1024)"},
+    {"status", "varchar(255)"}
   };
   int num_cols = sizeof (columns) / sizeof (columns[0]);
   int i;
@@ -4763,7 +4772,13 @@ boot_define_view_index (void)
 	   " CASE WHEN [i].[is_reverse] = 0 THEN 'NO' ELSE 'YES' END, [i].[class_of].[class_name], [i].[key_count],"
 	   " CASE WHEN [i].[is_primary_key] = 0 THEN 'NO' ELSE 'YES' END,"
 	   " CASE WHEN [i].[is_foreign_key] = 0 THEN 'NO' ELSE 'YES' END, [i].[filter_expression],"
-	   " CASE WHEN [i].[have_function] = 0 THEN 'NO' ELSE 'YES' END, [i].[comment] FROM [%s] [i]"
+	   " CASE WHEN [i].[have_function] = 0 THEN 'NO' ELSE 'YES' END, [i].[comment],"
+	   " CASE WHEN [i].[status] = 0 THEN 'NO_INDEX' "
+	   " WHEN [i].[status] = 1 THEN 'NORMAL INDEX' "
+	   " WHEN [i].[status] = 2 THEN 'INVISIBLE INDEX'"
+	   " WHEN [i].[status] = 3 THEN 'INDEX IS IN ONLINE BUILDING' "
+	   " ELSE 'NULL' END "
+	   " FROM [%s] [i]"
 	   " WHERE CURRENT_USER = 'DBA' OR {[i].[class_of].[owner].[name]} SUBSETEQ ("
 	   " SELECT SET{CURRENT_USER} + COALESCE(SUM(SET{[t].[g].[name]}), SET{})"
 	   " FROM [%s] [u], TABLE([groups]) AS [t]([g]) WHERE [u].[name] = CURRENT_USER) OR"
@@ -5396,8 +5411,7 @@ catcls_vclass_install (void)
     {"CTV_TRIGGER_NAME", boot_define_view_trigger},
     {"CTV_PARTITION_NAME", boot_define_view_partition},
     {"CTV_STORED_PROC_NAME", boot_define_view_stored_procedure},
-    {"CTV_STORED_PROC_ARGS_NAME",
-     boot_define_view_stored_procedure_arguments},
+    {"CTV_STORED_PROC_ARGS_NAME", boot_define_view_stored_procedure_arguments},
     {"CTV_DB_COLLATION_NAME", boot_define_view_db_collation},
     {"CTV_DB_CHARSET_NAME", boot_define_view_db_charset}
   };
@@ -5441,7 +5455,6 @@ boot_build_catalog_classes (const char *dbname)
   /* check if an old version database */
   if (locator_find_class (CT_CLASS_NAME) != NULL)
     {
-
       fprintf (stdout, "Database %s already has system catalog class/vclass\n", dbname);
       return 1;
     }
@@ -5737,9 +5750,8 @@ boot_set_server_session_key (const char *key)
 static int
 boot_check_timezone_checksum (BOOT_CLIENT_CREDENTIAL * client_credential)
 {
-#define CHECKSUM_SIZE 32
   int error_code = NO_ERROR;
-  char timezone_checksum[CHECKSUM_SIZE + 1];
+  char timezone_checksum[TZ_CHECKSUM_SIZE + 1];
   const TZ_DATA *tzd;
   char cli_text[PATH_MAX];
   char srv_text[DB_MAX_IDENTIFIER_LENGTH + 10];
@@ -5758,7 +5770,6 @@ boot_check_timezone_checksum (BOOT_CLIENT_CREDENTIAL * client_credential)
   error_code = check_timezone_compat (tzd->checksum, timezone_checksum, cli_text, srv_text);
 exit:
   return error_code;
-#undef CHECKSUM_SIZE
 }
 #endif /* CS_MODE */
 

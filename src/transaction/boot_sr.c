@@ -68,8 +68,9 @@
 #include "tz_support.h"
 #include "filter_pred_cache.h"
 #include "slotted_page.h"
-#include "thread.h"
 #include "thread_manager.hpp"
+#include "double_write_buffer.h"
+
 #if defined(SERVER_MODE)
 #include "connection_sr.h"
 #include "server_support.h"
@@ -127,24 +128,7 @@ extern int catcls_get_db_collation (THREAD_ENTRY * thread_p, LANG_COLL_COMPAT **
 extern int catcls_find_and_set_cached_class_oid (THREAD_ENTRY * thread_p);
 
 #if defined(SA_MODE)
-int thread_Recursion_depth = 0;
-
-LF_TRAN_ENTRY thread_ts_decoy_entries[THREAD_TS_LAST] = {
-  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &spage_saving_Ts, 0, false},
-  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &obj_lock_res_Ts, 0, false},
-  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &obj_lock_ent_Ts, 0, false},
-  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &catalog_Ts, 0, false},
-  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &sessions_Ts, 0, false},
-  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &free_sort_list_Ts, 0, false},
-  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &global_unique_stats_Ts, 0, false},
-  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &hfid_table_Ts, 0, false},
-  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &xcache_Ts, 0, false},
-  {0, LF_NULL_TRANSACTION_ID, NULL, NULL, &fpcache_Ts, 0, false}
-};
-
 extern void boot_client_all_finalize (bool is_er_final);
-
-static void boot_decoy_entries_finalize (void);
 #endif /* SA_MODE */
 
 
@@ -217,6 +201,8 @@ static INTL_CODESET boot_get_db_charset_from_header (THREAD_ENTRY * thread_p, co
 						     const char *log_prefix);
 STATIC_INLINE int boot_db_parm_update_heap (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 
+static int boot_after_copydb (THREAD_ENTRY * thread_p);
+
 /*
  * bo_server) -set server's status, UP or DOWN
  *   return: void
@@ -257,7 +243,8 @@ boot_shutdown_server_at_exit (void)
     {
       /* Avoid infinite looping if someone calls exit during shutdown */
       boot_Server_process_id++;
-      (void) xboot_shutdown_server (NULL, ER_ALL_FINAL);
+      THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+      (void) xboot_shutdown_server (thread_p, ER_ALL_FINAL);
     }
 }
 
@@ -368,7 +355,7 @@ xboot_find_number_temp_volumes (THREAD_ENTRY * thread_p)
 
 /*
  * xboot_find_last_permanent () - find the volid of last permanent volume
- * 
+ *
  * return : volid of last permanent volume
  */
 VOLID
@@ -386,7 +373,7 @@ xboot_find_last_permanent (THREAD_ENTRY * thread_p)
 
 /*
  * xboot_peek_last_permanent () - peek the volid of last permanent volume
- * 
+ *
  * return : volid of last permanent volume
  * NOTE: this function does not wait for extensions to finish
  */
@@ -588,7 +575,7 @@ boot_remove_useless_path_separator (const char *path, char *new_path)
   assert (path != NULL);
   assert (new_path != NULL);
 
-  /* 
+  /*
    * Before transform.
    *   / h o m e 3 / / w o r k / c u b r i d / / / w o r k /
    *
@@ -608,7 +595,7 @@ boot_remove_useless_path_separator (const char *path, char *new_path)
     {
       *new_path++ = PATH_SEPARATOR;
 #if defined(WINDOWS)
-      /* 
+      /*
        * In Windows/NT,
        * If first duplicated PATH_SEPARATORs are appeared, they are survived.
        * For example,
@@ -624,7 +611,7 @@ boot_remove_useless_path_separator (const char *path, char *new_path)
   /* Initialize separator counter again. */
   slash_num = 0;
 
-  /* 
+  /*
    * If current character is PATH_SEPARATOR,
    *    skip after increasing separator counter.
    * If current character is normal character, copy to new_path.
@@ -637,7 +624,7 @@ boot_remove_useless_path_separator (const char *path, char *new_path)
 	}
       else
 	{
-	  /* 
+	  /*
 	   * If there is consumed slash, append PATH_SEPARATOR.
 	   * Initialize separator counter.
 	   */
@@ -700,7 +687,7 @@ boot_parse_add_volume_extensions (THREAD_ENTRY * thread_p, const char *filename_
       return ER_LOG_USER_FILE_UNKNOWN;
     }
 
-  /* 
+  /*
    * Get a line
    * Continue parsing even in case of error, so that we can indicate as
    * many errors as possible.
@@ -724,7 +711,7 @@ boot_parse_add_volume_extensions (THREAD_ENTRY * thread_p, const char *filename_
 	  line[ext_npages + 1] = '\0';
 	}
 
-      /* 
+      /*
        * Parse the line
        */
 
@@ -736,7 +723,7 @@ boot_parse_add_volume_extensions (THREAD_ENTRY * thread_p, const char *filename_
 
       while (true)
 	{
-	  /* 
+	  /*
 	   * Read token.. skip leading whitespace and comments
 	   */
 	  while (char_isspace (line[0]))
@@ -759,7 +746,7 @@ boot_parse_add_volume_extensions (THREAD_ENTRY * thread_p, const char *filename_
 	  line[0] = '\0';
 	  line++;
 
-	  /* 
+	  /*
 	   * Skip any whitespace before the value.
 	   */
 
@@ -770,7 +757,7 @@ boot_parse_add_volume_extensions (THREAD_ENTRY * thread_p, const char *filename_
 
 	  token_value = line;
 
-	  /* 
+	  /*
 	   * If string in " xxx " or ' xxxx ' find its delimiter
 	   */
 
@@ -858,7 +845,7 @@ boot_parse_add_volume_extensions (THREAD_ENTRY * thread_p, const char *filename_
 	    }
 	}
 
-      /* 
+      /*
        * Add the volume
        */
       if (error_code != NO_ERROR || (ext_name == NULL && ext_path == NULL && ext_comments == NULL && ext_npages == 0))
@@ -1089,7 +1076,7 @@ boot_find_rest_permanent_volumes (THREAD_ENTRY * thread_p, bool newvolpath, bool
       num_vols = 0;
 
       /* First the primary volume, then the rest of the volumes */
-      /* 
+      /*
        * Do not assume that all the volumes are mounted. This function may be called to mount the volumes.
        * Thus, request to current volume for the next volume instead of going directly through the volume identifier.
        */
@@ -1173,7 +1160,7 @@ boot_find_rest_temp_volumes (THREAD_ENTRY * thread_p, VOLID volid,
   int num_vols;
   bool go_to_access;
 
-  /* 
+  /*
    * Get the name of the extension: ext_path|dbname|"ext"|volid
    */
 
@@ -1275,7 +1262,7 @@ boot_check_permanent_volumes (THREAD_ENTRY * thread_p)
   char next_vol_fullname[PATH_MAX];	/* Next volume name */
   const char *vlabel;
 
-  /* 
+  /*
    * Don't use volinfo .. or could not find volinfo
    */
 
@@ -1283,7 +1270,7 @@ boot_check_permanent_volumes (THREAD_ENTRY * thread_p)
   num_vols = 0;
   strcpy (next_vol_fullname, boot_Db_full_name);
 
-  /* 
+  /*
    * Do not assume that all the volumes are mounted. This function may be
    * called to mount the volumes. Thus, request to current volume for the
    * next volume instead of going directly through the volume identifier.
@@ -1301,7 +1288,7 @@ boot_check_permanent_volumes (THREAD_ENTRY * thread_p)
 
       if (util_compare_filepath (next_vol_fullname, vlabel) != 0)
 	{
-	  /* 
+	  /*
 	   * Names are different. The database was renamed outside the domain of
 	   * the database (e.g., in Unix), or this is not a database.
 	   * If volume information is not present, assume that this is not a
@@ -1358,7 +1345,7 @@ boot_mount (THREAD_ENTRY * thread_p, VOLID volid, const char *vlabel, void *igno
 
   if (util_compare_filepath (check_vlabel, vlabel) != 0)
     {
-      /* 
+      /*
        * Names are different. The database was renamed outside the domain of
        * the database (e.g., in Unix), or this is not a database.
        * If volume information is not present, assume that this is not a
@@ -1459,11 +1446,11 @@ boot_ctrl_c_in_init_server (int ignore_signo)
  *       started.
  */
 int
-xboot_initialize_server (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL * client_credential,
-			 BOOT_DB_PATH_INFO * db_path_info, bool db_overwrite, const char *file_addmore_vols,
-			 volatile DKNPAGES db_npages, PGLENGTH db_desired_pagesize, volatile DKNPAGES log_npages,
-			 PGLENGTH db_desired_log_page_size, OID * rootclass_oid, HFID * rootclass_hfid,
-			 int client_lock_wait, TRAN_ISOLATION client_isolation)
+xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH_INFO * db_path_info,
+			 bool db_overwrite, const char *file_addmore_vols, volatile DKNPAGES db_npages,
+			 PGLENGTH db_desired_pagesize, volatile DKNPAGES log_npages, PGLENGTH db_desired_log_page_size,
+			 OID * rootclass_oid, HFID * rootclass_hfid, int client_lock_wait,
+			 TRAN_ISOLATION client_isolation)
 {
   int tran_index = NULL_TRAN_INDEX;
   const char *log_prefix = NULL;
@@ -1485,6 +1472,7 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
   struct stat stat_buf;
   bool is_exist_volume;
   char *db_path, *log_path, *lob_path, *p;
+  THREAD_ENTRY *thread_p = NULL;
 
   assert (client_credential != NULL);
   assert (db_path_info != NULL);
@@ -1567,7 +1555,7 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
       goto exit_on_error;
     }
 
-  /* 
+  /*
    * Make sure that the db_path and log_path and lob_path are the canonicalized
    * absolute pathnames
    */
@@ -1576,7 +1564,7 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
   memset (log_pathbuf, 0, sizeof (log_pathbuf));
   memset (lob_pathbuf, 0, sizeof (lob_pathbuf));
 
-  /* 
+  /*
    * for db path,
    * convert to absolute path, remove useless PATH_SEPARATOR
    */
@@ -1593,7 +1581,7 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
   boot_remove_useless_path_separator (db_path, db_pathbuf);
   db_path = db_pathbuf;
 
-  /* 
+  /*
    * for log path,
    * convert to absolute path, remove useless PATH_SEPARATOR
    */
@@ -1610,7 +1598,7 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
   boot_remove_useless_path_separator (log_path, log_pathbuf);
   log_path = log_pathbuf;
 
-  /* 
+  /*
    * for lob path,
    * convert to absolute path, remove useless PATH_SEPARATOR
    */
@@ -1656,13 +1644,13 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
     }
   lob_path = lob_pathbuf;
 
-  /* 
+  /*
    * Compose the full name of the database
    */
   snprintf (boot_Db_full_name, sizeof (boot_Db_full_name), "%s%c%s", db_path, PATH_SEPARATOR,
 	    client_credential->db_name);
 
-  /* 
+  /*
    * Initialize error structure, critical section, slotted page, heap, and
    * recovery managers
    */
@@ -1674,12 +1662,18 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
   /* If the server is already restarted, shutdown the server */
   if (BO_IS_SERVER_RESTARTED ())
     {
+      // not sure this can be true
+      if (thread_p == NULL)
+	{
+	  thread_p = thread_get_thread_entry_info ();
+	}
       (void) xboot_shutdown_server (thread_p, ER_ALL_FINAL);
+      assert (thread_p == NULL);
     }
 
   log_prefix = fileio_get_base_file_name (client_credential->db_name);
 
-  /* 
+  /*
    * Find logging information to create the log volume. If the page size is
    * not the same as the one in production mode, adjust the number of pages
    * allocated.
@@ -1710,7 +1704,7 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
     }
   /* *INDENT-ON* */
 
-  /* 
+  /*
    * get the database directory information in write mode.
    */
 
@@ -1749,7 +1743,7 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
 	}
       else
 	{
-	  /* 
+	  /*
 	   * Delete the database.. to make sure that all backups, log archives, and
 	   * so on are removed... then continue...
 	   *
@@ -1878,7 +1872,7 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
 	    }
 
 #if defined(WINDOWS) && !defined(DONT_USE_MANDATORY_LOCK_IN_WINDOWS)
-	  /* Under Windows/NT, it appears that locking a file prevents a subsequent open for write by the same process. 
+	  /* Under Windows/NT, it appears that locking a file prevents a subsequent open for write by the same process.
 	   * The cfg_write_directory will never succeed as long as the file is "mounted" by fileio_mount().  To allow
 	   * the cubrid.db file to be updated, dismount before calling cfg_.  Note that this leaves an extremely small
 	   * windows where another process could steal our lock. */
@@ -1936,6 +1930,14 @@ xboot_initialize_server (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
       goto exit_on_error;
     }
 
+  // sessions state is required to continue
+  error_code = session_states_init (thread_p);
+  if (error_code != NO_ERROR)
+    {
+      assert (false);
+      goto exit_on_error;
+    }
+
   /* print_version string */
 #if defined (NDEBUG)
   strncpy (format, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_GENERAL, MSGCAT_GENERAL_DATABASE_INIT),
@@ -1979,6 +1981,9 @@ exit_on_error:
   er_stack_push ();
   boot_server_all_finalize (thread_p, ER_THREAD_FINAL, BOOT_SHUTDOWN_EXCEPT_COMMON_MODULES);
   er_stack_pop ();
+
+  // and now finalize thread entry
+  cubthread::finalize ();
 
   return NULL_TRAN_INDEX;
 }
@@ -2093,7 +2098,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  /* 
+  /*
    * Make sure that there is a database.txt and that the desired database
    * exists. We do not want to lock the database.txt at this point since we
    * are only reading it. However, if we do not find the desired database,
@@ -2115,7 +2120,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
   if (dir == NULL || ((db = cfg_find_db_list (dir, db_name)) == NULL))
     {
-      /* 
+      /*
        * Make sure that nobody was in the process of writing the
        * database.txt when we got a snapshot of it.
        */
@@ -2186,7 +2191,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       boot_Lob_path[0] = '\0';
     }
 
-  /* 
+  /*
    * Initialize error structure, critical section, slotted page, heap, and
    * recovery managers
    */
@@ -2237,8 +2242,9 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       error_code = ER_FAILED;
       goto error;
     }
-  er_init_access_log ();
   er_clear ();
+
+  event_log_init (db_name);
 
   /* initialize allocations areas for things we need, on the client, most of this is done inside ws_init(). */
   area_init ();
@@ -2266,6 +2272,13 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   tsc_init ();
 #endif /* !SERVER_MODE */
 
+  // Initialize java stored procedure server
+  error_code = jsp_start_server (db_name, db->pathname);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
   /* *INDENT-OFF* */
 #if defined (SA_MODE)
   // thread_manager was not initialized
@@ -2280,15 +2293,9 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
   /* *INDENT-ON* */
 
-#if defined (SERVER_MODE)
-#if defined(DIAG_DEVEL)
-  init_diag_mgr (server_name, thread_num_worker_threads (), NULL);
-#endif /* DIAG_DEVEL */
-#endif /* !SERVER_MODE */
-
   pr_Enable_string_compression = prm_get_bool_value (PRM_ID_ENABLE_STRING_COMPRESSION);
 
-  /* 
+  /*
    * Compose the full name of the database and find location of logs
    */
 
@@ -2308,12 +2315,12 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   /* Initialize the transaction table */
   logtb_define_trantable (thread_p, -1, -1);
 
-  /* 
+  /*
    * How to restart the system ?
    */
   if (from_backup != false)
     {
-      /* 
+      /*
        * RESTART FROM BACKUP
        */
 #if defined(SA_MODE)
@@ -2340,7 +2347,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  /* 
+  /*
    * Now continue the normal restart process. At this point the data volumes
    * are ok. However, some recovery may need to take place
    */
@@ -2433,14 +2440,30 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
   oid_set_root (&boot_Db_parm->rootclass_oid);
 
-  /* 
+  /* Load and recover data pages before log recovery */
+  error_code = dwb_load_and_recover_pages (thread_p, log_path, log_prefix);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error;
+    }
+
+  /*
    * Now restart the recovery manager and execute any recovery actions
    */
 
   log_initialize (thread_p, boot_Db_full_name, log_path, log_prefix, from_backup, r_args);
 
+  error_code = boot_after_copydb (thread_p);	// only does something if this is first boot after copydb
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error;
+    }
+
 #if defined(SERVER_MODE)
   pgbuf_daemons_init ();
+  dwb_daemons_init ();
 #endif /* SERVER_MODE */
 
   // after recovery we can boot vacuum
@@ -2451,7 +2474,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  /* 
+  /*
    * Initialize the catalog manager, the query evaluator, and install meta
    * classes
    */
@@ -2495,7 +2518,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  /* 
+  /*
    * Initialize system locale using values from db_root system table
    */
   error_code =
@@ -2546,7 +2569,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 #endif /* SERVER_MODE */
 
-  /* 
+  /*
    * Allocate a temporary transaction index to finish further system related
    * changes such as removal of temporary volumes and modifications of
    * system parameter
@@ -2564,7 +2587,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  /* 
+  /*
    * Remove any database temporary volumes
    */
 
@@ -2636,12 +2659,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 	      goto error;
 	    }
 	}
-    }
-
-  error_code = jsp_start_server (db_name, db->pathname);
-  if (error_code != NO_ERROR)
-    {
-      goto error;
     }
 
 #if defined (SA_MODE)
@@ -2758,6 +2775,7 @@ error:
 
 #if defined(SERVER_MODE)
   pgbuf_daemons_destroy ();
+  dwb_daemons_destroy ();
 #endif
 
   log_final (thread_p);
@@ -2835,7 +2853,7 @@ xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart, const cha
 
   prm_set_bool_value (PRM_ID_DBFILES_PROTECT, false);
 
-  /* 
+  /*
    *  We need to do some initialization that normally happens in
    *  boot_restart_server(), but only if the SERVER_MODE CPP variable is
    *  defined.  Unfortunately, if we're here, then SERVER_MODE is not defined
@@ -2867,6 +2885,7 @@ xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart, const cha
  *
  * return : true
  *
+ *   thread_p (in/out) : input thread entry; outputs NULL if thread is finalized (SA_MODE)
  *   is_er_final(in): Terminate the error module..
  *
  * Note: All active transactions of all clients are aborted and the
@@ -2874,50 +2893,59 @@ xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart, const cha
  *       is destroyed.
  */
 bool
-xboot_shutdown_server (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final)
+xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_final)
 {
-  if (BO_IS_SERVER_RESTARTED ())
+  if (!BO_IS_SERVER_RESTARTED ())
     {
+      return true;
+    }
+
 #if defined(CUBRID_DEBUG)
-      boot_check_db_at_num_shutdowns (true);
+  boot_check_db_at_num_shutdowns (true);
 #endif /* CUBRID_DEBUG */
 
-      sysprm_set_force (prm_get_name (PRM_ID_SUPPRESS_FSYNC), "0");
+  sysprm_set_force (prm_get_name (PRM_ID_SUPPRESS_FSYNC), "0");
 
-      /* Shutdown the system with the system transaction */
-      logtb_set_to_system_tran_index (thread_p);
-      log_abort_all_active_transaction (thread_p);
-      vacuum_stop (thread_p);
+  /* Shutdown the system with the system transaction */
+  logtb_set_to_system_tran_index (thread_p);
+  log_abort_all_active_transaction (thread_p);
+  vacuum_stop (thread_p);
 
-      /* before removing temp vols */
-      (void) logtb_reflect_global_unique_stats_to_btree (thread_p);
-      qfile_finalize_list_cache (thread_p);
-      xcache_finalize (thread_p);
-      fpcache_finalize (thread_p);
-      session_states_finalize (thread_p);
+  /* before removing temp vols */
+  (void) logtb_reflect_global_unique_stats_to_btree (thread_p);
+  qfile_finalize_list_cache (thread_p);
+  xcache_finalize (thread_p);
+  fpcache_finalize (thread_p);
+  session_states_finalize (thread_p);
 
-      (void) boot_remove_all_temp_volumes (thread_p, REMOVE_TEMP_VOL_DEFAULT_ACTION);
+  (void) boot_remove_all_temp_volumes (thread_p, REMOVE_TEMP_VOL_DEFAULT_ACTION);
 
 #if defined(SERVER_MODE)
-      pgbuf_daemons_destroy ();
+  pgbuf_daemons_destroy ();
 #endif
 
-      log_final (thread_p);
+  log_final (thread_p);
 
-      if (is_er_final == ER_ALL_FINAL)
-	{
-	  boot_server_all_finalize (thread_p, is_er_final, BOOT_SHUTDOWN_EXCEPT_COMMON_MODULES);
-	}
-      else
-	{
-	  er_stack_push ();
-	  boot_server_all_finalize (thread_p, is_er_final, BOOT_SHUTDOWN_EXCEPT_COMMON_MODULES);
-	  er_stack_pop ();
-	}
-#if defined(SA_MODE)
-      boot_decoy_entries_finalize ();
-#endif
+  /* Since all pages were flushed, now it's safe to destroy DWB. */
+  (void) dwb_destroy (thread_p);
+
+  if (is_er_final == ER_ALL_FINAL)
+    {
+      boot_server_all_finalize (thread_p, is_er_final, BOOT_SHUTDOWN_EXCEPT_COMMON_MODULES);
     }
+  else
+    {
+      er_stack_push ();
+      boot_server_all_finalize (thread_p, is_er_final, BOOT_SHUTDOWN_EXCEPT_COMMON_MODULES);
+      er_stack_pop ();
+    }
+
+#if defined (SA_MODE)
+  // stop thread module
+  cubthread::finalize ();
+  thread_p = NULL;
+#endif // SA_MODE
+
   return true;
 }
 
@@ -3036,7 +3064,7 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
   if (tran_index != NULL_TRAN_INDEX)
     {
 #if defined (SERVER_MODE)
-      thread_p->conn_entry->transaction_id = tran_index;
+      thread_p->conn_entry->set_tran_index (tran_index);
 #endif /* SERVER_MODE */
       server_credential->db_full_name = boot_Db_full_name;
       server_credential->host_name = boot_Host_name;
@@ -3098,6 +3126,7 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
  *
  * return : NO_ERROR if all OK, ER_ status otherwise
  *
+ *   thread_p (in/out) : input thread entry; outputs NULL if thread is finalized (SA_MODE)
  *   tran_index(in): Client transaction index
  *
  * Note: A client is unregistered. Any active transactions on that
@@ -3107,7 +3136,7 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
  *       and allocated memory, on behalf of the client.
  */
 int
-xboot_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
+xboot_unregister_client (REFPTR (THREAD_ENTRY, thread_p), int tran_index)
 {
   int save_index;
   LOG_TDES *tdes;
@@ -3152,7 +3181,6 @@ xboot_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 #else
       if (tdes == NULL)
 	{
-
 #if defined(ENABLE_SYSTEMTAP)
 	  CUBRID_CONN_END (-1, "NULL");
 #endif /* ENABLE_SYSTEMTAP */
@@ -3184,7 +3212,7 @@ xboot_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 #endif /* CUBRID_DEBUG */
 
 #if defined(SA_MODE)
-  (void) xboot_shutdown_server (NULL, ER_ALL_FINAL);
+  (void) xboot_shutdown_server (thread_p, ER_ALL_FINAL);
 #endif /* SA_MODE */
 
   return NO_ERROR;
@@ -3209,7 +3237,7 @@ xboot_notify_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 
   conn = thread_p->conn_entry;
 
-  /* sboot_notify_unregister_client should hold conn->rmutex. 
+  /* sboot_notify_unregister_client should hold conn->rmutex.
    * Please see the comment of sboot_notify_unregister_client.
    */
 
@@ -3267,7 +3295,7 @@ boot_check_db_at_num_shutdowns (bool force_nshutdowns)
       return;
     }
 
-  /* 
+  /*
    * Check the consistency of the database when the client is unregister
    */
 
@@ -3325,7 +3353,7 @@ boot_check_db_at_num_shutdowns (bool force_nshutdowns)
 		       "Some inconsistencies were detected in your database.\n Please consult error_log file = %s"
 		       " for additional information\n", tmpname);
 	      fflush (stdout);
-	      /* 
+	      /*
 	       * The following is added so we can attach to the debugger on
 	       * a fatal error. It is of great help to stop execution when
 	       * running a set of sql scripts. (That is, find the script that
@@ -3646,25 +3674,18 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
   catcls_finalize_class_oid_to_oid_hash_table (thread_p);
   serial_finalize_cache_pool ();
   partition_cache_finalize (thread_p);
+
+  // return lock-free transaction and destroy the system.
+  thread_return_lock_free_transaction_entries ();
+  lf_destroy_transaction_systems ();
+
 #if defined(SERVER_MODE)
   /* server mode shuts down all modules */
   shutdown_common_modules = BOOT_SHUTDOWN_ALL_MODULES;
-
-#if defined(DIAG_DEVEL)
-  close_diag_mgr ();
-#endif /* DIAG_DEVEL */
 #endif /* SERVER_MODE */
 
   if (shutdown_common_modules == BOOT_SHUTDOWN_ALL_MODULES)
     {
-#if defined(SERVER_MODE)
-      /*
-       * Clears latch free resources, before shutting down the area manager. This is needed, since latch free resources
-       * may still refers the area manager.
-       */
-      thread_return_all_transactions_entries ();
-      lf_destroy_transaction_systems ();
-#endif
       es_final ();
       tp_final ();
       locator_free_areas ();
@@ -3691,33 +3712,24 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
  *
  * return : NO_ERROR if all OK, ER_ status otherwise
  *
- *   backup_path(in): Location where information volumes are
- *                    backed up. If NULL is given, the following
- *                    defaults are assumed to back up each
- *                    information volume:
- *                    - If file "fileof_vols_and_backup_paths" is
- *                      given, the path to backup each volume is
- *                      found in this file.
- *                    - All information volumes are backed up on
- *                      the same location where the log files are
- *                      located.
+ *   backup_path(in): Location where information volumes are backed up. If NULL is given, the following defaults
+ *   		      are assumed to back up each information volume:
+ *                    - If file "fileof_vols_and_backup_paths" is given, the path to backup each volume is found in
+ *                      this file.
+ *                    - All information volumes are backed up on the same location where the log files are located.
  *   backup_level(in): backup levels allowed: 0 - Full (default),
  *                     1 - Incremental1, 2 - Incremental
- *   deleted_unneeded_logarchives(in): Whetear to remove log archives that are
- *                                 not needed any longer to recovery from
- *                                 crashes when the backup just created is
- *                                 used.
+ *   deleted_unneeded_logarchives(in): Whether to remove log archives that are not needed any longer to recovery from
+ *   				       crashes when the backup just created is used.
  *   backup_verbose_file(in): verbose mode file path
- *                    num_threads: number of threads
- *                    zip_method: compression method
- *                    zip_level: compression level
+ *   num_threads: number of threads
+ *   zip_method: compression method
+ *   zip_level: compression level
  *   sleep_msecs(in):
  *
- * Note: A fuzzy backup of the database is taken. The backup is written
- *       into the given backup_path location. If the backup_path
- *       location is omitted (i.e, NULL is given), the log path
- *       location which was specified at database creation is used to
- *       store the backup.
+ * Note: A fuzzy backup of the database is taken. The backup is written into the given backup_path location.
+ *       If the backup_path location is omitted (i.e, NULL is given), the log path location which was specified at
+ *       database creation is used to store the backup.
  */
 int
 xboot_backup (THREAD_ENTRY * thread_p, const char *backup_path, FILEIO_BACKUP_LEVEL backup_level,
@@ -3737,32 +3749,25 @@ xboot_backup (THREAD_ENTRY * thread_p, const char *backup_path, FILEIO_BACKUP_LE
  *
  * return : NO_ERROR if all OK, ER_ status otherwise
  *
+ *   thread_p (in/out) : input thread entry; outputs NULL if thread is finalized (SA_MODE)
  *   fromdb_name(in): The database from where the copy is made.
  *   newdb_name(in): Name of new database
  *   newdb_path(in): Directory where the new database will reside
- *   newlog_path(in): Directory where the log volumes of the new database
- *                    will reside
+ *   newlog_path(in): Directory where the log volumes of the new database will reside
+ *   newlob_path(in): Directory where the lob volumes of the new database will reside
  *   newdb_server_host(in): Server host where the new database reside
- *   new_volext_path(in): A path is included if all volumes are placed in one
- *                        place/directory. If NULL is given,
- *                        - If file "fileof_vols_and_wherepaths" is given, the
- *                          path is found in this file.
- *                        - Each volume is copied to same place where the
- *                          volume resides.
- *                      Note: This parameter should be NULL, if the above file
- *                            is given.
- *   fileof_vols_and_wherepaths(in): A file is given when the user decides to
- *                               control the copy/rename of the volume by
- *                               individual bases. That is, user decides to
- *                               spread the volumes over several locations and
- *                               or to label the volumes with specific names.
- *                               Each volume entry consists of:
- *                                 volid from_fullvolname to_fullvolname
- *   newdb_overwrite(in): Wheater to overwrite the new database if it already
- *                        exist.
+ *   new_volext_path(in): A path is included if all volumes are placed in one place/directory. If NULL is given,
+ *                        - If file "fileof_vols_and_wherepaths" is given, the path is found in this file.
+ *                        - Each volume is copied to same place where the volume resides.
+ *                      Note: This parameter should be NULL, if the above file is given.
+ *   fileof_vols_and_wherepaths(in): A file is given when the user decides to control the copy/rename of the volume by
+ *                               individual bases. That is, user decides to spread the volumes over several locations
+ *                               and or to label the volumes with specific names.
+ *                               Each volume entry consists of: volid from_fullvolname to_fullvolname
+ *   newdb_overwrite(in): Whether to overwrite the new database if it already exist.
  */
 int
-xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname, const char *new_db_name, const char *new_db_path,
+xboot_copy (REFPTR (THREAD_ENTRY, thread_p), const char *from_dbname, const char *new_db_name, const char *new_db_path,
 	    const char *new_log_path, const char *new_lob_path, const char *new_db_server_host,
 	    const char *new_volext_path, const char *fileof_vols_and_copypaths, bool new_db_overwrite)
 {
@@ -3785,11 +3790,13 @@ xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname, const char *new_db
   struct stat stat_buf;
 #endif
 
+  assert (thread_p != NULL);
+
   /* If db_path and/or log_path are NULL find the defaults */
 
   if (new_db_path == NULL || fileof_vols_and_copypaths != NULL)
     {
-      /* 
+      /*
        * If a newdb path was given, it is ignored since only one option must
        * be specified
        */
@@ -3801,7 +3808,7 @@ xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname, const char *new_db
 	}
     }
 
-  /* 
+  /*
    * Make sure that the db_path and log_path are the canonicalized absolute
    * pathnames
    */
@@ -3912,7 +3919,7 @@ xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname, const char *new_db
   /* Make sure that the full path for the new database is not too long */
   if ((int) (strlen (new_db_name) + strlen (new_db_path) + 2) > DB_MAX_PATH_LENGTH)
     {
-      /* 
+      /*
        * db_path + db_name is too long
        */
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG, 3, new_db_path, new_db_name,
@@ -3924,7 +3931,7 @@ xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname, const char *new_db
   /* Get the log prefix */
   new_log_prefix = fileio_get_base_file_name (new_db_name);
 
-  /* 
+  /*
    * get the database directory information in write mode
    */
   if (cfg_maycreate_get_directory_filename (dbtxt_label) == NULL
@@ -3968,7 +3975,7 @@ xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname, const char *new_db
 	}
       else
 	{
-	  /* 
+	  /*
 	   * Delete the database.. to make sure that all backups, log archives, and
 	   * so on are removed... then continue...
 	   * Note: we do not call xboot_delete since it reverts a bunch of stuff.
@@ -3984,7 +3991,7 @@ xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname, const char *new_db
 	    }
 	  (void) xboot_shutdown_server (thread_p, ER_THREAD_FINAL);
 
-	  error_code = xboot_delete (thread_p, new_db_name, true, BOOT_SHUTDOWN_EXCEPT_COMMON_MODULES);
+	  error_code = xboot_delete (new_db_name, true, BOOT_SHUTDOWN_EXCEPT_COMMON_MODULES);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error;
@@ -3996,9 +4003,12 @@ xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname, const char *new_db
 	      goto error;
 	    }
 
+	  // get current thread entry
+	  thread_p = thread_get_thread_entry_info ();
 	  error_code =
 	    xboot_copy (thread_p, from_dbname, new_db_name, new_db_path, new_log_path, new_lob_path, new_db_server_host,
 			new_volext_path, fileof_vols_and_copypaths, false);
+	  assert (thread_p == NULL);
 
 	  return error_code;
 	}
@@ -4012,13 +4022,13 @@ xboot_copy (THREAD_ENTRY * thread_p, const char *from_dbname, const char *new_db
       dir = NULL;
     }
 
-  /* 
+  /*
    * Compose the full name of the new database
    */
 
   COMPOSE_FULL_NAME (new_db_fullname, sizeof (new_db_fullname), new_db_path, new_db_name);
 
-  /* 
+  /*
    * Copy the database
    */
 
@@ -4175,7 +4185,7 @@ xboot_soft_rename (THREAD_ENTRY * thread_p, const char *old_db_name, const char 
 
   if (fileof_vols_and_renamepaths != NULL)
     {
-      /* 
+      /*
        * If a newdb path was given, it is ignored since only one option must
        * be specified
        */
@@ -4189,7 +4199,7 @@ xboot_soft_rename (THREAD_ENTRY * thread_p, const char *old_db_name, const char 
 
   if (new_db_path == NULL)
     {
-      /* 
+      /*
        * Use the same location as the source database
        */
       new_db_path = fileio_get_directory_path (allocdb_path, boot_Db_full_name);
@@ -4207,7 +4217,7 @@ xboot_soft_rename (THREAD_ENTRY * thread_p, const char *old_db_name, const char 
 
   if (new_log_path == NULL)
     {
-      /* 
+      /*
        * Use the same log location as the source database
        */
       new_log_path = fileio_get_directory_path (alloclog_path, log_Name_active);
@@ -4223,7 +4233,7 @@ xboot_soft_rename (THREAD_ENTRY * thread_p, const char *old_db_name, const char 
 	}
     }
 
-  /* 
+  /*
    * Make sure that the db_path and log_path are the canonicalized absolute
    * pathnames
    */
@@ -4267,7 +4277,7 @@ xboot_soft_rename (THREAD_ENTRY * thread_p, const char *old_db_name, const char 
   /* Make sure that the full path for the new database is not too long */
   if ((int) (strlen (new_db_name) + strlen (new_db_path) + 2) > DB_MAX_PATH_LENGTH)
     {
-      /* 
+      /*
        * db_path + db_name is too long
        */
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG, 3, new_db_path, new_db_name,
@@ -4279,7 +4289,7 @@ xboot_soft_rename (THREAD_ENTRY * thread_p, const char *old_db_name, const char 
   /* Get the log prefix */
   newlog_prefix = fileio_get_base_file_name (new_db_name);
 
-  /* 
+  /*
    * get the database directory information in write mode
    */
   if (cfg_maycreate_get_directory_filename (dbtxt_label) == NULL
@@ -4325,13 +4335,13 @@ xboot_soft_rename (THREAD_ENTRY * thread_p, const char *old_db_name, const char 
       goto end;
     }
 
-  /* 
+  /*
    * Compose the full name of the new database
    */
 
   COMPOSE_FULL_NAME (new_db_fullname, sizeof (new_db_fullname), new_db_path, new_db_name);
 
-  /* 
+  /*
    * Rename the database
    */
 
@@ -4365,6 +4375,7 @@ xboot_soft_rename (THREAD_ENTRY * thread_p, const char *old_db_name, const char 
 	{
 	  cfg_update_db (db, new_db_path, new_log_path, NULL, new_db_server_host);
 	}
+
       if (db == NULL || db->name == NULL || db->pathname == NULL || db->logpath == NULL || db->hosts == NULL)
 	{
 	  error_code = ER_FAILED;
@@ -4424,8 +4435,7 @@ end:
  *              run when there are multiusers in the system.
  */
 int
-xboot_delete (THREAD_ENTRY * thread_p, const char *db_name, bool force_delete,
-	      BOOT_SERVER_SHUTDOWN_MODE shutdown_common_modules)
+xboot_delete (const char *db_name, bool force_delete, BOOT_SERVER_SHUTDOWN_MODE shutdown_common_modules)
 {
   char log_path[PATH_MAX];
   const char *log_prefix = NULL;
@@ -4434,10 +4444,11 @@ xboot_delete (THREAD_ENTRY * thread_p, const char *db_name, bool force_delete,
   int dbtxt_vdes = NULL_VOLDES;
   char dbtxt_label[PATH_MAX];
   int error_code = NO_ERROR;
+  THREAD_ENTRY *thread_p = NULL;
 
   if (!BO_IS_SERVER_RESTARTED ())
     {
-      /* 
+      /*
        * Compose the full name of the database and find location of logs
        */
       if (msgcat_init () != NO_ERROR)
@@ -4475,7 +4486,7 @@ xboot_delete (THREAD_ENTRY * thread_p, const char *db_name, bool force_delete,
   /* Find the prefix for the database */
   log_prefix = fileio_get_base_file_name (db_name);
 
-  /* 
+  /*
    * get the database directory information in write mode.
    */
   if (cfg_maycreate_get_directory_filename (dbtxt_label) == NULL)
@@ -4503,7 +4514,7 @@ xboot_delete (THREAD_ENTRY * thread_p, const char *db_name, bool force_delete,
 
   if (error_code != NO_ERROR)
     {
-      /* 
+      /*
        * If I cannot obtain a Lock on database.txt, it is better to quite at
        * this moment. We will not even perform a dirty delete.
        */
@@ -4528,14 +4539,14 @@ xboot_delete (THREAD_ENTRY * thread_p, const char *db_name, bool force_delete,
       goto error_dirty_delete;
     }
 
-  /* 
+  /*
    * How can we perform the delete operation..without restarting the system
    * or restarted the system.
    */
 
   if (!BO_IS_SERVER_RESTARTED ())
     {
-      /* 
+      /*
        * Compose the full name of the database and find location of logs
        */
       COMPOSE_FULL_NAME (boot_Db_full_name, sizeof (boot_Db_full_name), db->pathname, db_name);
@@ -4554,7 +4565,7 @@ xboot_delete (THREAD_ENTRY * thread_p, const char *db_name, bool force_delete,
       dir = NULL;
     }
 
-  /* Now delete the database */
+  /* Now delete the database. Normally, DWB was already removed at database shutdown. */
   error_code = boot_remove_all_volumes (thread_p, boot_Db_full_name, log_path, log_prefix, false, force_delete);
   if (error_code == NO_ERROR)
     {
@@ -4625,6 +4636,12 @@ xboot_delete (THREAD_ENTRY * thread_p, const char *db_name, bool force_delete,
 #endif
       er_stack_pop ();
     }
+
+#if defined (SA_MODE)
+  cubthread::finalize ();
+  thread_p = NULL;
+#endif // SA_MODE
+
   return error_code;
 
 error_dirty_delete:
@@ -4639,6 +4656,11 @@ error_dirty_delete:
   boot_server_all_finalize (thread_p, ER_THREAD_FINAL, shutdown_common_modules);
 #endif
   er_stack_pop ();
+
+#if defined (SA_MODE)
+  cubthread::finalize ();
+  thread_p = NULL;
+#endif // SA_MODE
 
   return error_code;
 }
@@ -4664,8 +4686,8 @@ error_dirty_delete:
 static int
 boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL * client_credential,
 			 const char *db_comments, DKNPAGES db_npages, const char *file_addmore_vols,
-			 const char *log_path, const char *log_prefix, DKNPAGES log_npages, int client_lock_wait,
-			 TRAN_ISOLATION client_isolation)
+			 const char *log_path, const char *log_prefix, DKNPAGES log_npages,
+			 int client_lock_wait, TRAN_ISOLATION client_isolation)
 {
   int tran_index = NULL_TRAN_INDEX;
   VOLID db_volid = NULL_VOLID;
@@ -4712,6 +4734,14 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
   ext_info.purpose = DB_PERMANENT_DATA_PURPOSE;
   ext_info.extend_npages = db_npages;
 
+  /* Create double write buffer if not already created. DWB creation must be done before first volume.
+   * DWB file is created on log_path.
+   */
+  if (dwb_create (thread_p, log_path, log_prefix) != NO_ERROR)
+    {
+      goto error;
+    }
+
   /* Format the first database volume */
   error_code = disk_format_first_volume (thread_p, boot_Db_full_name, db_comments, db_npages);
   if (error_code != NO_ERROR)
@@ -4725,7 +4755,7 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
       goto error;
     }
 
-  /* 
+  /*
    * Initialize the database parameter table
    */
 
@@ -4856,7 +4886,7 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
       goto error;
     }
 
-  /* 
+  /*
    * Create the rest of the other volumes if any
    */
 
@@ -4881,7 +4911,7 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
       goto error;
     }
 
-  /* 
+  /*
    * Initialize the catalog manager, the query evaluator, and install meta
    * classes
    */
@@ -4961,7 +4991,7 @@ boot_remove_all_volumes (THREAD_ENTRY * thread_p, const char *db_fullname, const
       goto error_rem_allvols;
     }
 
-  /* 
+  /*
    * How can we perform the delete operation..without restarting the system
    * or restarted the system.
    */
@@ -4981,7 +5011,7 @@ boot_remove_all_volumes (THREAD_ENTRY * thread_p, const char *db_fullname, const
 	  return ER_FAILED;
 	}
 
-      /* 
+      /*
        * Initialize error structure, critical section, slotted page, heap, and
        * recovery managers
        */
@@ -4995,7 +5025,7 @@ boot_remove_all_volumes (THREAD_ENTRY * thread_p, const char *db_fullname, const
 
       if (log_get_io_page_size (thread_p, db_fullname, log_path, log_prefix) == -1)
 	{
-	  /* 
+	  /*
 	   * There is something wrong with this database... We will only remove
 	   * as much as we can
 	   */
@@ -5071,8 +5101,8 @@ error_rem_allvols:
  *              is not available, the recreate_flag must be given
  */
 int
-xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name, bool recreate_log, DKNPAGES log_npages,
-		       const char *db_locale, FILE * out_fp)
+xboot_emergency_patch (const char *db_name, bool recreate_log, DKNPAGES log_npages, const char *db_locale,
+		       FILE * out_fp)
 {
   char log_path[PATH_MAX];
   const char *log_prefix;
@@ -5085,6 +5115,7 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name, bool recrea
   INTL_CODESET db_charset_db_root = INTL_CODESET_ERROR;
   char dummy_timezone_checksum[32 + 1];
   char db_lang[LANG_MAX_LANGNAME];
+  THREAD_ENTRY *thread_p = NULL;
 
   if (lang_init () != NO_ERROR)
     {
@@ -5121,7 +5152,7 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name, bool recrea
     }
   /* *INDENT-ON* */
 
-  /* 
+  /*
    * Compose the full name of the database and find location of logs
    */
   if (cfg_read_directory (&dir, false) != NO_ERROR)
@@ -5133,7 +5164,7 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name, bool recrea
 
   if (dir == NULL || ((db = cfg_find_db_list (dir, db_name)) == NULL))
     {
-      /* 
+      /*
        * Make sure that nobody was in the process of writing the
        * database.txt when we got a snapshot of it.
        */
@@ -5198,7 +5229,7 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name, bool recrea
       goto error_exit;
     }
 
-  /* 
+  /*
    * Initialize error structure, critical section, slotted page, heap, and
    * recovery managers
    */
@@ -5209,7 +5240,7 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name, bool recrea
     {
       if (recreate_log != 0)
 	{
-	  /* 
+	  /*
 	   * User must indicate the database pagesize through its own environment
 	   */
 	  (void) db_set_page_size (IO_DEFAULT_PAGE_SIZE, IO_DEFAULT_PAGE_SIZE);
@@ -5333,7 +5364,7 @@ xboot_emergency_patch (THREAD_ENTRY * thread_p, const char *db_name, bool recrea
       log_restart_emergency (thread_p, boot_Db_full_name, log_path, log_prefix);
     }
 
-  /* 
+  /*
    * Initialize the catalog manager, the query evaluator, and install meta
    * classes
    */
@@ -5434,7 +5465,7 @@ boot_find_new_db_path (char *db_pathbuf, const char *fileof_vols_and_wherepaths)
 
   if (fileof_vols_and_wherepaths != NULL)
     {
-      /* 
+      /*
        * Obtain the new database path from where paths file
        */
       where_paths_fp = fopen (fileof_vols_and_wherepaths, "r");
@@ -5575,45 +5606,6 @@ boot_volume_info_log_path (char *log_path)
 
   return NULL;
 }
-
-#if defined(SA_MODE)
-/*
- * boot_decoy_entries_finalize () - free memory of the decoy entries in SA_MODE
- *
- * return : nothing
- */
-static void
-boot_decoy_entries_finalize (void)
-{
-  LF_TRAN_ENTRY *t_entry;
-
-  t_entry = thread_get_tran_entry (NULL, THREAD_TS_SPAGE_SAVING);
-  lf_tran_destroy_entry (t_entry);
-
-  /* To free the tran entry of THREAD_TS_OBJ_LOCK_RES and THREAD_TS_OBJ_LOCK_ENT are not needed */
-
-  t_entry = thread_get_tran_entry (NULL, THREAD_TS_CATALOG);
-  lf_tran_destroy_entry (t_entry);
-
-  t_entry = thread_get_tran_entry (NULL, THREAD_TS_SESSIONS);
-  lf_tran_destroy_entry (t_entry);
-
-  t_entry = thread_get_tran_entry (NULL, THREAD_TS_FREE_SORT_LIST);
-  lf_tran_destroy_entry (t_entry);
-
-  t_entry = thread_get_tran_entry (NULL, THREAD_TS_GLOBAL_UNIQUE_STATS);
-  lf_tran_destroy_entry (t_entry);
-
-  t_entry = thread_get_tran_entry (NULL, THREAD_TS_HFID_TABLE);
-  lf_tran_destroy_entry (t_entry);
-
-  t_entry = thread_get_tran_entry (NULL, THREAD_TS_XCACHE);
-  lf_tran_destroy_entry (t_entry);
-
-  t_entry = thread_get_tran_entry (NULL, THREAD_TS_FPCACHE);
-  lf_tran_destroy_entry (t_entry);
-}
-#endif
 
 /*
  * xboot_compact_db () - compact the database
@@ -5893,7 +5885,7 @@ boot_dbparm_save_volume (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, VOLID voli
   /* flush the boot_Db_parm object. this is not necessary but it is recommended in order to mount every known volume
    * during restart. that may not be possible during media crash though. */
   heap_flush (thread_p, boot_Db_parm_oid);
-  fileio_synchronize (thread_p, fileio_get_volume_descriptor (boot_Db_parm_oid->volid), NULL);	/* label? */
+  fileio_synchronize (thread_p, fileio_get_volume_descriptor (boot_Db_parm_oid->volid), NULL, FILEIO_SYNC_ALSO_FLUSH_DWB);	/* label? */
 
 exit:
   return error_code;
@@ -5940,4 +5932,40 @@ boot_db_parm_update_heap (THREAD_ENTRY * thread_p)
     }
   heap_scancache_end (thread_p, &scan_cache);
   return error_code;
+}
+
+//
+// boot_after_copydb - do whatever checks and changes necessary on first boot of copied database.
+//                     copydb is quite rudimentary; it will just copy page by page as is, and then reset the LSA's.
+//                     some of database stuff may be contextual (e.g. stuff that depend on log like vacuum), and
+//                     here that stuff must be handled
+//
+static int
+boot_after_copydb (THREAD_ENTRY * thread_p)
+{
+  if (!log_Gl.hdr.was_copied)
+    {
+      // this is not after copydb
+      return NO_ERROR;
+    }
+
+  int error_code = vacuum_reset_data_after_copydb (thread_p);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  // finished booting after copydb
+  log_Gl.hdr.was_copied = false;
+
+  // flush log and header to disk to make sure everything is saved
+  LOG_CS_ENTER (thread_p);
+  logpb_flush_pages_direct (thread_p);
+  logpb_flush_header (thread_p);
+  LOG_CS_EXIT (thread_p);
+
+  er_log_debug (ARG_FILE_LINE, "Complete boot_after_copydb \n");
+
+  return NO_ERROR;
 }

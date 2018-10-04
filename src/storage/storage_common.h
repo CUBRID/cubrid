@@ -108,6 +108,7 @@ struct log_lsa
 };
 
 typedef struct log_lsa LOG_LSA;	/* Log address identifier */
+
 STATIC_INLINE void
 LSA_COPY (LOG_LSA * plsa1, const LOG_LSA * plsa2)
 {
@@ -115,11 +116,19 @@ LSA_COPY (LOG_LSA * plsa1, const LOG_LSA * plsa2)
   plsa1->offset = plsa2->offset;
 }
 
-#define LSA_SET_NULL(lsa_ptr)\
-  do {									      \
-    (lsa_ptr)->pageid = NULL_PAGEID;                                          \
-    (lsa_ptr)->offset = NULL_OFFSET;                                          \
-  } while(0)
+STATIC_INLINE void
+LSA_SET_NULL (LOG_LSA * lsa_ptr)
+{
+  lsa_ptr->pageid = NULL_PAGEID;
+  lsa_ptr->offset = NULL_OFFSET;
+}
+
+STATIC_INLINE void
+LSA_SET_TEMP_LSA (LOG_LSA * lsa_ptr)
+{
+  lsa_ptr->pageid = NULL_PAGEID - 1;
+  lsa_ptr->offset = NULL_OFFSET - 1;
+}
 
 #define LSA_INITIALIZER	{NULL_PAGEID, NULL_OFFSET}
 
@@ -161,6 +170,8 @@ LSA_COPY (LOG_LSA * plsa1, const LOG_LSA * plsa2)
 #define LOG_PAGESIZE            (db_log_page_size())
 #define IO_PAGESIZE             (db_io_page_size())
 #define DB_PAGESIZE             (db_page_size())
+
+#define IS_POWER_OF_2(x)        (((x) & ((x) - 1)) == 0)
 
 /*
  * Sector
@@ -1053,9 +1064,11 @@ typedef enum
   T_JSON_TYPE,
   T_JSON_EXTRACT,
   T_JSON_VALID,
+  T_JSON_UNQUOTE,
   T_JSON_LENGTH,
   T_JSON_DEPTH,
   T_JSON_SEARCH,
+  T_JSON_PRETTY,
 } OPERATOR_TYPE;		/* arithmetic operator types */
 
 typedef enum
@@ -1073,6 +1086,7 @@ typedef enum
   PT_RANK,
   PT_DENSE_RANK,
   PT_NTILE,
+  PT_JSON_ARRAYAGG,
   PT_TOP_AGG_FUNC,
   /* only aggregate functions should be below PT_TOP_AGG_FUNC */
 
@@ -1092,7 +1106,7 @@ typedef enum
   F_SET, F_MULTISET, F_SEQUENCE, F_VID, F_GENERIC, F_CLASS_OF,
   F_INSERT_SUBSTRING, F_ELT, F_JSON_OBJECT, F_JSON_ARRAY, F_JSON_MERGE,
   F_JSON_INSERT, F_JSON_REMOVE, F_JSON_ARRAY_APPEND, F_JSON_GET_ALL_PATHS,
-  F_JSON_REPLACE, F_JSON_SET, F_JSON_KEYS,
+  F_JSON_REPLACE, F_JSON_SET, F_JSON_KEYS, F_JSON_ARRAY_INSERT,
 
   /* only for FIRST_VALUE. LAST_VALUE, NTH_VALUE analytic functions */
   PT_FIRST_VALUE, PT_LAST_VALUE, PT_NTH_VALUE,
@@ -1107,6 +1121,66 @@ typedef enum
 /************************************************************************/
 /* QUERY                                                                */
 /************************************************************************/
+
+/*
+ * CACHE TIME RELATED DEFINITIONS
+ */
+typedef struct cache_time CACHE_TIME;
+struct cache_time
+{
+  int sec;
+  int usec;
+};
+
+#define CACHE_TIME_AS_ARGS(ct)	(ct)->sec, (ct)->usec
+
+#define CACHE_TIME_EQ(T1, T2) \
+  (((T1)->sec != 0) && ((T1)->sec == (T2)->sec) && ((T1)->usec == (T2)->usec))
+
+#define CACHE_TIME_RESET(T) \
+  do \
+    { \
+      (T)->sec = 0; \
+      (T)->usec = 0; \
+    } \
+  while (0)
+
+#define CACHE_TIME_MAKE(CT, TV) \
+  do \
+    { \
+      (CT)->sec = (TV)->tv_sec; \
+      (CT)->usec = (TV)->tv_usec; \
+    } \
+  while (0)
+
+#define OR_CACHE_TIME_SIZE (OR_INT_SIZE * 2)
+
+#define OR_PACK_CACHE_TIME(PTR, T) \
+  do \
+    { \
+      if ((CACHE_TIME *) (T) != NULL) \
+        { \
+          PTR = or_pack_int (PTR, (T)->sec); \
+          PTR = or_pack_int (PTR, (T)->usec); \
+        } \
+    else \
+      { \
+        PTR = or_pack_int (PTR, 0); \
+        PTR = or_pack_int (PTR, 0); \
+      } \
+    } \
+  while (0)
+
+#define OR_UNPACK_CACHE_TIME(PTR, T) \
+  do \
+    { \
+      if ((CACHE_TIME *) (T) != NULL) \
+        { \
+          PTR = or_unpack_int (PTR, &((T)->sec)); \
+          PTR = or_unpack_int (PTR, &((T)->usec)); \
+        } \
+    } \
+  while (0)
 
 /* XASL identifier */
 typedef struct xasl_id XASL_ID;
@@ -1201,7 +1275,7 @@ extern const int SM_MAX_STRING_LENGTH;
  */
 typedef enum
 {
-
+  SM_ATTFLAG_NONE = 0,
   SM_ATTFLAG_INDEX = 1,		/* attribute has an index 0x01 */
   SM_ATTFLAG_UNIQUE = 2,	/* attribute has UNIQUE constraint 0x02 */
   SM_ATTFLAG_NON_NULL = 4,	/* attribute has NON_NULL constraint 0x04 */
@@ -1345,5 +1419,12 @@ typedef enum
   DB_PARTITIONED_CLASS = 1,
   DB_PARTITION_CLASS = 2
 } DB_CLASS_PARTITION_TYPE;
+
+// TODO: move me in a proper place
+typedef enum
+{
+  KILLSTMT_TRAN = 0,
+  KILLSTMT_QUERY = 1,
+} KILLSTMT_TYPE;
 
 #endif /* _STORAGE_COMMON_H_ */

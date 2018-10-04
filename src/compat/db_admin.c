@@ -266,15 +266,6 @@ db_init (const char *program, int print_version, const char *dbname, const char 
   db_path_info.db_host = (char *) host_name;
   db_path_info.db_comments = (char *) comments;
 
-#if defined (SA_MODE)
-  error = session_states_init (NULL);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-  (void) db_find_or_create_session (client_credential.db_user, client_credential.program_name);
-#endif /* SA_MODE */
-
   error = boot_initialize_client (&client_credential, &db_path_info, (bool) overwrite, addmore_vols_file, npages,
 				  (PGLENGTH) desired_pagesize, log_npages, (PGLENGTH) desired_log_page_size,
 				  lang_charset);
@@ -1147,6 +1138,21 @@ db_abort_transaction (void)
   error = tran_abort ();
 
   return (error);
+}
+
+/*
+ * db_reset_latest_query_status() - Reset latest query status.
+ *
+ * return : error code
+ */
+int
+db_reset_latest_query_status (void)
+{
+  CHECK_CONNECT_ERROR ();
+
+  tran_reset_latest_query_status ();
+
+  return NO_ERROR;
 }
 
 /*

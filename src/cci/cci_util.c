@@ -50,7 +50,7 @@
 #include <windows.h>
 #endif
 #include <sys/types.h>
-#include <regex38a.h>
+#include "libregex38a/regex38a.h"
 
 /************************************************************************
  * OTHER IMPORTED HEADER FILES						*
@@ -803,7 +803,7 @@ ut_date_tz_to_str (T_CCI_DATE_TZ * value, T_CCI_U_TYPE u_type, char *str, int si
   int len;
 
   if (u_type == CCI_U_TYPE_DATETIMETZ || u_type == CCI_U_TYPE_DATETIMELTZ || u_type == CCI_U_TYPE_TIMESTAMPTZ
-      || u_type == CCI_U_TYPE_TIMESTAMPLTZ || u_type == CCI_U_TYPE_TIMETZ)
+      || u_type == CCI_U_TYPE_TIMESTAMPLTZ)
     {
       int remain_size;
       ut_date_to_str ((T_CCI_DATE *) value, u_type, str, size);

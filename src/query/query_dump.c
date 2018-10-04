@@ -30,6 +30,9 @@
 #include "object_primitive.h"
 #include "system_parameter.h"
 #include "dbtype.h"
+#if defined (SERVER_MODE)
+#include "thread_manager.hpp"	// for thread_get_thread_entry_info
+#endif // SERVER_MODE
 
 #define foutput stdout
 
@@ -1117,10 +1120,6 @@ qdump_data_type_string (DB_TYPE type)
       return "CLOB";
     case DB_TYPE_TIME:
       return "TIME";
-    case DB_TYPE_TIMETZ:
-      return "TIMETZ";
-    case DB_TYPE_TIMELTZ:
-      return "TIMELTZ";
     case DB_TYPE_TIMESTAMP:
       return "TIMESTAMP";
     case DB_TYPE_TIMESTAMPTZ:
@@ -1344,6 +1343,8 @@ qdump_function_type_string (FUNC_TYPE ftype)
       return "PERCENTILE_CONT";
     case PT_PERCENTILE_DISC:
       return "PERCENTILE_DISC";
+    case PT_JSON_ARRAYAGG:
+      return "JSON_ARRAYAGG";
     case F_TABLE_SET:
       return "F_TABLE_SET";
     case F_TABLE_MULTISET:
@@ -1386,6 +1387,8 @@ qdump_function_type_string (FUNC_TYPE ftype)
       return "JSON_REMOVE";
     case F_JSON_ARRAY_APPEND:
       return "JSON_ARRAY_APPEND";
+    case F_JSON_ARRAY_INSERT:
+      return "JSON_ARRAY_INSERT";
     case F_JSON_MERGE:
       return "JSON_MERGE";
     case F_JSON_GET_ALL_PATHS:
@@ -2885,6 +2888,9 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
   json_t *scan = NULL, *scan_array = NULL;
   int num_spec = 0;
   char spec_name[1024];
+  THREAD_ENTRY *thread_p;
+
+  thread_p = thread_get_thread_entry_info ();
 
   for (spec = spec_list_p; spec != NULL; spec = spec->next)
     {
@@ -2904,7 +2910,7 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
       if (type == TARGET_CLASS)
 	{
 	  cls_node = &ACCESS_SPEC_CLS_SPEC (spec);
-	  if (heap_get_class_name (NULL, &(cls_node->cls_oid), &class_name) != NO_ERROR)
+	  if (heap_get_class_name (thread_p, &(cls_node->cls_oid), &class_name) != NO_ERROR)
 	    {
 	      /* ignore */
 	      er_clear ();
@@ -2925,8 +2931,8 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 	    }
 	  else if (spec->access == ACCESS_METHOD_INDEX)
 	    {
-	      if (heap_get_indexinfo_of_btid (NULL, &cls_node->cls_oid, &spec->indexptr->btid, NULL, NULL, NULL, NULL,
-					      &index_name, NULL) == NO_ERROR)
+	      if (heap_get_indexinfo_of_btid (thread_p, &cls_node->cls_oid, &spec->indexptr->btid, NULL, NULL, NULL,
+					      NULL, &index_name, NULL) == NO_ERROR)
 		{
 		  if (class_name != NULL && index_name != NULL)
 		    {
@@ -3245,8 +3251,8 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 	    }
 	  else if (spec->access == ACCESS_METHOD_INDEX)
 	    {
-	      if (heap_get_indexinfo_of_btid (NULL, &cls_node->cls_oid, &spec->indexptr->btid, NULL, NULL, NULL, NULL,
-					      &index_name, NULL) == NO_ERROR)
+	      if (heap_get_indexinfo_of_btid (thread_p, &cls_node->cls_oid, &spec->indexptr->btid, NULL, NULL, NULL,
+					      NULL, &index_name, NULL) == NO_ERROR)
 		{
 		  if (class_name != NULL && index_name != NULL)
 		    {

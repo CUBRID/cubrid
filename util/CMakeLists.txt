@@ -65,7 +65,7 @@ endif(UNIX)
 if(UNIX)
   add_dependencies(csql ${EP_TARGETS})
 endif(UNIX)
-
+add_dependencies(csql cubridsa cubridcs)
 
 set(CUB_MASTER_SOURCES
   ${EXECUTABLES_DIR}/master.c
@@ -204,18 +204,13 @@ set(CUB_ADMIN_SOURCES
   ${BASE_DIR}/cubrid_getopt_long.c
   ${BASE_DIR}/porting.c
   )
-  
 SET_SOURCE_FILES_PROPERTIES(
   ${CUB_ADMIN_SOURCES}
   PROPERTIES LANGUAGE CXX
-  )  
-
+  )
 if(WIN32)
   list(APPEND CUB_ADMIN_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
 endif(WIN32)
-
-
-
 add_executable(cub_admin ${CUB_ADMIN_SOURCES})
 target_include_directories(cub_admin PRIVATE ${EP_INCLUDES})
 target_link_libraries(cub_admin LINK_PRIVATE ${CMAKE_DL_LIBS})
@@ -224,6 +219,8 @@ if(UNIX)
 else(UNIX)
   target_link_libraries(cub_admin LINK_PRIVATE ws2_32)
 endif(UNIX)
+add_dependencies(cub_admin cubridsa cubridcs)
+
 
 set(CUBRID_ESQL_SOURCES
   ${BISON_esql_grammar_OUTPUTS}
@@ -280,6 +277,24 @@ if(WIN32)
   target_link_libraries(gencat LINK_PRIVATE ws2_32)
 endif(WIN32)
 
+set(DDL_PROXY_CLIENT_SOURCES
+  ${EXECUTABLES_DIR}/ddl_proxy_client.cpp
+  ${EXECUTABLES_DIR}/util_support.c
+  )
+
+SET_SOURCE_FILES_PROPERTIES(
+  ${DDL_PROXY_CLIENT_SOURCES}
+  PROPERTIES LANGUAGE CXX
+  )
+
+add_executable(ddl_proxy_client ${DDL_PROXY_CLIENT_SOURCES})
+target_compile_definitions(ddl_proxy_client PRIVATE ${COMMON_DEFS})
+target_link_libraries(ddl_proxy_client LINK_PRIVATE cubridcs)
+
+if(WIN32)
+target_link_libraries(ddl_proxy_client LINK_PRIVATE ws2_32)
+endif(WIN32)
+
 if(UNIX)
   set(UNITTESTS_LF_SOURCES
     ${BASE_DIR}/porting.c
@@ -308,18 +323,6 @@ if(UNIX)
   target_include_directories(unittests_area PRIVATE ${EP_INCLUDES})
   target_link_libraries(unittests_area LINK_PRIVATE cubrid)
 
-  set(UNITTESTS_CQUEUE_SOURCES
-    ${EXECUTABLES_DIR}/unittests_cqueue.c
-    )
-    SET_SOURCE_FILES_PROPERTIES(
-      ${UNITTESTS_CQUEUE_SOURCES}
-      PROPERTIES LANGUAGE CXX
-    )
-  add_executable(unittests_cqueue ${UNITTESTS_CQUEUE_SOURCES})
-  target_compile_definitions(unittests_cqueue PRIVATE UNITTEST_CQ SERVER_MODE ${COMMON_DEFS})
-  target_include_directories(unittests_cqueue PRIVATE ${EP_INCLUDES})
-  target_link_libraries(unittests_cqueue LINK_PRIVATE cubrid)
-  
   set(UNITTESTS_SNAPSHOT_SOURCES
       ${EXECUTABLES_DIR}/unittests_snapshot.c
       )
@@ -386,6 +389,7 @@ install(TARGETS
   loadjava
   cub_admin
   cubrid_esql
+  ddl_proxy_client
   RUNTIME DESTINATION ${CUBRID_BINDIR} COMPONENT Application
   LIBRARY DESTINATION ${CUBRID_LIBDIR} COMPONENT Library
   PUBLIC_HEADER DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header

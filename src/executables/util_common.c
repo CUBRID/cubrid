@@ -35,12 +35,16 @@
 #include "util_func.h"
 #include "porting.h"
 #include "message_catalog.h"
+#include "log_impl.h"
 #include "mprec.h"
 #include "system_parameter.h"
 #include "environment_variable.h"
 #include "heartbeat.h"
-#include "log_impl.h"
+#if defined (WINDOWS)
 #include "wintcp.h"
+#else
+#include "tcp.h"
+#endif
 
 typedef enum
 {

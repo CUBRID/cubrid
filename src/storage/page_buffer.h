@@ -398,6 +398,7 @@ extern void pgbuf_peek_stats (UINT64 * fixed_cnt, UINT64 * dirty_cnt, UINT64 * l
 			      UINT64 * alloc_bcb_waiter_high, UINT64 * alloc_bcb_waiter_med,
 			      UINT64 * alloc_bcb_waiter_low, UINT64 * lfcq_big_prv_num, UINT64 * lfcq_prv_num,
 			      UINT64 * lfcq_shr_num);
+extern void pgbuf_daemons_get_stats (UINT64 * stats_out);
 
 extern int pgbuf_flush_control_from_dirty_ratio (void);
 

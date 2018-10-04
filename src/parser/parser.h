@@ -62,6 +62,8 @@ extern "C"
     HIDDEN_CLASSOID_NAME
   } VIEW_HANDLING;
 
+  extern size_t json_table_column_count;
+
   extern PT_NODE **parser_main (PARSER_CONTEXT * p);
   extern void parser_final (void);
 
@@ -218,6 +220,7 @@ extern "C"
   extern DB_DOMAIN *pt_string_to_db_domain (const char *s, const char *class_name);
 
   extern DB_VALUE *pt_value_to_db (PARSER_CONTEXT * parser, PT_NODE * value);
+  extern void pt_data_type_init_value (const PT_NODE * node, DB_VALUE * value_out);
 
   extern int pt_coerce_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest, PT_TYPE_ENUM desired_type,
 			      PT_NODE * elem_type_list);
@@ -641,6 +644,7 @@ extern "C"
 						  int *continue_walk);
   extern void pt_get_default_expression_from_data_default_node (PARSER_CONTEXT * parser, PT_NODE * data_default_node,
 								DB_DEFAULT_EXPR * default_expr);
+  extern PT_NODE *pt_has_name_oid (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 #ifdef __cplusplus
 }
 #endif

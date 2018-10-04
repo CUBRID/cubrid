@@ -56,12 +56,8 @@
 #if defined(SERVER_MODE)
 #include "connection_error.h"
 #endif /* SERVER_MODE */
-#include "thread.h"
-#if !defined (SERVER_MODE)
-#include "transaction_cl.h"
-#endif
-
 #include "fault_injection.h"
+#include "thread_manager.hpp"	// for thread_get_thread_entry_info
 
 /************************************************************************/
 /* Define structures, globals, and macro's                              */
@@ -916,6 +912,8 @@ file_header_sanity_check (THREAD_ENTRY * thread_p, FILE_HEADER * fhead)
 #if !defined (NDEBUG)
   FILE_EXTENSIBLE_DATA *part_table;
   FILE_EXTENSIBLE_DATA *full_table;
+  FILE_VSID_COLLECTOR collector;
+  int iter_vsid;
 
   if (prm_get_bool_value (PRM_ID_FORCE_RESTART_TO_SKIP_RECOVERY))
     {
@@ -943,6 +941,16 @@ file_header_sanity_check (THREAD_ENTRY * thread_p, FILE_HEADER * fhead)
   if (fhead->n_page_free == 0)
     {
       assert (fhead->n_sector_total == fhead->n_sector_full);
+    }
+
+  // in some scenario with many file manipulation operations, next checks may be too slow. They gradually stack and
+  // waiting times for file headers grow continuously.
+  // skip the check if there are waiters on file header.
+  // don't skip if file logging is activated. it means a bug in file manipulation is investigated and header checks may
+  // be valuable.
+  if (!prm_get_bool_value (PRM_ID_FILE_LOGGING) && pgbuf_has_any_waiters ((PAGE_PTR) fhead))
+    {
+      return;
     }
 
   er_stack_push ();
@@ -989,6 +997,23 @@ file_header_sanity_check (THREAD_ENTRY * thread_p, FILE_HEADER * fhead)
 	    }
 	  assert (FILE_IS_TEMPORARY (fhead) || fhead->n_sector_full == full_cnt);
 	}
+    }
+
+  if (file_table_collect_all_vsids (thread_p, (PAGE_PTR) fhead, &collector) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto exit;
+    }
+
+  for (iter_vsid = 0; iter_vsid < collector.n_vsids - 1; iter_vsid++)
+    {
+      /* A VSID can't appears twice in tables. */
+      assert (disk_compare_vsids (&collector.vsids[iter_vsid], &collector.vsids[iter_vsid + 1]) != 0);
+    }
+
+  if (collector.vsids != NULL)
+    {
+      db_private_free (thread_p, collector.vsids);
     }
 
 exit:
@@ -3813,7 +3838,7 @@ exit:
       if (was_temp_reserved)
 	{
 	  /* recovery won't free reserved sectors. we have to manually handle the unreserve */
-	  bool save_check_interrupt = thread_set_check_interrupt (thread_p, false);
+	  bool save_check_interrupt = logtb_set_check_interrupt (thread_p, false);
 
 	  /* make sure sectors are sorted */
 	  qsort (vsids_reserved, n_sectors, sizeof (VSID), disk_compare_vsids);
@@ -3824,7 +3849,7 @@ exit:
 	      assert_release (false);
 	      /* fall through */
 	    }
-	  (void) thread_set_check_interrupt (thread_p, save_check_interrupt);
+	  (void) logtb_set_check_interrupt (thread_p, save_check_interrupt);
 	}
     }
 
@@ -4007,7 +4032,7 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
   if (is_temp)
     {
       /* do not interrupt destroying temporary files. it will leak pages. */
-      save_check_interrupt = thread_set_check_interrupt (thread_p, false);
+      save_check_interrupt = logtb_set_check_interrupt (thread_p, false);
     }
   else
     {
@@ -4154,7 +4179,7 @@ exit:
     }
   if (is_temp)
     {
-      (void) thread_set_check_interrupt (thread_p, save_check_interrupt);
+      (void) logtb_set_check_interrupt (thread_p, save_check_interrupt);
     }
   return error_code;
 }
@@ -4655,8 +4680,8 @@ file_table_move_partial_sectors_to_header (THREAD_ENTRY * thread_p, PAGE_PTR pag
     {
       /* Remove copied entries. */
       save_lsa = *pgbuf_get_lsa (page_part_ftab_first);
-      file_extdata_remove_at (extdata_part_ftab_first, 0, n_items_to_move);
       file_log_extdata_remove (thread_p, extdata_part_ftab_first, page_part_ftab_first, 0, n_items_to_move);
+      file_extdata_remove_at (extdata_part_ftab_first, 0, n_items_to_move);
 
       file_log ("file_table_move_partial_sectors_to_header",
 		"removed %d items from first page partial table \n"
@@ -8047,7 +8072,7 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
   bool was_empty = false;
   bool is_full = false;
   /* we don't have rollback, so don't interrupt */
-  bool save_check_interrupt = thread_set_check_interrupt (thread_p, false);
+  bool save_check_interrupt = logtb_set_check_interrupt (thread_p, false);
   int error_code = NO_ERROR;
 
   file_header_sanity_check (thread_p, fhead);
@@ -8269,7 +8294,7 @@ exit:
     {
       pgbuf_unfix_and_init (thread_p, page_ftab);
     }
-  (void) thread_set_check_interrupt (thread_p, save_check_interrupt);
+  (void) logtb_set_check_interrupt (thread_p, save_check_interrupt);
   return error_code;
 }
 
@@ -8343,7 +8368,7 @@ file_temp_reset_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid)
   int error_code = NO_ERROR;
 
   /* don't let this be interrupted, because we might ruin the file */
-  save_interrupt = thread_set_check_interrupt (thread_p, false);
+  save_interrupt = logtb_set_check_interrupt (thread_p, false);
 
   FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
   page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
@@ -8487,7 +8512,7 @@ exit:
       pgbuf_unfix (thread_p, page_fhead);
     }
 
-  (void) thread_set_check_interrupt (thread_p, save_interrupt);
+  (void) logtb_set_check_interrupt (thread_p, save_interrupt);
 
   if (collector.partsect_ftab != NULL)
     {
@@ -8993,7 +9018,7 @@ STATIC_INLINE int
 file_get_tempcache_entry_index (THREAD_ENTRY * thread_p)
 {
 #if defined (SERVER_MODE)
-  return thread_get_current_tran_index ();
+  return logtb_get_current_tran_index ();
 #else
   return 0;
 #endif
