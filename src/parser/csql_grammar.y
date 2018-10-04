@@ -26759,7 +26759,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_JSON_DEPTH:
     case PT_JSON_PRETTY:
     case PT_JSON_QUOTE:
-	case PT_JSON_UNQUOTE:
+    case PT_JSON_UNQUOTE:
       if (c != 1)
         return NULL;
 

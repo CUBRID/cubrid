@@ -1891,7 +1891,7 @@ db_string_substring (const MISC_OPERAND substr_operand, const DB_VALUE * src_str
 }
 
 /*
- * db_string_quote - escape a string and surround it with quotes 
+ * db_string_quote - escape a string and surround it with quotes
  *   return: If success, return 0.
  *   src(in): str
  *   res(out): quoted string
