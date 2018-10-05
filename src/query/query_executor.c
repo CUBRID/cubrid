@@ -8668,14 +8668,6 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 
   /* lock classes which this query will update */
   aptr = xasl->aptr_list;
-  if (aptr != NULL)
-    {
-      for (XASL_NODE * crt = aptr->next; crt; aptr = aptr->next, crt = crt->next)
-	{
-	  // assert there is never the situation that a CTE_PROC is after another type of PROC
-	  assert (!(aptr->type != CTE_PROC && crt->type == CTE_PROC));
-	}
-    }
   error = qexec_set_class_locks (thread_p, aptr, update->classes, update->num_classes, internal_classes);
   if (error != NO_ERROR)
     {
@@ -8702,13 +8694,9 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
       p_class_instance_lock_info = &class_instance_lock_info;
     }
 
-  aptr = xasl->aptr_list;
-  for (XASL_NODE * crt = aptr; crt != NULL && error == NO_ERROR; crt = crt->next)
+  if (qexec_execute_mainblock (thread_p, aptr, xasl_state, p_class_instance_lock_info) != NO_ERROR)
     {
-      if (qexec_execute_mainblock (thread_p, crt, xasl_state, p_class_instance_lock_info) != NO_ERROR)
-	{
-	  GOTO_EXIT_ON_ERROR;
-	}
+      GOTO_EXIT_ON_ERROR;
     }
 
   if (p_class_instance_lock_info && p_class_instance_lock_info->instances_locked)
@@ -9617,13 +9605,6 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 
   /* lock classes from which this query will delete */
   aptr = xasl->aptr_list;
-  if (aptr != NULL)
-    {
-      for (XASL_NODE * crt = aptr->next; crt; aptr = aptr->next, crt = crt->next)
-	{
-	  assert (!(aptr->type != CTE_PROC && crt->type == CTE_PROC));
-	}
-    }
   error = qexec_set_class_locks (thread_p, aptr, delete_->classes, delete_->num_classes, internal_classes);
   if (error != NO_ERROR)
     {
@@ -9649,13 +9630,9 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
       p_class_instance_lock_info = &class_instance_lock_info;
     }
 
-  aptr = xasl->aptr_list;
-  for (XASL_NODE * crt = aptr; crt != NULL; crt = crt->next)
+  if (qexec_execute_mainblock (thread_p, aptr, xasl_state, p_class_instance_lock_info) != NO_ERROR)
     {
-      if (qexec_execute_mainblock (thread_p, crt, xasl_state, p_class_instance_lock_info) != NO_ERROR)
-	{
-	  GOTO_EXIT_ON_ERROR;
-	}
+      GOTO_EXIT_ON_ERROR;
     }
 
   if (p_class_instance_lock_info && p_class_instance_lock_info->instances_locked)

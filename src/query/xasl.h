@@ -993,7 +993,7 @@ struct xasl_node
   ACCESS_SPEC_TYPE *merge_spec;	/* merge spec. node */
   VAL_LIST *val_list;		/* output-value list */
   VAL_LIST *merge_val_list;	/* value list for the merge spec */
-  XASL_NODE *aptr_list;		/* CTEs and uncorrelated subquery; CTEs are guaranteed always before the subqueries */
+  XASL_NODE *aptr_list;		/* CTEs and uncorrelated subquery. CTEs are guaranteed always before the subqueries */
   XASL_NODE *bptr_list;		/* OBJFETCH_PROC list */
   XASL_NODE *dptr_list;		/* corr. subquery list */
   PRED_EXPR *after_join_pred;	/* after-join predicate */
