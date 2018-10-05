@@ -25,7 +25,6 @@
 #define _LOAD_SCANNER_HPP_
 
 #include "load_driver.hpp"
-#include "load_grammar.hpp"
 #include "utility.h"
 
 #if !defined (yyFlexLexerOnce)
@@ -42,7 +41,6 @@ namespace cubload
       explicit scanner (driver &driver)
 	: yyFlexLexer ()
 	, m_driver (driver)
-	, m_error_manager (NULL)
       {
 	//
       };
@@ -64,34 +62,11 @@ namespace cubload
        */
       void LexerError (const char *msg) override
       {
-	assert (m_error_manager != NULL);
-	if (m_error_manager == NULL)
-	  {
-	    return;
-	  }
-
-	m_error_manager->on_error (LOADDB_MSG_LOAD_FAIL, true);
-      }
-
-      void ParserError ()
-      {
-	assert (m_error_manager != NULL);
-	if (m_error_manager == NULL)
-	  {
-	    return;
-	  }
-
-	m_error_manager->on_syntax_error ();
-      }
-
-      void set_error_manager (error_manager *error_manager)
-      {
-	m_error_manager = error_manager;
+	m_driver.on_error (LOADDB_MSG_LOAD_FAIL, true);
       }
 
     private:
       driver &m_driver;
-      error_manager *m_error_manager;
   };
 } // namespace cubload
 

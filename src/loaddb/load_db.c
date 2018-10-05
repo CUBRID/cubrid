@@ -29,6 +29,7 @@
 #include <stdarg.h>
 #include <assert.h>
 #include <fstream>
+#include <thread>
 
 #if !defined (WINDOWS)
 #include <unistd.h>
@@ -79,7 +80,7 @@ static int get_ignore_class_list (const char *filename);
 static void free_ignoreclasslist (void);
 static int ldr_compare_attribute_with_meta (char *table_name, char *meta, DB_ATTRIBUTE * attribute);
 static int ldr_compare_storage_order (FILE * schema_file);
-static bool ldr_load_on_server ();
+static void ldr_server_load (load_args * args, int *status, bool * interrupted);
 static void get_loaddb_args (UTIL_ARG_MAP * arg_map, load_args * args);
 
 /*
@@ -501,7 +502,6 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   int au_save = 0;
   extern bool obt_Enable_autoincrement;
   char log_file_name[PATH_MAX];
-  char object_file_abs_path[PATH_MAX];
   const char *msg_format;
   obt_Enable_autoincrement = false;
   load_args args;
@@ -749,53 +749,11 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       schema_file = NULL;
     }
 
+  print_log_msg (1, "\nStart object loading.\n");
 #if defined (SA_MODE)
-  ldr_load (&args, &status, &interrupted);
+  ldr_sa_load (&args, &status, &interrupted);
 #else // !SA_MODE = CS_MODE
-  //bool load_on_server = ldr_load_on_server ();
-  //if (load_on_server)
-  //  {
-  /* *INDENT-OFF* */
-  if (realpath (args.object_file, object_file_abs_path) != NULL)
-    {
-      int total_batches;
-
-      loaddb_init ();
-
-      int ret = loaddb_load_object_file (object_file_abs_path, &total_batches);
-      if (ret == ER_FAILED)
-	{
-	  int batch_size = 100000;
-	  std::string object_file_abs_path_ (object_file_abs_path);
-
-	  batch_handler handler = [] (std::string &batch, int batch_id)
-	  {
-	    loaddb_load_batch (batch, batch_id);
-	  };
-
-	  cubload::split (batch_size, object_file_abs_path_, handler, total_batches);
-	}
-
-      int i = 0;
-      while (i <= 10)
-	{
-	  cubload::stats stats;
-	  loaddb_fetch_stats (&stats);
-
-	  if (stats.failures >= 1)
-	    {
-	      fprintf (stderr, "%s", stats.error_message.c_str ());
-	      exit (-1);
-	    }
-
-	  sleep (1);
-	  i++;
-	}
-
-      loaddb_destroy (total_batches);
-    }
-  /* *INDENT-ON* */
-  //  }
+  ldr_server_load (&args, &status, &interrupted);
 #endif // !SA_MODE = CS_MODE
 
   /* if index file is specified, do index creation */
@@ -1157,17 +1115,6 @@ free_ignoreclasslist (void)
 #endif // SA_MODE
 }
 
-static bool
-ldr_load_on_server ()
-{
-  // TODO CBRD-21654 check if object file contains references
-#if defined (SA_MODE)
-  return false;
-#else
-  return true;
-#endif // SA_MODE
-}
-
 static void
 get_loaddb_args (UTIL_ARG_MAP * arg_map, load_args * args)
 {
@@ -1201,4 +1148,60 @@ get_loaddb_args (UTIL_ARG_MAP * arg_map, load_args * args)
   args->object_file = args->object_file ? args->object_file : (char *) "";
   args->error_file = args->error_file ? args->error_file : (char *) "";
   args->table_name = args->table_name ? args->table_name : (char *) "";
+}
+
+void
+ldr_server_load (load_args * args, int *status, bool * interrupted)
+{
+  char object_file_abs_path[PATH_MAX];
+
+  if (realpath (args->object_file, object_file_abs_path) != NULL)
+    {
+      loaddb_init ();
+
+      int ret = loaddb_load_object_file (object_file_abs_path);
+      if (ret == ER_FAILED)
+	{
+	  /* *INDENT-OFF* */
+	  std::string object_file_abs_path_ (object_file_abs_path);
+	  batch_handler handler = [] (std::string & batch, int batch_id) { loaddb_load_batch (batch, batch_id); };
+	  /* *INDENT-ON* */
+
+	  split (args->periodic_commit, object_file_abs_path_, handler);
+	}
+
+      stats stats;
+      long prev_last_commit = 0;
+      do
+	{
+	  loaddb_fetch_stats (&stats);
+
+	  if (stats.failures >= 1)
+	    {
+	      *status = 3;
+	      fprintf (stderr, "%s", stats.error_message.c_str ());
+	    }
+	  else
+	    {
+	      long curr_last_commit = stats.last_commit.load ();
+	      if (curr_last_commit > prev_last_commit)
+		{
+		  print_log_msg (args->verbose_commit,
+				 msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
+						 LOADDB_MSG_COMMITTED_INSTANCES), curr_last_commit);
+		  prev_last_commit = curr_last_commit;
+		}
+	    }
+
+	  /* *INDENT-OFF* */
+	  std::this_thread::sleep_for (std::chrono::milliseconds (100));
+	  /* *INDENT-ON* */
+	}
+      while (!stats.is_completed && stats.failures == 0);
+
+      loaddb_destroy ();
+
+      print_log_msg (1, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_INSERT_AND_FAIL_COUNT),
+		     stats.total_objects.load (), stats.failures.load ());
+    }
 }

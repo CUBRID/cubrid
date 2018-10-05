@@ -24,8 +24,6 @@
 #ifndef _LOAD_COMMON_HPP_
 #define _LOAD_COMMON_HPP_
 
-#include "utility.h"
-
 #include <atomic>
 #include <functional>
 
@@ -183,7 +181,8 @@ namespace cubload
       , total_objects (0)
       , last_commit (0)
       , failures (0)
-      , error_message()
+      , error_message ()
+      , is_completed (false)
     {
       //
     }
@@ -195,6 +194,7 @@ namespace cubload
       , last_commit (copy.last_commit.load ())
       , failures (copy.failures.load ())
       , error_message (copy.error_message)
+      , is_completed (copy.is_completed)
     {
       //
     }
@@ -207,6 +207,7 @@ namespace cubload
       this->last_commit.exchange (other.last_commit);
       this->failures.exchange (other.failures);
       this->error_message = other.error_message;
+      this->is_completed = other.is_completed;
 
       return *this;
     }
@@ -216,16 +217,7 @@ namespace cubload
     std::atomic_long last_commit;
     std::atomic_int failures;
     std::string error_message;
-  };
-
-  class error_manager
-  {
-    public:
-      virtual ~error_manager () = default; // Destructor
-
-      virtual void on_syntax_error ()  = 0;
-
-      virtual void on_error (MSGCAT_LOADDB_MSG msg_id, bool include_line_msg, ...) = 0;
+    bool is_completed;
   };
 
   /*
@@ -315,11 +307,10 @@ namespace cubload
    *    batch_size(in)      : batch size
    *    object_file_name(in): loaddb object file name (absolute path is required)
    *    handler(in)         : a function for handling/process a batch
-   *    total_batches(out)  : the total number of batches as of result of split operation
    */
-  int split (int batch_size, std::string &object_file_name, batch_handler &handler, int &total_batches);
+  int split (int batch_size, std::string &object_file_name, batch_handler &handler);
 
-  void handle_batch (std::string &class_line, std::string &batch, int &total_batches, batch_handler &handler);
+  void handle_batch (std::string &class_line, std::string &batch, int &batch_id, batch_handler &handler);
 
   /*
    * Check if a given string starts with a given prefix
@@ -331,6 +322,10 @@ namespace cubload
    */
   bool ends_with (const std::string &str, const std::string &suffix);
 
+  void rtrim (std::string &str);
+
+  std::string format (const char *fmt, ...);
+  std::string format (const char *fmt, va_list *ap);
 } // namespace cubload
 
 #endif /* _LOAD_COMMON_HPP_ */

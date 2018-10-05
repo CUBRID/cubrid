@@ -34,6 +34,10 @@
 #include "thread_compat.hpp"
 #include "tz_support.h"
 
+/* *INDENT-OFF* */
+typedef cubload::session loaddb_session;
+/* *INDENT-ON* */
+
 extern int session_states_init (THREAD_ENTRY * thread_p);
 extern void session_states_finalize (THREAD_ENTRY * thread_p);
 extern int session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id);
@@ -81,8 +85,6 @@ extern int session_get_number_of_holdable_cursors (void);
 extern int session_get_private_lru_idx (const void *session_p);
 extern int session_set_tran_auto_commit (THREAD_ENTRY * thread_p, bool auto_commit);
 
-  /* *INDENT-OFF* */
-extern int session_set_loaddb_session (THREAD_ENTRY *thread_p, cubload::session *loaddb_session);
-extern int session_get_loaddb_session (THREAD_ENTRY *thread_p, cubload::session **loaddb_session);
-  /* *INDENT-ON* */
+extern int session_set_loaddb_session (THREAD_ENTRY * thread_p, loaddb_session * session);
+extern int session_get_loaddb_session (THREAD_ENTRY * thread_p, loaddb_session ** session);
 #endif /* _SESSION_H_ */

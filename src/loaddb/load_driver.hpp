@@ -30,6 +30,7 @@
 
 #include "load_common.hpp"
 #include "load_grammar.hpp"
+#include "utility.h"
 
 #include <istream>
 
@@ -46,6 +47,9 @@ namespace cubload
 
   // forward declaration
   class scanner;
+#if defined (SERVER_MODE)
+  class session;
+#endif
 
   /*
    * cubload::driver
@@ -74,8 +78,11 @@ namespace cubload
   class driver
   {
     public:
-      // Default constructor.
-      explicit driver (loader *loader);
+#if defined (SERVER_MODE)
+      explicit driver (session &session);
+#elif defined (SA_MODE)
+      driver ();
+#endif
 
       // Copy constructor (disabled).
       driver (const driver &copy) = delete;
@@ -89,12 +96,18 @@ namespace cubload
       // Parse functions
       int parse (std::istream &iss);
 
-      void syntax_error ();
+      void on_syntax_error ();
+
+      void on_error (MSGCAT_LOADDB_MSG msg_id, bool include_line_msg, ...);
+
       int scanner_lineno (); // Returns line number through scanner
 
       scanner &get_scanner ();
 
     private:
+#if defined (SERVER_MODE)
+      session &m_session;
+#endif
       loader *m_loader;
       scanner *m_scanner;
       parser m_parser;

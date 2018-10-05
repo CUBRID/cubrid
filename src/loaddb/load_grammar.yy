@@ -56,8 +56,6 @@ namespace cubload
 
 %code {
 // This code will be copied into loader grammar source file
-#include <cstring>
-
 #include "dbtype_def.h"
 #include "load_driver.hpp"
 #include "load_scanner.hpp"
@@ -789,5 +787,5 @@ monetary :
 void
 cubload::parser::error (const parser::location_type& l, const std::string& m)
 {
-  m_driver.syntax_error ();
+  m_driver.on_syntax_error ();
 }

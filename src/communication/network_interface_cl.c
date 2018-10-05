@@ -10050,13 +10050,12 @@ loaddb_init ()
 }
 
 int
-loaddb_load_object_file (const char *file_name, int *batch_total)
+loaddb_load_object_file (const char *file_name)
 {
 #if defined(CS_MODE)
-  char *ptr;
   int req_error;
   int rc = NO_ERROR;
-  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
   int request_size = length_const_string (file_name, NULL);
@@ -10076,8 +10075,7 @@ loaddb_load_object_file (const char *file_name, int *batch_total)
 
   if (!req_error)
     {
-      ptr = or_unpack_int (reply, &rc);
-      or_unpack_int (ptr, batch_total);
+      or_unpack_int (reply, &rc);
     }
 
   return rc;
@@ -10161,6 +10159,10 @@ loaddb_fetch_stats (cubload::stats * stats)
   ptr = or_unpack_int (ptr, &failures);
   stats->failures.store (failures);
 
+  int is_completed;
+  ptr = or_unpack_int (ptr, &is_completed);
+  stats->is_completed = (bool) is_completed;
+
   char *error_message;
   or_unpack_string (ptr, &error_message);
   stats->error_message = error_message;
@@ -10172,20 +10174,16 @@ loaddb_fetch_stats (cubload::stats * stats)
 }
 
 int
-loaddb_destroy (int batch_total)
+loaddb_destroy ()
 {
 #if defined(CS_MODE)
   int req_error;
   int rc = NO_ERROR;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
-  char *request = OR_ALIGNED_BUF_START (a_request);
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  or_pack_int (request, batch_total);
-
-  req_error = net_client_request (NET_SERVER_LD_DESTROY, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  req_error =
+    net_client_request (NET_SERVER_LD_DESTROY, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       or_unpack_int (reply, &rc);

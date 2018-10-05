@@ -9628,11 +9628,9 @@ sloaddb_init (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reql
 void
 sloaddb_load_object_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  char *ptr;
   int ret;
-  int batch_total;
   char *object_file_name;
-  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
   or_unpack_string (request, &object_file_name);
@@ -9644,12 +9642,11 @@ sloaddb_load_object_file (THREAD_ENTRY * thread_p, unsigned int rid, char *reque
 
   session_get_loaddb_session (thread_p, &session);
   assert (session != NULL);
-  ret = session->load_file (*thread_p, object_file_name_str, batch_total);
+  ret = session->load_file (*thread_p, object_file_name_str);
 
   db_private_free (thread_p, object_file_name);
 
-  ptr = or_pack_int (reply, ret);
-  or_pack_int (ptr, batch_total);
+  or_pack_int (reply, ret);
 
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
@@ -9677,7 +9674,7 @@ sloaddb_load_batch (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 
   db_private_free (thread_p, batch);
 
-  or_pack_int (reply, 0);
+  or_pack_int (reply, NO_ERROR);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
@@ -9703,7 +9700,7 @@ sloaddb_fetch_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   /* *INDENT-ON* */
 
   data_reply_length =
-    or_packed_string_length (loaddb_stats.error_message.c_str (), NULL) + OR_INT64_SIZE + OR_INT64_SIZE + OR_INT_SIZE;
+    or_packed_string_length (loaddb_stats.error_message.c_str (), NULL) + (2 * OR_INT64_SIZE) + (2 * OR_INT_SIZE);
   data_reply = (char *) malloc (data_reply_length);
   if (data_reply == NULL)
     {
@@ -9717,6 +9714,7 @@ sloaddb_fetch_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   ptr = or_pack_int64 (data_reply, loaddb_stats.total_objects.load ());
   ptr = or_pack_int64 (ptr, loaddb_stats.last_commit.load ());
   ptr = or_pack_int (ptr, loaddb_stats.failures.load ());
+  ptr = or_pack_int (ptr, (int) loaddb_stats.is_completed);
   or_pack_string (ptr, loaddb_stats.error_message.c_str ());
 
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), data_reply,
@@ -9731,22 +9729,19 @@ sloaddb_fetch_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 void
 sloaddb_destroy (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  int batch_total;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   /* *INDENT-OFF* */
   cubload::session *session = NULL;
   /* *INDENT-ON* */
 
-  or_unpack_int (request, &batch_total);
-
   session_get_loaddb_session (thread_p, &session);
   assert (session != NULL);
 
-  session->wait_for_completion (batch_total);
+  session->wait_for_completion ();
   delete session;
   session_set_loaddb_session (thread_p, NULL);
 
-  or_pack_int (reply, 0);
+  or_pack_int (reply, NO_ERROR);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }

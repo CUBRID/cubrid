@@ -28,6 +28,7 @@
 
 #include <cassert>
 #include <fstream>
+#include <stdarg.h>
 #include <string>
 
 namespace cubload
@@ -86,9 +87,10 @@ namespace cubload
   }
 
   int
-  split (int batch_size, std::string &object_file_name, batch_handler &handler, int &total_batches)
+  split (int batch_size, std::string &object_file_name, batch_handler &handler)
   {
     int rows = 0;
+    int batch_id = 0;
     std::string class_line;
     std::string batch_buffer;
     std::ifstream object_file (object_file_name, std::fstream::in);
@@ -100,8 +102,6 @@ namespace cubload
       }
 
     assert (batch_size > 0);
-
-    total_batches = 0;
 
     for (std::string line; std::getline (object_file, line);)
       {
@@ -115,7 +115,7 @@ namespace cubload
 	  {
 	    // in case of class line collect remaining for current class
 	    // and start new batch for the new class
-	    handle_batch (class_line, batch_buffer, total_batches, handler);
+	    handle_batch (class_line, batch_buffer, batch_id, handler);
 
 	    // store new class line
 	    class_line = line;
@@ -127,28 +127,31 @@ namespace cubload
 	    continue;
 	  }
 
+	// strip trailing whitespace
+	rtrim (line);
+
 	// it is a line containing row data so append it
 	batch_buffer.append (line);
+
+	// since std::getline eats end line character, add it back in order to make loaddb lexer happy
+	batch_buffer.append ("\n");
 
 	// it could be that a row is wrapped on the next line,
 	// this means that the row ends on the last line that does not end with '+' (plus) character
 	if (!ends_with (line, "+"))
 	  {
-	    // since std::getline eats end line character, add it back in order to make loaddb lexer happy
-	    batch_buffer.append ("\n");
-
 	    rows++;
 
 	    // check if we have a full batch
 	    if ((rows % batch_size) == 0)
 	      {
-		handle_batch (class_line, batch_buffer, total_batches, handler);
+		handle_batch (class_line, batch_buffer, batch_id, handler);
 	      }
 	  }
       }
 
     // collect remaining rows
-    handle_batch (class_line, batch_buffer, total_batches, handler);
+    handle_batch (class_line, batch_buffer, batch_id, handler);
 
     object_file.close ();
 
@@ -156,7 +159,7 @@ namespace cubload
   }
 
   void
-  handle_batch (std::string &class_line, std::string &batch, int &total_batches, batch_handler &handler)
+  handle_batch (std::string &class_line, std::string &batch, int &batch_id, batch_handler &handler)
   {
     if (batch.empty () || class_line.empty ())
       {
@@ -170,21 +173,51 @@ namespace cubload
     buffer.append ("\n");
     buffer.append (batch);
 
-    handler (buffer, ++total_batches);
+    handler (buffer, ++batch_id);
 
     // prepare to start new batch for the class
     batch.clear ();
   }
 
-  bool
+  inline bool
   starts_with (const std::string &str, const std::string &prefix)
   {
     return str.size () >= prefix.size () && 0 == str.compare (0, prefix.size (), prefix);
   }
 
-  bool
+  inline bool
   ends_with (const std::string &str, const std::string &suffix)
   {
     return str.size () >= suffix.size () && 0 == str.compare (str.size () - suffix.size (), suffix.size (), suffix);
+  }
+
+  inline void
+  rtrim (std::string &str)
+  {
+    str.erase (str.find_last_not_of (" \t\f\v\n\r") + 1);
+  }
+
+  std::string
+  format (const char *fmt, ...)
+  {
+    va_list ap;
+
+    va_start (ap, fmt);
+    std::string msg = format (fmt, &ap);
+    va_end (ap);
+
+    return msg;
+  }
+
+  std::string
+  format (const char *fmt, va_list *ap)
+  {
+    // Determine required size
+    int size = vsnprintf (NULL, 0, fmt, *ap) + 1; // +1  for '\0'
+    std::unique_ptr<char[]> msg (new char[size]);
+
+    vsnprintf (msg.get (), (size_t) size, fmt, *ap);
+
+    return std::string (msg.get (), msg.get () + size - 1);
   }
 } // namespace cubload

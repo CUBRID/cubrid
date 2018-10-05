@@ -141,9 +141,7 @@ struct session_state
   TZ_REGION session_tz_region;
   int private_lru_index;
 
-  /* *INDENT-OFF* */
-  cubload::session *loaddb_session;
-  /* *INDENT-ON* */
+  loaddb_session *loaddb_session_p;
 };
 
 /* session state manipulation functions */
@@ -285,7 +283,7 @@ session_state_init (void *st)
   session_p->trace_format = QUERY_TRACE_TEXT;
   session_p->private_lru_index = -1;
   session_p->auto_commit = false;
-  session_p->loaddb_session = NULL;
+  session_p->loaddb_session_p = NULL;
 
   return NO_ERROR;
 }
@@ -797,6 +795,16 @@ session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_ID id)
       pthread_mutex_unlock (&session_p->mutex);
 
       return NO_ERROR;
+    }
+
+  // on destroy abort and delete loaddb session
+  if (session_p->loaddb_session_p != NULL)
+    {
+      session_p->loaddb_session_p->abort ();
+      session_p->loaddb_session_p->wait_for_completion ();
+
+      delete session_p->loaddb_session_p;
+      session_p->loaddb_session_p = NULL;
     }
 
   /* Now we can destroy this session */
@@ -3164,7 +3172,7 @@ session_set_tran_auto_commit (THREAD_ENTRY * thread_p, bool auto_commit)
 }
 
 int
-session_set_loaddb_session (THREAD_ENTRY * thread_p, cubload::session * loaddb_session)
+session_set_loaddb_session (THREAD_ENTRY * thread_p, loaddb_session * session)
 {
   SESSION_STATE *state_p = NULL;
 
@@ -3174,13 +3182,13 @@ session_set_loaddb_session (THREAD_ENTRY * thread_p, cubload::session * loaddb_s
       return ER_FAILED;
     }
 
-  state_p->loaddb_session = loaddb_session;
+  state_p->loaddb_session_p = session;
 
   return NO_ERROR;
 }
 
 int
-session_get_loaddb_session (THREAD_ENTRY * thread_p, cubload::session ** loaddb_session)
+session_get_loaddb_session (THREAD_ENTRY * thread_p, loaddb_session ** session)
 {
   SESSION_STATE *state_p = NULL;
 
@@ -3190,7 +3198,7 @@ session_get_loaddb_session (THREAD_ENTRY * thread_p, cubload::session ** loaddb_
       return ER_FAILED;
     }
 
-  *loaddb_session = state_p->loaddb_session;
+  *session = state_p->loaddb_session_p;
 
   return NO_ERROR;
 }

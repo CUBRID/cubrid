@@ -24,11 +24,14 @@
 #include "load_server_loader.hpp"
 
 #include "load_db_value_converter.hpp"
+#include "load_driver.hpp"
 #include "load_scanner.hpp"
 #include "load_session.hpp"
 #include "locator_sr.h"
+#include "message_catalog.h"
 #include "oid.h"
 #include "thread_manager.hpp"
+#include "utility.h"
 #include "xserver_interface.h"
 
 #include <map>
@@ -36,14 +39,47 @@
 namespace cubload
 {
 
-  server_loader::server_loader (session *session)
-    : m_class_oid (OID_INITIALIZER)
+  void
+  driver::on_syntax_error ()
+  {
+    on_error (LOADDB_MSG_SYNTAX_ERR, false, m_scanner->lineno (), m_scanner->YYText ());
+  }
+
+  void
+  driver::on_error (MSGCAT_LOADDB_MSG msg_id, bool include_line_msg, ...)
+  {
+    va_list ap;
+    std::string err_msg_line;
+
+    if (include_line_msg)
+      {
+	err_msg_line = format (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_LINE),
+			       m_scanner->lineno () - 1);
+      }
+
+    va_start (ap, include_line_msg);
+    std::string err_msg = format (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, msg_id), &ap);
+    va_end (ap);
+
+    if (!err_msg_line.empty ())
+      {
+	err_msg_line.append (err_msg);
+	m_session.abort (std::move (err_msg_line));
+      }
+    else
+      {
+	m_session.abort (std::move (err_msg));
+      }
+  }
+
+  server_loader::server_loader (session &session, driver &driver)
+    : m_session (session)
+    , m_driver (driver)
+    , m_class_oid (OID_INITIALIZER)
     , m_attr_ids (NULL)
     , m_attr_info ()
     , m_scancache ()
     , m_scancache_started (false)
-    , m_session (session)
-    , m_error_manager (NULL)
   {
     //
   }
@@ -55,17 +91,6 @@ namespace cubload
 	delete m_attr_ids;
 	m_attr_ids = NULL;
       }
-    if (m_error_manager != NULL)
-      {
-	delete m_error_manager;
-	m_error_manager = NULL;
-      }
-  }
-
-  void
-  server_loader::set_error_manager (error_manager *error_manager)
-  {
-    m_error_manager = error_manager;
   }
 
   void
@@ -104,22 +129,21 @@ namespace cubload
     LC_FIND_CLASSNAME found = xlocator_find_class_oid (&thread_ref, class_name->val, &m_class_oid, IX_LOCK);
     if (found != LC_CLASSNAME_EXIST)
       {
-	// FIXME - error handling(reporting)
-	m_error_manager->on_error (LOADDB_MSG_UNKNOWN_CLASS, true, class_name->val);
+	m_driver.on_error (LOADDB_MSG_UNKNOWN_CLASS, true, class_name->val);
 	return;
       }
 
     error = heap_get_hfid_from_class_oid (&thread_ref, &m_class_oid, &hfid);
     if (error != NO_ERROR)
       {
-	// FIXME - error handling(reporting)
+	m_driver.on_error (LOADDB_MSG_LOAD_FAIL, true);
 	return;
       }
 
     error = heap_scancache_start_modify (&thread_ref, &m_scancache, &hfid, &m_class_oid, SINGLE_ROW_INSERT, NULL);
     if (error != NO_ERROR)
       {
-	// FIXME - error handling(reporting)
+	m_driver.on_error (LOADDB_MSG_LOAD_FAIL, true);
 	m_scancache_started = false;
 	return;
       }
@@ -129,14 +153,14 @@ namespace cubload
     error = heap_attrinfo_start (&thread_ref, &m_class_oid, -1, NULL, &m_attr_info);
     if (error != NO_ERROR)
       {
-	// FIXME - error handling(reporting)
+	m_driver.on_error (LOADDB_MSG_LOAD_FAIL, true);
 	return;
       }
 
     SCAN_CODE scan_code = heap_get_class_record (&thread_ref, &m_class_oid, &recdes, &m_scancache, PEEK);
     if (scan_code != S_SUCCESS)
       {
-	// FIXME - error handling(reporting)
+	m_driver.on_error (LOADDB_MSG_LOAD_FAIL, true);
 	return;
       }
 
@@ -150,7 +174,7 @@ namespace cubload
 	error = or_get_attrname (&recdes, attr_id, &string, &alloced_string);
 	if (error != NO_ERROR)
 	  {
-	    // FIXME - error handling(reporting)
+	    m_driver.on_error (LOADDB_MSG_LOAD_FAIL, true);
 	    return;
 	  }
 
@@ -211,8 +235,13 @@ namespace cubload
   void
   server_loader::process_line (constant_type *cons)
   {
-    if (m_session->aborted ())
+    if (m_session.aborted ())
       {
+	return;
+      }
+    if (m_attr_ids == NULL)
+      {
+	m_driver.on_error (LOADDB_MSG_LOAD_FAIL, true);
 	return;
       }
 
@@ -229,7 +258,6 @@ namespace cubload
   void
   server_loader::process_constant (constant_type *cons, int attr_idx)
   {
-    // TODO CBRD-21654 refactor this function
     db_value db_val;
     or_attribute *attr = heap_locate_last_attrepr (m_attr_ids[attr_idx], &m_attr_info);
 
@@ -359,7 +387,7 @@ namespace cubload
   void
   server_loader::finish_line ()
   {
-    if (m_session->aborted ())
+    if (m_session.aborted ())
       {
 	return;
       }
@@ -383,84 +411,10 @@ namespace cubload
 					  UPDATE_INPLACE_NONE, NULL, false);
     if (error != NO_ERROR)
       {
-	// FIXME - error handling(reporting)
+	m_driver.on_error (LOADDB_MSG_LOAD_FAIL, true);
 	return;
       }
 
-    m_session->inc_total_objects ();
+    m_session.inc_total_objects ();
   }
-
-  /*
-   * server_error_manager functions definition
-   */
-  server_error_manager::server_error_manager (session &session, scanner &scanner)
-    : m_session (session)
-    , m_scanner (scanner)
-  {
-    m_scanner.set_error_manager (this);
-  }
-
-  void
-  server_error_manager::abort_session (std::string &err_msg)
-  {
-    m_session.abort (std::forward<std::string> (err_msg));
-  }
-
-  void
-  server_error_manager::on_error (MSGCAT_LOADDB_MSG msg_id, bool include_line_msg, ...)
-  {
-    va_list ap;
-    std::string err_msg_line;
-
-    if (include_line_msg)
-      {
-	err_msg_line = format (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_LINE),
-			       m_scanner.lineno () - 1);
-      }
-
-    va_start (ap, include_line_msg);
-    std::string err_msg = format (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, msg_id), &ap);
-    va_end (ap);
-
-    if (!err_msg_line.empty ())
-      {
-	err_msg_line.append (err_msg);
-	abort_session (err_msg_line);
-      }
-    else
-      {
-	abort_session (err_msg);
-      }
-  }
-
-  void
-  server_error_manager::on_syntax_error ()
-  {
-    on_error (LOADDB_MSG_SYNTAX_ERR, false, m_scanner.lineno (), m_scanner.YYText ());
-  }
-
-  std::string
-  server_error_manager::format (const char *fmt, ...)
-  {
-    va_list ap;
-
-    va_start (ap, fmt);
-    std::string msg = format (fmt, &ap);
-    va_end (ap);
-
-    return msg;
-  }
-
-  std::string
-  server_error_manager::format (const char *fmt, va_list *ap)
-  {
-    // Determine required size
-    int size = vsnprintf (NULL, 0, fmt, *ap) + 1; // +1  for '\0'
-    std::unique_ptr<char[]> msg (new char[size]);
-
-    vsnprintf (msg.get (), (size_t) size, fmt, *ap);
-
-    return std::string (msg.get (), msg.get () + size - 1);
-  }
-
 } // namespace cubload

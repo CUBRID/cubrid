@@ -25,6 +25,7 @@
 
 #include "error_manager.h"
 #include "load_common.hpp"
+#include "load_driver.hpp"
 #include "log_impl.h"
 #include "xserver_interface.h"
 
@@ -34,7 +35,7 @@
 namespace cubload
 {
 
-  load_worker::load_worker (std::string &batch, int batch_id, session *session, css_conn_entry conn_entry)
+  load_worker::load_worker (std::string &batch, int batch_id, session &session, css_conn_entry conn_entry)
     : m_batch (std::move (batch))
     , m_batch_id (batch_id)
     , m_session (session)
@@ -46,15 +47,15 @@ namespace cubload
   void
   load_worker::execute (cubthread::entry &thread_ref)
   {
-    if (m_session->aborted ())
+    if (m_session.aborted ())
       {
 	return;
       }
 
-    driver *driver = m_session->m_driver_pool->claim ();
+    driver *driver = m_session.m_driver_pool->claim ();
     if (driver == NULL)
       {
-	m_session->abort (""); // TODO CBRD-22254 add proper error id
+	m_session.abort ();
 	assert (false);
 	return;
       }
@@ -70,30 +71,31 @@ namespace cubload
     int ret = driver->parse (iss); // parse documentation says that 0 is returned if parsing succeeds
 
     // once driver is not needed anymore, recycle it
-    m_session->m_driver_pool->retire (*driver);
+    m_session.m_driver_pool->retire (*driver);
 
-    if (m_session->aborted () || ret != 0 || er_errid_if_has_error () != NO_ERROR)
+    if (m_session.aborted () || ret != 0 || er_errid_if_has_error () != NO_ERROR)
       {
 	// if a batch transaction was aborted then abort entire loaddb session
-	m_session->abort (""); // TODO CBRD-22254 add proper error id
+	m_session.abort ();
 
 	xtran_server_abort (&thread_ref);
       }
     else
       {
 	// order batch commits, therefore wait until previous batch is committed
-	m_session->wait_for_previous_batch (m_batch_id);
+	m_session.wait_for_previous_batch (m_batch_id);
 
 	xtran_server_commit (&thread_ref, false);
 
-	m_session->m_stats.last_commit = m_batch_id * m_session->m_batch_size;
+	// TODO fix last_commit assignment
+	m_session.m_stats.last_commit = m_batch_id * m_session.m_batch_size;
       }
 
     // free transaction index
     logtb_free_tran_index (&thread_ref, thread_ref.tran_index);
 
     // notify session that batch is done
-    m_session->notify_batch_done (m_batch_id);
+    m_session.notify_batch_done (m_batch_id);
   }
 
   session::session (SESSION_ID id)
@@ -104,30 +106,29 @@ namespace cubload
     , m_aborted {false}
     , m_batch_size (100000) // TODO CBRD-21654 get batch size from cub_admin loaddb
     , m_last_batch_id {NULL_BATCH_ID}
+    , m_max_batch_id {NULL_BATCH_ID}
     , m_worker_pool (NULL)
     , m_drivers (NULL)
     , m_driver_pool (NULL)
     , m_stats ()
+    , m_pool_size (0)
   {
-    void *raw_memory = operator new[] (DRIVER_POOL_SIZE * sizeof (driver));
+    m_pool_size = std::max<unsigned int> (2, std::thread::hardware_concurrency ()); // start at least 2 loaddb threads
+
+    void *raw_memory = operator new[] (m_pool_size * sizeof (driver));
     m_drivers = static_cast<driver *> (raw_memory);
 
-    for (size_t i = 0; i < DRIVER_POOL_SIZE; ++i)
+    for (unsigned int i = 0; i < m_pool_size; ++i)
       {
-	driver *driver_ptr = &m_drivers[i];
-	server_loader *loader = new server_loader (this);
-	new (driver_ptr) driver (loader);
-
-	error_manager *err_mng = new server_error_manager (*this, driver_ptr->get_scanner ());
-	loader->set_error_manager (err_mng);
+	new (&m_drivers[i]) driver (*this);
       }
 
-    m_driver_pool = new resource_shared_pool<driver> (m_drivers, DRIVER_POOL_SIZE);
+    m_driver_pool = new resource_shared_pool<driver> (m_drivers, m_pool_size);
 
     std::string worker_pool_name ("loaddb-workers_session-");
     worker_pool_name.append (std::to_string (id));
 
-    m_worker_pool = cubthread::get_manager ()->create_worker_pool (DRIVER_POOL_SIZE, DRIVER_POOL_SIZE,
+    m_worker_pool = cubthread::get_manager ()->create_worker_pool (m_pool_size, m_pool_size,
 		    worker_pool_name.c_str (), NULL, 1, false, true);
   }
 
@@ -138,11 +139,16 @@ namespace cubload
 
     delete m_driver_pool;
 
-    for (size_t i = 0; i < DRIVER_POOL_SIZE; ++i)
+    for (unsigned int i = 0; i < m_pool_size; ++i)
       {
 	m_drivers[i].~driver ();
       }
     operator delete[] (m_drivers);
+  }
+
+  bool session::completed ()
+  {
+    return m_last_batch_id == m_max_batch_id;
   }
 
   void
@@ -160,9 +166,9 @@ namespace cubload
   }
 
   void
-  session::wait_for_completion (const int max_batch_id)
+  session::wait_for_completion ()
   {
-    auto pred = [this, &max_batch_id] { return aborted () || m_last_batch_id == max_batch_id; };
+    auto pred = [this] { return aborted () || completed (); };
 
     if (pred ())
       {
@@ -182,6 +188,12 @@ namespace cubload
       }
 
     notify_waiting_threads ();
+  }
+
+  void
+  session::abort ()
+  {
+    abort ("Load failed, generic error\n");
   }
 
   void
@@ -224,6 +236,8 @@ namespace cubload
   void
   session::load_batch (cubthread::entry &thread_ref, std::string &batch, int batch_id)
   {
+    m_max_batch_id.store (std::max (m_max_batch_id.load (), batch_id));
+
     if (batch.empty ())
       {
 	// nothing to do, just notify that batch processing is done
@@ -231,23 +245,24 @@ namespace cubload
 	return;
       }
 
-    m_worker_pool->execute (new load_worker (batch, batch_id, this, *thread_ref.conn_entry));
+    m_worker_pool->execute (new load_worker (batch, batch_id, *this, *thread_ref.conn_entry));
   }
 
   int
-  session::load_file (cubthread::entry &thread_ref, std::string &file_name, int &total_batches)
+  session::load_file (cubthread::entry &thread_ref, std::string &file_name)
   {
     batch_handler handler = [this, &thread_ref] (std::string &batch, int batch_id)
     {
       load_batch (thread_ref, batch, batch_id);
     };
 
-    return split (m_batch_size, file_name, handler, total_batches);
+    return split (m_batch_size, file_name, handler);
   }
 
   stats
   session::get_stats ()
   {
+    m_stats.is_completed = completed ();
     return m_stats;
   }
 

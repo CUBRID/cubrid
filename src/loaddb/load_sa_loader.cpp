@@ -53,6 +53,7 @@
 #include "load_object.h"
 #include "load_object_table.h"
 #include "load_sa_loader.hpp"
+#include "load_scanner.hpp"
 #include "locator_cl.h"
 #include "memory_alloc.h"
 #include "message_catalog.h"
@@ -643,6 +644,30 @@ namespace cubload
 {
 
   void
+  driver::on_syntax_error ()
+  {
+    ldr_increment_err_total ();
+    fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_SYNTAX_ERR),
+	     m_scanner->lineno (), m_scanner->YYText ());
+  }
+
+  void
+  driver::on_error (MSGCAT_LOADDB_MSG msg_id, bool include_line_msg, ...)
+  {
+    if (include_line_msg)
+      {
+	display_error_line (0);
+      }
+
+    va_list ap;
+    va_start (ap, include_line_msg);
+    vfprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, msg_id), ap);
+    va_end (ap);
+
+    ldr_increment_fails ();
+  }
+
+  void
   sa_loader::check_class (const char *class_name, int class_id)
   {
     DB_OBJECT *class_;
@@ -996,33 +1021,6 @@ namespace cubload
 	ldr_abort ();
       }
     ldr_Current_context->instance_started = 0;
-  }
-
-  /*
-   * sa_error_manager functions definition
-   */
-  void
-  sa_error_manager::on_syntax_error ()
-  {
-    ldr_increment_err_total ();
-    //fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_SYNTAX_ERR),
-    //     ldr_Driver->scanner_lineno (), ldr_Driver->scanner_text ());
-  }
-
-  void
-  sa_error_manager::on_error (MSGCAT_LOADDB_MSG msg_id, bool include_line_msg, ...)
-  {
-    if (include_line_msg)
-      {
-	display_error_line (0);
-      }
-
-    va_list ap;
-    va_start (ap, include_line_msg);
-    fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, msg_id), ap);
-    va_end (ap);
-
-    ldr_increment_fails ();
   }
 }
 /* *INDENT-ON* */
@@ -6167,7 +6165,7 @@ ldr_final (void)
 }
 
 void
-ldr_load (load_args *args, int *status, bool *interrupted)
+ldr_sa_load (load_args *args, int *status, bool *interrupted)
 {
   int errors = 0;
   int objects = 0;
@@ -6176,14 +6174,12 @@ ldr_load (load_args *args, int *status, bool *interrupted)
   int lastcommit = 0;
   int ldr_init_ret = NO_ERROR;
 
-  // TODO CBRD-21654
   /* *INDENT-OFF* */
   std::ifstream object_file (args->object_file);
-  ldr_Driver = new driver (new sa_loader ());
+  ldr_Driver = new driver ();
   /* *INDENT-ON* */
 
   locator_Dont_check_foreign_key = true;
-  print_log_msg (1, "\nStart object loading.\n");
   ldr_init (args);
 
   /* set the flag to indicate what type of interrupts to raise If logging has been disabled set commit flag. If

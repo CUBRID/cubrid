@@ -25,19 +25,27 @@
 
 #include "error_manager.h"
 #include "language_support.h"
-#include "load_common.hpp"
 #include "load_scanner.hpp"
+#if defined (SERVER_MODE)
+#include "load_server_loader.hpp"
+#elif defined (SA_MODE)
+#include "load_sa_loader.hpp"
+#endif
 #include "memory_alloc.h"
-#include "message_catalog.h"
-#include "utility.h"
 
 #include <cassert>
 
 namespace cubload
 {
 
-  driver::driver (loader *loader)
-    : m_loader (loader)
+#if defined (SERVER_MODE)
+  driver::driver (session &session)
+    : m_session (session)
+    , m_loader (new server_loader (session, *this))
+#elif defined (SA_MODE)
+  driver::driver ()
+    : m_loader (new sa_loader ())
+#endif
     , m_scanner (new scanner (*this))
     , m_parser (*this, *m_loader)
     , m_semantic_helper (*this)
@@ -59,12 +67,6 @@ namespace cubload
     m_semantic_helper.reset ();
 
     return m_parser.parse ();
-  }
-
-  void
-  driver::syntax_error ()
-  {
-    m_scanner->ParserError ();
   }
 
   int

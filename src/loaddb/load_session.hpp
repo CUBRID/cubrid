@@ -25,7 +25,6 @@
 #define _LOAD_SESSION_HPP_
 
 #include "connection_defs.h"
-#include "load_driver.hpp"
 #include "load_server_loader.hpp"
 #include "resource_shared_pool.hpp"
 #include "thread_entry_task.hpp"
@@ -34,7 +33,6 @@
 
 #include <atomic>
 #include <condition_variable>
-#include <map>
 #include <mutex>
 
 #define NULL_BATCH_ID -1
@@ -43,10 +41,9 @@
 namespace cubload
 {
 
-  static const std::size_t DRIVER_POOL_SIZE = 1;
-
   // forward declaration
   class session;
+  class driver;
 
   /*
   * cubload::load_worker
@@ -59,7 +56,7 @@ namespace cubload
   {
     public:
       load_worker () = delete; // Default c-tor: deleted.
-      load_worker (std::string &batch, int batch_id, session *session, css_conn_entry conn_entry);
+      load_worker (std::string &batch, int batch_id, session &session, css_conn_entry conn_entry);
 
       void execute (context_type &thread_ref) final;
 
@@ -67,7 +64,7 @@ namespace cubload
       std::string m_batch;
       int m_batch_id;
 
-      session *m_session;
+      session &m_session;
       css_conn_entry m_conn_entry;
   };
 
@@ -106,22 +103,22 @@ namespace cubload
        *    return: NO_ERROR in case of success or ER_FAILED if file does not exists
        *    thread_ref(in)    : thread entry
        *    file_name(in)     : loaddb object file name (absolute path is required)
-       *    total_batches(out): the total number of batches as of result of split operation
        */
-      int load_file (cubthread::entry &thread_ref, std::string &file_name, int &total_batches);
+      int load_file (cubthread::entry &thread_ref, std::string &file_name);
 
-      stats get_stats ();
+      void wait_for_completion ();
 
-      void wait_for_completion (int max_batch_id);
-
+      void abort ();
       void abort (std::string &&err_msg);
       bool aborted ();
 
+      stats get_stats ();
       void inc_total_objects ();
 
     private:
       void notify_waiting_threads ();
       void notify_batch_done (int batch_id);
+      bool completed ();
       void wait_for_previous_batch (int batch_id);
 
       friend class load_worker;
@@ -136,6 +133,7 @@ namespace cubload
 
       int m_batch_size;
       std::atomic_int m_last_batch_id;
+      std::atomic_int m_max_batch_id;
 
       cubthread::entry_workpool *m_worker_pool;
 
@@ -143,6 +141,8 @@ namespace cubload
       resource_shared_pool<driver> *m_driver_pool;
 
       stats m_stats; // load db stats
+
+      unsigned int m_pool_size;
   };
 
   /*
