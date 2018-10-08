@@ -227,7 +227,6 @@ static int pt_create_iss_range (INDX_INFO * indx_infop, TP_DOMAIN * domain);
 static int pt_init_pred_expr_context (PARSER_CONTEXT * parser, PT_NODE * predicate, PT_NODE * spec,
 				      PRED_EXPR_WITH_CONTEXT * pred_expr);
 static bool validate_regu_key_function_index (REGU_VARIABLE * regu_var);
-static void pt_to_with_clause_xasl (PARSER_CONTEXT * parser, PT_NODE * with);
 static XASL_NODE *pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_null_attrs);
 static XASL_NODE *pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * non_null_attrs,
 					   PT_NODE * default_expr_attrs);
@@ -18954,36 +18953,6 @@ pt_mark_spec_list_for_update_clause (PARSER_CONTEXT * parser, PT_NODE * statemen
 }
 
 /*
- * pt_to_with_clause_xasl () - Creates xasl for ctes nodes of the with clause
- *
- *   parser(in): context
- *   with(in): with-clause containing ctes
- */
-void
-pt_to_with_clause_xasl (PARSER_CONTEXT * parser, PT_NODE * with)
-{
-  PT_NODE *old_query_list = xasl_Supp_info.query_list;
-
-  /* add dummy node at the head of list */
-  xasl_Supp_info.query_list = parser_new_node (parser, PT_SELECT);
-  if (xasl_Supp_info.query_list == NULL)
-    {
-      PT_INTERNAL_ERROR (parser, "out of memory");
-      xasl_Supp_info.query_list = old_query_list;
-      return;
-    }
-
-  xasl_Supp_info.query_list->info.query.xasl = NULL;
-
-  /* XASL cache related information */
-  pt_init_xasl_supp_info ();
-
-  parser_walk_tree (parser, with, parser_generate_xasl_pre, NULL, parser_generate_xasl_post, &xasl_Supp_info);
-  parser_free_tree (parser, xasl_Supp_info.query_list);
-  xasl_Supp_info.query_list = old_query_list;
-}
-
-/*
  * pt_to_upd_del_query () - Creates a query based on the given select list,
  * 	from list, and where clause
  *   return: PT_NODE *, query statement or NULL if error
@@ -19774,28 +19743,19 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* list of class OIDs used in this XASL */
       if (xasl->aptr_list != NULL)
 	{
-	  // undo this
-	  XASL_NODE *last = xasl->aptr_list;
-	  for (XASL_NODE * crt = xasl->aptr_list->next; crt; last = last->next, crt = crt->next)
-	    {
-	      // CTE procs are before the BuildList and are empty of references
-	      assert (last->n_oid_list == 0);
-	      assert (last->dbval_cnt == 0);
-	    }
+	  xasl->n_oid_list = xasl->aptr_list->n_oid_list;
+	  xasl->aptr_list->n_oid_list = 0;
 
-	  xasl->n_oid_list = last->n_oid_list;
-	  last->n_oid_list = 0;
+	  xasl->class_oid_list = xasl->aptr_list->class_oid_list;
+	  xasl->aptr_list->class_oid_list = NULL;
 
-	  xasl->class_oid_list = last->class_oid_list;
-	  last->class_oid_list = NULL;
+	  xasl->class_locks = xasl->aptr_list->class_locks;
+	  xasl->aptr_list->class_locks = NULL;
 
-	  xasl->class_locks = last->class_locks;
-	  last->class_locks = NULL;
+	  xasl->tcard_list = xasl->aptr_list->tcard_list;
+	  xasl->aptr_list->tcard_list = NULL;
 
-	  xasl->tcard_list = last->tcard_list;
-	  last->tcard_list = NULL;
-
-	  xasl->dbval_cnt = last->dbval_cnt;
+	  xasl->dbval_cnt = xasl->aptr_list->dbval_cnt;
 	}
     }
   if (xasl)
@@ -20609,28 +20569,19 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
 
   if (xasl->aptr_list != NULL)
     {
-      XASL_NODE *last = xasl->aptr_list;
-      // undo this
-      for (XASL_NODE * crt = xasl->aptr_list->next; crt; last = last->next, crt = crt->next)
-	{
-	  // CTE procs are before the BuildList and are empty of references
-	  assert (last->n_oid_list == 0);
-	  assert (last->dbval_cnt == 0);
-	}
+      xasl->n_oid_list = xasl->aptr_list->n_oid_list;
+      xasl->aptr_list->n_oid_list = 0;
 
-      xasl->n_oid_list = last->n_oid_list;
-      last->n_oid_list = 0;
+      xasl->class_oid_list = xasl->aptr_list->class_oid_list;
+      xasl->aptr_list->class_oid_list = NULL;
 
-      xasl->class_oid_list = last->class_oid_list;
-      last->class_oid_list = NULL;
+      xasl->class_locks = xasl->aptr_list->class_locks;
+      xasl->aptr_list->class_locks = NULL;
 
-      xasl->class_locks = last->class_locks;
-      last->class_locks = NULL;
+      xasl->tcard_list = xasl->aptr_list->tcard_list;
+      xasl->aptr_list->tcard_list = NULL;
 
-      xasl->tcard_list = last->tcard_list;
-      last->tcard_list = NULL;
-
-      xasl->dbval_cnt = last->dbval_cnt;
+      xasl->dbval_cnt = xasl->aptr_list->dbval_cnt;
     }
 
   xasl->query_alias = statement->alias_print;
