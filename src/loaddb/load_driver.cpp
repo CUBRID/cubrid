@@ -574,4 +574,5 @@ namespace cubload
     head->last = tail;
     return head;
   }
+
 } // namespace cubload

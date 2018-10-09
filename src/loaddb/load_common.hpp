@@ -310,6 +310,9 @@ namespace cubload
    */
   int split (int batch_size, std::string &object_file_name, batch_handler &handler);
 
+  /*
+   * A wrapper function for calling batch handler. Used by split function and does some extra checks
+   */
   void handle_batch (std::string &class_line, std::string &batch, int &batch_id, batch_handler &handler);
 
   /*
@@ -322,10 +325,21 @@ namespace cubload
    */
   bool ends_with (const std::string &str, const std::string &suffix);
 
+  /*
+   * Trim whitespaces on the right of the string. String is passed as reference and it will be modified
+   */
   void rtrim (std::string &str);
 
+  /*
+   * Format string based on format string passed as input parameter. Check vsnprintf function for more details
+   */
   std::string format (const char *fmt, ...);
+
+  /*
+   * Same as above function, but instead of variadic arguments a pointer to va_list is passed
+   */
   std::string format (const char *fmt, va_list *ap);
+
 } // namespace cubload
 
 #endif /* _LOAD_COMMON_HPP_ */

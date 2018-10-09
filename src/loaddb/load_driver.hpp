@@ -96,11 +96,14 @@ namespace cubload
       // Parse functions
       int parse (std::istream &iss);
 
+      // Function to report parsing syntax errors. Used by cubload::parser class
       void on_syntax_error ();
 
+      // Function to report any error which occurs during the loading of the data
       void on_error (MSGCAT_LOADDB_MSG msg_id, bool include_line_msg, ...);
 
-      int scanner_lineno (); // Returns line number through scanner
+      // Returns line number through scanner
+      int scanner_lineno ();
 
       scanner &get_scanner ();
 

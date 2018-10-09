@@ -263,7 +263,7 @@ namespace cubload
 
     if (attr == NULL)
       {
-	// TODO report an error
+	m_driver.on_error (LOADDB_MSG_LOAD_FAIL, true);
 	return;
       }
 
@@ -272,7 +272,7 @@ namespace cubload
       case LDR_NULL:
 	if (attr->is_notnull)
 	  {
-	    // TODO report an error
+	    m_driver.on_error (LOADDB_MSG_LOAD_FAIL, true);
 	    return;
 	  }
       case LDR_INT:
@@ -299,7 +299,7 @@ namespace cubload
 	  }
 	else
 	  {
-	    // TODO report an error
+	    m_driver.on_error (LOADDB_MSG_LOAD_FAIL, true);
 	    return;
 	  }
 
@@ -387,7 +387,7 @@ namespace cubload
   void
   server_loader::finish_line ()
   {
-    if (m_session.aborted ())
+    if (m_session.aborted () || !m_scancache_started)
       {
 	return;
       }
@@ -397,13 +397,7 @@ namespace cubload
     int force_count = 0;
     int pruning_type = 0;
     int op_type = SINGLE_ROW_INSERT;
-
     cubthread::entry &thread_ref = cubthread::get_entry ();
-
-    if (!m_scancache_started)
-      {
-	return;
-      }
 
     error = locator_attribute_info_force (&thread_ref, &m_scancache.node.hfid, &oid, &m_attr_info, NULL, 0,
 					  LC_FLUSH_INSERT, op_type, &m_scancache, &force_count, false,
@@ -417,4 +411,5 @@ namespace cubload
 
     m_session.inc_total_objects ();
   }
+
 } // namespace cubload

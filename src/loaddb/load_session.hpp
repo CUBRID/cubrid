@@ -42,8 +42,8 @@ namespace cubload
 {
 
   // forward declaration
-  class session;
   class driver;
+  class session;
 
   /*
   * cubload::load_worker
@@ -72,8 +72,27 @@ namespace cubload
    * cubload::session
    *
    * description
+   *    This class serves as an entry point to server side loaddb functionality.
+   *    It has two main public function:
+   *        * load_file : for parsing a loaddb object file directly on server if the file exists on the server machine
+   *        * load_batch: when loaddb object file exists only on client machine, then client must send over
+   *                       the network batches from file and then these batches will be parsed by the server
+   *
+   *    The file is splitted into batches or batches are received over the network, then each batch is delegated to a
+   *    worker thread from a internal worker pool. The worker thread does the scanning/parsing and inserting of the data
+   *    Loaddb session is attached to database client session in session_state struct
    *
    * how to use
+   *    cubload::session *session = NULL;
+   *    session_get_loaddb_session (thread_p, &session);
+   *
+   *    std::string file_name = "<file>"; // the absolute path of the loaddb object file
+   *    session.load_file (*thread_p, file_name);
+   *
+   *    or
+   *
+   *    std::string batch = "<batch>"; // get batch from client
+   *    session.load_batch (*thread_p, batch, batch_id);
    */
   class session
   {
@@ -145,30 +164,6 @@ namespace cubload
       unsigned int m_pool_size;
   };
 
-  /*
-   * cubload::manager
-   *
-   * description
-   *    This class serves as an entry point to server side loaddb functionality. The class is a singleton class.
-   *    It has two main public function:
-   *        * load_file : for parsing a loaddb object file directly on server if the file exists on the server machine
-   *        * load_batch: when loaddb object file exists only on client machine, then client must send over
-   *                       the network batches from file and then these batches will be parsed by the server
-   *
-   *    The file is splitted into batches or batches are received over the network, then each batch is delegated to a
-   *    worker thread from a internal worker pool. The worker thread does the scanning/parsing and inserting of the data
-   *
-   * how to use
-   *    cubload::manager &manager = cubload::manager::get_instance ();
-   *
-   *    std::string file_name = "<file>"; // the absolute path of the loaddb object file
-   *    manager.load_file (*thread_p, file_name);
-   *
-   *    or
-   *
-   *    std::string batch = "<batch>"; // get batch from client
-   *    manager.load_batch (*thread_p, batch);
-   */
 } // namespace cubload
 
 #endif /* _LOAD_SESSION_HPP_ */

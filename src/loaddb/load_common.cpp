@@ -220,4 +220,5 @@ namespace cubload
 
     return std::string (msg.get (), msg.get () + size - 1);
   }
+
 } // namespace cubload

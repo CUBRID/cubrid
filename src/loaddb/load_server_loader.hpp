@@ -33,8 +33,8 @@ namespace cubload
 {
 
   // forward declaration
-  class session;
   class driver;
+  class session;
 
   class server_loader : public loader
   {
@@ -66,5 +66,6 @@ namespace cubload
       heap_scancache m_scancache;
       bool m_scancache_started;
   };
+
 } // namespace cubload
 #endif /* _LOAD_SERVER_LOADER_HPP_ */

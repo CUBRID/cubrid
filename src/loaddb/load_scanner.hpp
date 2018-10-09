@@ -68,6 +68,7 @@ namespace cubload
     private:
       driver &m_driver;
   };
+
 } // namespace cubload
 
 #endif /* _LOAD_SCANNER_HPP_ */
