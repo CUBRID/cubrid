@@ -4581,11 +4581,17 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 
 	      thread_lock_entry (wait_thread_p);
 
-	      if (wait_thread_p->resume_status == THREAD_LOGWR_SUSPENDED)
+	      /* If THREAD_RESUME_DUE_TO_INTERRUPT, do not sets the entry status, to avoids deadlock
+	       * between flush_end_cond and CSECT_LOG.
+	       */
+	      if (thread_p->resume_status != THREAD_RESUME_DUE_TO_INTERRUPT)
 		{
 		  /* Still waiting for LOGWR. */
 		  entry->status = LOGWR_STATUS_FETCH;
-		  thread_wakeup_already_had_mutex (wait_thread_p, THREAD_LOGWR_RESUMED);
+		  if (wait_thread_p->resume_status == THREAD_LOGWR_SUSPENDED)
+		    {
+		      thread_wakeup_already_had_mutex (wait_thread_p, THREAD_LOGWR_RESUMED);
+		    }
 		}
 
 	      thread_unlock_entry (wait_thread_p);
