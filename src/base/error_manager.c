@@ -1855,7 +1855,7 @@ er_clearid (void)
   // todo: is this necessary?
 #if defined (CS_MODE) && !defined (NDEBUG)
   /* temporary workaround for HA process which may encounter missing er_module */
-  if (er_Ignore_uninit)
+  if (!er_Hasalready_initiated && er_Ignore_uninit)
     {
       return;
     }
@@ -1876,7 +1876,7 @@ er_setid (int err_id)
   // todo: is this necessary?
 #if defined (CS_MODE) && !defined (NDEBUG)
   /* temporary workaround for HA process which may encounter missing er_module */
-  if (er_Ignore_uninit)
+  if (!er_Hasalready_initiated && er_Ignore_uninit)
     {
       return;
     }
@@ -1920,7 +1920,7 @@ er_msg (void)
 {
 #if defined (CS_MODE) && !defined (NDEBUG)
   /* temporary workaround for HA process which may encounter missing er_module */
-  if (er_Ignore_uninit)
+  if (!er_Hasalready_initiated && er_Ignore_uninit)
     {
       return "Not available";
     }
@@ -1989,7 +1989,7 @@ _er_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
 
 #if defined (CS_MODE) && !defined (NDEBUG)
   /* temporary workaround for HA process which may encounter missing er_module */
-  if (er_Ignore_uninit)
+  if (!er_Hasalready_initiated && er_Ignore_uninit)
     {
       return;
     }
