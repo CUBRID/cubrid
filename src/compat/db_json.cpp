@@ -1986,15 +1986,15 @@ db_json_get_type_of_value (const JSON_VALUE *val)
 }
 
 /*
-* db_json_merge_two_json_objects_patch () - Merge the source object into the destination object handling duplicate keys
-*
-* return                  : error code
-* dest (in)               : json where to merge
-* source (in)             : json to merge
-* example                 : let dest = '{"a" : "b"}'
-*                           let source = '{"a" : 3}'
-*                           after JSON_MERGE_PATCH (dest, source), dest = {"a" : 3}
-*/
+ * db_json_merge_two_json_objects_patch () - Merge the source object into the destination object handling duplicate keys
+ *
+ * return                  : error code
+ * dest (in)               : json where to merge
+ * source (in)             : json to merge
+ * example                 : let dest = '{"a" : "b"}'
+ *                           let source = '{"a" : 3}'
+ *                           after JSON_MERGE_PATCH (dest, source), dest = {"a" : 3}
+ */
 void
 db_json_merge_two_json_objects_patch (const JSON_VALUE *source, JSON_VALUE &dest, JSON_PRIVATE_MEMPOOL &allocator)
 {
@@ -2288,20 +2288,20 @@ db_json_merge_func_patch (const JSON_VALUE *source, JSON_VALUE &dest, JSON_PRIVA
 }
 
 /*
-* db_json_merge_func () - Merge the source json into destination json
-*
-* return                   : error code
-* dest (in)                : json where to merge
-* source (in)              : json to merge
-* patch (in)               : how to handle duplicate keys
-*
-* example                  : let x = { "a": 1, "b": 2 }
-*                                y = { "a": 3, "c": 4 }
-*                                z = { "a": 5, "d": 6 }
-*
-* result PATCH             : {"a": 5, "b": 2, "c": 4, "d": 6}
-* result PRESERVE          : {"a": [1, 3, 5], "b": 2, "c": 4, "d": 6}
-*/
+ * db_json_merge_func () - Merge the source json into destination json
+ *
+ * return                   : error code
+ * dest (in)                : json where to merge
+ * source (in)              : json to merge
+ * patch (in)               : how to handle duplicate keys
+ *
+ * example                  : let x = { "a": 1, "b": 2 }
+ *                                y = { "a": 3, "c": 4 }
+ *                                z = { "a": 5, "d": 6 }
+ *
+ * result PATCH             : {"a": 5, "b": 2, "c": 4, "d": 6}
+ * result PRESERVE          : {"a": [1, 3, 5], "b": 2, "c": 4, "d": 6}
+ */
 int
 db_json_merge_func (const JSON_DOC *source, JSON_DOC *&dest, bool patch)
 {
