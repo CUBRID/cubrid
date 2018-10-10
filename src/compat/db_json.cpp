@@ -2904,13 +2904,13 @@ db_json_arrayagg_func_accumulate (const JSON_DOC *value, JSON_DOC &result_json)
 }
 
 /*
-* db_json_objectagg_func_accumulate () - Inserts a (key, value) pair in the result_json
-*
-* return                  : void
-* key_str (in)            : the key string
-* val_doc (in)            : the value document
-* result_json (in)        : the document where we want to insert
-*/
+ * db_json_objectagg_func_accumulate () - Inserts a (key, value) pair in the result_json
+ *
+ * return                  : void
+ * key_str (in)            : the key string
+ * val_doc (in)            : the value document
+ * result_json (in)        : the document where we want to insert
+ */
 void
 db_json_objectagg_func_accumulate (const char *key_str, const JSON_DOC *val_doc, JSON_DOC &result_json)
 {

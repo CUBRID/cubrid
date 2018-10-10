@@ -2085,19 +2085,19 @@ pr_clear_value (DB_VALUE * value)
 }
 
 /*
-* pr_clear_value_vector - clear a vector of db_values
-* references
-*    return: void
-*    value(in/out): vector of values
-*/
+ * pr_clear_value_vector - clear a vector of db_values
+ * references
+ *    return: void
+ *    value(in/out): vector of values
+ */
 /* *INDENT-OFF* */
 void 
 pr_clear_value_vector (std::vector<DB_VALUE> &value_vector)
 {
   for (DB_VALUE &dbval : value_vector)
-  {
-    pr_clear_value (&dbval);
-  }
+    {
+      pr_clear_value (&dbval);
+    }
 }
 /* *INDENT-ON* */
 

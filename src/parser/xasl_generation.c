@@ -22175,11 +22175,11 @@ pt_add_regu_var_to_list (REGU_VARIABLE_LIST * destination, REGU_VARIABLE_LIST so
 }
 
 /*
-* pt_merge_regu_var_lists () - appends the source to the end of the destination regu var list
-*  return:
-*  destination (in/out):
-*  source (in/out):
-*/
+ * pt_merge_regu_var_lists () - appends the source to the end of the destination regu var list
+ *  return:
+ *  destination (in/out):
+ *  source (in/out):
+ */
 static void
 pt_merge_regu_var_lists (REGU_VARIABLE_LIST * destination, REGU_VARIABLE_LIST source)
 {
@@ -22192,7 +22192,8 @@ pt_merge_regu_var_lists (REGU_VARIABLE_LIST * destination, REGU_VARIABLE_LIST so
   else
     {
       // get the end of the list
-      for (itr = *destination; itr->next != NULL; itr = itr->next);
+      for (itr = *destination; itr->next != NULL; itr = itr->next)
+	;
 
       // append it
       itr->next = source;
@@ -22200,8 +22201,7 @@ pt_merge_regu_var_lists (REGU_VARIABLE_LIST * destination, REGU_VARIABLE_LIST so
 }
 
 /*
- * pt_build_do_stmt_aptr_list_pre () - build an XASL list of top level
- *				       queries
+ * pt_build_do_stmt_aptr_list_pre () - build an XASL list of top level queries
  * returns: original node
  *  node(in): node to check
  *  arg(out): first node in list
@@ -25718,11 +25718,11 @@ pt_set_limit_optimization_flags (PARSER_CONTEXT * parser, QO_PLAN * qo_plan, XAS
 }
 
 /*
-* pt_aggregate_info_append_value_list () - Appends the value_list in the aggregate info->value_list, increasing also
-*                                          the val_cnt
-* info        (in/out)  :
-* value_list  (in)      :      
-*/
+ * pt_aggregate_info_append_value_list () - Appends the value_list in the aggregate info->value_list, increasing also
+ *                                          the val_cnt
+ * info        (in/out)  :
+ * value_list  (in)      :
+ */
 static void
 pt_aggregate_info_append_value_list (AGGREGATE_INFO * info, VAL_LIST * value_list)
 {
@@ -25734,7 +25734,8 @@ pt_aggregate_info_append_value_list (AGGREGATE_INFO * info, VAL_LIST * value_lis
   QPROC_DB_VALUE_LIST value_temp = NULL;
 
   // get the end of the list
-  for (value_temp = info->value_list->valp; value_temp->next != NULL; value_temp = value_temp->next);
+  for (value_temp = info->value_list->valp; value_temp->next != NULL; value_temp = value_temp->next)
+    ;
 
   assert (value_temp != NULL);
 
@@ -25743,12 +25744,12 @@ pt_aggregate_info_append_value_list (AGGREGATE_INFO * info, VAL_LIST * value_lis
 }
 
 /*
-* pt_aggregate_info_update_value_and_reguvar_lists () - Merges the arguments in the aggregate info corresponding lists
-* info                (in/out)  :
-* value_list          (in)      :
-* regu_position_list  (in)      :
-* regu_constant_list  (in)      :
-*/
+ * pt_aggregate_info_update_value_and_reguvar_lists () - Merges the arguments in the aggregate info corresponding lists
+ * info                (in/out)  :
+ * value_list          (in)      :
+ * regu_position_list  (in)      :
+ * regu_constant_list  (in)      :
+ */
 static void
 pt_aggregate_info_update_value_and_reguvar_lists (AGGREGATE_INFO * info, VAL_LIST * value_list,
 						  REGU_VARIABLE_LIST regu_position_list,
@@ -25762,15 +25763,18 @@ pt_aggregate_info_update_value_and_reguvar_lists (AGGREGATE_INFO * info, VAL_LIS
 
   // also increment list count
   size_t regu_constant_list_size = 0;
-  for (REGU_VARIABLE_LIST ptr = regu_constant_list; ptr != NULL; ptr = ptr->next, regu_constant_list_size++);
+
+  for (REGU_VARIABLE_LIST ptr = regu_constant_list; ptr != NULL; ptr = ptr->next, regu_constant_list_size++)
+    ;
+
   info->out_list->valptr_cnt += regu_constant_list_size;
 }
 
 /*
-* pt_aggregate_info_update_scan_regu_list () - Merges scan_regu_list in the aggregate info->scan_regu_list
-* info                (in/out)  :
-* scan_regu_list      (in)      :
-*/
+ * pt_aggregate_info_update_scan_regu_list () - Merges scan_regu_list in the aggregate info->scan_regu_list
+ * info                (in/out)  :
+ * scan_regu_list      (in)      :
+ */
 static void
 pt_aggregate_info_update_scan_regu_list (AGGREGATE_INFO * info, REGU_VARIABLE_LIST scan_regu_list)
 {
@@ -25779,7 +25783,8 @@ pt_aggregate_info_update_scan_regu_list (AGGREGATE_INFO * info, REGU_VARIABLE_LI
   size_t index = 0;
 
   // calculate the size of scan_regu_var_list
-  for (tail = scan_regu_list; tail != NULL; tail = tail->next, scan_regu_list_size++);
+  for (tail = scan_regu_list; tail != NULL; tail = tail->next, scan_regu_list_size++)
+    ;
 
   // start fetching for the last scan_regu_var_list_size elements
   index = info->value_list->val_cnt - scan_regu_list_size;
@@ -25823,12 +25828,12 @@ pt_node_list_to_value_and_reguvar_list (PARSER_CONTEXT * parser, PT_NODE * node,
 }
 
 /*
-* pt_make_regu_list_from_value_list () - creates a regu_list from value_list with TYPE POSITION
-* parser (in)         :
-* node (in)           :
-* value_list (in)     :
-* regu_list (in/out)  :
-*/
+ * pt_make_regu_list_from_value_list () - creates a regu_list from value_list with TYPE POSITION
+ * parser (in)         :
+ * node (in)           :
+ * value_list (in)     :
+ * regu_list (in/out)  :
+ */
 static PT_NODE *
 pt_make_regu_list_from_value_list (PARSER_CONTEXT * parser, PT_NODE * node, VAL_LIST * value_list,
 				   REGU_VARIABLE_LIST * regu_list)
@@ -25868,11 +25873,11 @@ end:
 }
 
 /*
-* pt_make_constant_regu_list_from_val_list () - creates a regu list with constant type from value_list
-* parser (in)         :
-* value_list (in)     :
-* regu_list (in/out)  :
-*/
+ * pt_make_constant_regu_list_from_val_list () - creates a regu list with constant type from value_list
+ * parser (in)         :
+ * value_list (in)     :
+ * regu_list (in/out)  :
+ */
 static int
 pt_make_constant_regu_list_from_val_list (PARSER_CONTEXT * parser, VAL_LIST * value_list,
 					  REGU_VARIABLE_LIST * regu_list)

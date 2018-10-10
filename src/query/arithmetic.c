@@ -5304,13 +5304,13 @@ db_json_arrayagg_dbval_accumulate (DB_VALUE * json, DB_VALUE * json_res)
 }
 
 /*
-* db_json_objectagg_dbval_accumulate () - Construct a Member (key-value pair) and add it in the result_json
-*
-* return                  : error_code
-* json_key (in)           : the key of the pair
-* json_val (in)           : the value of the pair
-* json_res (in)           : the DB_VALUE that contains the document where we want to insert
-*/
+ * db_json_objectagg_dbval_accumulate () - Construct a Member (key-value pair) and add it in the result_json
+ *
+ * return                  : error_code
+ * json_key (in)           : the key of the pair
+ * json_val (in)           : the value of the pair
+ * json_res (in)           : the DB_VALUE that contains the document where we want to insert
+ */
 int
 db_json_objectagg_dbval_accumulate (DB_VALUE * json_key, DB_VALUE * json_val, DB_VALUE * json_res)
 {
@@ -5358,12 +5358,12 @@ db_json_objectagg_dbval_accumulate (DB_VALUE * json_key, DB_VALUE * json_val, DB
 }
 
 /*
-* db_json_merge () - Inserts a JSON_OBJECT/JSON_ARRAY with possibly multiple members in the result_json
-*
-* return                  : error_code
-* json (in)               : the JSON_OBJECT/JSON_ARRAY that we want to insert
-* json_res (in)           : the DB_VALUE that contains the document where we want to insert
-*/
+ * db_json_merge () - Inserts a JSON_OBJECT/JSON_ARRAY with possibly multiple members in the result_json
+ *
+ * return                  : error_code
+ * json (in)               : the JSON_OBJECT/JSON_ARRAY that we want to insert
+ * json_res (in)           : the DB_VALUE that contains the document where we want to insert
+ */
 int
 db_json_merge (DB_VALUE * json, DB_VALUE * json_res)
 {
