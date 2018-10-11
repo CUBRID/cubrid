@@ -3742,6 +3742,73 @@ db_json_array_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
   return NO_ERROR;
 }
 
+int
+db_json_contains_path (DB_VALUE * result, DB_VALUE * arg[], const int num_args)
+{
+  bool find_all = false;
+  bool exists = false;
+  int error_code = NO_ERROR;
+  JSON_DOC *doc = NULL;
+  db_make_null (result);
+
+  if (DB_IS_NULL (arg[0]) || DB_IS_NULL (arg[1]))
+    {
+      return NO_ERROR;
+    }
+
+  doc = db_get_json_document (arg[0]);
+  const char *find_all_str = db_get_string (arg[1]);
+
+  if (strcmp (find_all_str, "all") == 0)
+    {
+      find_all = true;
+    }
+  if (!find_all && strcmp (find_all_str, "one"))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
+      return ER_QSTR_INVALID_DATA_TYPE;
+    }
+
+  for (int i = 2; i < num_args; ++i)
+    {
+      if (DB_IS_NULL (arg[i]))
+	{
+	  return NO_ERROR;
+	}
+    }
+
+  for (int i = 2; i < num_args; ++i)
+    {
+      const char *path = db_get_string (arg[i]);
+
+      if (path == NULL)
+	{
+	  return NO_ERROR;
+	}
+
+      error_code = db_json_contains_path (doc, path, exists);
+      if (error_code)
+	{
+	  return error_code;
+	}
+
+      if (find_all && !exists)
+	{
+	  error_code = db_make_int (result, (int) false);
+	  return error_code;
+	}
+      if (!find_all && exists)
+	{
+	  error_code = db_make_int (result, (int) true);
+	  return error_code;
+	}
+    }
+
+  // if we have not returned early last search is decisive
+  error_code = db_make_int (result, (int) exists);
+  return error_code;
+}
+
 static int
 db_json_merge_helper (DB_VALUE * result, DB_VALUE * arg[], int const num_args, bool patch)
 {

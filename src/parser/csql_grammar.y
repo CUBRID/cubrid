@@ -1236,6 +1236,7 @@ int g_original_buffer_len;
 %token FUN_JSON_ARRAY_APPEND
 %token FUN_JSON_ARRAY_INSERT
 %token FUN_JSON_SEARCH
+%token FUN_JSON_CONTAINS_PATH
 %token FUN_JSON_GET_ALL_PATHS
 %token FUN_JSON_INSERT
 %token FUN_JSON_KEYS
@@ -1246,6 +1247,11 @@ int g_original_buffer_len;
 %token FUN_JSON_REMOVE
 %token FUN_JSON_REPLACE
 %token FUN_JSON_SET
+%token FUN_JSON_KEYS
+%token FUN_JSON_REMOVE
+%token FUN_JSON_ARRAY_APPEND
+%token FUN_JSON_ARRAY_INSERT
+%token FUN_JSON_GET_ALL_PATHS
 %token GENERAL
 %token GET
 %token GLOBAL
@@ -16977,6 +16983,25 @@ reserved_func
 		    $$ = node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
+		| FUN_JSON_CONTAINS_PATH '(' expression_list ')'
+		{{
+		    PT_NODE *args_list = $3;
+		    PT_NODE *node = NULL;
+		    int len;
+
+		    len = parser_count_list (args_list);
+		    node = parser_make_expr_with_func (this_parser, F_JSON_CONTAINS_PATH, args_list);
+		    if (len < 3)
+		    {
+			PT_ERRORmf (this_parser, args_list,
+				    MSGCAT_SET_PARSER_SEMANTIC,
+				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
+				    "json_contains_path");
+		    }
+
+		    $$ = node;
+		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
         | FUN_JSON_MERGE '(' expression_list ')'
 		{{
 		    PT_NODE *args_list = $3;
@@ -16996,8 +17021,8 @@ reserved_func
 		    $$ = node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-    | FUN_JSON_MERGE_PATCH '(' expression_list ')'
-    {{
+		| FUN_JSON_MERGE_PATCH '(' expression_list ')'
+		{{
 		    PT_NODE *args_list = $3;
 		    PT_NODE *node = NULL;
                     int len;

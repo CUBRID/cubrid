@@ -256,12 +256,17 @@ qdata_json_search (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESC
 		   QFILE_TUPLE tuple);
 
 static int
+qdata_json_contains_path (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
+			  QFILE_TUPLE tuple);
+
+static int
 qdata_json_get_all_paths (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
 			  QFILE_TUPLE tuple);
 
 static int
 qdata_json_merge (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
 		  QFILE_TUPLE tuple);
+
 static int
 qdata_json_merge_patch (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
 			QFILE_TUPLE tuple);
@@ -8533,6 +8538,9 @@ qdata_evaluate_function (THREAD_ENTRY * thread_p, REGU_VARIABLE * function_p, VA
     case F_JSON_SEARCH:
       return qdata_json_search (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
 
+    case F_JSON_CONTAINS_PATH:
+      return qdata_json_contains_path (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+
     case F_JSON_GET_ALL_PATHS:
       return qdata_json_get_all_paths (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
 
@@ -10292,6 +10300,14 @@ qdata_json_search (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESC
 {
   return qdata_convert_operands_to_value_and_call (thread_p, function_p, val_desc_p,
 						   obj_oid_p, tuple, db_json_search_dbval);
+}
+
+static int
+qdata_json_contains_path (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
+			  QFILE_TUPLE tuple)
+{
+  return qdata_convert_operands_to_value_and_call (thread_p, function_p, val_desc_p,
+						   obj_oid_p, tuple, db_json_contains_path);
 }
 
 static int
