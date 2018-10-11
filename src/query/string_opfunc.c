@@ -3801,6 +3801,38 @@ db_json_merge_helper (DB_VALUE * result, DB_VALUE * arg[], int const num_args, b
 }
 
 /*
+ * db_json_merge ()
+ *
+ * this function merges two by two json
+ * so merge (j1, j2, j3, j4) = merge_two (j1, (merge (j2, merge (j3, j4))))
+ *
+ * result (out): the merge result
+ * arg (in): the arguments for the merge function
+ * num_args (in)
+ */
+int
+db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
+{
+  return db_json_merge_helper (result, arg, num_args);
+}
+
+/*
+ * db_json_merge_patch()
+ *
+ * this function merges two by two json without preserving members having duplicate keys
+ * so merge (j1, j2, j3, j4) = merge_two (j1, (merge (j2, merge (j3, j4))))
+ *
+ * result (out): the merge result
+ * arg (in): the arguments for the merge function
+ * num_args (in)
+ */
+int
+db_json_merge_patch (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
+{
+  return db_json_merge_helper (result, arg, num_args, true);
+}
+
+/*
  * JSON_SEARCH (json_doc, one/all, pattern [, escape_char, path_1,... path_n])
  *
  * db_json_search_dbval ()
