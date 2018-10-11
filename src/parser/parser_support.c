@@ -723,7 +723,7 @@ pt_is_expr_wrapped_function (PARSER_CONTEXT * parser, const PT_NODE * node)
 	  || function_type == F_JSON_MERGE || function_type == F_JSON_MERGE_PATCH
 	  || function_type == F_JSON_ARRAY_APPEND || function_type == F_JSON_GET_ALL_PATHS
 	  || function_type == F_JSON_REPLACE || function_type == F_JSON_SET
-	  || function_type == F_JSON_KEYS || function_type == F_JSON_ARRAY_INSERT)
+	  || function_type == F_JSON_KEYS || function_type == F_JSON_ARRAY_INSERT || function_type == F_JSON_SEARCH)
 	{
 	  return true;
 	}

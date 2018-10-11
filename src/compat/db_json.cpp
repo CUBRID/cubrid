@@ -58,6 +58,7 @@
 
 #include "dbtype.h"
 #include "memory_alloc.h"
+#include "string_opfunc.h"
 #include "system_parameter.h"
 
 // we define COPY in storage_common.h, but so does rapidjson in its headers. We don't need the definition from storage
@@ -450,6 +451,20 @@ class JSON_WALKER
       return NO_ERROR;
     }
 
+    virtual int
+    CallOnArrayIterate ()
+    {
+      // do nothing
+      return NO_ERROR;
+    }
+
+    virtual int
+    CallOnKeyIterate (JSON_VALUE &key)
+    {
+      // do nothing
+      return NO_ERROR;
+    }
+
   private:
     int WalkValue (JSON_VALUE &value);
 };
@@ -469,6 +484,37 @@ class JSON_DUPLICATE_KEYS_CHECKER : public JSON_WALKER
 
   private:
     int CallBefore (JSON_VALUE &value);
+};
+
+class JSON_SEARCHER : public JSON_WALKER
+{
+  public:
+    JSON_SEARCHER (std::string starting_path, const DB_VALUE *pattern, const DB_VALUE *esc_char, bool find_all,
+		   std::vector<std::string> &paths)
+      : m_starting_path (std::move (starting_path))
+      , m_find_all (find_all)
+      , m_skip_search (false)
+      , m_pattern (pattern)
+      , m_esc_char (esc_char)
+      , m_found_paths (paths)
+    {}
+    ~JSON_SEARCHER () {}
+
+  private:
+
+    int CallBefore (JSON_VALUE &value) override;
+    int CallAfter (JSON_VALUE &value) override;
+    int CallOnArrayIterate () override;
+    int CallOnKeyIterate (JSON_VALUE &key) override;
+
+    std::stack<unsigned int> m_index;
+    std::vector <std::string> path_items;
+    std::string m_starting_path;
+    std::vector<std::string> &m_found_paths;
+    bool m_find_all;
+    bool m_skip_search;
+    const DB_VALUE *m_pattern;
+    const DB_VALUE *m_esc_char;
 };
 
 class JSON_SERIALIZER_LENGTH : public JSON_BASE_HANDLER
@@ -647,6 +693,8 @@ static void db_json_copy_doc (JSON_DOC &dest, const JSON_DOC *src);
 
 static void db_json_get_paths_helper (const JSON_VALUE &obj, const std::string &sql_path,
 				      std::vector<std::string> &paths);
+static int db_json_search_helper (JSON_DOC &obj, const DB_VALUE *pattern, const DB_VALUE *esc_char,
+				  bool find_all, const std::string &sql_path, bool &found, std::vector<std::string> &paths);
 static void db_json_normalize_path (std::string &path_string);
 static void db_json_remove_leading_zeros_index (std::string &index);
 static bool db_json_isspace (const unsigned char &ch);
@@ -720,9 +768,106 @@ int JSON_DUPLICATE_KEYS_CHECKER::CallBefore (JSON_VALUE &value)
   return NO_ERROR;
 }
 
-JSON_VALIDATOR::JSON_VALIDATOR (const char *schema_raw) : m_schema (NULL),
-  m_validator (NULL),
-  m_is_loaded (false)
+int JSON_SEARCHER::CallBefore (JSON_VALUE &value)
+{
+  if (m_skip_search)
+    {
+      return NO_ERROR;
+    }
+
+  if (value.IsArray ())
+    {
+      m_index.push (0);
+    }
+
+  if (value.IsObject () || value.IsArray ())
+    {
+      path_items.emplace_back ();
+    }
+
+  return NO_ERROR;
+}
+
+int JSON_SEARCHER::CallAfter (JSON_VALUE &value)
+{
+  if (m_skip_search)
+    {
+      return NO_ERROR;
+    }
+
+  int error_code = NO_ERROR;
+
+  if (value.IsString ())
+    {
+      const char *json_str = value.GetString ();
+      DB_VALUE str_val;
+
+      db_make_null (&str_val);
+      error_code = db_make_string (&str_val, (char *) json_str);
+      if (error_code)
+	{
+	  return error_code;
+	}
+
+      int match;
+      db_string_like (&str_val, m_pattern, m_esc_char, &match);
+
+      if (match)
+	{
+	  std::stringstream full_path;
+
+	  full_path << "\"" << m_starting_path;
+	  for (const auto &item : path_items)
+	    {
+	      full_path << item;
+	    }
+	  full_path << "\"";
+
+	  m_found_paths.emplace_back (full_path.str ());
+
+	  if (!m_find_all)
+	    {
+	      m_skip_search = true;
+	    }
+	}
+    }
+
+  if (value.IsArray ())
+    {
+      m_index.pop ();
+    }
+
+  if (value.IsArray () || value.IsObject ())
+    {
+      path_items.pop_back ();
+    }
+
+  return error_code;
+}
+
+int JSON_SEARCHER::CallOnKeyIterate (JSON_VALUE &key)
+{
+  std::string path_item = ".";
+  path_item += key.GetString ();
+
+  path_items.back () = path_item;
+  return NO_ERROR;
+}
+
+int JSON_SEARCHER::CallOnArrayIterate ()
+{
+  std::string path_item = "[";
+  path_item += std::to_string (m_index.top ()++);
+  path_item += "]";
+
+  path_items.back () = path_item;
+  return NO_ERROR;
+}
+
+JSON_VALIDATOR::JSON_VALIDATOR (const char *schema_raw)
+  : m_schema (NULL),
+    m_validator (NULL),
+    m_is_loaded (false)
 {
   m_schema_raw = strdup (schema_raw);
   /*
@@ -1796,6 +1941,51 @@ db_json_remove_func (JSON_DOC &doc, const char *raw_path)
 
   // erase the value from the specified path
   p.Erase (doc);
+
+  return NO_ERROR;
+}
+
+/*
+ * db_json_search_func () - Find json values that match the pattern and gather their paths
+ *
+ * return                  : error code
+ * doc (in)                : json document
+ * pattern (in)            : pattern to match against
+ * esc_char (in)           : escape sequence used to match the pattern
+ * starting_paths (in)     : prefixes used in the search
+ * paths (out)             : full paths found
+ */
+int
+db_json_search_func (JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALUE *esc_char, bool find_all,
+		     std::vector<std::string> &starting_paths, std::vector<std::string> &paths)
+{
+  for (auto &starting_path : starting_paths)
+    {
+      JSON_DOC *resolved = nullptr;
+      int error_code = db_json_extract_document_from_path (&doc, starting_path.c_str(), resolved);
+
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+
+      if (resolved == nullptr)
+	{
+	  continue;
+	}
+
+      bool found = false;
+      error_code = db_json_search_helper (*resolved, pattern, esc_char, find_all, starting_path, found, paths);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+
+      if (found && !find_all)
+	{
+	  break;
+	}
+    }
 
   return NO_ERROR;
 }
@@ -2885,6 +3075,25 @@ db_json_convert_sql_path_to_pointer (const char *sql_path, std::string &json_poi
 }
 
 /*
+ * db_json_get_paths_helper () - Recursive function to get the paths from a json object matching a pattern
+ *
+ * obj (in)                : current object
+ * pattern (in)            : the pattern to search for
+ * esc_char (in)           : esc_char used to find values that match the pattern
+ * find_all (in)           : whether to continue search after finding a match
+ * sql_path (in)           : current path in the json search tree
+ * paths (out)             : the paths found, whose pointed values match the pattern
+ */
+static int
+db_json_search_helper (JSON_DOC &obj, const DB_VALUE *pattern, const DB_VALUE *esc_char, bool find_all,
+		       const std::string &sql_path, bool &found, std::vector<std::string> &paths)
+{
+  JSON_SEARCHER json_search_walker (sql_path, pattern, esc_char, find_all, paths);
+
+  return json_search_walker.WalkDocument (obj);
+}
+
+/*
  * db_json_get_paths_helper () - Recursive function to get the paths from a json object
  *
  * obj (in)                : current object
@@ -3342,6 +3551,7 @@ JSON_WALKER::WalkValue (JSON_VALUE &value)
     {
       for (auto it = value.MemberBegin (); it != value.MemberEnd (); ++it)
 	{
+	  CallOnKeyIterate (it->name);
 	  error_code = WalkValue (it->value);
 	  if (error_code != NO_ERROR)
 	    {
@@ -3354,6 +3564,7 @@ JSON_WALKER::WalkValue (JSON_VALUE &value)
     {
       for (JSON_VALUE *it = value.Begin (); it != value.End (); ++it)
 	{
+	  CallOnArrayIterate ();
 	  error_code = WalkValue (*it);
 	  if (error_code != NO_ERROR)
 	    {

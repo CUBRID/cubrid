@@ -3817,7 +3817,7 @@ db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 }
 
 /*
- * db_json_merge_patch ()
+ * db_json_merge_patch()
  *
  * this function merges two by two json without preserving members having duplicate keys
  * so merge (j1, j2, j3, j4) = merge_two (j1, (merge (j2, merge (j3, j4))))
@@ -3831,6 +3831,108 @@ db_json_merge_patch (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 {
   return db_json_merge_helper (result, arg, num_args, true);
 }
+
+/*
+ * JSON_SEARCH (json_doc, one/all, pattern [, escape_char, path_1,... path_n])
+ *
+ * db_json_search_dbval ()
+ * function that finds paths of json_values that match the pattern argument
+ * result (out): json string or json array if there are more paths that match
+ * args (in): the arguments for the json_search function
+ * num_args (in)
+ */
+
+/* *INDENT-OFF* */
+int
+db_json_search_dbval (DB_VALUE * result, DB_VALUE * args[], const int num_args)
+{
+  int error_code = NO_ERROR;
+
+  if (num_args < 3)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_FAILED;
+    }
+
+  for (int i = 0; i < num_args; ++i)
+    {
+      // only escape char might be null
+      if (i != 3 && DB_IS_NULL (args[i]))
+        {
+          return db_make_null (result);
+        }
+    }
+
+  JSON_DOC *doc = db_get_json_document (args[0]);
+  char *find_all_str = db_get_string (args[1]);
+  bool find_all = false;
+
+  if (strcmp (find_all_str, "all") == 0)
+    {
+      find_all = true;
+    }
+  if (!find_all && strcmp (find_all_str, "one"))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
+      return ER_QSTR_INVALID_DATA_TYPE;
+    }
+
+  DB_VALUE *pattern = args[2];
+  DB_VALUE *esc_char = nullptr;
+  if (num_args >= 4)
+    {
+      esc_char = args[3];
+    }
+
+  std::vector<std::string> starting_paths;
+  for (int i = 4; i < num_args; ++i)
+    {
+      starting_paths.push_back (db_get_string (args[i]));
+    }
+  if (starting_paths.empty ())
+    {
+      starting_paths.push_back ("$");
+    }
+
+  std::vector<std::string> paths;
+  error_code = db_json_search_func (*doc, pattern, esc_char, find_all, starting_paths, paths);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  JSON_DOC *result_json = nullptr;
+
+  if (paths.size () == 1)
+    {
+      error_code = db_json_get_json_from_str (paths[0].c_str (), result_json, paths[0].length ());
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+      return db_make_json (result, result_json, true);
+    }
+
+  result_json = db_json_allocate_doc ();
+  for (auto &path : paths)
+    {
+      JSON_DOC *json_array_elem = nullptr;
+
+      error_code = db_json_get_json_from_str (path.c_str (), json_array_elem, path.length ());
+      if (error_code != NO_ERROR)
+	{
+          db_json_delete_doc (result_json);
+	  return error_code;
+	}
+
+      db_json_add_element_to_array (result_json, json_array_elem);
+
+      db_json_delete_doc (json_array_elem);
+    }
+
+  return db_make_json (result, result_json, true);
+}
+/* *INDENT-ON* */
 
 int
 db_json_get_all_paths (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
