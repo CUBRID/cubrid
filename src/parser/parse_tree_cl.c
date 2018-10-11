@@ -4083,6 +4083,8 @@ pt_show_function (FUNC_TYPE c)
       return "json_array_insert";
     case F_JSON_MERGE:
       return "json_merge";
+    case F_JSON_MERGE_PATCH:
+      return "json_merge_patch";
     case F_JSON_GET_ALL_PATHS:
       return "json_get_all_paths";
     default:

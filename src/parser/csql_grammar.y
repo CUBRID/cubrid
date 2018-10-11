@@ -1239,6 +1239,7 @@ int g_original_buffer_len;
 %token FUN_JSON_INSERT
 %token FUN_JSON_KEYS
 %token FUN_JSON_MERGE
+%token FUN_JSON_MERGE_PATCH
 %token FUN_JSON_MERGE_PRESERVE
 %token FUN_JSON_OBJECT
 %token FUN_JSON_REMOVE
@@ -16990,6 +16991,25 @@ reserved_func
 				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
 				    "json_merge");
 		    }
+
+		    $$ = node;
+		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
+    | FUN_JSON_MERGE_PATCH '(' expression_list ')'
+    {{
+		    PT_NODE *args_list = $3;
+		    PT_NODE *node = NULL;
+                    int len;
+
+                    len = parser_count_list (args_list);
+			node = parser_make_expr_with_func (this_parser, F_JSON_MERGE_PATCH, args_list);
+			if (len < 2)
+		    {
+			PT_ERRORmf (this_parser, args_list,
+				    MSGCAT_SET_PARSER_SEMANTIC,
+				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
+				    "json_merge_patch");
+			}
 
 		    $$ = node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)

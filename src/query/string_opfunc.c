@@ -284,6 +284,7 @@ static int print_string_date_token (const STRING_DATE_TOKEN token_type, const IN
 static void convert_locale_number (char *sz, const int size, const INTL_LANG src_locale, const INTL_LANG dst_locale);
 static int parse_tzd (const char *str, const int max_expect_len);
 static int db_value_to_json_doc (const DB_VALUE & value, REFPTR (JSON_DOC, json));
+static int db_json_merge_helper (DB_VALUE * result, DB_VALUE * arg[], int const num_args, bool patch = false);
 
 #define TRIM_FORMAT_STRING(sz, n) {if (strlen(sz) > n) sz[n] = 0;}
 #define WHITESPACE(c) ((c) == ' ' || (c) == '\t' || (c) == '\r' || (c) == '\n')
@@ -3674,17 +3675,8 @@ db_json_array_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
   return NO_ERROR;
 }
 
-/*
- * db_json_merge ()
- * this function merges two by two json
- * so merge (j1, j2, j3, j4) = merge_two (j1, (merge (j2, merge (j3, j4))))
- * result (out): the merge result
- * arg (in): the arguments for the merge function
- * num_args (in)
- */
-
-int
-db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
+static int
+db_json_merge_helper (DB_VALUE * result, DB_VALUE * arg[], int const num_args, bool patch)
 {
   int i;
   int error_code;
@@ -3707,7 +3699,7 @@ db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
       switch (DB_VALUE_TYPE (arg[i]))
 	{
 	case DB_TYPE_JSON:
-	  error_code = db_json_merge_func (arg[i]->data.json.document, accumulator);
+	  error_code = db_json_merge_func (arg[i]->data.json.document, accumulator, patch);
 	  break;
 
 	case DB_TYPE_CHAR:
@@ -3715,12 +3707,12 @@ db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARNCHAR:
 	  error_code = db_json_convert_string_and_call (db_get_string (arg[i]), db_get_string_size (arg[i]),
-							db_json_merge_func, accumulator);
+							db_json_merge_func, accumulator, patch);
 	  break;
 
 	case DB_TYPE_NULL:
 	  // todo: isn't this too supposed to be NULL?
-	  error_code = db_json_merge_func (NULL, accumulator);
+	  error_code = db_json_merge_func (NULL, accumulator, patch);
 	  break;
 
 	default:
@@ -3739,6 +3731,38 @@ db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
   db_make_json (result, accumulator, true);
 
   return NO_ERROR;
+}
+
+/*
+ * db_json_merge ()
+ *
+ * this function merges two by two json
+ * so merge (j1, j2, j3, j4) = merge_two (j1, (merge (j2, merge (j3, j4))))
+ *
+ * result (out): the merge result
+ * arg (in): the arguments for the merge function
+ * num_args (in)
+ */
+int
+db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
+{
+  return db_json_merge_helper (result, arg, num_args);
+}
+
+/*
+ * db_json_merge_patch ()
+ *
+ * this function merges two by two json without preserving members having duplicate keys
+ * so merge (j1, j2, j3, j4) = merge_two (j1, (merge (j2, merge (j3, j4))))
+ *
+ * result (out): the merge result
+ * arg (in): the arguments for the merge function
+ * num_args (in)
+ */
+int
+db_json_merge_patch (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
+{
+  return db_json_merge_helper (result, arg, num_args, true);
 }
 
 int
