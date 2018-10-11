@@ -1463,6 +1463,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 125 sessiontimezone geçersiz kullanımı\n sessiontimezone
 126 Bir class/vclass yorumun maksimum uzunluğu %1$d byte.
 127 Bir yorumun maksimum uzunluğu %1$d byte.
+128 Invalid number of arguments for JSON_OBJECTAGG
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Bellek yetersiz.

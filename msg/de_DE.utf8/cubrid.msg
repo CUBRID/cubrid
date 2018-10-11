@@ -1463,6 +1463,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 125 ungültige Verwendung von sessiontimezone\n sessiontimezone
 126 Maximale Länge einer class/vclass Kommentar ist %1$d bytes.
 127 Maximale Länge eines Kommentars ist %1$d bytes.
+128 Invalid number of arguments for JSON_OBJECTAGG
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Außer Speicher.

@@ -16017,7 +16017,7 @@ reserved_func
 			if (parser_count_list(args_list) != 2)
 		    {
 			  PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SYNTAX,
-					      MSGCAT_SYNTAX_INVALID_GROUP_CONCAT);
+					      MSGCAT_SYNTAX_INVALID_JSON_OBJECTAGG);
 		    }
 
  			if (node)
