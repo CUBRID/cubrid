@@ -6294,6 +6294,7 @@ pt_function_to_regu (PARSER_CONTEXT * parser, PT_NODE * function)
 	case F_JSON_ARRAY_APPEND:
 	case F_JSON_ARRAY_INSERT:
 	case F_JSON_MERGE:
+	case F_JSON_MERGE_PATCH:
 	case F_JSON_SEARCH:
 	case F_JSON_GET_ALL_PATHS:
 	  result_type = pt_node_to_db_type (function);
@@ -7123,14 +7124,16 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  || node->info.expr.op == PT_ADDTIME || node->info.expr.op == PT_DEFINE_VARIABLE
 		  || node->info.expr.op == PT_CHR || node->info.expr.op == PT_CLOB_TO_CHAR
 		  || node->info.expr.op == PT_INDEX_PREFIX || node->info.expr.op == PT_FROM_TZ
-		  || node->info.expr.op == PT_JSON_TYPE || node->info.expr.op == PT_JSON_UNQUOTE
+		  || node->info.expr.op == PT_JSON_TYPE || node->info.expr.op == PT_JSON_QUOTE
+		  || node->info.expr.op == PT_JSON_UNQUOTE
 		  || node->info.expr.op == PT_JSON_EXTRACT || node->info.expr.op == PT_JSON_VALID
 		  || node->info.expr.op == PT_JSON_LENGTH || node->info.expr.op == PT_JSON_DEPTH
 		  || node->info.expr.op == PT_JSON_PRETTY)
 		{
 		  r1 = pt_to_regu_variable (parser, node->info.expr.arg1, unbox);
 		  if ((node->info.expr.op == PT_CONCAT || node->info.expr.op == PT_JSON_LENGTH
-		       || node->info.expr.op == PT_JSON_UNQUOTE) && node->info.expr.arg2 == NULL)
+		       || node->info.expr.op == PT_JSON_QUOTE || node->info.expr.op == PT_JSON_UNQUOTE)
+		      && node->info.expr.arg2 == NULL)
 		    {
 		      r2 = NULL;
 		    }
@@ -7617,6 +7620,9 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  break;
 		case PT_JSON_DEPTH:
 		  regu = pt_make_regu_arith (r1, NULL, NULL, T_JSON_DEPTH, domain);
+		  break;
+		case PT_JSON_QUOTE:
+		  regu = pt_make_regu_arith (r1, NULL, NULL, T_JSON_QUOTE, domain);
 		  break;
 		case PT_JSON_UNQUOTE:
 		  regu = pt_make_regu_arith (r1, NULL, NULL, T_JSON_UNQUOTE, domain);

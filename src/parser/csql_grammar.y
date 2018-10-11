@@ -318,6 +318,7 @@ static FUNCTION_MAP functions[] = {
   {"json_valid", PT_JSON_VALID},
   {"json_unquote", PT_JSON_UNQUOTE},
   {"json_length", PT_JSON_LENGTH},
+  {"json_quote", PT_JSON_QUOTE},
   {"json_depth", PT_JSON_DEPTH},
   {"json_pretty", PT_JSON_PRETTY},
 };
@@ -1232,17 +1233,19 @@ int g_original_buffer_len;
 %token FULL
 %token FUNCTION
 %token FUN_JSON_ARRAY
-%token FUN_JSON_OBJECT
-%token FUN_JSON_MERGE
-%token FUN_JSON_INSERT
-%token FUN_JSON_REPLACE
-%token FUN_JSON_SET
-%token FUN_JSON_KEYS
-%token FUN_JSON_REMOVE
 %token FUN_JSON_ARRAY_APPEND
 %token FUN_JSON_ARRAY_INSERT
 %token FUN_JSON_SEARCH
 %token FUN_JSON_GET_ALL_PATHS
+%token FUN_JSON_INSERT
+%token FUN_JSON_KEYS
+%token FUN_JSON_MERGE
+%token FUN_JSON_MERGE_PATCH
+%token FUN_JSON_MERGE_PRESERVE
+%token FUN_JSON_OBJECT
+%token FUN_JSON_REMOVE
+%token FUN_JSON_REPLACE
+%token FUN_JSON_SET
 %token GENERAL
 %token GET
 %token GLOBAL
@@ -16993,6 +16996,44 @@ reserved_func
 		    $$ = node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
+    | FUN_JSON_MERGE_PATCH '(' expression_list ')'
+    {{
+		    PT_NODE *args_list = $3;
+		    PT_NODE *node = NULL;
+                    int len;
+
+                    len = parser_count_list (args_list);
+			node = parser_make_expr_with_func (this_parser, F_JSON_MERGE_PATCH, args_list);
+			if (len < 2)
+		    {
+			PT_ERRORmf (this_parser, args_list,
+				    MSGCAT_SET_PARSER_SEMANTIC,
+				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
+				    "json_merge_patch");
+			}
+
+		    $$ = node;
+		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
+		| FUN_JSON_MERGE_PRESERVE '(' expression_list ')'
+		{{
+		    PT_NODE *args_list = $3;
+		    PT_NODE *node = NULL;
+                    int len;
+
+                    len = parser_count_list (args_list);
+		    node = parser_make_expr_with_func (this_parser, F_JSON_MERGE, args_list);
+		    if (len < 2)
+		    {
+			PT_ERRORmf (this_parser, args_list,
+				    MSGCAT_SET_PARSER_SEMANTIC,
+				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
+				    "json_merge_preserve");
+		    }
+
+		    $$ = node;
+		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
         | FUN_JSON_INSERT '(' expression_list ')'
 		{{
 		    PT_NODE *args_list = $3;
@@ -26775,7 +26816,8 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_JSON_LENGTH:
     case PT_JSON_DEPTH:
     case PT_JSON_PRETTY:
-	case PT_JSON_UNQUOTE:
+    case PT_JSON_QUOTE:
+    case PT_JSON_UNQUOTE:
       if (c != 1)
         return NULL;
 

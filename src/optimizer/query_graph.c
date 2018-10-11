@@ -3277,6 +3277,7 @@ get_expr_fcode_rank (FUNC_TYPE fcode)
     case F_JSON_ARRAY_INSERT:
     case F_JSON_SEARCH:
     case F_JSON_MERGE:
+    case F_JSON_MERGE_PATCH:
     case F_JSON_GET_ALL_PATHS:
     case F_JSON_INSERT:
     case F_JSON_REPLACE:

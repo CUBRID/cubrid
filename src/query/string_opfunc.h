@@ -187,6 +187,7 @@ extern int db_json_search_dbval (DB_VALUE * result, DB_VALUE * args[], const int
 extern int db_string_substring (const MISC_OPERAND substr_operand, const DB_VALUE * src_string,
 				const DB_VALUE * start_position, const DB_VALUE * extraction_length,
 				DB_VALUE * sub_string);
+extern int db_string_quote (const DB_VALUE * src_string, DB_VALUE * res);
 extern int db_string_repeat (const DB_VALUE * src_string, const DB_VALUE * count, DB_VALUE * result);
 extern int db_string_substring_index (DB_VALUE * src_string, DB_VALUE * delim_string, const DB_VALUE * count,
 				      DB_VALUE * result);
@@ -209,6 +210,7 @@ extern int db_json_remove (DB_VALUE * result, DB_VALUE * arg[], int const num_ar
 extern int db_json_array_append (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
 extern int db_json_array_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
 extern int db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
+extern int db_json_merge_patch (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
 extern int db_json_get_all_paths (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
 extern int db_json_pretty (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
 

@@ -284,6 +284,7 @@ static int print_string_date_token (const STRING_DATE_TOKEN token_type, const IN
 static void convert_locale_number (char *sz, const int size, const INTL_LANG src_locale, const INTL_LANG dst_locale);
 static int parse_tzd (const char *str, const int max_expect_len);
 static int db_value_to_json_doc (const DB_VALUE & value, REFPTR (JSON_DOC, json));
+static int db_json_merge_helper (DB_VALUE * result, DB_VALUE * arg[], int const num_args, bool patch = false);
 
 #define TRIM_FORMAT_STRING(sz, n) {if (strlen(sz) > n) sz[n] = 0;}
 #define WHITESPACE(c) ((c) == ' ' || (c) == '\t' || (c) == '\r' || (c) == '\n')
@@ -295,6 +296,9 @@ static int db_value_to_json_doc (const DB_VALUE & value, REFPTR (JSON_DOC, json)
 #define PUNCTUATIONAL(c) ((c) == '-' || (c) == '/' || (c) == ',' || (c) == '.' \
 			  || (c) == ';' || (c) == ':' || (c) == ' ' \
 			  || (c) == '\t' || (c) == '\n')
+
+/* character that need escaping when making Json String */
+#define ESCAPE_CHAR(c) (c <= 0x1f || (c) == '"' || (c) == '\\')
 
 /* concatenate a char to s */
 #define STRCHCAT(s, c) \
@@ -1885,6 +1889,70 @@ db_string_substring (const MISC_OPERAND substr_operand, const DB_VALUE * src_str
     }
 
   return error_status;
+}
+
+/*
+ * db_string_quote - escape a string and surround it with quotes
+ *   return: If success, return 0.
+ *   src(in): str
+ *   res(out): quoted string
+ * Note:
+ */
+int
+db_string_quote (const DB_VALUE * str, DB_VALUE * res)
+{
+  if (DB_IS_NULL (str))
+    {
+      return db_make_null (res);
+    }
+  else
+    {
+      char *src_str = db_get_string (str);
+      int src_size = db_get_string_size (str);
+      int dest_crt_pos;
+      int src_last_pos;
+
+      // *INDENT-OFF*
+      std::vector<int> special_idx;
+      // *INDENT-ON*
+      for (int i = 0; i < src_size; ++i)
+	{
+	  unsigned char uc = (unsigned char) src_str[i];
+	  if (ESCAPE_CHAR (uc))
+	    {
+	      special_idx.push_back (i);
+	    }
+	}
+      int dest_size = src_size + special_idx.size () + 2;
+      char *result = (char *) db_private_alloc (NULL, dest_size);
+      if (result == NULL)
+	{
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      result[0] = '"';
+      dest_crt_pos = 1;
+      src_last_pos = 0;
+      for (int i = 0; i < special_idx.size (); ++i)
+	{
+	  int len = special_idx[i] - src_last_pos;
+	  memcpy (&result[dest_crt_pos], &src_str[src_last_pos], len);
+	  dest_crt_pos += len;
+	  result[dest_crt_pos] = '\\';
+	  ++dest_crt_pos;
+	  src_last_pos = special_idx[i];
+	}
+      memcpy (&result[dest_crt_pos], &src_str[src_last_pos], src_size - src_last_pos);
+      result[dest_size - 1] = '"';
+
+      db_make_null (res);
+      DB_TYPE result_type = DB_TYPE_CHAR;
+      qstr_make_typed_string (result_type, res, DB_VALUE_PRECISION (res), result,
+			      (const int) dest_size, db_get_string_codeset (str), db_get_string_collation (str));
+
+      res->need_clear = true;
+      return NO_ERROR;
+    }
 }
 
 /*
@@ -3674,17 +3742,8 @@ db_json_array_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
   return NO_ERROR;
 }
 
-/*
- * db_json_merge ()
- * this function merges two by two json
- * so merge (j1, j2, j3, j4) = merge_two (j1, (merge (j2, merge (j3, j4))))
- * result (out): the merge result
- * arg (in): the arguments for the merge function
- * num_args (in)
- */
-
-int
-db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
+static int
+db_json_merge_helper (DB_VALUE * result, DB_VALUE * arg[], int const num_args, bool patch)
 {
   int i;
   int error_code;
@@ -3707,7 +3766,7 @@ db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
       switch (DB_VALUE_TYPE (arg[i]))
 	{
 	case DB_TYPE_JSON:
-	  error_code = db_json_merge_func (arg[i]->data.json.document, accumulator);
+	  error_code = db_json_merge_func (arg[i]->data.json.document, accumulator, patch);
 	  break;
 
 	case DB_TYPE_CHAR:
@@ -3715,12 +3774,12 @@ db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARNCHAR:
 	  error_code = db_json_convert_string_and_call (db_get_string (arg[i]), db_get_string_size (arg[i]),
-							db_json_merge_func, accumulator);
+							db_json_merge_func, accumulator, patch);
 	  break;
 
 	case DB_TYPE_NULL:
 	  // todo: isn't this too supposed to be NULL?
-	  error_code = db_json_merge_func (NULL, accumulator);
+	  error_code = db_json_merge_func (NULL, accumulator, patch);
 	  break;
 
 	default:

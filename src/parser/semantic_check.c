@@ -5220,6 +5220,7 @@ pt_find_partition_column_count_func (PT_NODE * func, PT_NODE ** name_node)
     case F_JSON_ARRAY_INSERT:
     case F_JSON_SEARCH:
     case F_JSON_MERGE:
+    case F_JSON_MERGE_PATCH:
     case F_JSON_GET_ALL_PATHS:
       break;
     default:
@@ -15157,6 +15158,7 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *a
 	case F_JSON_ARRAY_INSERT:
 	case F_JSON_SEARCH:
 	case F_JSON_MERGE:
+	case F_JSON_MERGE_PATCH:
 	case F_JSON_GET_ALL_PATHS:
 	  /* valid expression, nothing to do */
 	  break;
