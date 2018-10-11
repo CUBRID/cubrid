@@ -297,6 +297,9 @@ static int db_json_merge_helper (DB_VALUE * result, DB_VALUE * arg[], int const 
 			  || (c) == ';' || (c) == ':' || (c) == ' ' \
 			  || (c) == '\t' || (c) == '\n')
 
+/* character that need escaping when making Json String */
+#define ESCAPE_CHAR(c) (c <= 0x1f || (c) == '"' || (c) == '\\')
+
 /* concatenate a char to s */
 #define STRCHCAT(s, c) \
   {\
@@ -1886,6 +1889,70 @@ db_string_substring (const MISC_OPERAND substr_operand, const DB_VALUE * src_str
     }
 
   return error_status;
+}
+
+/*
+ * db_string_quote - escape a string and surround it with quotes
+ *   return: If success, return 0.
+ *   src(in): str
+ *   res(out): quoted string
+ * Note:
+ */
+int
+db_string_quote (const DB_VALUE * str, DB_VALUE * res)
+{
+  if (DB_IS_NULL (str))
+    {
+      return db_make_null (res);
+    }
+  else
+    {
+      char *src_str = db_get_string (str);
+      int src_size = db_get_string_size (str);
+      int dest_crt_pos;
+      int src_last_pos;
+
+      // *INDENT-OFF*
+      std::vector<int> special_idx;
+      // *INDENT-ON*
+      for (int i = 0; i < src_size; ++i)
+	{
+	  unsigned char uc = (unsigned char) src_str[i];
+	  if (ESCAPE_CHAR (uc))
+	    {
+	      special_idx.push_back (i);
+	    }
+	}
+      int dest_size = src_size + special_idx.size () + 2;
+      char *result = (char *) db_private_alloc (NULL, dest_size);
+      if (result == NULL)
+	{
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      result[0] = '"';
+      dest_crt_pos = 1;
+      src_last_pos = 0;
+      for (int i = 0; i < special_idx.size (); ++i)
+	{
+	  int len = special_idx[i] - src_last_pos;
+	  memcpy (&result[dest_crt_pos], &src_str[src_last_pos], len);
+	  dest_crt_pos += len;
+	  result[dest_crt_pos] = '\\';
+	  ++dest_crt_pos;
+	  src_last_pos = special_idx[i];
+	}
+      memcpy (&result[dest_crt_pos], &src_str[src_last_pos], src_size - src_last_pos);
+      result[dest_size - 1] = '"';
+
+      db_make_null (res);
+      DB_TYPE result_type = DB_TYPE_CHAR;
+      qstr_make_typed_string (result_type, res, DB_VALUE_PRECISION (res), result,
+			      (const int) dest_size, db_get_string_codeset (str), db_get_string_collation (str));
+
+      res->need_clear = true;
+      return NO_ERROR;
+    }
 }
 
 /*

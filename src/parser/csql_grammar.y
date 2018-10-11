@@ -318,6 +318,7 @@ static FUNCTION_MAP functions[] = {
   {"json_valid", PT_JSON_VALID},
   {"json_unquote", PT_JSON_UNQUOTE},
   {"json_length", PT_JSON_LENGTH},
+  {"json_quote", PT_JSON_QUOTE},
   {"json_depth", PT_JSON_DEPTH},
   {"json_search", PT_JSON_SEARCH},
   {"json_pretty", PT_JSON_PRETTY},
@@ -26797,7 +26798,8 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_JSON_LENGTH:
     case PT_JSON_DEPTH:
     case PT_JSON_PRETTY:
-	case PT_JSON_UNQUOTE:
+    case PT_JSON_QUOTE:
+    case PT_JSON_UNQUOTE:
       if (c != 1)
         return NULL;
 
