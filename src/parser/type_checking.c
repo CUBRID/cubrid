@@ -13228,8 +13228,8 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  {
 	    if (index < 4)
 	      {
-		is_supported = PT_IS_STRING_TYPE (arg->type_enum) || arg->type_enum == PT_TYPE_MAYBE
-		  || arg->type_enum == PT_TYPE_NULL || arg->type_enum == PT_TYPE_NA;
+		is_supported = (PT_IS_STRING_TYPE (arg->type_enum) || arg->type_enum == PT_TYPE_MAYBE
+				|| arg->type_enum == PT_TYPE_NULL || arg->type_enum == PT_TYPE_NA);
 	      }
 	    else
 	      {

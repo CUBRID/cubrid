@@ -3764,15 +3764,15 @@ db_json_search_dbval (DB_VALUE * result, DB_VALUE * args[], const int num_args)
     }
 
   for (int i = 0; i < num_args; ++i)
-  {
-    // only escape char might be null
-    if (i != 3 && DB_IS_NULL (args[i]))
     {
-      return db_make_null (result);
+      // only escape char might be null
+      if (i != 3 && DB_IS_NULL (args[i]))
+        {
+          return db_make_null (result);
+        }
     }
-  }
 
-  JSON_DOC * doc = db_get_json_document (args[0]);
+  JSON_DOC *doc = db_get_json_document (args[0]);
   char *find_all_str = db_get_string (args[1]);
   bool find_all = false;
 
@@ -3805,17 +3805,17 @@ db_json_search_dbval (DB_VALUE * result, DB_VALUE * args[], const int num_args)
 
   std::vector<std::string> paths;
   error_code = db_json_search_func (*doc, pattern, esc_char, find_all, starting_paths, paths);
-  if (error_code)
-  {
-    return error_code;
-  }
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
 
   JSON_DOC *result_json = nullptr;
 
   if (paths.size () == 1)
     {
       error_code = db_json_get_json_from_str (paths[0].c_str (), result_json, paths[0].length ());
-      if (error_code)
+      if (error_code != NO_ERROR)
 	{
 	  return error_code;
 	}
@@ -3823,12 +3823,12 @@ db_json_search_dbval (DB_VALUE * result, DB_VALUE * args[], const int num_args)
     }
 
   result_json = db_json_allocate_doc ();
-  for (auto & path:paths)
+  for (auto &path : paths)
     {
       JSON_DOC *json_array_elem = nullptr;
 
       error_code = db_json_get_json_from_str (path.c_str (), json_array_elem, path.length ());
-      if (error_code)
+      if (error_code != NO_ERROR)
 	{
           db_json_delete_doc (result_json);
 	  return error_code;

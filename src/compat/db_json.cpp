@@ -768,14 +768,17 @@ int JSON_SEARCHER::CallBefore (JSON_VALUE &value)
     {
       return NO_ERROR;
     }
+
   if (value.IsArray ())
     {
       m_index.push (0);
     }
+
   if (value.IsObject () || value.IsArray ())
     {
       path_items.emplace_back ();
     }
+
   return NO_ERROR;
 }
 
@@ -785,29 +788,35 @@ int JSON_SEARCHER::CallAfter (JSON_VALUE &value)
     {
       return NO_ERROR;
     }
+
   int error_code = NO_ERROR;
-  if (value.IsString())
+
+  if (value.IsString ())
     {
       const char *json_str = value.GetString ();
       DB_VALUE str_val;
+
       db_make_null (&str_val);
-      error_code = db_make_string (&str_val, (char *)json_str);
+      error_code = db_make_string (&str_val, (char *) json_str);
       if (error_code)
 	{
 	  return error_code;
 	}
+
       int match;
       db_string_like (&str_val, m_pattern, m_esc_char, &match);
 
       if (match)
 	{
 	  std::stringstream full_path;
+
 	  full_path << "\"" << m_starting_path;
 	  for (const auto &item : path_items)
 	    {
 	      full_path << item;
 	    }
 	  full_path << "\"";
+
 	  m_found_paths.emplace_back (full_path.str ());
 
 	  if (!m_find_all)
@@ -826,6 +835,7 @@ int JSON_SEARCHER::CallAfter (JSON_VALUE &value)
     {
       path_items.pop_back ();
     }
+
   return error_code;
 }
 
@@ -848,9 +858,10 @@ int JSON_SEARCHER::CallOnArrayIterate ()
   return NO_ERROR;
 }
 
-JSON_VALIDATOR::JSON_VALIDATOR (const char *schema_raw) : m_schema (NULL),
-  m_validator (NULL),
-  m_is_loaded (false)
+JSON_VALIDATOR::JSON_VALIDATOR (const char *schema_raw)
+  : m_schema (NULL),
+    m_validator (NULL),
+    m_is_loaded (false)
 {
   m_schema_raw = strdup (schema_raw);
   /*
@@ -1946,7 +1957,8 @@ db_json_search_func (JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALUE *esc
     {
       JSON_DOC *resolved = nullptr;
       int error_code = db_json_extract_document_from_path (&doc, starting_path.c_str(), resolved);
-      if (error_code)
+
+      if (error_code != NO_ERROR)
 	{
 	  return error_code;
 	}
@@ -1958,7 +1970,7 @@ db_json_search_func (JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALUE *esc
 
       bool found = false;
       error_code = db_json_search_helper (*resolved, pattern, esc_char, find_all, starting_path, found, paths);
-      if (error_code)
+      if (error_code != NO_ERROR)
 	{
 	  return error_code;
 	}
