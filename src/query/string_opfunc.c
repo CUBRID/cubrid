@@ -3804,22 +3804,13 @@ db_json_contains_path (DB_VALUE * result, DB_VALUE * arg[], const int num_args)
 	}
     }
 
-  // if we have not returned early last search is decisive 
+  // if we have not returned early last search is decisive
   error_code = db_make_int (result, (int) exists);
   return error_code;
 }
 
-/*
- * db_json_merge ()
- * this function merges two by two json
- * so merge (j1, j2, j3, j4) = merge_two (j1, (merge (j2, merge (j3, j4))))
- * result (out): the merge result
- * arg (in): the arguments for the merge function
- * num_args (in)
- */
-
-int
-db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
+static int
+db_json_merge_helper (DB_VALUE * result, DB_VALUE * arg[], int const num_args, bool patch)
 {
   int i;
   int error_code;
