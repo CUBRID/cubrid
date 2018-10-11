@@ -447,10 +447,13 @@ int yybuffer_pos;
 [jJ][sS][oO][nN][_][iI][nN][sS][eE][rR][tT]                             { begin_token(yytext);  return FUN_JSON_INSERT; }
 [jJ][sS][oO][nN][_][kK][eE][yY][sS]					{ begin_token(yytext);  return FUN_JSON_KEYS; }
 [jJ][sS][oO][nN][_][mM][eE][rR][gG][eE]                                 { begin_token(yytext);  return FUN_JSON_MERGE; }
+[jJ][sS][oO][nN][_][mM][eE][rR][gG][eE][_][pP][aA][tT][cC][hH]			{ begin_token(yytext);  return FUN_JSON_MERGE_PATCH; }
+[jJ][sS][oO][nN][_][mM][eE][rR][gG][eE][_][pP][rR][eE][sS][eE][rR][vV][eE]	{ begin_token(yytext);  return FUN_JSON_MERGE_PRESERVE; }
 [jJ][sS][oO][nN][_][oO][bB][jJ][eE][cC][tT]                             { begin_token(yytext);  return FUN_JSON_OBJECT; }
 [jJ][sS][oO][nN][_][rR][eE][mM][oO][vV][eE]                             { begin_token(yytext);  return FUN_JSON_REMOVE; }
 [jJ][sS][oO][nN][_][rR][eE][pP][lL][aA][cC][eE]                         { begin_token(yytext);  return FUN_JSON_REPLACE; }
 [jJ][sS][oO][nN][_][sS][eE][tT]                                         { begin_token(yytext);  return FUN_JSON_SET; }
+[jJ][sS][oO][nN][_][sS][eE][aA][rR][cC][hH]                             { begin_token(yytext);  return FUN_JSON_SEARCH; }
 [jJ][sS][oO][nN][_][tT][aA][bB][lL][eE]                                 { begin_token(yytext);   return JSON_TABLE; }
 [kK][eE][yY]								{ begin_token(yytext);  return KEY; }
 [kK][eE][yY][sS]							{ begin_token(yytext);   
