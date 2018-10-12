@@ -40,6 +40,7 @@ typedef void JSON_ITERATOR;
 #if defined (__cplusplus)
 
 #include <functional>
+#include <vector>
 #include "thread_compat.hpp"
 
 /*
@@ -102,7 +103,9 @@ int db_json_keys_func (const char *json_raw, JSON_DOC *&result_json, const char 
 int db_json_array_append_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path);
 int db_json_array_insert_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path);
 int db_json_remove_func (JSON_DOC &doc, const char *raw_path);
-int db_json_merge_func (const JSON_DOC *source, JSON_DOC *&dest);
+int db_json_search_func (JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALUE *esc_char, bool find_all,
+			 std::vector<std::string> &starting_paths, std::vector<std::string> &paths);
+int db_json_merge_func (const JSON_DOC *source, JSON_DOC *&dest, bool patch);
 int db_json_get_all_paths_func (const JSON_DOC &doc, JSON_DOC *&result_json);
 void db_json_pretty_func (const JSON_DOC &doc, char *&result_str);
 int db_json_unquote (const JSON_DOC &doc, char *&result_str);
