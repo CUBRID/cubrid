@@ -5387,8 +5387,8 @@ db_json_merge (DB_VALUE * json, DB_VALUE * json_res)
   // get the resulting json document
   result_doc = db_get_json_document (json_res);
 
-  // merge the two jsons
-  db_json_merge_func (current_doc, result_doc);
+  // merge the two jsons (preserve, not patch)
+  db_json_merge_func (current_doc, result_doc, false);
 
   return NO_ERROR;
 }
