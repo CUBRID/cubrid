@@ -6811,7 +6811,6 @@ qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMUL
 }
 
 /* *INDENT-OFF* */
-
 int
 qdata_aggregate_multiple_values_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMULATOR * acc,
 						AGGREGATE_ACCUMULATOR_DOMAIN * domain, FUNC_TYPE func_type,
@@ -6848,7 +6847,6 @@ qdata_aggregate_multiple_values_to_accumulator (THREAD_ENTRY * thread_p, AGGREGA
 
   return NO_ERROR;
 }
-
 /* *INDENT-ON* */
 
 /*
