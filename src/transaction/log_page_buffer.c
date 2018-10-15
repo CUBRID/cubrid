@@ -4581,7 +4581,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 
 	      thread_lock_entry (wait_thread_p);
 
-	      /* If THREAD_RESUME_DUE_TO_INTERRUPT, do not sets the entry status, to avoids deadlock
+	      /* If THREAD_RESUME_DUE_TO_INTERRUPT, do not set the entry status to avoid deadlock
 	       * between flush_end_cond and CSECT_LOG.
 	       */
 	      if (thread_p->resume_status != THREAD_RESUME_DUE_TO_INTERRUPT)
