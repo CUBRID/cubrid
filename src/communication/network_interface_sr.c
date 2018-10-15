@@ -90,8 +90,9 @@
 #define NET_DEFER_END_QUERIES_MAX 10
 
 /* Query execution with commit. */
-#define QEWC_RESERVED_AREA_SIZE 1024
-#define QEWC_MAX_DATA_SIZE  (DB_PAGESIZE - QEWC_RESERVED_AREA_SIZE)
+#define QEWC_SAFE_GUARD_SIZE 1024
+// To have the safe area is just a safe guard to avoid potential issues of bad size calculation.
+#define QEWC_MAX_DATA_SIZE  (DB_PAGESIZE - QEWC_SAFE_GUARD_SIZE)
 
 /* This file is only included in the server.  So set the on_server flag on */
 unsigned int db_on_server = 1;
@@ -4666,19 +4667,21 @@ stran_can_end_after_query_execution (THREAD_ENTRY * thread_p, int query_flag, QF
   PR_TYPE *pr_type;
   int i, flag, compressed_size, decompressed_size, diff_size, val_length;
   char *tuple_p;
-  bool found_compressible_string_domain, local_can_end_transaction;
+  bool found_compressible_string_domain, exceed_a_page;
 
   assert (list_id != NULL && list_id->type_list.domp != NULL && can_end_transaction != NULL);
+
+  *can_end_transaction = false;
+
   if (list_id->page_cnt != 1)
     {
-      *can_end_transaction = false;
+      /* Needs fetch request. Do not allow ending transaction. */
       return NO_ERROR;
     }
 
   if (list_id->last_offset >= QEWC_MAX_DATA_SIZE)
     {
       /* Needs fetch request. Do not allow ending transaction. */
-      *can_end_transaction = false;
       return NO_ERROR;
     }
 
@@ -4707,7 +4710,7 @@ stran_can_end_after_query_execution (THREAD_ENTRY * thread_p, int query_flag, QF
     {
       /* Not compressible domains, do not check for compression. */
       *can_end_transaction = true;
-      return true;
+      return NO_ERROR;
     }
 
   if (qfile_open_list_scan (list_id, &scan_id) != NO_ERROR)
@@ -4717,8 +4720,8 @@ stran_can_end_after_query_execution (THREAD_ENTRY * thread_p, int query_flag, QF
 
   /* Estimates the data and header information. */
   diff_size = 0;
-  local_can_end_transaction = true;
-  do
+  exceed_a_page = false;
+  while (!exceed_a_page)
     {
       qp_scan = qfile_scan_list_next (thread_p, &scan_id, &tuple_record, PEEK);
       if (qp_scan != S_SUCCESS)
@@ -4736,7 +4739,7 @@ stran_can_end_after_query_execution (THREAD_ENTRY * thread_p, int query_flag, QF
 	  tuple_p += QFILE_TUPLE_VALUE_HEADER_SIZE;
 
 	  pr_type = domains[i]->type;
-	  if ((pr_type->id == DB_TYPE_VARCHAR || pr_type->id == DB_TYPE_VARNCHAR) && (flag != V_UNBOUND))
+	  if (flag != V_UNBOUND && (pr_type->id == DB_TYPE_VARCHAR || pr_type->id == DB_TYPE_VARNCHAR))
 	    {
 	      buf.ptr = tuple_p;
 	      or_get_varchar_compression_lengths (&buf, &compressed_size, &decompressed_size);
@@ -4747,7 +4750,7 @@ stran_can_end_after_query_execution (THREAD_ENTRY * thread_p, int query_flag, QF
 		  if (list_id->last_offset + diff_size >= QEWC_MAX_DATA_SIZE)
 		    {
 		      /* Needs fetch request. Do not allow ending transaction. */
-		      local_can_end_transaction = false;
+		      exceed_a_page = true;
 		      break;
 		    }
 		}
@@ -4756,12 +4759,16 @@ stran_can_end_after_query_execution (THREAD_ENTRY * thread_p, int query_flag, QF
 	  tuple_p += val_length;
 	}
     }
-  while (local_can_end_transaction);
 
   qfile_close_scan (thread_p, &scan_id);
 
-  assert (qp_scan == S_END || local_can_end_transaction == false);
-  *can_end_transaction = local_can_end_transaction;
+  if (qp_scan == S_ERROR)
+    {
+      // might be interrupted
+      return ER_FAILED;
+    }
+
+  *can_end_transaction = !exceed_a_page;
 
   return NO_ERROR;
 }
@@ -5013,12 +5020,13 @@ null_list:
 	      qmgr_free_old_page_and_init (thread_p, page_ptr, list_id->tfile_vfid);
 	      page_ptr = aligned_page_buf;
 
-	      /* for now, allow end query if there is only one page */
+	      /* for now, allow end query if there is only one page and more ... */
 	      if (stran_can_end_after_query_execution (thread_p, query_flag, list_id, &end_query_allowed) != NO_ERROR)
 		{
-		  // This execution request is followed by fetch.
 		  (void) return_error_to_client (thread_p, rid);
 		}
+
+	      // When !end_query_allowed, it means this execution request is followed by fetch request(s).
 	    }
 	  else
 	    {
