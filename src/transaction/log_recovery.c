@@ -1633,7 +1633,7 @@ log_rv_analysis_sysop_end (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_l
   // 3. is system operation start postpone equal or more recent to system operation last parent?
   if (!LSA_ISNULL (&tdes->rcv.sysop_start_postpone_lsa)
       && LSA_GT (&tdes->rcv.sysop_start_postpone_lsa, &tdes->rcv.atomic_sysop_start_lsa)
-      && LSA_LE (&sysop_end->lastparent_lsa, &tdes->rcv.sysop_start_postpone_lsa))
+      && LSA_LT (&sysop_end->lastparent_lsa, &tdes->rcv.sysop_start_postpone_lsa))
     {
       /* reset tdes->rcv.sysop_start_postpone_lsa */
       LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
