@@ -949,18 +949,7 @@ db_restart_ex (const char *program, const char *db_name, const char *db_user, co
     }
 
   db_set_client_type (client_type);
-#if !defined(CS_MODE)
-  /* if we're in SERVER_MODE, this is the only place where we can initialize the sessions state module */
-  switch (client_type)
-    {
-    case DB_CLIENT_TYPE_ADMIN_CSQL:
-    case DB_CLIENT_TYPE_READ_ONLY_CSQL:
-    case DB_CLIENT_TYPE_CSQL:
-      session_states_init (NULL);
-    default:
-      break;
-    }
-#endif
+
   /* For backward compatibility. Do not use the parameter, preferred_hosts. A caller is supposed to use
    * db_set_preferred_hosts before db_restart_ex is called. */
   if (preferred_hosts != NULL)
