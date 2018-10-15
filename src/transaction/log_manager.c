@@ -357,6 +357,8 @@ static void log_tran_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 static void log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_END * sysop_end,
 				   int data_size, const char *data);
 
+static int logtb_tran_update_delta_hash_func_online_index (THREAD_ENTRY * thread_p, void *data, void *args);
+
 #if defined(SERVER_MODE)
 // *INDENT-OFF*
 static cubthread::daemon *log_Clock_daemon = NULL;
@@ -5635,6 +5637,8 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran)
 
       log_rollback (thread_p, tdes, NULL);
 
+      log_update_global_btid_online_index_stats (thread_p);
+
       log_cleanup_modified_class_list (thread_p, tdes, NULL, true, true);
 
       if (tdes->first_save_entry != NULL)
@@ -10830,3 +10834,68 @@ log_abort_task::execute (context_type &thread_ref)
 }
 #endif // SERVER_MODE
 // *INDENT-ON*
+
+void
+log_update_global_btid_online_index_stats (THREAD_ENTRY * thread_p)
+{
+  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+  int error_code = NO_ERROR;
+  bool old_check_interrupt;
+
+  if (tdes == NULL)
+    {
+      return;
+    }
+
+  error_code =
+    mht_map_no_key (thread_p, tdes->log_upd_stats.unique_stats_hash, logtb_tran_update_delta_hash_func_online_index,
+		    thread_p);
+
+  if (error_code != NO_ERROR)
+    {
+      assert (false);
+    }
+
+}
+
+static int
+logtb_tran_update_delta_hash_func_online_index (THREAD_ENTRY * thread_p, void *data, void *args)
+{
+  LOG_TRAN_BTID_UNIQUE_STATS *unique_stats = (LOG_TRAN_BTID_UNIQUE_STATS *) data;
+  int error_code = NO_ERROR;
+  OID class_oid;
+
+  if (unique_stats->deleted)
+    {
+      /* ignore if deleted */
+      return NO_ERROR;
+    }
+
+  OID_SET_NULL (&class_oid);
+
+  error_code = btree_get_class_oid_of_unique_btid (thread_p, &unique_stats->btid, &class_oid);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  if (OID_ISNULL (&class_oid))
+    {
+      /* The index is not unique so we can safely skip it. */
+      return NO_ERROR;
+    }
+
+  if (!btree_is_btid_online_index (thread_p, &class_oid, &unique_stats->btid))
+    {
+      /* We can skip. */
+      return NO_ERROR;
+    }
+
+  /* We can update the statistics. */
+  error_code =
+    logtb_update_global_unique_stats_by_delta (thread_p, &unique_stats->btid, unique_stats->tran_stats.num_oids,
+					       unique_stats->tran_stats.num_nulls, unique_stats->tran_stats.num_keys,
+					       true);
+
+  return error_code;
+}

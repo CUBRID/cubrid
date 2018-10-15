@@ -212,4 +212,6 @@ extern bool log_is_log_flush_daemon_available ();
 extern void log_flush_daemon_get_stats (UINT64 * statsp);
 #endif // SERVER_MODE
 
+extern void log_update_global_btid_online_index_stats (THREAD_ENTRY * thread_p);
+
 #endif /* _LOG_MANAGER_H_ */

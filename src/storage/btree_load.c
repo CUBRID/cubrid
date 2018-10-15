@@ -4514,6 +4514,17 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
       goto error;
     }
 
+  /* TODO: Add code to handle unique checking at the end of the operation. */
+
+  /* Fix the root page and read info from it. */
+  ret = btree_online_index_check_unique_constraint (thread_p, btid);
+  if (ret != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      btid = NULL;
+      goto error;
+    }
+
   if (attr_info_inited)
     {
       heap_attrinfo_end (thread_p, &attr_info);
@@ -4646,9 +4657,6 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
   int *p_prefix_length;
   char midxkey_buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_midxkey_buf;
   char rec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
-  int tran_index = logtb_get_current_tran_index ();
-  int msecs = logtb_find_wait_msecs (tran_index);
-  LOCK lock = X_LOCK;
 
   aligned_midxkey_buf = PTR_ALIGN (midxkey_buf, MAX_ALIGNMENT);
   db_make_null (&dbvalue);
@@ -4749,26 +4757,10 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 	  break;
 	}
 
-      /* During online unique index locking we should lock the object we want to insert. */
-      if (BTREE_IS_UNIQUE (btid_int->unique_pk))
-	{
-	  ret = lock_object (thread_p, &cur_oid, class_oids, lock, LK_UNCOND_LOCK);
-	  if (ret != LK_GRANTED)
-	    {
-	      return ER_FAILED;
-	    }
-	}
-
       /* Dispatch the insert operation */
       ret =
 	btree_online_index_dispatcher (thread_p, btid_int->sys_btid, p_dbvalue, &class_oids[cur_class], &cur_oid,
 				       &unique, BTREE_OP_ONLINE_INDEX_IB_INSERT, NULL);
-
-      if (BTREE_IS_UNIQUE (btid_int->unique_pk))
-	{
-	  /* Unlock the object after inserting it. */
-	  lock_unlock_object (thread_p, &cur_oid, class_oids, lock, false);
-	}
 
       if (ret != NO_ERROR)
 	{
