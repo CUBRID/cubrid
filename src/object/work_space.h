@@ -31,7 +31,6 @@
 #include <stdio.h>
 #include "oid.h"
 #include "storage_common.h"
-#include "cubrid_api.h"
 #include "quick_fit.h"
 #include "locator.h"
 #include "dbtype_def.h"
