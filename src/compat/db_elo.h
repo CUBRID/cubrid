@@ -26,6 +26,8 @@
 
 #ident "$Id$"
 
+#include "dbtype_def.h"
+
 extern int db_create_fbo (DB_VALUE * value, DB_TYPE type);
 /* */
 extern int db_elo_copy_structure (const DB_ELO * src, DB_ELO * dest);
@@ -34,8 +36,8 @@ extern void db_elo_free_structure (DB_ELO * elo);
 extern int db_elo_copy (DB_ELO * src, DB_ELO * dest);
 extern int db_elo_delete (DB_ELO * elo);
 
-extern int64_t db_elo_size (DB_ELO * elo);
-extern int db_elo_read (const DB_ELO * elo, int64_t pos, void *buf, size_t count, int64_t * read_bytes);
-extern int db_elo_write (DB_ELO * elo, int64_t pos, void *buf, size_t count, int64_t * written_bytes);
+extern DB_BIGINT db_elo_size (DB_ELO * elo);
+extern int db_elo_read (const DB_ELO * elo, int64_t pos, void *buf, size_t count, DB_BIGINT * read_bytes);
+extern int db_elo_write (DB_ELO * elo, int64_t pos, void *buf, size_t count, DB_BIGINT * written_bytes);
 
 #endif /* _DB_ELO_H_ */
