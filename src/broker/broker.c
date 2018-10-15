@@ -79,10 +79,9 @@
 #include "broker_wsa_init.h"
 #endif
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-#else /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
 #define DB_EMPTY_SESSION        (0)
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+#endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 
 #ifdef WIN_FW
 #if !defined(WINDOWS)

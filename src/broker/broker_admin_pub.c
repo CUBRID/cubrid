@@ -75,10 +75,9 @@
 #include "cubrid_getopt.h"
 #include "dbtype_def.h"
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-#else
+#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
 #define DB_EMPTY_SESSION        (0)
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+#endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 
 #define ADMIN_ERR_MSG_SIZE	1024
 
