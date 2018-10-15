@@ -37,7 +37,7 @@ extern int db_elo_copy (DB_ELO * src, DB_ELO * dest);
 extern int db_elo_delete (DB_ELO * elo);
 
 extern DB_BIGINT db_elo_size (DB_ELO * elo);
-extern int db_elo_read (const DB_ELO * elo, int64_t pos, void *buf, size_t count, DB_BIGINT * read_bytes);
-extern int db_elo_write (DB_ELO * elo, int64_t pos, void *buf, size_t count, DB_BIGINT * written_bytes);
+extern int db_elo_read (const DB_ELO * elo, off_t pos, void *buf, size_t count, DB_BIGINT * read_bytes);
+extern int db_elo_write (DB_ELO * elo, off_t pos, void *buf, size_t count, DB_BIGINT * written_bytes);
 
 #endif /* _DB_ELO_H_ */
