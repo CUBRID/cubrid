@@ -1778,11 +1778,6 @@ static inline void btree_insert_helper_to_delete_helper (BTREE_INSERT_HELPER * i
 static inline void btree_delete_helper_to_insert_helper (BTREE_DELETE_HELPER * delete_helper,
 							 BTREE_INSERT_HELPER * insert_helper);
 
-
-static int btree_oi_key_get_and_lock_first_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
-						   PAGE_PTR * leaf_page, BTREE_SEARCH_KEY_HELPER * search_key,
-						   bool * restart, void *other_args);
-
 static inline bool btree_is_online_index_loading (BTREE_OP_PURPOSE purpose);
 
 static int btree_key_lock_first_object_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
@@ -27975,15 +27970,11 @@ btree_key_append_object_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB
   assert (offset_after_key > 0);
   assert (btree_is_insert_object_purpose (insert_helper->purpose));
   assert (insert_helper->rv_redo_data != NULL);
-  assert (insert_helper->purpose == BTREE_OP_ONLINE_INDEX_IB_INSERT
-	  || insert_helper->purpose == BTREE_OP_ONLINE_INDEX_UNDO_TRAN_DELETE
-	  || (insert_helper->rv_keyval_data != NULL && insert_helper->rv_keyval_data_length > 0));
+  assert (insert_helper->rv_keyval_data != NULL && insert_helper->rv_keyval_data_length > 0);
   assert (insert_helper->leaf_addr.offset != 0 && insert_helper->leaf_addr.pgptr == leaf);
-  assert (insert_helper->purpose == BTREE_OP_ONLINE_INDEX_IB_INSERT
-	  || insert_helper->purpose == BTREE_OP_ONLINE_INDEX_UNDO_TRAN_DELETE
-	  || (insert_helper->rcvindex == RVBT_MVCC_INSERT_OBJECT
-	      || insert_helper->rcvindex == RVBT_NON_MVCC_INSERT_OBJECT
-	      || insert_helper->rcvindex == RVBT_MVCC_INSERT_OBJECT_UNQ));
+  assert (insert_helper->rcvindex == RVBT_MVCC_INSERT_OBJECT
+	  || insert_helper->rcvindex == RVBT_NON_MVCC_INSERT_OBJECT
+	  || insert_helper->rcvindex == RVBT_MVCC_INSERT_OBJECT_UNQ);
   assert (first_object != NULL && !OID_ISNULL (&first_object->oid));
 
   /* First object must be relocated at the end of leaf record. First we need to make sure there is enough room to do
@@ -34673,145 +34664,6 @@ btree_is_online_index_loading (BTREE_OP_PURPOSE purpose)
 }
 
 static int
-btree_oi_key_get_and_lock_first_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
-					PAGE_PTR * leaf_page, BTREE_SEARCH_KEY_HELPER * search_key, bool * restart,
-					void *other_args)
-{
-  int error_code = NO_ERROR;
-  OID unique_oid, unique_class_oid;
-  BTREE_MVCC_INFO mvcc_info = BTREE_MVCC_INFO_INITIALIZER;
-  BTREE_FIND_UNIQUE_HELPER *find_unique_helper = NULL;
-  RECDES record;
-  bool was_page_refixed = false;
-
-  find_unique_helper = (BTREE_FIND_UNIQUE_HELPER *) other_args;
-
-  /* Make sure we have the proper locking. */
-  find_unique_helper->lock_mode = X_LOCK;
-
-  /* Assume result is BTREE_KEY_NOTFOUND. It will be set to BTREE_KEY_FOUND if key is found and its first object is
-   * successfully locked. */
-  find_unique_helper->found_object = false;
-
-  if (search_key->result != BTREE_KEY_FOUND)
-    {
-      /* Key doesn't exist. Exit. */
-      goto error_or_not_found;
-    }
-
-  /* Initialize unique_oid */
-  OID_SET_NULL (&unique_oid);
-
-  while (true)
-    {
-      if (spage_get_record (thread_p, *leaf_page, search_key->slotid, &record, PEEK) != S_SUCCESS)
-	{
-	  /* Unexpected error. */
-	  assert (false);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  error_code = ER_FAILED;
-	  goto error_or_not_found;
-	}
-      /* Get the first object. */
-      error_code = btree_leaf_get_first_object (btid_int, &record, &unique_oid, &unique_class_oid, &mvcc_info);
-      if (error_code != NO_ERROR)
-	{
-	  /* Error! */
-	  ASSERT_ERROR ();
-	  goto error_or_not_found;
-	}
-
-      if (!OID_ISNULL (&find_unique_helper->match_class_oid)
-	  && !OID_EQ (&find_unique_helper->match_class_oid, &unique_class_oid))
-	{
-	  /* Class OID didn't match. */
-	  /* Consider key not found. */
-	  goto error_or_not_found;
-	}
-
-#if defined (SERVER_MODE)
-      /* Did we already lock an object and was the object changed? If so, unlock it. */
-      if (!OID_ISNULL (&find_unique_helper->locked_oid) && !OID_EQ (&find_unique_helper->locked_oid, &unique_oid))
-	{
-	  lock_unlock_object_donot_move_to_non2pl (thread_p, &find_unique_helper->locked_oid,
-						   &find_unique_helper->locked_class_oid,
-						   find_unique_helper->lock_mode);
-	  OID_SET_NULL (&find_unique_helper->locked_oid);
-	}
-
-      if (!OID_ISNULL (&find_unique_helper->locked_oid))
-	{
-	  /* Object already locked. */
-	  /* Safe guard. */
-	  assert (OID_EQ (&find_unique_helper->locked_oid, &unique_oid));
-
-	  /* Return result. */
-	  COPY_OID (&find_unique_helper->oid, &unique_oid);
-	  find_unique_helper->found_object = true;
-	  return NO_ERROR;
-	}
-
-      /* Lock object. */
-      error_code =
-	btree_key_lock_object (thread_p, btid_int, key, leaf_page, NULL, &unique_oid, &unique_class_oid,
-			       find_unique_helper->lock_mode, search_key, true, restart, &was_page_refixed);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto error_or_not_found;
-	}
-
-      /* Object locked. */
-      assert (lock_has_lock_on_object (&unique_oid, &unique_class_oid, logtb_get_current_tran_index (),
-				       find_unique_helper->lock_mode) > 0);
-      COPY_OID (&find_unique_helper->locked_oid, &unique_oid);
-      COPY_OID (&find_unique_helper->locked_class_oid, &unique_class_oid);
-#endif /* SERVER_MODE */
-
-      if (*restart)
-	{
-	  /* Need to restart from top. */
-	  return NO_ERROR;
-	}
-      if (search_key->result == BTREE_KEY_BETWEEN)
-	{
-	  /* Key no longer exist. */
-	  goto error_or_not_found;
-	}
-      assert (search_key->result == BTREE_KEY_FOUND);
-      if (was_page_refixed)
-	{
-	  /* Read again the record to recheck the first object. */
-	  continue;
-	}
-
-      /* Object was found. Return result. */
-      COPY_OID (&find_unique_helper->oid, &unique_oid);
-      find_unique_helper->found_object = true;
-      return NO_ERROR;
-    }
-
-  /* We should never reach this. */
-  assert (false);
-  error_code = ER_FAILED;
-
-error_or_not_found:
-  assert (find_unique_helper->found_object == false);
-
-#if defined (SERVER_MODE)
-  if (!OID_ISNULL (&find_unique_helper->locked_oid))
-    {
-      /* Unlock object. */
-      lock_unlock_object_donot_move_to_non2pl (thread_p, &find_unique_helper->locked_oid,
-					       &find_unique_helper->locked_class_oid, find_unique_helper->lock_mode);
-      OID_SET_NULL (&find_unique_helper->locked_oid);
-    }
-#endif
-
-  return error_code;
-}
-
-static int
 btree_key_lock_first_object_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, PAGE_PTR * leaf,
 				    bool * restart, BTREE_SEARCH_KEY_HELPER * search_key,
 				    BTREE_INSERT_HELPER * insert_helper, RECDES * leaf_record,
@@ -34870,17 +34722,9 @@ btree_key_lock_first_object_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int
   is_online_index = btree_is_online_index_loading (insert_helper->purpose);
   find_unique_helper->lock_mode = X_LOCK;
 
-  if (is_online_index)
-    {
-      error_code =
-	btree_oi_key_get_and_lock_first_object (thread_p, btid_int, key, leaf, search_key, restart, find_unique_helper);
-    }
-  else
-    {
-      error_code =
-	btree_key_find_and_lock_unique_of_unique (thread_p, btid_int, key, leaf, search_key, restart,
-						  find_unique_helper);
-    }
+  error_code =
+    btree_key_find_and_lock_unique_of_unique (thread_p, btid_int, key, leaf, search_key, restart, find_unique_helper);
+
 #if defined (SERVER_MODE)
   /* Transfer locked object from find unique helper to insert helper. */
   COPY_OID (&insert_helper->saved_locked_oid, &find_unique_helper->locked_oid);
