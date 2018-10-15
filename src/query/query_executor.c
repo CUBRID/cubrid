@@ -1108,7 +1108,8 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	  XASL_NODE *aptr = xasl->aptr_list;
 	  if (aptr)
 	    {
-	      for (XASL_NODE * crt = aptr->next; crt; crt = crt->next, aptr = aptr->next);
+	      for (XASL_NODE * crt = aptr->next; crt; crt = crt->next, aptr = aptr->next)
+		;
 	    }
 	  if (aptr && aptr->type == BUILDLIST_PROC && aptr->proc.buildlist.push_list_id)
 	    {
