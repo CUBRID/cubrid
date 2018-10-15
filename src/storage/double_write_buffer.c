@@ -3549,6 +3549,15 @@ start:
 
   /* Save the block version and number of pages, to detect whether the block was written on disk. */
   initial_block_version = dwb_Global.blocks[initial_block_no].version;
+
+  /* Check for version. */
+  if (DWB_GET_PREV_BLOCK (initial_block_no)->version > initial_block_version)
+    {
+      /* The previous block is the latest one. */
+      initial_block_no = DWB_GET_PREV_BLOCK_NO (initial_block_no);
+      initial_block_version = dwb_Global.blocks[initial_block_no].version;
+    }
+
   initial_num_pages = dwb_Global.blocks[initial_block_no].count_wb_pages;
   if (initial_position_with_flags != ATOMIC_INC_64 (&dwb_Global.position_with_flags, 0ULL))
     {
@@ -3563,6 +3572,8 @@ start:
   memset (iopage, 0, IO_MAX_PAGE_SIZE);
   fileio_initialize_res (thread_p, iopage, IO_PAGESIZE);
 
+  dwb_log ("dwb_flush_force: Waits for flushing the block %d having version %lld and %d pages\n",
+	   initial_block_no, initial_block_version, initial_num_pages);
   /* Check whether the initial block was flushed */
 check_flushed_blocks:
 
