@@ -315,6 +315,13 @@ static bool er_Has_sticky_init = false;
 static bool er_Isa_null_device = false;
 static int er_Exit_ask = ER_EXIT_DEFAULT;
 static int er_Print_to_console = ER_DO_NOT_PRINT;
+/* TODO : remove this when applylogdb and copylogdb are removed 
+ * multithreaded client processes which start+end database (and error module) in a loop, may need to log errors on
+ * other threads (while error module is stopped); this flag prevents assertion failure of error module initialization
+*  for such case */
+#if defined (CS_MODE) && !defined (NDEBUG)
+static bool er_Ignore_uninit = false;
+#endif
 
 #if !defined (SERVER_MODE)
 // requires own context
@@ -1391,6 +1398,13 @@ er_set_internal (int severity, const char *file_name, const int line_no, int err
 
   if (er_Hasalready_initiated == false)
     {
+#if defined (CS_MODE) && !defined (NDEBUG)
+      /* temporary workaround for HA process which may encounter missing er_module */
+      if (er_Ignore_uninit)
+	{
+	  return ER_FAILED;
+	}
+#endif
       assert (false);
       er_Errid_not_initialized = err_id;
       return ER_FAILED;
@@ -1800,6 +1814,13 @@ er_errid (void)
 {
   if (!er_Hasalready_initiated)
     {
+#if defined (CS_MODE) && !defined (NDEBUG)
+      /* temporary workaround for HA process which may encounter missing er_module */
+      if (er_Ignore_uninit)
+	{
+	  return er_Errid_not_initialized;
+	}
+#endif
       assert (false);
       return er_Errid_not_initialized;
     }
@@ -1832,6 +1853,13 @@ void
 er_clearid (void)
 {
   // todo: is this necessary?
+#if defined (CS_MODE) && !defined (NDEBUG)
+  /* temporary workaround for HA process which may encounter missing er_module */
+  if (!er_Hasalready_initiated && er_Ignore_uninit)
+    {
+      return;
+    }
+#endif
   assert (er_Hasalready_initiated);
 
   context::get_thread_local_error ().err_id = NO_ERROR;
@@ -1846,6 +1874,13 @@ void
 er_setid (int err_id)
 {
   // todo: is this necessary?
+#if defined (CS_MODE) && !defined (NDEBUG)
+  /* temporary workaround for HA process which may encounter missing er_module */
+  if (!er_Hasalready_initiated && er_Ignore_uninit)
+    {
+      return;
+    }
+#endif
   assert (er_Hasalready_initiated);
 
   context::get_thread_local_error ().err_id = err_id;
@@ -1883,6 +1918,14 @@ er_has_error (void)
 const char *
 er_msg (void)
 {
+#if defined (CS_MODE) && !defined (NDEBUG)
+  /* temporary workaround for HA process which may encounter missing er_module */
+  if (!er_Hasalready_initiated && er_Ignore_uninit)
+    {
+      return "Not available";
+    }
+#endif
+
   if (!er_Hasalready_initiated)
     {
       assert (false);
@@ -1943,6 +1986,14 @@ _er_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
 {
   va_list ap;
   int r = NO_ERROR;
+
+#if defined (CS_MODE) && !defined (NDEBUG)
+  /* temporary workaround for HA process which may encounter missing er_module */
+  if (!er_Hasalready_initiated && er_Ignore_uninit)
+    {
+      return;
+    }
+#endif
 
   assert (er_Hasalready_initiated);
 
@@ -3175,6 +3226,14 @@ er_is_error_severity (er_severity severity)
       return false;
     }
 }
+
+#if defined (CS_MODE) && !defined (NDEBUG)
+void
+er_set_ignore_uninit (bool ignore)
+{
+  er_Ignore_uninit = ignore;
+}
+#endif
 
 /* *INDENT-OFF* */
 namespace cuberr
