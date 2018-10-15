@@ -42,13 +42,6 @@
 #include "shard_proxy_common.h"
 #include "shard_metadata.h"
 
-#ifndef min
-#define min(a,b)    ((a) < (b) ? (a) : (b))
-#endif
-#ifndef max
-#define max(a,b)    ((a) > (b) ? (a) : (b))
-#endif
-
 #if defined(WINDOWS)
 #define CLOSESOCKET(fd)                 closesocket((SOCKET)fd)
 #define READSOCKET(fd, buf, len)        recv((SOCKET)fd, buf, len, 0)

@@ -450,6 +450,7 @@ int yybuffer_pos;
 [jJ][sS][oO][nN][_][mM][eE][rR][gG][eE][_][pP][aA][tT][cC][hH]			{ begin_token(yytext);  return FUN_JSON_MERGE_PATCH; }
 [jJ][sS][oO][nN][_][mM][eE][rR][gG][eE][_][pP][rR][eE][sS][eE][rR][vV][eE]	{ begin_token(yytext);  return FUN_JSON_MERGE_PRESERVE; }
 [jJ][sS][oO][nN][_][oO][bB][jJ][eE][cC][tT]                             { begin_token(yytext);  return FUN_JSON_OBJECT; }
+[jJ][sS][oO][nN][_][oO][bB][jJ][eE][cC][tT][aA][gG][gG]					{ begin_token(yytext);  return JSON_OBJECTAGG; }
 [jJ][sS][oO][nN][_][rR][eE][mM][oO][vV][eE]                             { begin_token(yytext);  return FUN_JSON_REMOVE; }
 [jJ][sS][oO][nN][_][rR][eE][pP][lL][aA][cC][eE]                         { begin_token(yytext);  return FUN_JSON_REPLACE; }
 [jJ][sS][oO][nN][_][sS][eE][tT]                                         { begin_token(yytext);  return FUN_JSON_SET; }

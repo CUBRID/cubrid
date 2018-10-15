@@ -109,7 +109,8 @@ int db_json_merge_func (const JSON_DOC *source, JSON_DOC *&dest, bool patch);
 int db_json_get_all_paths_func (const JSON_DOC &doc, JSON_DOC *&result_json);
 void db_json_pretty_func (const JSON_DOC &doc, char *&result_str);
 int db_json_unquote (const JSON_DOC &doc, char *&result_str);
-int db_json_arrayagg_func (const JSON_DOC *value, JSON_DOC &result_json);
+void db_json_arrayagg_func_accumulate (const JSON_DOC *value, JSON_DOC &result_json);
+void db_json_objectagg_func_accumulate (const char *key_str, const JSON_DOC *val_doc, JSON_DOC &result_json);
 
 int db_json_object_contains_key (JSON_DOC *obj, const char *key, int &result);
 const char *db_json_get_schema_raw_from_validator (JSON_VALIDATOR *val);

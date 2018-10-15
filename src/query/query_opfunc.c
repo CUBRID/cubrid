@@ -6401,7 +6401,7 @@ qdata_process_distinct_or_sort (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_p,
       return ER_FAILED;
     }
 
-  type_list.domp[0] = agg_p->operand.domain;
+  type_list.domp[0] = agg_p->operands->value.domain;
   /* if the agg has ORDER BY force setting 'QFILE_FLAG_ALL' : in this case, no additional SORT_LIST will be created,
    * but the one in the AGGREGATE_TYPE structure will be used */
   if (agg_p->sort_list != NULL)
@@ -6532,9 +6532,14 @@ qdata_aggregate_accumulator_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_A
     case PT_AGG_BIT_XOR:
     case PT_AVG:
     case PT_SUM:
-    case PT_JSON_ARRAYAGG:
-      /* these functions only affect acc.value and new_acc can be treated as an ordinary value */
+      // these functions only affect acc.value and new_acc can be treated as an ordinary value
       error = qdata_aggregate_value_to_accumulator (thread_p, acc, acc_dom, func_type, func_domain, new_acc->value);
+      break;
+
+      // for these two situations we just need to merge
+    case PT_JSON_ARRAYAGG:
+    case PT_JSON_OBJECTAGG:
+      error = db_json_merge (new_acc->value, acc->value);
       break;
 
     case PT_STDDEV:
@@ -6607,6 +6612,7 @@ qdata_aggregate_accumulator_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_A
  *   func_type(in): function type
  *   func_domain(in): function domain
  *   value(in): value
+ *   value_next(int): value of the second argument; used only for JSON_OBJECTAGG
  */
 int
 qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMULATOR * acc,
@@ -6786,7 +6792,7 @@ qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMUL
       break;
 
     case PT_JSON_ARRAYAGG:
-      if (db_json_arrayagg_dbval (value, acc->value) != NO_ERROR)
+      if (db_json_arrayagg_dbval_accumulate (value, acc->value) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -6822,6 +6828,45 @@ qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMUL
   return NO_ERROR;
 }
 
+/* *INDENT-OFF* */
+int
+qdata_aggregate_multiple_values_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMULATOR * acc,
+						AGGREGATE_ACCUMULATOR_DOMAIN * domain, FUNC_TYPE func_type,
+						TP_DOMAIN * func_domain, std::vector<DB_VALUE> & db_values)
+{
+  // we have only one argument so aggregate only the first db_value
+  if (db_values.size () == 1)
+    {
+      return qdata_aggregate_value_to_accumulator (thread_p, acc, domain, func_type, func_domain, &db_values[0]);
+    }
+
+  // maybe this condition will be changed in the future based on the future arguments conditions
+  for (DB_VALUE &db_value : db_values)
+    {
+      if (DB_IS_NULL (&db_value))
+	{
+	  return NO_ERROR;
+	}
+    }
+
+  switch (func_type)
+    {
+    case PT_JSON_OBJECTAGG:
+      if (db_json_objectagg_dbval_accumulate (&db_values[0], &db_values[1], acc->value) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+      break;
+
+    default:
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+/* *INDENT-ON* */
+
 /*
  * qdata_evaluate_aggregate_list () -
  *   return: NO_ERROR, or ER_code
@@ -6840,18 +6885,21 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 {
   AGGREGATE_TYPE *agg_p;
   AGGREGATE_ACCUMULATOR *accumulator;
-  DB_VALUE dbval, *percentile_val = NULL;
+  DB_VALUE *percentile_val = NULL;
   PR_TYPE *pr_type_p;
   DB_TYPE dbval_type;
   OR_BUF buf;
   char *disk_repr_p = NULL;
   int dbval_size, i, error;
   AGGREGATE_PERCENTILE_INFO *percentile = NULL;
-
-  db_make_null (&dbval);
+  DB_VALUE *db_value_p = NULL;
 
   for (agg_p = agg_list_p, i = 0; agg_p != NULL; agg_p = agg_p->next, i++)
     {
+      /* *INDENT-OFF* */
+      std::vector<DB_VALUE> db_values;
+      /* *INDENT-ON* */
+
       /* determine accumulator */
       accumulator = (alt_acc_list != NULL ? &alt_acc_list[i] : &agg_p->accumulator);
 
@@ -6889,17 +6937,28 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	  continue;
 	}
 
-      /* 
-       * fetch operand value. aggregate regulator variable should only
-       * contain constants
-       */
-      if (fetch_copy_dbval (thread_p, &agg_p->operand, val_desc_p, NULL, NULL, NULL, &dbval) != NO_ERROR)
+      /* fetch operands value. aggregate regulator variable should only contain constants */
+      REGU_VARIABLE_LIST operand = NULL;
+      for (operand = agg_p->operands; operand != NULL; operand = operand->next)
 	{
-	  return ER_FAILED;
+	  // create an empty value
+	  db_values.emplace_back ();
+
+	  // fetch it
+	  if (fetch_copy_dbval (thread_p, &operand->value, val_desc_p, NULL, NULL, NULL,
+				&db_values.back ()) != NO_ERROR)
+	    {
+	      pr_clear_value_vector (db_values);
+	      return ER_FAILED;
+	    }
 	}
 
-      /* eliminate null values */
-      if (DB_IS_NULL (&dbval))
+      /* 
+       * eliminate null values
+       * consider only the first argument, because for the rest will depend on the function
+       */
+      db_value_p = &db_values[0];
+      if (DB_IS_NULL (db_value_p))
 	{
 	  /*
 	   * for JSON_ARRAYAGG we need to include also NULL values in the result set
@@ -6908,7 +6967,17 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	  if (agg_p->function == PT_JSON_ARRAYAGG)
 	    {
 	      // this creates a new JSON_DOC with the type DB_JSON_NULL
-	      db_make_json (&dbval, db_json_allocate_doc (), true);
+	      db_make_json (db_value_p, db_json_allocate_doc (), true);
+	    }
+	  /*
+	   * for JSON_OBJECTAGG we need to include keep track of key-value pairs
+	   * the key can not be NULL so this will throw an error
+	   * the value can be NULL and we will wrap this into a JSON with DB_JSON_NULL type in the next statement
+	   */
+	  else if (agg_p->function == PT_JSON_OBJECTAGG)
+	    {
+	      pr_clear_value_vector (db_values);
+	      return ER_FAILED;
 	    }
 	  else
 	    {
@@ -6918,6 +6987,17 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 		  db_make_int (accumulator->value, 0);
 		}
 	      continue;
+	    }
+	}
+
+      /*
+       * for JSON_OBJECTAGG, we wrap the second argument with a null JSON only if the value is NULL 
+       */
+      if (agg_p->function == PT_JSON_OBJECTAGG)
+	{
+	  if (DB_IS_NULL (&db_values[1]))
+	    {
+	      db_make_json (&db_values[1], db_json_allocate_doc (), true);
 	    }
 	}
 
@@ -6932,55 +7012,55 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	  if (QPROC_IS_INTERPOLATION_FUNC (agg_p))
 	    {
 	      /* never be null type */
-	      assert (!DB_IS_NULL (&dbval));
+	      assert (!DB_IS_NULL (db_value_p));
 
-	      error = qdata_update_agg_interpolation_func_value_and_domain (agg_p, &dbval);
+	      error = qdata_update_agg_interpolation_func_value_and_domain (agg_p, db_value_p);
 	      if (error != NO_ERROR)
 		{
-		  pr_clear_value (&dbval);
+		  pr_clear_value_vector (db_values);
 		  return ER_FAILED;
 		}
 	    }
 
-	  dbval_type = DB_VALUE_DOMAIN_TYPE (&dbval);
+	  dbval_type = DB_VALUE_DOMAIN_TYPE (db_value_p);
 	  pr_type_p = PR_TYPE_FROM_ID (dbval_type);
 
 	  if (pr_type_p == NULL)
 	    {
-	      pr_clear_value (&dbval);
+	      pr_clear_value_vector (db_values);
 	      return ER_FAILED;
 	    }
 
-	  dbval_size = pr_data_writeval_disk_size (&dbval);
+	  dbval_size = pr_data_writeval_disk_size (db_value_p);
 	  if (dbval_size > 0 && (disk_repr_p = (char *) db_private_alloc (thread_p, dbval_size)) != NULL)
 	    {
 	      OR_BUF_INIT (buf, disk_repr_p, dbval_size);
-	      error = (*(pr_type_p->data_writeval)) (&buf, &dbval);
+	      error = (*(pr_type_p->data_writeval)) (&buf, db_value_p);
 	      if (error != NO_ERROR)
 		{
 		  /* ER_TF_BUFFER_OVERFLOW means that val_size or packing is bad. */
 		  assert (error != ER_TF_BUFFER_OVERFLOW);
 
 		  db_private_free_and_init (thread_p, disk_repr_p);
-		  pr_clear_value (&dbval);
+		  pr_clear_value_vector (db_values);
 		  return ER_FAILED;
 		}
 	    }
 	  else
 	    {
-	      pr_clear_value (&dbval);
+	      pr_clear_value_vector (db_values);
 	      return ER_FAILED;
 	    }
 
 	  if (qfile_add_item_to_list (thread_p, disk_repr_p, dbval_size, agg_p->list_id) != NO_ERROR)
 	    {
 	      db_private_free_and_init (thread_p, disk_repr_p);
-	      pr_clear_value (&dbval);
+	      pr_clear_value_vector (db_values);
 	      return ER_FAILED;
 	    }
 
 	  db_private_free_and_init (thread_p, disk_repr_p);
-	  pr_clear_value (&dbval);
+	  pr_clear_value_vector (db_values);
 
 	  /* for PERCENTILE funcs, we have to check percentile value */
 	  if (agg_p->function != PT_PERCENTILE_CONT && agg_p->function != PT_PERCENTILE_DISC)
@@ -7051,18 +7131,19 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 		    case DB_TYPE_TIME:
 		      break;
 		    default:
-		      assert (agg_p->operand.type == TYPE_CONSTANT || agg_p->operand.type == TYPE_DBVAL);
+		      assert (agg_p->operands->value.type == TYPE_CONSTANT ||
+			      agg_p->operands->value.type == TYPE_DBVAL);
 
 		      /* try to cast dbval to double, datetime then time */
 		      tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DOUBLE);
 
-		      status = tp_value_cast (&dbval, &dbval, tmp_domain_p, false);
+		      status = tp_value_cast (db_value_p, db_value_p, tmp_domain_p, false);
 		      if (status != DOMAIN_COMPATIBLE)
 			{
 			  /* try datetime */
 			  tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DATETIME);
 
-			  status = tp_value_cast (&dbval, &dbval, tmp_domain_p, false);
+			  status = tp_value_cast (db_value_p, db_value_p, tmp_domain_p, false);
 			}
 
 		      /* try time */
@@ -7070,7 +7151,7 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 			{
 			  tmp_domain_p = tp_domain_resolve_default (DB_TYPE_TIME);
 
-			  status = tp_value_cast (&dbval, &dbval, tmp_domain_p, false);
+			  status = tp_value_cast (db_value_p, db_value_p, tmp_domain_p, false);
 			}
 
 		      if (status != DOMAIN_COMPATIBLE)
@@ -7079,7 +7160,7 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2,
 				  qdump_function_type_string (agg_p->function), "DOUBLE, DATETIME, TIME");
 
-			  pr_clear_value (&dbval);
+			  pr_clear_value_vector (db_values);
 			  return error;
 			}
 
@@ -7088,17 +7169,17 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 		    }
 
 		  pr_clear_value (agg_p->accumulator.value);
-		  error = pr_clone_value (&dbval, agg_p->accumulator.value);
+		  error = pr_clone_value (db_value_p, agg_p->accumulator.value);
 		  if (error != NO_ERROR)
 		    {
-		      pr_clear_value (&dbval);
+		      pr_clear_value_vector (db_values);
 		      return error;
 		    }
 		}
 	    }
 
 	  /* clear value */
-	  pr_clear_value (&dbval);
+	  pr_clear_value_vector (db_values);
 
 	  /* percentile value check */
 	  if (agg_p->function == PT_PERCENTILE_CONT || agg_p->function == PT_PERCENTILE_DISC)
@@ -7118,18 +7199,18 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	  /* group concat function requires special care */
 	  if (agg_p->accumulator.curr_cnt < 1)
 	    {
-	      error = qdata_group_concat_first_value (thread_p, agg_p, &dbval);
+	      error = qdata_group_concat_first_value (thread_p, agg_p, db_value_p);
 	    }
 	  else
 	    {
-	      error = qdata_group_concat_value (thread_p, agg_p, &dbval);
+	      error = qdata_group_concat_value (thread_p, agg_p, db_value_p);
 	    }
 
 	  /* increment tuple count */
 	  agg_p->accumulator.curr_cnt++;
 
 	  /* clear value */
-	  pr_clear_value (&dbval);
+	  pr_clear_value_vector (db_values);
 
 	  /* check error */
 	  if (error != NO_ERROR)
@@ -7140,14 +7221,14 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
       else
 	{
 	  /* aggregate value */
-	  error = qdata_aggregate_value_to_accumulator (thread_p, accumulator, &agg_p->accumulator_domain,
-							agg_p->function, agg_p->domain, &dbval);
+	  error = qdata_aggregate_multiple_values_to_accumulator (thread_p, accumulator, &agg_p->accumulator_domain,
+								  agg_p->function, agg_p->domain, db_values);
 
 	  /* increment tuple count */
 	  accumulator->curr_cnt++;
 
-	  /* clear value */
-	  pr_clear_value (&dbval);
+	  /* clear values */
+	  pr_clear_value_vector (db_values);
 
 	  /* handle error */
 	  if (error != NO_ERROR)
@@ -12063,9 +12144,9 @@ qdata_calculate_aggregate_cume_dist_percent_rank (THREAD_ENTRY * thread_p, AGGRE
   DB_DOMAIN *dom;
   HL_HEAPID save_heapid = 0;
 
-  assert (agg_p != NULL && agg_p->sort_list != NULL && agg_p->operand.type == TYPE_REGU_VAR_LIST);
+  assert (agg_p != NULL && agg_p->sort_list != NULL && agg_p->operands->value.type == TYPE_REGU_VAR_LIST);
 
-  regu_var_list = agg_p->operand.value.regu_var_list;
+  regu_var_list = agg_p->operands->value.value.regu_var_list;
   info_p = &agg_p->info.dist_percent;
   assert (regu_var_list != NULL && info_p != NULL);
 
