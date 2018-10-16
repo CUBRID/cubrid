@@ -3568,11 +3568,11 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
   PT_NODE *percentile = NULL;
 
   // it contains a list of positions
-  REGU_VARIABLE_LIST regu_position_list;
+  REGU_VARIABLE_LIST regu_position_list = NULL;
   // it contains a list of constants, which will be used for the operands
-  REGU_VARIABLE_LIST regu_constant_list;
+  REGU_VARIABLE_LIST regu_constant_list = NULL;
 
-  REGU_VARIABLE_LIST scan_regu_constant_list;
+  REGU_VARIABLE_LIST scan_regu_constant_list = NULL;
   int error_code = NO_ERROR;
 
   *continue_walk = PT_CONTINUE_WALK;
