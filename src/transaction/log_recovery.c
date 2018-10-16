@@ -1622,7 +1622,7 @@ log_rv_analysis_sysop_end (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_l
   // 3. is atomic system operation equal or more recent to system operation last parent?
   if (!LSA_ISNULL (&tdes->rcv.atomic_sysop_start_lsa)	/* 1 */
       && LSA_GT (&tdes->rcv.atomic_sysop_start_lsa, &tdes->rcv.sysop_start_postpone_lsa)	/* 2 */
-      && LSA_LE (&sysop_end->lastparent_lsa, &tdes->rcv.atomic_sysop_start_lsa) /* 3 */ )
+      && LSA_GE (&tdes->rcv.atomic_sysop_start_lsa, &sysop_end->lastparent_lsa) /* 3 */ )
     {
       /* reset tdes->rcv.atomic_sysop_start_lsa */
       LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
@@ -1630,10 +1630,10 @@ log_rv_analysis_sysop_end (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_l
   // do we reset sysop start postpone? next conditions must be met:
   // 1. is there system operation start postpone in progress?
   // 2. is system operation start postpone more recent than atomic system operation?
-  // 3. is system operation start postpone equal or more recent to system operation last parent?
+  // 3. is system operation start postpone more recent than system operation last parent?
   if (!LSA_ISNULL (&tdes->rcv.sysop_start_postpone_lsa)
       && LSA_GT (&tdes->rcv.sysop_start_postpone_lsa, &tdes->rcv.atomic_sysop_start_lsa)
-      && LSA_LT (&sysop_end->lastparent_lsa, &tdes->rcv.sysop_start_postpone_lsa))
+      && LSA_GT (&tdes->rcv.sysop_start_postpone_lsa, &sysop_end->lastparent_lsa))
     {
       /* reset tdes->rcv.sysop_start_postpone_lsa */
       LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
