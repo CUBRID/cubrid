@@ -3821,7 +3821,13 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	  regu_dbval_type_init (aggregate_list->accumulator.value2, DB_TYPE_INTEGER);
 	  aggregate_list->opr_dbtype = DB_TYPE_INTEGER;
 
-	  /* hack.  we need to pack some domain even though we don't need one, so we'll pack the int. */
+	  aggregate_list->operands = regu_varlist_alloc ();
+	  if (aggregate_list->operands == NULL)
+	    {
+	      PT_INTERNAL_ERROR (parser, "allocate new node");
+	      return NULL;
+	    }
+	  /* hack. we need to pack some domain even though we don't need one, so we'll pack the int. */
 	  aggregate_list->operands->value.domain = &tp_Integer_domain;
 	}
 
