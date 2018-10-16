@@ -26,6 +26,8 @@
 
 #ident "$Id$"
 
+#include <sys/types.h>
+
 #include "dbtype_def.h"
 
 extern int db_create_fbo (DB_VALUE * value, DB_TYPE type);
