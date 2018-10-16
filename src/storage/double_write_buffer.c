@@ -2446,9 +2446,9 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, UINT64 * current_po
       perfmon_db_flushed_block_volumes (thread_p, block->count_flush_volumes_info);
     }
 
-#if defined (SERVER_MODE)
-  assert (block->count_wb_pages == DWB_BLOCK_NUM_PAGES);
-#endif
+  /* The block is full or there is only one thread that access DWB. */
+  assert (block->count_wb_pages == DWB_BLOCK_NUM_PAGES
+	  || DWB_IS_MODIFYING_STRUCTURE (ATOMIC_INC_64 (&dwb_Global.position_with_flags, 0LL)));
 
   ATOMIC_TAS_32 (&block->count_wb_pages, 0);
   ATOMIC_INC_64 (&block->version, 1ULL);
