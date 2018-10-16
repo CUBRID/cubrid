@@ -9040,13 +9040,6 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  PT_NODE *assigns = statement->info.update.assignment;
 	  PT_NODE *from = statement->info.update.spec;
 
-	  if (statement->info.update.with != NULL)
-	    {
-	      /* client-side updates with CTEs are not supported for now */
-	      PT_INTERNAL_ERROR (parser, "update");
-	      break;
-	    }
-
 	  err = pt_append_omitted_on_update_expr_assignments (parser, assigns, from);
 	  if (err != NO_ERROR)
 	    {
@@ -10353,8 +10346,6 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 	  PT_DELETE_INFO *delete_info;
 
 	  delete_info = &statement->info.delete_;
-
-	  assert (delete_info->with == NULL);
 
 	  select_statement =
 	    pt_to_upd_del_query (parser, NULL, NULL, delete_info->spec, delete_info->with, delete_info->class_specs,
