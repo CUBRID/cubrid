@@ -4485,7 +4485,7 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
       goto error;
     }
 
-  /* Assign the snapshot to the sort_args. */
+  /* Assign the snapshot to the scan_cache. */
   scan_cache.mvcc_snapshot = builder_snapshot;
 
   /* Demote the lock. */
@@ -4514,17 +4514,19 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
       goto error;
     }
 
-  /* TODO: Add code to handle unique checking at the end of the operation. */
-
-  /* Fix the root page and read info from it. */
-  ret = btree_online_index_check_unique_constraint (thread_p, btid);
-  if (ret != NO_ERROR)
+  if (BTREE_IS_UNIQUE (unique_pk))
     {
-      ASSERT_ERROR ();
-      btid = NULL;
-      goto error;
+      /* Check if we have a unique constraint violation for unique indexes. */
+      ret = btree_online_index_check_unique_constraint (thread_p, btid);
+      if (ret != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  btid = NULL;
+	  goto error;
+	}
     }
 
+  /* Clear memory structures. */
   if (attr_info_inited)
     {
       heap_attrinfo_end (thread_p, &attr_info);
@@ -4584,7 +4586,6 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   return btid;
 
 error:
-  // TODO: error handling
   if (attr_info_inited)
     {
       heap_attrinfo_end (thread_p, &attr_info);
