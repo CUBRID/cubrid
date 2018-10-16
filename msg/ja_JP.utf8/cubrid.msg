@@ -1463,6 +1463,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 125 sessiontimezoneの使用が無効です\n sessiontimezone
 126 class/vclassコメントの最大長は%1$dバイトです。
 127 コメントの最大長は%1$dバイトです。
+128 Invalid number of arguments for JSON_OBJECTAGG
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 メモリーが足りません。

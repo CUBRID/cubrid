@@ -58,6 +58,7 @@
 
 #include "dbtype.h"
 #include "memory_alloc.h"
+#include "string_opfunc.h"
 #include "system_parameter.h"
 
 // we define COPY in storage_common.h, but so does rapidjson in its headers. We don't need the definition from storage
@@ -450,6 +451,20 @@ class JSON_WALKER
       return NO_ERROR;
     }
 
+    virtual int
+    CallOnArrayIterate ()
+    {
+      // do nothing
+      return NO_ERROR;
+    }
+
+    virtual int
+    CallOnKeyIterate (JSON_VALUE &key)
+    {
+      // do nothing
+      return NO_ERROR;
+    }
+
   private:
     int WalkValue (JSON_VALUE &value);
 };
@@ -469,6 +484,37 @@ class JSON_DUPLICATE_KEYS_CHECKER : public JSON_WALKER
 
   private:
     int CallBefore (JSON_VALUE &value);
+};
+
+class JSON_SEARCHER : public JSON_WALKER
+{
+  public:
+    JSON_SEARCHER (std::string starting_path, const DB_VALUE *pattern, const DB_VALUE *esc_char, bool find_all,
+		   std::vector<std::string> &paths)
+      : m_starting_path (std::move (starting_path))
+      , m_find_all (find_all)
+      , m_skip_search (false)
+      , m_pattern (pattern)
+      , m_esc_char (esc_char)
+      , m_found_paths (paths)
+    {}
+    ~JSON_SEARCHER () {}
+
+  private:
+
+    int CallBefore (JSON_VALUE &value) override;
+    int CallAfter (JSON_VALUE &value) override;
+    int CallOnArrayIterate () override;
+    int CallOnKeyIterate (JSON_VALUE &key) override;
+
+    std::stack<unsigned int> m_index;
+    std::vector <std::string> path_items;
+    std::string m_starting_path;
+    std::vector<std::string> &m_found_paths;
+    bool m_find_all;
+    bool m_skip_search;
+    const DB_VALUE *m_pattern;
+    const DB_VALUE *m_esc_char;
 };
 
 class JSON_SERIALIZER_LENGTH : public JSON_BASE_HANDLER
@@ -637,13 +683,18 @@ static const char *db_json_get_string_from_value (const JSON_VALUE *doc);
 static char *db_json_copy_string_from_value (const JSON_VALUE *doc);
 static char *db_json_get_bool_as_str_from_value (const JSON_VALUE *doc);
 static char *db_json_bool_to_string (bool b);
-static void db_json_merge_two_json_objects (JSON_DOC &first, const JSON_DOC *second);
+static void db_json_merge_two_json_objects_preserve (const JSON_VALUE *source, JSON_VALUE &dest,
+    JSON_PRIVATE_MEMPOOL &allocator);
+static void db_json_merge_two_json_objects_patch (const JSON_VALUE *source, JSON_VALUE &dest,
+    JSON_PRIVATE_MEMPOOL &allocator);
 static void db_json_merge_two_json_arrays (JSON_DOC &array1, const JSON_DOC *array2);
 static void db_json_merge_two_json_by_array_wrapping (JSON_DOC &j1, const JSON_DOC *j2);
 static void db_json_copy_doc (JSON_DOC &dest, const JSON_DOC *src);
 
 static void db_json_get_paths_helper (const JSON_VALUE &obj, const std::string &sql_path,
 				      std::vector<std::string> &paths);
+static int db_json_search_helper (JSON_DOC &obj, const DB_VALUE *pattern, const DB_VALUE *esc_char,
+				  bool find_all, const std::string &sql_path, bool &found, std::vector<std::string> &paths);
 static void db_json_normalize_path (std::string &path_string);
 static void db_json_remove_leading_zeros_index (std::string &index);
 static bool db_json_isspace (const unsigned char &ch);
@@ -688,6 +739,9 @@ static int db_json_unpack_bool_to_value (OR_BUF *buf, JSON_VALUE &value);
 static int db_json_unpack_object_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_PRIVATE_MEMPOOL &doc_allocator);
 static int db_json_unpack_array_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_PRIVATE_MEMPOOL &doc_allocator);
 
+static void db_json_merge_func_preserve (const JSON_DOC *source, JSON_DOC &dest);
+static void db_json_merge_func_patch (const JSON_VALUE *source, JSON_VALUE &dest, JSON_PRIVATE_MEMPOOL &allocator);
+
 int JSON_DUPLICATE_KEYS_CHECKER::CallBefore (JSON_VALUE &value)
 {
   std::vector<const char *> inserted_keys;
@@ -714,9 +768,106 @@ int JSON_DUPLICATE_KEYS_CHECKER::CallBefore (JSON_VALUE &value)
   return NO_ERROR;
 }
 
-JSON_VALIDATOR::JSON_VALIDATOR (const char *schema_raw) : m_schema (NULL),
-  m_validator (NULL),
-  m_is_loaded (false)
+int JSON_SEARCHER::CallBefore (JSON_VALUE &value)
+{
+  if (m_skip_search)
+    {
+      return NO_ERROR;
+    }
+
+  if (value.IsArray ())
+    {
+      m_index.push (0);
+    }
+
+  if (value.IsObject () || value.IsArray ())
+    {
+      path_items.emplace_back ();
+    }
+
+  return NO_ERROR;
+}
+
+int JSON_SEARCHER::CallAfter (JSON_VALUE &value)
+{
+  if (m_skip_search)
+    {
+      return NO_ERROR;
+    }
+
+  int error_code = NO_ERROR;
+
+  if (value.IsString ())
+    {
+      const char *json_str = value.GetString ();
+      DB_VALUE str_val;
+
+      db_make_null (&str_val);
+      error_code = db_make_string (&str_val, (char *) json_str);
+      if (error_code)
+	{
+	  return error_code;
+	}
+
+      int match;
+      db_string_like (&str_val, m_pattern, m_esc_char, &match);
+
+      if (match)
+	{
+	  std::stringstream full_path;
+
+	  full_path << "\"" << m_starting_path;
+	  for (const auto &item : path_items)
+	    {
+	      full_path << item;
+	    }
+	  full_path << "\"";
+
+	  m_found_paths.emplace_back (full_path.str ());
+
+	  if (!m_find_all)
+	    {
+	      m_skip_search = true;
+	    }
+	}
+    }
+
+  if (value.IsArray ())
+    {
+      m_index.pop ();
+    }
+
+  if (value.IsArray () || value.IsObject ())
+    {
+      path_items.pop_back ();
+    }
+
+  return error_code;
+}
+
+int JSON_SEARCHER::CallOnKeyIterate (JSON_VALUE &key)
+{
+  std::string path_item = ".";
+  path_item += key.GetString ();
+
+  path_items.back () = path_item;
+  return NO_ERROR;
+}
+
+int JSON_SEARCHER::CallOnArrayIterate ()
+{
+  std::string path_item = "[";
+  path_item += std::to_string (m_index.top ()++);
+  path_item += "]";
+
+  path_items.back () = path_item;
+  return NO_ERROR;
+}
+
+JSON_VALIDATOR::JSON_VALIDATOR (const char *schema_raw)
+  : m_schema (NULL),
+    m_validator (NULL),
+    m_is_loaded (false)
 {
   m_schema_raw = strdup (schema_raw);
   /*
@@ -1795,6 +1946,51 @@ db_json_remove_func (JSON_DOC &doc, const char *raw_path)
 }
 
 /*
+ * db_json_search_func () - Find json values that match the pattern and gather their paths
+ *
+ * return                  : error code
+ * doc (in)                : json document
+ * pattern (in)            : pattern to match against
+ * esc_char (in)           : escape sequence used to match the pattern
+ * starting_paths (in)     : prefixes used in the search
+ * paths (out)             : full paths found
+ */
+int
+db_json_search_func (JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALUE *esc_char, bool find_all,
+		     std::vector<std::string> &starting_paths, std::vector<std::string> &paths)
+{
+  for (auto &starting_path : starting_paths)
+    {
+      JSON_DOC *resolved = nullptr;
+      int error_code = db_json_extract_document_from_path (&doc, starting_path.c_str(), resolved);
+
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+
+      if (resolved == nullptr)
+	{
+	  continue;
+	}
+
+      bool found = false;
+      error_code = db_json_search_helper (*resolved, pattern, esc_char, find_all, starting_path, found, paths);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+
+      if (found && !find_all)
+	{
+	  break;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * db_json_array_append_func () - Append the value to the end of the indicated array within a JSON document
  *
  * return                  : error code
@@ -1980,25 +2176,72 @@ db_json_get_type_of_value (const JSON_VALUE *val)
 }
 
 /*
- * db_json_merge_two_json_objects () - Merge the source object into the destination object
+ * db_json_merge_two_json_objects_patch () - Merge the source object into the destination object handling duplicate keys
  *
  * return                  : error code
  * dest (in)               : json where to merge
  * source (in)             : json to merge
  * example                 : let dest = '{"a" : "b"}'
- *                           let source = '{"c" : "d"}'
- *                           after JSON_MERGE(dest, source), dest = {"a" : "b", "c" : "d"}
+ *                           let source = '{"a" : 3}'
+ *                           after JSON_MERGE_PATCH (dest, source), dest = {"a" : 3}
  */
 void
-db_json_merge_two_json_objects (JSON_DOC &dest, const JSON_DOC *source)
+db_json_merge_two_json_objects_patch (const JSON_VALUE *source, JSON_VALUE &dest, JSON_PRIVATE_MEMPOOL &allocator)
 {
   JSON_VALUE source_copy;
 
-  assert (db_json_get_type (&dest) == DB_JSON_OBJECT);
-  assert (db_json_get_type (source) == DB_JSON_OBJECT);
+  assert (dest.IsObject () && source->IsObject ());
 
   // create a copy for the source json
-  source_copy.CopyFrom (*source, dest.GetAllocator ());
+  source_copy.CopyFrom (*source, allocator);
+
+  // iterate through each member from the source json and insert it into the dest
+  for (JSON_VALUE::MemberIterator itr = source_copy.MemberBegin (); itr != source_copy.MemberEnd (); ++itr)
+    {
+      const char *name = itr->name.GetString ();
+
+      // if the key is in both jsons
+      if (dest.HasMember (name))
+	{
+	  // if the second argument value is DB_JSON_NULL, remove that member
+	  if (itr->value.IsNull ())
+	    {
+	      dest.RemoveMember (name);
+	    }
+	  else
+	    {
+	      // recursively merge_patch with the current values from both JSON_OBJECTs
+	      db_json_merge_func_patch (&itr->value, dest[name], allocator);
+	    }
+	}
+      else
+	{
+	  dest.AddMember (itr->name, itr->value, allocator);
+	}
+    }
+}
+
+/*
+ * db_json_merge_two_json_objects_preserve () - Merge the source object into the destination object,
+ *                                              preserving duplicate keys (adding their values in a JSON_ARRAY)
+ *
+ * return                  : error code
+ * dest (in)               : json where to merge
+ * source (in)             : json to merge
+ * patch (in)              : (true/false) preserve or not the duplicate keys
+ * example                 : let dest = '{"a" : "b"}'
+ *                           let source = '{"c" : "d"}'
+ *                           after JSON_MERGE (dest, source), dest = {"a" : "b", "c" : "d"}
+ */
+void
+db_json_merge_two_json_objects_preserve (const JSON_VALUE *source, JSON_VALUE &dest, JSON_PRIVATE_MEMPOOL &allocator)
+{
+  JSON_VALUE source_copy;
+
+  assert (dest.IsObject () && source->IsObject ());
+
+  // create a copy for the source json
+  source_copy.CopyFrom (*source, allocator);
 
   // iterate through each member from the source json and insert it into the dest
   for (JSON_VALUE::MemberIterator itr = source_copy.MemberBegin (); itr != source_copy.MemberEnd (); ++itr)
@@ -2010,17 +2253,17 @@ db_json_merge_two_json_objects (JSON_DOC &dest, const JSON_DOC *source)
 	{
 	  if (dest[name].IsArray ())
 	    {
-	      dest[name].GetArray ().PushBack (itr->value, dest.GetAllocator ());
+	      dest[name].GetArray ().PushBack (itr->value, allocator);
 	    }
 	  else
 	    {
-	      db_json_value_wrap_as_array (dest[name], dest.GetAllocator ());
-	      dest[name].PushBack (itr->value, dest.GetAllocator ());
+	      db_json_value_wrap_as_array (dest[name], allocator);
+	      dest[name].PushBack (itr->value, allocator);
 	    }
 	}
       else
 	{
-	  dest.AddMember (itr->name, itr->value, dest.GetAllocator ());
+	  dest.AddMember (itr->name, itr->value, allocator);
 	}
     }
 }
@@ -2191,20 +2434,66 @@ db_json_are_validators_equal (JSON_VALIDATOR *val1, JSON_VALIDATOR *val2)
     }
 }
 
-/*
- * db_json_merge_func ()
- * j1 (in)
- * j2 (in)
- * doc (out): the result
- * Json objects are merged like this:
- * {"a":"b", "x":"y"} M {"a":"c"} -> {"a":["b","c"], "x":"y"}
- * Json arrays as such:
- * ["a", "b"] M ["x", "y"] -> ["a", "b", "x", "y"]
- * Json scalars are transformed into arrays and merged normally
- */
+static void
+db_json_merge_func_preserve (const JSON_DOC *source, JSON_DOC &dest)
+{
+  DB_JSON_TYPE dest_type = db_json_get_type (&dest);
+  DB_JSON_TYPE source_type = db_json_get_type (source);
 
+  if (dest_type == source_type)
+    {
+      if (dest_type == DB_JSON_OBJECT)
+	{
+	  db_json_merge_two_json_objects_preserve (source, dest, dest.GetAllocator ());
+	}
+      else if (dest_type == DB_JSON_ARRAY)
+	{
+	  db_json_merge_two_json_arrays (dest, source);
+	}
+      else
+	{
+	  db_json_merge_two_json_by_array_wrapping (dest, source);
+	}
+    }
+  else
+    {
+      db_json_merge_two_json_by_array_wrapping (dest, source);
+    }
+}
+
+static void
+db_json_merge_func_patch (const JSON_VALUE *source, JSON_VALUE &dest, JSON_PRIVATE_MEMPOOL &allocator)
+{
+  DB_JSON_TYPE dest_type = db_json_get_type_of_value (&dest);
+  DB_JSON_TYPE source_type = db_json_get_type_of_value (source);
+
+  if (dest_type != DB_JSON_OBJECT || source_type != DB_JSON_OBJECT)
+    {
+      dest.CopyFrom (*source, allocator);
+    }
+  else
+    {
+      db_json_merge_two_json_objects_patch (source, dest, allocator);
+    }
+}
+
+/*
+ * db_json_merge_func () - Merge the source json into destination json
+ *
+ * return                   : error code
+ * dest (in)                : json where to merge
+ * source (in)              : json to merge
+ * patch (in)               : how to handle duplicate keys
+ *
+ * example                  : let x = { "a": 1, "b": 2 }
+ *                                y = { "a": 3, "c": 4 }
+ *                                z = { "a": 5, "d": 6 }
+ *
+ * result PATCH             : {"a": 5, "b": 2, "c": 4, "d": 6}
+ * result PRESERVE          : {"a": [1, 3, 5], "b": 2, "c": 4, "d": 6}
+ */
 int
-db_json_merge_func (const JSON_DOC *source, JSON_DOC *&dest)
+db_json_merge_func (const JSON_DOC *source, JSON_DOC *&dest, bool patch)
 {
   if (dest == NULL)
     {
@@ -2213,24 +2502,13 @@ db_json_merge_func (const JSON_DOC *source, JSON_DOC *&dest)
       return NO_ERROR;
     }
 
-  if (db_json_get_type (dest) == db_json_get_type (source))
+  if (patch)
     {
-      if (db_json_get_type (dest) == DB_JSON_OBJECT)
-	{
-	  db_json_merge_two_json_objects (*dest, source);
-	}
-      else if (db_json_get_type (dest) == DB_JSON_ARRAY)
-	{
-	  db_json_merge_two_json_arrays (*dest, source);
-	}
-      else
-	{
-	  db_json_merge_two_json_by_array_wrapping (*dest, source);
-	}
+      db_json_merge_func_patch (source, *dest, dest->GetAllocator ());
     }
   else
     {
-      db_json_merge_two_json_by_array_wrapping (*dest, source);
+      db_json_merge_func_preserve (source, *dest);
     }
 
   return NO_ERROR;
@@ -2797,6 +3075,25 @@ db_json_convert_sql_path_to_pointer (const char *sql_path, std::string &json_poi
 }
 
 /*
+ * db_json_get_paths_helper () - Recursive function to get the paths from a json object matching a pattern
+ *
+ * obj (in)                : current object
+ * pattern (in)            : the pattern to search for
+ * esc_char (in)           : esc_char used to find values that match the pattern
+ * find_all (in)           : whether to continue search after finding a match
+ * sql_path (in)           : current path in the json search tree
+ * paths (out)             : the paths found, whose pointed values match the pattern
+ */
+static int
+db_json_search_helper (JSON_DOC &obj, const DB_VALUE *pattern, const DB_VALUE *esc_char, bool find_all,
+		       const std::string &sql_path, bool &found, std::vector<std::string> &paths)
+{
+  JSON_SEARCHER json_search_walker (sql_path, pattern, esc_char, find_all, paths);
+
+  return json_search_walker.WalkDocument (obj);
+}
+
+/*
  * db_json_get_paths_helper () - Recursive function to get the paths from a json object
  *
  * obj (in)                : current object
@@ -2879,13 +3176,15 @@ db_json_pretty_func (const JSON_DOC &doc, char *&result_str)
 }
 
 /*
- * db_json_arrayagg_func () - Appends the value to the result_json
+ * db_json_arrayagg_func_accumulate () - Appends the value to the result_json
  *
+ * return                  : void
  * value (in)              : value to append
  * result_json (in)        : the document where we want to append
+ * expand (in)             : expand will be true only when aggregate 2 accumulators
  */
-int
-db_json_arrayagg_func (const JSON_DOC *value, JSON_DOC &result_json)
+void
+db_json_arrayagg_func_accumulate (const JSON_DOC *value, JSON_DOC &result_json)
 {
   DB_JSON_TYPE result_json_type = db_json_get_type (&result_json);
 
@@ -2899,8 +3198,30 @@ db_json_arrayagg_func (const JSON_DOC *value, JSON_DOC &result_json)
 
   JSON_VALUE value_copy (*value, result_json.GetAllocator ());
   result_json.PushBack (value_copy, result_json.GetAllocator ());
+}
 
-  return NO_ERROR;
+/*
+ * db_json_objectagg_func_accumulate () - Inserts a (key, value) pair in the result_json
+ *
+ * return                  : void
+ * key_str (in)            : the key string
+ * val_doc (in)            : the value document
+ * result_json (in)        : the document where we want to insert
+ */
+void
+db_json_objectagg_func_accumulate (const char *key_str, const JSON_DOC *val_doc, JSON_DOC &result_json)
+{
+  DB_JSON_TYPE result_json_type = db_json_get_type (&result_json);
+
+  // only the first time the result_json will have DB_JSON_NULL type
+  if (result_json_type == DB_JSON_TYPE::DB_JSON_NULL)
+    {
+      result_json.SetObject ();
+    }
+
+  assert (result_json.IsObject ());
+
+  db_json_add_member_to_object (&result_json, key_str, val_doc);
 }
 
 /*
@@ -3254,6 +3575,7 @@ JSON_WALKER::WalkValue (JSON_VALUE &value)
     {
       for (auto it = value.MemberBegin (); it != value.MemberEnd (); ++it)
 	{
+	  CallOnKeyIterate (it->name);
 	  error_code = WalkValue (it->value);
 	  if (error_code != NO_ERROR)
 	    {
@@ -3266,6 +3588,7 @@ JSON_WALKER::WalkValue (JSON_VALUE &value)
     {
       for (JSON_VALUE *it = value.Begin (); it != value.End (); ++it)
 	{
+	  CallOnArrayIterate ();
 	  error_code = WalkValue (*it);
 	  if (error_code != NO_ERROR)
 	    {

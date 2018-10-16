@@ -1489,8 +1489,8 @@ typedef enum
   PT_JSON_VALID,
   PT_JSON_LENGTH,
   PT_JSON_DEPTH,
+  PT_JSON_QUOTE,
   PT_JSON_UNQUOTE,
-  PT_JSON_SEARCH,
   PT_JSON_PRETTY,
 
   /* This is the last entry. Please add a new one before it. */

@@ -4861,6 +4861,22 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
 
       def->overloads_count = num;
       break;
+    case PT_JSON_QUOTE:
+      num = 0;
+
+      /* one overload */
+
+      /* arg1 */
+      sig.arg1_type.is_generic = false;
+      sig.arg1_type.val.type = PT_TYPE_CHAR;
+
+      /* return type */
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_CHAR;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
     case PT_JSON_UNQUOTE:
       num = 0;
 
@@ -4921,26 +4937,6 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
 
       sig.arg2_type.is_generic = false;
       sig.arg2_type.val.type = PT_TYPE_CHAR;
-
-      /* return type */
-      sig.return_type.is_generic = false;
-      sig.return_type.val.type = PT_TYPE_JSON;
-      def->overloads[num++] = sig;
-
-      def->overloads_count = num;
-      break;
-    case PT_JSON_SEARCH:
-      num = 0;
-
-      /* arg1 */
-      sig.arg1_type.is_generic = false;
-      sig.arg1_type.val.type = PT_TYPE_JSON;
-      /* arg2 */
-      sig.arg2_type.is_generic = false;
-      sig.arg2_type.val.type = PT_TYPE_CHAR;
-      /* arg3 */
-      sig.arg3_type.is_generic = false;
-      sig.arg3_type.val.type = PT_TYPE_CHAR;
 
       /* return type */
       sig.return_type.is_generic = false;
@@ -6953,8 +6949,8 @@ pt_is_symmetric_op (const PT_OP_TYPE op)
     case PT_JSON_VALID:
     case PT_JSON_LENGTH:
     case PT_JSON_DEPTH:
+    case PT_JSON_QUOTE:
     case PT_JSON_UNQUOTE:
-    case PT_JSON_SEARCH:
     case PT_JSON_PRETTY:
       return false;
 
@@ -12212,11 +12208,13 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	  || node->info.function.function_type == F_JSON_OBJECT || node->info.function.function_type == F_JSON_ARRAY
 	  || node->info.function.function_type == F_JSON_INSERT || node->info.function.function_type == F_JSON_REMOVE
 	  || node->info.function.function_type == F_JSON_MERGE
+	  || node->info.function.function_type == F_JSON_MERGE_PATCH
 	  || node->info.function.function_type == F_JSON_ARRAY_APPEND
 	  || node->info.function.function_type == F_JSON_ARRAY_INSERT
+	  || node->info.function.function_type == F_JSON_CONTAINS_PATH
 	  || node->info.function.function_type == F_JSON_GET_ALL_PATHS
 	  || node->info.function.function_type == F_JSON_REPLACE || node->info.function.function_type == F_JSON_SET
-	  || node->info.function.function_type == F_JSON_KEYS)
+	  || node->info.function.function_type == F_JSON_SEARCH || node->info.function.function_type == F_JSON_KEYS)
 	{
 	  assert (dt == NULL);
 	  dt = pt_make_prim_data_type (parser, node->type_enum);
@@ -13019,6 +13017,47 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
       }
       break;
 
+    case PT_JSON_OBJECTAGG:
+      {
+	// we will have 2 arguments (key, value)
+	// the key needs to be STRING type and the value can be any type compatible with JSON type
+
+	// check key
+	PT_NODE *key = arg_list;
+	PT_NODE *value = arg_list->next;
+
+	if (!PT_IS_STRING_TYPE (key->type_enum))
+	  {
+	    arg_type = PT_TYPE_NONE;
+	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
+			 pt_show_function (fcode), pt_show_type_enum (key->type_enum));
+	    break;
+	  }
+
+	// check value
+	bool is_supported = pt_is_json_value_type (value->type_enum);
+	if (!is_supported)
+	  {
+	    arg_type = PT_TYPE_NONE;
+	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
+			 pt_show_function (fcode), pt_show_type_enum (value->type_enum));
+	    break;
+	  }
+
+	/* cast value to json */
+	arg_list->next = pt_wrap_with_cast_op (parser, value, PT_TYPE_JSON, 0, 0, NULL);
+	if (arg_list->next == NULL)
+	  {
+	    return node;
+	  }
+
+	arg_type = PT_TYPE_JSON;
+	node->info.function.arg_list = arg_list;
+	// JSON_OBJECTAGG requires 2 arguments
+	check_agg_single_arg = false;
+      }
+      break;
+
     case F_JSON_OBJECT:
       {
 	PT_TYPE_ENUM unsupported_type;
@@ -13094,6 +13133,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
       break;
 
     case F_JSON_MERGE:
+    case F_JSON_MERGE_PATCH:
       {
 	PT_TYPE_ENUM unsupported_type;
 	bool is_supported;
@@ -13175,6 +13215,52 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
       }
       break;
 
+    case F_JSON_CONTAINS_PATH:
+      {
+	PT_TYPE_ENUM unsupported_type;
+	unsigned int index = 1;
+	bool is_supported = false;
+	PT_NODE *arg = arg_list;
+
+	is_supported = pt_is_json_doc_type (arg->type_enum);
+	if (!is_supported)
+	  {
+	    arg_type = PT_TYPE_NONE;
+	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
+			 pt_show_function (fcode), pt_show_type_enum (arg->type_enum));
+	    break;
+	  }
+
+	arg = arg->next;
+	while (arg)
+	  {
+	    if (index > 1)
+	      {
+		is_supported = pt_is_json_path (arg->type_enum);
+	      }
+	    else
+	      {
+		is_supported = pt_is_json_doc_type (arg->type_enum);
+	      }
+
+	    if (!is_supported)
+	      {
+		unsupported_type = arg->type_enum;
+		break;
+	      }
+
+	    arg = arg->next;
+	    index++;
+	  }
+	if (!is_supported)
+	  {
+	    arg_type = PT_TYPE_NONE;
+	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
+			 pt_show_function (fcode), pt_show_type_enum (unsupported_type));
+	  }
+      }
+      break;
+
     case F_JSON_REMOVE:
       {
 	PT_TYPE_ENUM unsupported_type;
@@ -13229,6 +13315,51 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
       }
       break;
 
+    case F_JSON_SEARCH:
+      {
+	// JSON_SEARCH (json_doc, one_or_all, pattern, [esc_charr, path_1, ... path_n])
+	PT_TYPE_ENUM unsupported_type;
+	PT_NODE *arg = arg_list;
+	bool is_supported = false;
+	is_supported = pt_is_json_doc_type (arg->type_enum);
+	if (!is_supported)
+	  {
+	    arg_type = PT_TYPE_NONE;
+	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
+			 pt_show_function (fcode), pt_show_type_enum (arg->type_enum));
+	    break;
+	  }
+
+	arg = arg->next;
+	unsigned int index = 1;
+	while (arg)
+	  {
+	    if (index < 4)
+	      {
+		is_supported = (PT_IS_STRING_TYPE (arg->type_enum) || arg->type_enum == PT_TYPE_MAYBE
+				|| arg->type_enum == PT_TYPE_NULL || arg->type_enum == PT_TYPE_NA);
+	      }
+	    else
+	      {
+		// args[4+] can be only paths 
+		is_supported = pt_is_json_path (arg->type_enum);
+	      }
+
+	    if (!is_supported)
+	      {
+		unsupported_type = arg->type_enum;
+		arg_type = PT_TYPE_NONE;
+		PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
+			     pt_show_function (fcode), pt_show_type_enum (unsupported_type));
+		break;
+	      }
+
+	    ++index;
+	    arg = arg->next;
+	  }
+      }
+      break;
+
     case F_JSON_KEYS:
       {
 	// should have maximum 2 parameters
@@ -13245,7 +13376,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 		is_supported = pt_is_json_doc_type (arg->type_enum);
 		break;
 	      case 1:
-		is_supported = pt_is_json_path (arg->type_enum);;
+		is_supported = pt_is_json_path (arg->type_enum);
 		break;
 	      default:
 		/* Should not happen */
@@ -13595,6 +13726,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  break;
 
 	case PT_JSON_ARRAYAGG:
+	case PT_JSON_OBJECTAGG:
 	case F_JSON_OBJECT:
 	case F_JSON_ARRAY:
 	case F_JSON_INSERT:
@@ -13605,8 +13737,13 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	case F_JSON_ARRAY_APPEND:
 	case F_JSON_ARRAY_INSERT:
 	case F_JSON_MERGE:
+	case F_JSON_MERGE_PATCH:
 	case F_JSON_GET_ALL_PATHS:
+	case F_JSON_SEARCH:
 	  node->type_enum = PT_TYPE_JSON;
+	  break;
+	case F_JSON_CONTAINS_PATH:
+	  node->type_enum = PT_TYPE_INTEGER;
 	  break;
 	case PT_MEDIAN:
 	case PT_PERCENTILE_CONT:
@@ -17015,6 +17152,14 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  return 0;
 	}
       break;
+    case PT_JSON_QUOTE:
+      error = db_string_quote (arg1, result);
+      if (error != NO_ERROR)
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
+      break;
     case PT_JSON_UNQUOTE:
       error = db_json_unquote_dbval (arg1, result);
       if (error != NO_ERROR)
@@ -17023,11 +17168,6 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  return 0;
 	}
       break;
-    case PT_JSON_SEARCH:
-      error = ER_DB_UNIMPLEMENTED;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1, "JSON_SEARCH");
-      PT_ERRORc (parser, o1, er_msg ());
-      return 0;
     case PT_JSON_PRETTY:
       error = db_json_pretty_dbval (arg1, result);
       if (error != NO_ERROR)
@@ -20346,6 +20486,7 @@ pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_TYPE fcode, DB_VALUE 
 	  return 0;
 	}
       break;
+
     case F_ELT:
       error = db_string_elt (result, args, num_args);
       if (error != NO_ERROR)
@@ -20353,99 +20494,75 @@ pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_TYPE fcode, DB_VALUE 
 	  return 0;
 	}
       break;
+
     case F_JSON_OBJECT:
       error = db_json_object (result, args, num_args);
-      if (error != NO_ERROR)
-	{
-	  PT_ERRORc (parser, NULL, er_msg ());
-	  return 0;
-	}
       break;
+
     case F_JSON_ARRAY:
       error = db_json_array (result, args, num_args);
-      if (error != NO_ERROR)
-	{
-	  PT_ERRORc (parser, NULL, er_msg ());
-	  return 0;
-	}
       break;
+
     case F_JSON_INSERT:
       error = db_json_insert (result, args, num_args);
-      if (error != NO_ERROR)
-	{
-	  PT_ERRORc (parser, NULL, er_msg ());
-	  return 0;
-	}
       break;
+
     case F_JSON_REPLACE:
       error = db_json_replace (result, args, num_args);
-      if (error != NO_ERROR)
-	{
-	  PT_ERRORc (parser, NULL, er_msg ());
-	  return 0;
-	}
       break;
+
     case F_JSON_SET:
       error = db_json_set (result, args, num_args);
-      if (error != NO_ERROR)
-	{
-	  PT_ERRORc (parser, NULL, er_msg ());
-	  return 0;
-	}
       break;
+
     case F_JSON_KEYS:
       error = db_json_keys (result, args, num_args);
-      if (error != NO_ERROR)
-	{
-	  PT_ERRORc (parser, NULL, er_msg ());
-	  return 0;
-	}
       break;
+
     case F_JSON_REMOVE:
       error = db_json_remove (result, args, num_args);
-      if (error != NO_ERROR)
-	{
-	  PT_ERRORc (parser, NULL, er_msg ());
-	  return 0;
-	}
       break;
+
     case F_JSON_ARRAY_APPEND:
       error = db_json_array_append (result, args, num_args);
-      if (error != NO_ERROR)
-	{
-	  PT_ERRORc (parser, NULL, er_msg ());
-	  return 0;
-	}
       break;
+
     case F_JSON_ARRAY_INSERT:
       error = db_json_array_insert (result, args, num_args);
-      if (error != NO_ERROR)
-	{
-	  PT_ERRORc (parser, NULL, er_msg ());
-	  return 0;
-	}
       break;
+
+    case F_JSON_CONTAINS_PATH:
+      error = db_json_contains_path (result, args, num_args);
+      break;
+
     case F_JSON_MERGE:
       error = db_json_merge (result, args, num_args);
-      if (error != NO_ERROR)
-	{
-	  PT_ERRORc (parser, NULL, er_msg ());
-	  return 0;
-	}
       break;
+
+    case F_JSON_MERGE_PATCH:
+      error = db_json_merge_patch (result, args, num_args);
+      break;
+
+    case F_JSON_SEARCH:
+      error = db_json_search_dbval (result, args, num_args);
+      break;
+
     case F_JSON_GET_ALL_PATHS:
       error = db_json_get_all_paths (result, args, num_args);
-      if (error != NO_ERROR)
-	{
-	  PT_ERRORc (parser, NULL, er_msg ());
-	  return 0;
-	}
       break;
+
     default:
       /* a supported function doesn't have const folding code */
       assert (false);
       break;
     }
+
+  if (error != NO_ERROR)
+    {
+      PT_ERRORc (parser, NULL, er_msg ());
+      return 0;
+    }
+
   return 1;
 }
 

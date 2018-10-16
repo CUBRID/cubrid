@@ -4344,6 +4344,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 
   LOGWR_INFO *writer_info = &log_Gl.writer_info;
   LOGWR_ENTRY *entry;
+  THREAD_ENTRY *wait_thread_p;
 #endif /* SERVER_MODE */
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
@@ -4575,8 +4576,25 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	{
 	  if (entry->status == LOGWR_STATUS_WAIT)
 	    {
-	      entry->status = LOGWR_STATUS_FETCH;
-	      logtb_wakeup_thread_with_tran_index (entry->thread_p->tran_index, THREAD_LOGWR_RESUMED);
+	      wait_thread_p = entry->thread_p;
+	      assert (wait_thread_p != thread_p);
+
+	      thread_lock_entry (wait_thread_p);
+
+	      /* If THREAD_RESUME_DUE_TO_INTERRUPT, do not set the entry status to avoid deadlock
+	       * between flush_end_cond and CSECT_LOG.
+	       */
+	      if (thread_p->resume_status != THREAD_RESUME_DUE_TO_INTERRUPT)
+		{
+		  /* Still waiting for LOGWR. */
+		  entry->status = LOGWR_STATUS_FETCH;
+		  if (wait_thread_p->resume_status == THREAD_LOGWR_SUSPENDED)
+		    {
+		      thread_wakeup_already_had_mutex (wait_thread_p, THREAD_LOGWR_RESUMED);
+		    }
+		}
+
+	      thread_unlock_entry (wait_thread_p);
 	    }
 	  entry = entry->next;
 	}

@@ -2685,6 +2685,7 @@ copylogdb (UTIL_FUNCTION_ARG * arg)
 
 	  return EXIT_FAILURE;
 	}
+      er_set_ignore_uninit (true);
     }
 #endif
 
@@ -2891,6 +2892,7 @@ applylogdb (UTIL_FUNCTION_ARG * arg)
 	    }
 	  return EXIT_FAILURE;
 	}
+      er_set_ignore_uninit (true);
     }
 
   if (HA_GET_MODE () == HA_MODE_REPLICA)

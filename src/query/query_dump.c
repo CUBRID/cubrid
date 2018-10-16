@@ -1345,6 +1345,8 @@ qdump_function_type_string (FUNC_TYPE ftype)
       return "PERCENTILE_DISC";
     case PT_JSON_ARRAYAGG:
       return "JSON_ARRAYAGG";
+    case PT_JSON_OBJECTAGG:
+      return "JSON_OBJECTAGG";
     case F_TABLE_SET:
       return "F_TABLE_SET";
     case F_TABLE_MULTISET:
@@ -1389,8 +1391,14 @@ qdump_function_type_string (FUNC_TYPE ftype)
       return "JSON_ARRAY_APPEND";
     case F_JSON_ARRAY_INSERT:
       return "JSON_ARRAY_INSERT";
+    case F_JSON_CONTAINS_PATH:
+      return "JSON_CONTAINS_PATH";
+    case F_JSON_SEARCH:
+      return "JSON_SEARCH";
     case F_JSON_MERGE:
       return "JSON_MERGE";
+    case F_JSON_MERGE_PATCH:
+      return "JSON_MERGE_PATCH";
     case F_JSON_GET_ALL_PATHS:
       return "JSON_GET_ALL_PATHS";
     default:
@@ -1893,9 +1901,13 @@ qdump_print_aggregate_expression (AGGREGATE_TYPE * aggptr)
 
   fprintf (foutput, "%s ", qdump_option_string (aggptr->option));
 
-  if (!qdump_print_value (&aggptr->operand))
+  REGU_VARIABLE_LIST operand = NULL;
+  for (operand = aggptr->operands; operand != NULL; operand = operand->next)
     {
-      return false;
+      if (!qdump_print_value (&operand->value))
+	{
+	  return false;
+	}
     }
 
   if (!qdump_print_list_id (aggptr->list_id))

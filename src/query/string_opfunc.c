@@ -286,6 +286,7 @@ static int print_string_date_token (const STRING_DATE_TOKEN token_type, const IN
 static void convert_locale_number (char *sz, const int size, const INTL_LANG src_locale, const INTL_LANG dst_locale);
 static int parse_tzd (const char *str, const int max_expect_len);
 static int db_value_to_json_doc (const DB_VALUE & value, REFPTR (JSON_DOC, json));
+static int db_json_merge_helper (DB_VALUE * result, DB_VALUE * arg[], int const num_args, bool patch = false);
 
 #define TRIM_FORMAT_STRING(sz, n) {if (strlen(sz) > n) sz[n] = 0;}
 #define WHITESPACE(c) ((c) == ' ' || (c) == '\t' || (c) == '\r' || (c) == '\n')
@@ -297,6 +298,9 @@ static int db_value_to_json_doc (const DB_VALUE & value, REFPTR (JSON_DOC, json)
 #define PUNCTUATIONAL(c) ((c) == '-' || (c) == '/' || (c) == ',' || (c) == '.' \
 			  || (c) == ';' || (c) == ':' || (c) == ' ' \
 			  || (c) == '\t' || (c) == '\n')
+
+/* character that need escaping when making Json String */
+#define ESCAPE_CHAR(c) (c <= 0x1f || (c) == '"' || (c) == '\\')
 
 /* concatenate a char to s */
 #define STRCHCAT(s, c) \
@@ -1887,6 +1891,70 @@ db_string_substring (const MISC_OPERAND substr_operand, const DB_VALUE * src_str
     }
 
   return error_status;
+}
+
+/*
+ * db_string_quote - escape a string and surround it with quotes
+ *   return: If success, return 0.
+ *   src(in): str
+ *   res(out): quoted string
+ * Note:
+ */
+int
+db_string_quote (const DB_VALUE * str, DB_VALUE * res)
+{
+  if (DB_IS_NULL (str))
+    {
+      return db_make_null (res);
+    }
+  else
+    {
+      char *src_str = db_get_string (str);
+      int src_size = db_get_string_size (str);
+      int dest_crt_pos;
+      int src_last_pos;
+
+      // *INDENT-OFF*
+      std::vector<int> special_idx;
+      // *INDENT-ON*
+      for (int i = 0; i < src_size; ++i)
+	{
+	  unsigned char uc = (unsigned char) src_str[i];
+	  if (ESCAPE_CHAR (uc))
+	    {
+	      special_idx.push_back (i);
+	    }
+	}
+      int dest_size = src_size + special_idx.size () + 2;
+      char *result = (char *) db_private_alloc (NULL, dest_size);
+      if (result == NULL)
+	{
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      result[0] = '"';
+      dest_crt_pos = 1;
+      src_last_pos = 0;
+      for (int i = 0; i < special_idx.size (); ++i)
+	{
+	  int len = special_idx[i] - src_last_pos;
+	  memcpy (&result[dest_crt_pos], &src_str[src_last_pos], len);
+	  dest_crt_pos += len;
+	  result[dest_crt_pos] = '\\';
+	  ++dest_crt_pos;
+	  src_last_pos = special_idx[i];
+	}
+      memcpy (&result[dest_crt_pos], &src_str[src_last_pos], src_size - src_last_pos);
+      result[dest_size - 1] = '"';
+
+      db_make_null (res);
+      DB_TYPE result_type = DB_TYPE_CHAR;
+      qstr_make_typed_string (result_type, res, DB_VALUE_PRECISION (res), result,
+			      (const int) dest_size, db_get_string_codeset (str), db_get_string_collation (str));
+
+      res->need_clear = true;
+      return NO_ERROR;
+    }
 }
 
 /*
@@ -3676,17 +3744,75 @@ db_json_array_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
   return NO_ERROR;
 }
 
-/*
- * db_json_merge ()
- * this function merges two by two json
- * so merge (j1, j2, j3, j4) = merge_two (j1, (merge (j2, merge (j3, j4))))
- * result (out): the merge result
- * arg (in): the arguments for the merge function
- * num_args (in)
- */
-
 int
-db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
+db_json_contains_path (DB_VALUE * result, DB_VALUE * arg[], const int num_args)
+{
+  bool find_all = false;
+  bool exists = false;
+  int error_code = NO_ERROR;
+  JSON_DOC *doc = NULL;
+  db_make_null (result);
+
+  if (DB_IS_NULL (arg[0]) || DB_IS_NULL (arg[1]))
+    {
+      return NO_ERROR;
+    }
+
+  doc = db_get_json_document (arg[0]);
+  const char *find_all_str = db_get_string (arg[1]);
+
+  if (strcmp (find_all_str, "all") == 0)
+    {
+      find_all = true;
+    }
+  if (!find_all && strcmp (find_all_str, "one"))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
+      return ER_QSTR_INVALID_DATA_TYPE;
+    }
+
+  for (int i = 2; i < num_args; ++i)
+    {
+      if (DB_IS_NULL (arg[i]))
+	{
+	  return NO_ERROR;
+	}
+    }
+
+  for (int i = 2; i < num_args; ++i)
+    {
+      const char *path = db_get_string (arg[i]);
+
+      if (path == NULL)
+	{
+	  return NO_ERROR;
+	}
+
+      error_code = db_json_contains_path (doc, path, exists);
+      if (error_code)
+	{
+	  return error_code;
+	}
+
+      if (find_all && !exists)
+	{
+	  error_code = db_make_int (result, (int) false);
+	  return error_code;
+	}
+      if (!find_all && exists)
+	{
+	  error_code = db_make_int (result, (int) true);
+	  return error_code;
+	}
+    }
+
+  // if we have not returned early last search is decisive
+  error_code = db_make_int (result, (int) exists);
+  return error_code;
+}
+
+static int
+db_json_merge_helper (DB_VALUE * result, DB_VALUE * arg[], int const num_args, bool patch)
 {
   int i;
   int error_code;
@@ -3709,7 +3835,7 @@ db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
       switch (DB_VALUE_TYPE (arg[i]))
 	{
 	case DB_TYPE_JSON:
-	  error_code = db_json_merge_func (arg[i]->data.json.document, accumulator);
+	  error_code = db_json_merge_func (arg[i]->data.json.document, accumulator, patch);
 	  break;
 
 	case DB_TYPE_CHAR:
@@ -3717,12 +3843,12 @@ db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARNCHAR:
 	  error_code = db_json_convert_string_and_call (db_get_string (arg[i]), db_get_string_size (arg[i]),
-							db_json_merge_func, accumulator);
+							db_json_merge_func, accumulator, patch);
 	  break;
 
 	case DB_TYPE_NULL:
 	  // todo: isn't this too supposed to be NULL?
-	  error_code = db_json_merge_func (NULL, accumulator);
+	  error_code = db_json_merge_func (NULL, accumulator, patch);
 	  break;
 
 	default:
@@ -3742,6 +3868,140 @@ db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 
   return NO_ERROR;
 }
+
+/*
+ * db_json_merge ()
+ *
+ * this function merges two by two json
+ * so merge (j1, j2, j3, j4) = merge_two (j1, (merge (j2, merge (j3, j4))))
+ *
+ * result (out): the merge result
+ * arg (in): the arguments for the merge function
+ * num_args (in)
+ */
+int
+db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
+{
+  return db_json_merge_helper (result, arg, num_args);
+}
+
+/*
+ * db_json_merge_patch()
+ *
+ * this function merges two by two json without preserving members having duplicate keys
+ * so merge (j1, j2, j3, j4) = merge_two (j1, (merge (j2, merge (j3, j4))))
+ *
+ * result (out): the merge result
+ * arg (in): the arguments for the merge function
+ * num_args (in)
+ */
+int
+db_json_merge_patch (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
+{
+  return db_json_merge_helper (result, arg, num_args, true);
+}
+
+/*
+ * JSON_SEARCH (json_doc, one/all, pattern [, escape_char, path_1,... path_n])
+ *
+ * db_json_search_dbval ()
+ * function that finds paths of json_values that match the pattern argument
+ * result (out): json string or json array if there are more paths that match
+ * args (in): the arguments for the json_search function
+ * num_args (in)
+ */
+
+/* *INDENT-OFF* */
+int
+db_json_search_dbval (DB_VALUE * result, DB_VALUE * args[], const int num_args)
+{
+  int error_code = NO_ERROR;
+
+  if (num_args < 3)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_FAILED;
+    }
+
+  for (int i = 0; i < num_args; ++i)
+    {
+      // only escape char might be null
+      if (i != 3 && DB_IS_NULL (args[i]))
+        {
+          return db_make_null (result);
+        }
+    }
+
+  JSON_DOC *doc = db_get_json_document (args[0]);
+  char *find_all_str = db_get_string (args[1]);
+  bool find_all = false;
+
+  if (strcmp (find_all_str, "all") == 0)
+    {
+      find_all = true;
+    }
+  if (!find_all && strcmp (find_all_str, "one"))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
+      return ER_QSTR_INVALID_DATA_TYPE;
+    }
+
+  DB_VALUE *pattern = args[2];
+  DB_VALUE *esc_char = nullptr;
+  if (num_args >= 4)
+    {
+      esc_char = args[3];
+    }
+
+  std::vector<std::string> starting_paths;
+  for (int i = 4; i < num_args; ++i)
+    {
+      starting_paths.push_back (db_get_string (args[i]));
+    }
+  if (starting_paths.empty ())
+    {
+      starting_paths.push_back ("$");
+    }
+
+  std::vector<std::string> paths;
+  error_code = db_json_search_func (*doc, pattern, esc_char, find_all, starting_paths, paths);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  JSON_DOC *result_json = nullptr;
+
+  if (paths.size () == 1)
+    {
+      error_code = db_json_get_json_from_str (paths[0].c_str (), result_json, paths[0].length ());
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+      return db_make_json (result, result_json, true);
+    }
+
+  result_json = db_json_allocate_doc ();
+  for (auto &path : paths)
+    {
+      JSON_DOC *json_array_elem = nullptr;
+
+      error_code = db_json_get_json_from_str (path.c_str (), json_array_elem, path.length ());
+      if (error_code != NO_ERROR)
+	{
+          db_json_delete_doc (result_json);
+	  return error_code;
+	}
+
+      db_json_add_element_to_array (result_json, json_array_elem);
+
+      db_json_delete_doc (json_array_elem);
+    }
+
+  return db_make_json (result, result_json, true);
+}
+/* *INDENT-ON* */
 
 int
 db_json_get_all_paths (DB_VALUE * result, DB_VALUE * arg[], int const num_args)

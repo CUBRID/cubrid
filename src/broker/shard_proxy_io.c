@@ -44,6 +44,13 @@
 #include "shard_shm.h"
 #include "broker_acl.h"
 
+#ifndef min
+#define min(a,b)    ((a) < (b) ? (a) : (b))
+#endif
+#ifndef max
+#define max(a,b)    ((a) > (b) ? (a) : (b))
+#endif
+
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */

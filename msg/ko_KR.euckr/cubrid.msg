@@ -1463,6 +1463,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 125 잘못된 형식의 sessiontimezone\n sessiontimezone
 126 테이블과 뷰 커맨트의 최대 길이는 %1$d 바이트입니다.
 127 커맨트의 최대 길이는 %1$d 바이트입니다.
+128 Invalid number of arguments for JSON_OBJECTAGG
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 메모리가 부족합니다
