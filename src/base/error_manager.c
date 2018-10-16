@@ -319,7 +319,7 @@ static int er_Print_to_console = ER_DO_NOT_PRINT;
  * multithreaded client processes which start+end database (and error module) in a loop, may need to log errors on
  * other threads (while error module is stopped); this flag prevents assertion failure of error module initialization
 *  for such case */
-#if defined (CS_MODE) && !defined (NDEBUG)
+#if defined (CS_MODE)
 static bool er_Ignore_uninit = false;
 #endif
 
@@ -3227,7 +3227,7 @@ er_is_error_severity (er_severity severity)
     }
 }
 
-#if defined (CS_MODE) && !defined (NDEBUG)
+#if defined (CS_MODE)
 void
 er_set_ignore_uninit (bool ignore)
 {
