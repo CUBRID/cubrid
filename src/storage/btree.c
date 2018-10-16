@@ -34836,6 +34836,7 @@ btree_is_btid_online_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID * bti
 
   if (rep == NULL)
     {
+      assert (false);
       return false;
     }
 
