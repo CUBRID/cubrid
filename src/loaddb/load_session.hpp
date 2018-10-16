@@ -38,6 +38,9 @@
 #define NULL_BATCH_ID -1
 #define FIRST_BATCH_ID 1
 
+// alias declaration for functionality from session.{c|h}
+using loaddb_context = cubload::session;
+
 namespace cubload
 {
 
@@ -84,7 +87,7 @@ namespace cubload
    *
    * how to use
    *    cubload::session *session = NULL;
-   *    session_get_loaddb_session (thread_p, &session);
+   *    session_get_loaddb_context (thread_p, session);
    *
    *    std::string file_name = "<file>"; // the absolute path of the loaddb object file
    *    session.load_file (*thread_p, file_name);

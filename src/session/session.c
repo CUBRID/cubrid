@@ -141,7 +141,7 @@ struct session_state
   TZ_REGION session_tz_region;
   int private_lru_index;
 
-  loaddb_session *loaddb_session_p;
+  loaddb_context *loaddb_context_p;
 };
 
 /* session state manipulation functions */
@@ -283,7 +283,7 @@ session_state_init (void *st)
   session_p->trace_format = QUERY_TRACE_TEXT;
   session_p->private_lru_index = -1;
   session_p->auto_commit = false;
-  session_p->loaddb_session_p = NULL;
+  session_p->loaddb_context_p = NULL;
 
   return NO_ERROR;
 }
@@ -364,6 +364,18 @@ session_state_uninit (void *st)
     {
       free_and_init (session->plan_string);
     }
+
+#if defined (SERVER_MODE)
+  // on uninit abort and delete loaddb session
+  if (session->loaddb_context_p != NULL)
+    {
+      session->loaddb_context_p->abort ();
+      session->loaddb_context_p->wait_for_completion ();
+
+      delete session->loaddb_context_p;
+      session->loaddb_context_p = NULL;
+    }
+#endif
 
   return NO_ERROR;
 }
@@ -795,16 +807,6 @@ session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_ID id)
       pthread_mutex_unlock (&session_p->mutex);
 
       return NO_ERROR;
-    }
-
-  // on destroy abort and delete loaddb session
-  if (session_p->loaddb_session_p != NULL)
-    {
-      session_p->loaddb_session_p->abort ();
-      session_p->loaddb_session_p->wait_for_completion ();
-
-      delete session_p->loaddb_session_p;
-      session_p->loaddb_session_p = NULL;
     }
 
   /* Now we can destroy this session */
@@ -3172,7 +3174,7 @@ session_set_tran_auto_commit (THREAD_ENTRY * thread_p, bool auto_commit)
 }
 
 int
-session_set_loaddb_session (THREAD_ENTRY * thread_p, loaddb_session * session)
+session_set_loaddb_context (THREAD_ENTRY * thread_p, loaddb_context * context)
 {
   SESSION_STATE *state_p = NULL;
 
@@ -3182,13 +3184,13 @@ session_set_loaddb_session (THREAD_ENTRY * thread_p, loaddb_session * session)
       return ER_FAILED;
     }
 
-  state_p->loaddb_session_p = session;
+  state_p->loaddb_context_p = context;
 
   return NO_ERROR;
 }
 
 int
-session_get_loaddb_session (THREAD_ENTRY * thread_p, loaddb_session ** session)
+session_get_loaddb_context (THREAD_ENTRY * thread_p, REFPTR (loaddb_context, context))
 {
   SESSION_STATE *state_p = NULL;
 
@@ -3198,7 +3200,7 @@ session_get_loaddb_session (THREAD_ENTRY * thread_p, loaddb_session ** session)
       return ER_FAILED;
     }
 
-  *session = state_p->loaddb_session_p;
+  context = state_p->loaddb_context_p;
 
   return NO_ERROR;
 }

@@ -314,8 +314,8 @@ set(LOADDB_SOURCES
   ${LOADDB_DIR}/load_common.cpp
   ${LOADDB_DIR}/load_db_value_converter.cpp
   ${LOADDB_DIR}/load_driver.cpp
-  ${LOADDB_DIR}/load_session.cpp
   ${LOADDB_DIR}/load_server_loader.cpp
+  ${LOADDB_DIR}/load_session.cpp
   )
 
 list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)
