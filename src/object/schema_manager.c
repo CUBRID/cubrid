@@ -16530,13 +16530,13 @@ sm_load_online_index (MOP classmop, const char *constraint_name)
       reverse = 0;
     }
 
-  if (con->type == SM_CONSTRAINT_UNIQUE)
+  if (con->type == SM_CONSTRAINT_UNIQUE || con->type == SM_CONSTRAINT_REVERSE_UNIQUE)
     {
       unique_pk = BTREE_CONSTRAINT_UNIQUE;
-      if (con->type == SM_CONSTRAINT_PRIMARY_KEY)
-	{
-	  unique_pk |= BTREE_CONSTRAINT_PRIMARY_KEY;
-	}
+    }
+  else if (con->type == SM_CONSTRAINT_PRIMARY_KEY)
+    {
+      unique_pk = BTREE_CONSTRAINT_UNIQUE | BTREE_CONSTRAINT_PRIMARY_KEY;
     }
 
   if (con->func_index_info)
@@ -16582,7 +16582,6 @@ error_return:
     {
       free_and_init (hfids);
     }
-
 
   return error;
 }
