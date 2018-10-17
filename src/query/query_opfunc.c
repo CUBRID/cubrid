@@ -6986,8 +6986,8 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 		  /* we might get a NULL count if aggregating with hash table and group has only one tuple; correct that */
 		  db_make_int (accumulator->value, 0);
 		}
-              pr_clear_value_vector (db_values);
-              continue;
+	      pr_clear_value_vector (db_values);
+	      continue;
 	    }
 	}
 
