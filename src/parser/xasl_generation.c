@@ -3853,9 +3853,6 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	  REGU_VARIABLE_LIST to_add = regu_varlist_alloc ();
 	  to_add->value = *regu;
 
-	  // insert also in the regu_constant_list to ensure compatibility
-	  pt_add_regu_var_to_list (&regu_constant_list, to_add);
-
 	  /* build list */
 	  if (!PT_IS_CONST (percentile) && info->out_list != NULL && info->value_list != NULL
 	      && info->regu_list != NULL)
@@ -3897,8 +3894,7 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	      /* fix count for list position */
 	      regu_position_list->value.value.pos_descr.pos_no = info->out_list->valptr_cnt;
 
-	      pt_aggregate_info_update_value_and_reguvar_lists (info, value_list, regu_position_list,
-								regu_constant_list);
+	      pt_aggregate_info_update_value_and_reguvar_lists (info, value_list, regu_position_list, to_add);
 	    }
 	  else
 	    {
