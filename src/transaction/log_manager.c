@@ -10856,20 +10856,25 @@ log_update_global_btid_online_index_stats (THREAD_ENTRY * thread_p)
 }
 
 /*
- *  logtb_tran_update_stats_online_index_rb     - Updates statistics during an online index when a transaction
- *                                                gets rollbacked.
+ * logtb_tran_update_stats_online_index_rb - Updates statistics during an online index when a transaction
+ *                                           gets rollbacked.
  *
- *  TODO: This can be easily optimized since it is slow. Try to find a better approach!
+ * TODO: This can be easily optimized since it is slow. Try to find a better approach!
  */
 static int
 logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, void *args)
 {
-  /*  This is called only during a rollback on a transaction that has updated an index which was under 
-   *  online loading.
+  /* This is called only during a rollback on a transaction that has updated an index which was under
+   * online loading.
    */
   LOG_TRAN_BTID_UNIQUE_STATS *unique_stats = (LOG_TRAN_BTID_UNIQUE_STATS *) data;
   int error_code = NO_ERROR;
   OID class_oid;
+#if !defined (NDEBUG)
+  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+
+  assert (LOG_ISTRAN_ABORTED (tdes));
+#endif /* !NDEBUG */
 
   if (unique_stats->deleted)
     {
