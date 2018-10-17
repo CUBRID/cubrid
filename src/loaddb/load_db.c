@@ -1164,7 +1164,7 @@ ldr_server_load (load_args * args, int *status, bool * interrupted)
 	{
 	  /* *INDENT-OFF* */
 	  std::string object_file_abs_path_ (object_file_abs_path);
-	  batch_handler handler = [] (std::string & batch, int batch_id) { loaddb_load_batch (batch, batch_id); };
+	  batch_handler handler = [] (std::string & batch, batch_id id) { loaddb_load_batch (batch, id); };
 	  /* *INDENT-ON* */
 
 	  split (args->periodic_commit, object_file_abs_path_, handler);

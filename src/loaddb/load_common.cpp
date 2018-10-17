@@ -90,7 +90,7 @@ namespace cubload
   split (int batch_size, std::string &object_file_name, batch_handler &handler)
   {
     int rows = 0;
-    int batch_id = 0;
+    batch_id id = 0;
     std::string class_line;
     std::string batch_buffer;
     std::ifstream object_file (object_file_name, std::fstream::in);
@@ -115,7 +115,7 @@ namespace cubload
 	  {
 	    // in case of class line collect remaining for current class
 	    // and start new batch for the new class
-	    handle_batch (class_line, batch_buffer, batch_id, handler);
+	    handle_batch (class_line, batch_buffer, id, handler);
 
 	    // store new class line
 	    class_line = line;
@@ -145,13 +145,13 @@ namespace cubload
 	    // check if we have a full batch
 	    if ((rows % batch_size) == 0)
 	      {
-		handle_batch (class_line, batch_buffer, batch_id, handler);
+		handle_batch (class_line, batch_buffer, id, handler);
 	      }
 	  }
       }
 
     // collect remaining rows
-    handle_batch (class_line, batch_buffer, batch_id, handler);
+    handle_batch (class_line, batch_buffer, id, handler);
 
     object_file.close ();
 
@@ -159,7 +159,7 @@ namespace cubload
   }
 
   void
-  handle_batch (std::string &class_line, std::string &batch, int &batch_id, batch_handler &handler)
+  handle_batch (std::string &class_line, std::string &batch, batch_id &id, batch_handler &handler)
   {
     if (batch.empty () || class_line.empty ())
       {
@@ -173,7 +173,7 @@ namespace cubload
     buffer.append ("\n");
     buffer.append (batch);
 
-    handler (buffer, ++batch_id);
+    handler (buffer, ++id);
 
     // prepare to start new batch for the class
     batch.clear ();

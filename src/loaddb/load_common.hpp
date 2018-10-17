@@ -33,6 +33,7 @@
 namespace cubload
 {
 
+  using batch_id = int;
   using batch_handler = std::function<void (std::string &, int)>;
 
   /*
@@ -313,7 +314,7 @@ namespace cubload
   /*
    * A wrapper function for calling batch handler. Used by split function and does some extra checks
    */
-  void handle_batch (std::string &class_line, std::string &batch, int &batch_id, batch_handler &handler);
+  void handle_batch (std::string &class_line, std::string &batch, batch_id &id, batch_handler &handler);
 
   /*
    * Check if a given string starts with a given prefix
