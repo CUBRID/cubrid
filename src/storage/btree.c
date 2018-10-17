@@ -33471,7 +33471,7 @@ btree_key_online_index_IB_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
     }
 end:
 
-  if (error_code == NO_ERROR)
+  if (error_code == NO_ERROR && BTREE_IS_UNIQUE (btid_int->unique_pk))
     {
       logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, n_keys, n_oids, 0, false);
     }
@@ -33660,7 +33660,7 @@ btree_key_online_index_tran_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	    btree_key_append_object_non_unique (thread_p, btid_int, key, *leaf_page, search_key, &new_record,
 						offset_after_key, &leaf_info, &helper->insert_helper.obj_info,
 						&helper->insert_helper);
-	  if (error_code == NO_ERROR)
+	  if (error_code == NO_ERROR && BTREE_IS_UNIQUE (btid_int->unique_pk))
 	    {
 	      // Append a single object.
 	      logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, 0, 1, 0, false);
@@ -33673,7 +33673,7 @@ btree_key_online_index_tran_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int
     {
       /* Key was not found, we must insert it. */
       error_code = btree_key_insert_new_key (thread_p, btid_int, key, *leaf_page, &helper->insert_helper, search_key);
-      if (error_code == NO_ERROR)
+      if (error_code == NO_ERROR && BTREE_IS_UNIQUE (btid_int->unique_pk))
 	{
 	  /* Insert a key with an object. */
 	  logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, 1, 1, 0, false);
@@ -33880,7 +33880,7 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 		}
 	      n_oids = -1;
 
-	      if (error_code == NO_ERROR)
+	      if (error_code == NO_ERROR && BTREE_IS_UNIQUE (btid_int->unique_pk))
 		{
 		  logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, n_keys, n_oids, 0, false);
 		}
@@ -33926,7 +33926,7 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 
       n_oids = 1;
 
-      if (error_code == NO_ERROR)
+      if (error_code == NO_ERROR && BTREE_IS_UNIQUE (btid_int->unique_pk))
 	{
 	  logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, n_keys, n_oids, 0, false);
 	}
@@ -34095,7 +34095,7 @@ btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_
 					 &leaf_info, offset_after_key, search_key, &page_found, prev_page, node_type,
 					 offset_to_object);
 
-	      if (error_code == NO_ERROR)
+	      if (error_code == NO_ERROR && BTREE_IS_UNIQUE (btid_int->unique_pk))
 		{
 		  logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, n_keys, n_oids, 0, false);
 		}
@@ -34163,7 +34163,7 @@ btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_
 						offset_after_key, &leaf_info, &helper->insert_helper.obj_info,
 						&helper->insert_helper);
 
-	  if (error_code == NO_ERROR)
+	  if (error_code == NO_ERROR && BTREE_IS_UNIQUE (btid_int->unique_pk))
 	    {
 	      logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, 0, 1, 0, false);
 	    }
@@ -34176,7 +34176,7 @@ btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_
       helper->insert_helper.obj_info.mvcc_info.flags |= BTREE_OID_HAS_MVCC_INSID;
       btree_online_index_set_delete_flag_state (helper->insert_helper.obj_info.mvcc_info.insert_mvccid);
       error_code = btree_key_insert_new_key (thread_p, btid_int, key, *leaf_page, &helper->insert_helper, search_key);
-      if (error_code == NO_ERROR)
+      if (error_code == NO_ERROR && BTREE_IS_UNIQUE (btid_int->unique_pk))
 	{
 	  logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, 1, 1, 0, false);
 	}
@@ -34815,11 +34815,6 @@ btree_get_class_oid_of_unique_btid (THREAD_ENTRY * thread_p, BTID * btid, OID * 
       /* Copy the class oid */
       COPY_OID (class_oid, &root_header->topclass_oid);
     }
-  else
-    {
-      /* If it is not a unique index, we set class_oid to NULL so we can skip this index later. */
-      OID_SET_NULL (class_oid);
-    }
 
   if (root_page != NULL)
     {
@@ -34841,6 +34836,7 @@ btree_is_btid_online_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID * bti
 
   if (rep == NULL)
     {
+      assert (false);
       return false;
     }
 

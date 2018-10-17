@@ -357,7 +357,7 @@ static void log_tran_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 static void log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_END * sysop_end,
 				   int data_size, const char *data);
 
-static int logtb_tran_update_delta_hash_func_online_index (THREAD_ENTRY * thread_p, void *data, void *args);
+static int logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, void *args);
 
 #if defined(SERVER_MODE)
 // *INDENT-OFF*
@@ -10847,8 +10847,7 @@ log_update_global_btid_online_index_stats (THREAD_ENTRY * thread_p)
     }
 
   error_code =
-    mht_map_no_key (thread_p, tdes->log_upd_stats.unique_stats_hash, logtb_tran_update_delta_hash_func_online_index,
-		    thread_p);
+    mht_map_no_key (thread_p, tdes->log_upd_stats.unique_stats_hash, logtb_tran_update_stats_online_index_rb, thread_p);
 
   if (error_code != NO_ERROR)
     {
@@ -10856,9 +10855,18 @@ log_update_global_btid_online_index_stats (THREAD_ENTRY * thread_p)
     }
 }
 
+/*
+ *  logtb_tran_update_stats_online_index_rb     - Updates statistics during an online index when a transaction
+ *                                                gets rollbacked.
+ *
+ *  TODO: This can be easily optimized since it is slow. Try to find a better approach!
+ */
 static int
-logtb_tran_update_delta_hash_func_online_index (THREAD_ENTRY * thread_p, void *data, void *args)
+logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, void *args)
 {
+  /*  This is called only during a rollback on a transaction that has updated an index which was under 
+   *  online loading.
+   */
   LOG_TRAN_BTID_UNIQUE_STATS *unique_stats = (LOG_TRAN_BTID_UNIQUE_STATS *) data;
   int error_code = NO_ERROR;
   OID class_oid;
@@ -10874,14 +10882,11 @@ logtb_tran_update_delta_hash_func_online_index (THREAD_ENTRY * thread_p, void *d
   error_code = btree_get_class_oid_of_unique_btid (thread_p, &unique_stats->btid, &class_oid);
   if (error_code != NO_ERROR)
     {
+      assert (false);
       return error_code;
     }
 
-  if (OID_ISNULL (&class_oid))
-    {
-      /* The index is not unique so we can safely skip it. */
-      return NO_ERROR;
-    }
+  assert (!OID_ISNULL (&class_oid));
 
   if (!btree_is_btid_online_index (thread_p, &class_oid, &unique_stats->btid))
     {
@@ -10893,7 +10898,7 @@ logtb_tran_update_delta_hash_func_online_index (THREAD_ENTRY * thread_p, void *d
   error_code =
     logtb_update_global_unique_stats_by_delta (thread_p, &unique_stats->btid, unique_stats->tran_stats.num_oids,
 					       unique_stats->tran_stats.num_nulls, unique_stats->tran_stats.num_keys,
-					       true);
+					       false);
 
   return error_code;
 }
