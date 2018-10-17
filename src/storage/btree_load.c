@@ -4370,6 +4370,8 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   int ret = NO_ERROR;
   LOCK old_lock = SCH_M_LOCK;
   LOCK new_lock = IX_LOCK;
+  bool scan_cache_inited = false;
+  bool attr_info_inited = false;
 
   func_index_info.expr = NULL;
 
@@ -4379,8 +4381,6 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BTREE_LOAD_FAILED, 0);
       return NULL;
     }
-
-  thread_p->push_resource_tracks ();
 
   btid_int.sys_btid = btid;
   btid_int.unique_pk = unique_pk;
@@ -4448,11 +4448,13 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
     {
       goto error;
     }
+  scan_cache_inited = true;
 
   if (heap_attrinfo_start (thread_p, &class_oids[cur_class], n_attrs, &attr_ids[attr_offset], &attr_info) != NO_ERROR)
     {
       goto error;
     }
+  attr_info_inited = true;
 
   if (filter_pred != NULL)
     {
@@ -4485,7 +4487,7 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
       goto error;
     }
 
-  /* Assign the snapshot to the sort_args. */
+  /* Assign the snapshot to the scan_cache. */
   scan_cache.mvcc_snapshot = builder_snapshot;
 
   /* Demote the lock. */
@@ -4506,14 +4508,43 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   /* Promote the lock to SCH_M_LOCK */
   if (lock_object (thread_p, class_oids, oid_Root_class_oid, SCH_M_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
     {
-      /* We should always acquire the lock.  */
-      // FIXME - What will happen lock timeout??
-      assert (false);
       goto error;
     }
 
-  heap_attrinfo_clear_dbvalues (&attr_info);
-  heap_attrinfo_end (thread_p, &attr_info);
+  if (BTREE_IS_UNIQUE (unique_pk))
+    {
+      /* Check if we have a unique constraint violation for unique indexes. */
+      ret = btree_online_index_check_unique_constraint (thread_p, btid);
+      if (ret != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  btid = NULL;
+	  goto error;
+	}
+    }
+
+  /* Clear memory structures. */
+  if (attr_info_inited)
+    {
+      heap_attrinfo_end (thread_p, &attr_info);
+
+      if (filter_pred)
+	{
+	  heap_attrinfo_end (thread_p, filter_pred->cache_pred);
+	}
+      if (func_index_info.expr)
+	{
+	  heap_attrinfo_end (thread_p, ((FUNC_PRED *) (&func_index_info.expr))->cache_attrinfo);
+	}
+
+      attr_info_inited = false;
+    }
+
+  if (scan_cache_inited)
+    {
+      heap_scancache_end (thread_p, &scan_cache);
+      scan_cache_inited = false;
+    }
 
   /* Verify the tree. */
   btree_verify_tree (thread_p, &class_oids[0], &btid_int, bt_name);
@@ -4538,8 +4569,6 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
       db_private_free_and_init (thread_p, func_unpack_info);
     }
 
-  thread_p->pop_resource_tracks ();
-
   LOG_CS_ENTER (thread_p);
   logpb_flush_pages_direct (thread_p);
   LOG_CS_EXIT (thread_p);
@@ -4554,7 +4583,47 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   return btid;
 
 error:
-  // TODO: error handling
+  if (attr_info_inited)
+    {
+      heap_attrinfo_end (thread_p, &attr_info);
+
+      if (filter_pred)
+	{
+	  heap_attrinfo_end (thread_p, filter_pred->cache_pred);
+	}
+      if (func_index_info.expr)
+	{
+	  heap_attrinfo_end (thread_p, ((FUNC_PRED *) (&func_index_info.expr))->cache_attrinfo);
+	}
+
+      attr_info_inited = false;
+    }
+
+  if (scan_cache_inited)
+    {
+      heap_scancache_end (thread_p, &scan_cache);
+      scan_cache_inited = false;
+    }
+
+  if (filter_pred != NULL)
+    {
+      /* to clear db values from dbvalue regu variable */
+      qexec_clear_pred_context (thread_p, filter_pred, true);
+
+      if (filter_pred->unpack_info != NULL)
+	{
+	  stx_free_additional_buff (thread_p, filter_pred->unpack_info);
+	  stx_free_xasl_unpack_info (filter_pred->unpack_info);
+	  db_private_free_and_init (thread_p, filter_pred->unpack_info);
+	}
+    }
+
+  if (func_unpack_info != NULL)
+    {
+      stx_free_additional_buff (thread_p, func_unpack_info);
+      stx_free_xasl_unpack_info (func_unpack_info);
+      db_private_free_and_init (thread_p, func_unpack_info);
+    }
 
   /* Invalidate snapshot. */
   if (builder_snapshot != NULL)
@@ -4576,7 +4645,6 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
   RECDES cur_record;
   int cur_class;
   SCAN_CODE sc;
-  MVCC_REC_HEADER mvcc_header;
   FUNCTION_INDEX_INFO *p_func_idx_info;
   PR_EVAL_FNC filter_eval_fnc;
   DB_TYPE single_node_type = DB_TYPE_NULL;
@@ -4625,13 +4693,6 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
       /* Make sure the scan was a success. */
       assert (sc == S_SUCCESS);
       assert (!OID_ISNULL (&cur_oid));
-
-      /* Get the MVCC header. */
-      ret = or_mvcc_get_header (&cur_record, &mvcc_header);
-      if (ret != NO_ERROR)
-	{
-	  return ret;
-	}
 
       if (filter_pred)
 	{
@@ -4688,13 +4749,9 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 	  break;
 	}
 
-      /* Clear mvcc flags. */
-      mvcc_header.mvcc_flag &= 0;
-
       /* Dispatch the insert operation */
-      ret =
-	btree_online_index_dispatcher (thread_p, btid_int->sys_btid, p_dbvalue, &class_oids[cur_class], &cur_oid,
-				       &unique, BTREE_OP_ONLINE_INDEX_IB_INSERT, NULL);
+      ret = btree_online_index_dispatcher (thread_p, btid_int->sys_btid, p_dbvalue, &class_oids[cur_class], &cur_oid,
+					   &unique, BTREE_OP_ONLINE_INDEX_IB_INSERT, NULL);
       if (ret != NO_ERROR)
 	{
 	  break;

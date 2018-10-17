@@ -398,7 +398,7 @@ static int sm_drop_cascade_foreign_key (SM_CLASS * class_);
 static char *sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, const char **att_names,
 					 const int *asc_desc);
 
-static int sm_load_online_index (SM_TEMPLATE * template_, MOP * classmop, const char *constraint_name);
+static int sm_load_online_index (MOP classmop, const char *constraint_name);
 
 static const char *sm_locate_method_file (SM_CLASS * class_, const char *function);
 
@@ -14688,6 +14688,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	}
 
       needs_hierarchy_lock = DB_IS_CONSTRAINT_UNIQUE_FAMILY (constraint_type);
+      /* This one frees the template inside!!! */
       error = sm_update_class_with_auth (def, &newmop, auth, needs_hierarchy_lock);
       if (error != NO_ERROR)
 	{
@@ -14698,10 +14699,9 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
       if (index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
 	{
 	  // Load index phase.
-	  error = sm_load_online_index (def, &newmop, constraint_name);
+	  error = sm_load_online_index (newmop, constraint_name);
 	  if (error != NO_ERROR)
 	    {
-	      smt_quit (def);
 	      return error;
 	    }
 
@@ -14733,6 +14733,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	    }
 
 	  /* Update the class now. */
+	  /* This one frees the template inside!!! */
 	  error = sm_update_class_with_auth (def, &newmop, auth, needs_hierarchy_lock);
 	  if (error != NO_ERROR)
 	    {
@@ -16391,7 +16392,7 @@ sm_stats_remove_bt_stats_at_position (ATTR_STATS * attr_stats, int position)
 }
 
 int
-sm_load_online_index (SM_TEMPLATE * template_, MOP * classmop, const char *constraint_name)
+sm_load_online_index (MOP classmop, const char *constraint_name)
 {
   SM_CLASS *class_ = NULL;
   int error = NO_ERROR;
@@ -16405,9 +16406,10 @@ sm_load_online_index (SM_TEMPLATE * template_, MOP * classmop, const char *const
   OID *oids = NULL;
   HFID *hfids = NULL;
   int reverse;
+  int unique_pk = 0;
 
   /* Fetch the class. */
-  error = au_fetch_class (template_->op, &class_, AU_FETCH_UPDATE, AU_ALTER);
+  error = au_fetch_class (classmop, &class_, AU_FETCH_UPDATE, AU_ALTER);
   if (error != NO_ERROR)
     {
       goto error_return;
@@ -16511,7 +16513,7 @@ sm_load_online_index (SM_TEMPLATE * template_, MOP * classmop, const char *const
 
   /* Enter the base class information into the arrays */
   n_classes = 0;
-  COPY_OID (&oids[n_classes], WS_OID (*classmop));
+  COPY_OID (&oids[n_classes], WS_OID (classmop));
   for (i = 0; i < n_attrs; i++)
     {
       attr_ids[i] = con->attributes[i]->id;
@@ -16528,10 +16530,19 @@ sm_load_online_index (SM_TEMPLATE * template_, MOP * classmop, const char *const
       reverse = 0;
     }
 
+  if (con->type == SM_CONSTRAINT_UNIQUE || con->type == SM_CONSTRAINT_REVERSE_UNIQUE)
+    {
+      unique_pk = BTREE_CONSTRAINT_UNIQUE;
+    }
+  else if (con->type == SM_CONSTRAINT_PRIMARY_KEY)
+    {
+      unique_pk = BTREE_CONSTRAINT_UNIQUE | BTREE_CONSTRAINT_PRIMARY_KEY;
+    }
+
   if (con->func_index_info)
     {
       error = btree_load_index (&con->index_btid, constraint_name, domain, oids, n_classes, n_attrs, attr_ids,
-				(int *) con->attrs_prefix_length, hfids, 0, false, NULL,
+				(int *) con->attrs_prefix_length, hfids, unique_pk, false, NULL,
 				NULL, NULL, SM_GET_FILTER_PRED_STREAM (con->filter_predicate),
 				SM_GET_FILTER_PRED_STREAM_SIZE (con->filter_predicate),
 				con->func_index_info->expr_stream, con->func_index_info->expr_stream_size,
@@ -16541,7 +16552,7 @@ sm_load_online_index (SM_TEMPLATE * template_, MOP * classmop, const char *const
   else
     {
       error = btree_load_index (&con->index_btid, constraint_name, domain, oids, n_classes, n_attrs, attr_ids,
-				(int *) con->attrs_prefix_length, hfids, 0, false, NULL,
+				(int *) con->attrs_prefix_length, hfids, unique_pk, false, NULL,
 				NULL, NULL, SM_GET_FILTER_PRED_STREAM (con->filter_predicate),
 				SM_GET_FILTER_PRED_STREAM_SIZE (con->filter_predicate), NULL, -1, -1, -1,
 				con->index_status);
@@ -16571,7 +16582,6 @@ error_return:
     {
       free_and_init (hfids);
     }
-
 
   return error;
 }

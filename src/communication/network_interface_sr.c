@@ -3907,7 +3907,6 @@ sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int
     }
 
   ptr = or_unpack_int (ptr, &index_status);	/* Get index status. */
-
   if (index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
     {
       return_btid =
@@ -3924,6 +3923,7 @@ sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int
 			   fk_name, pred_stream, pred_stream_size, expr_stream, expr_stream_size, func_col_id,
 			   func_attr_index_start);
     }
+
   if (return_btid == NULL)
     {
       (void) return_error_to_client (thread_p, rid);

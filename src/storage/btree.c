@@ -1773,11 +1773,12 @@ static int btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT
 					       PAGE_PTR * leaf_page, BTREE_SEARCH_KEY_HELPER * search_key,
 					       bool * restart, void *other_args);
 
-static void btree_insert_helper_to_delete_helper (BTREE_INSERT_HELPER * insert_helper,
-						  BTREE_DELETE_HELPER * delete_helper);
-static void btree_delete_helper_to_insert_helper (BTREE_DELETE_HELPER * delete_helper,
-						  BTREE_INSERT_HELPER * insert_helper);
+static inline void btree_insert_helper_to_delete_helper (BTREE_INSERT_HELPER * insert_helper,
+							 BTREE_DELETE_HELPER * delete_helper);
+static inline void btree_delete_helper_to_insert_helper (BTREE_DELETE_HELPER * delete_helper,
+							 BTREE_INSERT_HELPER * insert_helper);
 
+static inline bool btree_is_online_index_loading (BTREE_OP_PURPOSE purpose);
 
 /*
  * btree_fix_root_with_info () - Fix b-tree root page and output its VPID, header and b-tree info if requested.
@@ -26244,7 +26245,8 @@ btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
 			  &insert_helper->printed_key_sha1);
     }
 
-  if (insert_helper->purpose == BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE)
+  if (insert_helper->purpose == BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE
+      || insert_helper->purpose == BTREE_OP_ONLINE_INDEX_UNDO_TRAN_DELETE)
     {
       /* Stop here. */
       /* Code after this: 1. Update unique statistics. In this case, they are updated by undone log records. 2. Create
@@ -26312,12 +26314,15 @@ btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
       else
 	{
 	  /* Update transactions collected statistics. */
-	  error_code =
-	    logtb_tran_update_unique_stats (thread_p, btid, increment_keys, increment_oids, increment_nulls, true);
-	  if (error_code != NO_ERROR)
+	  if (!btree_is_online_index_loading (insert_helper->purpose))
 	    {
-	      ASSERT_ERROR ();
-	      goto error;
+	      error_code =
+		logtb_tran_update_unique_stats (thread_p, btid, increment_keys, increment_oids, increment_nulls, true);
+	      if (error_code != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  goto error;
+		}
 	    }
 	}
     }
@@ -27347,7 +27352,8 @@ btree_key_insert_new_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE
   assert (insert_helper->rv_redo_data != NULL && insert_helper->rv_redo_data_ptr != NULL);
   assert (insert_helper->is_system_op_started == false);
 #if defined (SERVER_MODE)
-  assert (!BTREE_IS_UNIQUE (btid_int->unique_pk) || log_is_in_crash_recovery ()
+  assert ((btree_is_online_index_loading (insert_helper->purpose)) || !BTREE_IS_UNIQUE (btid_int->unique_pk)
+	  || log_is_in_crash_recovery ()
 	  || lock_has_lock_on_object (BTREE_INSERT_OID (insert_helper), BTREE_INSERT_CLASS_OID (insert_helper),
 				      logtb_get_current_tran_index (), X_LOCK) > 0);
 #endif /* SERVER_MODE */
@@ -28068,11 +28074,12 @@ btree_key_append_object_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB
   assert (leaf_record != NULL);
   assert (leaf_record_info != NULL);
   assert (offset_after_key > 0);
-  assert (insert_helper->purpose == BTREE_OP_INSERT_NEW_OBJECT);
+  assert (btree_is_insert_object_purpose (insert_helper->purpose));
   assert (insert_helper->rv_redo_data != NULL);
   assert (insert_helper->rv_keyval_data != NULL && insert_helper->rv_keyval_data_length > 0);
   assert (insert_helper->leaf_addr.offset != 0 && insert_helper->leaf_addr.pgptr == leaf);
-  assert (insert_helper->rcvindex == RVBT_MVCC_INSERT_OBJECT || insert_helper->rcvindex == RVBT_NON_MVCC_INSERT_OBJECT
+  assert (insert_helper->rcvindex == RVBT_MVCC_INSERT_OBJECT
+	  || insert_helper->rcvindex == RVBT_NON_MVCC_INSERT_OBJECT
 	  || insert_helper->rcvindex == RVBT_MVCC_INSERT_OBJECT_UNQ);
   assert (first_object != NULL && !OID_ISNULL (&first_object->oid));
 
@@ -29858,12 +29865,15 @@ btree_fix_root_for_delete (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
       else
 	{
 	  /* Save and log statistics changes. */
-	  error_code =
-	    logtb_tran_update_unique_stats (thread_p, btid, increment_keys, increment_oids, increment_nulls, true);
-	  if (error_code != NO_ERROR)
+	  if (!btree_is_online_index_loading (delete_helper->purpose))
 	    {
-	      ASSERT_ERROR ();
-	      return error_code;
+	      error_code =
+		logtb_tran_update_unique_stats (thread_p, btid, increment_keys, increment_oids, increment_nulls, true);
+	      if (error_code != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  return error_code;
+		}
 	    }
 	}
     }
@@ -33298,6 +33308,8 @@ btree_key_online_index_IB_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
   char rec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
   char new_rec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
   RECDES new_record;
+  int n_keys = 0;
+  int n_oids = 0;
 
   record.data = PTR_ALIGN (rec_buf, BTREE_MAX_ALIGN);
   record.area_size = IO_MAX_PAGE_SIZE;
@@ -33316,10 +33328,6 @@ btree_key_online_index_IB_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
   /* We are in leaf level now, and we must inspect if we have found the OID inside the key. */
   if (search_key->result == BTREE_KEY_FOUND)
     {
-      /* We search the key for the OID. If we find it, we should find it with DELETE_FLAG set, therefore we must
-       * delete it in place.
-       */
-
       /* Get the record. */
       if (spage_get_record (thread_p, *leaf_page, search_key->slotid, &record, COPY) != S_SUCCESS)
 	{
@@ -33340,12 +33348,13 @@ btree_key_online_index_IB_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
 
       error_code =
 	btree_find_oid_with_page_and_record (thread_p, btid_int, &helper->insert_helper.obj_info.oid, *leaf_page,
-					     helper->insert_helper.purpose, NULL, &record, &leaf_info, offset_after_key,
-					     &page_found, &prev_page, &offset_to_object, &btree_mvcc_info, &new_record);
+					     helper->insert_helper.purpose, NULL, &record, &leaf_info,
+					     offset_after_key, &page_found, &prev_page, &offset_to_object,
+					     &btree_mvcc_info, &new_record);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  return error_code;
+	  goto end;
 	}
 
       node_type = (page_found == *leaf_page) ? BTREE_LEAF_NODE : BTREE_OVERFLOW_NODE;
@@ -33361,7 +33370,7 @@ btree_key_online_index_IB_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
 
       if (offset_to_object != NOT_FOUND)
 	{
-	  /* Inspect the key and its MVCC_INFO. */
+	  /* Inspect the object and its MVCC_INFO. */
 	  /* This is the index builder, therefore if there is already an OID that matches the one that needs to be
 	   * inserted, then the already inserted one should have either DELETE_FLAG or INSERT_FLAG set.
 	   */
@@ -33394,7 +33403,7 @@ btree_key_online_index_IB_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
 		  /* Unexpected. */
 		  assert_release (false);
 		  error_code = ER_FAILED;
-		  return error_code;
+		  goto end;
 		}
 
 	      FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
@@ -33414,7 +33423,7 @@ btree_key_online_index_IB_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
 
 	      pgbuf_set_dirty (thread_p, page_found, DONT_FREE);
 
-	      return error_code;
+	      goto end;
 	    }
 	  else
 	    {
@@ -33423,22 +33432,32 @@ btree_key_online_index_IB_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
 	      btree_insert_helper_to_delete_helper (&helper->insert_helper, &helper->delete_helper);
 	      helper->delete_helper.purpose = BTREE_OP_ONLINE_INDEX_IB_DELETE;
 
+	      if (node_type == BTREE_LEAF_NODE
+		  && (btree_record_get_num_oids (thread_p, btid_int, &new_record, offset_after_key, node_type) == 1))
+		{
+		  /* Only one OID in the key, we will remove the key as well. */
+		  n_keys = -1;
+		}
+	      n_oids = -1;
+
 	      error_code =
 		btree_key_remove_object (thread_p, key, btid_int, &helper->delete_helper, *leaf_page, &record,
-					 &leaf_info, offset_after_key, search_key, &page_found, prev_page, node_type,
-					 offset_to_object);
-
-	      return error_code;
+					 &leaf_info, offset_after_key, search_key, &page_found, prev_page,
+					 node_type, offset_to_object);
+	      goto end;
 	    }
 	}
       else
 	{
 	  /* Key was found but the object wasn't. We must append the object to the current key. */
+
 	  /* Safeguards. */
 	  assert (search_key->result == BTREE_KEY_FOUND && offset_to_object == NOT_FOUND);
 
+	  n_oids = 1;
+
 	  error_code =
-	    btree_key_append_object_non_unique (thread_p, btid_int, key, page_found, search_key, &new_record,
+	    btree_key_append_object_non_unique (thread_p, btid_int, key, *leaf_page, search_key, &new_record,
 						offset_after_key, &leaf_info, &helper->insert_helper.obj_info,
 						&helper->insert_helper);
 	}
@@ -33446,7 +33465,16 @@ btree_key_online_index_IB_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
   else
     {
       /* Key was not found, we must insert it. */
+      n_keys = 1;
+      n_oids = 1;
+
       error_code = btree_key_insert_new_key (thread_p, btid_int, key, *leaf_page, &helper->insert_helper, search_key);
+    }
+
+end:
+  if (error_code == NO_ERROR && BTREE_IS_UNIQUE (btid_int->unique_pk))
+    {
+      logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, n_keys, n_oids, 0, false);
     }
 
   return error_code;
@@ -33634,12 +33662,25 @@ btree_key_online_index_tran_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	    btree_key_append_object_non_unique (thread_p, btid_int, key, *leaf_page, search_key, &new_record,
 						offset_after_key, &leaf_info, &helper->insert_helper.obj_info,
 						&helper->insert_helper);
+	  if (error_code == NO_ERROR && BTREE_IS_UNIQUE (btid_int->unique_pk))
+	    {
+	      // Append a single object.
+	      logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, 0, 1, 0, false);
+	    }
+
+	  return error_code;
 	}
     }
   else
     {
       /* Key was not found, we must insert it. */
       error_code = btree_key_insert_new_key (thread_p, btid_int, key, *leaf_page, &helper->insert_helper, search_key);
+      if (error_code == NO_ERROR && BTREE_IS_UNIQUE (btid_int->unique_pk))
+	{
+	  /* Insert a key with an object. */
+	  logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, 1, 1, 0, false);
+	}
+      return error_code;
     }
 
   return error_code;
@@ -33698,6 +33739,9 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
   char *rv_redo_data = PTR_ALIGN (rv_redo_data_buffer, BTREE_MAX_ALIGN);
   char *rv_redo_data_ptr = rv_redo_data;
   int rv_redo_data_length = 0;
+
+  int n_keys = 0;
+  int n_oids = 0;
 
   helper->delete_helper.rv_keyval_data = rv_undo_data_bufalign;
   if (helper->delete_helper.purpose == BTREE_OP_ONLINE_INDEX_TRAN_DELETE)
@@ -33829,6 +33873,20 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 		btree_key_remove_object (thread_p, key, btid_int, &helper->delete_helper, *leaf_page, &new_record,
 					 &leaf_info, offset_after_key, search_key, &page_found, prev_page, node_type,
 					 offset_to_object);
+
+	      if (node_type == BTREE_LEAF_NODE
+		  && (btree_record_get_num_oids (thread_p, btid_int, &new_record, offset_after_key, node_type) == 1))
+		{
+		  /* Only one OID in the key, we will remove the key as well. */
+		  n_keys = -1;
+		}
+	      n_oids = -1;
+
+	      if (error_code == NO_ERROR && BTREE_IS_UNIQUE (btid_int->unique_pk))
+		{
+		  logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, n_keys, n_oids, 0, false);
+		}
+
 	      return error_code;
 	    }
 	}
@@ -33841,7 +33899,10 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
   /*  We did not find the object. We have to check if there is enough space in the leaf for the object. If there is,
    *  we insert it in place without any restarts.
    */
+
   btree_delete_helper_to_insert_helper (&helper->delete_helper, &helper->insert_helper);
+  helper->insert_helper.purpose = BTREE_OP_ONLINE_INDEX_TRAN_INSERT;
+
   if (!btree_key_insert_does_leaf_need_split (thread_p, btid_int, *leaf_page, &helper->insert_helper, search_key))
     {
       /* There is enough space. */
@@ -33853,8 +33914,6 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
       helper->insert_helper.purpose = BTREE_OP_ONLINE_INDEX_TRAN_INSERT_DF;
       if (search_key->result == BTREE_KEY_FOUND)
 	{
-	  /* We found the key, but not the object. We append the object at the end of the key. */
-	  assert (search_key->result == BTREE_KEY_FOUND && offset_to_object == NOT_FOUND);
 	  error_code =
 	    btree_key_append_object_non_unique (thread_p, btid_int, key, *leaf_page, search_key, &new_record,
 						offset_after_key, &leaf_info, &helper->insert_helper.obj_info,
@@ -33862,8 +33921,16 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	}
       else
 	{
-	  error_code =
-	    btree_key_insert_new_key (thread_p, btid_int, key, *leaf_page, &helper->insert_helper, search_key);
+	  error_code = btree_key_insert_new_key (thread_p, btid_int, key, *leaf_page, &helper->insert_helper,
+						 search_key);
+	  n_keys = 1;
+	}
+
+      n_oids = 1;
+
+      if (error_code == NO_ERROR && BTREE_IS_UNIQUE (btid_int->unique_pk))
+	{
+	  logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, n_keys, n_oids, 0, false);
 	}
 
       return error_code;
@@ -33926,6 +33993,9 @@ btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_
   char *rv_redo_data = PTR_ALIGN (rv_redo_data_buffer, BTREE_MAX_ALIGN);
   char *rv_redo_data_ptr = rv_redo_data;
   int rv_redo_data_length = 0;
+
+  int n_keys = 0;
+  int n_oids = 0;
 
   /* Save the key for undo process. */
   helper->insert_helper.rv_keyval_data = rv_undo_data_bufalign;
@@ -34014,10 +34084,23 @@ btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_
 
 	      helper->delete_helper.purpose = BTREE_OP_ONLINE_INDEX_TRAN_DELETE;
 
+	      if (node_type == BTREE_LEAF_NODE
+		  && (btree_record_get_num_oids (thread_p, btid_int, &new_record, offset_after_key, node_type) == 1))
+		{
+		  /* Only one OID in the key, we will remove the key as well. */
+		  n_keys = -1;
+		}
+	      n_oids = -1;
+
 	      error_code =
 		btree_key_remove_object (thread_p, key, btid_int, &helper->delete_helper, *leaf_page, &record,
 					 &leaf_info, offset_after_key, search_key, &page_found, prev_page, node_type,
 					 offset_to_object);
+
+	      if (error_code == NO_ERROR && BTREE_IS_UNIQUE (btid_int->unique_pk))
+		{
+		  logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, n_keys, n_oids, 0, false);
+		}
 	      return error_code;
 	    }
 	  else
@@ -34081,6 +34164,11 @@ btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_
 	    btree_key_append_object_non_unique (thread_p, btid_int, key, *leaf_page, search_key, &new_record,
 						offset_after_key, &leaf_info, &helper->insert_helper.obj_info,
 						&helper->insert_helper);
+
+	  if (error_code == NO_ERROR && BTREE_IS_UNIQUE (btid_int->unique_pk))
+	    {
+	      logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, 0, 1, 0, false);
+	    }
 	}
     }
   else
@@ -34089,7 +34177,12 @@ btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_
       /* We have to insert it with DELETE_FLAG set. */
       helper->insert_helper.obj_info.mvcc_info.flags |= BTREE_OID_HAS_MVCC_INSID;
       btree_online_index_set_delete_flag_state (helper->insert_helper.obj_info.mvcc_info.insert_mvccid);
+
       error_code = btree_key_insert_new_key (thread_p, btid_int, key, *leaf_page, &helper->insert_helper, search_key);
+      if (error_code == NO_ERROR && BTREE_IS_UNIQUE (btid_int->unique_pk))
+	{
+	  logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, 1, 1, 0, false);
+	}
     }
 
   return error_code;
@@ -34597,7 +34690,7 @@ btree_rv_keyval_undo_online_index_tran_insert (THREAD_ENTRY * thread_p, LOG_RCV 
   return NO_ERROR;
 }
 
-static void
+void
 btree_insert_helper_to_delete_helper (BTREE_INSERT_HELPER * insert_helper, BTREE_DELETE_HELPER * delete_helper)
 {
   /* oid, classoid and mvcc info */
@@ -34627,7 +34720,7 @@ btree_insert_helper_to_delete_helper (BTREE_INSERT_HELPER * insert_helper, BTREE
   delete_helper->printed_key_sha1 = insert_helper->printed_key_sha1;
 }
 
-static void
+void
 btree_delete_helper_to_insert_helper (BTREE_DELETE_HELPER * delete_helper, BTREE_INSERT_HELPER * insert_helper)
 {
   /* oid, classoid and mvcc info */
@@ -34655,4 +34748,112 @@ btree_delete_helper_to_insert_helper (BTREE_DELETE_HELPER * delete_helper, BTREE
   insert_helper->log_operations = delete_helper->log_operations;
   insert_helper->printed_key = delete_helper->printed_key;
   insert_helper->printed_key_sha1 = delete_helper->printed_key_sha1;
+
+}
+
+static inline bool
+btree_is_online_index_loading (BTREE_OP_PURPOSE purpose)
+{
+  switch (purpose)
+    {
+    case BTREE_OP_ONLINE_INDEX_IB_INSERT:
+    case BTREE_OP_ONLINE_INDEX_IB_DELETE:
+    case BTREE_OP_ONLINE_INDEX_TRAN_INSERT:
+    case BTREE_OP_ONLINE_INDEX_TRAN_INSERT_DF:
+    case BTREE_OP_ONLINE_INDEX_TRAN_DELETE:
+    case BTREE_OP_ONLINE_INDEX_UNDO_TRAN_DELETE:
+    case BTREE_OP_ONLINE_INDEX_UNDO_TRAN_INSERT:
+      return true;
+    default:
+      return false;
+    }
+
+  return false;
+}
+
+int
+btree_online_index_check_unique_constraint (THREAD_ENTRY * thread_p, BTID * btid)
+{
+  int ret = NO_ERROR;
+  int g_num_oids = 0, g_num_nulls = 0, g_num_keys = 0;
+  LOG_TRAN_BTID_UNIQUE_STATS *unique_stats = logtb_tran_find_btid_stats (thread_p, btid, true);
+
+  if (unique_stats == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  ret = logtb_get_global_unique_stats (thread_p, btid, &g_num_oids, &g_num_nulls, &g_num_keys);
+  if (ret != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return ret;
+    }
+
+  if ((g_num_oids + unique_stats->tran_stats.num_oids) != (g_num_keys + unique_stats->tran_stats.num_keys))
+    {
+      /* Unique constraint violation. */
+      BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_p, NULL, NULL, NULL, btid, NULL);
+      return ER_BTREE_UNIQUE_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+int
+btree_get_class_oid_of_unique_btid (THREAD_ENTRY * thread_p, BTID * btid, OID * class_oid)
+{
+  PAGE_PTR root_page;
+  BTREE_ROOT_HEADER *root_header = NULL;
+
+  OID_SET_NULL (class_oid);
+
+  root_page = btree_fix_root_with_info (thread_p, btid, PGBUF_LATCH_READ, NULL, &root_header, NULL);
+  if (root_page == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  if (BTREE_IS_UNIQUE (root_header->unique_pk))
+    {
+      /* Copy the class oid */
+      COPY_OID (class_oid, &root_header->topclass_oid);
+    }
+
+  pgbuf_unfix_and_init (thread_p, root_page);
+
+  return NO_ERROR;
+}
+
+bool
+btree_is_btid_online_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid)
+{
+  OR_CLASSREP *rep = NULL;
+  int idx_incache = -1;
+  bool result = false;
+  int i;
+
+  rep = heap_classrepr_get (thread_p, class_oid, NULL, NULL_REPRID, &idx_incache);
+  if (rep == NULL)
+    {
+      assert (false);
+      return false;
+    }
+
+  /* Iterate through indexes of current class_oid and check if the one matching the btid is an online one. */
+  for (i = 0; i < rep->n_indexes; i++)
+    {
+      if (BTID_IS_EQUAL (btid, &rep->indexes[i].btid))
+	{
+	  if (rep->indexes[i].index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+	    {
+	      result = true;
+	    }
+	  break;
+	}
+    }
+
+  heap_classrepr_free_and_init (rep, &idx_incache);
+
+  return result;
 }
