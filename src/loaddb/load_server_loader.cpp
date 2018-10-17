@@ -235,7 +235,7 @@ namespace cubload
   void
   server_loader::process_line (constant_type *cons)
   {
-    if (m_session.aborted ())
+    if (m_session.is_aborted ())
       {
 	return;
       }
@@ -387,7 +387,7 @@ namespace cubload
   void
   server_loader::finish_line ()
   {
-    if (m_session.aborted () || !m_scancache_started)
+    if (m_session.is_aborted () || !m_scancache_started)
       {
 	return;
       }

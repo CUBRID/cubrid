@@ -27,6 +27,7 @@
 #include "load_common.hpp"
 #include "load_driver.hpp"
 #include "log_impl.h"
+#include "thread_entry_task.hpp"
 #include "xserver_interface.h"
 
 #include <cassert>
@@ -35,68 +36,144 @@
 namespace cubload
 {
 
-  load_worker::load_worker (std::string &batch, int batch_id, session &session, css_conn_entry conn_entry)
-    : m_batch (std::move (batch))
-    , m_batch_id (batch_id)
-    , m_session (session)
-    , m_conn_entry (conn_entry)
+  /*
+   * cubload::loaddb_worker_context_manager
+   *    extends cubthread::entry_manager
+   *
+   * description
+   *    Thread entry manager for loaddb worker pool. Main functionality of the entry manager is to keep a pool of
+   *    cubload::driver instances.
+   *      on_create - a driver instance is claimed from the pool and assigned on thread ref
+   *      on_retire - previously stored driver in thread ref, is retired to the pool
+   */
+  class loaddb_worker_context_manager : public cubthread::entry_manager
   {
-    //
-  }
+    private:
+      session &m_session;
+      driver *m_drivers;
+      unsigned int m_pool_size;
+      resource_shared_pool<driver> *m_driver_pool;
 
-  void
-  load_worker::execute (cubthread::entry &thread_ref)
+    public:
+      loaddb_worker_context_manager (session &session, unsigned int pool_size)
+	: m_session (session)
+	, m_drivers (NULL)
+	, m_pool_size (pool_size)
+	, m_driver_pool (NULL)
+      {
+	void *raw_memory = operator new[] (pool_size * sizeof (driver));
+	m_drivers = static_cast<driver *> (raw_memory);
+
+	for (unsigned int i = 0; i < pool_size; ++i)
+	  {
+	    new (&m_drivers[i]) driver (session);
+	  }
+
+	m_driver_pool = new resource_shared_pool<driver> (m_drivers, pool_size);
+      }
+
+      ~loaddb_worker_context_manager () override
+      {
+	delete m_driver_pool;
+
+	for (unsigned int i = 0; i < m_pool_size; ++i)
+	  {
+	    m_drivers[i].~driver ();
+	  }
+
+	operator delete[] (m_drivers);
+      }
+
+      void on_create (cubthread::entry &context) final
+      {
+	context.m_loaddb_driver = m_driver_pool->claim ();
+      }
+
+      void on_retire (cubthread::entry &context) final
+      {
+	if (context.m_loaddb_driver != NULL)
+	  {
+	    m_driver_pool->retire (*context.m_loaddb_driver);
+	    context.m_loaddb_driver = NULL;
+	  }
+	else
+	  {
+	    m_session.abort ();
+	    assert (false);
+	  }
+      }
+  };
+
+  /*
+   * cubload::load_worker
+   *    extends cubthread::entry_task
+   *
+   * description
+   *    Loaddb worker thread task, which does parsing and inserting of data rows within a transaction
+   */
+  class load_worker : public cubthread::entry_task
   {
-    if (m_session.aborted ())
+    private:
+      std::string m_batch;
+      batch_id m_batch_id;
+
+      session &m_session;
+      css_conn_entry m_conn_entry;
+
+    public:
+      load_worker () = delete; // Default c-tor: deleted.
+
+      load_worker (std::string &batch, batch_id id, session &session, css_conn_entry conn_entry)
+	: m_batch (std::move (batch))
+	, m_batch_id (id)
+	, m_session (session)
+	, m_conn_entry (conn_entry)
       {
-	return;
+	//
       }
 
-    driver *driver = m_session.m_driver_pool->claim ();
-    if (driver == NULL)
+      void execute (cubthread::entry &thread_ref) final
       {
-	m_session.abort ();
-	assert (false);
-	return;
+	if (m_session.is_aborted ())
+	  {
+	    return;
+	  }
+
+	// save connection entry
+	thread_ref.conn_entry = &m_conn_entry;
+
+	logtb_assign_tran_index (&thread_ref, NULL_TRANID, TRAN_ACTIVE, NULL, NULL, TRAN_LOCK_INFINITE_WAIT,
+				 TRAN_DEFAULT_ISOLATION_LEVEL ());
+
+	// start parsing
+	std::istringstream iss (m_batch);
+	int ret = thread_ref.m_loaddb_driver->parse (iss); // parse documentation says that 0 is returned if parsing succeeds
+
+	if (m_session.is_aborted () || ret != 0 || er_errid_if_has_error () != NO_ERROR)
+	  {
+	    // if a batch transaction was aborted then abort entire loaddb session
+	    m_session.abort ();
+
+	    xtran_server_abort (&thread_ref);
+	  }
+	else
+	  {
+	    // order batch commits, therefore wait until previous batch is committed
+	    m_session.wait_for_previous_batch (m_batch_id);
+
+	    xtran_server_commit (&thread_ref, false);
+
+	    // TODO fix last_commit assignment
+	    //m_session.m_stats.last_commit = m_batch_id * m_session.m_batch_size;
+	  }
+
+	// free transaction index
+	logtb_free_tran_index (&thread_ref, thread_ref.tran_index);
+
+	// notify session that batch is done
+	m_session.notify_batch_done (m_batch_id);
       }
-
-    // save connection entry
-    thread_ref.conn_entry = &m_conn_entry;
-
-    logtb_assign_tran_index (&thread_ref, NULL_TRANID, TRAN_ACTIVE, NULL, NULL, TRAN_LOCK_INFINITE_WAIT,
-			     TRAN_DEFAULT_ISOLATION_LEVEL ());
-
-    // start parsing
-    std::istringstream iss (m_batch);
-    int ret = driver->parse (iss); // parse documentation says that 0 is returned if parsing succeeds
-
-    // once driver is not needed anymore, recycle it
-    m_session.m_driver_pool->retire (*driver);
-
-    if (m_session.aborted () || ret != 0 || er_errid_if_has_error () != NO_ERROR)
-      {
-	// if a batch transaction was aborted then abort entire loaddb session
-	m_session.abort ();
-
-	xtran_server_abort (&thread_ref);
-      }
-    else
-      {
-	// order batch commits, therefore wait until previous batch is committed
-	m_session.wait_for_previous_batch (m_batch_id);
-
-	xtran_server_commit (&thread_ref, false);
-
-	// TODO fix last_commit assignment
-	m_session.m_stats.last_commit = m_batch_id * m_session.m_batch_size;
-      }
-
-    // free transaction index
-    logtb_free_tran_index (&thread_ref, thread_ref.tran_index);
-
-    // notify session that batch is done
-    m_session.notify_batch_done (m_batch_id);
-  }
+  };
 
   session::session (SESSION_ID id)
     : m_commit_mutex ()
@@ -108,55 +185,37 @@ namespace cubload
     , m_last_batch_id {NULL_BATCH_ID}
     , m_max_batch_id {NULL_BATCH_ID}
     , m_worker_pool (NULL)
-    , m_drivers (NULL)
-    , m_driver_pool (NULL)
+    , m_wp_context_manager (NULL)
     , m_stats ()
     , m_pool_size (0)
   {
     m_pool_size = std::max<unsigned int> (2, std::thread::hardware_concurrency ()); // start at least 2 loaddb threads
 
-    void *raw_memory = operator new[] (m_pool_size * sizeof (driver));
-    m_drivers = static_cast<driver *> (raw_memory);
-
-    for (unsigned int i = 0; i < m_pool_size; ++i)
-      {
-	new (&m_drivers[i]) driver (*this);
-      }
-
-    m_driver_pool = new resource_shared_pool<driver> (m_drivers, m_pool_size);
-
     std::string worker_pool_name ("loaddb-workers_session-");
     worker_pool_name.append (std::to_string (id));
 
-    m_worker_pool = cubthread::get_manager ()->create_worker_pool (m_pool_size, m_pool_size,
-		    worker_pool_name.c_str (), NULL, 1, false, true);
+    m_wp_context_manager = new loaddb_worker_context_manager (*this, m_pool_size);
+    m_worker_pool = cubthread::get_manager ()->create_worker_pool (m_pool_size, m_pool_size, worker_pool_name.c_str (),
+		    m_wp_context_manager, 1, false, true);
   }
 
   session::~session ()
   {
-    m_worker_pool->stop_execution ();
     cubthread::get_manager ()->destroy_worker_pool (m_worker_pool);
-
-    delete m_driver_pool;
-
-    for (unsigned int i = 0; i < m_pool_size; ++i)
-      {
-	m_drivers[i].~driver ();
-      }
-    operator delete[] (m_drivers);
+    delete m_wp_context_manager;
   }
 
-  bool session::completed ()
+  bool session::is_completed ()
   {
     return m_last_batch_id == m_max_batch_id;
   }
 
   void
-  session::wait_for_previous_batch (const int batch_id)
+  session::wait_for_previous_batch (const batch_id id)
   {
-    auto pred = [this, &batch_id] { return aborted () || batch_id == (m_last_batch_id + 1); };
+    auto pred = [this, &id] { return is_aborted () || id == (m_last_batch_id + 1); };
 
-    if (batch_id == FIRST_BATCH_ID || pred ())
+    if (id == FIRST_BATCH_ID || pred ())
       {
 	return;
       }
@@ -168,7 +227,7 @@ namespace cubload
   void
   session::wait_for_completion ()
   {
-    auto pred = [this] { return aborted () || completed (); };
+    auto pred = [this] { return is_aborted () || is_completed (); };
 
     if (pred ())
       {
@@ -180,11 +239,11 @@ namespace cubload
   }
 
   void
-  session::notify_batch_done (int batch_id)
+  session::notify_batch_done (batch_id id)
   {
-    if (!aborted ())
+    if (!is_aborted ())
       {
-	m_last_batch_id = batch_id;
+	m_last_batch_id = id;
       }
 
     notify_waiting_threads ();
@@ -215,7 +274,7 @@ namespace cubload
   }
 
   bool
-  session::aborted ()
+  session::is_aborted ()
   {
     return m_aborted;
   }
@@ -234,26 +293,38 @@ namespace cubload
   }
 
   void
-  session::load_batch (cubthread::entry &thread_ref, std::string &batch, int batch_id)
+  session::load_batch (cubthread::entry &thread_ref, std::string &batch, batch_id id)
   {
-    m_max_batch_id.store (std::max (m_max_batch_id.load (), batch_id));
+    batch_id current_max_id;
+
+    do
+      {
+	current_max_id = m_max_batch_id.load ();
+	if (current_max_id >= id)
+	  {
+	    // max is already stored
+	    return;
+	  }
+      }
+    while (!m_max_batch_id.compare_exchange_strong (current_max_id, id));
 
     if (batch.empty ())
       {
 	// nothing to do, just notify that batch processing is done
-	notify_batch_done (batch_id);
+	notify_batch_done (id);
+	assert (false);
 	return;
       }
 
-    m_worker_pool->execute (new load_worker (batch, batch_id, *this, *thread_ref.conn_entry));
+    cubthread::get_manager ()->push_task (m_worker_pool, new load_worker (batch, id, *this, *thread_ref.conn_entry));
   }
 
   int
   session::load_file (cubthread::entry &thread_ref, std::string &file_name)
   {
-    batch_handler handler = [this, &thread_ref] (std::string &batch, int batch_id)
+    batch_handler handler = [this, &thread_ref] (std::string &batch, batch_id id)
     {
-      load_batch (thread_ref, batch, batch_id);
+      load_batch (thread_ref, batch, id);
     };
 
     return split (m_batch_size, file_name, handler);
@@ -262,7 +333,7 @@ namespace cubload
   stats
   session::get_stats ()
   {
-    m_stats.is_completed = completed ();
+    m_stats.is_completed = is_completed ();
     return m_stats;
   }
 

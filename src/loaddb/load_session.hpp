@@ -27,7 +27,6 @@
 #include "connection_defs.h"
 #include "load_server_loader.hpp"
 #include "resource_shared_pool.hpp"
-#include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
 #include "thread_worker_pool.hpp"
 
@@ -35,41 +34,17 @@
 #include <condition_variable>
 #include <mutex>
 
-#define NULL_BATCH_ID -1
-#define FIRST_BATCH_ID 1
-
-// alias declaration for functionality from session.{c|h}
+// alias declaration for legacy C files
 using loaddb_context = cubload::session;
 
 namespace cubload
 {
 
+  const batch_id NULL_BATCH_ID = -1;
+  const batch_id FIRST_BATCH_ID = 1;
+
   // forward declaration
   class driver;
-  class session;
-
-  /*
-  * cubload::load_worker
-  *    extends cubthread::entry_task
-  *
-  * description
-  *    Loaddb worker thread task, which does parsing and inserting of data rows within a transaction
-  */
-  class load_worker : public cubthread::entry_task
-  {
-    public:
-      load_worker () = delete; // Default c-tor: deleted.
-      load_worker (std::string &batch, int batch_id, session &session, css_conn_entry conn_entry);
-
-      void execute (context_type &thread_ref) final;
-
-    private:
-      std::string m_batch;
-      int m_batch_id;
-
-      session &m_session;
-      css_conn_entry m_conn_entry;
-  };
 
   /*
    * cubload::session
@@ -81,7 +56,7 @@ namespace cubload
    *        * load_batch: when loaddb object file exists only on client machine, then client must send over
    *                       the network batches from file and then these batches will be parsed by the server
    *
-   *    The file is splitted into batches or batches are received over the network, then each batch is delegated to a
+   *    The file is split into batches or batches are received over the network, then each batch is delegated to a
    *    worker thread from a internal worker pool. The worker thread does the scanning/parsing and inserting of the data
    *    Loaddb session is attached to database client session in session_state struct
    *
@@ -115,9 +90,9 @@ namespace cubload
        *    return: void
        *    thread_ref(in): thread entry
        *    batch(in)     : a batch from loaddb object
-       *    batch_id(in)  : id of the batch
+       *    id(in)        : id of the batch
        */
-      void load_batch (cubthread::entry &thread_ref, std::string &batch, int batch_id);
+      void load_batch (cubthread::entry &thread_ref, std::string &batch, batch_id id);
 
       /*
        * Load object file entirely on the the server
@@ -129,21 +104,19 @@ namespace cubload
       int load_file (cubthread::entry &thread_ref, std::string &file_name);
 
       void wait_for_completion ();
+      void wait_for_previous_batch (batch_id id);
+      void notify_batch_done (batch_id id);
 
       void abort ();
       void abort (std::string &&err_msg);
-      bool aborted ();
+      bool is_aborted ();
 
       stats get_stats ();
       void inc_total_objects ();
 
     private:
       void notify_waiting_threads ();
-      void notify_batch_done (int batch_id);
-      bool completed ();
-      void wait_for_previous_batch (int batch_id);
-
-      friend class load_worker;
+      bool is_completed ();
 
       std::mutex m_commit_mutex;
       std::condition_variable m_commit_cond_var;
@@ -154,13 +127,11 @@ namespace cubload
       std::atomic<bool> m_aborted;
 
       int m_batch_size;
-      std::atomic_int m_last_batch_id;
-      std::atomic_int m_max_batch_id;
+      std::atomic<batch_id> m_last_batch_id;
+      std::atomic<batch_id> m_max_batch_id;
 
       cubthread::entry_workpool *m_worker_pool;
-
-      driver *m_drivers;
-      resource_shared_pool<driver> *m_driver_pool;
+      cubthread::entry_manager *m_wp_context_manager;
 
       stats m_stats; // load db stats
 
