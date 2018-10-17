@@ -10840,7 +10840,6 @@ log_update_global_btid_online_index_stats (THREAD_ENTRY * thread_p)
 {
   LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
   int error_code = NO_ERROR;
-  bool old_check_interrupt;
 
   if (tdes == NULL)
     {
@@ -10855,7 +10854,6 @@ log_update_global_btid_online_index_stats (THREAD_ENTRY * thread_p)
     {
       assert (false);
     }
-
 }
 
 static int
