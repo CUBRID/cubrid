@@ -36,6 +36,53 @@ namespace cubreplication
 {
   static const char *repl_entry_type_str[] = { "update", "insert", "delete" };
 
+  static LC_COPYAREA_OPERATION
+  op_type_from_repl_type_and_prunning (repl_entry_type repl_type, DB_CLASS_PARTITION_TYPE prunning_type)
+  {
+    switch (repl_type)
+      {
+        case REPL_UPDATE:
+          if (prunning_type == DB_NOT_PARTITIONED_CLASS)
+            {
+              return LC_FLUSH_UPDATE;
+            }
+          else if (prunning_type == DB_PARTITIONED_CLASS)
+            {
+              return LC_FLUSH_UPDATE_PRUNE;
+            }
+          else
+            {
+              assert (prunning_type == DB_PARTITION_CLASS);
+              return LC_FLUSH_UPDATE_PRUNE_VERIFY;
+            }
+          break;
+
+        case REPL_INSERT:
+          if (prunning_type == DB_NOT_PARTITIONED_CLASS)
+            {
+              return LC_FLUSH_INSERT;
+            }
+          else if (prunning_type == DB_PARTITIONED_CLASS)
+            {
+              return LC_FLUSH_INSERT_PRUNE;
+            }
+          else
+            {
+              assert (prunning_type == DB_PARTITION_CLASS);
+              return LC_FLUSH_INSERT_PRUNE_VERIFY;
+            }
+          break;
+
+        case REPL_DELETE:
+          return LC_FLUSH_DELETE;
+
+        default:
+          assert (false);
+      }
+
+    return LC_FETCH;
+  }
+
   single_row_repl_entry::single_row_repl_entry (const repl_entry_type type, const char *class_name)
     : m_type (type),
       m_class_name (class_name)
@@ -62,13 +109,16 @@ namespace cubreplication
 #if defined (SERVER_MODE)
     assert (m_type == REPL_DELETE);
 
+    /* TODO : partition prunning  */
+    LC_COPYAREA_OPERATION op = op_type_from_repl_type_and_prunning (m_type, DB_NOT_PARTITIONED_CLASS);
+
     cubthread::entry &my_thread = cubthread::get_entry ();
 
     std::vector <int> dummy_int_vector;
-    std::vector <DB_VALUE *> dummy_val_vector;
+    std::vector <DB_VALUE> dummy_val_vector;
 
-    err = locator_repl_apply_rbr (&my_thread, LC_FLUSH_DELETE, m_class_name.c_str (), 0, &m_key_value,
-                                  dummy_int_vector, dummy_val_vector);
+    err = locator_repl_apply_rbr (&my_thread, op, m_class_name.c_str (), 0, &m_key_value,
+                                  dummy_int_vector, dummy_val_vector, NULL);
 #endif
     return err;
   }
@@ -277,10 +327,20 @@ namespace cubreplication
 
   int
   changed_attrs_row_repl_entry::apply (void)
-    {
-      /* TODO */
-      return NO_ERROR;
-    }
+  {
+    int err = NO_ERROR;
+#if defined (SERVER_MODE)
+
+    /* TODO : partition prunning  */
+    LC_COPYAREA_OPERATION op = op_type_from_repl_type_and_prunning (m_type, DB_NOT_PARTITIONED_CLASS);
+
+    cubthread::entry &my_thread = cubthread::get_entry ();
+
+    err = locator_repl_apply_rbr (&my_thread, op, m_class_name.c_str (), 0, &m_key_value,
+                                  m_changed_attributes, m_new_values, NULL);
+#endif
+    return err;
+  }
 
   int
   changed_attrs_row_repl_entry::pack (cubpacking::packer *serializator)
@@ -432,10 +492,24 @@ namespace cubreplication
 
   int
   rec_des_row_repl_entry::apply (void)
-    {
-      /* TODO */
-      return NO_ERROR;
-    }
+  {
+    int err = NO_ERROR;
+#if defined (SERVER_MODE)
+    assert (m_type == REPL_DELETE);
+
+    /* TODO : partition prunning  */
+    LC_COPYAREA_OPERATION op = op_type_from_repl_type_and_prunning (m_type, DB_NOT_PARTITIONED_CLASS);
+
+    cubthread::entry &my_thread = cubthread::get_entry ();
+
+    std::vector <int> dummy_int_vector;
+    std::vector <DB_VALUE> dummy_val_vector;
+
+    err = locator_repl_apply_rbr (&my_thread, op, m_class_name.c_str (), 0, &m_key_value,
+                                  dummy_int_vector, dummy_val_vector, &m_rec_des);
+#endif
+    return err;
+  }
 
   int
   rec_des_row_repl_entry::pack (cubpacking::packer *serializator)
