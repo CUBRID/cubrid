@@ -815,7 +815,8 @@ dwb_starts_structure_modification (THREAD_ENTRY * thread_p, UINT64 * current_pos
   while (!ATOMIC_CAS_64 (&dwb_Global.position_with_flags, local_current_position_with_flags, new_position_with_flags));
 
 #if defined(SERVER_MODE)
-  while (dwb_flush_block_daemon_is_running () || dwb_flush_block_helper_daemon_is_running ())
+  while ((ATOMIC_INC_32 (&dwb_Global.blocks_flush_counter, 0) > 0)
+	 || dwb_flush_block_daemon_is_running () || dwb_flush_block_helper_daemon_is_running ())
     {
       /* Can't modify structure while flush thread can access DWB. */
       thread_sleep (20);
