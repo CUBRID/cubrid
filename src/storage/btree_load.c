@@ -4449,11 +4449,13 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
       goto error;
     }
   scan_cache_inited = true;
+
   if (heap_attrinfo_start (thread_p, &class_oids[cur_class], n_attrs, &attr_ids[attr_offset], &attr_info) != NO_ERROR)
     {
       goto error;
     }
   attr_info_inited = true;
+
   if (filter_pred != NULL)
     {
       if (heap_attrinfo_start (thread_p, &class_oids[cur_class], filter_pred->num_attrs_pred,
@@ -4498,8 +4500,6 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   /* Start the online index builder. */
   ret = online_index_builder (thread_p, &btid_int, hfids, class_oids, n_classes, attr_ids, n_attrs,
 			      func_index_info, filter_pred, attrs_prefix_length, &attr_info, &scan_cache);
-
-
   if (ret != NO_ERROR)
     {
       goto error;
@@ -4508,9 +4508,6 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   /* Promote the lock to SCH_M_LOCK */
   if (lock_object (thread_p, class_oids, oid_Root_class_oid, SCH_M_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
     {
-      /* We should always acquire the lock.  */
-      // FIXME - What will happen lock timeout??
-      assert (false);
       goto error;
     }
 
@@ -4753,10 +4750,8 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 	}
 
       /* Dispatch the insert operation */
-      ret =
-	btree_online_index_dispatcher (thread_p, btid_int->sys_btid, p_dbvalue, &class_oids[cur_class], &cur_oid,
-				       &unique, BTREE_OP_ONLINE_INDEX_IB_INSERT, NULL);
-
+      ret = btree_online_index_dispatcher (thread_p, btid_int->sys_btid, p_dbvalue, &class_oids[cur_class], &cur_oid,
+					   &unique, BTREE_OP_ONLINE_INDEX_IB_INSERT, NULL);
       if (ret != NO_ERROR)
 	{
 	  break;
