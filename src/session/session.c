@@ -141,7 +141,7 @@ struct session_state
   TZ_REGION session_tz_region;
   int private_lru_index;
 
-  loaddb_context *loaddb_context_p;
+  load_session *load_session_p;
 };
 
 /* session state manipulation functions */
@@ -283,7 +283,7 @@ session_state_init (void *st)
   session_p->trace_format = QUERY_TRACE_TEXT;
   session_p->private_lru_index = -1;
   session_p->auto_commit = false;
-  session_p->loaddb_context_p = NULL;
+  session_p->load_session_p = NULL;
 
   return NO_ERROR;
 }
@@ -367,13 +367,13 @@ session_state_uninit (void *st)
 
 #if defined (SERVER_MODE)
   // on uninit abort and delete loaddb session
-  if (session->loaddb_context_p != NULL)
+  if (session->load_session_p != NULL)
     {
-      session->loaddb_context_p->abort ();
-      session->loaddb_context_p->wait_for_completion ();
+      session->load_session_p->abort ();
+      session->load_session_p->wait_for_completion ();
 
-      delete session->loaddb_context_p;
-      session->loaddb_context_p = NULL;
+      delete session->load_session_p;
+      session->load_session_p = NULL;
     }
 #endif
 
@@ -3174,7 +3174,7 @@ session_set_tran_auto_commit (THREAD_ENTRY * thread_p, bool auto_commit)
 }
 
 int
-session_set_loaddb_context (THREAD_ENTRY * thread_p, loaddb_context * context)
+session_set_load_session (THREAD_ENTRY * thread_p, load_session * load_session_p)
 {
   SESSION_STATE *state_p = NULL;
 
@@ -3184,13 +3184,13 @@ session_set_loaddb_context (THREAD_ENTRY * thread_p, loaddb_context * context)
       return ER_FAILED;
     }
 
-  state_p->loaddb_context_p = context;
+  state_p->load_session_p = load_session_p;
 
   return NO_ERROR;
 }
 
 int
-session_get_loaddb_context (THREAD_ENTRY * thread_p, REFPTR (loaddb_context, context))
+session_get_load_session (THREAD_ENTRY * thread_p, REFPTR (load_session, load_session_ref_ptr))
 {
   SESSION_STATE *state_p = NULL;
 
@@ -3200,7 +3200,7 @@ session_get_loaddb_context (THREAD_ENTRY * thread_p, REFPTR (loaddb_context, con
       return ER_FAILED;
     }
 
-  context = state_p->loaddb_context_p;
+  load_session_ref_ptr = state_p->load_session_p;
 
   return NO_ERROR;
 }

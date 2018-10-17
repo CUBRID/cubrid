@@ -9618,7 +9618,7 @@ sloaddb_init (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reql
   session_get_session_id (thread_p, &session_id);
 
   /* *INDENT-OFF* */
-  ret = session_set_loaddb_context (thread_p, new cubload::session (session_id));
+  ret = session_set_load_session (thread_p, new cubload::session (session_id));
   /* *INDENT-ON* */
 
   or_pack_int (reply, ret);
@@ -9640,7 +9640,7 @@ sloaddb_load_object_file (THREAD_ENTRY * thread_p, unsigned int rid, char *reque
   std::string object_file_name_str (object_file_name);
   /* *INDENT-ON* */
 
-  session_get_loaddb_context (thread_p, session);
+  session_get_load_session (thread_p, session);
   assert (session != NULL);
   ret = session->load_file (*thread_p, object_file_name_str);
 
@@ -9657,6 +9657,7 @@ sloaddb_load_batch (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
   char *ptr;
   char *batch;
   int batch_id;
+  int error = NO_ERROR;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
@@ -9668,13 +9669,13 @@ sloaddb_load_batch (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
   std::string batch_str (batch);
   /* *INDENT-ON* */
 
-  session_get_loaddb_context (thread_p, session);
+  session_get_load_session (thread_p, session);
   assert (session != NULL);
-  session->load_batch (*thread_p, batch_str, batch_id);
+  error = session->load_batch (*thread_p, batch_str, batch_id);
 
   db_private_free (thread_p, batch);
 
-  or_pack_int (reply, NO_ERROR);
+  or_pack_int (reply, error);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
@@ -9692,7 +9693,7 @@ sloaddb_fetch_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   cubload::session *session = NULL;
   /* *INDENT-ON* */
 
-  session_get_loaddb_context (thread_p, session);
+  session_get_load_session (thread_p, session);
   assert (session != NULL);
 
   /* *INDENT-OFF* */
@@ -9735,12 +9736,12 @@ sloaddb_destroy (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int r
   cubload::session *session = NULL;
   /* *INDENT-ON* */
 
-  session_get_loaddb_context (thread_p, session);
+  session_get_load_session (thread_p, session);
   assert (session != NULL);
 
   session->wait_for_completion ();
   delete session;
-  session_set_loaddb_context (thread_p, NULL);
+  session_set_load_session (thread_p, NULL);
 
   or_pack_int (reply, NO_ERROR);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));

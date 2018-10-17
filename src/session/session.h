@@ -81,6 +81,6 @@ extern int session_get_number_of_holdable_cursors (void);
 extern int session_get_private_lru_idx (const void *session_p);
 extern int session_set_tran_auto_commit (THREAD_ENTRY * thread_p, bool auto_commit);
 
-extern int session_set_loaddb_context (THREAD_ENTRY * thread_p, loaddb_context * context);
-extern int session_get_loaddb_context (THREAD_ENTRY * thread_p, REFPTR (loaddb_context, context));
+extern int session_set_load_session (THREAD_ENTRY * thread_p, load_session * load_session_p);
+extern int session_get_load_session (THREAD_ENTRY * thread_p, REFPTR (load_session, load_session_ref_ptr));
 #endif /* _SESSION_H_ */

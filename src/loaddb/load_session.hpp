@@ -24,9 +24,8 @@
 #ifndef _LOAD_SESSION_HPP_
 #define _LOAD_SESSION_HPP_
 
-#include "connection_defs.h"
-#include "load_server_loader.hpp"
-#include "resource_shared_pool.hpp"
+#include "dbtype_def.h"
+#include "load_common.hpp"
 #include "thread_manager.hpp"
 #include "thread_worker_pool.hpp"
 
@@ -34,17 +33,11 @@
 #include <condition_variable>
 #include <mutex>
 
-// alias declaration for legacy C files
-using loaddb_context = cubload::session;
-
 namespace cubload
 {
 
   const batch_id NULL_BATCH_ID = -1;
   const batch_id FIRST_BATCH_ID = 1;
-
-  // forward declaration
-  class driver;
 
   /*
    * cubload::session
@@ -87,12 +80,12 @@ namespace cubload
       /*
        * Load a batch from object file on the the server
        *
-       *    return: void
+       *    return: NO_ERROR in case of success or a error code in case of failure.
        *    thread_ref(in): thread entry
        *    batch(in)     : a batch from loaddb object
        *    id(in)        : id of the batch
        */
-      void load_batch (cubthread::entry &thread_ref, std::string &batch, batch_id id);
+      int load_batch (cubthread::entry &thread_ref, std::string &batch, batch_id id);
 
       /*
        * Load object file entirely on the the server
@@ -139,5 +132,8 @@ namespace cubload
   };
 
 } // namespace cubload
+
+// alias declaration for legacy C files
+using load_session = cubload::session;
 
 #endif /* _LOAD_SESSION_HPP_ */

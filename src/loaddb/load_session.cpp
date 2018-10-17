@@ -23,10 +23,11 @@
 
 #include "load_session.hpp"
 
+#include "connection_defs.h"
 #include "error_manager.h"
-#include "load_common.hpp"
 #include "load_driver.hpp"
 #include "log_impl.h"
+#include "resource_shared_pool.hpp"
 #include "thread_entry_task.hpp"
 #include "xserver_interface.h"
 
@@ -292,7 +293,7 @@ namespace cubload
     m_completion_cond_var.notify_one ();
   }
 
-  void
+  int
   session::load_batch (cubthread::entry &thread_ref, std::string &batch, batch_id id)
   {
     batch_id current_max_id;
@@ -303,7 +304,7 @@ namespace cubload
 	if (current_max_id >= id)
 	  {
 	    // max is already stored
-	    return;
+	    break;
 	  }
       }
     while (!m_max_batch_id.compare_exchange_strong (current_max_id, id));
@@ -313,10 +314,12 @@ namespace cubload
 	// nothing to do, just notify that batch processing is done
 	notify_batch_done (id);
 	assert (false);
-	return;
+	return ER_FAILED;
       }
 
     cubthread::get_manager ()->push_task (m_worker_pool, new load_worker (batch, id, *this, *thread_ref.conn_entry));
+
+    return NO_ERROR;
   }
 
   int
@@ -324,7 +327,7 @@ namespace cubload
   {
     batch_handler handler = [this, &thread_ref] (std::string &batch, batch_id id)
     {
-      load_batch (thread_ref, batch, id);
+      return load_batch (thread_ref, batch, id);
     };
 
     return split (m_batch_size, file_name, handler);

@@ -89,6 +89,7 @@ namespace cubload
   int
   split (int batch_size, std::string &object_file_name, batch_handler &handler)
   {
+    int error;
     int rows = 0;
     batch_id id = 0;
     std::string class_line;
@@ -115,7 +116,12 @@ namespace cubload
 	  {
 	    // in case of class line collect remaining for current class
 	    // and start new batch for the new class
-	    handle_batch (class_line, batch_buffer, id, handler);
+	    error = handle_batch (class_line, batch_buffer, id, handler);
+	    if (error != NO_ERROR)
+	      {
+		object_file.close ();
+		return error;
+	      }
 
 	    // store new class line
 	    class_line = line;
@@ -145,25 +151,37 @@ namespace cubload
 	    // check if we have a full batch
 	    if ((rows % batch_size) == 0)
 	      {
-		handle_batch (class_line, batch_buffer, id, handler);
+		error = handle_batch (class_line, batch_buffer, id, handler);
+		if (error != NO_ERROR)
+		  {
+		    object_file.close ();
+		    return error;
+		  }
 	      }
 	  }
       }
 
     // collect remaining rows
-    handle_batch (class_line, batch_buffer, id, handler);
+    error = handle_batch (class_line, batch_buffer, id, handler);
 
     object_file.close ();
 
-    return NO_ERROR;
+    return error;
   }
 
-  void
+  int
   handle_batch (std::string &class_line, std::string &batch, batch_id &id, batch_handler &handler)
   {
-    if (batch.empty () || class_line.empty ())
+    if (!batch.empty () && class_line.empty())
       {
-	return;
+	// batch must have a class
+	assert (false);
+	return ER_FAILED;
+      }
+    if (batch.empty ())
+      {
+	// batch is empty, therefore do nothing and return
+	return NO_ERROR;
       }
 
     std::string buffer;
@@ -173,10 +191,12 @@ namespace cubload
     buffer.append ("\n");
     buffer.append (batch);
 
-    handler (buffer, ++id);
+    int ret = handler (buffer, ++id);
 
     // prepare to start new batch for the class
     batch.clear ();
+
+    return ret;
   }
 
   inline bool
