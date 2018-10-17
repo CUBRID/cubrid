@@ -33444,15 +33444,16 @@ btree_key_online_index_IB_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
 		btree_key_remove_object (thread_p, key, btid_int, &helper->delete_helper, *leaf_page, &record,
 					 &leaf_info, offset_after_key, search_key, &page_found, prev_page,
 					 node_type, offset_to_object);
-
 	      goto end;
 	    }
 	}
       else
 	{
 	  /* Key was found but the object wasn't. We must append the object to the current key. */
+
 	  /* Safeguards. */
 	  assert (search_key->result == BTREE_KEY_FOUND && offset_to_object == NOT_FOUND);
+
 	  n_oids = 1;
 
 	  error_code =
@@ -33460,21 +33461,22 @@ btree_key_online_index_IB_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
 						offset_after_key, &leaf_info, &helper->insert_helper.obj_info,
 						&helper->insert_helper);
 	}
-
     }
   else
     {
+      /* Key was not found, we must insert it. */
       n_keys = 1;
       n_oids = 1;
-      /* Key was not found, we must insert it. */
+
       error_code = btree_key_insert_new_key (thread_p, btid_int, key, *leaf_page, &helper->insert_helper, search_key);
     }
-end:
 
+end:
   if (error_code == NO_ERROR && BTREE_IS_UNIQUE (btid_int->unique_pk))
     {
       logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, n_keys, n_oids, 0, false);
     }
+
   return error_code;
 }
 
@@ -33919,8 +33921,8 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	}
       else
 	{
-	  error_code =
-	    btree_key_insert_new_key (thread_p, btid_int, key, *leaf_page, &helper->insert_helper, search_key);
+	  error_code = btree_key_insert_new_key (thread_p, btid_int, key, *leaf_page, &helper->insert_helper,
+						 search_key);
 	  n_keys = 1;
 	}
 
@@ -34175,12 +34177,12 @@ btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_
       /* We have to insert it with DELETE_FLAG set. */
       helper->insert_helper.obj_info.mvcc_info.flags |= BTREE_OID_HAS_MVCC_INSID;
       btree_online_index_set_delete_flag_state (helper->insert_helper.obj_info.mvcc_info.insert_mvccid);
+
       error_code = btree_key_insert_new_key (thread_p, btid_int, key, *leaf_page, &helper->insert_helper, search_key);
       if (error_code == NO_ERROR && BTREE_IS_UNIQUE (btid_int->unique_pk))
 	{
 	  logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, 1, 1, 0, false);
 	}
-
     }
 
   return error_code;
