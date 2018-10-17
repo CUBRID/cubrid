@@ -34795,7 +34795,7 @@ btree_online_index_check_unique_constraint (THREAD_ENTRY * thread_p, BTID * btid
       return ER_BTREE_UNIQUE_FAILED;
     }
 
-  return ret;
+  return NO_ERROR;
 }
 
 int
@@ -34803,6 +34803,8 @@ btree_get_class_oid_of_unique_btid (THREAD_ENTRY * thread_p, BTID * btid, OID * 
 {
   PAGE_PTR root_page;
   BTREE_ROOT_HEADER *root_header = NULL;
+
+  OID_SET_NULL (class_oid);
 
   root_page = btree_fix_root_with_info (thread_p, btid, PGBUF_LATCH_READ, NULL, &root_header, NULL);
   if (root_page == NULL)
@@ -34816,10 +34818,7 @@ btree_get_class_oid_of_unique_btid (THREAD_ENTRY * thread_p, BTID * btid, OID * 
       COPY_OID (class_oid, &root_header->topclass_oid);
     }
 
-  if (root_page != NULL)
-    {
-      pgbuf_unfix_and_init (thread_p, root_page);
-    }
+  pgbuf_unfix_and_init (thread_p, root_page);
 
   return NO_ERROR;
 }
@@ -34833,7 +34832,6 @@ btree_is_btid_online_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID * bti
   int i;
 
   rep = heap_classrepr_get (thread_p, class_oid, NULL, NULL_REPRID, &idx_incache);
-
   if (rep == NULL)
     {
       assert (false);
