@@ -10647,6 +10647,9 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
 		       * but Not Equal is as close as we can come
 		       * to reporting it.
 		       */
+
+		      // WARNING: forget any error for coercion.
+		      er_clear ();
 		    }
 		  else
 		    {
@@ -10690,6 +10693,9 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
 		       * but Not Equal is as close as we can come
 		       * to reporting it.
 		       */
+
+		      // WARNING: forget any error for coercion.
+		      er_clear ();
 		    }
 		  else
 		    {
