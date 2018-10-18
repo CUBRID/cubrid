@@ -492,11 +492,11 @@ class JSON_SEARCHER : public JSON_WALKER
     JSON_SEARCHER (std::string starting_path, const DB_VALUE *pattern, const DB_VALUE *esc_char, bool find_all,
 		   std::vector<std::string> &paths)
       : m_starting_path (std::move (starting_path))
+      , m_found_paths (paths)
       , m_find_all (find_all)
       , m_skip_search (false)
       , m_pattern (pattern)
       , m_esc_char (esc_char)
-      , m_found_paths (paths)
     {}
     ~JSON_SEARCHER () {}
 
@@ -538,16 +538,17 @@ class JSON_SERIALIZER_LENGTH : public JSON_BASE_HANDLER
       return or_packed_string_length (str, NULL);
     }
 
-    bool Null ();
-    bool Bool (bool b);
-    bool Int (int i);
-    bool Double (double d);
-    bool String (const Ch *str, SizeType length, bool copy);
-    bool StartObject ();
-    bool Key (const Ch *str, SizeType length, bool copy);
-    bool StartArray ();
-    bool EndObject (SizeType memberCount);
-    bool EndArray (SizeType elementCount);
+    bool Null () override;
+    bool Bool (bool b) override;
+    bool Int (int i) override;
+    bool Int64 (int64_t i) override;
+    bool Double (double d) override;
+    bool String (const Ch *str, SizeType length, bool copy) override;
+    bool StartObject () override;
+    bool Key (const Ch *str, SizeType length, bool copy) override;
+    bool StartArray () override;
+    bool EndObject (SizeType memberCount) override;
+    bool EndArray (SizeType elementCount) override;
 
   private:
     std::size_t m_length;
@@ -563,16 +564,17 @@ class JSON_SERIALIZER : public JSON_BASE_HANDLER
     }
     ~JSON_SERIALIZER () {}
 
-    bool Null ();
-    bool Bool (bool b);
-    bool Int (int i);
-    bool Double (double d);
-    bool String (const Ch *str, SizeType length, bool copy);
-    bool StartObject ();
-    bool Key (const Ch *str, SizeType length, bool copy);
-    bool StartArray ();
-    bool EndObject (SizeType memberCount);
-    bool EndArray (SizeType elementCount);
+    bool Null () override;
+    bool Bool (bool b) override;
+    bool Int (int i) override;
+    bool Int64 (int64_t i) override;
+    bool Double (double d) override;
+    bool String (const Ch *str, SizeType length, bool copy) override;
+    bool StartObject () override;
+    bool Key (const Ch *str, SizeType length, bool copy) override;
+    bool StartArray () override;
+    bool EndObject (SizeType memberCount) override;
+    bool EndArray (SizeType elementCount) override;
 
   private:
     bool SaveSizePointers (char *ptr);
@@ -624,6 +626,7 @@ class JSON_PRETTY_WRITER : public JSON_BASE_HANDLER
     bool Null () override;
     bool Bool (bool b) override;
     bool Int (int i) override;
+    bool Int64 (int64_t i) override;
     bool Double (double d) override;
     bool String (const Ch *str, SizeType length, bool copy) override;
     bool StartObject () override;
@@ -678,6 +681,7 @@ static int db_json_value_is_contained_in_doc_helper (const JSON_VALUE *doc, cons
 static DB_JSON_TYPE db_json_get_type_of_value (const JSON_VALUE *val);
 static bool db_json_value_has_numeric_type (const JSON_VALUE *doc);
 static int db_json_get_int_from_value (const JSON_VALUE *val);
+static int64_t db_json_get_bigint_from_value (const JSON_VALUE *val);
 static double db_json_get_double_from_value (const JSON_VALUE *doc);
 static const char *db_json_get_string_from_value (const JSON_VALUE *doc);
 static char *db_json_copy_string_from_value (const JSON_VALUE *doc);
@@ -735,6 +739,7 @@ static int db_json_deserialize_doc_internal (OR_BUF *buf, JSON_VALUE &value, JSO
 static int db_json_or_buf_underflow (OR_BUF *buf, size_t length);
 static int db_json_unpack_string_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_PRIVATE_MEMPOOL &doc_allocator);
 static int db_json_unpack_int_to_value (OR_BUF *buf, JSON_VALUE &value);
+static int db_json_unpack_bigint_to_value (OR_BUF *buf, JSON_VALUE &value);
 static int db_json_unpack_bool_to_value (OR_BUF *buf, JSON_VALUE &value);
 static int db_json_unpack_object_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_PRIVATE_MEMPOOL &doc_allocator);
 static int db_json_unpack_array_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_PRIVATE_MEMPOOL &doc_allocator);
@@ -1151,6 +1156,10 @@ db_json_get_type_as_str (const JSON_DOC *document)
     {
       return "INTEGER";
     }
+  else if (document->IsInt64 ())
+    {
+      return "BIGINT";
+    }
   else if (document->IsDouble ())
     {
       return "DOUBLE";
@@ -1186,6 +1195,8 @@ db_json_get_json_type_as_str (const DB_JSON_TYPE &json_type)
       return "JSON_OBJECT";
     case DB_JSON_INT:
       return "INTEGER";
+    case DB_JSON_BIGINT:
+      return "BIGINT";
     case DB_JSON_DOUBLE:
       return "DOUBLE";
     case DB_JSON_STRING:
@@ -1501,6 +1512,16 @@ db_json_add_member_to_object (JSON_DOC *doc, const char *name, int value)
 }
 
 int
+db_json_add_member_to_object (JSON_DOC *doc, const char *name, int64_t value)
+{
+  JSON_VALUE val;
+
+  val.SetInt64 (value);
+
+  return db_json_add_json_value_to_object (*doc, name, val);
+}
+
+int
 db_json_add_member_to_object (JSON_DOC *doc, const char *name, const JSON_DOC *value)
 {
   JSON_VALUE val;
@@ -1555,6 +1576,17 @@ db_json_add_element_to_array (JSON_DOC *doc, int value)
     }
 
   doc->PushBack (JSON_VALUE ().SetInt (value), doc->GetAllocator ());
+}
+
+void
+db_json_add_element_to_array (JSON_DOC *doc, int64_t value)
+{
+  if (!doc->IsArray ())
+    {
+      doc->SetArray ();
+    }
+
+  doc->PushBack (JSON_VALUE ().SetInt64 (value), doc->GetAllocator ());
 }
 
 void
@@ -2151,6 +2183,10 @@ db_json_get_type_of_value (const JSON_VALUE *val)
     {
       return DB_JSON_INT;
     }
+  else if (val->IsInt64 ())
+    {
+      return DB_JSON_BIGINT;
+    }
   else if (val->IsFloat () || val->IsDouble ())
     {
       return DB_JSON_DOUBLE;
@@ -2520,6 +2556,12 @@ db_json_get_int_from_document (const JSON_DOC *doc)
   return db_json_get_int_from_value (doc);
 }
 
+int64_t
+db_json_get_bigint_from_document (const JSON_DOC *doc)
+{
+  return db_json_get_bigint_from_value (doc);
+}
+
 double
 db_json_get_double_from_document (const JSON_DOC *doc)
 {
@@ -2556,6 +2598,20 @@ db_json_get_int_from_value (const JSON_VALUE *val)
   assert (db_json_get_type_of_value (val) == DB_JSON_INT);
 
   return val->GetInt ();
+}
+
+int64_t
+db_json_get_bigint_from_value (const JSON_VALUE *val)
+{
+  if (val == NULL)
+    {
+      assert (false);
+      return 0;
+    }
+
+  assert (db_json_get_type_of_value (val) == DB_JSON_BIGINT);
+
+  return val->GetInt64 ();
 }
 
 double
@@ -3309,7 +3365,8 @@ db_json_keys_func (const char *json_raw, JSON_DOC *&result_json, const char *raw
 bool
 db_json_value_has_numeric_type (const JSON_VALUE *doc)
 {
-  return db_json_get_type_of_value (doc) == DB_JSON_INT || db_json_get_type_of_value (doc) == DB_JSON_DOUBLE;
+  return db_json_get_type_of_value (doc) == DB_JSON_INT || db_json_get_type_of_value (doc) == DB_JSON_BIGINT
+	 || db_json_get_type_of_value (doc) == DB_JSON_DOUBLE;
 }
 
 /*
@@ -3352,6 +3409,10 @@ db_json_value_is_contained_in_doc_helper (const JSON_VALUE *doc, const JSON_VALU
       else if (doc_type == DB_JSON_INT)
 	{
 	  result = (db_json_get_int_from_value (doc) == db_json_get_int_from_value (value));
+	}
+      else if (doc_type == DB_JSON_BIGINT)
+	{
+	  result = (db_json_get_bigint_from_value (doc) == db_json_get_bigint_from_value (value));
 	}
       else if (doc_type == DB_JSON_DOUBLE)
 	{
@@ -3459,6 +3520,11 @@ void db_json_set_double_to_doc (JSON_DOC *doc, double d)
 void db_json_set_int_to_doc (JSON_DOC *doc, int i)
 {
   doc->SetInt (i);
+}
+
+void db_json_set_bigint_to_doc (JSON_DOC *doc, int64_t i)
+{
+  doc->SetInt64 (i);
 }
 
 bool db_json_are_docs_equal (const JSON_DOC *doc1, const JSON_DOC *doc2)
@@ -3691,6 +3757,24 @@ bool JSON_SERIALIZER::Int (int i)
   return !HasError ();
 }
 
+bool JSON_SERIALIZER_LENGTH::Int64 (int64_t i)
+{
+  // the encode will be TYPE|VALUE, where TYPE is int and value is int64
+  m_length += GetTypePackedSize () + OR_BIGINT_SIZE;
+  return true;
+}
+
+bool JSON_SERIALIZER::Int64 (int64_t i)
+{
+  if (!PackType (DB_JSON_BIGINT))
+    {
+      return false;
+    }
+
+  m_error = or_put_bigint (m_buffer, i);
+  return !HasError ();
+}
+
 bool JSON_SERIALIZER_LENGTH::Double (double d)
 {
   // the encode will be TYPE|VALUE, where TYPE is int and value is double
@@ -3871,6 +3955,15 @@ bool JSON_PRETTY_WRITER::Bool (bool b)
 }
 
 bool JSON_PRETTY_WRITER::Int (int i)
+{
+  WriteDelimiters ();
+
+  m_buffer.append (std::to_string (i));
+
+  return true;
+}
+
+bool JSON_PRETTY_WRITER::Int64 (int64_t i)
 {
   WriteDelimiters ();
 
@@ -4072,6 +4165,25 @@ db_json_unpack_int_to_value (OR_BUF *buf, JSON_VALUE &value)
 }
 
 static int
+db_json_unpack_bigint_to_value (OR_BUF *buf, JSON_VALUE &value)
+{
+  int rc = NO_ERROR;
+  DB_BIGINT bigint_value;
+
+  // unpack bigint
+  bigint_value = or_get_bigint (buf, &rc);
+  if (rc != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_OVERFLOW, 0);
+      return rc;
+    }
+
+  value.SetInt64 (bigint_value);
+
+  return NO_ERROR;
+}
+
+static int
 db_json_unpack_double_to_value (OR_BUF *buf, JSON_VALUE &value)
 {
   int rc = NO_ERROR;
@@ -4212,6 +4324,10 @@ db_json_deserialize_doc_internal (OR_BUF *buf, JSON_VALUE &value, JSON_PRIVATE_M
     {
     case DB_JSON_INT:
       rc = db_json_unpack_int_to_value (buf, value);
+      break;
+
+    case DB_JSON_BIGINT:
+      rc = db_json_unpack_bigint_to_value (buf, value);
       break;
 
     case DB_JSON_DOUBLE:

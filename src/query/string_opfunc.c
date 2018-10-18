@@ -771,7 +771,7 @@ db_string_unique_prefix (const DB_VALUE * db_string1, const DB_VALUE * db_string
       return ER_GENERIC_ERROR;
     }
 
-  /* 
+  /*
    * A string which is NULL (not the same as a NULL string) is
    * ordered less than a string which is not NULL.  Since string2 is
    * assumed to be strictly > string1, string2 can never be NULL.
@@ -780,7 +780,7 @@ db_string_unique_prefix (const DB_VALUE * db_string1, const DB_VALUE * db_string
     {
       db_value_domain_init (db_result, result_type, precision, 0);
     }
-  /* 
+  /*
    *  Find the first byte where the 2 strings differ.  Set the result
    *  accordingly.
    */
@@ -812,8 +812,8 @@ db_string_unique_prefix (const DB_VALUE * db_string1, const DB_VALUE * db_string
 	}
       else if (result_type == DB_TYPE_VARNCHAR)
 	{
-	  /* This is going to look a lot like qstr_trim_trailing.  We don't call qstr_trim_trailing because he works on 
-	   * length of characters and we need to work on length of bytes.  We could calculate the length in characters, 
+	  /* This is going to look a lot like qstr_trim_trailing.  We don't call qstr_trim_trailing because he works on
+	   * length of characters and we need to work on length of bytes.  We could calculate the length in characters,
 	   * but that requires a full scan of the strings which is not necessary. */
 	  int i, pad_size, trim_length, cmp_flag, prev_size;
 	  unsigned char *prev_ptr, *current_ptr, pad[2];
@@ -976,12 +976,12 @@ db_string_concatenate (const DB_VALUE * string1, const DB_VALUE * string2, DB_VA
   DB_TYPE string_type1, string_type2;
   bool is_inplace_concat;
 
-  /* 
+  /*
    *  Initialize status value
    */
   *data_status = DATA_STATUS_OK;
 
-  /* 
+  /*
    *  Assert that DB_VALUE structures have been allocated.
    */
   assert (string1 != (DB_VALUE *) NULL);
@@ -996,7 +996,7 @@ db_string_concatenate (const DB_VALUE * string1, const DB_VALUE * string2, DB_VA
       is_inplace_concat = true;
     }
 
-  /* 
+  /*
    *  Categorize the parameters into respective code sets.
    *  Verify that the parameters are both character strings.
    *  Verify that the input strings belong to compatible code sets.
@@ -1408,7 +1408,7 @@ db_string_instr (const DB_VALUE * src_string, const DB_VALUE * sub_string, const
   DB_TYPE str1_type, str2_type;
   DB_TYPE arg3_type;
 
-  /* 
+  /*
    *  Assert that DB_VALUE structures have been allocated.
    */
   assert (src_string != (DB_VALUE *) NULL);
@@ -1416,7 +1416,7 @@ db_string_instr (const DB_VALUE * src_string, const DB_VALUE * sub_string, const
   assert (start_pos != (DB_VALUE *) NULL);
   assert (result != (DB_VALUE *) NULL);
 
-  /* 
+  /*
    *  Categorize the parameters into respective code sets.
    *  Verify that the parameters are both character strings.
    *  Verify that the input strings belong to compatible code sets.
@@ -1662,7 +1662,7 @@ db_string_position (const DB_VALUE * sub_string, const DB_VALUE * src_string, DB
   int error_status = NO_ERROR;
   DB_TYPE str1_type, str2_type;
 
-  /* 
+  /*
    *  Assert that DB_VALUE structures have been allocated.
    */
   assert (sub_string != (DB_VALUE *) NULL);
@@ -1670,7 +1670,7 @@ db_string_position (const DB_VALUE * sub_string, const DB_VALUE * src_string, DB
   assert (result != (DB_VALUE *) NULL);
 
 
-  /* 
+  /*
    *  Categorize the parameters into respective code sets.
    *  Verify that the parameters are both character strings.
    *  Verify that the input strings belong to compatible code sets.
@@ -1774,7 +1774,7 @@ db_string_substring (const MISC_OPERAND substr_operand, const DB_VALUE * src_str
   DB_TYPE result_type;
   DB_TYPE src_type;
 
-  /* 
+  /*
    *  Assert that DB_VALUE structures have been allocated.
    */
   assert (src_string != (DB_VALUE *) NULL);
@@ -1981,7 +1981,7 @@ db_string_repeat (const DB_VALUE * src_string, const DB_VALUE * count, DB_VALUE 
   DB_TYPE src_type;
   INTL_CODESET codeset;
 
-  /* 
+  /*
    *  Assert that DB_VALUE structures have been allocated.
    */
   assert (src_string != (DB_VALUE *) NULL);
@@ -2131,14 +2131,14 @@ db_string_substring_index (DB_VALUE * src_string, DB_VALUE * delim_string, const
   INTL_CODESET src_cs, delim_cs;
   int src_coll, delim_coll;
 
-  /* 
+  /*
    *  Initialize status value
    */
   db_make_null (result);
   db_make_null (&empty_string1);
   db_make_null (&empty_string2);
 
-  /* 
+  /*
    *  Assert that DB_VALUE structures have been allocated.
    */
   assert (src_string != (DB_VALUE *) NULL);
@@ -2154,7 +2154,7 @@ db_string_substring_index (DB_VALUE * src_string, DB_VALUE * delim_string, const
     }
   count_i = db_get_int (count);
 
-  /* 
+  /*
    *  Categorize the parameters into respective code sets.
    *  Verify that the parameters are both character strings.
    *  Verify that the input strings belong to compatible code sets.
@@ -2784,7 +2784,7 @@ db_string_insert_substring (DB_VALUE * src_string, const DB_VALUE * position, co
   INTL_CODESET src_cs, substr_cs;
   int src_coll, substr_coll;
 
-  /* 
+  /*
    *  Assert that DB_VALUE structures have been allocated.
    */
   assert (src_string != (DB_VALUE *) NULL);
@@ -2793,7 +2793,7 @@ db_string_insert_substring (DB_VALUE * src_string, const DB_VALUE * position, co
   assert (length != (DB_VALUE *) NULL);
   assert (result != (DB_VALUE *) NULL);
 
-  /* 
+  /*
    *  Initialize values
    */
   db_make_null (result);
@@ -2803,7 +2803,7 @@ db_string_insert_substring (DB_VALUE * src_string, const DB_VALUE * position, co
   db_make_null (&empty_string2);
   db_make_null (&partial_result);
 
-  /* 
+  /*
    *  Categorize the parameters into respective code sets.
    *  Verify that the parameters are both character strings.
    *  Verify that the input strings belong to compatible code sets.
@@ -3155,6 +3155,10 @@ db_json_object (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	  error_code = db_json_add_member_to_object (new_doc, db_get_string (arg[i]), db_get_int (arg[i + 1]));
 	  break;
 
+	case DB_TYPE_BIGINT:
+	  error_code = db_json_add_member_to_object (new_doc, db_get_string (arg[i]), db_get_bigint (arg[i + 1]));
+	  break;
+
 	case DB_TYPE_DOUBLE:
 	  error_code = db_json_add_member_to_object (new_doc, db_get_string (arg[i]), db_get_double (arg[i + 1]));
 	  break;
@@ -3231,6 +3235,10 @@ db_json_array (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 
 	case DB_TYPE_INTEGER:
 	  db_json_add_element_to_array (new_doc, db_get_int (arg[i]));
+	  break;
+
+	case DB_TYPE_BIGINT:
+	  db_json_add_element_to_array (new_doc, db_get_bigint (arg[i]));
 	  break;
 
 	case DB_TYPE_DOUBLE:
@@ -4072,13 +4080,13 @@ db_string_byte_length (const DB_VALUE * string, DB_VALUE * byte_count)
   int error_status = NO_ERROR;
   DB_TYPE str_type;
 
-  /* 
+  /*
    *  Assert that DB_VALUE structures have been allocated.
    */
   assert (string != (DB_VALUE *) NULL);
   assert (byte_count != (DB_VALUE *) NULL);
 
-  /* 
+  /*
    *  Verify that the input string is a valid character
    *  string.  Bit strings are not allowed.
    *
@@ -4137,13 +4145,13 @@ db_string_bit_length (const DB_VALUE * string, DB_VALUE * bit_count)
   int error_status = NO_ERROR;
   DB_TYPE str_type;
 
-  /* 
+  /*
    *  Assert that DB_VALUE structures have been allocated.
    */
   assert (string != (DB_VALUE *) NULL);
   assert (bit_count != (DB_VALUE *) NULL);
 
-  /* 
+  /*
    *  Verify that the input string is a valid character string.
    *  Bit strings are not allowed.
    *
@@ -4207,14 +4215,14 @@ db_string_char_length (const DB_VALUE * string, DB_VALUE * char_count)
 {
   int error_status = NO_ERROR;
 
-  /* 
+  /*
    *  Assert that DB_VALUE structures have been allocated.
    */
   assert (string != (DB_VALUE *) NULL);
   assert (char_count != (DB_VALUE *) NULL);
 
 
-  /* 
+  /*
    *  Verify that the input string is a valid character
    *  string.  Bit strings are not allowed.
    *
@@ -4277,13 +4285,13 @@ db_string_lower (const DB_VALUE * string, DB_VALUE * lower_string)
   int error_status = NO_ERROR;
   DB_TYPE str_type;
 
-  /* 
+  /*
    *  Assert that DB_VALUE structures have been allocated.
    */
   assert (string != (DB_VALUE *) NULL);
   assert (lower_string != (DB_VALUE *) NULL);
 
-  /* 
+  /*
    *  Categorize the two input parameters and check for errors.
    *    Verify that the parameters are both character strings.
    */
@@ -4297,7 +4305,7 @@ db_string_lower (const DB_VALUE * string, DB_VALUE * lower_string)
     {
       error_status = ER_QSTR_INVALID_DATA_TYPE;
     }
-  /* 
+  /*
    *  If the input parameters have been properly validated, then
    *  we are ready to operate.
    */
@@ -4376,13 +4384,13 @@ db_string_upper (const DB_VALUE * string, DB_VALUE * upper_string)
   int error_status = NO_ERROR;
   DB_TYPE str_type;
 
-  /* 
+  /*
    *  Assert that DB_VALUE structures have been allocated.
    */
   assert (string != (DB_VALUE *) NULL);
   assert (upper_string != (DB_VALUE *) NULL);
 
-  /* 
+  /*
    *  Categorize the two input parameters and check for errors.
    *    Verify that the parameters are both character strings.
    */
@@ -4396,7 +4404,7 @@ db_string_upper (const DB_VALUE * string, DB_VALUE * upper_string)
     {
       error_status = ER_QSTR_INVALID_DATA_TYPE;
     }
-  /* 
+  /*
    *  If the input parameters have been properly validated, then
    *  we are ready to operate.
    */
@@ -4474,7 +4482,7 @@ db_string_trim (const MISC_OPERAND tr_operand, const DB_VALUE * trim_charset, co
   int trim_charset_size = 0;
   DB_TYPE src_type, trim_type;
 
-  /* 
+  /*
    * Assert DB_VALUE structures have been allocated
    */
 
@@ -4518,7 +4526,7 @@ db_string_trim (const MISC_OPERAND tr_operand, const DB_VALUE * trim_charset, co
 	}
     }
 
-  /* 
+  /*
    * Verify input parameters are all char strings and are compatible
    */
 
@@ -4539,7 +4547,7 @@ db_string_trim (const MISC_OPERAND tr_operand, const DB_VALUE * trim_charset, co
       return error_status;
     }
 
-  /* 
+  /*
    * begin of main codes
    */
   if (!is_trim_charset_omitted)
@@ -4648,7 +4656,7 @@ qstr_trim (MISC_OPERAND trim_operand, const unsigned char *trim_charset, int tri
  *                codeset: (in)  International codeset of source string.
  *       lead_trimmed_ptr: (out) Pointer to start of trimmed string.
  *    lead_trimmed_length: (out) Length of trimmed string.
- *	trim_ascii_spaces: (in)  Option to trim normal spaces also. 
+ *	trim_ascii_spaces: (in)  Option to trim normal spaces also.
  *
  * Returns: nothing
  *
@@ -4969,7 +4977,7 @@ qstr_pad (MISC_OPERAND pad_operand, int pad_length, const unsigned char *pad_cha
       return error_status;
     }
 
-  /* 
+  /*
    * now start padding
    */
 
@@ -4986,7 +4994,7 @@ qstr_pad (MISC_OPERAND pad_operand, int pad_length, const unsigned char *pad_cha
       return error_status;
     }
 
-  /* 
+  /*
    * Get real length to be paded
    * if source length is greater than pad_length
    */
@@ -5083,7 +5091,7 @@ db_string_like (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB_
   int src_length = 0, pattern_length = 0;
   int coll_id;
 
-  /* 
+  /*
    *  Assert that DB_VALUE structures have been allocated.
    */
   assert (src_string != NULL);
@@ -6106,7 +6114,7 @@ qstr_replace (unsigned char *src_buf, int src_len, int src_size, INTL_CODESET co
 
   *result_buf = NULL;
 
-  /* 
+  /*
    * if search string is NULL or is longer than source string
    * copy source string as a result
    */
@@ -6574,7 +6582,7 @@ db_char_string_coerce (const DB_VALUE * src_string, DB_VALUE * dest_string, DB_D
   /* Initialize status value */
   *data_status = DATA_STATUS_OK;
 
-  /* 
+  /*
    *  Categorize the two input parameters and check for errors.
    *    Verify that the parameters are both character strings.
    *    Verify that the source and destination strings are of
@@ -6728,7 +6736,7 @@ db_find_string_in_in_set (const DB_VALUE * needle, const DB_VALUE * stack, DB_VA
       return NO_ERROR;
     }
 
-  /* 
+  /*
    *  Categorize the parameters into respective code sets.
    *  Verify that the parameters are both character strings.
    *  Verify that the input strings belong to compatible code sets.
@@ -7316,13 +7324,13 @@ db_string_convert (const DB_VALUE * src_string, DB_VALUE * dest_string)
   DB_TYPE src_type, dest_type;
   int error_status = NO_ERROR;
 
-  /* 
+  /*
    *  Assert that DB_VALUE structures have been allocated.
    */
   assert (src_string != (DB_VALUE *) NULL);
   assert (dest_string != (DB_VALUE *) NULL);
 
-  /* 
+  /*
    *  Categorize the two input parameters and check for errors.
    *    Verify that the parameters are both character strings.
    */
@@ -7408,7 +7416,7 @@ db_string_convert (const DB_VALUE * src_string, DB_VALUE * dest_string)
 	    }
 	}
 
-      /* 
+      /*
        *  If intl_convert_charset() returned an error, map
        *  to an ER_QSTR_INCOMPATIBLE_CODE_SETS error.
        */
@@ -7420,7 +7428,7 @@ db_string_convert (const DB_VALUE * src_string, DB_VALUE * dest_string)
 
   return error_status;
 
-  /* 
+  /*
    *  Error handling
    */
 mem_error:
@@ -7708,7 +7716,7 @@ qstr_bit_to_hex_coerce (char *buffer, int buffer_size, const char *src, int src_
 
   if (buffer_size > (2 * src_size))
     {
-      /* 
+      /*
        * No truncation; copy the data and blank pad if necessary.
        */
       qstr_bin_to_hex (buffer, buffer_size, src, src_size);
@@ -7730,7 +7738,7 @@ qstr_bit_to_hex_coerce (char *buffer, int buffer_size, const char *src, int src_
     }
   else
     {
-      /* 
+      /*
        * Truncation is necessary; put as many bytes as possible into
        * the receiving buffer and null-terminate it (i.e., it receives
        * at most dstsize-1 bytes).  If there is not outlen indicator by
@@ -8671,7 +8679,7 @@ qstr_append (unsigned char *s1, int s1_length, int s1_precision, DB_TYPE s1_type
     {
       return ER_QSTR_INVALID_DATA_TYPE;
     }
-  /* 
+  /*
    *  Categorize the source string into fixed and variable
    *  length.  Variable length strings are simple.  Fixed
    *  length strings have to be handled special since the
@@ -8700,13 +8708,13 @@ qstr_append (unsigned char *s1, int s1_length, int s1_precision, DB_TYPE s1_type
       s2_logical_length = s2_length;
     }
 
-  /* 
+  /*
    *  If both source strings are fixed-length, the concatenated
    *  result will be fixed-length.
    */
   if (QSTR_IS_FIXED_LENGTH (s1_type) && QSTR_IS_FIXED_LENGTH (s2_type))
     {
-      /* 
+      /*
        *  The result will be a chararacter string of length =
        *  string1_precision + string2_precision.  If the result
        *  length is greater than the maximum allowed for a fixed
@@ -8729,7 +8737,7 @@ qstr_append (unsigned char *s1, int s1_length, int s1_precision, DB_TYPE s1_type
 	  *result_size = *result_length;
 	}
 
-      /* 
+      /*
        *  Determine how much of s1 is already copied.
        *  Remember that this may or may not include needed padding.
        *  Then determine how much padding must be added to each
@@ -8741,7 +8749,7 @@ qstr_append (unsigned char *s1, int s1_length, int s1_precision, DB_TYPE s1_type
       pad1_length = MIN (s1_logical_length, *result_length) - copy_length;
       length_left = *result_length - copy_length - pad1_length;
 
-      /* 
+      /*
        *  Determine how much of string2 can be concatenated after
        *  string1.  Remember that string2 is concatentated after
        *  the full length of string1 including any necessary pad
@@ -8752,7 +8760,7 @@ qstr_append (unsigned char *s1, int s1_length, int s1_precision, DB_TYPE s1_type
 
       pad2_length = length_left - cat_length;
 
-      /* 
+      /*
        *  Pad string s1, Copy the s2 string after the s1 string
        */
       cat_ptr = qstr_pad_string ((unsigned char *) &(s1[copy_size]), pad1_length, codeset);
@@ -8760,13 +8768,13 @@ qstr_append (unsigned char *s1, int s1_length, int s1_precision, DB_TYPE s1_type
       memcpy ((char *) cat_ptr, (char *) s2, cat_size);
       (void) qstr_pad_string ((unsigned char *) &cat_ptr[cat_size], pad2_length, codeset);
     }
-  /* 
+  /*
    *  If either source string is variable-length, the concatenated
    *  result will be variable-length.
    */
   else
     {
-      /* 
+      /*
        *  The result length will be the sum of the lengths of
        *  the two source strings.  If this is greater than the
        *  maximum length of a variable length string, then the
@@ -8784,7 +8792,7 @@ qstr_append (unsigned char *s1, int s1_length, int s1_precision, DB_TYPE s1_type
 	  *result_size = *result_length;
 	}
 
-      /* 
+      /*
        *  Calculate the number of characters from string1 that are already
        *  into the result.  If s1 string is larger than the expected entire
        *  string and if the portion of the string s1 contained anything but
@@ -8805,7 +8813,7 @@ qstr_append (unsigned char *s1, int s1_length, int s1_precision, DB_TYPE s1_type
       pad1_length = MIN (s1_logical_length, *result_length) - copy_length;
       length_left = *result_length - copy_length - pad1_length;
 
-      /* 
+      /*
        *  Processess string2 as we did for string1.
        */
       cat_length = s2_length;
@@ -8822,7 +8830,7 @@ qstr_append (unsigned char *s1, int s1_length, int s1_precision, DB_TYPE s1_type
 
       pad2_length = length_left - cat_length;
 
-      /* 
+      /*
        *  Actually perform the copy operation.
        */
       cat_ptr = qstr_pad_string ((unsigned char *) &(s1[copy_size]), pad1_length, codeset);
@@ -8875,7 +8883,7 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_precision, DB_T
 
   *data_status = DATA_STATUS_OK;
 
-  /* 
+  /*
    *  Categorize the source string into fixed and variable
    *  length.  Variable length strings are simple.  Fixed
    *  length strings have to be handled special since the
@@ -8903,13 +8911,13 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_precision, DB_T
       s2_logical_length = s2_length;
     }
 
-  /* 
+  /*
    *  If both source strings are fixed-length, the concatenated
    *  result will be fixed-length.
    */
   if (QSTR_IS_FIXED_LENGTH (s1_type) && QSTR_IS_FIXED_LENGTH (s2_type))
     {
-      /* 
+      /*
        *  The result will be a chararacter string of length =
        *  string1_precision + string2_precision.  If the result
        *  length is greater than the maximum allowed for a fixed
@@ -8957,7 +8965,7 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_precision, DB_T
 	  goto mem_error;
 	}
 
-      /* 
+      /*
        *  Determine how much of string1 needs to be copied.
        *  Remember that this may or may not include needed padding.
        *  Then determine how much padding must be added to each
@@ -8969,7 +8977,7 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_precision, DB_T
       pad1_length = MIN (s1_logical_length, *result_length) - copy_length;
       length_left = *result_length - copy_length - pad1_length;
 
-      /* 
+      /*
        *  Determine how much of string2 can be concatenated after
        *  string1.  Remember that string2 is concatentated after
        *  the full length of string1 including any necessary pad
@@ -8980,7 +8988,7 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_precision, DB_T
 
       pad2_length = length_left - cat_length;
 
-      /* 
+      /*
        *  Copy the source strings into the result string
        */
       memcpy ((char *) *result, (char *) s1, copy_size);
@@ -8989,13 +8997,13 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_precision, DB_T
       memcpy ((char *) cat_ptr, (char *) s2, cat_size);
       (void) qstr_pad_string ((unsigned char *) &cat_ptr[cat_size], pad2_length, codeset);
     }
-  /* 
+  /*
    *  If either source string is variable-length, the concatenated
    *  result will be variable-length.
    */
   else
     {
-      /* 
+      /*
        *  The result length will be the sum of the lengths of
        *  the two source strings.  If this is greater than the
        *  maximum length of a variable length string, then the
@@ -9040,7 +9048,7 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_precision, DB_T
 	}
 
 
-      /* 
+      /*
        *  Calculate the number of characters from string1 that can
        *  be copied to the result.  If we cannot copy the entire
        *  string and if the portion of the string which was not
@@ -9062,7 +9070,7 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_precision, DB_T
       pad1_length = MIN (s1_logical_length, *result_length) - copy_length;
       length_left = *result_length - copy_length - pad1_length;
 
-      /* 
+      /*
        *  Processess string2 as we did for string1.
        */
       cat_length = s2_length;
@@ -9079,7 +9087,7 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_precision, DB_T
 
       pad2_length = length_left - cat_length;
 
-      /* 
+      /*
        *  Actually perform the copy operations.
        */
       memcpy ((char *) *result, (char *) s1, copy_size);
@@ -9098,7 +9106,7 @@ size_error:
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 2, *result_size,
 	  (int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES));
   return error_status;
-  /* 
+  /*
    * Error handler
    */
 mem_error:
@@ -9142,7 +9150,7 @@ qstr_bit_concatenate (const unsigned char *s1, int s1_length, int s1_precision, 
 
   *data_status = DATA_STATUS_OK;
 
-  /* 
+  /*
    *  Calculate the byte size of the strings.
    *  Calculate the bit length and byte size needed to concatenate
    *  the two strings without truncation.
@@ -9151,7 +9159,7 @@ qstr_bit_concatenate (const unsigned char *s1, int s1_length, int s1_precision, 
   s2_size = QSTR_NUM_BYTES (s2_length);
 
 
-  /* 
+  /*
    *  Categorize the source string into fixed and variable
    *  length.  Variable length strings are simple.  Fixed
    *  length strings have to be handled special since the
@@ -9182,7 +9190,7 @@ qstr_bit_concatenate (const unsigned char *s1, int s1_length, int s1_precision, 
 
   if ((s1_type == DB_TYPE_BIT) && (s2_type == DB_TYPE_BIT))
     {
-      /* 
+      /*
        *  The result will be a bit string of length =
        *  string1_precision + string2_precision.  If the result
        *  length is greater than the maximum allowed for a fixed
@@ -9212,13 +9220,13 @@ qstr_bit_concatenate (const unsigned char *s1, int s1_length, int s1_precision, 
 	  goto mem_error;
 	}
 
-      /* 
+      /*
        *  The source strings may not be fully padded, so
        *  we pre-pad the result string.
        */
       (void) memset ((char *) *result, (int) 0, (int) *result_size);
 
-      /* 
+      /*
        *  Determine how much of string1 needs to be copied.
        *  Remember that this may or may not include needed padding
        */
@@ -9228,7 +9236,7 @@ qstr_bit_concatenate (const unsigned char *s1, int s1_length, int s1_precision, 
 	  copy_length = *result_length;
 	}
 
-      /* 
+      /*
        *  Determine how much of string2 can be concatenated after
        *  string1.  Remember that string2 is concatentated after
        *  the full length of string1 including any necessary pad
@@ -9241,7 +9249,7 @@ qstr_bit_concatenate (const unsigned char *s1, int s1_length, int s1_precision, 
 	}
 
 
-      /* 
+      /*
        *  Copy the source strings into the result string.
        *  We are being a bit sloppy here by performing a byte
        *  copy as opposed to a bit copy.  But this should be OK
@@ -9252,7 +9260,7 @@ qstr_bit_concatenate (const unsigned char *s1, int s1_length, int s1_precision, 
 
   else				/* Assume DB_TYPE_VARBIT */
     {
-      /* 
+      /*
        *  The result length will be the sum of the lengths of
        *  the two source strings.  If this is greater than the
        *  maximum length of a variable length string, then the
@@ -9277,13 +9285,13 @@ qstr_bit_concatenate (const unsigned char *s1, int s1_length, int s1_precision, 
 	  goto mem_error;
 	}
 
-      /* 
+      /*
        *  The source strings may not be fully padded, so
        *  we pre-pad the result string.
        */
       (void) memset ((char *) *result, (int) 0, (int) *result_size);
 
-      /* 
+      /*
        *  Calculate the number of bits from string1 that can
        *  be copied to the result.  If we cannot copy the entire
        *  string and if the portion of the string which was not
@@ -9312,7 +9320,7 @@ qstr_bit_concatenate (const unsigned char *s1, int s1_length, int s1_precision, 
 	}
 
 
-      /* 
+      /*
        *  Actually perform the copy operations and
        *  place the result string in a container.
        */
@@ -9328,7 +9336,7 @@ size_error:
 	  (int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES));
   return error_status;
 
-  /* 
+  /*
    *  Error handling
    */
 mem_error:
@@ -9475,7 +9483,7 @@ bit_ncat (unsigned char *r, int offset, const unsigned char *s, int n)
       shift_amount = BYTE_SIZE - remainder;
       mask = 0xff << shift_amount;
 
-      /* 
+      /*
        *  tmp_shifted is loaded with a byte from the source
        *  string and shifted into poition.  The upper byte is
        *  used for the current destination location, while the
@@ -9526,7 +9534,7 @@ bstring_fls (const char *s, int n)
   int byte_num, bit_num, inter_bit_num;
 
 
-  /* 
+  /*
    *  We are looking for the first non-zero byte (starting at the end).
    */
   byte_num = n - 1;
@@ -9535,7 +9543,7 @@ bstring_fls (const char *s, int n)
       byte_num--;
     }
 
-  /* 
+  /*
    *  If byte_num is < 0, then the string is all 0's.
    *  Othersize, byte_num is the index for the first byte which has
    *  some bits set (from the end).
@@ -9582,7 +9590,7 @@ qstr_bit_coerce (const unsigned char *src, int src_length, int src_precision, DB
 
   *data_status = DATA_STATUS_OK;
 
-  /* 
+  /*
    *  <src_padded_length> is the length of the fully padded
    *  source string.
    */
@@ -9595,7 +9603,7 @@ qstr_bit_coerce (const unsigned char *src, int src_length, int src_precision, DB
       src_padded_length = src_length;
     }
 
-  /* 
+  /*
    *  If there is not enough precision in the destination string,
    *  then some bits will be omited from the source string.
    */
@@ -9608,7 +9616,7 @@ qstr_bit_coerce (const unsigned char *src, int src_length, int src_precision, DB
   copy_length = MIN (src_length, src_padded_length);
   copy_size = QSTR_NUM_BYTES (copy_length);
 
-  /* 
+  /*
    *  For fixed-length destination strings...
    *    Allocate the destination precision size, copy the source
    *    string and pad the rest.
@@ -9676,7 +9684,7 @@ qstr_coerce (const unsigned char *src, int src_length, int src_precision, DB_TYP
   *data_status = DATA_STATUS_OK;
   *dest_size = 0;
 
-  /* 
+  /*
    *  <src_padded_length> is the length of the fully padded
    *  source string.
    */
@@ -9689,7 +9697,7 @@ qstr_coerce (const unsigned char *src, int src_length, int src_precision, DB_TYP
       src_padded_length = src_length;
     }
 
-  /* 
+  /*
    *  Some characters will be truncated if there is not enough
    *  precision in the destination string.  If any of the
    *  truncated characters are non-pad characters, a truncation
@@ -9707,7 +9715,7 @@ qstr_coerce (const unsigned char *src, int src_length, int src_precision, DB_TYP
 
   copy_length = MIN (src_length, src_padded_length);
 
-  /* 
+  /*
    *  For fixed-length destination strings...
    *    Allocate the destination precision size, copy the source
    *    string and pad the rest.
@@ -9933,7 +9941,7 @@ qstr_position (const char *sub_string, const int sub_size, const int sub_length,
 
       codeset = lc->codeset;
 
-      /* 
+      /*
        *  Since the entire sub-string must be matched, a reduced
        *  number of compares <num_searches> are needed.  A collation-based
        *  comparison will be used.
@@ -9953,7 +9961,7 @@ qstr_position (const char *sub_string, const int sub_size, const int sub_length,
 	    }
 	}
 
-      /* 
+      /*
        *  Starting at the first position of the string, match the
        *  sub-string to the source string.  If a match is not found,
        *  then increment into the source string by one character and
@@ -10000,7 +10008,7 @@ qstr_position (const char *sub_string, const int sub_size, const int sub_length,
 	    }
 	}
 
-      /* 
+      /*
        *  Return the position of the match, if found.
        */
       if (result == 0)
@@ -10064,7 +10072,7 @@ qstr_bit_position (const unsigned char *sub_string, int sub_length, const unsign
       shift_amount = BYTE_SIZE - sub_remainder;
       mask = 0xff << shift_amount;
 
-      /* 
+      /*
        *  We will be manipulating the source string prior to
        *  comparison.  So that we do not corrupt the source string,
        *  we'll allocate a storage area so that we can make a copy
@@ -10081,7 +10089,7 @@ qstr_bit_position (const unsigned char *sub_string, int sub_length, const unsign
 	{
 	  ptr = (unsigned char *) src_string;
 
-	  /* 
+	  /*
 	   *  Make a copy of the source string.
 	   *  Initialize the bit index.
 	   */
@@ -10106,7 +10114,7 @@ qstr_bit_position (const unsigned char *sub_string, int sub_length, const unsign
 
 	      i++;
 
-	      /* 
+	      /*
 	       *  Every time we hit a byte boundary,
 	       *  Move on to the next byte of the source string.
 	       */
@@ -10120,7 +10128,7 @@ qstr_bit_position (const unsigned char *sub_string, int sub_length, const unsign
 
 	  db_private_free_and_init (NULL, tmp_string);
 
-	  /* 
+	  /*
 	   *  If a match was found, then return the position
 	   *  of the match.
 	   */
@@ -10208,7 +10216,7 @@ qstr_substring (const unsigned char *src, int src_length, int start, int length,
   /* Get the size of the source string. */
   intl_char_size ((unsigned char *) src, src_length, codeset, &src_size);
 
-  /* 
+  /*
    * Perform some error chaecking.
    * If the starting position is < 1, then set it to 1.
    * If the starting position is after the end of the source string,
@@ -10234,7 +10242,7 @@ qstr_substring (const unsigned char *src, int src_length, int start, int length,
 
   *r_length = length;
 
-  /* 
+  /*
    *  Get a pointer to the start of the sub-string and the
    *  size of the sub-string.
    *
@@ -10289,7 +10297,7 @@ qstr_bit_substring (const unsigned char *src, int src_length, int start, int len
 
   src_size = QSTR_NUM_BYTES (src_length);
 
-  /* 
+  /*
    *  Perform some error checking.
    *  If the starting position is < 1, then set it to 1.
    *  If the starting position is after the end of the source
@@ -10326,7 +10334,7 @@ qstr_bit_substring (const unsigned char *src, int src_length, int start, int len
       trailing_mask = 0xff << (BYTE_SIZE - rem);
     }
 
-  /* 
+  /*
    *  Allocate storage for the sub-string.
    *  Copy the sub-string.
    */
@@ -12728,7 +12736,7 @@ db_sys_datetime (DB_VALUE * result_datetime)
 }
 
 /*
- * db_sys_date_and_epoch_time () - This function returns current 
+ * db_sys_date_and_epoch_time () - This function returns current
  *				   datetime and timestamp.
  *
  * return: status of the error
@@ -18107,7 +18115,7 @@ lob_length (const DB_VALUE * src_value, DB_VALUE * result_value)
   elo = db_get_elo (src_value);
   if (elo)
     {
-      /* 
+      /*
        * Hack:
        * In order to check the existence of the file,
        * it is required to make to invoke real file operation.
@@ -19409,7 +19417,7 @@ make_number (char *src, char *last_src, INTL_CODESET codeset, char *token, int *
 	  /* This line needs to be modified to reflect appropriate error */
 	}
 
-      /* 
+      /*
        * modify result_str to contain correct string value with respect to
        * the given precision and scale.
        */
@@ -19441,7 +19449,7 @@ make_number (char *src, char *last_src, INTL_CODESET codeset, char *token, int *
 	{
 	  convert_locale_number (result_str, strlen (result_str), number_lang_id, INTL_LANG_ENGLISH);
 	}
-      /* 
+      /*
        * modify result_str to contain correct string value with respect to
        * the given precision and scale.
        */
@@ -20143,13 +20151,13 @@ db_string_reverse (const DB_VALUE * src_str, DB_VALUE * result_str)
   DB_TYPE str_type;
   char *res = NULL;
 
-  /* 
+  /*
    *  Assert that DB_VALUE structures have been allocated.
    */
   assert (src_str != (DB_VALUE *) NULL);
   assert (result_str != (DB_VALUE *) NULL);
 
-  /* 
+  /*
    *  Categorize the two input parameters and check for errors.
    *    Verify that the parameters are both character strings.
    */
@@ -20163,7 +20171,7 @@ db_string_reverse (const DB_VALUE * src_str, DB_VALUE * result_str)
     {
       error_status = ER_QSTR_INVALID_DATA_TYPE;
     }
-  /* 
+  /*
    *  If the input parameters have been properly validated, then
    *  we are ready to operate.
    */
@@ -21107,7 +21115,7 @@ copy_and_shift_values (int shift, int n, DB_BIGINT * first, ...)
   DB_BIGINT *v[16];		/* will contain max 5 elements */
   int i, count = 0, cnt_src = 0;
 
-  /* 
+  /*
    * numeric arguments from interval expression have a delimiter read also
    * as argument so out of N arguments there are actually (N + 1)/2 numeric
    * values (ex: 1:2:3:4 or 1:2 or 1:2:3)
@@ -21229,7 +21237,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 
   /* 1. Prepare the input: convert expr to char */
 
-  /* 
+  /*
    * expr is converted to char because it may contain a more complicated form
    * for the multiple unit formats, for example:
    * 'DAYS HOURS:MINUTES:SECONDS.MILLISECONDS'
@@ -22982,7 +22990,7 @@ db_str_to_date (const DB_VALUE * str, const DB_VALUE * format, const DB_VALUE * 
 	}
     }
 
-  /* 
+  /*
    * 1. Get information according to format specifiers
    *    iterate simultaneously through each string and sscanf when
    *    it is a format specifier.
@@ -23569,7 +23577,7 @@ db_str_to_date (const DB_VALUE * str, const DB_VALUE * format, const DB_VALUE * 
 		  break;
 
 		case 'X':
-		  /* %X Year for the week where Sunday is the first day of the week, numeric, four digits; used with %V 
+		  /* %X Year for the week where Sunday is the first day of the week, numeric, four digits; used with %V
 		   */
 		  k = parse_digits (sstr + i, &y, 4);
 		  if (k <= 0)
@@ -23688,13 +23696,13 @@ db_str_to_date (const DB_VALUE * str, const DB_VALUE * format, const DB_VALUE * 
 
   days[2] += LEAP (y);
 
-  /* 
+  /*
    * validations are done here because they are done just on the last memorized
    * values (ie: if you supply a month 99 then a month 12 the 99 isn't validated
    * because it's overwritten by 12 which is correct).
    */
 
-  /* 
+  /*
    * check only upper bounds, lower bounds will be checked later and
    * will return error
    */
@@ -23785,7 +23793,7 @@ db_str_to_date (const DB_VALUE * str, const DB_VALUE * format, const DB_VALUE * 
     }
 
   /* the year is fixed, compute the day and month from dow, doy, etc */
-  /* 
+  /*
    * the day and month can be supplied specifically which supress all other
    * informations or can be computed from dow and week or from doy
    */
@@ -27135,7 +27143,7 @@ db_conv (const DB_VALUE * num, const DB_VALUE * from_base, const DB_VALUE * to_b
       num_p_str = db_get_bit (num, &num_size);
       num_size = QSTR_NUM_BYTES (num_size);
 
-      /* convert to hex; NOTE: qstr_bin_to_hex returns number of converted bytes, not the size of the hex string; also, 
+      /* convert to hex; NOTE: qstr_bin_to_hex returns number of converted bytes, not the size of the hex string; also,
        * we convert at most 64 digits even if we need only 16 in order to let strtoll handle overflow (weird stuff
        * happens there ...) */
       num_size = qstr_bin_to_hex (num_str, UINT64_MAX_BIN_DIGITS, num_p_str, num_size);
@@ -28365,7 +28373,7 @@ db_string_extract_dbval (const MISC_OPERAND extr_operand, DB_VALUE * dbval_p, DB
  *
  * return error code or NO_ERROR
  * time_val (in) : time value (datetime or time)
- * tz_source (in) : source timezone string 
+ * tz_source (in) : source timezone string
  * tz_dest (in)	: dest timezone string
  * result_time (out) : result
  */
@@ -28377,7 +28385,7 @@ db_new_time (DB_VALUE * time_val, DB_VALUE * tz_source, DB_VALUE * tz_dest, DB_V
   DB_TIME *time = NULL;
   char *t_source, *t_dest;
 
-  /* 
+  /*
    *  Assert that DB_VALUE structures have been allocated.
    */
   assert (time_val != (DB_VALUE *) NULL);
@@ -28456,7 +28464,7 @@ db_new_time (DB_VALUE * time_val, DB_VALUE * tz_source, DB_VALUE * tz_dest, DB_V
 /*
  * db_tz_offset () - retrieve the timezone offset for src_str source timezone
  *
- *   return: error or no error 
+ *   return: error or no error
  *   src_str(in): source DB_VALUE timezone string or offset
  *   date_time(in): current UTC datetime
  *   result_str(out): result DB_VALUE string
@@ -28469,13 +28477,13 @@ db_tz_offset (const DB_VALUE * src_str, DB_VALUE * result_str, DB_DATETIME * dat
   DB_TYPE str_type;
   char *res;
 
-  /* 
+  /*
    *  Assert that DB_VALUE structures have been allocated.
    */
   assert (src_str != (DB_VALUE *) NULL);
   assert (result_str != (DB_VALUE *) NULL);
 
-  /* 
+  /*
    *  Categorize the two input parameters and check for errors.
    *    Verify that the parameters are both character strings.
    */
@@ -28490,7 +28498,7 @@ db_tz_offset (const DB_VALUE * src_str, DB_VALUE * result_str, DB_DATETIME * dat
       error_status = ER_QSTR_INVALID_DATA_TYPE;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
     }
-  /* 
+  /*
    *  If the input parameters have been properly validated, then
    *  we are ready to operate.
    */
@@ -28530,7 +28538,7 @@ db_tz_offset (const DB_VALUE * src_str, DB_VALUE * result_str, DB_DATETIME * dat
  * db_from_tz () - adds timezone information to the time_val
  * Return: error code or NO_ERROR
  * time_val (in) : time value (datetime, time or timestamp)
- * tz (in) : timezone string 
+ * tz (in) : timezone string
  * time_val_with_tz (out) : timeval with timezone information
  */
 
@@ -28541,7 +28549,7 @@ db_from_tz (DB_VALUE * time_val, DB_VALUE * tz, DB_VALUE * time_val_with_tz)
   int len_timezone, error = NO_ERROR;
   DB_DATETIME *datetime = NULL;
 
-  /* 
+  /*
    *  Assert that DB_VALUE structures have been allocated.
    */
   assert (time_val != (DB_VALUE *) NULL);
@@ -28639,7 +28647,7 @@ db_conv_tz (DB_VALUE * time_val, DB_VALUE * result_time)
   DB_TIMESTAMPTZ *timestamptz = NULL;
   DB_TIMESTAMP *timestamp = NULL;
 
-  /* 
+  /*
    *  Assert that DB_VALUE structures have been allocated.
    */
   assert (time_val != (DB_VALUE *) NULL);
