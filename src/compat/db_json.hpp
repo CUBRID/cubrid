@@ -21,8 +21,8 @@
  * db_json.hpp - functions related to json
  */
 
-#ifndef _DB_JSON_H_
-#define _DB_JSON_H_
+#ifndef _DB_JSON_HPP_
+#define _DB_JSON_HPP_
 
 #include "error_manager.h"
 #include "object_representation.h"
@@ -41,7 +41,6 @@ typedef void JSON_ITERATOR;
 
 #include <functional>
 #include <vector>
-#include "thread_compat.hpp"
 
 /*
  * these also double as type precedence
@@ -72,8 +71,7 @@ bool db_json_is_valid (const char *json_str);
 const char *db_json_get_type_as_str (const JSON_DOC *document);
 unsigned int db_json_get_length (const JSON_DOC *document);
 unsigned int db_json_get_depth (const JSON_DOC *doc);
-int db_json_extract_document_from_path (const JSON_DOC *document, const char *raw_path,
-					JSON_DOC *&result);
+int db_json_extract_document_from_path (const JSON_DOC *document, const char *raw_path, JSON_DOC *&result);
 int db_json_contains_path (const JSON_DOC *document, const char *raw_path, bool &result);
 char *db_json_get_raw_json_body_from_document (const JSON_DOC *doc);
 
@@ -178,4 +176,4 @@ db_json_convert_string_and_call (const char *json_raw, size_t json_raw_length, F
 
 #endif /* defined (__cplusplus) */
 
-#endif /* _DB_JSON_H_ */
+#endif /* _DB_JSON_HPP_ */
