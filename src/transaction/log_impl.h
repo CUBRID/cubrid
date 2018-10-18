@@ -2447,7 +2447,6 @@ extern void logtb_wakeup_thread_with_tran_index (int tran_index, thread_resume_s
 extern bool logtb_set_check_interrupt (THREAD_ENTRY * thread_p, bool flag);
 extern bool logtb_get_check_interrupt (THREAD_ENTRY * thread_p);
 extern int logpb_set_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr);
-  __attribute__ ((ALWAYS_INLINE));
 
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 #endif /* _LOG_IMPL_H_ */
