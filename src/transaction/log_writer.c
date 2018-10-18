@@ -82,6 +82,10 @@ logwr_check_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
 
   /* Save the old page checksum. */
   saved_checksum_crc32 = log_pgptr->hdr.checksum;
+  if (saved_checksum_crc32 == 0)
+    {
+      return NO_ERROR;
+    }
 
   /* Resets checksum to not affect the new computation. */
   log_pgptr->hdr.checksum = 0;
