@@ -34772,7 +34772,8 @@ btree_is_online_index_loading (BTREE_OP_PURPOSE purpose)
 }
 
 int
-btree_online_index_check_unique_constraint (THREAD_ENTRY * thread_p, BTID * btid)
+btree_online_index_check_unique_constraint (THREAD_ENTRY * thread_p, BTID * btid, const char *index_name,
+					    OID * class_oid)
 {
   int ret = NO_ERROR;
   int g_num_oids = 0, g_num_nulls = 0, g_num_keys = 0;
@@ -34793,7 +34794,7 @@ btree_online_index_check_unique_constraint (THREAD_ENTRY * thread_p, BTID * btid
   if ((g_num_oids + unique_stats->tran_stats.num_oids) != (g_num_keys + unique_stats->tran_stats.num_keys))
     {
       /* Unique constraint violation. */
-      BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_p, NULL, NULL, NULL, btid, NULL);
+      BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_p, NULL, NULL, class_oid, btid, index_name);
       return ER_BTREE_UNIQUE_FAILED;
     }
 

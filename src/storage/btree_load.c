@@ -4514,7 +4514,7 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   if (BTREE_IS_UNIQUE (unique_pk))
     {
       /* Check if we have a unique constraint violation for unique indexes. */
-      ret = btree_online_index_check_unique_constraint (thread_p, btid);
+      ret = btree_online_index_check_unique_constraint (thread_p, btid, bt_name, class_oids);
       if (ret != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
