@@ -415,8 +415,6 @@ static int logpb_fetch_header_from_active_log (THREAD_ENTRY * thread_p, const ch
 					       const char *logpath, const char *prefix_logname, LOG_HEADER * hdr,
 					       LOG_PAGE * log_pgptr);
 static int logpb_compute_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int *checksum_crc32);
-STATIC_INLINE int logpb_set_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
-  __attribute__ ((ALWAYS_INLINE));
 static int logpb_page_has_valid_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, bool * has_valid_checksum);
 
 /*
@@ -540,7 +538,7 @@ logpb_compute_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int 
  * log_pgptr (in) : log page pointer
  *   Note: Currently CRC32 is used as checksum.
  */
-STATIC_INLINE int
+int
 logpb_set_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
 {
   int error_code = NO_ERROR, checksum_crc32;
