@@ -2097,7 +2097,7 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p, char *logpg_area, int *logpg_used
 		}
 	    }
 
-          logwr_check_page_checksum (thread_p, log_pgptr);
+          logpb_set_page_checksum (thread_p, log_pgptr);
 
 	  assert (pageid == (log_pgptr->hdr.logical_pageid));
 	  p += LOG_PAGESIZE;
