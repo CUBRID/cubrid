@@ -16431,6 +16431,13 @@ sm_load_online_index (MOP classmop, const char *constraint_name)
   assert (con != NULL);
   assert (con->index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS);
 
+  /* We must check if the constraint isn't shared from another one. */
+  if (con->shared_cons_name != NULL)
+    {
+      /*  The BTID already exists and surely it has been loaded. Therefore we can just stop here */
+      return NO_ERROR;
+    }
+
   /* Count the attributes */
   for (i = 0, n_attrs = 0; con->attributes[i] != NULL; i++, n_attrs++)
     {
