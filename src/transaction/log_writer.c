@@ -38,6 +38,7 @@
 #include "system_parameter.h"
 #include "connection_support.h"
 #include "log_applier.h"
+#include "crypt_opfunc.h"
 #if defined(SERVER_MODE)
 #include "server_support.h"
 #include "network_interface_sr.h"
@@ -743,6 +744,63 @@ logwr_copy_necessary_log (LOG_PAGEID to_pageid)
   return NO_ERROR;
 }
 
+
+/*
+ * logwr_compute_page_checksum - Computes log page checksum.
+ * return: error code
+ * thread_p (in) : thread entry
+ * log_pgptr (in) : log page pointer
+ * checksum_crc32(out): computed checksum
+ *   Note: Currently CRC32 is used as checksum.
+ */
+static int
+logwr_check_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
+{
+  int error_code = NO_ERROR, saved_checksum_crc32;
+  const int block_size = 4096;
+  const int max_num_pages = IO_MAX_PAGE_SIZE / block_size;
+  const int sample_nbytes = 16;
+  int sampling_offset;
+  char buf[max_num_pages * sample_nbytes * 2];
+  const int num_pages = LOG_PAGESIZE / block_size;
+  const size_t sizeof_buf = num_pages * sample_nbytes * 2;
+  int checksum_crc32;
+
+  assert (log_pgptr != NULL);
+
+  /* Save the old page checksum. */
+  saved_checksum_crc32 = log_pgptr->hdr.checksum;
+
+  /* Resets checksum to not affect the new computation. */
+  log_pgptr->hdr.checksum = 0;
+
+  char *p = buf;
+  for (int i = 0; i < num_pages; i++)
+    {
+      // first 
+      sampling_offset = (i * block_size);
+      memcpy (p, ((char *) log_pgptr) + sampling_offset, sample_nbytes);
+      p += sample_nbytes;
+
+      // last 
+      sampling_offset = (i * block_size) + (block_size - sample_nbytes);
+      memcpy (p, ((char *) log_pgptr) + sampling_offset, sample_nbytes);
+      p += sample_nbytes;
+    }
+
+  error_code = crypt_crc32 (thread_p, (char *) buf, sizeof_buf, &checksum_crc32);
+
+  /* Restores the saved checksum */
+  log_pgptr->hdr.checksum = saved_checksum_crc32;
+
+  if (checksum_crc32 != saved_checksum_crc32)
+    {
+      assert (false);
+    }
+
+  return error_code;
+}
+
 /*
  * logwr_fetch_append_pages -
  *
@@ -816,6 +874,7 @@ logwr_writev_append_pages (LOG_PAGE ** to_flush, DKNPAGES npages)
 
       /* 2. active write */
       phy_pageid = logwr_to_physical_pageid (fpageid);
+      logwr_check_page_checksum (NULL, *to_flush);
       if (fileio_writev (NULL, logwr_Gl.append_vdes, (void **) to_flush, phy_pageid, npages, LOG_PAGESIZE) == NULL)
 	{
 	  if (er_errid () == ER_IO_WRITE_OUT_OF_SPACE)
