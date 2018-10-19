@@ -38,6 +38,7 @@
 #include "system_parameter.h"
 #include "connection_support.h"
 #include "log_applier.h"
+#include "crypt_opfunc.h"
 #if defined(SERVER_MODE)
 #include "server_support.h"
 #include "network_interface_sr.h"
@@ -54,6 +55,9 @@
 
 static int prev_ha_server_state = HA_SERVER_STATE_NA;
 static bool logwr_need_shutdown = false;
+
+static int logwr_check_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr);
+
 #if defined(CS_MODE)
 LOGWR_GLOBAL logwr_Gl = {
   /* log header */
@@ -762,6 +766,8 @@ logwr_writev_append_pages (LOG_PAGE ** to_flush, DKNPAGES npages)
   if (npages > 0)
     {
       fpageid = to_flush[0]->hdr.logical_pageid;
+
+      (void) logwr_check_page_checksum (NULL, *to_flush);
 
       /* 1. archive temp write */
       if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING))
@@ -1668,6 +1674,73 @@ logwr_copy_log_file (const char *db_name, const char *log_path, int mode, INT64 
 }
 #endif /* !CS_MODE */
 
+
+
+/*
+ * logwr_compute_page_checksum - Computes log page checksum.
+ * return: error code
+ * thread_p (in) : thread entry
+ * log_pgptr (in) : log page pointer
+ * checksum_crc32(out): computed checksum
+ *   Note: Currently CRC32 is used as checksum.
+ *   Note: this is a copy of logpb_compute_page_checksum
+ */
+static int
+logwr_check_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
+{
+  int error_code = NO_ERROR, saved_checksum_crc32;
+  const int block_size = 4096;
+  const int max_num_pages = IO_MAX_PAGE_SIZE / block_size;
+  const int sample_nbytes = 16;
+  int sampling_offset;
+  char buf[max_num_pages * sample_nbytes * 2];
+  const int num_pages = LOG_PAGESIZE / block_size;
+  const size_t sizeof_buf = num_pages * sample_nbytes * 2;
+  int checksum_crc32;
+
+  assert (log_pgptr != NULL);
+
+  /* Save the old page checksum. */
+  saved_checksum_crc32 = log_pgptr->hdr.checksum;
+  if (saved_checksum_crc32 == 0)
+    {
+      return NO_ERROR;
+    }
+
+  /* Resets checksum to not affect the new computation. */
+  log_pgptr->hdr.checksum = 0;
+
+  char *p = buf;
+  for (int i = 0; i < num_pages; i++)
+    {
+      // first 
+      sampling_offset = (i * block_size);
+      memcpy (p, ((char *) log_pgptr) + sampling_offset, sample_nbytes);
+      p += sample_nbytes;
+
+      // last 
+      sampling_offset = (i * block_size) + (block_size - sample_nbytes);
+      memcpy (p, ((char *) log_pgptr) + sampling_offset, sample_nbytes);
+      p += sample_nbytes;
+    }
+
+  error_code = crypt_crc32 (thread_p, (char *) buf, sizeof_buf, &checksum_crc32);
+
+  /* Restores the saved checksum */
+  log_pgptr->hdr.checksum = saved_checksum_crc32;
+
+  if (checksum_crc32 != saved_checksum_crc32)
+    {
+      _er_log_debug (ARG_FILE_LINE,
+		     "logwr_check_page_checksum: log page %lld has checksum = %d, computed checksum = %d\n",
+		     (long long int) log_pgptr->hdr.logical_pageid, saved_checksum_crc32, checksum_crc32);
+      assert (false);
+      return ER_FAILED;
+    }
+
+  return error_code;
+}
+
 /*
  * logwr_log_ha_filestat_to_string() - return the string alias of enum value
  *
@@ -2031,6 +2104,16 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p, char *logpg_area, int *logpg_used
 		  error_code = ER_FAILED;
 		  goto error;
 		}
+	    }
+
+	  if (pageid >= nxio_lsa.pageid)
+	    {
+	      /* page is not flushed yet, may be changed : update checksum before send */
+	      (void) logpb_set_page_checksum (thread_p, log_pgptr);
+	    }
+	  else
+	    {
+	      (void) logwr_check_page_checksum (thread_p, log_pgptr);
 	    }
 
 	  assert (pageid == (log_pgptr->hdr.logical_pageid));
