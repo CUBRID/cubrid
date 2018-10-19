@@ -64,6 +64,7 @@ static bool logwr_need_shutdown = false;
  * log_pgptr (in) : log page pointer
  * checksum_crc32(out): computed checksum
  *   Note: Currently CRC32 is used as checksum.
+ *   Note: this is a copy of logpb_compute_page_checksum
  */
 static int
 logwr_check_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
@@ -111,7 +112,11 @@ logwr_check_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
 
   if (checksum_crc32 != saved_checksum_crc32)
     {
+      _er_log_debug (ARG_FILE_LINE,
+                     "logwr_check_page_checksum: log page %lld has checksum = %d, computed checksum = %d\n",
+		     (long long int) log_pgptr->hdr.logical_pageid, saved_checksum_crc32, checksum_crc32);
       assert (false);
+      return ER_FAILED;
     }
 
   return error_code;
@@ -826,6 +831,8 @@ logwr_writev_append_pages (LOG_PAGE ** to_flush, DKNPAGES npages)
     {
       fpageid = to_flush[0]->hdr.logical_pageid;
 
+      (void) logwr_check_page_checksum (NULL, *to_flush);
+
       /* 1. archive temp write */
       if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING))
 	{
@@ -879,7 +886,6 @@ logwr_writev_append_pages (LOG_PAGE ** to_flush, DKNPAGES npages)
 
       /* 2. active write */
       phy_pageid = logwr_to_physical_pageid (fpageid);
-      logwr_check_page_checksum (NULL, *to_flush);
       if (fileio_writev (NULL, logwr_Gl.append_vdes, (void **) to_flush, phy_pageid, npages, LOG_PAGESIZE) == NULL)
 	{
 	  if (er_errid () == ER_IO_WRITE_OUT_OF_SPACE)
@@ -2097,9 +2103,15 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p, char *logpg_area, int *logpg_used
 		}
 	    }
 
-          logwr_check_page_checksum (thread_p, log_pgptr);
-          // temporay disable fix
-          //logpb_set_page_checksum (thread_p, log_pgptr);
+          if (pageid >= nxio_lsa.pageid)
+            {
+              /* page is not flushed yet, may be changed : update checksum before send */
+              (void) logpb_set_page_checksum (thread_p, log_pgptr);
+            }
+          else
+            {
+              (void) logwr_check_page_checksum (thread_p, log_pgptr);
+            }
 
 	  assert (pageid == (log_pgptr->hdr.logical_pageid));
 	  p += LOG_PAGESIZE;

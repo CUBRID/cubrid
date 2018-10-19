@@ -488,6 +488,7 @@ logpb_initialize_log_buffer (LOG_BUFFER * log_buffer_p, LOG_PAGE * log_pg)
  * log_pgptr (in) : log page pointer
  * checksum_crc32(out): computed checksum
  *   Note: Currently CRC32 is used as checksum.
+ *   Note: any changes to this requires changes to logwr_check_page_checksum
  */
 static int
 logpb_compute_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int *checksum_crc32)
