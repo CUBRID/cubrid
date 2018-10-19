@@ -1049,6 +1049,11 @@ logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
   if (!bufptr->dirty)
     {
       logpb_log ("dirty flag set for pageid = %lld\n", (long long int) bufptr->pageid);
+      if (log_pgptr->hdr.checksum != 0)
+        {
+          _er_log_debug (ARG_FILE_LINE, "LOG_PB: checksum already set while set dirty on pageid = %lld, checksum=%d\n",
+                         (long long int) bufptr->pageid, log_pgptr->hdr.checksum);
+        }
     }
 #if defined(CUBRID_DEBUG)
   if (bufptr->pageid != LOGPB_HEADER_PAGE_ID
