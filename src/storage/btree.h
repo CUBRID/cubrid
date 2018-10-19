@@ -739,7 +739,8 @@ extern int btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID * btid, 
 extern int btree_rv_keyval_undo_online_index_tran_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 extern int btree_rv_keyval_undo_online_index_tran_delete (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 
-extern int btree_online_index_check_unique_constraint (THREAD_ENTRY * thread_p, BTID * btid);
+extern int btree_online_index_check_unique_constraint (THREAD_ENTRY * thread_p, BTID * btid, const char *index_name,
+						       OID * class_oid);
 extern int btree_get_class_oid_of_unique_btid (THREAD_ENTRY * thread_p, BTID * btid, OID * class_oid);
 extern bool btree_is_btid_online_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid);
 #endif /* _BTREE_H_ */
