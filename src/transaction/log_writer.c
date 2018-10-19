@@ -1732,7 +1732,7 @@ logwr_check_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
   if (checksum_crc32 != saved_checksum_crc32)
     {
       _er_log_debug (ARG_FILE_LINE,
-                     "logwr_check_page_checksum: log page %lld has checksum = %d, computed checksum = %d\n",
+		     "logwr_check_page_checksum: log page %lld has checksum = %d, computed checksum = %d\n",
 		     (long long int) log_pgptr->hdr.logical_pageid, saved_checksum_crc32, checksum_crc32);
       assert (false);
       return ER_FAILED;
@@ -2106,15 +2106,15 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p, char *logpg_area, int *logpg_used
 		}
 	    }
 
-          if (pageid >= nxio_lsa.pageid)
-            {
-              /* page is not flushed yet, may be changed : update checksum before send */
-              (void) logpb_set_page_checksum (thread_p, log_pgptr);
-            }
-          else
-            {
-              (void) logwr_check_page_checksum (thread_p, log_pgptr);
-            }
+	  if (pageid >= nxio_lsa.pageid)
+	    {
+	      /* page is not flushed yet, may be changed : update checksum before send */
+	      (void) logpb_set_page_checksum (thread_p, log_pgptr);
+	    }
+	  else
+	    {
+	      (void) logwr_check_page_checksum (thread_p, log_pgptr);
+	    }
 
 	  assert (pageid == (log_pgptr->hdr.logical_pageid));
 	  p += LOG_PAGESIZE;
