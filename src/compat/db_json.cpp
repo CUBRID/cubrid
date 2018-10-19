@@ -3233,6 +3233,7 @@ db_json_get_all_paths_func (const JSON_DOC &doc, JSON_DOC *&result_json)
  *
  * doc (in)                : json document
  * result_str (in)         : a string that contains the json in a pretty format
+ *                           NOTE: Memory for the result_str is obtained with db_private_strdup and needs to be freed
  */
 void
 db_json_pretty_func (const JSON_DOC &doc, char *&result_str)

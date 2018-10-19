@@ -5248,9 +5248,11 @@ db_json_unquote_dbval (DB_VALUE * json, DB_VALUE * res)
 int
 db_json_pretty_dbval (DB_VALUE * json, DB_VALUE * res)
 {
+  int error_code;
+
   if (DB_IS_NULL (json))
     {
-      return db_make_null (res);
+      error_code = db_make_null (res);
     }
   else
     {
@@ -5258,8 +5260,11 @@ db_json_pretty_dbval (DB_VALUE * json, DB_VALUE * res)
 
       db_json_pretty_func (*db_get_json_document (json), str);
 
-      return db_make_string (res, str);
+      error_code = db_make_string (res, str);
+      res->need_clear = true;	// db_json_pretty_func uses strdup, therefore set need_clear flag
     }
+
+  return error_code;
 }
 
 int
