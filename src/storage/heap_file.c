@@ -3222,7 +3222,8 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, H
 	      break;
 	    }
 #if defined (SERVER_MODE)
-	  assert (er_errid () == ER_INTERRUPTED);
+	  // ignores a warning and expects no other errors
+	  assert (er_errid_if_has_error () == NO_ERROR);
 #endif /* SERVER_MODE */
 	  er_clear ();
 	}
