@@ -1978,7 +1978,7 @@ db_mod_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 static double
 round_double (double num, double integer)
 {
-  /* 
+  /*
    * Under high optimization level, some optimizers (e.g, gcc -O3 on linux)
    * generates a wrong result without "volatile".
    */
@@ -3139,7 +3139,7 @@ log_error:
 static double
 truncate_double (double num, double integer)
 {
-  /* 
+  /*
    * Under high optimization level, some optimizers (e.g, gcc -O3 on linux)
    * generates a wrong result without "volatile".
    */
@@ -4828,7 +4828,7 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1, const DB_VALUE * va
 
       if (type == DB_TYPE_BIGINT)
 	{
-	  /* cast bigint to numeric Compiler doesn't support long double (80 or 128bits), so we use numeric instead. If 
+	  /* cast bigint to numeric Compiler doesn't support long double (80 or 128bits), so we use numeric instead. If
 	   * a high precision lib is introduced or long double is full supported, remove this part and use the lib or
 	   * long double to calculate. */
 	  /* convert value1 */
@@ -5141,7 +5141,7 @@ db_json_type_dbval (const DB_VALUE * json, DB_VALUE * type_res)
       type = db_json_get_type_as_str (db_get_json_document (json));
       length = strlen (type);
 
-      return db_make_char (type_res, length, (DB_C_CHAR) type, length, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
+      return db_make_varchar (type_res, length, (DB_C_CHAR) type, length, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
     }
 }
 
@@ -5320,7 +5320,7 @@ db_json_objectagg_dbval_accumulate (DB_VALUE * json_key, DB_VALUE * json_val, DB
   int error_code = NO_ERROR;
 
   // this case should not be possible because we checked before if the key is NULL
-  // and wrapped the value with a JSON with DB_JSON_NULL type 
+  // and wrapped the value with a JSON with DB_JSON_NULL type
   if (DB_IS_NULL (json_key) || DB_IS_NULL (json_val))
     {
       assert (false);

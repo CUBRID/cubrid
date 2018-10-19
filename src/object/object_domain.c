@@ -355,7 +355,7 @@ static TP_DOMAIN *tp_Domains[] = {
   &tp_Bigint_domain,
   &tp_Datetime_domain,
 
-  /* beginning of some "padding" built-in domains that can be used as expansion space when new primitive data types are 
+  /* beginning of some "padding" built-in domains that can be used as expansion space when new primitive data types are
    * added. */
   &tp_Blob_domain,
   &tp_Clob_domain,
@@ -624,7 +624,7 @@ tp_init (void)
       return er_errid ();
     }
 
-  /* 
+  /*
    * Make sure the next pointer on all the built-in domains is clear.
    * Also make sure the built-in domain numbers are assigned consistently.
    * Assign the builtin indexes starting from 1 so we can use zero to mean
@@ -713,14 +713,14 @@ tp_final (void)
       return;
     }
 
-  /* 
+  /*
    * Make sure the next pointer on all the built-in domains is clear.
    * Also make sure the built-in domain numbers are assigned consistently.
    */
   for (i = 0; tp_Domains[i] != NULL; i++)
     {
       dlist = tp_Domains[i];
-      /* 
+      /*
        * The first element in the domain array is always a built-in, there
        * can potentially be other built-ins in the list mixed in with
        * allocated domains.
@@ -736,7 +736,7 @@ tp_final (void)
 	    {
 	      prev->next_list = next;
 
-	      /* 
+	      /*
 	       * Make sure to turn off the cache bit or else tp_domain_free
 	       * will ignore the request.
 	       */
@@ -746,7 +746,7 @@ tp_final (void)
 	}
     }
 
-  /* 
+  /*
    * tp_Midxkey_domains[0] was cleared by the above for-loop.
    * It holds a pointer of tp_Midxkey_domain_list_heads[0] on its head.
    * The pointer is also stored on tp_Domains[DB_TYPE_MIDXKEY].
@@ -848,7 +848,7 @@ tp_enumeration_match (const DB_ENUMERATION * db_enum1, const DB_ENUMERATION * db
 	  return 0;
 	}
 
-      /* 
+      /*
        * memcmp is used here because it is necessary for domains like
        * ENUM('a', 'b') COLLATE utf8_en_ci and
        * ENUM('A', 'B') COLLATE utf8_en_ci to be regarded as different
@@ -949,7 +949,7 @@ tp_domain_free (TP_DOMAIN * dom)
 	  db_json_delete_validator (dom->json_validator);
 	}
 
-      /* 
+      /*
        * sub-domains are always completely owned by their root domain,
        * they cannot be cached anywhere else.
        */
@@ -1118,7 +1118,7 @@ tp_domain_construct (DB_TYPE domain_type, DB_OBJECT * class_obj, int precision, 
 	{
 	  new_dm->class_mop = class_obj;
 	  new_dm->self_ref = 0;
-	  /* 
+	  /*
 	   * For compatibility on the server side, class objects must have
 	   * the oid in the domain match the oid in the class object.
 	   */
@@ -1132,7 +1132,7 @@ tp_domain_construct (DB_TYPE domain_type, DB_OBJECT * class_obj, int precision, 
 	    }
 	}
 
-      /* 
+      /*
        * have to leave the class OID uninitialized because we don't know how
        * to get an OID out of a DB_OBJECT on the server.
        * That shouldn't matter since the server side unpackers will use
@@ -1505,7 +1505,7 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
       return 0;
     }
 
-  /* 
+  /*
    * At this point, either dom1 and dom2 have exactly the same type, or
    * exact_match is TP_STR_MATCH and dom1 and dom2 are a char/varchar
    * (nchar/varnchar, bit/varbit) pair.
@@ -1540,7 +1540,7 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
     case DB_TYPE_DATE:
     case DB_TYPE_MONETARY:
     case DB_TYPE_SHORT:
-      /* 
+      /*
        * these domains have no parameters, they match if the types are the
        * same.
        */
@@ -1558,7 +1558,7 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
 #if defined (SERVER_MODE)
       match = OID_EQ (&dom1->class_oid, &dom2->class_oid);
 #else /* !defined (SERVER_MODE) */
-      /* 
+      /*
        * if "exact" is zero, we should be checking the subclass hierarchy of
        * dom1 to see id dom2 is in it !
        */
@@ -1574,7 +1574,7 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
 	}
       else
 	{
-	  /* 
+	  /*
 	   * We have a mixture of OID & MOPS, it probably isn't necessary to
 	   * be this general but try to avoid assuming the class OIDs have
 	   * been set when there is a MOP present.
@@ -1739,7 +1739,7 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
 	}
       else if (exact == TP_STR_MATCH)
 	{
-	  /* 
+	  /*
 	   * Allow the match if the precisions would allow us to reuse the
 	   * string without modification.
 	   */
@@ -1747,7 +1747,7 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
 	}
       else
 	{
-	  /* 
+	  /*
 	   * Allow matches regardless of precision, let the actual length of the
 	   * value determine if it can be assigned.  This is important for
 	   * literal strings as their precision will be the maximum but they
@@ -1767,7 +1767,7 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
 	}
       /* fall through */
     case DB_TYPE_BIT:
-      /* 
+      /*
        * Unlike varchar, we have to be a little tighter on domain matches for
        * fixed width char.  Not as much of a problem since these won't be
        * used for literal strings.
@@ -1794,7 +1794,7 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
 	}
       else
 	{
-	  /* 
+	  /*
 	   * see discussion of special domain precision values in the
 	   * DB_TYPE_CHAR case above.
 	   */
@@ -1818,7 +1818,7 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
       break;
 
     case DB_TYPE_NUMERIC:
-      /* 
+      /*
        * note that we never allow inexact matches here because the
        * mr_setmem_numeric function is not currently able to perform the
        * deferred coercion.
@@ -1830,7 +1830,7 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
     case DB_TYPE_ERROR:
     case DB_TYPE_OID:
     case DB_TYPE_DB_VALUE:
-      /* 
+      /*
        * These are internal domains, they shouldn't be seen, in case they are,
        * just let them match without parameters.
        */
@@ -1929,7 +1929,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 
   *ins_pos = domain;
 
-  /* 
+  /*
    * At this point, either domain and transient have exactly the same type, or
    * exact_match is TP_STR_MATCH and domain and transient are a char/varchar
    * (nchar/varnchar, bit/varbit) pair.
@@ -1956,7 +1956,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
     case DB_TYPE_DATE:
     case DB_TYPE_MONETARY:
     case DB_TYPE_SHORT:
-      /* 
+      /*
        * these domains have no parameters, they match if asc/desc are the
        * same
        */
@@ -1983,7 +1983,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 
       while (domain)
 	{
-	  /* 
+	  /*
 	   * if "exact" is zero, we should be checking the subclass hierarchy
 	   * of domain to see id transient is in it !
 	   */
@@ -1999,7 +1999,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 	    }
 	  else
 	    {
-	      /* 
+	      /*
 	       * We have a mixture of OID & MOPS, it probably isn't necessary
 	       * to be this general but try to avoid assuming the class OIDs
 	       * have been set when there is a MOP present.
@@ -2050,7 +2050,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 	      {
 		int dsize1;
 
-		/* 
+		/*
 		 * don't bother comparing the lists unless the sizes are the
 		 * same
 		 */
@@ -2094,7 +2094,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 	      {
 		int dsize;
 
-		/* 
+		/*
 		 * don't bother comparing the lists unless the sizes are the
 		 * same
 		 */
@@ -2237,7 +2237,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 	    }
 	  else if (exact == TP_STR_MATCH)
 	    {
-	      /* 
+	      /*
 	       * Allow the match if the precisions would allow us to reuse the
 	       * string without modification.
 	       */
@@ -2247,7 +2247,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 	    }
 	  else
 	    {
-	      /* 
+	      /*
 	       * Allow matches regardless of precision, let the actual length
 	       * of the value determine if it can be assigned.  This is
 	       * important for literal strings as their precision will be the
@@ -2285,7 +2285,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 	    }
 	  else if (exact == TP_STR_MATCH)
 	    {
-	      /* 
+	      /*
 	       * Allow the match if the precisions would allow us to reuse the
 	       * string without modification.
 	       */
@@ -2293,7 +2293,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 	    }
 	  else
 	    {
-	      /* 
+	      /*
 	       * Allow matches regardless of precision, let the actual length
 	       * of the value determine if it can be assigned.  This is
 	       * important for literal strings as their precision will be the
@@ -2317,7 +2317,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
     case DB_TYPE_BIT:
       while (domain)
 	{
-	  /* 
+	  /*
 	   * Unlike varchar, we have to be a little tighter on domain matches
 	   * for fixed width char.  Not as much of a problem since these won't
 	   * be used for literal strings.
@@ -2333,7 +2333,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 	    }
 	  else
 	    {
-	      /* 
+	      /*
 	       * Recognize a precision of TP_FLOATING_PRECISION_VALUE to
 	       * indicate a precision whose coercability must be determined
 	       * by examing the value.  This is used primarily by db_coerce()
@@ -2374,7 +2374,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 	    }
 	  else
 	    {
-	      /* 
+	      /*
 	       * see discussion of special domain precision values
 	       * in the DB_TYPE_CHAR case above.
 	       */
@@ -2431,7 +2431,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
       break;
 
     case DB_TYPE_NUMERIC:
-      /* 
+      /*
        * The first domain is a default domain for numeric type,
        * actually NUMERIC(15,0). We try to match it first.
        */
@@ -2445,7 +2445,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
       domain = domain->next_list;
       while (domain)
 	{
-	  /* 
+	  /*
 	   * The other domains for numeric values are sorted
 	   * by descending order of precision and scale.
 	   */
@@ -2455,7 +2455,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 	      break;
 	    }
 
-	  /* 
+	  /*
 	   * note that we never allow inexact matches here because
 	   * the mr_setmem_numeric function is not currently able
 	   * to perform the deferred coercion.
@@ -2476,7 +2476,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
     case DB_TYPE_ERROR:
     case DB_TYPE_OID:
     case DB_TYPE_DB_VALUE:
-      /* 
+      /*
        * These are internal domains, they shouldn't be seen, in case they are,
        * just let them match without parameters.
        */
@@ -2601,7 +2601,7 @@ tp_domain_find_numeric (DB_TYPE type, int precision, int scale, bool is_desc)
   /* type : DB_TYPE_NUMERIC */
   assert (type == DB_TYPE_NUMERIC);
 
-  /* 
+  /*
    * The first domain is a default domain for numeric type,
    * actually NUMERIC(15,0). We try to match it first.
    */
@@ -2645,7 +2645,7 @@ tp_domain_find_charbit (DB_TYPE type, int codeset, int collation_id, unsigned ch
   TP_DOMAIN *dom;
 
   /* tp_domain_find_with_codeset_precision */
-  /* 
+  /*
    * type : DB_TYPE_NCHAR   DB_TYPE_VARNCHAR
    * DB_TYPE_CHAR    DB_TYPE_VARCHAR
    * DB_TYPE_BIT     DB_TYPE_VARBIT
@@ -2751,7 +2751,7 @@ tp_domain_find_object (DB_TYPE type, OID * class_oid, struct db_object * class_m
 #if defined (SERVER_MODE)
 	  assert_release (false);
 #else /* defined (SERVER_MODE) */
-	  /* 
+	  /*
 	   * We have a mixture of OID & MOPS, it probably isn't necessary to be
 	   * this general but try to avoid assuming the class OIDs have been set
 	   * when there is a MOP present.
@@ -2949,7 +2949,7 @@ tp_domain_cache (TP_DOMAIN * transient)
   tp_swizzle_oid (transient);
 #endif /* !SERVER_MODE */
 
-  /* 
+  /*
    * first search stage: NO LOCK
    */
   /* locate the root of the cache list for domains of this type */
@@ -2962,7 +2962,7 @@ tp_domain_cache (TP_DOMAIN * transient)
       domain = tp_is_domain_cached (*dlist, transient, TP_EXACT_MATCH, &ins_pos);
       if (domain != NULL)
 	{
-	  /* 
+	  /*
 	   * We found one in the cache, free the supplied domain and return
 	   * the cached one
 	   */
@@ -2971,7 +2971,7 @@ tp_domain_cache (TP_DOMAIN * transient)
 	}
     }
 
-  /* 
+  /*
    * second search stage: LOCK
    */
 #if defined (SERVER_MODE)
@@ -2987,7 +2987,7 @@ tp_domain_cache (TP_DOMAIN * transient)
       domain = tp_is_domain_cached (*dlist, transient, TP_EXACT_MATCH, &ins_pos);
       if (domain != NULL)
 	{
-	  /* 
+	  /*
 	   * We found one in the cache, free the supplied domain and return
 	   * the cached one
 	   */
@@ -2998,7 +2998,7 @@ tp_domain_cache (TP_DOMAIN * transient)
     }
 #endif /* SERVER_MODE */
 
-  /* 
+  /*
    * We couldn't find one, install the transient domain that was passed in.
    * Since by far the most common domain match is going to be the built-in
    * domain at the head of the list, append new domains to the end of the
@@ -3104,7 +3104,7 @@ tp_domain_resolve_default (DB_TYPE type)
  *    coll_flag(in): collation flag
  * Note:
  *  It returns a special domain having the desired collation and collation
- *  mode flag. Use this in context of type inference for argument coercion 
+ *  mode flag. Use this in context of type inference for argument coercion
  */
 TP_DOMAIN *
 tp_domain_resolve_default_w_coll (DB_TYPE type, int coll_id, TP_DOMAIN_COLL_ACTION coll_flag)
@@ -3162,7 +3162,7 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
   if (TP_IS_SET_TYPE (value_type))
     {
       DB_SET *set;
-      /* 
+      /*
        * For sets, just return the domain attached to the set since it
        * will already have been cached.
        */
@@ -3297,7 +3297,7 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 	  domain->collation_id = db_get_string_collation (val);
 	  domain->precision = db_value_precision (val);
 
-	  /* 
+	  /*
 	   * Convert references to the "floating" precisions to actual
 	   * precisions.  This may not be necessary or desireable?
 	   * Zero seems to pop up occasionally in DB_VALUE precisions, until
@@ -3335,7 +3335,7 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 	    }
 	  break;
 	case DB_TYPE_ENUMERATION:
-	  /* 
+	  /*
 	   * We have no choice but to return the default enumeration domain
 	   * because we cannot construct the domain from a DB_VALUE
 	   */
@@ -3359,7 +3359,7 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 	  domain->precision = db_value_precision (val);
 	  domain->scale = db_value_scale (val);
 
-	  /* 
+	  /*
 	   * Hack, precision seems to be commonly -1 DB_VALUES, turn this into
 	   * the default "maximum" precision.
 	   * This may not be necessary any more.
@@ -3386,7 +3386,7 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 	case DB_TYPE_SUB:
 	case DB_TYPE_VARIABLE:
 	case DB_TYPE_DB_VALUE:
-	  /* 
+	  /*
 	   * These are internal domains, they shouldn't be seen, in case they
 	   * are, match to a built-in
 	   */
@@ -3431,7 +3431,7 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 	    }
 	  break;
 
-	  /* 
+	  /*
 	   * things handled in logic outside the switch, shuts up compiler
 	   * warnings
 	   */
@@ -3598,7 +3598,7 @@ tp_domain_add (TP_DOMAIN ** dlist, TP_DOMAIN * domain)
 	    case DB_TYPE_CHAR:
 	    case DB_TYPE_NCHAR:
 	    case DB_TYPE_BIT:
-	      /* 
+	      /*
 	       * PR)  1.deficient character related with CHAR & VARCHAR in set.
 	       * ==> distinguishing VARCHAR from CHAR.
 	       * 2. core dumped & deficient character related with
@@ -3890,7 +3890,7 @@ tp_domain_filter_list (TP_DOMAIN * dlist, int *list_changes)
 	    }
 	  else
 	    {
-	      /* 
+	      /*
 	       * redundant "object" domain, remove, prev can't be NULL here,
 	       * will always have at least one domain structure at the head of
 	       * the list
@@ -3941,7 +3941,7 @@ tp_domain_filter_list (TP_DOMAIN * dlist, int *list_changes)
 int
 tp_domain_name (const TP_DOMAIN * domain, char *buffer, int maxlen)
 {
-  /* 
+  /*
    * need to get more sophisticated here, do full name decomposition and
    * check maxlen
    */
@@ -4000,7 +4000,7 @@ tp_domain_find_compatible (const TP_DOMAIN * src, const TP_DOMAIN * dest)
 
   found = NULL;
 
-  /* 
+  /*
    * If we have a hierarchical domain, perform a lenient "superset" comparison
    * rather than an exact match.
    */
@@ -4048,7 +4048,7 @@ tp_domain_compatible (const TP_DOMAIN * src, const TP_DOMAIN * dest)
       equal = 1;
       if (src != dest)
 	{
-	  /* 
+	  /*
 	   * for every domain in src, make sure we have a compatible one in
 	   * dest
 	   */
@@ -4101,7 +4101,7 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value, int all
 
   best = NULL;
 
-  /* 
+  /*
    * NULL values are allowed in any domain, a NULL domain means that any value
    * is allowed, return the first thing on the list.
    */
@@ -4115,7 +4115,7 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value, int all
     {
       if (db_on_server)
 	{
-	  /* 
+	  /*
 	   * On the server, just make sure that we have any object domain in
 	   * the list.
 	   */
@@ -4130,7 +4130,7 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value, int all
 #if !defined (SERVER_MODE)
       else
 	{
-	  /* 
+	  /*
 	   * On the client, swizzle to an object and fall in to the next
 	   * clause
 	   */
@@ -4150,7 +4150,7 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value, int all
 		{
 		  mop = ws_mop (oid, NULL);
 		  db_make_object (&temp, mop);
-		  /* 
+		  /*
 		   * we don't have to worry about clearing this since its an
 		   * object
 		   */
@@ -4162,7 +4162,7 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value, int all
 #endif /* !SERVER_MODE */
     }
 
-  /* 
+  /*
    * Handling of object domains is more complex than just comparing the
    * types and parameters.  We have to see if the instance's class is
    * somewhere in the subclass hierarchy of the domain class.
@@ -4174,7 +4174,7 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value, int all
     {
       if (db_on_server)
 	{
-	  /* 
+	  /*
 	   * we really shouldn't get here but if we do, handle it like the
 	   * OID case above, just return the first object domain that we find.
 	   */
@@ -4190,7 +4190,7 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value, int all
 #if !defined (SERVER_MODE)
       else
 	{
-	  /* 
+	  /*
 	   * On the client, check to see if the instance is within the subclass
 	   * hierarchy of the object domains.  If there are more than one
 	   * acceptable domains, we just pick the first one.
@@ -4211,7 +4211,7 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value, int all
 #if !defined (SERVER_MODE)
   else if (vtype == DB_TYPE_POINTER)
     {
-      /* 
+      /*
        * This is necessary in order to correctly choose an object domain from
        * the domain list when doing an insert nested inside a heterogeneous
        * set, e.g.:
@@ -4237,7 +4237,7 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value, int all
 
   else if (TP_IS_SET_TYPE (vtype))
     {
-      /* 
+      /*
        * Now that we cache set domains, there might be a faster way to do
        * this !
        */
@@ -4338,7 +4338,7 @@ tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value, int all
     }
   else
     {
-      /* 
+      /*
        * synthesize a domain for the value and look for a match.
        * Could we be doing this for the set values too ?
        * Hack, since this will be used only for comparison purposes,
@@ -4401,7 +4401,7 @@ tp_domain_select_type (const TP_DOMAIN * domain_list, DB_TYPE type, DB_OBJECT * 
   TP_DOMAIN **others;
   int i;
 
-  /* 
+  /*
    * NULL values are allowed in any domain, a NULL domain means that any value
    * is allowed, return the first thing on the list
    */
@@ -4412,7 +4412,7 @@ tp_domain_select_type (const TP_DOMAIN * domain_list, DB_TYPE type, DB_OBJECT * 
   else
     {
       best = NULL;
-      /* 
+      /*
        * loop through the domain elements looking for one the fits,
        * rather than make type comparisons for each element in the loop,
        * do them out here and duplicate the loop
@@ -4455,7 +4455,7 @@ tp_domain_select_type (const TP_DOMAIN * domain_list, DB_TYPE type, DB_OBJECT * 
 	  others = tp_Domain_conversion_matrix[type];
 	  if (others != NULL)
 	    {
-	      /* 
+	      /*
 	       * loop through the allowable conversions until we find
 	       * one that appears in the supplied domain list, the
 	       * array is ordered in terms of priority,
@@ -5816,7 +5816,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	}
     }
 
-  /* 
+  /*
    * If src == dest, coerce into a temporary variable and
    * handle the conversion before returning.
    */
@@ -5829,7 +5829,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
       target = dest;
     }
 
-  /* 
+  /*
    * Initialize the destination domain, important for the
    * nm_ coercion functions which take domain information inside the
    * destination db value.
@@ -7124,6 +7124,9 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	case DB_JSON_INT:
 	  db_make_int (&src_replacement, db_json_get_int_from_document (src_doc));
 	  break;
+	case DB_JSON_BIGINT:
+	  db_make_bigint (&src_replacement, db_json_get_bigint_from_document (src_doc));
+	  break;
 	case DB_JSON_STRING:
 	  {
 	    const char *json_string = NULL;
@@ -7146,7 +7149,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 
   if (desired_type == original_type)
     {
-      /* 
+      /*
        * If there is an easy to check exact match on a non-parameterized
        * domain, just do a simple clone of the value.
        */
@@ -7201,7 +7204,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	}
     }
 
-  /* 
+  /*
    * If the coercion_mode is TP_IMPLICIT_COERCION, check to see if the original
    * type can be implicitly coerced to the desired_type.
    *
@@ -7227,7 +7230,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	}
     }
 
-  /* 
+  /*
    * If src == dest, coerce into a temporary variable and
    * handle the conversion before returning.
    */
@@ -7240,7 +7243,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
       target = dest;
     }
 
-  /* 
+  /*
    * Initialize the destination domain, important for the
    * nm_ coercion functions thich take domain information inside the
    * destination db value.
@@ -7817,7 +7820,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
       break;
 
     case DB_TYPE_NUMERIC:
-      /* 
+      /*
        * Numeric-to-numeric coercion will be handled in the nm_ module.
        * The desired precision & scale is communicated through the destination
        * value.
@@ -8893,7 +8896,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		      }
 		    if (is_vclass)
 		      {
-			/* 
+			/*
 			 * This should still be an error, and the above
 			 * code should have constructed a virtual mop.
 			 * I'm not sure the rest of the code is consistent
@@ -8931,7 +8934,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	      set_domain = setobj_domain (setref->set);
 	      if (src == dest && tp_domain_compatible (set_domain, desired_domain))
 		{
-		  /* 
+		  /*
 		   * We know that this is a "coerce-in-place" operation, and
 		   * we know that no coercion is necessary, so do nothing: we
 		   * can use the exact same set without any conversion.
@@ -8946,7 +8949,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		{
 		  if (tp_domain_compatible (set_domain, desired_domain))
 		    {
-		      /* 
+		      /*
 		       * Well, we can't use the exact same set, but we don't
 		       * have to do the whole hairy coerce thing either: we
 		       * can just make a copy and then take the more general
@@ -8961,7 +8964,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		    }
 		  else
 		    {
-		      /* 
+		      /*
 		       * Well, now we have to use the whole hairy coercion
 		       * thing.  Too bad...
 		       *
@@ -9002,7 +9005,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
       if (original_type == DB_TYPE_VOBJ)
 	{
 	  SETREF *setref;
-	  /* 
+	  /*
 	   * We should try and convert the view of the src to match
 	   * the view of the desired_domain. However, the desired
 	   * domain generally does not contain this information.
@@ -9018,7 +9021,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    }
 	  else
 	    {
-	      /* 
+	      /*
 	       * this is a "coerce-in-place", and no coercion is necessary,
 	       * so do nothing: use the same vobj without any conversion. set
 	       * "src" to NULL to prevent the wrapup code from clearing dest.
@@ -9057,7 +9060,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  seq = db_seq_create (NULL, NULL, 3);
 	  keys = *src;
 
-	  /* 
+	  /*
 	   * if we are on the server, and get a DB_TYPE_OBJECT,
 	   * then its only possible representation is a DB_TYPE_OID,
 	   * and it may be treated that way. However, this should
@@ -9167,7 +9170,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  if (src == dest && tp_can_steal_string (src, desired_domain))
 	    {
 	      tp_value_slam_domain (dest, desired_domain);
-	      /* 
+	      /*
 	       * Set "src" to NULL to prevent the wrapup code from undoing
 	       * our work; since we haven't actually made a copy, we don't
 	       * want to clear the original.
@@ -9204,7 +9207,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  if (src == dest && tp_can_steal_string (src, desired_domain))
 	    {
 	      tp_value_slam_domain (dest, desired_domain);
-	      /* 
+	      /*
 	       * Set "src" to NULL to prevent the wrapup code from undoing
 	       * our work; since we haven't actually made a copy, we don't
 	       * want to clear the original.
@@ -9996,6 +9999,10 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    doc = db_json_allocate_doc ();
 	    db_json_set_int_to_doc (doc, db_get_int (src));
 	    break;
+	  case DB_TYPE_BIGINT:
+	    doc = db_json_allocate_doc ();
+	    db_json_set_bigint_to_doc (doc, db_get_bigint (src));
+	    break;
 	  case DB_TYPE_DOUBLE:
 	    doc = db_json_allocate_doc ();
 	    db_json_set_double_to_doc (doc, db_get_double (src));
@@ -10131,7 +10138,7 @@ tp_value_cast_no_domain_select (const DB_VALUE * src, DB_VALUE * dest, const TP_
 }
 
 /*
- * tp_value_change_coll_and_codeset () - change the collation and codeset of a 
+ * tp_value_change_coll_and_codeset () - change the collation and codeset of a
  *                                       value
  *   returns: cast operation result
  *   src(in): source DB_VALUE
@@ -10334,7 +10341,7 @@ tp_set_compare (const DB_VALUE * value1, const DB_VALUE * value2, int do_coercio
 		  status = tp_value_coerce (v2, &temp, tp_domain_resolve_default (vtype1));
 		  if (status != DOMAIN_COMPATIBLE)
 		    {
-		      /* 
+		      /*
 		       * This is arguably an error condition
 		       * but Not Equal is as close as we can come
 		       * to reporting it.
@@ -10354,7 +10361,7 @@ tp_set_compare (const DB_VALUE * value1, const DB_VALUE * value2, int do_coercio
 		  status = tp_value_coerce (v1, &temp, tp_domain_resolve_default (vtype2));
 		  if (status != DOMAIN_COMPATIBLE)
 		    {
-		      /* 
+		      /*
 		       * This is arguably an error condition
 		       * but Not Equal is as close as we can come
 		       * to reporting it.
@@ -10375,7 +10382,7 @@ tp_set_compare (const DB_VALUE * value1, const DB_VALUE * value2, int do_coercio
       s1 = db_get_set (v1);
       s2 = db_get_set (v2);
 
-      /* 
+      /*
        * there may ba a call for set_compare returning a total
        * ordering some day.
        */
@@ -10482,7 +10489,7 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
       vtype1 = DB_VALUE_DOMAIN_TYPE (v1);
       vtype2 = DB_VALUE_DOMAIN_TYPE (v2);
 
-      /* 
+      /*
        * Hack, DB_TYPE_OID & DB_TYPE_OBJECT are logically the same domain
        * although their physical representations are different.
        * If we see a pair of those, handle it up front before we
@@ -10536,7 +10543,7 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
 	    }
 #endif /* !defined (SERVER_MODE) */
 
-	  /* 
+	  /*
 	   * If value types aren't exact, try coercion.
 	   * May need to be using the domain returned by
 	   * tp_domain_resolve_value here ?
@@ -10642,7 +10649,7 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
 		  status = tp_value_coerce (v2, &temp2, d1);
 		  if (status != DOMAIN_COMPATIBLE)
 		    {
-		      /* 
+		      /*
 		       * This is arguably an error condition
 		       * but Not Equal is as close as we can come
 		       * to reporting it.
@@ -10688,7 +10695,7 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
 		  status = tp_value_coerce (v1, &temp1, d2);
 		  if (status != DOMAIN_COMPATIBLE)
 		    {
-		      /* 
+		      /*
 		       * This is arguably an error condition
 		       * but Not Equal is as close as we can come
 		       * to reporting it.
@@ -10708,7 +10715,7 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
 
       if (!ARE_COMPARABLE (vtype1, vtype2))
 	{
-	  /* 
+	  /*
 	   * Default result for mismatched types.
 	   * Not correct but will be consistent.
 	   */
@@ -10929,7 +10936,7 @@ tp_domain_disk_size (TP_DOMAIN * domain)
 
   assert (domain->precision != TP_FLOATING_PRECISION_VALUE);
 
-  /* 
+  /*
    * Use the "lengthmem" function here with a NULL pointer.  The size will
    * not be dependent on the actual value.
    * The decision of whether or not to use the lengthmem function probably
@@ -10966,7 +10973,7 @@ tp_domain_memory_size (TP_DOMAIN * domain)
       return -1;
     }
 
-  /* 
+  /*
    * Use the "lengthmem" function here with a NULL pointer and a "disk"
    * flag of zero.
    * This will cause it to return the instance memory size.
@@ -11046,7 +11053,7 @@ tp_check_value_size (TP_DOMAIN * domain, DB_VALUE * value)
 	case DB_TYPE_CHAR:
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_BIT:
-	  /* 
+	  /*
 	   * The compatibility will be determined by the precision.
 	   * A floating precision is determined by the length of the string
 	   * value.
@@ -11081,7 +11088,7 @@ tp_check_value_size (TP_DOMAIN * domain, DB_VALUE * value)
 	case DB_TYPE_VARCHAR:
 	case DB_TYPE_VARNCHAR:
 	case DB_TYPE_VARBIT:
-	  /* 
+	  /*
 	   * The compatibility of the value is always determined by the
 	   * actual length of the value, not the destination precision.
 	   */
@@ -11098,7 +11105,7 @@ tp_check_value_size (TP_DOMAIN * domain, DB_VALUE * value)
 		  src_length = db_get_string_size (value);
 		}
 
-	      /* 
+	      /*
 	       * Work backwards from the source length into a minimum precision.
 	       * This feels like it should be a nice packed utility
 	       * function somewhere.
@@ -11113,7 +11120,7 @@ tp_check_value_size (TP_DOMAIN * domain, DB_VALUE * value)
 	  break;
 
 	default:
-	  /* 
+	  /*
 	   * None of the other types require this form of value dependent domain
 	   * precision checking.
 	   */
@@ -11321,7 +11328,7 @@ tp_domain_references_objects (const TP_DOMAIN * dom)
       dom = dom->setdomain;
       if (dom)
 	{
-	  /* 
+	  /*
 	   * If domains are specified, we can assume that the upper levels
 	   * have enforced the rule that no value in the collection has a
 	   * domain that isn't included in this list.  If this list has no
@@ -11340,7 +11347,7 @@ tp_domain_references_objects (const TP_DOMAIN * dom)
 	}
       else
 	{
-	  /* 
+	  /*
 	   * We've got hold of one of our fabulous "collection of anything"
 	   * attributes.  We've got no choice but to assume that it might
 	   * have objects in it.
@@ -11679,7 +11686,7 @@ tp_digit_number_str_to_bi (char *start, char *end, INTL_CODESET codeset, bool is
     }
   else
     {
-      /* Copy the number to str, excluding leading spaces and '0's and trailing spaces. Anything other than leading and 
+      /* Copy the number to str, excluding leading spaces and '0's and trailing spaces. Anything other than leading and
        * trailing spaces already resulted in an error. */
       if (is_negative)
 	{

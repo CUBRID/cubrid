@@ -21,8 +21,8 @@
  * db_json.hpp - functions related to json
  */
 
-#ifndef _DB_JSON_H_
-#define _DB_JSON_H_
+#ifndef _DB_JSON_HPP_
+#define _DB_JSON_HPP_
 
 #include "error_manager.h"
 #include "object_representation.h"
@@ -41,7 +41,6 @@ typedef void JSON_ITERATOR;
 
 #include <functional>
 #include <vector>
-#include "thread_compat.hpp"
 
 /*
  * these also double as type precedence
@@ -52,6 +51,7 @@ enum DB_JSON_TYPE
   DB_JSON_NULL = 0,
   DB_JSON_UNKNOWN,
   DB_JSON_INT,
+  DB_JSON_BIGINT,
   DB_JSON_DOUBLE,
   DB_JSON_STRING,
   DB_JSON_OBJECT,
@@ -71,8 +71,7 @@ bool db_json_is_valid (const char *json_str);
 const char *db_json_get_type_as_str (const JSON_DOC *document);
 unsigned int db_json_get_length (const JSON_DOC *document);
 unsigned int db_json_get_depth (const JSON_DOC *doc);
-int db_json_extract_document_from_path (const JSON_DOC *document, const char *raw_path,
-					JSON_DOC *&result);
+int db_json_extract_document_from_path (const JSON_DOC *document, const char *raw_path, JSON_DOC *&result);
 int db_json_contains_path (const JSON_DOC *document, const char *raw_path, bool &result);
 char *db_json_get_raw_json_body_from_document (const JSON_DOC *doc);
 
@@ -80,11 +79,13 @@ char *db_json_get_json_body_from_document (const JSON_DOC &doc);
 
 int db_json_add_member_to_object (JSON_DOC *doc, const char *name, const char *value);
 int db_json_add_member_to_object (JSON_DOC *doc, const char *name, int value);
+int db_json_add_member_to_object (JSON_DOC *doc, const char *name, std::int64_t value);
 int db_json_add_member_to_object (JSON_DOC *doc, const char *name, double value);
 int db_json_add_member_to_object (JSON_DOC *doc, const char *name, const JSON_DOC *value);
 
 void db_json_add_element_to_array (JSON_DOC *doc, char *value);
 void db_json_add_element_to_array (JSON_DOC *doc, int value);
+void db_json_add_element_to_array (JSON_DOC *doc, std::int64_t value);
 void db_json_add_element_to_array (JSON_DOC *doc, double value);
 void db_json_add_element_to_array (JSON_DOC *doc, const JSON_DOC *value);
 
@@ -137,6 +138,7 @@ void db_json_clear_json_iterator (JSON_ITERATOR *&json_itr);
 DB_JSON_TYPE db_json_get_type (const JSON_DOC *doc);
 
 int db_json_get_int_from_document (const JSON_DOC *doc);
+std::int64_t db_json_get_bigint_from_document (const JSON_DOC *doc);
 double db_json_get_double_from_document (const JSON_DOC *doc);
 const char *db_json_get_string_from_document (const JSON_DOC *doc);
 char *db_json_get_bool_as_str_from_document (const JSON_DOC *doc);
@@ -145,6 +147,7 @@ char *db_json_copy_string_from_document (const JSON_DOC *doc);
 void db_json_set_string_to_doc (JSON_DOC *doc, const char *str);
 void db_json_set_double_to_doc (JSON_DOC *doc, double d);
 void db_json_set_int_to_doc (JSON_DOC *doc, int i);
+void db_json_set_bigint_to_doc (JSON_DOC *doc, std::int64_t i);
 
 int db_json_value_is_contained_in_doc (const JSON_DOC *doc, const JSON_DOC *value, bool &result);
 bool db_json_are_docs_equal (const JSON_DOC *doc1, const JSON_DOC *doc2);
@@ -173,4 +176,4 @@ db_json_convert_string_and_call (const char *json_raw, size_t json_raw_length, F
 
 #endif /* defined (__cplusplus) */
 
-#endif /* _DB_JSON_H_ */
+#endif /* _DB_JSON_HPP_ */
