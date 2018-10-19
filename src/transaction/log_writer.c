@@ -56,6 +56,7 @@
 static int prev_ha_server_state = HA_SERVER_STATE_NA;
 static bool logwr_need_shutdown = false;
 
+static int logwr_check_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr);
 
 #if defined(CS_MODE)
 LOGWR_GLOBAL logwr_Gl = {
