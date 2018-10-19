@@ -79,13 +79,13 @@ char *db_json_get_json_body_from_document (const JSON_DOC &doc);
 
 int db_json_add_member_to_object (JSON_DOC *doc, const char *name, const char *value);
 int db_json_add_member_to_object (JSON_DOC *doc, const char *name, int value);
-int db_json_add_member_to_object (JSON_DOC *doc, const char *name, int64_t value);
+int db_json_add_member_to_object (JSON_DOC *doc, const char *name, std::int64_t value);
 int db_json_add_member_to_object (JSON_DOC *doc, const char *name, double value);
 int db_json_add_member_to_object (JSON_DOC *doc, const char *name, const JSON_DOC *value);
 
 void db_json_add_element_to_array (JSON_DOC *doc, char *value);
 void db_json_add_element_to_array (JSON_DOC *doc, int value);
-void db_json_add_element_to_array (JSON_DOC *doc, int64_t value);
+void db_json_add_element_to_array (JSON_DOC *doc, std::int64_t value);
 void db_json_add_element_to_array (JSON_DOC *doc, double value);
 void db_json_add_element_to_array (JSON_DOC *doc, const JSON_DOC *value);
 
@@ -138,7 +138,7 @@ void db_json_clear_json_iterator (JSON_ITERATOR *&json_itr);
 DB_JSON_TYPE db_json_get_type (const JSON_DOC *doc);
 
 int db_json_get_int_from_document (const JSON_DOC *doc);
-int64_t db_json_get_bigint_from_document (const JSON_DOC *doc);
+std::int64_t db_json_get_bigint_from_document (const JSON_DOC *doc);
 double db_json_get_double_from_document (const JSON_DOC *doc);
 const char *db_json_get_string_from_document (const JSON_DOC *doc);
 char *db_json_get_bool_as_str_from_document (const JSON_DOC *doc);
@@ -147,7 +147,7 @@ char *db_json_copy_string_from_document (const JSON_DOC *doc);
 void db_json_set_string_to_doc (JSON_DOC *doc, const char *str);
 void db_json_set_double_to_doc (JSON_DOC *doc, double d);
 void db_json_set_int_to_doc (JSON_DOC *doc, int i);
-void db_json_set_bigint_to_doc (JSON_DOC *doc, int64_t i);
+void db_json_set_bigint_to_doc (JSON_DOC *doc, std::int64_t i);
 
 int db_json_value_is_contained_in_doc (const JSON_DOC *doc, const JSON_DOC *value, bool &result);
 bool db_json_are_docs_equal (const JSON_DOC *doc1, const JSON_DOC *doc2);
