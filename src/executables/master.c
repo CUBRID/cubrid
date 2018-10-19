@@ -1127,7 +1127,7 @@ main (int argc, char **argv)
 {
   int port_id;
   CSS_CONN_ENTRY *conn;
-  static const char *suffix = "_master.err";
+  static const char suffix[] = "_master.err";
   char hostname[MAXHOSTNAMELEN + sizeof (suffix)];
   char *errlog = NULL;
   int status = EXIT_SUCCESS;
