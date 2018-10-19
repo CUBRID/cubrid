@@ -334,10 +334,10 @@ static int dwb_compare_vol_fd (const void *v1, const void *v2);
 STATIC_INLINE FLUSH_VOLUME_INFO *dwb_add_volume_to_block_flush_area (THREAD_ENTRY * thread_p, DWB_BLOCK * block,
 								     int vol_fd) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_slots,
-				   unsigned int ordered_slots_length, bool remove_from_hash)
+				   unsigned int ordered_slots_length, bool helper_can_flush, bool remove_from_hash)
   __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, UINT64 * current_position_with_flags)
-  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, bool helper_can_flush,
+				   UINT64 * current_position_with_flags) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void dwb_init_slot (DWB_SLOT * slot) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int dwb_acquire_next_slot (THREAD_ENTRY * thread_p, bool can_wait, DWB_SLOT ** p_dwb_slot)
   __attribute__ ((ALWAYS_INLINE));
@@ -857,8 +857,9 @@ dwb_starts_structure_modification (THREAD_ENTRY * thread_p, UINT64 * current_pos
     {
       if (DWB_IS_BLOCK_WRITE_STARTED (local_current_position_with_flags, block_no))
 	{
-	  /* Flush all pages from current block */
-	  error_code = dwb_flush_block (thread_p, &dwb_Global.blocks[block_no], &local_current_position_with_flags);
+	  /* Flush all pages from current block. I must flush all remaining data. */
+	  error_code =
+	    dwb_flush_block (thread_p, &dwb_Global.blocks[block_no], false, &local_current_position_with_flags);
 	  if (error_code != NO_ERROR)
 	    {
 	      /* Something wrong happened. */
@@ -2055,12 +2056,13 @@ dwb_add_volume_to_block_flush_area (THREAD_ENTRY * thread_p, DWB_BLOCK * block, 
  * p_dwb_ordered_slots(in): The slots that gives the pages flush order.
  * ordered_slots_length(in): The ordered slots array length.
  * remove_from_hash(in): True, if needs to remove entries from hash.
+ * helper_can_flush(in): True, if helper can flush.
  *
  *  Note: This function fills to_flush_vdes array with the volumes that must be flushed.
  */
 STATIC_INLINE int
 dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_ordered_slots,
-		 unsigned int ordered_slots_length, bool remove_from_hash)
+		 unsigned int ordered_slots_length, bool helper_can_flush, bool remove_from_hash)
 {
   VOLID last_written_volid;
   unsigned int i;
@@ -2153,7 +2155,7 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
       ATOMIC_INC_32 (&current_flush_volume_info->num_pages, 1);
       count_writes++;
 
-      if ((count_writes >= num_pages_to_sync || can_flush_volume == true)
+      if (helper_can_flush && (count_writes >= num_pages_to_sync || can_flush_volume == true)
 	  && dwb_is_flush_block_helper_daemon_available ())
 	{
 	  if (ATOMIC_CAS_ADDR (&dwb_Global.helper_flush_block, (DWB_BLOCK *) NULL, block))
@@ -2184,7 +2186,7 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
 #endif
 
 #if defined (SERVER_MODE)
-  if ((dwb_Global.helper_flush_block == NULL) && (block->count_flush_volumes_info > 0))
+  if (helper_can_flush && (dwb_Global.helper_flush_block == NULL) && (block->count_flush_volumes_info > 0))
     {
       /* If helper_flush_block is NULL, it means that the flush helper thread does not run and was not woken yet. */
       if (dwb_is_flush_block_helper_daemon_available ()
@@ -2233,12 +2235,14 @@ dwb_write_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, DWB_SLOT * p_dwb_or
  * return   : Error code.
  * thread_p (in): Thread entry.
  * block(in): The block that needs flush.
+ * helper_can_flush(in): True, if helper thread can flush.
  * current_position_with_flags(out): Current position with flags.
  *
  *  Note: The block pages can't be modified by others during flush.
  */
 STATIC_INLINE int
-dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, UINT64 * current_position_with_flags)
+dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, bool helper_can_flush,
+		 UINT64 * current_position_with_flags)
 {
   UINT64 local_current_position_with_flags, new_position_with_flags;
   int error_code = NO_ERROR;
@@ -2394,7 +2398,7 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, UINT64 * current_po
   dwb_log ("dwb_flush_block: DWB synchronized\n");
 
   /* Now, write and flush the original location. */
-  error_code = dwb_write_block (thread_p, block, p_dwb_ordered_slots, ordered_slots_length, true);
+  error_code = dwb_write_block (thread_p, block, p_dwb_ordered_slots, ordered_slots_length, helper_can_flush, true);
   if (error_code != NO_ERROR)
     {
       assert (false);
@@ -2416,11 +2420,18 @@ dwb_flush_block (THREAD_ENTRY * thread_p, DWB_BLOCK * block, UINT64 * current_po
 	}
 
 #if defined (SERVER_MODE)
-      if ((num_pages > max_pages_to_sync) && dwb_is_flush_block_helper_daemon_available ())
+      if (helper_can_flush == true)
 	{
-	  /* Let the helper thread to flush volumes having many pages. */
-	  assert (dwb_Global.helper_flush_block != NULL);
-	  continue;
+	  if ((num_pages > max_pages_to_sync) && dwb_is_flush_block_helper_daemon_available ())
+	    {
+	      /* Let the helper thread to flush volumes having many pages. */
+	      assert (dwb_Global.helper_flush_block != NULL);
+	      continue;
+	    }
+	}
+      else
+	{
+	  assert (dwb_Global.helper_flush_block == NULL);
 	}
 #endif
 
@@ -2848,7 +2859,7 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
 #endif /* SERVER_MODE */
 
   /* Flush all pages from current block */
-  error_code = dwb_flush_block (thread_p, block, NULL);
+  error_code = dwb_flush_block (thread_p, block, false, NULL);
   if (error_code != NO_ERROR)
     {
       dwb_log_error ("Can't flush block = %d having version %lld\n", block->block_no, block->version);
@@ -3296,7 +3307,8 @@ dwb_load_and_recover_pages (THREAD_ENTRY * thread_p, const char *dwb_path_p, con
 	  if (0 < num_recoverable_pages)
 	    {
 	      /* Replace the corrupted pages in data volume with the DWB content. */
-	      error_code = dwb_write_block (thread_p, rcv_block, p_dwb_ordered_slots, ordered_slots_length, false);
+	      error_code =
+		dwb_write_block (thread_p, rcv_block, p_dwb_ordered_slots, ordered_slots_length, false, false);
 	      if (error_code != NO_ERROR)
 		{
 		  goto end;
@@ -3448,7 +3460,7 @@ start:
 	    }
 	}
 
-      error_code = dwb_flush_block (thread_p, flush_block, NULL);
+      error_code = dwb_flush_block (thread_p, flush_block, true, NULL);
       if (error_code != NO_ERROR)
 	{
 	  /* Something wrong happened. */
