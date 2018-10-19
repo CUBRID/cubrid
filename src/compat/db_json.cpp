@@ -2754,7 +2754,7 @@ db_json_split_path_by_delimiters (const std::string &path, const std::string &de
     {
       if (path[end] == '"')
 	{
-	  std::size_t index_of_closing_quote = path.find_first_of ('\"', end + 1);
+	  std::size_t index_of_closing_quote = path.find_first_of ('"', end + 1);
 	  if (index_of_closing_quote == std::string::npos)
 	    {
 	      assert (false);
@@ -2985,7 +2985,7 @@ db_json_replace_token_special_chars (std::string &token,
 	  // compare special characters with sequence following token_it
 	  if (token_idx + special_it->first.length () <= token.length ())
 	    {
-	      if (token.compare (token_idx, special_it->first.length (), special_it->first.c_str ()) == 0)
+	      if (token.compare (token_idx, special_it->first.length (), special_it->first) == 0)
 		{
 		  // replace
 		  token.replace (token_idx, special_it->first.length (), special_it->second);
