@@ -1051,8 +1051,12 @@ logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
       logpb_log ("dirty flag set for pageid = %lld\n", (long long int) bufptr->pageid);
       if (log_pgptr->hdr.checksum != 0)
         {
-          er_print_callstack (ARG_FILE_LINE, "LOG_PB: checksum already set while set dirty on pageid = %lld, checksum=%d\n",
-                         (long long int) bufptr->pageid, log_pgptr->hdr.checksum);
+          er_print_callstack (ARG_FILE_LINE, "LOG_PB: checksum already set while set dirty on pageid = %lld, checksum=%d\n"
+                             "log_Gl.hdr.append_lsa:%lld,%lld\n"
+                             "log_Gl.hdr.chkpt_lsa:%lld,%lld\n",
+                         (long long int) bufptr->pageid, log_pgptr->hdr.checksum,
+                          log_Gl.hdr.append_lsa.pageid, log_Gl.hdr.append_lsa.offset,
+                        log_Gl.hdr.chkpt_lsa.pageid, log_Gl.hdr.chkpt_lsa.offset);
         }
     }
 #if defined(CUBRID_DEBUG)
