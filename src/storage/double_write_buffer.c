@@ -3491,7 +3491,7 @@ dwb_flush_force (THREAD_ENTRY * thread_p, bool * all_sync)
 {
   UINT64 initial_position_with_flags, current_position_with_flags, prev_position_with_flags;
   UINT64 initial_block_version, current_block_version;
-  unsigned int initial_block_no, current_block_no = DWB_NUM_TOTAL_BLOCKS;
+  int initial_block_no, current_block_no = DWB_NUM_TOTAL_BLOCKS;
   char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   FILEIO_PAGE *iopage = NULL;
   VPID null_vpid = { NULL_VOLID, NULL_PAGEID };
@@ -3500,6 +3500,7 @@ dwb_flush_force (THREAD_ENTRY * thread_p, bool * all_sync)
   unsigned int count_added_pages = 0, max_pages_to_add = 0, initial_num_pages = 0;
   DWB_BLOCK *initial_block;
   PERF_UTIME_TRACKER time_track;
+  int block_no;
 
   assert (all_sync != NULL);
 
@@ -3509,7 +3510,15 @@ dwb_flush_force (THREAD_ENTRY * thread_p, bool * all_sync)
 
 start:
   initial_position_with_flags = ATOMIC_INC_64 (&dwb_Global.position_with_flags, 0ULL);
-  dwb_log ("dwb_flush_force: Started with intital position = %lld\n", initial_position_with_flags);
+  dwb_log ("dwb_flush_force: Started with initital position = %lld\n", initial_position_with_flags);
+
+#if !defined (NDEBUG)
+  for (block_no = 0; block_no < (int) DWB_NUM_TOTAL_BLOCKS; block_no++)
+    {
+      dwb_log_error ("dwb_flush_force : Block %d, Num pages = %d, version = %lld\n",
+		     block_no, dwb_Global.blocks[block_no].count_wb_pages, dwb_Global.blocks[block_no].version);
+    }
+#endif
 
   if (DWB_NOT_CREATED_OR_MODIFYING (initial_position_with_flags))
     {
@@ -3539,11 +3548,10 @@ start:
 	}
     }
 
-  initial_block_no = DWB_GET_BLOCK_NO_FROM_POSITION (initial_position_with_flags);
-
   if (DWB_GET_BLOCK_STATUS (initial_position_with_flags) == 0)
     {
       /* Check helper flush block. */
+      initial_block_no = DWB_GET_BLOCK_NO_FROM_POSITION (initial_position_with_flags);
       initial_block = dwb_Global.helper_flush_block;
       if (initial_block == NULL)
 	{
@@ -3554,22 +3562,21 @@ start:
       goto wait_for_helper_flush_block;
     }
 
-  while (!DWB_IS_BLOCK_WRITE_STARTED (initial_position_with_flags, initial_block_no))
+  /* Search for latest not flushed block - not flushed yet, having highest version. */
+  initial_block_no = -1;
+  initial_block_version = 0;
+  for (block_no = 0; block_no < (int) DWB_NUM_TOTAL_BLOCKS; block_no++)
     {
-      /* Nothing to flush in this block, go to the previous block. */
-      initial_block_no = DWB_GET_PREV_BLOCK_NO (initial_block_no);
+      if (DWB_IS_BLOCK_WRITE_STARTED (initial_position_with_flags, block_no)
+	  && (dwb_Global.blocks[block_no].version >= initial_block_version))
+	{
+	  initial_block_no = block_no;
+	  initial_block_version = dwb_Global.blocks[initial_block_no].version;
+	}
     }
 
-  /* Save the block version and number of pages, to detect whether the block was written on disk. */
-  initial_block_version = dwb_Global.blocks[initial_block_no].version;
-
-  /* Check for version. */
-  if (DWB_GET_PREV_BLOCK (initial_block_no)->version > initial_block_version)
-    {
-      /* The previous block is the latest one. */
-      initial_block_no = DWB_GET_PREV_BLOCK_NO (initial_block_no);
-      initial_block_version = dwb_Global.blocks[initial_block_no].version;
-    }
+  /* At least one block was not flushed. */
+  assert (initial_block_no != -1);
 
   initial_num_pages = dwb_Global.blocks[initial_block_no].count_wb_pages;
   if (initial_position_with_flags != ATOMIC_INC_64 (&dwb_Global.position_with_flags, 0ULL))
@@ -3587,6 +3594,7 @@ start:
 
   dwb_log ("dwb_flush_force: Waits for flushing the block %d having version %lld and %d pages\n",
 	   initial_block_no, initial_block_version, initial_num_pages);
+
   /* Check whether the initial block was flushed */
 check_flushed_blocks:
 
