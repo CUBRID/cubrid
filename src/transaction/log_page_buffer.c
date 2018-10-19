@@ -1051,7 +1051,7 @@ logpb_set_dirty (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
       logpb_log ("dirty flag set for pageid = %lld\n", (long long int) bufptr->pageid);
       if (log_pgptr->hdr.checksum != 0)
         {
-          _er_log_debug (ARG_FILE_LINE, "LOG_PB: checksum already set while set dirty on pageid = %lld, checksum=%d\n",
+          er_print_callstack (ARG_FILE_LINE, "LOG_PB: checksum already set while set dirty on pageid = %lld, checksum=%d\n",
                          (long long int) bufptr->pageid, log_pgptr->hdr.checksum);
         }
     }
