@@ -57,71 +57,6 @@ static int prev_ha_server_state = HA_SERVER_STATE_NA;
 static bool logwr_need_shutdown = false;
 
 
-/*
- * logwr_compute_page_checksum - Computes log page checksum.
- * return: error code
- * thread_p (in) : thread entry
- * log_pgptr (in) : log page pointer
- * checksum_crc32(out): computed checksum
- *   Note: Currently CRC32 is used as checksum.
- *   Note: this is a copy of logpb_compute_page_checksum
- */
-static int
-logwr_check_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
-{
-  int error_code = NO_ERROR, saved_checksum_crc32;
-  const int block_size = 4096;
-  const int max_num_pages = IO_MAX_PAGE_SIZE / block_size;
-  const int sample_nbytes = 16;
-  int sampling_offset;
-  char buf[max_num_pages * sample_nbytes * 2];
-  const int num_pages = LOG_PAGESIZE / block_size;
-  const size_t sizeof_buf = num_pages * sample_nbytes * 2;
-  int checksum_crc32;
-
-  assert (log_pgptr != NULL);
-
-  /* Save the old page checksum. */
-  saved_checksum_crc32 = log_pgptr->hdr.checksum;
-  if (saved_checksum_crc32 == 0)
-    {
-      return NO_ERROR;
-    }
-
-  /* Resets checksum to not affect the new computation. */
-  log_pgptr->hdr.checksum = 0;
-
-  char *p = buf;
-  for (int i = 0; i < num_pages; i++)
-    {
-      // first 
-      sampling_offset = (i * block_size);
-      memcpy (p, ((char *) log_pgptr) + sampling_offset, sample_nbytes);
-      p += sample_nbytes;
-
-      // last 
-      sampling_offset = (i * block_size) + (block_size - sample_nbytes);
-      memcpy (p, ((char *) log_pgptr) + sampling_offset, sample_nbytes);
-      p += sample_nbytes;
-    }
-
-  error_code = crypt_crc32 (thread_p, (char *) buf, sizeof_buf, &checksum_crc32);
-
-  /* Restores the saved checksum */
-  log_pgptr->hdr.checksum = saved_checksum_crc32;
-
-  if (checksum_crc32 != saved_checksum_crc32)
-    {
-      _er_log_debug (ARG_FILE_LINE,
-                     "logwr_check_page_checksum: log page %lld has checksum = %d, computed checksum = %d\n",
-		     (long long int) log_pgptr->hdr.logical_pageid, saved_checksum_crc32, checksum_crc32);
-      assert (false);
-      return ER_FAILED;
-    }
-
-  return error_code;
-}
-
 #if defined(CS_MODE)
 LOGWR_GLOBAL logwr_Gl = {
   /* log header */
@@ -193,6 +128,73 @@ static int logwr_flush_all_append_pages (void);
 static int logwr_archive_active_log (void);
 static int logwr_flush_bgarv_header_page (void);
 static void logwr_reinit_copylog (void);
+
+
+
+/*
+ * logwr_compute_page_checksum - Computes log page checksum.
+ * return: error code
+ * thread_p (in) : thread entry
+ * log_pgptr (in) : log page pointer
+ * checksum_crc32(out): computed checksum
+ *   Note: Currently CRC32 is used as checksum.
+ *   Note: this is a copy of logpb_compute_page_checksum
+ */
+static int
+logwr_check_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
+{
+  int error_code = NO_ERROR, saved_checksum_crc32;
+  const int block_size = 4096;
+  const int max_num_pages = IO_MAX_PAGE_SIZE / block_size;
+  const int sample_nbytes = 16;
+  int sampling_offset;
+  char buf[max_num_pages * sample_nbytes * 2];
+  const int num_pages = LOG_PAGESIZE / block_size;
+  const size_t sizeof_buf = num_pages * sample_nbytes * 2;
+  int checksum_crc32;
+
+  assert (log_pgptr != NULL);
+
+  /* Save the old page checksum. */
+  saved_checksum_crc32 = log_pgptr->hdr.checksum;
+  if (saved_checksum_crc32 == 0)
+    {
+      return NO_ERROR;
+    }
+
+  /* Resets checksum to not affect the new computation. */
+  log_pgptr->hdr.checksum = 0;
+
+  char *p = buf;
+  for (int i = 0; i < num_pages; i++)
+    {
+      // first 
+      sampling_offset = (i * block_size);
+      memcpy (p, ((char *) log_pgptr) + sampling_offset, sample_nbytes);
+      p += sample_nbytes;
+
+      // last 
+      sampling_offset = (i * block_size) + (block_size - sample_nbytes);
+      memcpy (p, ((char *) log_pgptr) + sampling_offset, sample_nbytes);
+      p += sample_nbytes;
+    }
+
+  error_code = crypt_crc32 (thread_p, (char *) buf, sizeof_buf, &checksum_crc32);
+
+  /* Restores the saved checksum */
+  log_pgptr->hdr.checksum = saved_checksum_crc32;
+
+  if (checksum_crc32 != saved_checksum_crc32)
+    {
+      _er_log_debug (ARG_FILE_LINE,
+                     "logwr_check_page_checksum: log page %lld has checksum = %d, computed checksum = %d\n",
+		     (long long int) log_pgptr->hdr.logical_pageid, saved_checksum_crc32, checksum_crc32);
+      assert (false);
+      return ER_FAILED;
+    }
+
+  return error_code;
+}
 
 /*
  * logwr_to_physical_pageid -
