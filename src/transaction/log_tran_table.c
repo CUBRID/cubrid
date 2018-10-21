@@ -944,6 +944,10 @@ logtb_set_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const BOOT_CLIENT_CRED
   tdes->num_transient_classnames = 0;
   tdes->first_save_entry = NULL;
   RB_INIT (&tdes->lob_locator_root);
+
+  tdes->ref_classrep_entry = NULL;
+  tdes->ref_classrepr_entry_version = 0;
+  tdes->ref_classrep_entry_fix_cnt = 0;
 }
 
 /*
@@ -2034,6 +2038,10 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   LSA_SET_NULL (&tdes->rcv.tran_start_postpone_lsa);
   LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
   LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
+
+  tdes->ref_classrep_entry = NULL;
+  tdes->ref_classrepr_entry_version = 0;
+  tdes->ref_classrep_entry_fix_cnt = 0;
 }
 
 /*
@@ -4109,7 +4117,7 @@ cleanup:
     }
   if (classrepr != NULL)
     {
-      heap_classrepr_free_and_init (classrepr, &classrepr_cacheindex);
+      heap_classrepr_free_and_init (thread_p, classrepr, &classrepr_cacheindex);
     }
 
   return error_code;
@@ -5568,14 +5576,14 @@ logtb_create_unique_stats_from_repr (THREAD_ENTRY * thread_p, OID * class_oid)
     }
 
   /* free class representation */
-  heap_classrepr_free_and_init (classrepr, &classrepr_cacheindex);
+  heap_classrepr_free_and_init (thread_p, classrepr, &classrepr_cacheindex);
 
   return NO_ERROR;
 
 exit_on_error:
   if (classrepr != NULL)
     {
-      heap_classrepr_free_and_init (classrepr, &classrepr_cacheindex);
+      heap_classrepr_free_and_init (thread_p, classrepr, &classrepr_cacheindex);
     }
 
   return (error_code == NO_ERROR && (error_code = er_errid ()) == NO_ERROR) ? ER_FAILED : error_code;

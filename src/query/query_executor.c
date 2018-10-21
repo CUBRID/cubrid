@@ -21893,7 +21893,7 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
   free_and_init (attr_names);
 
   catalog_free_representation_and_init (disk_repr_p);
-  heap_classrepr_free_and_init (rep, &idx_incache);
+  heap_classrepr_free_and_init (thread_p, rep, &idx_incache);
   if (heap_scancache_end (thread_p, &scan) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
@@ -21964,7 +21964,7 @@ exit_on_error:
 
   if (rep)
     {
-      heap_classrepr_free_and_init (rep, &idx_incache);
+      heap_classrepr_free_and_init (thread_p, rep, &idx_incache);
     }
 
   heap_scancache_end (thread_p, &scan);
@@ -22890,7 +22890,7 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 
   free_and_init (out_values);
 
-  heap_classrepr_free_and_init (rep, &idx_incache);
+  heap_classrepr_free_and_init (thread_p, rep, &idx_incache);
   if (heap_scancache_end (thread_p, &scan) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
@@ -22928,7 +22928,7 @@ exit_on_error:
 
   if (rep)
     {
-      heap_classrepr_free_and_init (rep, &idx_incache);
+      heap_classrepr_free_and_init (thread_p, rep, &idx_incache);
     }
 
   heap_scancache_end (thread_p, &scan);

@@ -1769,6 +1769,11 @@ struct log_tdes
 #if defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))
     cubreplication::log_generator replication_log_generator;
 #endif
+
+  /* TODO - extends to allow referencing of multiple cache entries. */
+  void *ref_classrep_entry;	/* Referred class representation entry */
+  unsigned int ref_classrepr_entry_version;	/* Referred class representation entry version */
+  unsigned int ref_classrep_entry_fix_cnt;	/* Is fixed referred classrep entry? */
 };
 
 typedef struct log_addr_tdesarea LOG_ADDR_TDESAREA;

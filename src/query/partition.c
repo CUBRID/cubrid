@@ -3394,7 +3394,7 @@ cleanup:
     }
   if (classrepr != NULL)
     {
-      heap_classrepr_free_and_init (classrepr, &classrepr_cacheindex);
+      heap_classrepr_free_and_init (thread_p, classrepr, &classrepr_cacheindex);
     }
   if (error != NO_ERROR)
     {
