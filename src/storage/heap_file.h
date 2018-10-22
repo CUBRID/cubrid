@@ -182,8 +182,9 @@ struct heap_hfid_table_entry
 };
 
 
-//forward declaration.
-struct func_pred;
+
+
+
 typedef struct function_index_info FUNCTION_INDEX_INFO;
 struct function_index_info
 {
@@ -191,7 +192,7 @@ struct function_index_info
   int expr_stream_size;
   int col_id;
   int attr_index_start;
-  struct func_pred *expr;
+  void *expr;
 };
 
 typedef struct func_pred_unpack_info FUNC_PRED_UNPACK_INFO;

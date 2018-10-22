@@ -17248,8 +17248,8 @@ heap_eval_function_index (THREAD_ENTRY * thread_p, FUNCTION_INDEX_INFO * func_in
       expr_stream_size = func_index_info->expr_stream_size;
       nr_atts = n_atts;
       atts = att_ids;
-      cache_attr_info = func_index_info->expr->cache_attrinfo;
-      func_pred = func_index_info->expr;
+      cache_attr_info = ((FUNC_PRED *) func_index_info->expr)->cache_attrinfo;
+      func_pred = (FUNC_PRED *) func_index_info->expr;
     }
 
   if (func_index_info == NULL)
