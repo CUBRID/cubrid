@@ -15450,6 +15450,12 @@ pt_apply_union_stmt (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, v
   p->info.query.into_list = g (parser, p->info.query.into_list, arg);
   p->info.query.order_by = g (parser, p->info.query.order_by, arg);
   p->info.query.orderby_for = g (parser, p->info.query.orderby_for, arg);
+  p->info.query.limit = g (parser, p->info.query.limit, arg);
+
+  // todo - there is a lot less stuff here than on pt_apply_select. I am not sure this is safe.
+  //        e.g. this is used for parser_copy_tree too. which should deep copy entire tree! otherwise we may have some
+  //        unpleasant effects.
+
   return p;
 }
 
@@ -18809,4 +18815,12 @@ pt_clean_tree_copy_info (PT_TREE_COPY_INFO * tree_copy_info)
       save_next = cte_info_it->next;
       free (cte_info_it);
     }
+}
+
+// pt_move_node - move PT_NODE pointer from source to destination. useful to automatically assign and unlink
+void
+pt_move_node (REFPTR (PT_NODE, destp), REFPTR (PT_NODE, srcp))
+{
+  destp = srcp;
+  srcp = NULL;
 }
