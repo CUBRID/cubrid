@@ -646,8 +646,7 @@ extern int heap_get_hfid_from_vfid (THREAD_ENTRY * thread_p, const VFID * vfid, 
 extern int heap_scan_cache_allocate_area (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache_p, int size);
 extern bool heap_is_page_header (THREAD_ENTRY * thread_p, PAGE_PTR page);
 
-extern void heap_unfix_last_classrep_entry_by_oid (THREAD_ENTRY * thread_p, const OID * class_oid);
-extern void heap_unfix_last_classrep_entry (THREAD_ENTRY * thread_p);
-extern bool heap_fix_last_classrep_entry (THREAD_ENTRY * thread_p, void *classrep_entry);
+extern void heap_class_repr_enable_pin (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
+extern void heap_class_repr_disable_pin (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 
 #endif /* _HEAP_FILE_H_ */

@@ -1774,6 +1774,7 @@ struct log_tdes
   void *ref_classrep_entry;	/* Referred class representation entry */
   unsigned int ref_classrepr_entry_version;	/* Referred class representation entry version */
   unsigned int ref_classrep_entry_fix_cnt;	/* Is fixed referred classrep entry? */
+  bool ref_classrep_entry_pin_enabled;    /* TODO - improved */
 };
 
 typedef struct log_addr_tdesarea LOG_ADDR_TDESAREA;

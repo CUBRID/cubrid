@@ -928,7 +928,10 @@ STATIC_INLINE OR_CLASSREP *heap_get_classrepr_by_transaction_info (THREAD_ENTRY 
 								   REPR_ID reprid, int *idx_incache)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool heap_fix_classrep_cache_entry (THREAD_ENTRY * thread_p, LOG_TDES * tdes, void *classrep_entry,
-						  bool has_mutex) __attribute__ ((ALWAYS_INLINE));
+						  bool has_mutex, bool * is_fixed_by_current_transaction)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool heap_classrep_cache_entry_is_pinned (LOG_TDES * tdes, HEAP_CLASSREPR_ENTRY * cache_entry)
+  __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool heap_unfix_classrep_cache_entry (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 						    HEAP_CLASSREPR_ENTRY * cache_entry,
 						    UINT64 * new_fcnt_with_version_and_flags)
@@ -1880,11 +1883,14 @@ heap_classrepr_free (THREAD_ENTRY * thread_p, OR_CLASSREP * classrep, int *idx_i
 
   cache_entry = &heap_Classrepr_cache.area[*idx_incache];
 
-  if (heap_unfix_classrep_cache_entry (thread_p, tdes, cache_entry, &new_fcnt_with_version_and_flags)
-      && HEAP_CLASSREPR_CACHE_GET_FIXCNT (new_fcnt_with_version_and_flags) > 0)
+  if (tdes != NULL)
     {
-      *idx_incache = -1;
-      return NO_ERROR;
+      if (heap_unfix_classrep_cache_entry (thread_p, tdes, cache_entry, &new_fcnt_with_version_and_flags)
+	  && HEAP_CLASSREPR_CACHE_GET_FIXCNT (new_fcnt_with_version_and_flags) > 0)
+	{
+	  *idx_incache = -1;
+	  return NO_ERROR;
+	}
     }
 
   if (HEAP_CLASSREPR_CACHE_GET_FIXCNT (new_fcnt_with_version_and_flags) == 0)
@@ -2309,7 +2315,7 @@ heap_classrepr_get (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * cla
   OR_CLASSREP *repr_last = NULL;
   REPR_ID last_reprid;
   int r;
-  bool is_cache_entry_fixed = false;
+  bool is_fixed_by_current_transaction = false;
   LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
 
   *idx_incache = -1;
@@ -2536,7 +2542,7 @@ search_begin:
 #endif /* DEBUG_CLASSREPR_CACHE */
 
       assert (tdes->ref_classrep_entry_fix_cnt == 0 || tdes->ref_classrep_entry != cache_entry);
-      if (!heap_fix_classrep_cache_entry (thread_p, tdes, cache_entry, true))
+      if (!heap_fix_classrep_cache_entry (thread_p, tdes, cache_entry, true, &is_fixed_by_current_transaction))
 	{
 	  /* Not possible. */
 	  assert (false);
@@ -2601,7 +2607,8 @@ search_begin:
 	    }
 	}
 
-      if (!heap_fix_classrep_cache_entry (thread_p, tdes, cache_entry, true))
+      if (!heap_fix_classrep_cache_entry (thread_p, tdes, cache_entry, true, &is_fixed_by_current_transaction)
+	  && !is_fixed_by_current_transaction)
 	{
 	  pthread_mutex_unlock (&cache_entry->mutex);
 	  goto search_begin;
@@ -24895,21 +24902,48 @@ heap_is_page_header (THREAD_ENTRY * thread_p, PAGE_PTR page)
   return false;
 }
 
-
 /*
 * heap_fix_classrep_cache_entry () - fix class representation cache entry
 *
 * return              : true if fixed, false otherwise.
-* thread_p (in)       : thread entry
 * classrep_entry (in) : class representation
 */
 STATIC_INLINE bool
-heap_fix_classrep_cache_entry (THREAD_ENTRY * thread_p, LOG_TDES * tdes, void *classrep_entry, bool has_mutex)
+heap_classrep_cache_entry_is_pinned (LOG_TDES * tdes, HEAP_CLASSREPR_ENTRY * cache_entry)
+{
+  assert (tdes != NULL);
+  if (tdes->ref_classrep_entry_pin_enabled && tdes->ref_classrep_entry == cache_entry
+      && tdes->ref_classrep_entry_fix_cnt > 0)
+    {
+      return true;
+    }
+
+  return false;
+}
+
+/*
+ * heap_fix_classrep_cache_entry () - fix class representation cache entry
+ *
+ * return              : true if fixed, false otherwise.
+ * thread_p (in)       : thread entry
+ * classrep_entry (in) : class representation
+ */
+STATIC_INLINE bool
+heap_fix_classrep_cache_entry (THREAD_ENTRY * thread_p, LOG_TDES * tdes, void *classrep_entry, bool has_mutex,
+			       bool * is_fixed_by_current_transaction)
 {
   UINT64 old_fcnt_with_version_and_flags, new_fcnt_with_version_and_flags;
   HEAP_CLASSREPR_ENTRY *cache_entry = (HEAP_CLASSREPR_ENTRY *) classrep_entry;
 
   assert (tdes != NULL && classrep_entry != NULL);
+
+  if (heap_classrep_cache_entry_is_pinned (tdes, cache_entry))
+    {
+      /* Do not fix again, since was pinned. */
+      assert (tdes->ref_classrep_entry_fix_cnt == 1);
+      *is_fixed_by_current_transaction = true;
+      return true;
+    }
 
   do
     {
@@ -24921,6 +24955,7 @@ heap_fix_classrep_cache_entry (THREAD_ENTRY * thread_p, LOG_TDES * tdes, void *c
 	      && (tdes->ref_classrep_entry != cache_entry || tdes->ref_classrep_entry_fix_cnt == 0))
 	    {
 	      /* Can't fix the entry not previously fixed, since was mark for decache. */
+	      *is_fixed_by_current_transaction = false;
 	      return false;
 	    }
 
@@ -24928,6 +24963,7 @@ heap_fix_classrep_cache_entry (THREAD_ENTRY * thread_p, LOG_TDES * tdes, void *c
 	    {
 	      /* Old version */
 	      assert (tdes->ref_classrep_entry_fix_cnt == 0);
+	      *is_fixed_by_current_transaction = false;
 	      return false;
 	    }
 	}
@@ -24937,6 +24973,7 @@ heap_fix_classrep_cache_entry (THREAD_ENTRY * thread_p, LOG_TDES * tdes, void *c
   while (!ATOMIC_CAS_64
 	 (&cache_entry->fcnt_with_version_and_flags, old_fcnt_with_version_and_flags, new_fcnt_with_version_and_flags));
 
+  *is_fixed_by_current_transaction = true;
   if (cache_entry != tdes->ref_classrep_entry && tdes->ref_classrep_entry_fix_cnt == 0)
     {
       tdes->ref_classrep_entry = cache_entry;
@@ -24966,6 +25003,15 @@ heap_unfix_classrep_cache_entry (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_
 				 UINT64 * new_fcnt_with_version_and_flags)
 {
   UINT64 old_fcnt_with_version_and_flags, local_new_fcnt_with_version;
+
+  assert (new_fcnt_with_version_and_flags != NULL);
+  if (heap_classrep_cache_entry_is_pinned (tdes, cache_entry))
+    {
+      /* Do not unfix yet, since was pinned. */
+      *new_fcnt_with_version_and_flags = ATOMIC_INC_64 (&cache_entry->fcnt_with_version_and_flags, 0LL);
+      assert (tdes->ref_classrep_entry_fix_cnt == 1 && *new_fcnt_with_version_and_flags > 0);
+      return false;
+    }
 
   do
     {
@@ -25081,6 +25127,7 @@ heap_get_classrepr_by_transaction_info (THREAD_ENTRY * thread_p, LOG_TDES * tdes
 {
   HEAP_CLASSREPR_ENTRY *cache_entry;
   OR_CLASSREP *repr = NULL;
+  bool is_fixed_by_current_transaction = false;
   assert (tdes != NULL && class_oid != NULL);
 
   cache_entry = (HEAP_CLASSREPR_ENTRY *) tdes->ref_classrep_entry;
@@ -25101,7 +25148,8 @@ heap_get_classrepr_by_transaction_info (THREAD_ENTRY * thread_p, LOG_TDES * tdes
       return NULL;
     }
 
-  if (!heap_fix_classrep_cache_entry (thread_p, tdes, cache_entry, false))
+  if (!heap_fix_classrep_cache_entry (thread_p, tdes, cache_entry, false, &is_fixed_by_current_transaction)
+      && !is_fixed_by_current_transaction)
     {
       return NULL;
     }
@@ -25115,4 +25163,51 @@ heap_get_classrepr_by_transaction_info (THREAD_ENTRY * thread_p, LOG_TDES * tdes
   *idx_incache = cache_entry->idx;
 
   return repr;
+}
+
+/*
+* heap_class_repr_pin_fixed () - Enable postpone unfix
+*
+* return         :
+* thread_p (in)  : thread entry
+* tdes (in)      : transaction descriptor
+*/
+void
+heap_class_repr_enable_pin (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+{
+  if (tdes != NULL)
+    {
+      if (tdes->ref_classrep_entry_pin_enabled == false
+	  && (tdes->ref_classrep_entry == NULL || tdes->ref_classrep_entry_fix_cnt == 0))
+	{
+	  /* Allows when not fixed. */
+	  tdes->ref_classrep_entry_pin_enabled = true;
+	}
+    }
+}
+
+/*
+* heap_get_classrepr_by_transaction_info () - Disable postpone unfix
+*
+* return         :
+* thread_p (in)  : thread entry
+* tdes (in)      : transaction descriptor
+*/
+void
+heap_class_repr_disable_pin (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+{
+  HEAP_CLASSREPR_ENTRY *ref_cache_entry;
+  int idx;
+  if (tdes != NULL && tdes->ref_classrep_entry_pin_enabled == true)
+    {
+      ref_cache_entry = (HEAP_CLASSREPR_ENTRY *) tdes->ref_classrep_entry;
+      if (ref_cache_entry != NULL && tdes->ref_classrep_entry_fix_cnt > 0)
+	{
+	  /* Only one fix. */
+	  assert (tdes->ref_classrep_entry_fix_cnt == 1);
+	  tdes->ref_classrep_entry_pin_enabled = false;
+	  idx = ref_cache_entry->idx;
+	  heap_classrepr_free (thread_p, ref_cache_entry->repr[ref_cache_entry->last_reprid], &idx);
+	}
+    }
 }

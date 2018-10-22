@@ -948,6 +948,7 @@ logtb_set_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const BOOT_CLIENT_CRED
   tdes->ref_classrep_entry = NULL;
   tdes->ref_classrepr_entry_version = 0;
   tdes->ref_classrep_entry_fix_cnt = 0;
+  tdes->ref_classrep_entry_pin_enabled = false;
 }
 
 /*
@@ -2042,6 +2043,7 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->ref_classrep_entry = NULL;
   tdes->ref_classrepr_entry_version = 0;
   tdes->ref_classrep_entry_fix_cnt = 0;
+  tdes->ref_classrep_entry_pin_enabled = false;
 }
 
 /*
