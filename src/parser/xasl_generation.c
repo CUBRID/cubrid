@@ -12741,24 +12741,22 @@ pt_uncorr_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continu
 	  PT_NODE *non_recursive_part = node->info.cte.non_recursive_part;
 	  // non_recursive_part can become PT_VALUE during constant folding
 	  assert (PT_IS_QUERY (non_recursive_part) || PT_IS_VALUE_NODE (non_recursive_part));
-
 	  if (PT_IS_VALUE_NODE (non_recursive_part))
 	    {
 	      info->xasl = pt_append_xasl (xasl, info->xasl);
+	      break;
 	    }
-	  else
-	    {
-	      if (non_recursive_part->info.query.correlation_level == 0)
-		{
-		  /* add non_recursive_part to this level */
-		  non_recursive_part->info.query.correlation_level = info->level;
-		}
 
-	      if (non_recursive_part->info.query.correlation_level == info->level)
-		{
-		  /* append the CTE xasl at the beginning of the list */
-		  info->xasl = pt_append_xasl (xasl, info->xasl);
-		}
+	  if (non_recursive_part->info.query.correlation_level == 0)
+	    {
+	      /* add non_recursive_part to this level */
+	      non_recursive_part->info.query.correlation_level = info->level;
+	    }
+
+	  if (non_recursive_part->info.query.correlation_level == info->level)
+	    {
+	      /* append the CTE xasl at the beginning of the list */
+	      info->xasl = pt_append_xasl (xasl, info->xasl);
 	    }
 	}
 
