@@ -33175,7 +33175,7 @@ btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * 
 	  || purpose == BTREE_OP_ONLINE_INDEX_UNDO_TRAN_INSERT);
 
   /* Check for null keys. */
-  if (DB_IS_NULL (key) || btree_multicol_key_has_null (key))
+  if (DB_IS_NULL (key) || btree_multicol_key_is_null (key))
     {
       /* We do not store NULL keys but we track them for unique indexes. */
       if (BTREE_IS_UNIQUE (*unique))
