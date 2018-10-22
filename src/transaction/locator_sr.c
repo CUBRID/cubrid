@@ -7791,6 +7791,8 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 	      if (index->index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
 		{
 		  /* Online index is currently loading. */
+
+		  dummy_unique = btree_is_unique_type (index->type);
 		  error_code =
 		    btree_online_index_dispatcher (thread_p, &btid, key_dbvalue, class_oid, inst_oid, &dummy_unique,
 						   BTREE_OP_ONLINE_INDEX_TRAN_INSERT, NULL);
@@ -7816,6 +7818,8 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 		  if (index->index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
 		    {
 		      /* Online index is currently loading. */
+		      dummy_unique = btree_is_unique_type (index->type);
+
 		      error_code =
 			btree_online_index_dispatcher (thread_p, &btid, key_dbvalue, class_oid, inst_oid,
 						       &dummy_unique, BTREE_OP_ONLINE_INDEX_TRAN_DELETE, NULL);
@@ -8485,6 +8489,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 		{
 		  if (index->index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
 		    {
+		      dummy_unique = btree_is_unique_type (index->type);
 		      error_code =
 			btree_online_index_dispatcher (thread_p, &index->btid, old_key, class_oid, oid, &dummy_unique,
 						       BTREE_OP_ONLINE_INDEX_TRAN_DELETE, NULL);
@@ -8537,6 +8542,8 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 		      if (index->index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
 			{
 			  /* Online index loading on current index. */
+			  dummy_unique = btree_is_unique_type (index->type);
+
 			  error_code =
 			    btree_online_index_dispatcher (thread_p, &index->btid, new_key, class_oid, oid,
 							   &dummy_unique, BTREE_OP_ONLINE_INDEX_TRAN_INSERT, NULL);
@@ -8562,6 +8569,8 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 			  /* This translates into a delete of the old key and an insert of the new key. */
 
 			  /* Delete old key. */
+
+			  dummy_unique = btree_is_unique_type (index->type);
 			  error_code =
 			    btree_online_index_dispatcher (thread_p, &index->btid, old_key, class_oid, oid,
 							   &dummy_unique, BTREE_OP_ONLINE_INDEX_TRAN_DELETE, NULL);
