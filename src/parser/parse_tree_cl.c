@@ -15683,7 +15683,7 @@ pt_apply_union_stmt (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, v
   p->info.query.into_list = g (parser, p->info.query.into_list, arg);
   p->info.query.order_by = g (parser, p->info.query.order_by, arg);
   p->info.query.orderby_for = g (parser, p->info.query.orderby_for, arg);
-  p->info.query.limit = g (parser, p->info.query.orderby_for, arg);
+  p->info.query.limit = g (parser, p->info.query.limit, arg);
   // todo - there is a lot less stuff here than on pt_apply_select. I am not sure this is safe.
   //        e.g. this is used for parser_copy_tree too. which should deep copy entire tree! otherwise we may have some
   //        unpleasant effects.
