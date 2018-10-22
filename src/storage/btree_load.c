@@ -4468,7 +4468,7 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   if (func_index_info.expr != NULL)
     {
       if (heap_attrinfo_start (thread_p, &class_oids[cur_class], n_attrs, &attr_ids[attr_offset],
-			       ((FUNC_PRED *) (&func_index_info.expr))->cache_attrinfo) != NO_ERROR)
+			       (*(FUNC_PRED **) (&func_index_info.expr))->cache_attrinfo) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -4534,7 +4534,7 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 	}
       if (func_index_info.expr)
 	{
-	  heap_attrinfo_end (thread_p, ((FUNC_PRED *) (&func_index_info.expr))->cache_attrinfo);
+	  heap_attrinfo_end (thread_p, (*(FUNC_PRED **) (&func_index_info.expr))->cache_attrinfo);
 	}
 
       attr_info_inited = false;
