@@ -181,6 +181,7 @@ static void pt_bind_names_merge_insert (PARSER_CONTEXT * parser, PT_NODE * node,
 static void pt_bind_names_merge_update (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NAMES_ARG * bind_arg,
 					SCOPES * scopestack, PT_EXTRA_SPECS_FRAME * specs_frame);
 static const char *pt_get_unique_exposed_name (PARSER_CONTEXT * parser, PT_NODE * first_spec);
+static PT_NODE *pt_bind_name_to_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 
 static PT_NODE *pt_resolve_natural_join (PARSER_CONTEXT * parser, PT_NODE * node, void *chk_parent, int *continue_walk);
 
@@ -981,7 +982,19 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 
 	  assert (!PT_SPEC_IS_ENTITY (spec) && !PT_SPEC_IS_CTE (spec));
 	  table = spec->info.spec.derived_table;
-	  table = parser_walk_tree (parser, table, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
+	  if (table->node_type == PT_JSON_TABLE)
+	    {
+	      assert (spec->info.spec.derived_table_type == PT_DERIVED_JSON_TABLE);
+	      table->info.json_table_info.expr =
+		parser_walk_tree (parser, table->info.json_table_info.expr, pt_bind_names, bind_arg, pt_bind_names_post,
+				  bind_arg);
+	      table->info.json_table_info.tree =
+		parser_walk_tree (parser, table->info.json_table_info.tree, pt_bind_name_to_spec, spec, NULL, NULL);
+	    }
+	  else
+	    {
+	      table = parser_walk_tree (parser, table, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
+	    }
 	  spec->info.spec.derived_table = table;
 
 	  /* must bind any expr types in table. pt_bind_types requires it. */
@@ -4377,8 +4390,15 @@ pt_get_all_json_table_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * j
 					    const char *json_table_alias)
 {
   PT_NODE *attribs = NULL;
+  PT_NODE *copy_node = NULL;
 
   parser_walk_tree (parser, json_table_node, pt_json_table_gather_attribs, &attribs, NULL, NULL);
+
+  if (attribs == NULL)
+    {
+      assert (false);
+      return NULL;
+    }
 
   // *INDENT-OFF*
   std::unordered_map<size_t, PT_NODE *> sorted_attrs;
@@ -4387,23 +4407,33 @@ pt_get_all_json_table_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * j
   for (PT_NODE * attr = attribs; attr; attr = attr->next)
     {
       size_t index = attr->info.name.json_table_column_index;
-      sorted_attrs[index] = attr;
+      assert (strcmp (json_table_alias, attr->info.name.resolved) == 0);
+
+      // we need copies of the actual names
+      copy_node = pt_name (parser, attr->info.name.original);
+      copy_node->type_enum = attr->type_enum;
+      copy_node->info.name.resolved == json_table_alias;
+      if (attr->data_type != NULL)
+	{
+	  copy_node->data_type = parser_copy_tree (parser, attr->data_type);
+	}
+      sorted_attrs[index] = copy_node;	// we have to copy, cannot use same node
     }
 
   size_t columns_nr = sorted_attrs.size ();
 
   for (unsigned int i = 0; i < columns_nr - 1; i++)
     {
+      if (sorted_attrs[i] == NULL)
+	{
+	  assert (false);
+	  return NULL;
+	}
       sorted_attrs[i]->next = sorted_attrs[i + 1];
     }
   sorted_attrs[columns_nr - 1]->next = NULL;
 
-  for (PT_NODE * attr = attribs; attr; attr = attr->next)
-    {
-      assert (attr->info.name.resolved == NULL);
-      attr->info.name.resolved = json_table_alias;
-    }
-  return attribs;
+  return sorted_attrs[0];
 }
 
 /*
@@ -10086,5 +10116,28 @@ pt_count_with_clauses (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
       (*cnt)++;
     }
 
+  return node;
+}
+
+static PT_NODE *
+pt_bind_name_to_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_NODE *spec = REINTERPRET_CAST (PT_NODE *, arg);
+  if (spec->node_type != PT_SPEC)
+    {
+      assert (false);
+      return node;
+    }
+
+  if (node->node_type != PT_NAME)
+    {
+      // not relevant
+      return node;
+    }
+
+  assert (!pt_resolved (node));
+  node->info.name.spec_id = spec->info.spec.id;
+  node->info.name.resolved = spec->info.spec.range_var->info.name.original;
+  node->info.name.meta_class = PT_NORMAL;	// so far, only normals are used.
   return node;
 }

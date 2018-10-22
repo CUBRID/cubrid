@@ -19182,6 +19182,7 @@ pt_init_json_table_column (PT_NODE * p)
 static PT_NODE *
 pt_apply_json_table_column (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
 {
+  p->info.json_table_column_info.name = g (parser, p->info.json_table_column_info.name, arg);
   return p;
 }
 
