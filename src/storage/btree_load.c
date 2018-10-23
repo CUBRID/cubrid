@@ -190,7 +190,7 @@ static int btree_is_slot_visible (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE
 static int online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids, OID * class_oids,
 				 int n_classes, int *attrids, int n_attrs, FUNCTION_INDEX_INFO func_idx_info,
 				 PRED_EXPR_WITH_CONTEXT * filter_pred, int *attrs_prefix_length,
-				 HEAP_CACHE_ATTRINFO * attr_info, HEAP_SCANCACHE * scancache);
+				 HEAP_CACHE_ATTRINFO * attr_info, HEAP_SCANCACHE * scancache, int unique_pk);
 
 /*
  * btree_get_node_header () -
@@ -4499,7 +4499,7 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 
   /* Start the online index builder. */
   ret = online_index_builder (thread_p, &btid_int, hfids, class_oids, n_classes, attr_ids, n_attrs,
-			      func_index_info, filter_pred, attrs_prefix_length, &attr_info, &scan_cache);
+			      func_index_info, filter_pred, attrs_prefix_length, &attr_info, &scan_cache, unique_pk);
   if (ret != NO_ERROR)
     {
       goto error;
@@ -4638,7 +4638,7 @@ static int
 online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids, OID * class_oids, int n_classes,
 		      int *attrids, int n_attrs, FUNCTION_INDEX_INFO func_idx_info,
 		      PRED_EXPR_WITH_CONTEXT * filter_pred, int *attrs_prefix_length, HEAP_CACHE_ATTRINFO * attr_info,
-		      HEAP_SCANCACHE * scancache)
+		      HEAP_SCANCACHE * scancache, int unique_pk)
 {
   int ret = NO_ERROR;
   OID cur_oid;
@@ -4651,7 +4651,6 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
   int attr_offset;
   DB_VALUE dbvalue;
   DB_VALUE *p_dbvalue;
-  int unique = 0;
   int *p_prefix_length;
   char midxkey_buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_midxkey_buf;
   char rec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
@@ -4743,7 +4742,7 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
       p_dbvalue =
 	heap_attrinfo_generate_key (thread_p, n_attrs, &attrids[attr_offset], p_prefix_length, attr_info, &cur_record,
 				    &dbvalue, aligned_midxkey_buf, p_func_idx_info);
-      if (p_dbvalue == NULL || DB_IS_NULL (p_dbvalue))
+      if (p_dbvalue == NULL)
 	{
 	  ret = ER_FAILED;
 	  break;
@@ -4751,14 +4750,14 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 
       /* Dispatch the insert operation */
       ret = btree_online_index_dispatcher (thread_p, btid_int->sys_btid, p_dbvalue, &class_oids[cur_class], &cur_oid,
-					   &unique, BTREE_OP_ONLINE_INDEX_IB_INSERT, NULL);
+					   &unique_pk, BTREE_OP_ONLINE_INDEX_IB_INSERT, NULL);
+      /* Clear the index key. */
+      pr_clear_value (p_dbvalue);
+
       if (ret != NO_ERROR)
 	{
 	  break;
 	}
-
-      /* Clear the index key. */
-      pr_clear_value (p_dbvalue);
     }
 
   return ret;
