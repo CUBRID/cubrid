@@ -200,11 +200,6 @@ namespace cubscan
 	    }
 	}
 
-      if (m_node->m_iterator != NULL)
-	{
-	  db_json_clear_json_iterator (m_node->m_iterator);
-	}
-
       return NO_ERROR;
     }
 

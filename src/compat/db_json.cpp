@@ -1141,14 +1141,20 @@ db_json_create_iterator (const DB_JSON_TYPE &type)
 void
 db_json_delete_json_iterator (JSON_ITERATOR *&json_itr)
 {
-  delete json_itr;
-  json_itr = NULL;
+  if (json_itr != NULL)
+    {
+      delete json_itr;
+      json_itr = NULL;
+    }
 }
 
 void
 db_json_clear_json_iterator (JSON_ITERATOR *&json_itr)
 {
-  json_itr->clear_content ();
+  if (json_itr != NULL)
+    {
+      json_itr->clear_content ();
+    }
 }
 
 bool

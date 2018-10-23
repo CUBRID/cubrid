@@ -276,11 +276,8 @@ namespace cubxasl
     void
     node::clear_iterators ()
     {
-      if (m_iterator != nullptr)
-	{
-	  db_json_clear_json_iterator (m_iterator);
-	  db_json_delete_json_iterator (m_iterator);
-	}
+      db_json_clear_json_iterator (m_iterator);
+      db_json_delete_json_iterator (m_iterator);
 
       for (size_t i = 0; i < m_nested_nodes_size; ++i)
 	{
