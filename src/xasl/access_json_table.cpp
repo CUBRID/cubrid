@@ -104,14 +104,22 @@ namespace cubxasl
     }
 
     column::column (void)
-      : m_domain (NULL)
-      , m_column_name ()
-      , m_on_error ()
-      , m_on_empty ()
-      , m_output_value_pointer (NULL)
-      , m_function (json_table_column_function::JSON_TABLE_EXTRACT)
     {
-      //
+      init ();
+    }
+
+    void
+    column::init ()
+    {
+      m_domain = NULL;
+      m_path = NULL;
+      m_column_name = NULL;
+      m_output_value_pointer = NULL;
+      m_function = json_table_column_function::JSON_TABLE_EXTRACT;
+      m_on_error.m_default_value = NULL;
+      m_on_error.m_behavior = json_table_column_behavior_type::JSON_TABLE_RETURN_NULL;
+      m_on_empty.m_default_value = NULL;
+      m_on_empty.m_behavior = json_table_column_behavior_type::JSON_TABLE_RETURN_NULL;
     }
 
     int
@@ -225,13 +233,23 @@ namespace cubxasl
     }
 
     node::node (void)
-      : m_ordinality (1)
-      , m_need_inc_ordinality (true)
-      , m_id (0)
-      , m_iterator (nullptr)
-      , m_expand_type (json_table_expand_type::JSON_TABLE_NO_EXPAND)
     {
+      init();
+    }
 
+    void
+    node::init ()
+    {
+      m_path = NULL;
+      m_ordinality = 1;
+      m_need_inc_ordinality = true;
+      m_output_columns = NULL;
+      m_output_columns_size = 0;
+      m_nested_nodes = NULL;
+      m_nested_nodes_size = 0;
+      m_id = 0;
+      m_iterator = NULL;
+      m_expand_type = json_table_expand_type::JSON_TABLE_NO_EXPAND;
     }
 
     void
@@ -332,6 +350,19 @@ namespace cubxasl
 	      m_iterator = db_json_create_iterator (DB_JSON_TYPE::DB_JSON_OBJECT);
 	    }
 	}
+    }
+
+    spec_node::spec_node ()
+    {
+      init ();
+    }
+
+    void
+    spec_node::init ()
+    {
+      m_root_node = NULL;
+      m_json_reguvar = NULL;
+      m_node_count = 0;
     }
 
   } // namespace json_table
