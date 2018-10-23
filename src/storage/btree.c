@@ -34815,8 +34815,8 @@ btree_online_index_check_unique_constraint (THREAD_ENTRY * thread_p, BTID * btid
       return ret;
     }
 
-  if ((g_num_oids + unique_stats->tran_stats.num_oids) !=
-      (g_num_keys + unique_stats->tran_stats.num_keys) + (g_num_nulls + unique_stats->tran_stats.num_nulls))
+  if ((g_num_oids + unique_stats->tran_stats.num_oids)
+      != (g_num_keys + unique_stats->tran_stats.num_keys) + (g_num_nulls + unique_stats->tran_stats.num_nulls))
     {
       /* Unique constraint violation. */
       BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_p, NULL, NULL, class_oid, btid, index_name);
