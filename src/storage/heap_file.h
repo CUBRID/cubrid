@@ -181,8 +181,9 @@ struct heap_hfid_table_entry
   FILE_TYPE ftype;		/* value - FILE_HEAP or FILE_HEAP_REUSE_SLOTS */
 };
 
-//forward declaration
+// forward declaration
 struct func_pred;
+
 typedef struct function_index_info FUNCTION_INDEX_INFO;
 struct function_index_info
 {
@@ -196,7 +197,7 @@ struct function_index_info
 typedef struct func_pred_unpack_info FUNC_PRED_UNPACK_INFO;
 struct func_pred_unpack_info
 {
-  void *func_pred;
+  struct func_pred *func_pred;
   void *unpack_info;
 };
 
