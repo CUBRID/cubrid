@@ -33152,7 +33152,7 @@ btree_online_index_set_normal_state (MVCCID & state)
 //
 int
 btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid, OID * oid,
-			       int *unique, BTREE_OP_PURPOSE purpose, LOG_LSA * undo_nxlsa)
+			       int unique, BTREE_OP_PURPOSE purpose, LOG_LSA * undo_nxlsa)
 {
   int error_code = NO_ERROR;
   /* Search key helper which will point to where data should inserted. */
@@ -33178,7 +33178,7 @@ btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * 
   if (DB_IS_NULL (key) || btree_multicol_key_is_null (key))
     {
       /* We do not store NULL keys but we track them for unique indexes. */
-      if (BTREE_IS_UNIQUE (*unique))
+      if (BTREE_IS_UNIQUE (unique))
 	{
 	  /* In this scenario, we have to write log for the update of local statistics, since we do not
 	   * log the physical operation of a NULL key.
@@ -34637,7 +34637,6 @@ btree_rv_keyval_undo_online_index_tran_delete (THREAD_ENTRY * thread_p, LOG_RCV 
   int datasize;
   BTREE_MVCC_INFO mvcc_info;
   int error_code = NO_ERROR;
-  int dummy_unique;
 
   /* btid needs a place to unpack the sys_btid into.  We'll use stack space. */
   btid.sys_btid = &sys_btid;
@@ -34655,7 +34654,7 @@ btree_rv_keyval_undo_online_index_tran_delete (THREAD_ENTRY * thread_p, LOG_RCV 
   assert (!OID_ISNULL (&oid));
 
   /* Insert object and all its info. */
-  error_code = btree_online_index_dispatcher (thread_p, btid.sys_btid, &key, &cls_oid, &oid, &dummy_unique,
+  error_code = btree_online_index_dispatcher (thread_p, btid.sys_btid, &key, &cls_oid, &oid, btid.unique_pk,
 					      BTREE_OP_ONLINE_INDEX_UNDO_TRAN_DELETE, &recv->reference_lsa);
   if (error_code != NO_ERROR)
     {
@@ -34685,7 +34684,6 @@ btree_rv_keyval_undo_online_index_tran_insert (THREAD_ENTRY * thread_p, LOG_RCV 
   BTREE_MVCC_INFO dummy_mvcc_info;
   int err = NO_ERROR;
   DB_VALUE key;
-  int dummy_unique;
 
   /* btid needs a place to unpack the sys_btid into.  We'll use stack space. */
   btid.sys_btid = &sys_btid;
@@ -34703,7 +34701,7 @@ btree_rv_keyval_undo_online_index_tran_insert (THREAD_ENTRY * thread_p, LOG_RCV 
   assert (!OID_ISNULL (&oid));
 
   /* Undo insert: just delete object and all its information. */
-  err = btree_online_index_dispatcher (thread_p, btid.sys_btid, &key, &cls_oid, &oid, &dummy_unique,
+  err = btree_online_index_dispatcher (thread_p, btid.sys_btid, &key, &cls_oid, &oid, btid.unique_pk,
 				       BTREE_OP_ONLINE_INDEX_UNDO_TRAN_INSERT, &recv->reference_lsa);
   if (err != NO_ERROR)
     {
