@@ -19288,12 +19288,12 @@ pt_print_json_table_column_info (PARSER_CONTEXT * parser, PT_NODE * p, PARSER_VA
 
       // print on_error
       pstr = pt_append_nulstring (parser, pstr, " [");
-      pt_print_json_table_column_error_or_empty_behavior (parser, pstr, p->info.json_table_column_info.on_error);
+      pstr = pt_print_json_table_column_error_or_empty_behavior (parser, pstr, p->info.json_table_column_info.on_error);
       pstr = pt_append_nulstring (parser, pstr, "]");
 
       // print on_empty
       pstr = pt_append_nulstring (parser, pstr, " [");
-      pt_print_json_table_column_error_or_empty_behavior (parser, pstr, p->info.json_table_column_info.on_empty);
+      pstr = pt_print_json_table_column_error_or_empty_behavior (parser, pstr, p->info.json_table_column_info.on_empty);
       pstr = pt_append_nulstring (parser, pstr, "]");
       break;
 
