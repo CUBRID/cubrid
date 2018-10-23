@@ -33180,8 +33180,8 @@ btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * 
       /* We do not store NULL keys but we track them for unique indexes. */
       if (BTREE_IS_UNIQUE (*unique))
 	{
-	  /*  In this scenario, we have to write log for the update of local statistics, since we do not
-	   *  log the physical operation of a NULL key.
+	  /* In this scenario, we have to write log for the update of local statistics, since we do not
+	   * log the physical operation of a NULL key.
 	   */
 	  if (purpose == BTREE_OP_ONLINE_INDEX_TRAN_DELETE || purpose == BTREE_OP_ONLINE_INDEX_UNDO_TRAN_INSERT)
 	    {

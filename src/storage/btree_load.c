@@ -4751,13 +4751,13 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
       /* Dispatch the insert operation */
       ret = btree_online_index_dispatcher (thread_p, btid_int->sys_btid, p_dbvalue, &class_oids[cur_class], &cur_oid,
 					   &unique_pk, BTREE_OP_ONLINE_INDEX_IB_INSERT, NULL);
+      /* Clear the index key. */
+      pr_clear_value (p_dbvalue);
+
       if (ret != NO_ERROR)
 	{
 	  break;
 	}
-
-      /* Clear the index key. */
-      pr_clear_value (p_dbvalue);
     }
 
   return ret;
