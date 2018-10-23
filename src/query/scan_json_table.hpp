@@ -112,7 +112,7 @@ namespace cubscan
 	// initialize scanner
 	void init (cubxasl::json_table::spec_node &spec);
 	// clear scanner
-	void clear (xasl_node *xasl_p, bool is_final);
+	void clear (xasl_node *xasl_p, bool is_final, bool clear_default_values);
 
 	// open a new scan
 	int open (cubthread::entry *thread_p);

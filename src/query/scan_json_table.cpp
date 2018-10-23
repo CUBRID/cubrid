@@ -56,9 +56,10 @@ namespace cubscan
     };
 
     scanner::cursor::cursor (void)
-      : m_input_doc (NULL)
+      : m_child (0)
+      , m_node (NULL)
+      , m_input_doc (NULL)
       , m_process_doc (NULL)
-      , m_child (0)
       , m_is_row_fetched (false)
       , m_need_advance_row (false)
       , m_is_node_consumed (true)
@@ -203,7 +204,7 @@ namespace cubscan
 	}
 
       m_process_doc = NULL;
-      m_node->clear_columns ();
+      m_node->clear_columns (false);
     }
 
     size_t
@@ -234,7 +235,7 @@ namespace cubscan
       // init cursor nodes to left-most branch
       json_table_node *t = m_specp->m_root_node;
       m_scan_cursor[0].m_node = t;
-      for (int i = 1; t->m_nested_nodes_size!=0; t = &t->m_nested_nodes[0], ++i)
+      for (int i = 1; t->m_nested_nodes_size != 0; t = &t->m_nested_nodes[0], ++i)
 	{
 	  m_scan_cursor[i].m_node = t;
 	}
@@ -243,10 +244,10 @@ namespace cubscan
     }
 
     void
-    scanner::clear (xasl_node *xasl_p, bool is_final)
+    scanner::clear (xasl_node *xasl_p, bool is_final, bool clear_default_values)
     {
       // columns should be released every time
-      m_specp->m_root_node->clear_tree ();
+      m_specp->m_root_node->clear_tree (clear_default_values);
       reset_ordinality (*m_specp->m_root_node);
 
       // all json documents should be release depending on is_final

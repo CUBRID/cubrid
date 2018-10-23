@@ -1101,7 +1101,7 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
       ret = NO_ERROR;
 
 #if defined (ENABLE_COMPOSITE_LOCK)
-      /* At this moment composite locking is not used, but it can be activated at some point in the future. So we leave 
+      /* At this moment composite locking is not used, but it can be activated at some point in the future. So we leave
        * it as it is. */
       if (false)
 	{
@@ -1892,7 +1892,11 @@ qexec_clear_access_spec_list (XASL_NODE * xasl_p, THREAD_ENTRY * thread_p, ACCES
 	  pg_cnt += qexec_clear_regu_list (xasl_p, p->s_id.s.ssid.scan_pred.regu_list, is_final);
 	  break;
 	case S_JSON_TABLE_SCAN:
-	  p->s_id.s.jtid.clear (xasl_p, is_final);
+	  {
+	    bool jt_clear_default_values =
+	      XASL_IS_FLAGED (xasl_p, XASL_DECACHE_CLONE) == p->clear_value_at_clone_decache;
+	    p->s_id.s.jtid.clear (xasl_p, is_final, jt_clear_default_values);
+	  }
 	  break;
 	case S_SHOWSTMT_SCAN:
 	  break;
@@ -2083,7 +2087,7 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool is_final)
 
   decache_clone_flag = xasl->flag & XASL_DECACHE_CLONE;
 
-  /* 
+  /*
    ** We set this because in some M paths (e.g. when a driver crashes)
    ** the function qexec_clear_xasl() can be called recursively. By setting
    ** the query_in_progress flag, we prevent qmgr_clear_trans_wakeup() from
@@ -2624,7 +2628,7 @@ qexec_clear_all_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list)
 	  qexec_clear_all_lists (thread_p, xasl->fptr_list);
 	}
 
-      /* Note: Dptr lists are only procedure blocks (other than aptr_list) which can produce a LIST FILE. Therefore, we 
+      /* Note: Dptr lists are only procedure blocks (other than aptr_list) which can produce a LIST FILE. Therefore, we
        * are trying to clear all the dptr_list result LIST FILES in the XASL tree per iteration. */
       if (xasl->dptr_list)
 	{
@@ -2743,7 +2747,7 @@ qexec_eval_ordbynum_pred (THREAD_ENTRY * thread_p, ORDBYNUM_INFO * ordby_info)
 
   if (ordby_info->ordbynum_pred)
     {
-      /* 
+      /*
        * Evaluate the predicate.
        * CUBRID does not currently support such predicates in WHERE condition
        * lists but might support them in future versions (see the usage of
@@ -2899,7 +2903,7 @@ qexec_ordby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 
 	      if (ovfl_vpid.pageid == NULL_PAGEID)
 		{
-		  /* This is the normal case of a non-overflow tuple. We can use the page image directly, since we know 
+		  /* This is the normal case of a non-overflow tuple. We can use the page image directly, since we know
 		   * that the tuple resides entirely on that page. */
 		  data = page + key->s.original.offset;
 
@@ -3028,7 +3032,7 @@ qexec_fill_sort_limit (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * x
 	{
 	  if (dom_status == DOMAIN_OVERFLOW)
 	    {
-	      /* The limit is too bog to fit an integer. However, since this limit is used to keep the sort run flushes 
+	      /* The limit is too bog to fit an integer. However, since this limit is used to keep the sort run flushes
 	       * small (for instance only keep the first 10 elements of each run if ORDER BY LIMIT 10 is specified),
 	       * there is no conceivable way this limit would be useful if it is larger than 2.147 billion: such a
 	       * large run is infeasible anyway. So if it does not fit into an integer, discard it. */
@@ -3564,7 +3568,7 @@ qexec_clear_groupby_state (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate)
       gbstate->gby_rec.area_size = 0;
     }
   gbstate->output_tplrec = NULL;
-  /* 
+  /*
    * Don't cleanup gbstate->input_tpl; the memory it points to was
    * managed by the listfile manager (via input_scan), and it's not
    * ours to free.
@@ -3908,7 +3912,7 @@ qexec_hash_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *a
 	  data = page + key->s.original.offset;
 	  if (vpid.pageid != NULL_PAGEID)
 	    {
-	      /* 
+	      /*
 	       * This sucks; why do we need two different structures to
 	       * accomplish exactly the same goal?
 	       */
@@ -3918,7 +3922,7 @@ qexec_hash_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *a
 
 	      if (dummy.tpl != context->tuple_recdes.data)
 		{
-		  /* 
+		  /*
 		   * DON'T FREE THE BUFFER!  qfile_get_tuple() already did
 		   * that, and what you have here in gby_rec is a dangling
 		   * pointer.
@@ -3942,7 +3946,7 @@ qexec_hash_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *a
 	}
       else
 	{
-	  /* 
+	  /*
 	   * sorting over all columns (i.e. no aggregate functions); build
 	   * tuple from sort key.
 	   */
@@ -4069,7 +4073,7 @@ qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
       peek = COPY;		/* default */
       if (info->key_info.use_original)
 	{			/* P_sort_key */
-	  /* 
+	  /*
 	   * Retrieve the original tuple.  This will be the case if the
 	   * original tuple had more fields than we were sorting on.
 	   */
@@ -4114,7 +4118,7 @@ qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 	  data = page + key->s.original.offset;
 	  if (vpid.pageid != NULL_PAGEID)
 	    {
-	      /* 
+	      /*
 	       * This sucks; why do we need two different structures to
 	       * accomplish exactly the same goal?
 	       */
@@ -4124,7 +4128,7 @@ qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 
 	      if (dummy.tpl != info->gby_rec.data)
 		{
-		  /* 
+		  /*
 		   * DON'T FREE THE BUFFER!  qfile_get_tuple() already did
 		   * that, and what you have here in gby_rec is a dangling
 		   * pointer.
@@ -4146,7 +4150,7 @@ qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 	}
       else
 	{			/* A_sort_key */
-	  /* 
+	  /*
 	   * We didn't record the original vpid, and we should just
 	   * reconstruct the original record from this sort key (rather
 	   * than pressure the page buffer pool by reading in the original
@@ -4161,7 +4165,7 @@ qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 
       if (info->input_recs == 0)
 	{
-	  /* 
+	  /*
 	   * First record we've seen; put it out and set up the group
 	   * comparison key(s).
 	   */
@@ -4209,14 +4213,14 @@ qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 	}
       else if ((*info->cmp_fn) (&info->current_key.data, &key, &info->key_info) == 0)
 	{
-	  /* 
+	  /*
 	   * Still in the same group; accumulate the tuple and proceed,
 	   * leaving the group key the same.
 	   */
 	}
       else
 	{
-	  /* 
+	  /*
 	   * We got a new group; finalize the group we were accumulating,
 	   * and start a new group using the current key as the group key.
 	   */
@@ -4389,7 +4393,7 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
       GOTO_EXIT_ON_ERROR;
     }
 
-  /* 
+  /*
    * Create a new listfile to receive the results.
    */
   {
@@ -4401,7 +4405,7 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
 	GOTO_EXIT_ON_ERROR;
       }
     /* If it does not have 'order by'(xasl->orderby_list), then the list file to be open at here will be the last one.
-     * Otherwise, the last list file will be open at qexec_orderby_distinct(). (Note that only one that can have 'group 
+     * Otherwise, the last list file will be open at qexec_orderby_distinct(). (Note that only one that can have 'group
      * by' is BUILDLIST_PROC type.) And, the top most XASL is the other condition for the list file to be the last
      * result file. */
 
@@ -4598,7 +4602,7 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
       gbstate.agg_hash_context->part_scan_code = S_END;
     }
 
-  /* 
+  /*
    * Open a scan on the unsorted input file
    */
   if (qfile_open_list_scan (list_id, &input_scan_id) != NO_ERROR)
@@ -4607,7 +4611,7 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
     }
   gbstate.input_scan = &input_scan_id;
 
-  /* 
+  /*
    * Now load up the sort module and set it off...
    */
   gbstate.key_info.use_original = (gbstate.key_info.nkeys != list_id->type_list.type_cnt);
@@ -4635,7 +4639,7 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
       GOTO_EXIT_ON_ERROR;
     }
 
-  /* 
+  /*
    * There may be one unfinished group in the output, since the sort_listfile
    * interface doesn't include a finalization function.  If so, finish
    * off that group.
@@ -5290,7 +5294,7 @@ qexec_merge_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * outer_list_idp, QFILE
     }
 
   /* When a list file is sorted on a column, all the NULL values appear at the beginning of the list. So, we know that
-   * all the following values in the inner/outer column are BOUND(not NULL) values. Depending on the join type, we must 
+   * all the following values in the inner/outer column are BOUND(not NULL) values. Depending on the join type, we must
    * skip or join with a NULL opposite row, when a NULL is encountered. */
 
   /* move the outer(left) scan to the first tuple */
@@ -6290,9 +6294,9 @@ qexec_merge_listfiles (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * x
 	}
     }
 
-  /* If MERGELIST_PROC does not have 'order by' (xasl->orderby_list), then the list file to be open at here will be the 
+  /* If MERGELIST_PROC does not have 'order by' (xasl->orderby_list), then the list file to be open at here will be the
    * last one. Otherwise, the last list file will be open at qexec_orderby_distinct(). (Note that only one that can
-   * have 'group by' is BUILDLIST_PROC type.) And, the top most XASL is the other condition for the list file to be the 
+   * have 'group by' is BUILDLIST_PROC type.) And, the top most XASL is the other condition for the list file to be the
    * last result file. */
 
   QFILE_SET_FLAG (ls_flag, QFILE_FLAG_ALL);
@@ -6379,7 +6383,7 @@ exit_on_error:
  *   grouped(in)        : Grouped scan flag
  *   iscan_oid_order(in)       :
  *   s_id(out)   : Set to the scan identifier
- *   p_mvcc_select_lock_needed(out): true, whether instance lock needed at select 
+ *   p_mvcc_select_lock_needed(out): true, whether instance lock needed at select
  *
  * Note: This routine is used to open a scan on an access specification
  * node. A scan identifier is created with the given parameters.
@@ -6700,7 +6704,7 @@ qexec_close_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec)
       break;
 
     case TARGET_JSON_TABLE:
-      /* currently do nothing 
+      /* currently do nothing
          todo: check if here need to add something
        */
       break;
@@ -8713,7 +8717,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
       need_locking = true;
     }
 
-  /* This guarantees that the result list file will have a type list. Copying a list_id structure fails unless it has a 
+  /* This guarantees that the result list file will have a type list. Copying a list_id structure fails unless it has a
    * type list. */
   if (qexec_setup_list_id (thread_p, xasl) != NO_ERROR)
     {
@@ -9085,7 +9089,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 	  if (mvcc_upddel_reev_data.mvcc_cond_reev_list == NULL && mvcc_reev_class_cnt > 0)
 	    {
 	      /* If scan order was not set then do it. This operation must be run only once. We do it here and not at
-	       * the beginning of this function because the class OIDs must be set for classes involved in reevaluation 
+	       * the beginning of this function because the class OIDs must be set for classes involved in reevaluation
 	       * (in mvcc_reev_classes) prior to this operation */
 	      mvcc_upddel_reev_data.mvcc_cond_reev_list =
 		qexec_mvcc_cond_reev_set_scan_order (aptr, mvcc_reev_classes, mvcc_reev_class_cnt, update->classes,
@@ -9137,7 +9141,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 		}
 	    }
 
-	  /* Flush new values for each class. The class list was built from right to left during XASL generation, so in 
+	  /* Flush new values for each class. The class list was built from right to left during XASL generation, so in
 	   * order to maintain the correct update order specified in the query, we must iterate from right to left as
 	   * well; this makes a difference only when we update the same attribute of the same class more than once. */
 	  for (class_oid_idx = class_oid_cnt - 1, mvcc_reev_class_idx = mvcc_reev_class_cnt - 1; class_oid_idx >= 0;
@@ -9649,7 +9653,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
       need_locking = true;
     }
 
-  /* This guarantees that the result list file will have a type list. Copying a list_id structure fails unless it has a 
+  /* This guarantees that the result list file will have a type list. Copying a list_id structure fails unless it has a
    * type list. */
   if ((qexec_setup_list_id (thread_p, xasl) != NO_ERROR)
       /* it can be > 2 || (aptr->list_id->type_list.type_cnt != 2) */ )
@@ -9800,7 +9804,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	  if (mvcc_upddel_reev_data.mvcc_cond_reev_list == NULL)
 	    {
 	      /* If scan order was not set then do it. This operation must be run only once. We do it here and not at
-	       * the beginning of this function because the class OIDs must be set for classes involved in reevaluation 
+	       * the beginning of this function because the class OIDs must be set for classes involved in reevaluation
 	       * (in mvcc_reev_classes) prior to this operation */
 	      mvcc_upddel_reev_data.mvcc_cond_reev_list =
 		qexec_mvcc_cond_reev_set_scan_order (aptr, mvcc_reev_classes, mvcc_reev_class_cnt, delete_->classes,
@@ -10845,7 +10849,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
       xasl->list_id->query_id = xasl_state->query_id;
     }
 
-  /* This guarantees that the result list file will have a type list. Copying a list_id structure fails unless it has a 
+  /* This guarantees that the result list file will have a type list. Copying a list_id structure fails unless it has a
    * type list. */
   if (qexec_setup_list_id (thread_p, xasl) != NO_ERROR)
     {
@@ -11777,7 +11781,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	}
     }
 
-  /* 
+  /*
    * Pre_processing
    */
 
@@ -11806,7 +11810,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	}
     }
 
-  /* 
+  /*
    * Processing
    */
 
@@ -11835,7 +11839,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	}
       scan_cache_end_needed = true;
 
-      /* must choose corresponding lock_mode for scan_operation_type. 
+      /* must choose corresponding lock_mode for scan_operation_type.
        * for root classes the lock_mode is considered, not the operation type */
       lock_mode = locator_get_lock_mode_from_op_type (scan_operation_type);
 
@@ -11844,9 +11848,9 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 				 PEEK, NULL_CHN);
       if (scan != S_SUCCESS)
 	{
-	  /* setting ER_HEAP_UNKNOWN_OBJECT error for deleted or invisible objects should be replaced by a more clear 
+	  /* setting ER_HEAP_UNKNOWN_OBJECT error for deleted or invisible objects should be replaced by a more clear
 	   * way of handling the return code; it is imposible to decide at low level heap get functions if it is
-	   * expected to reach a deleted object and also it is difficult to propagate the NON_EXISTENT_HANDLING 
+	   * expected to reach a deleted object and also it is difficult to propagate the NON_EXISTENT_HANDLING
 	   * argument through all the callers; this system can currently generate some irrelevant error log that is
 	   * hard to eliminate */
 	  if (scan == S_DOESNT_EXIST || scan == S_SNAPSHOT_NOT_SATISFIED)
@@ -11877,7 +11881,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
       else
 	{
 	  /* check to see if the object is one of the classes that we are interested in.  This can only fail if there
-	   * was a selector variable in the query.  we can optimize this further to pass from the compiler whether this 
+	   * was a selector variable in the query.  we can optimize this further to pass from the compiler whether this
 	   * check is necessary or not. */
 	  bool found = false;
 
@@ -11895,7 +11899,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 
 	      if (!specp->pruned && specp->type == TARGET_CLASS)
 		{
-		  /* cls_oid might still refer to this spec through a partition. See if we already pruned this spec and 
+		  /* cls_oid might still refer to this spec through a partition. See if we already pruned this spec and
 		   * search through partitions for the appropriate class */
 		  PARTITION_SPEC_TYPE *partition_spec = NULL;
 		  int granted;
@@ -13045,9 +13049,9 @@ qexec_end_buildvalueblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       GOTO_EXIT_ON_ERROR;
     }
 
-  /* If BUILDVALUE_PROC does not have 'order by'(xasl->orderby_list), then the list file to be open at here will be the 
+  /* If BUILDVALUE_PROC does not have 'order by'(xasl->orderby_list), then the list file to be open at here will be the
    * last one. Otherwise, the last list file will be open at qexec_orderby_distinct(). (Note that only one that can
-   * have 'group by' is BUILDLIST_PROC type.) And, the top most XASL is the other condition for the list file to be the 
+   * have 'group by' is BUILDLIST_PROC type.) And, the top most XASL is the other condition for the list file to be the
    * last result file. */
   QFILE_SET_FLAG (ls_flag, QFILE_FLAG_ALL);
   if (XASL_IS_FLAGED (xasl, XASL_TOP_MOST_XASL) && XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED)
@@ -13495,7 +13499,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
   bool instant_lock_mode_started = false;
   bool mvcc_select_lock_needed;
 
-  /*  
+  /*
    * Pre_processing
    */
 
@@ -13844,11 +13848,11 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	  GOTO_EXIT_ON_ERROR;
 	}
 
-      /* 
+      /*
        * Processing
        */
-      /* Block out main part of query processing for performance profiling of JDBC driver and CAS side. Main purpose of 
-       * this modification is to pretend that the server's scan time is very fast so that it affect only little portion 
+      /* Block out main part of query processing for performance profiling of JDBC driver and CAS side. Main purpose of
+       * this modification is to pretend that the server's scan time is very fast so that it affect only little portion
        * of whole turnaround time in the point of view of the JDBC driver. */
 
       /* iterative processing is done only for XASL blocks that has access specification list blocks. */
@@ -14237,11 +14241,11 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	  GOTO_EXIT_ON_ERROR;
 	}
 
-      /* 
+      /*
        * Post_processing
        */
 
-      /* 
+      /*
        * DISTINCT processing caused by statement set operators(UNION,
        * DIFFERENCE, INTERSECTION) has already taken place now.
        * But, in the other cases, DISTINCT are not processed yet.
@@ -14359,7 +14363,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
     }
 
 
-  /* 
+  /*
    * Cleanup and Exit processing
    */
   if (instant_lock_mode_started == true)
@@ -14392,7 +14396,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 
   return NO_ERROR;
 
-  /* 
+  /*
    * Error processing
    */
 exit_on_error:
@@ -14663,7 +14667,7 @@ qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt, c
 	      {
 		char buf[512];
 
-		/* Make sure this does NOT return error indication without setting an error message and code. If we 
+		/* Make sure this does NOT return error indication without setting an error message and code. If we
 		 * get here, we most likely have a system error. qp_xasl_line is the first line to set an error
 		 * condition. */
 		snprintf (buf, 511, "Query execution failure #%d.", xasl_state.qp_xasl_line);
@@ -14812,7 +14816,7 @@ qexec_clear_list_cache_by_class (THREAD_ENTRY * thread_p, const OID * class_oid)
   XASL_CACHE_ENTRY *ent;
   void *last;
 
-  /* for all entries in the class oid hash table Note that mht_put2() allows mutiple data with the same key, so we have 
+  /* for all entries in the class oid hash table Note that mht_put2() allows mutiple data with the same key, so we have
    * to use mht_get2() */
 
   last = NULL;
@@ -15757,8 +15761,8 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
 	  GOTO_EXIT_ON_ERROR;
 	}
 
-      /* the recursive part XASL is executed totally (all iterations) 
-       * and the results will be inserted in non_recursive_part->list_id 
+      /* the recursive part XASL is executed totally (all iterations)
+       * and the results will be inserted in non_recursive_part->list_id
        */
 
       while (non_recursive_part->list_id->tuple_cnt > 0)
@@ -15834,7 +15838,7 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
 	      else if (recursive_part->spec_list->s.list_node.xasl_node == non_recursive_part)
 		{
 		  /* optimization: use non-recursive list id for both reading and writing
-		   * the recursive xasl will iterate through this list id while appending new results at its end 
+		   * the recursive xasl will iterate through this list id while appending new results at its end
 		   * note: this works only if the cte(actually the non_recursive_part link) is the first spec used
 		   * for scanning during recursive iterations
 		   */
@@ -17652,7 +17656,7 @@ qexec_gby_start_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, const R
 
   if (N == 0)
     {
-      /* 
+      /*
        * Record the new key; keep it in SORT_KEY format so we can continue
        * to use the SORTKEY_INFO version of the comparison functions.
        *
@@ -18745,7 +18749,7 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xas
   assert (gbstate.g_dim_levels == 1);
   assert (gbstate.with_rollup == false);
 
-  /* 
+  /*
    * Create a new listfile to receive the results.
    */
   {
@@ -18757,7 +18761,7 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xas
 	GOTO_EXIT_ON_ERROR;
       }
     /* If it does not have 'order by'(xasl->orderby_list), then the list file to be open at here will be the last one.
-     * Otherwise, the last list file will be open at qexec_orderby_distinct(). (Note that only one that can have 'group 
+     * Otherwise, the last list file will be open at qexec_orderby_distinct(). (Note that only one that can have 'group
      * by' is BUILDLIST_PROC type.) And, the top most XASL is the other condition for the list file to be the last
      * result file. */
 
@@ -18794,7 +18798,7 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xas
       tuple_cnt = list_id->tuple_cnt;
     }
 
-  /* 
+  /*
    * Open a scan on the unsorted input file
    */
   if (qfile_open_list_scan (list_id, &input_scan_id) != NO_ERROR)
@@ -19267,7 +19271,7 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
       goto wrapup;
     }
 
-  /* 
+  /*
    * Open a scan on the unsorted input file
    */
   if (qfile_open_list_scan (list_id, &input_scan_id) != NO_ERROR)
@@ -19276,7 +19280,7 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
     }
   analytic_state.input_scan = &input_scan_id;
 
-  /* 
+  /*
    * open a scan on the intermediate file
    */
   if (qfile_open_list_scan (analytic_state.interm_file, &interm_scan_id) != NO_ERROR)
@@ -19286,7 +19290,7 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
   interm_scan_id.keep_page_on_finish = 1;
   analytic_state.interm_scan = &interm_scan_id;
 
-  /* 
+  /*
    * Now load up the sort module and set it off...
    */
 
@@ -19315,7 +19319,7 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
       GOTO_EXIT_ON_ERROR;
     }
 
-  /* 
+  /*
    * There may be one unfinished group in the output, since the sort_listfile
    * interface doesn't include a finalization function.  If so, finish
    * off that group.
@@ -19712,7 +19716,7 @@ qexec_analytic_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *a
 	  goto exit_on_error;
 	}
 
-      /* 
+      /*
        * Retrieve the original tuple.  This will be the case if the
        * original tuple had more fields than we were sorting on.
        */
@@ -19742,7 +19746,7 @@ qexec_analytic_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *a
       data = analytic_state->curr_sort_page.page_p + key->s.original.offset;
       if (vpid.pageid != NULL_PAGEID)
 	{
-	  /* 
+	  /*
 	   * This sucks; why do we need two different structures to
 	   * accomplish exactly the same goal?
 	   */
@@ -19752,7 +19756,7 @@ qexec_analytic_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *a
 
 	  if (dummy.tpl != analytic_state->analytic_rec.data)
 	    {
-	      /* 
+	      /*
 	       * DON'T FREE THE BUFFER!  qfile_get_tuple() already did
 	       * that, and what you have here in gby_rec is a dangling
 	       * pointer.
@@ -19772,7 +19776,7 @@ qexec_analytic_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *a
 	  peek = PEEK;		/* avoid unnecessary COPY */
 	}
 
-      /* 
+      /*
        * process current sorted tuple
        */
       if (analytic_state->input_recs == 0)
@@ -19804,7 +19808,7 @@ qexec_analytic_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *a
 
 		  if (QPROC_ANALYTIC_IS_OFFSET_FUNCTION (func_state->func_p))
 		    {
-		      /* offset functions will treat all tuples in a group as having a different sort key regardless if 
+		      /* offset functions will treat all tuples in a group as having a different sort key regardless if
 		       * this is true or not; this is done in order to have a distinct value for each tuple in the
 		       * group (whereas normally tuples sharing a sort key will also share a value) */
 		      is_same_group = true;
@@ -19961,7 +19965,7 @@ qexec_analytic_start_group (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, AN
 {
   int error;
 
-  /* 
+  /*
    * Record the new key; keep it in SORT_KEY format so we can continue
    * to use the SORTKEY_INFO version of the comparison functions.
    *
@@ -19987,7 +19991,7 @@ qexec_analytic_start_group (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, AN
       func_state->current_key.length = key->length;
     }
 
-  /* 
+  /*
    * (Re)initialize the various accumulator variables...
    */
   if (reinit)
@@ -21083,7 +21087,7 @@ qexec_analytic_update_group_result (THREAD_ENTRY * thread_p, ANALYTIC_STATE * an
       return ER_FAILED;
     }
 
-  /* we will use each func_state->value as a buffer to read values from the sort key headers, so make sure it points to 
+  /* we will use each func_state->value as a buffer to read values from the sort key headers, so make sure it points to
    * the vallist in order to correctly output values */
   for (i = 0; i < analytic_state->func_count; i++)
     {
@@ -22777,7 +22781,7 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 		{
 		case 0:
 		  /* Do not copy the string--just use the pointer. The pr_ routines for strings and sets have different
-		   * semantics for length. A negative length value for strings means "don't copy thestring, just use the 
+		   * semantics for length. A negative length value for strings means "don't copy thestring, just use the
 		   * pointer". */
 
 		  disk_length = attrepr->current_default_value.val_length;
@@ -22796,7 +22800,7 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 		  idx_val++;
 		  break;
 		default:
-		  /* 
+		  /*
 		   * An error was found during the reading of the
 		   *  attribute value
 		   */
@@ -23069,7 +23073,7 @@ exit_on_error:
  * return : error code or NO_ERROR
  * thread_p (in) :
  * aptr (in): XASL for generated SELECT statement for UPDATE
- * should_delete (in): 
+ * should_delete (in):
  * classes (in) : internal classes array
  * num_classes (in) : count internal classes array elements
  * num_assignments (in) : no of assignments
@@ -23194,7 +23198,7 @@ qexec_clear_internal_classes (THREAD_ENTRY * thread_p, UPDDEL_CLASS_INFO_INTERNA
  *				      in a class hierarchy
  * return : error code or NO_ERROR
  * thread_p (in) :
- * aptr_list (in) : 
+ * aptr_list (in) :
  * mvcc_data_filter (in) : filter info
  * class_oid (in) : class oid
  *
@@ -23354,7 +23358,7 @@ qexec_upddel_setup_current_class (THREAD_ENTRY * thread_p, UPDDEL_CLASS_INFO * q
   /* Start a HEAP_SCANCACHE object on the new class. Partitioned classes and class hierarchies are handled differently */
   if (internal_class->needs_pruning)
     {
-      /* Get a scan_cache object from the pruning context. We don't close the previous one here, it will be closed when 
+      /* Get a scan_cache object from the pruning context. We don't close the previous one here, it will be closed when
        * the pruning context is cleared. */
       PRUNING_SCAN_CACHE *pcache = NULL;
       pcache =
@@ -24713,7 +24717,7 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
   proc->agg_hash_context.sort_key.key = NULL;
   proc->agg_hash_context.sort_key.nkeys = 0;
 
-  /* 
+  /*
    * create temporary dbvalue array
    */
   if (proc->g_func_count > 0)
@@ -24728,7 +24732,7 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
 	}
     }
 
-  /* 
+  /*
    * keep key domains
    */
   proc->agg_hash_context.key_domains =
@@ -24746,7 +24750,7 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
       proc->agg_hash_context.key_domains[i] = regu_list->value.domain;
     }
 
-  /* 
+  /*
    * keep accumulator domains
    */
   if (proc->g_func_count > 0)
@@ -24770,7 +24774,7 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
 	}
     }
 
-  /* 
+  /*
    * create partial list file
    */
 
@@ -24860,7 +24864,7 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
   /* free memory */
   db_private_free (thread_p, type_list.domp);
 
-  /* 
+  /*
    * create hash table
    */
   proc->agg_hash_context.hash_table =
@@ -24875,7 +24879,7 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
       proc->agg_hash_context.hash_table->build_lru_list = true;
     }
 
-  /* 
+  /*
    * create temp keys
    */
   proc->agg_hash_context.temp_key = qdata_alloc_agg_hkey (thread_p, proc->g_hkey_size, false);
@@ -24888,7 +24892,7 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
       goto exit_on_error;
     }
 
-  /* 
+  /*
    * create temp values
    */
   proc->agg_hash_context.temp_part_value = qdata_alloc_agg_hvalue (thread_p, proc->g_func_count);
@@ -24899,7 +24903,7 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
       goto exit_on_error;
     }
 
-  /* 
+  /*
    * initialize recdes
    */
   proc->agg_hash_context.tuple_recdes.data = 0;
@@ -24907,13 +24911,13 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
   proc->agg_hash_context.tuple_recdes.length = 0;
   proc->agg_hash_context.tuple_recdes.area_size = 0;
 
-  /* 
+  /*
    * initialize sort input tuple
    */
   proc->agg_hash_context.input_tuple.size = 0;
   proc->agg_hash_context.input_tuple.tpl = NULL;
 
-  /* 
+  /*
    * initialize remaining fields
    */
   proc->agg_hash_context.hash_size = 0;
