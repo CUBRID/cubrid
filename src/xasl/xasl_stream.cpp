@@ -478,6 +478,8 @@ stx_build (THREAD_ENTRY *thread_p, char *ptr, cubxasl::json_table::spec_node &js
 
   stx_alloc (thread_p, json_table_spec.m_root_node);
   assert (json_table_spec.m_root_node != NULL);
+
+  json_table_spec.m_root_node->init ();
   ptr = stx_build (thread_p, ptr, *json_table_spec.m_root_node);
 
   return ptr;
