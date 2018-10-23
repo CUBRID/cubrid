@@ -84,9 +84,9 @@ namespace cubxasl
 
       node (void);
 
-      void clear_columns ();
+      void clear_columns (bool clear_default_values);
       void clear_iterators ();
-      void clear_tree ();
+      void clear_tree (bool clear_default_values);
 
       bool check_need_expand () const;
       static bool str_ends_with (const std::string &str, const std::string &end);

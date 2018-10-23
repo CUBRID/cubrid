@@ -466,9 +466,9 @@ stx_build (THREAD_ENTRY *thread_p, char *ptr, cubxasl::json_table::node &jtn)
 char *
 stx_build (THREAD_ENTRY *thread_p, char *ptr, cubxasl::json_table::spec_node &json_table_spec)
 {
-  int m_node_count;
-  ptr = or_unpack_int (ptr, &m_node_count);
-  json_table_spec.m_node_count = (size_t) (m_node_count);
+  int node_count;
+  ptr = or_unpack_int (ptr, &node_count);
+  json_table_spec.m_node_count = (size_t) (node_count);
 
   stx_restore (thread_p, ptr, json_table_spec.m_json_reguvar);
 

@@ -228,19 +228,26 @@ namespace cubxasl
       : m_ordinality (1)
       , m_need_inc_ordinality (true)
       , m_id (0)
-      , m_expand_type (json_table_expand_type::JSON_TABLE_NO_EXPAND)
       , m_iterator (nullptr)
+      , m_expand_type (json_table_expand_type::JSON_TABLE_NO_EXPAND)
     {
 
     }
 
     void
-    node::clear_columns ()
+    node::clear_columns (bool clear_default_values)
     {
       for (size_t i = 0; i < m_output_columns_size; ++i)
 	{
-	  (void) pr_clear_value (m_output_columns[i].m_output_value_pointer);
-	  (void) db_make_null (m_output_columns[i].m_output_value_pointer);
+	  column *output_column = &m_output_columns[i];
+	  if (clear_default_values)
+	    {
+	      (void) pr_clear_value (output_column->m_on_empty.m_default_value);
+	      (void) pr_clear_value (output_column->m_on_error.m_default_value);
+	    }
+
+	  (void) pr_clear_value (output_column->m_output_value_pointer);
+	  (void) db_make_null (output_column->m_output_value_pointer);
 	}
     }
 
@@ -259,13 +266,13 @@ namespace cubxasl
     }
 
     void
-    node::clear_tree (void)
+    node::clear_tree (bool clear_default_values)
     {
-      clear_columns ();
+      clear_columns (clear_default_values);
 
       for (size_t i = 0; i < m_nested_nodes_size; ++i)
 	{
-	  m_nested_nodes[i].clear_tree ();
+	  m_nested_nodes[i].clear_tree (clear_default_values);
 	}
     }
 
