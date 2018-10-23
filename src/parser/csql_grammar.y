@@ -104,10 +104,10 @@ extern size_t json_table_column_count;
 #include "chartype.h"
 #include "parser.h"
 #include "parser_message.h"
-#include "dbdef.h"
 #include "language_support.h"
 #include "unicode_support.h"
 #include "environment_variable.h"
+#include "dbtype.h"
 #include "transaction_cl.h"
 #include "csql_grammar_scan.h"
 #include "system_parameter.h"
@@ -117,7 +117,6 @@ extern size_t json_table_column_count;
 #endif /* WINDOWS */
 #include "memory_alloc.h"
 #include "db_elo.h"
-#include "dbtype.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))

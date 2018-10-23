@@ -43,12 +43,14 @@
 #include "dbtype_def.h"
 #include "error_code.h"
 #include "dbtype_function.h"
+#include "db_date.h"
+#include "db_elo.h"
+#include "cache_time.h"
 
 #ifdef __cplusplus
 extern "C"
 {
 #endif
-
 
 #define DB_TRUE 1
 #define DB_FALSE 0
@@ -117,170 +119,11 @@ extern "C"
 #define SQLX_CMD_SET_NAMES   CUBRID_STMT_SET_NAMES
 #define SQLX_CMD_ALTER_STORED_PROCEDURE   CUBRID_STMT_ALTER_STORED_PROCEDURE
 #define SQLX_CMD_ALTER_STORED_PROCEDURE_OWNER   CUBRID_STMT_ALTER_STORED_PROCEDURE
+
 #define SQLX_MAX_CMD_TYPE   CUBRID_MAX_STMT_TYPE
 
-  enum tz_region_type
-  {
-    TZ_REGION_OFFSET = 0,
-    TZ_REGION_ZONE = 1
-  };
-  typedef enum tz_region_type TZ_REGION_TYPE;
-
-  typedef struct tz_region TZ_REGION;
-  struct tz_region
-  {
-    TZ_REGION_TYPE type;	/* 0 : offset ; 1 : zone */
-    union
-    {
-      int offset;		/* in seconds */
-      unsigned int zone_id;	/* geographical zone id */
-    };
-  };
-
-  extern int db_date_weekday (DB_DATE * date);
-  extern int db_date_to_string (char *buf, int bufsize, DB_DATE * date);
-  extern bool db_string_check_explicit_date (const char *str, int str_len);
-  extern int db_string_to_date (const char *buf, DB_DATE * date);
-  extern int db_string_to_date_ex (const char *buf, int str_len, DB_DATE * date);
-  extern int db_date_parse_date (char const *str, int str_len, DB_DATE * date);
-
-/* DB_DATETIME functions */
-  extern int db_datetime_encode (DB_DATETIME * datetime, int month, int day, int year, int hour, int minute, int second,
-				 int millisecond);
-  extern int db_datetime_decode (const DB_DATETIME * datetime, int *month, int *day, int *year, int *hour, int *minute,
-				 int *second, int *millisecond);
-  extern int db_datetime_to_string (char *buf, int bufsize, DB_DATETIME * datetime);
-  extern int db_datetimetz_to_string (char *buf, int bufsize, DB_DATETIME * dt, const TZ_ID * tz_id);
-  extern int db_datetimeltz_to_string (char *buf, int bufsize, DB_DATETIME * dt);
-  extern int db_datetime_to_string2 (char *buf, int bufsize, DB_DATETIME * datetime);
-  extern int db_string_to_datetime (const char *str, DB_DATETIME * datetime);
-  extern int db_string_to_datetime_ex (const char *str, int str_len, DB_DATETIME * datetime);
-  extern int db_string_to_datetimetz (const char *str, DB_DATETIMETZ * dt_tz, bool * has_zone);
-  extern int db_string_to_datetimetz_ex (const char *str, int str_len, DB_DATETIMETZ * dt_tz, bool * has_zone);
-  extern int db_string_to_datetimeltz (const char *str, DB_DATETIME * datetime);
-  extern int db_string_to_datetimeltz_ex (const char *str, int str_len, DB_DATETIME * datetime);
-  extern int db_date_parse_datetime_parts (char const *str, int str_len, DB_DATETIME * date, bool * is_explicit_time,
-					   bool * has_explicit_msec, bool * fits_as_timestamp, char const **endp);
-  extern int db_date_parse_datetime (char const *str, int str_len, DB_DATETIME * datetime);
-  extern int db_subtract_int_from_datetime (DB_DATETIME * dt1, DB_BIGINT i2, DB_DATETIME * result_datetime);
-  extern int db_add_int_to_datetime (DB_DATETIME * datetime, DB_BIGINT i2, DB_DATETIME * result_datetime);
-/* DB_TIMESTAMP functions */
-  extern int db_timestamp_encode (DB_TIMESTAMP * utime, DB_DATE * date, DB_TIME * timeval);
-  extern int db_timestamp_encode_ses (const DB_DATE * date, const DB_TIME * timeval, DB_TIMESTAMP * utime,
-				      TZ_ID * dest_tz_id);
-  extern int db_timestamp_encode_utc (const DB_DATE * date, const DB_TIME * timeval, DB_TIMESTAMP * utime);
-  extern int db_timestamp_decode_ses (const DB_TIMESTAMP * utime, DB_DATE * date, DB_TIME * timeval);
-  extern void db_timestamp_decode_utc (const DB_TIMESTAMP * utime, DB_DATE * date, DB_TIME * timeval);
-  extern int db_timestamp_decode_w_reg (const DB_TIMESTAMP * utime, const TZ_REGION * tz_region, DB_DATE * date,
-					DB_TIME * timeval);
-  extern int db_timestamp_decode_w_tz_id (const DB_TIMESTAMP * utime, const TZ_ID * tz_id, DB_DATE * date,
-					  DB_TIME * timeval);
-  extern int db_timestamp_to_string (char *buf, int bufsize, DB_TIMESTAMP * utime);
-  extern int db_timestamptz_to_string (char *buf, int bufsize, DB_TIMESTAMP * utime, const TZ_ID * tz_id);
-  extern int db_timestampltz_to_string (char *buf, int bufsize, DB_TIMESTAMP * utime);
-  extern int db_string_to_timestamp (const char *buf, DB_TIMESTAMP * utime);
-  extern int db_string_to_timestamp_ex (const char *buf, int buf_len, DB_TIMESTAMP * utime);
-  extern int db_date_parse_timestamp (char const *str, int str_len, DB_TIMESTAMP * utime);
-  extern int db_string_to_timestamptz (const char *str, DB_TIMESTAMPTZ * ts_tz, bool * has_zone);
-  extern int db_string_to_timestamptz_ex (const char *str, int str_len, DB_TIMESTAMPTZ * ts_tz, bool * has_zone);
-  extern int db_string_to_timestampltz (const char *str, DB_TIMESTAMP * ts);
-  extern int db_string_to_timestampltz_ex (const char *str, int str_len, DB_TIMESTAMP * ts);
-
-/* DB_TIME functions */
-  extern int db_time_to_string (char *buf, int bufsize, DB_TIME * dbtime);
-  extern bool db_string_check_explicit_time (const char *str, int str_len);
-  extern int db_string_to_time (const char *buf, DB_TIME * dbtime);
-  extern int db_string_to_time_ex (const char *buf, int buf_len, DB_TIME * dbtime);
-  extern int db_date_parse_time (char const *str, int str_len, DB_TIME * time, int *milisec);
-
-/* Unix-like functions */
-  extern time_t db_mktime (DB_DATE * date, DB_TIME * timeval);
-  extern int db_strftime (char *s, int smax, const char *fmt, DB_DATE * date, DB_TIME * timeval);
-  extern void db_localtime (time_t * epoch_time, DB_DATE * date, DB_TIME * timeval);
-  extern void db_localdatetime (time_t * epoch_time, DB_DATETIME * datetime);
-
-
-/* generic calculation functions */
-  extern int julian_encode (int m, int d, int y);
-  extern void julian_decode (int jul, int *monthp, int *dayp, int *yearp, int *weekp);
-  extern int day_of_week (int jul_day);
-  extern bool is_leap_year (int year);
-  extern int db_tm_encode (struct tm *c_time_struct, DB_DATE * date, DB_TIME * timeval);
-  extern int db_get_day_of_year (int year, int month, int day);
-  extern int db_get_day_of_week (int year, int month, int day);
-  extern int db_get_week_of_year (int year, int month, int day, int mode);
-  extern int db_check_time_date_format (const char *format_s);
-  extern int db_add_weeks_and_days_to_date (int *day, int *month, int *year, int weeks, int day_week);
-
-/* DB_ELO function */
-  extern int db_create_fbo (DB_VALUE * value, DB_TYPE type);
-  extern int db_elo_copy_structure (const DB_ELO * src, DB_ELO * dest);
-  extern void db_elo_free_structure (DB_ELO * elo);
-
-  extern int db_elo_copy (const DB_ELO * src, DB_ELO * dest);
-  extern int db_elo_delete (DB_ELO * elo);
-
-  extern int64_t db_elo_size (DB_ELO * elo);
-  extern int db_elo_read (const DB_ELO * elo, int64_t pos, void *buf, size_t count);
-  extern int db_elo_write (DB_ELO * elo, int64_t pos, void *buf, size_t count);
-
-/* Unix-like functions */
-  extern time_t db_mktime (DB_DATE * date, DB_TIME * timeval);
-  extern int db_strftime (char *s, int smax, const char *fmt, DB_DATE * date, DB_TIME * timeval);
-  extern void db_localtime (time_t * epoch_time, DB_DATE * date, DB_TIME * timeval);
-
-/* generic calculation functions */
-  extern int db_tm_encode (struct tm *c_time_struct, DB_DATE * date, DB_TIME * timeval);
-
-
-
-  typedef struct cache_time CACHE_TIME;
-  struct cache_time
-  {
-    int sec;
-    int usec;
-  };
-
-#define CACHE_TIME_EQ(T1, T2)               \
-        (((T1)->sec != 0) &&                \
-         ((T1)->sec == (T2)->sec) &&        \
-         ((T1)->usec == (T2)->usec))
-
-#define CACHE_TIME_RESET(T)     \
-        do {                    \
-          (T)->sec = 0;         \
-          (T)->usec = 0;        \
-        } while (0)
-
-#define CACHE_TIME_MAKE(CT, TV)         \
-        do {                            \
-          (CT)->sec = (TV)->tv_sec;     \
-          (CT)->usec = (TV)->tv_usec;   \
-        } while (0)
-
-#define OR_CACHE_TIME_SIZE      (OR_INT_SIZE * 2)
-
-#define OR_PACK_CACHE_TIME(PTR, T)                      \
-        do {                                            \
-          if ((CACHE_TIME *) (T) != NULL) {                                      \
-            PTR = or_pack_int(PTR, (T)->sec);        \
-            PTR = or_pack_int(PTR, (T)->usec);       \
-          }                                             \
-          else {                                        \
-            PTR = or_pack_int(PTR, 0);                  \
-            PTR = or_pack_int(PTR, 0);                  \
-          }                                             \
-        } while (0)
-
-#define OR_UNPACK_CACHE_TIME(PTR, T)                    \
-        do {                                            \
-          if ((CACHE_TIME *) (T) != NULL) {                                      \
-            PTR = or_unpack_int(PTR, &((T)->sec));      \
-            PTR = or_unpack_int(PTR, &((T)->usec));     \
-          }                                             \
-        } while (0)
-
-
+#define SQLX_CMD_CALL_SP CUBRID_STMT_CALL_SP
+#define SQLX_CMD_UNKNOWN CUBRID_STMT_UNKNOWN
 
   extern bool db_is_client_cache_reusable (DB_QUERY_RESULT * result);
   extern int db_query_seek_tuple (DB_QUERY_RESULT * result, int offset, int seek_mode);

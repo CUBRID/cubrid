@@ -49,6 +49,7 @@
 #include "log_manager.h"
 #include "critical_section.h"
 #include "boot_sr.h"
+#include "tz_support.h"
 #include "db_date.h"
 #include "bit.h"
 #include "fault_injection.h"

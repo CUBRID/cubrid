@@ -57,6 +57,7 @@
 #include "serial.h"
 #include "show_scan.h"
 #include "boot_sr.h"
+#include "tz_support.h"
 #include "db_date.h"
 #include "dbtype.h"
 #if defined (SERVER_MODE)

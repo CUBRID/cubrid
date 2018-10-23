@@ -54,6 +54,7 @@
 #include "network_interface_cl.h"
 #include "object_template.h"
 #include "db.h"
+#include "tz_support.h"
 
 #include "dbtype.h"
 

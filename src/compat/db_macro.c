@@ -44,6 +44,7 @@
 #if !defined(SERVER_MODE)
 #include "object_accessor.h"
 #endif
+#include "elo.h"
 #include "db_elo.h"
 #include "numeric_opfunc.h"
 #include "object_primitive.h"

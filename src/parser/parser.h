@@ -31,7 +31,6 @@
 #include <stdarg.h>
 #include "system.h"
 #include "dbtype_def.h"
-#include "dbdef.h"
 #include "parse_tree.h"
 
 #if defined (SERVER_MODE)

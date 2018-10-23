@@ -63,6 +63,7 @@
 #include "heap_file.h"
 #include "slotted_page.h"
 #include "object_primitive.h"
+#include "tz_support.h"
 #include "db_date.h"
 #include "fault_injection.h"
 #if defined (SA_MODE)

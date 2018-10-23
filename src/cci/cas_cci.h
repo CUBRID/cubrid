@@ -577,7 +577,6 @@ typedef struct DATASOURCE_T T_CCI_DATASOURCE;
 #endif
 #define CUBRID_STMT_CALL_SP	0x7e
 #define CUBRID_STMT_UNKNOWN	0x7f
-
 /* for backward compatibility */
 #define T_CCI_SQLX_CMD T_CCI_CUBRID_STMT
 

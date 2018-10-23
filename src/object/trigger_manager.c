@@ -31,7 +31,6 @@
 #include "memory_alloc.h"
 #include "error_manager.h"
 #include "dbtype.h"
-#include "dbdef.h"
 #include "trigger_manager.h"
 #include "memory_hash.h"
 #include "work_space.h"

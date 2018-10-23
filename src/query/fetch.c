@@ -46,6 +46,7 @@
 #include "string_opfunc.h"
 #include "server_interface.h"
 #include "query_opfunc.h"
+#include "tz_support.h"
 #include "db_date.h"
 #include "xasl.h"
 #include "query_executor.h"
