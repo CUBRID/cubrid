@@ -4412,7 +4412,7 @@ pt_get_all_json_table_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * j
       // we need copies of the actual names
       copy_node = pt_name (parser, attr->info.name.original);
       copy_node->type_enum = attr->type_enum;
-      copy_node->info.name.resolved == json_table_alias;
+      copy_node->info.name.resolved = json_table_alias;
       if (attr->data_type != NULL)
 	{
 	  copy_node->data_type = parser_copy_tree (parser, attr->data_type);
