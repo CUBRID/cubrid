@@ -3513,10 +3513,13 @@ start:
   dwb_log ("dwb_flush_force: Started with initital position = %lld\n", initial_position_with_flags);
 
 #if !defined (NDEBUG)
-  for (block_no = 0; block_no < (int) DWB_NUM_TOTAL_BLOCKS; block_no++)
+  if (dwb_Global.blocks != NULL)
     {
-      dwb_log_error ("dwb_flush_force : Block %d, Num pages = %d, version = %lld\n",
-		     block_no, dwb_Global.blocks[block_no].count_wb_pages, dwb_Global.blocks[block_no].version);
+      for (block_no = 0; block_no < (int) DWB_NUM_TOTAL_BLOCKS; block_no++)
+	{
+	  dwb_log_error ("dwb_flush_force start: Block %d, Num pages = %d, version = %lld\n",
+			 block_no, dwb_Global.blocks[block_no].count_wb_pages, dwb_Global.blocks[block_no].version);
+	}
     }
 #endif
 
@@ -3713,6 +3716,17 @@ end:
 
   dwb_log ("dwb_flush_force: Ended with position = %lld\n", ATOMIC_INC_64 (&dwb_Global.position_with_flags, 0ULL));
   PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &time_track, PSTAT_DWB_FLUSH_FORCE_TIME_COUNTERS);
+
+#if !defined (NDEBUG)
+  if (dwb_Global.blocks != NULL)
+    {
+      for (block_no = 0; block_no < (int) DWB_NUM_TOTAL_BLOCKS; block_no++)
+	{
+	  dwb_log_error ("dwb_flush_force end: Block %d, Num pages = %d, version = %lld\n",
+			 block_no, dwb_Global.blocks[block_no].count_wb_pages, dwb_Global.blocks[block_no].version);
+	}
+    }
+#endif
 
   return NO_ERROR;
 }

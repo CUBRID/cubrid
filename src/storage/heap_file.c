@@ -17217,7 +17217,7 @@ heap_eval_function_index (THREAD_ENTRY * thread_p, FUNCTION_INDEX_INFO * func_in
       index = &(attr_info->last_classrepr->indexes[btid_index]);
       if (func_pred_cache)
 	{
-	  func_pred = (FUNC_PRED *) func_pred_cache->func_pred;
+	  func_pred = func_pred_cache->func_pred;
 	  cache_attr_info = func_pred->cache_attrinfo;
 	  nr_atts = index->n_atts;
 	}
@@ -17248,8 +17248,8 @@ heap_eval_function_index (THREAD_ENTRY * thread_p, FUNCTION_INDEX_INFO * func_in
       expr_stream_size = func_index_info->expr_stream_size;
       nr_atts = n_atts;
       atts = att_ids;
-      cache_attr_info = ((FUNC_PRED *) func_index_info->expr)->cache_attrinfo;
-      func_pred = (FUNC_PRED *) func_index_info->expr;
+      cache_attr_info = func_index_info->expr->cache_attrinfo;
+      func_pred = func_index_info->expr;
     }
 
   if (func_index_info == NULL)
@@ -17257,8 +17257,7 @@ heap_eval_function_index (THREAD_ENTRY * thread_p, FUNCTION_INDEX_INFO * func_in
       /* insert case, read the values */
       if (func_pred == NULL)
 	{
-	  if (stx_map_stream_to_func_pred (thread_p, (FUNC_PRED **) (&func_pred), expr_stream, expr_stream_size,
-					   &unpack_info))
+	  if (stx_map_stream_to_func_pred (thread_p, &func_pred, expr_stream, expr_stream_size, &unpack_info))
 	    {
 	      error = ER_FAILED;
 	      goto end;
@@ -17281,9 +17280,8 @@ heap_eval_function_index (THREAD_ENTRY * thread_p, FUNCTION_INDEX_INFO * func_in
       attrinfo_clear = true;
     }
 
-  error =
-    fetch_peek_dbval (thread_p, func_pred->func_regu, NULL, &cache_attr_info->class_oid, &cache_attr_info->inst_oid,
-		      NULL, &res);
+  error = fetch_peek_dbval (thread_p, func_pred->func_regu, NULL, &cache_attr_info->class_oid,
+			    &cache_attr_info->inst_oid, NULL, &res);
   if (error == NO_ERROR)
     {
       pr_clone_value (res, result);
@@ -17392,8 +17390,8 @@ heap_init_func_pred_unpack_info (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * 
 		}
 	    }
 
-	  if (stx_map_stream_to_func_pred (thread_p, (FUNC_PRED **) (&(fi_preds[i].func_pred)),
-					   fi_info->expr_stream, fi_info->expr_stream_size, &(fi_preds[i].unpack_info)))
+	  if (stx_map_stream_to_func_pred (thread_p, &fi_preds[i].func_pred, fi_info->expr_stream,
+					   fi_info->expr_stream_size, &fi_preds[i].unpack_info))
 	    {
 	      error_status = ER_FAILED;
 	      goto error;
@@ -17414,7 +17412,7 @@ heap_init_func_pred_unpack_info (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * 
 	    }
 
 	  if (heap_attrinfo_start (thread_p, class_oid, idx->n_atts, att_ids,
-				   ((FUNC_PRED *) fi_preds[i].func_pred)->cache_attrinfo) != NO_ERROR)
+				   fi_preds[i].func_pred->cache_attrinfo) != NO_ERROR)
 	    {
 	      error_status = ER_FAILED;
 	      goto error;
@@ -17479,10 +17477,10 @@ heap_free_func_pred_unpack_info (THREAD_ENTRY * thread_p, int n_indexes, FUNC_PR
 	{
 	  if (attr_info_started == NULL || attr_info_started[i])
 	    {
-	      assert (((FUNC_PRED *) func_indx_preds[i].func_pred)->cache_attrinfo);
-	      (void) heap_attrinfo_end (thread_p, ((FUNC_PRED *) func_indx_preds[i].func_pred)->cache_attrinfo);
+	      assert (func_indx_preds[i].func_pred->cache_attrinfo);
+	      (void) heap_attrinfo_end (thread_p, func_indx_preds[i].func_pred->cache_attrinfo);
 	    }
-	  (void) qexec_clear_func_pred (thread_p, (FUNC_PRED *) func_indx_preds[i].func_pred);
+	  (void) qexec_clear_func_pred (thread_p, func_indx_preds[i].func_pred);
 	}
 
       if (func_indx_preds[i].unpack_info)
