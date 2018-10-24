@@ -33910,12 +33910,6 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	    {
 	      /* Normal state. We need to physically delete the object. */
 	      assert (btree_online_index_is_normal_state (btree_mvcc_info.insert_mvccid));
-
-	      error_code =
-		btree_key_remove_object (thread_p, key, btid_int, &helper->delete_helper, *leaf_page, &new_record,
-					 &leaf_info, offset_after_key, search_key, &page_found, prev_page, node_type,
-					 offset_to_object);
-
 	      if (node_type == BTREE_LEAF_NODE
 		  && (btree_record_get_num_oids (thread_p, btid_int, &new_record, offset_after_key, node_type) == 1))
 		{
@@ -33923,6 +33917,12 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 		  n_keys = -1;
 		}
 	      n_oids = -1;
+
+
+	      error_code =
+		btree_key_remove_object (thread_p, key, btid_int, &helper->delete_helper, *leaf_page, &new_record,
+					 &leaf_info, offset_after_key, search_key, &page_found, prev_page, node_type,
+					 offset_to_object);
 
 	      if (error_code == NO_ERROR && BTREE_IS_UNIQUE (btid_int->unique_pk))
 		{
