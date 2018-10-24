@@ -231,6 +231,74 @@ typedef enum
 #define MSGCAT_LK_MVCC_INFO			46
 #define MSGCAT_LK_LASTONE                       47
 
+/* Various constants and macros used to mark delete lock entries. */
+
+#define LK_RES_MAX_LOCK_MODE_CNT_NUM_BITS                   32
+#define LK_RES_VERSION_NUM_BITS                             24
+#define LK_RES_MAX_LOCK_MODE_CNT_AND_VERSION_NUM_BITS       56
+#define LK_RES_LOCK_MODE_NUM_BITS                            4
+#define LK_RES_FLAGS_NUM_BITS                                4	/* Reserved 4, used only one */
+
+#define LK_RES_MAX_LOCK_MODE_CNT_MASK                       0x00000000ffffffff
+#define LK_RES_MAX_LOCK_MODE_CNT_INCREMENT                  0x0000000000000001
+
+#define LK_RES_VERSION_MASK                                 0x00ffffff00000000
+#define LK_RES_VERSION_INCREMENT                            0x0000000100000000
+
+#define LK_RES_LOCK_MODE_MASK                               0x0f00000000000000
+
+#define LK_RES_REMOVE_MARK_DELETED_ENTRIES_FLAG             0x8000000000000000
+
+
+/* Get counter of resource max lock mode. */
+#define LK_RES_GET_MAX_LOCK_MODE_COUNT(cnt_max_lock_mode_with_version_and_flags) \
+  ((cnt_max_lock_mode_with_version_and_flags) & LK_RES_MAX_LOCK_MODE_CNT_MASK)
+
+/* Increment counter of resource max lock mode. */
+#define LK_RES_INC_MAX_LOCK_MODE_COUNT(cnt_max_lock_mode_with_version_and_flags) \
+  (assert (((cnt_max_lock_mode_with_version_and_flags) & LK_RES_MAX_LOCK_MODE_CNT_MASK) < LK_RES_MAX_LOCK_MODE_CNT_MASK),  \
+   (cnt_max_lock_mode_with_version_and_flags) + LK_RES_MAX_LOCK_MODE_CNT_INCREMENT)
+
+/* Increment counter of resource max lock mode. */
+#define LK_RES_DEC_MAX_LOCK_MODE_COUNT(cnt_max_lock_mode_with_version_and_flags) \
+  (assert (((cnt_max_lock_mode_with_version_and_flags) & LK_RES_MAX_LOCK_MODE_CNT_MASK) > 0),  \
+   (cnt_max_lock_mode_with_version_and_flags) - LK_RES_MAX_LOCK_MODE_CNT_INCREMENT)
+
+#define LK_RES_RESET_MAX_LOCK_MODE_COUNT(cnt_max_lock_mode_with_version_and_flags) \
+  ((cnt_max_lock_mode_with_version_and_flags) & ~LK_RES_MAX_LOCK_MODE_CNT_MASK)
+
+/* Get version. */
+#define LK_RES_GET_VERSION(cnt_max_lock_mode_with_version_and_flags) \
+  (((cnt_max_lock_mode_with_version_and_flags) & LK_RES_VERSION_MASK) >> LK_RES_MAX_LOCK_MODE_CNT_NUM_BITS)
+
+/* Increment version. */
+#define LK_RES_INS_VERSION(cnt_max_lock_mode_with_version_and_flags) \
+  (assert (((cnt_max_lock_mode_with_version_and_flags) & LK_RES_VERSION_MASK) <= LK_RES_VERSION_MASK),  \
+   ((cnt_max_lock_mode_with_version_and_flags) & LK_RES_VERSION_MASK) < (LK_RES_VERSION_MASK)  \
+   ? (cnt_max_lock_mode_with_version_and_flags + LK_RES_VERSION_INCREMENT) \
+   : ((cnt_max_lock_mode_with_version_and_flags) & ~LK_RES_VERSION_MASK))
+
+/* Get max lock mode. */
+#define LK_RES_GET_LOCK_MODE(cnt_max_lock_mode_with_version_and_flags) \
+  (((cnt_max_lock_mode_with_version_and_flags) & LK_RES_LOCK_MODE_MASK) >> LK_RES_MAX_LOCK_MODE_CNT_AND_VERSION_NUM_BITS)
+
+/* Set max lock mode. */
+#define LK_RES_SET_LOCK_MODE(cnt_max_lock_mode_with_version_and_flags, lock_mode) \
+  ((cnt_max_lock_mode_with_version_and_flags) | ((UINT64)lock_mode << 56))
+
+/* Add clean mark deleted flag. */
+#define LK_RES_ADD_CLEAN_MARK_DELETED_ENTRIES_FLAG(cnt_max_lock_mode_with_version_and_flags) \
+  ((cnt_max_lock_mode_with_version_and_flags) | LK_RES_REMOVE_MARK_DELETED_ENTRIES_FLAG)
+
+/* Add clean mark deleted flag. */
+#define LK_RES_REMOVE_CLEAN_MARK_DELETED_ENTRIES_FLAG(cnt_max_lock_mode_with_version_and_flags) \
+  ((cnt_max_lock_mode_with_version_and_flags) & ~LK_RES_REMOVE_MARK_DELETED_ENTRIES_FLAG)
+
+/* Has clean mark deleted flag? */
+#define LK_RES_HAS_CLEAN_MARK_DELETED_ENTRIES_FLAG(cnt_max_lock_mode_with_version_and_flags) \
+  (((cnt_max_lock_mode_with_version_and_flags) & LK_RES_REMOVE_MARK_DELETED_ENTRIES_FLAG) != 0)
+
+
 #if defined(SERVER_MODE)
 
 typedef struct lk_lockinfo LK_LOCKINFO;
@@ -488,9 +556,15 @@ static bool lock_check_escalate (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry
 static int lock_escalate_if_needed (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, int tran_index);
 static int lock_internal_hold_lock_object_instant (THREAD_ENTRY * thread_p, int tran_index, const OID * oid,
 						   const OID * class_oid, LOCK lock);
+STATIC_INLINE bool lock_internal_reset_mark_deleted (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr,
+						     LOCK requested_lock_mode) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void lock_disconnect_mark_deleted_objects (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
+  __attribute__ ((ALWAYS_INLINE));
 static int lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, const OID * oid,
 					      const OID * class_oid, LOCK lock, int wait_msecs,
 					      LK_ENTRY ** entry_addr_ptr, LK_ENTRY * class_entry);
+STATIC_INLINE bool lock_internal_set_mark_deleted (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
+  __attribute__ ((ALWAYS_INLINE));
 static void lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, bool release_flag,
 						 bool move_to_non2pl);
 static void lock_unlock_object_by_isolation (THREAD_ENTRY * thread_p, int tran_index, TRAN_ISOLATION isolation,
@@ -737,6 +811,7 @@ lock_init_resource (void *res)
   res_ptr->waiter = NULL;
   res_ptr->non2pl = NULL;
   res_ptr->hash_next = NULL;
+  res_ptr->cnt_max_lock_mode_with_version_and_flags = 0;
 
   return NO_ERROR;
 }
@@ -755,8 +830,10 @@ lock_uninit_resource (void *res)
   assert (res_ptr->waiter == NULL);
   assert (res_ptr->non2pl == NULL);
 
+  /* TODO - atomic operation */
+  res_ptr->cnt_max_lock_mode_with_version_and_flags =
+    LK_RES_INS_VERSION (res_ptr->cnt_max_lock_mode_with_version_and_flags);
   /* TO BE FILLED IN AS NECESSARY */
-
   return NO_ERROR;
 }
 
@@ -888,6 +965,11 @@ lock_initialize_entry_as_granted (LK_ENTRY * entry_ptr, int tran_index, LK_RES *
   entry_ptr->class_entry = NULL;
   entry_ptr->ngranules = 0;
   entry_ptr->instant_lock_count = 0;
+  entry_ptr->mark_deleted = 0;
+  if (res->key.type == LOCK_RESOURCE_CLASS || res->key.type == LOCK_RESOURCE_ROOT_CLASS)
+    {
+      entry_ptr->resource_version = LK_RES_GET_VERSION (res->cnt_max_lock_mode_with_version_and_flags);
+    }
 
   lock_event_set_xasl_id_to_entry (tran_index, entry_ptr);
 }
@@ -909,6 +991,8 @@ lock_initialize_entry_as_blocked (LK_ENTRY * entry_ptr, THREAD_ENTRY * thread_p,
   entry_ptr->class_entry = NULL;
   entry_ptr->ngranules = 0;
   entry_ptr->instant_lock_count = 0;
+  entry_ptr->resource_version = 0;
+  entry_ptr->mark_deleted = 0;
 
   lock_event_set_xasl_id_to_entry (tran_index, entry_ptr);
 }
@@ -929,6 +1013,8 @@ lock_initialize_entry_as_non2pl (LK_ENTRY * entry_ptr, int tran_index, LK_RES * 
   entry_ptr->class_entry = NULL;
   entry_ptr->ngranules = 0;
   entry_ptr->instant_lock_count = 0;
+  entry_ptr->resource_version = 0;
+  entry_ptr->mark_deleted = 0;
 }
 
 /* initialize lock resource as free state */
@@ -945,6 +1031,7 @@ lock_initialize_resource (LK_RES * res_ptr)
   res_ptr->waiter = NULL;
   res_ptr->non2pl = NULL;
   res_ptr->hash_next = NULL;
+  res_ptr->cnt_max_lock_mode_with_version_and_flags = 0;
 }
 
 /* initialize lock resource as allocated state */
@@ -1743,6 +1830,7 @@ lock_position_holder_entry (LK_RES * res_ptr, LK_ENTRY * entry_ptr)
       i = res_ptr->holder;
       while (i != NULL)
 	{
+	  /* Consider mark delete lock entries. */
 	  if (i->blocked_mode == NULL_LOCK)
 	    {
 	      break;
@@ -1764,6 +1852,7 @@ lock_position_holder_entry (LK_RES * res_ptr, LK_ENTRY * entry_ptr)
 	{
 	  if (i->blocked_mode != NULL_LOCK)
 	    {
+	      assert (i->mark_deleted == 0);
 	      assert (entry_ptr->blocked_mode >= NULL_LOCK && entry_ptr->granted_mode >= NULL_LOCK);
 	      assert (i->blocked_mode >= NULL_LOCK && i->granted_mode >= NULL_LOCK);
 
@@ -1891,6 +1980,7 @@ lock_set_error_for_timeout (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
 	  continue;
 	}
 
+      assert (entry->blocked_mode == NULL_LOCK || entry->mark_deleted == 0);
       assert (entry->granted_mode >= NULL_LOCK && entry->blocked_mode >= NULL_LOCK);
       compat1 = lock_Comp[entry->granted_mode][entry_ptr->blocked_mode];
       compat2 = lock_Comp[entry->blocked_mode][entry_ptr->blocked_mode];
@@ -1910,6 +2000,7 @@ lock_set_error_for_timeout (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
 	  continue;
 	}
 
+      assert (entry->blocked_mode == NULL_LOCK || entry->mark_deleted == 0);
       assert (entry->granted_mode >= NULL_LOCK && entry->blocked_mode >= NULL_LOCK);
       compat1 = lock_Comp[entry->blocked_mode][entry_ptr->blocked_mode];
       assert (compat1 != LOCK_COMPAT_UNKNOWN);
@@ -2521,9 +2612,11 @@ lock_grant_blocked_holder (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
   while (holder != NULL && holder->blocked_mode != NULL_LOCK)
     {
       /* there are some blocked holders */
+      assert (holder->mark_deleted == 0);
       mode = NULL_LOCK;
       for (h = holder->next; h != NULL; h = h->next)
 	{
+	  assert (h->mark_deleted == 0);
 	  assert (h->granted_mode >= NULL_LOCK && mode >= NULL_LOCK);
 	  mode = lock_Conv[h->granted_mode][mode];
 	  assert (mode != NA_LOCK);
@@ -2641,6 +2734,7 @@ lock_grant_blocked_waiter (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
   waiter = res_ptr->waiter;
   while (waiter != NULL)
     {
+      assert (waiter->mark_deleted == 0);
       assert (waiter->blocked_mode >= NULL_LOCK && res_ptr->total_holders_mode >= NULL_LOCK);
       compat = lock_Comp[waiter->blocked_mode][res_ptr->total_holders_mode];
       assert (compat != LOCK_COMPAT_UNKNOWN);
@@ -2772,6 +2866,7 @@ lock_grant_blocked_waiter_partial (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK
   check = res_ptr->waiter;
   while (check != from_whom)
     {
+      assert (check->mark_deleted == 0);
       assert (check->blocked_mode >= NULL_LOCK && mode >= NULL_LOCK);
       mode = lock_Conv[check->blocked_mode][mode];
       assert (mode != NA_LOCK);
@@ -2783,6 +2878,7 @@ lock_grant_blocked_waiter_partial (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK
   /* check = from_whom; */
   while (check != NULL)
     {
+      assert (check->mark_deleted == 0);
       assert (check->blocked_mode >= NULL_LOCK && mode >= NULL_LOCK);
       compat = lock_Comp[check->blocked_mode][mode];
       assert (compat != LOCK_COMPAT_UNKNOWN);
@@ -2893,6 +2989,7 @@ lock_grant_blocked_waiter_partial (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK
       mode = NULL_LOCK;
       for (i = res_ptr->waiter; i != NULL; i = i->next)
 	{
+	  assert (i->mark_deleted == 0);
 	  assert (i->blocked_mode >= NULL_LOCK && mode >= NULL_LOCK);
 	  mode = lock_Conv[i->blocked_mode][mode];
 	  assert (mode != NA_LOCK);
@@ -3208,6 +3305,248 @@ lock_internal_hold_lock_object_instant (THREAD_ENTRY * thread_p, int tran_index,
 #endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
+STATIC_INLINE bool
+lock_internal_reset_mark_deleted (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, LOCK requested_lock_mode)
+{
+  LK_RES *res_ptr;
+  UINT64 old_cnt_max_lock_mode_with_version_and_flags, new_cnt_max_lock_mode_with_version_and_flags;
+  LOCK res_max_lock_mode;
+  bool needs_clean_mark_delete;
+
+  res_ptr = entry_ptr->res_head;
+  assert (res_ptr != NULL);
+
+  assert (entry_ptr->mark_deleted != 0);
+
+start:
+  do
+    {
+      old_cnt_max_lock_mode_with_version_and_flags =
+	ATOMIC_INC_64 (&res_ptr->cnt_max_lock_mode_with_version_and_flags, 0LL);
+
+      /* TODO - START_CLEANUP do not allow to activate mark deleted. */
+      if (LK_RES_HAS_CLEAN_MARK_DELETED_ENTRIES_FLAG (old_cnt_max_lock_mode_with_version_and_flags))
+	{
+	  /* Someone else notified that mark deleted is not allowed. */
+	  return false;
+	}
+
+      /* Check for version */
+      if (entry_ptr->resource_version != LK_RES_GET_VERSION (old_cnt_max_lock_mode_with_version_and_flags))
+	{
+	  return false;
+	}
+
+      res_max_lock_mode = (LOCK) LK_RES_GET_LOCK_MODE (old_cnt_max_lock_mode_with_version_and_flags);
+
+      /* Check for max lock count */
+      if (LK_RES_GET_MAX_LOCK_MODE_COUNT (old_cnt_max_lock_mode_with_version_and_flags) == 0)
+	{
+	  /* Can't activate it, since no one else has max lock. */
+	  needs_clean_mark_delete = false;
+	}
+      else
+	{
+	  /* TODO - improve it. For now, handle most common cases.  */
+	  needs_clean_mark_delete = true;
+	  if (entry_ptr->granted_mode == res_max_lock_mode && requested_lock_mode == res_max_lock_mode)
+	    {
+	      /* Here needs increment count. */
+	      needs_clean_mark_delete = false;
+	    }
+	  else if (entry_ptr->granted_mode < res_max_lock_mode)
+	    {
+	      if (requested_lock_mode == entry_ptr->granted_mode)
+		{
+		  if ((LK_RES_GET_MAX_LOCK_MODE_COUNT (res_ptr->cnt_max_lock_mode_with_version_and_flags) > 0)
+		      && (entry_ptr->resource_version ==
+			  LK_RES_GET_VERSION (res_ptr->cnt_max_lock_mode_with_version_and_flags)))
+		    {
+		      /* Same weaker then max lock mode. Activate it. No need to increase the counter since weaker lock.
+		       * If someone else, disconnect the entry, then mark delete value is modified. If someone wants to
+		       * recompute max lock, it should set mark delete to value 2.
+		       */
+		      if (ATOMIC_CAS_32 (&entry_ptr->mark_deleted, 1, 0))
+			{
+			  return true;
+			}
+		    }
+		}
+	      else if (requested_lock_mode < res_max_lock_mode)
+		{
+		  /* TODO - transaction must disconnect it's own entry */
+#if 0
+		  /* I need to change the lock. I need mutex. I prefer to disconnect the entry. It should be better than disconnect all mark delted entries. */
+		  if (((res_ptr->cnt_max_lock_mode_with_version_and_flags & 0x00000000ffffffff) > 0)
+		      && (entry_ptr->resource_version ==
+			  (res_ptr->cnt_max_lock_mode_with_version_and_flags & 0x00ffffff00000000)))
+		    {
+		      if (ATOMIC_CAS_32 (&entry_ptr->mark_deleted, 1, 3))
+			{
+			  return true;
+			}
+		    }
+#endif
+		}
+	    }
+
+	}
+
+      if (needs_clean_mark_delete)
+	{
+	  /* The first lock request will remove mark deleted entries. Also, not allow to mark delete entries, while this flag is set. */
+	  if (!ATOMIC_CAS_64
+	      (&res_ptr->cnt_max_lock_mode_with_version_and_flags, old_cnt_max_lock_mode_with_version_and_flags,
+	       LK_RES_ADD_CLEAN_MARK_DELETED_ENTRIES_FLAG (old_cnt_max_lock_mode_with_version_and_flags)))
+	    {
+	      goto start;
+	    }
+
+	  return false;
+	}
+
+      new_cnt_max_lock_mode_with_version_and_flags =
+	LK_RES_INC_MAX_LOCK_MODE_COUNT (old_cnt_max_lock_mode_with_version_and_flags);
+    }
+  while (!ATOMIC_CAS_64
+	 (&res_ptr->cnt_max_lock_mode_with_version_and_flags, old_cnt_max_lock_mode_with_version_and_flags,
+	  new_cnt_max_lock_mode_with_version_and_flags));
+
+  /* Lock acquired. */
+  ATOMIC_TAS_32 (&entry_ptr->mark_deleted, 0);
+
+  return true;
+}
+#endif
+
+#if defined(SERVER_MODE)
+/*
+* lock_remove_non2pl -
+*
+* return:
+*
+*   non2pl(in):
+*   tran_index(in):
+*/
+STATIC_INLINE void
+lock_disconnect_mark_deleted_objects (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
+{
+  LK_ENTRY *prev, *curr, *next;
+  UINT64 old_cnt_max_lock_mode_with_version_and_flags, new_cnt_max_lock_mode_with_version_and_flags;
+  LOCK mode, max_mode;
+  int mark_deleted = 0;
+
+  /* The caller is holding a resource mutex. */
+
+  if (!LK_RES_HAS_CLEAN_MARK_DELETED_ENTRIES_FLAG (res_ptr->cnt_max_lock_mode_with_version_and_flags))
+    {
+      return;
+    }
+
+  /* find the given non2pl in non2pl list of resource entry */
+  assert (res_ptr->waiter == NULL);
+
+  prev = NULL;
+  curr = res_ptr->holder;
+  while (curr != NULL)
+    {
+      /* Set the state as modified, to block others access. */
+      do
+	{
+	  mark_deleted = curr->mark_deleted;
+	  if (mark_deleted == 0)
+	    {
+	      break;
+	    }
+
+	  assert (mark_deleted != 3);
+	}
+      while (!ATOMIC_CAS_32 (&curr->mark_deleted, mark_deleted, 3));
+
+      /* Check whether is mark as deleted. */
+      if (curr->mark_deleted == 3)
+	{
+	  /* Mark as disconnect started. */
+	  next = curr->next;
+	  if (prev == NULL)
+	    {
+	      res_ptr->holder = next;
+	    }
+	  else
+	    {
+	      prev->next = next;
+	    }
+
+	  /* Mark as disconnect ended. */
+	  if (!ATOMIC_CAS_32 (&curr->mark_deleted, 3, 2))
+	    {
+	      /* Imppossible. No other transaction can modify the value. */
+	      assert (false);
+	    }
+
+	  curr = next;
+	}
+      else
+	{
+	  prev = curr;
+	  curr = curr->next;
+	}
+    }
+
+  mode = NULL_LOCK;
+  /* TO DO - compute max mode */
+  max_mode = NULL_LOCK;
+  for (curr = res_ptr->holder; curr != NULL; curr = curr->next)
+    {
+      assert (curr->granted_mode >= NULL_LOCK && mode >= NULL_LOCK);
+      mode = lock_Conv[curr->granted_mode][mode];
+      assert (mode != NA_LOCK);
+
+      assert (curr->blocked_mode >= NULL_LOCK && mode >= NULL_LOCK);
+      mode = lock_Conv[curr->blocked_mode][mode];
+      assert (mode != NA_LOCK);
+    }
+  res_ptr->total_holders_mode = mode;
+  assert (res_ptr->waiter == NULL && res_ptr->non2pl == NULL);
+
+  /* Advance with version */
+  do
+    {
+      old_cnt_max_lock_mode_with_version_and_flags = res_ptr->cnt_max_lock_mode_with_version_and_flags;
+
+      /* Remove clean flag and increment version. */
+      new_cnt_max_lock_mode_with_version_and_flags =
+	LK_RES_REMOVE_CLEAN_MARK_DELETED_ENTRIES_FLAG (old_cnt_max_lock_mode_with_version_and_flags);
+
+      new_cnt_max_lock_mode_with_version_and_flags = LK_RES_INS_VERSION (new_cnt_max_lock_mode_with_version_and_flags);
+    }
+  while (!ATOMIC_CAS_64
+	 (&res_ptr->cnt_max_lock_mode_with_version_and_flags, old_cnt_max_lock_mode_with_version_and_flags,
+	  new_cnt_max_lock_mode_with_version_and_flags));
+}
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
+STATIC_INLINE void
+lock_remove_mark_deleted_entry (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
+{
+  assert (entry_ptr != NULL && entry_ptr->mark_deleted == 2);
+
+  /* I'm here because I couldn't activated mark deleted object. Remove my lock entry. */
+  LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_ENT);
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  assert (entry_ptr->mark_deleted == 2 && entry_ptr->tran_index == tran_index);
+
+  lock_delete_from_tran_hold_list (entry_ptr, tran_index);
+
+  /* to manage granules */
+  lock_decrement_class_granules (entry_ptr->class_entry);
+
+  lock_free_entry (tran_index, t_entry, &lk_Gl.obj_free_entry_list, entry_ptr);
+}
+#endif
+
+#if defined(SERVER_MODE)
 /*
  * lock_internal_perform_lock_object - Performs actual object lock operation
  *
@@ -3255,6 +3594,7 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, cons
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
   UINT64 lock_wait_time;
+  UINT64 old_cnt_max_lock_mode_with_version_and_flags, new_cnt_max_lock_mode_with_version_and_flags;
 
 #if defined(ENABLE_SYSTEMTAP)
   const OID *class_oid_for_marker_p;
@@ -3350,8 +3690,54 @@ start:
       entry_ptr = lock_find_class_entry (tran_index, oid);
       if (entry_ptr != NULL)
 	{
+	  if (entry_ptr->mark_deleted == 1)
+	    {
+	      /* Set the lock by reseting mark deleted. At success, nothing to do. At fail, the class entry will be reused. */
+	      if (lock_internal_reset_mark_deleted (thread_p, entry_ptr, lock))
+		{
+		  perfmon_inc_stat (thread_p, PSTAT_LK_NUM_RE_REQUESTED_ON_OBJECTS);	/* monitoring */
+		  ret_val = LK_GRANTED;
+		  goto end;
+		}
+	    }
+
 	  res_ptr = entry_ptr->res_head;
+	  if (LK_RES_HAS_CLEAN_MARK_DELETED_ENTRIES_FLAG (res_ptr->cnt_max_lock_mode_with_version_and_flags))
+
+	    {
+	      /* We need to lock resource mutex. */
+	      pthread_mutex_lock (&res_ptr->res_mutex);
+	      is_res_mutex_locked = true;
+
+	      if (LK_RES_HAS_CLEAN_MARK_DELETED_ENTRIES_FLAG (res_ptr->cnt_max_lock_mode_with_version_and_flags))
+		{
+		  /* Check again, maybe someone else cleaned before me. */
+		  lock_disconnect_mark_deleted_objects (thread_p, res_ptr);
+
+		  if (res_ptr->holder == NULL)
+		    {
+		      /* if resource entry is empty, remove it. */
+		      (void) lock_remove_resource (thread_p, res_ptr);
+		      is_res_mutex_locked = false;
+		    }
+		}
+	    }
+
+	  if (entry_ptr->mark_deleted == 2)
+	    {
+	      lock_remove_mark_deleted_entry (thread_p, entry_ptr);
+	    }
+	}
+
+      if (entry_ptr != NULL)
+	{
 	  goto lock_tran_lk_entry;
+	}
+      else if (is_res_mutex_locked)
+	{
+	  /* Needs a new resource */
+	  pthread_mutex_unlock (&res_ptr->res_mutex);
+	  is_res_mutex_locked = false;
 	}
     }
 
@@ -3406,6 +3792,26 @@ start:
       lock_insert_into_tran_hold_list (entry_ptr, tran_index);
 
       res_ptr->total_holders_mode = lock;
+
+      if ((res_ptr->key.type == LOCK_RESOURCE_CLASS || res_ptr->key.type == LOCK_RESOURCE_ROOT_CLASS)
+	  && lock <= IX_LOCK)
+	{
+	  /* TODO - function */
+	  do
+	    {
+	      old_cnt_max_lock_mode_with_version_and_flags = res_ptr->cnt_max_lock_mode_with_version_and_flags;
+
+	      /* Remove clean flag and increment version. */
+	      new_cnt_max_lock_mode_with_version_and_flags =
+		LK_RES_INC_MAX_LOCK_MODE_COUNT (old_cnt_max_lock_mode_with_version_and_flags);
+
+	      new_cnt_max_lock_mode_with_version_and_flags =
+		new_cnt_max_lock_mode_with_version_and_flags | ((UINT64) lock << 56);
+	    }
+	  while (!ATOMIC_CAS_64
+		 (&res_ptr->cnt_max_lock_mode_with_version_and_flags, old_cnt_max_lock_mode_with_version_and_flags,
+		  new_cnt_max_lock_mode_with_version_and_flags));
+	}
 
       /* Record number of acquired locks */
       perfmon_inc_stat (thread_p, PSTAT_LK_NUM_ACQUIRED_ON_OBJECTS);
@@ -3474,6 +3880,48 @@ start:
 	  /* add the lock entry into the holder list */
 	  lock_position_holder_entry (res_ptr, entry_ptr);
 
+	  if ((res_ptr->key.type == LOCK_RESOURCE_CLASS || res_ptr->key.type == LOCK_RESOURCE_ROOT_CLASS)
+	      && lock <= IX_LOCK)
+	    {
+	      /* TODO - function */
+	      if (lock == LK_RES_GET_LOCK_MODE (res_ptr->cnt_max_lock_mode_with_version_and_flags))
+		{
+		  do
+		    {
+		      old_cnt_max_lock_mode_with_version_and_flags = res_ptr->cnt_max_lock_mode_with_version_and_flags;
+
+		      /* Remove clean flag and increment version. */
+		      new_cnt_max_lock_mode_with_version_and_flags =
+			LK_RES_INC_MAX_LOCK_MODE_COUNT (old_cnt_max_lock_mode_with_version_and_flags);
+
+		      assert (LK_RES_GET_LOCK_MODE (new_cnt_max_lock_mode_with_version_and_flags) == lock);
+		    }
+		  while (!ATOMIC_CAS_64
+			 (&res_ptr->cnt_max_lock_mode_with_version_and_flags,
+			  old_cnt_max_lock_mode_with_version_and_flags, new_cnt_max_lock_mode_with_version_and_flags));
+		}
+	      else if (lock > LK_RES_GET_LOCK_MODE (res_ptr->cnt_max_lock_mode_with_version_and_flags))
+		{
+		  do
+		    {
+		      old_cnt_max_lock_mode_with_version_and_flags = res_ptr->cnt_max_lock_mode_with_version_and_flags;
+
+		      /* Remove clean flag and increment version. */
+		      new_cnt_max_lock_mode_with_version_and_flags =
+			LK_RES_RESET_MAX_LOCK_MODE_COUNT (old_cnt_max_lock_mode_with_version_and_flags);
+
+		      new_cnt_max_lock_mode_with_version_and_flags =
+			LK_RES_INC_MAX_LOCK_MODE_COUNT (new_cnt_max_lock_mode_with_version_and_flags);
+
+		      new_cnt_max_lock_mode_with_version_and_flags =
+			LK_RES_SET_LOCK_MODE (new_cnt_max_lock_mode_with_version_and_flags, lock);
+		    }
+		  while (!ATOMIC_CAS_64
+			 (&res_ptr->cnt_max_lock_mode_with_version_and_flags,
+			  old_cnt_max_lock_mode_with_version_and_flags, new_cnt_max_lock_mode_with_version_and_flags));
+		}
+	    }
+
 	  /* change total_holders_mode (total mode of holder list) */
 	  assert (lock >= NULL_LOCK && res_ptr->total_holders_mode >= NULL_LOCK);
 	  res_ptr->total_holders_mode = lock_Conv[lock][res_ptr->total_holders_mode];
@@ -3535,6 +3983,7 @@ start:
       wait_entry_ptr = res_ptr->waiter;
       while (wait_entry_ptr != NULL)
 	{
+	  assert (wait_entry_ptr->mark_deleted == 0);
 	  if (wait_entry_ptr->tran_index == tran_index)
 	    {
 	      break;
@@ -3620,6 +4069,7 @@ start:
       prev = NULL;
       for (i = res_ptr->waiter; i != NULL; i = i->next)
 	{
+	  assert (i->mark_deleted == 0);
 	  prev = i;
 	}
       if (prev == NULL)
@@ -3712,6 +4162,44 @@ lock_tran_lk_entry:
 	{
 	  entry_ptr->instant_lock_count++;
 	  assert (entry_ptr->instant_lock_count > 0);
+	}
+
+      if ((res_ptr->key.type == LOCK_RESOURCE_CLASS || res_ptr->key.type == LOCK_RESOURCE_ROOT_CLASS)
+	  && lock <= IX_LOCK)
+	{
+	  if (new_mode == LK_RES_GET_LOCK_MODE (res_ptr->cnt_max_lock_mode_with_version_and_flags))
+	    {
+	      do
+		{
+		  old_cnt_max_lock_mode_with_version_and_flags = res_ptr->cnt_max_lock_mode_with_version_and_flags;
+
+		  /* Remove clean flag and increment version. */
+		  new_cnt_max_lock_mode_with_version_and_flags =
+		    LK_RES_INC_MAX_LOCK_MODE_COUNT (old_cnt_max_lock_mode_with_version_and_flags);
+
+		  assert (LK_RES_GET_LOCK_MODE (new_cnt_max_lock_mode_with_version_and_flags) == lock);
+		}
+	      while (!ATOMIC_CAS_64
+		     (&res_ptr->cnt_max_lock_mode_with_version_and_flags, old_cnt_max_lock_mode_with_version_and_flags,
+		      new_cnt_max_lock_mode_with_version_and_flags));
+	    }
+	  else if (new_mode > LK_RES_GET_LOCK_MODE (res_ptr->cnt_max_lock_mode_with_version_and_flags))
+	    {
+	      do
+		{
+		  old_cnt_max_lock_mode_with_version_and_flags = res_ptr->cnt_max_lock_mode_with_version_and_flags;
+		  /* Remove clean flag and increment version. */
+		  new_cnt_max_lock_mode_with_version_and_flags =
+		    LK_RES_RESET_MAX_LOCK_MODE_COUNT (old_cnt_max_lock_mode_with_version_and_flags);
+		  new_cnt_max_lock_mode_with_version_and_flags =
+		    LK_RES_INC_MAX_LOCK_MODE_COUNT (new_cnt_max_lock_mode_with_version_and_flags);
+		  new_cnt_max_lock_mode_with_version_and_flags =
+		    LK_RES_SET_LOCK_MODE (new_cnt_max_lock_mode_with_version_and_flags, lock);
+		}
+	      while (!ATOMIC_CAS_64
+		     (&res_ptr->cnt_max_lock_mode_with_version_and_flags,
+		      old_cnt_max_lock_mode_with_version_and_flags, new_cnt_max_lock_mode_with_version_and_flags));
+	    }
 	}
 
       assert (lock >= NULL_LOCK && res_ptr->total_holders_mode >= NULL_LOCK);
@@ -3948,6 +4436,89 @@ end:
 #endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
+STATIC_INLINE bool
+lock_internal_set_mark_deleted (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
+{
+  LK_RES *res_ptr;
+  UINT64 old_cnt_max_lock_mode_with_version_and_flags, new_cnt_max_lock_mode_with_version_and_flags;
+  LOCK_RESOURCE_TYPE lock_resource_type;
+  if (entry_ptr->mark_deleted == 1)
+    {
+      /* Already set. Nothing to do. */
+      return true;
+    }
+
+  res_ptr = entry_ptr->res_head;
+  assert (res_ptr != NULL);
+  lock_resource_type = VOLATILE_ACCESS (res_ptr->key.type, LOCK_RESOURCE_TYPE);
+  if (lock_resource_type != LOCK_RESOURCE_CLASS && lock_resource_type != LOCK_RESOURCE_ROOT_CLASS)
+    {
+      return false;
+    }
+
+  if (entry_ptr->granted_mode > IX_LOCK)
+    {
+      /* Can't mark delete. */
+      return false;
+    }
+
+  do
+    {
+      old_cnt_max_lock_mode_with_version_and_flags =
+	ATOMIC_INC_64 (&res_ptr->cnt_max_lock_mode_with_version_and_flags, 0LL);
+      if (LK_RES_HAS_CLEAN_MARK_DELETED_ENTRIES_FLAG (old_cnt_max_lock_mode_with_version_and_flags))
+	{
+	  /* Someone else notified that mark deleted is not allowed. */
+	  return false;
+	}
+
+      assert (res_ptr->non2pl == NULL);
+      if (VOLATILE_ACCESS (res_ptr->holder, LK_ENTRY *) == entry_ptr
+	  && (VOLATILE_ACCESS (entry_ptr->next, LK_ENTRY *) == NULL)
+	  && VOLATILE_ACCESS (res_ptr->waiter, LK_ENTRY *) == NULL
+	  && VOLATILE_ACCESS (res_ptr->non2pl, LK_ENTRY *) == NULL)
+	{
+	  /* The resource is not shared. Don't care about mark deletion here. This help us to remove
+	   * the entries that are rarely accessed.
+	   */
+	  return false;
+	}
+
+      if (entry_ptr->resource_version != LK_RES_GET_VERSION (old_cnt_max_lock_mode_with_version_and_flags))
+	{
+	  return false;
+	}
+
+      if (entry_ptr->granted_mode != LK_RES_GET_LOCK_MODE (old_cnt_max_lock_mode_with_version_and_flags))
+	{
+	  /* Not highest lock. No need to decrement the counter. */
+	  assert (entry_ptr->granted_mode < LK_RES_GET_LOCK_MODE (old_cnt_max_lock_mode_with_version_and_flags));
+	  break;
+	}
+
+      new_cnt_max_lock_mode_with_version_and_flags =
+	LK_RES_DEC_MAX_LOCK_MODE_COUNT (old_cnt_max_lock_mode_with_version_and_flags);
+      if (LK_RES_GET_MAX_LOCK_MODE_COUNT (new_cnt_max_lock_mode_with_version_and_flags) == 0)
+	{
+	  /* Needs cleanup. TODO - we may improve it here. */
+	  new_cnt_max_lock_mode_with_version_and_flags =
+	    LK_RES_ADD_CLEAN_MARK_DELETED_ENTRIES_FLAG (new_cnt_max_lock_mode_with_version_and_flags);
+	}
+    }
+  while (!ATOMIC_CAS_64
+	 (&res_ptr->cnt_max_lock_mode_with_version_and_flags,
+	  old_cnt_max_lock_mode_with_version_and_flags, new_cnt_max_lock_mode_with_version_and_flags));
+  /* Mark deleted, if others not disconnected my entry. */
+  if (!ATOMIC_CAS_32 (&entry_ptr->mark_deleted, 0, 1))
+    {
+      return false;
+    }
+
+  return true;
+}
+#endif
+
+#if defined(SERVER_MODE)
 /*
  * lock_internal_perform_unlock_object - Performs actual object unlock operation
  *
@@ -3965,8 +4536,8 @@ end:
  *     Otherwise, just decrement the lock count for supporting isolation level.
  */
 static void
-lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, bool release_flag,
-				     bool move_to_non2pl)
+lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr,
+				     bool release_flag, bool move_to_non2pl)
 {
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_ENT);
   int tran_index;
@@ -3982,10 +4553,11 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
     {
       fprintf (stderr,
 	       "LK_DUMP::lk_internal_unlock_object()\n"
-	       "  tran(%2d) : oid(%2d|%3d|%3d), class_oid(%2d|%3d|%3d), LOCK(%7s)\n", entry_ptr->tran_index,
-	       entry_ptr->res_head->oid.volid, entry_ptr->res_head->oid.pageid, entry_ptr->res_head->oid.slotid,
-	       entry_ptr->res_head->class_oid.volid, entry_ptr->res_head->class_oid.pageid,
-	       entry_ptr->res_head->class_oid.slotid, LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode));
+	       "  tran(%2d) : oid(%2d|%3d|%3d), class_oid(%2d|%3d|%3d), LOCK(%7s)\n",
+	       entry_ptr->tran_index, entry_ptr->res_head->oid.volid, entry_ptr->res_head->oid.pageid,
+	       entry_ptr->res_head->oid.slotid, entry_ptr->res_head->class_oid.volid,
+	       entry_ptr->res_head->class_oid.pageid, entry_ptr->res_head->class_oid.slotid,
+	       LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode));
     }
 #endif /* LK_DUMP */
 
@@ -4017,6 +4589,18 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
 	  return;
 	}
     }
+  else
+    {
+      if (lock_internal_set_mark_deleted (thread_p, entry_ptr))
+	{
+	  return;
+	}
+      else if (entry_ptr->mark_deleted == 2)
+	{
+	  lock_remove_mark_deleted_entry (thread_p, entry_ptr);
+	  return;
+	}
+    }
 
   /* hold resource mutex */
   res_ptr = entry_ptr->res_head;
@@ -4042,6 +4626,7 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
       curr = res_ptr->waiter;
       while (curr != NULL)
 	{
+	  assert (curr->mark_deleted == 0);
 	  if (curr->tran_index == tran_index)
 	    {
 	      break;
@@ -4079,6 +4664,7 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
 	      mode = NULL_LOCK;
 	      for (i = res_ptr->waiter; i != NULL; i = i->next)
 		{
+		  assert (i->mark_deleted == 0);
 		  assert (i->blocked_mode >= NULL_LOCK && mode >= NULL_LOCK);
 		  mode = lock_Conv[i->blocked_mode][mode];
 		  assert (mode != NA_LOCK);
@@ -4090,8 +4676,8 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
 	{
 	  assert (false);
 	  /* The transaction is neither the lock holder nor the lock waiter */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_LOST_TRANSACTION, 4, tran_index, res_ptr->key.oid.volid,
-		  res_ptr->key.oid.pageid, res_ptr->key.oid.slotid);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_LOST_TRANSACTION, 4, tran_index,
+		  res_ptr->key.oid.volid, res_ptr->key.oid.pageid, res_ptr->key.oid.slotid);
 	}
 
       pthread_mutex_unlock (&res_ptr->res_mutex);
@@ -4234,12 +4820,20 @@ lock_internal_demote_class_lock (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, 
 
   // expects a class lock entry
   assert (res_ptr->key.type == LOCK_RESOURCE_CLASS);
-
+  res_ptr = entry_ptr->res_head;
   rv = pthread_mutex_lock (&res_ptr->res_mutex);
+  if (!(LK_RES_HAS_CLEAN_MARK_DELETED_ENTRIES_FLAG (res_ptr->cnt_max_lock_mode_with_version_and_flags)))
+    {
+      res_ptr->cnt_max_lock_mode_with_version_and_flags =
+	LK_RES_ADD_CLEAN_MARK_DELETED_ENTRIES_FLAG (res_ptr->cnt_max_lock_mode_with_version_and_flags);
+      lock_disconnect_mark_deleted_objects (thread_p, res_ptr);
+      assert (res_ptr->holder != NULL);
+    }
 
   /* find the given lock entry in the holder list */
   for (holder = res_ptr->holder; holder != NULL; holder = holder->next)
     {
+      assert (holder->mark_deleted == 0);
       if (holder == entry_ptr)
 	{
 	  break;
@@ -4264,8 +4858,9 @@ lock_internal_demote_class_lock (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, 
   if (lk_Gl.dump_level >= 1)
     {
       fprintf (stderr, "LK_DUMP::lk_demote_class_lock ()\n"
-	       "  tran(%2d) : oid(%d|%d|%d), class_oid(%d|%d|%d), LOCK(%7s -> %7s)\n", entry_ptr->tran_index,
-	       OID_AS_ARGS (&entry_ptr->res_head->key.oid), OID_AS_ARGS (&entry_ptr->res_head->key.class_oid),
+	       "  tran(%2d) : oid(%d|%d|%d), class_oid(%d|%d|%d), LOCK(%7s -> %7s)\n",
+	       entry_ptr->tran_index, OID_AS_ARGS (&entry_ptr->res_head->key.oid),
+	       OID_AS_ARGS (&entry_ptr->res_head->key.class_oid),
 	       LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode), LOCK_TO_LOCKMODE_STRING (to_be_lock));
     }
 #endif /* LK_DUMP */
@@ -4279,6 +4874,7 @@ lock_internal_demote_class_lock (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, 
   total_mode = NULL_LOCK;
   for (h = res_ptr->holder; h != NULL; h = h->next)
     {
+      assert (h->mark_deleted == 0);
       assert (h->granted_mode >= NULL_LOCK && total_mode >= NULL_LOCK);
       total_mode = lock_Conv[h->granted_mode][total_mode];
       assert (total_mode != NA_LOCK);
@@ -4479,7 +5075,6 @@ lock_remove_all_class_locks (THREAD_ENTRY * thread_p, int tran_index, LOCK lock)
   if (curr != NULL)
     {
       assert (tran_index == curr->tran_index);
-
       if (curr->granted_mode <= lock)
 	{
 	  lock_internal_perform_unlock_object (thread_p, curr, true, false);
@@ -4565,6 +5160,7 @@ lock_remove_non2pl (THREAD_ENTRY * thread_p, LK_ENTRY * non2pl, int tran_index)
   curr = res_ptr->non2pl;
   while (curr != NULL)
     {
+      assert (curr->mark_deleted == 0);
       if (curr->tran_index == tran_index)
 	{
 	  break;
@@ -4634,6 +5230,7 @@ lock_update_non2pl_list (THREAD_ENTRY * thread_p, LK_RES * res_ptr, int tran_ind
       if (curr->tran_index == tran_index)
 	{			/* same transaction */
 	  /* remove current non2pl entry */
+	  assert (curr->mark_deleted == 0);
 	  next = curr->next;
 	  if (prev == NULL)
 	    {
@@ -5027,8 +5624,8 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
 						  &client_pid);
 
 	  n =
-	    snprintf (ptr, unit_size, "%s%s@%s|%s(%d)", ((v == s) ? "" : ", "), client_user_name, client_host_name,
-		      client_prog_name, client_pid);
+	    snprintf (ptr, unit_size, "%s%s@%s|%s(%d)", ((v == s) ? "" : ", "), client_user_name,
+		      client_host_name, client_prog_name, client_pid);
 	  ptr += n;
 	  assert_release (ptr < cycle_info_string + unit_size * num_tran_in_cycle);
 
@@ -5152,8 +5749,8 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
 	  assert_release (TWFG_node[v].current >= 0 && TWFG_node[v].current < lk_Gl.max_TWFG_edge);
 
 	  next_node = TWFG_edge[TWFG_node[v].current].to_tran_index;
-
-	  if (TWFG_node[next_node].checked_by_deadlock_detector == false || TWFG_node[next_node].thrd_wait_stime == 0
+	  if (TWFG_node[next_node].checked_by_deadlock_detector == false
+	      || TWFG_node[next_node].thrd_wait_stime == 0
 	      || TWFG_node[next_node].thrd_wait_stime > TWFG_edge[TWFG_node[next_node].current].edge_wait_stime)
 	    {
 	      /* The edge from v to next_node is removed(false edge). */
@@ -5187,8 +5784,8 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
 	{
 	  er_log_debug (ARG_FILE_LINE, "Inactive transactions are found in deadlock cycle.\n");
 	}
-      er_log_debug (ARG_FILE_LINE, "total_edges=%d, free_edge_idx=%d, global_edge_seq=%d\n", lk_Gl.max_TWFG_edge,
-		    lk_Gl.TWFG_free_edge_idx, lk_Gl.global_edge_seq_num);
+      er_log_debug (ARG_FILE_LINE, "total_edges=%d, free_edge_idx=%d, global_edge_seq=%d\n",
+		    lk_Gl.max_TWFG_edge, lk_Gl.TWFG_free_edge_idx, lk_Gl.global_edge_seq_num);
       er_log_debug (ARG_FILE_LINE, "# of WFG nodes in deadlock cycle = %d (%d printed)\n", tot_WFG_nodes,
 		    num_WFG_nodes);
       for (WFG_nidx = 0; WFG_nidx < num_WFG_nodes; WFG_nidx++)
@@ -5248,7 +5845,8 @@ lock_dump_deadlock_victims (THREAD_ENTRY * thread_p, FILE * outfile)
     {
       if (victims[k].can_timeout)
 	{
-	  fprintf (outfile, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_DEADLOCK_TIMEOUT),
+	  fprintf (outfile,
+		   msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_DEADLOCK_TIMEOUT),
 		   victims[k].tran_index);
 	  if ((count % 10) == 9)
 	    {
@@ -5342,9 +5940,8 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
   memset (time_val, 0, sizeof (time_val));
 
   /* dump object identifier */
-  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_OID), res_ptr->key.oid.volid,
-	   res_ptr->key.oid.pageid, res_ptr->key.oid.slotid);
-
+  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_OID),
+	   res_ptr->key.oid.volid, res_ptr->key.oid.pageid, res_ptr->key.oid.slotid);
   /* dump object type related information */
   switch (res_ptr->key.type)
     {
@@ -5430,9 +6027,9 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 	      RECDES recdes;
 
 	      recdes.data = NULL;
-
-	      if (heap_get_visible_version (thread_p, &res_ptr->key.oid, &res_ptr->key.class_oid, &recdes, &scan_cache,
-					    PEEK, NULL_CHN) == S_SUCCESS)
+	      if (heap_get_visible_version
+		  (thread_p, &res_ptr->key.oid, &res_ptr->key.class_oid, &recdes, &scan_cache, PEEK,
+		   NULL_CHN) == S_SUCCESS)
 		{
 		  MVCC_REC_HEADER mvcc_rec_header;
 		  if (or_mvcc_get_header (&recdes, &mvcc_rec_header) == NO_ERROR)
@@ -5479,10 +6076,14 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 	{
 	  if (entry_ptr->blocked_mode == NULL_LOCK)
 	    {
-	      num_holders++;
+	      if (entry_ptr->mark_deleted == 0)
+		{
+		  num_holders++;
+		}
 	    }
 	  else
 	    {
+	      assert (entry_ptr->mark_deleted == 0);
 	      num_blocked_holders++;
 	    }
 	  entry_ptr = entry_ptr->next;
@@ -5494,14 +6095,14 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
       entry_ptr = res_ptr->waiter;
       while (entry_ptr != NULL)
 	{
+	  assert (entry_ptr->mark_deleted == 0);
 	  num_waiters++;
 	  entry_ptr = entry_ptr->next;
 	}
     }
 
-  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_LOCK_COUNT), num_holders,
-	   num_blocked_holders, num_waiters);
-
+  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_LOCK_COUNT),
+	   num_holders, num_blocked_holders, num_waiters);
   /* dump holders */
   if (num_holders > 0)
     {
@@ -5510,22 +6111,25 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
       entry_ptr = res_ptr->holder;
       while (entry_ptr != NULL)
 	{
-	  if (entry_ptr->blocked_mode == NULL_LOCK)
+	  if (entry_ptr->mark_deleted == 0)
 	    {
-	      if (res_ptr->key.type == LOCK_RESOURCE_INSTANCE)
+	      if (entry_ptr->blocked_mode == NULL_LOCK)
 		{
-		  fprintf (outfp,
-			   msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK,
-					   MSGCAT_LK_RES_NON_BLOCKED_HOLDER_ENTRY), "", entry_ptr->tran_index,
-			   LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode), entry_ptr->count);
-		}
-	      else
-		{
-		  fprintf (outfp,
-			   msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK,
-					   MSGCAT_LK_RES_NON_BLOCKED_HOLDER_ENTRY_WITH_GRANULE), "",
-			   entry_ptr->tran_index, LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode), entry_ptr->count,
-			   entry_ptr->ngranules);
+		  if (res_ptr->key.type == LOCK_RESOURCE_INSTANCE)
+		    {
+		      fprintf (outfp,
+			       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK,
+					       MSGCAT_LK_RES_NON_BLOCKED_HOLDER_ENTRY), "", entry_ptr->tran_index,
+			       LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode), entry_ptr->count);
+		    }
+		  else
+		    {
+		      fprintf (outfp,
+			       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK,
+					       MSGCAT_LK_RES_NON_BLOCKED_HOLDER_ENTRY_WITH_GRANULE), "",
+			       entry_ptr->tran_index, LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode),
+			       entry_ptr->count, entry_ptr->ngranules);
+		    }
 		}
 	    }
 	  entry_ptr = entry_ptr->next;
@@ -5539,35 +6143,40 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
       entry_ptr = res_ptr->holder;
       while (entry_ptr != NULL)
 	{
-	  if (entry_ptr->blocked_mode != NULL_LOCK)
+	  if (entry_ptr->mark_deleted == 0)
 	    {
-	      time_t stime = (time_t) (entry_ptr->thrd_entry->lockwait_stime / 1000LL);
-	      if (ctime_r (&stime, time_val) == NULL)
+	      if (entry_ptr->blocked_mode != NULL_LOCK)
 		{
-		  strcpy (time_val, "???");
-		}
+		  time_t stime = (time_t) (entry_ptr->thrd_entry->lockwait_stime / 1000LL);
+		  if (ctime_r (&stime, time_val) == NULL)
+		    {
+		      strcpy (time_val, "???");
+		    }
 
-	      time_str_len = strlen (time_val);
-	      if (time_str_len > 0 && time_val[time_str_len - 1] == '\n')
-		{
-		  time_val[time_str_len - 1] = 0;
-		}
-	      if (res_ptr->key.type == LOCK_RESOURCE_INSTANCE)
-		{
-		  fprintf (outfp,
-			   msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_BLOCKED_HOLDER_ENTRY),
-			   "", entry_ptr->tran_index, LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode),
-			   entry_ptr->count, "", LOCK_TO_LOCKMODE_STRING (entry_ptr->blocked_mode), "", time_val, "",
-			   lock_wait_msecs_to_secs (entry_ptr->thrd_entry->lockwait_msecs));
-		}
-	      else
-		{
-		  fprintf (outfp,
-			   msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK,
-					   MSGCAT_LK_RES_BLOCKED_HOLDER_ENTRY_WITH_GRANULE), "", entry_ptr->tran_index,
-			   LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode), entry_ptr->count, entry_ptr->ngranules,
-			   "", LOCK_TO_LOCKMODE_STRING (entry_ptr->blocked_mode), "", time_val, "",
-			   lock_wait_msecs_to_secs (entry_ptr->thrd_entry->lockwait_msecs));
+		  time_str_len = strlen (time_val);
+		  if (time_str_len > 0 && time_val[time_str_len - 1] == '\n')
+		    {
+		      time_val[time_str_len - 1] = 0;
+		    }
+		  if (res_ptr->key.type == LOCK_RESOURCE_INSTANCE)
+		    {
+		      fprintf (outfp,
+			       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK,
+					       MSGCAT_LK_RES_BLOCKED_HOLDER_ENTRY), "", entry_ptr->tran_index,
+			       LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode), entry_ptr->count, "",
+			       LOCK_TO_LOCKMODE_STRING (entry_ptr->blocked_mode), "", time_val, "",
+			       lock_wait_msecs_to_secs (entry_ptr->thrd_entry->lockwait_msecs));
+		    }
+		  else
+		    {
+		      fprintf (outfp,
+			       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK,
+					       MSGCAT_LK_RES_BLOCKED_HOLDER_ENTRY_WITH_GRANULE), "",
+			       entry_ptr->tran_index, LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode),
+			       entry_ptr->count, entry_ptr->ngranules, "",
+			       LOCK_TO_LOCKMODE_STRING (entry_ptr->blocked_mode), "", time_val, "",
+			       lock_wait_msecs_to_secs (entry_ptr->thrd_entry->lockwait_msecs));
+		    }
 		}
 	    }
 	  entry_ptr = entry_ptr->next;
@@ -5581,17 +6190,18 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
       entry_ptr = res_ptr->waiter;
       while (entry_ptr != NULL)
 	{
+	  assert (entry_ptr->mark_deleted == 0);
 	  time_t stime = (time_t) (entry_ptr->thrd_entry->lockwait_stime / 1000LL);
 	  (void) ctime_r (&stime, time_val);
-
 	  time_str_len = strlen (time_val);
 	  if (time_str_len > 0 && time_val[time_str_len - 1] == '\n')
 	    {
 	      time_val[time_str_len - 1] = 0;
 	    }
-	  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_BLOCKED_WAITER_ENTRY),
-		   "", entry_ptr->tran_index, LOCK_TO_LOCKMODE_STRING (entry_ptr->blocked_mode), "", time_val, "",
-		   lock_wait_msecs_to_secs (entry_ptr->thrd_entry->lockwait_msecs));
+	  fprintf (outfp,
+		   msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_BLOCKED_WAITER_ENTRY),
+		   "", entry_ptr->tran_index, LOCK_TO_LOCKMODE_STRING (entry_ptr->blocked_mode), "", time_val,
+		   "", lock_wait_msecs_to_secs (entry_ptr->thrd_entry->lockwait_msecs));
 	  entry_ptr = entry_ptr->next;
 	}
     }
@@ -5603,10 +6213,13 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
       entry_ptr = res_ptr->non2pl;
       while (entry_ptr != NULL)
 	{
-	  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_NON2PL_RELEASED_ENTRY),
-		   "", entry_ptr->tran_index,
-		   ((entry_ptr->granted_mode == INCON_NON_TWO_PHASE_LOCK) ? "INCON_NON_TWO_PHASE_LOCK"
-		    : LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode)));
+	  assert (entry_ptr->mark_deleted == 0);
+	  fprintf (outfp,
+		   msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK,
+				   MSGCAT_LK_RES_NON2PL_RELEASED_ENTRY), "", entry_ptr->tran_index,
+		   ((entry_ptr->granted_mode ==
+		     INCON_NON_TWO_PHASE_LOCK) ? "INCON_NON_TWO_PHASE_LOCK" :
+		    LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode)));
 	  entry_ptr = entry_ptr->next;
 	}
     }
@@ -6213,7 +6826,7 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
   int wait_msecs;
   TRAN_ISOLATION isolation;
   LOCK new_class_lock;
-  LOCK old_class_lock;
+  LOCK old_class_lock, old_root_class_lock;
   int granted;
   LK_ENTRY *root_class_entry = NULL;
   LK_ENTRY *class_entry = NULL, *superclass_entry = NULL;
@@ -6279,12 +6892,50 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
 
   /* Check if current transaction has already held the class lock. If the class lock is not held, hold the class lock,
    * now. */
-  class_entry = lock_get_class_lock (thread_p, class_oid, tran_index);
-  old_class_lock = (class_entry) ? class_entry->granted_mode : NULL_LOCK;
-
   if (OID_IS_ROOTOID (class_oid))
     {
-      if (old_class_lock < new_class_lock)
+      old_class_lock = NULL_LOCK;
+      old_root_class_lock = NULL_LOCK;
+      /* Find class lock and root class lock. If not found class lock entry we issue lock request for root class.
+       * Another option, in this case, would be to search for root class lock entry. However, in most of the
+       * cases is better to not search for it.
+       */
+      class_entry = lock_get_class_lock (thread_p, oid, tran_index);
+      if (class_entry != NULL)
+	{
+	  root_class_entry = class_entry->class_entry;
+	  while (root_class_entry != NULL)
+	    {
+	      if (OID_IS_ROOTOID (&root_class_entry->res_head->key.oid))
+		{
+		  old_root_class_lock = root_class_entry->granted_mode;
+		  break;
+		}
+
+	      root_class_entry = root_class_entry->class_entry;
+	    }
+
+	  old_class_lock = class_entry->granted_mode;
+	  if (class_entry->mark_deleted != 0)
+	    {
+	      /* Set the lock by reseting mark deleted. At success, nothing to do. At fail, the class entry will be reused. */
+	      if (class_entry->mark_deleted == 1)
+		{
+		  if (lock_internal_reset_mark_deleted (thread_p, class_entry, new_class_lock))
+		    {
+		      granted = LK_GRANTED;
+		      goto end;
+		    }
+		}
+
+	      if (class_entry->mark_deleted == 2)
+		{
+		  lock_remove_mark_deleted_entry (thread_p, class_entry);
+		}
+	    }
+	}
+
+      if (old_root_class_lock < new_class_lock)
 	{
 	  granted = lock_internal_perform_lock_object (thread_p, tran_index, class_oid, NULL, new_class_lock,
 						       wait_msecs, &root_class_entry, NULL);
@@ -6298,12 +6949,22 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
 
       /* NOTE that in case of acquiring a lock on a class object, the higher lock granule of the class object must not
        * be given. */
-      granted = lock_internal_perform_lock_object (thread_p, tran_index, oid, NULL, lock, wait_msecs, &class_entry,
-						   root_class_entry);
+
+      if (old_class_lock >= lock)
+	{
+	  granted = true;
+	  goto end;
+	}
+
+      granted =
+	lock_internal_perform_lock_object (thread_p, tran_index, oid, NULL, lock, wait_msecs, &class_entry,
+					   root_class_entry);
       goto end;
     }
   else
     {
+      class_entry = lock_get_class_lock (thread_p, class_oid, tran_index);
+      old_class_lock = (class_entry) ? class_entry->granted_mode : NULL_LOCK;
       if (old_class_lock < new_class_lock)
 	{
 	  if (class_entry != NULL && class_entry->class_entry != NULL
@@ -6338,8 +6999,9 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
 
       /* NOTE that in case of acquiring a lock on an instance object, the class oid of the instance object must be
        * given. */
-      granted = lock_internal_perform_lock_object (thread_p, tran_index, oid, class_oid, lock, wait_msecs, &inst_entry,
-						   class_entry);
+      granted =
+	lock_internal_perform_lock_object (thread_p, tran_index, oid, class_oid, lock, wait_msecs,
+					   &inst_entry, class_entry);
       goto end;
     }
 
@@ -6352,8 +7014,8 @@ end:
     }
   if (MONITOR_WAITING_THREAD (elapsed_time))
     {
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 2, "lock object (lock_object)",
-	      prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 2,
+	      "lock object (lock_object)", prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
       er_log_debug (ARG_FILE_LINE, "lock_object: %6d.%06d\n", elapsed_time.tv_sec, elapsed_time.tv_usec);
     }
 #endif
@@ -6448,8 +7110,9 @@ lock_subclass (THREAD_ENTRY * thread_p, const OID * subclass_oid, const OID * su
   if (old_superclass_lock < new_superclass_lock)
     {
       /* superclass is already locked, just promote to the new lock */
-      granted = lock_internal_perform_lock_object (thread_p, tran_index, superclass_oid, NULL, new_superclass_lock,
-						   wait_msecs, &superclass_entry, NULL);
+      granted =
+	lock_internal_perform_lock_object (thread_p, tran_index, superclass_oid, NULL, new_superclass_lock,
+					   wait_msecs, &superclass_entry, NULL);
       if (granted != LK_GRANTED)
 	{
 	  goto end;
@@ -6461,8 +7124,9 @@ lock_subclass (THREAD_ENTRY * thread_p, const OID * subclass_oid, const OID * su
   /* NOTE that in case of acquiring a lock on a class object, the higher lock granule of the class object must not be
    * given. */
 
-  granted = lock_internal_perform_lock_object (thread_p, tran_index, subclass_oid, NULL, lock, wait_msecs,
-					       &subclass_entry, superclass_entry);
+  granted =
+    lock_internal_perform_lock_object (thread_p, tran_index, subclass_oid, NULL, lock, wait_msecs, &subclass_entry,
+				       superclass_entry);
 end:
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
@@ -6472,8 +7136,8 @@ end:
     }
   if (MONITOR_WAITING_THREAD (elapsed_time))
     {
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 2, "lock object (lock_object)",
-	      prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 2,
+	      "lock object (lock_object)", prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
       er_log_debug (ARG_FILE_LINE, "lock_object: %6d.%06d\n", elapsed_time.tv_sec, elapsed_time.tv_usec);
     }
 #endif
@@ -6499,8 +7163,8 @@ end:
  *
  */
 int
-lock_object_wait_msecs (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LOCK lock, int cond_flag,
-			int wait_msecs)
+lock_object_wait_msecs (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LOCK lock,
+			int cond_flag, int wait_msecs)
 {
 #if !defined (SERVER_MODE)
   LK_SET_STANDALONE_XLOCK (lock);
@@ -6573,8 +7237,9 @@ lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, int cond_flag, LOCK c
   /* acquire the lock on the class */
   /* NOTE that in case of acquiring a lock on a class object, the higher lock granule of the class object is not given. */
   root_class_entry = lock_get_class_lock (thread_p, oid_Root_class_oid, tran_index);
-  granted = lock_internal_perform_lock_object (thread_p, tran_index, class_oid, NULL, class_lock, wait_msecs,
-					       &class_entry, root_class_entry);
+  granted =
+    lock_internal_perform_lock_object (thread_p, tran_index, class_oid, NULL, class_lock, wait_msecs,
+				       &class_entry, root_class_entry);
   assert (granted == LK_GRANTED || cond_flag == LK_COND_LOCK || er_errid () != NO_ERROR);
 
 #if defined (EnableThreadMonitoring)
@@ -6703,8 +7368,9 @@ lock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
 	  root_lock = lockhint->classes[i].lock;
 
 	  /* hold an explicit lock on the root class */
-	  granted = lock_internal_perform_lock_object (thread_p, tran_index, root_oidp, NULL, root_lock, wait_msecs,
-						       &root_class_entry, NULL);
+	  granted =
+	    lock_internal_perform_lock_object (thread_p, tran_index, root_oidp, NULL, root_lock, wait_msecs,
+					       &root_class_entry, NULL);
 	  if (granted != LK_GRANTED)
 	    {
 	      if (lockhint->quit_on_errors == (int) true || granted != LK_NOTGRANTED_DUE_TIMEOUT)
@@ -6752,8 +7418,9 @@ lock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
 
       if (root_class_entry == NULL || root_class_entry->granted_mode < intention_mode)
 	{
-	  granted = lock_internal_perform_lock_object (thread_p, tran_index, oid_Root_class_oid, NULL, intention_mode,
-						       wait_msecs, &root_class_entry, NULL);
+	  granted =
+	    lock_internal_perform_lock_object (thread_p, tran_index, oid_Root_class_oid, NULL, intention_mode,
+					       wait_msecs, &root_class_entry, NULL);
 	  if (granted != LK_GRANTED)
 	    {
 	      if (lockhint->quit_on_errors == false && granted == LK_NOTGRANTED_DUE_TIMEOUT)
@@ -6794,8 +7461,8 @@ lock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
     }
   if (MONITOR_WAITING_THREAD (elapsed_time))
     {
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 2, "lock object (lock_classes_lock_hint)",
-	      prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 2,
+	      "lock object (lock_classes_lock_hint)", prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD));
       er_log_debug (ARG_FILE_LINE, "lock_classes_lock_hint: %6d.%06d\n", elapsed_time.tv_sec, elapsed_time.tv_usec);
     }
 #endif
@@ -6812,8 +7479,8 @@ error:
 }
 
 static void
-lock_unlock_object_lock_internal (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LOCK lock,
-				  int release_flag, int move_to_non2pl)
+lock_unlock_object_lock_internal (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid,
+				  LOCK lock, int release_flag, int move_to_non2pl)
 {
 #if !defined (SERVER_MODE)
   return;
@@ -7108,8 +7775,7 @@ lock_unlock_all (THREAD_ENTRY * thread_p)
 #else /* !SERVER_MODE */
   int tran_index;
   LK_TRAN_LOCK *tran_lock;
-  LK_ENTRY *entry_ptr;
-
+  LK_ENTRY *entry_ptr, *next;
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tran_lock = &lk_Gl.tran_lock_table[tran_index];
 
@@ -7128,9 +7794,9 @@ lock_unlock_all (THREAD_ENTRY * thread_p)
   while (entry_ptr != NULL)
     {
       assert (tran_index == entry_ptr->tran_index);
-
+      next = entry_ptr->tran_next;
       lock_internal_perform_unlock_object (thread_p, entry_ptr, true, false);
-      entry_ptr = tran_lock->class_hold_list;
+      entry_ptr = next;
     }
 
   /* remove root class lock */
@@ -7179,7 +7845,13 @@ lock_find_tran_hold_entry (THREAD_ENTRY * thread_p, int tran_index, const OID * 
 
   if (is_class)
     {
-      return lock_find_class_entry (tran_index, oid);
+      entry_ptr = lock_find_class_entry (tran_index, oid);
+      if (entry_ptr != NULL && entry_ptr->mark_deleted == 0)
+	{
+	  return entry_ptr;
+	}
+
+      return NULL;
     }
 
   /* search hash */
@@ -7204,6 +7876,7 @@ lock_find_tran_hold_entry (THREAD_ENTRY * thread_p, int tran_index, const OID * 
   entry_ptr = res_ptr->holder;
   for (; entry_ptr != NULL; entry_ptr = entry_ptr->next)
     {
+      assert (entry_ptr->mark_deleted == 0);
       if (entry_ptr->tran_index == tran_index)
 	{
 	  break;
@@ -7501,8 +8174,8 @@ lock_has_lock_transaction (int tran_index)
 
   tran_lock = &lk_Gl.tran_lock_table[tran_index];
   rv = pthread_mutex_lock (&tran_lock->hold_mutex);
-  if (tran_lock->root_class_hold != NULL || tran_lock->class_hold_list != NULL || tran_lock->inst_hold_list != NULL
-      || tran_lock->non2pl_list != NULL)
+  if (tran_lock->root_class_hold != NULL || tran_lock->class_hold_list != NULL
+      || tran_lock->inst_hold_list != NULL || tran_lock->non2pl_list != NULL)
     {
       lock_hold = true;
     }
@@ -7732,8 +8405,8 @@ lock_force_timeout_expired_wait_transactions (void *thrd_entry)
  *              copies of the object.
  */
 void
-lock_notify_isolation_incons (THREAD_ENTRY * thread_p, bool (*fun) (const OID * class_oid, const OID * oid, void *args),
-			      void *args)
+lock_notify_isolation_incons (THREAD_ENTRY * thread_p,
+			      bool (*fun) (const OID * class_oid, const OID * oid, void *args), void *args)
 {
 #if !defined (SERVER_MODE)
   return;
@@ -8010,11 +8683,16 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
 	    {
 	      break;
 	    }
+
+	  assert (hi->mark_deleted == 0);
 	  for (hj = hi->next; hj != NULL; hj = hj->next)
 	    {
 	      assert (hi->granted_mode >= NULL_LOCK && hi->blocked_mode >= NULL_LOCK);
 	      assert (hj->granted_mode >= NULL_LOCK && hj->blocked_mode >= NULL_LOCK);
-
+	      if (hj->mark_deleted != 0)
+		{
+		  continue;
+		}
 	      compat1 = lock_Comp[hj->blocked_mode][hi->granted_mode];
 	      compat2 = lock_Comp[hj->blocked_mode][hi->blocked_mode];
 	      assert (compat1 != LOCK_COMPAT_UNKNOWN && compat2 != LOCK_COMPAT_UNKNOWN);
@@ -8037,10 +8715,20 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
       /* from waiters in the waiter to holders */
       for (hi = res_ptr->holder; hi != NULL; hi = hi->next)
 	{
+	  if (hi->mark_deleted != 0)
+	    {
+	      continue;
+	    }
+
 	  for (hj = res_ptr->waiter; hj != NULL; hj = hj->next)
 	    {
+	      assert (hi->mark_deleted == 0);
 	      assert (hi->granted_mode >= NULL_LOCK && hi->blocked_mode >= NULL_LOCK);
 	      assert (hj->granted_mode >= NULL_LOCK && hj->blocked_mode >= NULL_LOCK);
+	      if (hj->mark_deleted != 0)
+		{
+		  continue;
+		}
 
 	      compat1 = lock_Comp[hj->blocked_mode][hi->granted_mode];
 	      compat2 = lock_Comp[hj->blocked_mode][hi->blocked_mode];
@@ -8056,6 +8744,7 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
       /* from waiters in the waiter to other waiters in the waiter */
       for (hi = res_ptr->waiter; hi != NULL; hi = hi->next)
 	{
+	  assert (hi->mark_deleted == 0);
 	  for (hj = hi->next; hj != NULL; hj = hj->next)
 	    {
 	      assert (hj->blocked_mode >= NULL_LOCK && hi->blocked_mode >= NULL_LOCK);
@@ -8489,8 +9178,10 @@ lock_reacquire_crash_locks (THREAD_ENTRY * thread_p, LK_ACQUIRED_LOCKS * acqlock
        * lock wait duration       : LK_INFINITE_WAIT
        * conditional lock request : false
        */
-      r = lock_internal_perform_lock_object (thread_p, tran_index, &acqlocks->obj[i].oid, &acqlocks->obj[i].class_oid,
-					     acqlocks->obj[i].lock, LK_INFINITE_WAIT, &dummy_ptr, NULL);
+      r =
+	lock_internal_perform_lock_object (thread_p, tran_index, &acqlocks->obj[i].oid,
+					   &acqlocks->obj[i].class_oid, acqlocks->obj[i].lock,
+					   LK_INFINITE_WAIT, &dummy_ptr, NULL);
       if (r != LK_GRANTED)
 	{
 	  er_log_debug (ARG_FILE_LINE, "lk_reacquire_crash_locks: The lock cannot be reacquired...");
@@ -8701,8 +9392,8 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp)
   fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_NEWLINE));
   for (tran_index = 0; tran_index < lk_Gl.num_trans; tran_index++)
     {
-      if (logtb_find_client_name_host_pid (tran_index, &client_prog_name, &client_user_name, &client_host_name,
-					   &client_pid) != NO_ERROR)
+      if (logtb_find_client_name_host_pid
+	  (tran_index, &client_prog_name, &client_user_name, &client_host_name, &client_pid) != NO_ERROR)
 	{
 	  /* Likely this index is not assigned */
 	  continue;
@@ -8730,13 +9421,16 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp)
 	  sprintf (lock_timeout_string, ": %d", (int) lock_timeout_sec);
 	}
 
-      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_DUMP_TRAN_IDENTIFIERS),
+      fprintf (outfp,
+	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_DUMP_TRAN_IDENTIFIERS),
 	       tran_index, client_prog_name, client_user_name, client_host_name, client_pid);
-      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_DUMP_TRAN_ISOLATION),
+      fprintf (outfp,
+	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_DUMP_TRAN_ISOLATION),
 	       log_isolation_string (isolation));
       fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_DUMP_TRAN_STATE),
 	       log_state_string (state));
-      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_DUMP_TRAN_TIMEOUT_PERIOD),
+      fprintf (outfp,
+	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_DUMP_TRAN_TIMEOUT_PERIOD),
 	       lock_timeout_string);
       fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_NEWLINE));
     }
@@ -9034,8 +9728,9 @@ lock_finalize_composite_lock (THREAD_ENTRY * thread_p, LK_COMPOSITE_LOCK * comp_
 	  || lockcomp_class->num_inst_oids == prm_get_integer_value (PRM_ID_LK_ESCALATION_AT))
 	{
 	  /* hold X_LOCK on the class object */
-	  value = lock_internal_perform_lock_object (thread_p, lockcomp->tran_index, &lockcomp_class->class_oid, NULL,
-						     X_LOCK, lockcomp->wait_msecs, &dummy, lockcomp->root_class_ptr);
+	  value =
+	    lock_internal_perform_lock_object (thread_p, lockcomp->tran_index, &lockcomp_class->class_oid, NULL,
+					       X_LOCK, lockcomp->wait_msecs, &dummy, lockcomp->root_class_ptr);
 	  if (value != LK_GRANTED)
 	    {
 	      break;
@@ -9432,6 +10127,7 @@ lock_get_lock_holder_tran_index (THREAD_ENTRY * thread_p, char **out_buf, int wa
   waiter = res->waiter;
   while (waiter != NULL)
     {
+      assert (waiter->mark_deleted == 0);
       if (waiter->tran_index == waiter_index)
 	{
 	  is_valid = true;
@@ -9445,7 +10141,7 @@ lock_get_lock_holder_tran_index (THREAD_ENTRY * thread_p, char **out_buf, int wa
       holder = res->holder;
       while (holder != NULL)
 	{
-	  if (holder->blocked_mode != NULL_LOCK && holder->tran_index == waiter_index)
+	  if (holder->blocked_mode != NULL_LOCK && holder->tran_index == waiter_index && holder->mark_deleted == 0)
 	    {
 	      is_valid = true;
 	      break;
@@ -9464,7 +10160,7 @@ lock_get_lock_holder_tran_index (THREAD_ENTRY * thread_p, char **out_buf, int wa
   holder = res->holder;
   while (holder != NULL)
     {
-      if (holder->tran_index != waiter_index)
+      if (holder->tran_index != waiter_index && holder->mark_deleted == 0)
 	{
 	  holder_number++;
 	}
@@ -9495,6 +10191,7 @@ lock_get_lock_holder_tran_index (THREAD_ENTRY * thread_p, char **out_buf, int wa
   holder = res->holder;
   while (holder && holder->tran_index == waiter_index)
     {
+      assert (holder->mark_deleted == 0);
       holder = holder->next;
     }
 
@@ -9509,7 +10206,7 @@ lock_get_lock_holder_tran_index (THREAD_ENTRY * thread_p, char **out_buf, int wa
   holder = holder->next;
   while (holder != NULL)
     {
-      if (holder->tran_index != waiter_index)
+      if (holder->tran_index != waiter_index && holder->mark_deleted == 0)
 	{
 	  n = snprintf (p, remained_size, ", %d", holder->tran_index);
 	  remained_size -= n;
@@ -9687,7 +10384,7 @@ lock_event_log_blocking_locks (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY 
 
   for (entry = res_ptr->holder; entry != NULL; entry = entry->next)
     {
-      if (entry == wait_entry)
+      if (entry == wait_entry || entry->mark_deleted == 0)
 	{
 	  continue;
 	}
@@ -9717,6 +10414,7 @@ lock_event_log_blocking_locks (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY 
 
   for (entry = res_ptr->waiter; entry != NULL; entry = entry->next)
     {
+      assert (entry->mark_deleted == 0);
       if (entry == wait_entry)
 	{
 	  continue;
@@ -9931,8 +10629,8 @@ lock_rep_read_tran (THREAD_ENTRY * thread_p, LOCK lock, int cond_flag)
       wait_msecs = logtb_find_wait_msecs (tran_index);
     }
 
-  if (lock_internal_perform_lock_object (thread_p, tran_index, rep_read_oid, NULL, lock, wait_msecs, &entry_addr,
-					 NULL) != LK_GRANTED)
+  if (lock_internal_perform_lock_object
+      (thread_p, tran_index, rep_read_oid, NULL, lock, wait_msecs, &entry_addr, NULL) != LK_GRANTED)
     {
       return ER_FAILED;
     }
@@ -10078,12 +10776,11 @@ lock_unlock_object_by_isolation (THREAD_ENTRY * thread_p, int tran_index, TRAN_I
  * class_oid(in): class oid.
  */
 static void
-lock_unlock_inst_locks_of_class_by_isolation (THREAD_ENTRY * thread_p, int tran_index, TRAN_ISOLATION isolation,
-					      const OID * class_oid)
+lock_unlock_inst_locks_of_class_by_isolation (THREAD_ENTRY * thread_p, int tran_index,
+					      TRAN_ISOLATION isolation, const OID * class_oid)
 {
   assert (class_oid != NULL);
   assert (!OID_ISNULL (class_oid));
-
   if (isolation != TRAN_READ_COMMITTED)
     {
       return;			/* do nothing */
@@ -10111,7 +10808,8 @@ lock_unlock_inst_locks_of_class_by_isolation (THREAD_ENTRY * thread_p, int tran_
 // count (out)             : output thread count
 //
 static void
-lock_get_transaction_lock_waiting_threads_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, int tran_index,
+lock_get_transaction_lock_waiting_threads_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper,
+						   int tran_index,
 						   tran_lock_waiters_array_type & tran_lock_waiters, size_t & count)
 {
   (void) stop_mapper;		// suppress unused parameter warning
@@ -10137,8 +10835,8 @@ lock_get_transaction_lock_waiting_threads_mapfunc (THREAD_ENTRY & thread_ref, bo
 // count (out)             : output thread count
 //
 static void
-lock_get_transaction_lock_waiting_threads (int tran_index, tran_lock_waiters_array_type & tran_lock_waiters,
-					   size_t & count)
+lock_get_transaction_lock_waiting_threads (int tran_index,
+					   tran_lock_waiters_array_type & tran_lock_waiters, size_t & count)
 {
   thread_get_manager ()->map_entries (lock_get_transaction_lock_waiting_threads_mapfunc, tran_index,
 				      tran_lock_waiters, count);
