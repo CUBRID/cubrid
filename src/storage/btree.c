@@ -7064,6 +7064,24 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info_p, bool with_f
 	}
     }
 
+  if (npages < env->stat_info->height)
+    {
+      // this is a corner case. if b-tree had only one page when npages was read, but its root was split immediately
+      // after, we'd have this awkward situation.
+      //
+      // but we may read npages again, and this time it should be better (we rely also on the fact that one root is
+      // split, it is never merged back to one page again).
+      //
+      ret = file_get_num_user_pages (thread_p, &(stat_info_p->btid.vfid), &npages);
+      if (ret != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return ret;
+	}
+      assert_release (npages >= 1);
+      assert_release (npages >= env->stat_info->height);
+    }
+
   /* check for leaf pages */
   env->stat_info->leafs = MAX (1, env->stat_info->leafs);
   env->stat_info->leafs = MIN (env->stat_info->leafs, npages - (env->stat_info->height - 1));
