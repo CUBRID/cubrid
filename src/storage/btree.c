@@ -33236,6 +33236,9 @@ btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * 
       LSA_COPY (&helper.delete_helper.reference_lsa, undo_nxlsa);
     }
 
+  helper.insert_helper.log_operations = prm_get_bool_value (PRM_ID_LOG_BTREE_OPS);
+  helper.delete_helper.log_operations = prm_get_bool_value (PRM_ID_LOG_BTREE_OPS);
+
   switch (purpose)
     {
     case BTREE_OP_ONLINE_INDEX_IB_INSERT:
@@ -33459,7 +33462,11 @@ btree_key_online_index_IB_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
 	      log_append_redo_data (thread_p, RVBT_RECORD_MODIFY_NO_UNDO, &addr, rv_redo_data_length,
 				    helper->insert_helper.rv_redo_data);
 
-	      btree_insert_log (&helper->insert_helper, "btree_key_online_index_insert %s", "todo");
+	      btree_insert_log (&helper->insert_helper,
+				BTREE_INSERT_MODIFY_MSG ("IB insert change from INSERT_FLAG to NORMAL_STATE"),
+				BTREE_INSERT_MODIFY_ARGS (thread_p, &helper->insert_helper, page_found, &prev_lsa,
+							  node_type == BTREE_LEAF_NODE, slotid, new_record.length,
+							  btid_int->sys_btid));
 
 	      FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
 
@@ -33687,6 +33694,12 @@ btree_key_online_index_tran_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	  /* Logging. */
 	  BTREE_RV_GET_DATA_LENGTH (rv_redo_data_ptr, rv_redo_data, rv_redo_data_length);
 
+	  btree_insert_log (&helper->insert_helper,
+			    BTREE_INSERT_MODIFY_MSG ("Tran insert change from DELETE_FLAG to INSERT_FLAG"),
+			    BTREE_INSERT_MODIFY_ARGS (thread_p, &helper->insert_helper, page_found, &prev_lsa,
+						      node_type == BTREE_LEAF_NODE, slotid, new_record.length,
+						      btid_int->sys_btid));
+
 	  btree_rv_log_insert_object (thread_p, helper->insert_helper, addr, 0, rv_redo_data_length, NULL,
 				      rv_redo_data);
 
@@ -33898,6 +33911,12 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 
 	      /* Logging. */
 	      BTREE_RV_GET_DATA_LENGTH (rv_redo_data_ptr, rv_redo_data, rv_redo_data_length);
+
+	      btree_delete_log (&helper->delete_helper,
+				BTREE_DELETE_MODIFY_MSG ("Tran delete change from INSERT_FLAG to DELETE_FLAG"),
+				BTREE_DELETE_MODIFY_ARGS (thread_p, &helper->delete_helper, page_found, &prev_lsa,
+							  node_type == BTREE_LEAF_NODE, slotid, new_record.length,
+							  btid_int->sys_btid));
 
 	      btree_rv_log_delete_object (thread_p, helper->delete_helper, helper->delete_helper.leaf_addr, 0,
 					  rv_redo_data_length, NULL, rv_redo_data);
@@ -34183,6 +34202,12 @@ btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_
 
 	      /* Logging. */
 	      BTREE_RV_GET_DATA_LENGTH (rv_redo_data_ptr, rv_redo_data, rv_redo_data_length);
+
+	      btree_insert_log (&helper->insert_helper,
+				BTREE_INSERT_MODIFY_MSG ("Tran delete change from INSERT_FLAG to DELETE_FLAG"),
+				BTREE_INSERT_MODIFY_ARGS (thread_p, &helper->insert_helper, page_found, &prev_lsa,
+							  node_type == BTREE_LEAF_NODE, slotid, new_record.length,
+							  btid_int->sys_btid));
 
 	      btree_rv_log_insert_object (thread_p, helper->insert_helper, addr, 0, rv_redo_data_length, NULL,
 					  rv_redo_data);
