@@ -5729,7 +5729,7 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag, void
 	case CCI_U_TYPE_VARNCHAR:
 	case CCI_U_TYPE_NUMERIC:
 	case CCI_U_TYPE_ENUM:
-        case CCI_U_TYPE_JSON:
+	case CCI_U_TYPE_JSON:
 	  if (length == UNMEASURED_LENGTH)
 	    {
 	      bind_value->size = strlen ((const char *) value);

@@ -3558,7 +3558,7 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
  *   json_val(out): output JSON DB_VALUE
  */
 int
-db_json_val_from_str (const char *raw_str, const int str_size, DB_VALUE *json_val)
+db_json_val_from_str (const char *raw_str, const int str_size, DB_VALUE * json_val)
 {
   JSON_DOC *json_doc = NULL;
   int error_code = NO_ERROR;

@@ -286,7 +286,7 @@ extern "C"
 
   extern bool db_value_is_corrupted (const DB_VALUE * value);
 
-  extern int db_json_val_from_str (const char *raw_str, const int str_size, DB_VALUE *json_val);
+  extern int db_json_val_from_str (const char *raw_str, const int str_size, DB_VALUE * json_val);
 
 /* Use the inline version of the functions. */
 #include "dbtype_function.i"
