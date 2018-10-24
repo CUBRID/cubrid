@@ -20093,7 +20093,10 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
   aptr_statement = mq_translate (parser, aptr_statement);
   if (aptr_statement == NULL)
     {
-      assert (er_errid () != NO_ERROR);
+      if (pt_has_error (parser))
+	{
+	  pt_report_to_ersys_with_statement (parser, PT_SEMANTIC, aptr_statement);
+	}
       error = er_errid ();
       if (error == NO_ERROR)
 	{
@@ -24534,11 +24537,12 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
   aptr_statement = mq_translate (parser, aptr_statement);
   if (aptr_statement == NULL)
     {
-#if 0				/* TODO */
-      assert (er_errid () != NO_ERROR);
-#endif
+      if (pt_has_error (parser))
+	{
+	  pt_report_to_ersys_with_statement (parser, PT_SEMANTIC, aptr_statement);
+	}
       error = er_errid ();
-      if (error == NO_ERROR && !pt_has_error (parser))
+      if (error == NO_ERROR)
 	{
 	  error = ER_GENERIC_ERROR;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -24979,11 +24983,12 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
   aptr_statement = mq_translate (parser, aptr_statement);
   if (aptr_statement == NULL)
     {
-#if 0				/* TODO */
-      assert (er_errid () != NO_ERROR);
-#endif
+      if (pt_has_error (parser))
+	{
+	  pt_report_to_ersys_with_statement (parser, PT_SEMANTIC, aptr_statement);
+	}
       error = er_errid ();
-      if (error == NO_ERROR && !pt_has_error (parser))
+      if (error == NO_ERROR)
 	{
 	  error = ER_GENERIC_ERROR;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
