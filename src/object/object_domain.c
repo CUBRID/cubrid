@@ -8304,7 +8304,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	case DB_TYPE_VARNCHAR:
 	  if (tp_atoudatetime (src, &v_datetime) != NO_ERROR)
 	    {
-	      return DOMAIN_ERROR;
+	      status = DOMAIN_ERROR;
 	    }
 	  else
 	    {
