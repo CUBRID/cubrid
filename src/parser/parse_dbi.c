@@ -3549,3 +3549,28 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
 
   return db_value;
 }
+
+/*
+ * db_json_val_from_str() - create JSON value from string
+ *   return:  error code
+ *   raw_str(in): buffer storing a JSON
+ *   str_size(in): size of buffer
+ *   json_val(out): output JSON DB_VALUE
+ */
+int
+db_json_val_from_str (const char *raw_str, const int str_size, DB_VALUE *json_val)
+{
+  JSON_DOC *json_doc = NULL;
+  int error_code = NO_ERROR;
+
+  error_code = db_json_get_json_from_str (raw_str, json_doc, str_size);
+  if (error_code != NO_ERROR)
+    {
+      assert (json_doc == NULL);
+      return error_code;
+    }
+
+  db_make_json (json_val, json_doc, true);
+
+  return error_code;
+}

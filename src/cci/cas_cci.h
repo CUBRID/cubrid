@@ -354,7 +354,8 @@ typedef enum
   /* Disabled type */
   CCI_U_TYPE_TIMETZ = 33,	/* internal use only - RESERVED */
   /* end of disabled types */
-  CCI_U_TYPE_LAST = CCI_U_TYPE_DATETIMELTZ
+  CCI_U_TYPE_JSON = 34,
+  CCI_U_TYPE_LAST = CCI_U_TYPE_JSON
 } T_CCI_U_TYPE;
 
 typedef unsigned char T_CCI_U_EXT_TYPE;
