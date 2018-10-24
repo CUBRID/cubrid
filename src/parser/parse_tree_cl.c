@@ -12473,12 +12473,12 @@ pt_print_function (PARSER_CONTEXT * parser, PT_NODE * p)
 	    {
 	      if (p->info.function.arg_list != NULL)
 		{
-	          r1 = pt_print_bytes (parser, p->info.function.arg_list);
+		  r1 = pt_print_bytes (parser, p->info.function.arg_list);
 		}
 	      else
 		{
 		  // it is unexpected but a badly formed function may miss its arg_list.
-	          r1 = NULL;
+		  r1 = NULL;
 		}
 
 	      if (p->info.function.order_by != NULL)
