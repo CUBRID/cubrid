@@ -1114,7 +1114,10 @@ db_json_set_iterator (JSON_ITERATOR *&json_itr, const JSON_DOC &new_doc)
 void
 db_json_reset_iterator (JSON_ITERATOR *&json_itr)
 {
-  json_itr->reset ();
+  if (json_itr != NULL)
+    {
+      json_itr->reset ();
+    }
 }
 
 bool
@@ -1141,11 +1144,8 @@ db_json_create_iterator (const DB_JSON_TYPE &type)
 void
 db_json_delete_json_iterator (JSON_ITERATOR *&json_itr)
 {
-  if (json_itr != NULL)
-    {
-      delete json_itr;
-      json_itr = NULL;
-    }
+  delete json_itr;
+  json_itr = NULL;
 }
 
 void

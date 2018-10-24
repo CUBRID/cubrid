@@ -208,10 +208,7 @@ namespace cubscan
     {
       m_is_node_consumed = true;
 
-      if (m_node->m_iterator != NULL)
-	{
-	  db_json_reset_iterator (m_node->m_iterator);
-	}
+      db_json_reset_iterator (m_node->m_iterator);
 
       m_process_doc = NULL;
       m_node->clear_columns (false);
