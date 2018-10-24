@@ -12471,7 +12471,16 @@ pt_print_function (PARSER_CONTEXT * parser, PT_NODE * p)
 	{
 	  if (code == PT_GROUP_CONCAT)
 	    {
-	      r1 = pt_print_bytes (parser, p->info.function.arg_list);
+	      if (p->info.function.arg_list != NULL)
+		{
+	          r1 = pt_print_bytes (parser, p->info.function.arg_list);
+		}
+	      else
+		{
+		  // it is unexpected but a badly formed function may miss its arg_list.
+	          r1 = NULL;
+		}
+
 	      if (p->info.function.order_by != NULL)
 		{
 		  PARSER_VARCHAR *r2;
@@ -12480,8 +12489,9 @@ pt_print_function (PARSER_CONTEXT * parser, PT_NODE * p)
 		  r1 = pt_append_nulstring (parser, r1, " order by ");
 		  r1 = pt_append_varchar (parser, r1, r2);
 		}
+
 	      /* SEPARATOR */
-	      if (p->info.function.arg_list->next != NULL)
+	      if (p->info.function.arg_list != NULL && p->info.function.arg_list->next != NULL)
 		{
 		  PARSER_VARCHAR *r2;
 		  /* print separator */
