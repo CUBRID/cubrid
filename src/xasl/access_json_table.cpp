@@ -128,7 +128,6 @@ namespace cubxasl
       int error_code = NO_ERROR;
       JSON_DOC *docp = NULL;
       TP_DOMAIN_STATUS status_cast = TP_DOMAIN_STATUS::DOMAIN_COMPATIBLE;
-      db_value output_value_tmp;
 
       error_code = db_json_extract_document_from_path (&input, m_path, docp);
       if (error_code != NO_ERROR)
@@ -148,13 +147,16 @@ namespace cubxasl
 	  return error_code;
 	}
 
-      if (db_make_json (&output_value_tmp, docp, true) != NO_ERROR)
+      // clear previous output_value
+      pr_clear_value (m_output_value_pointer);
+
+      if (db_make_json (m_output_value_pointer, docp, true) != NO_ERROR)
 	{
 	  assert (false);
 	  return ER_FAILED;
 	}
 
-      status_cast = tp_value_cast (&output_value_tmp, m_output_value_pointer, m_domain, false);
+      status_cast = tp_value_cast (m_output_value_pointer, m_output_value_pointer, m_domain, false);
       if (status_cast != TP_DOMAIN_STATUS::DOMAIN_COMPATIBLE)
 	{
 	  error_code = trigger_on_error (input, status_cast, *m_output_value_pointer);
@@ -163,9 +165,6 @@ namespace cubxasl
 	      ASSERT_ERROR ();
 	    }
 	}
-
-      // clear output_value_tmp because content was copied to m_output_value_pointer on tp_value_cast
-      error_code = pr_clear_value (&output_value_tmp);
 
       return error_code;
     }
