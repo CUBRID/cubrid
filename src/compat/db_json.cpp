@@ -1114,7 +1114,10 @@ db_json_set_iterator (JSON_ITERATOR *&json_itr, const JSON_DOC &new_doc)
 void
 db_json_reset_iterator (JSON_ITERATOR *&json_itr)
 {
-  json_itr->reset ();
+  if (json_itr != NULL)
+    {
+      json_itr->reset ();
+    }
 }
 
 bool
@@ -1148,7 +1151,10 @@ db_json_delete_json_iterator (JSON_ITERATOR *&json_itr)
 void
 db_json_clear_json_iterator (JSON_ITERATOR *&json_itr)
 {
-  json_itr->clear_content ();
+  if (json_itr != NULL)
+    {
+      json_itr->clear_content ();
+    }
 }
 
 bool
@@ -1288,13 +1294,13 @@ db_json_unquote (const JSON_DOC &doc, char *&result_str)
 {
   assert (result_str == nullptr);
 
-  if (!doc.IsString())
+  if (!doc.IsString ())
     {
       result_str = db_json_get_raw_json_body_from_document (&doc);
     }
   else
     {
-      result_str = db_private_strdup (NULL, doc.GetString());
+      result_str = db_private_strdup (NULL, doc.GetString ());
 
       if (result_str == nullptr)
 	{
@@ -2015,7 +2021,7 @@ db_json_search_func (JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALUE *esc
   for (auto &starting_path : starting_paths)
     {
       JSON_DOC *resolved = nullptr;
-      int error_code = db_json_extract_document_from_path (&doc, starting_path.c_str(), resolved);
+      int error_code = db_json_extract_document_from_path (&doc, starting_path.c_str (), resolved);
 
       if (error_code != NO_ERROR)
 	{
