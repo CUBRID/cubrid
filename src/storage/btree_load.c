@@ -4670,6 +4670,8 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
   /* Start extracting from heap. */
   for (;;)
     {
+      ret = NO_ERROR;
+
       /* Scan from heap and insert into the index. */
       attr_offset = cur_class * n_attrs;
 
