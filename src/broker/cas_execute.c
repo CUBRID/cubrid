@@ -68,8 +68,6 @@
 #include "system_parameter.h"
 #include "schema_manager.h"
 #include "object_representation.h"
-#include "object_domain.h"
-#include "db_json.hpp"
 
 #include "dbi.h"
 #include "dbtype.h"
