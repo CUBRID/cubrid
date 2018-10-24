@@ -4744,6 +4744,30 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
 
       def->overloads_count = num;
       break;
+
+    case PT_STR_TO_DATE:
+      num = 0;
+
+      /* one overload */
+
+      /* arg1 */
+      sig.arg1_type.is_generic = true;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_STRING;
+      /* arg2 */
+      sig.arg2_type.is_generic = true;
+      sig.arg2_type.val.generic_type = PT_GENERIC_TYPE_STRING;
+      /* arg3 */
+      sig.arg3_type.is_generic = false;
+      sig.arg3_type.val.type = PT_TYPE_INTEGER;
+
+      /* return type */
+      sig.return_type.is_generic = true;
+      sig.return_type.val.generic_type = PT_GENERIC_TYPE_DATETIME;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
     case PT_CRC32:
       num = 0;
 
@@ -10288,6 +10312,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
 	if (arg2->node_type == PT_VALUE)
 	  {
+	    assert (PT_IS_CHAR_STRING_TYPE (arg2_type));
 	    type_specifier = db_check_time_date_format ((char *) arg2->info.value.data_value.str->bytes);
 	  }
 	else
