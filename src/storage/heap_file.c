@@ -50,6 +50,7 @@
 #include "query_executor.h"
 #include "fetch.h"
 #include "server_interface.h"
+#include "elo.h"
 #include "db_elo.h"
 #include "string_opfunc.h"
 #include "xasl.h"

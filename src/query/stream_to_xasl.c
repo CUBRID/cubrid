@@ -318,7 +318,7 @@ end:
 /*
  * stx_map_stream_to_func_pred () -
  *   return: if successful, return 0, otherwise non-zero error code
- *   xasl(in)      : pointer to where to return the unpacked FUNC_PRED 
+ *   xasl(in)      : pointer to where to return the unpacked FUNC_PRED
  *   xasl_stream(in)    : pointer to xasl stream
  *   xasl_stream_size(in)       : # of bytes in xasl_stream
  *   xasl_unpack_info_ptr(in)   : pointer to where to return the pack info
@@ -2148,7 +2148,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
   ptr = or_unpack_int (ptr, &xasl->mvcc_reev_extra_cls_cnt);
 
 #if defined (ENABLE_COMPOSITE_LOCK)
-  /* 
+  /*
    * Note that the composite lock block is strictly a server side block
    * and was not packed.  We'll simply clear the memory.
    */
@@ -4449,7 +4449,7 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr, ACCESS_SPEC_TYPE
   access_spec->curent = NULL;
   access_spec->pruned = false;
 
-  access_spec->clear_value_at_clone_decache = false;
+  access_spec->clear_value_at_clone_decache = xasl_unpack_info->use_xasl_clone;
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
@@ -4461,10 +4461,6 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr, ACCESS_SPEC_TYPE
       if (access_spec->s_dbval == NULL)
 	{
 	  goto error;
-	}
-      if (xasl_unpack_info->use_xasl_clone && !db_value_is_null (access_spec->s_dbval))
-	{
-	  access_spec->clear_value_at_clone_decache = true;
 	}
     }
 

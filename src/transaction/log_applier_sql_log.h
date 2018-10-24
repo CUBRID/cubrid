@@ -26,7 +26,6 @@
 
 #ident "$Id$"
 
-#include "dbdef.h"
 #include "dbtype_def.h"
 #include "work_space.h"
 

@@ -73,16 +73,15 @@
 #include "shard_shm.h"
 #include "shard_metadata.h"
 #include "broker_proxy_conn.h"
+#include "dbtype_def.h"
 
 #if defined(WINDOWS)
 #include "broker_wsa_init.h"
 #endif
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-#include "dbdef.h"
-#else /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
 #define DB_EMPTY_SESSION        (0)
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+#endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 
 #ifdef WIN_FW
 #if !defined(WINDOWS)

@@ -46,7 +46,6 @@
 #include "error_manager.h"
 #include "db.h"
 #include "dbi.h"
-#include "dbdef.h"
 #include "dbtype.h"
 #include "parser.h"
 #include "porting.h"
@@ -86,6 +85,7 @@
 #include "xasl_to_stream.h"
 #include "query_cl.h"
 #include "parser_support.h"
+#include "tz_support.h"
 #include "dbtype.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)

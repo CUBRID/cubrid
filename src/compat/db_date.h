@@ -29,23 +29,6 @@
 
 #include <time.h>
 
-#include "tz_support.h"
-
-#define db_utime_to_string db_timestamp_to_string
-#define db_string_to_utime db_string_to_timestamp
-#define db_date_parse_utime db_date_parse_timestamp
-
-enum
-{
-  TIME_SPECIFIER = 1,
-  DATE_SPECIFIER = 2,
-  DATETIME_SPECIFIER = 3,
-  REMOVED_TIMETZ_SPECIFIER = 4,
-  DATETIMETZ_SPECIFIER = 5
-};
-
-extern void db_date_locale_init (void);
-
 /* DB_DATE functions */
 extern int db_date_weekday (DB_DATE * date);
 extern int db_date_to_string (char *buf, int bufsize, DB_DATE * date);

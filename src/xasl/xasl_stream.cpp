@@ -438,6 +438,7 @@ stx_build (THREAD_ENTRY *thread_p, char *ptr, cubxasl::json_table::node &jtn)
 	      (json_table_column *) stx_alloc_struct (thread_p, (int) (sizeof (json_table_column) * jtn.m_output_columns_size));
       for (size_t i = 0; i < jtn.m_output_columns_size; ++i)
 	{
+	  jtn.m_output_columns[i].init ();
 	  ptr = stx_build (thread_p, ptr, jtn.m_output_columns[i]);
 	}
     }
@@ -450,6 +451,7 @@ stx_build (THREAD_ENTRY *thread_p, char *ptr, cubxasl::json_table::node &jtn)
 	      (json_table_node *) stx_alloc_struct (thread_p, (int) (sizeof (json_table_node) * jtn.m_nested_nodes_size));
       for (size_t i = 0; i < jtn.m_nested_nodes_size; ++i)
 	{
+	  jtn.m_nested_nodes[i].init ();
 	  ptr = stx_build (thread_p, ptr, jtn.m_nested_nodes[i]);
 	}
     }
@@ -466,14 +468,18 @@ stx_build (THREAD_ENTRY *thread_p, char *ptr, cubxasl::json_table::node &jtn)
 char *
 stx_build (THREAD_ENTRY *thread_p, char *ptr, cubxasl::json_table::spec_node &json_table_spec)
 {
-  int m_node_count;
-  ptr = or_unpack_int (ptr, &m_node_count);
-  json_table_spec.m_node_count = (size_t) (m_node_count);
+  json_table_spec.init ();
+
+  int node_count;
+  ptr = or_unpack_int (ptr, &node_count);
+  json_table_spec.m_node_count = (size_t) (node_count);
 
   stx_restore (thread_p, ptr, json_table_spec.m_json_reguvar);
 
   stx_alloc (thread_p, json_table_spec.m_root_node);
   assert (json_table_spec.m_root_node != NULL);
+
+  json_table_spec.m_root_node->init ();
   ptr = stx_build (thread_p, ptr, *json_table_spec.m_root_node);
 
   return ptr;

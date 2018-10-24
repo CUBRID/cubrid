@@ -42,6 +42,7 @@
 #include "system_parameter.h"
 #include "intl_support.h"
 #include "error_manager.h"
+#include "tz_support.h"
 #include "db_date.h"
 #include "misc_string.h"
 #include "md5.h"
@@ -50,6 +51,7 @@
 #include "tz_support.h"
 #include "object_primitive.h"
 #include "dbtype.h"
+#include "elo.h"
 #include "db_elo.h"
 #include <vector>
 #if !defined (SERVER_MODE)
@@ -22973,7 +22975,7 @@ db_str_to_date (const DB_VALUE * str, const DB_VALUE * format, const DB_VALUE * 
 	}
       else
 	{
-	  error_status = ER_OBJ_INVALID_ARGUMENTS;
+	  error_status = ER_QSTR_INVALID_FORMAT;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	  goto error;
 	}

@@ -49,6 +49,7 @@
 #if defined(SERVER_MODE)
 #include "critical_section.h"
 #endif
+#include "tz_support.h"
 #include "db_date.h"
 #include "dbtype.h"
 #if defined (SERVER_MODE)

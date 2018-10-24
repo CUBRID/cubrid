@@ -53,7 +53,6 @@
 #include "schema_manager.h"
 #include "trigger_manager.h"
 #include "system_parameter.h"
-#include "dbdef.h"
 #include "db.h"			/* for db_Connect_status */
 #include "porting.h"
 #include "network_interface_cl.h"

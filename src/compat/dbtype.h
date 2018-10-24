@@ -32,7 +32,6 @@
 #include "config.h"
 
 #include "system_parameter.h"
-#include "dbdef.h"
 #include "error_manager.h"
 #include "system.h"
 #include "dbtype_def.h"
@@ -42,7 +41,6 @@
 #include "intl_support.h"
 #include "object_primitive.h"
 #include "memory_alloc.h"
-
 
 #define DB_CURRENCY_DEFAULT db_get_currency_default()
 
@@ -149,11 +147,6 @@
 extern "C"
 {
 #endif
-
-  //extern DB_TYPE setobj_type (COL * set);
-  /********************************************************/
-  /* From elo.h */
-
 
   /********************************************************/
   /* From db_date.h */

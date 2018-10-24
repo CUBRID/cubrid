@@ -29,7 +29,6 @@
 #include "config.h"
 
 #include "error_manager.h"
-#include "dbdef.h"
 #include "query_list.h"
 #include "storage_common.h"
 #include "object_primitive.h"

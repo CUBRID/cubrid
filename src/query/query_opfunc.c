@@ -43,6 +43,7 @@
 #include "databases_file.h"
 #include "tz_support.h"
 #include "numeric_opfunc.h"
+#include "tz_support.h"
 #include "db_date.h"
 #include "dbtype.h"
 #include "query_dump.h"

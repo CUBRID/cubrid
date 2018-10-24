@@ -29,9 +29,9 @@
 #include <string.h>
 #include <assert.h>
 
+#include "dbtype.h"
 #include "dbi.h"
 #include "utility.h"
-#include "dbtype.h"
 #include "language_support.h"
 #include "message_catalog.h"
 #include "memory_alloc.h"

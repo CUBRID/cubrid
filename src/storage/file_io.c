@@ -2634,7 +2634,7 @@ fileio_expand_to (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES size_npages, D
 
   db_private_free (thread_p, io_page_p);
 
-  return NO_ERROR;
+  return error_code;
 }
 #endif /* not CS_MODE */
 

@@ -16407,6 +16407,7 @@ sm_load_online_index (MOP classmop, const char *constraint_name)
   HFID *hfids = NULL;
   int reverse;
   int unique_pk = 0;
+  int not_null;
 
   /* Fetch the class. */
   error = au_fetch_class (classmop, &class_, AU_FETCH_UPDATE, AU_ALTER);
@@ -16540,16 +16541,18 @@ sm_load_online_index (MOP classmop, const char *constraint_name)
   if (con->type == SM_CONSTRAINT_UNIQUE || con->type == SM_CONSTRAINT_REVERSE_UNIQUE)
     {
       unique_pk = BTREE_CONSTRAINT_UNIQUE;
+      not_null = 0;
     }
   else if (con->type == SM_CONSTRAINT_PRIMARY_KEY)
     {
       unique_pk = BTREE_CONSTRAINT_UNIQUE | BTREE_CONSTRAINT_PRIMARY_KEY;
+      not_null = 1;
     }
 
   if (con->func_index_info)
     {
       error = btree_load_index (&con->index_btid, constraint_name, domain, oids, n_classes, n_attrs, attr_ids,
-				(int *) con->attrs_prefix_length, hfids, unique_pk, false, NULL,
+				(int *) con->attrs_prefix_length, hfids, unique_pk, not_null, NULL,
 				NULL, NULL, SM_GET_FILTER_PRED_STREAM (con->filter_predicate),
 				SM_GET_FILTER_PRED_STREAM_SIZE (con->filter_predicate),
 				con->func_index_info->expr_stream, con->func_index_info->expr_stream_size,
@@ -16559,7 +16562,7 @@ sm_load_online_index (MOP classmop, const char *constraint_name)
   else
     {
       error = btree_load_index (&con->index_btid, constraint_name, domain, oids, n_classes, n_attrs, attr_ids,
-				(int *) con->attrs_prefix_length, hfids, unique_pk, false, NULL,
+				(int *) con->attrs_prefix_length, hfids, unique_pk, not_null, NULL,
 				NULL, NULL, SM_GET_FILTER_PRED_STREAM (con->filter_predicate),
 				SM_GET_FILTER_PRED_STREAM_SIZE (con->filter_predicate), NULL, -1, -1, -1,
 				con->index_status);

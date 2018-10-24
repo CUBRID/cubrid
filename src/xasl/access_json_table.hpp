@@ -58,6 +58,8 @@ namespace cubxasl
 	json_table_column_function m_function;
 
 	column ();
+
+	void init ();
 	int evaluate (const JSON_DOC &input, size_t ordinality);
 
       private:
@@ -84,9 +86,10 @@ namespace cubxasl
 
       node (void);
 
-      void clear_columns ();
+      void init ();
+      void clear_columns (bool clear_default_values);
       void clear_iterators ();
-      void clear_tree ();
+      void clear_tree (bool clear_default_values);
 
       bool check_need_expand () const;
       static bool str_ends_with (const std::string &str, const std::string &end);
@@ -99,6 +102,10 @@ namespace cubxasl
       node *m_root_node;
       regu_variable_node *m_json_reguvar;
       std::size_t m_node_count;               // the total number of nodes
+
+      spec_node ();
+
+      void init ();
     };
 
   } // namespace json_table

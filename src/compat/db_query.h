@@ -34,7 +34,6 @@
 #include "config.h"
 
 #include "error_manager.h"
-#include "dbdef.h"
 #include "object_primitive.h"
 #include "class_object.h"
 #include "cursor.h"

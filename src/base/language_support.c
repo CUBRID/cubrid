@@ -41,6 +41,7 @@
 #if !defined(WINDOWS)
 #include <dlfcn.h>
 #endif /* !defined (WINDOWS) */
+#include "tz_support.h"
 #include "db_date.h"
 #include "string_opfunc.h"
 

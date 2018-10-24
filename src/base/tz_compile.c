@@ -27,6 +27,7 @@
 #include "porting.h"
 #include "byte_order.h"
 #include "utility.h"
+#include "tz_support.h"
 #include "db_date.h"
 #include "environment_variable.h"
 #include "chartype.h"
@@ -35,7 +36,6 @@
 #include "memory_alloc.h"
 
 #include "tz_compile.h"
-#include "tz_support.h"
 #include "xml_parser.h"
 #include "md5.h"
 #include "db_query.h"
