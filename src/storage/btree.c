@@ -1922,7 +1922,7 @@ btree_clear_key_value (bool * clear_flag, DB_VALUE * key_value)
       pr_clear_value (key_value);
       *clear_flag = false;
     }
-
+  db_make_null (key_value);
   return *clear_flag;
 }
 
@@ -4303,7 +4303,7 @@ btree_read_record_without_decompression (THREAD_ENTRY * thread_p, BTID_INT * bti
 
   if (key != NULL)
     {
-      db_make_null (key);
+      btree_clear_key_value (clear_key, key);
     }
 
   *clear_key = false;
@@ -25565,7 +25565,7 @@ btree_select_visible_object_for_range_scan (THREAD_ENTRY * thread_p, BTID_INT * 
 	      ASSERT_ERROR ();
 	      return error_code;
 	    }
-	  db_make_null (&bts->cur_key);
+	  btree_clear_key_value (&bts->clear_cur_key, &bts->cur_key);
 	}
       else
 	{
