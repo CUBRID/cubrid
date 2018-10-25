@@ -2272,9 +2272,8 @@ logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_PAG
  */
 PGLENGTH
 logpb_find_header_parameters (THREAD_ENTRY * thread_p, const bool force_read_log_header, const char *db_fullname,
-                              const char *logpath, const char *prefix_logname, PGLENGTH * io_page_size,
-                              PGLENGTH * log_page_size, INT64 * creation_time, float *db_compatibility,
-                              int *db_charset)
+			      const char *logpath, const char *prefix_logname, PGLENGTH * io_page_size,
+			      PGLENGTH * log_page_size, INT64 * creation_time, float *db_compatibility, int *db_charset)
 {
   static LOG_HEADER hdr;	/* Log header */
   static bool is_header_read_from_file = false;
@@ -9398,7 +9397,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
   LOG_CS_ENTER (thread_p);
 
   if (logpb_find_header_parameters (thread_p, true, db_fullname, logpath, prefix_logname, &db_iopagesize,
-                                    &log_page_size, &db_creation, &db_compatibility, &dummy) == -1)
+				    &log_page_size, &db_creation, &db_compatibility, &dummy) == -1)
     {
       db_iopagesize = IO_PAGESIZE;
       log_page_size = LOG_PAGESIZE;
