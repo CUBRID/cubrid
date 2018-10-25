@@ -189,7 +189,8 @@ extern void set_query_timeout (T_SRV_HANDLE * srv_handle, int query_timeout);
 static int netval_to_dbval (void *type, void *value, DB_VALUE * db_val, T_NET_BUF * net_buf, char desired_type);
 static int cur_tuple (T_QUERY_RESULT * q_result, int max_col_size, char sensitive_flag, DB_OBJECT * obj,
 		      T_NET_BUF * net_buf);
-static int dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char flag, int max_col_size, char column_type_flag);
+static int dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_col_size,
+			     char column_type_flag);
 static void dbobj_to_casobj (DB_OBJECT * obj, T_OBJECT * cas_obj);
 static void casobj_to_dbobj (T_OBJECT * cas_obj, DB_OBJECT ** obj);
 static void dblob_to_caslob (DB_VALUE * lob, T_LOB_HANDLE * cas_lob);
@@ -354,7 +355,7 @@ static char cas_u_type[] = { 0,	/* 0 */
   CCI_U_TYPE_TIMESTAMPLTZ,	/* 37 */
   CCI_U_TYPE_DATETIMETZ,	/* 38 */
   CCI_U_TYPE_DATETIMELTZ,	/* 39 */
-  CCI_U_TYPE_STRING,		/* 40 */
+  CCI_U_TYPE_JSON,		/* 40 */
 };
 
 static T_FETCH_FUNC fetch_func[] = {
@@ -3870,6 +3871,10 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF 
 	{
 	  type = CCI_U_TYPE_NCHAR;
 	}
+      else if (desired_type == DB_TYPE_JSON)
+	{
+	  type = CCI_U_TYPE_JSON;
+	}
     }
 
   if (type == CCI_U_TYPE_DATETIME)
@@ -4342,6 +4347,16 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF 
 	net_arg_get_lob_handle (&cas_lob, net_value);
 	caslob_to_dblob (&cas_lob, &db_val);
 	coercion_flag = FALSE;
+      }
+      break;
+    case CCI_U_TYPE_JSON:
+      {
+	char *value;
+	int val_size;
+
+	net_arg_get_str (&value, &val_size, net_value);
+
+	err_code = db_json_val_from_str (value, val_size, &db_val);
       }
       break;
 
@@ -5020,6 +5035,8 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 	str = db_get_json_raw_body (val);
 	bytes_size = strlen (str);
 
+	/* no matter which column type is returned to client (JSON or STRING, depending on client version), 
+	 * the data is always encoded as string */
 	add_res_data_string (net_buf, str, bytes_size, 0, CAS_SCHEMA_DEFAULT_CHARSET, &data_size);
 	db_private_free (NULL, str);
       }
