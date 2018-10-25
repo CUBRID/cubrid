@@ -288,7 +288,7 @@ namespace cubscan
 
       // we need the starting value to expand into a list of records
       DB_VALUE *value_p = NULL;
-      error_code = fetch_peek_dbval (thread_p, m_specp->m_json_reguvar, NULL, NULL, NULL, NULL, &value_p);
+      error_code = fetch_peek_dbval (thread_p, m_specp->m_json_reguvar, m_vd, NULL, NULL, NULL, &value_p);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -615,9 +615,16 @@ namespace cubscan
       return NO_ERROR;
     }
 
-    SCAN_PRED &scanner::get_predicate ()
+    SCAN_PRED &
+    scanner::get_predicate ()
     {
       return m_scan_predicate;
+    }
+
+    void
+    scanner::set_value_descriptor (val_descr *vd)
+    {
+      m_vd = vd;
     }
   } // namespace json_table
 } // namespace cubscan
