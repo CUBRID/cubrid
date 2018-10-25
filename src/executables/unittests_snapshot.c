@@ -547,7 +547,7 @@ test_mvcc_get_oldest (void *param)
   for (i = 0; i < NOPS_OLDEST; i++)
     {
       prev_oldest = curr_oldest;
-      curr_oldest = logtb_get_oldest_active_mvccid (thread_p);
+      curr_oldest = logtb_get_oldest_active_mvccid (thread_p, true, false);
       if (MVCC_ID_PRECEDES (curr_oldest, prev_oldest))
 	{
 	  abort ();

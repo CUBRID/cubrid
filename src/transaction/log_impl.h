@@ -2364,8 +2364,10 @@ extern const char *logpb_perm_status_to_string (enum LOG_PSTATUS val);
 extern const char *tran_abort_reason_to_string (TRAN_ABORT_REASON val);
 extern int logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int arg_cnt,
 					 void **ctx);
-extern MVCCID logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p);
-
+extern MVCCID logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p, bool force_oldest_update_computation,
+					      bool keep_oldest_blocked);
+extern void logtb_unblock_oldest_mvccid_computation (THREAD_ENTRY * thread_p);
+extern bool logtb_is_oldest_mvccid_computation_blocked (THREAD_ENTRY * thread_p);
 extern LOG_PAGEID logpb_find_oldest_available_page_id (THREAD_ENTRY * thread_p);
 extern int logpb_find_oldest_available_arv_num (THREAD_ENTRY * thread_p);
 

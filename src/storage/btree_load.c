@@ -661,6 +661,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   BTID btid_global_stats = BTID_INITIALIZER;
   OID *notification_class_oid;
   bool is_sysop_started = false;
+  MVCCID oldest_active_mvccid;
 
   /* Check for robustness */
   if (!btid || !hfids || !class_oids || !attr_ids || !key_type)
@@ -719,8 +720,22 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
 
   btid_int.nonleaf_key_type = btree_generate_prefix_domain (&btid_int);
 
-  /* Initialize the fields of sorting argument structures */
-  sort_args->lowest_active_mvccid = logtb_get_oldest_active_mvccid (thread_p);
+  tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  if (tdes->block_global_oldest_active_until_commit == false)
+    {
+      /*  Wait for oldest MVCCID computation. */
+      oldest_active_mvccid = logtb_get_oldest_active_mvccid (thread_p, true, false);
+    }
+  else
+    {
+      /* We can use vacuum_Global_oldest_active_mvccid now, since nobody else can update it. */
+      assert (logtb_is_oldest_mvccid_computation_blocked (thread_p));
+      oldest_active_mvccid = vacuum_get_global_oldest_active_mvccid ();
+    }
+  assert (MVCCID_IS_VALID (oldest_active_mvccid));
+
+  /* Initialize the fields of sorting argument structures. Wait for oldest active MVCCID computation to get the best MVCCID. */
+  sort_args->lowest_active_mvccid = oldest_active_mvccid;
   sort_args->unique_pk = unique_pk;
   sort_args->not_null_flag = not_null_flag;
   sort_args->hfids = hfids;
@@ -788,7 +803,6 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   sort_args->scancache_inited = 1;
 
   /* After building index acquire lock on table, the transaction has deadlock priority */
-  tdes = LOG_FIND_CURRENT_TDES (thread_p);
   if (tdes)
     {
       tdes->has_deadlock_priority = true;

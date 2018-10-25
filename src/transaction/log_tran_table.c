@@ -104,6 +104,12 @@
 #define pthread_mutex_unlock(a)
 #endif /* not SERVER_MODE */
 
+/* When transactions run some complex operations on heap files (upgrade domain, reorganize partitions), concurrent
+ * access with vacuum workers can create problems.
+ * This is a counter that is used to block transactions against parallel computation of oldest active MVCCID.
+ */
+static volatile INT32 oldest_Active_mvccid_lock = 0;
+
 static const int LOG_MAX_NUM_CONTIGUOUS_TDES = INT_MAX / sizeof (LOG_TDES);
 static const float LOG_EXPAND_TRANTABLE_RATIO = 1.25;	/* Increase table by 25% */
 static const int LOG_TOPOPS_STACK_INCREMENT = 3;	/* No more than 3 nested top system operations */
@@ -4391,21 +4397,28 @@ xlogtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p)
 }
 
 /*
- * logtb_get_oldest_active_mvccid () - Get oldest MVCCID that was running
+ * logtb_get_oldest_active_mvccid () - Compute and get the oldest MVCCID that was running
  *				       when any active transaction started.
  *
- * return	 : MVCCID for oldest active transaction.
+ * return	 : MVCCID for oldest active transaction or MVCCID_NULL.
  * thread_p (in) : Thread entry.
+ * force_oldest_update_computation (in) : True, if needs to force oldest computation.
+ * keep_oldest_blocked (in): True, if keep oldest active MVCCID blocked after computation.
  *
- * Note:  The returned MVCCID is used as threshold by vacuum. The rows deleted
+ * Note:   The returned MVCCID is used as threshold by vacuum. The rows deleted
  *	      by transaction having MVCCIDs >= logtb_get_lowest_active_mvccid
  *	      will not be physical removed by vacuum. That's because that rows
  *	      may still be visible to active transactions, even if deleting
  *	      transaction has commit meanwhile. If there is no active
  *	      transaction, this function return highest_completed_mvccid + 1.
+ *         We do not allow parallel computation of oldest active MVCCID. If a thread can't compute oldest MVCCID, it
+ *	   returns NULL_MVCCID. In this case, the user may use VACUUM global MVCCID.
+ *	   Also, the user may decide to wait for computation of oldest active MVCCID (force_oldest_update_computation = true).
+ *         If needs to keep oldest blocked, is the user responsibility to unblock it. While a transaction keep oldest blocked,
+ *         other transaction can't compute another oldest.
  */
 MVCCID
-logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p)
+logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p, bool force_oldest_update_computation, bool keep_oldest_blocked)
 {
   MVCCID lowest_active_mvccid = 0;
   MVCCTABLE *mvcc_table = NULL;
@@ -4453,6 +4466,23 @@ logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
+    }
+
+  /* Currently, we do not allow parallel computation of oldest active MVCCID. */
+start_computation:
+  if (!ATOMIC_CAS_32 (&oldest_Active_mvccid_lock, 0, 1))
+    {
+      if (force_oldest_update_computation)
+	{
+	  /* Wait for concurrent thread to finish oldest computation. */
+#if defined (SERVER_MODE)
+	  thread_sleep (20);
+#endif
+	  goto start_computation;
+	}
+
+      /* Other transaction compute oldest. Return NULL_MVCCID. */
+      return MVCCID_NULL;
     }
 
   lowest_active_mvccid = ATOMIC_INC_64 (&mvcc_table->current_trans_status.lowest_active_mvccid, 0LL);
@@ -4560,7 +4590,49 @@ logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p)
   }
 #endif /* !NDEBUG */
 
+  if (keep_oldest_blocked == false)
+    {
+      logtb_unblock_oldest_mvccid_computation (thread_p);
+    }
   return lowest_active_mvccid;
+}
+
+/*
+ * logtb_unblock_oldest_mvccid_computation () - Unblock oldest active MVCCID computation.
+ *
+ * return	 : nothing
+ * thread_p (in) : Thread entry.
+ */
+void
+logtb_unblock_oldest_mvccid_computation (THREAD_ENTRY * thread_p)
+{
+  /* Allow to others to update the oldest active MVCCID. */
+  if (!ATOMIC_CAS_32 (&oldest_Active_mvccid_lock, 1, 0))
+    {
+      assert (false);
+    }
+}
+
+/*
+ * logtb_is_oldest_mvccid_computation_blocked () - Is oldest active MVCCID computation blocked?
+ *
+ * return	 : true, if oldest MVCCID computation is blocked
+ * thread_p (in) : Thread entry.
+ */
+bool
+logtb_is_oldest_mvccid_computation_blocked (THREAD_ENTRY * thread_p)
+{
+  int blockers_counter;
+
+  /* Get the blockers counter. */
+  blockers_counter = ATOMIC_INC_32 (&oldest_Active_mvccid_lock, 0);
+  if (blockers_counter == 1)
+    {
+      return true;
+    }
+
+  assert (blockers_counter == 0);
+  return false;
 }
 
 /*
