@@ -1922,6 +1922,7 @@ btree_clear_key_value (bool * clear_flag, DB_VALUE * key_value)
       pr_clear_value (key_value);
       *clear_flag = false;
     }
+  // also set null
   db_make_null (key_value);
   return *clear_flag;
 }
