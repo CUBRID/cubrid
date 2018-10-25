@@ -9556,7 +9556,7 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
       parser->custom_print = save_custom;
     }
   /* else is a single class entity spec */
-  else if (PT_SPEC_IS_ENTITY (p))
+  else if (PT_SPEC_IS_ENTITY (p) && p->info.spec.derived_table_type != PT_DERIVED_JSON_TABLE)
     {
       save_custom = parser->custom_print;
       parser->custom_print |= PT_SUPPRESS_META_ATTR_CLASS;
@@ -9621,7 +9621,7 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
     }
 
-  if (!(parser->custom_print & PT_SUPPRESS_RESOLVED) && !(p->info.spec.derived_table_type == PT_DERIVED_JSON_TABLE))
+  if (!(parser->custom_print & PT_SUPPRESS_RESOLVED) && p->info.spec.derived_table_type != PT_DERIVED_JSON_TABLE)
     {
       save_custom = parser->custom_print;
       parser->custom_print |= PT_SUPPRESS_META_ATTR_CLASS;
@@ -9635,7 +9635,7 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
       parser->custom_print = save_custom;
     }
-  if (p->info.spec.as_attr_list && !PT_SPEC_IS_CTE (p) && !(p->info.spec.derived_table_type == PT_DERIVED_JSON_TABLE))
+  if (p->info.spec.as_attr_list && !PT_SPEC_IS_CTE (p) && p->info.spec.derived_table_type != PT_DERIVED_JSON_TABLE)
     {
       save_custom = parser->custom_print;
       parser->custom_print |= PT_SUPPRESS_RESOLVED;
