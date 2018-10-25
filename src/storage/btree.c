@@ -33798,6 +33798,8 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
   int n_keys = 0;
   int n_oids = 0;
 
+  int key_len;
+
   helper->delete_helper.rv_keyval_data = rv_undo_data_bufalign;
   if (helper->delete_helper.purpose == BTREE_OP_ONLINE_INDEX_TRAN_DELETE)
     {
@@ -33963,6 +33965,13 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 
   btree_delete_helper_to_insert_helper (&helper->delete_helper, &helper->insert_helper);
   helper->insert_helper.purpose = BTREE_OP_ONLINE_INDEX_TRAN_INSERT;
+
+  /*  delete_helper does not hold information regarding the length of the key in page.
+   *  We need this information so that we can check whether we have enough space to insert the new object.
+   */
+
+  key_len = btree_get_disk_size_of_key (key);
+  helper->insert_helper.key_len_in_page = BTREE_GET_KEY_LEN_IN_PAGE (key_len);
 
   if (!btree_key_insert_does_leaf_need_split (thread_p, btid_int, *leaf_page, &helper->insert_helper, search_key))
     {
