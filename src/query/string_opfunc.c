@@ -22975,7 +22975,7 @@ db_str_to_date (const DB_VALUE * str, const DB_VALUE * format, const DB_VALUE * 
 	}
       else
 	{
-	  error_status = ER_QSTR_INVALID_FORMAT;
+	  error_status = ER_OBJ_INVALID_ARGUMENTS;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	  goto error;
 	}
