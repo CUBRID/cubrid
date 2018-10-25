@@ -7129,9 +7129,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  break;
 	case DB_JSON_STRING:
 	  {
-	    const char *json_string = NULL;
-
-	    json_string = db_json_get_string_from_document (src_doc);
+	    const char *json_string = db_json_get_string_from_document (src_doc);
 	    db_make_string_by_const_str (&src_replacement, json_string);
 	  }
 	  break;
@@ -7142,6 +7140,12 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 
       if (json_type != DB_JSON_ARRAY && json_type != DB_JSON_OBJECT)
 	{
+	  if (src == dest)
+	    {
+	      // if src is equal to dest then JSON_DOC can be deleted after required information was extracted from it
+	      pr_clear_value (dest);
+	    }
+
 	  original_type = DB_VALUE_TYPE (&src_replacement);
 	  src = &src_replacement;
 	}
