@@ -4660,6 +4660,8 @@ btree_dump_leaf_record (THREAD_ENTRY * thread_p, FILE * fp, BTID_INT * btid, REC
   int error;
   BTREE_MVCC_INFO mvcc_info;
 
+  db_make_null (&key);
+
   if (BTREE_IS_UNIQUE (btid->unique_pk))
     {
       oid_size = (2 * OR_OID_SIZE);
@@ -4911,6 +4913,8 @@ btree_dump_non_leaf_record (THREAD_ENTRY * thread_p, FILE * fp, BTID_INT * btid,
 
   VPID_SET_NULL (&(non_leaf_record.pnt));
 
+  db_make_null (&key);
+
   /* output the non_leaf record structure content */
   error =
     btree_read_record_without_decompression (thread_p, btid, rec, &key, &non_leaf_record, BTREE_NON_LEAF_NODE,
@@ -5019,6 +5023,8 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pa
 
   /* initialize child page identifier */
   VPID_SET_NULL (child_vpid);
+
+  db_make_null (&temp_key);
 
 #if !defined(NDEBUG)
   if (!page_ptr || !key || DB_IS_NULL (key))
@@ -5338,6 +5344,8 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
   assert (key != NULL && !DB_IS_NULL (key));
   assert (page_ptr != NULL);
   assert (search_key != NULL);
+
+  db_make_null (&temp_key);
 
   /* Initialize search results. */
   search_key->result = BTREE_KEY_NOTFOUND;
@@ -7395,6 +7403,7 @@ btree_verify_subtree (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID_INT
   char err_buf[LINE_MAX];
 
   db_make_null (&INFO2.max_key);
+  db_make_null (&curr_key);
 
   /* test the page for the order of the keys within the page and get the biggest key of this page */
   valid = btree_check_page_key (thread_p, class_oid_p, btid, btname, pg_ptr, pg_vpid);
@@ -8450,6 +8459,8 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
   /* initialize */
   leaf_pnt.key_len = 0;
   VPID_SET_NULL (&leaf_pnt.ovfl);
+
+  db_make_null (&key1);
 
   /* initialize capacity structure */
   cpc->dis_key_cnt = 0;
@@ -10502,6 +10513,8 @@ btree_node_size_uncompressed (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR
   LEAF_REC leaf_pnt;
   int error;
 
+  db_make_null (&key);
+
   used_size = DB_PAGESIZE - spage_get_free_space (thread_p, page_ptr);
 
   prefix = btree_node_common_prefix (thread_p, btid, page_ptr);
@@ -12345,6 +12358,9 @@ btree_node_common_prefix (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pag
   LEAF_REC leaf_pnt;
   int error = NO_ERROR;
 
+  db_make_null (&lf_key);
+  db_make_null (&uf_key);
+
   if (btree_node_is_compressed (thread_p, btid, page_ptr) == false)
     {
       return 0;
@@ -12424,6 +12440,8 @@ btree_recompress_record (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * 
 
   assert (btid_int != NULL);
   assert (record != NULL);
+
+  db_make_null (&key);
 
   if (old_prefix == new_prefix)
     {
@@ -12512,6 +12530,8 @@ btree_compress_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr
     {
       return diff_column;
     }
+
+  db_make_null (&key);
 
   /* compress prefix */
   for (i = 2; i < key_cnt; i++)
@@ -16268,6 +16288,7 @@ btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
     }
 
   db_make_null (key);
+  db_make_null (&key_value);
 
   BTS = &btree_scan;
   BTREE_INIT_SCAN (BTS);
@@ -19524,6 +19545,9 @@ btree_verify_nonleaf_node (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PT
   key_cnt = btree_node_number_of_keys (thread_p, page_ptr);
   assert_release (key_cnt >= 1);
 
+  db_make_null (&prev_key);
+  db_make_null (&curr_key);
+
   /* check key order; exclude neg-inf separator */
   for (i = 1; i < key_cnt; i++)
     {
@@ -20204,6 +20228,7 @@ btree_get_next_node_info (THREAD_ENTRY * thread_p, BTID * btid, BTREE_NODE_SCAN 
 
   /* Get key count */
   db_make_int (node_info[BTREE_NODE_INFO_KEY_COUNT], key_cnt);
+  db_make_null (&key_value);
 
   if (key_cnt > 0)
     {
