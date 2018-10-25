@@ -4761,8 +4761,8 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       sig.arg3_type.val.type = PT_TYPE_INTEGER;
 
       /* return type */
-      sig.return_type.is_generic = true;
-      sig.return_type.val.generic_type = PT_GENERIC_TYPE_DATETIME;
+      sig.return_type.is_generic = false;
+      sig.return_type.val.type = PT_TYPE_MAYBE;
       def->overloads[num++] = sig;
 
       def->overloads_count = num;
