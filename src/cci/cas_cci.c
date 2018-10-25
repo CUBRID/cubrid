@@ -5142,6 +5142,8 @@ dbg_u_type_str (T_CCI_U_TYPE utype)
       return "CCI_U_TYPE_UINT";
     case CCI_U_TYPE_UBIGINT:
       return "CCI_U_TYPE_UBIGINT";
+    case CCI_U_TYPE_JSON:
+      return "CCI_U_TYPE_JSON";
     default:
       return "***";
     }

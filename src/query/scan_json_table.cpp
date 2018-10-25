@@ -269,7 +269,7 @@ namespace cubscan
 	      cursor.m_is_row_fetched = false;
 	    }
 
-	  m_specp->m_root_node->clear_iterators ();
+	  m_specp->m_root_node->clear_iterators (is_final_clear);
 
 	  if (is_final_clear)
 	    {

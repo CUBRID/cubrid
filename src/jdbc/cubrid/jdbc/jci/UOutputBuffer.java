@@ -329,6 +329,7 @@ class UOutputBuffer {
 		switch (type) {
 		case UUType.U_TYPE_NULL:
 			return addNull();
+		case UUType.U_TYPE_JSON:
 		case UUType.U_TYPE_CHAR:
 		case UUType.U_TYPE_NCHAR:
 		case UUType.U_TYPE_STRING:
@@ -571,6 +572,7 @@ class UOutputBuffer {
 		case UUType.U_TYPE_STRING:
 		case UUType.U_TYPE_VARNCHAR:
 		case UUType.U_TYPE_ENUM:
+		case UUType.U_TYPE_JSON:
 			for (int i = 0; i < values.length; i++) {
 				if (values[i] == null) {
 					collection_size += addNull();

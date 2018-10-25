@@ -256,12 +256,12 @@ namespace cubxasl
     }
 
     void
-    node::clear_columns (bool clear_default_values)
+    node::clear_columns (bool is_final_clear)
     {
       for (size_t i = 0; i < m_output_columns_size; ++i)
 	{
 	  column *output_column = &m_output_columns[i];
-	  if (clear_default_values)
+	  if (is_final_clear)
 	    {
 	      (void) pr_clear_value (output_column->m_on_empty.m_default_value);
 	      (void) pr_clear_value (output_column->m_on_error.m_default_value);
@@ -273,24 +273,31 @@ namespace cubxasl
     }
 
     void
-    node::clear_iterators ()
+    node::clear_iterators (bool is_final_clear)
     {
-      db_json_delete_json_iterator (m_iterator);
+      if (is_final_clear)
+	{
+	  db_json_delete_json_iterator (m_iterator);
+	}
+      else
+	{
+	  db_json_clear_json_iterator (m_iterator);
+	}
 
       for (size_t i = 0; i < m_nested_nodes_size; ++i)
 	{
-	  m_nested_nodes[i].clear_iterators ();
+	  m_nested_nodes[i].clear_iterators (is_final_clear);
 	}
     }
 
     void
-    node::clear_tree (bool clear_default_values)
+    node::clear_tree (bool is_final_clear)
     {
-      clear_columns (clear_default_values);
+      clear_columns (is_final_clear);
 
       for (size_t i = 0; i < m_nested_nodes_size; ++i)
 	{
-	  m_nested_nodes[i].clear_tree (clear_default_values);
+	  m_nested_nodes[i].clear_tree (is_final_clear);
 	}
     }
 

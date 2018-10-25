@@ -3933,7 +3933,10 @@ end:
 
   if (return_btid == NULL)
     {
-      ptr = or_pack_int (reply, er_errid ());
+      int err;
+
+      ASSERT_ERROR_AND_SET (err);
+      ptr = or_pack_int (reply, err);
     }
   else
     {

@@ -4662,7 +4662,7 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 		      PRED_EXPR_WITH_CONTEXT * filter_pred, int *attrs_prefix_length, HEAP_CACHE_ATTRINFO * attr_info,
 		      HEAP_SCANCACHE * scancache, int unique_pk)
 {
-  int ret = NO_ERROR;
+  int ret = NO_ERROR, eval_res;
   OID cur_oid;
   RECDES cur_record;
   int cur_class;
@@ -4700,14 +4700,13 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
       cur_record.area_size = IO_MAX_PAGE_SIZE;
 
       sc = heap_next (thread_p, &hfids[cur_class], &class_oids[cur_class], &cur_oid, &cur_record, scancache, true);
-      if (sc == S_END)
-	{
-	  break;
-	}
-
       if (sc == S_ERROR)
 	{
 	  ASSERT_ERROR_AND_SET (ret);
+	  return ret;
+	}
+      else if (sc == S_END)
+	{
 	  break;
 	}
 
@@ -4720,15 +4719,15 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 	  ret = heap_attrinfo_read_dbvalues (thread_p, &cur_oid, &cur_record, NULL, filter_pred->cache_pred);
 	  if (ret != NO_ERROR)
 	    {
-	      break;
+	      return ret;
 	    }
 
-	  ret = (*filter_eval_fnc) (thread_p, filter_pred->pred, NULL, &cur_oid);
-	  if (ret == V_ERROR)
+	  eval_res = (*filter_eval_fnc) (thread_p, filter_pred->pred, NULL, &cur_oid);
+	  if (eval_res == V_ERROR)
 	    {
 	      return ER_FAILED;
 	    }
-	  else if (ret != V_TRUE)
+	  else if (eval_res != V_TRUE)
 	    {
 	      continue;
 	    }
@@ -4736,8 +4735,8 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 
       if (p_func_idx_info && p_func_idx_info->expr)
 	{
-	  ret =
-	    heap_attrinfo_read_dbvalues (thread_p, &cur_oid, &cur_record, NULL, p_func_idx_info->expr->cache_attrinfo);
+	  ret = heap_attrinfo_read_dbvalues (thread_p, &cur_oid, &cur_record, NULL,
+					     p_func_idx_info->expr->cache_attrinfo);
 	  if (ret != NO_ERROR)
 	    {
 	      return ret;
@@ -4761,13 +4760,11 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 	}
 
       /* Generate the key. */
-      p_dbvalue =
-	heap_attrinfo_generate_key (thread_p, n_attrs, &attrids[attr_offset], p_prefix_length, attr_info, &cur_record,
-				    &dbvalue, aligned_midxkey_buf, p_func_idx_info);
+      p_dbvalue = heap_attrinfo_generate_key (thread_p, n_attrs, &attrids[attr_offset], p_prefix_length, attr_info,
+					      &cur_record, &dbvalue, aligned_midxkey_buf, p_func_idx_info);
       if (p_dbvalue == NULL)
 	{
-	  ret = ER_FAILED;
-	  break;
+	  return ER_FAILED;
 	}
 
       /* Dispatch the insert operation */
@@ -4778,7 +4775,7 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 
       if (ret != NO_ERROR)
 	{
-	  break;
+	  return ret;
 	}
     }
 
