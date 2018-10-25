@@ -267,6 +267,9 @@ typedef enum
 #define LK_RES_RESET_MAX_LOCK_MODE_COUNT(cnt_max_lock_mode_with_version_and_flags) \
   ((cnt_max_lock_mode_with_version_and_flags) & ~LK_RES_MAX_LOCK_MODE_CNT_MASK)
 
+#define LK_RES_SET_MAX_LOCK_MODE_COUNT(cnt_max_lock_mode_with_version_and_flags, cnt) \
+  (((cnt_max_lock_mode_with_version_and_flags) & ~LK_RES_MAX_LOCK_MODE_CNT_MASK) | (cnt))
+
 /* Get version. */
 #define LK_RES_GET_VERSION(cnt_max_lock_mode_with_version_and_flags) \
   (((cnt_max_lock_mode_with_version_and_flags) & LK_RES_VERSION_MASK) >> LK_RES_MAX_LOCK_MODE_CNT_NUM_BITS)
@@ -284,7 +287,7 @@ typedef enum
 
 /* Set max lock mode. */
 #define LK_RES_SET_LOCK_MODE(cnt_max_lock_mode_with_version_and_flags, lock_mode) \
-  ((cnt_max_lock_mode_with_version_and_flags) | ((UINT64)lock_mode << 56))
+  (((cnt_max_lock_mode_with_version_and_flags) & ~LK_RES_LOCK_MODE_MASK) | ((UINT64)lock_mode << 56))
 
 /* Add clean mark deleted flag. */
 #define LK_RES_ADD_CLEAN_MARK_DELETED_ENTRIES_FLAG(cnt_max_lock_mode_with_version_and_flags) \
@@ -3435,6 +3438,7 @@ lock_disconnect_mark_deleted_objects (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
   UINT64 old_cnt_max_lock_mode_with_version_and_flags, new_cnt_max_lock_mode_with_version_and_flags;
   LOCK mode, max_mode;
   int mark_deleted = 0;
+  UINT64 cnt_max_mode;
 
   /* The caller is holding a resource mutex. */
 
@@ -3494,12 +3498,20 @@ lock_disconnect_mark_deleted_objects (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
     }
 
   mode = NULL_LOCK;
-  /* TO DO - compute max mode */
   max_mode = NULL_LOCK;
+  cnt_max_mode = 0;
   for (curr = res_ptr->holder; curr != NULL; curr = curr->next)
     {
       assert (curr->granted_mode >= NULL_LOCK && mode >= NULL_LOCK);
       mode = lock_Conv[curr->granted_mode][mode];
+      if (max_mode < mode)
+	{
+	  max_mode = mode;
+	}
+      else if (max_mode == mode)
+	{
+	  cnt_max_mode = cnt_max_mode + LK_RES_MAX_LOCK_MODE_CNT_INCREMENT;
+	}
       assert (mode != NA_LOCK);
 
       assert (curr->blocked_mode >= NULL_LOCK && mode >= NULL_LOCK);
@@ -3514,9 +3526,14 @@ lock_disconnect_mark_deleted_objects (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
     {
       old_cnt_max_lock_mode_with_version_and_flags = res_ptr->cnt_max_lock_mode_with_version_and_flags;
 
+      new_cnt_max_lock_mode_with_version_and_flags =
+	LK_RES_SET_MAX_LOCK_MODE_COUNT (old_cnt_max_lock_mode_with_version_and_flags, cnt_max_mode);
+
+      new_cnt_max_lock_mode_with_version_and_flags = LK_RES_GET_LOCK_MODE (max_mode);
+
       /* Remove clean flag and increment version. */
       new_cnt_max_lock_mode_with_version_and_flags =
-	LK_RES_REMOVE_CLEAN_MARK_DELETED_ENTRIES_FLAG (old_cnt_max_lock_mode_with_version_and_flags);
+	LK_RES_REMOVE_CLEAN_MARK_DELETED_ENTRIES_FLAG (new_cnt_max_lock_mode_with_version_and_flags);
 
       new_cnt_max_lock_mode_with_version_and_flags = LK_RES_INS_VERSION (new_cnt_max_lock_mode_with_version_and_flags);
     }
@@ -3726,6 +3743,7 @@ start:
 	  if (entry_ptr->mark_deleted == 2)
 	    {
 	      lock_remove_mark_deleted_entry (thread_p, entry_ptr);
+	      entry_ptr = NULL;
 	    }
 	}
 
