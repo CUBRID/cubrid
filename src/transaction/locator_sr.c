@@ -9245,7 +9245,7 @@ locator_repair_btree_by_delete (THREAD_ENTRY * thread_p, OID * class_oid, BTID *
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 #endif /* SERVER_MODE */
 
-  db_make_null (&key);
+  btree_init_temp_key_value (&clear_key, &key);
 
   if (btree_find_key (thread_p, btid, inst_oid, &key, &clear_key) != DISK_VALID)
     {
