@@ -4371,6 +4371,9 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   LOCK new_lock = IX_LOCK;
   bool scan_cache_inited = false;
   bool attr_info_inited = false;
+  LOG_TDES *tdes;
+  int old_wait_msec;
+  int lock_ret;
 
   func_index_info.expr = NULL;
 
@@ -4426,6 +4429,13 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 	{
 	  goto error;
 	}
+    }
+
+  /* After building index acquire lock on table, the transaction has deadlock priority */
+  tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  if (tdes)
+    {
+      tdes->has_deadlock_priority = true;
     }
 
   cur_class = 0;
@@ -4499,13 +4509,26 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   /* Start the online index builder. */
   ret = online_index_builder (thread_p, &btid_int, hfids, class_oids, n_classes, attr_ids, n_attrs,
 			      func_index_info, filter_pred, attrs_prefix_length, &attr_info, &scan_cache, unique_pk);
-  if (ret != NO_ERROR)
-    {
-      goto error;
-    }
+
+  // We shold recover the lock regardless of return code from online_index_builder.
+  // Otherwise, we might be doomed to failure to abort the transaction.
+  // We are going to do best to avoid lock promotion errors such as timeout and deadlocked.
+
+  // never give up
+  old_wait_msec = xlogtb_reset_wait_msecs (thread_p, LK_INFINITE_WAIT);
 
   /* Promote the lock to SCH_M_LOCK */
-  if (lock_object (thread_p, class_oids, oid_Root_class_oid, SCH_M_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+  lock_ret = lock_object (thread_p, class_oids, oid_Root_class_oid, SCH_M_LOCK, LK_UNCOND_LOCK);
+  if (lock_ret != LK_GRANTED)
+    {
+      // FIXME: What can we do??
+      assert (lock_ret == LK_GRANTED);
+    }
+
+  // reset back
+  (void) xlogtb_reset_wait_msecs (thread_p, old_wait_msec);
+
+  if (ret != NO_ERROR || lock_ret != LK_GRANTED)
     {
       goto error;
     }
