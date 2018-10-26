@@ -705,6 +705,7 @@ static double db_json_get_double_from_value (const JSON_VALUE *doc);
 static const char *db_json_get_string_from_value (const JSON_VALUE *doc);
 static char *db_json_copy_string_from_value (const JSON_VALUE *doc);
 static char *db_json_get_bool_as_str_from_value (const JSON_VALUE *doc);
+static bool db_json_get_bool_from_value (const JSON_VALUE *doc);
 static char *db_json_bool_to_string (bool b);
 static void db_json_merge_two_json_objects_preserve (const JSON_VALUE *source, JSON_VALUE &dest,
     JSON_PRIVATE_MEMPOOL &allocator);
@@ -2603,6 +2604,12 @@ db_json_get_bool_as_str_from_document (const JSON_DOC *doc)
   return db_json_get_bool_as_str_from_value (doc);
 }
 
+bool
+db_json_get_bool_from_document (const JSON_DOC *doc)
+{
+  return db_json_get_bool_from_value (doc);
+}
+
 char *
 db_json_copy_string_from_document (const JSON_DOC *doc)
 {
@@ -2696,6 +2703,19 @@ db_json_get_bool_as_str_from_value (const JSON_VALUE *doc)
 
   assert (db_json_get_type_of_value (doc) == DB_JSON_BOOL);
   return db_json_bool_to_string (doc->GetBool ());
+}
+
+bool
+db_json_get_bool_from_value (const JSON_VALUE *doc)
+{
+  if (doc == NULL)
+    {
+      assert (false);
+      return NULL;
+    }
+
+  assert (db_json_get_type_of_value (doc) == DB_JSON_BOOL);
+  return doc->GetBool ();
 }
 
 static JSON_PATH_TYPE
