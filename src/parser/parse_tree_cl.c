@@ -9556,7 +9556,7 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
       parser->custom_print = save_custom;
     }
   /* else is a single class entity spec */
-  else if (PT_SPEC_IS_ENTITY (p) && (p->info.spec.derived_table_type != PT_DERIVED_JSON_TABLE))
+  else if (PT_SPEC_IS_ENTITY (p))
     {
       save_custom = parser->custom_print;
       parser->custom_print |= PT_SUPPRESS_META_ATTR_CLASS;
@@ -9605,17 +9605,24 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 	      /* skip unnecessary nested parenthesis of derived-query */
 	      q = pt_append_varchar (parser, q, r1);
 	    }
+	  else if (p->info.spec.derived_table_type == PT_DERIVED_JSON_TABLE)
+	    {
+	      q = pt_append_nulstring (parser, q, "(");
+	      q = pt_append_varchar (parser, q, r1);
+
+	      unsigned int alias_print_flag = (parser->custom_print & PT_PRINT_ALIAS);
+	      q = pt_append_nulstring (parser, q, " as ");
+	      parser->custom_print &= ~PT_PRINT_ALIAS;
+	      r1 = pt_print_bytes (parser, p->info.spec.range_var);
+	      q = pt_append_varchar (parser, q, r1);
+	      parser->custom_print |= alias_print_flag;
+
+	      q = pt_append_nulstring (parser, q, ")");
+	    }
 	  else
 	    {
 	      q = pt_append_nulstring (parser, q, "(");
 	      q = pt_append_varchar (parser, q, r1);
-	      if (p->info.spec.derived_table_type == PT_DERIVED_JSON_TABLE)
-		{
-		  q = pt_append_nulstring (parser, q, " AS ");
-		  r1 = pt_print_bytes (parser, p->info.spec.range_var);
-		  q = pt_append_varchar (parser, q, r1);
-		}
-
 	      q = pt_append_nulstring (parser, q, ")");
 	    }
 	}
