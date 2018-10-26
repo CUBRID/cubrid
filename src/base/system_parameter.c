@@ -2177,7 +2177,9 @@ static UINT64 prm_repl_consumer_buffer_size_lower = 100 * 1024;
 static unsigned int prm_repl_consumer_buffer_size_flag = 0;
 
 int PRM_DATA_FILE_ADVISE = 0;
+
 static int prm_data_file_advise_default = 0;
+
 static unsigned int prm_data_file_advise_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
@@ -5558,7 +5560,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-   {PRM_ID_DATA_FILE_ADVISE,
+  {PRM_ID_DATA_FILE_ADVISE,
    PRM_NAME_DATA_FILE_ADVISE,
    (PRM_FOR_SERVER | PRM_USER_CHANGE),
    PRM_INTEGER,
