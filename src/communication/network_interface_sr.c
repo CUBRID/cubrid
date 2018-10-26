@@ -3950,11 +3950,11 @@ end:
       LOCK cls_lock = lock_get_object_lock (&class_oids[0], oid_Root_class_oid, tran_index);
 
       assert (cls_lock == SCH_M_LOCK);	// hope it never be IX_LOCK.
-      ptr = or_pack_int (reply, (int) cls_lock);
+      ptr = or_pack_int (ptr, (int) cls_lock);
     }
   else
     {
-      ptr = or_pack_int (reply, SCH_M_LOCK);	// irrelevant
+      ptr = or_pack_int (ptr, SCH_M_LOCK);	// irrelevant
     }
 
   ptr = or_pack_btid (ptr, &btid);

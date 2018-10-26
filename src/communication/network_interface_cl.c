@@ -5587,7 +5587,7 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
   int error = NO_ERROR, req_error, request_size, domain_size;
   char *ptr;
   char *request;
-  OR_ALIGNED_BUF (OR_INT_SIZE + OR_BTID_ALIGNED_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2 + OR_BTID_ALIGNED_SIZE) a_reply;
   char *reply;
   int i, total_attrs, bt_strlen, fk_strlen;
   int index_info_size = 0;
