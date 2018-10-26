@@ -3814,7 +3814,7 @@ sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int
   int *attr_prefix_lengths = NULL;
   TP_DOMAIN *key_type;
   char *ptr;
-  OR_ALIGNED_BUF (OR_INT_SIZE + OR_BTID_ALIGNED_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2 + OR_BTID_ALIGNED_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *pred_stream = NULL;
   int pred_stream_size = 0, size = 0;
@@ -3942,6 +3942,21 @@ end:
     {
       ptr = or_pack_int (reply, NO_ERROR);
     }
+
+  if (index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+    {
+      // it may not be really necessary. it just help things go worse that client keep caching ex-lock.
+      int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+      LOCK cls_lock = lock_get_object_lock (&class_oids[0], oid_Root_class_oid, tran_index);
+
+      assert (cls_lock == SCH_M_LOCK); // hope it never be IX_LOCK.
+      ptr = or_pack_int (reply, (int) cls_lock);
+    }
+  else
+    {
+      ptr = or_pack_int (reply, SCH_M_LOCK); // irrelevant
+    }
+
   ptr = or_pack_btid (ptr, &btid);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 
