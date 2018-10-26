@@ -3862,6 +3862,7 @@ scan_open_json_table_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, int group
   // scan_init_scan_pred
   scan_init_scan_pred (&scan_id->s.jtid.get_predicate (), NULL, pr,
 		       ((pr) ? eval_fnc (thread_p, pr, &single_node_type) : NULL));
+  scan_id->s.jtid.set_value_descriptor (vd);
 
   return NO_ERROR;
 }
