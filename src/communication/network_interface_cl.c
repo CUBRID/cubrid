@@ -5587,12 +5587,13 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
   int error = NO_ERROR, req_error, request_size, domain_size;
   char *ptr;
   char *request;
-  OR_ALIGNED_BUF (OR_INT_SIZE + OR_BTID_ALIGNED_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2 + OR_BTID_ALIGNED_SIZE) a_reply;
   char *reply;
   int i, total_attrs, bt_strlen, fk_strlen;
   int index_info_size = 0;
   char *stream = NULL;
   int stream_size = 0;
+  LOCK curr_cls_lock;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
@@ -5702,7 +5703,13 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
 
   if (!req_error)
     {
+      int t;
+
       ptr = or_unpack_int (reply, &error);
+
+      ptr = or_unpack_int (ptr, &t);
+      curr_cls_lock = (LOCK) t;
+
       ptr = or_unpack_btid (ptr, btid);
       if (error != NO_ERROR)
 	{
@@ -5712,6 +5719,18 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
   else
     {
       btid = NULL;
+    }
+
+  if (index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS && curr_cls_lock != SCH_M_LOCK)
+    {
+      // hope it won't happen. server failed to restore the demoted lock.
+      // It just help things don't go worse.
+
+      MOP class_mop = ws_mop (&class_oids[0], sm_Root_class_mop);
+      if (class_mop != NULL)
+	{
+	  ws_set_lock (class_mop, curr_cls_lock);
+	}
     }
 
   free_and_init (request);
