@@ -33242,62 +33242,56 @@ btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * 
   switch (purpose)
     {
     case BTREE_OP_ONLINE_INDEX_IB_INSERT:
-      {
-	/* This is an insert done by the index builder. */
-	helper.insert_helper.op_type = SINGLE_ROW_INSERT;
-	helper.insert_helper.purpose = purpose;
-	root_function = btree_fix_root_for_insert;
-	advance_function = btree_split_node_and_advance;
-	key_function = btree_key_online_index_IB_insert;
-	break;
-      }
+      /* This is an insert done by the index builder. */
+      helper.insert_helper.op_type = SINGLE_ROW_INSERT;
+      helper.insert_helper.purpose = purpose;
+      root_function = btree_fix_root_for_insert;
+      advance_function = btree_split_node_and_advance;
+      key_function = btree_key_online_index_IB_insert;
+      break;
 
     case BTREE_OP_ONLINE_INDEX_TRAN_INSERT:
     case BTREE_OP_ONLINE_INDEX_UNDO_TRAN_DELETE:
-      {
-	helper.insert_helper.op_type = SINGLE_ROW_INSERT;
-	helper.insert_helper.purpose = purpose;
-	root_function = btree_fix_root_for_insert;
-	advance_function = btree_split_node_and_advance;
-	key_function = btree_key_online_index_tran_insert;
-	break;
-      }
+      helper.insert_helper.op_type = SINGLE_ROW_INSERT;
+      helper.insert_helper.purpose = purpose;
+      root_function = btree_fix_root_for_insert;
+      advance_function = btree_split_node_and_advance;
+      key_function = btree_key_online_index_tran_insert;
+      break;
 
     case BTREE_OP_ONLINE_INDEX_TRAN_DELETE:
     case BTREE_OP_ONLINE_INDEX_UNDO_TRAN_INSERT:
-      {
-	helper.delete_helper.op_type = SINGLE_ROW_DELETE;
-	helper.delete_helper.purpose = purpose;
-	root_function = btree_fix_root_for_delete;
-	advance_function = btree_merge_node_and_advance;
-	key_function = btree_key_online_index_tran_delete;
+      helper.delete_helper.op_type = SINGLE_ROW_DELETE;
+      helper.delete_helper.purpose = purpose;
+      root_function = btree_fix_root_for_delete;
+      advance_function = btree_merge_node_and_advance;
+      key_function = btree_key_online_index_tran_delete;
 
-	error_code =
-	  btree_search_key_and_apply_functions (thread_p, btid, &btid_int, key, root_function, &helper.delete_helper,
-						advance_function, &helper.delete_helper, key_function, &helper,
-						&search_key, NULL);
+      error_code =
+	btree_search_key_and_apply_functions (thread_p, btid, &btid_int, key, root_function, &helper.delete_helper,
+					      advance_function, &helper.delete_helper, key_function, &helper,
+					      &search_key, NULL);
 
-	if (error_code == NO_ERROR && search_key.result == BTREE_KEY_NOTFOUND)
-	  {
-	    /*  We failed to find the object in the index. We must traverse again the btree and treat the operation
-	     *  as an insert with DELETE_FLAG set.
-	     */
-	    helper.insert_helper.purpose = purpose;
-	    helper.insert_helper.op_type = SINGLE_ROW_INSERT;
-	    if (helper.delete_helper.purpose == BTREE_OP_ONLINE_INDEX_TRAN_DELETE)
-	      {
-		helper.insert_helper.purpose = BTREE_OP_ONLINE_INDEX_TRAN_INSERT_DF;
-	      }
-	    root_function = btree_fix_root_for_insert;
-	    advance_function = btree_split_node_and_advance;
-	    key_function = btree_key_online_index_tran_insert_DF;
-	    break;		// Fall through.
-	  }
-	else
-	  {
-	    return error_code;
-	  }
-      }
+      if (error_code == NO_ERROR && search_key.result == BTREE_KEY_NOTFOUND)
+	{
+	  /* We failed to find the object in the index. We must traverse again the btree and treat the operation
+	   * as an insert with DELETE_FLAG set.
+	   */
+	  helper.insert_helper.purpose = purpose;
+	  helper.insert_helper.op_type = SINGLE_ROW_INSERT;
+	  if (helper.delete_helper.purpose == BTREE_OP_ONLINE_INDEX_TRAN_DELETE)
+	    {
+	      helper.insert_helper.purpose = BTREE_OP_ONLINE_INDEX_TRAN_INSERT_DF;
+	    }
+	  root_function = btree_fix_root_for_insert;
+	  advance_function = btree_split_node_and_advance;
+	  key_function = btree_key_online_index_tran_insert_DF;
+	  break;		// Fall through.
+	}
+      else
+	{
+	  return error_code;
+	}
 
     default:
       /* This should never happen. */
@@ -33798,6 +33792,8 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
   int n_keys = 0;
   int n_oids = 0;
 
+  int key_len;
+
   helper->delete_helper.rv_keyval_data = rv_undo_data_bufalign;
   if (helper->delete_helper.purpose == BTREE_OP_ONLINE_INDEX_TRAN_DELETE)
     {
@@ -33825,8 +33821,8 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
   /* We are in leaf level now, and we must inspect if we have found the OID inside the key. */
   if (search_key->result == BTREE_KEY_FOUND)
     {
-      /*  We search the key for the OID. If we find it, we should find it with DELETE_FLAG set, therefore we must
-       *  delete it in place.
+      /* We search the key for the OID. If we find it, we should find it with DELETE_FLAG set, therefore we must
+       * delete it in place.
        */
 
       /* Get the record. */
@@ -33851,7 +33847,6 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	btree_find_oid_with_page_and_record (thread_p, btid_int, &helper->delete_helper.object_info.oid, *leaf_page,
 					     helper->delete_helper.purpose, NULL, &record, &leaf_info, offset_after_key,
 					     &page_found, &prev_page, &offset_to_object, &btree_mvcc_info, &new_record);
-
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -33937,7 +33932,6 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 		}
 	      n_oids = -1;
 
-
 	      error_code =
 		btree_key_remove_object (thread_p, key, btid_int, &helper->delete_helper, *leaf_page, &new_record,
 					 &leaf_info, offset_after_key, search_key, &page_found, prev_page, node_type,
@@ -33957,12 +33951,19 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	}
     }
 
-  /*  We did not find the object. We have to check if there is enough space in the leaf for the object. If there is,
-   *  we insert it in place without any restarts.
+  /* We did not find the object. We have to check if there is enough space in the leaf for the object. If there is,
+   * we insert it in place without any restarts.
    */
 
   btree_delete_helper_to_insert_helper (&helper->delete_helper, &helper->insert_helper);
   helper->insert_helper.purpose = BTREE_OP_ONLINE_INDEX_TRAN_INSERT;
+
+  /* delete_helper does not hold information regarding the length of the key in page.
+   * We need this information so that we can check whether we have enough space to insert the new object.
+   */
+
+  key_len = btree_get_disk_size_of_key (key);
+  helper->insert_helper.key_len_in_page = BTREE_GET_KEY_LEN_IN_PAGE (key_len);
 
   if (!btree_key_insert_does_leaf_need_split (thread_p, btid_int, *leaf_page, &helper->insert_helper, search_key))
     {
