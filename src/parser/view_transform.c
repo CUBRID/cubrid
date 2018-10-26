@@ -8860,6 +8860,13 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * class_,
 		  /* spec will be free later, we don't want the entity_name will be freed */
 		  spec->info.spec.entity_name = NULL;
 		}
+	      if (newspec->info.spec.derived_table_type == PT_DERIVED_JSON_TABLE)
+		{
+		  /* this information is needed to gather referenced classes */
+		  newspec->info.spec.flat_entity_list = spec->info.spec.flat_entity_list;
+		  /* spec will be free later, we don't want the flat_entity_list will be freed */
+		  spec->info.spec.flat_entity_list = NULL;
+		}
 
 	      newspec->info.spec.range_var->info.name.original = spec->info.spec.range_var->info.name.original;
 	      newspec->info.spec.location = spec->info.spec.location;
