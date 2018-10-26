@@ -5228,22 +5228,33 @@ db_json_depth_dbval (DB_VALUE * json, DB_VALUE * res)
 int
 db_json_unquote_dbval (DB_VALUE * json, DB_VALUE * res)
 {
+  int error_code;
+
   if (DB_IS_NULL (json))
     {
-      return db_make_null (res);
+      error_code = db_make_null (res);
     }
   else
     {
       char *str = NULL;
 
-      int er = db_json_unquote (*db_get_json_document (json), str);
-      if (er)
+      error_code = db_json_unquote (*db_get_json_document (json), str);
+      if (error_code != NO_ERROR)
 	{
-	  return er;
+	  return error_code;
 	}
 
-      return db_make_string (res, str);
+      error_code = db_make_string (res, str);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+
+      // db_json_unquote uses strdup, therefore set need_clear flag
+      res->need_clear = true;
     }
+
+  return error_code;
 }
 
 int
@@ -5262,7 +5273,14 @@ db_json_pretty_dbval (DB_VALUE * json, DB_VALUE * res)
       db_json_pretty_func (*db_get_json_document (json), str);
 
       error_code = db_make_string (res, str);
-      res->need_clear = true;	// db_json_pretty_func uses strdup, therefore set need_clear flag
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+
+
+      // db_json_pretty_func uses strdup, therefore set need_clear flag
+      res->need_clear = true;
     }
 
   return error_code;
