@@ -1980,7 +1980,9 @@ disk_volume_expand (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLTYPE voltype, DK
   error_code = fileio_expand_to (thread_p, volid, volume_new_npages, voltype);
   if (error_code != NO_ERROR)
     {
-      ASSERT_ERROR ();
+      // important note - we just committed volume expansion; we cannot afford any failures here
+      // caller won't update cache!!
+      assert (false);
       return error_code;
     }
 
@@ -6336,6 +6338,8 @@ exit:
       pgbuf_unfix_and_init (thread_p, page_volheader);
     }
 
+  disk_log ("disk_check_volume", "check volume %d is %s", volid, valid == DISK_VALID ? "valid" : "not valid");
+
   csect_exit (thread_p, CSECT_DISK_CHECK);
 
   return valid;
@@ -6421,6 +6425,8 @@ disk_check (THREAD_ENTRY * thread_p, bool repair)
 	  return DISK_INVALID;
 	}
     }
+
+  disk_log ("disk_check", "first check step is %s", valid == DISK_VALID ? "valid" : "not valid");
 
   /* release critical section. we will get it for each volume we check, to avoid blocking all reservations and
    * extensions for a long time. */
@@ -6520,6 +6526,8 @@ disk_check (THREAD_ENTRY * thread_p, bool repair)
 	  return DISK_INVALID;
 	}
     }
+
+  disk_log ("disk_check", "full check is %s", "valid");
 
   /* all valid or all repaired */
   csect_exit (thread_p, CSECT_DISK_CHECK);

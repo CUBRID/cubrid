@@ -14619,6 +14619,13 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	  auth = AU_ALTER;
 	}
 
+      if (index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS && classop->lock > IX_LOCK)
+	{
+	  // if the transaction already hold a lock which is greater than IX,
+	  // we don't allow online index creation for transaction consistency.
+	  index_status = SM_NORMAL_INDEX;
+	}
+
       def = smt_edit_class_mop (classop, auth);
       if (def == NULL)
 	{

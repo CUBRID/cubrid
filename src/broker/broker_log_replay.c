@@ -723,6 +723,10 @@ get_cci_type (char *p)
     {
       type = CCI_U_TYPE_ENUM;
     }
+  else if (strcmp (p, "JSON") == 0)
+    {
+      type = CCI_U_TYPE_JSON;
+    }
   else
     {
       type = -1;

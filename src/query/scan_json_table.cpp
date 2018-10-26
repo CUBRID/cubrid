@@ -50,6 +50,7 @@ namespace cubscan
       void start_json_iterator (void);    // start json iteration of changing input document
       int fetch_row (void);               // fetch current row (if not fetched)
       void end (void);                    // finish current node scan
+      void delete_input_doc ();
 
       cursor (void);
       ~cursor (void);
@@ -70,7 +71,16 @@ namespace cubscan
 
     scanner::cursor::~cursor (void)
     {
-      db_json_delete_doc (m_input_doc);
+      delete_input_doc ();
+    }
+
+    void
+    scanner::cursor::delete_input_doc ()
+    {
+      if (m_input_doc != NULL)
+	{
+	  db_json_delete_doc (m_input_doc);
+	}
     }
 
     void
@@ -198,10 +208,7 @@ namespace cubscan
     {
       m_is_node_consumed = true;
 
-      if (m_node->m_iterator != NULL)
-	{
-	  db_json_reset_iterator (m_node->m_iterator);
-	}
+      db_json_reset_iterator (m_node->m_iterator);
 
       m_process_doc = NULL;
       m_node->clear_columns (false);
@@ -244,10 +251,10 @@ namespace cubscan
     }
 
     void
-    scanner::clear (xasl_node *xasl_p, bool is_final, bool clear_default_values)
+    scanner::clear (xasl_node *xasl_p, bool is_final, bool is_final_clear)
     {
       // columns should be released every time
-      m_specp->m_root_node->clear_tree (clear_default_values);
+      m_specp->m_root_node->clear_tree (is_final_clear);
       reset_ordinality (*m_specp->m_root_node);
 
       // all json documents should be release depending on is_final
@@ -256,13 +263,18 @@ namespace cubscan
 	  for (size_t i = 0; i < m_tree_height; ++i)
 	    {
 	      cursor &cursor = m_scan_cursor[i];
-	      db_json_delete_doc (cursor.m_input_doc);
+	      cursor.delete_input_doc ();
 
 	      cursor.m_child = 0;
 	      cursor.m_is_row_fetched = false;
 	    }
 
-	  m_specp->m_root_node->clear_iterators ();
+	  m_specp->m_root_node->clear_iterators (is_final_clear);
+
+	  if (is_final_clear)
+	    {
+	      delete [] m_scan_cursor;
+	    }
 	}
     }
 
@@ -276,7 +288,7 @@ namespace cubscan
 
       // we need the starting value to expand into a list of records
       DB_VALUE *value_p = NULL;
-      error_code = fetch_peek_dbval (thread_p, m_specp->m_json_reguvar, NULL, NULL, NULL, NULL, &value_p);
+      error_code = fetch_peek_dbval (thread_p, m_specp->m_json_reguvar, m_vd, NULL, NULL, NULL, &value_p);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -603,9 +615,16 @@ namespace cubscan
       return NO_ERROR;
     }
 
-    SCAN_PRED &scanner::get_predicate ()
+    SCAN_PRED &
+    scanner::get_predicate ()
     {
       return m_scan_predicate;
+    }
+
+    void
+    scanner::set_value_descriptor (val_descr *vd)
+    {
+      m_vd = vd;
     }
   } // namespace json_table
 } // namespace cubscan

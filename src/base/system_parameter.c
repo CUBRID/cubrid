@@ -654,6 +654,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_REPL_GENERATOR_BUFFER_SIZE "replication_generator_buffer_size"
 #define PRM_NAME_REPL_CONSUMER_BUFFER_SIZE "replication_consumer_buffer_size"
 
+#define PRM_NAME_DATA_FILE_ADVISE "data_file_os_advise"
+
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
 #define PRM_VALUE_MIN "MIN"
@@ -2173,6 +2175,12 @@ UINT64 PRM_REPL_CONSUMER_BUFFER_SIZE = 10 * 1024 * 1024;
 static UINT64 prm_repl_consumer_buffer_size_default = 10 * 1024 * 1024;
 static UINT64 prm_repl_consumer_buffer_size_lower = 100 * 1024;
 static unsigned int prm_repl_consumer_buffer_size_flag = 0;
+
+int PRM_DATA_FILE_ADVISE = 0;
+
+static int prm_data_file_advise_default = 0;
+
+static unsigned int prm_data_file_advise_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5552,6 +5560,17 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  {PRM_ID_DATA_FILE_ADVISE,
+   PRM_NAME_DATA_FILE_ADVISE,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE),
+   PRM_INTEGER,
+   &prm_data_file_advise_flag,
+   (void *) &prm_data_file_advise_default,
+   (void *) &PRM_DATA_FILE_ADVISE,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL}
 };
 
 #define NUM_PRM ((int)(sizeof(prm_Def)/sizeof(prm_Def[0])))

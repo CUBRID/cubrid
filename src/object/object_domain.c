@@ -7129,9 +7129,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  break;
 	case DB_JSON_STRING:
 	  {
-	    const char *json_string = NULL;
-
-	    json_string = db_json_get_string_from_document (src_doc);
+	    const char *json_string = db_json_get_string_from_document (src_doc);
 	    db_make_string_by_const_str (&src_replacement, json_string);
 	  }
 	  break;
@@ -7142,6 +7140,12 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 
       if (json_type != DB_JSON_ARRAY && json_type != DB_JSON_OBJECT)
 	{
+	  if (src == dest)
+	    {
+	      // if src is equal to dest then JSON_DOC can be deleted after required information was extracted from it
+	      pr_clear_value (dest);
+	    }
+
 	  original_type = DB_VALUE_TYPE (&src_replacement);
 	  src = &src_replacement;
 	}
@@ -7405,9 +7409,12 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	      {
 		if (er_errid () != NO_ERROR)	/* i.e, malloc failure */
 		  {
-		    return DOMAIN_ERROR;
+		    status = DOMAIN_ERROR;
 		  }
-		status = DOMAIN_INCOMPATIBLE;	/* conversion error */
+		else
+		  {
+		    status = DOMAIN_INCOMPATIBLE;	/* conversion error */
+		  }
 		break;
 	      }
 
@@ -7518,9 +7525,12 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	      {
 		if (er_errid () != NO_ERROR)	/* i.e, malloc failure */
 		  {
-		    return DOMAIN_ERROR;
+		    status = DOMAIN_ERROR;
 		  }
-		status = DOMAIN_INCOMPATIBLE;	/* conversion error */
+		else
+		  {
+		    status = DOMAIN_INCOMPATIBLE;	/* conversion error */
+		  }
 		break;
 	      }
 
@@ -7657,9 +7667,12 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	      {
 		if (er_errid () != NO_ERROR)	/* i.e, malloc failure */
 		  {
-		    return DOMAIN_ERROR;
+		    status = DOMAIN_ERROR;
 		  }
-		status = DOMAIN_INCOMPATIBLE;	/* conversion error */
+		else
+		  {
+		    status = DOMAIN_INCOMPATIBLE;	/* conversion error */
+		  }
 		break;
 	      }
 
@@ -7731,9 +7744,12 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	      {
 		if (er_errid () != NO_ERROR)	/* i.e, malloc failure */
 		  {
-		    return DOMAIN_ERROR;
+		    status = DOMAIN_ERROR;
 		  }
-		status = DOMAIN_INCOMPATIBLE;	/* conversion error */
+		else
+		  {
+		    status = DOMAIN_INCOMPATIBLE;	/* conversion error */
+		  }
 		break;
 	      }
 
@@ -7793,9 +7809,12 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	      {
 		if (er_errid () != NO_ERROR)	/* i.e, malloc failure */
 		  {
-		    return DOMAIN_ERROR;
+		    status = DOMAIN_ERROR;
 		  }
-		status = DOMAIN_INCOMPATIBLE;	/* conversion error */
+		else
+		  {
+		    status = DOMAIN_INCOMPATIBLE;	/* conversion error */
+		  }
 		break;
 	      }
 
@@ -7838,9 +7857,12 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	      {
 		if (er_errid () != NO_ERROR)
 		  {
-		    return DOMAIN_ERROR;
+		    status = DOMAIN_ERROR;
 		  }
-		status = DOMAIN_INCOMPATIBLE;
+		else
+		  {
+		    status = DOMAIN_INCOMPATIBLE;
+		  }
 	      }
 	    else
 	      {
@@ -7905,9 +7927,12 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	      {
 		if (er_errid () != NO_ERROR)	/* i.e, malloc failure */
 		  {
-		    return DOMAIN_ERROR;
+		    status = DOMAIN_ERROR;
 		  }
-		status = DOMAIN_INCOMPATIBLE;	/* conversion error */
+		else
+		  {
+		    status = DOMAIN_INCOMPATIBLE;	/* conversion error */
+		  }
 		break;
 	      }
 
@@ -7939,7 +7964,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	case DB_TYPE_VARNCHAR:
 	  if (tp_atoutime (src, &v_utime) != NO_ERROR)
 	    {
-	      return DOMAIN_ERROR;
+	      status = DOMAIN_ERROR;
 	    }
 	  else
 	    {
@@ -8055,7 +8080,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	case DB_TYPE_VARNCHAR:
 	  if (tp_atotimestamptz (src, &v_timestamptz) != NO_ERROR)
 	    {
-	      return DOMAIN_ERROR;
+	      status = DOMAIN_ERROR;
 	    }
 	  else
 	    {
@@ -8304,7 +8329,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	case DB_TYPE_VARNCHAR:
 	  if (tp_atoudatetime (src, &v_datetime) != NO_ERROR)
 	    {
-	      return DOMAIN_ERROR;
+	      status = DOMAIN_ERROR;
 	    }
 	  else
 	    {
@@ -8401,7 +8426,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	case DB_TYPE_VARNCHAR:
 	  if (tp_atodatetimetz (src, &v_datetimetz) != NO_ERROR)
 	    {
-	      return DOMAIN_ERROR;
+	      status = DOMAIN_ERROR;
 	    }
 	  else
 	    {
@@ -8589,12 +8614,13 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    }
 	  else
 	    {
-	      return DOMAIN_ERROR;
+	      status = DOMAIN_ERROR;
+	      break;
 	    }
 
 	  if (db_make_date (target, month, day, year) != NO_ERROR)
 	    {
-	      return DOMAIN_ERROR;
+	      status = DOMAIN_ERROR;
 	    }
 	  break;
 
@@ -8803,12 +8829,13 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    }
 	  else
 	    {
-	      return DOMAIN_ERROR;
+	      status = DOMAIN_ERROR;
+	      break;
 	    }
 
 	  if (db_make_time (target, hour, minute, second) != NO_ERROR)
 	    {
-	      return DOMAIN_ERROR;
+	      status = DOMAIN_ERROR;
 	    }
 	  break;
 	case DB_TYPE_ENUMERATION:
@@ -8848,6 +8875,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    if (!sm_check_class_domain ((TP_DOMAIN *) desired_domain, ((DB_OTMPL *) db_get_pointer (src))->classobj))
 	      {
 		status = DOMAIN_INCOMPATIBLE;
+		break;
 	      }
 	    db_make_pointer (target, db_get_pointer (src));
 	    break;
@@ -8860,7 +8888,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    is_vclass = db_is_vclass (desired_domain->class_mop);
 	    if (is_vclass < 0)
 	      {
-		return DOMAIN_ERROR;
+		status = DOMAIN_ERROR;
+		break;
 	      }
 	    if (!is_vclass)
 	      {
@@ -8892,7 +8921,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		    is_vclass = db_is_vclass (desired_domain->class_mop);
 		    if (is_vclass < 0)
 		      {
-			return DOMAIN_ERROR;
+			status = DOMAIN_ERROR;
+			break;
 		      }
 		    if (is_vclass)
 		      {
@@ -9262,7 +9292,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    new_string = (char *) db_private_alloc (NULL, max_size);
 	    if (!new_string)
 	      {
-		return DOMAIN_ERROR;
+		status = DOMAIN_ERROR;
+		break;
 	      }
 
 	    if (original_type == DB_TYPE_BIGINT)
@@ -9345,7 +9376,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    new_string = (char *) db_private_alloc (NULL, max_size);
 	    if (new_string == NULL)
 	      {
-		return DOMAIN_ERROR;
+		status = DOMAIN_ERROR;
+		break;
 	      }
 
 	    strcpy (new_string, str_buf);
@@ -9373,7 +9405,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    new_string = (char *) db_private_alloc (NULL, max_size);
 	    if (!new_string)
 	      {
-		return DOMAIN_ERROR;
+		status = DOMAIN_ERROR;
+		break;
 	      }
 
 	    snprintf (new_string, max_size - 1, "%s%.*f", lang_currency_symbol (db_get_monetary (src)->type), 2,
@@ -9418,7 +9451,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    new_string = (char *) db_private_alloc (NULL, max_size);
 	    if (!new_string)
 	      {
-		return DOMAIN_ERROR;
+		status = DOMAIN_ERROR;
+		break;
 	      }
 
 	    err = NO_ERROR;
@@ -9496,7 +9530,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    new_string = (char *) db_private_alloc (NULL, max_size);
 	    if (!new_string)
 	      {
-		return DOMAIN_ERROR;
+		status = DOMAIN_ERROR;
+		break;
 	      }
 
 	    convert_error = bfmt_print (1 /* BIT_STRING_HEX */ , src,
@@ -9983,7 +10018,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	      if (error_code != NO_ERROR)
 		{
 		  assert (doc == NULL);
-		  return DOMAIN_ERROR;
+		  status = DOMAIN_ERROR;
+		  break;
 		}
 
 	      if (desired_domain->json_validator
@@ -9991,7 +10027,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		{
 		  ASSERT_ERROR ();
 		  db_json_delete_doc (doc);
-		  return DOMAIN_ERROR;
+		  status = DOMAIN_ERROR;
+		  break;
 		}
 	    }
 	    break;

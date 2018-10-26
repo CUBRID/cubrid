@@ -1938,9 +1938,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
     {
       ux_set_utype_for_enum (CCI_U_TYPE_STRING);
     }
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
   /* for driver less than 10.0 */
   if (!DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (req_info->client_version, PROTOCOL_V7))
     {
@@ -1949,9 +1947,13 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
       ux_set_utype_for_datetimeltz (CCI_U_TYPE_DATETIME);
       ux_set_utype_for_timestampltz (CCI_U_TYPE_TIMESTAMP);
     }
-#endif
 
-  /* Since DB_TYPE_JSON is mapped into CCI_U_TYPE_STRING, legacy drivers are also able to access JSON type. */
+  /* driver version < 10.2 */
+  if (!DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (req_info->client_version, PROTOCOL_V8))
+    {
+      ux_set_utype_for_json (CCI_U_TYPE_STRING);
+    }
+#endif
 
   net_buf->client_version = req_info->client_version;
   set_hang_check_time ();
@@ -1959,14 +1961,12 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   set_hang_check_time ();
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-  /* set back original utype for enum */
+  /* set back original utype for enum, date-time, JSON */
   if (DOES_CLIENT_MATCH_THE_PROTOCOL (req_info->client_version, PROTOCOL_V2))
     {
       ux_set_utype_for_enum (CCI_U_TYPE_ENUM);
     }
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
   /* for driver less than 10.0 */
   if (!DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (req_info->client_version, PROTOCOL_V7))
     {
@@ -1974,6 +1974,12 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
       ux_set_utype_for_timestamptz (CCI_U_TYPE_TIMESTAMPTZ);
       ux_set_utype_for_datetimeltz (CCI_U_TYPE_DATETIMETZ);
       ux_set_utype_for_timestampltz (CCI_U_TYPE_TIMESTAMPTZ);
+    }
+
+  /* driver version < 10.2 */
+  if (!DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (req_info->client_version, PROTOCOL_V8))
+    {
+      ux_set_utype_for_json (CCI_U_TYPE_JSON);
     }
 #endif
 
