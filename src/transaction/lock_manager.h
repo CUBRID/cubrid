@@ -192,7 +192,17 @@ struct lk_res
   LK_RES *hash_next;		/* for hash chain */
   LK_RES *stack;		/* for freelist */
   UINT64 del_id;		/* delete transaction ID (for latch free) */
-  volatile UINT64 cnt_max_lock_mode_with_version_and_flags;	/* count lock entries having total holders mode and flags */
+  /*
+   * Short desription:
+   * 64 bytes used to improve unlocking. It keeps the highest lock (less than IX),
+   * counts how many such locks are holded by transaction, the resource version and flag.  
+   * Instead of releasing class lock, we can mark as deleted. The next transacion, can activate it.
+   * If total holder mode changes, then recomputes the highest lock and the counter. Do not allow
+   * to mark delete, if have waiters or lock > IX_LOCK.
+   * The version is used to detect whether a lock entry refers an older resource lock. If true,
+   * the lock entry must be deallocated.
+   */
+  volatile UINT64 cnt_max_lock_mode_with_version_and_flags;
 };
 
 #if defined(SERVER_MODE)

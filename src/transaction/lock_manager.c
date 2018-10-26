@@ -561,6 +561,8 @@ static int lock_internal_hold_lock_object_instant (THREAD_ENTRY * thread_p, int 
 						   const OID * class_oid, LOCK lock);
 STATIC_INLINE bool lock_internal_reset_mark_deleted (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr,
 						     LOCK requested_lock_mode) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void lock_res_compute_cnt_max_locK_with_version_and_flags (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
+  __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void lock_disconnect_mark_deleted_objects (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
   __attribute__ ((ALWAYS_INLINE));
 static int lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, const OID * oid,
@@ -3422,23 +3424,70 @@ start:
 }
 #endif
 
-#if defined(SERVER_MODE)
-/*
-* lock_remove_non2pl -
-*
-* return:
-*
-*   non2pl(in):
-*   tran_index(in):
-*/
+#if defined (SERVER_MODE)
 STATIC_INLINE void
-lock_disconnect_mark_deleted_objects (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
+lock_res_compute_cnt_max_locK_with_version_and_flags (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 {
-  LK_ENTRY *prev, *curr, *next;
+  LK_ENTRY *curr;
   UINT64 old_cnt_max_lock_mode_with_version_and_flags, new_cnt_max_lock_mode_with_version_and_flags;
   LOCK mode, max_mode;
   int mark_deleted = 0;
   UINT64 cnt_max_mode;
+
+  mode = NULL_LOCK;
+  max_mode = NULL_LOCK;
+  cnt_max_mode = 0;
+  for (curr = res_ptr->holder; curr != NULL; curr = curr->next)
+    {
+      assert (curr->granted_mode >= NULL_LOCK && mode >= NULL_LOCK);
+      mode = lock_Conv[curr->granted_mode][mode];
+      if (max_mode < mode)
+	{
+	  max_mode = mode;
+	  cnt_max_mode = 0;
+	}
+      else if (max_mode == mode)
+	{
+	  cnt_max_mode = cnt_max_mode + LK_RES_MAX_LOCK_MODE_CNT_INCREMENT;
+	}
+      assert (mode != NA_LOCK);
+
+      assert (curr->blocked_mode >= NULL_LOCK && mode >= NULL_LOCK);
+      mode = lock_Conv[curr->blocked_mode][mode];
+      assert (mode != NA_LOCK);
+    }
+  res_ptr->total_holders_mode = mode;
+  assert (res_ptr->waiter == NULL && res_ptr->non2pl == NULL);
+
+  /* Advance with version */
+  do
+    {
+      old_cnt_max_lock_mode_with_version_and_flags = res_ptr->cnt_max_lock_mode_with_version_and_flags;
+
+      new_cnt_max_lock_mode_with_version_and_flags =
+	LK_RES_SET_MAX_LOCK_MODE_COUNT (old_cnt_max_lock_mode_with_version_and_flags, cnt_max_mode);
+
+      new_cnt_max_lock_mode_with_version_and_flags =
+	LK_RES_SET_LOCK_MODE (new_cnt_max_lock_mode_with_version_and_flags, max_mode);
+
+      new_cnt_max_lock_mode_with_version_and_flags = LK_RES_INS_VERSION (new_cnt_max_lock_mode_with_version_and_flags);
+
+      new_cnt_max_lock_mode_with_version_and_flags =
+	LK_RES_REMOVE_CLEAN_MARK_DELETED_ENTRIES_FLAG (new_cnt_max_lock_mode_with_version_and_flags);
+    }
+  while (!ATOMIC_CAS_64
+	 (&res_ptr->cnt_max_lock_mode_with_version_and_flags, old_cnt_max_lock_mode_with_version_and_flags,
+	  new_cnt_max_lock_mode_with_version_and_flags));
+}
+#endif
+
+#if defined(SERVER_MODE)
+
+STATIC_INLINE void
+lock_disconnect_mark_deleted_objects (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
+{
+  LK_ENTRY *prev, *curr, *next;
+  int mark_deleted = 0;
 
   /* The caller is holding a resource mutex. */
 
@@ -3497,49 +3546,7 @@ lock_disconnect_mark_deleted_objects (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 	}
     }
 
-  mode = NULL_LOCK;
-  max_mode = NULL_LOCK;
-  cnt_max_mode = 0;
-  for (curr = res_ptr->holder; curr != NULL; curr = curr->next)
-    {
-      assert (curr->granted_mode >= NULL_LOCK && mode >= NULL_LOCK);
-      mode = lock_Conv[curr->granted_mode][mode];
-      if (max_mode < mode)
-	{
-	  max_mode = mode;
-	}
-      else if (max_mode == mode)
-	{
-	  cnt_max_mode = cnt_max_mode + LK_RES_MAX_LOCK_MODE_CNT_INCREMENT;
-	}
-      assert (mode != NA_LOCK);
-
-      assert (curr->blocked_mode >= NULL_LOCK && mode >= NULL_LOCK);
-      mode = lock_Conv[curr->blocked_mode][mode];
-      assert (mode != NA_LOCK);
-    }
-  res_ptr->total_holders_mode = mode;
-  assert (res_ptr->waiter == NULL && res_ptr->non2pl == NULL);
-
-  /* Advance with version */
-  do
-    {
-      old_cnt_max_lock_mode_with_version_and_flags = res_ptr->cnt_max_lock_mode_with_version_and_flags;
-
-      new_cnt_max_lock_mode_with_version_and_flags =
-	LK_RES_SET_MAX_LOCK_MODE_COUNT (old_cnt_max_lock_mode_with_version_and_flags, cnt_max_mode);
-
-      new_cnt_max_lock_mode_with_version_and_flags = LK_RES_GET_LOCK_MODE (max_mode);
-
-      /* Remove clean flag and increment version. */
-      new_cnt_max_lock_mode_with_version_and_flags =
-	LK_RES_REMOVE_CLEAN_MARK_DELETED_ENTRIES_FLAG (new_cnt_max_lock_mode_with_version_and_flags);
-
-      new_cnt_max_lock_mode_with_version_and_flags = LK_RES_INS_VERSION (new_cnt_max_lock_mode_with_version_and_flags);
-    }
-  while (!ATOMIC_CAS_64
-	 (&res_ptr->cnt_max_lock_mode_with_version_and_flags, old_cnt_max_lock_mode_with_version_and_flags,
-	  new_cnt_max_lock_mode_with_version_and_flags));
+  lock_res_compute_cnt_max_locK_with_version_and_flags (thread_p, res_ptr);
 }
 #endif /* SERVER_MODE */
 
@@ -4344,6 +4351,28 @@ lock_tran_lk_entry:
   lock_position_holder_entry (res_ptr, entry_ptr);
 
 blocked:
+  assert (is_res_mutex_locked);
+  if (!(LK_RES_HAS_CLEAN_MARK_DELETED_ENTRIES_FLAG (res_ptr->cnt_max_lock_mode_with_version_and_flags))
+      && (LK_RES_GET_MAX_LOCK_MODE_COUNT (res_ptr->cnt_max_lock_mode_with_version_and_flags) != 0))
+    {
+      /* Since I'll be blocked remove any  mark delete information. */
+      res_ptr->cnt_max_lock_mode_with_version_and_flags =
+	LK_RES_ADD_CLEAN_MARK_DELETED_ENTRIES_FLAG (res_ptr->cnt_max_lock_mode_with_version_and_flags);
+      lock_disconnect_mark_deleted_objects (thread_p, res_ptr);
+
+      /* Reset counter to 0 for simplicity. Will be recomputed when all transactions resume. */
+      do
+	{
+	  old_cnt_max_lock_mode_with_version_and_flags = res_ptr->cnt_max_lock_mode_with_version_and_flags;
+
+	  new_cnt_max_lock_mode_with_version_and_flags =
+	    LK_RES_RESET_MAX_LOCK_MODE_COUNT (old_cnt_max_lock_mode_with_version_and_flags);
+	}
+      while (!ATOMIC_CAS_64 (&res_ptr->cnt_max_lock_mode_with_version_and_flags,
+			     old_cnt_max_lock_mode_with_version_and_flags,
+			     new_cnt_max_lock_mode_with_version_and_flags));
+      assert (res_ptr->holder != NULL);
+    }
 
   if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_LOCK_OBJECT))
     {
@@ -4566,6 +4595,7 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
   LK_ENTRY *from_whom;
   LOCK mode;
   int rv;
+  LOCK initial_total_lock_mode;
 
 #if defined(LK_DUMP)
   if (lk_Gl.dump_level >= 1)
@@ -4638,6 +4668,7 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
       curr = curr->next;
     }
 
+  initial_total_lock_mode = res_ptr->total_waiters_mode;
   if (curr == NULL)
     {
       /* the transaction is not in the holder list, check the waiter. */
@@ -4697,6 +4728,14 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
 	  /* The transaction is neither the lock holder nor the lock waiter */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_LOST_TRANSACTION, 4, tran_index,
 		  res_ptr->key.oid.volid, res_ptr->key.oid.pageid, res_ptr->key.oid.slotid);
+	}
+
+      if (initial_total_lock_mode != NULL_LOCK && res_ptr->total_waiters_mode == NULL_LOCK)
+	{
+	  /* No mark deleted entry. Recomputes cnt_max_lock_mode_with_version_and_flags. It may be improved
+	   * by delegating to the next lock_object call, but don't care about optimization of such cases.
+	   */
+	  lock_res_compute_cnt_max_locK_with_version_and_flags (thread_p, res_ptr);
 	}
 
       pthread_mutex_unlock (&res_ptr->res_mutex);
@@ -4771,6 +4810,15 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
       lock_grant_blocked_holder (thread_p, res_ptr);
 
       (void) lock_grant_blocked_waiter (thread_p, res_ptr);
+
+      if (initial_total_lock_mode != NULL_LOCK && res_ptr->total_waiters_mode == NULL_LOCK)
+	{
+	  /* No mark deleted entry. Recomputes cnt_max_lock_mode_with_version_and_flags. It may be improved
+	   * by delegating to the next lock_object call, but don't care about optimization of such cases.
+	   */
+	  lock_res_compute_cnt_max_locK_with_version_and_flags (thread_p, res_ptr);
+	}
+
       pthread_mutex_unlock (&res_ptr->res_mutex);
     }
 }
@@ -4845,8 +4893,6 @@ lock_internal_demote_class_lock (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, 
     {
       res_ptr->cnt_max_lock_mode_with_version_and_flags =
 	LK_RES_ADD_CLEAN_MARK_DELETED_ENTRIES_FLAG (res_ptr->cnt_max_lock_mode_with_version_and_flags);
-      lock_disconnect_mark_deleted_objects (thread_p, res_ptr);
-      assert (res_ptr->holder != NULL);
     }
 
   /* find the given lock entry in the holder list */
@@ -4907,6 +4953,8 @@ lock_internal_demote_class_lock (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, 
   /* grant the blocked holders and blocked waiters */
   lock_grant_blocked_holder (thread_p, res_ptr);
   (void) lock_grant_blocked_waiter (thread_p, res_ptr);
+
+  lock_disconnect_mark_deleted_objects (thread_p, res_ptr);
 
   pthread_mutex_unlock (&res_ptr->res_mutex);
 
