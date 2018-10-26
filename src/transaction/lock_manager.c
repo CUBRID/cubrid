@@ -239,15 +239,15 @@ typedef enum
 #define LK_RES_LOCK_MODE_NUM_BITS                            4
 #define LK_RES_FLAGS_NUM_BITS                                4	/* Reserved 4, used only one */
 
-#define LK_RES_MAX_LOCK_MODE_CNT_MASK                       0x00000000ffffffff
-#define LK_RES_MAX_LOCK_MODE_CNT_INCREMENT                  0x0000000000000001
+#define LK_RES_MAX_LOCK_MODE_CNT_MASK                       0x00000000ffffffffULL
+#define LK_RES_MAX_LOCK_MODE_CNT_INCREMENT                  0x0000000000000001ULL
 
-#define LK_RES_VERSION_MASK                                 0x00ffffff00000000
-#define LK_RES_VERSION_INCREMENT                            0x0000000100000000
+#define LK_RES_VERSION_MASK                                 0x00ffffff00000000ULL
+#define LK_RES_VERSION_INCREMENT                            0x0000000100000000ULL
 
-#define LK_RES_LOCK_MODE_MASK                               0x0f00000000000000
+#define LK_RES_LOCK_MODE_MASK                               0x0f00000000000000ULL
 
-#define LK_RES_REMOVE_MARK_DELETED_ENTRIES_FLAG             0x8000000000000000
+#define LK_RES_REMOVE_MARK_DELETED_ENTRIES_FLAG             0x8000000000000000ULL
 
 
 /* Get counter of resource max lock mode. */
@@ -265,10 +265,10 @@ typedef enum
    (cnt_max_lock_mode_with_version_and_flags) - LK_RES_MAX_LOCK_MODE_CNT_INCREMENT)
 
 #define LK_RES_RESET_MAX_LOCK_MODE_COUNT(cnt_max_lock_mode_with_version_and_flags) \
-  ((cnt_max_lock_mode_with_version_and_flags) & ~LK_RES_MAX_LOCK_MODE_CNT_MASK)
+  ((cnt_max_lock_mode_with_version_and_flags) & ~ LK_RES_MAX_LOCK_MODE_CNT_MASK)
 
 #define LK_RES_SET_MAX_LOCK_MODE_COUNT(cnt_max_lock_mode_with_version_and_flags, cnt) \
-  (((cnt_max_lock_mode_with_version_and_flags) & ~LK_RES_MAX_LOCK_MODE_CNT_MASK) | (cnt))
+  (((cnt_max_lock_mode_with_version_and_flags) & ~ LK_RES_MAX_LOCK_MODE_CNT_MASK) | (cnt))
 
 /* Get version. */
 #define LK_RES_GET_VERSION(cnt_max_lock_mode_with_version_and_flags) \
@@ -279,15 +279,15 @@ typedef enum
   (assert (((cnt_max_lock_mode_with_version_and_flags) & LK_RES_VERSION_MASK) <= LK_RES_VERSION_MASK),  \
    ((cnt_max_lock_mode_with_version_and_flags) & LK_RES_VERSION_MASK) < (LK_RES_VERSION_MASK)  \
    ? (cnt_max_lock_mode_with_version_and_flags + LK_RES_VERSION_INCREMENT) \
-   : ((cnt_max_lock_mode_with_version_and_flags) & ~LK_RES_VERSION_MASK))
+   : ((cnt_max_lock_mode_with_version_and_flags) & ~ LK_RES_VERSION_MASK))
 
 /* Get max lock mode. */
 #define LK_RES_GET_LOCK_MODE(cnt_max_lock_mode_with_version_and_flags) \
-  (((cnt_max_lock_mode_with_version_and_flags) & LK_RES_LOCK_MODE_MASK) >> LK_RES_MAX_LOCK_MODE_CNT_AND_VERSION_NUM_BITS)
+  ((LOCK) (((cnt_max_lock_mode_with_version_and_flags) & LK_RES_LOCK_MODE_MASK) >> LK_RES_MAX_LOCK_MODE_CNT_AND_VERSION_NUM_BITS))
 
 /* Set max lock mode. */
 #define LK_RES_SET_LOCK_MODE(cnt_max_lock_mode_with_version_and_flags, lock_mode) \
-  (((cnt_max_lock_mode_with_version_and_flags) & ~LK_RES_LOCK_MODE_MASK) | ((UINT64)lock_mode << 56))
+  (((cnt_max_lock_mode_with_version_and_flags) & ~LK_RES_LOCK_MODE_MASK) | ((UINT64)lock_mode << LK_RES_MAX_LOCK_MODE_CNT_AND_VERSION_NUM_BITS))
 
 /* Add clean mark deleted flag. */
 #define LK_RES_ADD_CLEAN_MARK_DELETED_ENTRIES_FLAG(cnt_max_lock_mode_with_version_and_flags) \
@@ -295,7 +295,7 @@ typedef enum
 
 /* Add clean mark deleted flag. */
 #define LK_RES_REMOVE_CLEAN_MARK_DELETED_ENTRIES_FLAG(cnt_max_lock_mode_with_version_and_flags) \
-  ((cnt_max_lock_mode_with_version_and_flags) & ~LK_RES_REMOVE_MARK_DELETED_ENTRIES_FLAG)
+  ((cnt_max_lock_mode_with_version_and_flags) & ~ LK_RES_REMOVE_MARK_DELETED_ENTRIES_FLAG)
 
 /* Has clean mark deleted flag? */
 #define LK_RES_HAS_CLEAN_MARK_DELETED_ENTRIES_FLAG(cnt_max_lock_mode_with_version_and_flags) \
