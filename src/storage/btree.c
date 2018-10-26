@@ -33342,12 +33342,12 @@ end:
 
   if (helper.insert_helper.printed_key != NULL)
     {
-      db_private_free_and_init (thread_p, helper.insert_helper.printed_key);
+      db_private_free (thread_p, helper.insert_helper.printed_key);
     }
 
-  if (helper.delete_helper.printed_key != NULL)
+  if (helper.delete_helper.printed_key != NULL && helper.delete_helper.printed_key != helper.insert_helper.printed_key)
     {
-      db_private_free_and_init (thread_p, helper.delete_helper.printed_key);
+      db_private_free (thread_p, helper.delete_helper.printed_key);
     }
 
   return error_code;
@@ -34831,6 +34831,8 @@ btree_insert_helper_to_delete_helper (BTREE_INSERT_HELPER * insert_helper, BTREE
 
   /* Error logging. */
   delete_helper->log_operations = insert_helper->log_operations;
+  delete_helper->printed_key = insert_helper->printed_key;
+  delete_helper->printed_key_sha1 = insert_helper->printed_key_sha1;
 }
 
 void
@@ -34859,6 +34861,8 @@ btree_delete_helper_to_insert_helper (BTREE_DELETE_HELPER * delete_helper, BTREE
 
   /* Error logging. */
   insert_helper->log_operations = delete_helper->log_operations;
+  insert_helper->printed_key = delete_helper->printed_key;
+  insert_helper->printed_key_sha1 = delete_helper->printed_key_sha1;
 }
 
 static inline bool
