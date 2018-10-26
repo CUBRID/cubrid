@@ -3945,7 +3945,7 @@ end:
 
   if (index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
     {
-      // it may not be really necessary. it just help things go worse that client keep caching ex-lock.
+      // it may not be really necessary. it just help things don't go worse that client keep caching ex-lock.
       int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
       LOCK cls_lock = lock_get_object_lock (&class_oids[0], oid_Root_class_oid, tran_index);
 

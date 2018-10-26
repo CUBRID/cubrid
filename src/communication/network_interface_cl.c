@@ -5724,7 +5724,7 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
   if (index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS && curr_cls_lock != SCH_M_LOCK)
     {
       // hope it won't happen. server failed to restore the demoted lock.
-      // It just help things go worse.
+      // It just help things don't go worse.
 
       MOP class_mop = ws_mop (&class_oids[0], sm_Root_class_mop);
       if (class_mop != NULL)
