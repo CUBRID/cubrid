@@ -33324,7 +33324,7 @@ btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * 
 	}
       else
 	{
-	  return error_code;
+	  goto end;
 	}
 
     default:
@@ -33337,6 +33337,18 @@ btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * 
     btree_search_key_and_apply_functions (thread_p, btid, &btid_int, key, root_function, &helper.insert_helper,
 					  advance_function, &helper.insert_helper, key_function, &helper, &search_key,
 					  NULL);
+
+end:
+
+  if (helper.insert_helper.printed_key != NULL)
+    {
+      db_private_free (thread_p, helper.insert_helper.printed_key);
+    }
+
+  if (helper.delete_helper.printed_key != NULL && helper.delete_helper.printed_key != helper.insert_helper.printed_key)
+    {
+      db_private_free (thread_p, helper.delete_helper.printed_key);
+    }
 
   return error_code;
 }
@@ -33508,6 +33520,7 @@ btree_key_online_index_IB_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
 
 	      btree_insert_helper_to_delete_helper (&helper->insert_helper, &helper->delete_helper);
 	      helper->delete_helper.purpose = BTREE_OP_ONLINE_INDEX_IB_DELETE;
+	      helper->delete_helper.op_type = SINGLE_ROW_DELETE;
 
 	      if (node_type == BTREE_LEAF_NODE
 		  && (btree_record_get_num_oids (thread_p, btid_int, &new_record, offset_after_key, node_type) == 1))
@@ -33991,6 +34004,7 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 
   btree_delete_helper_to_insert_helper (&helper->delete_helper, &helper->insert_helper);
   helper->insert_helper.purpose = BTREE_OP_ONLINE_INDEX_TRAN_INSERT;
+  helper->insert_helper.op_type = SINGLE_ROW_INSERT;
 
   /* delete_helper does not hold information regarding the length of the key in page.
    * We need this information so that we can check whether we have enough space to insert the new object.
@@ -34179,6 +34193,7 @@ btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_
 	      btree_insert_helper_to_delete_helper (&helper->insert_helper, &helper->delete_helper);
 
 	      helper->delete_helper.purpose = BTREE_OP_ONLINE_INDEX_TRAN_DELETE;
+	      helper->delete_helper.op_type = SINGLE_ROW_DELETE;
 
 	      if (node_type == BTREE_LEAF_NODE
 		  && (btree_record_get_num_oids (thread_p, btid_int, &new_record, offset_after_key, node_type) == 1))
@@ -34848,7 +34863,6 @@ btree_delete_helper_to_insert_helper (BTREE_DELETE_HELPER * delete_helper, BTREE
   insert_helper->log_operations = delete_helper->log_operations;
   insert_helper->printed_key = delete_helper->printed_key;
   insert_helper->printed_key_sha1 = delete_helper->printed_key_sha1;
-
 }
 
 static inline bool
