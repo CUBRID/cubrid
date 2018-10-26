@@ -322,6 +322,7 @@ static PT_NODE *pt_check_function_collation (PARSER_CONTEXT * parser, PT_NODE * 
 static void pt_hv_consistent_data_type_with_domain (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_update_host_var_data_type (PARSER_CONTEXT * parser, PT_NODE * hv_node);
 static bool pt_cast_needs_wrap_for_collation (PT_NODE * node, const INTL_CODESET codeset);
+static PT_TYPE_ENUM pt_to_variable_size_type (PT_TYPE_ENUM type_enum);
 
 /*
  * pt_get_expression_definition () - get the expression definition for the
@@ -10095,6 +10096,13 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  /* we will end up with logical here if arg3 and arg2 are logical */
 	  common_type = PT_TYPE_INTEGER;
 	}
+      // CBRD-22431 hack:
+      //    we have an issue with different precision domains when value is packed into a list file and then used by a
+      //    list scan. in the issue, the value is folded and packed with fixed precision, but the unpacking expects
+      //    no precision, corrupting the read.
+      //    next line is a quick fix to force no precision domain; however, we should consider a more robus list scan
+      //    implementation that always matches domains used to generate the list file
+      common_type = pt_to_variable_size_type (common_type);
       if (pt_coerce_expression_argument (parser, node, &arg2, common_type, NULL) != NO_ERROR)
 	{
 	  node->type_enum = PT_TYPE_NONE;
@@ -25518,4 +25526,26 @@ pt_cast_needs_wrap_for_collation (PT_NODE * node, const INTL_CODESET codeset)
     }
 
   return false;
+}
+
+//
+// pt_to_variable_size_type () - convert fixed size types to the equivalent variable size types
+//
+// return         : if input type can have variable size, it returns the variable size. otherwise, returns input type
+// type_enum (in) : any type
+//
+static PT_TYPE_ENUM
+pt_to_variable_size_type (PT_TYPE_ENUM type_enum)
+{
+  switch (type_enum)
+    {
+    case PT_TYPE_CHAR:
+      return PT_TYPE_VARCHAR;
+    case PT_TYPE_NCHAR:
+      return PT_TYPE_VARNCHAR;
+    case PT_TYPE_BIT:
+      return PT_TYPE_VARBIT;
+    default:
+      return type_enum;
+    }
 }
