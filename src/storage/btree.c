@@ -20192,7 +20192,6 @@ btree_get_next_node_info (THREAD_ENTRY * thread_p, BTID * btid, BTREE_NODE_SCAN 
   node_type = (node_header->node_level > 1) ? BTREE_NON_LEAF_NODE : BTREE_LEAF_NODE;
   key_cnt = btree_node_number_of_keys (thread_p, btns->crt_page);
 
-
   rec_header = (node_type == BTREE_NON_LEAF_NODE) ? (void *) &nleaf : (void *) &leaf_pnt;
 
   if (node_type == BTREE_NON_LEAF_NODE)
@@ -20232,10 +20231,11 @@ btree_get_next_node_info (THREAD_ENTRY * thread_p, BTID * btid, BTREE_NODE_SCAN 
 
   /* Get key count */
   db_make_int (node_info[BTREE_NODE_INFO_KEY_COUNT], key_cnt);
-  btree_init_temp_key_value (&clear_key, &key_value);
 
   if (key_cnt > 0)
     {
+      btree_init_temp_key_value (&clear_key, &key_value);
+
       /* Get first key */
       if (spage_get_record (thread_p, btns->crt_page, 1, &rec, PEEK) != S_SUCCESS)
 	{
@@ -20246,8 +20246,10 @@ btree_get_next_node_info (THREAD_ENTRY * thread_p, BTID * btid, BTREE_NODE_SCAN 
 	{
 	  goto error;
 	}
+
       pr_clear_value (node_info[BTREE_NODE_INFO_FIRST_KEY]);
-      *node_info[BTREE_NODE_INFO_FIRST_KEY] = key_value;	/* just copy. it will be cleared later */
+      pr_clone_value (&key_value, node_info[BTREE_NODE_INFO_FIRST_KEY]);
+      btree_clear_key_value (&clear_key, &key_value);
 
       /* Get last key */
       if (spage_get_record (thread_p, btns->crt_page, key_cnt, &rec, PEEK) != S_SUCCESS)
@@ -20259,8 +20261,10 @@ btree_get_next_node_info (THREAD_ENTRY * thread_p, BTID * btid, BTREE_NODE_SCAN 
 	{
 	  goto error;
 	}
+
       pr_clear_value (node_info[BTREE_NODE_INFO_LAST_KEY]);
-      *node_info[BTREE_NODE_INFO_LAST_KEY] = key_value;	/* just copy. it will be cleared later */
+      pr_clone_value (&key_value, node_info[BTREE_NODE_INFO_LAST_KEY]);
+      btree_clear_key_value (&clear_key, &key_value);
     }
   else
     {
