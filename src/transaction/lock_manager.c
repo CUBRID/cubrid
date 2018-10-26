@@ -3735,6 +3735,7 @@ start:
 		    {
 		      /* if resource entry is empty, remove it. */
 		      (void) lock_remove_resource (thread_p, res_ptr);
+		      res_ptr = NULL;
 		      is_res_mutex_locked = false;
 		    }
 		}
@@ -3824,7 +3825,7 @@ start:
 		LK_RES_INC_MAX_LOCK_MODE_COUNT (old_cnt_max_lock_mode_with_version_and_flags);
 
 	      new_cnt_max_lock_mode_with_version_and_flags =
-		new_cnt_max_lock_mode_with_version_and_flags | ((UINT64) lock << 56);
+		LK_RES_SET_LOCK_MODE (new_cnt_max_lock_mode_with_version_and_flags, lock);
 	    }
 	  while (!ATOMIC_CAS_64
 		 (&res_ptr->cnt_max_lock_mode_with_version_and_flags, old_cnt_max_lock_mode_with_version_and_flags,
@@ -6949,6 +6950,7 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
 	      if (class_entry->mark_deleted == 2)
 		{
 		  lock_remove_mark_deleted_entry (thread_p, class_entry);
+		  class_entry = NULL;
 		}
 	    }
 	}
@@ -7811,7 +7813,7 @@ lock_unlock_all (THREAD_ENTRY * thread_p)
   entry_ptr = tran_lock->class_hold_list;
   while (entry_ptr != NULL)
     {
-      assert (tran_index == entry_ptr->tran_index);
+      assert (tran_index == entry_ptr->tran_index && entry_ptr != entry_ptr->tran_next);
       next = entry_ptr->tran_next;
       lock_internal_perform_unlock_object (thread_p, entry_ptr, true, false);
       entry_ptr = next;
