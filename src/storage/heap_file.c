@@ -3184,7 +3184,7 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, H
 
       if (hash_is_available)
 	{
-          PERF_UTIME_TRACKER_START (thread_p, &time_best_space);
+	  PERF_UTIME_TRACKER_START (thread_p, &time_best_space);
 	  rc = pthread_mutex_lock (&heap_Bestspace->bestspace_mutex);
 
 	  while (notfound_cnt < BEST_PAGE_SEARCH_MAX_COUNT
@@ -3209,7 +3209,7 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, H
 	    }
 
 	  pthread_mutex_unlock (&heap_Bestspace->bestspace_mutex);
-          PERF_UTIME_TRACKER_TIME (thread_p, &time_best_space, PSTAT_HF_BEST_SPACE_FIND);
+	  PERF_UTIME_TRACKER_TIME (thread_p, &time_best_space, PSTAT_HF_BEST_SPACE_FIND);
 	}
 
       if (best.freespace == -1)
@@ -3572,6 +3572,7 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid, int neede
 
 error:
   PERF_UTIME_TRACKER_TIME (thread_p, &time_find_best_page, PSTAT_HF_HEAP_FIND_BEST_PAGE);
+
   return NULL;
 }
 
