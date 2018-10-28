@@ -202,7 +202,7 @@ struct lk_res
    * The version is used to detect whether a lock entry refers an older resource lock. If true,
    * the lock entry must be deallocated.
    */
-  volatile UINT64 cnt_max_lock_mode_with_version_and_flags;
+  volatile UINT64 cnt_highest_lock_mode_with_version_and_flags;
 };
 
 #if defined(SERVER_MODE)
