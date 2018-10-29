@@ -3822,10 +3822,16 @@ db_json_contains_path (DB_VALUE * result, DB_VALUE * arg[], const int num_args)
       if (find_all && !exists)
 	{
 	  db_make_int (result, (int) false);
+
+	  pr_clear_value (&json_db_value);
+	  return NO_ERROR;
 	}
       if (!find_all && exists)
 	{
 	  db_make_int (result, (int) true);
+
+	  pr_clear_value (&json_db_value);
+	  return NO_ERROR;
 	}
     }
 
