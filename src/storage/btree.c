@@ -1147,6 +1147,8 @@ enum btree_rv_debug_id
 typedef enum btree_rv_debug_id BTREE_RV_DEBUG_ID;
 
 /* b-tree debug logging */
+#define btree_log_if_enabled(...) \
+  if (prm_get_bool_value(PRM_ID_LOG_BTREE_OPS)) _er_log_debug (ARG_FILE_LINE, __VA_ARGS__)
 #define btree_log(prefix, msg, ...) \
   _er_log_debug (ARG_FILE_LINE, prefix LOG_THREAD_TRAN_MSG ": " msg "\n", \
                  LOG_THREAD_TRAN_ARGS (thread_get_thread_entry_info ()), __VA_ARGS__)
@@ -4326,8 +4328,7 @@ btree_read_record_without_decompression (THREAD_ENTRY * thread_p, BTID_INT * bti
 #if !defined(NDEBUG)
   if (!rec || !rec->data)
     {
-      er_log_debug (ARG_FILE_LINE,
-		    "btree_read_record_without_decompression: null node header pointer. Operation Ignored.");
+      btree_log_if_enabled ("btree_read_record_without_decompression: null node header pointer. Operation Ignored.");
       return rc;
     }
 #endif
@@ -5040,7 +5041,7 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pa
 #if !defined(NDEBUG)
   if (!page_ptr || !key || DB_IS_NULL (key))
     {
-      er_log_debug (ARG_FILE_LINE, "btree_search_nonleaf_page: null page/key pointer. Operation Ignored.");
+      btree_log_if_enabled ("btree_search_nonleaf_page: null page/key pointer. Operation Ignored.");
       return ER_FAILED;
     }
 #endif
@@ -5050,7 +5051,7 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pa
 
   if (key_cnt <= 0)
     {				/* node record underflow */
-      er_log_debug (ARG_FILE_LINE, "btree_search_nonleaf_page: node key count underflow: %d", key_cnt);
+      btree_log_if_enabled ("btree_search_nonleaf_page: node key count underflow: %d", key_cnt);
       return ER_FAILED;
     }
 
@@ -7784,8 +7785,8 @@ btree_check_by_btid (THREAD_ENTRY * thread_p, BTID * btid)
 	   *
 	   * this is, for now, a quick fix to avoid the safe-guard. I hope it won't hide other issues.
 	   */
-	  er_log_debug (ARG_FILE_LINE, "btree_check_by_btid on (%d, %d|%d) failed, because index info could not be "
-			"fetched. it is possible that index is still loading... \n", BTID_AS_ARGS (btid));
+	  btree_log_if_enabled ("btree_check_by_btid on (%d, %d|%d) failed, because index info could not be "
+				"fetched. it is possible that index is still loading... \n", BTID_AS_ARGS (btid));
 	  valid = DISK_VALID;
 	}
       goto exit_on_end;
@@ -24948,10 +24949,7 @@ btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PR
 	{
 	  /* Couldn't advance. Restart from root. */
 	  assert (bts->use_desc_index);
-	  /* TODO: This is a notification to see how often this happens.  If it is spamming remove it.  Also maybe give 
-	   * up descending scan after a number of restarts. */
-	  er_log_debug (ARG_FILE_LINE,
-			"Notification: descending range scan had to be interrupted and restarted from root.\n");
+	  btree_log_if_enabled ("Notification: descending range scan had to be interrupted and restarted from root.\n");
 	  if (bts->C_page != NULL)
 	    {
 	      pgbuf_unfix_and_init (thread_p, bts->C_page);
@@ -25006,10 +25004,8 @@ btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PR
 	    {
 	      /* Couldn't advance. Restart from root. */
 	      assert (bts->use_desc_index);
-	      /* TODO: This is a notification to see how often this happens.  If it is spamming remove it.  Also maybe
-	       * give up descending scan after a number of restarts. */
-	      er_log_debug (ARG_FILE_LINE,
-			    "Notification: descending range scan had to be interrupted and restarted from root.\n");
+	      btree_log_if_enabled ("Notification: descending range scan had to be interrupted and restarted from "
+				    "root.\n");
 	      if (bts->C_page != NULL)
 		{
 		  pgbuf_unfix_and_init (thread_p, bts->C_page);
