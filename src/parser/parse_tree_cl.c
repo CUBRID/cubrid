@@ -9605,6 +9605,20 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 	      /* skip unnecessary nested parenthesis of derived-query */
 	      q = pt_append_varchar (parser, q, r1);
 	    }
+	  else if (p->info.spec.derived_table_type == PT_DERIVED_JSON_TABLE)
+	    {
+	      q = pt_append_nulstring (parser, q, "(");
+	      q = pt_append_varchar (parser, q, r1);
+
+	      unsigned int alias_print_flag = (parser->custom_print & PT_PRINT_ALIAS);
+	      q = pt_append_nulstring (parser, q, " as ");
+	      parser->custom_print &= ~PT_PRINT_ALIAS;
+	      r1 = pt_print_bytes (parser, p->info.spec.range_var);
+	      q = pt_append_varchar (parser, q, r1);
+	      parser->custom_print |= alias_print_flag;
+
+	      q = pt_append_nulstring (parser, q, ")");
+	    }
 	  else
 	    {
 	      q = pt_append_nulstring (parser, q, "(");
@@ -9614,7 +9628,7 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
     }
 
-  if (!(parser->custom_print & PT_SUPPRESS_RESOLVED))
+  if (!(parser->custom_print & PT_SUPPRESS_RESOLVED) && (p->info.spec.derived_table_type != PT_DERIVED_JSON_TABLE))
     {
       save_custom = parser->custom_print;
       parser->custom_print |= PT_SUPPRESS_META_ATTR_CLASS;
@@ -9628,7 +9642,7 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
       parser->custom_print = save_custom;
     }
-  if (p->info.spec.as_attr_list && !PT_SPEC_IS_CTE (p))
+  if (p->info.spec.as_attr_list && !PT_SPEC_IS_CTE (p) && (p->info.spec.derived_table_type != PT_DERIVED_JSON_TABLE))
     {
       save_custom = parser->custom_print;
       parser->custom_print |= PT_SUPPRESS_RESOLVED;
@@ -19153,7 +19167,9 @@ pt_print_json_table_node (PARSER_CONTEXT * parser, PT_NODE * p)
   // todo - print columns and nested path in same order as defined by user...
 
   // print path
+  pstr = pt_append_nulstring (parser, pstr, "'");
   pstr = pt_append_nulstring (parser, pstr, p->info.json_table_node_info.path);
+  pstr = pt_append_nulstring (parser, pstr, "'");
 
   // 'columns ('
   pstr = pt_append_nulstring (parser, pstr, " columns (");
@@ -19208,13 +19224,13 @@ pt_json_table_column_behavior_to_string (const json_table_column_behavior_type &
   switch (behavior_type)
     {
     case json_table_column_behavior_type::JSON_TABLE_RETURN_NULL:
-      return "RETURN NULL";
+      return "NULL";
 
     case json_table_column_behavior_type::JSON_TABLE_DEFAULT_VALUE:
-      return "DEFAULT VALUE";
+      return "DEFAULT";
 
     case json_table_column_behavior_type::JSON_TABLE_THROW_ERROR:
-      return "THROW ERROR";
+      return "ERROR";
 
     default:
       assert (false);
@@ -19272,8 +19288,7 @@ pt_print_json_table_column_info (PARSER_CONTEXT * parser, PT_NODE * p, PARSER_VA
   // | name type EXISTS PATH string path
 
   // print name
-  substr = pt_print_bytes (parser, p->info.json_table_column_info.name);
-  pstr = pt_append_varchar (parser, pstr, substr);
+  pstr = pt_append_nulstring (parser, pstr, p->info.json_table_column_info.name->info.name.original);
 
   // get the type
   type = pt_type_enum_to_db_domain_name (p->type_enum);
@@ -19294,17 +19309,19 @@ pt_print_json_table_column_info (PARSER_CONTEXT * parser, PT_NODE * p, PARSER_VA
       pstr = pt_append_nulstring (parser, pstr, " PATH ");
 
       // print path
+      pstr = pt_append_nulstring (parser, pstr, "'");
       pstr = pt_append_nulstring (parser, pstr, p->info.json_table_column_info.path);
+      pstr = pt_append_nulstring (parser, pstr, "'");
 
       // print on_error
-      pstr = pt_append_nulstring (parser, pstr, " [");
+      pstr = pt_append_nulstring (parser, pstr, " ");
       pstr = pt_print_json_table_column_error_or_empty_behavior (parser, pstr, p->info.json_table_column_info.on_error);
-      pstr = pt_append_nulstring (parser, pstr, "]");
+      pstr = pt_append_nulstring (parser, pstr, " ON ERROR");
 
       // print on_empty
-      pstr = pt_append_nulstring (parser, pstr, " [");
+      pstr = pt_append_nulstring (parser, pstr, " ");
       pstr = pt_print_json_table_column_error_or_empty_behavior (parser, pstr, p->info.json_table_column_info.on_empty);
-      pstr = pt_append_nulstring (parser, pstr, "]");
+      pstr = pt_append_nulstring (parser, pstr, " ON EMPTY");
       break;
 
     case json_table_column_function::JSON_TABLE_EXISTS:
@@ -19316,7 +19333,9 @@ pt_print_json_table_column_info (PARSER_CONTEXT * parser, PT_NODE * p, PARSER_VA
       pstr = pt_append_nulstring (parser, pstr, " EXISTS PATH ");
 
       // print path
+      pstr = pt_append_nulstring (parser, pstr, "'");
       pstr = pt_append_nulstring (parser, pstr, p->info.json_table_column_info.path);
+      pstr = pt_append_nulstring (parser, pstr, "'");
       break;
 
     default:
