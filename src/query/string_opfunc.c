@@ -3766,7 +3766,19 @@ db_json_contains_path (DB_VALUE * result, DB_VALUE * arg[], const int num_args)
       return NO_ERROR;
     }
 
-  doc = db_get_json_document (arg[0]);
+  db_value json_db_value;
+  TP_DOMAIN_STATUS cast_status = tp_value_cast (arg[0], &json_db_value, &tp_Json_domain, false);
+  if (cast_status != DOMAIN_COMPATIBLE)
+    {
+      error_code = er_errid ();
+      if (error_code == NO_ERROR)
+	{
+	  error_code = ER_JSON_INVALID_JSON;
+	}
+      return error_code;
+    }
+
+  doc = db_get_json_document (&json_db_value);
   const char *find_all_str = db_get_string (arg[1]);
 
   if (strcmp (find_all_str, "all") == 0)
