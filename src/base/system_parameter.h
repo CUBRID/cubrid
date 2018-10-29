@@ -425,9 +425,11 @@ enum param_id
   PRM_ID_DEBUG_LOG_ARCHIVES,
   PRM_ID_DEBUG_ES,
   PRM_ID_DEBUG_BESTSPACE,
+  PRM_ID_DEBUG_LOG_2PC,
+  PRM_ID_DEBUG_LOGWR,
 
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_DEBUG_BESTSPACE
+  PRM_LAST_ID = PRM_ID_DEBUG_LOGWR
 };
 typedef enum param_id PARAM_ID;
 

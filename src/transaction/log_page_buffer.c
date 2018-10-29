@@ -112,6 +112,8 @@ static int rv;
 #endif /* !SERVER_MODE */
 
 #define logpb_log(...) if (logpb_Logging) _er_log_debug (ARG_FILE_LINE, "LOGPB: " __VA_ARGS__)
+#define log_archive_er_log(...) \
+  if (prm_get_bool_value (PRM_ID_DEBUG_LOG_ARCHIVES)) _er_log_debug (ARG_FILE_LINE, __VA_ARGS__)
 
 #define LOGPB_FIND_BUFPTR(bufid) &log_Pb.buffers[(bufid)]
 
@@ -6994,7 +6996,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
 	}
     }
 
-  er_log_debug (ARG_FILE_LINE, "logpb_archive_active_log, arvhdr->fpageid = %lld\n", arvhdr->fpageid);
+  log_archive_er_log ("logpb_archive_active_log, arvhdr->fpageid = %lld\n", arvhdr->fpageid);
 
   error_code = logpb_set_page_checksum (thread_p, malloc_arv_hdr_pgptr);
   if (error_code != NO_ERROR)
@@ -7195,8 +7197,8 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
 	}
     }
 
-  er_log_debug (ARG_FILE_LINE, "logpb_archive_active_log end, arvhdr->fpageid = %lld, arvhdr->npages = %d\n",
-		arvhdr->fpageid, arvhdr->npages);
+  log_archive_er_log ("logpb_archive_active_log end, arvhdr->fpageid = %lld, arvhdr->npages = %d\n", arvhdr->fpageid,
+		      arvhdr->npages);
 
   free_and_init (malloc_arv_hdr_pgptr);
 
@@ -11860,9 +11862,8 @@ error:
 		    bg_arv_info->start_page_id, bg_arv_info->current_page_id, error_code);
     }
 
-  er_log_debug (ARG_FILE_LINE,
-		"logpb_background_archiving end, hdr->start_page_id = %d, hdr->current_page_id = %d\n",
-		bg_arv_info->start_page_id, bg_arv_info->current_page_id);
+  log_archive_er_log ("logpb_background_archiving end, hdr->start_page_id = %d, hdr->current_page_id = %d\n",
+		      bg_arv_info->start_page_id, bg_arv_info->current_page_id);
 
   return error_code;
 }
