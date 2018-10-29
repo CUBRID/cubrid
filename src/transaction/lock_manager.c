@@ -4502,7 +4502,7 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
     {
       bool needs_update_cnt_lock_mode_with_version_and_flags = false;
       /* grant blocked holders and blocked waiters */
-      if (res_ptr->holder->blocked_mode != NULL_LOCK)
+      if (res_ptr->holder != NULL && res_ptr->holder->blocked_mode != NULL_LOCK)
 	{
 	  needs_update_cnt_lock_mode_with_version_and_flags = true;
 	}
