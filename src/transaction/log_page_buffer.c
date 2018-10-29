@@ -11207,6 +11207,13 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *db_fulln
   fileio_make_volume_info_name (vol_fullname, db_fullname);
   fileio_unformat (thread_p, vol_fullname);
 
+  /* Destroy DWB, if still exists. */
+  fileio_make_dwb_name (vol_fullname, log_Path, log_Prefix);
+  if (fileio_is_volume_exist (vol_fullname))
+    {
+      fileio_unformat (thread_p, vol_fullname);
+    }
+
   if (force_delete)
     {
       /* 
