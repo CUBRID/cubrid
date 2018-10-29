@@ -2695,14 +2695,7 @@ db_json_bool_to_string (bool b)
 char *
 db_json_get_bool_as_str_from_value (const JSON_VALUE *doc)
 {
-  if (doc == NULL)
-    {
-      assert (false);
-      return NULL;
-    }
-
-  assert (db_json_get_type_of_value (doc) == DB_JSON_BOOL);
-  return db_json_bool_to_string (doc->GetBool ());
+  return db_json_bool_to_string (db_json_get_bool_from_value (doc));
 }
 
 bool
