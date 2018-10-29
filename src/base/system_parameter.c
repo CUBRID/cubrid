@@ -658,6 +658,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_DEBUG_LOG_ARCHIVES "debug_log_archives"
 #define PRM_NAME_DEBUG_ES "debug_external_storage"
+#define PRM_NAME_DEBUG_BESTSPACE "debug_heap_bestspace"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
@@ -2190,6 +2191,10 @@ static unsigned int prm_debug_log_archives_flag = 0;
 bool PRM_DEBUG_ES = false;
 static bool prm_debug_es_default = false;
 static unsigned int prm_debug_es_flag = 0;
+
+bool PRM_DEBUG_BESTSPACE = false;
+static bool prm_debug_bestspace_default = false;
+static unsigned int prm_debug_bestspace_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5595,9 +5600,20 @@ static SYSPRM_PARAM prm_Def[] = {
    PRM_NAME_DEBUG_ES,
    (PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
-   &prm_debug_es,
-   (void *) &prm_debug_es,
+   &prm_debug_es_flag,
+   (void *) &prm_debug_es_default,
    (void *) &PRM_DEBUG_ES,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_DEBUG_BESTSPACE,
+   PRM_NAME_DEBUG_BESTSPACE,
+   (PRM_USER_CHANGE | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_debug_bestspace_flag,
+   (void *) &prm_debug_bestspace_default,
+   (void *) &PRM_DEBUG_BESTSPACE,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
