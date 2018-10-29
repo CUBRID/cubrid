@@ -10724,7 +10724,12 @@ lock_res_update_cnt_highest_lock_with_version_and_flags (THREAD_ENTRY * thread_p
   for (curr = res_ptr->holder; curr != NULL; curr = curr->next)
     {
       assert (curr->granted_mode >= NULL_LOCK && mode >= NULL_LOCK);
-      mode = lock_Conv[curr->granted_mode][mode];
+      if (curr->mark_deleted != 0)
+	{
+	  continue;
+	}
+
+      mode = curr->granted_mode;
       if (max_mode < mode)
 	{
 	  max_mode = mode;
@@ -10734,11 +10739,9 @@ lock_res_update_cnt_highest_lock_with_version_and_flags (THREAD_ENTRY * thread_p
 	{
 	  cnt_max_mode = cnt_max_mode + LK_RES_HIGHEST_LOCK_COUNTER_INCREMENT;
 	}
-      assert (mode != NA_LOCK);
 
-      assert (curr->blocked_mode >= NULL_LOCK && mode >= NULL_LOCK);
-      mode = lock_Conv[curr->blocked_mode][mode];
       assert (mode != NA_LOCK);
+      assert (curr->blocked_mode <= NULL_LOCK);
     }
 
   /* Advance the version, since we have other locks. */
