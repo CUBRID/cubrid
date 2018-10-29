@@ -656,6 +656,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_DATA_FILE_ADVISE "data_file_os_advise"
 
+#define PRM_NAME_DEBUG_LOG_ARCHIVES "debug_log_archives"
+
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
 #define PRM_VALUE_MIN "MIN"
@@ -2177,10 +2179,12 @@ static UINT64 prm_repl_consumer_buffer_size_lower = 100 * 1024;
 static unsigned int prm_repl_consumer_buffer_size_flag = 0;
 
 int PRM_DATA_FILE_ADVISE = 0;
-
 static int prm_data_file_advise_default = 0;
-
 static unsigned int prm_data_file_advise_flag = 0;
+
+bool PRM_DEBUG_LOG_ARCHIVES = false;
+static bool prm_debug_log_archives_default = false;
+static unsigned int prm_debug_log_archives_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5551,7 +5555,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_DWB_LOGGING,
    PRM_NAME_DWB_LOGGING,
-   (PRM_FOR_SERVER | PRM_USER_CHANGE),
+   (PRM_FOR_SERVER | PRM_USER_CHANGE),	// todo - should this be hidden?
    PRM_BOOLEAN,
    &prm_dwb_logging_flag,
    (void *) &prm_dwb_logging_default,
@@ -5570,7 +5574,18 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL}
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_DEBUG_LOG_ARCHIVES,
+   PRM_NAME_DEBUG_LOG_ARCHIVES,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_debug_log_archives_flag,
+   (void *) &prm_debug_log_archives_default,
+   (void *) &PRM_DEBUG_LOG_ARCHIVES,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
 };
 
 #define NUM_PRM ((int)(sizeof(prm_Def)/sizeof(prm_Def[0])))

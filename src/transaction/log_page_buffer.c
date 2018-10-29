@@ -7359,11 +7359,14 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
 
   if (last_arv_num_to_delete >= 0 && last_arv_num_to_delete >= first_arv_num_to_delete)
     {
-      /* this is too problematic not to log in server error log too! */
-      _er_log_debug (ARG_FILE_LINE, "Purge archives starting with %d and up until %d; "
-		     "vacuum_first_pageid = %d, last_arv_num_for_syscrashes = %d",
-		     first_arv_num_to_delete, last_arv_num_to_delete, vacuum_first_pageid,
-		     log_Gl.hdr.last_arv_num_for_syscrashes);
+      if (prm_get_bool_value (PRM_ID_DEBUG_LOG_ARCHIVES) || VACUUM_IS_ER_LOG_LEVEL_SET (VACUUM_ER_LOG_ARCHIVES))
+	{
+	  /* this is too problematic not to log in server error log too! */
+	  _er_log_debug (ARG_FILE_LINE, "Purge archives starting with %d and up until %d; "
+			 "vacuum_first_pageid = %d, last_arv_num_for_syscrashes = %d",
+			 first_arv_num_to_delete, last_arv_num_to_delete, vacuum_first_pageid,
+			 log_Gl.hdr.last_arv_num_for_syscrashes);
+	}
 
       catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_MAX_ARCHIVES_HAS_BEEN_EXCEEDED);
       if (catmsg == NULL)
