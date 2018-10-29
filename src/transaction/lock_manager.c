@@ -626,7 +626,10 @@ STATIC_INLINE bool lock_internal_reset_mark_deleted (THREAD_ENTRY * thread_p, LK
 STATIC_INLINE void lock_res_update_cnt_highest_lock_with_version_and_flags (THREAD_ENTRY * thread_p,
 									    LK_RES * res_ptr)
   __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void lock_disconnect_mark_deleted_objects (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
+STATIC_INLINE bool
+lock_res_cleanup_mark_deleted_transaction_entry (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK_ENTRY * entry_ptr)
+__attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void lock_res_disconnect_mark_deleted_entries (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool lock_internal_set_mark_deleted (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
   __attribute__ ((ALWAYS_INLINE));
@@ -3374,7 +3377,7 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, cons
   TRAN_ISOLATION isolation;
   int ret_val;
   LOCK group_mode, old_mode, new_mode, total_holders_mode;	/* lock mode */
-  LK_RES *res_ptr;
+  LK_RES *res_ptr = NULL;
   LK_ENTRY *entry_ptr = NULL;
   LK_ENTRY *wait_entry_ptr = NULL;
   LK_ENTRY *prev, *curr, *i;
@@ -3388,6 +3391,7 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, cons
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
   UINT64 lock_wait_time;
+  bool has_highest_lock_invalid;
 
 #if defined(ENABLE_SYSTEMTAP)
   const OID *class_oid_for_marker_p;
@@ -3483,80 +3487,43 @@ start:
       entry_ptr = lock_find_class_entry (tran_index, oid);
       if (entry_ptr != NULL)
 	{
-	  res_ptr = entry_ptr->res_head;
-	  if (entry_ptr->mark_deleted != 0)
+	  /* Set the lock by reseting mark deleted. At success, nothing to do. At fail, the class entry will be reused. */
+	  if (lock_internal_reset_mark_deleted (thread_p, entry_ptr, lock))
 	    {
-	      /* TODO - improve it */
-	      if (entry_ptr->mark_deleted == 1)
+	      perfmon_inc_stat (thread_p, PSTAT_LK_NUM_RE_REQUESTED_ON_OBJECTS);	/* monitoring */
+	      ret_val = LK_GRANTED;
+	      goto end;
+	    }
+
+	  res_ptr = entry_ptr->res_head;
+	  has_highest_lock_invalid =
+	    LK_RES_HAS_HIGHEST_LOCK_INVALID_FLAG (res_ptr->cnt_highest_lock_mode_with_version_and_flags);
+	  if (entry_ptr->mark_deleted != 0 || has_highest_lock_invalid)
+	    {
+	      pthread_mutex_lock (&res_ptr->res_mutex);
+	      is_res_mutex_locked = true;
+
+	      if (has_highest_lock_invalid && res_ptr->total_waiters_mode == NULL_LOCK)
 		{
-		  /* Set the lock by reseting mark deleted. At success, nothing to do. At fail, the class entry will be reused. */
-		  if (lock_internal_reset_mark_deleted (thread_p, entry_ptr, lock))
+		  /* Check again, maybe someone else cleaned before me. */
+		  lock_res_disconnect_mark_deleted_entries (thread_p, res_ptr);
+		  lock_res_update_cnt_highest_lock_with_version_and_flags (thread_p, res_ptr);
+
+		  if (res_ptr->holder == NULL && res_ptr->waiter == NULL && res_ptr->non2pl == NULL)
 		    {
-		      perfmon_inc_stat (thread_p, PSTAT_LK_NUM_RE_REQUESTED_ON_OBJECTS);	/* monitoring */
-		      ret_val = LK_GRANTED;
-		      goto end;
+		      /* If resource entry is empty, remove it. */
+		      (void) lock_remove_resource (thread_p, res_ptr);
+		      is_res_mutex_locked = false;
+		      res_ptr = NULL;
 		    }
 		}
 
-	      if (LK_RES_HAS_HIGHEST_LOCK_INVALID_FLAG (res_ptr->cnt_highest_lock_mode_with_version_and_flags))
+	      /* Cleanup mark deleted entry. */
+	      if (lock_res_cleanup_mark_deleted_transaction_entry (thread_p, res_ptr, entry_ptr))
 		{
-		  /* We need to lock resource mutex. */
-		  pthread_mutex_lock (&res_ptr->res_mutex);
-		  is_res_mutex_locked = true;
-
-		  if (res_ptr->total_waiters_mode == NULL_LOCK)
-		    {
-		      /* Check again, maybe someone else cleaned before me. */
-		      lock_disconnect_mark_deleted_objects (thread_p, res_ptr);
-		      lock_res_update_cnt_highest_lock_with_version_and_flags (thread_p, res_ptr);
-
-		      if (res_ptr->holder == NULL)
-			{
-			  /* if resource entry is empty, remove it. */
-			  (void) lock_remove_resource (thread_p, res_ptr);
-			  res_ptr = NULL;
-			  is_res_mutex_locked = false;
-			}
-		    }
-		}
-
-	      if (entry_ptr->mark_deleted == 1)
-		{
-		  /* Disconnect only my entry. */
-		  ATOMIC_TAS_32 (&entry_ptr->mark_deleted, 2);
-
-		  /* We need to lock resource mutex. */
-		  pthread_mutex_lock (&res_ptr->res_mutex);
-		  is_res_mutex_locked = true;
-
-		  prev = NULL;
-		  curr = res_ptr->holder;
-		  while ((curr != NULL) && (curr != entry_ptr))
-		    {
-		      prev = curr;
-		      curr = curr->next;
-		    }
-
-		  if (curr != NULL)
-		    {
-		      if (prev == NULL)
-			{
-			  res_ptr->holder = entry_ptr->next;
-			}
-		      else
-			{
-			  prev->next = entry_ptr->next;
-			}
-		    }
-		}
-
-	      if (entry_ptr->mark_deleted == 2)
-		{
-		  lock_remove_mark_deleted_entry (thread_p, entry_ptr);
 		  entry_ptr = NULL;
 		}
 	    }
-
 	}
 
       if (entry_ptr != NULL)
@@ -3951,6 +3918,8 @@ lock_tran_lk_entry:
 	  total_holders_mode = lock_Conv[lock][res_ptr->total_holders_mode];
 	  lock_resource_update_total_holders_mode (thread_p, res_ptr, res_ptr->total_holders_mode, total_holders_mode,
 						   true);
+	  entry_ptr->resource_version =
+	    LK_RES_GET_HIGHEST_LOCK_VERSION (res_ptr->cnt_highest_lock_mode_with_version_and_flags);
 	}
       else
 	{
@@ -10621,7 +10590,10 @@ lock_internal_reset_mark_deleted (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr,
   res_ptr = entry_ptr->res_head;
   assert (res_ptr != NULL);
 
-  assert (entry_ptr->mark_deleted != 0);
+  if (entry_ptr->mark_deleted != 1)
+    {
+      return false;
+    }
 
 start:
   do
@@ -10793,9 +10765,52 @@ lock_res_update_cnt_highest_lock_with_version_and_flags (THREAD_ENTRY * thread_p
 #endif
 
 #if defined(SERVER_MODE)
+STATIC_INLINE bool
+lock_res_cleanup_mark_deleted_transaction_entry (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK_ENTRY * entry_ptr)
+{
+  assert (entry_ptr->tran_index == LOG_FIND_THREAD_TRAN_INDEX (thread_p));
 
+  if (entry_ptr->mark_deleted == 1)
+    {
+      LK_ENTRY *prev, *curr;
+
+      assert (res_ptr != NULL && entry_ptr != NULL && entry_ptr->res_head == res_ptr);
+      prev = NULL;
+      curr = res_ptr->holder;
+      while ((curr != NULL) && (curr != entry_ptr))
+	{
+	  prev = curr;
+	  curr = curr->next;
+	}
+
+      if (curr != NULL)
+	{
+	  if (prev == NULL)
+	    {
+	      res_ptr->holder = entry_ptr->next;
+	    }
+	  else
+	    {
+	      prev->next = entry_ptr->next;
+	    }
+	}
+
+      ATOMIC_TAS_32 (&entry_ptr->mark_deleted, 2);
+    }
+
+  if (entry_ptr->mark_deleted == 2)
+    {
+      lock_remove_mark_deleted_entry (thread_p, entry_ptr);
+      return true;
+    }
+
+  return false;
+}
+#endif
+
+#if defined(SERVER_MODE)
 STATIC_INLINE void
-lock_disconnect_mark_deleted_objects (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
+lock_res_disconnect_mark_deleted_entries (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 {
   LK_ENTRY *prev, *curr, *next;
   int mark_deleted = 0;
@@ -10963,7 +10978,7 @@ lock_resource_update_highest_lock_info_when_change_holders (THREAD_ENTRY * threa
     }
 
   /* Disconnct mark deleted objects. TODO - disconnect my entry, if is the case */
-  lock_disconnect_mark_deleted_objects (thread_p, res_ptr);
+  lock_res_disconnect_mark_deleted_entries (thread_p, res_ptr);
   lock_res_update_cnt_highest_lock_with_version_and_flags (thread_p, res_ptr);
 }
 #endif
@@ -11028,7 +11043,7 @@ lock_resource_update_highest_lock_info_when_change_waiters (THREAD_ENTRY * threa
     }
 
   /* Disconnct mark deleted objects. TODO - disconnect my entry, if is the case */
-  lock_disconnect_mark_deleted_objects (thread_p, res_ptr);
+  lock_res_disconnect_mark_deleted_entries (thread_p, res_ptr);
   lock_res_update_cnt_highest_lock_with_version_and_flags (thread_p, res_ptr);
 }
 #endif
