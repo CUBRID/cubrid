@@ -4581,6 +4581,12 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 	}
     }
 
+  if (func_index_info.expr != NULL)
+    {
+      (void) qexec_clear_func_pred (thread_p, func_index_info.expr);
+      func_index_info.expr = NULL;
+    }
+
   if (func_unpack_info != NULL)
     {
       stx_free_additional_buff (thread_p, func_unpack_info);
@@ -4635,6 +4641,11 @@ error:
 	  stx_free_xasl_unpack_info (filter_pred->unpack_info);
 	  db_private_free_and_init (thread_p, filter_pred->unpack_info);
 	}
+    }
+
+  if (func_index_info.expr != NULL)
+    {
+      (void) qexec_clear_func_pred (thread_p, func_index_info.expr);
     }
 
   if (func_unpack_info != NULL)
