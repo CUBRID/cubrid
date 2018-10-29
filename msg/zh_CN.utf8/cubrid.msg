@@ -1915,7 +1915,7 @@ $set 14 MSGCAT_SET_LOCK
 17 对象类型: 类(%1$2d|%2$6d|%3$4d)的实例 = %4$s.\n
 18 对象类型: 未知.\n
 19 持有者的总模式 = %1$8s, 等待者的总模式 = %2$8s.\n
-20 持有者的数目=%1$3d, 被阻塞的持有者的数目=%2$3d, 等待者的数目=%3$3d\n
+20 持有者的数目=%1$3d, 被阻塞的持有者的数目=%2$3d, 等待者的数目=%3$3d, Highest lock info=%4$llx\n
 21 LOCK HOLDERS:\n
 22 BLOCKED LOCK HOLDERS:\n
 23 LOCK WAITERS:\n

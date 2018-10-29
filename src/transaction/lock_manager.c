@@ -4455,7 +4455,14 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
       mode = lock_Conv[i->blocked_mode][mode];
       assert (mode != NA_LOCK);
     }
-  lock_resource_update_total_holders_mode (thread_p, res_ptr, res_ptr->total_holders_mode, mode, false);
+  if (entry_ptr->granted_mode >= mode)
+    {
+      lock_resource_update_total_holders_mode (thread_p, res_ptr, res_ptr->total_holders_mode, mode, false);
+    }
+  else
+    {
+      res_ptr->total_holders_mode = mode;
+    }
 
   if (res_ptr->holder == NULL && res_ptr->waiter == NULL)
     {
@@ -4617,7 +4624,15 @@ lock_internal_demote_class_lock (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, 
       total_mode = lock_Conv[h->blocked_mode][total_mode];
       assert (total_mode != NA_LOCK);
     }
-  lock_resource_update_total_holders_mode (thread_p, res_ptr, res_ptr->total_holders_mode, total_mode, false);
+
+  if (entry_ptr->granted_mode >= total_mode)
+    {
+      lock_resource_update_total_holders_mode (thread_p, res_ptr, res_ptr->total_holders_mode, total_mode, false);
+    }
+  else
+    {
+      res_ptr->total_holders_mode = total_mode;
+    }
 
   /* grant the blocked holders and blocked waiters */
   lock_grant_blocked_holder (thread_p, res_ptr);
@@ -5836,7 +5851,7 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
     }
 
   fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_LOCK_COUNT),
-	   num_holders, num_blocked_holders, num_waiters);
+	   num_holders, num_blocked_holders, num_waiters, res_ptr->cnt_highest_lock_mode_with_version_and_flags);
   /* dump holders */
   if (num_holders > 0)
     {
@@ -6642,41 +6657,43 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
 	    {
 	      if (OID_IS_ROOTOID (&root_class_entry->res_head->key.oid))
 		{
-		  old_root_class_lock = root_class_entry->granted_mode;
+		  old_root_class_lock =
+		    (root_class_entry->mark_deleted == 0) ? root_class_entry->granted_mode : NULL_LOCK;
 		  break;
 		}
 
 	      root_class_entry = root_class_entry->class_entry;
 	    }
 
-	  old_class_lock = class_entry->granted_mode;
-	  if (class_entry->mark_deleted != 0)
-	    {
-	      /* Set the lock by reseting mark deleted. At success, nothing to do. At fail, the class entry will be reused. */
-	      if (class_entry->mark_deleted == 1)
-		{
-		  if (lock_internal_reset_mark_deleted (thread_p, class_entry, new_class_lock))
-		    {
-		      granted = LK_GRANTED;
-		      goto end;
-		    }
-		}
-
-	      if (class_entry->mark_deleted == 2)
-		{
-		  lock_remove_mark_deleted_entry (thread_p, class_entry);
-		  class_entry = NULL;
-		}
-	    }
+	  old_class_lock = (class_entry->mark_deleted == 0) ? class_entry->granted_mode : NULL_LOCK;
 	}
 
       if (old_root_class_lock < new_class_lock)
 	{
-	  granted = lock_internal_perform_lock_object (thread_p, tran_index, class_oid, NULL, new_class_lock,
-						       wait_msecs, &root_class_entry, NULL);
-	  if (granted != LK_GRANTED)
+	  if (root_class_entry != NULL && root_class_entry->mark_deleted != 0)
 	    {
-	      goto end;
+	      /* Set the lock by reseting mark deleted. */
+	      if (lock_internal_reset_mark_deleted (thread_p, root_class_entry, new_class_lock))
+		{
+		  assert (root_class_entry->granted_mode == new_class_lock);
+		  old_root_class_lock = new_class_lock;
+		}
+	      else if (root_class_entry->mark_deleted == 2)
+		{
+		  lock_remove_mark_deleted_entry (thread_p, root_class_entry);
+		  root_class_entry = NULL;
+		  old_root_class_lock = NULL_LOCK;
+		}
+	    }
+
+	  if (old_root_class_lock < new_class_lock)
+	    {
+	      granted = lock_internal_perform_lock_object (thread_p, tran_index, class_oid, NULL, new_class_lock,
+							   wait_msecs, &root_class_entry, NULL);
+	      if (granted != LK_GRANTED)
+		{
+		  goto end;
+		}
 	    }
 	}
       /* case 2 : resource type is LOCK_RESOURCE_CLASS */
@@ -6691,6 +6708,22 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
 	  goto end;
 	}
 
+      if (class_entry != NULL && class_entry->mark_deleted != 0)
+	{
+	  /* Set the lock by reseting mark deleted. At success, nothing to do. At fail, the class entry will be reused. */
+	  if (lock_internal_reset_mark_deleted (thread_p, class_entry, new_class_lock))
+	    {
+	      granted = LK_GRANTED;
+	      goto end;
+	    }
+
+	  if (class_entry->mark_deleted == 2)
+	    {
+	      lock_remove_mark_deleted_entry (thread_p, class_entry);
+	      class_entry = NULL;
+	    }
+	}
+
       granted =
 	lock_internal_perform_lock_object (thread_p, tran_index, oid, NULL, lock, wait_msecs, &class_entry,
 					   root_class_entry);
@@ -6699,7 +6732,7 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
   else
     {
       class_entry = lock_get_class_lock (thread_p, class_oid, tran_index);
-      old_class_lock = (class_entry) ? class_entry->granted_mode : NULL_LOCK;
+      old_class_lock = (class_entry != NULL && class_entry->mark_deleted == 0) ? class_entry->granted_mode : NULL_LOCK;
       if (old_class_lock < new_class_lock)
 	{
 	  if (class_entry != NULL && class_entry->class_entry != NULL
@@ -6713,12 +6746,31 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
 	      superclass_entry = lock_get_class_lock (thread_p, oid_Root_class_oid, tran_index);
 	    }
 
-	  granted =
-	    lock_internal_perform_lock_object (thread_p, tran_index, class_oid, NULL, new_class_lock, wait_msecs,
-					       &class_entry, superclass_entry);
-	  if (granted != LK_GRANTED)
+	  if (class_entry != NULL && class_entry->mark_deleted != 0)
 	    {
-	      goto end;
+	      /* Set the lock by reseting mark deleted. At success, nothing to do. At fail, the class entry will be reused. */
+	      if (lock_internal_reset_mark_deleted (thread_p, class_entry, new_class_lock))
+		{
+		  assert (class_entry->granted_mode == new_class_lock);
+		  old_class_lock = new_class_lock;
+		}
+	      else if (class_entry->mark_deleted == 2)
+		{
+		  lock_remove_mark_deleted_entry (thread_p, class_entry);
+		  class_entry = NULL;
+		  old_class_lock = NULL_LOCK;
+		}
+	    }
+
+	  if (old_class_lock < new_class_lock)
+	    {
+	      granted =
+		lock_internal_perform_lock_object (thread_p, tran_index, class_oid, NULL, new_class_lock, wait_msecs,
+						   &class_entry, superclass_entry);
+	      if (granted != LK_GRANTED)
+		{
+		  goto end;
+		}
 	    }
 	}
 

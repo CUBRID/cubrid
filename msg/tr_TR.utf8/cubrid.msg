@@ -1914,7 +1914,7 @@ $set 14 MSGCAT_SET_LOCK
 17 Nesne türü: Sınıfın bir örneği (%1$2d|%2$6d|%3$4d) = %4$s.\n
 18 Nesne türü: Bilinmeyen.\n
 19 Tutucular Toplam modu = %1$8s, Bekleyenler Toplam modu = %2$8s.\n
-20 Num holders=%1$3d, Num blocked-holders=%2$3d, Num waiters=%3$3d\n
+20 Num holders=%1$3d, Num blocked-holders=%2$3d, Num waiters=%3$3d, Highest lock info=%4$llx\n
 21 LOCK HOLDERS:\n
 22 BLOCKED LOCK HOLDERS:\n
 23 LOCK WAITERS:\n

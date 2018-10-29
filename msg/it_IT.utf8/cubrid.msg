@@ -1915,7 +1915,7 @@ $set 14 MSGCAT_SET_LOCK
 17 Tipo di oggetto: Instanza della classe (%1$2d|%2$6d|%3$4d) = %4$s.\n
 18 Tipo di oggetto: sconosciuto.\n
 19 Modo totale di holders = %1$8s, modo totale di waiters = %2$8s.\n
-20 Numero di holders=%1$3d, Numero di holders bloccati=%2$3d, Numero di waiters=%3$3d\n
+20 Numero di holders=%1$3d, Numero di holders bloccati=%2$3d, Numero di waiters=%3$3d, Highest lock info=%4$llx\n
 21 LOCK HOLDERS:\n
 22 BLOCKED LOCK HOLDERS:\n
 23 LOCK WAITERS:\n

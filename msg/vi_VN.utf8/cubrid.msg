@@ -1915,7 +1915,7 @@ $set 14 MSGCAT_SET_LOCK
 17 Object type: Instance of class (%1$2d|%2$6d|%3$4d) = %4$s.\n
 18 Object type: Unknown.\n
 19 Total mode of holders = %1$8s, Total mode of waiters = %2$8s.\n
-20 Num holders=%1$3d, Num blocked-holders=%2$3d, Num waiters=%3$3d\n
+20 Num holders=%1$3d, Num blocked-holders=%2$3d, Num waiters=%3$3d, Highest lock info=%4$llx\n
 21 LOCK HOLDERS:\n
 22 BLOCKED LOCK HOLDERS:\n
 23 LOCK WAITERS:\n
