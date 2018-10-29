@@ -4252,7 +4252,9 @@ lock_internal_set_mark_deleted (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
 	LK_RES_DEC_HIGHEST_LOCK_COUNTER (old_cnt_highest_lock_mode_with_version_and_flags);
       if (LK_RES_GET_HIGHEST_LOCK_COUNTER (new_cnt_highest_lock_mode_with_version_and_flags) == 0)
 	{
-	  /* Needs cleanup. TODO - we may improve it here. TODO - replace with valid data flag */
+	  /* Needs cleanup and highest lock recomputation. */
+          new_cnt_highest_lock_mode_with_version_and_flags =
+            LK_RES_INC_HIGHEST_LOCK_VERSION (new_cnt_highest_lock_mode_with_version_and_flags);
 	  new_cnt_highest_lock_mode_with_version_and_flags =
 	    LK_RES_SET_HIGHEST_LOCK_INVALID_FLAG (new_cnt_highest_lock_mode_with_version_and_flags);
 	}
