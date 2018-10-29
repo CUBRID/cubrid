@@ -3787,6 +3787,8 @@ db_json_contains_path (DB_VALUE * result, DB_VALUE * arg[], const int num_args)
     }
   if (!find_all && strcmp (find_all_str, "one"))
     {
+      pr_clear_value (&json_db_value);
+
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
       return ER_QSTR_INVALID_DATA_TYPE;
     }
@@ -3795,6 +3797,7 @@ db_json_contains_path (DB_VALUE * result, DB_VALUE * arg[], const int num_args)
     {
       if (DB_IS_NULL (arg[i]))
 	{
+	  pr_clear_value (&json_db_value);
 	  return NO_ERROR;
 	}
     }
@@ -3805,30 +3808,33 @@ db_json_contains_path (DB_VALUE * result, DB_VALUE * arg[], const int num_args)
 
       if (path == NULL)
 	{
+	  pr_clear_value (&json_db_value);
 	  return NO_ERROR;
 	}
 
       error_code = db_json_contains_path (doc, path, exists);
       if (error_code)
 	{
+	  pr_clear_value (&json_db_value);
 	  return error_code;
 	}
 
       if (find_all && !exists)
 	{
-	  error_code = db_make_int (result, (int) false);
-	  return error_code;
+	  db_make_int (result, (int) false);
 	}
       if (!find_all && exists)
 	{
-	  error_code = db_make_int (result, (int) true);
-	  return error_code;
+	  db_make_int (result, (int) true);
 	}
     }
 
   // if we have not returned early last search is decisive
-  error_code = db_make_int (result, (int) exists);
-  return error_code;
+  db_make_int (result, (int) exists);
+
+  pr_clear_value (&json_db_value);
+
+  return NO_ERROR;
 }
 
 static int
