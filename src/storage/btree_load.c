@@ -4683,7 +4683,6 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
   DB_VALUE *p_dbvalue;
   int *p_prefix_length;
   char midxkey_buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_midxkey_buf;
-  char rec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
 
   aligned_midxkey_buf = PTR_ALIGN (midxkey_buf, MAX_ALIGNMENT);
   db_make_null (&dbvalue);
@@ -4704,8 +4703,7 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
       /* Scan from heap and insert into the index. */
       attr_offset = cur_class * n_attrs;
 
-      cur_record.data = PTR_ALIGN (rec_buf, BTREE_MAX_ALIGN);
-      cur_record.area_size = IO_MAX_PAGE_SIZE;
+      cur_record.data = NULL;
 
       sc = heap_next (thread_p, &hfids[cur_class], &class_oids[cur_class], &cur_oid, &cur_record, scancache, COPY);
       if (sc == S_ERROR)
