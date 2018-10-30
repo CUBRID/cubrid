@@ -16534,8 +16534,8 @@ sm_load_online_index (MOP classmop, const char *constraint_name)
       attr_ids[i] = con->attributes[i]->id;
     }
   HFID_COPY (&hfids[n_classes], sm_ch_heap ((MOBJ) class_));
-
   n_classes++;
+
   for (sub = subclasses; sub != NULL; sub = sub->next, n_classes++)
     {
       error = au_fetch_class (sub->op, &subclass_, AU_FETCH_UPDATE, AU_ALTER);
@@ -16546,24 +16546,16 @@ sm_load_online_index (MOP classmop, const char *constraint_name)
 	}
 
       COPY_OID (&oids[n_classes], WS_OID (sub->op));
+
       for (int j = 0; j < n_attrs; j++)
 	{
 	  attr_ids[n_classes * n_attrs + j] = con->attributes[j]->id;
 	}
+
       HFID_COPY (&hfids[n_classes], sm_ch_heap ((MOBJ) subclass_));
+
       subclass_ = NULL;
     }
-
-  /*for (int j = 0; j < max_classes; j++)
-     {
-     COPY_OID (&oids[j], WS_OID (classmop));
-     for (i = 0; i < n_attrs; i++)
-     {
-     attr_ids[j * n_attrs + i] = con->attributes[i]->id;
-     }
-     HFID_COPY (&hfids[n_classes], sm_ch_heap ((MOBJ) class_));
-     n_classes++;
-     } */
 
   if (con->type == SM_CONSTRAINT_REVERSE_INDEX || con->type == SM_CONSTRAINT_REVERSE_UNIQUE)
     {

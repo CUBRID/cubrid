@@ -4445,8 +4445,6 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 	}
     }
 
-  cur_class = 0;
-
   for (cur_class = 0; cur_class < n_classes; cur_class++)
     {
       attr_offset = cur_class * n_attrs;
