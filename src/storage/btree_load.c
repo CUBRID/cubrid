@@ -4436,6 +4436,13 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
       tdes->has_deadlock_priority = true;
     }
 
+  /* Acquire snapshot!! */
+  builder_snapshot = logtb_get_mvcc_snapshot (thread_p);
+  if (builder_snapshot == NULL)
+    {
+      goto error;
+    }
+
   /* Alloc memory for btid list for unique indexes. */
   if (BTREE_IS_UNIQUE (unique_pk))
     {
@@ -4499,13 +4506,6 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 	{
 	  _er_log_debug (ARG_FILE_LINE, "DEBUG_BTREE: load start on class(%d, %d, %d), btid(%d, (%d, %d)).",
 			 OID_AS_ARGS (&class_oids[cur_class]), BTID_AS_ARGS (btid_int.sys_btid));
-	}
-
-      /* Acquire snapshot!! */
-      builder_snapshot = logtb_get_mvcc_snapshot (thread_p);
-      if (builder_snapshot == NULL)
-	{
-	  goto error;
 	}
 
       /* Assign the snapshot to the scan_cache. */
