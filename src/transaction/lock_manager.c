@@ -1394,6 +1394,7 @@ lock_insert_into_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran_index)
 #endif /* CUBRID_DEBUG */
       entry_ptr->tran_next = tran_lock->root_class_hold;
       tran_lock->root_class_hold = entry_ptr;
+      assert (entry_ptr->tran_next != entry_ptr);
       break;
 
     case LOCK_RESOURCE_CLASS:
@@ -1423,6 +1424,7 @@ lock_insert_into_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran_index)
       entry_ptr->tran_next = tran_lock->class_hold_list;
       tran_lock->class_hold_list = entry_ptr;
       tran_lock->class_hold_count++;
+      assert (entry_ptr->tran_next != entry_ptr);
       break;
 
     case LOCK_RESOURCE_INSTANCE:
@@ -1452,6 +1454,7 @@ lock_insert_into_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran_index)
       entry_ptr->tran_next = tran_lock->inst_hold_list;
       tran_lock->inst_hold_list = entry_ptr;
       tran_lock->inst_hold_count++;
+      assert (entry_ptr->tran_next != entry_ptr);
       break;
 
     default:
@@ -6670,22 +6673,6 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
 
       if (old_root_class_lock < new_class_lock)
 	{
-	  if (root_class_entry != NULL && root_class_entry->mark_deleted != 0)
-	    {
-	      /* Set the lock by reseting mark deleted. */
-	      if (lock_internal_reset_mark_deleted (thread_p, root_class_entry, new_class_lock))
-		{
-		  assert (root_class_entry->granted_mode == new_class_lock);
-		  old_root_class_lock = new_class_lock;
-		}
-	      else if (root_class_entry->mark_deleted == 2)
-		{
-		  lock_remove_mark_deleted_entry (thread_p, root_class_entry);
-		  root_class_entry = NULL;
-		  old_root_class_lock = NULL_LOCK;
-		}
-	    }
-
 	  if (old_root_class_lock < new_class_lock)
 	    {
 	      granted = lock_internal_perform_lock_object (thread_p, tran_index, class_oid, NULL, new_class_lock,
@@ -6708,22 +6695,6 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
 	  goto end;
 	}
 
-      if (class_entry != NULL && class_entry->mark_deleted != 0)
-	{
-	  /* Set the lock by reseting mark deleted. At success, nothing to do. At fail, the class entry will be reused. */
-	  if (lock_internal_reset_mark_deleted (thread_p, class_entry, new_class_lock))
-	    {
-	      granted = LK_GRANTED;
-	      goto end;
-	    }
-
-	  if (class_entry->mark_deleted == 2)
-	    {
-	      lock_remove_mark_deleted_entry (thread_p, class_entry);
-	      class_entry = NULL;
-	    }
-	}
-
       granted =
 	lock_internal_perform_lock_object (thread_p, tran_index, oid, NULL, lock, wait_msecs, &class_entry,
 					   root_class_entry);
@@ -6744,22 +6715,6 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
 	  else
 	    {
 	      superclass_entry = lock_get_class_lock (thread_p, oid_Root_class_oid, tran_index);
-	    }
-
-	  if (class_entry != NULL && class_entry->mark_deleted != 0)
-	    {
-	      /* Set the lock by reseting mark deleted. At success, nothing to do. At fail, the class entry will be reused. */
-	      if (lock_internal_reset_mark_deleted (thread_p, class_entry, new_class_lock))
-		{
-		  assert (class_entry->granted_mode == new_class_lock);
-		  old_class_lock = new_class_lock;
-		}
-	      else if (class_entry->mark_deleted == 2)
-		{
-		  lock_remove_mark_deleted_entry (thread_p, class_entry);
-		  class_entry = NULL;
-		  old_class_lock = NULL_LOCK;
-		}
 	    }
 
 	  if (old_class_lock < new_class_lock)
@@ -7580,8 +7535,8 @@ lock_unlock_all (THREAD_ENTRY * thread_p)
   entry_ptr = tran_lock->class_hold_list;
   while (entry_ptr != NULL)
     {
-      assert (tran_index == entry_ptr->tran_index && entry_ptr != entry_ptr->tran_next);
       next = entry_ptr->tran_next;
+      assert (entry_ptr != next);
       lock_internal_perform_unlock_object (thread_p, entry_ptr, true, false);
       entry_ptr = next;
     }
@@ -7590,8 +7545,6 @@ lock_unlock_all (THREAD_ENTRY * thread_p)
   entry_ptr = tran_lock->root_class_hold;
   if (entry_ptr != NULL)
     {
-      assert (tran_index == entry_ptr->tran_index);
-
       lock_internal_perform_unlock_object (thread_p, entry_ptr, true, false);
     }
 
