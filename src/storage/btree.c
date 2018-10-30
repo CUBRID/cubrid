@@ -30791,6 +30791,7 @@ exit:
     {
       db_private_free_and_init (thread_p, delete_helper->rv_keyval_data);
     }
+  delete_helper->rv_keyval_data = NULL;
 
   btree_perf_track_time (thread_p, delete_helper);
   return error_code;
@@ -33521,6 +33522,7 @@ btree_key_online_index_IB_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
 	      btree_insert_helper_to_delete_helper (&helper->insert_helper, &helper->delete_helper);
 	      helper->delete_helper.purpose = BTREE_OP_ONLINE_INDEX_IB_DELETE;
 	      helper->delete_helper.op_type = SINGLE_ROW_DELETE;
+	      assert (helper->delete_helper.rv_keyval_data == NULL);	// otherwise, it will be leaked.
 
 	      if (node_type == BTREE_LEAF_NODE
 		  && (btree_record_get_num_oids (thread_p, btid_int, &new_record, offset_after_key, node_type) == 1))
@@ -33630,6 +33632,8 @@ btree_key_online_index_tran_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int
   helper->insert_helper.leaf_addr.pgptr = *leaf_page;
   helper->insert_helper.leaf_addr.vfid = &btid_int->sys_btid->vfid;
 
+  helper->insert_helper.rv_keyval_data = rv_undo_data_bufalign;
+
   /* Undo logging. */
   if (helper->insert_helper.purpose == BTREE_OP_ONLINE_INDEX_TRAN_INSERT
       || helper->insert_helper.purpose == BTREE_OP_ONLINE_INDEX_TRAN_INSERT_DF)
@@ -33643,7 +33647,7 @@ btree_key_online_index_tran_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  return error_code;
+	  goto end;
 	}
     }
 
@@ -33659,7 +33663,7 @@ btree_key_online_index_tran_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	{
 	  assert_release (false);
 	  error_code = ER_FAILED;
-	  return error_code;
+	  goto end;
 	}
 
       /* Read the record. */
@@ -33669,7 +33673,7 @@ btree_key_online_index_tran_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  return error_code;
+	  goto end;
 	}
 
       error_code =
@@ -33680,7 +33684,7 @@ btree_key_online_index_tran_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  return error_code;
+	  goto end;
 	}
 
       node_type = (page_found == *leaf_page) ? BTREE_LEAF_NODE : BTREE_OVERFLOW_NODE;
@@ -33726,7 +33730,7 @@ btree_key_online_index_tran_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	    {
 	      assert_release (false);
 	      error_code = ER_FAILED;
-	      return error_code;
+	      goto end;
 	    }
 
 	  /* We need to log previous lsa. */
@@ -33746,7 +33750,7 @@ btree_key_online_index_tran_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 
 	  pgbuf_set_dirty (thread_p, page_found, DONT_FREE);
 
-	  return error_code;
+	  goto end;
 	}
       else
 	{
@@ -33764,7 +33768,7 @@ btree_key_online_index_tran_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	      logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, 0, 1, 0, false);
 	    }
 
-	  return error_code;
+	  goto end;
 	}
     }
   else
@@ -33776,8 +33780,17 @@ btree_key_online_index_tran_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	  /* Insert a key with an object. */
 	  logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, 1, 1, 0, false);
 	}
-      return error_code;
+
+      goto end;
     }
+
+end:
+  if (helper->insert_helper.rv_keyval_data != NULL && helper->insert_helper.rv_keyval_data != rv_undo_data_bufalign)
+    {
+      db_private_free_and_init (thread_p, helper->insert_helper.rv_keyval_data);
+    }
+  helper->insert_helper.rv_keyval_data = NULL;
+  helper->insert_helper.rv_keyval_data_length = 0;
 
   return error_code;
 }
@@ -33841,6 +33854,8 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 
   int key_len;
 
+  bool switched_to_insert_helper = false;
+
   helper->delete_helper.rv_keyval_data = rv_undo_data_bufalign;
   if (helper->delete_helper.purpose == BTREE_OP_ONLINE_INDEX_TRAN_DELETE)
     {
@@ -33854,7 +33869,7 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  return error_code;
+	  goto end;
 	}
     }
 
@@ -33877,7 +33892,7 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	{
 	  assert_release (false);
 	  error_code = ER_FAILED;
-	  return error_code;
+	  goto end;
 	}
 
       /* Read the record. */
@@ -33887,7 +33902,7 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  return error_code;
+	  goto end;
 	}
 
       error_code =
@@ -33897,7 +33912,7 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  return error_code;
+	  goto end;
 	}
 
       node_type = (page_found == *leaf_page) ? BTREE_LEAF_NODE : BTREE_OVERFLOW_NODE;
@@ -33945,7 +33960,7 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 		{
 		  assert_release (false);
 		  error_code = ER_FAILED;
-		  return error_code;
+		  goto end;
 		}
 
 	      /* We need to log previous lsa. */
@@ -33965,7 +33980,7 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 
 	      pgbuf_set_dirty (thread_p, page_found, DONT_FREE);
 
-	      return error_code;
+	      goto end;
 	    }
 	  else
 	    {
@@ -33989,7 +34004,7 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 		  logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, n_keys, n_oids, 0, false);
 		}
 
-	      return error_code;
+	      goto end;
 	    }
 	}
       else
@@ -34003,6 +34018,7 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
    */
 
   btree_delete_helper_to_insert_helper (&helper->delete_helper, &helper->insert_helper);
+  switched_to_insert_helper = true;
   helper->insert_helper.purpose = BTREE_OP_ONLINE_INDEX_TRAN_INSERT;
   helper->insert_helper.op_type = SINGLE_ROW_INSERT;
 
@@ -34043,11 +34059,32 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	  logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, n_keys, n_oids, 0, false);
 	}
 
-      return error_code;
+      goto end;
     }
 
   /* Not enough space. We have to restart the traverse and try to insert the object with DELETE_FLAG set. */
   search_key->result = BTREE_KEY_NOTFOUND;
+
+end:
+  if (switched_to_insert_helper)
+    {
+      if (helper->insert_helper.rv_keyval_data != NULL && helper->insert_helper.rv_keyval_data != rv_undo_data_bufalign)
+	{
+	  db_private_free_and_init (thread_p, helper->insert_helper.rv_keyval_data);
+	}
+      helper->insert_helper.rv_keyval_data = NULL;
+      helper->insert_helper.rv_keyval_data_length = 0;
+    }
+  else
+    {
+      if (helper->delete_helper.rv_keyval_data != NULL && helper->delete_helper.rv_keyval_data != rv_undo_data_bufalign)
+	{
+	  db_private_free_and_init (thread_p, helper->delete_helper.rv_keyval_data);
+	}
+      helper->delete_helper.rv_keyval_data = NULL;
+      helper->delete_helper.rv_keyval_data_length = 0;
+    }
+
   return error_code;
 }
 
@@ -34107,6 +34144,8 @@ btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_
   int n_keys = 0;
   int n_oids = 0;
 
+  bool switched_to_delete_helper = false;
+
   /* Save the key for undo process. */
   helper->insert_helper.rv_keyval_data = rv_undo_data_bufalign;
   if (helper->insert_helper.purpose == BTREE_OP_ONLINE_INDEX_TRAN_INSERT_DF)
@@ -34120,7 +34159,7 @@ btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  return error_code;
+	  goto end;
 	}
     }
 
@@ -34142,7 +34181,7 @@ btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_
 	{
 	  assert_release (false);
 	  error_code = ER_FAILED;
-	  return error_code;
+	  goto end;
 	}
 
       /* Read the record. */
@@ -34152,7 +34191,7 @@ btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  return error_code;
+	  goto end;
 	}
 
       error_code =
@@ -34162,7 +34201,7 @@ btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  return error_code;
+	  goto end;
 	}
 
       node_type = (page_found == *leaf_page) ? BTREE_LEAF_NODE : BTREE_OVERFLOW_NODE;
@@ -34191,6 +34230,7 @@ btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_
 	      assert (btree_online_index_is_normal_state (btree_mvcc_info.insert_mvccid));
 
 	      btree_insert_helper_to_delete_helper (&helper->insert_helper, &helper->delete_helper);
+	      switched_to_delete_helper = true;
 
 	      helper->delete_helper.purpose = BTREE_OP_ONLINE_INDEX_TRAN_DELETE;
 	      helper->delete_helper.op_type = SINGLE_ROW_DELETE;
@@ -34212,7 +34252,7 @@ btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_
 		{
 		  logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, n_keys, n_oids, 0, false);
 		}
-	      return error_code;
+	      goto end;
 	    }
 	  else
 	    {
@@ -34244,7 +34284,7 @@ btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_
 		{
 		  assert_release (false);
 		  error_code = ER_FAILED;
-		  return error_code;
+		  goto end;
 		}
 
 	      /* We need to log previous lsa. */
@@ -34264,7 +34304,7 @@ btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_
 
 	      pgbuf_set_dirty (thread_p, page_found, DONT_FREE);
 
-	      return error_code;
+	      goto end;
 	    }
 	}
       else
@@ -34300,6 +34340,26 @@ btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_
 	{
 	  logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, 1, 1, 0, false);
 	}
+    }
+
+end:
+  if (switched_to_delete_helper)
+    {
+      if (helper->delete_helper.rv_keyval_data != NULL && helper->delete_helper.rv_keyval_data != rv_undo_data_bufalign)
+	{
+	  db_private_free_and_init (thread_p, helper->delete_helper.rv_keyval_data);
+	}
+      helper->delete_helper.rv_keyval_data = NULL;
+      helper->delete_helper.rv_keyval_data_length = 0;
+    }
+  else
+    {
+      if (helper->insert_helper.rv_keyval_data != NULL && helper->insert_helper.rv_keyval_data != rv_undo_data_bufalign)
+	{
+	  db_private_free_and_init (thread_p, helper->insert_helper.rv_keyval_data);
+	}
+      helper->insert_helper.rv_keyval_data = NULL;
+      helper->insert_helper.rv_keyval_data_length = 0;
     }
 
   return error_code;
