@@ -3766,7 +3766,12 @@ db_json_contains_path (DB_VALUE * result, DB_VALUE * arg[], const int num_args)
       return NO_ERROR;
     }
 
-  doc = db_get_json_document (arg[0]);
+  error_code = db_value_to_json_doc (*arg[0], doc);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
   const char *find_all_str = db_get_string (arg[1]);
 
   if (strcmp (find_all_str, "all") == 0)
@@ -3776,14 +3781,15 @@ db_json_contains_path (DB_VALUE * result, DB_VALUE * arg[], const int num_args)
   if (!find_all && strcmp (find_all_str, "one"))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
-      return ER_QSTR_INVALID_DATA_TYPE;
+      error_code = ER_QSTR_INVALID_DATA_TYPE;
+      goto end;
     }
 
   for (int i = 2; i < num_args; ++i)
     {
       if (DB_IS_NULL (arg[i]))
 	{
-	  return NO_ERROR;
+	  goto end;
 	}
     }
 
@@ -3793,29 +3799,32 @@ db_json_contains_path (DB_VALUE * result, DB_VALUE * arg[], const int num_args)
 
       if (path == NULL)
 	{
-	  return NO_ERROR;
+	  goto end;
 	}
 
       error_code = db_json_contains_path (doc, path, exists);
-      if (error_code)
+      if (error_code != NO_ERROR)
 	{
-	  return error_code;
+	  goto end;
 	}
 
       if (find_all && !exists)
 	{
-	  error_code = db_make_int (result, (int) false);
-	  return error_code;
+	  db_make_int (result, (int) false);
+	  goto end;
 	}
       if (!find_all && exists)
 	{
-	  error_code = db_make_int (result, (int) true);
-	  return error_code;
+	  db_make_int (result, (int) true);
+	  goto end;
 	}
     }
 
   // if we have not returned early last search is decisive
-  error_code = db_make_int (result, (int) exists);
+  db_make_int (result, (int) exists);
+
+end:
+  db_json_delete_doc (doc);
   return error_code;
 }
 
@@ -3924,6 +3933,7 @@ int
 db_json_search_dbval (DB_VALUE * result, DB_VALUE * args[], const int num_args)
 {
   int error_code = NO_ERROR;
+  JSON_DOC *doc = NULL;
 
   if (num_args < 3)
     {
@@ -3940,7 +3950,12 @@ db_json_search_dbval (DB_VALUE * result, DB_VALUE * args[], const int num_args)
         }
     }
 
-  JSON_DOC *doc = db_get_json_document (args[0]);
+  error_code = db_value_to_json_doc (*args[0], doc);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
   char *find_all_str = db_get_string (args[1]);
   bool find_all = false;
 
@@ -3950,6 +3965,7 @@ db_json_search_dbval (DB_VALUE * result, DB_VALUE * args[], const int num_args)
     }
   if (!find_all && strcmp (find_all_str, "one"))
     {
+      db_json_delete_doc (doc);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
       return ER_QSTR_INVALID_DATA_TYPE;
     }
@@ -3973,6 +3989,7 @@ db_json_search_dbval (DB_VALUE * result, DB_VALUE * args[], const int num_args)
 
   std::vector<std::string> paths;
   error_code = db_json_search_func (*doc, pattern, esc_char, find_all, starting_paths, paths);
+  db_json_delete_doc (doc);
   if (error_code != NO_ERROR)
     {
       return error_code;
