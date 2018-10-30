@@ -4371,6 +4371,7 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   LOG_TDES *tdes;
   int old_wait_msec;
   int lock_ret;
+  BTID *list_btid = NULL;
 
   func_index_info.expr = NULL;
 
@@ -4433,6 +4434,18 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   if (tdes)
     {
       tdes->has_deadlock_priority = true;
+    }
+
+  /* Alloc memory for btid list for unique indexes. */
+  if (BTREE_IS_UNIQUE (unique_pk))
+    {
+      list_btid = (BTID *) malloc (n_classes * sizeof (BTID));
+      if (list_btid == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, n_classes * sizeof (BTID));
+	  ret = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto error;
+	}
     }
 
   /* Demote the locks for classes on which we want to load indices. */
@@ -4501,6 +4514,14 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
       /* Get the BTID. */
       btid_int.sys_btid = &(attr_info.last_classrepr->indexes->btid);
 
+      /* For unique indices add to the list of btids for unique constraint checks. */
+      if (BTREE_IS_UNIQUE (unique_pk))
+	{
+	  list_btid[cur_class].root_pageid = btid_int.sys_btid->root_pageid;
+	  list_btid[cur_class].vfid.fileid = btid_int.sys_btid->vfid.fileid;
+	  list_btid[cur_class].vfid.volid = btid_int.sys_btid->vfid.volid;
+	}
+
       /* Start the online index builder. */
       ret =
 	online_index_builder (thread_p, &btid_int, &hfids[cur_class], &class_oids[cur_class], n_classes, attr_ids,
@@ -4557,20 +4578,6 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 	  stx_free_xasl_unpack_info (func_unpack_info);
 	  db_private_free_and_init (thread_p, func_unpack_info);
 	}
-
-      if (BTREE_IS_UNIQUE (unique_pk))
-	{
-	  /* Check if we have a unique constraint violation for unique indexes. */
-	  ret =
-	    btree_online_index_check_unique_constraint (thread_p, btid_int.sys_btid, bt_name, &class_oids[cur_class]);
-	  if (ret != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	      btid = NULL;
-	      break;
-	    }
-	}
-
     }
 
   // We should recover the lock regardless of return code from online_index_builder.
@@ -4596,6 +4603,23 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
       if (ret != NO_ERROR || lock_ret != LK_GRANTED)
 	{
 	  goto error;
+	}
+    }
+
+  if (BTREE_IS_UNIQUE (unique_pk))
+    {
+      for (cur_class = 0; cur_class < n_classes; cur_class++)
+	{
+	  /* Check if we have a unique constraint violation for unique indexes. */
+	  ret =
+	    btree_online_index_check_unique_constraint (thread_p, &list_btid[cur_class], bt_name,
+							&class_oids[cur_class]);
+	  if (ret != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      btid = NULL;
+	      goto error;
+	    }
 	}
     }
 
@@ -4646,6 +4670,11 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
       stx_free_additional_buff (thread_p, func_unpack_info);
       stx_free_xasl_unpack_info (func_unpack_info);
       db_private_free_and_init (thread_p, func_unpack_info);
+    }
+
+  if (list_btid != NULL)
+    {
+      free (list_btid);
     }
 
   LOG_CS_ENTER (thread_p);
@@ -4707,6 +4736,11 @@ error:
       stx_free_additional_buff (thread_p, func_unpack_info);
       stx_free_xasl_unpack_info (func_unpack_info);
       db_private_free_and_init (thread_p, func_unpack_info);
+    }
+
+  if (list_btid != NULL)
+    {
+      free (list_btid);
     }
 
   /* Invalidate snapshot. */
