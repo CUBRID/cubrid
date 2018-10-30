@@ -4707,7 +4707,7 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
       cur_record.data = PTR_ALIGN (rec_buf, BTREE_MAX_ALIGN);
       cur_record.area_size = IO_MAX_PAGE_SIZE;
 
-      sc = heap_next (thread_p, &hfids[cur_class], &class_oids[cur_class], &cur_oid, &cur_record, scancache, true);
+      sc = heap_next (thread_p, &hfids[cur_class], &class_oids[cur_class], &cur_oid, &cur_record, scancache, COPY);
       if (sc == S_ERROR)
 	{
 	  ASSERT_ERROR_AND_SET (ret);
