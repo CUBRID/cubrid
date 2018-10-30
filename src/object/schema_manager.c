@@ -80,9 +80,10 @@
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
-#define UNIQUE_SAVEPOINT_NAME "aDDuNIQUEcONSTRAINT"
-#define UNIQUE_SAVEPOINT_NAME2 "dELETEcLASSmOP"
-#define UNIQUE_SAVEPOINT_SM_TRUNCATE "SmtRUnCATE"
+#define SM_ADD_CONSTRAINT_SAVEPOINT_NAME "aDDcONSTRAINT"
+#define SM_ADD_UNIQUE_CONSTRAINT_SAVEPOINT_NAME "aDDuNIQUEcONSTRAINT"
+#define SM_DROP_CLASS_MOP_SAVEPOINT_NAME "dELETEcLASSmOP"
+#define SM_TRUNCATE_SAVEPOINT_NAME "SmtRUnCATE"
 
 /*
  * SCHEMA_DEFINITION
@@ -12590,7 +12591,7 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
    *  to a class with instances and the constraint is violated.  In this
    *  situation, we do not want to abort the entire transaction.
    */
-  error = tran_system_savepoint (UNIQUE_SAVEPOINT_NAME);
+  error = tran_system_savepoint (SM_ADD_UNIQUE_CONSTRAINT_SAVEPOINT_NAME);
 
   if ((error == NO_ERROR) && (template_->op != NULL))
     {
@@ -12823,7 +12824,7 @@ error_return:
 
   if (error != ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED && error != ER_LK_UNILATERALLY_ABORTED)
     {
-      (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_NAME);
+      (void) tran_abort_upto_system_savepoint (SM_ADD_UNIQUE_CONSTRAINT_SAVEPOINT_NAME);
     }
 
   goto end;
@@ -13039,7 +13040,7 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
   oldsupers = NULL;
 
   /* if the delete fails, we'll need to rollback to savepoint */
-  error = tran_system_savepoint (UNIQUE_SAVEPOINT_NAME2);
+  error = tran_system_savepoint (SM_DROP_CLASS_MOP_SAVEPOINT_NAME);
   if (error != NO_ERROR)
     {
       if (subdel == 1 && error != ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED && error != ER_LK_UNILATERALLY_ABORTED)
@@ -13305,7 +13306,7 @@ end:
 	}
       else
 	{
-	  tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_NAME2);
+	  tran_abort_upto_system_savepoint (SM_DROP_CLASS_MOP_SAVEPOINT_NAME);
 	}
     }
 
@@ -14591,6 +14592,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
   SM_TEMPLATE *def;
   MOP newmop = NULL;
   bool needs_hierarchy_lock;
+  bool set_savepoint = false;
 
   if (att_names == NULL)
     {
@@ -14607,6 +14609,13 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
     case DB_CONSTRAINT_PRIMARY_KEY:
       DB_AUTH auth;
       bool is_secondary_index;
+
+      error = tran_system_savepoint (SM_ADD_CONSTRAINT_SAVEPOINT_NAME);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      set_savepoint = true;
 
       is_secondary_index = (constraint_type == DB_CONSTRAINT_INDEX || constraint_type == DB_CONSTRAINT_REVERSE_INDEX);
 
@@ -14630,7 +14639,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
       if (def == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error);
-	  return error;
+	  goto error_exit;
 	}
 
       // create local indexes on partitions
@@ -14643,7 +14652,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	  if (error != NO_ERROR)
 	    {
 	      smt_quit (def);
-	      return error;
+	      goto error_exit;
 	    }
 
 	  if (partition_type == DB_PARTITIONED_CLASS)
@@ -14661,7 +14670,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 			  free_and_init (sub_partitions);
 			}
 		      smt_quit (def);
-		      return error;
+		      goto error_exit;
 		    }
 		}
 
@@ -14676,7 +14685,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 		      free_and_init (sub_partitions);
 		    }
 		  smt_quit (def);
-		  return error;
+		  goto error_exit;
 		}
 	    }
 
@@ -14691,7 +14700,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
       if (error != NO_ERROR)
 	{
 	  smt_quit (def);
-	  return error;
+	  goto error_exit;
 	}
 
       needs_hierarchy_lock = DB_IS_CONSTRAINT_UNIQUE_FAMILY (constraint_type);
@@ -14700,7 +14709,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
       if (error != NO_ERROR)
 	{
 	  smt_quit (def);
-	  return error;
+	  goto error_exit;
 	}
 
       if (index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
@@ -14709,20 +14718,20 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	  error = sm_load_online_index (newmop, constraint_name);
 	  if (error != NO_ERROR)
 	    {
-	      return error;
+	      goto error_exit;
 	    }
 
 	  error = sm_update_statistics (newmop, STATS_WITH_SAMPLING);
 	  if (error != NO_ERROR)
 	    {
-	      return error;
+	      goto error_exit;
 	    }
 
 	  def = smt_edit_class_mop (classop, auth);
 	  if (def == NULL)
 	    {
 	      ASSERT_ERROR_AND_SET (error);
-	      return error;
+	      goto error_exit;
 	    }
 
 	  /* If we have an online index, we need to change the constraint to SM_ONLINE_INDEX_BUILDING_DONE, and 
@@ -14736,7 +14745,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	  if (error != NO_ERROR)
 	    {
 	      smt_quit (def);
-	      return error;
+	      goto error_exit;
 	    }
 
 	  /* Update the class now. */
@@ -14745,9 +14754,10 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	  if (error != NO_ERROR)
 	    {
 	      smt_quit (def);
-	      return error;
+	      goto error_exit;
 	    }
 	}
+
       break;
 
     case DB_CONSTRAINT_NOT_NULL:
@@ -14783,6 +14793,14 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 
     default:
       break;
+    }
+
+  return error;
+
+error_exit:
+  if (set_savepoint && error != ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED && error != ER_LK_UNILATERALLY_ABORTED)
+    {
+      (void) tran_abort_upto_system_savepoint (SM_ADD_CONSTRAINT_SAVEPOINT_NAME);
     }
 
   return error;
@@ -15544,7 +15562,7 @@ sm_truncate_class (MOP class_mop)
 
   assert (class_mop != NULL);
 
-  error = tran_system_savepoint (UNIQUE_SAVEPOINT_SM_TRUNCATE);
+  error = tran_system_savepoint (SM_TRUNCATE_SAVEPOINT_NAME);
   if (error != NO_ERROR)
     {
       return error;
@@ -15783,7 +15801,7 @@ error_exit:
 
   if (error != ER_LK_UNILATERALLY_ABORTED)
     {
-      tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_SM_TRUNCATE);
+      tran_abort_upto_system_savepoint (SM_TRUNCATE_SAVEPOINT_NAME);
     }
 
   if (unique_save_info != NULL)
@@ -16575,6 +16593,11 @@ sm_load_online_index (MOP classmop, const char *constraint_name)
 				con->index_status);
     }
 
+  if (error != NO_ERROR)
+    {
+      goto error_return;
+    }
+
   free_and_init (attr_ids);
   free_and_init (oids);
   free_and_init (hfids);
@@ -16582,11 +16605,6 @@ sm_load_online_index (MOP classmop, const char *constraint_name)
   return error;
 
 error_return:
-  if (error != ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED && error != ER_LK_UNILATERALLY_ABORTED)
-    {
-      (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_NAME);
-    }
-
   if (attr_ids != NULL)
     {
       free_and_init (attr_ids);
