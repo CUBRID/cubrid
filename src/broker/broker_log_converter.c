@@ -395,6 +395,10 @@ log_bind_value (char *str, int bind_len, int lineno, FILE * outfp)
     {
       type = CCI_U_TYPE_ENUM;
     }
+  else if (strcmp (p, "JSON") == 0)
+    {
+      type = CCI_U_TYPE_JSON;
+    }
   else
     {
       fprintf (stderr, "log error [line:%d]\n", lineno);

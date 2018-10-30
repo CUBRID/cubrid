@@ -5217,7 +5217,11 @@ pt_find_partition_column_count_func (PT_NODE * func, PT_NODE ** name_node)
     case F_JSON_KEYS:
     case F_JSON_REMOVE:
     case F_JSON_ARRAY_APPEND:
+    case F_JSON_ARRAY_INSERT:
+    case F_JSON_CONTAINS_PATH:
+    case F_JSON_SEARCH:
     case F_JSON_MERGE:
+    case F_JSON_MERGE_PATCH:
     case F_JSON_GET_ALL_PATHS:
       break;
     default:
@@ -9791,7 +9795,7 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	      break;
 	    }
 
-	  if (entity->info.spec.derived_table != NULL)
+	  if (entity->info.spec.derived_table != NULL || PT_SPEC_IS_CTE (entity))
 	    {
 	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UPDATE_DERIVED_TABLE);
 	      break;
@@ -10006,6 +10010,17 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
       if (node)
 	{
 	  pt_coerce_insert_values (parser, node);
+	}
+      break;
+
+    case PT_JSON_TABLE:
+      if (node->info.json_table_info.expr->type_enum != PT_TYPE_JSON
+	  && node->info.json_table_info.expr->type_enum != PT_TYPE_CHAR
+	  && node->info.json_table_info.expr->type_enum != PT_TYPE_MAYBE)
+	{
+	  // todo: can this be improved to hint that we are talking about json_table's expression
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_WANT_TYPE,
+		      pt_show_type_enum (PT_TYPE_JSON));
 	}
       break;
 
@@ -15142,7 +15157,11 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *a
 	case F_JSON_KEYS:
 	case F_JSON_REMOVE:
 	case F_JSON_ARRAY_APPEND:
+	case F_JSON_ARRAY_INSERT:
+	case F_JSON_SEARCH:
+	case F_JSON_CONTAINS_PATH:
 	case F_JSON_MERGE:
+	case F_JSON_MERGE_PATCH:
 	case F_JSON_GET_ALL_PATHS:
 	  /* valid expression, nothing to do */
 	  break;
@@ -15896,15 +15915,12 @@ pt_check_union_is_foldable (PARSER_CONTEXT * parser, PT_NODE * union_node)
 PT_NODE *
 pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, STATEMENT_SET_FOLD fold_as)
 {
-  PT_NODE *arg1, *arg2, *new_node, *next;
+  PT_NODE *new_node, *next;
   int line, column;
   const char *alias_print;
 
   assert (union_node->node_type == PT_UNION || union_node->node_type == PT_INTERSECTION
 	  || union_node->node_type == PT_DIFFERENCE);
-
-  arg1 = union_node->info.query.q.union_.arg1;
-  arg2 = union_node->info.query.q.union_.arg2;
 
   line = union_node->line_number;
   column = union_node->column_number;
@@ -15927,19 +15943,19 @@ pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, STATEMENT_SET_FOLD
 
       if (fold_as == STATEMENT_SET_FOLD_AS_ARG1)
 	{
-	  active = arg1;
+	  pt_move_node (active, union_node->info.query.q.union_.arg1);
 	}
       else
 	{
-	  active = arg2;
+	  pt_move_node (active, union_node->info.query.q.union_.arg2);
 	}
 
       /* to save union's orderby or limit clause to arg1 or arg2 */
-      union_orderby = union_node->info.query.order_by;
-      union_orderby_for = union_node->info.query.orderby_for;
-      union_limit = union_node->info.query.limit;
+      pt_move_node (union_orderby, union_node->info.query.order_by);
+      pt_move_node (union_orderby_for, union_node->info.query.orderby_for);
+      pt_move_node (union_limit, union_node->info.query.limit);
       union_rewrite_limit = union_node->info.query.rewrite_limit;
-      union_with_clause = union_node->info.query.with;
+      pt_move_node (union_with_clause, union_node->info.query.with);
 
       /* When active node has a limit or orderby_for clause and union node has a limit or ORDERBY clause, need a
        * derived table to keep both conflicting clauses. When a subquery has orderby clause without
@@ -15963,20 +15979,7 @@ pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, STATEMENT_SET_FOLD
 	  new_node = active;
 	}
 
-      /* unlink and free union node */
-      union_node->info.query.order_by = NULL;
-      union_node->info.query.orderby_for = NULL;
-      union_node->info.query.limit = NULL;
-      if (fold_as == STATEMENT_SET_FOLD_AS_ARG1)
-	{
-	  union_node->info.query.q.union_.arg1 = NULL;	/* to save arg1 to fold */
-	}
-      else
-	{
-	  union_node->info.query.q.union_.arg2 = NULL;	/* to save arg2 to fold */
-	}
-      union_node->info.query.with = NULL;
-
+      /* free union node */
       parser_free_tree (parser, union_node);
 
       /* to fold the query with remaining parts */

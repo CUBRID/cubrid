@@ -39,7 +39,6 @@
 #include "work_space.h"
 #include "storage_common.h"
 #include "locator.h"
-#include "dbdef.h"
 #include "replication.h"
 
 #define ONE_MFLUSH    true

@@ -24,6 +24,7 @@
 
 
 %{/*%CODE_REQUIRES_START%*/
+#include "json_table_def.h"
 #include "parser.h"
 
 /* 
@@ -83,6 +84,7 @@ void csql_yyerror (const char *s);
 extern int g_msg[1024];
 extern int msg_ptr;
 extern int yybuffer_pos;
+extern size_t json_table_column_count;
 /*%CODE_END%*/%}
 
 %{
@@ -102,10 +104,10 @@ extern int yybuffer_pos;
 #include "chartype.h"
 #include "parser.h"
 #include "parser_message.h"
-#include "dbdef.h"
 #include "language_support.h"
 #include "unicode_support.h"
 #include "environment_variable.h"
+#include "dbtype.h"
 #include "transaction_cl.h"
 #include "csql_grammar_scan.h"
 #include "system_parameter.h"
@@ -115,7 +117,6 @@ extern int yybuffer_pos;
 #endif /* WINDOWS */
 #include "memory_alloc.h"
 #include "db_elo.h"
-#include "dbtype.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -314,9 +315,11 @@ static FUNCTION_MAP functions[] = {
   {"json_type", PT_JSON_TYPE},
   {"json_extract", PT_JSON_EXTRACT},
   {"json_valid", PT_JSON_VALID},
+  {"json_unquote", PT_JSON_UNQUOTE},
   {"json_length", PT_JSON_LENGTH},
+  {"json_quote", PT_JSON_QUOTE},
   {"json_depth", PT_JSON_DEPTH},
-  {"json_search", PT_JSON_SEARCH},
+  {"json_pretty", PT_JSON_PRETTY},
 };
 
 
@@ -533,6 +536,7 @@ static PT_NODE * pt_create_date_value (PARSER_CONTEXT *parser,
 				       const char *str);
 static PT_NODE * pt_create_json_value (PARSER_CONTEXT *parser,
 				       const char *str);
+static void pt_jt_append_column_or_nested_node (PT_NODE * jt_node, PT_NODE * jt_col_or_nested);
 static void pt_value_set_charset_coll (PARSER_CONTEXT *parser,
 				       PT_NODE *node,
 				       const int codeset_id,
@@ -616,6 +620,7 @@ int g_original_buffer_len;
   container_3 c3;
   container_4 c4;
   container_10 c10;
+  struct json_table_column_behavior jtcb;
 }
 
 
@@ -751,6 +756,16 @@ int g_original_buffer_len;
 %type <node> insert_value_clause
 %type <node> insert_value_clause_list
 %type <node> insert_stmt_value_clause
+%type <node> select_or_subquery_without_values_query_no_with_clause
+%type <node> csql_query_without_values_query_no_with_clause
+%type <node> select_expression_without_values_query_no_with_clause
+%type <node> csql_query_without_subquery_and_with_clause
+%type <node> select_expression_without_subquery
+%type <node> select_or_values_query
+%type <node> subquery_without_subquery_and_with_clause
+%type <node> select_or_nested_values_query
+%type <node> csql_query_without_values_and_single_subquery
+%type <node> select_expression_without_values_and_single_subquery
 %type <node> insert_expression_value_clause
 %type <node> insert_value_list
 %type <node> insert_value
@@ -831,6 +846,7 @@ int g_original_buffer_len;
 %type <node> sp_param_def
 %type <node> esql_query_stmt
 %type <node> csql_query
+%type <node> csql_query_select_has_no_with_clause
 %type <node> csql_query_without_values_query
 %type <node> select_expression_opt_with
 %type <node> select_expression
@@ -1022,6 +1038,10 @@ int g_original_buffer_len;
 %type <node> limit_expr
 %type <node> limit_term
 %type <node> limit_factor
+%type <node> json_table_rule
+%type <node> json_table_node_rule
+%type <node> json_table_column_rule
+%type <node> json_table_column_list_rule
 /*}}}*/
 
 /* define rule type (cptr) */
@@ -1066,6 +1086,13 @@ int g_original_buffer_len;
 %type <c2> insert_assignment_list
 %type <c2> expression_queue
 %type <c2> of_cast_data_type
+/*}}}*/
+
+/* define rule type (json_table_column_behavior) */
+/*{{{*/
+%type <jtcb> json_table_column_behavior_rule
+%type <jtcb> json_table_on_error_rule_optional
+%type <jtcb> json_table_on_empty_rule_optional
 /*}}}*/
 
 /* Token define */
@@ -1178,9 +1205,11 @@ int g_original_buffer_len;
 %token EACH
 %token ELSE
 %token ELSEIF
+%token EMPTY
 %token END
 %token ENUM
 %token EQUALS
+%token ERROR_
 %token ESCAPE
 %token EVALUATE
 %token EXCEPT
@@ -1203,14 +1232,24 @@ int g_original_buffer_len;
 %token FULL
 %token FUNCTION
 %token FUN_JSON_ARRAY
-%token FUN_JSON_OBJECT
-%token FUN_JSON_MERGE
+%token FUN_JSON_ARRAY_APPEND
+%token FUN_JSON_ARRAY_INSERT
+%token FUN_JSON_SEARCH
+%token FUN_JSON_CONTAINS_PATH
+%token FUN_JSON_GET_ALL_PATHS
 %token FUN_JSON_INSERT
+%token FUN_JSON_KEYS
+%token FUN_JSON_MERGE
+%token FUN_JSON_MERGE_PATCH
+%token FUN_JSON_MERGE_PRESERVE
+%token FUN_JSON_OBJECT
+%token FUN_JSON_REMOVE
 %token FUN_JSON_REPLACE
 %token FUN_JSON_SET
 %token FUN_JSON_KEYS
 %token FUN_JSON_REMOVE
 %token FUN_JSON_ARRAY_APPEND
+%token FUN_JSON_ARRAY_INSERT
 %token FUN_JSON_GET_ALL_PATHS
 %token GENERAL
 %token GET
@@ -1246,6 +1285,8 @@ int g_original_buffer_len;
 %token IS
 %token ISOLATION
 %token JOIN
+%token JSON
+%token JSON_TABLE
 %token KEY
 %token KEYLIMIT
 %token LANGUAGE
@@ -1286,6 +1327,7 @@ int g_original_buffer_len;
 %token NATIONAL
 %token NATURAL
 %token NCHAR
+%token NESTED
 %token NEXT
 %token NO
 %token NOT
@@ -1302,6 +1344,7 @@ int g_original_buffer_len;
 %token OPTION
 %token OR
 %token ORDER
+%token ORDINALITY
 %token OUT_
 %token OUTER
 %token OUTPUT
@@ -1446,7 +1489,6 @@ int g_original_buffer_len;
 %token YEAR_
 %token YEAR_MONTH
 %token ZONE
-%token JSON
 
 %token YEN_SIGN
 %token DOLLAR_SIGN
@@ -1475,6 +1517,7 @@ int g_original_buffer_len;
 
 %token DOT
 %token RIGHT_ARROW
+%token DOUBLE_RIGHT_ARROW
 %token STRCAT
 %token COMP_NOT_EQ
 %token COMP_GE
@@ -1539,6 +1582,8 @@ int g_original_buffer_len;
 %token <cptr> KEYS
 %token <cptr> KILL
 %token <cptr> JAVA
+%token <cptr> JSON_ARRAYAGG
+%token <cptr> JSON_OBJECTAGG
 %token <cptr> JOB
 %token <cptr> LAG
 %token <cptr> LAST_VALUE
@@ -1563,6 +1608,7 @@ int g_original_buffer_len;
 %token <cptr> OFFSET
 %token <cptr> ONLINE
 %token <cptr> OPEN
+%token <cptr> PATH
 %token <cptr> OWNER
 %token <cptr> PAGE
 %token <cptr> PARTITIONING
@@ -1851,8 +1897,17 @@ stmt_
 		{ $$ = $1; }
 	| do_stmt
 		{ $$ = $1; }
-	| esql_query_stmt
-		{ $$ = $1; }
+	| opt_with_clause
+	  esql_query_stmt 
+		{{
+			PT_NODE *with_clause = $1;
+			PT_NODE *stmt = $2;
+			if (stmt && with_clause)
+			  {
+			    stmt->info.query.with = with_clause;
+			  }
+			$$ = stmt;
+	  DBG_PRINT}}
 	| evaluate_stmt
 		{ $$ = $1; }
 	| prepare_stmt
@@ -1861,10 +1916,28 @@ stmt_
 		{ $$ = $1; }
 	| insert_or_replace_stmt
 		{ $$ = $1; }
-	| update_stmt
-		{ $$ = $1; }
-	| delete_stmt
-		{ $$ = $1; }
+	| opt_with_clause
+	  update_stmt
+		{{
+			PT_NODE *with_clause = $1;
+			PT_NODE *stmt = $2;
+			if (stmt && with_clause)
+			  {
+			    stmt->info.update.with = with_clause;
+			  }
+			$$ = stmt;
+	  DBG_PRINT}}
+	| opt_with_clause
+	  delete_stmt
+		{{
+			PT_NODE *with_clause = $1;
+			PT_NODE *stmt = $2;
+			if (stmt && with_clause)
+			  {
+			    stmt->info.delete_.with = with_clause;
+			  }
+			$$ = stmt;
+	  DBG_PRINT}}
 	| show_stmt
 		{ $$ = $1; }		
 	| call_stmt
@@ -4449,7 +4522,7 @@ join_table_spec
 			PT_NODE *sopt = $3;
 			bool natural = false;
 
-			if ($4 == PT_JOIN_NONE)  
+			if ($4 == NULL)  
 			  {
 				/* Not exists ON condition, if it is outer join, report error */
 				if ($1 == PT_JOIN_LEFT_OUTER 
@@ -4493,7 +4566,7 @@ join_condition
 	: /* empty */
 		{{
 			parser_save_and_set_pseudoc (0);
-			$$ = PT_JOIN_NONE;   /* just return NULL */
+			$$ = NULL;   /* just return NULL */
 		DBG_PRINT}} 
 	| ON_
 		{{
@@ -4609,7 +4682,7 @@ original_table_spec
 			    if ($3)
 			      {
 				PT_NODE *hint = NULL, *alias = NULL;
-				char *qualifier_name = NULL;
+				const char *qualifier_name = NULL;
 
 				/* Get qualifier */
 				alias = CONTAINER_AT_0 ($2);
@@ -4748,6 +4821,19 @@ original_table_spec
 			    ent->info.spec.as_attr_list = CONTAINER_AT_1 ($5);
 
 			    parser_remove_dummy_select (&ent);
+			  }
+			$$ = ent;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| JSON_TABLE json_table_rule AS identifier
+		{{
+			PT_NODE *ent = parser_new_node (this_parser, PT_SPEC);
+			if (ent)
+			  {
+			    ent->info.spec.derived_table = $2;  // json_table_rule
+			    ent->info.spec.derived_table_type = PT_DERIVED_JSON_TABLE;
+			    ent->info.spec.range_var = $4;      // identifier
 			  }
 			$$ = ent;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -6364,10 +6450,27 @@ insert_stmt_value_clause
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| csql_query_without_values_query
+	| opt_with_clause
+	  csql_query_without_values_and_single_subquery
 		{{
 
-			PT_NODE *nls = pt_node_list (this_parser, PT_IS_SUBQUERY, $1);
+			PT_NODE *with_clause = $1;
+			PT_NODE *select_node = $2;
+			select_node->info.query.with = with_clause;
+			PT_NODE *nls = pt_node_list (this_parser, PT_IS_SUBQUERY, select_node);
+
+			$$ = nls;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| '(' opt_with_clause
+	  csql_query_without_values_query_no_with_clause ')'
+		{{
+			PT_NODE *with_clause = $2;
+			PT_NODE *select_node = $3;
+			select_node->info.query.with = with_clause;
+			PT_NODE *nls = pt_node_list (this_parser, PT_IS_SUBQUERY, select_node);
+
 			$$ = nls;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
@@ -10438,7 +10541,7 @@ transaction_mode
 			if (tm && is)
 			  {
 			    PARSER_SAVE_ERR_CONTEXT (tm, @$.buffer_pos)
-			    async_ws_or_error =  TO_NUMBER (CONTAINER_AT_3 ($3));
+			    async_ws_or_error = (int) TO_NUMBER (CONTAINER_AT_3 ($3));
 			    if (async_ws_or_error < 0)
 			      {
 				PT_ERRORm(this_parser, tm, MSGCAT_SET_PARSER_SYNTAX,
@@ -10451,7 +10554,7 @@ transaction_mode
 			    tm->info.isolation_lvl.async_ws = async_ws_or_error;
 
 
-			    async_ws_or_error =  TO_NUMBER (CONTAINER_AT_3 ($5));
+			    async_ws_or_error = (int) TO_NUMBER (CONTAINER_AT_3 ($5));
 			    if (async_ws_or_error < 0)
 			      {
 				PT_ERRORm(this_parser, is, MSGCAT_SET_PARSER_SYNTAX,
@@ -10512,7 +10615,7 @@ transaction_mode
 		{{
 
 			PT_NODE *tm = parser_new_node (this_parser, PT_ISOLATION_LVL);
-			int async_ws_or_error =  TO_NUMBER (CONTAINER_AT_3 ($3));
+			int async_ws_or_error = (int) TO_NUMBER (CONTAINER_AT_3 ($3));
 
 			PARSER_SAVE_ERR_CONTEXT (tm, @$.buffer_pos)
 
@@ -11711,7 +11814,7 @@ opt_sp_in_out
 
 esql_query_stmt
 	: 	{ parser_select_level++; }
-	  csql_query
+	  csql_query_select_has_no_with_clause
 		{{
 			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -11738,6 +11841,182 @@ csql_query
 
 		DBG_PRINT}}
 	  select_expression_opt_with
+		{{
+
+			PT_NODE *node = $2;
+			parser_push_orderby_node (node);
+
+		DBG_PRINT}}
+	  opt_orderby_clause
+		{{
+
+			PT_NODE *node = parser_pop_orderby_node ();
+
+			if (node && parser_cannot_cache)
+			  {
+			    node->info.query.reexecute = 1;
+			    node->info.query.do_cache = 0;
+			    node->info.query.do_not_cache = 1;
+			  }
+
+			parser_restore_cannot_cache ();
+			parser_restore_ic ();
+			parser_restore_gc ();
+			parser_restore_oc ();
+			parser_restore_wjc ();
+			parser_restore_sysc ();
+			parser_restore_prc ();
+			parser_restore_cbrc ();
+			parser_restore_serc ();
+			parser_restore_sqc ();
+			parser_restore_pseudoc ();
+
+			if (parser_subquery_check == 0)
+			    PT_ERRORmf(this_parser, pt_top(this_parser),
+				MSGCAT_SET_PARSER_SEMANTIC,
+				MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "Subquery");
+
+			if (node)
+			  {
+			    /* handle ORDER BY NULL */
+			    PT_NODE *order = node->info.query.order_by;
+			    if (order && order->info.sort_spec.expr
+				&& order->info.sort_spec.expr->node_type == PT_VALUE
+				&& order->info.sort_spec.expr->type_enum == PT_TYPE_NULL)
+			      {
+				if (!node->info.query.q.select.group_by)
+				  {
+				    PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					       MSGCAT_SEMANTIC_ORDERBYNULL_REQUIRES_GROUPBY);
+				  }
+				else
+				  {
+				    parser_free_tree (this_parser, node->info.query.order_by);
+				    node->info.query.order_by = NULL;
+				  }
+			      }
+			  }
+
+			parser_push_orderby_node (node);
+
+		DBG_PRINT}}
+	opt_select_limit_clause
+	opt_for_update_clause
+		{{
+
+			PT_NODE *node = parser_pop_orderby_node ();
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	;
+
+csql_query_select_has_no_with_clause
+	:
+		{{
+
+			parser_save_and_set_cannot_cache (false);
+			parser_save_and_set_ic (0);
+			parser_save_and_set_gc (0);
+			parser_save_and_set_oc (0);
+			parser_save_and_set_wjc (0);
+			parser_save_and_set_sysc (0);
+			parser_save_and_set_prc (0);
+			parser_save_and_set_cbrc (0);
+			parser_save_and_set_serc (1);
+			parser_save_and_set_sqc (1);
+			parser_save_and_set_pseudoc (1);
+
+		DBG_PRINT}}
+	  select_expression
+		{{
+
+			PT_NODE *node = $2;
+			parser_push_orderby_node (node);
+
+		DBG_PRINT}}
+	  opt_orderby_clause
+		{{
+
+			PT_NODE *node = parser_pop_orderby_node ();
+
+			if (node && parser_cannot_cache)
+			  {
+			    node->info.query.reexecute = 1;
+			    node->info.query.do_cache = 0;
+			    node->info.query.do_not_cache = 1;
+			  }
+
+			parser_restore_cannot_cache ();
+			parser_restore_ic ();
+			parser_restore_gc ();
+			parser_restore_oc ();
+			parser_restore_wjc ();
+			parser_restore_sysc ();
+			parser_restore_prc ();
+			parser_restore_cbrc ();
+			parser_restore_serc ();
+			parser_restore_sqc ();
+			parser_restore_pseudoc ();
+
+			if (parser_subquery_check == 0)
+			    PT_ERRORmf(this_parser, pt_top(this_parser),
+				MSGCAT_SET_PARSER_SEMANTIC,
+				MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "Subquery");
+
+			if (node)
+			  {
+			    /* handle ORDER BY NULL */
+			    PT_NODE *order = node->info.query.order_by;
+			    if (order && order->info.sort_spec.expr
+				&& order->info.sort_spec.expr->node_type == PT_VALUE
+				&& order->info.sort_spec.expr->type_enum == PT_TYPE_NULL)
+			      {
+				if (!node->info.query.q.select.group_by)
+				  {
+				    PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					       MSGCAT_SEMANTIC_ORDERBYNULL_REQUIRES_GROUPBY);
+				  }
+				else
+				  {
+				    parser_free_tree (this_parser, node->info.query.order_by);
+				    node->info.query.order_by = NULL;
+				  }
+			      }
+			  }
+
+			parser_push_orderby_node (node);
+
+		DBG_PRINT}}
+	opt_select_limit_clause
+	opt_for_update_clause
+		{{
+
+			PT_NODE *node = parser_pop_orderby_node ();
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	;
+
+csql_query_without_subquery_and_with_clause
+	:
+		{{
+
+			parser_save_and_set_cannot_cache (false);
+			parser_save_and_set_ic (0);
+			parser_save_and_set_gc (0);
+			parser_save_and_set_oc (0);
+			parser_save_and_set_wjc (0);
+			parser_save_and_set_sysc (0);
+			parser_save_and_set_prc (0);
+			parser_save_and_set_cbrc (0);
+			parser_save_and_set_serc (1);
+			parser_save_and_set_sqc (1);
+			parser_save_and_set_pseudoc (1);
+
+		DBG_PRINT}}
+	  select_expression_without_subquery
 		{{
 
 			PT_NODE *node = $2;
@@ -11896,6 +12175,182 @@ csql_query_without_values_query
 		DBG_PRINT}}
 	;
 
+csql_query_without_values_query_no_with_clause
+	:
+		{{
+
+			parser_save_and_set_cannot_cache (false);
+			parser_save_and_set_ic (0);
+			parser_save_and_set_gc (0);
+			parser_save_and_set_oc (0);
+			parser_save_and_set_wjc (0);
+			parser_save_and_set_sysc (0);
+			parser_save_and_set_prc (0);
+			parser_save_and_set_cbrc (0);
+			parser_save_and_set_serc (1);
+			parser_save_and_set_sqc (1);
+			parser_save_and_set_pseudoc (1);
+
+		DBG_PRINT}}
+	  select_expression_without_values_query_no_with_clause
+		{{
+
+			PT_NODE *node = $2;
+			parser_push_orderby_node (node);
+
+		DBG_PRINT}}
+	  opt_orderby_clause
+		{{
+
+			PT_NODE *node = parser_pop_orderby_node ();
+
+			if (node && parser_cannot_cache)
+			  {
+			    node->info.query.reexecute = 1;
+			    node->info.query.do_cache = 0;
+			    node->info.query.do_not_cache = 1;
+			  }
+
+			parser_restore_cannot_cache ();
+			parser_restore_ic ();
+			parser_restore_gc ();
+			parser_restore_oc ();
+			parser_restore_wjc ();
+			parser_restore_sysc ();
+			parser_restore_prc ();
+			parser_restore_cbrc ();
+			parser_restore_serc ();
+			parser_restore_sqc ();
+			parser_restore_pseudoc ();
+
+			if (parser_subquery_check == 0)
+			    PT_ERRORmf(this_parser, pt_top(this_parser),
+				MSGCAT_SET_PARSER_SEMANTIC,
+				MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "Subquery");
+
+			if (node)
+			  {
+			    /* handle ORDER BY NULL */
+			    PT_NODE *order = node->info.query.order_by;
+			    if (order && order->info.sort_spec.expr
+				&& order->info.sort_spec.expr->node_type == PT_VALUE
+				&& order->info.sort_spec.expr->type_enum == PT_TYPE_NULL)
+			      {
+				if (!node->info.query.q.select.group_by)
+				  {
+				    PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					       MSGCAT_SEMANTIC_ORDERBYNULL_REQUIRES_GROUPBY);
+				  }
+				else
+				  {
+				    parser_free_tree (this_parser, node->info.query.order_by);
+				    node->info.query.order_by = NULL;
+				  }
+			      }
+			  }
+
+			parser_push_orderby_node (node);
+
+		DBG_PRINT}}
+	  opt_select_limit_clause
+	  opt_for_update_clause
+		{{
+
+			PT_NODE *node = parser_pop_orderby_node ();
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	;
+
+csql_query_without_values_and_single_subquery
+	:
+		{{
+
+			parser_save_and_set_cannot_cache (false);
+			parser_save_and_set_ic (0);
+			parser_save_and_set_gc (0);
+			parser_save_and_set_oc (0);
+			parser_save_and_set_wjc (0);
+			parser_save_and_set_sysc (0);
+			parser_save_and_set_prc (0);
+			parser_save_and_set_cbrc (0);
+			parser_save_and_set_serc (1);
+			parser_save_and_set_sqc (1);
+			parser_save_and_set_pseudoc (1);
+
+		DBG_PRINT}}
+	  select_expression_without_values_and_single_subquery
+		{{
+
+			PT_NODE *node = $2;
+			parser_push_orderby_node (node);
+
+		DBG_PRINT}}
+	  opt_orderby_clause
+		{{
+
+			PT_NODE *node = parser_pop_orderby_node ();
+
+			if (node && parser_cannot_cache)
+			  {
+			    node->info.query.reexecute = 1;
+			    node->info.query.do_cache = 0;
+			    node->info.query.do_not_cache = 1;
+			  }
+
+			parser_restore_cannot_cache ();
+			parser_restore_ic ();
+			parser_restore_gc ();
+			parser_restore_oc ();
+			parser_restore_wjc ();
+			parser_restore_sysc ();
+			parser_restore_prc ();
+			parser_restore_cbrc ();
+			parser_restore_serc ();
+			parser_restore_sqc ();
+			parser_restore_pseudoc ();
+
+			if (parser_subquery_check == 0)
+			    PT_ERRORmf (this_parser, pt_top(this_parser), MSGCAT_SET_PARSER_SEMANTIC,
+				        MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "Subquery");
+
+			if (node)
+			  {
+			    /* handle ORDER BY NULL */
+			    PT_NODE *order = node->info.query.order_by;
+			    if (order && order->info.sort_spec.expr
+				&& order->info.sort_spec.expr->node_type == PT_VALUE
+				&& order->info.sort_spec.expr->type_enum == PT_TYPE_NULL)
+			      {
+				if (!node->info.query.q.select.group_by)
+				  {
+				    PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					       MSGCAT_SEMANTIC_ORDERBYNULL_REQUIRES_GROUPBY);
+				  }
+				else
+				  {
+				    parser_free_tree (this_parser, node->info.query.order_by);
+				    node->info.query.order_by = NULL;
+				  }
+			      }
+			  }
+
+			parser_push_orderby_node (node);
+
+		DBG_PRINT}}
+	  opt_select_limit_clause
+	  opt_for_update_clause
+		{{
+
+			PT_NODE *node = parser_pop_orderby_node ();
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	;
+
+
 select_expression_opt_with
 	: opt_with_clause
 	  select_expression
@@ -11911,73 +12366,74 @@ select_expression_opt_with
 			$$ = stmt;
 
 		DBG_PRINT}} 
-	;   
+	;
 
-select_expression
-	: select_expression
-    {{
-        PT_NODE *node = $1;
-        parser_push_orderby_node (node);      
-      }}
-    opt_orderby_clause 
-    {{
-      
-        PT_NODE *node = parser_pop_orderby_node ();
-        
-        if (node && parser_cannot_cache)
-        {
-          node->info.query.reexecute = 1;
-          node->info.query.do_cache = 0;
-          node->info.query.do_not_cache = 1;
-        }
-        
-
-        if (parser_subquery_check == 0)
-          PT_ERRORmf(this_parser, pt_top(this_parser),
-                     MSGCAT_SET_PARSER_SEMANTIC,
-                     MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "Subquery");
-        
-        if (node)
-        {
-
-         PT_NODE *order = node->info.query.order_by;
-          if (order && order->info.sort_spec.expr
-              && order->info.sort_spec.expr->node_type == PT_VALUE
-              && order->info.sort_spec.expr->type_enum == PT_TYPE_NULL)
-          {
-            if (!node->info.query.q.select.group_by)
-            {
-              PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-                         MSGCAT_SEMANTIC_ORDERBYNULL_REQUIRES_GROUPBY);
-            }
-            else
-            {
-              parser_free_tree (this_parser, node->info.query.order_by);
-              node->info.query.order_by = NULL;
-            }
-          }
-        }
-        
-        parser_push_orderby_node (node);
-        
-		DBG_PRINT}}
-      opt_select_limit_clause
-      opt_for_update_clause
+select_expression_without_subquery
+	: select_expression_without_subquery
 		{{
-                        
+        		PT_NODE *node = $1;
+			parser_push_orderby_node (node);      
+	        }}
+
+	  opt_orderby_clause 
+	        {{
+
+			PT_NODE *node = parser_pop_orderby_node ();
+
+			if (node && parser_cannot_cache)
+			  {
+			    node->info.query.reexecute = 1;
+			    node->info.query.do_cache = 0;
+			    node->info.query.do_not_cache = 1;
+			  }
+
+
+			if (parser_subquery_check == 0)
+			  PT_ERRORmf (this_parser, pt_top(this_parser), MSGCAT_SET_PARSER_SEMANTIC, 
+				      MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "Subquery");
+
+			if (node)
+			  {
+			    PT_NODE *order = node->info.query.order_by;
+			    if (order && order->info.sort_spec.expr
+				&& order->info.sort_spec.expr->node_type == PT_VALUE
+				&& order->info.sort_spec.expr->type_enum == PT_TYPE_NULL)
+			      {
+				if (!node->info.query.q.select.group_by)
+				  {
+				    PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					       MSGCAT_SEMANTIC_ORDERBYNULL_REQUIRES_GROUPBY);
+				  }
+				else
+				  {
+				    parser_free_tree (this_parser, node->info.query.order_by);
+				    node->info.query.order_by = NULL;
+				  }
+			     }
+			  }
+
+			parser_push_orderby_node (node);
+
+		DBG_PRINT}}
+
+          opt_select_limit_clause
+          opt_for_update_clause
+		{{
+
 			PT_NODE *node = parser_pop_orderby_node ();
 			$<node>$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($<node>$, @$.buffer_pos)
-            
-            DBG_PRINT}}
-     table_op select_or_subquery
-     {{
-         
-         PT_NODE *stmt = $8;
-         PT_NODE *arg1 = $1;
-         
-         if (stmt)
-         {
+
+                DBG_PRINT}}
+
+          table_op select_or_values_query
+                {{
+
+			PT_NODE *stmt = $8;
+			PT_NODE *arg1 = $1;
+
+			if (stmt)
+			  {
 			    stmt->info.query.id = (UINTPTR) stmt;
 			    stmt->info.query.q.union_.arg1 = $1;
 			    stmt->info.query.q.union_.arg2 = $9;
@@ -11990,7 +12446,97 @@ select_expression
 			               MSGCAT_SET_PARSER_SYNTAX,
 			               MSGCAT_SYNTAX_INVALID_UNION_ORDERBY);
 			      }
-         }
+			  }
+
+
+			$$ = stmt;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| select_or_values_query
+		{{
+			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	;
+
+select_expression
+	: select_expression
+		{{
+			PT_NODE *node = $1;
+			parser_push_orderby_node (node);      
+		}}
+	  opt_orderby_clause 
+		{{
+      
+			PT_NODE *node = parser_pop_orderby_node ();
+        
+			if (node && parser_cannot_cache)
+			  {
+			    node->info.query.reexecute = 1;
+			    node->info.query.do_cache = 0;
+			    node->info.query.do_not_cache = 1;
+			  }
+        
+
+			if (parser_subquery_check == 0)
+			  PT_ERRORmf (this_parser, pt_top(this_parser), MSGCAT_SET_PARSER_SEMANTIC,
+				      MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "Subquery");
+        
+			if (node)
+			  {
+
+			    PT_NODE *order = node->info.query.order_by;
+			    if (order && order->info.sort_spec.expr
+				&& order->info.sort_spec.expr->node_type == PT_VALUE
+				&& order->info.sort_spec.expr->type_enum == PT_TYPE_NULL)
+			      {
+				if (!node->info.query.q.select.group_by)
+				  {
+				    PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					       MSGCAT_SEMANTIC_ORDERBYNULL_REQUIRES_GROUPBY);
+				  }
+				else
+				  {
+				    parser_free_tree (this_parser, node->info.query.order_by);
+				    node->info.query.order_by = NULL;
+				  }
+			      }
+			  }
+        
+			parser_push_orderby_node (node);
+        
+		DBG_PRINT}}
+	  opt_select_limit_clause
+	  opt_for_update_clause
+		{{
+                        
+			PT_NODE *node = parser_pop_orderby_node ();
+			$<node>$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($<node>$, @$.buffer_pos)
+            
+		DBG_PRINT}}
+	  table_op select_or_subquery
+		{{
+         
+			PT_NODE *stmt = $8;
+			PT_NODE *arg1 = $1;
+         
+			if (stmt)
+			  {
+			    stmt->info.query.id = (UINTPTR) stmt;
+			    stmt->info.query.q.union_.arg1 = $1;
+			    stmt->info.query.q.union_.arg2 = $9;
+			    
+			    if (arg1 != NULL
+			        && arg1->info.query.is_subquery != PT_IS_SUBQUERY
+			        && arg1->info.query.order_by != NULL)
+			      {
+			        PT_ERRORm (this_parser, stmt, MSGCAT_SET_PARSER_SYNTAX,
+			                   MSGCAT_SYNTAX_INVALID_UNION_ORDERBY);
+			      }
+			  }
 
 
 			$$ = stmt;
@@ -12008,69 +12554,67 @@ select_expression
 
 select_expression_without_values_query
 	: select_expression_without_values_query
-    {{
-        PT_NODE *node = $1;
-        parser_push_orderby_node (node);      
-      }}
-    opt_orderby_clause 
-    {{
+		{{
+			PT_NODE *node = $1;
+			parser_push_orderby_node (node);      
+		}}
+	  opt_orderby_clause 
+		{{
       
-        PT_NODE *node = parser_pop_orderby_node ();
+			PT_NODE *node = parser_pop_orderby_node ();
         
-        if (node && parser_cannot_cache)
-        {
-          node->info.query.reexecute = 1;
-          node->info.query.do_cache = 0;
-          node->info.query.do_not_cache = 1;
-        }
+			if (node && parser_cannot_cache)
+			  {
+			    node->info.query.reexecute = 1;
+			    node->info.query.do_cache = 0;
+			    node->info.query.do_not_cache = 1;
+			  }
         
+			if (parser_subquery_check == 0)
+			  PT_ERRORmf (this_parser, pt_top(this_parser), MSGCAT_SET_PARSER_SEMANTIC,
+				      MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "Subquery");
+        
+			if (node)
+			  {
 
-        if (parser_subquery_check == 0)
-          PT_ERRORmf(this_parser, pt_top(this_parser),
-                     MSGCAT_SET_PARSER_SEMANTIC,
-                     MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "Subquery");
+			    PT_NODE *order = node->info.query.order_by;
+			    if (order && order->info.sort_spec.expr
+				&& order->info.sort_spec.expr->node_type == PT_VALUE
+				&& order->info.sort_spec.expr->type_enum == PT_TYPE_NULL)
+			      {
+				if (!node->info.query.q.select.group_by)
+				  {
+				    PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					       MSGCAT_SEMANTIC_ORDERBYNULL_REQUIRES_GROUPBY);
+				  }
+				else
+				  {
+				    parser_free_tree (this_parser, node->info.query.order_by);
+				    node->info.query.order_by = NULL;
+				  }
+			      }
+			  }
         
-        if (node)
-        {
-
-         PT_NODE *order = node->info.query.order_by;
-          if (order && order->info.sort_spec.expr
-              && order->info.sort_spec.expr->node_type == PT_VALUE
-              && order->info.sort_spec.expr->type_enum == PT_TYPE_NULL)
-          {
-            if (!node->info.query.q.select.group_by)
-            {
-              PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-                         MSGCAT_SEMANTIC_ORDERBYNULL_REQUIRES_GROUPBY);
-            }
-            else
-            {
-              parser_free_tree (this_parser, node->info.query.order_by);
-              node->info.query.order_by = NULL;
-            }
-          }
-        }
-        
-        parser_push_orderby_node (node);
+			parser_push_orderby_node (node);
         
 		DBG_PRINT}}
-      opt_select_limit_clause
-      opt_for_update_clause
+	  opt_select_limit_clause
+	  opt_for_update_clause
 		{{
                         
 			PT_NODE *node = parser_pop_orderby_node ();
 			$<node>$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($<node>$, @$.buffer_pos)
             
-            DBG_PRINT}}
-     table_op select_or_subquery_without_values_query
-     {{
+		DBG_PRINT}}
+	  table_op select_or_subquery_without_values_query
+		{{
          
-         PT_NODE *stmt = $8;
-         PT_NODE *arg1 = $1;
+			PT_NODE *stmt = $8;
+			PT_NODE *arg1 = $1;
          
-         if (stmt)
-         {
+			if (stmt)
+			  {
 			    stmt->info.query.id = (UINTPTR) stmt;
 			    stmt->info.query.q.union_.arg1 = $1;
 			    stmt->info.query.q.union_.arg2 = $9;
@@ -12078,11 +12622,10 @@ select_expression_without_values_query
 			        && arg1->info.query.is_subquery != PT_IS_SUBQUERY
 			        && arg1->info.query.order_by != NULL)
 			      {
-			        PT_ERRORm (this_parser, stmt,
-			               MSGCAT_SET_PARSER_SYNTAX,
-			               MSGCAT_SYNTAX_INVALID_UNION_ORDERBY);
+			        PT_ERRORm (this_parser, stmt, MSGCAT_SET_PARSER_SYNTAX,
+			                   MSGCAT_SYNTAX_INVALID_UNION_ORDERBY);
 			      }
-         }
+			   }
 
 
 			$$ = stmt;
@@ -12090,6 +12633,185 @@ select_expression_without_values_query
 
 		DBG_PRINT}}
 	| select_or_subquery_without_values_query
+		{{
+
+			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	;
+
+select_expression_without_values_query_no_with_clause
+	: select_expression_without_values_query_no_with_clause
+		{{
+			PT_NODE *node = $1;
+			parser_push_orderby_node (node);
+		}}
+	  opt_orderby_clause
+		{{
+
+			PT_NODE *node = parser_pop_orderby_node ();
+
+			if (node && parser_cannot_cache)
+			  {
+			    node->info.query.reexecute = 1;
+			    node->info.query.do_cache = 0;
+			    node->info.query.do_not_cache = 1;
+			  }
+
+			if (parser_subquery_check == 0)
+			  PT_ERRORmf (this_parser, pt_top(this_parser), MSGCAT_SET_PARSER_SEMANTIC,
+				      MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "Subquery");
+
+			if (node)
+			  {
+
+			    PT_NODE *order = node->info.query.order_by;
+			    if (order && order->info.sort_spec.expr
+				&& order->info.sort_spec.expr->node_type == PT_VALUE
+				&& order->info.sort_spec.expr->type_enum == PT_TYPE_NULL)
+			      {
+				if (!node->info.query.q.select.group_by)
+				  {
+				    PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					       MSGCAT_SEMANTIC_ORDERBYNULL_REQUIRES_GROUPBY);
+				  }
+				else
+				  {
+				    parser_free_tree (this_parser, node->info.query.order_by);
+				    node->info.query.order_by = NULL;
+				  }
+			      }
+			  }
+
+			parser_push_orderby_node (node);
+
+		DBG_PRINT}}
+	  opt_select_limit_clause
+	  opt_for_update_clause
+		{{
+
+			PT_NODE *node = parser_pop_orderby_node ();
+			$<node>$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($<node>$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	  table_op select_or_subquery_without_values_query_no_with_clause
+		{{
+
+			PT_NODE *stmt = $8;
+			PT_NODE *arg1 = $1;
+
+			if (stmt)
+			  {
+			    stmt->info.query.id = (UINTPTR) stmt;
+			    stmt->info.query.q.union_.arg1 = $1;
+			    stmt->info.query.q.union_.arg2 = $9;
+			    if (arg1 != NULL
+			        && arg1->info.query.is_subquery != PT_IS_SUBQUERY
+			        && arg1->info.query.order_by != NULL)
+			      {
+			        PT_ERRORm (this_parser, stmt, MSGCAT_SET_PARSER_SYNTAX,
+			                   MSGCAT_SYNTAX_INVALID_UNION_ORDERBY);
+			      }
+			  }
+
+
+			$$ = stmt;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| select_or_subquery_without_values_query_no_with_clause
+		{{
+
+			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	;
+
+select_expression_without_values_and_single_subquery
+	: select_expression_without_values_query_no_with_clause
+		{{
+			PT_NODE *node = $1;
+			parser_push_orderby_node (node);
+		}}
+	  opt_orderby_clause
+		{{
+
+			PT_NODE *node = parser_pop_orderby_node ();
+
+			if (node && parser_cannot_cache)
+			  {
+			    node->info.query.reexecute = 1;
+			    node->info.query.do_cache = 0;
+			    node->info.query.do_not_cache = 1;
+			  }
+
+
+			if (parser_subquery_check == 0)
+			  PT_ERRORmf (this_parser, pt_top(this_parser), MSGCAT_SET_PARSER_SEMANTIC,
+				      MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "Subquery");
+
+			if (node)
+			  {
+
+			    PT_NODE *order = node->info.query.order_by;
+			    if (order && order->info.sort_spec.expr
+				&& order->info.sort_spec.expr->node_type == PT_VALUE
+				&& order->info.sort_spec.expr->type_enum == PT_TYPE_NULL)
+			      {
+				if (!node->info.query.q.select.group_by)
+				  {
+				    PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					       MSGCAT_SEMANTIC_ORDERBYNULL_REQUIRES_GROUPBY);
+				  }
+				else
+				  {
+				    parser_free_tree (this_parser, node->info.query.order_by);
+				    node->info.query.order_by = NULL;
+				  }
+			      }
+			  }
+
+			parser_push_orderby_node (node);
+
+		DBG_PRINT}}
+	  opt_select_limit_clause
+	  opt_for_update_clause
+		{{
+
+			PT_NODE *node = parser_pop_orderby_node ();
+			$<node>$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($<node>$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	  table_op select_or_subquery_without_values_query_no_with_clause
+		{{
+
+			PT_NODE *stmt = $8;
+			PT_NODE *arg1 = $1;
+
+			if (stmt)
+			  {
+			     stmt->info.query.id = (UINTPTR) stmt;
+			     stmt->info.query.q.union_.arg1 = $1;
+			     stmt->info.query.q.union_.arg2 = $9;
+			     if (arg1 != NULL
+				 && arg1->info.query.is_subquery != PT_IS_SUBQUERY
+				 && arg1->info.query.order_by != NULL)
+			       {
+				 PT_ERRORm (this_parser, stmt, MSGCAT_SET_PARSER_SYNTAX,
+					    MSGCAT_SYNTAX_INVALID_UNION_ORDERBY);
+			       }
+			  }
+
+
+			$$ = stmt;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| select_or_nested_values_query
 		{{
 
 			$$ = $1;
@@ -12202,6 +12924,21 @@ select_or_subquery
 		DBG_PRINT}}
 	;
 
+select_or_values_query
+	: values_query
+		{{
+			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
+	| select_stmt
+		{{
+
+			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	;
+
 select_or_subquery_without_values_query
 	: select_stmt
 		{{
@@ -12216,6 +12953,38 @@ select_or_subquery_without_values_query
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
+		DBG_PRINT}}
+	;
+
+select_or_subquery_without_values_query_no_with_clause
+	: select_stmt
+		{{
+
+			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| subquery_without_subquery_and_with_clause
+		{{
+
+			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	;
+
+select_or_nested_values_query
+	: select_stmt
+		{{
+
+			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| '(' values_query ')'
+		{{
+			$$ = $2;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
 	;
 
@@ -12382,8 +13151,8 @@ opt_with_clause
 
 		DBG_PRINT}}    
 	| WITH            /* $1 */
-	opt_recursive   /* $2 */
-	cte_definition_list   /* $3 */  
+	  opt_recursive   /* $2 */
+	  cte_definition_list   /* $3 */  
 		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_WITH_CLAUSE);
@@ -12968,7 +13737,7 @@ to_param
 			if (val)
 			  {
 			    val->info.name.meta_class = PT_PARAMETER;
-			    val->info.name.spec_id = (long) val;
+			    val->info.name.spec_id = (UINTPTR) val;
 			    val->info.name.resolved = pt_makename ("out parameter");
 			  }
 
@@ -12984,7 +13753,7 @@ to_param
 			if (val)
 			  {
 			    val->info.name.meta_class = PT_PARAMETER;
-			    val->info.name.spec_id = (long) val;
+			    val->info.name.spec_id = (UINTPTR) val;
 			    val->info.name.resolved = pt_makename ("out parameter");
 			  }
 
@@ -15232,6 +16001,43 @@ reserved_func
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| JSON_ARRAYAGG '(' expression_ ')'
+		{{
+
+			PT_NODE *node = parser_new_node (this_parser, PT_FUNCTION);
+
+			if (node)
+			  {
+			    node->info.function.function_type = PT_JSON_ARRAYAGG;
+			    node->info.function.all_or_distinct = PT_ALL;
+			    node->info.function.arg_list = parser_make_link ($3, NULL);
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| JSON_OBJECTAGG '(' expression_list ')'
+		{{
+ 			PT_NODE *node = parser_new_node (this_parser, PT_FUNCTION);
+			PT_NODE *args_list = $3;
+
+			if (parser_count_list(args_list) != 2)
+		    {
+			  PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SYNTAX,
+					      MSGCAT_SYNTAX_INVALID_JSON_OBJECTAGG);
+		    }
+
+ 			if (node)
+			  {
+			    node->info.function.function_type = PT_JSON_OBJECTAGG;
+			    node->info.function.all_or_distinct = PT_ALL;
+			    node->info.function.arg_list = args_list;
+			  }
+
+ 			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+ 		DBG_PRINT}}
 	| of_percentile '(' expression_ ')' WITHIN GROUP_ '(' ORDER BY sort_spec ')' opt_over_analytic_partition_by
 		{{
 		
@@ -16198,6 +17004,25 @@ reserved_func
 		    $$ = node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
+		| FUN_JSON_CONTAINS_PATH '(' expression_list ')'
+		{{
+		    PT_NODE *args_list = $3;
+		    PT_NODE *node = NULL;
+		    int len;
+
+		    len = parser_count_list (args_list);
+		    node = parser_make_expr_with_func (this_parser, F_JSON_CONTAINS_PATH, args_list);
+		    if (len < 3)
+		    {
+			PT_ERRORmf (this_parser, args_list,
+				    MSGCAT_SET_PARSER_SEMANTIC,
+				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
+				    "json_contains_path");
+		    }
+
+		    $$ = node;
+		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
         | FUN_JSON_MERGE '(' expression_list ')'
 		{{
 		    PT_NODE *args_list = $3;
@@ -16212,6 +17037,44 @@ reserved_func
 				    MSGCAT_SET_PARSER_SEMANTIC,
 				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
 				    "json_merge");
+		    }
+
+		    $$ = node;
+		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
+		| FUN_JSON_MERGE_PATCH '(' expression_list ')'
+		{{
+		    PT_NODE *args_list = $3;
+		    PT_NODE *node = NULL;
+                    int len;
+
+                    len = parser_count_list (args_list);
+			node = parser_make_expr_with_func (this_parser, F_JSON_MERGE_PATCH, args_list);
+			if (len < 2)
+		    {
+			PT_ERRORmf (this_parser, args_list,
+				    MSGCAT_SET_PARSER_SEMANTIC,
+				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
+				    "json_merge_patch");
+			}
+
+		    $$ = node;
+		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
+		| FUN_JSON_MERGE_PRESERVE '(' expression_list ')'
+		{{
+		    PT_NODE *args_list = $3;
+		    PT_NODE *node = NULL;
+                    int len;
+
+                    len = parser_count_list (args_list);
+		    node = parser_make_expr_with_func (this_parser, F_JSON_MERGE, args_list);
+		    if (len < 2)
+		    {
+			PT_ERRORmf (this_parser, args_list,
+				    MSGCAT_SET_PARSER_SEMANTIC,
+				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
+				    "json_merge_preserve");
 		    }
 
 		    $$ = node;
@@ -16236,7 +17099,7 @@ reserved_func
 		    $$ = node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-		| FUN_JSON_REPLACE '(' expression_list ')'
+         | FUN_JSON_REPLACE '(' expression_list ')'
 		{{
 		    PT_NODE *args_list = $3;
 		    PT_NODE *node = NULL;
@@ -16255,7 +17118,7 @@ reserved_func
 		    $$ = node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-		| FUN_JSON_SET '(' expression_list ')'
+         | FUN_JSON_SET '(' expression_list ')'
 		{{
 		    PT_NODE *args_list = $3;
 		    PT_NODE *node = NULL;
@@ -16274,7 +17137,7 @@ reserved_func
 		    $$ = node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-		| FUN_JSON_KEYS '(' expression_list ')'
+         | FUN_JSON_KEYS '(' expression_list ')'
 		{{
 		    PT_NODE *args_list = $3;
 		    PT_NODE *node = NULL;
@@ -16312,7 +17175,7 @@ reserved_func
 		    $$ = node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-		| FUN_JSON_ARRAY_APPEND '(' expression_list ')'
+         | FUN_JSON_ARRAY_APPEND '(' expression_list ')'
 		{{
 		    PT_NODE *args_list = $3;
 		    PT_NODE *node = NULL;
@@ -16331,7 +17194,44 @@ reserved_func
 		    $$ = node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-		| FUN_JSON_GET_ALL_PATHS '(' expression_list ')'
+         | FUN_JSON_ARRAY_INSERT '(' expression_list ')'
+		{{
+		    PT_NODE *args_list = $3;
+		    PT_NODE *node = NULL;
+                    int len;
+
+                    len = parser_count_list (args_list);
+		    node = parser_make_expr_with_func (this_parser, F_JSON_ARRAY_INSERT, args_list);
+		    if (len < 3 || len % 2 != 1)
+		    {
+			PT_ERRORmf (this_parser, args_list,
+				    MSGCAT_SET_PARSER_SEMANTIC,
+				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
+				    "json_array_insert");
+		    }
+
+		    $$ = node;
+		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
+         | FUN_JSON_SEARCH '(' expression_list ')'
+		{{
+		    PT_NODE *args_list = $3;
+		    PT_NODE *node = NULL;
+		    int len = parser_count_list (args_list);
+		    node = parser_make_expr_with_func (this_parser, F_JSON_SEARCH, args_list);		    
+
+		    if (len < 3)
+		      {
+			    PT_ERRORmf (this_parser, args_list,
+			    	    MSGCAT_SET_PARSER_SEMANTIC,
+			    	    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
+			    	    "json_search");
+		      }
+
+		    $$ = node;
+		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
+         | FUN_JSON_GET_ALL_PATHS '(' expression_list ')'
 		{{
 		    PT_NODE *args_list = $3;
 		    PT_NODE *node = NULL;
@@ -16349,6 +17249,40 @@ reserved_func
 
 		    $$ = node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
+         | identifier RIGHT_ARROW CHAR_STRING
+		{{
+			PT_NODE *matcher = parser_new_node (this_parser, PT_VALUE);
+
+			if (matcher)
+			  {
+			    matcher->type_enum = PT_TYPE_CHAR;
+			    matcher->info.value.string_type = ' ';
+			    matcher->info.value.data_value.str =
+			      pt_append_bytes (this_parser, NULL, $3, strlen ($3));
+			    PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, matcher);
+			  }
+
+			PT_NODE *expr = parser_make_expression (this_parser, PT_JSON_EXTRACT, $1, matcher, NULL);
+			$$ = expr;
+		DBG_PRINT}}
+         | identifier DOUBLE_RIGHT_ARROW CHAR_STRING
+		{{
+			PT_NODE *matcher = parser_new_node (this_parser, PT_VALUE);
+
+			if (matcher)
+			  {
+			    matcher->type_enum = PT_TYPE_CHAR;
+			    matcher->info.value.string_type = ' ';
+			    matcher->info.value.data_value.str =
+			      pt_append_bytes (this_parser, NULL, $3, strlen ($3));
+			    PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, matcher);
+			  }
+
+			PT_NODE *extract_expr = parser_make_expression (this_parser, PT_JSON_EXTRACT, $1, matcher, NULL);			
+			PT_NODE *expr = parser_make_expression (this_parser, PT_JSON_EXTRACT, extract_expr, NULL, NULL);
+
+			$$ = expr;
 		DBG_PRINT}}
 	;
 
@@ -18451,6 +19385,26 @@ set_op
 
 subquery
 	: '(' csql_query ')'
+		{{
+
+			PT_NODE *stmt = $2;
+
+			if (parser_within_join_condition)
+			  {
+			    PT_ERRORm (this_parser, stmt, MSGCAT_SET_PARSER_SYNTAX,
+				       MSGCAT_SYNTAX_JOIN_COND_SUBQ);
+			  }
+
+			if (stmt)
+			  stmt->info.query.is_subquery = PT_IS_SUBQUERY;
+			$$ = stmt;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	;
+
+subquery_without_subquery_and_with_clause
+	: '(' csql_query_without_subquery_and_with_clause ')'
 		{{
 
 			PT_NODE *stmt = $2;
@@ -21327,6 +22281,16 @@ identifier
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| PATH
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
 	| PERCENT_RANK
 		{{
 
@@ -21897,6 +22861,26 @@ identifier
 
 		DBG_PRINT}}
 	| WEEK
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| JSON_ARRAYAGG
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| JSON_OBJECTAGG
 		{{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -23026,7 +24010,8 @@ json_literal
 			$$ = val;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)	
                 
-                DBG_PRINT}};
+                DBG_PRINT}}
+
 create_as_clause
 	: opt_replace AS csql_query
 		{{
@@ -23328,7 +24313,139 @@ vacuum_stmt
 			$$ = node;
 		DBG_PRINT}}
 	;
-			
+
+json_table_column_behavior_rule
+    : Null
+      {{
+        $$.m_behavior = JSON_TABLE_RETURN_NULL;
+        $$.m_default_value = NULL;
+      DBG_PRINT}}
+    | ERROR_
+      {{
+        $$.m_behavior = JSON_TABLE_THROW_ERROR;
+        $$.m_default_value = NULL;
+      DBG_PRINT}}
+    | DEFAULT expression_       
+      {{
+        PT_NODE * default_value = $2;
+        if (default_value->node_type != PT_VALUE)
+          {
+            PT_ERROR (this_parser, default_value, "invalid JSON_TABLE default");
+          }
+        DB_VALUE * temp = pt_value_to_db (this_parser, default_value);
+        $$.m_behavior = JSON_TABLE_DEFAULT_VALUE;
+        $$.m_default_value = db_value_copy (temp);
+
+        parser_free_node(this_parser, default_value);
+      DBG_PRINT}}
+    ;
+
+json_table_on_error_rule_optional
+    : /* empty */
+      {{
+        $$.m_behavior = JSON_TABLE_RETURN_NULL;
+        $$.m_default_value = NULL;
+      DBG_PRINT}}
+    | json_table_column_behavior_rule ON_ ERROR_
+      {{
+        $$ = $1;
+      DBG_PRINT}}
+    ;
+
+json_table_on_empty_rule_optional
+    : /* empty */
+      {{
+        $$.m_behavior = JSON_TABLE_RETURN_NULL;
+        $$.m_default_value = NULL;
+      DBG_PRINT}}
+    | json_table_column_behavior_rule ON_ EMPTY
+      {{
+        $$ = $1;
+      DBG_PRINT}}
+    ;
+
+json_table_column_rule
+    : identifier For ORDINALITY
+      {{
+        PT_NODE *pt_col = parser_new_node (this_parser, PT_JSON_TABLE_COLUMN);
+        pt_col->info.json_table_column_info.name = $1;
+        pt_col->info.json_table_column_info.func = JSON_TABLE_ORDINALITY;
+        pt_col->type_enum = PT_TYPE_INTEGER;
+        $$ = pt_col;
+      DBG_PRINT}}
+    | identifier data_type PATH CHAR_STRING json_table_on_error_rule_optional json_table_on_empty_rule_optional
+    //        $1        $2   $3          $4                                $5                                $6
+      {{
+        PT_NODE *pt_col = parser_new_node (this_parser, PT_JSON_TABLE_COLUMN);
+        pt_col->info.json_table_column_info.name = $1;
+        pt_col->type_enum = TO_NUMBER (CONTAINER_AT_0 ($2));
+        pt_col->data_type = CONTAINER_AT_1 ($2);
+        pt_col->info.json_table_column_info.path=$4;
+        pt_col->info.json_table_column_info.func = JSON_TABLE_EXTRACT;
+        pt_col->info.json_table_column_info.on_error = $5;
+        pt_col->info.json_table_column_info.on_empty = $6;
+        $$ = pt_col;
+      DBG_PRINT}}
+    | identifier data_type EXISTS PATH CHAR_STRING
+      {{
+        PT_NODE *pt_col = parser_new_node (this_parser, PT_JSON_TABLE_COLUMN);
+        pt_col->info.json_table_column_info.name = $1;
+        pt_col->type_enum = TO_NUMBER (CONTAINER_AT_0 ($2));
+        pt_col->data_type = CONTAINER_AT_1 ($2);
+        pt_col->info.json_table_column_info.path=$5;
+        pt_col->info.json_table_column_info.func = JSON_TABLE_EXISTS;
+        $$ = pt_col;
+      DBG_PRINT}}
+    | NESTED json_table_node_rule
+      {{
+        $$ = $2;
+      DBG_PRINT}}
+    | NESTED PATH json_table_node_rule
+      {{
+        $$ = $3;
+      DBG_PRINT}}
+    ;
+
+json_table_column_list_rule
+    : json_table_column_list_rule ',' json_table_column_rule
+      {{
+        pt_jt_append_column_or_nested_node ($1, $3);
+        $$ = $1;
+      DBG_PRINT}}
+    | json_table_column_rule
+      {{
+        PT_NODE *pt_jt_node = parser_new_node (this_parser, PT_JSON_TABLE_NODE);
+        pt_jt_append_column_or_nested_node (pt_jt_node, $1);
+        $$ = pt_jt_node;
+      DBG_PRINT}}
+    ;
+
+json_table_node_rule
+    : CHAR_STRING COLUMNS '(' json_table_column_list_rule ')'
+      {{
+        PT_NODE *jt_node = $4;
+        assert (jt_node != NULL);
+        assert (jt_node->node_type == PT_JSON_TABLE_NODE);
+
+        jt_node->info.json_table_node_info.path = $1;
+
+        $$ = jt_node;
+      DBG_PRINT}}
+    ;
+
+json_table_rule
+    : {{
+	    json_table_column_count = 0;
+      DBG_PRINT}} 
+	'(' expression_ ',' json_table_node_rule ')'
+      {{
+        PT_NODE *jt = parser_new_node (this_parser, PT_JSON_TABLE);
+        jt->info.json_table_info.expr = $3;
+        jt->info.json_table_info.tree = $5;
+
+        $$ = jt;
+      DBG_PRINT}}
+    ;
 
 %%
 
@@ -23355,6 +24472,7 @@ int yycolumn_end = 0;
 int dot_flag = 0;
 
 int parser_function_code = PT_EMPTY;
+size_t json_table_column_count = 0;
 
 static PT_NODE *
 parser_make_expr_with_func (PARSER_CONTEXT * parser, FUNC_TYPE func_code,
@@ -25753,6 +26871,9 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_JSON_VALID:
     case PT_JSON_LENGTH:
     case PT_JSON_DEPTH:
+    case PT_JSON_PRETTY:
+    case PT_JSON_QUOTE:
+    case PT_JSON_UNQUOTE:
       if (c != 1)
         return NULL;
 
@@ -25760,19 +26881,6 @@ parser_keyword_func (const char *name, PT_NODE * args)
       a1->next = NULL;
 
       node = parser_make_expression (this_parser, key->op, a1, NULL, NULL);
-      return node;
-    case PT_JSON_SEARCH:
-      if (c != 3)
-	return NULL;
-
-      a1 = args;
-      a2 = a1->next;
-      a3 = a2->next;
-      a1->next = NULL;
-      a2->next = NULL;
-      a3->next = NULL;
-
-      node = parser_make_expression (this_parser, key->op, a1, a2, a3);
       return node;
     case PT_STRCMP:
       if (c != 2)
@@ -26302,11 +27410,9 @@ pt_set_collation_modifier (PARSER_CONTEXT *parser, PT_NODE *node,
     }
   else if (node->node_type == PT_EXPR)
     {
-      if (node->info.expr.op == PT_EVALUATE_VARIABLE
-	  || node->info.expr.op == PT_DEFINE_VARIABLE)
+      if (node->info.expr.op == PT_EVALUATE_VARIABLE || node->info.expr.op == PT_DEFINE_VARIABLE)
 	{
-	  PT_ERRORm (parser, coll_node, MSGCAT_SET_PARSER_SEMANTIC,
-		     MSGCAT_SEMANTIC_COLLATE_NOT_ALLOWED);
+	  PT_ERRORm (parser, coll_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_COLLATE_NOT_ALLOWED);
 	  return node;
 	}
       else if (node->info.expr.op == PT_CAST
@@ -26315,8 +27421,7 @@ pt_set_collation_modifier (PARSER_CONTEXT *parser, PT_NODE *node,
 	  LANG_COLLATION *lc_node = lang_get_collation (PT_GET_COLLATION_MODIFIER (node));
 	  if (lc_node->codeset != lang_coll->codeset)
 	    {
-	      PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-			   MSGCAT_SEMANTIC_CS_MATCH_COLLATE,
+	      PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CS_MATCH_COLLATE,
 			   lang_get_codeset_name (lc_node->codeset),
 			   lang_get_codeset_name (lang_coll->codeset));
 	      return node;
@@ -26328,16 +27433,14 @@ pt_set_collation_modifier (PARSER_CONTEXT *parser, PT_NODE *node,
 	  do_wrap_with_cast = true;
 	}
     }
-  else if (node->node_type == PT_NAME || node->node_type == PT_DOT_
-	   || node->node_type == PT_FUNCTION)
+  else if (node->node_type == PT_NAME || node->node_type == PT_DOT_ || node->node_type == PT_FUNCTION)
     {
       PT_SET_NODE_COLL_MODIFIER (node, lang_coll->coll.coll_id);
       do_wrap_with_cast = true;
     }
   else
     {
-      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-		 MSGCAT_SEMANTIC_COLLATE_NOT_ALLOWED);
+      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_COLLATE_NOT_ALLOWED);
       assert (do_wrap_with_cast == false);
     }
 
@@ -26362,7 +27465,6 @@ pt_create_json_value (PARSER_CONTEXT *parser, const char *str)
   PT_NODE *node = NULL;
 
   node = parser_new_node (parser, PT_VALUE);
-
   if (node)
     {
       node->type_enum = PT_TYPE_JSON;
@@ -26372,4 +27474,24 @@ pt_create_json_value (PARSER_CONTEXT *parser, const char *str)
     }
 
   return node;
+}
+
+static void
+pt_jt_append_column_or_nested_node (PT_NODE * jt_node, PT_NODE * jt_col_or_nested)
+{
+  assert (jt_node != NULL && jt_node->node_type == PT_JSON_TABLE_NODE);
+  assert (jt_col_or_nested != NULL);
+
+  if (jt_col_or_nested->node_type == PT_JSON_TABLE_COLUMN)
+    {
+      jt_col_or_nested->info.json_table_column_info.index = json_table_column_count++;
+      jt_node->info.json_table_node_info.columns =
+        parser_append_node (jt_col_or_nested, jt_node->info.json_table_node_info.columns);
+    }
+  else
+    {
+      assert (jt_col_or_nested->node_type == PT_JSON_TABLE_NODE);
+      jt_node->info.json_table_node_info.nested_paths =
+        parser_append_node (jt_col_or_nested, jt_node->info.json_table_node_info.nested_paths);
+    }
 }

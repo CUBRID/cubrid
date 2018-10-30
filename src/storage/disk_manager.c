@@ -49,6 +49,7 @@
 #include "log_manager.h"
 #include "critical_section.h"
 #include "boot_sr.h"
+#include "tz_support.h"
 #include "db_date.h"
 #include "bit.h"
 #include "fault_injection.h"
@@ -748,7 +749,8 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
 	}
       if (ext_info->voltype == DB_PERMANENT_VOLTYPE)
 	{
-	  LSA_SET_INIT_TEMP (&init_with_temp_lsa);
+	  LSA_SET_TEMP_LSA (&init_with_temp_lsa);
+
 	  /* Flush all dirty pages and then invalidate them from page buffer pool. So that we can reset the recovery
 	   * information directly using the io module */
 
@@ -1978,7 +1980,9 @@ disk_volume_expand (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLTYPE voltype, DK
   error_code = fileio_expand_to (thread_p, volid, volume_new_npages, voltype);
   if (error_code != NO_ERROR)
     {
-      ASSERT_ERROR ();
+      // important note - we just committed volume expansion; we cannot afford any failures here
+      // caller won't update cache!!
+      assert (false);
       return error_code;
     }
 
@@ -6334,6 +6338,8 @@ exit:
       pgbuf_unfix_and_init (thread_p, page_volheader);
     }
 
+  disk_log ("disk_check_volume", "check volume %d is %s", volid, valid == DISK_VALID ? "valid" : "not valid");
+
   csect_exit (thread_p, CSECT_DISK_CHECK);
 
   return valid;
@@ -6419,6 +6425,8 @@ disk_check (THREAD_ENTRY * thread_p, bool repair)
 	  return DISK_INVALID;
 	}
     }
+
+  disk_log ("disk_check", "first check step is %s", valid == DISK_VALID ? "valid" : "not valid");
 
   /* release critical section. we will get it for each volume we check, to avoid blocking all reservations and
    * extensions for a long time. */
@@ -6518,6 +6526,8 @@ disk_check (THREAD_ENTRY * thread_p, bool repair)
 	  return DISK_INVALID;
 	}
     }
+
+  disk_log ("disk_check", "full check is %s", "valid");
 
   /* all valid or all repaired */
   csect_exit (thread_p, CSECT_DISK_CHECK);

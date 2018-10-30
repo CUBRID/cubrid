@@ -1214,6 +1214,13 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
     }
 
   /* add index status. */
+  /*  If the index_status is set to SM_ONLINE_INDEX_BUILDING_DONE, we must change it to NORMAL_INDEX since
+   *  the index has finished loading and the temporary status was set to avoid some previous checks.
+   */
+  if (index_status == SM_ONLINE_INDEX_BUILDING_DONE)
+    {
+      index_status = SM_NORMAL_INDEX;
+    }
   db_make_int (&value, index_status);
   classobj_put_value_and_iterate (constraint, constraint_seq_index, value);
 

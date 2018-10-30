@@ -24,7 +24,6 @@
 #ifndef _API_COMMON_H_
 #define _API_COMMON_H_
 
-#include "cubrid_api.h"
 #include "api_handle.h"
 
 /*

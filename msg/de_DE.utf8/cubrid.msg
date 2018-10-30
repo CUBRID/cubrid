@@ -1304,8 +1304,10 @@ $ LOADDB
 1235 Reserved error for stream/replication.
 1236 Double Write Buffer is disabled.
 1237 Cannot change status on %1$s because %2$s is a %3$s.
+1238 Missing value for JSON_TABLE column '%1$s'.
+1239 Cannot coerce value from JSON "%1$s" at path "%2$s" to JSON_TABLE column "%3$s" of domain "%4$s". 
 
-1238 Letzter Fehler
+1240 Letzter Fehler
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Fehler in Fehler-Subsystem (Zeile %1$d):
@@ -1461,6 +1463,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 125 ungültige Verwendung von sessiontimezone\n sessiontimezone
 126 Maximale Länge einer class/vclass Kommentar ist %1$d bytes.
 127 Maximale Länge eines Kommentars ist %1$d bytes.
+128 Invalid number of arguments for JSON_OBJECTAGG
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Außer Speicher.

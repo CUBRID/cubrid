@@ -485,7 +485,16 @@ enum btree_op_purpose
   BTREE_OP_DELETE_VACUUM_INSID,	/* Remove only insert MVCCID for an object in b-tree. It is called by vacuum when the
 				 * object becomes visible to all running transactions. */
 
-  BTREE_OP_NOTIFY_VACUUM	/* Notify vacuum of an object in need of cleanup. */
+  BTREE_OP_NOTIFY_VACUUM,	/* Notify vacuum of an object in need of cleanup. */
+
+  /* Below purposes are used during online index loading. */
+  BTREE_OP_ONLINE_INDEX_IB_INSERT,	/* Insert done by the Index Builder. */
+  BTREE_OP_ONLINE_INDEX_IB_DELETE,	/* Delete done by the Index Builder. */
+  BTREE_OP_ONLINE_INDEX_TRAN_INSERT,	/* Insert done by a transaction. */
+  BTREE_OP_ONLINE_INDEX_TRAN_INSERT_DF,	/* Insert done by a transaction with DELETE_FLAG set. */
+  BTREE_OP_ONLINE_INDEX_UNDO_TRAN_INSERT,	/* Undo an insert */
+  BTREE_OP_ONLINE_INDEX_TRAN_DELETE,	/* Delete done by a transaction. */
+  BTREE_OP_ONLINE_INDEX_UNDO_TRAN_DELETE	/* Undo a delete. */
 };
 typedef enum btree_op_purpose BTREE_OP_PURPOSE;
 
@@ -724,4 +733,14 @@ extern PERF_PAGE_TYPE btree_get_perf_btree_page_type (THREAD_ENTRY * thread_p, P
 
 extern void btree_dump_key (THREAD_ENTRY * thread_p, FILE * fp, DB_VALUE * key);
 
+extern int btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * cls_oid,
+					  OID * oid, int unique, BTREE_OP_PURPOSE purpose, LOG_LSA * undo_nxlsa);
+
+extern int btree_rv_keyval_undo_online_index_tran_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv);
+extern int btree_rv_keyval_undo_online_index_tran_delete (THREAD_ENTRY * thread_p, LOG_RCV * recv);
+
+extern int btree_online_index_check_unique_constraint (THREAD_ENTRY * thread_p, BTID * btid, const char *index_name,
+						       OID * class_oid);
+extern int btree_get_class_oid_of_unique_btid (THREAD_ENTRY * thread_p, BTID * btid, OID * class_oid);
+extern bool btree_is_btid_online_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid);
 #endif /* _BTREE_H_ */

@@ -34,14 +34,15 @@
 #include <setjmp.h>
 #include <assert.h>
 
-#include "config.h"
-#include "jansson.h"
-#include "cursor.h"
-#include "string_opfunc.h"
-#include "message_catalog.h"
 #include "authenticate.h"
+#include "compile_context.h"
+#include "config.h"
+#include "cursor.h"
+#include "jansson.h"
+#include "json_table_def.h"
+#include "message_catalog.h"
+#include "string_opfunc.h"
 #include "system_parameter.h"
-#include "xasl.h"
 
 #define MAX_PRINT_ERROR_CONTEXT_LENGTH 64
 
@@ -896,6 +897,9 @@ enum pt_node_type
   PT_KILL_STMT,
   PT_VACUUM,
   PT_WITH_CLAUSE,
+  PT_JSON_TABLE,
+  PT_JSON_TABLE_NODE,
+  PT_JSON_TABLE_COLUMN,
 
   PT_NODE_NUMBER,		/* This is the number of node types */
   PT_LAST_NODE_NUMBER = PT_NODE_NUMBER
@@ -1138,7 +1142,11 @@ typedef enum
 
   PT_IS_SHOWSTMT,		/* query is SHOWSTMT */
   PT_IS_CTE_REC_SUBQUERY,
-  PT_IS_CTE_NON_REC_SUBQUERY
+  PT_IS_CTE_NON_REC_SUBQUERY,
+
+  PT_DERIVED_JSON_TABLE,	// json table spec derivation
+
+  // todo: separate into relevant enumerations
 } PT_MISC_TYPE;
 
 /* Enumerated join type */
@@ -1481,7 +1489,9 @@ typedef enum
   PT_JSON_VALID,
   PT_JSON_LENGTH,
   PT_JSON_DEPTH,
-  PT_JSON_SEARCH,
+  PT_JSON_QUOTE,
+  PT_JSON_UNQUOTE,
+  PT_JSON_PRETTY,
 
   /* This is the last entry. Please add a new one before it. */
   PT_LAST_OPCODE
@@ -1686,6 +1696,10 @@ typedef struct pt_insert_value_info PT_INSERT_VALUE_INFO;
 typedef struct pt_set_timezone_info PT_SET_TIMEZONE_INFO;
 
 typedef struct pt_flat_spec_info PT_FLAT_SPEC_INFO;
+
+typedef struct pt_json_table_info PT_JSON_TABLE_INFO;
+typedef struct pt_json_table_node_info PT_JSON_TABLE_NODE_INFO;
+typedef struct pt_json_table_column_info PT_JSON_TABLE_COLUMN_INFO;
 
 typedef PT_NODE *(*PT_NODE_FUNCTION) (PARSER_CONTEXT * p, PT_NODE * tree, void *arg);
 
@@ -2086,6 +2100,7 @@ struct pt_delete_info
   PT_NODE *limit;		/* PT_VALUE limit clause parameter */
   PT_NODE *del_stmt_list;	/* list of DELETE statements after split */
   PT_HINT_ENUM hint;		/* hint flag */
+  PT_NODE *with;		/* PT_WITH_CLAUSE */
   unsigned has_trigger:1;	/* whether it has triggers */
   unsigned server_delete:1;	/* whether it can be server-side deletion */
   unsigned rewrite_limit:1;	/* need to rewrite the limit clause */
@@ -2154,6 +2169,7 @@ struct pt_spec_info
   PT_NODE *flat_entity_list;	/* PT_NAME (list) resolved class's */
   PT_NODE *method_list;		/* PT_METHOD_CALL list with this entity as the target */
   PT_NODE *partition;		/* PT_NAME of the specified partition */
+  PT_NODE *json_table;		/* JSON TABLE definition tree */
   UINTPTR id;			/* entity spec unique id # */
   PT_MISC_TYPE only_all;	/* PT_ONLY or PT_ALL */
   PT_MISC_TYPE meta_class;	/* enum 0 or PT_META */
@@ -2592,6 +2608,7 @@ struct pt_name_info
   PT_NODE *indx_key_limit;	/* key limits for index name */
   int coll_modifier;		/* collation modifier = collation + 1 */
   PT_RESERVED_NAME_ID reserved_id;	/* used to identify reserved name */
+  size_t json_table_column_index;	/* will be used only for json_table to gather attributes in the correct order */
 };
 
 /*
@@ -2724,26 +2741,26 @@ struct pt_select_info
   unsigned single_table_opt:1;	/* hq optimized for single table */
 };
 
-#define PT_SELECT_INFO_ANSI_JOIN	1	/* has ANSI join? */
-#define PT_SELECT_INFO_ORACLE_OUTER	2	/* has Oracle's outer join operator? */
-#define PT_SELECT_INFO_DUMMY		4	/* is dummy (i.e., 'SELECT * FROM x') ? */
-#define PT_SELECT_INFO_HAS_AGG		8	/* has any type of aggregation? */
-#define PT_SELECT_INFO_HAS_ANALYTIC	16	/* has analytic functions */
-#define PT_SELECT_INFO_MULTI_UPDATE_AGG	32	/* is query for multi-table update using aggregate */
-#define PT_SELECT_INFO_IDX_SCHEMA	64	/* is show index query */
-#define PT_SELECT_INFO_COLS_SCHEMA	128	/* is show columns query */
-#define PT_SELECT_FULL_INFO_COLS_SCHEMA	256	/* is show columns query */
-#define PT_SELECT_INFO_IS_MERGE_QUERY	512	/* is a query of a merge stmt */
-#define	PT_SELECT_INFO_LIST_PUSHER	1024	/* dummy subquery that pushes a list file descriptor to be used at
-						 * server as its own result */
-#define PT_SELECT_INFO_NO_STRICT_OID_CHECK  2048	/* normally, only OIDs of updatable views are allowed in parse
+#define PT_SELECT_INFO_ANSI_JOIN	     0x01	/* has ANSI join? */
+#define PT_SELECT_INFO_ORACLE_OUTER	     0x02	/* has Oracle's outer join operator? */
+#define PT_SELECT_INFO_DUMMY		     0x04	/* is dummy (i.e., 'SELECT * FROM x') ? */
+#define PT_SELECT_INFO_HAS_AGG		     0x08	/* has any type of aggregation? */
+#define PT_SELECT_INFO_HAS_ANALYTIC	     0x10	/* has analytic functions */
+#define PT_SELECT_INFO_MULTI_UPDATE_AGG	     0x20	/* is query for multi-table update using aggregate */
+#define PT_SELECT_INFO_IDX_SCHEMA	     0x40	/* is show index query */
+#define PT_SELECT_INFO_COLS_SCHEMA	     0x80	/* is show columns query */
+#define PT_SELECT_FULL_INFO_COLS_SCHEMA	   0x0100	/* is show columns query */
+#define PT_SELECT_INFO_IS_MERGE_QUERY	   0x0200	/* is a query of a merge stmt */
+#define	PT_SELECT_INFO_LIST_PUSHER	   0x0400	/* dummy subquery that pushes a list file descriptor to be used at
+							 * server as its own result */
+#define PT_SELECT_INFO_NO_STRICT_OID_CHECK 0x0800	/* normally, only OIDs of updatable views are allowed in parse
 							 * trees; however, for MERGE and UPDATE we sometimes want to
 							 * allow OIDs of partially updatable views */
-#define PT_SELECT_INFO_IS_UPD_DEL_QUERY	4096	/* set if select was built for an UPDATE or DELETE statement */
-#define PT_SELECT_INFO_FOR_UPDATE	8192	/* FOR UPDATE clause is active */
-#define PT_SELECT_INFO_DISABLE_LOOSE_SCAN   16384	/* loose scan not possible on query */
-#define PT_SELECT_INFO_MVCC_LOCK_NEEDED	    32768	/* lock returned rows */
-#define PT_SELECT_INFO_READ_ONLY 65536	/* read-only system generated queries like show statement */
+#define PT_SELECT_INFO_IS_UPD_DEL_QUERY	   0x1000	/* set if select was built for an UPDATE or DELETE statement */
+#define PT_SELECT_INFO_FOR_UPDATE	   0x2000	/* FOR UPDATE clause is active */
+#define PT_SELECT_INFO_DISABLE_LOOSE_SCAN  0x4000	/* loose scan not possible on query */
+#define PT_SELECT_INFO_MVCC_LOCK_NEEDED	   0x8000	/* lock returned rows */
+#define PT_SELECT_INFO_READ_ONLY         0x010000	/* read-only system generated queries like show statement */
 
 #define PT_SELECT_INFO_IS_FLAGED(s, f)  \
           ((s)->info.query.q.select.flag & (f))
@@ -2886,6 +2903,7 @@ struct pt_update_info
   PT_NODE *order_by;		/* PT_EXPR (list) */
   PT_NODE *orderby_for;		/* PT_EXPR */
   PT_HINT_ENUM hint;		/* hint flag */
+  PT_NODE *with;		/* PT_WITH_CLAUSE */
   unsigned has_trigger:1;	/* whether it has triggers */
   unsigned has_unique:1;	/* whether there's unique constraint */
   unsigned server_update:1;	/* whether it can be server-side update */
@@ -3243,6 +3261,31 @@ struct pt_insert_value_info
   int replace_names;		/* true if names in evaluated node need to be replaced */
 };
 
+struct pt_json_table_column_info
+{
+  PT_NODE *name;
+  // domain is stored in parser node
+  char *path;
+  size_t index;			// will be used to store the columns in the correct order
+  enum json_table_column_function func;
+  struct json_table_column_behavior on_error;
+  struct json_table_column_behavior on_empty;
+};
+
+struct pt_json_table_node_info
+{
+  PT_NODE *columns;
+  PT_NODE *nested_paths;
+  const char *path;
+};
+
+struct pt_json_table_info
+{
+  PT_NODE *expr;
+  PT_NODE *tree;
+  bool is_correlated;
+};
+
 /* Info field of the basic NODE
   If 'xyz' is the name of the field, then the structure type should be
   struct PT_XYZ_INFO xyz;
@@ -3296,6 +3339,9 @@ union pt_statement_info
   PT_INSERT_INFO insert;
   PT_INSERT_VALUE_INFO insert_value;
   PT_ISOLATION_LVL_INFO isolation_lvl;
+  PT_JSON_TABLE_INFO json_table_info;
+  PT_JSON_TABLE_NODE_INFO json_table_node_info;
+  PT_JSON_TABLE_COLUMN_INFO json_table_column_info;
   PT_MERGE_INFO merge;
   PT_METHOD_CALL_INFO method_call;
   PT_METHOD_DEF_INFO method_def;

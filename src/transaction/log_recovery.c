@@ -1606,14 +1606,36 @@ log_rv_analysis_sysop_end (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_l
       tdes->topops.last = -1;
     }
 
-  if (LSA_LT (&sysop_end->lastparent_lsa, &tdes->rcv.atomic_sysop_start_lsa))
+  // if this is the end of atomic system operation or system operation postpone phase, now it is time to reset it
+  //
+  // NOTE - we might actually be in both a system operation postpone phase and an atomic system operation, one nested
+  //        in the other. we need to check which is last and end sysop should belong to that.
+  //
+  // NOTE - I really hate this guessing state system and we really, really should consider a more deterministic way.
+  //        Logging ALL started system operations and replicating the system operation stack precisely would really
+  //        help us avoiding all these ambiguities.
+  //
+
+  // do we reset atomic sysop? next conditions must be met:
+  // 1. is there atomic system operation started?
+  // 2. is atomic system operation more recent than start postpone?
+  // 3. is atomic system operation equal or more recent to system operation last parent?
+  if (!LSA_ISNULL (&tdes->rcv.atomic_sysop_start_lsa)	/* 1 */
+      && LSA_GT (&tdes->rcv.atomic_sysop_start_lsa, &tdes->rcv.sysop_start_postpone_lsa)	/* 2 */
+      && LSA_GE (&tdes->rcv.atomic_sysop_start_lsa, &sysop_end->lastparent_lsa) /* 3 */ )
     {
       /* reset tdes->rcv.atomic_sysop_start_lsa */
       LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
     }
-  if (LSA_LT (&sysop_end->lastparent_lsa, &tdes->rcv.sysop_start_postpone_lsa))
+  // do we reset sysop start postpone? next conditions must be met:
+  // 1. is there system operation start postpone in progress?
+  // 2. is system operation start postpone more recent than atomic system operation?
+  // 3. is system operation start postpone more recent than system operation last parent?
+  if (!LSA_ISNULL (&tdes->rcv.sysop_start_postpone_lsa)
+      && LSA_GT (&tdes->rcv.sysop_start_postpone_lsa, &tdes->rcv.atomic_sysop_start_lsa)
+      && LSA_GT (&tdes->rcv.sysop_start_postpone_lsa, &sysop_end->lastparent_lsa))
     {
-      /* reset tdes->rcv.atomic_sysop_start_lsa */
+      /* reset tdes->rcv.sysop_start_postpone_lsa */
       LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
     }
 

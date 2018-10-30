@@ -26,6 +26,7 @@
 #include "config.h"
 
 #include <assert.h>
+#include <unordered_map>
 
 #include "porting.h"
 #include "error_manager.h"
@@ -54,6 +55,7 @@
 extern "C"
 {
   extern int parser_function_code;
+  extern size_t json_table_column_count;
 }
 
 #define PT_NAMES_HASH_SIZE                50
@@ -128,6 +130,10 @@ static int pt_find_name_in_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NOD
 static int pt_check_unique_exposed (PARSER_CONTEXT * parser, const PT_NODE * p);
 static PT_NODE *pt_common_attribute (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE * q);
 static PT_NODE *pt_get_all_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * cls, PT_NODE * from);
+static PT_NODE *pt_get_all_json_table_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * json_table_node,
+							    const char *json_table_alias);
+static PT_NODE *pt_json_table_gather_attribs (PARSER_CONTEXT * parser, PT_NODE * json_table_node, void *args,
+					      int *continue_walk);
 static PT_NODE *pt_get_all_showstmt_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * derived_table);
 static void pt_get_attr_data_type (PARSER_CONTEXT * parser, DB_ATTRIBUTE * att, PT_NODE * attr);
 static PT_NODE *pt_unwhacked_spec (PARSER_CONTEXT * parser, PT_NODE * scope, PT_NODE * spec);
@@ -175,6 +181,7 @@ static void pt_bind_names_merge_insert (PARSER_CONTEXT * parser, PT_NODE * node,
 static void pt_bind_names_merge_update (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NAMES_ARG * bind_arg,
 					SCOPES * scopestack, PT_EXTRA_SPECS_FRAME * specs_frame);
 static const char *pt_get_unique_exposed_name (PARSER_CONTEXT * parser, PT_NODE * first_spec);
+static PT_NODE *pt_bind_name_to_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 
 static PT_NODE *pt_resolve_natural_join (PARSER_CONTEXT * parser, PT_NODE * node, void *chk_parent, int *continue_walk);
 
@@ -975,7 +982,19 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 
 	  assert (!PT_SPEC_IS_ENTITY (spec) && !PT_SPEC_IS_CTE (spec));
 	  table = spec->info.spec.derived_table;
-	  table = parser_walk_tree (parser, table, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
+	  if (table->node_type == PT_JSON_TABLE)
+	    {
+	      assert (spec->info.spec.derived_table_type == PT_DERIVED_JSON_TABLE);
+	      table->info.json_table_info.expr =
+		parser_walk_tree (parser, table->info.json_table_info.expr, pt_bind_names, bind_arg, pt_bind_names_post,
+				  bind_arg);
+	      table->info.json_table_info.tree =
+		parser_walk_tree (parser, table->info.json_table_info.tree, pt_bind_name_to_spec, spec, NULL, NULL);
+	    }
+	  else
+	    {
+	      table = parser_walk_tree (parser, table, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
+	    }
 	  spec->info.spec.derived_table = table;
 
 	  /* must bind any expr types in table. pt_bind_types requires it. */
@@ -2569,6 +2588,17 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 
     case PT_UPDATE:
       scopestack.specs = node->info.update.spec;
+      spec_frame.next = bind_arg->spec_frames;
+      spec_frame.extra_specs = NULL;
+
+      /* break links to current scopes to bind_names in the WITH_CLAUSE */
+      bind_arg->scopes = NULL;
+      bind_arg->spec_frames = NULL;
+      pt_bind_names_in_with_clause (parser, node, bind_arg);
+
+      bind_arg->spec_frames = spec_frame.next;
+
+      /* restore links to current scopes */
       bind_arg->scopes = &scopestack;
       spec_frame.next = bind_arg->spec_frames;
       spec_frame.extra_specs = NULL;
@@ -2592,6 +2622,16 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 
     case PT_DELETE:
       scopestack.specs = node->info.delete_.spec;
+      spec_frame.next = bind_arg->spec_frames;
+      spec_frame.extra_specs = NULL;
+
+      /* break links to current scopes to bind_names in the WITH_CLAUSE */
+      bind_arg->scopes = NULL;
+      bind_arg->spec_frames = NULL;
+      pt_bind_names_in_with_clause (parser, node, bind_arg);
+
+      bind_arg->spec_frames = spec_frame.next;
+
       bind_arg->scopes = &scopestack;
       spec_frame.next = bind_arg->spec_frames;
       spec_frame.extra_specs = NULL;
@@ -4323,6 +4363,77 @@ on_error:
     }
 
   return NULL;
+}
+
+static PT_NODE *
+pt_json_table_gather_attribs (PARSER_CONTEXT * parser, PT_NODE * json_table_column, void *args, int *continue_walk)
+{
+  PT_NODE **attribs = (PT_NODE **) args;
+
+  if (json_table_column->node_type == PT_JSON_TABLE_COLUMN)
+    {
+      PT_NODE *next_attr = json_table_column->info.json_table_column_info.name;
+      next_attr->type_enum = json_table_column->type_enum;
+      next_attr->info.name.json_table_column_index = json_table_column->info.json_table_column_info.index;
+      if (json_table_column->data_type != NULL)
+	{
+	  next_attr->data_type = parser_copy_tree (parser, json_table_column->data_type);
+	}
+      *attribs = parser_append_node (next_attr, *attribs);
+    }
+
+  return json_table_column;
+}
+
+static PT_NODE *
+pt_get_all_json_table_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * json_table_node,
+					    const char *json_table_alias)
+{
+  PT_NODE *attribs = NULL;
+  PT_NODE *copy_node = NULL;
+
+  parser_walk_tree (parser, json_table_node, pt_json_table_gather_attribs, &attribs, NULL, NULL);
+
+  if (attribs == NULL)
+    {
+      assert (false);
+      return NULL;
+    }
+
+  // *INDENT-OFF*
+  std::unordered_map<size_t, PT_NODE *> sorted_attrs;
+  // *INDENT-ON*
+
+  for (PT_NODE * attr = attribs; attr; attr = attr->next)
+    {
+      size_t index = attr->info.name.json_table_column_index;
+      assert (strcmp (json_table_alias, attr->info.name.resolved) == 0);
+
+      // we need copies of the actual names
+      copy_node = pt_name (parser, attr->info.name.original);
+      copy_node->type_enum = attr->type_enum;
+      copy_node->info.name.resolved = json_table_alias;
+      if (attr->data_type != NULL)
+	{
+	  copy_node->data_type = parser_copy_tree (parser, attr->data_type);
+	}
+      sorted_attrs[index] = copy_node;	// we have to copy, cannot use same node
+    }
+
+  size_t columns_nr = sorted_attrs.size ();
+
+  for (unsigned int i = 0; i < columns_nr - 1; i++)
+    {
+      if (sorted_attrs[i] == NULL)
+	{
+	  assert (false);
+	  return NULL;
+	}
+      sorted_attrs[i]->next = sorted_attrs[i + 1];
+    }
+  sorted_attrs[columns_nr - 1]->next = NULL;
+
+  return sorted_attrs[0];
 }
 
 /*
@@ -6844,14 +6955,11 @@ pt_resolve_using_index (PARSER_CONTEXT * parser, PT_NODE * index, PT_NODE * from
 				  pt_short_print (parser, index));
 		      return NULL;
 		    }
-		  else if (cons->index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+		  else if (cons->index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS
+			   || cons->index_status == SM_INVISIBLE_INDEX)
 		    {
-		      // TODO: raise an error?
-		      return NULL;	// unusable index
-		    }
-		  else if (cons->index_status == SM_INVISIBLE_INDEX)
-		    {
-		      // TODO: raise an error?
+		      PT_ERRORmf (parser, index, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USING_INDEX_ERR_1,
+				  pt_short_print (parser, index));
 		      return NULL;	// unusable index
 		    }
 		}
@@ -8119,6 +8227,7 @@ PT_NODE *
 pt_resolve_cte_specs (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   PT_NODE *cte_list, *with = NULL, *saved_with = NULL;
+  PT_NODE **with_p;
   PT_NODE *curr_cte, *previous_cte;
   PT_NODE *saved_curr_cte_next;
   int nested_with_count = 0;
@@ -8133,6 +8242,15 @@ pt_resolve_cte_specs (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
       with = node->info.query.with;
+      with_p = &node->info.query.with;
+      break;
+    case PT_UPDATE:
+      with = node->info.update.with;
+      with_p = &node->info.update.with;
+      break;
+    case PT_DELETE:
+      with = node->info.delete_.with;
+      with_p = &node->info.delete_.with;
       break;
 
     default:
@@ -8301,10 +8419,10 @@ pt_resolve_cte_specs (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
     }
 
   /* STEP 3: Resolve CTEs in the actual query */
-  saved_with = with;
-  node->info.query.with = NULL;
+  saved_with = *with_p;
+  *with_p = NULL;
   node = parser_walk_tree (parser, node, pt_resolve_spec_to_cte, cte_list, NULL, NULL);
-  node->info.query.with = saved_with;
+  *with_p = saved_with;
 
   /* all ok */
   return node;
@@ -9560,12 +9678,27 @@ pt_set_reserved_name_key_type (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 static void
 pt_bind_names_in_with_clause (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NAMES_ARG * bind_arg)
 {
-  PT_NODE *with;
+  PT_NODE *with = NULL;
   PT_NODE *curr_cte;
 
-  assert (PT_IS_QUERY_NODE_TYPE (node->node_type));
+  switch (node->node_type)
+    {
+    case PT_SELECT:
+    case PT_UNION:
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+      with = node->info.query.with;
+      break;
+    case PT_UPDATE:
+      with = node->info.update.with;
+      break;
+    case PT_DELETE:
+      with = node->info.delete_.with;
+      break;
+    default:
+      assert (false);
+    }
 
-  with = node->info.query.with;
   if (with == NULL)
     {
       /* nothing to do */
@@ -9752,56 +9885,61 @@ pt_get_attr_list_of_derived_table (PARSER_CONTEXT * parser, PT_MISC_TYPE derived
       break;
 
     case PT_IS_SUBQUERY:
-      {
-	/* must be a subquery derived table */
-	/* select_list must have passed star expansion */
-	PT_NODE *att, *col;
+      /* must be a subquery derived table */
+      /* select_list must have passed star expansion */
+      PT_NODE * att, *col;
 
-	select_list = pt_get_select_list (parser, derived_table);
-	if (!select_list)
-	  {
-	    return NULL;
-	  }
+      select_list = pt_get_select_list (parser, derived_table);
+      if (!select_list)
+	{
+	  return NULL;
+	}
 
-	for (att = select_list, i = 0; att; att = att->next, i++)
-	  {
-	    if (att->alias_print)
-	      {
-		col = pt_name (parser, att->alias_print);
-	      }
-	    else
-	      {
-		if (att->node_type == PT_NAME && att->info.name.original != NULL && att->info.name.original[0] != '\0')
-		  {
-		    col = pt_name (parser, att->info.name.original);
-		  }
-		else if (att->node_type == PT_VALUE && att->info.value.text != NULL && att->info.value.text[0] != '\0')
-		  {
-		    col = pt_name (parser, att->info.value.text);
-		  }
-		else if (att->node_type == PT_EXPR || att->node_type == PT_FUNCTION)
-		  {
-		    PARSER_VARCHAR *alias;
-		    alias = pt_print_bytes (parser, att);
-		    col = pt_name (parser, (const char *) alias->bytes);
-		  }
-		else
-		  {		/* generate column name */
-		    id = i;
-		    col = pt_name (parser, mq_generate_name (parser, derived_alias->info.name.original, &id));
-		  }
-	      }
+      for (att = select_list, i = 0; att; att = att->next, i++)
+	{
+	  if (att->alias_print)
+	    {
+	      col = pt_name (parser, att->alias_print);
+	    }
+	  else
+	    {
+	      if (att->node_type == PT_NAME && att->info.name.original != NULL && att->info.name.original[0] != '\0')
+		{
+		  col = pt_name (parser, att->info.name.original);
+		}
+	      else if (att->node_type == PT_VALUE && att->info.value.text != NULL && att->info.value.text[0] != '\0')
+		{
+		  col = pt_name (parser, att->info.value.text);
+		}
+	      else if (att->node_type == PT_EXPR || att->node_type == PT_FUNCTION)
+		{
+		  PARSER_VARCHAR *alias;
+		  alias = pt_print_bytes (parser, att);
+		  col = pt_name (parser, (const char *) alias->bytes);
+		}
+	      else
+		{		/* generate column name */
+		  id = i;
+		  col = pt_name (parser, mq_generate_name (parser, derived_alias->info.name.original, &id));
+		}
+	    }
 
-	    col->type_enum = att->type_enum;
-	    if (att->data_type)
-	      {
-		col->data_type = parser_copy_tree_list (parser, att->data_type);
-	      }
+	  col->type_enum = att->type_enum;
+	  if (att->data_type)
+	    {
+	      col->data_type = parser_copy_tree_list (parser, att->data_type);
+	    }
 
-	    as_attr_list = parser_append_node (col, as_attr_list);
-	  }
-	break;
-      }
+	  as_attr_list = parser_append_node (col, as_attr_list);
+	}
+      break;
+
+    case PT_DERIVED_JSON_TABLE:
+      assert (derived_table->node_type == PT_JSON_TABLE);
+
+      as_attr_list = pt_get_all_json_table_attributes_and_types (parser, derived_table,
+								 derived_alias->info.name.original);
+      break;
 
     default:
       /* this can't happen since we removed MERGE/CSELECT from grammar */
@@ -9947,6 +10085,10 @@ pt_set_attr_list_types (PARSER_CONTEXT * parser, PT_NODE * as_attr_list, PT_MISC
 	}
       break;
 
+    case PT_DERIVED_JSON_TABLE:
+      // nothing to do? Types already set during pt_json_table_gather_attribs ()
+      return;
+
     default:
       /* this can't happen since we removed MERGE/CSELECT from grammar */
       assert (derived_table_type == PT_IS_CSELECT);
@@ -9974,5 +10116,28 @@ pt_count_with_clauses (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
       (*cnt)++;
     }
 
+  return node;
+}
+
+static PT_NODE *
+pt_bind_name_to_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_NODE *spec = REINTERPRET_CAST (PT_NODE *, arg);
+  if (spec->node_type != PT_SPEC)
+    {
+      assert (false);
+      return node;
+    }
+
+  if (node->node_type != PT_NAME)
+    {
+      // not relevant
+      return node;
+    }
+
+  assert (!pt_resolved (node));
+  node->info.name.spec_id = spec->info.spec.id;
+  node->info.name.resolved = spec->info.spec.range_var->info.name.original;
+  node->info.name.meta_class = PT_NORMAL;	// so far, only normals are used.
   return node;
 }

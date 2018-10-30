@@ -75,6 +75,7 @@
 #include "tz_support.h"
 #include "dbtype.h"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
+#include "compile_context.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -88,6 +89,11 @@
 
 #define NET_DEFER_END_QUERIES_MAX 10
 
+/* Query execution with commit. */
+#define QEWC_SAFE_GUARD_SIZE 1024
+// To have the safe area is just a safe guard to avoid potential issues of bad size calculation.
+#define QEWC_MAX_DATA_SIZE  (DB_PAGESIZE - QEWC_SAFE_GUARD_SIZE)
+
 /* This file is only included in the server.  So set the on_server flag on */
 unsigned int db_on_server = 1;
 
@@ -100,6 +106,8 @@ STATIC_INLINE void stran_server_auto_commit_or_abort (THREAD_ENTRY * thread_p, u
 						      bool has_updated, bool * end_query_allowed,
 						      TRAN_STATE * tran_state, bool * should_conn_reset)
   __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int stran_can_end_after_query_execution (THREAD_ENTRY * thread_p, int query_flag, QFILE_LIST_ID * list_id,
+						       bool * can_end_transaction) __attribute__ ((ALWAYS_INLINE));
 
 static bool need_to_abort_tran (THREAD_ENTRY * thread_p, int *errid);
 static int server_capabilities (void);
@@ -3806,7 +3814,7 @@ sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int
   int *attr_prefix_lengths = NULL;
   TP_DOMAIN *key_type;
   char *ptr;
-  OR_ALIGNED_BUF (OR_INT_SIZE + OR_BTID_ALIGNED_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2 + OR_BTID_ALIGNED_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *pred_stream = NULL;
   int pred_stream_size = 0, size = 0;
@@ -3814,6 +3822,7 @@ sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int
   int index_info_type;
   char *expr_stream = NULL;
   int csserror;
+  int index_status = 0;
 
   ptr = or_unpack_btid (request, &btid);
   ptr = or_unpack_string_nocopy (ptr, &bt_name);
@@ -3897,11 +3906,24 @@ sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int
       break;
     }
 
-  return_btid =
-    xbtree_load_index (thread_p, &btid, bt_name, key_type, class_oids, n_classes, n_attrs, attr_ids,
-		       attr_prefix_lengths, hfids, unique_pk, not_null_flag, &fk_refcls_oid, &fk_refcls_pk_btid,
-		       fk_name, pred_stream, pred_stream_size, expr_stream, expr_stream_size, func_col_id,
-		       func_attr_index_start);
+  ptr = or_unpack_int (ptr, &index_status);	/* Get index status. */
+  if (index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+    {
+      return_btid =
+	xbtree_load_online_index (thread_p, &btid, bt_name, key_type, class_oids, n_classes, n_attrs, attr_ids,
+				  attr_prefix_lengths, hfids, unique_pk, not_null_flag, &fk_refcls_oid,
+				  &fk_refcls_pk_btid, fk_name, pred_stream, pred_stream_size, expr_stream,
+				  expr_stream_size, func_col_id, func_attr_index_start);
+    }
+  else
+    {
+      return_btid =
+	xbtree_load_index (thread_p, &btid, bt_name, key_type, class_oids, n_classes, n_attrs, attr_ids,
+			   attr_prefix_lengths, hfids, unique_pk, not_null_flag, &fk_refcls_oid, &fk_refcls_pk_btid,
+			   fk_name, pred_stream, pred_stream_size, expr_stream, expr_stream_size, func_col_id,
+			   func_attr_index_start);
+    }
+
   if (return_btid == NULL)
     {
       (void) return_error_to_client (thread_p, rid);
@@ -3911,12 +3933,30 @@ end:
 
   if (return_btid == NULL)
     {
-      ptr = or_pack_int (reply, er_errid ());
+      int err;
+
+      ASSERT_ERROR_AND_SET (err);
+      ptr = or_pack_int (reply, err);
     }
   else
     {
       ptr = or_pack_int (reply, NO_ERROR);
     }
+
+  if (index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+    {
+      // it may not be really necessary. it just help things don't go worse that client keep caching ex-lock.
+      int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+      LOCK cls_lock = lock_get_object_lock (&class_oids[0], oid_Root_class_oid, tran_index);
+
+      assert (cls_lock == SCH_M_LOCK);	// hope it never be IX_LOCK.
+      ptr = or_pack_int (ptr, (int) cls_lock);
+    }
+  else
+    {
+      ptr = or_pack_int (ptr, SCH_M_LOCK);	// irrelevant
+    }
+
   ptr = or_pack_btid (ptr, &btid);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 
@@ -4623,6 +4663,135 @@ sqmgr_prepare_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 }
 
 /*
+ * stran_can_end_after_query_execution - Check whether can end transaction after query execution.
+ *
+ * return:error code
+ *
+ *   thread_p(in): thread entry
+ *   query_flag(in): query flag
+ *   list_id(in): list id
+ *   can_end_transaction(out): true, if transaction can be safely ended
+ *
+ */
+STATIC_INLINE int
+stran_can_end_after_query_execution (THREAD_ENTRY * thread_p, int query_flag, QFILE_LIST_ID * list_id,
+				     bool * can_end_transaction)
+{
+  QFILE_LIST_SCAN_ID scan_id;
+  QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
+  SCAN_CODE qp_scan;
+  OR_BUF buf;
+  TP_DOMAIN **domains;
+  PR_TYPE *pr_type;
+  int i, flag, compressed_size, decompressed_size, diff_size, val_length;
+  char *tuple_p;
+  bool found_compressible_string_domain, exceed_a_page;
+
+  assert (list_id != NULL && list_id->type_list.domp != NULL && can_end_transaction != NULL);
+
+  *can_end_transaction = false;
+
+  if (list_id->page_cnt != 1)
+    {
+      /* Needs fetch request. Do not allow ending transaction. */
+      return NO_ERROR;
+    }
+
+  if (list_id->last_offset >= QEWC_MAX_DATA_SIZE)
+    {
+      /* Needs fetch request. Do not allow ending transaction. */
+      return NO_ERROR;
+    }
+
+  if (query_flag & RESULT_HOLDABLE)
+    {
+      /* Holdable result, do not check for compression. */
+      *can_end_transaction = true;
+      return NO_ERROR;
+    }
+
+  domains = list_id->type_list.domp;
+  found_compressible_string_domain = false;
+  for (i = 0; i < list_id->type_list.type_cnt; i++)
+    {
+      pr_type = domains[i]->type;
+      assert (pr_type != NULL);
+
+      if (pr_type->id == DB_TYPE_VARCHAR || pr_type->id == DB_TYPE_VARNCHAR)
+	{
+	  found_compressible_string_domain = true;
+	  break;
+	}
+    }
+
+  if (!found_compressible_string_domain)
+    {
+      /* Not compressible domains, do not check for compression. */
+      *can_end_transaction = true;
+      return NO_ERROR;
+    }
+
+  if (qfile_open_list_scan (list_id, &scan_id) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  /* Estimates the data and header information. */
+  diff_size = 0;
+  exceed_a_page = false;
+  while (!exceed_a_page)
+    {
+      qp_scan = qfile_scan_list_next (thread_p, &scan_id, &tuple_record, PEEK);
+      if (qp_scan != S_SUCCESS)
+	{
+	  break;
+	}
+
+      tuple_p = tuple_record.tpl;
+      or_init (&buf, tuple_p, QFILE_GET_TUPLE_LENGTH (tuple_p));
+      tuple_p += QFILE_TUPLE_LENGTH_SIZE;
+      for (i = 0; i < list_id->type_list.type_cnt; i++)
+	{
+	  flag = QFILE_GET_TUPLE_VALUE_FLAG (tuple_p);
+	  val_length = QFILE_GET_TUPLE_VALUE_LENGTH (tuple_p);
+	  tuple_p += QFILE_TUPLE_VALUE_HEADER_SIZE;
+
+	  pr_type = domains[i]->type;
+	  if (flag != V_UNBOUND && (pr_type->id == DB_TYPE_VARCHAR || pr_type->id == DB_TYPE_VARNCHAR))
+	    {
+	      buf.ptr = tuple_p;
+	      or_get_varchar_compression_lengths (&buf, &compressed_size, &decompressed_size);
+	      if (compressed_size != 0)
+		{
+		  /* Compression used. */
+		  diff_size += decompressed_size - compressed_size;
+		  if (list_id->last_offset + diff_size >= QEWC_MAX_DATA_SIZE)
+		    {
+		      /* Needs fetch request. Do not allow ending transaction. */
+		      exceed_a_page = true;
+		      break;
+		    }
+		}
+	    }
+
+	  tuple_p += val_length;
+	}
+    }
+
+  qfile_close_scan (thread_p, &scan_id);
+
+  if (qp_scan == S_ERROR)
+    {
+      // might be interrupted
+      return ER_FAILED;
+    }
+
+  *can_end_transaction = !exceed_a_page;
+
+  return NO_ERROR;
+}
+
+/*
  * sqmgr_execute_query - Process a SERVER_QM_EXECUTE request
  *
  * return:error or no error
@@ -4869,12 +5038,13 @@ null_list:
 	      qmgr_free_old_page_and_init (thread_p, page_ptr, list_id->tfile_vfid);
 	      page_ptr = aligned_page_buf;
 
-	      /* for now, allow end query if there is only one page */
-	      if (list_id->page_cnt != 1)
+	      /* for now, allow end query if there is only one page and more ... */
+	      if (stran_can_end_after_query_execution (thread_p, query_flag, list_id, &end_query_allowed) != NO_ERROR)
 		{
-		  // This execution request is followed by fetch.
-		  end_query_allowed = false;
+		  (void) return_error_to_client (thread_p, rid);
 		}
+
+	      // When !end_query_allowed, it means this execution request is followed by fetch request(s).
 	    }
 	  else
 	    {

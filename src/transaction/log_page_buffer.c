@@ -415,8 +415,6 @@ static int logpb_fetch_header_from_active_log (THREAD_ENTRY * thread_p, const ch
 					       const char *logpath, const char *prefix_logname, LOG_HEADER * hdr,
 					       LOG_PAGE * log_pgptr);
 static int logpb_compute_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int *checksum_crc32);
-STATIC_INLINE int logpb_set_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
-  __attribute__ ((ALWAYS_INLINE));
 static int logpb_page_has_valid_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, bool * has_valid_checksum);
 
 /*
@@ -490,11 +488,19 @@ logpb_initialize_log_buffer (LOG_BUFFER * log_buffer_p, LOG_PAGE * log_pg)
  * log_pgptr (in) : log page pointer
  * checksum_crc32(out): computed checksum
  *   Note: Currently CRC32 is used as checksum.
+ *   Note: any changes to this requires changes to logwr_check_page_checksum
  */
 static int
 logpb_compute_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int *checksum_crc32)
 {
   int error_code = NO_ERROR, saved_checksum_crc32;
+  const int block_size = 4096;
+  const int max_num_pages = IO_MAX_PAGE_SIZE / block_size;
+  const int sample_nbytes = 16;
+  int sampling_offset;
+  char buf[max_num_pages * sample_nbytes * 2];
+  const int num_pages = LOG_PAGESIZE / block_size;
+  const size_t sizeof_buf = num_pages * sample_nbytes * 2;
 
   assert (log_pgptr != NULL && checksum_crc32 != NULL);
 
@@ -504,8 +510,21 @@ logpb_compute_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int 
   /* Resets checksum to not affect the new computation. */
   log_pgptr->hdr.checksum = 0;
 
-  /* Computes the page checksum. */
-  error_code = crypt_crc32 (thread_p, (char *) log_pgptr, LOG_PAGESIZE, checksum_crc32);
+  char *p = buf;
+  for (int i = 0; i < num_pages; i++)
+    {
+      // first 
+      sampling_offset = (i * block_size);
+      memcpy (p, ((char *) log_pgptr) + sampling_offset, sample_nbytes);
+      p += sample_nbytes;
+
+      // last 
+      sampling_offset = (i * block_size) + (block_size - sample_nbytes);
+      memcpy (p, ((char *) log_pgptr) + sampling_offset, sample_nbytes);
+      p += sample_nbytes;
+    }
+
+  error_code = crypt_crc32 (thread_p, (char *) buf, sizeof_buf, checksum_crc32);
 
   /* Restores the saved checksum */
   log_pgptr->hdr.checksum = saved_checksum_crc32;
@@ -520,7 +539,7 @@ logpb_compute_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int 
  * log_pgptr (in) : log page pointer
  *   Note: Currently CRC32 is used as checksum.
  */
-STATIC_INLINE int
+int
 logpb_set_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
 {
   int error_code = NO_ERROR, checksum_crc32;
@@ -2230,6 +2249,7 @@ logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_PAG
  * return: iopagesize or -1
  *
  *   db_fullname(in): Full name of the database
+ *   force_read_log_header(in): force to read log header
  *   logpath(in): Directory where the log volumes reside
  *   prefix_logname(in): Name of the log volumes. It is usually set as database
  *                      name. For example, if the value is equal to "db", the
@@ -2251,9 +2271,9 @@ logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_PAG
  * NOTE:Find some database creation parameters such as pagesize, creation time, and disk compatability.
  */
 PGLENGTH
-logpb_find_header_parameters (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
-			      const char *prefix_logname, PGLENGTH * io_page_size, PGLENGTH * log_page_size,
-			      INT64 * creation_time, float *db_compatibility, int *db_charset)
+logpb_find_header_parameters (THREAD_ENTRY * thread_p, const bool force_read_log_header, const char *db_fullname,
+			      const char *logpath, const char *prefix_logname, PGLENGTH * io_page_size,
+			      PGLENGTH * log_page_size, INT64 * creation_time, float *db_compatibility, int *db_charset)
 {
   static LOG_HEADER hdr;	/* Log header */
   static bool is_header_read_from_file = false;
@@ -2261,6 +2281,12 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p, const char *db_fullname, 
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr = NULL;
   int error_code = NO_ERROR;
+
+  if (force_read_log_header)
+    {
+      is_header_read_from_file = false;
+      is_log_header_validated = false;
+    }
 
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
@@ -4324,6 +4350,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 
   LOGWR_INFO *writer_info = &log_Gl.writer_info;
   LOGWR_ENTRY *entry;
+  THREAD_ENTRY *wait_thread_p;
 #endif /* SERVER_MODE */
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
@@ -4555,8 +4582,25 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	{
 	  if (entry->status == LOGWR_STATUS_WAIT)
 	    {
-	      entry->status = LOGWR_STATUS_FETCH;
-	      logtb_wakeup_thread_with_tran_index (entry->thread_p->tran_index, THREAD_LOGWR_RESUMED);
+	      wait_thread_p = entry->thread_p;
+	      assert (wait_thread_p != thread_p);
+
+	      thread_lock_entry (wait_thread_p);
+
+	      /* If THREAD_RESUME_DUE_TO_INTERRUPT, do not set the entry status to avoid deadlock
+	       * between flush_end_cond and CSECT_LOG.
+	       */
+	      if (thread_p->resume_status != THREAD_RESUME_DUE_TO_INTERRUPT)
+		{
+		  /* Still waiting for LOGWR. */
+		  entry->status = LOGWR_STATUS_FETCH;
+		  if (wait_thread_p->resume_status == THREAD_LOGWR_SUSPENDED)
+		    {
+		      thread_wakeup_already_had_mutex (wait_thread_p, THREAD_LOGWR_RESUMED);
+		    }
+		}
+
+	      thread_unlock_entry (wait_thread_p);
 	    }
 	  entry = entry->next;
 	}
@@ -9352,8 +9396,8 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 
   LOG_CS_ENTER (thread_p);
 
-  if (logpb_find_header_parameters (thread_p, db_fullname, logpath, prefix_logname, &db_iopagesize, &log_page_size,
-				    &db_creation, &db_compatibility, &dummy) == -1)
+  if (logpb_find_header_parameters (thread_p, true, db_fullname, logpath, prefix_logname, &db_iopagesize,
+				    &log_page_size, &db_creation, &db_compatibility, &dummy) == -1)
     {
       db_iopagesize = IO_PAGESIZE;
       log_page_size = LOG_PAGESIZE;
@@ -11162,6 +11206,13 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *db_fulln
   /* Destroy the database volume information */
   fileio_make_volume_info_name (vol_fullname, db_fullname);
   fileio_unformat (thread_p, vol_fullname);
+
+  /* Destroy DWB, if still exists. */
+  fileio_make_dwb_name (vol_fullname, log_Path, log_Prefix);
+  if (fileio_is_volume_exist (vol_fullname))
+    {
+      fileio_unformat (thread_p, vol_fullname);
+    }
 
   if (force_delete)
     {

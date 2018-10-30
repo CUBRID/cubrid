@@ -49,6 +49,9 @@
 #include "storage_common.h"
 #include "thread_compat.hpp"
 
+// forward definitions
+struct compile_context;
+
 extern int xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH_INFO * db_path_info,
 				    bool db_overwrite, const char *file_addmore_vols, volatile DKNPAGES db_npages,
 				    PGLENGTH db_desired_pagesize, volatile DKNPAGES xlog_npages,
@@ -163,6 +166,13 @@ extern BTID *xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char
 				HFID * hfids, int unique_pk, int not_null_flag, OID * fk_refcls_oid,
 				BTID * fk_refcls_pk_btid, const char *fk_name, char *pred_stream, int pred_stream_size,
 				char *expr_stream, int expr_steram_size, int func_col_id, int func_attr_index_start);
+extern BTID *xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP_DOMAIN * key_type,
+				       OID * class_oids, int n_classes, int n_attrs, int *attr_ids,
+				       int *attrs_prefix_length, HFID * hfids, int unique_pk, int not_null_flag,
+				       OID * fk_refcls_oid, BTID * fk_refcls_pk_btid, const char *fk_name,
+				       char *pred_stream, int pred_stream_size, char *expr_stream, int expr_steram_size,
+				       int func_col_id, int func_attr_index_start);
+
 extern int xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid);
 extern BTREE_SEARCH xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE scan_op_type,
 					DB_VALUE * key, OID * class_oid, OID * oid, bool is_all_class_srch);
@@ -194,7 +204,7 @@ extern int xqfile_get_list_file_page (THREAD_ENTRY * thread_p, QUERY_ID query_id
 				      char *page_bufp, int *page_sizep);
 
 /* new query interface */
-extern int xqmgr_prepare_query (THREAD_ENTRY * thrd, COMPILE_CONTEXT * ctx, XASL_STREAM * stream);
+extern int xqmgr_prepare_query (THREAD_ENTRY * thrd, compile_context * ctx, XASL_STREAM * stream);
 
 extern QFILE_LIST_ID *xqmgr_execute_query (THREAD_ENTRY * thrd, const XASL_ID * xasl_id, QUERY_ID * query_idp,
 					   int dbval_cnt, void *data, QUERY_FLAG * flagp, CACHE_TIME * clt_cache_time,

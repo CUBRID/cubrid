@@ -122,7 +122,7 @@ extern void log_append_compensate (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvinde
 				   PAGE_PTR pgptr, int length, const void *data, LOG_TDES * tdes);
 extern void log_append_compensate_with_undo_nxlsa (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VPID * vpid,
 						   PGLENGTH offset, PAGE_PTR pgptr, int length, const void *data,
-						   LOG_TDES * tdes, LOG_LSA * undo_nxlsa);
+						   LOG_TDES * tdes, const LOG_LSA * undo_nxlsa);
 extern void log_append_ha_server_state (THREAD_ENTRY * thread_p, int state);
 extern void log_append_empty_record (THREAD_ENTRY * thread_p, LOG_RECTYPE logrec_type, LOG_DATA_ADDR * addr);
 extern void log_skip_logging_set_lsa (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr);
@@ -211,5 +211,7 @@ extern bool log_is_log_flush_daemon_available ();
 #if defined (SERVER_MODE)
 extern void log_flush_daemon_get_stats (UINT64 * statsp);
 #endif // SERVER_MODE
+
+extern void log_update_global_btid_online_index_stats (THREAD_ENTRY * thread_p);
 
 #endif /* _LOG_MANAGER_H_ */

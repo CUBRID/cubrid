@@ -38,7 +38,6 @@
 #include "class_object.h"	/* for SM_CLASS */
 #include "schema_template.h"	/* template interface */
 #include "trigger_manager.h"	/* for TR_EVENT_TYPE */
-#include "dbdef.h"
 
 /*
  * This is NOT the "object" class but rather functions more like

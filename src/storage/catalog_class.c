@@ -38,6 +38,7 @@
 #include "xserver_interface.h"
 #include "object_primitive.h"
 #include "query_dump.h"
+#include "tz_support.h"
 #include "db_date.h"
 #include "dbtype.h"
 #include "thread_manager.hpp"
@@ -1480,6 +1481,17 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
 	  db_make_string (attr_val_p, default_str_val);
 	  attr_val_p->need_clear = true;
 	  default_value_len = len;
+	}
+      else
+	{
+	  /* update_default exists and default_expr is not a DEFAULT EXPRESSION or does not exist */
+	  valcnv_convert_value_to_string (attr_val_p);
+	  db_string_truncate (attr_val_p, DB_MAX_IDENTIFIER_LENGTH);
+	  default_str_val = db_get_string (attr_val_p);
+	  if (default_str_val != NULL)
+	    {
+	      default_value_len = strlen (default_str_val);
+	    }
 	}
 
       if (classobj_get_prop (att_props, "update_default", &default_expr) > 0)

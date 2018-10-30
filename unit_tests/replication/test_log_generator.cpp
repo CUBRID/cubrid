@@ -175,7 +175,7 @@ namespace test_replication
     cubreplication::log_generator::create_stream (0);
 
     cubreplication::log_generator *lg =
-      new cubreplication::log_generator (cubreplication::log_generator::get_stream ());
+	    new cubreplication::log_generator (cubreplication::log_generator::get_stream ());
 
     lg->append_repl_object (sbr1);
     lg->append_repl_object (rbr1);
@@ -280,7 +280,7 @@ namespace test_replication
 
   };
 
-  std::atomic<int> tasks_running(0);
+  std::atomic<int> tasks_running (0);
 
   class gen_repl_task : public cubthread::entry_task
   {
@@ -288,7 +288,7 @@ namespace test_replication
       gen_repl_task (int tran_id)
       {
 	m_thread_entry.tran_index = tran_id;
-        m_lg = new cubreplication::log_generator (cubreplication::log_generator::get_stream ());
+	m_lg = new cubreplication::log_generator (cubreplication::log_generator::get_stream ());
       }
 
       void execute (cubthread::entry &thread_ref) override
@@ -331,7 +331,7 @@ namespace test_replication
     int res = 0;
 
     init_common_cubrid_modules ();
-    
+
     cubreplication::log_generator *lg = new cubreplication::log_generator;
     cubreplication::log_generator::create_stream (0);
 

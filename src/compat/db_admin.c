@@ -62,6 +62,7 @@
 #if !defined(CS_MODE)
 #include "session.h"
 #endif
+#include "connection_cl.h"
 #include "dbtype.h"
 
 #if !defined(WINDOWS)
@@ -70,7 +71,22 @@ void (*prev_sigfpe_handler) (int) = SIG_DFL;
 #include "wintcp.h"
 #endif /* !WINDOWS */
 
-#include "db_admin.h"
+/* host status for marking abnormal host status */
+typedef struct db_host_status DB_HOST_STATUS;
+struct db_host_status
+{
+  char hostname[MAXHOSTNAMELEN];
+  int status;
+};
+
+typedef struct db_host_status_list DB_HOST_STATUS_LIST;
+struct db_host_status_list
+{
+  /* preferred_hosts + db-hosts */
+  DB_HOST_STATUS hostlist[MAX_NUM_DB_HOSTS * 2];
+  DB_HOST_STATUS *connected_host_status;
+  int last_host_idx;
+};
 
 /* Some like to assume that the db_ layer is able to recognize that a
  database has not been successfully restarted.  For now, check every
@@ -142,9 +158,9 @@ install_static_methods (void)
 
 int
 db_init (const char *program, int print_version, const char *dbname, const char *db_path, const char *vol_path,
-	 const char *log_path, const char *lob_path, const char *host_name, const bool overwrite,
-	 const char *comments, const char *addmore_vols_file, int npages, int desired_pagesize, int log_npages,
-	 int desired_log_page_size, const char *lang_charset)
+	 const char *log_path, const char *lob_path, const char *host_name, const bool overwrite, const char *comments,
+	 const char *addmore_vols_file, int npages, int desired_pagesize, int log_npages, int desired_log_page_size,
+	 const char *lang_charset)
 {
 #if defined (CUBRID_DEBUG)
   int value;

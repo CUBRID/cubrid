@@ -1305,8 +1305,10 @@ $ LOADDB
 1235 Reserved error for stream/replication.
 1236 Double Write Buffer is disabled.
 1237 Cannot change status on %1$s because %2$s is a %3$s.
+1238 Missing value for JSON_TABLE column '%1$s'.
+1239 Cannot coerce value from JSON "%1$s" at path "%2$s" to JSON_TABLE column "%3$s" of domain "%4$s". 
 
-1238 最后一个错误.
+1240 最后一个错误.
 
 $set 6 MSGCAT_SET_INTERNAL
 1 在错误子系统中错误 (line %1$d):
@@ -1462,6 +1464,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 125 非法使用 sessiontimezone\n sessiontimezone
 126 一个class或vclass的comment的最大长度是 %1$d 字节.
 127 一个comment的最大长度是 %1$d 字节.
+128 Invalid number of arguments for JSON_OBJECTAGG
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 内存耗尽.

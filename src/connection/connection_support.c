@@ -83,6 +83,7 @@
 #include "heap_file.h"
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 #include "dbtype.h"
+#include "tz_support.h"
 #include "db_date.h"
 #include "show_scan.h"
 

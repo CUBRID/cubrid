@@ -50,6 +50,7 @@
 #include "file_manager.h"
 #include "overflow_file.h"
 #include "memory_hash.h"	/* For hash functions */
+#include "tz_support.h"
 #include "db_date.h"
 #include "thread_compat.hpp"
 

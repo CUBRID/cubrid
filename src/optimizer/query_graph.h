@@ -458,7 +458,7 @@ struct qo_segment
   bool class_attr;
   bool shared_attr;
 
-  /* is index term equatity expression? */
+  /* is index term equality expression? */
   bool index_term_eq_expr;
 
   /* 
@@ -471,7 +471,7 @@ struct qo_segment
    */
   QO_ATTR_INFO *info;
 
-  /* indexable terms to which this segment belings */
+  /* indexable terms to which this segment belongs */
   BITSET index_terms;
 
   /* The index of this segment in the corresponding Env's seg array. */
@@ -541,6 +541,7 @@ typedef enum
    *                                      t  g  k   m
    *                                      h  e  e
    */
+  // todo: explain meaning of each flag
   QO_TC_PATH = 0x30,		/* 1 1 0 000 */
   QO_TC_JOIN = 0x11,		/* 0 1 0 001 */
   QO_TC_SARG = 0x02,		/* 0 0 0 010 */

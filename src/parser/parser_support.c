@@ -675,7 +675,8 @@ pt_is_aggregate_function (PARSER_CONTEXT * parser, const PT_NODE * node)
 	      || function_type == PT_AGG_BIT_AND || function_type == PT_AGG_BIT_OR || function_type == PT_AGG_BIT_XOR
 	      || function_type == PT_GROUP_CONCAT || function_type == PT_MEDIAN || function_type == PT_PERCENTILE_CONT
 	      || function_type == PT_PERCENTILE_DISC || function_type == PT_CUME_DIST
-	      || function_type == PT_PERCENT_RANK))
+	      || function_type == PT_PERCENT_RANK || function_type == PT_JSON_ARRAYAGG
+	      || function_type == PT_JSON_OBJECTAGG))
 	{
 	  return true;
 	}
@@ -720,9 +721,11 @@ pt_is_expr_wrapped_function (PARSER_CONTEXT * parser, const PT_NODE * node)
       function_type = node->info.function.function_type;
       if (function_type == F_INSERT_SUBSTRING || function_type == F_ELT || function_type == F_JSON_OBJECT
 	  || function_type == F_JSON_ARRAY || function_type == F_JSON_INSERT || function_type == F_JSON_REMOVE
-	  || function_type == F_JSON_MERGE || function_type == F_JSON_ARRAY_APPEND
-	  || function_type == F_JSON_GET_ALL_PATHS || function_type == F_JSON_REPLACE || function_type == F_JSON_SET
-	  || function_type == F_JSON_KEYS)
+	  || function_type == F_JSON_MERGE || function_type == F_JSON_MERGE_PATCH
+	  || function_type == F_JSON_ARRAY_APPEND || function_type == F_JSON_ARRAY_INSERT
+	  || function_type == F_JSON_CONTAINS_PATH || function_type == F_JSON_GET_ALL_PATHS
+	  || function_type == F_JSON_REPLACE || function_type == F_JSON_SET
+	  || function_type == F_JSON_KEYS || function_type == F_JSON_SEARCH)
 	{
 	  return true;
 	}
@@ -4469,7 +4472,7 @@ regu_agg_init (AGGREGATE_TYPE * ptr)
   ptr->accumulator.curr_cnt = 0;
   ptr->function = (FUNC_TYPE) 0;
   ptr->option = (QUERY_OPTIONS) 0;
-  regu_var_init (&ptr->operand);
+  ptr->operands = NULL;
   ptr->list_id = NULL;
   ptr->sort_list = NULL;
   memset (&ptr->info, 0, sizeof (AGGREGATE_SPECIFIC_FUNCTION_INFO));
@@ -4809,6 +4812,12 @@ regu_spec_init (ACCESS_SPEC_TYPE * ptr, TARGET_TYPE type)
       ACCESS_SPEC_METHOD_REGU_LIST (ptr) = NULL;
       ACCESS_SPEC_XASL_NODE (ptr) = NULL;
       ACCESS_SPEC_METHOD_SIG_LIST (ptr) = NULL;
+    }
+  else if (type == TARGET_JSON_TABLE)
+    {
+      ACCESS_SPEC_JSON_TABLE_REGU_VAR (ptr) = NULL;
+      ACCESS_SPEC_JSON_TABLE_ROOT_NODE (ptr) = NULL;
+      ACCESS_SPEC_JSON_TABLE_M_NODE_COUNT (ptr) = 0;
     }
   ptr->single_fetch = (QPROC_SINGLE_FETCH) false;
   ptr->s_dbval = NULL;
@@ -9096,7 +9105,7 @@ pt_make_query_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
       for (; dim < block.dim + len; dim *= 2) // calc next power of 2 >= b.dim+len
 	;
 
-      mem::block b{ dim, (char *) parser_alloc (parser, dim) };
+      mem::block b{ dim, (char *) parser_alloc (parser, (const int) dim) };
       memcpy (b.ptr, block.ptr, block.dim); // copy old content
       block = std::move (b);
     },

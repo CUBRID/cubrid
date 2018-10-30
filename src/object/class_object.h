@@ -953,8 +953,7 @@ extern int classobj_rename_constraint (DB_SEQ * properties, const char *prop_nam
 				       const char *new_name);
 #endif
 
-extern int classobj_change_constraint_comment (DB_SEQ * properties, SM_CLASS_CONSTRAINT *cons,
-					       const char *comment);
+extern int classobj_change_constraint_comment (DB_SEQ * properties, SM_CLASS_CONSTRAINT * cons, const char *comment);
 
 extern int classobj_get_cached_constraint (SM_CONSTRAINT * constraints, SM_CONSTRAINT_TYPE type, BTID * id);
 extern bool classobj_has_class_unique_constraint (SM_CLASS_CONSTRAINT * constraints);
@@ -1109,7 +1108,7 @@ extern SM_PARTITION *classobj_make_partition_info (void);
 extern void classobj_free_partition_info (SM_PARTITION * partition_info);
 extern SM_PARTITION *classobj_copy_partition_info (SM_PARTITION * partition_info);
 
-extern int classobj_change_constraint_status (DB_SEQ * properties, SM_CLASS_CONSTRAINT *cons,
+extern int classobj_change_constraint_status (DB_SEQ * properties, SM_CLASS_CONSTRAINT * cons,
 					      SM_INDEX_STATUS index_status);
 
 #endif /* _CLASS_OBJECT_H_ */

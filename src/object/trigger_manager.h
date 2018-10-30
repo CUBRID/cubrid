@@ -28,7 +28,6 @@
 
 #include "memory_alloc.h"
 #include "dbtype_def.h"
-#include "dbdef.h"
 #include "class_object.h"
 
 /*

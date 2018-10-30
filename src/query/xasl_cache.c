@@ -23,20 +23,21 @@
 
 #ident "$Id$"
 
-#include <assert.h>
-
-#include "config.h"
-
 #include "xasl_cache.h"
+
+#include "binaryheap.h"
+#include "compile_context.h"
+#include "config.h"
+#include "list_file.h"
 #include "perf_monitor.h"
 #include "query_executor.h"
-#include "list_file.h"
-#include "binaryheap.h"
-#include "statistics_sr.h"
 #include "query_manager.h"
+#include "statistics_sr.h"
 #include "stream_to_xasl.h"
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
+
+#include <assert.h>
 
 #define XCACHE_ENTRY_MARK_DELETED	    ((INT32) 0x80000000)
 #define XCACHE_ENTRY_TO_BE_RECOMPILED	    ((INT32) 0x40000000)
@@ -1321,7 +1322,7 @@ xcache_need_cleanup (void)
  * xcache_entry (out) : XASL cache entry.
  */
 int
-xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_STREAM * stream,
+xcache_insert (THREAD_ENTRY * thread_p, const compile_context * context, XASL_STREAM * stream,
 	       int n_oid, const OID * class_oids, const int *class_locks, const int *tcards,
 	       XASL_CACHE_ENTRY ** xcache_entry)
 {

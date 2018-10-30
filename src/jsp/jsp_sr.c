@@ -359,7 +359,8 @@ jsp_start_server (const char *db_name, const char *path)
   jstring jstr_dbname, jstr_path, jstr_version, jstr_envroot;
   jobjectArray args;
   JavaVMInitArgs vm_arguments;
-  JavaVMOption options[3];
+  const int vm_n_options = 3;
+  JavaVMOption options[vm_n_options];
   char classpath[PATH_MAX + 32], logging_prop[PATH_MAX + 32];
   char *loc_p, *locale;
   const char *envroot;
@@ -367,7 +368,7 @@ jsp_start_server (const char *db_name, const char *path)
   char optionString2[] = "-Xrs";
   CREATE_VM_FUNC create_vm_func = NULL;
 
-  if (prm_get_bool_value (PRM_ID_JAVA_STORED_PROCEDURE) == false)
+  if (!prm_get_bool_value (PRM_ID_JAVA_STORED_PROCEDURE))
     {
       return NO_ERROR;
     }
@@ -395,7 +396,7 @@ jsp_start_server (const char *db_name, const char *path)
   options[2].optionString = optionString2;
   vm_arguments.version = JNI_VERSION_1_4;
   vm_arguments.options = options;
-  vm_arguments.nOptions = 3;
+  vm_arguments.nOptions = vm_n_options;
   vm_arguments.ignoreUnrecognized = JNI_TRUE;
 
   locale = NULL;
