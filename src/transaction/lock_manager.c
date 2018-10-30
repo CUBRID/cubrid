@@ -1526,6 +1526,7 @@ lock_delete_from_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran_index)
 	  if (entry_ptr->tran_prev)
 	    {
 	      entry_ptr->tran_prev->tran_next = entry_ptr->tran_next;
+	      assert (entry_ptr->tran_prev->tran_next != entry_ptr->tran_prev);
 	    }
 	  if (entry_ptr->tran_next)
 	    {
@@ -1549,6 +1550,7 @@ lock_delete_from_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran_index)
 	  if (entry_ptr->tran_prev)
 	    {
 	      entry_ptr->tran_prev->tran_next = entry_ptr->tran_next;
+	      assert (entry_ptr->tran_prev->tran_next != entry_ptr->tran_prev);
 	    }
 	  if (entry_ptr->tran_next)
 	    {
@@ -2864,6 +2866,7 @@ lock_grant_blocked_waiter (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
       mode = NULL_LOCK;
       for (w = res_ptr->waiter; w != NULL; w = w->next)
 	{
+	  assert (w->mark_deleted == 0);
 	  assert (w->blocked_mode >= NULL_LOCK && mode >= NULL_LOCK);
 	  mode = lock_Conv[w->blocked_mode][mode];
 	  assert (mode != NA_LOCK);
@@ -3281,7 +3284,7 @@ lock_internal_hold_lock_object_instant (THREAD_ENTRY * thread_p, int tran_index,
     }
 
   /* I am not a lock holder of the lockable object. */
-  if (entry_ptr == NULL)
+  if (entry_ptr == NULL || entry_ptr->mark_deleted != 0)
     {
       assert (lock >= NULL_LOCK && res_ptr->total_waiters_mode >= NULL_LOCK
 	      && res_ptr->total_holders_mode >= NULL_LOCK);
@@ -3521,10 +3524,17 @@ start:
 		    }
 		}
 
-	      /* Cleanup mark deleted entry. */
-	      if (lock_res_cleanup_mark_deleted_transaction_entry (thread_p, res_ptr, entry_ptr))
+	      if (entry_ptr->mark_deleted != 0)
 		{
-		  entry_ptr = NULL;
+		  /* Cleanup mark deleted entry. */
+		  if (lock_res_cleanup_mark_deleted_transaction_entry (thread_p, res_ptr, entry_ptr))
+		    {
+		      entry_ptr = NULL;
+		    }
+		  else
+		    {
+		      assert (false);
+		    }
 		}
 	    }
 	}
@@ -3841,6 +3851,7 @@ start:
 
 lock_tran_lk_entry:
   /* The object exists in the hash chain & I am a lock holder of the lockable object. */
+  assert (entry_ptr->mark_deleted == 0);
   lock_conversion = true;
   old_mode = entry_ptr->granted_mode;
   assert (lock >= NULL_LOCK && entry_ptr->granted_mode >= NULL_LOCK);
@@ -3892,7 +3903,7 @@ lock_tran_lk_entry:
   group_mode = NULL_LOCK;
   for (i = res_ptr->holder; i != NULL; i = i->next)
     {
-      if (i != entry_ptr)
+      if (i != entry_ptr && i->mark_deleted == 0)
 	{
 	  assert (i->granted_mode >= NULL_LOCK && group_mode >= NULL_LOCK);
 	  group_mode = lock_Conv[i->granted_mode][group_mode];
@@ -4184,6 +4195,7 @@ lock_internal_set_mark_deleted (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
       return false;
     }
 
+start:
   do
     {
       old_cnt_highest_lock_mode_with_version_and_flags =
@@ -4224,11 +4236,16 @@ lock_internal_set_mark_deleted (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
 	LK_RES_DEC_HIGHEST_LOCK_COUNTER (old_cnt_highest_lock_mode_with_version_and_flags);
       if (LK_RES_GET_HIGHEST_LOCK_COUNTER (new_cnt_highest_lock_mode_with_version_and_flags) == 0)
 	{
-	  /* Needs cleanup and highest lock recomputation. */
-	  new_cnt_highest_lock_mode_with_version_and_flags =
-	    LK_RES_INC_HIGHEST_LOCK_VERSION (new_cnt_highest_lock_mode_with_version_and_flags);
-	  new_cnt_highest_lock_mode_with_version_and_flags =
-	    LK_RES_SET_HIGHEST_LOCK_INVALID_FLAG (new_cnt_highest_lock_mode_with_version_and_flags);
+	  /* Check again any change. */
+	  if (ATOMIC_INC_64 (&res_ptr->cnt_highest_lock_mode_with_version_and_flags, 0)
+	      != old_cnt_highest_lock_mode_with_version_and_flag)
+	    {
+	      /* I have a chance to avoid clean with mutex acquisition. */
+	      goto start;
+	    }
+
+	  /* Needs cleanup and highest lock recomputation. It is safety to cleanup with mutex. */
+	  return false;
 	}
     }
   while (!ATOMIC_CAS_64
@@ -4450,6 +4467,10 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
   mode = NULL_LOCK;
   for (i = res_ptr->holder; i != NULL; i = i->next)
     {
+      if (i->mark_deleted != 0)
+	{
+	  continue;
+	}
       assert (i->granted_mode >= NULL_LOCK && mode >= NULL_LOCK);
       mode = lock_Conv[i->granted_mode][mode];
       assert (mode != NA_LOCK);
@@ -4618,7 +4639,10 @@ lock_internal_demote_class_lock (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, 
   total_mode = NULL_LOCK;
   for (h = res_ptr->holder; h != NULL; h = h->next)
     {
-      assert (h->mark_deleted == 0);
+      if (h->mark_deleted != 0)
+	{
+	  continue;
+	}
       assert (h->granted_mode >= NULL_LOCK && total_mode >= NULL_LOCK);
       total_mode = lock_Conv[h->granted_mode][total_mode];
       assert (total_mode != NA_LOCK);
@@ -7783,7 +7807,7 @@ lock_has_lock_on_object (const OID * oid, const OID * class_oid, int tran_index,
   if (OID_EQ (oid, oid_Root_class_oid))
     {
       rv = pthread_mutex_lock (&tran_lock->hold_mutex);
-      if (tran_lock->root_class_hold != NULL)
+      if (tran_lock->root_class_hold != NULL && tran_lock->root_class_hold->mark_deleted == 0)
 	{
 	  granted_lock_mode = tran_lock->root_class_hold->granted_mode;
 	}
@@ -7798,7 +7822,7 @@ lock_has_lock_on_object (const OID * oid, const OID * class_oid, int tran_index,
   if (class_oid == NULL || OID_EQ (class_oid, oid_Root_class_oid))
     {
       entry_ptr = lock_find_tran_hold_entry (thread_p, tran_index, oid, true);
-      if (entry_ptr != NULL)
+      if (entry_ptr != NULL && entry_ptr->mark_deleted == 0)
 	{
 	  granted_lock_mode = entry_ptr->granted_mode;
 	}
@@ -7806,7 +7830,7 @@ lock_has_lock_on_object (const OID * oid, const OID * class_oid, int tran_index,
     }
 
   entry_ptr = lock_find_tran_hold_entry (thread_p, tran_index, class_oid, true);
-  if (entry_ptr != NULL)
+  if (entry_ptr != NULL && entry_ptr->mark_deleted == 0)
     {
       granted_lock_mode = entry_ptr->granted_mode;
       if (lock_Conv[lock][granted_lock_mode] == granted_lock_mode)
@@ -7822,6 +7846,7 @@ lock_has_lock_on_object (const OID * oid, const OID * class_oid, int tran_index,
   entry_ptr = lock_find_tran_hold_entry (thread_p, tran_index, oid, false);
   if (entry_ptr != NULL)
     {
+      assert (entry_ptr->mark_deleted == 0);
       granted_lock_mode = entry_ptr->granted_mode;
       return 1;
     }
@@ -10875,6 +10900,7 @@ lock_res_disconnect_mark_deleted_entries (THREAD_ENTRY * thread_p, LK_RES * res_
 	}
       else
 	{
+	  assert (curr->mark_deleted != 2);
 	  prev = curr;
 	  curr = curr->next;
 	}
@@ -10909,6 +10935,7 @@ lock_resource_update_highest_lock_info_when_change_holders (THREAD_ENTRY * threa
 							    bool is_lock_request_purpose)
 {
   UINT64 old_cnt_highest_lock_mode_with_version_and_flags, new_cnt_highest_lock_mode_with_version_and_flags;
+  bool needs_highest_lock_recomputation = true;
 
   if (res_ptr->total_waiters_mode > NULL_LOCK)
     {
@@ -10922,18 +10949,21 @@ lock_resource_update_highest_lock_info_when_change_holders (THREAD_ENTRY * threa
       /* Update lock and count. Most common case when many transactions are involved. */
       do
 	{
+	  needs_highest_lock_recomputation = false;
 	  old_cnt_highest_lock_mode_with_version_and_flags = res_ptr->cnt_highest_lock_mode_with_version_and_flags;
 
 	  if (new_total_holders_mode != LK_RES_GET_HIGHEST_LOCK_MODE (old_cnt_highest_lock_mode_with_version_and_flags))
 	    {
 	      if (old_total_holders_mode != NULL_LOCK)
 		{
+		  needs_highest_lock_recomputation = true;
 		  break;
 		}
 	    }
 
 	  if (LK_RES_HAS_HIGHEST_LOCK_INVALID_FLAG (old_cnt_highest_lock_mode_with_version_and_flags))
 	    {
+	      needs_highest_lock_recomputation = true;
 	      break;
 	    }
 
@@ -10954,6 +10984,7 @@ lock_resource_update_highest_lock_info_when_change_holders (THREAD_ENTRY * threa
 		    LK_RES_INC_HIGHEST_LOCK_VERSION (new_cnt_highest_lock_mode_with_version_and_flags);
 		  new_cnt_highest_lock_mode_with_version_and_flags =
 		    LK_RES_SET_HIGHEST_LOCK_INVALID_FLAG (new_cnt_highest_lock_mode_with_version_and_flags);
+		  needs_highest_lock_recomputation = true;
 		}
 	    }
 
@@ -10964,10 +10995,16 @@ lock_resource_update_highest_lock_info_when_change_holders (THREAD_ENTRY * threa
 			     old_cnt_highest_lock_mode_with_version_and_flags,
 			     new_cnt_highest_lock_mode_with_version_and_flags))
 	    {
-	      return;
+	      break;
 	    }
 	}
       while (true);
+    }
+
+  if (needs_highest_lock_recomputation == false)
+    {
+      /* Nothing to do. */
+      return;
     }
 
   /* Check for valid mark delete info. */
