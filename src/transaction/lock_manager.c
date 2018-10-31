@@ -4238,7 +4238,7 @@ start:
 	{
 	  /* Check again any change. */
 	  if (ATOMIC_INC_64 (&res_ptr->cnt_highest_lock_mode_with_version_and_flags, 0)
-	      != old_cnt_highest_lock_mode_with_version_and_flag)
+	      != old_cnt_highest_lock_mode_with_version_and_flags)
 	    {
 	      /* I have a chance to avoid clean with mutex acquisition. */
 	      goto start;
