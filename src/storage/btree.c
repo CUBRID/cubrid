@@ -33581,6 +33581,11 @@ end:
       logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, n_keys, n_oids, 0, false);
     }
 
+  if (page_found != NULL && page_found != *leaf_page)
+    {
+      pgbuf_unfix_and_init (thread_p, page_found);
+    }
+
   return error_code;
 }
 
@@ -33803,6 +33808,11 @@ end:
     }
   helper->insert_helper.rv_keyval_data = NULL;
   helper->insert_helper.rv_keyval_data_length = 0;
+
+  if (page_found != NULL && page_found != *leaf_page)
+    {
+      pgbuf_unfix_and_init (thread_p, page_found);
+    }
 
   return error_code;
 }
@@ -34097,6 +34107,11 @@ end:
       helper->delete_helper.rv_keyval_data_length = 0;
     }
 
+  if (page_found != NULL && page_found != *leaf_page)
+    {
+      pgbuf_unfix_and_init (thread_p, page_found);
+    }
+
   return error_code;
 }
 
@@ -34372,6 +34387,11 @@ end:
 	}
       helper->insert_helper.rv_keyval_data = NULL;
       helper->insert_helper.rv_keyval_data_length = 0;
+    }
+
+  if (page_found != NULL && page_found != *leaf_page)
+    {
+      pgbuf_unfix_and_init (thread_p, page_found);
     }
 
   return error_code;
