@@ -10258,6 +10258,12 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
 	  continue;
 	}
 
+      if (index->index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+	{
+	  /* Skip for online index in loading phase. */
+	  continue;
+	}
+
       COPY_OID (&pruned_oid, &class_oid);
       HFID_COPY (&pruned_hfid, &class_hfid);
       BTID_COPY (&btid, &index->btid);
@@ -10479,6 +10485,12 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
       index = &(index_attr_info->last_classrepr->indexes[i]);
       if (!btree_is_unique_type (index->type))
 	{
+	  continue;
+	}
+
+      if (index->index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+	{
+	  /* Skip for online index in loading phase. */
 	  continue;
 	}
 
