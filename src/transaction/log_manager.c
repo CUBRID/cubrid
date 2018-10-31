@@ -4009,6 +4009,8 @@ log_sysop_end_logical_undo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, cons
 {
   LOG_REC_SYSOP_END log_record;
 
+  assert (rcvindex != RV_NOT_DEFINED);
+
   if (LOG_IS_MVCC_OPERATION (rcvindex))
     {
       log_record.type = LOG_SYSOP_END_LOGICAL_MVCC_UNDO;
@@ -7702,13 +7704,8 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
    * compensating records are logged.
    */
 
-#if defined(CUBRID_DEBUG)
-  if (RV_fun[rcvindex].undofun == NULL)
-    {
-      assert (false);
-      return;
-    }
-#endif /* CUBRID_DEBUG */
+  assert (rcvindex != RV_NOT_DEFINED);
+  assert (RV_fun[rcvindex].undofun != NULL);
 
   if (RCV_IS_LOGICAL_LOG (rcv_vpid, rcvindex))
     {
