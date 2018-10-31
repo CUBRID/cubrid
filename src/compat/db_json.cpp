@@ -2036,6 +2036,7 @@ db_json_search_func (JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALUE *esc
 
       bool found = false;
       error_code = db_json_search_helper (*resolved, pattern, esc_char, find_all, starting_path, found, paths);
+      db_json_delete_doc (resolved);
       if (error_code != NO_ERROR)
 	{
 	  return error_code;
