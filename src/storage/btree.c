@@ -32919,10 +32919,13 @@ btree_delete_sysop_end (THREAD_ENTRY * thread_p, BTREE_DELETE_HELPER * helper)
   switch (helper->purpose)
     {
     case BTREE_OP_DELETE_OBJECT_PHYSICAL:
-    case BTREE_OP_ONLINE_INDEX_TRAN_DELETE:
       log_sysop_end_logical_undo (thread_p, RVBT_DELETE_OBJECT_PHYSICAL, NULL, helper->rv_keyval_data_length,
 				  helper->rv_keyval_data);
       break;
+
+    case BTREE_OP_ONLINE_INDEX_TRAN_DELETE:
+      log_sysop_end_logical_undo (thread_p, RVBT_ONLINE_INDEX_UNDO_TRAN_DELETE, NULL, helper->rv_keyval_data_length,
+				  helper->rv_keyval_data);
 
     case BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED:
       log_sysop_end_logical_run_postpone (thread_p, &helper->reference_lsa);
