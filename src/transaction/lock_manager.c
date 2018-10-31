@@ -1428,6 +1428,7 @@ lock_insert_into_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran_index)
       break;
 
     case LOCK_RESOURCE_INSTANCE:
+      assert (entry_ptr->mark_deleted == 0);
 #if defined(CUBRID_DEBUG)
       if (tran_lock->inst_hold_list != NULL)
 	{
@@ -1537,6 +1538,7 @@ lock_delete_from_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran_index)
       break;
 
     case LOCK_RESOURCE_INSTANCE:
+      assert (entry_ptr->mark_deleted == 0);
       if (tran_lock->inst_hold_list == entry_ptr)
 	{
 	  tran_lock->inst_hold_list = entry_ptr->tran_next;
@@ -2154,6 +2156,7 @@ set_error:
       break;
 
     case LOCK_RESOURCE_INSTANCE:
+      assert (entry_ptr->mark_deleted == 0);
       if (OID_ISTEMP (&entry_ptr->res_head->key.class_oid))
 	{
 	  classname = NULL;
@@ -7560,7 +7563,13 @@ lock_unlock_all (THREAD_ENTRY * thread_p)
   while (entry_ptr != NULL)
     {
       next = entry_ptr->tran_next;
-      assert (entry_ptr != next);
+      if (entry_ptr == next)
+        {
+          /* Quick fix. TODO - find and fix the invalid state. */
+          assert(entry_ptr->mark_deleted != 0);
+          break;
+        }
+
       lock_internal_perform_unlock_object (thread_p, entry_ptr, true, false);
       entry_ptr = next;
     }
