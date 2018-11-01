@@ -35088,7 +35088,7 @@ btree_is_single_object_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE_
     }
   // leaf
   assert (node_type == BTREE_LEAF_NODE);
-  if (offset_after_key > record->length)
+  if (offset_after_key < record->length)
     {
       // it has more than one object!
       // this is a hack to avoid counting objects; maybe it is not safe
