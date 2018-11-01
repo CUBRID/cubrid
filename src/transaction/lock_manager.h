@@ -96,13 +96,6 @@ struct lk_entry
   int instant_lock_count;	/* number of instant lock requests */
   int bind_index_in_tran;
   XASL_ID xasl_id;
-  int mark_deleted;		/* TO DO flags : mark deletd, disconneected */
-  /* 0 - no mark deleted 
-   * 1 - mark deleted
-   * 2 - disconnected from hash ended
-   * 3 - disconeected from started
-   */
-  int resource_version;
 #else				/* not SERVER_MODE */
   int dummy;
 #endif				/* not SERVER_MODE */
@@ -192,17 +185,6 @@ struct lk_res
   LK_RES *hash_next;		/* for hash chain */
   LK_RES *stack;		/* for freelist */
   UINT64 del_id;		/* delete transaction ID (for latch free) */
-  /*
-   * Short desription:
-   * 64 bytes used to improve unlocking. It keeps the highest lock (less than IX),
-   * counts how many such locks are holded by transaction, the resource version and flag.  
-   * Instead of releasing class lock, we can mark as deleted. The next transacion, can activate it.
-   * If total holder mode changes, then recomputes the highest lock and the counter. Do not allow
-   * to mark delete, if have waiters or lock > IX_LOCK.
-   * The version is used to detect whether a lock entry refers an older resource lock. If true,
-   * the lock entry must be deallocated.
-   */
-  volatile UINT64 cnt_highest_lock_mode_with_version_and_flags;
 };
 
 #if defined(SERVER_MODE)
