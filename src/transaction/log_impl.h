@@ -1770,11 +1770,18 @@ struct log_tdes
     cubreplication::log_generator replication_log_generator;
 #endif
 
-  /* TODO - extends to allow referencing of multiple cache entries. */
-  void *ref_classrep_entry;	/* Referred class representation entry */
-  unsigned int ref_classrepr_entry_version;	/* Referred class representation entry version */
-  unsigned int ref_classrep_entry_fix_cnt;	/* Is fixed referred classrep entry? */
-  bool ref_classrep_entry_pin_enabled;    /* TODO - improved */
+  /*
+   * Information about referred class representation cache entry. Currently, refers only one cache entry.
+   * It is ussed to optimize access at class representation. Thus, cache mutex request is replaced with atomic
+   * operations.
+   */
+  void *ref_classrep_entry;	/* Referred class representation entry. */
+  unsigned int ref_classrepr_entry_version;	/* The version of the referred class representation entry.
+						 * If the version does not change, no need to acquire cache mutex,
+						 * even if the fix count is 0.
+						 */
+  unsigned int ref_classrep_entry_fix_cnt;	/* How many times the current transaction fixes the entry. */
+  bool ref_classrep_entry_pin_enabled;	/* Avoids multiple mutex lock/unlock requests during query execution. */
 };
 
 typedef struct log_addr_tdesarea LOG_ADDR_TDESAREA;

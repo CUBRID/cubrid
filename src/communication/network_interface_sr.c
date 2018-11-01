@@ -4933,6 +4933,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
       info = xasl_cache_entry_p->sql_info;
     }
 
+  heap_class_repr_disable_pin (thread_p, tdes);
   end_query_allowed = IS_QUERY_EXECUTE_WITH_COMMIT (query_flag);
   tran_state = tdes->state;
   has_updated = false;
@@ -4986,7 +4987,6 @@ null_list:
 	  has_updated = logtb_has_updated (thread_p);
 	}
 
-      heap_class_repr_disable_pin (thread_p, tdes);
       tran_state = return_error_to_client (thread_p, rid);
     }
 
@@ -5135,7 +5135,6 @@ null_list:
   /* result cache created time */
   OR_PACK_CACHE_TIME (ptr, &srv_cache_time);
 
-  heap_class_repr_disable_pin (thread_p, tdes);
   if (IS_QUERY_EXECUTE_WITH_COMMIT (query_flag))
     {
       /* Try to end transaction and pack the result. */

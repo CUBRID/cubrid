@@ -330,7 +330,7 @@ struct heap_chkall_relocoids
 #define HEAP_CLASSREPR_CACHE_GET_VERSION(fcnt_with_version_and_flags) \
   (((fcnt_with_version_and_flags) & HEAP_CLASSREPR_CACHE_VERSION_MASK) >> HEAP_CLASSREPR_CACHE_FIXCNT_NUM_BITS)
 
-/* Increment version. TODO - global increment */
+/* Increment version. */
 #define HEAP_CLASSREPR_CACHE_INC_VERSION(fcnt_with_version_and_flags) \
   (assert (((fcnt_with_version_and_flags) & HEAP_CLASSREPR_CACHE_VERSION_MASK) <= HEAP_CLASSREPR_CACHE_VERSION_MASK),  \
    ((fcnt_with_version_and_flags) & HEAP_CLASSREPR_CACHE_VERSION_MASK) < (HEAP_CLASSREPR_CACHE_VERSION_MASK)  \
@@ -357,7 +357,7 @@ struct heap_classrepr_entry
 {
   pthread_mutex_t mutex;
   int idx;			/* Cache index. Used to pass the index when a class representation is in the cache */
-  UINT64 fcnt_with_version_and_flags;	/* Keep fix count, version and flags.
+  UINT64 fcnt_with_version_and_flags;	/* Keep fix count, version and decache flag. Used in atomic operation to avoid mutex acquisition.
 					 * The fix count is how many times this structure has been fixed.
 					 * It cannot be deallocated until fix count is zero.  */
   int zone;			/* ZONE_VOID, ZONE_LRU, ZONE_FREE */
@@ -1790,7 +1790,7 @@ heap_classrepr_decache_guessed_last (const OID * class_oid)
 	  /*
 	   * I'm the last thread accessing the cache entry. Move cache_entry to free_list first
 	   * and then reset the class entry. We have to remove the flag after increasing the version.
-	   * Otherwise, other transaction may access the entry that I want to add to free list.
+	   * Otherwise, other transaction may access the entry that I want to add it to free list.
 	   */
 	  ret = heap_classrepr_entry_free (cache_entry);
 	  if (ret == NO_ERROR)
@@ -1852,6 +1852,7 @@ heap_classrepr_decache (THREAD_ENTRY * thread_p, const OID * class_oid)
 /*
  * heap_classrepr_free () - Free a class representation
  *   return: NO_ERROR
+ *   thread_p(in): thread entry.
  *   classrep(in): The class representation structure
  *   idx_incache(in): An index if the desired class representation is part of
  *                    the cache, otherwise -1 (no part of cache)
@@ -1885,6 +1886,7 @@ heap_classrepr_free (THREAD_ENTRY * thread_p, OR_CLASSREP * classrep, int *idx_i
 
   if (tdes != NULL)
     {
+      /* Unfix the entry without using the mutex. */
       if (heap_unfix_classrep_cache_entry (thread_p, tdes, cache_entry, &new_fcnt_with_version_and_flags)
 	  && HEAP_CLASSREPR_CACHE_GET_FIXCNT (new_fcnt_with_version_and_flags) > 0)
 	{
@@ -1893,7 +1895,10 @@ heap_classrepr_free (THREAD_ENTRY * thread_p, OR_CLASSREP * classrep, int *idx_i
 	}
     }
 
-  if (HEAP_CLASSREPR_CACHE_GET_FIXCNT (new_fcnt_with_version_and_flags) == 0)
+  /* Check for decache/relocation. Avoids mutex acquisition as much as possible. */
+  if ((HEAP_CLASSREPR_CACHE_GET_FIXCNT (new_fcnt_with_version_and_flags) == 0)
+      && (HEAP_CLASSREPR_CACHE_HAS_FORCE_DECACHE_FLAG (new_fcnt_with_version_and_flags)
+	  || (cache_entry != (VOLATILE_ACCESS (heap_Classrepr_cache.LRU_list.LRU_top, HEAP_CLASSREPR_ENTRY *)))))
     {
       /*
        * Is this entry declared to be decached
@@ -1906,9 +1911,11 @@ heap_classrepr_free (THREAD_ENTRY * thread_p, OR_CLASSREP * classrep, int *idx_i
 
       rv = pthread_mutex_lock (&cache_entry->mutex);
 
+      /* Read again the counter, after mutex acquisition. */
+      new_fcnt_with_version_and_flags = ATOMIC_INC_64 (&cache_entry->fcnt_with_version_and_flags, 0LL);
       if (HEAP_CLASSREPR_CACHE_HAS_FORCE_DECACHE_FLAG (new_fcnt_with_version_and_flags))
 	{
-	  /* cache_entry is already removed from LRU list. I'm the last thread accessing the cache
+	  /* The cache_entry is already removed from LRU list. I'm the last thread accessing the cache
 	   * entry. Move cache_entry to free_list.
 	   */
 	  assert (HEAP_CLASSREPR_CACHE_GET_FIXCNT (cache_entry->fcnt_with_version_and_flags) == 0);
@@ -1920,7 +1927,7 @@ heap_classrepr_free (THREAD_ENTRY * thread_p, OR_CLASSREP * classrep, int *idx_i
 	}
       else
 	{
-	  /* Check again after mutex aquisition, maybe someone else fixed meanwhile. */
+	  /* Check again after mutex acquisition, maybe someone else fixed meanwhile. */
 	  if (HEAP_CLASSREPR_CACHE_GET_FIXCNT (cache_entry->fcnt_with_version_and_flags) != 0)
 	    {
 	      pthread_mutex_unlock (&cache_entry->mutex);
@@ -1929,7 +1936,7 @@ heap_classrepr_free (THREAD_ENTRY * thread_p, OR_CLASSREP * classrep, int *idx_i
 	      return NO_ERROR;
 	    }
 
-	  /* relocate entry to the top of LRU list. Others can fix it while I'm moving. */
+	  /* Relocate the entry to the top of LRU list. Others can fix it while it is moved. */
 	  if (cache_entry != heap_Classrepr_cache.LRU_list.LRU_top)
 	    {
 	      rv = pthread_mutex_lock (&heap_Classrepr_cache.LRU_list.LRU_mutex);
@@ -2140,7 +2147,7 @@ check_LRU_list:
   rv = pthread_mutex_lock (&heap_Classrepr_cache.LRU_list.LRU_mutex);
   for (cache_entry = heap_Classrepr_cache.LRU_list.LRU_bottom; cache_entry != NULL; cache_entry = cache_entry->prev)
     {
-      /* Increase version, to be sure that nobody else can access it. TODO - check for delete flag ? */
+      /* Increase the version, to be sure that nobody else can access it. */
       if (heap_classrep_cache_entry_increment_version (cache_entry))
 	{
 	  assert (HEAP_CLASSREPR_CACHE_GET_FIXCNT (cache_entry->fcnt_with_version_and_flags));
@@ -2165,6 +2172,7 @@ check_LRU_list:
   if (!heap_classrep_cache_entry_increment_version (cache_entry))
     {
       pthread_mutex_unlock (&cache_entry->mutex);
+      goto check_LRU_list;
     }
 
   /* Nobody else referenced it. */
@@ -2229,7 +2237,7 @@ heap_classrepr_entry_free (HEAP_CLASSREPR_ENTRY * cache_entry)
   int rv;
   rv = pthread_mutex_lock (&heap_Classrepr_cache.free_list.free_mutex);
 
-  /* Increment version. */
+  /* Increment the version. This will allow us to detect whether the cache referred by transaction is valid. */
   heap_classrep_cache_entry_increment_version (cache_entry);
 
   cache_entry->next = heap_Classrepr_cache.free_list.free_top;
@@ -2321,6 +2329,9 @@ heap_classrepr_get (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * cla
   *idx_incache = -1;
   if (tdes != NULL)
     {
+      /* First, try to access the class representation without mutex. This is done by using atomic operations
+       * and information about the cache stored in transaction : cache, version, fix count, pin.
+       */
       repr = heap_get_classrepr_by_transaction_info (thread_p, tdes, class_oid, reprid, idx_incache);
       if (repr != NULL)
 	{
@@ -24903,11 +24914,12 @@ heap_is_page_header (THREAD_ENTRY * thread_p, PAGE_PTR page)
 }
 
 /*
-* heap_fix_classrep_cache_entry () - fix class representation cache entry
-*
-* return              : true if fixed, false otherwise.
-* classrep_entry (in) : class representation
-*/
+ * heap_fix_classrep_cache_entry () - fix class representation cache entry
+ *
+ * return              : true if fixed, false otherwise.
+ * tdes(in)            : transaction descriptor.
+ * classrep_entry (in) : class representation.
+ */
 STATIC_INLINE bool
 heap_classrep_cache_entry_is_pinned (LOG_TDES * tdes, HEAP_CLASSREPR_ENTRY * cache_entry)
 {
@@ -24927,6 +24939,8 @@ heap_classrep_cache_entry_is_pinned (LOG_TDES * tdes, HEAP_CLASSREPR_ENTRY * cac
  * return              : true if fixed, false otherwise.
  * thread_p (in)       : thread entry
  * classrep_entry (in) : class representation
+ * has_mutex (in)      : true, if mutex acquired
+ * is_fixed_by_current_transaction (in): true, it is fixed by current transaction
  */
 STATIC_INLINE bool
 heap_fix_classrep_cache_entry (THREAD_ENTRY * thread_p, LOG_TDES * tdes, void *classrep_entry, bool has_mutex,
@@ -24989,15 +25003,15 @@ heap_fix_classrep_cache_entry (THREAD_ENTRY * thread_p, LOG_TDES * tdes, void *c
   return true;
 }
 
-
 /*
-* heap_unfix_classrep_cache_entry () - unfix class representation cache entry
-*
-* return              : true if fixed, false otherwise.
-* thread_p (in)       : thread entry
-* tdes (in)           : transaction descriptor
-* cache_entry (in)    : cache entry
-*/
+ * heap_unfix_classrep_cache_entry () - unfix class representation cache entry
+ *
+ * return              : true if fixed, false otherwise
+ * thread_p (in)       : thread entry
+ * tdes (in)           : transaction descriptor
+ * cache_entry (in)    : cache entry
+ * new_fcnt_with_version_and_flags(in) : new fix count with version and flags
+ */
 STATIC_INLINE bool
 heap_unfix_classrep_cache_entry (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_CLASSREPR_ENTRY * cache_entry,
 				 UINT64 * new_fcnt_with_version_and_flags)
@@ -25016,7 +25030,10 @@ heap_unfix_classrep_cache_entry (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_
   do
     {
       old_fcnt_with_version_and_flags = cache_entry->fcnt_with_version_and_flags;
-      assert (old_fcnt_with_version_and_flags > 0);
+      /* Fix count must be greater than 0 and same class represe */
+      assert (old_fcnt_with_version_and_flags > 0
+	      && tdes->ref_classrepr_entry_version ==
+	      HEAP_CLASSREPR_CACHE_GET_VERSION (old_fcnt_with_version_and_flags));
       local_new_fcnt_with_version = HEAP_CLASSREPR_CACHE_DEC_FIX_CNT (old_fcnt_with_version_and_flags);
     }
   while (!ATOMIC_CAS_64
@@ -25037,11 +25054,11 @@ heap_unfix_classrep_cache_entry (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_
 }
 
 /*
-* heap_classrep_cache_entry_increment_version () - increment version of heap classrepr cache
-*
-* return              : true, if increment with success, false otherwise
-* cache_entry (in)    : cache entry
-*/
+ * heap_classrep_cache_entry_increment_version () - increment version of heap classrepr cache
+ *
+ * return              : true, if increment with success, false otherwise
+ * cache_entry (in)    : cache entry
+ */
 STATIC_INLINE bool
 heap_classrep_cache_entry_increment_version (HEAP_CLASSREPR_ENTRY * cache_entry)
 {
@@ -25064,14 +25081,12 @@ heap_classrep_cache_entry_increment_version (HEAP_CLASSREPR_ENTRY * cache_entry)
   return true;
 }
 
-
-
 /*
-* heap_classrep_cache_entry_add_force_decache_flag () - add force decache flag to heap classrepr cache
-*
-* return              : new fix count with version and flags
-* cache_entry (in)    : cache entry
-*/
+ * heap_classrep_cache_entry_add_force_decache_flag () - Add force decache flag to heap classrepr cache.
+ *
+ * return              : new fix count with version and flags
+ * cache_entry (in)    : cache entry
+ */
 STATIC_INLINE UINT64
 heap_classrep_cache_entry_add_force_decache_flag (HEAP_CLASSREPR_ENTRY * cache_entry)
 {
@@ -25110,15 +25125,17 @@ heap_classrep_cache_entry_remove_force_decache_flag (HEAP_CLASSREPR_ENTRY * cach
 }
 
 /*
- * heap_get_classrepr_by_transaction_info () - find transaction classrep cache info
+ * heap_get_classrepr_by_transaction_info () - get classrep by transaction info
  *
  * return         :
  * thread_p (in)  : thread entry
  * tdes (in)      : transaction descriptor
  * class_oid (in) : class oid
+ * reprid(in)     : representation id
+ * idx_incache(out)    : index of class repr
  * 
  *  Note: This function tries to get representation based on information stored in transaction.
- *    At success, the class representation is obtained without acquiring mutexes in global cache.
+ *    At success, the class representation is obtained without acquiring mutexes.
  *    At fails, is responsability of the user to get class representation after acquiring mutexes.
  */
 STATIC_INLINE OR_CLASSREP *
@@ -25166,33 +25183,32 @@ heap_get_classrepr_by_transaction_info (THREAD_ENTRY * thread_p, LOG_TDES * tdes
 }
 
 /*
-* heap_class_repr_pin_fixed () - Enable postpone unfix
-*
-* return         :
-* thread_p (in)  : thread entry
-* tdes (in)      : transaction descriptor
-*/
+ * heap_class_repr_enable_pin () - enable pinning for class representation
+ *
+ * return         : nothing
+ * thread_p (in)  : thread entry
+ * tdes (in)      : transaction descriptor
+ */
 void
 heap_class_repr_enable_pin (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
-  if (tdes != NULL)
+  if (tdes != NULL && tdes->ref_classrep_entry_pin_enabled == false
+      && (tdes->ref_classrep_entry == NULL || tdes->ref_classrep_entry_fix_cnt == 0))
     {
-      if (tdes->ref_classrep_entry_pin_enabled == false
-	  && (tdes->ref_classrep_entry == NULL || tdes->ref_classrep_entry_fix_cnt == 0))
-	{
-	  /* Allows when not fixed. */
-	  tdes->ref_classrep_entry_pin_enabled = true;
-	}
+      /* Enable pin, only if the class representation was not previously fixed.
+       * If is pinned, the cache will be fixed only one and unfixed when disable pin.
+       */
+      tdes->ref_classrep_entry_pin_enabled = true;
     }
 }
 
 /*
-* heap_get_classrepr_by_transaction_info () - Disable postpone unfix
-*
-* return         :
-* thread_p (in)  : thread entry
-* tdes (in)      : transaction descriptor
-*/
+ * heap_class_repr_disable_pin () - disable pinning for class representation
+ *
+ * return         : nothing
+ * thread_p (in)  : thread entry
+ * tdes (in)      : transaction descriptor
+ */
 void
 heap_class_repr_disable_pin (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
