@@ -16529,7 +16529,7 @@ sm_load_online_index (MOP classmop, const char *constraint_name)
   /* Enter the base class information into the arrays */
   n_classes = 0;
   COPY_OID (&oids[n_classes], WS_OID (classmop));
-  for (int i = 0; i < n_attrs; i++)
+  for (i = 0; i < n_attrs; i++)
     {
       attr_ids[i] = con->attributes[i]->id;
     }
