@@ -2127,7 +2127,6 @@ lock_set_error_for_aborted (LK_ENTRY * entry_ptr)
   char *client_user_name;	/* Client user name for transaction */
   char *client_host_name;	/* Client host for transaction */
   int client_pid;		/* Client process id for transaction */
-  LOG_TDES *tdes;
 
   (void) logtb_find_client_name_host_pid (entry_ptr->tran_index, &client_prog_name, &client_user_name,
 					  &client_host_name, &client_pid);
@@ -6212,8 +6211,7 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
   int tran_index;
   int wait_msecs;
   TRAN_ISOLATION isolation;
-  LOCK new_class_lock;
-  LOCK old_class_lock;
+  LOCK new_class_lock, old_class_lock, old_root_class_lock;
   int granted;
   LK_ENTRY *root_class_entry = NULL;
   LK_ENTRY *class_entry = NULL, *superclass_entry = NULL;
@@ -6279,12 +6277,31 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
 
   /* Check if current transaction has already held the class lock. If the class lock is not held, hold the class lock,
    * now. */
-  class_entry = lock_get_class_lock (thread_p, class_oid, tran_index);
-  old_class_lock = (class_entry) ? class_entry->granted_mode : NULL_LOCK;
-
   if (OID_IS_ROOTOID (class_oid))
     {
-      if (old_class_lock < new_class_lock)
+      old_class_lock = NULL_LOCK;
+      old_root_class_lock = NULL_LOCK;
+
+      /* Find class lock and root class lock. */
+      class_entry = lock_get_class_lock (thread_p, oid, tran_index);
+      if (class_entry != NULL)
+	{
+	  root_class_entry = class_entry->class_entry;
+	  while (root_class_entry != NULL)
+	    {
+	      if (OID_IS_ROOTOID (&root_class_entry->res_head->key.oid))
+		{
+		  old_root_class_lock = root_class_entry->granted_mode;
+		  break;
+		}
+
+	      root_class_entry = root_class_entry->class_entry;
+	    }
+
+	  old_class_lock = class_entry->granted_mode;
+	}
+
+      if (old_root_class_lock < new_class_lock)
 	{
 	  granted = lock_internal_perform_lock_object (thread_p, tran_index, class_oid, NULL, new_class_lock,
 						       wait_msecs, &root_class_entry, NULL);
@@ -6298,12 +6315,22 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
 
       /* NOTE that in case of acquiring a lock on a class object, the higher lock granule of the class object must not
        * be given. */
-      granted = lock_internal_perform_lock_object (thread_p, tran_index, oid, NULL, lock, wait_msecs, &class_entry,
-						   root_class_entry);
+
+      if (old_class_lock >= lock)
+	{
+	  granted = true;
+	  goto end;
+	}
+
+      granted =
+	lock_internal_perform_lock_object (thread_p, tran_index, oid, NULL, lock, wait_msecs, &class_entry,
+					   root_class_entry);
       goto end;
     }
   else
     {
+      class_entry = lock_get_class_lock (thread_p, class_oid, tran_index);
+      old_class_lock = (class_entry) ? class_entry->granted_mode : NULL_LOCK;
       if (old_class_lock < new_class_lock)
 	{
 	  if (class_entry != NULL && class_entry->class_entry != NULL
@@ -6338,8 +6365,9 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
 
       /* NOTE that in case of acquiring a lock on an instance object, the class oid of the instance object must be
        * given. */
-      granted = lock_internal_perform_lock_object (thread_p, tran_index, oid, class_oid, lock, wait_msecs, &inst_entry,
-						   class_entry);
+      granted =
+	lock_internal_perform_lock_object (thread_p, tran_index, oid, class_oid, lock, wait_msecs,
+					   &inst_entry, class_entry);
       goto end;
     }
 
