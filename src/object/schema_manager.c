@@ -16419,7 +16419,7 @@ sm_stats_remove_bt_stats_at_position (ATTR_STATS * attr_stats, int position)
 int
 sm_load_online_index (MOP classmop, const char *constraint_name)
 {
-  SM_CLASS *class_ = NULL;
+  SM_CLASS *class_ = NULL, *subclass_ = NULL;
   int error = NO_ERROR;
   SM_CLASS_CONSTRAINT *con = NULL;
   TP_DOMAIN *domain;
@@ -16553,6 +16553,27 @@ sm_load_online_index (MOP classmop, const char *constraint_name)
     }
   HFID_COPY (&hfids[n_classes], sm_ch_heap ((MOBJ) class_));
   n_classes++;
+
+  for (sub = subclasses; sub != NULL; sub = sub->next, n_classes++)
+    {
+      error = au_fetch_class (sub->op, &subclass_, AU_FETCH_UPDATE, AU_ALTER);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto error_return;
+	}
+
+      COPY_OID (&oids[n_classes], WS_OID (sub->op));
+
+      for (int j = 0; j < n_attrs; j++)
+	{
+	  attr_ids[n_classes * n_attrs + j] = con->attributes[j]->id;
+	}
+
+      HFID_COPY (&hfids[n_classes], sm_ch_heap ((MOBJ) subclass_));
+
+      subclass_ = NULL;
+    }
 
   if (con->type == SM_CONSTRAINT_REVERSE_INDEX || con->type == SM_CONSTRAINT_REVERSE_UNIQUE)
     {
