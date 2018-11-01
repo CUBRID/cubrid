@@ -1779,6 +1779,8 @@ static inline void btree_delete_helper_to_insert_helper (BTREE_DELETE_HELPER * d
 							 BTREE_INSERT_HELPER * insert_helper);
 
 static inline bool btree_is_online_index_loading (BTREE_OP_PURPOSE purpose);
+static bool btree_is_single_object_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE_NODE_TYPE node_type,
+					RECDES * record, int offset_after_key);
 
 /*
  * btree_fix_root_with_info () - Fix b-tree root page and output its VPID, header and b-tree info if requested.
@@ -33537,8 +33539,7 @@ btree_key_online_index_IB_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
 	      helper->delete_helper.op_type = SINGLE_ROW_DELETE;
 	      assert (helper->delete_helper.rv_keyval_data == NULL);	// otherwise, it will be leaked.
 
-	      if (node_type == BTREE_LEAF_NODE
-		  && (btree_record_get_num_oids (thread_p, btid_int, &new_record, offset_after_key, node_type) == 1))
+	      if (btree_is_single_object_key (thread_p, btid_int, node_type, &new_record, offset_after_key))
 		{
 		  /* Only one OID in the key, we will remove the key as well. */
 		  n_keys = -1;
@@ -34009,8 +34010,7 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	    {
 	      /* Normal state. We need to physically delete the object. */
 	      assert (btree_online_index_is_normal_state (btree_mvcc_info.insert_mvccid));
-	      if (node_type == BTREE_LEAF_NODE
-		  && (btree_record_get_num_oids (thread_p, btid_int, &new_record, offset_after_key, node_type) == 1))
+	      if (btree_is_single_object_key (thread_p, btid_int, node_type, &new_record, offset_after_key))
 		{
 		  /* Only one OID in the key, we will remove the key as well. */
 		  n_keys = -1;
@@ -34018,7 +34018,7 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	      n_oids = -1;
 
 	      error_code =
-		btree_key_remove_object (thread_p, key, btid_int, &helper->delete_helper, *leaf_page, &new_record,
+		btree_key_remove_object (thread_p, key, btid_int, &helper->delete_helper, *leaf_page, &record,
 					 &leaf_info, offset_after_key, search_key, &page_found, prev_page, node_type,
 					 offset_to_object);
 
@@ -34263,8 +34263,7 @@ btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_
 	      helper->delete_helper.purpose = BTREE_OP_ONLINE_INDEX_TRAN_DELETE;
 	      helper->delete_helper.op_type = SINGLE_ROW_DELETE;
 
-	      if (node_type == BTREE_LEAF_NODE
-		  && (btree_record_get_num_oids (thread_p, btid_int, &new_record, offset_after_key, node_type) == 1))
+	      if (btree_is_single_object_key (thread_p, btid_int, node_type, &new_record, offset_after_key))
 		{
 		  /* Only one OID in the key, we will remove the key as well. */
 		  n_keys = -1;
@@ -35065,4 +35064,36 @@ btree_is_btid_online_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID * bti
   heap_classrepr_free_and_init (rep, &idx_incache);
 
   return result;
+}
+
+//
+// btree_is_single_object_key () - returns true if there is only one object in key, false otherwise; parameters
+//                                 offer details on object location
+//
+// return                : true if single object
+// thread_p (in)         : thread entry
+// btid_int (in)         : b-tree info
+// node_type (in)        : node type - overflow or leaf
+// record (in)           : current record (overflow or leaf)
+// offset_after_key (in) : offset after key (only for leaf)
+//
+static bool
+btree_is_single_object_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE_NODE_TYPE node_type,
+			    RECDES * record, int offset_after_key)
+{
+  if (node_type == BTREE_OVERFLOW_NODE)
+    {
+      // has overflows, must have at least two
+      return false;
+    }
+  // leaf
+  assert (node_type == BTREE_LEAF_NODE);
+  if (offset_after_key < record->length)
+    {
+      // it has more than one object!
+      // this is a hack to avoid counting objects; maybe it is not safe
+      return false;
+    }
+  assert (offset_after_key == record->length);
+  return true;
 }
