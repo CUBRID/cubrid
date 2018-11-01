@@ -285,7 +285,6 @@ static int print_string_date_token (const STRING_DATE_TOKEN token_type, const IN
 				    int *token_size);
 static void convert_locale_number (char *sz, const int size, const INTL_LANG src_locale, const INTL_LANG dst_locale);
 static int parse_tzd (const char *str, const int max_expect_len);
-static int db_value_to_json_doc (const DB_VALUE & value, REFPTR (JSON_DOC, json));
 static int db_json_merge_helper (DB_VALUE * result, DB_VALUE * arg[], int const num_args, bool patch = false);
 
 #define TRIM_FORMAT_STRING(sz, n) {if (strlen(sz) > n) sz[n] = 0;}
@@ -28747,45 +28746,4 @@ db_conv_tz (DB_VALUE * time_val, DB_VALUE * result_time)
     }
 
   return error;
-}
-
-/* db_value_to_json_doc - create a JSON_DOC from db_value.
- *
- * return     : error code
- * value (in) : input db_value
- * json (out) : output JSON_DOC pointer
- */
-static int
-db_value_to_json_doc (const DB_VALUE & value, REFPTR (JSON_DOC, json))
-{
-  int error_code = NO_ERROR;
-
-  json = NULL;
-  switch (DB_VALUE_DOMAIN_TYPE (&value))
-    {
-    case DB_TYPE_CHAR:
-    case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
-      error_code = db_json_get_json_from_str (db_get_string (&value), json, db_get_string_size (&value));
-      if (error_code != NO_ERROR)
-	{
-	  assert (json == NULL);
-	  ASSERT_ERROR ();
-	}
-      return error_code;
-
-    case DB_TYPE_JSON:
-      json = db_json_get_copy_of_doc (value.data.json.document);
-      return NO_ERROR;
-
-    case DB_TYPE_NULL:
-      json = db_json_allocate_doc ();
-      return NO_ERROR;
-
-    default:
-      // todo: more specific error
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
-      return ER_QSTR_INVALID_DATA_TYPE;
-    }
 }
