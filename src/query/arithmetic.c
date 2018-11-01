@@ -5302,26 +5302,7 @@ db_json_arrayagg_dbval_accumulate (DB_VALUE * json_db_val, DB_VALUE * json_res)
     }
 
   // get the current value
-  switch (DB_VALUE_DOMAIN_TYPE (json_db_val))
-    {
-    case DB_TYPE_CHAR:
-    case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
-      val_doc = db_json_allocate_doc ();
-      db_json_set_string_to_doc (val_doc, db_get_string (json_db_val));
-      break;
-    default:
-      DB_VALUE dest;
-      TP_DOMAIN_STATUS status = tp_value_cast (json_db_val, &dest, &tp_Json_domain, false);
-      if (status != DOMAIN_COMPATIBLE)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
-	  return ER_QSTR_INVALID_DATA_TYPE;
-	}
-
-      val_doc = db_get_json_document (&dest);
-    }
+  db_value_to_json_value (*json_db_val, val_doc);
 
   // append to existing document
   // allocate only first time
@@ -5377,26 +5358,7 @@ db_json_objectagg_dbval_accumulate (DB_VALUE * json_key, DB_VALUE * json_db_val,
   key_str = db_get_string (json_key);
 
   // get the current value
-  switch (DB_VALUE_DOMAIN_TYPE (json_db_val))
-    {
-    case DB_TYPE_CHAR:
-    case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
-      val_doc = db_json_allocate_doc ();
-      db_json_set_string_to_doc (val_doc, db_get_string (json_db_val));
-      break;
-    default:
-      DB_VALUE dest;
-      TP_DOMAIN_STATUS status = tp_value_cast (json_db_val, &dest, &tp_Json_domain, false);
-      if (status != DOMAIN_COMPATIBLE)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
-	  return ER_QSTR_INVALID_DATA_TYPE;
-	}
-
-      val_doc = db_get_json_document (&dest);
-    }
+  db_value_to_json_value (*json_db_val, val_doc);
 
   // append to existing document
   // allocate only first time

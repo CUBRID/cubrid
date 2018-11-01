@@ -153,6 +153,10 @@ bool db_json_are_docs_equal (const JSON_DOC *doc1, const JSON_DOC *doc2);
 void db_json_make_document_null (JSON_DOC *doc);
 bool db_json_doc_has_numeric_type (const JSON_DOC *doc);
 bool db_json_doc_is_uncomparable (const JSON_DOC *doc);
+
+// DB_VALUE manipulation functions
+int db_value_to_json_doc (const DB_VALUE &db_val, REFPTR (JSON_DOC, json_doc));
+int db_value_to_json_value (const DB_VALUE &db_val, REFPTR (JSON_DOC, json_val));
 /* end of C functions */
 
 template <typename Fn, typename... Args>

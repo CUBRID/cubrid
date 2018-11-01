@@ -3541,6 +3541,82 @@ bool db_json_doc_is_uncomparable (const JSON_DOC *doc)
   return (type == DB_JSON_ARRAY || type == DB_JSON_OBJECT);
 }
 
+/* db_value_to_json_doc - create a JSON_DOC from db_value.
+ *
+ * return     : error code
+ * db_val(in) : input db_value
+ * json_doc(out) : output JSON_DOC pointer
+ */
+int
+db_value_to_json_doc (const DB_VALUE &db_val, REFPTR (JSON_DOC, json_doc))
+{
+  int error_code = NO_ERROR;
+
+  json_doc = NULL;
+  switch (DB_VALUE_DOMAIN_TYPE (&db_val))
+    {
+    case DB_TYPE_CHAR:
+    case DB_TYPE_VARCHAR:
+    case DB_TYPE_NCHAR:
+    case DB_TYPE_VARNCHAR:
+      error_code = db_json_get_json_from_str (db_get_string (&db_val), json_doc, db_get_string_size (&db_val));
+      if (error_code != NO_ERROR)
+	{
+	  assert (json_doc == NULL);
+	  ASSERT_ERROR ();
+	}
+      return error_code;
+
+    case DB_TYPE_JSON:
+      json_doc = db_json_get_copy_of_doc (db_val.data.json.document);
+      return NO_ERROR;
+
+    case DB_TYPE_NULL:
+      json_doc = db_json_allocate_doc ();
+      return NO_ERROR;
+
+    default:
+      // todo: more specific error
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
+      return ER_QSTR_INVALID_DATA_TYPE;
+    }
+}
+
+/* db_value_to_json_value - create a JSON_DOC treated as JSON_VALUE from db_value.
+ *
+ * return     : error code
+ * db_val(in) : input db_value
+ * json_val(out) : output JSON_DOC pointer
+ */
+int
+db_value_to_json_value (const DB_VALUE &db_val, REFPTR (JSON_DOC, json_val))
+{
+  json_val = NULL;
+  switch (DB_VALUE_DOMAIN_TYPE (&db_val))
+    {
+    case DB_TYPE_CHAR:
+    case DB_TYPE_VARCHAR:
+    case DB_TYPE_NCHAR:
+    case DB_TYPE_VARNCHAR:
+      json_val = db_json_allocate_doc ();
+      db_json_set_string_to_doc (json_val, db_get_string (&db_val));
+      return NO_ERROR;
+
+    default:
+      DB_VALUE dest;
+      TP_DOMAIN_STATUS status = tp_value_cast (&db_val, &dest, &tp_Json_domain, false);
+      if (status != DOMAIN_COMPATIBLE)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
+	  return ER_QSTR_INVALID_DATA_TYPE;
+	}
+
+      json_val = db_get_json_document (&dest);
+    }
+
+  return NO_ERROR;
+}
+
 /*
  * db_json_path_is_token_valid_array_index () - verify if token is a valid array index. token can be a substring of
  *                                              first argument (by default the entire argument).
