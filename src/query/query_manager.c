@@ -939,7 +939,7 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context, XASL_ST
   int *class_locks = NULL;
   int dbval_cnt;
   int error_code = NO_ERROR;
-  bool recompile_due_to_threshold = false;
+  xasl_cache_rt_check_result recompile_due_to_threshold = XASL_CACHE_RECOMPILE_NOT_NEEDED;
 
   /* If xasl_stream is NULL, it means that the client requested looking up the XASL cache to know there's a reusable
    * execution plan (XASL) for this query. The XASL is stored as a file so that the XASL file id (XASL_ID) will be
@@ -966,8 +966,9 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context, XASL_ST
 	}
       if (cache_entry_p != NULL)
 	{
-	  if (recompile_due_to_threshold)
+	  if (recompile_due_to_threshold != XASL_CACHE_RECOMPILE_NOT_NEEDED)
 	    {
+              assert (recompile_due_to_threshold == XASL_CACHE_RECOMPILE_PREPARE);
 	      XASL_ID_COPY (stream->xasl_id, &cache_entry_p->xasl_id);
 	      xcache_unfix (thread_p, cache_entry_p);
 	      context->recompile_xasl = true;
@@ -989,9 +990,10 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context, XASL_ST
       if (stream->buffer == NULL)
 	{
 	  /* No entry found. */
-	  if (recompile_due_to_threshold)
+	  if (recompile_due_to_threshold != XASL_CACHE_RECOMPILE_NOT_NEEDED)
 	    {
 	      /* We need to force recompile. */
+              assert (recompile_due_to_threshold == XASL_CACHE_RECOMPILE_PREPARE);
 	      context->recompile_xasl = true;
 	    }
 	  return NO_ERROR;
@@ -1290,7 +1292,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
     }
 
   xasl_cache_entry_p = NULL;
-  if (xcache_find_xasl_id (thread_p, xasl_id_p, &xasl_cache_entry_p, &xclone) != NO_ERROR)
+  if (xcache_find_xasl_id_for_execute (thread_p, xasl_id_p, &xasl_cache_entry_p, &xclone) != NO_ERROR)
     {
       ASSERT_ERROR ();
       return NULL;
