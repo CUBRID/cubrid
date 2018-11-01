@@ -3265,55 +3265,6 @@ db_json_pretty_func (const JSON_DOC &doc, char *&result_str)
 }
 
 /*
- * db_json_arrayagg_func_accumulate () - Appends the value to the result_json
- *
- * return                  : void
- * value (in)              : value to append
- * result_json (in)        : the document where we want to append
- * expand (in)             : expand will be true only when aggregate 2 accumulators
- */
-void
-db_json_arrayagg_func_accumulate (const JSON_DOC *value, JSON_DOC &result_json)
-{
-  DB_JSON_TYPE result_json_type = db_json_get_type (&result_json);
-
-  // only the first time the result_json will have DB_JSON_NULL type
-  if (result_json_type == DB_JSON_TYPE::DB_JSON_NULL)
-    {
-      result_json.SetArray ();
-    }
-
-  assert (result_json.IsArray ());
-
-  JSON_VALUE value_copy (*value, result_json.GetAllocator ());
-  result_json.PushBack (value_copy, result_json.GetAllocator ());
-}
-
-/*
- * db_json_objectagg_func_accumulate () - Inserts a (key, value) pair in the result_json
- *
- * return                  : void
- * key_str (in)            : the key string
- * val_doc (in)            : the value document
- * result_json (in)        : the document where we want to insert
- */
-void
-db_json_objectagg_func_accumulate (const char *key_str, const JSON_DOC *val_doc, JSON_DOC &result_json)
-{
-  DB_JSON_TYPE result_json_type = db_json_get_type (&result_json);
-
-  // only the first time the result_json will have DB_JSON_NULL type
-  if (result_json_type == DB_JSON_TYPE::DB_JSON_NULL)
-    {
-      result_json.SetObject ();
-    }
-
-  assert (result_json.IsObject ());
-
-  db_json_add_member_to_object (&result_json, key_str, val_doc);
-}
-
-/*
  * db_json_keys_func () - Returns the keys from the top-level value of a JSON object as a JSON array
  *
  * return                  : error code
