@@ -1740,7 +1740,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
       /* now, execute the statement by calling do_execute_statement() */
       err = do_execute_statement (parser, statement);
       if ((err == ER_QPROC_XASLNODE_RECOMPILE_REQUESTED || err == ER_QPROC_INVALID_XASLNODE)
-           && session->stage[stmt_ndx] == StatementPreparedStage)
+	  && session->stage[stmt_ndx] == StatementPreparedStage)
 	{
 	  /* The cache entry was deleted before 'execute' */
 	  if (statement->xasl_id)

@@ -831,21 +831,21 @@ xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, const XASL_CAC
 	}
       else
 	{
-          bool recompile_needed = xcache_check_recompilation_threshold (thread_p, *xcache_entry);
+	  bool recompile_needed = xcache_check_recompilation_threshold (thread_p, *xcache_entry);
 	  if (recompile_needed)
 	    {
 	      /* We need to recompile. */
 	      xcache_unfix (thread_p, *xcache_entry);
 	      *xcache_entry = NULL;
-              if (search_mode == XASL_CACHE_SEARCH_FOR_EXECUTE)
-                {
-                  *rt_check = XASL_CACHE_RECOMPILE_EXECUTE;
-                }
-              else
-                {
-                  assert (search_mode == XASL_CACHE_SEARCH_FOR_PREPARE);
-                  *rt_check = XASL_CACHE_RECOMPILE_PREPARE;
-                }
+	      if (search_mode == XASL_CACHE_SEARCH_FOR_EXECUTE)
+		{
+		  *rt_check = XASL_CACHE_RECOMPILE_EXECUTE;
+		}
+	      else
+		{
+		  assert (search_mode == XASL_CACHE_SEARCH_FOR_PREPARE);
+		  *rt_check = XASL_CACHE_RECOMPILE_PREPARE;
+		}
 
 	      return NO_ERROR;
 	    }
@@ -872,7 +872,7 @@ xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, const XASL_CAC
  */
 int
 xcache_find_xasl_id_for_execute (THREAD_ENTRY * thread_p, const XASL_ID * xid, XASL_CACHE_ENTRY ** xcache_entry,
-		                 XASL_CLONE * xclone)
+				 XASL_CLONE * xclone)
 {
   int error_code = NO_ERROR;
   HL_HEAPID save_heapid = 0;
@@ -896,11 +896,11 @@ xcache_find_xasl_id_for_execute (THREAD_ENTRY * thread_p, const XASL_ID * xid, X
     {
       /* No entry was found. */
       if (recompile_due_to_threshold == XASL_CACHE_RECOMPILE_EXECUTE)
-        {
-          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_XASLNODE_RECOMPILE_REQUESTED, 0);
-          perfmon_inc_stat (thread_p, PSTAT_PC_NUM_INVALID_XASL_ID);
-          return ER_QPROC_XASLNODE_RECOMPILE_REQUESTED;
-        }
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_XASLNODE_RECOMPILE_REQUESTED, 0);
+	  perfmon_inc_stat (thread_p, PSTAT_PC_NUM_INVALID_XASL_ID);
+	  return ER_QPROC_XASLNODE_RECOMPILE_REQUESTED;
+	}
       return NO_ERROR;
     }
   if ((*xcache_entry)->xasl_id.time_stored.sec != xid->time_stored.sec
