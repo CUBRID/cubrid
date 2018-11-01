@@ -981,6 +981,7 @@ lock_initialize_entry (LK_ENTRY * entry_ptr)
   entry_ptr->instant_lock_count = 0;
   entry_ptr->bind_index_in_tran = -1;
   XASL_ID_SET_NULL (&entry_ptr->xasl_id);
+  entry_ptr->mark_deleted = 0;
 }
 
 /* initialize lock entry as granted state */
@@ -1025,7 +1026,10 @@ lock_initialize_entry_as_blocked (LK_ENTRY * entry_ptr, THREAD_ENTRY * thread_p,
   entry_ptr->class_entry = NULL;
   entry_ptr->ngranules = 0;
   entry_ptr->instant_lock_count = 0;
-  entry_ptr->resource_version = 0;
+  if (res->key.type == LOCK_RESOURCE_CLASS || res->key.type == LOCK_RESOURCE_ROOT_CLASS)
+    {
+      entry_ptr->resource_version = LK_RES_GET_HIGHEST_LOCK_VERSION (res->cnt_highest_lock_mode_with_version_and_flags);
+    }
   entry_ptr->mark_deleted = 0;
 
   lock_event_set_xasl_id_to_entry (tran_index, entry_ptr);
@@ -1595,7 +1599,7 @@ lock_insert_into_tran_non2pl_list (LK_ENTRY * non2pl, int owner_tran_index)
   int rv;
 
   /* The caller is holding a resource mutex */
-
+  assert (non2pl->mark_deleted == 0);
   if (owner_tran_index != non2pl->tran_index)
     {
       assert (owner_tran_index == non2pl->tran_index);
@@ -3512,7 +3516,7 @@ start:
 	      pthread_mutex_lock (&res_ptr->res_mutex);
 	      is_res_mutex_locked = true;
 
-	      if (has_highest_lock_invalid && res_ptr->total_waiters_mode == NULL_LOCK)
+	      if (has_highest_lock_invalid && res_ptr->total_waiters_mode == NULL_LOCK && res_ptr->non2pl == NULL)
 		{
 		  /* Check again, maybe someone else cleaned before me. */
 		  lock_res_disconnect_mark_deleted_entries (thread_p, res_ptr);
@@ -3530,6 +3534,7 @@ start:
 	      if (entry_ptr->mark_deleted != 0)
 		{
 		  /* Cleanup mark deleted entry. */
+		  assert (entry_ptr->mark_deleted == 2 || entry_ptr->mark_deleted == 1);
 		  if (lock_res_cleanup_mark_deleted_transaction_entry (thread_p, res_ptr, entry_ptr))
 		    {
 		      entry_ptr = NULL;
@@ -3598,6 +3603,7 @@ start:
       res_ptr->holder = entry_ptr;
 
       /* to manage granules */
+      assert (class_entry->mark_deleted == 0);
       entry_ptr->class_entry = class_entry;
       lock_increment_class_granules (class_entry);
 
@@ -3668,6 +3674,7 @@ start:
 	    }
 
 	  /* to manage granules */
+	  assert (class_entry->mark_deleted == 0);
 	  entry_ptr->class_entry = class_entry;
 	  lock_increment_class_granules (class_entry);
 
@@ -4161,6 +4168,7 @@ lock_conversion_treatement:
   if (lock_conversion == false)
     {
       /* to manage granules */
+      assert (class_entry->mark_deleted == 0);
       entry_ptr->class_entry = class_entry;
       lock_increment_class_granules (class_entry);
     }
@@ -7564,11 +7572,11 @@ lock_unlock_all (THREAD_ENTRY * thread_p)
     {
       next = entry_ptr->tran_next;
       if (entry_ptr == next)
-        {
-          /* Quick fix. TODO - find and fix the invalid state. */
-          assert(entry_ptr->mark_deleted != 0);
-          break;
-        }
+	{
+	  /* Quick fix. TODO - find and fix the invalid state. */
+	  assert (entry_ptr->mark_deleted != 0);
+	  break;
+	}
 
       lock_internal_perform_unlock_object (thread_p, entry_ptr, true, false);
       entry_ptr = next;
@@ -10797,8 +10805,13 @@ lock_res_update_cnt_highest_lock_with_version_and_flags (THREAD_ENTRY * thread_p
       new_cnt_highest_lock_mode_with_version_and_flags =
 	LK_RES_INC_HIGHEST_LOCK_VERSION (new_cnt_highest_lock_mode_with_version_and_flags);
 
-      new_cnt_highest_lock_mode_with_version_and_flags =
-	LK_RES_RESET_HIGHEST_LOCK_INVALID_FLAG (new_cnt_highest_lock_mode_with_version_and_flags);
+      /* I have the mutex, so I can check total holders mode. */
+      if (res_ptr->waiter == NULL && res_ptr->non2pl == NULL)
+	{
+	  /* Allows other to use mark deletion mechanism, if no waiter and no non2pl. */
+	  new_cnt_highest_lock_mode_with_version_and_flags =
+	    LK_RES_RESET_HIGHEST_LOCK_INVALID_FLAG (new_cnt_highest_lock_mode_with_version_and_flags);
+	}
     }
   while (!ATOMIC_CAS_64
 	 (&res_ptr->cnt_highest_lock_mode_with_version_and_flags, old_cnt_highest_lock_mode_with_version_and_flags,
@@ -11031,7 +11044,7 @@ lock_resource_update_highest_lock_info_when_change_holders (THREAD_ENTRY * threa
 			     new_cnt_highest_lock_mode_with_version_and_flags));
     }
 
-  /* Disconnct mark deleted objects. TODO - disconnect my entry, if is the case */
+  /* Disconnct mark deleted objects. */
   lock_res_disconnect_mark_deleted_entries (thread_p, res_ptr);
   lock_res_update_cnt_highest_lock_with_version_and_flags (thread_p, res_ptr);
 }
