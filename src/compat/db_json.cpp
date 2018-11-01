@@ -1752,8 +1752,8 @@ db_json_resolve_json_parent (JSON_DOC &doc, const std::string &path, JSON_VALUE 
   std::size_t found = path.find_last_of ('/');
   if (found == std::string::npos)
     {
-      assert (false);
-      return ER_FAILED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
+      return ER_JSON_INVALID_PATH;
     }
 
   // parent pointer
@@ -2036,6 +2036,7 @@ db_json_search_func (JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALUE *esc
 
       bool found = false;
       error_code = db_json_search_helper (*resolved, pattern, esc_char, find_all, starting_path, found, paths);
+      db_json_delete_doc (resolved);
       if (error_code != NO_ERROR)
 	{
 	  return error_code;
@@ -2170,15 +2171,13 @@ db_json_array_insert_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw
     }
 
   JSON_POINTER p (json_pointer_string.c_str ());
-  JSON_VALUE *resulting_json = NULL;
-
   if (!p.IsValid ())
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
       return ER_JSON_INVALID_PATH;
     }
 
-  resulting_json = p.Get (doc);
+  JSON_VALUE *resulting_json = p.Get (doc);
   if (resulting_json != NULL)
     {
       // need to shift any following values to the right

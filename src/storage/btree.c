@@ -32921,8 +32921,12 @@ btree_delete_sysop_end (THREAD_ENTRY * thread_p, BTREE_DELETE_HELPER * helper)
   switch (helper->purpose)
     {
     case BTREE_OP_DELETE_OBJECT_PHYSICAL:
-    case BTREE_OP_ONLINE_INDEX_TRAN_DELETE:
       log_sysop_end_logical_undo (thread_p, RVBT_DELETE_OBJECT_PHYSICAL, NULL, helper->rv_keyval_data_length,
+				  helper->rv_keyval_data);
+      break;
+
+    case BTREE_OP_ONLINE_INDEX_TRAN_DELETE:
+      log_sysop_end_logical_undo (thread_p, RVBT_ONLINE_INDEX_UNDO_TRAN_DELETE, NULL, helper->rv_keyval_data_length,
 				  helper->rv_keyval_data);
       break;
 
@@ -33579,6 +33583,11 @@ end:
       logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, n_keys, n_oids, 0, false);
     }
 
+  if (page_found != NULL && page_found != *leaf_page)
+    {
+      pgbuf_unfix_and_init (thread_p, page_found);
+    }
+
   return error_code;
 }
 
@@ -33801,6 +33810,11 @@ end:
     }
   helper->insert_helper.rv_keyval_data = NULL;
   helper->insert_helper.rv_keyval_data_length = 0;
+
+  if (page_found != NULL && page_found != *leaf_page)
+    {
+      pgbuf_unfix_and_init (thread_p, page_found);
+    }
 
   return error_code;
 }
@@ -34094,6 +34108,11 @@ end:
       helper->delete_helper.rv_keyval_data_length = 0;
     }
 
+  if (page_found != NULL && page_found != *leaf_page)
+    {
+      pgbuf_unfix_and_init (thread_p, page_found);
+    }
+
   return error_code;
 }
 
@@ -34368,6 +34387,11 @@ end:
 	}
       helper->insert_helper.rv_keyval_data = NULL;
       helper->insert_helper.rv_keyval_data_length = 0;
+    }
+
+  if (page_found != NULL && page_found != *leaf_page)
+    {
+      pgbuf_unfix_and_init (thread_p, page_found);
     }
 
   return error_code;
