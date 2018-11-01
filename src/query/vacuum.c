@@ -4165,7 +4165,6 @@ vacuum_data_load_and_recover (THREAD_ENTRY * thread_p)
   else
     {
       /* Get last_blockid from last vacuum data entry. */
-      assert (vacuum_Data.last_page->index_free > 0);
       INT16 last_block_index = (vacuum_Data.last_page->index_free <= 0) ? 0 : vacuum_Data.last_page->index_free - 1;
       vacuum_Data.set_last_blockid (vacuum_Data.last_page->data[last_block_index].blockid);
 

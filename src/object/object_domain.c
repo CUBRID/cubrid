@@ -7115,6 +7115,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
        */
       DB_JSON_TYPE json_type = db_json_get_type (db_get_json_document (src));
       JSON_DOC *src_doc = db_get_json_document (src);
+      bool use_replacement = true;
 
       switch (json_type)
 	{
@@ -7127,6 +7128,20 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	case DB_JSON_BIGINT:
 	  db_make_bigint (&src_replacement, db_json_get_bigint_from_document (src_doc));
 	  break;
+	case DB_JSON_BOOL:
+	  switch (desired_type)
+	    {
+	    case DB_TYPE_CHAR:
+	    case DB_TYPE_VARCHAR:
+	    case DB_TYPE_NCHAR:
+	    case DB_TYPE_VARNCHAR:
+	      db_make_string (&src_replacement, db_json_get_bool_as_str_from_document (src_doc));
+	      src_replacement.need_clear = true;
+	      break;
+	    default:
+	      db_make_int (&src_replacement, db_json_get_bool_from_document (src_doc) ? 1 : 0);
+	    }
+	  break;
 	case DB_JSON_STRING:
 	  {
 	    const char *json_string = db_json_get_string_from_document (src_doc);
@@ -7134,11 +7149,12 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  }
 	  break;
 	default:
+	  use_replacement = false;
 	  /* do nothing */
 	  break;
 	}
 
-      if (json_type != DB_JSON_ARRAY && json_type != DB_JSON_OBJECT)
+      if (use_replacement)
 	{
 	  if (src == dest)
 	    {
