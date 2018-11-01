@@ -54,6 +54,7 @@
 #include "elo.h"
 #include "db_elo.h"
 #include <vector>
+#include <regex>
 #if !defined (SERVER_MODE)
 #include "parse_tree.h"
 #include "es_common.h"
@@ -151,6 +152,12 @@ typedef enum
 #define MAX_TOKEN_SIZE 16000
 
 #define GUID_STANDARD_BYTES_LENGTH 16
+
+struct pattern_insertion_obj
+{
+  size_t pos;
+    std::string to_be_inserted;
+};
 
 static int qstr_trim (MISC_OPERAND tr_operand, const unsigned char *trim, int trim_length, int trim_size,
 		      const unsigned char *src_ptr, DB_TYPE src_type, int src_length, int src_size,
@@ -287,6 +294,9 @@ static void convert_locale_number (char *sz, const int size, const INTL_LANG src
 static int parse_tzd (const char *str, const int max_expect_len);
 static int db_value_to_json_doc (const DB_VALUE & value, REFPTR (JSON_DOC, json));
 static int db_json_merge_helper (DB_VALUE * result, DB_VALUE * arg[], int const num_args, bool patch = false);
+/* *INDENT-OFF* */
+static void wild_cards_to_regex(const std::vector<std::string> wild_cards, std::vector<std::regex> & regs);
+/* *INDENT-ON* */
 
 #define TRIM_FORMAT_STRING(sz, n) {if (strlen(sz) > n) sz[n] = 0;}
 #define WHITESPACE(c) ((c) == ' ' || (c) == '\t' || (c) == '\r' || (c) == '\n')
@@ -3909,6 +3919,101 @@ db_json_merge_patch (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
   return db_json_merge_helper (result, arg, num_args, true);
 }
 
+void
+wild_cards_to_regex (const std::vector < std::string > wild_cards, std::vector < std::regex > &regs)
+{
+for (auto & wild_card:wild_cards)
+    {
+      std::string s;
+      // todo: replace string construction with string_stream
+      std::vector < pattern_insertion_obj > insert_at_index;
+      for (size_t i = 0; i < wild_card.length (); ++i)
+	{
+	  switch (wild_card[i])
+	    {
+	    case '$':
+	      insert_at_index.push_back (
+					  {
+					  i, "\\$"}
+	      );
+	      break;
+	    case '[':
+	      insert_at_index.push_back (
+					  {
+					  i, "\\["}
+	      );
+	      break;
+	    case ']':
+	      insert_at_index.push_back (
+					  {
+					  i, "\\]"}
+	      );
+	      break;
+	    case '.':
+	      insert_at_index.push_back (
+					  {
+					  i, "\\."}
+	      );
+	      break;
+	    case '*':
+	      if (i < wild_card.length () - 1 && wild_card[i + 1] == '*')
+		{		// wild_card '**'. Match any string
+		  insert_at_index.push_back (
+					      {
+					      i, "[([:alnum:]|\.)]+"}
+		  );
+		  ++i;
+		}
+	      else if (wild_card[i - 1] == '[')
+		{		// wild_card '[*]'. Match numbers only
+		  insert_at_index.push_back (
+					      {
+					      i, "[0-9]+"}
+		  );
+		}
+	      else
+		{		// wild_card '.*'. Match alphanumerics only
+		  insert_at_index.push_back (
+					      {
+					      i, "[[:alnum:]]+"}
+		  );
+		}
+	      break;
+	    default:
+	      break;
+	    }
+	}
+
+      if (!insert_at_index.empty ())
+	{
+	  s = insert_at_index[0].to_be_inserted;
+	}
+
+      for (size_t i = 1; i < insert_at_index.size (); ++i)
+	{
+	  // copy string between special characters.
+	  // in case of '*' there is guaranteed that a special character follows.
+	  // ignore it or treat the case of '**'
+	  if (wild_card[insert_at_index[i].pos] != '*')
+	    {
+	      size_t len = insert_at_index[i].pos - insert_at_index[i - 1].pos - 1;
+	      s += wild_card.substr (insert_at_index[i - 1].pos + 1, len);
+	    }
+	  s += insert_at_index[i].to_be_inserted;
+	}
+      s += "[^[:space:]]*";
+
+      try
+      {
+	regs.push_back (std::regex (s));
+      }
+      catch (std::exception & e)
+      {
+	// regex compilation exception
+      }
+    }
+}
+
 /*
  * JSON_SEARCH (json_doc, one/all, pattern [, escape_char, path_1,... path_n])
  *
@@ -3921,81 +4026,120 @@ db_json_merge_patch (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 
 /* *INDENT-OFF* */
 int
-db_json_search_dbval (DB_VALUE * result, DB_VALUE * args[], const int num_args)
+db_json_search_dbval(DB_VALUE * result, DB_VALUE * args[], const int num_args)
 {
   int error_code = NO_ERROR;
 
   if (num_args < 3)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
-      return ER_FAILED;
-    }
+  {
+    er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+    return ER_FAILED;
+  }
 
   for (int i = 0; i < num_args; ++i)
+  {
+    // only escape char might be null
+    if (i != 3 && DB_IS_NULL(args[i]))
     {
-      // only escape char might be null
-      if (i != 3 && DB_IS_NULL (args[i]))
-        {
-          return db_make_null (result);
-        }
+      return db_make_null(result);
     }
+  }
 
-  JSON_DOC *doc = db_get_json_document (args[0]);
-  char *find_all_str = db_get_string (args[1]);
+  JSON_DOC *doc = db_get_json_document(args[0]);
+  char *find_all_str = db_get_string(args[1]);
   bool find_all = false;
 
-  if (strcmp (find_all_str, "all") == 0)
-    {
-      find_all = true;
-    }
-  if (!find_all && strcmp (find_all_str, "one"))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
-      return ER_QSTR_INVALID_DATA_TYPE;
-    }
+  if (strcmp(find_all_str, "all") == 0)
+  {
+    find_all = true;
+  }
+  if (!find_all && strcmp(find_all_str, "one"))
+  {
+    er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
+    return ER_QSTR_INVALID_DATA_TYPE;
+  }
 
   DB_VALUE *pattern = args[2];
   DB_VALUE *esc_char = nullptr;
   if (num_args >= 4)
-    {
-      esc_char = args[3];
-    }
+  {
+    esc_char = args[3];
+  }
 
   std::vector<std::string> starting_paths;
+  bool wild_card_found = false;
   for (int i = 4; i < num_args; ++i)
+  {
+    std::string s(db_get_string(args[i]));
+    if (s.find("*") != std::string::npos)
     {
-      starting_paths.push_back (db_get_string (args[i]));
+      wild_card_found = true;
+      // if we check against wild_cards only at the end we cannot return early when finding a json_value that matches
+      find_all = true;
     }
-  if (starting_paths.empty ())
-    {
-      starting_paths.push_back ("$");
-    }
+    
+    starting_paths.emplace_back(s);    
+  }
 
   std::vector<std::string> paths;
-  error_code = db_json_search_func (*doc, pattern, esc_char, find_all, starting_paths, paths);
+  if (wild_card_found || starting_paths.empty())
+  {    
+    error_code = db_json_search_func(*doc, pattern, esc_char, find_all, std::vector<std::string>({ std::string("$") }), paths);
+  }
+  else
+  {
+    error_code = db_json_search_func(*doc, pattern, esc_char, find_all, starting_paths, paths);
+  }
   if (error_code != NO_ERROR)
     {
       return error_code;
     }
+  
+  std::vector<int> matches_path;
+  for (int i = 0; i < paths.size(); ++i)
+  {
+    matches_path.push_back(0);
+  }
+  
+  std::vector<std::regex> regs;
+  if (wild_card_found)
+  {
+    wild_cards_to_regex (starting_paths, regs);
+  }
 
+  for (size_t i = 0; i<paths.size(); ++i)
+  {
+    for (auto & reg : regs)
+    {
+      matches_path[i] |= (int) std::regex_match (paths[i].substr(1, paths[i].size()-2), reg);
+    }
+  }
+    
   JSON_DOC *result_json = nullptr;
-
   if (paths.size () == 1)
     {
-      error_code = db_json_get_json_from_str (paths[0].c_str (), result_json, paths[0].length ());
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
-	}
-      return db_make_json (result, result_json, true);
+      if (!wild_card_found || matches_path[0] == 1)
+        {      
+        error_code = db_json_get_json_from_str (paths[0].c_str (), result_json, paths[0].length ());
+        if (error_code != NO_ERROR)
+	  {
+	    return error_code;
+	  }
+        }
+      return result_json ? db_make_json (result, result_json, true) : db_make_null (result);
     }
 
   result_json = db_json_allocate_doc ();
-  for (auto &path : paths)
+  for (size_t i = 0; i < paths.size(); ++i)
     {
+      if (wild_card_found && matches_path[i] == 0)
+        {
+          continue;
+        }
+
       JSON_DOC *json_array_elem = nullptr;
 
-      error_code = db_json_get_json_from_str (path.c_str (), json_array_elem, path.length ());
+      error_code = db_json_get_json_from_str (paths[i].c_str (), json_array_elem, paths[i].length ());
       if (error_code != NO_ERROR)
 	{
           db_json_delete_doc (result_json);
