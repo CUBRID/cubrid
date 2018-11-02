@@ -4510,7 +4510,7 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 
       /* Assign the snapshot to the scan_cache. */
       scan_cache.mvcc_snapshot = builder_snapshot;
-      
+
       /* For unique indices add to the list of btids for unique constraint checks. */
       if (BTREE_IS_UNIQUE (unique_pk))
 	{
