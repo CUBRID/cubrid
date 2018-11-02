@@ -4055,6 +4055,8 @@ db_json_search_dbval (DB_VALUE *result, DB_VALUE *args[], const int num_args)
   for (int i = 4; i < num_args; ++i)
     {
       std::string s (db_get_string (args[i]));
+      // todo: improve paths validation
+
       if (s.find ("*") != std::string::npos)
 	{
 	  wild_card_present = true;
