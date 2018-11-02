@@ -33588,6 +33588,11 @@ end:
       pgbuf_unfix_and_init (thread_p, page_found);
     }
 
+  if (prev_page != NULL && prev_page != *leaf_page)
+    {
+      pgbuf_unfix_and_init (thread_p, prev_page);
+    }
+
   return error_code;
 }
 
@@ -33618,7 +33623,6 @@ btree_key_online_index_tran_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int
   PAGE_PTR page_found = NULL;
   int offset_to_object = 0;
   BTREE_MVCC_INFO btree_mvcc_info = BTREE_MVCC_INFO_INITIALIZER;
-  PAGE_PTR prev_page = NULL;
   BTREE_NODE_TYPE node_type;
   RECDES new_record;
   PGSLOTID slotid;
@@ -33698,7 +33702,7 @@ btree_key_online_index_tran_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int
       error_code =
 	btree_find_oid_with_page_and_record (thread_p, btid_int, &helper->insert_helper.obj_info.oid, *leaf_page,
 					     helper->insert_helper.purpose, NULL, &record, &leaf_info, offset_after_key,
-					     &page_found, &prev_page, &offset_to_object, &btree_mvcc_info, &new_record);
+					     &page_found, NULL, &offset_to_object, &btree_mvcc_info, &new_record);
 
       if (error_code != NO_ERROR)
 	{
@@ -34113,6 +34117,11 @@ end:
       pgbuf_unfix_and_init (thread_p, page_found);
     }
 
+  if (prev_page != NULL && prev_page != *leaf_page)
+    {
+      pgbuf_unfix_and_init (thread_p, prev_page);
+    }
+
   return error_code;
 }
 
@@ -34392,6 +34401,11 @@ end:
   if (page_found != NULL && page_found != *leaf_page)
     {
       pgbuf_unfix_and_init (thread_p, page_found);
+    }
+
+  if (prev_page != NULL && prev_page != *leaf_page)
+    {
+      pgbuf_unfix_and_init (thread_p, prev_page);
     }
 
   return error_code;
