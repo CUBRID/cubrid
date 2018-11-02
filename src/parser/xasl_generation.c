@@ -5709,7 +5709,7 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
 	  regu->domain = pt_xasl_node_to_domain (parser, node);
 	}
 
-      if (regu->domain == NULL && (parser->set_host_var == 1 || typ != DB_TYPE_NULL))
+      if (regu->domain == NULL && (parser->set_host_var == 1 || (typ != DB_TYPE_NULL && node->expected_domain == NULL)))
 	{
 	  /* if the host var DB_VALUE was initialized before, use its domain for regu variable */
 	  TP_DOMAIN *domain;
@@ -9176,20 +9176,39 @@ pt_to_position_regu_variable_list (PARSER_CONTEXT * parser, PT_NODE * node_list,
 {
   REGU_VARIABLE_LIST regu_list = NULL;
   REGU_VARIABLE_LIST *tail = NULL;
-  PT_NODE *node;
+  PT_NODE *node = NULL, *next_node = NULL;
   int i = 0;
 
   tail = &regu_list;
 
-  for (node = node_list; node != NULL; node = node->next)
+  for (node = node_list; node != NULL; node = next_node)
     {
+      next_node = node->next;
       (*tail) = regu_varlist_alloc ();
 
       /* it would be better form to call pt_make_position_regu_variable, but this avoids additional allocation do to
        * regu variable and regu_variable_list bizarreness. */
       if (*tail)
 	{
-	  TP_DOMAIN *domain = pt_xasl_node_to_domain (parser, node);
+	  TP_DOMAIN *domain = NULL;
+
+	  CAST_POINTER_TO_NODE (node);
+
+	  if (PT_IS_HOSTVAR (node))
+	    {
+	      DB_VALUE *val;
+
+	      val = &parser->host_variables[node->info.host_var.index];
+	      if ((node->data_type == NULL) && (parser->set_host_var == 0) && (node->expected_domain != NULL))
+		{
+		  domain = node->expected_domain;
+		}
+	    }
+
+	  if (domain == NULL)
+	    {
+	      domain = pt_xasl_node_to_domain (parser, node);
+	    }
 
 	  (*tail)->value.type = TYPE_POSITION;
 	  (*tail)->value.domain = domain;
