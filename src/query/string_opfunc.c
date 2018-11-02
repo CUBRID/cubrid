@@ -294,7 +294,7 @@ static void convert_locale_number (char *sz, const int size, const INTL_LANG src
 static int parse_tzd (const char *str, const int max_expect_len);
 static int db_json_merge_helper (DB_VALUE * result, DB_VALUE * arg[], int const num_args, bool patch = false);
 /* *INDENT-OFF* */
-static void wild_cards_to_regex(const std::vector<std::string> wild_cards, std::vector<std::regex> & regs);
+static void wild_cards_to_regex (const std::vector<std::string> &wild_cards, std::vector<std::regex> &regs);
 /* *INDENT-ON* */
 
 #define TRIM_FORMAT_STRING(sz, n) {if (strlen(sz) > n) sz[n] = 0;}
@@ -3929,9 +3929,9 @@ db_json_merge_patch (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 
 /* *INDENT-OFF* */
 void
-wild_cards_to_regex (const std::vector < std::string > wild_cards, std::vector < std::regex > &regs)
+wild_cards_to_regex (const std::vector<std::string> &wild_cards, std::vector<std::regex> &regs)
 {
-for (auto & wild_card:wild_cards)
+  for (auto & wild_card : wild_cards)
     {
       std::string s;
       // todo: replace string construction with string_stream
@@ -3941,51 +3941,30 @@ for (auto & wild_card:wild_cards)
 	  switch (wild_card[i])
 	    {
 	    case '$':
-	      insert_at_index.push_back (
-					  {
-					  i, "\\$"}
-	      );
+	      insert_at_index.push_back ({i,"\\$"});
 	      break;
 	    case '[':
-	      insert_at_index.push_back (
-					  {
-					  i, "\\["}
-	      );
+	      insert_at_index.push_back ({i,"\\["});
 	      break;
 	    case ']':
-	      insert_at_index.push_back (
-					  {
-					  i, "\\]"}
-	      );
+	      insert_at_index.push_back ({i,"\\]"});
 	      break;
 	    case '.':
-	      insert_at_index.push_back (
-					  {
-					  i, "\\."}
-	      );
+	      insert_at_index.push_back ({i,"\\."});
 	      break;
 	    case '*':
 	      if (i < wild_card.length () - 1 && wild_card[i + 1] == '*')
 		{		// wild_card '**'. Match any string
-		  insert_at_index.push_back (
-					      {
-					      i, "[([:alnum:]|\\.|\\[|\\])]+"}
-		  );
+		  insert_at_index.push_back ({i,"[([:alnum:]|\\.|\\[|\\])]+"});
 		  ++i;
 		}
 	      else if (wild_card[i - 1] == '[')
 		{		// wild_card '[*]'. Match numbers only
-		  insert_at_index.push_back (
-					      {
-					      i, "[0-9]+"}
-		  );
+		  insert_at_index.push_back ({i,"[0-9]+"});
 		}
 	      else
 		{		// wild_card '.*'. Match alphanumerics only
-		  insert_at_index.push_back (
-					      {
-					      i, "[[:alnum:]]+"}
-		  );
+		  insert_at_index.push_back ({i,"[[:alnum:]]+"});
 		}
 	      break;
 	    default:
@@ -3993,7 +3972,7 @@ for (auto & wild_card:wild_cards)
 	    }
 	}
       
-      insert_at_index.push_back({ wild_card.length(), "[^[:space:]]*" });
+      insert_at_index.push_back ({wild_card.length (),"[^[:space:]]*"});
       s = insert_at_index[0].to_be_inserted;
 
       for (size_t i = 1; i < insert_at_index.size (); ++i)
@@ -4010,13 +3989,13 @@ for (auto & wild_card:wild_cards)
 	}
 
       try
-      {
-	regs.push_back (std::regex (s));
-      }
+        {
+	  regs.push_back (std::regex (s));
+        }
       catch (std::exception & e)
-      {
-	// regex compilation exception
-      }
+        {
+	  // regex compilation exception
+        }
     }
 }
 
@@ -4082,25 +4061,25 @@ db_json_search_dbval(DB_VALUE * result, DB_VALUE * args[], const int num_args)
   bool wild_card_present = false;
   for (int i = 4; i < num_args; ++i)
   {
-    std::string s(db_get_string(args[i]));
-    if (s.find("*") != std::string::npos)
+    std::string s (db_get_string (args[i]));
+    if (s.find ("*") != std::string::npos)
     {
       wild_card_present = true;
       // if we check against wild_cards only at the end we cannot return early when finding a json_value that matches
       find_all = true;
     }
     
-    starting_paths.emplace_back(s);    
+    starting_paths.emplace_back (s);    
   }
 
   std::vector<std::string> paths;
-  if (wild_card_present || starting_paths.empty())
+  if (wild_card_present || starting_paths.empty ())
   {    
-    error_code = db_json_search_func(*doc, pattern, esc_char, find_all, std::vector<std::string>({ std::string("$") }), paths);
+    error_code = db_json_search_func (*doc, pattern, esc_char, find_all, std::vector<std::string> ({std::string ("$")}), paths);
   }
   else
   {
-    error_code = db_json_search_func(*doc, pattern, esc_char, find_all, starting_paths, paths);
+    error_code = db_json_search_func (*doc, pattern, esc_char, find_all, starting_paths, paths);
   }
   db_json_delete_doc(doc);
   if (error_code != NO_ERROR)
@@ -4120,7 +4099,7 @@ db_json_search_dbval(DB_VALUE * result, DB_VALUE * args[], const int num_args)
   {
     for (auto & reg : regs)
     {
-      matches_path[i] |= (int) std::regex_match (paths[i].substr(1, paths[i].size()-2), reg);
+      matches_path[i] |= (int) std::regex_match (paths[i].substr (1, paths[i].size ()-2), reg);
     }
   }
     
