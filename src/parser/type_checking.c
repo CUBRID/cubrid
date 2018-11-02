@@ -13023,13 +13023,13 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	PT_NODE *key = arg_list;
 	PT_NODE *value = arg_list->next;
 
-	if (!PT_IS_STRING_TYPE (key->type_enum))
+	arg_list = pt_wrap_with_cast_op (parser, key, PT_TYPE_VARCHAR, 0, 0, NULL);
+	if (arg_list == NULL)
 	  {
-	    arg_type = PT_TYPE_NONE;
-	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
-			 pt_show_function (fcode), pt_show_type_enum (key->type_enum));
-	    break;
+	    return node;
 	  }
+	arg_type = PT_TYPE_VARCHAR;
+	node->info.function.arg_list = arg_list;
 
 	// check value
 	bool is_supported = pt_is_json_value_type (value->type_enum);
