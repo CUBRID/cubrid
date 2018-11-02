@@ -55,6 +55,7 @@
 #include "db_elo.h"
 #include <vector>
 #include <regex>
+#include <sstream>
 #if !defined (SERVER_MODE)
 #include "parse_tree.h"
 #include "es_common.h"
@@ -153,11 +154,6 @@ typedef enum
 
 #define GUID_STANDARD_BYTES_LENGTH 16
 
-struct pattern_insertion_obj
-{
-  size_t pos;
-    std::string to_be_inserted;
-};
 
 static int qstr_trim (MISC_OPERAND tr_operand, const unsigned char *trim, int trim_length, int trim_size,
 		      const unsigned char *src_ptr, DB_TYPE src_type, int src_length, int src_size,
@@ -3928,74 +3924,69 @@ db_json_merge_patch (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 }
 
 /* *INDENT-OFF* */
+
+/*
+ * db_json_merge_patch()
+ *
+ * transform path strings into regexes by escaping special characters '$', '[', ']' and
+ * replace [*], .*, ** with patterns that match accordingly
+ *
+ * wild_cards (in): json path strings
+ * regs (in/out): resulting regexes
+ *
+ */
 void
 wild_cards_to_regex (const std::vector<std::string> &wild_cards, std::vector<std::regex> &regs)
 {
   for (auto &wild_card : wild_cards)
     {
-      std::string s;
-      // todo: replace string construction with string_stream
-      std::vector<pattern_insertion_obj> insert_at_index;
+      std::stringstream ss;
       for (size_t i = 0; i < wild_card.length (); ++i)
 	{
 	  switch (wild_card[i])
 	    {
 	    case '$':
-	      insert_at_index.push_back ({i,"\\$"});
+              ss << "\\$";
 	      break;
 	    case '[':
-	      insert_at_index.push_back ({i,"\\["});
+              ss << "\\[";
 	      break;
 	    case ']':
-	      insert_at_index.push_back ({i,"\\]"});
+              ss << "\\[";
 	      break;
 	    case '.':
-	      insert_at_index.push_back ({i,"\\."});
+              ss << "\\.";
 	      break;
 	    case '*':
 	      if (i < wild_card.length () - 1 && wild_card[i + 1] == '*')
 		{
 		  // wild_card '**'. Match any string
-		  insert_at_index.push_back ({i,"[([:alnum:]|\\.|\\[|\\])]+"});
-		  ++i;
+                  ss << "[([:alnum:]|\\.|\\[|\\])]+";
+                  ++i;
 		}
 	      else if (wild_card[i - 1] == '[')
 		{
 		  // wild_card '[*]'. Match numbers only
-		  insert_at_index.push_back ({i,"[0-9]+"});
+                  ss << "[0-9]+";
 		}
 	      else
 		{
 		  // wild_card '.*'. Match alphanumerics only
-		  insert_at_index.push_back ({i,"[[:alnum:]]+"});
+                  ss << "[[:alnum:]]+";
 		}
 	      break;
 	    default:
+              ss << wild_card[i];
 	      break;
 	    }
 	}
-
-      insert_at_index.push_back ({wild_card.length (),"[^[:space:]]*"});
-      s = insert_at_index[0].to_be_inserted;
-
-      for (size_t i = 1; i < insert_at_index.size (); ++i)
-	{
-	  // copy string between special characters.
-	  // in case of '*' there is guaranteed that a special character follows.
-	  // ignore it or treat the case of '**'
-	  if (wild_card[insert_at_index[i-1].pos] != '*')
-	    {
-	      size_t len = insert_at_index[i].pos - insert_at_index[i - 1].pos - 1;
-	      s += wild_card.substr (insert_at_index[i - 1].pos + 1, len);
-	    }
-	  s += insert_at_index[i].to_be_inserted;
-	}
+      ss << "[^[:space:]]*";
 
       try
 	{
-	  regs.push_back (std::regex (s));
+	  regs.push_back (std::regex (ss.str ()));
 	}
-      catch (std::exception &e)
+      catch (std::regex_error &e)
 	{
 	  // regex compilation exception
 	}
@@ -4099,11 +4090,11 @@ db_json_search_dbval (DB_VALUE *result, DB_VALUE *args[], const int num_args)
       wild_cards_to_regex (starting_paths, regs);
     }
 
-  for (size_t i = 0; i<paths.size(); ++i)
+  for (size_t i = 0; i<paths.size (); ++i)
     {
       for (auto &reg : regs)
 	{
-	  matches_path[i] |= (int) std::regex_match (paths[i].substr (1, paths[i].size ()-2), reg);
+          matches_path[i] |= (int) std::regex_match (paths[i].substr (1, paths[i].size () - 2), reg);
 	}
     }
 
@@ -4122,7 +4113,7 @@ db_json_search_dbval (DB_VALUE *result, DB_VALUE *args[], const int num_args)
     }
 
   result_json = db_json_allocate_doc ();
-  for (size_t i = 0; i < paths.size(); ++i)
+  for (size_t i = 0; i < paths.size (); ++i)
     {
       if (wild_card_present && matches_path[i] == 0)
 	{

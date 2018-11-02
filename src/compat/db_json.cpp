@@ -2022,6 +2022,7 @@ db_json_search_func (JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALUE *esc
   for (auto &starting_path : starting_paths)
     {
       JSON_DOC *resolved = nullptr;
+      // todo: improve by avoiding copying a sub-document into resolved
       int error_code = db_json_extract_document_from_path (&doc, starting_path.c_str (), resolved);
 
       if (error_code != NO_ERROR)
