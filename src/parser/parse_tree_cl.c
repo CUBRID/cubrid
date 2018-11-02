@@ -19278,7 +19278,6 @@ static PARSER_VARCHAR *
 pt_print_json_table_column_info (PARSER_CONTEXT * parser, PT_NODE * p, PARSER_VARCHAR * pstr)
 {
   PARSER_VARCHAR *substr = NULL;
-  const char *type = NULL;
 
   assert (p->node_type == PT_JSON_TABLE_COLUMN);
 
@@ -19290,9 +19289,6 @@ pt_print_json_table_column_info (PARSER_CONTEXT * parser, PT_NODE * p, PARSER_VA
   // print name
   pstr = pt_append_nulstring (parser, pstr, p->info.json_table_column_info.name->info.name.original);
 
-  // get the type
-  type = pt_type_enum_to_db_domain_name (p->type_enum);
-
   switch (p->info.json_table_column_info.func)
     {
     case json_table_column_function::JSON_TABLE_ORDINALITY:
@@ -19303,7 +19299,7 @@ pt_print_json_table_column_info (PARSER_CONTEXT * parser, PT_NODE * p, PARSER_VA
     case json_table_column_function::JSON_TABLE_EXTRACT:
       // print type
       pstr = pt_append_nulstring (parser, pstr, " ");
-      pstr = pt_append_nulstring (parser, pstr, type);
+      pstr = pt_append_varchar (parser, pstr, pt_print_datatype (parser, p));
 
       // print PATH
       pstr = pt_append_nulstring (parser, pstr, " PATH ");
@@ -19327,7 +19323,7 @@ pt_print_json_table_column_info (PARSER_CONTEXT * parser, PT_NODE * p, PARSER_VA
     case json_table_column_function::JSON_TABLE_EXISTS:
       // print type
       pstr = pt_append_nulstring (parser, pstr, " ");
-      pstr = pt_append_nulstring (parser, pstr, type);
+      pstr = pt_append_varchar (parser, pstr, pt_print_datatype (parser, p));
 
       // print EXISTS PATH
       pstr = pt_append_nulstring (parser, pstr, " EXISTS PATH ");
