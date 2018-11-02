@@ -53,9 +53,6 @@
 #include "dbtype.h"
 #include "elo.h"
 #include "db_elo.h"
-#include <vector>
-#include <regex>
-#include <sstream>
 #if !defined (SERVER_MODE)
 #include "parse_tree.h"
 #include "es_common.h"
@@ -288,9 +285,6 @@ static int print_string_date_token (const STRING_DATE_TOKEN token_type, const IN
 static void convert_locale_number (char *sz, const int size, const INTL_LANG src_locale, const INTL_LANG dst_locale);
 static int parse_tzd (const char *str, const int max_expect_len);
 static int db_json_merge_helper (DB_VALUE * result, DB_VALUE * arg[], int const num_args, bool patch = false);
-/* *INDENT-OFF* */
-static void wild_cards_to_regex (const std::vector<std::string> &wild_cards, std::vector<std::regex> &regs);
-/* *INDENT-ON* */
 
 #define TRIM_FORMAT_STRING(sz, n) {if (strlen(sz) > n) sz[n] = 0;}
 #define WHITESPACE(c) ((c) == ' ' || (c) == '\t' || (c) == '\r' || (c) == '\n')
@@ -3925,74 +3919,6 @@ db_json_merge_patch (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 /* *INDENT-OFF* */
 
 /*
- * db_json_merge_patch()
- *
- * transform path strings into regexes by escaping special characters '$', '[', ']' and
- * replace [*], .*, ** with patterns that match accordingly
- *
- * wild_cards (in): json path strings
- * regs (in/out): resulting regexes
- *
- */
-void
-wild_cards_to_regex (const std::vector<std::string> &wild_cards, std::vector<std::regex> &regs)
-{
-  for (auto &wild_card : wild_cards)
-    {
-      std::stringstream ss;
-      for (size_t i = 0; i < wild_card.length (); ++i)
-	{
-	  switch (wild_card[i])
-	    {
-	    case '$':
-	      ss << "\\$";
-	      break;
-	    case '[':
-	      ss << "\\[";
-	      break;
-	    case ']':
-	      ss << "\\[";
-	      break;
-	    case '.':
-	      ss << "\\.";
-	      break;
-	    case '*':
-	      if (i < wild_card.length () - 1 && wild_card[i + 1] == '*')
-		{
-		  // wild_card '**'. Match any string
-		  ss << "[([:alnum:]|\\.|\\[|\\])]+";
-		  ++i;
-		}
-	      else if (wild_card[i - 1] == '[')
-		{
-		  // wild_card '[*]'. Match numbers only
-		  ss << "[0-9]+";
-		}
-	      else
-		{
-		  // wild_card '.*'. Match alphanumerics only
-		  ss << "[[:alnum:]]+";
-		}
-	      break;
-	    default:
-	      ss << wild_card[i];
-	      break;
-	    }
-	}
-      ss << "[^[:space:]]*";
-
-      try
-	{
-	  regs.push_back (std::regex (ss.str ()));
-	}
-      catch (std::regex_error &e)
-	{
-	  // regex compilation exception
-	}
-    }
-}
-
-/*
  * JSON_SEARCH (json_doc, one/all, pattern [, escape_char, path_1,... path_n])
  *
  * db_json_search_dbval ()
@@ -4070,8 +3996,8 @@ db_json_search_dbval (DB_VALUE *result, DB_VALUE *args[], const int num_args)
   std::vector<std::string> paths;
   if (wild_card_present || starting_paths.empty ())
     {
-      error_code = db_json_search_func (*doc, pattern, esc_char, find_all, std::vector<std::string> ({std::string ("$")}),
-					paths);
+      std::vector<std::string> default_start_path (1, "$");
+      error_code = db_json_search_func (*doc, pattern, esc_char, find_all, default_start_path, paths);
     }
   else
     {
@@ -4088,7 +4014,12 @@ db_json_search_dbval (DB_VALUE *result, DB_VALUE *args[], const int num_args)
   std::vector<std::regex> regs;
   if (wild_card_present)
     {
-      wild_cards_to_regex (starting_paths, regs);
+      error_code = db_json_paths_to_regex (starting_paths, regs);
+      if (error_code != NO_ERROR)
+        {
+          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+          return error_code;
+        }
     }
 
   for (size_t i = 0; i<paths.size (); ++i)
