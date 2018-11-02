@@ -3927,6 +3927,7 @@ db_json_merge_patch (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
   return db_json_merge_helper (result, arg, num_args, true);
 }
 
+/* *INDENT-OFF* */
 void
 wild_cards_to_regex (const std::vector < std::string > wild_cards, std::vector < std::regex > &regs)
 {
@@ -3968,7 +3969,7 @@ for (auto & wild_card:wild_cards)
 		{		// wild_card '**'. Match any string
 		  insert_at_index.push_back (
 					      {
-					      i, "[([:alnum:]|\.)]+"}
+					      i, "[([:alnum:]|\\.|\\[|\\])]+"}
 		  );
 		  ++i;
 		}
@@ -3991,25 +3992,22 @@ for (auto & wild_card:wild_cards)
 	      break;
 	    }
 	}
-
-      if (!insert_at_index.empty ())
-	{
-	  s = insert_at_index[0].to_be_inserted;
-	}
+      
+      insert_at_index.push_back({ wild_card.length(), "[^[:space:]]*" });
+      s = insert_at_index[0].to_be_inserted;
 
       for (size_t i = 1; i < insert_at_index.size (); ++i)
 	{
 	  // copy string between special characters.
 	  // in case of '*' there is guaranteed that a special character follows.
 	  // ignore it or treat the case of '**'
-	  if (wild_card[insert_at_index[i].pos] != '*')
+	  if (wild_card[insert_at_index[i-1].pos] != '*')
 	    {
 	      size_t len = insert_at_index[i].pos - insert_at_index[i - 1].pos - 1;
 	      s += wild_card.substr (insert_at_index[i - 1].pos + 1, len);
 	    }
 	  s += insert_at_index[i].to_be_inserted;
 	}
-      s += "[^[:space:]]*";
 
       try
       {
@@ -4032,7 +4030,6 @@ for (auto & wild_card:wild_cards)
  * num_args (in)
  */
 
-/* *INDENT-OFF* */
 int
 db_json_search_dbval(DB_VALUE * result, DB_VALUE * args[], const int num_args)
 {
@@ -4082,13 +4079,13 @@ db_json_search_dbval(DB_VALUE * result, DB_VALUE * args[], const int num_args)
   }
 
   std::vector<std::string> starting_paths;
-  bool wild_card_found = false;
+  bool wild_card_present = false;
   for (int i = 4; i < num_args; ++i)
   {
     std::string s(db_get_string(args[i]));
     if (s.find("*") != std::string::npos)
     {
-      wild_card_found = true;
+      wild_card_present = true;
       // if we check against wild_cards only at the end we cannot return early when finding a json_value that matches
       find_all = true;
     }
@@ -4097,7 +4094,7 @@ db_json_search_dbval(DB_VALUE * result, DB_VALUE * args[], const int num_args)
   }
 
   std::vector<std::string> paths;
-  if (wild_card_found || starting_paths.empty())
+  if (wild_card_present || starting_paths.empty())
   {    
     error_code = db_json_search_func(*doc, pattern, esc_char, find_all, std::vector<std::string>({ std::string("$") }), paths);
   }
@@ -4111,14 +4108,10 @@ db_json_search_dbval(DB_VALUE * result, DB_VALUE * args[], const int num_args)
       return error_code;
     }
   
-  std::vector<int> matches_path;
-  for (int i = 0; i < paths.size(); ++i)
-  {
-    matches_path.push_back(0);
-  }
+  std::vector<int> matches_path (paths.size (), 0);
   
   std::vector<std::regex> regs;
-  if (wild_card_found)
+  if (wild_card_present)
   {
     wild_cards_to_regex (starting_paths, regs);
   }
@@ -4134,7 +4127,7 @@ db_json_search_dbval(DB_VALUE * result, DB_VALUE * args[], const int num_args)
   JSON_DOC *result_json = nullptr;
   if (paths.size () == 1)
     {
-      if (!wild_card_found || matches_path[0] == 1)
+      if (!wild_card_present || matches_path[0] == 1)
         {      
         error_code = db_json_get_json_from_str (paths[0].c_str (), result_json, paths[0].length ());
         if (error_code != NO_ERROR)
@@ -4148,7 +4141,7 @@ db_json_search_dbval(DB_VALUE * result, DB_VALUE * args[], const int num_args)
   result_json = db_json_allocate_doc ();
   for (size_t i = 0; i < paths.size(); ++i)
     {
-      if (wild_card_found && matches_path[i] == 0)
+      if (wild_card_present && matches_path[i] == 0)
         {
           continue;
         }
