@@ -13051,18 +13051,34 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	PT_TYPE_ENUM unsupported_type;
 	bool is_supported = false;
 
+	bool new_arg_list_inited = false;
+	PT_NODE *new_arg_prev = NULL;
+	PT_NODE *new_arg_curr = NULL;
+	PT_NODE *new_arg_list_head = NULL;
+
 	PT_NODE *arg = arg_list;
+	PT_NODE *arg_next = NULL;
 	unsigned int index = 0;
 
 	while (arg)
 	  {
+	    // save next node since pt_wrap_with_cast_op will set next to NULL
+	    arg_next = arg->next;
+
 	    if (index % 2 == 0)
 	      {
-		is_supported = pt_is_json_object_name (arg->type_enum);
+		PT_NODE *tmp = pt_wrap_with_cast_op (parser, arg, PT_TYPE_VARCHAR, 0, 0, NULL);
+		if (tmp == NULL)
+		  {
+		    return node;
+		  }
+		is_supported = true;
+		new_arg_curr = tmp;
 	      }
 	    else
 	      {
 		is_supported = pt_is_json_value_type (arg->type_enum);
+		new_arg_curr = arg;
 	      }
 
 	    if (!is_supported)
@@ -13071,7 +13087,17 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 		break;
 	      }
 
-	    arg = arg->next;
+	    if (!new_arg_list_inited)
+	      {
+		new_arg_list_head = new_arg_curr;
+		new_arg_list_inited = true;
+	      }
+	    if (new_arg_prev != NULL)
+	      {
+		new_arg_prev->next = new_arg_curr;
+	      }
+	    new_arg_prev = new_arg_curr;
+	    arg = arg_next;
 	    index++;
 	  }
 
@@ -13085,6 +13111,8 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  {
 	    arg_type = PT_TYPE_JSON;
 	  }
+
+	node->info.function.arg_list = new_arg_list_head;
       }
       break;
 
@@ -13182,7 +13210,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	      }
 	    else
 	      {
-		is_supported = pt_is_json_doc_type (arg->type_enum);
+		is_supported = pt_is_json_value_type (arg->type_enum);
 	      }
 
 	    if (!is_supported)
