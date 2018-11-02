@@ -8626,7 +8626,8 @@ pt_init_datatype (PT_NODE * p)
 static PARSER_VARCHAR *
 pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
 {
-  PARSER_VARCHAR *q = 0, *r1;
+  PARSER_VARCHAR *q = NULL;
+  PARSER_VARCHAR *r1 = NULL;
   char buf[PT_MEMB_BUF_SIZE];
   bool show_collation = false;
 
@@ -19278,6 +19279,7 @@ static PARSER_VARCHAR *
 pt_print_json_table_column_info (PARSER_CONTEXT * parser, PT_NODE * p, PARSER_VARCHAR * pstr)
 {
   PARSER_VARCHAR *substr = NULL;
+  const char *type = NULL;
 
   assert (p->node_type == PT_JSON_TABLE_COLUMN);
 
@@ -19289,6 +19291,9 @@ pt_print_json_table_column_info (PARSER_CONTEXT * parser, PT_NODE * p, PARSER_VA
   // print name
   pstr = pt_append_nulstring (parser, pstr, p->info.json_table_column_info.name->info.name.original);
 
+  // get the type
+  type = pt_type_enum_to_db_domain_name (p->type_enum);
+
   switch (p->info.json_table_column_info.func)
     {
     case json_table_column_function::JSON_TABLE_ORDINALITY:
@@ -19299,7 +19304,15 @@ pt_print_json_table_column_info (PARSER_CONTEXT * parser, PT_NODE * p, PARSER_VA
     case json_table_column_function::JSON_TABLE_EXTRACT:
       // print type
       pstr = pt_append_nulstring (parser, pstr, " ");
-      pstr = pt_append_varchar (parser, pstr, pt_print_datatype (parser, p));
+      if (p->data_type != NULL)
+	{
+	  substr = pt_print_bytes (parser, p->data_type);
+	  pstr = pt_append_varchar (parser, pstr, substr);
+	}
+      else
+	{
+	  pstr = pt_append_nulstring (parser, pstr, type);
+	}
 
       // print PATH
       pstr = pt_append_nulstring (parser, pstr, " PATH ");
@@ -19323,7 +19336,15 @@ pt_print_json_table_column_info (PARSER_CONTEXT * parser, PT_NODE * p, PARSER_VA
     case json_table_column_function::JSON_TABLE_EXISTS:
       // print type
       pstr = pt_append_nulstring (parser, pstr, " ");
-      pstr = pt_append_varchar (parser, pstr, pt_print_datatype (parser, p));
+      if (p->data_type != NULL)
+	{
+	  substr = pt_print_bytes (parser, p->data_type);
+	  pstr = pt_append_varchar (parser, pstr, substr);
+	}
+      else
+	{
+	  pstr = pt_append_nulstring (parser, pstr, type);
+	}
 
       // print EXISTS PATH
       pstr = pt_append_nulstring (parser, pstr, " EXISTS PATH ");
