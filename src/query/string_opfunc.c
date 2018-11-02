@@ -53,6 +53,7 @@
 #include "dbtype.h"
 #include "elo.h"
 #include "db_elo.h"
+#include <algorithm>
 #include <vector>
 #if !defined (SERVER_MODE)
 #include "parse_tree.h"
@@ -3955,14 +3956,15 @@ db_json_search_dbval (DB_VALUE * result, DB_VALUE * args[], const int num_args)
       return error_code;
     }
 
-  char *find_all_str = db_get_string (args[1]);
-  bool find_all = false;
+  std::string find_all_str (db_get_string (args[1]));
+  std::transform (find_all_str.begin (), find_all_str.end (), find_all_str.begin (), ::tolower);
 
-  if (strcmp (find_all_str, "all") == 0)
+  bool find_all = false;
+  if (find_all_str == "all")
     {
       find_all = true;
     }
-  if (!find_all && strcmp (find_all_str, "one"))
+  if (!find_all && find_all_str != "one")
     {
       db_json_delete_doc (doc);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
