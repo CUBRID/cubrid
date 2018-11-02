@@ -154,7 +154,6 @@ typedef enum
 
 #define GUID_STANDARD_BYTES_LENGTH 16
 
-
 static int qstr_trim (MISC_OPERAND tr_operand, const unsigned char *trim, int trim_length, int trim_size,
 		      const unsigned char *src_ptr, DB_TYPE src_type, int src_length, int src_size,
 		      INTL_CODESET codeset, unsigned char **res, DB_TYPE * res_type, int *res_length, int *res_size);
@@ -3946,37 +3945,37 @@ wild_cards_to_regex (const std::vector<std::string> &wild_cards, std::vector<std
 	  switch (wild_card[i])
 	    {
 	    case '$':
-              ss << "\\$";
+	      ss << "\\$";
 	      break;
 	    case '[':
-              ss << "\\[";
+	      ss << "\\[";
 	      break;
 	    case ']':
-              ss << "\\[";
+	      ss << "\\[";
 	      break;
 	    case '.':
-              ss << "\\.";
+	      ss << "\\.";
 	      break;
 	    case '*':
 	      if (i < wild_card.length () - 1 && wild_card[i + 1] == '*')
 		{
 		  // wild_card '**'. Match any string
-                  ss << "[([:alnum:]|\\.|\\[|\\])]+";
-                  ++i;
+		  ss << "[([:alnum:]|\\.|\\[|\\])]+";
+		  ++i;
 		}
 	      else if (wild_card[i - 1] == '[')
 		{
 		  // wild_card '[*]'. Match numbers only
-                  ss << "[0-9]+";
+		  ss << "[0-9]+";
 		}
 	      else
 		{
 		  // wild_card '.*'. Match alphanumerics only
-                  ss << "[[:alnum:]]+";
+		  ss << "[[:alnum:]]+";
 		}
 	      break;
 	    default:
-              ss << wild_card[i];
+	      ss << wild_card[i];
 	      break;
 	    }
 	}
@@ -4019,9 +4018,9 @@ db_json_search_dbval (DB_VALUE *result, DB_VALUE *args[], const int num_args)
     {
       // only escape char might be null
       if (i != 3 && DB_IS_NULL (args[i]))
-	{
-	  return db_make_null (result);
-	}
+        {
+          return db_make_null (result);
+        }
     }
 
   error_code = db_value_to_json_doc (*args[0], doc);
@@ -4093,22 +4092,22 @@ db_json_search_dbval (DB_VALUE *result, DB_VALUE *args[], const int num_args)
   for (size_t i = 0; i<paths.size (); ++i)
     {
       for (auto &reg : regs)
-	{
+        {
           matches_path[i] |= (int) std::regex_match (paths[i].substr (1, paths[i].size () - 2), reg);
-	}
+        }
     }
 
   JSON_DOC *result_json = nullptr;
   if (paths.size () == 1)
     {
       if (!wild_card_present || matches_path[0] == 1)
-	{
-	  error_code = db_json_get_json_from_str (paths[0].c_str (), result_json, paths[0].length ());
-	  if (error_code != NO_ERROR)
-	    {
-	      return error_code;
-	    }
-	}
+        {
+          error_code = db_json_get_json_from_str (paths[0].c_str (), result_json, paths[0].length ());
+          if (error_code != NO_ERROR)
+            {
+              return error_code;
+            }
+        }
       return result_json ? db_make_json (result, result_json, true) : db_make_null (result);
     }
 
@@ -4116,18 +4115,18 @@ db_json_search_dbval (DB_VALUE *result, DB_VALUE *args[], const int num_args)
   for (size_t i = 0; i < paths.size (); ++i)
     {
       if (wild_card_present && matches_path[i] == 0)
-	{
-	  continue;
-	}
+        {
+          continue;
+        }
 
       JSON_DOC *json_array_elem = nullptr;
 
       error_code = db_json_get_json_from_str (paths[i].c_str (), json_array_elem, paths[i].length ());
       if (error_code != NO_ERROR)
-	{
-	  db_json_delete_doc (result_json);
-	  return error_code;
-	}
+        {
+          db_json_delete_doc (result_json);
+          return error_code;
+        }
 
       db_json_add_element_to_array (result_json, json_array_elem);
 
