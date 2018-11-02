@@ -5299,7 +5299,12 @@ db_json_arrayagg_dbval_accumulate (DB_VALUE * json_db_val, DB_VALUE * json_res)
     }
 
   // get the current value
-  db_value_to_json_value (*json_db_val, val_doc);
+  error_code = db_value_to_json_value (*json_db_val, val_doc);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
 
   // append to existing document
   // allocate only first time
@@ -5355,7 +5360,12 @@ db_json_objectagg_dbval_accumulate (DB_VALUE * json_key, DB_VALUE * json_db_val,
   key_str = db_get_string (json_key);
 
   // get the current value
-  db_value_to_json_value (*json_db_val, val_doc);
+  error_code = db_value_to_json_value (*json_db_val, val_doc);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
 
   // append to existing document
   // allocate only first time
