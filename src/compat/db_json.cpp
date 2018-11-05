@@ -834,7 +834,11 @@ int JSON_SEARCHER::CallAfter (JSON_VALUE &value)
 	}
 
       int match;
-      db_string_like (&str_val, m_pattern, m_esc_char, &match);
+      error_code = db_string_like (&str_val, m_pattern, m_esc_char, &match);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
 
       if (match)
 	{
