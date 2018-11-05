@@ -34060,6 +34060,14 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
     {
       /* There is enough space. */
 
+      /* We have to check if we have an overflow key and if the btid can handle it. If not, restart the traverse. */
+      if (key_len >= BTREE_MAX_KEYLEN_INPAGE && VFID_ISNULL (&btid_int->ovfid))
+	{
+	  /* We have to restart to ensure the key is correctly handled. */
+	  search_key->result = BTREE_KEY_NOTFOUND;
+	  goto end;
+	}
+
       /* Set DELETE_FLAG in the helper structure. */
       helper->insert_helper.obj_info.mvcc_info.flags |= BTREE_OID_HAS_MVCC_INSID;
       btree_online_index_set_delete_flag_state (helper->insert_helper.obj_info.mvcc_info.insert_mvccid);
