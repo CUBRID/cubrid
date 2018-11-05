@@ -33588,6 +33588,11 @@ end:
       pgbuf_unfix_and_init (thread_p, page_found);
     }
 
+  if (prev_page != NULL && prev_page != *leaf_page)
+    {
+      pgbuf_unfix_and_init (thread_p, prev_page);
+    }
+
   return error_code;
 }
 
@@ -33618,7 +33623,6 @@ btree_key_online_index_tran_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int
   PAGE_PTR page_found = NULL;
   int offset_to_object = 0;
   BTREE_MVCC_INFO btree_mvcc_info = BTREE_MVCC_INFO_INITIALIZER;
-  PAGE_PTR prev_page = NULL;
   BTREE_NODE_TYPE node_type;
   RECDES new_record;
   PGSLOTID slotid;
@@ -33698,7 +33702,7 @@ btree_key_online_index_tran_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int
       error_code =
 	btree_find_oid_with_page_and_record (thread_p, btid_int, &helper->insert_helper.obj_info.oid, *leaf_page,
 					     helper->insert_helper.purpose, NULL, &record, &leaf_info, offset_after_key,
-					     &page_found, &prev_page, &offset_to_object, &btree_mvcc_info, &new_record);
+					     &page_found, NULL, &offset_to_object, &btree_mvcc_info, &new_record);
 
       if (error_code != NO_ERROR)
 	{
@@ -34056,6 +34060,14 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
     {
       /* There is enough space. */
 
+      /* We have to check if we have an overflow key and if the btid can handle it. If not, restart the traverse. */
+      if (key_len >= BTREE_MAX_KEYLEN_INPAGE && VFID_ISNULL (&btid_int->ovfid))
+	{
+	  /* We have to restart to ensure the key is correctly handled. */
+	  search_key->result = BTREE_KEY_NOTFOUND;
+	  goto end;
+	}
+
       /* Set DELETE_FLAG in the helper structure. */
       helper->insert_helper.obj_info.mvcc_info.flags |= BTREE_OID_HAS_MVCC_INSID;
       btree_online_index_set_delete_flag_state (helper->insert_helper.obj_info.mvcc_info.insert_mvccid);
@@ -34111,6 +34123,11 @@ end:
   if (page_found != NULL && page_found != *leaf_page)
     {
       pgbuf_unfix_and_init (thread_p, page_found);
+    }
+
+  if (prev_page != NULL && prev_page != *leaf_page)
+    {
+      pgbuf_unfix_and_init (thread_p, prev_page);
     }
 
   return error_code;
@@ -34392,6 +34409,11 @@ end:
   if (page_found != NULL && page_found != *leaf_page)
     {
       pgbuf_unfix_and_init (thread_p, page_found);
+    }
+
+  if (prev_page != NULL && prev_page != *leaf_page)
+    {
+      pgbuf_unfix_and_init (thread_p, prev_page);
     }
 
   return error_code;

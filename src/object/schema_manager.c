@@ -16432,7 +16432,7 @@ sm_load_online_index (MOP classmop, const char *constraint_name)
   HFID *hfids = NULL;
   int reverse;
   int unique_pk = 0;
-  int not_null;
+  int not_null = 0;
 
   /* Fetch the class. */
   error = au_fetch_class (classmop, &class_, AU_FETCH_UPDATE, AU_ALTER);

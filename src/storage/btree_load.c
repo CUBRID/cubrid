@@ -4511,8 +4511,12 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
       /* Assign the snapshot to the scan_cache. */
       scan_cache.mvcc_snapshot = builder_snapshot;
 
-      /* Get the BTID. */
-      btid_int.sys_btid = &(attr_info.last_classrepr->indexes->btid);
+      ret = heap_get_btid_from_index_name (thread_p, &class_oids[cur_class], bt_name, btid_int.sys_btid);
+      if (ret != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  break;
+	}
 
       /* For unique indices add to the list of btids for unique constraint checks. */
       if (BTREE_IS_UNIQUE (unique_pk))
