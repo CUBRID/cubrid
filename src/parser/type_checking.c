@@ -13025,7 +13025,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	// if the key is not of type STRING then try to cast it to STRING
 	if (!PT_IS_STRING_TYPE (key->type_enum))
 	  {
-	    arg_list = pt_wrap_with_cast_op (parser, key, PT_TYPE_VARCHAR, 0, 0, NULL);
+	    arg_list = pt_wrap_with_cast_op (parser, key, PT_TYPE_VARCHAR, TP_FLOATING_PRECISION_VALUE, 0, NULL);
 	    if (arg_list == NULL)
 	      {
 		return node;
