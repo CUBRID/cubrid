@@ -5714,23 +5714,23 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
       curr_cls_lock = (LOCK) t;
 
       if (index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
-        {
-          BTID local_btid;
-          ptr = or_unpack_btid (ptr, &local_btid);
-          if (error != NO_ERROR)
+	{
+	  BTID local_btid;
+	  ptr = or_unpack_btid (ptr, &local_btid);
+	  if (error != NO_ERROR)
 	    {
 	      btid = NULL;
 	    }
-          assert (!BTID_IS_NULL (&local_btid));
-        }
+	  assert (!BTID_IS_NULL (&local_btid));
+	}
       else
-        {
-          ptr = or_unpack_btid (ptr, btid);
-          if (error != NO_ERROR)
+	{
+	  ptr = or_unpack_btid (ptr, btid);
+	  if (error != NO_ERROR)
 	    {
 	      btid = NULL;
 	    }
-      }
+	}
     }
   else
     {
