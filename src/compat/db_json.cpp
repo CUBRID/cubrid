@@ -2038,13 +2038,13 @@ db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<std::
 	      ss << "\\.";
 	      break;
 	    case '*':
-	      if (i < wild_card.length() - 1 && wild_card[i + 1] == '*')
+	      if (i < wild_card.length () - 1 && wild_card[i + 1] == '*')
 		{
 		  // wild_card '**'. Match any string
 		  ss << "[([:alnum:]|\\.|\\[|\\])]+";
 		  ++i;
 		}
-	      else if (wild_card[i - 1] == '[')
+	      else if (i > 0 && wild_card[i - 1] == '[')
 		{
 		  // wild_card '[*]'. Match numbers only
 		  ss << "[0-9]+";
