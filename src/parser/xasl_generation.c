@@ -9199,9 +9199,6 @@ pt_to_position_regu_variable_list (PARSER_CONTEXT * parser, PT_NODE * node_list,
 
 	  if (PT_IS_HOSTVAR (node))
 	    {
-	      DB_VALUE *val;
-
-	      val = &parser->host_variables[node->info.host_var.index];
 	      if (node->data_type == NULL && parser->set_host_var == 0 && node->expected_domain != NULL
 		  && TP_DOMAIN_TYPE (node->expected_domain) != DB_TYPE_ENUMERATION)
 		{
