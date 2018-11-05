@@ -5595,6 +5595,9 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
   int stream_size = 0;
   LOCK curr_cls_lock;
 
+  // online index should have created the empty b-tree already
+  assert (index_status != SM_ONLINE_INDEX_BUILDING_IN_PROGRESS || !BTID_IS_NULL (btid));
+
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   if (pred_stream && expr_stream)
@@ -5710,10 +5713,23 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
       ptr = or_unpack_int (ptr, &t);
       curr_cls_lock = (LOCK) t;
 
-      ptr = or_unpack_btid (ptr, btid);
-      if (error != NO_ERROR)
+      if (index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
 	{
-	  btid = NULL;
+	  BTID local_btid;
+	  ptr = or_unpack_btid (ptr, &local_btid);
+	  if (error != NO_ERROR)
+	    {
+	      btid = NULL;
+	    }
+	  assert (!BTID_IS_NULL (&local_btid));
+	}
+      else
+	{
+	  ptr = or_unpack_btid (ptr, btid);
+	  if (error != NO_ERROR)
+	    {
+	      btid = NULL;
+	    }
 	}
     }
   else
