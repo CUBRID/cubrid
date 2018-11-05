@@ -13017,19 +13017,22 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
     case PT_JSON_OBJECTAGG:
       {
 	// we will have 2 arguments (key, value)
-	// the key needs to be STRING type and the value can be any type compatible with JSON type
 
-	// check key
 	PT_NODE *key = arg_list;
+	// value can be any type compatible with JSON type
 	PT_NODE *value = arg_list->next;
 
-	arg_list = pt_wrap_with_cast_op (parser, key, PT_TYPE_VARCHAR, 0, 0, NULL);
-	if (arg_list == NULL)
+	// if the key is not of type STRING then try to cast it to STRING
+	if (!PT_IS_STRING_TYPE (key->type_enum))
 	  {
-	    return node;
+	    arg_list = pt_wrap_with_cast_op (parser, key, PT_TYPE_VARCHAR, 0, 0, NULL);
+	    if (arg_list == NULL)
+	      {
+		return node;
+	      }
+
+	    node->info.function.arg_list = arg_list;
 	  }
-	arg_type = PT_TYPE_VARCHAR;
-	node->info.function.arg_list = arg_list;
 
 	// check value
 	bool is_supported = pt_is_json_value_type (value->type_enum);
