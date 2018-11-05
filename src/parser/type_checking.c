@@ -13017,18 +13017,21 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
     case PT_JSON_OBJECTAGG:
       {
 	// we will have 2 arguments (key, value)
-	// the key needs to be STRING type and the value can be any type compatible with JSON type
 
-	// check key
 	PT_NODE *key = arg_list;
+	// value can be any type compatible with JSON type
 	PT_NODE *value = arg_list->next;
 
+	// if the key is not of type STRING then try to cast it to STRING
 	if (!PT_IS_STRING_TYPE (key->type_enum))
 	  {
-	    arg_type = PT_TYPE_NONE;
-	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
-			 pt_show_function (fcode), pt_show_type_enum (key->type_enum));
-	    break;
+	    arg_list = pt_wrap_with_cast_op (parser, key, PT_TYPE_VARCHAR, TP_FLOATING_PRECISION_VALUE, 0, NULL);
+	    if (arg_list == NULL)
+	      {
+		return node;
+	      }
+
+	    node->info.function.arg_list = arg_list;
 	  }
 
 	// check value
