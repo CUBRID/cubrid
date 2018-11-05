@@ -497,12 +497,12 @@ class JSON_DUPLICATE_KEYS_CHECKER : public JSON_WALKER
 class JSON_SEARCHER : public JSON_WALKER
 {
   public:
-    JSON_SEARCHER (std::string starting_path, const DB_VALUE *pattern, const DB_VALUE *esc_char, bool find_all,
+    JSON_SEARCHER (const std::string &starting_path, const DB_VALUE *pattern, const DB_VALUE *esc_char, bool find_all,
 		   std::vector<std::string> &paths)
-      : m_starting_path (std::move (starting_path))
+      : m_starting_path (starting_path)
       , m_found_paths (paths)
       , m_find_all (find_all)
-      , m_skip_search (false)
+      , m_skip_other_matches (false)
       , m_pattern (pattern)
       , m_esc_char (esc_char)
     {
@@ -520,10 +520,10 @@ class JSON_SEARCHER : public JSON_WALKER
 
     std::stack<unsigned int> m_index;
     std::vector <std::string> path_items;
-    std::string m_starting_path;
+    const std::string &m_starting_path;
     std::vector<std::string> &m_found_paths;
     bool m_find_all;
-    bool m_skip_search;
+    bool m_skip_other_matches;
     const DB_VALUE *m_pattern;
     const DB_VALUE *m_esc_char;
 };
@@ -795,7 +795,7 @@ int JSON_DUPLICATE_KEYS_CHECKER::CallBefore (JSON_VALUE &value)
 
 int JSON_SEARCHER::CallBefore (JSON_VALUE &value)
 {
-  if (m_skip_search)
+  if (m_skip_other_matches)
     {
       return NO_ERROR;
     }
@@ -815,7 +815,7 @@ int JSON_SEARCHER::CallBefore (JSON_VALUE &value)
 
 int JSON_SEARCHER::CallAfter (JSON_VALUE &value)
 {
-  if (m_skip_search)
+  if (m_skip_other_matches)
     {
       return NO_ERROR;
     }
@@ -852,7 +852,9 @@ int JSON_SEARCHER::CallAfter (JSON_VALUE &value)
 
 	  if (!m_find_all)
 	    {
-	      m_skip_search = true;
+	      m_skip_other_matches = true;
+	      // todo: change WalkValue() to stop search after first matching value is found;
+	      // in current implementation full search pointless search is performed
 	    }
 	}
     }
@@ -872,6 +874,11 @@ int JSON_SEARCHER::CallAfter (JSON_VALUE &value)
 
 int JSON_SEARCHER::CallOnKeyIterate (JSON_VALUE &key)
 {
+  if (m_skip_other_matches)
+    {
+      return NO_ERROR;
+    }
+
   std::string path_item = ".";
   path_item += key.GetString ();
 
@@ -881,6 +888,11 @@ int JSON_SEARCHER::CallOnKeyIterate (JSON_VALUE &key)
 
 int JSON_SEARCHER::CallOnArrayIterate ()
 {
+  if (m_skip_other_matches)
+    {
+      return NO_ERROR;
+    }
+
   std::string path_item = "[";
   path_item += std::to_string (m_index.top ()++);
   path_item += "]";
