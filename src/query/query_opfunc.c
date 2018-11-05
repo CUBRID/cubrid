@@ -554,7 +554,7 @@ qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p, VALPTR_LIST * valptr_l
 
 	  if ((tuple_record_p->size - toffset) < n_size)
 	    {
-	      /* no space left in tuple to put next item, increase the tuple size by the max of n_size and DB_PAGE_SIZE 
+	      /* no space left in tuple to put next item, increase the tuple size by the max of n_size and DB_PAGE_SIZE
 	       * since we can't compute the actual tuple size without re-evaluating the expressions.  This guarantees
 	       * that we can at least get the next value into the tuple. */
 	      tpl_size = MAX (tuple_record_p->size, QFILE_TUPLE_LENGTH_SIZE);
@@ -6622,19 +6622,26 @@ qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMUL
 {
   DB_VALUE squared;
   bool copy_operator = false;
-  int coll_id;
+  int coll_id = -1;
 
   if (DB_IS_NULL (value))
     {
       return NO_ERROR;
     }
 
-  coll_id = domain->value_dom->collation_id;
+  if (domain != NULL && domain->value_dom != NULL)
+    {
+      coll_id = domain->value_dom->collation_id;
+    }
 
   /* aggregate new value */
   switch (func_type)
     {
     case PT_MIN:
+      if (coll_id == -1)
+	{
+	  return ER_FAILED;
+	}
       if (acc->curr_cnt < 1 || (*(domain->value_dom->type->cmpval)) (acc->value, value, 1, 1, NULL, coll_id) > 0)
 	{
 	  /* we have new minimum */
@@ -6643,6 +6650,10 @@ qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMUL
       break;
 
     case PT_MAX:
+      if (coll_id == -1)
+	{
+	  return ER_FAILED;
+	}
       if (acc->curr_cnt < 1 || (*(domain->value_dom->type->cmpval)) (acc->value, value, 1, 1, NULL, coll_id) < 0)
 	{
 	  /* we have new maximum */
@@ -6915,7 +6926,7 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	  continue;
 	}
 
-      /* 
+      /*
        * the value of groupby_num() remains unchanged;
        * it will be changed while evaluating groupby_num predicates
        * against each group at 'xs_eval_grbynum_pred()'
@@ -6954,7 +6965,7 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	    }
 	}
 
-      /* 
+      /*
        * eliminate null values
        * consider only the first argument, because for the rest will depend on the function
        */
@@ -6993,7 +7004,7 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	}
 
       /*
-       * for JSON_OBJECTAGG, we wrap the second argument with a null JSON only if the value is NULL 
+       * for JSON_OBJECTAGG, we wrap the second argument with a null JSON only if the value is NULL
        */
       if (agg_p->function == PT_JSON_OBJECTAGG)
 	{
@@ -7003,7 +7014,7 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	    }
 	}
 
-      /* 
+      /*
        * handle distincts by inserting each operand into a list file,
        * which will be distinct-ified and counted/summed/averaged
        * in qdata_finalize_aggregate_list ()
@@ -7934,7 +7945,7 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	}
 
       /* Resolve the final result of aggregate function. Since the evaluation value might be changed to keep the
-       * precision during the aggregate function evaluation, for example, use DOUBLE instead FLOAT, we need to cast the 
+       * precision during the aggregate function evaluation, for example, use DOUBLE instead FLOAT, we need to cast the
        * result to the original domain. */
       if (agg_p->function == PT_SUM && agg_p->domain != agg_p->accumulator_domain.value_dom)
 	{
@@ -8324,7 +8335,7 @@ qdata_convert_dbvals_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype, REGU_VARIAB
       goto error;
     }
 
-  /* 
+  /*
    * DON'T set the "set"'s domain if it's really a vobj; they don't
    * play by quite the same rules.  The domain coming in here is some
    * flavor of vobj domain,  which is definitely *not* what the
@@ -8358,7 +8369,7 @@ qdata_convert_dbvals_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype, REGU_VARIAB
        * clone/free. */
       error_code = setobj_put_value (setobj_p, n, &dbval);
 
-      /* 
+      /*
        * if we attempt to add a duplicate value to a set,
        * clear the value, but do not set an error code
        */
@@ -8709,7 +8720,7 @@ qdata_convert_table_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype, REGU_VARIABL
       return ER_FAILED;
     }
 
-  /* 
+  /*
    * Don't need to worry about the vobj case here; this function can't
    * be called in a context where it's expected to produce a vobj.  See
    * xd_dbvals_to_set for the contrasting case.
@@ -8752,13 +8763,13 @@ qdata_convert_table_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype, REGU_VARIABL
 		}
 	    }
 
-	  /* 
+	  /*
 	   * using setobj_put_value transfers "ownership" of the
 	   * db_value memory to the set. This avoids a redundant clone/free.
 	   */
 	  error = setobj_put_value (setobj_p, seq_pos++, &dbval);
 
-	  /* 
+	  /*
 	   * if we attempt to add a duplicate value to a set,
 	   * clear the value, but do not set an error
 	   */
@@ -10245,7 +10256,7 @@ qdata_elt (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_
       goto error_exit;
     }
 
-  /* 
+  /*
    * operand should already be cast to the right type (CHAR
    * or NCHAR VARYING)
    */
@@ -10798,7 +10809,7 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, V
 
 	  if (TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (opr_dbval_p)))
 	    {
-	      /* char types default to double; coerce here so we don't mess up the accumulator when we copy the operand 
+	      /* char types default to double; coerce here so we don't mess up the accumulator when we copy the operand
 	       */
 	      if (tp_value_coerce (&dbval, &dbval, func_p->domain) != DOMAIN_COMPATIBLE)
 		{
@@ -11492,7 +11503,7 @@ qdata_finalize_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, b
 	  goto error;
 	}
 
-      /* compute VAR(X) = SUM(X^2)/(n) - AVG(X) * {SUM(X) / (n)} OR VAR(X) = SUM(X^2)/(n-1) - AVG(X) * {SUM(X) / (n-1)} 
+      /* compute VAR(X) = SUM(X^2)/(n) - AVG(X) * {SUM(X) / (n)} OR VAR(X) = SUM(X^2)/(n-1) - AVG(X) * {SUM(X) / (n-1)}
        * for xxx_SAMP aggregates */
       if (qdata_subtract_dbval (&x2avgval, &xavg2val, &varval, double_domain_ptr) != NO_ERROR)
 	{

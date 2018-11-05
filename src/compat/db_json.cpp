@@ -1752,8 +1752,8 @@ db_json_resolve_json_parent (JSON_DOC &doc, const std::string &path, JSON_VALUE 
   std::size_t found = path.find_last_of ('/');
   if (found == std::string::npos)
     {
-      assert (false);
-      return ER_FAILED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
+      return ER_JSON_INVALID_PATH;
     }
 
   // parent pointer
@@ -2036,6 +2036,7 @@ db_json_search_func (JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALUE *esc
 
       bool found = false;
       error_code = db_json_search_helper (*resolved, pattern, esc_char, find_all, starting_path, found, paths);
+      db_json_delete_doc (resolved);
       if (error_code != NO_ERROR)
 	{
 	  return error_code;
@@ -2170,15 +2171,13 @@ db_json_array_insert_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw
     }
 
   JSON_POINTER p (json_pointer_string.c_str ());
-  JSON_VALUE *resulting_json = NULL;
-
   if (!p.IsValid ())
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
       return ER_JSON_INVALID_PATH;
     }
 
-  resulting_json = p.Get (doc);
+  JSON_VALUE *resulting_json = p.Get (doc);
   if (resulting_json != NULL)
     {
       // need to shift any following values to the right
@@ -3267,55 +3266,6 @@ db_json_pretty_func (const JSON_DOC &doc, char *&result_str)
 }
 
 /*
- * db_json_arrayagg_func_accumulate () - Appends the value to the result_json
- *
- * return                  : void
- * value (in)              : value to append
- * result_json (in)        : the document where we want to append
- * expand (in)             : expand will be true only when aggregate 2 accumulators
- */
-void
-db_json_arrayagg_func_accumulate (const JSON_DOC *value, JSON_DOC &result_json)
-{
-  DB_JSON_TYPE result_json_type = db_json_get_type (&result_json);
-
-  // only the first time the result_json will have DB_JSON_NULL type
-  if (result_json_type == DB_JSON_TYPE::DB_JSON_NULL)
-    {
-      result_json.SetArray ();
-    }
-
-  assert (result_json.IsArray ());
-
-  JSON_VALUE value_copy (*value, result_json.GetAllocator ());
-  result_json.PushBack (value_copy, result_json.GetAllocator ());
-}
-
-/*
- * db_json_objectagg_func_accumulate () - Inserts a (key, value) pair in the result_json
- *
- * return                  : void
- * key_str (in)            : the key string
- * val_doc (in)            : the value document
- * result_json (in)        : the document where we want to insert
- */
-void
-db_json_objectagg_func_accumulate (const char *key_str, const JSON_DOC *val_doc, JSON_DOC &result_json)
-{
-  DB_JSON_TYPE result_json_type = db_json_get_type (&result_json);
-
-  // only the first time the result_json will have DB_JSON_NULL type
-  if (result_json_type == DB_JSON_TYPE::DB_JSON_NULL)
-    {
-      result_json.SetObject ();
-    }
-
-  assert (result_json.IsObject ());
-
-  db_json_add_member_to_object (&result_json, key_str, val_doc);
-}
-
-/*
  * db_json_keys_func () - Returns the keys from the top-level value of a JSON object as a JSON array
  *
  * return                  : error code
@@ -3590,6 +3540,82 @@ bool db_json_doc_is_uncomparable (const JSON_DOC *doc)
   DB_JSON_TYPE type = db_json_get_type (doc);
 
   return (type == DB_JSON_ARRAY || type == DB_JSON_OBJECT);
+}
+
+/* db_value_to_json_doc - create a JSON_DOC from db_value.
+ *
+ * return     : error code
+ * db_val(in) : input db_value
+ * json_doc(out) : output JSON_DOC pointer
+ */
+int
+db_value_to_json_doc (const DB_VALUE &db_val, REFPTR (JSON_DOC, json_doc))
+{
+  int error_code = NO_ERROR;
+
+  json_doc = NULL;
+  switch (DB_VALUE_DOMAIN_TYPE (&db_val))
+    {
+    case DB_TYPE_CHAR:
+    case DB_TYPE_VARCHAR:
+    case DB_TYPE_NCHAR:
+    case DB_TYPE_VARNCHAR:
+      error_code = db_json_get_json_from_str (db_get_string (&db_val), json_doc, db_get_string_size (&db_val));
+      if (error_code != NO_ERROR)
+	{
+	  assert (json_doc == NULL);
+	  ASSERT_ERROR ();
+	}
+      return error_code;
+
+    case DB_TYPE_JSON:
+      json_doc = db_json_get_copy_of_doc (db_val.data.json.document);
+      return NO_ERROR;
+
+    case DB_TYPE_NULL:
+      json_doc = db_json_allocate_doc ();
+      return NO_ERROR;
+
+    default:
+      // todo: more specific error
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
+      return ER_QSTR_INVALID_DATA_TYPE;
+    }
+}
+
+/* db_value_to_json_value - create a JSON_DOC treated as JSON_VALUE from db_value.
+ *
+ * return     : error code
+ * db_val(in) : input db_value
+ * json_val(out) : output JSON_DOC pointer
+ */
+int
+db_value_to_json_value (const DB_VALUE &db_val, REFPTR (JSON_DOC, json_val))
+{
+  json_val = NULL;
+  switch (DB_VALUE_DOMAIN_TYPE (&db_val))
+    {
+    case DB_TYPE_CHAR:
+    case DB_TYPE_VARCHAR:
+    case DB_TYPE_NCHAR:
+    case DB_TYPE_VARNCHAR:
+      json_val = db_json_allocate_doc ();
+      db_json_set_string_to_doc (json_val, db_get_string (&db_val));
+      return NO_ERROR;
+
+    default:
+      DB_VALUE dest;
+      TP_DOMAIN_STATUS status = tp_value_cast (&db_val, &dest, &tp_Json_domain, false);
+      if (status != DOMAIN_COMPATIBLE)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
+	  return ER_QSTR_INVALID_DATA_TYPE;
+	}
+
+      json_val = db_get_json_document (&dest);
+    }
+
+  return NO_ERROR;
 }
 
 /*

@@ -10258,6 +10258,12 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
 	  continue;
 	}
 
+      if (index->index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+	{
+	  /* Skip for online index in loading phase. */
+	  continue;
+	}
+
       COPY_OID (&pruned_oid, &class_oid);
       HFID_COPY (&pruned_hfid, &class_hfid);
       BTID_COPY (&btid, &index->btid);
@@ -10479,6 +10485,12 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
       index = &(index_attr_info->last_classrepr->indexes[i]);
       if (!btree_is_unique_type (index->type))
 	{
+	  continue;
+	}
+
+      if (index->index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+	{
+	  /* Skip for online index in loading phase. */
 	  continue;
 	}
 
@@ -18466,6 +18478,14 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 	  continue;
 	}
 
+      if (agg_p->function == PT_JSON_ARRAYAGG || agg_p->function == PT_JSON_OBJECTAGG)
+	{
+	  /* PT_JSON_ARRAYAGG and PT_JSON_OBJECTAGG always have the same signature */
+	  agg_p->accumulator_domain.value_dom = &tp_Json_domain;
+	  agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
+	  continue;
+	}
+
       /* fetch function operand */
       if (fetch_peek_dbval (thread_p, &agg_p->operands->value, &xasl_state->vd, NULL, NULL, NULL, &dbval) != NO_ERROR)
 	{
@@ -18516,8 +18536,6 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 	    case PT_AGG_BIT_XOR:
 	    case PT_MIN:
 	    case PT_MAX:
-	    case PT_JSON_ARRAYAGG:
-	    case PT_JSON_OBJECTAGG:
 	      agg_p->accumulator_domain.value_dom = agg_p->domain;
 	      agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
 	      break;

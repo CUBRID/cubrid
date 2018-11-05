@@ -17280,7 +17280,7 @@ reserved_func
 			  }
 
 			PT_NODE *extract_expr = parser_make_expression (this_parser, PT_JSON_EXTRACT, $1, matcher, NULL);			
-			PT_NODE *expr = parser_make_expression (this_parser, PT_JSON_EXTRACT, extract_expr, NULL, NULL);
+			PT_NODE *expr = parser_make_expression (this_parser, PT_JSON_UNQUOTE, extract_expr, NULL, NULL);
 
 			$$ = expr;
 		DBG_PRINT}}
