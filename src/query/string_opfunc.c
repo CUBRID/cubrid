@@ -8130,6 +8130,7 @@ is_str_find_all (DB_VALUE * val, bool & find_all)
     {
       return ER_QSTR_INVALID_DATA_TYPE;
     }
+  return NO_ERROR;
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)
