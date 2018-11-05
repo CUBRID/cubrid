@@ -3582,21 +3582,6 @@ db_value_to_json_value (const DB_VALUE &db_val, REFPTR (JSON_DOC, json_val))
       db_json_set_string_to_doc (json_val, db_get_string (&db_val));
       break;
 
-    case DB_TYPE_INTEGER:
-      json_val = db_json_allocate_doc ();
-      db_json_set_int_to_doc (json_val, db_get_int (&db_val));
-      break;
-
-    case DB_TYPE_BIGINT:
-      json_val = db_json_allocate_doc ();
-      db_json_set_bigint_to_doc (json_val, db_get_bigint (&db_val));
-      break;
-
-    case DB_TYPE_DOUBLE:
-      json_val = db_json_allocate_doc ();
-      db_json_set_double_to_doc (json_val, db_get_double (&db_val));
-      break;
-
     default:
       DB_VALUE dest;
       TP_DOMAIN_STATUS status = tp_value_cast (&db_val, &dest, &tp_Json_domain, false);
