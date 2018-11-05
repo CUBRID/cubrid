@@ -13064,21 +13064,28 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  {
 	    // save next node since pt_wrap_with_cast_op will set next to NULL
 	    arg_next = arg->next;
+	    new_arg_curr = arg;
 
 	    if (index % 2 == 0)
 	      {
-		PT_NODE *tmp = pt_wrap_with_cast_op (parser, arg, PT_TYPE_VARCHAR, 0, 0, NULL);
-		if (tmp == NULL)
+		if (!PT_IS_STRING_TYPE (arg->type_enum))
 		  {
-		    return node;
+		    PT_NODE *tmp =
+		      pt_wrap_with_cast_op (parser, arg, PT_TYPE_VARCHAR, TP_FLOATING_PRECISION_VALUE, 0, NULL);
+		    if (tmp == NULL)
+		      {
+			return node;
+		      }
+
+		    // override new_arg_curr in case a cast node is added
+		    new_arg_curr = tmp;
 		  }
+
 		is_supported = true;
-		new_arg_curr = tmp;
 	      }
 	    else
 	      {
 		is_supported = pt_is_json_value_type (arg->type_enum);
-		new_arg_curr = arg;
 	      }
 
 	    if (!is_supported)
@@ -13087,15 +13094,19 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 		break;
 	      }
 
+	    // initialize new_arg_list only first time
 	    if (!new_arg_list_inited)
 	      {
 		new_arg_list_head = new_arg_curr;
 		new_arg_list_inited = true;
 	      }
+
+	    // set next link of the prev node to curr one for the new list
 	    if (new_arg_prev != NULL)
 	      {
 		new_arg_prev->next = new_arg_curr;
 	      }
+
 	    new_arg_prev = new_arg_curr;
 	    arg = arg_next;
 	    index++;
