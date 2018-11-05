@@ -26869,7 +26869,6 @@ parser_keyword_func (const char *name, PT_NODE * args)
        return node;
     case PT_JSON_TYPE:
     case PT_JSON_VALID:
-    case PT_JSON_LENGTH:
     case PT_JSON_DEPTH:
     case PT_JSON_PRETTY:
     case PT_JSON_QUOTE:
@@ -26965,6 +26964,17 @@ parser_keyword_func (const char *name, PT_NODE * args)
             a3->next = NULL;
           }
       node = parser_make_expression (this_parser, key->op, a1, a2, a3);
+      return node;
+
+    case PT_JSON_LENGTH:
+      if (c != 1 && c != 2)
+          return NULL;
+
+      a1 = args;
+      a2 = a1->next;
+      a1->next = NULL;
+
+      node = parser_make_expression (this_parser, key->op, a1, a2, NULL);
       return node;
 
     default:
