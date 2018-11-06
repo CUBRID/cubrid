@@ -14734,14 +14734,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	      goto error_exit;
 	    }
 
-	  /* If we have an online index, we need to change the constraint to SM_ONLINE_INDEX_BUILDING_DONE, and 
-	   * remove the old one from the property list. We also do not want to do some later checks.
-	   */
-
-	  // TODO: Why do we remove and add it rather than just change the property?
-	  error = smt_add_constraint (def, constraint_type, constraint_name, att_names, asc_desc, attrs_prefix_length,
-				      class_attributes, NULL, filter_index, function_index, comment,
-				      SM_ONLINE_INDEX_BUILDING_DONE);
+          error = smt_change_constraint_status (def, constraint_name, SM_NORMAL_INDEX);
 	  if (error != NO_ERROR)
 	    {
 	      smt_quit (def);
