@@ -14646,10 +14646,10 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 
       error = sm_partitioned_class_type (classop, &partition_type, NULL, &sub_partitions);
       if (error != NO_ERROR)
-        {
-          smt_quit (def);
-          goto error_exit;
-        }
+	{
+	  smt_quit (def);
+	  goto error_exit;
+	}
 
       // create local indexes on partitions
       if (is_secondary_index)
