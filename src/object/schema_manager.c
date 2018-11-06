@@ -14734,7 +14734,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	      goto error_exit;
 	    }
 
-          error = smt_change_constraint_status (def, constraint_name, SM_NORMAL_INDEX);
+	  error = smt_change_constraint_status (def, constraint_name, SM_NORMAL_INDEX);
 	  if (error != NO_ERROR)
 	    {
 	      smt_quit (def);
