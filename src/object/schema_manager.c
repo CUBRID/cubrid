@@ -14593,6 +14593,8 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
   MOP newmop = NULL;
   bool needs_hierarchy_lock;
   bool set_savepoint = false;
+  int partition_type;
+  MOP *sub_partitions = NULL;
 
   if (att_names == NULL)
     {
@@ -14642,19 +14644,16 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	  goto error_exit;
 	}
 
+      error = sm_partitioned_class_type (classop, &partition_type, NULL, &sub_partitions);
+      if (error != NO_ERROR)
+	{
+	  smt_quit (def);
+	  goto error_exit;
+	}
+
       // create local indexes on partitions
       if (is_secondary_index)
 	{
-	  MOP *sub_partitions = NULL;
-	  int partition_type;
-
-	  error = sm_partitioned_class_type (classop, &partition_type, NULL, &sub_partitions);
-	  if (error != NO_ERROR)
-	    {
-	      smt_quit (def);
-	      goto error_exit;
-	    }
-
 	  if (partition_type == DB_PARTITIONED_CLASS)
 	    {
 	      // prefix index is not allowed on partition
@@ -14712,7 +14711,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	  goto error_exit;
 	}
 
-      if (index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+      if (index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS && partition_type != DB_PARTITION_CLASS)
 	{
 	  // Load index phase.
 	  error = sm_load_online_index (newmop, constraint_name);
