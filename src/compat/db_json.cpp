@@ -2021,6 +2021,7 @@ db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<std::
   for (auto &wild_card : paths)
     {
       std::stringstream ss;
+      ss << '"';
       for (size_t i = 0; i < wild_card.length (); ++i)
 	{
 	  switch (wild_card[i])
@@ -2032,7 +2033,7 @@ db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<std::
 	      ss << "\\[";
 	      break;
 	    case ']':
-	      ss << "\\[";
+	      ss << "\\]";
 	      break;
 	    case '.':
 	      ss << "\\.";
@@ -2060,7 +2061,7 @@ db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<std::
 	      break;
 	    }
 	}
-      ss << "[^[:space:]]*";
+      ss << "[^[:space:]]*" << '"';
 
       try
 	{
@@ -2069,6 +2070,7 @@ db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<std::
       catch (std::regex_error &e)
 	{
 	  // regex compilation exception
+	  assert (false);
 	  return ER_FAILED;
 	}
     }

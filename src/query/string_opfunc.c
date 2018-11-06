@@ -4014,11 +4014,11 @@ db_json_search_dbval (DB_VALUE *result, DB_VALUE *args[], const int num_args)
         }
     }
 
-  for (size_t i = 0; i<paths.size (); ++i)
+  for (size_t i = 0; i < paths.size (); ++i)
     {
       for (auto &reg : regs)
         {
-          matches_path[i] |= (int) std::regex_match (paths[i].substr (1, paths[i].size () - 2), reg);
+          matches_path[i] |= (int) std::regex_match (paths[i], reg);
         }
     }
 
