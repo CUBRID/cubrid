@@ -2583,7 +2583,6 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
     }
 
-
   if (er_errid () != NO_ERROR && prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
     {
       er_clear ();
@@ -4784,7 +4783,6 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1, const DB_VALUE * va
       d3 = (double) (db_get_timestamptz (value3)->timestamp);
       break;
 
-
     case DB_TYPE_TIME:
       d1 = (double) *db_get_time (value1);
       d2 = (double) *db_get_time (value2);
@@ -5278,7 +5276,6 @@ db_json_pretty_dbval (DB_VALUE * json, DB_VALUE * res)
 	  return error_code;
 	}
 
-
       // db_json_pretty_func uses strdup, therefore set need_clear flag
       res->need_clear = true;
     }
@@ -5302,7 +5299,12 @@ db_json_arrayagg_dbval_accumulate (DB_VALUE * json_db_val, DB_VALUE * json_res)
     }
 
   // get the current value
-  db_value_to_json_value (*json_db_val, val_doc);
+  error_code = db_value_to_json_value (*json_db_val, val_doc);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
 
   // append to existing document
   // allocate only first time
@@ -5358,7 +5360,12 @@ db_json_objectagg_dbval_accumulate (DB_VALUE * json_key, DB_VALUE * json_db_val,
   key_str = db_get_string (json_key);
 
   // get the current value
-  db_value_to_json_value (*json_db_val, val_doc);
+  error_code = db_value_to_json_value (*json_db_val, val_doc);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
 
   // append to existing document
   // allocate only first time
