@@ -2017,6 +2017,78 @@ db_json_remove_func (JSON_DOC &doc, const char *raw_path)
 }
 
 /*
+ * db_json_paths_to_regex ()
+ *
+ * transform path strings into regexes by escaping special characters '$', '[', '.', ']' and
+ * replace [*], .*, ** with patterns that match accordingly
+ *
+ * paths (in): json path strings
+ * regs (in/out): resulting regexes
+ *
+ */
+int
+db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<std::regex> &regs)
+{
+  for (auto &wild_card : paths)
+    {
+      std::stringstream ss;
+      ss << '"';
+      for (size_t i = 0; i < wild_card.length (); ++i)
+	{
+	  switch (wild_card[i])
+	    {
+	    case '$':
+	      ss << "\\$";
+	      break;
+	    case '[':
+	      ss << "\\[";
+	      break;
+	    case ']':
+	      ss << "\\]";
+	      break;
+	    case '.':
+	      ss << "\\.";
+	      break;
+	    case '*':
+	      if (i < wild_card.length () - 1 && wild_card[i + 1] == '*')
+		{
+		  // wild_card '**'. Match any string
+		  ss << "[([:alnum:]|\\.|\\[|\\])]+";
+		  ++i;
+		}
+	      else if (i > 0 && wild_card[i - 1] == '[')
+		{
+		  // wild_card '[*]'. Match numbers only
+		  ss << "[0-9]+";
+		}
+	      else
+		{
+		  // wild_card '.*'. Match alphanumerics only
+		  ss << "[[:alnum:]]+";
+		}
+	      break;
+	    default:
+	      ss << wild_card[i];
+	      break;
+	    }
+	}
+      ss << "[^[:space:]]*" << '"';
+
+      try
+	{
+	  regs.push_back (std::regex (ss.str ()));
+	}
+      catch (std::regex_error &e)
+	{
+	  // regex compilation exception
+	  assert (false);
+	  return ER_FAILED;
+	}
+    }
+  return NO_ERROR;
+}
+
+/*
  * db_json_search_func () - Find json values that match the pattern and gather their paths
  *
  * return                  : error code
@@ -2033,6 +2105,7 @@ db_json_search_func (JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALUE *esc
   for (auto &starting_path : starting_paths)
     {
       JSON_DOC *resolved = nullptr;
+      // todo: improve by avoiding copying a sub-document into resolved
       int error_code = db_json_extract_document_from_path (&doc, starting_path.c_str (), resolved);
 
       if (error_code != NO_ERROR)
