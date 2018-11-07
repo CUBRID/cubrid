@@ -1914,12 +1914,6 @@ heap_classrepr_free (THREAD_ENTRY * thread_p, OR_CLASSREP * classrep, int *idx_i
   /*
    * Is this entry declared to be decached
    */
-#ifdef DEBUG_CLASSREPR_CACHE
-  rv = pthread_mutex_lock (&heap_Classrepr_cache.num_fix_entries_mutex);
-  heap_Classrepr_cache.num_fix_entries--;
-  pthread_mutex_unlock (&heap_Classrepr_cache.num_fix_entries_mutex);
-#endif /* DEBUG_CLASSREPR_CACHE */
-
   if (HEAP_CLASSREPR_CACHE_HAS_FORCE_DECACHE_FLAG (new_fcnt_with_version_and_flags))
     {
       /* The cache_entry is already removed from LRU list. I'm the last thread accessing the cache
@@ -2332,13 +2326,6 @@ heap_classrepr_get (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * cla
       repr = heap_get_classrepr_by_transaction_info (thread_p, tdes, class_oid, reprid, idx_incache);
       if (repr != NULL)
 	{
-#ifdef DEBUG_CLASSREPR_CACHE
-	  r = pthread_mutex_lock (&heap_Classrepr_cache.num_fix_entries_mutex);
-	  heap_Classrepr_cache.num_fix_entries++;
-	  pthread_mutex_unlock (&heap_Classrepr_cache.num_fix_entries_mutex);
-
-#endif /* DEBUG_CLASSREPR_CACHE */
-
 	  return repr;
 	}
     }
@@ -2542,13 +2529,6 @@ search_begin:
 	}
 
       cache_entry->class_oid = *class_oid;
-#ifdef DEBUG_CLASSREPR_CACHE
-      r = pthread_mutex_lock (&heap_Classrepr_cache.num_fix_entries_mutex);
-      heap_Classrepr_cache.num_fix_entries++;
-      pthread_mutex_unlock (&heap_Classrepr_cache.num_fix_entries_mutex);
-
-#endif /* DEBUG_CLASSREPR_CACHE */
-
       assert (tdes->ref_classrep_entry_fix_cnt == 0 || tdes->ref_classrep_entry != cache_entry);
       if (!heap_fix_classrep_cache_entry (thread_p, tdes, cache_entry, true, &is_fix_pinned))
 	{
@@ -24995,6 +24975,13 @@ heap_fix_classrep_cache_entry (THREAD_ENTRY * thread_p, LOG_TDES * tdes, void *c
       tdes->ref_classrep_entry_fix_cnt = tdes->ref_classrep_entry_fix_cnt + 1;
     }
 
+#ifdef DEBUG_CLASSREPR_CACHE
+  r = pthread_mutex_lock (&heap_Classrepr_cache.num_fix_entries_mutex);
+  heap_Classrepr_cache.num_fix_entries++;
+  pthread_mutex_unlock (&heap_Classrepr_cache.num_fix_entries_mutex);
+
+#endif /* DEBUG_CLASSREPR_CACHE */
+
   return true;
 }
 
@@ -25057,6 +25044,12 @@ heap_unfix_classrep_cache_entry (THREAD_ENTRY * thread_p, LOG_TDES * tdes, HEAP_
     {
       tdes->ref_classrep_entry_fix_cnt = tdes->ref_classrep_entry_fix_cnt - 1;
     }
+
+#ifdef DEBUG_CLASSREPR_CACHE
+  rv = pthread_mutex_lock (&heap_Classrepr_cache.num_fix_entries_mutex);
+  heap_Classrepr_cache.num_fix_entries--;
+  pthread_mutex_unlock (&heap_Classrepr_cache.num_fix_entries_mutex);
+#endif /* DEBUG_CLASSREPR_CACHE */
 
   return true;
 }
@@ -25173,16 +25166,18 @@ heap_get_classrepr_by_transaction_info (THREAD_ENTRY * thread_p, LOG_TDES * tdes
       return NULL;
     }
 
-  if (heap_fix_classrep_cache_entry (thread_p, tdes, cache_entry, false, &is_fix_pinned) || is_fix_pinned)
+  if (!heap_fix_classrep_cache_entry (thread_p, tdes, cache_entry, false, &is_fix_pinned) && !is_fix_pinned)
     {
-      assert (tdes->ref_classrepr_entry_version ==
-	      HEAP_CLASSREPR_CACHE_GET_VERSION (cache_entry->fcnt_with_version_and_flags));
-
-      repr = cache_entry->repr[reprid];
-      assert (repr != NULL);
-
-      *idx_incache = cache_entry->idx;
+      return NULL;
     }
+
+  assert (tdes->ref_classrepr_entry_version ==
+	  HEAP_CLASSREPR_CACHE_GET_VERSION (cache_entry->fcnt_with_version_and_flags));
+
+  repr = cache_entry->repr[reprid];
+  assert (repr != NULL);
+
+  *idx_incache = cache_entry->idx;
 
   return repr;
 }
