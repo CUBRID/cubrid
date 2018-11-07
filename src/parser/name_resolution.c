@@ -3623,7 +3623,7 @@ pt_find_name_in_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * name)
 	  if (spec->info.spec.derived_table_type == PT_DERIVED_JSON_TABLE)
 	    {
 	      // calling default() on any json_table's columns should return NULL
-	      // set PT_NAME_REAL_TABLE flag to pass check_defaultf() 
+	      // set PT_NAME_REAL_TABLE flag to pass pt_check_defaultf() 
 	      DB_VALUE val;
 	      db_make_null (&val);
 	      name->info.name.default_value = pt_dbval_to_value (parser, &val);
