@@ -266,7 +266,9 @@ namespace cubscan
 	      cursor.delete_input_doc ();
 
 	      cursor.m_child = 0;
+	      cursor.m_need_advance_row = false;
 	      cursor.m_is_row_fetched = false;
+	      cursor.m_row_was_expanded = false;
 	    }
 
 	  m_specp->m_root_node->clear_iterators (is_final_clear);
