@@ -284,8 +284,6 @@ namespace cubscan
       int error_code = NO_ERROR;
       const JSON_DOC *document = NULL;
 
-      // so... we need to generate the whole list file
-
       // we need the starting value to expand into a list of records
       DB_VALUE *value_p = NULL;
       error_code = fetch_peek_dbval (thread_p, m_specp->m_json_reguvar, m_vd, NULL, NULL, NULL, &value_p);
@@ -294,10 +292,16 @@ namespace cubscan
 	  ASSERT_ERROR ();
 	  return error_code;
 	}
-      if (value_p == NULL || db_value_is_null (value_p))
+      if (value_p == NULL)
 	{
 	  assert (false);
 	  return ER_FAILED;
+	}
+
+      if (db_value_is_null (value_p))
+	{
+	  // input is empty
+	  return NO_ERROR;
 	}
 
       // build m_scan_cursor
