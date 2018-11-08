@@ -25069,7 +25069,7 @@ heap_classrep_cache_entry_increment_version (HEAP_CLASSREPR_ENTRY * cache_entry)
     {
       old_fcnt_with_version_and_flags = cache_entry->fcnt_with_version_and_flags;
 
-      if (HEAP_CLASSREPR_CACHE_GET_VERSION (old_fcnt_with_version_and_flags) != 0)
+      if (HEAP_CLASSREPR_CACHE_GET_FIXCNT (old_fcnt_with_version_and_flags) != 0)
 	{
 	  /* Can't increase version since someone else access the entry. */
 	  return false;
