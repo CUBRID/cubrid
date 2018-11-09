@@ -4433,6 +4433,28 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 	}
     }
 
+  if (pred_stream && pred_stream_size > 0)
+    {
+      if (stx_map_stream_to_filter_pred (thread_p, &filter_pred, pred_stream, pred_stream_size) != NO_ERROR)
+	{
+	  goto error;
+	}
+    }
+
+  if (func_pred_stream && func_pred_stream_size > 0)
+    {
+      func_index_info.expr_stream = func_pred_stream;
+      func_index_info.expr_stream_size = func_pred_stream_size;
+      func_index_info.col_id = func_col_id;
+      func_index_info.attr_index_start = func_attr_index_start;
+      func_index_info.expr = NULL;
+      if (stx_map_stream_to_func_pred (thread_p, &func_index_info.expr, func_pred_stream,
+				       func_pred_stream_size, &func_unpack_info))
+	{
+	  goto error;
+	}
+    }
+
   /* Demote the locks for classes on which we want to load indices. */
   for (cur_class = 0; cur_class < n_classes; cur_class++)
     {
@@ -4446,28 +4468,6 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   for (cur_class = 0; cur_class < n_classes; cur_class++)
     {
       attr_offset = cur_class * n_attrs;
-
-      if (pred_stream && pred_stream_size > 0)
-	{
-	  if (stx_map_stream_to_filter_pred (thread_p, &filter_pred, pred_stream, pred_stream_size) != NO_ERROR)
-	    {
-	      goto error;
-	    }
-	}
-
-      if (func_pred_stream && func_pred_stream_size > 0)
-	{
-	  func_index_info.expr_stream = func_pred_stream;
-	  func_index_info.expr_stream_size = func_pred_stream_size;
-	  func_index_info.col_id = func_col_id;
-	  func_index_info.attr_index_start = func_attr_index_start;
-	  func_index_info.expr = NULL;
-	  if (stx_map_stream_to_func_pred (thread_p, &func_index_info.expr, func_pred_stream,
-					   func_pred_stream_size, &func_unpack_info))
-	    {
-	      goto error;
-	    }
-	}
 
       /* Start scancache */
       if (heap_scancache_start (thread_p, &scan_cache, &hfids[cur_class], &class_oids[cur_class], true, false,
@@ -4556,31 +4556,6 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 	{
 	  heap_scancache_end (thread_p, &scan_cache);
 	  scan_cache_inited = false;
-	}
-      if (filter_pred != NULL)
-	{
-	  /* to clear db values from dbvalue regu variable */
-	  qexec_clear_pred_context (thread_p, filter_pred, true);
-
-	  if (filter_pred->unpack_info != NULL)
-	    {
-	      stx_free_additional_buff (thread_p, filter_pred->unpack_info);
-	      stx_free_xasl_unpack_info (filter_pred->unpack_info);
-	      db_private_free_and_init (thread_p, filter_pred->unpack_info);
-	    }
-	}
-
-      if (func_index_info.expr != NULL)
-	{
-	  (void) qexec_clear_func_pred (thread_p, func_index_info.expr);
-	  func_index_info.expr = NULL;
-	}
-
-      if (func_unpack_info != NULL)
-	{
-	  stx_free_additional_buff (thread_p, func_unpack_info);
-	  stx_free_xasl_unpack_info (func_unpack_info);
-	  db_private_free_and_init (thread_p, func_unpack_info);
 	}
     }
 
@@ -4679,6 +4654,7 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   if (list_btid != NULL)
     {
       free (list_btid);
+      list_btid = NULL;
     }
 
   LOG_CS_ENTER (thread_p);
