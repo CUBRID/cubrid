@@ -75,7 +75,6 @@ namespace cubxasl
     {
       char *m_path;
       size_t m_ordinality;                    // will be used to count the row ordinality
-      bool m_need_inc_ordinality;
       column *m_output_columns;   // columns part of output only
       size_t m_output_columns_size;
       node *m_nested_nodes;       // nested nodes
