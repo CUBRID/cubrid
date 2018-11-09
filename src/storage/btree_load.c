@@ -4407,28 +4407,6 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   btid_int.copy_buf_len = 0;
   btid_int.nonleaf_key_type = btree_generate_prefix_domain (&btid_int);
 
-  if (pred_stream && pred_stream_size > 0)
-    {
-      if (stx_map_stream_to_filter_pred (thread_p, &filter_pred, pred_stream, pred_stream_size) != NO_ERROR)
-	{
-	  goto error;
-	}
-    }
-
-  if (func_pred_stream && func_pred_stream_size > 0)
-    {
-      func_index_info.expr_stream = func_pred_stream;
-      func_index_info.expr_stream_size = func_pred_stream_size;
-      func_index_info.col_id = func_col_id;
-      func_index_info.attr_index_start = func_attr_index_start;
-      func_index_info.expr = NULL;
-      if (stx_map_stream_to_func_pred (thread_p, &func_index_info.expr, func_pred_stream,
-				       func_pred_stream_size, &func_unpack_info))
-	{
-	  goto error;
-	}
-    }
-
   /* After building index acquire lock on table, the transaction has deadlock priority */
   tdes = LOG_FIND_CURRENT_TDES (thread_p);
   if (tdes)
@@ -4469,6 +4447,28 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
     {
       attr_offset = cur_class * n_attrs;
 
+      if (pred_stream && pred_stream_size > 0)
+	{
+	  if (stx_map_stream_to_filter_pred (thread_p, &filter_pred, pred_stream, pred_stream_size) != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+
+      if (func_pred_stream && func_pred_stream_size > 0)
+	{
+	  func_index_info.expr_stream = func_pred_stream;
+	  func_index_info.expr_stream_size = func_pred_stream_size;
+	  func_index_info.col_id = func_col_id;
+	  func_index_info.attr_index_start = func_attr_index_start;
+	  func_index_info.expr = NULL;
+	  if (stx_map_stream_to_func_pred (thread_p, &func_index_info.expr, func_pred_stream,
+					   func_pred_stream_size, &func_unpack_info))
+	    {
+	      goto error;
+	    }
+	}
+
       /* Start scancache */
       if (heap_scancache_start (thread_p, &scan_cache, &hfids[cur_class], &class_oids[cur_class], true, false,
 				NULL) != NO_ERROR)
@@ -4502,12 +4502,6 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 	    }
 	}
 
-      if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
-	{
-	  _er_log_debug (ARG_FILE_LINE, "DEBUG_BTREE: load start on class(%d, %d, %d), btid(%d, (%d, %d)).",
-			 OID_AS_ARGS (&class_oids[cur_class]), BTID_AS_ARGS (btid_int.sys_btid));
-	}
-
       /* Assign the snapshot to the scan_cache. */
       scan_cache.mvcc_snapshot = builder_snapshot;
 
@@ -4524,6 +4518,12 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 	  list_btid[cur_class].root_pageid = btid_int.sys_btid->root_pageid;
 	  list_btid[cur_class].vfid.fileid = btid_int.sys_btid->vfid.fileid;
 	  list_btid[cur_class].vfid.volid = btid_int.sys_btid->vfid.volid;
+	}
+
+      if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
+	{
+	  _er_log_debug (ARG_FILE_LINE, "DEBUG_BTREE: load start on class(%d, %d, %d), btid(%d, (%d, %d)).",
+			 OID_AS_ARGS (&class_oids[cur_class]), BTID_AS_ARGS (btid_int.sys_btid));
 	}
 
       /* Start the online index builder. */
