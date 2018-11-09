@@ -300,7 +300,7 @@ namespace cubscan
 
       if (db_value_is_null (value_p))
 	{
-	  // input is empty
+	  assert (m_scan_cursor[0].m_is_node_consumed);
 	  return NO_ERROR;
 	}
 
