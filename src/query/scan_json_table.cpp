@@ -236,6 +236,7 @@ namespace cubscan
       assert (m_specp->m_node_count > 0);
 
       m_tree_height = get_tree_height (*m_specp->m_root_node);
+      m_scan_cursor_depth = 0;
 
       m_scan_cursor = new cursor[m_tree_height];
 
@@ -266,8 +267,9 @@ namespace cubscan
 	      cursor.delete_input_doc ();
 
 	      cursor.m_child = 0;
-	      cursor.m_need_advance_row = false;
 	      cursor.m_is_row_fetched = false;
+	      cursor.m_need_advance_row = false;
+	      cursor.m_is_node_consumed = true;
 	      cursor.m_row_was_expanded = false;
 	    }
 
@@ -342,6 +344,7 @@ namespace cubscan
 
       // if we gather expr from another table, for each row we need to reset the ordinality
       reset_ordinality (*m_specp->m_root_node);
+      m_scan_cursor_depth = 0;
 
       return NO_ERROR;
     }
