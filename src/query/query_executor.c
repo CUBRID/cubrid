@@ -21744,8 +21744,8 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
       comment = (char *) or_get_constraint_comment (&class_record, index->btname);
       db_make_string (out_values[12], comment);
 
-      /* Visble */
-      db_make_string_by_const_str (out_values[13], (index->index_status == OR_INVISIBLE_INDEX) ? "NO" : "YES");
+      /* Visible */
+      db_make_string_by_const_str (out_values[13], (index->index_status == OR_NORMAL_INDEX) ? "YES" : "NO");
 
       if (index->func_index_info == NULL)
 	{
