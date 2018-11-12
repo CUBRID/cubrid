@@ -54,7 +54,6 @@
 #include "elo.h"
 #include "db_elo.h"
 #include <algorithm>
-#include <vector>
 #if !defined (SERVER_MODE)
 #include "parse_tree.h"
 #include "es_common.h"
@@ -3766,6 +3765,8 @@ db_json_merge_patch (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
   return db_json_merge_helper (result, arg, num_args, true);
 }
 
+/* *INDENT-OFF* */
+
 /*
  * JSON_SEARCH (json_doc, one/all, pattern [, escape_char, path_1,... path_n])
  *
@@ -3776,9 +3777,8 @@ db_json_merge_patch (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
  * num_args (in)
  */
 
-/* *INDENT-OFF* */
 int
-db_json_search_dbval (DB_VALUE * result, DB_VALUE * args[], const int num_args)
+db_json_search_dbval (DB_VALUE *result, DB_VALUE *args[], const int num_args)
 {
   int error_code = NO_ERROR;
   JSON_DOC *doc = NULL;
@@ -3821,46 +3821,89 @@ db_json_search_dbval (DB_VALUE * result, DB_VALUE * args[], const int num_args)
     }
 
   std::vector<std::string> starting_paths;
+  bool wild_card_present = false;
   for (int i = 4; i < num_args; ++i)
     {
-      starting_paths.push_back (db_get_string (args[i]));
-    }
-  if (starting_paths.empty ())
-    {
-      starting_paths.push_back ("$");
+      std::string s (db_get_string (args[i]));
+      // todo: improve paths validation
+
+      if (s.find ("*") != std::string::npos)
+	{
+	  wild_card_present = true;
+	  // if we check against wild_cards only at the end we cannot return early when finding a json_value that matches
+	  find_all = true;
+	}
+
+      starting_paths.emplace_back (s);
     }
 
   std::vector<std::string> paths;
-  error_code = db_json_search_func (*doc, pattern, esc_char, find_all, starting_paths, paths);
+  if (wild_card_present || starting_paths.empty ())
+    {
+      std::vector<std::string> default_start_path (1, "$");
+      error_code = db_json_search_func (*doc, pattern, esc_char, find_all, default_start_path, paths);
+    }
+  else
+    {
+      error_code = db_json_search_func (*doc, pattern, esc_char, find_all, starting_paths, paths);
+    }
   db_json_delete_doc (doc);
   if (error_code != NO_ERROR)
     {
       return error_code;
     }
 
-  JSON_DOC *result_json = nullptr;
+  std::vector<int> matches_path (paths.size (), 0);
 
+  std::vector<std::regex> regs;
+  if (wild_card_present)
+    {
+      error_code = db_json_paths_to_regex (starting_paths, regs);
+      if (error_code != NO_ERROR)
+        {
+          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+          return error_code;
+        }
+    }
+
+  for (size_t i = 0; i < paths.size (); ++i)
+    {
+      for (auto &reg : regs)
+        {
+          matches_path[i] |= (int) std::regex_match (paths[i], reg);
+        }
+    }
+
+  JSON_DOC *result_json = nullptr;
   if (paths.size () == 1)
     {
-      error_code = db_json_get_json_from_str (paths[0].c_str (), result_json, paths[0].length ());
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
-	}
-      return db_make_json (result, result_json, true);
+      if (!wild_card_present || matches_path[0] == 1)
+        {
+          error_code = db_json_get_json_from_str (paths[0].c_str (), result_json, paths[0].length ());
+          if (error_code != NO_ERROR)
+            {
+              return error_code;
+            }
+        }
+      return result_json ? db_make_json (result, result_json, true) : db_make_null (result);
     }
 
   result_json = db_json_allocate_doc ();
-  for (auto &path : paths)
+  for (size_t i = 0; i < paths.size (); ++i)
     {
+      if (wild_card_present && matches_path[i] == 0)
+        {
+          continue;
+        }
+
       JSON_DOC *json_array_elem = nullptr;
 
-      error_code = db_json_get_json_from_str (path.c_str (), json_array_elem, path.length ());
+      error_code = db_json_get_json_from_str (paths[i].c_str (), json_array_elem, paths[i].length ());
       if (error_code != NO_ERROR)
-	{
+        {
           db_json_delete_doc (result_json);
-	  return error_code;
-	}
+          return error_code;
+        }
 
       db_json_add_element_to_array (result_json, json_array_elem);
 

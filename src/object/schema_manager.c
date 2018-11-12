@@ -14593,6 +14593,8 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
   MOP newmop = NULL;
   bool needs_hierarchy_lock;
   bool set_savepoint = false;
+  int partition_type;
+  MOP *sub_partitions = NULL;
 
   if (att_names == NULL)
     {
@@ -14642,19 +14644,16 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	  goto error_exit;
 	}
 
+      error = sm_partitioned_class_type (classop, &partition_type, NULL, &sub_partitions);
+      if (error != NO_ERROR)
+	{
+	  smt_quit (def);
+	  goto error_exit;
+	}
+
       // create local indexes on partitions
       if (is_secondary_index)
 	{
-	  MOP *sub_partitions = NULL;
-	  int partition_type;
-
-	  error = sm_partitioned_class_type (classop, &partition_type, NULL, &sub_partitions);
-	  if (error != NO_ERROR)
-	    {
-	      smt_quit (def);
-	      goto error_exit;
-	    }
-
 	  if (partition_type == DB_PARTITIONED_CLASS)
 	    {
 	      // prefix index is not allowed on partition
@@ -14688,11 +14687,11 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 		  goto error_exit;
 		}
 	    }
+	}
 
-	  if (sub_partitions != NULL)
-	    {
-	      free_and_init (sub_partitions);
-	    }
+      if (sub_partitions != NULL)
+	{
+	  free_and_init (sub_partitions);
 	}
 
       error = smt_add_constraint (def, constraint_type, constraint_name, att_names, asc_desc, attrs_prefix_length,
@@ -14712,7 +14711,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	  goto error_exit;
 	}
 
-      if (index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+      if (index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS && partition_type != DB_PARTITION_CLASS)
 	{
 	  // Load index phase.
 	  error = sm_load_online_index (newmop, constraint_name);
@@ -14734,14 +14733,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	      goto error_exit;
 	    }
 
-	  /* If we have an online index, we need to change the constraint to SM_ONLINE_INDEX_BUILDING_DONE, and 
-	   * remove the old one from the property list. We also do not want to do some later checks.
-	   */
-
-	  // TODO: Why do we remove and add it rather than just change the property?
-	  error = smt_add_constraint (def, constraint_type, constraint_name, att_names, asc_desc, attrs_prefix_length,
-				      class_attributes, NULL, filter_index, function_index, comment,
-				      SM_ONLINE_INDEX_BUILDING_DONE);
+	  error = smt_change_constraint_status (def, constraint_name, SM_NORMAL_INDEX);
 	  if (error != NO_ERROR)
 	    {
 	      smt_quit (def);
