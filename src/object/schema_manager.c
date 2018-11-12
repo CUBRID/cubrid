@@ -14687,11 +14687,11 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 		  goto error_exit;
 		}
 	    }
+	}
 
-	  if (sub_partitions != NULL)
-	    {
-	      free_and_init (sub_partitions);
-	    }
+      if (sub_partitions != NULL)
+	{
+	  free_and_init (sub_partitions);
 	}
 
       error = smt_add_constraint (def, constraint_type, constraint_name, att_names, asc_desc, attrs_prefix_length,
