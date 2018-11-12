@@ -14654,9 +14654,10 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 
       if (index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
 	{
-	  if (partition_type != DB_PARTITIONED_CLASS && def->current->users != NULL)
+	  if (partition_type == DB_NOT_PARTITIONED_CLASS
+	      && (def->current->users != NULL || def->current->inheritance != NULL))
 	    {
-	      // Current class is part of a hierarchy stop here and throw error as we do not support online index
+	      // Current class is part of a hierarchy stop here and throw an error as we do not support online index
 	      // for hierarchies.
 	      error = ER_SM_ONLINE_INDEX_ON_HIERARCHY;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
