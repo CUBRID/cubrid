@@ -1306,8 +1306,9 @@ $ LOADDB
 1237 Cannot change status on %1$s because %2$s is a %3$s.
 1238 Missing value for JSON_TABLE column '%1$s'.
 1239 Cannot coerce value from JSON "%1$s" at path "%2$s" to JSON_TABLE column "%3$s" of domain "%4$s". 
+1240 Online index is not allowed on classes that are part of a hierarchy chain.
 
-1240 Last Error
+1241 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error en subsistema de error (linea %1$d):

@@ -14595,6 +14595,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
   bool set_savepoint = false;
   int partition_type;
   MOP *sub_partitions = NULL;
+  SM_CLASS *local_class = NULL;
 
   if (att_names == NULL)
     {
@@ -14649,6 +14650,18 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	{
 	  smt_quit (def);
 	  goto error_exit;
+	}
+
+      if (index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+	{
+	  if (partition_type != DB_PARTITIONED_CLASS && def->current->users != NULL)
+	    {
+	      // Current class is part of a hierarchy stop here and throw error as we do not support online index
+	      // for hierarchies.
+	      error = ER_SM_ONLINE_INDEX_ON_HIERARCHY;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	      goto error_exit;
+	    }
 	}
 
       // create local indexes on partitions
