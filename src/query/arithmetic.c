@@ -5464,6 +5464,70 @@ db_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * 
 }
 
 int
+db_json_extract_multiple_paths (DB_VALUE * result, const DB_VALUE * args[], int num_args)
+{
+  db_make_null (result);
+
+  if (num_args < 2)
+    {
+      // should be detected early
+      assert (false);
+      return ER_FAILED;
+    }
+
+  if (num_args == 2)
+    {
+      // extract one JSON value from path at args[1]
+      return db_json_extract_dbval (args[0], args[1], result);
+    }
+
+  // there are multiple paths; the result of extract is a JSON_ARRAY with all extracted values
+
+  JSON_DOC *result_doc = db_json_allocate_doc ();	// result JSON document; it will be converted to array later
+  JSON_DOC *source_doc = db_get_json_document (args[0]);	// source document - first argument
+  JSON_DOC *extracted_doc;	// document used for extracting each value
+  const DB_VALUE *path_value;
+
+  db_make_null (&copy_path_value);
+
+  int error_code = NO_ERROR;
+  TP_DOMAIN_STATUS domain_status = DOMAIN_COMPATIBLE;
+
+  for (int path_idx = 1; path_idx < num_args; path_idx++)
+    {
+      path_value = args[path_idx];
+      if (!TP_IS_CHAR_TYPE (db_value_domain_type (path_value)))
+	{
+	  // set proper error
+	  // free docs
+	  db_json_delete_doc (result_doc);
+	  db_json_delete_doc (extracted_doc);
+	  return ER_FAILED;
+	}
+      error_code = db_json_extract_document_from_path (source_doc, db_get_string (path_value), extracted_doc);
+
+      pr_clear_value (&copy_path_value);	// no longer needed
+
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  // free docs
+	  db_json_delete_doc (result_doc);
+	  db_json_delete_doc (extracted_doc);
+	  return error_code;
+	}
+
+      db_json_add_element_to_array (result_doc, extracted_doc);
+    }
+
+  // free temporary resources
+  db_json_delete_doc (extracted_doc);
+
+  db_make_json (result, result_doc, true);
+  return NO_ERROR;
+}
+
+int
 db_least_or_greatest (DB_VALUE * arg1, DB_VALUE * arg2, DB_VALUE * result, bool least)
 {
   int error_code = NO_ERROR;

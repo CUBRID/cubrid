@@ -1393,6 +1393,8 @@ qdump_function_type_string (FUNC_TYPE ftype)
       return "JSON_ARRAY_INSERT";
     case F_JSON_CONTAINS_PATH:
       return "JSON_CONTAINS_PATH";
+    case F_JSON_EXTRACT:
+      return "JSON_EXTRACT";
     case F_JSON_SEARCH:
       return "JSON_SEARCH";
     case F_JSON_MERGE:

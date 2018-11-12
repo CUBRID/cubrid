@@ -4087,6 +4087,8 @@ pt_show_function (FUNC_TYPE c)
       return "json_search";
     case F_JSON_CONTAINS_PATH:
       return "json_contains_path";
+    case F_JSON_EXTRACT:
+      return "json_extract";
     case F_JSON_MERGE:
       return "json_merge";
     case F_JSON_MERGE_PATCH:

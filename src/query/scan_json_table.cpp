@@ -267,6 +267,8 @@ namespace cubscan
 
 	      cursor.m_child = 0;
 	      cursor.m_is_row_fetched = false;
+	      cursor.m_need_advance_row = false;
+	      cursor.m_row_was_expanded = false;
 	    }
 
 	  m_specp->m_root_node->clear_iterators (is_final_clear);
@@ -294,10 +296,14 @@ namespace cubscan
 	  ASSERT_ERROR ();
 	  return error_code;
 	}
-      if (value_p == NULL || db_value_is_null (value_p))
+      if (value_p == NULL)
 	{
 	  assert (false);
 	  return ER_FAILED;
+	}
+      if (db_value_is_null (value_p))
+	{
+	  return NO_ERROR;
 	}
 
       // build m_scan_cursor

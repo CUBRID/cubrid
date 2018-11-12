@@ -12220,6 +12220,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	  || node->info.function.function_type == F_JSON_ARRAY_APPEND
 	  || node->info.function.function_type == F_JSON_ARRAY_INSERT
 	  || node->info.function.function_type == F_JSON_CONTAINS_PATH
+	  || node->info.function.function_type == F_JSON_EXTRACT
 	  || node->info.function.function_type == F_JSON_GET_ALL_PATHS
 	  || node->info.function.function_type == F_JSON_REPLACE || node->info.function.function_type == F_JSON_SET
 	  || node->info.function.function_type == F_JSON_SEARCH || node->info.function.function_type == F_JSON_KEYS)
@@ -13287,6 +13288,28 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	    arg_type = PT_TYPE_NONE;
 	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
 			 pt_show_function (fcode), pt_show_type_enum (unsupported_type));
+	  }
+      }
+      break;
+
+    case F_JSON_EXTRACT:
+      {
+	PT_NODE *first_arg = arg_list;
+	if (!pt_is_json_doc_type (first_arg->type_enum))
+	  {
+	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
+			 pt_show_function (fcode), pt_show_type_enum (first_arg->type_enum));
+	    break;
+	  }
+	// followed by a list of paths - strings
+	for (PT_NODE * arg = first_arg->next; arg != NULL; arg = arg->next)
+	  {
+	    if (!pt_is_json_path (arg->type_enum))
+	      {
+		PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
+			     pt_show_function (fcode), pt_show_type_enum (first_arg->type_enum));
+		break;
+	      }
 	  }
       }
       break;
@@ -20563,6 +20586,10 @@ pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_TYPE fcode, DB_VALUE 
 
     case F_JSON_CONTAINS_PATH:
       error = db_json_contains_path (result, args, num_args);
+      break;
+
+    case F_JSON_EXTRACT:
+      error = db_json_extract_dbval (result, args, num_args);
       break;
 
     case F_JSON_MERGE:

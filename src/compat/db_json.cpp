@@ -1406,6 +1406,10 @@ db_json_extract_document_from_path (const JSON_DOC *document, const char *raw_pa
 
   if (!p.IsValid ())
     {
+      if (result != NULL)
+	{
+	  delete result;
+	}
       result = NULL;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
       return ER_JSON_INVALID_PATH;
