@@ -730,12 +730,12 @@ static void db_json_build_path_special_chars (const JSON_PATH_TYPE &json_path_ty
     std::unordered_map<std::string, std::string> &special_chars);
 static std::vector<std::string> db_json_split_path_by_delimiters (const std::string &path,
     const std::string &delim);
-static bool db_json_sql_path_is_valid (std::string &sql_path);
 static int db_json_er_set_path_does_not_exist (const char *file_name, const int line_no, const std::string &path,
     const JSON_DOC *doc);
 static void db_json_replace_token_special_chars (std::string &token,
     const std::unordered_map<std::string, std::string> &special_chars);
-static bool db_json_path_is_token_valid_array_index (const std::string &str, std::size_t start = 0,
+static bool db_json_path_is_token_valid_array_index (const std::string &str, bool allow_wildcards,
+    std::size_t start = 0,
     std::size_t end = 0);
 static void db_json_doc_wrap_as_array (JSON_DOC &doc);
 static void db_json_value_wrap_as_array (JSON_VALUE &value, JSON_PRIVATE_MEMPOOL &allocator);
@@ -1458,6 +1458,7 @@ db_json_contains_path (const JSON_DOC *document, const char *raw_path, bool &res
     }
 
   // path must be JSON pointer
+  // todo: solve for wildcard paths
   error_code = db_json_convert_sql_path_to_pointer (raw_path, json_pointer_string);
   if (error_code != NO_ERROR)
     {
@@ -1798,7 +1799,7 @@ db_json_resolve_json_parent (JSON_DOC &doc, const std::string &path, JSON_VALUE 
     }
 
   const std::string &last_token = path.substr (found + 1);
-  bool token_is_valid_index = db_json_path_is_token_valid_array_index (last_token);
+  bool token_is_valid_index = db_json_path_is_token_valid_array_index (last_token, false);
 
   if (parent_json_type == DB_JSON_ARRAY && !token_is_valid_index)
     {
@@ -2899,7 +2900,7 @@ db_json_split_path_by_delimiters (const std::string &path, const std::string &de
   std::size_t tokens_size = tokens.size ();
   for (std::size_t i = 0; i < tokens_size; i++)
     {
-      if (db_json_path_is_token_valid_array_index (tokens[i]))
+      if (db_json_path_is_token_valid_array_index (tokens[i], false))
 	{
 	  db_json_remove_leading_zeros_index (tokens[i]);
 	}
@@ -2913,9 +2914,10 @@ db_json_split_path_by_delimiters (const std::string &path, const std::string &de
  *
  * return                  : true/false
  * sql_path (in)           : path to be checked
+ * allow_wild_cards (in)   : whether json_path wildcards are allowed
  */
-static bool
-db_json_sql_path_is_valid (std::string &sql_path)
+bool
+db_json_sql_path_is_valid (std::string &sql_path, bool allow_wildcards)
 {
   std::size_t end_bracket_offset;
 
@@ -2941,14 +2943,20 @@ db_json_sql_path_is_valid (std::string &sql_path)
       switch (sql_path[i])
 	{
 	case '[':
-	  end_bracket_offset = sql_path.find_first_of (']', ++i);
+	  ++i;
+
+	  // spaces are allowed before beginning the array index
+	  while (i < sql_path.length () && sql_path[i] == ' ')
+	    {
+	      ++i;
+	    }
+
+	  end_bracket_offset = sql_path.find_first_of (']', i);
 	  if (end_bracket_offset == std::string::npos)
 	    {
-	      // unacceptable
-	      assert (false);
 	      return false;
 	    }
-	  if (!db_json_path_is_token_valid_array_index (sql_path, i, end_bracket_offset))
+	  if (!db_json_path_is_token_valid_array_index (sql_path, allow_wildcards, i, end_bracket_offset))
 	    {
 	      // expecting a valid index
 	      return false;
@@ -2960,7 +2968,13 @@ db_json_sql_path_is_valid (std::string &sql_path)
 	case '.':
 	  i++;
 
-	  if (sql_path[i] == '"')
+	  // spaces are allowed before beginning the object key token
+	  while (i < sql_path.length () && sql_path[i] == ' ')
+	    {
+	      ++i;
+	    }
+
+	  if (i < sql_path.length () && sql_path[i] == '"')
 	    {
 	      i++;
 
@@ -2979,18 +2993,50 @@ db_json_sql_path_is_valid (std::string &sql_path)
 	    {
 	      // we can have an object name without quotes only if the first character is a letter
 	      // otherwise we need to put in between quotes
-	      if (!std::isalpha (sql_path[i++]))
+	      // todo: this needs change. At least, '\\' should be allowed to be first
+	      if (i < sql_path.length () && !std::isalpha (sql_path[i]) && sql_path[i] != '*')
 		{
 		  return false;
 		}
 
-	      while (i < sql_path.length () && (sql_path[i] != '.' && sql_path[i] != '['))
+	      while (i < sql_path.length () && (sql_path[i] != '.' && sql_path[i] != '[' && sql_path[i] != ' '))
 		{
+		  // spaces inside unqouted object keyes are not allowed
+		  if (sql_path[i] == '"')
+		    {
+		      return false;
+		    }
 		  i++;
 		}
 
 	      i--;
 	    }
+	  break;
+
+	case ' ':
+	  break;
+
+	case '*':
+	  // only ** wildcard is allowed in this case
+	  if (!allow_wildcards || (++i < sql_path.length () && sql_path[i] != '*'))
+	    {
+	      return false;
+	    }
+
+	  while (++i < sql_path.length () && (sql_path[i] != '.' && sql_path[i] != '['))
+	    {
+	      if (sql_path[i] != ' ')
+		{
+		  return false;
+		}
+	    }
+
+	  if (i == sql_path.length ())
+	    {
+	      // ** wildcard requires suffix
+	      return false;
+	    }
+	  --i;
 	  break;
 
 	default:
@@ -3147,7 +3193,7 @@ db_json_convert_pointer_to_sql_path (const char *pointer_path, std::string &sql_
 
   for (std::string &token : tokens)
     {
-      if (db_json_path_is_token_valid_array_index (token))
+      if (db_json_path_is_token_valid_array_index (token, false))
 	{
 	  sql_path_out += "[";
 	  sql_path_out += token;
@@ -3219,6 +3265,9 @@ db_json_convert_sql_path_to_pointer (const char *sql_path, std::string &json_poi
   std::string sql_path_string (sql_path);
   JSON_PATH_TYPE json_path_type = db_json_get_path_type (sql_path_string);
 
+  // todo: calling this function from json_extract with sql_path == "" should result in ER_JSON_INVALID_PATH
+  // currently passes by setting json_path_type == JSON_PATH_EMPTY
+
   if (json_path_type == JSON_PATH_TYPE::JSON_PATH_EMPTY
       || json_path_type == JSON_PATH_TYPE::JSON_PATH_POINTER)
     {
@@ -3227,7 +3276,7 @@ db_json_convert_sql_path_to_pointer (const char *sql_path, std::string &json_poi
       return NO_ERROR;
     }
 
-  if (!db_json_sql_path_is_valid (sql_path_string))
+  if (!db_json_sql_path_is_valid (sql_path_string, false))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
       return ER_JSON_INVALID_PATH;
@@ -3690,14 +3739,18 @@ db_value_to_json_value (const DB_VALUE &db_val, REFPTR (JSON_DOC, json_val))
  * db_json_path_is_token_valid_array_index () - verify if token is a valid array index. token can be a substring of
  *                                              first argument (by default the entire argument).
  *
- * return     : true if all token characters are digits (valid index)
- * str (in)   : token or the string that token belong to
- * start (in) : start of token; default is start of string
- * end (in)   : end of token; default is end of string; 0 is considered default value
+ * return          : true if all token characters are digits followed by spaces (valid index)
+ * str (in)        : token or the string that token belong to
+ * allow_wildcards : whether json_path wildcards are allowed
+ * start (in)      : start of token; default is start of string
+ * end (in)        : end of token; default is end of string; 0 is considered default value
  */
 static bool
-db_json_path_is_token_valid_array_index (const std::string &str, std::size_t start, std::size_t end)
+db_json_path_is_token_valid_array_index (const std::string &str, bool allow_wildcards, std::size_t start,
+    std::size_t end)
 {
+  // todo: is the other format (the uri one) ok with enabling spaces at the end?
+
   // json pointer will corespond the symbol '-' to JSON_ARRAY length
   // so if we have the json {"A":[1,2,3]} and the path /A/-
   // this will point to the 4th element of the array (zero indexed)
@@ -3706,20 +3759,33 @@ db_json_path_is_token_valid_array_index (const std::string &str, std::size_t sta
       return true;
     }
 
+  if (start == end)
+    {
+      return false;
+    }
+
   if (end == 0)
     {
       // default is end of string
       end = str.length ();
     }
-  for (auto it = str.cbegin () + start; it < str.cbegin () + end; it++)
+
+  // array index must begin with a digit or wildcard, making '$[]' or '$[   ]' invalid paths
+  auto it = str.cbegin () + start;
+  if (it < str.cbegin () + end && !std::isdigit (*it) && ! (allow_wildcards && *it == '*'))
     {
-      if (!std::isdigit (*it))
+      return false;
+    }
+  ++it;
+  for (; it < str.cbegin () + end; ++it)
+    {
+      if ((!std::isdigit (*it) && !std::isspace (*it)) || (std::isdigit (*it) && std::isspace (* (it - 1))))
 	{
 	  return false;
 	}
     }
 
-  // all are digits; this is a valid array index
+  // this is a valid array index
   return true;
 }
 
