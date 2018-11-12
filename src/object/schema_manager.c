@@ -14654,6 +14654,9 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 
       if (index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
 	{
+	  /* We allow online index on hierarchies just for the special case of partitions. 
+	   * Here ->users denotes the immediate subclass, while ->inheritance is the immediate superclass.
+	   */
 	  if (partition_type == DB_NOT_PARTITIONED_CLASS
 	      && (def->current->users != NULL || def->current->inheritance != NULL))
 	    {
