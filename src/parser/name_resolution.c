@@ -9937,7 +9937,7 @@ pt_get_attr_list_of_derived_table (PARSER_CONTEXT * parser, PT_MISC_TYPE derived
     case PT_DERIVED_JSON_TABLE:
       assert (derived_table->node_type == PT_JSON_TABLE);
 
-      as_attr_list = pt_get_all_json_table_attributes_and_types (parser, derived_table,
+      as_attr_list = pt_get_all_json_table_attributes_and_types (parser, derived_table->info.json_table_info.tree,
 								 derived_alias->info.name.original);
       break;
 

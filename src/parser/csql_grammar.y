@@ -24434,14 +24434,12 @@ json_table_node_rule
     ;
 
 json_table_rule
-    : {{
-	    json_table_column_count = 0;
-      DBG_PRINT}} 
-	'(' expression_ ',' json_table_node_rule ')'
+    : '(' expression_ ',' json_table_node_rule ')'
       {{
         PT_NODE *jt = parser_new_node (this_parser, PT_JSON_TABLE);
-        jt->info.json_table_info.expr = $3;
-        jt->info.json_table_info.tree = $5;
+        jt->info.json_table_info.expr = $2;
+        jt->info.json_table_info.tree = $4;
+        json_table_column_count = 0;  // reset
 
         $$ = jt;
       DBG_PRINT}}
