@@ -5688,106 +5688,104 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
   DB_TYPE typ, exptyp;
 
   regu = regu_var_alloc ();
-  if (regu)
+  if (regu == NULL)
     {
-      val = &parser->host_variables[node->info.host_var.index];
-      typ = DB_VALUE_DOMAIN_TYPE (val);
+      return NULL;
+    }
 
-      regu->type = TYPE_POS_VALUE;
-      regu->value.val_pos = node->info.host_var.index;
-      if (parser->dbval_cnt <= node->info.host_var.index)
+  val = &parser->host_variables[node->info.host_var.index];
+  typ = DB_VALUE_DOMAIN_TYPE (val);
+
+  regu->type = TYPE_POS_VALUE;
+  regu->value.val_pos = node->info.host_var.index;
+  if (parser->dbval_cnt <= node->info.host_var.index)
+    {
+      parser->dbval_cnt = node->info.host_var.index + 1;
+    }
+
+  /* determine the domain of this host var */
+  regu->domain = NULL;
+
+  if (node->data_type)
+    {
+      /* try to get domain info from its data_type */
+      regu->domain = pt_xasl_node_to_domain (parser, node);
+    }
+
+  if (regu->domain == NULL
+      && (parser->set_host_var == 1
+	  || (typ != DB_TYPE_NULL
+	      && (node->expected_domain == NULL || TP_DOMAIN_TYPE (node->expected_domain) == DB_TYPE_ENUMERATION))))
+    {
+      /* if the host var DB_VALUE was initialized before, use its domain for regu variable */
+      TP_DOMAIN *domain;
+      if (TP_IS_CHAR_TYPE (typ))
 	{
-	  parser->dbval_cnt = node->info.host_var.index + 1;
-	}
-
-      /* determine the domain of this host var */
-      regu->domain = NULL;
-
-      if (node->data_type)
-	{
-	  /* try to get domain info from its data_type */
-	  regu->domain = pt_xasl_node_to_domain (parser, node);
-	}
-
-      if (regu->domain == NULL && (parser->set_host_var == 1
-				   || (typ != DB_TYPE_NULL
-				       && (node->expected_domain == NULL
-					   || TP_DOMAIN_TYPE (node->expected_domain) == DB_TYPE_ENUMERATION))))
-	{
-	  /* if the host var DB_VALUE was initialized before, use its domain for regu variable */
-	  TP_DOMAIN *domain;
-	  if (TP_IS_CHAR_TYPE (typ))
+	  domain = pt_xasl_type_enum_to_domain (pt_db_to_type_enum (typ));
+	  regu->domain = tp_domain_copy (domain, false);
+	  if (regu->domain != NULL)
 	    {
-	      domain = pt_xasl_type_enum_to_domain (pt_db_to_type_enum (typ));
-	      regu->domain = tp_domain_copy (domain, false);
-	      if (regu->domain != NULL)
-		{
-		  regu->domain->codeset = db_get_string_codeset (val);
-		  regu->domain->collation_id = db_get_string_collation (val);
-		  regu->domain = tp_domain_cache (regu->domain);
-		  if (regu->domain == NULL)
-		    {
-		      goto error_exit;
-		    }
-		}
-	      else
+	      regu->domain->codeset = db_get_string_codeset (val);
+	      regu->domain->collation_id = db_get_string_collation (val);
+	      regu->domain = tp_domain_cache (regu->domain);
+	      if (regu->domain == NULL)
 		{
 		  goto error_exit;
 		}
 	    }
 	  else
 	    {
-	      regu->domain = pt_xasl_type_enum_to_domain (pt_db_to_type_enum (typ));
+	      goto error_exit;
 	    }
-	}
-
-      if (regu->domain == NULL && node->expected_domain)
-	{
-	  /* try to get domain infor from its expected_domain */
-	  regu->domain = node->expected_domain;
-	}
-
-      if (regu->domain == NULL)
-	{
-	  /* try to get domain info from its type_enum */
-	  regu->domain = pt_xasl_type_enum_to_domain (node->type_enum);
-	}
-
-      if (regu->domain == NULL)
-	{
-	  PT_INTERNAL_ERROR (parser, "unresolved data type of host var");
-	  regu = NULL;
 	}
       else
 	{
-	  exptyp = TP_DOMAIN_TYPE (regu->domain);
-	  if (parser->set_host_var == 0 && typ == DB_TYPE_NULL)
-	    {
-	      /* If the host variable was not given before by the user, preset it by the expected domain. When the user 
-	       * set the host variable, its value will be casted to this domain if necessary. */
-	      (void) db_value_domain_init (val, exptyp, regu->domain->precision, regu->domain->scale);
-	      if (TP_IS_CHAR_TYPE (exptyp))
-		{
-		  db_string_put_cs_and_collation (val, TP_DOMAIN_CODESET (regu->domain),
-						  TP_DOMAIN_COLLATION (regu->domain));
-		}
-	    }
-	  else if (typ != exptyp
-		   || (TP_TYPE_HAS_COLLATION (typ) && TP_TYPE_HAS_COLLATION (exptyp)
-		       && (db_get_string_collation (val) != TP_DOMAIN_COLLATION (regu->domain))))
-	    {
-	      if (tp_value_cast (val, val, regu->domain, false) != DOMAIN_COMPATIBLE)
-		{
-		  PT_ERRORmf2 (parser, node, MSGCAT_SET_ERROR, -(ER_TP_CANT_COERCE),
-			       pr_type_name (DB_VALUE_DOMAIN_TYPE (val)), pr_type_name (TP_DOMAIN_TYPE (regu->domain)));
-		  regu = NULL;
-		}
-	    }
+	  regu->domain = pt_xasl_type_enum_to_domain (pt_db_to_type_enum (typ));
 	}
+    }
+
+  if (regu->domain == NULL && node->expected_domain)
+    {
+      /* try to get domain infor from its expected_domain */
+      regu->domain = node->expected_domain;
+    }
+
+  if (regu->domain == NULL)
+    {
+      /* try to get domain info from its type_enum */
+      regu->domain = pt_xasl_type_enum_to_domain (node->type_enum);
+    }
+
+  if (regu->domain == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "unresolved data type of host var");
+      regu = NULL;
     }
   else
     {
-      regu = NULL;
+      exptyp = TP_DOMAIN_TYPE (regu->domain);
+      if (parser->set_host_var == 0 && typ == DB_TYPE_NULL)
+	{
+	  /* If the host variable was not given before by the user, preset it by the expected domain. When the user 
+	   * set the host variable, its value will be casted to this domain if necessary. */
+	  (void) db_value_domain_init (val, exptyp, regu->domain->precision, regu->domain->scale);
+	  if (TP_IS_CHAR_TYPE (exptyp))
+	    {
+	      db_string_put_cs_and_collation (val, TP_DOMAIN_CODESET (regu->domain),
+					      TP_DOMAIN_COLLATION (regu->domain));
+	    }
+	}
+      else if (typ != exptyp
+	       || (TP_TYPE_HAS_COLLATION (typ) && TP_TYPE_HAS_COLLATION (exptyp)
+		   && (db_get_string_collation (val) != TP_DOMAIN_COLLATION (regu->domain))))
+	{
+	  if (tp_value_cast (val, val, regu->domain, false) != DOMAIN_COMPATIBLE)
+	    {
+	      PT_ERRORmf2 (parser, node, MSGCAT_SET_ERROR, -(ER_TP_CANT_COERCE),
+			   pr_type_name (DB_VALUE_DOMAIN_TYPE (val)), pr_type_name (TP_DOMAIN_TYPE (regu->domain)));
+	      regu = NULL;
+	    }
+	}
     }
 
   return regu;
