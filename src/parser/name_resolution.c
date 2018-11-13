@@ -3623,11 +3623,11 @@ pt_find_name_in_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * name)
 	  if (spec->info.spec.derived_table_type == PT_DERIVED_JSON_TABLE)
 	    {
 	      // calling default() on any json_table's columns should return NULL
-	      // set PT_NAME_REAL_TABLE flag to pass pt_check_defaultf() 
+	      // set PT_NAME_DEFAULTF_ACCEPTS flag to pass pt_check_defaultf()
 	      DB_VALUE val;
 	      db_make_null (&val);
 	      name->info.name.default_value = pt_dbval_to_value (parser, &val);
-	      PT_NAME_INFO_SET_FLAG (name, PT_NAME_REAL_TABLE);
+	      PT_NAME_INFO_SET_FLAG (name, PT_NAME_DEFAULTF_ACCEPTS);
 	    }
 	}
     }
@@ -4662,7 +4662,7 @@ pt_resolve_correlation (PARSER_CONTEXT * parser, PT_NODE * in_node, PT_NODE * sc
       corr_name->info.name.resolved = exposed_spec->info.spec.range_var->info.name.original;
       if (PT_IS_SPEC_REAL_TABLE (exposed_spec))
 	{
-	  PT_NAME_INFO_SET_FLAG (corr_name, PT_NAME_REAL_TABLE);
+	  PT_NAME_INFO_SET_FLAG (corr_name, PT_NAME_DEFAULTF_ACCEPTS);
 	}
 
       /* attach the data type */
@@ -4844,7 +4844,7 @@ pt_get_resolution (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg, PT_NOD
 
 	  if (PT_IS_SPEC_REAL_TABLE (savespec))
 	    {
-	      PT_NAME_INFO_SET_FLAG (in_node, PT_NAME_REAL_TABLE);
+	      PT_NAME_INFO_SET_FLAG (in_node, PT_NAME_DEFAULTF_ACCEPTS);
 	    }
 
 	  savespec = pt_unwhacked_spec (parser, scope, savespec);
@@ -4915,7 +4915,7 @@ pt_get_resolution (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg, PT_NOD
 	      in_node->info.name.meta_class = PT_META_CLASS;
 	      in_node->info.name.spec_id = class_spec->info.spec.id;
 	      in_node->info.name.resolved = class_spec->info.spec.range_var->info.name.original;
-	      PT_NAME_INFO_SET_FLAG (in_node, PT_NAME_REAL_TABLE);
+	      PT_NAME_INFO_SET_FLAG (in_node, PT_NAME_DEFAULTF_ACCEPTS);
 	      /* attach the data type */
 	      in_node->type_enum = PT_TYPE_OBJECT;
 	      if (class_spec->info.spec.flat_entity_list)
@@ -5035,9 +5035,9 @@ pt_get_resolution (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg, PT_NOD
 	    {
 	      /* only mark it resolved if it was found! transfer the info from arg1 to arg2 */
 	      arg2->info.name.resolved = arg1->info.name.resolved;
-	      if (PT_NAME_INFO_IS_FLAGED (arg1, PT_NAME_REAL_TABLE))
+	      if (PT_NAME_INFO_IS_FLAGED (arg1, PT_NAME_DEFAULTF_ACCEPTS))
 		{
-		  PT_NAME_INFO_SET_FLAG (arg2, PT_NAME_REAL_TABLE);
+		  PT_NAME_INFO_SET_FLAG (arg2, PT_NAME_DEFAULTF_ACCEPTS);
 		}
 	      /* don't loose list */
 	      arg2->next = in_node->next;
@@ -5092,9 +5092,9 @@ pt_get_resolution (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg, PT_NOD
 
 	      /* A meta class attribute, transfer the class info from arg1 to arg2 */
 	      arg2->info.name.resolved = arg1->info.name.resolved;
-	      if (PT_NAME_INFO_IS_FLAGED (arg1, PT_NAME_REAL_TABLE))
+	      if (PT_NAME_INFO_IS_FLAGED (arg1, PT_NAME_DEFAULTF_ACCEPTS))
 		{
-		  PT_NAME_INFO_SET_FLAG (arg2, PT_NAME_REAL_TABLE);
+		  PT_NAME_INFO_SET_FLAG (arg2, PT_NAME_DEFAULTF_ACCEPTS);
 		}
 	      /* don't lose list */
 	      arg2->next = in_node->next;
@@ -6179,7 +6179,7 @@ pt_must_have_exposed_name (PARSER_CONTEXT * parser, PT_NODE * p)
 	      q->info.name.resolved = p->info.spec.range_var->info.name.original;
 	      if (PT_IS_SPEC_REAL_TABLE (p))
 		{
-		  PT_NAME_INFO_SET_FLAG (q, PT_NAME_REAL_TABLE);
+		  PT_NAME_INFO_SET_FLAG (q, PT_NAME_DEFAULTF_ACCEPTS);
 		}
 	      q = q->next;
 	    }
@@ -7531,7 +7531,7 @@ pt_create_pt_name (PARSER_CONTEXT * parser, PT_NODE * spec, NATURAL_JOIN_ATTR_IN
 
   if (PT_IS_SPEC_REAL_TABLE (spec))
     {
-      PT_NAME_INFO_SET_FLAG (name, PT_NAME_REAL_TABLE);
+      PT_NAME_INFO_SET_FLAG (name, PT_NAME_DEFAULTF_ACCEPTS);
     }
 
   name->info.name.spec_id = spec->info.spec.id;
@@ -9153,7 +9153,7 @@ pt_make_flat_list_from_data_types (PARSER_CONTEXT * parser, PT_NODE * res_list, 
       node->info.name.resolved = entity->info.spec.entity_name->info.name.original;
       if (PT_IS_SPEC_REAL_TABLE (entity))
 	{
-	  PT_NAME_INFO_SET_FLAG (node, PT_NAME_REAL_TABLE);
+	  PT_NAME_INFO_SET_FLAG (node, PT_NAME_DEFAULTF_ACCEPTS);
 	}
       node->info.name.meta_class = PT_CLASS;
     }
