@@ -45,7 +45,6 @@
 #include "db_date.h"
 #include "db_json.hpp"
 #include "dbtype.h"
-#include "query_dump.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -4644,7 +4643,6 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1, const DB_VALUE * va
   bool is_deal_with_numeric = false;
   int er_status = NO_ERROR;
   char buf[MAX_DOMAIN_NAME_SIZE];
-  DB_TIME time_local;
 
   assert (result != NULL && value1 != NULL && value2 != NULL && value3 != NULL && value4 != NULL);
 
@@ -5428,37 +5426,42 @@ db_json_merge (DB_VALUE * json, DB_VALUE * json_res)
   return NO_ERROR;
 }
 
-static int
-db_json_get_path (const DB_VALUE * path_value, FUNC_TYPE fcode, const char **path_str)
-{
-  if (!TP_IS_CHAR_TYPE (db_value_domain_type (path_value)))
-    {
-      int error_code = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 2, qdump_function_type_string (fcode), "STRING");
-      return error_code;
-    }
-  *path_str = db_get_string (path_value);
-  return NO_ERROR;
-}
-
+//
+// db_json_extract_dbval () - extract path from json DOC
+//
+// return         : error code
+// json (in)      : source JSON
+// path (in)      : path
+// json_res (out) : result JSON
+//
 int
-db_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * json_res)
+db_json_extract_dbval (DB_VALUE * json, DB_VALUE * path, DB_VALUE * json_res)
 {
-  JSON_DOC *this_doc;
-  const char *raw_path;
+  JSON_DOC *this_doc = NULL;
+  const char *raw_path = NULL;
   JSON_DOC *result_doc = NULL;
   int error_code = NO_ERROR;
 
-  db_make_null (json_res) if (DB_IS_NULL (json) || DB_IS_NULL (path))
+  assert (json != NULL);
+  assert (path != NULL);
+
+  db_make_null (json_res);
+
+  if (DB_IS_NULL (json) || DB_IS_NULL (path))
     {
       return NO_ERROR;
     }
 
-  this_doc = db_get_json_document (json);
-
-  error_code = db_json_get_path (path, F_JSON_EXTRACT, &raw_path);
+  error_code = db_value_to_json_doc (*json, this_doc);
   if (error_code != NO_ERROR)
     {
+      return error_code;
+    }
+
+  error_code = db_value_to_json_path (path, F_JSON_EXTRACT, &raw_path);
+  if (error_code != NO_ERROR)
+    {
+      db_json_delete_doc (this_doc);
       return error_code;
     }
 
@@ -5466,6 +5469,7 @@ db_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * 
   if (error_code != NO_ERROR)
     {
       assert (result_doc == NULL);
+      db_json_delete_doc (this_doc);
       return error_code;
     }
 
@@ -5478,11 +5482,24 @@ db_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * 
       db_make_null (json_res);
     }
 
+  db_json_delete_doc (this_doc);
+
   return NO_ERROR;
 }
 
+//
+// db_json_extract_multiple_paths () - extract paths from JSON and return a JSON object if there is only one path or
+//                                     a JSON array if there are multiple paths
+//
+// return        : error code
+// result (in)   : result
+// args[] (in)   : 
+// num_args (in) :
+//
+// TODO: we need to change the args type of all JSON function to const DB_VALUE *[]
+//
 int
-db_json_extract_multiple_paths (DB_VALUE * result, const DB_VALUE * args[], int num_args)
+db_json_extract_multiple_paths (DB_VALUE * result, DB_VALUE * args[], int num_args)
 {
   db_make_null (result);
 
@@ -5495,19 +5512,25 @@ db_json_extract_multiple_paths (DB_VALUE * result, const DB_VALUE * args[], int 
 
   if (num_args == 2)
     {
-      // extract one JSON value from path at args[1]
       return db_json_extract_dbval (args[0], args[1], result);
     }
 
   // there are multiple paths; the result of extract is a JSON_ARRAY with all extracted values
+  int error_code = NO_ERROR;
+  JSON_DOC *source_doc = NULL;	// source document - first argument
+
+  error_code = db_value_to_json_doc (*args[0], source_doc);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
 
   JSON_DOC *result_doc = db_json_allocate_doc ();	// result JSON document; it will be converted to array later
-  JSON_DOC *source_doc = db_get_json_document (args[0]);	// source document - first argument
-  JSON_DOC *extracted_doc;	// document used for extracting each value
+  JSON_DOC *extracted_doc = NULL;	// document used for extracting each value
   const DB_VALUE *path_value;
   const char *path_str = NULL;
 
-  int error_code = NO_ERROR;
   TP_DOMAIN_STATUS domain_status = DOMAIN_COMPATIBLE;
 
   for (int path_idx = 1; path_idx < num_args; path_idx++)
@@ -5515,12 +5538,13 @@ db_json_extract_multiple_paths (DB_VALUE * result, const DB_VALUE * args[], int 
       path_value = args[path_idx];
 
       // paths can only be strings
-      error_code = db_json_get_path (path_value, F_JSON_EXTRACT, &path_str);
+      error_code = db_value_to_json_path (path_value, F_JSON_EXTRACT, &path_str);
       if (error_code != NO_ERROR)
 	{
 	  // free docs
 	  db_json_delete_doc (result_doc);
 	  db_json_delete_doc (extracted_doc);
+	  db_json_delete_doc (source_doc);
 	  return error_code;
 	}
 
@@ -5532,6 +5556,7 @@ db_json_extract_multiple_paths (DB_VALUE * result, const DB_VALUE * args[], int 
 	  // free docs
 	  db_json_delete_doc (result_doc);
 	  db_json_delete_doc (extracted_doc);
+	  db_json_delete_doc (source_doc);
 	  return error_code;
 	}
 

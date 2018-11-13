@@ -58,6 +58,7 @@
 
 #include "dbtype.h"
 #include "memory_alloc.h"
+#include "query_dump.h"
 #include "string_opfunc.h"
 #include "system_parameter.h"
 
@@ -2089,6 +2090,7 @@ db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<std::
       catch (std::regex_error &e)
 	{
 	  // regex compilation exception
+	  (void) e;
 	  assert (false);
 	  return ER_FAILED;
 	}
@@ -3606,11 +3608,34 @@ bool db_json_doc_is_uncomparable (const JSON_DOC *doc)
   return (type == DB_JSON_ARRAY || type == DB_JSON_OBJECT);
 }
 
+//
+// db_value_to_json_path () - get path string from value; if value is not a string, an error is returned
+//
+// return          : error code
+// path_value (in) : path value
+// fcode (in)      : JSON function (for verbose error)
+// path_str (out)  : path string
+//
+int
+db_value_to_json_path (const DB_VALUE *path_value, FUNC_TYPE fcode, const char **path_str)
+{
+  if (!TP_IS_CHAR_TYPE (db_value_domain_type (path_value)))
+    {
+      int error_code = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 2, qdump_function_type_string (fcode), "STRING");
+      return error_code;
+    }
+  *path_str = db_get_string (path_value);
+  return NO_ERROR;
+}
+
 /* db_value_to_json_doc - create a JSON_DOC from db_value.
  *
  * return     : error code
  * db_val(in) : input db_value
  * json_doc(out) : output JSON_DOC pointer
+ *
+ * TODO: sometimes copying a JSON document might not be necessary.
  */
 int
 db_value_to_json_doc (const DB_VALUE &db_val, REFPTR (JSON_DOC, json_doc))
@@ -3652,6 +3677,9 @@ db_value_to_json_doc (const DB_VALUE &db_val, REFPTR (JSON_DOC, json_doc))
  * return     : error code
  * db_val(in) : input db_value
  * json_val(out) : output JSON_DOC pointer
+ *
+ * TODO: if db_val is a JSON value, document is copied. Sometimes, we only need to "read" the value, so copying is not
+ *       necessary. adapt function for those cases.
  */
 int
 db_value_to_json_value (const DB_VALUE &db_val, REFPTR (JSON_DOC, json_val))

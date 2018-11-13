@@ -13295,6 +13295,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
     case F_JSON_EXTRACT:
       {
 	PT_NODE *first_arg = arg_list;
+	arg_type = PT_TYPE_NONE;
 	if (!pt_is_json_doc_type (first_arg->type_enum))
 	  {
 	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
@@ -13311,6 +13312,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 		break;
 	      }
 	  }
+	arg_type = PT_TYPE_JSON;
       }
       break;
 
