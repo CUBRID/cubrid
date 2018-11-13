@@ -14589,7 +14589,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 		   SM_INDEX_STATUS index_status)
 {
   int error = NO_ERROR;
-  SM_TEMPLATE *def;
+  SM_TEMPLATE *def = NULL;
   MOP newmop = NULL;
   bool needs_hierarchy_lock;
   bool set_savepoint = false;
@@ -14663,6 +14663,12 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	      // for hierarchies.
 	      error = ER_SM_ONLINE_INDEX_ON_HIERARCHY;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+
+	      if (sub_partitions != NULL)
+		{
+		  free_and_init (sub_partitions);
+		}
+	      smt_quit (def);
 	      goto error_exit;
 	    }
 	}
