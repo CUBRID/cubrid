@@ -14595,7 +14595,6 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
   bool set_savepoint = false;
   int partition_type;
   MOP *sub_partitions = NULL;
-  SM_CLASS *local_class = NULL;
 
   if (att_names == NULL)
     {
