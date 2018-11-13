@@ -724,7 +724,8 @@ static void db_json_remove_leading_zeros_index (std::string &index);
 static bool db_json_isspace (const unsigned char &ch);
 static bool db_json_iszero (const unsigned char &ch);
 static int db_json_convert_pointer_to_sql_path (const char *pointer_path, std::string &sql_path_out);
-static int db_json_convert_sql_path_to_pointer (const char *sql_path, std::string &json_pointer_out);
+static int db_json_convert_sql_path_to_pointer (const char *sql_path, std::string &json_pointer_out,
+    bool allow_pointer);
 static JSON_PATH_TYPE db_json_get_path_type (std::string &path_string);
 static void db_json_build_path_special_chars (const JSON_PATH_TYPE &json_path_type,
     std::unordered_map<std::string, std::string> &special_chars);
@@ -1394,7 +1395,7 @@ db_json_extract_document_from_path (const JSON_DOC *document, const char *raw_pa
     }
 
   // path must be JSON pointer
-  error_code = db_json_convert_sql_path_to_pointer (raw_path, json_pointer_string);
+  error_code = db_json_convert_sql_path_to_pointer (raw_path, json_pointer_string, false);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -1459,7 +1460,7 @@ db_json_contains_path (const JSON_DOC *document, const char *raw_path, bool &res
 
   // path must be JSON pointer
   // todo: solve for wildcard paths
-  error_code = db_json_convert_sql_path_to_pointer (raw_path, json_pointer_string);
+  error_code = db_json_convert_sql_path_to_pointer (raw_path, json_pointer_string, false);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -1855,7 +1856,7 @@ db_json_insert_func (const JSON_DOC *doc_to_be_inserted, JSON_DOC &doc_destinati
     }
 
   // path must be JSON pointer
-  error_code = db_json_convert_sql_path_to_pointer (raw_path, json_pointer_string);
+  error_code = db_json_convert_sql_path_to_pointer (raw_path, json_pointer_string, false);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -1902,7 +1903,7 @@ db_json_replace_func (const JSON_DOC *new_value, JSON_DOC &doc, const char *raw_
     }
 
   // path must be JSON pointer
-  error_code = db_json_convert_sql_path_to_pointer (raw_path, json_pointer_string);
+  error_code = db_json_convert_sql_path_to_pointer (raw_path, json_pointer_string, false);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -1952,7 +1953,7 @@ db_json_set_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path)
     }
 
   // path must be JSON pointer
-  error_code = db_json_convert_sql_path_to_pointer (raw_path, json_pointer_string);
+  error_code = db_json_convert_sql_path_to_pointer (raw_path, json_pointer_string, false);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -1994,7 +1995,7 @@ db_json_remove_func (JSON_DOC &doc, const char *raw_path)
   std::string json_pointer_string;
 
   // path must be JSON pointer
-  error_code = db_json_convert_sql_path_to_pointer (raw_path, json_pointer_string);
+  error_code = db_json_convert_sql_path_to_pointer (raw_path, json_pointer_string, false);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -2162,7 +2163,7 @@ db_json_array_append_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw
     }
 
   // path must be JSON pointer
-  error_code = db_json_convert_sql_path_to_pointer (raw_path, json_pointer_string);
+  error_code = db_json_convert_sql_path_to_pointer (raw_path, json_pointer_string, false);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -2252,7 +2253,7 @@ db_json_array_insert_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw
     }
 
   // path must be JSON pointer
-  error_code = db_json_convert_sql_path_to_pointer (raw_path, json_pointer_string);
+  error_code = db_json_convert_sql_path_to_pointer (raw_path, json_pointer_string, false);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -3256,20 +3257,19 @@ db_json_remove_leading_zeros_index (std::string &index)
  *
  * sql_path (in)
  * json_pointer_out (out): the result
+ * allow_sql_path (in): whether allowing sql_paths is enabled
+ *
  * An sql_path is converted to rapidjson standard path
  * Example: $[0]."name1".name2[2] -> /0/name1/name2/2
  */
 static int
-db_json_convert_sql_path_to_pointer (const char *sql_path, std::string &json_pointer_out)
+db_json_convert_sql_path_to_pointer (const char *sql_path, std::string &json_pointer_out, bool allow_sql_path)
 {
   std::string sql_path_string (sql_path);
   JSON_PATH_TYPE json_path_type = db_json_get_path_type (sql_path_string);
 
-  // todo: calling this function from json_extract with sql_path == "" should result in ER_JSON_INVALID_PATH
-  // currently passes by setting json_path_type == JSON_PATH_EMPTY
-
-  if (json_path_type == JSON_PATH_TYPE::JSON_PATH_EMPTY
-      || json_path_type == JSON_PATH_TYPE::JSON_PATH_POINTER)
+  if (allow_sql_path && (json_path_type == JSON_PATH_TYPE::JSON_PATH_EMPTY
+			 || json_path_type == JSON_PATH_TYPE::JSON_PATH_POINTER))
     {
       // path is not SQL path format; consider it JSON pointer.
       json_pointer_out = sql_path_string;
@@ -3417,7 +3417,7 @@ db_json_keys_func (const JSON_DOC &doc, JSON_DOC &result_json, const char *raw_p
   std::string json_pointer_string;
 
   // path must be JSON pointer
-  error_code = db_json_convert_sql_path_to_pointer (raw_path, json_pointer_string);
+  error_code = db_json_convert_sql_path_to_pointer (raw_path, json_pointer_string, false);
 
   if (error_code != NO_ERROR)
     {
@@ -3749,8 +3749,6 @@ static bool
 db_json_path_is_token_valid_array_index (const std::string &str, bool allow_wildcards, std::size_t start,
     std::size_t end)
 {
-  // todo: is the other format (the uri one) ok with enabling spaces at the end?
-
   // json pointer will corespond the symbol '-' to JSON_ARRAY length
   // so if we have the json {"A":[1,2,3]} and the path /A/-
   // this will point to the 4th element of the array (zero indexed)
@@ -3759,15 +3757,15 @@ db_json_path_is_token_valid_array_index (const std::string &str, bool allow_wild
       return true;
     }
 
-  if (start == end)
-    {
-      return false;
-    }
-
   if (end == 0)
     {
       // default is end of string
       end = str.length ();
+    }
+
+  if (start == end)
+    {
+      return false;
     }
 
   // array index must begin with a digit or wildcard, making '$[]' or '$[   ]' invalid paths

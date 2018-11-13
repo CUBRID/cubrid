@@ -9318,6 +9318,7 @@ pt_check_json_table_paths (PT_NODE * node)
 
   if (!ok)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
       return ER_JSON_INVALID_PATH;
     }
 
@@ -10067,9 +10068,7 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 
       if (pt_check_json_table_paths (node->info.json_table_info.tree))
 	{
-	  // todo: change to json_path validation error
-	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_WANT_TYPE,
-		      pt_show_type_enum (PT_TYPE_JSON));
+	  PT_ERRORc (parser, node, er_msg ());
 	}
 
       break;
