@@ -20589,7 +20589,7 @@ pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_TYPE fcode, DB_VALUE 
       break;
 
     case F_JSON_EXTRACT:
-      error = db_json_extract_dbval (result, args, num_args);
+      error = db_json_extract_multiple_paths (result, args, num_args);
       break;
 
     case F_JSON_MERGE:

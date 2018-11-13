@@ -44,8 +44,8 @@
 #include "tz_support.h"
 #include "db_date.h"
 #include "db_json.hpp"
-
 #include "dbtype.h"
+#include "query_dump.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -5428,6 +5428,19 @@ db_json_merge (DB_VALUE * json, DB_VALUE * json_res)
   return NO_ERROR;
 }
 
+static int
+db_json_get_path (const DB_VALUE * path_value, FUNC_TYPE fcode, const char **path_str)
+{
+  if (!TP_IS_CHAR_TYPE (db_value_domain_type (path_value)))
+    {
+      int error_code = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 2, qdump_function_type_string (fcode), "STRING");
+      return error_code;
+    }
+  *path_str = db_get_string (path_value);
+  return NO_ERROR;
+}
+
 int
 db_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * json_res)
 {
@@ -5436,13 +5449,18 @@ db_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * 
   JSON_DOC *result_doc = NULL;
   int error_code = NO_ERROR;
 
-  if (DB_IS_NULL (json) || DB_IS_NULL (path))
+  db_make_null (json_res) if (DB_IS_NULL (json) || DB_IS_NULL (path))
     {
-      return db_make_null (json_res);
+      return NO_ERROR;
     }
 
   this_doc = db_get_json_document (json);
-  raw_path = db_get_string (path);
+
+  error_code = db_json_get_path (path, F_JSON_EXTRACT, &raw_path);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
 
   error_code = db_json_extract_document_from_path (this_doc, raw_path, result_doc);
   if (error_code != NO_ERROR)
@@ -5487,8 +5505,7 @@ db_json_extract_multiple_paths (DB_VALUE * result, const DB_VALUE * args[], int 
   JSON_DOC *source_doc = db_get_json_document (args[0]);	// source document - first argument
   JSON_DOC *extracted_doc;	// document used for extracting each value
   const DB_VALUE *path_value;
-
-  db_make_null (&copy_path_value);
+  const char *path_str = NULL;
 
   int error_code = NO_ERROR;
   TP_DOMAIN_STATUS domain_status = DOMAIN_COMPATIBLE;
@@ -5496,17 +5513,18 @@ db_json_extract_multiple_paths (DB_VALUE * result, const DB_VALUE * args[], int 
   for (int path_idx = 1; path_idx < num_args; path_idx++)
     {
       path_value = args[path_idx];
-      if (!TP_IS_CHAR_TYPE (db_value_domain_type (path_value)))
+
+      // paths can only be strings
+      error_code = db_json_get_path (path_value, F_JSON_EXTRACT, &path_str);
+      if (error_code != NO_ERROR)
 	{
-	  // set proper error
 	  // free docs
 	  db_json_delete_doc (result_doc);
 	  db_json_delete_doc (extracted_doc);
-	  return ER_FAILED;
+	  return error_code;
 	}
-      error_code = db_json_extract_document_from_path (source_doc, db_get_string (path_value), extracted_doc);
 
-      pr_clear_value (&copy_path_value);	// no longer needed
+      error_code = db_json_extract_document_from_path (source_doc, path_str, extracted_doc);
 
       if (error_code != NO_ERROR)
 	{
