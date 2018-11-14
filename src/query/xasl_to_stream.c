@@ -2293,7 +2293,7 @@ xts_save_string (const char *string)
 
   packed_length = or_packed_string_length (string, &length);
 
-  assert ((string != NULL && length > 0) || (string == NULL && length == 0));
+  assert (string != NULL || length == 0);
 
   offset = xts_reserve_location_in_stream (packed_length);
   if (offset == ER_FAILED || xts_mark_ptr_visited (string, offset) == ER_FAILED)

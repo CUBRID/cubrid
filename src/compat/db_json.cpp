@@ -736,8 +736,7 @@ static int db_json_er_set_path_does_not_exist (const char *file_name, const int 
 static void db_json_replace_token_special_chars (std::string &token,
     const std::unordered_map<std::string, std::string> &special_chars);
 static bool db_json_path_is_token_valid_array_index (const std::string &str, bool allow_wildcards,
-    std::size_t start = 0,
-    std::size_t end = 0);
+    std::size_t start = 0, std::size_t end = 0);
 static void db_json_doc_wrap_as_array (JSON_DOC &doc);
 static void db_json_value_wrap_as_array (JSON_VALUE &value, JSON_PRIVATE_MEMPOOL &allocator);
 static const char *db_json_get_json_type_as_str (const DB_JSON_TYPE &json_type);
