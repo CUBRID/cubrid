@@ -9307,24 +9307,26 @@ pt_check_json_table_paths (PT_NODE * node)
 {
   assert (node != NULL && node->node_type == PT_JSON_TABLE_NODE);
 
-  std::string path (node->info.json_table_node_info.path);
-  bool ok = db_json_sql_path_is_valid (path, true);
+  std::string path;
+
+  int error_code = db_json_convert_sql_path_to_pointer (node->info.json_table_node_info.path, path);
+  if (error_code)
+    {
+      return error_code;
+    }
 
   for (PT_NODE * col = node->info.json_table_node_info.columns; col; col = col->next)
     {
-      path = col->info.json_table_column_info.path;
-      ok = ok && db_json_sql_path_is_valid (path, true);
-    }
-
-  if (!ok)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
-      return ER_JSON_INVALID_PATH;
+      error_code = db_json_convert_sql_path_to_pointer (col->info.json_table_column_info.path, path);
+      if (error_code)
+	{
+	  return error_code;
+	}
     }
 
   for (PT_NODE * nested_col = node->info.json_table_node_info.nested_paths; nested_col; nested_col = nested_col->next)
     {
-      int error_code = pt_check_json_table_paths (nested_col);
+      error_code = pt_check_json_table_paths (nested_col);
       if (error_code)
 	{
 	  return error_code;

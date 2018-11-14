@@ -724,12 +724,12 @@ static void db_json_remove_leading_zeros_index (std::string &index);
 static bool db_json_isspace (const unsigned char &ch);
 static bool db_json_iszero (const unsigned char &ch);
 static int db_json_convert_pointer_to_sql_path (const char *pointer_path, std::string &sql_path_out);
-static int db_json_convert_sql_path_to_pointer (const char *sql_path, std::string &json_pointer_out);
 static JSON_PATH_TYPE db_json_get_path_type (std::string &path_string);
 static void db_json_build_path_special_chars (const JSON_PATH_TYPE &json_path_type,
     std::unordered_map<std::string, std::string> &special_chars);
 static std::vector<std::string> db_json_split_path_by_delimiters (const std::string &path,
     const std::string &delim);
+static bool db_json_sql_path_is_valid (std::string &sql_path, bool allow_wildcards);
 static int db_json_er_set_path_does_not_exist (const char *file_name, const int line_no, const std::string &path,
     const JSON_DOC *doc);
 static void db_json_replace_token_special_chars (std::string &token,
@@ -2915,7 +2915,7 @@ db_json_split_path_by_delimiters (const std::string &path, const std::string &de
  * sql_path (in)           : path to be checked
  * allow_wild_cards (in)   : whether json_path wildcards are allowed
  */
-bool
+static bool
 db_json_sql_path_is_valid (std::string &sql_path, bool allow_wildcards)
 {
   std::size_t end_bracket_offset;
@@ -3255,11 +3255,10 @@ db_json_remove_leading_zeros_index (std::string &index)
  *
  * sql_path (in)
  * json_pointer_out (out): the result
- *
  * An sql_path is converted to rapidjson standard path
  * Example: $[0]."name1".name2[2] -> /0/name1/name2/2
  */
-static int
+int
 db_json_convert_sql_path_to_pointer (const char *sql_path, std::string &json_pointer_out)
 {
   std::string sql_path_string (sql_path);
