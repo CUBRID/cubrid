@@ -516,6 +516,9 @@ static int qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, X
 static int qexec_execute_increment (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, HFID * class_hfid,
 				    ATTR_ID attrid, int n_increment, int pruning_type, bool need_locking);
 static int qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
+static int qexec_execute_selupd_list_find_class (THREAD_ENTRY * thread_p, XASL_NODE * xasl, VAL_DESCR * vd, OID * oid,
+						 SELUPD_LIST * selupd, OID * class_oid, REFPTR (HFID, class_hfid),
+						 int *needs_pruning, bool * found);
 static int qexec_start_connect_by_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static int qexec_update_connect_by_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 					  QFILE_TUPLE_RECORD * tplrec);
@@ -12285,6 +12288,101 @@ wrapup:
 }
 
 /*
+ * qexec_execute_selupd_list_find_class () -
+ * Helper function used by qexec_execute_selupd_list to find class oid/hfid
+ *
+ * return:  NO_ERROR or a error code
+ * thread_p(in)       : thread entry
+ * xasl(in)           : XASL Tree
+ * vd(in)             : Value Descriptor (from XASL State)
+ * oid(in)            : oid of the column used in click counter function
+ * selupd(in)         : select update list
+ * class_oid(out)     : corresponding class oid
+ * class_hfid(out)    : corresponding class hfid
+ * needs_pruning(out) : type of pruning that should be performed later
+ * found(out)         : true if class oid/hfid was found, false otherwise
+ */
+static int
+qexec_execute_selupd_list_find_class (THREAD_ENTRY * thread_p, XASL_NODE * xasl, VAL_DESCR * vd, OID * oid,
+				      SELUPD_LIST * selupd, OID * class_oid, REFPTR (HFID, class_hfid),
+				      int *needs_pruning, bool * found)
+{
+
+  OID class_oid_buf;
+  XASL_NODE *scan_ptr = xasl;
+
+  *found = false;
+  *needs_pruning = DB_NOT_PARTITIONED_CLASS;
+
+  if (!OID_EQ (&selupd->class_oid, &oid_Null_oid))
+    {
+      *class_oid = selupd->class_oid;
+      class_hfid = &selupd->class_hfid;
+      return NO_ERROR;
+    }
+
+  if (heap_get_class_oid (thread_p, oid, &class_oid_buf) != S_SUCCESS)
+    {
+      ASSERT_ERROR ();
+      return er_errid ();
+    }
+  *class_oid = class_oid_buf;
+
+  for (; scan_ptr != NULL; scan_ptr = scan_ptr->scan_ptr)
+    {
+      ACCESS_SPEC_TYPE *specp = NULL;
+      for (specp = scan_ptr->spec_list; specp; specp = specp->next)
+	{
+	  if (specp->type == TARGET_CLASS && OID_EQ (&specp->s.cls_node.cls_oid, class_oid))
+	    {
+	      *found = true;
+	      class_hfid = &specp->s.cls_node.hfid;
+	      *needs_pruning = specp->pruning_type;
+	      return NO_ERROR;
+	    }
+	  else if (specp->pruning_type)
+	    {
+	      if (!specp->pruned)
+		{
+		  /* perform pruning */
+		  int error_code = qexec_prune_spec (thread_p, specp, vd, scan_ptr->scan_op_type);
+		  if (error_code != NO_ERROR)
+		    {
+		      return error_code;
+		    }
+		}
+
+	      PARTITION_SPEC_TYPE *part_spec = NULL;
+	      for (part_spec = specp->parts; part_spec != NULL; part_spec = part_spec->next)
+		{
+		  if (OID_EQ (&part_spec->oid, class_oid))
+		    {
+		      *found = true;
+		      class_hfid = &part_spec->hfid;
+		      *needs_pruning = specp->pruning_type;
+		      return NO_ERROR;
+		    }
+		}
+	    }
+	}
+
+      if (specp == NULL)
+	{
+	  specp = scan_ptr->spec_list;
+	  if (specp != NULL && specp->pruning_type == DB_PARTITION_CLASS && specp->next == NULL
+	      && specp->s_id.mvcc_select_lock_needed)
+	    {
+	      /* the object may be updated to other partition */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_DATA_FOR_PARTITION, 0);
+	      return ER_INVALID_DATA_FOR_PARTITION;
+	    }
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * qexec_execute_selupd_list () -
  *   return: NO_ERROR, or ER_code
  *   xasl(in)   : XASL Tree
@@ -12294,15 +12392,15 @@ wrapup:
 static int
 qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state)
 {
-  SELUPD_LIST *list, *selupd;
-  REGU_VARLIST_LIST outptr;
-  REGU_VARIABLE *varptr;
-  DB_VALUE *rightvalp, *thirdvalp;
+  SELUPD_LIST *list = NULL, *selupd = NULL;
+  REGU_VARLIST_LIST outptr = NULL;
+  REGU_VARIABLE *varptr = NULL;
+  DB_VALUE *rightvalp = NULL, *thirdvalp = NULL;
   CL_ATTR_ID attrid;
   int n_increment;
   int savepoint_used = 0;
   OID *oid = NULL, *class_oid = NULL, class_oid_buf, last_cached_class_oid;
-  HFID *class_hfid;
+  HFID *class_hfid = NULL;
   int tran_index;
   int err = NO_ERROR;
   int needs_pruning = DB_NOT_PARTITIONED_CLASS;
@@ -12311,7 +12409,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
   SCAN_CODE scan_code;
   MVCC_INFO *curr_mvcc_info = NULL;
   LOG_TDES *tdes = NULL;
-  SCAN_ID *scan_id;
+  SCAN_ID *scan_id = NULL;
   FILTER_INFO range_filter, key_filter, data_filter;
   MVCC_SCAN_REEV_DATA mvcc_sel_reev_data;
   MVCC_REEV_DATA mvcc_reev_data, *p_mvcc_reev_data = NULL;
@@ -12422,78 +12520,22 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 	  n_increment = (varptr->value.arithptr->opcode == T_INCR ? 1 : -1);
 
 	  /* check if class oid/hfid does not set, find class oid/hfid to access */
-	  if (!OID_EQ (&selupd->class_oid, &oid_Null_oid))
+	  bool found = false;
+	  err = qexec_execute_selupd_list_find_class (thread_p, xasl, &xasl_state->vd, oid, selupd, &class_oid_buf,
+						      class_hfid, &needs_pruning, &found);
+	  if (err != NO_ERROR)
 	    {
-	      class_oid = &selupd->class_oid;
-	      class_hfid = &selupd->class_hfid;
+	      goto exit_on_error;
 	    }
-	  else
+	  if (!found)
 	    {
-	      ACCESS_SPEC_TYPE *specp;
-
-	      if (heap_get_class_oid (thread_p, oid, &class_oid_buf) != S_SUCCESS)
-		{
-		  ASSERT_ERROR ();
-		  goto exit_on_error;
-		}
-
-	      class_oid = &class_oid_buf;
-	      for (specp = xasl->spec_list; specp; specp = specp->next)
-		{
-		  if (specp->type == TARGET_CLASS && OID_EQ (&specp->s.cls_node.cls_oid, class_oid))
-		    {
-		      class_hfid = &specp->s.cls_node.hfid;
-		      needs_pruning = specp->pruning_type;
-		      break;
-		    }
-		  else if (specp->pruning_type)
-		    {
-		      PARTITION_SPEC_TYPE *part_spec;
-		      bool found = false;
-		      if (!specp->pruned)
-			{
-			  /* perform pruning */
-			  err = qexec_prune_spec (thread_p, specp, &xasl_state->vd, xasl->scan_op_type);
-			  if (err != NO_ERROR)
-			    {
-			      goto exit_on_error;
-			    }
-			}
-		      for (part_spec = specp->parts; part_spec != NULL; part_spec = part_spec->next)
-			{
-			  if (OID_EQ (&part_spec->oid, class_oid))
-			    {
-			      class_hfid = &part_spec->hfid;
-			      found = true;
-			      break;
-			    }
-			}
-		      if (found)
-			{
-			  needs_pruning = specp->pruning_type;
-			  break;
-			}
-		    }
-		}
-	      if (specp == NULL)
-		{
-		  specp = xasl->spec_list;
-		  if (specp != NULL && specp->pruning_type == DB_PARTITION_CLASS && specp->next == NULL
-		      && specp->s_id.mvcc_select_lock_needed == true)
-		    {
-		      /* the object may be updated to other partition */
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_DATA_FOR_PARTITION, 0);
-		      goto exit_on_error;
-		    }
-		  else
-		    {
-		      /* not found hfid */
-		      er_log_debug (ARG_FILE_LINE, "qexec_execute_selupd_list: class hfid to access is null\n");
-		      assert (false);
-		      goto exit_on_error;
-		    }
-		}
+	      /* not found hfid */
+	      er_log_debug (ARG_FILE_LINE, "qexec_execute_selupd_list: class hfid to access is null\n");
+	      assert (false);
+	      goto exit_on_error;
 	    }
+
+	  class_oid = &class_oid_buf;
 
 	  if (p_mvcc_reev_data != NULL)
 	    {
