@@ -83,6 +83,7 @@
 #include <stack>
 #include <memory>
 #include <climits>
+#include <functional>
 
 #include <cctype>
 
@@ -495,6 +496,28 @@ class JSON_DUPLICATE_KEYS_CHECKER : public JSON_WALKER
     int CallBefore (JSON_VALUE &value) override;
 };
 
+template<typename T>
+class JSON_TREE_FUNCTION : public JSON_WALKER
+{
+  public:
+    JSON_TREE_FUNCTION (std::function <void (JSON_VALUE &, T &)> &func, T &v, std::vector<std::string> &paths);
+
+    ~JSON_TREE_FUNCTION() override = default;
+
+  private:
+
+    int CallBefore (JSON_VALUE &value) override;
+    int CallAfter (JSON_VALUE &value) override;
+    int CallOnArrayIterate() override;
+    int CallOnKeyIterate (JSON_VALUE &key) override;
+
+    std::function <void (JSON_VALUE &, T &)> producer;
+    T &produced;
+
+    // used for filtering
+    std::vector<std::string> &paths;
+};
+
 class JSON_SEARCHER : public JSON_WALKER
 {
   public:
@@ -902,6 +925,133 @@ int JSON_SEARCHER::CallOnArrayIterate ()
   path_item += "]";
 
   path_items.back () = path_item;
+  return NO_ERROR;
+}
+
+template<typename T>
+JSON_TREE_FUNCTION<T>::JSON_TREE_FUNCTION (std::function <void (JSON_VALUE &, T &)> &func, T &v,
+    std::vector<std::string> &paths)
+  : producer (func)
+  , produced (v)
+  , paths (paths)
+{
+  //
+}
+
+template<typename T>
+int JSON_TREE_FUNCTION<T>::CallBefore (JSON_VALUE &value)
+{
+  if (m_skip_other_matches)
+    {
+      return NO_ERROR;
+    }
+
+  if (value.IsArray())
+    {
+      m_index.push (0);
+    }
+
+  if (value.IsObject() || value.IsArray())
+    {
+      path_items.emplace_back();
+    }
+
+  return NO_ERROR;
+}
+
+template<typename T> int
+JSON_TREE_FUNCTION<T>::CallAfter (JSON_VALUE &value)
+{
+  if (m_skip_other_matches)
+    {
+      return NO_ERROR;
+    }
+  // here we should call the producer
+  int error_code = NO_ERROR;
+
+  //producer (value, path_items, m_starting_path, produced);
+  if (value.IsString())
+    {
+      const char *json_str = value.GetString();
+      DB_VALUE str_val;
+
+      db_make_null (&str_val);
+      error_code = db_make_string (&str_val, (char *)json_str);
+      if (error_code)
+	{
+	  return error_code;
+	}
+
+      int match;
+      error_code = db_string_like (&str_val, m_pattern, m_esc_char, &match);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+
+      if (match)
+	{
+	  std::stringstream full_path;
+
+	  full_path << "\"" << m_starting_path;
+	  for (const auto &item : path_items)
+	    {
+	      full_path << item;
+	    }
+	  full_path << "\"";
+
+	  m_found_paths.emplace_back (full_path.str());
+
+	  if (!m_find_all)
+	    {
+	      m_skip_other_matches = true;
+	      // todo: change WalkValue() to stop search after first matching value is found;
+	      // in current implementation full search pointless search is performed
+	    }
+	}
+    }
+
+  if (value.IsArray())
+    {
+      m_index.pop();
+    }
+
+  if (value.IsArray() || value.IsObject())
+    {
+      path_items.pop_back();
+    }
+
+  return error_code;
+}
+
+template<typename T>
+int JSON_TREE_FUNCTION<T>::CallOnArrayIterate()
+{
+  if (m_skip_other_matches)
+    {
+      return NO_ERROR;
+    }
+
+  std::string path_item = "[";
+  path_item += std::to_string (m_index.top()++);
+  path_item += "]";
+
+  path_items.back() = path_item;
+  return NO_ERROR;
+}
+
+template<typename T>
+int JSON_TREE_FUNCTION<T>::CallOnKeyIterate (JSON_VALUE &key)
+{
+  if (m_skip_other_matches)
+    {
+      return NO_ERROR;
+    }
+
+  std::string path_item = ".";
+  path_item += key.GetString();
+
+  path_items.back() = path_item;
   return NO_ERROR;
 }
 
