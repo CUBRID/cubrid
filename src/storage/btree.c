@@ -34866,8 +34866,11 @@ btree_rv_keyval_undo_online_index_tran_delete (THREAD_ENTRY * thread_p, LOG_RCV 
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
+      pr_clear_value (&key);
       return error_code;
     }
+
+  pr_clear_value (&key);
 
   return NO_ERROR;
 }
@@ -34913,8 +34916,11 @@ btree_rv_keyval_undo_online_index_tran_insert (THREAD_ENTRY * thread_p, LOG_RCV 
   if (err != NO_ERROR)
     {
       ASSERT_ERROR ();
+      pr_clear_value (&key);
       return err;
     }
+
+  pr_clear_value (&key);
 
   return NO_ERROR;
 }

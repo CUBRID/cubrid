@@ -14589,7 +14589,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 		   SM_INDEX_STATUS index_status)
 {
   int error = NO_ERROR;
-  SM_TEMPLATE *def;
+  SM_TEMPLATE *def = NULL;
   MOP newmop = NULL;
   bool needs_hierarchy_lock;
   bool set_savepoint = false;
@@ -14651,6 +14651,28 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	  goto error_exit;
 	}
 
+      if (index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+	{
+	  /* We allow online index on hierarchies just for the special case of partitions. 
+	   * Here ->users denotes the immediate subclass, while ->inheritance is the immediate superclass.
+	   */
+	  if (partition_type == DB_NOT_PARTITIONED_CLASS
+	      && (def->current->users != NULL || def->current->inheritance != NULL))
+	    {
+	      // Current class is part of a hierarchy stop here and throw an error as we do not support online index
+	      // for hierarchies.
+	      error = ER_SM_ONLINE_INDEX_ON_HIERARCHY;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+
+	      if (sub_partitions != NULL)
+		{
+		  free_and_init (sub_partitions);
+		}
+	      smt_quit (def);
+	      goto error_exit;
+	    }
+	}
+
       // create local indexes on partitions
       if (is_secondary_index)
 	{
@@ -14687,11 +14709,11 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 		  goto error_exit;
 		}
 	    }
+	}
 
-	  if (sub_partitions != NULL)
-	    {
-	      free_and_init (sub_partitions);
-	    }
+      if (sub_partitions != NULL)
+	{
+	  free_and_init (sub_partitions);
 	}
 
       error = smt_add_constraint (def, constraint_type, constraint_name, att_names, asc_desc, attrs_prefix_length,

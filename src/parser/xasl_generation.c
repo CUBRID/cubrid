@@ -3555,10 +3555,7 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
   REGU_VARIABLE *percentile_regu = NULL;
   AGGREGATE_TYPE *aggregate_list;
   AGGREGATE_INFO *info = (AGGREGATE_INFO *) arg;
-  REGU_VARIABLE_LIST scan_regu_list;
-  REGU_VARIABLE_LIST scan_regu_next_list;
   REGU_VARIABLE_LIST out_list = NULL;
-  REGU_VARIABLE_LIST regu_temp;
   VAL_LIST *value_list;
   MOP classop;
   PT_NODE *group_concat_sep_node_save = NULL;
@@ -4667,7 +4664,7 @@ pt_make_json_table_spec_node_internal (PARSER_CONTEXT * parser, PT_JSON_TABLE_NO
     ;
 
   result.m_output_columns =
-    (json_table_column *) pt_alloc_packing_buf (sizeof (json_table_column) * result.m_output_columns_size);
+    (json_table_column *) pt_alloc_packing_buf ((int) (sizeof (json_table_column) * result.m_output_columns_size));
 
   for (itr = jt_node_info->columns, i = 0; itr != NULL; itr = itr->next, i++)
     {
@@ -4680,7 +4677,7 @@ pt_make_json_table_spec_node_internal (PARSER_CONTEXT * parser, PT_JSON_TABLE_NO
     ;
 
   result.m_nested_nodes =
-    (json_table_node *) pt_alloc_packing_buf (sizeof (json_table_node) * result.m_nested_nodes_size);
+    (json_table_node *) pt_alloc_packing_buf ((int) (sizeof (json_table_node) * result.m_nested_nodes_size));
 
   for (itr = jt_node_info->nested_paths, i = 0; itr != NULL; itr = itr->next, i++)
     {
@@ -6332,6 +6329,7 @@ pt_function_to_regu (PARSER_CONTEXT * parser, PT_NODE * function)
 	case F_JSON_ARRAY_APPEND:
 	case F_JSON_ARRAY_INSERT:
 	case F_JSON_CONTAINS_PATH:
+	case F_JSON_EXTRACT:
 	case F_JSON_MERGE:
 	case F_JSON_MERGE_PATCH:
 	case F_JSON_SEARCH:
@@ -25701,7 +25699,7 @@ pt_aggregate_info_update_value_and_reguvar_lists (AGGREGATE_INFO * info, VAL_LIS
   pt_merge_regu_var_lists (&info->out_list->valptrp, regu_constant_list);
 
   // also increment list count
-  size_t regu_constant_list_size = 0;
+  int regu_constant_list_size = 0;
 
   for (REGU_VARIABLE_LIST ptr = regu_constant_list; ptr != NULL; ptr = ptr->next, regu_constant_list_size++)
     ;
@@ -25718,8 +25716,8 @@ static void
 pt_aggregate_info_update_scan_regu_list (AGGREGATE_INFO * info, REGU_VARIABLE_LIST scan_regu_list)
 {
   REGU_VARIABLE_LIST tail = NULL;
-  size_t scan_regu_list_size = 0;
-  size_t index = 0;
+  int scan_regu_list_size = 0;
+  int index = 0;
 
   // calculate the size of scan_regu_var_list
   for (tail = scan_regu_list; tail != NULL; tail = tail->next, scan_regu_list_size++)
@@ -25862,7 +25860,7 @@ pt_set_regu_list_pos_descr_from_idx (REGU_VARIABLE_LIST & regu_list, size_t star
   for (REGU_VARIABLE_LIST crt_regu = regu_list; crt_regu != NULL; crt_regu = crt_regu->next)
     {
       assert (crt_regu->value.type == TYPE_POSITION);
-      crt_regu->value.value.pos_descr.pos_no = starting_index++;
+      crt_regu->value.value.pos_descr.pos_no = (int) starting_index++;
     }
 }
 

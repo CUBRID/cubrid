@@ -9646,10 +9646,29 @@ check_auto_commit_after_fetch_done (T_SRV_HANDLE * srv_handle)
 {
   // To close an updatable cursor is dangerous since it lose locks and updating cursor is allowed before closing it.
 
-  if (srv_handle->auto_commit_mode == TRUE && srv_handle->cur_result_index == srv_handle->num_q_result
-      && srv_handle->forward_only_cursor == TRUE && srv_handle->is_updatable == FALSE)
+  if (srv_handle->auto_commit_mode == TRUE && srv_handle->forward_only_cursor == TRUE
+      && srv_handle->is_updatable == FALSE)
     {
-      return true;
+      if (srv_handle->cur_result_index == srv_handle->num_q_result)
+	{
+	  /* The last fetch. We can commit. */
+	  return true;
+	}
+      else
+	{
+	  /* Check for other future fetch. */
+	  for (int i = srv_handle->cur_result_index; i < srv_handle->num_q_result; i++)
+	    {
+	      if (has_stmt_result_set (srv_handle->q_result[i].stmt_type))
+		{
+		  /* Needs other fetch. Can't commit. */
+		  return false;
+		}
+	    }
+
+	  /* The last fetch. We can commit. */
+	  return true;
+	}
     }
 
   return false;

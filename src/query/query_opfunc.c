@@ -261,6 +261,10 @@ qdata_json_contains_path (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, V
 			  QFILE_TUPLE tuple);
 
 static int
+qdata_json_extract_multiple_paths (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
+				   OID * obj_oid_p, QFILE_TUPLE tuple);
+
+static int
 qdata_json_get_all_paths (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
 			  QFILE_TUPLE tuple);
 
@@ -6167,7 +6171,7 @@ qdata_json_unquote_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * 
 }
 
 int
-qdata_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * json_res, TP_DOMAIN * domain_p)
+qdata_json_extract_dbval (DB_VALUE * json, DB_VALUE * path, DB_VALUE * json_res, TP_DOMAIN * domain_p)
 {
   return db_json_extract_dbval (json, path, json_res);
 }
@@ -8635,6 +8639,9 @@ qdata_evaluate_function (THREAD_ENTRY * thread_p, REGU_VARIABLE * function_p, VA
     case F_JSON_CONTAINS_PATH:
       return qdata_json_contains_path (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
 
+    case F_JSON_EXTRACT:
+      return qdata_json_extract_multiple_paths (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+
     case F_JSON_GET_ALL_PATHS:
       return qdata_json_get_all_paths (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
 
@@ -10402,6 +10409,14 @@ qdata_json_contains_path (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, V
 {
   return qdata_convert_operands_to_value_and_call (thread_p, function_p, val_desc_p,
 						   obj_oid_p, tuple, db_json_contains_path);
+}
+
+static int
+qdata_json_extract_multiple_paths (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
+				   OID * obj_oid_p, QFILE_TUPLE tuple)
+{
+  return qdata_convert_operands_to_value_and_call (thread_p, function_p, val_desc_p,
+						   obj_oid_p, tuple, db_json_extract_multiple_paths);
 }
 
 static int

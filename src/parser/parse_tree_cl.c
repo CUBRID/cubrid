@@ -4087,6 +4087,8 @@ pt_show_function (FUNC_TYPE c)
       return "json_search";
     case F_JSON_CONTAINS_PATH:
       return "json_contains_path";
+    case F_JSON_EXTRACT:
+      return "json_extract";
     case F_JSON_MERGE:
       return "json_merge";
     case F_JSON_MERGE_PATCH:
@@ -12646,6 +12648,15 @@ pt_print_function (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, pt_show_function (code));
       q = pt_append_nulstring (parser, q, " ");
       q = pt_append_varchar (parser, q, r1);
+    }
+  else if (code == F_JSON_EXTRACT)
+    {
+      r1 = pt_print_bytes_l (parser, p->info.function.arg_list);
+      q = pt_append_nulstring (parser, q, " ");	// for compatibility with PT_EXPR
+      q = pt_append_nulstring (parser, q, pt_show_function (code));
+      q = pt_append_nulstring (parser, q, "(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
     }
   else
     {
