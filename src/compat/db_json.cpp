@@ -2402,14 +2402,42 @@ db_json_merge_two_json_objects_preserve (const JSON_VALUE *source, JSON_VALUE &d
       // if the key is in both jsons
       if (dest.HasMember (name))
 	{
-	  if (dest[name].IsArray ())
+	  // rules for merging:
+	  // 1. Adjacent arrays are merged to a single array.
+	  // 2. Adjacent objects are merged to a single object.
+	  // 3. A scalar value is auto-wrapped as an array and merged as an array.
+	  // 4. An adjacent array and object are merged by autowrapping the object as an array and merging the arrays.
+	  //
+	  // In other words:
+	  // If both are object, do an object merge
+	  // If not, we need to do an array merge
+	  if (dest[name].IsObject () && itr->value.IsObject ())
 	    {
-	      dest[name].GetArray ().PushBack (itr->value, allocator);
+	      // object merge
+	      for (JSON_VALUE::MemberIterator elem = itr->value.MemberBegin (); elem != itr->value.MemberEnd ();
+		   ++elem)
+		{
+		  dest[name].AddMember (elem->name, elem->value, allocator);
+		}
 	    }
 	  else
 	    {
-	      db_json_value_wrap_as_array (dest[name], allocator);
-	      dest[name].PushBack (itr->value, allocator);
+	      // array merge
+	      if (!dest[name].IsArray ())
+		{
+		  db_json_value_wrap_as_array (dest[name], allocator);
+		}
+	      if (itr->value.IsArray ())
+		{
+		  for (JSON_VALUE::ValueIterator elem = itr->value.Begin (); elem != itr->value.End (); ++elem)
+		    {
+		      dest[name].PushBack (*elem, allocator);
+		    }
+		}
+	      else
+		{
+		  dest[name].PushBack (itr->value, allocator);
+		}
 	    }
 	}
       else
