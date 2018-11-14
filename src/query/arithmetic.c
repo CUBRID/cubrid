@@ -4694,6 +4694,8 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1, const DB_VALUE * va
 	  else
 	    {
 	      /* try time */
+	      er_clear ();	// forget previous error to try datetime
+
 	      cast_domain = tp_domain_resolve_default (DB_TYPE_TIME);
 	      cast_status = tp_value_coerce (value1, &cast_value1, cast_domain);
 	      if (cast_status == DOMAIN_COMPATIBLE)
