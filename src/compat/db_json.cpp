@@ -3259,7 +3259,7 @@ db_json_remove_leading_zeros_index (std::string &index)
  * Example: $[0]."name1".name2[2] -> /0/name1/name2/2
  */
 int
-db_json_convert_sql_path_to_pointer (const char *sql_path, std::string &json_pointer_out)
+db_json_convert_sql_path_to_pointer (const char *sql_path, std::string &json_pointer_out, bool allow_wildcards)
 {
   std::string sql_path_string (sql_path);
   JSON_PATH_TYPE json_path_type = db_json_get_path_type (sql_path_string);
@@ -3272,7 +3272,7 @@ db_json_convert_sql_path_to_pointer (const char *sql_path, std::string &json_poi
       return NO_ERROR;
     }
 
-  if (!db_json_sql_path_is_valid (sql_path_string, false))
+  if (!db_json_sql_path_is_valid (sql_path_string, allow_wildcards))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
       return ER_JSON_INVALID_PATH;
