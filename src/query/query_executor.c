@@ -12318,6 +12318,7 @@ qexec_execute_selupd_list_find_class (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     {
       *class_oid = selupd->class_oid;
       class_hfid = &selupd->class_hfid;
+      *found = true;
       return NO_ERROR;
     }
 
