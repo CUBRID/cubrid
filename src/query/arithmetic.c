@@ -44,7 +44,6 @@
 #include "tz_support.h"
 #include "db_date.h"
 #include "db_json.hpp"
-
 #include "dbtype.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
@@ -4644,7 +4643,6 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1, const DB_VALUE * va
   bool is_deal_with_numeric = false;
   int er_status = NO_ERROR;
   char buf[MAX_DOMAIN_NAME_SIZE];
-  DB_TIME time_local;
 
   assert (result != NULL && value1 != NULL && value2 != NULL && value3 != NULL && value4 != NULL);
 
@@ -5428,26 +5426,50 @@ db_json_merge (DB_VALUE * json, DB_VALUE * json_res)
   return NO_ERROR;
 }
 
+//
+// db_json_extract_dbval () - extract path from json DOC
+//
+// return         : error code
+// json (in)      : source JSON
+// path (in)      : path
+// json_res (out) : result JSON
+//
 int
-db_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * json_res)
+db_json_extract_dbval (DB_VALUE * json, DB_VALUE * path, DB_VALUE * json_res)
 {
-  JSON_DOC *this_doc;
-  const char *raw_path;
+  JSON_DOC *this_doc = NULL;
+  const char *raw_path = NULL;
   JSON_DOC *result_doc = NULL;
   int error_code = NO_ERROR;
 
+  assert (json != NULL);
+  assert (path != NULL);
+
+  db_make_null (json_res);
+
   if (DB_IS_NULL (json) || DB_IS_NULL (path))
     {
-      return db_make_null (json_res);
+      return NO_ERROR;
     }
 
-  this_doc = db_get_json_document (json);
-  raw_path = db_get_string (path);
+  error_code = db_value_to_json_doc (*json, this_doc);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = db_value_to_json_path (path, F_JSON_EXTRACT, &raw_path);
+  if (error_code != NO_ERROR)
+    {
+      db_json_delete_doc (this_doc);
+      return error_code;
+    }
 
   error_code = db_json_extract_document_from_path (this_doc, raw_path, result_doc);
   if (error_code != NO_ERROR)
     {
       assert (result_doc == NULL);
+      db_json_delete_doc (this_doc);
       return error_code;
     }
 
@@ -5460,6 +5482,91 @@ db_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * 
       db_make_null (json_res);
     }
 
+  db_json_delete_doc (this_doc);
+
+  return NO_ERROR;
+}
+
+//
+// db_json_extract_multiple_paths () - extract paths from JSON and return a JSON object if there is only one path or
+//                                     a JSON array if there are multiple paths
+//
+// return        : error code
+// result (in)   : result
+// args[] (in)   : 
+// num_args (in) :
+//
+// TODO: we need to change the args type of all JSON function to const DB_VALUE *[]
+//
+int
+db_json_extract_multiple_paths (DB_VALUE * result, DB_VALUE * args[], int num_args)
+{
+  db_make_null (result);
+
+  if (num_args < 2)
+    {
+      // should be detected early
+      assert (false);
+      return ER_FAILED;
+    }
+
+  if (num_args == 2)
+    {
+      return db_json_extract_dbval (args[0], args[1], result);
+    }
+
+  // there are multiple paths; the result of extract is a JSON_ARRAY with all extracted values
+  int error_code = NO_ERROR;
+  JSON_DOC *source_doc = NULL;	// source document - first argument
+
+  error_code = db_value_to_json_doc (*args[0], source_doc);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  JSON_DOC *result_doc = db_json_allocate_doc ();	// result JSON document; it will be converted to array later
+  JSON_DOC *extracted_doc = NULL;	// document used for extracting each value
+  const DB_VALUE *path_value;
+  const char *path_str = NULL;
+
+  TP_DOMAIN_STATUS domain_status = DOMAIN_COMPATIBLE;
+
+  for (int path_idx = 1; path_idx < num_args; path_idx++)
+    {
+      path_value = args[path_idx];
+
+      // paths can only be strings
+      error_code = db_value_to_json_path (path_value, F_JSON_EXTRACT, &path_str);
+      if (error_code != NO_ERROR)
+	{
+	  // free docs
+	  db_json_delete_doc (result_doc);
+	  db_json_delete_doc (extracted_doc);
+	  db_json_delete_doc (source_doc);
+	  return error_code;
+	}
+
+      error_code = db_json_extract_document_from_path (source_doc, path_str, extracted_doc);
+
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  // free docs
+	  db_json_delete_doc (result_doc);
+	  db_json_delete_doc (extracted_doc);
+	  db_json_delete_doc (source_doc);
+	  return error_code;
+	}
+
+      db_json_add_element_to_array (result_doc, extracted_doc);
+    }
+
+  // free temporary resources
+  db_json_delete_doc (extracted_doc);
+
+  db_make_json (result, result_doc, true);
   return NO_ERROR;
 }
 

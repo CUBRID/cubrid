@@ -808,9 +808,9 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
   if (prt_type == class_description::CSQL_SCHEMA_COMMAND)
     {
       if (constraint.index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
-        {
-          m_buf (" IN PROGRESS");
-        }
+	{
+	  m_buf (" IN PROGRESS");
+	}
     }
 }
 
