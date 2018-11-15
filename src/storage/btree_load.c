@@ -4569,9 +4569,23 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
       old_wait_msec = xlogtb_reset_wait_msecs (thread_p, LK_INFINITE_WAIT);
 
       /* Promote the lock to SCH_M_LOCK */
-      lock_ret = lock_object (thread_p, &class_oids[cur_class], oid_Root_class_oid, SCH_M_LOCK, LK_UNCOND_LOCK);
-      if (lock_ret != LK_GRANTED)
+      /* we need to do this in a loop to retry in case of interruption */
+      while (true)
 	{
+	  lock_ret = lock_object (thread_p, &class_oids[cur_class], oid_Root_class_oid, SCH_M_LOCK, LK_UNCOND_LOCK);
+	  if (lock_ret == LK_GRANTED)
+	    {
+	      break;
+	    }
+	  if (er_errid () == ER_INTERRUPTED)
+	    {
+	      // interruptions cannot be allowed here; lock must be promoted to either commit or rollback changes
+	      er_clear ();
+	      // make sure the transaction interrupt flag is cleared
+	      logtb_set_tran_index_interrupt (thread_p, thread_p->tran_index, false);
+	      // and retry
+	      continue;
+	    }
 	  // FIXME: What can we do??
 	  assert (lock_ret == LK_GRANTED);
 	}
