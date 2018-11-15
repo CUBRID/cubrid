@@ -13777,7 +13777,6 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	case PT_VAR_SAMP:
 	  node->type_enum = arg_type;
 	  node->data_type = NULL;
-
 	  break;
 
 	case PT_JSON_ARRAYAGG:
@@ -13795,18 +13794,20 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	case F_JSON_MERGE_PATCH:
 	case F_JSON_GET_ALL_PATHS:
 	case F_JSON_SEARCH:
+	case F_JSON_EXTRACT:
 	  node->type_enum = PT_TYPE_JSON;
 	  break;
+
 	case F_JSON_CONTAINS_PATH:
 	  node->type_enum = PT_TYPE_INTEGER;
 	  break;
+
 	case PT_MEDIAN:
 	case PT_PERCENTILE_CONT:
 	case PT_PERCENTILE_DISC:
 	  /* let calculation decide the type */
 	  node->type_enum = PT_TYPE_MAYBE;
 	  node->data_type = NULL;
-
 	  break;
 
 	case PT_GROUP_CONCAT:
