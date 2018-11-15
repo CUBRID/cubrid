@@ -296,7 +296,7 @@ static int create_srv_handle_with_query_result (T_QUERY_RESULT * src_q_result, D
 #define check_class_chn(s) 0
 static int get_client_result_cache_lifetime (DB_SESSION * session, int stmt_id);
 static bool has_stmt_result_set (char stmt_type);
-static bool check_auto_commit_after_fetch_done (T_SRV_HANDLE * srv_handle);
+static bool check_auto_commit_after_getting_result (T_SRV_HANDLE * srv_handle);
 static char *convert_db_value_to_string (DB_VALUE * value, DB_VALUE * value_string);
 static void serialize_collection_as_string (DB_VALUE * col, char **out);
 static void add_fk_info_before (T_FK_INFO_RESULT * pivot, T_FK_INFO_RESULT * pnew);
@@ -1972,6 +1972,14 @@ ux_next_result (T_SRV_HANDLE * srv_handle, char flag, T_NET_BUF * net_buf, T_REQ
 
   srv_handle->cur_result = cur_result;
   (srv_handle->cur_result_index)++;
+
+  if (!has_stmt_result_set (cur_result->stmt_type))
+    {
+      if (check_auto_commit_after_getting_result (srv_handle) == true)
+	{
+	  req_info->need_auto_commit = TRAN_AUTOCOMMIT;
+	}
+    }
 
   return 0;
 
@@ -5362,7 +5370,7 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char f
 
 	  net_buf_cp_int (net_buf, 0, NULL);
 
-	  if (check_auto_commit_after_fetch_done (srv_handle) == true)
+	  if (check_auto_commit_after_getting_result (srv_handle) == true)
 	    {
 	      ux_cursor_close (srv_handle);
 	      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
@@ -5445,7 +5453,7 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char f
       cursor_pos++;
       if (srv_handle->max_row > 0 && cursor_pos > srv_handle->max_row)
 	{
-	  if (check_auto_commit_after_fetch_done (srv_handle) == true)
+	  if (check_auto_commit_after_getting_result (srv_handle) == true)
 	    {
 	      ux_cursor_close (srv_handle);
 	      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
@@ -5461,7 +5469,7 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char f
 	{
 	  fetch_end_flag = 1;
 
-	  if (check_auto_commit_after_fetch_done (srv_handle) == true)
+	  if (check_auto_commit_after_getting_result (srv_handle) == true)
 	    {
 	      ux_cursor_close (srv_handle);
 	      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
@@ -9642,33 +9650,14 @@ has_stmt_result_set (char stmt_type)
 }
 
 static bool
-check_auto_commit_after_fetch_done (T_SRV_HANDLE * srv_handle)
+check_auto_commit_after_getting_result (T_SRV_HANDLE * srv_handle)
 {
   // To close an updatable cursor is dangerous since it lose locks and updating cursor is allowed before closing it.
 
-  if (srv_handle->auto_commit_mode == TRUE && srv_handle->forward_only_cursor == TRUE
-      && srv_handle->is_updatable == FALSE)
+  if (srv_handle->auto_commit_mode == TRUE && srv_handle->cur_result_index == srv_handle->num_q_result
+      && srv_handle->forward_only_cursor == TRUE && srv_handle->is_updatable == FALSE)
     {
-      if (srv_handle->cur_result_index == srv_handle->num_q_result)
-	{
-	  /* The last fetch. We can commit. */
-	  return true;
-	}
-      else
-	{
-	  /* Check for other future fetch. */
-	  for (int i = srv_handle->cur_result_index; i < srv_handle->num_q_result; i++)
-	    {
-	      if (has_stmt_result_set (srv_handle->q_result[i].stmt_type))
-		{
-		  /* Needs other fetch. Can't commit. */
-		  return false;
-		}
-	    }
-
-	  /* The last fetch. We can commit. */
-	  return true;
-	}
+      return true;
     }
 
   return false;
