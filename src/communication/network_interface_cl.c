@@ -5758,10 +5758,23 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  btid =
-    xbtree_load_index (thread_p, btid, bt_name, key_type, class_oids, n_classes, n_attrs, attr_ids, attrs_prefix_length,
-		       hfids, unique_pk, not_null_flag, fk_refcls_oid, fk_refcls_pk_btid, fk_name, pred_stream,
-		       pred_stream_size, expr_stream, expr_stream_size, func_col_id, func_attr_index_start);
+  if (index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+    {
+      btid =
+	xbtree_load_online_index (thread_p, btid, bt_name, key_type, class_oids, n_classes, n_attrs, attr_ids,
+				  attrs_prefix_length, hfids, unique_pk, not_null_flag, fk_refcls_oid,
+				  fk_refcls_pk_btid, fk_name, pred_stream, pred_stream_size, expr_stream,
+				  expr_stream_size, func_col_id, func_attr_index_start);
+    }
+  else
+    {
+      btid =
+	xbtree_load_index (thread_p, btid, bt_name, key_type, class_oids, n_classes, n_attrs, attr_ids,
+			   attrs_prefix_length, hfids, unique_pk, not_null_flag, fk_refcls_oid, fk_refcls_pk_btid,
+			   fk_name, pred_stream, pred_stream_size, expr_stream, expr_stream_size, func_col_id,
+			   func_attr_index_start);
+    }
+
   if (btid == NULL)
     {
       assert (er_errid () != NO_ERROR);
