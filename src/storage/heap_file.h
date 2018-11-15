@@ -82,12 +82,12 @@
     } \
   while (0)
 
-#define heap_classrepr_free_and_init(class_repr, idxp) \
+#define heap_classrepr_free_and_init(thread_p, class_repr, idxp) \
   do \
     { \
       if ((class_repr) != NULL) \
         { \
-          heap_classrepr_free ((class_repr), (idxp)); \
+          heap_classrepr_free (thread_p, (class_repr), (idxp)); \
           (class_repr) = NULL; \
         } \
     } \
@@ -513,7 +513,7 @@ extern int heap_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, const HFID * 
 /* partition-support */
 extern OR_CLASSREP *heap_classrepr_get (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * class_recdes,
 					REPR_ID reprid, int *idx_incache);
-extern int heap_classrepr_free (OR_CLASSREP * classrep, int *idx_incache);
+extern int heap_classrepr_free (THREAD_ENTRY * thread_p, OR_CLASSREP * classrep, int *idx_incache);
 extern REPR_ID heap_get_class_repr_id (THREAD_ENTRY * thread_p, OID * class_oid);
 extern int heap_classrepr_find_index_id (OR_CLASSREP * classrepr, const BTID * btid);
 extern int heap_attrinfo_set_uninitialized_global (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES * recdes,
@@ -644,4 +644,8 @@ extern int heap_get_best_space_num_stats_entries (void);
 extern int heap_get_hfid_from_vfid (THREAD_ENTRY * thread_p, const VFID * vfid, HFID * hfid);
 extern int heap_scan_cache_allocate_area (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache_p, int size);
 extern bool heap_is_page_header (THREAD_ENTRY * thread_p, PAGE_PTR page);
+
+extern void heap_class_repr_enable_pin (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
+extern void heap_class_repr_disable_pin (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
+
 #endif /* _HEAP_FILE_H_ */

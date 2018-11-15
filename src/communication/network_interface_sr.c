@@ -4935,6 +4935,8 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 
   CACHE_TIME_RESET (&srv_cache_time);
 
+  tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  heap_class_repr_enable_pin (thread_p, tdes);
   /* call the server routine of query execute */
   list_id = xqmgr_execute_query (thread_p, &xasl_id, &query_id, dbval_cnt, data, &query_flag, &clt_cache_time,
 				 &srv_cache_time, query_timeout, &xasl_cache_entry_p);
@@ -4949,8 +4951,8 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
       info = xasl_cache_entry_p->sql_info;
     }
 
+  heap_class_repr_disable_pin (thread_p, tdes);
   end_query_allowed = IS_QUERY_EXECUTE_WITH_COMMIT (query_flag);
-  tdes = LOG_FIND_CURRENT_TDES (thread_p);
   tran_state = tdes->state;
   has_updated = false;
 
