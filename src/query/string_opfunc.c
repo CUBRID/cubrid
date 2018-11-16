@@ -1925,7 +1925,7 @@ db_string_quote (const DB_VALUE * str, DB_VALUE * res)
 	      special_idx.push_back (i);
 	    }
 	}
-      int dest_size = src_size + special_idx.size () + 2;
+      int dest_size = (int) (src_size + special_idx.size () + 2);
       char *result = (char *) db_private_alloc (NULL, dest_size);
       if (result == NULL)
 	{

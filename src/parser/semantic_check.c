@@ -1461,7 +1461,7 @@ pt_get_attributes (PARSER_CONTEXT * parser, const DB_OBJECT * c)
       /* its name is class_name.attribute_name */
       i_attr->info.attr_def.attr_name = name = pt_name (parser, db_attribute_name (attributes));
       name->info.name.resolved = pt_append_string (parser, NULL, class_name);
-      PT_NAME_INFO_SET_FLAG (name, PT_NAME_REAL_TABLE);
+      PT_NAME_INFO_SET_FLAG (name, PT_NAME_DEFAULTF_ACCEPTS);
       name->info.name.meta_class = (db_attribute_is_shared (attributes) ? PT_SHARED : PT_NORMAL);
 
       /* set its data type */
@@ -5219,6 +5219,7 @@ pt_find_partition_column_count_func (PT_NODE * func, PT_NODE ** name_node)
     case F_JSON_ARRAY_APPEND:
     case F_JSON_ARRAY_INSERT:
     case F_JSON_CONTAINS_PATH:
+    case F_JSON_EXTRACT:
     case F_JSON_SEARCH:
     case F_JSON_MERGE:
     case F_JSON_MERGE_PATCH:
@@ -13584,7 +13585,7 @@ pt_check_defaultf (PARSER_CONTEXT * parser, PT_NODE * node)
 
   /* OIDs don't have default value */
   if (arg == NULL || arg->node_type != PT_NAME || arg->info.name.meta_class == PT_OID_ATTR
-      || !PT_NAME_INFO_IS_FLAGED (arg, PT_NAME_REAL_TABLE))
+      || !PT_NAME_INFO_IS_FLAGED (arg, PT_NAME_DEFAULTF_ACCEPTS))
     {
       PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DEFAULT_JUST_COLUMN_NAME);
       return ER_FAILED;
@@ -15164,6 +15165,7 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *a
 	case F_JSON_ARRAY_INSERT:
 	case F_JSON_SEARCH:
 	case F_JSON_CONTAINS_PATH:
+	case F_JSON_EXTRACT:
 	case F_JSON_MERGE:
 	case F_JSON_MERGE_PATCH:
 	case F_JSON_GET_ALL_PATHS:

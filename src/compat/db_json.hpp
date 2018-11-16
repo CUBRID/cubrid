@@ -158,6 +158,7 @@ bool db_json_doc_is_uncomparable (const JSON_DOC *doc);
 // DB_VALUE manipulation functions
 int db_value_to_json_doc (const DB_VALUE &db_val, REFPTR (JSON_DOC, json_doc));
 int db_value_to_json_value (const DB_VALUE &db_val, REFPTR (JSON_DOC, json_val));
+int db_value_to_json_path (const DB_VALUE *path_value, FUNC_TYPE fcode, const char **path_str);
 /* end of C functions */
 
 template <typename Fn, typename... Args>
