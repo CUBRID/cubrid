@@ -160,6 +160,7 @@ set(PARSER_SOURCES
   ${PARSER_DIR}/cnf.c
   ${PARSER_DIR}/compile.c
   ${PARSER_DIR}/double_byte_support.c
+  ${PARSER_DIR}/func_type.cpp
   ${PARSER_DIR}/keyword.c
   ${PARSER_DIR}/method_transform.c
   ${PARSER_DIR}/name_resolution.c
@@ -176,7 +177,10 @@ set(PARSER_SOURCES
   ${PARSER_DIR}/type_checking.c
   ${PARSER_DIR}/view_transform.c
   ${PARSER_DIR}/xasl_generation.c
-  ${PARSER_DIR}/func_type.cpp
+  )
+set(PARSER_HEADERS
+  ${PARSER_DIR}/func_type.hpp
+  ${PARSER_DIR}/parse_type.hpp
   )
 
 set(OPTIMIZER_SOURCES
@@ -365,6 +369,7 @@ add_library(cubridcs SHARED
   ${CONNECTION_TCP_SOURCE}
   ${COMMUNICATION_SOURCES}
   ${PARSER_SOURCES}
+  ${PARSER_HEADERS}
   ${OPTIMIZER_SOURCES}
   ${QUERY_SOURCES}
   ${OBJECT_SOURCES}

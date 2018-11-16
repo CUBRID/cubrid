@@ -9854,7 +9854,7 @@ attr_index_def
 attr_def_one
 	: identifier
 	  data_type
-		{{//attr_def_one : identifier
+		{{
 
 			PT_NODE *dt;
 			PT_TYPE_ENUM typ;
@@ -15700,7 +15700,7 @@ reserved_func
 
 		DBG_PRINT}}
 	| of_avg_max_etc '(' of_distinct_unique expression_ ')'
-		{{//reserved_func | of_avg_max_etc '(' of_distinct_unique expression_ ')'
+		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_FUNCTION);
 			
@@ -15722,7 +15722,7 @@ reserved_func
 
 		DBG_PRINT}}
 	| of_avg_max_etc '(' opt_all expression_ ')'
-		{{//reserved_func | of_avg_max_etc '(' opt_all expression_ ')'
+		{{
 
 			PT_NODE *node = parser_new_node (this_parser, PT_FUNCTION);
 
@@ -21530,7 +21530,8 @@ simple_path_id_list
 
 identifier
 	: IdName
-		{{//identifier : IdName
+		{{
+
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
 
 			if (p)
@@ -21549,7 +21550,8 @@ identifier
 
 		DBG_PRINT}}
 	| BracketDelimitedIdName
-		{{//identifier | BracketDelimitedIdName
+		{{
+
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
 
 			if (p)
@@ -21568,7 +21570,8 @@ identifier
 
 		DBG_PRINT}}
 	| BacktickDelimitedIdName
-		{{//identifier | BacktickDelimitedIdName
+		{{
+
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
 
 			if (p)
@@ -21587,7 +21590,8 @@ identifier
 
 		DBG_PRINT}}
 	| DelimitedIdName
-		{{//identifier | DelimitedIdName
+		{{
+
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
 
 			if (p)
