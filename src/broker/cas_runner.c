@@ -1109,7 +1109,7 @@ process_bind (char *linebuf, int *num_bind_p, T_BIND_INFO * bind_info)
   if ((bind_info[num_bind].type == CCI_U_TYPE_CHAR) || (bind_info[num_bind].type == CCI_U_TYPE_STRING)
       || (bind_info[num_bind].type == CCI_U_TYPE_NCHAR) || (bind_info[num_bind].type == CCI_U_TYPE_VARNCHAR)
       || (bind_info[num_bind].type == CCI_U_TYPE_BIT) || (bind_info[num_bind].type == CCI_U_TYPE_VARBIT)
-      || (bind_info[num_bind].type == CCI_U_TYPE_ENUM))
+      || (bind_info[num_bind].type == CCI_U_TYPE_ENUM) || (bind_info[num_bind].type == CCI_U_TYPE_JSON))
     {
       bind_info[num_bind].len = atoi (p + 1);
       p = strchr (p + 1, ' ');

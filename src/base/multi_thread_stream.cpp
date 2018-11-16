@@ -18,19 +18,19 @@
  */
 
 /*
- * packing_stream.cpp
+ * multi_thread_stream.cpp
  */
 
 #ident "$Id$"
 
-#include "packing_stream.hpp"
+#include "multi_thread_stream.hpp"
 
 #include "error_code.h"
 #include "error_manager.h"
 
 namespace cubstream
 {
-  packing_stream::packing_stream (const size_t buffer_capacity, const int max_appenders)
+  multi_thread_stream::multi_thread_stream (const size_t buffer_capacity, const int max_appenders)
     : m_bip_buffer (buffer_capacity),
       m_reserved_positions (max_appenders)
   {
@@ -39,7 +39,7 @@ namespace cubstream
     /* TODO : system parameter */
     m_trigger_flush_to_disk_size = buffer_capacity / 2;
 
-    m_trigger_min_to_read_size = 1024;
+    m_trigger_min_to_read_size = 16;
 
     m_stat_reserve_queue_spins = 0;
     m_stat_reserve_buffer_spins = 0;
@@ -47,9 +47,11 @@ namespace cubstream
     m_stat_read_not_in_buffer_cnt = 0;
     m_stat_read_no_readable_pos_cnt = 0;
     m_stat_read_buffer_failed_cnt = 0;
+
+    m_is_stopped = false;
   }
 
-  packing_stream::~packing_stream ()
+  multi_thread_stream::~multi_thread_stream ()
   {
     assert (m_append_position - m_read_position == 0);
   }
@@ -61,7 +63,7 @@ namespace cubstream
    * 3. commit the reserve position
    *  the write_function is expected to return error code (negative value) or number of written bytes (positive)
    */
-  int packing_stream::write (const size_t byte_count, write_func_t &write_action)
+  int multi_thread_stream::write (const size_t byte_count, write_func_t &write_action)
   {
     int err = NO_ERROR;
     stream_reserve_context *reserve_context = NULL;
@@ -102,7 +104,7 @@ namespace cubstream
    * 7. execute read action using local buffer or initial provided pointer
    * 8. release latch read (in case local buffer not used)
    */
-  int packing_stream::read (const stream_position first_pos, const size_t byte_count, read_func_t &read_action)
+  int multi_thread_stream::read (const stream_position first_pos, const size_t byte_count, read_func_t &read_action)
   {
     int err = NO_ERROR;
     char *ptr;
@@ -180,7 +182,7 @@ namespace cubstream
    * 9. release latch read (in case local buffer not used)
    * 10. wait for an amount of payload of data to be produced (committed)
    */
-  int packing_stream::read_serial (const size_t amount, read_prepare_func_t &read_prepare_action)
+  int multi_thread_stream::read_serial (const size_t amount, read_prepare_func_t &read_prepare_action)
   {
     int err = NO_ERROR;
     char *ptr;
@@ -264,8 +266,9 @@ namespace cubstream
     return (err < 0) ? err : read_bytes;
   }
 
-  int packing_stream::read_partial (const stream_position first_pos, const size_t byte_count, size_t &actual_read_bytes,
-				    read_partial_func_t &read_partial_action)
+  int multi_thread_stream::read_partial (const stream_position first_pos, const size_t byte_count,
+					 size_t &actual_read_bytes,
+					 read_partial_func_t &read_partial_action)
   {
     int err = NO_ERROR;
     char *ptr;
@@ -295,12 +298,14 @@ namespace cubstream
    *  3. notifies the m_ready_pos_handler handler that new amount is ready to be read
    *     (only if threshold is reached compared to previous notified position)
    */
-  int packing_stream::commit_append (stream_reserve_context *reserve_context)
+  int multi_thread_stream::commit_append (stream_reserve_context *reserve_context)
   {
     stream_reserve_context *last_used_context = NULL;
     bool collapsed_reserve;
     char *ptr_commit;
+    int err = NO_ERROR;
     stream_position new_completed_position = reserve_context->start_pos + reserve_context->reserved_amount;
+    bool signal_data_ready = false;
 
     std::unique_lock<std::mutex> ulock (m_buffer_mutex);
 
@@ -318,24 +323,28 @@ namespace cubstream
 	assert (new_completed_position > m_last_committed_pos);
 	m_last_committed_pos = new_completed_position;
       }
-
-    /* notify readers of the new completed position */
-    if (new_completed_position > m_last_notified_committed_pos + m_trigger_min_to_read_size)
+    if (m_last_committed_pos >= m_serial_read_wait_pos)
       {
-	if (m_ready_pos_handler)
-	  {
-	    int err;
-	    err = m_ready_pos_handler (m_last_notified_committed_pos,
-				       new_completed_position - m_last_notified_committed_pos);
-	    if (err != NO_ERROR)
-	      {
-		return err;
-	      }
-	  }
-	m_last_notified_committed_pos = new_completed_position;
+	signal_data_ready = true;
       }
 
-    return NO_ERROR;
+    ulock.unlock ();
+
+    if (signal_data_ready)
+      {
+	m_serial_read_cv.notify_one ();
+      }
+
+    /* notify readers of the new completed position */
+    if (m_ready_pos_handler && new_completed_position > m_last_notified_committed_pos + m_trigger_min_to_read_size)
+      {
+	stream_position save_last_notified_commited_pos = m_last_notified_committed_pos;
+	size_t committed_bytes = new_completed_position - m_last_notified_committed_pos;
+
+	err = m_ready_pos_handler (save_last_notified_commited_pos, committed_bytes);
+      }
+
+    return err;
   }
 
   /*
@@ -353,7 +362,7 @@ namespace cubstream
    *     of stream data and instructs the stream up to which position is safe to drop the data;
    *     the interested clients may be : normal readers or the readers which saves the data to disk (for persistence)
    */
-  char *packing_stream::reserve_with_buffer (const size_t amount, stream_reserve_context *&reserved_context)
+  char *multi_thread_stream::reserve_with_buffer (const size_t amount, stream_reserve_context *&reserved_context)
   {
     char *ptr = NULL;
 
@@ -417,10 +426,9 @@ namespace cubstream
    * The action may be : block (until data is committed) or actively fetch data (from disk or other on-demand producer)
    * skip_mode argument indicates which action to take after data becomes available.
    */
-  int packing_stream::wait_for_data (const size_t amount, const STREAM_SKIP_MODE skip_mode)
+  int multi_thread_stream::wait_for_data (const size_t amount, const STREAM_SKIP_MODE skip_mode)
   {
     int err = NO_ERROR;
-    size_t dummy;
 
     if (m_read_position + amount <= m_last_committed_pos)
       {
@@ -432,21 +440,22 @@ namespace cubstream
       }
 
     m_stat_read_not_enough_data_cnt++;
-    if (m_fetch_data_handler)
-      {
-	err = m_fetch_data_handler (m_read_position, NULL, amount, dummy);
-	if (err != NO_ERROR)
-	  {
-	    return err;
-	  }
-      }
-    else
+
+    std::unique_lock<std::mutex> local_lock (m_buffer_mutex);
+    m_serial_read_wait_pos = m_read_position + amount;
+    m_serial_read_cv.wait (local_lock,
+			   [&] { return m_is_stopped || m_last_committed_pos >= m_serial_read_wait_pos; });
+    m_serial_read_wait_pos = std::numeric_limits<stream_position>::max ();
+    local_lock.unlock ();
+
+    if (m_is_stopped)
       {
 	err = ER_STREAM_NO_MORE_DATA;
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_NO_MORE_DATA, 3, this->name ().c_str (), m_read_position,
-		amount);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_NO_MORE_DATA, 3, this->name ().c_str (), m_read_position, amount);
 	return err;
       }
+
+    assert (m_read_position + amount <= m_last_committed_pos);
 
     if (skip_mode == STREAM_SKIP)
       {
@@ -473,32 +482,22 @@ namespace cubstream
    *  6. try to read-latch the read range in bip_buffer
    *  7. release mutex
    */
-  char *packing_stream::get_data_from_pos (const stream_position &req_start_pos, const size_t amount,
+  char *multi_thread_stream::get_data_from_pos (const stream_position &req_start_pos, const size_t amount,
       size_t &actual_read_bytes, mem::buffer_latch_read_id &read_latch_page_idx)
   {
     int err = NO_ERROR;
     char *ptr = NULL;
 
-    if (req_start_pos + amount > m_last_committed_pos && m_fetch_data_handler)
+    assert (amount > 0);
+
+    if (req_start_pos + amount > m_last_committed_pos)
       {
 	m_stat_read_not_enough_data_cnt++;
 	/* not yet produced */
-	/* try asking for more data : */
-
-	size_t actual_read_bytes;
-
-	err = m_fetch_data_handler (req_start_pos, ptr, amount, actual_read_bytes);
-	if (err != NO_ERROR)
-	  {
-	    return NULL;
-	  }
-
-	if (actual_read_bytes < amount)
-	  {
-	    /* force fetch handler to acquire at least the requested amount or return error (above code) */
-	    assert (false);
-	    return NULL;
-	  }
+	assert (false);
+	err = ER_STREAM_NO_MORE_DATA;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_NO_MORE_DATA, 3, this->name ().c_str (), m_read_position,
+		amount);
 
 	return NULL;
       }
@@ -544,12 +543,14 @@ namespace cubstream
 	/* the area may be found in trail of region B
 	 * this includes case when B does not exit - from start of buffer) */
 	ptr = (char *) ptr_trail_b + amount_trail_b - (m_last_committed_pos - req_start_pos);
-	actual_read_bytes = MIN (amount, amount_trail_b);
+	assert (ptr_trail_b + amount_trail_b > ptr);
+	actual_read_bytes = MIN ((int) amount, ptr_trail_b + amount_trail_b - ptr);
       }
     else
       {
 	ptr = (char *) ptr_trail_a + amount_trail_a - (m_last_committed_pos - req_start_pos - amount_trail_b);
-	actual_read_bytes = MIN (amount, amount_trail_a);
+	assert (ptr_trail_a + amount_trail_a > ptr);
+	actual_read_bytes = MIN ((int) amount, ptr_trail_a + amount_trail_a - ptr);
       }
 
     err = m_bip_buffer.start_read (ptr, actual_read_bytes, read_latch_page_idx);
@@ -562,7 +563,7 @@ namespace cubstream
     return ptr;
   }
 
-  int packing_stream::unlatch_read_data (const mem::buffer_latch_read_id &read_latch_page_idx)
+  int multi_thread_stream::unlatch_read_data (const mem::buffer_latch_read_id &read_latch_page_idx)
   {
     std::unique_lock<std::mutex> ulock (m_buffer_mutex);
     m_bip_buffer.end_read (read_latch_page_idx);

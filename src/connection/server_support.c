@@ -26,7 +26,7 @@
 #include "server_support.h"
 
 #include "config.h"
-#include "packing_stream.hpp"
+#include "multi_thread_stream.hpp"
 #include "session.h"
 #include "thread_entry_task.hpp"
 #include "thread_entry.hpp"
@@ -234,7 +234,7 @@ static bool css_check_ha_log_applier_done (void);
 static bool css_check_ha_log_applier_working (void);
 static void css_process_new_slave (SOCKET master_fd);
 
-static void css_push_server_task (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
+static void css_push_server_task (CSS_CONN_ENTRY & conn_ref);
 static void css_stop_non_log_writer (THREAD_ENTRY & thread_ref, bool &, THREAD_ENTRY & stopper_thread_ref);
 static void css_stop_log_writer (THREAD_ENTRY & thread_ref, bool &);
 static void css_find_not_stopped (THREAD_ENTRY & thread_ref, bool & stop, bool is_log_writer, bool & found);
@@ -1165,7 +1165,7 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 	      if (type == COMMAND_TYPE)
 		{
 		  // push new task
-		  css_push_server_task (*thread_p, *conn);
+		  css_push_server_task (*conn);
 		}
 	    }
 	}
@@ -1241,8 +1241,7 @@ css_internal_connection_handler (CSS_CONN_ENTRY * conn)
   css_insert_into_active_conn_list (conn);
 
   // push connection handler task
-  cubthread::get_manager ()->push_task (cubthread::get_entry (), css_Connection_worker_pool,
-					new css_connection_task (*conn));
+  cubthread::get_manager ()->push_task (css_Connection_worker_pool, new css_connection_task (*conn));
 
   return NO_ERRORS;
 }
@@ -2821,7 +2820,7 @@ css_get_current_conn_entry (void)
  * TODO: this is also used externally due to legacy design; should be internalized completely
  */
 static void
-css_push_server_task (THREAD_ENTRY &thread_ref, CSS_CONN_ENTRY &conn_ref)
+css_push_server_task (CSS_CONN_ENTRY &conn_ref)
 {
   // push the task
   //
@@ -2829,15 +2828,14 @@ css_push_server_task (THREAD_ENTRY &thread_ref, CSS_CONN_ENTRY &conn_ref)
   //       randomly pushed to cores that are full. some of those tasks may belong to threads holding locks. as a
   //       consequence, lock waiters may wait longer or even indefinitely if we are really unlucky.
   //
-  thread_get_manager ()->push_task_on_core (thread_ref, css_Server_request_worker_pool,
-                                            new css_server_task (conn_ref), static_cast<size_t> (conn_ref.idx));
+  thread_get_manager ()->push_task_on_core (css_Server_request_worker_pool, new css_server_task (conn_ref),
+                                            static_cast<size_t> (conn_ref.idx));
 }
 
 void
-css_push_external_task (THREAD_ENTRY &thread_ref, CSS_CONN_ENTRY *conn, cubthread::entry_task *task)
+css_push_external_task (CSS_CONN_ENTRY *conn, cubthread::entry_task *task)
 {
-  thread_get_manager ()->push_task (thread_ref, css_Server_request_worker_pool,
-				    new css_server_external_task (conn, task));
+  thread_get_manager ()->push_task (css_Server_request_worker_pool, new css_server_external_task (conn, task));
 }
 
 void

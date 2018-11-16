@@ -62,6 +62,7 @@
 #if !defined(CS_MODE)
 #include "session.h"
 #endif
+#include "connection_cl.h"
 #include "dbtype.h"
 
 #if !defined(WINDOWS)
@@ -70,7 +71,22 @@ void (*prev_sigfpe_handler) (int) = SIG_DFL;
 #include "wintcp.h"
 #endif /* !WINDOWS */
 
-#include "db_admin.h"
+/* host status for marking abnormal host status */
+typedef struct db_host_status DB_HOST_STATUS;
+struct db_host_status
+{
+  char hostname[MAXHOSTNAMELEN];
+  int status;
+};
+
+typedef struct db_host_status_list DB_HOST_STATUS_LIST;
+struct db_host_status_list
+{
+  /* preferred_hosts + db-hosts */
+  DB_HOST_STATUS hostlist[MAX_NUM_DB_HOSTS * 2];
+  DB_HOST_STATUS *connected_host_status;
+  int last_host_idx;
+};
 
 /* Some like to assume that the db_ layer is able to recognize that a
  database has not been successfully restarted.  For now, check every
@@ -1111,6 +1127,21 @@ db_abort_transaction (void)
   error = tran_abort ();
 
   return (error);
+}
+
+/*
+ * db_reset_latest_query_status() - Reset latest query status.
+ *
+ * return : error code
+ */
+int
+db_reset_latest_query_status (void)
+{
+  CHECK_CONNECT_ERROR ();
+
+  tran_reset_latest_query_status ();
+
+  return NO_ERROR;
 }
 
 /*

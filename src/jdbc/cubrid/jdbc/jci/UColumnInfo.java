@@ -224,6 +224,7 @@ public class UColumnInfo {
 		case UUType.U_TYPE_VARCHAR:
 		case UUType.U_TYPE_VARNCHAR:
 		case UUType.U_TYPE_ENUM:
+		case UUType.U_TYPE_JSON:
 			return "java.lang.String";
 		case UUType.U_TYPE_NUMERIC:
 			return "java.math.BigDecimal";
@@ -244,7 +245,6 @@ public class UColumnInfo {
 		case UUType.U_TYPE_DATE:
 			return "java.sql.Date";
 		case UUType.U_TYPE_TIME:
-		case UUType.U_TYPE_TIMETZ:		
 			return "java.sql.Time";
 		case UUType.U_TYPE_TIMESTAMP:
 		case UUType.U_TYPE_DATETIME:
@@ -278,6 +278,7 @@ public class UColumnInfo {
 		case UUType.U_TYPE_VARCHAR:
 		case UUType.U_TYPE_VARNCHAR:
 		case UUType.U_TYPE_ENUM:
+		case UUType.U_TYPE_JSON:
 			return "java.lang.String[]";
 		case UUType.U_TYPE_NUMERIC:
 			return "java.lang.Double[]";
@@ -298,7 +299,6 @@ public class UColumnInfo {
 		case UUType.U_TYPE_DATE:
 			return "java.sql.Date[]";
 		case UUType.U_TYPE_TIME:
-		case UUType.U_TYPE_TIMETZ:		
 			return "java.sql.Time[]";
 		case UUType.U_TYPE_TIMESTAMP:
 		case UUType.U_TYPE_DATETIME:

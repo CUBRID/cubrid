@@ -42,6 +42,12 @@ extern "C"
   typedef char need_clear_type;
 #endif
 
+#define IS_VALID_ISOLATION_LEVEL(isolation_level) \
+    (TRAN_MINVALUE_ISOLATION <= (isolation_level) \
+     && (isolation_level) <= TRAN_MAXVALUE_ISOLATION)
+
+#define TRAN_DEFAULT_ISOLATION_LEVEL()	(TRAN_DEFAULT_ISOLATION)
+
 #if defined (__GNUC__) && defined (NDEBUG)
 #define ALWAYS_INLINE always_inline
 #else
@@ -622,9 +628,6 @@ extern "C"
 /* This constant defines the default precision of DB_TYPE_TIME. */
 #define DB_TIME_PRECISION      8
 
-/* This constant defines the default precision of DB_TIMETZ_PRECISION. */
-#define DB_TIMETZ_PRECISION   DB_TIME_PRECISION
-
 /* This constant defines the default precision of DB_TYPE_DATE. */
 #define DB_DATE_PRECISION      10
 
@@ -740,10 +743,8 @@ extern "C"
     DB_TYPE_DATETIMETZ = 38,
     DB_TYPE_DATETIMELTZ = 39,
     DB_TYPE_JSON = 40,
-    /* Disabled types */
-    DB_TYPE_TIMETZ = 41,	/* internal use only - RESERVED */
-    DB_TYPE_TIMELTZ = 42,	/* internal use only - RESERVED */
-    /* end of disabled types */
+
+    /* aliases */
     DB_TYPE_LIST = DB_TYPE_SEQUENCE,
     DB_TYPE_SMALLINT = DB_TYPE_SHORT,	/* SQL SMALLINT */
     DB_TYPE_VARCHAR = DB_TYPE_STRING,	/* SQL CHAR(n) VARYING values */
@@ -784,12 +785,6 @@ extern "C"
   typedef unsigned int DB_TIME;
 
   typedef unsigned int TZ_ID;
-  typedef struct db_timetz DB_TIMETZ;
-  struct db_timetz
-  {
-    DB_TIME time;
-    TZ_ID tz_id;		/* zone id */
-  };
 
   /* Structure used for the representation of universal times. These are compatible with the Unix time_t definition. */
   typedef unsigned int DB_TIMESTAMP;
@@ -923,37 +918,39 @@ extern "C"
     short volid;		/* Volume identifier where the file resides */
   };
 
-#define VFID_INITIALIZER \
-  { NULL_FILEID, NULL_VOLID }
+#define VFID_INITIALIZER { NULL_FILEID, NULL_VOLID }
 
 #define VFID_AS_ARGS(vfidp) (vfidp)->volid, (vfidp)->fileid
 
-#define VPID_INITIALIZER \
-  { NULL_PAGEID, NULL_VOLID }
+#define VPID_INITIALIZER { NULL_PAGEID, NULL_VOLID }
 
 #define VPID_AS_ARGS(vpidp) (vpidp)->volid, (vpidp)->pageid
 
   /* Set a vpid with values of volid and pageid */
-#define VPID_SET(vpid_ptr, volid_value, pageid_value)	      \
-  do {							      \
-    (vpid_ptr)->volid  = (volid_value);			      \
-    (vpid_ptr)->pageid = (pageid_value);		      \
-  } while(0)
+#define VPID_SET(vpid_ptr, volid_value, pageid_value) \
+  do { \
+    (vpid_ptr)->volid  = (volid_value);	\
+    (vpid_ptr)->pageid = (pageid_value); \
+  } while (0)
 
   /* Set the vpid to an invalid one */
 #define VPID_SET_NULL(vpid_ptr) VPID_SET(vpid_ptr, NULL_VOLID, NULL_PAGEID)
 
   /* copy a VPID */
-#define  VPID_COPY(dest_ptr, src_ptr)                      \
-  do {							   \
-    *(dest_ptr) = *(src_ptr);				   \
+#define  VPID_COPY(dest_ptr, src_ptr) \
+  do { \
+    *(dest_ptr) = *(src_ptr); \
   } while (0)
 
   /* vpid1 == vpid2 ? */
-#define VPID_EQ(vpid_ptr1, vpid_ptr2)                         \
-  ((vpid_ptr1) == (vpid_ptr2) ||                              \
-   ((vpid_ptr1)->pageid == (vpid_ptr2)->pageid &&             \
-    (vpid_ptr1)->volid  == (vpid_ptr2)->volid))
+#define VPID_EQ(vpid_ptr1, vpid_ptr2) \
+  ((vpid_ptr1) == (vpid_ptr2) \
+   || ((vpid_ptr1)->pageid == (vpid_ptr2)->pageid && (vpid_ptr1)->volid == (vpid_ptr2)->volid))
+
+#define VPID_LT(vpid_ptr1, vpid_ptr2) \
+  ((vpid_ptr1) != (vpid_ptr2) \
+   && ((vpid_ptr1)->volid < (vpid_ptr2)->volid \
+       || ((vpid_ptr1)->volid == (vpid_ptr2)->volid && (vpid_ptr1)->pageid < (vpid_ptr2)->pageid)))
 
   /* Is vpid NULL ? */
 #define VPID_ISNULL(vpid_ptr) ((vpid_ptr)->pageid == NULL_PAGEID)
@@ -1070,7 +1067,6 @@ extern "C"
   typedef struct db_json DB_JSON;
   struct db_json
   {
-    char *json_body;
     const char *schema_raw;
     JSON_DOC *document;
   };
@@ -1089,7 +1085,6 @@ extern "C"
     void *p;
     DB_OBJECT *op;
     DB_TIME time;
-    DB_TIMETZ timetz;
     DB_DATE date;
     DB_TIMESTAMP utime;
     DB_TIMESTAMPTZ timestamptz;
@@ -1255,6 +1250,27 @@ extern "C"
     V_UNKNOWN = 2,
     V_ERROR = -1
   } DB_LOGICAL;
+
+/********************************************************/
+  /* From tz_support.h */
+  enum tz_region_type
+  {
+    TZ_REGION_OFFSET = 0,
+    TZ_REGION_ZONE = 1
+  };
+  typedef enum tz_region_type TZ_REGION_TYPE;
+
+  typedef struct tz_region TZ_REGION;
+  struct tz_region
+  {
+    TZ_REGION_TYPE type;	/* 0 : offset ; 1 : zone */
+    union
+    {
+      int offset;		/* in seconds */
+      unsigned int zone_id;	/* geographical zone id */
+    };
+  };
+/********************************************************/
 
 #ifdef __cplusplus
 }

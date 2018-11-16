@@ -2649,13 +2649,13 @@ vacuum_push_task (THREAD_ENTRY * thread_p, const VACUUM_DATA_ENTRY & data_entry,
   vacuum_convert_thread_to_worker (thread_p, worker_p, save_type);
   assert (save_type == thread_type::TT_VACUUM_MASTER);
 #endif // SA_MODE
+  (void) thread_p;		// not used
   if (vacuum_Data.shutdown_requested)
     {
       // stop pushing tasks; worker pool may be stopped already
       return;
     }
-  cubthread::get_manager ()->push_task (*thread_p, vacuum_Worker_threads,
-					new vacuum_worker_task (data_entry, is_partial_block));
+  cubthread::get_manager ()->push_task (vacuum_Worker_threads, new vacuum_worker_task (data_entry, is_partial_block));
 #if defined (SA_MODE)
   vacuum_convert_thread_to_master (thread_p, save_type);
   assert (save_type == thread_type::TT_VACUUM_WORKER);
@@ -4165,7 +4165,6 @@ vacuum_data_load_and_recover (THREAD_ENTRY * thread_p)
   else
     {
       /* Get last_blockid from last vacuum data entry. */
-      assert (vacuum_Data.last_page->index_free > 0);
       INT16 last_block_index = (vacuum_Data.last_page->index_free <= 0) ? 0 : vacuum_Data.last_page->index_free - 1;
       vacuum_Data.set_last_blockid (vacuum_Data.last_page->data[last_block_index].blockid);
 
@@ -5088,8 +5087,7 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
 
 	      if (is_sysop)
 		{
-		  // not really expected, but...
-		  assert (false);
+		  // more than one page in one iteration, now that's a performance
 		  log_sysop_commit (thread_p);
 		}
 
@@ -5140,6 +5138,7 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
 	    {
 	      /* Page is empty. We don't want to add a new block that does not require vacuum. */
 	      assert (data_page->index_unvacuumed == 0);
+	      next_blockid = consumed_data.blockid - 1;	// for will increment it to consumed_data.blockid
 	      continue;
 	    }
 
@@ -5166,11 +5165,12 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
 #endif /* !NDEBUG */
 
 	      vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
-			     "Add block %lld, start_lsa=%lld|%d, oldest_mvccid=%llu, newest_mvccid=%llu.",
+			     "Add block %lld, start_lsa=%lld|%d, oldest_mvccid=%llu, newest_mvccid=%llu. Hdr last blockid = %lld\n",
 			     (long long int) VACUUM_BLOCKID_WITHOUT_FLAGS (page_free_data->blockid),
 			     (long long int) page_free_data->start_lsa.pageid, (int) page_free_data->start_lsa.offset,
 			     (unsigned long long int) page_free_data->oldest_mvccid,
-			     (unsigned long long int) page_free_data->newest_mvccid);
+			     (unsigned long long int) page_free_data->newest_mvccid,
+			     (long long int) log_Gl.hdr.vacuum_last_blockid);
 	    }
 	  else
 	    {

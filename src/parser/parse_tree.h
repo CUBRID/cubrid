@@ -34,14 +34,15 @@
 #include <setjmp.h>
 #include <assert.h>
 
-#include "config.h"
-#include "jansson.h"
-#include "cursor.h"
-#include "string_opfunc.h"
-#include "message_catalog.h"
 #include "authenticate.h"
+#include "compile_context.h"
+#include "config.h"
+#include "cursor.h"
+#include "jansson.h"
+#include "json_table_def.h"
+#include "message_catalog.h"
+#include "string_opfunc.h"
 #include "system_parameter.h"
-#include "xasl.h"
 
 #define MAX_PRINT_ERROR_CONTEXT_LENGTH 64
 
@@ -186,20 +187,16 @@
 	   ((t) == PT_TYPE_ENUMERATION)) ? true : false )
 
 #define PT_IS_DATE_TIME_WITH_TZ_TYPE(t) \
-        ( (((t) == PT_TYPE_TIMETZ)       || \
-	   ((t) == PT_TYPE_TIMELTZ)       || \
-	   ((t) == PT_TYPE_TIMESTAMPTZ)       || \
-	   ((t) == PT_TYPE_TIMESTAMPLTZ       || \
-	   ((t) == PT_TYPE_DATETIMETZ)  || \
-	   ((t) == PT_TYPE_DATETIMELTZ)) ? true : false )
+        ( ((t) == PT_TYPE_TIMESTAMPTZ  || \
+	   (t) == PT_TYPE_TIMESTAMPLTZ || \
+	   (t) == PT_TYPE_DATETIMETZ   || \
+	   (t) == PT_TYPE_DATETIMELTZ) ? true : false )
 
 #define PT_IS_DATE_TIME_TYPE(t) \
         ( (((t) == PT_TYPE_DATE)       || \
 	   ((t) == PT_TYPE_TIME)       || \
 	   ((t) == PT_TYPE_TIMESTAMP)  || \
 	   ((t) == PT_TYPE_DATETIME)   || \
-	   ((t) == PT_TYPE_TIMETZ)     || \
-	   ((t) == PT_TYPE_TIMELTZ)    || \
 	   ((t) == PT_TYPE_DATETIMETZ)   || \
 	   ((t) == PT_TYPE_DATETIMELTZ)  || \
 	   ((t) == PT_TYPE_TIMESTAMPTZ)  || \
@@ -216,8 +213,6 @@
 
 #define PT_HAS_TIME_PART(t) \
         ( (((t) == PT_TYPE_TIME)       || \
-	   ((t) == PT_TYPE_TIMETZ)     || \
-	   ((t) == PT_TYPE_TIMELTZ)    || \
 	   ((t) == PT_TYPE_TIMESTAMP)  || \
 	   ((t) == PT_TYPE_TIMESTAMPTZ)  || \
 	   ((t) == PT_TYPE_TIMESTAMPLTZ)  || \
@@ -226,9 +221,7 @@
 	   ((t) == PT_TYPE_DATETIMELTZ)) ? true : false )
 
 #define PT_IS_LTZ_TYPE(t) \
-  ((t) == PT_TYPE_TIMELTZ \
-   || (t) == PT_TYPE_TIMESTAMPLTZ \
-   || (t) == PT_TYPE_DATETIMELTZ)
+  ((t) == PT_TYPE_TIMESTAMPLTZ || (t) == PT_TYPE_DATETIMELTZ)
 
 #define PT_IS_PRIMITIVE_TYPE(t) \
         ( (((t) == PT_TYPE_OBJECT) || \
@@ -904,6 +897,9 @@ enum pt_node_type
   PT_KILL_STMT,
   PT_VACUUM,
   PT_WITH_CLAUSE,
+  PT_JSON_TABLE,
+  PT_JSON_TABLE_NODE,
+  PT_JSON_TABLE_COLUMN,
 
   PT_NODE_NUMBER,		/* This is the number of node types */
   PT_LAST_NODE_NUMBER = PT_NODE_NUMBER
@@ -966,10 +962,6 @@ enum pt_type_enum
   PT_TYPE_DATETIMELTZ,
 
   PT_TYPE_MAX,
-
-  /* Disabled type : kept here to minimize code changes */
-  PT_TYPE_TIMETZ,
-  PT_TYPE_TIMELTZ,
 };
 typedef enum pt_type_enum PT_TYPE_ENUM;
 
@@ -1150,7 +1142,11 @@ typedef enum
 
   PT_IS_SHOWSTMT,		/* query is SHOWSTMT */
   PT_IS_CTE_REC_SUBQUERY,
-  PT_IS_CTE_NON_REC_SUBQUERY
+  PT_IS_CTE_NON_REC_SUBQUERY,
+
+  PT_DERIVED_JSON_TABLE,	// json table spec derivation
+
+  // todo: separate into relevant enumerations
 } PT_MISC_TYPE;
 
 /* Enumerated join type */
@@ -1271,7 +1267,8 @@ typedef enum
   PT_REBUILD_INDEX,
   PT_ADD_INDEX_CLAUSE,
   PT_CHANGE_TABLE_COMMENT,
-  PT_CHANGE_INDEX_COMMENT
+  PT_CHANGE_INDEX_COMMENT,
+  PT_CHANGE_INDEX_STATUS
 } PT_ALTER_CODE;
 
 /* Codes for trigger event type */
@@ -1482,7 +1479,6 @@ typedef enum
   PT_FROM_TZ,
   PT_TO_DATETIME_TZ,
   PT_TO_TIMESTAMP_TZ,
-  PT_TO_TIME_TZ,
   PT_UTC_TIMESTAMP,
   PT_CRC32,
   PT_SCHEMA_DEF,
@@ -1493,7 +1489,9 @@ typedef enum
   PT_JSON_VALID,
   PT_JSON_LENGTH,
   PT_JSON_DEPTH,
-  PT_JSON_SEARCH,
+  PT_JSON_QUOTE,
+  PT_JSON_UNQUOTE,
+  PT_JSON_PRETTY,
 
   /* This is the last entry. Please add a new one before it. */
   PT_LAST_OPCODE
@@ -1698,6 +1696,10 @@ typedef struct pt_insert_value_info PT_INSERT_VALUE_INFO;
 typedef struct pt_set_timezone_info PT_SET_TIMEZONE_INFO;
 
 typedef struct pt_flat_spec_info PT_FLAT_SPEC_INFO;
+
+typedef struct pt_json_table_info PT_JSON_TABLE_INFO;
+typedef struct pt_json_table_node_info PT_JSON_TABLE_NODE_INFO;
+typedef struct pt_json_table_column_info PT_JSON_TABLE_COLUMN_INFO;
 
 typedef PT_NODE *(*PT_NODE_FUNCTION) (PARSER_CONTEXT * p, PT_NODE * tree, void *arg);
 
@@ -1966,6 +1968,7 @@ struct pt_index_info
   int func_no_args;		/* number of arguments in the function index expression */
   bool reverse;			/* REVERSE */
   bool unique;			/* UNIQUE specified? */
+  SM_INDEX_STATUS index_status;	/* Index status : NORMAL / ONLINE / INVISIBLE */
 };
 
 /* CREATE USER INFO */
@@ -2097,9 +2100,11 @@ struct pt_delete_info
   PT_NODE *limit;		/* PT_VALUE limit clause parameter */
   PT_NODE *del_stmt_list;	/* list of DELETE statements after split */
   PT_HINT_ENUM hint;		/* hint flag */
+  PT_NODE *with;		/* PT_WITH_CLAUSE */
   unsigned has_trigger:1;	/* whether it has triggers */
   unsigned server_delete:1;	/* whether it can be server-side deletion */
   unsigned rewrite_limit:1;	/* need to rewrite the limit clause */
+  unsigned execute_with_commit_allowed:1;	/* true, if execute with commit allowed. */
 };
 
 /* DOT_INFO*/
@@ -2164,6 +2169,7 @@ struct pt_spec_info
   PT_NODE *flat_entity_list;	/* PT_NAME (list) resolved class's */
   PT_NODE *method_list;		/* PT_METHOD_CALL list with this entity as the target */
   PT_NODE *partition;		/* PT_NAME of the specified partition */
+  PT_NODE *json_table;		/* JSON TABLE definition tree */
   UINTPTR id;			/* entity spec unique id # */
   PT_MISC_TYPE only_all;	/* PT_ONLY or PT_ALL */
   PT_MISC_TYPE meta_class;	/* enum 0 or PT_META */
@@ -2366,6 +2372,7 @@ struct pt_insert_info
   PT_NODE *odku_non_null_attrs;	/* attributes with not null constraint in odku assignments */
   int has_uniques;		/* class has unique constraints */
   SERVER_INSERT_ALLOWED server_allowed;	/* is insert allowed on server */
+  unsigned execute_with_commit_allowed:1;	/* true, if execute with commit allowed. */
 };
 
 /* Info for Transaction Isolation Level */
@@ -2590,7 +2597,7 @@ struct pt_name_info
 #define PT_NAME_ALLOW_REUSABLE_OID 512	/* ignore the REUSABLE_OID restrictions for this name */
 #define PT_NAME_GENERATED_DERIVED_SPEC 1024	/* attribute generated from derived spec */
 #define PT_NAME_FOR_UPDATE	   2048	/* Table name in FOR UPDATE clause */
-#define PT_NAME_REAL_TABLE	   4096	/* name of table/column belongs to a real table */
+#define PT_NAME_DEFAULTF_ACCEPTS   4096	/* name of table/column that default function accepts: real table's, cte's */
 
   short flag;
 #define PT_NAME_INFO_IS_FLAGED(e, f)    ((e)->info.name.flag & (short) (f))
@@ -2601,6 +2608,7 @@ struct pt_name_info
   PT_NODE *indx_key_limit;	/* key limits for index name */
   int coll_modifier;		/* collation modifier = collation + 1 */
   PT_RESERVED_NAME_ID reserved_id;	/* used to identify reserved name */
+  size_t json_table_column_index;	/* will be used only for json_table to gather attributes in the correct order */
 };
 
 /*
@@ -2733,26 +2741,26 @@ struct pt_select_info
   unsigned single_table_opt:1;	/* hq optimized for single table */
 };
 
-#define PT_SELECT_INFO_ANSI_JOIN	1	/* has ANSI join? */
-#define PT_SELECT_INFO_ORACLE_OUTER	2	/* has Oracle's outer join operator? */
-#define PT_SELECT_INFO_DUMMY		4	/* is dummy (i.e., 'SELECT * FROM x') ? */
-#define PT_SELECT_INFO_HAS_AGG		8	/* has any type of aggregation? */
-#define PT_SELECT_INFO_HAS_ANALYTIC	16	/* has analytic functions */
-#define PT_SELECT_INFO_MULTI_UPDATE_AGG	32	/* is query for multi-table update using aggregate */
-#define PT_SELECT_INFO_IDX_SCHEMA	64	/* is show index query */
-#define PT_SELECT_INFO_COLS_SCHEMA	128	/* is show columns query */
-#define PT_SELECT_FULL_INFO_COLS_SCHEMA	256	/* is show columns query */
-#define PT_SELECT_INFO_IS_MERGE_QUERY	512	/* is a query of a merge stmt */
-#define	PT_SELECT_INFO_LIST_PUSHER	1024	/* dummy subquery that pushes a list file descriptor to be used at
-						 * server as its own result */
-#define PT_SELECT_INFO_NO_STRICT_OID_CHECK  2048	/* normally, only OIDs of updatable views are allowed in parse
+#define PT_SELECT_INFO_ANSI_JOIN	     0x01	/* has ANSI join? */
+#define PT_SELECT_INFO_ORACLE_OUTER	     0x02	/* has Oracle's outer join operator? */
+#define PT_SELECT_INFO_DUMMY		     0x04	/* is dummy (i.e., 'SELECT * FROM x') ? */
+#define PT_SELECT_INFO_HAS_AGG		     0x08	/* has any type of aggregation? */
+#define PT_SELECT_INFO_HAS_ANALYTIC	     0x10	/* has analytic functions */
+#define PT_SELECT_INFO_MULTI_UPDATE_AGG	     0x20	/* is query for multi-table update using aggregate */
+#define PT_SELECT_INFO_IDX_SCHEMA	     0x40	/* is show index query */
+#define PT_SELECT_INFO_COLS_SCHEMA	     0x80	/* is show columns query */
+#define PT_SELECT_FULL_INFO_COLS_SCHEMA	   0x0100	/* is show columns query */
+#define PT_SELECT_INFO_IS_MERGE_QUERY	   0x0200	/* is a query of a merge stmt */
+#define	PT_SELECT_INFO_LIST_PUSHER	   0x0400	/* dummy subquery that pushes a list file descriptor to be used at
+							 * server as its own result */
+#define PT_SELECT_INFO_NO_STRICT_OID_CHECK 0x0800	/* normally, only OIDs of updatable views are allowed in parse
 							 * trees; however, for MERGE and UPDATE we sometimes want to
 							 * allow OIDs of partially updatable views */
-#define PT_SELECT_INFO_IS_UPD_DEL_QUERY	4096	/* set if select was built for an UPDATE or DELETE statement */
-#define PT_SELECT_INFO_FOR_UPDATE	8192	/* FOR UPDATE clause is active */
-#define PT_SELECT_INFO_DISABLE_LOOSE_SCAN   16384	/* loose scan not possible on query */
-#define PT_SELECT_INFO_MVCC_LOCK_NEEDED	    32768	/* lock returned rows */
-#define PT_SELECT_INFO_READ_ONLY 65536	/* read-only system generated queries like show statement */
+#define PT_SELECT_INFO_IS_UPD_DEL_QUERY	   0x1000	/* set if select was built for an UPDATE or DELETE statement */
+#define PT_SELECT_INFO_FOR_UPDATE	   0x2000	/* FOR UPDATE clause is active */
+#define PT_SELECT_INFO_DISABLE_LOOSE_SCAN  0x4000	/* loose scan not possible on query */
+#define PT_SELECT_INFO_MVCC_LOCK_NEEDED	   0x8000	/* lock returned rows */
+#define PT_SELECT_INFO_READ_ONLY         0x010000	/* read-only system generated queries like show statement */
 
 #define PT_SELECT_INFO_IS_FLAGED(s, f)  \
           ((s)->info.query.q.select.flag & (f))
@@ -2784,6 +2792,7 @@ struct pt_query_info
   unsigned do_not_cache:1;	/* do not cache the query result */
   unsigned order_siblings:1;	/* flag ORDER SIBLINGS BY */
   unsigned rewrite_limit:1;	/* need to rewrite the limit clause */
+  unsigned has_system_class:1;	/* do not cache the query result */
   PT_NODE *order_by;		/* PT_EXPR (list) */
   PT_NODE *orderby_for;		/* PT_EXPR (list) */
   PT_NODE *into_list;		/* PT_VALUE (list) */
@@ -2894,11 +2903,13 @@ struct pt_update_info
   PT_NODE *order_by;		/* PT_EXPR (list) */
   PT_NODE *orderby_for;		/* PT_EXPR */
   PT_HINT_ENUM hint;		/* hint flag */
+  PT_NODE *with;		/* PT_WITH_CLAUSE */
   unsigned has_trigger:1;	/* whether it has triggers */
   unsigned has_unique:1;	/* whether there's unique constraint */
   unsigned server_update:1;	/* whether it can be server-side update */
   unsigned do_class_attrs:1;	/* whether it is on class attributes */
   unsigned rewrite_limit:1;	/* need to rewrite the limit clause */
+  unsigned execute_with_commit_allowed:1;	/* true, if execute with commit allowed. */
 };
 
 /* UPDATE STATISTICS INFO */
@@ -2994,7 +3005,6 @@ typedef enum pt_time_zones
 
 /* typedefs for TIME and DATE */
 typedef long PT_TIME;
-typedef DB_TIMETZ PT_TIMETZ;
 typedef long PT_UTIME;
 typedef DB_TIMESTAMPTZ PT_TIMESTAMPTZ;
 typedef long PT_DATE;
@@ -3056,7 +3066,6 @@ union pt_data_value
   void *p;			/* what is this */
   DB_OBJECT *op;
   PT_TIME time;
-  PT_TIMETZ timetz;
   PT_DATE date;
   PT_UTIME utime;		/* used for TIMESTAMP and TIMESTAMPLTZ */
   PT_TIMESTAMPTZ timestamptz;
@@ -3252,6 +3261,31 @@ struct pt_insert_value_info
   int replace_names;		/* true if names in evaluated node need to be replaced */
 };
 
+struct pt_json_table_column_info
+{
+  PT_NODE *name;
+  // domain is stored in parser node
+  char *path;
+  size_t index;			// will be used to store the columns in the correct order
+  enum json_table_column_function func;
+  struct json_table_column_behavior on_error;
+  struct json_table_column_behavior on_empty;
+};
+
+struct pt_json_table_node_info
+{
+  PT_NODE *columns;
+  PT_NODE *nested_paths;
+  const char *path;
+};
+
+struct pt_json_table_info
+{
+  PT_NODE *expr;
+  PT_NODE *tree;
+  bool is_correlated;
+};
+
 /* Info field of the basic NODE
   If 'xyz' is the name of the field, then the structure type should be
   struct PT_XYZ_INFO xyz;
@@ -3305,6 +3339,9 @@ union pt_statement_info
   PT_INSERT_INFO insert;
   PT_INSERT_VALUE_INFO insert_value;
   PT_ISOLATION_LVL_INFO isolation_lvl;
+  PT_JSON_TABLE_INFO json_table_info;
+  PT_JSON_TABLE_NODE_INFO json_table_node_info;
+  PT_JSON_TABLE_COLUMN_INFO json_table_column_info;
   PT_MERGE_INFO merge;
   PT_METHOD_CALL_INFO method_call;
   PT_METHOD_DEF_INFO method_def;
@@ -3473,6 +3510,7 @@ struct parser_node
   unsigned is_alias_enabled_expr:1;	/* node allowed to have alias */
   unsigned is_wrapped_res_for_coll:1;	/* is a result node wrapped with CAST by collation inference */
   unsigned is_system_generated_stmt:1;	/* is internally generated by system */
+  unsigned use_auto_commit:1;	/* use autocommit */
   PT_STATEMENT_INFO info;	/* depends on 'node_type' field */
 };
 
@@ -3604,6 +3642,7 @@ struct parser_context
   unsigned dont_collect_exec_stats:1;
   unsigned return_generated_keys:1;
   unsigned is_system_generated_stmt:1;
+  unsigned is_auto_commit:1;	/* set to true, if auto commit. */
 };
 
 /* used in assignments enumeration */

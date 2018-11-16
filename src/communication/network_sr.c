@@ -1022,6 +1022,8 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
   assert (func != NULL);
   if (func)
     {
+      er_log_debug (ARG_FILE_LINE, "net_server_request(): request %s\n", net_Requests[request].name);
+
       thread_p->push_resource_tracks ();
 
       if (conn->invalidate_snapshot != 0)
@@ -1136,6 +1138,7 @@ loop:
 		    case THREAD_HEAP_CLSREPR_SUSPENDED:
 		    case THREAD_LOGWR_SUSPENDED:
 		    case THREAD_ALLOC_BCB_SUSPENDED:
+		    case THREAD_DWB_QUEUE_SUSPENDED:
 		      wakeup_now = true;
 		      break;
 
@@ -1152,6 +1155,7 @@ loop:
 		    case THREAD_LOCK_RESUMED:
 		    case THREAD_LOGWR_RESUMED:
 		    case THREAD_ALLOC_BCB_RESUMED:
+		    case THREAD_DWB_QUEUE_RESUMED:
 		      /* thread is in resumed status, we don't need to wake up */
 		      wakeup_now = false;
 		      break;

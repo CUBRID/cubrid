@@ -43,7 +43,6 @@
 #include "misc_string.h"
 #include "memory_alloc.h"
 #include "dbtype.h"
-#include "dbdef.h"
 #include "error_manager.h"
 #include "boot_cl.h"
 #include "work_space.h"

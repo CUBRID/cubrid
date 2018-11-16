@@ -363,10 +363,6 @@ log_bind_value (char *str, int bind_len, int lineno, FILE * outfp)
     {
       type = CCI_U_TYPE_DATETIME;
     }
-  else if (strcmp (p, "TIMETZ") == 0)
-    {
-      type = CCI_U_TYPE_TIMETZ;
-    }
   else if (strcmp (p, "TIMESTAMPTZ") == 0)
     {
       type = CCI_U_TYPE_TIMESTAMPTZ;
@@ -398,6 +394,10 @@ log_bind_value (char *str, int bind_len, int lineno, FILE * outfp)
   else if (strcmp (p, "ENUM") == 0)
     {
       type = CCI_U_TYPE_ENUM;
+    }
+  else if (strcmp (p, "JSON") == 0)
+    {
+      type = CCI_U_TYPE_JSON;
     }
   else
     {

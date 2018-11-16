@@ -63,6 +63,7 @@
 #include "heap_file.h"
 #include "slotted_page.h"
 #include "object_primitive.h"
+#include "tz_support.h"
 #include "db_date.h"
 #include "fault_injection.h"
 #if defined (SA_MODE)
@@ -340,7 +341,7 @@ static void log_cleanup_modified_class_list (THREAD_ENTRY * thread_p, LOG_TDES *
 
 static void log_append_compensate_internal (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VPID * vpid,
 					    PGLENGTH offset, PAGE_PTR pgptr, int length, const void *data,
-					    LOG_TDES * tdes, LOG_LSA * undo_nxlsa);
+					    LOG_TDES * tdes, const LOG_LSA * undo_nxlsa);
 
 STATIC_INLINE void log_sysop_end_random_exit (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void log_sysop_end_begin (THREAD_ENTRY * thread_p, int *tran_index_out, LOG_TDES ** tdes_out)
@@ -356,6 +357,8 @@ STATIC_INLINE int log_sysop_get_level (THREAD_ENTRY * thread_p) __attribute__ ((
 static void log_tran_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 static void log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_END * sysop_end,
 				   int data_size, const char *data);
+
+static int logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, void *args);
 
 #if defined(SERVER_MODE)
 // *INDENT-OFF*
@@ -511,7 +514,7 @@ log_to_string (LOG_RECTYPE type)
 }
 
 /*
- * log_isin_crash_recovery - are we in crash recovery ?
+ * log_is_in_crash_recovery - are we in crash recovery ?
  *
  * return:
  *
@@ -527,6 +530,25 @@ log_is_in_crash_recovery (void)
   else
     {
       return true;
+    }
+}
+
+/*
+ * log_is_in_crash_recovery_and_not_year_complets_redo - completes redo recovery?
+ *
+ * return:
+ *
+ */
+bool
+log_is_in_crash_recovery_and_not_yet_completes_redo (void)
+{
+  if (log_Gl.rcv_phase == LOG_RECOVERY_ANALYSIS_PHASE || log_Gl.rcv_phase == LOG_RECOVERY_REDO_PHASE)
+    {
+      return true;
+    }
+  else
+    {
+      return false;
     }
 }
 
@@ -1058,12 +1080,13 @@ log_initialize (THREAD_ENTRY * thread_p, const char *db_fullname, const char *lo
  *
  * return:
  *
- *   db_fullname(in):
- *   logpath(in):
- *   prefix_logname(in):
- *   ismedia_crash(in):
- *   stopat(in):
- *   init_emergency(in):
+ *   db_fullname(in): Full name of the database
+ *   logpath(in): Directory where the log volumes reside
+ *   prefix_logname(in): Name of the log volumes. It must be the same as the
+ *                      one given during the creation of the database.
+ *   ismedia_crash(in): Are we recovering from media crash ?.
+ *   stopat(in): If we are recovering from a media crash, we can stop
+ *                      the recovery process at a given time. 
  *
  * NOTE:
  */
@@ -1217,8 +1240,8 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 	{
 	  return error_code;
 	}
-      error_code =
-	log_initialize_internal (thread_p, db_fullname, logpath, prefix_logname, ismedia_crash, r_args, init_emergency);
+      error_code = log_initialize_internal (thread_p, db_fullname, logpath, prefix_logname, ismedia_crash,
+					    r_args, init_emergency);
 
       return error_code;
     }
@@ -1468,6 +1491,9 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 
   LOG_CS_EXIT (thread_p);
 
+  er_log_debug (ARG_FILE_LINE, "log_initialize_internal: end of log initializaton, append_lsa = (%lld|%d) \n",
+		(long long int) log_Gl.hdr.append_lsa.pageid, log_Gl.hdr.append_lsa.offset);
+
   return error_code;
 
 error:
@@ -1614,7 +1640,7 @@ loop:
 	    }
 	  else if (LOG_ISTRAN_ACTIVE (tdes) && abort_thread_running[i] == 0)
 	    {
-	      css_push_external_task (*thread_p, css_find_conn_by_tran_index (i), new log_abort_task (*tdes));
+	      css_push_external_task (css_find_conn_by_tran_index (i), new log_abort_task (*tdes));
 	      abort_thread_running[i] = 1;
 	      repeat_loop = true;
 	    }
@@ -2994,7 +3020,7 @@ log_append_compensate (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VPI
 void
 log_append_compensate_with_undo_nxlsa (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VPID * vpid,
 				       PGLENGTH offset, PAGE_PTR pgptr, int length, const void *data, LOG_TDES * tdes,
-				       LOG_LSA * undo_nxlsa)
+				       const LOG_LSA * undo_nxlsa)
 {
   assert (undo_nxlsa != NULL);
 
@@ -3029,7 +3055,8 @@ log_append_compensate_with_undo_nxlsa (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcv
  */
 static void
 log_append_compensate_internal (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VPID * vpid, PGLENGTH offset,
-				PAGE_PTR pgptr, int length, const void *data, LOG_TDES * tdes, LOG_LSA * undo_nxlsa)
+				PAGE_PTR pgptr, int length, const void *data, LOG_TDES * tdes,
+				const LOG_LSA * undo_nxlsa)
 {
   LOG_REC_COMPENSATE *compensate;	/* Compensate log record */
   LOG_LSA prev_lsa;		/* LSA of next record to undo */
@@ -3981,6 +4008,8 @@ log_sysop_end_logical_undo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, cons
 			    const char *undo_data)
 {
   LOG_REC_SYSOP_END log_record;
+
+  assert (rcvindex != RV_NOT_DEFINED);
 
   if (LOG_IS_MVCC_OPERATION (rcvindex))
     {
@@ -5610,6 +5639,8 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran)
        */
 
       log_rollback (thread_p, tdes, NULL);
+
+      log_update_global_btid_online_index_stats (thread_p);
 
       log_cleanup_modified_class_list (thread_p, tdes, NULL, true, true);
 
@@ -7673,13 +7704,8 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
    * compensating records are logged.
    */
 
-#if defined(CUBRID_DEBUG)
-  if (RV_fun[rcvindex].undofun == NULL)
-    {
-      assert (false);
-      return;
-    }
-#endif /* CUBRID_DEBUG */
+  assert (rcvindex != RV_NOT_DEFINED);
+  assert (RV_fun[rcvindex].undofun != NULL);
 
   if (RCV_IS_LOGICAL_LOG (rcv_vpid, rcvindex))
     {
@@ -9111,7 +9137,7 @@ log_recreate (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logp
    * RESET RECOVERY INFORMATION ON ALL DATA VOLUMES
    */
 
-  LSA_SET_INIT_NONTEMP (&init_nontemp_lsa);
+  LSA_SET_NULL (&init_nontemp_lsa);
 
   for (volid = LOG_DBFIRST_VOLID; volid != NULL_VOLID; volid = fileio_find_next_perm_volume (thread_p, volid))
     {
@@ -9213,7 +9239,7 @@ log_get_io_page_size (THREAD_ENTRY * thread_p, const char *db_fullname, const ch
   int dummy;
 
   LOG_CS_ENTER (thread_p);
-  if (logpb_find_header_parameters (thread_p, db_fullname, logpath, prefix_logname, &db_iopagesize,
+  if (logpb_find_header_parameters (thread_p, false, db_fullname, logpath, prefix_logname, &db_iopagesize,
 				    &log_page_size, &ignore_dbcreation, &ignore_dbcomp, &dummy) == -1)
     {
       /* 
@@ -9287,7 +9313,7 @@ log_get_charset_from_header_page (THREAD_ENTRY * thread_p, const char *db_fullna
   int db_charset = INTL_CODESET_NONE;
 
   LOG_CS_ENTER (thread_p);
-  if (logpb_find_header_parameters (thread_p, db_fullname, logpath, prefix_logname, &dummy_db_iopagesize,
+  if (logpb_find_header_parameters (thread_p, false, db_fullname, logpath, prefix_logname, &dummy_db_iopagesize,
 				    &dummy_ignore_log_page_size, &dummy_ignore_dbcreation, &dummy_ignore_dbcomp,
 				    &db_charset) == -1)
     {
@@ -10806,3 +10832,76 @@ log_abort_task::execute (context_type &thread_ref)
 }
 #endif // SERVER_MODE
 // *INDENT-ON*
+
+void
+log_update_global_btid_online_index_stats (THREAD_ENTRY * thread_p)
+{
+  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+  int error_code = NO_ERROR;
+
+  if (tdes == NULL)
+    {
+      return;
+    }
+
+  error_code =
+    mht_map_no_key (thread_p, tdes->log_upd_stats.unique_stats_hash, logtb_tran_update_stats_online_index_rb, thread_p);
+
+  if (error_code != NO_ERROR)
+    {
+      assert (false);
+    }
+}
+
+/*
+ * logtb_tran_update_stats_online_index_rb - Updates statistics during an online index when a transaction
+ *                                           gets rollbacked.
+ *
+ * TODO: This can be easily optimized since it is slow. Try to find a better approach!
+ */
+static int
+logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, void *args)
+{
+  /* This is called only during a rollback on a transaction that has updated an index which was under
+   * online loading.
+   */
+  LOG_TRAN_BTID_UNIQUE_STATS *unique_stats = (LOG_TRAN_BTID_UNIQUE_STATS *) data;
+  int error_code = NO_ERROR;
+  OID class_oid;
+#if !defined (NDEBUG)
+  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+
+  assert (LOG_ISTRAN_ABORTED (tdes));
+#endif /* !NDEBUG */
+
+  if (unique_stats->deleted)
+    {
+      /* ignore if deleted */
+      return NO_ERROR;
+    }
+
+  OID_SET_NULL (&class_oid);
+
+  error_code = btree_get_class_oid_of_unique_btid (thread_p, &unique_stats->btid, &class_oid);
+  if (error_code != NO_ERROR)
+    {
+      assert (false);
+      return error_code;
+    }
+
+  assert (!OID_ISNULL (&class_oid));
+
+  if (!btree_is_btid_online_index (thread_p, &class_oid, &unique_stats->btid))
+    {
+      /* We can skip. */
+      return NO_ERROR;
+    }
+
+  /* We can update the statistics. */
+  error_code =
+    logtb_update_global_unique_stats_by_delta (thread_p, &unique_stats->btid, unique_stats->tran_stats.num_oids,
+					       unique_stats->tran_stats.num_nulls, unique_stats->tran_stats.num_keys,
+					       false);
+
+  return error_code;
+}

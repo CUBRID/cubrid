@@ -149,7 +149,6 @@ extern void net_arg_get_double (double *value, void *arg);
 extern void net_arg_get_str (char **value, int *size, void *arg);
 extern void net_arg_get_date (short *year, short *mon, short *day, void *arg);
 extern void net_arg_get_time (short *hh, short *mm, short *ss, void *arg);
-extern void net_arg_get_timetz (short *hh, short *mm, short *ss, char **tz, int *tz_size, void *arg);
 extern void net_arg_get_timestamp (short *yr, short *mon, short *day, short *hh, short *mm, short *ss, void *arg);
 extern void net_arg_get_timestamptz (short *yr, short *mon, short *day, short *hh, short *mm, short *ss, char **tz,
 				     int *tz_size, void *arg);

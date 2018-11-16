@@ -35,14 +35,13 @@
 #include "system_parameter.h"
 #include "environment_variable.h"
 #include "file_io.h"
+#include "tz_support.h"
 #include "db_date.h"
 #include "dbtype.h"
 
 
 /* RESERVED_SIZE_IN_PAGE should be aligned */
-#define RESERVED_SIZE_IN_PAGE   sizeof(FILEIO_PAGE_RESERVED)
-
-#define IS_POWER_OF_2(x)        (((x) & ((x)-1)) == 0)
+#define RESERVED_SIZE_IN_PAGE   (sizeof (FILEIO_PAGE_RESERVED) + sizeof (FILEIO_PAGE_WATERMARK))
 
 static PGLENGTH db_Io_page_size = IO_DEFAULT_PAGE_SIZE;
 static PGLENGTH db_Log_page_size = IO_DEFAULT_PAGE_SIZE;
@@ -228,14 +227,8 @@ db_print_data (DB_TYPE type, DB_DATA * data, FILE * fd)
       break;
 
     case DB_TYPE_TIME:
-    case DB_TYPE_TIMELTZ:
       db_time_decode (&data->time, &hour, &minute, &second);
       fprintf (fd, "%d:%d:%d", hour, minute, second);
-      break;
-
-    case DB_TYPE_TIMETZ:
-      db_time_decode (&data->timetz.time, &hour, &minute, &second);
-      fprintf (fd, "%d:%d:%d Z:%X", hour, minute, second, data->timetz.tz_id);
       break;
 
     case DB_TYPE_TIMESTAMP:

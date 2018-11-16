@@ -911,11 +911,7 @@ pt_check_compatible_node_for_orderby (PARSER_CONTEXT * parser, PT_NODE * order, 
 
   if (PT_IS_DATE_TIME_TYPE (type1) && PT_IS_DATE_TIME_TYPE (type2))
     {
-      if ((type1 == PT_TYPE_TIME && type2 != PT_TYPE_TIME) || (type1 != PT_TYPE_TIME && type2 == PT_TYPE_TIME)
-	  || (type1 == PT_TYPE_TIMELTZ && type2 != PT_TYPE_TIMELTZ) || (type1 != PT_TYPE_TIMELTZ
-									&& type2 == PT_TYPE_TIMELTZ)
-	  || (type1 == PT_TYPE_TIMETZ && type2 != PT_TYPE_TIMETZ) || (type1 != PT_TYPE_TIMETZ
-								      && type2 == PT_TYPE_TIMETZ))
+      if ((type1 == PT_TYPE_TIME && type2 != PT_TYPE_TIME) || (type1 != PT_TYPE_TIME && type2 == PT_TYPE_TIME))
 	{
 	  return false;
 	}
@@ -1054,8 +1050,6 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 	case PT_TYPE_BIT:
 	case PT_TYPE_VARBIT:
 	case PT_TYPE_TIME:
-	case PT_TYPE_TIMELTZ:
-	case PT_TYPE_TIMETZ:
 	case PT_TYPE_SET:
 	case PT_TYPE_MULTISET:
 	case PT_TYPE_SEQUENCE:
@@ -1069,8 +1063,6 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
       break;
     case PT_TYPE_TIME:
-    case PT_TYPE_TIMELTZ:
-    case PT_TYPE_TIMETZ:
       switch (cast_type)
 	{
 	case PT_TYPE_INTEGER:
@@ -1192,8 +1184,6 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 	case PT_TYPE_NUMERIC:
 	case PT_TYPE_DATE:
 	case PT_TYPE_TIME:
-	case PT_TYPE_TIMELTZ:
-	case PT_TYPE_TIMETZ:
 	case PT_TYPE_TIMESTAMP:
 	case PT_TYPE_TIMESTAMPTZ:
 	case PT_TYPE_TIMESTAMPLTZ:
@@ -1236,8 +1226,6 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 	case PT_TYPE_VARBIT:
 	case PT_TYPE_DATE:
 	case PT_TYPE_TIME:
-	case PT_TYPE_TIMELTZ:
-	case PT_TYPE_TIMETZ:
 	case PT_TYPE_TIMESTAMP:
 	case PT_TYPE_TIMESTAMPTZ:
 	case PT_TYPE_TIMESTAMPLTZ:
@@ -1473,7 +1461,7 @@ pt_get_attributes (PARSER_CONTEXT * parser, const DB_OBJECT * c)
       /* its name is class_name.attribute_name */
       i_attr->info.attr_def.attr_name = name = pt_name (parser, db_attribute_name (attributes));
       name->info.name.resolved = pt_append_string (parser, NULL, class_name);
-      PT_NAME_INFO_SET_FLAG (name, PT_NAME_REAL_TABLE);
+      PT_NAME_INFO_SET_FLAG (name, PT_NAME_DEFAULTF_ACCEPTS);
       name->info.name.meta_class = (db_attribute_is_shared (attributes) ? PT_SHARED : PT_NORMAL);
 
       /* set its data type */
@@ -4042,16 +4030,16 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
 	}
 
       node_ptr = NULL;
-      parser_walk_tree(parser, default_value, pt_find_aggregate_function, &node_ptr, NULL, NULL);
+      parser_walk_tree (parser, default_value, pt_find_aggregate_function, &node_ptr, NULL, NULL);
       if (node_ptr != NULL)
-        {
-          PT_ERRORmf(parser,
-              node_ptr,
-              MSGCAT_SET_PARSER_SEMANTIC,
-              MSGCAT_SEMANTIC_DEFAULT_EXPR_NOT_ALLOWED,
-              pt_show_function(node_ptr->info.function.function_type));
-          goto end;
-        }
+	{
+	  PT_ERRORmf (parser,
+		      node_ptr,
+		      MSGCAT_SET_PARSER_SEMANTIC,
+		      MSGCAT_SEMANTIC_DEFAULT_EXPR_NOT_ALLOWED,
+		      pt_show_function (node_ptr->info.function.function_type));
+	  goto end;
+	}
 
     end:
       data_default->next = save_next;
@@ -5233,7 +5221,12 @@ pt_find_partition_column_count_func (PT_NODE * func, PT_NODE ** name_node)
     case F_JSON_KEYS:
     case F_JSON_REMOVE:
     case F_JSON_ARRAY_APPEND:
+    case F_JSON_ARRAY_INSERT:
+    case F_JSON_CONTAINS_PATH:
+    case F_JSON_EXTRACT:
+    case F_JSON_SEARCH:
     case F_JSON_MERGE:
+    case F_JSON_MERGE_PATCH:
     case F_JSON_GET_ALL_PATHS:
       break;
     default:
@@ -5441,7 +5434,6 @@ pt_find_partition_column_count (PT_NODE * expr, PT_NODE ** name_node)
     case PT_NEW_TIME:
     case PT_TO_DATETIME_TZ:
     case PT_TO_TIMESTAMP_TZ:
-    case PT_TO_TIME_TZ:
     case PT_UTC_TIMESTAMP:
     case PT_CONV_TZ:
       break;
@@ -5897,8 +5889,6 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 	case PT_TYPE_SMALLINT:
 	case PT_TYPE_DATE:
 	case PT_TYPE_TIME:
-	case PT_TYPE_TIMELTZ:
-	case PT_TYPE_TIMETZ:
 	case PT_TYPE_TIMESTAMP:
 	case PT_TYPE_TIMESTAMPTZ:
 	case PT_TYPE_TIMESTAMPLTZ:
@@ -5956,8 +5946,6 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 	case PT_TYPE_SMALLINT:
 	case PT_TYPE_DATE:
 	case PT_TYPE_TIME:
-	case PT_TYPE_TIMELTZ:
-	case PT_TYPE_TIMETZ:
 	case PT_TYPE_TIMESTAMP:
 	case PT_TYPE_TIMESTAMPTZ:
 	case PT_TYPE_TIMESTAMPLTZ:
@@ -9812,7 +9800,7 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	      break;
 	    }
 
-	  if (entity->info.spec.derived_table != NULL)
+	  if (entity->info.spec.derived_table != NULL || PT_SPEC_IS_CTE (entity))
 	    {
 	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UPDATE_DERIVED_TABLE);
 	      break;
@@ -10027,6 +10015,21 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
       if (node)
 	{
 	  pt_coerce_insert_values (parser, node);
+	}
+      break;
+
+    case PT_JSON_TABLE:
+      if (pt_has_error (parser))
+	{
+	  break;
+	}
+      if (node->info.json_table_info.expr->type_enum != PT_TYPE_JSON
+	  && node->info.json_table_info.expr->type_enum != PT_TYPE_CHAR
+	  && node->info.json_table_info.expr->type_enum != PT_TYPE_MAYBE)
+	{
+	  // todo: can this be improved to hint that we are talking about json_table's expression
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_WANT_TYPE,
+		      pt_show_type_enum (PT_TYPE_JSON));
 	}
       break;
 
@@ -10588,6 +10591,7 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 	      node->info.query.reexecute = 1;
 	      node->info.query.do_cache = 0;
 	      node->info.query.do_not_cache = 1;
+	      node->info.query.has_system_class = 1;
 	    }
 
 	  if (node->node_type == PT_UPDATE || node->node_type == PT_DELETE || node->node_type == PT_INSERT
@@ -10764,61 +10768,61 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
       pt_check_alter (parser, node);
 
       if (node->info.alter.code == PT_ADD_ATTR_MTHD || node->info.alter.code == PT_ADD_INDEX_CLAUSE)
-        {
-          if (parser->host_var_count)
-            {
-              PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_HOSTVAR_IN_DDL);
-              break;
-            }
-        }
+	{
+	  if (parser->host_var_count)
+	    {
+	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_HOSTVAR_IN_DDL);
+	      break;
+	    }
+	}
 
       if (node->info.alter.code == PT_ADD_INDEX_CLAUSE)
-        {
-          /* apply typechecking on ALTER TABLE ADD INDEX statements, to check the expression in the WHERE clause of 
-	       * a partial index */
-          PT_NODE *p = node->info.alter.create_index;
-          assert (p != NULL);
+	{
+	  /* apply typechecking on ALTER TABLE ADD INDEX statements, to check the expression in the WHERE clause of 
+	   * a partial index */
+	  PT_NODE *p = node->info.alter.create_index;
+	  assert (p != NULL);
 
-          while (p)
-            {
-              sc_info_ptr->system_class = false;
-              p = pt_resolve_names (parser, p, sc_info_ptr);
-              if (p && !pt_has_error (parser))
-                {
-                  pt_check_create_index (parser, p);
-                }
+	  while (p)
+	    {
+	      sc_info_ptr->system_class = false;
+	      p = pt_resolve_names (parser, p, sc_info_ptr);
+	      if (p && !pt_has_error (parser))
+		{
+		  pt_check_create_index (parser, p);
+		}
 
-              if (!pt_has_error (parser))
-                {
-                  p = pt_semantic_type (parser, p, info);
-                }
+	      if (!pt_has_error (parser))
+		{
+		  p = pt_semantic_type (parser, p, info);
+		}
 
-              if (p && !pt_has_error (parser))
-                {
-                  p = parser_walk_tree (parser, p, NULL, NULL, pt_semantic_check_local, sc_info_ptr);
+	      if (p && !pt_has_error (parser))
+		{
+		  p = parser_walk_tree (parser, p, NULL, NULL, pt_semantic_check_local, sc_info_ptr);
 
-                  if (p && !pt_has_error (parser))
-                    {
-                      /* This must be done before CNF since we are adding disjuncts to the "IS NULL" expression. */
-                      p = parser_walk_tree (parser, p, pt_expand_isnull_preds, p, NULL, NULL);
-                    }
-                }
+		  if (p && !pt_has_error (parser))
+		    {
+		      /* This must be done before CNF since we are adding disjuncts to the "IS NULL" expression. */
+		      p = parser_walk_tree (parser, p, pt_expand_isnull_preds, p, NULL, NULL);
+		    }
+		}
 
-              if (p != NULL && !pt_has_error (parser) && p->info.index.function_expr != NULL
-                  && !pt_is_function_index_expr (parser, p->info.index.function_expr->info.sort_spec.expr, true))
-                {
-                  break;
-                }
-              if (p && !pt_has_error (parser))
-                {
-                  p = p->next;
-                }
-              else
-                {
-                  break;
-                }
-            }
-        }
+	      if (p != NULL && !pt_has_error (parser) && p->info.index.function_expr != NULL
+		  && !pt_is_function_index_expr (parser, p->info.index.function_expr->info.sort_spec.expr, true))
+		{
+		  break;
+		}
+	      if (p && !pt_has_error (parser))
+		{
+		  p = p->next;
+		}
+	      else
+		{
+		  break;
+		}
+	    }
+	}
       break;
 
     case PT_CREATE_ENTITY:
@@ -13577,7 +13581,7 @@ pt_check_defaultf (PARSER_CONTEXT * parser, PT_NODE * node)
 
   /* OIDs don't have default value */
   if (arg == NULL || arg->node_type != PT_NAME || arg->info.name.meta_class == PT_OID_ATTR
-      || !PT_NAME_INFO_IS_FLAGED (arg, PT_NAME_REAL_TABLE))
+      || !PT_NAME_INFO_IS_FLAGED (arg, PT_NAME_DEFAULTF_ACCEPTS))
     {
       PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DEFAULT_JUST_COLUMN_NAME);
       return ER_FAILED;
@@ -15035,7 +15039,6 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *a
 	case PT_FROM_TZ:
 	case PT_TO_DATETIME_TZ:
 	case PT_TO_TIMESTAMP_TZ:
-	case PT_TO_TIME_TZ:
 	case PT_CONV_TZ:
 	  /* valid expression, nothing to do */
 	  break;
@@ -15155,7 +15158,12 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *a
 	case F_JSON_KEYS:
 	case F_JSON_REMOVE:
 	case F_JSON_ARRAY_APPEND:
+	case F_JSON_ARRAY_INSERT:
+	case F_JSON_SEARCH:
+	case F_JSON_CONTAINS_PATH:
+	case F_JSON_EXTRACT:
 	case F_JSON_MERGE:
+	case F_JSON_MERGE_PATCH:
 	case F_JSON_GET_ALL_PATHS:
 	  /* valid expression, nothing to do */
 	  break;
@@ -15909,15 +15917,12 @@ pt_check_union_is_foldable (PARSER_CONTEXT * parser, PT_NODE * union_node)
 PT_NODE *
 pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, STATEMENT_SET_FOLD fold_as)
 {
-  PT_NODE *arg1, *arg2, *new_node, *next;
+  PT_NODE *new_node, *next;
   int line, column;
   const char *alias_print;
 
   assert (union_node->node_type == PT_UNION || union_node->node_type == PT_INTERSECTION
 	  || union_node->node_type == PT_DIFFERENCE);
-
-  arg1 = union_node->info.query.q.union_.arg1;
-  arg2 = union_node->info.query.q.union_.arg2;
 
   line = union_node->line_number;
   column = union_node->column_number;
@@ -15940,19 +15945,19 @@ pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, STATEMENT_SET_FOLD
 
       if (fold_as == STATEMENT_SET_FOLD_AS_ARG1)
 	{
-	  active = arg1;
+	  pt_move_node (active, union_node->info.query.q.union_.arg1);
 	}
       else
 	{
-	  active = arg2;
+	  pt_move_node (active, union_node->info.query.q.union_.arg2);
 	}
 
       /* to save union's orderby or limit clause to arg1 or arg2 */
-      union_orderby = union_node->info.query.order_by;
-      union_orderby_for = union_node->info.query.orderby_for;
-      union_limit = union_node->info.query.limit;
+      pt_move_node (union_orderby, union_node->info.query.order_by);
+      pt_move_node (union_orderby_for, union_node->info.query.orderby_for);
+      pt_move_node (union_limit, union_node->info.query.limit);
       union_rewrite_limit = union_node->info.query.rewrite_limit;
-      union_with_clause = union_node->info.query.with;
+      pt_move_node (union_with_clause, union_node->info.query.with);
 
       /* When active node has a limit or orderby_for clause and union node has a limit or ORDERBY clause, need a
        * derived table to keep both conflicting clauses. When a subquery has orderby clause without
@@ -15976,20 +15981,7 @@ pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, STATEMENT_SET_FOLD
 	  new_node = active;
 	}
 
-      /* unlink and free union node */
-      union_node->info.query.order_by = NULL;
-      union_node->info.query.orderby_for = NULL;
-      union_node->info.query.limit = NULL;
-      if (fold_as == STATEMENT_SET_FOLD_AS_ARG1)
-	{
-	  union_node->info.query.q.union_.arg1 = NULL;	/* to save arg1 to fold */
-	}
-      else
-	{
-	  union_node->info.query.q.union_.arg2 = NULL;	/* to save arg2 to fold */
-	}
-      union_node->info.query.with = NULL;
-
+      /* free union node */
       parser_free_tree (parser, union_node);
 
       /* to fold the query with remaining parts */

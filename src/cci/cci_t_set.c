@@ -238,6 +238,7 @@ t_set_make (T_SET * set, char ele_type, int size, void *value, int *indicator)
 	case CCI_U_TYPE_VARNCHAR:
 	case CCI_U_TYPE_NUMERIC:
 	case CCI_U_TYPE_ENUM:
+	case CCI_U_TYPE_JSON:
 	  {
 	    char *ele_value;
 	    ele_value = ((char **) value)[i];
@@ -292,7 +293,6 @@ t_set_make (T_SET * set, char ele_type, int size, void *value, int *indicator)
 	    ADD_ARG_DATETIME (&net_buf, &ele_value);
 	  }
 	  break;
-	case CCI_U_TYPE_TIMETZ:
 	case CCI_U_TYPE_TIMESTAMPTZ:
 	case CCI_U_TYPE_TIMESTAMPLTZ:
 	case CCI_U_TYPE_DATETIMETZ:

@@ -152,6 +152,28 @@ namespace cubpacking
     return NO_ERROR;
   }
 
+  int packer::pack_bigint (std::uint64_t *value)
+  {
+    align (MAX_ALIGNMENT);
+    check_range (m_ptr, m_end_ptr, OR_BIGINT_SIZE);
+
+    OR_PUT_INT64 (m_ptr, value);
+    m_ptr += OR_BIGINT_SIZE;
+
+    return NO_ERROR;
+  }
+
+  int packer::unpack_bigint (std::uint64_t *value)
+  {
+    align (MAX_ALIGNMENT);
+    check_range (m_ptr, m_end_ptr, OR_BIGINT_SIZE);
+
+    OR_GET_INT64 (m_ptr, value);
+    m_ptr += OR_BIGINT_SIZE;
+
+    return NO_ERROR;
+  }
+
   int packer::pack_int_array (const int *array, const int count)
   {
     int i;

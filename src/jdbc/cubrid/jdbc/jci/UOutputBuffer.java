@@ -51,7 +51,6 @@ import cubrid.jdbc.driver.CUBRIDLobHandle;
 import cubrid.jdbc.driver.CUBRIDBinaryString;
 import cubrid.jdbc.util.ByteArrayBuffer;
 import cubrid.sql.CUBRIDOID;
-import cubrid.sql.CUBRIDTimetz;
 import cubrid.sql.CUBRIDTimestamptz;
 import java.util.TimeZone;
 
@@ -183,20 +182,6 @@ class UOutputBuffer {
 		dataBuffer.writeInt(14);
 		writeTime(value);
 		return 18;
-	}
-
-	int addTimetz(CUBRIDTimetz value) throws IOException {
-		int timezone_len;
-		String timezone_str;
-
-		timezone_str = value.getTimezone();
-		timezone_len = timezone_str.length();
-
-		dataBuffer.writeInt(14 + timezone_len);
-		writeTime(value);
-		dataBuffer.write(timezone_str.getBytes(), 0, timezone_len);
-
-		return 4 + 14 + timezone_len;
 	}
 
 	private void writeTime(Time date) throws IOException {
@@ -344,6 +329,7 @@ class UOutputBuffer {
 		switch (type) {
 		case UUType.U_TYPE_NULL:
 			return addNull();
+		case UUType.U_TYPE_JSON:
 		case UUType.U_TYPE_CHAR:
 		case UUType.U_TYPE_NCHAR:
 		case UUType.U_TYPE_STRING:
@@ -395,13 +381,6 @@ class UOutputBuffer {
 				return addTime(UGetTypeConvertedValue.getTime(new Timestamp(0)));
 			} else {
 				return addTime(UGetTypeConvertedValue.getTime(value));
-			}
-
-		case UUType.U_TYPE_TIMETZ:
-			if (value == null) {
-				return addTimetz(UGetTypeConvertedValue.getTimetz(new Timestamp(0)));
-			} else {
-				return addTimetz(UGetTypeConvertedValue.getTimetz(value));
 			}
 
 		case UUType.U_TYPE_TIMESTAMP:
@@ -593,6 +572,7 @@ class UOutputBuffer {
 		case UUType.U_TYPE_STRING:
 		case UUType.U_TYPE_VARNCHAR:
 		case UUType.U_TYPE_ENUM:
+		case UUType.U_TYPE_JSON:
 			for (int i = 0; i < values.length; i++) {
 				if (values[i] == null) {
 					collection_size += addNull();

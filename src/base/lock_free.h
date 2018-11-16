@@ -257,6 +257,7 @@ extern LF_TRAN_SYSTEM global_unique_stats_Ts;
 extern LF_TRAN_SYSTEM hfid_table_Ts;
 extern LF_TRAN_SYSTEM xcache_Ts;
 extern LF_TRAN_SYSTEM fpcache_Ts;
+extern LF_TRAN_SYSTEM dwb_slots_Ts;
 
 extern int lf_initialize_transaction_systems (int max_threads);
 extern void lf_destroy_transaction_systems (void);

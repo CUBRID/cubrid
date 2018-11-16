@@ -675,7 +675,8 @@ pt_is_aggregate_function (PARSER_CONTEXT * parser, const PT_NODE * node)
 	      || function_type == PT_AGG_BIT_AND || function_type == PT_AGG_BIT_OR || function_type == PT_AGG_BIT_XOR
 	      || function_type == PT_GROUP_CONCAT || function_type == PT_MEDIAN || function_type == PT_PERCENTILE_CONT
 	      || function_type == PT_PERCENTILE_DISC || function_type == PT_CUME_DIST
-	      || function_type == PT_PERCENT_RANK))
+	      || function_type == PT_PERCENT_RANK || function_type == PT_JSON_ARRAYAGG
+	      || function_type == PT_JSON_OBJECTAGG))
 	{
 	  return true;
 	}
@@ -720,9 +721,11 @@ pt_is_expr_wrapped_function (PARSER_CONTEXT * parser, const PT_NODE * node)
       function_type = node->info.function.function_type;
       if (function_type == F_INSERT_SUBSTRING || function_type == F_ELT || function_type == F_JSON_OBJECT
 	  || function_type == F_JSON_ARRAY || function_type == F_JSON_INSERT || function_type == F_JSON_REMOVE
-	  || function_type == F_JSON_MERGE || function_type == F_JSON_ARRAY_APPEND
+	  || function_type == F_JSON_MERGE || function_type == F_JSON_MERGE_PATCH
+	  || function_type == F_JSON_ARRAY_APPEND || function_type == F_JSON_ARRAY_INSERT
+	  || function_type == F_JSON_CONTAINS_PATH || function_type == F_JSON_EXTRACT
 	  || function_type == F_JSON_GET_ALL_PATHS || function_type == F_JSON_REPLACE || function_type == F_JSON_SET
-	  || function_type == F_JSON_KEYS)
+	  || function_type == F_JSON_KEYS || function_type == F_JSON_SEARCH)
 	{
 	  return true;
 	}
@@ -4469,7 +4472,7 @@ regu_agg_init (AGGREGATE_TYPE * ptr)
   ptr->accumulator.curr_cnt = 0;
   ptr->function = (FUNC_TYPE) 0;
   ptr->option = (QUERY_OPTIONS) 0;
-  regu_var_init (&ptr->operand);
+  ptr->operands = NULL;
   ptr->list_id = NULL;
   ptr->sort_list = NULL;
   memset (&ptr->info, 0, sizeof (AGGREGATE_SPECIFIC_FUNCTION_INFO));
@@ -4809,6 +4812,12 @@ regu_spec_init (ACCESS_SPEC_TYPE * ptr, TARGET_TYPE type)
       ACCESS_SPEC_METHOD_REGU_LIST (ptr) = NULL;
       ACCESS_SPEC_XASL_NODE (ptr) = NULL;
       ACCESS_SPEC_METHOD_SIG_LIST (ptr) = NULL;
+    }
+  else if (type == TARGET_JSON_TABLE)
+    {
+      ACCESS_SPEC_JSON_TABLE_REGU_VAR (ptr) = NULL;
+      ACCESS_SPEC_JSON_TABLE_ROOT_NODE (ptr) = NULL;
+      ACCESS_SPEC_JSON_TABLE_M_NODE_COUNT (ptr) = 0;
     }
   ptr->single_fetch = (QPROC_SINGLE_FETCH) false;
   ptr->s_dbval = NULL;
@@ -9096,7 +9105,7 @@ pt_make_query_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
       for (; dim < block.dim + len; dim *= 2) // calc next power of 2 >= b.dim+len
 	;
 
-      mem::block b{ dim, (char *) parser_alloc (parser, (int)dim) };
+      mem::block b{ dim, (char *) parser_alloc (parser, (const int) dim) };
       memcpy (b.ptr, block.ptr, block.dim); // copy old content
       block = std::move (b);
     },
@@ -10039,6 +10048,7 @@ pt_make_query_describe_w_identifier (PARSER_CONTEXT * parser, PT_NODE * original
  *	     'BTREE' AS Index_type
  *	     "" AS Func,
  *           "" AS Comment,
+ *           "" AS Visible
  *    FROM <table> ORDER BY 3, 5;
  *
  *  Note: At execution, all empty fields will be replaced by values
@@ -10052,11 +10062,11 @@ pt_make_query_show_index (PARSER_CONTEXT * parser, PT_NODE * original_cls_id)
   PT_NODE *query = NULL;
   char lower_table_name[DB_MAX_IDENTIFIER_LENGTH];
   PT_NODE *value = NULL, *value_list = NULL;
-  DB_VALUE db_valuep[13];
+  DB_VALUE db_valuep[14];
   const char *aliases[] = {
     "Table", "Non_unique", "Key_name", "Seq_in_index", "Column_name",
     "Collation", "Cardinality", "Sub_part", "Packed", "Null", "Index_type",
-    "Func", "Comment"
+    "Func", "Comment", "Visible"
   };
   unsigned int i = 0;
 
@@ -10094,6 +10104,8 @@ pt_make_query_show_index (PARSER_CONTEXT * parser, PT_NODE * original_cls_id)
   db_value_domain_default (db_valuep + 11, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, 0, LANG_SYS_CODESET,
 			   LANG_SYS_COLLATION, NULL);
   db_make_varchar (db_valuep + 12, DB_DEFAULT_PRECISION, (const DB_C_CHAR) "", 0, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  db_value_domain_default (db_valuep + 13, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, 0, LANG_SYS_CODESET,
+			   LANG_SYS_COLLATION, NULL);
 
   for (i = 0; i < sizeof (db_valuep) / sizeof (db_valuep[0]); i++)
     {
@@ -12050,4 +12062,42 @@ pt_get_default_expression_from_data_default_node (PARSER_CONTEXT * parser, PT_NO
 	    }
 	}
     }
+}
+
+/*
+ * pt_has_name_oid () - Check whether the node is oid name
+ *   return:
+ *   parser(in):
+ *   node(in):
+ *   arg(in):
+ *   continue_walk(in):
+ */
+PT_NODE *
+pt_has_name_oid (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  bool *has_name_oid = (bool *) arg;
+
+  switch (node->node_type)
+    {
+    case PT_NAME:
+      if (PT_IS_OID_NAME (node))
+	{
+	  *has_name_oid = true;
+	  *continue_walk = PT_STOP_WALK;
+	}
+      break;
+
+    case PT_DATA_TYPE:
+      if (node->type_enum == PT_TYPE_OBJECT)
+	{
+	  *has_name_oid = true;
+	  *continue_walk = PT_STOP_WALK;
+	}
+      break;
+
+    default:
+      break;
+    }
+
+  return node;
 }

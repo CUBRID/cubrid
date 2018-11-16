@@ -100,9 +100,9 @@ set(BASE_SOURCES
   ${BASE_DIR}/packer.cpp
   ${BASE_DIR}/get_clockfreq.c
   ${BASE_DIR}/perf.cpp
+  ${BASE_DIR}/perf_monitor.c
   ${BASE_DIR}/pinnable_buffer.cpp
   ${BASE_DIR}/pinning.cpp
-  ${BASE_DIR}/perf_monitor.c
   ${BASE_DIR}/porting.c
   ${BASE_DIR}/release_string.c
   ${BASE_DIR}/resource_tracker.cpp
@@ -118,6 +118,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/variable_string.c
   ${BASE_DIR}/xml_parser.c
   )
+
 set(BASE_HEADERS
   ${BASE_DIR}/error_code.h
   ${BASE_DIR}/error_context.hpp
@@ -132,7 +133,7 @@ set(BASE_HEADERS
   ${BASE_DIR}/packable_object.hpp
   ${BASE_DIR}/string_buffer.hpp
   ${BASE_DIR}/resource_tracker.hpp
-)
+  )
 
 set(HEAPLAYER_SOURCES
   ${HEAPLAYERS_DIR}/customheaps.cpp
@@ -250,6 +251,16 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/es.c
   ${STORAGE_DIR}/es_posix.c
   )
+  
+set(XASL_SOURCES
+  ${XASL_DIR}/access_json_table.cpp
+  ${XASL_DIR}/xasl_stream.cpp
+  )
+set(XASL_HEADERS
+  ${XASL_DIR}/access_json_table.hpp
+  ${XASL_DIR}/compile_context.h
+  ${XASL_DIR}/xasl_stream.hpp
+  )
 
 list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)
 if(UNIX)
@@ -328,6 +339,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${STORAGE_SOURCES}
   ${ES_SOURCES}
   ${PROBES_OBJECT}
+  ${XASL_SOURCES}
   PROPERTIES LANGUAGE CXX
   )
 SET_SOURCE_FILES_PROPERTIES(
@@ -361,6 +373,8 @@ add_library(cubridcs SHARED
   ${STORAGE_SOURCES}
   ${ES_SOURCES}
   ${PROBES_OBJECT}
+  ${XASL_SOURCES}
+  ${XASL_HEADERS}
   )
 set_target_properties(cubridcs PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 

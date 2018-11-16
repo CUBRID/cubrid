@@ -32,7 +32,6 @@
 #include "config.h"
 
 #include "system_parameter.h"
-#include "dbdef.h"
 #include "error_manager.h"
 #include "system.h"
 #include "dbtype_def.h"
@@ -42,7 +41,6 @@
 #include "intl_support.h"
 #include "object_primitive.h"
 #include "memory_alloc.h"
-
 
 #define DB_CURRENCY_DEFAULT db_get_currency_default()
 
@@ -67,9 +65,9 @@
 
 #define DB_VALUE_DOMAIN_TYPE(value)     db_value_domain_type(value)
 
-#define DB_VALUE_TYPE(value) db_value_type(value)
-#define DB_VALUE_PRECISION(value) db_value_precision(value)
-#define DB_VALUE_SCALE(value) db_value_scale(value)
+#define DB_VALUE_TYPE(value)            db_value_type(value)
+#define DB_VALUE_PRECISION(value)       db_value_precision(value)
+#define DB_VALUE_SCALE(value)           db_value_scale(value)
 
 #define DB_SET_COMPRESSED_STRING(value, compressed_string, compressed_size, compressed_need_clear) \
 	db_set_compressed_string(value, compressed_string, compressed_size, compressed_need_clear)
@@ -149,11 +147,6 @@
 extern "C"
 {
 #endif
-
-  //extern DB_TYPE setobj_type (COL * set);
-  /********************************************************/
-  /* From elo.h */
-
 
   /********************************************************/
   /* From db_date.h */
@@ -282,6 +275,11 @@ extern "C"
   extern int db_convert_json_into_scalar (const DB_VALUE * src, DB_VALUE * dest);
   extern bool db_is_json_value_type (DB_TYPE type);
   extern bool db_is_json_doc_type (DB_TYPE type);
+  extern char *db_get_json_raw_body (const DB_VALUE * value);
+
+  extern bool db_value_is_corrupted (const DB_VALUE * value);
+
+  extern int db_json_val_from_str (const char *raw_str, const int str_size, DB_VALUE * json_val);
 
 /* Use the inline version of the functions. */
 #include "dbtype_function.i"

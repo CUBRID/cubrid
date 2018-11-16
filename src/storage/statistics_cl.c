@@ -34,6 +34,7 @@
 #include "work_space.h"
 #include "schema_manager.h"
 #include "network_interface_cl.h"
+#include "tz_support.h"
 #include "db_date.h"
 
 static CLASS_STATS *stats_client_unpack_statistics (char *buffer);
@@ -381,14 +382,6 @@ stats_dump (const char *class_name_p, FILE * file_p)
 
 	case DB_TYPE_TIME:
 	  fprintf (file_p, "DB_TYPE_TIME\n");
-	  break;
-
-	case DB_TYPE_TIMELTZ:
-	  fprintf (file_p, "DB_TYPE_TIMELTZ\n");
-	  break;
-
-	case DB_TYPE_TIMETZ:
-	  fprintf (file_p, "DB_TYPE_TIMETZ\n");
 	  break;
 
 	case DB_TYPE_TIMESTAMP:

@@ -82,16 +82,26 @@ extern int qdata_strcat_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * 
 extern int qdata_json_contains_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * dbval3, DB_VALUE * res,
 				      TP_DOMAIN * domain);
 extern int qdata_json_type_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * domain_p);
+extern int qdata_json_pretty_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * domain_p);
 extern int qdata_json_valid_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * domain_p);
 extern int qdata_json_length_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p,
 				    TP_DOMAIN * domain_p);
-extern int qdata_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * json_res,
-				     TP_DOMAIN * domain_p);
+extern int qdata_json_unquote_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * domain_p);
+extern int qdata_json_extract_dbval (DB_VALUE * json, DB_VALUE * path, DB_VALUE * json_res, TP_DOMAIN * domain_p);
 extern int qdata_json_depth_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * domain_p);
+extern int qdata_json_quote_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * domain_p);
 extern int qdata_initialize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_list, QUERY_ID query_id);
 extern int qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMULATOR * acc,
 						 AGGREGATE_ACCUMULATOR_DOMAIN * domain, FUNC_TYPE func_type,
 						 TP_DOMAIN * func_domain, DB_VALUE * value);
+
+/* *INDENT-OFF* */
+extern int qdata_aggregate_multiple_values_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMULATOR * acc,
+                                                           AGGREGATE_ACCUMULATOR_DOMAIN * domain, FUNC_TYPE func_type,
+                                                           TP_DOMAIN * func_domain,
+                                                           std::vector<DB_VALUE> & db_values);
+/* *INDENT-ON* */
+
 extern int qdata_aggregate_accumulator_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMULATOR * acc,
 						       AGGREGATE_ACCUMULATOR_DOMAIN * acc_dom, FUNC_TYPE func_type,
 						       TP_DOMAIN * func_domain, AGGREGATE_ACCUMULATOR * new_acc);

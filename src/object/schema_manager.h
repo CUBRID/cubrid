@@ -38,7 +38,6 @@
 #include "class_object.h"	/* for SM_CLASS */
 #include "schema_template.h"	/* template interface */
 #include "trigger_manager.h"	/* for TR_EVENT_TYPE */
-#include "dbdef.h"
 
 /*
  * This is NOT the "object" class but rather functions more like
@@ -92,15 +91,18 @@ extern const char *sm_Root_class_name;
 
 extern int sm_finish_class (SM_TEMPLATE * template_, MOP * classmop);
 extern int sm_update_class (SM_TEMPLATE * template_, MOP * classmop);
+extern int sm_update_class_with_auth (SM_TEMPLATE * template_, MOP * classmop, DB_AUTH auth, bool lock_hierarchy);
 extern int sm_update_class_auto (SM_TEMPLATE * template_, MOP * classmop);
 extern int sm_delete_class_mop (MOP op, bool is_cascade_constraints);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int sm_delete_class (const char *name);
 #endif
 
+#if 0				// TODO - remove it
 extern int sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type, const char *constraint_name,
 			 const char **attnames, const int *asc_desc, const int *attrs_prefix_length,
 			 SM_PREDICATE_INFO * pred_info, SM_FUNCTION_INFO * fi_info, const char *comment);
+#endif
 extern int sm_get_index (MOP classop, const char *attname, BTID * index);
 extern char *sm_produce_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE constraint_type,
 					 const char **att_names, const int *asc_desc, const char *given_name);
@@ -111,7 +113,7 @@ extern char *sm_produce_constraint_name_tmpl (SM_TEMPLATE * tmpl, DB_CONSTRAINT_
 extern int sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *constraint_name,
 			      const char **att_names, const int *asc_desc, const int *attrs_prefix_length,
 			      int class_attributes, SM_PREDICATE_INFO * predicate_info, SM_FUNCTION_INFO * fi_info,
-			      const char *comment);
+			      const char *comment, SM_INDEX_STATUS index_status);
 extern int sm_drop_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *constraint_name,
 			       const char **att_names, bool class_attributes, bool mysql_index_name);
 extern int sm_drop_index (MOP classop, const char *constraint_name);
@@ -241,6 +243,8 @@ extern struct parser_context *sm_virtual_queries (struct parser_context *parser,
 
 
 extern int sm_flush_objects (MOP obj);
+extern int sm_decache_mop (MOP mop, void *info);
+extern int sm_decache_instances_after_query_executed_with_commit (MOP class_mop);
 extern int sm_flush_and_decache_objects (MOP obj, int decache);
 extern int sm_flush_for_multi_update (MOP class_mop);
 
@@ -275,6 +279,7 @@ extern void sm_free_descriptor (SM_DESCRIPTOR * desc);
 extern int sm_get_descriptor_component (MOP op, SM_DESCRIPTOR * desc, int for_update, SM_CLASS ** class_ptr,
 					SM_COMPONENT ** comp_ptr);
 
+extern void sm_fee_resident_classes_virtual_query_cache (void);
 
 /* Module control */
 extern void sm_final (void);

@@ -58,14 +58,13 @@ set(THREAD_HEADERS
 
 set(STREAM_SOURCES
   ${BASE_DIR}/cubstream.cpp
-  ${BASE_DIR}/packing_stream.cpp
-  ${BASE_DIR}/stream_entry.cpp
+  ${BASE_DIR}/multi_thread_stream.cpp
   )
 set (STREAM_HEADERS
   ${BASE_DIR}/bip_buffer.hpp
   ${BASE_DIR}/collapsable_circular_queue.hpp
   ${BASE_DIR}/cubstream.hpp
-  ${BASE_DIR}/packing_stream.hpp
+  ${BASE_DIR}/multi_thread_stream.hpp
   ${BASE_DIR}/stream_entry.hpp
   ${BASE_DIR}/stream_io.hpp
   )
@@ -190,12 +189,12 @@ set(MONITOR_HEADERS
   ${MONITOR_DIR}/monitor_transaction.hpp
 )
 
-set (REPLICATION_SOURCES
-  ${REPLICATION_DIR}/replication_master_senders_manager.cpp
-  )
-
 set (REPLICATION_HEADERS
+  ${REPLICATION_DIR}/log_generator.hpp
+  ${REPLICATION_DIR}/log_consumer.hpp
   ${REPLICATION_DIR}/replication_master_senders_manager.hpp
+  ${REPLICATION_DIR}/replication_object.hpp
+  ${REPLICATION_DIR}/replication_stream_entry.hpp
   )
 
 set(QUERY_SOURCES
@@ -212,6 +211,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/query_executor.c
   ${QUERY_DIR}/query_manager.c
   ${QUERY_DIR}/query_opfunc.c
+  ${QUERY_DIR}/scan_json_table.cpp
   ${QUERY_DIR}/scan_manager.c
   ${QUERY_DIR}/serial.c
   ${QUERY_DIR}/set_scan.c
@@ -220,6 +220,9 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/string_opfunc.c
   ${QUERY_DIR}/vacuum.c
   ${QUERY_DIR}/xasl_cache.c
+  )
+set(QUERY_HEADERS
+  ${QUERY_DIR}/scan_json_table.hpp
   )
 
 set(OBJECT_SOURCES
@@ -230,6 +233,14 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/object_primitive.c
   ${OBJECT_DIR}/transform.c
   ${OBJECT_DIR}/object_domain.c
+  )
+  
+set(REPLICATION_SOURCES
+  ${REPLICATION_DIR}/log_consumer.cpp
+  ${REPLICATION_DIR}/log_generator.cpp
+  ${REPLICATION_DIR}/replication_object.cpp
+  ${REPLICATION_DIR}/replication_master_senders_manager.cpp  
+  ${REPLICATION_DIR}/replication_stream_entry.cpp
   )
 
 set(JSP_SOURCES
@@ -273,6 +284,7 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/oid.c
   ${STORAGE_DIR}/overflow_file.c
   ${STORAGE_DIR}/page_buffer.c
+  ${STORAGE_DIR}/double_write_buffer.c
   ${STORAGE_DIR}/statistics_sr.c
   ${STORAGE_DIR}/slotted_page.c
   ${STORAGE_DIR}/external_sort.c
@@ -284,6 +296,16 @@ set(STORAGE_SOURCES
 set(SESSION_SOURCES
   ${SESSION_DIR}/session.c
   ${SESSION_DIR}/session_sr.c
+  )
+
+set(XASL_SOURCES
+  ${XASL_DIR}/access_json_table.cpp
+  ${XASL_DIR}/xasl_stream.cpp
+  )
+set(XASL_HEADERS
+  ${XASL_DIR}/access_json_table.hpp
+  ${XASL_DIR}/compile_context.h
+  ${XASL_DIR}/xasl_stream.hpp
   )
 
 list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)
@@ -310,7 +332,6 @@ SET_SOURCE_FILES_PROPERTIES(
   ${COMPAT_SOURCES}
   ${CONNECTION_SOURCES}
   ${CONNECTION_TCP_SOURCE}
-  ${REPLICATION_SOURCES}
   ${ES_SOURCES}
   ${EXECUTABLE_SOURCES}
   ${HEAPLAYER_SOURCES}
@@ -320,10 +341,12 @@ SET_SOURCE_FILES_PROPERTIES(
   ${PARSER_SOURCES}
   ${PROBES_OBJECT}
   ${QUERY_SOURCES}
+  ${REPLICATION_SOURCES}
   ${SESSION_SOURCES}
   ${STORAGE_SOURCES}
   ${THREAD_SOURCES}
   ${TRANSACTION_SOURCES}
+  ${XASL_SOURCES}
   PROPERTIES LANGUAGE CXX
   )
 
@@ -338,7 +361,6 @@ set (CUBRID_LIB_SOURCES
   ${COMPAT_SOURCES}
   ${CONNECTION_SOURCES}
   ${CONNECTION_TCP_SOURCE}
-  ${REPLICATION_SOURCES}
   ${ES_SOURCES}
   ${EXECUTABLE_SOURCES}
   ${HEAPLAYER_SOURCES}
@@ -347,11 +369,13 @@ set (CUBRID_LIB_SOURCES
   ${OBJECT_SOURCES}
   ${PROBES_OBJECT}
   ${QUERY_SOURCES}
+  ${REPLICATION_SOURCES}  
   ${SESSION_SOURCES}
   ${STORAGE_SOURCES}
   ${STREAM_SOURCES}
   ${THREAD_SOURCES}
   ${TRANSACTION_SOURCES}
+  ${XASL_SOURCES}
   )
 
 set (CUBRID_LIB_HEADERS
@@ -359,9 +383,11 @@ set (CUBRID_LIB_HEADERS
   ${COMMUNICATION_HEADERS}
   ${COMPAT_HEADERS}
   ${MONITOR_HEADERS}
+  ${QUERY_HEADERS}
   ${REPLICATION_HEADERS}
   ${THREAD_HEADERS}
   ${STREAM_HEADERS}
+  ${XASL_HEADERS}
   )
 
 add_library(cubrid SHARED
@@ -445,6 +471,9 @@ install(FILES
 install(FILES
   ${COMPAT_DIR}/dbtype_def.h
   ${COMPAT_DIR}/dbtype_function.h
+  ${COMPAT_DIR}/db_date.h
+  ${COMPAT_DIR}/db_elo.h
+  ${COMPAT_DIR}/cache_time.h
   DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header  
   )
 install(FILES

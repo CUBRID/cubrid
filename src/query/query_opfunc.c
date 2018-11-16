@@ -43,6 +43,7 @@
 #include "databases_file.h"
 #include "tz_support.h"
 #include "numeric_opfunc.h"
+#include "tz_support.h"
 #include "db_date.h"
 #include "dbtype.h"
 #include "query_dump.h"
@@ -70,7 +71,6 @@ static int qdata_add_numeric (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, DB_V
 static int qdata_add_numeric_to_monetary (DB_VALUE * numeric_val_p, DB_VALUE * monetary_val_p, DB_VALUE * result_p);
 static int qdata_add_monetary (double d1, double d2, DB_CURRENCY type, DB_VALUE * result_p);
 static int qdata_add_bigint_to_time (DB_VALUE * time_val_p, DB_BIGINT add_time, DB_VALUE * result_p);
-static int qdata_add_bigint_to_timetz (DB_VALUE * time_tz_val_p, DB_BIGINT add_time, DB_VALUE * result_p);
 static int qdata_add_short_to_utime_asymmetry (DB_VALUE * utime_val_p, short s, unsigned int *utime,
 					       DB_VALUE * result_p, TP_DOMAIN * domain_p);
 static int qdata_add_int_to_utime_asymmetry (DB_VALUE * utime_val_p, int i, unsigned int *utime, DB_VALUE * result_p,
@@ -103,7 +103,6 @@ static int qdata_add_chars_to_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, D
 static int qdata_add_sequence_to_dbval (DB_VALUE * seq_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p,
 					TP_DOMAIN * domain_p);
 static int qdata_add_time_to_dbval (DB_VALUE * time_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p);
-static int qdata_add_timetz_to_dbval (DB_VALUE * time_tz_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p);
 static int qdata_add_utime_to_dbval (DB_VALUE * utime_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p,
 				     TP_DOMAIN * domain_p);
 static int qdata_add_timestamptz_to_dbval (DB_VALUE * ts_tz_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p);
@@ -141,8 +140,6 @@ static int qdata_subtract_monetary_to_dbval (DB_VALUE * monetary_val_p, DB_VALUE
 static int qdata_subtract_sequence_to_dbval (DB_VALUE * seq_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p,
 					     TP_DOMAIN * domain_p);
 static int qdata_subtract_time_to_dbval (DB_VALUE * time_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p);
-static int qdata_subtract_timetz_to_dbval (DB_VALUE * timetz_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p);
-static int qdata_subtract_timeltz_to_dbval (DB_VALUE * timetz_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p);
 static int qdata_subtract_utime_to_dbval (DB_VALUE * utime_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p,
 					  TP_DOMAIN * domain_p);
 static int qdata_subtract_timestampltz_to_dbval (DB_VALUE * ts_ltz_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p,
@@ -252,12 +249,32 @@ qdata_json_array_append (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VA
 			 QFILE_TUPLE tuple);
 
 static int
+qdata_json_array_insert (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
+			 QFILE_TUPLE tuple);
+
+static int
+qdata_json_search (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
+		   QFILE_TUPLE tuple);
+
+static int
+qdata_json_contains_path (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
+			  QFILE_TUPLE tuple);
+
+static int
+qdata_json_extract_multiple_paths (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
+				   OID * obj_oid_p, QFILE_TUPLE tuple);
+
+static int
 qdata_json_get_all_paths (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
 			  QFILE_TUPLE tuple);
 
 static int
 qdata_json_merge (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
 		  QFILE_TUPLE tuple);
+
+static int
+qdata_json_merge_patch (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
+			QFILE_TUPLE tuple);
 
 static int (*generic_func_ptrs[]) (THREAD_ENTRY * thread_p, DB_VALUE *, int, DB_VALUE **) =
 {
@@ -541,7 +558,7 @@ qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p, VALPTR_LIST * valptr_l
 
 	  if ((tuple_record_p->size - toffset) < n_size)
 	    {
-	      /* no space left in tuple to put next item, increase the tuple size by the max of n_size and DB_PAGE_SIZE 
+	      /* no space left in tuple to put next item, increase the tuple size by the max of n_size and DB_PAGE_SIZE
 	       * since we can't compute the actual tuple size without re-evaluating the expressions.  This guarantees
 	       * that we can at least get the next value into the tuple. */
 	      tpl_size = MAX (tuple_record_p->size, QFILE_TUPLE_LENGTH_SIZE);
@@ -957,85 +974,6 @@ qdata_add_bigint_to_time (DB_VALUE * time_val_p, DB_BIGINT add_time, DB_VALUE * 
 	}
     }
 
-  return error;
-}
-
-static int
-qdata_add_bigint_to_timetz (DB_VALUE * time_tz_val_p, DB_BIGINT add_time, DB_VALUE * result_p)
-{
-  DB_TIME utime, time_res;
-  DB_TIMETZ *time_tz_p, time_tz_res, time_tz_fixed;
-  int hour, minute, second;
-  int error = NO_ERROR;
-  DB_VALUE time_val_res;
-
-  time_tz_p = db_get_timetz (time_tz_val_p);
-  utime = (time_tz_p->time) % SECONDS_OF_ONE_DAY;
-  add_time = add_time % SECONDS_OF_ONE_DAY;
-  if (add_time < 0)
-    {
-      error = qdata_subtract_time (utime, (DB_TIME) (-add_time), &time_val_res);
-      if (error != NO_ERROR)
-	{
-	  goto exit;
-	}
-      assert (DB_VALUE_TYPE (&time_val_res) == DB_TYPE_TIME);
-      time_res = *db_get_time (&time_val_res);
-      goto return_time_tz;
-    }
-
-  time_res = (utime + add_time) % SECONDS_OF_ONE_DAY;
-
-  if (prm_get_integer_value (PRM_ID_COMPAT_MODE) != COMPAT_MYSQL)
-    {
-      goto return_time_tz;
-    }
-  else
-    {
-      DB_TYPE type = DB_VALUE_DOMAIN_TYPE (result_p);
-
-      switch (type)
-	{
-	case DB_TYPE_BIGINT:
-	case DB_TYPE_INTEGER:
-	  time_tz_res.time = time_res;
-	  time_tz_res.tz_id = time_tz_p->tz_id;
-	  error = tz_timetz_fix_zone (&time_tz_res, &time_tz_fixed);
-	  if (error != NO_ERROR)
-	    {
-	      goto exit;
-	    }
-
-	  db_time_decode (&time_tz_fixed.time, &hour, &minute, &second);
-
-	  if (type == DB_TYPE_BIGINT)
-	    {
-	      error = db_make_bigint (result_p, (hour * 100 + minute) * 100 + second);
-	    }
-	  else
-	    {
-	      error = db_make_int (result_p, (hour * 100 + minute) * 100 + second);
-	    }
-	  break;
-
-	default:
-	  break;
-	}
-      /* return timetz */
-    }
-
-return_time_tz:
-  /* adjust TZ_ID to new time value */
-  time_tz_res.time = time_res;
-  time_tz_res.tz_id = time_tz_p->tz_id;
-  error = tz_timetz_fix_zone (&time_tz_res, &time_tz_fixed);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-  db_make_timetz (result_p, &time_tz_fixed);
-
-exit:
   return error;
 }
 
@@ -1798,34 +1736,6 @@ qdata_add_short_to_dbval (DB_VALUE * short_val_p, DB_VALUE * dbval_p, DB_VALUE *
     case DB_TYPE_TIME:
       return qdata_add_bigint_to_time (dbval_p, (DB_BIGINT) s, result_p);
 
-    case DB_TYPE_TIMELTZ:
-      {
-	DB_TIMETZ time_tz;
-	time_tz.time = *db_get_time (dbval_p);
-
-	err = tz_create_session_tzid_for_time (&time_tz.time, true, &time_tz.tz_id);
-	if (err != NO_ERROR)
-	  {
-	    break;
-	  }
-	db_make_timetz (&tmp_val, &time_tz);
-
-	err = qdata_add_bigint_to_timetz (&tmp_val, (DB_BIGINT) s, result_p);
-	if (err != NO_ERROR)
-	  {
-	    break;
-	  }
-	if (DB_VALUE_TYPE (result_p) == DB_TYPE_TIMETZ)
-	  {
-	    time_tz = *db_get_timetz (result_p);
-	    db_make_timeltz (result_p, &time_tz.time);
-	  }
-	break;
-      }
-
-    case DB_TYPE_TIMETZ:
-      return qdata_add_bigint_to_timetz (dbval_p, (DB_BIGINT) s, result_p);
-
     case DB_TYPE_TIMESTAMP:
       return qdata_add_short_to_utime (dbval_p, s, result_p, domain_p);
 
@@ -1917,34 +1827,6 @@ qdata_add_int_to_dbval (DB_VALUE * int_val_p, DB_VALUE * dbval_p, DB_VALUE * res
 
     case DB_TYPE_TIME:
       return qdata_add_bigint_to_time (dbval_p, (DB_BIGINT) i, result_p);
-
-    case DB_TYPE_TIMELTZ:
-      {
-	DB_TIMETZ time_tz;
-	time_tz.time = *db_get_time (dbval_p);
-
-	err = tz_create_session_tzid_for_time (&time_tz.time, true, &time_tz.tz_id);
-	if (err != NO_ERROR)
-	  {
-	    break;
-	  }
-	db_make_timetz (&tmp_val, &time_tz);
-
-	err = qdata_add_bigint_to_timetz (&tmp_val, (DB_BIGINT) i, result_p);
-	if (err != NO_ERROR)
-	  {
-	    break;
-	  }
-	if (DB_VALUE_TYPE (result_p) == DB_TYPE_TIMETZ)
-	  {
-	    time_tz = *db_get_timetz (result_p);
-	    db_make_timeltz (result_p, &time_tz.time);
-	  }
-	break;
-      }
-
-    case DB_TYPE_TIMETZ:
-      return qdata_add_bigint_to_timetz (dbval_p, (DB_BIGINT) i, result_p);
 
     case DB_TYPE_TIMESTAMP:
       return qdata_add_int_to_utime (dbval_p, i, result_p, domain_p);
@@ -2038,34 +1920,6 @@ qdata_add_bigint_to_dbval (DB_VALUE * bigint_val_p, DB_VALUE * dbval_p, DB_VALUE
 
     case DB_TYPE_TIME:
       return qdata_add_bigint_to_time (dbval_p, bi, result_p);
-
-    case DB_TYPE_TIMELTZ:
-      {
-	DB_TIMETZ time_tz;
-	time_tz.time = *db_get_time (dbval_p);
-
-	err = tz_create_session_tzid_for_time (&time_tz.time, true, &time_tz.tz_id);
-	if (err != NO_ERROR)
-	  {
-	    break;
-	  }
-	db_make_timetz (&tmp_val, &time_tz);
-
-	err = qdata_add_bigint_to_timetz (&tmp_val, bi, result_p);
-	if (err != NO_ERROR)
-	  {
-	    break;
-	  }
-	if (DB_VALUE_TYPE (result_p) == DB_TYPE_TIMETZ)
-	  {
-	    time_tz = *db_get_timetz (result_p);
-	    db_make_timeltz (result_p, &time_tz.time);
-	  }
-	break;
-      }
-
-    case DB_TYPE_TIMETZ:
-      return qdata_add_bigint_to_timetz (dbval_p, bi, result_p);
 
     case DB_TYPE_TIMESTAMP:
       return qdata_add_bigint_to_utime (dbval_p, bi, result_p, domain_p);
@@ -2381,31 +2235,6 @@ qdata_add_time_to_dbval (DB_VALUE * time_val_p, DB_VALUE * dbval_p, DB_VALUE * r
 
     case DB_TYPE_BIGINT:
       return qdata_add_bigint_to_time (time_val_p, db_get_bigint (dbval_p), result_p);
-
-    default:
-      break;
-    }
-
-  return NO_ERROR;
-}
-
-static int
-qdata_add_timetz_to_dbval (DB_VALUE * time_tz_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p)
-{
-  DB_TYPE type;
-
-  type = DB_VALUE_DOMAIN_TYPE (dbval_p);
-
-  switch (type)
-    {
-    case DB_TYPE_SHORT:
-      return qdata_add_bigint_to_timetz (time_tz_val_p, (DB_BIGINT) db_get_short (dbval_p), result_p);
-
-    case DB_TYPE_INTEGER:
-      return qdata_add_bigint_to_timetz (time_tz_val_p, (DB_BIGINT) db_get_int (dbval_p), result_p);
-
-    case DB_TYPE_BIGINT:
-      return qdata_add_bigint_to_timetz (time_tz_val_p, db_get_bigint (dbval_p), result_p);
 
     default:
       break;
@@ -2828,17 +2657,7 @@ qdata_add_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, 
       break;
 
     case DB_TYPE_TIME:
-    case DB_TYPE_TIMELTZ:
-      /* we are adding only numbers, is safe to handle TIMELTZ as TIME */
       error = qdata_add_time_to_dbval (dbval1_p, dbval2_p, result_p);
-      if (error == NO_ERROR && type1 == DB_TYPE_TIMELTZ)
-	{
-	  db_make_timeltz (result_p, db_get_time (result_p));
-	}
-      break;
-
-    case DB_TYPE_TIMETZ:
-      error = qdata_add_timetz_to_dbval (dbval1_p, dbval2_p, result_p);
       break;
 
     case DB_TYPE_TIMESTAMP:
@@ -3013,8 +2832,6 @@ qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1_p, DB_VALUE 
     case DB_TYPE_NUMERIC:
     case DB_TYPE_MONETARY:
     case DB_TYPE_TIME:
-    case DB_TYPE_TIMELTZ:
-    case DB_TYPE_TIMETZ:
     case DB_TYPE_DATE:
     case DB_TYPE_DATETIME:
     case DB_TYPE_DATETIMELTZ:
@@ -3469,8 +3286,6 @@ qdata_subtract_short_to_dbval (DB_VALUE * short_val_p, DB_VALUE * dbval_p, DB_VA
 				      result_p);
 
     case DB_TYPE_TIME:
-    case DB_TYPE_TIMELTZ:
-    case DB_TYPE_TIMETZ:
       if (s < 0)
 	{
 	  timetmp = s + SECONDS_OF_ONE_DAY;
@@ -3480,36 +3295,9 @@ qdata_subtract_short_to_dbval (DB_VALUE * short_val_p, DB_VALUE * dbval_p, DB_VA
 	  timetmp = s;
 	}
 
-      if (type2 == DB_TYPE_TIMETZ)
-	{
-	  DB_TIMETZ *timetz_p;
-
-	  timetz_p = db_get_timetz (dbval_p);
-	  timeval = &timetz_p->time;
-	}
-      else
-	{
-	  timeval = db_get_time (dbval_p);
-	}
+      timeval = db_get_time (dbval_p);
 
       err = qdata_subtract_time (timetmp, (DB_TIME) (*timeval % SECONDS_OF_ONE_DAY), result_p);
-      if (err == NO_ERROR && type2 == DB_TYPE_TIMELTZ)
-	{
-	  db_make_timeltz (result_p, db_get_time (result_p));
-	}
-      else if (err == NO_ERROR && type2 == DB_TYPE_TIMETZ)
-	{
-	  DB_TIMETZ time_tz, time_tz_fixed;
-
-	  time_tz = *db_get_timetz (dbval_p);
-	  time_tz.time = *db_get_time (result_p);
-	  err = tz_timetz_fix_zone (&time_tz, &time_tz_fixed);
-	  if (err != NO_ERROR)
-	    {
-	      break;
-	    }
-	  db_make_timetz (result_p, &time_tz_fixed);
-	}
       return err;
 
     case DB_TYPE_TIMESTAMP:
@@ -3596,8 +3384,6 @@ qdata_subtract_int_to_dbval (DB_VALUE * int_val_p, DB_VALUE * dbval_p, DB_VALUE 
 				      result_p);
 
     case DB_TYPE_TIME:
-    case DB_TYPE_TIMELTZ:
-    case DB_TYPE_TIMETZ:
     case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPLTZ:
     case DB_TYPE_TIMESTAMPTZ:
@@ -3729,36 +3515,10 @@ qdata_subtract_bigint_to_dbval (DB_VALUE * bigint_val_p, DB_VALUE * dbval_p, DB_
 	  bi %= SECONDS_OF_ONE_DAY;
 	}
 
-      if (type == DB_TYPE_TIMETZ)
-	{
-	  DB_TIMETZ *timetz_p;
-
-	  timetz_p = db_get_timetz (dbval_p);
-	  timeval = &timetz_p->time;
-	}
-      else
-	{
-	  timeval = db_get_time (dbval_p);
-	}
+      timeval = db_get_time (dbval_p);
       err = qdata_subtract_time ((DB_TIME) bi, (DB_TIME) (*timeval % SECONDS_OF_ONE_DAY), result_p);
-      if (err == NO_ERROR && type == DB_TYPE_TIMELTZ)
-	{
-	  db_make_timeltz (result_p, db_get_time (result_p));
-	}
-      else if (err == NO_ERROR && type == DB_TYPE_TIMETZ)
-	{
-	  DB_TIMETZ time_tz, time_tz_fixed;
-
-	  time_tz = *db_get_timetz (dbval_p);
-	  time_tz.time = *db_get_time (result_p);
-	  err = tz_timetz_fix_zone (&time_tz, &time_tz_fixed);
-	  if (err != NO_ERROR)
-	    {
-	      break;
-	    }
-	  db_make_timetz (result_p, &time_tz_fixed);
-	}
       return err;
+
     case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPLTZ:
       utime = db_get_timestamp (dbval_p);
@@ -4062,200 +3822,6 @@ qdata_subtract_time_to_dbval (DB_VALUE * time_val_p, DB_VALUE * dbval_p, DB_VALU
       timeval1 = db_get_time (dbval_p);
       db_make_int (result_p, ((int) *timeval - (int) *timeval1));
       break;
-
-    case DB_TYPE_TIMELTZ:
-      err = qdata_subtract_timeltz_to_dbval (dbval_p, time_val_p, result_p);
-      if (err != NO_ERROR)
-	{
-	  break;
-	}
-      assert (DB_VALUE_TYPE (result_p) == DB_TYPE_INTEGER);
-      db_make_int (result_p, -(db_get_int (result_p)));
-      break;
-    case DB_TYPE_TIMETZ:
-      err = qdata_subtract_timetz_to_dbval (dbval_p, time_val_p, result_p);
-      if (err != NO_ERROR)
-	{
-	  break;
-	}
-      assert (DB_VALUE_TYPE (result_p) == DB_TYPE_INTEGER);
-      db_make_int (result_p, -(db_get_int (result_p)));
-      break;
-
-    default:
-      break;
-    }
-
-  return err;
-}
-
-static int
-qdata_subtract_timetz_to_dbval (DB_VALUE * timetz_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p)
-{
-  int err = NO_ERROR;
-  DB_TYPE type;
-  DB_TIMETZ *time_tz_p;
-
-  time_tz_p = db_get_timetz (timetz_val_p);
-  type = DB_VALUE_DOMAIN_TYPE (dbval_p);
-
-  switch (type)
-    {
-    case DB_TYPE_SHORT:
-    case DB_TYPE_INTEGER:
-    case DB_TYPE_BIGINT:
-      {
-	DB_VALUE time_val, time_val_res;
-	DB_TIMETZ time_tz_res, time_tz_fixed;
-
-	db_value_put_encoded_time (&time_val, &time_tz_p->time);
-
-	err = qdata_subtract_time_to_dbval (&time_val, dbval_p, &time_val_res);
-	if (err != NO_ERROR)
-	  {
-	    break;
-	  }
-	time_tz_res.time = *db_get_time (&time_val_res);
-	time_tz_res.tz_id = time_tz_p->tz_id;
-
-	err = tz_timetz_fix_zone (&time_tz_res, &time_tz_fixed);
-	if (err != NO_ERROR)
-	  {
-	    break;
-	  }
-
-	db_make_timetz (result_p, &time_tz_fixed);
-	break;
-      }
-
-    case DB_TYPE_TIME:
-      {
-	DB_TIME *time_2_p;
-	DB_TIMETZ timetz_2;
-
-	time_2_p = db_get_time (dbval_p);
-
-	err = tz_create_timetz_from_ses (time_2_p, &timetz_2);
-	if (err != NO_ERROR)
-	  {
-	    break;
-	  }
-
-	db_make_int (result_p, ((int) time_tz_p->time - (int) timetz_2.time));
-	break;
-      }
-
-    case DB_TYPE_TIMELTZ:
-      {
-	DB_TIME *time_2_p;
-
-	time_2_p = db_get_time (dbval_p);
-	db_make_int (result_p, ((int) time_tz_p->time - (int) *time_2_p));
-	break;
-      }
-    case DB_TYPE_TIMETZ:
-      {
-	DB_TIMETZ *time_tz_2_p;
-	int day1, day2;
-
-	time_tz_2_p = db_get_timetz (dbval_p);
-	day1 = get_day_from_timetz (time_tz_p);
-	day2 = get_day_from_timetz (time_tz_2_p);
-
-	db_make_int (result_p,
-		     ((int) time_tz_p->time + day1 * SECONDS_OF_ONE_DAY - (int) time_tz_2_p->time -
-		      day2 * SECONDS_OF_ONE_DAY));
-	break;
-      }
-
-    default:
-      break;
-    }
-
-  return err;
-}
-
-static int
-qdata_subtract_timeltz_to_dbval (DB_VALUE * timetz_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p)
-{
-  int err = NO_ERROR;
-  DB_TYPE type;
-  DB_TIME *time_p;
-
-  time_p = db_get_time (timetz_val_p);
-  type = DB_VALUE_DOMAIN_TYPE (dbval_p);
-
-  switch (type)
-    {
-    case DB_TYPE_SHORT:
-    case DB_TYPE_INTEGER:
-    case DB_TYPE_BIGINT:
-      {
-	DB_VALUE time_val, time_val_res;
-
-	/* create a simple TIME value and perform the operation with it */
-	db_value_put_encoded_time (&time_val, time_p);
-	err = qdata_subtract_time_to_dbval (&time_val, dbval_p, &time_val_res);
-	if (err != NO_ERROR)
-	  {
-	    break;
-	  }
-	db_make_timeltz (result_p, db_get_time (&time_val_res));
-	break;
-      }
-
-    case DB_TYPE_TIME:
-    case DB_TYPE_TIMETZ:
-      {
-	DB_VALUE timetz_val;
-	DB_TIMETZ timetz;
-
-	/* perform the operation as TIMETZ operand (keep session timezone when mixing with other data types having
-	 * timezone) */
-	timetz.time = *time_p;
-	err = tz_create_session_tzid_for_time (time_p, true, &timetz.tz_id);
-	if (err != NO_ERROR)
-	  {
-	    break;
-	  }
-	db_make_timetz (&timetz_val, &timetz);
-
-	err = qdata_subtract_timetz_to_dbval (&timetz_val, dbval_p, result_p);
-	break;
-      }
-    case DB_TYPE_TIMELTZ:
-      {
-	TZ_ID ses_tz_id1, ses_tz_id2;
-	DB_TIME *t2_utc, t1_local, t2_local;
-
-	t2_utc = db_get_time (dbval_p);
-	err = tz_create_session_tzid_for_time (time_p, true, &ses_tz_id1);
-	if (err != NO_ERROR)
-	  {
-	    break;
-	  }
-
-	err = tz_create_session_tzid_for_time (t2_utc, true, &ses_tz_id2);
-	if (err != NO_ERROR)
-	  {
-	    break;
-	  }
-
-	err = tz_utc_timetz_to_local (time_p, &ses_tz_id1, &t1_local);
-	if (err != NO_ERROR)
-	  {
-	    break;
-	  }
-
-	err = tz_utc_timetz_to_local (t2_utc, &ses_tz_id2, &t2_local);
-	if (err != NO_ERROR)
-	  {
-	    break;
-	  }
-
-	db_make_int (result_p, t1_local - t2_local);
-	break;
-      }
 
     default:
       break;
@@ -5171,14 +4737,6 @@ qdata_subtract_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * resul
       error = qdata_subtract_time_to_dbval (dbval1_p, dbval2_p, result_p);
       break;
 
-    case DB_TYPE_TIMELTZ:
-      error = qdata_subtract_timeltz_to_dbval (dbval1_p, dbval2_p, result_p);
-      break;
-
-    case DB_TYPE_TIMETZ:
-      error = qdata_subtract_timetz_to_dbval (dbval1_p, dbval2_p, result_p);
-      break;
-
     case DB_TYPE_TIMESTAMP:
       error = qdata_subtract_utime_to_dbval (dbval1_p, dbval2_p, result_p, domain_p);
       break;
@@ -5795,8 +5353,6 @@ qdata_multiply_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * resul
       break;
 
     case DB_TYPE_TIME:
-    case DB_TYPE_TIMELTZ:
-    case DB_TYPE_TIMETZ:
     case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPLTZ:
     case DB_TYPE_TIMESTAMPTZ:
@@ -6386,8 +5942,6 @@ qdata_divide_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
     case DB_TYPE_TIME:
-    case DB_TYPE_TIMELTZ:
-    case DB_TYPE_TIMETZ:
     case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPLTZ:
     case DB_TYPE_TIMESTAMPTZ:
@@ -6567,6 +6121,19 @@ qdata_json_type_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * dom
 }
 
 int
+qdata_json_pretty_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
+{
+  int error_code = db_json_pretty_dbval (dbval1_p, result_p);
+
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  return qdata_coerce_result_to_domain (result_p, domain_p);
+}
+
+int
 qdata_json_valid_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
 {
   int error_code = db_json_valid_dbval (dbval1_p, result_p);
@@ -6592,7 +6159,19 @@ qdata_json_depth_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * do
 }
 
 int
-qdata_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * json_res, TP_DOMAIN * domain_p)
+qdata_json_quote_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
+{
+  return db_string_quote (dbval1_p, result_p);
+}
+
+int
+qdata_json_unquote_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
+{
+  return db_json_unquote_dbval (dbval1_p, result_p);
+}
+
+int
+qdata_json_extract_dbval (DB_VALUE * json, DB_VALUE * path, DB_VALUE * json_res, TP_DOMAIN * domain_p)
 {
   return db_json_extract_dbval (json, path, json_res);
 }
@@ -6745,16 +6324,7 @@ qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
       break;
 
     case DB_TYPE_TIME:
-    case DB_TYPE_TIMELTZ:
       error = qdata_add_time_to_dbval (dbval1_p, dbval2_p, result_p);
-      if (error != NO_ERROR && type1 == DB_TYPE_TIMELTZ)
-	{
-	  db_make_timeltz (result_p, db_get_time (result_p));
-	}
-      break;
-
-    case DB_TYPE_TIMETZ:
-      error = qdata_add_timetz_to_dbval (dbval1_p, dbval2_p, result_p);
       break;
 
     case DB_TYPE_TIMESTAMP:
@@ -6836,7 +6406,7 @@ qdata_process_distinct_or_sort (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_p,
       return ER_FAILED;
     }
 
-  type_list.domp[0] = agg_p->operand.domain;
+  type_list.domp[0] = agg_p->operands->value.domain;
   /* if the agg has ORDER BY force setting 'QFILE_FLAG_ALL' : in this case, no additional SORT_LIST will be created,
    * but the one in the AGGREGATE_TYPE structure will be used */
   if (agg_p->sort_list != NULL)
@@ -6967,8 +6537,14 @@ qdata_aggregate_accumulator_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_A
     case PT_AGG_BIT_XOR:
     case PT_AVG:
     case PT_SUM:
-      /* these functions only affect acc.value and new_acc can be treated as an ordinary value */
+      // these functions only affect acc.value and new_acc can be treated as an ordinary value
       error = qdata_aggregate_value_to_accumulator (thread_p, acc, acc_dom, func_type, func_domain, new_acc->value);
+      break;
+
+      // for these two situations we just need to merge
+    case PT_JSON_ARRAYAGG:
+    case PT_JSON_OBJECTAGG:
+      error = db_json_merge (new_acc->value, acc->value);
       break;
 
     case PT_STDDEV:
@@ -7041,6 +6617,7 @@ qdata_aggregate_accumulator_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_A
  *   func_type(in): function type
  *   func_domain(in): function domain
  *   value(in): value
+ *   value_next(int): value of the second argument; used only for JSON_OBJECTAGG
  */
 int
 qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMULATOR * acc,
@@ -7049,19 +6626,26 @@ qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMUL
 {
   DB_VALUE squared;
   bool copy_operator = false;
-  int coll_id;
+  int coll_id = -1;
 
   if (DB_IS_NULL (value))
     {
       return NO_ERROR;
     }
 
-  coll_id = domain->value_dom->collation_id;
+  if (domain != NULL && domain->value_dom != NULL)
+    {
+      coll_id = domain->value_dom->collation_id;
+    }
 
   /* aggregate new value */
   switch (func_type)
     {
     case PT_MIN:
+      if (coll_id == -1)
+	{
+	  return ER_FAILED;
+	}
       if (acc->curr_cnt < 1 || (*(domain->value_dom->type->cmpval)) (acc->value, value, 1, 1, NULL, coll_id) > 0)
 	{
 	  /* we have new minimum */
@@ -7070,6 +6654,10 @@ qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMUL
       break;
 
     case PT_MAX:
+      if (coll_id == -1)
+	{
+	  return ER_FAILED;
+	}
       if (acc->curr_cnt < 1 || (*(domain->value_dom->type->cmpval)) (acc->value, value, 1, 1, NULL, coll_id) < 0)
 	{
 	  /* we have new maximum */
@@ -7219,6 +6807,13 @@ qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMUL
 	}
       break;
 
+    case PT_JSON_ARRAYAGG:
+      if (db_json_arrayagg_dbval_accumulate (value, acc->value) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+      break;
+
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
       return ER_FAILED;
@@ -7249,6 +6844,45 @@ qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMUL
   return NO_ERROR;
 }
 
+/* *INDENT-OFF* */
+int
+qdata_aggregate_multiple_values_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMULATOR * acc,
+						AGGREGATE_ACCUMULATOR_DOMAIN * domain, FUNC_TYPE func_type,
+						TP_DOMAIN * func_domain, std::vector<DB_VALUE> & db_values)
+{
+  // we have only one argument so aggregate only the first db_value
+  if (db_values.size () == 1)
+    {
+      return qdata_aggregate_value_to_accumulator (thread_p, acc, domain, func_type, func_domain, &db_values[0]);
+    }
+
+  // maybe this condition will be changed in the future based on the future arguments conditions
+  for (DB_VALUE &db_value : db_values)
+    {
+      if (DB_IS_NULL (&db_value))
+	{
+	  return NO_ERROR;
+	}
+    }
+
+  switch (func_type)
+    {
+    case PT_JSON_OBJECTAGG:
+      if (db_json_objectagg_dbval_accumulate (&db_values[0], &db_values[1], acc->value) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+      break;
+
+    default:
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+/* *INDENT-ON* */
+
 /*
  * qdata_evaluate_aggregate_list () -
  *   return: NO_ERROR, or ER_code
@@ -7267,18 +6901,21 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 {
   AGGREGATE_TYPE *agg_p;
   AGGREGATE_ACCUMULATOR *accumulator;
-  DB_VALUE dbval, *percentile_val = NULL;
+  DB_VALUE *percentile_val = NULL;
   PR_TYPE *pr_type_p;
   DB_TYPE dbval_type;
   OR_BUF buf;
   char *disk_repr_p = NULL;
   int dbval_size, i, error;
   AGGREGATE_PERCENTILE_INFO *percentile = NULL;
-
-  db_make_null (&dbval);
+  DB_VALUE *db_value_p = NULL;
 
   for (agg_p = agg_list_p, i = 0; agg_p != NULL; agg_p = agg_p->next, i++)
     {
+      /* *INDENT-OFF* */
+      std::vector<DB_VALUE> db_values;
+      /* *INDENT-ON* */
+
       /* determine accumulator */
       accumulator = (alt_acc_list != NULL ? &alt_acc_list[i] : &agg_p->accumulator);
 
@@ -7293,7 +6930,7 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	  continue;
 	}
 
-      /* 
+      /*
        * the value of groupby_num() remains unchanged;
        * it will be changed while evaluating groupby_num predicates
        * against each group at 'xs_eval_grbynum_pred()'
@@ -7316,27 +6953,73 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	  continue;
 	}
 
-      /* 
-       * fetch operand value. aggregate regulator variable should only
-       * contain constants
-       */
-      if (fetch_copy_dbval (thread_p, &agg_p->operand, val_desc_p, NULL, NULL, NULL, &dbval) != NO_ERROR)
+      /* fetch operands value. aggregate regulator variable should only contain constants */
+      REGU_VARIABLE_LIST operand = NULL;
+      for (operand = agg_p->operands; operand != NULL; operand = operand->next)
 	{
-	  return ER_FAILED;
-	}
+	  // create an empty value
+	  db_values.emplace_back ();
 
-      /* eliminate null values */
-      if (DB_IS_NULL (&dbval))
-	{
-	  if ((agg_p->function == PT_COUNT || agg_p->function == PT_COUNT_STAR) && DB_IS_NULL (accumulator->value))
+	  // fetch it
+	  if (fetch_copy_dbval (thread_p, &operand->value, val_desc_p, NULL, NULL, NULL,
+				&db_values.back ()) != NO_ERROR)
 	    {
-	      /* we might get a NULL count if aggregating with hash table and group has only one tuple; correct that */
-	      db_make_int (accumulator->value, 0);
+	      pr_clear_value_vector (db_values);
+	      return ER_FAILED;
 	    }
-	  continue;
 	}
 
-      /* 
+      /*
+       * eliminate null values
+       * consider only the first argument, because for the rest will depend on the function
+       */
+      db_value_p = &db_values[0];
+      if (DB_IS_NULL (db_value_p))
+	{
+	  /*
+	   * for JSON_ARRAYAGG we need to include also NULL values in the result set
+	   * so we need to construct a NULL JSON value
+	   */
+	  if (agg_p->function == PT_JSON_ARRAYAGG)
+	    {
+	      // this creates a new JSON_DOC with the type DB_JSON_NULL
+	      db_make_json (db_value_p, db_json_allocate_doc (), true);
+	    }
+	  /*
+	   * for JSON_OBJECTAGG we need to include keep track of key-value pairs
+	   * the key can not be NULL so this will throw an error
+	   * the value can be NULL and we will wrap this into a JSON with DB_JSON_NULL type in the next statement
+	   */
+	  else if (agg_p->function == PT_JSON_OBJECTAGG)
+	    {
+	      pr_clear_value_vector (db_values);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_OBJECT_NAME_IS_NULL, 0);
+	      return ER_JSON_OBJECT_NAME_IS_NULL;
+	    }
+	  else
+	    {
+	      if ((agg_p->function == PT_COUNT || agg_p->function == PT_COUNT_STAR) && DB_IS_NULL (accumulator->value))
+		{
+		  /* we might get a NULL count if aggregating with hash table and group has only one tuple; correct that */
+		  db_make_int (accumulator->value, 0);
+		}
+	      pr_clear_value_vector (db_values);
+	      continue;
+	    }
+	}
+
+      /*
+       * for JSON_OBJECTAGG, we wrap the second argument with a null JSON only if the value is NULL
+       */
+      if (agg_p->function == PT_JSON_OBJECTAGG)
+	{
+	  if (DB_IS_NULL (&db_values[1]))
+	    {
+	      db_make_json (&db_values[1], db_json_allocate_doc (), true);
+	    }
+	}
+
+      /*
        * handle distincts by inserting each operand into a list file,
        * which will be distinct-ified and counted/summed/averaged
        * in qdata_finalize_aggregate_list ()
@@ -7347,55 +7030,55 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	  if (QPROC_IS_INTERPOLATION_FUNC (agg_p))
 	    {
 	      /* never be null type */
-	      assert (!DB_IS_NULL (&dbval));
+	      assert (!DB_IS_NULL (db_value_p));
 
-	      error = qdata_update_agg_interpolation_func_value_and_domain (agg_p, &dbval);
+	      error = qdata_update_agg_interpolation_func_value_and_domain (agg_p, db_value_p);
 	      if (error != NO_ERROR)
 		{
-		  pr_clear_value (&dbval);
+		  pr_clear_value_vector (db_values);
 		  return ER_FAILED;
 		}
 	    }
 
-	  dbval_type = DB_VALUE_DOMAIN_TYPE (&dbval);
+	  dbval_type = DB_VALUE_DOMAIN_TYPE (db_value_p);
 	  pr_type_p = PR_TYPE_FROM_ID (dbval_type);
 
 	  if (pr_type_p == NULL)
 	    {
-	      pr_clear_value (&dbval);
+	      pr_clear_value_vector (db_values);
 	      return ER_FAILED;
 	    }
 
-	  dbval_size = pr_data_writeval_disk_size (&dbval);
+	  dbval_size = pr_data_writeval_disk_size (db_value_p);
 	  if (dbval_size > 0 && (disk_repr_p = (char *) db_private_alloc (thread_p, dbval_size)) != NULL)
 	    {
 	      OR_BUF_INIT (buf, disk_repr_p, dbval_size);
-	      error = (*(pr_type_p->data_writeval)) (&buf, &dbval);
+	      error = (*(pr_type_p->data_writeval)) (&buf, db_value_p);
 	      if (error != NO_ERROR)
 		{
 		  /* ER_TF_BUFFER_OVERFLOW means that val_size or packing is bad. */
 		  assert (error != ER_TF_BUFFER_OVERFLOW);
 
 		  db_private_free_and_init (thread_p, disk_repr_p);
-		  pr_clear_value (&dbval);
+		  pr_clear_value_vector (db_values);
 		  return ER_FAILED;
 		}
 	    }
 	  else
 	    {
-	      pr_clear_value (&dbval);
+	      pr_clear_value_vector (db_values);
 	      return ER_FAILED;
 	    }
 
 	  if (qfile_add_item_to_list (thread_p, disk_repr_p, dbval_size, agg_p->list_id) != NO_ERROR)
 	    {
 	      db_private_free_and_init (thread_p, disk_repr_p);
-	      pr_clear_value (&dbval);
+	      pr_clear_value_vector (db_values);
 	      return ER_FAILED;
 	    }
 
 	  db_private_free_and_init (thread_p, disk_repr_p);
-	  pr_clear_value (&dbval);
+	  pr_clear_value_vector (db_values);
 
 	  /* for PERCENTILE funcs, we have to check percentile value */
 	  if (agg_p->function != PT_PERCENTILE_CONT && agg_p->function != PT_PERCENTILE_DISC)
@@ -7464,22 +7147,21 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 		    case DB_TYPE_TIMESTAMPLTZ:
 		    case DB_TYPE_TIMESTAMPTZ:
 		    case DB_TYPE_TIME:
-		    case DB_TYPE_TIMELTZ:
-		    case DB_TYPE_TIMETZ:
 		      break;
 		    default:
-		      assert (agg_p->operand.type == TYPE_CONSTANT || agg_p->operand.type == TYPE_DBVAL);
+		      assert (agg_p->operands->value.type == TYPE_CONSTANT ||
+			      agg_p->operands->value.type == TYPE_DBVAL);
 
 		      /* try to cast dbval to double, datetime then time */
 		      tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DOUBLE);
 
-		      status = tp_value_cast (&dbval, &dbval, tmp_domain_p, false);
+		      status = tp_value_cast (db_value_p, db_value_p, tmp_domain_p, false);
 		      if (status != DOMAIN_COMPATIBLE)
 			{
 			  /* try datetime */
 			  tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DATETIME);
 
-			  status = tp_value_cast (&dbval, &dbval, tmp_domain_p, false);
+			  status = tp_value_cast (db_value_p, db_value_p, tmp_domain_p, false);
 			}
 
 		      /* try time */
@@ -7487,7 +7169,7 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 			{
 			  tmp_domain_p = tp_domain_resolve_default (DB_TYPE_TIME);
 
-			  status = tp_value_cast (&dbval, &dbval, tmp_domain_p, false);
+			  status = tp_value_cast (db_value_p, db_value_p, tmp_domain_p, false);
 			}
 
 		      if (status != DOMAIN_COMPATIBLE)
@@ -7496,7 +7178,7 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2,
 				  qdump_function_type_string (agg_p->function), "DOUBLE, DATETIME, TIME");
 
-			  pr_clear_value (&dbval);
+			  pr_clear_value_vector (db_values);
 			  return error;
 			}
 
@@ -7505,17 +7187,17 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 		    }
 
 		  pr_clear_value (agg_p->accumulator.value);
-		  error = pr_clone_value (&dbval, agg_p->accumulator.value);
+		  error = pr_clone_value (db_value_p, agg_p->accumulator.value);
 		  if (error != NO_ERROR)
 		    {
-		      pr_clear_value (&dbval);
+		      pr_clear_value_vector (db_values);
 		      return error;
 		    }
 		}
 	    }
 
 	  /* clear value */
-	  pr_clear_value (&dbval);
+	  pr_clear_value_vector (db_values);
 
 	  /* percentile value check */
 	  if (agg_p->function == PT_PERCENTILE_CONT || agg_p->function == PT_PERCENTILE_DISC)
@@ -7535,18 +7217,18 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	  /* group concat function requires special care */
 	  if (agg_p->accumulator.curr_cnt < 1)
 	    {
-	      error = qdata_group_concat_first_value (thread_p, agg_p, &dbval);
+	      error = qdata_group_concat_first_value (thread_p, agg_p, db_value_p);
 	    }
 	  else
 	    {
-	      error = qdata_group_concat_value (thread_p, agg_p, &dbval);
+	      error = qdata_group_concat_value (thread_p, agg_p, db_value_p);
 	    }
 
 	  /* increment tuple count */
 	  agg_p->accumulator.curr_cnt++;
 
 	  /* clear value */
-	  pr_clear_value (&dbval);
+	  pr_clear_value_vector (db_values);
 
 	  /* check error */
 	  if (error != NO_ERROR)
@@ -7557,14 +7239,14 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
       else
 	{
 	  /* aggregate value */
-	  error = qdata_aggregate_value_to_accumulator (thread_p, accumulator, &agg_p->accumulator_domain,
-							agg_p->function, agg_p->domain, &dbval);
+	  error = qdata_aggregate_multiple_values_to_accumulator (thread_p, accumulator, &agg_p->accumulator_domain,
+								  agg_p->function, agg_p->domain, db_values);
 
 	  /* increment tuple count */
 	  accumulator->curr_cnt++;
 
-	  /* clear value */
-	  pr_clear_value (&dbval);
+	  /* clear values */
+	  pr_clear_value_vector (db_values);
 
 	  /* handle error */
 	  if (error != NO_ERROR)
@@ -8268,7 +7950,7 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	}
 
       /* Resolve the final result of aggregate function. Since the evaluation value might be changed to keep the
-       * precision during the aggregate function evaluation, for example, use DOUBLE instead FLOAT, we need to cast the 
+       * precision during the aggregate function evaluation, for example, use DOUBLE instead FLOAT, we need to cast the
        * result to the original domain. */
       if (agg_p->function == PT_SUM && agg_p->domain != agg_p->accumulator_domain.value_dom)
 	{
@@ -8658,7 +8340,7 @@ qdata_convert_dbvals_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype, REGU_VARIAB
       goto error;
     }
 
-  /* 
+  /*
    * DON'T set the "set"'s domain if it's really a vobj; they don't
    * play by quite the same rules.  The domain coming in here is some
    * flavor of vobj domain,  which is definitely *not* what the
@@ -8692,7 +8374,7 @@ qdata_convert_dbvals_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype, REGU_VARIAB
        * clone/free. */
       error_code = setobj_put_value (setobj_p, n, &dbval);
 
-      /* 
+      /*
        * if we attempt to add a duplicate value to a set,
        * clear the value, but do not set an error code
        */
@@ -8949,11 +8631,26 @@ qdata_evaluate_function (THREAD_ENTRY * thread_p, REGU_VARIABLE * function_p, VA
     case F_JSON_ARRAY_APPEND:
       return qdata_json_array_append (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
 
+    case F_JSON_ARRAY_INSERT:
+      return qdata_json_array_insert (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+
+    case F_JSON_SEARCH:
+      return qdata_json_search (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+
+    case F_JSON_CONTAINS_PATH:
+      return qdata_json_contains_path (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+
+    case F_JSON_EXTRACT:
+      return qdata_json_extract_multiple_paths (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+
     case F_JSON_GET_ALL_PATHS:
       return qdata_json_get_all_paths (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
 
     case F_JSON_MERGE:
       return qdata_json_merge (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+
+    case F_JSON_MERGE_PATCH:
+      return qdata_json_merge_patch (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
 
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
@@ -9031,7 +8728,7 @@ qdata_convert_table_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype, REGU_VARIABL
       return ER_FAILED;
     }
 
-  /* 
+  /*
    * Don't need to worry about the vobj case here; this function can't
    * be called in a context where it's expected to produce a vobj.  See
    * xd_dbvals_to_set for the contrasting case.
@@ -9074,13 +8771,13 @@ qdata_convert_table_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype, REGU_VARIABL
 		}
 	    }
 
-	  /* 
+	  /*
 	   * using setobj_put_value transfers "ownership" of the
 	   * db_value memory to the set. This avoids a redundant clone/free.
 	   */
 	  error = setobj_put_value (setobj_p, seq_pos++, &dbval);
 
-	  /* 
+	  /*
 	   * if we attempt to add a duplicate value to a set,
 	   * clear the value, but do not set an error
 	   */
@@ -10567,7 +10264,7 @@ qdata_elt (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_
       goto error_exit;
     }
 
-  /* 
+  /*
    * operand should already be cast to the right type (CHAR
    * or NCHAR VARYING)
    */
@@ -10692,6 +10389,38 @@ qdata_json_array_append (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VA
 }
 
 static int
+qdata_json_array_insert (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
+			 QFILE_TUPLE tuple)
+{
+  return qdata_convert_operands_to_value_and_call (thread_p, function_p, val_desc_p,
+						   obj_oid_p, tuple, db_json_array_insert);
+}
+
+static int
+qdata_json_search (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
+		   QFILE_TUPLE tuple)
+{
+  return qdata_convert_operands_to_value_and_call (thread_p, function_p, val_desc_p,
+						   obj_oid_p, tuple, db_json_search_dbval);
+}
+
+static int
+qdata_json_contains_path (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
+			  QFILE_TUPLE tuple)
+{
+  return qdata_convert_operands_to_value_and_call (thread_p, function_p, val_desc_p,
+						   obj_oid_p, tuple, db_json_contains_path);
+}
+
+static int
+qdata_json_extract_multiple_paths (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
+				   OID * obj_oid_p, QFILE_TUPLE tuple)
+{
+  return qdata_convert_operands_to_value_and_call (thread_p, function_p, val_desc_p,
+						   obj_oid_p, tuple, db_json_extract_multiple_paths);
+}
+
+static int
 qdata_json_get_all_paths (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
 			  QFILE_TUPLE tuple)
 {
@@ -10704,6 +10433,14 @@ qdata_json_merge (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR
 		  QFILE_TUPLE tuple)
 {
   return qdata_convert_operands_to_value_and_call (thread_p, function_p, val_desc_p, obj_oid_p, tuple, db_json_merge);
+}
+
+static int
+qdata_json_merge_patch (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
+			QFILE_TUPLE tuple)
+{
+  return qdata_convert_operands_to_value_and_call (thread_p, function_p, val_desc_p,
+						   obj_oid_p, tuple, db_json_merge_patch);
 }
 
 /*
@@ -11018,7 +10755,7 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, V
 	      goto exit;
 	    }
 
-	  int ntile_bucket = (int) floor(db_get_double(&dbval));
+	  int ntile_bucket = (int) floor (db_get_double (&dbval));
 
 	  /* boundary check */
 	  if (ntile_bucket < 1 || ntile_bucket > DB_INT32_MAX)
@@ -11087,7 +10824,7 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, V
 
 	  if (TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (opr_dbval_p)))
 	    {
-	      /* char types default to double; coerce here so we don't mess up the accumulator when we copy the operand 
+	      /* char types default to double; coerce here so we don't mess up the accumulator when we copy the operand
 	       */
 	      if (tp_value_coerce (&dbval, &dbval, func_p->domain) != DOMAIN_COMPATIBLE)
 		{
@@ -11383,20 +11120,6 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, V
 		  if (TP_DOMAIN_TYPE (func_p->domain) == DB_TYPE_VARIABLE)
 		    {
 		      func_p->domain = tp_domain_resolve_default (DB_TYPE_TIME);
-		    }
-		  break;
-
-		case DB_TYPE_TIMETZ:
-		  if (TP_DOMAIN_TYPE (func_p->domain) == DB_TYPE_VARIABLE)
-		    {
-		      func_p->domain = tp_domain_resolve_default (DB_TYPE_TIMETZ);
-		    }
-		  break;
-
-		case DB_TYPE_TIMELTZ:
-		  if (TP_DOMAIN_TYPE (func_p->domain) == DB_TYPE_VARIABLE)
-		    {
-		      func_p->domain = tp_domain_resolve_default (DB_TYPE_TIMELTZ);
 		    }
 		  break;
 
@@ -11795,7 +11518,7 @@ qdata_finalize_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, b
 	  goto error;
 	}
 
-      /* compute VAR(X) = SUM(X^2)/(n) - AVG(X) * {SUM(X) / (n)} OR VAR(X) = SUM(X^2)/(n-1) - AVG(X) * {SUM(X) / (n-1)} 
+      /* compute VAR(X) = SUM(X^2)/(n) - AVG(X) * {SUM(X) / (n)} OR VAR(X) = SUM(X^2)/(n-1) - AVG(X) * {SUM(X) / (n-1)}
        * for xxx_SAMP aggregates */
       if (qdata_subtract_dbval (&x2avgval, &xavg2val, &varval, double_domain_ptr) != NO_ERROR)
 	{
@@ -11978,8 +11701,6 @@ qdata_apply_interpolation_function_coercion (DB_VALUE * f_value, TP_DOMAIN ** re
     case DB_TYPE_TIMESTAMPLTZ:
     case DB_TYPE_TIMESTAMPTZ:
     case DB_TYPE_TIME:
-    case DB_TYPE_TIMELTZ:
-    case DB_TYPE_TIMETZ:
       pr_clone_value (f_value, result);
       break;
 
@@ -12298,49 +12019,14 @@ qdata_interpolation_function_values (DB_VALUE * f_value, DB_VALUE * c_value, dou
       break;
 
     case DB_TYPE_TIME:
-    case DB_TYPE_TIMELTZ:
-    case DB_TYPE_TIMETZ:
-      if (type == DB_TYPE_TIMETZ)
-	{
-	  d1 = (double) (db_get_timetz (f_value)->time);
-	  d2 = (double) (db_get_timetz (c_value)->time);
-	}
-      else
-	{
-	  d1 = (double) (*db_get_time (f_value));
-	  d2 = (double) (*db_get_time (c_value));
-	}
+      d1 = (double) (*db_get_time (f_value));
+      d2 = (double) (*db_get_time (c_value));
 
       d_result = floor ((c_row_num_d - row_num_d) * d1 + (row_num_d - f_row_num_d) * d2);
 
       time = (DB_TIME) d_result;
 
-      if (type == DB_TYPE_TIME)
-	{
-	  db_value_put_encoded_time (result, &time);
-	}
-      else if (type == DB_TYPE_TIMELTZ)
-	{
-	  db_make_timeltz (result, &time);
-	}
-      else
-	{
-	  DB_TIMETZ ttz1, ttz2;
-
-	  /* if the two timezones are different, we use the first timezone */
-	  ttz1.time = time;
-	  ttz1.tz_id = db_get_timetz (f_value)->tz_id;
-
-	  error = tz_timetz_fix_zone (&ttz1, &ttz2);
-	  if (error != NO_ERROR)
-	    {
-	      error = ER_FAILED;
-	      goto end;
-	    }
-
-	  db_make_timetz (result, &ttz2);
-	}
-
+      db_value_put_encoded_time (result, &time);
       break;
 
     default:
@@ -12486,9 +12172,9 @@ qdata_calculate_aggregate_cume_dist_percent_rank (THREAD_ENTRY * thread_p, AGGRE
   DB_DOMAIN *dom;
   HL_HEAPID save_heapid = 0;
 
-  assert (agg_p != NULL && agg_p->sort_list != NULL && agg_p->operand.type == TYPE_REGU_VAR_LIST);
+  assert (agg_p != NULL && agg_p->sort_list != NULL && agg_p->operands->value.type == TYPE_REGU_VAR_LIST);
 
-  regu_var_list = agg_p->operand.value.regu_var_list;
+  regu_var_list = agg_p->operands->value.value.regu_var_list;
   info_p = &agg_p->info.dist_percent;
   assert (regu_var_list != NULL && info_p != NULL);
 
@@ -13143,6 +12829,8 @@ qdata_save_agg_hentry_to_list (THREAD_ENTRY * thread_p, AGGREGATE_HASH_KEY * key
   DB_VALUE tuple_count;
   int tuple_size = QFILE_TUPLE_LENGTH_SIZE;
   int col = 0, i;
+  QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
+  int error = NO_ERROR;
 
   /* build tuple descriptor */
   for (i = 0; i < key->val_count; i++)
@@ -13168,12 +12856,34 @@ qdata_save_agg_hentry_to_list (THREAD_ENTRY * thread_p, AGGREGATE_HASH_KEY * key
   list_id->tpl_descr.f_valp[col++] = &tuple_count;
   tuple_size += qdata_get_tuple_value_size_from_dbval (&tuple_count);
 
-  /* add to list file */
   list_id->tpl_descr.tpl_size = tuple_size;
-  qfile_generate_tuple_into_list (thread_p, list_id, T_NORMAL);
+  /* add to list file */
+  if (tuple_size <= QFILE_MAX_TUPLE_SIZE_IN_PAGE)
+    {
+      qfile_generate_tuple_into_list (thread_p, list_id, T_NORMAL);
+    }
+  else
+    {
+      error = qfile_copy_tuple_descr_to_tuple (thread_p, &list_id->tpl_descr, &tplrec);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+      error = qfile_add_tuple_to_list (thread_p, list_id, tplrec.tpl);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+    }
+
+cleanup:
+  if (tplrec.tpl != NULL)
+    {
+      db_private_free (thread_p, tplrec.tpl);
+    }
 
   /* all ok */
-  return NO_ERROR;
+  return error;
 }
 
 /*

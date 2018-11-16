@@ -579,6 +579,7 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
   DB_OBJECT *mop;
   DB_TYPE db_type;
   char buf[100];
+  char *json_body = NULL;
 
   assert (parser != NULL && val != NULL);
 
@@ -637,8 +638,9 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
       else
 	{
 	  result->data_type->type_enum = result->type_enum;
-	  result->info.value.data_value.str =
-	    pt_append_nulstring (parser, (PARSER_VARCHAR *) NULL, db_get_json_raw_body (val));
+	  json_body = db_get_json_raw_body (val);
+	  result->info.value.data_value.str = pt_append_nulstring (parser, (PARSER_VARCHAR *) NULL, json_body);
+	  db_private_free (NULL, json_body);
 	  if (db_get_json_schema (val) != NULL)
 	    {
 	      /* check valid schema */
@@ -774,29 +776,6 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
 	{
 	  result->info.value.data_value.str = pt_append_bytes (parser, NULL, buf, strlen (buf));
 	}
-      break;
-    case DB_TYPE_TIMELTZ:
-      if (db_timeltz_to_string (buf, sizeof (buf), db_get_time (val)) == 0)
-	{
-	  SET_PARSER_ERROR_AND_FREE_NODE (parser, result, MSGCAT_RUNTIME_UNDEFINED_CONVERSION);
-	}
-      else
-	{
-	  result->info.value.data_value.str = pt_append_bytes (parser, NULL, buf, strlen (buf));
-	}
-      break;
-    case DB_TYPE_TIMETZ:
-      {
-	DB_TIMETZ *time_tz = db_get_timetz (val);
-	if (db_timetz_to_string (buf, sizeof (buf), &time_tz->time, &time_tz->tz_id) == 0)
-	  {
-	    SET_PARSER_ERROR_AND_FREE_NODE (parser, result, MSGCAT_RUNTIME_UNDEFINED_CONVERSION);
-	  }
-	else
-	  {
-	    result->info.value.data_value.str = pt_append_bytes (parser, NULL, buf, strlen (buf));
-	  }
-      }
       break;
     case DB_TYPE_TIMESTAMP:
       if (db_utime_to_string (buf, sizeof (buf), db_get_timestamp (val)) == 0)
@@ -1484,10 +1463,6 @@ pt_type_enum_to_db_domain_name (const PT_TYPE_ENUM t)
 
     case PT_TYPE_TIME:
       return "time";
-    case PT_TYPE_TIMETZ:
-      return "timetz";
-    case PT_TYPE_TIMELTZ:
-      return "timeltz";
 
     case PT_TYPE_TIMESTAMP:
       name = "timestamp";
@@ -1598,11 +1573,7 @@ pt_type_enum_to_db_domain (const PT_TYPE_ENUM t)
       retval = tp_domain_construct (domain_type, NULL, DB_MONETARY_DECIMAL_PRECISION, 0, NULL);
       break;
     case DB_TYPE_TIME:
-    case DB_TYPE_TIMELTZ:
       retval = tp_domain_construct (domain_type, NULL, DB_TIME_PRECISION, 0, NULL);
-      break;
-    case DB_TYPE_TIMETZ:
-      retval = tp_domain_construct (domain_type, NULL, DB_TIMETZ_PRECISION, 0, NULL);
       break;
     case DB_TYPE_DATE:
       retval = tp_domain_construct (domain_type, NULL, DB_DATE_PRECISION, 0, NULL);
@@ -1859,8 +1830,6 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
     case DB_TYPE_TIME:
-    case DB_TYPE_TIMETZ:
-    case DB_TYPE_TIMELTZ:
     case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPTZ:
     case DB_TYPE_TIMESTAMPLTZ:
@@ -2089,8 +2058,6 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, PT_TYPE_E
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
     case DB_TYPE_TIME:
-    case DB_TYPE_TIMETZ:
-    case DB_TYPE_TIMELTZ:
     case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPTZ:
     case DB_TYPE_TIMESTAMPLTZ:
@@ -2379,12 +2346,6 @@ pt_type_enum_to_db (const PT_TYPE_ENUM t)
     case PT_TYPE_TIME:
       db_type = DB_TYPE_TIME;
       break;
-    case PT_TYPE_TIMETZ:
-      db_type = DB_TYPE_TIMETZ;
-      break;
-    case PT_TYPE_TIMELTZ:
-      db_type = DB_TYPE_TIMELTZ;
-      break;
     case PT_TYPE_TIMESTAMP:
       db_type = DB_TYPE_TIMESTAMP;
       break;
@@ -2671,12 +2632,6 @@ pt_db_to_type_enum (const DB_TYPE t)
     case DB_TYPE_TIME:
       pt_type = PT_TYPE_TIME;
       break;
-    case DB_TYPE_TIMETZ:
-      pt_type = PT_TYPE_TIMETZ;
-      break;
-    case DB_TYPE_TIMELTZ:
-      pt_type = PT_TYPE_TIMELTZ;
-      break;
     case DB_TYPE_TIMESTAMP:
       pt_type = PT_TYPE_TIMESTAMP;
       break;
@@ -2835,6 +2790,7 @@ pt_bind_helper (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val, int *da
   PT_NODE *dt;
   DB_TYPE val_type;
   PT_TYPE_ENUM pt_type;
+  char *json_body = NULL;
 
   assert (node != NULL && val != NULL);
 
@@ -2889,8 +2845,6 @@ pt_bind_helper (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val, int *da
     case DB_TYPE_FLOAT:
     case DB_TYPE_DOUBLE:
     case DB_TYPE_TIME:
-    case DB_TYPE_TIMETZ:
-    case DB_TYPE_TIMELTZ:
     case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPTZ:
     case DB_TYPE_TIMESTAMPLTZ:
@@ -2979,21 +2933,27 @@ pt_bind_helper (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val, int *da
       dt = parser_new_node (parser, PT_DATA_TYPE);
       if (dt)
 	{
-	  if (db_json_validate_json (val->data.json.json_body) != NO_ERROR)
+	  json_body = db_json_get_json_body_from_document (*val->data.json.document);
+	  if (db_json_validate_json (json_body) != NO_ERROR)
 	    {
 	      assert (false);
 	      parser_free_node (parser, dt);
 	      /* TODO: set a real error. */
 	      PT_INTERNAL_ERROR (parser, "json validation failed");
+	      db_private_free (NULL, json_body);
 	      return NULL;
 	    }
 	  /* valid schema */
 
 	  dt->type_enum = node->type_enum;
+	  db_private_free (NULL, json_body);
 
 	  /* save raw schema */
-	  dt->info.data_type.json_schema =
-	    pt_append_bytes (parser, NULL, val->data.json.json_body, strlen (val->data.json.json_body));
+	  if (val->data.json.schema_raw != NULL)
+	    {
+	      const char *schema_raw = val->data.json.schema_raw;
+	      dt->info.data_type.json_schema = pt_append_bytes (parser, NULL, schema_raw, strlen (schema_raw));
+	    }
 	}
       break;
 
@@ -3226,7 +3186,6 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
   DB_SEQ *seq;
   DB_DATE date;
   DB_TIME time;
-  DB_TIMETZ time_tz;
   DB_UTIME utime;
   DB_TIMESTAMPTZ ts_tz;
   DB_DATETIME datetime;
@@ -3238,6 +3197,7 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
   int collation_id = LANG_COERCIBLE_COLL;
   INTL_CODESET codeset = LANG_COERCIBLE_CODESET;
   bool has_zone;
+  const char *json_body = NULL;
 
   assert (value->node_type == PT_VALUE);
   if (PT_HAS_COLLATION (value->type_enum) && value->data_type != NULL)
@@ -3365,28 +3325,6 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
 	}
       db_value_domain_init (db_value, DB_TYPE_TIME, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
       db_value_put_encoded_time (db_value, &time);
-      break;
-
-    case PT_TYPE_TIMETZ:
-      if (db_string_to_timetz ((const char *) value->info.value.data_value.str->bytes, &time_tz, &has_zone) != NO_ERROR)
-	{
-	  PT_ERRORmf (parser, value, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_BAD_TIME,
-		      value->info.value.data_value.str->bytes);
-	  return (DB_VALUE *) NULL;
-	}
-      db_value_domain_init (db_value, DB_TYPE_TIMETZ, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-      db_make_timetz (db_value, &time_tz);
-      break;
-
-    case PT_TYPE_TIMELTZ:
-      if (db_string_to_timeltz ((const char *) value->info.value.data_value.str->bytes, &time) != NO_ERROR)
-	{
-	  PT_ERRORmf (parser, value, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_BAD_TIME,
-		      value->info.value.data_value.str->bytes);
-	  return (DB_VALUE *) NULL;
-	}
-      db_value_domain_init (db_value, DB_TYPE_TIMELTZ, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-      db_make_timeltz (db_value, &time);
       break;
 
     case PT_TYPE_TIMESTAMP:
@@ -3557,10 +3495,10 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
     case PT_TYPE_JSON:
       db_value->domain.general_info.type = DB_TYPE_JSON;
       db_value->domain.general_info.is_null = 0;
-      db_value->data.json.json_body = db_private_strdup (NULL, (const char *) value->info.value.data_value.str->bytes);
-      if (db_json_get_json_from_str (db_value->data.json.json_body, db_value->data.json.document) != NO_ERROR)
+      json_body = (const char *) value->info.value.data_value.str->bytes;
+      if (db_json_get_json_from_str (json_body, db_value->data.json.document,
+				     value->info.value.data_value.str->length) != NO_ERROR)
 	{
-	  db_private_free (NULL, db_value->data.json.json_body);
 	  PT_ERRORmf (parser, value, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_INVALID_JSON,
 		      value->info.value.data_value.str->bytes);
 	  return (DB_VALUE *) NULL;
@@ -3568,15 +3506,6 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
 
       value->info.value.db_value_is_in_workspace = true;
       db_value->need_clear = true;
-      if (value->info.data_type.json_schema)
-	{
-	  db_value->data.json.schema_raw =
-	    db_private_strdup (NULL, (const char *) value->info.data_type.json_schema->bytes);
-	}
-      else
-	{
-	  db_value->data.json.schema_raw = NULL;
-	}
       *more_type_info_needed = (value->data_type == NULL);
       break;
 
@@ -3619,4 +3548,29 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
     }
 
   return db_value;
+}
+
+/*
+ * db_json_val_from_str() - create JSON value from string
+ *   return:  error code
+ *   raw_str(in): buffer storing a JSON
+ *   str_size(in): size of buffer
+ *   json_val(out): output JSON DB_VALUE
+ */
+int
+db_json_val_from_str (const char *raw_str, const int str_size, DB_VALUE * json_val)
+{
+  JSON_DOC *json_doc = NULL;
+  int error_code = NO_ERROR;
+
+  error_code = db_json_get_json_from_str (raw_str, json_doc, str_size);
+  if (error_code != NO_ERROR)
+    {
+      assert (json_doc == NULL);
+      return error_code;
+    }
+
+  db_make_json (json_val, json_doc, true);
+
+  return error_code;
 }

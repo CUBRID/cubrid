@@ -247,6 +247,9 @@ static PT_NODE *pt_apply_kill (PARSER_CONTEXT * parser, PT_NODE * P, PT_NODE_FUN
 static PT_NODE *pt_apply_vacuum (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
 static PT_NODE *pt_apply_with_clause (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
 static PT_NODE *pt_apply_cte (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
+static PT_NODE *pt_apply_json_table (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
+static PT_NODE *pt_apply_json_table_node (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
+static PT_NODE *pt_apply_json_table_column (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
 
 static PARSER_APPLY_NODE_FUNC pt_apply_func_array[PT_NODE_NUMBER];
 
@@ -348,6 +351,9 @@ static PT_NODE *pt_init_kill (PT_NODE * p);
 static PT_NODE *pt_init_vacuum (PT_NODE * p);
 static PT_NODE *pt_init_with_clause (PT_NODE * p);
 static PT_NODE *pt_init_cte (PT_NODE * p);
+static PT_NODE *pt_init_json_table (PT_NODE * p);
+static PT_NODE *pt_init_json_table_node (PT_NODE * p);
+static PT_NODE *pt_init_json_table_column (PT_NODE * p);
 
 static PARSER_INIT_NODE_FUNC pt_init_func_array[PT_NODE_NUMBER];
 
@@ -455,6 +461,9 @@ static PARSER_VARCHAR *pt_print_insert_value (PARSER_CONTEXT * parser, PT_NODE *
 static PARSER_VARCHAR *pt_print_vacuum (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_with_clause (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_cte (PARSER_CONTEXT * parser, PT_NODE * p);
+static PARSER_VARCHAR *pt_print_json_table (PARSER_CONTEXT * parser, PT_NODE * p);
+static PARSER_VARCHAR *pt_print_json_table_node (PARSER_CONTEXT * parser, PT_NODE * p);
+static PARSER_VARCHAR *pt_print_json_table_columns (PARSER_CONTEXT * parser, PT_NODE * p);
 #if defined(ENABLE_UNUSED_FUNCTION)
 static PT_NODE *pt_apply_use (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg);
 static PT_NODE *pt_init_use (PT_NODE * p);
@@ -464,6 +473,13 @@ static PARSER_VARCHAR *pt_print_use (PARSER_CONTEXT * parser, PT_NODE * p);
 static int parser_print_user (char *user_text, int len);
 
 static void pt_clean_tree_copy_info (PT_TREE_COPY_INFO * tree_copy_info);
+static const char *pt_json_table_column_behavior_to_string (const json_table_column_behavior_type & behavior_type);
+static PARSER_VARCHAR *pt_print_json_table_column_error_or_empty_behavior (PARSER_CONTEXT * parser,
+									   PARSER_VARCHAR * pstr,
+									   const struct json_table_column_behavior
+									   &column_behavior);
+static PARSER_VARCHAR *pt_print_json_table_column_info (PARSER_CONTEXT * parser, PT_NODE * p, PARSER_VARCHAR * pstr);
+
 
 static PARSER_PRINT_NODE_FUNC pt_print_func_array[PT_NODE_NUMBER];
 
@@ -2239,6 +2255,7 @@ parser_init_node (PT_NODE * node)
       node->is_alias_enabled_expr = 0;
       node->is_wrapped_res_for_coll = 0;
       node->is_system_generated_stmt = 0;
+      node->use_auto_commit = 0;
       /* initialize node info field */
       memset (&(node->info), 0, sizeof (node->info));
 
@@ -2533,7 +2550,7 @@ pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
       for (; dim < block.dim + len; dim *= 2)	//calc next power of 2 >= b.dim+len
 	 ;
 
-      mem::block b { dim, (char *) parser_alloc (parser, (int)dim) };
+      mem::block b { dim, (char *) parser_alloc (parser, (const int) dim) };
       memcpy (b.ptr, block.ptr, block.dim);
       block = std::move (b);
     }, [](mem::block &block)
@@ -2596,8 +2613,6 @@ pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
       break;
 
     case DB_TYPE_TIME:
-    case DB_TYPE_TIMETZ:
-    case DB_TYPE_TIMELTZ:
       /* csql & everyone else get time 'hh:mi:ss' */
       printer.describe_value (val);
       break;
@@ -3921,8 +3936,6 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "to_datetime_tz ";
     case PT_TO_TIMESTAMP_TZ:
       return "to_timestamp_tz ";
-    case PT_TO_TIME_TZ:
-      return "to_time_tz ";
     case PT_UTC_TIMESTAMP:
       return "utc_timestamp ";
     case PT_CRC32:
@@ -3939,12 +3952,16 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "json_extract";
     case PT_JSON_VALID:
       return "json_valid";
+    case PT_JSON_QUOTE:
+      return "json_quote";
+    case PT_JSON_UNQUOTE:
+      return "json_unquote";
     case PT_JSON_LENGTH:
       return "json_length";
     case PT_JSON_DEPTH:
       return "json_depth";
-    case PT_JSON_SEARCH:
-      return "json_search";
+    case PT_JSON_PRETTY:
+      return "json_pretty";
     default:
       return "unknown opcode";
     }
@@ -4022,6 +4039,10 @@ pt_show_function (FUNC_TYPE c)
       return "percentile_cont";
     case PT_PERCENTILE_DISC:
       return "percentile_disc";
+    case PT_JSON_ARRAYAGG:
+      return "json_arrayagg";
+    case PT_JSON_OBJECTAGG:
+      return "json_objectagg";
 
     case F_SEQUENCE:
       return "sequence";
@@ -4060,8 +4081,18 @@ pt_show_function (FUNC_TYPE c)
       return "json_remove";
     case F_JSON_ARRAY_APPEND:
       return "json_array_append";
+    case F_JSON_ARRAY_INSERT:
+      return "json_array_insert";
+    case F_JSON_SEARCH:
+      return "json_search";
+    case F_JSON_CONTAINS_PATH:
+      return "json_contains_path";
+    case F_JSON_EXTRACT:
+      return "json_extract";
     case F_JSON_MERGE:
       return "json_merge";
+    case F_JSON_MERGE_PATCH:
+      return "json_merge_patch";
     case F_JSON_GET_ALL_PATHS:
       return "json_get_all_paths";
     default:
@@ -4144,10 +4175,6 @@ pt_show_type_enum (PT_TYPE_ENUM t)
       return "date";
     case PT_TYPE_TIME:
       return "time";
-    case PT_TYPE_TIMETZ:
-      return "timetz";
-    case PT_TYPE_TIMELTZ:
-      return "timeltz";
     case PT_TYPE_TIMESTAMP:
       return "timestamp";
     case PT_TYPE_TIMESTAMPTZ:
@@ -5096,6 +5123,9 @@ pt_init_apply_f (void)
   pt_apply_func_array[PT_VACUUM] = pt_apply_vacuum;
   pt_apply_func_array[PT_WITH_CLAUSE] = pt_apply_with_clause;
   pt_apply_func_array[PT_CTE] = pt_apply_cte;
+  pt_apply_func_array[PT_JSON_TABLE] = pt_apply_json_table;
+  pt_apply_func_array[PT_JSON_TABLE_NODE] = pt_apply_json_table_node;
+  pt_apply_func_array[PT_JSON_TABLE_COLUMN] = pt_apply_json_table_column;
 
   pt_apply_f = pt_apply_func_array;
 }
@@ -5212,6 +5242,9 @@ pt_init_init_f (void)
   pt_init_func_array[PT_VACUUM] = pt_init_vacuum;
   pt_init_func_array[PT_WITH_CLAUSE] = pt_init_with_clause;
   pt_init_func_array[PT_CTE] = pt_init_cte;
+  pt_init_func_array[PT_JSON_TABLE] = pt_init_json_table;
+  pt_init_func_array[PT_JSON_TABLE_NODE] = pt_init_json_table_node;
+  pt_init_func_array[PT_JSON_TABLE_COLUMN] = pt_init_json_table_column;
 
   pt_init_f = pt_init_func_array;
 }
@@ -5326,6 +5359,9 @@ pt_init_print_f (void)
   pt_print_func_array[PT_VACUUM] = pt_print_vacuum;
   pt_print_func_array[PT_WITH_CLAUSE] = pt_print_with_clause;
   pt_print_func_array[PT_CTE] = pt_print_cte;
+  pt_print_func_array[PT_JSON_TABLE] = pt_print_json_table;
+  pt_print_func_array[PT_JSON_TABLE_NODE] = pt_print_json_table_node;
+  pt_print_func_array[PT_JSON_TABLE_COLUMN] = pt_print_json_table_columns;
 
   pt_print_f = pt_print_func_array;
 }
@@ -6401,6 +6437,15 @@ pt_print_alter_index (PARSER_CONTEXT * parser, PT_NODE * p)
       b = pt_append_nulstring (parser, b, " ");
     }
 
+  if (p->info.index.index_status == SM_INVISIBLE_INDEX)
+    {
+      b = pt_append_nulstring (parser, b, " INVISIBLE ");
+    }
+  else if (p->info.index.index_status == SM_NORMAL_INDEX)
+    {
+      b = pt_append_nulstring (parser, b, " VISIBLE ");
+    }
+
   if (p->info.index.code == PT_REBUILD_INDEX)
     {
       b = pt_append_nulstring (parser, b, "rebuild");
@@ -6730,8 +6775,6 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_TYPE_MONETARY:
     case PT_TYPE_DATE:
     case PT_TYPE_TIME:
-    case PT_TYPE_TIMETZ:
-    case PT_TYPE_TIMELTZ:
     case PT_TYPE_TIMESTAMP:
     case PT_TYPE_TIMESTAMPTZ:
     case PT_TYPE_TIMESTAMPLTZ:
@@ -7457,6 +7500,15 @@ pt_print_create_index (PARSER_CONTEXT * parser, PT_NODE * p)
       comment = pt_print_bytes (parser, p->info.index.comment);
       b = pt_append_nulstring (parser, b, " comment ");
       b = pt_append_varchar (parser, b, comment);
+    }
+
+  if (p->info.index.index_status == SM_INVISIBLE_INDEX)
+    {
+      b = pt_append_nulstring (parser, b, " INVISIBLE ");
+    }
+  else if (p->info.index.index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+    {
+      b = pt_append_nulstring (parser, b, " WITH ONLINE ");
     }
 
   parser->custom_print = saved_cp;
@@ -8576,7 +8628,8 @@ pt_init_datatype (PT_NODE * p)
 static PARSER_VARCHAR *
 pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
 {
-  PARSER_VARCHAR *q = 0, *r1;
+  PARSER_VARCHAR *q = NULL;
+  PARSER_VARCHAR *r1 = NULL;
   char buf[PT_MEMB_BUF_SIZE];
   bool show_collation = false;
 
@@ -8703,6 +8756,7 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_delete (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
 {
+  p->info.delete_.with = g (parser, p->info.delete_.with, arg);
   p->info.delete_.target_classes = g (parser, p->info.delete_.target_classes, arg);
   p->info.delete_.spec = g (parser, p->info.delete_.spec, arg);
   p->info.delete_.search_cond = g (parser, p->info.delete_.search_cond, arg);
@@ -8750,6 +8804,12 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
 
   r1 = pt_print_bytes_l (parser, p->info.delete_.target_classes);
   r2 = pt_print_bytes_spec_list (parser, p->info.delete_.spec);
+
+  if (p->info.delete_.with != NULL)
+    {
+      r1 = pt_print_bytes_l (parser, p->info.delete_.with);
+      q = pt_append_varchar (parser, q, r1);
+    }
 
   q = pt_append_nulstring (parser, q, "delete ");
   if (p->info.delete_.hint != PT_HINT_NONE)
@@ -8967,6 +9027,7 @@ pt_init_difference (PT_NODE * p)
   p->info.query.do_cache = 0;
   p->info.query.do_not_cache = 0;
   p->info.query.order_siblings = 0;
+  p->info.query.has_system_class = 0;
   p->info.query.hint = PT_HINT_NONE;
   p->info.query.qcache_hint = NULL;
   p->info.query.q.union_.select_list = 0;
@@ -9547,6 +9608,20 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 	      /* skip unnecessary nested parenthesis of derived-query */
 	      q = pt_append_varchar (parser, q, r1);
 	    }
+	  else if (p->info.spec.derived_table_type == PT_DERIVED_JSON_TABLE)
+	    {
+	      q = pt_append_nulstring (parser, q, "(");
+	      q = pt_append_varchar (parser, q, r1);
+
+	      unsigned int alias_print_flag = (parser->custom_print & PT_PRINT_ALIAS);
+	      q = pt_append_nulstring (parser, q, " as ");
+	      parser->custom_print &= ~PT_PRINT_ALIAS;
+	      r1 = pt_print_bytes (parser, p->info.spec.range_var);
+	      q = pt_append_varchar (parser, q, r1);
+	      parser->custom_print |= alias_print_flag;
+
+	      q = pt_append_nulstring (parser, q, ")");
+	    }
 	  else
 	    {
 	      q = pt_append_nulstring (parser, q, "(");
@@ -9556,7 +9631,7 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
     }
 
-  if (!(parser->custom_print & PT_SUPPRESS_RESOLVED))
+  if (!(parser->custom_print & PT_SUPPRESS_RESOLVED) && (p->info.spec.derived_table_type != PT_DERIVED_JSON_TABLE))
     {
       save_custom = parser->custom_print;
       parser->custom_print |= PT_SUPPRESS_META_ATTR_CLASS;
@@ -9570,7 +9645,7 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
       parser->custom_print = save_custom;
     }
-  if (p->info.spec.as_attr_list && !PT_SPEC_IS_CTE (p))
+  if (p->info.spec.as_attr_list && !PT_SPEC_IS_CTE (p) && (p->info.spec.derived_table_type != PT_DERIVED_JSON_TABLE))
     {
       save_custom = parser->custom_print;
       parser->custom_print |= PT_SUPPRESS_RESOLVED;
@@ -10160,6 +10235,20 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
       break;
+    case PT_JSON_QUOTE:
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+
+      q = pt_append_nulstring (parser, q, " json_quote(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+    case PT_JSON_UNQUOTE:
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+
+      q = pt_append_nulstring (parser, q, " json_unquote(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
     case PT_JSON_LENGTH:
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
 
@@ -10181,16 +10270,11 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
       break;
-    case PT_JSON_SEARCH:
-      q = pt_append_nulstring (parser, q, "json_search(");
+    case PT_JSON_PRETTY:
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
+
+      q = pt_append_nulstring (parser, q, " json_pretty(");
       q = pt_append_varchar (parser, q, r1);
-      q = pt_append_nulstring (parser, q, ", ");
-      r2 = pt_print_bytes (parser, p->info.expr.arg2);
-      q = pt_append_varchar (parser, q, r2);
-      q = pt_append_nulstring (parser, q, ", ");
-      r3 = pt_print_bytes (parser, p->info.expr.arg3);
-      q = pt_append_varchar (parser, q, r3);
       q = pt_append_nulstring (parser, q, ")");
       break;
     case PT_POWER:
@@ -10519,7 +10603,6 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_TO_CHAR:
     case PT_TO_DATETIME_TZ:
     case PT_TO_TIMESTAMP_TZ:
-    case PT_TO_TIME_TZ:
       {
 	int flags;
 	bool has_user_format = false;
@@ -10553,10 +10636,6 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	else if (p->info.expr.op == PT_TO_TIMESTAMP_TZ)
 	  {
 	    q = pt_append_nulstring (parser, q, " to_timestamp_tz(");
-	  }
-	else if (p->info.expr.op == PT_TO_TIME_TZ)
-	  {
-	    q = pt_append_nulstring (parser, q, " to_time_tz(");
 	  }
 	else
 	  {
@@ -12409,7 +12488,16 @@ pt_print_function (PARSER_CONTEXT * parser, PT_NODE * p)
 	{
 	  if (code == PT_GROUP_CONCAT)
 	    {
-	      r1 = pt_print_bytes (parser, p->info.function.arg_list);
+	      if (p->info.function.arg_list != NULL)
+		{
+		  r1 = pt_print_bytes (parser, p->info.function.arg_list);
+		}
+	      else
+		{
+		  // it is unexpected but a badly formed function may miss its arg_list.
+		  r1 = NULL;
+		}
+
 	      if (p->info.function.order_by != NULL)
 		{
 		  PARSER_VARCHAR *r2;
@@ -12418,8 +12506,9 @@ pt_print_function (PARSER_CONTEXT * parser, PT_NODE * p)
 		  r1 = pt_append_nulstring (parser, r1, " order by ");
 		  r1 = pt_append_varchar (parser, r1, r2);
 		}
+
 	      /* SEPARATOR */
-	      if (p->info.function.arg_list->next != NULL)
+	      if (p->info.function.arg_list != NULL && p->info.function.arg_list->next != NULL)
 		{
 		  PARSER_VARCHAR *r2;
 		  /* print separator */
@@ -12559,6 +12648,15 @@ pt_print_function (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, pt_show_function (code));
       q = pt_append_nulstring (parser, q, " ");
       q = pt_append_varchar (parser, q, r1);
+    }
+  else if (code == F_JSON_EXTRACT)
+    {
+      r1 = pt_print_bytes_l (parser, p->info.function.arg_list);
+      q = pt_append_nulstring (parser, q, " ");	// for compatibility with PT_EXPR
+      q = pt_append_nulstring (parser, q, pt_show_function (code));
+      q = pt_append_nulstring (parser, q, "(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
     }
   else
     {
@@ -13177,6 +13275,7 @@ pt_init_intersection (PT_NODE * p)
   p->info.query.reexecute = 0;
   p->info.query.do_not_cache = 0;
   p->info.query.order_siblings = 0;
+  p->info.query.has_system_class = 0;
   p->info.query.hint = PT_HINT_NONE;
   p->info.query.qcache_hint = NULL;
   p->info.query.q.union_.select_list = 0;
@@ -14315,6 +14414,7 @@ pt_init_select (PT_NODE * p)
   p->info.query.reexecute = 0;
   p->info.query.do_not_cache = 0;
   p->info.query.order_siblings = 0;
+  p->info.query.has_system_class = 0;
   p->info.query.hint = PT_HINT_NONE;
   p->info.query.qcache_hint = NULL;
   p->info.query.upd_del_class_cnt = 0;
@@ -15619,6 +15719,12 @@ pt_apply_union_stmt (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, v
   p->info.query.into_list = g (parser, p->info.query.into_list, arg);
   p->info.query.order_by = g (parser, p->info.query.order_by, arg);
   p->info.query.orderby_for = g (parser, p->info.query.orderby_for, arg);
+  p->info.query.limit = g (parser, p->info.query.limit, arg);
+
+  // todo - there is a lot less stuff here than on pt_apply_select. I am not sure this is safe.
+  //        e.g. this is used for parser_copy_tree too. which should deep copy entire tree! otherwise we may have some
+  //        unpleasant effects.
+
   return p;
 }
 
@@ -15644,6 +15750,7 @@ pt_init_union_stmt (PT_NODE * p)
   p->info.query.reexecute = 0;
   p->info.query.do_not_cache = 0;
   p->info.query.order_siblings = 0;
+  p->info.query.has_system_class = 0;
   p->info.query.hint = PT_HINT_NONE;
   p->info.query.qcache_hint = NULL;
   p->info.query.q.union_.select_list = 0;
@@ -15716,6 +15823,7 @@ pt_print_union_stmt (PARSER_CONTEXT * parser, PT_NODE * p)
 static PT_NODE *
 pt_apply_update (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
 {
+  p->info.update.with = g (parser, p->info.update.with, arg);
   p->info.update.spec = g (parser, p->info.update.spec, arg);
   p->info.update.assignment = g (parser, p->info.update.assignment, arg);
   p->info.update.search_cond = g (parser, p->info.update.search_cond, arg);
@@ -15763,6 +15871,12 @@ static PARSER_VARCHAR *
 pt_print_update (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *b = NULL, *r1;
+
+  if (p->info.update.with != NULL)
+    {
+      r1 = pt_print_bytes_l (parser, p->info.update.with);
+      b = pt_append_varchar (parser, b, r1);
+    }
 
   b = pt_append_nulstring (parser, b, "update ");
 
@@ -16536,8 +16650,6 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 
     case PT_TYPE_DATE:
     case PT_TYPE_TIME:
-    case PT_TYPE_TIMETZ:
-    case PT_TYPE_TIMELTZ:
     case PT_TYPE_TIMESTAMP:
     case PT_TYPE_TIMESTAMPTZ:
     case PT_TYPE_TIMESTAMPLTZ:
@@ -16558,12 +16670,6 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 	  break;
 	case PT_TYPE_TIME:
 	  q = pt_append_nulstring (parser, q, "time ");
-	  break;
-	case PT_TYPE_TIMETZ:
-	  q = pt_append_nulstring (parser, q, "timetz ");
-	  break;
-	case PT_TYPE_TIMELTZ:
-	  q = pt_append_nulstring (parser, q, "timeltz ");
 	  break;
 	case PT_TYPE_TIMESTAMP:
 	  q = pt_append_nulstring (parser, q, "timestamp ");
@@ -17942,9 +18048,6 @@ pt_is_const_expr_node (PT_NODE * node)
 	  return (pt_is_const_expr_node (node->info.expr.arg1)
 		  && pt_is_const_expr_node (node->info.expr.arg2)) ? true : false;
 	case PT_SUBSTRING_INDEX:
-	case PT_JSON_SEARCH:
-	  return (pt_is_const_expr_node (node->info.expr.arg1) && pt_is_const_expr_node (node->info.expr.arg2)
-		  && pt_is_const_expr_node (node->info.expr.arg3)) ? true : false;
 	case PT_SUBSTRING:
 	case PT_LOCATE:
 	  return (pt_is_const_expr_node (node->info.expr.arg1) && pt_is_const_expr_node (node->info.expr.arg2)
@@ -18074,7 +18177,6 @@ pt_is_const_expr_node (PT_NODE * node)
 	case PT_TO_NUMBER:
 	case PT_TO_DATETIME_TZ:
 	case PT_TO_TIMESTAMP_TZ:
-	case PT_TO_TIME_TZ:
 	  return (pt_is_const_expr_node (node->info.expr.arg1)
 		  && (node->info.expr.arg2 ? pt_is_const_expr_node (node->info.expr.arg2) : true)) ? true : false;
 	case PT_CURRENT_VALUE:
@@ -18125,7 +18227,10 @@ pt_is_const_expr_node (PT_NODE * node)
 	case PT_COLLATION:
 	case PT_JSON_TYPE:
 	case PT_JSON_VALID:
+	case PT_JSON_QUOTE:
+	case PT_JSON_UNQUOTE:
 	case PT_JSON_DEPTH:
+	case PT_JSON_PRETTY:
 	  return pt_is_const_expr_node (node->info.expr.arg1);
 	case PT_COERCIBILITY:
 	  /* coercibility is always folded to constant */
@@ -18581,15 +18686,16 @@ pt_is_allowed_as_function_index (const PT_NODE * expr)
     case PT_INET_NTOA:
     case PT_TO_DATETIME_TZ:
     case PT_TO_TIMESTAMP_TZ:
-    case PT_TO_TIME_TZ:
     case PT_CRC32:
     case PT_JSON_CONTAINS:
     case PT_JSON_TYPE:
     case PT_JSON_EXTRACT:
     case PT_JSON_VALID:
+    case PT_JSON_QUOTE:
+    case PT_JSON_UNQUOTE:
     case PT_JSON_LENGTH:
     case PT_JSON_DEPTH:
-    case PT_JSON_SEARCH:
+    case PT_JSON_PRETTY:
       return true;
     case PT_TZ_OFFSET:
     default:
@@ -18984,9 +19090,8 @@ pt_print_query_trace (PARSER_CONTEXT * parser, PT_NODE * p)
   return b;
 }
 
-/* pt_clean_tree_copy_info - deallocate memory used by a PT_TREE_COPY_INFO
- *
- *
+/*
+ * pt_clean_tree_copy_info () - deallocate memory used by a PT_TREE_COPY_INFO
  */
 static void
 pt_clean_tree_copy_info (PT_TREE_COPY_INFO * tree_copy_info)
@@ -18999,4 +19104,301 @@ pt_clean_tree_copy_info (PT_TREE_COPY_INFO * tree_copy_info)
       save_next = cte_info_it->next;
       free (cte_info_it);
     }
+}
+
+static PT_NODE *
+pt_init_json_table (PT_NODE * p)
+{
+  p->info.json_table_info.expr = NULL;
+  p->info.json_table_info.tree = NULL;
+  p->info.json_table_info.is_correlated = false;
+  return p;
+}
+
+static PT_NODE *
+pt_apply_json_table (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+{
+  p->info.json_table_info.expr = g (parser, p->info.json_table_info.expr, arg);
+  p->info.json_table_info.tree = g (parser, p->info.json_table_info.tree, arg);
+  return p;
+}
+
+static PARSER_VARCHAR *
+pt_print_json_table (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  PARSER_VARCHAR *pstr = NULL;
+  PARSER_VARCHAR *substr = NULL;
+
+  // print format:
+  // json_table (.expr, .tree)
+
+  // 'json_table ('
+  pstr = pt_append_nulstring (parser, pstr, "json_table (");
+
+  // print expr
+  substr = pt_print_bytes (parser, p->info.json_table_info.expr);
+  pstr = pt_append_varchar (parser, pstr, substr);
+
+  // ', ' print tree
+  pstr = pt_append_nulstring (parser, pstr, ", ");
+  substr = pt_print_bytes (parser, p->info.json_table_info.tree);
+  pstr = pt_append_varchar (parser, pstr, substr);
+
+  // ')'
+  pstr = pt_append_nulstring (parser, pstr, ")");
+
+  return pstr;
+}
+
+static PT_NODE *
+pt_init_json_table_node (PT_NODE * p)
+{
+  p->info.json_table_node_info.columns = NULL;
+  p->info.json_table_node_info.nested_paths = NULL;
+  p->info.json_table_node_info.path = NULL;
+  return p;
+}
+
+static PT_NODE *
+pt_apply_json_table_node (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+{
+  p->info.json_table_node_info.columns = g (parser, p->info.json_table_node_info.columns, arg);
+  p->info.json_table_node_info.nested_paths = g (parser, p->info.json_table_node_info.nested_paths, arg);
+  return p;
+}
+
+static PARSER_VARCHAR *
+pt_print_json_table_node (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  PARSER_VARCHAR *pstr = NULL;
+  PARSER_VARCHAR *substr = NULL;
+
+  // print format:
+  // .path columns (.columns, .nested paths)
+
+  // todo - print columns and nested path in same order as defined by user...
+
+  // print path
+  pstr = pt_append_nulstring (parser, pstr, "'");
+  pstr = pt_append_nulstring (parser, pstr, p->info.json_table_node_info.path);
+  pstr = pt_append_nulstring (parser, pstr, "'");
+
+  // 'columns ('
+  pstr = pt_append_nulstring (parser, pstr, " columns (");
+
+  // print columns
+  substr = pt_print_bytes (parser, p->info.json_table_node_info.columns);
+  pstr = pt_append_varchar (parser, pstr, substr);
+
+  if (p->info.json_table_node_info.nested_paths != NULL)
+    {
+      // ', nested path ' print nested
+      pstr = pt_append_nulstring (parser, pstr, ", nested path ");
+      substr = pt_print_bytes (parser, p->info.json_table_node_info.nested_paths);
+      pstr = pt_append_varchar (parser, pstr, substr);
+    }
+
+  // ' )'
+  pstr = pt_append_nulstring (parser, pstr, " )");
+
+  return pstr;
+}
+
+static PT_NODE *
+pt_init_json_table_column (PT_NODE * p)
+{
+  p->info.json_table_column_info.name = NULL;
+  p->info.json_table_column_info.path = NULL;
+  p->info.json_table_column_info.func = JSON_TABLE_EXTRACT;
+  p->info.json_table_column_info.on_error.m_behavior = JSON_TABLE_RETURN_NULL;
+  p->info.json_table_column_info.on_error.m_default_value = NULL;
+  p->info.json_table_column_info.on_empty.m_behavior = JSON_TABLE_RETURN_NULL;
+  p->info.json_table_column_info.on_empty.m_default_value = NULL;
+  return p;
+}
+
+static PT_NODE *
+pt_apply_json_table_column (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE_FUNCTION g, void *arg)
+{
+  p->info.json_table_column_info.name = g (parser, p->info.json_table_column_info.name, arg);
+  return p;
+}
+
+//
+// pt_json_table_column_behavior_to_string ()
+//
+// return             : stringify behavior
+// behavior_type (in) : behavior enum value
+//
+static const char *
+pt_json_table_column_behavior_to_string (const json_table_column_behavior_type & behavior_type)
+{
+  switch (behavior_type)
+    {
+    case json_table_column_behavior_type::JSON_TABLE_RETURN_NULL:
+      return "NULL";
+
+    case json_table_column_behavior_type::JSON_TABLE_DEFAULT_VALUE:
+      return "DEFAULT";
+
+    case json_table_column_behavior_type::JSON_TABLE_THROW_ERROR:
+      return "ERROR";
+
+    default:
+      assert (false);
+      return "UNKNOWN BEHAVIOR";
+    }
+}
+
+//
+// pt_print_json_table_column_error_or_empty_behavior () - print json table column behavior
+//
+// return               : parser varchar
+// parser (in)          : parser context
+// pstr (in/out)        : parser varchar where printed column behavior is appended
+// column_behavior (in) : column behavior
+//
+static PARSER_VARCHAR *
+pt_print_json_table_column_error_or_empty_behavior (PARSER_CONTEXT * parser, PARSER_VARCHAR * pstr,
+						    const struct json_table_column_behavior &column_behavior)
+{
+  PARSER_VARCHAR *substr = NULL;
+
+  // print behavior type
+  pstr = pt_append_nulstring (parser, pstr, pt_json_table_column_behavior_to_string (column_behavior.m_behavior));
+
+  if (column_behavior.m_behavior == json_table_column_behavior_type::JSON_TABLE_DEFAULT_VALUE)
+    {
+      pstr = pt_append_nulstring (parser, pstr, " ");
+
+      substr = pt_print_db_value (parser, column_behavior.m_default_value);
+      pstr = pt_append_varchar (parser, pstr, substr);
+    }
+
+  return pstr;
+}
+
+//
+// pt_print_json_table_column_info () - print json table column info
+//
+// return        : parser varchar
+// parser (in)   : parser context
+// p (in)        : print column
+// pstr (in/out) : parser varchar where printed column info is appended
+//
+static PARSER_VARCHAR *
+pt_print_json_table_column_info (PARSER_CONTEXT * parser, PT_NODE * p, PARSER_VARCHAR * pstr)
+{
+  PARSER_VARCHAR *substr = NULL;
+  const char *type = NULL;
+
+  assert (p->node_type == PT_JSON_TABLE_COLUMN);
+
+  // print format:
+  // name FOR ORDINALITY
+  // | name type PATH string path[on_error][on_empty]
+  // | name type EXISTS PATH string path
+
+  // print name
+  pstr = pt_append_nulstring (parser, pstr, p->info.json_table_column_info.name->info.name.original);
+
+  // get the type
+  type = pt_type_enum_to_db_domain_name (p->type_enum);
+
+  switch (p->info.json_table_column_info.func)
+    {
+    case json_table_column_function::JSON_TABLE_ORDINALITY:
+      // print FOR ORDINALITY
+      pstr = pt_append_nulstring (parser, pstr, " FOR ORDINALITY");
+      break;
+
+    case json_table_column_function::JSON_TABLE_EXTRACT:
+      // print type
+      pstr = pt_append_nulstring (parser, pstr, " ");
+      if (p->data_type != NULL)
+	{
+	  substr = pt_print_bytes (parser, p->data_type);
+	  pstr = pt_append_varchar (parser, pstr, substr);
+	}
+      else
+	{
+	  pstr = pt_append_nulstring (parser, pstr, type);
+	}
+
+      // print PATH
+      pstr = pt_append_nulstring (parser, pstr, " PATH ");
+
+      // print path
+      pstr = pt_append_nulstring (parser, pstr, "'");
+      pstr = pt_append_nulstring (parser, pstr, p->info.json_table_column_info.path);
+      pstr = pt_append_nulstring (parser, pstr, "'");
+
+      // print on_error
+      pstr = pt_append_nulstring (parser, pstr, " ");
+      pstr = pt_print_json_table_column_error_or_empty_behavior (parser, pstr, p->info.json_table_column_info.on_error);
+      pstr = pt_append_nulstring (parser, pstr, " ON ERROR");
+
+      // print on_empty
+      pstr = pt_append_nulstring (parser, pstr, " ");
+      pstr = pt_print_json_table_column_error_or_empty_behavior (parser, pstr, p->info.json_table_column_info.on_empty);
+      pstr = pt_append_nulstring (parser, pstr, " ON EMPTY");
+      break;
+
+    case json_table_column_function::JSON_TABLE_EXISTS:
+      // print type
+      pstr = pt_append_nulstring (parser, pstr, " ");
+      if (p->data_type != NULL)
+	{
+	  substr = pt_print_bytes (parser, p->data_type);
+	  pstr = pt_append_varchar (parser, pstr, substr);
+	}
+      else
+	{
+	  pstr = pt_append_nulstring (parser, pstr, type);
+	}
+
+      // print EXISTS PATH
+      pstr = pt_append_nulstring (parser, pstr, " EXISTS PATH ");
+
+      // print path
+      pstr = pt_append_nulstring (parser, pstr, "'");
+      pstr = pt_append_nulstring (parser, pstr, p->info.json_table_column_info.path);
+      pstr = pt_append_nulstring (parser, pstr, "'");
+      break;
+
+    default:
+      /* should not be here */
+      assert (false);
+      break;
+    }
+
+  return pstr;
+}
+
+static PARSER_VARCHAR *
+pt_print_json_table_columns (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  PARSER_VARCHAR *pstr = NULL;
+  PT_NODE *p_it = NULL;
+
+  // append each column
+  for (p_it = p; p_it->next != NULL; p_it = p_it->next)
+    {
+      pstr = pt_print_json_table_column_info (parser, p_it, pstr);
+      // print ','
+      pstr = pt_append_nulstring (parser, pstr, ", ");
+    }
+
+  // the last column
+  pstr = pt_print_json_table_column_info (parser, p_it, pstr);
+
+  return pstr;
+}
+
+// pt_move_node - move PT_NODE pointer from source to destination. useful to automatically assign and unlink
+void
+pt_move_node (REFPTR (PT_NODE, destp), REFPTR (PT_NODE, srcp))
+{
+  destp = srcp;
+  srcp = NULL;
 }

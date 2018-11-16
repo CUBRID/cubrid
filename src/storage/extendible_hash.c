@@ -50,6 +50,7 @@
 #include "file_manager.h"
 #include "overflow_file.h"
 #include "memory_hash.h"	/* For hash functions */
+#include "tz_support.h"
 #include "db_date.h"
 #include "thread_compat.hpp"
 
@@ -691,7 +692,7 @@ ehash_initialize_bucket_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, void
 
   if (!is_temp)
     {
-      log_append_redo_data2 (thread_p, RVEH_INIT_BUCKET, NULL, page_p, -1, 2, args);
+      log_append_undoredo_data2 (thread_p, RVEH_INIT_BUCKET, NULL, page_p, -1, 0, 2, NULL, args);
     }
   pgbuf_set_dirty (thread_p, page_p, DONT_FREE);
 
@@ -714,7 +715,7 @@ ehash_initialize_dir_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, void *a
   pgbuf_set_page_ptype (thread_p, page_p, PAGE_EHASH);
   if (!is_temp)
     {
-      log_append_redo_data2 (thread_p, RVEH_INIT_NEW_DIR_PAGE, NULL, page_p, -1, 0, NULL);
+      log_append_undoredo_data2 (thread_p, RVEH_INIT_NEW_DIR_PAGE, NULL, page_p, -1, 0, 0, NULL, NULL);
     }
   pgbuf_set_dirty (thread_p, page_p, DONT_FREE);
 
@@ -787,13 +788,8 @@ eh_dump_key (DB_TYPE key_type, void *key, OID * value_ptr)
       break;
 
     case DB_TYPE_TIME:
-    case DB_TYPE_TIMELTZ:
       db_time_decode ((DB_TIME *) key, &hour, &minute, &second);
       fprintf (stdout, "key:%3d:%3d:%3d", hour, minute, second);
-      break;
-
-    case DB_TYPE_TIMETZ:
-      fprintf (stdout, "key:%d", ((DB_TIMETZ *) key)->time, ((DB_TIMETZ *) key)->tz_id);
       break;
 
     case DB_TYPE_TIMESTAMP:

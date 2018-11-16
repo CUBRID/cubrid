@@ -3263,6 +3263,7 @@ qe_get_data_str (T_VALUE_BUF * conv_val_buf, T_CCI_U_TYPE u_type, char *col_valu
     case CCI_U_TYPE_VARNCHAR:
     case CCI_U_TYPE_NUMERIC:
     case CCI_U_TYPE_ENUM:
+    case CCI_U_TYPE_JSON:
       {
 	*((char **) value) = col_value_p;
 	*indicator = col_val_size - 1;
@@ -3375,7 +3376,6 @@ qe_get_data_str (T_VALUE_BUF * conv_val_buf, T_CCI_U_TYPE u_type, char *col_valu
 	ut_date_to_str (&data, u_type, (char *) conv_val_buf->data, 128);
       }
       break;
-    case CCI_U_TYPE_TIMETZ:
     case CCI_U_TYPE_TIMESTAMPTZ:
     case CCI_U_TYPE_TIMESTAMPLTZ:
     case CCI_U_TYPE_DATETIMETZ:
@@ -3957,9 +3957,6 @@ qe_get_data_date_tz (T_CCI_U_TYPE u_type, char *col_value_p, void *value, int to
 
   switch (u_type)
     {
-    case CCI_U_TYPE_TIMETZ:
-      NET_STR_TO_TIMETZ (data, col_value_p, total_size);
-      break;
     case CCI_U_TYPE_TIMESTAMPTZ:
     case CCI_U_TYPE_TIMESTAMPLTZ:
       NET_STR_TO_TIMESTAMPTZ (data, col_value_p, total_size);
@@ -5098,7 +5095,7 @@ fetch_info_decode (char *buf, int size, int num_cols, T_TUPLE_VALUE ** tuple_val
 
 	  if (charset != NULL
 	      && (u_type == CCI_U_TYPE_CHAR || u_type == CCI_U_TYPE_STRING || u_type == CCI_U_TYPE_NCHAR
-		  || u_type == CCI_U_TYPE_VARNCHAR || u_type == CCI_U_TYPE_ENUM))
+		  || u_type == CCI_U_TYPE_VARNCHAR || u_type == CCI_U_TYPE_ENUM || u_type == CCI_U_TYPE_JSON))
 	    {
 	      err_code = decode_result_col (col_p, data_size, &(tmp_tuple_value[i].column_ptr[j]), charset);
 
@@ -5732,6 +5729,7 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag, void
 	case CCI_U_TYPE_VARNCHAR:
 	case CCI_U_TYPE_NUMERIC:
 	case CCI_U_TYPE_ENUM:
+	case CCI_U_TYPE_JSON:
 	  if (length == UNMEASURED_LENGTH)
 	    {
 	      bind_value->size = strlen ((const char *) value);
@@ -5894,25 +5892,6 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag, void
 	    if (bind_value->value == NULL)
 	      return CCI_ER_NO_MORE_MEMORY;
 	    bind_value->size = sizeof (T_CCI_DATE);
-	    bind_value->flag = BIND_PTR_DYNAMIC;
-	  }
-	  break;
-	case CCI_U_TYPE_TIMETZ:
-	  {
-	    T_CCI_DATE_TZ date_tz = { 0, 0, 0, 0, 0, 0, 0, "" };
-
-	    err_code = ut_str_to_timetz ((char *) value, &date_tz);
-	    if (err_code < 0)
-	      {
-		return err_code;
-	      }
-
-	    ALLOC_COPY_DATE_TZ (bind_value->value, date_tz);
-	    if (bind_value->value == NULL)
-	      {
-		return CCI_ER_NO_MORE_MEMORY;
-	      }
-	    bind_value->size = sizeof (T_CCI_DATE) + strlen (date_tz.tz);
 	    bind_value->flag = BIND_PTR_DYNAMIC;
 	  }
 	  break;
@@ -6530,7 +6509,6 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag, void
     {
       switch (u_type)
 	{
-	case CCI_U_TYPE_TIMETZ:
 	case CCI_U_TYPE_TIMESTAMPTZ:
 	case CCI_U_TYPE_TIMESTAMPLTZ:
 	case CCI_U_TYPE_DATETIMETZ:
@@ -6614,9 +6592,6 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag, void
     case CCI_U_TYPE_OBJECT:
       bind_value->size = NET_SIZE_OBJECT;
       break;
-    case CCI_U_TYPE_TIMETZ:
-      bind_value->size = NET_SIZE_TIME + NET_SIZE_TZ (bind_value->value);
-      break;
     case CCI_U_TYPE_TIMESTAMPTZ:
     case CCI_U_TYPE_TIMESTAMPLTZ:
       bind_value->size = NET_SIZE_TIMESTAMP + NET_SIZE_TZ (bind_value->value);
@@ -6659,6 +6634,7 @@ bind_value_to_net_buf (T_NET_BUF * net_buf, T_CCI_U_TYPE u_type, void *value, in
     case CCI_U_TYPE_NCHAR:
     case CCI_U_TYPE_VARNCHAR:
     case CCI_U_TYPE_ENUM:
+    case CCI_U_TYPE_JSON:
       if (value == NULL)
 	{
 	  ADD_ARG_BIND_STR (net_buf, "", 1, charset);
@@ -6768,7 +6744,6 @@ bind_value_to_net_buf (T_NET_BUF * net_buf, T_CCI_U_TYPE u_type, void *value, in
 	  ADD_ARG_DATETIME (net_buf, value);
 	}
       break;
-    case CCI_U_TYPE_TIMETZ:
     case CCI_U_TYPE_TIMESTAMPTZ:
     case CCI_U_TYPE_TIMESTAMPLTZ:
     case CCI_U_TYPE_DATETIMETZ:

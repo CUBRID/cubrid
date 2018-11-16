@@ -183,32 +183,36 @@ set(OPTIMIZER_SOURCES
   )
 
 set(QUERY_SOURCES
+  ${QUERY_DIR}/arithmetic.c
+  ${QUERY_DIR}/crypt_opfunc.c
+  ${QUERY_DIR}/cursor.c
   ${QUERY_DIR}/execute_schema.c
   ${QUERY_DIR}/execute_statement.c
-  ${QUERY_DIR}/arithmetic.c
-  ${QUERY_DIR}/cursor.c
-  ${QUERY_DIR}/query_dump.c
-  ${QUERY_DIR}/query_evaluator.c
   ${QUERY_DIR}/fetch.c
   ${QUERY_DIR}/filter_pred_cache.c
   ${QUERY_DIR}/list_file.c
+  ${QUERY_DIR}/method_scan.c
   ${QUERY_DIR}/numeric_opfunc.c
+  ${QUERY_DIR}/partition.c
   ${QUERY_DIR}/query_cl.c
+  ${QUERY_DIR}/query_dump.c
+  ${QUERY_DIR}/query_evaluator.c
+  ${QUERY_DIR}/query_executor.c
   ${QUERY_DIR}/query_manager.c
+  ${QUERY_DIR}/query_opfunc.c
+  ${QUERY_DIR}/scan_json_table.cpp
   ${QUERY_DIR}/scan_manager.c
   ${QUERY_DIR}/serial.c
   ${QUERY_DIR}/set_scan.c
-  ${QUERY_DIR}/string_opfunc.c
-  ${QUERY_DIR}/method_scan.c
-  ${QUERY_DIR}/query_executor.c
   ${QUERY_DIR}/show_scan.c
-  ${QUERY_DIR}/partition.c
-  ${QUERY_DIR}/query_opfunc.c
-  ${QUERY_DIR}/xasl_to_stream.c
   ${QUERY_DIR}/stream_to_xasl.c
-  ${QUERY_DIR}/crypt_opfunc.c
+  ${QUERY_DIR}/string_opfunc.c
   ${QUERY_DIR}/vacuum.c
   ${QUERY_DIR}/xasl_cache.c
+  ${QUERY_DIR}/xasl_to_stream.c
+  )
+set(QUERY_HEADERS
+  ${QUERY_DIR}/scan_json_table.hpp
   )
 
 set(OBJECT_SOURCES
@@ -235,6 +239,36 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/trigger_manager.c
   ${OBJECT_DIR}/virtual_object.c
   ${OBJECT_DIR}/work_space.c
+  )
+
+set (REPLICATION_HEADERS
+  ${REPLICATION_DIR}/log_generator.hpp
+  ${REPLICATION_DIR}/log_consumer.hpp
+  ${REPLICATION_DIR}/replication_master_senders_manager.hpp
+  ${REPLICATION_DIR}/replication_object.hpp
+  ${REPLICATION_DIR}/replication_stream_entry.hpp
+  )
+
+set(REPLICATION_SOURCES
+  ${REPLICATION_DIR}/log_consumer.cpp
+  ${REPLICATION_DIR}/log_generator.cpp
+  ${REPLICATION_DIR}/replication_object.cpp
+  ${REPLICATION_DIR}/replication_master_senders_manager.cpp  
+  ${REPLICATION_DIR}/replication_stream_entry.cpp
+  )
+
+set(STREAM_SOURCES
+  ${BASE_DIR}/cubstream.cpp
+  ${BASE_DIR}/multi_thread_stream.cpp
+  )
+
+set (STREAM_HEADERS
+  ${BASE_DIR}/bip_buffer.hpp
+  ${BASE_DIR}/collapsable_circular_queue.hpp
+  ${BASE_DIR}/cubstream.hpp
+  ${BASE_DIR}/multi_thread_stream.hpp
+  ${BASE_DIR}/stream_entry.hpp
+  ${BASE_DIR}/stream_io.hpp
   )
 
 set(JSP_SOURCES
@@ -295,6 +329,7 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/oid.c
   ${STORAGE_DIR}/overflow_file.c
   ${STORAGE_DIR}/page_buffer.c
+  ${STORAGE_DIR}/double_write_buffer.c
   ${STORAGE_DIR}/statistics_cl.c
   ${STORAGE_DIR}/statistics_sr.c
   ${STORAGE_DIR}/slotted_page.c
@@ -308,6 +343,16 @@ set(STORAGE_SOURCES
 set(SESSION_SOURCES
   ${SESSION_DIR}/session.c
   ${SESSION_DIR}/session_sr.c
+  )
+
+set(XASL_SOURCES
+  ${XASL_DIR}/access_json_table.cpp
+  ${XASL_DIR}/xasl_stream.cpp
+  )
+set(XASL_HEADERS
+  ${XASL_DIR}/access_json_table.hpp
+  ${XASL_DIR}/compile_context.h
+  ${XASL_DIR}/xasl_stream.hpp
   )
 
 if(UNIX)
@@ -373,6 +418,8 @@ SET_SOURCE_FILES_PROPERTIES(
   ${OPTIMIZER_SOURCES}
   ${QUERY_SOURCES}
   ${OBJECT_SOURCES}
+  ${REPLICATION_SOURCES}
+  ${STREAM_SOURCES}  
   ${JSP_SOURCES}
   ${THREAD_SOURCES}
   ${TRANSACTION_SOURCES}
@@ -380,6 +427,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${ES_SOURCES}
   ${SESSION_SOURCES}
   ${PROBES_OBJECT}
+  ${XASL_SOURCES}
   PROPERTIES LANGUAGE CXX
   )
 
@@ -406,8 +454,13 @@ add_library(cubridsa SHARED
   ${COMMUNICATION_SOURCES}
   ${PARSER_SOURCES}
   ${OPTIMIZER_SOURCES}
+  ${QUERY_HEADERS}
   ${QUERY_SOURCES}
   ${OBJECT_SOURCES}
+  ${REPLICATION_HEADERS}
+  ${REPLICATION_SOURCES}
+  ${STREAM_HEADERS}  
+  ${STREAM_SOURCES}
   ${JSP_SOURCES}
   ${THREAD_SOURCES}
   ${TRANSACTION_SOURCES}
@@ -416,6 +469,8 @@ add_library(cubridsa SHARED
   ${SESSION_SOURCES}
   ${PROBES_OBJECT}
   ${COMPAT_SOURCES_C}
+  ${XASL_SOURCES}
+  ${XASL_HEADERS}
   )
 set_target_properties(cubridsa PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 

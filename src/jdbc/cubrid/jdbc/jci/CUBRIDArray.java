@@ -87,7 +87,6 @@ class CUBRIDArray {
 			internalArray = (Object[]) (new Date[length]);
 			break;
 		case UUType.U_TYPE_TIME:
-		case UUType.U_TYPE_TIMETZ:		
 			internalArray = (Object[]) (new Time[length]);
 			break;
 		case UUType.U_TYPE_TIMESTAMP:
@@ -103,6 +102,7 @@ class CUBRIDArray {
 		case UUType.U_TYPE_STRING:
 		case UUType.U_TYPE_VARNCHAR:
 		case UUType.U_TYPE_ENUM:
+		case UUType.U_TYPE_JSON:
 			internalArray = (Object[]) (new String[length]);
 			break;
 		case UUType.U_TYPE_OBJECT:

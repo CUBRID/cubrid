@@ -69,6 +69,8 @@
 #include "filter_pred_cache.h"
 #include "slotted_page.h"
 #include "thread_manager.hpp"
+#include "double_write_buffer.h"
+
 #if defined(SERVER_MODE)
 #include "connection_sr.h"
 #include "server_support.h"
@@ -353,7 +355,7 @@ xboot_find_number_temp_volumes (THREAD_ENTRY * thread_p)
 
 /*
  * xboot_find_last_permanent () - find the volid of last permanent volume
- * 
+ *
  * return : volid of last permanent volume
  */
 VOLID
@@ -371,7 +373,7 @@ xboot_find_last_permanent (THREAD_ENTRY * thread_p)
 
 /*
  * xboot_peek_last_permanent () - peek the volid of last permanent volume
- * 
+ *
  * return : volid of last permanent volume
  * NOTE: this function does not wait for extensions to finish
  */
@@ -573,7 +575,7 @@ boot_remove_useless_path_separator (const char *path, char *new_path)
   assert (path != NULL);
   assert (new_path != NULL);
 
-  /* 
+  /*
    * Before transform.
    *   / h o m e 3 / / w o r k / c u b r i d / / / w o r k /
    *
@@ -593,7 +595,7 @@ boot_remove_useless_path_separator (const char *path, char *new_path)
     {
       *new_path++ = PATH_SEPARATOR;
 #if defined(WINDOWS)
-      /* 
+      /*
        * In Windows/NT,
        * If first duplicated PATH_SEPARATORs are appeared, they are survived.
        * For example,
@@ -609,7 +611,7 @@ boot_remove_useless_path_separator (const char *path, char *new_path)
   /* Initialize separator counter again. */
   slash_num = 0;
 
-  /* 
+  /*
    * If current character is PATH_SEPARATOR,
    *    skip after increasing separator counter.
    * If current character is normal character, copy to new_path.
@@ -622,7 +624,7 @@ boot_remove_useless_path_separator (const char *path, char *new_path)
 	}
       else
 	{
-	  /* 
+	  /*
 	   * If there is consumed slash, append PATH_SEPARATOR.
 	   * Initialize separator counter.
 	   */
@@ -685,7 +687,7 @@ boot_parse_add_volume_extensions (THREAD_ENTRY * thread_p, const char *filename_
       return ER_LOG_USER_FILE_UNKNOWN;
     }
 
-  /* 
+  /*
    * Get a line
    * Continue parsing even in case of error, so that we can indicate as
    * many errors as possible.
@@ -709,7 +711,7 @@ boot_parse_add_volume_extensions (THREAD_ENTRY * thread_p, const char *filename_
 	  line[ext_npages + 1] = '\0';
 	}
 
-      /* 
+      /*
        * Parse the line
        */
 
@@ -721,7 +723,7 @@ boot_parse_add_volume_extensions (THREAD_ENTRY * thread_p, const char *filename_
 
       while (true)
 	{
-	  /* 
+	  /*
 	   * Read token.. skip leading whitespace and comments
 	   */
 	  while (char_isspace (line[0]))
@@ -744,7 +746,7 @@ boot_parse_add_volume_extensions (THREAD_ENTRY * thread_p, const char *filename_
 	  line[0] = '\0';
 	  line++;
 
-	  /* 
+	  /*
 	   * Skip any whitespace before the value.
 	   */
 
@@ -755,7 +757,7 @@ boot_parse_add_volume_extensions (THREAD_ENTRY * thread_p, const char *filename_
 
 	  token_value = line;
 
-	  /* 
+	  /*
 	   * If string in " xxx " or ' xxxx ' find its delimiter
 	   */
 
@@ -843,7 +845,7 @@ boot_parse_add_volume_extensions (THREAD_ENTRY * thread_p, const char *filename_
 	    }
 	}
 
-      /* 
+      /*
        * Add the volume
        */
       if (error_code != NO_ERROR || (ext_name == NULL && ext_path == NULL && ext_comments == NULL && ext_npages == 0))
@@ -1074,7 +1076,7 @@ boot_find_rest_permanent_volumes (THREAD_ENTRY * thread_p, bool newvolpath, bool
       num_vols = 0;
 
       /* First the primary volume, then the rest of the volumes */
-      /* 
+      /*
        * Do not assume that all the volumes are mounted. This function may be called to mount the volumes.
        * Thus, request to current volume for the next volume instead of going directly through the volume identifier.
        */
@@ -1158,7 +1160,7 @@ boot_find_rest_temp_volumes (THREAD_ENTRY * thread_p, VOLID volid,
   int num_vols;
   bool go_to_access;
 
-  /* 
+  /*
    * Get the name of the extension: ext_path|dbname|"ext"|volid
    */
 
@@ -1260,7 +1262,7 @@ boot_check_permanent_volumes (THREAD_ENTRY * thread_p)
   char next_vol_fullname[PATH_MAX];	/* Next volume name */
   const char *vlabel;
 
-  /* 
+  /*
    * Don't use volinfo .. or could not find volinfo
    */
 
@@ -1268,7 +1270,7 @@ boot_check_permanent_volumes (THREAD_ENTRY * thread_p)
   num_vols = 0;
   strcpy (next_vol_fullname, boot_Db_full_name);
 
-  /* 
+  /*
    * Do not assume that all the volumes are mounted. This function may be
    * called to mount the volumes. Thus, request to current volume for the
    * next volume instead of going directly through the volume identifier.
@@ -1286,7 +1288,7 @@ boot_check_permanent_volumes (THREAD_ENTRY * thread_p)
 
       if (util_compare_filepath (next_vol_fullname, vlabel) != 0)
 	{
-	  /* 
+	  /*
 	   * Names are different. The database was renamed outside the domain of
 	   * the database (e.g., in Unix), or this is not a database.
 	   * If volume information is not present, assume that this is not a
@@ -1343,7 +1345,7 @@ boot_mount (THREAD_ENTRY * thread_p, VOLID volid, const char *vlabel, void *igno
 
   if (util_compare_filepath (check_vlabel, vlabel) != 0)
     {
-      /* 
+      /*
        * Names are different. The database was renamed outside the domain of
        * the database (e.g., in Unix), or this is not a database.
        * If volume information is not present, assume that this is not a
@@ -1553,7 +1555,7 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
       goto exit_on_error;
     }
 
-  /* 
+  /*
    * Make sure that the db_path and log_path and lob_path are the canonicalized
    * absolute pathnames
    */
@@ -1562,7 +1564,7 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
   memset (log_pathbuf, 0, sizeof (log_pathbuf));
   memset (lob_pathbuf, 0, sizeof (lob_pathbuf));
 
-  /* 
+  /*
    * for db path,
    * convert to absolute path, remove useless PATH_SEPARATOR
    */
@@ -1579,7 +1581,7 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
   boot_remove_useless_path_separator (db_path, db_pathbuf);
   db_path = db_pathbuf;
 
-  /* 
+  /*
    * for log path,
    * convert to absolute path, remove useless PATH_SEPARATOR
    */
@@ -1596,7 +1598,7 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
   boot_remove_useless_path_separator (log_path, log_pathbuf);
   log_path = log_pathbuf;
 
-  /* 
+  /*
    * for lob path,
    * convert to absolute path, remove useless PATH_SEPARATOR
    */
@@ -1642,13 +1644,13 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
     }
   lob_path = lob_pathbuf;
 
-  /* 
+  /*
    * Compose the full name of the database
    */
   snprintf (boot_Db_full_name, sizeof (boot_Db_full_name), "%s%c%s", db_path, PATH_SEPARATOR,
 	    client_credential->db_name);
 
-  /* 
+  /*
    * Initialize error structure, critical section, slotted page, heap, and
    * recovery managers
    */
@@ -1671,7 +1673,7 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
 
   log_prefix = fileio_get_base_file_name (client_credential->db_name);
 
-  /* 
+  /*
    * Find logging information to create the log volume. If the page size is
    * not the same as the one in production mode, adjust the number of pages
    * allocated.
@@ -1702,7 +1704,7 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
     }
   /* *INDENT-ON* */
 
-  /* 
+  /*
    * get the database directory information in write mode.
    */
 
@@ -1741,7 +1743,7 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
 	}
       else
 	{
-	  /* 
+	  /*
 	   * Delete the database.. to make sure that all backups, log archives, and
 	   * so on are removed... then continue...
 	   *
@@ -1870,7 +1872,7 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
 	    }
 
 #if defined(WINDOWS) && !defined(DONT_USE_MANDATORY_LOCK_IN_WINDOWS)
-	  /* Under Windows/NT, it appears that locking a file prevents a subsequent open for write by the same process. 
+	  /* Under Windows/NT, it appears that locking a file prevents a subsequent open for write by the same process.
 	   * The cfg_write_directory will never succeed as long as the file is "mounted" by fileio_mount().  To allow
 	   * the cubrid.db file to be updated, dismount before calling cfg_.  Note that this leaves an extremely small
 	   * windows where another process could steal our lock. */
@@ -2096,7 +2098,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  /* 
+  /*
    * Make sure that there is a database.txt and that the desired database
    * exists. We do not want to lock the database.txt at this point since we
    * are only reading it. However, if we do not find the desired database,
@@ -2118,7 +2120,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
   if (dir == NULL || ((db = cfg_find_db_list (dir, db_name)) == NULL))
     {
-      /* 
+      /*
        * Make sure that nobody was in the process of writing the
        * database.txt when we got a snapshot of it.
        */
@@ -2189,7 +2191,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       boot_Lob_path[0] = '\0';
     }
 
-  /* 
+  /*
    * Initialize error structure, critical section, slotted page, heap, and
    * recovery managers
    */
@@ -2270,6 +2272,13 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   tsc_init ();
 #endif /* !SERVER_MODE */
 
+  // Initialize java stored procedure server
+  error_code = jsp_start_server (db_name, db->pathname);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
   /* *INDENT-OFF* */
 #if defined (SA_MODE)
   // thread_manager was not initialized
@@ -2286,7 +2295,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
   pr_Enable_string_compression = prm_get_bool_value (PRM_ID_ENABLE_STRING_COMPRESSION);
 
-  /* 
+  /*
    * Compose the full name of the database and find location of logs
    */
 
@@ -2306,12 +2315,12 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   /* Initialize the transaction table */
   logtb_define_trantable (thread_p, -1, -1);
 
-  /* 
+  /*
    * How to restart the system ?
    */
   if (from_backup != false)
     {
-      /* 
+      /*
        * RESTART FROM BACKUP
        */
 #if defined(SA_MODE)
@@ -2338,7 +2347,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  /* 
+  /*
    * Now continue the normal restart process. At this point the data volumes
    * are ok. However, some recovery may need to take place
    */
@@ -2431,7 +2440,15 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
   oid_set_root (&boot_Db_parm->rootclass_oid);
 
-  /* 
+  /* Load and recover data pages before log recovery */
+  error_code = dwb_load_and_recover_pages (thread_p, log_path, log_prefix);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error;
+    }
+
+  /*
    * Now restart the recovery manager and execute any recovery actions
    */
 
@@ -2446,6 +2463,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
 #if defined(SERVER_MODE)
   pgbuf_daemons_init ();
+  dwb_daemons_init ();
 #endif /* SERVER_MODE */
 
   // after recovery we can boot vacuum
@@ -2456,7 +2474,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  /* 
+  /*
    * Initialize the catalog manager, the query evaluator, and install meta
    * classes
    */
@@ -2500,7 +2518,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  /* 
+  /*
    * Initialize system locale using values from db_root system table
    */
   error_code =
@@ -2551,7 +2569,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 #endif /* SERVER_MODE */
 
-  /* 
+  /*
    * Allocate a temporary transaction index to finish further system related
    * changes such as removal of temporary volumes and modifications of
    * system parameter
@@ -2569,7 +2587,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  /* 
+  /*
    * Remove any database temporary volumes
    */
 
@@ -2641,12 +2659,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 	      goto error;
 	    }
 	}
-    }
-
-  error_code = jsp_start_server (db_name, db->pathname);
-  if (error_code != NO_ERROR)
-    {
-      goto error;
     }
 
 #if defined (SA_MODE)
@@ -2763,6 +2775,7 @@ error:
 
 #if defined(SERVER_MODE)
   pgbuf_daemons_destroy ();
+  dwb_daemons_destroy ();
 #endif
 
   log_final (thread_p);
@@ -2840,7 +2853,7 @@ xboot_restart_from_backup (THREAD_ENTRY * thread_p, int print_restart, const cha
 
   prm_set_bool_value (PRM_ID_DBFILES_PROTECT, false);
 
-  /* 
+  /*
    *  We need to do some initialization that normally happens in
    *  boot_restart_server(), but only if the SERVER_MODE CPP variable is
    *  defined.  Unfortunately, if we're here, then SERVER_MODE is not defined
@@ -2912,6 +2925,9 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
 #endif
 
   log_final (thread_p);
+
+  /* Since all pages were flushed, now it's safe to destroy DWB. */
+  (void) dwb_destroy (thread_p);
 
   if (is_er_final == ER_ALL_FINAL)
     {
@@ -3221,7 +3237,7 @@ xboot_notify_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
 
   conn = thread_p->conn_entry;
 
-  /* sboot_notify_unregister_client should hold conn->rmutex. 
+  /* sboot_notify_unregister_client should hold conn->rmutex.
    * Please see the comment of sboot_notify_unregister_client.
    */
 
@@ -3279,7 +3295,7 @@ boot_check_db_at_num_shutdowns (bool force_nshutdowns)
       return;
     }
 
-  /* 
+  /*
    * Check the consistency of the database when the client is unregister
    */
 
@@ -3337,7 +3353,7 @@ boot_check_db_at_num_shutdowns (bool force_nshutdowns)
 		       "Some inconsistencies were detected in your database.\n Please consult error_log file = %s"
 		       " for additional information\n", tmpname);
 	      fflush (stdout);
-	      /* 
+	      /*
 	       * The following is added so we can attach to the debugger on
 	       * a fatal error. It is of great help to stop execution when
 	       * running a set of sql scripts. (That is, find the script that
@@ -3696,33 +3712,24 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
  *
  * return : NO_ERROR if all OK, ER_ status otherwise
  *
- *   backup_path(in): Location where information volumes are
- *                    backed up. If NULL is given, the following
- *                    defaults are assumed to back up each
- *                    information volume:
- *                    - If file "fileof_vols_and_backup_paths" is
- *                      given, the path to backup each volume is
- *                      found in this file.
- *                    - All information volumes are backed up on
- *                      the same location where the log files are
- *                      located.
+ *   backup_path(in): Location where information volumes are backed up. If NULL is given, the following defaults
+ *   		      are assumed to back up each information volume:
+ *                    - If file "fileof_vols_and_backup_paths" is given, the path to backup each volume is found in
+ *                      this file.
+ *                    - All information volumes are backed up on the same location where the log files are located.
  *   backup_level(in): backup levels allowed: 0 - Full (default),
  *                     1 - Incremental1, 2 - Incremental
- *   deleted_unneeded_logarchives(in): Whetear to remove log archives that are
- *                                 not needed any longer to recovery from
- *                                 crashes when the backup just created is
- *                                 used.
+ *   deleted_unneeded_logarchives(in): Whether to remove log archives that are not needed any longer to recovery from
+ *   				       crashes when the backup just created is used.
  *   backup_verbose_file(in): verbose mode file path
- *                    num_threads: number of threads
- *                    zip_method: compression method
- *                    zip_level: compression level
+ *   num_threads: number of threads
+ *   zip_method: compression method
+ *   zip_level: compression level
  *   sleep_msecs(in):
  *
- * Note: A fuzzy backup of the database is taken. The backup is written
- *       into the given backup_path location. If the backup_path
- *       location is omitted (i.e, NULL is given), the log path
- *       location which was specified at database creation is used to
- *       store the backup.
+ * Note: A fuzzy backup of the database is taken. The backup is written into the given backup_path location.
+ *       If the backup_path location is omitted (i.e, NULL is given), the log path location which was specified at
+ *       database creation is used to store the backup.
  */
 int
 xboot_backup (THREAD_ENTRY * thread_p, const char *backup_path, FILEIO_BACKUP_LEVEL backup_level,
@@ -3746,26 +3753,18 @@ xboot_backup (THREAD_ENTRY * thread_p, const char *backup_path, FILEIO_BACKUP_LE
  *   fromdb_name(in): The database from where the copy is made.
  *   newdb_name(in): Name of new database
  *   newdb_path(in): Directory where the new database will reside
- *   newlog_path(in): Directory where the log volumes of the new database
- *                    will reside
+ *   newlog_path(in): Directory where the log volumes of the new database will reside
+ *   newlob_path(in): Directory where the lob volumes of the new database will reside
  *   newdb_server_host(in): Server host where the new database reside
- *   new_volext_path(in): A path is included if all volumes are placed in one
- *                        place/directory. If NULL is given,
- *                        - If file "fileof_vols_and_wherepaths" is given, the
- *                          path is found in this file.
- *                        - Each volume is copied to same place where the
- *                          volume resides.
- *                      Note: This parameter should be NULL, if the above file
- *                            is given.
- *   fileof_vols_and_wherepaths(in): A file is given when the user decides to
- *                               control the copy/rename of the volume by
- *                               individual bases. That is, user decides to
- *                               spread the volumes over several locations and
- *                               or to label the volumes with specific names.
- *                               Each volume entry consists of:
- *                                 volid from_fullvolname to_fullvolname
- *   newdb_overwrite(in): Wheater to overwrite the new database if it already
- *                        exist.
+ *   new_volext_path(in): A path is included if all volumes are placed in one place/directory. If NULL is given,
+ *                        - If file "fileof_vols_and_wherepaths" is given, the path is found in this file.
+ *                        - Each volume is copied to same place where the volume resides.
+ *                      Note: This parameter should be NULL, if the above file is given.
+ *   fileof_vols_and_wherepaths(in): A file is given when the user decides to control the copy/rename of the volume by
+ *                               individual bases. That is, user decides to spread the volumes over several locations
+ *                               and or to label the volumes with specific names.
+ *                               Each volume entry consists of: volid from_fullvolname to_fullvolname
+ *   newdb_overwrite(in): Whether to overwrite the new database if it already exist.
  */
 int
 xboot_copy (REFPTR (THREAD_ENTRY, thread_p), const char *from_dbname, const char *new_db_name, const char *new_db_path,
@@ -3797,7 +3796,7 @@ xboot_copy (REFPTR (THREAD_ENTRY, thread_p), const char *from_dbname, const char
 
   if (new_db_path == NULL || fileof_vols_and_copypaths != NULL)
     {
-      /* 
+      /*
        * If a newdb path was given, it is ignored since only one option must
        * be specified
        */
@@ -3809,7 +3808,7 @@ xboot_copy (REFPTR (THREAD_ENTRY, thread_p), const char *from_dbname, const char
 	}
     }
 
-  /* 
+  /*
    * Make sure that the db_path and log_path are the canonicalized absolute
    * pathnames
    */
@@ -3920,7 +3919,7 @@ xboot_copy (REFPTR (THREAD_ENTRY, thread_p), const char *from_dbname, const char
   /* Make sure that the full path for the new database is not too long */
   if ((int) (strlen (new_db_name) + strlen (new_db_path) + 2) > DB_MAX_PATH_LENGTH)
     {
-      /* 
+      /*
        * db_path + db_name is too long
        */
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG, 3, new_db_path, new_db_name,
@@ -3932,7 +3931,7 @@ xboot_copy (REFPTR (THREAD_ENTRY, thread_p), const char *from_dbname, const char
   /* Get the log prefix */
   new_log_prefix = fileio_get_base_file_name (new_db_name);
 
-  /* 
+  /*
    * get the database directory information in write mode
    */
   if (cfg_maycreate_get_directory_filename (dbtxt_label) == NULL
@@ -3976,7 +3975,7 @@ xboot_copy (REFPTR (THREAD_ENTRY, thread_p), const char *from_dbname, const char
 	}
       else
 	{
-	  /* 
+	  /*
 	   * Delete the database.. to make sure that all backups, log archives, and
 	   * so on are removed... then continue...
 	   * Note: we do not call xboot_delete since it reverts a bunch of stuff.
@@ -4023,13 +4022,13 @@ xboot_copy (REFPTR (THREAD_ENTRY, thread_p), const char *from_dbname, const char
       dir = NULL;
     }
 
-  /* 
+  /*
    * Compose the full name of the new database
    */
 
   COMPOSE_FULL_NAME (new_db_fullname, sizeof (new_db_fullname), new_db_path, new_db_name);
 
-  /* 
+  /*
    * Copy the database
    */
 
@@ -4186,7 +4185,7 @@ xboot_soft_rename (THREAD_ENTRY * thread_p, const char *old_db_name, const char 
 
   if (fileof_vols_and_renamepaths != NULL)
     {
-      /* 
+      /*
        * If a newdb path was given, it is ignored since only one option must
        * be specified
        */
@@ -4200,7 +4199,7 @@ xboot_soft_rename (THREAD_ENTRY * thread_p, const char *old_db_name, const char 
 
   if (new_db_path == NULL)
     {
-      /* 
+      /*
        * Use the same location as the source database
        */
       new_db_path = fileio_get_directory_path (allocdb_path, boot_Db_full_name);
@@ -4218,7 +4217,7 @@ xboot_soft_rename (THREAD_ENTRY * thread_p, const char *old_db_name, const char 
 
   if (new_log_path == NULL)
     {
-      /* 
+      /*
        * Use the same log location as the source database
        */
       new_log_path = fileio_get_directory_path (alloclog_path, log_Name_active);
@@ -4234,7 +4233,7 @@ xboot_soft_rename (THREAD_ENTRY * thread_p, const char *old_db_name, const char 
 	}
     }
 
-  /* 
+  /*
    * Make sure that the db_path and log_path are the canonicalized absolute
    * pathnames
    */
@@ -4278,7 +4277,7 @@ xboot_soft_rename (THREAD_ENTRY * thread_p, const char *old_db_name, const char 
   /* Make sure that the full path for the new database is not too long */
   if ((int) (strlen (new_db_name) + strlen (new_db_path) + 2) > DB_MAX_PATH_LENGTH)
     {
-      /* 
+      /*
        * db_path + db_name is too long
        */
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG, 3, new_db_path, new_db_name,
@@ -4290,7 +4289,7 @@ xboot_soft_rename (THREAD_ENTRY * thread_p, const char *old_db_name, const char 
   /* Get the log prefix */
   newlog_prefix = fileio_get_base_file_name (new_db_name);
 
-  /* 
+  /*
    * get the database directory information in write mode
    */
   if (cfg_maycreate_get_directory_filename (dbtxt_label) == NULL
@@ -4336,13 +4335,13 @@ xboot_soft_rename (THREAD_ENTRY * thread_p, const char *old_db_name, const char 
       goto end;
     }
 
-  /* 
+  /*
    * Compose the full name of the new database
    */
 
   COMPOSE_FULL_NAME (new_db_fullname, sizeof (new_db_fullname), new_db_path, new_db_name);
 
-  /* 
+  /*
    * Rename the database
    */
 
@@ -4376,6 +4375,7 @@ xboot_soft_rename (THREAD_ENTRY * thread_p, const char *old_db_name, const char 
 	{
 	  cfg_update_db (db, new_db_path, new_log_path, NULL, new_db_server_host);
 	}
+
       if (db == NULL || db->name == NULL || db->pathname == NULL || db->logpath == NULL || db->hosts == NULL)
 	{
 	  error_code = ER_FAILED;
@@ -4448,7 +4448,7 @@ xboot_delete (const char *db_name, bool force_delete, BOOT_SERVER_SHUTDOWN_MODE 
 
   if (!BO_IS_SERVER_RESTARTED ())
     {
-      /* 
+      /*
        * Compose the full name of the database and find location of logs
        */
       if (msgcat_init () != NO_ERROR)
@@ -4486,7 +4486,7 @@ xboot_delete (const char *db_name, bool force_delete, BOOT_SERVER_SHUTDOWN_MODE 
   /* Find the prefix for the database */
   log_prefix = fileio_get_base_file_name (db_name);
 
-  /* 
+  /*
    * get the database directory information in write mode.
    */
   if (cfg_maycreate_get_directory_filename (dbtxt_label) == NULL)
@@ -4514,7 +4514,7 @@ xboot_delete (const char *db_name, bool force_delete, BOOT_SERVER_SHUTDOWN_MODE 
 
   if (error_code != NO_ERROR)
     {
-      /* 
+      /*
        * If I cannot obtain a Lock on database.txt, it is better to quite at
        * this moment. We will not even perform a dirty delete.
        */
@@ -4539,14 +4539,14 @@ xboot_delete (const char *db_name, bool force_delete, BOOT_SERVER_SHUTDOWN_MODE 
       goto error_dirty_delete;
     }
 
-  /* 
+  /*
    * How can we perform the delete operation..without restarting the system
    * or restarted the system.
    */
 
   if (!BO_IS_SERVER_RESTARTED ())
     {
-      /* 
+      /*
        * Compose the full name of the database and find location of logs
        */
       COMPOSE_FULL_NAME (boot_Db_full_name, sizeof (boot_Db_full_name), db->pathname, db_name);
@@ -4565,7 +4565,7 @@ xboot_delete (const char *db_name, bool force_delete, BOOT_SERVER_SHUTDOWN_MODE 
       dir = NULL;
     }
 
-  /* Now delete the database */
+  /* Now delete the database. Normally, DWB was already removed at database shutdown. */
   error_code = boot_remove_all_volumes (thread_p, boot_Db_full_name, log_path, log_prefix, false, force_delete);
   if (error_code == NO_ERROR)
     {
@@ -4686,8 +4686,8 @@ error_dirty_delete:
 static int
 boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL * client_credential,
 			 const char *db_comments, DKNPAGES db_npages, const char *file_addmore_vols,
-			 const char *log_path, const char *log_prefix, DKNPAGES log_npages, int client_lock_wait,
-			 TRAN_ISOLATION client_isolation)
+			 const char *log_path, const char *log_prefix, DKNPAGES log_npages,
+			 int client_lock_wait, TRAN_ISOLATION client_isolation)
 {
   int tran_index = NULL_TRAN_INDEX;
   VOLID db_volid = NULL_VOLID;
@@ -4734,6 +4734,14 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
   ext_info.purpose = DB_PERMANENT_DATA_PURPOSE;
   ext_info.extend_npages = db_npages;
 
+  /* Create double write buffer if not already created. DWB creation must be done before first volume.
+   * DWB file is created on log_path.
+   */
+  if (dwb_create (thread_p, log_path, log_prefix) != NO_ERROR)
+    {
+      goto error;
+    }
+
   /* Format the first database volume */
   error_code = disk_format_first_volume (thread_p, boot_Db_full_name, db_comments, db_npages);
   if (error_code != NO_ERROR)
@@ -4747,7 +4755,7 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
       goto error;
     }
 
-  /* 
+  /*
    * Initialize the database parameter table
    */
 
@@ -4878,7 +4886,7 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
       goto error;
     }
 
-  /* 
+  /*
    * Create the rest of the other volumes if any
    */
 
@@ -4903,7 +4911,7 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
       goto error;
     }
 
-  /* 
+  /*
    * Initialize the catalog manager, the query evaluator, and install meta
    * classes
    */
@@ -4983,7 +4991,7 @@ boot_remove_all_volumes (THREAD_ENTRY * thread_p, const char *db_fullname, const
       goto error_rem_allvols;
     }
 
-  /* 
+  /*
    * How can we perform the delete operation..without restarting the system
    * or restarted the system.
    */
@@ -5003,7 +5011,7 @@ boot_remove_all_volumes (THREAD_ENTRY * thread_p, const char *db_fullname, const
 	  return ER_FAILED;
 	}
 
-      /* 
+      /*
        * Initialize error structure, critical section, slotted page, heap, and
        * recovery managers
        */
@@ -5017,7 +5025,7 @@ boot_remove_all_volumes (THREAD_ENTRY * thread_p, const char *db_fullname, const
 
       if (log_get_io_page_size (thread_p, db_fullname, log_path, log_prefix) == -1)
 	{
-	  /* 
+	  /*
 	   * There is something wrong with this database... We will only remove
 	   * as much as we can
 	   */
@@ -5144,7 +5152,7 @@ xboot_emergency_patch (const char *db_name, bool recreate_log, DKNPAGES log_npag
     }
   /* *INDENT-ON* */
 
-  /* 
+  /*
    * Compose the full name of the database and find location of logs
    */
   if (cfg_read_directory (&dir, false) != NO_ERROR)
@@ -5156,7 +5164,7 @@ xboot_emergency_patch (const char *db_name, bool recreate_log, DKNPAGES log_npag
 
   if (dir == NULL || ((db = cfg_find_db_list (dir, db_name)) == NULL))
     {
-      /* 
+      /*
        * Make sure that nobody was in the process of writing the
        * database.txt when we got a snapshot of it.
        */
@@ -5221,7 +5229,7 @@ xboot_emergency_patch (const char *db_name, bool recreate_log, DKNPAGES log_npag
       goto error_exit;
     }
 
-  /* 
+  /*
    * Initialize error structure, critical section, slotted page, heap, and
    * recovery managers
    */
@@ -5232,7 +5240,7 @@ xboot_emergency_patch (const char *db_name, bool recreate_log, DKNPAGES log_npag
     {
       if (recreate_log != 0)
 	{
-	  /* 
+	  /*
 	   * User must indicate the database pagesize through its own environment
 	   */
 	  (void) db_set_page_size (IO_DEFAULT_PAGE_SIZE, IO_DEFAULT_PAGE_SIZE);
@@ -5356,7 +5364,7 @@ xboot_emergency_patch (const char *db_name, bool recreate_log, DKNPAGES log_npag
       log_restart_emergency (thread_p, boot_Db_full_name, log_path, log_prefix);
     }
 
-  /* 
+  /*
    * Initialize the catalog manager, the query evaluator, and install meta
    * classes
    */
@@ -5457,7 +5465,7 @@ boot_find_new_db_path (char *db_pathbuf, const char *fileof_vols_and_wherepaths)
 
   if (fileof_vols_and_wherepaths != NULL)
     {
-      /* 
+      /*
        * Obtain the new database path from where paths file
        */
       where_paths_fp = fopen (fileof_vols_and_wherepaths, "r");
@@ -5877,7 +5885,7 @@ boot_dbparm_save_volume (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, VOLID voli
   /* flush the boot_Db_parm object. this is not necessary but it is recommended in order to mount every known volume
    * during restart. that may not be possible during media crash though. */
   heap_flush (thread_p, boot_Db_parm_oid);
-  fileio_synchronize (thread_p, fileio_get_volume_descriptor (boot_Db_parm_oid->volid), NULL);	/* label? */
+  fileio_synchronize (thread_p, fileio_get_volume_descriptor (boot_Db_parm_oid->volid), NULL, FILEIO_SYNC_ALSO_FLUSH_DWB);	/* label? */
 
 exit:
   return error_code;

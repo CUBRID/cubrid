@@ -37,12 +37,13 @@
 #endif
 
 #include "btree.h"		/* TODO: for BTREE_SCAN */
-
-#include "oid.h"		/* for OID */
-#include "storage_common.h"	/* for PAGEID */
 #include "heap_file.h"		/* for HEAP_SCANCACHE */
 #include "method_scan.h"	/* for METHOD_SCAN_BUFFER */
+#include "oid.h"		/* for OID */
 #include "query_evaluator.h"
+#include "access_json_table.hpp"
+#include "scan_json_table.hpp"
+#include "storage_common.h"	/* for PAGEID */
 
 /*
  *       	TYPEDEFS RELATED TO THE SCAN DATA STRUCTURES
@@ -57,6 +58,7 @@ typedef enum
   S_INDX_SCAN,
   S_LIST_SCAN,
   S_SET_SCAN,
+  S_JSON_TABLE_SCAN,
   S_METHOD_SCAN,
   S_VALUES_SCAN,		/* regu_values_list scan */
   S_SHOWSTMT_SCAN,
@@ -331,6 +333,7 @@ struct scan_id_struct
     VA_SCAN_ID vaid;		/* Value Array Identifier */
     REGU_VALUES_SCAN_ID rvsid;	/* regu_variable list identifier */
     SHOWSTMT_SCAN_ID stsid;	/* show stmt identifier */
+    JSON_TABLE_SCAN_ID jtid;
   } s;
 
   SCAN_STATS scan_stats;
@@ -423,6 +426,9 @@ extern int scan_open_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 			       VAL_DESCR * vd,
 			       /* fields of SET_SCAN_ID */
 			       REGU_VARIABLE * set_ptr, REGU_VARIABLE_LIST regu_list_pred, PRED_EXPR * pr);
+extern int scan_open_json_table_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, int grouped,
+				      QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, VAL_LIST * val_list,
+				      VAL_DESCR * vd, PRED_EXPR * pr);
 extern int scan_open_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				  /* fields of SCAN_ID */
 				  int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval,

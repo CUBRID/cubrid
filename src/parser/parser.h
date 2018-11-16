@@ -31,7 +31,6 @@
 #include <stdarg.h>
 #include "system.h"
 #include "dbtype_def.h"
-#include "dbdef.h"
 #include "parse_tree.h"
 
 #if defined (SERVER_MODE)
@@ -62,6 +61,8 @@ extern "C"
     CLASSOID_NAME,
     HIDDEN_CLASSOID_NAME
   } VIEW_HANDLING;
+
+  extern size_t json_table_column_count;
 
   extern PT_NODE **parser_main (PARSER_CONTEXT * p);
   extern void parser_final (void);
@@ -643,8 +644,13 @@ extern "C"
 						  int *continue_walk);
   extern void pt_get_default_expression_from_data_default_node (PARSER_CONTEXT * parser, PT_NODE * data_default_node,
 								DB_DEFAULT_EXPR * default_expr);
+  extern PT_NODE *pt_has_name_oid (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 #ifdef __cplusplus
 }
 #endif
 
-#endif				/* _PARSER_H_ */
+#if defined __cplusplus
+extern void pt_move_node (REFPTR (PT_NODE, destp), REFPTR (PT_NODE, srcp));
+#endif // c++
+
+#endif /* _PARSER_H_ */

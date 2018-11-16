@@ -102,7 +102,7 @@ class conn_initiator_daemon_task : public cubthread::task_without_context
   public:
     conn_initiator_daemon_task (int &counter, cubcomm::channel &&chn)
       : m_counter (counter),
-        m_channel (std::forward <cubcomm::channel> (chn))
+	m_channel (std::forward <cubcomm::channel> (chn))
     {
     }
 

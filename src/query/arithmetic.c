@@ -41,9 +41,9 @@
 #include "numeric_opfunc.h"
 #include "crypt_opfunc.h"
 #include "string_opfunc.h"
+#include "tz_support.h"
 #include "db_date.h"
 #include "db_json.hpp"
-
 #include "dbtype.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
@@ -1978,7 +1978,7 @@ db_mod_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 static double
 round_double (double num, double integer)
 {
-  /* 
+  /*
    * Under high optimization level, some optimizers (e.g, gcc -O3 on linux)
    * generates a wrong result without "volatile".
    */
@@ -2582,7 +2582,6 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
     }
 
-
   if (er_errid () != NO_ERROR && prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
     {
       er_clear ();
@@ -3139,7 +3138,7 @@ log_error:
 static double
 truncate_double (double num, double integer)
 {
-  /* 
+  /*
    * Under high optimization level, some optimizers (e.g, gcc -O3 on linux)
    * generates a wrong result without "volatile".
    */
@@ -4644,7 +4643,6 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1, const DB_VALUE * va
   bool is_deal_with_numeric = false;
   int er_status = NO_ERROR;
   char buf[MAX_DOMAIN_NAME_SIZE];
-  DB_TIME time_local;
 
   assert (result != NULL && value1 != NULL && value2 != NULL && value3 != NULL && value4 != NULL);
 
@@ -4696,6 +4694,8 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1, const DB_VALUE * va
 	  else
 	    {
 	      /* try time */
+	      er_clear ();	// forget previous error to try datetime
+
 	      cast_domain = tp_domain_resolve_default (DB_TYPE_TIME);
 	      cast_status = tp_value_coerce (value1, &cast_value1, cast_domain);
 	      if (cast_status == DOMAIN_COMPATIBLE)
@@ -4783,61 +4783,10 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1, const DB_VALUE * va
       d3 = (double) (db_get_timestamptz (value3)->timestamp);
       break;
 
-
     case DB_TYPE_TIME:
       d1 = (double) *db_get_time (value1);
       d2 = (double) *db_get_time (value2);
       d3 = (double) *db_get_time (value3);
-      break;
-
-    case DB_TYPE_TIMELTZ:
-      er_status = tz_timeltz_to_local (db_get_time (value1), &time_local);
-      if (er_status == NO_ERROR)
-	{
-	  d1 = (double) time_local;
-	  er_status = tz_timeltz_to_local (db_get_time (value2), &time_local);
-	}
-
-      if (er_status == NO_ERROR)
-	{
-	  d2 = (double) time_local;
-	  er_status = tz_timeltz_to_local (db_get_time (value3), &time_local);
-	}
-
-      if (er_status == NO_ERROR)
-	{
-	  d3 = (double) time_local;
-	}
-      else
-	{
-	  RETURN_ERROR (er_status);
-	}
-      break;
-
-    case DB_TYPE_TIMETZ:
-      er_status = tz_utc_timetz_to_local (&db_get_timetz (value1)->time, &db_get_timetz (value1)->tz_id, &time_local);
-      if (er_status == NO_ERROR)
-	{
-	  d1 = (double) time_local;
-	  er_status =
-	    tz_utc_timetz_to_local (&db_get_timetz (value2)->time, &db_get_timetz (value2)->tz_id, &time_local);
-	}
-
-      if (er_status == NO_ERROR)
-	{
-	  d2 = (double) time_local;
-	  er_status =
-	    tz_utc_timetz_to_local (&db_get_timetz (value3)->time, &db_get_timetz (value3)->tz_id, &time_local);
-	}
-
-      if (er_status == NO_ERROR)
-	{
-	  d3 = (double) time_local;
-	}
-      else
-	{
-	  RETURN_ERROR (er_status);
-	}
       break;
 
     case DB_TYPE_SHORT:
@@ -4878,7 +4827,7 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1, const DB_VALUE * va
 
       if (type == DB_TYPE_BIGINT)
 	{
-	  /* cast bigint to numeric Compiler doesn't support long double (80 or 128bits), so we use numeric instead. If 
+	  /* cast bigint to numeric Compiler doesn't support long double (80 or 128bits), so we use numeric instead. If
 	   * a high precision lib is introduced or long double is full supported, remove this part and use the lib or
 	   * long double to calculate. */
 	  /* convert value1 */
@@ -5188,12 +5137,10 @@ db_json_type_dbval (const DB_VALUE * json, DB_VALUE * type_res)
       const char *type;
       unsigned int length;
 
-      assert (db_get_json_raw_body (json) != NULL);
-
       type = db_json_get_type_as_str (db_get_json_document (json));
       length = strlen (type);
 
-      return db_make_char (type_res, length, (DB_C_CHAR) type, length, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
+      return db_make_varchar (type_res, length, (DB_C_CHAR) type, length, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
     }
 }
 
@@ -5277,39 +5224,351 @@ db_json_depth_dbval (DB_VALUE * json, DB_VALUE * res)
 }
 
 int
-db_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * json_res)
+db_json_unquote_dbval (DB_VALUE * json, DB_VALUE * res)
 {
-  JSON_DOC *this_doc;
-  const char *raw_path;
-  char *json_body;
-  JSON_DOC *result_doc = NULL;
   int error_code;
+
+  if (DB_IS_NULL (json))
+    {
+      error_code = db_make_null (res);
+    }
+  else
+    {
+      char *str = NULL;
+
+      error_code = db_json_unquote (*db_get_json_document (json), str);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+
+      error_code = db_make_string (res, str);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+
+      // db_json_unquote uses strdup, therefore set need_clear flag
+      res->need_clear = true;
+    }
+
+  return error_code;
+}
+
+int
+db_json_pretty_dbval (DB_VALUE * json, DB_VALUE * res)
+{
+  int error_code;
+
+  if (DB_IS_NULL (json))
+    {
+      error_code = db_make_null (res);
+    }
+  else
+    {
+      char *str = NULL;
+
+      db_json_pretty_func (*db_get_json_document (json), str);
+
+      error_code = db_make_string (res, str);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+
+      // db_json_pretty_func uses strdup, therefore set need_clear flag
+      res->need_clear = true;
+    }
+
+  return error_code;
+}
+
+int
+db_json_arrayagg_dbval_accumulate (DB_VALUE * json_db_val, DB_VALUE * json_res)
+{
+  int error_code = NO_ERROR;
+  JSON_DOC *val_doc = NULL;
+  JSON_DOC *result_doc = NULL;
+
+  if (DB_IS_NULL (json_db_val))
+    {
+      // this case should not be possible because we already wrapped a NULL value into a JSON with type DB_JSON_NULL
+      assert (false);
+      db_make_null (json_res);
+      return ER_FAILED;
+    }
+
+  // get the current value
+  error_code = db_value_to_json_value (*json_db_val, val_doc);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  // append to existing document
+  // allocate only first time
+  if (DB_IS_NULL (json_res))
+    {
+      result_doc = db_json_allocate_doc ();
+      db_make_json (json_res, result_doc, true);
+    }
+  else
+    {
+      result_doc = db_get_json_document (json_res);
+    }
+
+  if (result_doc == NULL)
+    {
+      db_make_null (json_res);
+      db_json_delete_doc (val_doc);
+      return ER_FAILED;
+    }
+
+  db_json_add_element_to_array (result_doc, val_doc);
+
+  db_json_delete_doc (val_doc);
+  return error_code;
+}
+
+/*
+ * db_json_objectagg_dbval_accumulate () - Construct a Member (key-value pair) and add it in the result_json
+ *
+ * return                  : error_code
+ * json_key (in)           : the key of the pair
+ * json_val (in)           : the value of the pair
+ * json_res (in)           : the DB_VALUE that contains the document where we want to insert
+ */
+int
+db_json_objectagg_dbval_accumulate (DB_VALUE * json_key, DB_VALUE * json_db_val, DB_VALUE * json_res)
+{
+  int error_code = NO_ERROR;
+  const char *key_str = NULL;
+  JSON_DOC *val_doc = NULL;
+  JSON_DOC *result_doc = NULL;
+
+  // this case should not be possible because we checked before if the key is NULL
+  // and wrapped the value with a JSON with DB_JSON_NULL type
+  if (DB_IS_NULL (json_key) || DB_IS_NULL (json_db_val))
+    {
+      assert (false);
+      db_make_null (json_res);
+      return ER_FAILED;
+    }
+
+  // get the current key
+  key_str = db_get_string (json_key);
+
+  // get the current value
+  error_code = db_value_to_json_value (*json_db_val, val_doc);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  // append to existing document
+  // allocate only first time
+  if (DB_IS_NULL (json_res))
+    {
+      result_doc = db_json_allocate_doc ();
+      db_make_json (json_res, result_doc, true);
+    }
+  else
+    {
+      result_doc = db_get_json_document (json_res);
+    }
+
+  if (result_doc == NULL)
+    {
+      db_make_null (json_res);
+      db_json_delete_doc (val_doc);
+      return ER_FAILED;
+    }
+
+  db_json_add_member_to_object (result_doc, key_str, val_doc);
+
+  db_json_delete_doc (val_doc);
+  return NO_ERROR;
+}
+
+/*
+ * db_json_merge () - Inserts a JSON_OBJECT/JSON_ARRAY with possibly multiple members in the result_json
+ *
+ * return                  : error_code
+ * json (in)               : the JSON_OBJECT/JSON_ARRAY that we want to insert
+ * json_res (in)           : the DB_VALUE that contains the document where we want to insert
+ */
+int
+db_json_merge (DB_VALUE * json, DB_VALUE * json_res)
+{
+  // this case should not be possible because we did the checking before
+  // also the method should be called after we already created the json_res (in the first iteration)
+  if (DB_IS_NULL (json) || DB_IS_NULL (json_res))
+    {
+      assert (false);
+      db_make_null (json_res);
+      return ER_FAILED;
+    }
+
+  JSON_DOC *current_doc = NULL;
+  JSON_DOC *result_doc = NULL;
+
+  // get the current document that we want to insert
+  current_doc = db_get_json_document (json);
+
+  assert (db_value_domain_type (json_res) == DB_TYPE_JSON);
+
+  // get the resulting json document
+  result_doc = db_get_json_document (json_res);
+
+  // merge the two jsons (preserve, not patch)
+  db_json_merge_func (current_doc, result_doc, false);
+
+  return NO_ERROR;
+}
+
+//
+// db_json_extract_dbval () - extract path from json DOC
+//
+// return         : error code
+// json (in)      : source JSON
+// path (in)      : path
+// json_res (out) : result JSON
+//
+int
+db_json_extract_dbval (DB_VALUE * json, DB_VALUE * path, DB_VALUE * json_res)
+{
+  JSON_DOC *this_doc = NULL;
+  const char *raw_path = NULL;
+  JSON_DOC *result_doc = NULL;
+  int error_code = NO_ERROR;
+
+  assert (json != NULL);
+  assert (path != NULL);
+
+  db_make_null (json_res);
 
   if (DB_IS_NULL (json) || DB_IS_NULL (path))
     {
-      return db_make_null (json_res);
+      return NO_ERROR;
     }
 
-  this_doc = db_get_json_document (json);
-  raw_path = db_get_string (path);
+  error_code = db_value_to_json_doc (*json, this_doc);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = db_value_to_json_path (path, F_JSON_EXTRACT, &raw_path);
+  if (error_code != NO_ERROR)
+    {
+      db_json_delete_doc (this_doc);
+      return error_code;
+    }
 
   error_code = db_json_extract_document_from_path (this_doc, raw_path, result_doc);
   if (error_code != NO_ERROR)
     {
       assert (result_doc == NULL);
+      db_json_delete_doc (this_doc);
       return error_code;
     }
 
   if (result_doc != NULL)
     {
-      json_body = db_json_get_raw_json_body_from_document (result_doc);
-      db_make_json (json_res, json_body, result_doc, true);
+      db_make_json (json_res, result_doc, true);
     }
   else
     {
       db_make_null (json_res);
     }
 
+  db_json_delete_doc (this_doc);
+
+  return NO_ERROR;
+}
+
+//
+// db_json_extract_multiple_paths () - extract paths from JSON and return a JSON object if there is only one path or
+//                                     a JSON array if there are multiple paths
+//
+// return        : error code
+// result (in)   : result
+// args[] (in)   : 
+// num_args (in) :
+//
+// TODO: we need to change the args type of all JSON function to const DB_VALUE *[]
+//
+int
+db_json_extract_multiple_paths (DB_VALUE * result, DB_VALUE * args[], int num_args)
+{
+  db_make_null (result);
+
+  if (num_args < 2)
+    {
+      // should be detected early
+      assert (false);
+      return ER_FAILED;
+    }
+
+  if (num_args == 2)
+    {
+      return db_json_extract_dbval (args[0], args[1], result);
+    }
+
+  // there are multiple paths; the result of extract is a JSON_ARRAY with all extracted values
+  int error_code = NO_ERROR;
+  JSON_DOC *source_doc = NULL;	// source document - first argument
+
+  error_code = db_value_to_json_doc (*args[0], source_doc);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  JSON_DOC *result_doc = db_json_allocate_doc ();	// result JSON document; it will be converted to array later
+  JSON_DOC *extracted_doc = NULL;	// document used for extracting each value
+  const DB_VALUE *path_value;
+  const char *path_str = NULL;
+
+  TP_DOMAIN_STATUS domain_status = DOMAIN_COMPATIBLE;
+
+  for (int path_idx = 1; path_idx < num_args; path_idx++)
+    {
+      path_value = args[path_idx];
+
+      // paths can only be strings
+      error_code = db_value_to_json_path (path_value, F_JSON_EXTRACT, &path_str);
+      if (error_code != NO_ERROR)
+	{
+	  // free docs
+	  db_json_delete_doc (result_doc);
+	  db_json_delete_doc (extracted_doc);
+	  db_json_delete_doc (source_doc);
+	  return error_code;
+	}
+
+      error_code = db_json_extract_document_from_path (source_doc, path_str, extracted_doc);
+
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  // free docs
+	  db_json_delete_doc (result_doc);
+	  db_json_delete_doc (extracted_doc);
+	  db_json_delete_doc (source_doc);
+	  return error_code;
+	}
+
+      db_json_add_element_to_array (result_doc, extracted_doc);
+    }
+
+  // free temporary resources
+  db_json_delete_doc (extracted_doc);
+
+  db_make_json (result, result_doc, true);
   return NO_ERROR;
 }
 

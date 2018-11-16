@@ -46,6 +46,7 @@
 #include "string_opfunc.h"
 #include "server_interface.h"
 #include "query_opfunc.h"
+#include "tz_support.h"
 #include "db_date.h"
 #include "xasl.h"
 #include "query_executor.h"
@@ -131,7 +132,6 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_INDEX_PREFIX:
     case T_TO_DATETIME_TZ:
     case T_TO_TIMESTAMP_TZ:
-    case T_TO_TIME_TZ:
 
       /* fetch lhs, rhs, and third value */
       if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
@@ -650,18 +650,17 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	}
       break;
 
+    case T_JSON_QUOTE:
+    case T_JSON_UNQUOTE:
     case T_JSON_TYPE:
     case T_JSON_VALID:
     case T_JSON_DEPTH:
+    case T_JSON_PRETTY:
       if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
 	{
 	  goto error;
 	}
       break;
-
-    case T_JSON_SEARCH:
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1, "JSON_SEARCH");
-      goto error;
 
     case T_JSON_CONTAINS:
       if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
@@ -2645,6 +2644,13 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	}
       break;
 
+    case T_JSON_PRETTY:
+      if (qdata_json_pretty_dbval (peek_left, arithptr->value, regu_var->domain) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
     case T_JSON_EXTRACT:
       if (qdata_json_extract_dbval (peek_left, peek_right, arithptr->value, regu_var->domain) != NO_ERROR)
 	{
@@ -2669,6 +2675,20 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 
     case T_JSON_DEPTH:
       if (qdata_json_depth_dbval (peek_left, arithptr->value, regu_var->domain) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_JSON_QUOTE:
+      if (qdata_json_quote_dbval (peek_left, arithptr->value, regu_var->domain) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_JSON_UNQUOTE:
+      if (qdata_json_unquote_dbval (peek_left, arithptr->value, regu_var->domain) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -3654,17 +3674,6 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	}
       break;
 
-    case T_TO_TIME_TZ:
-      if (DB_IS_NULL (peek_left))
-	{
-	  PRIM_SET_NULL (arithptr->value);
-	}
-      else if (db_to_time (peek_left, peek_right, peek_third, DB_TYPE_TIMETZ, arithptr->value) != NO_ERROR)
-	{
-	  goto error;
-	}
-      break;
-
     case T_UTC_TIMESTAMP:
       {
 	DB_DATE date;
@@ -4052,8 +4061,13 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	    case F_JSON_KEYS:
 	    case F_JSON_REMOVE:
 	    case F_JSON_ARRAY_APPEND:
+	    case F_JSON_ARRAY_INSERT:
+	    case F_JSON_CONTAINS_PATH:
+	    case F_JSON_EXTRACT:
 	    case F_JSON_MERGE:
+	    case F_JSON_MERGE_PATCH:
 	    case F_JSON_GET_ALL_PATHS:
+	    case F_JSON_SEARCH:
 	      {
 		REGU_VARIABLE_LIST operand;
 
@@ -4244,7 +4258,12 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	case F_JSON_KEYS:
 	case F_JSON_REMOVE:
 	case F_JSON_ARRAY_APPEND:
+	case F_JSON_ARRAY_INSERT:
+	case F_JSON_CONTAINS_PATH:
+	case F_JSON_EXTRACT:
+	case F_JSON_SEARCH:
 	case F_JSON_MERGE:
+	case F_JSON_MERGE_PATCH:
 	case F_JSON_GET_ALL_PATHS:
 	  break;
 

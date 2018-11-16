@@ -206,6 +206,7 @@ namespace cubthread
     tran_entries[THREAD_TS_HFID_TABLE] = lf_tran_request_entry (&hfid_table_Ts);
     tran_entries[THREAD_TS_XCACHE] = lf_tran_request_entry (&xcache_Ts);
     tran_entries[THREAD_TS_FPCACHE] = lf_tran_request_entry (&fpcache_Ts);
+    tran_entries[THREAD_TS_DWB_SLOTS] = lf_tran_request_entry (&dwb_slots_Ts);
   }
 
   void
@@ -750,6 +751,10 @@ thread_resume_status_to_string (thread_resume_suspend_status resume_status)
       return "ALLOC_BCB_SUSPENDED";
     case THREAD_ALLOC_BCB_RESUMED:
       return "ALLOC_BCB_RESUMED";
+    case THREAD_DWB_QUEUE_SUSPENDED:
+      return "DWB_BLOCK_QUEUE_SUSPENDED";
+    case THREAD_DWB_QUEUE_RESUMED:
+      return "DWB_BLOCK_QUEUE_RESUMED";
     }
   return "UNKNOWN";
 }
