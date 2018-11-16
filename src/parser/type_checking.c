@@ -12572,7 +12572,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
     case F_JSON_GET_ALL_PATHS:
     case F_JSON_SEARCH:
     case F_JSON_KEYS:
-      return pt_eval_function_type (parser, node);
+      return pt_eval_function_type_new (parser, node);
 
       // legacy functions are still managed by old checking function; all should be migrated though
     default:
