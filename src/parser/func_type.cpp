@@ -195,27 +195,27 @@ std::vector<func_signature> func_signature::json_doc_r_doc =
 
 std::vector<func_signature> func_signature::json_doc_path =
 {
-{PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC, PT_GENERIC_TYPE_JSON_PATH}, {}},
+{PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC, PT_GENERIC_TYPE_STRING}, {}},
 };
 
 std::vector<func_signature> func_signature::json_doc_r_path =
 {
-{PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC}, {PT_GENERIC_TYPE_JSON_PATH}},
+{PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC}, { PT_GENERIC_TYPE_STRING }},
 };
 
 std::vector<func_signature> func_signature::json_doc_str_r_path =
 {
-{PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC, PT_GENERIC_TYPE_STRING}, {PT_GENERIC_TYPE_JSON_PATH}},
+{PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC, PT_GENERIC_TYPE_STRING}, { PT_GENERIC_TYPE_STRING }},
 };
 
 std::vector<func_signature> func_signature::json_doc_r_path_val =
 {
-{PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC}, {PT_GENERIC_TYPE_JSON_PATH, PT_GENERIC_TYPE_JSON_VAL}},
+{PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC}, { PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_JSON_VAL}},
 };
 
 std::vector<func_signature> func_signature::json_contains_path =
 {
-{PT_TYPE_INTEGER, {PT_GENERIC_TYPE_JSON_DOC, PT_GENERIC_TYPE_STRING}, {PT_GENERIC_TYPE_JSON_PATH}},
+{PT_TYPE_INTEGER, {PT_GENERIC_TYPE_JSON_DOC, PT_GENERIC_TYPE_STRING}, {PT_GENERIC_TYPE_STRING}},
 };
 
 std::vector<func_signature> func_signature::json_search =
@@ -227,7 +227,7 @@ std::vector<func_signature> func_signature::json_search =
 {
   PT_TYPE_JSON,
   {PT_GENERIC_TYPE_JSON_DOC, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING},
-  {PT_GENERIC_TYPE_JSON_PATH}
+  {PT_GENERIC_TYPE_STRING}
 },
 };
 
@@ -1029,9 +1029,6 @@ bool pt_are_equivalent_types (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM op_
 
     case PT_GENERIC_TYPE_JSON_DOC:
       return pt_is_json_doc_type (op_type);
-
-    case PT_GENERIC_TYPE_JSON_PATH:
-      return pt_is_json_path (op_type);
 
     case PT_GENERIC_TYPE_SCALAR:
       return (
