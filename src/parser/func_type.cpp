@@ -315,7 +315,6 @@ std::vector<func_signature> *func_signature::get_signatures (FUNC_TYPE ft)
       return &insert;
     case F_ELT:
       return &elt;
-
     case F_JSON_ARRAY:
       return &json_r_val;
     case F_JSON_ARRAY_APPEND:
@@ -340,6 +339,8 @@ std::vector<func_signature> *func_signature::get_signatures (FUNC_TYPE ft)
       return &json_doc_r_path;
     case F_JSON_REPLACE:
       return &json_doc_r_path_val;
+    case F_JSON_SEARCH:
+      return &json_search;
     case F_JSON_SET:
       return &json_doc_r_path_val;
     case PT_FIRST_VALUE:
@@ -461,26 +462,36 @@ const char *str (FUNC_TYPE ft)
       return "INSERT_SUBSTRING";
     case F_ELT:
       return "ELT";
-    case F_JSON_OBJECT:
-      return "JSON_OBJECT";
     case F_JSON_ARRAY:
       return "JSON_ARRAY";
-    case F_JSON_MERGE:
-      return "JSON_MERGE";
-    case F_JSON_INSERT:
-      return "JSON_INSERT";
-    case F_JSON_REMOVE:
-      return "JSON_REMOVE";
     case F_JSON_ARRAY_APPEND:
       return "JSON_ARRAY_APPEND";
+    case F_JSON_ARRAY_INSERT:
+      return "JSON_ARRAY_INSERT";
+    case F_JSON_CONTAINS_PATH:
+      return "JSON_CONTAINS_PATH";
+    case F_JSON_EXTRACT:
+      return "JSON_EXTRACT";
     case F_JSON_GET_ALL_PATHS:
       return "JSON_GET_ALL_PATHS";
-    case F_JSON_REPLACE:
-      return "JSON_REPLACE";
-    case F_JSON_SET:
-      return "JSON_SET";
+    case F_JSON_INSERT:
+      return "JSON_INSERT";
     case F_JSON_KEYS:
       return "JSON_KEYS";
+    case F_JSON_MERGE:
+      return "JSON_MERGE";
+    case F_JSON_MERGE_PATCH:
+      return "JSON_MERGE_PATH";
+    case F_JSON_OBJECT:
+      return "JSON_OBJECT";
+    case F_JSON_REMOVE:
+      return "JSON_REMOVE";
+    case F_JSON_REPLACE:
+      return "JSON_REPLACE";
+    case F_JSON_SEARCH:
+      return "JSON_SEARCH";
+    case F_JSON_SET:
+      return "JSON_SET";
     case PT_FIRST_VALUE:
       return "FIRST_VALUE";
     case PT_LAST_VALUE:
@@ -514,32 +525,30 @@ bool Func::cmp_types_castable (const pt_arg_type &type, pt_type_enum type_enum) 
   assert (type.type != pt_arg_type::INDEX);
   if (type_enum == PT_TYPE_NULL)
     {
-      return true; //PT_TYPE_NULL is castable to any type
+      return true; // PT_TYPE_NULL is castable to any type
+    }
+  if (type_enum == PT_TYPE_MAYBE)
+    {
+      return true; // consider this castable, and truth will be told after late binding
     }
   if (type.type == pt_arg_type::NORMAL)
     {
       switch (type.val.type)
 	{
 	case PT_TYPE_INTEGER:
-	  return (PT_IS_NUMERIC_TYPE (type_enum) || PT_IS_STRING_TYPE (type_enum) || type_enum == PT_TYPE_MAYBE);
+	  return (PT_IS_NUMERIC_TYPE (type_enum) || PT_IS_STRING_TYPE (type_enum));
 	case PT_TYPE_BIGINT:
-	  return (PT_IS_DISCRETE_NUMBER_TYPE (type_enum) || type_enum == PT_TYPE_MAYBE);
+	  return (PT_IS_DISCRETE_NUMBER_TYPE (type_enum));
 	case PT_TYPE_VARCHAR:
 	  return (PT_IS_SIMPLE_CHAR_STRING_TYPE (type_enum) || PT_IS_NUMERIC_TYPE (type_enum) ||
-		  PT_IS_DATE_TIME_TYPE (type_enum) || PT_IS_BIT_STRING_TYPE (type_enum) || type_enum == PT_TYPE_ENUMERATION ||
-		  type_enum == PT_TYPE_MAYBE || type_enum == PT_TYPE_NULL); //monetary should be here???
+		  PT_IS_DATE_TIME_TYPE (type_enum) || PT_IS_BIT_STRING_TYPE (type_enum)
+		  || type_enum == PT_TYPE_ENUMERATION); //monetary should be here???
 	case PT_TYPE_VARNCHAR:
 	  return (PT_IS_NATIONAL_CHAR_STRING_TYPE (type_enum) || PT_IS_NUMERIC_TYPE (type_enum) ||
-		  PT_IS_DATE_TIME_TYPE (type_enum) || PT_IS_BIT_STRING_TYPE (type_enum) || type_enum == PT_TYPE_ENUMERATION ||
-		  type_enum == PT_TYPE_MAYBE || type_enum == PT_TYPE_NULL); //monetary should be here???
+		  PT_IS_DATE_TIME_TYPE (type_enum) || PT_IS_BIT_STRING_TYPE (type_enum)
+		  || type_enum == PT_TYPE_ENUMERATION); //monetary should be here???
 	default:
-	  if (type.val.type == type_enum)
-	    {
-	      return (type_enum !=
-		      PT_TYPE_NONE); //false if both arguments are of type none; true if both have the same type
-	    }
-	  /* if def_type is a PT_TYPE_ENUM and the conditions above did not hold then the two types are not equivalent. */
-	  return false;
+	  return type.val.type == type_enum;
 	}
     }
 
@@ -547,23 +556,23 @@ bool Func::cmp_types_castable (const pt_arg_type &type, pt_type_enum type_enum) 
   switch (type.val.generic_type)
     {
     case PT_GENERIC_TYPE_NUMBER:
-      return (PT_IS_NUMERIC_TYPE (type_enum) || PT_IS_STRING_TYPE (type_enum) || type_enum == PT_TYPE_JSON ||
-	      type_enum == PT_TYPE_MAYBE || type_enum == PT_TYPE_NONE);
+      return (PT_IS_NUMERIC_TYPE (type_enum) || PT_IS_STRING_TYPE (type_enum) || type_enum == PT_TYPE_JSON);
     case PT_GENERIC_TYPE_DISCRETE_NUMBER:
-      return (PT_IS_NUMERIC_TYPE (type_enum) || PT_IS_STRING_TYPE (type_enum) || type_enum == PT_TYPE_MAYBE);
+      return (PT_IS_NUMERIC_TYPE (type_enum) || PT_IS_STRING_TYPE (type_enum));
 
     case PT_GENERIC_TYPE_STRING:
       return (PT_IS_NUMERIC_TYPE (type_enum) || PT_IS_STRING_TYPE (type_enum) || PT_IS_DATE_TIME_TYPE (type_enum));
     case PT_GENERIC_TYPE_CHAR:
       return (PT_IS_NUMERIC_TYPE (type_enum) || PT_IS_SIMPLE_CHAR_STRING_TYPE (type_enum) ||
-	      PT_IS_DATE_TIME_TYPE (type_enum) || type_enum == PT_TYPE_MAYBE);
+	      PT_IS_DATE_TIME_TYPE (type_enum));
     case PT_GENERIC_TYPE_NCHAR:
       return (PT_IS_NUMERIC_TYPE (type_enum) || PT_IS_NATIONAL_CHAR_STRING_TYPE (type_enum) ||
 	      PT_IS_DATE_TIME_TYPE (type_enum));
     case PT_GENERIC_TYPE_SCALAR:
-      return (type_enum == PT_TYPE_MAYBE);
+      return false;
 
     default:
+      assert (false);
       return false;
     }
 }
