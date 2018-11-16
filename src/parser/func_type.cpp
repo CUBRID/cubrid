@@ -200,17 +200,17 @@ std::vector<func_signature> func_signature::json_doc_path =
 
 std::vector<func_signature> func_signature::json_doc_r_path =
 {
-{PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC}, { PT_GENERIC_TYPE_STRING }},
+{PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC}, {PT_GENERIC_TYPE_STRING}},
 };
 
 std::vector<func_signature> func_signature::json_doc_str_r_path =
 {
-{PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC, PT_GENERIC_TYPE_STRING}, { PT_GENERIC_TYPE_STRING }},
+{PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC, PT_GENERIC_TYPE_STRING}, {PT_GENERIC_TYPE_STRING}},
 };
 
 std::vector<func_signature> func_signature::json_doc_r_path_val =
 {
-{PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC}, { PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_JSON_VAL}},
+{PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC}, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_JSON_VAL}},
 };
 
 std::vector<func_signature> func_signature::json_contains_path =
@@ -223,7 +223,9 @@ std::vector<func_signature> func_signature::json_search =
 // all signatures: json_doc, one_or_all_str, search_str[, escape_char[, path] ... -> JSON_DOC
 // first overload: json_doc, one_or_all_str, search_str:
 {PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING}, {}},
-// second overload: json_doc, one_or_all_str, search_str, escape_char[, paths ...]
+// second overload: json_doc, one_or_all_str, search_str, escape_char
+{PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING}, {}},
+// third overload: json_doc, one_or_all_str, search_str, escape_char, path...
 {
   PT_TYPE_JSON,
   {PT_GENERIC_TYPE_JSON_DOC, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING},
