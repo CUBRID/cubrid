@@ -1588,7 +1588,9 @@
 #define ER_JSON_TABLE_ON_ERROR_INCOMP_DOMAIN        -1239
 #define ER_SM_ONLINE_INDEX_ON_HIERARCHY             -1240
 
-#define ER_LAST_ERROR                               -1241
+#define ER_QPROC_XASLNODE_RECOMPILE_REQUESTED       -1241
+
+#define ER_LAST_ERROR                               -1242
 
 /*
  * CAUTION!
