@@ -236,6 +236,8 @@ static int pt_coerce_str_to_time_date_utime_datetime (PARSER_CONTEXT * parser, P
 						      PT_TYPE_ENUM * result_type);
 static int pt_coerce_3args (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_NODE * arg3);
 static PT_NODE *pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node);
+static PT_NODE *pt_eval_function_type_new (PARSER_CONTEXT * parser, PT_NODE * node);
+static PT_NODE *pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_eval_method_call_type (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg);
 static PT_NODE *pt_fold_const_function (PARSER_CONTEXT * parser, PT_NODE * func);
@@ -12547,6 +12549,37 @@ pt_character_length_for_node (PT_NODE * node, const PT_TYPE_ENUM coerce_type)
   return precision;
 }
 
+static PT_NODE *
+pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  switch (node->info.function.function_type)
+    {
+      // JSON functions are migrated to new checking function
+    case F_JSON_OBJECT:
+    case PT_JSON_OBJECTAGG:
+    case F_JSON_ARRAY:
+    case PT_JSON_ARRAYAGG:
+    case F_JSON_MERGE:
+    case F_JSON_MERGE_PATCH:
+    case F_JSON_INSERT:
+    case F_JSON_REPLACE:
+    case F_JSON_SET:
+    case F_JSON_ARRAY_APPEND:
+    case F_JSON_ARRAY_INSERT:
+    case F_JSON_CONTAINS_PATH:
+    case F_JSON_EXTRACT:
+    case F_JSON_REMOVE:
+    case F_JSON_GET_ALL_PATHS:
+    case F_JSON_SEARCH:
+    case F_JSON_KEYS:
+      return pt_eval_function_type (parser, node);
+
+      // legacy functions are still managed by old checking function; all should be migrated though
+    default:
+      return pt_eval_function_type_old (parser, node);
+    }
+}
+
 /*
  * pt_eval_function_type () -
  *   return: returns a node of the same type.
@@ -12555,7 +12588,7 @@ pt_character_length_for_node (PT_NODE * node, const PT_TYPE_ENUM coerce_type)
  *             an expression with aggregate functions.
  */
 static PT_NODE *
-pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_eval_function_type_new (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   FUNC_TYPE fcode = node->info.function.function_type;
   switch (fcode)
@@ -12841,17 +12874,17 @@ error_collation:
   return node;
 }
 
-#if 0				// OLD function check
 /*
  * pt_eval_function_type () -
  *   return: returns a node of the same type.
  *   parser(in): parser global context info for reentrancy
  *   node(in): a parse tree node of type PT_FUNCTION denoting an
  *             an expression with aggregate functions.
+ *
+ * TODO - remove me when all functions are migrated to new evaluation
  */
-
 static PT_NODE *
-pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_NODE *arg_list;
   PT_TYPE_ENUM arg_type;
@@ -14366,7 +14399,6 @@ error_collation:
 
   return node;
 }
-#endif // OLD function check
 
 /*
  * pt_eval_method_call_type () -
