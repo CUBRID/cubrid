@@ -2583,7 +2583,6 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
     }
 
-
   if (er_errid () != NO_ERROR && prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
     {
       er_clear ();
@@ -4784,7 +4783,6 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1, const DB_VALUE * va
       d3 = (double) (db_get_timestamptz (value3)->timestamp);
       break;
 
-
     case DB_TYPE_TIME:
       d1 = (double) *db_get_time (value1);
       d2 = (double) *db_get_time (value2);
@@ -5278,7 +5276,6 @@ db_json_pretty_dbval (DB_VALUE * json, DB_VALUE * res)
 	  return error_code;
 	}
 
-
       // db_json_pretty_func uses strdup, therefore set need_clear flag
       res->need_clear = true;
     }
@@ -5287,13 +5284,13 @@ db_json_pretty_dbval (DB_VALUE * json, DB_VALUE * res)
 }
 
 int
-db_json_arrayagg_dbval_accumulate (DB_VALUE * json, DB_VALUE * json_res)
+db_json_arrayagg_dbval_accumulate (DB_VALUE * json_db_val, DB_VALUE * json_res)
 {
-  JSON_DOC *this_doc;
-  JSON_DOC *result_doc = NULL;
   int error_code = NO_ERROR;
+  JSON_DOC *val_doc = NULL;
+  JSON_DOC *result_doc = NULL;
 
-  if (DB_IS_NULL (json))
+  if (DB_IS_NULL (json_db_val))
     {
       // this case should not be possible because we already wrapped a NULL value into a JSON with type DB_JSON_NULL
       assert (false);
@@ -5302,7 +5299,12 @@ db_json_arrayagg_dbval_accumulate (DB_VALUE * json, DB_VALUE * json_res)
     }
 
   // get the current value
-  this_doc = db_get_json_document (json);
+  error_code = db_value_to_json_value (*json_db_val, val_doc);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
 
   // append to existing document
   // allocate only first time
@@ -5316,14 +5318,16 @@ db_json_arrayagg_dbval_accumulate (DB_VALUE * json, DB_VALUE * json_res)
       result_doc = db_get_json_document (json_res);
     }
 
-  db_json_arrayagg_func_accumulate (this_doc, *result_doc);
-
   if (result_doc == NULL)
     {
       db_make_null (json_res);
+      db_json_delete_doc (val_doc);
       return ER_FAILED;
     }
 
+  db_json_add_element_to_array (result_doc, val_doc);
+
+  db_json_delete_doc (val_doc);
   return error_code;
 }
 
@@ -5336,16 +5340,16 @@ db_json_arrayagg_dbval_accumulate (DB_VALUE * json, DB_VALUE * json_res)
  * json_res (in)           : the DB_VALUE that contains the document where we want to insert
  */
 int
-db_json_objectagg_dbval_accumulate (DB_VALUE * json_key, DB_VALUE * json_val, DB_VALUE * json_res)
+db_json_objectagg_dbval_accumulate (DB_VALUE * json_key, DB_VALUE * json_db_val, DB_VALUE * json_res)
 {
-  JSON_DOC *val_doc;
-  const char *key_str = NULL;
-  JSON_DOC *result_doc = NULL;
   int error_code = NO_ERROR;
+  const char *key_str = NULL;
+  JSON_DOC *val_doc = NULL;
+  JSON_DOC *result_doc = NULL;
 
   // this case should not be possible because we checked before if the key is NULL
   // and wrapped the value with a JSON with DB_JSON_NULL type
-  if (DB_IS_NULL (json_key) || DB_IS_NULL (json_val))
+  if (DB_IS_NULL (json_key) || DB_IS_NULL (json_db_val))
     {
       assert (false);
       db_make_null (json_res);
@@ -5356,7 +5360,12 @@ db_json_objectagg_dbval_accumulate (DB_VALUE * json_key, DB_VALUE * json_val, DB
   key_str = db_get_string (json_key);
 
   // get the current value
-  val_doc = db_get_json_document (json_val);
+  error_code = db_value_to_json_value (*json_db_val, val_doc);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
 
   // append to existing document
   // allocate only first time
@@ -5370,14 +5379,16 @@ db_json_objectagg_dbval_accumulate (DB_VALUE * json_key, DB_VALUE * json_val, DB
       result_doc = db_get_json_document (json_res);
     }
 
-  db_json_objectagg_func_accumulate (key_str, val_doc, *result_doc);
-
   if (result_doc == NULL)
     {
       db_make_null (json_res);
+      db_json_delete_doc (val_doc);
       return ER_FAILED;
     }
 
+  db_json_add_member_to_object (result_doc, key_str, val_doc);
+
+  db_json_delete_doc (val_doc);
   return NO_ERROR;
 }
 

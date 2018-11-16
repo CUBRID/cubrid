@@ -18478,6 +18478,14 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 	  continue;
 	}
 
+      if (agg_p->function == PT_JSON_ARRAYAGG || agg_p->function == PT_JSON_OBJECTAGG)
+	{
+	  /* PT_JSON_ARRAYAGG and PT_JSON_OBJECTAGG always have the same signature */
+	  agg_p->accumulator_domain.value_dom = &tp_Json_domain;
+	  agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
+	  continue;
+	}
+
       /* fetch function operand */
       if (fetch_peek_dbval (thread_p, &agg_p->operands->value, &xasl_state->vd, NULL, NULL, NULL, &dbval) != NO_ERROR)
 	{
@@ -18528,8 +18536,6 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 	    case PT_AGG_BIT_XOR:
 	    case PT_MIN:
 	    case PT_MAX:
-	    case PT_JSON_ARRAYAGG:
-	    case PT_JSON_OBJECTAGG:
 	      agg_p->accumulator_domain.value_dom = agg_p->domain;
 	      agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
 	      break;
@@ -21738,8 +21744,8 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
       comment = (char *) or_get_constraint_comment (&class_record, index->btname);
       db_make_string (out_values[12], comment);
 
-      /* Visble */
-      db_make_string_by_const_str (out_values[13], (index->index_status == OR_INVISIBLE_INDEX) ? "NO" : "YES");
+      /* Visible */
+      db_make_string_by_const_str (out_values[13], (index->index_status == OR_NORMAL_INDEX) ? "YES" : "NO");
 
       if (index->func_index_info == NULL)
 	{

@@ -5500,7 +5500,7 @@ pt_infer_common_type (const PT_OP_TYPE op, PT_TYPE_ENUM * arg1, PT_TYPE_ENUM * a
     }
   if (arg3_eq_type != PT_TYPE_NONE)
     {
-      /* at this point either all arg1_eq_type, arg2_eq_type and common_type are PT_TYPE_MAYBE, or are already set to a 
+      /* at this point either all arg1_eq_type, arg2_eq_type and common_type are PT_TYPE_MAYBE, or are already set to a
        * PT_TYPE_ENUM */
       common_type = pt_common_type_op (common_type, op, arg3_eq_type);
       if (common_type == PT_TYPE_MAYBE)
@@ -5524,7 +5524,7 @@ pt_infer_common_type (const PT_OP_TYPE op, PT_TYPE_ENUM * arg1, PT_TYPE_ENUM * a
     }
   if (common_type == PT_TYPE_MAYBE && expected_type != PT_TYPE_NONE && !pt_is_op_hv_late_bind (op))
     {
-      /* if expected type if not PT_TYPE_NONE then a expression higher up in the parser tree has set an expected domain 
+      /* if expected type if not PT_TYPE_NONE then a expression higher up in the parser tree has set an expected domain
        * for this node and we can use it to set the expected domain of the arguments */
       common_type = expected_type;
     }
@@ -5756,7 +5756,7 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
   else if (PT_IS_COLLECTION_TYPE (arg2_type))
     {
       /* Because we're using collections, semantically, all three cases below are valid: 1. SELECT * FROM tbl WHERE
-       * int_col in {integer, set, object, date} 2. SELECT * FROM tbl WHERE int_col in {str, str, str} 3. SELECT * FROM 
+       * int_col in {integer, set, object, date} 2. SELECT * FROM tbl WHERE int_col in {str, str, str} 3. SELECT * FROM
        * tbl WHERE int_col in {integer, integer, integer} We will only coerce arg2 if there is a common type between
        * arg1 and all elements from the collection arg2. We do not consider the case in which we cannot discern a
        * common type to be a semantic error and we rely on the functionality of the comparison operators to be applied
@@ -6154,7 +6154,7 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * arg
 	}
     }
 
-  /* We might have decided a new type for arg1 based on the common_type but, if the signature defines an exact type, we 
+  /* We might have decided a new type for arg1 based on the common_type but, if the signature defines an exact type, we
    * should keep it. For example, + is a symmetric operator but also defines date + bigint which is not symmetric and
    * we have to keep the bigint type even if the common type is date. This is why, before coercing expression
    * arguments, we check the signature that we decided to apply */
@@ -7280,7 +7280,7 @@ pt_where_type (PARSER_CONTEXT * parser, PT_NODE * where)
 
 always_false:
 
-  /* If any conjunct is false, the entire WHERE clause is false. Jack the return value to be a single false node (being 
+  /* If any conjunct is false, the entire WHERE clause is false. Jack the return value to be a single false node (being
    * sure to unlink the node from the "next" chain if we reuse the incoming node). */
   parser_free_tree (parser, where);
   where = parser_new_node (parser, PT_VALUE);
@@ -7349,7 +7349,7 @@ pt_false_where (PARSER_CONTEXT * parser, PT_NODE * node)
 
     case PT_SELECT:
 
-      /* If the "connect by" condition is false the query still has to return all the "start with" tuples. Therefore we 
+      /* If the "connect by" condition is false the query still has to return all the "start with" tuples. Therefore we
        * do not check that "connect by" is false. */
       if (node->info.query.q.select.start_with)
 	{
@@ -7944,7 +7944,7 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 	 * argn-1), argn) we need to compute the common type between all arguments in order to give a correct return
 	 * type. Let's say we have the following call to PT_GREATEST: greatest(e1, e2, e3, 2) where e1, e2, e3 are
 	 * ENUMs. The internal form is rewrited to greatest(greatest(greatest(e1, e2), e3), 2). For the inner call the
-	 * common type will be STRING. For middle call the common type will be STRING and for the outer call the common 
+	 * common type will be STRING. For middle call the common type will be STRING and for the outer call the common
 	 * type will be DOUBLE and both arguments will be casted to DOUBLE including the returned STRING of the middle
 	 * (or even inner) call. If the string does not have a numeric format, the call will fail. The natural
 	 * behaviour is a conversion of all enum arguments to the type of '2' (integer). So we compute the common type
@@ -7967,7 +7967,7 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 		norm_arg = &recurs_expr->info.expr.arg1;
 		recurs_arg = &recurs_expr->info.expr.arg2;
 	      }
-	    /* In order to correctly compute the common type we need to know the type of each argument and therefore we 
+	    /* In order to correctly compute the common type we need to know the type of each argument and therefore we
 	     * compute it. */
 	    node_tmp = pt_semantic_type (parser, *norm_arg, (SEMANTIC_CHK_INFO *) arg);
 	    if (*norm_arg == NULL || pt_has_error (parser))
@@ -9220,7 +9220,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
     }
 
-  /* 
+  /*
    * At this point, arg1_hv is non-NULL (and equal to arg1) if it represents
    * a dynamic host variable, i.e., a host var parameter that hasn't had
    * a value supplied at compile time.  Same for arg2_hv and arg3_hv...
@@ -9351,7 +9351,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
       /* [NOT] LIKE operators with an escape clause are parsed like PT_LIKE(arg1, PT_LIKE_ESCAPE(arg2, arg3)). We
        * convert it to PT_LIKE(arg1, arg2, arg3) to be able to decide the correct common type of all arguments and we
        * will convert it back once we apply the correct casts.
-       * 
+       *
        * A better approach would be to modify the parser to output PT_LIKE(arg1, arg2, arg3) directly. */
 
       if (arg2->node_type == PT_EXPR && arg2->info.expr.op == PT_LIKE_ESCAPE)
@@ -9739,7 +9739,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
   if (pt_is_symmetric_op (op))
     {
-      /* 
+      /*
        * At most one of these next two cases will hold... these will
        * make a dynamic host var (one about whose type we know nothing
        * at this point) assume the type of its "mate" in a symmetric
@@ -9811,7 +9811,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
 	  if (arg1_type != common_type)
 	    {
-	      /* 
+	      /*
 	       * pt_coerce_value may fail here, but it shouldn't be
 	       * considered a real failure yet, because it could still
 	       * be rescued by the gruesome date/time stuff below.
@@ -9922,7 +9922,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
   if (node->type_enum == PT_TYPE_MAYBE && pt_is_able_to_determine_return_type (op))
     {
-      /* Because we can determine the return type of the expression regardless of its argument, go further to determine 
+      /* Because we can determine the return type of the expression regardless of its argument, go further to determine
        * it. temporary reset to NONE. */
       node->type_enum = PT_TYPE_NONE;
     }
@@ -10078,7 +10078,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
       else
 	{
-	  /* We have to decide a common type for arg2 and arg3. We cannot use pt_common_type_op because this function 
+	  /* We have to decide a common type for arg2 and arg3. We cannot use pt_common_type_op because this function
 	   * is designed mostly for arithmetic expression. This is why we use the tp_is_more_general_type here. */
 	  dbtype2 = pt_type_enum_to_db (arg2_type);
 	  dbtype3 = pt_type_enum_to_db (arg3_type);
@@ -11592,7 +11592,7 @@ pt_common_type_op (PT_TYPE_ENUM t1, PT_OP_TYPE op, PT_TYPE_ENUM t2)
     default:
       break;
     }
-  /* 
+  /*
    * true + true must not be logical.
    * Same goes for true*true, (i or j)+(i and j) etc.
    * Basic rule: if both operands are logical but the operation is not logical,
@@ -12807,7 +12807,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
       return node;
     }
 
-  /* to avoid "node->next" ambiguities, wrap any logical node within the arg list with a cast to integer. This way, the 
+  /* to avoid "node->next" ambiguities, wrap any logical node within the arg list with a cast to integer. This way, the
    * CNF trees do not mix up with the arg list. */
   for (arg = arg_list; arg != NULL; prev = arg, arg = arg->next)
     {
@@ -12838,7 +12838,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
       return node;
     }
 
-  /* 
+  /*
    * Should only get one arg to function; set to 0 if the function
    * accepts more than one.
    */
@@ -13010,36 +13010,28 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	    arg_type = PT_TYPE_NONE;
 	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
 			 pt_show_function (fcode), pt_show_type_enum (arg_list->type_enum));
-	    break;
 	  }
-
-	/* cast arg_list to json */
-	arg_list = pt_wrap_with_cast_op (parser, arg_list, PT_TYPE_JSON, 0, 0, NULL);
-	if (arg_list == NULL)
-	  {
-	    return node;
-	  }
-
-	arg_type = PT_TYPE_JSON;
-	node->info.function.arg_list = arg_list;
       }
       break;
 
     case PT_JSON_OBJECTAGG:
       {
 	// we will have 2 arguments (key, value)
-	// the key needs to be STRING type and the value can be any type compatible with JSON type
 
-	// check key
 	PT_NODE *key = arg_list;
+	// value can be any type compatible with JSON type
 	PT_NODE *value = arg_list->next;
 
+	// if the key is not of type STRING then try to cast it to STRING
 	if (!PT_IS_STRING_TYPE (key->type_enum))
 	  {
-	    arg_type = PT_TYPE_NONE;
-	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
-			 pt_show_function (fcode), pt_show_type_enum (key->type_enum));
-	    break;
+	    arg_list = pt_wrap_with_cast_op (parser, key, PT_TYPE_VARCHAR, TP_FLOATING_PRECISION_VALUE, 0, NULL);
+	    if (arg_list == NULL)
+	      {
+		return node;
+	      }
+
+	    node->info.function.arg_list = arg_list;
 	  }
 
 	// check value
@@ -13052,15 +13044,6 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	    break;
 	  }
 
-	/* cast value to json */
-	arg_list->next = pt_wrap_with_cast_op (parser, value, PT_TYPE_JSON, 0, 0, NULL);
-	if (arg_list->next == NULL)
-	  {
-	    return node;
-	  }
-
-	arg_type = PT_TYPE_JSON;
-	node->info.function.arg_list = arg_list;
 	// JSON_OBJECTAGG requires 2 arguments
 	check_agg_single_arg = false;
       }
@@ -13071,14 +13054,37 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	PT_TYPE_ENUM unsupported_type;
 	bool is_supported = false;
 
+	bool new_arg_list_inited = false;
+	PT_NODE *new_arg_prev = NULL;
+	PT_NODE *new_arg_curr = NULL;
+	PT_NODE *new_arg_list_head = NULL;
+
 	PT_NODE *arg = arg_list;
+	PT_NODE *arg_next = NULL;
 	unsigned int index = 0;
 
 	while (arg)
 	  {
+	    // save next node since pt_wrap_with_cast_op will set next to NULL
+	    arg_next = arg->next;
+	    new_arg_curr = arg;
+
 	    if (index % 2 == 0)
 	      {
-		is_supported = pt_is_json_object_name (arg->type_enum);
+		if (!PT_IS_STRING_TYPE (arg->type_enum))
+		  {
+		    PT_NODE *tmp =
+		      pt_wrap_with_cast_op (parser, arg, PT_TYPE_VARCHAR, TP_FLOATING_PRECISION_VALUE, 0, NULL);
+		    if (tmp == NULL)
+		      {
+			return node;
+		      }
+
+		    // override new_arg_curr in case a cast node is added
+		    new_arg_curr = tmp;
+		  }
+
+		is_supported = true;
 	      }
 	    else
 	      {
@@ -13091,7 +13097,21 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 		break;
 	      }
 
-	    arg = arg->next;
+	    // initialize new_arg_list only first time
+	    if (!new_arg_list_inited)
+	      {
+		new_arg_list_head = new_arg_curr;
+		new_arg_list_inited = true;
+	      }
+
+	    // set next link of the prev node to curr one for the new list
+	    if (new_arg_prev != NULL)
+	      {
+		new_arg_prev->next = new_arg_curr;
+	      }
+
+	    new_arg_prev = new_arg_curr;
+	    arg = arg_next;
 	    index++;
 	  }
 
@@ -13105,6 +13125,8 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  {
 	    arg_type = PT_TYPE_JSON;
 	  }
+
+	node->info.function.arg_list = new_arg_list_head;
       }
       break;
 
@@ -13202,7 +13224,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	      }
 	    else
 	      {
-		is_supported = pt_is_json_doc_type (arg->type_enum);
+		is_supported = pt_is_json_value_type (arg->type_enum);
 	      }
 
 	    if (!is_supported)
@@ -13349,7 +13371,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	      }
 	    else
 	      {
-		// args[4+] can be only paths 
+		// args[4+] can be only paths
 		is_supported = pt_is_json_path (arg->type_enum);
 	      }
 
@@ -13970,7 +13992,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 		  }
 	      }
 
-	    /* 
+	    /*
 	     * Look for the first argument of character string type and obtain its category (CHAR/NCHAR). All other
 	     * arguments should be converted to this type, which is also the return type. */
 
@@ -15248,7 +15270,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      return 0;
 	    }
 
-	  /* If len, defined as second argument, is negative value, RIGHT function returns the entire string. It's same 
+	  /* If len, defined as second argument, is negative value, RIGHT function returns the entire string. It's same
 	   * behavior with LEFT and SUBSTRING. */
 	  if (db_get_int (&tmp_val2) < 0)
 	    {
@@ -16717,7 +16739,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 	    case DB_TYPE_INTEGER:
 	      {
-		/* NOTE that we need volatile to prevent optimizer from generating division expression as 
+		/* NOTE that we need volatile to prevent optimizer from generating division expression as
 		 * multiplication.
 		 */
 		volatile int i1, i2, itmp;
@@ -16738,7 +16760,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 	    case DB_TYPE_BIGINT:
 	      {
-		/* NOTE that we need volatile to prevent optimizer from generating division expression as 
+		/* NOTE that we need volatile to prevent optimizer from generating division expression as
 		 * multiplication.
 		 */
 		volatile DB_BIGINT bi1, bi2, bitmp;
@@ -16759,7 +16781,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 	    case DB_TYPE_SHORT:
 	      {
-		/* NOTE that we need volatile to prevent optimizer from generating division expression as 
+		/* NOTE that we need volatile to prevent optimizer from generating division expression as
 		 * multiplication.
 		 */
 		volatile short s1, s2, stmp;
@@ -19766,7 +19788,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	}
 
       /* a NULL OID is returned; the resulting PT_VALUE node will be replaced with a PT_HOST_VAR by the auto
-       * parameterization step because of the special force_auto_parameterize flag. Also see and pt_dup_key_update_stmt 
+       * parameterization step because of the special force_auto_parameterize flag. Also see and pt_dup_key_update_stmt
        * () and qo_optimize_queries () */
       tmp_value->type_enum = PT_TYPE_OBJECT;
       OID_SET_NULL (&null_oid);
@@ -20917,7 +20939,7 @@ pt_set_default_data_type (PARSER_CONTEXT * parser, PT_TYPE_ENUM type, PT_NODE **
 
     case PT_TYPE_NUMERIC:
       dt->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
-      /* 
+      /*
        * FIX ME!! Is it the case that this will always happen in
        * zero-scale context?  That's certainly the case when we're
        * coercing from integers, but what about floats and doubles?
@@ -21097,7 +21119,7 @@ pt_coerce_value_internal (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest
     {
     case PT_HOST_VAR:
       /* binding of host variables may be delayed in the case of an esql PREPARE statement until an OPEN cursor or an
-       * EXECUTE statement. in this case we seem to have no choice but to assume each host variable is typeless and can 
+       * EXECUTE statement. in this case we seem to have no choice but to assume each host variable is typeless and can
        * be coerced into any desired type. */
       if (parser->set_host_var == 0)
 	{
@@ -22472,7 +22494,7 @@ pt_get_collation_info (PT_NODE * node, PT_COLL_INFER * coll_infer)
  *
  *   return:  NO_COLLATION = node doesn't have collation;
  *	      HAS_COLLATION = node has collation
- *	      ERROR_COLLATION = node has multiple component types with 
+ *	      ERROR_COLLATION = node has multiple component types with
  *	      collation and collations are not compatible
  *
  *   parser(in)
@@ -22692,9 +22714,9 @@ error:
  *   parser(in)
  *   node(in): a parse tree node
  *   coll_infer(out): collation inference data
- *   is_inner_collection(in): the node is an inner collection (inside 
+ *   is_inner_collection(in): the node is an inner collection (inside
  *   another collection)
- *   first_element(in/out): is this the first element of the outer collection  
+ *   first_element(in/out): is this the first element of the outer collection
  *   (of all of the collections of collection)
  *
  */
@@ -23177,7 +23199,7 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node, const int col
       else if (PT_HAS_COLLATION (node->type_enum) || node->type_enum == PT_TYPE_MAYBE)
 	{
 	  /* We wrap with cast when: - force_mode is disabled (we apply new collation on existing node), and - it is a
-	   * string literal node with different codeset - it is a other node type with differrent collation - it is not 
+	   * string literal node with different codeset - it is a other node type with differrent collation - it is not
 	   * a CAST expression - it is not HOST_VAR node */
 	  if (!force_mode
 	      && ((node->data_type != NULL
@@ -23497,7 +23519,7 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node, const int col
       if (is_string_literal == true && node->node_type == PT_EXPR && node->info.expr.op == PT_CAST)
 	{
 	  PT_NODE *save_next;
-	  /* a PT_VALUE node was wrapped with CAST to change the charset and collation, but the value originated from a 
+	  /* a PT_VALUE node was wrapped with CAST to change the charset and collation, but the value originated from a
 	   * simple string literal which does not allow COLLATE; this forces a charset conversion and print with the
 	   * new charset introducer, and without COLLATE */
 	  assert (PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_CAST_SHOULD_FOLD));
@@ -24179,7 +24201,7 @@ coerce_arg:
 coerce_result:
   if (op == PT_CHR || op == PT_CLOB_TO_CHAR)
     {
-      /* for these operators, we don't want the arguments' collations to infere common collation, but special values of 
+      /* for these operators, we don't want the arguments' collations to infere common collation, but special values of
        * arg2 */
       common_cs = (INTL_CODESET) expr->data_type->info.data_type.units;
       common_coll = expr->data_type->info.data_type.collation_id;
@@ -24845,7 +24867,7 @@ pt_fix_enumeration_comparison (PARSER_CONTEXT * parser, PT_NODE * expr)
 
       while (list != NULL)
 	{
-	  /* Skip nodes that already have been wrapped with PT_TO_ENUMERATION_VALUE expression or have the correct type 
+	  /* Skip nodes that already have been wrapped with PT_TO_ENUMERATION_VALUE expression or have the correct type
 	   */
 	  if ((list->node_type == PT_EXPR && list->info.expr.op == PT_TO_ENUMERATION_VALUE)
 	      || (list->type_enum == PT_TYPE_ENUMERATION
@@ -25143,7 +25165,7 @@ pt_fix_arguments_collation_flag (PT_NODE * expr)
     }
 
   /* for each argument, determine a common type between signatures : if all signatures allows only data types having
-   * collation, we can promote the collation flag, if not - the signature type (argx_sig_type) is set to TYPE_NULL, and 
+   * collation, we can promote the collation flag, if not - the signature type (argx_sig_type) is set to TYPE_NULL, and
    * the collation flag is not promoted */
   for (i = 0; i < def.overloads_count; i++)
     {

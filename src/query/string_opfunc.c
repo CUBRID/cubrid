@@ -53,7 +53,7 @@
 #include "dbtype.h"
 #include "elo.h"
 #include "db_elo.h"
-#include <vector>
+#include <algorithm>
 #if !defined (SERVER_MODE)
 #include "parse_tree.h"
 #include "es_common.h"
@@ -181,6 +181,7 @@ static bool is_string (const DB_VALUE * s);
 static bool is_char_string (const DB_VALUE * s);
 static bool is_integer (const DB_VALUE * i);
 static bool is_number (const DB_VALUE * n);
+static int is_str_find_all (DB_VALUE * val, bool & find_all);
 static int qstr_grow_string (DB_VALUE * src_string, DB_VALUE * result, int new_size);
 #if defined (ENABLE_UNUSED_FUNCTION)
 static int qstr_append (unsigned char *s1, int s1_length, int s1_precision, DB_TYPE s1_type, const unsigned char *s2,
@@ -285,7 +286,6 @@ static int print_string_date_token (const STRING_DATE_TOKEN token_type, const IN
 				    int *token_size);
 static void convert_locale_number (char *sz, const int size, const INTL_LANG src_locale, const INTL_LANG dst_locale);
 static int parse_tzd (const char *str, const int max_expect_len);
-static int db_value_to_json_doc (const DB_VALUE & value, REFPTR (JSON_DOC, json));
 static int db_json_merge_helper (DB_VALUE * result, DB_VALUE * arg[], int const num_args, bool patch = false);
 
 #define TRIM_FORMAT_STRING(sz, n) {if (strlen(sz) > n) sz[n] = 0;}
@@ -3104,7 +3104,8 @@ db_json_object (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
   int i;
   int error_code = NO_ERROR;
   JSON_DOC *new_doc = NULL;
-  char *str = NULL;
+  JSON_DOC *value_doc = NULL;
+  const char *value_key = NULL;
 
   db_make_null (result);
 
@@ -3132,63 +3133,17 @@ db_json_object (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	  return ER_JSON_OBJECT_NAME_IS_NULL;
 	}
 
-      if (DB_IS_NULL (arg[i + 1]))
+      value_key = db_get_string (arg[i]);
+      error_code = db_value_to_json_value (*arg[i + 1], value_doc);
+      if (error_code != NO_ERROR)
 	{
-	  error_code = db_json_add_member_to_object (new_doc, db_get_string (arg[i]), (JSON_DOC *) NULL);
-	  if (error_code != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	      db_json_delete_doc (new_doc);
-	      return error_code;
-	    }
-	  continue;
-	}
-
-      switch (DB_VALUE_DOMAIN_TYPE (arg[i + 1]))
-	{
-	case DB_TYPE_CHAR:
-	case DB_TYPE_VARCHAR:
-	case DB_TYPE_NCHAR:
-	case DB_TYPE_VARNCHAR:
-	  error_code = db_json_add_member_to_object (new_doc, db_get_string (arg[i]), db_get_string (arg[i + 1]));
-	  break;
-
-	case DB_TYPE_INTEGER:
-	  error_code = db_json_add_member_to_object (new_doc, db_get_string (arg[i]), db_get_int (arg[i + 1]));
-	  break;
-
-	case DB_TYPE_BIGINT:
-	  error_code = db_json_add_member_to_object (new_doc, db_get_string (arg[i]), db_get_bigint (arg[i + 1]));
-	  break;
-
-	case DB_TYPE_DOUBLE:
-	  error_code = db_json_add_member_to_object (new_doc, db_get_string (arg[i]), db_get_double (arg[i + 1]));
-	  break;
-
-	case DB_TYPE_NUMERIC:
-	  {
-	    DB_VALUE double_value;
-
-	    db_value_coerce (arg[i + 1], &double_value, db_type_to_db_domain (DB_TYPE_DOUBLE));
-	    error_code = db_json_add_member_to_object (new_doc, db_get_string (arg[i]), db_get_double (&double_value));
-	    pr_clear_value (&double_value);
-	  }
-	  break;
-
-	case DB_TYPE_JSON:
-	  error_code = db_json_add_member_to_object (new_doc, db_get_string (arg[i]), arg[i + 1]->data.json.document);
-	  break;
-
-	case DB_TYPE_NULL:
-	  error_code = db_json_add_member_to_object (new_doc, db_get_string (arg[i]), (JSON_DOC *) NULL);
-	  break;
-
-	default:
+	  ASSERT_ERROR ();
 	  db_json_delete_doc (new_doc);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
-	  return ER_QSTR_INVALID_DATA_TYPE;
+	  return error_code;
 	}
 
+      error_code = db_json_add_member_to_object (new_doc, value_key, value_doc);
+      db_json_delete_doc (value_doc);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -3205,8 +3160,9 @@ db_json_object (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 int
 db_json_array (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 {
+  int error_code;
   JSON_DOC *new_doc = NULL;
-  char *str = NULL;
+  JSON_DOC *value_doc = NULL;
 
   db_make_null (result);
 
@@ -3220,56 +3176,16 @@ db_json_array (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 
   for (int i = 0; i < num_args; i++)
     {
-      if (DB_IS_NULL (arg[i]))
+      error_code = db_value_to_json_value (*arg[i], value_doc);
+      if (error_code != NO_ERROR)
 	{
-	  db_json_add_element_to_array (new_doc, (JSON_DOC *) NULL);
-	  continue;
-	}
-
-      switch (DB_VALUE_DOMAIN_TYPE (arg[i]))
-	{
-	case DB_TYPE_CHAR:
-	case DB_TYPE_VARCHAR:
-	case DB_TYPE_NCHAR:
-	case DB_TYPE_VARNCHAR:
-	  db_json_add_element_to_array (new_doc, db_get_string (arg[i]));
-	  break;
-
-	case DB_TYPE_INTEGER:
-	  db_json_add_element_to_array (new_doc, db_get_int (arg[i]));
-	  break;
-
-	case DB_TYPE_BIGINT:
-	  db_json_add_element_to_array (new_doc, db_get_bigint (arg[i]));
-	  break;
-
-	case DB_TYPE_DOUBLE:
-	  db_json_add_element_to_array (new_doc, db_get_double (arg[i]));
-	  break;
-
-	case DB_TYPE_NUMERIC:
-	  {
-	    DB_VALUE double_value;
-
-	    db_value_coerce (arg[i], &double_value, db_type_to_db_domain (DB_TYPE_DOUBLE));
-	    db_json_add_element_to_array (new_doc, db_get_double (&double_value));
-	    pr_clear_value (&double_value);
-	  }
-	  break;
-
-	case DB_TYPE_JSON:
-	  db_json_add_element_to_array (new_doc, arg[i]->data.json.document);
-	  break;
-
-	case DB_TYPE_NULL:
-	  db_json_add_element_to_array (new_doc, (JSON_DOC *) NULL);
-	  break;
-
-	default:
+	  ASSERT_ERROR ();
 	  db_json_delete_doc (new_doc);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
-	  return ER_QSTR_INVALID_DATA_TYPE;
+	  return error_code;
 	}
+
+      db_json_add_element_to_array (new_doc, value_doc);
+      db_json_delete_doc (value_doc);
     }
 
   db_make_json (result, new_doc, true);
@@ -3282,7 +3198,8 @@ db_json_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 {
   int i, error_code = NO_ERROR;
   JSON_DOC *new_doc = NULL;
-  char *str = NULL;
+  JSON_DOC *value_doc = NULL;
+  const char *value_path = NULL;
 
   db_make_null (result);
 
@@ -3313,30 +3230,21 @@ db_json_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	  return db_make_null (result);
 	}
 
-      switch (DB_VALUE_DOMAIN_TYPE (arg[i + 1]))
+      // extract path
+      value_path = db_get_string (arg[i]);
+
+      // extract json value
+      error_code = db_value_to_json_value (*arg[i + 1], value_doc);
+      if (error_code != NO_ERROR)
 	{
-	case DB_TYPE_CHAR:
-	case DB_TYPE_VARCHAR:
-	case DB_TYPE_NCHAR:
-	case DB_TYPE_VARNCHAR:
-	  error_code = db_json_convert_string_and_call (db_get_string (arg[i + 1]), db_get_string_size (arg[i + 1]),
-							db_json_insert_func, *new_doc, db_get_string (arg[i]));
-	  break;
-
-	case DB_TYPE_JSON:
-	  error_code = db_json_insert_func (arg[i + 1]->data.json.document, *new_doc, db_get_string (arg[i]));
-	  break;
-
-	case DB_TYPE_NULL:
+	  ASSERT_ERROR ();
 	  db_json_delete_doc (new_doc);
-	  return db_make_null (result);
-
-	default:
-	  db_json_delete_doc (new_doc);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
-	  return ER_QSTR_INVALID_DATA_TYPE;
+	  return error_code;
 	}
 
+      // insert into result the value at required path
+      error_code = db_json_insert_func (value_doc, *new_doc, value_path);
+      db_json_delete_doc (value_doc);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -3355,6 +3263,8 @@ db_json_replace (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 {
   int i, error_code = NO_ERROR;
   JSON_DOC *new_doc = NULL;
+  JSON_DOC *value_doc = NULL;
+  const char *value_path = NULL;
 
   db_make_null (result);
 
@@ -3385,30 +3295,21 @@ db_json_replace (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	  return db_make_null (result);
 	}
 
-      switch (DB_VALUE_DOMAIN_TYPE (arg[i + 1]))
+      // extract path
+      value_path = db_get_string (arg[i]);
+
+      // extract json value
+      error_code = db_value_to_json_value (*arg[i + 1], value_doc);
+      if (error_code != NO_ERROR)
 	{
-	case DB_TYPE_CHAR:
-	case DB_TYPE_VARCHAR:
-	case DB_TYPE_NCHAR:
-	case DB_TYPE_VARNCHAR:
-	  error_code = db_json_convert_string_and_call (db_get_string (arg[i + 1]), db_get_string_size (arg[i + 1]),
-							db_json_replace_func, *new_doc, db_get_string (arg[i]));
-	  break;
-
-	case DB_TYPE_JSON:
-	  error_code = db_json_replace_func (arg[i + 1]->data.json.document, *new_doc, db_get_string (arg[i]));
-	  break;
-
-	case DB_TYPE_NULL:
+	  ASSERT_ERROR ();
 	  db_json_delete_doc (new_doc);
-	  return db_make_null (result);
-
-	default:
-	  db_json_delete_doc (new_doc);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
-	  return ER_QSTR_INVALID_DATA_TYPE;
+	  return error_code;
 	}
 
+      // insert into result the value at requred path
+      error_code = db_json_replace_func (value_doc, *new_doc, value_path);
+      db_json_delete_doc (value_doc);
       if (error_code != NO_ERROR)
 	{
 	  db_json_delete_doc (new_doc);
@@ -3426,6 +3327,8 @@ db_json_set (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 {
   int i, error_code = NO_ERROR;
   JSON_DOC *new_doc = NULL;
+  JSON_DOC *value_doc = NULL;
+  const char *value_path = NULL;
 
   db_make_null (result);
 
@@ -3456,30 +3359,21 @@ db_json_set (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 	  return db_make_null (result);
 	}
 
-      switch (DB_VALUE_DOMAIN_TYPE (arg[i + 1]))
+      // extract path
+      value_path = db_get_string (arg[i]);
+
+      // extract json value
+      error_code = db_value_to_json_value (*arg[i + 1], value_doc);
+      if (error_code != NO_ERROR)
 	{
-	case DB_TYPE_CHAR:
-	case DB_TYPE_VARCHAR:
-	case DB_TYPE_NCHAR:
-	case DB_TYPE_VARNCHAR:
-	  error_code = db_json_convert_string_and_call (db_get_string (arg[i + 1]), db_get_string_size (arg[i + 1]),
-							db_json_set_func, *new_doc, db_get_string (arg[i]));
-	  break;
-
-	case DB_TYPE_JSON:
-	  error_code = db_json_set_func (arg[i + 1]->data.json.document, *new_doc, db_get_string (arg[i]));
-	  break;
-
-	case DB_TYPE_NULL:
+	  ASSERT_ERROR ();
 	  db_json_delete_doc (new_doc);
-	  return db_make_null (result);
-
-	default:
-	  db_json_delete_doc (new_doc);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
-	  return ER_QSTR_INVALID_DATA_TYPE;
+	  return error_code;
 	}
 
+      // insert into result the value at requred path
+      error_code = db_json_set_func (value_doc, *new_doc, value_path);
+      db_json_delete_doc (value_doc);
       if (error_code != NO_ERROR)
 	{
 	  db_json_delete_doc (new_doc);
@@ -3524,27 +3418,16 @@ db_json_keys (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
       path = db_get_string (arg[1]);
     }
 
-  switch (DB_VALUE_DOMAIN_TYPE (arg[0]))
+  error_code = db_value_to_json_doc (*arg[0], new_doc);
+  if (error_code != NO_ERROR)
     {
-    case DB_TYPE_CHAR:
-    case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
-      error_code = db_json_keys_func (db_get_string (arg[0]), result_json, path.c_str (), db_get_string_size (arg[0]));
-      break;
-    case DB_TYPE_JSON:
-      error_code = db_json_keys_func (*(db_get_json_document (arg[0])), result_json, path.c_str ());
-      break;
-    case DB_TYPE_NULL:
-      db_json_delete_doc (result_json);
-      return db_make_null (result);
-
-    default:
-      db_json_delete_doc (result_json);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
-      return ER_QSTR_INVALID_DATA_TYPE;
+      ASSERT_ERROR ();
+      return error_code;
     }
 
+  result_json = db_json_allocate_doc ();
+  error_code = db_json_keys_func (*new_doc, *result_json, path.c_str ());
+  db_json_delete_doc (new_doc);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -3611,7 +3494,8 @@ db_json_array_append (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 {
   int i, error_code = NO_ERROR;
   JSON_DOC *new_doc = NULL;
-  char *str = NULL;
+  JSON_DOC *value_doc = NULL;
+  const char *value_path = NULL;
 
   db_make_null (result);
 
@@ -3636,36 +3520,27 @@ db_json_array_append (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 
   for (i = 1; i < num_args; i += 2)
     {
-      if (DB_IS_NULL (arg[i]) || DB_IS_NULL (arg[i + 1]))
+      if (DB_IS_NULL (arg[i]))
 	{
 	  db_json_delete_doc (new_doc);
 	  return db_make_null (result);
 	}
 
-      switch (DB_VALUE_DOMAIN_TYPE (arg[i + 1]))
+      // extract path
+      value_path = db_get_string (arg[i]);
+
+      // extract json value
+      error_code = db_value_to_json_value (*arg[i + 1], value_doc);
+      if (error_code != NO_ERROR)
 	{
-	case DB_TYPE_CHAR:
-	case DB_TYPE_VARCHAR:
-	case DB_TYPE_NCHAR:
-	case DB_TYPE_VARNCHAR:
-	  error_code = db_json_convert_string_and_call (db_get_string (arg[i + 1]), db_get_string_size (arg[i + 1]),
-							db_json_array_append_func, *new_doc, db_get_string (arg[i]));
-	  break;
-
-	case DB_TYPE_JSON:
-	  error_code = db_json_array_append_func (arg[i + 1]->data.json.document, *new_doc, db_get_string (arg[i]));
-	  break;
-
-	case DB_TYPE_NULL:
+	  ASSERT_ERROR ();
 	  db_json_delete_doc (new_doc);
-	  return db_make_null (result);
-
-	default:
-	  db_json_delete_doc (new_doc);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
-	  return ER_QSTR_INVALID_DATA_TYPE;
+	  return error_code;
 	}
 
+      // insert into result the value at required path
+      error_code = db_json_array_append_func (value_doc, *new_doc, value_path);
+      db_json_delete_doc (value_doc);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -3684,7 +3559,8 @@ db_json_array_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 {
   int i, error_code = NO_ERROR;
   JSON_DOC *new_doc = NULL;
-  char *str = NULL;
+  JSON_DOC *value_doc = NULL;
+  const char *value_path = NULL;
 
   db_make_null (result);
 
@@ -3709,36 +3585,27 @@ db_json_array_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 
   for (i = 1; i < num_args; i += 2)
     {
-      if (DB_IS_NULL (arg[i]) || DB_IS_NULL (arg[i + 1]))
+      if (DB_IS_NULL (arg[i]))
 	{
 	  db_json_delete_doc (new_doc);
 	  return db_make_null (result);
 	}
 
-      switch (DB_VALUE_DOMAIN_TYPE (arg[i + 1]))
+      // extract path
+      value_path = db_get_string (arg[i]);
+
+      // extract json value
+      error_code = db_value_to_json_value (*arg[i + 1], value_doc);
+      if (error_code != NO_ERROR)
 	{
-	case DB_TYPE_CHAR:
-	case DB_TYPE_VARCHAR:
-	case DB_TYPE_NCHAR:
-	case DB_TYPE_VARNCHAR:
-	  error_code = db_json_convert_string_and_call (db_get_string (arg[i + 1]), db_get_string_size (arg[i + 1]),
-							db_json_array_insert_func, *new_doc, db_get_string (arg[i]));
-	  break;
-
-	case DB_TYPE_JSON:
-	  error_code = db_json_array_insert_func (arg[i + 1]->data.json.document, *new_doc, db_get_string (arg[i]));
-	  break;
-
-	case DB_TYPE_NULL:
+	  ASSERT_ERROR ();
 	  db_json_delete_doc (new_doc);
-	  return db_make_null (result);
-
-	default:
-	  db_json_delete_doc (new_doc);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
-	  return ER_QSTR_INVALID_DATA_TYPE;
+	  return error_code;
 	}
 
+      // insert into result the value at required path
+      error_code = db_json_array_insert_func (value_doc, *new_doc, value_path);
+      db_json_delete_doc (value_doc);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -3755,7 +3622,6 @@ db_json_array_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 int
 db_json_contains_path (DB_VALUE * result, DB_VALUE * arg[], const int num_args)
 {
-  bool find_all = false;
   bool exists = false;
   int error_code = NO_ERROR;
   JSON_DOC *doc = NULL;
@@ -3772,13 +3638,9 @@ db_json_contains_path (DB_VALUE * result, DB_VALUE * arg[], const int num_args)
       return error_code;
     }
 
-  const char *find_all_str = db_get_string (arg[1]);
-
-  if (strcmp (find_all_str, "all") == 0)
-    {
-      find_all = true;
-    }
-  if (!find_all && strcmp (find_all_str, "one"))
+  bool find_all;
+  error_code = is_str_find_all (arg[1], find_all);
+  if (error_code != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
       error_code = ER_QSTR_INVALID_DATA_TYPE;
@@ -3834,6 +3696,7 @@ db_json_merge_helper (DB_VALUE * result, DB_VALUE * arg[], int const num_args, b
   int i;
   int error_code;
   JSON_DOC *accumulator = NULL;
+  JSON_DOC *doc = NULL;
 
   if (num_args < 2)
     {
@@ -3849,31 +3712,15 @@ db_json_merge_helper (DB_VALUE * result, DB_VALUE * arg[], int const num_args, b
 	  return db_make_null (result);
 	}
 
-      switch (DB_VALUE_TYPE (arg[i]))
+      error_code = db_value_to_json_doc (*arg[i], doc);
+      if (error_code != NO_ERROR)
 	{
-	case DB_TYPE_JSON:
-	  error_code = db_json_merge_func (arg[i]->data.json.document, accumulator, patch);
-	  break;
-
-	case DB_TYPE_CHAR:
-	case DB_TYPE_VARCHAR:
-	case DB_TYPE_NCHAR:
-	case DB_TYPE_VARNCHAR:
-	  error_code = db_json_convert_string_and_call (db_get_string (arg[i]), db_get_string_size (arg[i]),
-							db_json_merge_func, accumulator, patch);
-	  break;
-
-	case DB_TYPE_NULL:
-	  // todo: isn't this too supposed to be NULL?
-	  error_code = db_json_merge_func (NULL, accumulator, patch);
-	  break;
-
-	default:
 	  db_json_delete_doc (accumulator);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
-	  return ER_QSTR_INVALID_DATA_TYPE;
+	  return error_code;
 	}
 
+      error_code = db_json_merge_func (doc, accumulator, patch);
+      db_json_delete_doc (doc);
       if (error_code != NO_ERROR)
 	{
 	  db_json_delete_doc (accumulator);
@@ -3918,6 +3765,8 @@ db_json_merge_patch (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
   return db_json_merge_helper (result, arg, num_args, true);
 }
 
+/* *INDENT-OFF* */
+
 /*
  * JSON_SEARCH (json_doc, one/all, pattern [, escape_char, path_1,... path_n])
  *
@@ -3928,9 +3777,8 @@ db_json_merge_patch (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
  * num_args (in)
  */
 
-/* *INDENT-OFF* */
 int
-db_json_search_dbval (DB_VALUE * result, DB_VALUE * args[], const int num_args)
+db_json_search_dbval (DB_VALUE *result, DB_VALUE *args[], const int num_args)
 {
   int error_code = NO_ERROR;
   JSON_DOC *doc = NULL;
@@ -3956,14 +3804,9 @@ db_json_search_dbval (DB_VALUE * result, DB_VALUE * args[], const int num_args)
       return error_code;
     }
 
-  char *find_all_str = db_get_string (args[1]);
-  bool find_all = false;
-
-  if (strcmp (find_all_str, "all") == 0)
-    {
-      find_all = true;
-    }
-  if (!find_all && strcmp (find_all_str, "one"))
+  bool find_all;
+  error_code = is_str_find_all (args[1], find_all);
+  if (error_code != NO_ERROR)
     {
       db_json_delete_doc (doc);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
@@ -3978,46 +3821,89 @@ db_json_search_dbval (DB_VALUE * result, DB_VALUE * args[], const int num_args)
     }
 
   std::vector<std::string> starting_paths;
+  bool wild_card_present = false;
   for (int i = 4; i < num_args; ++i)
     {
-      starting_paths.push_back (db_get_string (args[i]));
-    }
-  if (starting_paths.empty ())
-    {
-      starting_paths.push_back ("$");
+      std::string s (db_get_string (args[i]));
+      // todo: improve paths validation
+
+      if (s.find ("*") != std::string::npos)
+	{
+	  wild_card_present = true;
+	  // if we check against wild_cards only at the end we cannot return early when finding a json_value that matches
+	  find_all = true;
+	}
+
+      starting_paths.emplace_back (s);
     }
 
   std::vector<std::string> paths;
-  error_code = db_json_search_func (*doc, pattern, esc_char, find_all, starting_paths, paths);
+  if (wild_card_present || starting_paths.empty ())
+    {
+      std::vector<std::string> default_start_path (1, "$");
+      error_code = db_json_search_func (*doc, pattern, esc_char, find_all, default_start_path, paths);
+    }
+  else
+    {
+      error_code = db_json_search_func (*doc, pattern, esc_char, find_all, starting_paths, paths);
+    }
   db_json_delete_doc (doc);
   if (error_code != NO_ERROR)
     {
       return error_code;
     }
 
-  JSON_DOC *result_json = nullptr;
+  std::vector<int> matches_path (paths.size (), 0);
 
+  std::vector<std::regex> regs;
+  if (wild_card_present)
+    {
+      error_code = db_json_paths_to_regex (starting_paths, regs);
+      if (error_code != NO_ERROR)
+        {
+          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+          return error_code;
+        }
+    }
+
+  for (size_t i = 0; i < paths.size (); ++i)
+    {
+      for (auto &reg : regs)
+        {
+          matches_path[i] |= (int) std::regex_match (paths[i], reg);
+        }
+    }
+
+  JSON_DOC *result_json = nullptr;
   if (paths.size () == 1)
     {
-      error_code = db_json_get_json_from_str (paths[0].c_str (), result_json, paths[0].length ());
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
-	}
-      return db_make_json (result, result_json, true);
+      if (!wild_card_present || matches_path[0] == 1)
+        {
+          error_code = db_json_get_json_from_str (paths[0].c_str (), result_json, paths[0].length ());
+          if (error_code != NO_ERROR)
+            {
+              return error_code;
+            }
+        }
+      return result_json ? db_make_json (result, result_json, true) : db_make_null (result);
     }
 
   result_json = db_json_allocate_doc ();
-  for (auto &path : paths)
+  for (size_t i = 0; i < paths.size (); ++i)
     {
+      if (wild_card_present && matches_path[i] == 0)
+        {
+          continue;
+        }
+
       JSON_DOC *json_array_elem = nullptr;
 
-      error_code = db_json_get_json_from_str (path.c_str (), json_array_elem, path.length ());
+      error_code = db_json_get_json_from_str (paths[i].c_str (), json_array_elem, paths[i].length ());
       if (error_code != NO_ERROR)
-	{
+        {
           db_json_delete_doc (result_json);
-	  return error_code;
-	}
+          return error_code;
+        }
 
       db_json_add_element_to_array (result_json, json_array_elem);
 
@@ -8096,6 +7982,50 @@ is_number (const DB_VALUE * n)
   return ((domain_type == DB_TYPE_NUMERIC) || (domain_type == DB_TYPE_INTEGER) || (domain_type == DB_TYPE_SMALLINT)
 	  || (domain_type == DB_TYPE_BIGINT) || (domain_type == DB_TYPE_DOUBLE) || (domain_type == DB_TYPE_FLOAT)
 	  || (domain_type == DB_TYPE_MONETARY));
+}
+
+/*
+* is_str_find_all () -
+*
+* Arguments:
+*      val: (IN) DB_VALUE variable. Assumed string
+*      find_all: (OUT) whether all/one
+*
+* Returns: error
+*
+* Errors:
+*   ER_QSTR_INVALID_DATA_TYPE
+*
+* Note:
+*   find_all becomes TRUE if val's lower-cased string is 'all', FALSE if it is 'one'
+*
+*   Returns ER_QSTR_INVALID_DATA_TYPE otherwise.
+*
+*/
+
+static int
+is_str_find_all (DB_VALUE * val, bool & find_all)
+{
+  if (DB_IS_NULL (val))
+    {
+      return ER_QSTR_INVALID_DATA_TYPE;
+    }
+
+  // *INDENT-OFF*
+  std::string find_all_str (db_get_string (val));
+  std::transform (find_all_str.begin (), find_all_str.end (), find_all_str.begin (), ::tolower);
+  // *INDENT-ON*
+
+  find_all = false;
+  if (find_all_str == "all")
+    {
+      find_all = true;
+    }
+  if (!find_all && find_all_str != "one")
+    {
+      return ER_QSTR_INVALID_DATA_TYPE;
+    }
+  return NO_ERROR;
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -28747,45 +28677,4 @@ db_conv_tz (DB_VALUE * time_val, DB_VALUE * result_time)
     }
 
   return error;
-}
-
-/* db_value_to_json_doc - create a JSON_DOC from db_value.
- *
- * return     : error code
- * value (in) : input db_value
- * json (out) : output JSON_DOC pointer
- */
-static int
-db_value_to_json_doc (const DB_VALUE & value, REFPTR (JSON_DOC, json))
-{
-  int error_code = NO_ERROR;
-
-  json = NULL;
-  switch (DB_VALUE_DOMAIN_TYPE (&value))
-    {
-    case DB_TYPE_CHAR:
-    case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
-      error_code = db_json_get_json_from_str (db_get_string (&value), json, db_get_string_size (&value));
-      if (error_code != NO_ERROR)
-	{
-	  assert (json == NULL);
-	  ASSERT_ERROR ();
-	}
-      return error_code;
-
-    case DB_TYPE_JSON:
-      json = db_json_get_copy_of_doc (value.data.json.document);
-      return NO_ERROR;
-
-    case DB_TYPE_NULL:
-      json = db_json_allocate_doc ();
-      return NO_ERROR;
-
-    default:
-      // todo: more specific error
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
-      return ER_QSTR_INVALID_DATA_TYPE;
-    }
 }

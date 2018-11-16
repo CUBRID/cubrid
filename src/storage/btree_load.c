@@ -4371,6 +4371,7 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   LOG_TDES *tdes;
   int old_wait_msec;
   int lock_ret;
+  BTID *list_btid = NULL;
 
   func_index_info.expr = NULL;
 
@@ -4406,6 +4407,32 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   btid_int.copy_buf_len = 0;
   btid_int.nonleaf_key_type = btree_generate_prefix_domain (&btid_int);
 
+  /* After building index acquire lock on table, the transaction has deadlock priority */
+  tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  if (tdes)
+    {
+      tdes->has_deadlock_priority = true;
+    }
+
+  /* Acquire snapshot!! */
+  builder_snapshot = logtb_get_mvcc_snapshot (thread_p);
+  if (builder_snapshot == NULL)
+    {
+      goto error;
+    }
+
+  /* Alloc memory for btid list for unique indexes. */
+  if (BTREE_IS_UNIQUE (unique_pk))
+    {
+      list_btid = (BTID *) malloc (n_classes * sizeof (BTID));
+      if (list_btid == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, n_classes * sizeof (BTID));
+	  ret = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto error;
+	}
+    }
+
   if (pred_stream && pred_stream_size > 0)
     {
       if (stx_map_stream_to_filter_pred (thread_p, &filter_pred, pred_stream, pred_stream_size) != NO_ERROR)
@@ -4428,117 +4455,150 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 	}
     }
 
-  /* After building index acquire lock on table, the transaction has deadlock priority */
-  tdes = LOG_FIND_CURRENT_TDES (thread_p);
-  if (tdes)
+  /* Demote the locks for classes on which we want to load indices. */
+  for (cur_class = 0; cur_class < n_classes; cur_class++)
     {
-      tdes->has_deadlock_priority = true;
-    }
-
-  cur_class = 0;
-  /* 
-   * Start a heap scan cache for reading objects using the first nun-null heap
-   * We are guaranteed that such a heap exists, otherwise btree_load_index
-   * would not have been called.
-   */
-  while (cur_class < n_classes && HFID_IS_NULL (&hfids[cur_class]))
-    {
-      cur_class++;
-    }
-
-  attr_offset = cur_class * n_attrs;
-
-  /* Start scancache */
-  if (heap_scancache_start (thread_p, &scan_cache, &hfids[cur_class], &class_oids[cur_class], true, false,
-			    NULL) != NO_ERROR)
-    {
-      goto error;
-    }
-  scan_cache_inited = true;
-
-  if (heap_attrinfo_start (thread_p, &class_oids[cur_class], n_attrs, &attr_ids[attr_offset], &attr_info) != NO_ERROR)
-    {
-      goto error;
-    }
-  attr_info_inited = true;
-
-  if (filter_pred != NULL)
-    {
-      if (heap_attrinfo_start (thread_p, &class_oids[cur_class], filter_pred->num_attrs_pred,
-			       filter_pred->attrids_pred, filter_pred->cache_pred) != NO_ERROR)
+      ret = lock_demote_class_lock (thread_p, &class_oids[cur_class], new_lock, &old_lock);
+      if (ret != NO_ERROR)
 	{
 	  goto error;
 	}
     }
 
-  if (func_index_info.expr != NULL)
+  for (cur_class = 0; cur_class < n_classes; cur_class++)
     {
-      if (heap_attrinfo_start (thread_p, &class_oids[cur_class], n_attrs, &attr_ids[attr_offset],
-			       func_index_info.expr->cache_attrinfo) != NO_ERROR)
+      attr_offset = cur_class * n_attrs;
+
+      /* Start scancache */
+      if (heap_scancache_start (thread_p, &scan_cache, &hfids[cur_class], &class_oids[cur_class], true, false,
+				NULL) != NO_ERROR)
 	{
 	  goto error;
 	}
+      scan_cache_inited = true;
+
+      if (heap_attrinfo_start (thread_p, &class_oids[cur_class], n_attrs, &attr_ids[attr_offset], &attr_info) !=
+	  NO_ERROR)
+	{
+	  goto error;
+	}
+      attr_info_inited = true;
+
+      if (filter_pred != NULL)
+	{
+	  if (heap_attrinfo_start (thread_p, &class_oids[cur_class], filter_pred->num_attrs_pred,
+				   filter_pred->attrids_pred, filter_pred->cache_pred) != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+
+      if (func_index_info.expr != NULL)
+	{
+	  if (heap_attrinfo_start (thread_p, &class_oids[cur_class], n_attrs, &attr_ids[attr_offset],
+				   func_index_info.expr->cache_attrinfo) != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+
+      /* Assign the snapshot to the scan_cache. */
+      scan_cache.mvcc_snapshot = builder_snapshot;
+
+      ret = heap_get_btid_from_index_name (thread_p, &class_oids[cur_class], bt_name, btid_int.sys_btid);
+      if (ret != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  break;
+	}
+
+      /* For unique indices add to the list of btids for unique constraint checks. */
+      if (BTREE_IS_UNIQUE (unique_pk))
+	{
+	  list_btid[cur_class].root_pageid = btid_int.sys_btid->root_pageid;
+	  list_btid[cur_class].vfid.fileid = btid_int.sys_btid->vfid.fileid;
+	  list_btid[cur_class].vfid.volid = btid_int.sys_btid->vfid.volid;
+	}
+
+      if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
+	{
+	  _er_log_debug (ARG_FILE_LINE, "DEBUG_BTREE: load start on class(%d, %d, %d), btid(%d, (%d, %d)).",
+			 OID_AS_ARGS (&class_oids[cur_class]), BTID_AS_ARGS (btid_int.sys_btid));
+	}
+
+      /* Start the online index builder. */
+      ret =
+	online_index_builder (thread_p, &btid_int, &hfids[cur_class], &class_oids[cur_class], n_classes, attr_ids,
+			      n_attrs, func_index_info, filter_pred, attrs_prefix_length, &attr_info, &scan_cache,
+			      unique_pk);
+      if (ret != NO_ERROR)
+	{
+	  break;
+	}
+
+      if (attr_info_inited)
+	{
+	  heap_attrinfo_end (thread_p, &attr_info);
+
+	  if (filter_pred)
+	    {
+	      heap_attrinfo_end (thread_p, filter_pred->cache_pred);
+	    }
+	  if (func_index_info.expr)
+	    {
+	      heap_attrinfo_end (thread_p, func_index_info.expr->cache_attrinfo);
+	    }
+
+	  attr_info_inited = false;
+	}
+
+      if (scan_cache_inited)
+	{
+	  heap_scancache_end (thread_p, &scan_cache);
+	  scan_cache_inited = false;
+	}
     }
 
-  if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
-    {
-      _er_log_debug (ARG_FILE_LINE, "DEBUG_BTREE: load start on class(%d, %d, %d), btid(%d, (%d, %d)).",
-		     OID_AS_ARGS (&class_oids[cur_class]), BTID_AS_ARGS (btid_int.sys_btid));
-    }
-
-  /* Acquire snapshot!! */
-  builder_snapshot = logtb_get_mvcc_snapshot (thread_p);
-  if (builder_snapshot == NULL)
-    {
-      goto error;
-    }
-
-  /* Assign the snapshot to the scan_cache. */
-  scan_cache.mvcc_snapshot = builder_snapshot;
-
-  /* Demote the lock. */
-  ret = lock_demote_class_lock (thread_p, class_oids, new_lock, &old_lock);
-  if (ret != NO_ERROR)
-    {
-      goto error;
-    }
-
-  /* Start the online index builder. */
-  ret = online_index_builder (thread_p, &btid_int, hfids, class_oids, n_classes, attr_ids, n_attrs,
-			      func_index_info, filter_pred, attrs_prefix_length, &attr_info, &scan_cache, unique_pk);
-
-  // We shold recover the lock regardless of return code from online_index_builder.
+  // We should recover the lock regardless of return code from online_index_builder.
   // Otherwise, we might be doomed to failure to abort the transaction.
   // We are going to do best to avoid lock promotion errors such as timeout and deadlocked.
 
-  // never give up
-  old_wait_msec = xlogtb_reset_wait_msecs (thread_p, LK_INFINITE_WAIT);
-
-  /* Promote the lock to SCH_M_LOCK */
-  lock_ret = lock_object (thread_p, class_oids, oid_Root_class_oid, SCH_M_LOCK, LK_UNCOND_LOCK);
-  if (lock_ret != LK_GRANTED)
+  for (cur_class = 0; cur_class < n_classes; cur_class++)
     {
-      // FIXME: What can we do??
-      assert (lock_ret == LK_GRANTED);
-    }
+      // never give up
+      old_wait_msec = xlogtb_reset_wait_msecs (thread_p, LK_INFINITE_WAIT);
 
-  // reset back
-  (void) xlogtb_reset_wait_msecs (thread_p, old_wait_msec);
+      /* Promote the lock to SCH_M_LOCK */
+      lock_ret = lock_object (thread_p, &class_oids[cur_class], oid_Root_class_oid, SCH_M_LOCK, LK_UNCOND_LOCK);
+      if (lock_ret != LK_GRANTED)
+	{
+	  // FIXME: What can we do??
+	  assert (lock_ret == LK_GRANTED);
+	}
 
-  if (ret != NO_ERROR || lock_ret != LK_GRANTED)
-    {
-      goto error;
+      // reset back
+      (void) xlogtb_reset_wait_msecs (thread_p, old_wait_msec);
+
+      if (ret != NO_ERROR || lock_ret != LK_GRANTED)
+	{
+	  goto error;
+	}
     }
 
   if (BTREE_IS_UNIQUE (unique_pk))
     {
-      /* Check if we have a unique constraint violation for unique indexes. */
-      ret = btree_online_index_check_unique_constraint (thread_p, btid, bt_name, class_oids);
-      if (ret != NO_ERROR)
+      for (cur_class = 0; cur_class < n_classes; cur_class++)
 	{
-	  ASSERT_ERROR ();
-	  btid = NULL;
-	  goto error;
+	  /* Check if we have a unique constraint violation for unique indexes. */
+	  ret =
+	    btree_online_index_check_unique_constraint (thread_p, &list_btid[cur_class], bt_name,
+							&class_oids[cur_class]);
+	  if (ret != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      btid = NULL;
+	      goto error;
+	    }
 	}
     }
 
@@ -4565,9 +4625,6 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
       scan_cache_inited = false;
     }
 
-  /* Verify the tree. */
-  btree_verify_tree (thread_p, &class_oids[0], &btid_int, bt_name);
-
   if (filter_pred != NULL)
     {
       /* to clear db values from dbvalue regu variable */
@@ -4592,6 +4649,12 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
       stx_free_additional_buff (thread_p, func_unpack_info);
       stx_free_xasl_unpack_info (func_unpack_info);
       db_private_free_and_init (thread_p, func_unpack_info);
+    }
+
+  if (list_btid != NULL)
+    {
+      free (list_btid);
+      list_btid = NULL;
     }
 
   LOG_CS_ENTER (thread_p);
@@ -4653,6 +4716,11 @@ error:
       stx_free_additional_buff (thread_p, func_unpack_info);
       stx_free_xasl_unpack_info (func_unpack_info);
       db_private_free_and_init (thread_p, func_unpack_info);
+    }
+
+  if (list_btid != NULL)
+    {
+      free (list_btid);
     }
 
   /* Invalidate snapshot. */
@@ -4783,6 +4851,7 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 	{
 	  return ret;
 	}
+
     }
 
   return ret;

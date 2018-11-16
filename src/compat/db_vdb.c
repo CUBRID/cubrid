@@ -3972,6 +3972,7 @@ db_set_statement_auto_commit (DB_SESSION * session, bool auto_commit)
   int stmt_ndx;
   int error_code;
   bool has_user_trigger;
+  int dimension;
 
   assert (session != NULL);
 
@@ -4008,10 +4009,21 @@ db_set_statement_auto_commit (DB_SESSION * session, bool auto_commit)
       return NO_ERROR;
     }
 
-  if (session->dimension > 1 && !session->parser->is_holdable)
+  if (session->dimension > 1)
     {
       /* Search for select. */
-      for (int i = 0; i < session->dimension; i++)
+      if (!session->parser->is_holdable)
+	{
+	  /* Check all statements. */
+	  dimension = session->dimension;
+	}
+      else
+	{
+	  /* Check all statements, except the last one. */
+	  dimension = session->dimension - 1;
+	}
+
+      for (int i = 0; i < dimension; i++)
 	{
 	  if (session->statements[i] != NULL && PT_IS_QUERY_NODE_TYPE (session->statements[i]->node_type))
 	    {
