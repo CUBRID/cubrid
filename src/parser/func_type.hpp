@@ -44,6 +44,8 @@ struct func_signature
   static std::vector<func_signature> json_doc_r_path_val;
   static std::vector<func_signature> json_contains_path;
   static std::vector<func_signature> json_search;
+  static std::vector<func_signature> json_arrayagg;
+  static std::vector<func_signature> json_objectagg;
   static std::vector<func_signature> set_r_any; //set, table_set
   static std::vector<func_signature> multiset_r_any; //multiset, table_multiset
   static std::vector<func_signature> sequence_r_any; //sequence, table_sequence

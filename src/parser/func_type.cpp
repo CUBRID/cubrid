@@ -231,6 +231,16 @@ std::vector<func_signature> func_signature::json_search =
 },
 };
 
+std::vector<func_signature> func_signature::json_arrayagg =
+{
+{PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_VAL}, {}}
+};
+
+std::vector<func_signature> func_signature::json_objectagg =
+{
+{PT_TYPE_JSON, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_JSON_VAL}, {}}
+};
+
 std::vector<func_signature> func_signature::set_r_any =
 {
 {PT_TYPE_SET, {}, {PT_GENERIC_TYPE_ANY}},
@@ -357,6 +367,10 @@ std::vector<func_signature> *func_signature::get_signatures (FUNC_TYPE ft)
       return &percentile_cont;
     case PT_PERCENTILE_DISC:
       return &percentile_disc;
+    case PT_JSON_ARRAYAGG:
+      return &json_arrayagg;
+    case PT_JSON_OBJECTAGG:
+      return &json_objectagg;
     default:
       assert (false);
       return nullptr;
@@ -508,6 +522,10 @@ const char *str (FUNC_TYPE ft)
       return "PERCENTILE_CONT";
     case PT_PERCENTILE_DISC:
       return "PERCENTILE_DISC";
+    case PT_JSON_ARRAYAGG:
+      return "JSON_ARRAYAGG";
+    case PT_JSON_OBJECTAGG:
+      return "JSON_OBJECTAGG";
     default:
       assert (false);
       return nullptr;
@@ -557,18 +575,49 @@ bool Func::cmp_types_castable (const pt_arg_type &type, pt_type_enum type_enum) 
     {
     case PT_GENERIC_TYPE_NUMBER:
       return (PT_IS_NUMERIC_TYPE (type_enum) || PT_IS_STRING_TYPE (type_enum) || type_enum == PT_TYPE_JSON);
+
     case PT_GENERIC_TYPE_DISCRETE_NUMBER:
       return (PT_IS_NUMERIC_TYPE (type_enum) || PT_IS_STRING_TYPE (type_enum));
 
+    case PT_GENERIC_TYPE_ANY:
+    case PT_GENERIC_TYPE_PRIMITIVE:
     case PT_GENERIC_TYPE_STRING:
-      return (PT_IS_NUMERIC_TYPE (type_enum) || PT_IS_STRING_TYPE (type_enum) || PT_IS_DATE_TIME_TYPE (type_enum));
+    case PT_GENERIC_TYPE_STRING_VARYING:
+    case PT_GENERIC_TYPE_BIT:
+      // any non-set?
+      return !PT_IS_COLLECTION_TYPE (type_enum);
+
     case PT_GENERIC_TYPE_CHAR:
       return (PT_IS_NUMERIC_TYPE (type_enum) || PT_IS_SIMPLE_CHAR_STRING_TYPE (type_enum) ||
-	      PT_IS_DATE_TIME_TYPE (type_enum));
+	      PT_IS_DATE_TIME_TYPE (type_enum) || type_enum == PT_TYPE_JSON);
+
     case PT_GENERIC_TYPE_NCHAR:
       return (PT_IS_NUMERIC_TYPE (type_enum) || PT_IS_NATIONAL_CHAR_STRING_TYPE (type_enum) ||
-	      PT_IS_DATE_TIME_TYPE (type_enum));
+	      PT_IS_DATE_TIME_TYPE (type_enum) || type_enum == PT_TYPE_JSON);
+
+    case PT_GENERIC_TYPE_DATE:
+    case PT_GENERIC_TYPE_DATETIME:
+      return PT_IS_STRING_TYPE (type_enum) || PT_IS_DATE_TIME_TYPE (type_enum);
+
     case PT_GENERIC_TYPE_SCALAR:
+      return !PT_IS_COLLECTION_TYPE (type_enum);
+
+    case PT_GENERIC_TYPE_JSON_DOC:
+    case PT_GENERIC_TYPE_JSON_VAL:
+      // it will be resolved at runtime
+      return true;
+
+    case PT_GENERIC_TYPE_SEQUENCE:
+      // todo -
+      return false;
+
+    case PT_GENERIC_TYPE_LOB:
+      // todo -
+      return false;
+
+    case PT_GENERIC_TYPE_QUERY:
+      // ??
+      assert (false);
       return false;
 
     default:
