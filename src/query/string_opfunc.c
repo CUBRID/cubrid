@@ -4974,12 +4974,12 @@ qstr_pad (MISC_OPERAND pad_operand, int pad_length, const unsigned char *pad_cha
  *          An illegal pattern is specified.
  *
  *      ER_QSTR_INVALID_ESCAPE_CHARACTER:
- *          If <esc_char> is not NULL and the length of E is > 1.
+ *          If <esc_char> is not NULL or empty and the length of E is > 1.
  *
  */
 /* TODO ER_QSTR_INVALID_ESCAPE_CHARACTER is not checked for, although it
-        probably should be (the escape sequence string should contain a single
-	character)
+        probably should be (the escape sequence string should contain zero or one
+	characters)
 */
 
 int
@@ -5069,7 +5069,13 @@ db_string_like (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB_
 				   &esc_char_len);
 
 		  assert (esc_char_p != NULL);
-		  if (esc_char_len != 1)
+		  if (esc_char_len == 0)
+		    {
+		      /* implicit escape character ('\\') is also used in case of empty string */
+		      esc_char_p = "\\";
+		    }
+
+		  if (esc_char_len != 1 && esc_char_len != 0)
 		    {
 		      error_status = ER_QSTR_INVALID_ESCAPE_SEQUENCE;
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
