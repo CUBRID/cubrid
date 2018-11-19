@@ -2897,10 +2897,10 @@ static void
 json_path_strip_whitespaces (std::string &sql_path)
 {
   std::string result;
-  result.reserve (sql_path.length()+1);
+  result.reserve (sql_path.length () + 1);
 
   bool skip_spaces = true;
-  for (size_t i = 0; i<sql_path.length(); ++i)
+  for (size_t i = 0; i < sql_path.length (); ++i)
     {
       if (skip_spaces && sql_path[i] == ' ')
 	{
