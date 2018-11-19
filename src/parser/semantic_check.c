@@ -4033,7 +4033,10 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
       parser_walk_tree (parser, default_value, pt_find_aggregate_function, &node_ptr, NULL, NULL);
       if (node_ptr != NULL)
 	{
-	  PT_ERRORmf (parser, node_ptr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DEFAULT_EXPR_NOT_ALLOWED,
+	  PT_ERRORmf (parser,
+		      node_ptr,
+		      MSGCAT_SET_PARSER_SEMANTIC,
+		      MSGCAT_SEMANTIC_DEFAULT_EXPR_NOT_ALLOWED,
 		      pt_show_function (node_ptr->info.function.function_type));
 	  goto end;
 	}
