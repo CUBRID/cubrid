@@ -236,6 +236,8 @@ static int pt_coerce_str_to_time_date_utime_datetime (PARSER_CONTEXT * parser, P
 						      PT_TYPE_ENUM * result_type);
 static int pt_coerce_3args (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_NODE * arg3);
 static PT_NODE *pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node);
+static PT_NODE *pt_eval_function_type_new (PARSER_CONTEXT * parser, PT_NODE * node);
+static PT_NODE *pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_eval_method_call_type (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg);
 static PT_NODE *pt_fold_const_function (PARSER_CONTEXT * parser, PT_NODE * func);
@@ -12547,6 +12549,37 @@ pt_character_length_for_node (PT_NODE * node, const PT_TYPE_ENUM coerce_type)
   return precision;
 }
 
+static PT_NODE *
+pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  switch (node->info.function.function_type)
+    {
+      // JSON functions are migrated to new checking function
+    case F_JSON_OBJECT:
+    case PT_JSON_OBJECTAGG:
+    case F_JSON_ARRAY:
+    case PT_JSON_ARRAYAGG:
+    case F_JSON_MERGE:
+    case F_JSON_MERGE_PATCH:
+    case F_JSON_INSERT:
+    case F_JSON_REPLACE:
+    case F_JSON_SET:
+    case F_JSON_ARRAY_APPEND:
+    case F_JSON_ARRAY_INSERT:
+    case F_JSON_CONTAINS_PATH:
+    case F_JSON_EXTRACT:
+    case F_JSON_REMOVE:
+    case F_JSON_GET_ALL_PATHS:
+    case F_JSON_SEARCH:
+    case F_JSON_KEYS:
+      return pt_eval_function_type_new (parser, node);
+
+      // legacy functions are still managed by old checking function; all should be migrated though
+    default:
+      return pt_eval_function_type_old (parser, node);
+    }
+}
+
 /*
  * pt_eval_function_type () -
  *   return: returns a node of the same type.
@@ -12555,7 +12588,7 @@ pt_character_length_for_node (PT_NODE * node, const PT_TYPE_ENUM coerce_type)
  *             an expression with aggregate functions.
  */
 static PT_NODE *
-pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_eval_function_type_new (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   FUNC_TYPE fcode = node->info.function.function_type;
   switch (fcode)
@@ -12607,9 +12640,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
   if (pt_list_has_logical_nodes (arg_list))
     {
-      pt_cat_error (parser,
-		    node,
-		    MSGCAT_SET_PARSER_SEMANTIC,
+      pt_cat_error (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
 		    MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON, pt_show_function (fcode), "boolean");
       return node;
     }
@@ -12625,10 +12656,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  assert ("ERR no function signature" && func_sigs != NULL);
 	  if (!func_sigs)
 	    {
-	      pt_cat_error (parser,
-			    node,
-			    MSGCAT_SET_PARSER_SEMANTIC,
-			    MSGCAT_SEMANTIC_FUNCTYPECHECK_NO_SIGNATURES,
+	      pt_cat_error (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTYPECHECK_NO_SIGNATURES,
 			    str (fcode) /*, parser_print_tree_list(parser, arg_list) */ );
 	      return node;
 	    }
@@ -12643,10 +12671,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	    {
 	      node->type_enum = PT_TYPE_NA;	//to avoid entering here 2nd time
 	      //arg_type = PT_TYPE_NONE;//unused!?
-	      pt_cat_error (parser,
-			    node,
-			    MSGCAT_SET_PARSER_SEMANTIC,
-			    MSGCAT_SEMANTIC_FUNCTYPECHECK_NO_SIGNATURE,
+	      pt_cat_error (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTYPECHECK_NO_SIGNATURE,
 			    str (fcode) /*, parser_print_tree_list(parser, arg_list) */ );
 	    }
 	}
@@ -12841,17 +12866,17 @@ error_collation:
   return node;
 }
 
-#if 0				// OLD function check
 /*
  * pt_eval_function_type () -
  *   return: returns a node of the same type.
  *   parser(in): parser global context info for reentrancy
  *   node(in): a parse tree node of type PT_FUNCTION denoting an
  *             an expression with aggregate functions.
+ *
+ * TODO - remove me when all functions are migrated to new evaluation
  */
-
 static PT_NODE *
-pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_NODE *arg_list;
   PT_TYPE_ENUM arg_type;
@@ -13065,458 +13090,6 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  arg_type = PT_TYPE_INTEGER;
 	  node->info.function.arg_list = arg_list;
 	}
-      break;
-
-    case PT_JSON_ARRAYAGG:
-      {
-	bool is_supported = pt_is_json_value_type (arg_list->type_enum);
-
-	if (!is_supported)
-	  {
-	    arg_type = PT_TYPE_NONE;
-	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
-			 pt_show_function (fcode), pt_show_type_enum (arg_list->type_enum));
-	  }
-      }
-      break;
-
-    case PT_JSON_OBJECTAGG:
-      {
-	// we will have 2 arguments (key, value)
-
-	PT_NODE *key = arg_list;
-	// value can be any type compatible with JSON type
-	PT_NODE *value = arg_list->next;
-
-	// if the key is not of type STRING then try to cast it to STRING
-	if (!PT_IS_STRING_TYPE (key->type_enum))
-	  {
-	    arg_list = pt_wrap_with_cast_op (parser, key, PT_TYPE_VARCHAR, TP_FLOATING_PRECISION_VALUE, 0, NULL);
-	    if (arg_list == NULL)
-	      {
-		return node;
-	      }
-
-	    node->info.function.arg_list = arg_list;
-	  }
-
-	// check value
-	bool is_supported = pt_is_json_value_type (value->type_enum);
-	if (!is_supported)
-	  {
-	    arg_type = PT_TYPE_NONE;
-	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
-			 pt_show_function (fcode), pt_show_type_enum (value->type_enum));
-	    break;
-	  }
-
-	// JSON_OBJECTAGG requires 2 arguments
-	check_agg_single_arg = false;
-      }
-      break;
-
-    case F_JSON_OBJECT:
-      {
-	PT_TYPE_ENUM unsupported_type;
-	bool is_supported = false;
-
-	bool new_arg_list_inited = false;
-	PT_NODE *new_arg_prev = NULL;
-	PT_NODE *new_arg_curr = NULL;
-	PT_NODE *new_arg_list_head = NULL;
-
-	PT_NODE *arg = arg_list;
-	PT_NODE *arg_next = NULL;
-	unsigned int index = 0;
-
-	while (arg)
-	  {
-	    // save next node since pt_wrap_with_cast_op will set next to NULL
-	    arg_next = arg->next;
-	    new_arg_curr = arg;
-
-	    if (index % 2 == 0)
-	      {
-		if (!PT_IS_STRING_TYPE (arg->type_enum))
-		  {
-		    PT_NODE *tmp =
-		      pt_wrap_with_cast_op (parser, arg, PT_TYPE_VARCHAR, TP_FLOATING_PRECISION_VALUE, 0, NULL);
-		    if (tmp == NULL)
-		      {
-			return node;
-		      }
-
-		    // override new_arg_curr in case a cast node is added
-		    new_arg_curr = tmp;
-		  }
-
-		is_supported = true;
-	      }
-	    else
-	      {
-		is_supported = pt_is_json_value_type (arg->type_enum);
-	      }
-
-	    if (!is_supported)
-	      {
-		unsupported_type = arg->type_enum;
-		break;
-	      }
-
-	    // initialize new_arg_list only first time
-	    if (!new_arg_list_inited)
-	      {
-		new_arg_list_head = new_arg_curr;
-		new_arg_list_inited = true;
-	      }
-
-	    // set next link of the prev node to curr one for the new list
-	    if (new_arg_prev != NULL)
-	      {
-		new_arg_prev->next = new_arg_curr;
-	      }
-
-	    new_arg_prev = new_arg_curr;
-	    arg = arg_next;
-	    index++;
-	  }
-
-	if (!is_supported)
-	  {
-	    arg_type = PT_TYPE_NONE;
-	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
-			 pt_show_function (fcode), pt_show_type_enum (unsupported_type));
-	  }
-	else
-	  {
-	    arg_type = PT_TYPE_JSON;
-	  }
-
-	node->info.function.arg_list = new_arg_list_head;
-      }
-      break;
-
-    case F_JSON_ARRAY:
-      {
-	PT_TYPE_ENUM unsupported_type;
-	bool is_supported = false;
-
-	PT_NODE *arg = arg_list;
-
-	while (arg)
-	  {
-	    is_supported = pt_is_json_value_type (arg->type_enum);
-
-	    if (!is_supported)
-	      {
-		unsupported_type = arg->type_enum;
-		break;
-	      }
-	    arg = arg->next;
-	  }
-
-	if (!is_supported)
-	  {
-	    arg_type = PT_TYPE_NONE;
-	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
-			 pt_show_function (fcode), pt_show_type_enum (unsupported_type));
-	  }
-	else
-	  {
-	    arg_type = PT_TYPE_JSON;
-	  }
-      }
-      break;
-
-    case F_JSON_MERGE:
-    case F_JSON_MERGE_PATCH:
-      {
-	PT_TYPE_ENUM unsupported_type;
-	bool is_supported;
-
-	PT_NODE *arg = arg_list;
-
-	while (arg)
-	  {
-	    is_supported = pt_is_json_doc_type (arg->type_enum);
-
-	    if (!is_supported)
-	      {
-		unsupported_type = arg->type_enum;
-		break;
-	      }
-	    arg = arg->next;
-	  }
-
-	if (!is_supported)
-	  {
-	    arg_type = PT_TYPE_NONE;
-	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
-			 pt_show_function (fcode), pt_show_type_enum (unsupported_type));
-	  }
-	else
-	  {
-	    arg_type = PT_TYPE_JSON;
-	  }
-      }
-      break;
-
-    case F_JSON_INSERT:
-    case F_JSON_REPLACE:
-    case F_JSON_SET:
-    case F_JSON_ARRAY_APPEND:
-    case F_JSON_ARRAY_INSERT:
-      {
-	PT_TYPE_ENUM unsupported_type;
-	unsigned int index = 0;
-	bool is_supported = false;
-	PT_NODE *arg = arg_list;
-
-	is_supported = pt_is_json_doc_type (arg->type_enum);
-	if (!is_supported)
-	  {
-	    arg_type = PT_TYPE_NONE;
-	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
-			 pt_show_function (fcode), pt_show_type_enum (arg->type_enum));
-	    break;
-	  }
-
-	arg = arg->next;
-	while (arg)
-	  {
-	    if (index % 2 == 0)
-	      {
-		is_supported = pt_is_json_path (arg->type_enum);
-	      }
-	    else
-	      {
-		is_supported = pt_is_json_value_type (arg->type_enum);
-	      }
-
-	    if (!is_supported)
-	      {
-		unsupported_type = arg->type_enum;
-		break;
-	      }
-
-	    arg = arg->next;
-	    index++;
-	  }
-	if (!is_supported)
-	  {
-	    arg_type = PT_TYPE_NONE;
-	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
-			 pt_show_function (fcode), pt_show_type_enum (unsupported_type));
-	  }
-      }
-      break;
-
-    case F_JSON_CONTAINS_PATH:
-      {
-	PT_TYPE_ENUM unsupported_type;
-	unsigned int index = 1;
-	bool is_supported = false;
-	PT_NODE *arg = arg_list;
-
-	is_supported = pt_is_json_doc_type (arg->type_enum);
-	if (!is_supported)
-	  {
-	    arg_type = PT_TYPE_NONE;
-	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
-			 pt_show_function (fcode), pt_show_type_enum (arg->type_enum));
-	    break;
-	  }
-
-	arg = arg->next;
-	while (arg)
-	  {
-	    if (index > 1)
-	      {
-		is_supported = pt_is_json_path (arg->type_enum);
-	      }
-	    else
-	      {
-		is_supported = pt_is_json_doc_type (arg->type_enum);
-	      }
-
-	    if (!is_supported)
-	      {
-		unsupported_type = arg->type_enum;
-		break;
-	      }
-
-	    arg = arg->next;
-	    index++;
-	  }
-	if (!is_supported)
-	  {
-	    arg_type = PT_TYPE_NONE;
-	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
-			 pt_show_function (fcode), pt_show_type_enum (unsupported_type));
-	  }
-      }
-      break;
-
-    case F_JSON_EXTRACT:
-      {
-	PT_NODE *first_arg = arg_list;
-	arg_type = PT_TYPE_NONE;
-	if (!pt_is_json_doc_type (first_arg->type_enum))
-	  {
-	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
-			 pt_show_function (fcode), pt_show_type_enum (first_arg->type_enum));
-	    break;
-	  }
-	// followed by a list of paths - strings
-	for (PT_NODE * arg = first_arg->next; arg != NULL; arg = arg->next)
-	  {
-	    if (!pt_is_json_path (arg->type_enum))
-	      {
-		PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
-			     pt_show_function (fcode), pt_show_type_enum (first_arg->type_enum));
-		break;
-	      }
-	  }
-	arg_type = PT_TYPE_JSON;
-      }
-      break;
-
-    case F_JSON_REMOVE:
-      {
-	PT_TYPE_ENUM unsupported_type;
-	bool is_supported = false;
-	PT_NODE *arg = arg_list;
-
-	is_supported = pt_is_json_doc_type (arg->type_enum);
-
-	if (!is_supported)
-	  {
-	    arg_type = PT_TYPE_NONE;
-	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
-			 pt_show_function (fcode), pt_show_type_enum (arg->type_enum));
-	    break;
-	  }
-
-	arg = arg->next;
-	while (arg)
-	  {
-	    is_supported = pt_is_json_path (arg->type_enum);
-
-	    if (!is_supported)
-	      {
-		unsupported_type = arg->type_enum;
-		break;
-	      }
-
-	    arg = arg->next;
-	  }
-
-	if (!is_supported)
-	  {
-	    arg_type = PT_TYPE_NONE;
-	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
-			 pt_show_function (fcode), pt_show_type_enum (unsupported_type));
-	  }
-      }
-      break;
-
-    case F_JSON_GET_ALL_PATHS:
-      {
-	PT_NODE *arg = arg_list;
-	bool is_supported = false;
-
-	is_supported = pt_is_json_doc_type (arg->type_enum);
-	if (!is_supported)
-	  {
-	    arg_type = PT_TYPE_NONE;
-	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
-			 pt_show_function (fcode), pt_show_type_enum (arg->type_enum));
-	  }
-      }
-      break;
-
-    case F_JSON_SEARCH:
-      {
-	// JSON_SEARCH (json_doc, one_or_all, pattern, [esc_charr, path_1, ... path_n])
-	PT_TYPE_ENUM unsupported_type;
-	PT_NODE *arg = arg_list;
-	bool is_supported = false;
-	is_supported = pt_is_json_doc_type (arg->type_enum);
-	if (!is_supported)
-	  {
-	    arg_type = PT_TYPE_NONE;
-	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
-			 pt_show_function (fcode), pt_show_type_enum (arg->type_enum));
-	    break;
-	  }
-
-	arg = arg->next;
-	unsigned int index = 1;
-	while (arg)
-	  {
-	    if (index < 4)
-	      {
-		is_supported = (PT_IS_STRING_TYPE (arg->type_enum) || arg->type_enum == PT_TYPE_MAYBE
-				|| arg->type_enum == PT_TYPE_NULL || arg->type_enum == PT_TYPE_NA);
-	      }
-	    else
-	      {
-		// args[4+] can be only paths
-		is_supported = pt_is_json_path (arg->type_enum);
-	      }
-
-	    if (!is_supported)
-	      {
-		unsupported_type = arg->type_enum;
-		arg_type = PT_TYPE_NONE;
-		PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
-			     pt_show_function (fcode), pt_show_type_enum (unsupported_type));
-		break;
-	      }
-
-	    ++index;
-	    arg = arg->next;
-	  }
-      }
-      break;
-
-    case F_JSON_KEYS:
-      {
-	// should have maximum 2 parameters
-	PT_NODE *arg = arg_list;
-	PT_TYPE_ENUM unsupported_type;
-	unsigned int index = 0;
-	bool is_supported = false;
-
-	while (arg)
-	  {
-	    switch (index)
-	      {
-	      case 0:
-		is_supported = pt_is_json_doc_type (arg->type_enum);
-		break;
-	      case 1:
-		is_supported = pt_is_json_path (arg->type_enum);
-		break;
-	      default:
-		/* Should not happen */
-		assert (false);
-		break;
-	      }
-
-	    if (!is_supported)
-	      {
-		unsupported_type = arg->type_enum;
-		arg_type = PT_TYPE_NONE;
-		PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
-			     pt_show_function (fcode), pt_show_type_enum (unsupported_type));
-		break;
-	      }
-
-	    index++;
-	    arg = arg->next;
-	  }
-      }
       break;
 
     case F_ELT:
@@ -13842,29 +13415,6 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	case PT_VAR_SAMP:
 	  node->type_enum = arg_type;
 	  node->data_type = NULL;
-	  break;
-
-	case PT_JSON_ARRAYAGG:
-	case PT_JSON_OBJECTAGG:
-	case F_JSON_OBJECT:
-	case F_JSON_ARRAY:
-	case F_JSON_INSERT:
-	case F_JSON_REPLACE:
-	case F_JSON_SET:
-	case F_JSON_KEYS:
-	case F_JSON_REMOVE:
-	case F_JSON_ARRAY_APPEND:
-	case F_JSON_ARRAY_INSERT:
-	case F_JSON_MERGE:
-	case F_JSON_MERGE_PATCH:
-	case F_JSON_GET_ALL_PATHS:
-	case F_JSON_SEARCH:
-	case F_JSON_EXTRACT:
-	  node->type_enum = PT_TYPE_JSON;
-	  break;
-
-	case F_JSON_CONTAINS_PATH:
-	  node->type_enum = PT_TYPE_INTEGER;
 	  break;
 
 	case PT_MEDIAN:
@@ -14366,7 +13916,6 @@ error_collation:
 
   return node;
 }
-#endif // OLD function check
 
 /*
  * pt_eval_method_call_type () -

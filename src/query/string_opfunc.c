@@ -8023,7 +8023,7 @@ is_str_find_all (DB_VALUE * val, bool & find_all)
     }
   if (!find_all && find_all_str != "one")
     {
-      return ER_QSTR_INVALID_DATA_TYPE;
+      return ER_QSTR_INVALID_DATA_TYPE;	// todo - set a proper error
     }
   return NO_ERROR;
 }

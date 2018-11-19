@@ -1,3 +1,26 @@
+/*
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *
+ */
+
+/*
+ * func_type.hpp
+ */
+
 #ifndef _FUNC_TYPE_HPP_
 #define _FUNC_TYPE_HPP_
 
@@ -40,8 +63,12 @@ struct func_signature
   static std::vector<func_signature> json_doc_r_doc;
   static std::vector<func_signature> json_doc_path;
   static std::vector<func_signature> json_doc_r_path;
-  static std::vector<func_signature> json_doc_r_path_doc;
-
+  static std::vector<func_signature> json_doc_str_r_path;
+  static std::vector<func_signature> json_doc_r_path_val;
+  static std::vector<func_signature> json_contains_path;
+  static std::vector<func_signature> json_search;
+  static std::vector<func_signature> json_arrayagg;
+  static std::vector<func_signature> json_objectagg;
   static std::vector<func_signature> set_r_any; //set, table_set
   static std::vector<func_signature> multiset_r_any; //multiset, table_multiset
   static std::vector<func_signature> sequence_r_any; //sequence, table_sequence

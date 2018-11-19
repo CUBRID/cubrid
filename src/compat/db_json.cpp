@@ -2425,9 +2425,7 @@ db_json_merge_two_json_array_values (const JSON_VALUE &source, JSON_VALUE &dest,
   assert (source.IsArray ());
   assert (dest.IsArray ());
 
-  JSON_DOC temp_doc;    // local allocator
-
-  JSON_VALUE source_copy (source, temp_doc.GetAllocator ());
+  JSON_VALUE source_copy (source, allocator);
 
   for (JSON_VALUE::ValueIterator itr = source_copy.Begin (); itr != source_copy.End (); ++itr)
     {
@@ -2444,8 +2442,7 @@ db_json_array_push_back (const JSON_VALUE &value, JSON_VALUE &dest_array, JSON_P
   assert (dest_array.IsArray ());
 
   // PushBack cannot guarantee const property, so we need a copy of value. also a local allocator is needed
-  JSON_DOC temp_doc;    // local allocator
-  dest_array.PushBack (JSON_VALUE (value, temp_doc.GetAllocator ()), allocator);
+  dest_array.PushBack (JSON_VALUE (value, allocator), allocator);
 }
 
 //
@@ -2457,10 +2454,8 @@ db_json_object_add_member (const JSON_VALUE &name, const JSON_VALUE &value, JSON
 {
   assert (dest_object.IsObject ());
 
-  // AddMember cannot guarantee const property, so we need copies of name and value. also a local allocator is needed
-  JSON_DOC temp_doc;    // local allocator
-  dest_object.AddMember (JSON_VALUE (name, temp_doc.GetAllocator ()), JSON_VALUE (value, temp_doc.GetAllocator ()),
-			 allocator);
+  // AddMember cannot guarantee const property, so we need copies of name and value
+  dest_object.AddMember (JSON_VALUE (name, allocator), JSON_VALUE (value, allocator), allocator);
 }
 
 int

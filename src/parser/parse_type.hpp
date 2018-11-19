@@ -1,5 +1,28 @@
-#ifndef _PARSER_TYPE_HPP_
-#define _PARSER_TYPE_HPP_
+/*
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *
+ */
+
+/*
+ * parse_type.hpp
+ */
+
+#ifndef _PARSE_TYPE_HPP_
+#define _PARSE_TYPE_HPP_
 
 #include "parse_tree.h"
 #include <string>
@@ -23,13 +46,15 @@ enum pt_generic_type_enum
   PT_GENERIC_TYPE_QUERY, // Sub query (for range operators)
   PT_GENERIC_TYPE_PRIMITIVE, // primitive types
   PT_GENERIC_TYPE_ANY, // any type
-  PT_GENERIC_TYPE_JSON_VAL, // PT_TYPE_VARCHAR, PT_TYPE_VARCHAR, PT_TYPE_CHAR, PT_TYPE_NCHAR, PT_TYPE_NUMERIC, PT_TYPE_INTEGER, PT_TYPE_LOGICAL, PT_TYPE_DOUBLE, PT_TYPE_NUMERIC, PT_TYPE_JSON, PT_TYPE_MAYBE, PT_TYPE_NULL
-  PT_GENERIC_TYPE_JSON_DOC, // PT_TYPE_VARCHAR, PT_TYPE_VARNCHAR, PT_TYPE_CHAR, PT_TYPE_NCHAR, PT_TYPE_JSON, PT_TYPE_MAYBE, PT_TYPE_NULL
-  PT_GENERIC_TYPE_JSON_PATH, // PT_TYPE_VARCHAR, PT_TYPE_VARNCHAR, PT_TYPE_CHAR, PT_TYPE_NCHAR, PT_TYPE_BIT, PT_TYPE_VARBIT, PT_TYPE_MAYBE, PT_TYPE_NULL
+  PT_GENERIC_TYPE_JSON_VAL, // PT_TYPE_VARCHAR, PT_TYPE_VARCHAR, PT_TYPE_CHAR, PT_TYPE_NCHAR,
+  // PT_TYPE_NUMERIC, PT_TYPE_INTEGER, PT_TYPE_LOGICAL, PT_TYPE_DOUBLE, PT_TYPE_NUMERIC,
+  // PT_TYPE_JSON, PT_TYPE_MAYBE, PT_TYPE_NULL
+  PT_GENERIC_TYPE_JSON_DOC, // PT_TYPE_VARCHAR, PT_TYPE_VARNCHAR, PT_TYPE_CHAR, PT_TYPE_NCHAR,
+  // PT_TYPE_JSON, PT_TYPE_MAYBE, PT_TYPE_NULL
   PT_GENERIC_TYPE_SCALAR, // any type but set
 };
 
-const char* str(pt_generic_type_enum type);
+const char *str (pt_generic_type_enum type);
 
 /* expression argument type */
 struct pt_arg_type
@@ -47,53 +72,53 @@ struct pt_arg_type
     pt_generic_type_enum generic_type;
     size_t index; //index type
 
-    pt_arg_type_val(pt_type_enum type)
-      : type(type)
+    pt_arg_type_val (pt_type_enum type)
+      : type (type)
     {
     }
 
-    pt_arg_type_val(pt_generic_type_enum enum_val)
-      : generic_type(enum_val)
+    pt_arg_type_val (pt_generic_type_enum enum_val)
+      : generic_type (enum_val)
     {
     }
 
-    pt_arg_type_val(size_t index)
-      : index(index)
+    pt_arg_type_val (size_t index)
+      : index (index)
     {
     }
   } val;
 
-  pt_arg_type(pt_type_enum type = PT_TYPE_NONE)
-    : type(NORMAL)
-    , val(type)
+  pt_arg_type (pt_type_enum type = PT_TYPE_NONE)
+    : type (NORMAL)
+    , val (type)
   {
   }
 
-  pt_arg_type(pt_generic_type_enum generic_type)
-    : type(GENERIC)
-    , val(generic_type)
+  pt_arg_type (pt_generic_type_enum generic_type)
+    : type (GENERIC)
+    , val (generic_type)
   {
   }
 
-  pt_arg_type(size_t index)
-    : type(INDEX)
-    , val(index)
+  pt_arg_type (size_t index)
+    : type (INDEX)
+    , val (index)
   {
   }
 
-  void operator()(pt_type_enum normal_type)
+  void operator() (pt_type_enum normal_type)
   {
     type = NORMAL;
     val.type = normal_type;
   }
 
-  void operator()(pt_generic_type_enum generic_type)
+  void operator() (pt_generic_type_enum generic_type)
   {
     type = GENERIC;
     val.generic_type = generic_type;
   }
 
-  void operator()(size_t index)
+  void operator() (size_t index)
   {
     type = INDEX;
     val.index = index;
@@ -101,6 +126,6 @@ struct pt_arg_type
 };
 typedef pt_arg_type PT_ARG_TYPE;
 
-const char* str(const pt_arg_type& type, string_buffer& sb);
+const char *str (const pt_arg_type &type, string_buffer &sb);
 
-#endif // _PARSER_TYPE_HPP_
+#endif // _PARSE_TYPE_HPP_
