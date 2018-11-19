@@ -6993,7 +6993,8 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	  else if (agg_p->function == PT_JSON_OBJECTAGG)
 	    {
 	      pr_clear_value_vector (db_values);
-	      return ER_FAILED;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_OBJECT_NAME_IS_NULL, 0);
+	      return ER_JSON_OBJECT_NAME_IS_NULL;
 	    }
 	  else
 	    {
@@ -10592,7 +10593,6 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, V
   int copy_opr;
   TP_DOMAIN *tmp_domain_p = NULL;
   DB_TYPE dbval_type;
-  double ntile_bucket = 0.0;
   int error = NO_ERROR;
   TP_DOMAIN_STATUS dom_status;
   int coll_id;
@@ -10755,10 +10755,10 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, V
 	      goto exit;
 	    }
 
-	  ntile_bucket = db_get_double (&dbval);
+	  int ntile_bucket = (int) floor (db_get_double (&dbval));
 
 	  /* boundary check */
-	  if (ntile_bucket < 1.0 || ntile_bucket > DB_INT32_MAX)
+	  if (ntile_bucket < 1 || ntile_bucket > DB_INT32_MAX)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NTILE_INVALID_BUCKET_NUMBER, 0);
 	      error = ER_NTILE_INVALID_BUCKET_NUMBER;
@@ -10767,7 +10767,7 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, V
 
 	  /* we're sure the operand is not null */
 	  func_p->info.ntile.is_null = false;
-	  func_p->info.ntile.bucket_count = (int) floor (ntile_bucket);
+	  func_p->info.ntile.bucket_count = ntile_bucket;
 	}
       break;
 
