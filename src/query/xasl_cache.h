@@ -136,13 +136,20 @@ enum xasl_cache_search_mode
 };
 typedef enum xasl_cache_search_mode XASL_CACHE_SEARCH_MODE;
 
+enum xasl_cache_rt_check_result
+{
+  XASL_CACHE_RECOMPILE_NOT_NEEDED = 0,
+  XASL_CACHE_RECOMPILE_EXECUTE = 1,
+  XASL_CACHE_RECOMPILE_PREPARE = 2
+};
+
 extern int xcache_initialize (THREAD_ENTRY * thread_p);
 extern void xcache_finalize (THREAD_ENTRY * thread_p);
 
 extern int xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, const XASL_CACHE_SEARCH_MODE search_mode,
-			     XASL_CACHE_ENTRY ** xcache_entry, bool * rt_check);
-extern int xcache_find_xasl_id (THREAD_ENTRY * thread_p, const XASL_ID * xid, XASL_CACHE_ENTRY ** xcache_entry,
-				XASL_CLONE * xclone);
+			     XASL_CACHE_ENTRY ** xcache_entry, xasl_cache_rt_check_result * rt_check);
+extern int xcache_find_xasl_id_for_execute (THREAD_ENTRY * thread_p, const XASL_ID * xid,
+					    XASL_CACHE_ENTRY ** xcache_entry, XASL_CLONE * xclone);
 extern void xcache_unfix (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry);
 extern int xcache_insert (THREAD_ENTRY * thread_p, const compile_context * context, XASL_STREAM * stream,
 			  int n_oid, const OID * class_oids, const int *class_locks,

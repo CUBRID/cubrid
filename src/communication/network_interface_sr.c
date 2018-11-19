@@ -4973,9 +4973,12 @@ null_list:
 		}
 	    }
 
-	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_QUERY_EXECUTION_ERROR, 3, error_code,
-		  sql_id ? sql_id : "(UNKNOWN SQL_ID)",
-		  info.sql_user_text ? info.sql_user_text : "(UNKNOWN USER_TEXT)");
+	  if (error_code != ER_QPROC_XASLNODE_RECOMPILE_REQUESTED)
+	    {
+	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_QUERY_EXECUTION_ERROR, 3, error_code,
+		      sql_id ? sql_id : "(UNKNOWN SQL_ID)",
+		      info.sql_user_text ? info.sql_user_text : "(UNKNOWN USER_TEXT)");
+	    }
 
 	  if (sql_id != NULL)
 	    {

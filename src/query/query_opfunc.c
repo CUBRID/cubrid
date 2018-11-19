@@ -6993,7 +6993,8 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	  else if (agg_p->function == PT_JSON_OBJECTAGG)
 	    {
 	      pr_clear_value_vector (db_values);
-	      return ER_FAILED;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_OBJECT_NAME_IS_NULL, 0);
+	      return ER_JSON_OBJECT_NAME_IS_NULL;
 	    }
 	  else
 	    {
