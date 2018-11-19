@@ -4,95 +4,96 @@
 #include "parser.h"
 #include "parser_message.h"
 
-#if 0 //PT_TYPE_MAYBE
-- for the moment I don't see how to eliminate PT_TYPE_MAYBE from functions with multiple signature
-- with PT_TYPE_MAYBE in signature, the final type will not be decided during type checking but later
-- without PT_TYPE_MAYBE in signature you must either:
-  1. choose one signature and apply cast
-  ... but what about "prepare median(?)... execute with date'2018-06-13'... execute with 123"?
-  2. handle from code
-  ... but there are cases when the cast should be made
-  but neither one of them is OK
+#if 0
+//PT_TYPE_MAYBE
+// - for the moment I don't see how to eliminate PT_TYPE_MAYBE from functions with multiple signature
+// - with PT_TYPE_MAYBE in signature, the final type will not be decided during type checking but later
+// - without PT_TYPE_MAYBE in signature you must either:
+//   1. choose one signature and apply cast
+//   ... but what about "prepare median(?)... execute with date'2018-06-13'... execute with 123"?
+//   2. handle from code
+//   ... but there are cases when the cast should be made
+//   but neither one of them is OK
 #endif
 
-  std::vector<func_signature> func_signature::integer =
+std::vector<func_signature> func_signature::integer =
 {
   {PT_TYPE_INTEGER, {}, {}},
 };
 
 std::vector<func_signature> func_signature::bigint =
 {
-{PT_TYPE_BIGINT, {}, {}},
+  {PT_TYPE_BIGINT, {}, {}},
 };
 
 std::vector<func_signature> func_signature::percentile_cont =
 {
 #if 1
-{PT_TYPE_MAYBE, {PT_GENERIC_TYPE_NUMBER}, {}},
-{0, {PT_GENERIC_TYPE_DATETIME}, {}},
-{PT_TYPE_MAYBE, {PT_GENERIC_TYPE_STRING}, {}},
-{0, {PT_TYPE_MAYBE}, {}},
+  {PT_TYPE_MAYBE, {PT_GENERIC_TYPE_NUMBER}, {}},
+  {0, {PT_GENERIC_TYPE_DATETIME}, {}},
+  {PT_TYPE_MAYBE, {PT_GENERIC_TYPE_STRING}, {}},
+  {0, {PT_TYPE_MAYBE}, {}},
 #else //use double as return type (as documentation says)... but tests are failing (adjust doc or tests)
-{PT_TYPE_DOUBLE, {PT_GENERIC_TYPE_NUMBER}, {}},
-{0, {PT_GENERIC_TYPE_STRING}, {}},
-{PT_TYPE_DOUBLE, {PT_GENERIC_TYPE_DATETIME}, {}},
-{0, {PT_TYPE_MAYBE}, {}},
-{0, {PT_TYPE_NA}, {}},
+  {PT_TYPE_DOUBLE, {PT_GENERIC_TYPE_NUMBER}, {}},
+  {0, {PT_GENERIC_TYPE_STRING}, {}},
+  {PT_TYPE_DOUBLE, {PT_GENERIC_TYPE_DATETIME}, {}},
+  {0, {PT_TYPE_MAYBE}, {}},
+  {0, {PT_TYPE_NA}, {}},
 #endif
 };
 
 std::vector<func_signature> func_signature::percentile_disc =
 {
-{PT_TYPE_MAYBE, {PT_GENERIC_TYPE_NUMBER}, {}},
-{0, {PT_GENERIC_TYPE_DATETIME}, {}},
-{PT_TYPE_MAYBE, {PT_GENERIC_TYPE_STRING}, {}},
-{0, {PT_TYPE_MAYBE}, {}},
+  {PT_TYPE_MAYBE, {PT_GENERIC_TYPE_NUMBER}, {}},
+  {0, {PT_GENERIC_TYPE_DATETIME}, {}},
+  {PT_TYPE_MAYBE, {PT_GENERIC_TYPE_STRING}, {}},
+  {0, {PT_TYPE_MAYBE}, {}},
 };
 
 std::vector<func_signature> func_signature::bigint_discrete =
 {
-{PT_TYPE_BIGINT, {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}},
-{PT_TYPE_BIGINT, {PT_TYPE_NA}, {}}, //not needed???
+  {PT_TYPE_BIGINT, {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}},
+  {PT_TYPE_BIGINT, {PT_TYPE_NA}, {}}, //not needed???
 };
 
 std::vector<func_signature> func_signature::avg =
 {
-{PT_TYPE_DOUBLE, {PT_GENERIC_TYPE_NUMBER}, {}},
+  {PT_TYPE_DOUBLE, {PT_GENERIC_TYPE_NUMBER}, {}},
 };
 
 std::vector<func_signature> func_signature::double_number =
 {
-{PT_TYPE_DOUBLE, {PT_GENERIC_TYPE_NUMBER}, {}},
+  {PT_TYPE_DOUBLE, {PT_GENERIC_TYPE_NUMBER}, {}},
 };
 
 std::vector<func_signature> func_signature::count_star =
 {
-{PT_TYPE_INTEGER, {}, {}},
+  {PT_TYPE_INTEGER, {}, {}},
 };
 
 std::vector<func_signature> func_signature::count =
 {
-{PT_TYPE_INTEGER, {PT_GENERIC_TYPE_ANY}, {}},
+  {PT_TYPE_INTEGER, {PT_GENERIC_TYPE_ANY}, {}},
 };
 
 std::vector<func_signature> func_signature::sum =
 {
-{0, {PT_GENERIC_TYPE_NUMBER}, {}},
-{0, {PT_TYPE_MAYBE}, {}},
-{0, {PT_TYPE_SET}, {}},
-{0, {PT_TYPE_MULTISET}, {}},
-{0, {PT_TYPE_SEQUENCE}, {}},
+  {0, {PT_GENERIC_TYPE_NUMBER}, {}},
+  {0, {PT_TYPE_MAYBE}, {}},
+  {0, {PT_TYPE_SET}, {}},
+  {0, {PT_TYPE_MULTISET}, {}},
+  {0, {PT_TYPE_SEQUENCE}, {}},
 };
 
 std::vector<func_signature> func_signature::double_r_any =
 {
-{PT_TYPE_DOUBLE, {}, {}},
-{PT_TYPE_DOUBLE, {}, {PT_GENERIC_TYPE_ANY}},
+  {PT_TYPE_DOUBLE, {}, {}},
+  {PT_TYPE_DOUBLE, {}, {PT_GENERIC_TYPE_ANY}},
 };
 
 std::vector<func_signature> func_signature::ntile =
 {
-{PT_TYPE_INTEGER, {PT_GENERIC_TYPE_NUMBER}, {}}, //argument value will be truuncated at execution
+  {PT_TYPE_INTEGER, {PT_GENERIC_TYPE_NUMBER}, {}}, //argument value will be truncated at execution
 };
 
 /*cannot define a clear signature because casting depends on actual value
@@ -100,39 +101,39 @@ std::vector<func_signature> func_signature::ntile =
   MEDIAN('2018-03-14') <=> MEDIAN(date)   -> date  */
 std::vector<func_signature> func_signature::median =
 {
-{PT_TYPE_MAYBE, {PT_GENERIC_TYPE_NUMBER}, {}}, //if ret type is double => tests with median(int) will fail
-{0, {PT_GENERIC_TYPE_DATETIME}, {}},
-{PT_TYPE_MAYBE, {PT_GENERIC_TYPE_STRING}, {}},
-{0, {PT_TYPE_MAYBE}, {}}, //DISCUSSION: can we get rid of MAYBE here??? prepare median(?)...execute with date'2018-06-13'
+  {PT_TYPE_MAYBE, {PT_GENERIC_TYPE_NUMBER}, {}}, //if ret type is double => tests with median(int) will fail
+  {0, {PT_GENERIC_TYPE_DATETIME}, {}},
+  {PT_TYPE_MAYBE, {PT_GENERIC_TYPE_STRING}, {}},
+  {0, {PT_TYPE_MAYBE}, {}}, //DISCUSSION: can we get rid of MAYBE here??? prepare median(?)...execute with date'2018-06-13'
 };
 
 std::vector<func_signature> func_signature::type0_nr_or_str =
 {
-{0, {PT_GENERIC_TYPE_SCALAR}, {}},
+  {0, {PT_GENERIC_TYPE_SCALAR}, {}},
 };
 
 std::vector<func_signature> func_signature::type0_nr_or_str_discrete =
 {
-{0, {PT_GENERIC_TYPE_NUMBER, PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}},
-{0, {PT_GENERIC_TYPE_DATETIME, PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}},
-{0, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}},
-{0, {PT_GENERIC_TYPE_BIT, PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}},
-{0, {PT_TYPE_ENUMERATION, PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}},
+  {0, {PT_GENERIC_TYPE_NUMBER, PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}},
+  {0, {PT_GENERIC_TYPE_DATETIME, PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}},
+  {0, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}},
+  {0, {PT_GENERIC_TYPE_BIT, PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}},
+  {0, {PT_TYPE_ENUMERATION, PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}},
 };
 
 std::vector<func_signature> func_signature::group_concat =
 {
-{PT_TYPE_VARCHAR, {PT_TYPE_ENUMERATION, PT_GENERIC_TYPE_CHAR}, {}}, //needed because pt_are_equivalent_types(PT_GENERIC_TYPE_CHAR, PT_TYPE_ENUMERATION) and casting to VCHR will affect order
-{PT_TYPE_VARCHAR, {PT_TYPE_ENUMERATION, PT_GENERIC_TYPE_NCHAR}, {}},
+  {PT_TYPE_VARCHAR, {PT_TYPE_ENUMERATION, PT_GENERIC_TYPE_CHAR}, {}}, //needed because pt_are_equivalent_types(PT_GENERIC_TYPE_CHAR, PT_TYPE_ENUMERATION) and casting to VCHR will affect order
+  {PT_TYPE_VARCHAR, {PT_TYPE_ENUMERATION, PT_GENERIC_TYPE_NCHAR}, {}},
 
 //normal cases
-{PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_CHAR, PT_GENERIC_TYPE_CHAR}, {}},
-{PT_TYPE_VARNCHAR, {PT_GENERIC_TYPE_NCHAR, PT_GENERIC_TYPE_NCHAR}, {}},
-{PT_TYPE_VARBIT, {PT_GENERIC_TYPE_BIT, PT_GENERIC_TYPE_BIT}, {}},
+  {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_CHAR, PT_GENERIC_TYPE_CHAR}, {}},
+  {PT_TYPE_VARNCHAR, {PT_GENERIC_TYPE_NCHAR, PT_GENERIC_TYPE_NCHAR}, {}},
+  {PT_TYPE_VARBIT, {PT_GENERIC_TYPE_BIT, PT_GENERIC_TYPE_BIT}, {}},
 
 #if 0 //anything else should be casted to separator's type (if possible! makes sense to detect incompatible types when detecting/applying signatures?); NOTE: casting affects the order!!!
-{PT_TYPE_VARCHAR, {1, PT_GENERIC_TYPE_CHAR  }, {}},                          //test
-{PT_TYPE_VARNCHAR, {1, PT_GENERIC_TYPE_NCHAR }, {}},                         //test
+  {PT_TYPE_VARCHAR, {1, PT_GENERIC_TYPE_CHAR  }, {}},                          //test
+  {PT_TYPE_VARNCHAR, {1, PT_GENERIC_TYPE_NCHAR }, {}},                         //test
 #else //anything else should be left untouched (like in the original code), maybe it will be casted later?
 #if 0 //it allows group_concat(SET) but it should not!
 //{PT_TYPE_VARCHAR  , {PT_GENERIC_TYPE_ANY      , PT_GENERIC_TYPE_CHAR  }, {}},
@@ -140,127 +141,127 @@ std::vector<func_signature> func_signature::group_concat =
 #else //OK to keep the order but it allows cast (n)char -> number and it should not because group_concat(n'123', ', ') should be rejected?!            \
 //like that it allows group_concat(n'123', ', ') or group_concat(<nchar field>, ', ') when <nchar field> can be casted to double (acceptable for me) \
 //but solved in preprocess for compatibility to original behaviour
-{PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_NUMBER, PT_GENERIC_TYPE_CHAR}, {}},
-{PT_TYPE_VARNCHAR, {PT_GENERIC_TYPE_NUMBER, PT_GENERIC_TYPE_NCHAR}, {}},
-{PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_DATETIME, PT_GENERIC_TYPE_CHAR}, {}},
-{PT_TYPE_VARNCHAR, {PT_GENERIC_TYPE_DATETIME, PT_GENERIC_TYPE_NCHAR}, {}},
+  {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_NUMBER, PT_GENERIC_TYPE_CHAR}, {}},
+  {PT_TYPE_VARNCHAR, {PT_GENERIC_TYPE_NUMBER, PT_GENERIC_TYPE_NCHAR}, {}},
+  {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_DATETIME, PT_GENERIC_TYPE_CHAR}, {}},
+  {PT_TYPE_VARNCHAR, {PT_GENERIC_TYPE_DATETIME, PT_GENERIC_TYPE_NCHAR}, {}},
 #endif
 #endif
 };
 
 std::vector<func_signature> func_signature::lead_lag =
 {
-{0, {PT_GENERIC_TYPE_NUMBER}, {}},
-{0, {PT_GENERIC_TYPE_STRING}, {}},
-{0, {PT_GENERIC_TYPE_DATETIME}, {}},
-{0, {PT_GENERIC_TYPE_BIT}, {}},
-{0, {PT_GENERIC_TYPE_SEQUENCE}, {}},
+  {0, {PT_GENERIC_TYPE_NUMBER}, {}},
+  {0, {PT_GENERIC_TYPE_STRING}, {}},
+  {0, {PT_GENERIC_TYPE_DATETIME}, {}},
+  {0, {PT_GENERIC_TYPE_BIT}, {}},
+  {0, {PT_GENERIC_TYPE_SEQUENCE}, {}},
 };
 
 std::vector<func_signature> func_signature::elt =
 {
-{PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {PT_TYPE_VARCHAR}}, //get_current_result() expects args to be VCHAR, not just equivalent
-{PT_TYPE_VARNCHAR, {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {PT_TYPE_VARNCHAR}}, //get_current_result() expects args to be VNCHAR, not just equivalent
-{PT_TYPE_NULL, {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}},
+  {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {PT_TYPE_VARCHAR}}, //get_current_result() expects args to be VCHAR, not just equivalent
+  {PT_TYPE_VARNCHAR, {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {PT_TYPE_VARNCHAR}}, //get_current_result() expects args to be VNCHAR, not just equivalent
+  {PT_TYPE_NULL, {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}},
 };
 
 std::vector<func_signature> func_signature::insert =
 {
-{PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_CHAR, PT_TYPE_INTEGER, PT_TYPE_INTEGER, PT_GENERIC_TYPE_CHAR}, {}},
-{PT_TYPE_VARNCHAR, {PT_GENERIC_TYPE_NCHAR, PT_TYPE_INTEGER, PT_TYPE_INTEGER, 0}, {}},
+  {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_CHAR, PT_TYPE_INTEGER, PT_TYPE_INTEGER, PT_GENERIC_TYPE_CHAR}, {}},
+  {PT_TYPE_VARNCHAR, {PT_GENERIC_TYPE_NCHAR, PT_TYPE_INTEGER, PT_TYPE_INTEGER, 0}, {}},
 
-{0, {3, PT_TYPE_INTEGER, PT_TYPE_INTEGER, PT_GENERIC_TYPE_NCHAR}, {}}, //for insert(?, i, i, n'nchar')
-{0, {3, PT_TYPE_INTEGER, PT_TYPE_INTEGER, PT_GENERIC_TYPE_STRING}, {}}, //for insert(?, i, i, 'char or anything else')
+  {0, {3, PT_TYPE_INTEGER, PT_TYPE_INTEGER, PT_GENERIC_TYPE_NCHAR}, {}}, //for insert(?, i, i, n'nchar')
+  {0, {3, PT_TYPE_INTEGER, PT_TYPE_INTEGER, PT_GENERIC_TYPE_STRING}, {}}, //for insert(?, i, i, 'char or anything else')
 };
 
 std::vector<func_signature> func_signature::json_r_key_val =
 {
-{PT_TYPE_JSON, {}, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_JSON_VAL}},
+  {PT_TYPE_JSON, {}, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_JSON_VAL}},
 };
 
 std::vector<func_signature> func_signature::json_r_val =
 {
-{PT_TYPE_JSON, {}, {PT_GENERIC_TYPE_JSON_VAL}},
+  {PT_TYPE_JSON, {}, {PT_GENERIC_TYPE_JSON_VAL}},
 };
 
 std::vector<func_signature> func_signature::json_doc =
 {
-{PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC}, {}},
+  {PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC}, {}},
 };
 
 std::vector<func_signature> func_signature::json_doc_r_doc =
 {
-{PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC}, {PT_GENERIC_TYPE_JSON_DOC}},
+  {PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC}, {PT_GENERIC_TYPE_JSON_DOC}},
 };
 
 std::vector<func_signature> func_signature::json_doc_path =
 {
-{PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC, PT_GENERIC_TYPE_STRING}, {}},
+  {PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC, PT_GENERIC_TYPE_STRING}, {}},
 };
 
 std::vector<func_signature> func_signature::json_doc_r_path =
 {
-{PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC}, {PT_GENERIC_TYPE_STRING}},
+  {PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC}, {PT_GENERIC_TYPE_STRING}},
 };
 
 std::vector<func_signature> func_signature::json_doc_str_r_path =
 {
-{PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC, PT_GENERIC_TYPE_STRING}, {PT_GENERIC_TYPE_STRING}},
+  {PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC, PT_GENERIC_TYPE_STRING}, {PT_GENERIC_TYPE_STRING}},
 };
 
 std::vector<func_signature> func_signature::json_doc_r_path_val =
 {
-{PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC}, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_JSON_VAL}},
+  {PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC}, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_JSON_VAL}},
 };
 
 std::vector<func_signature> func_signature::json_contains_path =
 {
-{PT_TYPE_INTEGER, {PT_GENERIC_TYPE_JSON_DOC, PT_GENERIC_TYPE_STRING}, {PT_GENERIC_TYPE_STRING}},
+  {PT_TYPE_INTEGER, {PT_GENERIC_TYPE_JSON_DOC, PT_GENERIC_TYPE_STRING}, {PT_GENERIC_TYPE_STRING}},
 };
 
 std::vector<func_signature> func_signature::json_search =
 {
 // all signatures: json_doc, one_or_all_str, search_str[, escape_char[, path] ... -> JSON_DOC
 // first overload: json_doc, one_or_all_str, search_str:
-{PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING}, {}},
+  {PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING}, {}},
 // second overload: json_doc, one_or_all_str, search_str, escape_char
-{PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING}, {}},
+  {PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING}, {}},
 // third overload: json_doc, one_or_all_str, search_str, escape_char, path...
-{
-  PT_TYPE_JSON,
-  {PT_GENERIC_TYPE_JSON_DOC, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING},
-  {PT_GENERIC_TYPE_STRING}
-},
+  {
+    PT_TYPE_JSON,
+    {PT_GENERIC_TYPE_JSON_DOC, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING},
+    {PT_GENERIC_TYPE_STRING}
+  },
 };
 
 std::vector<func_signature> func_signature::json_arrayagg =
 {
-{PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_VAL}, {}}
+  {PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_VAL}, {}}
 };
 
 std::vector<func_signature> func_signature::json_objectagg =
 {
-{PT_TYPE_JSON, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_JSON_VAL}, {}}
+  {PT_TYPE_JSON, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_JSON_VAL}, {}}
 };
 
 std::vector<func_signature> func_signature::set_r_any =
 {
-{PT_TYPE_SET, {}, {PT_GENERIC_TYPE_ANY}},
+  {PT_TYPE_SET, {}, {PT_GENERIC_TYPE_ANY}},
 };
 
 std::vector<func_signature> func_signature::multiset_r_any =
 {
-{PT_TYPE_MULTISET, {}, {PT_GENERIC_TYPE_ANY}},
+  {PT_TYPE_MULTISET, {}, {PT_GENERIC_TYPE_ANY}},
 };
 
 std::vector<func_signature> func_signature::sequence_r_any =
 {
-{PT_TYPE_SEQUENCE, {}, {PT_GENERIC_TYPE_ANY}},
+  {PT_TYPE_SEQUENCE, {}, {PT_GENERIC_TYPE_ANY}},
 };
 
 std::vector<func_signature> func_signature::generic =
 {
-{0, {PT_GENERIC_TYPE_ANY}, {}},
+  {0, {PT_GENERIC_TYPE_ANY}, {}},
 };
 
 std::vector<func_signature> *func_signature::get_signatures (FUNC_TYPE ft)
@@ -560,12 +561,12 @@ bool Func::cmp_types_castable (const pt_arg_type &type, pt_type_enum type_enum) 
 	case PT_TYPE_BIGINT:
 	  return (PT_IS_DISCRETE_NUMBER_TYPE (type_enum));
 	case PT_TYPE_VARCHAR:
-	  return (PT_IS_SIMPLE_CHAR_STRING_TYPE (type_enum) || PT_IS_NUMERIC_TYPE (type_enum) ||
-		  PT_IS_DATE_TIME_TYPE (type_enum) || PT_IS_BIT_STRING_TYPE (type_enum)
+	  return (PT_IS_SIMPLE_CHAR_STRING_TYPE (type_enum) || PT_IS_NUMERIC_TYPE (type_enum)
+		  || PT_IS_DATE_TIME_TYPE (type_enum) || PT_IS_BIT_STRING_TYPE (type_enum)
 		  || type_enum == PT_TYPE_ENUMERATION); //monetary should be here???
 	case PT_TYPE_VARNCHAR:
-	  return (PT_IS_NATIONAL_CHAR_STRING_TYPE (type_enum) || PT_IS_NUMERIC_TYPE (type_enum) ||
-		  PT_IS_DATE_TIME_TYPE (type_enum) || PT_IS_BIT_STRING_TYPE (type_enum)
+	  return (PT_IS_NATIONAL_CHAR_STRING_TYPE (type_enum) || PT_IS_NUMERIC_TYPE (type_enum)
+		  || PT_IS_DATE_TIME_TYPE (type_enum) || PT_IS_BIT_STRING_TYPE (type_enum)
 		  || type_enum == PT_TYPE_ENUMERATION); //monetary should be here???
 	default:
 	  return type.val.type == type_enum;
@@ -590,12 +591,12 @@ bool Func::cmp_types_castable (const pt_arg_type &type, pt_type_enum type_enum) 
       return !PT_IS_COLLECTION_TYPE (type_enum);
 
     case PT_GENERIC_TYPE_CHAR:
-      return (PT_IS_NUMERIC_TYPE (type_enum) || PT_IS_SIMPLE_CHAR_STRING_TYPE (type_enum) ||
-	      PT_IS_DATE_TIME_TYPE (type_enum) || type_enum == PT_TYPE_JSON);
+      return (PT_IS_NUMERIC_TYPE (type_enum) || PT_IS_SIMPLE_CHAR_STRING_TYPE (type_enum)
+	      || PT_IS_DATE_TIME_TYPE (type_enum) || type_enum == PT_TYPE_JSON);
 
     case PT_GENERIC_TYPE_NCHAR:
-      return (PT_IS_NUMERIC_TYPE (type_enum) || PT_IS_NATIONAL_CHAR_STRING_TYPE (type_enum) ||
-	      PT_IS_DATE_TIME_TYPE (type_enum) || type_enum == PT_TYPE_JSON);
+      return (PT_IS_NUMERIC_TYPE (type_enum) || PT_IS_NATIONAL_CHAR_STRING_TYPE (type_enum)
+	      || PT_IS_DATE_TIME_TYPE (type_enum) || type_enum == PT_TYPE_JSON);
 
     case PT_GENERIC_TYPE_DATE:
     case PT_GENERIC_TYPE_DATETIME:
@@ -672,47 +673,42 @@ bool Func::Node::preprocess()
       m_node->type_enum = (arg_list) ? arg_list->type_enum : PT_TYPE_NONE;
       return false; //no need to continue with generic code
     case F_INSERT_SUBSTRING:
-      {
-	std::vector<parser_node *> args; //preallocate!?
-	int i = 0;
-	for (auto arg = m_node->info.function.arg_list; arg; arg = arg->next)
-	  {
-	    args.push_back (arg);
-	  }
-	if (args[0] && args[0]->type_enum == PT_TYPE_MAYBE && args[3] && args[3]->type_enum == PT_TYPE_MAYBE)
-	  {
-	    args[0] = cast (NULL, args[0], PT_TYPE_VARCHAR, 0, 0, NULL);
-	    args[3] = cast (args[2], args[3], PT_TYPE_VARCHAR, 0, 0, NULL);
-	  }
-	break;
-      }
+    {
+      std::vector<parser_node *> args; //preallocate!?
+      int i = 0;
+      for (auto arg = m_node->info.function.arg_list; arg; arg = arg->next)
+	{
+	  args.push_back (arg);
+	}
+      if (args[0] && args[0]->type_enum == PT_TYPE_MAYBE && args[3] && args[3]->type_enum == PT_TYPE_MAYBE)
+	{
+	  args[0] = cast (NULL, args[0], PT_TYPE_VARCHAR, 0, 0, NULL);
+	  args[3] = cast (args[2], args[3], PT_TYPE_VARCHAR, 0, 0, NULL);
+	}
+      break;
+    }
     case PT_GROUP_CONCAT: //ToDo: try withut this!
-      {
-	auto arg1 = m_node->info.function.arg_list;
-	if (arg1 != NULL)
-	  {
-	    auto arg2 = arg1->next;
-	    if (arg2 != NULL)
-	      {
-		if ((PT_IS_SIMPLE_CHAR_STRING_TYPE (arg1->type_enum) &&
-		     PT_IS_NATIONAL_CHAR_STRING_TYPE (arg2->type_enum)) ||
-		    (PT_IS_SIMPLE_CHAR_STRING_TYPE (arg2->type_enum) &&
-		     PT_IS_NATIONAL_CHAR_STRING_TYPE (arg1->type_enum)))
-		  {
-		    pt_cat_error (m_parser,
-				  m_node,
-				  MSGCAT_SET_PARSER_SEMANTIC,
-				  MSGCAT_SEMANTIC_OP_NOT_DEFINED_ON,
-				  pt_show_function (PT_GROUP_CONCAT),
-				  pt_show_type_enum (arg1->type_enum),
-				  pt_show_type_enum (arg2->type_enum));
-		    m_node->type_enum = PT_TYPE_VARCHAR;
-		    return false;
-		  }
-	      }
-	  }
-	break;
-      }
+    {
+      auto arg1 = m_node->info.function.arg_list;
+      if (arg1 != NULL)
+	{
+	  auto arg2 = arg1->next;
+	  if (arg2 != NULL)
+	    {
+	      if ((PT_IS_SIMPLE_CHAR_STRING_TYPE (arg1->type_enum) && PT_IS_NATIONAL_CHAR_STRING_TYPE (arg2->type_enum))
+		  || (PT_IS_SIMPLE_CHAR_STRING_TYPE (arg2->type_enum)
+		      && PT_IS_NATIONAL_CHAR_STRING_TYPE (arg1->type_enum)))
+		{
+		  pt_cat_error (m_parser, m_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OP_NOT_DEFINED_ON,
+				pt_show_function (PT_GROUP_CONCAT), pt_show_type_enum (arg1->type_enum),
+				pt_show_type_enum (arg2->type_enum));
+		  m_node->type_enum = PT_TYPE_VARCHAR;
+		  return false;
+		}
+	    }
+	}
+      break;
+    }
     default:
       ;
     }
@@ -777,20 +773,16 @@ const func_signature *Func::Node::get_signature (const std::vector<func_signatur
 	  if (!matchEquivalent && !matchCastable) //current arg doesn' match => current signature doesn't match
 	    {
 	      sb.clear();
-	      pt_cat_error (m_parser,
-			    arg,
-			    MSGCAT_SET_PARSER_SEMANTIC,
-			    MSGCAT_SEMANTIC_FUNCTYPECHECK_INCOMPATIBLE_TYPE,
-			    pt_show_type_enum (arg->type_enum),
-			    get_types (signatures, argIndex - 1, sb));
+	      pt_cat_error (m_parser, arg, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTYPECHECK_INCOMPATIBLE_TYPE,
+			    pt_show_type_enum (arg->type_enum), get_types (signatures, argIndex - 1, sb));
 	      break;
 	    }
 	  arg = arg->next;
 	}
-      if ((matchEquivalent || matchCastable) &&
-	  ((arg != NULL && sig.rep.size() == 0) ||
-	   (arg == NULL && sig.rep.size() != 0))) //number of arguments don't match
+      if ((matchEquivalent || matchCastable)
+	  && ((arg != NULL && sig.rep.size() == 0) || (arg == NULL && sig.rep.size() != 0)))
 	{
+	  // number of arguments don't match
 	  matchEquivalent = matchCastable = false;
 	  pt_cat_error (m_parser, arg, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTYPECHECK_ARGS_COUNT);
 	}
@@ -812,12 +804,8 @@ const func_signature *Func::Node::get_signature (const std::vector<func_signatur
 	  if (!matchEquivalent && !matchCastable) //current arg doesn' match => current signature doesn't match
 	    {
 	      sb.clear();
-	      pt_cat_error (m_parser,
-			    arg,
-			    MSGCAT_SET_PARSER_SEMANTIC,
-			    MSGCAT_SEMANTIC_FUNCTYPECHECK_INCOMPATIBLE_TYPE,
-			    pt_show_type_enum (arg->type_enum),
-			    get_types (signatures, argIndex - 1, sb));
+	      pt_cat_error (m_parser, arg, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTYPECHECK_INCOMPATIBLE_TYPE,
+			    pt_show_type_enum (arg->type_enum), get_types (signatures, argIndex - 1, sb));
 	      break;
 	    }
 	}
@@ -920,6 +908,7 @@ bool Func::Node::apply_signature (const func_signature &signature)
   parser_node *arg = m_node->info.function.arg_list;
   parser_node *prev = NULL;
   int arg_pos = 0;
+
   for (auto type: signature.fix) //check fixed part of the function signature
     {
       if (arg == NULL)
@@ -1082,12 +1071,8 @@ bool pt_are_equivalent_types (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM op_
       return pt_is_json_doc_type (op_type);
 
     case PT_GENERIC_TYPE_SCALAR:
-      return (
-		     (op_type == PT_TYPE_ENUMERATION) ||
-		     PT_IS_NUMERIC_TYPE (op_type) ||
-		     PT_IS_STRING_TYPE (op_type) ||
-		     PT_IS_DATE_TIME_TYPE (op_type)
-	     );
+      return ((op_type == PT_TYPE_ENUMERATION) || PT_IS_NUMERIC_TYPE (op_type) || PT_IS_STRING_TYPE (op_type)
+	      || PT_IS_DATE_TIME_TYPE (op_type));
 
     default:
       return false;

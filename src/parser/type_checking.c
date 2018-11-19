@@ -12640,9 +12640,7 @@ pt_eval_function_type_new (PARSER_CONTEXT * parser, PT_NODE * node)
 
   if (pt_list_has_logical_nodes (arg_list))
     {
-      pt_cat_error (parser,
-		    node,
-		    MSGCAT_SET_PARSER_SEMANTIC,
+      pt_cat_error (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
 		    MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON, pt_show_function (fcode), "boolean");
       return node;
     }
@@ -12658,10 +12656,7 @@ pt_eval_function_type_new (PARSER_CONTEXT * parser, PT_NODE * node)
 	  assert ("ERR no function signature" && func_sigs != NULL);
 	  if (!func_sigs)
 	    {
-	      pt_cat_error (parser,
-			    node,
-			    MSGCAT_SET_PARSER_SEMANTIC,
-			    MSGCAT_SEMANTIC_FUNCTYPECHECK_NO_SIGNATURES,
+	      pt_cat_error (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTYPECHECK_NO_SIGNATURES,
 			    str (fcode) /*, parser_print_tree_list(parser, arg_list) */ );
 	      return node;
 	    }
@@ -12676,10 +12671,7 @@ pt_eval_function_type_new (PARSER_CONTEXT * parser, PT_NODE * node)
 	    {
 	      node->type_enum = PT_TYPE_NA;	//to avoid entering here 2nd time
 	      //arg_type = PT_TYPE_NONE;//unused!?
-	      pt_cat_error (parser,
-			    node,
-			    MSGCAT_SET_PARSER_SEMANTIC,
-			    MSGCAT_SEMANTIC_FUNCTYPECHECK_NO_SIGNATURE,
+	      pt_cat_error (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTYPECHECK_NO_SIGNATURE,
 			    str (fcode) /*, parser_print_tree_list(parser, arg_list) */ );
 	    }
 	}

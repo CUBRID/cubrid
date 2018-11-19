@@ -2,9 +2,10 @@
 #include "parser.h"
 #include "string_buffer.hpp"
 
-const char* str(pt_generic_type_enum type)
+const char *str (pt_generic_type_enum type)
 {
-  static const char* arr[] = {
+  static const char *arr[] =
+  {
     "GT_NONE",
     "GT_STRING",
     "GT_STRING_VARYING",
@@ -29,19 +30,19 @@ const char* str(pt_generic_type_enum type)
 }
 
 //--------------------------------------------------------------------------------
-const char* str(const pt_arg_type& type, string_buffer& sb)
+const char *str (const pt_arg_type &type, string_buffer &sb)
 {
   switch (type.type)
     {
     case pt_arg_type::NORMAL:
       //sb("%s", str(type.val.type));
-      sb("%s", pt_show_type_enum(type.val.type));
+      sb ("%s", pt_show_type_enum (type.val.type));
       break;
     case pt_arg_type::GENERIC:
-      sb("%s", str(type.val.generic_type));
+      sb ("%s", str (type.val.generic_type));
       break;
     case pt_arg_type::INDEX:
-      sb("IDX%d", type.val.index);
+      sb ("IDX%d", type.val.index);
       break;
     }
   return sb.get_buffer();
