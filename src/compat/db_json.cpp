@@ -738,6 +738,7 @@ static void db_json_build_path_special_chars (const JSON_PATH_TYPE &json_path_ty
 static std::vector<std::string> db_json_split_path_by_delimiters (const std::string &path,
     const std::string &delim);
 static bool db_json_sql_path_is_valid (std::string &sql_path, bool allow_wildcards);
+static void json_path_strip_whitespaces (std::string &sql_path);
 static int db_json_er_set_path_does_not_exist (const char *file_name, const int line_no, const std::string &path,
     const JSON_DOC *doc);
 static void db_json_replace_token_special_chars (std::string &token,
@@ -2887,10 +2888,40 @@ db_json_split_path_by_delimiters (const std::string &path, const std::string &de
 }
 
 /*
+ * json_path_strip_whitespaces () - Remove whitespaces in json_path
+ *
+ * sql_path (in/out)       : json path
+ * NOTE: This can be only called after validation because spaces are not allowed in some cases (e.g. $[1 1] is illegal)
+ */
+static void
+json_path_strip_whitespaces (std::string &sql_path)
+{
+  std::string result;
+  result.reserve (sql_path.length()+1);
+
+  bool skip_spaces = true;
+  for (size_t i = 0; i<sql_path.length(); ++i)
+    {
+      if (skip_spaces && sql_path[i] == ' ')
+	{
+	  continue;
+	}
+      if (i > 0 && sql_path[i-1] == '\\' &&  sql_path[i] == '"')
+	{
+	  skip_spaces = !skip_spaces;
+	}
+
+      result.push_back (sql_path[i]);
+    }
+
+  sql_path = std::move (result);
+}
+
+/*
  * db_json_sql_path_is_valid () - Check if a given path is a SQL valid path
  *
  * return                  : true/false
- * sql_path (in)           : path to be checked
+ * sql_path (in/out)       : path to be checked
  * allow_wild_cards (in)   : whether json_path wildcards are allowed
  */
 static bool
@@ -2970,7 +3001,8 @@ db_json_sql_path_is_valid (std::string &sql_path, bool allow_wildcards)
 	    {
 	      // todo: this needs change. Besides alphanumerics, object keyes can be valid ECMAScript identifiers as defined in
 	      // http://www.ecma-international.org/ecma-262/5.1/#sec-7.6
-	      if (i < sql_path.length () && !std::isalpha (sql_path[i]) && ! (allow_wildcards && sql_path[i] != '*'))
+	      if (i < sql_path.length () && !std::isalnum (static_cast<unsigned char> (sql_path[i])) && ! (allow_wildcards
+		  && sql_path[i] != '*'))
 		{
 		  return false;
 		}
@@ -2978,7 +3010,7 @@ db_json_sql_path_is_valid (std::string &sql_path, bool allow_wildcards)
 	      ++i;
 	      while (i < sql_path.length () && (sql_path[i] != '.' && sql_path[i] != '[' && sql_path[i] != ' '))
 		{
-		  // spaces inside unqouted object keyes are not allowed
+		  // special characters are not allowed in the middle of an unqouted object key
 		  if (sql_path[i] == '"' || sql_path[i] == '*')
 		    {
 		      return false;
@@ -3021,6 +3053,7 @@ db_json_sql_path_is_valid (std::string &sql_path, bool allow_wildcards)
 	}
     }
 
+  json_path_strip_whitespaces (sql_path);
   return true;
 }
 

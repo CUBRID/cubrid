@@ -10071,6 +10071,7 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 
       if (pt_check_json_table_paths (node->info.json_table_info.tree))
 	{
+	  ASSERT_ERROR ();
 	  PT_ERRORc (parser, node, er_msg ());
 	}
 
