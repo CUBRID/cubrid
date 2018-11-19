@@ -5567,6 +5567,7 @@ db_json_extract_multiple_paths (DB_VALUE * result, DB_VALUE * args[], int num_ar
 
   // free temporary resources
   db_json_delete_doc (extracted_doc);
+  db_json_delete_doc (source_doc);
 
   db_make_json (result, result_doc, true);
   return NO_ERROR;
