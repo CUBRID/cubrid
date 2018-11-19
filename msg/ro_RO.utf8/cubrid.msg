@@ -1768,6 +1768,10 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 298 CTE-ul recursiv '%1$s' trebuie referenţiat direct în interogarea sa recursivă.
 299 Eroare în CTE '%1$s': Partea nerecursivă și partea recursivă trebuie conectate cu UNION ALL.
 300 Nu este permisă o subinterogare în clauza DEFAULT.
+301 Nu s-au gasit semnaturi pentru functia %1$s()
+302 Tip argument incompatibil %1$s; tip(uri) asteptate: %2$s
+303 Numar invalid de argumente
+304 Nu s-a gasit semnatura compatibila pentru functia %1$s()
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Memorie virtuală epuizată: nu s-au putut aloca %1$d bytes.
