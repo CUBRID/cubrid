@@ -4160,7 +4160,7 @@ end_create:
       return error;
     }
 
-  assert (er_errid () == NO_ERROR);
+  assert (er_errid_if_has_error () == NO_ERROR);
 
   return NO_ERROR;
 }
