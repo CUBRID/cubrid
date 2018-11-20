@@ -3676,6 +3676,15 @@ db_value_to_json_value (const DB_VALUE &db_val, REFPTR (JSON_DOC, json_val))
       db_json_set_string_to_doc (json_val, db_get_string (&db_val));
       break;
 
+    case DB_TYPE_ENUMERATION:
+      json_val = db_json_allocate_doc ();
+      {
+	std::string enum_str;
+	enum_str.append (db_get_enum_string (&db_val), (size_t) db_get_enum_string_size (&db_val));
+	db_json_set_string_to_doc (json_val, enum_str.c_str ());
+      }
+      break;
+
     default:
       DB_VALUE dest;
       TP_DOMAIN_STATUS status = tp_value_cast (&db_val, &dest, &tp_Json_domain, false);

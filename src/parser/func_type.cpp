@@ -801,7 +801,8 @@ Func::Node::get_signature (const std::vector<func_signature> &signatures)
 
   const func_signature *signature = nullptr;
   size_t arg_count = static_cast<size_t> (pt_length_of_list (m_node->info.function.arg_list));
-  m_compat.m_args_compat.resize (arg_count);
+  std::vector<argument_compatibility> args_compat;
+  args_compat.resize (arg_count);
 
   int sigIndex = 0;
   for (auto &sig: signatures)
@@ -821,17 +822,16 @@ Func::Node::get_signature (const std::vector<func_signature> &signatures)
 	    {
 	      break;
 	    }
-	  argument_compatibility &arg_compat = m_compat.m_args_compat[argIndex];
 	  auto t = ((fix.type == pt_arg_type::INDEX) ? sig.fix[fix.val.index] : fix);
 
-	  check_arg_compat (t, arg, arg_compat);
-	  if (arg_compat.m_compat == type_compatibility::INCOMPATIBLE)
+	  check_arg_compat (t, arg, args_compat[argIndex]);
+	  if (args_compat[argIndex].m_compat == type_compatibility::INCOMPATIBLE)
 	    {
 	      invalid_arg_error (t, arg, sig);
 	      m_compat.m_singature_compat = type_compatibility::INCOMPATIBLE;
 	      break;
 	    }
-	  else if (arg_compat.m_compat == type_compatibility::COERCIBLE)
+	  else if (args_compat[argIndex].m_compat == type_compatibility::COERCIBLE)
 	    {
 	      // demote signature to coercible
 	      m_compat.m_singature_compat = type_compatibility::COERCIBLE;
@@ -858,15 +858,14 @@ Func::Node::get_signature (const std::vector<func_signature> &signatures)
 	  auto &rep = sig.rep[index];
 	  auto t = ((rep.type == pt_arg_type::INDEX) ? sig.rep[rep.val.index] : rep);
 
-	  argument_compatibility &arg_compat = m_compat.m_args_compat[argIndex];
-	  check_arg_compat (t, arg, arg_compat);
-	  if (arg_compat.m_compat == type_compatibility::INCOMPATIBLE)
+	  check_arg_compat (t, arg, args_compat[argIndex]);
+	  if (args_compat[argIndex].m_compat == type_compatibility::INCOMPATIBLE)
 	    {
 	      invalid_arg_error (t, arg, sig);
 	      m_compat.m_singature_compat = type_compatibility::INCOMPATIBLE;
 	      break;
 	    }
-	  else if (arg_compat.m_compat == type_compatibility::COERCIBLE)
+	  else if (args_compat[argIndex].m_compat == type_compatibility::COERCIBLE)
 	    {
 	      // demote signature to coercible
 	      m_compat.m_singature_compat = type_compatibility::COERCIBLE;
@@ -877,12 +876,14 @@ Func::Node::get_signature (const std::vector<func_signature> &signatures)
       if (m_compat.m_singature_compat == type_compatibility::EQUIVALENT)
 	{
 	  signature = &sig;
+	  m_compat.m_args_compat = std::move (args_compat);
 	  break; //stop at 1st equivalent signature
 	}
       if (m_compat.m_singature_compat == type_compatibility::COERCIBLE && signature == nullptr)
 	{
 	  //don't stop, continue because it is possible to find an equivalent signature later
 	  signature = &sig;
+	  m_compat.m_args_compat = args_compat;
 	}
     }
   if (signature)
@@ -1300,6 +1301,26 @@ pt_get_equivalent_type (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM arg_type)
     case PT_GENERIC_TYPE_SCALAR:
       if (arg_type == PT_TYPE_ENUMERATION || arg_type == PT_TYPE_MAYBE || PT_IS_NUMERIC_TYPE (arg_type)
 	  || PT_IS_STRING_TYPE (arg_type) || PT_IS_DATE_TIME_TYPE (arg_type))
+	{
+	  return arg_type;
+	}
+      else
+	{
+	  return PT_TYPE_NONE;
+	}
+
+    case PT_GENERIC_TYPE_JSON_VAL:
+      if (pt_is_json_value_type (arg_type))
+	{
+	  return arg_type;
+	}
+      else
+	{
+	  return PT_TYPE_NONE;
+	}
+
+    case PT_GENERIC_TYPE_JSON_DOC:
+      if (pt_is_json_doc_type (arg_type))
 	{
 	  return arg_type;
 	}
