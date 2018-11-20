@@ -14022,14 +14022,16 @@ do_select (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
   else
     {
-      if (pt_has_error (parser))
+      error = er_errid ();
+      if (error == NO_ERROR && pt_has_error (parser))
 	{
 	  pt_report_to_ersys (parser, PT_SEMANTIC);
 	  pt_reset_error (parser);
+
+	  error = er_errid ();
 	}
 
       assert (er_errid () != NO_ERROR);
-      error = er_errid ();
       if (error == NO_ERROR)
 	{
 	  error = ER_FAILED;
@@ -14173,14 +14175,16 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       else
 	{
-	  if (pt_has_error (parser))
+	  err = er_errid ();
+	  if (err == NO_ERROR && pt_has_error (parser))
 	    {
 	      pt_report_to_ersys (parser, PT_SEMANTIC);
 	      pt_reset_error (parser);
+
+	      err = er_errid ();
 	    }
 
 	  assert (er_errid () != NO_ERROR);
-	  err = er_errid ();
 	  if (err == NO_ERROR)
 	    {
 	      err = ER_FAILED;
