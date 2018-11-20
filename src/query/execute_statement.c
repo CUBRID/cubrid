@@ -14173,9 +14173,13 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       else
 	{
-#if 0				/* TODO */
+	  if (pt_has_error (parser))
+	    {
+	      pt_report_to_ersys (parser, PT_SEMANTIC);
+	      pt_reset_error (parser);
+	    }
+
 	  assert (er_errid () != NO_ERROR);
-#endif
 	  err = er_errid ();
 	  if (err == NO_ERROR)
 	    {
