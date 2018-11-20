@@ -485,8 +485,6 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * c
       thread_p = thread_get_thread_entry_info ();
     }
 
-  thread_p->get_csect_tracker ().on_enter_as_writer (csect->cs_index);
-
   csect->stats->nenter++;
 
   tsc_getticks (&start_tick);
@@ -605,7 +603,6 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * c
 		      assert (0);
 		      return ER_CSS_PTHREAD_COND_WAIT;
 		    }
-
 		  return error_code;
 		}
 	    }
@@ -657,6 +654,7 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * c
 		    csect->stats->total_elapsed.tv_sec, csect->stats->total_elapsed.tv_usec);
     }
 
+  thread_p->get_csect_tracker ().on_enter_as_writer (csect->cs_index);
   return NO_ERROR;
 }
 
@@ -707,8 +705,6 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p, SYNC_CRITICAL_S
     {
       thread_p = thread_get_thread_entry_info ();
     }
-
-  thread_p->get_csect_tracker ().on_enter_as_reader (csect->cs_index);
 
   csect->stats->nenter++;
 
@@ -877,6 +873,7 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p, SYNC_CRITICAL_S
 		    csect->stats->total_elapsed.tv_usec);
     }
 
+  thread_p->get_csect_tracker ().on_enter_as_reader (csect->cs_index);
   return NO_ERROR;
 }
 
@@ -927,8 +924,6 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * 
     {
       thread_p = thread_get_thread_entry_info ();
     }
-
-  thread_p->get_csect_tracker ().on_demote (csect->cs_index);
 
   csect->stats->nenter++;
 
@@ -1137,7 +1132,7 @@ csect_demote_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * 
 		    csect->stats->max_elapsed.tv_usec, csect->stats->total_elapsed.tv_sec,
 		    csect->stats->total_elapsed.tv_usec);
     }
-
+  thread_p->get_csect_tracker ().on_demote (csect->cs_index);
   return NO_ERROR;
 }
 
@@ -1184,8 +1179,6 @@ csect_promote_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION *
     {
       thread_p = thread_get_thread_entry_info ();
     }
-
-  thread_p->get_csect_tracker ().on_promote (csect->cs_index);
 
   csect->stats->nenter++;
 
@@ -1348,6 +1341,7 @@ csect_promote_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION *
 		    csect->stats->total_elapsed.tv_usec);
     }
 
+  thread_p->get_csect_tracker ().on_promote (csect->cs_index);
   return NO_ERROR;
 }
 
@@ -1389,8 +1383,6 @@ csect_exit_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * cs
       thread_p = thread_get_thread_entry_info ();
     }
 
-  thread_p->get_csect_tracker ().on_exit (csect->cs_index);
-
   error_code = pthread_mutex_lock (&csect->lock);
   if (error_code != NO_ERROR)
     {
@@ -1412,6 +1404,7 @@ csect_exit_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * cs
 	      assert (0);
 	      return ER_CSS_PTHREAD_MUTEX_UNLOCK;
 	    }
+	  thread_p->get_csect_tracker ().on_exit (csect->cs_index);
 	  return NO_ERROR;
 	}
       else
@@ -1492,6 +1485,7 @@ csect_exit_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * cs
       return ER_CSS_PTHREAD_MUTEX_UNLOCK;
     }
 
+  thread_p->get_csect_tracker ().on_exit (csect->cs_index);
   return NO_ERROR;
 }
 
