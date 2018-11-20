@@ -54,7 +54,7 @@ enum pt_generic_type_enum
   PT_GENERIC_TYPE_SCALAR, // any type but set
 };
 
-const char *str (pt_generic_type_enum type);
+const char *pt_generic_type_to_string (pt_generic_type_enum type);
 
 /* expression argument type */
 struct pt_arg_type
@@ -126,6 +126,6 @@ struct pt_arg_type
 };
 typedef pt_arg_type PT_ARG_TYPE;
 
-const char *str (const pt_arg_type &type, string_buffer &sb);
+const char *pt_arg_type_to_string_buffer (const pt_arg_type &type, string_buffer &sb);
 
 #endif // _PARSE_TYPE_HPP_

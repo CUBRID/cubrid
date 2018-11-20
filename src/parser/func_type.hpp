@@ -76,10 +76,11 @@ struct func_signature
   static std::vector<func_signature> generic;
 
   static std::vector<func_signature> *get_signatures (FUNC_TYPE ft); //get all valid signatures for a given type
+
+  void to_string_buffer (string_buffer &sb) const;
 };
 
-const char *str (const func_signature &signature, string_buffer &sb);
-const char *str (FUNC_TYPE ft);
+const char *pt_func_type_to_string (FUNC_TYPE ft);
 
 
 bool pt_are_equivalent_types (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM op_type);
@@ -88,6 +89,26 @@ PT_TYPE_ENUM pt_get_equivalent_type (const PT_ARG_TYPE def_type, const PT_TYPE_E
 
 namespace Func
 {
+  // helpers
+  enum class type_compatibility
+  {
+    EQUIVALENT,
+    COERCIBLE,
+    INCOMPATIBLE
+  };
+
+  struct argument_compatibility
+  {
+    type_compatibility m_compat;
+    PT_TYPE_ENUM m_type;
+  };
+
+  struct signature_compatibility
+  {
+    type_compatibility m_singature_compat;
+    std::vector<argument_compatibility> m_args_compat;
+  };
+
   bool cmp_types_equivalent (const pt_arg_type &type, pt_type_enum type_enum);
   bool cmp_types_castable (const pt_arg_type &type, pt_type_enum type_enum);
 
@@ -96,6 +117,7 @@ namespace Func
     private:
       parser_context *m_parser;
       parser_node *m_node;
+      signature_compatibility m_compat;
 
     public:
       Node (parser_context *parser, parser_node *node)
@@ -110,11 +132,15 @@ namespace Func
       parser_node *cast (parser_node *prev, parser_node *arg, pt_type_enum type, int p, int s, parser_node *dt);
 
       bool preprocess(); //preprocess current function node type for special cases
-      const func_signature *get_signature (const std::vector<func_signature> &signatures, string_buffer &sb);
+      const func_signature *get_signature (const std::vector<func_signature> &signatures);
       void set_return_type (const func_signature &signature); //set return type for current node in current context
       bool apply_signature (const func_signature &signature); //apply function signature with casts if necessary
     protected:
       const char *get_types (const std::vector<func_signature> &signatures, size_t index, string_buffer &sb);
+      void check_arg_compat (const pt_arg_type &arg_signature, const PT_NODE *arg_node,
+			     argument_compatibility &compat);
+      void invalid_arg_error (const pt_arg_type &arg_sgn, const PT_NODE *arg_node, const func_signature &func_sgn);
+      void invalid_arg_count_error (std::size_t arg_count, const func_signature &func_sgn);
   }; //class Node
 } //namespace Func
 
