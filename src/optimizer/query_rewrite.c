@@ -609,7 +609,6 @@ qo_convert_attref_to_dotexpr (PARSER_CONTEXT * parser, PT_NODE * node, void *arg
 	    pt_init_node (node, PT_DOT_);
 	    node->info.dot.arg1 = arg1;
 	    node->info.dot.arg2 = arg2;
-	    node->info.dot.selector = NULL;
 	    node->info.dot.coll_modifier = coll_modifier;
 	    node->info.dot.tag_click_counter = tag_click_counter;
 	  }
