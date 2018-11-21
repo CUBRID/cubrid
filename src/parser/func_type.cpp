@@ -655,7 +655,7 @@ Func::cmp_types_castable (const pt_arg_type &type, pt_type_enum type_enum) //is 
     case PT_GENERIC_TYPE_JSON_DOC:
     case PT_GENERIC_TYPE_JSON_VAL:
       // it will be resolved at runtime
-      return true;
+      return PT_IS_NUMERIC_TYPE (type_enum);      // numerics can be converted to json
 
     case PT_GENERIC_TYPE_SEQUENCE:
       // todo -
@@ -820,6 +820,8 @@ Func::Node::get_signature (const std::vector<func_signature> &signatures)
 	{
 	  if (arg == NULL)
 	    {
+	      invalid_arg_count_error (arg_count, sig);
+	      m_compat.m_signature_compat = type_compatibility::INCOMPATIBLE;
 	      break;
 	    }
 	  auto t = ((fix.type == pt_arg_type::INDEX) ? sig.fix[fix.val.index] : fix);
@@ -871,6 +873,12 @@ Func::Node::get_signature (const std::vector<func_signature> &signatures)
 	      m_compat.m_signature_compat = type_compatibility::COERCIBLE;
 	    }
 	  ++argIndex;
+	}
+      if (index != 0 && m_compat.m_signature_compat != type_compatibility::INCOMPATIBLE)
+	{
+	  invalid_arg_count_error (arg_count, sig);
+	  m_compat.m_signature_compat = type_compatibility::INCOMPATIBLE;
+	  continue;
 	}
 
       if (m_compat.m_signature_compat == type_compatibility::EQUIVALENT)
@@ -1043,6 +1051,9 @@ Func::Node::check_arg_compat (const pt_arg_type &arg_signature, const PT_NODE *a
   compat.m_type = PT_TYPE_NONE;
   compat.m_compat = type_compatibility::INCOMPATIBLE;
 
+  // todo - equivalent type & coercible type checks should all be in a the same place to have a better view of how
+  //        each type can convert to another
+
   if (cmp_types_equivalent (arg_signature, arg_node->type_enum))
     {
       compat.m_compat = type_compatibility::EQUIVALENT;
@@ -1055,7 +1066,7 @@ Func::Node::check_arg_compat (const pt_arg_type &arg_signature, const PT_NODE *a
     }
 
   // if compatible, pt_get_equivalent_type should return a valid type. but we need to double-check
-  if (compat.m_type == PT_TYPE_NONE)
+  if (compat.m_compat != type_compatibility::INCOMPATIBLE && compat.m_type == PT_TYPE_NONE)
     {
       assert (false);
       compat.m_compat = type_compatibility::INCOMPATIBLE;
@@ -1310,6 +1321,10 @@ pt_get_equivalent_type (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM arg_type)
 	{
 	  return arg_type;
 	}
+      else if (PT_IS_NUMERIC_TYPE (arg_type))
+	{
+	  return PT_TYPE_JSON;
+	}
       else
 	{
 	  return PT_TYPE_NONE;
@@ -1319,6 +1334,10 @@ pt_get_equivalent_type (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM arg_type)
       if (pt_is_json_doc_type (arg_type))
 	{
 	  return arg_type;
+	}
+      else if (PT_IS_NUMERIC_TYPE (arg_type))
+	{
+	  return PT_TYPE_JSON;
 	}
       else
 	{
