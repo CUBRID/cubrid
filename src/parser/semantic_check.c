@@ -12441,13 +12441,15 @@ pt_check_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
 	      PT_NODE *next = order_by->next;
 	      order_by->next = NULL;
 
-	      if (order_by->info.sort_spec.expr->node_type == PT_NAME)
+	      if (order_by->info.sort_spec.expr->node_type == PT_NAME
+		  || order_by->info.sort_spec.expr->node_type == PT_EXPR)
 		{
 		  parser_free_node (parser, order_by);
 		  skip_orderby_num = true;
 		}
 	      else
 		{
+		  // leave PT_VALUE, PT_HOST_VAR, in fact, PT_HOST_VAR will be rejected soon.
 		  last->next = order_by;
 		  last = order_by;
 		}
