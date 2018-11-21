@@ -5336,6 +5336,12 @@ pt_init_print_f (void)
   pt_print_f = pt_print_func_array;
 }
 
+/*
+ * pt_init_node () - initialize node by calling init function identified by node type
+ *   return: void
+ *   node(in)      : pt node
+ *   node_type(in) : node type
+ */
 void
 pt_init_node (PT_NODE * node, PT_NODE_TYPE node_type)
 {
