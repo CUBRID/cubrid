@@ -2849,7 +2849,7 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
    * Wake ups flush block thread to flush the current block. The current block will be flushed after flushing the
    * previous block.
    */
-  if (dwb_is_flush_block_daemon_available ())
+  if (prm_get_bool_value (PRM_ID_ENABLE_DWB_FLUSH_THREAD) == true && dwb_is_flush_block_daemon_available ())
     {
       /* Wakeup the thread that will flush the block. */
       dwb_flush_block_daemon->wakeup ();
