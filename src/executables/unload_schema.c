@@ -151,7 +151,7 @@ static void emit_method_files (DB_OBJECT * class_);
 static bool emit_methods (DB_OBJECT * class_, const char *class_type);
 static int ex_contains_object_reference (DB_VALUE * value);
 static void emit_attribute_def (DB_ATTRIBUTE * attribute, ATTRIBUTE_QUALIFIER qualifier);
-static void emit_unique_def (DB_OBJECT * class_);
+static void emit_unique_def (DB_OBJECT * class_, const char *class_type);
 static void emit_reverse_unique_def (DB_OBJECT * class_);
 static void emit_index_def (DB_OBJECT * class_);
 static void emit_domain_def (DB_DOMAIN * domains);
@@ -1953,9 +1953,7 @@ emit_instance_attributes (DB_OBJECT * class_, const char *class_type, int *has_i
   fprintf (output_file, "\n");
   if (unique_flag)
     {
-      name = db_get_class_name (class_);
-      fprintf (output_file, "\nALTER %s %s%s%s ADD ATTRIBUTE\n", class_type, PRINT_IDENTIFIER (name));
-      emit_unique_def (class_);
+      emit_unique_def (class_, class_type);
     }
 
   if (reverse_unique_flag)
@@ -2396,13 +2394,18 @@ emit_attribute_def (DB_ATTRIBUTE * attribute, ATTRIBUTE_QUALIFIER qualifier)
  *    class(in): the class to emit the attributes for
  */
 static void
-emit_unique_def (DB_OBJECT * class_)
+emit_unique_def (DB_OBJECT * class_, const char *class_type)
 {
   DB_CONSTRAINT *constraint_list, *constraint;
   DB_ATTRIBUTE **atts, **att;
   bool has_inherited_atts;
   int num_printed = 0;
-  const char *name;
+  const char *name, *class_name;
+  int not_online = 0;
+
+  class_name = db_get_class_name (class_);
+
+  /* First we must check if there is a unique one without the online index tag. */
 
   constraint_list = db_get_constraints (class_);
   if (constraint_list == NULL)
@@ -2410,11 +2413,42 @@ emit_unique_def (DB_OBJECT * class_)
       return;
     }
 
+  for (constraint = constraint_list; constraint != NULL && not_online == 0;
+       constraint = db_constraint_next (constraint))
+    {
+      if (db_constraint_type (constraint) != DB_CONSTRAINT_UNIQUE
+	  && db_constraint_type (constraint) != DB_CONSTRAINT_PRIMARY_KEY)
+	{
+	  continue;
+	}
+
+      if (constraint->index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+	{
+	  /* Skip the unique index definitions for online indexes. */
+	  continue;
+	}
+      not_online++;
+    }
+
+  if (not_online == 0)
+    {
+      /* We need to return and not print anything. */
+      return;
+    }
+
+  fprintf (output_file, "\nALTER %s %s%s%s ADD ATTRIBUTE\n", class_type, PRINT_IDENTIFIER (class_name));
+
   for (constraint = constraint_list; constraint != NULL; constraint = db_constraint_next (constraint))
     {
       if (db_constraint_type (constraint) != DB_CONSTRAINT_UNIQUE
 	  && db_constraint_type (constraint) != DB_CONSTRAINT_PRIMARY_KEY)
 	{
+	  continue;
+	}
+
+      if (constraint->index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+	{
+	  /* Skip the unique index definitions for online indexes. */
 	  continue;
 	}
 
@@ -2494,6 +2528,12 @@ emit_reverse_unique_def (DB_OBJECT * class_)
     {
       if (db_constraint_type (constraint) != DB_CONSTRAINT_REVERSE_UNIQUE)
 	{
+	  continue;
+	}
+
+      if (constraint->index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+	{
+	  /* We skip definitions for unique indexes during online loading. */
 	  continue;
 	}
 
@@ -2582,7 +2622,8 @@ emit_index_def (DB_OBJECT * class_)
   for (constraint = constraint_list; constraint != NULL; constraint = db_constraint_next (constraint))
     {
       ctype = db_constraint_type (constraint);
-      if (ctype != DB_CONSTRAINT_INDEX && ctype != DB_CONSTRAINT_REVERSE_INDEX)
+      if ((constraint->index_status != SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+	  && (ctype != DB_CONSTRAINT_INDEX && ctype != DB_CONSTRAINT_REVERSE_INDEX))
 	{
 	  continue;
 	}
@@ -2594,15 +2635,17 @@ emit_index_def (DB_OBJECT * class_)
 
       if (constraint->func_index_info)
 	{
-	  fprintf (output_file, "CREATE %sINDEX %s%s%s ON %s%s%s (",
-		   (ctype == DB_CONSTRAINT_REVERSE_INDEX) ? "REVERSE " : "",
+	  fprintf (output_file, "CREATE %s%sINDEX %s%s%s ON %s%s%s (",
+		   (ctype == DB_CONSTRAINT_REVERSE_INDEX || ctype == DB_CONSTRAINT_REVERSE_UNIQUE) ? "REVERSE " : "",
+		   (ctype == DB_CONSTRAINT_UNIQUE || ctype == DB_CONSTRAINT_REVERSE_UNIQUE) ? "UNIQUE " : "",
 		   PRINT_FUNCTION_INDEX_NAME (constraint->name), PRINT_IDENTIFIER (cls_name));
 	}
       else
 	{
-	  fprintf (output_file, "CREATE %sINDEX %s%s%s ON %s%s%s (",
-		   (ctype == DB_CONSTRAINT_REVERSE_INDEX) ? "REVERSE " : "", PRINT_IDENTIFIER (constraint->name),
-		   PRINT_IDENTIFIER (cls_name));
+	  fprintf (output_file, "CREATE %s%sINDEX %s%s%s ON %s%s%s (",
+		   (ctype == DB_CONSTRAINT_REVERSE_INDEX || ctype == DB_CONSTRAINT_REVERSE_UNIQUE) ? "REVERSE " : "",
+		   (ctype == DB_CONSTRAINT_UNIQUE || ctype == DB_CONSTRAINT_REVERSE_UNIQUE) ? "UNIQUE " : "",
+		   PRINT_IDENTIFIER (constraint->name), PRINT_IDENTIFIER (cls_name));
 	}
 
       asc_desc = NULL;		/* init */
@@ -2693,6 +2736,15 @@ emit_index_def (DB_OBJECT * class_)
 	{
 	  fprintf (output_file, " ");
 	  help_fprint_describe_comment (output_file, constraint->comment);
+	}
+
+      /* Safeguard. */
+      /* If it's unique then it must surely be with online flag. */
+      assert ((constraint->index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+	      || (ctype != DB_CONSTRAINT_UNIQUE && ctype != DB_CONSTRAINT_REVERSE_UNIQUE));
+      if (constraint->index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+	{
+	  fprintf (output_file, " WITH ONLINE");
 	}
       fprintf (output_file, ";\n");
     }
