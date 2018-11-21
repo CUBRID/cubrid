@@ -985,14 +985,10 @@ Func::Node::apply_signature (const func_signature &signature)
 	  assert (false);
 	  return false;
 	}
+      assert (m_compat.m_args_compat[arg_pos].m_compat != type_compatibility::INCOMPATIBLE);
 
-      if (m_compat.m_args_compat[arg_pos].m_compat == type_compatibility::EQUIVALENT)
+      if (m_compat.m_args_compat[arg_pos].m_type != arg->type_enum)
 	{
-	  // arg is good as is
-	}
-      else
-	{
-	  assert (m_compat.m_args_compat[arg_pos].m_compat == type_compatibility::COERCIBLE);
 	  arg = cast (prev, arg, m_compat.m_args_compat[arg_pos].m_type, TP_FLOATING_PRECISION_VALUE, 0, NULL);
 	  if (arg == NULL)
 	    {
