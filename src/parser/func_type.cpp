@@ -713,7 +713,7 @@ Func::Node::cast (parser_node *prev, parser_node *arg, pt_type_enum type, int p,
 }
 
 bool
-Func::Node::preprocess()
+Func::Node::preprocess ()
 {
   auto arg_list = m_node->info.function.arg_list;
   switch (m_node->info.function.function_type)
@@ -771,23 +771,23 @@ Func::Node::get_types (const std::vector<func_signature> &signatures, size_t ind
   for (auto &signature: signatures)
     {
       auto i = index;
-      if (index < signature.fix.size())
+      if (index < signature.fix.size ())
 	{
 	  pt_arg_type_to_string_buffer (signature.fix[i], sb);
 	  sb (", ");
 	}
       else
 	{
-	  i -= signature.fix.size();
-	  if (signature.rep.size() > 0)
+	  i -= signature.fix.size ();
+	  if (signature.rep.size () > 0)
 	    {
-	      i %= signature.rep.size();
+	      i %= signature.rep.size ();
 	      pt_arg_type_to_string_buffer (signature.rep[i], sb);
 	      sb (", ");
 	    }
 	}
     }
-  return sb.get_buffer();
+  return sb.get_buffer ();
 }
 
 const func_signature *
@@ -844,7 +844,7 @@ Func::Node::get_signature (const std::vector<func_signature> &signatures)
 	{
 	  continue;
 	}
-      if ((arg != NULL && sig.rep.size() == 0) || (arg == NULL && sig.rep.size() != 0))
+      if ((arg != NULL && sig.rep.size () == 0) || (arg == NULL && sig.rep.size () != 0))
 	{
 	  // number of arguments don't match
 	  invalid_arg_count_error (arg_count, sig);
@@ -853,7 +853,7 @@ Func::Node::get_signature (const std::vector<func_signature> &signatures)
 
       //check repetitive args
       int index = 0;
-      for (; arg; arg = arg->next, index = (index + 1) % sig.rep.size())
+      for (; arg; arg = arg->next, index = (index + 1) % sig.rep.size ())
 	{
 	  auto &rep = sig.rep[index];
 	  auto t = ((rep.type == pt_arg_type::INDEX) ? sig.rep[rep.val.index] : rep);
@@ -1002,7 +1002,7 @@ Func::Node::apply_signature (const func_signature &signature)
       arg = arg->next;
     }
 
-  if (arg != NULL && signature.rep.size() == 0)
+  if (arg != NULL && signature.rep.size () == 0)
     {
       assert (false);
       return false;
@@ -1010,7 +1010,7 @@ Func::Node::apply_signature (const func_signature &signature)
 
   //check repetitive part of the function signature
   int index = 0;
-  for (; arg != NULL; prev = arg, arg = arg->next, index = (index + 1) % signature.rep.size(), ++arg_pos)
+  for (; arg != NULL; prev = arg, arg = arg->next, index = (index + 1) % signature.rep.size (), ++arg_pos)
     {
       if (m_compat.m_args_compat[arg_pos].m_compat == type_compatibility::EQUIVALENT)
 	{
