@@ -604,12 +604,14 @@ qo_convert_attref_to_dotexpr (PARSER_CONTEXT * parser, PT_NODE * node, void *arg
 	      }
 
 	    int coll_modifier = node->info.name.coll_modifier;
+	    short tag_click_counter = node->info.name.tag_click_counter;
 
-	    node->node_type = PT_DOT_;
-	    node->info.dot.coll_modifier = coll_modifier;
+	    pt_init_node (node, PT_DOT_);
 	    node->info.dot.arg1 = arg1;
 	    node->info.dot.arg2 = arg2;
 	    node->info.dot.selector = NULL;
+	    node->info.dot.coll_modifier = coll_modifier;
+	    node->info.dot.tag_click_counter = tag_click_counter;
 	  }
 	  break;
 	default:
@@ -1689,21 +1691,13 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
       temp = pt_get_end_path_node (arg1);
 
       if (node->node_type == PT_SELECT)
-	{			/* query with WHERE condition */
-	  node->info.query.q.select.list = pt_lambda_with_arg (parser, node->info.query.q.select.list, arg1, arg2, (temp->info.name.location > 0 ? true : false), 1	/* type:
-																					 * check
-																					 * normal
-																					 * func
-																					 * data_type
-																					 */ ,
+	{
+	  /* query with WHERE condition */
+	  node->info.query.q.select.list = pt_lambda_with_arg (parser, node->info.query.q.select.list, arg1, arg2,
+							       (temp->info.name.location > 0 ? true : false), 1,
 							       true /* dont_replace */ );
 	}
-      *wherep = pt_lambda_with_arg (parser, *wherep, arg1, arg2, (temp->info.name.location > 0 ? true : false), 1	/* type:
-															 * check
-															 * normal
-															 * func
-															 * data_type
-															 */ ,
+      *wherep = pt_lambda_with_arg (parser, *wherep, arg1, arg2, (temp->info.name.location > 0 ? true : false), 1,
 				    false /* dont_replace: DEFAULT */ );
 
       /* Leave "wherep" pointing at the begining of the rest of the predicate. We still gurantee loop termination
