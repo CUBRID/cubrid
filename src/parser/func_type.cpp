@@ -813,7 +813,7 @@ Func::Node::get_signature (const std::vector<func_signature> &signatures)
       bool matchCastable = true;
       size_t argIndex = 0;
 
-      m_compat.m_singature_compat = type_compatibility::EQUIVALENT;
+      m_compat.m_signature_compat = type_compatibility::EQUIVALENT;
 
       //check fix part of the signature
       for (auto &fix: sig.fix)
@@ -828,19 +828,19 @@ Func::Node::get_signature (const std::vector<func_signature> &signatures)
 	  if (args_compat[argIndex].m_compat == type_compatibility::INCOMPATIBLE)
 	    {
 	      invalid_arg_error (t, arg, sig);
-	      m_compat.m_singature_compat = type_compatibility::INCOMPATIBLE;
+	      m_compat.m_signature_compat = type_compatibility::INCOMPATIBLE;
 	      break;
 	    }
 	  else if (args_compat[argIndex].m_compat == type_compatibility::COERCIBLE)
 	    {
 	      // demote signature to coercible
-	      m_compat.m_singature_compat = type_compatibility::COERCIBLE;
+	      m_compat.m_signature_compat = type_compatibility::COERCIBLE;
 	    }
 
 	  ++argIndex;
 	  arg = arg->next;
 	}
-      if (m_compat.m_singature_compat == type_compatibility::INCOMPATIBLE)
+      if (m_compat.m_signature_compat == type_compatibility::INCOMPATIBLE)
 	{
 	  continue;
 	}
@@ -862,24 +862,24 @@ Func::Node::get_signature (const std::vector<func_signature> &signatures)
 	  if (args_compat[argIndex].m_compat == type_compatibility::INCOMPATIBLE)
 	    {
 	      invalid_arg_error (t, arg, sig);
-	      m_compat.m_singature_compat = type_compatibility::INCOMPATIBLE;
+	      m_compat.m_signature_compat = type_compatibility::INCOMPATIBLE;
 	      break;
 	    }
 	  else if (args_compat[argIndex].m_compat == type_compatibility::COERCIBLE)
 	    {
 	      // demote signature to coercible
-	      m_compat.m_singature_compat = type_compatibility::COERCIBLE;
+	      m_compat.m_signature_compat = type_compatibility::COERCIBLE;
 	    }
 	  ++argIndex;
 	}
 
-      if (m_compat.m_singature_compat == type_compatibility::EQUIVALENT)
+      if (m_compat.m_signature_compat == type_compatibility::EQUIVALENT)
 	{
 	  signature = &sig;
 	  m_compat.m_args_compat = std::move (args_compat);
 	  break; //stop at 1st equivalent signature
 	}
-      if (m_compat.m_singature_compat == type_compatibility::COERCIBLE && signature == nullptr)
+      if (m_compat.m_signature_compat == type_compatibility::COERCIBLE && signature == nullptr)
 	{
 	  //don't stop, continue because it is possible to find an equivalent signature later
 	  signature = &sig;

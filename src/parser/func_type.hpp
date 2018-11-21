@@ -105,7 +105,7 @@ namespace Func
 
   struct signature_compatibility
   {
-    type_compatibility m_singature_compat;
+    type_compatibility m_signature_compat;
     std::vector<argument_compatibility> m_args_compat;
   };
 
