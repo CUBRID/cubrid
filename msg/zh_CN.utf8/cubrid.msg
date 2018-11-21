@@ -1771,7 +1771,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 300 DEFAULT子句中不允许使用子查询.
 301 Could not find signatures for function %1$s()
 302 Incompatible argument type %1$s, expected type is: %2$s. Invalid signature %3$s.
-303 Unexpected number of arguments %1$d. Invalid signature %1$s.
+303 Unexpected number of arguments %1$d. Invalid signature %2$s.
 304 Could not find compatible signature for function %1$s()
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
