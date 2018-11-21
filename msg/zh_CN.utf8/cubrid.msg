@@ -1307,8 +1307,10 @@ $ LOADDB
 1237 Cannot change status on %1$s because %2$s is a %3$s.
 1238 Missing value for JSON_TABLE column '%1$s'.
 1239 Cannot coerce value from JSON "%1$s" at path "%2$s" to JSON_TABLE column "%3$s" of domain "%4$s". 
+1240 Online index is not allowed on classes that are part of a hierarchy chain.
+1241 XASL tree needs recompile.
 
-1240 最后一个错误.
+1242 最后一个错误.
 
 $set 6 MSGCAT_SET_INTERNAL
 1 在错误子系统中错误 (line %1$d):
@@ -1767,6 +1769,10 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 298 递归的CTE'%1$s'必须直接在其递归查询中引用.
 299 CTE'%1$s'错误: 非递归部分和递归部分必须使用UNION ALL连接.
 300 DEFAULT子句中不允许使用子查询.
+301 Could not find signatures for function %1$s()
+302 Incompatible argument type %1$s; expected types are: %2$s
+303 Number of arguments don't match
+304 Could not find compatible signature for function %1$s()
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 虚拟内存耗尽: 无法申请 %1$d 字节.

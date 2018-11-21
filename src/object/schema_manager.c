@@ -14589,10 +14589,12 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 		   SM_INDEX_STATUS index_status)
 {
   int error = NO_ERROR;
-  SM_TEMPLATE *def;
+  SM_TEMPLATE *def = NULL;
   MOP newmop = NULL;
   bool needs_hierarchy_lock;
   bool set_savepoint = false;
+  int partition_type;
+  MOP *sub_partitions = NULL;
 
   if (att_names == NULL)
     {
@@ -14628,6 +14630,14 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	  auth = AU_ALTER;
 	}
 
+#if defined (SA_MODE)
+      if (index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+	{
+	  // We don't allow online index for SA_MODE.
+	  index_status = SM_NORMAL_INDEX;
+	}
+#endif /* SA_MODE */
+
       if (index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS && classop->lock > IX_LOCK)
 	{
 	  // if the transaction already hold a lock which is greater than IX,
@@ -14642,19 +14652,38 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	  goto error_exit;
 	}
 
-      // create local indexes on partitions
-      if (is_secondary_index)
+      error = sm_partitioned_class_type (classop, &partition_type, NULL, &sub_partitions);
+      if (error != NO_ERROR)
 	{
-	  MOP *sub_partitions = NULL;
-	  int partition_type;
+	  smt_quit (def);
+	  goto error_exit;
+	}
 
-	  error = sm_partitioned_class_type (classop, &partition_type, NULL, &sub_partitions);
-	  if (error != NO_ERROR)
+      if (index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+	{
+	  /* We allow online index on hierarchies just for the special case of partitions. 
+	   * Here ->users denotes the immediate subclass, while ->inheritance is the immediate superclass.
+	   */
+	  if (partition_type == DB_NOT_PARTITIONED_CLASS
+	      && (def->current->users != NULL || def->current->inheritance != NULL))
 	    {
+	      // Current class is part of a hierarchy stop here and throw an error as we do not support online index
+	      // for hierarchies.
+	      error = ER_SM_ONLINE_INDEX_ON_HIERARCHY;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+
+	      if (sub_partitions != NULL)
+		{
+		  free_and_init (sub_partitions);
+		}
 	      smt_quit (def);
 	      goto error_exit;
 	    }
+	}
 
+      // create local indexes on partitions
+      if (is_secondary_index)
+	{
 	  if (partition_type == DB_PARTITIONED_CLASS)
 	    {
 	      // prefix index is not allowed on partition
@@ -14688,11 +14717,11 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 		  goto error_exit;
 		}
 	    }
+	}
 
-	  if (sub_partitions != NULL)
-	    {
-	      free_and_init (sub_partitions);
-	    }
+      if (sub_partitions != NULL)
+	{
+	  free_and_init (sub_partitions);
 	}
 
       error = smt_add_constraint (def, constraint_type, constraint_name, att_names, asc_desc, attrs_prefix_length,
@@ -14712,7 +14741,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	  goto error_exit;
 	}
 
-      if (index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+      if (index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS && partition_type != DB_PARTITION_CLASS)
 	{
 	  // Load index phase.
 	  error = sm_load_online_index (newmop, constraint_name);
@@ -14734,14 +14763,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	      goto error_exit;
 	    }
 
-	  /* If we have an online index, we need to change the constraint to SM_ONLINE_INDEX_BUILDING_DONE, and 
-	   * remove the old one from the property list. We also do not want to do some later checks.
-	   */
-
-	  // TODO: Why do we remove and add it rather than just change the property?
-	  error = smt_add_constraint (def, constraint_type, constraint_name, att_names, asc_desc, attrs_prefix_length,
-				      class_attributes, NULL, filter_index, function_index, comment,
-				      SM_ONLINE_INDEX_BUILDING_DONE);
+	  error = smt_change_constraint_status (def, constraint_name, SM_NORMAL_INDEX);
 	  if (error != NO_ERROR)
 	    {
 	      smt_quit (def);
@@ -16432,7 +16454,7 @@ sm_load_online_index (MOP classmop, const char *constraint_name)
   HFID *hfids = NULL;
   int reverse;
   int unique_pk = 0;
-  int not_null;
+  int not_null = 0;
 
   /* Fetch the class. */
   error = au_fetch_class (classmop, &class_, AU_FETCH_UPDATE, AU_ALTER);

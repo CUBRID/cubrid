@@ -2597,7 +2597,7 @@ struct pt_name_info
 #define PT_NAME_ALLOW_REUSABLE_OID 512	/* ignore the REUSABLE_OID restrictions for this name */
 #define PT_NAME_GENERATED_DERIVED_SPEC 1024	/* attribute generated from derived spec */
 #define PT_NAME_FOR_UPDATE	   2048	/* Table name in FOR UPDATE clause */
-#define PT_NAME_REAL_TABLE	   4096	/* name of table/column belongs to a real table */
+#define PT_NAME_DEFAULTF_ACCEPTS   4096	/* name of table/column that default function accepts: real table's, cte's */
 
   short flag;
 #define PT_NAME_INFO_IS_FLAGED(e, f)    ((e)->info.name.flag & (short) (f))
@@ -3706,8 +3706,6 @@ extern "C"
   void *parser_allocate_string_buffer (const PARSER_CONTEXT * parser, const int length, const int align);
   bool pt_is_json_value_type (PT_TYPE_ENUM type);
   bool pt_is_json_doc_type (PT_TYPE_ENUM type);
-  bool pt_is_json_object_name (PT_TYPE_ENUM type);
-  bool pt_is_json_path (PT_TYPE_ENUM type);
 #ifdef __cplusplus
 }
 #endif

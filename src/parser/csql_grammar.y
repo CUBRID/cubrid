@@ -313,7 +313,7 @@ static FUNCTION_MAP functions[] = {
   {"conv_tz", PT_CONV_TZ},
   {"json_contains", PT_JSON_CONTAINS},
   {"json_type", PT_JSON_TYPE},
-  {"json_extract", PT_JSON_EXTRACT},
+  // {"json_extract", PT_JSON_EXTRACT},  // grammar generates F_JSON_EXTRACT, which can accept any number of arguments
   {"json_valid", PT_JSON_VALID},
   {"json_unquote", PT_JSON_UNQUOTE},
   {"json_length", PT_JSON_LENGTH},
@@ -1231,26 +1231,22 @@ int g_original_buffer_len;
 %token FROM
 %token FULL
 %token FUNCTION
-%token FUN_JSON_ARRAY
-%token FUN_JSON_ARRAY_APPEND
-%token FUN_JSON_ARRAY_INSERT
-%token FUN_JSON_SEARCH
-%token FUN_JSON_CONTAINS_PATH
-%token FUN_JSON_GET_ALL_PATHS
-%token FUN_JSON_INSERT
-%token FUN_JSON_KEYS
-%token FUN_JSON_MERGE
-%token FUN_JSON_MERGE_PATCH
-%token FUN_JSON_MERGE_PRESERVE
-%token FUN_JSON_OBJECT
-%token FUN_JSON_REMOVE
-%token FUN_JSON_REPLACE
-%token FUN_JSON_SET
-%token FUN_JSON_KEYS
-%token FUN_JSON_REMOVE
-%token FUN_JSON_ARRAY_APPEND
-%token FUN_JSON_ARRAY_INSERT
-%token FUN_JSON_GET_ALL_PATHS
+%token JSON_ARRAY_LEX
+%token JSON_ARRAY_APPEND
+%token JSON_ARRAY_INSERT
+%token JSON_CONTAINS_PATH
+%token JSON_EXTRACT
+%token JSON_GET_ALL_PATHS
+%token JSON_INSERT
+%token JSON_KEYS
+%token JSON_MERGE
+%token JSON_MERGE_PATCH
+%token JSON_MERGE_PRESERVE
+%token JSON_OBJECT_LEX
+%token JSON_REMOVE
+%token JSON_REPLACE
+%token JSON_SEARCH
+%token JSON_SET
 %token GENERAL
 %token GET
 %token GLOBAL
@@ -9858,7 +9854,7 @@ attr_index_def
 attr_def_one
 	: identifier
 	  data_type
-		{{
+		{{//attr_def_one : identifier
 
 			PT_NODE *dt;
 			PT_TYPE_ENUM typ;
@@ -15704,7 +15700,7 @@ reserved_func
 
 		DBG_PRINT}}
 	| of_avg_max_etc '(' of_distinct_unique expression_ ')'
-		{{
+		{{//reserved_func | of_avg_max_etc '(' of_distinct_unique expression_ ')'
 
 			PT_NODE *node = parser_new_node (this_parser, PT_FUNCTION);
 			
@@ -15726,7 +15722,7 @@ reserved_func
 
 		DBG_PRINT}}
 	| of_avg_max_etc '(' opt_all expression_ ')'
-		{{
+		{{//reserved_func | of_avg_max_etc '(' opt_all expression_ ')'
 
 			PT_NODE *node = parser_new_node (this_parser, PT_FUNCTION);
 
@@ -16966,7 +16962,7 @@ reserved_func
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-        | FUN_JSON_OBJECT '(' expression_list ')'
+        | JSON_OBJECT_LEX '(' expression_list ')'
 		{{
 		    PT_NODE *args_list = $3;
 		    PT_NODE *node = NULL;
@@ -16985,7 +16981,7 @@ reserved_func
 		    $$ = node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-        | FUN_JSON_ARRAY '(' expression_list ')'
+        | JSON_ARRAY_LEX '(' expression_list ')'
 		{{
 		    PT_NODE *args_list = $3;
 		    PT_NODE *node = NULL;
@@ -17004,7 +17000,7 @@ reserved_func
 		    $$ = node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-		| FUN_JSON_CONTAINS_PATH '(' expression_list ')'
+	| JSON_CONTAINS_PATH '(' expression_list ')'
 		{{
 		    PT_NODE *args_list = $3;
 		    PT_NODE *node = NULL;
@@ -17023,7 +17019,19 @@ reserved_func
 		    $$ = node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-        | FUN_JSON_MERGE '(' expression_list ')'
+        | JSON_EXTRACT '(' expression_list ')'
+		{{
+                    PT_NODE *args_list = $3;
+                    // check number of arguments
+                    if (parser_count_list (args_list) < 2)
+                    {
+                      PT_ERRORmf (this_parser, args_list, MSGCAT_SET_PARSER_SEMANTIC,
+                                  MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION, "json_extract");
+                    }
+                    $$ = parser_make_expr_with_func (this_parser, F_JSON_EXTRACT, args_list);
+                    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
+        | JSON_MERGE '(' expression_list ')'
 		{{
 		    PT_NODE *args_list = $3;
 		    PT_NODE *node = NULL;
@@ -17042,7 +17050,7 @@ reserved_func
 		    $$ = node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-		| FUN_JSON_MERGE_PATCH '(' expression_list ')'
+        | JSON_MERGE_PATCH '(' expression_list ')'
 		{{
 		    PT_NODE *args_list = $3;
 		    PT_NODE *node = NULL;
@@ -17061,7 +17069,7 @@ reserved_func
 		    $$ = node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-		| FUN_JSON_MERGE_PRESERVE '(' expression_list ')'
+        | JSON_MERGE_PRESERVE '(' expression_list ')'
 		{{
 		    PT_NODE *args_list = $3;
 		    PT_NODE *node = NULL;
@@ -17080,7 +17088,7 @@ reserved_func
 		    $$ = node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-        | FUN_JSON_INSERT '(' expression_list ')'
+        | JSON_INSERT '(' expression_list ')'
 		{{
 		    PT_NODE *args_list = $3;
 		    PT_NODE *node = NULL;
@@ -17099,7 +17107,7 @@ reserved_func
 		    $$ = node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-         | FUN_JSON_REPLACE '(' expression_list ')'
+         | JSON_REPLACE '(' expression_list ')'
 		{{
 		    PT_NODE *args_list = $3;
 		    PT_NODE *node = NULL;
@@ -17118,7 +17126,7 @@ reserved_func
 		    $$ = node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-         | FUN_JSON_SET '(' expression_list ')'
+         | JSON_SET '(' expression_list ')'
 		{{
 		    PT_NODE *args_list = $3;
 		    PT_NODE *node = NULL;
@@ -17137,7 +17145,7 @@ reserved_func
 		    $$ = node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-         | FUN_JSON_KEYS '(' expression_list ')'
+         | JSON_KEYS '(' expression_list ')'
 		{{
 		    PT_NODE *args_list = $3;
 		    PT_NODE *node = NULL;
@@ -17156,7 +17164,7 @@ reserved_func
 		    $$ = node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-        | FUN_JSON_REMOVE '(' expression_list ')'
+        | JSON_REMOVE '(' expression_list ')'
 		{{
 		    PT_NODE *args_list = $3;
 		    PT_NODE *node = NULL;
@@ -17175,7 +17183,7 @@ reserved_func
 		    $$ = node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-         | FUN_JSON_ARRAY_APPEND '(' expression_list ')'
+         | JSON_ARRAY_APPEND '(' expression_list ')'
 		{{
 		    PT_NODE *args_list = $3;
 		    PT_NODE *node = NULL;
@@ -17194,7 +17202,7 @@ reserved_func
 		    $$ = node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-         | FUN_JSON_ARRAY_INSERT '(' expression_list ')'
+         | JSON_ARRAY_INSERT '(' expression_list ')'
 		{{
 		    PT_NODE *args_list = $3;
 		    PT_NODE *node = NULL;
@@ -17213,7 +17221,7 @@ reserved_func
 		    $$ = node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-         | FUN_JSON_SEARCH '(' expression_list ')'
+         | JSON_SEARCH '(' expression_list ')'
 		{{
 		    PT_NODE *args_list = $3;
 		    PT_NODE *node = NULL;
@@ -17231,7 +17239,7 @@ reserved_func
 		    $$ = node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-         | FUN_JSON_GET_ALL_PATHS '(' expression_list ')'
+         | JSON_GET_ALL_PATHS '(' expression_list ')'
 		{{
 		    PT_NODE *args_list = $3;
 		    PT_NODE *node = NULL;
@@ -21522,8 +21530,7 @@ simple_path_id_list
 
 identifier
 	: IdName
-		{{
-
+		{{//identifier : IdName
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
 
 			if (p)
@@ -21542,8 +21549,7 @@ identifier
 
 		DBG_PRINT}}
 	| BracketDelimitedIdName
-		{{
-
+		{{//identifier | BracketDelimitedIdName
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
 
 			if (p)
@@ -21562,8 +21568,7 @@ identifier
 
 		DBG_PRINT}}
 	| BacktickDelimitedIdName
-		{{
-
+		{{//identifier | BacktickDelimitedIdName
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
 
 			if (p)
@@ -21582,8 +21587,7 @@ identifier
 
 		DBG_PRINT}}
 	| DelimitedIdName
-		{{
-
+		{{//identifier | DelimitedIdName
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
 
 			if (p)
@@ -24434,14 +24438,12 @@ json_table_node_rule
     ;
 
 json_table_rule
-    : {{
-	    json_table_column_count = 0;
-      DBG_PRINT}} 
-	'(' expression_ ',' json_table_node_rule ')'
+    : '(' expression_ ',' json_table_node_rule ')'
       {{
         PT_NODE *jt = parser_new_node (this_parser, PT_JSON_TABLE);
-        jt->info.json_table_info.expr = $3;
-        jt->info.json_table_info.tree = $5;
+        jt->info.json_table_info.expr = $2;
+        jt->info.json_table_info.tree = $4;
+        json_table_column_count = 0;  // reset
 
         $$ = jt;
       DBG_PRINT}}
@@ -26869,7 +26871,6 @@ parser_keyword_func (const char *name, PT_NODE * args)
        return node;
     case PT_JSON_TYPE:
     case PT_JSON_VALID:
-    case PT_JSON_LENGTH:
     case PT_JSON_DEPTH:
     case PT_JSON_PRETTY:
     case PT_JSON_QUOTE:
@@ -26965,6 +26966,17 @@ parser_keyword_func (const char *name, PT_NODE * args)
             a3->next = NULL;
           }
       node = parser_make_expression (this_parser, key->op, a1, a2, a3);
+      return node;
+
+    case PT_JSON_LENGTH:
+      if (c != 1 && c != 2)
+          return NULL;
+
+      a1 = args;
+      a2 = a1->next;
+      a1->next = NULL;
+
+      node = parser_make_expression (this_parser, key->op, a1, a2, NULL);
       return node;
 
     default:

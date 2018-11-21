@@ -1739,7 +1739,9 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
     {
       /* now, execute the statement by calling do_execute_statement() */
       err = do_execute_statement (parser, statement);
-      if (err == ER_QPROC_INVALID_XASLNODE && session->stage[stmt_ndx] == StatementPreparedStage)
+      if (((err == ER_QPROC_XASLNODE_RECOMPILE_REQUESTED || err == ER_QPROC_INVALID_XASLNODE)
+	   && session->stage[stmt_ndx] == StatementPreparedStage)
+	  || (err == ER_QPROC_XASLNODE_RECOMPILE_REQUESTED && session->stage[stmt_ndx] == StatementExecutedStage))
 	{
 	  /* The cache entry was deleted before 'execute' */
 	  if (statement->xasl_id)
@@ -3970,6 +3972,7 @@ db_set_statement_auto_commit (DB_SESSION * session, bool auto_commit)
   int stmt_ndx;
   int error_code;
   bool has_user_trigger;
+  int dimension;
 
   assert (session != NULL);
 
@@ -4006,10 +4009,21 @@ db_set_statement_auto_commit (DB_SESSION * session, bool auto_commit)
       return NO_ERROR;
     }
 
-  if (session->dimension > 1 && !session->parser->is_holdable)
+  if (session->dimension > 1)
     {
       /* Search for select. */
-      for (int i = 0; i < session->dimension; i++)
+      if (!session->parser->is_holdable)
+	{
+	  /* Check all statements. */
+	  dimension = session->dimension;
+	}
+      else
+	{
+	  /* Check all statements, except the last one. */
+	  dimension = session->dimension - 1;
+	}
+
+      for (int i = 0; i < dimension; i++)
 	{
 	  if (session->statements[i] != NULL && PT_IS_QUERY_NODE_TYPE (session->statements[i]->node_type))
 	    {

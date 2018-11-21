@@ -1305,9 +1305,11 @@ $ LOADDB
 1236 Double Write Buffer is disabled.
 1237 Cannot change status on %1$s because %2$s is a %3$s.
 1238 Missing value for JSON_TABLE column '%1$s'.
-1239 Cannot coerce value from JSON "%1$s" at path "%2$s" to JSON_TABLE column "%3$s" of domain "%4$s". 
+1239 Cannot coerce value from JSON "%1$s" at path "%2$s" to JSON_TABLE column "%3$s" of domain "%4$s".
+1240 Online index is not allowed on classes that are part of a hierarchy chain.
+1241 XASL tree needs recompile.
 
-1240 마지막 에러
+1242 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
@@ -1766,6 +1768,10 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 298 재귀 CTE  '%1$s’는 재귀 질의에서 직접 참조되어야 합니다.
 299 CTE '%1$s’의 에러: 비재귀 부분과 재귀 부분은 반드시 UNION ALL로 연결되어야 합니다.
 300 DEFAULT 절에 부질의는 허용되지 않습니다.
+301 Could not find signatures for function %1$s()
+302 Incompatible argument type %1$s; expected types are: %2$s
+303 Number of arguments don't match
+304 Could not find compatible signature for function %1$s()
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %1$d 바이트를 할당할 수 없습니다.

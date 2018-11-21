@@ -749,8 +749,8 @@ pp_type_str (LINK * link)
 	    {
 	      strncat (target, buf, sizeof (target) - strnlen (target, sizeof (target)));
 	      snprintf (buf, sizeof (buf), " %s",
-			(link->decl.s.val.v_struct->tag ? link->decl.s.val.v_struct->
-			 tag : ((unsigned char *) "untagged")));
+			(link->decl.s.val.v_struct->tag ? link->decl.s.val.
+			 v_struct->tag : ((unsigned char *) "untagged")));
 	    }
 	}
 

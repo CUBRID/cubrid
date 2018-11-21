@@ -1433,15 +1433,3 @@ pt_is_json_doc_type (PT_TYPE_ENUM type)
 
   return db_is_json_doc_type (converted_type);
 }
-
-bool
-pt_is_json_object_name (PT_TYPE_ENUM type)
-{
-  return (PT_IS_STRING_TYPE (type) || type == PT_TYPE_MAYBE);
-}
-
-bool
-pt_is_json_path (PT_TYPE_ENUM type)
-{
-  return (PT_IS_STRING_TYPE (type) || type == PT_TYPE_MAYBE || type == PT_TYPE_NULL);
-}

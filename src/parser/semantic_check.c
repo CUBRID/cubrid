@@ -1461,7 +1461,7 @@ pt_get_attributes (PARSER_CONTEXT * parser, const DB_OBJECT * c)
       /* its name is class_name.attribute_name */
       i_attr->info.attr_def.attr_name = name = pt_name (parser, db_attribute_name (attributes));
       name->info.name.resolved = pt_append_string (parser, NULL, class_name);
-      PT_NAME_INFO_SET_FLAG (name, PT_NAME_REAL_TABLE);
+      PT_NAME_INFO_SET_FLAG (name, PT_NAME_DEFAULTF_ACCEPTS);
       name->info.name.meta_class = (db_attribute_is_shared (attributes) ? PT_SHARED : PT_NORMAL);
 
       /* set its data type */
@@ -4030,13 +4030,17 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
 	}
 
       node_ptr = NULL;
-      (void) parser_walk_tree (parser, default_value, pt_find_aggregate_function, &node_ptr, NULL, NULL);
+      parser_walk_tree (parser, default_value, pt_find_aggregate_function, &node_ptr, NULL, NULL);
       if (node_ptr != NULL)
 	{
-	  PT_ERRORmf (parser, node_ptr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DEFAULT_EXPR_NOT_ALLOWED,
+	  PT_ERRORmf (parser,
+		      node_ptr,
+		      MSGCAT_SET_PARSER_SEMANTIC,
+		      MSGCAT_SEMANTIC_DEFAULT_EXPR_NOT_ALLOWED,
 		      pt_show_function (node_ptr->info.function.function_type));
 	  goto end;
 	}
+
     end:
       data_default->next = save_next;
       prev = data_default;
@@ -5219,6 +5223,7 @@ pt_find_partition_column_count_func (PT_NODE * func, PT_NODE ** name_node)
     case F_JSON_ARRAY_APPEND:
     case F_JSON_ARRAY_INSERT:
     case F_JSON_CONTAINS_PATH:
+    case F_JSON_EXTRACT:
     case F_JSON_SEARCH:
     case F_JSON_MERGE:
     case F_JSON_MERGE_PATCH:
@@ -10014,6 +10019,10 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
       break;
 
     case PT_JSON_TABLE:
+      if (pt_has_error (parser))
+	{
+	  break;
+	}
       if (node->info.json_table_info.expr->type_enum != PT_TYPE_JSON
 	  && node->info.json_table_info.expr->type_enum != PT_TYPE_CHAR
 	  && node->info.json_table_info.expr->type_enum != PT_TYPE_MAYBE)
@@ -10742,94 +10751,86 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
       pt_check_kill (parser, node);
       break;
 
-    case PT_ALTER:
     case PT_ALTER_SERIAL:
     case PT_ALTER_TRIGGER:
     case PT_ALTER_USER:
-    case PT_CREATE_ENTITY:
     case PT_CREATE_SERIAL:
     case PT_CREATE_TRIGGER:
-    case PT_CREATE_USER:
     case PT_DROP_SERIAL:
     case PT_DROP_TRIGGER:
     case PT_DROP_USER:
     case PT_RENAME:
     case PT_RENAME_TRIGGER:
     case PT_UPDATE_STATS:
-      switch (node->node_type)
-	{
-	case PT_ALTER:
-	  pt_check_alter (parser, node);
+      break;
 
-	  if (node->info.alter.code == PT_ADD_ATTR_MTHD || node->info.alter.code == PT_ADD_INDEX_CLAUSE)
+    case PT_ALTER:
+      pt_check_alter (parser, node);
+
+      if (node->info.alter.code == PT_ADD_ATTR_MTHD || node->info.alter.code == PT_ADD_INDEX_CLAUSE)
+	{
+	  if (parser->host_var_count)
 	    {
-	      if (parser->host_var_count)
+	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_HOSTVAR_IN_DDL);
+	      break;
+	    }
+	}
+
+      if (node->info.alter.code == PT_ADD_INDEX_CLAUSE)
+	{
+	  /* apply typechecking on ALTER TABLE ADD INDEX statements, to check the expression in the WHERE clause of 
+	   * a partial index */
+	  PT_NODE *p = node->info.alter.create_index;
+	  assert (p != NULL);
+
+	  while (p)
+	    {
+	      sc_info_ptr->system_class = false;
+	      p = pt_resolve_names (parser, p, sc_info_ptr);
+	      if (p && !pt_has_error (parser))
 		{
-		  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_HOSTVAR_IN_DDL);
+		  pt_check_create_index (parser, p);
+		}
+
+	      if (!pt_has_error (parser))
+		{
+		  p = pt_semantic_type (parser, p, info);
+		}
+
+	      if (p && !pt_has_error (parser))
+		{
+		  p = parser_walk_tree (parser, p, NULL, NULL, pt_semantic_check_local, sc_info_ptr);
+
+		  if (p && !pt_has_error (parser))
+		    {
+		      /* This must be done before CNF since we are adding disjuncts to the "IS NULL" expression. */
+		      p = parser_walk_tree (parser, p, pt_expand_isnull_preds, p, NULL, NULL);
+		    }
+		}
+
+	      if (p != NULL && !pt_has_error (parser) && p->info.index.function_expr != NULL
+		  && !pt_is_function_index_expr (parser, p->info.index.function_expr->info.sort_spec.expr, true))
+		{
+		  break;
+		}
+	      if (p && !pt_has_error (parser))
+		{
+		  p = p->next;
+		}
+	      else
+		{
 		  break;
 		}
 	    }
-
-	  if (node->info.alter.code == PT_ADD_INDEX_CLAUSE)
-	    {
-	      /* apply typechecking on ALTER TABLE ADD INDEX statements, to check the expression in the WHERE clause of 
-	       * a partial index */
-	      PT_NODE *p = node->info.alter.create_index;
-	      assert (p != NULL);
-
-	      while (p)
-		{
-		  sc_info_ptr->system_class = false;
-		  p = pt_resolve_names (parser, p, sc_info_ptr);
-		  if (p && !pt_has_error (parser))
-		    {
-		      pt_check_create_index (parser, p);
-		    }
-
-		  if (!pt_has_error (parser))
-		    {
-		      p = pt_semantic_type (parser, p, info);
-		    }
-
-		  if (p && !pt_has_error (parser))
-		    {
-		      p = parser_walk_tree (parser, p, NULL, NULL, pt_semantic_check_local, sc_info_ptr);
-
-		      if (p && !pt_has_error (parser))
-			{
-			  /* This must be done before CNF since we are adding disjuncts to the "IS NULL" expression. */
-			  p = parser_walk_tree (parser, p, pt_expand_isnull_preds, p, NULL, NULL);
-			}
-		    }
-
-		  if (p != NULL && !pt_has_error (parser) && p->info.index.function_expr != NULL
-		      && !pt_is_function_index_expr (parser, p->info.index.function_expr->info.sort_spec.expr, true))
-		    {
-		      break;
-		    }
-		  if (p && !pt_has_error (parser))
-		    {
-		      p = p->next;
-		    }
-		  else
-		    {
-		      break;
-		    }
-		}
-	    }
-	  break;
-
-	case PT_CREATE_ENTITY:
-	  pt_check_create_entity (parser, node);
-	  break;
-
-	case PT_CREATE_USER:
-	  pt_check_create_user (parser, node);
-	  break;
-
-	default:
-	  break;
 	}
+      break;
+
+    case PT_CREATE_ENTITY:
+      pt_check_create_entity (parser, node);
+      break;
+
+    case PT_CREATE_USER:
+      pt_check_create_user (parser, node);
       break;
 
     default:
@@ -13580,7 +13581,7 @@ pt_check_defaultf (PARSER_CONTEXT * parser, PT_NODE * node)
 
   /* OIDs don't have default value */
   if (arg == NULL || arg->node_type != PT_NAME || arg->info.name.meta_class == PT_OID_ATTR
-      || !PT_NAME_INFO_IS_FLAGED (arg, PT_NAME_REAL_TABLE))
+      || !PT_NAME_INFO_IS_FLAGED (arg, PT_NAME_DEFAULTF_ACCEPTS))
     {
       PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DEFAULT_JUST_COLUMN_NAME);
       return ER_FAILED;
@@ -15160,6 +15161,7 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *a
 	case F_JSON_ARRAY_INSERT:
 	case F_JSON_SEARCH:
 	case F_JSON_CONTAINS_PATH:
+	case F_JSON_EXTRACT:
 	case F_JSON_MERGE:
 	case F_JSON_MERGE_PATCH:
 	case F_JSON_GET_ALL_PATHS:

@@ -261,6 +261,10 @@ qdata_json_contains_path (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, V
 			  QFILE_TUPLE tuple);
 
 static int
+qdata_json_extract_multiple_paths (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
+				   OID * obj_oid_p, QFILE_TUPLE tuple);
+
+static int
 qdata_json_get_all_paths (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
 			  QFILE_TUPLE tuple);
 
@@ -6167,7 +6171,7 @@ qdata_json_unquote_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * 
 }
 
 int
-qdata_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * json_res, TP_DOMAIN * domain_p)
+qdata_json_extract_dbval (DB_VALUE * json, DB_VALUE * path, DB_VALUE * json_res, TP_DOMAIN * domain_p)
 {
   return db_json_extract_dbval (json, path, json_res);
 }
@@ -6989,7 +6993,8 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	  else if (agg_p->function == PT_JSON_OBJECTAGG)
 	    {
 	      pr_clear_value_vector (db_values);
-	      return ER_FAILED;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_OBJECT_NAME_IS_NULL, 0);
+	      return ER_JSON_OBJECT_NAME_IS_NULL;
 	    }
 	  else
 	    {
@@ -8634,6 +8639,9 @@ qdata_evaluate_function (THREAD_ENTRY * thread_p, REGU_VARIABLE * function_p, VA
 
     case F_JSON_CONTAINS_PATH:
       return qdata_json_contains_path (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+
+    case F_JSON_EXTRACT:
+      return qdata_json_extract_multiple_paths (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
 
     case F_JSON_GET_ALL_PATHS:
       return qdata_json_get_all_paths (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
@@ -10405,6 +10413,14 @@ qdata_json_contains_path (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, V
 }
 
 static int
+qdata_json_extract_multiple_paths (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
+				   OID * obj_oid_p, QFILE_TUPLE tuple)
+{
+  return qdata_convert_operands_to_value_and_call (thread_p, function_p, val_desc_p,
+						   obj_oid_p, tuple, db_json_extract_multiple_paths);
+}
+
+static int
 qdata_json_get_all_paths (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
 			  QFILE_TUPLE tuple)
 {
@@ -10577,7 +10593,6 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, V
   int copy_opr;
   TP_DOMAIN *tmp_domain_p = NULL;
   DB_TYPE dbval_type;
-  double ntile_bucket = 0.0;
   int error = NO_ERROR;
   TP_DOMAIN_STATUS dom_status;
   int coll_id;
@@ -10740,10 +10755,10 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, V
 	      goto exit;
 	    }
 
-	  ntile_bucket = db_get_double (&dbval);
+	  int ntile_bucket = (int) floor (db_get_double (&dbval));
 
 	  /* boundary check */
-	  if (ntile_bucket < 1.0 || ntile_bucket > DB_INT32_MAX)
+	  if (ntile_bucket < 1 || ntile_bucket > DB_INT32_MAX)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NTILE_INVALID_BUCKET_NUMBER, 0);
 	      error = ER_NTILE_INVALID_BUCKET_NUMBER;
@@ -10752,7 +10767,7 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, V
 
 	  /* we're sure the operand is not null */
 	  func_p->info.ntile.is_null = false;
-	  func_p->info.ntile.bucket_count = (int) floor (ntile_bucket);
+	  func_p->info.ntile.bucket_count = ntile_bucket;
 	}
       break;
 
@@ -12814,6 +12829,8 @@ qdata_save_agg_hentry_to_list (THREAD_ENTRY * thread_p, AGGREGATE_HASH_KEY * key
   DB_VALUE tuple_count;
   int tuple_size = QFILE_TUPLE_LENGTH_SIZE;
   int col = 0, i;
+  QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
+  int error = NO_ERROR;
 
   /* build tuple descriptor */
   for (i = 0; i < key->val_count; i++)
@@ -12839,12 +12856,34 @@ qdata_save_agg_hentry_to_list (THREAD_ENTRY * thread_p, AGGREGATE_HASH_KEY * key
   list_id->tpl_descr.f_valp[col++] = &tuple_count;
   tuple_size += qdata_get_tuple_value_size_from_dbval (&tuple_count);
 
-  /* add to list file */
   list_id->tpl_descr.tpl_size = tuple_size;
-  qfile_generate_tuple_into_list (thread_p, list_id, T_NORMAL);
+  /* add to list file */
+  if (tuple_size <= QFILE_MAX_TUPLE_SIZE_IN_PAGE)
+    {
+      qfile_generate_tuple_into_list (thread_p, list_id, T_NORMAL);
+    }
+  else
+    {
+      error = qfile_copy_tuple_descr_to_tuple (thread_p, &list_id->tpl_descr, &tplrec);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+      error = qfile_add_tuple_to_list (thread_p, list_id, tplrec.tpl);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+    }
+
+cleanup:
+  if (tplrec.tpl != NULL)
+    {
+      db_private_free (thread_p, tplrec.tpl);
+    }
 
   /* all ok */
-  return NO_ERROR;
+  return error;
 }
 
 /*

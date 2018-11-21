@@ -4063,6 +4063,7 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	    case F_JSON_ARRAY_APPEND:
 	    case F_JSON_ARRAY_INSERT:
 	    case F_JSON_CONTAINS_PATH:
+	    case F_JSON_EXTRACT:
 	    case F_JSON_MERGE:
 	    case F_JSON_MERGE_PATCH:
 	    case F_JSON_GET_ALL_PATHS:
@@ -4259,6 +4260,7 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	case F_JSON_ARRAY_APPEND:
 	case F_JSON_ARRAY_INSERT:
 	case F_JSON_CONTAINS_PATH:
+	case F_JSON_EXTRACT:
 	case F_JSON_SEARCH:
 	case F_JSON_MERGE:
 	case F_JSON_MERGE_PATCH:

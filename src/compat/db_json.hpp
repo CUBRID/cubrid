@@ -40,6 +40,7 @@ typedef void JSON_ITERATOR;
 #if defined (__cplusplus)
 
 #include <functional>
+#include <regex>
 #include <vector>
 
 /*
@@ -99,11 +100,11 @@ int db_json_deserialize (OR_BUF *buf, JSON_DOC *&doc);
 int db_json_insert_func (const JSON_DOC *doc_to_be_inserted, JSON_DOC &doc_destination, const char *raw_path);
 int db_json_replace_func (const JSON_DOC *new_value, JSON_DOC &doc, const char *raw_path);
 int db_json_set_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path);
-int db_json_keys_func (const JSON_DOC &doc, JSON_DOC *&result_json, const char *raw_path);
-int db_json_keys_func (const char *json_raw, JSON_DOC *&result_json, const char *raw_path, size_t json_raw_length);
+int db_json_keys_func (const JSON_DOC &doc, JSON_DOC &result_json, const char *raw_path);
 int db_json_array_append_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path);
 int db_json_array_insert_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path);
 int db_json_remove_func (JSON_DOC &doc, const char *raw_path);
+int db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<std::regex> &regs);
 int db_json_search_func (JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALUE *esc_char, bool find_all,
 			 std::vector<std::string> &starting_paths, std::vector<std::string> &paths);
 int db_json_merge_func (const JSON_DOC *source, JSON_DOC *&dest, bool patch);
@@ -157,6 +158,7 @@ bool db_json_doc_is_uncomparable (const JSON_DOC *doc);
 // DB_VALUE manipulation functions
 int db_value_to_json_doc (const DB_VALUE &db_val, REFPTR (JSON_DOC, json_doc));
 int db_value_to_json_value (const DB_VALUE &db_val, REFPTR (JSON_DOC, json_val));
+int db_value_to_json_path (const DB_VALUE *path_value, FUNC_TYPE fcode, const char **path_str);
 /* end of C functions */
 
 template <typename Fn, typename... Args>

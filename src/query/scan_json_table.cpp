@@ -236,6 +236,7 @@ namespace cubscan
       assert (m_specp->m_node_count > 0);
 
       m_tree_height = get_tree_height (*m_specp->m_root_node);
+      m_scan_cursor_depth = 0;
 
       m_scan_cursor = new cursor[m_tree_height];
 
@@ -267,6 +268,9 @@ namespace cubscan
 
 	      cursor.m_child = 0;
 	      cursor.m_is_row_fetched = false;
+	      cursor.m_need_advance_row = false;
+	      cursor.m_is_node_consumed = true;
+	      cursor.m_row_was_expanded = false;
 	    }
 
 	  m_specp->m_root_node->clear_iterators (is_final_clear);
@@ -284,8 +288,6 @@ namespace cubscan
       int error_code = NO_ERROR;
       const JSON_DOC *document = NULL;
 
-      // so... we need to generate the whole list file
-
       // we need the starting value to expand into a list of records
       DB_VALUE *value_p = NULL;
       error_code = fetch_peek_dbval (thread_p, m_specp->m_json_reguvar, m_vd, NULL, NULL, NULL, &value_p);
@@ -294,10 +296,16 @@ namespace cubscan
 	  ASSERT_ERROR ();
 	  return error_code;
 	}
-      if (value_p == NULL || db_value_is_null (value_p))
+      if (value_p == NULL)
 	{
 	  assert (false);
 	  return ER_FAILED;
+	}
+
+      if (db_value_is_null (value_p))
+	{
+	  assert (m_scan_cursor[0].m_is_node_consumed);
+	  return NO_ERROR;
 	}
 
       // build m_scan_cursor
@@ -340,6 +348,7 @@ namespace cubscan
 
       // if we gather expr from another table, for each row we need to reset the ordinality
       reset_ordinality (*m_specp->m_root_node);
+      m_scan_cursor_depth = 0;
 
       return NO_ERROR;
     }
