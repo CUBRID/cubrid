@@ -1769,8 +1769,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 299 CTE '%1$s' hatası: yinelemesiz bölüm ve özyinelemeli bölüm UNION ALL ile bağlanmalıdır.
 300 DEFAULT yan tümcesi içinde alt sorguya izin verilmez.
 301 Could not find signatures for function %1$s()
-302 Incompatible argument type %1$s; expected types are: %2$s
-303 Number of arguments don't match
+302 Incompatible argument type %1$s, expected type is: %2$s. Invalid signature %3$s.
+303 Unexpected number of arguments %1$d. Invalid signature %1$s.
 304 Could not find compatible signature for function %1$s()
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
