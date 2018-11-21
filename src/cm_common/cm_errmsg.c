@@ -38,6 +38,7 @@ const char *cm_errors[] = {
   "file (%s) open failed: %s",
   "read database (%s) exec stat info error",
 };
+
 void
 cm_err_buf_reset (T_CM_ERROR * err_buf)
 {

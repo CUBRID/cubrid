@@ -67,6 +67,7 @@ static OID oid_DB_root_class = { 0, 0, 0 };
 static OID oid_Rep_Read_Tran = { 0, (short int) 0x8000, 0 };
 
 const OID oid_Null_oid = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
+
 PAGEID oid_Next_tempid = NULL_PAGEID;
 
 /* ROOT_CLASS OID values. Set during restart/initialization.*/

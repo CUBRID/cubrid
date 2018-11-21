@@ -46,6 +46,7 @@ const char *output_dirname = NULL;
 char *input_filename = NULL;
 FILE *output_file = NULL;
 TEXT_OUTPUT object_output = { NULL, NULL, 0, 0, NULL };
+
 TEXT_OUTPUT *obj_out = &object_output;
 int page_size = 4096;
 int cached_pages = 100;
