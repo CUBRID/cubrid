@@ -33965,17 +33965,18 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	    {
 	      /* Insert flag set. We must change the flag to DELETE_FLAG. */
 
-	      /* Redo logging. */
-	      if (node_type == BTREE_OVERFLOW_NODE)
-		{
-		  BTREE_RV_SET_OVERFLOW_NODE (&helper->delete_helper.leaf_addr);
-		}
-	      LOG_RV_RECORD_SET_MODIFY_MODE (&addr, LOG_RV_RECORD_UPDATE_PARTIAL);
 
 	      /* Logging. */
 	      addr.pgptr = page_found;
 	      addr.offset = slotid;
 	      addr.vfid = &btid_int->sys_btid->vfid;
+
+	      /* Redo logging. */
+	      if (node_type == BTREE_OVERFLOW_NODE)
+		{
+		  BTREE_RV_SET_OVERFLOW_NODE (&addr);
+		}
+	      LOG_RV_RECORD_SET_MODIFY_MODE (&addr, LOG_RV_RECORD_UPDATE_PARTIAL);
 
 	      /* Set the new state to DELETE_FLAG. */
 	      btree_online_index_set_delete_flag_state (btree_mvcc_info.insert_mvccid);
@@ -34003,7 +34004,7 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 							  node_type == BTREE_LEAF_NODE, slotid, new_record.length,
 							  btid_int->sys_btid));
 
-	      btree_rv_log_delete_object (thread_p, helper->delete_helper, helper->delete_helper.leaf_addr, 0,
+	      btree_rv_log_delete_object (thread_p, helper->delete_helper, addr, 0,
 					  rv_redo_data_length, NULL, rv_redo_data);
 
 	      pgbuf_set_dirty (thread_p, page_found, DONT_FREE);
