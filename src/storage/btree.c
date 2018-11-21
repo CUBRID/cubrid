@@ -33965,8 +33965,7 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	    {
 	      /* Insert flag set. We must change the flag to DELETE_FLAG. */
 
-
-	      /* Logging. */
+	      /* Prepare Logging. */
 	      addr.pgptr = page_found;
 	      addr.offset = slotid;
 	      addr.vfid = &btid_int->sys_btid->vfid;
