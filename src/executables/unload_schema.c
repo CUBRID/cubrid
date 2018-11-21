@@ -2656,6 +2656,11 @@ emit_index_def (DB_OBJECT * class_)
 	  asc_desc = db_constraint_asc_desc (constraint);
 	  prefix_length = db_constraint_prefix_length (constraint);
 	}
+      else if (ctype == DB_CONSTRAINT_UNIQUE)
+	{			/* is not reverse unique index */
+	  /* need to get asc/desc info */
+	  asc_desc = db_constraint_asc_desc (constraint);
+	}
 
       atts = db_constraint_attributes (constraint);
 
