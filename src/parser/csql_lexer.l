@@ -143,13 +143,13 @@ int yybuffer_pos;
 [bB][iI][nN][aA][rR][yY]						{ begin_token(yytext);   return BINARY;}
 [bB][iI][tT]								{ begin_token(yytext);   return BIT; }
 [bB][iI][tT]_[lL][eE][nN][gG][tT][hH]					{ begin_token(yytext);   return BIT_LENGTH; }
-[bB][iI][tT]_[aA][nN][dD]						{ begin_token(yytext);	
+[bB][iI][tT]_[aA][nN][dD]						{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return BIT_AND; }
-[bB][iI][tT]_[oO][rR]							{ begin_token(yytext);	
+[bB][iI][tT]_[oO][rR]							{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return BIT_OR; }
-[bB][iI][tT]_[xX][oO][rR]						{ begin_token(yytext);	
+[bB][iI][tT]_[xX][oO][rR]						{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return BIT_XOR; }
 [bB][lL][oO][bB]							{ begin_token(yytext);	 return BLOB_; }
@@ -377,10 +377,10 @@ int yybuffer_pos;
 [hH][oO][uU][rR]_[mM][iI][nN][uU][tT][eE]				{ begin_token(yytext);   return HOUR_MINUTE; }
 [iI][dD][eE][nN][tT][iI][tT][yY]					{ begin_token(yytext);   return IDENTITY; }
 [iI][fF]								{ begin_token(yytext);   return IF; }
-[iI][fF][nN][uU][lL][lL]						{ begin_token(yytext);	
+[iI][fF][nN][uU][lL][lL]						{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return IFNULL; }
-[iI][sS][nN][uU][lL][lL]						{ begin_token(yytext);	
+[iI][sS][nN][uU][lL][lL]						{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return ISNULL; }
 [iI][gG][nN][oO][rR][eE]						{ begin_token(yytext);   return IGNORE_; }
@@ -475,7 +475,7 @@ int yybuffer_pos;
 [lL][aA][sS][tT]_[vV][aA][lL][uU][eE]		{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return LAST_VALUE; }
-[lL][cC][aA][sS][eE]							{ begin_token(yytext);	
+[lL][cC][aA][sS][eE]							{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return LCASE; }
 [lL][eE][aA][dD]							{ begin_token(yytext);
@@ -953,7 +953,7 @@ int yybuffer_pos;
 										len = strlen(yytext);
 										if (len >= 254)
 											yytext[254] = 0;
-		
+
 										/* loop until len - 1, in case of 0000000000000000000000 */
 										for (i = 0; i < len - 1 && yytext[i] == '0'; i++)
 										;
@@ -983,7 +983,7 @@ int yybuffer_pos;
 										else
 										  {
 										    csql_yylval.cptr = pt_makename(yytext);
-										  }	
+										  }
 										return UNSIGNED_REAL;
 									}
 
@@ -1033,7 +1033,7 @@ _[uU][tT][fF]8[']		{
 								      {
 								        yytext[254] = 0;
 								      }
-								
+
 								    for (i = 1; i < len - 1 && IS_BLANK_CHAR (yytext[i]); i++)
 								    ;
 
@@ -1079,10 +1079,10 @@ _[uU][tT][fF]8[']		{
 								      {
 								        yytext[254] = 0;
 								      }
-								
+
 								    for (i = 2; i < len - 1 && IS_BLANK_CHAR (yytext[i]); i++)
 								    ;
-								
+
 								    csql_yylval.cptr = pt_makename(&yytext[i]);
 
 								    /* Distinguish some special words/tokens from normal identifiers (IdName).
@@ -1177,7 +1177,7 @@ _[uU][tT][fF]8[']		{
 					BEGIN(INITIAL);
 					return UTF8_STRING;
 				}
-				
+
 <QUOTED_NCHAR_STRING>[']	{
 					BEGIN(INITIAL);
 					return NCHAR_STRING;
@@ -1563,7 +1563,7 @@ csql_yyerror (const char *s)
 	    }
 
 	  len = strlen (msg);
-	
+
 	  if (msg[len - 3] == '\n')
 	    {
 	      msg[len - 3] = ' ';
@@ -1670,7 +1670,7 @@ parser_yyinput_single_line (char *buff, int max_size)
 	      c = pt_nextchar ();
 	      if (c == end)	/* string end */
 		{
-		  str_identifier = '\0';	
+		  str_identifier = '\0';
 		  break;
 		}
 
