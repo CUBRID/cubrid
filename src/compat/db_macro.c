@@ -5049,6 +5049,7 @@ db_is_json_value_type (DB_TYPE type)
     case DB_TYPE_JSON:
     case DB_TYPE_NUMERIC:
     case DB_TYPE_BIGINT:
+    case DB_TYPE_ENUMERATION:
       return true;
     default:
       return false;

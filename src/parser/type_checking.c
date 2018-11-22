@@ -12646,6 +12646,7 @@ pt_eval_function_type_new (PARSER_CONTEXT * parser, PT_NODE * node)
     }
 
   Func::Node funcNode (parser, node);
+  // todo - move below code to Func::Node
   if (funcNode.preprocess ())
     {
       if (node->type_enum == PT_TYPE_NONE || node->data_type == NULL)
@@ -12657,22 +12658,19 @@ pt_eval_function_type_new (PARSER_CONTEXT * parser, PT_NODE * node)
 	  if (!func_sigs)
 	    {
 	      pt_cat_error (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTYPECHECK_NO_SIGNATURES,
-			    str (fcode) /*, parser_print_tree_list(parser, arg_list) */ );
+			    pt_func_type_to_string (fcode));
 	      return node;
 	    }
-	  string_buffer sb;
-	  const func_signature *func_sig = funcNode.get_signature (*func_sigs, sb);
-	  if (func_sig != NULL)
+	  const func_signature *func_sig = funcNode.get_signature (*func_sigs);
+	  if (func_sig == NULL || !funcNode.apply_signature (*func_sig))
 	    {
-	      funcNode.apply_signature (*func_sig);
-	      funcNode.set_return_type (*func_sig);
+	      node->type_enum = PT_TYPE_NA;	//to avoid entering here 2nd time
+	      pt_cat_error (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTYPECHECK_NO_SIGNATURE,
+			    pt_func_type_to_string (fcode));
 	    }
 	  else
 	    {
-	      node->type_enum = PT_TYPE_NA;	//to avoid entering here 2nd time
-	      //arg_type = PT_TYPE_NONE;//unused!?
-	      pt_cat_error (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTYPECHECK_NO_SIGNATURE,
-			    str (fcode) /*, parser_print_tree_list(parser, arg_list) */ );
+	      funcNode.set_return_type (*func_sig);
 	    }
 	}
     }

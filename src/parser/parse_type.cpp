@@ -25,35 +25,36 @@
 #include "parser.h"
 #include "string_buffer.hpp"
 
-const char *str (pt_generic_type_enum type)
+const char *pt_generic_type_to_string (pt_generic_type_enum type)
 {
   static const char *arr[] =
   {
-    "GT_NONE",
-    "GT_STRING",
-    "GT_STRING_VARYING",
-    "GT_CHAR",
-    "GT_NCHAR",
-    "GT_BIT",
-    "GT_DISCRETE_NUMBER",
-    "GT_NUMBER",
-    "GT_DATE",
-    "GT_DATETIME",
-    "GT_SEQUENCE",
-    "GT_LOB",
-    "GT_QUERY",
-    "GT_PRIMITIVE",
-    "GT_ANY",
-    "GT_JSON_VAL",
-    "GT_JSON_DOC",
-    "GT_JSON_PATH",
-    "GT_SCALAR",
+    "GENERIC TYPE NONE",
+    "GENERIC ANY STRING TYPE",
+    "GENERIC VARIABLE STRING TYPE",
+    "GENERIC ANY CHAR TYPE",
+    "GENERIC ANY NCHAR TYPE",
+    "GENERIC ANY BIT TYPE",
+    "GENERIC DISCRETE NUMBER TYPE",
+    "GENERIC ANY NUMBER TYPE",
+    "GENERIC DATE TYPE",
+    "GENERIC DATETIME TYPE",
+    "GENERIC SEQUENCE TYPE",
+    "GENERIC LOB TYPE",
+    "GENERIC QUERY TYPE",    // what is this?
+    "GENERIC PRIMITIVE TYPE",
+    "GENERIC ANY TYPE",
+    "JSON VALUE",
+    "JSON DOCUMENT",
+    "GENERIC SCALAR TYPE",
   };
+  static_assert ((PT_GENERIC_TYPE_SCALAR + 1) == (sizeof (arr) / sizeof (const char *)),
+		 "miss-match between pt_generic_type_enum and its name array");
   return arr[type];
 }
 
 //--------------------------------------------------------------------------------
-const char *str (const pt_arg_type &type, string_buffer &sb)
+const char *pt_arg_type_to_string_buffer (const pt_arg_type &type, string_buffer &sb)
 {
   switch (type.type)
     {
@@ -62,7 +63,7 @@ const char *str (const pt_arg_type &type, string_buffer &sb)
       sb ("%s", pt_show_type_enum (type.val.type));
       break;
     case pt_arg_type::GENERIC:
-      sb ("%s", str (type.val.generic_type));
+      sb ("%s", pt_generic_type_to_string (type.val.generic_type));
       break;
     case pt_arg_type::INDEX:
       sb ("IDX%d", type.val.index);
