@@ -27509,3 +27509,4 @@ pt_jt_append_column_or_nested_node (PT_NODE * jt_node, PT_NODE * jt_col_or_neste
         parser_append_node (jt_col_or_nested, jt_node->info.json_table_node_info.nested_paths);
     }
 }
+
