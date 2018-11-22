@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -84,7 +84,7 @@ typedef struct disk_attribute DISK_ATTR;
 struct disk_attribute
 {
   ATTR_ID id;			/* attribute identifier */
-  int location;			/* location in disk representation exact offset if fixed attr. index to offset table if 
+  int location;			/* location in disk representation exact offset if fixed attr. index to offset table if
 				 * var attr. */
   DB_TYPE type;			/* datatype */
   int val_length;		/* default value length >= 0 */

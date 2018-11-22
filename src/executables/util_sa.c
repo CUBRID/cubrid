@@ -1789,12 +1789,12 @@ estimatedb_index (UTIL_FUNCTION_ARG * arg)
 		    case DB_TYPE_VARCHAR:
 		    case DB_TYPE_NCHAR:
 		    case DB_TYPE_VARNCHAR:
-		      /* Do not override any information in Avg_key_size with precision information. Just make sure the 
+		      /* Do not override any information in Avg_key_size with precision information. Just make sure the
 		       * input makes sense for these cases.  */
 		      if (avg_key_size > domain->precision)
 			{
 			  /* Does not make sense to have avg_key_size bigger than precision - inform user of error.
-			   * This is illegal input since the char precision defaults to 1. estimatedb_index 100000 1000 
+			   * This is illegal input since the char precision defaults to 1. estimatedb_index 100000 1000
 			   * 5 char */
 			  status = -2;
 			}
@@ -1805,7 +1805,7 @@ estimatedb_index (UTIL_FUNCTION_ARG * arg)
 
 		  if (status != -2)
 		    {
-		      /* 
+		      /*
 		       * This will call pr_estimate_size which uses the
 		       * Avg_key_size and TP_DOMAIN_TYPE(domain) to really
 		       * compute the correct average key size that we
@@ -2544,8 +2544,8 @@ error:
       lf = NULL;
     }
 
-  /* 
-   * Text conversions having init_conv_func not NULL are built-in. 
+  /*
+   * Text conversions having init_conv_func not NULL are built-in.
    * They can't be deallocates, as they are static constants.
    */
   if (lld.txt_conv != NULL && lld.txt_conv->init_conv_func == NULL)

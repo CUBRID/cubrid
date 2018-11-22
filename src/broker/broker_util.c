@@ -265,7 +265,7 @@ ut_kill_as_process (int pid, char *broker_name, int as_index, int shard_flag)
     {
       char tmp[BROKER_PATH_MAX];
 
-      /* 
+      /*
        * shard_cas does not have unix-domain socket and pid lock file.
        * so, we need not delete socket and lock file.
        */

@@ -574,8 +574,8 @@ dbt_finish_object (DB_OTMPL * def)
 }
 
 /*
- * dbt_finish_object_and_decache_when_failure() - This function applies an 
- * object template and decache if it is failed to update object template. 
+ * dbt_finish_object_and_decache_when_failure() - This function applies an
+ * object template and decache if it is failed to update object template.
  * return : object pointer
  * def(in): object template
  */

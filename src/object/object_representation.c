@@ -316,7 +316,7 @@ or_class_name (RECDES * record)
   char *start, *name;
   int offset, len;
 
-  /* 
+  /*
    * the first variable attribute for both classes and the rootclass
    * is the name - if this ever changes, we could check the class
    * OID which should be NULL for the root class and special case
@@ -326,7 +326,7 @@ or_class_name (RECDES * record)
   offset = OR_VAR_OFFSET (record->data, 0);
   start = &record->data[offset];
 
-  /* 
+  /*
    * kludge kludge kludge
    * This is now an encoded "varchar" string, we need to skip over the length
    * before returning it.  Note that this also depends on the stored string
@@ -531,7 +531,7 @@ or_replace_chn (RECDES * record, int chn)
  * or_mvcc_get_repid_and_flags () - Gets MVCC representation id and flags.
  *
  * return	   : MVCC flags.
- * buf (in/out) : or buffer 
+ * buf (in/out) : or buffer
  * error(out): NO_ERROR or error code
  */
 int
@@ -558,7 +558,7 @@ or_mvcc_get_repid_and_flags (OR_BUF * buf, int *error)
  * or_mvcc_set_repid_and_flags () - Set MVCC representation id and flags.
  *
  * return	   : nothing
- * buf (in/out) : or buffer 
+ * buf (in/out) : or buffer
  * bound_bit(in) : bound bit
  * variable_offset_size(in); variable offset size
  * error(out): NO_ERROR or error code
@@ -746,8 +746,8 @@ or_mvcc_get_chn (OR_BUF * buf, int *error)
 /*
  * or_mvcc_set_delid () - Set MVCC delete id
  *
- * return	      : error code 
- * buf (in/out)	      : or buffer 
+ * return	      : error code
+ * buf (in/out)	      : or buffer
  * mvcc_rec_header(in): MVCC record header
  */
 STATIC_INLINE int
@@ -767,8 +767,8 @@ or_mvcc_set_delid (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
 /*
  * or_mvcc_set_chn () - Set MVCC chn
  *
- * return	      : error code 
- * buf (in/out)	      : or buffer 
+ * return	      : error code
+ * buf (in/out)	      : or buffer
  * mvcc_rec_header(in): MVCC record header
  */
 STATIC_INLINE int
@@ -840,11 +840,11 @@ exit_on_error:
  * or_mvcc_set_header () - Updates record header
  *
  * return		: Void.
- * record (in/out)	: Record descriptor. 
+ * record (in/out)	: Record descriptor.
  * mvcc_rec_header (in) : MVCC Record header.
  *
  *  Note: This function assume that record area size is sufficiently large
- *    to include additional MVCC data that may come from mvcc_rec_header. 
+ *    to include additional MVCC data that may come from mvcc_rec_header.
  */
 int
 or_mvcc_set_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header)
@@ -921,7 +921,7 @@ exit_on_error:
  * or_mvcc_add_header () - Add header in record
  *
  * return		: Void.
- * record (in/out)	: Record descriptor. 
+ * record (in/out)	: Record descriptor.
  * mvcc_rec_header (in) : MVCC Record header.
  *
  *  Note: This function must be called when the record is build by adding
@@ -1063,7 +1063,7 @@ or_put_bound_bit (char *bound_bits, int element, int bound)
 int
 or_overflow (OR_BUF * buf)
 {
-  /* 
+  /*
    * since this is normal behavior, don't set an error condition, the
    * main transformer functions will need to test the status value
    * for ER_TF_BUFFER_OVERFLOW and know that this isn't an error condition.
@@ -1267,7 +1267,7 @@ or_varchar_length_internal (int charlen, int align)
     }
   else
     {
-      /* 
+      /*
        * Regarding the new encoding for VARCHAR and VARNCHAR, the strings stored in buffers have this representation:
        * OR_BYTE_SIZE    : First byte in encoding. If it's 0xFF, the string's length is greater than 255.
        *                 : Otherwise, the first byte states the length of the string.
@@ -4431,7 +4431,7 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
 	case DB_TYPE_NUMERIC:
 	  precision = d->precision;
 	  scale = d->scale;
-	  /* 
+	  /*
 	   * Safe guard for floating precision caused by incorrect type setting
 	   */
 	  if (precision <= TP_FLOATING_PRECISION_VALUE)
@@ -4448,7 +4448,7 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
 	  size += OR_INT_SIZE;
 	case DB_TYPE_BIT:
 	case DB_TYPE_VARBIT:
-	  /* 
+	  /*
 	   * Hack, if the precision is -1, it is a special value indicating
 	   * either the maximum precision for the varying types or a floating
 	   * precision for the fixed types.
@@ -4458,7 +4458,7 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
 	      precision = d->precision;
 	    }
 
-	  /* 
+	  /*
 	   * Kludge, for temporary backward compatibility, treat varchar
 	   * types with the maximum precision as above. Need to change ourselves
 	   * to use -1 consistently for this after which this little
@@ -4545,7 +4545,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
   int rc = NO_ERROR;
   unsigned int collation_storage;
 
-  /* 
+  /*
    * Hack, if this is a built-in domain, store a single word reference.
    * This is only allowed for the top level domain.
    * Note that or_unpack_domain is probably not going to do the right
@@ -4571,7 +4571,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 
       id = TP_DOMAIN_TYPE (d);
 
-      /* 
+      /*
        * Initial word has type, precision, scale, & codeset to the extent that
        * they will fit.  High bit of the type byte is set if there
        * is another domain following this one. (e.g. for set or union domains).
@@ -4624,7 +4624,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	    }
 	  /* handle all precisions the same way at the end */
 	  precision = d->precision;
-	  /* 
+	  /*
 	   * Safe guard for floating precision caused by incorrect type setting
 	   */
 	  if (precision <= TP_FLOATING_PRECISION_VALUE)
@@ -4642,7 +4642,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	case DB_TYPE_VARBIT:
 	  carrier |= ((int) (d->codeset)) << OR_DOMAIN_CODSET_SHIFT;
 
-	  /* 
+	  /*
 	   * Hack, if the precision is our special maximum/floating indicator,
 	   * store a zero in the precision field of the carrier.
 	   */
@@ -4651,7 +4651,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	      precision = d->precision;
 	    }
 
-	  /* 
+	  /*
 	   * Kludge, for temporary backward compatibility, treat varchar
 	   * types with the maximum precision as the -1 case.  See commentary
 	   * in or_packed_domain_size above.
@@ -4666,7 +4666,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 
 	case DB_TYPE_OBJECT:
 	case DB_TYPE_OID:
-	  /* 
+	  /*
 	   * If the include_classoids argument was specified, set a flag in the
 	   * disk representation indicating the presence of the class oids.
 	   * This isn't necessary when the domain is used for value tagging
@@ -4684,7 +4684,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	case DB_TYPE_SEQUENCE:
 	case DB_TYPE_TABLE:
 	case DB_TYPE_MIDXKEY:
-	  /* 
+	  /*
 	   * we need to recursively store the sub-domains following this one,
 	   * since sets can have empty domains we need a flag to indicate this.
 	   */
@@ -4819,7 +4819,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	    }
 	}
 
-      /* 
+      /*
        * Recurse on the sub domains if necessary, note that we don't
        * pass the NULL bit down here because that applies only to the
        * top level domain.
@@ -4880,7 +4880,7 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
       if (type == DB_TYPE_NULL && (carrier & OR_DOMAIN_BUILTIN_FLAG))
 	{
 	  index = (carrier & OR_DOMAIN_PRECISION_MASK) >> OR_DOMAIN_PRECISION_SHIFT;
-	  /* 
+	  /*
 	   * Recall that the builtin domain indexes are 1 based rather
 	   * than zero based, must adjust prior to indexing the table.
 	   */
@@ -5127,7 +5127,7 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 		}
 	    }
 
-	  /* 
+	  /*
 	   * Recurse to get set sub-domains if there are any, note that
 	   * we don't pass the is_null flag down here since NULLness only
 	   * applies to the top level domain.
@@ -5334,7 +5334,7 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		}
 	      if (precision == 0)
 		{
-		  /* 
+		  /*
 		   * Kludge, restore maximum precision for the types that
 		   * aren't yet prepared for a -1.  This can be removed
 		   * eventually, see commentary in the or_put_domain.
@@ -5719,7 +5719,7 @@ or_packed_set_info (DB_TYPE set_type, TP_DOMAIN * domain, int include_domain, in
   int homogeneous;
 
 
-  /* 
+  /*
    * A set can be of fixed width only if the domain is fully specified and there
    * is only one fixed width data type in the set.
    * Note that for "attached" sets that may be fixed width, the domain must
@@ -5727,7 +5727,7 @@ or_packed_set_info (DB_TYPE set_type, TP_DOMAIN * domain, int include_domain, in
    * and assume its a variable width set.
    */
 
-  /* 
+  /*
    * might only need bother with offset tables if this is an indexable
    * sequence ?
    */
@@ -5765,7 +5765,7 @@ or_packed_set_info (DB_TYPE set_type, TP_DOMAIN * domain, int include_domain, in
       *offset_table = 1;
     }
 
-  /* 
+  /*
    * Determine if we need to tag each value with its domain.
    * Normally, one would tag the elements if the domain is being excluded
    * from the set, but we'll allow it and assume that it will be passed
@@ -5773,7 +5773,7 @@ or_packed_set_info (DB_TYPE set_type, TP_DOMAIN * domain, int include_domain, in
    */
   *element_tags = !homogeneous;	/* || !include_domain */
 
-  /* 
+  /*
    * If we have to have element tags, then don't bother with a bound
    * bit array.
    */
@@ -5979,7 +5979,7 @@ or_packed_set_length (SETOBJ * set, int include_domain)
       len += or_packed_domain_size (set_domain, 0);
     }
 
-  /* 
+  /*
    * If we have a non-tagged fixed width set, can calculate the size without
    * mapping over the values.
    */
@@ -5995,7 +5995,7 @@ or_packed_set_length (SETOBJ * set, int include_domain)
 	  error = setobj_get_element_ptr (set, i, &value);
 
 	  /* Second argument indicates whether to "collapse_null" values into nothing.  - can do this only if there is
-	   * an offset table. Third argument indicates whether or not to include the domain which - we do if the values 
+	   * an offset table. Third argument indicates whether or not to include the domain which - we do if the values
 	   * are tagged. Fourth argument indicates the desire to pack class OIDs which we never do since these are tag
 	   * domains. */
 	  len += or_packed_value_size (value, offset_table, element_tags, 0);
@@ -6103,7 +6103,7 @@ or_put_set (OR_BUF * buf, SETOBJ * set, int include_domain)
 	{
 	  error = setobj_get_element_ptr (set, i, &value);
 
-	  /* 
+	  /*
 	   * make an entry in the offset table or bound bit array if we
 	   * have them
 	   */
@@ -6133,7 +6133,7 @@ or_put_set (OR_BUF * buf, SETOBJ * set, int include_domain)
 		}
 	    }
 
-	  /* 
+	  /*
 	   * Write the value.  Be careful with NULLs in fixed width sets, need
 	   * to leave space.
 	   */
@@ -6141,7 +6141,7 @@ or_put_set (OR_BUF * buf, SETOBJ * set, int include_domain)
 
 	  if (bound_ptr != NULL && is_null)
 	    {
-	      /* 
+	      /*
 	       * Could just use or_advance here but lets be nice and
 	       * zero out the space for debugging.
 	       */
@@ -6232,7 +6232,7 @@ or_get_set (OR_BUF * buf, TP_DOMAIN * domain)
       return NULL;
     }
 
-  /* 
+  /*
    * If a domain was supplied, stick it in the set, probably should do a
    * sanity check in this and the doamin stored in the set.  The domain
    * MUST be passed if the set was packed with the "include_domain" domain
@@ -6265,7 +6265,7 @@ or_get_set (OR_BUF * buf, TP_DOMAIN * domain)
        * Might want to check this here. */
     }
 
-  /* 
+  /*
    * Calculate the length of the fixed width elements if that's what we have.
    * This looks like it should be a little utilitiy function.
    */
@@ -6321,13 +6321,13 @@ or_get_set (OR_BUF * buf, TP_DOMAIN * domain)
 		}
 	    }
 
-	  /* 
+	  /*
 	   * 8 element_size will now be 0 if NULL, the true size, or -1 if * variable or unknown. */
 
 	  /* Read the element. */
 	  if (element_size == 0)
 	    {
-	      /* 
+	      /*
 	       * we have to initlaize the domain too, since a set can
 	       * have several possible domains, just pick the first one.
 	       * Actually,for wildcard sets, we won't have a domain to select.
@@ -6336,7 +6336,7 @@ or_get_set (OR_BUF * buf, TP_DOMAIN * domain)
 	       */
 	      db_value_domain_init (&value, DB_TYPE_NULL, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	      db_make_null (&value);
-	      /* 
+	      /*
 	       * if this is a fixed width element array, skip over the null
 	       * data
 	       */
@@ -6347,7 +6347,7 @@ or_get_set (OR_BUF * buf, TP_DOMAIN * domain)
 	    }
 	  else
 	    {
-	      /* 
+	      /*
 	       * read a packed value, pass the domain only if the
 	       * values are not tagged already tagged.
 	       */
@@ -6361,7 +6361,7 @@ or_get_set (OR_BUF * buf, TP_DOMAIN * domain)
 		}
 	    }
 
-	  /* 
+	  /*
 	   * This setobj interface function passes "ownership" of the memory
 	   * of value to the set. value need not be cleared after this call,
 	   * as its internal memory pointers are copied directly to the set
@@ -6445,7 +6445,7 @@ or_disk_set_size (OR_BUF * buf, TP_DOMAIN * set_domain, DB_TYPE * set_type)
       set_domain = or_get_domain (buf, set_domain, NULL);
     }
 
-  /* 
+  /*
    * Calculate the length of the fixed width elements if that's what we have.
    * This looks like it should be a little utilitiy function.
    */
@@ -6499,19 +6499,19 @@ or_disk_set_size (OR_BUF * buf, TP_DOMAIN * set_domain, DB_TYPE * set_type)
 		}
 	    }
 
-	  /* 
+	  /*
 	   * element_size will now be 0 if NULL, the true size, or -1 if
 	   * variable or unknown.
 	   */
 
-	  /* 
+	  /*
 	   * Skip the element, we may have to actually unpack the element
 	   * to do this (if the size is variable), but no storage should be
 	   * allocated.
 	   */
 	  if (element_size == 0)
 	    {
-	      /* 
+	      /*
 	       * if this is a fixed width element array, skip over the null
 	       * data
 	       */
@@ -6720,7 +6720,7 @@ or_put_value (OR_BUF * buf, DB_VALUE * value, int collapse_null, int include_dom
 	}
     }
 
-  /* 
+  /*
    * Values must as a unit be aligned to a word boundary.  We can't do this
    * inside the writeval function becaue that may be used to place data inside
    * disk structures that don't have alignment requirements.
@@ -6775,7 +6775,7 @@ or_get_value (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int expected, 
   is_null = 0;
   start = buf->ptr;
 
-  /* 
+  /*
    * Always make sure this is properly initialized.
    * If the domain is given here, we could use that for further initialization ?
    */
@@ -6790,7 +6790,7 @@ or_get_value (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int expected, 
       return NO_ERROR;
     }
 
-  /* 
+  /*
    * If a domain was supplied, use it to decode the value, otherwise we
    * assume that the vlaues must be tagged.
    */
@@ -7236,7 +7236,7 @@ or_unpack_unbound_listid (char *ptr, void **listid_ptr)
   QFILE_LIST_ID *listid;
   int count, i;
 
-  /* 
+  /*
    * tuple_cnt 4, vfid.fileid 4, vfid.volid 2, attr_list.oid_flg 2,
    * attr_list.attr_cnt 4, attr_list.attr_id 4 * n
    */
@@ -7310,7 +7310,7 @@ or_listid_length (void *listid_ptr)
       return length;
     }
 
-  /* QFILE_LIST_ID 9 fixed item tuple_cnt page_cnt first_vpid.pageid first_vpid.volid last_vpid.pageid last_vpid.volid 
+  /* QFILE_LIST_ID 9 fixed item tuple_cnt page_cnt first_vpid.pageid first_vpid.volid last_vpid.pageid last_vpid.volid
    * last_offset lasttpl_len type_list_type_cnt */
   length = OR_INT_SIZE * 9;
 
@@ -7664,7 +7664,7 @@ or_get_enumeration (OR_BUF * buf, DB_ENUMERATION * enumeration)
       /* enum values are indexed starting with 1 */
       db_enum->short_val = idx + 1;
 
-      /* 
+      /*
        * Make sure this starts off initialized so "readval" won't try to free
        * any existing contents.
        */
@@ -8130,7 +8130,7 @@ or_unpack_sha1 (char *ptr, SHA1Hash * sha1)
 /*
  * or_mvcc_set_prev_version_lsa () - Set MVCC prev version LSA
  *
- * return	      : error code 
+ * return	      : error code
  * buf (in/out)	      : or buffer
  * mvcc_rec_header(in): MVCC record header
  */
@@ -8159,7 +8159,7 @@ or_mvcc_set_prev_version_lsa (OR_BUF * buf, MVCC_REC_HEADER * mvcc_rec_header)
 /*
  * or_mvcc_get_prev_version_lsa () - Get MVCC prev version LSA from buffer
  *
- * return	        : error code 
+ * return	        : error code
  * buf (in)	        : or buffer
  * mvcc_flags(in)       : header mvcc flags
  * prev_version_lsa(out): the LSA to previous version
@@ -8189,11 +8189,11 @@ or_mvcc_get_prev_version_lsa (OR_BUF * buf, int mvcc_flags, LOG_LSA * prev_versi
 }
 
 /*
- * or_mvcc_set_log_lsa_to_record () - Sets the previus version LSA in record header. 
+ * or_mvcc_set_log_lsa_to_record () - Sets the previus version LSA in record header.
  *			    Assumes the previous version lsa is allocated in header
  *
  * return		 : error_code
- * record (in/out)	 : record 
+ * record (in/out)	 : record
  * lsa (in) : lsa to be set
  */
 int

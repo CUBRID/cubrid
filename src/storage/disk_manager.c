@@ -963,7 +963,7 @@ error:
  *   logchange(in): Whether or not to log the change
  *   flush(in):
  *
- * Note: No logging is intended for exclusive use by the log and recovery manager. It is used when a database 
+ * Note: No logging is intended for exclusive use by the log and recovery manager. It is used when a database
  * 	 is copied or renamed.
  */
 int
@@ -1085,7 +1085,7 @@ error:
  *   volid(in): Permanent volume identifier
  *   hfid(in): System boot heap file
  *
- * Note: The system boot file filed of in the volume header is redefined to point to the given value. This function 
+ * Note: The system boot file filed of in the volume header is redefined to point to the given value. This function
  * 	 is called only during the initialization process.
  */
 int
@@ -1688,7 +1688,7 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
    *
    * Once we decide how much we want to expand, we first extend last volume are already extended to their maximum
    * capacities. If last volume is also extended to its maximum capacity, we start adding new volumes.
-   * 
+   *
    * NOTE: The same algorithm is applied to both permanent and temporary files. More exactly, the expansion is allowed
    *       for permanent volumes used for permanent data purpose or temporary files used for temporary data purpose.
    *       Permanent volumes for temporary data purpose can only be added by user and are never extended.
@@ -1901,11 +1901,11 @@ disk_volume_expand (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLTYPE voltype, DK
    * to make sure extension is correctly recovered, we need to:
    * 1. use a system operation (we need to undo change in volume header if expand is not completed).
    * 2. undoredo update on volume header.
-   * 3. log expansion (unattached redo - is always executed). 
+   * 3. log expansion (unattached redo - is always executed).
    * 4. commit system operation (to cancel the volume header change undo).
    * 5. flush log! without this last step, it is still possible to expand the volume without recovery
    * 6. now it is safe to expand volume.
-   * 
+   *
    */
 
   /* round up */
@@ -4391,10 +4391,10 @@ error:
 }
 
 /*
- * disk_reserve_from_cache () - First step of sector reservation on disk. This searches the cache for free space in 
- * 				existing volumes. If not enough available sectors were found, volumes will be 
- * 				expanded/added until all sectors could be reserved.  
- * 				NOTE: this will modify the disk cache. It will "move" free sectors from disk cache 
+ * disk_reserve_from_cache () - First step of sector reservation on disk. This searches the cache for free space in
+ * 				existing volumes. If not enough available sectors were found, volumes will be
+ * 				expanded/added until all sectors could be reserved.
+ * 				NOTE: this will modify the disk cache. It will "move" free sectors from disk cache
  * 				to reserve context. If any error occurs, the sectors must be returned to disk cache.
  *
  * return           : Error code
@@ -5420,7 +5420,7 @@ disk_vhdr_length_of_varfields (const DISK_VOLUME_HEADER * vhdr)
  *   volid(in): Permanent volume identifier
  *   log_chkpt_lsa(in): Recovery checkpoint for volume
  *
- * Note: The dirty pages of this volume are not written out, not even the header page which maintains the checkpoint 
+ * Note: The dirty pages of this volume are not written out, not even the header page which maintains the checkpoint
  * 	 value. The function assumes that all volume pages with lsa smaller that the given one has already been forced
  * 	 to disk (e.g., by the log and recovery manager).
  *
@@ -5555,7 +5555,7 @@ xdisk_get_purpose (THREAD_ENTRY * thread_p, INT16 volid)
  *   vol_purpose(out): Purpose for the given volume
  *   space_info (out): space info of the volume.
  *
- * Note: The free number of pages should be taken as an approximation by the caller since we do not leave the page 
+ * Note: The free number of pages should be taken as an approximation by the caller since we do not leave the page
  * 	 locked after the inquire. That is, someone else can allocate pages
  */
 int
@@ -5677,8 +5677,8 @@ xdisk_get_free_numpages (THREAD_ENTRY * thread_p, INT16 volid)
 }
 
 /*
- * xdisk_is_volume_exist () - 
- *   return: 
+ * xdisk_is_volume_exist () -
+ *   return:
  *   volid(in): volume identifier
  */
 bool
@@ -6229,7 +6229,7 @@ disk_compatible_type_and_purpose (DB_VOLTYPE type, DB_VOLPURPOSE purpose)
 
 /*
  * disk_check_volume () - compare cache and volume and check for inconsistencies
- * 
+ *
  * return        : DISK_VALID if no inconsistency or if all inconsistencies have been fixed
  *                 DISK_ERROR if expected errors occurred
  *                 DISK_INVALID if cache and/or volume header are inconsistent
@@ -6745,9 +6745,9 @@ disk_volheader_check_magic (THREAD_ENTRY * thread_p, const PAGE_PTR page_volhead
 #endif /* !NDEBUG */
 
 /*
- * disk_sectors_to_extend_npages () - compute the rounded number of sectors necessary to extend a number of pages 
+ * disk_sectors_to_extend_npages () - compute the rounded number of sectors necessary to extend a number of pages
  *
- * return	  : The number of sectors 
+ * return	  : The number of sectors
  * num_pages (in) : required number of pages
  **/
 int

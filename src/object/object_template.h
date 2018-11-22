@@ -61,7 +61,7 @@ typedef struct obj_tempassign
   struct obj_template *obj;	/* if new object assignment */
   DB_VALUE *variable;		/* if non-object assignment */
 
-  /* 
+  /*
    * cache of attribute definition, must be verified as part
    * of the outer template validation
    */
@@ -87,7 +87,7 @@ typedef struct obj_template
 {
 
   /* edited object, NULL if insert template */
-  /* 
+  /*
    * garbage collector tickets are not required for the object & base_object
    * fields as the entire object template area is registered for scanning by
    * area_create().
@@ -128,30 +128,30 @@ typedef struct obj_template
   /* for detection of cycles in template hierarchy */
   unsigned traversed:1;
 
-  /* 
+  /*
    * set if this is being used for the "old" temporary object in
    * trigger processing
    */
   unsigned is_old_template:1;
 
-  /* 
+  /*
    * Set if we're updating class attributes rather than instance attributes.
    * This happens when the object and the class are the same.
    */
   unsigned is_class_update:1;
 
-  /* 
+  /*
    * Set if we're doing bulk updates to disable unique checking from
    * templates.
    */
   unsigned check_uniques:1;
 
-  /* 
-   * Set if need to check SERIALIZABLE conflicts   
+  /*
+   * Set if need to check SERIALIZABLE conflicts
    */
   unsigned check_serializable_conflict:1;
 
-  /* 
+  /*
    * Set if we ever make an assignment for an attribute that has the
    * UNIQUE constraint.  Speeds up a common test.
    */
@@ -163,7 +163,7 @@ typedef struct obj_template
   /* Set if we should free the template after it is applied */
   unsigned discard_on_finish:1;
 
-  /* 
+  /*
    * true if we ever make an assignment for an attribute that has the
    * FOREIGN KEY constraint.  Speeds up a common test.
    */
@@ -172,20 +172,20 @@ typedef struct obj_template
   /* Set if we want to flush the object to the server regardless of updating the PRIMARY KEY/UNIQUE constraint. */
   unsigned force_flush:1;
 
-  /* 
+  /*
    * true if we want to regard NULL values in NOT NULL AUTO_INCREMENT
-   * attributes as errors (i.e. when executing UPDATE or ON DUPLICATE KEY 
+   * attributes as errors (i.e. when executing UPDATE or ON DUPLICATE KEY
    * UPDATE statements).
    */
   unsigned force_check_not_null:1;
 
-  /* 
+  /*
    * Set if we ever make an assignment for an attribute that has the
    * function key constraint.
    */
   unsigned function_key_modified:1;
 
-  /* 
+  /*
    * Set if at least one autoincrement column has been populated
    */
   unsigned is_autoincrement_set:1;

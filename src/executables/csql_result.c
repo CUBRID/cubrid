@@ -530,16 +530,16 @@ get_current_result (int **lengths, const CUR_RESULT_INFO * result_info, bool pla
 
       value_type = DB_VALUE_TYPE (&db_value);
 
-      /* 
+      /*
        * This assert is intended to validate that the server returned the
        * expected types for the query results. See the note in
        * pt_print_value () regarding XASL caching.
        */
-      /* 
+      /*
        * TODO fix this assert if it fails in valid cases. Perhaps it should
        *      allow DB_TYPE_POINTER? What about DB_TYPE_ERROR?
        */
-      /* 
+      /*
        * TODO add a similar check to the ux_* and/or cci_* and/or the server
        *      functions so that the results' types returned through sockets in
        *      CS_MODE are validated.
@@ -582,7 +582,7 @@ get_current_result (int **lengths, const CUR_RESULT_INFO * result_info, bool pla
 	  break;
 
 	default:		/* other types */
-	  /* 
+	  /*
 	   * If we are printing the isolation level, we need to
 	   * interpret it for the user, not just return a meaningless number.
 	   *
@@ -701,7 +701,7 @@ static void (*csql_pipe_save) (int sig);
 static int
 write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp, const CUR_RESULT_INFO * result_info)
 {
-  /* 
+  /*
    * These are volatile to avoid dangerous interaction with the longjmp
    * handler for SIGPIPE problems.  The typedef is necessary so that we
    * can tell the compiler that the top POINTER is volatile, not the
@@ -735,7 +735,7 @@ write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp, const CUR_RE
   len = NULL;
   error = FALSE;
 
-  /* 
+  /*
    * Do this *before* the setjmp to avoid the possibility of the value
    * being clobbered by a longjmp.  Even if some internal thing longjmps
    * to the end of the next block we still need to be able to close the
@@ -919,7 +919,7 @@ done:
 
   if (pf)
     {
-      /* 
+      /*
        * Don't care for a sig pipe error when closing pipe.
        *
        * NOTE if I restore to previous signal handler which could be the
@@ -956,8 +956,8 @@ done:
 
 /*
  * calcluate_width() - calculate column's width
- *   return: width 
- *   column_width(in): column width 
+ *   return: width
+ *   column_width(in): column width
  *   string_width(in): string width
  *   origin_width(in): real width
  *   attr_type(in): type
@@ -1103,7 +1103,7 @@ is_cuttable_type_by_string_width (DB_TYPE type)
 }
 
 /*
- * is_type_that_has_suffix() - check whether this type has suffix or not 
+ * is_type_that_has_suffix() - check whether this type has suffix or not
  *   return: bool
  *   type(in): type
  */

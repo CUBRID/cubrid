@@ -132,7 +132,7 @@ struct hbp_header
 
 
 /*
- * heartbeat resource message body 
+ * heartbeat resource message body
  */
 
 /* process register */
@@ -147,8 +147,8 @@ struct hbp_proc_register
 };
 
 
-/* 
- * externs 
+/*
+ * externs
  */
 extern const char *hb_process_type_string (int ptype);
 extern void hb_set_exec_path (char *exec_path);

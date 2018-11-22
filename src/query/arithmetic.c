@@ -5495,7 +5495,7 @@ db_json_extract_dbval (DB_VALUE * json, DB_VALUE * path, DB_VALUE * json_res)
 //
 // return        : error code
 // result (in)   : result
-// args[] (in)   : 
+// args[] (in)   :
 // num_args (in) :
 //
 // TODO: we need to change the args type of all JSON function to const DB_VALUE *[]

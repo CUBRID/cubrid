@@ -922,7 +922,7 @@ extern "C"
   extern int cci_get_shard_id_with_con_handle (int con_h_id, int *shard_id, T_CCI_ERROR * err_buf);
   extern int cci_get_shard_id_with_req_handle (int req_h_id, int *shard_id, T_CCI_ERROR * err_buf);
 
-  /* 
+  /*
    * IMPORTANT: cci_last_insert_id and cci_get_last_insert_id
    *
    *   cci_get_last_insert_id set value as last insert id in con_handle

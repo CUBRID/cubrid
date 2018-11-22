@@ -847,7 +847,7 @@ receiver_thr_f (void *arg)
 	  continue;
 	}
 
-      /* 
+      /*
        * Query cancel message (size in bytes)
        *
        * - For client version 8.4.0 patch 1 or below:
@@ -2206,7 +2206,7 @@ hang_check_thr_f (void *ar)
 	}
       else
 	{
-	  /* 
+	  /*
 	   * reject_client_flag for shard broker
 	   * does not depend on the current number of proxies.
 	   * If one proxy hangs for the last 1 min, then

@@ -330,7 +330,7 @@ lf_tran_return_entry (LF_TRAN_ENTRY * entry)
 
 /*
  * lf_tran_destroy_entry () - destroy a tran entry
- **  return : NULL 
+ **  return : NULL
  *   entry(in): tran entry
  */
 
@@ -2310,7 +2310,7 @@ lf_hash_clear (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table)
 	      rv = pthread_mutex_lock (mutex_p);
 	      pthread_mutex_unlock (mutex_p);
 
-	      /* there should be only one mutex lock-unlock per entry per access via bucket array, so locking/unlocking 
+	      /* there should be only one mutex lock-unlock per entry per access via bucket array, so locking/unlocking
 	       * once while the entry is inaccessible should be enough to guarantee nobody will be using it afterwards */
 	    }
 
@@ -2362,7 +2362,7 @@ lf_hash_clear (LF_TRAN_ENTRY * tran, LF_HASH_TABLE * table)
 /*
  * lf_hash_create_iterator () - create an iterator for a hash table
  *   iterator(out): iterator to be initialized
- *   tran_entry(in): 
+ *   tran_entry(in):
  *   table(in): hash table to iterate on
  *   returns: void
  */

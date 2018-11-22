@@ -116,7 +116,7 @@ enum
   ATT_CHG_PROPERTY_LOST = 0x4,
   /* not present in OLD , gained in NEW */
   ATT_CHG_PROPERTY_GAINED = 0x8,
-  /* property is not changed (not present in both current schema or new defition or present in both but not affected in 
+  /* property is not changed (not present in both current schema or new defition or present in both but not affected in
    * any way) */
   ATT_CHG_PROPERTY_UNCHANGED = 0x10,
   /* property is changed (i.e.: both present in old an new , but different) */
@@ -526,7 +526,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 #if 0
       /* we currently core dump when adding a unique constraint at the same time as an attribute, whether the unique
        * constraint is on the new attribute or another. Therefore we temporarily disallow adding a unique constraint
-       * and an attribute in the same alter statement if the class has or has had any instances. Note that we should be 
+       * and an attribute in the same alter statement if the class has or has had any instances. Note that we should be
        * checking for instances in the entire subhierarchy, not just the current class. */
       if ((hfid = sm_get_ch_heap (vclass)) && !HFID_IS_NULL (hfid)
 	  && alter->info.alter.alter_clause.attr_mthd.attr_def_list)
@@ -1200,9 +1200,9 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	      {
 		if (alter_code == PT_DROP_FK_CLAUSE && prm_get_integer_value (PRM_ID_COMPAT_MODE) == COMPAT_MYSQL)
 		  {
-		    /* We warn the user that dropping a foreign key behaves differently in CUBRID (the associated index 
+		    /* We warn the user that dropping a foreign key behaves differently in CUBRID (the associated index
 		     * is also dropped while MySQL's associated index is kept and only the foreign key constraint is
-		     * dropped). This difference is not important enough to be an error but a warning or a notification 
+		     * dropped). This difference is not important enough to be an error but a warning or a notification
 		     * might help. */
 		    er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_SM_FK_MYSQL_DIFFERENT, 0);
 		  }
@@ -1310,7 +1310,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
     }
 
   /* If we have an ADD COLUMN x NOT NULL without a default value, the existing rows will be filled with NULL for the
-   * new column by default. For compatibility with MySQL, we can auto-fill some column types with "hard defaults", like 
+   * new column by default. For compatibility with MySQL, we can auto-fill some column types with "hard defaults", like
    * 0 for integer types. THIS CAN TAKE A LONG TIME (it runs an UPDATE), and can be turned off by setting
    * "add_col_not_null_no_default_behavior" to "cubrid". The parameter is true by default. */
   if (alter_code == PT_ADD_ATTR_MTHD)
@@ -1326,7 +1326,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	}
 
       /*
-       * if we ADD COLUMN with DEFAULT expression the existing rows will be filled with default expression for the 
+       * if we ADD COLUMN with DEFAULT expression the existing rows will be filled with default expression for the
        * new column. That's because we need to set the column value right now (the default expression may be date/time).
        */
       error = do_update_new_cols_with_default_expression (parser, alter, vclass);
@@ -2223,7 +2223,7 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
     }
   set_savepoint = true;
 
-  /* 
+  /*
    * here, both password and comment are optional,
    * either password or comment shall exist,
    * csql_grammar denies the error case with the missing of both.
@@ -3040,12 +3040,12 @@ do_drop_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 
 /*
  * do_alter_index_rebuild() - Alters an index on a class (drop and create).
- *                            INDEX REBUILD statement ignores any type of the 
- *                            qualifier, column, and filter predicate (filtered 
- *                            index). The purpose of this feature is that 
- *                            reconstructing the corrupted index or improving 
- *                            the efficiency of indexes. For the backward 
- *                            compatibility, this function supports the 
+ *                            INDEX REBUILD statement ignores any type of the
+ *                            qualifier, column, and filter predicate (filtered
+ *                            index). The purpose of this feature is that
+ *                            reconstructing the corrupted index or improving
+ *                            the efficiency of indexes. For the backward
+ *                            compatibility, this function supports the
  *                            previous grammar.
  *   return: Error code if it fails
  *   parser(in): Parser context
@@ -5885,8 +5885,8 @@ do_remove_partition_post (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION
   assert (parser && alter && pinfo);
   CHECK_3ARGS_ERROR (parser, alter, pinfo);
 
-  /* At this point, the root class of the partitioned table has been modified not to be partitioned anymore and the all 
-   * the promoted partition names are stored in pinfo->promoted_names. step 1: do an INSERT ... SELECT to move all data 
+  /* At this point, the root class of the partitioned table has been modified not to be partitioned anymore and the all
+   * the promoted partition names are stored in pinfo->promoted_names. step 1: do an INSERT ... SELECT to move all data
    * from promoted classes into the root class step 2: drop promoted classes; */
   root_name = alter->info.alter.entity_name->info.name.original;
 
@@ -7494,7 +7494,7 @@ do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
 		      att_names[i++] = (char *) p->info.name.original;
 
 		      /* Determine if the unique constraint is being applied to class or normal attributes.  The way
-		       * the parser currently works, all multi-column constraints will be on normal attributes and it's 
+		       * the parser currently works, all multi-column constraints will be on normal attributes and it's
 		       * therefore impossible for a constraint to contain both class and normal attributes. */
 		      if (p->info.name.meta_class == PT_META_ATTR)
 			{
@@ -7569,7 +7569,7 @@ do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
 		      att_names[i++] = (char *) p->info.name.original;
 
 		      /* Determine if the unique constraint is being applied to class or normal attributes.  The way
-		       * the parser currently works, all multi-column constraints will be on normal attributes and it's 
+		       * the parser currently works, all multi-column constraints will be on normal attributes and it's
 		       * therefore impossible for a constraint to contain both class and normal attributes. */
 		      if (p->info.name.meta_class == PT_META_ATTR)
 			{
@@ -9905,7 +9905,7 @@ do_alter_change_tbl_comment (PARSER_CONTEXT * const parser, PT_NODE * const alte
     }
   else
     {
-      /* 
+      /*
        * code shall be one of the above 4 types, otherwise it's an error.
        */
       assert (0);
@@ -10410,7 +10410,7 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
       attr_chg_properties->p[P_NAME] |= ATT_CHG_PROPERTY_UNCHANGED;
     }
 
-  /* at this point, attr_name is the current name of the attribute, new_name is either the desired new name or NULL, if 
+  /* at this point, attr_name is the current name of the attribute, new_name is either the desired new name or NULL, if
    * name change is not requested */
 
   /* get the attribute structure */
@@ -11924,7 +11924,7 @@ check_att_chg_allowed (const char *att_name, const PT_TYPE_ENUM t, const SM_ATTR
 {
   int error = NO_ERROR;
 
-  /* these are error codes issued by ALTER CHANGE which map on other exising ALTER CHANGE error messages; they are kept 
+  /* these are error codes issued by ALTER CHANGE which map on other exising ALTER CHANGE error messages; they are kept
    * with different names for better differentiation between error contexts */
   const int ER_ALTER_CHANGE_TYPE_WITH_NON_UNIQUE = ER_ALTER_CHANGE_TYPE_WITH_INDEX;
   const int ER_ALTER_CHANGE_TYPE_WITH_M_UNIQUE = ER_ALTER_CHANGE_TYPE_WITH_INDEX;
@@ -12318,7 +12318,7 @@ get_att_order_from_def (PT_NODE * attribute, bool * ord_first, const char **ord_
       else
 	{
 	  *ord_after_name = NULL;
-	  /* 
+	  /*
 	   * If we have no "AFTER name" then this must have been a "FIRST"
 	   * token
 	   */
@@ -12509,7 +12509,7 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
     {
       /* We are creating a new class, and expected domain of default value has a self reference. Class cannot be
        * resolved yet, since it doesn't exist. It is only reserved and it has a temporary OID. Thus, we need to handle
-       * it here and avoid fetching the object (which will hit assert due to temporary OID). We can only accept a NULL 
+       * it here and avoid fetching the object (which will hit assert due to temporary OID). We can only accept a NULL
        * default value, or if the expected type is a collection (that contains self references too), we can only accept
        * an empty set. */
       DB_VALUE *value;
@@ -13881,7 +13881,7 @@ do_run_update_query_for_class (char *query, MOP class_mop, int *row_count)
       goto end;
     }
 
-  /* 
+  /*
    * We are going to perform an UPDATE on the table. We need to disable
    * the triggers because these are not UPDATES that the user required
    * explicitly.

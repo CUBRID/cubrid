@@ -372,7 +372,7 @@ logtb_initialize_mvcc_testing (int num_threads, THREAD_ENTRY ** thread_array)
   area->tdesarea = ((LOG_TDES *) ((char *) area + sizeof (LOG_ADDR_TDESAREA)));
   area->next = NULL;
 
-  /* 
+  /*
    * Initialize every newly created transaction descriptor index
    */
   for (i = 0; i < num_threads; i++)
