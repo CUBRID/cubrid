@@ -2499,7 +2499,7 @@ qe_get_last_insert_id (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, voi
   NET_STR_TO_INT (valsize, ptr);
   if (valsize == -1)
     {
-      /* 
+      /*
        * CCI_ER_NO_ERROR with NULL value
        * means DB NULL
        */

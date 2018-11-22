@@ -378,7 +378,7 @@ spage_free_saved_spaces (THREAD_ENTRY * thread_p, void *first_save_entry)
       assert (current->tranid == logtb_find_current_tranid (thread_p));
 
       /* since we only remove hash entries when they are empty AND each transaction uses only one thread (and thus
-       * cannot call this function concurrently), we can assume that the entry we just fetched is valid and in the hash 
+       * cannot call this function concurrently), we can assume that the entry we just fetched is valid and in the hash
        * table */
       rv = pthread_mutex_lock (&head->mutex);
 
@@ -488,7 +488,7 @@ spage_save_space (THREAD_ENTRY * thread_p, SPAGE_HEADER * page_header_p, PAGE_PT
 
   tranid = logtb_find_current_tranid (thread_p);
 
-  /* 
+  /*
    * increase saved space when the transaction is active.
    */
   if (space < 0 || !logtb_is_active (thread_p, tranid))
@@ -517,7 +517,7 @@ spage_save_space (THREAD_ENTRY * thread_p, SPAGE_HEADER * page_header_p, PAGE_PT
 	  return ER_FAILED;
 	}
 
-      /* 
+      /*
        * Form the head and the first entry with information of the page
        * header, modify the header with current transaction saving, and
        * add first entry into hash
@@ -532,7 +532,7 @@ spage_save_space (THREAD_ENTRY * thread_p, SPAGE_HEADER * page_header_p, PAGE_PT
       entry_p->prev = NULL;
       entry_p->head = head_p;
 
-      /* 
+      /*
        * Add this entry to the save entry list of this transaction.
        * It will be used to release the save entries when the transaction
        * is completed.
@@ -553,7 +553,7 @@ spage_save_space (THREAD_ENTRY * thread_p, SPAGE_HEADER * page_header_p, PAGE_PT
       return NO_ERROR;
     }
 
-  /* 
+  /*
    * Check if the current transaction is in the list. If it is, adjust the
    * total saved space on the head entry. otherwise, create a new entry.
    */
@@ -599,7 +599,7 @@ spage_save_space (THREAD_ENTRY * thread_p, SPAGE_HEADER * page_header_p, PAGE_PT
 
       head_p->first = entry_p;
 
-      /* 
+      /*
        * Add this entry to the save entry list of this transaction.
        * It will be used to release the save entries when the transaction
        * is completed.
@@ -689,7 +689,7 @@ spage_get_saved_spaces (THREAD_ENTRY * thread_p, SPAGE_HEADER * page_header_p, P
   assert (page_p != NULL);
   SPAGE_VERIFY_HEADER (page_header_p);
 
-  /* 
+  /*
    * If we are recovering, no other transaction should exist.
    */
   if (log_is_in_crash_recovery ())
@@ -707,7 +707,7 @@ spage_get_saved_spaces (THREAD_ENTRY * thread_p, SPAGE_HEADER * page_header_p, P
   my_saved_space = 0;
   total_saved = 0;
 
-  /* 
+  /*
    * Get the saved space held by the head of the save entries. This is
    * the aggregate value of spaces saved on all entries.
    */
@@ -1437,7 +1437,7 @@ spage_find_empty_slot (THREAD_ENTRY * thread_p, PAGE_PTR page_p, int record_leng
   page_header_p = (SPAGE_HEADER *) page_p;
   SPAGE_VERIFY_HEADER (page_header_p);
 
-  /* Calculate the wasted space that this record will introduce. We need to take in consideration the wasted space when 
+  /* Calculate the wasted space that this record will introduce. We need to take in consideration the wasted space when
    * there is space saved */
   waste = DB_WASTED_ALIGN (record_length, page_header_p->alignment);
   space = record_length + waste;
@@ -1597,7 +1597,7 @@ spage_add_new_slot (THREAD_ENTRY * thread_p, PAGE_PTR page_p, SPAGE_HEADER * pag
   SPAGE_SLOT *last_slot_p;
   int status;
 
-  /* 
+  /*
    * New one slot is are being allocated.
    */
   SPAGE_VERIFY_HEADER (page_header_p);
@@ -1639,7 +1639,7 @@ spage_take_slot_in_use (THREAD_ENTRY * thread_p, PAGE_PTR page_p, SPAGE_HEADER *
 
   SPAGE_VERIFY_HEADER (page_header_p);
 
-  /* 
+  /*
    * An already defined slot. The slotid can be used in the following
    * cases:
    * 1) The slot is marked as deleted. (Reuse)
@@ -1715,7 +1715,7 @@ spage_find_empty_slot_at (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slo
 
   slot_p = spage_find_slot (page_p, page_header_p, slot_id, false);
 
-  /* Calculate the wasted space that this record will introduce. We need to take in consideration the wasted space when 
+  /* Calculate the wasted space that this record will introduce. We need to take in consideration the wasted space when
    * there is space saved */
   waste = DB_WASTED_ALIGN (record_length, page_header_p->alignment);
   space = record_length + waste;
@@ -2320,7 +2320,7 @@ spage_check_updatable (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_i
  *   page_p(in): Pointer to slotted page
  *   slot_id(in): Slot identifier of record to logical delete
  *   mvcc_delete_record_length(in): the length of delete record
- *   mvcc_insert_record_length(in): the length of insert record 
+ *   mvcc_insert_record_length(in): the length of insert record
  */
 static int
 spage_check_mvcc_updatable (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id, int mvcc_delete_record_length,
@@ -2502,7 +2502,7 @@ spage_update_record_after_compact (THREAD_ENTRY * thread_p, PAGE_PTR page_p, SPA
       return SP_ERROR;
     }
 
-  /* 
+  /*
    * If record does not fit in the contiguous free area, compress the page
    * leaving the desired record at the end of the free area.
    *
@@ -2518,7 +2518,7 @@ spage_update_record_after_compact (THREAD_ENTRY * thread_p, PAGE_PTR page_p, SPA
     }
   else if (record_descriptor_p->length + new_waste > page_header_p->cont_free)
     {
-      /* 
+      /*
        * Full compaction: eliminate record from compaction (like a quick
        * delete). Compaction always finish with the correct amount of free
        * space.
@@ -2677,7 +2677,7 @@ spage_is_updatable (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id, 
  *   page_p(in): Pointer to slotted page
  *   slot_id(in): Slot identifier of record to logical delete
  *   mvcc_delete_record_length(in): the length of delete record
- *   mvcc_insert_record_length(in): the length of insert record 
+ *   mvcc_insert_record_length(in): the length of insert record
  */
 bool
 spage_is_mvcc_updatable (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id, int delete_record_length,
@@ -2865,7 +2865,7 @@ spage_split (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id, int off
     }
   else
     {
-      /* 
+      /*
        * We must move the second portion of the record to an offset that
        * is aligned according to the page alignment method. In fact we
        * can moved it to the location (offset) returned by sp_empty, if
@@ -2876,7 +2876,7 @@ spage_split (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id, int off
       old_waste = DB_WASTED_ALIGN (slot_p->record_length, page_header_p->alignment);
       remain_waste = DB_WASTED_ALIGN (offset, page_header_p->alignment);
       new_waste = DB_WASTED_ALIGN (remain_length, page_header_p->alignment);
-      /* 
+      /*
        * Difference in space:
        *   newlength1 + new_waste1  :   sptr->record_length - offset + new_waste1
        * + newlength2 + new_waste2  : + offset + new_waste2
@@ -2894,7 +2894,7 @@ spage_split (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id, int off
 
       if (remain_length > page_header_p->cont_free)
 	{
-	  /* 
+	  /*
 	   * Need to compact the page, before the second part is moved
 	   * to an alignment position.
 	   *
@@ -3038,7 +3038,7 @@ spage_take_out (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id, int 
   total_free_save = page_header_p->total_free;
   old_waste = DB_WASTED_ALIGN (slot_p->record_length, page_header_p->alignment);
   new_waste = DB_WASTED_ALIGN (slot_p->record_length - takeout_offset, page_header_p->alignment);
-  /* 
+  /*
    * How to shift: The left portion to the right or
    *               the right portion to the left ?
    *
@@ -3051,7 +3051,7 @@ spage_take_out (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id, int 
   mayshift_left = DB_WASTED_ALIGN (slot_p->offset_to_record + takeout_length, page_header_p->alignment);
   if (mayshift_left == 0 && (takeout_offset < ((int) slot_p->record_length - takeout_offset - takeout_length)))
     {
-      /* 
+      /*
        * Move left part to right since we can archive alignment by moving left
        * part "takeout_length" spaces and the left part is smaller than right
        * part.
@@ -3100,7 +3100,7 @@ spage_take_out (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id, int 
 
       if (spage_is_record_located_at_end (page_header_p, slot_p))
 	{
-	  /* 
+	  /*
 	   * The record is located just before the contiguous free area. That is,
 	   * at the end of the page.
 	   *
@@ -3222,7 +3222,7 @@ spage_put_helper (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id, in
 
   if (spage_is_record_located_at_end (page_header_p, slot_p) && space <= page_header_p->cont_free)
     {
-      /* 
+      /*
        * The record is at the end of the page (just before contiguous free
        * space), and there is space on the contiguous free are to put in the
        * new data.
@@ -3297,7 +3297,7 @@ spage_put_helper (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_id, in
     }
   else
     {
-      /* 
+      /*
        * We need to compress the data leaving the desired record at the end.
        * Eliminate the old data from compaction (like a quick delete), by
        * saving the data in memory. Then, after the compaction we place the
@@ -3538,7 +3538,7 @@ spage_merge (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID first_slot_id, P
   if (spage_is_record_located_at_end (page_header_p, first_slot_p)
       && (int) second_slot_p->record_length <= page_header_p->cont_free)
     {
-      /* 
+      /*
        * The first record is at the end of the page (just before contiguous free
        * space), and there is space on the contiguous free area to append the
        * second record.
@@ -3577,7 +3577,7 @@ spage_merge (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID first_slot_id, P
     }
   else
     {
-      /* 
+      /*
        * We need to compress the page leaving the desired record at end.
        * We eliminate the data of both records (like quick deletes), by
        * saving their data in memory. Then, after the compaction we restore
@@ -3904,7 +3904,7 @@ spage_get_record_data (PAGE_PTR page_p, SPAGE_SLOT * slot_p, RECDES * record_des
   assert (slot_p != NULL);
   assert (record_descriptor_p != NULL);
 
-  /* 
+  /*
    * If peeking, the address of the data in the descriptor is set to the
    * address of the record in the buffer. Otherwise, the record is copied
    * onto the area specified by the descriptor
@@ -3919,7 +3919,7 @@ spage_get_record_data (PAGE_PTR page_p, SPAGE_SLOT * slot_p, RECDES * record_des
       /* copy the record */
       if (record_descriptor_p->area_size < 0 || record_descriptor_p->area_size < (int) slot_p->record_length)
 	{
-	  /* 
+	  /*
 	   * DOES NOT FIT
 	   * Give a hint to the user of the needed length. Hint is given as a
 	   * negative value
@@ -4068,7 +4068,7 @@ spage_mark_deleted_slot_as_reusable (THREAD_ENTRY * thread_p, PAGE_PTR page_p, P
     }
   else
     {
-      /* 
+      /*
        * If the function is called in the scenarios it was designed for, this
        * should not happen. The slot to be set as reusable should always
        * exist and should not point to a valid record.
@@ -4708,7 +4708,7 @@ spage_add_contiguous_free_space (PAGE_PTR page_p, int space)
  * spage_next_record_dont_skip_empty () - Get next slot without skipping
  *					  empty records.
  *
- * return		    : 
+ * return		    :
  * page_p (in)		    :
  * out_slot_id_p (in)	    :
  * record_descriptor_p (in) :
@@ -4741,7 +4741,7 @@ spage_previous_record_dont_skip_empty (PAGE_PTR page_p, PGSLOTID * out_slot_id_p
 /*
  * spage_get_page_header_info () - Obtain page information for spage_header.
  *
- * return		 : 
+ * return		 :
  * page_p (in)		 :
  * page_header_info (in) :
  */
@@ -4915,10 +4915,10 @@ spage_reduce_contiguous_free_space (PAGE_PTR page_p, int space)
 
 
 /*
- * spage_header_start_scan () - 
+ * spage_header_start_scan () -
  *   return: NO_ERROR, or ER_code
  *
- *   thread_p(in): 
+ *   thread_p(in):
  *   show_type(in):
  *   arg_values(in):
  *   arg_cnt(in):
@@ -4994,10 +4994,10 @@ exit_on_error:
 }
 
 /*
- * spage_header_next_scan () - 
+ * spage_header_next_scan () -
  *   return: NO_ERROR, or ER_code
  *
- *   thread_p(in): 
+ *   thread_p(in):
  *   cursor(in):
  *   out_values(in):
  *   out_cnt(in):
@@ -5060,7 +5060,7 @@ spage_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_val
  * spage_header_end_scan () - free the context
  *   return: NO_ERROR, or ER_code
  *
- *   thread_p(in): 
+ *   thread_p(in):
  *   ptr(in): context pointer
  */
 int
@@ -5075,10 +5075,10 @@ spage_header_end_scan (THREAD_ENTRY * thread_p, void **ptr)
 }
 
 /*
- * spage_slots_start_scan () - 
+ * spage_slots_start_scan () -
  *   return: NO_ERROR, or ER_code
  *
- *   thread_p(in): 
+ *   thread_p(in):
  *   show_type(in):
  *   arg_values(in):
  *   arg_cnt(in):
@@ -5172,10 +5172,10 @@ exit_on_error:
 }
 
 /*
- * spage_slots_next_scan () - 
+ * spage_slots_next_scan () -
  *   return: NO_ERROR, or ER_code
  *
- *   thread_p(in): 
+ *   thread_p(in):
  *   cursor(in):
  *   out_values(in):
  *   out_cnt(in):
@@ -5193,7 +5193,7 @@ spage_slots_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
       return S_END;
     }
 
-  /* 
+  /*
    * In the case of read a arbitrary specified page as slotted page,
    * num_slots of SPAGE_HEADER is meaningless data.
    * num_slots maybe too big to cause slot header address out of the page range.
@@ -5235,7 +5235,7 @@ spage_slots_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
  * spage_slots_end_scan () - free the context
  *   return: NO_ERROR, or ER_code
  *
- *   thread_p(in): 
+ *   thread_p(in):
  *   ptr(in): context pointer
  */
 int

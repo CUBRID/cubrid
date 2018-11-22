@@ -212,7 +212,7 @@ filter_system_classes (DB_OBJLIST ** class_list)
 	    {
 	      prev->next = next;
 	    }
-	  /* 
+	  /*
 	   * class_list links were allocated via ml_ext_alloc_link, so we must
 	   * free them via ml_ext_free_link.  Otherwise, we can crash.
 	   */
@@ -338,7 +338,7 @@ has_dependencies (DB_OBJECT * mop, DB_OBJLIST * unordered, DB_OBJLIST * ordered,
       dependencies = is_dependent_class (su->op, unordered, ordered);
     }
 
-  /* 
+  /*
    * if we're doing a conservative dependency check, look at the domains
    * of each attribute.
    */
@@ -506,7 +506,7 @@ get_ordered_classes (MOP * class_table)
 
   ordered = NULL;
 
-  /* 
+  /*
    * if class_table is passed, use it to initialize the list, otherwise
    * get it from the API.
    */
@@ -550,7 +550,7 @@ get_ordered_classes (MOP * class_table)
       count = order_classes (&classes, &ordered, 1);
       if (count == 0)
 	{
-	  /* 
+	  /*
 	   * didn't find any using the conservative ordering, try the
 	   * more relaxed one.
 	   */
@@ -614,7 +614,7 @@ export_serial (FILE * outfp)
   DB_DOMAIN *domain;
   char str_buf[NUMERIC_MAX_STRING_SIZE];
 
-  /* 
+  /*
    * You must check SERIAL_VALUE_INDEX enum defined on the top of this file
    * when changing the following query. Notice the order of the result.
    */
@@ -838,7 +838,7 @@ extractschema (const char *exec_name, int do_auth, EMIT_STORAGE_ORDER storage_or
       return errno;
     }
 
-  /* 
+  /*
    * convert the class table into an ordered class list, would be better
    * if we just built the initial list rather than using the table.
    */
@@ -856,7 +856,7 @@ extractschema (const char *exec_name, int do_auth, EMIT_STORAGE_ORDER storage_or
 	}
     }
 
-  /* 
+  /*
    * Schema
    */
   if (!required_class_only && do_auth)
@@ -897,7 +897,7 @@ extractschema (const char *exec_name, int do_auth, EMIT_STORAGE_ORDER storage_or
   fclose (output_file);
   output_file = NULL;
 
-  /* 
+  /*
    * Trigger
    * emit the triggers last, they will have no mutual dependencies so
    * it doesn't really matter what order they're in.
@@ -950,7 +950,7 @@ extractschema (const char *exec_name, int do_auth, EMIT_STORAGE_ORDER storage_or
       output_file = NULL;
     }
 
-  /* 
+  /*
    * Index
    */
   if (emit_indexes (classes, has_indexes, vclass_list_has_using_index) != NO_ERROR)
@@ -1016,7 +1016,7 @@ emit_indexes (DB_OBJLIST * classes, int has_indexes, DB_OBJLIST * vclass_list_ha
 
   if (!has_indexes)
     {
-      /* 
+      /*
        * don't have anything to emit but to avoid confusion with old
        * files that might be lying around, make sure that we delete
        * any existing index file
@@ -1082,7 +1082,7 @@ emit_schema (DB_OBJLIST * classes, int do_auth, DB_OBJLIST ** vclass_list_has_us
   const char *name;
   int is_partitioned = 0;
   SM_CLASS *class_ = NULL;
-  /* 
+  /*
    * First create all the classes
    */
   for (cl = classes; cl != NULL; cl = cl->next)
@@ -1156,7 +1156,7 @@ emit_schema (DB_OBJLIST * classes, int do_auth, DB_OBJLIST ** vclass_list_has_us
 
   fprintf (output_file, "\n\n");
 
-  /* 
+  /*
    * Now fill out the class definitions for the non-proxy classes.
    */
   for (cl = classes; cl != NULL; cl = cl->next)
@@ -1191,7 +1191,7 @@ emit_schema (DB_OBJLIST * classes, int do_auth, DB_OBJLIST ** vclass_list_has_us
 	  emit_partition_info (cl->op);
 	}
 
-      /* 
+      /*
        * change_owner method should be called after adding all columns.
        * If some column has auto_increment attribute, change_owner method
        * will change serial object's owner related to that attribute.
@@ -1212,13 +1212,13 @@ emit_schema (DB_OBJLIST * classes, int do_auth, DB_OBJLIST ** vclass_list_has_us
       (void) emit_resolutions (cl->op, class_type);
     }
 
-  /* 
+  /*
    * do query specs LAST after we're sure that all potentially
    * referenced classes have their full definitions.
    */
   *vclass_list_has_using_index = emit_query_specs (classes);
 
-  /* 
+  /*
    * Dump authorizations.
    */
   if (do_auth)
@@ -1254,7 +1254,7 @@ emit_schema (DB_OBJLIST * classes, int do_auth, DB_OBJLIST ** vclass_list_has_us
 static bool
 has_vclass_domains (DB_OBJECT * vclass)
 {
-  /* 
+  /*
    * this doesn't seem to be enough, always return 1 so we make two full passes
    * on the query specs of all vclasses
    */
@@ -1281,7 +1281,7 @@ emit_query_specs (DB_OBJLIST * classes)
   bool change_vclass_spec;
   int i;
 
-  /* 
+  /*
    * pass 1, emit NULL spec lists for vclasses that have attribute
    * domains which are other vclasses
    */
@@ -1307,7 +1307,7 @@ emit_query_specs (DB_OBJLIST * classes)
       has_using_index = false;
       for (s = specs; s && has_using_index == false; s = db_query_spec_next (s))
 	{
-	  /* 
+	  /*
 	   * convert the query spec into one containing NULLs for
 	   * each column
 	   */
@@ -1353,7 +1353,7 @@ emit_query_specs (DB_OBJLIST * classes)
 	}
     }
 
-  /* 
+  /*
    * pass 2, emit full spec lists
    */
   for (cl = classes; cl != NULL; cl = cl->next)
@@ -1415,7 +1415,7 @@ emit_query_specs_has_using_index (DB_OBJLIST * vclass_list_has_using_index)
 
   fprintf (output_file, "\n\n");
 
-  /* 
+  /*
    * pass 1, emit NULL spec lists for vclasses that have attribute
    * domains which are other vclasses
    */
@@ -1441,7 +1441,7 @@ emit_query_specs_has_using_index (DB_OBJLIST * vclass_list_has_using_index)
 
       for (s = specs; s != NULL; s = db_query_spec_next (s))
 	{
-	  /* 
+	  /*
 	   * convert the query spec into one containing NULLs for
 	   * each column
 	   */
@@ -1696,7 +1696,7 @@ emit_instance_attributes (DB_OBJECT * class_, const char *class_type, int *has_i
 	}
     }
 
-  /* 
+  /*
    * We call this function many times, so be careful not to clobber
    * (i.e. overwrite) the has_index parameter
    */
@@ -2953,7 +2953,7 @@ emit_method_def (DB_METHOD * method, METHOD_QUALIFIER qualifier)
       }				/* case CLASS_METHOD */
     }
 
-  /* 
+  /*
    * Emit argument type list
    */
   arg_count = db_method_arg_count (method);
@@ -2971,7 +2971,7 @@ emit_method_def (DB_METHOD * method, METHOD_QUALIFIER qualifier)
 
   fprintf (output_file, ") ");
 
-  /* 
+  /*
    * Emit method return domain
    */
   method_return_domain = db_method_return_domain (method);
@@ -2980,7 +2980,7 @@ emit_method_def (DB_METHOD * method, METHOD_QUALIFIER qualifier)
       emit_domain_def (db_method_return_domain (method));
     }
 
-  /* 
+  /*
    * Emit method function implementation
    */
   method_function_name = db_method_function (method);

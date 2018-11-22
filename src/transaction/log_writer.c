@@ -189,7 +189,7 @@ logwr_fetch_header_page (LOG_PAGE * log_pgptr, int vol_fd)
 
   assert (log_pgptr != NULL);
 
-  /* 
+  /*
    * Page is contained in the active log.
    * Find the corresponding physical page and read the page form disk.
    */
@@ -677,9 +677,9 @@ logwr_set_hdr_and_flush_info (void)
 
 
 /*
- * logwr_copy_necessary_log - 
+ * logwr_copy_necessary_log -
 
- * return: 
+ * return:
  *   to_pageid(in): page id
  *
  * Note: copy active log to background archive file.
@@ -781,7 +781,7 @@ logwr_writev_append_pages (LOG_PAGE ** to_flush, DKNPAGES npages)
 	      return to_flush;
 	    }
 
-	  /* If there exist empty page between current_page_id and (fpageid-1) copy missing logs to background archive 
+	  /* If there exist empty page between current_page_id and (fpageid-1) copy missing logs to background archive
 	   * log file */
 	  if (bg_arv_info->current_page_id < fpageid - 1 || bg_arv_info->current_page_id == NULL_PAGEID)
 	    {
@@ -868,7 +868,7 @@ logwr_flush_all_append_pages (void)
 
       if (idxflush != -1 && prv_pgptr != NULL)
 	{
-	  /* 
+	  /*
 	   * This append log page should be dirty and contiguous to previous
 	   * append page. If it is not, we need to flush the accumulated pages
 	   * up to this point, and then start accumulating pages again.
@@ -879,7 +879,7 @@ logwr_flush_all_append_pages (void)
 	  if ((pageid != prv_pageid + 1)
 	      || (logwr_to_physical_pageid (pageid) != logwr_to_physical_pageid (prv_pageid) + 1))
 	    {
-	      /* 
+	      /*
 	       * This page is not contiguous.
 	       *
 	       * Flush the accumulated contiguous pages
@@ -893,7 +893,7 @@ logwr_flush_all_append_pages (void)
 		{
 		  need_sync = true;
 
-		  /* 
+		  /*
 		   * Start over the accumulation of pages
 		   */
 
@@ -905,7 +905,7 @@ logwr_flush_all_append_pages (void)
 
       if (idxflush == -1)
 	{
-	  /* 
+	  /*
 	   * This page should be included in the flush
 	   */
 	  idxflush = i;
@@ -916,7 +916,7 @@ logwr_flush_all_append_pages (void)
       prv_pgptr = pgptr;
     }
 
-  /* 
+  /*
    * If there are any accumulated pages, flush them at this point
    */
 
@@ -938,7 +938,7 @@ logwr_flush_all_append_pages (void)
 	}
     }
 
-  /* 
+  /*
    * Make sure that all of the above log writes are synchronized with any
    * future log writes. That is, the pages should be stored on physical disk.
    */
@@ -1150,7 +1150,7 @@ logwr_archive_active_log (void)
   arvhdr->arv_num = logwr_Gl.last_arv_num;
   arvhdr->npages = (DKNPAGES) (logwr_Gl.last_arv_lpageid - arvhdr->fpageid + 1);
 
-  /* 
+  /*
    * Now create the archive and start copying pages
    */
 
@@ -1222,7 +1222,7 @@ logwr_archive_active_log (void)
   /* Now start dumping the current active pages to archive */
   for (; pageid <= logwr_Gl.last_arv_lpageid; pageid += num_pages, ar_phy_pageid += num_pages)
     {
-      /* 
+      /*
        * Page is contained in the active log.
        * Find the corresponding physical page and read the page form disk.
        */
@@ -1383,7 +1383,7 @@ logwr_write_log_pages (void)
 	}
     }
 
-  /* 
+  /*
    * LWT sets the archiving flag at the time when it sends new active page
    * after archiving finished, so that logwr_archive_active_log() should
    * be executed before logwr_flush_all_append_pages().
@@ -1713,12 +1713,12 @@ logwr_check_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
   char *p = buf;
   for (int i = 0; i < num_pages; i++)
     {
-      // first 
+      // first
       sampling_offset = (i * block_size);
       memcpy (p, ((char *) log_pgptr) + sampling_offset, sample_nbytes);
       p += sample_nbytes;
 
-      // last 
+      // last
       sampling_offset = (i * block_size) + (block_size - sample_nbytes);
       memcpy (p, ((char *) log_pgptr) + sampling_offset, sample_nbytes);
       p += sample_nbytes;
@@ -2414,9 +2414,9 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid, LOGWR_MO
 	}
 
       /* In case of async mode, unregister the writer and wakeup LFT to finish */
-      /* 
+      /*
        * The result mode is the following.
-       * 
+       *
        * transition \ req mode | req_sync req_async ----------------------------------------- delay -> delay | n/a
        * ASYNC delay -> done | n/a SYNC wait -> delay | SYNC ASYNC wait -> done | SYNC ASYNC */
 

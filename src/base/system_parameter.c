@@ -695,7 +695,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_DIFFER_UNIT     0x00004000	/* parameter unit need to be changed */
 #define PRM_FOR_HA_CONTEXT  0x00008000	/* should be replicated into HA log applier */
 
-#define PRM_GET_SERVER      0x00010000	/* return the value of server parameter from client/server parameter. Note that 
+#define PRM_GET_SERVER      0x00010000	/* return the value of server parameter from client/server parameter. Note that
 					 * this flag only can be set if the parameter has PRM_FOR_CLIENT,
 					 * PRM_FOR_SERVER, and PRM_USER_CHANGE flags. */
 
@@ -4435,7 +4435,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  /* All the compound parameters *must* be at the end of the array so that the changes they cause are not overridden by 
+  /* All the compound parameters *must* be at the end of the array so that the changes they cause are not overridden by
    * other parameters (for example in sysprm_load_and_init the parameters are set to their default in the order they
    * are found in this array). */
   {PRM_ID_COMPAT_MODE,
@@ -6126,7 +6126,7 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool 
     }
 #endif /* !CS_MODE */
 
-  /* 
+  /*
    * Read installation configuration file - $CUBRID/conf/cubrid.conf
    * or use conf_file if exist
    */
@@ -6189,7 +6189,7 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool 
       return r;
     }
 
-  /* 
+  /*
    * If a parameter is not given, set it by default
    */
   for (i = 0; i < NUM_PRM; i++)
@@ -6210,7 +6210,7 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool 
   init_server_timezone_parameter ();
 #endif
 
-  /* 
+  /*
    * Perform system parameter check and tuning.
    */
   prm_check_environment ();
@@ -6222,7 +6222,7 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool 
     }
 #endif
 
-  /* 
+  /*
    * Perform forced system parameter setting.
    */
   for (i = 0; i < DIM (prm_Def); i++)
@@ -7029,7 +7029,7 @@ prm_equal_to_ori (void *out_val, SYSPRM_DATATYPE out_type, void *in_val, SYSPRM_
 static int
 prm_check_parameters (void)
 {
-  /* 
+  /*
    * ha_node_list and ha_db_list should be not null for ha_mode=yes|replica
    */
   if (PRM_HA_MODE != HA_MODE_OFF)
@@ -8356,7 +8356,7 @@ sysprm_get_param_range (SYSPRM_PARAM * prm, void *min, void *max)
 
 /*
  * sysprm_get_range - returns the minimum and maximum value
- *                    for a paramter, given by its name 
+ *                    for a paramter, given by its name
  *   return: error code
  *   pname (in): parameter name
  *   min (out): the minimum possible value for the parameter
@@ -12005,7 +12005,7 @@ sysprm_init_intl_param (void)
   /* intl system parameters are session based and depend on system language; The language is read from DB (and client
    * from server), after the system parameters module was initialized and default values read from configuration file.
    * This function avoids to override any value already read from config. If no values are set from config, then this
-   * function sets the values according to the default language. On client (CAS), we set the client copy of the value, 
+   * function sets the values according to the default language. On client (CAS), we set the client copy of the value,
    * and also the cached session parameter value (which is the default starting value, when the existing CAS serves
    * another session) is intialized. */
 

@@ -140,7 +140,7 @@ struct multi_range_opt
   RANGE_OPT_ITEM **buffer;	/* temporary buffer used to copy elements from top_n_items */
 };
 
-/* Index Skip Scan Operation types: Get the first valid key for the first 
+/* Index Skip Scan Operation types: Get the first valid key for the first
  * column, do a regular range search or search for the next value in the first
  * column, to use in the next regular range search.
  */

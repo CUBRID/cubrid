@@ -313,7 +313,7 @@ struct fileio_backup_header
   char db_fullname[PATH_MAX];	/* Fullname of backed up database. Really more than one byte */
   PGLENGTH db_iopagesize;	/* Size of database pages */
   FILEIO_BACKUP_LEVEL level;	/* Backup level: one of the following level 0: Full backup, every database page that
-				 * has been allocated. level 1: All database pages that have changed since last level 0 
+				 * has been allocated. level 1: All database pages that have changed since last level 0
 				 * backup level 2: All database pages that have changed since last level 0 or 1. */
   LOG_LSA start_lsa;		/* A page with a LSA greater than this value is going to be backed up. */
   LOG_LSA chkpt_lsa;		/* LSA for next incremental backup */
@@ -364,7 +364,7 @@ typedef struct fileio_backup_db_buffer FILEIO_BACKUP_DB_BUFFER;
 struct fileio_backup_db_buffer
 {
   FILEIO_BACKUP_LEVEL level;	/* Backup level: one of the following level 0: Full backup, every database page that
-				 * has been allocated. level 1: All database pages that have changed since last level 0 
+				 * has been allocated. level 1: All database pages that have changed since last level 0
 				 * backup level 2: All database pages that have changed since last level 0 or 1. */
   LOG_LSA lsa;			/* A page with a LSA greater than this value is going to be backed up. */
   int vdes;			/* Open file descriptor of device name for writing purposes */

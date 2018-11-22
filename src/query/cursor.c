@@ -437,7 +437,7 @@ cursor_get_tuple_value_to_dbvalue (OR_BUF * buffer_p, TP_DOMAIN * domain_p, QFIL
       return ER_FAILED;
     }
 
-  /* 
+  /*
    * OIDs must be turned into objects.
    * VOBJs must be turned into vmops.
    */
@@ -552,7 +552,7 @@ cursor_get_list_file_page (CURSOR_ID * cursor_id_p, VPID * vpid_p)
   /* find page at buffer area */
   if (VPID_EQ (vpid_p, &cursor_id_p->current_vpid))
     {
-      /* 
+      /*
        * current_vpid can indicate one of pages in buffer area,
        * so do not assign buffer as head of buffer area
        */
@@ -836,7 +836,7 @@ cursor_prefetch_first_hidden_oid (CURSOR_ID * cursor_id_p)
   current_tuple = cursor_id_p->buffer + QFILE_PAGE_HEADER_SIZE;
   oid_index = 0;
 
-  /* 
+  /*
    * search through the current buffer to store interesting OIDs
    * in the oid_set area, eliminating duplicates.
    */
@@ -1185,7 +1185,7 @@ cursor_allocate_oid_buffer (CURSOR_ID * cursor_id_p)
       return;
     }
 
-  /* 
+  /*
    * NOTE: Currently assume a PAGESIZE. In fact, since we can
    * find average tuple count per page from the LIST FILE
    * identifier we can make a good estimate of oid entry count.
@@ -1540,7 +1540,7 @@ cursor_next_tuple (CURSOR_ID * cursor_id_p)
 	}
 
       QFILE_COPY_VPID (&cursor_id_p->current_vpid, &cursor_id_p->list_id.first_vpid);
-      /* 
+      /*
        * Setup the cursor so that we can proceed through the next "if"
        * statement w/o code duplication.
        */

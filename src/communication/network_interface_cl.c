@@ -820,7 +820,7 @@ locator_fetch_lockset (LC_LOCKSET * lockset, LC_COPYAREA ** fetch_copyarea)
       *fetch_copyarea = NULL;
     }
 
-  /* 
+  /*
    * We will not need to send the lockset structure any more. We do not
    * need to receive the classes and objects in the lockset structure
    * any longer
@@ -1318,7 +1318,7 @@ locator_assign_oid_batch (LC_OIDSET * oidset)
   char *buffer, *ptr;
   int req_error;
 
-  /* 
+  /*
    * Build a buffer in which to send and receive the goobers.  We'll
    * reuse the same buffer to receive the data as we used to send it.
    * First word is reserved for the return code.
@@ -2497,7 +2497,7 @@ tran_server_commit (bool retain_lock)
       ptr = or_unpack_int (ptr, &should_conn_reset);
       if (should_conn_reset != 0 && log_does_allow_replication ())
 	{
-	  /* 
+	  /*
 	   * fail-back action
 	   * make the client to reconnect to the active server
 	   */
@@ -2553,7 +2553,7 @@ tran_server_abort (void)
       ptr = or_unpack_int (ptr, &should_conn_reset);
       if (should_conn_reset != 0 && log_does_allow_replication ())
 	{
-	  /* 
+	  /*
 	   * fail-back action
 	   * make the client to reconnect to the active server
 	   */
@@ -6513,7 +6513,7 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
 	}
     }
 
-  /* pack XASL file id (XASL_ID), number of parameter values, size of the send data, and query execution mode flag as a 
+  /* pack XASL file id (XASL_ID), number of parameter values, size of the send data, and query execution mode flag as a
    * request data */
   ptr = request;
   OR_PACK_XASL_ID (ptr, xasl_id);
@@ -7145,7 +7145,7 @@ serial_get_next_value (DB_VALUE * value, OID * oid_p, int cached_num, int num_al
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  /* 
+  /*
    * If a client wants to generate AUTO_INCREMENT value during client-side
    * insertion, a server should update LAST_INSERT_ID on a session.
    */
@@ -9701,7 +9701,7 @@ tran_lock_rep_read (LOCK lock_rr_tran)
 }
 
 /*
- * boot_get_server_timezone_checksum () - get the timezone checksum from the 
+ * boot_get_server_timezone_checksum () - get the timezone checksum from the
  *					  server
  *
  * return : error code or no error

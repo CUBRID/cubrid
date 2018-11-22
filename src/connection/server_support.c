@@ -1073,7 +1073,7 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 	{
 	  /* There's an interesting race condition among client, worker thread and connection handler.
 	   * Please find CBRD-21375 for detail and also see sboot_notify_unregister_client.
-	   * 
+	   *
 	   * We have to synchronize here with worker thread which may be in sboot_notify_unregister_client
 	   * to let it have a chance to send reply to client.
 	   */
@@ -1434,7 +1434,7 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
     }
 
 shutdown:
-  /* 
+  /*
    * start to shutdown server
    */
 
@@ -1858,7 +1858,7 @@ css_pack_server_name (const char *server_name, int *name_length)
 	  return NULL;
 	}
 
-      /* 
+      /*
        * here we changed the 2nd string in packed_name from
        * rel_release_string() to rel_major_release_string()
        * solely for the purpose of matching the name of the cubrid driver.
@@ -2173,7 +2173,7 @@ css_check_ha_server_state_for_client (THREAD_ENTRY * thread_p, int whence)
       break;
 
     case HA_SERVER_STATE_TO_BE_STANDBY:
-      /* 
+      /*
        * If the server's state is 'to-be-standby',
        * new connection request will be rejected for HA fail-back action.
        */
@@ -2183,7 +2183,7 @@ css_check_ha_server_state_for_client (THREAD_ENTRY * thread_p, int whence)
 		  "Connection rejected. " "The server is changing to standby mode.");
 	  err = ERR_CSS_ERROR_FROM_SERVER;
 	}
-      /* 
+      /*
        * If all connected clients are released (by reset-on-commit),
        * change the state to 'standby' as a completion of HA fail-back action.
        */

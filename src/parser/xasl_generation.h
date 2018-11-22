@@ -49,7 +49,7 @@ struct table_info
   PT_NODE *class_spec;		/* SHARED pointer to parse tree entity spec */
   const char *exposed;		/* SHARED pointer to entity spec exposed name */
   UINTPTR spec_id;
-  PT_NODE *attribute_list;	/* is a list of names which appear anywhere in a select statement with the exposed name 
+  PT_NODE *attribute_list;	/* is a list of names which appear anywhere in a select statement with the exposed name
 				 */
   VAL_LIST *value_list;		/* is a list of DB_VALUES which correspond by position in list to the attributes named
 				 * in attribute_list */

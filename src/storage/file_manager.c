@@ -246,7 +246,7 @@ typedef int (*FILE_EXTDATA_ITEM_FUNC) (THREAD_ENTRY * thread_p, const void *data
  * sectors) stores reserved sectors and bitmaps for allocated pages in these sectors. Usually, when all sector pages are
  * allocated, the sector is removed from partial sector table. This rule does not apply to temporary files, which for
  * simplicity, only use this partial sector table without moving its content to full table sector.
- * 
+ *
  * Each bit in bitmap represents a page, and a page is considered allocated if its bit is set or free if the bit is not
  * set.
  */
@@ -2562,7 +2562,7 @@ file_extdata_find_and_remove_item (THREAD_ENTRY * thread_p, FILE_EXTENSIBLE_DATA
   assert (log_check_system_op_is_started (thread_p));
 
   /* how it works:
-   * 
+   *
    * first we must find the item in one of the extensible pages. we iterate through each page and try to find the item.
    * during page iteration we save the previous page (it is NULL when current page is first).
    *
@@ -5646,7 +5646,7 @@ file_dealloc (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid, FIL
    *
    * temporary files: we do not deallocate the page.
    *
-   * numerable files: we mark the page for 
+   * numerable files: we mark the page for
    */
 
   /* todo: add known is_temp/is_numerable */

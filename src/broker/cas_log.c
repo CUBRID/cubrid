@@ -907,7 +907,7 @@ access_log_open (char *log_file_name)
 #if defined (WINDOWS)
   fp = cas_fopen_and_lock (log_file_name, "a");
 #else
-  /* In case of Linux and solaris..., Openning a file in append mode guarantees subsequent write operations to occur at 
+  /* In case of Linux and solaris..., Openning a file in append mode guarantees subsequent write operations to occur at
    * ent-of-file. So we don't need to lock to the opened file. */
   fp = cas_fopen (log_file_name, "a");
 #endif

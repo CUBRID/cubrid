@@ -2062,7 +2062,7 @@ qdump_check_node (XASL_NODE * xasl_p, QDUMP_XASL_CHECK_NODE * chk_nodes[HASH_NUM
 
   check_node_p->reachable = 1;
 
-  /* 
+  /*
    * Mark the node its access spec references.  You may need to create
    * it if it is a forward reference.
    */

@@ -441,7 +441,7 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 #endif
 
   bind_value_index = 9;
-  /* 
+  /*
    * query timeout is transferred from a driver only if protocol version 1
    * or above.
    */
@@ -1895,7 +1895,7 @@ fn_get_query_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T
       err = db_execute_statement (session, stmt_id, &result);
       if (err < 0 && err != ER_UCI_TOO_FEW_HOST_VARS)
 	{
-	  /* We will ignore an error "too few host variables are given" to return a plan for a statement including host 
+	  /* We will ignore an error "too few host variables are given" to return a plan for a statement including host
 	   * variables. */
 	  ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
 	  NET_BUF_ERR_SET (net_buf);

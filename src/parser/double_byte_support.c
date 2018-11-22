@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -334,7 +334,7 @@ dbcs_process_double_quote_string (PARSER_CONTEXT * parser, int input_char, int c
 	switch (c1_c = dbcs_convert_w_char (c1))
 	  {
 	  case '"':
-	    /* 
+	    /*
 	     * Contiguous double quote.  Then we may scann double quote
 	     * string later still.
 	     */
@@ -342,7 +342,7 @@ dbcs_process_double_quote_string (PARSER_CONTEXT * parser, int input_char, int c
 	      {
 		if (input_char == '"')
 		  {
-		    /* 
+		    /*
 		     * Single byte double quote. Then, latter half character
 		     * has to be scanned next time.
 		     */
@@ -350,7 +350,7 @@ dbcs_process_double_quote_string (PARSER_CONTEXT * parser, int input_char, int c
 		  }
 		else
 		  {
-		    /* 
+		    /*
 		     * Double byte double quote.  Main scanner does not require
 		     * escape sequence to accept this.
 		     */
@@ -363,7 +363,7 @@ dbcs_process_double_quote_string (PARSER_CONTEXT * parser, int input_char, int c
 		DBCS_STATUS_UNGET_RETURN (CSQL_, c1, converted_char);
 	      }
 	  default:
-	    /* 
+	    /*
 	     * Double quote did not appear after the double quote.  Then
 	     * terminate double quote string status and go back to CSQL
 	     * statement status.
@@ -568,7 +568,7 @@ dbcs_process_c_comment (PARSER_CONTEXT * parser, int input_char, int converted_c
 
 	if ((c1_c = dbcs_convert_w_char (c1)) == '/')
 	  {
-	    /* 
+	    /*
 	     * Because this is the end of the C-comment, converted value is
 	     * returned so that this is recognized by the parser correctly.
 	     */
@@ -576,7 +576,7 @@ dbcs_process_c_comment (PARSER_CONTEXT * parser, int input_char, int converted_c
 	    DBCS_STATUS_RETURN (CSQL_BEGIN_, converted_char);
 	  }
 
-	/* 
+	/*
 	 * Because this is a part of comment, input character is returned
 	 * without conversion.
 	 */
