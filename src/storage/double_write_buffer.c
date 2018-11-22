@@ -2849,7 +2849,7 @@ dwb_add_page (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page_p, VPID * vpid, DWB
    * Wake ups flush block thread to flush the current block. The current block will be flushed after flushing the
    * previous block.
    */
-  if (prm_get_bool_value (PRM_ID_ENABLE_DWB_FLUSH_THREAD) == true && dwb_is_flush_block_daemon_available ())
+  if (dwb_is_flush_block_daemon_available ())
     {
       /* Wakeup the thread that will flush the block. */
       dwb_flush_block_daemon->wakeup ();
@@ -4109,7 +4109,7 @@ static bool
 dwb_is_flush_block_daemon_available (void)
 {
 #if defined (SERVER_MODE)
-  return dwb_flush_block_daemon != NULL;
+  return prm_get_bool_value (PRM_ID_ENABLE_DWB_FLUSH_THREAD) == true && dwb_flush_block_daemon != NULL;
 #else
   return false;
 #endif
@@ -4123,7 +4123,7 @@ static bool
 dwb_is_flush_block_helper_daemon_available (void)
 {
 #if defined (SERVER_MODE)
-  return dwb_flush_block_helper_daemon != NULL;
+  return prm_get_bool_value (PRM_ID_ENABLE_DWB_FLUSH_THREAD) == true && dwb_flush_block_helper_daemon != NULL;
 #else
   return false;
 #endif
@@ -4138,7 +4138,8 @@ static bool
 dwb_flush_block_daemon_is_running (void)
 {
 #if defined (SERVER_MODE)
-  return ((dwb_flush_block_daemon != NULL) && (dwb_flush_block_daemon->is_running ()));
+  return (prm_get_bool_value (PRM_ID_ENABLE_DWB_FLUSH_THREAD) == true && (dwb_flush_block_daemon != NULL)
+	  && (dwb_flush_block_daemon->is_running ()));
 #else
   return false;
 #endif /* SERVER_MODE */
@@ -4153,7 +4154,8 @@ static bool
 dwb_flush_block_helper_daemon_is_running (void)
 {
 #if defined (SERVER_MODE)
-  return ((dwb_flush_block_helper_daemon != NULL) && (dwb_flush_block_helper_daemon->is_running ()));
+  return (prm_get_bool_value (PRM_ID_ENABLE_DWB_FLUSH_THREAD) == true && (dwb_flush_block_helper_daemon != NULL)
+	  && (dwb_flush_block_helper_daemon->is_running ()));
 #else
   return false;
 #endif /* SERVER_MODE */
