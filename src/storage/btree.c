@@ -24087,7 +24087,6 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE sc
 						   &find_unique_helper.locked_class_oid, find_unique_helper.lock_mode);
 	  OID_SET_NULL (&find_unique_helper.locked_oid);
 	}
-      assert (OID_ISNULL (&find_unique_helper.locked_oid));
 #endif /* SERVER_MODE */
       return BTREE_ERROR_OCCURRED;
     }
