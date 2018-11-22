@@ -1430,8 +1430,6 @@ csql_yyerror (const char *s)
   int next_ptr_len = 0;
   char *buffer = NULL;
 
-  json_table_column_count = 0;
-
   /* make a copy of the token value before the buffer flush */
   if (CSQL_MAXNAME < csql_yyget_leng () + 1)
     {
