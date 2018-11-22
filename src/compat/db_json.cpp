@@ -1444,7 +1444,11 @@ db_json_extract_document_from_path (const JSON_DOC *document, const char *raw_pa
     {
       if (result != NULL)
 	{
-	  result->SetNull ();
+	  // note - NULL result is different from DB_JSON_NULL.
+	  //        NULL means path was not found
+	  //        DB_JSON_NULL means a null value was found at given path
+	  delete result;
+	  result = NULL;
 	}
     }
 
