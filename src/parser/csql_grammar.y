@@ -17258,7 +17258,7 @@ reserved_func
 		    $$ = node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-         | identifier RIGHT_ARROW CHAR_STRING
+         | simple_path_id RIGHT_ARROW CHAR_STRING
 		{{
 			PT_NODE *matcher = parser_new_node (this_parser, PT_VALUE);
 
@@ -17274,7 +17274,7 @@ reserved_func
 			PT_NODE *expr = parser_make_expression (this_parser, PT_JSON_EXTRACT, $1, matcher, NULL);
 			$$ = expr;
 		DBG_PRINT}}
-         | identifier DOUBLE_RIGHT_ARROW CHAR_STRING
+         | simple_path_id DOUBLE_RIGHT_ARROW CHAR_STRING
 		{{
 			PT_NODE *matcher = parser_new_node (this_parser, PT_VALUE);
 
