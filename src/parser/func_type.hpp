@@ -66,6 +66,7 @@ struct func_signature
   static std::vector<func_signature> json_doc_str_r_path;
   static std::vector<func_signature> json_doc_r_path_val;
   static std::vector<func_signature> json_contains_path;
+  static std::vector<func_signature> json_keys;
   static std::vector<func_signature> json_search;
   static std::vector<func_signature> json_arrayagg;
   static std::vector<func_signature> json_objectagg;

@@ -240,6 +240,12 @@ std::vector<func_signature> func_signature::json_contains_path =
   {PT_TYPE_INTEGER, {PT_GENERIC_TYPE_JSON_DOC, PT_GENERIC_TYPE_STRING}, {PT_GENERIC_TYPE_STRING}},
 };
 
+std::vector<func_signature> func_signature::json_keys =
+{
+  {PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC}, {}},
+  {PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC, PT_GENERIC_TYPE_STRING}, {}},
+};
+
 std::vector<func_signature> func_signature::json_search =
 {
 // all signatures: json_doc, one_or_all_str, search_str[, escape_char[, path] ... -> JSON_DOC
@@ -364,7 +370,7 @@ func_signature::get_signatures (FUNC_TYPE ft)
     case F_JSON_INSERT:
       return &json_doc_r_path_val;
     case F_JSON_KEYS:
-      return &json_doc_path;
+      return &json_keys;
     case F_JSON_MERGE:
     case F_JSON_MERGE_PATCH:
       return &json_doc_r_doc;
