@@ -24080,9 +24080,9 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE sc
       ASSERT_ERROR ();
 #if defined (SERVER_MODE)
       /* Safe guard: don't keep lock if error has occurred. */
-      if (er_errid () == ER_INTERRUPTED)
+      if (!OID_ISNULL (&find_unique_helper.locked_oid))
 	{
-	  /* In case of an interrupt, the oid might already be locked so we should clear it. */
+	  /* Make sure to unlock the object. */
 	  lock_unlock_object_donot_move_to_non2pl (thread_p, &find_unique_helper.locked_oid,
 						   &find_unique_helper.locked_class_oid, find_unique_helper.lock_mode);
 	  OID_SET_NULL (&find_unique_helper.locked_oid);
