@@ -5562,14 +5562,29 @@ db_json_extract_multiple_paths (DB_VALUE * result, DB_VALUE * args[], int num_ar
 	  return error_code;
 	}
 
-      db_json_add_element_to_array (result_doc, extracted_doc);
+      if (extracted_doc != NULL)
+	{
+	  db_json_add_element_to_array (result_doc, extracted_doc);
+	}
+      else
+	{
+	  // continue
+	}
     }
 
   // free temporary resources
   db_json_delete_doc (extracted_doc);
   db_json_delete_doc (source_doc);
 
-  db_make_json (result, result_doc, true);
+  if (db_json_get_type (result_doc) == DB_JSON_NULL)
+    {
+      // let null result
+      db_json_delete_doc (result_doc);
+    }
+  else
+    {
+      db_make_json (result, result_doc, true);
+    }
   return NO_ERROR;
 }
 
