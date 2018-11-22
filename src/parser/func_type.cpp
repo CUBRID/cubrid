@@ -956,7 +956,7 @@ Func::Node::set_return_type (const func_signature &signature)
 	  if (m_node->data_type)
 	    {
 	      m_node->data_type->info.data_type.precision =
-		      m_node->type_enum == (PT_TYPE_VARNCHAR ? DB_MAX_VARNCHAR_PRECISION : DB_MAX_VARCHAR_PRECISION);
+		      (m_node->type_enum == PT_TYPE_VARNCHAR ? DB_MAX_VARNCHAR_PRECISION : DB_MAX_VARCHAR_PRECISION);
 	      m_node->data_type->info.data_type.dec_precision = 0;
 	    }
 	  break;
