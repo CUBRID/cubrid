@@ -3778,123 +3778,99 @@ db_json_merge_patch (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
  */
 
 int
-db_json_search_dbval (DB_VALUE *result, DB_VALUE *args[], const int num_args)
+db_json_search_dbval(DB_VALUE *result, DB_VALUE *args[], const int num_args)
 {
   int error_code = NO_ERROR;
   JSON_DOC *doc = NULL;
 
   if (num_args < 3)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
-      return ER_FAILED;
-    }
+  {
+    er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+    return ER_FAILED;
+  }
 
   for (int i = 0; i < num_args; ++i)
+  {
+    // only escape char might be null
+    if (i != 3 && DB_IS_NULL (args[i]))
     {
-      // only escape char might be null
-      if (i != 3 && DB_IS_NULL (args[i]))
-        {
-          return db_make_null (result);
-        }
+      return db_make_null (result);
     }
+  }
 
   error_code = db_value_to_json_doc (*args[0], doc);
   if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
+  {
+    return error_code;
+  }
 
   bool find_all;
   error_code = is_str_find_all (args[1], find_all);
   if (error_code != NO_ERROR)
-    {
-      db_json_delete_doc (doc);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
-      return ER_QSTR_INVALID_DATA_TYPE;
-    }
+  {
+    db_json_delete_doc (doc);
+    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
+    return ER_QSTR_INVALID_DATA_TYPE;
+  }
 
   DB_VALUE *pattern = args[2];
   DB_VALUE *esc_char = nullptr;
   if (num_args >= 4)
-    {
-      esc_char = args[3];
-    }
+  {
+    esc_char = args[3];
+  }
 
   std::vector<std::string> starting_paths;
   bool wild_card_present = false;
   for (int i = 4; i < num_args; ++i)
-    {
-      std::string s (db_get_string (args[i]));
-      // todo: improve paths validation
-
-      if (s.find ("*") != std::string::npos)
-	{
-	  wild_card_present = true;
-	  // if we check against wild_cards only at the end we cannot return early when finding a json_value that matches
-	  find_all = true;
-	}
-
-      starting_paths.emplace_back (s);
-    }
-
-  std::vector<std::string> paths;
-  if (wild_card_present || starting_paths.empty ())
-    {
-      std::vector<std::string> default_start_path (1, "$");
-      error_code = db_json_search_func (*doc, pattern, esc_char, find_all, default_start_path, paths);
-    }
-  else
-    {
-      error_code = db_json_search_func (*doc, pattern, esc_char, find_all, starting_paths, paths);
-    }
-  db_json_delete_doc (doc);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  std::vector<int> matches_path (paths.size (), 0);
+  {
+    std::string s(db_get_string(args[i]));
+    // todo: improve paths validation
+    // todo: only path validation is available?
+    starting_paths.emplace_back (s);
+  }
 
   std::vector<std::regex> regs;
-  if (wild_card_present)
-    {
-      error_code = db_json_paths_to_regex (starting_paths, regs);
-      if (error_code != NO_ERROR)
-        {
-          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
-          return error_code;
-        }
-    }
+  // wildcards or not, compute regexes
+  if (starting_paths.empty ())
+  {
+    starting_paths.push_back ("$");
+  }
+  error_code = db_json_paths_to_regex (starting_paths, regs);
+  if (error_code != NO_ERROR)
+  {
+    er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+    return error_code;
+  }
 
-  for (size_t i = 0; i < paths.size (); ++i)
-    {
-      for (auto &reg : regs)
-        {
-          matches_path[i] |= (int) std::regex_match (paths[i], reg);
-        }
-    }
+  std::vector<std::string> paths;
+  error_code = db_json_search_func(*doc, pattern, esc_char, paths, regs);
+
+  db_json_delete_doc(doc);
+  if (error_code != NO_ERROR)
+  {
+    return error_code;
+  }
+
+  if (paths.empty())
+  {
+    return db_make_null(result);
+  }
 
   JSON_DOC *result_json = nullptr;
   if (paths.size () == 1)
     {
-      if (!wild_card_present || matches_path[0] == 1)
-        {
-          error_code = db_json_get_json_from_str (paths[0].c_str (), result_json, paths[0].length ());
-          if (error_code != NO_ERROR)
-            {
-              return error_code;
-            }
-        }
-      return result_json ? db_make_json (result, result_json, true) : db_make_null (result);
+      error_code = db_json_get_json_from_str (paths[0].c_str (), result_json, paths[0].length ());
+      if (error_code != NO_ERROR)
+      {
+        return error_code;
+      }
+      return db_make_json (result, result_json, true);
     }
-
+  
   result_json = db_json_allocate_doc ();
   for (size_t i = 0; i < paths.size (); ++i)
     {
-      if (wild_card_present && matches_path[i] == 0)
-        {
-          continue;
-        }
 
       JSON_DOC *json_array_elem = nullptr;
 
