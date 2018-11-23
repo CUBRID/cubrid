@@ -4822,7 +4822,7 @@ original_table_spec
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| JSON_TABLE json_table_rule AS identifier
+	| JSON_TABLE json_table_rule opt_as identifier
 		{{
 			PT_NODE *ent = parser_new_node (this_parser, PT_SPEC);
 			if (ent)
