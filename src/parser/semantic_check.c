@@ -11097,10 +11097,7 @@ pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs, PT_NODE * rhs)
   else
     {
       SEMAN_COMPATIBLE_INFO sci = {
-	0, PT_TYPE_NONE, 0, 0, false,
-	{0, INTL_CODESET_NONE, PT_COLLATION_NOT_COERC, false}
-	,
-	NULL
+	0, PT_TYPE_NONE, 0, 0, false, pt_coll_infer (), NULL
       };
       bool is_cast_allowed = true;
 

@@ -98,16 +98,20 @@ namespace Func
     INCOMPATIBLE
   };
 
-  struct argument_compatibility
+  struct argument_resolve
   {
-    type_compatibility m_compat;
     PT_TYPE_ENUM m_type;
+    pt_coll_infer m_coll_infer;
   };
 
   struct signature_compatibility
   {
-    type_compatibility m_signature_compat;
-    std::vector<argument_compatibility> m_args_compat;
+    type_compatibility m_compat;
+    std::vector<argument_resolve> m_args_resolve;
+    pt_coll_infer m_collation_inference;
+    const func_signature *m_signature;
+
+    signature_compatibility ();
   };
 
   bool cmp_types_equivalent (const pt_arg_type &type, pt_type_enum type_enum);
@@ -118,7 +122,7 @@ namespace Func
     private:
       parser_context *m_parser;
       parser_node *m_node;
-      signature_compatibility m_compat;
+      signature_compatibility m_best_signature;
 
     public:
       Node (parser_context *parser, parser_node *node)
@@ -129,18 +133,21 @@ namespace Func
 
       parser_node *get_arg (size_t index);
 
-      //cast given argument to specified type and re-link
-      parser_node *cast (parser_node *prev, parser_node *arg, pt_type_enum type, int p, int s, parser_node *dt);
+      void check_types (void);
 
       bool preprocess(); //preprocess current function node type for special cases
       const func_signature *get_signature (const std::vector<func_signature> &signatures);
       void set_return_type (const func_signature &signature); //set return type for current node in current context
       bool apply_signature (const func_signature &signature); //apply function signature with casts if necessary
     protected:
+
+      parser_node *apply_argument (parser_node *prev, parser_node *arg, const argument_resolve &arg_res);
+
       const char *get_types (const std::vector<func_signature> &signatures, size_t index, string_buffer &sb);
-      void check_arg_compat (const pt_arg_type &arg_signature, const PT_NODE *arg_node,
-			     argument_compatibility &compat);
+      bool check_arg_compat (const pt_arg_type &arg_signature, const PT_NODE *arg_node,
+			     signature_compatibility &compat, argument_resolve &resolved_type);
       void invalid_arg_error (const pt_arg_type &arg_sgn, const PT_NODE *arg_node, const func_signature &func_sgn);
+      void invalid_coll_error (const func_signature &func_sgn);
       void invalid_arg_count_error (std::size_t arg_count, const func_signature &func_sgn);
   }; //class Node
 } //namespace Func
