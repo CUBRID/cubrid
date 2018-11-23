@@ -321,7 +321,7 @@ check_server_capabilities (int server_cap, int client_type, int rel_compare, REL
 	}
     }
 
-  /* 
+  /*
    * check HA replication delay
    * if client_cap is on, it checks the server delay status
    * else, it ignores the delay status.
@@ -339,7 +339,7 @@ check_server_capabilities (int server_cap, int client_type, int rel_compare, REL
     {
       if (rel_compare < 0 && ((server_cap & NET_CAP_BACKWARD_COMPATIBLE) || (client_cap & NET_CAP_FORWARD_COMPATIBLE)))
 	{
-	  /* 
+	  /*
 	   * The client is older than the server but the server has a backward
 	   * compatible capability or the client has a forward compatible
 	   * capability.
@@ -348,7 +348,7 @@ check_server_capabilities (int server_cap, int client_type, int rel_compare, REL
 	}
       if (rel_compare > 0 && ((server_cap & NET_CAP_FORWARD_COMPATIBLE) || (client_cap & NET_CAP_BACKWARD_COMPATIBLE)))
 	{
-	  /* 
+	  /*
 	   * The client is newer than the server but the server has a forward
 	   * compatible capability or the client has a backward compatible
 	   * capability.
@@ -1892,7 +1892,7 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 	      }
 	      break;
 
-	      /* 
+	      /*
 	       * A code of END_CALLBACK is followed immediately by an
 	       * integer returning status from the remote call.  The second
 	       * integer represents the return value and must be returned
@@ -1947,7 +1947,7 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 		    else
 		      {
 			ptr = or_unpack_string_nocopy (reply, &prompt);
-			/* 
+			/*
 			 * the following data are used depending on prompt type
 			 * but will always be in the input stream
 			 */
@@ -1993,7 +1993,7 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 				      }
 				    break;
 
-				    /* 
+				    /*
 				     * simply boolean (y, yes, 1, n, no, 0)
 				     * validation
 				     */
@@ -2507,7 +2507,7 @@ net_client_get_next_log_pages (int rc, char *replybuf, int replysize, int length
 
   if (logwr_Gl.logpg_area_size < length)
     {
-      /* 
+      /*
        * It means log_buffer_size/log_page_size are different between master
        * and slave.
        * In this case, we have to disconnect from server and try to reconnect.
@@ -2599,7 +2599,7 @@ net_client_request_recv_copyarea (int request, char *argbuf, int argsize, char *
       return set_server_error (css_Errno);
     }
 
-  /* 
+  /*
    * Receive replybuf
    */
 
@@ -2612,7 +2612,7 @@ net_client_request_recv_copyarea (int request, char *argbuf, int argsize, char *
 
   error = COMPARE_SIZE_AND_BUFFER (&replysize, size, &replybuf, reply);
 
-  /* 
+  /*
    * Receive copyarea
    * Here assume that the next two integers in the reply are the lengths of
    * the copy descriptor and content descriptor
@@ -2788,7 +2788,7 @@ net_client_request_2recv_copyarea (int request, char *argbuf, int argsize, char 
 
   *eid = rc;
 
-  /* 
+  /*
    * Receive replybuf
    */
 
@@ -2803,7 +2803,7 @@ net_client_request_2recv_copyarea (int request, char *argbuf, int argsize, char 
       error = COMPARE_SIZE_AND_BUFFER (&replysize, size, &replybuf, reply);
     }
 
-  /* 
+  /*
    * Receive recvbuffer
    * Here we assume that the first integer in the reply is the length
    * of the following data block
@@ -2862,7 +2862,7 @@ net_client_request_2recv_copyarea (int request, char *argbuf, int argsize, char 
 	}
     }
 
-  /* 
+  /*
    * Receive copyarea
    * Here assume that the next two integers in the reply are the lengths of
    * the copy descriptor and content descriptor
@@ -3178,7 +3178,7 @@ net_client_recv_copyarea (int request, char *replybuf, int replysize, char *recv
     }
 #endif /* HISTO */
 
-  /* 
+  /*
    * Receive replybuf
    */
 
@@ -3194,7 +3194,7 @@ net_client_recv_copyarea (int request, char *replybuf, int replysize, char *recv
       error = COMPARE_SIZE_AND_BUFFER (&replysize, size, &replybuf, reply);
     }
 
-  /* 
+  /*
    * Receive recvbuffer
    * Here we assume that the first integer in the reply is the length
    * of the following data block
@@ -3251,7 +3251,7 @@ net_client_recv_copyarea (int request, char *replybuf, int replysize, char *recv
 	}
     }
 
-  /* 
+  /*
    * Receive copyarea
    * Here assume that the next two integers in the reply are the lengths of
    * the copy descriptor and content descriptor
@@ -3412,7 +3412,7 @@ net_client_request_3recv_copyarea (int request, char *argbuf, int argsize, char 
       return set_server_error (css_Errno);
     }
 
-  /* 
+  /*
    * Receive replybuf
    */
   error = css_receive_data_from_server (rc, &reply, &size);
@@ -3426,7 +3426,7 @@ net_client_request_3recv_copyarea (int request, char *argbuf, int argsize, char 
       error = COMPARE_SIZE_AND_BUFFER (&replysize, size, &replybuf, reply);
     }
 
-  /* 
+  /*
    * Receive recvbuffer
    * Here we assume that the first integer in the reply is the length
    * of the following data block
@@ -3465,7 +3465,7 @@ net_client_request_3recv_copyarea (int request, char *argbuf, int argsize, char 
 	}
     }
 
-  /* 
+  /*
    * Receive copyarea
    * Here assume that the next two integers in the reply are the lengths of
    * the copy descriptor and content descriptor
@@ -3850,7 +3850,7 @@ net_client_ping_server_with_handshake (int client_type, bool check_capabilities,
       return error;
     }
 
-  /* 
+  /*
    * 1. get the result of compatibility check.
    * 2. check if the both capabilities of client and server are compatible.
    * 3. check if the server has a capability to make it compatible.
@@ -3907,7 +3907,7 @@ net_client_init (const char *dbname, const char *hostname)
 {
   int error = NO_ERROR;
 
-  /* don't really need to do this every time but bruce says its ok - we probably need to guarentee that a css_terminate 
+  /* don't really need to do this every time but bruce says its ok - we probably need to guarentee that a css_terminate
    * is always called before this */
   error = css_client_init (prm_get_integer_value (PRM_ID_TCP_PORT_ID), dbname, hostname);
   if (error != NO_ERROR)

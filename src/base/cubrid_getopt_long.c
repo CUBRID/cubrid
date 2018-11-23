@@ -136,7 +136,7 @@ permute_args (int nonopt_start, int nonopt_end, int opt_end, char *const *nargv)
   int cstart, cyclelen, i, j, ncycle, nnonopts, nopts, pos;
   char *swap;
 
-  /* 
+  /*
    * compute lengths of blocks and number and size of cycles
    */
   nnonopts = nonopt_end - nonopt_start;
@@ -179,7 +179,7 @@ getopt_internal (int nargc, char *const *nargv, const char *options)
 
   optarg = NULL;
 
-  /* 
+  /*
    * XXX Some programs (like rsyncd) expect to be able to
    * XXX re-initialize optind to 0 and have getopt_long(3)
    * XXX properly function again.  Work around this braindamage.
@@ -204,7 +204,7 @@ start:
 	    }
 	  else if (nonopt_start != -1)
 	    {
-	      /* 
+	      /*
 	       * If we skipped non-options, set optind
 	       * to the first of them.
 	       */
@@ -218,8 +218,8 @@ start:
 	  place = EMSG;
 	  if (IN_ORDER)
 	    {
-	      /* 
-	       * GNU extension: 
+	      /*
+	       * GNU extension:
 	       * return non-option as argument to option 1
 	       */
 	      optarg = nargv[optind++];
@@ -227,7 +227,7 @@ start:
 	    }
 	  if (!PERMUTE)
 	    {
-	      /* 
+	      /*
 	       * if no permutation wanted, stop parsing
 	       * at first non-option
 	       */
@@ -282,7 +282,7 @@ start:
 	}
       else			/* white space */
 	place = nargv[optind];
-      /* 
+      /*
        * Handle -W arg the same as --arg (which causes getopt to
        * stop parsing).
        */
@@ -337,7 +337,7 @@ getopt (int nargc, char *const *nargv, const char *options)
   if ((retval = getopt_internal (nargc, nargv, options)) == -2)
     {
       ++optind;
-      /* 
+      /*
        * We found an option (--), so if we skipped non-options,
        * we have to permute.
        */
@@ -383,7 +383,7 @@ getopt_long (int nargc, char *const *nargv, const char *options, const struct op
 
       if (*current_argv == '\0')
 	{			/* found "--" */
-	  /* 
+	  /*
 	   * We found an option (--), so if we skipped
 	   * non-options, we have to permute.
 	   */
@@ -433,7 +433,7 @@ getopt_long (int nargc, char *const *nargv, const char *options, const struct op
 	    {
 	      if (PRINT_ERROR)
 		xwarnx (noarg, (int) current_argv_len, current_argv);
-	      /* 
+	      /*
 	       * XXX: GNU sets optopt to val regardless of
 	       * flag
 	       */
@@ -450,7 +450,7 @@ getopt_long (int nargc, char *const *nargv, const char *options, const struct op
 		optarg = has_equal;
 	      else if (long_options[match].has_arg == required_argument)
 		{
-		  /* 
+		  /*
 		   * optional argument doesn't use
 		   * next nargv
 		   */
@@ -459,13 +459,13 @@ getopt_long (int nargc, char *const *nargv, const char *options, const struct op
 	    }
 	  if ((long_options[match].has_arg == required_argument) && (optarg == NULL))
 	    {
-	      /* 
+	      /*
 	       * Missing argument; leading ':'
 	       * indicates no error should be generated
 	       */
 	      if (PRINT_ERROR)
 		xwarnx (recargstring, current_argv);
-	      /* 
+	      /*
 	       * XXX: GNU sets optopt to val regardless
 	       * of flag
 	       */

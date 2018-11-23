@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -80,7 +80,7 @@ struct SORT_REC
       char body[1];		/* sort_key body start position */
     } original;
 
-    /* 
+    /*
      * The offset vector.  A value of zero for an entry means that the
      * corresponding column is null, and that there are no data bytes for
      * the column.  A non-zero entry is interpreted as the offset from
@@ -105,7 +105,7 @@ struct SUBKEY_INFO
     DB_VALUE_COMPARE_RESULT (*sort_f) (void *tplp1, void *tplp2, TP_DOMAIN * dom, int do_coercion, int total_order,
 				       int *start_col);
 
-  /* 
+  /*
    * Non-zero iff the sort on this column is descending.  Factoring
    * this decision out of the actual sort function allows to use only
    * one of those guys, at no particularly great cost in performance,
@@ -134,7 +134,7 @@ struct SORT_INFO
   SORTKEY_INFO key_info;	/* All of the interesting key information. */
   QFILE_SORT_SCAN_ID *s_id;	/* A SCAN_ID for the input list file.  This is stateful, and records the current
 				 * location of the scan between calls to ls_sort_get_next(). */
-  QFILE_LIST_ID *output_file;	/* The name of the output file.  This is where ls_sort_put_next_*() deposits its stuff. 
+  QFILE_LIST_ID *output_file;	/* The name of the output file.  This is where ls_sort_put_next_*() deposits its stuff.
 				 */
   RECDES output_recdes;		/* A working buffer for output of tuples; used only when we're using
 				 * ls_sort_put_next_short() as the output function. */

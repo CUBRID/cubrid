@@ -684,7 +684,7 @@ pt_check_hint (const char *text, PT_HINT hint_table[], PT_HINT_ENUM * result_hin
 		    }
 		  else if (has_parenthesis && IS_HINT_ON_TABLE (hint_table[i].hint))
 		    {
-		      /* 
+		      /*
 		       * INDEX_SS() or INDEX_LS() means do not apply
 		       * hint, use special node to mark this.
 		       */

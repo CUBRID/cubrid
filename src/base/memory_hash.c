@@ -346,7 +346,7 @@ mht_4str_pseudo_key (const void *key, int key_size)
 	    }
 	}
 
-      /* 
+      /*
        * Each of the following hash values,
        * generates a value between 0 and 255
        */
@@ -1105,7 +1105,7 @@ mht_clear (MHT_TABLE * ht, int (*rem_func) (const void *key, void *data, void *a
 
   assert (ht != NULL);
 
-  /* 
+  /*
    * Go over the hash table, removing all entries and setting the vector
    * entries to NULL.
    */
@@ -1229,7 +1229,7 @@ mht_get (MHT_TABLE * ht, const void *key)
   assert (ht != NULL);
   assert (key != NULL);
 
-  /* 
+  /*
    * Hash the key and make sure that the return value is between 0 and size
    * of hash table
    */
@@ -1305,7 +1305,7 @@ mht_get2 (const MHT_TABLE * ht, const void *key, void **last)
 
   assert (ht != NULL && key != NULL);
 
-  /* 
+  /*
    * Hash the key and make sure that the return value is between 0 and size
    * of hash table
    */
@@ -1345,8 +1345,8 @@ mht_get2 (const MHT_TABLE * ht, const void *key, void **last)
  * mht_put_internal - internal function for mht_put(), mht_put_new(), and
  *                    mht_put_data();
  *                    insert an entry associating key with data
- *   return: 
- *       For option MHT_OPT_DEFAULT, MHT_OPT_KEEP_KEY, MHT_OPT_INSERT_ONLY, 
+ *   return:
+ *       For option MHT_OPT_DEFAULT, MHT_OPT_KEEP_KEY, MHT_OPT_INSERT_ONLY,
  *           returns key if insertion was OK, otherwise, it returns NULL.
  *       For option MHT_OPT_INSERT_IF_NOT_EXISTS,
  *           returns existing data if duplicated key was found, or return
@@ -1372,7 +1372,7 @@ mht_put_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt)
 
   assert (ht != NULL && key != NULL);
 
-  /* 
+  /*
    * Hash the key and make sure that the return value is between 0 and size
    * of hash table
    */
@@ -1438,7 +1438,7 @@ mht_put_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt)
 	}
     }
 
-  /* 
+  /*
    * Link the new entry to the double link list of active entries and the
    * hash itself. The previous entry should point to new one.
    */
@@ -1468,7 +1468,7 @@ mht_put_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt)
   ht->table[hash] = hentry;
   ht->nentries++;
 
-  /* 
+  /*
    * Rehash if almost all entries of hash table are used and there are at least
    * 5% of collisions
    */
@@ -1563,7 +1563,7 @@ mht_put2_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt)
 
   assert (ht != NULL && key != NULL);
 
-  /* 
+  /*
    * Hash the key and make sure that the return value is between 0 and size
    * of hash table
    */
@@ -1715,7 +1715,7 @@ mht_rem (MHT_TABLE * ht, const void *key, int (*rem_func) (const void *key, void
 
   assert (ht != NULL && key != NULL);
 
-  /* 
+  /*
    * Hash the key and make sure that the return value is between 0 and size
    * of hash table
    */
@@ -1730,7 +1730,7 @@ mht_rem (MHT_TABLE * ht, const void *key, int (*rem_func) (const void *key, void
     {
       if (hentry->key == key || (*ht->cmp_func) (hentry->key, key))
 	{
-	  /* 
+	  /*
 	   * We found the entry
 	   * Call "rem_func" (if any) to delete the data and key
 	   * Delete the node from the double link list of active entries.
@@ -1854,7 +1854,7 @@ mht_rem2 (MHT_TABLE * ht, const void *key, const void *data, int (*rem_func) (co
     {
       if ((hentry->key == key || (*ht->cmp_func) (hentry->key, key)) && hentry->data == data)
 	{
-	  /* 
+	  /*
 	   * We found the entry.
 	   * Call "fun" (if any) to delete the data and key.
 	   * Delete the node from the double link list of active entries.
@@ -2191,7 +2191,7 @@ mht_get_hash_number (const int ht_size, const DB_VALUE * val)
 	  }
 	  break;
 	default:		/* impossible */
-	  /* 
+	  /*
 	   * TODO this is actually possible. See the QA scenario:
 	   * sql/_01_object/_09_partition/_006_prunning/cases/1093.sql
 	   * select * from hash_test where test_int = round(11.57);

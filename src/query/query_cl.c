@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -98,7 +98,7 @@ prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream)
  *   var_cnt(in)        : number of host variables
  *   varptr(in) : array of host variables (query input parameters)
  *   list_idp(out)      : query result file id (QFILE_LIST_ID)
- *   flag(in)   : flag 
+ *   flag(in)   : flag
  *   clt_cache_time(in) :
  *   srv_cache_time(in) :
  */
@@ -141,7 +141,7 @@ execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int var_cnt, const
  *   var_cnt(in)        : number of input values for positional variables
  *   varptr(in) : pointer to the array of input values
  *   result(out): pointer to result list id pointer
- *   flag(in)   : flag 
+ *   flag(in)   : flag
  *
  * Note: Prepares and executes a query, and the result is returned
  *       through a list id (actually the list file).

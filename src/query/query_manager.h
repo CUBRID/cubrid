@@ -63,10 +63,10 @@ typedef enum
   QMGR_TRAN_RUNNING,		/* Running transaction */
   QMGR_TRAN_DELAYED_START,	/* Suspended transaction: waiting for all the waiting transactions to be served */
   QMGR_TRAN_WAITING,		/* Suspended transaction: waiting for a query file page to be freed. */
-  QMGR_TRAN_RESUME_TO_DEALLOCATE,	/* Transaction has been resumed to deallocate all query pages. Transaction will 
+  QMGR_TRAN_RESUME_TO_DEALLOCATE,	/* Transaction has been resumed to deallocate all query pages. Transaction will
 					 * have to restart the query */
   QMGR_TRAN_RESUME_DUE_DEADLOCK,	/* Transaction has been resumed to deallocate all query pages. The transaction
-					 * was involved in a deadlock. Transaction will have to restart the query. Note 
+					 * was involved in a deadlock. Transaction will have to restart the query. Note
 					 * that the transaction is not aborted. */
   QMGR_TRAN_TERMINATED		/* Terminated transaction */
 } QMGR_TRAN_STATUS;

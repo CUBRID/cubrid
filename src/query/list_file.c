@@ -128,7 +128,7 @@ union qfile_pooled_list_cache_entry
     QFILE_LIST_CACHE_ENTRY entry;	/* list cache entry data */
   } s;
   char dummy[FIXED_SIZE_OF_POOLED_LIST_CACHE_ENTRY];
-  /* 
+  /*
    * 4K size including list cache entry itself
    * and reserved spaces for list_cache_ent.param_values
    */
@@ -1278,7 +1278,7 @@ qfile_allocate_new_page (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, PAG
   QFILE_PUT_TUPLE_COUNT (new_page_p, 0);
   QFILE_PUT_PREV_VPID (new_page_p, &list_id_p->last_vpid);
 
-  /* 
+  /*
    * For streaming query support, set next_vpid differently
    */
   if (is_ovf_page)
@@ -1338,7 +1338,7 @@ qfile_allocate_new_ovf_page (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
   QFILE_PUT_OVERFLOW_TUPLE_PAGE_SIZE (new_page_p, *tuple_page_size_p);
   QFILE_PUT_OVERFLOW_VPID_NULL (new_page_p);
 
-  /* 
+  /*
    * connect the previous page to this page and free,
    * if it is not the first page
    */
@@ -2902,7 +2902,7 @@ qfile_reallocate_tuple (QFILE_TUPLE_RECORD * tuple_record_p, int tuple_size)
     }
   else
     {
-      /* 
+      /*
        * Don't leak the original tuple if we get a malloc failure!
        */
       tuple = (QFILE_TUPLE) db_private_realloc (NULL, tuple_record_p->tpl, tuple_size);
@@ -3026,7 +3026,7 @@ qfile_make_sort_key (THREAD_ENTRY * thread_p, SORTKEY_INFO * key_info_p, RECDES 
 	      memcpy (data, field_data, QFILE_TUPLE_VALUE_HEADER_SIZE + field_length);
 	    }
 
-	  /* 
+	  /*
 	   * Always pretend that we copied the data, even if we didn't.
 	   * That will allow us to find out how big the record really needs
 	   * to be.
@@ -3067,7 +3067,7 @@ qfile_make_sort_key (THREAD_ENTRY * thread_p, SORTKEY_INFO * key_info_p, RECDES 
 		  sort_record_p->s.offset[i] = offset;
 		  memcpy (data, field_data, QFILE_TUPLE_VALUE_HEADER_SIZE + field_length);
 		}
-	      /* 
+	      /*
 	       * Always pretend that we copied the data, even if we didn't.
 	       * That will allow us to find out how big the record really
 	       * needs to be.
@@ -3296,7 +3296,7 @@ qfile_put_next_sort_item (THREAD_ENTRY * thread_p, const RECDES * recdes_p, void
 	  QFILE_GET_OVERFLOW_VPID (&vpid, page_p);
 	  if (vpid.pageid == NULL_PAGEID)
 	    {
-	      /* 
+	      /*
 	       * This is the normal case of a non-overflow tuple.  We can use
 	       * the page image directly, since we know that the tuple resides
 	       * entirely on that page.
@@ -3308,7 +3308,7 @@ qfile_put_next_sort_item (THREAD_ENTRY * thread_p, const RECDES * recdes_p, void
 	    {
 	      assert (NULL_PAGEID < vpid.pageid);	/* should not be NULL_PAGEID_IN_PROGRESS */
 
-	      /* 
+	      /*
 	       * Rats; this tuple requires overflow pages.  We need to copy
 	       * all of the pages from the input file to the output file.
 	       */
@@ -3333,7 +3333,7 @@ qfile_put_next_sort_item (THREAD_ENTRY * thread_p, const RECDES * recdes_p, void
 	    {
 	      if (key_p->s.offset[i] != 0)
 		{
-		  /* 
+		  /*
 		   * Remember, the offset[] value points to the start of the
 		   * value's *data* (i.e., after the valflag/vallen nonsense),
 		   * and is measured from the start of the sort_rec.
@@ -3358,7 +3358,7 @@ qfile_put_next_sort_item (THREAD_ENTRY * thread_p, const RECDES * recdes_p, void
 	    {
 	      /* BIG QFILE_TUPLE */
 
-	      /* 
+	      /*
 	       * We didn't record the original vpid, and we should just
 	       * reconstruct the original record from this sort key (rather
 	       * than pressure the page buffer pool by reading in the original
@@ -3580,7 +3580,7 @@ qfile_get_estimated_pages_for_sorting (QFILE_LIST_ID * list_id_p, SORTKEY_INFO *
     {
       /* P_sort_key */
 
-      /* 
+      /*
        * Every Part sort key record will have one int of overhead
        * per field in the key (for the offset vector).
        */
@@ -3591,7 +3591,7 @@ qfile_get_estimated_pages_for_sorting (QFILE_LIST_ID * list_id_p, SORTKEY_INFO *
     {
       /* A_sort_key */
 
-      /* 
+      /*
        * Every Part sort key record will have one int of overhead
        * per field in the key (for the offset vector).
        */
@@ -5135,7 +5135,7 @@ qfile_free_list_cache_entry (THREAD_ENTRY * thread_p, void *data, void *args)
       return ER_FAILED;
     }
 
-  /* 
+  /*
    * Clear out parameter values. (DB_VALUE containers)
    * Remind that the parameter values are cloned in global heap context(0)
    */
@@ -5839,7 +5839,7 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr, con
   tran_isolation = logtb_find_isolation (tran_index);
 #endif /* SERVER_MODE */
 
-  /* 
+  /*
    * The other competing thread which is running the same query
    * already updated this entry after that this and the thread had failed
    * to find the query in the cache.
@@ -5979,7 +5979,7 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr, con
       /* select more victims if insufficient */
       if (k < qfile_List_cache_candidate.num_victims)
 	{
-	  /* 
+	  /*
 	   * The above victim selection algorithm is not completed yet.
 	   * Two double linked lists for list cache entries are needed to
 	   * implement the algorithm efficiently. One for creation time, and
@@ -6045,7 +6045,7 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr, con
   lent->param_values.size = params->size;
   lent->param_values.vals = qfile_get_list_cache_entry_param_values (lent);
 
-  /* 
+  /*
    * Copy parameter values. (DB_VALUE containers)
    * Changing private heap to the global one (0, malloc/free) is
    * needed because cloned db values last beyond request processing time

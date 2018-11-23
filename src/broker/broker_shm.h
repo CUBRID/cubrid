@@ -152,8 +152,8 @@
 #define PAIR_LIST                (2)
 
 /*
- * proxy need to reserve FD for 
- * broker, cas, log etc.. 
+ * proxy need to reserve FD for
+ * broker, cas, log etc..
  */
 #if defined(LINUX)
 #define PROXY_RESERVED_FD 	(256)

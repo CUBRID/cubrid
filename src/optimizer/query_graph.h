@@ -44,17 +44,17 @@ typedef struct qo_class_info_entry QO_CLASS_INFO_ENTRY;
 
 struct qo_class_info_entry
 {
-  /* 
+  /*
    * The name of the class.
    */
   const char *name;
 
-  /* 
+  /*
    * The actual oid of the class.
    */
   OID oid;
 
-  /* 
+  /*
    * The mop pointer to the memory-resident descriptor for the class
    * object.  It is important that we keep this alive while we still
    * need statistics; it our guarantee that the garbage collector won't
@@ -63,7 +63,7 @@ struct qo_class_info_entry
    */
   MOP mop;
 
-  /* 
+  /*
    * The class which contains a statistics structure. This structure will be
    * automatically reclaimed, so there is no need to explicitly free it
    * when the QO_CLASS_INFO structure is freed.
@@ -158,7 +158,7 @@ struct qo_index_entry
   /* index loose scan prefix length or -1 if ILS is not used */
   int ils_prefix_len;
 
-  /* 
+  /*
    * the name of the first indexed attribute in a multi column index
    * the first indexed attribute contain valid statistics
    */
@@ -167,7 +167,7 @@ struct qo_index_entry
   /* key limits */
   PT_NODE *key_limit;
 
-  /* 
+  /*
    * if the first indexed attribute is actually a function expression,
    * statistics will be retrieved from the B-tree , rather that attribute
    * stats. This flag is true only if the function expression is the first key
@@ -256,13 +256,13 @@ struct qo_using_index
 
 struct qo_node
 {
-  /* 
+  /*
    * The environment in which this Node is embedded, and to which it
    * refers for other important information.
    */
   QO_ENV *env;
 
-  /* 
+  /*
    * The PT_NODE from env->pt_tree that gave rise to this graph
    * node.  entity_spec holds all of the interesting information about
    * class oids, etc. which we need to communicate with the statistics
@@ -270,19 +270,19 @@ struct qo_node
    */
   PT_NODE *entity_spec;
 
-  /* 
+  /*
    * The segments (and their equivalence classes) that cover (i.e.,
    * emanate from) this node.
    */
   BITSET segs;
   BITSET eqclasses;
 
-  /* 
+  /*
    * The partition (see below) to which this node belongs.
    */
   QO_PARTITION *partition;
 
-  /* 
+  /*
    * If non-NULL, oid_seg is a segment corresponding to the (virtual)
    * oid attribute of a class.  It is often necessary to retrieve the
    * oid of an object along with other of its attributes (in order to,
@@ -292,7 +292,7 @@ struct qo_node
    */
   QO_SEGMENT *oid_seg;
 
-  /* 
+  /*
    * The set of all nodes that this node MAY be dependent on if it is
    * a derived table that is correlated to this level.  It will be all
    * nodes with an idx less than this node.  This is coarser than
@@ -301,7 +301,7 @@ struct qo_node
    */
   BITSET dep_set;
 
-  /* 
+  /*
    * The set of sargs that apply to this node.  This is an implicit
    * conjunction; elements produced from a scan of this node will
    * satisfy all sargs in the set.  selectivity is the product of the
@@ -310,7 +310,7 @@ struct qo_node
   BITSET sargs;
   double selectivity;
 
-  /* 
+  /*
    * The set of all subqueries that must be evaluated whenever a new
    * row is produced from this node.
    */
@@ -319,7 +319,7 @@ struct qo_node
 
   QO_CLASS_INFO *info;
 
-  /* 
+  /*
    * Summaries of size information from the various constituent
    * classes. ncard is the total number of objects represented by this
    * node, while tcard is the total number of disk pages occupied by
@@ -330,7 +330,7 @@ struct qo_node
   unsigned long int ncard;
   unsigned long int tcard;
 
-  /* 
+  /*
    * The nominal name of this node, used pretty much only for dumping
    * debugging information. Right now, we just pick the name of the
    * first class in the list of classes and subclasses underlying this
@@ -338,19 +338,19 @@ struct qo_node
    */
   const char *class_name;
 
-  /* 
+  /*
    * The ordinal id of this node; this is the id used to identify this
    * node in various bitsets.
    */
   int idx;
 
-  /* 
+  /*
    * The relative id of this node in partition; this is the id used to
    * identify this node in join_info vector.
    */
   int rel_idx;
 
-  /* 
+  /*
    *  Indexes can be viewed from a variety of perspectives. Each class
    *  associated with this node has a collection of indexes which are
    *  possible candidates for use in an index scan. For scans across
@@ -411,31 +411,31 @@ struct qo_node
 
 struct qo_segment
 {
-  /* 
+  /*
    * The environment in which this Segment is embedded.
    */
   QO_ENV *env;
 
-  /* 
+  /*
    * The parse node that gave rise to this Segment.
    */
   PT_NODE *pt_node;
 
 
-  /* 
+  /*
    * The Node at the head (start) of this segment, i.e., the node from
    * which this segment emanates.
    */
   QO_NODE *head;
 
-  /* 
+  /*
    * The Node at the tail (end) of this segment, if any.  This will be
    * non-NULL only if the segment is a join segment, i.e., if the
    * domain of the underlying attribute is object-based.
    */
   QO_NODE *tail;
 
-  /* 
+  /*
    * The link field used to chain together (in trees, actually)
    * segments that belong to the same equivalence class.  This is used
    * by env_assign_eq_classes() to actually create and initialize the
@@ -444,13 +444,13 @@ struct qo_segment
   QO_SEGMENT *eq_root;
   QO_EQCLASS *eqclass;
 
-  /* 
+  /*
    * The actual name of the attribute, squirreled away here for
    * convenience.
    */
   const char *name;
 
-  /* 
+  /*
    * A flags indicating whether this segment is set valued, a class
    * attribute, or a shared attribute.
    */
@@ -461,7 +461,7 @@ struct qo_segment
   /* is index term equality expression? */
   bool index_term_eq_expr;
 
-  /* 
+  /*
    * Statistics information gleaned from the underlying attributes for
    * this segment.  This vector should have the same number of entries
    * as the number of classes underlying the node from which this
@@ -503,13 +503,13 @@ struct qo_eqclass
   /* The Env in which this EqClass is embedded. */
   QO_ENV *env;
 
-  /* 
+  /*
    * The set of segments that belong to this equivalence class (i.e.,
    * that are related by some join term).
    */
   BITSET segs;
 
-  /* 
+  /*
    * The QO_TERM associated with this equivalence class if this class
    * was fabricated specially to deal with complex merge terms.  It
    * should always be the case that this is NULL if segs is non-empty,
@@ -517,7 +517,7 @@ struct qo_eqclass
    */
   QO_TERM *term;
 
-  /* 
+  /*
    * The index of this EqClass in the corresponding Env's eqclasses
    * array.
    */
@@ -535,7 +535,7 @@ struct qo_eqclass
 
 typedef enum
 {
-  /* 
+  /*
    *                                      p  e  f   n
    *                                      a  d  a   u
    *                                      t  g  k   m
@@ -560,7 +560,7 @@ typedef enum
 
 struct qo_term
 {
-  /* 
+  /*
    * WARNING!!! WARNING!!! WARNING!!!
    *
    * If you add any more elements to this struct, be sure to update the
@@ -571,7 +571,7 @@ struct qo_term
   /* The env in which this term is embedded. */
   QO_ENV *env;
 
-  /* 
+  /*
    * The nodes referenced by this term (i.e., the heads of all segments
    * used in this term).
    *
@@ -580,13 +580,13 @@ struct qo_term
    */
   BITSET nodes;
 
-  /* 
+  /*
    * The set of segments involved in the expression that gives rise to
    * this term.
    */
   BITSET segments;
 
-  /* 
+  /*
    * The selectivity of this term (i.e., the fraction of candidates
    * that we expect to satisfy the term) when it is not used as an
    * index.  If T is the cartesian product of all nodes referenced by
@@ -595,36 +595,36 @@ struct qo_term
    */
   double selectivity;
 
-  /* 
+  /*
    * The "flavor" of this term.  This is determined by analysis of the
    * segment or where-clause disjunct that gives rise to the term.
    */
   QO_TERMCLASS term_class;
 
-  /* 
+  /*
    * The rank of this term. used for the same selectivity
    */
   int rank;
 
-  /* 
+  /*
    * The expression that gave rise to this term.  This is either a
    * conjunct from the conjunctive normal form of the query's search
    * condition, or a "manufactured" term spawned by a path term.
    */
   PT_NODE *pt_expr;
 
-  /* 
+  /*
    * The set of all correlated subqueries appearing in this term.
    */
   BITSET subqueries;
 
-  /* 
+  /*
    * -1 == NO_JOIN iff this term is not suitable as a join predicate
    * Currently only applicable to path terms.
    */
   JOIN_TYPE join_type;
 
-  /* 
+  /*
    * can_use_index is non-zero if this term can be implemented with an
    * index under appropriate circumstances, i.e., one or both sides are
    * local names, and each side is "independent" of the other (no node
@@ -636,7 +636,7 @@ struct qo_term
   int can_use_index;
   QO_SEGMENT *index_seg[2];
 
-  /* 
+  /*
    * The two segments involved in a path join term.  It's relatively
    * important to know which one is the (virtual) oid segment and which
    * is the real segment.
@@ -644,7 +644,7 @@ struct qo_term
   QO_SEGMENT *seg;
   QO_SEGMENT *oid_seg;
 
-  /* 
+  /*
    * The head and tail nodes joined by this term if it is a join term.
    * This is redundant, but it is convenient to cache this information
    * here since it tends to get accessed a lot.
@@ -661,7 +661,7 @@ struct qo_term
 
   int flag;			/* flags */
 
-  /* 
+  /*
    * The ordinal id of this term; this is the id used to identify this
    * node in various bitsets.
    */
@@ -669,7 +669,7 @@ struct qo_term
 
   short location;
 
-  /* 
+  /*
    * WARNING!!! WARNING!!! WARNING!!!
    *
    * If you add any more elements to this struct, be sure to update the
@@ -714,26 +714,26 @@ struct qo_term
 
 struct qo_subquery
 {
-  /* 
+  /*
    * Interesting information about subqueries that are directly
    * correlated to this query (i.e., the query being optimized is the
    * innermost query to which the subqueries have correlated
    * references).
    */
 
-  /* 
+  /*
    * The parse tree for the subquery itself.
    */
   PT_NODE *node;
 
-  /* 
+  /*
    * The set of segments (and corresponding nodes) to which the
    * subquery actually refers.
    */
   BITSET segs;
   BITSET nodes;
 
-  /* 
+  /*
    * The QO_TERMs in which this subquery appears, if any.  This will
    * have a cardinality of 1 for normal terms, but it could be larger
    * for dependent derived tables since they can depend upon more than
@@ -742,7 +742,7 @@ struct qo_subquery
    */
   BITSET terms;
 
-  /* 
+  /*
    * This entry's offset in env->subqueries.
    */
   int idx;
@@ -751,7 +751,7 @@ struct qo_subquery
 
 struct qo_partition
 {
-  /* 
+  /*
    * Since the overall join graph can actually be disconnected (this
    * corresponds to a situation where the luser has specified one or
    * more cartesian products), we partition it first and optimize each
@@ -761,7 +761,7 @@ struct qo_partition
    * present, we don't expend much effort in determining that order.
    */
 
-  /* 
+  /*
    * The nodes, edges, and dependencies (sargable terms) in the
    * partition.  This partition might have dependent tables in it that
    * depend on tables in other partitions, so we will need this
@@ -772,7 +772,7 @@ struct qo_partition
   BITSET edges;
   BITSET dependencies;
 
-  /* 
+  /*
    * The optimized plan created for this partition.
    */
   QO_PLAN *plan;
@@ -780,7 +780,7 @@ struct qo_partition
   /* the starting point of this partition's join_info vector that will be allocated. */
   int M_offset;
 
-  /* 
+  /*
    * The id of this partition.
    */
   int idx;
@@ -803,7 +803,7 @@ typedef enum
 
 struct qo_env
 {
-  /* 
+  /*
    * The repository of all optimizer data structures.  These things are
    * all collected into one data structure in case the optimizer ever
    * needs to live in a multi-threaded world.  This adds a little
@@ -811,12 +811,12 @@ struct qo_env
    * parameter), but it's not too bad.
    */
 
-  /* 
+  /*
    * The parser environment that is associated with the pt_tree
    */
   PARSER_CONTEXT *parser;
 
-  /* 
+  /*
    * The path expression tree for which we are to develop a plan.
    * The environment initializer will crawl all over this tree to glean
    * relevant information for the optimizer.
@@ -830,23 +830,23 @@ struct qo_env
   QO_SUBQUERY *subqueries;
   QO_PARTITION *partitions;
 
-  /* 
+  /*
    * A temporary bitset.  This is needed for expr_segs() in build_query_graph
    */
   BITSET *tmp_bitset;
 
-  /* 
+  /*
    * The final plan produced by the optimizer.
    */
   QO_PLAN *final_plan;
 
-  /* 
+  /*
    * The segments (attributes) to be produced as the ultimate result of
    * the plan, i.e., the attributes that the luser expects to receive.
    */
   BITSET final_segs;
 
-  /* 
+  /*
    * Counts and vectors that hold the various collections of nodes,
    * segments, etc.
    */
@@ -866,21 +866,21 @@ struct qo_env
 
   /* true if we should consider generating SORT-LIMIT plans */
   QO_SORT_LIMIT_USE use_sort_limit;
-  /* 
+  /*
    * True iff we found a conjunct which was not an expression.  We assume
    * that this is a false conjunct and we don't need to optimize a query
    * that will return no values.
    */
   int bail_out;
 
-  /* 
+  /*
    * The planner structure used during the search of the plan space.
    * We keep a pointer to it here to simplify cleanup, whether natural
    * or forced by an error.
    */
   QO_PLANNER *planner;
 
-  /* 
+  /*
    * A JMPBUF for aborting from fatal problems.  A fatal problem for
    * the optimizer isn't necessarily a fatal problem for anyone else,
    * since we can always return to the outer context and try the
@@ -888,27 +888,27 @@ struct qo_env
    */
   jmp_buf catch_;
 
-  /* 
+  /*
    * A bitset holding the idx's of all fake terms.  This is convenient
    * for a quick exclusion test necessary during the search for good
    * plans, because fake terms can't be used in certain contexts.
    */
   BITSET fake_terms;
 
-  /* 
+  /*
    * Controls the amount of garbage dumped with plans.  Can be
    * overridden with the environment variable CUBRID_QO_DUMP_LEVEL.
    */
   bool dump_enable;
 
-  /* 
+  /*
    * Controls whether the plan is dumped.  There are situations like
    * "SHOW COLUMNS" when the plan should not be dumped, even if QO_PARAM_LEVEL
    * parameter was set to dump a readable version of the plan
    */
   bool plan_dump_enabled;
 
-  /* 
+  /*
    * If a plan may be using multi range optimization, but the limit is too
    * large, this is set to true.
    */
@@ -941,7 +941,7 @@ struct qo_xasl_index_info
   /* Array of term expressions which are associated with this index. */
   PT_NODE **term_exprs;
 
-  /* 
+  /*
    *  Pointer to the node index entry structure which contains
    *  infomation regarding the index itself.
    */

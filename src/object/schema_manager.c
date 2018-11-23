@@ -1421,7 +1421,7 @@ sm_link_dynamic_methods (METHOD_LINK * links, const char **files, const char **c
 
   if (links != NULL)
     {
-      /* Load the DLL associated with each file in the files array and try to locate each method in them.  If there are 
+      /* Load the DLL associated with each file in the files array and try to locate each method in them.  If there are
        * errors loading a DLL, could continue assuming that Windows has had a chance to popup a message window. */
       for (i = 0; files[i] != NULL && error == NO_ERROR; i++)
 	{
@@ -1457,9 +1457,9 @@ sm_link_dynamic_methods (METHOD_LINK * links, const char **files, const char **c
 		      /* Formerly only did the GetProcAddress if the signature's function pointer was NULL, this
 		       * prevents us from getting new addresses if the DLL changes.  Hopefully this isn't very
 		       * expensive. if (ml->method->signatures->function == NULL) { */
-		      /* its possible that the name they've given for the function name matches exactly the name in the 
+		      /* its possible that the name they've given for the function name matches exactly the name in the
 		       * export list of the DLL, in that case, always try the given name first, if that fails, assume
-		       * that they've left off the initial underscore necessary for DLL function references and add one 
+		       * that they've left off the initial underscore necessary for DLL function references and add one
 		       * automatically. */
 		      strcpy (fname, ml->method->signatures->function_name);
 		      func = GetProcAddress (libhandle, fname);
@@ -1880,7 +1880,7 @@ sm_prelink_methods (DB_OBJLIST * classes)
 const char *
 sm_locate_method_file (SM_CLASS * class_, const char *function)
 {
-  /* 
+  /*
    * DO NOT use nlist() because of installation problems. - elf library linking error on some Linux platform */
   return NULL;
 #if 0
@@ -2997,7 +2997,7 @@ sm_is_reuse_oid_class (MOP op)
  * sm_check_reuse_oid_class() - Tests the reuse OID class flag of a class object.
  *   return: true, false or error with negative value
  *   op(in): class object
- *  
+ *
  */
 
 int
@@ -3534,7 +3534,7 @@ sm_check_class_domain (TP_DOMAIN * domain, MOP class_)
 
   if (domain->type == tp_Type_object && class_ != NULL)
     {
-      /* check for domain class deletions and other delayed updates SINCE THIS IS CALLED FOR EVERY ATTRIBUTE UPDATE, WE 
+      /* check for domain class deletions and other delayed updates SINCE THIS IS CALLED FOR EVERY ATTRIBUTE UPDATE, WE
        * MUST EITHER CACHE THIS INFORMATION OR PERFORM IT ONCE WHEN THE CLASS IS FETCHED */
       (void) sm_filter_domain (domain, NULL);
 
@@ -5343,7 +5343,7 @@ sm_find_index (MOP classop, char **att_names, int num_atts, bool unique_index_on
 
   if (unique_index_only)
     {
-      /* unique indexes are global indexes on class hierarchies and we cannot use them. The exception is when the class 
+      /* unique indexes are global indexes on class hierarchies and we cannot use them. The exception is when the class
        * hierarchy is actually a partitioning hierarchy. In this case, we want to use any global/local index if class_
        * points to the partitioned class and only local indexes if class_ points to a partition */
       if ((class_->inheritance || class_->users) && class_->partition == NULL)
@@ -6229,7 +6229,7 @@ sm_bump_global_schema_version (void)
 
 /*
  * sm_save_nested_view_versions() --  save nested view versions into view_cache
- *   return: 
+ *   return:
  *   parser(in): outer parser
  *   class_object(in): the db object of nested view
  *   class_(in): the SM_CLASS of nested view
@@ -6409,7 +6409,7 @@ sm_virtual_queries (PARSER_CONTEXT * parser, DB_OBJECT * class_object)
 
   if (cl->class_type != SM_CLASS_CT && cl->virtual_query_cache == NULL)
     {
-      /* Okay, this is a bit of a kludge: If there happens to be a cyclic view definition, then the virtual_query_cache 
+      /* Okay, this is a bit of a kludge: If there happens to be a cyclic view definition, then the virtual_query_cache
        * will be allocated during the call to mq_virtual_queries. So, we'll assign it to a temp pointer and check it
        * again.  We need to keep the old one and free the new one because the parser assigned originally contains the
        * error message. */
@@ -6511,7 +6511,7 @@ sm_get_attribute_descriptor (DB_OBJECT * op, const char *name, int class_attribu
 	    {
 	      /* sigh, we didn't know that this was going to be a shared attribute when we checked class authorization
 	       * above, we must now upgrade the lock and check for alter access.
-	       * 
+	       *
 	       * Since this is logically in the name_space of the instance, should we use simple AU_UPDATE
 	       * authorization rather than AU_ALTER even though we're technically modifying the class ? */
 	      if (for_update)
@@ -7012,7 +7012,7 @@ find_superclass (DB_OBJECT * classop, SM_TEMPLATE * temp, DB_OBJECT * super)
     }
   if (!status)
     {
-      /* Look all the way up the hierarchy, could be doing this in the previous loop but lets try to make the detection 
+      /* Look all the way up the hierarchy, could be doing this in the previous loop but lets try to make the detection
        * of immediate superclasses fast as it is likely to be the most common. Recurse so we recognize pending
        * templates on the way up. */
       for (el = super_list; el != NULL && !status; el = el->next)
@@ -7755,7 +7755,7 @@ check_alias_conflict (SM_TEMPLATE * template_, SM_CANDIDATE * candidates)
 
       if (normal->source == NULL || normal->source == template_->op)
 	{
-	  /* Can't use "alias" as an alias for inherited component "name", there is already a locally defined component 
+	  /* Can't use "alias" as an alias for inherited component "name", there is already a locally defined component
 	   * with that name */
 	  ERROR2 (error, ER_SM_ALIAS_COMPONENT_EXISTS, alias->name, alias->obj->name);
 	}
@@ -8476,7 +8476,7 @@ check_resolution_target (SM_TEMPLATE * template_, SM_RESOLUTION * res, int *vali
   valid = 0;
   if (ml_find (template_->inheritance, res->class_mop))
     {
-      /* the class exists, must check to see if the attribute still exists in the class. Note that since we may be in a 
+      /* the class exists, must check to see if the attribute still exists in the class. Note that since we may be in a
        * subclass of the edited class, we have to look for templates on the superclass. */
       error = au_fetch_class_force (res->class_mop, &super, AU_FETCH_READ);
       if (error == NO_ERROR)
@@ -8772,7 +8772,7 @@ retain_former_ids (SM_TEMPLATE * flat)
 				      new_att->id = found->id;
 				      continue;
 				    }
-				  /* 
+				  /*
 				   * search the supers original attribute list
 				   * based on the id of the new one
 				   */
@@ -8836,7 +8836,7 @@ retain_former_ids (SM_TEMPLATE * flat)
 				      new_att->id = found->id;
 				      continue;
 				    }
-				  /* 
+				  /*
 				   * search the supers original attribute list
 				   * based on the id of the new one
 				   */
@@ -9065,7 +9065,7 @@ flatten_properties (SM_TEMPLATE * def, SM_TEMPLATE * flat)
 		  found_match = 1;
 		  for (i = 0; ((attrs[i] != NULL) && found_match); i++)
 		    {
-		      /* 
+		      /*
 		       * Try to find a corresponding attribute in the flattened template
 		       */
 		      for (att = flat->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
@@ -9076,7 +9076,7 @@ flatten_properties (SM_TEMPLATE * def, SM_TEMPLATE * flat)
 			    }
 			}
 
-		      /* 
+		      /*
 		       * If we found an attribute with a matching name but from a
 		       * different source class, it still isn't a match since it was
 		       * inherited from somewhere else.
@@ -9283,7 +9283,7 @@ flatten_template (SM_TEMPLATE * def, MOP deleted_class, SM_TEMPLATE ** flatp, in
       goto memory_error;
     }
 
-  /* Flatten the properties (primarily for constraints). Do this after the components have been flattened so we can see 
+  /* Flatten the properties (primarily for constraints). Do this after the components have been flattened so we can see
    * use this information for selecting constraint properties. */
   if (flatten_properties (def, flat))
     {
@@ -9753,7 +9753,7 @@ fixup_method_self_domains (SM_METHOD * meth, MOP self)
 static void
 fixup_attribute_self_domain (SM_ATTRIBUTE * att, MOP self)
 {
-  /* 
+  /*
    * Remember that attributes have a type pointer cache as well as a full domain.  BOTH of these need to be updated.
    * This is unfortunate, I think its time to remove the type pointer and rely on the domain structure only. */
 
@@ -10839,8 +10839,8 @@ allocate_disk_structures_index (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRA
 	}
     }
 
-  /* Whether we allocated a BTID or not, always write the constraint info back out to the property list.  
-   * This is where the promotion of attribute name references to ids references happens. 
+  /* Whether we allocated a BTID or not, always write the constraint info back out to the property list.
+   * This is where the promotion of attribute name references to ids references happens.
    */
   if (classobj_put_index (&(class_->properties), con->type, con->name, con->attributes, con->asc_desc,
 			  con->attrs_prefix_length, &(con->index_btid), con->filter_predicate, con->fk_info, NULL,
@@ -10882,7 +10882,7 @@ allocate_disk_structures (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasse
       return ER_FAILED;
     }
 
-  /* Allocate_disk_structures may be called twice on the call-stack. Make sure constraints are not decached or recached 
+  /* Allocate_disk_structures may be called twice on the call-stack. Make sure constraints are not decached or recached
    * while they are processed. */
   dont_decache_and_flush = class_->dont_decache_constraints_or_flush;
 
@@ -11050,7 +11050,7 @@ drop_foreign_key_ref (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRAINT * flat
 
   strcpy (saved_name, (*cons)->name);
 
-  /* Since the constraints may be reallocated during the following process, we have to mark a special status flag to be 
+  /* Since the constraints may be reallocated during the following process, we have to mark a special status flag to be
    * used for identifying whether the instance will have been reallocated. */
   class_->constraints->extra_status = SM_FLAG_TO_BE_REINTIALIZED;
 
@@ -11350,7 +11350,7 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
   MOP origin_classop;
   int is_global_index = 0;
 
-  /* Get the cached constraint info for the flattened template. Sigh, convert the template property list to a transient 
+  /* Get the cached constraint info for the flattened template. Sigh, convert the template property list to a transient
    * constraint cache so we have a prayer of dealing with it. */
   if (flat != NULL)
     {
@@ -11390,7 +11390,7 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 		}
 	      else
 		{
-		  /* The index in the new template is not the same, I'm not entirely sure what this means or how we can 
+		  /* The index in the new template is not the same, I'm not entirely sure what this means or how we can
 		   * get here. Possibly if we drop the unique but add it again with the same name but over different
 		   * attributes. */
 		  if (con->attributes[0] != NULL && is_index_owner (classop, con))
@@ -11607,7 +11607,7 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 	}
     }
 end:
-  /* This was used only for convenience here, be sure to free it. Eventually, we'll just maintain these directly on the 
+  /* This was used only for convenience here, be sure to free it. Eventually, we'll just maintain these directly on the
    * template. */
   if (flat_constraints != NULL)
     {
@@ -11822,7 +11822,7 @@ install_new_representation (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
       assign_attribute_id (class_, a, 1);
     }
 
-  /* methods don't currently have ids stored persistently but go ahead and assign them anyway in the hopes that someday 
+  /* methods don't currently have ids stored persistently but go ahead and assign them anyway in the hopes that someday
    * they'll be stored */
   for (m = flat->methods; m != NULL; m = (SM_METHOD *) m->header.next)
     {
@@ -11925,7 +11925,7 @@ install_new_representation (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
     }
 
   /* If the representation was incremented, invalidate any existing statistics cache.  The next time statistics are
-   * requested, we'll go to the server and get them based on the new catalog information. This probably isn't necessary 
+   * requested, we'll go to the server and get them based on the new catalog information. This probably isn't necessary
    * in all cases but let's be safe and waste it unconditionally. */
   if (newrep && class_->stats != NULL)
     {
@@ -12252,7 +12252,7 @@ lock_subclasses (SM_TEMPLATE * def, DB_OBJLIST * newsupers, DB_OBJLIST * cursubs
  * sm_check_catalog_rep_dir () - Checks class representations directory
  *   return: NO_ERROR on success, non-zero for ERROR
  *   classmop(in): class pointer
- *   class_(in/out): class structure, set ch_rep_dir 
+ *   class_(in/out): class structure, set ch_rep_dir
  *   return: NO_ERROR on success, non-zero for ERROR
  */
 
@@ -12263,13 +12263,13 @@ sm_check_catalog_rep_dir (MOP classmop, SM_CLASS * class_)
   int error = NO_ERROR;
   int status;
 
-  /* if the OID is temporary, then we haven't flushed the class yet and it isn't necessary to check since there will be 
+  /* if the OID is temporary, then we haven't flushed the class yet and it isn't necessary to check since there will be
    * no existing entries in the catalog */
 
   if (!OID_ISTEMP (WS_OID (classmop)))
     {
       /* if the oid is permanent, we still may not have flushed the class because the OID could have been assigned
-       * during the transformation of another object that referenced this class. In this case, the catalog manager will 
+       * during the transformation of another object that referenced this class. In this case, the catalog manager will
        * return ER_HEAP_NODATA_NEWADDRESS because it will have no entries for this class oid. */
 
       status = catalog_check_rep_dir (WS_OID (classmop), &rep_dir);
@@ -12440,7 +12440,7 @@ update_subclasses (DB_OBJLIST * subclasses)
 	      error = install_new_representation (sub->op, class_, class_->new_);
 	      if (error == NO_ERROR)
 		{
-		  /* 
+		  /*
 		   * currently, install_new_representation, allocate_disk_structures
 		   * both increment repr_id.
 		   *   NEED MORE CONSIDERATION
@@ -12586,7 +12586,7 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
 
   assert (template_ != NULL);
 
-  /* 
+  /*
    *  Set a savepoint in the event that we are adding a unique constraint
    *  to a class with instances and the constraint is violated.  In this
    *  situation, we do not want to abort the entire transaction.
@@ -12733,7 +12733,7 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
 
 	  /* NOTE: Garbage collection can occur in the following function as a result of the allocation of the class
 	   * MOP.  We must ensure that there are no object handles in the SM_CLASS structure at this point that don't
-	   * have roots elsewhere.  Currently, this is the case since we are simply caching a newly created empty class 
+	   * have roots elsewhere.  Currently, this is the case since we are simply caching a newly created empty class
 	   * structure which will later be populated with install_new_representation.  The template that holds the new
 	   * class contents IS already a GC root. */
 	  template_->op = locator_add_class ((MOBJ) class_, (char *) sm_ch_name ((MOBJ) class_));
@@ -13720,8 +13720,8 @@ sm_add_index (MOP classop, DB_CONSTRAINT_TYPE db_constraint_type, const char *co
 	  goto severe_error;
 	}
 
-      /* since we almost always want to use the index after it has been created, cause the statistics for this class to 
-       * be updated so that the optimizer is able to make use of the new index.  Recall that the optimizer looks at the 
+      /* since we almost always want to use the index after it has been created, cause the statistics for this class to
+       * be updated so that the optimizer is able to make use of the new index.  Recall that the optimizer looks at the
        * statistics structures, not the schema structures. */
       assert_release (!BTID_IS_NULL (&index));
       error = sm_update_statistics (classop, STATS_WITH_SAMPLING);
@@ -13794,7 +13794,7 @@ severe_error:
     }
 
   /* Something happened at a bad time, the database is in an inconsistent state.  Must abort the transaction. Save the
-   * error that caused the problem. We should try to disable error overwriting when we abort so the caller can find out 
+   * error that caused the problem. We should try to disable error overwriting when we abort so the caller can find out
    * what happened. */
   if (attrs != NULL)
     {
@@ -13815,7 +13815,7 @@ severe_error:
       free_and_init (new_filter_index_info);
     }
 
-  /* Some errors will led ws_abort_mops() be called. mops maybe be decached. In this case, its class_ is invalid and we 
+  /* Some errors will led ws_abort_mops() be called. mops maybe be decached. In this case, its class_ is invalid and we
    * cannot access it any more. */
   if (!classop->decached)
     {
@@ -13906,7 +13906,7 @@ sm_drop_index (MOP classop, const char *constraint_name)
     }
   else
     {
-      /* 
+      /*
        *  Remove the index from the class.  We do this is an awkward
        *  way.  First we remove it from the class constraint cache and
        *  then we back propagate the changes to the class property list.
@@ -13933,7 +13933,7 @@ sm_drop_index (MOP classop, const char *constraint_name)
 	  goto severe_error;
 	}
 
-      /* Make sure the class is now marked dirty and flushed so that the catalog is updated.  Also update statistics so 
+      /* Make sure the class is now marked dirty and flushed so that the catalog is updated.  Also update statistics so
        * that the optimizer will know that the index no longer exists. */
       if (locator_update_class (classop) == NULL)
 	{
@@ -13960,7 +13960,7 @@ fail_end:
 
 severe_error:
   /* Something happened at a bad time, the database is in an inconsistent state.  Must abort the transaction. Save the
-   * error that caused the problem. We should try to disable error overwriting when we abort so the caller can find out 
+   * error that caused the problem. We should try to disable error overwriting when we abort so the caller can find out
    * what happened. */
   assert (er_errid () != NO_ERROR);
   error = er_errid ();
@@ -14061,7 +14061,7 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
   bool do_desc;
   int error = NO_ERROR;
   int n_attrs = 0;
-  /* 
+  /*
    *  Construct the constraint name
    */
   if ((class_name == NULL) || (att_names == NULL))
@@ -14105,7 +14105,7 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 	  break;
 	}
 
-      /* 
+      /*
        *  Count the number of characters that we'll need for the name
        */
       name_length = strlen (prefix);
@@ -14206,7 +14206,7 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 	  att_name_prefix_size = ((size_class_and_attrs - class_name_prefix_size) / n_attrs) - 1;
 	  name_length = DB_MAX_IDENTIFIER_LENGTH;
 	}
-      /* 
+      /*
        *  Allocate space for the name and construct it
        */
       name = (char *) malloc (name_length + 1);	/* Remember terminating NULL */
@@ -14439,7 +14439,7 @@ sm_add_secondary_index_on_partition (MOP classop, DB_CONSTRAINT_TYPE constraint_
   SM_PREDICATE_INFO *new_filter_index_info = NULL;
   const char *class_name, *partition_name;
 
-  /* TODO: This will not work for online indexes from the point of view of concurrent transactions since the 
+  /* TODO: This will not work for online indexes from the point of view of concurrent transactions since the
    * global index will hold the lock until all the partitions finished loading.
    * We need to let the partition loading to also demote the global table as well.
    */
@@ -14630,6 +14630,14 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	  auth = AU_ALTER;
 	}
 
+#if defined (SA_MODE)
+      if (index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+	{
+	  // We don't allow online index for SA_MODE.
+	  index_status = SM_NORMAL_INDEX;
+	}
+#endif /* SA_MODE */
+
       if (index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS && classop->lock > IX_LOCK)
 	{
 	  // if the transaction already hold a lock which is greater than IX,
@@ -14653,7 +14661,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 
       if (index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
 	{
-	  /* We allow online index on hierarchies just for the special case of partitions. 
+	  /* We allow online index on hierarchies just for the special case of partitions.
 	   * Here ->users denotes the immediate subclass, while ->inheritance is the immediate superclass.
 	   */
 	  if (partition_type == DB_NOT_PARTITIONED_CLASS
@@ -15582,7 +15590,7 @@ sm_truncate_class (MOP class_mop)
       return error;
     }
 
-  /* We need to flush everything so that the server logs the inserts that happened before the truncate. We need this in 
+  /* We need to flush everything so that the server logs the inserts that happened before the truncate. We need this in
    * order to make sure that a rollback takes us into a consistent state. If we can prove that simply discarding the
    * objects would work correctly we would be able to remove this call. However, it's better to be safe than sorry. */
   error = sm_flush_and_decache_objects (class_mop, true);

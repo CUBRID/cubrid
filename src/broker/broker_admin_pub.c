@@ -1924,7 +1924,7 @@ admin_conf_change (int master_shm_id, const char *br_name, const char *conf_name
     {
       int size;
 
-      /* 
+      /*
        * Use "KB" as unit, because MAX_ACCESS_LOG_MAX_SIZE uses this unit.
        * the range of the config value should be verified to avoid the invalid setting.
        */

@@ -152,7 +152,7 @@ compactdb_start (bool verbose_flag)
   int status = 0;
   THREAD_ENTRY *thread_p;
 
-  /* 
+  /*
    * Build class name table
    */
 
@@ -181,7 +181,7 @@ compactdb_start (bool verbose_flag)
 
   thread_p = thread_get_thread_entry_info ();
 
-  /* 
+  /*
    * Dump the object definitions
    */
   disk_init ();
@@ -201,7 +201,7 @@ compactdb_start (bool verbose_flag)
       printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_FAILED),
 	      total_objects - failed_objects, total_objects);
       status = 1;
-      /* 
+      /*
        * TODO Processing should not continue in this case as we cannot be sure
        * that all references to deleted objects have been set to NULL. Most of
        * the code in the offline compactdb should be modified to check for
@@ -258,7 +258,7 @@ phase3:
     }
   db_commit_transaction ();
 
-  /* 
+  /*
    * Cleanup
    */
   locator_free_list_mops (class_table);
@@ -376,7 +376,7 @@ process_class (THREAD_ENTRY * thread_p, DB_OBJECT * class_, bool verbose_flag)
     }
   desc_free (desc_obj);
 
-  /* 
+  /*
    * Now that the class has been processed, we can reclaim space in the catalog
    * and the schema.
    * Might be able to ignore failed objects here if we're sure that's
@@ -697,7 +697,7 @@ update_indexes (OID * class_oid, OID * obj_oid, RECDES * rec)
 
   if (old_object)
     {
-      /* 
+      /*
        * 4th arg -> give up setting updated attr info
        * for replication..
        * 9rd arg -> data or schema, 10th arg -> max repl. log or not

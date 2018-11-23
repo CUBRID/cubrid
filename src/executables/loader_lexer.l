@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -100,7 +100,7 @@ extern int loader_yyline;
     yylineno = loader_yyline++;
     if (load_fail_flag)
       {
-        load_fail_flag = false;              
+        load_fail_flag = false;
         loader_load_fail ();
       }
     return NL;
@@ -497,7 +497,7 @@ extern int loader_yyline;
 
 \\\n {
     yylineno = loader_yyline++;
-    /* continue line */ ; 
+    /* continue line */ ;
 }
 
 "," {
@@ -630,7 +630,7 @@ extern int loader_yyline;
 void loader_yyerror(const char *s)
 {
   ldr_increment_err_total(ldr_Current_context);
-  fprintf(stderr, 
+  fprintf(stderr,
           msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
                           LOADDB_MSG_SYNTAX_ERR),
           yylineno, yytext);
@@ -660,13 +660,13 @@ loader_set_quoted_string_buffer (void)
 	{
 	  qstr_Malloc_buffer_size = MAX_QUOTED_STR_BUF_SIZE;
 	  qstr_Malloc_buffer = malloc (qstr_Malloc_buffer_size);
-	  
+	
 	  if (qstr_Malloc_buffer == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	              ER_OUT_OF_VIRTUAL_MEMORY, 1,
 	              (size_t) qstr_Malloc_buffer_size);
-	      YY_FATAL_ERROR (er_msg());        
+	      YY_FATAL_ERROR (er_msg());
 	      return;
 	    }
 	}
@@ -688,16 +688,16 @@ loader_append_string (char c)
 	  qstr_Malloc_buffer_size *= 2;
 	  qstr_Malloc_buffer = realloc (qstr_Malloc_buffer,
 	                                qstr_Malloc_buffer_size);
-	                                
+	
 	  if (qstr_Malloc_buffer == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	              ER_OUT_OF_VIRTUAL_MEMORY, 1,
 	              (size_t) qstr_Malloc_buffer_size);
-	      YY_FATAL_ERROR (er_msg());        
+	      YY_FATAL_ERROR (er_msg());
 	      return;
 	    }
-	    
+	
 	  qstr_Buf_p = qstr_Malloc_buffer;
 	}
     }
@@ -716,17 +716,17 @@ loader_append_string (char c)
             {
 	      qstr_Malloc_buffer_size = MAX_QUOTED_STR_BUF_SIZE * 2;
 	      qstr_Malloc_buffer = malloc (qstr_Malloc_buffer_size);
-	  
+	
 	      if (qstr_Malloc_buffer == NULL)
 	        {
 	          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	                  ER_OUT_OF_VIRTUAL_MEMORY, 1, 
+	                  ER_OUT_OF_VIRTUAL_MEMORY, 1,
 	                  (size_t) qstr_Malloc_buffer_size);
-	          YY_FATAL_ERROR (er_msg());        
+	          YY_FATAL_ERROR (er_msg());
 	          return;
 	        }
 	    }
-	    
+	
 	  memcpy (qstr_Malloc_buffer, qstr_Buf_p, qstr_Buf_idx);
 	  qstr_Buf_p = qstr_Malloc_buffer;
 	  qstr_Buf_pool_idx--;
@@ -757,7 +757,7 @@ loader_get_string_container (void)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	         ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LDR_STRING));
-	  YY_FATAL_ERROR (er_msg());        
+	  YY_FATAL_ERROR (er_msg());
 	  return NULL;
 	}
 
@@ -781,7 +781,7 @@ loader_make_string_by_yytext (void)
 
   str->size = yyleng;
 
-  if (copy_Buf_pool_idx < COPY_BUF_POOL_SIZE 
+  if (copy_Buf_pool_idx < COPY_BUF_POOL_SIZE
       && str->size < MAX_COPY_BUF_SIZE)
     {
       str->val = &(copy_Buf_pool[copy_Buf_pool_idx][0]);
@@ -793,15 +793,15 @@ loader_make_string_by_yytext (void)
   else
     {
       str->val = malloc (str->size + 1);
-      
+
       if (str->val == NULL)
         {
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	          ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (str->size + 1));
-	  YY_FATAL_ERROR (er_msg());        
+	  YY_FATAL_ERROR (er_msg());
 	  return NULL;
         }
-        
+
       memcpy (str->val, yytext, str->size);
       str->val[str->size] = '\0';
       str->need_free_val = true;
@@ -839,7 +839,7 @@ loader_make_string_by_buffer (void)
     }
   else
     {
-      if (copy_Buf_pool_idx < COPY_BUF_POOL_SIZE 
+      if (copy_Buf_pool_idx < COPY_BUF_POOL_SIZE
           && str->size < MAX_COPY_BUF_SIZE)
 	{
 	  str->val = &(copy_Buf_pool[copy_Buf_pool_idx][0]);
@@ -860,7 +860,7 @@ loader_make_string_by_buffer (void)
 		
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 	              ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) qstr_Buf_idx);
-	      YY_FATAL_ERROR (er_msg());        
+	      YY_FATAL_ERROR (er_msg());
 	      return NULL;
 	    }
 
@@ -868,14 +868,14 @@ loader_make_string_by_buffer (void)
 	  str->need_free_val = true;
 	}
     }
-    
+
   if (intl_check_string (str->val, str->size, &invalid_pos, LANG_SYS_CODESET) != INTL_UTF8_VALID)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_CHAR, 1,
 	      invalid_pos - str->val);
       YY_FATAL_ERROR (er_msg());
       return NULL;
-    }    
+    }
 
   return str;
 }

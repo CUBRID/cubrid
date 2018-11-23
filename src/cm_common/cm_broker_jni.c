@@ -18,9 +18,9 @@
  */
 
 
-/* 
+/*
  * always define this macro.
- * developer can move this macro definition to global 
+ * developer can move this macro definition to global
  * configuration header if need to control this option
  */
 #define SUPPORT_BROKER_JNI

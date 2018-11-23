@@ -124,7 +124,7 @@ parse_error (DB_TYPE token_type, const char *token)
 {
   display_error_line (0);
 
-  /* 
+  /*
    * Note, this is always called after a successful call
    * to ldr_add_attribute() via get_value().  At this point
    * the current value counter has been incremented to the

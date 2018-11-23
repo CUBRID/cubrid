@@ -214,7 +214,7 @@ find_attribute (SM_CLASS ** classp, SM_ATTRIBUTE ** attp, MOP op, const char *na
 	    {
 	      if (att->header.name_space == ID_SHARED_ATTRIBUTE)
 		{
-		  /* 
+		  /*
 		   * sigh, we didn't know that this was going to be a shared attribute
 		   * when we checked class authorization above, we must now upgrade
 		   * the lock and check for alter access.
@@ -456,7 +456,7 @@ obj_locate_attribute (MOP op, int attid, int for_write, char **memp, SM_ATTRIBUT
 static int
 assign_null_value (MOP op, SM_ATTRIBUTE * att, char *mem)
 {
-  /* 
+  /*
    * the mr_ functions are responsible for initializing/freeing the
    * value if NULL is passed in
    */
@@ -579,7 +579,7 @@ assign_set_value (MOP op, SM_ATTRIBUTE * att, char *mem, SETREF * setref)
 	}
       else
 	{
-	  /* 
+	  /*
 	   * remove ownership information in the current set,
 	   * need to be able to free this !!!
 	   */
@@ -789,7 +789,7 @@ obj_set_att (MOP op, SM_CLASS * class_, SM_ATTRIBUTE * att, DB_VALUE * value, SM
 	}
       else
 	{
-	  /* 
+	  /*
 	   * simple, single valued update without triggers,
 	   * avoid template overhead
 	   */
@@ -802,7 +802,7 @@ obj_set_att (MOP op, SM_CLASS * class_, SM_ATTRIBUTE * att, DB_VALUE * value, SM
 		      ref_mop = vid_get_referenced_mop (op);
 		      if (ref_mop)
 			{
-			  /* 
+			  /*
 			   * lock the object for update, this also ensures the class
 			   * gets cached in the MOP which is important for the
 			   * following usage of ref_mop->class
@@ -814,7 +814,7 @@ obj_set_att (MOP op, SM_CLASS * class_, SM_ATTRIBUTE * att, DB_VALUE * value, SM
 			      return er_errid ();
 			    }
 
-			  /* 
+			  /*
 			   * some attributes may not be updatable
 			   * even if the instance itself is updatable.
 			   */
@@ -875,7 +875,7 @@ obj_set_att (MOP op, SM_CLASS * class_, SM_ATTRIBUTE * att, DB_VALUE * value, SM
 	      mem = (char *) (((char *) obj) + att->offset);
 	    }
 
-	  /* 
+	  /*
 	   * now that we have a memory pointer into the object, must pin it
 	   * to prevent workspace flush from destroying it
 	   */
@@ -1105,13 +1105,13 @@ get_object_value (MOP op, SM_ATTRIBUTE * att, char *mem, DB_VALUE * source, DB_V
 	{
 	  /* Check that this operation is not coming from vid workspace management. This context implies that the
 	   * object will not be passed directly to an application. An operation being done may be an object flush, and
-	   * it is undesirable for a side effect of flushing to be fetching more objects, particularly when fetching an 
+	   * it is undesirable for a side effect of flushing to be fetching more objects, particularly when fetching an
 	   * object can cause flushing and then infinite recursion. */
 	  if (!vid_inhibit_null_check)
 	    {
 	      rc = au_fetch_instance (current, &object, AU_FETCH_READ, TM_TRAN_READ_FETCH_VERSION (), AU_SELECT);
 	    }
-	  /* 
+	  /*
 	   * do NOT mark current as deleted because the fetch may
 	   * have encountered an error which needs to be returned!
 	   */
@@ -1136,7 +1136,7 @@ get_object_value (MOP op, SM_ATTRIBUTE * att, char *mem, DB_VALUE * source, DB_V
       /* convert deleted MOPs to NULL values */
       db_make_null (dest);
 
-      /* 
+      /*
        * set the attribute value so we don't hit this condition again,
        * note that this doesn't dirty the object
        */
@@ -1248,7 +1248,7 @@ get_set_value (MOP op, SM_ATTRIBUTE * att, char *mem, DB_VALUE * source, DB_VALU
 	}
     }
 
-  /* 
+  /*
    * make sure set has proper ownership tags, this shouldn't happen
    * in normal circumstances
    */
@@ -1741,7 +1741,7 @@ obj_get_temp (DB_OBJECT * obj, SM_CLASS * class_, SM_ATTRIBUTE * att, DB_VALUE *
       assignment = temp->assignments[att->order];
       if (assignment != NULL)
 	{
-	  /* 
+	  /*
 	   * If this is a "new" object, return the assignment value, otherwise
 	   * return the saved value.
 	   */
@@ -1754,7 +1754,7 @@ obj_get_temp (DB_OBJECT * obj, SM_CLASS * class_, SM_ATTRIBUTE * att, DB_VALUE *
 	      src = assignment->variable;
 	    }
 
-	  /* 
+	  /*
 	   * Note that for sets, the ownership may get tagged with
 	   * a temporary object
 	   */
@@ -1763,7 +1763,7 @@ obj_get_temp (DB_OBJECT * obj, SM_CLASS * class_, SM_ATTRIBUTE * att, DB_VALUE *
 	}
       else
 	{
-	  /* 
+	  /*
 	   * Couldn't find it in the template, get it out of the real object.
 	   * Since we've already done some of the work, could optimize
 	   * the value fetch a bit.  Make sure we use the base object so
@@ -1776,7 +1776,7 @@ obj_get_temp (DB_OBJECT * obj, SM_CLASS * class_, SM_ATTRIBUTE * att, DB_VALUE *
 	    }
 	  else
 	    {
-	      /* 
+	      /*
 	       * there was no base object so we must be performing an insertion,
 	       * in this case, the value is considered to be NULL
 	       */
@@ -1826,7 +1826,7 @@ obj_set_temp (DB_OBJECT * obj, SM_ATTRIBUTE * att, DB_VALUE * value)
 	}
       else
 	{
-	  /* 
+	  /*
 	   * Treat this like a normal template assignment.  Remember,
 	   * this template may have been created on a virtual class and if
 	   * so, it is expecting attribute names on the virtual class rather
@@ -2132,7 +2132,7 @@ obj_delete (MOP op)
       goto error_exit;
     }
 
-  /* 
+  /*
    * Note that if "op" is a VMOP, au_fetch_instance () will have returned
    * "obj" as a pointer to the BASE INSTANCE memory which is not the instance
    * associated with "op".  When this happens we need to get the base MOP so
@@ -2142,7 +2142,7 @@ obj_delete (MOP op)
   base_op = op;
   if (op->is_vid && class_->class_type == SM_VCLASS_CT)
     {
-      /* 
+      /*
        * This is a view, get the base MOP.
        * What happens here if this is a non-updatable view?
        */
@@ -2211,7 +2211,7 @@ obj_delete (MOP op)
 	}
     }
 
-  /* 
+  /*
    * Unpin this now since the remaining operations will mark the instance as
    * deleted and it doesn't make much sense to have pinned & deleted objects.
    */
@@ -2222,7 +2222,7 @@ obj_delete (MOP op)
     }
   unpin_on_error = false;
 
-  /* 
+  /*
    * We don't need to decache the object as it will be decached when the mop
    * is GC'd in the usual way.
    */
@@ -2669,24 +2669,24 @@ check_args (SM_METHOD * method, ARGSTATE * state)
       for (i = 0; i < state->nargs && error == NO_ERROR; i++)
 	{
 
-	  /* 
+	  /*
 	   * find the argument matching this value, this should be an array lookup !
 	   * remember the arg index is one based
 	   */
 	  for (arg = sig->args; arg != NULL && arg->index != i + 1; arg = arg->next);
-	  /* 
+	  /*
 	   * if there is no definition for a particular argument, assume it
 	   * is a "wildcard" and will match any domain
 	   */
 	  if (arg != NULL)
 	    {
-	      /* 
+	      /*
 	       * Try to use exact domain matching for method arguments !
 	       */
 	      dom = tp_domain_select (arg->domain, state->values[i], 0, TP_EXACT_MATCH);
 	      if (dom == NULL)
 		{
-		  /* 
+		  /*
 		   * We don't have an exact match, so try a "near" match, i.e.,
 		   * one where we can get what we want simply by changing a
 		   * string domain (without actually copying the string).  This
@@ -2797,7 +2797,7 @@ obj_send_method_va (MOP obj, SM_CLASS * class_, SM_METHOD * method, DB_VALUE * r
   if (func != NULL)
     {
       sig = method->signatures;
-      /* 
+      /*
        * calculate the expected number of arguments
        * allow the case where the arg count is set but there are no
        * arg definitions, should be an error
@@ -2990,7 +2990,7 @@ obj_send_method_list (MOP obj, SM_CLASS * class_, SM_METHOD * method, DB_VALUE *
     {
       sig = method->signatures;
 
-      /* 
+      /*
        * calculate the expected number of arguments
        * allow the case where the arg count is set but there are no
        * arg definitions, should be an error
@@ -3007,7 +3007,7 @@ obj_send_method_list (MOP obj, SM_CLASS * class_, SM_METHOD * method, DB_VALUE *
 	}
       else
 	{
-	  /* 
+	  /*
 	   * what happens when the actual count doesn't match the expected
 	   * count and there is no domain definition ?
 	   * for now, assume the supplied args are correct
@@ -3158,7 +3158,7 @@ obj_send_method_array (MOP obj, SM_CLASS * class_, SM_METHOD * method, DB_VALUE 
     {
       sig = method->signatures;
 
-      /* 
+      /*
        * calculate the expected number of arguments
        * allow the case where the arg count is set but there are no
        * arg definitions, should be an error
@@ -3175,7 +3175,7 @@ obj_send_method_array (MOP obj, SM_CLASS * class_, SM_METHOD * method, DB_VALUE 
 	}
       else
 	{
-	  /* 
+	  /*
 	   * what happens when the actual count doesn't match the expected
 	   * count and there is no domain definition ?
 	   * for now, assume the supplied args are correct
@@ -3377,7 +3377,7 @@ find_unique (MOP classop, SM_ATTRIBUTE * att, DB_VALUE * value, AU_FETCHMODE fet
       return NULL;
     }
 
-  /* 
+  /*
    * Check to see if we have any sort of index we can search, if not,
    * then return an error indicating that the indexes do not exist rather than
    * the "object not found" error.
@@ -3417,7 +3417,7 @@ find_unique (MOP classop, SM_ATTRIBUTE * att, DB_VALUE * value, AU_FETCHMODE fet
   value_type = DB_VALUE_TYPE (value);
   if (value_type == DB_TYPE_NULL)
     {
-      /* 
+      /*
        * We cannot search for a "null" value, though perhaps we could with some
        * additional effort.
        */
@@ -3442,19 +3442,19 @@ find_unique (MOP classop, SM_ATTRIBUTE * att, DB_VALUE * value, AU_FETCHMODE fet
       found = ws_mop (&unique_oid, NULL);
     }
 
-  /* 
+  /*
    * If we got an object, obtain an "S" lock before returning it, this
    * avoid problems peeking at objects that were created
    * by another transaction but which have not yet been committed.
    * We may suspend here.
    * Note that we're not getting an S lock on the class so we're still
    * not technically correct in terms of the usual index scan locking
-   * model, but that's actually a desirable feature in this case.   
+   * model, but that's actually a desirable feature in this case.
    */
   if (found != NULL)
     {
       /* Using LC_FETCH_DIRTY_VERSION instead current version, is a quick fix. Thus, we need to avoid fetching current
-       * version without any instance or shared/exclusive class lock, since btree_find_unique does not acquire locks in 
+       * version without any instance or shared/exclusive class lock, since btree_find_unique does not acquire locks in
        * all cases. */
       if (au_fetch_instance_force (found, NULL, fetchmode, LC_FETCH_DIRTY_VERSION) != NO_ERROR)
 	{
@@ -3463,7 +3463,7 @@ find_unique (MOP classop, SM_ATTRIBUTE * att, DB_VALUE * value, AU_FETCHMODE fet
     }
 
 notfound:
-  /* 
+  /*
    * since this is a common case, set this as a warning so we don't clutter
    * up the error log.
    */
@@ -3970,14 +3970,14 @@ obj_find_object_by_cons_and_key (MOP classop, SM_CLASS_CONSTRAINT * cons, DB_VAL
   if (btree_find_unique (&cons->index_btid, key, ws_oid (classop), &unique_oid) == BTREE_KEY_FOUND)
     {
       obj = ws_mop (&unique_oid, NULL);
-      /* 
+      /*
        * If we got an object, obtain an "S" lock before returning it, this
        * avoid problems peeking at objects that were created
        * by another transaction but which have not yet been committed.
        * We may suspend here.
        * Note that we're not getting an S lock on the class so we're still
        * not technically correct in terms of the usual index scan locking
-       * model, but that's actually a desirable feature in this case.       
+       * model, but that's actually a desirable feature in this case.
        */
       if (obj != NULL)
 	{
@@ -3992,7 +3992,7 @@ obj_find_object_by_cons_and_key (MOP classop, SM_CLASS_CONSTRAINT * cons, DB_VAL
     }
 
 error_return:
-  /* 
+  /*
    * since this is a common case, set this as a warning so we don't clutter
    * up the error log.
    */
@@ -4120,7 +4120,7 @@ obj_find_object_by_pkey (MOP classop, DB_VALUE * key, AU_FETCHMODE fetchmode)
   value_type = DB_VALUE_TYPE (key);
   if (value_type == DB_TYPE_NULL)
     {
-      /* 
+      /*
        * We cannot search for a "null" value, though perhaps we could with some
        * additional effort.
        */
@@ -4154,19 +4154,19 @@ obj_find_object_by_pkey (MOP classop, DB_VALUE * key, AU_FETCHMODE fetchmode)
       obj = ws_mop (&unique_oid, NULL);
     }
 
-  /* 
+  /*
    * If we got an object, obtain an "S" lock before returning it, this
    * avoid problems peeking at objects that were created
    * by another transaction but which have not yet been committed.
    * We may suspend here.
    * Note that we're not getting an S lock on the class so we're still
    * not technically correct in terms of the usual index scan locking
-   * model, but that's actually a desirable feature in this case.   
+   * model, but that's actually a desirable feature in this case.
    */
   if (obj != NULL)
     {
       /* Using LC_FETCH_DIRTY_VERSION instead current version, is a quick fix. Thus, we need to avoid fetching current
-       * version without any instance or shared/exclusive class lock, since btree_find_unique does not acquire locks in 
+       * version without any instance or shared/exclusive class lock, since btree_find_unique does not acquire locks in
        * all cases. */
       if (au_fetch_instance_force (obj, NULL, fetchmode, LC_FETCH_DIRTY_VERSION) != NO_ERROR)
 	{
@@ -4175,7 +4175,7 @@ obj_find_object_by_pkey (MOP classop, DB_VALUE * key, AU_FETCHMODE fetchmode)
     }
 
 notfound:
-  /* 
+  /*
    * since this is a common case, set this as a warning so we don't clutter
    * up the error log.
    */
@@ -4252,7 +4252,7 @@ obj_isinstance (MOP obj)
 	      is_instance = 1;
 	    }
 
-	  /* 
+	  /*
 	   * before declaring this an instance, we have to make sure it
 	   * isn't deleted
 	   */
@@ -4307,7 +4307,7 @@ obj_is_instance_of (MOP obj, MOP class_mop)
   int status = 0;
   MOP object_class_mop;
 
-  /* 
+  /*
    * is it possible for the obj->class field to be unset and yet still have
    * the class MOP in the workspace ?
    */
@@ -4376,7 +4376,7 @@ obj_lock (MOP op, int for_write)
 }
 
 /*
- * obj_class_lock - Simplified interface for obtaining the basic read/write locks 
+ * obj_class_lock - Simplified interface for obtaining the basic read/write locks
  *		    on a class object.
  *    return: error code
  *    op(in): object to lock
@@ -4407,7 +4407,7 @@ obj_class_lock (MOP op, int for_write)
 }
 
 /*
- * obj_inst_lock - Simplified interface for obtaining the basic read/write locks 
+ * obj_inst_lock - Simplified interface for obtaining the basic read/write locks
  *		   on an instance object.
  *    return: error code
  *    op(in): object to lock

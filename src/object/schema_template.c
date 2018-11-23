@@ -1228,7 +1228,7 @@ smt_add_set_attribute_domain (SM_TEMPLATE * template_, const char *name, int cla
 	    }
 	  else
 	    {
-	      /* We need to make sure that we don't update a cached domain since we may not be the only one pointing to 
+	      /* We need to make sure that we don't update a cached domain since we may not be the only one pointing to
 	       * it.  If the domain is cached, make a copy of it, update it, then cache it. */
 	      if (att->domain->is_cached)
 		{
@@ -1394,7 +1394,7 @@ smt_set_attribute_default (SM_TEMPLATE * template_, const char *name, int class_
 
 	      /* if there wasn't an previous original value, take this one. This can only happen for new templates OR
 	       * if this is a new attribute that was added during this template OR if this is the first time setting a
-	       * default value to the attribute. This should be handled by using candidates in the template and storing 
+	       * default value to the attribute. This should be handled by using candidates in the template and storing
 	       * an extra bit field in the candidate structure. See the comment above sm_attribute for more information
 	       * about "original_value". */
 	      if (att->flags & SM_ATTFLAG_NEW)
@@ -1554,8 +1554,8 @@ smt_add_constraint_to_property (SM_TEMPLATE * template_, SM_CONSTRAINT_TYPE type
 
   db_make_null (&cnstr_val);
 
-  /* 
-   *  Check if the constraint already exists. Skip it if we have an online index building done. 
+  /*
+   *  Check if the constraint already exists. Skip it if we have an online index building done.
    */
   if (index_status != SM_ONLINE_INDEX_BUILDING_DONE)
     {
@@ -2108,7 +2108,7 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
       goto error_return;
     }
 
-  /* 
+  /*
    *  Process constraint
    */
   if (SM_IS_ATTFLAG_INDEX_FAMILY (constraint))
@@ -2189,7 +2189,7 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
     }
   else if (constraint == SM_ATTFLAG_NON_NULL)
     {
-      /* 
+      /*
        *  We do not support NOT NULL constraints for;
        *    - normal (not class and shared) attributes of virtual classes
        *    - multiple attributes
@@ -2732,7 +2732,7 @@ rename_constraint (SM_TEMPLATE * ctemplate, SM_CLASS_CONSTRAINT * sm_cons, const
 	}
       else
 	{
-	  /* Class references to another one (owner class). The below rename FK ref in owner class and update the owner 
+	  /* Class references to another one (owner class). The below rename FK ref in owner class and update the owner
 	   * class. */
 	  error = sm_rename_foreign_key_ref (ref_clsop, btid, old_name, new_name);
 	}
@@ -3446,7 +3446,7 @@ smt_delete_super_connect (SM_TEMPLATE * template_, MOP super_class)
 	      error = ml_append (&template_->inheritance, s->op, NULL);
 	    }
 
-	  /* It is unclear what the semantics of inheriting resolutions are force the user to respecify resolutions for 
+	  /* It is unclear what the semantics of inheriting resolutions are force the user to respecify resolutions for
 	   * conflicts on super supers */
 	}
     }
@@ -3686,7 +3686,7 @@ check_local_definition (SM_TEMPLATE * template_, const char *name, const char *a
       comp = find_component (template_, alias, class_stuff);
       if (comp != NULL)
 	{
-	  /* Can't use "alias" as an alias for inherited component "name", there is already a locally defined component 
+	  /* Can't use "alias" as an alias for inherited component "name", there is already a locally defined component
 	   * with that name */
 	  ERROR2 (error, ER_SM_ALIAS_COMPONENT_EXISTS, alias, name);
 	  return error;
@@ -4582,7 +4582,7 @@ smt_change_class_shared_attribute_domain (SM_ATTRIBUTE * att, DB_DOMAIN * new_do
  *
  *   return: MOP on success, NULL for ERROR
  *   ctemplate(in): class template
- *   constrant_name(in): 
+ *   constrant_name(in):
  *
  *   Note: This function requires that the given constraint must exist in the
  *         class of ctemplate.

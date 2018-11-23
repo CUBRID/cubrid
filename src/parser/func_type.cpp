@@ -27,7 +27,6 @@
 #include "parser.h"
 #include "parser_message.h"
 
-#if 0
 //PT_TYPE_MAYBE
 // - for the moment I don't see how to eliminate PT_TYPE_MAYBE from functions with multiple signature
 // - with PT_TYPE_MAYBE in signature, the final type will not be decided during type checking but later
@@ -37,7 +36,6 @@
 //   2. handle from code
 //   ... but there are cases when the cast should be made
 //   but neither one of them is OK
-#endif
 
 std::vector<func_signature> func_signature::integer =
 {
@@ -242,6 +240,12 @@ std::vector<func_signature> func_signature::json_contains_path =
   {PT_TYPE_INTEGER, {PT_GENERIC_TYPE_JSON_DOC, PT_GENERIC_TYPE_STRING}, {PT_GENERIC_TYPE_STRING}},
 };
 
+std::vector<func_signature> func_signature::json_keys =
+{
+  {PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC}, {}},
+  {PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC, PT_GENERIC_TYPE_STRING}, {}},
+};
+
 std::vector<func_signature> func_signature::json_search =
 {
 // all signatures: json_doc, one_or_all_str, search_str[, escape_char[, path] ... -> JSON_DOC
@@ -287,7 +291,8 @@ std::vector<func_signature> func_signature::generic =
   {0, {PT_GENERIC_TYPE_ANY}, {}},
 };
 
-std::vector<func_signature> *func_signature::get_signatures (FUNC_TYPE ft)
+std::vector<func_signature> *
+func_signature::get_signatures (FUNC_TYPE ft)
 {
   switch (ft)
     {
@@ -365,7 +370,7 @@ std::vector<func_signature> *func_signature::get_signatures (FUNC_TYPE ft)
     case F_JSON_INSERT:
       return &json_doc_r_path_val;
     case F_JSON_KEYS:
-      return &json_doc_path;
+      return &json_keys;
     case F_JSON_MERGE:
     case F_JSON_MERGE_PATCH:
       return &json_doc_r_doc;
@@ -403,26 +408,7 @@ std::vector<func_signature> *func_signature::get_signatures (FUNC_TYPE ft)
     }
 }
 
-const char *str (const func_signature &signature, string_buffer &sb)
-{
-  ::str (signature.ret, sb);
-  sb ("(");
-  for (auto i: signature.fix)
-    {
-      ::str (i, sb);
-      sb (",");
-    }
-  sb ("{");
-  for (auto i: signature.rep)
-    {
-      ::str (i, sb);
-      sb (",");
-    }
-  sb ("})");
-  return sb.get_buffer();
-}
-
-const char *str (FUNC_TYPE ft)
+const char *pt_func_type_to_string (FUNC_TYPE ft)
 {
   switch (ft)
     {
@@ -558,13 +544,57 @@ const char *str (FUNC_TYPE ft)
     }
 }
 
-bool Func::cmp_types_equivalent (const pt_arg_type &type, pt_type_enum type_enum)
+void
+func_signature::to_string_buffer (string_buffer &sb) const
+{
+  bool first = true;
+  for (auto fix_arg : fix)
+    {
+      if (first)
+	{
+	  first = false;
+	}
+      else
+	{
+	  sb (", ");
+	}
+      pt_arg_type_to_string_buffer (fix_arg, sb);
+    }
+  if (!rep.empty ())
+    {
+      if (!first)
+	{
+	  sb (", ");
+	}
+      sb ("repeat[");
+      first = true;
+      for (auto rep_arg : rep)
+	{
+	  if (first)
+	    {
+	      first = false;
+	    }
+	  else
+	    {
+	      sb (", ");
+	    }
+	  pt_arg_type_to_string_buffer (rep_arg, sb);
+	}
+      sb ("]");
+    }
+  sb (" -> ");
+  pt_arg_type_to_string_buffer (ret, sb);
+}
+
+bool
+Func::cmp_types_equivalent (const pt_arg_type &type, pt_type_enum type_enum)
 {
   assert (type.type != pt_arg_type::INDEX);
   return type_enum == PT_TYPE_NULL || pt_are_equivalent_types (type, type_enum);
 }
 
-bool Func::cmp_types_castable (const pt_arg_type &type, pt_type_enum type_enum) //is possible to cast type_enum -> type?
+bool
+Func::cmp_types_castable (const pt_arg_type &type, pt_type_enum type_enum) //is possible to cast type_enum -> type?
 {
   assert (type.type != pt_arg_type::INDEX);
   if (type_enum == PT_TYPE_NULL)
@@ -631,7 +661,7 @@ bool Func::cmp_types_castable (const pt_arg_type &type, pt_type_enum type_enum) 
     case PT_GENERIC_TYPE_JSON_DOC:
     case PT_GENERIC_TYPE_JSON_VAL:
       // it will be resolved at runtime
-      return true;
+      return PT_IS_NUMERIC_TYPE (type_enum);      // numerics can be converted to json
 
     case PT_GENERIC_TYPE_SEQUENCE:
       // todo -
@@ -652,7 +682,8 @@ bool Func::cmp_types_castable (const pt_arg_type &type, pt_type_enum type_enum) 
     }
 }
 
-parser_node *Func::Node::get_arg (size_t index)
+parser_node *
+Func::Node::get_arg (size_t index)
 {
   for (auto arg = m_node->info.function.arg_list; arg; arg = arg->next, --index)
     {
@@ -664,7 +695,8 @@ parser_node *Func::Node::get_arg (size_t index)
   return NULL;
 }
 
-parser_node *Func::Node::cast (parser_node *prev, parser_node *arg, pt_type_enum type, int p, int s, parser_node *dt)
+parser_node *
+Func::Node::cast (parser_node *prev, parser_node *arg, pt_type_enum type, int p, int s, parser_node *dt)
 {
   if (type == arg->type_enum) //no cast needed
     {
@@ -686,7 +718,8 @@ parser_node *Func::Node::cast (parser_node *prev, parser_node *arg, pt_type_enum
   return arg;
 }
 
-bool Func::Node::preprocess()
+bool
+Func::Node::preprocess ()
 {
   auto arg_list = m_node->info.function.arg_list;
   switch (m_node->info.function.function_type)
@@ -738,39 +771,45 @@ bool Func::Node::preprocess()
   return true;
 }
 
-const char *Func::Node::get_types (const std::vector<func_signature> &signatures, size_t index, string_buffer &sb)
+const char *
+Func::Node::get_types (const std::vector<func_signature> &signatures, size_t index, string_buffer &sb)
 {
   for (auto &signature: signatures)
     {
       auto i = index;
-      if (index < signature.fix.size())
+      if (index < signature.fix.size ())
 	{
-	  str (signature.fix[i], sb);
+	  pt_arg_type_to_string_buffer (signature.fix[i], sb);
 	  sb (", ");
 	}
       else
 	{
-	  i -= signature.fix.size();
-	  if (signature.rep.size() > 0)
+	  i -= signature.fix.size ();
+	  if (signature.rep.size () > 0)
 	    {
-	      i %= signature.rep.size();
-	      str (signature.rep[i], sb);
+	      i %= signature.rep.size ();
+	      pt_arg_type_to_string_buffer (signature.rep[i], sb);
 	      sb (", ");
 	    }
 	}
     }
-  return sb.get_buffer();
+  return sb.get_buffer ();
 }
 
-const func_signature *Func::Node::get_signature (const std::vector<func_signature> &signatures, string_buffer &sb)
+const func_signature *
+Func::Node::get_signature (const std::vector<func_signature> &signatures)
 {
   if (pt_has_error (m_parser))
     {
-      //printf("ERR in get_sigature() IT SHOULDN'T BE HERE!!!\n");
       return nullptr;
     }
   pt_reset_error (m_parser);
+
   const func_signature *signature = nullptr;
+  size_t arg_count = static_cast<size_t> (pt_length_of_list (m_node->info.function.arg_list));
+  std::vector<argument_compatibility> args_compat;
+  args_compat.resize (arg_count);
+
   int sigIndex = 0;
   for (auto &sig: signatures)
     {
@@ -780,67 +819,85 @@ const func_signature *Func::Node::get_signature (const std::vector<func_signatur
       bool matchCastable = true;
       size_t argIndex = 0;
 
+      m_compat.m_signature_compat = type_compatibility::EQUIVALENT;
+
       //check fix part of the signature
       for (auto &fix: sig.fix)
 	{
 	  if (arg == NULL)
 	    {
-	      //printf("ERR [%s()] not enough arguments... or default arg???\n", __func__);
+	      invalid_arg_count_error (arg_count, sig);
+	      m_compat.m_signature_compat = type_compatibility::INCOMPATIBLE;
 	      break;
 	    }
-	  ++argIndex;
 	  auto t = ((fix.type == pt_arg_type::INDEX) ? sig.fix[fix.val.index] : fix);
-	  matchEquivalent &= cmp_types_equivalent (t, arg->type_enum);
-	  matchCastable &= cmp_types_castable (t, arg->type_enum);
-	  //... accumulate error messages
-	  if (!matchEquivalent && !matchCastable) //current arg doesn' match => current signature doesn't match
+
+	  check_arg_compat (t, arg, args_compat[argIndex]);
+	  if (args_compat[argIndex].m_compat == type_compatibility::INCOMPATIBLE)
 	    {
-	      sb.clear();
-	      pt_cat_error (m_parser, arg, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTYPECHECK_INCOMPATIBLE_TYPE,
-			    pt_show_type_enum (arg->type_enum), get_types (signatures, argIndex - 1, sb));
+	      invalid_arg_error (t, arg, sig);
+	      m_compat.m_signature_compat = type_compatibility::INCOMPATIBLE;
 	      break;
 	    }
+	  else if (args_compat[argIndex].m_compat == type_compatibility::COERCIBLE)
+	    {
+	      // demote signature to coercible
+	      m_compat.m_signature_compat = type_compatibility::COERCIBLE;
+	    }
+
+	  ++argIndex;
 	  arg = arg->next;
 	}
-      if ((matchEquivalent || matchCastable)
-	  && ((arg != NULL && sig.rep.size() == 0) || (arg == NULL && sig.rep.size() != 0)))
+      if (m_compat.m_signature_compat == type_compatibility::INCOMPATIBLE)
+	{
+	  continue;
+	}
+      if ((arg != NULL && sig.rep.size () == 0) || (arg == NULL && sig.rep.size () != 0))
 	{
 	  // number of arguments don't match
-	  matchEquivalent = matchCastable = false;
-	  pt_cat_error (m_parser, arg, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTYPECHECK_ARGS_COUNT);
-	}
-      if (!matchEquivalent && !matchCastable)
-	{
+	  invalid_arg_count_error (arg_count, sig);
 	  continue;
 	}
 
       //check repetitive args
       int index = 0;
-      for (; arg; arg = arg->next, index = (index + 1) % sig.rep.size())
+      for (; arg; arg = arg->next, index = (index + 1) % sig.rep.size ())
 	{
-	  ++argIndex;
 	  auto &rep = sig.rep[index];
 	  auto t = ((rep.type == pt_arg_type::INDEX) ? sig.rep[rep.val.index] : rep);
-	  matchEquivalent &= cmp_types_equivalent (t, arg->type_enum);
-	  matchCastable &= cmp_types_castable (t, arg->type_enum);
-	  //... accumulate error messages
-	  if (!matchEquivalent && !matchCastable) //current arg doesn' match => current signature doesn't match
+
+	  check_arg_compat (t, arg, args_compat[argIndex]);
+	  if (args_compat[argIndex].m_compat == type_compatibility::INCOMPATIBLE)
 	    {
-	      sb.clear();
-	      pt_cat_error (m_parser, arg, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTYPECHECK_INCOMPATIBLE_TYPE,
-			    pt_show_type_enum (arg->type_enum), get_types (signatures, argIndex - 1, sb));
+	      invalid_arg_error (t, arg, sig);
+	      m_compat.m_signature_compat = type_compatibility::INCOMPATIBLE;
 	      break;
 	    }
+	  else if (args_compat[argIndex].m_compat == type_compatibility::COERCIBLE)
+	    {
+	      // demote signature to coercible
+	      m_compat.m_signature_compat = type_compatibility::COERCIBLE;
+	    }
+	  ++argIndex;
 	}
-      if (matchEquivalent)
+      if (index != 0 && m_compat.m_signature_compat != type_compatibility::INCOMPATIBLE)
+	{
+	  invalid_arg_count_error (arg_count, sig);
+	  m_compat.m_signature_compat = type_compatibility::INCOMPATIBLE;
+	  continue;
+	}
+
+      if (m_compat.m_signature_compat == type_compatibility::EQUIVALENT)
 	{
 	  signature = &sig;
+	  m_compat.m_args_compat = std::move (args_compat);
 	  break; //stop at 1st equivalent signature
 	}
-      if (matchCastable && signature == nullptr)
+      if (m_compat.m_signature_compat == type_compatibility::COERCIBLE && signature == nullptr)
 	{
 	  //don't stop, continue because it is possible to find an equivalent signature later
 	  signature = &sig;
+	  m_compat.m_args_compat = args_compat;
 	}
     }
   if (signature)
@@ -850,12 +907,14 @@ const func_signature *Func::Node::get_signature (const std::vector<func_signatur
   return signature;
 }
 
-void Func::Node::set_return_type (const func_signature &signature)
+void
+Func::Node::set_return_type (const func_signature &signature)
 {
   parser_node *arg_list = m_node->info.function.arg_list;
-  //printf("2: fcode=%d(%s) args: %s\n", fcode, Func::type_str[fcode-PT_MIN], parser_print_tree_list(parser, arg_list));
   if (m_node->type_enum == PT_TYPE_NONE || m_node->data_type == NULL) //return type
     {
+      // todo - make this really generic
+
       //set node->type_enum
       switch (signature.ret.type)
 	{
@@ -897,7 +956,7 @@ void Func::Node::set_return_type (const func_signature &signature)
 	  if (m_node->data_type)
 	    {
 	      m_node->data_type->info.data_type.precision =
-		      m_node->type_enum == (PT_TYPE_VARNCHAR ? DB_MAX_VARNCHAR_PRECISION : DB_MAX_VARCHAR_PRECISION);
+		      (m_node->type_enum == PT_TYPE_VARNCHAR ? DB_MAX_VARNCHAR_PRECISION : DB_MAX_VARCHAR_PRECISION);
 	      m_node->data_type->info.data_type.dec_precision = 0;
 	    }
 	  break;
@@ -925,62 +984,122 @@ void Func::Node::set_return_type (const func_signature &signature)
     }
 }
 
-bool Func::Node::apply_signature (const func_signature &signature)
+bool
+Func::Node::apply_signature (const func_signature &signature)
 {
   FUNC_TYPE func_type = m_node->info.function.function_type;
   parser_node *arg = m_node->info.function.arg_list;
   parser_node *prev = NULL;
-  int arg_pos = 0;
+  size_t arg_pos = 0;
 
   for (auto type: signature.fix) //check fixed part of the function signature
     {
       if (arg == NULL)
 	{
-	  //printf("ERR [%s()] not enough arguments... or default arg???\n", __func__);
-	  break;
-	}
-#if 1 //get index type from signature
-      auto t = (type.type == pt_arg_type::INDEX ? signature.fix[type.val.index] : type);
-#else //get index type from actual argument
-      auto t = (type.type == pt_arg_type::INDEX ? get_arg (type.val.index)->type_enum : type);
-#endif
-      pt_type_enum equivalent_type = pt_get_equivalent_type (t, arg->type_enum);
-      arg = cast (prev, arg, equivalent_type, TP_FLOATING_PRECISION_VALUE, 0, NULL);
-      if (arg == NULL)
-	{
-	  printf ("ERR\n");
+	  assert (false);
 	  return false;
 	}
+      assert (m_compat.m_args_compat[arg_pos].m_compat != type_compatibility::INCOMPATIBLE);
+
+      if (m_compat.m_args_compat[arg_pos].m_type != arg->type_enum)
+	{
+	  arg = cast (prev, arg, m_compat.m_args_compat[arg_pos].m_type, TP_FLOATING_PRECISION_VALUE, 0, NULL);
+	  if (arg == NULL)
+	    {
+	      assert (false);
+	      return false;
+	    }
+	}
+
       ++arg_pos;
       prev = arg;
       arg = arg->next;
     }
 
-  if (arg != NULL && signature.rep.size() == 0)
+  if (arg != NULL && signature.rep.size () == 0)
     {
-      printf ("ERR invalid number or arguments\n");
+      assert (false);
       return false;
     }
 
   //check repetitive part of the function signature
   int index = 0;
-  for (; arg; prev = arg, arg = arg->next, index = (index + 1) % signature.rep.size(), ++arg_pos)
+  for (; arg != NULL; prev = arg, arg = arg->next, index = (index + 1) % signature.rep.size (), ++arg_pos)
     {
-      auto &type = signature.rep[index];
-#if 1 //get index type from signature
-      auto t = (type.type == pt_arg_type::INDEX ? signature.fix[type.val.index] : type);
-#else //get index type from actual argument
-      auto t = (type.type == pt_arg_type::INDEX ? get_arg (type.val.index)->type_enum : type);
-#endif
-      pt_type_enum equivalent_type = pt_get_equivalent_type (t, arg->type_enum);
-      arg = cast (prev, arg, equivalent_type, TP_FLOATING_PRECISION_VALUE, 0, NULL);
+      if (m_compat.m_args_compat[arg_pos].m_compat == type_compatibility::EQUIVALENT)
+	{
+	  // arg is good as is
+	}
+      else
+	{
+	  assert (m_compat.m_args_compat[arg_pos].m_compat == type_compatibility::COERCIBLE);
+	  arg = cast (prev, arg, m_compat.m_args_compat[arg_pos].m_type, TP_FLOATING_PRECISION_VALUE, 0, NULL);
+	  if (arg == NULL)
+	    {
+	      assert (false);
+	      return false;
+	    }
+	}
     }
-  if (index)
+  if (index != 0)
     {
-      printf ("ERR invalid number of arguments (index=%d)\n", index);
+      assert (false);
       return false;
     }
+
   return true;
+}
+
+void
+Func::Node::check_arg_compat (const pt_arg_type &arg_signature, const PT_NODE *arg_node,
+			      argument_compatibility &compat)
+{
+  compat.m_type = PT_TYPE_NONE;
+  compat.m_compat = type_compatibility::INCOMPATIBLE;
+
+  // todo - equivalent type & coercible type checks should all be in a the same place to have a better view of how
+  //        each type can convert to another
+
+  if (cmp_types_equivalent (arg_signature, arg_node->type_enum))
+    {
+      compat.m_compat = type_compatibility::EQUIVALENT;
+      compat.m_type = pt_get_equivalent_type (arg_signature, arg_node->type_enum);
+    }
+  else if (cmp_types_castable (arg_signature, arg_node->type_enum))
+    {
+      compat.m_compat = type_compatibility::COERCIBLE;
+      compat.m_type = pt_get_equivalent_type (arg_signature, arg_node->type_enum);
+    }
+
+  // if compatible, pt_get_equivalent_type should return a valid type. but we need to double-check
+  if (compat.m_compat != type_compatibility::INCOMPATIBLE && compat.m_type == PT_TYPE_NONE)
+    {
+      assert (false);
+      compat.m_compat = type_compatibility::INCOMPATIBLE;
+    }
+}
+
+void
+Func::Node::invalid_arg_error (const pt_arg_type &arg_sgn, const PT_NODE *arg_node, const func_signature &func_sgn)
+{
+  string_buffer expected_sb;
+  string_buffer sgn_sb;
+
+  pt_arg_type_to_string_buffer (arg_sgn, expected_sb);
+  func_sgn.to_string_buffer (sgn_sb);
+
+  pt_cat_error (m_parser, arg_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTYPECHECK_INCOMPATIBLE_TYPE,
+		pt_show_type_enum (arg_node->type_enum), expected_sb.get_buffer (), sgn_sb.get_buffer ());
+}
+
+void
+Func::Node::invalid_arg_count_error (std::size_t arg_count, const func_signature &func_sgn)
+{
+  string_buffer sgn_sb;
+  func_sgn.to_string_buffer (sgn_sb);
+
+  pt_cat_error (m_parser, m_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTYPECHECK_ARGS_COUNT,
+		(int) arg_count, sgn_sb.get_buffer ());
 }
 
 /*
@@ -990,7 +1109,8 @@ bool Func::Node::apply_signature (const func_signature &signature)
  * def_type(in)	: the definition type
  * op_type(in)	: argument type
  */
-bool pt_are_equivalent_types (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM op_type)
+bool
+pt_are_equivalent_types (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM op_type)
 {
   if (def_type.type == pt_arg_type::NORMAL)
     {
@@ -1112,7 +1232,8 @@ bool pt_are_equivalent_types (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM op_
  *   def_type(in) : the type defined in the expression signature
  *   arg_type(in) : the type of the received expression argument
  */
-PT_TYPE_ENUM pt_get_equivalent_type (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM arg_type)
+PT_TYPE_ENUM
+pt_get_equivalent_type (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM arg_type)
 {
   if (arg_type == PT_TYPE_NULL || arg_type == PT_TYPE_NONE)
     {
@@ -1195,6 +1316,34 @@ PT_TYPE_ENUM pt_get_equivalent_type (const PT_ARG_TYPE def_type, const PT_TYPE_E
 	  || PT_IS_STRING_TYPE (arg_type) || PT_IS_DATE_TIME_TYPE (arg_type))
 	{
 	  return arg_type;
+	}
+      else
+	{
+	  return PT_TYPE_NONE;
+	}
+
+    case PT_GENERIC_TYPE_JSON_VAL:
+      if (pt_is_json_value_type (arg_type))
+	{
+	  return arg_type;
+	}
+      else if (PT_IS_NUMERIC_TYPE (arg_type))
+	{
+	  return PT_TYPE_JSON;
+	}
+      else
+	{
+	  return PT_TYPE_NONE;
+	}
+
+    case PT_GENERIC_TYPE_JSON_DOC:
+      if (pt_is_json_doc_type (arg_type))
+	{
+	  return arg_type;
+	}
+      else if (PT_IS_NUMERIC_TYPE (arg_type))
+	{
+	  return PT_TYPE_JSON;
 	}
       else
 	{
