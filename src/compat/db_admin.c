@@ -2820,7 +2820,7 @@ db_get_host_connected (void)
 #endif
 }
 
- /* 
+ /*
   * db_get_ha_server_state() - get the connected server's HA state
   * return : number defined in HA_SERVER_STATE
   * buffer(out) : buffer where the string of the HA state to be stored.
@@ -2882,7 +2882,7 @@ db_set_session_id (const SESSION_ID session_id)
  * db_find_or_create_session - check if current session is still active
  *                               if not, create a new session
  * return error code or NO_ERROR
- * db_user(in)  : 
+ * db_user(in)  :
  * program_name(in)  :
  * Note: This function will check if the current session is active and will
  *	 create a new one if needed and save user access status in server

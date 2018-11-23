@@ -224,7 +224,7 @@ db_alignment (int n)
 int
 db_align_to (int n, int alignment)
 {
-  /* 
+  /*
    * Return the least multiple of 'alignment' that is greater than or
    * equal to 'n'.  'alignment' must be a power of 2.
    */

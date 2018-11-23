@@ -120,7 +120,7 @@ struct load_args
   int n_keys;			/* Number of keys - note that in the context of MVCC, only keys that have at least one
 				 * non-deleted object are counted. */
 
-  int curr_non_del_obj_count;	/* Number of objects that have not been deleted. Unique indexes must have only one such 
+  int curr_non_del_obj_count;	/* Number of objects that have not been deleted. Unique indexes must have only one such
 				 * object. */
   int curr_rec_max_obj_count;	/* Maximum number of objects for current record. */
   int curr_rec_obj_count;	/* Current number of record objects. */
@@ -683,7 +683,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   load_args->push_list = NULL;
   load_args->pop_list = NULL;
 
-  /* 
+  /*
    * Start a TOP SYSTEM OPERATION.
    * This top system operation will be either ABORTED (case of failure) or
    * COMMITTED, so that the new file becomes kind of permanent.  This allows
@@ -709,7 +709,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   btid_int.rev_level = BTREE_CURRENT_REV_LEVEL;
   COPY_OID (&btid_int.topclass_oid, &class_oids[0]);
 
-  /* 
+  /*
    * for btree_range_search, part_key_desc is re-set at btree_initialize_bts
    */
   btid_int.part_key_desc = 0;
@@ -766,7 +766,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
       sort_args->func_index_info = &func_index_info;
     }
 
-  /* 
+  /*
    * Start a heap scan cache for reading objects using the first nun-null heap
    * We are guaranteed that such a heap exists, otherwise btree_load_index
    * would not have been called.
@@ -1509,13 +1509,13 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
 
       if (pr_is_prefix_key_type (TP_DOMAIN_TYPE (load_args->btid->key_type)))
 	{
-	  /* 
+	  /*
 	   * Key type is string or midxkey.
 	   * Should insert the prefix key to the parent level
 	   */
 	  if (DB_IS_NULL (&last_key))
 	    {
-	      /* is the first leaf When the types of leaf node are char, nchar, bit, the type that is saved on non-leaf 
+	      /* is the first leaf When the types of leaf node are char, nchar, bit, the type that is saved on non-leaf
 	       * node is different. non-leaf spec (char -> varchar, nchar -> varnchar, bit -> varbit) hence it should
 	       * be configured by using setval of nonleaf_key_type. */
 	      ret = (*(load_args->btid->nonleaf_key_type->type->setval)) (&prefix_key, &first_key, true);
@@ -1536,7 +1536,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
 		}
 	    }
 
-	  /* 
+	  /*
 	   * We may need to update the max_key length if the mid key is
 	   * larger than the max key length.  This will only happen when
 	   * the varying key length is larger than the fixed key length
@@ -2364,7 +2364,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *
 	{			/* This is not the first call to this function */
 	  int c = DB_UNK;
 
-	  /* 
+	  /*
 	   * Compare the received key with the current one.
 	   * If different, then dump the current record and create a new record.
 	   */
@@ -2581,7 +2581,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *
 	      if (((cur_maxspace - load_args->leaf_nleaf_recdes.length) < LOAD_FIXED_EMPTY_FOR_LEAF)
 		  && (spage_number_of_records (load_args->leaf.pgptr) > 1))
 		{
-		  /* New record does not fit into the current leaf page (within the threshold value); so allocate a new 
+		  /* New record does not fit into the current leaf page (within the threshold value); so allocate a new
 		   * leaf page and dump the current leaf page. */
 		  if (btree_proceed_leaf (thread_p, load_args) == NULL)
 		    {
@@ -2924,14 +2924,14 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
       int cur_class, attr_offset;
       bool save_cache_last_fix_page;
 
-      /* 
+      /*
        * This infinite loop will be exited when a satisfactory next value is
        * found (i.e., when an object belonging to this class with a non-null
        * attribute value is found), or when there are no more objects in the
        * heap files.
        */
 
-      /* 
+      /*
        * RETRIEVE THE NEXT OBJECT
        */
 
@@ -3027,7 +3027,7 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 	  break;
 	}
 
-      /* 
+      /*
        * Produce the sort item for this object
        */
 
@@ -3159,7 +3159,7 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 
 	  if (temp_recdes->area_size < record_size)
 	    {
-	      /* 
+	      /*
 	       * Record is too big to fit into temp_recdes area; so
 	       * backtrack this iteration
 	       */
@@ -4397,7 +4397,7 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   VFID_SET_NULL (&btid_int.ovfid);
   btid_int.rev_level = BTREE_CURRENT_REV_LEVEL;
   COPY_OID (&btid_int.topclass_oid, &class_oids[0]);
-  /* 
+  /*
    * for btree_range_search, part_key_desc is re-set at btree_initialize_bts
    */
   btid_int.part_key_desc = 0;

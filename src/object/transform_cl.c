@@ -224,7 +224,7 @@ tf_find_temporary_oids (LC_OIDSET * oidset, MOBJ classobj, MOBJ obj)
   DB_TYPE type;
   SETOBJ *col;
 
-  /* 
+  /*
    * Do this only for instance objects.  This means that class objects
    * with temporary oids in, say, class variables won't get flushed at
    * this time, but that's probably ok.  They'll get flushed as part of
@@ -312,7 +312,7 @@ optimize_sets (SM_CLASS * class_, MOBJ volatile obj)
 
 	  if (col)
 	    {
-	      /* 
+	      /*
 	       * col now has the collection pointer.
 	       * sort it before we flush. The sort operation will produce
 	       * batched permanent oid's on demand if needed.
@@ -507,7 +507,7 @@ tf_need_permanent_oid (OR_BUF * buf, DB_OBJECT * obj)
 
   oidp = NULL;
 
-  /* 
+  /*
    * if we have a fixup buffer, and this is NOT a class object, then make
    * an entry for it.
    */
@@ -526,7 +526,7 @@ tf_need_permanent_oid (OR_BUF * buf, DB_OBJECT * obj)
     }
   else
     {
-      /* 
+      /*
        * couldn't make a fixup buffer entry, go to the server and assign
        * it in the usual way.
        */
@@ -709,7 +709,7 @@ put_attributes (OR_BUF * buf, char *obj, SM_CLASS * class_)
   char *start;
   int pad;
 
-  /* 
+  /*
    * write fixed attribute values, if unbound, leave zero or garbage
    * it doesn't really matter.
    */
@@ -821,7 +821,7 @@ tf_mem_to_disk (MOP classmop, MOBJ classobj, MOBJ volatile obj, RECDES * record,
 
       if (OID_ISTEMP (WS_OID (classmop)))
 	{
-	  /* 
+	  /*
 	   * since this isn't a mem_oid, can't rely on write_oid to do this,
 	   * don't bother making this part of the deferred fixup stuff yet.
 	   */
@@ -863,7 +863,7 @@ tf_mem_to_disk (MOP classmop, MOBJ classobj, MOBJ volatile obj, RECDES * record,
       /* see if there are any indexes */
       has_index = classobj_class_has_indexes (class_);
 
-      /* 
+      /*
        * assign permanent OID's and make the necessary adjustments in
        * the packed buffer.
        */
@@ -872,7 +872,7 @@ tf_mem_to_disk (MOP classmop, MOBJ classobj, MOBJ volatile obj, RECDES * record,
 	  status = TF_ERROR;
 	}
 
-      /* 
+      /*
        * Now that we know the object has been packed up safely, it's safe
        * to update the coherency number of the in-memory image.
        */
@@ -948,7 +948,7 @@ get_current (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr, int bound_bit_flag
 	}
     }
 
-  /* 
+  /*
    * if there are no bound bits on disk, allocate the instance block
    * with all the bits turned on, we have to assume that the values
    * are non-null
@@ -1114,7 +1114,7 @@ get_old (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr, int repid, int bound_b
     }
   else
     {
-      /* 
+      /*
        * if there are no bound bits on disk, allocate the instance block
        * with all the bits turned on, we have to assume that the values
        * are non-null
@@ -1127,7 +1127,7 @@ get_old (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr, int repid, int bound_b
 	}
       else
 	{
-	  /* 
+	  /*
 	   * read the variable offset table, can't we just leave this on
 	   * disk ?
 	   */
@@ -1214,7 +1214,7 @@ get_old (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr, int repid, int bound_b
 	  or_advance (buf, (padded_size - fixed_size));
 
 
-	  /* 
+	  /*
 	   * sigh, we now have to process the bound bits in much the same way
 	   * as the attributes above, it would be nice if these could be done
 	   * in parallel but we don't have the fixed size of the old
@@ -1511,13 +1511,13 @@ get_string (OR_BUF * buf, int length)
   char *string = NULL;
   DB_DOMAIN my_domain;
 
-  /* 
+  /*
    * Make sure this starts off initialized so "readval" won't try to free
    * any existing contents.
    */
   db_make_null (&value);
 
-  /* 
+  /*
    * The domain here is always a server side VARNCHAR.  Set a temporary
    * domain to reflect this.
    */
@@ -1705,7 +1705,7 @@ get_object_set (OR_BUF * buf, int expected)
   count = or_skip_set_header (buf);
   for (i = 0; i < count; i++)
     {
-      /* 
+      /*
        * Get a MOP, could assume classes mops here and make sure the resulting
        * MOP is stamped with the sm_Root_class_mop class ?
        */
@@ -1758,7 +1758,7 @@ substructure_set_size (DB_LIST * list, LSIZER function)
 
   if (count)
     {
-      /* 
+      /*
        * we have elements to store, in that case we need to add the
        * common substructure header at the front and an offset table
        */
@@ -1993,7 +1993,7 @@ get_property_list (OR_BUF * buf, int expected_size)
 	  max = set_size (properties);
 	  if (!max)
 	    {
-	      /* 
+	      /*
 	       * there is an empty sequence here, get rid of it so we don't
 	       * have to carry it around
 	       */
@@ -2139,7 +2139,7 @@ disk_to_domain2 (OR_BUF * buf)
       assert (domain->collation_id == LANG_COLL_ISO_BINARY);
       domain->codeset = INTL_CODESET_ISO88591;
     }
-  /* 
+  /*
    * Read the domain class OID without promoting it to a MOP.
    * Could use readval, and extract the OID out of the already swizzled
    * MOP too.
@@ -2441,7 +2441,7 @@ disk_to_methsig (OR_BUF * buf)
 	  fname = get_string (buf, vars[ORC_METHSIG_FUNCTION_NAME_INDEX].length);
 	  sig->sql_definition = get_string (buf, vars[ORC_METHSIG_SQL_DEF_INDEX].length);
 
-	  /* 
+	  /*
 	   * KLUDGE: older databases have the function name string stored with
 	   * a prepended '_' character for the sun.  Now, since we don't do this
 	   * until we actually have to dynamic link the function, we have to
@@ -2867,7 +2867,7 @@ attribute_to_disk (OR_BUF * buf, SM_ATTRIBUTE * att)
   or_put_int (buf, att->flags);
 
   /* index BTID */
-  /* 
+  /*
    * The index member of the attribute structure has been removed.  Indexes
    * are now stored on the class property list.  We still need to store
    * something out to disk since the disk representation has not changed.
@@ -2962,7 +2962,7 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
     }
   else
     {
-      /* 
+      /*
        * must be sure to initialize these, the function classobj_make_attribute
        * should be split into creation & initialization functions so we can
        * have a single function that initializes the various fields.  As it
@@ -2995,7 +2995,7 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
       fileid = or_get_int (buf, &rc);
 
       /* index BTID */
-      /* 
+      /*
        * Read the NULL BTID from disk.  There is no place to put this so
        * ignore it.  - JB
        */
@@ -3660,7 +3660,7 @@ put_class_attributes (OR_BUF * buf, SM_CLASS * class_)
   put_substructure_set (buf, (DB_LIST *) class_->query_spec, (LWRITER) query_spec_to_disk,
 			&tf_Metaclass_query_spec.mc_classoid, tf_Metaclass_query_spec.mc_repid);
 
-  /* 
+  /*
    * triggers - for simplicity, convert the cache into a flattened
    * list of object id's
    */
@@ -3693,8 +3693,8 @@ class_to_disk (OR_BUF * buf, SM_CLASS * class_)
   int offset;
 
   /* kludge, we may have to do some last minute adj of the class structures before saving.  In particular, some of the
-   * attribute fields need to be placed in the attribute property list because there are no corresponding fields in the 
-   * disk representation.  This may result in storage allocation which because we don't have modern computers may fail. 
+   * attribute fields need to be placed in the attribute property list because there are no corresponding fields in the
+   * disk representation.  This may result in storage allocation which because we don't have modern computers may fail.
    * This function does all of the various checking up front so we don't have to detect it later in the substructure
    * conversion routines */
   if (!check_class_structure (class_))
@@ -4032,7 +4032,7 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
   install_substructure_set (buf, (DB_LIST *) class_->class_methods, (VREADER) disk_to_method,
 			    vars[ORC_CLASS_METHODS_INDEX].length);
 
-  /* 
+  /*
    * fix up the name_space tags, could do this later but easier just
    * to assume that they're set up correctly
    */
@@ -4316,7 +4316,7 @@ tf_disk_to_class (OID * oid, RECDES * record)
       break;
 
     default:
-      /* 
+      /*
        * make sure to clear the class that was being created,
        * an appropriate error will have been set
        */
@@ -4365,7 +4365,7 @@ tf_class_to_disk (MOBJ classobj, RECDES * record)
       tf_compile_meta_classes ();
     }
 
-  /* 
+  /*
    * don't worry about deferred fixup for classes, we don't usually have
    * many temporary OIDs in classes.
    */
@@ -4382,7 +4382,7 @@ tf_class_to_disk (MOBJ classobj, RECDES * record)
       rc = tf_attribute_default_expr_to_property (class_->attributes);
     }
 
-  /* 
+  /*
    * test - this isn't necessary but we've been having a class size related
    * bug that I want to try to catch - take this out when we're sure
    */
@@ -4440,7 +4440,7 @@ tf_class_to_disk (MOBJ classobj, RECDES * record)
       /* fprintf(stdout, "Saved class in %d bytes\n", record->length); */
       break;
 
-      /* 
+      /*
        * if the longjmp status was anything other than ER_TF_BUFFER_OVERFLOW,
        * it represents an error condition and er_set will have been called
        */
@@ -4692,7 +4692,7 @@ tf_set_size (DB_SET * set)
       return 0;
     }
 
-  /* 
+  /*
    * Doesn't matter which set function we call, they all use the
    * Don't have to synthesize a domain, we can get the one out
    * of the set itself.
@@ -4745,7 +4745,7 @@ tf_pack_set (DB_SET * set, char *buffer, int buffer_size, int *actual_bytes)
     case 0:
       error = NO_ERROR;
 
-      /* 
+      /*
        * Doesn't matter which set function we pick, all the types are the same.
        * Don't have to pass in domain either since the type will be
        * self-describing.
@@ -4759,7 +4759,7 @@ tf_pack_set (DB_SET * set, char *buffer, int buffer_size, int *actual_bytes)
 	}
       break;
 
-      /* 
+      /*
        * something happened, if it was ER_TF_BUFFER_OVERFLOW, return
        * the desired size as a negative number
        */

@@ -126,7 +126,7 @@ struct log_hdrpage
 {
   LOG_PAGEID logical_pageid;	/* Logical pageid in infinite log */
   PGLENGTH offset;		/* Offset of first log record in this page. This may be useful when previous log page
-				 * is corrupted and an archive of that page does not exist. Instead of losing the whole 
+				 * is corrupted and an archive of that page does not exist. Instead of losing the whole
 				 * log because of such bad page, we could salvage the log starting at the offset
 				 * address, that is, at the next log record */
   short dummy1;			/* Dummy field for 8byte align */
@@ -1920,7 +1920,7 @@ struct global_unique_stats_table
   LF_ENTRY_DESCRIPTOR unique_stats_descriptor;	/* used by unique_stats_hash */
   LF_FREELIST unique_stats_freelist;	/* used by unique_stats_hash */
 
-  LOG_LSA curr_rcv_rec_lsa;	/* This is used at recovery stage to pass the lsa of the log record to be processed, to 
+  LOG_LSA curr_rcv_rec_lsa;	/* This is used at recovery stage to pass the lsa of the log record to be processed, to
 				 * the record processing funtion, in order to restore the last_log_lsa from
 				 * GLOBAL_UNIQUE_STATS */
   bool initialized;		/* true if the current instance was initialized */

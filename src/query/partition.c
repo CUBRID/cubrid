@@ -1218,7 +1218,7 @@ partition_prune_hash (PRUNING_CONTEXT * pinfo, const DB_VALUE * val_p, const PRU
     case PO_EQ:
       if (TP_DOMAIN_TYPE (col_domain) != DB_VALUE_TYPE (val_p))
 	{
-	  /* We have a problem here because type checking might not have coerced val to the type of the column. If this 
+	  /* We have a problem here because type checking might not have coerced val to the type of the column. If this
 	   * is the case, we have to do it here */
 	  if (tp_value_cast (val_p, &val, col_domain, false) == DOMAIN_INCOMPATIBLE)
 	    {
@@ -1598,7 +1598,7 @@ partition_get_value_from_regu_var (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE 
 
     case TYPE_INARITH:
       /* We can't evaluate the general form of TYPE_INARITH but we can handle "pseudo constants" (SYS_DATE, SYS_TIME,
-       * etc) and the CAST operator applied to constants. Eventually, it would be great if we could evaluate all pseudo 
+       * etc) and the CAST operator applied to constants. Eventually, it would be great if we could evaluate all pseudo
        * constant here (like cast ('1' as int) + 1) */
       if (partition_get_value_from_inarith (pinfo, regu, value_p, is_value) != NO_ERROR)
 	{
@@ -2650,7 +2650,7 @@ partition_get_position_in_key (PRUNING_CONTEXT * pinfo, BTID * btid)
   if (pinfo->partition_pred->func_regu->type != TYPE_ATTR_ID)
     {
       /* In the case of index keys, we will only apply pruning if the partition expression is actually an attribute.
-       * This is because we will not have expressions in the index key, only attributes (except for function and filter 
+       * This is because we will not have expressions in the index key, only attributes (except for function and filter
        * indexes which are not handled yet) */
       pinfo->attr_position = -1;
       return NO_ERROR;
@@ -3000,7 +3000,7 @@ partition_find_partition_for_record (PRUNING_CONTEXT * pinfo, const OID * class_
     {
       /* Update representation id of the record to that of the pruned partition. For any other operation than pruning,
        * the new representation id should be obtained by constructing a new HEAP_ATTRIBUTE_INFO structure for the new
-       * class, copying values from this record to that structure and then transforming it to disk. Since we're working 
+       * class, copying values from this record to that structure and then transforming it to disk. Since we're working
        * with partitioned tables, we can guarantee that, except for the actual representation id bits, the new record
        * will be exactly the same. Because of this, we can take a shortcut here and only update the bits from the
        * representation id */
@@ -3188,7 +3188,7 @@ partition_prune_update (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES *
       else
 	{
 	  /* UPDATE operation is always performed on an instance of a partition (since the top class holds no data).
-	   * Even if pruning_type is DB_PARTITIONED_CLASS, class_oid will still hold the OID of the partition. Find the 
+	   * Even if pruning_type is DB_PARTITIONED_CLASS, class_oid will still hold the OID of the partition. Find the
 	   * OID of the root class before loading pruning context. The function which loads the pruning context will
 	   * get confused if we tell it that class_oid holds the partitioned class. */
 	  (void) partition_init_pruning_context (pcontext);

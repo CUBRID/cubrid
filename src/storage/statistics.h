@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -65,7 +65,7 @@ struct btree_stats
   int has_function;		/* is a function index */
   TP_DOMAIN *key_type;		/* The key type for the B+tree */
   int pkeys_size;		/* pkeys array size */
-  int *pkeys;			/* partial keys info for example: index (a, b, ..., x) pkeys[0] -> # of {a} pkeys[1] -> 
+  int *pkeys;			/* partial keys info for example: index (a, b, ..., x) pkeys[0] -> # of {a} pkeys[1] ->
 				 * # of {a, b} ... pkeys[pkeys_size-1] -> # of {a, b, ..., x} */
 #if 0				/* reserved for future use */
   int reserved[BTREE_STATS_RESERVED_NUM];

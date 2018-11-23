@@ -558,7 +558,9 @@ class JSON_SERIALIZER_LENGTH : public JSON_BASE_HANDLER
     bool Null () override;
     bool Bool (bool b) override;
     bool Int (int i) override;
+    bool Uint (unsigned i) override;
     bool Int64 (std::int64_t i) override;
+    bool Uint64 (std::uint64_t i) override;
     bool Double (double d) override;
     bool String (const Ch *str, SizeType length, bool copy) override;
     bool StartObject () override;
@@ -587,7 +589,9 @@ class JSON_SERIALIZER : public JSON_BASE_HANDLER
     bool Null () override;
     bool Bool (bool b) override;
     bool Int (int i) override;
+    bool Uint (unsigned i) override;
     bool Int64 (std::int64_t i) override;
+    bool Uint64 (std::uint64_t i) override;
     bool Double (double d) override;
     bool String (const Ch *str, SizeType length, bool copy) override;
     bool StartObject () override;
@@ -646,7 +650,9 @@ class JSON_PRETTY_WRITER : public JSON_BASE_HANDLER
     bool Null () override;
     bool Bool (bool b) override;
     bool Int (int i) override;
+    bool Uint (unsigned i) override;
     bool Int64 (std::int64_t i) override;
+    bool Uint64 (std::uint64_t i) override;
     bool Double (double d) override;
     bool String (const Ch *str, SizeType length, bool copy) override;
     bool StartObject () override;
@@ -1447,7 +1453,11 @@ db_json_extract_document_from_path (const JSON_DOC *document, const char *raw_pa
     {
       if (result != NULL)
 	{
-	  result->SetNull ();
+	  // note - NULL result is different from DB_JSON_NULL.
+	  //        NULL means path was not found
+	  //        DB_JSON_NULL means a null value was found at given path
+	  delete result;
+	  result = NULL;
 	}
     }
 
@@ -2435,9 +2445,7 @@ db_json_merge_two_json_array_values (const JSON_VALUE &source, JSON_VALUE &dest,
   assert (source.IsArray ());
   assert (dest.IsArray ());
 
-  JSON_DOC temp_doc;    // local allocator
-
-  JSON_VALUE source_copy (source, temp_doc.GetAllocator ());
+  JSON_VALUE source_copy (source, allocator);
 
   for (JSON_VALUE::ValueIterator itr = source_copy.Begin (); itr != source_copy.End (); ++itr)
     {
@@ -2454,8 +2462,7 @@ db_json_array_push_back (const JSON_VALUE &value, JSON_VALUE &dest_array, JSON_P
   assert (dest_array.IsArray ());
 
   // PushBack cannot guarantee const property, so we need a copy of value. also a local allocator is needed
-  JSON_DOC temp_doc;    // local allocator
-  dest_array.PushBack (JSON_VALUE (value, temp_doc.GetAllocator ()), allocator);
+  dest_array.PushBack (JSON_VALUE (value, allocator), allocator);
 }
 
 //
@@ -2467,10 +2474,8 @@ db_json_object_add_member (const JSON_VALUE &name, const JSON_VALUE &value, JSON
 {
   assert (dest_object.IsObject ());
 
-  // AddMember cannot guarantee const property, so we need copies of name and value. also a local allocator is needed
-  JSON_DOC temp_doc;    // local allocator
-  dest_object.AddMember (JSON_VALUE (name, temp_doc.GetAllocator ()), JSON_VALUE (value, temp_doc.GetAllocator ()),
-			 allocator);
+  // AddMember cannot guarantee const property, so we need copies of name and value
+  dest_object.AddMember (JSON_VALUE (name, allocator), JSON_VALUE (value, allocator), allocator);
 }
 
 int
@@ -4002,6 +4007,15 @@ db_value_to_json_value (const DB_VALUE &db_val, REFPTR (JSON_DOC, json_val))
       db_json_set_string_to_doc (json_val, db_get_string (&db_val));
       break;
 
+    case DB_TYPE_ENUMERATION:
+      json_val = db_json_allocate_doc ();
+      {
+	std::string enum_str;
+	enum_str.append (db_get_enum_string (&db_val), (size_t) db_get_enum_string_size (&db_val));
+	db_json_set_string_to_doc (json_val, enum_str.c_str ());
+      }
+      break;
+
     default:
       DB_VALUE dest;
       TP_DOMAIN_STATUS status = tp_value_cast (&db_val, &dest, &tp_Json_domain, false);
@@ -4210,7 +4224,7 @@ bool JSON_SERIALIZER::Bool (bool b)
 bool JSON_SERIALIZER_LENGTH::Int (int i)
 {
   // the encode will be TYPE|VALUE, where TYPE is int and value is int
-  m_length += GetTypePackedSize () + OR_INT_SIZE;
+  m_length += GetTypePackedSize () + OR_INT_SIZE + OR_INT_SIZE;
   return true;
 }
 
@@ -4221,6 +4235,30 @@ bool JSON_SERIALIZER::Int (int i)
       return false;
     }
 
+  int is_uint = 0;
+  or_put_int (m_buffer, is_uint);
+
+  m_error = or_put_int (m_buffer, i);
+  return !HasError ();
+}
+
+bool JSON_SERIALIZER_LENGTH::Uint (unsigned i)
+{
+  // the encode will be TYPE|VALUE, where TYPE is int and value is int
+  m_length += GetTypePackedSize () + OR_INT_SIZE + OR_INT_SIZE;
+  return true;
+}
+
+bool JSON_SERIALIZER::Uint (unsigned i)
+{
+  if (!PackType (DB_JSON_INT))
+    {
+      return false;
+    }
+
+  int is_uint = 1;
+  or_put_int (m_buffer, is_uint);
+
   m_error = or_put_int (m_buffer, i);
   return !HasError ();
 }
@@ -4228,7 +4266,7 @@ bool JSON_SERIALIZER::Int (int i)
 bool JSON_SERIALIZER_LENGTH::Int64 (std::int64_t i)
 {
   // the encode will be TYPE|VALUE, where TYPE is int and value is int64
-  m_length += GetTypePackedSize () + OR_BIGINT_SIZE;
+  m_length += GetTypePackedSize () + OR_INT_SIZE + OR_BIGINT_SIZE;
   return true;
 }
 
@@ -4238,6 +4276,30 @@ bool JSON_SERIALIZER::Int64 (std::int64_t i)
     {
       return false;
     }
+
+  int is_uint64 = 0;
+  or_put_int (m_buffer, is_uint64);
+
+  m_error = or_put_bigint (m_buffer, i);
+  return !HasError ();
+}
+
+bool JSON_SERIALIZER_LENGTH::Uint64 (std::uint64_t i)
+{
+  // the encode will be TYPE|VALUE, where TYPE is int and value is int64
+  m_length += GetTypePackedSize () + OR_INT_SIZE + OR_BIGINT_SIZE;
+  return true;
+}
+
+bool JSON_SERIALIZER::Uint64 (std::uint64_t i)
+{
+  if (!PackType (DB_JSON_BIGINT))
+    {
+      return false;
+    }
+
+  int is_uint64 = 1;
+  or_put_int (m_buffer, is_uint64);
 
   m_error = or_put_bigint (m_buffer, i);
   return !HasError ();
@@ -4431,7 +4493,25 @@ bool JSON_PRETTY_WRITER::Int (int i)
   return true;
 }
 
+bool JSON_PRETTY_WRITER::Uint (unsigned i)
+{
+  WriteDelimiters ();
+
+  m_buffer.append (std::to_string (i));
+
+  return true;
+}
+
 bool JSON_PRETTY_WRITER::Int64 (std::int64_t i)
+{
+  WriteDelimiters ();
+
+  m_buffer.append (std::to_string (i));
+
+  return true;
+}
+
+bool JSON_PRETTY_WRITER::Uint64 (std::uint64_t i)
 {
   WriteDelimiters ();
 
@@ -4619,6 +4699,8 @@ db_json_unpack_int_to_value (OR_BUF *buf, JSON_VALUE &value)
   int rc = NO_ERROR;
   int int_value;
 
+  int is_uint = or_get_int (buf, &rc);
+
   // unpack int
   int_value = or_get_int (buf, &rc);
   if (rc != NO_ERROR)
@@ -4627,7 +4709,14 @@ db_json_unpack_int_to_value (OR_BUF *buf, JSON_VALUE &value)
       return rc;
     }
 
-  value.SetInt (int_value);
+  if (is_uint)
+    {
+      value.SetUint ((unsigned) int_value);
+    }
+  else
+    {
+      value.SetInt (int_value);
+    }
 
   return NO_ERROR;
 }
@@ -4638,6 +4727,8 @@ db_json_unpack_bigint_to_value (OR_BUF *buf, JSON_VALUE &value)
   int rc = NO_ERROR;
   DB_BIGINT bigint_value;
 
+  int is_uint64 = or_get_int (buf, &rc);
+
   // unpack bigint
   bigint_value = or_get_bigint (buf, &rc);
   if (rc != NO_ERROR)
@@ -4646,7 +4737,14 @@ db_json_unpack_bigint_to_value (OR_BUF *buf, JSON_VALUE &value)
       return rc;
     }
 
-  value.SetInt64 (bigint_value);
+  if (is_uint64)
+    {
+      value.SetUint64 ((std::uint64_t) bigint_value);
+    }
+  else
+    {
+      value.SetInt64 (bigint_value);
+    }
 
   return NO_ERROR;
 }

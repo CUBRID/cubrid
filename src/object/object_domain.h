@@ -96,7 +96,7 @@ typedef struct tp_domain
   TP_DOMAIN_COLL_ACTION collation_flag;
 
   unsigned self_ref:1;		/* object self reference */
-  /* 
+  /*
    * merge this with self_ref when we get a chance to rebuild the whole
    * system
    */

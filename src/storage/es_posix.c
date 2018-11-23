@@ -148,7 +148,7 @@ es_rename_path (char *src, char *tgt, char *metaname)
   char *s, *t;
 
   assert (metaname != NULL);
-  /* 
+  /*
    * src: /.../ces_000/ces_tmp.123456789
    *                  ^
    *                  s
@@ -160,14 +160,14 @@ es_rename_path (char *src, char *tgt, char *metaname)
     {
       return;
     }
-  /* 
+  /*
    * tgt: /.../ces_000/ces_tmp.123456789
    *                  ^
    *                  t
    */
   t = tgt + (s - src) + 1;
 
-  /* 
+  /*
    * tgt: /.../ces_000/ces_tmp.123456789
    *                          ^
    *                          s
@@ -302,7 +302,7 @@ xes_posix_write_file (const char *path, const void *buf, size_t count, off_t off
 
   er_log_debug (ARG_FILE_LINE, "xes_posix_write_file(%s, count %d offset %ld)\n", path, count, offset);
 
-  /* 
+  /*
    * TODO: This block of codes prevents partial update or writing at advanced
    * position or something like that.
    * This restriction is introduced due to OwFS's capability.

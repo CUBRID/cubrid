@@ -341,7 +341,7 @@ put_attributes (OR_BUF * buf, DESC_OBJ * obj)
 	}
     }
 
-  /* 
+  /*
    * Write fixed attribute values, if unbound, leave zero or garbage
    * it doesn't matter, if the attribute is bound, set the appropriate
    * bit in the bound bit array
@@ -401,7 +401,7 @@ put_attributes (OR_BUF * buf, DESC_OBJ * obj)
   if (bits != NULL)
     {
       or_put_data (buf, bits, bsize);
-      /* 
+      /*
        * We do not need the bits array anymore, lets free it now.
        * the pr_data_writeval() function can perform a longjmp()
        * back to the calling function if we get an overflow,
@@ -602,7 +602,7 @@ desc_obj_to_disk (DESC_OBJ * obj, RECDES * record, bool * index_flag)
     {
       assert (false);		/* impossible case */
 
-      /* 
+      /*
        * error, currently can only be from buffer overflow
        * might be nice to store the "size guess" from the class
        * SHOULD BE USING TF_STATUS LIKE tf_mem_to_disk, need to
@@ -828,7 +828,7 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bo
       or_advance (buf, (padded_size - fixed_size));
 
 
-      /* 
+      /*
        * sigh, we now have to process the bound bits in much the same way as the
        * attributes above, it would be nice if these could be done in parallel
        * but we don't have the fixed size of the old representation so we
@@ -882,7 +882,7 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bo
 	    }
 	}
 
-      /* 
+      /*
        * initialize new values
        */
       for (i = 0, att = class_->attributes; att != NULL; i++, att = (SM_ATTRIBUTE *) att->header.next)
@@ -897,7 +897,7 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bo
 	    }
 	  if (found == NULL)
 	    {
-	      /* 
+	      /*
 	       * formerly used copy_value which converted MOP values to OID
 	       * values, is this really necessary ?
 	       */
@@ -1124,7 +1124,7 @@ exit_on_error:
 static int
 bfmt_print (int bfmt, const DB_VALUE * the_db_bit, char *string, int max_size)
 {
-  /* 
+  /*
    * Description:
    */
   int length = 0;
@@ -1255,7 +1255,7 @@ print_quoted_str (TEXT_OUTPUT * tout, char *str, int len, int max_token_len)
 	  write_len = CAST_STRLEN (internal_quote_p - p + 1);
 	  CHECK_PRINT_ERROR (text_print (tout, p, write_len, NULL));
 	  left_nbytes -= (write_len + 1);
-	  /* 
+	  /*
 	   * write internal "'" as "''", check for still has something to
 	   * work
 	   */

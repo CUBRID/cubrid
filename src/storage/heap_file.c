@@ -1815,7 +1815,7 @@ heap_classrepr_free (OR_CLASSREP * classrep, int *idx_incache)
   cache_entry->fcnt--;
   if (cache_entry->fcnt == 0)
     {
-      /* 
+      /*
        * Is this entry declared to be decached
        */
 #ifdef DEBUG_CLASSREPR_CACHE
@@ -2591,7 +2591,7 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid, 
   int alloced_string = 0;
   HEAP_SCANCACHE scan_cache;
 
-  /* 
+  /*
    * The class is fetched to print the attribute names.
    *
    * This is needed since the name of the attributes is not contained
@@ -2685,7 +2685,7 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid, 
 	    }
 	}
 
-      /* 
+      /*
        * Dump the default value if any.
        */
       fprintf (fp, " Default disk value format:\n");
@@ -2723,7 +2723,7 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid, 
 		}
 	      break;
 	    default:
-	      /* 
+	      /*
 	       * An error was found during the reading of the attribute value
 	       */
 	      fprintf (fp, "Error transforming the default value\n");
@@ -2794,7 +2794,7 @@ heap_stats_get_min_freespace (HEAP_HDR_STATS * heap_hdr)
 
   header_size = OR_MVCC_MAX_HEADER_SIZE;
 
-  /* 
+  /*
    * Don't cache as a good space page if page does not have at least
    * unfill_space + one record
    */
@@ -2904,7 +2904,7 @@ heap_stats_update_internal (THREAD_ENTRY * thread_p, const HFID * hfid, VPID * l
   vpid.volid = hfid->vfid.volid;
   vpid.pageid = hfid->hpgid;
 
-  /* 
+  /*
    * We do not want to wait for the following operation.
    * So, if we cannot lock the page return.
    */
@@ -2917,7 +2917,7 @@ heap_stats_update_internal (THREAD_ENTRY * thread_p, const HFID * hfid, VPID * l
 
   (void) pgbuf_check_page_ptype (thread_p, hdr_pgptr, PAGE_HEAP);
 
-  /* 
+  /*
    * Peek the header record to find statistics for insertion.
    * Update the statistics directly.
    */
@@ -2931,13 +2931,13 @@ heap_stats_update_internal (THREAD_ENTRY * thread_p, const HFID * hfid, VPID * l
 
   if (free_space >= heap_stats_get_min_freespace (heap_hdr))
     {
-      /* 
+      /*
        * We do not compare with the current stored values since these values
        * may not be accurate at all. When the given one is supposed to be
        * accurate.
        */
 
-      /* 
+      /*
        * Find a good place to insert this page
        */
       for (i = 0; i < HEAP_NUM_BEST_SPACESTATS; i++)
@@ -2962,7 +2962,7 @@ heap_stats_update_internal (THREAD_ENTRY * thread_p, const HFID * hfid, VPID * l
 
 	  heap_stats_put_second_best (heap_hdr, &heap_hdr->estimates.best[best].vpid);
 	}
-      /* 
+      /*
        * Now substitute the entry with the new information
        */
 
@@ -2971,7 +2971,7 @@ heap_stats_update_internal (THREAD_ENTRY * thread_p, const HFID * hfid, VPID * l
 
       heap_hdr->estimates.head = HEAP_STATS_NEXT_BEST_INDEX (best);
 
-      /* 
+      /*
        * The changes to the statistics are not logged. They are fixed
        * automatically sooner or later
        */
@@ -3111,7 +3111,7 @@ heap_stats_quick_num_fit_in_bestspace (HEAP_BESTSPACE * bestspace, int num_entri
     {
       if ((bestspace[i].freespace - unfill_space) >= unit_size)
 	{
-	  /* 
+	  /*
 	   * How many min_spaces can fit in this page
 	   */
 	  total_nunits += (bestspace[i].freespace - unfill_space) / unit_size;
@@ -3163,7 +3163,7 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, H
 
   PERF_UTIME_TRACKER_START (thread_p, &time_find_page_best_space);
 
-  /* 
+  /*
    * If a page is busy, don't wait continue looking for other pages in our
    * statistics. This will improve some contentions on the heap at the
    * expenses of storage.
@@ -3256,7 +3256,7 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, H
       pg_watcher->pgptr = heap_scan_pb_lock_and_fetch (thread_p, &best.vpid, OLD_PAGE, X_LOCK, scan_cache, pg_watcher);
       if (pg_watcher->pgptr == NULL)
 	{
-	  /* 
+	  /*
 	   * Either we timeout and we want to continue in this case, or
 	   * we have another kind of problem.
 	   */
@@ -3272,7 +3272,7 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, H
 	      break;
 
 	    default:
-	      /* 
+	      /*
 	       * Something went wrong, we are unable to fetch this page.
 	       */
 	      if (best_hint_is_used == true)
@@ -3297,7 +3297,7 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, H
 	  best.freespace = spage_max_space_for_new_record (thread_p, pg_watcher->pgptr);
 	  if (best.freespace >= needed_space)
 	    {
-	      /* 
+	      /*
 	       * Decrement by only the amount space needed by the caller. Don't
 	       * include the unfill factor
 	       */
@@ -3355,14 +3355,14 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, H
 	}
     }
 
-  /* 
+  /*
    * Set the idx_badspace to the index with the smallest free space
    * which may not be accurate. This is used for future lookups (where to
    * start) into the findbest space ring.
    */
   *idx_badspace = idx_worstspace;
 
-  /* 
+  /*
    * Reset back the timeout value of the transaction
    */
   (void) xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
@@ -3404,7 +3404,7 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid, int neede
   PERF_UTIME_TRACKER time_find_best_page = PERF_UTIME_TRACKER_INITIALIZER;
 
   PERF_UTIME_TRACKER_START (thread_p, &time_find_best_page);
-  /* 
+  /*
    * Try to use the space cache for as much information as possible to avoid
    * fetching and updating the header page a lot.
    */
@@ -3412,7 +3412,7 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid, int neede
   assert (scan_cache == NULL || scan_cache->cache_last_fix_page == false || scan_cache->page_watcher.pgptr == NULL);
   PGBUF_INIT_WATCHER (&hdr_page_watcher, PGBUF_ORDERED_HEAP_HDR, hfid);
 
-  /* 
+  /*
    * Get the heap header in exclusive mode since it is going to be changed.
    *
    * Note: to avoid any possibilities of deadlocks, I should not have any locks
@@ -3500,13 +3500,13 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid, int neede
       if (try_find >= 2 || other_high_best_ratio < HEAP_BESTSPACE_SYNC_THRESHOLD)
 	{
 	  /* We stop to find free pages if: (1) we have tried to do it twice (2) it is first trying but we have no
-	   * hints Regarding (2), we will find free pages by heap_stats_sync_bestspace only if we know that a free page 
+	   * hints Regarding (2), we will find free pages by heap_stats_sync_bestspace only if we know that a free page
 	   * exists somewhere. and (num_other_high_best/total page) > HEAP_BESTSPACE_SYNC_THRESHOLD.
 	   * num_other_high_best means the number of free pages existing somewhere in the heap file. */
 	  break;
 	}
 
-      /* 
+      /*
        * The followings will try to find free pages and fill best hints with them.
        */
 
@@ -3547,7 +3547,7 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid, int neede
 
   if (pg_watcher->pgptr == NULL)
     {
-      /* 
+      /*
        * None of the best pages has the needed space, allocate a new page.
        * Set the head to the index with the smallest free space, which may not
        * be accurate.
@@ -3694,7 +3694,7 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_
 
   if (VPID_ISNULL (&next_vpid))
     {
-      /* 
+      /*
        * Start from beginning of heap due to lack of statistics.
        */
       next_vpid.volid = hfid->vfid.volid;
@@ -3704,7 +3704,7 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_
       can_cycle = false;
     }
 
-  /* 
+  /*
    * Note that we do not put any locks on the pages that we are scanning
    * since the best space array is only used for hints, and it is OK
    * if it is a little bit wrong.
@@ -3719,7 +3719,7 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_
     {
       if (can_cycle == true && VPID_ISNULL (&next_vpid))
 	{
-	  /* 
+	  /*
 	   * Go back to beginning of heap looking for good pages with a lot of
 	   * free space
 	   */
@@ -3858,7 +3858,7 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_
 
   if (scan_all == true || heap_hdr->estimates.num_pages <= num_pages)
     {
-      /* 
+      /*
        * We scan the whole heap.
        * Reset its statistics with new found statistics
        */
@@ -3869,7 +3869,7 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_
     }
   else
     {
-      /* 
+      /*
        * We did not scan the whole heap.
        * We reset only some of its statistics since we do not have any idea
        * which ones are better the ones that are currently recorded or the ones
@@ -4303,7 +4303,7 @@ heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_STATS * h
   PGBUF_INIT_WATCHER (&rm_pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
   PGBUF_INIT_WATCHER (&prev_pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
 
-  /* 
+  /*
    * Make sure that this is not the header page since the header page cannot
    * be removed. If the header page is removed.. the heap is gone
    */
@@ -4332,7 +4332,7 @@ heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_STATS * h
 
   rm_chain = (HEAP_CHAIN *) rm_recdes.data;
 
-  /* 
+  /*
    * UPDATE PREVIOUS PAGE
    *
    * Update chain next field of previous last page
@@ -4359,14 +4359,14 @@ heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_STATS * h
       goto error;
     }
 
-  /* 
+  /*
    * Make sure that the page to be removed is not referenced on the heap
    * statistics
    */
 
   assert (heap_hdr != NULL);
 
-  /* 
+  /*
    * We cannot break in the following loop since a best page could be
    * duplicated
    */
@@ -4386,12 +4386,12 @@ heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_STATS * h
       heap_hdr->estimates.last_vpid = rm_chain->prev_vpid;
     }
 
-  /* 
+  /*
    * Is previous page the header page ?
    */
   if (vpid.pageid == hfid->hpgid && vpid.volid == hfid->vfid.volid)
     {
-      /* 
+      /*
        * PREVIOUS PAGE IS THE HEADER PAGE.
        * It contains a heap header instead of a chain record
        */
@@ -4399,7 +4399,7 @@ heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_STATS * h
     }
   else
     {
-      /* 
+      /*
        * PREVIOUS PAGE IS NOT THE HEADER PAGE.
        * It contains a chain...
        * We need to make sure that there is not references to the page to delete
@@ -4434,7 +4434,7 @@ heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_STATS * h
       sp_success = spage_update (thread_p, prev_pg_watcher.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &recdes);
       if (sp_success != SP_SUCCESS)
 	{
-	  /* 
+	  /*
 	   * This look like a system error, size did not change, so why did it
 	   * fail
 	   */
@@ -4450,7 +4450,7 @@ heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_STATS * h
   /* Now set dirty, free and unlock the previous page */
   pgbuf_ordered_set_dirty_and_free (thread_p, &prev_pg_watcher);
 
-  /* 
+  /*
    * UPDATE NEXT PAGE
    *
    * Update chain previous field of next page
@@ -4493,7 +4493,7 @@ heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_STATS * h
       sp_success = spage_update (thread_p, prev_pg_watcher.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &recdes);
       if (sp_success != SP_SUCCESS)
 	{
-	  /* 
+	  /*
 	   * This look like a system error, size did not change, so why did it
 	   * fail
 	   */
@@ -4669,7 +4669,7 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
   /* recheck the dealloc flag after all latches are acquired */
   if (pgbuf_has_prevent_dealloc (crt_watcher.pgptr))
     {
-      /* Even though we have fixed all required pages, somebody was doing a heap scan, and already reached our page. We 
+      /* Even though we have fixed all required pages, somebody was doing a heap scan, and already reached our page. We
        * cannot deallocate it. */
       vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
 			     "Candidate heap page %d|%d to remove has waiters.", page_vpid.volid, page_vpid.pageid);
@@ -5096,7 +5096,7 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
 
   if (prm_get_bool_value (PRM_ID_DONT_REUSE_HEAP_FILE) == false)
     {
-      /* 
+      /*
        * Try to reuse an already mark deleted heap file
        */
 
@@ -5127,7 +5127,7 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
 	}
     }
 
-  /* 
+  /*
    * Create the unstructured file for the heap
    * Create the header for the heap file. The header is used to speed
    * up insertions of objects and to find some simple information about the
@@ -5254,7 +5254,7 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
     }
   else
     {
-      /* 
+      /*
        * Don't need to log before image (undo) since file and pages of the heap
        * are deallocated during undo (abort).
        */
@@ -5425,7 +5425,7 @@ heap_reuse (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid, c
   VPID_SET_NULL (&last_vpid);
   addr.vfid = &hfid->vfid;
 
-  /* 
+  /*
    * Read the header page.
    * We lock the header page in exclusive mode.
    */
@@ -5440,14 +5440,14 @@ heap_reuse (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid, c
 
   (void) pgbuf_check_page_ptype (thread_p, hdr_pgptr, PAGE_HEAP);
 
-  /* 
+  /*
    * Start scanning every page of the heap and removing the objects.
    * Note that, for normal heap files, the slot is not removed since we do not
    * know if the objects are pointed by some other objects in the database.
    * For reusable OID heap files we are certain there can be no references to
    * the objects so we can simply initialize the slotted page.
    */
-  /* 
+  /*
    * Note Because the objects of reusable OID heaps are not referenced,
    *      reusing such heaps provides no actual benefit. We might consider
    *      giving up the reuse heap mechanism for reusable OID heaps in the
@@ -5456,7 +5456,7 @@ heap_reuse (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid, c
 
   while (!(VPID_ISNULL (&vpid)))
     {
-      /* 
+      /*
        * Fetch the page
        */
       pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
@@ -5469,7 +5469,7 @@ heap_reuse (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid, c
 
       is_header_page = (hdr_pgptr == pgptr) ? 1 : 0;
 
-      /* 
+      /*
        * Remove all the objects in this page
        */
       if (!reuse_oid)
@@ -5535,7 +5535,7 @@ heap_reuse (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid, c
       npages++;
       last_vpid = vpid;
 
-      /* 
+      /*
        * Find next page to scan and free the current page
        */
       if (heap_vpid_next (thread_p, hfid, pgptr, &vpid) != NO_ERROR)
@@ -5547,7 +5547,7 @@ heap_reuse (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid, c
       pgptr = NULL;
     }
 
-  /* 
+  /*
    * Reset the statistics. Set statistics for insertion back to first page
    * and reset unfill space according to new parameters
    */
@@ -5825,7 +5825,7 @@ heap_assign_address (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid
 	}
     }
 
-  /* 
+  /*
    * Use the expected length only when it is larger than the size of an OID
    * and it is smaller than the maximum size of an object that can be stored
    * in the primary area (no in overflow). In any other case, use the the size
@@ -5875,7 +5875,7 @@ heap_flush (THREAD_ENTRY * thread_p, const OID * oid)
       return;
     }
 
-  /* 
+  /*
    * Lock and fetch the page where the object is stored
    */
   vpid.volid = oid->volid;
@@ -5905,7 +5905,7 @@ heap_flush (THREAD_ENTRY * thread_p, const OID * oid)
   switch (type)
     {
     case REC_RELOCATION:
-      /* 
+      /*
        * The object stored on the page is a relocation record. The relocation
        * record is used as a map to find the actual location of the content of
        * the object.
@@ -5943,7 +5943,7 @@ heap_flush (THREAD_ENTRY * thread_p, const OID * oid)
       break;
 
     case REC_BIGONE:
-      /* 
+      /*
        * The object stored in the heap page is a relocation_overflow record,
        * get the overflow address of the object
        */
@@ -6055,7 +6055,7 @@ xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
   /* Copy the header to memory.. so we can log the changes */
   memcpy (&initial_heap_hdr, hdr_recdes.data, sizeof (initial_heap_hdr));
 
-  /* 
+  /*
    * Initialize best estimates
    */
   heap_hdr.estimates.num_pages = 0;
@@ -6107,7 +6107,7 @@ xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
 	  goto exit_on_error;
 	}
 
-      /* 
+      /*
        * Are there any objects in this page ?
        * Compare against > 1 since every heap page contains a header record
        * (heap header or chain).
@@ -6119,7 +6119,7 @@ xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
 	  if (spage_reclaim (thread_p, curr_page_watcher.pgptr) == true)
 	    {
 	      addr.pgptr = curr_page_watcher.pgptr;
-	      /* 
+	      /*
 	       * If this function is called correctly (see the notes in the
 	       * header comment about the preconditions) we can skip the
 	       * logging of spage_reclaim (). Logging for REDO would add many
@@ -6136,7 +6136,7 @@ xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
 	    }
 	}
 
-      /* 
+      /*
        * Throw away the page if it doesn't contain any object. The header of
        * the heap cannot be thrown.
        */
@@ -6146,7 +6146,7 @@ xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
 	  /* Is any vacuum required? */
 	  && vacuum_is_mvccid_vacuumed (heap_page_get_max_mvccid (thread_p, curr_page_watcher.pgptr)))
 	{
-	  /* 
+	  /*
 	   * This page can be thrown away
 	   */
 	  pgbuf_ordered_unfix (thread_p, &curr_page_watcher);
@@ -6192,7 +6192,7 @@ xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
     }
 
   heap_hdr.estimates.num_high_best = best;
-  /* 
+  /*
    * Set the rest of the statistics to NULL
    */
   for (; best < HEAP_NUM_BEST_SPACESTATS; best++)
@@ -6489,7 +6489,7 @@ heap_ovf_get (THREAD_ENTRY * thread_p, const OID * ovf_oid, RECDES * recdes, int
 
   if (chn != NULL_CHN)
     {
-      /* 
+      /*
        * This assumes that most of the time, we have the right cache coherency
        * number and that it is expensive to copy the overflow object to be
        * thrown most of the time. Thus, it is OK to do some extra page look up
@@ -6599,14 +6599,14 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
 
   if (class_oid != NULL)
     {
-      /* 
+      /*
        * Scanning the instances of a specific class
        */
       scan_cache->node.class_oid = *class_oid;
 
       if (is_queryscan == true)
 	{
-	  /* 
+	  /*
 	   * Acquire a lock for the heap scan so that the class is not updated
 	   * during the scan of the heap. This can happen in transaction isolation
 	   * levels that release the locks of the class when the class is read.
@@ -6630,7 +6630,7 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
     }
   else
     {
-      /* 
+      /*
        * Scanning the instances of any class in the heap
        */
       OID_SET_NULL (&scan_cache->node.class_oid);
@@ -7183,7 +7183,7 @@ heap_get_if_diff_chn (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, REC
   SCAN_CODE scan;
   MVCC_REC_HEADER mvcc_header;
 
-  /* 
+  /*
    * Don't retrieve the object when the object has the same cache
    * coherency number given by the caller. That is, the caller has the
    * valid cached object.
@@ -7245,7 +7245,7 @@ heap_get_if_diff_chn (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, REC
 
       if (scan != S_SUCCESS_CHN_UPTODATE)
 	{
-	  /* 
+	  /*
 	   * Note that we could copy the recdes.data from chn_recdes.data, but
 	   * I don't think it is much difference here, and we will have to deal
 	   * with all not fit conditions and so on, so we decide to use
@@ -7269,7 +7269,7 @@ heap_get_if_diff_chn (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, REC
  * context (in/out)      : Heap get context used to store the information required for heap objects processing.
  * is_heap_scan (in)     : Used to decide if it is acceptable to reach deleted objects or not.
  * non_ex_handling_type (in): Handling type for deleted objects
- *			      - LOG_ERROR_IF_DELETED: write the 
+ *			      - LOG_ERROR_IF_DELETED: write the
  *				ER_HEAP_UNKNOWN_OBJECT error to log
  *                            - LOG_WARNING_IF_DELETED: set only warning
  *
@@ -7410,7 +7410,7 @@ try_again:
       /* Output forward_oid. */
       COPY_OID (&context->forward_oid, (OID *) peek_recdes.data);
 
-      /* Fix overflow page. Since overflow pages should be always accessed with their home pages latched, unconditional 
+      /* Fix overflow page. Since overflow pages should be always accessed with their home pages latched, unconditional
        * latch should work; However, we need to use the same ordered_fix approach. */
       PGBUF_WATCHER_RESET_RANK (&context->fwd_page_watcher, PGBUF_ORDERED_HEAP_OVERFLOW);
       PGBUF_WATCHER_COPY_GROUP (&context->fwd_page_watcher, &context->home_page_watcher);
@@ -7479,7 +7479,7 @@ try_again:
       if (OID_EQ (context->class_oid_p, oid_Root_class_oid) || OID_EQ (context->class_oid_p, oid_User_class_oid)
 	  || non_ex_handling_type == LOG_WARNING_IF_DELETED)
 	{
-	  /* A deleted class record, corresponding to a deleted class can be accessed through catalog update operations 
+	  /* A deleted class record, corresponding to a deleted class can be accessed through catalog update operations
 	   * on another class. This is possible if a class has an attribute holding a domain that references the
 	   * dropped class. Another situation is the client request for authentication, which fetches the object (an
 	   * instance of db_user) using dirty version. If it has been removed, it will be found as a deleted record. */
@@ -7625,7 +7625,7 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
 
   /* Assert ispeeking, scan_cache and recdes are compatible. If ispeeking is PEEK, it is the caller responsabilty to
    * keep the page latched while the recdes don't go out of scope. If ispeeking is COPY, we must have a preallocated
-   * area to copy to. This means either scan_cache is not NULL (and scan_cache->area can be used) or recdes->data is 
+   * area to copy to. This means either scan_cache is not NULL (and scan_cache->area can be used) or recdes->data is
    * not NULL (and recdes->area_size defines how much can be copied). */
   assert ((context->ispeeking == PEEK)
 	  || (context->ispeeking == COPY && (scan_cache_p != NULL || context->recdes_p->data != NULL)));
@@ -7767,7 +7767,7 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 	  vpid.volid = oid.volid;
 	  vpid.pageid = oid.pageid;
 
-	  /* 
+	  /*
 	   * Fetch the page where the object of OID is stored. Use previous
 	   * scan page whenever possible, otherwise, deallocate the page.
 	   */
@@ -7936,7 +7936,7 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 
       if (scan == S_SUCCESS)
 	{
-	  /* 
+	  /*
 	   * Make sure that the found object is an instance of the desired
 	   * class. If it isn't then continue looking.
 	   */
@@ -8228,7 +8228,7 @@ heap_scanrange_to_following (THREAD_ENTRY * thread_p, HEAP_SCANRANGE * scan_rang
     }
   else
     {
-      /* 
+      /*
        * Scanrange ends with the prior object after the first object in the
        * the previous scanrange
        */
@@ -8335,7 +8335,7 @@ heap_scanrange_to_prior (THREAD_ENTRY * thread_p, HEAP_SCANRANGE * scan_range, O
     }
   else
     {
-      /* 
+      /*
        * Scanrange ends with the prior object after the first object in the
        * the previous scanrange
        */
@@ -8349,7 +8349,7 @@ heap_scanrange_to_prior (THREAD_ENTRY * thread_p, HEAP_SCANRANGE * scan_range, O
 	}
     }
 
-  /* 
+  /*
    * Now define the first object for the scanrange. A scanrange range starts
    * when a relocated or multipage object is found or when the last object is
    * the page is found.
@@ -8403,7 +8403,7 @@ heap_scanrange_next (THREAD_ENTRY * thread_p, OID * next_oid, RECDES * recdes, H
       return S_ERROR;
     }
 
-  /* 
+  /*
    * If next_oid is less than the first OID in the scanrange.. get the first
    * object
    */
@@ -8647,7 +8647,7 @@ heap_does_exist (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid)
       goto exit_on_end;
     }
 
-  /* 
+  /*
    * If the class is not NULL and it is different from the Rootclass,
    * make sure that it exist. Rootclass always exist.. not need to check
    * for it
@@ -8689,7 +8689,7 @@ heap_does_exist (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid)
       doesexist = spage_is_slot_exist (pg_watcher.pgptr, oid->slotid);
       rectype = spage_get_record_type (pg_watcher.pgptr, oid->slotid);
 
-      /* 
+      /*
        * Check the class
        */
 
@@ -8703,7 +8703,7 @@ heap_does_exist (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid)
 
 	  if (OID_ISNULL (class_oid))
 	    {
-	      /* 
+	      /*
 	       * Caller does not know the class of the object. Get the class
 	       * identifier from disk
 	       */
@@ -8721,7 +8721,7 @@ heap_does_exist (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid)
 	  /* If doesexist is true, then check its class */
 	  if (!OID_IS_ROOTOID (class_oid))
 	    {
-	      /* 
+	      /*
 	       * Make sure that the class exist too. Loop with this
 	       */
 	      oid = class_oid;
@@ -8778,7 +8778,7 @@ heap_is_object_not_null (THREAD_ENTRY * thread_p, OID * class_oid, const OID * o
       goto exit_on_end;
     }
 
-  /* 
+  /*
    * If the class is not NULL and it is different from the Root class,
    * make sure that it exist. Root class always exist.. not need to check for it
    */
@@ -8855,7 +8855,7 @@ heap_get_num_objects (THREAD_ENTRY * thread_p, const HFID * hfid, int *npages, i
   HEAP_HDR_STATS *heap_hdr;	/* Heap header */
   PGBUF_WATCHER hdr_pg_watcher;
 
-  /* 
+  /*
    * Get the heap header in exclusive mode and call the synchronization to
    * update the statistics of the heap. The number of record/objects is
    * updated.
@@ -8924,7 +8924,7 @@ heap_estimate (THREAD_ENTRY * thread_p, const HFID * hfid, int *npages, int *nob
   RECDES hdr_recdes;		/* Record descriptor to point to space statistics */
   HEAP_HDR_STATS *heap_hdr;	/* Heap header */
 
-  /* 
+  /*
    * Get the heap header in shared mode since it is an estimation of the
    * number of objects.
    */
@@ -9105,7 +9105,7 @@ heap_get_capacity (THREAD_ENTRY * thread_p, const HFID * hfid, INT64 * num_recs,
 		    case REC_ASSIGN_ADDRESS:
 		    case REC_HOME:
 		    case REC_NEWHOME:
-		      /* 
+		      /*
 		       * Note: for newhome (relocated), we are including the length
 		       *       and number of records. In the relocation record (above)
 		       *       we are just adding the overhead and number of
@@ -9131,7 +9131,7 @@ heap_get_capacity (THREAD_ENTRY * thread_p, const HFID * hfid, INT64 * num_recs,
 			}
 		      break;
 		    case REC_MARKDELETED:
-		      /* 
+		      /*
 		       * TODO Find out and document here why this is added to
 		       * the overhead. The record has been deleted so its
 		       * length should no longer have any meaning. Perhaps
@@ -9159,7 +9159,7 @@ heap_get_capacity (THREAD_ENTRY * thread_p, const HFID * hfid, INT64 * num_recs,
 
   if (*num_pages > 0)
     {
-      /* 
+      /*
        * Don't take in consideration the last page for free space
        * considerations since the average free space will be contaminated.
        */
@@ -9232,7 +9232,7 @@ heap_get_class_oid (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid)
  *   return: error_code
  *
  *   class_oid(in): The Class Object identifier
- *   class_name(out): Reference of the Class name pointer where name will reside; 
+ *   class_name(out): Reference of the Class name pointer where name will reside;
  *		      The classname space must be released by the caller.
  *
  * Note: Find the name of the given class identifier. It asserts that the given OID is class OID.
@@ -9260,7 +9260,7 @@ heap_get_class_name (THREAD_ENTRY * thread_p, const OID * class_oid, char **clas
  * Note: Find the name of the given class identifier. If the name is
  * the same as the guessed name, the guessed name is returned.
  * Otherwise, an allocated area with the name of the class is
- * returned. 
+ * returned.
  */
 int
 heap_get_class_name_alloc_if_diff (THREAD_ENTRY * thread_p, const OID * class_oid, char *guess_classname,
@@ -9278,7 +9278,7 @@ heap_get_class_name_alloc_if_diff (THREAD_ENTRY * thread_p, const OID * class_oi
       classname = or_class_name (&recdes);
       if (guess_classname == NULL || strcmp (guess_classname, classname) != 0)
 	{
-	  /* 
+	  /*
 	   * The names are different.. return a copy that must be freed.
 	   */
 	  *classname_out = strdup (classname);
@@ -9291,7 +9291,7 @@ heap_get_class_name_alloc_if_diff (THREAD_ENTRY * thread_p, const OID * class_oi
 	}
       else
 	{
-	  /* 
+	  /*
 	   * The classnames are identical
 	   */
 	  *classname_out = guess_classname;
@@ -9367,7 +9367,7 @@ heap_attrinfo_start (THREAD_ENTRY * thread_p, const OID * class_oid, int request
       getall = false;
     }
 
-  /* 
+  /*
    * initialize attribute information
    *
    */
@@ -9384,7 +9384,7 @@ heap_attrinfo_start (THREAD_ENTRY * thread_p, const OID * class_oid, int request
   attr_info->values = NULL;
   attr_info->num_values = -1;	/* initialize attr_info */
 
-  /* 
+  /*
    * Find the most recent representation of the instances of the class, and
    * cache the structure that describe the attributes of this representation.
    * At the same time find the default values of attributes, the shared
@@ -9398,7 +9398,7 @@ heap_attrinfo_start (THREAD_ENTRY * thread_p, const OID * class_oid, int request
       goto exit_on_error;
     }
 
-  /* 
+  /*
    * If the requested attributes is < 0, get all attributes of the last
    * representation.
    */
@@ -9434,7 +9434,7 @@ heap_attrinfo_start (THREAD_ENTRY * thread_p, const OID * class_oid, int request
 
   attr_info->num_values = requested_num_attrs;
 
-  /* 
+  /*
    * Set the attribute identifier of the desired attributes in the value
    * attribute information, and indicates that the current value is
    * unitialized. That is, it has not been read, set or whatever.
@@ -9457,7 +9457,7 @@ heap_attrinfo_start (THREAD_ENTRY * thread_p, const OID * class_oid, int request
       value->read_attrepr = NULL;
     }
 
-  /* 
+  /*
    * Make last information to be recached for each individual attribute
    * value. Needed for WRITE and Default values
    */
@@ -9495,7 +9495,7 @@ heap_moreattr_attrinfo (int attrid, HEAP_CACHE_ATTRINFO * attr_info)
   int i;
   int ret = NO_ERROR;
 
-  /* 
+  /*
    * If we get an empty HEAP_CACHE_ATTRINFO, this is an error.  We can
    * not add more attributes to an improperly initialized HEAP_CACHE_ATTRINFO
    * structure.
@@ -9505,7 +9505,7 @@ heap_moreattr_attrinfo (int attrid, HEAP_CACHE_ATTRINFO * attr_info)
       return ER_FAILED;
     }
 
-  /* 
+  /*
    * Make sure that the attribute is not already included
    */
   for (i = 0; i < attr_info->num_values; i++)
@@ -9517,7 +9517,7 @@ heap_moreattr_attrinfo (int attrid, HEAP_CACHE_ATTRINFO * attr_info)
 	}
     }
 
-  /* 
+  /*
    * Resize the value attribute array and set the attribute identifier as
    * as part of the desired attribute list
    */
@@ -9538,7 +9538,7 @@ heap_moreattr_attrinfo (int attrid, HEAP_CACHE_ATTRINFO * attr_info)
   value->read_attrepr = NULL;
   attr_info->num_values++;
 
-  /* 
+  /*
    * Recache attribute representation and get default value specifications
    * for new attribute. The default values are located on the last
    * representation
@@ -9602,7 +9602,7 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
   bool isattr_found;
   int ret = NO_ERROR;
 
-  /* 
+  /*
    * Initialize the value domain for dbvalues of all desired attributes
    */
   if (islast_reset == true)
@@ -9620,7 +9620,7 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 
   for (num_found_attrs = 0, curr_attr = 0; curr_attr < attr_info->num_values; curr_attr++)
     {
-      /* 
+      /*
        * Go over the list of attributes (instance, shared, and class attrs)
        * until the desired attribute is found
        */
@@ -9644,12 +9644,12 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 
       for (i = 0; isattr_found == false && i < srch_num_attrs; i++, search_attrepr++)
 	{
-	  /* 
+	  /*
 	   * Is this a desired instance attribute?
 	   */
 	  if (value->attrid == search_attrepr->id)
 	    {
-	      /* 
+	      /*
 	       * Found it.
 	       * Initialize the attribute value information
 	       */
@@ -9658,7 +9658,7 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 	      if (islast_reset == true)
 		{
 		  value->last_attrepr = search_attrepr;
-		  /* 
+		  /*
 		   * The server does not work with DB_TYPE_OBJECT but DB_TYPE_OID
 		   */
 		  if (value->last_attrepr->type == DB_TYPE_OBJECT)
@@ -9675,7 +9675,7 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 	      else
 		{
 		  value->read_attrepr = search_attrepr;
-		  /* 
+		  /*
 		   * The server does not work with DB_TYPE_OBJECT but DB_TYPE_OID
 		   */
 		  if (value->read_attrepr->type == DB_TYPE_OBJECT)
@@ -9688,7 +9688,7 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 	    }
 	}
 
-      /* 
+      /*
        * if the desired attribute was not found in the instance attributes,
        * look for it in the shared attributes.  We always use the last_repr
        * for shared attributes.
@@ -9697,19 +9697,19 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
       for (i = 0, search_attrepr = attr_info->last_classrepr->shared_attrs;
 	   isattr_found == false && i < srch_num_shared; i++, search_attrepr++)
 	{
-	  /* 
+	  /*
 	   * Is this a desired shared attribute?
 	   */
 	  if (value->attrid == search_attrepr->id)
 	    {
-	      /* 
+	      /*
 	       * Found it.
 	       * Initialize the attribute value information
 	       */
 	      isattr_found = true;
 	      value->attr_type = HEAP_SHARED_ATTR;
 	      value->last_attrepr = search_attrepr;
-	      /* 
+	      /*
 	       * The server does not work with DB_TYPE_OBJECT but DB_TYPE_OID
 	       */
 	      if (value->last_attrepr->type == DB_TYPE_OBJECT)
@@ -9726,7 +9726,7 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 	    }
 	}
 
-      /* 
+      /*
        * if the desired attribute was not found in the instance/shared atttrs,
        * look for it in the class attributes.  We always use the last_repr
        * for class attributes.
@@ -9735,13 +9735,13 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
       for (i = 0, search_attrepr = attr_info->last_classrepr->class_attrs; isattr_found == false && i < srch_num_class;
 	   i++, search_attrepr++)
 	{
-	  /* 
+	  /*
 	   * Is this a desired class attribute?
 	   */
 
 	  if (value->attrid == search_attrepr->id)
 	    {
-	      /* 
+	      /*
 	       * Found it.
 	       * Initialize the attribute value information
 	       */
@@ -9755,7 +9755,7 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 		{
 		  value->read_attrepr = search_attrepr;
 		}
-	      /* 
+	      /*
 	       * The server does not work with DB_TYPE_OBJECT but DB_TYPE_OID
 	       */
 	      if (value->last_attrepr->type == DB_TYPE_OBJECT)
@@ -9805,7 +9805,7 @@ heap_attrinfo_recache (THREAD_ENTRY * thread_p, REPR_ID reprid, HEAP_CACHE_ATTRI
   int i;
   int ret = NO_ERROR;
 
-  /* 
+  /*
    * If we do not need to cache anything (case of only clear values and
    * disk repr structure).. return
    */
@@ -9817,7 +9817,7 @@ heap_attrinfo_recache (THREAD_ENTRY * thread_p, REPR_ID reprid, HEAP_CACHE_ATTRI
 	  return NO_ERROR;
 	}
 
-      /* 
+      /*
        * Do we need to free the current cached disk representation ?
        */
       if (attr_info->read_classrepr != attr_info->last_classrepr)
@@ -9834,7 +9834,7 @@ heap_attrinfo_recache (THREAD_ENTRY * thread_p, REPR_ID reprid, HEAP_CACHE_ATTRI
 
   if (reprid == attr_info->last_classrepr->id)
     {
-      /* 
+      /*
        * Take a short cut
        */
       if (attr_info->values != NULL)
@@ -9850,7 +9850,7 @@ heap_attrinfo_recache (THREAD_ENTRY * thread_p, REPR_ID reprid, HEAP_CACHE_ATTRI
       return NO_ERROR;
     }
 
-  /* 
+  /*
    * Cache the desired class representation information
    */
   if (attr_info->values != NULL)
@@ -9901,7 +9901,7 @@ heap_attrinfo_end (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info)
       return;
     }
 
-  /* 
+  /*
    * Free any attribute and class representation information
    */
   ret = heap_attrinfo_clear_dbvalues (attr_info);
@@ -9918,7 +9918,7 @@ heap_attrinfo_end (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info)
     }
   OID_SET_NULL (&attr_info->class_oid);
 
-  /* 
+  /*
    * Bash this so that we ensure that heap_attrinfo_end is idempotent.
    */
   attr_info->num_values = -1;
@@ -9954,7 +9954,7 @@ heap_attrinfo_clear_dbvalues (HEAP_CACHE_ATTRINFO * attr_info)
 	  value = &attr_info->values[i];
 	  if (value->state != HEAP_UNINIT_ATTRVALUE)
 	    {
-	      /* 
+	      /*
 	       * Was the value set up from a default value or from a representation
 	       * of the object
 	       */
@@ -10002,14 +10002,14 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
   disk_bound = false;
   disk_length = -1;
 
-  /* 
+  /*
    * Does attribute exist in this disk representation?
    */
 
   if (recdes == NULL || recdes->data == NULL || value->read_attrepr == NULL || value->attr_type == HEAP_SHARED_ATTR
       || value->attr_type == HEAP_CLASS_ATTR)
     {
-      /* 
+      /*
        * Either the attribute is a shared or class attr, or the attribute
        * does not exist in this disk representation, or we do not have
        * the disk object (recdes), get default value if any...
@@ -10028,13 +10028,13 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
       /* Is it a fixed size attribute ? */
       if (value->read_attrepr->is_fixed != 0)
 	{
-	  /* 
+	  /*
 	   * A fixed attribute.
 	   */
 	  if (!OR_FIXED_ATT_IS_UNBOUND (recdes->data, attr_info->read_classrepr->n_variable,
 					attr_info->read_classrepr->fixed_length, value->read_attrepr->position))
 	    {
-	      /* 
+	      /*
 	       * The fixed attribute is bound. Access its information
 	       */
 	      disk_data =
@@ -10048,12 +10048,12 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
 	}
       else
 	{
-	  /* 
+	  /*
 	   * A variable attribute
 	   */
 	  if (!OR_VAR_IS_NULL (recdes->data, value->read_attrepr->location))
 	    {
-	      /* 
+	      /*
 	       * The variable attribute is bound.
 	       * Find its location through the variable offset attribute table.
 	       */
@@ -10077,12 +10077,12 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
 	}
     }
 
-  /* 
+  /*
    * From now on, I should only use attrepr.. it will point to either
    * a current value or a default one
    */
 
-  /* 
+  /*
    * Clear/decache any old value
    */
   if (value->state != HEAP_UNINIT_ATTRVALUE)
@@ -10091,7 +10091,7 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
     }
 
 
-  /* 
+  /*
    * Now make the dbvalue according to the disk data value
    */
 
@@ -10107,7 +10107,7 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
     }
   else
     {
-      /* 
+      /*
        * Read the value according to disk information that was found
        */
       OR_BUF_INIT2 (buf, disk_data, disk_length);
@@ -10128,7 +10128,7 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
 	  value->state = HEAP_READ_ATTRVALUE;
 	  break;
 	default:
-	  /* 
+	  /*
 	   * An error was found during the reading of the attribute value
 	   */
 	  (void) db_value_domain_init (&value->dbvalue, attrepr->type, attrepr->domain->precision,
@@ -10183,7 +10183,7 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, H
 
       if (found == false)
 	{
-	  /* It means that the representation has an attribute which was created after insertion of the record. In this 
+	  /* It means that the representation has an attribute which was created after insertion of the record. In this
 	   * case, return the default value of the attribute if it exists. */
 	  if (att->default_value.val_length > 0)
 	    {
@@ -10264,7 +10264,7 @@ heap_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, const OID * inst_oid, RECD
       return NO_ERROR;
     }
 
-  /* 
+  /*
    * Make sure that we have the needed cached representation.
    */
 
@@ -10283,7 +10283,7 @@ heap_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, const OID * inst_oid, RECD
 	}
     }
 
-  /* 
+  /*
    * Go over each attribute and read it
    */
 
@@ -10297,7 +10297,7 @@ heap_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, const OID * inst_oid, RECD
 	}
     }
 
-  /* 
+  /*
    * Cache the information of the instance
    */
   if (inst_oid != NULL && recdes != NULL && recdes->data != NULL)
@@ -10327,7 +10327,7 @@ heap_attrinfo_read_dbvalues_without_oid (THREAD_ENTRY * thread_p, RECDES * recde
       return NO_ERROR;
     }
 
-  /* 
+  /*
    * Make sure that we have the needed cached representation.
    */
 
@@ -10346,7 +10346,7 @@ heap_attrinfo_read_dbvalues_without_oid (THREAD_ENTRY * thread_p, RECDES * recde
 	}
     }
 
-  /* 
+  /*
    * Go over each attribute and read it
    */
 
@@ -10387,7 +10387,7 @@ heap_attrinfo_delete_lob (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_A
   assert (attr_info != NULL);
   assert (attr_info->num_values > 0);
 
-  /* 
+  /*
    * Make sure that we have the needed cached representation.
    */
 
@@ -10406,7 +10406,7 @@ heap_attrinfo_delete_lob (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_A
 	}
     }
 
-  /* 
+  /*
    * Go over each attribute and delete the data if it's lob type
    */
 
@@ -10467,7 +10467,7 @@ heap_attrinfo_dump (THREAD_ENTRY * thread_p, FILE * fp, HEAP_CACHE_ATTRINFO * at
       return;
     }
 
-  /* 
+  /*
    * Dump attribute schema information
    */
 
@@ -10481,7 +10481,7 @@ heap_attrinfo_dump (THREAD_ENTRY * thread_p, FILE * fp, HEAP_CACHE_ATTRINFO * at
       value = &attr_info->values[i];
       fprintf (fp, "  Attrid = %d, state = %d, type = %s\n", value->attrid, value->state,
 	       pr_type_name (value->read_attrepr->type));
-      /* 
+      /*
        * Dump the value in memory format
        */
 
@@ -10901,7 +10901,7 @@ heap_get_class_partitions (THREAD_ENTRY * thread_p, const OID * class_oid, OR_PA
   *parts_count = 0;
   part_info.values = NULL;
 
-  /* This class might have partitions and subclasses. In order to get partition information we have to: 1. Get the OIDs 
+  /* This class might have partitions and subclasses. In order to get partition information we have to: 1. Get the OIDs
    * for all subclasses 2. Get partition information for all OIDs 3. Build information only for those subclasses which
    * are partitions */
   error =
@@ -11062,7 +11062,7 @@ heap_attrinfo_check (const OID * inst_oid, HEAP_CACHE_ATTRINFO * attr_info)
 
   if (inst_oid != NULL)
     {
-      /* 
+      /*
        * The OIDs must be equal
        */
       if (!OID_EQ (&attr_info->inst_oid, inst_oid))
@@ -11116,7 +11116,7 @@ heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HE
   TP_DOMAIN_STATUS dom_status;
   int ret = NO_ERROR;
 
-  /* 
+  /*
    * check to make sure the attr_info has been used, should never be empty.
    */
 
@@ -11157,7 +11157,7 @@ heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HE
       goto exit_on_error;
     }
 
-  /* 
+  /*
    * As we use "writeval" to do the writing and that function gets
    * enough domain information, we can use non-exact domain matching
    * here to defer the coercion until it is written.
@@ -11165,7 +11165,7 @@ heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HE
   dom_status = tp_domain_check (value->last_attrepr->domain, attr_val, TP_EXACT_MATCH);
   if (dom_status == DOMAIN_COMPATIBLE)
     {
-      /* 
+      /*
        * the domains match exactly, set the value and proceed.  Copy
        * the source only if it's a set-valued thing (that's the purpose
        * of the third argument).
@@ -11232,7 +11232,7 @@ heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES
       goto exit_on_error;
     }
 
-  /* 
+  /*
    * Make sure that we have the needed cached representation.
    */
 
@@ -11255,7 +11255,7 @@ heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES
 	}
     }
 
-  /* 
+  /*
    * Go over the attribute values and set the ones that have not been
    * initialized
    */
@@ -11461,7 +11461,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
       return S_ERROR;
     }
 
-  /* 
+  /*
    * Get any of the values that have not been set/read
    */
   if (heap_attrinfo_set_uninitialized (thread_p, &attr_info->inst_oid, old_recdes, attr_info) != NO_ERROR)
@@ -11496,13 +11496,13 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
     case 0:
       status = S_SUCCESS;
 
-      /* 
+      /*
        * Store the representation of the class along with bound bit
        * flag information
        */
 
       repid_bits = attr_info->last_classrepr->id;
-      /* 
+      /*
        * Do we have fixed value attributes ?
        */
       if ((attr_info->last_classrepr->n_attributes - attr_info->last_classrepr->n_variable) != 0)
@@ -11513,7 +11513,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
       /* offset size */
       OR_SET_VAR_OFFSET_SIZE (repid_bits, offset_size);
 
-      /* 
+      /*
        * We must increase the current value by one so that clients
        * can detect the change in object. That is, clients will need to
        * refetch the object.
@@ -11549,7 +11549,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	  header_size = OR_NON_MVCC_HEADER_SIZE;
 	}
 
-      /* 
+      /*
        * Calculate the pointer address to variable offset attribute table,
        * fixed attributes, and variable attributes
        */
@@ -11557,7 +11557,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
       ptr_bound = OR_GET_BOUND_BITS (buf->buffer, attr_info->last_classrepr->n_variable,
 				     attr_info->last_classrepr->fixed_length);
 
-      /* 
+      /*
        * Variable offset table is relative to the beginning of the buffer
        */
 
@@ -11584,12 +11584,12 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	      return S_ERROR;
 	    }
 
-	  /* 
+	  /*
 	   * Is this a fixed or variable attribute ?
 	   */
 	  if (value->last_attrepr->is_fixed != 0)
 	    {
-	      /* 
+	      /*
 	       * Fixed attribute
 	       * Write the fixed attributes values, if unbound, does not matter
 	       * what value is stored. We need to set the appropiate bit in the
@@ -11610,7 +11610,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 
 	      if (dbvalue == NULL || db_value_is_null (dbvalue) == true)
 		{
-		  /* 
+		  /*
 		   * This is an unbound value.
 		   *  1) Set any value in the fixed array value table, so we can
 		   *     advance to next attribute.
@@ -11621,7 +11621,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 		  dbvalue = &temp_dbvalue;
 		  OR_CLEAR_BOUND_BIT (ptr_bound, value->last_attrepr->position);
 
-		  /* 
+		  /*
 		   * pad the appropriate amount, writeval needs to be modified
 		   * to accept a domain so it can perform this padding.
 		   */
@@ -11630,7 +11630,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 		}
 	      else
 		{
-		  /* 
+		  /*
 		   * Write the value.
 		   */
 		  OR_ENABLE_BOUND_BIT (ptr_bound, value->last_attrepr->position);
@@ -11639,14 +11639,14 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	    }
 	  else
 	    {
-	      /* 
+	      /*
 	       * Variable attribute
 	       *  1) Set the offset to this value in the variable offset table
 	       *  2) Set the value in the variable value portion of the disk
 	       *     object (Only if the value is bound)
 	       */
 
-	      /* 
+	      /*
 	       * Write the offset onto the variable offset table and remember
 	       * the current pointer to the variable offset table
 	       */
@@ -11663,7 +11663,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 
 	      if (dbvalue != NULL && db_value_is_null (dbvalue) != true)
 		{
-		  /* 
+		  /*
 		   * Now write the value and remember the current pointer
 		   * to variable value array for the next element.
 		   */
@@ -11725,7 +11725,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 
       if (attr_info->last_classrepr->n_variable > 0)
 	{
-	  /* 
+	  /*
 	   * The last element of the variable offset table points to the end of
 	   * the object. The variable offset array starts with zero, so we can
 	   * just access n_variable...
@@ -11746,7 +11746,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	  break;
 	}
 
-      /* 
+      /*
        * if the longjmp status was anything other than ER_TF_BUFFER_OVERFLOW,
        * it represents an error condition and er_set will have been called
        */
@@ -11754,7 +11754,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 
       status = S_DOESNT_FIT;
 
-      /* 
+      /*
        * Give a hint of the needed space. The hint is given as a negative
        * value in the record descriptor length. Make sure that this length
        * is larger than the current record descriptor area.
@@ -11764,7 +11764,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 
       if (new_recdes->area_size > -new_recdes->length)
 	{
-	  /* 
+	  /*
 	   * This may be an error. The estimated disk size is smaller
 	   * than the current record descriptor area size. For now assume
 	   * at least 20% above the current area descriptor. The main problem
@@ -11812,7 +11812,7 @@ heap_attrinfo_start_refoids (THREAD_ENTRY * thread_p, OID * class_oid, HEAP_CACH
 
   attr_info->num_values = -1;
 
-  /* 
+  /*
    * Find the current representation of the class, then scan all its
    * attributes finding the ones that may reference objects
    */
@@ -11823,7 +11823,7 @@ heap_attrinfo_start_refoids (THREAD_ENTRY * thread_p, OID * class_oid, HEAP_CACH
       return ER_FAILED;
     }
 
-  /* 
+  /*
    * Go over the list of attributes until the desired attributes (OIDs, sets)
    * are found
    */
@@ -11919,7 +11919,7 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES
       set_attrids = guess_attrids;
     }
 
-  /* 
+  /*
    * Read the number of BTID's in this class
    */
   *num_btids = classrepr->n_indexes;
@@ -11942,7 +11942,7 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES
 	}
     }
 
-  /* 
+  /*
    * Go over the list of attrs until all indexed attributes (OIDs, sets)
    * are found
    */
@@ -12009,7 +12009,7 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES
 	    }
 	}
 
-      /* 
+      /*
        * Set the attribute identifier of the desired attributes in the value
        * attribute information, and indicates that the current value is
        * unitialized. That is, it has not been read, set or whatever.
@@ -12023,7 +12023,7 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES
 	  value->read_attrepr = NULL;
 	}
 
-      /* 
+      /*
        * Make last information to be recached for each individual attribute
        * value. Needed for WRITE and Default values
        */
@@ -12124,7 +12124,7 @@ heap_attrinfo_start_with_btid (THREAD_ENTRY * thread_p, OID * class_oid, BTID * 
   int classrepr_cacheindex = -1;
   int num_found_attrs = 0;
 
-  /* 
+  /*
    *  We'll start by assuming that the number of attributes will fit into
    *  the preallocated array.
    */
@@ -12132,7 +12132,7 @@ heap_attrinfo_start_with_btid (THREAD_ENTRY * thread_p, OID * class_oid, BTID * 
 
   attr_info->num_values = -1;	/* initialize attr_info */
 
-  /* 
+  /*
    *  Get the class representation so that we can access the indexes.
    */
   classrepr = heap_classrepr_get (thread_p, class_oid, NULL, NULL_REPRID, &classrepr_cacheindex);
@@ -12141,7 +12141,7 @@ heap_attrinfo_start_with_btid (THREAD_ENTRY * thread_p, OID * class_oid, BTID * 
       goto error;
     }
 
-  /* 
+  /*
    *  Get the index ID which corresponds to the BTID
    */
   index_id = heap_classrepr_find_index_id (classrepr, btid);
@@ -12150,7 +12150,7 @@ heap_attrinfo_start_with_btid (THREAD_ENTRY * thread_p, OID * class_oid, BTID * 
       goto error;
     }
 
-  /* 
+  /*
    *  Get the number of attributes associated with this index.
    *  Allocate a new attribute ID array if we have more attributes
    *  than will fit in the pre-allocated array.
@@ -12175,7 +12175,7 @@ heap_attrinfo_start_with_btid (THREAD_ENTRY * thread_p, OID * class_oid, BTID * 
 
   heap_classrepr_free_and_init (classrepr, &classrepr_cacheindex);
 
-  /* 
+  /*
    *  Get the attribute information for the collected ID's
    */
   if (num_found_attrs > 0)
@@ -12186,7 +12186,7 @@ heap_attrinfo_start_with_btid (THREAD_ENTRY * thread_p, OID * class_oid, BTID * 
 	}
     }
 
-  /* 
+  /*
    *  Free the attribute ID array if it was dynamically allocated
    */
   if (set_attrids != guess_attrids)
@@ -12437,7 +12437,7 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
   OR_BUF buf;
   int error = NO_ERROR;
 
-  /* 
+  /*
    * Make sure that we have the needed cached representation.
    */
 
@@ -12565,7 +12565,7 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
       fi_res = db_valuep;
     }
 
-  /* 
+  /*
    *  Multi-column index.  The key is a sequence of the attribute values.
    *  Return a pointer to the attributes DB_VALUE.
    */
@@ -12614,7 +12614,7 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
     }
   else
     {
-      /* 
+      /*
        *  Single-column index.  The key is simply the value of the attribute.
        *  Return a pointer to the attributes DB_VALUE.
        */
@@ -12684,7 +12684,7 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
 
   assert (DB_IS_NULL (db_value));
 
-  /* 
+  /*
    *  check to make sure the idx_attrinfo has been used, it should
    *  never be empty.
    */
@@ -12693,7 +12693,7 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
       return NULL;
     }
 
-  /* 
+  /*
    * Make sure that we have the needed cached representation.
    */
   if (recdes != NULL)
@@ -12725,7 +12725,7 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
       fi_res = db_value;
     }
 
-  /* 
+  /*
    *  Multi-column index.  Construct the key as a sequence of attribute
    *  values.  The sequence is contained in the passed DB_VALUE.  A
    *  pointer to this DB_VALUE is returned.
@@ -12777,7 +12777,7 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
     }
   else
     {
-      /* 
+      /*
        *  Single-column index.  The key is simply the value of the attribute.
        *  Return a pointer to the attributes DB_VALUE.
        */
@@ -13188,7 +13188,7 @@ heap_get_referenced_by (THREAD_ENTRY * thread_p, OID * class_oid, const OID * ob
   int new_max_oid;
   int i, j;			/* loop counters */
 
-  /* 
+  /*
    * We don't support class references in this function
    */
   if (oid_is_root (class_oid))
@@ -13208,7 +13208,7 @@ heap_get_referenced_by (THREAD_ENTRY * thread_p, OID * class_oid, const OID * ob
     }
   else if (*max_oid_cnt <= 0)
     {
-      /* 
+      /*
        * We better release oid_list since we do not know it size. This may
        * be a bug.
        */
@@ -13216,7 +13216,7 @@ heap_get_referenced_by (THREAD_ENTRY * thread_p, OID * class_oid, const OID * ob
       *max_oid_cnt = 0;
     }
 
-  /* 
+  /*
    * Now start searching the attributes that may reference objects
    */
   oid_cnt = 0;
@@ -13229,12 +13229,12 @@ heap_get_referenced_by (THREAD_ENTRY * thread_p, OID * class_oid, const OID * ob
       if (dbtype == DB_TYPE_OID && !db_value_is_null (&value->dbvalue)
 	  && (attr_oid = db_get_oid (&value->dbvalue)) != NULL && !OID_ISNULL (attr_oid))
 	{
-	  /* 
+	  /*
 	   * A simple attribute with reference an object (OID)
 	   */
 	  if (oid_cnt == *max_oid_cnt)
 	    {
-	      /* 
+	      /*
 	       * We need to expand the area to deposit more OIDs.
 	       * Use 50% of the current size for expansion and at least 10 OIDs
 	       */
@@ -13264,7 +13264,7 @@ heap_get_referenced_by (THREAD_ENTRY * thread_p, OID * class_oid, const OID * ob
 		  goto error;
 		}
 
-	      /* 
+	      /*
 	       * Set the pointers and advance to current area pointer
 	       */
 	      *oid_list = oid_ptr;
@@ -13279,7 +13279,7 @@ heap_get_referenced_by (THREAD_ENTRY * thread_p, OID * class_oid, const OID * ob
 	{
 	  if (TP_IS_SET_TYPE (dbtype))
 	    {
-	      /* 
+	      /*
 	       * A set which may or may nor reference objects (OIDs)
 	       * Go through each element of the set
 	       */
@@ -13300,7 +13300,7 @@ heap_get_referenced_by (THREAD_ENTRY * thread_p, OID * class_oid, const OID * ob
 		    {
 		      if (oid_cnt == *max_oid_cnt)
 			{
-			  /* 
+			  /*
 			   * We need to expand the area to deposit more OIDs.
 			   * Use 50% of the current size for expansion.
 			   */
@@ -13330,7 +13330,7 @@ heap_get_referenced_by (THREAD_ENTRY * thread_p, OID * class_oid, const OID * ob
 			      goto error;
 			    }
 
-			  /* 
+			  /*
 			   * Set the pointers and advance to current area pointer
 			   */
 			  *oid_list = oid_ptr;
@@ -13348,7 +13348,7 @@ heap_get_referenced_by (THREAD_ENTRY * thread_p, OID * class_oid, const OID * ob
 
   /* free object area if no OIDs were encountered */
   if (oid_cnt == 0)
-    /* 
+    /*
      * Unless we check whether *oid_list is NULL,
      * it may cause double-free of oid_list.
      */
@@ -13392,7 +13392,7 @@ heap_prefetch (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid, LC_COP
   SCAN_CODE scan;
   int ret = NO_ERROR;
 
-  /* 
+  /*
    * Prefetch other instances (i.e., neighbors) stored on the same page
    * of the given object OID. Relocated instances and instances in overflow are
    * not prefetched, nor instances that do not belong to the given class.
@@ -13413,7 +13413,7 @@ heap_prefetch (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid, LC_COP
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ret, 3, oid->volid, oid->pageid, oid->slotid);
 	}
 
-      /* 
+      /*
        * Problems getting the page.. forget about prefetching...
        */
       return ret;
@@ -13425,7 +13425,7 @@ heap_prefetch (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid, LC_COP
 
   while (direction != HEAP_DIRECTION_NONE)
     {
-      /* 
+      /*
        * Don't include the desired object again, forwarded instances, nor
        * instances that belong to other classes
        */
@@ -13693,7 +13693,7 @@ heap_check_all_pages (THREAD_ENTRY * thread_p, HFID * hfid)
 	  tmp_valid_pg = heap_chkreloc_start (chk_objs);
 	}
 
-      /* 
+      /*
        * Scan every page of the heap using allocset.
        * This is for getting more information of the corrupted pages.
        */
@@ -13734,7 +13734,7 @@ heap_check_all_pages (THREAD_ENTRY * thread_p, HFID * hfid)
 
   if (valid_pg == DISK_VALID)
     {
-      /* 
+      /*
        * Check the statistics entries in the header
        */
 
@@ -14082,7 +14082,7 @@ heap_dump (THREAD_ENTRY * thread_p, FILE * fp, HFID * hfid, bool dump_records)
 	}
     }
 
-  /* 
+  /*
    * Dump schema definition
    */
 
@@ -14290,7 +14290,7 @@ heap_chkreloc_end (HEAP_CHKALL_RELOCOIDS * chk)
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_FOUND_NOT_VACUUMED, 0);
     }
 
-  /* 
+  /*
    * Check for any postponed unfound relocated OIDs that have not been
    * checked or found. If they are not in the hash table, it would be an
    * error. That is, we would have a relocated (content) object without an
@@ -14303,7 +14303,7 @@ heap_chkreloc_end (HEAP_CHKALL_RELOCOIDS * chk)
 	  forward = (HEAP_CHK_RELOCOID *) mht_get (chk->ht, &chk->unfound_reloc_oids[i]);
 	  if (forward != NULL)
 	    {
-	      /* 
+	      /*
 	       * The entry was found.
 	       * Remove the entry and the memory space
 	       */
@@ -14332,7 +14332,7 @@ heap_chkreloc_end (HEAP_CHKALL_RELOCOIDS * chk)
 	}
     }
 
-  /* 
+  /*
    * If there are entries in the hash table, it would be problems. That is,
    * the relocated (content) objects were not found. That is, the home object
    * points to a dangling content object, or what it points is not a
@@ -14451,7 +14451,7 @@ heap_chkreloc_next (THREAD_ENTRY * thread_p, HEAP_CHKALL_RELOCOIDS * chk, PAGE_P
       switch (type)
 	{
 	case REC_RELOCATION:
-	  /* 
+	  /*
 	   * The record stored on the page is a relocation record,
 	   * get the new home for the record
 	   *
@@ -14463,14 +14463,14 @@ heap_chkreloc_next (THREAD_ENTRY * thread_p, HEAP_CHKALL_RELOCOIDS * chk, PAGE_P
 	  found = false;
 	  if (chk->num_unfound_reloc < HEAP_CHKRELOC_UNFOUND_SHORT)
 	    {
-	      /* 
+	      /*
 	       * Go a head and check since the list is very short.
 	       */
 	      for (i = 0; i < chk->num_unfound_reloc; i++)
 		{
 		  if (OID_EQ (&chk->unfound_reloc_oids[i], peek_oid))
 		    {
-		      /* 
+		      /*
 		       * Remove it from the unfound list
 		       */
 		      if ((i + 1) != chk->num_unfound_reloc)
@@ -14485,13 +14485,13 @@ heap_chkreloc_next (THREAD_ENTRY * thread_p, HEAP_CHKALL_RELOCOIDS * chk, PAGE_P
 	    }
 	  if (found == false)
 	    {
-	      /* 
+	      /*
 	       * Add it to hash table
 	       */
 	      forward = (HEAP_CHK_RELOCOID *) malloc (sizeof (HEAP_CHK_RELOCOID));
 	      if (forward == NULL)
 		{
-		  /* 
+		  /*
 		   * Out of memory
 		   */
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (HEAP_CHK_RELOCOID));
@@ -14502,7 +14502,7 @@ heap_chkreloc_next (THREAD_ENTRY * thread_p, HEAP_CHKALL_RELOCOIDS * chk, PAGE_P
 	      forward->reloc_oid = *peek_oid;
 	      if (mht_put (chk->ht, &forward->reloc_oid, forward) == NULL)
 		{
-		  /* 
+		  /*
 		   * Failure in mht_put
 		   */
 		  return DISK_ERROR;
@@ -14604,14 +14604,14 @@ heap_chkreloc_next (THREAD_ENTRY * thread_p, HEAP_CHKALL_RELOCOIDS * chk, PAGE_P
 		}
 	    }
 
-	  /* 
+	  /*
 	   * Remove the object from hash table or insert the object in unfound
 	   * reloc check list.
 	   */
 	  forward = (HEAP_CHK_RELOCOID *) mht_get (chk->ht, &oid);
 	  if (forward != NULL)
 	    {
-	      /* 
+	      /*
 	       * The entry was found.
 	       * Remove the entry and the memory space
 	       */
@@ -14623,13 +14623,13 @@ heap_chkreloc_next (THREAD_ENTRY * thread_p, HEAP_CHKALL_RELOCOIDS * chk, PAGE_P
 	    }
 	  else
 	    {
-	      /* 
+	      /*
 	       * The entry is not in hash table.
 	       * Add entry into unfound_reloc list
 	       */
 	      if (chk->max_unfound_reloc <= chk->num_unfound_reloc)
 		{
-		  /* 
+		  /*
 		   * Need to realloc the area. Add 100 OIDs to it
 		   */
 		  i = (sizeof (*chk->unfound_reloc_oids) * (chk->max_unfound_reloc + HEAP_CHK_ADD_UNFOUND_RELOCOIDS));
@@ -14710,7 +14710,7 @@ heap_chnguess_initialize (void)
   heap_Guesschn_area.clock_hand = -1;
   heap_Guesschn_area.num_entries = HEAP_CLASSREPR_MAXCACHE;
 
-  /* 
+  /*
    * Start with at least the fude factor of clients. Make sure that every
    * bit is used.
    */
@@ -14753,7 +14753,7 @@ heap_chnguess_initialize (void)
       goto exit_on_error;
     }
 
-  /* 
+  /*
    * Initialize every entry as not recently freed
    */
   for (i = 0; i < heap_Guesschn_area.num_entries; i++)
@@ -14796,13 +14796,13 @@ heap_chnguess_realloc (void)
       return heap_chnguess_initialize ();
     }
 
-  /* 
+  /*
    * Save current information, so we can copy them at a alater point
    */
   save_bitindex = heap_Guesschn_area.bitindex;
   save_nbytes = heap_Guesschn_area.nbytes;
 
-  /* 
+  /*
    * Find the number of clients that need to be supported. Avoid small
    * increases since it is undesirable to realloc again. Increase by at least
    * the fudge factor.
@@ -14832,7 +14832,7 @@ heap_chnguess_realloc (void)
       goto exit_on_error;
     }
 
-  /* 
+  /*
    * Now reset the bits for each entry
    */
 
@@ -14840,13 +14840,13 @@ heap_chnguess_realloc (void)
     {
       entry = &heap_Guesschn_area.entries[i];
       entry->bits = &heap_Guesschn_area.bitindex[i * heap_Guesschn_area.nbytes];
-      /* 
+      /*
        * Copy the bits
        */
       memcpy (entry->bits, &save_bitindex[i * save_nbytes], save_nbytes);
       HEAP_NBYTES_CLEARED (&entry->bits[save_nbytes], heap_Guesschn_area.nbytes - save_nbytes);
     }
-  /* 
+  /*
    * Now throw previous storage
    */
   free_and_init (save_bitindex);
@@ -15147,7 +15147,7 @@ heap_chnguess_get (THREAD_ENTRY * thread_p, const OID * oid, int tran_index)
 	    }
 	}
 
-      /* 
+      /*
        * Do we have this entry in hash table, if we do then check corresponding
        * bit for given client transaction index.
        */
@@ -15202,13 +15202,13 @@ heap_chnguess_put (THREAD_ENTRY * thread_p, const OID * oid, int tran_index, int
 	}
     }
 
-  /* 
+  /*
    * Is the entry already in the chnguess hash table ?
    */
   entry = (HEAP_CHNGUESS_ENTRY *) mht_get (heap_Guesschn->ht, oid);
   if (entry != NULL)
     {
-      /* 
+      /*
        * If the cache coherence number is different reset all client entries
        */
       if (entry->chn != chn)
@@ -15219,7 +15219,7 @@ heap_chnguess_put (THREAD_ENTRY * thread_p, const OID * oid, int tran_index, int
     }
   else
     {
-      /* 
+      /*
        * Replace one of the entries that has not been used for a while.
        * Follow clock replacement algorithm.
        */
@@ -15229,7 +15229,7 @@ heap_chnguess_put (THREAD_ENTRY * thread_p, const OID * oid, int tran_index, int
 	  can_continue = false;
 	  for (i = 0; i < heap_Guesschn->num_entries; i++)
 	    {
-	      /* 
+	      /*
 	       * Increase the clock to next entry
 	       */
 	      heap_Guesschn->clock_hand++;
@@ -15241,7 +15241,7 @@ heap_chnguess_put (THREAD_ENTRY * thread_p, const OID * oid, int tran_index, int
 	      entry = &heap_Guesschn->entries[heap_Guesschn->clock_hand];
 	      if (entry->recently_accessed == true)
 		{
-		  /* 
+		  /*
 		   * Set recently freed to false, so it can be replaced in next
 		   * if the entry is not referenced
 		   */
@@ -15260,7 +15260,7 @@ heap_chnguess_put (THREAD_ENTRY * thread_p, const OID * oid, int tran_index, int
 	}
     }
 
-  /* 
+  /*
    * Now set the desired client transaction index bit
    */
   if (entry != NULL)
@@ -15453,7 +15453,7 @@ heap_rv_redo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
   if (recdes.type == REC_ASSIGN_ADDRESS)
     {
-      /* 
+      /*
        * The data here isn't really the data to be inserted (because there
        * wasn't any); instead it's the number of bytes that were reserved
        * for future insertion.  Change recdes.length to reflect the number
@@ -16051,8 +16051,8 @@ heap_rv_undo_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   return NO_ERROR;
 }
 
-/* 
- * heap_rv_undo_update () - Undo the update of an object 
+/*
+ * heap_rv_undo_update () - Undo the update of an object
  *   return: int
  *   rev(in): Recovery structure
  */
@@ -16088,8 +16088,8 @@ heap_rv_undo_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   return NO_ERROR;
 }
 
-/* 
- * heap_rv_redo_update () - Redo the update of an object 
+/*
+ * heap_rv_redo_update () - Redo the update of an object
  *   return: int
  *   rcv(in): Recovrery structure
  */
@@ -16154,7 +16154,7 @@ heap_rv_redo_reuse_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   vpid.volid = pgbuf_get_volume_id (rcv->pgptr);
   vpid.pageid = pgbuf_get_page_id (rcv->pgptr);
 
-  /* We ignore the return value. It should be true (objects were deleted) except for the scenario when the redo actions 
+  /* We ignore the return value. It should be true (objects were deleted) except for the scenario when the redo actions
    * are applied twice. */
   (void) heap_delete_all_page_records (thread_p, &vpid, rcv->pgptr);
 
@@ -18749,7 +18749,7 @@ heap_get_bigone_content (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, b
     {
       if (scan_cache->area == NULL)
 	{
-	  /* 
+	  /*
 	   * Allocate an area to hold the object. Assume that the object will fit in two pages for not better estimates.
 	   * We could call heap_ovf_get_length, but it may be better to just guess and realloc if needed.
 	   * We could also check the estimates for average object length, but again, it may be expensive and may not be
@@ -18768,7 +18768,7 @@ heap_get_bigone_content (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, b
 
       while ((scan = heap_ovf_get (thread_p, forward_oid, recdes, NULL_CHN, NULL)) == S_DOESNT_FIT)
 	{
-	  /* 
+	  /*
 	   * The object did not fit into such an area, reallocate a new
 	   * area
 	   */
@@ -18819,7 +18819,7 @@ heap_get_class_oid_from_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, OID * cl
   chain = (HEAP_CHAIN *) chain_recdes.data;
   COPY_OID (class_oid, &(chain->class_oid));
 
-  /* 
+  /*
    * kludge, root class is identified with a NULL class OID but we must
    * substitute the actual OID here - think about this
    */
@@ -19708,7 +19708,7 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
 
   if (use_optimization)
     {
-      /* 
+      /*
        * Most common case. Since is UPDATE_INPLACE_NONE, the header does not have DELID.
        * Optimize header adjustment.
        */
@@ -20061,7 +20061,7 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
   context->res_oid.volid = pgbuf_get_volume_id (context->home_page_watcher_p->pgptr);
   context->res_oid.pageid = pgbuf_get_page_id (context->home_page_watcher_p->pgptr);
 
-  /* 
+  /*
    * Find a slot that is lockable and lock it
    */
   /* determine lock type */
@@ -20616,11 +20616,11 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 
       if (context->home_page_watcher_p->page_was_unfixed)
 	{
-	  /* 
+	  /*
 	   * Need to get the record again, since record may have changed
 	   * by other transactions (INSID removed by VACUUM, page compact).
 	   * The object was already locked, so the record size may be the
-	   * same or smaller (INSID removed by VACUUM). 
+	   * same or smaller (INSID removed by VACUUM).
 	   */
 	  int is_peeking = (context->home_recdes.area_size >= context->home_recdes.length) ? COPY : PEEK;
 	  if (spage_get_record (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid,
@@ -20925,7 +20925,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
-      /* 
+      /*
        * Update old home record (if necessary)
        */
       if (update_old_home)
@@ -20934,11 +20934,11 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 
 	  if (context->home_page_watcher_p->page_was_unfixed)
 	    {
-	      /* 
+	      /*
 	       * Need to get the record again, since record may have changed
 	       * by other transactions (INSID removed by VACUUM, page compact).
 	       * The object was already locked, so the record size may be the
-	       * same or smaller (INSID removed by VACUUM). 
+	       * same or smaller (INSID removed by VACUUM).
 	       */
 	      int is_peeking = (context->home_recdes.area_size >= context->home_recdes.length) ? COPY : PEEK;
 	      if (spage_get_record (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid,
@@ -20983,7 +20983,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	  HEAP_PERF_TRACK_LOGGING (thread_p, context);
 	}
 
-      /* 
+      /*
        * Update old forward record (if necessary)
        */
       if (update_old_forward)
@@ -21010,14 +21010,14 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	  HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 	}
 
-      /* 
+      /*
        * Delete old forward record (if necessary)
        */
       if (remove_old_forward)
 	{
 	  LOG_DATA_ADDR forward_addr;
 
-	  /* re-peek forward record descriptor; forward page may have been unfixed by previous pgbuf_ordered_fix() call 
+	  /* re-peek forward record descriptor; forward page may have been unfixed by previous pgbuf_ordered_fix() call
 	   */
 	  if (context->forward_page_watcher_p->page_was_unfixed)
 	    {
@@ -21059,11 +21059,11 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 
       if (context->home_page_watcher_p->page_was_unfixed)
 	{
-	  /* 
+	  /*
 	   * Need to get the record again, since record may have changed
 	   * by other transactions (INSID removed by VACUUM, page compact).
 	   * The object was already locked, so the record size may be the
-	   * same or smaller (INSID removed by VACUUM). 
+	   * same or smaller (INSID removed by VACUUM).
 	   */
 	  int is_peeking = (context->home_recdes.area_size >= context->home_recdes.length) ? COPY : PEEK;
 	  if (spage_get_record (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid,
@@ -21072,7 +21072,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	      return ER_FAILED;
 	    }
 	}
-      /* 
+      /*
        * Delete home record
        */
 
@@ -21092,7 +21092,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 
       if (context->forward_page_watcher_p->page_was_unfixed)
 	{
-	  /* re-peek forward record descriptor; forward page may have been unfixed by previous pgbuf_ordered_fix() call 
+	  /* re-peek forward record descriptor; forward page may have been unfixed by previous pgbuf_ordered_fix() call
 	   */
 	  if (spage_get_record (thread_p, context->forward_page_watcher_p->pgptr, forward_oid.slotid,
 				&forward_recdes, PEEK) != S_SUCCESS)
@@ -21100,10 +21100,10 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	      return ER_FAILED;
 	    }
 	}
-      /* 
+      /*
        * Delete forward record
        */
-      /* 
+      /*
        * It should be safe to mark the new home slot as reusable regardless
        * of the heap type (reusable OID or not) as the relocated record
        * should not be referenced anywhere in the database.
@@ -21150,11 +21150,11 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 
   if (context->home_page_watcher_p->page_was_unfixed)
     {
-      /* 
+      /*
        * Need to get the record again, since record may have changed
        * by other transactions (INSID removed by VACUUM, page compact).
        * The object was already locked, so the record size may be the
-       * same or smaller (INSID removed by VACUUM). 
+       * same or smaller (INSID removed by VACUUM).
        */
       int is_peeking = (context->home_recdes.area_size >= context->home_recdes.length) ? COPY : PEEK;
       if (spage_get_record (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid,
@@ -21299,7 +21299,7 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
       /* check whether relocation is necessary */
       if (built_recdes.type == REC_BIGONE || built_recdes.type == REC_NEWHOME)
 	{
-	  /* 
+	  /*
 	   * Relocation necessary
 	   */
 	  LOG_DATA_ADDR rec_address;
@@ -21340,11 +21340,11 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 
 	  if (context->home_page_watcher_p->page_was_unfixed)
 	    {
-	      /* 
+	      /*
 	       * Need to get the record again, since record may have changed
 	       * by other transactions (INSID removed by VACUUM, page compact).
 	       * The object was already locked, so the record size may be the
-	       * same or smaller (INSID removed by VACUUM). 
+	       * same or smaller (INSID removed by VACUUM).
 	       */
 	      int is_peeking = (context->home_recdes.area_size >= context->home_recdes.length) ? COPY : PEEK;
 	      if (spage_get_record (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid,
@@ -21370,7 +21370,7 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	{
 	  LOG_DATA_ADDR rec_address;
 
-	  /* 
+	  /*
 	   * No relocation, can be updated in place
 	   */
 
@@ -21848,7 +21848,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
   /* Remove rec_newhome only in case of old_home update */
   assert (remove_old_forward == update_old_home);
 
-  /* 
+  /*
    * Update old home record (if necessary)
    */
   if (update_old_home)
@@ -21869,7 +21869,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
     }
 
-  /* 
+  /*
    * Delete old forward record (if necessary)
    */
   if (remove_old_forward)
@@ -21878,7 +21878,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       if ((new_home_recdes.type == REC_RELOCATION || new_home_recdes.type == REC_BIGONE)
 	  && context->forward_page_watcher_p->page_was_unfixed)
 	{
-	  /* 
+	  /*
 	   * Need to get the record again, since the record may have changed by other concurrent
 	   * transactions (INSID removed by VACUUM).
 	   */
@@ -21908,7 +21908,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
     }
 
-  /* 
+  /*
    * Update old forward record (if necessary)
    */
   if (update_old_forward)
@@ -22108,11 +22108,11 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
   if ((home_page_updated_recdes_p->type == REC_RELOCATION || home_page_updated_recdes_p->type == REC_BIGONE)
       && context->home_page_watcher_p->page_was_unfixed)
     {
-      /* 
+      /*
        * Need to get the record again, since record may have changed
        * by other transactions (INSID removed by VACUUM, page compact).
        * The object was already locked, so the record size may be the
-       * same or smaller (INSID removed by VACUUM). 
+       * same or smaller (INSID removed by VACUUM).
        */
       int is_peeking = (context->home_recdes.area_size >= context->home_recdes.length) ? COPY : PEEK;
       if (spage_get_record (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid, &context->home_recdes,
@@ -22198,7 +22198,7 @@ heap_update_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, short slot_id, R
   scancode = spage_update (thread_p, page_p, slot_id, recdes_p);
   if (scancode != SP_SUCCESS)
     {
-      /* 
+      /*
        * This is likely a system error since we have already checked
        * for space.
        */
@@ -22398,7 +22398,7 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
     }
 
   is_mvcc_class = !mvcc_is_mvcc_disabled_class (&context->class_oid);
-  /* 
+  /*
    * Determine type of operation
    */
 #if defined (SERVER_MODE)
@@ -22414,7 +22414,7 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   is_mvcc_op = false;
 #endif /* SERVER_MODE */
 
-  /* 
+  /*
    * Record header adjustments
    */
   if (!OID_ISNULL (&context->class_oid) && !OID_IS_ROOTOID (&context->class_oid)
@@ -22430,7 +22430,7 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   CUBRID_OBJ_INSERT_START (&context->class_oid);
 #endif /* ENABLE_SYSTEMTAP */
 
-  /* 
+  /*
    * Handle multipage object
    */
   if (heap_insert_handle_multipage_record (thread_p, context) != NO_ERROR)
@@ -22439,7 +22439,7 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
       goto error;
     }
 
-  /* 
+  /*
    * Locking
    */
   /* make sure we have IX_LOCK on class see [NOTE-1] */
@@ -22456,7 +22456,7 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 
   HEAP_PERF_TRACK_PREPARE (thread_p, context);
 
-  /* 
+  /*
    * Physical insertion
    */
   if (heap_insert_physical (thread_p, context) != NO_ERROR)
@@ -22467,7 +22467,7 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 
   HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
-  /* 
+  /*
    * Operation logging
    */
   heap_log_insert_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->res_oid,
@@ -22478,7 +22478,7 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   /* mark insert page as dirty */
   pgbuf_set_dirty (thread_p, context->home_page_watcher_p->pgptr, DONT_FREE);
 
-  /* 
+  /*
    * Page unfix or caching
    */
   if (context->scan_cache_p != NULL && context->home_page_watcher_p == &context->home_page_watcher
@@ -22497,7 +22497,7 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   /* unfix other pages */
   heap_unfix_watchers (thread_p, context);
 
-  /* 
+  /*
    * Class creation case
    */
   if (context->recdes_p->type != REC_ASSIGN_ADDRESS && HFID_EQ ((&context->hfid), &(heap_Classrepr->rootclass_hfid)))
@@ -22549,7 +22549,7 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   int rc = NO_ERROR;
   PERF_UTIME_TRACKER time_track;
 
-  /* 
+  /*
    * Check input
    */
   assert (context != NULL);
@@ -22589,7 +22589,7 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
       return ER_FAILED;
     }
 
-  /* 
+  /*
    * Class deletion case
    */
   if (HFID_EQ (&context->hfid, &(heap_Classrepr->rootclass_hfid)))
@@ -22600,7 +22600,7 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 	}
     }
 
-  /* 
+  /*
    * Determine type of operation
    */
 #if defined (SERVER_MODE)
@@ -22620,7 +22620,7 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   CUBRID_OBJ_DELETE_START (&context->class_oid);
 #endif /* ENABLE_SYSTEMTAP */
 
-  /* 
+  /*
    * Fetch object's page and check record type
    */
   if (heap_get_record_location (thread_p, context) != NO_ERROR)
@@ -22650,7 +22650,7 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 
   HEAP_PERF_TRACK_PREPARE (thread_p, context);
 
-  /* 
+  /*
    * Physical deletion and logging
    */
   switch (context->record_type)
@@ -22716,7 +22716,7 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   PERF_UTIME_TRACKER time_track;
   bool is_mvcc_class;
 
-  /* 
+  /*
    * Check input
    */
   assert (context != NULL);
@@ -22779,7 +22779,7 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   context->is_logical_old = true;
 
   is_mvcc_class = !mvcc_is_mvcc_disabled_class (&context->class_oid);
-  /* 
+  /*
    * Determine type of operation
    */
   is_mvcc_op = HEAP_UPDATE_IS_MVCC_OP (is_mvcc_class, context->update_in_place);
@@ -22793,7 +22793,7 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   CUBRID_OBJ_UPDATE_START (&context->class_oid);
 #endif /* ENABLE_SYSTEMTAP */
 
-  /* 
+  /*
    * Get location
    */
   rc = heap_get_record_location (thread_p, context);
@@ -22806,7 +22806,7 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   /* decache guessed representation */
   HEAP_MAYNEED_DECACHE_GUESSED_LASTREPRS (&context->oid, &context->hfid);
 
-  /* 
+  /*
    * Fetch record
    */
   context->record_type = spage_get_record_type (context->home_page_watcher_p->pgptr, context->oid.slotid);
@@ -22827,7 +22827,7 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
       goto exit;
     }
 
-  /* 
+  /*
    * Adjust new record header
    */
   if (!OID_ISNULL (&context->class_oid) && !OID_IS_ROOTOID (&context->class_oid))
@@ -22842,7 +22842,7 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 
   HEAP_PERF_TRACK_PREPARE (thread_p, context);
 
-  /* 
+  /*
    * Update record
    */
   switch (context->record_type)
@@ -22877,7 +22877,7 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
       goto exit;
     }
 
-  /* 
+  /*
    * Class update case
    */
   if (HFID_EQ ((&context->hfid), &(heap_Classrepr->rootclass_hfid)))
@@ -23083,7 +23083,7 @@ heap_hfid_table_entry_key_compare (void *k1, void *k2)
  * heap_initialize_hfid_table () - Creates and initializes global structure
  *				    for global class OID->HFID hash table
  *   return: error code
- *   thread_p  (in) : 
+ *   thread_p  (in) :
  */
 int
 heap_initialize_hfid_table (void)
@@ -23138,7 +23138,7 @@ heap_initialize_hfid_table (void)
 /*
  * heap_finalize_hfid_table () - Finalize class OID->HFID hash table
  *   return: error code
- *   thread_p  (in) : 
+ *   thread_p  (in) :
  */
 void
 heap_finalize_hfid_table (void)
@@ -23331,7 +23331,7 @@ heap_insert_hfid_for_class_oid (THREAD_ENTRY * thread_p, const OID * class_oid, 
  *   return: error code
  *   thread_p  (in) :
  *   class OID (in) : the class OID for which the entry will be returned
- *   hfid_out  (out): 
+ *   hfid_out  (out):
  *
  *   Note: if the entry is not found, one will be inserted and the HFID is
  *	retrieved from the class record.
@@ -23695,7 +23695,7 @@ heap_rv_nop (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * heap_rv_update_chain_after_mvcc_op () - Redo update of page chain after
  *					   an MVCC operation (used for
  *					   operations that are not changing
- *					   
+ *					
  *
  * return	 : NO_ERROR
  * thread_p (in) : Thread entry.
@@ -23730,7 +23730,7 @@ heap_rv_remove_flags_from_offset (INT16 offset)
 /*
  * heap_should_try_update_stat () - checks if an heap update statistics is
  *				    indicated
- *					   
+ *					
  *
  * return	 : NO_ERROR
  * thread_p (in) : Thread entry.
@@ -23752,7 +23752,7 @@ heap_should_try_update_stat (const int current_freespace, const int prev_freespa
  *				      to the scan_cache's partition list.
  *				      Also sets the current node of the
  *				      scancache to this newly inserted node.
- * 
+ *
  * return		: error code
  * thread_p (in)	:
  * scan_cache (in)	:
@@ -23954,8 +23954,8 @@ heap_rv_mvcc_redo_redistribute (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
 /*
  * heap_get_visible_version_from_log () - Iterate through old versions of object until a visible object is found
- *				    
- *   return: SCAN_CODE. Possible values: 
+ *				
+ *   return: SCAN_CODE. Possible values:
  *	     - S_SUCCESS: for successful case when record was obtained.
  *	     - S_DOESNT_EXIT: NULL LSA was provided, otherwise a visible version should exist
  *	     - S_DOESNT_FIT: the record doesn't fit in allocated area
@@ -24096,16 +24096,16 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
 /*
  * heap_get_visible_version () - get visible version, mvcc style when snapshot provided, otherwise directly from heap
  *
- *   return: SCAN_CODE. Posible values: 
+ *   return: SCAN_CODE. Posible values:
  *	     - S_SUCCESS: for successful case when record was obtained.
- *	     - S_DOESNT_EXIT: 
+ *	     - S_DOESNT_EXIT:
  *	     - S_DOESNT_FIT: the record doesn't fit in allocated area
  *	     - S_ERROR: In case of error
  *	     - S_SNAPSHOT_NOT_SATISFIED
  *	     - S_SUCCESS_CHN_UPTODATE: CHN is up to date and it's not necessary to get record again
  *   thread_p (in): Thread entry.
  *   oid (in): Object to be obtained.
- *   class_oid (in): 
+ *   class_oid (in):
  *   recdes (out): Record descriptor. NULL if not needed
  *   scan_cache(in): Heap scan cache.
  *   ispeeking(in): Peek record or copy.
@@ -24168,11 +24168,11 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
 }
 
 /*
- * heap_get_visible_version_internal () - Retrieve the visible version of an object according to snapshot 
- * 
+ * heap_get_visible_version_internal () - Retrieve the visible version of an object according to snapshot
+ *
  *  return SCAN_CODE.
  *  thread_p (in): Thread entry.
- *  context (in): Heap get context. 
+ *  context (in): Heap get context.
  *  is_heap_scan (in): required for heap_prepare_get_context
  */
 SCAN_CODE
@@ -24269,16 +24269,16 @@ exit:
 }
 
 /*
- * heap_update_set_prev_version () - Set prev version lsa to record according to its type. 
+ * heap_update_set_prev_version () - Set prev version lsa to record according to its type.
  *
  * return	       : error code or NO_ERROR
  * thread_p (in)       : Thread entry.
  * oid (in)            : Object identifier of the updated record
- * home_pg_watcher (in): Home page watcher; must be  
+ * home_pg_watcher (in): Home page watcher; must be
  * fwd_pg_watcher (in) : Forward page watcher
  * prev_version_lsa(in): LSA address of undo log record of the old record
  *
- * Note: This function works only with heap_update_home/relocation/bigone functions. It is designed to set the 
+ * Note: This function works only with heap_update_home/relocation/bigone functions. It is designed to set the
  *       prev_version_lsa to updated records by overwriting this information directly into heap file. The header of the
  *       record should be prepared for this in heap_insert_adjust_recdes_header().
  *       The records are obtained using PEEK, and modified directly, without using spage_update afterwards!
@@ -24442,7 +24442,7 @@ exit:
   return scan;
 }
 
-/* 
+/*
  * heap_prepare_object_page () - Check if provided page matches the page of provided OID or fix the right one.
  *
  * return	       : Error code.
@@ -24493,9 +24493,9 @@ heap_prepare_object_page (THREAD_ENTRY * thread_p, const OID * oid, PGBUF_WATCHE
   return ret;
 }
 
-/* 
- * heap_clean_get_context () - Unfix page watchers of get context and save home page to scan_cache if possible 
- * 
+/*
+ * heap_clean_get_context () - Unfix page watchers of get context and save home page to scan_cache if possible
+ *
  * thread_p (in)   : Thread_identifier.
  * context (in)	   : Heap get context.
  */
@@ -24527,7 +24527,7 @@ heap_clean_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
   assert (context->home_page_watcher.pgptr == NULL && context->fwd_page_watcher.pgptr == NULL);
 }
 
-/* 
+/*
  * heap_init_get_context () - Initiate all heap get context fields with generic informations
  *
  * thread_p (in)   : Thread_identifier.
@@ -24535,9 +24535,9 @@ heap_clean_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
  * oid (in)	   : Object identifier.
  * class_oid (in)  : Class oid.
  * recdes (in)     : Record descriptor.
- * scan_cache (in) : Scan cache. 
+ * scan_cache (in) : Scan cache.
  * is_peeking (in) : PEEK or COPY.
- * old_chn (in)	   : Cache coherency number. 
+ * old_chn (in)	   : Cache coherency number.
 */
 void
 heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, const OID * oid, OID * class_oid,
@@ -24619,8 +24619,8 @@ heap_scan_cache_allocate_area (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
 
 /*
  * heap_scan_cache_allocate_recdes_data () - Allocate recdes data and set it to recdes
- * 
- * return: error code 
+ *
+ * return: error code
  * thread_p (in) : Thread entry.
  * scan_cache_p (in) : Scan cache.
  * recdes_p (in) : Record descriptor.
@@ -24647,7 +24647,7 @@ heap_scan_cache_allocate_recdes_data (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * 
 
 /*
  * heap_get_class_record () - Retrieves class objects only
- * 
+ *
  * return SCAN_CODE: S_SUCCESS or error
  * thread_p (in)   : Thread entry.
  * class_oid (in)  : Class object identifier.
@@ -24700,7 +24700,7 @@ heap_rv_undo_ovf_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 }
 
 /*
- * heap_get_best_space_num_stats_entries - Returns the number of num_stats_entries 
+ * heap_get_best_space_num_stats_entries - Returns the number of num_stats_entries
  * return : the number of entries in the heap
  *
  */

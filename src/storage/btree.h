@@ -201,7 +201,7 @@ struct btree_scan
 
   bool key_range_max_value_equal;
 
-  /* 
+  /*
    * cur_leaf_lsa
    */
   LOG_LSA cur_leaf_lsa;		/* page LSA of current leaf page */
@@ -465,7 +465,7 @@ enum btree_op_purpose
   BTREE_OP_INSERT_NEW_OBJECT,	/* Insert a new object into b-tree along with its insert MVCCID. */
   BTREE_OP_INSERT_MVCC_DELID,	/* Insert delete MVCCID for object when deleted. */
   BTREE_OP_INSERT_MARK_DELETED,	/* Mark object as deleted. This is used on a unique index of a non-MVCC class. It is
-				 * very similar to BTREE_OP_INSERT_MVCC_DELID. The differences are: 1. The context they 
+				 * very similar to BTREE_OP_INSERT_MVCC_DELID. The differences are: 1. The context they
 				 * are used for. MVCC delete is used to delete from MVCC-enabled classes. Mark deleted
 				 * is used for unique indexes of MVCC-disabled classes like db_serial. 2. Mark deleted
 				 * is followed by a postpone operation which removes the object after commit. 3. Mark
@@ -475,7 +475,7 @@ enum btree_op_purpose
   BTREE_OP_DELETE_OBJECT_PHYSICAL,	/* Physically delete an object from b-tree when MVCC is enabled. */
   BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED,	/* Physical delete was postponed. */
   BTREE_OP_DELETE_UNDO_INSERT,	/* Undo insert */
-  BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD,	/* Undo insert into unique index, when multi-update exception to unique 
+  BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD,	/* Undo insert into unique index, when multi-update exception to unique
 						 * constraint violation is applied. Previous visible object must be
 						 * returned to first position in record. */
   BTREE_OP_DELETE_UNDO_INSERT_DELID,	/* Remove only delete MVCCID for an object in b-tree. It is called when object

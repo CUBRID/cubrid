@@ -157,10 +157,10 @@ extern const VPID vpid_Null_vpid;
 
 typedef enum
 {
-  OLD_PAGE = 0,			/* Fetch page that should be allocated and already existing either in page buffer or on 
+  OLD_PAGE = 0,			/* Fetch page that should be allocated and already existing either in page buffer or on
 				 * disk. Must pass validation test and must be fixed from disk if it doesn't exist in
 				 * buffer. */
-  NEW_PAGE,			/* Fetch newly allocated page. Must pass validation test but it can be created directly 
+  NEW_PAGE,			/* Fetch newly allocated page. Must pass validation test but it can be created directly
 				 * in buffer without fixing from disk. */
   OLD_PAGE_IF_IN_BUFFER,	/* Fetch existing page only if is valid and if it exists in page buffer. Page may be
 				 * deallocated or flushed and invalidated from buffer, in which case fixing page is not

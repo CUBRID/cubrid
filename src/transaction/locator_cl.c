@@ -255,7 +255,7 @@ locator_is_class (MOP mop, DB_FETCH_MODE hint_purpose)
 	  er_stack_push ();
 	  error_saved = true;
 	}
-      /* 
+      /*
        * The class identifier of the object associated with the mop is stored
        * along with the object on the disk representation. The class mop is not
        * stored with the object since the object is not cached, fetch the object
@@ -315,7 +315,7 @@ locator_cache_lock (MOP mop, MOBJ ignore_notgiven_object, void *xcache_lock)
   cache_lock = (LOCATOR_CACHE_LOCK *) xcache_lock;
   oid = ws_oid (mop);
 
-  /* 
+  /*
    * The cached lock depends upon the object that we are dealing, Is the
    * object the requested one, is the class of the requested object,
    * or is a prefetched object
@@ -337,7 +337,7 @@ locator_cache_lock (MOP mop, MOBJ ignore_notgiven_object, void *xcache_lock)
       assert (lock != NA_LOCK);
     }
 
-  /* 
+  /*
    * If the lock is IS_LOCK, IX_LOCK, the object must be a class. Otherwise,
    * we call the server with the wrong lock, the server should have fixed
    * the lock by now.
@@ -347,7 +347,7 @@ locator_cache_lock (MOP mop, MOBJ ignore_notgiven_object, void *xcache_lock)
 
   if (class_mop != NULL && class_mop != sm_Root_class_mop)
     {
-      /* 
+      /*
        * An instance
        */
       if (lock > NULL_LOCK)
@@ -438,7 +438,7 @@ locator_cache_lock_set (MOP mop, MOBJ ignore_notgiven_object, void *xlockset)
 
   while (true)
     {
-      /* 
+      /*
        * Is the object part of the classes of the requested objects ?
        */
       for (i = lockset->last_classof_reqobjs_cached + 1; i < stopidx_class; i++)
@@ -459,7 +459,7 @@ locator_cache_lock_set (MOP mop, MOBJ ignore_notgiven_object, void *xlockset)
 	      lock = lock_Conv[lock][ws_get_lock (mop)];
 	      assert (lock != NA_LOCK);
 	      found = true;
-	      /* 
+	      /*
 	       * Cache the location of the current on for future initialization of
 	       * the search. The objects are cached in the same order as they are
 	       * requested. The classes of the requested objects are sent before
@@ -470,7 +470,7 @@ locator_cache_lock_set (MOP mop, MOBJ ignore_notgiven_object, void *xlockset)
 	    }
 	}
 
-      /* 
+      /*
        * Is the object part of the requested objects ?
        */
       for (i = lockset->last_reqobj_cached + 1; found == false && i < stopidx_reqobj; i++)
@@ -499,7 +499,7 @@ locator_cache_lock_set (MOP mop, MOBJ ignore_notgiven_object, void *xlockset)
 	      assert (lock != NA_LOCK);
 	      found = true;
 	      lockset->last_reqobj_cached = i;
-	      /* 
+	      /*
 	       * Likely, we have finished all the classes by now.
 	       */
 	      lockset->last_classof_reqobjs_cached = lockset->num_classes_of_reqobjs;
@@ -507,7 +507,7 @@ locator_cache_lock_set (MOP mop, MOBJ ignore_notgiven_object, void *xlockset)
 	    }
 	}
 
-      /* 
+      /*
        * If were not able to find the object. We need to start looking from
        * the very beginning of the lists, and stop the searching one object
        * before where the current search stopped.
@@ -522,7 +522,7 @@ locator_cache_lock_set (MOP mop, MOBJ ignore_notgiven_object, void *xlockset)
 
       if (lockset->last_classof_reqobjs_cached != -1 || lockset->last_reqobj_cached != -1)
 	{
-	  /* 
+	  /*
 	   * Try the portion of the list that we have not looked
 	   */
 	  stopidx_class = lockset->last_classof_reqobjs_cached - 1;
@@ -533,7 +533,7 @@ locator_cache_lock_set (MOP mop, MOBJ ignore_notgiven_object, void *xlockset)
 	}
       else
 	{
-	  /* 
+	  /*
 	   * Leave the hints the way they were..
 	   */
 	  lockset->last_classof_reqobjs_cached = stopidx_class + 1;
@@ -544,7 +544,7 @@ locator_cache_lock_set (MOP mop, MOBJ ignore_notgiven_object, void *xlockset)
 
   if (found == false && class_mop != NULL)
     {
-      /* 
+      /*
        * This is a prefetched object
        */
       lock = ws_get_lock (class_mop);
@@ -554,7 +554,7 @@ locator_cache_lock_set (MOP mop, MOBJ ignore_notgiven_object, void *xlockset)
       lock = lock_Conv[lock][ws_get_lock (mop)];
       assert (lock != NA_LOCK);
 
-      /* 
+      /*
        * If a prefetch a class somehow.. I don't have any lock on the root
        * set, the lowest lock on it
        */
@@ -610,7 +610,7 @@ locator_lock (MOP mop, LC_OBJTYPE isclass, LOCK lock, LC_FETCH_VERSION_TYPE fetc
 
   if (WS_ISVID (mop))
     {
-      /* 
+      /*
        * Don't know how to fetch virtual object. This looks like a system error
        * of the caller
        */
@@ -635,7 +635,7 @@ locator_lock (MOP mop, LC_OBJTYPE isclass, LOCK lock, LC_FETCH_VERSION_TYPE fetc
       goto end;
     }
 
-  /* 
+  /*
    * Invoke the transaction object locator on the server either:
    * a) if the object is not cached
    * b) the current lock acquired on the object is less powerful
@@ -677,7 +677,7 @@ locator_lock (MOP mop, LC_OBJTYPE isclass, LOCK lock, LC_FETCH_VERSION_TYPE fetc
   else if (class_mop != NULL)
     {
       class_lock = ws_get_lock (class_mop);
-      /* 
+      /*
        *  Since shared or exclusive class lock is requested, the purpose is to
        * update class or instances (we do not allow such locks at select).
        *  In read committed, using MVCC version may lead to issues. Thus, we may
@@ -714,13 +714,13 @@ locator_lock (MOP mop, LC_OBJTYPE isclass, LOCK lock, LC_FETCH_VERSION_TYPE fetc
     {
       /* Since an already cached object of a reuse_oid table may be deleted after it is cached to my workspace and
        * then another object may occupy its slot, unfortunately the cached CHN has no meaning. When the new object
-       * occasionally has the same CHN with that of the cached object and we don't fetch the object from server again, 
+       * occasionally has the same CHN with that of the cached object and we don't fetch the object from server again,
        * * we will incorrectly reuse the cached deleted object. We need to refetch the cached object if it is an
        * instance of reuse_oid table. Server will fetch the object since client passes NULL_CHN. */
       chn = NULL_CHN;
     }
 
-  /* 
+  /*
    * Get the class information for the desired object, just in case we need
    * to bring it from the server.
    */
@@ -776,7 +776,7 @@ locator_lock (MOP mop, LC_OBJTYPE isclass, LOCK lock, LC_FETCH_VERSION_TYPE fetc
 
   if (fetch_version_type == LC_FETCH_CURRENT_VERSION && TM_TRAN_READ_FETCH_VERSION () == LC_FETCH_CURRENT_VERSION)
     {
-      /* The purpose was to fetch current version from beginning (not based on mop). This may happen when write results 
+      /* The purpose was to fetch current version from beginning (not based on mop). This may happen when write results
        * to stream. Converts LC_FETCH_CURRENT_VERSION to LC_FETCH_CURRENT_VERSION_NO_CHECK to avoid checks on server
        * side. */
       fetch_version_type = LC_FETCH_CURRENT_VERSION_NO_CHECK;
@@ -791,7 +791,7 @@ locator_lock (MOP mop, LC_OBJTYPE isclass, LOCK lock, LC_FETCH_VERSION_TYPE fetc
 
   if (fetch_area != NULL)
     {
-      /* 
+      /*
        * Cache the objects that were brought from the server
        */
       error_code = locator_cache (fetch_area, class_mop, class_obj, locator_cache_lock, &cache_lock);
@@ -802,7 +802,7 @@ locator_lock (MOP mop, LC_OBJTYPE isclass, LOCK lock, LC_FETCH_VERSION_TYPE fetc
 	}
     }
 
-  /* 
+  /*
    * Cache the lock for the object and its class.
    * We need to do this since we don't know if the object was received in
    * the fetch area
@@ -895,7 +895,7 @@ locator_lock_set (int num_mops, MOP * vector_mop, LOCK reqobj_inst_lock, LOCK re
   reqobjs = lockset->objects;
   reqclasses = lockset->classes;
 
-  /* 
+  /*
    * If there were requested more than 30 objects, set a memory hash table
    * to check for duplicates.
    */
@@ -928,7 +928,7 @@ locator_lock_set (int num_mops, MOP * vector_mop, LOCK reqobj_inst_lock, LOCK re
 	    }
 	}
 
-      /* 
+      /*
        * Make sure that it is not duplicated. This is needed since our API does
        * not enforce uniqueness in sequences and so on.
        *
@@ -938,12 +938,12 @@ locator_lock_set (int num_mops, MOP * vector_mop, LOCK reqobj_inst_lock, LOCK re
 
       if (htbl != NULL)
 	{
-	  /* 
+	  /*
 	   * Check for duplicates by looking into the hash table
 	   */
 	  if (mht_get (htbl, oid) == NULL)
 	    {
-	      /* 
+	      /*
 	       * The object has not been processed
 	       */
 	      if (mht_put (htbl, oid, mop) != mop)
@@ -955,7 +955,7 @@ locator_lock_set (int num_mops, MOP * vector_mop, LOCK reqobj_inst_lock, LOCK re
 	    }
 	  else
 	    {
-	      /* 
+	      /*
 	       * These object has been processed. The object is duplicated in the
 	       * list of requested objects.
 	       */
@@ -964,7 +964,7 @@ locator_lock_set (int num_mops, MOP * vector_mop, LOCK reqobj_inst_lock, LOCK re
 	}
       else
 	{
-	  /* 
+	  /*
 	   * We do not have a hash table to check for duplicates, we must do a
 	   * sequential scan.
 	   */
@@ -1020,7 +1020,7 @@ locator_lock_set (int num_mops, MOP * vector_mop, LOCK reqobj_inst_lock, LOCK re
 	}
 #endif /* SA_MODE && !CUBRID_DEBUG */
 
-      /* 
+      /*
        * Invoke the transaction object locator on the server either:
        * a) if the object is not cached
        * b) the current lock acquired on the object is less powerful
@@ -1037,7 +1037,7 @@ locator_lock_set (int num_mops, MOP * vector_mop, LOCK reqobj_inst_lock, LOCK re
 	  continue;
 	}
 
-      /* 
+      /*
        * We must invoke the transaction object locator on the server for this
        * object.
        */
@@ -1068,12 +1068,12 @@ locator_lock_set (int num_mops, MOP * vector_mop, LOCK reqobj_inst_lock, LOCK re
 	  /* Since an already cached object of a reuse_oid table may be deleted after it is cached to my workspace and
 	   * then another object may occupy its slot, unfortunately the cached CHN has no meaning. When the new object
 	   * occasionally has the same CHN with that of the cached object and we don't fetch the object from server
-	   * again, we will incorrectly reuse the cached deleted object. We need to refetch the cached object if it is 
+	   * again, we will incorrectly reuse the cached deleted object. We need to refetch the cached object if it is
 	   * an instance of reuse_oid table. Server will fetch the object since client passes NULL_CHN. */
 	  reqobjs->chn = NULL_CHN;
 	}
 
-      /* 
+      /*
        * Get the class information for the desired object, just in case we
        * need to bring it from the server.
        */
@@ -1131,7 +1131,7 @@ locator_lock_set (int num_mops, MOP * vector_mop, LOCK reqobj_inst_lock, LOCK re
       reqobjs++;
     }
 
-  /* 
+  /*
    * We do not need the hash table any longer
    */
   if (htbl != NULL)
@@ -1140,7 +1140,7 @@ locator_lock_set (int num_mops, MOP * vector_mop, LOCK reqobj_inst_lock, LOCK re
       htbl = NULL;
     }
 
-  /* 
+  /*
    * Now acquire the locks and fetch the desired objects when needed
    */
 
@@ -1149,7 +1149,7 @@ locator_lock_set (int num_mops, MOP * vector_mop, LOCK reqobj_inst_lock, LOCK re
       error_code = locator_get_rest_objects_classes (lockset, class_mop, class_obj);
       if (error_code == NO_ERROR)
 	{
-	  /* 
+	  /*
 	   * Cache the lock for the requested objects and their classes.
 	   */
 	  for (i = 0; i < lockset->num_classes_of_reqobjs; i++)
@@ -1157,7 +1157,7 @@ locator_lock_set (int num_mops, MOP * vector_mop, LOCK reqobj_inst_lock, LOCK re
 	      if ((!OID_ISNULL (&lockset->classes[i].oid))
 		  && (mop = ws_mop (&lockset->classes[i].oid, sm_Root_class_mop)) != NULL)
 		{
-		  /* 
+		  /*
 		   * The following statement was added as safety after the C/S stub
 		   * optimization of locator_fetch_lockset...which does not bring back
 		   * the lock lockset array
@@ -1180,7 +1180,7 @@ locator_lock_set (int num_mops, MOP * vector_mop, LOCK reqobj_inst_lock, LOCK re
 		  if ((!OID_ISNULL (&lockset->objects[i].oid))
 		      && (mop = ws_mop (&lockset->objects[i].oid, NULL)) != NULL)
 		    {
-		      /* 
+		      /*
 		       * The following statement was added as safety after the
 		       * C/S stub optimization of locator_fetch_lockset...which does
 		       * not bring back the lock lockset array
@@ -1273,7 +1273,7 @@ locator_set_chn_classes_objects (LC_LOCKSET * lockset)
   MOBJ object;			/* The desired object */
   OID *class_oid;		/* Class identifier of object to lock */
 
-  /* 
+  /*
    * First the classes of the object and its references
    */
 
@@ -1361,7 +1361,7 @@ locator_get_rest_objects_classes (LC_LOCKSET * lockset, MOP class_mop, MOBJ clas
       if (fetch_ptr[idx] == NULL)
 	{
 	  /* FIXME: This loop should have the same lifespan as the loop in slocator_fetch_lockset on server. Because
-	   * that loop stops when copy_area is NULL (fetch_ptr[idx] here), this loop should stop too or the client will 
+	   * that loop stops when copy_area is NULL (fetch_ptr[idx] here), this loop should stop too or the client will
 	   * be stuck in this loop waiting for an answer that will never come. This is a temporary fix. NOTE: No error
 	   * is set on server, we will not set one here. */
 	  break;
@@ -1444,7 +1444,7 @@ locator_lock_nested (MOP mop, LOCK lock, int prune_level, int quit_on_errors, in
 
   if (WS_ISVID (mop))
     {
-      /* 
+      /*
        * Don't know how to fetch virtual object. This looks like a system error
        * of the caller
        */
@@ -1466,7 +1466,7 @@ locator_lock_nested (MOP mop, LOCK lock, int prune_level, int quit_on_errors, in
       return ER_HEAP_UNKNOWN_OBJECT;
     }
 
-  /* 
+  /*
    * Don't need to go to the server if the following holds:
    * 1: The object is cached
    * 2: We have the correct lock
@@ -1484,7 +1484,7 @@ locator_lock_nested (MOP mop, LOCK lock, int prune_level, int quit_on_errors, in
       level = (int) WS_MOP_GET_PRUNE_LEVEL (mop);
       if (level <= 0 || level >= prune_level)
 	{
-	  /* 
+	  /*
 	   * Don't need to go to the server
 	   */
 	  return NO_ERROR;
@@ -1496,13 +1496,13 @@ locator_lock_nested (MOP mop, LOCK lock, int prune_level, int quit_on_errors, in
     {
       /* Since an already cached object of a reuse_oid table may be deleted after it is cached to my workspace and
        * then another object may occupy its slot, unfortunately the cached CHN has no meaning. When the new object
-       * occasionally has the same CHN with that of the cached object and we don't fetch the object from server again, 
+       * occasionally has the same CHN with that of the cached object and we don't fetch the object from server again,
        * we will incorrectly reuse the cached deleted object. We need to refetch the cached object if it is an
        * instance of reuse_oid table. Server will fetch the object since client passes NULL_CHN. */
       chn = NULL_CHN;
     }
 
-  /* 
+  /*
    * Get the class information for the desired object, just in case we need
    * to bring it from the server
    */
@@ -1527,7 +1527,7 @@ locator_lock_nested (MOP mop, LOCK lock, int prune_level, int quit_on_errors, in
       class_chn = ws_chn (class_obj);
     }
 
-  /* 
+  /*
    * We need to ensure that the server knows about this object.  So if the
    * object has a temporary OID or has never been flushed to the server,
    * (and is dirty) then do it now.
@@ -1541,7 +1541,7 @@ locator_lock_nested (MOP mop, LOCK lock, int prune_level, int quit_on_errors, in
 	}
     }
 
-  /* 
+  /*
    * Lock the desired object and its references up to the prune level.
    * And bring the first batch of classes and objects
    */
@@ -1573,7 +1573,7 @@ locator_lock_nested (MOP mop, LOCK lock, int prune_level, int quit_on_errors, in
 
   if (error_code == NO_ERROR && lockset != NULL)
     {
-      /* 
+      /*
        * Cache the lock for the desired object and its references and their
        * class.
        */
@@ -1592,7 +1592,7 @@ locator_lock_nested (MOP mop, LOCK lock, int prune_level, int quit_on_errors, in
 	  if (!OID_ISNULL (&lockset->objects[i].oid) && (xmop = ws_mop (&lockset->objects[i].oid, NULL)) != NULL)
 	    {
 	      locator_cache_lock_set (xmop, NULL, lockset);
-	      /* 
+	      /*
 	       * Indicate that the object was fetched as a composite object
 	       */
 	      WS_MOP_SET_COMPOSITION_FETCH (xmop);
@@ -1618,7 +1618,7 @@ locator_lock_nested (MOP mop, LOCK lock, int prune_level, int quit_on_errors, in
 
   if (quit_on_errors == false)
     {
-      /* 
+      /*
        * Make sure that there was not an error in the interested root nested
        * object
        */
@@ -1702,7 +1702,7 @@ locator_lock_class_of_instance (MOP inst_mop, MOP * class_mop, LOCK lock)
   if (WS_ISVID (inst_mop) || (*class_mop != NULL && WS_ISVID (*class_mop)))
     {
 #if defined(CUBRID_DEBUG)
-      /* 
+      /*
        * Don't know how to fetch virtual object. This looks like a system error
        * of the caller
        */
@@ -1727,7 +1727,7 @@ locator_lock_class_of_instance (MOP inst_mop, MOP * class_mop, LOCK lock)
     }
 #endif /* SA_MODE && !CUBRID_DEBUG */
 
-  /* 
+  /*
    * Invoke the transaction object locator on the server either:
    * a) We do not know the class (i.e., class_mop)
    * b) the class is not cached
@@ -1789,7 +1789,7 @@ locator_lock_class_of_instance (MOP inst_mop, MOP * class_mop, LOCK lock)
 	}
     }
 
-  /* 
+  /*
    * Cache the lock for the class.
    * We need to do this since we don't know if the class was received in
    * the fetch area
@@ -1889,7 +1889,7 @@ locator_lock_and_doesexist (MOP mop, LOCK lock, LC_OBJTYPE isclass)
     }
 #endif /* SA_MODE && !CUBRID_DEBUG */
 
-  /* 
+  /*
    * Invoke the transaction object locator on the server either:
    * a) if the object is not cached
    * b) the current lock acquired on the object is less powerful
@@ -1922,13 +1922,13 @@ locator_lock_and_doesexist (MOP mop, LOCK lock, LC_OBJTYPE isclass)
     {
       /* Since an already cached object of a reuse_oid table may be deleted after it is cached to my workspace and
        * then another object may occupy its slot, unfortunately the cached CHN has no meaning. When the new object
-       * occasionally has the same CHN with that of the cached object and we don't fetch the object from server again, 
+       * occasionally has the same CHN with that of the cached object and we don't fetch the object from server again,
        * * we will incorrectly reuse the cached deleted object. We need to refetch the cached object if it is an
        * instance of reuse_oid table. Server will fetch the object since client passes NULL_CHN. */
       chn = NULL_CHN;
     }
 
-  /* 
+  /*
    * Get the class information for the desired object, just in case we need
    * to bring it from the server
    */
@@ -2019,7 +2019,7 @@ locator_lock_and_doesexist (MOP mop, LOCK lock, LC_OBJTYPE isclass)
 
       if (doesexist == LC_EXIST)
 	{
-	  /* 
+	  /*
 	   * Cache the lock for the object and its class.
 	   * We need to do this since we don't know if the object was received in
 	   * the fetch area
@@ -2057,7 +2057,7 @@ locator_lock_and_doesexist (MOP mop, LOCK lock, LC_OBJTYPE isclass)
  *                                    DB_FETCH_CLREAD_INSTREAD
  *                                    DB_FETCH_QUERY_READ
  *                                    DB_FETCH_QUERY_WRITE
- *   type(in): type of object that will need the above purpose 
+ *   type(in): type of object that will need the above purpose
  *   fetch_version_type(in): fetch version type
  *
  * Note:Find the equivalent lock for the given fetch purpose.
@@ -2679,7 +2679,7 @@ locator_fun_get_all_mops (MOP class_mop, DB_FETCH_MODE purpose, int (*fun) (MOBJ
       assert (lock != NA_LOCK);
     }
 
-  /* 
+  /*
    * Find the implicit lock to be acquired by the instances
    */
 
@@ -2706,12 +2706,12 @@ locator_fun_get_all_mops (MOP class_mop, DB_FETCH_MODE purpose, int (*fun) (MOBJ
   estimate_nobjects = -1;
   OID_SET_NULL (&last_oid);
 
-  /* 
+  /*
    *  Since shared or exclusive class lock is requested, the purpose is to
    * update class or instances (we do not allow such locks at select).
    *  In read committed, using MVCC version may lead to issues. Thus, we may
    * select deleted objects (still visible for the current transaction)
-   * and later (same command) we may try to update already deleted object. 
+   * and later (same command) we may try to update already deleted object.
    *  In read committed, when class share or exclusive lock is requested,
    * we can fetch dirty version of the instances. These instance versions are
    * updatable instance versions for the current command. Also, these instance
@@ -2741,7 +2741,7 @@ locator_fun_get_all_mops (MOP class_mop, DB_FETCH_MODE purpose, int (*fun) (MOBJ
 
   while (nobjects != nfetched)
     {
-      /* 
+      /*
        * Note that the number of object and the number of fetched objects are
        * updated by the locator_fetch_all function on the server
        */
@@ -2761,7 +2761,7 @@ locator_fun_get_all_mops (MOP class_mop, DB_FETCH_MODE purpose, int (*fun) (MOBJ
 	    }
 	  break;
 	}
-      /* 
+      /*
        * Cache the objects, that were brought from the server
        */
       if (fetch_area == NULL)
@@ -2770,7 +2770,7 @@ locator_fun_get_all_mops (MOP class_mop, DB_FETCH_MODE purpose, int (*fun) (MOBJ
 	  break;
 	}
 
-      /* 
+      /*
        * If the list of mops is NULL, this is the first time.. allocate the
        * list and continue retrieving the objects
        */
@@ -2977,7 +2977,7 @@ locator_free_list_mops (LIST_MOPS * mops)
 {
   int i;
 
-  /* 
+  /*
    * before freeing the array, NULL out all the MOP pointers so we don't
    * become a GC root for all of those MOPs.
    */
@@ -3025,7 +3025,7 @@ locator_find_class_by_oid (MOP * class_mop, const char *classname, OID * class_o
       error_code = locator_lock (*class_mop, LC_CLASS, lock, LC_FETCH_CURRENT_VERSION);
       if (error_code != NO_ERROR)
 	{
-	  /* 
+	  /*
 	   * Fetch the class object so that it gets properly interned in
 	   * the workspace class table.  If we don't do that we can go
 	   * through here a zillion times until somebody actually *looks*
@@ -3089,7 +3089,7 @@ locator_find_class_by_name (const char *classname, LOCK lock, MOP * class_mop)
 
   OID_SET_NULL (&class_oid);
 
-  /* 
+  /*
    * Check if the classname to OID entry is cached. Trust the cache only if
    * there is a lock on the class
    */
@@ -3337,7 +3337,7 @@ locator_cache_object_class (MOP mop, LC_COPYAREA_ONEOBJ * obj, MOBJ * object_p, 
       break;
 
     case LC_FETCH_DECACHE_LOCK:
-      /* 
+      /*
        * We have brought the object. Recache it when its cache
        * coherency number has changed.
        *
@@ -3438,7 +3438,7 @@ locator_cache_object_instance (MOP mop, MOP class_mop, MOP * hint_class_mop_p, M
       break;
 
     case LC_FETCH_DECACHE_LOCK:
-      /* 
+      /*
        * We have brought the object. Recache it when its cache
        * coherency number has changed.
        */
@@ -3493,7 +3493,7 @@ locator_cache_not_have_object (MOP * mop_p, MOBJ * object_p, bool * call_fun, LC
   MOP class_mop;		/* The class mop of object described by obj */
   int error_code = NO_ERROR;
 
-  /* 
+  /*
    * We do not have the object. This is a delete or a decache operation.
    * We cannot know if this is an instance or a class
    */
@@ -3519,7 +3519,7 @@ locator_cache_not_have_object (MOP * mop_p, MOBJ * object_p, bool * call_fun, LC
 	  break;
 
 	case LC_FETCH_DECACHE_LOCK:
-	  /* 
+	  /*
 	   * Next time we access this object we need to go to server.
 	   * Note that we do not remove the object.
 	   *
@@ -3542,7 +3542,7 @@ locator_cache_not_have_object (MOP * mop_p, MOBJ * object_p, bool * call_fun, LC
 	  break;
 
 	case LC_FETCH_VERIFY_CHN:
-	  /* 
+	  /*
 	   * Make sure that the cached object is current
 	   * NOTE that the server sent the cached coherency number in the
 	   * length field of the object.
@@ -3610,7 +3610,7 @@ locator_cache_have_object (MOP * mop_p, MOBJ * object_p, RECDES * recdes_p, MOP 
 	  return error_code;
 	}
 
-      /* 
+      /*
        * Don't need to transform the object, when the object is cached
        * and has a valid state (same chn)
        */
@@ -3625,7 +3625,7 @@ locator_cache_have_object (MOP * mop_p, MOBJ * object_p, RECDES * recdes_p, MOP 
 	      return error_code;
 	    }
 	}
-      /* 
+      /*
        * Assume that this class is going to be needed to transform other
        * objects in the copy area, so remember the class
        */
@@ -3662,7 +3662,7 @@ locator_cache_have_object (MOP * mop_p, MOBJ * object_p, RECDES * recdes_p, MOP 
 	  return error_code;
 	}
 
-      /* 
+      /*
        * Don't need to transform the object, when the object is cached and
        * has a valid state (same chn and not an object of reuse_oid table)
        */
@@ -3790,7 +3790,7 @@ locator_cache (LC_COPYAREA * copy_area, MOP hint_class_mop, MOBJ hint_class,
  *   decache(in): true if objects must be decached after they are flushed
  *   isone_mflush(in): true if process stops after one set of objects (i.e., one area) has been flushed to server.
  *
- * Note: Initialize the mflush structure which describes the objects in disk format to flush. 
+ * Note: Initialize the mflush structure which describes the objects in disk format to flush.
  *	 A copy area of one page is defined to place the objects.
  */
 static int
@@ -4078,7 +4078,7 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
   /* Force the objects stored in area */
   if (mflush->mobjs->num_objs >= 0)
     {
-      /* 
+      /*
        * If there are objects with temporarily OIDs, make sure that they still
        * have temporarily OIDs. For those that do not have temporarily OIDs any
        * longer, change the flushing area to reflect the change. A situation
@@ -4118,7 +4118,7 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 	  while (mop_toid != NULL)
 	    {
 	      next_mop_toid = mop_toid->next;
-	      /* 
+	      /*
 	       * Set mop to NULL before freeing the structure, so that it does not
 	       * become a GC root for this mop..
 	       */
@@ -4132,7 +4132,7 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 	  while (mop_toid != NULL)
 	    {
 	      next_mop_toid = mop_toid->next;
-	      /* 
+	      /*
 	       * Set mop to NULL before freeing the structure, so that it does not
 	       * become a GC root for this mop..
 	       */
@@ -4145,7 +4145,7 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 	  return error_code;
 	}
 
-      /* 
+      /*
        * Notify the workspace module of OIDs for new objects. The MOPs must
        * refelect the new OID.. and not the temporarily OID
        */
@@ -4166,7 +4166,7 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 		}
 	    }
 	  next_mop_toid = mop_toid->next;
-	  /* 
+	  /*
 	   * Set mop to NULL before freeing the structure, so that it does not
 	   * become a GC root for this mop..
 	   */
@@ -4176,7 +4176,7 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 	}
       mflush->mop_toids = NULL;
 
-      /* Notify the workspace about the changes that were made to objects belonging to partitioned classes. In the case 
+      /* Notify the workspace about the changes that were made to objects belonging to partitioned classes. In the case
        * of a partition change, what the server returns here is a new object (not an updated one) and the object that
        * we sent was deleted */
       mop_toid = mflush->mop_uoids;
@@ -4199,7 +4199,7 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 
 	  next_mop_toid = mop_toid->next;
 
-	  /* 
+	  /*
 	   * Set mop to NULL before freeing the structure, so that it does not
 	   * become a GC root for this mop..
 	   */
@@ -4228,7 +4228,7 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 
       if (error_code != NO_ERROR)
 	{
-	  /* 
+	  /*
 	   * There were problems forcing the objects.. Recover the objects..
 	   * Put them back into the workspace.. For example, some objects were
 	   * deleted from the workspace
@@ -4306,7 +4306,7 @@ locator_class_to_disk (LOCATOR_MFLUSH_CACHE * mflush, MOBJ object, bool * has_in
 
       if (enable_class_to_disk)
 	{
-	  /* 
+	  /*
 	   * Quit after the above force. If only one flush is
 	   * desired and and we have flushed. stop
 	   */
@@ -4325,7 +4325,7 @@ locator_class_to_disk (LOCATOR_MFLUSH_CACHE * mflush, MOBJ object, bool * has_in
 		  *map_status = WS_MAP_FAIL;
 		  return ER_FAILED;
 		}
-	      /* 
+	      /*
 	       * The object does not fit on flushing copy area.
 	       * Increase the size of the flushing area,
 	       * and try again.
@@ -4337,7 +4337,7 @@ locator_class_to_disk (LOCATOR_MFLUSH_CACHE * mflush, MOBJ object, bool * has_in
 	       * insert/update/delete */
 	      *round_length_p += (OR_MVCC_MAX_HEADER_SIZE - OR_MVCC_INSERT_HEADER_SIZE);
 
-	      /* 
+	      /*
 	       * If this is the only object in the flushing copy
 	       * area and does not fit even when the copy area seems
 	       * to be large enough, increase the copy area by at
@@ -4423,7 +4423,7 @@ locator_mem_to_disk (LOCATOR_MFLUSH_CACHE * mflush, MOBJ object, bool * has_inde
 
       if (enable_mem_to_disk)
 	{
-	  /* 
+	  /*
 	   * Quit after the above force. If only one flush is
 	   * desired and and we have flushed. stop
 	   */
@@ -4442,7 +4442,7 @@ locator_mem_to_disk (LOCATOR_MFLUSH_CACHE * mflush, MOBJ object, bool * has_inde
 		  *map_status = WS_MAP_FAIL;
 		  return ER_FAILED;
 		}
-	      /* 
+	      /*
 	       * The object does not fit on flushing copy area.
 	       * Increase the size of the flushing area,
 	       * and try again.
@@ -4450,7 +4450,7 @@ locator_mem_to_disk (LOCATOR_MFLUSH_CACHE * mflush, MOBJ object, bool * has_inde
 
 	      *round_length_p = -mflush->recdes.length;
 
-	      /* 
+	      /*
 	       * If this is the only object in the flushing copy
 	       * area and does not fit even when the copy area seems
 	       * to be large enough, increase the copy area by at
@@ -4600,7 +4600,7 @@ locator_mflush (MOP mop, void *mf)
 
   if (WS_ISDIRTY (class_mop) && class_mop != mop)
     {
-      /* 
+      /*
        * Make sure that the class is not decached.. otherwise, we may have
        * problems
        */
@@ -4776,7 +4776,7 @@ locator_mflush (MOP mop, void *mf)
 
   if (LC_IS_FLUSH_INSERT (operation))
     {
-      /* 
+      /*
        * For new objects, make sure that its OID is still a temporary
        * one. If it is not, a permanent OID was assigned during the
        * transformation process, likely the object points to itself
@@ -4852,7 +4852,7 @@ locator_mflush (MOP mop, void *mf)
 
   if (HFID_IS_NULL (hfid))
     {
-      /* 
+      /*
        * There is not place to store the object. This is an error, the heap
        * should have been allocated when the object was created
        */
@@ -4895,7 +4895,7 @@ locator_mflush (MOP mop, void *mf)
 
   mflush->obj = LC_NEXT_ONEOBJ_PTR_IN_COPYAREA (mflush->obj);
 
-  /* 
+  /*
    * Round the length of the object, so that new placement of objects
    * start at alignment of sizeof(int)
    */
@@ -5079,7 +5079,7 @@ locator_flush_class (MOP class_mop)
 
   if (WS_ISDIRTY (class_mop) && (ws_find (class_mop, &class_obj) == WS_FIND_MOP_DELETED || class_obj != NULL))
     {
-      /* 
+      /*
        * Prepare the area for flushing... only one force area
        * Flush class and preflush other dirty objects to the flushing area
        */
@@ -5149,7 +5149,7 @@ locator_internal_flush_instance (MOP inst_mop, bool decache)
 retry:
   if (WS_ISDIRTY (inst_mop) && (ws_find (inst_mop, &inst) == WS_FIND_MOP_DELETED || inst != NULL))
     {
-      /* 
+      /*
        * Prepare the area for flushing... only one force area
        * Flush instance and preflush other dirty objects to the flushing area
        */
@@ -5177,7 +5177,7 @@ retry:
 		      if (error_code == NO_ERROR && chn != CHN_UNKNOWN_ATCLIENT && chn == WS_CHN (inst))
 			{
 			  locator_mflush_end (&mflush);
-			  /* 
+			  /*
 			   * Make sure that you don't loop more than
 			   * once in this function.
 			   */
@@ -5543,7 +5543,7 @@ locator_add_root (OID * root_oid, MOBJ class_root)
 {
   MOP root_mop;			/* Mop of the root */
 
-  /* 
+  /*
    * Insert the root class, set it dirty and cache the lock.. we need to cache
    * the lock since it was not acquired directly. Actually, it has not been
    * requested. It is set when the root class is flushed
@@ -5611,7 +5611,7 @@ locator_add_class (MOBJ class_obj, const char *classname)
 	  return NULL;
 	}
 
-      /* 
+      /*
        * Flush the deleted class so we do not have problems with the
        * classname to oid entry during commit
        */
@@ -5621,7 +5621,7 @@ locator_add_class (MOBJ class_obj, const char *classname)
 	}
     }
 
-  /* 
+  /*
    * Class name should be already reserved, and server generated a pseudo-oid
    * for it. Get the OID.
    */
@@ -5631,13 +5631,13 @@ locator_add_class (MOBJ class_obj, const char *classname)
       return NULL;
     }
 
-  /* 
+  /*
    * SCH_M_LOCK and IX_LOCK locks were indirectly acquired on the newly
    * created class and the root class using the locator_reserve_class_name
    * function.
    */
 
-  /* 
+  /*
    * If there is any lock on the sm_Root_class_mop, its lock is converted to
    * reflect the IX_LOCK. Otherwise, the root class is fetched to synchronize
    * the root
@@ -5690,7 +5690,7 @@ locator_create_heap_if_needed (MOP class_mop, bool reuse_oid)
   MOBJ class_obj;		/* The class object */
   HFID *hfid;			/* Heap where instance will be placed */
 
-  /* 
+  /*
    * Get the class for the instance.
    * Assume that we are updating, inserting, deleting instances
    */
@@ -5701,7 +5701,7 @@ locator_create_heap_if_needed (MOP class_mop, bool reuse_oid)
       return NULL;
     }
 
-  /* 
+  /*
    * Make sure that there is a heap for the instance. We cannot postpone
    * the creation of the heap since the class must be updated
    */
@@ -5782,7 +5782,7 @@ locator_add_instance (MOBJ instance, MOP class_mop)
   MOP mop;			/* Mop of newly created instance */
   OID temp_oid;			/* A temporarily OID for the newly created instance */
 
-  /* 
+  /*
    * Make sure that there is a heap for the instance. We cannot postpone
    * the creation of the heap since the class must be updated
    */
@@ -5792,7 +5792,7 @@ locator_add_instance (MOBJ instance, MOP class_mop)
       return NULL;
     }
 
-  /* 
+  /*
    * Assign a temporarily OID. If the assigned OID is NULL, we need to flush to
    * recycle the temporarily OIDs.
    */
@@ -5809,7 +5809,7 @@ locator_add_instance (MOBJ instance, MOP class_mop)
       OID_ASSIGN_TEMPOID (&temp_oid);
     }
 
-  /* 
+  /*
    * Insert the instance, set it dirty and cache the lock.. we need to cache
    * the lock since it was not acquired directly. Actually, it has not been
    * requested. It is set when the instance is flushed
@@ -5888,7 +5888,7 @@ locator_remove_class (MOP class_mop)
     {
       ws_dirty (class_mop);
       ws_mark_deleted (class_mop);
-      /* 
+      /*
        * Flush the deleted class so we do not have problems with the classname
        * to oid entry at a later point.
        */
@@ -6018,7 +6018,7 @@ locator_prepare_rename_class (MOP class_mop, const char *old_classname, const ch
  *
  * return: MOBJ
  *
- *   mop(in): Mop of object that it is going to be updated 
+ *   mop(in): Mop of object that it is going to be updated
  *
  * Note:Prepare an instance for update. The instance is fetched for
  *              exclusive mode and it is set dirty. Note that it is very
@@ -6275,7 +6275,7 @@ locator_lockhint_classes (int num_classes, const char **many_classnames, LOCK * 
   all_found = LC_CLASSNAME_EXIST;
   need_call_server = need_flush = false;
 
-  /* 
+  /*
    * Check if we need to call the server
    */
 
@@ -6283,7 +6283,7 @@ locator_lockhint_classes (int num_classes, const char **many_classnames, LOCK * 
     {
       if (many_classnames[i])
 	{
-	  /* 
+	  /*
 	   * If we go to the server, let us flush any new class (temp OID or
 	   * small cache coherance number) or a class that has been deleted
 	   */
@@ -6306,7 +6306,7 @@ locator_lockhint_classes (int num_classes, const char **many_classnames, LOCK * 
 	      continue;
 	    }
 
-	  /* 
+	  /*
 	   * If the subclasses or count optimization are needed, go to the
 	   * server for now.
 	   */
@@ -6316,7 +6316,7 @@ locator_lockhint_classes (int num_classes, const char **many_classnames, LOCK * 
 	      continue;
 	    }
 
-	  /* 
+	  /*
 	   * Check if the classname to OID entry is cached. Trust the cache only
 	   * if there is a lock on the class
 	   */
@@ -6333,7 +6333,7 @@ locator_lockhint_classes (int num_classes, const char **many_classnames, LOCK * 
 	}
     }
 
-  /* 
+  /*
    * Do we Need to find out the classnames to oids in the server?
    */
 
@@ -6367,13 +6367,13 @@ locator_lockhint_classes (int num_classes, const char **many_classnames, LOCK * 
     {
       if (many_classnames[i] && (class_mop = ws_find_class (many_classnames[i])) != NULL)
 	{
-	  /* 
+	  /*
 	   * Flush the class when the class has never been flushed and/or
 	   * the class has been deleted.
 	   */
 	  if (need_flush == true)
 	    {
-	      /* 
+	      /*
 	       * May be, we should flush in a set (ala mflush)
 	       */
 	      if (WS_ISDIRTY (class_mop)
@@ -6388,7 +6388,7 @@ locator_lockhint_classes (int num_classes, const char **many_classnames, LOCK * 
 	    {
 	      if (ws_find (class_mop, &class_obj) != WS_FIND_MOP_DELETED && class_obj != NULL)
 		{
-		  /* 
+		  /*
 		   * The class is cached
 		   */
 		  COPY_OID (&guessmany_class_oids[i], ws_oid (class_mop));
@@ -6428,7 +6428,7 @@ locator_lockhint_classes (int num_classes, const char **many_classnames, LOCK * 
 
   if (lockhint != NULL && lockhint->num_classes > lockhint->num_classes_processed)
     {
-      /* 
+      /*
        * Rest the cache coherence numbers to avoid receiving classes with the
        * right state (chn) in the workspace.
        * We could have started with the number of classes processed, however,
@@ -6450,7 +6450,7 @@ locator_lockhint_classes (int num_classes, const char **many_classnames, LOCK * 
 	}
     }
 
-  /* 
+  /*
    * If we received any classes, cache them
    */
 
@@ -6470,7 +6470,7 @@ locator_lockhint_classes (int num_classes, const char **many_classnames, LOCK * 
       quit_on_errors = true;
     }
 
-  /* 
+  /*
    * Now get the rest of the objects and classes
    */
 
@@ -6522,7 +6522,7 @@ locator_lockhint_classes (int num_classes, const char **many_classnames, LOCK * 
 	}
     }
 
-  /* 
+  /*
    * Cache the lock of the hinted classes
    */
 
@@ -6594,7 +6594,7 @@ locator_check_object_and_get_class (MOP obj_mop, MOP * out_class_mop)
       goto error;
     }
 
-  /* 
+  /*
    * Ensure that the class has been flushed at this point.
    * HFID can't be NULL at this point since we've got an instance for
    * this class.  Could use locator_has_heap to make sure.
@@ -6646,7 +6646,7 @@ locator_add_oidset_object (LC_OIDSET * oidset, MOP obj_mop)
     {
       oid_map_p->mop = (void *) obj_mop;
 
-      /* 
+      /*
        * Since this is the first time we've been here, compute the estimated
        * storage size.  This could be rather expensive, may want to just
        * keep an approximate size guess in the class rather than walking
@@ -6691,7 +6691,7 @@ locator_assign_oidset (LC_OIDSET * oidset, LC_OIDMAP_CALLBACK callback)
 
   if (oidset != NULL && oidset->total_oids > 0)
     {
-      /* 
+      /*
        * Note:, it is currently defined that if the server returns a
        * failure here that it will have "rolled back" any partial results
        * it may have obtained, this means that we don't have to worry about
@@ -6787,7 +6787,7 @@ locator_add_to_oidset_when_temp_oid (MOP mop, void *data)
 	  return WS_MAP_FAIL;
 	}
 
-      /* 
+      /*
        * If we've gone over our threshold, flush the ones we have so far,
        * and clear out the oidset for more.  We may want to make this
        * part of locator_add_oidset_object rather than doing it out here.
@@ -6888,7 +6888,7 @@ locator_get_append_lsa (LOG_LSA * lsa)
  *					   locks and snapshot version.
  *
  * return	 : True if server fetch can be skipped. False otherwise.
- * mop (in)	 : Mop that 
+ * mop (in)	 : Mop that
  * lock (in/out) : Required lock. Output is results of lock convention
  *		   between input lock and current lock.
  * fetch_version_type(in): fetch version type

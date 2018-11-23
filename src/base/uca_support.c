@@ -514,7 +514,7 @@ load_ducet (const char *file_path, const int sett_contr_policy)
 	  continue;
 	}
 
-      /* 
+      /*
        * 3400;<CJK Ideograph Extension A, First> 4DB5;<CJK Ideograph Extension A, Last> 4E00;<CJK Ideograph, First>
        * 9FA5;<CJK Ideograph, Last> */
 

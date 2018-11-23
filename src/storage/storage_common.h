@@ -744,7 +744,7 @@ typedef enum
 {
   LOG_ERROR_IF_DELETED,		/* set error when locking deleted objects */
   LOG_WARNING_IF_DELETED	/* set warning when locking deleted objects - the case when it is expected and
-				 * accepted to find a deleted object; for example when er_clear() is used afterwards if 
+				 * accepted to find a deleted object; for example when er_clear() is used afterwards if
 				 * ER_HEAP_UNKNOWN_OBJECT is set in er_errid */
 } NON_EXISTENT_HANDLING;
 
@@ -1352,12 +1352,12 @@ enum
   REC_BIGONE = 5,
 
 /* Slot does not describe any record.
- * A record was stored in this slot.  Slot cannot be reused. 
+ * A record was stored in this slot.  Slot cannot be reused.
  */
   REC_MARKDELETED = 6,
 
 /* Slot does not describe any record.
- * A record was stored in this slot.  Slot will be reused. 
+ * A record was stored in this slot.  Slot will be reused.
  */
   REC_DELETED_WILL_REUSE = 7,
 

@@ -694,7 +694,7 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id)
       return ER_FAILED;
     }
 
-  /* inserted key might have been incremented; if last_session_id was not modified in the meantime, store the new value 
+  /* inserted key might have been incremented; if last_session_id was not modified in the meantime, store the new value
    */
   ATOMIC_CAS_32 (&sessions.last_session_id, next_session_id, *id);
 

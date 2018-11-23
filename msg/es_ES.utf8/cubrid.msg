@@ -1768,6 +1768,10 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 298 El CTE recursivo '%1$s' debe referenciarse directamente en su consulta recursiva.
 299 Error en CTE '%1$s': La parte no recursiva y la parte recursiva deben estar conectadas con UNION ALL.
 300 La subconsulta no está permitida en la cláusula DEFAULT.
+301 Could not find signatures for function %1$s()
+302 Incompatible argument type %1$s, expected type is: %2$s. Invalid signature %3$s.
+303 Unexpected number of arguments %1$d. Invalid signature %2$s.
+304 Could not find compatible signature for function %1$s()
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sin memoria virtual: incapaz de asignar %1$d bytes.

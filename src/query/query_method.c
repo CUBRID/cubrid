@@ -390,7 +390,7 @@ method_invoke_for_server (unsigned int rc, char *host_p, char *server_name_p, QF
 
 	  if (meth_sig_p->class_name != NULL)
 	    {
-	      /* Don't call the method if the object is NULL or it has been deleted.  A method call on a NULL object is 
+	      /* Don't call the method if the object is NULL or it has been deleted.  A method call on a NULL object is
 	       * NULL. */
 	      if (!DB_IS_NULL (values_p[0]))
 		{
