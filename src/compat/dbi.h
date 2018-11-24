@@ -522,6 +522,7 @@ extern "C"
   extern int db_is_updatable_object (DB_OBJECT * obj);
   extern int db_is_updatable_attribute (DB_OBJECT * obj, const char *attr_name);
   extern int db_check_single_query (DB_SESSION * session);
+  extern int db_check_single_query_and_set_error (DB_SESSION * session);
 /* query pre-processing functions */
   extern int db_get_query_format (const char *CSQL_query, DB_QUERY_TYPE ** type_list, DB_QUERY_ERROR * query_error);
   extern DB_QUERY_TYPE *db_query_format_next (DB_QUERY_TYPE * query_type);

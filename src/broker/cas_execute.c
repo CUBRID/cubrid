@@ -889,6 +889,12 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
     }
   else
     {
+      if (db_check_single_query_and_set_error (session) != NO_ERROR)
+	{
+	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	  goto prepare_error;
+	}
+
       num_markers = get_num_markers (sql_stmt);
       stmt_type = db_get_statement_type (session, stmt_id);
       srv_handle->is_prepared = TRUE;
