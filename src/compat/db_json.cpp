@@ -744,12 +744,10 @@ static void db_json_build_path_special_chars (const JSON_PATH_TYPE &json_path_ty
 static std::vector<std::string> db_json_split_path_by_delimiters (const std::string &path, const std::string &delim);
 static void db_json_path_strip_spaces (const std::string &sql_path, std::string &res, std::size_t token_begin,
 				       std::size_t token_end);
-static std::size_t db_json_path_find_token_end (const std::string &path, std::size_t token_starter,
-    std::size_t &next_token_starter);
+static bool db_json_path_find_token_end (const std::string &path, std::size_t token_starter,
+    std::size_t &token_end, std::string &token);
 static void db_json_path_extract_array_index_token (const std::string &token, std::string &array_index_token,
     std::size_t &end_bracket_offset);
-static void db_json_path_extract_object_key_token (const std::string &token, std::string &object_key_token,
-    std::size_t token_begin, std::size_t &token_end);
 static bool db_json_path_is_token_valid_object_key (const std::string &token, bool allow_wildcards);
 static void db_json_path_extract_double_star_token (const std::string &token, std::string &stars_token,
     std::size_t prev_token_end, std::size_t token_end);
@@ -2932,15 +2930,17 @@ db_json_path_strip_spaces (const std::string &sql_path, std::string &res, std::s
 *
 * path (in)
 * token_starter (in)
-* next_token_starter (out) - index of the next token_starter
-* returns the end of the token that starts with the token_starter
+* token_end (out) - the end of the token in path that starts after the token_starter
+* token (out) - token
+* returns whether no early validation issues were found
 */
-static std::size_t
-db_json_path_find_token_end (const std::string &path, std::size_t token_starter, std::size_t &next_token_starter)
+static bool
+db_json_path_find_token_end (const std::string &path, std::size_t token_starter, std::size_t &token_end,
+			     std::string &token)
 {
   assert (token_starter < path.length ());
-  std::size_t token_end = std::string::npos;
-  next_token_starter = std::string::npos;
+  token_end = std::string::npos;
+  std::size_t next_token_starter = std::string::npos;
 
   switch (path[token_starter])
     {
@@ -2953,8 +2953,9 @@ db_json_path_find_token_end (const std::string &path, std::size_t token_starter,
 	    {
 	      in_quotes = !in_quotes;
 	    }
-
-	  if (!in_quotes && (path[i] == '.' || path[i] == '['))
+	  // next_token_starter is found if we find '.', '[' or a "**" substring
+	  if (!in_quotes && (path[i] == '.' || path[i] == '[' || (i != token_starter + 1 && path[i] == '*'
+			     && (i + 1 < path.length ()) && path[i + 1] == '*')))
 	    {
 	      next_token_starter = i;
 	      break;
@@ -2963,11 +2964,34 @@ db_json_path_find_token_end (const std::string &path, std::size_t token_starter,
       break;
     }
     case '[':
-      next_token_starter = path.find_first_of (".[", token_starter + 1);
+      for (std::size_t i = token_starter + 1; i < path.length (); ++i)
+	{
+	  if (path[i] == '.' || path[i] == '[' || (path[i] == '*' && (i + 1 < path.length ()) && path[i + 1] == '*'))
+	    {
+	      next_token_starter = i;
+	      break;
+	    }
+	}
+      break;
+    case '*':
+      if (token_starter + 1 >= path.length () || path[token_starter + 1] != '*')
+	{
+	  token_end = std::string::npos;
+	  return false;
+	}
+
+      for (std::size_t i = token_starter + 2; i < path.length (); ++i)
+	{
+	  if (path[i] == '.' || path[i] == '[' || (path[i] == '*' && (i + 1 < path.length ()) && path[i + 1] == '*'))
+	    {
+	      next_token_starter = i;
+	      break;
+	    }
+	}
       break;
     default:
       next_token_starter = std::string::npos;
-      break;
+      return false;
     }
 
   if (next_token_starter == std::string::npos)
@@ -2979,7 +3003,15 @@ db_json_path_find_token_end (const std::string &path, std::size_t token_starter,
       token_end = next_token_starter - 1;
     }
 
-  return token_end;
+  if (token_starter + 1 > token_end)
+    {
+      // empty object_key or array_indexing token
+      token_end = std::string::npos;
+      return false;
+    }
+
+  db_json_path_strip_spaces (path, token, token_starter + 1, token_end);
+  return true;
 }
 
 /*
@@ -3015,7 +3047,7 @@ db_json_path_extract_array_index_token (const std::string &token, std::string &a
 static bool
 db_json_path_is_token_valid_object_key (const std::string &token, bool allow_wildcards)
 {
-  if (token.empty())
+  if (token.empty ())
     {
       return false;
     }
@@ -3031,7 +3063,7 @@ db_json_path_is_token_valid_object_key (const std::string &token, bool allow_wil
 	  ++i;
 	}
 
-      if (i == token.length ())
+      if (i != token.length () - 1)
 	{
 	  return false;
 	}
@@ -3040,17 +3072,17 @@ db_json_path_is_token_valid_object_key (const std::string &token, bool allow_wil
     {
       // todo: this needs change. Besides alphanumerics, object keyes can be valid ECMAScript identifiers as defined in
       // http://www.ecma-international.org/ecma-262/5.1/#sec-7.6
-      if (i < token.length () && !std::isalnum (static_cast<unsigned char> (token[i])) && ! (allow_wildcards
-	  && token[i] == '*'))
+      if (i < token.length () && !std::isalpha (static_cast<unsigned char> (token[i])) && ! (allow_wildcards
+	  && token[i] == '*' && i == token.length () - 1))
 	{
 	  return false;
 	}
 
       ++i;
-      while (i < token.length () && (token[i] != '.' && token[i] != '[' && token[i] != ' '))
+      while (i < token.length () && (token[i] != '.' && token[i] != '['))
 	{
 	  // special characters are not allowed in the middle of an unqouted object key
-	  if (token[i] == '"' || token[i] == '*')
+	  if (token[i] == '"' || token[i] == '*' || token[i] == ' ')
 	    {
 	      return false;
 	    }
@@ -3058,80 +3090,6 @@ db_json_path_is_token_valid_object_key (const std::string &token, bool allow_wil
 	}
     }
   return true;
-}
-
-/*
- * db_json_path_extract_object_key_token () - extract object key token
- *
- * token (in)
- * object_key_token (out)
- * token_begin (in)
- * token_end (in)
- *
- * Note: Because of ** wildcards we can distinguish between 3 cases:
- *       1. 0/1 wildcards : (i.e. $.a.x , $.*[0]) object_key ends before the next token_starter
- *       2. 2 wildcards   : object_key ends before first star
- *       3. 3 wildcards   : (i.e. $.* **) object_key should end after first star. In case double ** wildcards is invalid
- *                          it is detected during its own validation
- */
-static void
-db_json_path_extract_object_key_token (const std::string &token, std::string &object_key_token, std::size_t token_begin,
-				       std::size_t &token_end)
-{
-  bool in_quote = false;
-  std::size_t first_star;
-  std::size_t stars_cnt = 0;
-  for (std::size_t i = token_begin; i < token.length (); ++i)
-    {
-      if (token[i] == '"' && token[i - 1] != '\\')
-	{
-	  in_quote = !in_quote;
-	}
-
-      if (!in_quote)
-	{
-	  if (token[i] == '*')
-	    {
-	      if (stars_cnt++ == 0)
-		{
-		  first_star = i;
-		}
-	    }
-
-	  if (token[i] == '.' || token[i] == '[' || i == token.length () - 1)
-	    {
-	      if (i == token.length () - 1)
-		{
-		  ++i;
-		}
-
-	      switch (stars_cnt)
-		{
-		case 0:
-		case 1:
-		  token_end = i == 0 ? std::string::npos : i - 1;
-		  break;
-		case 2:
-		  token_end = first_star == 0 ? std::string::npos : first_star - 1;
-		  break;
-		case 3:
-		  token_end = first_star;
-		  break;
-		default:
-		  token_end = std::string::npos;
-		  break;
-		}
-	    }
-	}
-    }
-
-  if (token_end == std::string::npos)
-    {
-      object_key_token = "";
-      return;
-    }
-
-  db_json_path_strip_spaces (token, object_key_token, token_begin, token_end);
 }
 
 /*
@@ -3182,47 +3140,18 @@ db_json_sql_path_is_valid (std::string &sql_path, bool allow_wildcards)
       return false;
     }
   tokens.emplace_back ("$");
-  std::size_t next_token_starter = sql_path.find_first_of (".[");
-  if (allow_wildcards && next_token_starter != std::string::npos && next_token_starter >= 2)
-    {
-      std::string stars_token;
-      db_json_path_extract_double_star_token (sql_path, stars_token, 0, next_token_starter - 1);
-      if (!stars_token.empty () && ! (allow_wildcards && stars_token == "**"))
-	{
-	  return false;
-	}
-      tokens.emplace_back (stars_token);
-      if (stars_token == "**")
-	{
-	  needs_suffix = true;
-	}
-    }
+  std::size_t crt_index = sql_path.find_first_not_of (' ', 1);
 
-  std::size_t crt_index = next_token_starter;
   while (crt_index < sql_path.length ())
     {
       std::size_t token_starter = crt_index;
       std::size_t token_begin = crt_index + 1;
-      if (token_begin == sql_path.length ())
-	{
-	  if (sql_path[token_starter] == '[' || sql_path[token_starter] == '.')
-	    {
-	      return false;
-	    }
-	  break;
-	}
-      needs_suffix = false;
-      std::size_t token_end = db_json_path_find_token_end (sql_path, token_starter, next_token_starter);
-
-      if (token_begin > token_end)
-	{
-	  // empty token between two token delimiters
-	  return false;
-	}
 
       std::string token;
-      db_json_path_strip_spaces (sql_path, token, token_begin, token_end);
-      if (token.empty ())
+      std::size_t token_end;
+      bool is_ok = db_json_path_find_token_end (sql_path, token_starter, token_end, token);
+
+      if (!is_ok || token.empty ())
 	{
 	  return false;
 	}
@@ -3230,6 +3159,7 @@ db_json_sql_path_is_valid (std::string &sql_path, bool allow_wildcards)
 	{
 	case '[':
 	{
+	  needs_suffix = false;
 	  std::string array_index_token;
 	  std::size_t end_bracket_offset;
 	  db_json_path_extract_array_index_token (token, array_index_token, end_bracket_offset);
@@ -3240,56 +3170,31 @@ db_json_sql_path_is_valid (std::string &sql_path, bool allow_wildcards)
 	      // expecting a valid index
 	      return false;
 	    }
-
+	  tokens.emplace_back ("[");
 	  tokens.emplace_back (array_index_token);
 	  tokens.emplace_back ("]");
-
-	  // handle remaining '**'
-	  std::string stars_token;
-	  db_json_path_extract_double_star_token (token, stars_token, end_bracket_offset, token.length () - 1);
-	  if (!stars_token.empty () && ! (allow_wildcards && stars_token == "**"))
-	    {
-	      return false;
-	    }
-	  tokens.emplace_back (stars_token);
-	  if (stars_token == "**")
-	    {
-	      needs_suffix = true;
-	    }
-	  break;
 	}
+	break;
 	case '.':
-	{
-	  std::string object_key_token;
-	  std::size_t object_key_end;
-	  db_json_path_extract_object_key_token (token, object_key_token, 0, object_key_end);
-	  if (!db_json_path_is_token_valid_object_key (object_key_token, allow_wildcards))
+	  needs_suffix = false;
+	  if (!db_json_path_is_token_valid_object_key (token, allow_wildcards))
 	    {
 	      return false;
 	    }
-
-	  tokens.emplace_back (object_key_token);
-
-	  // handle remaining '**'
-	  std::string stars_token;
-	  db_json_path_extract_double_star_token (token, stars_token, object_key_end, token.length () - 1);
-	  if (!stars_token.empty () && ! (allow_wildcards && stars_token == "**"))
-	    {
-	      return false;
-	    }
-	  tokens.emplace_back (stars_token);
-	  if (stars_token == "**")
-	    {
-	      needs_suffix = true;
-	    }
+	  tokens.emplace_back (".");
+	  tokens.emplace_back (token);
 	  break;
-	}
+	case '*':
+	  needs_suffix = true;
+	  // hack, token_starter is '*' and token is "*"
+	  if (!allow_wildcards || allow_wildcards && token != "*")
+	    {
+	      return false;
+	    }
+	  tokens.emplace_back ("**");
+	  break;
 	default:
 	  return false;
-	}
-      if (next_token_starter != std::string::npos)
-	{
-	  tokens.emplace_back (std::string (1, sql_path[next_token_starter]));
 	}
       crt_index = token_end + 1;
     }
@@ -3481,7 +3386,6 @@ db_json_isspace (const unsigned char &ch)
   return std::isspace (ch) != 0;
 }
 
-// todo: change this to be the actual strip function
 static void
 db_json_normalize_path (std::string &path_string)
 {
