@@ -99,7 +99,7 @@ struct statement_impl_s
   int req_handle;
   int status;
   bool opt_updatable_result;
-  /* 
+  /*
    * parameter and parameter meta related fields
    * - PM : parameter meta data api structure header
    * - got_pm_handle : flag for indicating parameter related fields sanity
@@ -115,7 +115,7 @@ struct statement_impl_s
   T_CCI_CUBRID_STMT cmd_type;
   T_CCI_COL_INFO *col_info;
   VALUE_INDEXER *params;
-  /* 
+  /*
    * current result info (batch or multiple query in single statement)
    * - has_resultset : flag for field availablity
    * - res_handle : handle
@@ -132,7 +132,7 @@ struct statement_impl_s
   T_CCI_QUERY_RESULT *query_result;
   int curr_query_result_index;	/* 0 start */
 
-  /* 
+  /*
    * fields for batch processing
    * batch : list of BATCH_SQL_ITEM or BATCH_ARY_ITEM w.r.t. status
    */
@@ -153,7 +153,7 @@ struct resultset_impl_s
   COMMON_RESULTSET_HEADER;
   RESULTSET_META_IMPL RM;
 
-  /* 
+  /*
    * provided (do not try to destroy them)
    * parent, bh, req_handle, err_buf, on_close
    */
@@ -167,13 +167,13 @@ struct resultset_impl_s
   /* called when this structure is to be destroyed by resultset_impl_dtor */
   void (*on_close) (RESULTSET_IMPL * pres, void *arg);
 
-  /* 
+  /*
    * result set cursor related
    */
   int offset;
   bool fetched;
   VALUE_INDEXER *updated_values;
-  /* 
+  /*
    * resultset meta fields (lazy initialized)
    */
   bool got_rm_handle;
@@ -1218,7 +1218,7 @@ get_value_from_req_handle (CI_CONNECTION conn, int req_handle, int index, CI_TYP
     {
       if (type == CI_TYPE_OID)
 	{
-	  /* 
+	  /*
 	   * this implies bind.atype == CCI_A_TYPE_STR so shoud be
 	   * checked before other cases which binds results
 	   * bind.atype == CCI_A_TYPE_STR
@@ -2301,7 +2301,7 @@ statement_get_reshandle_or_affectedrows (BH_INTERFACE * bh, STATEMENT_IMPL * pst
       return ER_INTERFACE_GENERIC;
     }
 
-  /* 
+  /*
    * call cci_cursor () for resutlset test. (hack)
    * It will be good if CCI API provides function something like
    * CCI_QUERY_RESULT_HAS_RESULTSET ()
@@ -3975,7 +3975,7 @@ res_return:
 
   if (binds)
     {
-      /* 
+      /*
        * calloc'ed API_VAL_CCI_BIND is safe to pass to api_val_cci_bind_clear()
        */
       for (i = 0; i < size; i++)

@@ -179,7 +179,7 @@ pt_set_table_to_db (PARSER_CONTEXT * parser, PT_NODE * subquery_in, DB_VALUE * d
 
   if (!(error < 0))
     {
-      /* 
+      /*
        * the  above select resulted in a list file put on subquery->etc
        * open it and add the elements to the set.
        */
@@ -445,7 +445,7 @@ pt_get_one_tuple_from_list_id (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE
       if (cursor_next_tuple (&cursor_id) != DB_CURSOR_SUCCESS
 	  || cursor_get_tuple_value_list (&cursor_id, cnt, vals) != NO_ERROR)
 	{
-	  /* 
+	  /*
 	   * This isn't really an error condition, especially when we are in an
 	   * esql context.  Just say that we didn't succeed, which should be
 	   * enough to keep upper levels from trying to do anything with the
@@ -542,7 +542,7 @@ pt_associate_label_with_value (const char *label, DB_VALUE * val)
   else
     {
       /* Sigh, the old key value was allocated too and needs to be freed or reused. We don't currently have a way to
-       * get the current key pointer in the table. mht_put has the undocumented behavior that if the key already exists 
+       * get the current key pointer in the table. mht_put has the undocumented behavior that if the key already exists
        * in the table, it will continue to use the old key and ignore the one passed in. We rely on this here by
        * passing in the label string which we don't own. If this mht_put behavior changes, then the only safe way will
        * be to add a new mht_ function that allows us to get a pointer to the key so we can free it. */

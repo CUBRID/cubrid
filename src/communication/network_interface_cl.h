@@ -33,7 +33,7 @@
 
 #include <stdio.h>
 
-#include "dbdef.h"
+#include "dbtype_def.h"
 #include "replication.h"
 #include "server_interface.h"
 #include "perf_monitor.h"
@@ -48,6 +48,7 @@
 #include "parse_tree.h"
 #include "xasl.h"
 #include "load_common.hpp"
+#include "timezone_lib_common.h"
 
 // forward definitions
 struct compile_context;

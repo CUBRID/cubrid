@@ -466,7 +466,7 @@ struct aggregate_list_node
   QUERY_OPTIONS option;		/* DISTINCT/ALL option */
   DB_TYPE opr_dbtype;		/* Operand values data type */
   DB_TYPE original_opr_dbtype;	/* Original operand values data type */
-  REGU_VARIABLE operand;	/* operand */
+  REGU_VARIABLE_LIST operands;	/* list of operands (one operand per function argument) */
   QFILE_LIST_ID *list_id;	/* used for distinct handling */
   int flag_agg_optimize;
   BTID btid;

@@ -38,6 +38,7 @@
 #include "xserver_interface.h"
 #include "object_primitive.h"
 #include "query_dump.h"
+#include "tz_support.h"
 #include "db_date.h"
 #include "dbtype.h"
 #include "thread_manager.hpp"
@@ -3053,7 +3054,7 @@ catcls_expand_or_value_by_subset (THREAD_ENTRY * thread_p, OR_VALUE * value_p)
 	  if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
 	    {
 	      /* Currently, we have reached here the situation where an instance has already been removed by the same
-	       * transaction. One example is when dropping a partition. The instances corresponding the partitions will 
+	       * transaction. One example is when dropping a partition. The instances corresponding the partitions will
 	       * first be removed, which implies that the class OID can no longer be found and will be set to NULL. */
 	      er_clear ();
 	    }
@@ -4454,7 +4455,7 @@ catcls_compile_catalog_classes (THREAD_ENTRY * thread_p)
 
 /*
  * catcls_get_server_compat_info () - get the language id, charset id and
- *				      timezone checksum stored in the 
+ *				      timezone checksum stored in the
  *				      "db_root" system table
  *   return: NO_ERROR, or error code
  *   thread_p(in)  : thread context
@@ -4701,7 +4702,7 @@ exit:
  *   return:
  *   thread_p(in): thred entry
  *   value(in): new values
- *   old_value_p(in): old values 
+ *   old_value_p(in): old values
  *   uflag(in): update necessary flag
  *   force_in_place(in): UPDATE_INPLACE style
  */

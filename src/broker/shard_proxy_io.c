@@ -44,6 +44,13 @@
 #include "shard_shm.h"
 #include "broker_acl.h"
 
+#ifndef min
+#define min(a,b)    ((a) < (b) ? (a) : (b))
+#endif
+#ifndef max
+#define max(a,b)    ((a) > (b) ? (a) : (b))
+#endif
+
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
@@ -1804,7 +1811,7 @@ proxy_process_client_register (T_SOCKET_IO * sock_io_p)
 connection_established:
   if (ctx_p->error_ind != CAS_NO_ERROR)
     {
-      /* 
+      /*
        * Process error message if exists.
        * context will be freed after sending error message.
        */
@@ -2003,7 +2010,7 @@ proxy_process_client_read_error (T_SOCKET_IO * sock_io_p)
   assert (sock_io_p);
 
 #if defined(LINUX)
-  /* 
+  /*
    * If connection error event was triggered by EPOLLERR, EPOLLHUP,
    * there could be no error events.
    */
@@ -2354,7 +2361,7 @@ proxy_process_cas_read_error (T_SOCKET_IO * sock_io_p)
   assert (sock_io_p);
 
 #if defined(LINUX)
-  /* 
+  /*
    * If connection error event was triggered by EPOLLERR, EPOLLHUP,
    * there could be no error events.
    */
@@ -2747,7 +2754,7 @@ proxy_socket_io_write (T_SOCKET_IO * sock_io_p)
     {
       PROXY_DEBUG_LOG ("Unexpected socket status. (fd:%d, status:%d). \n", sock_io_p->fd, sock_io_p->status);
 
-      /* 
+      /*
        * free writer event when sock status is 'close wait'
        */
       if (sock_io_p->write_event)
@@ -2822,7 +2829,7 @@ proxy_socket_io_read (T_SOCKET_IO * sock_io_p)
 
       PROXY_DEBUG_LOG ("Unexpected socket status. " "socket will be closed. " "(fd:%d, status:%d).", sock_io_p->fd,
 		       sock_io_p->status);
-      // 
+      //
       // proxy_io_buffer_clear (&sock_io_p->recv_buffer);
 
       // assert (false);
@@ -3020,7 +3027,7 @@ proxy_client_io_new (SOCKET fd, char *driver_info)
 
       if (proxy_Client_io.cur_client > proxy_Client_io.max_client)
 	{
-	  /* 
+	  /*
 	   * Error message would be retured when processing
 	   * register(db_info) request.
 	   */

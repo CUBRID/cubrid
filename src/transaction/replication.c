@@ -412,14 +412,14 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
 	}
       break;
     case RVREPL_DATA_UPDATE:
-      /* 
+      /*
        * for the update case, this function is called before the heap
        * file update, so we don't need to LSA for update log here.
        */
       LSA_SET_NULL (&repl_rec->lsa);
       break;
     case RVREPL_DATA_DELETE:
-      /* 
+      /*
        * for the delete case, we don't need to find out the target
        * LSA. Delete is operation is possible without "After Image"
        */
@@ -542,7 +542,7 @@ repl_log_insert_statement (THREAD_ENTRY * thread_p, REPL_INFO_SBR * repl_info)
 
   if (tdes->fl_mark_repl_recidx != -1 && tdes->cur_repl_record >= tdes->fl_mark_repl_recidx)
     {
-      /* 
+      /*
        * statement replication does not check log conflicts, so
        * use repl_start_flush_mark with caution.
        */

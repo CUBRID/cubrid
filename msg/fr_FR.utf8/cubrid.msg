@@ -1306,8 +1306,10 @@ $ LOADDB
 1237 Cannot change status on %1$s because %2$s is a %3$s.
 1238 Missing value for JSON_TABLE column '%1$s'.
 1239 Cannot coerce value from JSON "%1$s" at path "%2$s" to JSON_TABLE column "%3$s" of domain "%4$s". 
+1240 Online index is not allowed on classes that are part of a hierarchy chain.
+1241 XASL tree needs recompile.
 
-1240 Dernière erreur
+1242 Dernière erreur
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Erreur dans le sous-système d'erreur (ligne %1$d):
@@ -1463,6 +1465,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 125 Utilisation non valide de sessiontimezone\n sessiontimezone
 126 La dimension maximale d'un commentaire class/vclass est %1$d octets.
 127 La dimension maximale d'un commentaire est %1$d octets.
+128 Invalid number of arguments for JSON_OBJECTAGG
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Mémoire épuisée.
@@ -1765,6 +1768,10 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 298 Le CTE récursif '%1$s' doit être référencé directement dans sa requête récursive.
 299 Erreur dans CTE '%1$s': la partie non récursive et la partie récursive doivent être connectées avec UNION ALL.
 300 La sous-requête n'est pas autorisée dans la clause DEFAULT.
+301 Could not find signatures for function %1$s()
+302 Incompatible argument type %1$s, expected type is: %2$s. Invalid signature %3$s.
+303 Unexpected number of arguments %1$d. Invalid signature %2$s.
+304 Could not find compatible signature for function %1$s()
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Mémoire virtuelle épuisée: impossible d'allouer %1$d octets.

@@ -262,10 +262,6 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_BT_NUM_MERGES, "Num_btree_merges"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_BT_NUM_GET_STATS, "Num_btree_get_stats"),
 
-  /* Execution statistics for the heap manager */
-  /* TODO: Move this to heap section. TODO: count and timer. */
-  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_HEAP_NUM_STATS_SYNC_BESTSPACE, "Num_heap_stats_sync_bestspace"),
-
   /* Execution statistics for the query manager */
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_QM_NUM_SELECTS, "Num_query_selects"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_QM_NUM_INSERTS, "Num_query_inserts"),
@@ -297,10 +293,6 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PRIOR_LSA_LIST_SIZE, "Num_prior_lsa_list_size"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PRIOR_LSA_LIST_MAXED, "Num_prior_lsa_list_maxed"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PRIOR_LSA_LIST_REMOVED, "Num_prior_lsa_list_removed"),
-
-  /* best space info */
-  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_HF_NUM_STATS_ENTRIES, "Num_heap_stats_bestspace_entries"),
-  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_HF_NUM_STATS_MAXED, "Num_heap_stats_bestspace_maxed"),
 
   /* HA replication delay */
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_HA_REPL_DELAY, "Time_ha_replication_delay"),
@@ -364,6 +356,17 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_HEAP_VACUUM_PREPARE, "heap_vacuum_prepare"),
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_HEAP_VACUUM_EXECUTE, "heap_vacuum_execute"),
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_HEAP_VACUUM_LOG, "heap_vacuum_log"),
+
+  /* Execution statistics for the heap manager */
+  /* best space info */
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_HEAP_STATS_SYNC_BESTSPACE, "heap_stats_sync_bestspace"),
+  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_HF_NUM_STATS_ENTRIES, "Num_heap_stats_bestspace_entries"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_HF_NUM_STATS_MAXED, "Num_heap_stats_bestspace_maxed"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_HF_BEST_SPACE_ADD, "bestspace_add"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_HF_BEST_SPACE_DEL, "bestspace_del"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_HF_BEST_SPACE_FIND, "bestspace_find"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_HF_HEAP_FIND_PAGE_BEST_SPACE, "heap_find_page_bestspace"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_HF_HEAP_FIND_BEST_PAGE, "heap_find_best_page"),
 
   /* B-tree detailed statistics. */
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_BT_FIX_OVF_OIDS, "bt_fix_ovf_oids"),
@@ -1071,7 +1074,7 @@ perfmon_get_stats_and_clear (THREAD_ENTRY * thread_p, const char *stat_name)
 }
 
 /*
- *   perfmon_pbx_fix - 
+ *   perfmon_pbx_fix -
  *   return: none
  */
 void
@@ -1097,7 +1100,7 @@ perfmon_pbx_fix (THREAD_ENTRY * thread_p, int page_type, int page_found_mode, in
 }
 
 /*
- *   perfmon_pbx_promote - 
+ *   perfmon_pbx_promote -
  *   return: none
  */
 void
@@ -1125,7 +1128,7 @@ perfmon_pbx_promote (THREAD_ENTRY * thread_p, int page_type, int promote_cond, i
 }
 
 /*
- *   perfmon_pbx_unfix - 
+ *   perfmon_pbx_unfix -
  *   return: none
  *
  * todo: inline
@@ -1153,7 +1156,7 @@ perfmon_pbx_unfix (THREAD_ENTRY * thread_p, int page_type, int buf_dirty, int di
 }
 
 /*
- *   perfmon_pbx_lock_acquire_time - 
+ *   perfmon_pbx_lock_acquire_time -
  *   return: none
  */
 void
@@ -1181,7 +1184,7 @@ perfmon_pbx_lock_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_
 }
 
 /*
- *   perfmon_pbx_hold_acquire_time - 
+ *   perfmon_pbx_hold_acquire_time -
  *   return: none
  */
 void
@@ -1208,7 +1211,7 @@ perfmon_pbx_hold_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_
 }
 
 /*
- *   perfmon_pbx_fix_acquire_time - 
+ *   perfmon_pbx_fix_acquire_time -
  *   return: none
  */
 void
@@ -1236,7 +1239,7 @@ perfmon_pbx_fix_acquire_time (THREAD_ENTRY * thread_p, int page_type, int page_f
 }
 
 /*
- *   perfmon_mvcc_snapshot - 
+ *   perfmon_mvcc_snapshot -
  *   return: none
  */
 void
@@ -1256,7 +1259,7 @@ perfmon_mvcc_snapshot (THREAD_ENTRY * thread_p, int snapshot, int rec_type, int 
 }
 
 /*
- *   perfmon_db_flushed_block_volumes - 
+ *   perfmon_db_flushed_block_volumes -
  *   return: none
  */
 void
@@ -2064,7 +2067,7 @@ perfmon_stat_promote_cond_name (const int cond_type)
  * stats_ptr(in): start of array values
  * s(in/out): output string (NULL if not used)
  * remaining_size(in/out): remaining size in string s (NULL if not used)
- * 
+ *
  */
 static void
 perfmon_stat_dump_in_buffer_fix_page_array_stat (const UINT64 * stats_ptr, char **s, int *remaining_size)
@@ -2176,7 +2179,7 @@ perfmon_stat_dump_in_file_fix_page_array_stat (FILE * stream, const UINT64 * sta
  * stats_ptr(in): start of array values
  * s(in/out): output string (NULL if not used)
  * remaining_size(in/out): remaining size in string s (NULL if not used)
- * 
+ *
  */
 static void
 perfmon_stat_dump_in_buffer_promote_page_array_stat (const UINT64 * stats_ptr, char **s, int *remaining_size)
@@ -2239,7 +2242,7 @@ perfmon_stat_dump_in_buffer_promote_page_array_stat (const UINT64 * stats_ptr, c
  *
  * stream(in): output file
  * stats_ptr(in): start of array values
- * 
+ *
  */
 static void
 perfmon_stat_dump_in_file_promote_page_array_stat (FILE * stream, const UINT64 * stats_ptr)
@@ -2290,7 +2293,7 @@ perfmon_stat_dump_in_file_promote_page_array_stat (FILE * stream, const UINT64 *
  * stats_ptr(in): start of array values
  * s(in/out): output string (NULL if not used)
  * remaining_size(in/out): remaining size in string s (NULL if not used)
- * 
+ *
  */
 static void
 perfmon_stat_dump_in_buffer_unfix_page_array_stat (const UINT64 * stats_ptr, char **s, int *remaining_size)
@@ -2353,7 +2356,7 @@ perfmon_stat_dump_in_buffer_unfix_page_array_stat (const UINT64 * stats_ptr, cha
  *
  * stream(in): output file
  * stats_ptr(in): start of array values
- * 
+ *
  */
 static void
 perfmon_stat_dump_in_file_unfix_page_array_stat (FILE * stream, const UINT64 * stats_ptr)
@@ -2403,7 +2406,7 @@ perfmon_stat_dump_in_file_unfix_page_array_stat (FILE * stream, const UINT64 * s
  * stats_ptr(in): start of array values
  * s(in/out): output string (NULL if not used)
  * remaining_size(in/out): remaining size in string s (NULL if not used)
- * 
+ *
  */
 static void
 perfmon_stat_dump_in_buffer_page_lock_time_array_stat (const UINT64 * stats_ptr, char **s, int *remaining_size)
@@ -2464,7 +2467,7 @@ perfmon_stat_dump_in_buffer_page_lock_time_array_stat (const UINT64 * stats_ptr,
  *
  * stream(in): output file
  * stats_ptr(in): start of array values
- * 
+ *
  */
 static void
 perfmon_stat_dump_in_file_page_lock_time_array_stat (FILE * stream, const UINT64 * stats_ptr)
@@ -2514,7 +2517,7 @@ perfmon_stat_dump_in_file_page_lock_time_array_stat (FILE * stream, const UINT64
  * stats_ptr(in): start of array values
  * s(in/out): output string (NULL if not used)
  * remaining_size(in/out): remaining size in string s (NULL if not used)
- * 
+ *
  */
 static void
 perfmon_stat_dump_in_buffer_page_hold_time_array_stat (const UINT64 * stats_ptr, char **s, int *remaining_size)
@@ -2570,7 +2573,7 @@ perfmon_stat_dump_in_buffer_page_hold_time_array_stat (const UINT64 * stats_ptr,
  *
  * stream(in): output file
  * stats_ptr(in): start of array values
- * 
+ *
  */
 static void
 perfmon_stat_dump_in_file_page_hold_time_array_stat (FILE * stream, const UINT64 * stats_ptr)
@@ -2617,7 +2620,7 @@ perfmon_stat_dump_in_file_page_hold_time_array_stat (FILE * stream, const UINT64
  * stats_ptr(in): start of array values
  * s(in/out): output string (NULL if not used)
  * remaining_size(in/out): remaining size in string s (NULL if not used)
- * 
+ *
  */
 static void
 perfmon_stat_dump_in_buffer_page_fix_time_array_stat (const UINT64 * stats_ptr, char **s, int *remaining_size)
@@ -2631,7 +2634,7 @@ perfmon_stat_dump_in_buffer_page_fix_time_array_stat (const UINT64 * stats_ptr, 
  *
  * stream(in): output file
  * stats_ptr(in): start of array values
- * 
+ *
  */
 static void
 perfmon_stat_dump_in_file_page_fix_time_array_stat (FILE * stream, const UINT64 * stats_ptr)
@@ -2646,7 +2649,7 @@ perfmon_stat_dump_in_file_page_fix_time_array_stat (FILE * stream, const UINT64 
  * stats_ptr(in): start of array values
  * s(in/out): output string (NULL if not used)
  * remaining_size(in/out): remaining size in string s (NULL if not used)
- * 
+ *
  */
 static void
 perfmon_stat_dump_in_buffer_mvcc_snapshot_array_stat (const UINT64 * stats_ptr, char **s, int *remaining_size)
@@ -2702,7 +2705,7 @@ perfmon_stat_dump_in_buffer_mvcc_snapshot_array_stat (const UINT64 * stats_ptr, 
  *
  * stream(in): output file
  * stats_ptr(in): start of array values
- * 
+ *
  */
 static void
 perfmon_stat_dump_in_file_mvcc_snapshot_array_stat (FILE * stream, const UINT64 * stats_ptr)
@@ -2748,7 +2751,7 @@ perfmon_stat_dump_in_file_mvcc_snapshot_array_stat (FILE * stream, const UINT64 
  * stats_ptr(in): start of array values
  * s(in/out): output string (NULL if not used)
  * remaining_size(in/out): remaining size in string s (NULL if not used)
- * 
+ *
  */
 static void
 perfmon_stat_dump_in_buffer_obj_lock_array_stat (const UINT64 * stats_ptr, char **s, int *remaining_size)
@@ -2786,7 +2789,7 @@ perfmon_stat_dump_in_buffer_obj_lock_array_stat (const UINT64 * stats_ptr, char 
  *
  * stream(in): output file
  * stats_ptr(in): start of array values
- * 
+ *
  */
 static void
 perfmon_stat_dump_in_file_obj_lock_array_stat (FILE * stream, const UINT64 * stats_ptr)
@@ -2814,7 +2817,7 @@ perfmon_stat_dump_in_file_obj_lock_array_stat (FILE * stream, const UINT64 * sta
  * stats_ptr(in): start of array values
  * s(in/out): output string (NULL if not used)
  * remaining_size(in/out): remaining size in string s (NULL if not used)
- * 
+ *
  */
 static void
 perfmon_stat_dump_in_buffer_flushed_block_volumes_array_stat (const UINT64 * stats_ptr, char **s, int *remaining_size)
@@ -2855,7 +2858,7 @@ perfmon_stat_dump_in_buffer_flushed_block_volumes_array_stat (const UINT64 * sta
  *
  * stream(in): output file
  * stats_ptr(in): start of array values
- * 
+ *
  */
 static void
 perfmon_stat_dump_in_file_flushed_block_volumes_array_stat (FILE * stream, const UINT64 * stats_ptr)
@@ -2886,7 +2889,7 @@ perfmon_stat_dump_in_file_flushed_block_volumes_array_stat (FILE * stream, const
  * stats_ptr(in): start of array values
  * s(in/out): output string (NULL if not used)
  * remaining_size(in/out): remaining size in string s (NULL if not used)
- * 
+ *
  */
 static void
 perfmon_stat_dump_in_buffer_snapshot_array_stat (const UINT64 * stats_ptr, char **s, int *remaining_size)
@@ -2928,7 +2931,7 @@ perfmon_stat_dump_in_buffer_snapshot_array_stat (const UINT64 * stats_ptr, char 
  *
  * stream(in): output file
  * stats_ptr(in): start of array values
- * 
+ *
  */
 static void
 perfmon_stat_dump_in_file_snapshot_array_stat (FILE * stream, const UINT64 * stats_ptr)
@@ -3204,7 +3207,7 @@ perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, const in
 
 /*
  * f_load_Num_data_page_fix_ext () - Get the number of values for Num_data_page_fix_ext statistic
- * 
+ *
  */
 static int
 f_load_Num_data_page_fix_ext (void)
@@ -3214,7 +3217,7 @@ f_load_Num_data_page_fix_ext (void)
 
 /*
  * f_load_Num_data_page_promote_ext () - Get the number of values for Num_data_page_promote_ext statistic
- * 
+ *
  */
 static int
 f_load_Num_data_page_promote_ext (void)
@@ -3224,7 +3227,7 @@ f_load_Num_data_page_promote_ext (void)
 
 /*
  * f_load_Num_data_page_promote_time_ext () - Get the number of values for Num_data_page_promote_time_ext statistic
- * 
+ *
  */
 static int
 f_load_Num_data_page_promote_time_ext (void)
@@ -3234,7 +3237,7 @@ f_load_Num_data_page_promote_time_ext (void)
 
 /*
  * f_load_Num_data_page_unfix_ext () - Get the number of values for Num_data_page_unfix_ext statistic
- * 
+ *
  */
 static int
 f_load_Num_data_page_unfix_ext (void)
@@ -3244,7 +3247,7 @@ f_load_Num_data_page_unfix_ext (void)
 
 /*
  * f_load_Time_data_page_lock_acquire_time () - Get the number of values for Time_data_page_lock_acquire_time statistic
- * 
+ *
  */
 static int
 f_load_Time_data_page_lock_acquire_time (void)
@@ -3254,7 +3257,7 @@ f_load_Time_data_page_lock_acquire_time (void)
 
 /*
  * f_load_Time_data_page_hold_acquire_time () - Get the number of values for Time_data_page_hold_acquire_time statistic
- * 
+ *
  */
 static int
 f_load_Time_data_page_hold_acquire_time (void)
@@ -3264,7 +3267,7 @@ f_load_Time_data_page_hold_acquire_time (void)
 
 /*
  * f_load_Time_data_page_fix_acquire_time () - Get the number of values for Time_data_page_fix_acquire_time statistic
- * 
+ *
  */
 static int
 f_load_Time_data_page_fix_acquire_time (void)
@@ -3274,7 +3277,7 @@ f_load_Time_data_page_fix_acquire_time (void)
 
 /*
  * f_load_Num_mvcc_snapshot_ext () - Get the number of values for Num_mvcc_snapshot_ext statistic
- * 
+ *
  */
 static int
 f_load_Num_mvcc_snapshot_ext (void)
@@ -3284,7 +3287,7 @@ f_load_Num_mvcc_snapshot_ext (void)
 
 /*
  * f_load_Time_obj_lock_acquire_time () - Get the number of values for Time_obj_lock_acquire_time statistic
- * 
+ *
  */
 static int
 f_load_Time_obj_lock_acquire_time (void)
@@ -3294,7 +3297,7 @@ f_load_Time_obj_lock_acquire_time (void)
 
 /*
  * f_load_Num_dwb_flushed_block_volumes () - Get the number of values for Num_dwb_flushed_block_volumes statistic
- * 
+ *
  */
 static int
 f_load_Num_dwb_flushed_block_volumes (void)
@@ -3304,7 +3307,7 @@ f_load_Num_dwb_flushed_block_volumes (void)
 
 /*
  * f_load_Time_get_snapshot_acquire_time () - Get the number of values for Time_get_snapshot_acquire_time statistic
- * 
+ *
  */
 static int
 f_load_Time_get_snapshot_acquire_time (void)
@@ -3314,7 +3317,7 @@ f_load_Time_get_snapshot_acquire_time (void)
 
 /*
  * f_load_Count_get_snapshot_retry () - Get the number of values for Count_get_snapshot_retry statistic
- * 
+ *
  */
 static int
 f_load_Count_get_snapshot_retry (void)
@@ -3324,7 +3327,7 @@ f_load_Count_get_snapshot_retry (void)
 
 /*
  * f_load_Time_tran_complete_time () - Get the number of values for Time_tran_complete_time statistic
- * 
+ *
  */
 static int
 f_load_Time_tran_complete_time (void)
@@ -3333,9 +3336,9 @@ f_load_Time_tran_complete_time (void)
 }
 
 /*
- * f_load_Time_get_oldest_mvcc_acquire_time () - Get the number of values for Time_get_oldest_mvcc_acquire_time 
+ * f_load_Time_get_oldest_mvcc_acquire_time () - Get the number of values for Time_get_oldest_mvcc_acquire_time
  *						 statistic
- * 
+ *
  */
 static int
 f_load_Time_get_oldest_mvcc_acquire_time (void)
@@ -3345,7 +3348,7 @@ f_load_Time_get_oldest_mvcc_acquire_time (void)
 
 /*
  * f_load_Count_get_oldest_mvcc_retry () - Get the number of values for Count_get_oldest_mvcc_retry statistic
- * 
+ *
  */
 static int
 f_load_Count_get_oldest_mvcc_retry (void)
@@ -3357,7 +3360,7 @@ f_load_Count_get_oldest_mvcc_retry (void)
  * f_dump_in_file_Num_data_page_fix_ext () - Write in file the values for Num_data_page_fix_ext statistic
  * f (out): File handle
  * stat_vals (in): statistics buffer
- * 
+ *
  */
 static void
 f_dump_in_file_Num_data_page_fix_ext (FILE * f, const UINT64 * stat_vals)
@@ -3369,7 +3372,7 @@ f_dump_in_file_Num_data_page_fix_ext (FILE * f, const UINT64 * stat_vals)
  * f_dump_in_file_Num_data_page_promote_ext () - Write in file the values for Num_data_page_promote_ext statistic
  * f (out): File handle
  * stat_vals (in): statistics buffer
- * 
+ *
  */
 static void
 f_dump_in_file_Num_data_page_promote_ext (FILE * f, const UINT64 * stat_vals)
@@ -3378,11 +3381,11 @@ f_dump_in_file_Num_data_page_promote_ext (FILE * f, const UINT64 * stat_vals)
 }
 
 /*
- * f_dump_in_file_Num_data_page_promote_time_ext () - Write in file the values for Num_data_page_promote_time_ext 
+ * f_dump_in_file_Num_data_page_promote_time_ext () - Write in file the values for Num_data_page_promote_time_ext
  *						      statistic
  * f (out): File handle
  * stat_vals (in): statistics buffer
- * 
+ *
  */
 static void
 f_dump_in_file_Num_data_page_promote_time_ext (FILE * f, const UINT64 * stat_vals)
@@ -3391,11 +3394,11 @@ f_dump_in_file_Num_data_page_promote_time_ext (FILE * f, const UINT64 * stat_val
 }
 
 /*
- * f_dump_in_file_Num_data_page_unfix_ext () - Write in file the values for Num_data_page_unfix_ext 
+ * f_dump_in_file_Num_data_page_unfix_ext () - Write in file the values for Num_data_page_unfix_ext
  *					       statistic
  * f (out): File handle
  * stat_vals (in): statistics buffer
- * 
+ *
  */
 static void
 f_dump_in_file_Num_data_page_unfix_ext (FILE * f, const UINT64 * stat_vals)
@@ -3404,11 +3407,11 @@ f_dump_in_file_Num_data_page_unfix_ext (FILE * f, const UINT64 * stat_vals)
 }
 
 /*
- * f_dump_in_file_Time_data_page_lock_acquire_time () - Write in file the values for Time_data_page_lock_acquire_time 
+ * f_dump_in_file_Time_data_page_lock_acquire_time () - Write in file the values for Time_data_page_lock_acquire_time
  *					                statistic
  * f (out): File handle
  * stat_vals (in): statistics buffer
- * 
+ *
  */
 static void
 f_dump_in_file_Time_data_page_lock_acquire_time (FILE * f, const UINT64 * stat_vals)
@@ -3417,11 +3420,11 @@ f_dump_in_file_Time_data_page_lock_acquire_time (FILE * f, const UINT64 * stat_v
 }
 
 /*
- * f_dump_in_file_Time_data_page_hold_acquire_time () - Write in file the values for Time_data_page_hold_acquire_time 
+ * f_dump_in_file_Time_data_page_hold_acquire_time () - Write in file the values for Time_data_page_hold_acquire_time
  *					                statistic
  * f (out): File handle
  * stat_vals (in): statistics buffer
- * 
+ *
  */
 static void
 f_dump_in_file_Time_data_page_hold_acquire_time (FILE * f, const UINT64 * stat_vals)
@@ -3430,11 +3433,11 @@ f_dump_in_file_Time_data_page_hold_acquire_time (FILE * f, const UINT64 * stat_v
 }
 
 /*
- * f_dump_in_file_Time_data_page_fix_acquire_time () - Write in file the values for Time_data_page_fix_acquire_time 
+ * f_dump_in_file_Time_data_page_fix_acquire_time () - Write in file the values for Time_data_page_fix_acquire_time
  *					               statistic
  * f (out): File handle
  * stat_vals (in): statistics buffer
- * 
+ *
  */
 static void
 f_dump_in_file_Time_data_page_fix_acquire_time (FILE * f, const UINT64 * stat_vals)
@@ -3447,7 +3450,7 @@ f_dump_in_file_Time_data_page_fix_acquire_time (FILE * f, const UINT64 * stat_va
  *					     statistic
  * f (out): File handle
  * stat_vals (in): statistics buffer
- * 
+ *
  */
 static void
 f_dump_in_file_Num_mvcc_snapshot_ext (FILE * f, const UINT64 * stat_vals)
@@ -3463,7 +3466,7 @@ f_dump_in_file_Num_mvcc_snapshot_ext (FILE * f, const UINT64 * stat_vals)
  *						  statistic
  * f (out): File handle
  * stat_vals (in): statistics buffer
- * 
+ *
  */
 static void
 f_dump_in_file_Time_obj_lock_acquire_time (FILE * f, const UINT64 * stat_vals)
@@ -3479,7 +3482,7 @@ f_dump_in_file_Time_obj_lock_acquire_time (FILE * f, const UINT64 * stat_vals)
  *						  statistic
  * f (out): File handle
  * stat_vals (in): statistics buffer
- * 
+ *
  */
 static void
 f_dump_in_file_Num_dwb_flushed_block_volumes (FILE * f, const UINT64 * stat_vals)
@@ -3496,7 +3499,7 @@ f_dump_in_file_Num_dwb_flushed_block_volumes (FILE * f, const UINT64 * stat_vals
  * s (out): Buffer to write to
  * stat_vals (in): statistics buffer
  * remaining_size (in): size of input buffer
- * 
+ *
  */
 static void
 f_dump_in_buffer_Num_data_page_fix_ext (char **s, const UINT64 * stat_vals, int *remaining_size)
@@ -3510,7 +3513,7 @@ f_dump_in_buffer_Num_data_page_fix_ext (char **s, const UINT64 * stat_vals, int 
  * s (out): Buffer to write to
  * stat_vals (in): statistics buffer
  * remaining_size (in): size of input buffer
- * 
+ *
  */
 static void
 f_dump_in_buffer_Num_data_page_promote_ext (char **s, const UINT64 * stat_vals, int *remaining_size)
@@ -3524,7 +3527,7 @@ f_dump_in_buffer_Num_data_page_promote_ext (char **s, const UINT64 * stat_vals, 
  * s (out): Buffer to write to
  * stat_vals (in): statistics buffer
  * remaining_size (in): size of input buffer
- * 
+ *
  */
 static void
 f_dump_in_buffer_Num_data_page_promote_time_ext (char **s, const UINT64 * stat_vals, int *remaining_size)
@@ -3538,7 +3541,7 @@ f_dump_in_buffer_Num_data_page_promote_time_ext (char **s, const UINT64 * stat_v
  * s (out): Buffer to write to
  * stat_vals (in): statistics buffer
  * remaining_size (in): size of input buffer
- * 
+ *
  */
 static void
 f_dump_in_buffer_Num_data_page_unfix_ext (char **s, const UINT64 * stat_vals, int *remaining_size)
@@ -3547,13 +3550,13 @@ f_dump_in_buffer_Num_data_page_unfix_ext (char **s, const UINT64 * stat_vals, in
 }
 
 /*
- * f_dump_in_buffer_Time_data_page_lock_acquire_time () - Write to a buffer the values for 
+ * f_dump_in_buffer_Time_data_page_lock_acquire_time () - Write to a buffer the values for
  *							  Time_data_page_lock_acquire_time statistic
  *
  * s (out): Buffer to write to
  * stat_vals (in): statistics buffer
  * remaining_size (in): size of input buffer
- * 
+ *
  */
 static void
 f_dump_in_buffer_Time_data_page_lock_acquire_time (char **s, const UINT64 * stat_vals, int *remaining_size)
@@ -3568,7 +3571,7 @@ f_dump_in_buffer_Time_data_page_lock_acquire_time (char **s, const UINT64 * stat
  * s (out): Buffer to write to
  * stat_vals (in): statistics buffer
  * remaining_size (in): size of input buffer
- * 
+ *
  */
 static void
 f_dump_in_buffer_Time_data_page_hold_acquire_time (char **s, const UINT64 * stat_vals, int *remaining_size)
@@ -3583,7 +3586,7 @@ f_dump_in_buffer_Time_data_page_hold_acquire_time (char **s, const UINT64 * stat
  * s (out): Buffer to write to
  * stat_vals (in): statistics buffer
  * remaining_size (in): size of input buffer
- * 
+ *
  */
 static void
 f_dump_in_buffer_Time_data_page_fix_acquire_time (char **s, const UINT64 * stat_vals, int *remaining_size)
@@ -3597,7 +3600,7 @@ f_dump_in_buffer_Time_data_page_fix_acquire_time (char **s, const UINT64 * stat_
  * s (out): Buffer to write to
  * stat_vals (in): statistics buffer
  * remaining_size (in): size of input buffer
- * 
+ *
  */
 static void
 f_dump_in_buffer_Num_mvcc_snapshot_ext (char **s, const UINT64 * stat_vals, int *remaining_size)
@@ -3614,7 +3617,7 @@ f_dump_in_buffer_Num_mvcc_snapshot_ext (char **s, const UINT64 * stat_vals, int 
  * s (out): Buffer to write to
  * stat_vals (in): statistics buffer
  * remaining_size (in): size of input buffer
- * 
+ *
  */
 static void
 f_dump_in_buffer_Time_obj_lock_acquire_time (char **s, const UINT64 * stat_vals, int *remaining_size)
@@ -3631,7 +3634,7 @@ f_dump_in_buffer_Time_obj_lock_acquire_time (char **s, const UINT64 * stat_vals,
  * s (out): Buffer to write to
  * stat_vals (in): statistics buffer
  * remaining_size (in): size of input buffer
- * 
+ *
  */
 static void
 f_dump_in_buffer_Num_dwb_flushed_block_volumes (char **s, const UINT64 * stat_vals, int *remaining_size)
@@ -3644,7 +3647,7 @@ f_dump_in_buffer_Num_dwb_flushed_block_volumes (char **s, const UINT64 * stat_va
 
 /*
  * perfmon_get_number_of_statistic_values () - Get the number of entries in the statistic array
- * 
+ *
  */
 int
 perfmon_get_number_of_statistic_values (void)
@@ -3653,8 +3656,8 @@ perfmon_get_number_of_statistic_values (void)
 }
 
 /*
- * perfmon_allocate_values () - Allocate PERFMON_VALUES_MEMSIZE bytes 
- * 
+ * perfmon_allocate_values () - Allocate PERFMON_VALUES_MEMSIZE bytes
+ *
  */
 UINT64 *
 perfmon_allocate_values (void)
@@ -3672,7 +3675,7 @@ perfmon_allocate_values (void)
 
 /*
  * perfmon_allocate_packed_values_buffer () - Allocate PERFMON_VALUES_MEMSIZE bytes and verify alignment
- * 
+ *
  */
 char *
 perfmon_allocate_packed_values_buffer (void)
@@ -3694,7 +3697,7 @@ perfmon_allocate_packed_values_buffer (void)
  *
  * dest (in/out): destination buffer
  * source (in): source buffer
- * 
+ *
  */
 void
 perfmon_copy_values (UINT64 * dest, UINT64 * src)
@@ -3757,7 +3760,7 @@ perfmon_unpack_stats (char *buf, UINT64 * stats)
 
 /*
  * perfmon_get_peek_stats - Copy into the statistics array the values of the peek statistics
- *		         
+ *		
  * return: void
  *
  *   stats (in): statistics array
@@ -3807,7 +3810,7 @@ perfmon_print_timer_to_file (FILE * stream, int stat_index, UINT64 * stats_ptr)
  * stat_index (in): statistic index
  * stats_ptr (in): statistic values array
  * offset (in): offset in the statistics array
- * remained_size (in/out): remained size to write in the buffer 
+ * remained_size (in/out): remained size to write in the buffer
  *
  * return: void
  *
@@ -3923,7 +3926,7 @@ perfmon_stat_thread_stat_name (size_t index)
  *
  * f (out): File handle
  * stat_vals (in): statistics buffer
- * 
+ *
  */
 static void
 f_dump_in_file_thread_stats (FILE * f, const UINT64 * stat_vals)
@@ -3939,7 +3942,7 @@ f_dump_in_file_thread_stats (FILE * f, const UINT64 * stat_vals)
  *
  * stream(in): output file
  * stats_ptr(in): start of array values
- * 
+ *
  */
 static void
 perfmon_stat_dump_in_file_thread_stats (FILE * stream, const UINT64 * stats_ptr)
@@ -3964,7 +3967,7 @@ perfmon_stat_dump_in_file_thread_stats (FILE * stream, const UINT64 * stats_ptr)
  * s (out): Buffer to write to
  * stat_vals (in): statistics buffer
  * remaining_size (in): size of input buffer
- * 
+ *
  */
 static void
 f_dump_in_buffer_thread_stats (char **s, const UINT64 * stat_vals, int *remaining_size)
@@ -3981,7 +3984,7 @@ f_dump_in_buffer_thread_stats (char **s, const UINT64 * stat_vals, int *remainin
  * stats_ptr(in): start of array values
  * s(in/out): output string (NULL if not used)
  * remaining_size(in/out): remaining size in string s (NULL if not used)
- * 
+ *
  */
 static void
 perfmon_stat_dump_in_buffer_thread_stats (const UINT64 * stats_ptr, char **s, int *remaining_size)
@@ -4103,7 +4106,7 @@ f_load_thread_daemon_stats (void)
  *
  * f (out): File handle
  * stat_vals (in): statistics buffer
- * 
+ *
  */
 static void
 f_dump_in_file_thread_daemon_stats (FILE * f, const UINT64 * stat_vals)
@@ -4119,7 +4122,7 @@ f_dump_in_file_thread_daemon_stats (FILE * f, const UINT64 * stat_vals)
  *
  * stream(in): output file
  * stats_ptr(in): start of array values
- * 
+ *
  */
 static void
 perfmon_stat_dump_in_file_thread_daemon_stats (FILE * stream, const UINT64 * stats_ptr)
@@ -4145,7 +4148,7 @@ perfmon_stat_dump_in_file_thread_daemon_stats (FILE * stream, const UINT64 * sta
  * s (out): Buffer to write to
  * stat_vals (in): statistics buffer
  * remaining_size (in): size of input buffer
- * 
+ *
  */
 static void
 f_dump_in_buffer_thread_daemon_stats (char **s, const UINT64 * stat_vals, int *remaining_size)
@@ -4162,7 +4165,7 @@ f_dump_in_buffer_thread_daemon_stats (char **s, const UINT64 * stat_vals, int *r
  * stats_ptr(in): start of array values
  * s(in/out): output string (NULL if not used)
  * remaining_size(in/out): remaining size in string s (NULL if not used)
- * 
+ *
  */
 static void
 perfmon_stat_dump_in_buffer_thread_daemon_stats (const UINT64 * stats_ptr, char **s, int *remaining_size)

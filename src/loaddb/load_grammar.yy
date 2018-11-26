@@ -56,7 +56,7 @@ namespace cubload
 
 %code {
 // This code will be copied into loader grammar source file
-#include "dbtype_def.h"
+#include "dbtype.h"
 #include "load_driver.hpp"
 #include "load_scanner.hpp"
 

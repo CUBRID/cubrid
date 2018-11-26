@@ -36,9 +36,9 @@
 #include <assert.h>
 
 #include "porting.h"
-#include "dbdef.h"
 #include "dbtype_def.h"
 #include "sha1.h"
+#include "cache_time.h"
 
   /* LIMITS AND NULL VALUES ON DISK RELATED DATATYPES */
 
@@ -133,6 +133,13 @@ LSA_SET_TEMP_LSA (LOG_LSA * lsa_ptr)
 #define LSA_INITIALIZER	{NULL_PAGEID, NULL_OFFSET}
 
 #define LSA_AS_ARGS(lsa_ptr) (long long int) (lsa_ptr)->pageid, (int) (lsa_ptr)->offset
+
+#define LSA_SET_INIT_NONTEMP(lsa_ptr) LSA_SET_NULL(lsa_ptr)
+#define LSA_SET_INIT_TEMP(lsa_ptr)\
+  do {									      \
+    (lsa_ptr)->pageid = NULL_PAGEID - 1;                                      \
+    (lsa_ptr)->offset = NULL_OFFSET - 1;                                      \
+  } while(0)
 
 #define LSA_ISNULL(lsa_ptr) ((lsa_ptr)->pageid == NULL_PAGEID)
 #define LSA_IS_INIT_NONTEMP(lsa_ptr) LSA_ISNULL(lsa_ptr)
@@ -737,7 +744,7 @@ typedef enum
 {
   LOG_ERROR_IF_DELETED,		/* set error when locking deleted objects */
   LOG_WARNING_IF_DELETED	/* set warning when locking deleted objects - the case when it is expected and
-				 * accepted to find a deleted object; for example when er_clear() is used afterwards if 
+				 * accepted to find a deleted object; for example when er_clear() is used afterwards if
 				 * ER_HEAP_UNKNOWN_OBJECT is set in er_errid */
 } NON_EXISTENT_HANDLING;
 
@@ -1056,9 +1063,10 @@ typedef enum
   T_JSON_TYPE,
   T_JSON_EXTRACT,
   T_JSON_VALID,
+  T_JSON_QUOTE,
+  T_JSON_UNQUOTE,
   T_JSON_LENGTH,
   T_JSON_DEPTH,
-  T_JSON_SEARCH,
   T_JSON_PRETTY,
 } OPERATOR_TYPE;		/* arithmetic operator types */
 
@@ -1078,6 +1086,7 @@ typedef enum
   PT_DENSE_RANK,
   PT_NTILE,
   PT_JSON_ARRAYAGG,
+  PT_JSON_OBJECTAGG,
   PT_TOP_AGG_FUNC,
   /* only aggregate functions should be below PT_TOP_AGG_FUNC */
 
@@ -1095,9 +1104,10 @@ typedef enum
 
   /* "normal" functions, arguments are values */
   F_SET, F_MULTISET, F_SEQUENCE, F_VID, F_GENERIC, F_CLASS_OF,
-  F_INSERT_SUBSTRING, F_ELT, F_JSON_OBJECT, F_JSON_ARRAY, F_JSON_MERGE,
+  F_INSERT_SUBSTRING, F_ELT, F_JSON_OBJECT, F_JSON_ARRAY, F_JSON_MERGE, F_JSON_MERGE_PATCH,
   F_JSON_INSERT, F_JSON_REMOVE, F_JSON_ARRAY_APPEND, F_JSON_GET_ALL_PATHS,
-  F_JSON_REPLACE, F_JSON_SET, F_JSON_KEYS, F_JSON_ARRAY_INSERT,
+  F_JSON_REPLACE, F_JSON_SET, F_JSON_KEYS, F_JSON_ARRAY_INSERT, F_JSON_SEARCH,
+  F_JSON_CONTAINS_PATH, F_JSON_EXTRACT,
 
   /* only for FIRST_VALUE. LAST_VALUE, NTH_VALUE analytic functions */
   PT_FIRST_VALUE, PT_LAST_VALUE, PT_NTH_VALUE,
@@ -1112,16 +1122,6 @@ typedef enum
 /************************************************************************/
 /* QUERY                                                                */
 /************************************************************************/
-
-/*
- * CACHE TIME RELATED DEFINITIONS
- */
-typedef struct cache_time CACHE_TIME;
-struct cache_time
-{
-  int sec;
-  int usec;
-};
 
 #define CACHE_TIME_AS_ARGS(ct)	(ct)->sec, (ct)->usec
 
@@ -1352,12 +1352,12 @@ enum
   REC_BIGONE = 5,
 
 /* Slot does not describe any record.
- * A record was stored in this slot.  Slot cannot be reused. 
+ * A record was stored in this slot.  Slot cannot be reused.
  */
   REC_MARKDELETED = 6,
 
 /* Slot does not describe any record.
- * A record was stored in this slot.  Slot will be reused. 
+ * A record was stored in this slot.  Slot will be reused.
  */
   REC_DELETED_WILL_REUSE = 7,
 
@@ -1374,6 +1374,42 @@ enum
   REC_4BIT_USED_TYPE_MAX = REC_DELETED_WILL_REUSE,
   REC_4BIT_TYPE_MAX = REC_RESERVED_TYPE_15
 };
+
+typedef struct dbdef_vol_ext_info DBDEF_VOL_EXT_INFO;
+struct dbdef_vol_ext_info
+{
+  const char *path;		/* Directory where the volume extension is created.  If NULL, is given, it defaults to
+				 * the system parameter. */
+  const char *name;		/* Name of the volume extension If NULL, system generates one like "db".ext"volid"
+				 * where "db" is the database name and "volid" is the volume identifier to be assigned
+				 * to the volume extension. */
+  const char *comments;		/* Comments which are included in the volume extension header. */
+  int max_npages;		/* Maximum pages of this volume */
+  int extend_npages;		/* Number of pages to extend - used for generic volume only */
+  INT32 nsect_total;		/* DKNSECTS type, number of sectors for volume extension */
+  INT32 nsect_max;		/* DKNSECTS type, maximum number of sectors for volume extension */
+  int max_writesize_in_sec;	/* the amount of volume written per second */
+  DB_VOLPURPOSE purpose;	/* The purpose of the volume extension. One of the following: -
+				 * DB_PERMANENT_DATA_PURPOSE, DB_TEMPORARY_DATA_PURPOSE */
+  DB_VOLTYPE voltype;		/* Permanent of temporary volume type */
+  bool overwrite;
+};
+
+#define SERVER_SESSION_KEY_SIZE			8
+
+typedef enum
+{
+  DB_PARTITION_HASH = 0,
+  DB_PARTITION_RANGE,
+  DB_PARTITION_LIST
+} DB_PARTITION_TYPE;
+
+typedef enum
+{
+  DB_NOT_PARTITIONED_CLASS = 0,
+  DB_PARTITIONED_CLASS = 1,
+  DB_PARTITION_CLASS = 2
+} DB_CLASS_PARTITION_TYPE;
 
 // TODO: move me in a proper place
 typedef enum

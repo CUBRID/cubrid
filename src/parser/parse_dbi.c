@@ -336,7 +336,7 @@ pt_add_type_to_set (PARSER_CONTEXT * parser, const PT_NODE * typs, PT_NODE ** se
 	      else
 		{
 		  /* If the node has been parameterized by its data_type, node, copy ALL pertinent information into
-		   * this node. Datatype parameterization includes ALL the fields of a data_type node (ie, virt_object, 
+		   * this node. Datatype parameterization includes ALL the fields of a data_type node (ie, virt_object,
 		   * proxy_object, etc). */
 		  new_typ = parser_copy_tree_list (parser, typs->data_type);
 		}
@@ -366,7 +366,7 @@ pt_add_type_to_set (PARSER_CONTEXT * parser, const PT_NODE * typs, PT_NODE ** se
 			}
 		      new_typ->info.data_type.entity = entity;
 
-		      /* 
+		      /*
 		       * Make sure that everything on the entity list has the
 		       * same bloody spec_id.
 		       */
@@ -1097,7 +1097,7 @@ pt_value_to_db (PARSER_CONTEXT * parser, PT_NODE * value)
       return NULL;
     }
 
-  /* 
+  /*
    * if it is an input host_variable then its associated DB_VALUE is in parser->host_variables[x] */
   if (value->node_type == PT_HOST_VAR && value->info.host_var.var_type == PT_HOST_IN)
     {
@@ -1240,7 +1240,7 @@ pt_value_to_db (PARSER_CONTEXT * parser, PT_NODE * value)
       value->info.value.db_value_is_initialized = true;
     }
 
-  /* 
+  /*
    * We want to make sure that none of the parameterized types can leave
    * here without the proper DATA_TYPE information tacked onto them.  A
    * common symptom of a screwup here is character strings that are
@@ -2486,7 +2486,7 @@ pt_sort_in_desc_order (PT_NODE * vlist)
   PT_NODE *init_list = vlist, *c_addr, *p_addr;
   int t;
 
-  /* 
+  /*
    * bubble sort (yuck!) the linked list of nodes
    * in descending order.
    */
@@ -2854,7 +2854,7 @@ pt_bind_helper (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val, int *da
     case DB_TYPE_DATETIMELTZ:
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
-      /* 
+      /*
        * Nothing more to do for these guys; their type is completely
        * described by the type_enum.  Why don't we care about precision
        * and dec_precision for these, if we care about DB_TYPE_INT?
@@ -2877,7 +2877,7 @@ pt_bind_helper (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val, int *da
       dt = pt_bind_set_type (parser, node, val, data_type_added);
       break;
 
-      /* 
+      /*
        * All of the remaining cases need to tack a new DATA_TYPE node
        * onto the incoming node.  Most of the cases allocate it
        * themselves, but not all.
@@ -3021,7 +3021,7 @@ pt_bind_set_type (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val, int *
 
       pt_add_type_to_set (parser, &tmp, &set_type);
 
-      /* 
+      /*
        * pt_add_type_to_set will copy the data type we send it if it
        * needs to keep it, so it's our responsibility to clean up any
        * intermediate stuff that was produced by pt_bind_helper.
@@ -3394,7 +3394,7 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
       break;
 
     case PT_TYPE_MONETARY:
-      /* 
+      /*
        * Don't use db_make_monetary here, since it doesn't preserve the
        * currency info.
        */
@@ -3548,4 +3548,29 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
     }
 
   return db_value;
+}
+
+/*
+ * db_json_val_from_str() - create JSON value from string
+ *   return:  error code
+ *   raw_str(in): buffer storing a JSON
+ *   str_size(in): size of buffer
+ *   json_val(out): output JSON DB_VALUE
+ */
+int
+db_json_val_from_str (const char *raw_str, const int str_size, DB_VALUE * json_val)
+{
+  JSON_DOC *json_doc = NULL;
+  int error_code = NO_ERROR;
+
+  error_code = db_json_get_json_from_str (raw_str, json_doc, str_size);
+  if (error_code != NO_ERROR)
+    {
+      assert (json_doc == NULL);
+      return error_code;
+    }
+
+  db_make_json (json_val, json_doc, true);
+
+  return error_code;
 }

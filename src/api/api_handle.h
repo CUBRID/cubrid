@@ -1,19 +1,19 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -42,9 +42,9 @@ typedef enum
   BH_ROOT_TYPE_RB_TREE = 4	/* not implemented */
 } BH_ROOT_TYPE;
 
-/* 
+/*
  * basic bind structure corresponding a handle.
- * user struct should extend (first member) this structure 
+ * user struct should extend (first member) this structure
  */
 struct bh_bind_s
 {
@@ -53,7 +53,7 @@ struct bh_bind_s
 };
 
 /*
- * abstract structure that provides functionality related with 
+ * abstract structure that provides functionality related with
  * handle management.
  */
 struct bh_interface_s
@@ -83,10 +83,10 @@ struct bh_provider_s
 /*
  * Exported functions.
  *
- * A user first acquire root id using bh_root_acquire() and get 
+ * A user first acquire root id using bh_root_acquire() and get
  * BH_INTERFACE by calling bh_root_lock().
  * BH_INTERFACE is MT safe until the root id is unlocked by calling
- * bh_root_unlock() 
+ * bh_root_unlock()
  */
 extern int bh_root_acquire (int *rid, BH_ROOT_TYPE rt);
 extern int bh_root_release (int rid);

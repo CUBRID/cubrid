@@ -5585,12 +5585,16 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
   int error = NO_ERROR, req_error, request_size, domain_size;
   char *ptr;
   char *request;
-  OR_ALIGNED_BUF (OR_INT_SIZE + OR_BTID_ALIGNED_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2 + OR_BTID_ALIGNED_SIZE) a_reply;
   char *reply;
   int i, total_attrs, bt_strlen, fk_strlen;
   int index_info_size = 0;
   char *stream = NULL;
   int stream_size = 0;
+  LOCK curr_cls_lock = SCH_M_LOCK;
+
+  // online index should have created the empty b-tree already
+  assert (index_status != SM_ONLINE_INDEX_BUILDING_IN_PROGRESS || !BTID_IS_NULL (btid));
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
@@ -5698,18 +5702,50 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
     net_client_request (NET_SERVER_BTREE_LOADINDEX, request, request_size, reply, OR_ALIGNED_BUF_SIZE (a_reply),
 			stream, stream_size, NULL, 0);
 
-  if (!req_error)
+  if (req_error == NO_ERROR)
     {
+      int t;
+
       ptr = or_unpack_int (reply, &error);
-      ptr = or_unpack_btid (ptr, btid);
-      if (error != NO_ERROR)
+
+      ptr = or_unpack_int (ptr, &t);
+      curr_cls_lock = (LOCK) t;
+
+      if (index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
 	{
-	  btid = NULL;
+	  BTID local_btid;
+	  ptr = or_unpack_btid (ptr, &local_btid);
+	  if (error != NO_ERROR)
+	    {
+	      btid = NULL;
+	    }
+	  assert (!BTID_IS_NULL (&local_btid));
+	}
+      else
+	{
+	  ptr = or_unpack_btid (ptr, btid);
+	  if (error != NO_ERROR)
+	    {
+	      btid = NULL;
+	    }
 	}
     }
   else
     {
       btid = NULL;
+      error = req_error;
+    }
+
+  if (index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS && curr_cls_lock != SCH_M_LOCK)
+    {
+      // hope it won't happen. server failed to restore the demoted lock.
+      // It just help things don't go worse.
+
+      MOP class_mop = ws_mop (&class_oids[0], sm_Root_class_mop);
+      if (class_mop != NULL)
+	{
+	  ws_set_lock (class_mop, curr_cls_lock);
+	}
     }
 
   free_and_init (request);
@@ -5720,10 +5756,23 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  btid =
-    xbtree_load_index (thread_p, btid, bt_name, key_type, class_oids, n_classes, n_attrs, attr_ids, attrs_prefix_length,
-		       hfids, unique_pk, not_null_flag, fk_refcls_oid, fk_refcls_pk_btid, fk_name, pred_stream,
-		       pred_stream_size, expr_stream, expr_stream_size, func_col_id, func_attr_index_start);
+  if (index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+    {
+      btid =
+	xbtree_load_online_index (thread_p, btid, bt_name, key_type, class_oids, n_classes, n_attrs, attr_ids,
+				  attrs_prefix_length, hfids, unique_pk, not_null_flag, fk_refcls_oid,
+				  fk_refcls_pk_btid, fk_name, pred_stream, pred_stream_size, expr_stream,
+				  expr_stream_size, func_col_id, func_attr_index_start);
+    }
+  else
+    {
+      btid =
+	xbtree_load_index (thread_p, btid, bt_name, key_type, class_oids, n_classes, n_attrs, attr_ids,
+			   attrs_prefix_length, hfids, unique_pk, not_null_flag, fk_refcls_oid, fk_refcls_pk_btid,
+			   fk_name, pred_stream, pred_stream_size, expr_stream, expr_stream_size, func_col_id,
+			   func_attr_index_start);
+    }
+
   if (btid == NULL)
     {
       assert (er_errid () != NO_ERROR);

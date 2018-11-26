@@ -19,7 +19,7 @@
 
 
 /*
- * show_scan.h  
+ * show_scan.h
  */
 #ifndef _SHOW_SCAN_H_
 #define _SHOW_SCAN_H_

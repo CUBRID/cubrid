@@ -18,7 +18,7 @@
  */
 
 /*
- * cm_portable.h - 
+ * cm_portable.h -
  */
 
 #ifndef _CM_PORTABLE_H_

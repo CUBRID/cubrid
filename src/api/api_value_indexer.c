@@ -1,24 +1,24 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
 /*
- * api_value_indexer.c - 
+ * api_value_indexer.c -
  */
 
 #include "config.h"
@@ -216,7 +216,7 @@ ai_api_delete (VALUE_INDEXER * indexer, int index, VALUE_AREA ** rva, API_VALUE 
  *    return: void
  *    indexer(in): VALUE_INDEXER
  *    df(in): element destroy function
- * 
+ *
  */
 static void
 ai_api_destroy (VALUE_INDEXER * indexer, void (*df) (VALUE_AREA * va, API_VALUE * db))
@@ -332,8 +332,8 @@ li_getf (LIST_INDEXER * li, int index)
   ds = index;
   dc = index > li->cache_idx ? index - li->cache_idx : li->cache_idx - index;
   de = li->nelems - index;
-  /* 
-   * find the minimum element from {ds, dc, de} and 
+  /*
+   * find the minimum element from {ds, dc, de} and
    * calcuate the direction form the element to index
    */
   if (ds > dc)
@@ -441,7 +441,7 @@ struct li_mapf_arg
 };
 
 /*
- * li_mapf - this is a helper function of li_api_map (type is dlist_map_func) 
+ * li_mapf - this is a helper function of li_api_map (type is dlist_map_func)
  *    return: NO_ERROR if successful, error code otherwise
  *    h(h): dlisth
  *    arg(in): linked list element

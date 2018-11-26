@@ -50,15 +50,17 @@ namespace cubscan
       void start_json_iterator (void);    // start json iteration of changing input document
       int fetch_row (void);               // fetch current row (if not fetched)
       void end (void);                    // finish current node scan
+      void delete_input_doc ();
 
       cursor (void);
       ~cursor (void);
     };
 
     scanner::cursor::cursor (void)
-      : m_input_doc (NULL)
+      : m_child (0)
+      , m_node (NULL)
+      , m_input_doc (NULL)
       , m_process_doc (NULL)
-      , m_child (0)
       , m_is_row_fetched (false)
       , m_need_advance_row (false)
       , m_is_node_consumed (true)
@@ -69,7 +71,16 @@ namespace cubscan
 
     scanner::cursor::~cursor (void)
     {
-      db_json_delete_doc (m_input_doc);
+      delete_input_doc ();
+    }
+
+    void
+    scanner::cursor::delete_input_doc ()
+    {
+      if (m_input_doc != NULL)
+	{
+	  db_json_delete_doc (m_input_doc);
+	}
     }
 
     void
@@ -197,13 +208,10 @@ namespace cubscan
     {
       m_is_node_consumed = true;
 
-      if (m_node->m_iterator != NULL)
-	{
-	  db_json_reset_iterator (m_node->m_iterator);
-	}
+      db_json_reset_iterator (m_node->m_iterator);
 
       m_process_doc = NULL;
-      m_node->clear_columns ();
+      m_node->clear_columns (false);
     }
 
     size_t
@@ -228,13 +236,14 @@ namespace cubscan
       assert (m_specp->m_node_count > 0);
 
       m_tree_height = get_tree_height (*m_specp->m_root_node);
+      m_scan_cursor_depth = 0;
 
       m_scan_cursor = new cursor[m_tree_height];
 
       // init cursor nodes to left-most branch
       json_table_node *t = m_specp->m_root_node;
       m_scan_cursor[0].m_node = t;
-      for (int i = 1; t->m_nested_nodes_size!=0; t = &t->m_nested_nodes[0], ++i)
+      for (int i = 1; t->m_nested_nodes_size != 0; t = &t->m_nested_nodes[0], ++i)
 	{
 	  m_scan_cursor[i].m_node = t;
 	}
@@ -243,10 +252,10 @@ namespace cubscan
     }
 
     void
-    scanner::clear (xasl_node *xasl_p, bool is_final)
+    scanner::clear (xasl_node *xasl_p, bool is_final, bool is_final_clear)
     {
       // columns should be released every time
-      m_specp->m_root_node->clear_tree ();
+      m_specp->m_root_node->clear_tree (is_final_clear);
       reset_ordinality (*m_specp->m_root_node);
 
       // all json documents should be release depending on is_final
@@ -255,13 +264,21 @@ namespace cubscan
 	  for (size_t i = 0; i < m_tree_height; ++i)
 	    {
 	      cursor &cursor = m_scan_cursor[i];
-	      db_json_delete_doc (cursor.m_input_doc);
+	      cursor.delete_input_doc ();
 
 	      cursor.m_child = 0;
 	      cursor.m_is_row_fetched = false;
+	      cursor.m_need_advance_row = false;
+	      cursor.m_is_node_consumed = true;
+	      cursor.m_row_was_expanded = false;
 	    }
 
-	  m_specp->m_root_node->clear_iterators ();
+	  m_specp->m_root_node->clear_iterators (is_final_clear);
+
+	  if (is_final_clear)
+	    {
+	      delete [] m_scan_cursor;
+	    }
 	}
     }
 
@@ -271,20 +288,24 @@ namespace cubscan
       int error_code = NO_ERROR;
       const JSON_DOC *document = NULL;
 
-      // so... we need to generate the whole list file
-
       // we need the starting value to expand into a list of records
       DB_VALUE *value_p = NULL;
-      error_code = fetch_peek_dbval (thread_p, m_specp->m_json_reguvar, NULL, NULL, NULL, NULL, &value_p);
+      error_code = fetch_peek_dbval (thread_p, m_specp->m_json_reguvar, m_vd, NULL, NULL, NULL, &value_p);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  return error_code;
 	}
-      if (value_p == NULL || db_value_is_null (value_p))
+      if (value_p == NULL)
 	{
 	  assert (false);
 	  return ER_FAILED;
+	}
+
+      if (db_value_is_null (value_p))
+	{
+	  assert (m_scan_cursor[0].m_is_node_consumed);
+	  return NO_ERROR;
 	}
 
       // build m_scan_cursor
@@ -327,6 +348,7 @@ namespace cubscan
 
       // if we gather expr from another table, for each row we need to reset the ordinality
       reset_ordinality (*m_specp->m_root_node);
+      m_scan_cursor_depth = 0;
 
       return NO_ERROR;
     }
@@ -602,9 +624,16 @@ namespace cubscan
       return NO_ERROR;
     }
 
-    SCAN_PRED &scanner::get_predicate ()
+    SCAN_PRED &
+    scanner::get_predicate ()
     {
       return m_scan_predicate;
+    }
+
+    void
+    scanner::set_value_descriptor (val_descr *vd)
+    {
+      m_vd = vd;
     }
   } // namespace json_table
 } // namespace cubscan

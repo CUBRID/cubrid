@@ -35,6 +35,7 @@
 #include "system_parameter.h"
 #include "environment_variable.h"
 #include "file_io.h"
+#include "tz_support.h"
 #include "db_date.h"
 #include "dbtype.h"
 
@@ -155,7 +156,7 @@ find_valid_page_size (PGLENGTH page_size)
     {
       if (!IS_POWER_OF_2 (power2_page_size))
 	{
-	  /* 
+	  /*
 	   * Not a power of 2 or page size is too small
 	   *
 	   * Round the number to a power of two. Find smaller number that it is

@@ -302,7 +302,7 @@ struct vacuum_data
   void set_last_blockid (VACUUM_LOG_BLOCKID blockid);
 
 private:
-    VACUUM_LOG_BLOCKID m_last_blockid;	/* Block id for last vacuum data entry... This entry is actually the id of last 
+    VACUUM_LOG_BLOCKID m_last_blockid;	/* Block id for last vacuum data entry... This entry is actually the id of last
 					 * added block which may not even be in vacuum data (being already vacuumed).
 					 */
 };
@@ -724,7 +724,7 @@ class vacuum_worker_context_manager : public cubthread::entry_manager
     {
       delete m_pool;
     }
-  
+
   private:
 #if defined (SA_MODE)
     // find a proper way to do this; SA_MODE claim vacuum worker
@@ -1480,7 +1480,7 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
       /* Safe guard. */
       assert (page_vacuum_status != HEAP_PAGE_VACUUM_NONE || (was_interrupted && helper.n_vacuumed == 0));
 
-      /* Page can be removed if no other worker will access this page. If this worker is the only one expected, then it 
+      /* Page can be removed if no other worker will access this page. If this worker is the only one expected, then it
        * can remove the page. It is also possible that this job was previously executed and interrupted due to
        * shutdown or crash. This case is a little more complicated. There are two scenarios: 1. Current page status is
        * vacuum none. This means all vacuum was already executed. 2. Current page status is vacuum once. This means a
@@ -1714,7 +1714,7 @@ retry_prepare:
 	    }
 	  /* Both pages fixed. */
 
-	  /* While home has been unfixed, it is possible that current record was changed. It could be returned to home, 
+	  /* While home has been unfixed, it is possible that current record was changed. It could be returned to home,
 	   * link could be changed, or it could be vacuumed. Repeat getting record. */
 	  goto retry_prepare;
 	}
@@ -2845,7 +2845,7 @@ restart:
       if (!MVCC_ID_PRECEDES (entry->newest_mvccid, vacuum_Global_oldest_active_mvccid)
 	  || (entry->start_lsa.pageid + 1 >= log_Gl.append.prev_lsa.pageid))
 	{
-	  /* Newest MVCCID in block is not old enough. Or 
+	  /* Newest MVCCID in block is not old enough. Or
 	   * The block is generated very recently and it is possible that not all its info is in log (some may still
 	   * be cached in prior list.
 	   *
@@ -2886,7 +2886,7 @@ restart:
       vacuum_set_dirty_data_page (thread_p, data_page, DONT_FREE);
       if (!VACUUM_BLOCK_IS_INTERRUPTED (entry->blockid))
 	{
-	  /* Log that a new job is starting. After recovery, the system will then know this job was partially executed. 
+	  /* Log that a new job is starting. After recovery, the system will then know this job was partially executed.
 	   * Logging the start of a job already interrupted is not necessary. We do it here rather than when vacuum job
 	   * is really started to avoid locking vacuum data again (logging vacuum data cannot be done without locking).
 	   */
@@ -3369,7 +3369,7 @@ end:
   worker->state = VACUUM_WORKER_STATE_INACTIVE;
   if (!sa_mode_partial_block)
     {
-      /* TODO: Check that if start_lsa can be set to a different value when vacuum is not complete, to avoid processing 
+      /* TODO: Check that if start_lsa can be set to a different value when vacuum is not complete, to avoid processing
        * the same log data again. */
       vacuum_finished_block_vacuum (thread_p, data, vacuum_complete);
     }
@@ -4011,7 +4011,7 @@ vacuum_get_worker_min_dropped_files_version (void)
 
   for (i = 0; i < VACUUM_MAX_WORKER_COUNT; i++)
     {
-      /* Update minimum version if worker is active and its seen version is smaller than current minimum version (or if 
+      /* Update minimum version if worker is active and its seen version is smaller than current minimum version (or if
        * minimum version is not initialized). */
       if (vacuum_Workers[i].state != VACUUM_WORKER_STATE_INACTIVE
 	  && (min_version == -1
@@ -4165,7 +4165,6 @@ vacuum_data_load_and_recover (THREAD_ENTRY * thread_p)
   else
     {
       /* Get last_blockid from last vacuum data entry. */
-      assert (vacuum_Data.last_page->index_free > 0);
       INT16 last_block_index = (vacuum_Data.last_page->index_free <= 0) ? 0 : vacuum_Data.last_page->index_free - 1;
       vacuum_Data.set_last_blockid (vacuum_Data.last_page->data[last_block_index].blockid);
 
@@ -5088,8 +5087,7 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
 
 	      if (is_sysop)
 		{
-		  // not really expected, but...
-		  assert (false);
+		  // more than one page in one iteration, now that's a performance
 		  log_sysop_commit (thread_p);
 		}
 
@@ -5140,6 +5138,7 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
 	    {
 	      /* Page is empty. We don't want to add a new block that does not require vacuum. */
 	      assert (data_page->index_unvacuumed == 0);
+	      next_blockid = consumed_data.blockid - 1;	// for will increment it to consumed_data.blockid
 	      continue;
 	    }
 
@@ -5720,7 +5719,7 @@ vacuum_update_keep_from_log_pageid (THREAD_ENTRY * thread_p)
    * does not remove log required for vacuum.
    * If vacuum data is empty, then all blocks until (and including) vacuum_Data.last_blockid have been
    * vacuumed, and first page belonging to next block must be preserved (this is most likely in the active area of the
-   * log, for now). However, it might happen that the page referred might belong in a log archive that might have 
+   * log, for now). However, it might happen that the page referred might belong in a log archive that might have
    * been removed due to a previous action. So to be sure, we set the pageid, from which the vacuum must keep
    * the remaining pages, to NULL_PAGEID.
    * If vacuum data is not empty, then we need to preserve the log starting with the first page of first unvacuumed
@@ -6342,7 +6341,7 @@ vacuum_rv_notify_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   VACUUM_DROPPED_FILES_RCV_DATA *rcv_data;
 
   /* Copy VFID from current log recovery data but set MVCCID at this point. We will use the log_Gl.hdr.mvcc_next_id as
-   * borderline to distinguish this file from newer files. 1. All changes on this file must be done by transaction that 
+   * borderline to distinguish this file from newer files. 1. All changes on this file must be done by transaction that
    * have already committed which means their MVCCID will be less than current log_Gl.hdr.mvcc_next_id. 2. All changes
    * on a new file that reused VFID must be done by transaction that start after this call, which means their MVCCID's
    * will be at least equal to current log_Gl.hdr.mvcc_next_id. */
@@ -6800,7 +6799,7 @@ vacuum_rv_set_next_page_dropped_files (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * vacuum_compare_heap_object () - Compare two heap objects to be vacuumed. HFID compare has priority against OID
  *				   compare.
  *
- * return : Compare result. 
+ * return : Compare result.
  * a (in) : First object.
  * b (in) : Second object.
  */
@@ -7223,7 +7222,7 @@ vacuum_fetch_log_page (THREAD_ENTRY * thread_p, LOG_PAGEID log_pageid, LOG_PAGE 
  * class_oid (in): The class to which belongs the oid
  * rec_header (in): The record header of the not vacuumed record
  * btree_node_type (in): If the oid is not vacuumed from BTREE then this is
- *			 the type node. If <0 then the OID comes from heap. 
+ *			 the type node. If <0 then the OID comes from heap.
  *
  */
 static void
@@ -7297,7 +7296,7 @@ print_not_vacuumed_to_log (OID * oid, OID * class_oid, MVCC_REC_HEADER * rec_hea
  * class_oid (in): The class to which the oid belongs
  * recdes (in): The not vacuumed record
  * btree_node_type (in): If the oid is not vacuumed from BTREE then this is
- *			 the type node. If <0 then the OID comes from heap. 
+ *			 the type node. If <0 then the OID comes from heap.
  *
  */
 DISK_ISVALID
@@ -7356,7 +7355,7 @@ is_not_vacuumed_and_lost (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header)
  * class_oid (in): The class to which belongs the oid
  * rec_header (in): The not vacuumed record header
  * btree_node_type (in): If the oid is not vacuumed from BTREE then this is
- *			 the type node. If <0 then the OID comes from heap. 
+ *			 the type node. If <0 then the OID comes from heap.
  *
  */
 DISK_ISVALID
@@ -7389,7 +7388,7 @@ vacuum_check_not_vacuumed_rec_header (THREAD_ENTRY * thread_p, OID * oid, OID * 
  *
  * return    : VPID *
  * thread_p (in):
- * first_page_vpid (out): 
+ * first_page_vpid (out):
  *
  */
 static int
@@ -7761,7 +7760,7 @@ vacuum_verify_vacuum_data_page_fix_count (THREAD_ENTRY * thread_p)
 
 /*
  * vacuum_rv_check_at_undo () - check and modify undo record header to satisfy vacuum status
- * 
+ *
  * return	 : Error code.
  * thread_p (in) : Thread entry.
  * pgptr (in)	 : Page where record resides.
@@ -7769,7 +7768,7 @@ vacuum_verify_vacuum_data_page_fix_count (THREAD_ENTRY * thread_p)
  * rec_type (in) : Expected record type.
  *
  * Note: This function will update the record to be valid in terms of vacuuming. Insert ID and prev version
- *       must be removed from the record at undo, if the record was subject to vacuuming but skipped 
+ *       must be removed from the record at undo, if the record was subject to vacuuming but skipped
  *       during an update/delete operation. This happens when the record is changed before vacuum reaches it,
  *       and when it is reached its new header is different and not qualified for vacuum anymore.
  */
@@ -7872,7 +7871,7 @@ vacuum_rv_check_at_undo (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, 
   return NO_ERROR;
 }
 
-/* 
+/*
  * vacuum_is_empty() - Checks if the vacuum is empty.
  *
  * return :- true or false

@@ -656,7 +656,7 @@ ws_mop (const OID * oid, MOP class_mop)
 		{
 		  if (mop->decached)
 		    {
-		      /* 
+		      /*
 		       * If a decached instance object has a class mop,
 		       * we need to clear the information related the class mop,
 		       * such as class_mop and class_link.
@@ -764,7 +764,7 @@ ws_vmop (MOP class_mop, int flags, DB_VALUE * keys)
   switch (keytype)
     {
     case DB_TYPE_OBJECT:
-      /* 
+      /*
        * a non-virtual object mop
        * This will occur when reading the oid keys field of a vobject
        * if it was read thru some interface that automatically
@@ -796,7 +796,7 @@ ws_vmop (MOP class_mop, int flags, DB_VALUE * keys)
       db_make_object (keys, mop);
       break;
     case DB_TYPE_OID:
-      /* 
+      /*
        * a non-virtual object mop
        * This will occur when reading the oid keys field of a virtual object
        * if it was read through some interface that does NOT swizzle.
@@ -829,7 +829,7 @@ ws_vmop (MOP class_mop, int flags, DB_VALUE * keys)
 	      vid_info = WS_VID_INFO (mop);
 	      if (class_mop == mop->class_mop)
 		{
-		  /* 
+		  /*
 		   * NOTE, formerly called pr_value_equal. Don't coerce
 		   * with the new tp_value_equal function but that may
 		   * actually be desired here.
@@ -1242,7 +1242,7 @@ ws_disconnect_deleted_instances (MOP classop)
 
       if (m->object != NULL)
 	{
-	  /* 
+	  /*
 	   * there should be no cached object here ! since the class is gone,
 	   * we no longer no how to free this. If this becomes a normal case,
 	   * we'll have to wait and decache the class AFTER all the instances
@@ -1302,7 +1302,7 @@ emergency_remove_dirty (MOP op)
 {
   MOP mop, prev;
 
-  /* 
+  /*
    * make sure we can get to op's class dirty list because without that
    * there is no dirty list from which we can remove op.
    */
@@ -1333,7 +1333,7 @@ emergency_remove_dirty (MOP op)
 }
 
 /*
- * ws_unlink_from_commit_mops_list - 
+ * ws_unlink_from_commit_mops_list -
  *    return: void
  *    op(in): mop that needs to be unlinked from ws_Commit_mops list
  *
@@ -1501,7 +1501,7 @@ ws_cull_mops (void)
 		{
 		  if (mops->class_mop != sm_Root_class_mop)
 		    {
-		      /* 
+		      /*
 		       * Since we removed the GC'd MOPs from the resident
 		       * instance list before we started the hash table
 		       * map, we shouldn't see any at this point.  If
@@ -1517,7 +1517,7 @@ ws_cull_mops (void)
 		    }
 		  else
 		    {
-		      /* 
+		      /*
 		       * carefully remove the class from the resident
 		       * instance list and make sure no instances are
 		       * still going to be referencing this thing
@@ -1579,7 +1579,7 @@ void
 ws_release_user_instance (MOP mop)
 {
   /* to keep instances of system classes, for instance, db_serial's. This prevents from dangling references to serial
-   * objects during replication. The typical scenario is to update serials, cull mops which clears the mop up, and then 
+   * objects during replication. The typical scenario is to update serials, cull mops which clears the mop up, and then
    * truncate the table which leads updating the serial mop to reset its values. */
   if (db_is_system_class (mop->class_mop) > 0)
     {
@@ -1621,7 +1621,7 @@ ws_release_user_instance (MOP mop)
 void
 ws_dirty (MOP op)
 {
-  /* 
+  /*
    * don't add the root class to any dirty list. otherwise, later traversals
    * of that dirty list will loop forever.
    */
@@ -1632,7 +1632,7 @@ ws_dirty (MOP op)
     }
 
   WS_SET_DIRTY (op);
-  /* 
+  /*
    * add_class_object makes sure each class' dirty list (even an empty one)
    * is always terminated by the magical Null_object. Therefore, this test
    * "op->dirty_link == NULL" makes sure class objects are not added to
@@ -1656,7 +1656,7 @@ ws_dirty (MOP op)
     }
   else
     {
-      /* 
+      /*
        * add op to op's class' dirty list only if op is not yet there.
        * The preceding "op->dirty_link == NULL" asserts that op is not
        * on any dirty list so we can simply prepend op to op's class'
@@ -1680,7 +1680,7 @@ ws_dirty (MOP op)
 void
 ws_clean (MOP op)
 {
-  /* 
+  /*
    * because pinned objects can be in a state of direct modification, we
    * can't reset the dirty bit after a workspace panic flush because this
    * would lose any changes made to the pinned object after the flush
@@ -1762,7 +1762,7 @@ ws_map_dirty_internal (MAPFUNC function, void *args, bool classes_only)
       for (; op != Null_object && status == WS_MAP_CONTINUE; op = next)
 	{
 
-	  /* 
+	  /*
 	   * if we get here, then op must be dirty. So turn the static dirty
 	   * flag on (just in case we've been called from ws_has_updated).
 	   * ws_has_updated uses this static flag to check for the presence
@@ -1883,7 +1883,7 @@ add_class_object (MOP class_mop, MOP obj)
 
   if (class_mop == sm_Root_class_mop)
     {
-      /* 
+      /*
        * class MOP, initialize the object list, do this only if it isn't
        * already initialized, this may happen if the workspace is cleared
        * and nothing is cached.  In this case the class_link lists are still
@@ -2138,7 +2138,7 @@ ws_map_class (MOP class_op, MAPFUNC function, void *args)
 	  for (op = class_op->class_link; op != Null_object && status == WS_MAP_CONTINUE; op = save_class_link)
 	    {
 	      save_class_link = op->class_link;
-	      /* 
+	      /*
 	       * should we only call the function if the object has been
 	       * loaded ? what if it is deleted ?
 	       */
@@ -2315,7 +2315,7 @@ ws_init (void)
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  /* 
+  /*
    * area_init() must have been called earlier.
    * These need to all be returning errors !
    */
@@ -2438,7 +2438,7 @@ ws_final (void)
       /* this is for debugging only */
       fprintf (stdout, "*** Database client statistics before shutdown ***\n");
       ws_dump (stdout);
-      /* 
+      /*
        * Check for dangling allocations in the workspace.
        * First decache everything, must do this before the
        * MOP tables are destroyed.
@@ -2535,7 +2535,7 @@ ws_clear (void)
 bool
 ws_has_updated (void)
 {
-  /* 
+  /*
    * We used to be able to test the global dirty list (Dirty_objects) for
    * the presence of workspace updates. Now, we have to be a bit sneaky. To
    * do the same test, we set this static dirty flag to false and let the
@@ -2544,7 +2544,7 @@ ws_has_updated (void)
    */
   Ws_dirty = false;
 
-  /* 
+  /*
    * wouldn't need to filter the whole list but this seems like
    * a reasonable time to do this
    */
@@ -2589,7 +2589,7 @@ ws_cache (MOBJ obj, MOP mop, MOP class_mop)
       mop->object = obj;
       mop->class_mop = class_mop;
 
-      /* 
+      /*
        * must always call this when caching a class because we don't know
        * if there are any objects on disk
        */
@@ -2655,7 +2655,7 @@ ws_cache (MOBJ obj, MOP mop, MOP class_mop)
   return;
 
 abort_it:
-  /* 
+  /*
    * NULL the MOP since we're in an unknown state, this function
    * should be returning an error
    */
@@ -3256,7 +3256,7 @@ ws_map (MAPFUNC function, void *args)
 void
 ws_clear_hints (MOP mop, bool leave_pinned)
 {
-  /* 
+  /*
    * Don't decache non-updatable view objects because they cannot be
    * recreated.  Let garbage collection eventually decache them.
    */
@@ -3363,7 +3363,7 @@ ws_abort_mops (bool only_unpinned)
       next = mop->commit_link;
       mop->commit_link = NULL;	/* remove mop from commit link (it's done) */
 
-      /* 
+      /*
        * In some cases we cannot clear up pinned stuff, because we
        * may already be looping through the object or dirty list somewhere
        * in the calling chain, and we would be removing something out
@@ -3374,7 +3374,7 @@ ws_abort_mops (bool only_unpinned)
 	  /* always remove this so we can decache things without error */
 	  mop->pinned = 0;
 
-	  /* 
+	  /*
 	   * Decache all objects in commit link. Even though they are not
 	   * marked as dirty and do not have exclusive locks, they may have
 	   * been decached (and reset) during a partial rollback. Now we are

@@ -83,6 +83,7 @@
 #include "heap_file.h"
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 #include "dbtype.h"
+#include "tz_support.h"
 #include "db_date.h"
 #include "show_scan.h"
 
@@ -505,7 +506,7 @@ css_read_remaining_bytes (SOCKET fd, int len)
 	}
 
       nbytes = css_readn (fd, temp_buffer, buf_size, -1);
-      /* 
+      /*
        * nbytes will be less than the size of the buffer if any of the
        * following hold:
        *   a) the socket has been closed for some reason (e.g., the client
@@ -608,7 +609,7 @@ css_net_recv (SOCKET fd, char *buffer, int *maxlen, int timeout)
       return ERROR_ON_READ;
     }
 
-  /* 
+  /*
    * This is possible if the data buffer provided by the client is smaller
    * than the number of bytes sent by the server
    */
@@ -872,7 +873,7 @@ css_vector_send (SOCKET fd, struct iovec *vec[], int *len, int bytes_written, in
   return total_size;
 
 error:
-  /* 
+  /*
    * We end up with an error. The error has already been set in css_writen
    */
 #if defined(SERVER_MODE)
@@ -2113,9 +2114,9 @@ css_peer_host_name (CSS_CONN_ENTRY * conn, char *hostname, size_t namelen)
 /*
  * css_default_check_server_alive_fn () - check server alive
  *
- *   return: 
- *   db_host(in): 
- *   db_name(in): 
+ *   return:
+ *   db_host(in):
+ *   db_name(in):
  */
 static bool
 css_default_check_server_alive_fn (const char *db_name, const char *db_host)
@@ -2527,10 +2528,10 @@ css_check_magic_with_socket (SOCKET fd)
 
 #if !defined (CS_MODE)
 /*
- * css_user_access_status_start_scan () -  start scan function for show access status 
+ * css_user_access_status_start_scan () -  start scan function for show access status
  *   return: NO_ERROR, or ER_CODE
  *
- *   thread_p(in): 
+ *   thread_p(in):
  *   show_type(in):
  *   arg_values(in):
  *   arg_cnt(in):
@@ -2637,10 +2638,10 @@ error:
 }
 
 /*
- * css_make_access_status_exist_user () - set access status information of whom are in db_user class  
+ * css_make_access_status_exist_user () - set access status information of whom are in db_user class
  *   return: NO_ERROR, or ER_CODE
  *
- *   thread_p(in): 
+ *   thread_p(in):
  *   class_oid(in): db_user class's class oid
  *   access_status_array(in):
  *   num_user(in):
@@ -2824,10 +2825,10 @@ end:
 }
 
 /*
- * css_get_access_status_with_name () - return access status which match with user_name  
+ * css_get_access_status_with_name () - return access status which match with user_name
  *   return: address of found access status or NULL
  *
- *   access_status_array(in): 
+ *   access_status_array(in):
  *   num_user(in):
  *   user_name(in):
  */
@@ -2859,10 +2860,10 @@ css_get_access_status_with_name (LAST_ACCESS_STATUS ** access_status_array, int 
 }
 
 /*
- * css_get_unused_access_status () - return unused access status from array 
+ * css_get_unused_access_status () - return unused access status from array
  *   return: address of found access status or NULL
  *
- *   access_status_array(in): 
+ *   access_status_array(in):
  *   num_user(in):
  */
 static LAST_ACCESS_STATUS *

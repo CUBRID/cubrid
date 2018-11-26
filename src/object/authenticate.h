@@ -36,8 +36,8 @@
 #include <stdlib.h>
 
 #include "error_manager.h"
-#include "dbdef.h"
 #include "class_object.h"
+#include "databases_file.h"
 
 /*
  * Authorization Class Names

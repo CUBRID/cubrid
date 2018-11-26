@@ -482,7 +482,7 @@ struct cte_proc_node
 #define XASL_RETURN_GENERATED_KEYS    0x2000	/* return generated keys */
 #define XASL_NO_FIXED_SCAN	      0x4000	/* disable fixed scan for this proc */
 
-#define XASL_IS_FLAGED(x, f)        ((x)->flag & (int) (f))
+#define XASL_IS_FLAGED(x, f)        (((x)->flag & (int) (f)) != 0)
 #define XASL_SET_FLAG(x, f)         (x)->flag |= (int) (f)
 #define XASL_CLEAR_FLAG(x, f)       (x)->flag &= (int) ~(f)
 
@@ -993,7 +993,7 @@ struct xasl_node
   ACCESS_SPEC_TYPE *merge_spec;	/* merge spec. node */
   VAL_LIST *val_list;		/* output-value list */
   VAL_LIST *merge_val_list;	/* value list for the merge spec */
-  XASL_NODE *aptr_list;		/* first uncorrelated subquery */
+  XASL_NODE *aptr_list;		/* CTEs and uncorrelated subquery. CTEs are guaranteed always before the subqueries */
   XASL_NODE *bptr_list;		/* OBJFETCH_PROC list */
   XASL_NODE *dptr_list;		/* corr. subquery list */
   PRED_EXPR *after_join_pred;	/* after-join predicate */
@@ -1031,7 +1031,7 @@ struct xasl_node
 				 * UPDATE/DELETE in MVCC */
 #if defined (ENABLE_COMPOSITE_LOCK)
   /* note: upon reactivation, you may face header cross reference issues */
-  LK_COMPOSITE_LOCK composite_lock;	/* flag and lock block for composite locking for queries which obtain candidate 
+  LK_COMPOSITE_LOCK composite_lock;	/* flag and lock block for composite locking for queries which obtain candidate
 					 * rows for updates/deletes. */
 #endif				/* defined (ENABLE_COMPOSITE_LOCK) */
   union

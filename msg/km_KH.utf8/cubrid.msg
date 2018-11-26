@@ -1306,8 +1306,10 @@ $ LOADDB
 1237 Cannot change status on %1$s because %2$s is a %3$s.
 1238 Missing value for JSON_TABLE column '%1$s'.
 1239 Cannot coerce value from JSON "%1$s" at path "%2$s" to JSON_TABLE column "%3$s" of domain "%4$s".
+1240 Online index is not allowed on classes that are part of a hierarchy chain.
+1241 XASL tree needs recompile.
 
-1240 Last Error
+1242 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
@@ -1463,6 +1465,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 125 invalid use of sessiontimezone\n sessiontimezone
 126 Maximum length of a class/vclass comment is %1$d bytes.
 127 Maximum length of a comment is %1$d bytes.
+128 Invalid number of arguments for JSON_OBJECTAGG
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Out of memory.
@@ -1765,6 +1768,10 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 298 Recursive CTE '%1$s' must be referenced directly in its recursive query.
 299 Error in CTE '%1$s': The non-recursive part and the recursive part must be connected with UNION ALL.
 300 Subquery is not allowed in DEFAULT clause.
+301 Could not find signatures for function %1$s()
+302 Incompatible argument type %1$s, expected type is: %2$s. Invalid signature %3$s.
+303 Unexpected number of arguments %1$d. Invalid signature %2$s.
+304 Could not find compatible signature for function %1$s()
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %1$d bytes.

@@ -527,7 +527,7 @@ ini_parse_line (char *input_line, char *section, char *key, char *value)
       strcpy (key, ini_str_trim (key));
       strcpy (key, ini_str_lower (key));
       strcpy (value, ini_str_trim (value));
-      /* 
+      /*
        * sscanf cannot handle '' or "" as empty values
        * this is done here
        */
@@ -539,7 +539,7 @@ ini_parse_line (char *input_line, char *section, char *key, char *value)
     }
   else if (sscanf (line, "%[^=] = %[;#]", key, value) == 2 || sscanf (line, "%[^=] %[=]", key, value) == 2)
     {
-      /* 
+      /*
        * Special cases:
        * key=
        * key=;

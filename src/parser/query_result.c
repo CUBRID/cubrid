@@ -454,12 +454,12 @@ pt_get_select_list (PARSER_CONTEXT * parser, PT_NODE * query)
       assert (query->parser_id == parser->id);
       if (select_list && select_list->parser_id != parser->id)
 	{
-	  /* 
+	  /*
 	   * Union PT_NODE keeps select_list as reference
 	   * this case means, this parser copy other parsers tree
 	   * but union.info.select_list points old reference
-	   * 
-	   * this function can free & realloc select_list->data_type 
+	   *
+	   * this function can free & realloc select_list->data_type
 	   * so, to prevent modifying (other parser's) original
 	   * tree, deep copy select_list in this parser's context
 	   */
@@ -915,7 +915,7 @@ pt_fillin_type_size (PARSER_CONTEXT * parser, PT_NODE * query, DB_QUERY_TYPE * l
 
   if (oids_included == 1)
     {
-      /* 
+      /*
        * prepend single oid column onto the type list
        * the first node of the select list will be the oid column.
        */

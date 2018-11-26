@@ -46,6 +46,7 @@
 #include "string_opfunc.h"
 #include "server_interface.h"
 #include "query_opfunc.h"
+#include "tz_support.h"
 #include "db_date.h"
 #include "xasl.h"
 #include "query_executor.h"
@@ -649,6 +650,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	}
       break;
 
+    case T_JSON_QUOTE:
+    case T_JSON_UNQUOTE:
     case T_JSON_TYPE:
     case T_JSON_VALID:
     case T_JSON_DEPTH:
@@ -658,10 +661,6 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	  goto error;
 	}
       break;
-
-    case T_JSON_SEARCH:
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1, "JSON_SEARCH");
-      goto error;
 
     case T_JSON_CONTAINS:
       if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
@@ -1103,7 +1102,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	}
       else
 	{
-	  /* 
+	  /*
 	   * right argument is used at end of scan,
 	   * so keep it in the expr until that.
 	   */
@@ -2681,6 +2680,20 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	}
       break;
 
+    case T_JSON_QUOTE:
+      if (qdata_json_quote_dbval (peek_left, arithptr->value, regu_var->domain) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_JSON_UNQUOTE:
+      if (qdata_json_unquote_dbval (peek_left, arithptr->value, regu_var->domain) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
     case T_CONCAT:
       if (arithptr->rightptr != NULL)
 	{
@@ -2922,7 +2935,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_right, &tp_Integer_domain);
 	      goto error;
 	    }
-	  /* If len, defined as second argument, is negative value, RIGHT function returns the entire string. It's same 
+	  /* If len, defined as second argument, is negative value, RIGHT function returns the entire string. It's same
 	   * behavior with LEFT and SUBSTRING. */
 	  if (db_get_int (&tmp_val2) < 0)
 	    {
@@ -3340,7 +3353,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
       else
 	{
 	  /* There are two types of seed: 1) given by user (rightptr's type is TYPE_DBVAL) e.g, select rand(1) from
-	   * table; 2) fetched from tuple (rightptr's type is TYPE_CONSTANT) e.g, select rand(i) from table; Regarding 
+	   * table; 2) fetched from tuple (rightptr's type is TYPE_CONSTANT) e.g, select rand(i) from table; Regarding
 	   * the former case, rand(1) will generate a sequence of pseudo-random values up to the number of rows.
 	   * However, on the latter case, rand(i) generates values depending on the column i's value. If, for example,
 	   * there are three tuples which include column i of 1 in a table, results of the above statements are as
@@ -4049,8 +4062,12 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	    case F_JSON_REMOVE:
 	    case F_JSON_ARRAY_APPEND:
 	    case F_JSON_ARRAY_INSERT:
+	    case F_JSON_CONTAINS_PATH:
+	    case F_JSON_EXTRACT:
 	    case F_JSON_MERGE:
+	    case F_JSON_MERGE_PATCH:
 	    case F_JSON_GET_ALL_PATHS:
+	    case F_JSON_SEARCH:
 	      {
 		REGU_VARIABLE_LIST operand;
 
@@ -4242,7 +4259,11 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	case F_JSON_REMOVE:
 	case F_JSON_ARRAY_APPEND:
 	case F_JSON_ARRAY_INSERT:
+	case F_JSON_CONTAINS_PATH:
+	case F_JSON_EXTRACT:
+	case F_JSON_SEARCH:
 	case F_JSON_MERGE:
+	case F_JSON_MERGE_PATCH:
 	case F_JSON_GET_ALL_PATHS:
 	  break;
 
@@ -4523,7 +4544,7 @@ fetch_copy_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
       return result;
     }
 
-  /* 
+  /*
    * This routine needs to ensure that a copy happens.  If readonly_val
    * points to the same db_value as dbval, qdata_copy_db_value() won't copy.
    * This can happen with scans that are PEEKING and routines that
@@ -4547,7 +4568,7 @@ fetch_copy_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 
   if (tmp == &copy_val)
     {
-      /* 
+      /*
        * transfer ownership to the real db_value via a
        * structure copy.  Make sure you clear the previous value.
        */
@@ -4621,7 +4642,7 @@ fetch_val_list (THREAD_ENTRY * thread_p, REGU_VARIABLE_LIST regu_list, VAL_DESCR
     }
   else
     {
-      /* 
+      /*
        * These DB_VALUES must persist across object fetches, so we must
        * use fetch_copy_dbval and NOT peek here.
        */

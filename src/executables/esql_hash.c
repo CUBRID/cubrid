@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -274,7 +274,7 @@ es_ht_print_table (HASH_TAB * table, void (*print) (BUCKET *, void *), void *par
     {
       for (symtab = tbl->table, i = tbl->size; --i >= 0; ++symtab)
 	{
-	  /* 
+	  /*
 	   * Print all symbols in the current chain.  The +1 in the
 	   * print call adjusts the bucket pointer to point to the user
 	   * area of the bucket.
@@ -287,7 +287,7 @@ es_ht_print_table (HASH_TAB * table, void (*print) (BUCKET *, void *), void *par
     }
   else
     {
-      /* 
+      /*
        * Allocate enough memory for 'outtab', an array of pointers to
        * BUCKETs, and initialize it.  'outtab' is different from the
        * actual hash table in that every 'outtab' element points to a
@@ -313,7 +313,7 @@ es_ht_print_table (HASH_TAB * table, void (*print) (BUCKET *, void *), void *par
 	    }
 	}
 
-      /* 
+      /*
        * Sort 'outtab' and then print it.
        */
       es_User_cmp = tbl->cmp;

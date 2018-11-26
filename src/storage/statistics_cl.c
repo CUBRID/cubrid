@@ -34,6 +34,7 @@
 #include "work_space.h"
 #include "schema_manager.h"
 #include "network_interface_cl.h"
+#include "tz_support.h"
 #include "db_date.h"
 
 static CLASS_STATS *stats_client_unpack_statistics (char *buffer);

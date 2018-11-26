@@ -1283,7 +1283,7 @@ xts_save_regu_variable (const REGU_VARIABLE * regu_var)
     }
   assert (buf <= buf_p + size);
 
-  /* 
+  /*
    * OR_VALUE_ALIGNED_SIZE may reserve more bytes
    * suppress valgrind UMW (uninitialized memory write)
    */
@@ -1572,7 +1572,7 @@ xts_save_xasl_node (const XASL_NODE * xasl)
 
   assert (buf <= buf_p + size);
 
-  /* 
+  /*
    * OR_DOUBLE_ALIGNED_SIZE may reserve more bytes
    * suppress valgrind UMW (uninitialized memory write)
    */
@@ -3006,7 +3006,7 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
 
   ptr = or_pack_int (ptr, xasl->mvcc_reev_extra_cls_cnt);
 
-  /* 
+  /*
    * NOTE that the composite lock block is strictly a server side block
    * and is not packed.
    */
@@ -3162,7 +3162,7 @@ xts_process_func_pred (char *ptr, const FUNC_PRED * func_pred)
 static char *
 xts_process_cache_attrinfo (char *ptr)
 {
-  /* 
+  /*
    * We don't need to pack anything here, it is strictly a server side
    * structure.  Unfortunately, we must send something or else the ptrs
    * to this structure might conflict with a structure that might be
@@ -5223,7 +5223,7 @@ xts_process_aggregate_type (char *ptr, const AGGREGATE_TYPE * aggregate)
 
   ptr = or_pack_int (ptr, (int) aggregate->opr_dbtype);
 
-  ptr = xts_process_regu_variable (ptr, &aggregate->operand);
+  ptr = xts_process_regu_variable_list (ptr, aggregate->operands);
   if (ptr == NULL)
     {
       return NULL;
@@ -5460,7 +5460,7 @@ xts_process_sort_list (char *ptr, const SORT_LIST * sort_list)
   return ptr;
 }
 
-/* 
+/*
  * xts_process_method_sig_list ( ) -
  *
  * Note: do not use or_pack_method_sig_list
@@ -6202,7 +6202,7 @@ xts_sizeof_merge_proc (const MERGE_PROC_NODE * merge_info)
 
 /*
  * xts_sizeof_cte_proc () -
- * return 
+ * return
  * ptr(in)  :
  */
 static int
@@ -7035,7 +7035,7 @@ xts_sizeof_aggregate_type (const AGGREGATE_TYPE * aggregate)
 	   + OR_INT_SIZE	/* option */
 	   + OR_INT_SIZE);	/* opr_dbtype */
 
-  tmp_size = xts_sizeof_regu_variable (&aggregate->operand);
+  tmp_size = xts_sizeof_regu_variable_list (aggregate->operands);
   if (tmp_size == ER_FAILED)
     {
       return ER_FAILED;
@@ -7511,7 +7511,7 @@ xts_process_regu_variable_list (char *ptr, const REGU_VARIABLE_LIST regu_var_lis
 // template T - type having an overload of xts_sizeof and xts_process functions
 //
 // return : offset
-// t (in) : 
+// t (in) :
 //
 template <typename T>
 int static

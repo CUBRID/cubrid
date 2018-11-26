@@ -41,6 +41,7 @@
 #if !defined(WINDOWS)
 #include <dlfcn.h>
 #endif /* !defined (WINDOWS) */
+#include "tz_support.h"
 #include "db_date.h"
 #include "string_opfunc.h"
 
@@ -168,7 +169,7 @@ static const DB_CHARSET lang_Db_charsets[] = {
 };
 
 
-/* 
+/*
  * Locales data
  */
 
@@ -932,7 +933,7 @@ lang_init_console_txt_conv (void)
   conv_sys_ids = lang_Loc_data->txt_conv->win_codepages;
 #else
   /* setlocale with empty string forces the current locale : this is required to retrieve codepage id, but as a
-   * side-effect modifies the behavior of string utility functions such as 'snprintf' to support current locale charset 
+   * side-effect modifies the behavior of string utility functions such as 'snprintf' to support current locale charset
    */
   if (setlocale (LC_CTYPE, "") != NULL)
     {
@@ -1050,7 +1051,7 @@ set_msg_lang_from_env (void)
   /* set flag as set; this function will set the messages language either to environment or leave it default value */
   lang_Msg_env_initialized = true;
 
-  /* 
+  /*
    * Determines the messages language by examining environment variables.
    * We check the optional variable CUBRID_MSG_LANG, which decides the
    * locale for catalog messages; if not set, en_US is used for catalog
@@ -2369,7 +2370,7 @@ lang_get_lang_id_from_flag (const int flag, bool * has_user_format, bool * has_u
  * Note:  If a format for combination (lang_id, codeset) is not found, then
  *	  the first valid (non-NULL) format for lang_id and the codeset
  *	  are returned.
- * 
+ *
  */
 const char *
 lang_date_format_parse (const INTL_LANG lang_id, const INTL_CODESET codeset, const DB_TYPE type,

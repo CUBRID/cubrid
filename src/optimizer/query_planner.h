@@ -96,12 +96,12 @@ struct qo_plan
 
   int refcount;
 
-  /* 
+  /*
    * A plan is "top-rooted" if it is a top level plan
    */
   bool top_rooted;
 
-  /* 
+  /*
    * A plan is "well-rooted" if it is a scan plan, or if it is a follow
    * plan whose subplan is itself well-rooted.  These are plans that
    * won't require the construction of any temporary files during
@@ -120,7 +120,7 @@ struct qo_plan
   QO_EQCLASS *order;
   PT_NODE *iscan_sort_list;	/* sorting fields */
 
-  /* 
+  /*
    * The set of correlated subqueries that are "covered" by this plan.
    * These are the subqueries that must be reevaluated every time a new
    * candidate row is produced by this plan.
@@ -150,7 +150,7 @@ struct qo_plan
       QO_NODE_INDEX_ENTRY *index;
     } scan;
 
-    /* 
+    /*
      * Sort nodes are now really "build a temp file" nodes; the
      * created temp file may be sorted or unsorted.  If sorted, the
      * `order' field indicates the sorting order; if unsorted, the
@@ -220,13 +220,13 @@ struct qo_info
 {
   struct qo_info *next;
 
-  /* 
+  /*
    * The environment relative to which all of the following sets, etc.
    * make sense.
    */
   QO_ENV *env;
 
-  /* 
+  /*
    * The Planner instance to which this Info node belongs.  I wish
    * we didn't have to do this, but there are just enough occassions
    * where we need the back pointer that it is easier just to include
@@ -236,30 +236,30 @@ struct qo_info
    */
   QO_PLANNER *planner;
 
-  /* 
+  /*
    * The lowest-cost plan without regard to ordering.
    */
   QO_PLANVEC best_no_order;
 
-  /* 
+  /*
    * The set of nodes joined by the plans at this node.
    */
   BITSET nodes;
 
-  /* 
+  /*
    * All of the terms accounted for by the plans in this node and their
    * descendents, i.e., the complement of the terms remaining to be
    * dealt with.
    */
   BITSET terms;
 
-  /* 
+  /*
    * The equivalence classes represented by all of the attributes
    * (segments) joined together in this node.
    */
   BITSET eqclasses;
 
-  /* 
+  /*
    * 'projected_segs' is the set of segments (attributes) that need to
    * be projected from this plan produced by this node in order to
    * satisfy the needs of upper level plans.  'projected_size' is the
@@ -270,7 +270,7 @@ struct qo_info
   BITSET projected_segs;
   double cardinality;
 
-  /* 
+  /*
    * One plan for each equivalence class, in each case the best we have
    * seen so far.  This vector is NULL after a node is detached.
    */
@@ -278,12 +278,12 @@ struct qo_info
 
   int projected_size;
 
-  /* 
+  /*
    * The last join level.
    */
   int join_unit;
 
-  /* 
+  /*
    * `detached' is true iff the node has been detached; we can no
    * longer just use the value of `plans' as the indicator because
    * dependent derived tables can give rise to join graphs that couple
@@ -295,22 +295,22 @@ struct qo_info
 
 struct qo_planner
 {
-  /* 
+  /*
    * The struct that encapsulates the information involved in searching
    * for an optimal query plan.
    */
 
-  /* 
+  /*
    * The environment that supplies the various nodes, edges, segments, etc.
    */
   QO_ENV *env;
 
-  /* 
+  /*
    * The relations being considered in this join; there are N of them.
    */
   QO_NODE *node;
 
-  /* 
+  /*
    * The join terms (e.g., employee.dno = dept.dno); there are T of
    * them, E of which are actual edges in the join graph.  node_mask is
    * a bit mask used to mask out non-node terms from node bitsets.
@@ -322,7 +322,7 @@ struct qo_planner
   unsigned int E, M, T;
   unsigned long node_mask;
 
-  /* 
+  /*
    * The path segments involved in the various join terms, and the
    * equivalence classes implied by those joins (e.g., if we have join
    * terms c1 = c2 and c2 = c3, (c1,c2,c3) is an equivalence class for
@@ -332,12 +332,12 @@ struct qo_planner
 
   QO_EQCLASS *eqclass;
 
-  /* 
+  /*
    * The partitions (strong components) of the join graph.
    */
   QO_PARTITION *partition;
 
-  /* 
+  /*
    * The last join level.
    */
   int join_unit;
@@ -345,14 +345,14 @@ struct qo_planner
   unsigned int EQ;
   unsigned int P;
 
-  /* 
+  /*
    * The (level-1 correlated) subqueries used in this query.
    */
   QO_SUBQUERY *subqueries;
   BITSET all_subqueries;
   unsigned int Q;
 
-  /* 
+  /*
    * The final set of segments to be projected out of the top-level
    * plan produced by this planner.
    */
@@ -370,7 +370,7 @@ struct qo_planner
   /* alloced info list */
   QO_INFO *info_list;
 
-  /* 
+  /*
    * true iff qo_planner_cleanup() needs to be called before freeing
    * this planner.  This is needed to help clean up after aborts, when
    * control flow takes an unexpected longjmp.

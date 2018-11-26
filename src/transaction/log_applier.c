@@ -685,7 +685,7 @@ la_log_io_read_with_max_retries (char *vname, int vdes, void *io_pgptr, LOG_PHY_
 
       if (nbytes == 0)
 	{
-	  /* 
+	  /*
 	   * This is an end of file.
 	   * We are trying to read beyond the allocated disk space
 	   */
@@ -4963,7 +4963,7 @@ la_apply_update_log (LA_ITEM * item)
 
   error = la_repl_add_object (class_obj, item, recdes);
 
-  /* 
+  /*
    * regardless of the success or failure of obj_repl_update_object,
    * we should write sql log.
    */
@@ -5406,7 +5406,7 @@ la_apply_statement_log (LA_ITEM * item)
 	  return NO_ERROR;
 	}
 
-      /* 
+      /*
        * When we create the schema objects, the object's owner must be changed
        * to the appropriate owner.
        * Special alter statement, non partitioned -> partitioned is the same.
@@ -6452,7 +6452,7 @@ la_check_mem_size (void)
 #endif
   if (vsize > max_vsize)
     {
-      /* 
+      /*
        * vmem size is more than max_mem_size
        * or grow more than 2 times
        */

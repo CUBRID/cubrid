@@ -371,7 +371,7 @@ scan_restore_range_details (ISS_RANGE_DETAILS * rdp_src, INDX_SCAN_ID * isidp_de
 static SCAN_CODE
 scan_get_next_iss_value (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SCAN_ID * isidp)
 {
-  /* we are being called either before any other btree range search, or after somebody finished a real range search and 
+  /* we are being called either before any other btree range search, or after somebody finished a real range search and
    * wants to advance to the next value for the first column of the index. */
 
   INDEX_SKIP_SCAN *iss = NULL;
@@ -719,7 +719,7 @@ scan_init_indx_coverage (THREAD_ENTRY * thread_p, int coverage_enabled, OUTPTR_L
       goto exit_on_error;
     }
 
-  /* 
+  /*
    * Covering index scan needs large-size memory buffer in order to decrease
    * the number of times doing stop-and-resume during btree_range_search.
    * To do it, QFILE_FLAG_USE_KEY_BUFFER is introduced. If the flag is set,
@@ -2255,7 +2255,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
 	  key_cnt = iscan_id->key_cnt = check_key_vals (key_vals, key_cnt, merge_key_ranges);
 	}
 
-      /* if is order by skip and first column is descending, the order will be reversed so reverse the key ranges to be 
+      /* if is order by skip and first column is descending, the order will be reversed so reverse the key ranges to be
        * desc. */
       if ((indx_infop->range_type == R_KEYLIST || indx_infop->range_type == R_RANGELIST)
 	  && ((indx_infop->orderby_desc && indx_infop->orderby_skip)
@@ -2273,7 +2273,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
       iscan_id->curr_keyno = 0;
     }
 
-  /* 
+  /*
    * init vars to execute B+tree key range search
    */
 
@@ -3862,6 +3862,7 @@ scan_open_json_table_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, int group
   // scan_init_scan_pred
   scan_init_scan_pred (&scan_id->s.jtid.get_predicate (), NULL, pr,
 		       ((pr) ? eval_fnc (thread_p, pr, &single_node_type) : NULL));
+  scan_id->s.jtid.set_value_descriptor (vd);
 
   return NO_ERROR;
 }
@@ -5711,7 +5712,7 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 			      return S_ERROR;
 			    }
 			}
-		      /* if this the current scan is not done (i.e. the buffer was full and we need to fetch more rows, 
+		      /* if this the current scan is not done (i.e. the buffer was full and we need to fetch more rows,
 		       * do not go to the next value */
 		      go_to_next_iss_value = BTREE_END_OF_SCAN (&isidp->bt_scan)
 			&& (isidp->indx_info->range_type == R_KEY || isidp->indx_info->range_type == R_RANGE);
@@ -5892,6 +5893,15 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
 	}
 
       return S_DOESNT_EXIST;	/* not qualified, continue to the next tuple */
+    }
+  else if (sp_scan == S_ERROR)
+    {
+      ASSERT_ERROR ();
+      return sp_scan;
+    }
+  else
+    {
+      assert (sp_scan == S_SUCCESS || sp_scan == S_SUCCESS_CHN_UPTODATE);
     }
 
 

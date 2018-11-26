@@ -27,6 +27,7 @@
 #include "porting.h"
 #include "byte_order.h"
 #include "utility.h"
+#include "tz_support.h"
 #include "db_date.h"
 #include "environment_variable.h"
 #include "chartype.h"
@@ -35,7 +36,6 @@
 #include "memory_alloc.h"
 
 #include "tz_compile.h"
-#include "tz_support.h"
 #include "xml_parser.h"
 #include "md5.h"
 #include "db_query.h"
@@ -94,7 +94,7 @@ struct tz_file_descriptor
  * addition or removal to/from future TZ releases by IANA. The reference for
  * building this list is IANA's tzdata2013b.tar.gz, released on 11 March 2013.
  * Visit http://www.iana.org/time-zones for the latest release.
- * NOTE: the array below is sorted by type. This order is used in 
+ * NOTE: the array below is sorted by type. This order is used in
  *	 timezone_data_load(), so it must be preserved.
  */
 static const TZ_FILE_DESCRIPTOR tz_Files[] = {
@@ -539,7 +539,7 @@ tzc_build_filepath (char *path, size_t size, const char *dir, const char *filena
  *			      the end of the string/line.
  * Returns:
  * str(in/out): string from where to remove the whitespaces described above.
- *			      
+ *			
  */
 static void
 trim_comments_whitespaces (char *str)
@@ -1045,7 +1045,7 @@ exit:
 }
 
 /*
- * tzc_load_countries() - loads the list of countries from the files marked 
+ * tzc_load_countries() - loads the list of countries from the files marked
  *			  as TZ_COUNTRIES type (e.g. iso3166.tab)
  * Returns: NO_ERROR(0) if success, error code or -1 otherwise
  * tzd_raw(out): timezone data structure to hold the loaded information
@@ -1144,7 +1144,7 @@ exit:
 }
 
 /*
- * tzc_load_zones() - loads the list of countries from the files marked 
+ * tzc_load_zones() - loads the list of countries from the files marked
  *		      as TZ_ZONES type (e.g. zone.tab)
  * Returns: 0 (NO_ERROR) if success, error code or -1 otherwise
  * tzd_raw(out): timezone data structure to hold the loaded information
@@ -1241,7 +1241,7 @@ exit:
 }
 
 /*
- * tzc_load_rule_files() - loads the data from the files marked as TZ_RULES 
+ * tzc_load_rule_files() - loads the data from the files marked as TZ_RULES
  *			   (e.g. europe, asia etc.)
  * Returns: 0 (NO_ERROR) if success, error code or -1 otherwise
  * tzd_raw(out): timezone data structure to hold the loaded information
@@ -1966,7 +1966,7 @@ exit:
 }
 
 /*
- * tzc_read_time_type() - 
+ * tzc_read_time_type() -
  *
  * Returns: 0 (NO_ERROR) if success, or negative code if an error occurs
  * tzd_raw(in/out): raw timezone data structure
@@ -2007,7 +2007,7 @@ tzc_read_time_type (const char *str, const char **next, TZ_TIME_TYPE * time_type
 }
 
 /*
- * tzc_add_ds_rule() - parse the input string as a daylight saving rule and 
+ * tzc_add_ds_rule() - parse the input string as a daylight saving rule and
  *		       append it to the rule set identified by the rule name
  * Returns: 0 (NO_ERROR) if success, or negative code if an error occurs
  * tzd_raw(in/out): raw timezone data structure
@@ -2196,7 +2196,7 @@ tzc_add_ds_rule (TZ_RAW_DATA * tzd_raw, char *rule_text)
       return err_status;
     }
 
-  /* In a daylight saving rule, the "Save" column is either 0 or 1 hour, given as a one char string ("0" or "1"), or an 
+  /* In a daylight saving rule, the "Save" column is either 0 or 1 hour, given as a one char string ("0" or "1"), or an
    * amount of time specified as hh:mm. So first check if col_save == "<one_char>" */
   if (strlen (col_save) == 1)
     {
@@ -2251,7 +2251,7 @@ tzc_parse_ds_change_on (TZ_RAW_DS_RULE * dest, const char *str)
       goto exit;
     }
 
-  /* need to validate the day found; check if it is a valid value, according to the year(s) and month already read into 
+  /* need to validate the day found; check if it is a valid value, according to the year(s) and month already read into
    * the input TZ_RAW_DS_RULE dest parameter */
   if (type == TZ_DS_TYPE_FIXED)
     {
@@ -2660,7 +2660,7 @@ tzc_index_raw_data_w_static (TZ_RAW_DATA * tzd_raw, const TZ_GEN_TYPE mode)
 }
 
 /*
- * tzc_index_raw_subdata - compute indexes for rulesets and update ruleset_id 
+ * tzc_index_raw_subdata - compute indexes for rulesets and update ruleset_id
  *			  for offset rules (e.g. index the data not processed
  *			  by tzc_index_raw_data/tzc_index_raw_data_w_static)
  * Returns: 0 (NO_ERROR) if success, error code if something goes wrong
@@ -2804,10 +2804,10 @@ compare_ints (const void *a, const void *b)
   return 1;
 }
 
-/* 
+/*
  * tzc_check_ds_ruleset - Checks the validity of the daylight saving time
  *			  ruleset
- * tzd(in): timezone data 
+ * tzd(in): timezone data
  * ds_rule_set(in): day-light saving time ruleset
  * ds_changes_cnt(out): total number of daylight saving time changes between
  *                      the start year and the end year
@@ -3756,7 +3756,7 @@ exit:
 /*
  * str_read_day_var() - parse the input string as a specification for a day of
  *			the month. The input string may be of the following
- *			forms: 
+ *			forms:
  *			    '21' (e.g. a day of the month)
 *			    'lastFri' (e.g. 'lastWEEKDAY')
 *			    'Sun>=1' (e.g. WEEKDAY>=NUMBER)
@@ -4060,7 +4060,7 @@ comp_func_raw_ds_rulesets (const void *arg1, const void *arg2)
 
 /*
  * get_day_of_week_for_raw_rule - Returns the day in which the ds_rule applies
- *			  
+ *			
  * Returns: the day
  * rule(in): daylight saving rule
  * year(in): year in which to apply rule
@@ -4969,7 +4969,7 @@ tzc_summary (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd)
 
 #if defined(WINDOWS)
 /*
- * comp_func_tz_windows_zones - comparison function between two 
+ * comp_func_tz_windows_zones - comparison function between two
  *                              TZ_WINDOWS_IANA_MAP values
  * Returns: -1 if arg1 < arg2, 0 if arg1 = arg2, 1 if arg1 > arg2
  * arg1(in): first value to compare
@@ -5000,7 +5000,7 @@ comp_func_tz_windows_zones (const void *arg1, const void *arg2)
 /*
  * xml_start_mapZone() - extracts from a mapZone tag the Windows timezone name
  *			 and IANA timezone name
- *			 
+ *			
  * Returns: 0 parser OK, non-zero value if parser NOK
  * data(in): user data
  * attr(in): array of pairs for XML attribute and value (strings) of current
@@ -5076,9 +5076,9 @@ xml_start_mapZone (void *data, const char **attr)
 }
 
 /*
- * tzc_load_windows_iana_map() - loads the data from the file marked as 
- *			        TZF_LIBC_IANA_ZONES_MAP 
- *			 
+ * tzc_load_windows_iana_map() - loads the data from the file marked as
+ *			        TZF_LIBC_IANA_ZONES_MAP
+ *			
  * Returns: 0 (NO_ERROR) if success, error code or -1 otherwise
  * tz_data(out): timezone data structure to hold the loaded information
  * input_folder(in): folder containing IANA's timezone database
@@ -5210,7 +5210,7 @@ tzc_find_country_names (const TZ_COUNTRY * countries, const int country_count, c
 /*
  * comp_ds_rules() - equality function for two daylight saving rules
  *
- * Returns: true if the rules are identical or false otherwise 
+ * Returns: true if the rules are identical or false otherwise
  * rule1(in): first daylight saving rule
  * rule2(in): second daylight saving rule
  */
@@ -5230,7 +5230,7 @@ comp_ds_rules (const TZ_DS_RULE * rule1, const TZ_DS_RULE * rule2)
 /*
  * comp_offset_rules() - equality function for two offset rules
  *
- * Returns: true if the rules are identical or false otherwise 
+ * Returns: true if the rules are identical or false otherwise
  * rule1(in): first offset rule
  * rule2(in): second offset rule
  */
@@ -5296,7 +5296,7 @@ exit:
 
 /*
  * init_ds_ruleset() - initializes the members of dst_ruleset
- *                     
+ *
  * Returns: error or no error
  * dst_ruleset(in/out): destination ds ruleset
  * tzd(in): timezone data
@@ -5319,7 +5319,7 @@ exit:
 }
 
 /*
- * copy_ds_rule() - copies in dst the daylight saving rule in tzd at 
+ * copy_ds_rule() - copies in dst the daylight saving rule in tzd at
  *		    position index in the daylight saving rule array
  *
  * Returns: error or no error
@@ -5349,7 +5349,7 @@ exit:
 /*
  * tz_data_partial_clone() - copies timezone data from tzd into
  *                           the three data structures
- *		    
+ *		
  * Returns: error or no error
  * timezone_names(in/out): timezone names without aliases
  * timezones(in/out): timezones
@@ -5380,7 +5380,7 @@ exit:
 
 /*
  * init_tz_name() - copies the members of src into dst
- *                     
+ *
  * Returns: error or no error
  * dst(in/out): destination tz_name
  * src(in): source tz_name
@@ -5402,7 +5402,7 @@ exit:
 /*
  * tzc_extend() - Does a merge between the new timezone data and
  *                the old timezone data in order to maintain backward
- *                compatibility with the timezone data present in the 
+ *                compatibility with the timezone data present in the
  *                database. If the data could not be made backward
  *                compatible a message is printed
  *
@@ -6245,7 +6245,7 @@ exit:
 
 /*
  * tzc_compute_timezone_checksum() - Computes an MD5 for the timezone data
- *                                   structures                
+ *                                   structures
  * Returns:
  * tzd (in/out): timezone library
  * type(in): tells which make_tz mode was used
@@ -6514,7 +6514,7 @@ exit:
 }
 
 /*
- * tzc_update() - Do a data migration in case that tzc_extend fails 
+ * tzc_update() - Do a data migration in case that tzc_extend fails
  *
  * Returns: error or no error
  * tzd (in): Timezone library used to the data migration
