@@ -58,7 +58,7 @@ namespace cubload
 // This code will be copied into loader grammar source file
 #include <cstring>
 
-#include "dbtype_def.h"
+#include "dbtype.h"
 #include "load_driver.hpp"
 
 #undef yylex
