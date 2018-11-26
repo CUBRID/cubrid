@@ -9322,6 +9322,12 @@ pt_check_json_table_paths (PT_NODE * node)
 
   for (PT_NODE * col = node->info.json_table_node_info.columns; col; col = col->next)
     {
+      if (col->info.json_table_column_info.func == JSON_TABLE_ORDINALITY)
+	{
+	  // ORDINALITY columns do not have a path
+	  assert (col->info.json_table_column_info.path == NULL);
+	  continue;
+	}
       error_code = db_json_convert_sql_path_to_pointer (col->info.json_table_column_info.path, path, true);
       if (error_code)
 	{
