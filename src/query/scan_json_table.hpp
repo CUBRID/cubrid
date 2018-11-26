@@ -94,6 +94,7 @@ class JSON_DOC;
 class JSON_ITERATOR;
 // scan_manager.h
 struct scan_id_struct;
+struct val_descr;
 
 // thread_entry.hpp
 namespace cubthread
@@ -112,7 +113,7 @@ namespace cubscan
 	// initialize scanner
 	void init (cubxasl::json_table::spec_node &spec);
 	// clear scanner
-	void clear (xasl_node *xasl_p, bool is_final);
+	void clear (xasl_node *xasl_p, bool is_final, bool is_final_clear);
 
 	// open a new scan
 	int open (cubthread::entry *thread_p);
@@ -127,6 +128,7 @@ namespace cubscan
 	int next_scan (cubthread::entry *thread_p, scan_id_struct &sid);
 
 	SCAN_PRED &get_predicate ();
+	void set_value_descriptor (val_descr *vd);
 
 	scanner () = default;
 
@@ -160,6 +162,7 @@ namespace cubscan
 	size_t m_scan_cursor_depth;                 // the current level where the cursor was left
 	size_t m_tree_height;                       // will be used to initialize cursor vector
 	scan_pred m_scan_predicate;                 // scan predicate to filter generated rows
+	val_descr *m_vd;
     };
   } // namespace json_table
 } // namespace cubscan

@@ -177,18 +177,17 @@ stx_restore (THREAD_ENTRY *thread_p, char *&ptr, T *&target)
 	{
 	  return;
 	}
-      if (stx_mark_struct_visited (thread_p, bufptr, target) != NO_ERROR)
-	{
-	  assert (false);
-	  return;
-	}
       target = (T *) stx_alloc_struct (thread_p, (int) sizeof (T));
       if (target == NULL)
 	{
 	  assert (false);
 	  return;
 	}
-
+      if (stx_mark_struct_visited (thread_p, bufptr, target) != NO_ERROR)
+	{
+	  assert (false);
+	  return;
+	}
       if (stx_build (thread_p, bufptr, *target) == NULL)
 	{
 	  assert (false);

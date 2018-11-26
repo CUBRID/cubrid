@@ -322,13 +322,13 @@ enum
 
 #if defined (__cplusplus)
 // *INDENT-OFF*
-template <class T> 
+template <class T>
 class PRIVATE_UNIQUE_PTR_DELETER
 {
   public:
     PRIVATE_UNIQUE_PTR_DELETER ()
-      : thread_p (NULL) 
-      { 
+      : thread_p (NULL)
+      {
       }
 
     PRIVATE_UNIQUE_PTR_DELETER (THREAD_ENTRY * thread_p)
@@ -348,7 +348,7 @@ class PRIVATE_UNIQUE_PTR_DELETER
     THREAD_ENTRY * thread_p;
 };
 
-template <class T> 
+template <class T>
 class PRIVATE_UNIQUE_PTR
 {
   public:

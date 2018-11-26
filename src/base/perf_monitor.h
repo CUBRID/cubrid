@@ -339,9 +339,6 @@ typedef enum
   PSTAT_BT_NUM_MERGES,
   PSTAT_BT_NUM_GET_STATS,
 
-  /* Execution statistics for the heap manager */
-  PSTAT_HEAP_NUM_STATS_SYNC_BESTSPACE,
-
   /* Execution statistics for the query manager */
   PSTAT_QM_NUM_SELECTS,
   PSTAT_QM_NUM_INSERTS,
@@ -373,10 +370,6 @@ typedef enum
   PSTAT_PRIOR_LSA_LIST_SIZE,	/* kbytes */
   PSTAT_PRIOR_LSA_LIST_MAXED,
   PSTAT_PRIOR_LSA_LIST_REMOVED,
-
-  /* best space info */
-  PSTAT_HF_NUM_STATS_ENTRIES,
-  PSTAT_HF_NUM_STATS_MAXED,
 
   /* HA replication delay */
   PSTAT_HA_REPL_DELAY,
@@ -438,6 +431,17 @@ typedef enum
   PSTAT_HEAP_VACUUM_PREPARE,
   PSTAT_HEAP_VACUUM_EXECUTE,
   PSTAT_HEAP_VACUUM_LOG,
+
+  /* Execution statistics for the heap manager */
+  /* best space info */
+  PSTAT_HEAP_STATS_SYNC_BESTSPACE,
+  PSTAT_HF_NUM_STATS_ENTRIES,
+  PSTAT_HF_NUM_STATS_MAXED,
+  PSTAT_HF_BEST_SPACE_ADD,
+  PSTAT_HF_BEST_SPACE_DEL,
+  PSTAT_HF_BEST_SPACE_FIND,
+  PSTAT_HF_HEAP_FIND_PAGE_BEST_SPACE,
+  PSTAT_HF_HEAP_FIND_BEST_PAGE,
 
   /* B-tree ops detailed statistics. */
   PSTAT_BT_FIX_OVF_OIDS,
@@ -1270,7 +1274,7 @@ perfmon_is_perf_tracking_and_active (int activation_flag)
 /*
  * perfmon_is_perf_tracking_force () - Skips the check for active threads if the always_collect
  *				       flag is set to true
- *				       
+ *				
  * return	        : true or false
  * always_collect (in)  : flag that tells that we should always collect statistics
  *

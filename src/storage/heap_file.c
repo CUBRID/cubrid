@@ -50,6 +50,7 @@
 #include "query_executor.h"
 #include "fetch.h"
 #include "server_interface.h"
+#include "elo.h"
 #include "db_elo.h"
 #include "string_opfunc.h"
 #include "xasl.h"
@@ -717,7 +718,9 @@ static SCAN_CODE heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread
 							   int lob_create_flag);
 static int heap_stats_del_bestspace_by_vpid (THREAD_ENTRY * thread_p, VPID * vpid);
 static int heap_stats_del_bestspace_by_hfid (THREAD_ENTRY * thread_p, const HFID * hfid);
+#if defined (ENABLE_UNUSED_FUNCTION)
 static HEAP_BESTSPACE heap_stats_get_bestspace_by_vpid (THREAD_ENTRY * thread_p, VPID * vpid);
+#endif /* #if defined (ENABLE_UNUSED_FUNCTION) */
 static HEAP_STATS_ENTRY *heap_stats_add_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, VPID * vpid,
 						   int freespace);
 static int heap_stats_entry_free (THREAD_ENTRY * thread_p, void *data, void *args);
@@ -959,8 +962,11 @@ heap_stats_add_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, VPID * vpi
 {
   HEAP_STATS_ENTRY *ent;
   int rc;
+  PERF_UTIME_TRACKER time_best_space = PERF_UTIME_TRACKER_INITIALIZER;
 
   assert (prm_get_integer_value (PRM_ID_HF_MAX_BESTSPACE_ENTRIES) > 0);
+
+  PERF_UTIME_TRACKER_START (thread_p, &time_best_space);
 
   rc = pthread_mutex_lock (&heap_Bestspace->bestspace_mutex);
 
@@ -1041,6 +1047,8 @@ end:
 
   pthread_mutex_unlock (&heap_Bestspace->bestspace_mutex);
 
+  PERF_UTIME_TRACKER_TIME (thread_p, &time_best_space, PSTAT_HF_BEST_SPACE_ADD);
+
   return ent;
 }
 
@@ -1056,6 +1064,9 @@ heap_stats_del_bestspace_by_hfid (THREAD_ENTRY * thread_p, const HFID * hfid)
   HEAP_STATS_ENTRY *ent;
   int del_cnt = 0;
   int rc;
+  PERF_UTIME_TRACKER time_best_space = PERF_UTIME_TRACKER_INITIALIZER;
+
+  PERF_UTIME_TRACKER_START (thread_p, &time_best_space);
 
   rc = pthread_mutex_lock (&heap_Bestspace->bestspace_mutex);
 
@@ -1076,6 +1087,8 @@ heap_stats_del_bestspace_by_hfid (THREAD_ENTRY * thread_p, const HFID * hfid)
   assert (mht_count (heap_Bestspace->vpid_ht) == mht_count (heap_Bestspace->hfid_ht));
   pthread_mutex_unlock (&heap_Bestspace->bestspace_mutex);
 
+  PERF_UTIME_TRACKER_TIME (thread_p, &time_best_space, PSTAT_HF_BEST_SPACE_DEL);
+
   return del_cnt;
 }
 
@@ -1090,7 +1103,9 @@ heap_stats_del_bestspace_by_vpid (THREAD_ENTRY * thread_p, VPID * vpid)
 {
   HEAP_STATS_ENTRY *ent;
   int rc;
+  PERF_UTIME_TRACKER time_best_space = PERF_UTIME_TRACKER_INITIALIZER;
 
+  PERF_UTIME_TRACKER_START (thread_p, &time_best_space);
   rc = pthread_mutex_lock (&heap_Bestspace->bestspace_mutex);
 
   ent = (HEAP_STATS_ENTRY *) mht_get (heap_Bestspace->vpid_ht, vpid);
@@ -1111,9 +1126,12 @@ end:
 
   pthread_mutex_unlock (&heap_Bestspace->bestspace_mutex);
 
+  PERF_UTIME_TRACKER_TIME (thread_p, &time_best_space, PSTAT_HF_BEST_SPACE_DEL);
+
   return NO_ERROR;
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * heap_stats_get_bestspace_by_vpid () -
  *   return: NO_ERROR
@@ -1147,6 +1165,7 @@ end:
 
   return best;
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * Scan page buffer and latch page manipulation
@@ -3137,8 +3156,12 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, H
   int i, best_array_index = -1;
   bool hash_is_available;
   bool best_hint_is_used;
+  PERF_UTIME_TRACKER time_best_space = PERF_UTIME_TRACKER_INITIALIZER;
+  PERF_UTIME_TRACKER time_find_page_best_space = PERF_UTIME_TRACKER_INITIALIZER;
 
   assert (PGBUF_IS_CLEAN_WATCHER (pg_watcher));
+
+  PERF_UTIME_TRACKER_START (thread_p, &time_find_page_best_space);
 
   /*
    * If a page is busy, don't wait continue looking for other pages in our
@@ -3161,6 +3184,7 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, H
 
       if (hash_is_available)
 	{
+	  PERF_UTIME_TRACKER_START (thread_p, &time_best_space);
 	  rc = pthread_mutex_lock (&heap_Bestspace->bestspace_mutex);
 
 	  while (notfound_cnt < BEST_PAGE_SEARCH_MAX_COUNT
@@ -3185,6 +3209,7 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, H
 	    }
 
 	  pthread_mutex_unlock (&heap_Bestspace->bestspace_mutex);
+	  PERF_UTIME_TRACKER_TIME (thread_p, &time_best_space, PSTAT_HF_BEST_SPACE_FIND);
 	}
 
       if (best.freespace == -1)
@@ -3222,7 +3247,8 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, H
 	      break;
 	    }
 #if defined (SERVER_MODE)
-	  assert (er_errid () == ER_INTERRUPTED);
+	  // ignores a warning and expects no other errors
+	  assert (er_errid_if_has_error () == NO_ERROR);
 #endif /* SERVER_MODE */
 	  er_clear ();
 	}
@@ -3340,6 +3366,7 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, H
    * Reset back the timeout value of the transaction
    */
   (void) xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
+  PERF_UTIME_TRACKER_TIME (thread_p, &time_find_page_best_space, PSTAT_HF_HEAP_FIND_PAGE_BEST_SPACE);
 
   return found;
 }
@@ -3374,7 +3401,9 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid, int neede
   float other_high_best_ratio;
   PGBUF_WATCHER hdr_page_watcher;
   int error_code = NO_ERROR;
+  PERF_UTIME_TRACKER time_find_best_page = PERF_UTIME_TRACKER_INITIALIZER;
 
+  PERF_UTIME_TRACKER_START (thread_p, &time_find_best_page);
   /*
    * Try to use the space cache for as much information as possible to avoid
    * fetching and updating the header page a lot.
@@ -3403,7 +3432,7 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid, int neede
     {
       /* something went wrong. Unable to fetch header page */
       ASSERT_ERROR ();
-      return NULL;
+      goto error;
     }
   assert (hdr_page_watcher.pgptr != NULL);
 
@@ -3413,7 +3442,7 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid, int neede
     {
       assert (false);
       pgbuf_ordered_unfix (thread_p, &hdr_page_watcher);
-      return NULL;
+      goto error;
     }
 
   heap_hdr = (HEAP_HDR_STATS *) hdr_recdes.data;
@@ -3447,7 +3476,7 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid, int neede
 	  ASSERT_ERROR ();
 	  assert (pg_watcher->pgptr == NULL);
 	  pgbuf_ordered_unfix (thread_p, &hdr_page_watcher);
-	  return NULL;
+	  goto error;
 	}
       if (pg_watcher->pgptr != NULL)
 	{
@@ -3504,7 +3533,7 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid, int neede
 	    {
 	      pgbuf_ordered_unfix (thread_p, &hdr_page_watcher);
 	      ASSERT_ERROR ();
-	      return NULL;
+	      goto error;
 	    }
 	}
       while (num_pages_found == 0 && try_sync <= 2);
@@ -3527,7 +3556,7 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid, int neede
 	{
 	  ASSERT_ERROR ();
 	  pgbuf_ordered_unfix (thread_p, &hdr_page_watcher);
-	  return NULL;
+	  goto error;
 	}
       assert (pg_watcher->pgptr != NULL || er_errid () == ER_INTERRUPTED
 	      || er_errid () == ER_FILE_NOT_ENOUGH_PAGES_IN_DATABASE);
@@ -3537,7 +3566,14 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid, int neede
   log_skip_logging (thread_p, &addr_hdr);
   pgbuf_ordered_set_dirty_and_free (thread_p, &hdr_page_watcher);
 
+  PERF_UTIME_TRACKER_TIME (thread_p, &time_find_best_page, PSTAT_HF_HEAP_FIND_BEST_PAGE);
+
   return pg_watcher->pgptr;
+
+error:
+  PERF_UTIME_TRACKER_TIME (thread_p, &time_find_best_page, PSTAT_HF_HEAP_FIND_BEST_PAGE);
+
+  return NULL;
 }
 
 /*
@@ -3582,16 +3618,10 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_
   bool search_all = false;
   PGBUF_WATCHER pg_watcher;
   PGBUF_WATCHER old_pg_watcher;
-#if defined (CUBRID_DEBUG)
-  TSC_TICKS start_tick, end_tick;
-  TSCTIMEVAL tv_diff;
+  PERF_UTIME_TRACKER timer_sync_best_space = PERF_UTIME_TRACKER_INITIALIZER;
 
-  float elapsed;
+  PERF_UTIME_TRACKER_START (thread_p, &timer_sync_best_space);
 
-  tsc_getticks (&start_tick);
-#endif /* CUBRID_DEBUG */
-
-  perfmon_inc_stat (thread_p, PSTAT_HEAP_NUM_STATS_SYNC_BESTSPACE);
   PGBUF_INIT_WATCHER (&pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
   PGBUF_INIT_WATCHER (&old_pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
 
@@ -3809,7 +3839,7 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_
    * used to handle "select count(*) from table". */
   if (scan_all == false && num_high_best == 0 && heap_hdr->estimates.num_second_best == 0)
     {
-      return 0;
+      goto end;
     }
 
   if (num_high_best < HEAP_NUM_BEST_SPACESTATS)
@@ -3860,15 +3890,8 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_
 	}
     }
 
-#if defined (CUBRID_DEBUG)
-  tsc_getticks (&end_tick);
-  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-  elapsed = (float) tv_diff.tv_sec * 1000000;
-  elapsed += (float) tv_diff.tv_usec;
-  elapsed /= 1000000;
-
-  er_log_debug (ARG_FILE_LINE, "heap_stats_sync_bestspace: elapsed time %.6f", elapsed);
-#endif /* CUBRID_DEBUG */
+end:
+  PERF_UTIME_TRACKER_TIME (thread_p, &timer_sync_best_space, PSTAT_HEAP_STATS_SYNC_BESTSPACE);
 
   return num_high_best;
 }
@@ -17216,7 +17239,7 @@ heap_eval_function_index (THREAD_ENTRY * thread_p, FUNCTION_INDEX_INFO * func_in
       index = &(attr_info->last_classrepr->indexes[btid_index]);
       if (func_pred_cache)
 	{
-	  func_pred = (FUNC_PRED *) func_pred_cache->func_pred;
+	  func_pred = func_pred_cache->func_pred;
 	  cache_attr_info = func_pred->cache_attrinfo;
 	  nr_atts = index->n_atts;
 	}
@@ -17247,8 +17270,8 @@ heap_eval_function_index (THREAD_ENTRY * thread_p, FUNCTION_INDEX_INFO * func_in
       expr_stream_size = func_index_info->expr_stream_size;
       nr_atts = n_atts;
       atts = att_ids;
-      cache_attr_info = ((FUNC_PRED *) func_index_info->expr)->cache_attrinfo;
-      func_pred = (FUNC_PRED *) func_index_info->expr;
+      cache_attr_info = func_index_info->expr->cache_attrinfo;
+      func_pred = func_index_info->expr;
     }
 
   if (func_index_info == NULL)
@@ -17256,8 +17279,7 @@ heap_eval_function_index (THREAD_ENTRY * thread_p, FUNCTION_INDEX_INFO * func_in
       /* insert case, read the values */
       if (func_pred == NULL)
 	{
-	  if (stx_map_stream_to_func_pred (thread_p, (FUNC_PRED **) (&func_pred), expr_stream, expr_stream_size,
-					   &unpack_info))
+	  if (stx_map_stream_to_func_pred (thread_p, &func_pred, expr_stream, expr_stream_size, &unpack_info))
 	    {
 	      error = ER_FAILED;
 	      goto end;
@@ -17280,9 +17302,8 @@ heap_eval_function_index (THREAD_ENTRY * thread_p, FUNCTION_INDEX_INFO * func_in
       attrinfo_clear = true;
     }
 
-  error =
-    fetch_peek_dbval (thread_p, func_pred->func_regu, NULL, &cache_attr_info->class_oid, &cache_attr_info->inst_oid,
-		      NULL, &res);
+  error = fetch_peek_dbval (thread_p, func_pred->func_regu, NULL, &cache_attr_info->class_oid,
+			    &cache_attr_info->inst_oid, NULL, &res);
   if (error == NO_ERROR)
     {
       pr_clone_value (res, result);
@@ -17391,8 +17412,8 @@ heap_init_func_pred_unpack_info (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * 
 		}
 	    }
 
-	  if (stx_map_stream_to_func_pred (thread_p, (FUNC_PRED **) (&(fi_preds[i].func_pred)),
-					   fi_info->expr_stream, fi_info->expr_stream_size, &(fi_preds[i].unpack_info)))
+	  if (stx_map_stream_to_func_pred (thread_p, &fi_preds[i].func_pred, fi_info->expr_stream,
+					   fi_info->expr_stream_size, &fi_preds[i].unpack_info))
 	    {
 	      error_status = ER_FAILED;
 	      goto error;
@@ -17413,7 +17434,7 @@ heap_init_func_pred_unpack_info (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * 
 	    }
 
 	  if (heap_attrinfo_start (thread_p, class_oid, idx->n_atts, att_ids,
-				   ((FUNC_PRED *) fi_preds[i].func_pred)->cache_attrinfo) != NO_ERROR)
+				   fi_preds[i].func_pred->cache_attrinfo) != NO_ERROR)
 	    {
 	      error_status = ER_FAILED;
 	      goto error;
@@ -17478,10 +17499,10 @@ heap_free_func_pred_unpack_info (THREAD_ENTRY * thread_p, int n_indexes, FUNC_PR
 	{
 	  if (attr_info_started == NULL || attr_info_started[i])
 	    {
-	      assert (((FUNC_PRED *) func_indx_preds[i].func_pred)->cache_attrinfo);
-	      (void) heap_attrinfo_end (thread_p, ((FUNC_PRED *) func_indx_preds[i].func_pred)->cache_attrinfo);
+	      assert (func_indx_preds[i].func_pred->cache_attrinfo);
+	      (void) heap_attrinfo_end (thread_p, func_indx_preds[i].func_pred->cache_attrinfo);
 	    }
-	  (void) qexec_clear_func_pred (thread_p, (FUNC_PRED *) func_indx_preds[i].func_pred);
+	  (void) qexec_clear_func_pred (thread_p, func_indx_preds[i].func_pred);
 	}
 
       if (func_indx_preds[i].unpack_info)

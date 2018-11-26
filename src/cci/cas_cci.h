@@ -354,7 +354,8 @@ typedef enum
   /* Disabled type */
   CCI_U_TYPE_TIMETZ = 33,	/* internal use only - RESERVED */
   /* end of disabled types */
-  CCI_U_TYPE_LAST = CCI_U_TYPE_DATETIMELTZ
+  CCI_U_TYPE_JSON = 34,
+  CCI_U_TYPE_LAST = CCI_U_TYPE_JSON
 } T_CCI_U_TYPE;
 
 typedef unsigned char T_CCI_U_EXT_TYPE;
@@ -577,7 +578,6 @@ typedef struct DATASOURCE_T T_CCI_DATASOURCE;
 #endif
 #define CUBRID_STMT_CALL_SP	0x7e
 #define CUBRID_STMT_UNKNOWN	0x7f
-
 /* for backward compatibility */
 #define T_CCI_SQLX_CMD T_CCI_CUBRID_STMT
 
@@ -922,7 +922,7 @@ extern "C"
   extern int cci_get_shard_id_with_con_handle (int con_h_id, int *shard_id, T_CCI_ERROR * err_buf);
   extern int cci_get_shard_id_with_req_handle (int req_h_id, int *shard_id, T_CCI_ERROR * err_buf);
 
-  /* 
+  /*
    * IMPORTANT: cci_last_insert_id and cci_get_last_insert_id
    *
    *   cci_get_last_insert_id set value as last insert id in con_handle

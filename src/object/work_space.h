@@ -31,7 +31,6 @@
 #include <stdio.h>
 #include "oid.h"
 #include "storage_common.h"
-#include "dbdef.h"
 #include "quick_fit.h"
 #include "locator.h"
 #include "dbtype_def.h"
@@ -121,7 +120,7 @@ struct db_object
   void *object;			/* pointer to attribute values */
 
   struct db_object *class_link;	/* link for class instances list */
-  /* Careful whenever looping through object using class_link to save it and advance using this saved class link if the 
+  /* Careful whenever looping through object using class_link to save it and advance using this saved class link if the
    * current mop can be removed from class. */
   struct db_object *dirty_link;	/* link for dirty list */
   struct db_object *hash_link;	/* link for workspace hash table */

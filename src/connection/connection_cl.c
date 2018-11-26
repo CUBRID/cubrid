@@ -569,7 +569,7 @@ begin:
 #if defined(CS_MODE)
   else if (type == ABORT_TYPE)
     {
-      /* 
+      /*
        * if the user registered a buffer, we should return the buffer
        */
       *buffer_size = ntohl (header.buffer_size);
@@ -658,7 +658,7 @@ begin:
 	    }
 	  else
 	    {
-	      /* 
+	      /*
 	       * allocation error, buffer == NULL
 	       * cleanup received message and set error
 	       */
@@ -678,7 +678,7 @@ begin:
 	}
       else
 	{
-	  /* 
+	  /*
 	   * This is the case where data length is zero, but if the
 	   * user registered a buffer, we should return the buffer
 	   */
@@ -925,9 +925,9 @@ css_connect_to_master_server (int master_port_id, const char *server_name, int n
       goto fail_end;
 
     case SERVER_REQUEST_ACCEPTED_NEW:
-      /* 
+      /*
        * Master requests a new-style connect, must go get our port id and set up our connection socket.
-       * For drivers, we don't need a connection socket and we don't want to allocate a bunch of them.  
+       * For drivers, we don't need a connection socket and we don't want to allocate a bunch of them.
        * Let a flag variable control whether or not we actually create one of these.
        */
       if (css_Server_inhibit_connection_socket)
@@ -1309,7 +1309,7 @@ css_return_queued_data (CSS_CONN_ENTRY * conn, unsigned short request_id, char *
       return 0;
     }
 
-  /* 
+  /*
    * We may have somehow already queued a receive buffer for this
    * packet.  If so, it's important that we use *that* buffer, because
    * upper level code will check to see that the buffer address that we
@@ -1330,7 +1330,7 @@ css_return_queued_data (CSS_CONN_ENTRY * conn, unsigned short request_id, char *
     {
       *buffer = data_q_entry_p->buffer;
       *buffer_size = data_q_entry_p->size;
-      /* 
+      /*
        * Null this out so that the call to css_queue_remove_header_entry_ptr()
        * below doesn't free the buffer out from underneath our caller.
        */
@@ -1375,7 +1375,7 @@ css_return_queued_error (CSS_CONN_ENTRY * conn, unsigned short request_id, char 
   error_q_entry_p->buffer = NULL;
   css_queue_remove_header_entry_ptr (&conn->error_queue, error_q_entry_p);
 
-  /* 
+  /*
    * Propagate ER_LK_UNILATERALLY_ABORTED error
    * when it is set during method call.
    */

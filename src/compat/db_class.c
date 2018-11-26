@@ -382,7 +382,7 @@ db_drop_attribute_internal (MOP class_, const char *name)
   int error = NO_ERROR;
 
   /* kludge, since instance & shared attributes are really supposed to be in the same logical namespace, we should
-   * allow shared attributes to be deleted here as well.  Unfortunately, the template function smt_delete_any() doesn't 
+   * allow shared attributes to be deleted here as well.  Unfortunately, the template function smt_delete_any() doesn't
    * support this.  Instead, we try the operation and if it gets an error, we try again. */
   error = drop_internal (class_, name, ID_ATTRIBUTE);
   if (error == ER_SM_ATTRIBUTE_NOT_FOUND)

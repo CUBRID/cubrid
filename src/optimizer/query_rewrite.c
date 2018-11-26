@@ -259,7 +259,7 @@ qo_check_condition_yields_null (PARSER_CONTEXT * parser, PT_NODE * path_spec, PT
   result = pt_false_search_condition (parser, where);
   parser_free_tree (parser, where);
 
-  /* 
+  /*
    * Ignore any error returned from semantic type check.
    * Just wanted to evaluate where clause with nulled spec names.
    */
@@ -333,7 +333,7 @@ qo_analyze_path_join (PARSER_CONTEXT * parser, PT_NODE * path_spec, void *arg, i
       && path_spec->info.spec.meta_class != PT_PATH_INNER)
     {
       /* to get here, this must be a 'normal' outer path entity We may be able to optimize this to an inner path if
-       * any sub path is an PT_PATH_INNER, so is this one. otherwise, if any sub-path is NOT an PT_PATH_OUTER, the best 
+       * any sub path is an PT_PATH_INNER, so is this one. otherwise, if any sub-path is NOT an PT_PATH_OUTER, the best
        * we can be is a WEASEL :). Since we are a post function, sub-paths are already set. */
       path_type = qo_find_best_path_type (path_spec->info.spec.path_entities);
 
@@ -587,22 +587,31 @@ qo_convert_attref_to_dotexpr (PARSER_CONTEXT * parser, PT_NODE * node, void *arg
 	case PT_NORMAL:
 	  /* we must transform this NAME node into a DOT node in place to preserve its address. (Otherwise, we have to
 	   * find all the places that point to it and change them all.) */
-	  arg2 = parser_copy_tree (parser, node);
-	  if (arg2)
-	    arg2->next = NULL;
-	  arg1 = pt_name (parser, attr->info.name.original);
-	  if (arg1)
-	    {
-	      arg1->info.name.resolved = rvar->info.name.original;
-	      arg1->info.name.spec_id = new_spec->info.spec.id;
-	      arg1->info.name.meta_class = PT_NORMAL;
-	      arg1->type_enum = attr->type_enum;
-	      arg1->data_type = parser_copy_tree (parser, attr->data_type);
-	    }
-	  node->node_type = PT_DOT_;
-	  node->info.dot.arg1 = arg1;
-	  node->info.dot.arg2 = arg2;
-	  node->info.dot.selector = NULL;
+	  {
+	    arg2 = parser_copy_tree (parser, node);
+	    if (arg2)
+	      {
+		arg2->next = NULL;
+	      }
+	    arg1 = pt_name (parser, attr->info.name.original);
+	    if (arg1)
+	      {
+		arg1->info.name.resolved = rvar->info.name.original;
+		arg1->info.name.spec_id = new_spec->info.spec.id;
+		arg1->info.name.meta_class = PT_NORMAL;
+		arg1->type_enum = attr->type_enum;
+		arg1->data_type = parser_copy_tree (parser, attr->data_type);
+	      }
+
+	    int coll_modifier = node->info.name.coll_modifier;
+	    short tag_click_counter = node->info.name.tag_click_counter;
+
+	    pt_init_node (node, PT_DOT_);
+	    node->info.dot.arg1 = arg1;
+	    node->info.dot.arg2 = arg2;
+	    node->info.dot.coll_modifier = coll_modifier;
+	    node->info.dot.tag_click_counter = tag_click_counter;
+	  }
 	  break;
 	default:
 	  break;
@@ -672,7 +681,7 @@ qo_is_oid_const (PT_NODE * node)
       return 1;
 
     case PT_NAME:
-      /* 
+      /*
        * This *could* look to see if the name is correlated to the same
        * level as the caller, but that's going to require more context
        * to come in...
@@ -687,7 +696,7 @@ qo_is_oid_const (PT_NODE * node)
 	}
       else
 	{
-	  /* 
+	  /*
 	   * The is the case for an expression like
 	   *
 	   *  {:a, :b, :c}
@@ -743,7 +752,7 @@ qo_construct_new_set (PARSER_CONTEXT * parser, PT_NODE * node)
   if (!node || node->node_type != PT_EXPR)
     return set;
 
-  /* if control reaches here, then qo_get_next_oid_pred must have succeeded in finding a CNF-term: 'x {=|IN} expr' from 
+  /* if control reaches here, then qo_get_next_oid_pred must have succeeded in finding a CNF-term: 'x {=|IN} expr' from
    * a query select ... from c x, ... where ... and x {=|IN} expr Now, copy 'expr' into a derived table:
    * 'table({expr})' which the caller will put into the transformed query select ... from table({expr}) as t(x), ...
    * where ... */
@@ -1396,7 +1405,7 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 	  continue;		/* give up */
 	}
 
-      /* 
+      /*
        * now, finally pass all check
        */
 
@@ -1485,7 +1494,7 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 		  if (info1.query_serial_num == 0 && info2.query_serial_num == 0)
 		    {
 		      /* check for join term related to reduced attr lhs and rhs has name of other spec CASE 1:
-		       * X.c_name = Y.attr CASE 2: X.c_name + Y.attr = ? CASE 3: Y.attr = X.c_name CASE 4: ? = Y.attr + 
+		       * X.c_name = Y.attr CASE 2: X.c_name + Y.attr = ? CASE 3: Y.attr = X.c_name CASE 4: ? = Y.attr +
 		       * X.c_name */
 
 		      spec1_cnt = pt_length_of_list (info1.s_point_list);
@@ -1681,21 +1690,13 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
       temp = pt_get_end_path_node (arg1);
 
       if (node->node_type == PT_SELECT)
-	{			/* query with WHERE condition */
-	  node->info.query.q.select.list = pt_lambda_with_arg (parser, node->info.query.q.select.list, arg1, arg2, (temp->info.name.location > 0 ? true : false), 1	/* type: 
-																					 * check 
-																					 * normal 
-																					 * func 
-																					 * data_type 
-																					 */ ,
+	{
+	  /* query with WHERE condition */
+	  node->info.query.q.select.list = pt_lambda_with_arg (parser, node->info.query.q.select.list, arg1, arg2,
+							       (temp->info.name.location > 0 ? true : false), 1,
 							       true /* dont_replace */ );
 	}
-      *wherep = pt_lambda_with_arg (parser, *wherep, arg1, arg2, (temp->info.name.location > 0 ? true : false), 1	/* type: 
-															 * check 
-															 * normal 
-															 * func 
-															 * data_type 
-															 */ ,
+      *wherep = pt_lambda_with_arg (parser, *wherep, arg1, arg2, (temp->info.name.location > 0 ? true : false), 1,
 				    false /* dont_replace: DEFAULT */ );
 
       /* Leave "wherep" pointing at the begining of the rest of the predicate. We still gurantee loop termination
@@ -1898,7 +1899,7 @@ qo_reduce_order_by (PARSER_CONTEXT * parser, PT_NODE * node)
 
       r = order->info.sort_spec.expr;
 
-      /* 
+      /*
        * safe guard: check for integer value. */
       if (r->node_type != PT_VALUE)
 	{
@@ -1915,7 +1916,7 @@ qo_reduce_order_by (PARSER_CONTEXT * parser, PT_NODE * node)
 	  col = col->next;
 	}
 
-      /* 
+      /*
        * safe guard: invalid parse tree */
       if (col == NULL)
 	{
@@ -3680,7 +3681,7 @@ qo_rewrite_like_terms (PARSER_CONTEXT * parser, PT_NODE ** cnf_list)
 	      /* The LIKE predicate in CNF is not chained in an OR list, so we can easily split it into several
 	       * predicates chained with AND. Supporting the case: col LIKE expr1 OR predicate would make it difficult
 	       * to rewrite the query because we need to preserve the CNF. */
-	      /* TODO We should check that the column is indexed. Otherwise it might not be worth the effort to do this 
+	      /* TODO We should check that the column is indexed. Otherwise it might not be worth the effort to do this
 	       * rewrite. */
 	      if (pt_is_pseudo_const (pattern)
 		  && (escape == NULL || PT_IS_NULL_NODE (escape) || pt_is_pseudo_const (escape)))
@@ -4180,7 +4181,7 @@ qo_compare_dbvalue_with_optype (DB_VALUE * val1, PT_OP_TYPE op1, DB_VALUE * val2
 
 /*
  * qo_range_optype_rank () -
- *   return: 
+ *   return:
  *   op(in):
  * description:
  *   a, x = 1
@@ -4566,7 +4567,7 @@ qo_merge_range_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 	  if (r_op == 0)
 	    {
 	      /* We determined that this range is always false. If we successfully merged all ranges in this DNF and
-	       * the final result is false, we can return false. If we haven't reached the end yet or we found disjoint 
+	       * the final result is false, we can return false. If we haven't reached the end yet or we found disjoint
 	       * ranges along the way, we need to remove this node from the DNF. */
 	      if (prev == NULL && range->or_next == NULL)
 		{
@@ -4694,7 +4695,7 @@ qo_convert_to_range (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 	      if (dnf_node->info.expr.op == PT_IS_IN && PT_IS_SET_TYPE (dnf_node->info.expr.arg2)
 		  && dnf_node->or_next == NULL)
 		{
-		  /* 
+		  /*
 		   * skip merge in list
 		   * server will eliminate duplicate keys
 		   * this is because merging huge in list takes
@@ -6557,7 +6558,7 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
     case PT_SELECT:
       /* HQ sub-query might be optimized twice in UPDATE statement because UPDATE statement internally creates SELECT
        * statement to get targets to update. We should check whether it was already single-table-optimized. Here is an
-       * example: CREATE TABLE t(p INT, c INT, x INT); INSERT INTO t VALUES(1, 11, 0), (1, 12, 0), (2, 21, 0); UPDATE t 
+       * example: CREATE TABLE t(p INT, c INT, x INT); INSERT INTO t VALUES(1, 11, 0), (1, 12, 0), (2, 21, 0); UPDATE t
        * SET x=0 WHERE c IN (SELECT c FROM t START WITH p=1 CONNECT BY PRIOR c=p); */
       if (node->info.query.q.select.connect_by != NULL && !PT_IS_VALUE_NODE (node->info.query.q.select.where)
 	  && !node->info.query.q.select.after_cb_filter && !node->info.query.q.select.single_table_opt)
@@ -6583,7 +6584,7 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 	}
 
       /* Put all join conditions together with WHERE clause for rewrite optimization. But we can distinguish a join
-       * condition from each other and from WHERE clause by location information that were marked at 'pt_bind_names()'. 
+       * condition from each other and from WHERE clause by location information that were marked at 'pt_bind_names()'.
        * We'll recover the parse tree of join conditions using the location information in shortly. */
       qo_move_on_clause_of_explicit_join_to_where_clause (parser, &node->info.query.q.select.from,
 							  &node->info.query.q.select.where);
@@ -6654,8 +6655,8 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
       node->info.query.q.union_.arg1 = qo_rewrite_hidden_col_as_derived (parser, node->info.query.q.union_.arg1, NULL);
       node->info.query.q.union_.arg2 = qo_rewrite_hidden_col_as_derived (parser, node->info.query.q.union_.arg2, NULL);
 
-      /* If LIMIT clause is specified without ORDER BY clause, we will rewrite the UNION query as derived. For example, 
-       * (SELECT ...) UNION (SELECT ...) LIMIT 10 will be rewritten to: SELECT * FROM ((SELECT ...) UNION (SELECT ...)) 
+      /* If LIMIT clause is specified without ORDER BY clause, we will rewrite the UNION query as derived. For example,
+       * (SELECT ...) UNION (SELECT ...) LIMIT 10 will be rewritten to: SELECT * FROM ((SELECT ...) UNION (SELECT ...))
        * T WHERE INST_NUM() <= 10 */
       if (node->info.query.limit && node->info.query.rewrite_limit)
 	{
@@ -6871,7 +6872,7 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 		    }
 		}
 
-	      /* Not found aggregate function in cnf node and no ROLLUP clause. So, move it from HAVING clause to WHERE 
+	      /* Not found aggregate function in cnf node and no ROLLUP clause. So, move it from HAVING clause to WHERE
 	       * clause. */
 	      if (can_move && !node->info.query.q.select.group_by->with_rollup)
 		{
@@ -6907,7 +6908,7 @@ qo_optimize_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 	}
 
       /* we don't reduce equality terms for startwith and connectby. This optimization for every A after a statement
-       * like A = 5, replaced the column with the scalar 5. If the column is in an ORDER BY clause, the sorting may not 
+       * like A = 5, replaced the column with the scalar 5. If the column is in an ORDER BY clause, the sorting may not
        * occur on column A because it's always 5. This behavior is incorrect when running a hierarchical query because
        * there may be a A = 5 in the START WITH part or CONNECT BY part but the ORDER BY on A should sort all elements
        * from all levels, column A being different. */

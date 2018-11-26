@@ -31,7 +31,6 @@
 #include <stdarg.h>
 #include "system.h"
 #include "dbtype_def.h"
-#include "dbdef.h"
 #include "parse_tree.h"
 
 #if defined (SERVER_MODE)
@@ -650,4 +649,8 @@ extern "C"
 }
 #endif
 
-#endif				/* _PARSER_H_ */
+#if defined __cplusplus
+extern void pt_move_node (REFPTR (PT_NODE, destp), REFPTR (PT_NODE, srcp));
+#endif // c++
+
+#endif /* _PARSER_H_ */

@@ -44,7 +44,6 @@
 #include "error_manager.h"
 #include "memory_alloc.h"
 #include "dbtype.h"
-#include "dbdef.h"
 #include "parser.h"
 #include "object_domain.h"
 #include "db.h"
@@ -364,7 +363,7 @@ jsp_call_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       (*next_value_list)->next = (DB_ARG_LIST *) 0;
 
-      /* 
+      /*
        * Don't clone host vars; they may actually be acting as output variables (e.g., a character array that is
        * intended to receive bytes from the method), and cloning will ensure that the results never make it to the
        * expected area.  Since pt_evaluate_tree() always clones its db_values we must not use pt_evaluate_tree() to

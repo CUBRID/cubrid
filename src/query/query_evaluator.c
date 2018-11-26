@@ -151,7 +151,7 @@ eval_value_rel_cmp (DB_VALUE * dbval1, DB_VALUE * dbval2, REL_OP rel_operator, C
   DB_TYPE vtype1, vtype2;
   TP_DOMAIN *dom;
 
-  /* 
+  /*
    * we get here for either an ordinal comparison or a set comparison.
    * Set comparisons are R_SUBSET, R_SUBSETEQ, R_SUPERSET, R_SUPSERSETEQ.
    * All others are ordinal comparisons.
@@ -400,7 +400,7 @@ eval_all_eval (DB_VALUE * item, DB_SET * set, REL_OP rel_operator)
 {
   DB_LOGICAL some_res;
 
-  /* 
+  /*
    * use the some quantifier first on a negated relational operator
    * then find the result boolean value for the all quantifier
    */
@@ -1536,7 +1536,7 @@ eval_set_list_cmp (THREAD_ENTRY * thread_p, COMP_EVAL_TERM * et_comp, VAL_DESCR 
 	  return V_ERROR;
 	}
 
-      /* 
+      /*
        * lhs value refers to a list file. for efficiency reasons
        * first sort the list file
        */
@@ -1564,7 +1564,7 @@ eval_set_list_cmp (THREAD_ENTRY * thread_p, COMP_EVAL_TERM * et_comp, VAL_DESCR 
 	      return V_ERROR;
 	    }
 
-	  /* 
+	  /*
 	   * rhs value refers to a list file. for efficiency reasons
 	   * first sort the list file
 	   */
@@ -1601,7 +1601,7 @@ eval_set_list_cmp (THREAD_ENTRY * thread_p, COMP_EVAL_TERM * et_comp, VAL_DESCR 
 	  return V_ERROR;
 	}
 
-      /* 
+      /*
        * rhs value refers to a list file. for efficiency reasons
        * first sort the list file
        */
@@ -1800,7 +1800,7 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * obj_oi
       switch (pr->pe.eval_term.et_type)
 	{
 	case T_COMP_EVAL_TERM:
-	  /* 
+	  /*
 	   * compound evaluation terms are used to test relationships
 	   * such as equality, greater than etc. between two items
 	   * Each datatype defines its own meaning of relationship
@@ -1861,7 +1861,7 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * obj_oi
 	      break;
 	    }
 
-	  /* 
+	  /*
 	   * fetch left hand size and right hand size values, if one of
 	   * values are unbound, result = V_UNKNOWN
 	   */
@@ -1905,7 +1905,7 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * obj_oi
 	    }
 	  else
 	    {
-	      /* 
+	      /*
 	       * general case: compare values, db_value_compare will
 	       * take care of any coercion necessary.
 	       */
@@ -1920,7 +1920,7 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * obj_oi
 
 	    et_alsm = &pr->pe.eval_term.et.et_alsm;
 
-	    /* 
+	    /*
 	     * Note: According to ANSI, if the set or list file is empty,
 	     * the result of comparison is true/false for ALL/SOME,
 	     * regardless of whether lhs value is bound or not.
@@ -2104,7 +2104,7 @@ eval_pred_comp0 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * 
 
   et_comp = &pr->pe.eval_term.et.et_comp;
 
-  /* 
+  /*
    * fetch left hand size and right hand size values, if one of
    * values are unbound, return V_UNKNOWN
    */
@@ -2126,7 +2126,7 @@ eval_pred_comp0 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * 
       return V_UNKNOWN;
     }
 
-  /* 
+  /*
    * general case: compare values, db_value_compare will
    * take care of any coercion necessary.
    */
@@ -2249,7 +2249,7 @@ eval_pred_comp3 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * 
 
   et_comp = &pr->pe.eval_term.et.et_comp;
 
-  /* 
+  /*
    * fetch left hand size and right hand size values, if one of
    * values are unbound, result = V_UNKNOWN
    */
@@ -2307,7 +2307,7 @@ eval_pred_alsm4 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * 
 
   et_alsm = &pr->pe.eval_term.et.et_alsm;
 
-  /* 
+  /*
    * Note: According to ANSI, if the set or list file is empty,
    *       the result of comparison is true/false for ALL/SOME,
    *       regardles of whether lhs value is bound or not.
@@ -2380,7 +2380,7 @@ eval_pred_alsm5 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * 
       return V_ERROR;
     }
 
-  /* 
+  /*
    * Note: According to ANSI, if the set or list file is empty,
    *       the result of comparison is true/false for ALL/SOME,
    *       regardless of whether lhs value is bound or not.
@@ -2555,7 +2555,7 @@ eval_fnc (THREAD_ENTRY * thread_p, PRED_EXPR * pr, DB_TYPE * single_node_type)
 	case T_COMP_EVAL_TERM:
 	  et_comp = &pr->pe.eval_term.et.et_comp;
 
-	  /* 
+	  /*
 	   * et_comp->type can be DB_TYPE_NULL,
 	   * in the case of positional variables
 	   */
@@ -2580,7 +2580,7 @@ eval_fnc (THREAD_ENTRY * thread_p, PRED_EXPR * pr, DB_TYPE * single_node_type)
 	case T_ALSM_EVAL_TERM:
 	  et_alsm = &pr->pe.eval_term.et.et_alsm;
 
-	  /* 
+	  /*
 	   * et_alsm->item_type can be DB_TYPE_NULL,
 	   * in the case of positional variables
 	   */
@@ -2605,7 +2605,7 @@ eval_fnc (THREAD_ENTRY * thread_p, PRED_EXPR * pr, DB_TYPE * single_node_type)
 }
 
 /*
- * update_logical_result () - checks DB_LOGICAL value and qualification 
+ * update_logical_result () - checks DB_LOGICAL value and qualification
  *   return: new DB_LOGICAL value and qualification (if needed)
  *   thread_p(in):
  *   ev_res(in): logical value to be checked
@@ -2768,7 +2768,7 @@ eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdesp, HEAP_SCA
 
       if (oid == NULL && recdesp == NULL && filterp->val_list)
 	{
-	  /* 
+	  /*
 	   * In the case of class attribute scan, we should fetch regu_list
 	   * before pred evaluation because eval_pred*() functions do not
 	   * know class OID so that TYPE_CLASSOID regu cannot be handled
@@ -2797,7 +2797,7 @@ eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdesp, HEAP_SCA
 
   if (ev_res == V_TRUE && scan_predp->regu_list && filterp->val_list)
     {
-      /* 
+      /*
        * fetch the values for the regu variable list of the data filter
        * from the cached attribute information
        */
@@ -2936,7 +2936,7 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, FILTER_INFO * filter
 
 	      if (j >= filterp->btree_num_attrs)
 		{
-		  /* 
+		  /*
 		   * the attribute exists in key filter scan cache, but it is
 		   * not a member of attributes consisting index key
 		   */
@@ -3001,7 +3001,7 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, FILTER_INFO * filter
 	  attrvalue->state = HEAP_WRITTEN_ATTRVALUE;
 	}
 
-      /* 
+      /*
        * evaluate the predicates of the key filter
        * using the given key value
        */

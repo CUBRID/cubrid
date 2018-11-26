@@ -43,7 +43,6 @@
 #include "misc_string.h"
 #include "memory_alloc.h"
 #include "dbtype.h"
-#include "dbdef.h"
 #include "error_manager.h"
 #include "boot_cl.h"
 #include "work_space.h"
@@ -457,7 +456,7 @@ static DB_METHOD_LINK au_static_links[] = {
   {"au_get_owner_method", (METHOD_LINK_FUNCTION) au_get_owner_method},
   {"au_check_authorization_method", (METHOD_LINK_FUNCTION) au_check_authorization_method},
 
-  /* 
+  /*
    * qo_set_cost
    *
    * This function is exported by optimizer/query_planner.c, and provides a backdoor that
@@ -597,7 +596,7 @@ au_get_set (MOP obj, const char *attname, DB_SET ** set)
 	      *set = db_get_set (&value);
 	    }
 
-	  /* 
+	  /*
 	   * since we almost ALWAYS end up iterating through the sets fetching
 	   * objects, do a vector fetch immediately to avoid
 	   * multiple server calls.
@@ -610,7 +609,7 @@ au_get_set (MOP obj, const char *attname, DB_SET ** set)
 		{
 		  error = set_filter (*set);
 		}
-	      /* 
+	      /*
 	       * shoudl be detecting the filtered elements and marking the
 	       * object dirty if possible
 	       */
@@ -909,7 +908,7 @@ au_find_user_cache_index (DB_OBJECT * user, int *index, int check_it)
     }
   else
     {
-      /* 
+      /*
        * User wasn't in the cache, add it and extend the existing class
        * caches.  First do a little sanity check just to make sure this
        * is a user object.
@@ -992,7 +991,7 @@ reset_cache_for_user_and_class (SM_CLASS * sm_class)
   for (c = Au_class_caches; c != NULL && c->class_ != sm_class; c = c->next);
   if (c != NULL)
     {
-      /* 
+      /*
        * invalide every user's cache for this class_, could be more
        * selective and do only the given user and its members
        */
@@ -1193,7 +1192,7 @@ au_find_user (const char *user_name)
     }
   intl_identifier_upper (user_name, upper_case_name);
 
-  /* 
+  /*
    * first try to find the user id by index. This is faster than
    * a query, and will not get blocked out as a server request
    * if the query processing resources are all used up at the moment.
@@ -1268,7 +1267,7 @@ exit:
 }
 
 /*
- * au_find_user_to_drop - Find a user object by name for dropping. 
+ * au_find_user_to_drop - Find a user object by name for dropping.
  *
  *   return: error code
  *   user_name(in): name
@@ -2203,7 +2202,7 @@ au_add_user (const char *name, int *exists)
 		  db_make_object (&value, user);
 		  if (Au_public_user != NULL)
 		    {
-		      /* 
+		      /*
 		       * every user is a member of the PUBLIC group,
 		       * must make sure that the exported routines can't
 		       * be used to violate this internal connection
@@ -2214,7 +2213,7 @@ au_add_user (const char *name, int *exists)
 			}
 		    }
 
-		  /* 
+		  /*
 		   * do we want to do this ?? - logically it is ok but this
 		   * means we can't have DBA members since this would
 		   * cause user hierarchy cycles.
@@ -2266,7 +2265,7 @@ au_add_user_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * name, DB_VAL
 	  db_make_error (returnval, error);
 	  return;
 	}
-      /* 
+      /*
        * although au_set_password will check this, check it out here before
        * we bother creating the user object
        */
@@ -2569,7 +2568,7 @@ au_set_password_internal (MOP user, const char *password, int encode, char encry
 	  len = strlen (password);
 	  if (len == 0)
 	    password = NULL;
-	  /* 
+	  /*
 	   * check for large passwords, only do this
 	   * if the encode flag is on !
 	   */
@@ -2626,7 +2625,7 @@ au_set_password_internal (MOP user, const char *password, int encode, char encry
 		    }
 		  else
 		    {
-		      /* 
+		      /*
 		       * always add the prefix, the unload process strips it out
 		       * so the password can be read by the csql interpreter
 		       */
@@ -3045,7 +3044,7 @@ au_add_member_internal (MOP group, MOP member, int new_user)
   db_make_object (&membervalue, member);
   db_make_object (&groupvalue, group);
 
-  /* 
+  /*
    * Skip some checks and processing for a new user/group because it
    * can't have any members yet.
    */
@@ -3391,7 +3390,7 @@ au_drop_user (MOP user)
   int g, gcard, i;
   DB_VALUE name;
   const char *class_name[] = {
-    /* 
+    /*
      * drop user command can be called only by DBA group,
      * so we can use query for _db_class directly
      */
@@ -3517,7 +3516,7 @@ au_drop_user (MOP user)
 	      error = er_errid ();
 	    }
 	}
-      /* 
+      /*
        * We need to clear the host variable here to free the set.  set_free()
        * is not sufficient since the set referenced by new_groups may have
        * be replaced as a result of tp_value_cast().
@@ -3631,7 +3630,7 @@ au_drop_user (MOP user)
 	}
     }
 
-  /* 
+  /*
    * could go through classes created by this user and change ownership
    * to the DBA ? - do this as the classes are referenced instead
    */
@@ -3907,7 +3906,7 @@ get_grants (MOP auth, DB_SET ** grant_ptr, int filter)
 
 	      if (existing == -1)
 		{
-		  /* 
+		  /*
 		   * no previous entry for the owner,
 		   * use the current one
 		   */
@@ -3920,7 +3919,7 @@ get_grants (MOP auth, DB_SET ** grant_ptr, int filter)
 		}
 	      else
 		{
-		  /* 
+		  /*
 		   * update the previous entry with the extra bits
 		   * and delete the current entry
 		   */
@@ -4035,7 +4034,7 @@ update_cache (MOP classop, SM_CLASS * sm_class, AU_CLASS_CACHE * cache)
   bool is_member = false;
   bool need_pop_er_stack = false;
 
-  /* 
+  /*
    * must disable here because we may be updating the cache of the system
    * objects and we need to read them in order to update etc.
    */
@@ -4200,7 +4199,7 @@ appropriate_error (unsigned int bits, unsigned int requested)
   unsigned int mask, atype;
   int i;
 
-  /* 
+  /*
    * Since we don't currently have a way of indicating multiple
    * authorization failures, select the first one in the
    * bit vector that causes problems.
@@ -4262,7 +4261,7 @@ appropriate_error (unsigned int bits, unsigned int requested)
 	      /* we asked for this one */
 	      if ((bits & mask) == 0)
 		{
-		  /* 
+		  /*
 		   * But it wasn't available, convert this back down to the
 		   * corresponding basic type and select an appropriate error.
 		   *
@@ -4325,7 +4324,7 @@ check_grant_option (MOP classop, SM_CLASS * sm_class, DB_AUTH type)
   unsigned int cache_bits;
   unsigned int mask;
 
-  /* 
+  /*
    * this potentially can be called during initialization when we don't
    * actually have any users yet.  If so, assume its ok
    */
@@ -4428,7 +4427,7 @@ au_grant (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
   AU_DISABLE (save);
   if (ws_is_same_object (user, Au_user))
     {
-      /* 
+      /*
        * Treat grant to self condition as a success only. Although this
        * statement is a no-op, it is not an indication of no-success.
        * The "privileges" are indeed already granted to self.
@@ -4523,13 +4522,13 @@ au_grant (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
 	      set_put_element (grants, GRANT_ENTRY_CACHE (gindex), &value);
 	      set_free (grants);
 
-	      /* 
+	      /*
 	       * clear the cache for this user/class pair to make sure we
 	       * recalculate it the next time it is referenced
 	       */
 	      reset_cache_for_user_and_class (classobj);
 
-	      /* 
+	      /*
 	       * Make sure any cached parse trees are rebuild.  This proabably
 	       * isn't necessary for GRANT, only REVOKE.
 	       */
@@ -4817,7 +4816,7 @@ propagate_revoke (AU_GRANT * grant_list, MOP owner, DB_AUTH mask)
     {
       if (!g->legal)
 	{
-	  /* 
+	  /*
 	   * lock authorization for write & mark dirty,
 	   * don't need to pin because we'll be going through the usual
 	   * set interface, this just ensures that the locks can be obtained
@@ -4845,7 +4844,7 @@ propagate_revoke (AU_GRANT * grant_list, MOP owner, DB_AUTH mask)
 		      db_make_int (&element, db_get_int (&element) & mask);
 		      error = set_put_element (grants, GRANT_ENTRY_CACHE (g->grant_index), &element);
 		    }
-		  /* 
+		  /*
 		   * if cache bits are zero, we can't remove it because
 		   * there may be other entries in the grant list that
 		   * have indexes into this set -
@@ -4857,7 +4856,7 @@ propagate_revoke (AU_GRANT * grant_list, MOP owner, DB_AUTH mask)
 	    }
 	}
 
-      /* 
+      /*
        * now go back through and remove any grant entries that have no
        * bits set
        */
@@ -5011,7 +5010,7 @@ au_revoke (MOP user, MOP class_mop, DB_AUTH type)
 		}
 	      current = db_get_int (&cache_element);
 
-	      /* 
+	      /*
 	       * If all the bits are set, assume we wan't to
 	       * revoke everything previously granted, makes it a bit
 	       * easier but muddies the semantics too much ?
@@ -5021,7 +5020,7 @@ au_revoke (MOP user, MOP class_mop, DB_AUTH type)
 		  type = (DB_AUTH) (current & AU_TYPE_MASK);
 		}
 
-	      /* 
+	      /*
 	       * this test could be more sophisticated, right now,
 	       * if there are any valid grants that fit in
 	       * the specified bit mask, the operation will proceed,
@@ -5045,7 +5044,7 @@ au_revoke (MOP user, MOP class_mop, DB_AUTH type)
 		  if ((error = propagate_revoke (grant_list, classobj->owner, (DB_AUTH) mask)) == NO_ERROR)
 		    {
 
-		      /* 
+		      /*
 		       * finally, update the local grant for the
 		       * original object
 		       */
@@ -5060,7 +5059,7 @@ au_revoke (MOP user, MOP class_mop, DB_AUTH type)
 			  /* no remaining grants, remove it from the grant set */
 			  drop_grant_entry (grants, gindex);
 			}
-		      /* 
+		      /*
 		       * clear the cache for this user/class pair
 		       * to make sure we recalculate it the next time
 		       * it is referenced
@@ -5072,7 +5071,7 @@ au_revoke (MOP user, MOP class_mop, DB_AUTH type)
 #endif /* SA_MODE */
 			error = au_delete_new_auth (Au_user, user, class_mop, type);
 
-		      /* 
+		      /*
 		       * Make sure that we don't keep any parse trees
 		       * around that rely on obsolete authorization.
 		       * This may not be necessary.
@@ -5132,7 +5131,7 @@ au_change_owner (MOP classmop, MOP owner)
       error = au_fetch_class_force (classmop, &class_, AU_FETCH_UPDATE);
       if (error == NO_ERROR)
 	{
-	  /* 
+	  /*
 	   * Change serial object's owner when the class has auto_increment
 	   * attribute column.
 	   */
@@ -5486,7 +5485,7 @@ au_get_class_owner (MOP classmop)
   SM_CLASS *class_;
 
   /* should we disable authorization here ? */
-  /* 
+  /*
    * should we allow the class owner to be known if the active user doesn't
    * have select authorization ?
    */
@@ -5753,7 +5752,7 @@ au_user_name (void)
 
   if (Au_user == NULL)
     {
-      /* 
+      /*
        * Database hasn't been started yet, return the registered name
        * if any.
        */
@@ -5764,7 +5763,7 @@ au_user_name (void)
       else
 	{
 	  name = ws_copy_string (Au_user_name);
-	  /* 
+	  /*
 	   * When this function is called before the workspace memory
 	   * manager was not initialized in the case of client
 	   * initialization(db_restart()), ws_copy_string() will return
@@ -5853,7 +5852,7 @@ check_authorization (MOP classobj, SM_CLASS * sm_class, DB_AUTH type)
   AU_CLASS_CACHE *cache;
   unsigned int bits;
 
-  /* 
+  /*
    * Callers generally check Au_disable already to avoid the function call.
    * Check it again to be safe, at this point, it isn't going to add anything.
    */
@@ -6019,7 +6018,7 @@ fetch_class (MOP op, MOP * return_mop, SM_CLASS ** return_class, AU_FETCHMODE fe
 	  class_ = (SM_CLASS *) locator_fetch_class_of_instance (op, &classmop, DB_FETCH_WRITE);
 	  if (class_ != NULL)
 	    {
-	      /* 
+	      /*
 	       * all this appreciably does is set the dirty flag in the MOP
 	       * should have the "dirty after getting write lock" operation
 	       * separated
@@ -6032,7 +6031,7 @@ fetch_class (MOP op, MOP * return_mop, SM_CLASS ** return_class, AU_FETCHMODE fe
 
   /* I've seen cases where locator_fetch has an error but doesn't return NULL ?? */
   /* this is debug only, take out in production */
-  /* 
+  /*
    * if (class_ != NULL && Db_error != NO_ERROR)
    * au_log(Db_error, "Inconsistent error handling ?");
    */
@@ -6043,7 +6042,7 @@ fetch_class (MOP op, MOP * return_mop, SM_CLASS ** return_class, AU_FETCHMODE fe
       error = er_errid ();
       /* !!! do we need to mask the error here ? */
 
-      /* 
+      /*
        * if the object was deleted, set the workspace bit so we can avoid this
        * in the future
        */
@@ -6174,7 +6173,7 @@ au_fetch_class (MOP op, SM_CLASS ** class_ptr, AU_FETCHMODE fetchmode, DB_AUTH t
 }
 
 /*
- * au_fetch_class_by_classmop - This is the primary function 
+ * au_fetch_class_by_classmop - This is the primary function
  *                  for accessing a class by an instance mop.
  *   return: error code
  *   op(in): class or instance
@@ -6190,7 +6189,7 @@ au_fetch_class_by_instancemop (MOP op, SM_CLASS ** class_ptr, AU_FETCHMODE fetch
 }
 
 /*
- * au_fetch_class_by_classmop - This is the primary function 
+ * au_fetch_class_by_classmop - This is the primary function
  *                  for accessing a class by a class mop.
  *   return: error code
  *   op(in): class or instance
@@ -6246,7 +6245,7 @@ au_check_authorization (MOP op, DB_AUTH auth)
   SM_CLASS *class_;
   int save;
 
-  /* 
+  /*
    * It seems to be simplest to just override the Au_disable
    * flag and call au_fetch_class normally.  If this turns
    * out to be a problem, will have to duplicate some of
@@ -6355,7 +6354,7 @@ fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE fetchmode, LC_FETCH_VERSION
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
 
-      /* 
+      /*
        * if the object was deleted, set the workspace bit so we can avoid this
        * in the future
        */
@@ -6420,7 +6419,7 @@ au_fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE mode, LC_FETCH_VERSION_T
   error = fetch_class (op, &classmop, &class_, AU_FETCH_READ, BY_INSTANCE_MOP);
   if (error != NO_ERROR)
     {
-      /* 
+      /*
        * the class was deleted, make sure the instance MOP also gets
        * the deleted bit set so the upper levels can depend on this
        * behavior
@@ -6448,7 +6447,7 @@ au_fetch_instance (MOP op, MOBJ * obj_ptr, AU_FETCHMODE mode, LC_FETCH_VERSION_T
  *   op(in): instance MOP
  *   obj_ptr(out): returned instance memory pointer
  *   fetchmode(in): access type
- *   fetch_version_type(in): fetch version type 
+ *   fetch_version_type(in): fetch version type
  */
 int
 au_fetch_instance_force (MOP op, MOBJ * obj_ptr, AU_FETCHMODE fetchmode, LC_FETCH_VERSION_TYPE fetch_version_type)
@@ -6490,12 +6489,12 @@ au_set_user (MOP newuser)
 	  Au_user = newuser;
 	  Au_cache_index = index;
 
-	  /* 
+	  /*
 	   * it is important that we don't call sm_bump_local_schema_version() here
 	   * because this function is called during the compilation of vclasses
 	   */
 
-	  /* 
+	  /*
 	   * Entry-level SQL specifies that the schema name is the same as
 	   * the current user authorization name.  In any case, this is
 	   * the place to set the current schema since the user just changed.
@@ -6567,7 +6566,7 @@ au_perform_login (const char *name, const char *password, bool ignore_dba_privil
 	    }
 	  else
 	    {
-	      /* 
+	      /*
 	       * hack, allow password checking to be turned off in certain
 	       * cases, like the utility programs that will always run in DBA
 	       * mode but don't want to have to enter a password, also
@@ -6610,7 +6609,7 @@ au_perform_login (const char *name, const char *password, bool ignore_dba_privil
 		    }
 		  else
 		    {
-		      /* 
+		      /*
 		       * the password in the user object is effectively NULL,
 		       * only accept the login if the user supplied an empty
 		       * password.
@@ -6661,7 +6660,7 @@ au_login (const char *name, const char *password, bool ignore_dba_privilege)
   int error = NO_ERROR;
   int save;
 
-  /* 
+  /*
    * because the database can be left open after authorization failure,
    * checking Au_root for NULL isn't a reliable way to see of the database
    * is in an "un-restarted" state.  Instead, look at BOOT_IS_CLIENT_RESTARTED
@@ -6670,7 +6669,7 @@ au_login (const char *name, const char *password, bool ignore_dba_privilege)
    */
   if (Au_root == NULL || !BOOT_IS_CLIENT_RESTARTED ())
     {
-      /* 
+      /*
        * Save the name & password for later.  Allow the name to be NULL
        * and leave it unmodified.
        */
@@ -6781,13 +6780,13 @@ au_start (void)
   MOPLIST mops;
   MOP class_mop;
 
-  /* 
+  /*
    * NEED TO MAKE SURE THIS IS 1 IF THE SERVER CRASHED BECAUSE WE'RE
    * GOING TO CALL db_ FUNCTIONS
    */
   db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
 
-  /* 
+  /*
    * It is important not to enable authorization until after the
    * login is finished, otherwise the system will stop when it tries
    * to validate the user when accessing the authorization objects.
@@ -6862,7 +6861,7 @@ au_start (void)
 	}
       else
 	{
-	  /* 
+	  /*
 	   * If you try to start the authorization system and
 	   * there is no user logged in, you will automatically be logged in
 	   * as "PUBLIC".  Optionally, we could get a name from the
@@ -7000,7 +6999,7 @@ au_export_users (FILE * outfp)
 		{
 		  if (!DB_IS_NULL (&value) && IS_STRING (&value))
 		    {
-		      /* 
+		      /*
 		       * copy password string using malloc
 		       * to be consistent with encrypt_password
 		       */
@@ -7230,7 +7229,7 @@ make_class_user (MOP user_obj)
       u->obj = user_obj;
       u->grants = NULL;
 
-      /* 
+      /*
        * This authorization of this user class structure would normally
        * be filled in by examining authorizations granted by other users.
        * The DBA user is special in that it should have full authorization
@@ -7355,7 +7354,7 @@ add_class_grant (CLASS_AUTH * auth, MOP source, MOP user, int cache)
     }
   else
     {
-      /* 
+      /*
        * this shouldn't happen, multiple grants from source should already have
        * been combined
        */
@@ -7582,7 +7581,7 @@ class_grant_loop (CLASS_AUTH * auth, FILE * outfp)
 		{
 		  /* combine auth type & grant option bit */
 		  authbits = mask | (grant->cache & (mask << AU_GRANT_SHIFT));
-		  /* 
+		  /*
 		   * if the user has these same bits available,
 		   * issue the grant
 		   */
@@ -7616,7 +7615,7 @@ class_grant_loop (CLASS_AUTH * auth, FILE * outfp)
 	      prev_grant = grant;
 	    }
 	}
-      /* 
+      /*
        * could remove user from the list but can't free it because
        * structure may be referenced by a grant inside another user
        */
@@ -7662,7 +7661,7 @@ au_export_grants (FILE * outfp, MOP class_mop)
 	    {
 	      uname = au_get_user_name (u->obj);
 
-	      /* 
+	      /*
 	       * should this be setting an error condition ?
 	       * for now, leave a comment in the output file
 	       */
@@ -7918,7 +7917,7 @@ au_dump_user (MOP user, FILE * fp)
       au_print_auth (auth, fp);
     }
 
-  /* 
+  /*
    * need to do a walk back through the group hierarchy and collect all
    * inherited grants and their origins
    */
@@ -8167,7 +8166,7 @@ au_describe_root_method (MOP class_mop, DB_VALUE * returnval, DB_VALUE * info)
     }
   else
     {
-      /* 
+      /*
        * temporary, pass this through for older databases that still
        * have the "info" method pointing to this function
        */
@@ -8206,7 +8205,7 @@ au_install (void)
 
   AU_DISABLE (save);
 
-  /* 
+  /*
    * create the system authorization objects, add attributes later since they
    * have domain dependencies
    */
@@ -8227,13 +8226,13 @@ au_install (void)
   sm_mark_system_class (auth, 1);
   sm_mark_system_class (old, 1);
 
-  /* 
+  /*
    * db_root
    */
 
-  /* 
+  /*
    * Authorization root, might not need this if we restrict the generation of
-   * user and  group objects but could be useful in other ways. 
+   * user and  group objects but could be useful in other ways.
    */
   def = smt_edit_class_mop (root, AU_ALTER);
   if (def == NULL)
@@ -8265,11 +8264,11 @@ au_install (void)
       goto exit_on_error;
     }
 
-  /* 
+  /*
    * db_authorizations
    */
 
-  /* 
+  /*
    * temporary support for the old name, need to migrate
    * users over to db_root
    */
@@ -8295,7 +8294,7 @@ au_install (void)
       goto exit_on_error;
     }
 
-  /* 
+  /*
    * db_user
    */
 
@@ -8341,7 +8340,7 @@ au_install (void)
       }
   }
 
-  /* 
+  /*
    * db_password
    */
 
@@ -8357,11 +8356,11 @@ au_install (void)
       goto exit_on_error;
     }
 
-  /* 
+  /*
    * db_authorization
    */
 
-  /* 
+  /*
    * Authorization object, the grant set could go directly in the user object
    * but it might be better to keep it separate in order to use the special
    * read-once lock for the authorization object only.
@@ -8418,7 +8417,7 @@ au_install (void)
       goto exit_on_error;
     }
 
-  /* 
+  /*
    * grant browser access to the authorization objects
    * note that the password class cannot be read by anyone except the DBA
    */
@@ -8520,7 +8519,7 @@ au_final (void)
   Au_dba_user = NULL;
   Au_disable = 1;
 
-  /* 
+  /*
    * could remove the static links here but it isn't necessary and
    * we may need them again the next time we restart
    */

@@ -324,7 +324,7 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry
 
       if (i == 0)
 	{
-	  /* optimization: The second try uses the current max query_id as hint. 
+	  /* optimization: The second try uses the current max query_id as hint.
 	   * This may help us to quickly locate an available id.
 	   */
 	  assert (hint_query_id != 0);
@@ -484,7 +484,7 @@ qmgr_get_query_entry (THREAD_ENTRY * thread_p, QUERY_ID query_id, int tran_index
   QMGR_QUERY_ENTRY *query_p = NULL;
   QMGR_TRAN_ENTRY *tran_entry_p;
 
-  /* 
+  /*
    * The code for finding the query_entry pointer is in-lined in
    * xqmgr_end_query and qmgr_is_query_interrupted to avoid calling this function.
    */
@@ -924,7 +924,7 @@ qmgr_finalize (THREAD_ENTRY * thread_p)
  *
  * Note: Store the given XASL stream into the XASL file and return its file id.
  * The XASL file is a temporay file, ..
- * If NULL is given as the input argument xasl_stream, this function will look up the XASL cache, 
+ * If NULL is given as the input argument xasl_stream, this function will look up the XASL cache,
  * and return the cached XASL file id if found. If not found, NULL will be returned.
  */
 int
@@ -939,11 +939,11 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context, XASL_ST
   int *class_locks = NULL;
   int dbval_cnt;
   int error_code = NO_ERROR;
-  bool recompile_due_to_threshold = false;
+  xasl_cache_rt_check_result recompile_due_to_threshold = XASL_CACHE_RECOMPILE_NOT_NEEDED;
 
   /* If xasl_stream is NULL, it means that the client requested looking up the XASL cache to know there's a reusable
    * execution plan (XASL) for this query. The XASL is stored as a file so that the XASL file id (XASL_ID) will be
-   * returned if found in the cache. 
+   * returned if found in the cache.
    */
 
   if (stream->buffer == NULL && context->recompile_xasl)
@@ -966,8 +966,9 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context, XASL_ST
 	}
       if (cache_entry_p != NULL)
 	{
-	  if (recompile_due_to_threshold)
+	  if (recompile_due_to_threshold != XASL_CACHE_RECOMPILE_NOT_NEEDED)
 	    {
+	      assert (recompile_due_to_threshold == XASL_CACHE_RECOMPILE_PREPARE);
 	      XASL_ID_COPY (stream->xasl_id, &cache_entry_p->xasl_id);
 	      xcache_unfix (thread_p, cache_entry_p);
 	      context->recompile_xasl = true;
@@ -989,9 +990,10 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context, XASL_ST
       if (stream->buffer == NULL)
 	{
 	  /* No entry found. */
-	  if (recompile_due_to_threshold)
+	  if (recompile_due_to_threshold != XASL_CACHE_RECOMPILE_NOT_NEEDED)
 	    {
 	      /* We need to force recompile. */
+	      assert (recompile_due_to_threshold == XASL_CACHE_RECOMPILE_PREPARE);
 	      context->recompile_xasl = true;
 	    }
 	  return NO_ERROR;
@@ -1127,7 +1129,7 @@ qmgr_process_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl_tree, char *xasl_s
 	}
 
       /* Adjust XASL flag for query result cache. For the last list file(QFILE_LIST_ID) as the query result, the
-       * permanent query result file(FILE_QUERY_AREA) rather than temporary file(FILE_TEMP) will be created if and only 
+       * permanent query result file(FILE_QUERY_AREA) rather than temporary file(FILE_TEMP) will be created if and only
        * if XASL_TO_BE_CACHED flag is set. */
       if (qmgr_is_allowed_result_cache (flag))
 	{
@@ -1202,7 +1204,7 @@ exit_on_error:
  *   query_idp(out)     : query id to be used for getting results
  *   dbval_count(in)      : number of host variables
  *   dbval_p(in) : array of host variables (query input parameters)
- *   flagp(in)  : flag 
+ *   flagp(in)  : flag
  *   clt_cache_time(in) :
  *   srv_cache_time(in) :
  *   query_timeout(in) : query_timeout in millisec.
@@ -1290,7 +1292,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
     }
 
   xasl_cache_entry_p = NULL;
-  if (xcache_find_xasl_id (thread_p, xasl_id_p, &xasl_cache_entry_p, &xclone) != NO_ERROR)
+  if (xcache_find_xasl_id_for_execute (thread_p, xasl_id_p, &xasl_cache_entry_p, &xclone) != NO_ERROR)
     {
       ASSERT_ERROR ();
       return NULL;
@@ -1347,7 +1349,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
   /* If it is not inhibited from getting the cached result, inspect the list cache (query result cache) and get the
    * list file id(QFILE_LIST_ID) to be returned to the client if it is in there. The list cache will be searched with
    * the XASL cache entry of the target query that is obtained from the XASL_ID, because all results of the query with
-   * different parameters (host variables - DB_VALUES) are linked at the XASL cache entry. 
+   * different parameters (host variables - DB_VALUES) are linked at the XASL cache entry.
    */
   params.size = dbval_count;
   params.vals = dbvals_p;
@@ -1473,8 +1475,8 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
   /* everything is ok, mark that the query is completed */
   qmgr_mark_query_as_completed (query_p);
 
-  /* If it is allowed to cache the query result or if it is required to cache, put the list file id(QFILE_LIST_ID) into 
-   * the list cache. Provided are the corresponding XASL cache entry to be linked, and the parameters (host variables - 
+  /* If it is allowed to cache the query result or if it is required to cache, put the list file id(QFILE_LIST_ID) into
+   * the list cache. Provided are the corresponding XASL cache entry to be linked, and the parameters (host variables -
    * DB_VALUES). */
   if (qmgr_is_allowed_result_cache (*flag_p))
     {
@@ -1858,7 +1860,7 @@ end:
 
 exit_on_error:
 
-  /* 
+  /*
    * free the query entry when error occurs. note that the query_id should be
    * set to 0 so as to upper levels can detect the error.
    */
@@ -2451,7 +2453,7 @@ qmgr_set_dirty_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, int free_page, LO
  *   vpidp(in)  : Set to the allocated real page identifier
  *   tfile_vfidp(in)    : Query Associated with the XASL tree
  *
- * Note: A new query file page is allocated and returned. The page fetched and returned, is not locked. 
+ * Note: A new query file page is allocated and returned. The page fetched and returned, is not locked.
  * This routine is called succesively to allocate pages for the query result files (list files) or XASL tree files.
  * If an error occurs, NULL pointer is returned.
  */
@@ -2526,8 +2528,8 @@ qmgr_init_external_file_page (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args
  *   vpid(in)   : Set to the allocated virtual page identifier
  *   tmp_vfid(in)       : tempfile_vfid struct pointer
  *
- * Note: This function tries to allocate a new page from an external query file, fetchs and returns the page pointer. 
- * Since pages are not shared by different transactions, it does not lock the page on fetching. 
+ * Note: This function tries to allocate a new page from an external query file, fetchs and returns the page pointer.
+ * Since pages are not shared by different transactions, it does not lock the page on fetching.
  * If it can not allocate a new page, necessary error code is set and NULL pointer is returned.
  */
 static PAGE_PTR
@@ -2968,7 +2970,7 @@ qmgr_is_query_interrupted (THREAD_ENTRY * thread_p, QUERY_ID query_id)
   int tran_index;
   bool dummy;
 
-  /* 
+  /*
    * get query entry - This is done in-line to avoid qmgr_get_query_entry
    * from returning NULL when the query is being interrupted
    */
@@ -3308,7 +3310,7 @@ qmgr_set_query_exec_info_to_tdes (int tran_index, int query_timeout, const XASL_
 	}
       else
 	{
-	  /* 
+	  /*
 	   * query_timeout == -1
 	   * This means that the query is not the first of a bundle of queries.
 	   * We will apply a timeout to the bundle, not each query.

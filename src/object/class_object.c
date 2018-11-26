@@ -578,7 +578,7 @@ classobj_copy_props (DB_SEQ * properties, MOP filter_class, DB_SEQ ** new_proper
 
       /* Remove all constraints from the property list.  We'll add the locally defined ones bellow.  We can't just
        * start with an empty property list since there might be other properties on it (such as proxy information).
-       * 
+       *
        * We don't know (or care) if the properties already exist so just ignore the return value.  */
       (void) classobj_drop_prop (*new_properties, SM_PROPERTY_UNIQUE);
       (void) classobj_drop_prop (*new_properties, SM_PROPERTY_INDEX);
@@ -992,7 +992,7 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
   db_make_null (&pvalue);
   db_make_null (&value);
 
-  /* 
+  /*
    *  If the property pointer is NULL, create an empty property sequence
    */
   if (*properties == NULL)
@@ -1006,7 +1006,7 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
       is_new_created = true;
     }
 
-  /* 
+  /*
    *  Get a copy of the existing UNIQUE property value.  If one
    *  doesn't exist, create a new one.
    */
@@ -1214,6 +1214,13 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
     }
 
   /* add index status. */
+  /*  If the index_status is set to SM_ONLINE_INDEX_BUILDING_DONE, we must change it to NORMAL_INDEX since
+   *  the index has finished loading and the temporary status was set to avoid some previous checks.
+   */
+  if (index_status == SM_ONLINE_INDEX_BUILDING_DONE)
+    {
+      index_status = SM_NORMAL_INDEX;
+    }
   db_make_int (&value, index_status);
   classobj_put_value_and_iterate (constraint, constraint_seq_index, value);
 
@@ -2343,7 +2350,7 @@ classobj_cache_constraint_entry (const char *name, DB_SEQ * constraint_seq, SM_C
   bool ok = true;
   bool has_function_constraint = false;
 
-  /* 
+  /*
    *  Extract the first element of the sequence which is the
    *  encoded B-tree ID
    */
@@ -2364,7 +2371,7 @@ classobj_cache_constraint_entry (const char *name, DB_SEQ * constraint_seq, SM_C
       goto finish;
     }
 
-  /* 
+  /*
    *  Assign the B-tree ID.
    *  Loop over the attribute names in the constraint and cache
    *    the constraint in those attributes.
@@ -2398,7 +2405,7 @@ classobj_cache_constraint_entry (const char *name, DB_SEQ * constraint_seq, SM_C
 		    }
 		}
 
-	      /* 
+	      /*
 	       *  Add a new constraint node to the cache list
 	       */
 	      ptr = classobj_make_constraint (name, constraint_type, &id, has_function_constraint);
@@ -2519,7 +2526,7 @@ classobj_cache_constraints (SM_CLASS * class_)
   bool ok = true;
   int num_constraint_types = NUM_CONSTRAINT_TYPES;
 
-  /* 
+  /*
    *  Clear the attribute caches
    */
   for (att = class_->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
@@ -2531,7 +2538,7 @@ classobj_cache_constraints (SM_CLASS * class_)
 	}
     }
 
-  /* 
+  /*
    *  Extract the constraint property and process
    */
   if (class_->properties == NULL)
@@ -3137,7 +3144,7 @@ classobj_make_class_constraints (DB_SET * class_props, SM_ATTRIBUTE * attributes
 
   constraints = last = NULL;
 
-  /* 
+  /*
    *  Process Index and Unique constraints
    */
   for (k = 0; k < num_constraint_types; k++)
@@ -3215,7 +3222,7 @@ classobj_make_class_constraints (DB_SET * class_props, SM_ATTRIBUTE * attributes
 		}
 	      pr_clear_value (&bvalue);
 
-	      /* Allocate an array to contain pointers to the attributes involved in this constraint. The array will be 
+	      /* Allocate an array to contain pointers to the attributes involved in this constraint. The array will be
 	       * NULL terminated. */
 	      new_->attributes = (SM_ATTRIBUTE **) db_ws_alloc (sizeof (SM_ATTRIBUTE *) * (att_cnt + 1));
 	      if (new_->attributes == NULL)
@@ -3600,7 +3607,7 @@ classobj_cache_not_null_constraints (const char *class_name, SM_ATTRIBUTE * attr
       if (att->flags & SM_ATTFLAG_NON_NULL)
 	{
 
-	  /* Construct a default name for the constraint node.  The constraint name is normally allocated from the heap 
+	  /* Construct a default name for the constraint node.  The constraint name is normally allocated from the heap
 	   * but we want it stored in the workspace so we'll construct it as usual and then copy it into the workspace
 	   * before calling classobj_make_class_constraint(). After the name is copied into the workspace it can be
 	   * deallocated from the heap.  The name will be deallocated from the workspace when the constraint node is
@@ -3703,7 +3710,7 @@ classobj_cache_class_constraints (SM_CLASS * class_)
   /* Cache the Indexes and Unique constraints found in the property list */
   error = classobj_make_class_constraints (class_->properties, class_->attributes, &(class_->constraints));
 
-  /* The NOT NULL constraints are not in the property lists but are instead contained in the SM_ATTRIBUTE structures as 
+  /* The NOT NULL constraints are not in the property lists but are instead contained in the SM_ATTRIBUTE structures as
    * flags.  Search through the attributes and cache the NOT NULL constraints found. */
   if (error == NO_ERROR)
     {
@@ -4440,7 +4447,7 @@ classobj_init_attribute (SM_ATTRIBUTE * src, SM_ATTRIBUTE * dest, int copy)
 
       if (src->constraints != NULL)
 	{
-	  /* 
+	  /*
 	   *  We used to just copy the unique BTID from the source to the
 	   *  destination.  We might want to copy the src cache to dest, or
 	   *  maybe regenerate the cache for dest since the information is
@@ -4477,7 +4484,7 @@ classobj_init_attribute (SM_ATTRIBUTE * src, SM_ATTRIBUTE * dest, int copy)
        * values, etc. */
       dest->domain = src->domain;
 
-      /* 
+      /*
        * do structure copies on the values and make sure the sources
        * get cleared
        */
@@ -6206,7 +6213,7 @@ classobj_make_template_like (const char *name, SM_CLASS * class_)
       || class_->loader_commands != NULL)
     {
       /* It does not make sense to copy the methods that were designed for another class. We could silently ignore the
-       * methods but we prefer to flag an error because CREATE LIKE will be used for MySQL type applications mostly and 
+       * methods but we prefer to flag an error because CREATE LIKE will be used for MySQL type applications mostly and
        * will not interact with CUBRID features too often. */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CANT_COPY_WITH_FEATURE, 3, name, existing_name,
 	      "CREATE CLASS ... METHOD");

@@ -69,7 +69,7 @@ xtran_server_commit (THREAD_ENTRY * thread_p, bool retain_lock)
   TRAN_STATE state;
   int tran_index;
 
-  /* 
+  /*
    * Execute some few remaining actions before the log manager is notified of
    * the commit
    */
@@ -202,7 +202,7 @@ xtran_server_start_topop (THREAD_ENTRY * thread_p, LOG_LSA * topop_lsa)
 {
   int error_code = NO_ERROR;
 
-  /* 
+  /*
    * Execute some few remaining actions before the start top nested action is
    * started by the log manager.
    */
@@ -248,7 +248,7 @@ xtran_server_end_topop (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result, LOG_LS
 
   assert (result == LOG_RESULT_TOPOP_ABORT || result == LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
 
-  /* 
+  /*
    * Execute some few remaining actions before the start top nested action is
    * started by the log manager.
    */
@@ -330,7 +330,7 @@ xtran_server_savepoint (THREAD_ENTRY * thread_p, const char *savept_name, LOG_LS
   LOG_LSA *lsa;
   int error_code = NO_ERROR;
 
-  /* 
+  /*
    * Execute some few remaining actions before the start top nested action is
    * started by the log manager.
    */

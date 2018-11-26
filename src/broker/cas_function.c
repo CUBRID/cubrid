@@ -144,6 +144,7 @@ static const char *type_str_tbl[] = {
   "DATETIMETZ",			/* CCI_U_TYPE_DATETIMETZ */
   "DATETIMELTZ",		/* CCI_U_TYPE_DATETIMELTZ */
   "TIMETZ",			/* CCI_U_TYPE_TIMETZ */
+  "JSON",			/* CCI_U_TYPE_JSON */
 };
 
 FN_RETURN
@@ -440,7 +441,7 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 #endif
 
   bind_value_index = 9;
-  /* 
+  /*
    * query timeout is transferred from a driver only if protocol version 1
    * or above.
    */
@@ -1894,7 +1895,7 @@ fn_get_query_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T
       err = db_execute_statement (session, stmt_id, &result);
       if (err < 0 && err != ER_UCI_TOO_FEW_HOST_VARS)
 	{
-	  /* We will ignore an error "too few host variables are given" to return a plan for a statement including host 
+	  /* We will ignore an error "too few host variables are given" to return a plan for a statement including host
 	   * variables. */
 	  ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
 	  NET_BUF_ERR_SET (net_buf);
@@ -2208,6 +2209,7 @@ bind_value_print (char type, void *net_value, bool slow_log)
     case CCI_U_TYPE_VARBIT:
     case CCI_U_TYPE_NUMERIC:
     case CCI_U_TYPE_ENUM:
+    case CCI_U_TYPE_JSON:
       {
 	char *str_val;
 	int val_size;

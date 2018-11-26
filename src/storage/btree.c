@@ -518,7 +518,7 @@ typedef int BTREE_ROOT_WITH_KEY_FUNCTION (THREAD_ENTRY * thread_p, BTID * btid, 
  * modify the structure of b-tree, will advance one level at each call and
  * it will ultimately stop at the leaf page were the key belongs or would
  * belong if it existed.
- * 
+ *
  * Arguments:
  * thread_p (in)       : Thread entry.
  * btid_int (int)      : B-tree info.
@@ -530,7 +530,7 @@ typedef int BTREE_ROOT_WITH_KEY_FUNCTION (THREAD_ENTRY * thread_p, BTID * btid, 
  * restart (out)       : Output true when advancing in b-tree must be
  *			 restarted starting with root.
  * other_args (in/out) : Function specific arguments.
- * 
+ *
  * List of functions:
  * btree_advance_and_find_key.
  * btree_split_node_and_advance.
@@ -705,7 +705,7 @@ struct btree_insert_helper
 
   bool is_first_try;		/* True if this is first attempt to fix root page. B-tree information is loaded only
 				 * first time. */
-  bool need_update_max_key_len;	/* Set to true when a node max key length must be updated. All children nodes will also 
+  bool need_update_max_key_len;	/* Set to true when a node max key length must be updated. All children nodes will also
 				 * update max key length. */
   bool is_crt_node_write_latched;	/* Set to true when a node is latched exclusively. Then promotion will not be
 					 * required. */
@@ -1773,11 +1773,14 @@ static int btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT
 					       PAGE_PTR * leaf_page, BTREE_SEARCH_KEY_HELPER * search_key,
 					       bool * restart, void *other_args);
 
-static void btree_insert_helper_to_delete_helper (BTREE_INSERT_HELPER * insert_helper,
-						  BTREE_DELETE_HELPER * delete_helper);
-static void btree_delete_helper_to_insert_helper (BTREE_DELETE_HELPER * delete_helper,
-						  BTREE_INSERT_HELPER * insert_helper);
+static inline void btree_insert_helper_to_delete_helper (BTREE_INSERT_HELPER * insert_helper,
+							 BTREE_DELETE_HELPER * delete_helper);
+static inline void btree_delete_helper_to_insert_helper (BTREE_DELETE_HELPER * delete_helper,
+							 BTREE_INSERT_HELPER * insert_helper);
 
+static inline bool btree_is_online_index_loading (BTREE_OP_PURPOSE purpose);
+static bool btree_is_single_object_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE_NODE_TYPE node_type,
+					RECDES * record, int offset_after_key);
 
 /*
  * btree_fix_root_with_info () - Fix b-tree root page and output its VPID, header and b-tree info if requested.
@@ -1921,8 +1924,22 @@ btree_clear_key_value (bool * clear_flag, DB_VALUE * key_value)
       pr_clear_value (key_value);
       *clear_flag = false;
     }
-
+  // also set null
+  db_make_null (key_value);
   return *clear_flag;
+}
+
+/*
+ * btree_init_temp_key_value () -
+ *   return: void
+ *   clear_flag (in/out):
+ *   key_value (in/out):
+ */
+void
+btree_init_temp_key_value (bool * clear_flag, DB_VALUE * key_value)
+{
+  db_make_null (key_value);
+  *clear_flag = false;
 }
 
 /*
@@ -2522,7 +2539,7 @@ error:
  * leaf_record (in)	 : Leaf record descriptor.
  * offset_after_key (in) : Offset to where packed key is ended.
  * leaf_info (in)	 : Leaf record information (VPID of first overflow).
- * max_visible_oids (in) : Non-null value if there is limit of objects to count. 
+ * max_visible_oids (in) : Non-null value if there is limit of objects to count.
  * 			   If limit is reached, counting is stopped and current count is returned.
  * mvcc_snapshot (in)	 : Snapshot for visibility test.
  * num_visible(out)      : Number of visible items.
@@ -4240,6 +4257,7 @@ btree_read_record (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pgptr, REC
 	  LEAF_REC leaf_pnt;
 	  int dummy_offset;
 
+	  btree_init_temp_key_value (&lf_clear_key, &lf_key);
 	  (void) spage_get_record (thread_p, pgptr, 1, &peek_rec, PEEK);
 	  error = btree_read_record_without_decompression (thread_p, btid, &peek_rec, &lf_key, &leaf_pnt,
 							   BTREE_LEAF_NODE, &lf_clear_key, &dummy_offset,
@@ -4302,7 +4320,7 @@ btree_read_record_without_decompression (THREAD_ENTRY * thread_p, BTID_INT * bti
 
   if (key != NULL)
     {
-      db_make_null (key);
+      btree_clear_key_value (clear_key, key);
     }
 
   *clear_key = false;
@@ -4320,7 +4338,7 @@ btree_read_record_without_decompression (THREAD_ENTRY * thread_p, BTID_INT * bti
 
   or_init (&buf, rec->data, rec->length);
 
-  /* 
+  /*
    * Find the beginning position of the key within the record and read
    * the key length.
    */
@@ -4417,7 +4435,7 @@ btree_read_record_without_decompression (THREAD_ENTRY * thread_p, BTID_INT * bti
       copy_key_buf = NULL;
       copy_key_buf_len = 0;
 
-      /* 
+      /*
        * When we read the key, must copy in two cases:
        *   1) we are told to via the copy_key flag, or 2) it is a set.
        */
@@ -4642,10 +4660,7 @@ static void
 btree_dump_leaf_record (THREAD_ENTRY * thread_p, FILE * fp, BTID_INT * btid, RECDES * rec, int depth)
 {
   OR_BUF buf;
-  LEAF_REC leaf_record = {
-    {
-     NULL_PAGEID, NULL_VOLID}, 0
-  };
+  LEAF_REC leaf_record = { {NULL_PAGEID, NULL_VOLID}, 0 };
   int i, k, oid_cnt;
   OID class_oid;
   OID oid;
@@ -4657,6 +4672,8 @@ btree_dump_leaf_record (THREAD_ENTRY * thread_p, FILE * fp, BTID_INT * btid, REC
   MVCCID mvccid;
   int error;
   BTREE_MVCC_INFO mvcc_info;
+
+  btree_init_temp_key_value (&clear_key, &key);
 
   if (BTREE_IS_UNIQUE (btid->unique_pk))
     {
@@ -4909,6 +4926,8 @@ btree_dump_non_leaf_record (THREAD_ENTRY * thread_p, FILE * fp, BTID_INT * btid,
 
   VPID_SET_NULL (&(non_leaf_record.pnt));
 
+  btree_init_temp_key_value (&clear_key, &key);
+
   /* output the non_leaf record structure content */
   error =
     btree_read_record_without_decompression (thread_p, btid, rec, &key, &non_leaf_record, BTREE_NON_LEAF_NODE,
@@ -4997,7 +5016,7 @@ btree_initialize_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args)
  *   slot_id(out): Set to the record number that contains the key
  *   child_vpid(out): Set to the child page identifier to be followed, or NULL_PAGEID
  *
- * Note: Binary search the page to locate the record that contains the child page pointer to be followed to locate 
+ * Note: Binary search the page to locate the record that contains the child page pointer to be followed to locate
  *       the key, and return the page identifier for this child page.
  */
 static int
@@ -5018,6 +5037,8 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pa
   /* initialize child page identifier */
   VPID_SET_NULL (child_vpid);
 
+  btree_init_temp_key_value (&clear_key, &temp_key);
+
 #if !defined(NDEBUG)
   if (!page_ptr || !key || DB_IS_NULL (key))
     {
@@ -5037,7 +5058,7 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pa
 
   if (key_cnt == 1)
     {
-      /* 
+      /*
        * node has dummy neg-inf keys, but a child page pointer
        * So, follow this pointer
        */
@@ -5188,11 +5209,11 @@ btree_leaf_is_key_between_min_max (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
       return NO_ERROR;
     }
 
-  /* 
+  /*
    * Compare with first key in page.
    */
   /* Read record and get key. */
-  db_make_null (&border_key);
+  btree_init_temp_key_value (&clear_key, &border_key);
 
   if (spage_get_record (thread_p, leaf, 1, &border_record, PEEK) != S_SUCCESS)
     {
@@ -5243,7 +5264,7 @@ btree_leaf_is_key_between_min_max (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
       return NO_ERROR;
     }
 
-  /* 
+  /*
    * Compare with last key in page.
    */
   /* Read record and get key. */
@@ -5303,7 +5324,7 @@ btree_leaf_is_key_between_min_max (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
  *			- BTREE_KEY_NOTFOUND (unknown compare result).
  *			- BTREE_KEY_SMALLER (smaller than any key in page, slotid = 0).
  *			- BTREE_KEY_BIGGER (bigger than any key in page, slotid = key_cnt + 1).
- *			- BTREE_KEY_BETWEEN (key is not found, but it would belong to this page if it existed. 
+ *			- BTREE_KEY_BETWEEN (key is not found, but it would belong to this page if it existed.
  *			    slotid of next bigger key, where the searched key should be inserted).
  *
  * Note: Binary search the page to find the location of the key.
@@ -5336,6 +5357,8 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
   assert (key != NULL && !DB_IS_NULL (key));
   assert (page_ptr != NULL);
   assert (search_key != NULL);
+
+  btree_init_temp_key_value (&clear_key, &temp_key);
 
   /* Initialize search results. */
   search_key->result = BTREE_KEY_NOTFOUND;
@@ -5378,7 +5401,7 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
     }
 #endif /* !NDEBUG */
 
-  /* 
+  /*
    * binary search the node to find if the key exists and in which record it
    * exists, or if it doesn't exist , the in which record it should have been
    * located to preserve the order of keys
@@ -5644,7 +5667,7 @@ error:
  *   return: NO_ERROR
  *   btid(in): B+tree index identifier
  *
- * Note: Removes the B+tree index. All pages associated with the index are removed. After the routine is called, 
+ * Note: Removes the B+tree index. All pages associated with the index are removed. After the routine is called,
  *       the index identifier is not valid any more.
  */
 int
@@ -5702,7 +5725,7 @@ xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid)
  *   return:
  *   btid(in):
  *
- * Note: This routine returns a varying domain of the same precision for fixed domains which are one of the string 
+ * Note: This routine returns a varying domain of the same precision for fixed domains which are one of the string
  *       types. For all other domains, it returns the same domain.
  */
 TP_DOMAIN *
@@ -6231,7 +6254,7 @@ btree_get_subtree_stats (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page
 	  goto exit_on_error;
 	}
 
-      /* 
+      /*
        * traverse all the subtrees of this non_leaf page and accumulate
        * the statistical data in the environment structure
        */
@@ -6278,6 +6301,8 @@ btree_get_subtree_stats (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page
       stats_env->stat_info->leafs++;
       stats_env->stat_info->keys += key_cnt;
       stats_env->stat_info->height = 1;	/* init */
+
+      btree_init_temp_key_value (&clear_key, &key);
 
       if (stats_env->pkeys)
 	{
@@ -6472,7 +6497,7 @@ btree_get_stats_key (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, MVCC_SNAPSH
 
   assert (env != NULL);
 
-  db_make_null (&key_value);
+  btree_init_temp_key_value (&clear_key, &key_value);
 
   if (mvcc_snapshot != NULL)
     {
@@ -6911,7 +6936,7 @@ btree_get_btid_from_file (THREAD_ENTRY * thread_p, const VFID * vfid, BTID * bti
  *   stat_info_p(in/out): Structure to store and return the statistical information
  *   with_fullscan(in): true iff WITH FULLSCAN
  *
- * Note: Computes and returns statistical information about B+tree which consist of the number of leaf pages, 
+ * Note: Computes and returns statistical information about B+tree which consist of the number of leaf pages,
  * total number of pages, number of keys and the height of the tree.
  */
 int
@@ -6937,7 +6962,7 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info_p, bool with_f
     }
   assert_release (npages >= 1);
 
-  /* For the optimization of the sampling, if the btree file has currently the same pages as we gathered statistics, we 
+  /* For the optimization of the sampling, if the btree file has currently the same pages as we gathered statistics, we
    * guess the btree file has not been modified; So, we take current stats as it is */
   if (!with_fullscan)
     {
@@ -7063,6 +7088,24 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info_p, bool with_f
 	}
     }
 
+  if (npages < env->stat_info->height)
+    {
+      // this is a corner case. if b-tree had only one page when npages was read, but its root was split immediately
+      // after, we'd have this awkward situation.
+      //
+      // but we may read npages again, and this time it should be better (we rely also on the fact that one root is
+      // split, it is never merged back to one page again).
+      //
+      ret = file_get_num_user_pages (thread_p, &(stat_info_p->btid.vfid), &npages);
+      if (ret != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return ret;
+	}
+      assert_release (npages >= 1);
+      assert_release (npages >= env->stat_info->height);
+    }
+
   /* check for leaf pages */
   env->stat_info->leafs = MAX (1, env->stat_info->leafs);
   env->stat_info->leafs = MIN (env->stat_info->leafs, npages - (env->stat_info->height - 1));
@@ -7172,8 +7215,8 @@ btree_check_page_key (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID_INT
   nleaf_pnt.key_len = 0;
   VPID_SET_NULL (&nleaf_pnt.pnt);
 
-  db_make_null (&key1);
-  db_make_null (&key2);
+  btree_init_temp_key_value (&clear_key1, &key1);
+  btree_init_temp_key_value (&clear_key2, &key2);
 
   key_cnt = btree_node_number_of_keys (thread_p, page_ptr);
 
@@ -7375,6 +7418,7 @@ btree_verify_subtree (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID_INT
   char err_buf[LINE_MAX];
 
   db_make_null (&INFO2.max_key);
+  btree_init_temp_key_value (&clear_key, &curr_key);
 
   /* test the page for the order of the keys within the page and get the biggest key of this page */
   valid = btree_check_page_key (thread_p, class_oid_p, btid, btname, pg_ptr, pg_vpid);
@@ -7501,7 +7545,7 @@ error:
  *   return: either: DISK_INVALID, DISK_VALID, DISK_ERROR
  *   btid_int(in): B+tree index identifier
  *
- * Note: Verifies the correctness of the B+tree index. During tree traversal, several tests are conducted, 
+ * Note: Verifies the correctness of the B+tree index. During tree traversal, several tests are conducted,
  * such as checking the order of keys on a page or among pages that are in a father-child relationship.
  */
 DISK_ISVALID
@@ -8339,7 +8383,7 @@ btree_keyoid_checkscan_check (THREAD_ENTRY * thread_p, BTREE_CHECKSCAN * btscan,
 
       if (DB_VALUE_DOMAIN_TYPE (key) == DB_TYPE_MIDXKEY && key->data.midxkey.domain == NULL)
 	{
-	  /* set the appropriate domain, as it might be needed for printing if the given key-oid pair does not exist in 
+	  /* set the appropriate domain, as it might be needed for printing if the given key-oid pair does not exist in
 	   * the index. */
 	  key->data.midxkey.domain = btscan->btree_scan.btid_int.key_type;
 	}
@@ -8430,6 +8474,8 @@ btree_get_subtree_capacity (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR p
   /* initialize */
   leaf_pnt.key_len = 0;
   VPID_SET_NULL (&leaf_pnt.ovfl);
+
+  btree_init_temp_key_value (&clear_key, &key1);
 
   /* initialize capacity structure */
   cpc->dis_key_cnt = 0;
@@ -9225,8 +9271,8 @@ btree_replace_first_oid_with_ovfl_oid (THREAD_ENTRY * thread_p, BTID_INT * btid,
 
   /* Since we cannot leave the leaf record without any objects, we will need to replace it with an overflow object.
    * Logging physical delete, because it has logical undo, cannot work well under system operation. For this reason,
-   * the operation will be split into two sub-operations: 1. Swap first object in leaf record with last object in first 
-   * overflow page. This is done under a system operation that is committed at the end. 2. Remove relocated object from 
+   * the operation will be split into two sub-operations: 1. Swap first object in leaf record with last object in first
+   * overflow page. This is done under a system operation that is committed at the end. 2. Remove relocated object from
    * overflow record. */
 
   /* Get overflow record. */
@@ -9952,12 +9998,12 @@ exit_on_error:
  *   p_slot_id(in): The slot of parent page P which points page to be merged (right page)
  *   child_vpid(in): Child page identifier to be followed, Q or R.
  *
- * Note: Page Q is merged with page R which may be its left or right sibling. Depending on the efficiency of 
- * the merge operation the merge operation may take place on Page Q or on page R to reduce the size of the data 
- * that will moved. After the merge operation either page Q or page R becomes ready for deallocation. 
+ * Note: Page Q is merged with page R which may be its left or right sibling. Depending on the efficiency of
+ * the merge operation the merge operation may take place on Page Q or on page R to reduce the size of the data
+ * that will moved. After the merge operation either page Q or page R becomes ready for deallocation.
  * Deallocation is left to the calling routine.
  *
- * Note: The page which will be deallocated by the caller after a successful merge operation is not changed 
+ * Note: The page which will be deallocated by the caller after a successful merge operation is not changed
  * by this routine.
  */
 static int
@@ -10054,8 +10100,8 @@ btree_merge_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   right_header = btree_get_node_header (thread_p, right_pg);
   assert (left_header != NULL && right_header != NULL);
 
-  db_make_null (&left_fence_key);
-  db_make_null (&right_fence_key);
+  btree_init_temp_key_value (&left_fence_key_clear, &left_fence_key);
+  btree_init_temp_key_value (&right_fence_key_clear, &right_fence_key);
 
   left_used = btree_node_size_uncompressed (thread_p, btid, left_pg);
   if (left_used < 0)
@@ -10481,6 +10527,8 @@ btree_node_size_uncompressed (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR
   DB_MIDXKEY *midx_key = NULL;
   LEAF_REC leaf_pnt;
   int error;
+
+  btree_init_temp_key_value (&clear_key, &key);
 
   used_size = DB_PAGESIZE - spage_get_free_space (thread_p, page_ptr);
 
@@ -11341,7 +11389,7 @@ btree_find_oid_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * lea
   while (buf.ptr < buf.endptr)
     {
       /* If the object has fixed size, it is forced to have both insert MVCCID and delete MVCCID. This can happen if:
-       * 1. The index is unique, and this is not the key's first object. 2. The keys has overflow OID's and this is the 
+       * 1. The index is unique, and this is not the key's first object. 2. The keys has overflow OID's and this is the
        * first object. In any other cases follow the MVCC flags. */
       *offset_to_object = CAST_BUFLEN (buf.ptr - buf.buffer);
 
@@ -11854,7 +11902,7 @@ btree_find_split_point (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
     }
 
   /* Start splitting records into left and right nodes. The algorithm must consider next rules: 1. The size of split
-   * records should be done as close as possible to the size indicated by split_info. Split info is not applied to page 
+   * records should be done as close as possible to the size indicated by split_info. Split info is not applied to page
    * header and fences. 2. Left and right nodes should have enough space for new data required by insert, and also for
    * new fences. This applies only to leaf nodes. 3. After split & insert, both nodes must have at least one non-fence
    * record. */
@@ -11896,7 +11944,7 @@ btree_find_split_point (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
 
       /* New fences are added to both leaves: an upper fence for left leaf and lower fence for right leaf. We don't
        * know their size yet, but we can estimate the largest size using node maximum key length. */
-      /* TODO: Fences currently optimize only midxkey key types. Save storage by not using fence keys when they are not 
+      /* TODO: Fences currently optimize only midxkey key types. Save storage by not using fence keys when they are not
        * required. */
       max_key_len = MAX (key_len, header->max_key_len);
       new_fence_size = LEAF_FENCE_MAX_SIZE (max_key_len) + spage_slot_size ();
@@ -12031,7 +12079,7 @@ btree_find_split_point (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
       goto error;
     }
 
-  db_make_null (mid_key);
+  btree_init_temp_key_value (&m_clear_key, mid_key);
 
   if (*mid_slot == (slot_id - 1) && is_key_added_to_left && !found)
     {
@@ -12089,7 +12137,7 @@ btree_find_split_point (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
       goto error;
     }
 
-  db_make_null (next_key);
+  btree_init_temp_key_value (&n_clear_key, next_key);
 
   if (*mid_slot == key_cnt && slot_id == (key_cnt + 1))
     {
@@ -12136,14 +12184,14 @@ btree_find_split_point (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
       goto error;
     }
 
-  /* Check if we can make use of prefix keys.  We can't use them in the upper levels of the trees because the algorithm 
+  /* Check if we can make use of prefix keys.  We can't use them in the upper levels of the trees because the algorithm
    * will fall apart.  We can only use them when splitting a leaf page. */
   if (node_type == BTREE_LEAF_NODE)
     {
       if ((btree_get_disk_size_of_key (mid_key) >= BTREE_MAX_KEYLEN_INPAGE)
 	  || (btree_get_disk_size_of_key (next_key) >= BTREE_MAX_KEYLEN_INPAGE))
 	{
-	  /* if one of key is overflow key prefix key could be longer then max_key_len in page (that means insert could 
+	  /* if one of key is overflow key prefix key could be longer then max_key_len in page (that means insert could
 	   * be failed) so, in this case use next key itself as prefix key */
 	  pr_clone_value (next_key, prefix_key);
 	}
@@ -12325,6 +12373,9 @@ btree_node_common_prefix (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pag
   LEAF_REC leaf_pnt;
   int error = NO_ERROR;
 
+  btree_init_temp_key_value (&lf_clear_key, &lf_key);
+  btree_init_temp_key_value (&uf_clear_key, &uf_key);
+
   if (btree_node_is_compressed (thread_p, btid, page_ptr) == false)
     {
       return 0;
@@ -12404,6 +12455,8 @@ btree_recompress_record (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * 
 
   assert (btid_int != NULL);
   assert (record != NULL);
+
+  btree_init_temp_key_value (&clear_key, &key);
 
   if (old_prefix == new_prefix)
     {
@@ -12492,6 +12545,8 @@ btree_compress_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr
     {
       return diff_column;
     }
+
+  btree_init_temp_key_value (&clear_key, &key);
 
   /* compress prefix */
   for (i = 2; i < key_cnt; i++)
@@ -12735,7 +12790,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   /* add undo logging for page Q */
   log_append_undo_data2 (thread_p, RVBT_COPYPAGE, &btid->sys_btid->vfid, Q, -1, DB_PAGESIZE, Q);
 
-  /* We may need to update the max_key length if the mid key is larger than the max key length.  This can happen due to 
+  /* We may need to update the max_key length if the mid key is larger than the max key length.  This can happen due to
    * disk padding when the prefix key length approaches the fixed key length. */
   sep_key_len = btree_get_disk_size_of_key (sep_key);
   sep_key_len = BTREE_GET_KEY_LEN_IN_PAGE (sep_key_len);
@@ -13102,7 +13157,7 @@ btree_set_split_point (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_p
       assert (false);
     }
 
-  db_make_null (mid_key);
+  btree_init_temp_key_value (&m_clear_key, mid_key);
 
   /* the split key is one of the keys on the page */
   assert (mid_slot > 0);
@@ -13136,7 +13191,7 @@ btree_set_split_point (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_p
       assert (false);
     }
 
-  db_make_null (next_key);
+  btree_init_temp_key_value (&n_clear_key, next_key);
 
   if (mid_slot == key_cnt && slot_id == (key_cnt + 1))
     {
@@ -13183,7 +13238,7 @@ btree_set_split_point (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_p
       assert (false);
     }
 
-  /* Check if we can make use of prefix keys.  We can't use them in the upper levels of the trees because the algorithm 
+  /* Check if we can make use of prefix keys.  We can't use them in the upper levels of the trees because the algorithm
    * will fall apart.  We can only use them when splitting a leaf page. */
   if (node_type == BTREE_LEAF_NODE)
     {
@@ -13772,7 +13827,7 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   log_append_redo_data2 (thread_p, RVBT_DEL_PGRECORDS, &btid->sys_btid->vfid, P, -1, sizeof (RECSET_HEADER),
 			 &recset_header);
 
-  /* update the root page P to keep the middle key and to point to page Q and R.  Remember that this mid key will be on 
+  /* update the root page P to keep the middle key and to point to page Q and R.  Remember that this mid key will be on
    * a non leaf page regardless of whether we are splitting a leaf or non leaf page. */
   nleaf_rec.pnt = *Q_vpid;
   key_len = btree_get_disk_size_of_key (neg_inf_key);
@@ -14685,10 +14740,10 @@ error:
  *   isidp(in):
  *   is_all_class_srch(in):
  *
- * Note: Finds the set of object identifiers for the given key. if the key is not found, 0 count is returned. 
+ * Note: Finds the set of object identifiers for the given key. if the key is not found, 0 count is returned.
  * Otherwise, the area pointed at by oids_ptr is filled with one group of object identifiers.
  *
- * Note: the btree_scan structure must first be initialized by using the macro BTREE_INIT_SCAN() 
+ * Note: the btree_scan structure must first be initialized by using the macro BTREE_INIT_SCAN()
  *
  * Note: After the first iteration, caller can use BTREE_END_OF_SCAN() macro to understand the end of range.
  *
@@ -15059,7 +15114,7 @@ btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid, INDX_
 
       /* TODO: Why is the below code here? What does constructing btid have to do with the issue described below?
        * Shouldn't this be always verified? It doesn't look like belonging here. */
-      /* 
+      /*
        * The asc/desc properties in midxkey from log_applier may be
        * inaccurate. therefore, we should use btree header's domain while
        * processing btree search request from log_applier.
@@ -15069,7 +15124,7 @@ btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid, INDX_
 	  midxkey = db_get_midxkey (&key_val_range->key1);
 	  if (midxkey->domain == NULL || LOG_CHECK_LOG_APPLIER (thread_p))
 	    {
-	      /* 
+	      /*
 	       * The asc/desc properties in midxkey from log_applier may be
 	       * inaccurate. therefore, we should use btree header's domain
 	       * while processing btree search request from log_applier.
@@ -15406,7 +15461,7 @@ btree_find_next_index_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
       bts->common_prefix = COMMON_PREFIX_UNKNOWN;
     }
 
-  /* 
+  /*
    * unfix first page if fix next page and move to it
    *
    *  case 1: P_page == NULL, C_page == first_page       x do not fix 1 next page
@@ -15467,7 +15522,7 @@ btree_find_next_index_record_holding_current (THREAD_ENTRY * thread_p, BTREE_SCA
 
   rec.data = NULL;
 
-  /* 
+  /*
    * Assumptions : last accessed leaf page is fixed.
    *    - bts->C_page != NULL
    *    - bts->O_page : NULL or NOT NULL
@@ -15582,7 +15637,7 @@ btree_find_next_index_record_holding_current_helper (THREAD_ENTRY * thread_p, BT
   assert (header->node_level == 1);	/* BTREE_LEAF_NODE */
 #endif
 
-  /* 
+  /*
    * If the next index record exists in the current leaf page,
    * the next index record(slot) and OID position can be identified easily.
    */
@@ -15712,8 +15767,8 @@ exit_on_error:
  *   is_key_range_satisfied(out): true, or false
  *   is_key_filter_satisfied(out): true, or false
  *
- * Note: This function applies key range condition and key filter condition to the current key value saved 
- * in B+-tree scan structure. The results of the evaluation of the given conditions are returned through 
+ * Note: This function applies key range condition and key filter condition to the current key value saved
+ * in B+-tree scan structure. The results of the evaluation of the given conditions are returned through
  * key_range_satisfied and key_filter_satisfied.
  */
 static int
@@ -15837,7 +15892,7 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, boo
 	    }
 	}
 
-      /* 
+      /*
        * Only in case that key_range_satisfied is true,
        * the key filter can be applied to the current key value.
        */
@@ -16248,6 +16303,7 @@ btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
     }
 
   db_make_null (key);
+  btree_init_temp_key_value (&clear_key, &key_value);
 
   BTS = &btree_scan;
   BTREE_INIT_SCAN (BTS);
@@ -16281,7 +16337,7 @@ btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 
   assert (tp_valid_indextype (TP_DOMAIN_TYPE (BTS->btid_int.key_type)));
 
-  /* 
+  /*
    * in case of desc domain index,
    * we have to find the min/max key in opposite order.
    */
@@ -16321,11 +16377,7 @@ btree_find_min_or_max_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key,
 
       (void) pr_clone_value (&key_value, key);
 
-      if (clear_key)
-	{
-	  pr_clear_value (&key_value);
-	  clear_key = false;
-	}
+      btree_clear_key_value (&clear_key, &key_value);
     }
 
 end:
@@ -16350,11 +16402,7 @@ end:
       pgbuf_unfix_and_init (thread_p, root_page_ptr);
     }
 
-  if (clear_key)
-    {
-      pr_clear_value (&key_value);
-      clear_key = false;
-    }
+  btree_clear_key_value (&clear_key, &key_value);
 
   return ret;
 
@@ -16446,12 +16494,12 @@ btree_rv_util_save_page_records (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, INT
  * length (out) : Length of the data area after save is completed.
  *
  * Note: Copy the adequate key-value information to the data area and return this data area.
- *	 The MVCCID is stored in buffer only if is not null. In this case, an area at the beginning of recovery data 
+ *	 The MVCCID is stored in buffer only if is not null. In this case, an area at the beginning of recovery data
  *	 is reserved for the log lsa of previous MVCC operation (used by vacuum).
  *
  * Note: This is a UTILITY routine, but not an actual recovery routine
  *
- * Warning: This routine assumes that the keyval is from a leaf page and not a non-leaf page. Because of this assumption, 
+ * Warning: This routine assumes that the keyval is from a leaf page and not a non-leaf page. Because of this assumption,
  *          we use the index domain and not the non-leaf domain to write out the key value.
  *	    Currently all calls to this routine are from leaf pages. Be careful if you add a call to this routine.
  */
@@ -17251,7 +17299,7 @@ void
 btree_rv_noderec_dump (FILE * fp, int length, void *data)
 {
 #if 0
-  /* This needs to be fixed.  The easiest way is for the btid to be packed and sent, but this increases the log record. 
+  /* This needs to be fixed.  The easiest way is for the btid to be packed and sent, but this increases the log record.
    * We may want to allow this routine to know the layout of a node record.  TODO: ??? */
 
   int Node_Type;
@@ -17860,7 +17908,7 @@ btree_rv_keyval_undo_delete (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 /*
  * btree_rv_remove_marked_for_delete () - Part of run postpone to remove an object which was previously marked
  *					  for delete.
- *				       
+ *				
  *
  * return	 : Error code.
  * thread_p (in) : Thread entry.
@@ -17966,7 +18014,7 @@ btree_rv_undoredo_copy_page (THREAD_ENTRY * thread_p, LOG_RCV * recv)
  *   recv(in): Recovery structure
  *
  *
- * Note: Does nothing. This routine is used for to accompany some compensating redo logs which are supposed 
+ * Note: Does nothing. This routine is used for to accompany some compensating redo logs which are supposed
  * to do nothing.
  */
 int
@@ -19440,7 +19488,7 @@ btree_verify_node (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR page_p
   assert (header->next_vpid.pageid >= NULL_PAGEID);
 
 #if 0				/* DO NOT DELETE ME */
-  /* 
+  /*
    * FOR TEST
    *   usually should admit below assertions.
    *   but assert is possible in normal case rarely.
@@ -19498,11 +19546,13 @@ btree_verify_nonleaf_node (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PT
   assert_release (btid_int != NULL);
   assert_release (page_ptr != NULL);
 
-  clear_prev_key = clear_curr_key = false;
   key_domain = btid_int->key_type;
 
   key_cnt = btree_node_number_of_keys (thread_p, page_ptr);
   assert_release (key_cnt >= 1);
+
+  btree_init_temp_key_value (&clear_prev_key, &prev_key);
+  btree_init_temp_key_value (&clear_curr_key, &curr_key);
 
   /* check key order; exclude neg-inf separator */
   for (i = 1; i < key_cnt; i++)
@@ -19625,9 +19675,9 @@ btree_verify_leaf_node (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR p
   prev_vpid = header->prev_vpid;
   next_vpid = header->next_vpid;
 
-  db_make_null (&curr_key);
-  db_make_null (&prev_key);
-  db_make_null (&lower_fence_key);
+  btree_init_temp_key_value (&clear_curr_key, &curr_key);
+  btree_init_temp_key_value (&clear_prev_key, &prev_key);
+  btree_init_temp_key_value (&clear_lower_fence_key, &lower_fence_key);
   db_make_null (&uncompressed_value);
 
   common_prefix = btree_node_common_prefix (thread_p, btid_int, page_ptr);
@@ -19673,7 +19723,7 @@ btree_verify_leaf_node (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR p
 	  goto exit_on_error;
 	}
 
-      /* 
+      /*
        * record oid check
        */
       oid_cnt = btree_record_get_num_oids (thread_p, btid_int, &rec, offset, BTREE_LEAF_NODE);
@@ -19767,7 +19817,7 @@ btree_verify_leaf_node (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR p
 	  }
       }
 
-      /* 
+      /*
        * key order check
        */
       if (btree_leaf_is_flaged (&rec, BTREE_LEAF_RECORD_FENCE))
@@ -20144,7 +20194,6 @@ btree_get_next_node_info (THREAD_ENTRY * thread_p, BTID * btid, BTREE_NODE_SCAN 
   node_type = (node_header->node_level > 1) ? BTREE_NON_LEAF_NODE : BTREE_LEAF_NODE;
   key_cnt = btree_node_number_of_keys (thread_p, btns->crt_page);
 
-
   rec_header = (node_type == BTREE_NON_LEAF_NODE) ? (void *) &nleaf : (void *) &leaf_pnt;
 
   if (node_type == BTREE_NON_LEAF_NODE)
@@ -20187,6 +20236,8 @@ btree_get_next_node_info (THREAD_ENTRY * thread_p, BTID * btid, BTREE_NODE_SCAN 
 
   if (key_cnt > 0)
     {
+      btree_init_temp_key_value (&clear_key, &key_value);
+
       /* Get first key */
       if (spage_get_record (thread_p, btns->crt_page, 1, &rec, PEEK) != S_SUCCESS)
 	{
@@ -20197,8 +20248,10 @@ btree_get_next_node_info (THREAD_ENTRY * thread_p, BTID * btid, BTREE_NODE_SCAN 
 	{
 	  goto error;
 	}
+
       pr_clear_value (node_info[BTREE_NODE_INFO_FIRST_KEY]);
-      *node_info[BTREE_NODE_INFO_FIRST_KEY] = key_value;	/* just copy. it will be cleared later */
+      pr_clone_value (&key_value, node_info[BTREE_NODE_INFO_FIRST_KEY]);
+      btree_clear_key_value (&clear_key, &key_value);
 
       /* Get last key */
       if (spage_get_record (thread_p, btns->crt_page, key_cnt, &rec, PEEK) != S_SUCCESS)
@@ -20210,8 +20263,10 @@ btree_get_next_node_info (THREAD_ENTRY * thread_p, BTID * btid, BTREE_NODE_SCAN 
 	{
 	  goto error;
 	}
+
       pr_clear_value (node_info[BTREE_NODE_INFO_LAST_KEY]);
-      *node_info[BTREE_NODE_INFO_LAST_KEY] = key_value;	/* just copy. it will be cleared later */
+      pr_clone_value (&key_value, node_info[BTREE_NODE_INFO_LAST_KEY]);
+      btree_clear_key_value (&clear_key, &key_value);
     }
   else
     {
@@ -20252,9 +20307,9 @@ node_type_to_string (short node_type)
  * key_type_to_string () -  convert key_type to string
  *   return: the converted string
  *
- *   buf(in/out): 
+ *   buf(in/out):
  *   buf_size(in):
- *   key_type(in): 
+ *   key_type(in):
  */
 static char *
 key_type_to_string (char *buf, int buf_size, TP_DOMAIN * key_type)
@@ -20348,10 +20403,10 @@ key_type_to_string (char *buf, int buf_size, TP_DOMAIN * key_type)
  * index_attrs_to_string () -  convert the attributes info of index to string
  *   return: NO_ERROR, or ER_code
  *
- *   buf(in/out): 
+ *   buf(in/out):
  *   buf_size(in):
- *   index_p(in): 
- *   recdes(in): 
+ *   index_p(in):
+ *   recdes(in):
  */
 static int
 index_attrs_to_string (char *buf, int buf_size, OR_INDEX * index_p, RECDES * recdes)
@@ -21366,7 +21421,7 @@ btree_or_get_mvccinfo (OR_BUF * buf, BTREE_MVCC_INFO * mvcc_info, short btree_mv
 }
 
 /*
- * btree_or_put_mvccinfo () - Set MVCC information into buffer (should be used for b-tree records). 
+ * btree_or_put_mvccinfo () - Set MVCC information into buffer (should be used for b-tree records).
  *                            Only insert/delete MVCCID's will be set depending on MVCC flags.
  *
  * return	  : Error code.
@@ -21472,7 +21527,7 @@ btree_pack_object (char *ptr, BTID_INT * btid_int, BTREE_NODE_TYPE node_type, RE
  *
  * NOTE: Buffer.buffer should point to start of b-tree record.
  * NOTE: Buffer pointer will be moved after read object.
- *	 If object is first in leaf record, buffer pointer will be moved after the packed key 
+ *	 If object is first in leaf record, buffer pointer will be moved after the packed key
  *	 (where second objects starts).
  */
 static int
@@ -22302,7 +22357,7 @@ btree_rv_undo_global_unique_stats_commit (THREAD_ENTRY * thread_p, LOG_RCV * rec
   num_keys = OR_GET_INT (datap);
   datap += OR_INT_SIZE;
 
-  /* Because this log record is logical, it will be processed even if the B-tree was deleted. If the B-tree was deleted 
+  /* Because this log record is logical, it will be processed even if the B-tree was deleted. If the B-tree was deleted
    * then skip update of unique statistics in global hash. */
   if (log_Gl.rcv_phase == LOG_RECOVERY_UNDO_PHASE)
     {
@@ -22371,7 +22426,7 @@ btree_rv_redo_global_unique_stats_commit (THREAD_ENTRY * thread_p, LOG_RCV * rec
   num_keys = OR_GET_INT (datap);
   datap += OR_INT_SIZE;
 
-  /* Because this log record is logical, it will be processed even if the B-tree was deleted. If the B-tree was deleted 
+  /* Because this log record is logical, it will be processed even if the B-tree was deleted. If the B-tree was deleted
    * then skip update of unique statistics in global hash. */
   if (disk_is_page_sector_reserved (thread_p, btid.vfid.volid, btid.root_pageid) != DISK_VALID)
     {
@@ -22401,8 +22456,8 @@ error:
 }
 
 /*
- * btree_search_key_and_apply_functions () - B-tree internal function to traverse the tree in the direction given by 
- * 					     a key and calling three types of function: one to fix/handle root page, 
+ * btree_search_key_and_apply_functions () - B-tree internal function to traverse the tree in the direction given by
+ * 					     a key and calling three types of function: one to fix/handle root page,
  * 					     one on the traversed nodes and one on the leaf node pointed by key.
  *
  * return		     : Error code.
@@ -22462,7 +22517,7 @@ start_btree_traversal:
    * Root function: It may be used to fix and modify root page. If no such function is provided,
    * btree_get_root_with_key is used by default. 2. Advance function: It is used to determine the path to follow in
    * order to locate the key in leaf node. It can manipulate the nodes it passes (merge, split). 3. Process key
-   * function: It must process the leaf and overflow key/OIDs pages where key is/should be found. It can be a read-only 
+   * function: It must process the leaf and overflow key/OIDs pages where key is/should be found. It can be a read-only
    * function or it can insert/delete/modify the key. */
 
   /* Reset restart flag. */
@@ -22608,7 +22663,7 @@ error:
 }
 
 /*
- * btree_get_root_with_key () - BTREE_ROOT_WITH_KEY_FUNCTION used by default to read root page header and get b-tree 
+ * btree_get_root_with_key () - BTREE_ROOT_WITH_KEY_FUNCTION used by default to read root page header and get b-tree
  * 				data from header.
  *
  * return	       : Error code.
@@ -22673,7 +22728,7 @@ btree_get_root_with_key (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid_i
  * btree_advance_and_find_key () - Fix next node in b-tree following given key.
  *				   If argument is leaf-node, return if key is found and the slot if key instead.
  *
- * return		 : Error code. 
+ * return		 : Error code.
  * thread_p (in)	 : Thread entry.
  * btid_int (in)	 : B-tree data.
  * key (in)		 : Search key value.
@@ -22804,7 +22859,7 @@ btree_key_find_unique_version_oid (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 
   /* Find unique visible object version. Since the index is unique, there can only be one visible version in the key.
    * Parse all key objects until the one visible to current transaction is found. NOTE: The newest object version in
-   * the key is always kept first. This is also usually the object being manipulated by running transactions.  However, 
+   * the key is always kept first. This is also usually the object being manipulated by running transactions.  However,
    * this isn't always the visible object for current transaction. The visible version for current transaction may be
    * deleted by another, but still visible due to snapshot. */
 
@@ -22947,9 +23002,9 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * bt
       goto error_or_not_found;
     }
 
-  /* Lock key non-dirty version to protect it. Non-dirty or newest key version is always kept first. Locking object is 
+  /* Lock key non-dirty version to protect it. Non-dirty or newest key version is always kept first. Locking object is
    * possible if object is not deleted and it is not dirty (its inserter/deleter is not active). If inserter or
-   * deleter is active, or if conditional lock on object failed, current transaction must suspend until the object lock 
+   * deleter is active, or if conditional lock on object failed, current transaction must suspend until the object lock
    * holder is completed. This also means unfixing leaf page first. Current algorithm tries to avoid traversing the
    * b-tree back from root after resume. If conditional lock on object fails, leaf node must be unfixed and then fixed
    * again after object is locked. If page no longer exists or if the page is no longer usable (key is not in page),
@@ -23475,7 +23530,7 @@ error_or_not_found:
  * btid_int (in)	  : B-tree identifier.
  * key (in)		  : Key.
  * leaf_page (in/out)     : Pointer to leaf node page.
- * overflow_page (in/out) : Pointer to fixed overflow page. If leaf page must be unfixed, this will be unfixed too 
+ * overflow_page (in/out) : Pointer to fixed overflow page. If leaf page must be unfixed, this will be unfixed too
  * 			    (without fixing it again).
  * oid (in)		  : OID of object to lock.
  * class_oid (in)	  : Class OID of object to lock.
@@ -23961,7 +24016,7 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE sc
 
   if (scan_op_type == S_SELECT)
     {
-      /* 
+      /*
        * If MVCC disabled, do not use snapshot and lock. If MVCC enabled and
        * find unique in catalog classes, use dirty version without lock.
        * Otherwise, use dirty version with lock since need to check whether the
@@ -24005,7 +24060,7 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE sc
 
   if (logtb_find_current_isolation (thread_p) >= TRAN_REP_READ || (find_unique_helper.lock_mode >= S_LOCK))
     {
-      /* 
+      /*
        * Acquire snapshot in RR if not already acquired. This is needed since
        * the transaction need to know the actual visible objects - before
        * instance locking. In this way future commands of current transaction
@@ -24025,7 +24080,13 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE sc
       ASSERT_ERROR ();
 #if defined (SERVER_MODE)
       /* Safe guard: don't keep lock if error has occurred. */
-      assert (OID_ISNULL (&find_unique_helper.locked_oid));
+      if (!OID_ISNULL (&find_unique_helper.locked_oid))
+	{
+	  /* Make sure to unlock the object. */
+	  lock_unlock_object_donot_move_to_non2pl (thread_p, &find_unique_helper.locked_oid,
+						   &find_unique_helper.locked_class_oid, find_unique_helper.lock_mode);
+	  OID_SET_NULL (&find_unique_helper.locked_oid);
+	}
 #endif /* SERVER_MODE */
       return BTREE_ERROR_OCCURRED;
     }
@@ -24689,8 +24750,8 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
       return error_code;
     }
 
-  /* Before searching the key in leaf page, we must make sure to handle this next peculiar case: 1. First key search of 
-   * descending scan. Lower key limit is located as first in leaf page. 2. Range scan says strictly less than lower key 
+  /* Before searching the key in leaf page, we must make sure to handle this next peculiar case: 1. First key search of
+   * descending scan. Lower key limit is located as first in leaf page. 2. Range scan says strictly less than lower key
    * limit. 3. The algorithm tries to fix go to previous leaf. However, bts->cur_key does not yet store any key values.
    * Set bts->cur_key to lower key limit of range. NOTE: If there is no lower limit, this case cannot happen. */
   if (!bts->is_scan_started && bts->key_range.lower_key != NULL && DB_IS_NULL (&bts->cur_key))
@@ -24829,8 +24890,8 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
 }
 
 /*
- * btree_range_scan () - Generic function to do a range scan on b-tree. It can scan key by key starting with first 
- * 			 (or last key for descending scans). For each key, it calls an internal function to process 
+ * btree_range_scan () - Generic function to do a range scan on b-tree. It can scan key by key starting with first
+ * 			 (or last key for descending scans). For each key, it calls an internal function to process
  * 			 the key.
  *
  * return	      : Error code.
@@ -24895,7 +24956,7 @@ btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PR
 	{
 	  /* Couldn't advance. Restart from root. */
 	  assert (bts->use_desc_index);
-	  /* TODO: This is a notification to see how often this happens.  If it is spamming remove it.  Also maybe give 
+	  /* TODO: This is a notification to see how often this happens.  If it is spamming remove it.  Also maybe give
 	   * up descending scan after a number of restarts. */
 	  er_log_debug (ARG_FILE_LINE,
 			"Notification: descending range scan had to be interrupted and restarted from root.\n");
@@ -25031,7 +25092,7 @@ exit_on_error:
 
 /*
  * btree_range_scan_select_visible_oids () - BTREE_RANGE_SCAN_PROCESS_KEY_FUNC
- *					     Used internally by btree_range_scan to select visible objects from key 
+ *					     Used internally by btree_range_scan to select visible objects from key
  *					     OID's.
  *					     Handling depends on the type of scan:
  *					     1. Multiple ranges optimization.
@@ -25099,8 +25160,8 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 
   /* ISS and regular scans can use a buffer to store read OID's. Covering index optimization uses a list file, while
    * MRO uses a Top N structure. When OID buffer is used, it can be filled during scan. If this happens, interrupt
-   * range scan, handle currently buffered objects and resume with an empty buffer. NOTE: There are two types of limits 
-   * used here. A soft limit and hard limit. Hard limit is used when key has too many objects and don't fit soft limit. 
+   * range scan, handle currently buffered objects and resume with an empty buffer. NOTE: There are two types of limits
+   * used here. A soft limit and hard limit. Hard limit is used when key has too many objects and don't fit soft limit.
    * Hard limit is necessary to handle key processing interrupt/resume.  Soft key limit is ignored if no objects have
    * been processed in this iteration. */
   /* Don't do any checks for MRO or if objects only have to be counted. */
@@ -25150,16 +25211,16 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 	{
 	  /* Key was not fully processed. Resume from its current overflow. */
 	  /* The interrupt algorithm is based on next facts: 1. Objects can be vacuumed. Overflow pages can be
-	   * deallocated when all its objects are vacuumed. Entire key cannot be vacuumed while interrupted (because at 
+	   * deallocated when all its objects are vacuumed. Entire key cannot be vacuumed while interrupted (because at
 	   * least one visible object existed in previous iteration). 2. Objects can be swapped from overflow page to
 	   * leaf record.  Only one object from first overflow page is swapped. If this object is not visible, it can
-	   * be vacuumed again and another object is swapped. This can continue until this thread resumes scan or until 
+	   * be vacuumed again and another object is swapped. This can continue until this thread resumes scan or until
 	   * a visible object is swapped.  Note that first overflow page will be deallocated if all its objects have
 	   * been swapped. This is possible if page has at most one visible object that cannot be vacuumed. 3. New
-	   * objects can be inserted and new overflow pages can be created. Interrupt/resume system tries to work with 
+	   * objects can be inserted and new overflow pages can be created. Interrupt/resume system tries to work with
 	   * constants in this behavior: 1. A key without overflow pages is never interrupted (actually a key without
 	   * at least four overflow pages is never interrupted since all its objects can be processed in default
-	   * buffer). 2. If interrupted, the buffer should have at least default number of OID's - one overflow page of 
+	   * buffer). 2. If interrupted, the buffer should have at least default number of OID's - one overflow page of
 	   * OID's. This means roughly default_buffer_size / OR_OID_SIZE - db_page_size / OID_WITH_MVCC_INFO_SIZE =
 	   * 16k*4/8 - 16k/32 with default parameters = ~7.5k objects. 3. When interrupted, bts saves last overflow
 	   * page with at least one visible object to make sure it is not deallocated.  How can an overflow page be
@@ -25172,7 +25233,7 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 	   * visible objects processed in previous iteration, the first leaf object, if visible, must be one of these.
 	   * 5. Inserting new OID's will not affect our scan in any way. If they are found after resume, they will be
 	   * ignored by visibility test. If not found, they are again ignored (as they should). Even creating new
-	   * overflow pages, does not affect us. The above statements are true for default buffer. In order to make it 
+	   * overflow pages, does not affect us. The above statements are true for default buffer. In order to make it
 	   * true for small buffers, there are two limits used by scan: a soft limit and a hard limit. The hard limit
 	   * is used when key has too many objects. See comment from BTS_IS_HARD_CAPACITY_ENOUGH. */
 	  /* Resume from next page of last overflow page. */
@@ -25390,7 +25451,7 @@ btree_select_visible_object_for_range_scan (THREAD_ENTRY * thread_p, BTID_INT * 
    * filters: 1. Snapshot: object must be visible. 2. Match class: for unique indexes of hierarchical classes, query
    * may be executed on one class only. The class must be matched. 3. Key limit filters: First lower key limit and all
    * after upper key limit objects are ignored. Then object will be saved/processed differently depending on type of
-   * scan: 1. MRO - object is checked against the current Top N objects. 2. Covering index: object and key are saved in 
+   * scan: 1. MRO - object is checked against the current Top N objects. 2. Covering index: object and key are saved in
    * a list file. 3. ISS/regular scan: OID is saved in a buffer. NOTE: Unique indexes will stop after the first
    * visible objects. */
 
@@ -25546,7 +25607,7 @@ btree_select_visible_object_for_range_scan (THREAD_ENTRY * thread_p, BTID_INT * 
 	      ASSERT_ERROR ();
 	      return error_code;
 	    }
-	  db_make_null (&bts->cur_key);
+	  btree_clear_key_value (&bts->clear_cur_key, &bts->cur_key);
 	}
       else
 	{
@@ -25746,7 +25807,7 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
 
     case DELETE_RECORD_DELETE_IN_PROGRESS:
 #if defined (SERVER_MODE)
-      /* Object is being deleted by an active transaction. We have to wait for that transaction to commit. Fall through 
+      /* Object is being deleted by an active transaction. We have to wait for that transaction to commit. Fall through
        * to suspend. */
       break;
 #else	/* !SERVER_MODE */		   /* SA_MODE */
@@ -26189,7 +26250,7 @@ btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
 
   /* Possible insert data operations: 1. Insert a new object along with other necessary informations (class OID and/or
    * insert MVCCID. 2. Undo of physical delete. If an object is physically removed from b-tree and operation must be
-   * undone, the object with all its additional information existing before delete must be inserted. 3. Logical delete, 
+   * undone, the object with all its additional information existing before delete must be inserted. 3. Logical delete,
    * which inserts a delete MVCCID. */
   assert (btree_is_insert_data_purpose (insert_helper->purpose));
 
@@ -26244,7 +26305,8 @@ btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
 			  &insert_helper->printed_key_sha1);
     }
 
-  if (insert_helper->purpose == BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE)
+  if (insert_helper->purpose == BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE
+      || insert_helper->purpose == BTREE_OP_ONLINE_INDEX_UNDO_TRAN_DELETE)
     {
       /* Stop here. */
       /* Code after this: 1. Update unique statistics. In this case, they are updated by undone log records. 2. Create
@@ -26294,7 +26356,7 @@ btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
 	  increment_nulls = 0;
 	}
       /* Update statistics. */
-      /* Based on type of operation - single or multi, update the unique_stats_info structure or update the transaction 
+      /* Based on type of operation - single or multi, update the unique_stats_info structure or update the transaction
        * collected statistics. They will be reflected into global statistics later. */
       if (BTREE_IS_MULTI_ROW_OP (insert_helper->op_type))
 	{
@@ -26312,12 +26374,15 @@ btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
       else
 	{
 	  /* Update transactions collected statistics. */
-	  error_code =
-	    logtb_tran_update_unique_stats (thread_p, btid, increment_keys, increment_oids, increment_nulls, true);
-	  if (error_code != NO_ERROR)
+	  if (!btree_is_online_index_loading (insert_helper->purpose))
 	    {
-	      ASSERT_ERROR ();
-	      goto error;
+	      error_code =
+		logtb_tran_update_unique_stats (thread_p, btid, increment_keys, increment_oids, increment_nulls, true);
+	      if (error_code != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  goto error;
+		}
 	    }
 	}
     }
@@ -26466,7 +26531,7 @@ btree_get_max_new_data_size (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_
     case BTREE_OP_ONLINE_INDEX_TRAN_INSERT_DF:
       if (known_to_be_found)
 	{
-	  /* Possible inserted data: 1. New object (consider maximum size including all info). 2. Link to overflow page 
+	  /* Possible inserted data: 1. New object (consider maximum size including all info). 2. Link to overflow page
 	   * (and setting first object to max size).  In worst case scenario it will insert same data as a fixed size
 	   * object. */
 	  return BTREE_OBJECT_FIXED_SIZE (btid_int);
@@ -26494,7 +26559,7 @@ btree_get_max_new_data_size (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_
  *				     following key. It also has the role to make sure b-tree has enough space to
  *				     insert new data.
  *
- * return		 : Error code. 
+ * return		 : Error code.
  * thread_p (in)	 : Thread entry.
  * btid_int (in)	 : B-tree data.
  * key (in)		 : Search key value.
@@ -26541,7 +26606,7 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 				 * must be determined before fixing the child node page. */
 
 #if !defined (NDEBUG)
-  int parent_max_key_len = 0;	/* Used by debug to check the rule that parent max key length is always bigger or equal 
+  int parent_max_key_len = 0;	/* Used by debug to check the rule that parent max key length is always bigger or equal
 				 * to child max key length. */
   int parent_node_level = 0;	/* Used by debug to check that level of parent node is always the incremented value of
 				 * level of child node. */
@@ -26590,15 +26655,15 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
   /* Is new key possible? True if inserting new object or if undoing the removal of some key/object. */
   is_new_key_possible = btree_is_insert_object_purpose (insert_helper->purpose);
 
-  /* Split algorithm: There are two types of splits: root split and normal split. 1. Root split: If there is not enough 
+  /* Split algorithm: There are two types of splits: root split and normal split. 1. Root split: If there is not enough
    * space for new data in root, split it into three nodes: two nodes containing all previous entries and a new root
    * node to point to these nodes. This will increase the b-tree level.  After split, function will continue with one
    * of the two newly created nodes. 2. Normal split: If child doesn't have enough space to handle new insert data,
-   * split it into two nodes and update current node entries. Current node will gain one additional entry, so the split 
+   * split it into two nodes and update current node entries. Current node will gain one additional entry, so the split
    * algorithm should make sure it always has enough space before checking its children. One of the two children
    * resulted from the split will be chosen to advance to. */
   /* Part of split algorithm is to keep the maximum key length for each node. The value kept by a node is actually the
-   * maximum length of all keys found in all leaf pages of the sub-tree fathered by current node. One resulting rule is 
+   * maximum length of all keys found in all leaf pages of the sub-tree fathered by current node. One resulting rule is
    * that the maximum key length value for one node is always bigger than or equal to the maximum key length value for
    * any of its children. Maximum key length is used to estimate the size of future entries (in a defensive way). */
   /* NOTE 1: To optimize b-tree access, the algorithm assumes that no change is required and READ latch on nodes is
@@ -26606,8 +26671,8 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
    * write/exclusive. Promotion may sometimes fail (e.g. when there is already another promoter in waiting list). This
    * case is considered to be an exceptional and rare case, therefore it is allowed to restart b-tree traversal.
    * However, to avoid repeating traversals indefinetly, the second traversal is done using exclusive latches (which
-   * should guarantee success). NOTE 2: Leaf nodes are always latched using exclusive latches (because they are changed 
-   * almost every time and using promotion can actually lead to poor performance). NOTE 3: Promotion of current page is 
+   * should guarantee success). NOTE 2: Leaf nodes are always latched using exclusive latches (because they are changed
+   * almost every time and using promotion can actually lead to poor performance). NOTE 3: Promotion of current page is
    * always done using ONLY_READER. This prevents dead-latches between three or more threads like the following: T1:
    * Holds READ on P1 and P2, waits on T2 for P1 promotion T2: Holds READ on P1, waits on T3 for READ on P2 T3: Holds
    * READ on P2 and another page, waits on T1 for P2 promotion */
@@ -27158,7 +27223,7 @@ btree_key_insert_new_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VA
 
   /* Do not allow inserting a deleted object. It should never happen Insert new object should insert objects with no
    * delete MVCCID. Rollback of object physical removal, cannot reach here with a deleted object. There are three
-   * types of physical removal: - Delete object (should not have a delete MVCCID). - Rollback insert (should not have a 
+   * types of physical removal: - Delete object (should not have a delete MVCCID). - Rollback insert (should not have a
    * delete MVCCID). - Vacuum (deleted object). However, vacuum is not rollbacked. */
   assert (!BTREE_MVCC_INFO_IS_DELID_VALID (BTREE_INSERT_MVCC_INFO (insert_helper)));
 
@@ -27347,7 +27412,8 @@ btree_key_insert_new_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE
   assert (insert_helper->rv_redo_data != NULL && insert_helper->rv_redo_data_ptr != NULL);
   assert (insert_helper->is_system_op_started == false);
 #if defined (SERVER_MODE)
-  assert (!BTREE_IS_UNIQUE (btid_int->unique_pk) || log_is_in_crash_recovery ()
+  assert ((btree_is_online_index_loading (insert_helper->purpose)) || !BTREE_IS_UNIQUE (btid_int->unique_pk)
+	  || log_is_in_crash_recovery ()
 	  || lock_has_lock_on_object (BTREE_INSERT_OID (insert_helper), BTREE_INSERT_CLASS_OID (insert_helper),
 				      logtb_get_current_tran_index (), X_LOCK) > 0);
 #endif /* SERVER_MODE */
@@ -27598,7 +27664,7 @@ btree_key_lock_and_append_object_unique (THREAD_ENTRY * thread_p, BTID_INT * bti
   int num_visible = 0;		/* Used to count number of visible objects. */
 
 #if defined (SERVER_MODE)
-  LOG_LSA saved_leaf_lsa;	/* Save page LSA before locking the first object in record. If LSA is changed, it is no 
+  LOG_LSA saved_leaf_lsa;	/* Save page LSA before locking the first object in record. If LSA is changed, it is no
 				 * longer guaranteed that page has enough space for new key/object. We need to be
 				 * conservative and check it. */
 #endif /* SERVER_MODE */
@@ -27681,7 +27747,7 @@ btree_key_lock_and_append_object_unique (THREAD_ENTRY * thread_p, BTID_INT * bti
     {
       /* This could be an object deleted but still visible to me. */
       /* The problem is reading the object next time. Old object, even if it was deleted, on the next read will be
-       * visible to me. This object is inserted by me, so it is also visible to me. This means I will see two different 
+       * visible to me. This object is inserted by me, so it is also visible to me. This means I will see two different
        * objects that have this key, which is obviously a violation of unique constraint. READ COMMITTED doesn't have
        * this problem, since on the next statement it will refresh its snapshot and old object will no longer be
        * visible (even if it was with this snapshot). */
@@ -27884,7 +27950,7 @@ btree_key_lock_and_append_object_unique (THREAD_ENTRY * thread_p, BTID_INT * bti
 	   == BTREE_MVCC_INFO_INSID (BTREE_INSERT_MVCC_INFO (insert_helper))))
       && insert_helper->rcvindex == RVBT_MVCC_INSERT_OBJECT)
     {
-      /* We need to log two objects: the one that is being inserted and the one that was first before. Undo will return 
+      /* We need to log two objects: the one that is being inserted and the one that was first before. Undo will return
        * the visible object to its place. */
       char *rv_keyval_data_buf = NULL;
       int rv_keyval_data_capacity = IO_MAX_PAGE_SIZE;
@@ -28068,11 +28134,12 @@ btree_key_append_object_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB
   assert (leaf_record != NULL);
   assert (leaf_record_info != NULL);
   assert (offset_after_key > 0);
-  assert (insert_helper->purpose == BTREE_OP_INSERT_NEW_OBJECT);
+  assert (btree_is_insert_object_purpose (insert_helper->purpose));
   assert (insert_helper->rv_redo_data != NULL);
   assert (insert_helper->rv_keyval_data != NULL && insert_helper->rv_keyval_data_length > 0);
   assert (insert_helper->leaf_addr.offset != 0 && insert_helper->leaf_addr.pgptr == leaf);
-  assert (insert_helper->rcvindex == RVBT_MVCC_INSERT_OBJECT || insert_helper->rcvindex == RVBT_NON_MVCC_INSERT_OBJECT
+  assert (insert_helper->rcvindex == RVBT_MVCC_INSERT_OBJECT
+	  || insert_helper->rcvindex == RVBT_NON_MVCC_INSERT_OBJECT
 	  || insert_helper->rcvindex == RVBT_MVCC_INSERT_OBJECT_UNQ);
   assert (first_object != NULL && !OID_ISNULL (&first_object->oid));
 
@@ -28080,7 +28147,7 @@ btree_key_append_object_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB
    * so. If there isn't, last object in leaf record must be relocated to an overflow page. NOTE: Initially, the first
    * object was relocated directly into overflow. However, current logging system is quite limited when it comes to
    * using system operations and logical undo together. For that reason, the entire operation was split into two
-   * sub-operations: 1. Relocate last object in leaf record using a system operation and physical undo/redo logging. 2. 
+   * sub-operations: 1. Relocate last object in leaf record using a system operation and physical undo/redo logging. 2.
    * Relocate first object at the end of leaf record and replace with new object. This is logged using logical undo.
    * The log size used is not optimal, but it is the only correct way. */
   if (btree_record_get_num_oids (thread_p, btid_int, leaf_record, offset_after_key, BTREE_LEAF_NODE) >=
@@ -29042,7 +29109,7 @@ btree_rv_record_modify_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is
 		  bool clear_key;
 		  char *printed_key = NULL;
 
-		  db_make_null (&key);
+		  btree_init_temp_key_value (&clear_key, &key);
 		  (void) btree_read_record (thread_p, &btid_int_for_debug, rcv->pgptr, &update_record, &key,
 					    &leaf_rec_info, node_type, &clear_key, &offset_after_key, PEEK_KEY_VALUE,
 					    NULL);
@@ -29146,7 +29213,7 @@ btree_rv_record_modify_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is
 	   * crash). */
 	  if (node_type == BTREE_LEAF_NODE && !btree_leaf_is_flaged (&update_record, BTREE_LEAF_RECORD_OVERFLOW_KEY))
 	    {
-	      db_make_null (&key);
+	      btree_init_temp_key_value (&clear_key, &key);
 	      (void) btree_read_record (thread_p, &btid_int_for_debug, rcv->pgptr, &update_record, &key, &leaf_rec_info,
 					node_type, &clear_key, &offset_after_key, PEEK_KEY_VALUE, NULL);
 	      printed_key = pr_valstring (thread_p, &key);
@@ -29266,7 +29333,7 @@ btree_physical_delete (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID
   if (false)
 #endif /* SA_MODE */
     {
-      /* Before starting, we have to handle the special case of serials. Since next key locking was removed, deleting a 
+      /* Before starting, we have to handle the special case of serials. Since next key locking was removed, deleting a
        * key from serial is not protected. Somebody may insert same key, and if the deleter undoes work, two objects
        * for the same key will be found. Therefore, it is better to postpone deleting object from index after commit.
        * While the deleter is still active, others will be blocked on the key. After deleter commits, it is no longer
@@ -29858,12 +29925,15 @@ btree_fix_root_for_delete (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
       else
 	{
 	  /* Save and log statistics changes. */
-	  error_code =
-	    logtb_tran_update_unique_stats (thread_p, btid, increment_keys, increment_oids, increment_nulls, true);
-	  if (error_code != NO_ERROR)
+	  if (!btree_is_online_index_loading (delete_helper->purpose))
 	    {
-	      ASSERT_ERROR ();
-	      return error_code;
+	      error_code =
+		logtb_tran_update_unique_stats (thread_p, btid, increment_keys, increment_oids, increment_nulls, true);
+	      if (error_code != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  return error_code;
+		}
 	    }
 	}
     }
@@ -29936,7 +30006,7 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 
   /* Merge algorithm: There are two types of merges: root merge and normal merge. 1. Root merge: If root has only two
    * keys and a level more than 2, it could be merged if all keys stored in leaf page pass the size check.  All three
-   * nodes are merged into current root.  After merging, function will continue to check the merged node similarly with 
+   * nodes are merged into current root.  After merging, function will continue to check the merged node similarly with
    * any non-leaf nodes.  NOTE: I don't really know why the root_level has to be greater than 2. This means the b-tree
    * will never be reduced back to one node. It may not be a real issue, since the index is too small to worry about
    * performance. 2. Normal merge: Two nodes are merged if they pass the size check or if any of them is empty. Both
@@ -29944,7 +30014,7 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
    * argument is tested against its neighbors. A node is merged only once (if it was merged to the right node, it will
    * not be merged to left node too). To optimize b-tree access, the algorithm assumes that no change is required
    * (nodes are not merged) and uses READ latch on non-leaf nodes (leaf nodes still require WRITE latch since they are
-   * very likely to be changed). Instead, if merge is required, latches are then promoted to WRITE. If promotions fail, 
+   * very likely to be changed). Instead, if merge is required, latches are then promoted to WRITE. If promotions fail,
    * the algorithm has two choices: 1. Skip merging and just advance to child page. 2. Restart b-tree traversal using
    * exclusive access and force the merge.  Second choice is decided when the two nodes use together less than one
    * third of a page or when one of them is completely empty. Normally, promotions use shared reader condition
@@ -30235,7 +30305,7 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
   else
     {
       /* Use non-leaf latch mode. */
-      /* Promote when non-leaf latch mode is PGBUF_LATCH_READ can be shared reader. If latch mode is PGBUF_LATCH_WRITE, 
+      /* Promote when non-leaf latch mode is PGBUF_LATCH_READ can be shared reader. If latch mode is PGBUF_LATCH_WRITE,
        * no promotion is required. */
       child_latch = delete_helper->nonleaf_latch_mode;
       promote_cond = PGBUF_PROMOTE_SHARED_READER;
@@ -30502,7 +30572,7 @@ btree_key_delete_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB
   int offset_after_key = 0;	/* Offset after key in leaf record. */
   bool dummy_clear_value = false;	/* Dummy. */
   PAGE_PTR found_page = NULL;	/* Page where object being removed is found. */
-  PAGE_PTR prev_found_page = NULL;	/* Previous page to the page where object being removed is found. Saved in case 
+  PAGE_PTR prev_found_page = NULL;	/* Previous page to the page where object being removed is found. Saved in case
 					 * that object is last in an overflow page and page must be deallocated. */
   int offset_to_object = NOT_FOUND;	/* Offset in record where object to be removed is found. */
   BTREE_NODE_TYPE node_type;
@@ -30729,6 +30799,7 @@ exit:
     {
       db_private_free_and_init (thread_p, delete_helper->rv_keyval_data);
     }
+  delete_helper->rv_keyval_data = NULL;
 
   btree_perf_track_time (thread_p, delete_helper);
   return error_code;
@@ -30736,7 +30807,7 @@ exit:
 
 /*
  * btree_key_remove_object_and_keep_visible_first () - Remove one object and all its info from b-tree key. Then find
- *						       other visible version and move it first in leaf record. 
+ *						       other visible version and move it first in leaf record.
  *                                                     Special case of unique index.
  *
  * return	   : Error code.
@@ -30763,7 +30834,7 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
   int offset_after_key = 0;	/* Offset after key in leaf record. */
   bool dummy_clear_value = false;	/* Dummy. */
   PAGE_PTR found_page = NULL;	/* Page where object being removed is found. */
-  PAGE_PTR prev_found_page = NULL;	/* Previous page to the page where object being removed is found. Saved in case 
+  PAGE_PTR prev_found_page = NULL;	/* Previous page to the page where object being removed is found. Saved in case
 					 * that object is last in an overflow page and page must be deallocated. */
   int offset_to_object = NOT_FOUND;	/* Offset in record where object to be removed is found. */
   int offset_to_second_object = NOT_FOUND;	/* Offset to second visible object. */
@@ -30853,7 +30924,7 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
   if (offset_to_object != 0 || found_page != *leaf_page)
     {
       /* Object is normally expected to be first. */
-      /* But there is this case: create table t (a int unique); insert into t values (1), (2); update t set a=a+1 where 
+      /* But there is this case: create table t (a int unique); insert into t values (1), (2); update t set a=a+1 where
        * a > 0; rollback; First a new version of object from key 1 is inserted in key 2. Then the other object in key
        * 2 is updated to key 3. The version in key 2 is deleted (marked as deleted). On undo/rollback, the second
        * object old version delete MVCCID is removed first. The algorithm for undo MVCC delete in unique index makes
@@ -31830,7 +31901,7 @@ btree_key_remove_delete_mvccid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB
   LEAF_REC leaf_rec_info;	/* Leaf leaf_record info. */
   int offset_after_key = 0;	/* Offset after key in leaf leaf_record. */
   bool dummy_clear_key = false;	/* Dummy. */
-  PGSLOTID slotid;		/* Slot ID of leaf_record being updated. It is either search_key->slotid if leaf_record 
+  PGSLOTID slotid;		/* Slot ID of leaf_record being updated. It is either search_key->slotid if leaf_record
 				 * is from leaf or 1 if leaf_record is from overflow. */
   BTREE_NODE_TYPE node_type;	/* Page of found object node type. */
 
@@ -32856,8 +32927,12 @@ btree_delete_sysop_end (THREAD_ENTRY * thread_p, BTREE_DELETE_HELPER * helper)
   switch (helper->purpose)
     {
     case BTREE_OP_DELETE_OBJECT_PHYSICAL:
-    case BTREE_OP_ONLINE_INDEX_TRAN_DELETE:
       log_sysop_end_logical_undo (thread_p, RVBT_DELETE_OBJECT_PHYSICAL, NULL, helper->rv_keyval_data_length,
+				  helper->rv_keyval_data);
+      break;
+
+    case BTREE_OP_ONLINE_INDEX_TRAN_DELETE:
+      log_sysop_end_logical_undo (thread_p, RVBT_ONLINE_INDEX_UNDO_TRAN_DELETE, NULL, helper->rv_keyval_data_length,
 				  helper->rv_keyval_data);
       break;
 
@@ -32910,10 +32985,19 @@ btree_insert_sysop_end (THREAD_ENTRY * thread_p, BTREE_INSERT_HELPER * helper)
   switch (helper->purpose)
     {
     case BTREE_OP_INSERT_NEW_OBJECT:
-    case BTREE_OP_ONLINE_INDEX_TRAN_INSERT:
-    case BTREE_OP_ONLINE_INDEX_TRAN_INSERT_DF:
+      assert (helper->rcvindex != RV_NOT_DEFINED);
       log_sysop_end_logical_undo (thread_p, helper->rcvindex, helper->leaf_addr.vfid, helper->rv_keyval_data_length,
 				  helper->rv_keyval_data);
+      break;
+
+    case BTREE_OP_ONLINE_INDEX_TRAN_INSERT_DF:
+      log_sysop_end_logical_undo (thread_p, RVBT_ONLINE_INDEX_UNDO_TRAN_DELETE, helper->leaf_addr.vfid,
+				  helper->rv_keyval_data_length, helper->rv_keyval_data);
+      break;
+
+    case BTREE_OP_ONLINE_INDEX_TRAN_INSERT:
+      log_sysop_end_logical_undo (thread_p, RVBT_ONLINE_INDEX_UNDO_TRAN_INSERT, helper->leaf_addr.vfid,
+				  helper->rv_keyval_data_length, helper->rv_keyval_data);
       break;
 
     case BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE:
@@ -33142,7 +33226,7 @@ btree_online_index_set_normal_state (MVCCID & state)
 //
 int
 btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid, OID * oid,
-			       int *unique, BTREE_OP_PURPOSE purpose, LOG_LSA * undo_nxlsa)
+			       int unique, BTREE_OP_PURPOSE purpose, LOG_LSA * undo_nxlsa)
 {
   int error_code = NO_ERROR;
   /* Search key helper which will point to where data should inserted. */
@@ -33164,6 +33248,30 @@ btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * 
 	  || purpose == BTREE_OP_ONLINE_INDEX_TRAN_DELETE || purpose == BTREE_OP_ONLINE_INDEX_UNDO_TRAN_DELETE
 	  || purpose == BTREE_OP_ONLINE_INDEX_UNDO_TRAN_INSERT);
 
+  /* Check for null keys. */
+  if (DB_IS_NULL (key) || btree_multicol_key_is_null (key))
+    {
+      /* We do not store NULL keys but we track them for unique indexes. */
+      if (BTREE_IS_UNIQUE (unique))
+	{
+	  /* In this scenario, we have to write log for the update of local statistics, since we do not
+	   * log the physical operation of a NULL key.
+	   */
+	  if (purpose == BTREE_OP_ONLINE_INDEX_TRAN_DELETE || purpose == BTREE_OP_ONLINE_INDEX_UNDO_TRAN_INSERT)
+	    {
+	      /* DELETE operation, we decrement oids and nulls. */
+	      logtb_tran_update_unique_stats (thread_p, btid, 0, -1, -1, true);
+	    }
+	  else
+	    {
+	      /* Insert operation, we increment oids and nulls. */
+	      logtb_tran_update_unique_stats (thread_p, btid, 0, 1, 1, true);
+	    }
+	}
+
+      return NO_ERROR;
+    }
+
   /* Save OID, class OID and MVCC info in insert helper. */
   COPY_OID (BTREE_INSERT_OID (&helper.insert_helper), oid);
   COPY_OID (BTREE_DELETE_OID (&helper.delete_helper), oid);
@@ -33184,65 +33292,62 @@ btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * 
       LSA_COPY (&helper.delete_helper.reference_lsa, undo_nxlsa);
     }
 
+  helper.insert_helper.log_operations = prm_get_bool_value (PRM_ID_LOG_BTREE_OPS);
+  helper.delete_helper.log_operations = prm_get_bool_value (PRM_ID_LOG_BTREE_OPS);
+
   switch (purpose)
     {
     case BTREE_OP_ONLINE_INDEX_IB_INSERT:
-      {
-	/* This is an insert done by the index builder. */
-	helper.insert_helper.op_type = SINGLE_ROW_INSERT;
-	helper.insert_helper.purpose = purpose;
-	root_function = btree_fix_root_for_insert;
-	advance_function = btree_split_node_and_advance;
-	key_function = btree_key_online_index_IB_insert;
-	break;
-      }
+      /* This is an insert done by the index builder. */
+      helper.insert_helper.op_type = SINGLE_ROW_INSERT;
+      helper.insert_helper.purpose = purpose;
+      root_function = btree_fix_root_for_insert;
+      advance_function = btree_split_node_and_advance;
+      key_function = btree_key_online_index_IB_insert;
+      break;
 
     case BTREE_OP_ONLINE_INDEX_TRAN_INSERT:
     case BTREE_OP_ONLINE_INDEX_UNDO_TRAN_DELETE:
-      {
-	helper.insert_helper.op_type = SINGLE_ROW_INSERT;
-	helper.insert_helper.purpose = purpose;
-	root_function = btree_fix_root_for_insert;
-	advance_function = btree_split_node_and_advance;
-	key_function = btree_key_online_index_tran_insert;
-	break;
-      }
+      helper.insert_helper.op_type = SINGLE_ROW_INSERT;
+      helper.insert_helper.purpose = purpose;
+      root_function = btree_fix_root_for_insert;
+      advance_function = btree_split_node_and_advance;
+      key_function = btree_key_online_index_tran_insert;
+      break;
 
     case BTREE_OP_ONLINE_INDEX_TRAN_DELETE:
     case BTREE_OP_ONLINE_INDEX_UNDO_TRAN_INSERT:
-      {
-	helper.delete_helper.op_type = SINGLE_ROW_DELETE;
-	helper.delete_helper.purpose = purpose;
-	root_function = btree_fix_root_for_delete;
-	advance_function = btree_merge_node_and_advance;
-	key_function = btree_key_online_index_tran_delete;
+      helper.delete_helper.op_type = SINGLE_ROW_DELETE;
+      helper.delete_helper.purpose = purpose;
+      root_function = btree_fix_root_for_delete;
+      advance_function = btree_merge_node_and_advance;
+      key_function = btree_key_online_index_tran_delete;
 
-	error_code =
-	  btree_search_key_and_apply_functions (thread_p, btid, &btid_int, key, root_function, &helper.delete_helper,
-						advance_function, &helper.delete_helper, key_function, &helper,
-						&search_key, NULL);
+      error_code =
+	btree_search_key_and_apply_functions (thread_p, btid, &btid_int, key, root_function, &helper.delete_helper,
+					      advance_function, &helper.delete_helper, key_function, &helper,
+					      &search_key, NULL);
 
-	if (error_code == NO_ERROR && search_key.result == BTREE_KEY_NOTFOUND)
-	  {
-	    /*  We failed to find the object in the index. We must traverse again the btree and treat the operation
-	     *  as an insert with DELETE_FLAG set.
-	     */
-	    helper.insert_helper.purpose = purpose;
-	    helper.insert_helper.op_type = SINGLE_ROW_INSERT;
-	    if (helper.delete_helper.purpose == BTREE_OP_ONLINE_INDEX_TRAN_DELETE)
-	      {
-		helper.insert_helper.purpose = BTREE_OP_ONLINE_INDEX_TRAN_INSERT_DF;
-	      }
-	    root_function = btree_fix_root_for_insert;
-	    advance_function = btree_split_node_and_advance;
-	    key_function = btree_key_online_index_tran_insert_DF;
-	    break;		// Fall through.
-	  }
-	else
-	  {
-	    return error_code;
-	  }
-      }
+      if (error_code == NO_ERROR && search_key.result == BTREE_KEY_NOTFOUND)
+	{
+	  /* We failed to find the object in the index. We must traverse again the btree and treat the operation
+	   * as an insert with DELETE_FLAG set.
+	   */
+	  helper.insert_helper.purpose = purpose;
+	  helper.insert_helper.op_type = SINGLE_ROW_INSERT;
+	  if (helper.delete_helper.purpose == BTREE_OP_ONLINE_INDEX_TRAN_DELETE)
+	    {
+	      helper.insert_helper.purpose = BTREE_OP_ONLINE_INDEX_TRAN_INSERT_DF;
+	    }
+	  root_function = btree_fix_root_for_insert;
+	  advance_function = btree_split_node_and_advance;
+	  key_function = btree_key_online_index_tran_insert_DF;
+	  break;		// Fall through.
+	}
+      else
+	{
+	  goto end;
+	}
 
     default:
       /* This should never happen. */
@@ -33254,6 +33359,18 @@ btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * 
     btree_search_key_and_apply_functions (thread_p, btid, &btid_int, key, root_function, &helper.insert_helper,
 					  advance_function, &helper.insert_helper, key_function, &helper, &search_key,
 					  NULL);
+
+end:
+
+  if (helper.insert_helper.printed_key != NULL)
+    {
+      db_private_free (thread_p, helper.insert_helper.printed_key);
+    }
+
+  if (helper.delete_helper.printed_key != NULL && helper.delete_helper.printed_key != helper.insert_helper.printed_key)
+    {
+      db_private_free (thread_p, helper.delete_helper.printed_key);
+    }
 
   return error_code;
 }
@@ -33298,6 +33415,8 @@ btree_key_online_index_IB_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
   char rec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
   char new_rec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
   RECDES new_record;
+  int n_keys = 0;
+  int n_oids = 0;
 
   record.data = PTR_ALIGN (rec_buf, BTREE_MAX_ALIGN);
   record.area_size = IO_MAX_PAGE_SIZE;
@@ -33316,10 +33435,6 @@ btree_key_online_index_IB_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
   /* We are in leaf level now, and we must inspect if we have found the OID inside the key. */
   if (search_key->result == BTREE_KEY_FOUND)
     {
-      /* We search the key for the OID. If we find it, we should find it with DELETE_FLAG set, therefore we must
-       * delete it in place.
-       */
-
       /* Get the record. */
       if (spage_get_record (thread_p, *leaf_page, search_key->slotid, &record, COPY) != S_SUCCESS)
 	{
@@ -33340,12 +33455,13 @@ btree_key_online_index_IB_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
 
       error_code =
 	btree_find_oid_with_page_and_record (thread_p, btid_int, &helper->insert_helper.obj_info.oid, *leaf_page,
-					     helper->insert_helper.purpose, NULL, &record, &leaf_info, offset_after_key,
-					     &page_found, &prev_page, &offset_to_object, &btree_mvcc_info, &new_record);
+					     helper->insert_helper.purpose, NULL, &record, &leaf_info,
+					     offset_after_key, &page_found, &prev_page, &offset_to_object,
+					     &btree_mvcc_info, &new_record);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  return error_code;
+	  goto end;
 	}
 
       node_type = (page_found == *leaf_page) ? BTREE_LEAF_NODE : BTREE_OVERFLOW_NODE;
@@ -33361,7 +33477,7 @@ btree_key_online_index_IB_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
 
       if (offset_to_object != NOT_FOUND)
 	{
-	  /* Inspect the key and its MVCC_INFO. */
+	  /* Inspect the object and its MVCC_INFO. */
 	  /* This is the index builder, therefore if there is already an OID that matches the one that needs to be
 	   * inserted, then the already inserted one should have either DELETE_FLAG or INSERT_FLAG set.
 	   */
@@ -33394,7 +33510,7 @@ btree_key_online_index_IB_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
 		  /* Unexpected. */
 		  assert_release (false);
 		  error_code = ER_FAILED;
-		  return error_code;
+		  goto end;
 		}
 
 	      FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
@@ -33408,13 +33524,17 @@ btree_key_online_index_IB_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
 	      log_append_redo_data (thread_p, RVBT_RECORD_MODIFY_NO_UNDO, &addr, rv_redo_data_length,
 				    helper->insert_helper.rv_redo_data);
 
-	      btree_insert_log (&helper->insert_helper, "btree_key_online_index_insert %s", "todo");
+	      btree_insert_log (&helper->insert_helper,
+				BTREE_INSERT_MODIFY_MSG ("IB insert change from INSERT_FLAG to NORMAL_STATE"),
+				BTREE_INSERT_MODIFY_ARGS (thread_p, &helper->insert_helper, page_found, &prev_lsa,
+							  node_type == BTREE_LEAF_NODE, slotid, new_record.length,
+							  btid_int->sys_btid));
 
 	      FI_TEST (thread_p, FI_TEST_BTREE_MANAGER_RANDOM_EXIT, 0);
 
 	      pgbuf_set_dirty (thread_p, page_found, DONT_FREE);
 
-	      return error_code;
+	      goto end;
 	    }
 	  else
 	    {
@@ -33422,23 +33542,34 @@ btree_key_online_index_IB_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
 
 	      btree_insert_helper_to_delete_helper (&helper->insert_helper, &helper->delete_helper);
 	      helper->delete_helper.purpose = BTREE_OP_ONLINE_INDEX_IB_DELETE;
+	      helper->delete_helper.op_type = SINGLE_ROW_DELETE;
+	      assert (helper->delete_helper.rv_keyval_data == NULL);	// otherwise, it will be leaked.
+
+	      if (btree_is_single_object_key (thread_p, btid_int, node_type, &new_record, offset_after_key))
+		{
+		  /* Only one OID in the key, we will remove the key as well. */
+		  n_keys = -1;
+		}
+	      n_oids = -1;
 
 	      error_code =
 		btree_key_remove_object (thread_p, key, btid_int, &helper->delete_helper, *leaf_page, &record,
-					 &leaf_info, offset_after_key, search_key, &page_found, prev_page, node_type,
-					 offset_to_object);
-
-	      return error_code;
+					 &leaf_info, offset_after_key, search_key, &page_found, prev_page,
+					 node_type, offset_to_object);
+	      goto end;
 	    }
 	}
       else
 	{
 	  /* Key was found but the object wasn't. We must append the object to the current key. */
+
 	  /* Safeguards. */
 	  assert (search_key->result == BTREE_KEY_FOUND && offset_to_object == NOT_FOUND);
 
+	  n_oids = 1;
+
 	  error_code =
-	    btree_key_append_object_non_unique (thread_p, btid_int, key, page_found, search_key, &new_record,
+	    btree_key_append_object_non_unique (thread_p, btid_int, key, *leaf_page, search_key, &new_record,
 						offset_after_key, &leaf_info, &helper->insert_helper.obj_info,
 						&helper->insert_helper);
 	}
@@ -33446,7 +33577,26 @@ btree_key_online_index_IB_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
   else
     {
       /* Key was not found, we must insert it. */
+      n_keys = 1;
+      n_oids = 1;
+
       error_code = btree_key_insert_new_key (thread_p, btid_int, key, *leaf_page, &helper->insert_helper, search_key);
+    }
+
+end:
+  if (error_code == NO_ERROR && BTREE_IS_UNIQUE (btid_int->unique_pk))
+    {
+      logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, n_keys, n_oids, 0, false);
+    }
+
+  if (page_found != NULL && page_found != *leaf_page)
+    {
+      pgbuf_unfix_and_init (thread_p, page_found);
+    }
+
+  if (prev_page != NULL && prev_page != *leaf_page)
+    {
+      pgbuf_unfix_and_init (thread_p, prev_page);
     }
 
   return error_code;
@@ -33479,7 +33629,6 @@ btree_key_online_index_tran_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int
   PAGE_PTR page_found = NULL;
   int offset_to_object = 0;
   BTREE_MVCC_INFO btree_mvcc_info = BTREE_MVCC_INFO_INITIALIZER;
-  PAGE_PTR prev_page = NULL;
   BTREE_NODE_TYPE node_type;
   RECDES new_record;
   PGSLOTID slotid;
@@ -33512,6 +33661,8 @@ btree_key_online_index_tran_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int
   helper->insert_helper.leaf_addr.pgptr = *leaf_page;
   helper->insert_helper.leaf_addr.vfid = &btid_int->sys_btid->vfid;
 
+  helper->insert_helper.rv_keyval_data = rv_undo_data_bufalign;
+
   /* Undo logging. */
   if (helper->insert_helper.purpose == BTREE_OP_ONLINE_INDEX_TRAN_INSERT
       || helper->insert_helper.purpose == BTREE_OP_ONLINE_INDEX_TRAN_INSERT_DF)
@@ -33525,7 +33676,7 @@ btree_key_online_index_tran_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  return error_code;
+	  goto end;
 	}
     }
 
@@ -33541,7 +33692,7 @@ btree_key_online_index_tran_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	{
 	  assert_release (false);
 	  error_code = ER_FAILED;
-	  return error_code;
+	  goto end;
 	}
 
       /* Read the record. */
@@ -33551,18 +33702,18 @@ btree_key_online_index_tran_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  return error_code;
+	  goto end;
 	}
 
       error_code =
 	btree_find_oid_with_page_and_record (thread_p, btid_int, &helper->insert_helper.obj_info.oid, *leaf_page,
 					     helper->insert_helper.purpose, NULL, &record, &leaf_info, offset_after_key,
-					     &page_found, &prev_page, &offset_to_object, &btree_mvcc_info, &new_record);
+					     &page_found, NULL, &offset_to_object, &btree_mvcc_info, &new_record);
 
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  return error_code;
+	  goto end;
 	}
 
       node_type = (page_found == *leaf_page) ? BTREE_LEAF_NODE : BTREE_OVERFLOW_NODE;
@@ -33608,7 +33759,7 @@ btree_key_online_index_tran_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	    {
 	      assert_release (false);
 	      error_code = ER_FAILED;
-	      return error_code;
+	      goto end;
 	    }
 
 	  /* We need to log previous lsa. */
@@ -33617,12 +33768,18 @@ btree_key_online_index_tran_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	  /* Logging. */
 	  BTREE_RV_GET_DATA_LENGTH (rv_redo_data_ptr, rv_redo_data, rv_redo_data_length);
 
+	  btree_insert_log (&helper->insert_helper,
+			    BTREE_INSERT_MODIFY_MSG ("Tran insert change from DELETE_FLAG to INSERT_FLAG"),
+			    BTREE_INSERT_MODIFY_ARGS (thread_p, &helper->insert_helper, page_found, &prev_lsa,
+						      node_type == BTREE_LEAF_NODE, slotid, new_record.length,
+						      btid_int->sys_btid));
+
 	  btree_rv_log_insert_object (thread_p, helper->insert_helper, addr, 0, rv_redo_data_length, NULL,
 				      rv_redo_data);
 
 	  pgbuf_set_dirty (thread_p, page_found, DONT_FREE);
 
-	  return error_code;
+	  goto end;
 	}
       else
 	{
@@ -33634,12 +33791,39 @@ btree_key_online_index_tran_insert (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	    btree_key_append_object_non_unique (thread_p, btid_int, key, *leaf_page, search_key, &new_record,
 						offset_after_key, &leaf_info, &helper->insert_helper.obj_info,
 						&helper->insert_helper);
+	  if (error_code == NO_ERROR && BTREE_IS_UNIQUE (btid_int->unique_pk))
+	    {
+	      // Append a single object.
+	      logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, 0, 1, 0, false);
+	    }
+
+	  goto end;
 	}
     }
   else
     {
       /* Key was not found, we must insert it. */
       error_code = btree_key_insert_new_key (thread_p, btid_int, key, *leaf_page, &helper->insert_helper, search_key);
+      if (error_code == NO_ERROR && BTREE_IS_UNIQUE (btid_int->unique_pk))
+	{
+	  /* Insert a key with an object. */
+	  logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, 1, 1, 0, false);
+	}
+
+      goto end;
+    }
+
+end:
+  if (helper->insert_helper.rv_keyval_data != NULL && helper->insert_helper.rv_keyval_data != rv_undo_data_bufalign)
+    {
+      db_private_free_and_init (thread_p, helper->insert_helper.rv_keyval_data);
+    }
+  helper->insert_helper.rv_keyval_data = NULL;
+  helper->insert_helper.rv_keyval_data_length = 0;
+
+  if (page_found != NULL && page_found != *leaf_page)
+    {
+      pgbuf_unfix_and_init (thread_p, page_found);
     }
 
   return error_code;
@@ -33699,6 +33883,13 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
   char *rv_redo_data_ptr = rv_redo_data;
   int rv_redo_data_length = 0;
 
+  int n_keys = 0;
+  int n_oids = 0;
+
+  int key_len;
+
+  bool switched_to_insert_helper = false;
+
   helper->delete_helper.rv_keyval_data = rv_undo_data_bufalign;
   if (helper->delete_helper.purpose == BTREE_OP_ONLINE_INDEX_TRAN_DELETE)
     {
@@ -33712,7 +33903,7 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  return error_code;
+	  goto end;
 	}
     }
 
@@ -33726,8 +33917,8 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
   /* We are in leaf level now, and we must inspect if we have found the OID inside the key. */
   if (search_key->result == BTREE_KEY_FOUND)
     {
-      /*  We search the key for the OID. If we find it, we should find it with DELETE_FLAG set, therefore we must
-       *  delete it in place.
+      /* We search the key for the OID. If we find it, we should find it with DELETE_FLAG set, therefore we must
+       * delete it in place.
        */
 
       /* Get the record. */
@@ -33735,7 +33926,7 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	{
 	  assert_release (false);
 	  error_code = ER_FAILED;
-	  return error_code;
+	  goto end;
 	}
 
       /* Read the record. */
@@ -33745,18 +33936,17 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  return error_code;
+	  goto end;
 	}
 
       error_code =
 	btree_find_oid_with_page_and_record (thread_p, btid_int, &helper->delete_helper.object_info.oid, *leaf_page,
 					     helper->delete_helper.purpose, NULL, &record, &leaf_info, offset_after_key,
 					     &page_found, &prev_page, &offset_to_object, &btree_mvcc_info, &new_record);
-
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  return error_code;
+	  goto end;
 	}
 
       node_type = (page_found == *leaf_page) ? BTREE_LEAF_NODE : BTREE_OVERFLOW_NODE;
@@ -33781,17 +33971,17 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	    {
 	      /* Insert flag set. We must change the flag to DELETE_FLAG. */
 
-	      /* Redo logging. */
-	      if (node_type == BTREE_OVERFLOW_NODE)
-		{
-		  BTREE_RV_SET_OVERFLOW_NODE (&helper->delete_helper.leaf_addr);
-		}
-	      LOG_RV_RECORD_SET_MODIFY_MODE (&addr, LOG_RV_RECORD_UPDATE_PARTIAL);
-
-	      /* Logging. */
+	      /* Prepare Logging. */
 	      addr.pgptr = page_found;
 	      addr.offset = slotid;
 	      addr.vfid = &btid_int->sys_btid->vfid;
+
+	      /* Redo logging. */
+	      if (node_type == BTREE_OVERFLOW_NODE)
+		{
+		  BTREE_RV_SET_OVERFLOW_NODE (&addr);
+		}
+	      LOG_RV_RECORD_SET_MODIFY_MODE (&addr, LOG_RV_RECORD_UPDATE_PARTIAL);
 
 	      /* Set the new state to DELETE_FLAG. */
 	      btree_online_index_set_delete_flag_state (btree_mvcc_info.insert_mvccid);
@@ -33804,7 +33994,7 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 		{
 		  assert_release (false);
 		  error_code = ER_FAILED;
-		  return error_code;
+		  goto end;
 		}
 
 	      /* We need to log previous lsa. */
@@ -33813,23 +34003,41 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	      /* Logging. */
 	      BTREE_RV_GET_DATA_LENGTH (rv_redo_data_ptr, rv_redo_data, rv_redo_data_length);
 
-	      btree_rv_log_delete_object (thread_p, helper->delete_helper, helper->delete_helper.leaf_addr, 0,
+	      btree_delete_log (&helper->delete_helper,
+				BTREE_DELETE_MODIFY_MSG ("Tran delete change from INSERT_FLAG to DELETE_FLAG"),
+				BTREE_DELETE_MODIFY_ARGS (thread_p, &helper->delete_helper, page_found, &prev_lsa,
+							  node_type == BTREE_LEAF_NODE, slotid, new_record.length,
+							  btid_int->sys_btid));
+
+	      btree_rv_log_delete_object (thread_p, helper->delete_helper, addr, 0,
 					  rv_redo_data_length, NULL, rv_redo_data);
 
 	      pgbuf_set_dirty (thread_p, page_found, DONT_FREE);
 
-	      return error_code;
+	      goto end;
 	    }
 	  else
 	    {
 	      /* Normal state. We need to physically delete the object. */
 	      assert (btree_online_index_is_normal_state (btree_mvcc_info.insert_mvccid));
+	      if (btree_is_single_object_key (thread_p, btid_int, node_type, &new_record, offset_after_key))
+		{
+		  /* Only one OID in the key, we will remove the key as well. */
+		  n_keys = -1;
+		}
+	      n_oids = -1;
 
 	      error_code =
-		btree_key_remove_object (thread_p, key, btid_int, &helper->delete_helper, *leaf_page, &new_record,
+		btree_key_remove_object (thread_p, key, btid_int, &helper->delete_helper, *leaf_page, &record,
 					 &leaf_info, offset_after_key, search_key, &page_found, prev_page, node_type,
 					 offset_to_object);
-	      return error_code;
+
+	      if (error_code == NO_ERROR && BTREE_IS_UNIQUE (btid_int->unique_pk))
+		{
+		  logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, n_keys, n_oids, 0, false);
+		}
+
+	      goto end;
 	    }
 	}
       else
@@ -33838,13 +34046,33 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	}
     }
 
-  /*  We did not find the object. We have to check if there is enough space in the leaf for the object. If there is,
-   *  we insert it in place without any restarts.
+  /* We did not find the object. We have to check if there is enough space in the leaf for the object. If there is,
+   * we insert it in place without any restarts.
    */
+
   btree_delete_helper_to_insert_helper (&helper->delete_helper, &helper->insert_helper);
+  switched_to_insert_helper = true;
+  helper->insert_helper.purpose = BTREE_OP_ONLINE_INDEX_TRAN_INSERT;
+  helper->insert_helper.op_type = SINGLE_ROW_INSERT;
+
+  /* delete_helper does not hold information regarding the length of the key in page.
+   * We need this information so that we can check whether we have enough space to insert the new object.
+   */
+
+  key_len = btree_get_disk_size_of_key (key);
+  helper->insert_helper.key_len_in_page = BTREE_GET_KEY_LEN_IN_PAGE (key_len);
+
   if (!btree_key_insert_does_leaf_need_split (thread_p, btid_int, *leaf_page, &helper->insert_helper, search_key))
     {
       /* There is enough space. */
+
+      /* We have to check if we have an overflow key and if the btid can handle it. If not, restart the traverse. */
+      if (key_len >= BTREE_MAX_KEYLEN_INPAGE && VFID_ISNULL (&btid_int->ovfid))
+	{
+	  /* We have to restart to ensure the key is correctly handled. */
+	  search_key->result = BTREE_KEY_NOTFOUND;
+	  goto end;
+	}
 
       /* Set DELETE_FLAG in the helper structure. */
       helper->insert_helper.obj_info.mvcc_info.flags |= BTREE_OID_HAS_MVCC_INSID;
@@ -33853,8 +34081,6 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
       helper->insert_helper.purpose = BTREE_OP_ONLINE_INDEX_TRAN_INSERT_DF;
       if (search_key->result == BTREE_KEY_FOUND)
 	{
-	  /* We found the key, but not the object. We append the object at the end of the key. */
-	  assert (search_key->result == BTREE_KEY_FOUND && offset_to_object == NOT_FOUND);
 	  error_code =
 	    btree_key_append_object_non_unique (thread_p, btid_int, key, *leaf_page, search_key, &new_record,
 						offset_after_key, &leaf_info, &helper->insert_helper.obj_info,
@@ -33862,15 +34088,54 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	}
       else
 	{
-	  error_code =
-	    btree_key_insert_new_key (thread_p, btid_int, key, *leaf_page, &helper->insert_helper, search_key);
+	  error_code = btree_key_insert_new_key (thread_p, btid_int, key, *leaf_page, &helper->insert_helper,
+						 search_key);
+	  n_keys = 1;
 	}
 
-      return error_code;
+      n_oids = 1;
+
+      if (error_code == NO_ERROR && BTREE_IS_UNIQUE (btid_int->unique_pk))
+	{
+	  logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, n_keys, n_oids, 0, false);
+	}
+
+      goto end;
     }
 
   /* Not enough space. We have to restart the traverse and try to insert the object with DELETE_FLAG set. */
   search_key->result = BTREE_KEY_NOTFOUND;
+
+end:
+  if (switched_to_insert_helper)
+    {
+      if (helper->insert_helper.rv_keyval_data != NULL && helper->insert_helper.rv_keyval_data != rv_undo_data_bufalign)
+	{
+	  db_private_free_and_init (thread_p, helper->insert_helper.rv_keyval_data);
+	}
+      helper->insert_helper.rv_keyval_data = NULL;
+      helper->insert_helper.rv_keyval_data_length = 0;
+    }
+  else
+    {
+      if (helper->delete_helper.rv_keyval_data != NULL && helper->delete_helper.rv_keyval_data != rv_undo_data_bufalign)
+	{
+	  db_private_free_and_init (thread_p, helper->delete_helper.rv_keyval_data);
+	}
+      helper->delete_helper.rv_keyval_data = NULL;
+      helper->delete_helper.rv_keyval_data_length = 0;
+    }
+
+  if (page_found != NULL && page_found != *leaf_page)
+    {
+      pgbuf_unfix_and_init (thread_p, page_found);
+    }
+
+  if (prev_page != NULL && prev_page != *leaf_page)
+    {
+      pgbuf_unfix_and_init (thread_p, prev_page);
+    }
+
   return error_code;
 }
 
@@ -33927,6 +34192,11 @@ btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_
   char *rv_redo_data_ptr = rv_redo_data;
   int rv_redo_data_length = 0;
 
+  int n_keys = 0;
+  int n_oids = 0;
+
+  bool switched_to_delete_helper = false;
+
   /* Save the key for undo process. */
   helper->insert_helper.rv_keyval_data = rv_undo_data_bufalign;
   if (helper->insert_helper.purpose == BTREE_OP_ONLINE_INDEX_TRAN_INSERT_DF)
@@ -33940,7 +34210,7 @@ btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  return error_code;
+	  goto end;
 	}
     }
 
@@ -33962,7 +34232,7 @@ btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_
 	{
 	  assert_release (false);
 	  error_code = ER_FAILED;
-	  return error_code;
+	  goto end;
 	}
 
       /* Read the record. */
@@ -33972,7 +34242,7 @@ btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  return error_code;
+	  goto end;
 	}
 
       error_code =
@@ -33982,14 +34252,14 @@ btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  return error_code;
+	  goto end;
 	}
 
       node_type = (page_found == *leaf_page) ? BTREE_LEAF_NODE : BTREE_OVERFLOW_NODE;
 
       if (offset_to_object != NOT_FOUND)
 	{
-	  /* Inspect the key and its MVCC_INFO. This is the transactional insert with DELETE_FLAG, which means 
+	  /* Inspect the key and its MVCC_INFO. This is the transactional insert with DELETE_FLAG, which means
 	   * that if we can find the object, then the object must have either INSERT_FLAG set, or the object
 	   * should be in normal state.
 	   */
@@ -34011,14 +34281,28 @@ btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_
 	      assert (btree_online_index_is_normal_state (btree_mvcc_info.insert_mvccid));
 
 	      btree_insert_helper_to_delete_helper (&helper->insert_helper, &helper->delete_helper);
+	      switched_to_delete_helper = true;
 
 	      helper->delete_helper.purpose = BTREE_OP_ONLINE_INDEX_TRAN_DELETE;
+	      helper->delete_helper.op_type = SINGLE_ROW_DELETE;
+
+	      if (btree_is_single_object_key (thread_p, btid_int, node_type, &new_record, offset_after_key))
+		{
+		  /* Only one OID in the key, we will remove the key as well. */
+		  n_keys = -1;
+		}
+	      n_oids = -1;
 
 	      error_code =
 		btree_key_remove_object (thread_p, key, btid_int, &helper->delete_helper, *leaf_page, &record,
 					 &leaf_info, offset_after_key, search_key, &page_found, prev_page, node_type,
 					 offset_to_object);
-	      return error_code;
+
+	      if (error_code == NO_ERROR && BTREE_IS_UNIQUE (btid_int->unique_pk))
+		{
+		  logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, n_keys, n_oids, 0, false);
+		}
+	      goto end;
 	    }
 	  else
 	    {
@@ -34050,7 +34334,7 @@ btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_
 		{
 		  assert_release (false);
 		  error_code = ER_FAILED;
-		  return error_code;
+		  goto end;
 		}
 
 	      /* We need to log previous lsa. */
@@ -34059,12 +34343,18 @@ btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_
 	      /* Logging. */
 	      BTREE_RV_GET_DATA_LENGTH (rv_redo_data_ptr, rv_redo_data, rv_redo_data_length);
 
+	      btree_insert_log (&helper->insert_helper,
+				BTREE_INSERT_MODIFY_MSG ("Tran delete change from INSERT_FLAG to DELETE_FLAG"),
+				BTREE_INSERT_MODIFY_ARGS (thread_p, &helper->insert_helper, page_found, &prev_lsa,
+							  node_type == BTREE_LEAF_NODE, slotid, new_record.length,
+							  btid_int->sys_btid));
+
 	      btree_rv_log_insert_object (thread_p, helper->insert_helper, addr, 0, rv_redo_data_length, NULL,
 					  rv_redo_data);
 
 	      pgbuf_set_dirty (thread_p, page_found, DONT_FREE);
 
-	      return error_code;
+	      goto end;
 	    }
 	}
       else
@@ -34081,6 +34371,11 @@ btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_
 	    btree_key_append_object_non_unique (thread_p, btid_int, key, *leaf_page, search_key, &new_record,
 						offset_after_key, &leaf_info, &helper->insert_helper.obj_info,
 						&helper->insert_helper);
+
+	  if (error_code == NO_ERROR && BTREE_IS_UNIQUE (btid_int->unique_pk))
+	    {
+	      logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, 0, 1, 0, false);
+	    }
 	}
     }
   else
@@ -34089,7 +34384,42 @@ btree_key_online_index_tran_insert_DF (THREAD_ENTRY * thread_p, BTID_INT * btid_
       /* We have to insert it with DELETE_FLAG set. */
       helper->insert_helper.obj_info.mvcc_info.flags |= BTREE_OID_HAS_MVCC_INSID;
       btree_online_index_set_delete_flag_state (helper->insert_helper.obj_info.mvcc_info.insert_mvccid);
+
       error_code = btree_key_insert_new_key (thread_p, btid_int, key, *leaf_page, &helper->insert_helper, search_key);
+      if (error_code == NO_ERROR && BTREE_IS_UNIQUE (btid_int->unique_pk))
+	{
+	  logtb_tran_update_unique_stats (thread_p, btid_int->sys_btid, 1, 1, 0, false);
+	}
+    }
+
+end:
+  if (switched_to_delete_helper)
+    {
+      if (helper->delete_helper.rv_keyval_data != NULL && helper->delete_helper.rv_keyval_data != rv_undo_data_bufalign)
+	{
+	  db_private_free_and_init (thread_p, helper->delete_helper.rv_keyval_data);
+	}
+      helper->delete_helper.rv_keyval_data = NULL;
+      helper->delete_helper.rv_keyval_data_length = 0;
+    }
+  else
+    {
+      if (helper->insert_helper.rv_keyval_data != NULL && helper->insert_helper.rv_keyval_data != rv_undo_data_bufalign)
+	{
+	  db_private_free_and_init (thread_p, helper->insert_helper.rv_keyval_data);
+	}
+      helper->insert_helper.rv_keyval_data = NULL;
+      helper->insert_helper.rv_keyval_data_length = 0;
+    }
+
+  if (page_found != NULL && page_found != *leaf_page)
+    {
+      pgbuf_unfix_and_init (thread_p, page_found);
+    }
+
+  if (prev_page != NULL && prev_page != *leaf_page)
+    {
+      pgbuf_unfix_and_init (thread_p, prev_page);
     }
 
   return error_code;
@@ -34520,7 +34850,6 @@ btree_rv_keyval_undo_online_index_tran_delete (THREAD_ENTRY * thread_p, LOG_RCV 
   int datasize;
   BTREE_MVCC_INFO mvcc_info;
   int error_code = NO_ERROR;
-  int dummy_unique;
 
   /* btid needs a place to unpack the sys_btid into.  We'll use stack space. */
   btid.sys_btid = &sys_btid;
@@ -34538,13 +34867,16 @@ btree_rv_keyval_undo_online_index_tran_delete (THREAD_ENTRY * thread_p, LOG_RCV 
   assert (!OID_ISNULL (&oid));
 
   /* Insert object and all its info. */
-  error_code = btree_online_index_dispatcher (thread_p, btid.sys_btid, &key, &cls_oid, &oid, &dummy_unique,
+  error_code = btree_online_index_dispatcher (thread_p, btid.sys_btid, &key, &cls_oid, &oid, btid.unique_pk,
 					      BTREE_OP_ONLINE_INDEX_UNDO_TRAN_DELETE, &recv->reference_lsa);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
+      pr_clear_value (&key);
       return error_code;
     }
+
+  pr_clear_value (&key);
 
   return NO_ERROR;
 }
@@ -34568,7 +34900,6 @@ btree_rv_keyval_undo_online_index_tran_insert (THREAD_ENTRY * thread_p, LOG_RCV 
   BTREE_MVCC_INFO dummy_mvcc_info;
   int err = NO_ERROR;
   DB_VALUE key;
-  int dummy_unique;
 
   /* btid needs a place to unpack the sys_btid into.  We'll use stack space. */
   btid.sys_btid = &sys_btid;
@@ -34586,18 +34917,21 @@ btree_rv_keyval_undo_online_index_tran_insert (THREAD_ENTRY * thread_p, LOG_RCV 
   assert (!OID_ISNULL (&oid));
 
   /* Undo insert: just delete object and all its information. */
-  err = btree_online_index_dispatcher (thread_p, btid.sys_btid, &key, &cls_oid, &oid, &dummy_unique,
+  err = btree_online_index_dispatcher (thread_p, btid.sys_btid, &key, &cls_oid, &oid, btid.unique_pk,
 				       BTREE_OP_ONLINE_INDEX_UNDO_TRAN_INSERT, &recv->reference_lsa);
   if (err != NO_ERROR)
     {
       ASSERT_ERROR ();
+      pr_clear_value (&key);
       return err;
     }
+
+  pr_clear_value (&key);
 
   return NO_ERROR;
 }
 
-static void
+void
 btree_insert_helper_to_delete_helper (BTREE_INSERT_HELPER * insert_helper, BTREE_DELETE_HELPER * delete_helper)
 {
   /* oid, classoid and mvcc info */
@@ -34627,7 +34961,7 @@ btree_insert_helper_to_delete_helper (BTREE_INSERT_HELPER * insert_helper, BTREE
   delete_helper->printed_key_sha1 = insert_helper->printed_key_sha1;
 }
 
-static void
+void
 btree_delete_helper_to_insert_helper (BTREE_DELETE_HELPER * delete_helper, BTREE_INSERT_HELPER * insert_helper)
 {
   /* oid, classoid and mvcc info */
@@ -34655,4 +34989,145 @@ btree_delete_helper_to_insert_helper (BTREE_DELETE_HELPER * delete_helper, BTREE
   insert_helper->log_operations = delete_helper->log_operations;
   insert_helper->printed_key = delete_helper->printed_key;
   insert_helper->printed_key_sha1 = delete_helper->printed_key_sha1;
+}
+
+static inline bool
+btree_is_online_index_loading (BTREE_OP_PURPOSE purpose)
+{
+  switch (purpose)
+    {
+    case BTREE_OP_ONLINE_INDEX_IB_INSERT:
+    case BTREE_OP_ONLINE_INDEX_IB_DELETE:
+    case BTREE_OP_ONLINE_INDEX_TRAN_INSERT:
+    case BTREE_OP_ONLINE_INDEX_TRAN_INSERT_DF:
+    case BTREE_OP_ONLINE_INDEX_TRAN_DELETE:
+    case BTREE_OP_ONLINE_INDEX_UNDO_TRAN_DELETE:
+    case BTREE_OP_ONLINE_INDEX_UNDO_TRAN_INSERT:
+      return true;
+    default:
+      return false;
+    }
+
+  return false;
+}
+
+int
+btree_online_index_check_unique_constraint (THREAD_ENTRY * thread_p, BTID * btid, const char *index_name,
+					    OID * class_oid)
+{
+  int ret = NO_ERROR;
+  int g_num_oids = 0, g_num_nulls = 0, g_num_keys = 0;
+  LOG_TRAN_BTID_UNIQUE_STATS *unique_stats = logtb_tran_find_btid_stats (thread_p, btid, true);
+
+  if (unique_stats == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  ret = logtb_get_global_unique_stats (thread_p, btid, &g_num_oids, &g_num_nulls, &g_num_keys);
+  if (ret != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return ret;
+    }
+
+  if ((g_num_oids + unique_stats->tran_stats.num_oids)
+      != (g_num_keys + unique_stats->tran_stats.num_keys) + (g_num_nulls + unique_stats->tran_stats.num_nulls))
+    {
+      /* Unique constraint violation. */
+      BTREE_SET_UNIQUE_VIOLATION_ERROR (thread_p, NULL, NULL, class_oid, btid, index_name);
+      return ER_BTREE_UNIQUE_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+int
+btree_get_class_oid_of_unique_btid (THREAD_ENTRY * thread_p, BTID * btid, OID * class_oid)
+{
+  PAGE_PTR root_page;
+  BTREE_ROOT_HEADER *root_header = NULL;
+
+  OID_SET_NULL (class_oid);
+
+  root_page = btree_fix_root_with_info (thread_p, btid, PGBUF_LATCH_READ, NULL, &root_header, NULL);
+  if (root_page == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  if (BTREE_IS_UNIQUE (root_header->unique_pk))
+    {
+      /* Copy the class oid */
+      COPY_OID (class_oid, &root_header->topclass_oid);
+    }
+
+  pgbuf_unfix_and_init (thread_p, root_page);
+
+  return NO_ERROR;
+}
+
+bool
+btree_is_btid_online_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid)
+{
+  OR_CLASSREP *rep = NULL;
+  int idx_incache = -1;
+  bool result = false;
+  int i;
+
+  rep = heap_classrepr_get (thread_p, class_oid, NULL, NULL_REPRID, &idx_incache);
+  if (rep == NULL)
+    {
+      assert (false);
+      return false;
+    }
+
+  /* Iterate through indexes of current class_oid and check if the one matching the btid is an online one. */
+  for (i = 0; i < rep->n_indexes; i++)
+    {
+      if (BTID_IS_EQUAL (btid, &rep->indexes[i].btid))
+	{
+	  if (rep->indexes[i].index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+	    {
+	      result = true;
+	    }
+	  break;
+	}
+    }
+
+  heap_classrepr_free_and_init (rep, &idx_incache);
+
+  return result;
+}
+
+//
+// btree_is_single_object_key () - returns true if there is only one object in key, false otherwise; parameters
+//                                 offer details on object location
+//
+// return                : true if single object
+// thread_p (in)         : thread entry
+// btid_int (in)         : b-tree info
+// node_type (in)        : node type - overflow or leaf
+// record (in)           : current record (overflow or leaf)
+// offset_after_key (in) : offset after key (only for leaf)
+//
+static bool
+btree_is_single_object_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE_NODE_TYPE node_type,
+			    RECDES * record, int offset_after_key)
+{
+  if (node_type == BTREE_OVERFLOW_NODE)
+    {
+      // has overflows, must have at least two
+      return false;
+    }
+  // leaf
+  assert (node_type == BTREE_LEAF_NODE);
+  if (offset_after_key < record->length)
+    {
+      // it has more than one object!
+      // this is a hack to avoid counting objects; maybe it is not safe
+      return false;
+    }
+  assert (offset_after_key == record->length);
+  return true;
 }

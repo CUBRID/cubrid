@@ -1977,7 +1977,7 @@ pr_clear_value (DB_VALUE * value)
       break;
 
     case DB_TYPE_OBJECT:
-      /* we need to be sure to NULL the object pointer so that this db_value does not cause garbage collection problems 
+      /* we need to be sure to NULL the object pointer so that this db_value does not cause garbage collection problems
        * by retaining an object pointer. */
       value->data.op = NULL;
       break;
@@ -1998,7 +1998,7 @@ pr_clear_value (DB_VALUE * value)
 	    {
 	      db_private_free_and_init (NULL, data);
 	    }
-	  /* 
+	  /*
 	   * Ack, phfffft!!! why should we have to know about the
 	   * internals here?
 	   */
@@ -2019,7 +2019,7 @@ pr_clear_value (DB_VALUE * value)
 	    {
 	      db_private_free_and_init (NULL, data);
 	    }
-	  /* 
+	  /*
 	   * Ack, phfffft!!! why should we have to know about the
 	   * internals here?
 	   */
@@ -2083,6 +2083,23 @@ pr_clear_value (DB_VALUE * value)
 
   return NO_ERROR;
 }
+
+/*
+ * pr_clear_value_vector - clear a vector of db_values
+ * references
+ *    return: void
+ *    value(in/out): vector of values
+ */
+/* *INDENT-OFF* */
+void
+pr_clear_value_vector (std::vector<DB_VALUE> &value_vector)
+{
+  for (DB_VALUE &dbval : value_vector)
+    {
+      pr_clear_value (&dbval);
+    }
+}
+/* *INDENT-ON* */
 
 /*
  * pr_free_value - free an internval value container any anything that it
@@ -2161,7 +2178,7 @@ pr_clone_value (const DB_VALUE * src, DB_VALUE * dest)
 	      type = PR_TYPE_FROM_ID (src_dbtype);
 	      if (type != NULL)
 		{
-		  /* 
+		  /*
 		   * Formerly called "initval" here but that was removed as
 		   * "setval" is supposed to properly initialize the
 		   * destination domain.  No need to do it twice.
@@ -2171,7 +2188,7 @@ pr_clone_value (const DB_VALUE * src, DB_VALUE * dest)
 		}
 	      else
 		{
-		  /* 
+		  /*
 		   * can only get here in error conditions, initialize to NULL
 		   */
 		  db_make_null (dest);
@@ -2199,7 +2216,7 @@ pr_copy_value (DB_VALUE * value)
       new_ = pr_make_value ();
       if (pr_clone_value (value, new_) != NO_ERROR)
 	{
-	  /* 
+	  /*
 	   * oh well, couldn't allocate storage for the clone.
 	   * Note that pr_free_value can only return errors in the
 	   * case where the value has been initialized so it won't
@@ -2237,7 +2254,7 @@ pr_share_value (DB_VALUE * src, DB_VALUE * dst)
       dst->need_clear = false;
       if (pr_is_set_type (DB_VALUE_DOMAIN_TYPE (src)) && !DB_IS_NULL (src))
 	{
-	  /* 
+	  /*
 	   * This bites... isn't there a function for adding a
 	   * reference to a set?
 	   */
@@ -2270,7 +2287,7 @@ pr_copy_string (const char *str)
   return copy;
 }
 
- /* 
+ /*
   * pr_free_string - free copied string
   *
   * str(in): copied string
@@ -5120,7 +5137,7 @@ mr_setval_object (DB_VALUE * dest, const DB_VALUE * src, bool copy)
     }
   else if (DB_VALUE_TYPE (src) == DB_TYPE_OBJECT)
     {
-      /* If we're logically on the server, we probably shouldn't have gotten here but if we do, don't continue with the 
+      /* If we're logically on the server, we probably shouldn't have gotten here but if we do, don't continue with the
        * object representation, de-swizzle it back to an OID. */
       if (db_on_server)
 	{
@@ -5138,7 +5155,7 @@ mr_setval_object (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	}
     }
 #else /* SERVER_MODE */
-  /* 
+  /*
    * If we're really on the server, we can only get here when dispatching
    * through set element domains.  The value must contain an OID.
    */
@@ -5422,7 +5439,7 @@ mr_data_readval_object (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int 
 	  db_value_domain_init (value, DB_TYPE_OBJECT, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 
 	  rc = or_get_oid (buf, &oid);
-	  /* 
+	  /*
 	   * if the OID is NULL, leave the value with the NULL bit set
 	   * and don't bother to put the OID inside.
 	   * I added this because it seemed logical, does it break anything ?
@@ -5491,7 +5508,7 @@ mr_cmpval_object (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
   const OID *o1, *o2;
   int oidc;
 
-  /* 
+  /*
    * we need to be careful here because even though the domain may
    * say object, it may really be an OID (especially on the server).
    */
@@ -5526,7 +5543,7 @@ mr_cmpval_object (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
   int nonupdate = 0;
   DB_VALUE keys1, keys2;
 
-  /* 
+  /*
    * we need to be careful here because even though the domain may
    * say object, it may really be an OID (especially on the server).
    */
@@ -5647,7 +5664,7 @@ mr_cmpval_object (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
   if (nonupdate == 0)
     {
       int oidc;
-      /* 
+      /*
        * comparing two proxy mops, the must both be from the
        * same proxy class. Compare the proxy classes oids.
        * Note class mops are never virtual mops.
@@ -5659,7 +5676,7 @@ mr_cmpval_object (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
       oidc = oid_compare (o1, o2);
       c = MR_CMP_RETURN_CODE (oidc);
 
-      /* 
+      /*
        * as long as the result is not equal, we are done
        * If its equal, we need to continue with a key test below.
        */
@@ -5669,7 +5686,7 @@ mr_cmpval_object (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
 	}
     }
 
-  /* 
+  /*
    * here, nonupdate must be 3 or 0 and
    * we must have two non-updatable mops, or two proxy mops
    * from the same proxy. Consequently, their keys are comparable
@@ -6184,7 +6201,7 @@ mr_data_cmpdisk_elo (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion
 {
   assert (domain != NULL);
 
-  /* 
+  /*
    * don't know how to do this since elo's should find their way into
    * listfiles and such.
    */
@@ -6920,7 +6937,7 @@ mr_setmem_set (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
   SETOBJ *set;
   SETREF *ref;
 
-  /* 
+  /*
    * NOTE: assumes ownership info has already been placed
    * in the set reference by the caller
    */
@@ -6974,7 +6991,7 @@ mr_getmem_set (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 	  (void) db_make_set (value, NULL);
 	}
     }
-  /* 
+  /*
    * NOTE: assumes that ownership info will already have been set or will
    * be set by the caller
    */
@@ -7173,7 +7190,7 @@ mr_data_writeval_set (OR_BUF * buf, DB_VALUE * value)
   if (ref != NULL)
     {
       /* If we have a disk image of the set, we can just copy those bits here.  This assumes very careful maintenance
-       * of the disk and memory images.  Currently, we only have one or the other.  That is, when we transform the disk 
+       * of the disk and memory images.  Currently, we only have one or the other.  That is, when we transform the disk
        * image to memory, we clear the disk image. */
       if (ref->disk_set)
 	{
@@ -7552,7 +7569,7 @@ mr_getmem_sequence (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool cop
 	  (void) db_make_sequence (value, NULL);
 	}
     }
-  /* 
+  /*
    * NOTE: assumes that ownership info will already have been set or will
    * be set by the caller
    */
@@ -7759,7 +7776,7 @@ mr_index_readval_midxkey (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
 	}
       else
 	{
-	  /* 
+	  /*
 	   * Allocate storage for the string
 	   * do not include the kludge NULL terminator
 	   */
@@ -8597,7 +8614,7 @@ mr_setval_numeric (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	}
       else
 	{
-	  /* 
+	  /*
 	   * Because numerics are stored in an inline buffer, there is no
 	   * difference between the copy and non-copy operations, this may
 	   * need to change.
@@ -8680,7 +8697,7 @@ mr_data_readval_numeric (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
       return ER_FAILED;
     }
 
-  /* 
+  /*
    * If size is -1, the caller doesn't know the size and we must determine
    * it from the domain.
    */
@@ -8703,7 +8720,7 @@ mr_data_readval_numeric (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
     }
   else
     {
-      /* 
+      /*
        * the copy and no copy cases are identical because db_make_numeric
        * will copy the bits into its internal buffer.
        */
@@ -9163,7 +9180,7 @@ pr_midxkey_element_disk_size (char *mem, DB_DOMAIN * domain)
 {
   int disk_size = 0;
 
-  /* 
+  /*
    * variable types except VARCHAR, VARNCHAR, and VARBIT
    * cannot be a member of midxkey
    */
@@ -9214,7 +9231,7 @@ pr_midxkey_get_vals_size (TP_DOMAIN * domains, DB_VALUE * dbvals, int total)
 
 /*
  * pr_midxkey_get_element_offset - Returns element offset of midxkey
- *    return: 
+ *    return:
  *    midxkey(in):
  *    index(in):
  */
@@ -9284,9 +9301,9 @@ exit_on_error:
 }
 
 /*
- * pr_midxkey_add_prefix - 
+ * pr_midxkey_add_prefix -
  *
- *    return: 
+ *    return:
  *    prefix(in):
  *    postfix(in):
  *    result(out):
@@ -9345,9 +9362,9 @@ pr_midxkey_add_prefix (DB_VALUE * result, DB_VALUE * prefix, DB_VALUE * postfix,
 }
 
 /*
- * pr_midxkey_remove_prefix - 
+ * pr_midxkey_remove_prefix -
  *
- *    return: 
+ *    return:
  *    key(in):
  *    prefix(in):
  */
@@ -9375,9 +9392,9 @@ pr_midxkey_remove_prefix (DB_VALUE * key, int prefix)
 }
 
 /*
- * pr_midxkey_common_prefix - 
+ * pr_midxkey_common_prefix -
  *
- *    return: 
+ *    return:
  *    key1(in):
  *    key2(in):
  */
@@ -9985,7 +10002,7 @@ pr_valstring (THREAD_ENTRY * threade, DB_VALUE * val)
  *    one of them is missing.
  *    return: NO_ERROR or error code.
  *    value(in/out): enumeration value.
- *    domain(in): enumeration domain against which the value is checked. 
+ *    domain(in): enumeration domain against which the value is checked.
  */
 int
 pr_complete_enum_value (DB_VALUE * value, TP_DOMAIN * domain)
@@ -10226,7 +10243,7 @@ mr_setmem_string (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
     }
   else
     {
-      /* 
+      /*
        * Get information from the value.  Ignore precision for the time being
        * since we really only care about the byte size of the value for varchar.
        * Whether or not the value "fits" should have been checked by now.
@@ -10445,7 +10462,7 @@ mr_data_readmem_string (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size
   char *start;
   int rc = NO_ERROR;
 
-  /* 
+  /*
    * we must have an explicit size here as it can't be determined from the
    * domain
    */
@@ -10478,7 +10495,7 @@ mr_data_readmem_string (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size
 	  start = buf->ptr;
 
 	  /* KLUDGE, we have some knowledge of how the thing is stored here in order have some control over the
-	   * conversion between the packed length prefix and the full word memory length prefix. Might want to put this 
+	   * conversion between the packed length prefix and the full word memory length prefix. Might want to put this
 	   * in another specialized or_ function. */
 
 	  /* Get just the length prefix. */
@@ -10489,7 +10506,7 @@ mr_data_readmem_string (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size
 	      return;
 	    }
 
-	  /* 
+	  /*
 	   * Allocate storage for this string, including our own full word size
 	   * prefix and a NULL terminator.
 	   */
@@ -10982,7 +10999,7 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 		}
 	      else
 		{
-		  /* 
+		  /*
 		   * Allocate storage for the string including the kludge
 		   * NULL terminator
 		   */
@@ -11491,7 +11508,7 @@ mr_setmem_char (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 
   if (mem_length < src_length)
     {
-      /* 
+      /*
        * should never get here, this is supposed to be caught during domain
        * validation, need a better error message.
        */
@@ -11504,7 +11521,7 @@ mr_setmem_char (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
       mem = (char *) memptr;
       memcpy (mem, src, src_length);
 
-      /* 
+      /*
        * Check for space padding, if this were a national string, we would
        * need to be padding with the appropriate space character !
        */
@@ -11609,7 +11626,7 @@ mr_data_writemem_char (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
 
   mem_length = STR_SIZE (domain->precision, TP_DOMAIN_CODESET (domain));
 
-  /* 
+  /*
    * We simply dump the memory image to disk, it will already have been padded.
    * If this were a national character string, at this point, we'd have to
    * decide now to perform a character set conversion.
@@ -11626,7 +11643,7 @@ mr_data_readmem_char (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
 
   if (mem == NULL)
     {
-      /* 
+      /*
        * If we passed in a size, then use it.  Otherwise, determine the
        * size from the domain.
        */
@@ -11651,7 +11668,7 @@ mr_data_readmem_char (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
 	}
       or_get_data (buf, (char *) mem, mem_length);
 
-      /* 
+      /*
        * We should only see padding if the string is contained within a packed
        * value that had extra padding to ensure alignment.  If we see these,
        * just pop them out of the buffer.  This shouldn't ever happen for the
@@ -11768,7 +11785,7 @@ mr_data_lengthval_char (DB_VALUE * value, int disk)
     }
   else
     {
-      /* 
+      /*
        * Precision is "floating", calculate the effective precision based on the
        * string length.
        * Should be rounding this up so it is a proper multiple of the charset
@@ -11784,7 +11801,7 @@ mr_data_lengthval_char (DB_VALUE * value, int disk)
       packed_length += OR_INT_SIZE;
     }
 
-  /* 
+  /*
    * NOTE: We do NOT perform padding here, if this is used in the context
    * of a packed value, the or_put_value() family of functions must handle
    * their own padding, this is because "lengthval" and "writeval" can be
@@ -11845,7 +11862,7 @@ mr_writeval_char_internal (OR_BUF * buf, DB_VALUE * value, int align)
       else
 	{
 	  rc = or_put_data (buf, src, src_length);
-	  /* 
+	  /*
 	   * Check for space padding, if this were a national string, we
 	   * would need to be padding with the appropriate space character !
 	   */
@@ -11866,7 +11883,7 @@ mr_writeval_char_internal (OR_BUF * buf, DB_VALUE * value, int align)
     }
   else
     {
-      /* 
+      /*
        * This is a "floating" precision value. Pack what we can based on the
        * string size.  Note that for this to work, this can only be packed as
        * part of a domain tagged value and we must include a length prefix
@@ -11993,7 +12010,7 @@ mr_readval_char_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
     }
   else
     {
-      /* 
+      /*
        * Normal fixed width char(n) whose size can be determined by looking at
        * the domain.
        */
@@ -12001,7 +12018,7 @@ mr_readval_char_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
 
       if (disk_size != -1 && mem_length > disk_size)
 	{
-	  /* 
+	  /*
 	   * If we're low here, we could just read what we have and make a
 	   * smaller value.  Still the domain should match at this point.
 	   */
@@ -12039,7 +12056,7 @@ mr_readval_char_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
 	    }
 	  else
 	    {
-	      /* 
+	      /*
 	       * Allocate storage for the string including the kludge NULL
 	       * terminator
 	       */
@@ -12079,7 +12096,7 @@ mr_readval_char_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
 
       if (rc == NO_ERROR)
 	{
-	  /* 
+	  /*
 	   * We should only see padding if the string is contained within a
 	   * packed value that had extra padding to ensure alignment.  If we
 	   * see these, just pop them out of the buffer.
@@ -12137,7 +12154,7 @@ mr_cmpdisk_char_internal (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coe
     }
   else
     {
-      /* 
+      /*
        * Normal fixed width char(n) whose size can be determined by looking at
        * the domain.
        * Needs NCHAR work here to separate the dependencies on disk_size and
@@ -12319,7 +12336,7 @@ mr_setmem_nchar (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
       src_length = strlen (src);
     }
 
-  /* 
+  /*
    * The only thing we really care about at this point, is the byte
    * length of the string.  The precision could be checked here but it
    * really isn't necessary for this operation.
@@ -12329,7 +12346,7 @@ mr_setmem_nchar (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 
   if (mem_length < src_length)
     {
-      /* 
+      /*
        * should never get here, this is supposed to be caught during domain
        * validation, need a better error message.
        */
@@ -12342,7 +12359,7 @@ mr_setmem_nchar (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
       mem = (char *) memptr;
       memcpy (mem, src, src_length);
 
-      /* 
+      /*
        * Check for space padding, if this were a national string, we would need
        * to be padding with the appropriate space character !
        */
@@ -12450,7 +12467,7 @@ mr_data_writemem_nchar (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
 
   mem_length = STR_SIZE (domain->precision, TP_DOMAIN_CODESET (domain));
 
-  /* 
+  /*
    * We simply dump the memory image to disk, it will already have been padded.
    * If this were a national character string, at this point, we'd have to
    * decide now to perform a character set conversion.
@@ -12465,7 +12482,7 @@ mr_data_readmem_nchar (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
 
   if (mem == NULL)
     {
-      /* 
+      /*
        * If we passed in a size, then use it.  Otherwise, determine the
        * size from the domain.
        */
@@ -12490,7 +12507,7 @@ mr_data_readmem_nchar (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
 	}
       or_get_data (buf, (char *) mem, mem_length);
 
-      /* 
+      /*
        * We should only see padding if the string is contained within a packed
        * value that had extra padding to ensure alignment.  If we see these,
        * just pop them out of the buffer.  This shouldn't ever happen for
@@ -12608,7 +12625,7 @@ mr_data_lengthval_nchar (DB_VALUE * value, int disk)
     }
   else
     {
-      /* Precision is "floating", calculate the effective precision based on the string length. Should be rounding this 
+      /* Precision is "floating", calculate the effective precision based on the string length. Should be rounding this
        * up so it is a proper multiple of the charset width ? */
       packed_length = db_get_string_size (value);
       if (packed_length < 0)
@@ -12617,7 +12634,7 @@ mr_data_lengthval_nchar (DB_VALUE * value, int disk)
 	}
 
 #if !defined (SERVER_MODE)
-      /* 
+      /*
        * If this is a client side string, and the disk representation length
        * is requested,  Need to return the length of a converted string.
        *
@@ -12647,7 +12664,7 @@ mr_data_lengthval_nchar (DB_VALUE * value, int disk)
       packed_length += OR_INT_SIZE;
     }
 
-  /* 
+  /*
    * NOTE: We do NOT perform padding here, if this is used in the context
    * of a packed value, the or_put_value() family of functions must handle
    * their own padding, this is because "lengthval" and "writeval" can be
@@ -12717,7 +12734,7 @@ mr_writeval_nchar_internal (OR_BUF * buf, DB_VALUE * value, int align)
     }
   intl_pad_char (src_codeset, (unsigned char *) pad_char, &pad_charsize);
 #else
-  /* 
+  /*
    * (void) lang_srvr_space_char(pad_char, &pad_charsize);
    *
    * Until this is resolved, set the pad character to be an ASCII space.
@@ -12740,7 +12757,7 @@ mr_writeval_nchar_internal (OR_BUF * buf, DB_VALUE * value, int align)
 	{
 	  if ((rc = or_put_data (buf, src, src_size)) == NO_ERROR)
 	    {
-	      /* 
+	      /*
 	       * Check for space padding, if this were a national string, we
 	       * would need to be padding with the appropriate space character!
 	       */
@@ -12766,7 +12783,7 @@ mr_writeval_nchar_internal (OR_BUF * buf, DB_VALUE * value, int align)
     }
   else
     {
-      /* 
+      /*
        * This is a "floating" precision value. Pack what we can based on the
        * string size.  Note that for this to work, this can only be packed as
        * part of a domain tagged value and we must include a size prefix after
@@ -12863,7 +12880,7 @@ mr_readval_nchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, i
 	    }
 	  else
 	    {
-	      /* 
+	      /*
 	       * Allocate storage for the string including the kludge NULL
 	       * terminator
 	       */
@@ -12902,7 +12919,7 @@ mr_readval_nchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, i
 
       if (disk_size != -1 && mem_length > disk_size)
 	{
-	  /* 
+	  /*
 	   * If we're low here, we could just read what we have and make a
 	   * smaller value.  Still the domain should match at this point.
 	   */
@@ -12939,7 +12956,7 @@ mr_readval_nchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, i
 	    }
 	  else
 	    {
-	      /* 
+	      /*
 	       * Allocate storage for the string including the kludge NULL
 	       * terminator
 	       */
@@ -13044,7 +13061,7 @@ mr_cmpdisk_nchar_internal (void *mem1, void *mem2, TP_DOMAIN * domain, int do_co
 
   if (IS_FLOATING_PRECISION (domain->precision))
     {
-      /* 
+      /*
        * This is only allowed if we're unpacking a "floating" domain CHAR(n) in
        * which case there will be a byte size prefix.
        */
@@ -13195,7 +13212,7 @@ mr_setmem_varnchar (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
     }
   else
     {
-      /* 
+      /*
        * Get information from the value.  Ignore precision for the time being
        * since we really only care about the byte size of the value for
        * varnchar.
@@ -13208,7 +13225,7 @@ mr_setmem_varnchar (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 	  src_length = strlen (src);
 	}
 
-      /* 
+      /*
        * Currently we NULL terminate the workspace string.
        * Could try to do the single byte size hack like we have in the
        * disk representation.
@@ -13541,7 +13558,7 @@ mr_lengthval_varnchar_internal (DB_VALUE * value, int disk, int align)
 #if !defined (SERVER_MODE)
       src_codeset = (INTL_CODESET) db_get_string_codeset (value);
 
-      /* 
+      /*
        * If this is a client side string, and the disk representation length
        * is requested,  Need to return the length of a converted string.
        */
@@ -13832,7 +13849,7 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 		}
 	      else
 		{
-		  /* 
+		  /*
 		   * Allocate storage for the string including the kludge
 		   * NULL terminator
 		   */
@@ -13959,7 +13976,7 @@ mr_readval_varnchar_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain
 		    }
 		  else
 		    {		/* size != -1 */
-		      /* Standard packed varnchar within an area of fixed size, usually this means we're looking at the 
+		      /* Standard packed varnchar within an area of fixed size, usually this means we're looking at the
 		       * disk representation of an attribute. Just like the -1 case except we advance past the
 		       * additional padding. */
 		      pad = size - (int) (buf->ptr - start);
@@ -14312,7 +14329,7 @@ mr_setmem_bit (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
       return NO_ERROR;
     }
 
-  /* 
+  /*
    * The only thing we really care about at this point, is the byte
    * length of the string.  The precision could be checked here but it
    * really isn't necessary for this operation.
@@ -14323,7 +14340,7 @@ mr_setmem_bit (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 
   if (mem_length < src_length)
     {
-      /* 
+      /*
        * should never get here, this is supposed to be caught during domain
        * validation, need a better error message.
        */
@@ -14403,7 +14420,7 @@ mr_data_writemem_bit (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
   assert (TP_DOMAIN_CODESET (domain) == INTL_CODESET_RAW_BITS);
   mem_length = STR_SIZE (domain->precision, TP_DOMAIN_CODESET (domain));
 
-  /* 
+  /*
    * We simply dump the memory image to disk, it will already have been padded.
    * If this were a national character string, at this point, we'd have to
    * decide now to perform a character set conversion.
@@ -14441,7 +14458,7 @@ mr_data_readmem_bit (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
 	}
       or_get_data (buf, (char *) mem, mem_length);
 
-      /* 
+      /*
        * We should only see padding if the string is contained within a packed
        * value that had extra padding to ensure alignment.  If we see these,
        * just pop them out of the buffer.  This shouldn't ever happen for the
@@ -14572,7 +14589,7 @@ mr_data_lengthval_bit (DB_VALUE * value, int disk)
     }
   else
     {
-      /* 
+      /*
        * Precision is "floating", calculate the effective precision based on the
        * string length.
        */
@@ -14582,7 +14599,7 @@ mr_data_lengthval_bit (DB_VALUE * value, int disk)
       packed_length += OR_INT_SIZE;
     }
 
-  /* 
+  /*
    * NOTE: We do NOT perform padding here, if this is used in the context
    * of a packed value, the or_put_value() family of functions must handle
    * their own padding, this is because "lengthval" and "writeval" can be
@@ -14656,7 +14673,7 @@ mr_writeval_bit_internal (OR_BUF * buf, DB_VALUE * value, int align)
     }
   else
     {
-      /* 
+      /*
        * This is a "floating" precision value. Pack what we can based on the
        * string size.  Note that for this to work, this can only be packed
        * as part of a domain tagged value and we must include a length
@@ -14743,7 +14760,7 @@ mr_readval_bit_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
 	    }
 	  else
 	    {
-	      /* 
+	      /*
 	       * Allocate storage for the string including the kludge NULL
 	       * terminator
 	       */
@@ -14783,7 +14800,7 @@ mr_readval_bit_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
 
       if (disk_size != -1 && mem_length > disk_size)
 	{
-	  /* 
+	  /*
 	   * If we're low here, we could just read what we have and make a
 	   * smaller value.  Still the domain should match at this point.
 	   */
@@ -14812,7 +14829,7 @@ mr_readval_bit_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
 	    }
 	  else
 	    {
-	      /* 
+	      /*
 	       * Allocate storage for the string including the kludge NULL
 	       * terminator
 	       */
@@ -14846,7 +14863,7 @@ mr_readval_bit_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
 	}
       if (rc == NO_ERROR)
 	{
-	  /* 
+	  /*
 	   * We should only see padding if the string is contained within a
 	   * packed value that had extra padding to ensure alignment.  If we see
 	   * these, just pop them out of the buffer.
@@ -15031,7 +15048,7 @@ mr_setmem_varbit (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
     }
   else
     {
-      /* 
+      /*
        * Get information from the value.  Ignore precision for the time being
        * since we really only care about the byte size of the value for varbit.
        * Whether or not the value "fits" should have been checked by now.
@@ -15221,13 +15238,13 @@ mr_data_readmem_varbit (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size
 	  start = buf->ptr;
 
 	  /* KLUDGE, we have some knowledge of how the thing is stored here in order have some control over the
-	   * conversion between the packed length prefix and the full word memory length prefix. Might want to put this 
+	   * conversion between the packed length prefix and the full word memory length prefix. Might want to put this
 	   * in another specialized or_ function. */
 
 	  /* Get just the length prefix. */
 	  bit_len = or_get_varbit_length (buf, &rc);
 
-	  /* 
+	  /*
 	   * Allocate storage for this string, including our own full word size
 	   * prefix.
 	   */
@@ -15250,7 +15267,7 @@ mr_data_readmem_varbit (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size
 	      or_get_align32 (buf);
 	    }
 
-	  /* 
+	  /*
 	   * If we were given a size, check to see if for some reason this is
 	   * larger than the already word aligned string that we have now
 	   * extracted.  This shouldn't be the case but since we've got a
@@ -15512,7 +15529,7 @@ mr_readval_varbit_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 		}
 	      else
 		{
-		  /* 
+		  /*
 		   * Allocate storage for the string including the kludge NULL
 		   * terminator
 		   */
@@ -16000,9 +16017,9 @@ pr_get_compressed_data_from_buffer (OR_BUF * buf, char *data, int compressed_siz
   return rc;
 }
 
-/* 
+/*
  * pr_get_compression_length()		  - Simulate a compression to find its length to be stored on the disk.
- * 
+ *
  * return()				  : The length of the compression, based on the new encoding of varchar.
  *					    If the compression fails, then it returns charlen.
  * string(in)				  : The string to be compressed.
@@ -16086,12 +16103,12 @@ cleanup:
 /*
  * pr_get_size_and_write_string_to_buffer ()
  *	  			  : Writes a VARCHAR or VARNCHAR to buffer and gets the correct size on the disk.
- *				    
+ *
  * buf(out)			  : Buffer to be written to.
  * val_p(in)			  : Memory area to be written to.
  * value(in)			  : DB_VALUE to be written.
  * val_size(out)		  : Disk size of the DB_VALUE.
- * align(in)			  : 
+ * align(in)			  :
  *
  *  Note:
  *	We use this to avoid double compression when it is required to have the size of the DB_VALUE, previous
@@ -16179,7 +16196,7 @@ pr_get_size_and_write_string_to_buffer (OR_BUF * buf, char *val_p, DB_VALUE * va
       str = string;
     }
 after_compression:
-  /* 
+  /*
    * Step 2 : Compute the disk size of the dbvalue.
    * We are sure that the initial string length is greater than 255, which means that the new encoding applies.
    */
@@ -16236,7 +16253,7 @@ cleanup:
   return rc;
 }
 
-/* pr_write_compressed_string_to_buffer()	  : Similar function to the previous implementation of 
+/* pr_write_compressed_string_to_buffer()	  : Similar function to the previous implementation of
  *						    or_put_varchar_internal.
  *
  * buf(in/out)					  : Buffer to be written the string.
@@ -16315,7 +16332,7 @@ pr_write_compressed_string_to_buffer (OR_BUF * buf, char *compressed_string, int
 /*
  * pr_write_uncompressed_string_to_buffer()   :-  Writes a string with a size less than
  *						  OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION to buffer.
- * 
+ *
  * return				      :- NO_ERROR or error code.
  * buf(in/out)				      :- Buffer to be written to.
  * string(in)				      :- String to be written.
@@ -16363,7 +16380,7 @@ pr_write_uncompressed_string_to_buffer (OR_BUF * buf, char *string, int size, in
 /*
  *  pr_data_compress_string() :- Does compression for a string.
  *
- *  return		      :- NO_ERROR or error code.  
+ *  return		      :- NO_ERROR or error code.
  *  string(in)		      :- String to be compressed.
  *  str_length(in)	      :- The size of the string.
  *  compressed_string(out)    :- The compressed string. Needs to be alloced!!!!!
@@ -16488,7 +16505,7 @@ pr_clear_compressed_string (DB_VALUE * value)
   return NO_ERROR;
 }
 
-/* 
+/*
  * pr_do_db_value_string_compression()	  :- Test a DB_VALUE for VARCHAR and VARNCHAR types and do string compression
  *					  :- for such types.
  *
@@ -16891,7 +16908,8 @@ mr_data_writeval_json (OR_BUF * buf, DB_VALUE * value)
 	}
     }
 
-  rc = db_json_serialize (*value->data.json.document, *buf);
+  JSON_DOC *json_doc = db_get_json_document (value);
+  rc = db_json_serialize (*json_doc, *buf);
   if (rc != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -16974,7 +16992,7 @@ mr_data_cmpdisk_json (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercio
  * this is because "order by" uses total_order=true
  * and we don't want to fail. The standard says that
  * only scalar and nulls are comparable.
- * 
+ *
  * we only return DB_UNK when either one is null and
  * total_order is false
  */
