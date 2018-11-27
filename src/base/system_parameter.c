@@ -6802,8 +6802,15 @@ prm_log_pages_to_size (void *out_val, SYSPRM_DATATYPE out_type, void *in_val, SY
     {
       int *size_value = (int *) out_val;
       int page_value = *(int *) in_val;
+      UINT64 t;
 
-      *size_value = (int) (page_value * LOG_PAGESIZE);
+      t = ((UINT64) page_value) * LOG_PAGESIZE;
+      if (t > INT_MAX)
+	{
+	  return PRM_ERR_BAD_VALUE;
+	}
+
+      *size_value = (int) t;
     }
   else
     {
@@ -6873,14 +6880,21 @@ prm_sec_to_msec (void *out_val, SYSPRM_DATATYPE out_type, void *in_val, SYSPRM_D
       UINT64 *msec_value = (UINT64 *) out_val;
       int sec_value = *(int *) in_val;
 
-      *msec_value = (UINT64) sec_value *ONE_SEC;
+      *msec_value = (UINT64) (sec_value * ONE_SEC);
     }
   else if (out_type == PRM_INTEGER && in_type == PRM_INTEGER)
     {
       int *msec_value = (int *) out_val;
       int sec_value = *(int *) in_val;
+      UINT64 t;
 
-      *msec_value = (int) sec_value *ONE_SEC;
+      t = ((UINT64) sec_value) * ONE_SEC;
+      if (t > INT_MAX)
+	{
+	  return PRM_ERR_BAD_VALUE;
+	}
+
+      *msec_value = (int) t;
     }
   else
     {
