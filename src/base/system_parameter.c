@@ -6880,7 +6880,7 @@ prm_sec_to_msec (void *out_val, SYSPRM_DATATYPE out_type, void *in_val, SYSPRM_D
       UINT64 *msec_value = (UINT64 *) out_val;
       int sec_value = *(int *) in_val;
 
-      *msec_value = (UINT64) (sec_value * ONE_SEC);
+      *msec_value = ((UINT64) sec_value) * ONE_SEC;
     }
   else if (out_type == PRM_INTEGER && in_type == PRM_INTEGER)
     {
