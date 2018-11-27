@@ -825,6 +825,7 @@ static int heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * c
 static int heap_update_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, short slot_id, RECDES * recdes_p);
 static void heap_log_update_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p, OID * oid_p,
 				      RECDES * old_recdes_p, RECDES * new_recdes_p, LOG_RCVINDEX rcvindex);
+static int heap_log_update_class_record (THREAD_ENTRY * thread_p, OID * class_oid);
 
 static void *heap_hfid_table_entry_alloc (void);
 static int heap_hfid_table_entry_free (void *unique_stat);
@@ -22703,6 +22704,54 @@ error:
 }
 
 /*
+ * heap_log_update_class_record () - log a class record update
+ *   thread_p(in): thread entry
+ *   class_oid(in): class OID
+ *   return: error code or NO_ERROR
+ *    Note: This function adds a RVCR_UPDATE record only if the representation has a online index in progress.
+ */
+static int
+heap_log_update_class_record (THREAD_ENTRY * thread_p, OID * class_oid)
+{
+  OR_CLASSREP *rep = NULL;
+  bool has_online_index;
+  int idx_incache = -1;
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  int i;
+
+  rep = heap_classrepr_get (thread_p, class_oid, NULL, NULL_REPRID, &idx_incache);
+  if (rep == NULL)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  /* Check for online in progress index. */
+  has_online_index = false;
+  for (i = 0; i < rep->n_indexes; i++)
+    {
+      if (rep->indexes[i].index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+	{
+	  /* I need to decache class at recovery, to be sure that someone does not access removed index. */
+	  has_online_index = true;
+	  break;
+	}
+    }
+
+  heap_classrepr_free_and_init (rep, &idx_incache);
+
+  if (has_online_index)
+    {
+      /* We may improve it here. Thus, we may add only one RVCR_UPDATE log.
+       * Currently, we add this log record entry for each class record update.
+       */
+      log_append_undo_data2 (thread_p, RVCR_UPDATE, NULL, NULL, 0, sizeof (OID), class_oid);
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * heap_update_logical () - update a record in a heap file
  *   thread_p(in): thread entry
  *   context(in): operation context
@@ -22911,6 +22960,11 @@ exit:
 #if defined(ENABLE_SYSTEMTAP)
   CUBRID_OBJ_UPDATE_END (&context->class_oid, (rc != NO_ERROR));
 #endif /* ENABLE_SYSTEMTAP */
+
+  if (HFID_EQ ((&context->hfid), &(heap_Classrepr->rootclass_hfid)))
+    {
+      (void) heap_log_update_class_record (thread_p, &context->oid);
+    }
 
   return rc;
 }
@@ -24769,4 +24823,31 @@ heap_is_page_header (THREAD_ENTRY * thread_p, PAGE_PTR page)
       return true;
     }
   return false;
+}
+
+/*
+ * heap_rv_notify_class_record_update () - Notify that class record was updated.
+ *   return: int
+ *   recv(in): Recovery structure
+ *
+ * Note: This function is used at recovery to decache class representation.
+ */
+int
+heap_rv_notify_class_record_update (THREAD_ENTRY * thread_p, LOG_RCV * recv)
+{
+  const OID *class_oid;
+  OID root_class_oid;
+
+  class_oid = (OID *) recv->data;
+  assert (!OID_ISNULL (class_oid));
+
+  if (heap_get_class_oid (thread_p, class_oid, &root_class_oid) != S_SUCCESS || !OID_IS_ROOTOID (&root_class_oid))
+    {
+      /* Should not happen. */
+      assert_release (false);
+    }
+
+  (void) heap_classrepr_decache (thread_p, class_oid);
+
+  return NO_ERROR;
 }
