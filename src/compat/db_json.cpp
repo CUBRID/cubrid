@@ -805,6 +805,8 @@ static int db_json_unpack_bool_to_value (OR_BUF *buf, JSON_VALUE &value);
 static int db_json_unpack_object_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_PRIVATE_MEMPOOL &doc_allocator);
 static int db_json_unpack_array_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_PRIVATE_MEMPOOL &doc_allocator);
 
+static void db_json_add_element_to_array (JSON_DOC *doc, const JSON_VALUE *value);
+
 int JSON_DUPLICATE_KEYS_CHECKER::CallBefore (JSON_VALUE &value)
 {
   std::vector<const char *> inserted_keys;
@@ -990,6 +992,16 @@ JSON_TREE_FUNCTION<T>::CallAfter (JSON_VALUE &value)
 
   // current_value, items used to create path, produced
 
+  if (value.IsArray ())
+    {
+      m_index.pop();
+    }
+
+  if (value.IsArray () || value.IsObject ())
+    {
+      path_items.pop_back();
+    }
+
   std::string accumulated = "\"";
   accumulated += m_starting_path;
   for (auto &sub_path : path_items)
@@ -997,19 +1009,7 @@ JSON_TREE_FUNCTION<T>::CallAfter (JSON_VALUE &value)
       accumulated += sub_path;
     }
   accumulated += "\"";
-
   error_code = producer (value, accumulated, produced);
-
-
-  if (value.IsArray ())
-    {
-      m_index.pop ();
-    }
-
-  if (value.IsArray () || value.IsObject ())
-    {
-      path_items.pop_back ();
-    }
 
   return error_code;
 }
@@ -1534,6 +1534,61 @@ db_json_extract_document_from_path (const JSON_DOC *document, const char *raw_pa
       return NO_ERROR;
     }
 
+  bool wildcard_present = false;
+  for (size_t i = 0; raw_path[i] != '\0'; ++i)
+    {
+      if (raw_path[i] == '*')
+	{
+	  wildcard_present = true;
+	  break;
+	}
+    }
+
+  if (wildcard_present)
+    {
+      std::string path (raw_path);
+      std::vector<std::pair<JSON_VALUE *, std::string>> produced;
+      std::vector<std::regex> regs;
+      error_code = db_json_paths_to_regex (std::vector<std::string> (1, path), regs, true);
+      if (error_code)
+	{
+	  return error_code;
+	}
+
+      auto f = [&regs] (JSON_VALUE &jv, const std::string& accumulated_path,
+			std::vector<std::pair<JSON_VALUE *, std::string>> &res) -> int
+      {
+	// find a way to bypass subjsons, that will still match the regs
+	for (const auto &reg : regs)
+	  {
+	    if (std::regex_match (accumulated_path, reg))
+	      {
+		res.push_back (std::make_pair (&jv, accumulated_path));
+	      }
+	  }
+	return NO_ERROR;
+      };
+
+      JSON_TREE_FUNCTION<std::pair<JSON_VALUE *, std::string>> json_extractor (f, produced);
+      json_extractor.WalkDocument (const_cast<JSON_DOC &> (*document));
+
+      for (auto &p : produced)
+	{
+	  if (result == NULL)
+	    {
+	      result = db_json_allocate_doc ();
+	      result->SetArray ();
+	    }
+
+	  std::string cpy = p.second;
+
+	  db_json_add_element_to_array (result, p.first);
+	}
+
+      return NO_ERROR;
+    }
+
+  // we have no wildcard, fallback to old implementation
   // path must be JSON pointer
   error_code = db_json_convert_sql_path_to_pointer (raw_path, json_pointer_string);
   if (error_code != NO_ERROR)
@@ -1803,6 +1858,27 @@ db_json_add_element_to_array (JSON_DOC *doc, double value)
 
 void
 db_json_add_element_to_array (JSON_DOC *doc, const JSON_DOC *value)
+{
+  JSON_VALUE new_doc;
+
+  if (!doc->IsArray ())
+    {
+      doc->SetArray ();
+    }
+
+  if (value == NULL)
+    {
+      new_doc.SetNull ();
+    }
+  else
+    {
+      new_doc.CopyFrom (*value, doc->GetAllocator ());
+    }
+  doc->PushBack (new_doc, doc->GetAllocator ());
+}
+
+static void
+db_json_add_element_to_array (JSON_DOC *doc, const JSON_VALUE *value)
 {
   JSON_VALUE new_doc;
 
@@ -2189,7 +2265,7 @@ db_json_remove_func (JSON_DOC &doc, const char *raw_path)
  *
  */
 int
-db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<std::regex> &regs)
+db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<std::regex> &regs, bool match_exactly)
 {
   for (auto &wild_card : paths)
     {
@@ -2234,7 +2310,10 @@ db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<std::
 	      break;
 	    }
 	}
-      ss << "[^[:space:]]*";
+      if (!match_exactly)
+	{
+	  ss << "[^[:space:]]*";
+	}
       ss << '"';
 
       try

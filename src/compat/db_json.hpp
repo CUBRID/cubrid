@@ -104,7 +104,8 @@ int db_json_keys_func (const JSON_DOC &doc, JSON_DOC &result_json, const char *r
 int db_json_array_append_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path);
 int db_json_array_insert_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path);
 int db_json_remove_func (JSON_DOC &doc, const char *raw_path);
-int db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<std::regex> &regs);
+int db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<std::regex> &regs,
+			    bool match_exactly = false);
 int db_json_search_func (JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALUE *esc_char,
 			 std::vector<std::string> &paths, const std::vector<std::regex> &regs);
 int db_json_merge_func (const JSON_DOC *source, JSON_DOC *&dest, bool patch);
