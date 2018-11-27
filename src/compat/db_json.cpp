@@ -500,8 +500,9 @@ template<typename T>
 class JSON_TREE_FUNCTION : public JSON_WALKER
 {
   public:
-    JSON_TREE_FUNCTION (std::function <int (JSON_VALUE &, std::string &, std::vector<T> &)> &func,
+    JSON_TREE_FUNCTION (const std::function<int (JSON_VALUE &, const std::string &, std::vector<T> &)> &func,
 			std::vector<T> &produced);
+    JSON_TREE_FUNCTION (JSON_TREE_FUNCTION &) = delete;
     ~JSON_TREE_FUNCTION () override = default;
 
   private:
@@ -510,14 +511,12 @@ class JSON_TREE_FUNCTION : public JSON_WALKER
     int CallOnArrayIterate() override;
     int CallOnKeyIterate (JSON_VALUE &key) override;
 
-    std::function <int (JSON_VALUE &, std::string &, std::vector<T> &)> producer;
+    std::function <int (JSON_VALUE &, const std::string &, std::vector<T> &)> producer;
     std::vector<T> &produced;
 
     const std::string m_starting_path;
     bool m_find_all;
     bool m_skip_other_matches;
-    //const DB_VALUE *m_pattern;
-    //const DB_VALUE *m_esc_char;
     std::stack<unsigned int> m_index;
     std::vector<std::string> path_items;
 };
@@ -758,7 +757,7 @@ static void db_json_copy_doc (JSON_DOC &dest, const JSON_DOC *src);
 
 static void db_json_get_paths_helper (const JSON_VALUE &obj, const std::string &sql_path,
 				      std::vector<std::string> &paths);
-static int f_search (const std::vector<std::regex> &regs, JSON_VALUE &json_value, std::string &crt_path,
+static int f_search (const std::vector<std::regex> &regs, JSON_VALUE &json_value, const std::string &crt_path,
 		     std::vector<std::string> &results, const DB_VALUE *pattern, const DB_VALUE *esc_char);
 static int db_json_search_helper (JSON_DOC &obj, const DB_VALUE *pattern, const DB_VALUE *esc_char,
 				  std::vector<std::string> &paths, const std::vector<std::regex> &regs);
@@ -945,7 +944,8 @@ int JSON_SEARCHER::CallOnArrayIterate ()
 }
 
 template<typename T>
-JSON_TREE_FUNCTION<T>::JSON_TREE_FUNCTION (std::function <int (JSON_VALUE &, std::string &, std::vector<T> &)> &func,
+JSON_TREE_FUNCTION<T>::JSON_TREE_FUNCTION (const std::function
+    <int (JSON_VALUE &, const std::string &, std::vector<T> &)> &func,
     std::vector<T> &produced)
   : producer (func)
   , produced (produced)
@@ -1596,6 +1596,7 @@ db_json_extract_document_from_path (const JSON_DOC *document, const char *raw_pa
 int
 db_json_contains_path (const JSON_DOC *document, const char *raw_path, bool &result)
 {
+  // todo: call this once with all paths
   int error_code = NO_ERROR;
   std::string json_pointer_string;
 
@@ -1606,28 +1607,36 @@ db_json_contains_path (const JSON_DOC *document, const char *raw_path, bool &res
       return false;
     }
 
-  // path must be JSON pointer
-  error_code = db_json_convert_sql_path_to_pointer (raw_path, json_pointer_string);
+  std::string path (raw_path);
+  std::vector<std::regex> regs;
+  error_code = db_json_paths_to_regex (std::vector<std::string> (1, raw_path), regs);
   if (error_code != NO_ERROR)
     {
-      ASSERT_ERROR ();
       return error_code;
     }
 
-  JSON_POINTER p (json_pointer_string.c_str ());
-  const JSON_VALUE *resulting_json = NULL;
+  auto f = [&regs] (JSON_VALUE &v, const std::string& accumulated_path, std::vector<int> &res) -> int
+  {
+    for (const auto &reg : regs)
+      {
+	if (std::regex_match (accumulated_path, reg))
+	  {
+	    if (res.empty ())
+	      {
+		res.push_back (1);
+	      }
+	    return NO_ERROR;
+	  }
+      }
+    return NO_ERROR;
+  };
 
-  if (!p.IsValid ())
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
-      return ER_JSON_INVALID_PATH;
-    }
+  std::vector<int> produced;
+  JSON_TREE_FUNCTION<int> json_contains_path_walker (f, produced);
 
-  resulting_json = p.Get (*document);
-  if (resulting_json != NULL)
-    {
-      result = true;
-    }
+  // todo: remove const_cast
+  json_contains_path_walker.WalkDocument (const_cast<JSON_DOC &> (*document));
+  result = !produced.empty ();
 
   return NO_ERROR;
 }
@@ -3339,7 +3348,7 @@ db_json_convert_sql_path_to_pointer (const char *sql_path, std::string &json_poi
 }
 
 static int
-f_search (const std::vector<std::regex> &regs, JSON_VALUE &json_value, std::string &crt_path,
+f_search (const std::vector<std::regex> &regs, JSON_VALUE &json_value, const std::string &crt_path,
 	  std::vector<std::string> &results, const DB_VALUE *pattern, const DB_VALUE *esc_char)
 {
   if (!json_value.IsString())
@@ -3391,10 +3400,17 @@ static int
 db_json_search_helper (JSON_DOC &obj, const DB_VALUE *pattern, const DB_VALUE *esc_char,
 		       std::vector<std::string> &paths, const std::vector<std::regex> &regs)
 {
-  std::function<int (JSON_VALUE &, std::string &, std::vector<std::string> &)> f2 = std::bind (&f_search,
+  std::function<int (JSON_VALUE &, const std::string &, std::vector<std::string> &)> f2 = std::bind (&f_search,
       std::cref (regs), std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, pattern, esc_char);
 
   JSON_TREE_FUNCTION<std::string> json_search_walker (f2, paths);
+
+  auto tf = [] (JSON_VALUE &, const std::string &, std::vector<std::string> &)
+  {
+    return 0;
+  };
+
+  JSON_TREE_FUNCTION<std::string> json_search_walker2 (tf, paths);
 
   return json_search_walker.WalkDocument (obj);
 }
