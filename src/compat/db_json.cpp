@@ -1040,8 +1040,12 @@ int JSON_TREE_FUNCTION<T>::CallOnKeyIterate (JSON_VALUE &key)
 
   std::string path_item = ".";
   path_item += key.GetString ();
+  if (path_item.length () == 1)
+    {
+      path_item = "\" \"";
+    }
 
-  path_items.back() = path_item;
+  path_items.back () = path_item;
   return NO_ERROR;
 }
 
@@ -3483,13 +3487,6 @@ db_json_search_helper (JSON_DOC &obj, const DB_VALUE *pattern, const DB_VALUE *e
       std::cref (regs), std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, pattern, esc_char);
 
   JSON_TREE_FUNCTION<std::string> json_search_walker (f2, paths);
-
-  auto tf = [] (JSON_VALUE &, const std::string &, std::vector<std::string> &)
-  {
-    return 0;
-  };
-
-  JSON_TREE_FUNCTION<std::string> json_search_walker2 (tf, paths);
 
   return json_search_walker.WalkDocument (obj);
 }

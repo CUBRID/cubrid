@@ -3778,96 +3778,96 @@ db_json_merge_patch (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
  */
 
 int
-db_json_search_dbval(DB_VALUE *result, DB_VALUE *args[], const int num_args)
+db_json_search_dbval (DB_VALUE * result, DB_VALUE * args[], const int num_args)
 {
   int error_code = NO_ERROR;
   JSON_DOC *doc = NULL;
 
   if (num_args < 3)
-  {
-    er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
-    return ER_FAILED;
-  }
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_FAILED;
+    }
 
   for (int i = 0; i < num_args; ++i)
-  {
-    // only escape char might be null
-    if (i != 3 && DB_IS_NULL (args[i]))
     {
-      return db_make_null (result);
+      // only escape char might be null
+      if (i != 3 && DB_IS_NULL (args[i]))
+	{
+	  return db_make_null (result);
+	}
     }
-  }
 
   error_code = db_value_to_json_doc (*args[0], doc);
   if (error_code != NO_ERROR)
-  {
-    return error_code;
-  }
+    {
+      return error_code;
+    }
 
   bool find_all;
   error_code = is_str_find_all (args[1], find_all);
   if (error_code != NO_ERROR)
-  {
-    db_json_delete_doc (doc);
-    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
-    return ER_QSTR_INVALID_DATA_TYPE;
-  }
+    {
+      db_json_delete_doc (doc);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
+      return ER_QSTR_INVALID_DATA_TYPE;
+    }
 
   DB_VALUE *pattern = args[2];
   DB_VALUE *esc_char = nullptr;
   if (num_args >= 4)
-  {
-    esc_char = args[3];
-  }
+    {
+      esc_char = args[3];
+    }
 
   std::vector<std::string> starting_paths;
   bool wild_card_present = false;
   for (int i = 4; i < num_args; ++i)
-  {
-    std::string s(db_get_string(args[i]));
-    // todo: improve paths validation
-    // todo: only path validation is available?
-    starting_paths.emplace_back (s);
-  }
+    {
+      std::string s (db_get_string (args[i]));
+      // todo: improve paths validation
+      // todo: only path validation is available?
+      starting_paths.emplace_back (s);
+    }
 
   std::vector<std::regex> regs;
   // wildcards or not, compute regexes
   if (starting_paths.empty ())
-  {
-    starting_paths.push_back ("$");
-  }
+    {
+      starting_paths.push_back ("$");
+    }
   error_code = db_json_paths_to_regex (starting_paths, regs);
   if (error_code != NO_ERROR)
-  {
-    er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
-    return error_code;
-  }
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return error_code;
+    }
 
   std::vector<std::string> paths;
-  error_code = db_json_search_func(*doc, pattern, esc_char, paths, regs);
+  error_code = db_json_search_func (*doc, pattern, esc_char, paths, regs);
 
-  db_json_delete_doc(doc);
+  db_json_delete_doc (doc);
   if (error_code != NO_ERROR)
-  {
-    return error_code;
-  }
+    {
+      return error_code;
+    }
 
-  if (paths.empty())
-  {
-    return db_make_null(result);
-  }
+  if (paths.empty ())
+    {
+      return db_make_null (result);
+    }
 
   JSON_DOC *result_json = nullptr;
   if (paths.size () == 1)
     {
       error_code = db_json_get_json_from_str (paths[0].c_str (), result_json, paths[0].length ());
       if (error_code != NO_ERROR)
-      {
-        return error_code;
-      }
+	{
+	  return error_code;
+	}
       return db_make_json (result, result_json, true);
     }
-  
+
   result_json = db_json_allocate_doc ();
   for (size_t i = 0; i < paths.size (); ++i)
     {
@@ -3876,10 +3876,10 @@ db_json_search_dbval(DB_VALUE *result, DB_VALUE *args[], const int num_args)
 
       error_code = db_json_get_json_from_str (paths[i].c_str (), json_array_elem, paths[i].length ());
       if (error_code != NO_ERROR)
-        {
-          db_json_delete_doc (result_json);
-          return error_code;
-        }
+	{
+	  db_json_delete_doc (result_json);
+	  return error_code;
+	}
 
       db_json_add_element_to_array (result_json, json_array_elem);
 
