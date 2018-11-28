@@ -54,6 +54,7 @@ namespace cubload
   void to_db_string (const char *str, const tp_domain *domain, db_value *val);
   void to_db_float (const char *str, const tp_domain *domain, db_value *val);
   void to_db_double (const char *str, const tp_domain *domain, db_value *val);
+  void to_db_numeric (const char *str, const tp_domain *domain, db_value *val);
   void to_db_date (const char *str, const tp_domain *domain, db_value *val);
   void to_db_time (const char *str, const tp_domain *domain, db_value *val);
   void to_db_timestamp (const char *str, const tp_domain *domain, db_value *val);
@@ -96,6 +97,11 @@ namespace cubload
     setters_[DB_TYPE_DOUBLE][LDR_NUMERIC] = &to_db_double;
     setters_[DB_TYPE_DOUBLE][LDR_DOUBLE] = &to_db_double;
     setters_[DB_TYPE_DOUBLE][LDR_FLOAT] = &to_db_double;
+
+    setters_[DB_TYPE_NUMERIC][LDR_INT] = &to_db_numeric;
+    setters_[DB_TYPE_NUMERIC][LDR_NUMERIC] = &to_db_numeric;
+    setters_[DB_TYPE_NUMERIC][LDR_DOUBLE] = &to_db_numeric;
+    setters_[DB_TYPE_NUMERIC][LDR_FLOAT] = &to_db_numeric;
 
     setters_[DB_TYPE_JSON][LDR_STR] = &to_db_json;
     setters_[DB_TYPE_MONETARY][LDR_MONETARY] = &to_db_monetary;
@@ -403,6 +409,29 @@ namespace cubload
     else
       {
 	val->data.d = d;
+      }
+  }
+
+  void
+  to_db_numeric (const char *str, const tp_domain *domain, db_value *val)
+  {
+    int ret;
+    size_t str_len = strlen (str);
+
+    int precision = (int) str_len - 1 - (str[0] == '+' || str[0] == '-' || str[0] == '.');
+    int scale = (int) str_len - (int) strcspn (str, ".") - 1;
+
+    ret = db_value_domain_init (val, DB_TYPE_NUMERIC, precision, scale);
+    if (ret != NO_ERROR)
+      {
+	// TODO CBRD-21654 handle error
+	return;
+      }
+
+    ret = db_value_put (val, DB_TYPE_C_CHAR, (char *) str, (int) str_len);
+    if (ret != NO_ERROR)
+      {
+	// TODO CBRD-21654 handle error
       }
   }
 
