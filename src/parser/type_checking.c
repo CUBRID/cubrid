@@ -8896,6 +8896,10 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
   /* shortcut for FUNCTION HOLDER */
   if (op == PT_FUNCTION_HOLDER)
     {
+      if (pt_has_error (parser))
+	{
+	  goto error;
+	}
       PT_NODE *func = NULL;
       /* this may be a 2nd pass, tree may be already const folded */
       if (node->info.expr.arg1->node_type == PT_FUNCTION)

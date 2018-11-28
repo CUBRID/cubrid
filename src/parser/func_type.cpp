@@ -1138,13 +1138,15 @@ Func::Node::check_arg_compat (const pt_arg_type &arg_signature, const PT_NODE *a
       if (compat.m_collation_inference.coll_id == -1)
 	{
 	  compat.m_collation_inference.coll_id = arg_res.m_coll_infer.coll_id;
-          compat.m_collation_inference.codeset = arg_res.m_coll_infer.codeset;
+	  compat.m_collation_inference.codeset = arg_res.m_coll_infer.codeset;
+	  compat.m_collation_inference.can_force_cs = arg_res.m_coll_infer.can_force_cs;
+	  compat.m_collation_inference.coerc_level = arg_res.m_coll_infer.coerc_level;
 	}
       else if (pt_common_collation (&compat.m_collation_inference, &arg_res.m_coll_infer, NULL, 2, false, &common_coll,
 				    &common_cs) == NO_ERROR)
 	{
 	  compat.m_collation_inference.coll_id = common_coll;
-          compat.m_collation_inference.codeset = common_cs;
+	  compat.m_collation_inference.codeset = common_cs;
 	}
       else
 	{

@@ -3678,11 +3678,16 @@ struct pt_coll_infer
 				 * to another charset (of another argument) if this flag is set */
 
 #ifdef __cplusplus
-    pt_coll_infer ():coll_id (-1), codeset (INTL_CODESET_NONE), coerc_level (PT_COLLATION_NOT_APPLICABLE),
-    can_force_cs (true)
+  // *INDENT-OFF*
+    pt_coll_infer ()
+      : coll_id (-1)
+      , codeset (INTL_CODESET_NONE)
+      , coerc_level (PT_COLLATION_NOT_APPLICABLE)
+      , can_force_cs (true)
   {
     //
   }
+  // *INDENT-ON*
 #endif				// c++
 };
 
