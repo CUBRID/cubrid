@@ -97,7 +97,6 @@ namespace cubload
     LDR_MONETARY,
     LDR_BSTR,                    /* Binary bit strings */
     LDR_XSTR,                    /* Hexidecimal bit strings */
-    LDR_BIGINT,
     LDR_DATETIME,
     LDR_DATETIMELTZ,
     LDR_DATETIMETZ,
