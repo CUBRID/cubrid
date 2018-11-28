@@ -321,41 +321,41 @@ namespace cubxasl
 	  return;
 	}
 
-      if (m_expand_type == json_table_expand_type::JSON_TABLE_ARRAY_EXPAND)
-	{
-	  std::string s (m_path);
-	  s.assign (s.substr (0, s.size () - 3));
-
-	  // will only shrink
-
-	  strcpy (m_path, s.c_str ());
-	  m_path[s.size ()] = 0;
-	}
-      else if (m_expand_type == json_table_expand_type::JSON_TABLE_OBJECT_EXPAND)
-	{
-	  std::string s (m_path);
-	  s.assign (s.substr (0, s.size () - 2));
-
-	  // will only shrink
-	  strcpy (m_path, s.c_str ());
-	  m_path[s.size ()] = 0;
-	}
+//     if (m_expand_type == json_table_expand_type::JSON_TABLE_ARRAY_EXPAND)
+//	{
+//	  std::string s (m_path);
+//	  s.assign (s.substr (0, s.size () - 3));
+//
+//	  // will only shrink
+//
+//	  strcpy (m_path, s.c_str ());
+//	  m_path[s.size ()] = 0;
+//	}
+//     else if (m_expand_type == json_table_expand_type::JSON_TABLE_OBJECT_EXPAND)
+//	{
+//	  std::string s (m_path);
+//	  s.assign (s.substr (0, s.size () - 2));
+//
+//	  // will only shrink
+//	  strcpy (m_path, s.c_str ());
+//	  m_path[s.size ()] = 0;
+//	}
     }
 
     void
     node::init_iterator ()
     {
-      if (check_need_expand ())
-	{
-	  if (m_expand_type == json_table_expand_type::JSON_TABLE_ARRAY_EXPAND)
-	    {
-	      m_iterator = db_json_create_iterator (DB_JSON_TYPE::DB_JSON_ARRAY);
-	    }
-	  else if (m_expand_type == json_table_expand_type::JSON_TABLE_OBJECT_EXPAND)
-	    {
-	      m_iterator = db_json_create_iterator (DB_JSON_TYPE::DB_JSON_OBJECT);
-	    }
-	}
+//   if (check_need_expand ())
+//	{
+//	  if (m_expand_type == json_table_expand_type::JSON_TABLE_ARRAY_EXPAND)
+//	    {
+//	      m_iterator = db_json_create_iterator (DB_JSON_TYPE::DB_JSON_ARRAY);
+//	    }
+//	  else if (m_expand_type == json_table_expand_type::JSON_TABLE_OBJECT_EXPAND)
+//	    {
+//	      m_iterator = db_json_create_iterator (DB_JSON_TYPE::DB_JSON_OBJECT);
+//	    }
+//	}
     }
 
     spec_node::spec_node ()

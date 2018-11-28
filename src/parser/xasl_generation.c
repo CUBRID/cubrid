@@ -4642,15 +4642,15 @@ pt_make_json_table_spec_node_internal (PARSER_CONTEXT * parser, PT_JSON_TABLE_NO
   // by default expand type is none
   result.m_expand_type = json_table_expand_type::JSON_TABLE_NO_EXPAND;
 
-  // set the expand type
-  if (json_table_node::str_ends_with (result.m_path, "[*]"))
-    {
-      result.m_expand_type = json_table_expand_type::JSON_TABLE_ARRAY_EXPAND;
-    }
-  else if (json_table_node::str_ends_with (result.m_path, ".*"))
-    {
-      result.m_expand_type = json_table_expand_type::JSON_TABLE_OBJECT_EXPAND;
-    }
+//  // set the expand type
+//  if (json_table_node::str_ends_with (result.m_path, "[*]"))
+//    {
+//      result.m_expand_type = json_table_expand_type::JSON_TABLE_ARRAY_EXPAND;
+//    }
+//  else if (json_table_node::str_ends_with (result.m_path, ".*"))
+//    {
+//      result.m_expand_type = json_table_expand_type::JSON_TABLE_OBJECT_EXPAND;
+//    }
 
   if (result.check_need_expand ())
     {
