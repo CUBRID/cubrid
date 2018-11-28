@@ -8501,6 +8501,7 @@ logpb_backup_for_volume (THREAD_ENTRY * thread_p, VOLID volid, LOG_LSA * chkpt_l
 {
   DISK_VOLPURPOSE volpurpose;
   PAGEID vol_sys_lastpage;
+  int vdes;
   int error_code = NO_ERROR;
 
   /*
@@ -8545,6 +8546,12 @@ logpb_backup_for_volume (THREAD_ENTRY * thread_p, VOLID volid, LOG_LSA * chkpt_l
   if (error_code != NO_ERROR)
     {
       return error_code;
+    }
+
+  vdes = fileio_get_volume_descriptor (volid);
+  if (fileio_synchronize (thread_p, vdes, fileio_get_volume_label (vdes, PEEK), FILEIO_SYNC_ALSO_FLUSH_DWB) != vdes)
+    {
+      return ER_FAILED;
     }
 
   /*
