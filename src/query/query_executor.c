@@ -1947,6 +1947,9 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 		    {
 		      pg_cnt += qexec_clear_regu_var (thread_p, xasl_p, indx_info->key_info.key_limit_u, is_final);
 		    }
+
+		  /* Restore the BTID for future usages (needed for partition cases). */
+		  BTID_COPY (&indx_info->btid, &p->btid);
 		}
 	    }
 	  break;
