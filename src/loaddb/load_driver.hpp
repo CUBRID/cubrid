@@ -78,11 +78,7 @@ namespace cubload
   class driver
   {
     public:
-#if defined (SERVER_MODE)
-      explicit driver (session &session);
-#elif defined (SA_MODE)
       driver ();
-#endif
 
       // Copy constructor (disabled).
       driver (const driver &copy) = delete;
@@ -91,7 +87,11 @@ namespace cubload
       driver &operator= (const driver &other) = delete;
 
       // Destructor
-      virtual ~driver ();
+      ~driver ();
+
+#if defined (SERVER_MODE)
+      void initialize (session *session);
+#endif
 
       // Parse functions
       int parse (std::istream &iss);
@@ -108,14 +108,13 @@ namespace cubload
       scanner &get_scanner ();
 
     private:
-#if defined (SERVER_MODE)
-      session &m_session;
-#endif
-      loader *m_loader;
       scanner *m_scanner;
-      parser m_parser;
+      loader *m_loader;
+      parser *m_parser;
+#if defined (SERVER_MODE)
+      session *m_session;
+#endif
 
-    private:
       /*
        * cubload::driver::semantic_helper
        *

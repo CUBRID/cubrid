@@ -55,6 +55,8 @@ namespace cubload
       void process_constant (constant_type *cons, int attr_idx);
       void process_monetary_constant (constant_type *cons, tp_domain *domain, db_value *db_val);
 
+      void clear ();
+
       session &m_session;
       driver &m_driver;
 

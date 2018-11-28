@@ -64,11 +64,11 @@ namespace cubload
     if (!err_msg_line.empty ())
       {
 	err_msg_line.append (err_msg);
-	m_session.abort (std::move (err_msg_line));
+	m_session->abort (std::move (err_msg_line));
       }
     else
       {
-	m_session.abort (std::move (err_msg));
+	m_session->abort (std::move (err_msg));
       }
   }
 
@@ -86,11 +86,7 @@ namespace cubload
 
   server_loader::~server_loader ()
   {
-    if (m_attr_ids != NULL)
-      {
-	delete m_attr_ids;
-	m_attr_ids = NULL;
-      }
+    clear ();
   }
 
   void
@@ -206,11 +202,7 @@ namespace cubload
   void
   server_loader::destroy ()
   {
-    if (m_attr_ids != NULL)
-      {
-	delete m_attr_ids;
-	m_attr_ids = NULL;
-      }
+    clear ();
 
     cubthread::entry &thread_ref = cubthread::get_entry ();
 
@@ -412,4 +404,10 @@ namespace cubload
     m_session.inc_total_objects ();
   }
 
+  void
+  server_loader::clear ()
+  {
+    delete [] m_attr_ids;
+    m_attr_ids = NULL;
+  }
 } // namespace cubload

@@ -38,16 +38,16 @@
 namespace cubload
 {
 
-#if defined (SERVER_MODE)
-  driver::driver (session &session)
-    : m_session (session)
-    , m_loader (new server_loader (session, *this))
-#elif defined (SA_MODE)
   driver::driver ()
-    : m_loader (new sa_loader ())
+    : m_scanner (new scanner (*this))
+#if defined (SERVER_MODE)
+    , m_loader (NULL)
+    , m_parser (NULL)
+    , m_session (NULL)
+#elif defined (SA_MODE)
+    , m_loader (new sa_loader ())
+    , m_parser (new parser (*this, *m_loader))
 #endif
-    , m_scanner (new scanner (*this))
-    , m_parser (*this, *m_loader)
     , m_semantic_helper (*this)
   {
     //
@@ -55,9 +55,33 @@ namespace cubload
 
   driver::~driver ()
   {
-    delete m_scanner;
+    delete m_parser;
+    m_parser = NULL;
+
     delete m_loader;
+    m_loader = NULL;
+
+    delete m_scanner;
+    m_scanner = NULL;
   }
+
+#if defined (SERVER_MODE)
+  void
+  driver::initialize (session *session)
+  {
+    if (m_session != NULL)
+      {
+	// if already initialized then do nothing
+	return;
+      }
+
+    assert (m_loader == NULL && m_parser == NULL);
+
+    m_session = session;
+    m_loader = new server_loader (*session, *this);
+    m_parser = new parser (*this, *m_loader);
+  }
+#endif
 
   int
   driver::parse (std::istream &iss)
@@ -66,7 +90,7 @@ namespace cubload
 
     m_semantic_helper.reset ();
 
-    return m_parser.parse ();
+    return m_parser->parse ();
   }
 
   int

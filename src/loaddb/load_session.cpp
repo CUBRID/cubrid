@@ -51,43 +51,36 @@ namespace cubload
   {
     private:
       session &m_session;
-      driver *m_drivers;
       unsigned int m_pool_size;
       resource_shared_pool<driver> *m_driver_pool;
 
     public:
       loaddb_worker_context_manager (session &session, unsigned int pool_size)
 	: m_session (session)
-	, m_drivers (NULL)
 	, m_pool_size (pool_size)
 	, m_driver_pool (NULL)
       {
-	void *raw_memory = operator new[] (pool_size * sizeof (driver));
-	m_drivers = static_cast<driver *> (raw_memory);
-
-	for (unsigned int i = 0; i < pool_size; ++i)
-	  {
-	    new (&m_drivers[i]) driver (session);
-	  }
-
-	m_driver_pool = new resource_shared_pool<driver> (m_drivers, pool_size);
+	m_driver_pool = new resource_shared_pool<driver> (pool_size);
       }
 
       ~loaddb_worker_context_manager () override
       {
 	delete m_driver_pool;
-
-	for (unsigned int i = 0; i < m_pool_size; ++i)
-	  {
-	    m_drivers[i].~driver ();
-	  }
-
-	operator delete[] (m_drivers);
       }
 
       void on_create (cubthread::entry &context) final
       {
-	context.m_loaddb_driver = m_driver_pool->claim ();
+	driver *driver = m_driver_pool->claim ();
+	if (driver == NULL)
+	  {
+	    m_session.abort ();
+	    assert (false);
+	    return;
+	  }
+
+	driver->initialize (&m_session);
+
+	context.m_loaddb_driver = driver;
       }
 
       void on_retire (cubthread::entry &context) final
