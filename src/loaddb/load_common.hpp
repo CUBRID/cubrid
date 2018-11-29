@@ -179,8 +179,8 @@ namespace cubload
   struct stats : public cubpacking::packable_object
   {
     std::atomic_int defaults;
-    std::atomic_long total_objects;
-    std::atomic_long last_commit;
+    std::atomic_int64_t total_objects;
+    std::atomic_int64_t last_commit;
     std::atomic_int failures;
     std::string error_message;
     bool is_completed;
@@ -224,10 +224,10 @@ namespace cubload
 
     int pack (cubpacking::packer *serializator) override
     {
-      long total_objects_ = total_objects.load ();
+      std::int64_t total_objects_ = total_objects.load ();
       serializator->pack_bigint (&total_objects_);
 
-      long last_commit_ = last_commit.load ();
+      std::int64_t last_commit_ = last_commit.load ();
       serializator->pack_bigint (&last_commit_);
 
       serializator->pack_int (failures.load ());
@@ -239,11 +239,11 @@ namespace cubload
 
     int unpack (cubpacking::packer *serializator) override
     {
-      long total_objects_;
+      std::int64_t total_objects_;
       serializator->unpack_bigint (&total_objects_);
       total_objects.store (total_objects_);
 
-      long last_commit_;
+      std::int64_t last_commit_;
       serializator->unpack_bigint (&last_commit_);
       last_commit.store (last_commit_);
 
