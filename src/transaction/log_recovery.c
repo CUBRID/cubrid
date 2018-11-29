@@ -837,8 +837,15 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
       return;
     }
 
-  /* Decache all class representations. */
-  heap_classrepr_decache_all (thread_p);
+  /* Remove all class representations. */
+  error_code = heap_classrepr_restart_cache ();
+  if (error_code != NO_ERROR)
+    {
+      assert (false);
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery:heap_classrepr_restart_cache");
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_FINISHED, 0);
+      return;
+    }
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_FINISHED, 0);
 }

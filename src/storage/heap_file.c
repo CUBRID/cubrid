@@ -1779,32 +1779,29 @@ heap_classrepr_decache (THREAD_ENTRY * thread_p, const OID * class_oid)
 }
 
 /*
- * heap_classrepr_decache_all () - Deache all class representations.
+ * heap_classrepr_restart_cache () - Restart recache.
  *
- *   return: NO_ERROR
- *   thread_p(in): thread entry
+ *   return: error code
  *
  * Note: This function is called at recovery.
  */
-void
-heap_classrepr_decache_all (THREAD_ENTRY * thread_p)
+int
+heap_classrepr_restart_cache (void)
 {
-  HEAP_CLASSREPR_ENTRY *curr_entry, *next_entry;
-  HEAP_CLASSREPR_HASH *hash_anchor;
-  int i;
-
-  assert (log_is_in_crash_recovery () && heap_Classrepr->hash_table != NULL);
-  for (i = 0; i < heap_Classrepr->num_hash; i++)
+  int ret;
+  ret = heap_classrepr_finalize_cache ();
+  if (ret != NO_ERROR)
     {
-      hash_anchor = &heap_Classrepr->hash_table[i];
-
-      for (curr_entry = hash_anchor->hash_next; curr_entry != NULL; curr_entry = next_entry)
-	{
-	  next_entry = curr_entry->hash_next;
-
-	  heap_classrepr_decache (thread_p, &curr_entry->class_oid);
-	}
+      return ret;
     }
+
+  ret = heap_classrepr_initialize_cache ();
+  if (ret != NO_ERROR)
+    {
+      return ret;
+    }
+
+  return NO_ERROR;
 }
 
 /* TODO: STL::list for _cache.area */

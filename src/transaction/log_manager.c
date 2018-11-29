@@ -10903,11 +10903,5 @@ logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, vo
 					       unique_stats->tran_stats.num_nulls, unique_stats->tran_stats.num_keys,
 					       false);
 
-  /* Decache class representation if we are in crash recovery. */
-  if (log_is_in_crash_recovery ())
-    {
-      heap_classrepr_decache (thread_p, &class_oid);
-    }
-
   return error_code;
 }

@@ -358,11 +358,11 @@ struct mvcc_reev_data;
 extern int mvcc_header_size_lookup[8];
 
 extern int heap_classrepr_decache (THREAD_ENTRY * thread_p, const OID * class_oid);
-extern void heap_classrepr_decache_all (THREAD_ENTRY * thread_p);
 #ifdef DEBUG_CLASSREPR_CACHE
 extern int heap_classrepr_dump_anyfixed (void);
 #endif /* DEBUG_CLASSREPR_CACHE */
 extern int heap_manager_initialize (void);
+extern int heap_classrepr_restart_cache (void);
 extern int heap_manager_finalize (void);
 extern int heap_assign_address (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * oid,
 				int expected_length);
