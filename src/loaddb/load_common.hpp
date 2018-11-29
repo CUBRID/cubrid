@@ -179,8 +179,8 @@ namespace cubload
   struct stats : public cubpacking::packable_object
   {
     std::atomic_int defaults;
-    std::atomic_int64_t total_objects;
-    std::atomic_int64_t last_commit;
+    std::atomic<std::int64_t> total_objects;
+    std::atomic<std::int64_t> last_commit;
     std::atomic_int failures;
     std::string error_message;
     bool is_completed;
