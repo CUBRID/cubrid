@@ -5419,21 +5419,22 @@ disk_vhdr_length_of_varfields (const DISK_VOLUME_HEADER * vhdr)
  *   return: NO_ERROR;
  *   volid(in): Permanent volume identifier
  *   log_chkpt_lsa(in): Recovery checkpoint for volume
+ *   flush_page(in): True, if needs to flush page.
  *
- * Note: The dirty pages of this volume are not written out, not even the header page which maintains the checkpoint
- * 	 value. The function assumes that all volume pages with lsa smaller that the given one has already been forced
- * 	 to disk (e.g., by the log and recovery manager).
+ * Note: The dirty pages of this volume are not written out, not even the header page (when flush page is false) which maintains
+ * 	 the checkpoint value. The function assumes that all volume pages with lsa smaller that the given one has already been
+ * 	 forced to disk (e.g., by the log and recovery manager).
  *
  *       When a backup of the database is taken, it is important that the volume header page is forced out.
  *       The checkpoint on the volume is used as an indicator to start a media recovery process, so it may be good idea
  *       to force all dirty unfixed pages.
  */
 int
-disk_set_checkpoint (THREAD_ENTRY * thread_p, INT16 volid, const LOG_LSA * log_chkpt_lsa)
+disk_set_checkpoint (THREAD_ENTRY * thread_p, INT16 volid, const LOG_LSA * log_chkpt_lsa, bool flush_page)
 {
   DISK_VOLUME_HEADER *vhdr;
   LOG_DATA_ADDR addr;
-  int error_code = NO_ERROR;
+  int error_code = NO_ERROR, vdes;
 
   addr.pgptr = NULL;
   addr.vfid = NULL;
@@ -5452,8 +5453,23 @@ disk_set_checkpoint (THREAD_ENTRY * thread_p, INT16 volid, const LOG_LSA * log_c
   (void) disk_verify_volume_header (thread_p, addr.pgptr);
 
   log_skip_logging (thread_p, &addr);
-  pgbuf_set_dirty (thread_p, addr.pgptr, FREE);
-  addr.pgptr = NULL;
+  if (flush_page == false)
+    {
+      pgbuf_set_dirty (thread_p, addr.pgptr, FREE);
+      addr.pgptr = NULL;
+    }
+  else
+    {
+      pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
+      pgbuf_flush (thread_p, addr.pgptr, FREE);
+      addr.pgptr = NULL;
+
+      vdes = fileio_get_volume_descriptor (volid);
+      if (fileio_synchronize (thread_p, vdes, fileio_get_volume_label (vdes, PEEK), FILEIO_SYNC_ALSO_FLUSH_DWB) != vdes)
+	{
+	  return ER_FAILED;
+	}
+    }
 
   return NO_ERROR;
 }

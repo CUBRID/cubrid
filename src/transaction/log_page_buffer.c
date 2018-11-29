@@ -8296,7 +8296,11 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
     {
       /* When volid is greater than boot_Db_parm->last_perm_volid, it means that the volume is now adding. We don't
        * need to care for the new volumes in here. */
-      (void) disk_set_checkpoint (thread_p, volid, &chkpt_lsa);
+      if (disk_set_checkpoint (thread_p, volid, &chkpt_lsa, true) != NO_ERROR)
+	{
+	  LOG_CS_ENTER (thread_p);
+	  goto error_cannot_chkpt;
+	}
     }
 
   /*
@@ -8532,7 +8536,7 @@ logpb_backup_for_volume (THREAD_ENTRY * thread_p, VOLID volid, LOG_LSA * chkpt_l
    * pages, so that the the backup reflects the actual state of the volume
    * as much as possible
    */
-  error_code = disk_set_checkpoint (thread_p, volid, chkpt_lsa);
+  error_code = disk_set_checkpoint (thread_p, volid, chkpt_lsa, false);
   if (error_code != NO_ERROR)
     {
       return error_code;
