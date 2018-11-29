@@ -10171,7 +10171,7 @@ loaddb_load_batch (std::string & batch, int batch_id)
 }
 
 int
-loaddb_fetch_stats (cubload::stats * stats)
+loaddb_fetch_stats (load_stats * stats)
 {
 #if defined(CS_MODE)
   char *ptr = NULL;
@@ -10196,25 +10196,8 @@ loaddb_fetch_stats (cubload::stats * stats)
       return error_code;
     }
 
-  INT64 total_objects;
-  ptr = or_unpack_int64 (data_reply, &total_objects);
-  stats->total_objects.store (total_objects);
-
-  INT64 last_commit;
-  ptr = or_unpack_int64 (ptr, &last_commit);
-  stats->last_commit.store (last_commit);
-
-  int failures;
-  ptr = or_unpack_int (ptr, &failures);
-  stats->failures.store (failures);
-
-  int is_completed;
-  ptr = or_unpack_int (ptr, &is_completed);
-  stats->is_completed = (bool) is_completed;
-
-  char *error_message;
-  or_unpack_string (ptr, &error_message);
-  stats->error_message = error_message;
+  cubpacking::packer packer (data_reply, data_reply_size);
+  stats->unpack (&packer);
 
   return 0;
 #else /* CS_MODE */

@@ -24,6 +24,9 @@
 #ifndef _LOAD_COMMON_HPP_
 #define _LOAD_COMMON_HPP_
 
+#include "packable_object.hpp"
+
+#include <cassert>
 #include <atomic>
 #include <functional>
 
@@ -173,8 +176,15 @@ namespace cubload
     int currency_type;
   };
 
-  struct stats
+  struct stats : public cubpacking::packable_object
   {
+    std::atomic_int defaults;
+    std::atomic_long total_objects;
+    std::atomic_long last_commit;
+    std::atomic_int failures;
+    std::string error_message;
+    bool is_completed;
+
     // Default constructor
     stats ()
       : defaults (0)
@@ -212,12 +222,63 @@ namespace cubload
       return *this;
     }
 
-    std::atomic_int defaults;
-    std::atomic_long total_objects;
-    std::atomic_long last_commit;
-    std::atomic_int failures;
-    std::string error_message;
-    bool is_completed;
+    int pack (cubpacking::packer *serializator) override
+    {
+      long total_objects_ = total_objects.load ();
+      serializator->pack_bigint (&total_objects_);
+
+      long last_commit_ = last_commit.load ();
+      serializator->pack_bigint (&last_commit_);
+
+      serializator->pack_int (failures.load ());
+      serializator->pack_int ((int) is_completed);
+      serializator->pack_string (error_message);
+
+      return NO_ERROR;
+    }
+
+    int unpack (cubpacking::packer *serializator) override
+    {
+      long total_objects_;
+      serializator->unpack_bigint (&total_objects_);
+      total_objects.store (total_objects_);
+
+      long last_commit_;
+      serializator->unpack_bigint (&last_commit_);
+      last_commit.store (last_commit_);
+
+      int failures_;
+      serializator->unpack_int (&failures_);
+      failures.store (failures_);
+
+      int is_completed_;
+      serializator->unpack_int (&is_completed_);
+      is_completed = (bool) is_completed_;
+
+      serializator->unpack_string (error_message);
+
+      return NO_ERROR;
+    }
+
+    bool is_equal (const packable_object *other) override
+    {
+      // used only in test context
+      assert (false);
+      return true;
+    }
+
+    size_t get_packed_size (cubpacking::packer *serializator) override
+    {
+      size_t size = 0;
+
+      size += serializator->get_packed_bigint_size (size); // total_objects
+      size += serializator->get_packed_bigint_size (size); // last_commit
+      size += serializator->get_packed_int_size (size); // failures
+      size += serializator->get_packed_int_size (size); // is_completed
+      size += serializator->get_packed_string_size (error_message, size);
+
+      return size;
+    }
   };
 
   /*
@@ -341,5 +402,8 @@ namespace cubload
   std::string format (const char *fmt, va_list *ap);
 
 } // namespace cubload
+
+// alias declaration for legacy C files
+using load_stats = cubload::stats;
 
 #endif /* _LOAD_COMMON_HPP_ */
