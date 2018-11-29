@@ -31,9 +31,34 @@
 #include <stdarg.h>
 #include <string>
 
+///////////////////// Function declarations /////////////////////
 namespace cubload
 {
 
+  /*
+   * A wrapper function for calling batch handler. Used by split function and does some extra checks
+   */
+  int handle_batch (std::string &class_line, std::string &batch, batch_id &id, batch_handler &handler);
+
+  /*
+   * Check if a given string starts with a given prefix
+   */
+  bool starts_with (const std::string &str, const std::string &prefix);
+
+  /*
+   * Check if a given string ends with a given suffix
+   */
+  bool ends_with (const std::string &str, const std::string &suffix);
+
+  /*
+   * Trim whitespaces on the right of the string. String is passed as reference and it will be modified
+   */
+  void rtrim (std::string &str);
+}
+
+///////////////////// Function definitions /////////////////////
+namespace cubload
+{
   void
   free_string (string_type **str)
   {
@@ -215,30 +240,6 @@ namespace cubload
   rtrim (std::string &str)
   {
     str.erase (str.find_last_not_of (" \t\f\v\n\r") + 1);
-  }
-
-  std::string
-  format (const char *fmt, ...)
-  {
-    va_list ap;
-
-    va_start (ap, fmt);
-    std::string msg = format (fmt, &ap);
-    va_end (ap);
-
-    return msg;
-  }
-
-  std::string
-  format (const char *fmt, va_list *ap)
-  {
-    // Determine required size
-    int size = vsnprintf (NULL, 0, fmt, *ap) + 1; // +1  for '\0'
-    std::unique_ptr<char[]> msg (new char[size]);
-
-    vsnprintf (msg.get (), (size_t) size, fmt, *ap);
-
-    return std::string (msg.get (), msg.get () + size - 1);
   }
 
 } // namespace cubload

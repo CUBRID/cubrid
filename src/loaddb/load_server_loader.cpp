@@ -39,6 +39,21 @@
 namespace cubload
 {
 
+  /*
+   * Format string based on format string passed as input parameter. Check vsnprintf function for more details
+   */
+  std::string format (const char *fmt, ...);
+  /*
+   * Same as above function, but instead of variadic arguments a pointer to va_list is passed
+   */
+  std::string
+  format (const char *fmt, va_list *ap);
+}
+
+///////////////////// cubload::driver functions definitions (used only on SERVER_MODE) /////////////////////
+namespace cubload
+{
+
   void
   driver::on_syntax_error ()
   {
@@ -72,6 +87,34 @@ namespace cubload
       }
   }
 
+  std::string
+  format (const char *fmt, ...)
+  {
+    va_list ap;
+
+    va_start (ap, fmt);
+    std::string msg = format (fmt, &ap);
+    va_end (ap);
+
+    return msg;
+  }
+
+  std::string
+  format (const char *fmt, va_list *ap)
+  {
+    // Determine required size
+    int size = vsnprintf (NULL, 0, fmt, *ap) + 1; // +1  for '\0'
+    std::unique_ptr<char[]> msg (new char[size]);
+
+    vsnprintf (msg.get (), (size_t) size, fmt, *ap);
+
+    return std::string (msg.get (), msg.get () + size - 1);
+  }
+}
+
+///////////////////// cubload::server_loader functions definitions /////////////////////
+namespace cubload
+{
   server_loader::server_loader (session &session, driver &driver)
     : m_session (session)
     , m_driver (driver)

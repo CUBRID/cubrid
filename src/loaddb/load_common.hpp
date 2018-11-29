@@ -371,36 +371,6 @@ namespace cubload
    */
   int split (int batch_size, std::string &object_file_name, batch_handler &handler);
 
-  /*
-   * A wrapper function for calling batch handler. Used by split function and does some extra checks
-   */
-  int handle_batch (std::string &class_line, std::string &batch, batch_id &id, batch_handler &handler);
-
-  /*
-   * Check if a given string starts with a given prefix
-   */
-  bool starts_with (const std::string &str, const std::string &prefix);
-
-  /*
-   * Check if a given string ends with a given suffix
-   */
-  bool ends_with (const std::string &str, const std::string &suffix);
-
-  /*
-   * Trim whitespaces on the right of the string. String is passed as reference and it will be modified
-   */
-  void rtrim (std::string &str);
-
-  /*
-   * Format string based on format string passed as input parameter. Check vsnprintf function for more details
-   */
-  std::string format (const char *fmt, ...);
-
-  /*
-   * Same as above function, but instead of variadic arguments a pointer to va_list is passed
-   */
-  std::string format (const char *fmt, va_list *ap);
-
 } // namespace cubload
 
 // alias declaration for legacy C files
