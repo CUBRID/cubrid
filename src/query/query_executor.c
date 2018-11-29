@@ -1949,6 +1949,15 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 		    }
 
 		  /* Restore the BTID for future usages (needed for partition cases). */
+		  /* XASL comes from the client with the btid set to the root class of the partitions hierarchy. 
+		   * Scan begins and starts with the rootclass, then jumps to a partition and sets the btid in the 
+		   * XASL to the one of the partition. Execution ends and the next identical statement comes and uses
+		   * the XASL previously generated. However, the BTID was not cleared from the INDEX_INFO structure
+		   * so the execution will fail.
+		   * We need to find a better solution so that we do not write on the XASL members during execution.
+		   */
+
+		  /* TODO: Fix me!! */
 		  BTID_COPY (&indx_info->btid, &p->btid);
 		}
 	    }
