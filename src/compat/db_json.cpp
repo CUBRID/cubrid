@@ -309,6 +309,11 @@ JSON_ARRAY_ITERATOR::has_next ()
       return false;
     }
 
+  char *temp = NULL;
+  db_json_unquote (*m_input_doc, temp);
+  std::string s1 (temp);
+  db_private_free (NULL, temp);
+
   JSON_VALUE_ITERATOR end = m_input_doc->GetArray ().End ();
 
   return (m_iterator + 1) != end;
@@ -328,6 +333,11 @@ JSON_OBJECT_ITERATOR::has_next ()
     {
       return false;
     }
+
+  char *temp = NULL;
+  db_json_unquote (*m_input_doc, temp);
+  std::string s1 (temp);
+  db_private_free (NULL, temp);
 
   JSON_MEMBER_ITERATOR end = m_input_doc->MemberEnd ();
 
@@ -1548,16 +1558,25 @@ db_json_extract_document_from_path (const JSON_DOC *document, const char *raw_pa
 	  return error_code;
 	}
 
-      std::vector<std::pair<JSON_VALUE *, std::string>> res;
+      std::vector<std::string> unquoted_json_values;
 
-      auto f = [&regs, &res] (JSON_VALUE &jv, const std::string& accumulated_path) -> int
+      auto f = [&regs, &produced, &unquoted_json_values] (JSON_VALUE &jv, const std::string& accumulated_path) -> int
       {
 	// find a way to bypass subjsons, that will still match the regs
 	for (const auto &reg : regs)
 	  {
 	    if (std::regex_match (accumulated_path, reg))
 	      {
-		res.push_back (std::make_pair (&jv, accumulated_path));
+		JSON_STRING_BUFFER buffer;
+		rapidjson::Writer<JSON_STRING_BUFFER> json_default_writer (buffer);
+		buffer.Clear();
+		jv.Accept (json_default_writer);
+		char *unquoted_doc =  db_private_strdup (NULL, buffer.GetString());
+
+		unquoted_json_values.push_back (unquoted_doc);
+		db_private_free (NULL, unquoted_doc);
+
+		produced.push_back (std::make_pair (&jv, accumulated_path));
 	      }
 	  }
 	return NO_ERROR;
@@ -1569,8 +1588,11 @@ db_json_extract_document_from_path (const JSON_DOC *document, const char *raw_pa
       std::vector<std::string> debug_strs;
       for (auto &p : produced)
 	{
-	  char *unquoted_doc = NULL;
-	  db_json_unquote (*document, unquoted_doc);
+	  JSON_STRING_BUFFER buffer;
+	  rapidjson::Writer<JSON_STRING_BUFFER> json_default_writer (buffer);
+	  buffer.Clear ();
+	  p.first->Accept (json_default_writer);
+	  char *unquoted_doc = db_private_strdup (NULL, buffer.GetString ());
 
 	  debug_strs.push_back (unquoted_doc);
 	  db_private_free (NULL, unquoted_doc);
@@ -1585,7 +1607,6 @@ db_json_extract_document_from_path (const JSON_DOC *document, const char *raw_pa
 	    }
 
 	  std::string cpy = p.second;
-
 	  db_json_add_element_to_array (result, p.first);
 	}
 

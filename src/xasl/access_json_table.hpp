@@ -60,11 +60,14 @@ namespace cubxasl
 	column ();
 
 	void init ();
+	int quick_evaluate (const JSON_DOC &input, size_t ordinality);
 	int evaluate (const JSON_DOC &input, size_t ordinality);
 
       private:
 	int evaluate_extract (const JSON_DOC &input);
+	int quick_evaluate_extract (const JSON_DOC &input);
 	int evaluate_exists (const JSON_DOC &input);
+	int quick_evaluate_exists (const JSON_DOC &input);
 	int evaluate_ordinality (size_t ordinality);
 
 	int trigger_on_error (const JSON_DOC &input, const TP_DOMAIN_STATUS &status_cast, db_value &value_out);

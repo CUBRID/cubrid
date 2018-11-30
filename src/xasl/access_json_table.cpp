@@ -147,6 +147,19 @@ namespace cubxasl
 	  return error_code;
 	}
 
+      char *temp = NULL;
+      db_json_unquote (input, temp);
+      std::string s1 (temp);
+      db_private_free (NULL, temp);
+      std::string s2;
+      if (docp != NULL)
+	{
+	  temp = NULL;
+	  db_json_unquote (*docp, temp);
+	  s2 = temp;
+	  db_private_free (NULL, temp);
+	}
+
       // clear previous output_value
       pr_clear_value (m_output_value_pointer);
 
@@ -168,6 +181,68 @@ namespace cubxasl
 
       return error_code;
     }
+
+    int
+    column::quick_evaluate_extract (const JSON_DOC &input)
+    {
+      int error_code = NO_ERROR;
+      JSON_DOC *docp = NULL;
+      TP_DOMAIN_STATUS status_cast = TP_DOMAIN_STATUS::DOMAIN_COMPATIBLE;
+
+      error_code = db_json_extract_document_from_path (&input, "$", docp);
+
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR();
+	  assert (db_value_is_null (m_output_value_pointer));
+	  return ER_FAILED;
+	}
+
+      if (docp == NULL)
+	{
+	  error_code = trigger_on_empty (*m_output_value_pointer);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR();
+	    }
+	  return error_code;
+	}
+
+      char *temp = NULL;
+      db_json_unquote (input, temp);
+      std::string s1 (temp);
+      db_private_free (NULL, temp);
+      std::string s2;
+      if (docp != NULL)
+	{
+	  temp = NULL;
+	  db_json_unquote (*docp, temp);
+	  s2 = temp;
+	  db_private_free (NULL, temp);
+	}
+
+      // clear previous output_value
+      pr_clear_value (m_output_value_pointer);
+
+      if (db_make_json (m_output_value_pointer, docp, true) != NO_ERROR)
+	{
+	  assert (false);
+	  return ER_FAILED;
+	}
+
+      status_cast = tp_value_cast (m_output_value_pointer, m_output_value_pointer, m_domain, false);
+      if (status_cast != TP_DOMAIN_STATUS::DOMAIN_COMPATIBLE)
+	{
+	  error_code = trigger_on_error (input, status_cast, *m_output_value_pointer);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR();
+	    }
+	}
+
+      return error_code;
+    }
+
 
     int
     column::evaluate_exists (const JSON_DOC &input)
@@ -196,6 +271,33 @@ namespace cubxasl
     }
 
     int
+    column::quick_evaluate_exists (const JSON_DOC &input)
+    {
+      int error_code = NO_ERROR;
+      bool result = false;
+      TP_DOMAIN_STATUS status_cast = TP_DOMAIN_STATUS::DOMAIN_COMPATIBLE;
+
+      error_code = db_json_contains_path (&input, "$", result);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR();
+	  assert (db_value_is_null (m_output_value_pointer));
+	  return ER_FAILED;
+	}
+
+      db_make_short (m_output_value_pointer, result ? 1 : 0);
+
+      status_cast = tp_value_cast (m_output_value_pointer, m_output_value_pointer, m_domain, false);
+      if (status_cast != TP_DOMAIN_STATUS::DOMAIN_COMPATIBLE)
+	{
+	  return ER_FAILED;
+	}
+
+      return error_code;
+    }
+
+
+    int
     column::evaluate_ordinality (size_t ordinality)
     {
       TP_DOMAIN_STATUS status_cast = TP_DOMAIN_STATUS::DOMAIN_COMPATIBLE;
@@ -205,6 +307,36 @@ namespace cubxasl
       db_make_int (m_output_value_pointer, ordinality);
 
       return NO_ERROR;
+    }
+
+    int
+    column::quick_evaluate (const JSON_DOC &input, size_t ordinality)
+    {
+      assert (m_output_value_pointer != NULL);
+
+      pr_clear_value (m_output_value_pointer);
+      db_make_null (m_output_value_pointer);
+
+      int error_code = NO_ERROR;
+
+      // todo: what if there is a hierarchy? When to decide to cut path?
+
+      switch (m_function)
+	{
+	case json_table_column_function::JSON_TABLE_EXTRACT:
+	  error_code = quick_evaluate_extract (input);
+	  break;
+	case json_table_column_function::JSON_TABLE_EXISTS:
+	  error_code = quick_evaluate_exists (input);
+	  break;
+	case json_table_column_function::JSON_TABLE_ORDINALITY:
+	  error_code = evaluate_ordinality (ordinality);
+	  break;
+	default:
+	  return ER_FAILED;
+	}
+
+      return error_code;
     }
 
     int
@@ -320,42 +452,22 @@ namespace cubxasl
 	  assert (false);
 	  return;
 	}
-
-//     if (m_expand_type == json_table_expand_type::JSON_TABLE_ARRAY_EXPAND)
-//	{
-//	  std::string s (m_path);
-//	  s.assign (s.substr (0, s.size () - 3));
-//
-//	  // will only shrink
-//
-//	  strcpy (m_path, s.c_str ());
-//	  m_path[s.size ()] = 0;
-//	}
-//     else if (m_expand_type == json_table_expand_type::JSON_TABLE_OBJECT_EXPAND)
-//	{
-//	  std::string s (m_path);
-//	  s.assign (s.substr (0, s.size () - 2));
-//
-//	  // will only shrink
-//	  strcpy (m_path, s.c_str ());
-//	  m_path[s.size ()] = 0;
-//	}
     }
 
     void
     node::init_iterator ()
     {
-//   if (check_need_expand ())
-//	{
-//	  if (m_expand_type == json_table_expand_type::JSON_TABLE_ARRAY_EXPAND)
-//	    {
-//	      m_iterator = db_json_create_iterator (DB_JSON_TYPE::DB_JSON_ARRAY);
-//	    }
-//	  else if (m_expand_type == json_table_expand_type::JSON_TABLE_OBJECT_EXPAND)
-//	    {
-//	      m_iterator = db_json_create_iterator (DB_JSON_TYPE::DB_JSON_OBJECT);
-//	    }
-//	}
+      if (check_need_expand ())
+	{
+	  if (m_expand_type == json_table_expand_type::JSON_TABLE_ARRAY_EXPAND)
+	    {
+	      m_iterator = db_json_create_iterator (DB_JSON_TYPE::DB_JSON_ARRAY);
+	    }
+	  else if (m_expand_type == json_table_expand_type::JSON_TABLE_OBJECT_EXPAND)
+	    {
+	      m_iterator = db_json_create_iterator (DB_JSON_TYPE::DB_JSON_OBJECT);
+	    }
+	}
     }
 
     spec_node::spec_node ()
