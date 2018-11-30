@@ -137,7 +137,6 @@ static int rv;
 #define LOG_NEED_TO_SET_LSA(RCVI, PGPTR) \
    (((RCVI) != RVBT_MVCC_INCREMENTS_UPD) \
     && ((RCVI) != RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT) \
-    && ((RCVI) != RVCR_UPDATE) \
     && ((RCVI) != RVBT_REMOVE_UNIQUE_STATS) \
     && ((RCVI) != RVLOC_CLASSNAME_DUMMY) \
     && ((RCVI) != RVDK_LINK_PERM_VOLEXT || !pgbuf_is_lsa_temporary(PGPTR)))
@@ -7798,7 +7797,7 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
 	  rv_err = (*RV_fun[rcvindex].undofun) (thread_p, rcv);
 	  assert (rv_err == NO_ERROR);
 	}
-      else if (rcvindex == RVBT_MVCC_NOTIFY_VACUUM || rcvindex == RVES_NOTIFY_VACUUM || rcvindex == RVCR_UPDATE)
+      else if (rcvindex == RVBT_MVCC_NOTIFY_VACUUM || rcvindex == RVES_NOTIFY_VACUUM)
 	{
 	  /* do nothing */
 	}

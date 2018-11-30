@@ -813,12 +813,7 @@ struct rvfun RV_fun[] = {
    btree_rv_redo_record_modify,
    btree_rv_keyval_dump,
    log_rv_dump_hexa},
-  {RVCR_UPDATE,
-   "RVCR_UPDATE",
-   heap_rv_notify_class_record_update,
-   NULL,
-   log_rv_dump_hexa,
-   NULL},
+
 };
 
 /*

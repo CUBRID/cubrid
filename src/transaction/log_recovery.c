@@ -273,7 +273,7 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_p
 	{
 	  /* nothing to do */
 	}
-      else if (rcvindex == RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT || rcvindex == RVCR_UPDATE)
+      else if (rcvindex == RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT)
 	{
 	  /* this only modifies in memory data that is only flushed to disk on checkpoints. we need to execute undo
 	   * every time recovery is run, and we cannot compensate it. */
@@ -833,6 +833,16 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
     {
       assert (false);
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery:locator_initialize");
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_FINISHED, 0);
+      return;
+    }
+
+  /* Remove all class representations. */
+  error_code = heap_classrepr_restart_cache ();
+  if (error_code != NO_ERROR)
+    {
+      assert (false);
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery:heap_classrepr_restart_cache");
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_FINISHED, 0);
       return;
     }
