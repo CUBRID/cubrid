@@ -1779,7 +1779,7 @@ heap_classrepr_decache (THREAD_ENTRY * thread_p, const OID * class_oid)
 }
 
 /*
- * heap_classrepr_restart_cache () - Restart recache.
+ * heap_classrepr_restart_cache () - Restart classrepr recache.
  *
  *   return: error code
  *
@@ -1789,6 +1789,13 @@ int
 heap_classrepr_restart_cache (void)
 {
   int ret;
+
+  if (!log_is_in_crash_recovery ())
+    {
+      assert (log_is_in_crash_recovery ());
+      return ER_FAILED;
+    }
+
   ret = heap_classrepr_finalize_cache ();
   if (ret != NO_ERROR)
     {
