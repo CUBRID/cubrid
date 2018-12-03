@@ -709,7 +709,10 @@ Func::cmp_types_castable (const pt_arg_type &type, pt_type_enum type_enum) //is 
 
     case PT_GENERIC_TYPE_JSON_VAL:
       // it will be resolved at runtime
-      return PT_IS_NUMERIC_TYPE (type_enum);      // numerics can be converted to json
+      return PT_IS_NUMERIC_TYPE (type_enum);      // numerics can be converted to a json value
+
+    case PT_GENERIC_TYPE_JSON_DOC:
+      return false;     // only equivalent types
 
     case PT_GENERIC_TYPE_JSON_DOC:
       return false;
