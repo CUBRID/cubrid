@@ -3074,6 +3074,7 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
   const char *class_name = NULL;
   const char *comment_str = NULL;
   bool do_rollback = false;
+  SM_INDEX_STATUS old_index_status = SM_NORMAL_INDEX;
 
   /* TODO refactor this code, the code in create_or_drop_index_helper and the code in do_drop_index in order to remove
    * duplicate code */
@@ -3115,6 +3116,8 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
       error = ER_SM_NO_INDEX;
       goto error_exit;
     }
+
+  old_index_status = idx->index_status;
 
   if (statement->info.index.comment != NULL)
     {
@@ -3304,7 +3307,7 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
 
   error =
     sm_add_constraint (obj, original_ctype, index_name, (const char **) attnames, asc_desc, attrs_prefix_length, false,
-		       p_pred_index_info, func_index_info, comment_str, SM_NORMAL_INDEX);
+		       p_pred_index_info, func_index_info, comment_str, old_index_status);
   if (error != NO_ERROR)
     {
       goto error_exit;
@@ -9145,13 +9148,13 @@ do_copy_indexes (PARSER_CONTEXT * parser, MOP classmop, SM_CLASS * src_class)
 	{
 	  error = sm_add_constraint (classmop, constraint_type, new_cons_name, att_names, index_save_info->asc_desc,
 				     index_save_info->prefix_length, false, index_save_info->filter_predicate,
-				     index_save_info->func_index_info, index_save_info->comment, SM_NORMAL_INDEX);
+				     index_save_info->func_index_info, index_save_info->comment, c->index_status);
 	}
       else
 	{
 	  error =
 	    sm_add_constraint (classmop, constraint_type, new_cons_name, att_names, c->asc_desc, c->attrs_prefix_length,
-			       false, c->filter_predicate, c->func_index_info, c->comment, SM_NORMAL_INDEX);
+			       false, c->filter_predicate, c->func_index_info, c->comment, c->index_status);
 	}
       if (error != NO_ERROR)
 	{
