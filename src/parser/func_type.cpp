@@ -586,6 +586,14 @@ func_signature::to_string_buffer (string_buffer &sb) const
   pt_arg_type_to_string_buffer (ret, sb);
 }
 
+Func::argument_resolve::argument_resolve ()
+  : m_type (PT_TYPE_NONE)
+  , m_check_coll_infer (false)
+  , m_coll_infer ()
+{
+  //
+}
+
 Func::signature_compatibility::signature_compatibility ()
   : m_compat (type_compatibility::INCOMPATIBLE)
   , m_args_resolve {}
@@ -593,6 +601,38 @@ Func::signature_compatibility::signature_compatibility ()
   , m_signature (NULL)
 {
   //
+}
+
+bool
+Func::is_type_with_collation (PT_TYPE_ENUM type)
+{
+  return PT_HAS_COLLATION (type) || type == PT_TYPE_MAYBE;
+}
+
+bool
+Func::can_signature_have_collation (const pt_arg_type &arg_sig)
+{
+  switch (arg_sig.type)
+    {
+    case pt_arg_type::NORMAL:
+      // types that can have collations
+      return is_type_with_collation (arg_sig.val.type);
+
+    case pt_arg_type::GENERIC:
+      // all generic that can accept string (and result is still string)
+      return arg_sig.val.generic_type == PT_GENERIC_TYPE_STRING
+	     || arg_sig.val.generic_type == PT_GENERIC_TYPE_STRING_VARYING
+	     || arg_sig.val.generic_type == PT_GENERIC_TYPE_CHAR
+	     || arg_sig.val.generic_type == PT_GENERIC_TYPE_NCHAR
+	     || arg_sig.val.generic_type == PT_GENERIC_TYPE_PRIMITIVE
+	     || arg_sig.val.generic_type == PT_GENERIC_TYPE_ANY
+	     || arg_sig.val.generic_type == PT_GENERIC_TYPE_SCALAR;
+
+    case pt_arg_type::INDEX:
+    default:
+      assert (false);
+      return false;
+    }
 }
 
 bool
@@ -667,10 +707,12 @@ Func::cmp_types_castable (const pt_arg_type &type, pt_type_enum type_enum) //is 
     case PT_GENERIC_TYPE_SCALAR:
       return !PT_IS_COLLECTION_TYPE (type_enum);
 
-    case PT_GENERIC_TYPE_JSON_DOC:
     case PT_GENERIC_TYPE_JSON_VAL:
       // it will be resolved at runtime
       return PT_IS_NUMERIC_TYPE (type_enum);      // numerics can be converted to json
+
+    case PT_GENERIC_TYPE_JSON_DOC:
+      return false;
 
     case PT_GENERIC_TYPE_SEQUENCE:
       // todo -
@@ -718,15 +760,14 @@ Func::Node::apply_argument (parser_node *prev, parser_node *arg, const argument_
 	  return NULL;
 	}
     }
-  if (m_best_signature.m_collation_inference.coll_id != -1)
+  if (m_best_signature.m_collation_inference.coll_id != -1 && arg_res.m_check_coll_infer)
     {
-      if (PT_HAS_COLLATION (arg_res.m_type)
-	  && m_best_signature.m_collation_inference.coll_id != arg_res.m_coll_infer.coll_id)
+      if (m_best_signature.m_collation_inference.coll_id != arg_res.m_coll_infer.coll_id)
 	{
-	  PT_NODE *new_node =
-		  pt_coerce_node_collation (m_parser, arg, m_best_signature.m_collation_inference.coll_id,
-					    m_best_signature.m_collation_inference.codeset,
-					    arg_res.m_coll_infer.can_force_cs, false, arg_res.m_type, PT_TYPE_NONE);
+	  PT_NODE *new_node = pt_coerce_node_collation (m_parser, arg, m_best_signature.m_collation_inference.coll_id,
+			      m_best_signature.m_collation_inference.codeset,
+			      arg_res.m_coll_infer.can_force_cs, false, arg_res.m_type,
+			      PT_TYPE_NONE);
 	  if (new_node != NULL)
 	    {
 	      arg = new_node;
@@ -1109,7 +1150,7 @@ Func::Node::check_arg_compat (const pt_arg_type &arg_signature, const PT_NODE *a
     }
 
   // if compatible, pt_get_equivalent_type should return a valid type. but we need to double-check
-  if (arg_res.m_type == PT_TYPE_NONE || arg_res.m_type == PT_TYPE_MAYBE)
+  if (arg_res.m_type == PT_TYPE_NONE)
     {
       assert (false);
       compat.m_compat = type_compatibility::INCOMPATIBLE;
@@ -1117,43 +1158,64 @@ Func::Node::check_arg_compat (const pt_arg_type &arg_signature, const PT_NODE *a
       return false;
     }
 
-  // if argument type has collation and resolved type also has collation, we need to do collation inference
+  // three conditions should be met to require collation inference:
   //
-  // if argument type does not have collation, it doesn't influence result collation (e.g. when casting int to string)
+  //  1. argument signature should allow collation. e.g. all generic strings allow collations, but json docs and values
+  //     don't allow
   //
-  // if resolved type does not have collation, again it won't influence result collation (e.g. when casting string to
-  // datetime)
-  if (PT_HAS_COLLATION (arg_node->type_enum) && PT_HAS_COLLATION (arg_res.m_type))
+  //  2. equivalent type should have collation.
+  //
+  //  3. original argument type should have collation. if it doesn't have, it doesn't affect common collation.
+  //     NOTE - if first two conditions are true and this is false, we don't do collation inference, but argument will
+  //            be coerced to common collation.
+  //
+  // todo - what happens when all arguments are maybe??
+  //
+  // NOTE:
+  //  Most of the time, first and second conditions are similar. There are cases when first condition is false and
+  //  second is true. I don't know at this moment if second argument can be false while first is true. To be on the
+  //  safe side, we check them both.
+  //
+  if (!can_signature_have_collation (arg_signature) || !is_type_with_collation (arg_res.m_type))
     {
-      int common_coll;
-      INTL_CODESET common_cs;
-
-      // get collation from node
-      if (!pt_get_collation_info (arg_node, &arg_res.m_coll_infer))
+      // collation does not matter for this argument
+      arg_res.m_coll_infer.coll_id = -1;
+      arg_res.m_check_coll_infer = false;
+    }
+  else
+    {
+      // collation matters for this argument
+      arg_res.m_coll_infer.coll_id = -1;
+      arg_res.m_check_coll_infer = true;
+      if (is_type_with_collation (arg_node->type_enum) && pt_get_collation_info (arg_node, &arg_res.m_coll_infer))
 	{
-	  // ignore
-	  return true;
-	}
-
-      if (compat.m_collation_inference.coll_id == -1)
-	{
-	  compat.m_collation_inference.coll_id = arg_res.m_coll_infer.coll_id;
-	  compat.m_collation_inference.codeset = arg_res.m_coll_infer.codeset;
-	  compat.m_collation_inference.can_force_cs = arg_res.m_coll_infer.can_force_cs;
-	  compat.m_collation_inference.coerc_level = arg_res.m_coll_infer.coerc_level;
-	}
-      else if (pt_common_collation (&compat.m_collation_inference, &arg_res.m_coll_infer, NULL, 2, false, &common_coll,
-				    &common_cs) == NO_ERROR)
-	{
-	  compat.m_collation_inference.coll_id = common_coll;
-	  compat.m_collation_inference.codeset = common_cs;
+	  // do collation inference
+	  int common_coll;
+	  INTL_CODESET common_cs;
+	  if (compat.m_collation_inference.coll_id == -1)
+	    {
+	      compat.m_collation_inference.coll_id = arg_res.m_coll_infer.coll_id;
+	      compat.m_collation_inference.codeset = arg_res.m_coll_infer.codeset;
+	      compat.m_collation_inference.can_force_cs = arg_res.m_coll_infer.can_force_cs;
+	      compat.m_collation_inference.coerc_level = arg_res.m_coll_infer.coerc_level;
+	    }
+	  else if (pt_common_collation (&compat.m_collation_inference, &arg_res.m_coll_infer, NULL, 2, false,
+					&common_coll, &common_cs) == NO_ERROR)
+	    {
+	      compat.m_collation_inference.coll_id = common_coll;
+	      compat.m_collation_inference.codeset = common_cs;
+	    }
+	  else
+	    {
+	      // todo: we'll need a clear error here
+	      compat.m_compat = type_compatibility::INCOMPATIBLE;
+	      invalid_coll_error (*compat.m_signature);
+	      return false;
+	    }
 	}
       else
 	{
-	  // todo: we'll need a clear error here
-	  compat.m_compat = type_compatibility::INCOMPATIBLE;
-	  invalid_coll_error (*compat.m_signature);
-	  return false;
+	  // third condition is not met; this argument does not contribute to common collation.
 	}
     }
   return true;
@@ -1419,11 +1481,7 @@ pt_get_equivalent_type (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM arg_type)
 	}
 
     case PT_GENERIC_TYPE_JSON_VAL:
-      if (arg_type == PT_TYPE_MAYBE || arg_type == PT_TYPE_NULL)
-	{
-	  return PT_TYPE_JSON;
-	}
-      else if (pt_is_json_value_type (arg_type))
+      if (pt_is_json_value_type (arg_type))
 	{
 	  return arg_type;
 	}
@@ -1437,17 +1495,9 @@ pt_get_equivalent_type (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM arg_type)
 	}
 
     case PT_GENERIC_TYPE_JSON_DOC:
-      if (arg_type == PT_TYPE_MAYBE || arg_type == PT_TYPE_NULL)
-	{
-	  return PT_TYPE_JSON;
-	}
-      else if (pt_is_json_doc_type (arg_type))
+      if (pt_is_json_doc_type (arg_type))
 	{
 	  return arg_type;
-	}
-      else if (PT_IS_NUMERIC_TYPE (arg_type))
-	{
-	  return PT_TYPE_JSON;
 	}
       else
 	{

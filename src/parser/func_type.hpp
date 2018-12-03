@@ -101,7 +101,10 @@ namespace Func
   struct argument_resolve
   {
     PT_TYPE_ENUM m_type;
+    bool m_check_coll_infer;
     pt_coll_infer m_coll_infer;
+
+    argument_resolve ();
   };
 
   struct signature_compatibility
@@ -116,6 +119,9 @@ namespace Func
 
   bool cmp_types_equivalent (const pt_arg_type &type, pt_type_enum type_enum);
   bool cmp_types_castable (const pt_arg_type &type, pt_type_enum type_enum);
+
+  bool is_type_with_collation (PT_TYPE_ENUM type);
+  bool can_signature_have_collation (const pt_arg_type &arg_sig);
 
   class Node
   {
