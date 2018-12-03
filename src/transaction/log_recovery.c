@@ -744,7 +744,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   if (logpb_fetch_start_append_page (thread_p) != NO_ERROR)
     {
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery:logpb_fetch_start_append_page");
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_FINISHED, 0);
+      // dead-ended. not reach here
       return;
     }
 
@@ -833,7 +833,17 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
     {
       assert (false);
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery:locator_initialize");
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_FINISHED, 0);
+      // dead-ended. not reach here
+      return;
+    }
+
+  /* Remove all class representations. */
+  error_code = heap_classrepr_restart_cache ();
+  if (error_code != NO_ERROR)
+    {
+      assert (false);
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery:heap_classrepr_restart_cache");
+      // dead-ended. not reach here
       return;
     }
 
