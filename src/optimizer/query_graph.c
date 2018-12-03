@@ -5111,7 +5111,7 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 		}
 	    }
 
-	  if (consp)		/* is unique index */
+	  if (consp && consp->index_status == SM_NORMAL_INDEX)	/* is unique index */
 	    {
 	      /* is class hierarchy index: set unique index statistics */
 	      cum_statsp->leafs = bt_statsp->leafs;
