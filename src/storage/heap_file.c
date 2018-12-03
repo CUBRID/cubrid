@@ -1778,6 +1778,39 @@ heap_classrepr_decache (THREAD_ENTRY * thread_p, const OID * class_oid)
   return ret;
 }
 
+/*
+ * heap_classrepr_restart_cache () - Restart classrepr recache.
+ *
+ *   return: error code
+ *
+ * Note: This function is called at recovery.
+ */
+int
+heap_classrepr_restart_cache (void)
+{
+  int ret;
+
+  if (!log_is_in_crash_recovery ())
+    {
+      assert (log_is_in_crash_recovery ());
+      return ER_FAILED;
+    }
+
+  ret = heap_classrepr_finalize_cache ();
+  if (ret != NO_ERROR)
+    {
+      return ret;
+    }
+
+  ret = heap_classrepr_initialize_cache ();
+  if (ret != NO_ERROR)
+    {
+      return ret;
+    }
+
+  return NO_ERROR;
+}
+
 /* TODO: STL::list for _cache.area */
 /*
  * heap_classrepr_free () - Free a class representation

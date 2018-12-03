@@ -3851,7 +3851,7 @@ db_value_to_json_doc (const DB_VALUE &db_val, REFPTR (JSON_DOC, json_doc))
   int error_code = NO_ERROR;
 
   json_doc = NULL;
-  switch (DB_VALUE_DOMAIN_TYPE (&db_val))
+  switch (db_value_domain_type (&db_val))
     {
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
@@ -3875,8 +3875,9 @@ db_value_to_json_doc (const DB_VALUE &db_val, REFPTR (JSON_DOC, json_doc))
 
     default:
       // todo: more specific error
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
-      return ER_QSTR_INVALID_DATA_TYPE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_EXPECTING_JSON_DOC, 1,
+	      pr_type_name (db_value_domain_type (&db_val)));
+      return ER_JSON_EXPECTING_JSON_DOC;
     }
 }
 
