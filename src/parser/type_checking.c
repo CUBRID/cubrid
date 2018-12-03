@@ -19981,6 +19981,11 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 		  goto end;
 		}
 	    }
+          else if (result && op == PT_CAST && opd1 != NULL && opd1->node_type == PT_VALUE)
+            {
+              /* folding of a CAST around a VALUE which initially was a host variable */
+              result->info.value.host_var_index = opd1->info.value.host_var_index;
+            }
 	}
     }
   else if (result_type == PT_TYPE_LOGICAL)
