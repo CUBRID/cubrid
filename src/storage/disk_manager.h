@@ -98,7 +98,7 @@ extern int disk_set_creation (THREAD_ENTRY * thread_p, INT16 volid, const char *
 			      DISK_FLUSH_TYPE flush_page);
 extern int disk_set_link (THREAD_ENTRY * thread_p, INT16 volid, INT16 next_volid, const char *next_volext_fullname,
 			  bool logchange, DISK_FLUSH_TYPE flush);
-extern int disk_set_checkpoint (THREAD_ENTRY * thread_p, INT16 volid, const LOG_LSA * log_chkpt_lsa, bool flush_page);
+extern int disk_set_checkpoint (THREAD_ENTRY * thread_p, INT16 volid, const LOG_LSA * log_chkpt_lsa);
 extern int disk_set_boot_hfid (THREAD_ENTRY * thread_p, INT16 volid, const HFID * hfid);
 
 extern int disk_reserve_sectors (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, VOLID volid_hint, int n_sectors,

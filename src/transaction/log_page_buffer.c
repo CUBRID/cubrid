@@ -7943,7 +7943,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   int last_arv_num_not_needed;
   LOG_PRIOR_NODE *node;
   void *ptr;
-  int flushed_page_cnt = 0;
+  int flushed_page_cnt = 0, vdes;
 
   LOG_CS_ENTER (thread_p);
 
@@ -8296,10 +8296,24 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
     {
       /* When volid is greater than boot_Db_parm->last_perm_volid, it means that the volume is now adding. We don't
        * need to care for the new volumes in here. */
-      if (disk_set_checkpoint (thread_p, volid, &chkpt_lsa, true) != NO_ERROR)
+      if (disk_set_checkpoint (thread_p, volid, &chkpt_lsa) != NO_ERROR)
 	{
 	  LOG_CS_ENTER (thread_p);
 	  goto error_cannot_chkpt;
+	}
+
+      /* When setting the checkpoint, the header page modification is not logged. However, other concurrent
+       * transaction may modify meanwhile the header page (with logging). Since writing data page is preceded by
+       * log sync, we are sure that WAL is not violated. We only need to sync the data volume. Probably, it is better
+       * to sync it now - as soon as possible. If we are postponing volume sync, we may write on disk more data pages
+       * twice (the data pages modified before checkpoint - other than volume header page, written on disk at the
+       * beginning of the checkpoint, modified again by concurrent transaction, written on disk again in checkpoint
+       * due to volume header page modification).
+       */
+      vdes = fileio_get_volume_descriptor (volid);
+      if (fileio_synchronize (thread_p, vdes, fileio_get_volume_label (vdes, PEEK), FILEIO_SYNC_ALSO_FLUSH_DWB) != vdes)
+	{
+	  return ER_FAILED;
 	}
     }
 
@@ -8536,7 +8550,7 @@ logpb_backup_for_volume (THREAD_ENTRY * thread_p, VOLID volid, LOG_LSA * chkpt_l
    * pages, so that the the backup reflects the actual state of the volume
    * as much as possible
    */
-  error_code = disk_set_checkpoint (thread_p, volid, chkpt_lsa, false);
+  error_code = disk_set_checkpoint (thread_p, volid, chkpt_lsa);
   if (error_code != NO_ERROR)
     {
       return error_code;
