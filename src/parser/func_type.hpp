@@ -111,7 +111,7 @@ namespace Func
   {
     type_compatibility m_compat;
     std::vector<argument_resolve> m_args_resolve;
-    pt_coll_infer m_collation_inference;
+    pt_coll_infer m_common_collation;
     const func_signature *m_signature;
 
     signature_compatibility ();
@@ -138,8 +138,6 @@ namespace Func
       }
 
       parser_node *get_arg (size_t index);
-
-      void check_types (void);
 
       bool preprocess(); //preprocess current function node type for special cases
       const func_signature *get_signature (const std::vector<func_signature> &signatures);

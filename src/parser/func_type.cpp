@@ -189,10 +189,10 @@ std::vector<func_signature> func_signature::elt =
 std::vector<func_signature> func_signature::insert =
 {
   {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_CHAR, PT_TYPE_INTEGER, PT_TYPE_INTEGER, PT_GENERIC_TYPE_CHAR}, {}},
-  {PT_TYPE_VARNCHAR, {PT_GENERIC_TYPE_NCHAR, PT_TYPE_INTEGER, PT_TYPE_INTEGER, 0}, {}},
+  {PT_TYPE_VARNCHAR, {PT_GENERIC_TYPE_NCHAR, PT_TYPE_INTEGER, PT_TYPE_INTEGER, PT_TYPE_VARNCHAR}, {}},
 
-  {0, {3, PT_TYPE_INTEGER, PT_TYPE_INTEGER, PT_GENERIC_TYPE_NCHAR}, {}}, //for insert(?, i, i, n'nchar')
-  {0, {3, PT_TYPE_INTEGER, PT_TYPE_INTEGER, PT_GENERIC_TYPE_STRING}, {}}, //for insert(?, i, i, 'char or anything else')
+  //{0, {3, PT_TYPE_INTEGER, PT_TYPE_INTEGER, PT_GENERIC_TYPE_NCHAR}, {}}, //for insert(?, i, i, n'nchar')
+  //{0, {3, PT_TYPE_INTEGER, PT_TYPE_INTEGER, PT_GENERIC_TYPE_STRING}, {}}, //for insert(?, i, i, 'char or anything else')
 };
 
 std::vector<func_signature> func_signature::json_r_key_val =
@@ -597,7 +597,7 @@ Func::argument_resolve::argument_resolve ()
 Func::signature_compatibility::signature_compatibility ()
   : m_compat (type_compatibility::INCOMPATIBLE)
   , m_args_resolve {}
-  , m_collation_inference {}
+  , m_common_collation {}
   , m_signature (NULL)
 {
   //
@@ -760,12 +760,12 @@ Func::Node::apply_argument (parser_node *prev, parser_node *arg, const argument_
 	  return NULL;
 	}
     }
-  if (m_best_signature.m_collation_inference.coll_id != -1 && arg_res.m_check_coll_infer)
+  if (m_best_signature.m_common_collation.coll_id != -1 && arg_res.m_check_coll_infer)
     {
-      if (m_best_signature.m_collation_inference.coll_id != arg_res.m_coll_infer.coll_id)
+      if (m_best_signature.m_common_collation.coll_id != arg_res.m_coll_infer.coll_id)
 	{
-	  PT_NODE *new_node = pt_coerce_node_collation (m_parser, arg, m_best_signature.m_collation_inference.coll_id,
-			      m_best_signature.m_collation_inference.codeset,
+	  PT_NODE *new_node = pt_coerce_node_collation (m_parser, arg, m_best_signature.m_common_collation.coll_id,
+			      m_best_signature.m_common_collation.codeset,
 			      arg_res.m_coll_infer.can_force_cs, false, arg_res.m_type,
 			      PT_TYPE_NONE);
 	  if (new_node != NULL)
@@ -891,6 +891,8 @@ Func::Node::get_signature (const std::vector<func_signature> &signatures)
 	      sgn_compat.m_compat = type_compatibility::INCOMPATIBLE;
 	      break;
 	    }
+
+	  // todo - index type signature should copy argument type, not argument signature
 	  auto t = ((fix.type == pt_arg_type::INDEX) ? sig.fix[fix.val.index] : fix);
 
 	  if (!check_arg_compat (t, arg, sgn_compat, sgn_compat.m_args_resolve[arg_idx]))
@@ -917,6 +919,7 @@ Func::Node::get_signature (const std::vector<func_signature> &signatures)
       for (; arg; arg = arg->next, index = (index + 1) % sig.rep.size ())
 	{
 	  auto &rep = sig.rep[index];
+	  // todo - index type signature should copy argument type, not argument signature
 	  auto t = ((rep.type == pt_arg_type::INDEX) ? sig.rep[rep.val.index] : rep);
 
 	  if (!check_arg_compat (t, arg, sgn_compat, sgn_compat.m_args_resolve[arg_idx]))
@@ -974,6 +977,10 @@ Func::Node::set_return_type (const func_signature &signature)
 	  if (arg_node != NULL)
 	    {
 	      m_node->type_enum = arg_node->type_enum;
+	      if (m_node->type_enum == PT_TYPE_MAYBE && arg_node->expected_domain != NULL)
+		{
+		  m_node->type_enum = pt_db_to_type_enum (arg_node->expected_domain->type->id);
+		}
 	      if (arg_node->data_type != NULL)
 		{
 		  m_node->data_type = parser_copy_tree_list (m_parser, arg_node->data_type);
@@ -1055,15 +1062,15 @@ Func::Node::set_return_type (const func_signature &signature)
     }
 
   // set collation on result node... I am not sure this is correct
-  if (PT_HAS_COLLATION (m_node->type_enum) && m_best_signature.m_collation_inference.coll_id != -1)
+  if (PT_HAS_COLLATION (m_node->type_enum) && m_best_signature.m_common_collation.coll_id != -1)
     {
       pt_coll_infer result_coll_infer;
       if (pt_get_collation_info (m_node, &result_coll_infer)
-	  && m_best_signature.m_collation_inference.coll_id != result_coll_infer.coll_id)
+	  && m_best_signature.m_common_collation.coll_id != result_coll_infer.coll_id)
 	{
 	  parser_node *new_node = pt_coerce_node_collation (m_parser, m_node,
-				  m_best_signature.m_collation_inference.coll_id,
-				  m_best_signature.m_collation_inference.codeset,
+				  m_best_signature.m_common_collation.coll_id,
+				  m_best_signature.m_common_collation.codeset,
 				  true, false, PT_TYPE_VARCHAR, PT_TYPE_NONE);
 	}
     }
@@ -1192,18 +1199,18 @@ Func::Node::check_arg_compat (const pt_arg_type &arg_signature, const PT_NODE *a
 	  // do collation inference
 	  int common_coll;
 	  INTL_CODESET common_cs;
-	  if (compat.m_collation_inference.coll_id == -1)
+	  if (compat.m_common_collation.coll_id == -1)
 	    {
-	      compat.m_collation_inference.coll_id = arg_res.m_coll_infer.coll_id;
-	      compat.m_collation_inference.codeset = arg_res.m_coll_infer.codeset;
-	      compat.m_collation_inference.can_force_cs = arg_res.m_coll_infer.can_force_cs;
-	      compat.m_collation_inference.coerc_level = arg_res.m_coll_infer.coerc_level;
+	      compat.m_common_collation.coll_id = arg_res.m_coll_infer.coll_id;
+	      compat.m_common_collation.codeset = arg_res.m_coll_infer.codeset;
+	      compat.m_common_collation.can_force_cs = arg_res.m_coll_infer.can_force_cs;
+	      compat.m_common_collation.coerc_level = arg_res.m_coll_infer.coerc_level;
 	    }
-	  else if (pt_common_collation (&compat.m_collation_inference, &arg_res.m_coll_infer, NULL, 2, false,
+	  else if (pt_common_collation (&compat.m_common_collation, &arg_res.m_coll_infer, NULL, 2, false,
 					&common_coll, &common_cs) == NO_ERROR)
 	    {
-	      compat.m_collation_inference.coll_id = common_coll;
-	      compat.m_collation_inference.codeset = common_cs;
+	      compat.m_common_collation.coll_id = common_coll;
+	      compat.m_common_collation.codeset = common_cs;
 	    }
 	  else
 	    {
