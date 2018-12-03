@@ -3094,7 +3094,7 @@ db_json_sql_path_is_valid (std::string &sql_path, bool allow_wildcards)
 
 	case '*':
 	  // only ** wildcard is allowed in this case
-	  if (!allow_wildcards || (++i < sql_path.length () && sql_path[i] != '*'))
+	  if (!allow_wildcards || ++i >= sql_path.length () || sql_path[i] != '*')
 	    {
 	      return false;
 	    }
