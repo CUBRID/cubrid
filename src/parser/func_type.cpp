@@ -714,9 +714,6 @@ Func::cmp_types_castable (const pt_arg_type &type, pt_type_enum type_enum) //is 
     case PT_GENERIC_TYPE_JSON_DOC:
       return false;     // only equivalent types
 
-    case PT_GENERIC_TYPE_JSON_DOC:
-      return false;
-
     case PT_GENERIC_TYPE_SEQUENCE:
       // todo -
       return false;
