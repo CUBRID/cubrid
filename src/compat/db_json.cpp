@@ -3871,13 +3871,12 @@ db_json_path_is_token_valid_array_index (const std::string &str, bool allow_wild
 
   std::size_t last_non_space = end - 1;
   for (; last_non_space > start && str[last_non_space] == ' '; --last_non_space);
-  ++last_non_space;
-
   if (allow_wildcards && start == last_non_space && str[start] == '*')
     {
       return true;
     }
 
+  ++last_non_space;
   for (auto it = str.cbegin () + start; it < str.cbegin () + last_non_space; ++it)
     {
       if (!std::isdigit (static_cast<unsigned char> (*it)))
