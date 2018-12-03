@@ -4857,6 +4857,12 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg, const char *expr_st
 	  attr_statsp = stats->attr_stats;
 	  n_attrs = stats->n_attrs;
 
+	  if (consp->index_status == SM_INVISIBLE_INDEX || consp->index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+	    {
+	      /* Skip not normal indexes. */
+	      continue;
+	    }
+
 	  if (consp->func_index_info && consp->func_index_info->col_id == 0
 	      && !intl_identifier_casecmp (expr_str, consp->func_index_info->expr_str))
 	    {
