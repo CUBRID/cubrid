@@ -4000,14 +4000,15 @@ classobj_is_possible_constraint (SM_CONSTRAINT_TYPE existed, DB_CONSTRAINT_TYPE 
  */
 
 TP_DOMAIN *
-classobj_find_cons_index2_col_type_list (SM_CLASS_CONSTRAINT * cons, CLASS_STATS * stats)
+classobj_find_cons_index2_col_type_list (SM_CLASS_CONSTRAINT * cons)
 {
   TP_DOMAIN *key_type = NULL;
   int i, j;
   ATTR_STATS *attr_statsp;
   BTREE_STATS *bt_statsp;
+  CLASS_STATS *local_stats;
 
-  if (!cons || !stats)
+  if (!cons)
     {
       return NULL;		/* invalid args */
     }
@@ -4017,8 +4018,11 @@ classobj_find_cons_index2_col_type_list (SM_CLASS_CONSTRAINT * cons, CLASS_STATS
       return NULL;		/* give up */
     }
 
-  attr_statsp = stats->attr_stats;
-  for (i = 0; i < stats->n_attrs && !key_type; i++, attr_statsp++)
+  /* Get local stats including invisible indexes. */
+  local_stats = stats_get_statistics (&cons->attributes[0]->class_mop->oid_info.oid, 0);
+
+  attr_statsp = local_stats->attr_stats;
+  for (i = 0; i < local_stats->n_attrs && !key_type; i++, attr_statsp++)
     {
       bt_statsp = attr_statsp->bt_stats;
       for (j = 0; j < attr_statsp->n_btstats && !key_type; j++, bt_statsp++)

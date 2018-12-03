@@ -5319,7 +5319,7 @@ do_create_partition_constraint (PT_NODE * alter, SM_CLASS * root_class, SM_CLASS
 
   attp = constraint->attributes;
   attrnames = namep;
-  key_type = classobj_find_cons_index2_col_type_list (constraint, root_class->stats);
+  key_type = classobj_find_cons_index2_col_type_list (constraint);
   if (key_type == NULL)
     {
       if ((error = er_errid ()) == NO_ERROR)
@@ -5398,7 +5398,7 @@ do_create_partition_constraint (PT_NODE * alter, SM_CLASS * root_class, SM_CLASS
 	  error =
 	    sm_add_constraint (subclass_op, db_constraint_type (constraint), constraint->name, (const char **) namep,
 			       asc_desc, constraint->attrs_prefix_length, false, constraint->filter_predicate,
-			       new_func_index_info, constraint->comment, SM_NORMAL_INDEX);
+			       new_func_index_info, constraint->comment, constraint->index_status);
 	  if (error != NO_ERROR)
 	    {
 	      goto cleanup;
@@ -5452,7 +5452,7 @@ do_create_partition_constraint (PT_NODE * alter, SM_CLASS * root_class, SM_CLASS
 	  error =
 	    sm_add_constraint (objs->op, db_constraint_type (constraint), constraint->name, (const char **) namep,
 			       asc_desc, constraint->attrs_prefix_length, false, constraint->filter_predicate,
-			       new_func_index_info, constraint->comment, SM_NORMAL_INDEX);
+			       new_func_index_info, constraint->comment, constraint->index_status);
 	  if (error != NO_ERROR)
 	    {
 	      goto cleanup;
