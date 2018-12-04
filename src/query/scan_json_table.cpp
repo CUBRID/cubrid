@@ -145,7 +145,16 @@ namespace cubscan
 	  break;
 
 	case json_table_expand_type::JSON_TABLE_OBJECT_EXPAND:
-	  assert (false);
+	  // only DB_JSON_OBJECT can be expanded
+	  if (db_json_get_type (m_input_doc) == DB_JSON_OBJECT)
+	    {
+	      m_is_node_consumed = false;
+	      db_json_set_iterator (m_node->m_iterator, *m_input_doc);
+	    }
+	  else
+	    {
+	      m_is_node_consumed = true;
+	    }
 	  break;
 
 	default:
