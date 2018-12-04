@@ -2743,7 +2743,7 @@ ehash_split_bucket (THREAD_ENTRY * thread_p, EHASH_DIR_HEADER * dir_header_p, PA
       pgbuf_unfix_and_init (thread_p, sibling_page_p);
       if (file_dealloc (thread_p, &bucket_vfid, sibling_vpid_p, FILE_EXTENDIBLE_HASH) != NO_ERROR)
 	{
-	  assert_release (false);
+	  ASSERT_ERROR ();
 	}
       VPID_SET_NULL (sibling_vpid_p);
       return NULL;
@@ -3848,7 +3848,13 @@ ehash_merge (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p, bool is_temp)
 		  if (file_dealloc (thread_p, &dir_header_p->bucket_file, &bucket_vpid, FILE_EXTENDIBLE_HASH)
 		      != NO_ERROR)
 		    {
-		      assert_release (false);
+		      ASSERT_ERROR ();
+		      pgbuf_unfix_and_init (thread_p, dir_root_page_p);
+		      if (!is_temp)
+			{
+			  log_sysop_abort (thread_p);
+			}
+		      return;
 		    }
 
 		  /* Set all pointers to the bucket to NULL */
@@ -3905,7 +3911,13 @@ ehash_merge (THREAD_ENTRY * thread_p, EHID * ehid_p, void *key_p, bool is_temp)
 
 	      if (file_dealloc (thread_p, &dir_header_p->bucket_file, &bucket_vpid, FILE_EXTENDIBLE_HASH) != NO_ERROR)
 		{
-		  assert_release (false);
+		  ASSERT_ERROR ();
+		  pgbuf_unfix_and_init (thread_p, dir_root_page_p);
+		  if (!is_temp)
+		    {
+		      log_sysop_abort (thread_p);
+		    }
+		  return;
 		}
 
 	      ehash_adjust_local_depth (thread_p, ehid_p, dir_root_page_p, dir_header_p, old_local_depth, -2, is_temp);
