@@ -133,6 +133,9 @@ static GENERIC_FUNCTION_RECORD pt_Generic_functions[] = {
     ((node)->info.expr.arg1->info.expr.op == PT_EVALUATE_VARIABLE))	      \
     )) ? true : false )
 
+#define PT_IS_VALUE_FROM_HV(p) \
+  ((p) != NULL && (p)->node_type == PT_VALUE && (p)->info.value.host_var_index != -1)
+
 typedef struct compare_between_operator
 {
   PT_OP_TYPE left;
@@ -261,7 +264,7 @@ static int pt_character_length_for_node (PT_NODE * node, const PT_TYPE_ENUM coer
 static PT_NODE *pt_wrap_expr_w_exp_dom_cast (PARSER_CONTEXT * parser, PT_NODE * expr);
 static bool pt_is_op_with_forced_common_type (PT_OP_TYPE op);
 static bool pt_check_const_fold_op_w_args (PT_OP_TYPE op, DB_VALUE * arg1, DB_VALUE * arg2, DB_VALUE * arg3,
-					   TP_DOMAIN * domain);
+                                           PT_NODE *opd1, PT_NODE *opd2, PT_NODE *opd3, TP_DOMAIN * domain);
 static bool pt_is_range_or_comp (PT_OP_TYPE op);
 static bool pt_is_op_w_collation (const PT_OP_TYPE op);
 static COLLATION_RESULT pt_get_collation_info_for_collection_type (PARSER_CONTEXT * parser, const PT_NODE * node,
@@ -19937,7 +19940,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	  goto end;
 	}
 
-      if (!pt_check_const_fold_op_w_args (op, arg1, arg2, arg3, domain))
+      if (!pt_check_const_fold_op_w_args (op, arg1, arg2, arg3, opd1, opd2, opd3, domain))
 	{
 	  goto end;
 	}
@@ -19981,7 +19984,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 		  goto end;
 		}
 	    }
-	  else if (result && op == PT_CAST && opd1 != NULL && opd1->node_type == PT_VALUE)
+	  else if (result && op == PT_CAST && PT_IS_VALUE_FROM_HV (opd1))
 	    {
 	      /* folding of a CAST around a VALUE which initially was a host variable */
 	      result->info.value.host_var_index = opd1->info.value.host_var_index;
@@ -21777,6 +21780,9 @@ pt_is_op_with_forced_common_type (PT_OP_TYPE op)
  *   arg1(in): 1st db_value operand
  *   arg2(in): 2nd db_value operand
  *   arg3(in): 3rd db_value operand
+ *   opd1(in): 1st parse tree node operand of expression 
+ *   opd2(in): 2nd parse tree node operand of expression 
+ *   opd3(in): 3rd parse tree node operand of expression 
  *   domain(in): node domain
  *
  *  Note : this function is used in context of constant folding to check if
@@ -21784,9 +21790,17 @@ pt_is_op_with_forced_common_type (PT_OP_TYPE op)
  *	   which may cause performance problem
  */
 static bool
-pt_check_const_fold_op_w_args (PT_OP_TYPE op, DB_VALUE * arg1, DB_VALUE * arg2, DB_VALUE * arg3, TP_DOMAIN * domain)
+pt_check_const_fold_op_w_args (PT_OP_TYPE op, DB_VALUE * arg1, DB_VALUE * arg2, DB_VALUE * arg3,
+                               PT_NODE *opd1, PT_NODE *opd2, PT_NODE *opd3, TP_DOMAIN * domain)
 {
   const int MAX_RESULT_SIZE_ON_CONST_FOLDING = 256;
+
+  if ((op != PT_CAST)
+      && (PT_IS_VALUE_FROM_HV (opd1) || PT_IS_VALUE_FROM_HV (opd2) || PT_IS_VALUE_FROM_HV (opd3)))
+    {
+      return false;
+    }
+
   switch (op)
     {
     case PT_CAST:
