@@ -287,6 +287,7 @@ class JSON_ARRAY_ITERATOR : public JSON_ITERATOR
       assert (new_doc.IsArray ());
 
       m_input_doc = &new_doc;
+
       m_iterator = new_doc.GetArray ().Begin ();
     }
 

@@ -145,16 +145,7 @@ namespace cubscan
 	  break;
 
 	case json_table_expand_type::JSON_TABLE_OBJECT_EXPAND:
-	  // only DB_JSON_OBJECT can be expanded
-	  if (db_json_get_type (m_input_doc) == DB_JSON_OBJECT)
-	    {
-	      m_is_node_consumed = false;
-	      db_json_set_iterator (m_node->m_iterator, *m_input_doc);
-	    }
-	  else
-	    {
-	      m_is_node_consumed = true;
-	    }
+	  assert  (false);
 	  break;
 
 	default:
@@ -423,6 +414,12 @@ namespace cubscan
     scanner::set_input_document (cursor &cursor_arg, const cubxasl::json_table::node &node, const JSON_DOC &document)
     {
       int error_code = NO_ERROR;
+
+      if (cursor_arg.m_input_doc != nullptr)
+	{
+	  // do not gather previous result
+	  db_json_delete_doc (cursor_arg.m_input_doc);
+	}
 
       // extract input document
       error_code = db_json_extract_document_from_path (&document, node.m_path, cursor_arg.m_input_doc);

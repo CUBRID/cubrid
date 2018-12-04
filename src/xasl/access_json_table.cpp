@@ -320,26 +320,6 @@ namespace cubxasl
 	  assert (false);
 	  return;
 	}
-
-      if (m_expand_type == json_table_expand_type::JSON_TABLE_ARRAY_EXPAND)
-	{
-	  std::string s (m_path);
-	  s.assign (s.substr (0, s.size () - 3));
-
-	  // will only shrink
-
-	  strcpy (m_path, s.c_str ());
-	  m_path[s.size ()] = 0;
-	}
-      else if (m_expand_type == json_table_expand_type::JSON_TABLE_OBJECT_EXPAND)
-	{
-	  std::string s (m_path);
-	  s.assign (s.substr (0, s.size () - 2));
-
-	  // will only shrink
-	  strcpy (m_path, s.c_str ());
-	  m_path[s.size ()] = 0;
-	}
     }
 
     void
@@ -353,7 +333,7 @@ namespace cubxasl
 	    }
 	  else if (m_expand_type == json_table_expand_type::JSON_TABLE_OBJECT_EXPAND)
 	    {
-	      m_iterator = db_json_create_iterator (DB_JSON_TYPE::DB_JSON_OBJECT);
+	      assert (false);
 	    }
 	}
     }

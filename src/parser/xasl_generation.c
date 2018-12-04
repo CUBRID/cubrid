@@ -4649,6 +4649,7 @@ pt_make_json_table_spec_node_internal (PARSER_CONTEXT * parser, PT_JSON_TABLE_NO
     {
       if (s[i] == '*')
 	{
+	  // json_extract on '*' json_paths results in iterable arrays
 	  result.m_expand_type = json_table_expand_type::JSON_TABLE_ARRAY_EXPAND;
 	  break;
 	}
