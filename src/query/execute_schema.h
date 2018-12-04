@@ -106,4 +106,6 @@ extern int do_recreate_func_index_constr (PARSER_CONTEXT * parser, SM_CONSTRAINT
 extern int do_recreate_filter_index_constr (PARSER_CONTEXT * parser, SM_PREDICATE_INFO * filter_index_info,
 					    PT_NODE * alter, const char *src_cls_name, const char *new_cls_name);
 
+extern int sm_get_constr_index_status (MOP classmop, const char *name, SM_INDEX_STATUS * index_status);
+
 #endif /* _EXECUTE_SCHEMA_H_ */

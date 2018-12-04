@@ -5358,6 +5358,9 @@ do_create_partition_constraint (PT_NODE * alter, SM_CLASS * root_class, SM_CLASS
       for (; parts; parts = parts->next)
 	{
 	  MOP subclass_op = parts->info.parts.name->info.name.db_object;
+	  SM_INDEX_STATUS old_status = SM_NORMAL_INDEX;
+	  SM_CLASS_CONSTRAINT *constr = NULL;
+
 	  if (alter_op == PT_REORG_PARTITION && parts->partition_pruned)
 	    {
 	      continue;		/* reused partition */
@@ -5368,6 +5371,12 @@ do_create_partition_constraint (PT_NODE * alter, SM_CLASS * root_class, SM_CLASS
 	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	      goto cleanup;
+	    }
+
+	  constr = classobj_find_constraint_by_name (subclass->constraints, constraint->name);
+	  if (constr != NULL)
+	    {
+	      old_status = constr->index_status;
 	    }
 
 	  if (subclass->partition == NULL)
@@ -5401,7 +5410,7 @@ do_create_partition_constraint (PT_NODE * alter, SM_CLASS * root_class, SM_CLASS
 	  error =
 	    sm_add_constraint (subclass_op, db_constraint_type (constraint), constraint->name, (const char **) namep,
 			       asc_desc, constraint->attrs_prefix_length, false, constraint->filter_predicate,
-			       new_func_index_info, constraint->comment, SM_NORMAL_INDEX);
+			       new_func_index_info, constraint->comment, old_status);
 	  if (error != NO_ERROR)
 	    {
 	      goto cleanup;
@@ -5418,12 +5427,21 @@ do_create_partition_constraint (PT_NODE * alter, SM_CLASS * root_class, SM_CLASS
     {
       for (objs = root_class->users; objs; objs = objs->next)
 	{
+	  SM_CLASS_CONSTRAINT *constr = NULL;
+	  SM_INDEX_STATUS old_status = SM_NORMAL_INDEX;
+
 	  error = au_fetch_class (objs->op, &subclass, AU_FETCH_READ, AU_SELECT);
 	  if (error != NO_ERROR)
 	    {
 	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	      goto cleanup;
+	    }
+
+	  constr = classobj_find_constraint_by_name (subclass->constraints, constr->name);
+	  if (constr != NULL)
+	    {
+	      old_status = constr->index_status;
 	    }
 
 	  if (subclass->partition == NULL)
@@ -5455,7 +5473,7 @@ do_create_partition_constraint (PT_NODE * alter, SM_CLASS * root_class, SM_CLASS
 	  error =
 	    sm_add_constraint (objs->op, db_constraint_type (constraint), constraint->name, (const char **) namep,
 			       asc_desc, constraint->attrs_prefix_length, false, constraint->filter_predicate,
-			       new_func_index_info, constraint->comment, SM_NORMAL_INDEX);
+			       new_func_index_info, constraint->comment, old_status);
 	  if (error != NO_ERROR)
 	    {
 	      goto cleanup;
@@ -9034,9 +9052,17 @@ do_recreate_renamed_class_indexes (const PARSER_CONTEXT * parser, const char *co
   /* add indexes */
   for (saved = index_save_info; saved != NULL; saved = saved->next)
     {
+      SM_INDEX_STATUS old_status = SM_NORMAL_INDEX;
+
+      error = sm_get_constr_index_status (classmop, saved->name, &old_status);
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+
       error = sm_add_constraint (classmop, saved->constraint_type, saved->name, (const char **) saved->att_names,
 				 saved->asc_desc, saved->prefix_length, false, saved->filter_predicate,
-				 saved->func_index_info, saved->comment, SM_NORMAL_INDEX);
+				 saved->func_index_info, saved->comment, old_status);
 
       if (error != NO_ERROR)
 	{
@@ -9493,6 +9519,14 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser, PT_NODE * const
 
 		  if (att_old_name != NULL)
 		    {
+		      SM_INDEX_STATUS old_status = SM_NORMAL_INDEX;
+
+		      error = sm_get_constr_index_status (class_mop, saved_constr->name, &old_status);
+		      if (error != NO_ERROR)
+			{
+			  goto exit;
+			}
+
 		      assert (att_old_name->node_type == PT_NAME);
 		      att_names[0] = att_old_name->info.name.original;
 		      att_names[1] = NULL;
@@ -9510,7 +9544,7 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser, PT_NODE * const
 		      error = sm_add_constraint (class_mop, saved_constr->constraint_type, saved_constr->name,
 						 (const char **) saved_constr->att_names, saved_constr->asc_desc,
 						 saved_constr->prefix_length, false, saved_constr->filter_predicate,
-						 saved_constr->func_index_info, saved_constr->comment, SM_NORMAL_INDEX);
+						 saved_constr->func_index_info, saved_constr->comment, old_status);
 		      if (error != NO_ERROR)
 			{
 			  goto exit;
@@ -13263,10 +13297,18 @@ do_recreate_att_constraints (MOP class_mop, SM_CONSTRAINT_INFO * constr_info_lis
     {
       if (SM_IS_CONSTRAINT_INDEX_FAMILY ((SM_CONSTRAINT_TYPE) constr->constraint_type))
 	{
+	  SM_INDEX_STATUS old_status = SM_NORMAL_INDEX;
+
+	  error = sm_get_constr_index_status (class_mop, constr->name, &old_status);
+	  if (error != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+
 	  error =
 	    sm_add_constraint (class_mop, constr->constraint_type, constr->name, (const char **) constr->att_names,
 			       constr->asc_desc, constr->prefix_length, false, constr->filter_predicate,
-			       constr->func_index_info, constr->comment, SM_NORMAL_INDEX);
+			       constr->func_index_info, constr->comment, old_status);
 
 	  if (error != NO_ERROR)
 	    {
@@ -14974,9 +15016,17 @@ do_recreate_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_save_info)
     {
       if (SM_IS_CONSTRAINT_INDEX_FAMILY ((SM_CONSTRAINT_TYPE) saved->constraint_type))
 	{
+	  SM_INDEX_STATUS old_status = SM_NORMAL_INDEX;
+
+	  error = sm_get_constr_index_status (classmop, saved->name, &old_status);
+	  if (error != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+
 	  error = sm_add_constraint (classmop, saved->constraint_type, saved->name, (const char **) saved->att_names,
 				     saved->asc_desc, saved->prefix_length, false, saved->filter_predicate,
-				     saved->func_index_info, saved->comment, SM_NORMAL_INDEX);
+				     saved->func_index_info, saved->comment, old_status);
 
 	  if (error != NO_ERROR)
 	    {
@@ -15082,4 +15132,31 @@ error_exit:
   error = (error == NO_ERROR && (error = er_errid ()) == NO_ERROR) ? ER_FAILED : error;
 
   goto end;
+}
+
+int
+sm_get_constr_index_status (MOP classmop, const char *name, SM_INDEX_STATUS * index_status)
+{
+  SM_CLASS_CONSTRAINT *constr;
+  SM_CLASS *class_;
+  int error = NO_ERROR;
+
+  error = au_fetch_class (classmop, &class_, AU_FETCH_READ, DB_AUTH_SELECT);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error;
+    }
+
+  constr = classobj_find_constraint_by_name (class_->constraints, name);
+  if (constr == NULL)
+    {
+      *index_status = SM_NORMAL_INDEX;
+    }
+  else
+    {
+      *index_status = constr->index_status;
+    }
+
+  return NO_ERROR;
 }
