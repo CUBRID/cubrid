@@ -7976,8 +7976,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   tdes = LOG_FIND_TDES (LOG_SYSTEM_TRAN_INDEX);
   if (tdes == NULL)
     {
-      LOG_CS_EXIT (thread_p);
-      return NULL_PAGEID;
+      goto error_cannot_chkpt;
     }
 
   /*
@@ -7997,8 +7996,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   node = prior_lsa_alloc_and_copy_data (thread_p, LOG_START_CHKPT, RV_NOT_DEFINED, NULL, 0, NULL, 0, NULL);
   if (node == NULL)
     {
-      LOG_CS_EXIT (thread_p);
-      return NULL_PAGEID;
+      goto error_cannot_chkpt;
     }
 
   newchkpt_lsa = prior_lsa_next_record (thread_p, node, tdes);
@@ -8014,7 +8012,6 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   er_log_debug (ARG_FILE_LINE, "logpb_checkpoint: call logtb_reflect_global_unique_stats_to_btree()\n");
   if (logtb_reflect_global_unique_stats_to_btree (thread_p) != NO_ERROR)
     {
-      LOG_CS_ENTER (thread_p);
       goto error_cannot_chkpt;
     }
 
@@ -8022,14 +8019,12 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   if (pgbuf_flush_checkpoint (thread_p, &newchkpt_lsa, &chkpt_redo_lsa, &tmp_chkpt.redo_lsa, &flushed_page_cnt) !=
       NO_ERROR)
     {
-      LOG_CS_ENTER (thread_p);
       goto error_cannot_chkpt;
     }
 
   er_log_debug (ARG_FILE_LINE, "logpb_checkpoint: call fileio_synchronize_all()\n");
   if (fileio_synchronize_all (thread_p, false) != NO_ERROR)
     {
-      LOG_CS_ENTER (thread_p);
       goto error_cannot_chkpt;
     }
 
@@ -8047,7 +8042,9 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   if (!LSA_ISNULL (&tmp_chkpt.redo_lsa))
     {
       if (LSA_ISNULL (&log_Gl.flushed_lsa_lower_bound) || LSA_GT (&tmp_chkpt.redo_lsa, &log_Gl.flushed_lsa_lower_bound))
-	LSA_COPY (&log_Gl.flushed_lsa_lower_bound, &tmp_chkpt.redo_lsa);
+	{
+	  LSA_COPY (&log_Gl.flushed_lsa_lower_bound, &tmp_chkpt.redo_lsa);
+	}
     }
 #endif /* SERVER_MODE */
 
@@ -8216,9 +8213,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 	}
       pthread_mutex_unlock (&log_Gl.prior_info.prior_lsa_mutex);
       TR_TABLE_CS_EXIT (thread_p);
-      LOG_CS_EXIT (thread_p);
-
-      return NULL_PAGEID;
+      goto error_cannot_chkpt;
     }
 
   chkpt = (LOG_REC_CHKPT *) node->data_header;
@@ -8298,7 +8293,6 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
        * need to care for the new volumes in here. */
       if (disk_set_checkpoint (thread_p, volid, &chkpt_lsa) != NO_ERROR)
 	{
-	  LOG_CS_ENTER (thread_p);
 	  goto error_cannot_chkpt;
 	}
 
@@ -8313,7 +8307,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
       vdes = fileio_get_volume_descriptor (volid);
       if (fileio_synchronize (thread_p, vdes, fileio_get_volume_label (vdes, PEEK), FILEIO_SYNC_ALSO_FLUSH_DWB) != vdes)
 	{
-	  return ER_FAILED;
+	  goto error_cannot_chkpt;
 	}
     }
 
@@ -8440,14 +8434,21 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_CHECKPOINT_FINISHED, 3, log_Gl.hdr.chkpt_lsa.pageid,
 	  log_Gl.chkpt_redo_lsa.pageid, flushed_page_cnt);
   er_log_debug (ARG_FILE_LINE, "end checkpoint\n");
+
   return tmp_chkpt.redo_lsa.pageid;
 
   /* ******** */
 error_cannot_chkpt:
-  assert (LOG_CS_OWN_WRITE_MODE (thread_p));
+  if (!LOG_CS_OWN_WRITE_MODE (thread_p))
+    {
+      LOG_CS_ENTER (thread_p);
+    }
+
   /* to immediately execute the next checkpoint. */
   log_Gl.run_nxchkpt_atpageid = log_Gl.hdr.append_lsa.pageid;
+
   LOG_CS_EXIT (thread_p);
+
   return NULL_PAGEID;
 }
 

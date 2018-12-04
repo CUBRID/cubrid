@@ -5419,7 +5419,6 @@ disk_vhdr_length_of_varfields (const DISK_VOLUME_HEADER * vhdr)
  *   return: NO_ERROR;
  *   volid(in): Permanent volume identifier
  *   log_chkpt_lsa(in): Recovery checkpoint for volume
- *   flush_page(in): True, if needs to flush page.
  *
  * Note: The dirty pages of this volume (except the header page which maintains the checkpoint value) are not
  * 	 written out. The function assumes that all volume pages with lsa smaller that the given one has already
