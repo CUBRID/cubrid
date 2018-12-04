@@ -399,7 +399,7 @@ static int sm_drop_cascade_foreign_key (SM_CLASS * class_);
 static char *sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, const char **att_names,
 					 const int *asc_desc);
 
-static int sm_load_online_index (MOP classmop, const char *constraint_name);
+static int sm_load_online_index (MOP classmop, const char *constraint_name, bool * is_shared);
 
 static const char *sm_locate_method_file (SM_CLASS * class_, const char *function);
 
@@ -10655,6 +10655,12 @@ allocate_unique_constraint (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRAINT 
 	{
 	  shared_con = classobj_find_constraint_by_name (class_->constraints, con->shared_cons_name);
 	  con->index_btid = shared_con->index_btid;
+
+	  /* Since we have a shared index, we can easily set it to normal index as we do not load the BTID anymore. */
+	  if (con->index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+	    {
+	      con->index_status = SM_NORMAL_INDEX;
+	    }
 	}
       else
 	{
@@ -10843,8 +10849,9 @@ allocate_disk_structures_index (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRA
    * This is where the promotion of attribute name references to ids references happens.
    */
   if (classobj_put_index (&(class_->properties), con->type, con->name, con->attributes, con->asc_desc,
-			  con->attrs_prefix_length, &(con->index_btid), con->filter_predicate, con->fk_info, NULL,
-			  con->func_index_info, con->comment, con->index_status, false) != NO_ERROR)
+			  con->attrs_prefix_length, &(con->index_btid), con->filter_predicate, con->fk_info,
+			  con->shared_cons_name, con->func_index_info, con->comment, con->index_status,
+			  false) != NO_ERROR)
     {
       return error;
     }
@@ -14744,12 +14751,18 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
       if (index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS && partition_type != DB_PARTITION_CLASS)
 	{
 	  // Load index phase.
-	  error = sm_load_online_index (newmop, constraint_name);
+	  bool is_shared = false;
+	  error = sm_load_online_index (newmop, constraint_name, &is_shared);
 	  if (error != NO_ERROR)
 	    {
 	      goto error_exit;
 	    }
 
+	  if (is_shared)
+	    {
+	      /* Nothing to do, everything is set. */
+	      break;
+	    }
 	  error = sm_update_statistics (newmop, STATS_WITH_SAMPLING);
 	  if (error != NO_ERROR)
 	    {
@@ -16439,7 +16452,7 @@ sm_stats_remove_bt_stats_at_position (ATTR_STATS * attr_stats, int position)
 }
 
 int
-sm_load_online_index (MOP classmop, const char *constraint_name)
+sm_load_online_index (MOP classmop, const char *constraint_name, bool * is_shared)
 {
   SM_CLASS *class_ = NULL, *subclass_ = NULL;
   int error = NO_ERROR;
@@ -16477,6 +16490,13 @@ sm_load_online_index (MOP classmop, const char *constraint_name)
 
   /* Safeguards. */
   assert (con != NULL);
+  if (con->index_status == SM_NORMAL_INDEX)
+    {
+      /* Index should already have been loaded. */
+      assert (!BTID_IS_NULL (&con->index_btid));
+      *is_shared = true;
+      return NO_ERROR;
+    }
   assert (con->index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS);
 
   /* We must check if the constraint isn't shared from another one. */
