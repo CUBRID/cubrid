@@ -264,7 +264,7 @@ static int pt_character_length_for_node (PT_NODE * node, const PT_TYPE_ENUM coer
 static PT_NODE *pt_wrap_expr_w_exp_dom_cast (PARSER_CONTEXT * parser, PT_NODE * expr);
 static bool pt_is_op_with_forced_common_type (PT_OP_TYPE op);
 static bool pt_check_const_fold_op_w_args (PT_OP_TYPE op, DB_VALUE * arg1, DB_VALUE * arg2, DB_VALUE * arg3,
-                                           PT_NODE *opd1, PT_NODE *opd2, PT_NODE *opd3, TP_DOMAIN * domain);
+					   PT_NODE * opd1, PT_NODE * opd2, PT_NODE * opd3, TP_DOMAIN * domain);
 static bool pt_is_range_or_comp (PT_OP_TYPE op);
 static bool pt_is_op_w_collation (const PT_OP_TYPE op);
 static COLLATION_RESULT pt_get_collation_info_for_collection_type (PARSER_CONTEXT * parser, const PT_NODE * node,
@@ -20322,13 +20322,13 @@ pt_fold_const_function (PARSER_CONTEXT * parser, PT_NODE * func)
       return func;
     }
 
-  parser_node * arg = func->info.function.arg_list;
+  parser_node *arg = func->info.function.arg_list;
   while (arg != NULL)
     {
       if (PT_IS_VALUE_FROM_HV (arg))
-        {
-          return func;
-        }
+	{
+	  return func;
+	}
       arg = arg->next;
     }
 
@@ -21801,12 +21801,11 @@ pt_is_op_with_forced_common_type (PT_OP_TYPE op)
  */
 static bool
 pt_check_const_fold_op_w_args (PT_OP_TYPE op, DB_VALUE * arg1, DB_VALUE * arg2, DB_VALUE * arg3,
-                               PT_NODE *opd1, PT_NODE *opd2, PT_NODE *opd3, TP_DOMAIN * domain)
+			       PT_NODE * opd1, PT_NODE * opd2, PT_NODE * opd3, TP_DOMAIN * domain)
 {
   const int MAX_RESULT_SIZE_ON_CONST_FOLDING = 256;
 
-  if ((op != PT_CAST)
-      && (PT_IS_VALUE_FROM_HV (opd1) || PT_IS_VALUE_FROM_HV (opd2) || PT_IS_VALUE_FROM_HV (opd3)))
+  if ((op != PT_CAST) && (PT_IS_VALUE_FROM_HV (opd1) || PT_IS_VALUE_FROM_HV (opd2) || PT_IS_VALUE_FROM_HV (opd3)))
     {
       return false;
     }
