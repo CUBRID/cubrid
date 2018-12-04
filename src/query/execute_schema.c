@@ -5438,7 +5438,7 @@ do_create_partition_constraint (PT_NODE * alter, SM_CLASS * root_class, SM_CLASS
 	      goto cleanup;
 	    }
 
-	  constr = classobj_find_constraint_by_name (subclass->constraints, constr->name);
+	  constr = classobj_find_constraint_by_name (subclass->constraints, constraint->name);
 	  if (constr != NULL)
 	    {
 	      old_status = constr->index_status;
