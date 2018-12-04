@@ -4006,7 +4006,7 @@ classobj_find_cons_index2_col_type_list (SM_CLASS_CONSTRAINT * cons, OID * root_
   int i, j;
   ATTR_STATS *attr_statsp;
   BTREE_STATS *bt_statsp;
-  CLASS_STATS *local_stats;
+  CLASS_STATS *local_stats = NULL;
 
   if (!cons)
     {
@@ -4047,6 +4047,11 @@ classobj_find_cons_index2_col_type_list (SM_CLASS_CONSTRAINT * cons, OID * root_
     {
       /* get the column key-type of multi-column index */
       key_type = key_type->setdomain;
+    }
+
+  if (local_stats != NULL)
+    {
+      stats_free_statistics (local_stats);
     }
 
   return key_type;
