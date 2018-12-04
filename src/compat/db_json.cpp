@@ -488,6 +488,9 @@ class JSON_WALKER
 
   private:
     int WalkValue (JSON_VALUE &value);
+
+  protected:
+    bool m_stop;
 };
 
 /*
@@ -521,47 +524,12 @@ class JSON_TREE_FUNCTION : public JSON_WALKER
     int CallOnKeyIterate (JSON_VALUE &key) override;
 
     std::function<int (JSON_VALUE &, const std::string &)> producer;
-    //std::vector<T> &produced;
 
     const std::string m_starting_path;
     bool m_find_all;
     bool m_skip_other_matches;
     std::stack<unsigned int> m_index;
     std::vector<std::string> path_items;
-};
-
-class JSON_SEARCHER : public JSON_WALKER
-{
-  public:
-    JSON_SEARCHER (const std::string &starting_path, const DB_VALUE *pattern, const DB_VALUE *esc_char, bool find_all,
-		   std::vector<std::string> &paths)
-      : m_starting_path (starting_path)
-      , m_found_paths (paths)
-      , m_find_all (find_all)
-      , m_skip_other_matches (false)
-      , m_pattern (pattern)
-      , m_esc_char (esc_char)
-    {
-      //
-    }
-
-    ~JSON_SEARCHER () override = default;
-
-  private:
-
-    int CallBefore (JSON_VALUE &value) override;
-    int CallAfter (JSON_VALUE &value) override;
-    int CallOnArrayIterate () override;
-    int CallOnKeyIterate (JSON_VALUE &key) override;
-
-    std::stack<unsigned int> m_index;
-    std::vector<std::string> path_items;
-    const std::string &m_starting_path;
-    std::vector<std::string> &m_found_paths;
-    bool m_find_all;
-    bool m_skip_other_matches;
-    const DB_VALUE *m_pattern;
-    const DB_VALUE *m_esc_char;
 };
 
 class JSON_SERIALIZER_LENGTH : public JSON_BASE_HANDLER
@@ -842,118 +810,6 @@ int JSON_DUPLICATE_KEYS_CHECKER::CallBefore (JSON_VALUE &value)
 	}
     }
 
-  return NO_ERROR;
-}
-
-int JSON_SEARCHER::CallBefore (JSON_VALUE &value)
-{
-  if (m_skip_other_matches)
-    {
-      return NO_ERROR;
-    }
-
-  if (value.IsArray ())
-    {
-      m_index.push (0);
-    }
-
-  if (value.IsObject () || value.IsArray ())
-    {
-      path_items.emplace_back ();
-    }
-
-  return NO_ERROR;
-}
-
-int JSON_SEARCHER::CallAfter (JSON_VALUE &value)
-{
-  if (m_skip_other_matches)
-    {
-      return NO_ERROR;
-    }
-
-  int error_code = NO_ERROR;
-
-  if (value.IsString ())
-    {
-      const char *json_str = value.GetString ();
-      DB_VALUE str_val;
-
-      db_make_null (&str_val);
-      error_code = db_make_string (&str_val, (char *) json_str);
-      if (error_code)
-	{
-	  return error_code;
-	}
-
-      int match;
-      error_code = db_string_like (&str_val, m_pattern, m_esc_char, &match);
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
-	}
-
-      if (match)
-	{
-	  std::stringstream full_path;
-
-	  full_path << "\"" << m_starting_path;
-	  for (const auto &item : path_items)
-	    {
-	      full_path << item;
-	    }
-	  full_path << "\"";
-
-	  m_found_paths.emplace_back (full_path.str ());
-
-	  if (!m_find_all)
-	    {
-	      m_skip_other_matches = true;
-	      // todo: change WalkValue() to stop search after first matching value is found;
-	      // in current implementation full search pointless search is performed
-	    }
-	}
-    }
-
-  if (value.IsArray ())
-    {
-      m_index.pop ();
-    }
-
-  if (value.IsArray () || value.IsObject ())
-    {
-      path_items.pop_back ();
-    }
-
-  return error_code;
-}
-
-int JSON_SEARCHER::CallOnKeyIterate (JSON_VALUE &key)
-{
-  if (m_skip_other_matches)
-    {
-      return NO_ERROR;
-    }
-
-  std::string path_item = ".";
-  path_item += key.GetString ();
-
-  path_items.back () = path_item;
-  return NO_ERROR;
-}
-
-int JSON_SEARCHER::CallOnArrayIterate ()
-{
-  if (m_skip_other_matches)
-    {
-      return NO_ERROR;
-    }
-
-  std::string path_item = "[";
-  path_item += std::to_string (m_index.top ()++);
-  path_item += "]";
-
-  path_items.back () = path_item;
   return NO_ERROR;
 }
 
@@ -4176,6 +4032,7 @@ db_json_doc_wrap_as_array (JSON_DOC &doc)
 int
 JSON_WALKER::WalkDocument (JSON_DOC &document)
 {
+  m_stop = false;
   return WalkValue (db_json_doc_to_value (document));
 }
 
@@ -4184,11 +4041,19 @@ JSON_WALKER::WalkValue (JSON_VALUE &value)
 {
   int error_code = NO_ERROR;
 
+  if (m_stop)
+    {
+      return NO_ERROR;
+    }
   error_code = CallBefore (value);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
       return error_code;
+    }
+  if (m_stop)
+    {
+      return NO_ERROR;
     }
 
   if (value.IsObject ())
@@ -4196,11 +4061,19 @@ JSON_WALKER::WalkValue (JSON_VALUE &value)
       for (auto it = value.MemberBegin (); it != value.MemberEnd (); ++it)
 	{
 	  CallOnKeyIterate (it->name);
+	  if (m_stop)
+	    {
+	      return NO_ERROR;
+	    }
 	  error_code = WalkValue (it->value);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
 	      return error_code;
+	    }
+	  if (m_stop)
+	    {
+	      return NO_ERROR;
 	    }
 	}
     }
@@ -4209,11 +4082,19 @@ JSON_WALKER::WalkValue (JSON_VALUE &value)
       for (JSON_VALUE *it = value.Begin (); it != value.End (); ++it)
 	{
 	  CallOnArrayIterate ();
+	  if (m_stop)
+	    {
+	      return NO_ERROR;
+	    }
 	  error_code = WalkValue (*it);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
 	      return error_code;
+	    }
+	  if (m_stop)
+	    {
+	      return NO_ERROR;
 	    }
 	}
     }
