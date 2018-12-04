@@ -20322,6 +20322,16 @@ pt_fold_const_function (PARSER_CONTEXT * parser, PT_NODE * func)
       return func;
     }
 
+  parser_node * arg = func->info.function.arg_list;
+  while (arg != NULL)
+    {
+      if (PT_IS_VALUE_FROM_HV (arg))
+        {
+          return func;
+        }
+      arg = arg->next;
+    }
+
   /* PT_FUNCTION doesn't have location attribute as PT_EXPR does temporary set location to 0 ( WHERE clause) */
   location = 0;
 
