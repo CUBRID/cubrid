@@ -598,6 +598,7 @@ Func::signature_compatibility::signature_compatibility ()
   : m_compat (type_compatibility::INCOMPATIBLE)
   , m_args_resolve {}
   , m_common_collation {}
+  , m_collation_action (TP_DOMAIN_COLL_LEAVE)
   , m_signature (NULL)
 {
   //
@@ -881,6 +882,9 @@ Func::Node::get_signature (const std::vector<func_signature> &signatures)
       sgn_compat.m_args_resolve.resize (arg_count);
       sgn_compat.m_compat = type_compatibility::EQUIVALENT;
       sgn_compat.m_signature = &sig;
+      // collation action is initialized as leave. if string-signature arguments are all maybes, then it will remain
+      // leave, and is decided at runtime. if any argument is string, it will be set to TP_DOMAIN_COLL_NORMAL.
+      sgn_compat.m_collation_action = TP_DOMAIN_COLL_LEAVE;
 
       //check fix part of the signature
       for (auto &fix: sig.fix)
@@ -954,7 +958,7 @@ Func::Node::get_signature (const std::vector<func_signature> &signatures)
   return m_best_signature.m_signature;
 }
 
-void
+PT_NODE *
 Func::Node::set_return_type (const func_signature &signature)
 {
   parser_node *arg_list = m_node->info.function.arg_list;
@@ -1065,15 +1069,26 @@ Func::Node::set_return_type (const func_signature &signature)
   if (PT_HAS_COLLATION (m_node->type_enum) && m_best_signature.m_common_collation.coll_id != -1)
     {
       pt_coll_infer result_coll_infer;
-      if (pt_get_collation_info (m_node, &result_coll_infer)
-	  && m_best_signature.m_common_collation.coll_id != result_coll_infer.coll_id)
+      if (is_type_with_collation (m_node->type_enum) && m_best_signature.m_collation_action == TP_DOMAIN_COLL_LEAVE
+	  && m_node->data_type != NULL)
+	{
+	  // all maybes case. leave collation coming from arguments
+	  m_node->data_type->info.data_type.collation_flag = TP_DOMAIN_COLL_LEAVE;
+	}
+      else if (pt_get_collation_info (m_node, &result_coll_infer)
+	       && m_best_signature.m_common_collation.coll_id != result_coll_infer.coll_id)
 	{
 	  parser_node *new_node = pt_coerce_node_collation (m_parser, m_node,
 				  m_best_signature.m_common_collation.coll_id,
 				  m_best_signature.m_common_collation.codeset,
 				  true, false, PT_TYPE_VARCHAR, PT_TYPE_NONE);
+	  if (new_node != NULL)
+	    {
+	      m_node = new_node;
+	    }
 	}
     }
+  return m_node;
 }
 
 bool
@@ -1218,6 +1233,11 @@ Func::Node::check_arg_compat (const pt_arg_type &arg_signature, const PT_NODE *a
 	      compat.m_compat = type_compatibility::INCOMPATIBLE;
 	      invalid_coll_error (*compat.m_signature);
 	      return false;
+	    }
+
+	  if (arg_node->type_enum != PT_TYPE_MAYBE)
+	    {
+	      compat.m_collation_action = TP_DOMAIN_COLL_NORMAL;
 	    }
 	}
       else

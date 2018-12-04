@@ -112,6 +112,8 @@ namespace Func
     type_compatibility m_compat;
     std::vector<argument_resolve> m_args_resolve;
     pt_coll_infer m_common_collation;
+    TP_DOMAIN_COLL_ACTION m_collation_action;
+
     const func_signature *m_signature;
 
     signature_compatibility ();
@@ -141,10 +143,10 @@ namespace Func
 
       bool preprocess(); //preprocess current function node type for special cases
       const func_signature *get_signature (const std::vector<func_signature> &signatures);
-      void set_return_type (const func_signature &signature); //set return type for current node in current context
+      PT_NODE *set_return_type (const func_signature &signature); //set return type for current node in current context
       bool apply_signature (const func_signature &signature); //apply function signature with casts if necessary
-    protected:
 
+    protected:
       parser_node *apply_argument (parser_node *prev, parser_node *arg, const argument_resolve &arg_res);
 
       const char *get_types (const std::vector<func_signature> &signatures, size_t index, string_buffer &sb);

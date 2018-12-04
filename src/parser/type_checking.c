@@ -12669,7 +12669,7 @@ pt_eval_function_type_new (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	  else
 	    {
-	      funcNode.set_return_type (*func_sig);
+	      node = funcNode.set_return_type (*func_sig);
 	    }
 	}
     }
