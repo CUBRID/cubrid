@@ -1578,6 +1578,7 @@ catalog_drop_representation_helper (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VP
   VPID overflow_vpid, new_overflow_vpid;
   PGLENGTH new_space;
   RECDES record = { 0, -1, REC_HOME, NULL };
+  int error_code;
 
   (void) pgbuf_check_page_ptype (thread_p, page_p, PAGE_CATALOG);
 
@@ -1646,9 +1647,12 @@ catalog_drop_representation_helper (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VP
       new_overflow_vpid.volid = CATALOG_GET_PGHEADER_OVFL_PGID_VOLID (record.data);
 
       pgbuf_unfix_and_init (thread_p, overflow_page_p);
-      if (file_dealloc (thread_p, &catalog_Id.vfid, &overflow_vpid, FILE_CATALOG) != NO_ERROR)
+
+      error_code = file_dealloc (thread_p, &catalog_Id.vfid, &overflow_vpid, FILE_CATALOG);
+      if (error_code != NO_ERROR)
 	{
-	  assert (false);
+	  ASSERT_ERROR ();
+	  return error_code;
 	}
       overflow_vpid = new_overflow_vpid;
     }

@@ -4801,7 +4801,7 @@ vacuum_data_empty_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * prev_data_pa
       vacuum_unfix_data_page (thread_p, save_first_page);
       if (file_dealloc (thread_p, &vacuum_Data.vacuum_data_file, &save_first_vpid, FILE_VACUUM_DATA) != NO_ERROR)
 	{
-	  assert_release (false);
+	  ASSERT_ERROR ();
 	  vacuum_er_log_error (VACUUM_ER_LOG_VACUUM_DATA,
 			       "Failed to deallocate first page from vacuum data - %d|%d!!!",
 			       save_first_vpid.volid, save_first_vpid.pageid);
@@ -4856,7 +4856,7 @@ vacuum_data_empty_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * prev_data_pa
       /* Deallocate data page. */
       if (file_dealloc (thread_p, &vacuum_Data.vacuum_data_file, &save_page_vpid, FILE_VACUUM_DATA) != NO_ERROR)
 	{
-	  assert_release (false);
+	  ASSERT_ERROR ();
 	  vacuum_er_log_error (VACUUM_ER_LOG_VACUUM_DATA,
 			       "Failed to deallocate page from vacuum data - %d|%d!!!",
 			       save_page_vpid.volid, save_page_vpid.pageid);
