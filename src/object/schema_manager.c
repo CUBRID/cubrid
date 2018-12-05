@@ -14630,14 +14630,6 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	  auth = AU_ALTER;
 	}
 
-#if defined (SA_MODE)
-      if (index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
-	{
-	  // We don't allow online index for SA_MODE.
-	  index_status = SM_NORMAL_INDEX;
-	}
-#endif /* SA_MODE */
-
       def = smt_edit_class_mop (classop, auth);
       if (def == NULL)
 	{
@@ -14648,9 +14640,9 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
       if (index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
 	{
 	  bool is_online_index_allowed = false;
-	  error =
-	    smt_is_online_index_allowed (classop, def, constraint_type, constraint_name, att_names, asc_desc,
-					 filter_index, function_index, &is_online_index_allowed);
+
+	  error = smt_is_online_index_allowed (classop, def, constraint_type, constraint_name, att_names, asc_desc,
+					       filter_index, function_index, &is_online_index_allowed);
 	  if (error != NO_ERROR)
 	    {
 	      smt_quit (def);
