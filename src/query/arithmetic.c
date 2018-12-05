@@ -5088,7 +5088,9 @@ db_json_contains_dbval (const DB_VALUE * json, const DB_VALUE * value, const DB_
     {
       const char *raw_path = db_get_string (path);
 
-      error_code = db_json_extract_document_from_path (this_doc, raw_path, result_doc);
+      /* *INDENT-OFF* */
+      error_code = db_json_extract_document_from_path (this_doc, std::vector<std::string> (1, raw_path), result_doc);
+      /* *INDENT-ON* */
       if (error_code != NO_ERROR)
 	{
 	  assert (result_doc == NULL);
@@ -5178,7 +5180,9 @@ db_json_length_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * r
 	{
 	  const char *raw_path = db_get_string (path);
 
-	  error_code = db_json_extract_document_from_path (db_get_json_document (json), raw_path, this_doc);
+          /* *INDENT-OFF* */
+	  error_code = db_json_extract_document_from_path (db_get_json_document (json), std::vector<std::string> (1, raw_path), this_doc);
+          /* *INDENT-ON* */
 	  if (error_code != NO_ERROR)
 	    {
 	      assert (this_doc == NULL);
@@ -5467,7 +5471,9 @@ db_json_extract_dbval (DB_VALUE * json, DB_VALUE * path, DB_VALUE * json_res)
       return error_code;
     }
 
-  error_code = db_json_extract_document_from_path (this_doc, raw_path, result_doc);
+  /* *INDENT-OFF* */
+  error_code = db_json_extract_document_from_path (this_doc, std::vector<std::string> (1, raw_path), result_doc);
+  /* *INDENT-ON* */
   if (error_code != NO_ERROR)
     {
       assert (result_doc == NULL);
@@ -5528,57 +5534,28 @@ db_json_extract_multiple_paths (DB_VALUE * result, DB_VALUE * args[], int num_ar
       return error_code;
     }
 
-  JSON_DOC *result_doc = db_json_allocate_doc ();	// result JSON document; it will be converted to array later
-  JSON_DOC *extracted_doc = NULL;	// document used for extracting each value
+  JSON_DOC *result_doc = NULL;	// result JSON document; it will be converted to array later
   const DB_VALUE *path_value;
-  const char *path_str = NULL;
 
   TP_DOMAIN_STATUS domain_status = DOMAIN_COMPATIBLE;
 
+  std::vector < std::string > paths;
   for (int path_idx = 1; path_idx < num_args; path_idx++)
     {
-      path_value = args[path_idx];
-      if (extracted_doc != NULL)
-	{
-	  db_json_delete_doc (extracted_doc);
-	}
-
-      // paths can only be strings
+      const DB_VALUE *path_value = args[path_idx];
+      const char *path_str = NULL;
       error_code = db_value_to_json_path (path_value, F_JSON_EXTRACT, &path_str);
       if (error_code != NO_ERROR)
 	{
-	  // free docs
-	  db_json_delete_doc (result_doc);
-	  db_json_delete_doc (extracted_doc);
 	  db_json_delete_doc (source_doc);
 	  return error_code;
 	}
 
-      error_code = db_json_extract_document_from_path (source_doc, path_str, extracted_doc);
-
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  // free docs
-	  db_json_delete_doc (result_doc);
-	  db_json_delete_doc (extracted_doc);
-	  db_json_delete_doc (source_doc);
-	  return error_code;
-	}
-
-      if (extracted_doc != NULL)
-	{
-	  // todo: result_doc needs unboxing in case of wildcards
-	  db_json_add_element_to_array (result_doc, extracted_doc);
-	}
-      else
-	{
-	  // continue
-	}
+      paths.push_back (path_str);
     }
+  error_code = db_json_extract_document_from_path (source_doc, paths, result_doc);
 
   // free temporary resources
-  db_json_delete_doc (extracted_doc);
   db_json_delete_doc (source_doc);
 
   if (db_json_get_type (result_doc) == DB_JSON_NULL)

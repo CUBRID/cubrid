@@ -72,7 +72,8 @@ bool db_json_is_valid (const char *json_str);
 const char *db_json_get_type_as_str (const JSON_DOC *document);
 unsigned int db_json_get_length (const JSON_DOC *document);
 unsigned int db_json_get_depth (const JSON_DOC *doc);
-int db_json_extract_document_from_path (const JSON_DOC *document, const char *raw_path, JSON_DOC *&result);
+int db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<std::string> &raw_path,
+					JSON_DOC *&result);
 int db_json_contains_path (const JSON_DOC *document, const std::vector<std::string> &paths, bool find_all,
 			   bool &result);
 char *db_json_get_raw_json_body_from_document (const JSON_DOC *doc);

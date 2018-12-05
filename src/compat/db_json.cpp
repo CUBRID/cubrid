@@ -1368,12 +1368,12 @@ db_json_value_get_depth (const JSON_VALUE *doc)
  * return                  : error code
  * doc_to_be_inserted (in) : document to be inserted
  * doc_destination (in)    : destination document
- * raw_path (in)           : insertion path
+ * paths (in)              : extraction path
+ * result (out)            : resulting doc
  * example                 : json_extract('{"a":["b", 123]}', '/a/1') yields 123
  */
-// todo: refactor calls to send all arguments
 int
-db_json_extract_document_from_path (const JSON_DOC *document, const char *raw_path, JSON_DOC *&result)
+db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<std::string> &paths, JSON_DOC *&result)
 {
   int error_code = NO_ERROR;
   std::string json_pointer_string;
@@ -1387,46 +1387,52 @@ db_json_extract_document_from_path (const JSON_DOC *document, const char *raw_pa
       return NO_ERROR;
     }
 
-  bool wildcard_present = false;
-  for (size_t i = 0; raw_path[i] != '\0'; ++i)
+  // decide whether we wrap the result in an array
+  bool array_result = false;
+  if (paths.size () > 1)
     {
-      if (raw_path[i] == '*')
+      array_result = true;
+    }
+  else
+    {
+      assert (!paths.empty ());
+      for (std::size_t i = 0; i < paths[0].length (); ++i)
 	{
-	  wildcard_present = true;
-	  break;
+	  // todo: check for stars that are outside of quoted object_keys
+	  if (paths[0][i] == '*')
+	    {
+	      array_result = true;
+	      break;
+	    }
 	}
     }
 
-  if (wildcard_present)
+  std::vector<JSON_VALUE *> produced;
+  std::vector<std::regex> regs;
+  error_code = db_json_paths_to_regex (paths, regs, true);
+  if (error_code)
     {
-      std::string path (raw_path);
-      std::vector<JSON_VALUE *> produced;
-      std::vector<std::regex> regs;
-      error_code = db_json_paths_to_regex (std::vector<std::string> (1, path), regs, true);
-      if (error_code)
-	{
-	  return error_code;
-	}
+      return error_code;
+    }
 
-      // use an unordered_set to prevent double extracting
-      std::unordered_set<std::string> paths_gathered;
-      auto f = [&regs, &produced, &paths_gathered] (JSON_VALUE &jv, const std::string &crt_path, bool &stop) -> int
+  auto f = [&regs, &produced] (JSON_VALUE &jv, const std::string &crt_path, bool &stop) -> int
+  {
+    for (const auto &reg : regs)
       {
-	for (const auto &reg : regs)
+	if (std::regex_match (crt_path, reg))
 	  {
-	    if (std::regex_match (crt_path, reg) && paths_gathered.find (crt_path) == paths_gathered.end ())
-	      {
-		produced.push_back (&jv);
-		paths_gathered.insert (crt_path);
-	      }
+	    produced.push_back (&jv);
 	  }
-	return NO_ERROR;
-      };
+      }
+    return NO_ERROR;
+  };
 
-      JSON_TREE_FUNCTION json_extract_walker (f);
-      json_extract_walker.WalkDocument (const_cast<JSON_DOC &> (*document));
+  JSON_TREE_FUNCTION json_extract_walker (f);
+  json_extract_walker.WalkDocument (const_cast<JSON_DOC &> (*document));
 
-      for (auto &p : produced)
+  if (produced.size () > 1 || array_result)
+    {
+      for (auto p : produced)
 	{
 	  if (result == NULL)
 	    {
@@ -1436,57 +1442,14 @@ db_json_extract_document_from_path (const JSON_DOC *document, const char *raw_pa
 
 	  db_json_add_element_to_array (result, p);
 	}
-
-      return NO_ERROR;
     }
-
-  // we have no wildcard, fallback to old implementation
-  // path must be JSON pointer
-  error_code = db_json_convert_sql_path_to_pointer (raw_path, json_pointer_string);
-  if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return error_code;
-    }
-
-  JSON_POINTER p (json_pointer_string.c_str ());
-  const JSON_VALUE *resulting_json = NULL;
-
-  if (!p.IsValid ())
-    {
-      if (result != NULL)
-	{
-	  delete result;
-	}
-      result = NULL;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
-      return ER_JSON_INVALID_PATH;
-    }
-
-  // the json from the specified path
-  resulting_json = p.Get (*document);
-
-  DB_JSON_TYPE type = db_json_get_type (document);
-
-  if (resulting_json != NULL)
+  else if (!produced.empty ())
     {
       if (result == NULL)
 	{
-	  result = db_json_allocate_doc ();
+	  result = db_json_allocate_doc();
 	}
-
-      result->CopyFrom (*resulting_json, result->GetAllocator ());
-    }
-  else
-    {
-      if (result != NULL)
-	{
-	  // note - NULL result is different from DB_JSON_NULL.
-	  //        NULL means path was not found
-	  //        DB_JSON_NULL means a null value was found at given path
-	  delete result;
-	  result = NULL;
-	}
+      result->CopyFrom (*produced[0], result->GetAllocator ());
     }
 
   return NO_ERROR;
