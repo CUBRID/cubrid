@@ -42,6 +42,11 @@ std::vector<func_signature> func_signature::integer =
   {PT_TYPE_INTEGER, {}, {}},
 };
 
+std::vector<func_signature> func_signature::integer_doc =
+{
+  {PT_TYPE_INTEGER, {PT_GENERIC_TYPE_JSON_DOC}, {}},
+};
+
 std::vector<func_signature> func_signature::bigint =
 {
   {PT_TYPE_BIGINT, {}, {}},
@@ -235,6 +240,12 @@ std::vector<func_signature> func_signature::json_doc_r_path_val =
   {PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC}, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_JSON_VAL}},
 };
 
+std::vector<func_signature> func_signature::json_contains =
+{
+  {PT_TYPE_INTEGER, {PT_GENERIC_TYPE_JSON_DOC, PT_GENERIC_TYPE_JSON_DOC}, {}},
+  {PT_TYPE_INTEGER, {PT_GENERIC_TYPE_JSON_DOC, PT_GENERIC_TYPE_JSON_DOC, PT_GENERIC_TYPE_STRING}, {}},
+};
+
 std::vector<func_signature> func_signature::json_contains_path =
 {
   {PT_TYPE_INTEGER, {PT_GENERIC_TYPE_JSON_DOC, PT_GENERIC_TYPE_STRING}, {PT_GENERIC_TYPE_STRING}},
@@ -244,6 +255,12 @@ std::vector<func_signature> func_signature::json_keys =
 {
   {PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC}, {}},
   {PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC, PT_GENERIC_TYPE_STRING}, {}},
+};
+
+std::vector<func_signature> func_signature::json_length =
+{
+  {PT_TYPE_INTEGER, {PT_GENERIC_TYPE_JSON_DOC}, {}},
+  {PT_TYPE_INTEGER, {PT_GENERIC_TYPE_JSON_DOC, PT_GENERIC_TYPE_STRING}, {}},
 };
 
 std::vector<func_signature> func_signature::json_search =
@@ -289,6 +306,16 @@ std::vector<func_signature> func_signature::sequence_r_any =
 std::vector<func_signature> func_signature::generic =
 {
   {0, {PT_GENERIC_TYPE_ANY}, {}},
+};
+
+std::vector<func_signature> func_signature::string_doc =
+{
+  {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_JSON_DOC}, {}},
+};
+
+std::vector<func_signature> func_signature::string_string =
+{
+  {0, {PT_GENERIC_TYPE_STRING}, {}},
 };
 
 std::vector<func_signature> *
@@ -361,8 +388,11 @@ func_signature::get_signatures (FUNC_TYPE ft)
     case F_JSON_ARRAY_APPEND:
     case F_JSON_ARRAY_INSERT:
       return &json_doc_r_path_val;
+    case F_JSON_CONTAINS:
     case F_JSON_CONTAINS_PATH:
       return &json_contains_path;
+    case F_JSON_DEPTH:
+      return &integer_doc;
     case F_JSON_EXTRACT:
       return &json_doc_r_path;
     case F_JSON_GET_ALL_PATHS:
@@ -371,11 +401,17 @@ func_signature::get_signatures (FUNC_TYPE ft)
       return &json_doc_r_path_val;
     case F_JSON_KEYS:
       return &json_keys;
+    case F_JSON_LENGTH:
+      return &json_doc_path;
     case F_JSON_MERGE:
     case F_JSON_MERGE_PATCH:
       return &json_doc_r_doc;
     case F_JSON_OBJECT:
       return &json_r_key_val;
+    case F_JSON_PRETTY:
+      return &string_doc;
+    case F_JSON_QUOTE:
+      return &string_string;
     case F_JSON_REMOVE:
       return &json_doc_r_path;
     case F_JSON_REPLACE:
@@ -384,6 +420,12 @@ func_signature::get_signatures (FUNC_TYPE ft)
       return &json_search;
     case F_JSON_SET:
       return &json_doc_r_path_val;
+    case F_JSON_TYPE:
+      return &string_doc;
+    case F_JSON_UNQUOTE:
+      return &string_doc;
+    case F_JSON_VALID:
+      return &integer_doc;
     case PT_FIRST_VALUE:
     case PT_LAST_VALUE:
       return &type0_nr_or_str;
@@ -494,8 +536,12 @@ const char *pt_func_type_to_string (FUNC_TYPE ft)
       return "JSON_ARRAY_APPEND";
     case F_JSON_ARRAY_INSERT:
       return "JSON_ARRAY_INSERT";
+    case F_JSON_CONTAINS:
+      return "JSON_CONTAINS";
     case F_JSON_CONTAINS_PATH:
       return "JSON_CONTAINS_PATH";
+    case F_JSON_DEPTH:
+      return "JSON_DEPTH";
     case F_JSON_EXTRACT:
       return "JSON_EXTRACT";
     case F_JSON_GET_ALL_PATHS:
@@ -504,12 +550,18 @@ const char *pt_func_type_to_string (FUNC_TYPE ft)
       return "JSON_INSERT";
     case F_JSON_KEYS:
       return "JSON_KEYS";
+    case F_JSON_LENGTH:
+      return "JSON_LENGTH";
     case F_JSON_MERGE:
       return "JSON_MERGE";
     case F_JSON_MERGE_PATCH:
       return "JSON_MERGE_PATH";
     case F_JSON_OBJECT:
       return "JSON_OBJECT";
+    case F_JSON_PRETTY:
+      return "JSON_PRETTY";
+    case F_JSON_QUOTE:
+      return "F_JSON_QUOTE";
     case F_JSON_REMOVE:
       return "JSON_REMOVE";
     case F_JSON_REPLACE:
@@ -518,6 +570,12 @@ const char *pt_func_type_to_string (FUNC_TYPE ft)
       return "JSON_SEARCH";
     case F_JSON_SET:
       return "JSON_SET";
+    case F_JSON_TYPE:
+      return "JSON_TYPE";
+    case F_JSON_UNQUOTE:
+      return "JSON_UNQUOTE";
+    case F_JSON_VALID:
+      return "JSON_VALID";
     case PT_FIRST_VALUE:
       return "FIRST_VALUE";
     case PT_LAST_VALUE:

@@ -40,6 +40,7 @@ struct func_signature
   //signatures; naming convention: returnType_fixedType(s)_r_repetitiveType(s)
   static std::vector<func_signature> bigint; //return bigint, no args
   static std::vector<func_signature> integer; //return integer, no args
+  static std::vector<func_signature> integer_doc;
   static std::vector<func_signature> bigint_discrete; //return bigint, arg: discrete
   static std::vector<func_signature> avg;
   static std::vector<func_signature> double_number; //return double, arg: any number type number
@@ -65,14 +66,18 @@ struct func_signature
   static std::vector<func_signature> json_doc_r_path;
   static std::vector<func_signature> json_doc_str_r_path;
   static std::vector<func_signature> json_doc_r_path_val;
+  static std::vector<func_signature> json_contains;
   static std::vector<func_signature> json_contains_path;
   static std::vector<func_signature> json_keys;
+  static std::vector<func_signature> json_length;
   static std::vector<func_signature> json_search;
   static std::vector<func_signature> json_arrayagg;
   static std::vector<func_signature> json_objectagg;
   static std::vector<func_signature> set_r_any; //set, table_set
   static std::vector<func_signature> multiset_r_any; //multiset, table_multiset
   static std::vector<func_signature> sequence_r_any; //sequence, table_sequence
+  static std::vector<func_signature> string_doc;
+  static std::vector<func_signature> string_string;
 
   static std::vector<func_signature> generic;
 
