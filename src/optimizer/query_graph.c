@@ -4895,6 +4895,9 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg, const char *expr_st
 		  cum_statsp->valid_limits = true;
 		}
 
+	      /* This should always happen. We must find a matching index. */
+	      assert (j < attr_statsp->n_btstats);
+
 	      cum_statsp->is_indexed = true;
 
 	      cum_statsp->leafs += bstatsp->leafs;
