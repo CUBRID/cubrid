@@ -770,12 +770,12 @@ public class CUBRIDResultSetMetaData implements ResultSetMetaData {
 
 	/* JDK 1.6 */
 	public boolean isWrapperFor(Class<?> iface) throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	/* JDK 1.6 */
 	public <T> T unwrap(Class<T> iface) throws SQLException {
-		throw new java.lang.UnsupportedOperationException();
+		throw new SQLException(new java.lang.UnsupportedOperationException());
 	}
 
 	private void checkColumnIndex(int column) throws SQLException {
