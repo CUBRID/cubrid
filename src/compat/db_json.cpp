@@ -156,6 +156,8 @@ class JSON_DOC: public rapidjson::GenericDocument <JSON_ENCODING, JSON_PRIVATE_M
 #endif // TODO_OPTIMIZE_JSON_BODY_STRING
 };
 
+typedef std::function<int (JSON_VALUE &, const std::string &, bool &)> map_func_type;
+
 // class JSON_ITERATOR - virtual interface to wrap array and object iterators
 //
 class JSON_ITERATOR
@@ -500,12 +502,12 @@ class JSON_DUPLICATE_KEYS_CHECKER : public JSON_WALKER
     int CallBefore (JSON_VALUE &value) override;
 };
 
-class JSON_TREE_FUNCTION : public JSON_WALKER
+class JSON_PATH_MAPPER : public JSON_WALKER
 {
   public:
-    JSON_TREE_FUNCTION (std::function<int (JSON_VALUE &, const std::string &, bool &)> func);
-    JSON_TREE_FUNCTION (JSON_TREE_FUNCTION &) = delete;
-    ~JSON_TREE_FUNCTION () override = default;
+    JSON_PATH_MAPPER (map_func_type func);
+    JSON_PATH_MAPPER (JSON_PATH_MAPPER &) = delete;
+    ~JSON_PATH_MAPPER () override = default;
 
   private:
     int CallBefore (JSON_VALUE &value) override;
@@ -513,10 +515,13 @@ class JSON_TREE_FUNCTION : public JSON_WALKER
     int CallOnArrayIterate () override;
     int CallOnKeyIterate (JSON_VALUE &key) override;
 
-    std::function<int (JSON_VALUE &, const std::string &, bool &)> producer;
-    const std::string m_starting_path;
+    void ReplaceLastItem (const std::string &item);
+    void PopItem ();
+
+    map_func_type m_producer;
     std::stack<unsigned int> m_index;
-    std::vector<std::string> path_items;
+    std::vector<std::string> m_path_items;
+    std::string m_accumulated;
 };
 
 class JSON_SERIALIZER_LENGTH : public JSON_BASE_HANDLER
@@ -796,14 +801,15 @@ int JSON_DUPLICATE_KEYS_CHECKER::CallBefore (JSON_VALUE &value)
   return NO_ERROR;
 }
 
-JSON_TREE_FUNCTION::JSON_TREE_FUNCTION (std::function<int (JSON_VALUE &, const std::string &, bool &)> func)
-  : producer (func)
-  , m_starting_path ("$")
+JSON_PATH_MAPPER::JSON_PATH_MAPPER (map_func_type func)
+  : m_producer (func)
+  , m_accumulated ("\"$\"")
+  , m_path_items (1, "$")
 {
   //
 }
 
-int JSON_TREE_FUNCTION::CallBefore (JSON_VALUE &value)
+int JSON_PATH_MAPPER::CallBefore (JSON_VALUE &value)
 {
   if (value.IsArray ())
     {
@@ -812,13 +818,13 @@ int JSON_TREE_FUNCTION::CallBefore (JSON_VALUE &value)
 
   if (value.IsObject () || value.IsArray ())
     {
-      path_items.emplace_back ();
+      m_path_items.emplace_back ();
     }
 
   return NO_ERROR;
 }
 
-int JSON_TREE_FUNCTION::CallAfter (JSON_VALUE &value)
+int JSON_PATH_MAPPER::CallAfter (JSON_VALUE &value)
 {
   if (value.IsArray ())
     {
@@ -827,38 +833,44 @@ int JSON_TREE_FUNCTION::CallAfter (JSON_VALUE &value)
 
   if (value.IsArray () || value.IsObject ())
     {
-      path_items.pop_back ();
+      PopItem ();
     }
-
-  std::string accumulated = "\"";
-  accumulated += m_starting_path;
-  for (auto &sub_path : path_items)
-    {
-      accumulated += sub_path;
-    }
-  accumulated += "\"";
-  int error_code = producer (value, accumulated, m_stop);
-
-  return error_code;
+  return m_producer (value, m_accumulated, m_stop);
 }
 
-int JSON_TREE_FUNCTION::CallOnArrayIterate ()
+int JSON_PATH_MAPPER::CallOnArrayIterate ()
 {
   std::string path_item = "[";
   path_item += std::to_string (m_index.top ()++);
   path_item += "]";
 
-  path_items.back () = path_item;
+  ReplaceLastItem (path_item);
   return NO_ERROR;
 }
 
-int JSON_TREE_FUNCTION::CallOnKeyIterate (JSON_VALUE &key)
+int JSON_PATH_MAPPER::CallOnKeyIterate (JSON_VALUE &key)
 {
   std::string path_item = ".";
   path_item += key.GetString ();
 
-  path_items.back () = path_item;
+  ReplaceLastItem (path_item);
   return NO_ERROR;
+}
+
+void JSON_PATH_MAPPER::ReplaceLastItem (const std::string &item)
+{
+  m_accumulated.erase (m_accumulated.length () - 1 - m_path_items.back ().length ());
+  m_accumulated += '"';
+  m_path_items.back () = item;
+  // insert before ending "
+  m_accumulated.insert (m_accumulated.length () - 1, item);
+}
+
+void JSON_PATH_MAPPER::PopItem ()
+{
+  m_accumulated.erase (m_accumulated.length () - 1 - m_path_items.back ().length ());
+  m_accumulated += '"';
+  m_path_items.pop_back ();
 }
 
 JSON_VALIDATOR::JSON_VALIDATOR (const char *schema_raw)
@@ -1339,7 +1351,6 @@ int
 db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<std::string> &paths, JSON_DOC *&result)
 {
   int error_code = NO_ERROR;
-  std::string json_pointer_string;
 
   if (document == NULL)
     {
@@ -1378,7 +1389,7 @@ db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<
       return error_code;
     }
 
-  auto f = [&regs, &produced] (JSON_VALUE &jv, const std::string &crt_path, bool &stop) -> int
+  const map_func_type &f = [&regs, &produced] (JSON_VALUE &jv, const std::string &crt_path, bool &stop) -> int
   {
     for (const auto &reg : regs)
       {
@@ -1390,7 +1401,7 @@ db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<
     return NO_ERROR;
   };
 
-  JSON_TREE_FUNCTION json_extract_walker (f);
+  JSON_PATH_MAPPER json_extract_walker (f);
   json_extract_walker.WalkDocument (const_cast<JSON_DOC &> (*document));
 
   if (produced.size () > 1 || array_result)
@@ -1442,16 +1453,21 @@ db_json_contains_path (const JSON_DOC *document, const std::vector<std::string> 
     {
       return error_code;
     }
-  std::vector<unsigned char> found_set (paths.size (), 0);
 
-  const auto f_find = [&regs, &found_set, find_all] (JSON_VALUE &v, const std::string &accumulated_path,
-		      bool &stop) -> int
+  std::shared_ptr<bool[]> found_set (new bool[paths.size ()]);
+  for (std::size_t i = 0; i < paths.size (); ++i)
+    {
+      found_set[i] = false;
+    }
+
+  const map_func_type &f_find = [&regs, found_set, find_all] (JSON_VALUE &v, const std::string &accumulated_path,
+				bool &stop) -> int
   {
     for (std::size_t i = 0; i < regs.size (); ++i)
       {
-	if (found_set[i] == 0 && std::regex_match (accumulated_path, regs[i]))
+	if (!found_set[i] && std::regex_match (accumulated_path, regs[i]))
 	  {
-	    found_set[i] = 1;
+	    found_set[i] = true;
 	    if (!find_all)
 	      {
 		stop = true;
@@ -1462,20 +1478,22 @@ db_json_contains_path (const JSON_DOC *document, const std::vector<std::string> 
     return NO_ERROR;
   };
 
-  JSON_TREE_FUNCTION json_contains_path_walker (f_find);
+  JSON_PATH_MAPPER json_contains_path_walker (f_find);
   // todo: remove const_cast
   json_contains_path_walker.WalkDocument (const_cast<JSON_DOC &> (*document));
 
   result = find_all;
-  for (auto found : found_set)
+  for (std::size_t i = 0; i < paths.size (); ++i)
     {
-      if (find_all)
+      if (find_all && !found_set[i])
 	{
-	  result = result && (bool) found;
+	  result = false;
+	  return NO_ERROR;
 	}
-      else
+      if (!find_all && found_set[i])
 	{
-	  result = result || (bool) found;
+	  result = true;
+	  return NO_ERROR;
 	}
     }
 
@@ -2178,7 +2196,7 @@ db_json_search_func (JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALUE *esc
     // no regex was matched
   };
 
-  JSON_TREE_FUNCTION json_search_walker (f_search);
+  JSON_PATH_MAPPER json_search_walker (f_search);
   return json_search_walker.WalkDocument (doc);
 }
 
