@@ -215,7 +215,7 @@ static int qdata_elt (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_D
 static int
 qdata_convert_operands_to_value_and_call (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
 					  OID * obj_oid_p, QFILE_TUPLE tuple,
-					  int (*function_to_call) (DB_VALUE *, DB_VALUE **, int const));
+					  int (*function_to_call) (DB_VALUE *, DB_VALUE * const *, int const));
 
 static int
 qdata_json_object (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
@@ -6093,89 +6093,6 @@ qdata_extract_dbval (const MISC_OPERAND extr_operand, DB_VALUE * dbval_p, DB_VAL
   return NO_ERROR;
 }
 
-int
-qdata_json_contains_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * dbval3_p, DB_VALUE * result_p,
-			   TP_DOMAIN * domain_p)
-{
-  int error_code = db_json_contains_dbval (dbval1_p, dbval2_p, dbval3_p, result_p);
-
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return qdata_coerce_result_to_domain (result_p, domain_p);
-}
-
-int
-qdata_json_type_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
-{
-  int error_code = db_json_type_dbval (dbval1_p, result_p);
-
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return qdata_coerce_result_to_domain (result_p, domain_p);
-}
-
-int
-qdata_json_pretty_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
-{
-  int error_code = db_json_pretty_dbval (dbval1_p, result_p);
-
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return qdata_coerce_result_to_domain (result_p, domain_p);
-}
-
-int
-qdata_json_valid_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
-{
-  int error_code = db_json_valid_dbval (dbval1_p, result_p);
-
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return qdata_coerce_result_to_domain (result_p, domain_p);
-}
-
-int
-qdata_json_length_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
-{
-  return db_json_length_dbval (dbval1_p, dbval2_p, result_p);
-}
-
-int
-qdata_json_depth_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
-{
-  return db_json_depth_dbval (dbval1_p, result_p);
-}
-
-int
-qdata_json_quote_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
-{
-  return db_string_quote (dbval1_p, result_p);
-}
-
-int
-qdata_json_unquote_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
-{
-  return db_json_unquote_dbval (dbval1_p, result_p);
-}
-
-int
-qdata_json_extract_dbval (DB_VALUE * json, DB_VALUE * path, DB_VALUE * json_res, TP_DOMAIN * domain_p)
-{
-  return db_json_extract_dbval (json, path, json_res);
-}
-
 /*
  * qdata_strcat_dbval () -
  *   return:
@@ -10280,7 +10197,7 @@ error_exit:
 static int
 qdata_convert_operands_to_value_and_call (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
 					  OID * obj_oid_p, QFILE_TUPLE tuple,
-					  int (*function_to_call) (DB_VALUE *, DB_VALUE **, int const))
+					  int (*function_to_call) (DB_VALUE *, DB_VALUE * const *, int const))
 {
   DB_VALUE *value;
   REGU_VARIABLE_LIST operand;

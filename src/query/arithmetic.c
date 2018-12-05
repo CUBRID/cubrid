@@ -5070,16 +5070,27 @@ error:
 }
 
 int
-db_json_contains_dbval (const DB_VALUE * json, const DB_VALUE * value, const DB_VALUE * path, DB_VALUE * result)
+db_json_contains_dbval (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
 {
   int error_code = NO_ERROR;
   JSON_DOC *result_doc = NULL;
   JSON_DOC *this_doc;
   bool doc_needs_clear = false;
 
+  db_make_null (result);
+  if (num_args < 2)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  const DB_VALUE *json = arg[0];
+  const DB_VALUE *value = arg[1];
+  const DB_VALUE *path = num_args > 2 ? arg[3] : NULL;
+
   if (DB_IS_NULL (json) || DB_IS_NULL (value) || (path != NULL && DB_IS_NULL (path)))
     {
-      return db_make_null (result);
+      return NO_ERROR;
     }
 
   this_doc = db_get_json_document (json);
@@ -5400,7 +5411,7 @@ db_json_objectagg_dbval_accumulate (DB_VALUE * json_key, DB_VALUE * json_db_val,
  * json_res (in)           : the DB_VALUE that contains the document where we want to insert
  */
 int
-db_json_merge (DB_VALUE * json, DB_VALUE * json_res)
+db_json_merge (const DB_VALUE * json, DB_VALUE * json_res)
 {
   // this case should not be possible because we did the checking before
   // also the method should be called after we already created the json_res (in the first iteration)
@@ -5501,7 +5512,7 @@ db_json_extract_dbval (DB_VALUE * json, DB_VALUE * path, DB_VALUE * json_res)
 // TODO: we need to change the args type of all JSON function to const DB_VALUE *[]
 //
 int
-db_json_extract_multiple_paths (DB_VALUE * result, DB_VALUE * args[], int num_args)
+db_json_extract_multiple_paths (DB_VALUE * result, DB_VALUE * const *args, int num_args)
 {
   db_make_null (result);
 

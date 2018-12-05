@@ -16602,78 +16602,6 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  return 0;
 	}
       break;
-    case PT_JSON_CONTAINS:
-      error = db_json_contains_dbval (arg1, arg2, (o3 == NULL ? NULL : arg3), result);
-      if (error != NO_ERROR)
-	{
-	  PT_ERRORc (parser, o1, er_msg ());
-	  return 0;
-	}
-      break;
-    case PT_JSON_TYPE:
-      error = db_json_type_dbval (arg1, result);
-      if (error != NO_ERROR)
-	{
-	  PT_ERRORc (parser, o1, er_msg ());
-	  return 0;
-	}
-      break;
-    case PT_JSON_EXTRACT:
-      error = db_json_extract_dbval (arg1, arg2, result);
-      if (error != NO_ERROR)
-	{
-	  PT_ERRORc (parser, o1, er_msg ());
-	  return 0;
-	}
-      break;
-    case PT_JSON_VALID:
-      error = db_json_valid_dbval (arg1, result);
-      if (error != NO_ERROR)
-	{
-	  PT_ERRORc (parser, o1, er_msg ());
-	  return 0;
-	}
-      break;
-    case PT_JSON_LENGTH:
-      error = db_json_length_dbval (arg1, (o2 == NULL ? NULL : arg2), result);
-      if (error != NO_ERROR)
-	{
-	  PT_ERRORc (parser, o1, er_msg ());
-	  return 0;
-	}
-      break;
-    case PT_JSON_DEPTH:
-      error = db_json_depth_dbval (arg1, result);
-      if (error != NO_ERROR)
-	{
-	  PT_ERRORc (parser, o1, er_msg ());
-	  return 0;
-	}
-      break;
-    case PT_JSON_QUOTE:
-      error = db_string_quote (arg1, result);
-      if (error != NO_ERROR)
-	{
-	  PT_ERRORc (parser, o1, er_msg ());
-	  return 0;
-	}
-      break;
-    case PT_JSON_UNQUOTE:
-      error = db_json_unquote_dbval (arg1, result);
-      if (error != NO_ERROR)
-	{
-	  PT_ERRORc (parser, o1, er_msg ());
-	  return 0;
-	}
-      break;
-    case PT_JSON_PRETTY:
-      error = db_json_pretty_dbval (arg1, result);
-      if (error != NO_ERROR)
-	{
-	  PT_ERRORc (parser, o1, er_msg ());
-	  return 0;
-	}
-      break;
     case PT_POWER:
       error = db_power_dbval (result, arg1, arg2);
       if (error != NO_ERROR)
@@ -19993,32 +19921,8 @@ pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_TYPE fcode, DB_VALUE 
 	}
       break;
 
-    case F_JSON_OBJECT:
-      error = db_json_object (result, args, num_args);
-      break;
-
     case F_JSON_ARRAY:
       error = db_json_array (result, args, num_args);
-      break;
-
-    case F_JSON_INSERT:
-      error = db_json_insert (result, args, num_args);
-      break;
-
-    case F_JSON_REPLACE:
-      error = db_json_replace (result, args, num_args);
-      break;
-
-    case F_JSON_SET:
-      error = db_json_set (result, args, num_args);
-      break;
-
-    case F_JSON_KEYS:
-      error = db_json_keys (result, args, num_args);
-      break;
-
-    case F_JSON_REMOVE:
-      error = db_json_remove (result, args, num_args);
       break;
 
     case F_JSON_ARRAY_APPEND:
@@ -20029,12 +19933,28 @@ pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_TYPE fcode, DB_VALUE 
       error = db_json_array_insert (result, args, num_args);
       break;
 
+    case F_JSON_CONTAINS:
+      //error = db_json_contains_dbval (result, args, num_args);
+      break;
+
     case F_JSON_CONTAINS_PATH:
       error = db_json_contains_path (result, args, num_args);
       break;
 
     case F_JSON_EXTRACT:
       error = db_json_extract_multiple_paths (result, args, num_args);
+      break;
+
+    case F_JSON_GET_ALL_PATHS:
+      error = db_json_get_all_paths (result, args, num_args);
+      break;
+
+    case F_JSON_INSERT:
+      error = db_json_insert (result, args, num_args);
+      break;
+
+    case F_JSON_KEYS:
+      error = db_json_keys (result, args, num_args);
       break;
 
     case F_JSON_MERGE:
@@ -20045,12 +19965,24 @@ pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_TYPE fcode, DB_VALUE 
       error = db_json_merge_patch (result, args, num_args);
       break;
 
+    case F_JSON_OBJECT:
+      error = db_json_object (result, args, num_args);
+      break;
+
+    case F_JSON_REPLACE:
+      error = db_json_replace (result, args, num_args);
+      break;
+
+    case F_JSON_REMOVE:
+      error = db_json_remove (result, args, num_args);
+      break;
+
     case F_JSON_SEARCH:
       error = db_json_search_dbval (result, args, num_args);
       break;
 
-    case F_JSON_GET_ALL_PATHS:
-      error = db_json_get_all_paths (result, args, num_args);
+    case F_JSON_SET:
+      error = db_json_set (result, args, num_args);
       break;
 
     default:

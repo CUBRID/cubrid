@@ -67,11 +67,10 @@ extern int db_width_bucket (DB_VALUE * result, const DB_VALUE * value1, const DB
  */
 extern int db_sleep (DB_VALUE * result, DB_VALUE * value);
 extern int db_crc32_dbval (DB_VALUE * result, DB_VALUE * value);
-extern int db_json_contains_dbval (const DB_VALUE * json, const DB_VALUE * value, const DB_VALUE * path,
-				   DB_VALUE * result);
+extern int db_json_contains_dbval (DB_VALUE * result, DB_VALUE * const *arg, int const num_args);
 extern int db_json_type_dbval (const DB_VALUE * json, DB_VALUE * type);
 extern int db_json_extract_dbval (DB_VALUE * json, DB_VALUE * path, DB_VALUE * json_res);
-extern int db_json_extract_multiple_paths (DB_VALUE * result, DB_VALUE * args[], int num_args);
+extern int db_json_extract_multiple_paths (DB_VALUE * result, DB_VALUE * const *args, int num_args);
 extern int db_json_valid_dbval (const DB_VALUE * json, DB_VALUE * type_res);
 extern int db_json_length_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * res);
 extern int db_json_depth_dbval (DB_VALUE * json, DB_VALUE * res);
@@ -79,6 +78,6 @@ extern int db_json_unquote_dbval (DB_VALUE * json, DB_VALUE * res);
 extern int db_json_pretty_dbval (DB_VALUE * json, DB_VALUE * res);
 extern int db_json_arrayagg_dbval_accumulate (DB_VALUE * json_db_val, DB_VALUE * json_res);
 extern int db_json_objectagg_dbval_accumulate (DB_VALUE * json_key, DB_VALUE * json_db_val, DB_VALUE * json_res);
-extern int db_json_merge (DB_VALUE * json, DB_VALUE * json_res);
+extern int db_json_merge (const DB_VALUE * json, DB_VALUE * json_res);	// this is declared twice
 extern int db_least_or_greatest (DB_VALUE * arg1, DB_VALUE * arg2, DB_VALUE * result, bool least);
 #endif /* _ARITHMETIC_H_ */

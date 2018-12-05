@@ -286,7 +286,7 @@ static int print_string_date_token (const STRING_DATE_TOKEN token_type, const IN
 				    int *token_size);
 static void convert_locale_number (char *sz, const int size, const INTL_LANG src_locale, const INTL_LANG dst_locale);
 static int parse_tzd (const char *str, const int max_expect_len);
-static int db_json_merge_helper (DB_VALUE * result, DB_VALUE * arg[], int const num_args, bool patch = false);
+static int db_json_merge_helper (DB_VALUE * result, DB_VALUE * const *arg, int const num_args, bool patch = false);
 
 #define TRIM_FORMAT_STRING(sz, n) {if (strlen(sz) > n) sz[n] = 0;}
 #define WHITESPACE(c) ((c) == ' ' || (c) == '\t' || (c) == '\r' || (c) == '\n')
@@ -3099,7 +3099,7 @@ db_string_elt (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 }
 
 int
-db_json_object (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
+db_json_object (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
 {
   int i;
   int error_code = NO_ERROR;
@@ -3158,7 +3158,7 @@ db_json_object (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 }
 
 int
-db_json_array (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
+db_json_array (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
 {
   int error_code;
   JSON_DOC *new_doc = NULL;
@@ -3194,7 +3194,7 @@ db_json_array (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 }
 
 int
-db_json_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
+db_json_insert (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
 {
   int i, error_code = NO_ERROR;
   JSON_DOC *new_doc = NULL;
@@ -3259,7 +3259,7 @@ db_json_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 }
 
 int
-db_json_replace (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
+db_json_replace (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
 {
   int i, error_code = NO_ERROR;
   JSON_DOC *new_doc = NULL;
@@ -3323,7 +3323,7 @@ db_json_replace (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 }
 
 int
-db_json_set (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
+db_json_set (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
 {
   int i, error_code = NO_ERROR;
   JSON_DOC *new_doc = NULL;
@@ -3387,7 +3387,7 @@ db_json_set (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 }
 
 int
-db_json_keys (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
+db_json_keys (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
 {
   int error_code = NO_ERROR;
   JSON_DOC *new_doc = NULL;
@@ -3441,7 +3441,7 @@ db_json_keys (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 }
 
 int
-db_json_remove (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
+db_json_remove (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
 {
   int i, error_code;
   JSON_DOC *new_doc = NULL;
@@ -3490,7 +3490,7 @@ db_json_remove (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 }
 
 int
-db_json_array_append (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
+db_json_array_append (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
 {
   int i, error_code = NO_ERROR;
   JSON_DOC *new_doc = NULL;
@@ -3555,7 +3555,7 @@ db_json_array_append (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 }
 
 int
-db_json_array_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
+db_json_array_insert (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
 {
   int i, error_code = NO_ERROR;
   JSON_DOC *new_doc = NULL;
@@ -3620,7 +3620,7 @@ db_json_array_insert (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
 }
 
 int
-db_json_contains_path (DB_VALUE * result, DB_VALUE * arg[], const int num_args)
+db_json_contains_path (DB_VALUE * result, DB_VALUE * const *arg, const int num_args)
 {
   bool exists = false;
   int error_code = NO_ERROR;
@@ -3691,7 +3691,7 @@ end:
 }
 
 static int
-db_json_merge_helper (DB_VALUE * result, DB_VALUE * arg[], int const num_args, bool patch)
+db_json_merge_helper (DB_VALUE * result, DB_VALUE * const *arg, int const num_args, bool patch)
 {
   int i;
   int error_code;
@@ -3744,7 +3744,7 @@ db_json_merge_helper (DB_VALUE * result, DB_VALUE * arg[], int const num_args, b
  * num_args (in)
  */
 int
-db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
+db_json_merge (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
 {
   return db_json_merge_helper (result, arg, num_args);
 }
@@ -3760,7 +3760,7 @@ db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
  * num_args (in)
  */
 int
-db_json_merge_patch (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
+db_json_merge_patch (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
 {
   return db_json_merge_helper (result, arg, num_args, true);
 }
@@ -3778,7 +3778,7 @@ db_json_merge_patch (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
  */
 
 int
-db_json_search_dbval (DB_VALUE *result, DB_VALUE *args[], const int num_args)
+db_json_search_dbval (DB_VALUE *result, DB_VALUE * const * args, const int num_args)
 {
   int error_code = NO_ERROR;
   JSON_DOC *doc = NULL;
@@ -3915,7 +3915,7 @@ db_json_search_dbval (DB_VALUE *result, DB_VALUE *args[], const int num_args)
 /* *INDENT-ON* */
 
 int
-db_json_get_all_paths (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
+db_json_get_all_paths (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
 {
   int error_code = NO_ERROR;
   JSON_DOC *new_doc = NULL;
