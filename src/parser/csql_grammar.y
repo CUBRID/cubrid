@@ -16948,9 +16948,14 @@ reserved_func
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-        | JSON_OBJECT_LEX '(' expression_list ')'
+        | JSON_ARRAY_APPEND '(' expression_list ')'
 		{{
-                    $$ = parser_make_func_with_arg_count_mod2 (this_parser, F_JSON_OBJECT, $3, 1, 0, 0);
+                    $$ = parser_make_func_with_arg_count_mod2 (this_parser, F_JSON_ARRAY_APPEND, $3, 3, 0, 1);
+		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
+        | JSON_ARRAY_INSERT '(' expression_list ')'
+		{{
+                    $$ = parser_make_func_with_arg_count_mod2 (this_parser, F_JSON_ARRAY_INSERT, $3, 3, 0, 1);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
         | JSON_ARRAY_LEX '(' expression_list ')'
@@ -16978,6 +16983,26 @@ reserved_func
                     $$ = parser_make_func_with_arg_count (this_parser, F_JSON_EXTRACT, $3, 2, 0);
                     PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
+        | JSON_GET_ALL_PATHS '(' expression_list ')'
+		{{
+                    $$ = parser_make_func_with_arg_count (this_parser, F_JSON_GET_ALL_PATHS, $3, 1, 1);
+		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
+        | JSON_INSERT '(' expression_list ')'
+		{{
+                    $$ = parser_make_func_with_arg_count_mod2 (this_parser, F_JSON_INSERT, $3, 3, 0, 1);
+		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
+        | JSON_KEYS '(' expression_list ')'
+		{{
+                    $$ = parser_make_func_with_arg_count (this_parser, F_JSON_KEYS, $3, 0, 2);
+		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
+        | JSON_LENGTH '(' expression_list ')'
+		{{
+                    $$ = parser_make_func_with_arg_count (this_parser, F_JSON_LENGTH, $3, 1, 2);
+                    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
         | JSON_MERGE '(' expression_list ')'
 		{{
                     $$ = parser_make_func_with_arg_count (this_parser, F_JSON_MERGE, $3, 2, 0);
@@ -16993,24 +17018,19 @@ reserved_func
                     $$ = parser_make_func_with_arg_count (this_parser, F_JSON_MERGE, $3, 2, 0);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-        | JSON_INSERT '(' expression_list ')'
+        | JSON_OBJECT_LEX '(' expression_list ')'
 		{{
-                    $$ = parser_make_func_with_arg_count_mod2 (this_parser, F_JSON_INSERT, $3, 3, 0, 1);
+                    $$ = parser_make_func_with_arg_count_mod2 (this_parser, F_JSON_OBJECT, $3, 1, 0, 0);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-         | JSON_REPLACE '(' expression_list ')'
+        | JSON_PRETTY '(' expression_list ')'
 		{{
-                    $$ = parser_make_func_with_arg_count_mod2 (this_parser, F_JSON_REPLACE, $3, 3, 0, 1);
+                    $$ = parser_make_func_with_arg_count (this_parser, F_JSON_PRETTY, $3, 1, 1);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-         | JSON_SET '(' expression_list ')'
+        | JSON_QUOTE '(' expression_list ')'
 		{{
-                    $$ = parser_make_func_with_arg_count_mod2 (this_parser, F_JSON_SET, $3, 3, 0, 1);
-		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
-         | JSON_KEYS '(' expression_list ')'
-		{{
-                    $$ = parser_make_func_with_arg_count (this_parser, F_JSON_KEYS, $3, 0, 2);
+                    $$ = parser_make_func_with_arg_count (this_parser, F_JSON_QUOTE, $3, 1, 1);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
         | JSON_REMOVE '(' expression_list ')'
@@ -17018,59 +17038,62 @@ reserved_func
                     $$ = parser_make_func_with_arg_count (this_parser, F_JSON_KEYS, $3, 2, 0);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-         | JSON_ARRAY_APPEND '(' expression_list ')'
+        | JSON_REPLACE '(' expression_list ')'
 		{{
-                    $$ = parser_make_func_with_arg_count_mod2 (this_parser, F_JSON_ARRAY_APPEND, $3, 3, 0, 1);
+                    $$ = parser_make_func_with_arg_count_mod2 (this_parser, F_JSON_REPLACE, $3, 3, 0, 1);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-         | JSON_ARRAY_INSERT '(' expression_list ')'
+        | JSON_SET '(' expression_list ')'
 		{{
-                    $$ = parser_make_func_with_arg_count_mod2 (this_parser, F_JSON_ARRAY_INSERT, $3, 3, 0, 1);
+                    $$ = parser_make_func_with_arg_count_mod2 (this_parser, F_JSON_SET, $3, 3, 0, 1);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-         | JSON_SEARCH '(' expression_list ')'
+        | JSON_SEARCH '(' expression_list ')'
 		{{
                     $$ = parser_make_func_with_arg_count (this_parser, F_JSON_SEARCH, $3, 3, 0);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-         | JSON_GET_ALL_PATHS '(' expression_list ')'
+        | JSON_TYPE '(' expression_list ')'
 		{{
-                    $$ = parser_make_func_with_arg_count (this_parser, F_JSON_GET_ALL_PATHS, $3, 1, 1);
+                    $$ = parser_make_func_with_arg_count (this_parser, F_JSON_TYPE, $3, 1, 1);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-         | simple_path_id RIGHT_ARROW CHAR_STRING
+        | JSON_UNQUOTE '(' expression_list ')'
 		{{
-			PT_NODE *matcher = parser_new_node (this_parser, PT_VALUE);
-
-			if (matcher)
-			  {
-			    matcher->type_enum = PT_TYPE_CHAR;
-			    matcher->info.value.string_type = ' ';
-			    matcher->info.value.data_value.str =
-			      pt_append_bytes (this_parser, NULL, $3, strlen ($3));
-			    PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, matcher);
-			  }
-
-			PT_NODE *expr = parser_make_expression (this_parser, PT_JSON_EXTRACT, $1, matcher, NULL);
-			$$ = expr;
+                    $$ = parser_make_func_with_arg_count (this_parser, F_JSON_UNQUOTE, $3, 1, 1);
+		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-         | simple_path_id DOUBLE_RIGHT_ARROW CHAR_STRING
+        | JSON_VALID '(' expression_list ')'
 		{{
-			PT_NODE *matcher = parser_new_node (this_parser, PT_VALUE);
-
-			if (matcher)
-			  {
-			    matcher->type_enum = PT_TYPE_CHAR;
-			    matcher->info.value.string_type = ' ';
-			    matcher->info.value.data_value.str =
-			      pt_append_bytes (this_parser, NULL, $3, strlen ($3));
-			    PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, matcher);
-			  }
-
-			PT_NODE *extract_expr = parser_make_expression (this_parser, PT_JSON_EXTRACT, $1, matcher, NULL);
-			PT_NODE *expr = parser_make_expression (this_parser, PT_JSON_UNQUOTE, extract_expr, NULL, NULL);
-
-			$$ = expr;
+                    $$ = parser_make_func_with_arg_count (this_parser, F_JSON_VALID, $3, 1, 1);
+		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
+        | simple_path_id RIGHT_ARROW CHAR_STRING
+		{{
+		    PT_NODE *matcher = parser_new_node (this_parser, PT_VALUE);
+                    if (matcher != NULL)
+                      {
+                        matcher->type_enum = PT_TYPE_CHAR;
+                        matcher->info.value.string_type = ' ';
+                        matcher->info.value.data_value.str = pt_append_bytes (this_parser, NULL, $3, strlen ($3));
+                        PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, matcher);
+                      }
+		    $$ = parser_make_expression (this_parser, PT_JSON_EXTRACT, $1, matcher, NULL);
+                    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+                DBG_PRINT}}
+        | simple_path_id DOUBLE_RIGHT_ARROW CHAR_STRING
+		{{
+                    PT_NODE *matcher = parser_new_node (this_parser, PT_VALUE);
+                    if (matcher != NULL)
+                      {
+                        matcher->type_enum = PT_TYPE_CHAR;
+                        matcher->info.value.string_type = ' ';
+                        matcher->info.value.data_value.str = pt_append_bytes (this_parser, NULL, $3, strlen ($3));
+                        PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, matcher);
+                      }
+		    PT_NODE *extract_expr = parser_make_expr_with_func (this_parser, F_JSON_EXTRACT, matcher);
+		    $$ = parser_make_expr_with_func (this_parser, F_JSON_UNQUOTE, extract_expr);
+                    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
 	;
 
