@@ -433,9 +433,11 @@ typedef enum
 
 FUNCTION_MAP *keyword_offset (const char *name);
 
-static PT_NODE *parser_make_expr_with_func (PARSER_CONTEXT * parser,
-					    FUNC_TYPE func_code,
-					    PT_NODE * args_list);
+static PT_NODE *parser_make_expr_with_func (PARSER_CONTEXT * parser, FUNC_TYPE func_code, PT_NODE * args_list);
+static PT_NODE *parser_make_func_with_arg_count (PARSER_CONTEXT * parser, FUNC_TYPE func_code, PT_NODE * args_list,
+                                                 size_t min_args, size_t max_args);
+static PT_NODE *parser_make_func_with_arg_count_mod2 (PARSER_CONTEXT * parser, FUNC_TYPE func_code, PT_NODE * args_list,
+                                                      size_t min_args, size_t max_args, size_t mod2);
 static PT_NODE *parser_make_link (PT_NODE * list, PT_NODE * node);
 static PT_NODE *parser_make_link_or (PT_NODE * list, PT_NODE * node);
 
@@ -16099,37 +16101,13 @@ reserved_func
 	  '(' expression_list ')'
 	  { pop_msg(); }
 		{{
-			PT_NODE *args_list = $4;
-			PT_NODE *node = NULL;
-
-			node = parser_make_expr_with_func (this_parser, F_INSERT_SUBSTRING, args_list);
-			if (parser_count_list (args_list) != 4)
-			  {
-			    PT_ERRORmf (this_parser, args_list,
-					MSGCAT_SET_PARSER_SEMANTIC,
-					MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
-					"insert");
-			  }
-
-			$$ = node;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+                    $$ = parser_make_func_with_arg_count (this_parser, F_INSERT_SUBSTRING, $4, 4, 4);
+                    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
 	| ELT '(' opt_expression_list ')'
 		{{
-		    PT_NODE *args_list = $3;
-		    PT_NODE *node = NULL;
-
-		    node = parser_make_expr_with_func (this_parser, F_ELT, args_list);
-		    if (parser_count_list(args_list) < 1)
-		    {
-			PT_ERRORmf (this_parser, args_list,
-				    MSGCAT_SET_PARSER_SEMANTIC,
-				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
-				    "elt");
-		    }
-
-		    $$ = node;
-		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+                    $$ = parser_make_func_with_arg_count (this_parser, F_ELT, $3, 1, 0);
+                    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
 	| POSITION '(' expression_ IN_ expression_ ')'
 		{{
@@ -16972,298 +16950,92 @@ reserved_func
 		DBG_PRINT}}
         | JSON_OBJECT_LEX '(' expression_list ')'
 		{{
-		    PT_NODE *args_list = $3;
-		    PT_NODE *node = NULL;
-                    int len;
-
-                    len = parser_count_list (args_list);
-		    node = parser_make_expr_with_func (this_parser, F_JSON_OBJECT, args_list);
-		    if (len < 1 || len % 2 != 0)
-		    {
-			PT_ERRORmf (this_parser, args_list,
-				    MSGCAT_SET_PARSER_SEMANTIC,
-				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
-				    "json_object");
-		    }
-
-		    $$ = node;
+                    $$ = parser_make_func_with_arg_count_mod2 (this_parser, F_JSON_OBJECT, $3, 1, 0, 0);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
         | JSON_ARRAY_LEX '(' expression_list ')'
 		{{
-		    PT_NODE *args_list = $3;
-		    PT_NODE *node = NULL;
-                    int len;
-
-                    len = parser_count_list (args_list);
-		    node = parser_make_expr_with_func (this_parser, F_JSON_ARRAY, args_list);
-		    if (len < 1)
-		    {
-			PT_ERRORmf (this_parser, args_list,
-				    MSGCAT_SET_PARSER_SEMANTIC,
-				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
-				    "json_array");
-		    }
-
-		    $$ = node;
+                    $$ = parser_make_func_with_arg_count (this_parser, F_JSON_ARRAY, $3, 1, 0);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
+	| JSON_CONTAINS '(' expression_list ')'
+		{{
+                    $$ = parser_make_func_with_arg_count (this_parser, F_JSON_CONTAINS, $3, 2, 3);
+                    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+	      DBG_PRINT}}
 	| JSON_CONTAINS_PATH '(' expression_list ')'
 		{{
-		    PT_NODE *args_list = $3;
-		    PT_NODE *node = NULL;
-		    int len;
-
-		    len = parser_count_list (args_list);
-		    node = parser_make_expr_with_func (this_parser, F_JSON_CONTAINS_PATH, args_list);
-		    if (len < 3)
-		    {
-			PT_ERRORmf (this_parser, args_list,
-				    MSGCAT_SET_PARSER_SEMANTIC,
-				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
-				    "json_contains_path");
-		    }
-
-		    $$ = node;
+                    $$ = parser_make_func_with_arg_count (this_parser, F_JSON_CONTAINS_PATH, $3, 3, 0);
+		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
+        | JSON_DEPTH '(' expression_list ')'
+		{{
+                    $$ = parser_make_func_with_arg_count (this_parser, F_JSON_DEPTH, $3, 1, 1);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
         | JSON_EXTRACT '(' expression_list ')'
 		{{
-                    PT_NODE *args_list = $3;
-                    // check number of arguments
-                    if (parser_count_list (args_list) < 2)
-                    {
-                      PT_ERRORmf (this_parser, args_list, MSGCAT_SET_PARSER_SEMANTIC,
-                                  MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION, "json_extract");
-                    }
-                    $$ = parser_make_expr_with_func (this_parser, F_JSON_EXTRACT, args_list);
+                    $$ = parser_make_func_with_arg_count (this_parser, F_JSON_EXTRACT, $3, 2, 0);
                     PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
         | JSON_MERGE '(' expression_list ')'
 		{{
-		    PT_NODE *args_list = $3;
-		    PT_NODE *node = NULL;
-                    int len;
-
-                    len = parser_count_list (args_list);
-		    node = parser_make_expr_with_func (this_parser, F_JSON_MERGE, args_list);
-		    if (len < 2)
-		    {
-			PT_ERRORmf (this_parser, args_list,
-				    MSGCAT_SET_PARSER_SEMANTIC,
-				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
-				    "json_merge");
-		    }
-
-		    $$ = node;
+                    $$ = parser_make_func_with_arg_count (this_parser, F_JSON_MERGE, $3, 2, 0);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
         | JSON_MERGE_PATCH '(' expression_list ')'
 		{{
-		    PT_NODE *args_list = $3;
-		    PT_NODE *node = NULL;
-                    int len;
-
-                    len = parser_count_list (args_list);
-			node = parser_make_expr_with_func (this_parser, F_JSON_MERGE_PATCH, args_list);
-			if (len < 2)
-		    {
-			PT_ERRORmf (this_parser, args_list,
-				    MSGCAT_SET_PARSER_SEMANTIC,
-				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
-				    "json_merge_patch");
-			}
-
-		    $$ = node;
+                    $$ = parser_make_func_with_arg_count (this_parser, F_JSON_MERGE_PATCH, $3, 2, 0);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
         | JSON_MERGE_PRESERVE '(' expression_list ')'
 		{{
-		    PT_NODE *args_list = $3;
-		    PT_NODE *node = NULL;
-                    int len;
-
-                    len = parser_count_list (args_list);
-		    node = parser_make_expr_with_func (this_parser, F_JSON_MERGE, args_list);
-		    if (len < 2)
-		    {
-			PT_ERRORmf (this_parser, args_list,
-				    MSGCAT_SET_PARSER_SEMANTIC,
-				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
-				    "json_merge_preserve");
-		    }
-
-		    $$ = node;
+                    $$ = parser_make_func_with_arg_count (this_parser, F_JSON_MERGE, $3, 2, 0);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
         | JSON_INSERT '(' expression_list ')'
 		{{
-		    PT_NODE *args_list = $3;
-		    PT_NODE *node = NULL;
-                    int len;
-
-                    len = parser_count_list (args_list);
-		    node = parser_make_expr_with_func (this_parser, F_JSON_INSERT, args_list);
-		    if (len < 3 || len % 2 != 1)
-		    {
-			PT_ERRORmf (this_parser, args_list,
-				    MSGCAT_SET_PARSER_SEMANTIC,
-				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
-				    "json_insert");
-		    }
-
-		    $$ = node;
+                    $$ = parser_make_func_with_arg_count_mod2 (this_parser, F_JSON_INSERT, $3, 3, 0, 1);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
          | JSON_REPLACE '(' expression_list ')'
 		{{
-		    PT_NODE *args_list = $3;
-		    PT_NODE *node = NULL;
-                    int len;
-
-                    len = parser_count_list (args_list);
-		    node = parser_make_expr_with_func (this_parser, F_JSON_REPLACE, args_list);
-		    if (len < 3 || len % 2 != 1)
-		    {
-			PT_ERRORmf (this_parser, args_list,
-				    MSGCAT_SET_PARSER_SEMANTIC,
-				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
-				    "json_replace");
-		    }
-
-		    $$ = node;
+                    $$ = parser_make_func_with_arg_count_mod2 (this_parser, F_JSON_REPLACE, $3, 3, 0, 1);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
          | JSON_SET '(' expression_list ')'
 		{{
-		    PT_NODE *args_list = $3;
-		    PT_NODE *node = NULL;
-                    int len;
-
-                    len = parser_count_list (args_list);
-		    node = parser_make_expr_with_func (this_parser, F_JSON_SET, args_list);
-		    if (len < 3 || len % 2 != 1)
-		    {
-			PT_ERRORmf (this_parser, args_list,
-				    MSGCAT_SET_PARSER_SEMANTIC,
-				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
-				    "json_set");
-		    }
-
-		    $$ = node;
+                    $$ = parser_make_func_with_arg_count_mod2 (this_parser, F_JSON_SET, $3, 3, 0, 1);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
          | JSON_KEYS '(' expression_list ')'
 		{{
-		    PT_NODE *args_list = $3;
-		    PT_NODE *node = NULL;
-                    int len;
-
-                    len = parser_count_list (args_list);
-		    node = parser_make_expr_with_func (this_parser, F_JSON_KEYS, args_list);
-		    if (len > 2)
-		    {
-			PT_ERRORmf (this_parser, args_list,
-				    MSGCAT_SET_PARSER_SEMANTIC,
-				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
-				    "json_keys");
-		    }
-
-		    $$ = node;
+                    $$ = parser_make_func_with_arg_count (this_parser, F_JSON_KEYS, $3, 0, 2);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
         | JSON_REMOVE '(' expression_list ')'
 		{{
-		    PT_NODE *args_list = $3;
-		    PT_NODE *node = NULL;
-                    int len;
-
-                    len = parser_count_list (args_list);
-		    node = parser_make_expr_with_func (this_parser, F_JSON_REMOVE, args_list);
-		    if (len < 2)
-		    {
-			PT_ERRORmf (this_parser, args_list,
-				    MSGCAT_SET_PARSER_SEMANTIC,
-				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
-				    "json_remove");
-		    }
-
-		    $$ = node;
+                    $$ = parser_make_func_with_arg_count (this_parser, F_JSON_KEYS, $3, 2, 0);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
          | JSON_ARRAY_APPEND '(' expression_list ')'
 		{{
-		    PT_NODE *args_list = $3;
-		    PT_NODE *node = NULL;
-                    int len;
-
-                    len = parser_count_list (args_list);
-		    node = parser_make_expr_with_func (this_parser, F_JSON_ARRAY_APPEND, args_list);
-		    if (len < 3 || len % 2 != 1)
-		    {
-			PT_ERRORmf (this_parser, args_list,
-				    MSGCAT_SET_PARSER_SEMANTIC,
-				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
-				    "json_array_append");
-		    }
-
-		    $$ = node;
+                    $$ = parser_make_func_with_arg_count_mod2 (this_parser, F_JSON_ARRAY_APPEND, $3, 3, 0, 1);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
          | JSON_ARRAY_INSERT '(' expression_list ')'
 		{{
-		    PT_NODE *args_list = $3;
-		    PT_NODE *node = NULL;
-                    int len;
-
-                    len = parser_count_list (args_list);
-		    node = parser_make_expr_with_func (this_parser, F_JSON_ARRAY_INSERT, args_list);
-		    if (len < 3 || len % 2 != 1)
-		    {
-			PT_ERRORmf (this_parser, args_list,
-				    MSGCAT_SET_PARSER_SEMANTIC,
-				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
-				    "json_array_insert");
-		    }
-
-		    $$ = node;
+                    $$ = parser_make_func_with_arg_count_mod2 (this_parser, F_JSON_ARRAY_INSERT, $3, 3, 0, 1);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
          | JSON_SEARCH '(' expression_list ')'
 		{{
-		    PT_NODE *args_list = $3;
-		    PT_NODE *node = NULL;
-		    int len = parser_count_list (args_list);
-		    node = parser_make_expr_with_func (this_parser, F_JSON_SEARCH, args_list);
-
-		    if (len < 3)
-		      {
-			    PT_ERRORmf (this_parser, args_list,
-			    	    MSGCAT_SET_PARSER_SEMANTIC,
-			    	    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
-			    	    "json_search");
-		      }
-
-		    $$ = node;
+                    $$ = parser_make_func_with_arg_count (this_parser, F_JSON_SEARCH, $3, 3, 0);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
          | JSON_GET_ALL_PATHS '(' expression_list ')'
 		{{
-		    PT_NODE *args_list = $3;
-		    PT_NODE *node = NULL;
-                    int len;
-
-                    len = parser_count_list (args_list);
-		    node = parser_make_expr_with_func (this_parser, F_JSON_GET_ALL_PATHS, args_list);
-		    if (len != 1)
-		    {
-			PT_ERRORmf (this_parser, args_list,
-				    MSGCAT_SET_PARSER_SEMANTIC,
-				    MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
-				    "json_get_all_paths");
-		    }
-
-		    $$ = node;
+                    $$ = parser_make_func_with_arg_count (this_parser, F_JSON_GET_ALL_PATHS, $3, 1, 1);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
          | simple_path_id RIGHT_ARROW CHAR_STRING
@@ -24504,6 +24276,37 @@ parser_make_expr_with_func (PARSER_CONTEXT * parser, FUNC_TYPE func_code,
     }
 
   return node;
+}
+
+static PT_NODE *
+parser_make_func_with_arg_count (PARSER_CONTEXT * parser, FUNC_TYPE func_code, PT_NODE * args_list,
+                                 size_t min_args, size_t max_args)
+{
+  size_t count = (size_t) parser_count_list (args_list);
+  if (min_args > count || (max_args != 0 && max_args < count))
+    {
+      // todo - a more clear message
+      PT_ERRORmf (parser, args_list, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
+                  pt_show_function (func_code));
+      // todo - return null?
+    }
+  return parser_make_expr_with_func (parser, func_code, args_list);
+}
+
+static PT_NODE *
+parser_make_func_with_arg_count_mod2 (PARSER_CONTEXT * parser, FUNC_TYPE func_code, PT_NODE * args_list,
+                                      size_t min_args, size_t max_args, size_t mod2)
+{
+  size_t count = (size_t) parser_count_list (args_list);
+  assert (mod2 == 0 || mod2 == 1);
+  if (min_args > count || (max_args != 0 && max_args < count) || (count % 2 != mod2))
+    {
+      // todo - a more clear message
+      PT_ERRORmf (parser, args_list, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
+                  pt_show_function (func_code));
+      // todo - return null?
+    }
+  return parser_make_expr_with_func (parser, func_code, args_list);
 }
 
 PT_NODE *
