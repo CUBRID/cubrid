@@ -4829,3 +4829,43 @@ smt_change_constraint_status (SM_TEMPLATE * ctemplate, const char *index_name, S
 
   return NO_ERROR;
 }
+
+int
+smt_is_online_index_allowed (MOP class_mop, SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
+			     const char *constraint_name, const char **att_names, const int *asc_desc,
+			     SM_PREDICATE_INFO * filter_index, SM_FUNCTION_INFO * function_index, bool * is_allowed)
+{
+#if defined (SA_MODE)
+  // We don't allow online index for SA_MODE.
+  *is_allowed = false;
+  return NO_ERROR;
+#else /* SA_MODE */
+  int error = NO_ERROR;
+  char *shared_cons_name = NULL;
+
+  *is_allowed = false;
+
+  if (class_mop->lock > IX_LOCK)
+    {
+      // if the transaction already hold a lock which is greater than IX,
+      // we don't allow online index creation for transaction consistency.
+      return NO_ERROR;
+    }
+
+  error = smt_check_index_exist (template_, &shared_cons_name, constraint_type, constraint_name, att_names,
+				 asc_desc, filter_index, function_index);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (shared_cons_name != NULL)
+    {
+      /* If index is shared with another constraint, build it as a normal index. */
+      return NO_ERROR;
+    }
+
+  *is_allowed = true;
+  return NO_ERROR;
+#endif /* !SA_MODE */
+}

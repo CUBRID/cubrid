@@ -14630,26 +14630,29 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	  auth = AU_ALTER;
 	}
 
-#if defined (SA_MODE)
-      if (index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
-	{
-	  // We don't allow online index for SA_MODE.
-	  index_status = SM_NORMAL_INDEX;
-	}
-#endif /* SA_MODE */
-
-      if (index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS && classop->lock > IX_LOCK)
-	{
-	  // if the transaction already hold a lock which is greater than IX,
-	  // we don't allow online index creation for transaction consistency.
-	  index_status = SM_NORMAL_INDEX;
-	}
-
       def = smt_edit_class_mop (classop, auth);
       if (def == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error);
 	  goto error_exit;
+	}
+
+      if (index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+	{
+	  bool is_online_index_allowed = false;
+
+	  error = smt_is_online_index_allowed (classop, def, constraint_type, constraint_name, att_names, asc_desc,
+					       filter_index, function_index, &is_online_index_allowed);
+	  if (error != NO_ERROR)
+	    {
+	      smt_quit (def);
+	      goto error_exit;
+	    }
+
+	  if (!is_online_index_allowed)
+	    {
+	      index_status = SM_NORMAL_INDEX;
+	    }
 	}
 
       error = sm_partitioned_class_type (classop, &partition_type, NULL, &sub_partitions);
