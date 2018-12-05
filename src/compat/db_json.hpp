@@ -73,7 +73,8 @@ const char *db_json_get_type_as_str (const JSON_DOC *document);
 unsigned int db_json_get_length (const JSON_DOC *document);
 unsigned int db_json_get_depth (const JSON_DOC *doc);
 int db_json_extract_document_from_path (const JSON_DOC *document, const char *raw_path, JSON_DOC *&result);
-int db_json_contains_path (const JSON_DOC *document, const char *raw_path, bool &result);
+int db_json_contains_path (const JSON_DOC *document, const std::vector<std::string> &paths, bool find_all,
+			   bool &result);
 char *db_json_get_raw_json_body_from_document (const JSON_DOC *doc);
 
 char *db_json_get_json_body_from_document (const JSON_DOC &doc);
@@ -107,7 +108,7 @@ int db_json_remove_func (JSON_DOC &doc, const char *raw_path);
 int db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<std::regex> &regs,
 			    bool match_exactly = false);
 int db_json_search_func (JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALUE *esc_char,
-			 std::vector<std::string> &paths, const std::vector<std::regex> &regs);
+			 std::vector<std::string> &paths, const std::vector<std::regex> &regs, bool find_all);
 int db_json_merge_func (const JSON_DOC *source, JSON_DOC *&dest, bool patch);
 int db_json_get_all_paths_func (const JSON_DOC &doc, JSON_DOC *&result_json);
 void db_json_pretty_func (const JSON_DOC &doc, char *&result_str);

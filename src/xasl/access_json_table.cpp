@@ -176,7 +176,7 @@ namespace cubxasl
       bool result = false;
       TP_DOMAIN_STATUS status_cast = TP_DOMAIN_STATUS::DOMAIN_COMPATIBLE;
 
-      error_code = db_json_contains_path (&input, m_path, result);
+      error_code = db_json_contains_path (&input, std::vector<std::string> (1, m_path), false, result);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();

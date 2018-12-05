@@ -5538,6 +5538,10 @@ db_json_extract_multiple_paths (DB_VALUE * result, DB_VALUE * args[], int num_ar
   for (int path_idx = 1; path_idx < num_args; path_idx++)
     {
       path_value = args[path_idx];
+      if (extracted_doc != NULL)
+	{
+	  db_json_delete_doc (extracted_doc);
+	}
 
       // paths can only be strings
       error_code = db_value_to_json_path (path_value, F_JSON_EXTRACT, &path_str);
@@ -5564,6 +5568,7 @@ db_json_extract_multiple_paths (DB_VALUE * result, DB_VALUE * args[], int num_ar
 
       if (extracted_doc != NULL)
 	{
+	  // todo: result_doc needs unboxing in case of wildcards
 	  db_json_add_element_to_array (result_doc, extracted_doc);
 	}
       else

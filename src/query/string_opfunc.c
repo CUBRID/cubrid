@@ -3625,6 +3625,7 @@ db_json_contains_path (DB_VALUE * result, DB_VALUE * arg[], const int num_args)
   bool exists = false;
   int error_code = NO_ERROR;
   JSON_DOC *doc = NULL;
+  std::vector < std::string > paths;
   db_make_null (result);
 
   if (DB_IS_NULL (arg[0]) || DB_IS_NULL (arg[1]))
@@ -3663,23 +3664,28 @@ db_json_contains_path (DB_VALUE * result, DB_VALUE * arg[], const int num_args)
 	{
 	  goto end;
 	}
-
-      error_code = db_json_contains_path (doc, path, exists);
-      if (error_code != NO_ERROR)
-	{
-	  goto end;
-	}
-
-      if (find_all && !exists)
-	{
-	  db_make_int (result, (int) false);
-	  goto end;
-	}
-      if (!find_all && exists)
-	{
-	  db_make_int (result, (int) true);
-	  goto end;
-	}
+      paths.push_back (path);
+      //error_code = db_json_contains_path (doc, path, exists);
+      //if (error_code != NO_ERROR)
+      //{
+      //  goto end;
+      //}
+      //
+      //if (find_all && !exists)
+      //{
+      //  db_make_int (result, (int) false);
+      //  goto end;
+      //}
+      //if (!find_all && exists)
+      //{
+      //  db_make_int (result, (int) true);
+      //  goto end;
+      //}
+    }
+  error_code = db_json_contains_path (doc, paths, find_all, exists);
+  if (error_code != NO_ERROR)
+    {
+      goto end;
     }
 
   // if we have not returned early last search is decisive
@@ -3844,7 +3850,7 @@ db_json_search_dbval (DB_VALUE * result, DB_VALUE * args[], const int num_args)
     }
 
   std::vector<std::string> paths;
-  error_code = db_json_search_func (*doc, pattern, esc_char, paths, regs);
+  error_code = db_json_search_func (*doc, pattern, esc_char, paths, regs, find_all);
 
   db_json_delete_doc (doc);
   if (error_code != NO_ERROR)
