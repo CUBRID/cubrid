@@ -288,7 +288,6 @@ class JSON_ARRAY_ITERATOR : public JSON_ITERATOR
       assert (new_doc.IsArray ());
 
       m_input_doc = &new_doc;
-
       m_iterator = new_doc.GetArray ().Begin ();
     }
 
@@ -311,11 +310,6 @@ JSON_ARRAY_ITERATOR::has_next ()
       return false;
     }
 
-  char *temp = NULL;
-  db_json_unquote (*m_input_doc, temp);
-  std::string s1 (temp);
-  db_private_free (NULL, temp);
-
   JSON_VALUE_ITERATOR end = m_input_doc->GetArray ().End ();
 
   return (m_iterator + 1) != end;
@@ -335,11 +329,6 @@ JSON_OBJECT_ITERATOR::has_next ()
     {
       return false;
     }
-
-  char *temp = NULL;
-  db_json_unquote (*m_input_doc, temp);
-  std::string s1 (temp);
-  db_private_free (NULL, temp);
 
   JSON_MEMBER_ITERATOR end = m_input_doc->MemberEnd ();
 
@@ -514,7 +503,7 @@ class JSON_DUPLICATE_KEYS_CHECKER : public JSON_WALKER
 class JSON_TREE_FUNCTION : public JSON_WALKER
 {
   public:
-    JSON_TREE_FUNCTION (const std::function<int (JSON_VALUE &, const std::string &, bool &stop)> &func);
+    JSON_TREE_FUNCTION (std::function<int (JSON_VALUE &, const std::string &, bool &)> func);
     JSON_TREE_FUNCTION (JSON_TREE_FUNCTION &) = delete;
     ~JSON_TREE_FUNCTION () override = default;
 
@@ -524,11 +513,8 @@ class JSON_TREE_FUNCTION : public JSON_WALKER
     int CallOnArrayIterate () override;
     int CallOnKeyIterate (JSON_VALUE &key) override;
 
-    std::function<int (JSON_VALUE &, const std::string &, bool &stop)> producer;
-
+    std::function<int (JSON_VALUE &, const std::string &, bool &)> producer;
     const std::string m_starting_path;
-    bool m_find_all;
-    bool m_skip_other_matches;
     std::stack<unsigned int> m_index;
     std::vector<std::string> path_items;
 };
@@ -810,22 +796,15 @@ int JSON_DUPLICATE_KEYS_CHECKER::CallBefore (JSON_VALUE &value)
   return NO_ERROR;
 }
 
-JSON_TREE_FUNCTION::JSON_TREE_FUNCTION (const std::function<int (JSON_VALUE &, const std::string &, bool &stop)> &func)
+JSON_TREE_FUNCTION::JSON_TREE_FUNCTION (std::function<int (JSON_VALUE &, const std::string &, bool &)> func)
   : producer (func)
   , m_starting_path ("$")
-  , m_find_all (true)
-  , m_skip_other_matches (false)
 {
   //
 }
 
 int JSON_TREE_FUNCTION::CallBefore (JSON_VALUE &value)
 {
-  if (m_skip_other_matches)
-    {
-      return NO_ERROR;
-    }
-
   if (value.IsArray ())
     {
       m_index.push (0);
@@ -841,12 +820,6 @@ int JSON_TREE_FUNCTION::CallBefore (JSON_VALUE &value)
 
 int JSON_TREE_FUNCTION::CallAfter (JSON_VALUE &value)
 {
-  int error_code = NO_ERROR;
-  if (m_skip_other_matches)
-    {
-      return NO_ERROR;
-    }
-
   if (value.IsArray ())
     {
       m_index.pop ();
@@ -864,18 +837,13 @@ int JSON_TREE_FUNCTION::CallAfter (JSON_VALUE &value)
       accumulated += sub_path;
     }
   accumulated += "\"";
-  error_code = producer (value, accumulated, m_stop);
+  int error_code = producer (value, accumulated, m_stop);
 
   return error_code;
 }
 
 int JSON_TREE_FUNCTION::CallOnArrayIterate ()
 {
-  if (m_skip_other_matches)
-    {
-      return NO_ERROR;
-    }
-
   std::string path_item = "[";
   path_item += std::to_string (m_index.top ()++);
   path_item += "]";
@@ -886,11 +854,6 @@ int JSON_TREE_FUNCTION::CallOnArrayIterate ()
 
 int JSON_TREE_FUNCTION::CallOnKeyIterate (JSON_VALUE &key)
 {
-  if (m_skip_other_matches)
-    {
-      return NO_ERROR;
-    }
-
   std::string path_item = ".";
   path_item += key.GetString ();
 
@@ -1368,7 +1331,7 @@ db_json_value_get_depth (const JSON_VALUE *doc)
  * return                  : error code
  * doc_to_be_inserted (in) : document to be inserted
  * doc_destination (in)    : destination document
- * paths (in)              : extraction path
+ * paths (in)              : paths from where to extract
  * result (out)            : resulting doc
  * example                 : json_extract('{"a":["b", 123]}', '/a/1') yields 123
  */
@@ -1460,8 +1423,8 @@ db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<
  *
  * return                  : error code
  * document (in)           : document where to search
- * paths (in)              : starting paths for finding
- * find_all (in)           : whether the document should containt all paths
+ * paths (in)              : paths
+ * find_all (in)           : whether the document needs to contain all paths
  * result (out)            : true/false
  */
 int
@@ -1481,11 +1444,12 @@ db_json_contains_path (const JSON_DOC *document, const std::vector<std::string> 
     }
   std::vector<unsigned char> found_set (paths.size (), 0);
 
-  auto f = [&regs, &found_set, find_all] (JSON_VALUE &v, const std::string& accumulated_path, bool &stop) -> int
+  const auto f_find = [&regs, &found_set, find_all] (JSON_VALUE &v, const std::string &accumulated_path,
+		      bool &stop) -> int
   {
     for (std::size_t i = 0; i < regs.size (); ++i)
       {
-	if (std::regex_match (accumulated_path, regs[i]))
+	if (found_set[i] == 0 && std::regex_match (accumulated_path, regs[i]))
 	  {
 	    found_set[i] = 1;
 	    if (!find_all)
@@ -1498,7 +1462,7 @@ db_json_contains_path (const JSON_DOC *document, const std::vector<std::string> 
     return NO_ERROR;
   };
 
-  JSON_TREE_FUNCTION json_contains_path_walker (f);
+  JSON_TREE_FUNCTION json_contains_path_walker (f_find);
   // todo: remove const_cast
   json_contains_path_walker.WalkDocument (const_cast<JSON_DOC &> (*document));
 
@@ -2084,6 +2048,7 @@ db_json_remove_func (JSON_DOC &doc, const char *raw_path)
  *
  * paths (in): json path strings
  * regs (in/out): resulting regexes
+ * match_exactly (in) : whether to match whole string or to match any prefix
  *
  */
 int
@@ -2169,8 +2134,9 @@ db_json_search_func (JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALUE *esc
 		     const std::vector<std::regex> &regs, bool find_all)
 {
   std::unordered_set<std::string> paths_gathered;
-  auto f = [&regs, &paths, pattern, esc_char, find_all, &paths_gathered] (JSON_VALUE &jv, const std::string &crt_path,
-	   bool &stop) -> int
+  auto f_search = [&regs, &paths, pattern, esc_char, find_all, &paths_gathered] (JSON_VALUE &jv,
+		  const std::string &crt_path,
+		  bool &stop) -> int
   {
     if (!jv.IsString ())
       {
@@ -2212,7 +2178,7 @@ db_json_search_func (JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALUE *esc
     // no regex was matched
   };
 
-  JSON_TREE_FUNCTION json_search_walker (f);
+  JSON_TREE_FUNCTION json_search_walker (f_search);
   return json_search_walker.WalkDocument (doc);
 }
 

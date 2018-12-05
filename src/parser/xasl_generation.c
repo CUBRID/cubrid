@@ -4644,21 +4644,16 @@ pt_make_json_table_spec_node_internal (PARSER_CONTEXT * parser, PT_JSON_TABLE_NO
 
   // set the expand type
 
-  std::string s (result.m_path);
-  for (int i = 0; i < s.length (); ++i)
+  if (result.m_path)
     {
-      if (s[i] == '*')
+      for (int i = 0; result.m_path[i] != '\0'; ++i)
 	{
-	  // json_extract on '*' json_paths results in iterable arrays
-	  result.m_expand_type = json_table_expand_type::JSON_TABLE_ARRAY_EXPAND;
-	  break;
+	  if (result.m_path[i] == '*')
+	    {
+	      result.m_expand_type = json_table_expand_type::JSON_TABLE_ARRAY_EXPAND;
+	      break;
+	    }
 	}
-    }
-
-  if (result.check_need_expand ())
-    {
-      // trim the path to extract directly from this new path
-      result.set_parent_path ();
     }
 
   // create columns

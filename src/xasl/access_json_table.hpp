@@ -92,7 +92,6 @@ namespace cubxasl
 
       bool check_need_expand () const;
       static bool str_ends_with (const std::string &str, const std::string &end);
-      void set_parent_path ();
       void init_iterator ();
     };
 

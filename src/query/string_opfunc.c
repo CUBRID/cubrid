@@ -3625,7 +3625,9 @@ db_json_contains_path (DB_VALUE * result, DB_VALUE * arg[], const int num_args)
   bool exists = false;
   int error_code = NO_ERROR;
   JSON_DOC *doc = NULL;
-  std::vector < std::string > paths;
+  /* *INDENT-OFF* */
+  std::vector<std::string> paths;
+  /* *INDENT-ON* */
   db_make_null (result);
 
   if (DB_IS_NULL (arg[0]) || DB_IS_NULL (arg[1]))
@@ -3645,54 +3647,35 @@ db_json_contains_path (DB_VALUE * result, DB_VALUE * arg[], const int num_args)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
       error_code = ER_QSTR_INVALID_DATA_TYPE;
-      goto end;
+      db_json_delete_doc (doc);
+      return error_code;
     }
 
   for (int i = 2; i < num_args; ++i)
     {
+      const char *path;
       if (DB_IS_NULL (arg[i]))
 	{
-	  goto end;
+	  db_json_delete_doc (doc);
+	  return error_code;
 	}
-    }
-
-  for (int i = 2; i < num_args; ++i)
-    {
-      const char *path = db_get_string (arg[i]);
-
+      path = db_get_string (arg[i]);
       if (path == NULL)
 	{
-	  goto end;
+	  db_json_delete_doc (doc);
+	  return error_code;
 	}
       paths.push_back (path);
-      //error_code = db_json_contains_path (doc, path, exists);
-      //if (error_code != NO_ERROR)
-      //{
-      //  goto end;
-      //}
-      //
-      //if (find_all && !exists)
-      //{
-      //  db_make_int (result, (int) false);
-      //  goto end;
-      //}
-      //if (!find_all && exists)
-      //{
-      //  db_make_int (result, (int) true);
-      //  goto end;
-      //}
     }
+
   error_code = db_json_contains_path (doc, paths, find_all, exists);
   if (error_code != NO_ERROR)
     {
-      goto end;
+      db_json_delete_doc (doc);
+      return error_code;
     }
 
-  // if we have not returned early last search is decisive
   db_make_int (result, (int) exists);
-
-end:
-  db_json_delete_doc (doc);
   return error_code;
 }
 
@@ -3837,7 +3820,6 @@ db_json_search_dbval (DB_VALUE * result, DB_VALUE * args[], const int num_args)
     }
 
   std::vector<std::regex> regs;
-  // wildcards or not, compute regexes
   if (starting_paths.empty ())
     {
       starting_paths.push_back ("$");
@@ -3875,9 +3857,8 @@ db_json_search_dbval (DB_VALUE * result, DB_VALUE * args[], const int num_args)
     }
 
   result_json = db_json_allocate_doc ();
-  for (size_t i = 0; i < paths.size (); ++i)
+  for (std::size_t i = 0; i < paths.size (); ++i)
     {
-
       JSON_DOC *json_array_elem = nullptr;
 
       error_code = db_json_get_json_from_str (paths[i].c_str (), json_array_elem, paths[i].length ());

@@ -313,16 +313,6 @@ namespace cubxasl
     }
 
     void
-    node::set_parent_path ()
-    {
-      if (!check_need_expand ())
-	{
-	  assert (false);
-	  return;
-	}
-    }
-
-    void
     node::init_iterator ()
     {
       if (check_need_expand ())

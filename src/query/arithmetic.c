@@ -5534,12 +5534,10 @@ db_json_extract_multiple_paths (DB_VALUE * result, DB_VALUE * args[], int num_ar
       return error_code;
     }
 
-  JSON_DOC *result_doc = NULL;	// result JSON document; it will be converted to array later
-  const DB_VALUE *path_value;
-
-  TP_DOMAIN_STATUS domain_status = DOMAIN_COMPATIBLE;
-
-  std::vector < std::string > paths;
+  JSON_DOC *result_doc = NULL;
+  /* *INDENT-OFF* */
+  std::vector<std::string> paths;
+  /* *INDENT-ON* */
   for (int path_idx = 1; path_idx < num_args; path_idx++)
     {
       const DB_VALUE *path_value = args[path_idx];
