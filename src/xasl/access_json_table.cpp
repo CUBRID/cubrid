@@ -198,8 +198,6 @@ namespace cubxasl
     int
     column::evaluate_ordinality (size_t ordinality)
     {
-      TP_DOMAIN_STATUS status_cast = TP_DOMAIN_STATUS::DOMAIN_COMPATIBLE;
-
       assert (m_domain->type->id == DB_TYPE_INTEGER);
 
       db_make_int (m_output_value_pointer, ordinality);
@@ -300,31 +298,12 @@ namespace cubxasl
 	}
     }
 
-    bool
-    node::str_ends_with (const std::string &str, const std::string &end)
-    {
-      return end.size () <= str.size () && str.compare (str.size () - end.size (), end.size (), end) == 0;
-    }
-
-    bool
-    node::check_need_expand () const
-    {
-      return m_expand_type != json_table_expand_type::JSON_TABLE_NO_EXPAND;
-    }
-
     void
-    node::init_iterator ()
+    node::init_iterator()
     {
-      if (check_need_expand ())
+      if (m_expand_type == json_table_expand_type::JSON_TABLE_ARRAY_EXPAND)
 	{
-	  if (m_expand_type == json_table_expand_type::JSON_TABLE_ARRAY_EXPAND)
-	    {
-	      m_iterator = db_json_create_iterator (DB_JSON_TYPE::DB_JSON_ARRAY);
-	    }
-	  else if (m_expand_type == json_table_expand_type::JSON_TABLE_OBJECT_EXPAND)
-	    {
-	      assert (false);
-	    }
+	  m_iterator = db_json_create_iterator (DB_JSON_TYPE::DB_JSON_ARRAY);
 	}
     }
 
