@@ -739,6 +739,7 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
   int is_first_out = 0;
   char *tmp;
   int result_cache_lifetime;
+  bool is_first_statement = true;
 
   if ((flag & CCI_PREPARE_UPDATABLE) && (flag & CCI_PREPARE_HOLDABLE))
     {
@@ -870,28 +871,42 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
       db_session_set_xasl_cache_pinned (session, true, false);
     }
 
-  stmt_id = db_compile_statement (session);
-  if (stmt_id < 0)
+  while (1)
     {
-      stmt_type = get_stmt_type (sql_stmt);
-      if (stmt_id == ER_PT_SEMANTIC && stmt_type != CUBRID_MAX_STMT_TYPE)
-	{
-	  db_close_session (session);
-	  session = NULL;
-	  num_markers = get_num_markers (sql_stmt);
-	}
+      stmt_id = db_compile_statement (session);
+      if (stmt_id < 0)
+        {
+          stmt_type = get_stmt_type (sql_stmt);
+          if (stmt_id == ER_PT_SEMANTIC && stmt_type != CUBRID_MAX_STMT_TYPE)
+	    {
+	      db_close_session (session);
+	      session = NULL;
+	      num_markers = get_num_markers (sql_stmt);
+	    }
+          else
+	    {
+	      err_code = ERROR_INFO_SET (stmt_id, DBMS_ERROR_INDICATOR);
+	      goto prepare_error;
+	    }
+          srv_handle->is_prepared = FALSE;
+          break;
+        }
       else
-	{
-	  err_code = ERROR_INFO_SET (stmt_id, DBMS_ERROR_INDICATOR);
-	  goto prepare_error;
-	}
-      srv_handle->is_prepared = FALSE;
-    }
-  else
-    {
-      num_markers = get_num_markers (sql_stmt);
-      stmt_type = db_get_statement_type (session, stmt_id);
-      srv_handle->is_prepared = TRUE;
+        {
+          if (is_first_statement)
+            {
+              num_markers = get_num_markers (sql_stmt);
+              stmt_type = db_get_statement_type (session, stmt_id);
+              srv_handle->is_prepared = TRUE;
+              is_first_statement = false;
+            }
+
+          if (db_session_is_last_statement (session))
+            {
+              break;
+            }
+          /* compile next statement */
+        }
     }
 
 prepare_result_set:
