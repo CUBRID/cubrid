@@ -79,6 +79,7 @@ struct sm_constraint_info
   SM_FOREIGN_KEY_ACTION fk_update_action;
   DB_CONSTRAINT_TYPE constraint_type;
   const char *comment;
+  SM_INDEX_STATUS index_status;
 };
 
 extern ROOT_CLASS sm_Root_class;
