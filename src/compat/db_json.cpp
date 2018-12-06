@@ -1454,13 +1454,13 @@ db_json_contains_path (const JSON_DOC *document, const std::vector<std::string> 
       return error_code;
     }
 
-  std::shared_ptr<bool[]> found_set (new bool[paths.size ()]);
+  std::unique_ptr<bool[]> found_set (new bool[paths.size ()]);
   for (std::size_t i = 0; i < paths.size (); ++i)
     {
       found_set[i] = false;
     }
 
-  const map_func_type &f_find = [&regs, found_set, find_all] (JSON_VALUE &v, const std::string &accumulated_path,
+  const map_func_type &f_find = [&regs, &found_set, find_all] (JSON_VALUE &v, const std::string &accumulated_path,
 				bool &stop) -> int
   {
     for (std::size_t i = 0; i < regs.size (); ++i)
