@@ -57,7 +57,6 @@
 
 #define	SYS_CONNECT_BY_PATH_MEM_STEP	256
 
-static int qdata_dummy (THREAD_ENTRY * thread_p, DB_VALUE * result_p, int num_args, DB_VALUE ** args);
 static bool qdata_is_zero_value_date (DB_VALUE * dbval_p);
 
 static int qdata_add_short (short s, DB_VALUE * dbval_p, DB_VALUE * result_p);
@@ -212,73 +211,10 @@ static int qdata_insert_substring_function (THREAD_ENTRY * thread_p, FUNCTION_TY
 static int qdata_elt (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
 		      QFILE_TUPLE tuple);
 
-static int
-qdata_convert_operands_to_value_and_call (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
-					  OID * obj_oid_p, QFILE_TUPLE tuple,
-					  int (*function_to_call) (DB_VALUE *, DB_VALUE * const *, int const));
-
-static int
-qdata_json_object (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-		   QFILE_TUPLE tuple);
-
-static int
-qdata_json_array (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-		  QFILE_TUPLE tuple);
-static int
-qdata_json_insert (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-		   QFILE_TUPLE tuple);
-
-static int
-qdata_json_replace (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-		    QFILE_TUPLE tuple);
-
-static int
-qdata_json_set (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-		QFILE_TUPLE tuple);
-
-static int
-qdata_json_keys (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-		 QFILE_TUPLE tuple);
-
-static int
-qdata_json_remove (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-		   QFILE_TUPLE tuple);
-
-static int
-qdata_json_array_append (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-			 QFILE_TUPLE tuple);
-
-static int
-qdata_json_array_insert (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-			 QFILE_TUPLE tuple);
-
-static int
-qdata_json_search (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-		   QFILE_TUPLE tuple);
-
-static int
-qdata_json_contains_path (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-			  QFILE_TUPLE tuple);
-
-static int
-qdata_json_extract_multiple_paths (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
-				   OID * obj_oid_p, QFILE_TUPLE tuple);
-
-static int
-qdata_json_get_all_paths (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-			  QFILE_TUPLE tuple);
-
-static int
-qdata_json_merge (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-		  QFILE_TUPLE tuple);
-
-static int
-qdata_json_merge_patch (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-			QFILE_TUPLE tuple);
-
-static int (*generic_func_ptrs[]) (THREAD_ENTRY * thread_p, DB_VALUE *, int, DB_VALUE **) =
-{
-qdata_dummy};
+static int qdata_convert_operands_to_value_and_call (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p,
+						     VAL_DESCR * val_desc_p, OID * obj_oid_p, QFILE_TUPLE tuple,
+						     int (*function_to_call) (DB_VALUE *, DB_VALUE * const *,
+									      int const));
 
 static int qdata_calculate_aggregate_cume_dist_percent_rank (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_p,
 							     VAL_DESCR * val_desc_p);
@@ -287,22 +223,6 @@ static int qdata_update_agg_interpolation_func_value_and_domain (AGGREGATE_TYPE 
 
 static int qdata_evaluate_interpolation_function (THREAD_ENTRY * thread_p, void *func_p, QFILE_LIST_SCAN_ID * scan_id,
 						  bool is_analytic);
-
-/*
- * qdata_dummy () -
- *   return:
- *   res(in)    :
- *   num_args(in)       :
- *   args(in)   :
- *
- * Note: dummy generic function.
- */
-static int
-qdata_dummy (THREAD_ENTRY * thread_p, DB_VALUE * result_p, int num_args, DB_VALUE ** args)
-{
-  db_make_null (result_p);
-  return ER_FAILED;
-}
 
 static bool
 qdata_is_zero_value_date (DB_VALUE * dbval_p)
@@ -8339,70 +8259,8 @@ static int
 qdata_evaluate_generic_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
 				 OID * obj_oid_p, QFILE_TUPLE tuple)
 {
-#if defined(ENABLE_UNUSED_FUNCTION)
-  DB_VALUE *args[NUM_F_GENERIC_ARGS];
-  DB_VALUE *result_p = function_p->value;
-  DB_VALUE *offset_dbval_p;
-  int offset;
-  REGU_VARIABLE_LIST operand = function_p->operand;
-  int i, num_args;
-  int (*function) (THREAD_ENTRY * thread_p, DB_VALUE *, int, DB_VALUE **);
-
-  /* by convention the first argument for the function is the function jump table offset and is not a real argument to
-   * the function. */
-  if (!operand
-      || fetch_peek_dbval (thread_p, &operand->value, val_desc_p, NULL, obj_oid_p, tuple, &offset_dbval_p) != NO_ERROR
-      || db_value_type (offset_dbval_p) != DB_TYPE_INTEGER)
-    {
-      goto error;
-    }
-
-  offset = db_get_int (offset_dbval_p);
-  if (offset >= (SSIZEOF (generic_func_ptrs) / SSIZEOF (generic_func_ptrs[0])))
-    {
-      goto error;
-    }
-
-  function = generic_func_ptrs[offset];
-  /* initialize the argument array */
-  for (i = 0; i < NUM_F_GENERIC_ARGS; i++)
-    {
-      args[i] = NULL;
-    }
-
-  /* skip the first argument, it is only the offset into the jump table */
-  operand = operand->next;
-  num_args = 0;
-
-  while (operand)
-    {
-      num_args++;
-      if (num_args > NUM_F_GENERIC_ARGS)
-	{
-	  goto error;
-	}
-
-      if (fetch_peek_dbval (thread_p, &operand->value, val_desc_p, NULL, obj_oid_p, tuple, &args[num_args - 1]) !=
-	  NO_ERROR)
-	{
-	  goto error;
-	}
-
-      operand = operand->next;
-    }
-
-  if ((*function) (thread_p, result_p, num_args, args) != NO_ERROR)
-    {
-      goto error;
-    }
-
-  return NO_ERROR;
-
-error:
-#else /* ENABLE_UNUSED_FUNCTION */
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_GENERIC_FUNCTION_FAILURE, 0);
   return ER_FAILED;
-#endif /* ENABLE_UNUSED_FUNCTION */
 }
 
 /*
@@ -8524,50 +8382,77 @@ qdata_evaluate_function (THREAD_ENTRY * thread_p, REGU_VARIABLE * function_p, VA
     case F_ELT:
       return qdata_elt (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
 
-    case F_JSON_OBJECT:
-      return qdata_json_object (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
-
     case F_JSON_ARRAY:
-      return qdata_json_array (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
-
-    case F_JSON_INSERT:
-      return qdata_json_insert (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
-
-    case F_JSON_REPLACE:
-      return qdata_json_replace (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
-
-    case F_JSON_SET:
-      return qdata_json_set (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
-
-    case F_JSON_KEYS:
-      return qdata_json_keys (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
-
-    case F_JSON_REMOVE:
-      return qdata_json_remove (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple, db_json_array);
 
     case F_JSON_ARRAY_APPEND:
-      return qdata_json_array_append (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+						       db_json_array_append);
 
     case F_JSON_ARRAY_INSERT:
-      return qdata_json_array_insert (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+						       db_json_array_insert);
 
-    case F_JSON_SEARCH:
-      return qdata_json_search (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+    case F_JSON_CONTAINS:
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+						       db_json_contains_dbval);
 
     case F_JSON_CONTAINS_PATH:
-      return qdata_json_contains_path (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+						       db_json_contains_path);
+
+    case F_JSON_DEPTH:
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+						       db_json_depth_dbval);
 
     case F_JSON_EXTRACT:
-      return qdata_json_extract_multiple_paths (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+						       db_json_extract_multiple_paths);
 
     case F_JSON_GET_ALL_PATHS:
-      return qdata_json_get_all_paths (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+						       db_json_get_all_paths);
+
+    case F_JSON_INSERT:
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple, db_json_insert);
+
+    case F_JSON_KEYS:
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple, db_json_keys);
+
+    case F_JSON_LENGTH:
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+						       db_json_length_dbval);
 
     case F_JSON_MERGE:
-      return qdata_json_merge (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple, db_json_merge);
 
     case F_JSON_MERGE_PATCH:
-      return qdata_json_merge_patch (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+						       db_json_merge_patch);
+
+    case F_JSON_OBJECT:
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple, db_json_object);
+
+    case F_JSON_PRETTY:
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+						       db_json_pretty_dbval);
+
+    case F_JSON_QUOTE:
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+						       db_json_quote_dbval);
+
+    case F_JSON_REMOVE:
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple, db_json_remove);
+
+    case F_JSON_REPLACE:
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple, db_json_replace);
+
+    case F_JSON_SEARCH:
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+						       db_json_search_dbval);
+
+    case F_JSON_SET:
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple, db_json_set);
 
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
@@ -10246,118 +10131,6 @@ qdata_convert_operands_to_value_and_call (THREAD_ENTRY * thread_p, FUNCTION_TYPE
 exit:
   db_private_free (thread_p, args);
   return error_status;
-}
-
-static int
-qdata_json_object (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-		   QFILE_TUPLE tuple)
-{
-  return qdata_convert_operands_to_value_and_call (thread_p, function_p, val_desc_p, obj_oid_p, tuple, db_json_object);
-}
-
-static int
-qdata_json_array (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-		  QFILE_TUPLE tuple)
-{
-  return qdata_convert_operands_to_value_and_call (thread_p, function_p, val_desc_p, obj_oid_p, tuple, db_json_array);
-}
-
-static int
-qdata_json_insert (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-		   QFILE_TUPLE tuple)
-{
-  return qdata_convert_operands_to_value_and_call (thread_p, function_p, val_desc_p, obj_oid_p, tuple, db_json_insert);
-}
-
-static int
-qdata_json_replace (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-		    QFILE_TUPLE tuple)
-{
-  return qdata_convert_operands_to_value_and_call (thread_p, function_p, val_desc_p, obj_oid_p, tuple, db_json_replace);
-}
-
-static int
-qdata_json_set (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-		QFILE_TUPLE tuple)
-{
-  return qdata_convert_operands_to_value_and_call (thread_p, function_p, val_desc_p, obj_oid_p, tuple, db_json_set);
-}
-
-static int
-qdata_json_keys (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-		 QFILE_TUPLE tuple)
-{
-  return qdata_convert_operands_to_value_and_call (thread_p, function_p, val_desc_p, obj_oid_p, tuple, db_json_keys);
-}
-
-static int
-qdata_json_remove (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-		   QFILE_TUPLE tuple)
-{
-  return qdata_convert_operands_to_value_and_call (thread_p, function_p, val_desc_p, obj_oid_p, tuple, db_json_remove);
-}
-
-static int
-qdata_json_array_append (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-			 QFILE_TUPLE tuple)
-{
-  return qdata_convert_operands_to_value_and_call (thread_p, function_p, val_desc_p,
-						   obj_oid_p, tuple, db_json_array_append);
-}
-
-static int
-qdata_json_array_insert (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-			 QFILE_TUPLE tuple)
-{
-  return qdata_convert_operands_to_value_and_call (thread_p, function_p, val_desc_p,
-						   obj_oid_p, tuple, db_json_array_insert);
-}
-
-static int
-qdata_json_search (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-		   QFILE_TUPLE tuple)
-{
-  return qdata_convert_operands_to_value_and_call (thread_p, function_p, val_desc_p,
-						   obj_oid_p, tuple, db_json_search_dbval);
-}
-
-static int
-qdata_json_contains_path (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-			  QFILE_TUPLE tuple)
-{
-  return qdata_convert_operands_to_value_and_call (thread_p, function_p, val_desc_p,
-						   obj_oid_p, tuple, db_json_contains_path);
-}
-
-static int
-qdata_json_extract_multiple_paths (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
-				   OID * obj_oid_p, QFILE_TUPLE tuple)
-{
-  return qdata_convert_operands_to_value_and_call (thread_p, function_p, val_desc_p,
-						   obj_oid_p, tuple, db_json_extract_multiple_paths);
-}
-
-static int
-qdata_json_get_all_paths (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-			  QFILE_TUPLE tuple)
-{
-  return qdata_convert_operands_to_value_and_call (thread_p, function_p, val_desc_p,
-						   obj_oid_p, tuple, db_json_get_all_paths);
-}
-
-static int
-qdata_json_merge (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-		  QFILE_TUPLE tuple)
-{
-  return qdata_convert_operands_to_value_and_call (thread_p, function_p, val_desc_p, obj_oid_p, tuple, db_json_merge);
-}
-
-static int
-qdata_json_merge_patch (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-			QFILE_TUPLE tuple)
-{
-  return qdata_convert_operands_to_value_and_call (thread_p, function_p, val_desc_p,
-						   obj_oid_p, tuple, db_json_merge_patch);
 }
 
 /*

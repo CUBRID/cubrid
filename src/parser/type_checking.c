@@ -19934,11 +19934,15 @@ pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_TYPE fcode, DB_VALUE 
       break;
 
     case F_JSON_CONTAINS:
-      //error = db_json_contains_dbval (result, args, num_args);
+      error = db_json_contains_dbval (result, args, num_args);
       break;
 
     case F_JSON_CONTAINS_PATH:
       error = db_json_contains_path (result, args, num_args);
+      break;
+
+    case F_JSON_DEPTH:
+      error = db_json_depth_dbval (result, args, num_args);
       break;
 
     case F_JSON_EXTRACT:
@@ -19957,6 +19961,10 @@ pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_TYPE fcode, DB_VALUE 
       error = db_json_keys (result, args, num_args);
       break;
 
+    case F_JSON_LENGTH:
+      error = db_json_length_dbval (result, args, num_args);
+      break;
+
     case F_JSON_MERGE:
       error = db_json_merge (result, args, num_args);
       break;
@@ -19967,6 +19975,14 @@ pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_TYPE fcode, DB_VALUE 
 
     case F_JSON_OBJECT:
       error = db_json_object (result, args, num_args);
+      break;
+
+    case F_JSON_PRETTY:
+      error = db_json_pretty_dbval (result, args, num_args);
+      break;
+
+    case F_JSON_QUOTE:
+      error = db_json_unquote_dbval (result, args, num_args);
       break;
 
     case F_JSON_REPLACE:
@@ -19983,6 +19999,18 @@ pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_TYPE fcode, DB_VALUE 
 
     case F_JSON_SET:
       error = db_json_set (result, args, num_args);
+      break;
+
+    case F_JSON_TYPE:
+      error = db_json_type_dbval (result, args, num_args);
+      break;
+
+    case F_JSON_UNQUOTE:
+      error = db_json_unquote_dbval (result, args, num_args);
+      break;
+
+    case F_JSON_VALID:
+      error = db_json_valid_dbval (result, args, num_args);
       break;
 
     default:

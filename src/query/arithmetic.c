@@ -5137,11 +5137,17 @@ db_json_contains_dbval (DB_VALUE * result, DB_VALUE * const *arg, int const num_
 }
 
 int
-db_json_type_dbval (const DB_VALUE * json, DB_VALUE * type_res)
+db_json_type_dbval (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
 {
+  if (num_args != 1)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+  DB_VALUE *json = arg[0];
   if (DB_IS_NULL (json))
     {
-      return db_make_null (type_res);
+      return db_make_null (result);
     }
   else
     {
@@ -5151,35 +5157,49 @@ db_json_type_dbval (const DB_VALUE * json, DB_VALUE * type_res)
       type = db_json_get_type_as_str (db_get_json_document (json));
       length = strlen (type);
 
-      return db_make_varchar (type_res, length, (DB_C_CHAR) type, length, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
+      return db_make_varchar (result, length, (DB_C_CHAR) type, length, LANG_COERCIBLE_CODESET, LANG_COERCIBLE_COLL);
     }
 }
 
 int
-db_json_valid_dbval (const DB_VALUE * json, DB_VALUE * type_res)
+db_json_valid_dbval (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
 {
+  if (num_args != 1)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+  DB_VALUE *json = arg[0];
   if (DB_IS_NULL (json))
     {
-      return db_make_null (type_res);
+      return db_make_null (result);
     }
   else
     {
       bool valid = db_json_is_valid (db_get_string (json));
 
-      return db_make_int (type_res, (int) valid);
+      return db_make_int (result, valid ? 1 : 0);
     }
 }
 
 int
-db_json_length_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * res)
+db_json_length_dbval (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
 {
   JSON_DOC *this_doc = NULL;
   int error_code;
   bool doc_needs_clear = false;
 
+  if (num_args < 1 || num_args > 2)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+  DB_VALUE *json = arg[0];
+  DB_VALUE *path = (num_args == 1) ? NULL : arg[1];
+
   if (DB_IS_NULL (json) || (path != NULL && DB_IS_NULL (path)))
     {
-      return db_make_null (res);
+      return db_make_null (result);
     }
   else
     {
@@ -5210,38 +5230,60 @@ db_json_length_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * r
 	    {
 	      db_json_delete_doc (this_doc);
 	    }
-	  return db_make_int (res, length);
+	  return db_make_int (result, length);
 	}
       else
 	{
-	  return db_make_null (res);
+	  return db_make_null (result);
 	}
     }
 }
 
 int
-db_json_depth_dbval (DB_VALUE * json, DB_VALUE * res)
+db_json_depth_dbval (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
 {
+  if (num_args != 1)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+  DB_VALUE *json = arg[0];
   if (DB_IS_NULL (json))
     {
-      return db_make_null (res);
+      return db_make_null (result);
     }
   else
     {
       unsigned int depth = db_json_get_depth (db_get_json_document (json));
 
-      return db_make_int (res, depth);
+      return db_make_int (result, depth);
     }
 }
 
 int
-db_json_unquote_dbval (DB_VALUE * json, DB_VALUE * res)
+db_json_quote_dbval (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
 {
-  int error_code;
+  if (num_args != 1)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+  return db_string_quote (arg[0], result);
+}
 
+int
+db_json_unquote_dbval (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
+{
+  int error_code = NO_ERROR;
+  if (num_args != 1)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+  DB_VALUE *json = arg[0];
   if (DB_IS_NULL (json))
     {
-      error_code = db_make_null (res);
+      error_code = db_make_null (result);
     }
   else
     {
@@ -5253,27 +5295,32 @@ db_json_unquote_dbval (DB_VALUE * json, DB_VALUE * res)
 	  return error_code;
 	}
 
-      error_code = db_make_string (res, str);
+      error_code = db_make_string (result, str);
       if (error_code != NO_ERROR)
 	{
 	  return error_code;
 	}
 
       // db_json_unquote uses strdup, therefore set need_clear flag
-      res->need_clear = true;
+      result->need_clear = true;
     }
 
   return error_code;
 }
 
 int
-db_json_pretty_dbval (DB_VALUE * json, DB_VALUE * res)
+db_json_pretty_dbval (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
 {
-  int error_code;
-
+  int error_code = NO_ERROR;
+  if (num_args != 1)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+  DB_VALUE *json = arg[0];
   if (DB_IS_NULL (json))
     {
-      error_code = db_make_null (res);
+      error_code = db_make_null (result);
     }
   else
     {
@@ -5281,14 +5328,14 @@ db_json_pretty_dbval (DB_VALUE * json, DB_VALUE * res)
 
       db_json_pretty_func (*db_get_json_document (json), str);
 
-      error_code = db_make_string (res, str);
+      error_code = db_make_string (result, str);
       if (error_code != NO_ERROR)
 	{
 	  return error_code;
 	}
 
       // db_json_pretty_func uses strdup, therefore set need_clear flag
-      res->need_clear = true;
+      result->need_clear = true;
     }
 
   return error_code;
