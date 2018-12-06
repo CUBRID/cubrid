@@ -3818,13 +3818,20 @@ db_json_search_dbval (DB_VALUE * result, DB_VALUE * args[], const int num_args)
       // todo: only path validation is available?
       starting_paths.emplace_back (s);
     }
+  
+  std::vector<std::string> transformed_paths;
+  for (const auto &path : starting_paths)
+  {
+    transformed_paths.emplace_back();
+    db_json_convert_pointer_to_sql_path (path.c_str(), transformed_paths.back ());
+  }
 
   std::vector<std::regex> regs;
   if (starting_paths.empty ())
     {
       starting_paths.push_back ("$");
     }
-  error_code = db_json_paths_to_regex (starting_paths, regs);
+  error_code = db_json_paths_to_regex (transformed_paths, regs);
   if (error_code != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);

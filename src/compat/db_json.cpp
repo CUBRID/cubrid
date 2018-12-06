@@ -730,7 +730,6 @@ static void db_json_normalize_path (std::string &path_string);
 static void db_json_remove_leading_zeros_index (std::string &index);
 static bool db_json_isspace (const unsigned char &ch);
 static bool db_json_iszero (const unsigned char &ch);
-static int db_json_convert_pointer_to_sql_path (const char *pointer_path, std::string &sql_path_out);
 static JSON_PATH_TYPE db_json_get_path_type (std::string &path_string);
 static void db_json_build_path_special_chars (const JSON_PATH_TYPE &json_path_type,
     std::unordered_map<std::string, std::string> &special_chars);
@@ -1381,9 +1380,16 @@ db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<
 	}
     }
 
+  std::vector<std::string> transformed_paths;
+  for (const auto &path : paths)
+    {
+      transformed_paths.emplace_back ();
+      db_json_convert_pointer_to_sql_path (path.c_str (), transformed_paths.back ());
+    }
+
   std::vector<JSON_VALUE *> produced;
   std::vector<std::regex> regs;
-  error_code = db_json_paths_to_regex (paths, regs, true);
+  error_code = db_json_paths_to_regex (transformed_paths, regs, true);
   if (error_code)
     {
       return error_code;
@@ -1447,8 +1453,15 @@ db_json_contains_path (const JSON_DOC *document, const std::vector<std::string> 
       return false;
     }
 
+  std::vector<std::string> transformed_paths;
+  for (const auto &path : paths)
+    {
+      transformed_paths.emplace_back ();
+      db_json_convert_pointer_to_sql_path (path.c_str (), transformed_paths.back ());
+    }
+
   std::vector<std::regex> regs;
-  error_code = db_json_paths_to_regex (paths, regs);
+  error_code = db_json_paths_to_regex (transformed_paths, regs);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -3273,7 +3286,7 @@ db_json_replace_token_special_chars (std::string &token,
  * A pointer path is converted to SQL standard path
  * Example: /0/name1/name2/2 -> $[0]."name1"."name2"[2]
  */
-static int
+int
 db_json_convert_pointer_to_sql_path (const char *pointer_path, std::string &sql_path_out)
 {
   std::string pointer_path_string (pointer_path);

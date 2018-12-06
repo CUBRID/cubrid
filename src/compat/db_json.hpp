@@ -139,6 +139,7 @@ JSON_ITERATOR *db_json_create_iterator (const DB_JSON_TYPE &type);
 void db_json_delete_json_iterator (JSON_ITERATOR *&json_itr);
 void db_json_clear_json_iterator (JSON_ITERATOR *&json_itr);
 
+int db_json_convert_pointer_to_sql_path (const char *pointer_path, std::string &sql_path_out);
 DB_JSON_TYPE db_json_get_type (const JSON_DOC *doc);
 
 int db_json_get_int_from_document (const JSON_DOC *doc);
