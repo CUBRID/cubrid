@@ -288,7 +288,6 @@ static PT_NODE *pt_check_function_collation (PARSER_CONTEXT * parser, PT_NODE * 
 static void pt_hv_consistent_data_type_with_domain (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_update_host_var_data_type (PARSER_CONTEXT * parser, PT_NODE * hv_node);
 static bool pt_cast_needs_wrap_for_collation (PT_NODE * node, const INTL_CODESET codeset);
-static PT_TYPE_ENUM pt_to_variable_size_type (PT_TYPE_ENUM type_enum);
 
 /*
  * pt_get_expression_definition () - get the expression definition for the
@@ -19990,7 +19989,7 @@ pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_TYPE fcode, DB_VALUE 
       break;
 
     case F_JSON_QUOTE:
-      error = db_json_unquote_dbval (result, args, num_args);
+      error = db_json_quote_dbval (result, args, num_args);
       break;
 
     case F_JSON_REPLACE:
@@ -24999,7 +24998,7 @@ pt_cast_needs_wrap_for_collation (PT_NODE * node, const INTL_CODESET codeset)
 // return         : if input type can have variable size, it returns the variable size. otherwise, returns input type
 // type_enum (in) : any type
 //
-static PT_TYPE_ENUM
+PT_TYPE_ENUM
 pt_to_variable_size_type (PT_TYPE_ENUM type_enum)
 {
   switch (type_enum)

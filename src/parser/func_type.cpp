@@ -47,6 +47,11 @@ std::vector<func_signature> func_signature::integer_doc =
   {PT_TYPE_INTEGER, {PT_GENERIC_TYPE_JSON_DOC}, {}},
 };
 
+std::vector<func_signature> func_signature::integer_string =
+{
+  {PT_TYPE_INTEGER, {PT_GENERIC_TYPE_STRING}, {}},
+};
+
 std::vector<func_signature> func_signature::bigint =
 {
   {PT_TYPE_BIGINT, {}, {}},
@@ -402,7 +407,7 @@ func_signature::get_signatures (FUNC_TYPE ft)
     case F_JSON_KEYS:
       return &json_keys;
     case F_JSON_LENGTH:
-      return &json_doc_path;
+      return &json_length;
     case F_JSON_MERGE:
     case F_JSON_MERGE_PATCH:
       return &json_doc_r_doc;
@@ -425,7 +430,7 @@ func_signature::get_signatures (FUNC_TYPE ft)
     case F_JSON_UNQUOTE:
       return &string_doc;
     case F_JSON_VALID:
-      return &integer_doc;
+      return &integer_string;
     case PT_FIRST_VALUE:
     case PT_LAST_VALUE:
       return &type0_nr_or_str;
@@ -1115,6 +1120,7 @@ Func::Node::set_return_type (const func_signature &signature)
       if (m_node->data_type != NULL && PT_IS_STRING_TYPE (m_node->type_enum))
 	{
 	  // always return string without precision
+	  m_node->type_enum = pt_to_variable_size_type (m_node->type_enum);
 	  m_node->data_type->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
 	}
     }

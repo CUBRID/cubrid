@@ -41,6 +41,7 @@ struct func_signature
   static std::vector<func_signature> bigint; //return bigint, no args
   static std::vector<func_signature> integer; //return integer, no args
   static std::vector<func_signature> integer_doc;
+  static std::vector<func_signature> integer_string;
   static std::vector<func_signature> bigint_discrete; //return bigint, arg: discrete
   static std::vector<func_signature> avg;
   static std::vector<func_signature> double_number; //return double, arg: any number type number

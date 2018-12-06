@@ -4080,7 +4080,14 @@ pt_show_function (FUNC_TYPE c)
       return "json_search";
     case F_JSON_SET:
       return "json_set";
+    case F_JSON_TYPE:
+      return "json_type";
+    case F_JSON_UNQUOTE:
+      return "json_unquote";
+    case F_JSON_VALID:
+      return "json_valid";
     default:
+      assert (false);
       return "unknown function";
     }
 }

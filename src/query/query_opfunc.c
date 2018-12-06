@@ -8454,6 +8454,18 @@ qdata_evaluate_function (THREAD_ENTRY * thread_p, REGU_VARIABLE * function_p, VA
     case F_JSON_SET:
       return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple, db_json_set);
 
+    case F_JSON_TYPE:
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+						       db_json_type_dbval);
+
+    case F_JSON_UNQUOTE:
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+						       db_json_unquote_dbval);
+
+    case F_JSON_VALID:
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+						       db_json_valid_dbval);
+
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
       return ER_FAILED;

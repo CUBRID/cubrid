@@ -1925,7 +1925,7 @@ db_string_quote (const DB_VALUE * str, DB_VALUE * res)
 	      special_idx.push_back (i);
 	    }
 	}
-      int dest_size = (int) (src_size + special_idx.size () + 2);
+      int dest_size = (int) (src_size + special_idx.size () + 2 /* quotes */  + 1 /* string terminator */ );
       char *result = (char *) db_private_alloc (NULL, dest_size);
       if (result == NULL)
 	{
@@ -1945,12 +1945,13 @@ db_string_quote (const DB_VALUE * str, DB_VALUE * res)
 	  src_last_pos = special_idx[i];
 	}
       memcpy (&result[dest_crt_pos], &src_str[src_last_pos], src_size - src_last_pos);
-      result[dest_size - 1] = '"';
+      result[dest_size - 2] = '"';
+      result[dest_size - 1] = '\0';
 
       db_make_null (res);
-      DB_TYPE result_type = DB_TYPE_CHAR;
-      qstr_make_typed_string (result_type, res, DB_VALUE_PRECISION (res), result,
-			      (const int) dest_size, db_get_string_codeset (str), db_get_string_collation (str));
+      DB_TYPE result_type = DB_TYPE_VARCHAR;
+      qstr_make_typed_string (result_type, res, TP_FLOATING_PRECISION_VALUE, result, strlen (result),
+			      db_get_string_codeset (str), db_get_string_collation (str));
 
       res->need_clear = true;
       return NO_ERROR;
@@ -1962,7 +1963,7 @@ db_string_quote (const DB_VALUE * str, DB_VALUE * res)
  *
  * Arguments:
  *             src_string: String which repeats itself.
- *		    count: Number of repetions.
+ *		    count: Number of repetitions.
  *		   result: string containing the repeated original.
  *
  * Returns: int
