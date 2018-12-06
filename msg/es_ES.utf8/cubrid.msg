@@ -1271,7 +1271,7 @@ $ LOADDB
 1202 Json PATH "%1$s" does not exist in %2$s
 1203 Invalid JSON type at path %1$s. Expected %2$s, but found %3$s.
 1204 Json KEY "%1$s" is duplicate
-1205 Reserved error for JSON.
+1205 Invalid type %1$s. Expecting JSON document compatible data type (STRING or JSON).
 1206 Reserved error for JSON.
 1207 Reserved error for JSON.
 1208 Reserved error for JSON.
@@ -1769,9 +1769,10 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 299 Error en CTE '%1$s': La parte no recursiva y la parte recursiva deben estar conectadas con UNION ALL.
 300 La subconsulta no está permitida en la cláusula DEFAULT.
 301 Could not find signatures for function %1$s()
-302 Incompatible argument type %1$s, expected type is: %2$s. Invalid signature %3$s.
-303 Unexpected number of arguments %1$d. Invalid signature %2$s.
+302 Incompatible argument type %1$s, expected type is: %2$s.
+303 Unexpected number of arguments %1$d.
 304 Could not find compatible signature for function %1$s()
+305 Signature %1$s is not compatible with function arguments.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sin memoria virtual: incapaz de asignar %1$d bytes.

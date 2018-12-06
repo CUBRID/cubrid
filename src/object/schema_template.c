@@ -95,10 +95,6 @@ static int add_resolution (SM_TEMPLATE * template_, MOP super_class, const char 
 static int delete_resolution (SM_TEMPLATE * template_, MOP super_class, const char *name, SM_NAME_SPACE name_space);
 static int smt_add_attribute_to_list (SM_ATTRIBUTE ** att_list, SM_ATTRIBUTE * att, const bool add_first,
 				      const char *add_after_attribute);
-static int smt_check_index_exist (SM_TEMPLATE * template_, char **out_shared_cons_name,
-				  DB_CONSTRAINT_TYPE constraint_type, const char *constraint_name,
-				  const char **att_names, const int *asc_desc, const SM_PREDICATE_INFO * filter_index,
-				  const SM_FUNCTION_INFO * function_index);
 static int smt_change_attribute (SM_TEMPLATE * template_, const char *name, const char *new_name,
 				 const char *new_domain_string, DB_DOMAIN * new_domain, const SM_NAME_SPACE name_space,
 				 const bool change_first, const char *change_after_attribute,
@@ -1876,7 +1872,7 @@ smt_drop_constraint (SM_TEMPLATE * template_, const char **att_names, const char
  *   filter_index(in): filter index info
  *   function_index(in): function index info
  */
-static int
+int
 smt_check_index_exist (SM_TEMPLATE * template_, char **out_shared_cons_name, DB_CONSTRAINT_TYPE constraint_type,
 		       const char *constraint_name, const char **att_names, const int *asc_desc,
 		       const SM_PREDICATE_INFO * filter_index, const SM_FUNCTION_INFO * function_index)
