@@ -4828,7 +4828,7 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg, const char *expr_st
   cum_statsp = &attr_infop->cum_stats;
   cum_statsp->type = pt_type_enum_to_db (QO_SEG_PT_NODE (seg)->type_enum);
   cum_statsp->valid_limits = false;
-  cum_statsp->is_indexed = true;
+  cum_statsp->is_indexed = false;
   cum_statsp->leafs = cum_statsp->pages = cum_statsp->height = 0;
   cum_statsp->keys = 0;
   cum_statsp->key_type = NULL;
@@ -4843,7 +4843,6 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg, const char *expr_st
       if (stats->attr_stats == NULL)
 	{
 	  /* the attribute statistics of the class were not set */
-	  cum_statsp->is_indexed = false;
 	  continue;
 	  /* We'll consider the segment to be indexed only if all of the attributes it represents are indexed. The
 	   * current optimization strategy makes it inconvenient to try to construct "mixed" (segment and index) scans
@@ -4856,6 +4855,12 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg, const char *expr_st
 	  /* search the attribute from the class information */
 	  attr_statsp = stats->attr_stats;
 	  n_attrs = stats->n_attrs;
+
+	  if (consp->index_status != SM_NORMAL_INDEX)
+	    {
+	      /* Skip not normal indexes. */
+	      continue;
+	    }
 
 	  if (consp->func_index_info && consp->func_index_info->col_id == 0
 	      && !intl_identifier_casecmp (expr_str, consp->func_index_info->expr_str))
@@ -4872,7 +4877,6 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg, const char *expr_st
 	      if (j == n_attrs)
 		{
 		  /* attribute not found, what happens to the class attribute? */
-		  cum_statsp->is_indexed = false;
 		  continue;
 		}
 
@@ -4890,6 +4894,11 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg, const char *expr_st
 		  /* first time */
 		  cum_statsp->valid_limits = true;
 		}
+
+	      /* This should always happen. We must find a matching index. */
+	      assert (j < attr_statsp->n_btstats);
+
+	      cum_statsp->is_indexed = true;
 
 	      cum_statsp->leafs += bstatsp->leafs;
 	      cum_statsp->pages += bstatsp->pages;
@@ -5105,7 +5114,7 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 		}
 	    }
 
-	  if (consp)		/* is unique index */
+	  if (consp && consp->index_status == SM_NORMAL_INDEX)	/* is unique index */
 	    {
 	      /* is class hierarchy index: set unique index statistics */
 	      cum_statsp->leafs = bt_statsp->leafs;
