@@ -14652,6 +14652,26 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	  goto error_exit;
 	}
 
+      if (index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+	{
+	  /* Check for shared constraints. */
+	  char *shared_cons_name = NULL;
+
+	  error = smt_check_index_exist (def, &shared_cons_name, constraint_type, constraint_name, att_names,
+					 asc_desc, filter_index, function_index);
+	  if (error != NO_ERROR)
+	    {
+	      smt_quit (def);
+	      goto error_exit;
+	    }
+
+	  if (shared_cons_name != NULL)
+	    {
+	      /* If index is shared with another constraint, build it as a normal index. */
+	      index_status = SM_NORMAL_INDEX;
+	    }
+	}
+
       error = sm_partitioned_class_type (classop, &partition_type, NULL, &sub_partitions);
       if (error != NO_ERROR)
 	{

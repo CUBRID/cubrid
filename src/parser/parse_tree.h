@@ -3676,6 +3676,19 @@ struct pt_coll_infer
 				 * for auto-CAST expressions around numbers: initially the string data type of CAST is
 				 * created with system charset by generic type checking but that charset can be forced
 				 * to another charset (of another argument) if this flag is set */
+
+#ifdef __cplusplus
+  // *INDENT-OFF*
+    pt_coll_infer ()
+      : coll_id (-1)
+      , codeset (INTL_CODESET_NONE)
+      , coerc_level (PT_COLLATION_NOT_APPLICABLE)
+      , can_force_cs (true)
+  {
+    //
+  }
+  // *INDENT-ON*
+#endif				// c++
 };
 
 void pt_init_node (PT_NODE * node, PT_NODE_TYPE node_type);

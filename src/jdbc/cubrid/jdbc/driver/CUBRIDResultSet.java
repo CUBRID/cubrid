@@ -1978,7 +1978,7 @@ public class CUBRIDResultSet implements ResultSet {
 
 	/* JDK 1.6 */
 	public boolean isClosed() throws SQLException {
-		throw new SQLException(new java.lang.UnsupportedOperationException());
+		return is_closed;
 	}
 
 	/* JDK 1.6 */
