@@ -4885,6 +4885,7 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg, const char *expr_st
 		{
 		  if (BTID_IS_EQUAL (&bstatsp->btid, &consp->index_btid) && bstatsp->has_function == 1)
 		    {
+		      assert (bstatsp->index_status == SM_NORMAL_INDEX);
 		      break;
 		    }
 		}
@@ -4958,6 +4959,7 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
   const char *name;
   int n, i, j;
   int n_func_indexes;
+  int n_unavail_indexes;
   SM_CLASS_CONSTRAINT *consp;
   CLASS_STATS *stats;
   bool is_reserved_name = false;
@@ -5070,17 +5072,23 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 	}
 
       n_func_indexes = 0;
+      n_unavail_indexes = 0;
       for (j = 0; j < attr_statsp->n_btstats; j++)
 	{
 	  if (attr_statsp->bt_stats[j].has_function == 1)
 	    {
 	      n_func_indexes++;
 	    }
+
+	  if (attr_statsp->bt_stats[j].index_status != SM_NORMAL_INDEX)
+	    {
+	      n_unavail_indexes++;
+	    }
 	}
 
-      if (attr_statsp->n_btstats - n_func_indexes <= 0 || !attr_statsp->bt_stats)
+      if ((attr_statsp->n_btstats - (n_func_indexes + n_unavail_indexes) <= 0) || (!attr_statsp->bt_stats))
 	{
-	  /* the attribute does not have any index */
+	  /* the attribute does not have any usable index */
 	  cum_statsp->is_indexed = false;
 	  continue;
 	  /* We'll consider the segment to be indexed only if all of the attributes it represents are indexed. The

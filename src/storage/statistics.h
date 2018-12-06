@@ -67,6 +67,7 @@ struct btree_stats
   int pkeys_size;		/* pkeys array size */
   int *pkeys;			/* partial keys info for example: index (a, b, ..., x) pkeys[0] -> # of {a} pkeys[1] ->
 				 * # of {a, b} ... pkeys[pkeys_size-1] -> # of {a, b, ..., x} */
+  int index_status;
 #if 0				/* reserved for future use */
   int reserved[BTREE_STATS_RESERVED_NUM];
 #endif

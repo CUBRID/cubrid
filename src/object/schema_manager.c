@@ -455,8 +455,7 @@ static DB_OBJLIST *sm_fetch_all_objects_internal (DB_OBJECT * op, DB_FETCH_MODE 
 						  LC_FETCH_VERSION_TYPE * force_fetch_version_type);
 static int sm_flush_and_decache_objects_internal (MOP obj, MOP obj_class_mop, int decache);
 
-static void sm_stats_remove_bt_stats_at_position (ATTR_STATS * attr_stats, int position);
-static void sm_stats_remove_online_index_stats (SM_CLASS * class_);
+static void sm_stats_assign_online_index_status (SM_CLASS * class_);
 
 static void sm_free_resident_classes_virtual_query_cache (void);
 
@@ -3789,9 +3788,11 @@ sm_get_class_with_statistics (MOP classop)
 	}
     }
 
-  /* Iterate through all constraints and check if there is any of them with online index build in progress. */
+  /* Iterate through all constraints and check if there is any of them with online index build in progress and set the
+   * corresponding status in stats field.
+   */
   // TODO - why not filter it in server?
-  sm_stats_remove_online_index_stats (class_);
+  sm_stats_assign_online_index_status (class_);
 
   return class_;
 }
@@ -3826,6 +3827,8 @@ sm_get_statistics_force (MOP classop)
 	      class_->stats = NULL;
 	    }
 	  stats = class_->stats = stats_get_statistics (WS_OID (classop), 0);
+
+	  sm_stats_assign_online_index_status (class_);
 	}
     }
 
@@ -3900,6 +3903,8 @@ sm_update_statistics (MOP classop, bool with_fullscan)
 		  /* get the new ones, should do this at the same time as the update operation to avoid two server
 		   * calls */
 		  class_->stats = stats_get_statistics (WS_OID (classop), 0);
+
+		  sm_stats_assign_online_index_status (class_);
 		}
 	    }
 	}
@@ -3953,6 +3958,8 @@ sm_update_all_statistics (bool with_fullscan)
 		      return (er_errid ());
 		    }
 		  class_->stats = stats_get_statistics (WS_OID (cl->op), 0);
+
+		  sm_stats_assign_online_index_status (class_);
 		}
 	    }
 	}
@@ -16385,15 +16392,12 @@ flatten_partition_info (SM_TEMPLATE * def, SM_TEMPLATE * flat)
 }
 
 /*
- * sm_stats_remove_online_index_stats () - Removes the online index statistics from the statistics arrays.
+ * sm_stats_assign_online_index_status () - Assign the online index status from the statistics arrays.
  * return        - void
  * class_ (in)   - Class that requested the statistics.
- *
- * Here, we have to remove the stats regarding the possible btid that represents
- * an online index build in progress.
  */
 static void
-sm_stats_remove_online_index_stats (SM_CLASS * class_)
+sm_stats_assign_online_index_status (SM_CLASS * class_)
 {
   SM_CLASS_CONSTRAINT *cons;
   int i;
@@ -16422,40 +16426,12 @@ sm_stats_remove_online_index_stats (SM_CLASS * class_)
 	    {
 	      if (BTID_IS_EQUAL (&class_->stats->attr_stats[i].bt_stats[j].btid, &online_index_btid) == 1)
 		{
-		  sm_stats_remove_bt_stats_at_position (&class_->stats->attr_stats[i], j);
+		  class_->stats->attr_stats[i].bt_stats[j].index_status = cons->index_status;
 		  break;
 		}
 	    }
 	}
     }
-}
-
-static void
-sm_stats_remove_bt_stats_at_position (ATTR_STATS * attr_stats, int position)
-{
-  BTREE_STATS *to_be_moved;
-  int i;
-
-  /* This moves the statistic at the end and makes it unavailable by decrementing the n_btstats */
-  if (attr_stats->bt_stats[position].pkeys != NULL)
-    {
-      /* First free the partial keys. */
-      db_ws_free_and_init (attr_stats->bt_stats[position].pkeys);
-    }
-
-  to_be_moved = &attr_stats->bt_stats[position];
-
-  /* Move the other statistics on a position to the left. */
-  for (i = position; i < attr_stats->n_btstats - 1; i++)
-    {
-      attr_stats->bt_stats[i] = attr_stats->bt_stats[i + 1];
-    }
-
-  /* Set the last position on the cleared statistic. */
-  attr_stats->bt_stats[attr_stats->n_btstats - 1] = *to_be_moved;
-
-  /* Make it unavailable. */
-  attr_stats->n_btstats--;
 }
 
 int

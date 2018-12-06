@@ -213,6 +213,8 @@ stats_client_unpack_statistics (char *buf_p)
 	      btree_stats_p->pkeys[k] = OR_GET_INT (buf_p);
 	      buf_p += OR_INT_SIZE;
 	    }
+
+	  btree_stats_p->index_status = SM_NORMAL_INDEX;
 	}
     }
 
