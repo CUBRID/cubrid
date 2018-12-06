@@ -12556,23 +12556,31 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
   switch (node->info.function.function_type)
     {
       // JSON functions are migrated to new checking function
-    case F_JSON_OBJECT:
-    case PT_JSON_OBJECTAGG:
     case F_JSON_ARRAY:
-    case PT_JSON_ARRAYAGG:
-    case F_JSON_MERGE:
-    case F_JSON_MERGE_PATCH:
-    case F_JSON_INSERT:
-    case F_JSON_REPLACE:
-    case F_JSON_SET:
     case F_JSON_ARRAY_APPEND:
     case F_JSON_ARRAY_INSERT:
+    case PT_JSON_ARRAYAGG:
+    case F_JSON_CONTAINS:
     case F_JSON_CONTAINS_PATH:
+    case F_JSON_DEPTH:
     case F_JSON_EXTRACT:
-    case F_JSON_REMOVE:
     case F_JSON_GET_ALL_PATHS:
-    case F_JSON_SEARCH:
     case F_JSON_KEYS:
+    case F_JSON_INSERT:
+    case F_JSON_LENGTH:
+    case F_JSON_MERGE:
+    case F_JSON_MERGE_PATCH:
+    case F_JSON_OBJECT:
+    case PT_JSON_OBJECTAGG:
+    case F_JSON_PRETTY:
+    case F_JSON_QUOTE:
+    case F_JSON_REMOVE:
+    case F_JSON_REPLACE:
+    case F_JSON_SEARCH:
+    case F_JSON_SET:
+    case F_JSON_TYPE:
+    case F_JSON_UNQUOTE:
+    case F_JSON_VALID:
       return pt_eval_function_type_new (parser, node);
 
       // legacy functions are still managed by old checking function; all should be migrated though

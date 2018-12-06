@@ -719,13 +719,26 @@ pt_is_expr_wrapped_function (PARSER_CONTEXT * parser, const PT_NODE * node)
   if (node->node_type == PT_FUNCTION)
     {
       function_type = node->info.function.function_type;
-      if (function_type == F_INSERT_SUBSTRING || function_type == F_ELT || function_type == F_JSON_OBJECT
-	  || function_type == F_JSON_ARRAY || function_type == F_JSON_INSERT || function_type == F_JSON_REMOVE
-	  || function_type == F_JSON_MERGE || function_type == F_JSON_MERGE_PATCH
+      if (function_type == F_INSERT_SUBSTRING
+	  || function_type == F_ELT
+	  || function_type == F_JSON_ARRAY
 	  || function_type == F_JSON_ARRAY_APPEND || function_type == F_JSON_ARRAY_INSERT
-	  || function_type == F_JSON_CONTAINS_PATH || function_type == F_JSON_EXTRACT
-	  || function_type == F_JSON_GET_ALL_PATHS || function_type == F_JSON_REPLACE || function_type == F_JSON_SET
-	  || function_type == F_JSON_KEYS || function_type == F_JSON_SEARCH)
+	  || function_type == F_JSON_CONTAINS || function_type == F_JSON_CONTAINS_PATH
+	  || function_type == F_JSON_DEPTH
+	  || function_type == F_JSON_EXTRACT
+	  || function_type == F_JSON_GET_ALL_PATHS
+	  || function_type == F_JSON_INSERT
+	  || function_type == F_JSON_KEYS
+	  || function_type == F_JSON_LENGTH
+	  || function_type == F_JSON_MERGE || function_type == F_JSON_MERGE_PATCH
+	  || function_type == F_JSON_OBJECT
+	  || function_type == F_JSON_PRETTY
+	  || function_type == F_JSON_QUOTE
+	  || function_type == F_JSON_REMOVE
+	  || function_type == F_JSON_REPLACE
+	  || function_type == F_JSON_SEARCH
+	  || function_type == F_JSON_SET
+	  || function_type == F_JSON_TYPE || function_type == F_JSON_UNQUOTE || function_type == F_JSON_VALID)
 	{
 	  return true;
 	}

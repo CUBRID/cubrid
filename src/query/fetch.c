@@ -3989,20 +3989,28 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	  switch (funcp->ftype)
 	    {
 	    case F_JSON_ARRAY:
-	    case F_JSON_OBJECT:
-	    case F_JSON_INSERT:
-	    case F_JSON_REPLACE:
-	    case F_JSON_SET:
-	    case F_JSON_KEYS:
-	    case F_JSON_REMOVE:
 	    case F_JSON_ARRAY_APPEND:
 	    case F_JSON_ARRAY_INSERT:
+	    case F_JSON_CONTAINS:
 	    case F_JSON_CONTAINS_PATH:
+	    case F_JSON_DEPTH:
 	    case F_JSON_EXTRACT:
+	    case F_JSON_GET_ALL_PATHS:
+	    case F_JSON_KEYS:
+	    case F_JSON_INSERT:
+	    case F_JSON_LENGTH:
 	    case F_JSON_MERGE:
 	    case F_JSON_MERGE_PATCH:
-	    case F_JSON_GET_ALL_PATHS:
+	    case F_JSON_OBJECT:
+	    case F_JSON_PRETTY:
+	    case F_JSON_QUOTE:
+	    case F_JSON_REMOVE:
+	    case F_JSON_REPLACE:
 	    case F_JSON_SEARCH:
+	    case F_JSON_SET:
+	    case F_JSON_TYPE:
+	    case F_JSON_UNQUOTE:
+	    case F_JSON_VALID:
 	      {
 		REGU_VARIABLE_LIST operand;
 
@@ -4185,21 +4193,29 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 
 	case F_INSERT_SUBSTRING:
 	case F_ELT:
-	case F_JSON_OBJECT:
 	case F_JSON_ARRAY:
-	case F_JSON_INSERT:
-	case F_JSON_REPLACE:
-	case F_JSON_SET:
-	case F_JSON_KEYS:
-	case F_JSON_REMOVE:
 	case F_JSON_ARRAY_APPEND:
 	case F_JSON_ARRAY_INSERT:
+	case F_JSON_CONTAINS:
 	case F_JSON_CONTAINS_PATH:
+	case F_JSON_DEPTH:
 	case F_JSON_EXTRACT:
-	case F_JSON_SEARCH:
+	case F_JSON_GET_ALL_PATHS:
+	case F_JSON_KEYS:
+	case F_JSON_INSERT:
+	case F_JSON_LENGTH:
 	case F_JSON_MERGE:
 	case F_JSON_MERGE_PATCH:
-	case F_JSON_GET_ALL_PATHS:
+	case F_JSON_OBJECT:
+	case F_JSON_PRETTY:
+	case F_JSON_QUOTE:
+	case F_JSON_REMOVE:
+	case F_JSON_REPLACE:
+	case F_JSON_SEARCH:
+	case F_JSON_SET:
+	case F_JSON_TYPE:
+	case F_JSON_UNQUOTE:
+	case F_JSON_VALID:
 	  break;
 
 	default:
