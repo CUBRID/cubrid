@@ -1059,15 +1059,6 @@ typedef enum
   T_CURRENT_DATE,
   T_CURRENT_TIME,
   T_CONV_TZ,
-  T_JSON_CONTAINS,
-  T_JSON_TYPE,
-  T_JSON_EXTRACT,
-  T_JSON_VALID,
-  T_JSON_QUOTE,
-  T_JSON_UNQUOTE,
-  T_JSON_LENGTH,
-  T_JSON_DEPTH,
-  T_JSON_PRETTY,
 } OPERATOR_TYPE;		/* arithmetic operator types */
 
 typedef enum

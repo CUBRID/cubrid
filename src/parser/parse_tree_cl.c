@@ -3919,25 +3919,8 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "schema_def";
     case PT_CONV_TZ:
       return "conv_tz";
-    case PT_JSON_CONTAINS:
-      return "json_contains";
-    case PT_JSON_TYPE:
-      return "json_type";
-    case PT_JSON_EXTRACT:
-      return "json_extract";
-    case PT_JSON_VALID:
-      return "json_valid";
-    case PT_JSON_QUOTE:
-      return "json_quote";
-    case PT_JSON_UNQUOTE:
-      return "json_unquote";
-    case PT_JSON_LENGTH:
-      return "json_length";
-    case PT_JSON_DEPTH:
-      return "json_depth";
-    case PT_JSON_PRETTY:
-      return "json_pretty";
     default:
+      assert (false);
       return "unknown opcode";
     }
 }
@@ -10189,89 +10172,6 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_ABS:
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
       q = pt_append_nulstring (parser, q, " abs(");
-      q = pt_append_varchar (parser, q, r1);
-      q = pt_append_nulstring (parser, q, ")");
-      break;
-    case PT_JSON_CONTAINS:
-      r1 = pt_print_bytes (parser, p->info.expr.arg1);
-      r2 = pt_print_bytes (parser, p->info.expr.arg2);
-
-      q = pt_append_nulstring (parser, q, " json_contains(");
-      q = pt_append_varchar (parser, q, r1);
-      q = pt_append_nulstring (parser, q, ", ");
-      q = pt_append_varchar (parser, q, r2);
-      if (p->info.expr.arg3 != NULL)
-	{
-	  r3 = pt_print_bytes (parser, p->info.expr.arg3);
-
-	  q = pt_append_nulstring (parser, q, ", ");
-	  q = pt_append_varchar (parser, q, r3);
-	}
-      q = pt_append_nulstring (parser, q, ")");
-      break;
-    case PT_JSON_EXTRACT:
-      r1 = pt_print_bytes (parser, p->info.expr.arg1);
-      r2 = pt_print_bytes (parser, p->info.expr.arg2);
-
-      q = pt_append_nulstring (parser, q, " json_extract(");
-      q = pt_append_varchar (parser, q, r1);
-      q = pt_append_nulstring (parser, q, ", ");
-      q = pt_append_varchar (parser, q, r2);
-      q = pt_append_nulstring (parser, q, ")");
-      break;
-    case PT_JSON_TYPE:
-      r1 = pt_print_bytes (parser, p->info.expr.arg1);
-
-      q = pt_append_nulstring (parser, q, " json_type(");
-      q = pt_append_varchar (parser, q, r1);
-      q = pt_append_nulstring (parser, q, ")");
-      break;
-    case PT_JSON_VALID:
-      r1 = pt_print_bytes (parser, p->info.expr.arg1);
-
-      q = pt_append_nulstring (parser, q, " json_valid(");
-      q = pt_append_varchar (parser, q, r1);
-      q = pt_append_nulstring (parser, q, ")");
-      break;
-    case PT_JSON_QUOTE:
-      r1 = pt_print_bytes (parser, p->info.expr.arg1);
-
-      q = pt_append_nulstring (parser, q, " json_quote(");
-      q = pt_append_varchar (parser, q, r1);
-      q = pt_append_nulstring (parser, q, ")");
-      break;
-    case PT_JSON_UNQUOTE:
-      r1 = pt_print_bytes (parser, p->info.expr.arg1);
-
-      q = pt_append_nulstring (parser, q, " json_unquote(");
-      q = pt_append_varchar (parser, q, r1);
-      q = pt_append_nulstring (parser, q, ")");
-      break;
-    case PT_JSON_LENGTH:
-      r1 = pt_print_bytes (parser, p->info.expr.arg1);
-
-      q = pt_append_nulstring (parser, q, " json_length(");
-      q = pt_append_varchar (parser, q, r1);
-      if (p->info.expr.arg2 != NULL)
-	{
-	  r2 = pt_print_bytes (parser, p->info.expr.arg2);
-
-	  q = pt_append_nulstring (parser, q, ", ");
-	  q = pt_append_varchar (parser, q, r2);
-	}
-      q = pt_append_nulstring (parser, q, ")");
-      break;
-    case PT_JSON_DEPTH:
-      r1 = pt_print_bytes (parser, p->info.expr.arg1);
-
-      q = pt_append_nulstring (parser, q, " json_depth(");
-      q = pt_append_varchar (parser, q, r1);
-      q = pt_append_nulstring (parser, q, ")");
-      break;
-    case PT_JSON_PRETTY:
-      r1 = pt_print_bytes (parser, p->info.expr.arg1);
-
-      q = pt_append_nulstring (parser, q, " json_pretty(");
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
       break;
@@ -18207,13 +18107,6 @@ pt_is_const_expr_node (PT_NODE * node)
 	case PT_INET_NTOA:
 	case PT_CHARSET:
 	case PT_COLLATION:
-	case PT_JSON_TYPE:
-	case PT_JSON_VALID:
-	case PT_JSON_QUOTE:
-	case PT_JSON_UNQUOTE:
-	case PT_JSON_DEPTH:
-	case PT_JSON_PRETTY:
-	  return pt_is_const_expr_node (node->info.expr.arg1);
 	case PT_COERCIBILITY:
 	  /* coercibility is always folded to constant */
 	  assert (false);
@@ -18221,16 +18114,6 @@ pt_is_const_expr_node (PT_NODE * node)
 
 	  return (pt_is_const_expr_node (node->info.expr.arg1) && pt_is_const_expr_node (node->info.expr.arg2)
 		  && pt_is_const_expr_node (node->info.expr.arg3));
-	case PT_JSON_EXTRACT:
-	  return (pt_is_const_expr_node (node->info.expr.arg1)
-		  && pt_is_const_expr_node (node->info.expr.arg2)) ? true : false;
-	case PT_JSON_CONTAINS:
-	  return (pt_is_const_expr_node (node->info.expr.arg1)
-		  && pt_is_const_expr_node (node->info.expr.arg2)
-		  && (node->info.expr.arg3 ? pt_is_const_expr_node (node->info.expr.arg3) : true)) ? true : false;
-	case PT_JSON_LENGTH:
-	  return (pt_is_const_expr_node (node->info.expr.arg1)
-		  && (node->info.expr.arg2 ? pt_is_const_expr_node (node->info.expr.arg2) : true)) ? true : false;
 	default:
 	  return false;
 	}
@@ -18669,15 +18552,6 @@ pt_is_allowed_as_function_index (const PT_NODE * expr)
     case PT_TO_DATETIME_TZ:
     case PT_TO_TIMESTAMP_TZ:
     case PT_CRC32:
-    case PT_JSON_CONTAINS:
-    case PT_JSON_TYPE:
-    case PT_JSON_EXTRACT:
-    case PT_JSON_VALID:
-    case PT_JSON_QUOTE:
-    case PT_JSON_UNQUOTE:
-    case PT_JSON_LENGTH:
-    case PT_JSON_DEPTH:
-    case PT_JSON_PRETTY:
       return true;
     case PT_TZ_OFFSET:
     default:

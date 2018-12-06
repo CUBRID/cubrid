@@ -1476,15 +1476,6 @@ typedef enum
   PT_CRC32,
   PT_SCHEMA_DEF,
   PT_CONV_TZ,
-  PT_JSON_CONTAINS,
-  PT_JSON_TYPE,
-  PT_JSON_EXTRACT,
-  PT_JSON_VALID,
-  PT_JSON_LENGTH,
-  PT_JSON_DEPTH,
-  PT_JSON_QUOTE,
-  PT_JSON_UNQUOTE,
-  PT_JSON_PRETTY,
 
   /* This is the last entry. Please add a new one before it. */
   PT_LAST_OPCODE

@@ -311,15 +311,6 @@ static FUNCTION_MAP functions[] = {
   {"crc32", PT_CRC32},
   {"schema_def", PT_SCHEMA_DEF},
   {"conv_tz", PT_CONV_TZ},
-  {"json_contains", PT_JSON_CONTAINS},
-  {"json_type", PT_JSON_TYPE},
-  // {"json_extract", PT_JSON_EXTRACT},  // grammar generates F_JSON_EXTRACT, which can accept any number of arguments
-  {"json_valid", PT_JSON_VALID},
-  {"json_unquote", PT_JSON_UNQUOTE},
-  {"json_length", PT_JSON_LENGTH},
-  {"json_quote", PT_JSON_QUOTE},
-  {"json_depth", PT_JSON_DEPTH},
-  {"json_pretty", PT_JSON_PRETTY},
 };
 
 
@@ -17078,7 +17069,9 @@ reserved_func
                         matcher->info.value.data_value.str = pt_append_bytes (this_parser, NULL, $3, strlen ($3));
                         PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, matcher);
                       }
-		    $$ = parser_make_expression (this_parser, PT_JSON_EXTRACT, $1, matcher, NULL);
+                    PT_NODE *first_arg = $1;
+                    first_arg->next = matcher;
+		    $$ = parser_make_expr_with_func (this_parser, F_JSON_EXTRACT, first_arg);
                     PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
                 DBG_PRINT}}
         | simple_path_id DOUBLE_RIGHT_ARROW CHAR_STRING
@@ -17091,7 +17084,9 @@ reserved_func
                         matcher->info.value.data_value.str = pt_append_bytes (this_parser, NULL, $3, strlen ($3));
                         PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, matcher);
                       }
-		    PT_NODE *extract_expr = parser_make_expr_with_func (this_parser, F_JSON_EXTRACT, matcher);
+                    PT_NODE *first_arg = $1;
+                    first_arg->next = matcher;
+		    PT_NODE *extract_expr = parser_make_expr_with_func (this_parser, F_JSON_EXTRACT, first_arg);
 		    $$ = parser_make_expr_with_func (this_parser, F_JSON_UNQUOTE, extract_expr);
                     PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
@@ -26686,39 +26681,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
 
       node = parser_make_expression (this_parser, key->op, a1, a2, a3);
       return node;
-    case PT_JSON_EXTRACT:
-      if (c != 2)
-	return NULL;
 
-      a1 = args;
-      a2 = a1->next;
-      a1->next = NULL;
-      a2->next = NULL;
-
-      node = parser_make_expression (this_parser, key->op, a1, a2, NULL);
-      return node;
-
-	case PT_DISK_SIZE:
- 		if (c != 1)
-	return NULL;
-
-       a1 = args;
-       node = parser_make_expression (this_parser, key->op, a1, NULL, NULL);
-       return node;
-    case PT_JSON_TYPE:
-    case PT_JSON_VALID:
-    case PT_JSON_DEPTH:
-    case PT_JSON_PRETTY:
-    case PT_JSON_QUOTE:
-    case PT_JSON_UNQUOTE:
-      if (c != 1)
-        return NULL;
-
-      a1 = args;
-      a1->next = NULL;
-
-      node = parser_make_expression (this_parser, key->op, a1, NULL, NULL);
-      return node;
     case PT_STRCMP:
       if (c != 2)
 	return NULL;
@@ -26786,33 +26749,6 @@ parser_keyword_func (const char *name, PT_NODE * args)
           node->do_not_fold = 1;
         }
 
-      return node;
-
-    case PT_JSON_CONTAINS:
-      if (c != 3 && c != 2)
-          return NULL;
-
-        a1 = args;
-        a2 = a1->next;
-        a3 = a2->next;
-        a1->next = NULL;
-        a2->next = NULL;
-        if (a3)
-          {
-            a3->next = NULL;
-          }
-      node = parser_make_expression (this_parser, key->op, a1, a2, a3);
-      return node;
-
-    case PT_JSON_LENGTH:
-      if (c != 1 && c != 2)
-          return NULL;
-
-      a1 = args;
-      a2 = a1->next;
-      a1->next = NULL;
-
-      node = parser_make_expression (this_parser, key->op, a1, a2, NULL);
       return node;
 
     default:
