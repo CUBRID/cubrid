@@ -95,10 +95,6 @@ static int add_resolution (SM_TEMPLATE * template_, MOP super_class, const char 
 static int delete_resolution (SM_TEMPLATE * template_, MOP super_class, const char *name, SM_NAME_SPACE name_space);
 static int smt_add_attribute_to_list (SM_ATTRIBUTE ** att_list, SM_ATTRIBUTE * att, const bool add_first,
 				      const char *add_after_attribute);
-static int smt_check_index_exist (SM_TEMPLATE * template_, char **out_shared_cons_name,
-				  DB_CONSTRAINT_TYPE constraint_type, const char *constraint_name,
-				  const char **att_names, const int *asc_desc, const SM_PREDICATE_INFO * filter_index,
-				  const SM_FUNCTION_INFO * function_index);
 static int smt_change_attribute (SM_TEMPLATE * template_, const char *name, const char *new_name,
 				 const char *new_domain_string, DB_DOMAIN * new_domain, const SM_NAME_SPACE name_space,
 				 const bool change_first, const char *change_after_attribute,
@@ -1876,7 +1872,7 @@ smt_drop_constraint (SM_TEMPLATE * template_, const char **att_names, const char
  *   filter_index(in): filter index info
  *   function_index(in): function index info
  */
-static int
+int
 smt_check_index_exist (SM_TEMPLATE * template_, char **out_shared_cons_name, DB_CONSTRAINT_TYPE constraint_type,
 		       const char *constraint_name, const char **att_names, const int *asc_desc,
 		       const SM_PREDICATE_INFO * filter_index, const SM_FUNCTION_INFO * function_index)
@@ -4828,44 +4824,4 @@ smt_change_constraint_status (SM_TEMPLATE * ctemplate, const char *index_name, S
     }
 
   return NO_ERROR;
-}
-
-int
-smt_is_online_index_allowed (MOP class_mop, SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
-			     const char *constraint_name, const char **att_names, const int *asc_desc,
-			     SM_PREDICATE_INFO * filter_index, SM_FUNCTION_INFO * function_index, bool * is_allowed)
-{
-#if defined (SA_MODE)
-  // We don't allow online index for SA_MODE.
-  *is_allowed = false;
-  return NO_ERROR;
-#else /* SA_MODE */
-  int error = NO_ERROR;
-  char *shared_cons_name = NULL;
-
-  *is_allowed = false;
-
-  if (class_mop->lock > IX_LOCK)
-    {
-      // if the transaction already hold a lock which is greater than IX,
-      // we don't allow online index creation for transaction consistency.
-      return NO_ERROR;
-    }
-
-  error = smt_check_index_exist (template_, &shared_cons_name, constraint_type, constraint_name, att_names,
-				 asc_desc, filter_index, function_index);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
-  if (shared_cons_name != NULL)
-    {
-      /* If index is shared with another constraint, build it as a normal index. */
-      return NO_ERROR;
-    }
-
-  *is_allowed = true;
-  return NO_ERROR;
-#endif /* !SA_MODE */
 }
