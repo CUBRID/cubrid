@@ -1893,6 +1893,50 @@ db_string_substring (const MISC_OPERAND substr_operand, const DB_VALUE * src_str
   return error_status;
 }
 
+int
+db_string_escape (const char *src_str, int src_size, char **res_string, int *dest_size)
+{
+  int dest_crt_pos;
+  int src_last_pos;
+
+  // *INDENT-OFF*
+  std::vector<int> special_idx;
+  // *INDENT-ON*
+  for (int i = 0; i < src_size; ++i)
+    {
+      unsigned char uc = (unsigned char) src_str[i];
+      if (ESCAPE_CHAR (uc))
+	{
+	  special_idx.push_back (i);
+	}
+    }
+  *dest_size = (int) (src_size + special_idx.size () + 2);
+  char *result = (char *) db_private_alloc (NULL, *dest_size);
+  if (result == NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  result[0] = '"';
+  dest_crt_pos = 1;
+  src_last_pos = 0;
+  for (int i = 0; i < special_idx.size (); ++i)
+    {
+      int len = special_idx[i] - src_last_pos;
+      memcpy (&result[dest_crt_pos], &src_str[src_last_pos], len);
+      dest_crt_pos += len;
+      result[dest_crt_pos] = '\\';
+      ++dest_crt_pos;
+      src_last_pos = special_idx[i];
+    }
+
+  memcpy (&result[dest_crt_pos], &src_str[src_last_pos], src_size - src_last_pos);
+  result[*dest_size - 1] = '"';
+
+  *res_string = result;
+  return NO_ERROR;
+}
+
 /*
  * db_string_quote - escape a string and surround it with quotes
  *   return: If success, return 0.
@@ -1910,46 +1954,18 @@ db_string_quote (const DB_VALUE * str, DB_VALUE * res)
   else
     {
       char *src_str = db_get_string (str);
-      int src_size = db_get_string_size (str);
-      int dest_crt_pos;
-      int src_last_pos;
 
-      // *INDENT-OFF*
-      std::vector<int> special_idx;
-      // *INDENT-ON*
-      for (int i = 0; i < src_size; ++i)
+      char *res_string = NULL;
+      int dest_size;
+      int error_code = db_string_escape (src_str, db_get_string_size (str), &res_string, &dest_size);
+      if (error_code)
 	{
-	  unsigned char uc = (unsigned char) src_str[i];
-	  if (ESCAPE_CHAR (uc))
-	    {
-	      special_idx.push_back (i);
-	    }
+	  return error_code;
 	}
-      int dest_size = (int) (src_size + special_idx.size () + 2);
-      char *result = (char *) db_private_alloc (NULL, dest_size);
-      if (result == NULL)
-	{
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-
-      result[0] = '"';
-      dest_crt_pos = 1;
-      src_last_pos = 0;
-      for (int i = 0; i < special_idx.size (); ++i)
-	{
-	  int len = special_idx[i] - src_last_pos;
-	  memcpy (&result[dest_crt_pos], &src_str[src_last_pos], len);
-	  dest_crt_pos += len;
-	  result[dest_crt_pos] = '\\';
-	  ++dest_crt_pos;
-	  src_last_pos = special_idx[i];
-	}
-      memcpy (&result[dest_crt_pos], &src_str[src_last_pos], src_size - src_last_pos);
-      result[dest_size - 1] = '"';
 
       db_make_null (res);
       DB_TYPE result_type = DB_TYPE_CHAR;
-      qstr_make_typed_string (result_type, res, DB_VALUE_PRECISION (res), result,
+      qstr_make_typed_string (result_type, res, DB_VALUE_PRECISION (res), res_string,
 			      (const int) dest_size, db_get_string_codeset (str), db_get_string_collation (str));
 
       res->need_clear = true;
@@ -3817,20 +3833,21 @@ db_json_search_dbval (DB_VALUE * result, DB_VALUE * args[], const int num_args)
       // todo: improve paths validation
       // todo: only path validation is available?
       starting_paths.emplace_back (s);
-    }
-  
-  std::vector<std::string> transformed_paths;
-  for (const auto &path : starting_paths)
-  {
-    transformed_paths.emplace_back();
-    db_json_convert_pointer_to_sql_path (path.c_str(), transformed_paths.back ());
-  }
+    }  
 
   std::vector<std::regex> regs;
   if (starting_paths.empty ())
     {
       starting_paths.push_back ("$");
     }
+
+  std::vector<std::string> transformed_paths;
+  for (const auto &path : starting_paths)
+  {
+    transformed_paths.emplace_back();
+    db_json_convert_pointer_to_sql_path (path.c_str (), transformed_paths.back ());
+  }
+
   error_code = db_json_paths_to_regex (transformed_paths, regs);
   if (error_code != NO_ERROR)
     {
@@ -3855,7 +3872,17 @@ db_json_search_dbval (DB_VALUE * result, DB_VALUE * args[], const int num_args)
   JSON_DOC *result_json = nullptr;
   if (paths.size () == 1)
     {
-      error_code = db_json_get_json_from_str (paths[0].c_str (), result_json, paths[0].length ());
+      char * escaped;
+      int escaped_size;
+      // escape things between quotes
+      error_code = db_string_escape (paths[0].c_str () + 1, paths[0].size() - 2 , &escaped, &escaped_size);
+      if (error_code)
+      {
+        db_private_free (NULL, escaped);
+        return error_code;
+      }
+      error_code = db_json_get_json_from_str (escaped, result_json, escaped_size);
+      db_private_free (NULL, escaped);
       if (error_code != NO_ERROR)
 	{
 	  return error_code;
@@ -3868,7 +3895,19 @@ db_json_search_dbval (DB_VALUE * result, DB_VALUE * args[], const int num_args)
     {
       JSON_DOC *json_array_elem = nullptr;
 
-      error_code = db_json_get_json_from_str (paths[i].c_str (), json_array_elem, paths[i].length ());
+      char * escaped;
+      int escaped_size;
+      // escape things between quotes
+      error_code = db_string_escape(paths[i].c_str() + 1, paths[i].size() - 2, &escaped, &escaped_size);
+      if (error_code)
+      {
+        db_json_delete_doc (result_json);
+        db_private_free (NULL, escaped);
+        return error_code;
+      }
+
+      error_code = db_json_get_json_from_str(escaped, result_json, escaped_size);
+      db_private_free (NULL, escaped);
       if (error_code != NO_ERROR)
 	{
 	  db_json_delete_doc (result_json);

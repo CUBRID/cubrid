@@ -738,7 +738,7 @@ static std::vector<std::string> db_json_split_path_by_delimiters (const std::str
 static std::size_t skip_whitespaces (const std::string &path, std::size_t token_begin);
 static bool db_json_sql_path_is_valid (std::string &sql_path, bool allow_wildcards);
 static bool db_json_path_is_token_valid_quoted_object_key (const std::string &path, std::size_t &token_begin);
-static bool db_json_path_is_token_valid_unquoted_object_key (const std::string &path, std::size_t &token_begin);
+static bool db_json_path_is_token_valid_unquoted_object_key (std::string &path, std::size_t &token_begin);
 static void json_path_strip_whitespaces (std::string &sql_path);
 static int db_json_er_set_path_does_not_exist (const char *file_name, const int line_no, const std::string &path,
     const JSON_DOC *doc);
@@ -849,8 +849,9 @@ int JSON_PATH_MAPPER::CallOnArrayIterate ()
 
 int JSON_PATH_MAPPER::CallOnKeyIterate (JSON_VALUE &key)
 {
-  std::string path_item = ".";
+  std::string path_item = ".\"";
   path_item += key.GetString ();
+  path_item += "\"";
 
   ReplaceLastItem (path_item);
   return NO_ERROR;
@@ -2109,7 +2110,7 @@ db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<std::
 	      if (i < wild_card.length () - 1 && wild_card[i + 1] == '*')
 		{
 		  // wild_card '**'. Match any string
-		  ss << "[([:alnum:]|\\.|\\[|\\])]*";
+		  ss << "[([:alnum:]|\\.|\\[|\\]|\")]*";
 		  ++i;
 		}
 	      else if (i > 0 && wild_card[i - 1] == '[')
@@ -2120,7 +2121,7 @@ db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<std::
 	      else
 		{
 		  // wild_card '.*'. Match alphanumerics only
-		  ss << "[[:alnum:]]+";
+		  ss << "\"[[:alnum:]]*\"";
 		}
 	      break;
 	    default:
@@ -2840,17 +2841,13 @@ db_json_get_path_type (std::string &path_string)
 {
   db_json_normalize_path (path_string);
 
-  if (path_string.empty ())
+  if (path_string.empty () || path_string[0] != '$')
     {
-      return JSON_PATH_TYPE::JSON_PATH_EMPTY;
-    }
-  else if (path_string[0] == '$')
-    {
-      return JSON_PATH_TYPE::JSON_PATH_SQL_JSON;
+      return JSON_PATH_TYPE::JSON_PATH_POINTER;
     }
   else
     {
-      return JSON_PATH_TYPE::JSON_PATH_POINTER;
+      return JSON_PATH_TYPE::JSON_PATH_SQL_JSON;
     }
 }
 
@@ -2916,10 +2913,7 @@ db_json_split_path_by_delimiters (const std::string &path, const std::string &de
       else if (path[end] != '"' || ((end >= 1) && path[end - 1] != '\\'))
 	{
 	  const std::string &substring = path.substr (start, end - start);
-	  if (!substring.empty ())
-	    {
-	      tokens.push_back (substring);
-	    }
+	  tokens.push_back (substring);
 
 	  start = end + 1;
 	}
@@ -2928,10 +2922,7 @@ db_json_split_path_by_delimiters (const std::string &path, const std::string &de
     }
 
   const std::string &substring = path.substr (start, end);
-  if (!substring.empty ())
-    {
-      tokens.push_back (substring);
-    }
+  tokens.push_back (substring);
 
   std::size_t tokens_size = tokens.size ();
   for (std::size_t i = 0; i < tokens_size; i++)
@@ -3043,7 +3034,7 @@ db_json_path_is_token_valid_quoted_object_key (const std::string &path, std::siz
  * token_begin (in/out)    : beginning offset of the token, is replaced with beginning of the next token or path.length ()
  */
 static bool
-db_json_path_is_token_valid_unquoted_object_key (const std::string &path, std::size_t &token_begin)
+db_json_path_is_token_valid_unquoted_object_key (std::string &path, std::size_t &token_begin)
 {
   std::size_t i = token_begin;
 
@@ -3056,6 +3047,9 @@ db_json_path_is_token_valid_unquoted_object_key (const std::string &path, std::s
 
   ++i;
   for (; i < path.length () && std::isalnum (static_cast<unsigned char> (path[i])); ++i);
+
+  // append to object key before space stripping (at the end of the calling function)
+  path.insert (i++, "\"");
 
   token_begin = skip_whitespaces (path, i);
   return true;
@@ -3134,6 +3128,10 @@ db_json_sql_path_is_valid (std::string &sql_path, bool allow_wildcards)
 	      break;
 	    default:
 	      // unquoted object_keys
+	      // we normalize object_keys by quoting them - e.g. $."objectkey" will be representant for $.objectkey
+	      sql_path.insert (i++, "\"");
+	      // finishing " is appended in the following function call
+	      // todo: rename functions to express purpose
 	      if (!db_json_path_is_token_valid_unquoted_object_key (sql_path, i))
 		{
 		  return false;
@@ -3292,12 +3290,12 @@ db_json_convert_pointer_to_sql_path (const char *pointer_path, std::string &sql_
   std::string pointer_path_string (pointer_path);
   JSON_PATH_TYPE json_path_type = db_json_get_path_type (pointer_path_string);
 
-  if (json_path_type == JSON_PATH_TYPE::JSON_PATH_EMPTY
-      || json_path_type == JSON_PATH_TYPE::JSON_PATH_SQL_JSON)
+  if (json_path_type == JSON_PATH_TYPE::JSON_PATH_SQL_JSON)
     {
       // path is not JSON path format; consider it SQL path.
       sql_path_out = pointer_path_string;
-      return NO_ERROR;
+      db_json_sql_path_is_valid (sql_path_out, true);
+      return db_json_sql_path_is_valid (sql_path_out, true);
     }
 
   std::unordered_map<std::string, std::string> special_chars;
@@ -3309,20 +3307,27 @@ db_json_convert_pointer_to_sql_path (const char *pointer_path, std::string &sql_
   // first we need to split into tokens
   std::vector<std::string> tokens = db_json_split_path_by_delimiters (pointer_path_string, db_Json_pointer_delimiters);
 
-  for (std::string &token : tokens)
+  for (std::size_t i = 0; i < tokens.size (); ++i)
     {
-      if (db_json_path_is_token_valid_array_index (token, false))
+      // skip first if empty
+      // can special json pointer characters be present in the first token?
+      if (i == 0 && tokens[i] == "")
+	{
+	  continue;
+	}
+
+      if (db_json_path_is_token_valid_array_index (tokens[i], false))
 	{
 	  sql_path_out += "[";
-	  sql_path_out += token;
+	  sql_path_out += tokens[i];
 	  sql_path_out += "]";
 	}
       else
 	{
 	  sql_path_out += ".\"";
 	  // replace special characters if necessary based on mapper
-	  db_json_replace_token_special_chars (token, special_chars);
-	  sql_path_out += token;
+	  db_json_replace_token_special_chars (tokens[i], special_chars);
+	  sql_path_out += tokens[i];
 	  sql_path_out += "\"";
 	}
     }
