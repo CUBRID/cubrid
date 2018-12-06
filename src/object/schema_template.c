@@ -1872,7 +1872,7 @@ smt_drop_constraint (SM_TEMPLATE * template_, const char **att_names, const char
  *   filter_index(in): filter index info
  *   function_index(in): function index info
  */
-static int
+int
 smt_check_index_exist (SM_TEMPLATE * template_, char **out_shared_cons_name, DB_CONSTRAINT_TYPE constraint_type,
 		       const char *constraint_name, const char **att_names, const int *asc_desc,
 		       const SM_PREDICATE_INFO * filter_index, const SM_FUNCTION_INFO * function_index)
