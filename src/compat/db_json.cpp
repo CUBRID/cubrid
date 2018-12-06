@@ -515,13 +515,9 @@ class JSON_PATH_MAPPER : public JSON_WALKER
     int CallOnArrayIterate () override;
     int CallOnKeyIterate (JSON_VALUE &key) override;
 
-    void ReplaceLastItem (const std::string &item);
-    void PopItem ();
-
     map_func_type m_producer;
     std::stack<unsigned int> m_index;
-    std::vector<std::string> m_path_items;
-    std::string m_accumulated;
+    std::stack<std::string> m_accumulated_paths;
 };
 
 class JSON_SERIALIZER_LENGTH : public JSON_BASE_HANDLER
@@ -802,10 +798,9 @@ int JSON_DUPLICATE_KEYS_CHECKER::CallBefore (JSON_VALUE &value)
 
 JSON_PATH_MAPPER::JSON_PATH_MAPPER (map_func_type func)
   : m_producer (func)
-  , m_accumulated ("\"$\"")
-  , m_path_items (1, "$")
+  , m_accumulated_paths ()
 {
-  //
+  m_accumulated_paths.push ("$");
 }
 
 int JSON_PATH_MAPPER::CallBefore (JSON_VALUE &value)
@@ -817,7 +812,8 @@ int JSON_PATH_MAPPER::CallBefore (JSON_VALUE &value)
 
   if (value.IsObject () || value.IsArray ())
     {
-      m_path_items.emplace_back ();
+      // should not be used. Only add a stack level
+      m_accumulated_paths.push ("");
     }
 
   return NO_ERROR;
@@ -832,45 +828,33 @@ int JSON_PATH_MAPPER::CallAfter (JSON_VALUE &value)
 
   if (value.IsArray () || value.IsObject ())
     {
-      PopItem ();
+      m_accumulated_paths.pop ();
     }
-  return m_producer (value, m_accumulated, m_stop);
+  return m_producer (value, m_accumulated_paths.top (), m_stop);
 }
 
 int JSON_PATH_MAPPER::CallOnArrayIterate ()
 {
-  std::string path_item = "[";
+  m_accumulated_paths.pop ();
+  std::string path_item = m_accumulated_paths.top ();
+  path_item += "[";
   path_item += std::to_string (m_index.top ()++);
   path_item += "]";
 
-  ReplaceLastItem (path_item);
+  m_accumulated_paths.push (path_item);
   return NO_ERROR;
 }
 
 int JSON_PATH_MAPPER::CallOnKeyIterate (JSON_VALUE &key)
 {
-  std::string path_item = ".\"";
+  m_accumulated_paths.pop ();
+  std::string path_item = m_accumulated_paths.top ();
+  path_item += ".\"";
   path_item += key.GetString ();
   path_item += "\"";
 
-  ReplaceLastItem (path_item);
+  m_accumulated_paths.push (path_item);
   return NO_ERROR;
-}
-
-void JSON_PATH_MAPPER::ReplaceLastItem (const std::string &item)
-{
-  m_accumulated.erase (m_accumulated.length () - 1 - m_path_items.back ().length ());
-  m_accumulated += '"';
-  m_path_items.back () = item;
-  // insert before ending "
-  m_accumulated.insert (m_accumulated.length () - 1, item);
-}
-
-void JSON_PATH_MAPPER::PopItem ()
-{
-  m_accumulated.erase (m_accumulated.length () - 1 - m_path_items.back ().length ());
-  m_accumulated += '"';
-  m_path_items.pop_back ();
 }
 
 JSON_VALIDATOR::JSON_VALIDATOR (const char *schema_raw)
@@ -1385,7 +1369,7 @@ db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<
   for (const auto &path : paths)
     {
       transformed_paths.emplace_back ();
-      db_json_convert_pointer_to_sql_path (path.c_str (), transformed_paths.back ());
+      error_code = db_json_convert_pointer_to_sql_path (path.c_str (), transformed_paths.back ());
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -2099,7 +2083,6 @@ db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<std::
   for (auto &wild_card : paths)
     {
       std::stringstream ss;
-      ss << '"';
       for (size_t i = 0; i < wild_card.length (); ++i)
 	{
 	  switch (wild_card[i])
@@ -2143,7 +2126,6 @@ db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<std::
 	{
 	  ss << "[^[:space:]]*";
 	}
-      ss << '"';
 
       try
 	{
