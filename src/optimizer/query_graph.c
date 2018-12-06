@@ -6990,7 +6990,7 @@ qo_is_usable_index (SM_CLASS_CONSTRAINT * constraint, QO_NODE * nodep)
       return false;
     }
 
-  if (constraint->index_status != SM_NORMAL_INDEX && constraint->index_status != SM_ONLINE_INDEX_BUILDING_DONE)
+  if (constraint->index_status != SM_NORMAL_INDEX)
     {
       // building or invisible
       return false;

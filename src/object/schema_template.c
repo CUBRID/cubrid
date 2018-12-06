@@ -1553,13 +1553,10 @@ smt_add_constraint_to_property (SM_TEMPLATE * template_, SM_CONSTRAINT_TYPE type
   /*
    *  Check if the constraint already exists. Skip it if we have an online index building done.
    */
-  if (index_status != SM_ONLINE_INDEX_BUILDING_DONE)
+  if (classobj_find_prop_constraint (template_->properties, constraint, constraint_name, &cnstr_val))
     {
-      if (classobj_find_prop_constraint (template_->properties, constraint, constraint_name, &cnstr_val))
-	{
-	  ERROR1 (error, ER_SM_CONSTRAINT_EXISTS, constraint_name);
-	  goto end;
-	}
+      ERROR1 (error, ER_SM_CONSTRAINT_EXISTS, constraint_name);
+      goto end;
     }
 
   if (classobj_put_index (&template_->properties, type, constraint_name, atts, asc_desc, attr_prefix_length, NULL,
@@ -1952,15 +1949,11 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
 
   assert (template_ != NULL);
 
-  /* Skip this check if we have an online index building done. */
-  if (index_status != SM_ONLINE_INDEX_BUILDING_DONE)
+  error = smt_check_index_exist (template_, &shared_cons_name, constraint_type, constraint_name, att_names,
+				 asc_desc, filter_index, function_index);
+  if (error != NO_ERROR)
     {
-      error = smt_check_index_exist (template_, &shared_cons_name, constraint_type, constraint_name, att_names,
-				     asc_desc, filter_index, function_index);
-      if (error != NO_ERROR)
-	{
-	  goto error_return;
-	}
+      goto error_return;
     }
 
   constraint = SM_MAP_CONSTRAINT_TO_ATTFLAG (constraint_type);

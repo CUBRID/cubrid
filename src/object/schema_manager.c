@@ -455,7 +455,7 @@ static DB_OBJLIST *sm_fetch_all_objects_internal (DB_OBJECT * op, DB_FETCH_MODE 
 						  LC_FETCH_VERSION_TYPE * force_fetch_version_type);
 static int sm_flush_and_decache_objects_internal (MOP obj, MOP obj_class_mop, int decache);
 
-static void sm_stats_assign_online_index_status (SM_CLASS * class_);
+static void sm_stats_assign_index_status (SM_CLASS * class_);
 
 static void sm_free_resident_classes_virtual_query_cache (void);
 
@@ -3792,7 +3792,7 @@ sm_get_class_with_statistics (MOP classop)
    * corresponding status in stats field.
    */
   // TODO - why not filter it in server?
-  sm_stats_assign_online_index_status (class_);
+  sm_stats_assign_index_status (class_);
 
   return class_;
 }
@@ -3828,7 +3828,7 @@ sm_get_statistics_force (MOP classop)
 	    }
 	  stats = class_->stats = stats_get_statistics (WS_OID (classop), 0);
 
-	  sm_stats_assign_online_index_status (class_);
+	  sm_stats_assign_index_status (class_);
 	}
     }
 
@@ -3904,7 +3904,7 @@ sm_update_statistics (MOP classop, bool with_fullscan)
 		   * calls */
 		  class_->stats = stats_get_statistics (WS_OID (classop), 0);
 
-		  sm_stats_assign_online_index_status (class_);
+		  sm_stats_assign_index_status (class_);
 		}
 	    }
 	}
@@ -3959,7 +3959,7 @@ sm_update_all_statistics (bool with_fullscan)
 		    }
 		  class_->stats = stats_get_statistics (WS_OID (cl->op), 0);
 
-		  sm_stats_assign_online_index_status (class_);
+		  sm_stats_assign_index_status (class_);
 		}
 	    }
 	}
@@ -16392,12 +16392,12 @@ flatten_partition_info (SM_TEMPLATE * def, SM_TEMPLATE * flat)
 }
 
 /*
- * sm_stats_assign_online_index_status () - Assign the online index status from the statistics arrays.
+ * sm_stats_assign_index_status () - Assign the index status from the statistics arrays.
  * return        - void
  * class_ (in)   - Class that requested the statistics.
  */
 static void
-sm_stats_assign_online_index_status (SM_CLASS * class_)
+sm_stats_assign_index_status (SM_CLASS * class_)
 {
   SM_CLASS_CONSTRAINT *cons;
   int i;
