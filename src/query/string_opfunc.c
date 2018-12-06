@@ -287,6 +287,7 @@ static int print_string_date_token (const STRING_DATE_TOKEN token_type, const IN
 static void convert_locale_number (char *sz, const int size, const INTL_LANG src_locale, const INTL_LANG dst_locale);
 static int parse_tzd (const char *str, const int max_expect_len);
 static int db_json_merge_helper (DB_VALUE * result, DB_VALUE * arg[], int const num_args, bool patch = false);
+static int db_string_escape (const char *src_str, int src_size, char **res_string, int *dest_size);
 
 #define TRIM_FORMAT_STRING(sz, n) {if (strlen(sz) > n) sz[n] = 0;}
 #define WHITESPACE(c) ((c) == ' ' || (c) == '\t' || (c) == '\r' || (c) == '\n')
@@ -1893,7 +1894,7 @@ db_string_substring (const MISC_OPERAND substr_operand, const DB_VALUE * src_str
   return error_status;
 }
 
-int
+static int
 db_string_escape (const char *src_str, int src_size, char **res_string, int *dest_size)
 {
   int dest_crt_pos;
@@ -3898,7 +3899,7 @@ db_json_search_dbval (DB_VALUE * result, DB_VALUE * args[], const int num_args)
       char * escaped;
       int escaped_size;
       // escape things between quotes
-      error_code = db_string_escape(paths[i].c_str() + 1, paths[i].size() - 2, &escaped, &escaped_size);
+      error_code = db_string_escape (paths[i].c_str () + 1, paths[i].size () - 2, &escaped, &escaped_size);
       if (error_code)
       {
         db_json_delete_doc (result_json);
@@ -3906,7 +3907,7 @@ db_json_search_dbval (DB_VALUE * result, DB_VALUE * args[], const int num_args)
         return error_code;
       }
 
-      error_code = db_json_get_json_from_str(escaped, result_json, escaped_size);
+      error_code = db_json_get_json_from_str (escaped, json_array_elem, escaped_size);
       db_private_free (NULL, escaped);
       if (error_code != NO_ERROR)
 	{
