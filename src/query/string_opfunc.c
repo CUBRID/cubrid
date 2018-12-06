@@ -3846,7 +3846,11 @@ db_json_search_dbval (DB_VALUE * result, DB_VALUE * args[], const int num_args)
   for (const auto &path : starting_paths)
   {
     transformed_paths.emplace_back();
-    db_json_convert_pointer_to_sql_path (path.c_str (), transformed_paths.back ());
+    error_code = db_json_convert_pointer_to_sql_path (path.c_str (), transformed_paths.back ());
+    if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
   }
 
   error_code = db_json_paths_to_regex (transformed_paths, regs);
