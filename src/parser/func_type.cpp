@@ -699,6 +699,56 @@ Func::can_signature_have_collation (const pt_arg_type &arg_sig)
     }
 }
 
+Func::argument_resolve::argument_resolve ()
+  : m_type (PT_TYPE_NONE)
+  , m_check_coll_infer (false)
+  , m_coll_infer ()
+{
+  //
+}
+
+Func::signature_compatibility::signature_compatibility ()
+  : m_compat (type_compatibility::INCOMPATIBLE)
+  , m_args_resolve {}
+  , m_common_collation {}
+  , m_collation_action (TP_DOMAIN_COLL_LEAVE)
+  , m_signature (NULL)
+{
+  //
+}
+
+bool
+Func::is_type_with_collation (PT_TYPE_ENUM type)
+{
+  return PT_HAS_COLLATION (type) || type == PT_TYPE_MAYBE;
+}
+
+bool
+Func::can_signature_have_collation (const pt_arg_type &arg_sig)
+{
+  switch (arg_sig.type)
+    {
+    case pt_arg_type::NORMAL:
+      // types that can have collations
+      return is_type_with_collation (arg_sig.val.type);
+
+    case pt_arg_type::GENERIC:
+      // all generic that can accept string (and result is still string)
+      return arg_sig.val.generic_type == PT_GENERIC_TYPE_STRING
+	     || arg_sig.val.generic_type == PT_GENERIC_TYPE_STRING_VARYING
+	     || arg_sig.val.generic_type == PT_GENERIC_TYPE_CHAR
+	     || arg_sig.val.generic_type == PT_GENERIC_TYPE_NCHAR
+	     || arg_sig.val.generic_type == PT_GENERIC_TYPE_PRIMITIVE
+	     || arg_sig.val.generic_type == PT_GENERIC_TYPE_ANY
+	     || arg_sig.val.generic_type == PT_GENERIC_TYPE_SCALAR;
+
+    case pt_arg_type::INDEX:
+    default:
+      assert (false);
+      return false;
+    }
+}
+
 bool
 Func::cmp_types_equivalent (const pt_arg_type &type, pt_type_enum type_enum)
 {
