@@ -644,30 +644,6 @@ namespace cubload
 {
 
   void
-  driver::on_syntax_error ()
-  {
-    ldr_increment_err_total ();
-    fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_SYNTAX_ERR),
-	     m_scanner->lineno (), m_scanner->YYText ());
-  }
-
-  void
-  driver::on_error (MSGCAT_LOADDB_MSG msg_id, bool include_line_msg, ...)
-  {
-    if (include_line_msg)
-      {
-	display_error_line (0);
-      }
-
-    va_list ap;
-    va_start (ap, include_line_msg);
-    vfprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, msg_id), ap);
-    va_end (ap);
-
-    ldr_increment_fails ();
-  }
-
-  void
   sa_loader::check_class (const char *class_name, int class_id)
   {
     DB_OBJECT *class_;
@@ -1021,6 +997,20 @@ namespace cubload
 	ldr_abort ();
       }
     ldr_Current_context->instance_started = 0;
+  }
+
+  void
+  sa_loader::on_error (std::string &err_msg)
+  {
+    ldr_increment_err_total ();
+    fprintf (stderr, "%s", err_msg.c_str ());
+  }
+
+  void
+  sa_loader::on_failure (std::string &err_msg)
+  {
+    ldr_increment_fails ();
+    fprintf (stderr, "%s", err_msg.c_str ());
   }
 }
 /* *INDENT-ON* */
@@ -6178,6 +6168,8 @@ ldr_sa_load (load_args *args, int *status, bool *interrupted)
   std::ifstream object_file (args->object_file);
   ldr_Driver = new driver ();
   /* *INDENT-ON* */
+
+  ldr_Driver->initialize<sa_loader> ();
 
   locator_Dont_check_foreign_key = true;
   ldr_init (args);

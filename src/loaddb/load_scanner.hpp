@@ -45,10 +45,7 @@ namespace cubload
 	//
       };
 
-      virtual ~scanner ()
-      {
-	//
-      };
+      ~scanner () override = default;
 
       /*
        * The main scanner function.
@@ -62,7 +59,7 @@ namespace cubload
        */
       void LexerError (const char *msg) override
       {
-	m_driver.on_error (LOADDB_MSG_LOAD_FAIL, true);
+	m_driver.on_failure (LOADDB_MSG_LEX_ERROR, true);
       }
 
     private:

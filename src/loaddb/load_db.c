@@ -1187,14 +1187,14 @@ ldr_server_load (load_args * args, int *status, bool * interrupted)
     {
       loaddb_fetch_stats (&stats);
 
-      if (stats.failures >= 1)
+      if (!stats.error_message.empty ())
 	{
 	  *status = 3;
 	  fprintf (stderr, "%s", stats.error_message.c_str ());
 	}
       else
 	{
-	  long curr_last_commit = stats.last_commit.load ();
+	  long curr_last_commit = stats.last_commit;
 	  if (curr_last_commit > prev_last_commit)
 	    {
 	      print_log_msg (args->verbose_commit, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
@@ -1207,10 +1207,10 @@ ldr_server_load (load_args * args, int *status, bool * interrupted)
 	std::this_thread::sleep_for (std::chrono::milliseconds (100));
 	/* *INDENT-ON* */
     }
-  while (!stats.is_completed && stats.failures == 0);
+  while (!(stats.is_completed || stats.is_failed));
 
   loaddb_destroy ();
 
   print_log_msg (1, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_INSERT_AND_FAIL_COUNT),
-		 stats.total_objects.load (), stats.failures.load ());
+		 stats.total_objects, stats.errors);
 }

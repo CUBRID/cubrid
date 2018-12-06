@@ -30,6 +30,7 @@
 
 #include "load_common.hpp"
 #include "load_grammar.hpp"
+#include "message_catalog.h"
 #include "utility.h"
 
 #include <istream>
@@ -47,9 +48,6 @@ namespace cubload
 
   // forward declaration
   class scanner;
-#if defined (SERVER_MODE)
-  class session;
-#endif
 
   /*
    * cubload::driver
@@ -89,31 +87,39 @@ namespace cubload
       // Destructor
       ~driver ();
 
-#if defined (SERVER_MODE)
-      void initialize (session *session);
-#endif
+      template<typename Loader, typename ... Args>
+      void initialize (Args &&... args);
 
       // Parse functions
       int parse (std::istream &iss);
 
-      // Function to report parsing syntax errors. Used by cubload::parser class
-      void on_syntax_error ();
-
       // Function to report any error which occurs during the loading of the data
-      void on_error (MSGCAT_LOADDB_MSG msg_id, bool include_line_msg, ...);
+      template<typename... Args>
+      void on_error (MSGCAT_LOADDB_MSG msg_id, bool include_line_msg, Args &&... args);
+
+      template<typename... Args>
+      void on_failure (MSGCAT_LOADDB_MSG msg_id, bool include_line_msg, Args &&... args);
 
       // Returns line number through scanner
       int scanner_lineno ();
+      // Returns current text from scanner
+      const char *scanner_text ();
 
       scanner &get_scanner ();
 
     private:
+      char *get_message_from_catalog (MSGCAT_LOADDB_MSG msg_id);
+
+      template<typename... Args>
+      std::string generate_error_message (MSGCAT_LOADDB_MSG msg_id, bool include_line_msg, Args &&... args);
+
+      // Format string based on format string passed as input parameter. Check snprintf function for more details
+      template<typename... Args>
+      std::string format (const char *fmt, Args &&... args);
+
       scanner *m_scanner;
       loader *m_loader;
       parser *m_parser;
-#if defined (SERVER_MODE)
-      session *m_session;
-#endif
 
       /*
        * cubload::driver::semantic_helper
@@ -225,6 +231,78 @@ namespace cubload
     public:
       semantic_helper &get_semantic_helper ();
   }; // class driver
+
+} // namespace cubload
+
+/************************************************************************/
+/* Template implementation                                              */
+/************************************************************************/
+
+namespace cubload
+{
+
+  template<typename Loader, typename ... Args>
+  void
+  driver::initialize (Args &&... args)
+  {
+    if (m_loader != NULL)
+      {
+	// if already initialized then do nothing
+	return;
+      }
+
+    assert (m_parser == NULL);
+
+    m_loader = new Loader (std::forward<Args> (args)...);
+    m_parser = new parser (*this, *m_loader);
+  }
+
+  template<typename... Args>
+  void
+  driver::on_error (MSGCAT_LOADDB_MSG msg_id, bool include_line_msg, Args &&... args)
+  {
+    std::string err_msg = generate_error_message (msg_id, include_line_msg, std::forward<Args> (args)...);
+    m_loader->on_error (err_msg);
+  }
+
+  template<typename... Args>
+  void
+  driver::on_failure (MSGCAT_LOADDB_MSG msg_id, bool include_line_msg, Args &&... args)
+  {
+    std::string err_msg = generate_error_message (msg_id, include_line_msg, std::forward<Args> (args)...);
+    m_loader->on_failure (err_msg);
+  }
+
+  template<typename... Args>
+  std::string
+  driver::generate_error_message (MSGCAT_LOADDB_MSG msg_id, bool include_line_msg, Args &&... args)
+  {
+    std::string err_msg_line;
+
+    if (include_line_msg)
+      {
+	err_msg_line = format (get_message_from_catalog (LOADDB_MSG_LINE), scanner_lineno () - 1);
+      }
+
+    std::string err_msg = format (get_message_from_catalog (msg_id), std::forward<Args> (args)...);
+
+    err_msg_line.append (err_msg);
+
+    return err_msg_line;
+  }
+
+  template<typename... Args>
+  std::string
+  driver::format (const char *fmt, Args &&... args)
+  {
+    // Determine required size
+    int size = snprintf (NULL, 0, fmt, std::forward<Args> (args)...) + 1; // +1  for '\0'
+    std::unique_ptr<char[]> msg (new char[size]);
+
+    snprintf (msg.get (), (size_t) size, fmt, std::forward<Args> (args)...);
+
+    return std::string (msg.get (), msg.get () + size - 1);
+  }
 
 } // namespace cubload
 

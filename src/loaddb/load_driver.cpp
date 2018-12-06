@@ -26,11 +26,6 @@
 #include "error_manager.h"
 #include "language_support.h"
 #include "load_scanner.hpp"
-#if defined (SERVER_MODE)
-#include "load_server_loader.hpp"
-#elif defined (SA_MODE)
-#include "load_sa_loader.hpp"
-#endif
 #include "memory_alloc.h"
 
 #include <cassert>
@@ -40,14 +35,8 @@ namespace cubload
 
   driver::driver ()
     : m_scanner (new scanner (*this))
-#if defined (SERVER_MODE)
     , m_loader (NULL)
     , m_parser (NULL)
-    , m_session (NULL)
-#elif defined (SA_MODE)
-    , m_loader (new sa_loader ())
-    , m_parser (new parser (*this, *m_loader))
-#endif
     , m_semantic_helper (*this)
   {
     //
@@ -65,31 +54,13 @@ namespace cubload
     m_scanner = NULL;
   }
 
-#if defined (SERVER_MODE)
-  void
-  driver::initialize (session *session)
-  {
-    if (m_session != NULL)
-      {
-	// if already initialized then do nothing
-	return;
-      }
-
-    assert (m_loader == NULL && m_parser == NULL);
-
-    m_session = session;
-    m_loader = new server_loader (*session, *this);
-    m_parser = new parser (*this, *m_loader);
-  }
-#endif
-
   int
   driver::parse (std::istream &iss)
   {
     m_scanner->switch_streams (&iss);
-
     m_semantic_helper.reset ();
 
+    assert (m_parser != NULL);
     return m_parser->parse ();
   }
 
@@ -97,6 +68,12 @@ namespace cubload
   driver::scanner_lineno ()
   {
     return m_scanner->lineno ();
+  }
+
+  const char *
+  driver::scanner_text ()
+  {
+    return m_scanner->YYText ();
   }
 
   scanner &
@@ -109,6 +86,12 @@ namespace cubload
   driver::get_semantic_helper ()
   {
     return m_semantic_helper;
+  }
+
+  char *
+  driver::get_message_from_catalog (MSGCAT_LOADDB_MSG msg_id)
+  {
+    return msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, msg_id);
   }
 
   /*

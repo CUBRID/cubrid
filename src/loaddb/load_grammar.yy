@@ -787,5 +787,5 @@ monetary :
 void
 cubload::parser::error (const parser::location_type& l, const std::string& m)
 {
-  m_driver.on_syntax_error ();
+  m_driver.on_error (LOADDB_MSG_SYNTAX_ERR, false, m_driver.scanner_lineno (), m_driver.scanner_text ());
 }

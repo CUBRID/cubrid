@@ -1,18 +1,18 @@
 $
-$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
 $
-$   This program is free software; you can redistribute it and/or modify 
-$   it under the terms of the GNU General Public License as published by 
+$   This program is free software; you can redistribute it and/or modify
+$   it under the terms of the GNU General Public License as published by
 $   the Free Software Foundation; either version 2 of the License, or
 $   (at your option) any later version.
 $
-$  This program is distributed in the hope that it will be useful, 
-$  but WITHOUT ANY WARRANTY; without even the implied warranty of 
-$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
-$  GNU General Public License for more details. 
+$  This program is distributed in the hope that it will be useful,
+$  but WITHOUT ANY WARRANTY; without even the implied warranty of
+$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+$  GNU General Public License for more details.
 $
-$  You should have received a copy of the GNU General Public License 
-$  along with this program; if not, write to the Free Software 
+$  You should have received a copy of the GNU General Public License
+$  along with this program; if not, write to the Free Software
 $  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 $
 
@@ -427,7 +427,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 50 密码:
 51 \n*** 更新类统计信息 ***\n
 52 %1$s 在行 %2$d 附近(文本是 '%3$s')\n
-53 词法错误
+53 词法错误\n
 54 行 %1$d: 语法错误， 在 \"%2$s\"
 55 丢失
 56 在 %1$s
@@ -588,7 +588,7 @@ cub_commdb: 这个工具不赞成使用. 用 'cubrid' 命令来代替.\n\
 33 主进程(Master) 将在 %1$d 分钟内关闭\n
 34 从客户端那里收到了错误的数据
 35 数据库服务 %1$s 当前没有运行
-36 对 %2$s, %3$s, 无法执行 shell (%1$s) 
+36 对 %2$s, %3$s, 无法执行 shell (%1$s)
 37 进程 fork %1$s, 返回 %2$d, %3$s
 38 无法执行 %1$s
 39 选项 -i(--immediately) 必须与选项 --deact-stop-all 一起使用.\n
@@ -903,7 +903,7 @@ copylogdb: 从服务端拷贝日志页.\n\
   -L, --log-path=PATH         指定目录PATH用于拷贝日志卷\n\
   -m, --mode=MODE             操作模式; 默认: 同步\n\
                               模式: 同步 或 半同步 或 异步\n\
-  -S, --start-page-id=ID      first log page to copy\n 
+  -S, --start-page-id=ID      first log page to copy\n
 
 $set 41 MSGCAT_UTIL_SET_APPLYLOGDB
 21 输入DBA密码:
@@ -1033,7 +1033,7 @@ synccolldb: 从数据库的排序规则同步到系统的排序规则.\n\
   -f, --force-only    更新数据库的排序规则与新的系统排序规则一致.\n\
 
 $set 49 MSGCAT_UTIL_SET_TRANLIST
-20 输入密码 %1$s: 
+20 输入密码 %1$s:
 22 Tran index          User name      Host name      Process id    Program name   \n
 23 -------------------------------------------------------------------------------\n
 24 %1$4d%2$-10s %3$14s %4$14s %5$15d %6$17s\n

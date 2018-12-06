@@ -26,6 +26,7 @@
 #include "connection_defs.h"
 #include "error_manager.h"
 #include "load_driver.hpp"
+#include "load_server_loader.hpp"
 #include "log_impl.h"
 #include "resource_shared_pool.hpp"
 #include "thread_entry_task.hpp"
@@ -68,33 +69,30 @@ namespace cubload
 	delete m_driver_pool;
       }
 
-      void on_create (cubthread::entry &context) final
+      void on_create (cubthread::entry &context) override
       {
 	driver *driver = m_driver_pool->claim ();
 	if (driver == NULL)
 	  {
-	    m_session.abort ();
+	    m_session.fail ();
 	    assert (false);
 	    return;
 	  }
 
-	driver->initialize (&m_session);
+	driver->initialize<server_loader> (m_session, *driver);
 
 	context.m_loaddb_driver = driver;
       }
 
-      void on_retire (cubthread::entry &context) final
+      void on_retire (cubthread::entry &context) override
       {
-	if (context.m_loaddb_driver != NULL)
+	if (context.m_loaddb_driver == NULL)
 	  {
-	    m_driver_pool->retire (*context.m_loaddb_driver);
-	    context.m_loaddb_driver = NULL;
+	    return;
 	  }
-	else
-	  {
-	    m_session.abort ();
-	    assert (false);
-	  }
+
+	m_driver_pool->retire (*context.m_loaddb_driver);
+	context.m_loaddb_driver = NULL;
       }
   };
 
@@ -128,7 +126,7 @@ namespace cubload
 
       void execute (cubthread::entry &thread_ref) final
       {
-	if (m_session.is_aborted ())
+	if (m_session.is_failed ())
 	  {
 	    return;
 	  }
@@ -143,10 +141,10 @@ namespace cubload
 	std::istringstream iss (m_batch);
 	int ret = thread_ref.m_loaddb_driver->parse (iss); // parse documentation says that 0 is returned if parsing succeeds
 
-	if (m_session.is_aborted () || ret != 0 || er_errid_if_has_error () != NO_ERROR)
+	if (m_session.is_failed () || ret != 0 || er_errid_if_has_error () != NO_ERROR)
 	  {
 	    // if a batch transaction was aborted then abort entire loaddb session
-	    m_session.abort ();
+	    m_session.fail ();
 
 	    xtran_server_abort (&thread_ref);
 	  }
@@ -174,13 +172,13 @@ namespace cubload
     , m_commit_cond_var ()
     , m_completion_mutex ()
     , m_completion_cond_var ()
-    , m_aborted {false}
     , m_batch_size (100000) // TODO CBRD-21654 get batch size from cub_admin loaddb
     , m_last_batch_id {NULL_BATCH_ID}
     , m_max_batch_id {NULL_BATCH_ID}
     , m_worker_pool (NULL)
     , m_wp_context_manager (NULL)
     , m_stats ()
+    , m_stats_mutex ()
     , m_pool_size (0)
   {
     m_pool_size = std::max<unsigned int> (2, std::thread::hardware_concurrency ()); // start at least 2 loaddb threads
@@ -199,7 +197,8 @@ namespace cubload
     delete m_wp_context_manager;
   }
 
-  bool session::is_completed ()
+  bool
+  session::is_completed ()
   {
     return m_last_batch_id == m_max_batch_id;
   }
@@ -207,7 +206,7 @@ namespace cubload
   void
   session::wait_for_previous_batch (const batch_id id)
   {
-    auto pred = [this, &id] { return is_aborted () || id == (m_last_batch_id + 1); };
+    auto pred = [this, &id] { return is_failed () || id == (m_last_batch_id + 1); };
 
     if (id == FIRST_BATCH_ID || pred ())
       {
@@ -221,7 +220,7 @@ namespace cubload
   void
   session::wait_for_completion ()
   {
-    auto pred = [this] { return is_aborted () || is_completed (); };
+    auto pred = [this] { return is_failed () || is_completed (); };
 
     if (pred ())
       {
@@ -235,7 +234,7 @@ namespace cubload
   void
   session::notify_batch_done (batch_id id)
   {
-    if (!is_aborted ())
+    if (!is_failed ())
       {
 	m_last_batch_id = id;
       }
@@ -244,38 +243,48 @@ namespace cubload
   }
 
   void
-  session::abort ()
+  session::on_error (std::string &err_msg)
   {
-    abort ("Load failed, generic error\n");
+    std::unique_lock<std::mutex> ulock (m_stats_mutex);
+
+    m_stats.errors++;
+    m_stats.error_message.append (err_msg);
   }
 
   void
-  session::abort (std::string &&err_msg)
+  session::fail ()
   {
-    if (m_aborted.exchange (true))
+    if (m_stats.is_failed)
       {
-	// already aborted
+	// already is failed
 	return;
       }
 
-    std::unique_lock<std::mutex> ulock (m_completion_mutex);
+    std::unique_lock<std::mutex> ulock (m_stats_mutex);
 
-    m_stats.failures++;
-    m_stats.error_message = std::move (err_msg);
+    // check if failed after lock was acquired
+    if (m_stats.is_failed)
+      {
+	return;
+      }
+
+    m_stats.is_failed = true;
 
     // notify waiting threads that session was aborted
     notify_waiting_threads ();
   }
 
   bool
-  session::is_aborted ()
+  session::is_failed ()
   {
-    return m_aborted;
+    std::unique_lock<std::mutex> ulock (m_stats_mutex);
+    return m_stats.is_failed;
   }
 
   void
   session::inc_total_objects ()
   {
+    std::unique_lock<std::mutex> ulock (m_stats_mutex);
     m_stats.total_objects++;
   }
 
@@ -329,8 +338,15 @@ namespace cubload
   stats
   session::get_stats ()
   {
+    std::unique_lock<std::mutex> ulock (m_stats_mutex);
+
     m_stats.is_completed = is_completed ();
-    return m_stats;
+    stats copy = m_stats;
+
+    // since client periodically fetches the stats, clear error_message in order not to send twice same message
+    m_stats.error_message.clear ();
+
+    return copy;
   }
 
 } // namespace cubload

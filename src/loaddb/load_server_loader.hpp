@@ -51,6 +51,9 @@ namespace cubload
       void process_line (constant_type *cons) override;
       void finish_line () override;
 
+      void on_error (std::string &err_msg) override;
+      void on_failure (std::string &err_msg) override;
+
     private:
       void process_constant (constant_type *cons, int attr_idx);
       void process_monetary_constant (constant_type *cons, tp_domain *domain, db_value *db_val);

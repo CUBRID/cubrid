@@ -10197,6 +10197,7 @@ loaddb_fetch_stats (load_stats * stats)
     }
 
   cubpacking::packer packer (data_reply, data_reply_size);
+  stats->clear ();
   stats->unpack (&packer);
 
   return 0;

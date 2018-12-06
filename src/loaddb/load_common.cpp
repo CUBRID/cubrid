@@ -197,7 +197,7 @@ namespace cubload
   int
   handle_batch (std::string &class_line, std::string &batch, batch_id &id, batch_handler &handler)
   {
-    if (!batch.empty () && class_line.empty())
+    if (!batch.empty () && class_line.empty ())
       {
 	// batch must have a class
 	assert (false);

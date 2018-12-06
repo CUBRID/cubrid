@@ -28,91 +28,12 @@
 #include "load_scanner.hpp"
 #include "load_session.hpp"
 #include "locator_sr.h"
-#include "message_catalog.h"
 #include "oid.h"
 #include "thread_manager.hpp"
-#include "utility.h"
 #include "xserver_interface.h"
 
 #include <map>
 
-namespace cubload
-{
-
-  /*
-   * Format string based on format string passed as input parameter. Check vsnprintf function for more details
-   */
-  std::string format (const char *fmt, ...);
-  /*
-   * Same as above function, but instead of variadic arguments a pointer to va_list is passed
-   */
-  std::string
-  format (const char *fmt, va_list *ap);
-}
-
-///////////////////// cubload::driver functions definitions (used only on SERVER_MODE) /////////////////////
-namespace cubload
-{
-
-  void
-  driver::on_syntax_error ()
-  {
-    on_error (LOADDB_MSG_SYNTAX_ERR, false, m_scanner->lineno (), m_scanner->YYText ());
-  }
-
-  void
-  driver::on_error (MSGCAT_LOADDB_MSG msg_id, bool include_line_msg, ...)
-  {
-    va_list ap;
-    std::string err_msg_line;
-
-    if (include_line_msg)
-      {
-	err_msg_line = format (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_LINE),
-			       m_scanner->lineno () - 1);
-      }
-
-    va_start (ap, include_line_msg);
-    std::string err_msg = format (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, msg_id), &ap);
-    va_end (ap);
-
-    if (!err_msg_line.empty ())
-      {
-	err_msg_line.append (err_msg);
-	m_session->abort (std::move (err_msg_line));
-      }
-    else
-      {
-	m_session->abort (std::move (err_msg));
-      }
-  }
-
-  std::string
-  format (const char *fmt, ...)
-  {
-    va_list ap;
-
-    va_start (ap, fmt);
-    std::string msg = format (fmt, &ap);
-    va_end (ap);
-
-    return msg;
-  }
-
-  std::string
-  format (const char *fmt, va_list *ap)
-  {
-    // Determine required size
-    int size = vsnprintf (NULL, 0, fmt, *ap) + 1; // +1  for '\0'
-    std::unique_ptr<char[]> msg (new char[size]);
-
-    vsnprintf (msg.get (), (size_t) size, fmt, *ap);
-
-    return std::string (msg.get (), msg.get () + size - 1);
-  }
-}
-
-///////////////////// cubload::server_loader functions definitions /////////////////////
 namespace cubload
 {
   server_loader::server_loader (session &session, driver &driver)
@@ -270,13 +191,8 @@ namespace cubload
   void
   server_loader::process_line (constant_type *cons)
   {
-    if (m_session.is_aborted ())
+    if (m_session.is_failed () || m_attr_ids == NULL)
       {
-	return;
-      }
-    if (m_attr_ids == NULL)
-      {
-	m_driver.on_error (LOADDB_MSG_LOAD_FAIL, true);
 	return;
       }
 
@@ -298,7 +214,8 @@ namespace cubload
 
     if (attr == NULL)
       {
-	m_driver.on_error (LOADDB_MSG_LOAD_FAIL, true);
+	// TODO use LOADDB_MSG_MISSING_DOMAIN message
+	m_driver.on_failure (LOADDB_MSG_LOAD_FAIL, true);
 	return;
       }
 
@@ -334,7 +251,8 @@ namespace cubload
 	  }
 	else
 	  {
-	    m_driver.on_error (LOADDB_MSG_LOAD_FAIL, true);
+	    m_driver.on_error (LOADDB_MSG_CONVERSION_ERROR, true, str != NULL ? str->val : "",
+			       pr_type_name (TP_DOMAIN_TYPE (attr->domain)));
 	    return;
 	  }
 
@@ -422,7 +340,7 @@ namespace cubload
   void
   server_loader::finish_line ()
   {
-    if (m_session.is_aborted () || !m_scancache_started)
+    if (m_session.is_failed () || !m_scancache_started)
       {
 	return;
       }
@@ -445,6 +363,19 @@ namespace cubload
       }
 
     m_session.inc_total_objects ();
+  }
+
+  void
+  server_loader::on_error (std::string &err_msg)
+  {
+    m_session.on_error (err_msg);
+  }
+
+  void
+  server_loader::on_failure (std::string &err_msg)
+  {
+    m_session.on_error (err_msg);
+    m_session.fail ();
   }
 
   void

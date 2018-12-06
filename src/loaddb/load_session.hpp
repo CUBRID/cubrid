@@ -100,9 +100,10 @@ namespace cubload
       void wait_for_previous_batch (batch_id id);
       void notify_batch_done (batch_id id);
 
-      void abort ();
-      void abort (std::string &&err_msg);
-      bool is_aborted ();
+      void on_error (std::string &err_msg);
+
+      void fail ();
+      bool is_failed ();
 
       stats get_stats ();
       void inc_total_objects ();
@@ -117,8 +118,6 @@ namespace cubload
       std::mutex m_completion_mutex;
       std::condition_variable m_completion_cond_var;
 
-      std::atomic<bool> m_aborted;
-
       int m_batch_size;
       std::atomic<batch_id> m_last_batch_id;
       std::atomic<batch_id> m_max_batch_id;
@@ -127,6 +126,7 @@ namespace cubload
       cubthread::entry_manager *m_wp_context_manager;
 
       stats m_stats; // load db stats
+      std::mutex m_stats_mutex;
 
       unsigned int m_pool_size;
   };

@@ -27,7 +27,6 @@
 #include "packable_object.hpp"
 
 #include <cassert>
-#include <atomic>
 #include <functional>
 
 #define NUM_LDR_TYPES (LDR_TYPE_MAX + 1)
@@ -178,11 +177,12 @@ namespace cubload
 
   struct stats : public cubpacking::packable_object
   {
-    std::atomic_int defaults;
-    std::atomic<std::int64_t> total_objects;
-    std::atomic<std::int64_t> last_commit;
-    std::atomic_int failures;
+    int defaults;
+    std::int64_t total_objects;
+    std::int64_t last_commit;
+    int errors;
     std::string error_message;
+    bool is_failed;
     bool is_completed;
 
     // Default constructor
@@ -190,8 +190,9 @@ namespace cubload
       : defaults (0)
       , total_objects (0)
       , last_commit (0)
-      , failures (0)
+      , errors (0)
       , error_message ()
+      , is_failed (false)
       , is_completed (false)
     {
       //
@@ -199,11 +200,12 @@ namespace cubload
 
     // Copy constructor
     stats (const stats &copy)
-      : defaults (copy.defaults.load ())
-      , total_objects (copy.total_objects.load ())
-      , last_commit (copy.last_commit.load ())
-      , failures (copy.failures.load ())
+      : defaults (copy.defaults)
+      , total_objects (copy.total_objects)
+      , last_commit (copy.last_commit)
+      , errors (copy.errors)
       , error_message (copy.error_message)
+      , is_failed (copy.is_failed)
       , is_completed (copy.is_completed)
     {
       //
@@ -212,50 +214,54 @@ namespace cubload
     // Assignment operator
     stats &operator= (const stats &other)
     {
-      this->defaults.exchange (other.defaults);
-      this->total_objects.exchange (other.total_objects);
-      this->last_commit.exchange (other.last_commit);
-      this->failures.exchange (other.failures);
+      this->defaults = other.defaults;
+      this->total_objects = other.total_objects;
+      this->last_commit = other.last_commit;
+      this->errors = other.errors;
       this->error_message = other.error_message;
+      this->is_failed = other.is_failed;
       this->is_completed = other.is_completed;
 
       return *this;
     }
 
+    void clear ()
+    {
+      defaults = 0;
+      total_objects = 0;
+      last_commit = 0;
+      errors = 0;
+      error_message.clear ();
+      is_failed = false;
+      is_completed = false;
+    }
+
     int pack (cubpacking::packer *serializator) override
     {
-      std::int64_t total_objects_ = total_objects.load ();
-      serializator->pack_bigint (&total_objects_);
-
-      std::int64_t last_commit_ = last_commit.load ();
-      serializator->pack_bigint (&last_commit_);
-
-      serializator->pack_int (failures.load ());
-      serializator->pack_int ((int) is_completed);
+      serializator->pack_bigint (&total_objects);
+      serializator->pack_bigint (&last_commit);
+      serializator->pack_int (errors);
       serializator->pack_string (error_message);
+      serializator->pack_int ((int) is_failed);
+      serializator->pack_int ((int) is_completed);
 
       return NO_ERROR;
     }
 
     int unpack (cubpacking::packer *serializator) override
     {
-      std::int64_t total_objects_;
-      serializator->unpack_bigint (&total_objects_);
-      total_objects.store (total_objects_);
+      serializator->unpack_bigint (&total_objects);
+      serializator->unpack_bigint (&last_commit);
+      serializator->unpack_int (&errors);
+      serializator->unpack_string (error_message);
 
-      std::int64_t last_commit_;
-      serializator->unpack_bigint (&last_commit_);
-      last_commit.store (last_commit_);
-
-      int failures_;
-      serializator->unpack_int (&failures_);
-      failures.store (failures_);
+      int is_failed_;
+      serializator->unpack_int (&is_failed_);
+      is_failed = (bool) is_failed_;
 
       int is_completed_;
       serializator->unpack_int (&is_completed_);
       is_completed = (bool) is_completed_;
-
-      serializator->unpack_string (error_message);
 
       return NO_ERROR;
     }
@@ -273,9 +279,10 @@ namespace cubload
 
       size += serializator->get_packed_bigint_size (size); // total_objects
       size += serializator->get_packed_bigint_size (size); // last_commit
-      size += serializator->get_packed_int_size (size); // failures
-      size += serializator->get_packed_int_size (size); // is_completed
+      size += serializator->get_packed_int_size (size); // errors
       size += serializator->get_packed_string_size (error_message, size);
+      size += serializator->get_packed_int_size (size); // is_failed
+      size += serializator->get_packed_int_size (size); // is_completed
 
       return size;
     }
@@ -355,6 +362,16 @@ namespace cubload
        * Called after process_line, should implement login for cleaning up data after insert if required.
        */
       virtual void finish_line () = 0;
+
+      /*
+       * Error handler function
+       */
+      virtual void on_error (std::string &err_msg) = 0;
+
+      /*
+       * Failure handler function
+       */
+      virtual void on_failure (std::string &err_msg) = 0;
   };
 
   ///////////////////// common global functions /////////////////////
