@@ -3075,7 +3075,7 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
   const char *class_name = NULL;
   const char *comment_str = NULL;
   bool do_rollback = false;
-  SM_INDEX_STATUS old_index_status = SM_NORMAL_INDEX;
+  SM_INDEX_STATUS saved_index_status = SM_NORMAL_INDEX;
 
   /* TODO refactor this code, the code in create_or_drop_index_helper and the code in do_drop_index in order to remove
    * duplicate code */
@@ -3118,7 +3118,7 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
       goto error_exit;
     }
 
-  old_index_status = idx->index_status;
+  saved_index_status = idx->index_status;
 
   if (statement->info.index.comment != NULL)
     {
@@ -3308,7 +3308,7 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
 
   error =
     sm_add_constraint (obj, original_ctype, index_name, (const char **) attnames, asc_desc, attrs_prefix_length, false,
-		       p_pred_index_info, func_index_info, comment_str, old_index_status);
+		       p_pred_index_info, func_index_info, comment_str, saved_index_status);
   if (error != NO_ERROR)
     {
       goto error_exit;
@@ -5360,8 +5360,6 @@ do_create_partition_constraint (PT_NODE * alter, SM_CLASS * root_class, SM_CLASS
       for (; parts; parts = parts->next)
 	{
 	  MOP subclass_op = parts->info.parts.name->info.name.db_object;
-	  SM_INDEX_STATUS old_status = SM_NORMAL_INDEX;
-	  SM_CLASS_CONSTRAINT *constr = NULL;
 
 	  if (alter_op == PT_REORG_PARTITION && parts->partition_pruned)
 	    {
@@ -5373,12 +5371,6 @@ do_create_partition_constraint (PT_NODE * alter, SM_CLASS * root_class, SM_CLASS
 	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	      goto cleanup;
-	    }
-
-	  constr = classobj_find_constraint_by_name (subclass->constraints, constraint->name);
-	  if (constr != NULL)
-	    {
-	      old_status = constr->index_status;
 	    }
 
 	  if (subclass->partition == NULL)
@@ -5429,21 +5421,12 @@ do_create_partition_constraint (PT_NODE * alter, SM_CLASS * root_class, SM_CLASS
     {
       for (objs = root_class->users; objs; objs = objs->next)
 	{
-	  SM_CLASS_CONSTRAINT *constr = NULL;
-	  SM_INDEX_STATUS old_status = SM_NORMAL_INDEX;
-
 	  error = au_fetch_class (objs->op, &subclass, AU_FETCH_READ, AU_SELECT);
 	  if (error != NO_ERROR)
 	    {
 	      assert (er_errid () != NO_ERROR);
 	      error = er_errid ();
 	      goto cleanup;
-	    }
-
-	  constr = classobj_find_constraint_by_name (subclass->constraints, constraint->name);
-	  if (constr != NULL)
-	    {
-	      old_status = constr->index_status;
 	    }
 
 	  if (subclass->partition == NULL)
