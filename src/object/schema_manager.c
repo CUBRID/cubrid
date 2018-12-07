@@ -455,8 +455,6 @@ static DB_OBJLIST *sm_fetch_all_objects_internal (DB_OBJECT * op, DB_FETCH_MODE 
 						  LC_FETCH_VERSION_TYPE * force_fetch_version_type);
 static int sm_flush_and_decache_objects_internal (MOP obj, MOP obj_class_mop, int decache);
 
-static void sm_stats_assign_index_status (SM_CLASS * class_);
-
 static void sm_free_resident_classes_virtual_query_cache (void);
 
 /*
@@ -3788,12 +3786,6 @@ sm_get_class_with_statistics (MOP classop)
 	}
     }
 
-  /* Iterate through all constraints and check if there is any of them with online index build in progress and set the
-   * corresponding status in stats field.
-   */
-  // TODO - why not filter it in server?
-  sm_stats_assign_index_status (class_);
-
   return class_;
 }
 
@@ -3827,8 +3819,6 @@ sm_get_statistics_force (MOP classop)
 	      class_->stats = NULL;
 	    }
 	  stats = class_->stats = stats_get_statistics (WS_OID (classop), 0);
-
-	  sm_stats_assign_index_status (class_);
 	}
     }
 
@@ -3903,8 +3893,6 @@ sm_update_statistics (MOP classop, bool with_fullscan)
 		  /* get the new ones, should do this at the same time as the update operation to avoid two server
 		   * calls */
 		  class_->stats = stats_get_statistics (WS_OID (classop), 0);
-
-		  sm_stats_assign_index_status (class_);
 		}
 	    }
 	}
@@ -3958,8 +3946,6 @@ sm_update_all_statistics (bool with_fullscan)
 		      return (er_errid ());
 		    }
 		  class_->stats = stats_get_statistics (WS_OID (cl->op), 0);
-
-		  sm_stats_assign_index_status (class_);
 		}
 	    }
 	}
@@ -16391,49 +16377,6 @@ flatten_partition_info (SM_TEMPLATE * def, SM_TEMPLATE * flat)
   return NO_ERROR;
 }
 
-/*
- * sm_stats_assign_index_status () - Assign the index status from the statistics arrays.
- * return        - void
- * class_ (in)   - Class that requested the statistics.
- */
-static void
-sm_stats_assign_index_status (SM_CLASS * class_)
-{
-  SM_CLASS_CONSTRAINT *cons;
-  int i;
-  BTID online_index_btid = BTID_INITIALIZER;
-
-  if (class_ == NULL)
-    {
-      return;
-    }
-
-  for (cons = class_->constraints; cons != NULL; cons = cons->next)
-    {
-      /* Check if there is an online index currently being built or an invisible one. */
-      if (cons->index_status != SM_ONLINE_INDEX_BUILDING_IN_PROGRESS && cons->index_status != SM_INVISIBLE_INDEX)
-	{
-	  continue;
-	}
-
-      online_index_btid = cons->index_btid;
-
-      /* Iterate through all attributes. */
-      for (i = 0; i < class_->stats->n_attrs; i++)
-	{
-	  /* Iterate through all statistics for this attribute and find the one with the same BTID as the online index. */
-	  for (int j = 0; j < class_->stats->attr_stats[i].n_btstats; j++)
-	    {
-	      if (BTID_IS_EQUAL (&class_->stats->attr_stats[i].bt_stats[j].btid, &online_index_btid) == 1)
-		{
-		  class_->stats->attr_stats[i].bt_stats[j].index_status = cons->index_status;
-		  break;
-		}
-	    }
-	}
-    }
-}
-
 int
 sm_load_online_index (MOP classmop, const char *constraint_name)
 {
@@ -16658,4 +16601,35 @@ error_return:
     }
 
   return error;
+}
+
+
+
+
+/*
+ * sm_get_index_status_from_constraints () - Get the index status of the BTID from the constraints list.
+ * return                 - index_status
+ * constraint_list (in)   - The list of constraints to look into.
+ * btid (in)              - BTID to look for
+ */
+SM_INDEX_STATUS
+sm_get_index_status_from_constraints (SM_CLASS_CONSTRAINT * constraint_list, BTID btid)
+{
+  int error_code = NO_ERROR;
+  SM_CLASS_CONSTRAINT *constr;
+
+  for (constr = constraint_list; constr != NULL; constr = constr->next)
+    {
+      /* Iterate through all constraints. */
+      if (BTID_IS_EQUAL (&constr->index_btid, &btid))
+	{
+	  break;
+	}
+    }
+
+  /* We should always find the constraint. */
+  assert (constr != NULL);
+
+  return constr->index_status;
+
 }

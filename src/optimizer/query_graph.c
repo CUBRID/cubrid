@@ -4885,7 +4885,6 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg, const char *expr_st
 		{
 		  if (BTID_IS_EQUAL (&bstatsp->btid, &consp->index_btid) && bstatsp->has_function == 1)
 		    {
-		      assert (bstatsp->index_status == SM_NORMAL_INDEX);
 		      break;
 		    }
 		}
@@ -5080,7 +5079,11 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 	      n_func_indexes++;
 	    }
 
-	  if (attr_statsp->bt_stats[j].index_status != SM_NORMAL_INDEX)
+	  SM_INDEX_STATUS local_idx_status;
+	  local_idx_status =
+	    sm_get_index_status_from_constraints (class_info_entryp->smclass->constraints, attr_statsp->bt_stats->btid);
+
+	  if (local_idx_status != SM_NORMAL_INDEX)
 	    {
 	      n_unavail_indexes++;
 	    }
