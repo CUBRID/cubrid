@@ -3879,8 +3879,8 @@ db_json_search_dbval (DB_VALUE * result, DB_VALUE * args[], const int num_args)
     {
       char * escaped;
       int escaped_size;
-      // escape things between quotes
-      error_code = db_string_escape (paths[0].c_str () + 1, paths[0].size() - 2 , &escaped, &escaped_size);
+      // todo: escape things between quotes
+      error_code = db_string_escape (paths[0].c_str (), paths[0].size (), &escaped, &escaped_size);
       if (error_code)
       {
         db_private_free (NULL, escaped);
@@ -3903,7 +3903,7 @@ db_json_search_dbval (DB_VALUE * result, DB_VALUE * args[], const int num_args)
       char * escaped;
       int escaped_size;
       // escape things between quotes
-      error_code = db_string_escape (paths[i].c_str () + 1, paths[i].size () - 2, &escaped, &escaped_size);
+      error_code = db_string_escape (paths[i].c_str (), paths[i].size (), &escaped, &escaped_size);
       if (error_code)
       {
         db_json_delete_doc (result_json);

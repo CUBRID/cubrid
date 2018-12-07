@@ -2099,6 +2099,13 @@ db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<std::
 	    case '.':
 	      ss << "\\.";
 	      break;
+	    // todo: gather all characters that need escaping in regex string to be together
+	    case '^':
+	      ss << "\\^";
+	      break;
+	    case '|':
+	      ss << "\\|";
+	      break;
 	    case '*':
 	      if (i < wild_card.length () - 1 && wild_card[i + 1] == '*')
 		{
@@ -3034,6 +3041,10 @@ db_json_path_is_token_valid_quoted_object_key (const std::string &path, std::siz
 static bool
 db_json_path_is_token_valid_unquoted_object_key (std::string &path, std::size_t &token_begin)
 {
+  if (path == "")
+    {
+      return false;
+    }
   std::size_t i = token_begin;
 
   // todo: this needs change. Besides alphanumerics, object keys can be valid ECMAScript identifiers as defined in
@@ -3327,11 +3338,21 @@ db_json_convert_pointer_to_sql_path (const char *pointer_path, std::string &sql_
 	}
       else
 	{
-	  sql_path_out += ".\"";
-	  // replace special characters if necessary based on mapper
 	  db_json_replace_token_special_chars (tokens[i], special_chars);
+	  tokens[i].insert (0, "\"");
+	  tokens[i] += '"';
+
+	  std::size_t token_pos = 0;
+	  // todo: clarify escaping things e.g. '"' character in the token needs to be escaped for sure
+	  if (!db_json_path_is_token_valid_quoted_object_key (tokens[i], token_pos) || token_pos < tokens[i].length ())
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
+	      return ER_JSON_INVALID_PATH;
+	    }
+
+	  sql_path_out += ".";
+	  // replace special characters if necessary based on mapper
 	  sql_path_out += tokens[i];
-	  sql_path_out += "\"";
 	}
     }
 
