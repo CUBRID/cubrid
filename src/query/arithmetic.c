@@ -5084,7 +5084,7 @@ db_json_contains_dbval (DB_VALUE * result, DB_VALUE * const *arg, int const num_
 
   const DB_VALUE *json = arg[0];
   const DB_VALUE *value = arg[1];
-  const DB_VALUE *path = num_args > 2 ? arg[3] : NULL;
+  const DB_VALUE *path = num_args == 3 ? arg[2] : NULL;
 
   if (DB_IS_NULL (json) || DB_IS_NULL (value) || (path != NULL && DB_IS_NULL (path)))
     {
@@ -5305,6 +5305,7 @@ db_json_unquote_dbval (DB_VALUE * result, DB_VALUE * const *arg, int const num_a
     }
   assert (source_doc != NULL);
   error_code = db_json_unquote (*source_doc, str);
+  db_json_delete_doc (source_doc);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -5346,6 +5347,7 @@ db_json_pretty_dbval (DB_VALUE * result, DB_VALUE * const *arg, int const num_ar
     }
   assert (source_doc != NULL);
   db_json_pretty_func (*source_doc, str);
+  db_json_delete_doc (source_doc);
 
   error_code = db_make_string (result, str);
   if (error_code != NO_ERROR)
