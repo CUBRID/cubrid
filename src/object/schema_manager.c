@@ -14662,6 +14662,8 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	  if (error != NO_ERROR)
 	    {
 	      smt_quit (def);
+
+	      assert (shared_cons_name == NULL);
 	      goto error_exit;
 	    }
 
@@ -14669,6 +14671,8 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	    {
 	      /* If index is shared with another constraint, build it as a normal index. */
 	      index_status = SM_NORMAL_INDEX;
+
+	      free_and_init (shared_cons_name);
 	    }
 	}
 
