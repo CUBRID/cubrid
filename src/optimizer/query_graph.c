@@ -3270,6 +3270,7 @@ get_expr_fcode_rank (FUNC_TYPE fcode)
   switch (fcode)
     {
     case F_ELT:
+      return RANK_EXPR_LIGHT;
     case F_JSON_ARRAY:
     case F_JSON_ARRAY_APPEND:
     case F_JSON_ARRAY_INSERT:
@@ -3293,7 +3294,6 @@ get_expr_fcode_rank (FUNC_TYPE fcode)
     case F_JSON_TYPE:
     case F_JSON_UNQUOTE:
     case F_JSON_VALID:
-      return RANK_EXPR_LIGHT;
     case F_INSERT_SUBSTRING:
       return RANK_EXPR_MEDIUM;
     default:
