@@ -25775,6 +25775,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_FROM_BASE64:
     case PT_CRC32:
     case PT_SCHEMA_DEF:
+    case PT_DISK_SIZE:
       {
 	PT_NODE *expr;
 	if (c != 1)
