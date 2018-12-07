@@ -17026,7 +17026,7 @@ reserved_func
 		DBG_PRINT}}
         | JSON_REMOVE '(' expression_list ')'
 		{{
-                    $$ = parser_make_func_with_arg_count (this_parser, F_JSON_KEYS, $3, 2, 0);
+                    $$ = parser_make_func_with_arg_count (this_parser, F_JSON_REMOVE, $3, 2, 0);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
         | JSON_REPLACE '(' expression_list ')'

@@ -5120,7 +5120,7 @@ db_json_contains_dbval (DB_VALUE * result, DB_VALUE * const *arg, int const num_
       int error_code;
       bool has_member = false;
       JSON_DOC *value_doc;
-      error_code = db_value_to_json_doc (*json, value_doc);
+      error_code = db_value_to_json_doc (*value, value_doc);
       if (error_code != NO_ERROR)
 	{
 	  db_json_delete_doc (source_doc);

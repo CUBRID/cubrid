@@ -394,6 +394,7 @@ func_signature::get_signatures (FUNC_TYPE ft)
     case F_JSON_ARRAY_INSERT:
       return &json_doc_r_path_val;
     case F_JSON_CONTAINS:
+      return &json_contains;
     case F_JSON_CONTAINS_PATH:
       return &json_contains_path;
     case F_JSON_DEPTH:

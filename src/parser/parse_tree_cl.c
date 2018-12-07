@@ -12546,15 +12546,6 @@ pt_print_function (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, " ");
       q = pt_append_varchar (parser, q, r1);
     }
-  else if (code == F_JSON_EXTRACT)
-    {
-      r1 = pt_print_bytes_l (parser, p->info.function.arg_list);
-      q = pt_append_nulstring (parser, q, " ");	// for compatibility with PT_EXPR
-      q = pt_append_nulstring (parser, q, pt_show_function (code));
-      q = pt_append_nulstring (parser, q, "(");
-      q = pt_append_varchar (parser, q, r1);
-      q = pt_append_nulstring (parser, q, ")");
-    }
   else
     {
       r1 = pt_print_bytes_l (parser, p->info.function.arg_list);
