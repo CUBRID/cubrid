@@ -1110,6 +1110,16 @@ typedef enum
   PT_PERCENTILE_DISC
 } FUNC_TYPE;
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif				// c++
+  const char *fcode_get_lowercase_name (FUNC_TYPE ftype);
+  const char *fcode_get_uppercase_name (FUNC_TYPE ftype);
+#ifdef __cplusplus
+}
+#endif				// c++
+
 /************************************************************************/
 /* QUERY                                                                */
 /************************************************************************/

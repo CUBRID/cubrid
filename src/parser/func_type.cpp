@@ -456,158 +456,6 @@ func_signature::get_signatures (FUNC_TYPE ft)
     }
 }
 
-const char *pt_func_type_to_string (FUNC_TYPE ft)
-{
-  switch (ft)
-    {
-    case PT_MIN:
-      return "MIN";
-    case PT_MAX:
-      return "MAX";
-    case PT_SUM:
-      return "SUM";
-    case PT_AVG:
-      return "AVG";
-    case PT_STDDEV:
-      return "STDDEV";
-    case PT_VARIANCE:
-      return "VARIANCE";
-    case PT_STDDEV_POP:
-      return "STDDEV_POP";
-    case PT_VAR_POP:
-      return "VAR_POP";
-    case PT_STDDEV_SAMP:
-      return "STDDEV_SAMP";
-    case PT_VAR_SAMP:
-      return "VAR_SAMP";
-    case PT_COUNT:
-      return "COUNT";
-    case PT_COUNT_STAR:
-      return "COUNT_STAR";
-    case PT_GROUPBY_NUM:
-      return "GROUPBY_NUM";
-    case PT_AGG_BIT_AND:
-      return "AGG_BIT_AND";
-    case PT_AGG_BIT_OR:
-      return "AGG_BIT_OR";
-    case PT_AGG_BIT_XOR:
-      return "AGG_BIT_XOR";
-    case PT_GROUP_CONCAT:
-      return "GROUP_CONCAT";
-    case PT_ROW_NUMBER:
-      return "ROW_NUMBER";
-    case PT_RANK:
-      return "RANK";
-    case PT_DENSE_RANK:
-      return "DENSE_RANK";
-    case PT_NTILE:
-      return "NTILE";
-    case PT_TOP_AGG_FUNC:
-      return "TOP_AGG_FUNC";
-    case PT_LEAD:
-      return "LEAD";
-    case PT_LAG:
-      return "LAG";
-    case PT_GENERIC:
-      return "GENERIC";
-    case F_SET:
-      return "F_SET";
-    case F_TABLE_SET:
-      return "F_TABLE_SET";
-    case F_MULTISET:
-      return "F_MULTISET";
-    case F_TABLE_MULTISET:
-      return "F_TABLE_MULTISET";
-    case F_SEQUENCE:
-      return "F_SEQUENCE";
-    case F_TABLE_SEQUENCE:
-      return "F_TABLE_SEQUENCE";
-    case F_TOP_TABLE_FUNC:
-      return "F_TOP_TABLE_FUNC";
-    case F_MIDXKEY:
-      return "F_MIDXKEY";
-    case F_VID:
-      return "F_VID";
-    case F_GENERIC:
-      return "F_GENERIC";
-    case F_CLASS_OF:
-      return "F_CLASS_OF";
-    case F_INSERT_SUBSTRING:
-      return "INSERT_SUBSTRING";
-    case F_ELT:
-      return "ELT";
-    case F_JSON_ARRAY:
-      return "JSON_ARRAY";
-    case F_JSON_ARRAY_APPEND:
-      return "JSON_ARRAY_APPEND";
-    case F_JSON_ARRAY_INSERT:
-      return "JSON_ARRAY_INSERT";
-    case F_JSON_CONTAINS:
-      return "JSON_CONTAINS";
-    case F_JSON_CONTAINS_PATH:
-      return "JSON_CONTAINS_PATH";
-    case F_JSON_DEPTH:
-      return "JSON_DEPTH";
-    case F_JSON_EXTRACT:
-      return "JSON_EXTRACT";
-    case F_JSON_GET_ALL_PATHS:
-      return "JSON_GET_ALL_PATHS";
-    case F_JSON_INSERT:
-      return "JSON_INSERT";
-    case F_JSON_KEYS:
-      return "JSON_KEYS";
-    case F_JSON_LENGTH:
-      return "JSON_LENGTH";
-    case F_JSON_MERGE:
-      return "JSON_MERGE";
-    case F_JSON_MERGE_PATCH:
-      return "JSON_MERGE_PATH";
-    case F_JSON_OBJECT:
-      return "JSON_OBJECT";
-    case F_JSON_PRETTY:
-      return "JSON_PRETTY";
-    case F_JSON_QUOTE:
-      return "F_JSON_QUOTE";
-    case F_JSON_REMOVE:
-      return "JSON_REMOVE";
-    case F_JSON_REPLACE:
-      return "JSON_REPLACE";
-    case F_JSON_SEARCH:
-      return "JSON_SEARCH";
-    case F_JSON_SET:
-      return "JSON_SET";
-    case F_JSON_TYPE:
-      return "JSON_TYPE";
-    case F_JSON_UNQUOTE:
-      return "JSON_UNQUOTE";
-    case F_JSON_VALID:
-      return "JSON_VALID";
-    case PT_FIRST_VALUE:
-      return "FIRST_VALUE";
-    case PT_LAST_VALUE:
-      return "LAST_VALUE";
-    case PT_NTH_VALUE:
-      return "NTH_VALUE";
-    case PT_MEDIAN:
-      return "MEDIAN";
-    case PT_CUME_DIST:
-      return "CUME_DIST";
-    case PT_PERCENT_RANK:
-      return "PERCENT_RANK";
-    case PT_PERCENTILE_CONT:
-      return "PERCENTILE_CONT";
-    case PT_PERCENTILE_DISC:
-      return "PERCENTILE_DISC";
-    case PT_JSON_ARRAYAGG:
-      return "JSON_ARRAYAGG";
-    case PT_JSON_OBJECTAGG:
-      return "JSON_OBJECTAGG";
-    default:
-      assert (false);
-      return nullptr;
-    }
-}
-
 void
 func_signature::to_string_buffer (string_buffer &sb) const
 {
@@ -881,7 +729,7 @@ Func::Node::preprocess ()
 		      && PT_IS_NATIONAL_CHAR_STRING_TYPE (arg1->type_enum)))
 		{
 		  pt_cat_error (m_parser, m_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OP_NOT_DEFINED_ON,
-				pt_show_function (PT_GROUP_CONCAT), pt_show_type_enum (arg1->type_enum),
+				fcode_get_lowercase_name (PT_GROUP_CONCAT), pt_show_type_enum (arg1->type_enum),
 				pt_show_type_enum (arg2->type_enum));
 		  m_node->type_enum = PT_TYPE_VARCHAR;
 		  return false;
@@ -1335,7 +1183,7 @@ Func::Node::invalid_coll_error (const func_signature &func_sgn)
   func_sgn.to_string_buffer (sgn_sb);
 
   pt_cat_error (m_parser, m_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_COLLATION_OP_ERROR,
-		pt_show_function (m_node->info.function.function_type));
+		fcode_get_lowercase_name (m_node->info.function.function_type));
   pt_cat_error (m_parser, m_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INCOMPATIBLE_SIGNATURE,
 		sgn_sb.get_buffer ());
 }

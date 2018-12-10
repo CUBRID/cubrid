@@ -117,6 +117,7 @@ extern size_t json_table_column_count;
 #endif /* WINDOWS */
 #include "memory_alloc.h"
 #include "db_elo.h"
+#include "storage_common.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -2809,7 +2810,8 @@ create_stmt
 					PT_ERRORmf (this_parser, col->info.sort_spec.expr,
 						    MSGCAT_SET_PARSER_SEMANTIC,
 						    MSGCAT_SEMANTIC_FUNCTION_CANNOT_BE_USED_FOR_INDEX,
-						    pt_show_function (col->info.sort_spec.expr->info.function.function_type));
+						    fcode_get_lowercase_name (col->info.sort_spec.expr->info.function.
+                                                                              function_type));
 				      }
 				  }
 			      }
@@ -15944,7 +15946,7 @@ reserved_func
 						PT_ERRORmf (this_parser, node,
 									MSGCAT_SET_PARSER_SEMANTIC,
 									MSGCAT_SEMANTIC_NULL_ORDER_BY,
-									pt_show_function ($1));
+									fcode_get_lowercase_name ($1));
 					  }
 				  }
 			  }
@@ -24305,7 +24307,7 @@ parser_make_func_with_arg_count (PARSER_CONTEXT * parser, FUNC_TYPE func_code, P
     {
       // todo - a more clear message
       PT_ERRORmf (parser, args_list, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
-                  pt_show_function (func_code));
+                  fcode_get_lowercase_name (func_code));
       // todo - return null?
     }
   return parser_make_expr_with_func (parser, func_code, args_list);
@@ -24321,7 +24323,7 @@ parser_make_func_with_arg_count_mod2 (PARSER_CONTEXT * parser, FUNC_TYPE func_co
     {
       // todo - a more clear message
       PT_ERRORmf (parser, args_list, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INVALID_INTERNAL_FUNCTION,
-                  pt_show_function (func_code));
+                  fcode_get_lowercase_name (func_code));
       // todo - return null?
     }
   return parser_make_expr_with_func (parser, func_code, args_list);

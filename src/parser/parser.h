@@ -297,7 +297,6 @@ extern "C"
 
   extern const char *pt_show_binopcode (PT_OP_TYPE n);	/* printable opcode */
   extern const char *pt_show_type_enum (PT_TYPE_ENUM t);
-  extern const char *pt_show_function (FUNC_TYPE c);
   extern const char *pt_show_misc_type (PT_MISC_TYPE p);	/* return misc_type */
   extern const char *pt_show_node_type (PT_NODE * p);	/* return node_type */
   extern const char *pt_show_priv (PT_PRIV_TYPE t);

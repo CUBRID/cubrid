@@ -33,6 +33,5 @@ extern void qdump_print_stats_text (FILE * fp, XASL_NODE * xasl_p, int indent);
 #endif /* SERVER_MODE */
 extern const char *qdump_operator_type_string (OPERATOR_TYPE optype);
 extern const char *qdump_default_expression_string (DB_DEFAULT_EXPR_TYPE default_expr_type);
-extern const char *qdump_function_type_string (FUNC_TYPE ftype);
 
 #endif /* _QUERY_DUMP_H_ */

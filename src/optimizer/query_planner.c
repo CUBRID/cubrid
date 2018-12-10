@@ -1334,7 +1334,7 @@ qo_plan_print_analytic_eval (QO_PLAN * plan, FILE * f, int howfar)
 	      /* func info */
 	      fprintf (f, "\n" INDENTED_TITLE_FMT, (int) howfar, ' ', "");
 	      fprintf (f, "func[%d]: ", i);
-	      fputs (pt_show_function (func->function), f);
+	      fputs (fcode_get_lowercase_name (func->function), f);
 
 	      /* func partition by */
 	      fputs (" partition by (", f);

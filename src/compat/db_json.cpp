@@ -1201,44 +1201,8 @@ db_json_get_type_as_str (const JSON_DOC *document)
   assert (document != NULL);
   assert (!document->HasParseError ());
 
-  if (document->IsArray ())
-    {
-      return "JSON_ARRAY";
-    }
-  else if (document->IsObject ())
-    {
-      return "JSON_OBJECT";
-    }
-  else if (document->IsInt ())
-    {
-      return "INTEGER";
-    }
-  else if (document->IsInt64 ())
-    {
-      return "BIGINT";
-    }
-  else if (document->IsDouble ())
-    {
-      return "DOUBLE";
-    }
-  else if (document->IsString ())
-    {
-      return "STRING";
-    }
-  else if (document->IsNull ())
-    {
-      return "JSON_NULL";
-    }
-  else if (document->IsBool ())
-    {
-      return "BOOLEAN";
-    }
-  else
-    {
-      /* we shouldn't get here */
-      assert (false);
-      return "UNKNOWN";
-    }
+  const JSON_VALUE *to_valuep = &db_json_doc_to_value (*document);
+  return db_json_get_json_type_as_str (db_json_get_type_of_value (to_valuep));
 }
 
 static const char *
@@ -3730,7 +3694,7 @@ db_value_to_json_path (const DB_VALUE *path_value, FUNC_TYPE fcode, const char *
   if (!TP_IS_CHAR_TYPE (db_value_domain_type (path_value)))
     {
       int error_code = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 2, qdump_function_type_string (fcode), "STRING");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 2, fcode_get_uppercase_name (fcode), "STRING");
       return error_code;
     }
   *path_str = db_get_string (path_value);

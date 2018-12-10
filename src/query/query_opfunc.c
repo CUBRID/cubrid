@@ -7013,7 +7013,7 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 			{
 			  error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
 			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2,
-				  qdump_function_type_string (agg_p->function), "DOUBLE, DATETIME, TIME");
+				  fcode_get_uppercase_name (agg_p->function), "DOUBLE, DATETIME, TIME");
 
 			  pr_clear_value_vector (db_values);
 			  return error;
@@ -10857,7 +10857,7 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, V
 		  if (dom_status != DOMAIN_COMPATIBLE)
 		    {
 		      error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, qdump_function_type_string (func_p->function),
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, fcode_get_uppercase_name (func_p->function),
 			      "DOUBLE, DATETIME, TIME");
 		      goto exit;
 		    }
@@ -11423,7 +11423,7 @@ qdata_apply_interpolation_function_coercion (DB_VALUE * f_value, TP_DOMAIN ** re
 	    {
 	      assert (error == ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN);
 
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, qdump_function_type_string (function),
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, fcode_get_uppercase_name (function),
 		      "DOUBLE, DATETIME, TIME");
 
 	      error = ER_FAILED;
@@ -11487,7 +11487,7 @@ qdata_interpolation_function_values (DB_VALUE * f_value, DB_VALUE * c_value, dou
 	    {
 	      assert (error == ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN);
 
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, qdump_function_type_string (function),
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, fcode_get_uppercase_name (function),
 		      "DOUBLE, DATETIME, TIME");
 
 	      error = ER_FAILED;
@@ -12860,7 +12860,7 @@ qdata_update_agg_interpolation_func_value_and_domain (AGGREGATE_TYPE * agg_p, DB
 	{
 	  assert (error == ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN);
 
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, qdump_function_type_string (agg_p->function),
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, fcode_get_uppercase_name (agg_p->function),
 		  "DOUBLE, DATETIME, TIME");
 	  goto end;
 	}

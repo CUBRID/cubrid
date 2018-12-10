@@ -4039,7 +4039,7 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
 		      node_ptr,
 		      MSGCAT_SET_PARSER_SEMANTIC,
 		      MSGCAT_SEMANTIC_DEFAULT_EXPR_NOT_ALLOWED,
-		      pt_show_function (node_ptr->info.function.function_type));
+		      fcode_get_lowercase_name (node_ptr->info.function.function_type));
 	  goto end;
 	}
 
@@ -15188,7 +15188,7 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *a
 	case PT_FUNCTION_HOLDER:
 	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
 		      MSGCAT_SEMANTIC_FUNCTION_CANNOT_BE_USED_FOR_FILTER_INDEX,
-		      pt_show_function (node->info.expr.arg1->info.function.function_type));
+		      fcode_get_lowercase_name (node->info.expr.arg1->info.function.function_type));
 	  info->is_valid_expr = false;
 	  break;
 
@@ -15239,7 +15239,7 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *a
 	default:
 	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
 		      MSGCAT_SEMANTIC_FUNCTION_CANNOT_BE_USED_FOR_FILTER_INDEX,
-		      pt_show_function (node->info.function.function_type));
+		      fcode_get_lowercase_name (node->info.function.function_type));
 	  info->is_valid_expr = false;
 	  break;
 	}

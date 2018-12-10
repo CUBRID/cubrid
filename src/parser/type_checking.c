@@ -12456,7 +12456,7 @@ pt_eval_function_type_new (PARSER_CONTEXT * parser, PT_NODE * node)
   if (pt_list_has_logical_nodes (arg_list))
     {
       pt_cat_error (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-		    MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON, pt_show_function (fcode), "boolean");
+		    MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON, fcode_get_lowercase_name (fcode), "boolean");
       return node;
     }
 
@@ -12471,7 +12471,7 @@ pt_eval_function_type_new (PARSER_CONTEXT * parser, PT_NODE * node)
 	  if (!func_sigs)
 	    {
 	      pt_cat_error (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NO_SIGNATURES,
-			    pt_func_type_to_string (fcode));
+			    fcode_get_uppercase_name (fcode));
 	      return node;
 	    }
 	  const func_signature *func_sig = funcNode.get_signature (*func_sigs);
@@ -12479,7 +12479,7 @@ pt_eval_function_type_new (PARSER_CONTEXT * parser, PT_NODE * node)
 	    {
 	      node->type_enum = PT_TYPE_NA;	//to avoid entering here 2nd time
 	      pt_cat_error (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NO_VALID_FUNCTION_SIGNATURE,
-			    pt_func_type_to_string (fcode));
+			    fcode_get_uppercase_name (fcode));
 	    }
 	  else
 	    {
@@ -12550,7 +12550,7 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
   if (pt_list_has_logical_nodes (arg_list))
     {
       PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
-		   pt_show_function (fcode), "boolean");
+		   fcode_get_lowercase_name (fcode), "boolean");
       return node;
     }
 
@@ -12631,7 +12631,7 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 	  && arg_type != PT_TYPE_NA)
 	{
 	  PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INCOMPATIBLE_OPDS,
-		       pt_show_function (fcode), pt_show_type_enum (arg_type));
+		       fcode_get_lowercase_name (fcode), pt_show_type_enum (arg_type));
 	}
       break;
 
@@ -12651,14 +12651,14 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 	    && arg_type != PT_TYPE_NA)
 	  {
 	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INCOMPATIBLE_OPDS,
-			 pt_show_function (fcode), pt_show_type_enum (arg_type));
+			 fcode_get_lowercase_name (fcode), pt_show_type_enum (arg_type));
 	    break;
 	  }
 
 	if (!PT_IS_STRING_TYPE (sep_type) && sep_type != PT_TYPE_NONE)
 	  {
 	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INCOMPATIBLE_OPDS,
-			 pt_show_function (fcode), pt_show_type_enum (sep_type));
+			 fcode_get_lowercase_name (fcode), pt_show_type_enum (sep_type));
 	    break;
 	  }
 
@@ -12666,7 +12666,7 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 	    && arg_type != PT_TYPE_VARNCHAR)
 	  {
 	    PT_ERRORmf3 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OP_NOT_DEFINED_ON,
-			 pt_show_function (fcode), pt_show_type_enum (arg_type), pt_show_type_enum (sep_type));
+			 fcode_get_lowercase_name (fcode), pt_show_type_enum (arg_type), pt_show_type_enum (sep_type));
 	    break;
 	  }
 
@@ -12674,7 +12674,7 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 	    && sep_type != PT_TYPE_VARNCHAR && sep_type != PT_TYPE_NONE)
 	  {
 	    PT_ERRORmf3 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OP_NOT_DEFINED_ON,
-			 pt_show_function (fcode), pt_show_type_enum (arg_type), pt_show_type_enum (sep_type));
+			 fcode_get_lowercase_name (fcode), pt_show_type_enum (arg_type), pt_show_type_enum (sep_type));
 	    break;
 	  }
 
@@ -12682,7 +12682,7 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 	    && sep_type != PT_TYPE_VARBIT && sep_type != PT_TYPE_NONE)
 	  {
 	    PT_ERRORmf3 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OP_NOT_DEFINED_ON,
-			 pt_show_function (fcode), pt_show_type_enum (arg_type), pt_show_type_enum (sep_type));
+			 fcode_get_lowercase_name (fcode), pt_show_type_enum (arg_type), pt_show_type_enum (sep_type));
 	    break;
 	  }
 
@@ -12690,7 +12690,7 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 	    && (sep_type == PT_TYPE_BIT || sep_type == PT_TYPE_VARBIT))
 	  {
 	    PT_ERRORmf3 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OP_NOT_DEFINED_ON,
-			 pt_show_function (fcode), pt_show_type_enum (arg_type), pt_show_type_enum (sep_type));
+			 fcode_get_lowercase_name (fcode), pt_show_type_enum (arg_type), pt_show_type_enum (sep_type));
 	    break;
 	  }
       }
@@ -12745,7 +12745,7 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 	  {
 	    arg_type = PT_TYPE_NONE;
 	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON_INDEX,
-			 pt_show_function (fcode), pt_show_type_enum (arg->type_enum));
+			 fcode_get_lowercase_name (fcode), pt_show_type_enum (arg->type_enum));
 	    break;
 	  }
 
@@ -12762,7 +12762,7 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 		assert (false);	/* invalid data type */
 		arg_type = PT_TYPE_NONE;
 		PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
-			     pt_show_function (fcode), pt_show_type_enum (arg->type_enum));
+			     fcode_get_lowercase_name (fcode), pt_show_type_enum (arg->type_enum));
 		break;
 	      }
 	  }
@@ -12831,24 +12831,26 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 	  case 1:
 	    arg_type = PT_TYPE_NONE;
 	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
-			 pt_show_function (fcode), pt_show_type_enum (bad_types[0]));
+			 fcode_get_lowercase_name (fcode), pt_show_type_enum (bad_types[0]));
 	    break;
 	  case 2:
 	    arg_type = PT_TYPE_NONE;
 	    PT_ERRORmf3 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON_2,
-			 pt_show_function (fcode), pt_show_type_enum (bad_types[0]), pt_show_type_enum (bad_types[1]));
+			 fcode_get_lowercase_name (fcode), pt_show_type_enum (bad_types[0]),
+			 pt_show_type_enum (bad_types[1]));
 	    break;
 	  case 3:
 	    arg_type = PT_TYPE_NONE;
 	    PT_ERRORmf4 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON_3,
-			 pt_show_function (fcode), pt_show_type_enum (bad_types[0]), pt_show_type_enum (bad_types[1]),
-			 pt_show_type_enum (bad_types[2]));
+			 fcode_get_lowercase_name (fcode), pt_show_type_enum (bad_types[0]),
+			 pt_show_type_enum (bad_types[1]), pt_show_type_enum (bad_types[2]));
 	    break;
 	  case 4:
 	    arg_type = PT_TYPE_NONE;
 	    PT_ERRORmf5 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON_4,
-			 pt_show_function (fcode), pt_show_type_enum (bad_types[0]), pt_show_type_enum (bad_types[1]),
-			 pt_show_type_enum (bad_types[2]), pt_show_type_enum (bad_types[3]));
+			 fcode_get_lowercase_name (fcode), pt_show_type_enum (bad_types[0]),
+			 pt_show_type_enum (bad_types[1]), pt_show_type_enum (bad_types[2]),
+			 pt_show_type_enum (bad_types[3]));
 	    break;
 	  }
       }
@@ -12881,7 +12883,7 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 	  {
 	    arg_type = PT_TYPE_NONE;
 	    PT_ERRORmf5 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON_4,
-			 pt_show_function (fcode), pt_show_type_enum (arg1_type), pt_show_type_enum (arg2_type),
+			 fcode_get_lowercase_name (fcode), pt_show_type_enum (arg1_type), pt_show_type_enum (arg2_type),
 			 pt_show_type_enum (arg3_type), pt_show_type_enum (arg4_type));
 	    break;
 	  }
@@ -12891,7 +12893,7 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 	  {
 	    arg_type = PT_TYPE_NONE;
 	    PT_ERRORmf5 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON_4,
-			 pt_show_function (fcode), pt_show_type_enum (arg1_type), pt_show_type_enum (arg2_type),
+			 fcode_get_lowercase_name (fcode), pt_show_type_enum (arg1_type), pt_show_type_enum (arg2_type),
 			 pt_show_type_enum (arg3_type), pt_show_type_enum (arg4_type));
 	    break;
 	  }
@@ -12903,7 +12905,7 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 	  {
 	    arg_type = PT_TYPE_NONE;
 	    PT_ERRORmf5 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON_4,
-			 pt_show_function (fcode), pt_show_type_enum (arg1_type), pt_show_type_enum (arg2_type),
+			 fcode_get_lowercase_name (fcode), pt_show_type_enum (arg1_type), pt_show_type_enum (arg2_type),
 			 pt_show_type_enum (arg3_type), pt_show_type_enum (arg4_type));
 	    break;
 	  }
@@ -12913,7 +12915,7 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 	  {
 	    arg_type = PT_TYPE_NONE;
 	    PT_ERRORmf5 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON_4,
-			 pt_show_function (fcode), pt_show_type_enum (arg1_type), pt_show_type_enum (arg2_type),
+			 fcode_get_lowercase_name (fcode), pt_show_type_enum (arg1_type), pt_show_type_enum (arg2_type),
 			 pt_show_type_enum (arg3_type), pt_show_type_enum (arg4_type));
 	    break;
 	  }
@@ -12927,7 +12929,7 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 	  && !PT_IS_STRING_TYPE (arg_type) && !PT_IS_DATE_TIME_TYPE (arg_type) && arg_type != PT_TYPE_MAYBE)
 	{
 	  PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INCOMPATIBLE_OPDS,
-		       pt_show_function (fcode), pt_show_type_enum (arg_type));
+		       fcode_get_lowercase_name (fcode), pt_show_type_enum (arg_type));
 	}
 
       break;
@@ -13202,7 +13204,7 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 	      {
 		arg_type = PT_TYPE_NONE;
 		PT_ERRORmf5 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON_4,
-			     pt_show_function (fcode), pt_show_type_enum (arg1_orig_type),
+			     fcode_get_lowercase_name (fcode), pt_show_type_enum (arg1_orig_type),
 			     pt_show_type_enum (arg2_orig_type), pt_show_type_enum (arg3_orig_type),
 			     pt_show_type_enum (arg4_orig_type));
 	      }
@@ -13211,7 +13213,7 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 	      {
 		arg_type = PT_TYPE_NONE;
 		PT_ERRORmf5 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON_4,
-			     pt_show_function (fcode), pt_show_type_enum (arg1_orig_type),
+			     fcode_get_lowercase_name (fcode), pt_show_type_enum (arg1_orig_type),
 			     pt_show_type_enum (arg2_orig_type), pt_show_type_enum (arg3_orig_type),
 			     pt_show_type_enum (arg4_orig_type));
 	      }
@@ -13220,7 +13222,7 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 	      {
 		arg_type = PT_TYPE_NONE;
 		PT_ERRORmf5 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON_4,
-			     pt_show_function (fcode), pt_show_type_enum (arg1_orig_type),
+			     fcode_get_lowercase_name (fcode), pt_show_type_enum (arg1_orig_type),
 			     pt_show_type_enum (arg2_orig_type), pt_show_type_enum (arg3_orig_type),
 			     pt_show_type_enum (arg4_orig_type));
 	      }
@@ -13229,7 +13231,7 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 	      {
 		arg_type = PT_TYPE_NONE;
 		PT_ERRORmf5 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON_4,
-			     pt_show_function (fcode), pt_show_type_enum (arg1_orig_type),
+			     fcode_get_lowercase_name (fcode), pt_show_type_enum (arg1_orig_type),
 			     pt_show_type_enum (arg2_orig_type), pt_show_type_enum (arg3_orig_type),
 			     pt_show_type_enum (arg4_orig_type));
 	      }
@@ -13537,7 +13539,8 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
   return node;
 
 error_collation:
-  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_COLLATION_OP_ERROR, pt_show_function (fcode));
+  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_COLLATION_OP_ERROR,
+	      fcode_get_lowercase_name (fcode));
 
   return node;
 }
@@ -24713,7 +24716,7 @@ pt_check_function_collation (PARSER_CONTEXT * parser, PT_NODE * node)
 
 error_collation:
   PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_COLLATION_OP_ERROR,
-	      pt_show_function (node->info.function.function_type));
+	      fcode_get_lowercase_name (node->info.function.function_type));
   return node;
 }
 
