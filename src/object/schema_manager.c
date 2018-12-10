@@ -2085,8 +2085,6 @@ void
 sm_final ()
 {
   SM_DESCRIPTOR *d, *next;
-  SM_CLASS *class_;
-  DB_OBJLIST *cl;
 
 #if defined(WINDOWS)
   /* unload any DLL's we may have opened for methods */
@@ -15139,6 +15137,7 @@ sm_save_constraint_info (SM_CONSTRAINT_INFO ** save_info, const SM_CLASS_CONSTRA
     }
 
   new_constraint->comment = (c->comment == NULL) ? NULL : strdup (c->comment);
+  new_constraint->index_status = c->index_status;
 
   assert (c->attributes != NULL);
   for (crt_att_p = c->attributes, num_atts = 0; *crt_att_p != NULL; ++crt_att_p)
@@ -15761,7 +15760,7 @@ sm_truncate_class (MOP class_mop)
     {
       error = sm_add_constraint (class_mop, saved->constraint_type, saved->name, (const char **) saved->att_names,
 				 saved->asc_desc, saved->prefix_length, false, saved->filter_predicate,
-				 saved->func_index_info, saved->comment, SM_NORMAL_INDEX);
+				 saved->func_index_info, saved->comment, saved->index_status);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
@@ -15773,7 +15772,7 @@ sm_truncate_class (MOP class_mop)
     {
       error = sm_add_constraint (class_mop, saved->constraint_type, saved->name, (const char **) saved->att_names,
 				 saved->asc_desc, saved->prefix_length, false, saved->filter_predicate,
-				 saved->func_index_info, saved->comment, SM_NORMAL_INDEX);
+				 saved->func_index_info, saved->comment, saved->index_status);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
