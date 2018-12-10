@@ -8207,7 +8207,6 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
   LOG_TDES *tdes;
   LOG_LSA preserved_repl_lsa;
   int tran_index;
-  BTID_INT btid_int;
 
   assert_release (class_oid != NULL);
   assert_release (!OID_ISNULL (class_oid));

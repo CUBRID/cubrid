@@ -13937,6 +13937,11 @@ sm_drop_index (MOP classop, const char *constraint_name)
 	{
 	  goto severe_error;
 	}
+
+      if (stats_update_statistics (&classop->oid_info.oid, 0) != NO_ERROR)
+	{
+	  goto severe_error;
+	}
     }
 
 fail_end:
