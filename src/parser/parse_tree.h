@@ -2269,6 +2269,7 @@ struct pt_function_info
   PT_NODE *order_by;		/* ordering PT_SORT_SPEC for GROUP_CONCAT */
   PT_NODE *percentile;		/* percentile for PERCENTILE_CONT, PERCENTILE_DISC */
   bool is_order_dependent;	/* true if function is order dependent */
+  bool is_type_checked;		/* true if type is already checked, false otherwise... is this safe? */
   int coll_modifier;		/* collation modifier = collation + 1 */
   struct
   {

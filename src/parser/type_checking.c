@@ -12460,34 +12460,8 @@ pt_eval_function_type_new (PARSER_CONTEXT * parser, PT_NODE * node)
       return node;
     }
 
-  Func::Node funcNode (parser, node);
-  // todo - move below code to Func::Node
-  if (funcNode.preprocess ())
-    {
-      if (node->type_enum == PT_TYPE_NONE || node->data_type == NULL)
-	{
-	  auto func_sigs = func_signature::get_signatures (fcode);
-	  assert ("ERR no function signature" && func_sigs != NULL);
-	  if (!func_sigs)
-	    {
-	      pt_cat_error (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NO_SIGNATURES,
-			    fcode_get_uppercase_name (fcode));
-	      return node;
-	    }
-	  const func_signature *func_sig = funcNode.get_signature (*func_sigs);
-	  if (func_sig == NULL || !funcNode.apply_signature (*func_sig))
-	    {
-	      node->type_enum = PT_TYPE_NA;	//to avoid entering here 2nd time
-	      pt_cat_error (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NO_VALID_FUNCTION_SIGNATURE,
-			    fcode_get_uppercase_name (fcode));
-	    }
-	  else
-	    {
-	      node = funcNode.set_return_type (*func_sig);
-	    }
-	}
-    }
-
+  func_type::Node funcNode (parser, node);
+  node = funcNode.type_checking ();
   return node;
 }
 

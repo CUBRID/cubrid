@@ -12196,6 +12196,7 @@ pt_init_function (PT_NODE * p)
   p->info.function.analytic.ignore_nulls = false;
   p->info.function.hidden_column = 0;
   p->info.function.is_order_dependent = false;
+  p->info.function.is_type_checked = false;
   p->info.function.coll_modifier = 0;
   return p;
 }
