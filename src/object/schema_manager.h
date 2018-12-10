@@ -320,6 +320,6 @@ extern int sm_rename_foreign_key_ref (MOP ref_clsop, const BTID * btid, const ch
 #endif
 
 extern int sm_find_subclass_in_hierarchy (MOP hierarchy, MOP class_mop, bool * found);
-extern SM_INDEX_STATUS sm_get_index_status_from_constraints (SM_CLASS_CONSTRAINT * constraint_list, BTID btid);
+extern bool sm_is_index_visible (SM_CLASS_CONSTRAINT * constraint_list, BTID btid);
 
 #endif /* _SCHEMA_MANAGER_H_ */

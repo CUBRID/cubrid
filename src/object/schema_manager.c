@@ -13938,9 +13938,39 @@ sm_drop_index (MOP classop, const char *constraint_name)
 	  goto severe_error;
 	}
 
-      if (stats_update_statistics (&classop->oid_info.oid, 0) != NO_ERROR)
+      error = stats_update_statistics (WS_OID (classop), 0);
+      if (error == NO_ERROR)
 	{
-	  goto severe_error;
+	  /* only recache if the class itself is cached */
+	  if (classop->object != NULL)
+	    {			/* check cache */
+	      /* why are we checking authorization here ? */
+	      error = au_fetch_class_force (classop, &class_, AU_FETCH_READ);
+	      if (error == NO_ERROR)
+		{
+		  if (class_->stats != NULL)
+		    {
+		      stats_free_statistics (class_->stats);
+		      class_->stats = NULL;
+		    }
+
+		  /* make sure the class is flushed before acquiring stats, see comments above in
+		   * sm_get_class_with_statistics */
+		  if (locator_flush_class (classop) != NO_ERROR)
+		    {
+		      assert (er_errid () != NO_ERROR);
+		      goto severe_error;
+		    }
+
+		  /* get the new ones, should do this at the same time as the update operation to avoid two server
+		   * calls */
+		  class_->stats = stats_get_statistics (WS_OID (classop), 0);
+		}
+	    }
+	  else
+	    {
+	      goto severe_error;
+	    }
 	}
     }
 
@@ -16608,17 +16638,14 @@ error_return:
   return error;
 }
 
-
-
-
 /*
- * sm_get_index_status_from_constraints () - Get the index status of the BTID from the constraints list.
- * return                 - index_status
+ * sm_is_index_visible () - Check if the index represented by the BTID is visible.
+ * return                 - bool
  * constraint_list (in)   - The list of constraints to look into.
  * btid (in)              - BTID to look for
  */
-SM_INDEX_STATUS
-sm_get_index_status_from_constraints (SM_CLASS_CONSTRAINT * constraint_list, BTID btid)
+bool
+sm_is_index_visible (SM_CLASS_CONSTRAINT * constraint_list, BTID btid)
 {
   int error_code = NO_ERROR;
   SM_CLASS_CONSTRAINT *constr;
@@ -16633,8 +16660,13 @@ sm_get_index_status_from_constraints (SM_CLASS_CONSTRAINT * constraint_list, BTI
     }
 
   /* We should always find the constraint. */
-  assert (constr != NULL);
-
-  return constr->index_status;
-
+  if (constr == NULL)
+    {
+      assert (false);
+      return false;
+    }
+  else
+    {
+      return (constr->index_status == SM_NORMAL_INDEX);
+    }
 }

@@ -5079,11 +5079,7 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 	      n_func_indexes++;
 	    }
 
-	  SM_INDEX_STATUS local_idx_status;
-	  local_idx_status =
-	    sm_get_index_status_from_constraints (class_info_entryp->smclass->constraints, attr_statsp->bt_stats->btid);
-
-	  if (local_idx_status != SM_NORMAL_INDEX)
+	  if (!sm_is_index_visible (class_info_entryp->smclass->constraints, attr_statsp->bt_stats->btid))
 	    {
 	      n_unavail_indexes++;
 	    }
