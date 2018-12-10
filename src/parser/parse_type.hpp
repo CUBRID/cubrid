@@ -127,5 +127,6 @@ struct pt_arg_type
 typedef pt_arg_type PT_ARG_TYPE;
 
 const char *pt_arg_type_to_string_buffer (const pt_arg_type &type, string_buffer &sb);
+PT_TYPE_ENUM pt_to_variable_size_type (PT_TYPE_ENUM type_enum);
 
 #endif // _PARSE_TYPE_HPP_
