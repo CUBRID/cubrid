@@ -5506,6 +5506,12 @@ db_evaluate_json_extract (DB_VALUE * result, DB_VALUE * const *args, int num_arg
   int error_code = NO_ERROR;
   JSON_DOC *source_doc = NULL;	// source document - first argument
 
+  if (db_value_is_null (args[0]))
+    {
+      // return null result
+      return NO_ERROR;
+    }
+
   error_code = db_value_to_json_doc (*args[0], source_doc);
   if (error_code != NO_ERROR)
     {
@@ -5523,6 +5529,15 @@ db_evaluate_json_extract (DB_VALUE * result, DB_VALUE * const *args, int num_arg
   for (int path_idx = 1; path_idx < num_args; path_idx++)
     {
       path_value = args[path_idx];
+
+      if (db_value_is_null (path_value))
+	{
+	  // free docs
+	  db_json_delete_doc (result_array);
+	  db_json_delete_doc (extracted_doc);
+	  db_json_delete_doc (source_doc);
+	  return NO_ERROR;
+	}
 
       // paths can only be strings
       error_code = db_value_to_json_path (path_value, F_JSON_EXTRACT, &path_str);

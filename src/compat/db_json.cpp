@@ -3714,6 +3714,13 @@ db_value_to_json_doc (const DB_VALUE &db_val, REFPTR (JSON_DOC, json_doc))
 {
   int error_code = NO_ERROR;
 
+  if (db_value_is_null (&db_val))
+    {
+      json_doc = db_json_allocate_doc ();
+      db_json_make_document_null (json_doc);
+      return NO_ERROR;
+    }
+
   json_doc = NULL;
   switch (db_value_domain_type (&db_val))
     {
@@ -3759,7 +3766,7 @@ db_value_to_json_value (const DB_VALUE &db_val, REFPTR (JSON_DOC, json_val))
 {
   json_val = NULL;
 
-  if (DB_IS_NULL (&db_val))
+  if (db_value_is_null (&db_val))
     {
       json_val = db_json_allocate_doc ();
       db_json_make_document_null (json_val);

@@ -518,36 +518,52 @@ fcode_get_uppercase_name (FUNC_TYPE ftype)
       return "INSERT_SUBSTRING";
     case F_ELT:
       return "ELT";
-    case F_JSON_OBJECT:
-      return "JSON_OBJECT";
     case F_JSON_ARRAY:
       return "JSON_ARRAY";
-    case F_JSON_INSERT:
-      return "JSON_INSERT";
-    case F_JSON_REPLACE:
-      return "JSON_REPLACE";
-    case F_JSON_SET:
-      return "JSON_SET";
-    case F_JSON_KEYS:
-      return "JSON_KEYS";
-    case F_JSON_REMOVE:
-      return "JSON_REMOVE";
     case F_JSON_ARRAY_APPEND:
       return "JSON_ARRAY_APPEND";
     case F_JSON_ARRAY_INSERT:
       return "JSON_ARRAY_INSERT";
+    case F_JSON_CONTAINS:
+      return "JSON_CONTAINS";
     case F_JSON_CONTAINS_PATH:
       return "JSON_CONTAINS_PATH";
+    case F_JSON_DEPTH:
+      return "JSON_DEPTH";
     case F_JSON_EXTRACT:
       return "JSON_EXTRACT";
-    case F_JSON_SEARCH:
-      return "JSON_SEARCH";
+    case F_JSON_GET_ALL_PATHS:
+      return "JSON_GET_ALL_PATHS";
+    case F_JSON_INSERT:
+      return "JSON_INSERT";
+    case F_JSON_KEYS:
+      return "JSON_KEYS";
+    case F_JSON_LENGTH:
+      return "JSON_LENGTH";
     case F_JSON_MERGE:
       return "JSON_MERGE";
     case F_JSON_MERGE_PATCH:
       return "JSON_MERGE_PATCH";
-    case F_JSON_GET_ALL_PATHS:
-      return "JSON_GET_ALL_PATHS";
+    case F_JSON_OBJECT:
+      return "JSON_OBJECT";
+    case F_JSON_PRETTY:
+      return "JSON_PRETTY";
+    case F_JSON_QUOTE:
+      return "JSON_QUOTE";
+    case F_JSON_REMOVE:
+      return "JSON_REMOVE";
+    case F_JSON_REPLACE:
+      return "JSON_REPLACE";
+    case F_JSON_SEARCH:
+      return "JSON_SEARCH";
+    case F_JSON_SET:
+      return "JSON_SET";
+    case F_JSON_TYPE:
+      return "F_JSON_TYPE";
+    case F_JSON_UNQUOTE:
+      return "F_JSON_UNQUOTE";
+    case F_JSON_VALID:
+      return "F_JSON_VALID";
     default:
       assert (false);
       return "***UNKNOWN***";
