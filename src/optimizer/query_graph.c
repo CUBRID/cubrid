@@ -3270,22 +3270,30 @@ get_expr_fcode_rank (FUNC_TYPE fcode)
   switch (fcode)
     {
     case F_ELT:
-    case F_JSON_OBJECT:
+      return RANK_EXPR_LIGHT;
     case F_JSON_ARRAY:
-    case F_JSON_REMOVE:
     case F_JSON_ARRAY_APPEND:
     case F_JSON_ARRAY_INSERT:
-    case F_JSON_SEARCH:
+    case F_JSON_CONTAINS:
     case F_JSON_CONTAINS_PATH:
+    case F_JSON_DEPTH:
     case F_JSON_EXTRACT:
+    case F_JSON_GET_ALL_PATHS:
+    case F_JSON_KEYS:
+    case F_JSON_INSERT:
+    case F_JSON_LENGTH:
     case F_JSON_MERGE:
     case F_JSON_MERGE_PATCH:
-    case F_JSON_GET_ALL_PATHS:
-    case F_JSON_INSERT:
+    case F_JSON_OBJECT:
+    case F_JSON_PRETTY:
+    case F_JSON_QUOTE:
+    case F_JSON_REMOVE:
     case F_JSON_REPLACE:
+    case F_JSON_SEARCH:
     case F_JSON_SET:
-    case F_JSON_KEYS:
-      return RANK_EXPR_LIGHT;
+    case F_JSON_TYPE:
+    case F_JSON_UNQUOTE:
+    case F_JSON_VALID:
     case F_INSERT_SUBSTRING:
       return RANK_EXPR_MEDIUM;
     default:

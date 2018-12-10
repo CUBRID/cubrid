@@ -16655,7 +16655,6 @@ mr_setmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
     {
       return NO_ERROR;
     }
-
   doc = db_get_json_document (value);
   if (doc != NULL)
     {

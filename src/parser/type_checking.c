@@ -288,7 +288,6 @@ static PT_NODE *pt_check_function_collation (PARSER_CONTEXT * parser, PT_NODE * 
 static void pt_hv_consistent_data_type_with_domain (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_update_host_var_data_type (PARSER_CONTEXT * parser, PT_NODE * hv_node);
 static bool pt_cast_needs_wrap_for_collation (PT_NODE * node, const INTL_CODESET codeset);
-static PT_TYPE_ENUM pt_to_variable_size_type (PT_TYPE_ENUM type_enum);
 
 /*
  * pt_get_expression_definition () - get the expression definition for the
@@ -4743,191 +4742,7 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
 
       def->overloads_count = num;
       break;
-    case PT_JSON_CONTAINS:
-      num = 0;
 
-      /* two overloads */
-
-      /* json_contains (target, candidate, path) */
-      sig.arg1_type.type = pt_arg_type::NORMAL;
-      sig.arg1_type.val.type = PT_TYPE_JSON;
-
-      sig.arg2_type.type = pt_arg_type::NORMAL;
-      sig.arg2_type.val.type = PT_TYPE_JSON;
-
-      sig.arg3_type.type = pt_arg_type::NORMAL;
-      sig.arg3_type.val.type = PT_TYPE_CHAR;
-
-      /* return type */
-      sig.return_type.type = pt_arg_type::NORMAL;
-      sig.return_type.val.type = PT_TYPE_INTEGER;
-      def->overloads[num++] = sig;
-
-      /* json_contains (target, candidate) */
-      sig.arg1_type.type = pt_arg_type::NORMAL;
-      sig.arg1_type.val.type = PT_TYPE_JSON;
-
-      sig.arg2_type.type = pt_arg_type::NORMAL;
-      sig.arg2_type.val.type = PT_TYPE_JSON;
-
-      sig.arg3_type.type = pt_arg_type::NORMAL;
-      sig.arg3_type.val.type = PT_TYPE_NONE;
-
-      /* return type */
-      sig.return_type.type = pt_arg_type::NORMAL;
-      sig.return_type.val.type = PT_TYPE_INTEGER;
-      def->overloads[num++] = sig;
-
-      def->overloads_count = num;
-      break;
-    case PT_JSON_TYPE:
-      num = 0;
-
-      /* one overload */
-
-      /* arg1 */
-      sig.arg1_type.type = pt_arg_type::NORMAL;
-      sig.arg1_type.val.type = PT_TYPE_JSON;
-
-      /* return type */
-      sig.return_type.type = pt_arg_type::NORMAL;
-      sig.return_type.val.type = PT_TYPE_VARCHAR;
-      def->overloads[num++] = sig;
-
-      def->overloads_count = num;
-      break;
-    case PT_JSON_VALID:
-      num = 0;
-
-      /* one overload */
-
-      /* arg1 */
-      sig.arg1_type.type = pt_arg_type::NORMAL;
-      sig.arg1_type.val.type = PT_TYPE_CHAR;
-
-      /* return type */
-      sig.return_type.type = pt_arg_type::NORMAL;
-      sig.return_type.val.type = PT_TYPE_INTEGER;
-      def->overloads[num++] = sig;
-
-      def->overloads_count = num;
-      break;
-    case PT_JSON_DEPTH:
-      num = 0;
-
-      /* one overload */
-
-      /* arg1 */
-      sig.arg1_type.type = pt_arg_type::NORMAL;
-      sig.arg1_type.val.type = PT_TYPE_JSON;
-
-      /* return type */
-      sig.return_type.type = pt_arg_type::NORMAL;
-      sig.return_type.val.type = PT_TYPE_INTEGER;
-      def->overloads[num++] = sig;
-
-      def->overloads_count = num;
-      break;
-    case PT_JSON_QUOTE:
-      num = 0;
-
-      /* one overload */
-
-      /* arg1 */
-      sig.arg1_type.type = pt_arg_type::NORMAL;
-      sig.arg1_type.val.type = PT_TYPE_CHAR;
-
-      /* return type */
-      sig.return_type.type = pt_arg_type::NORMAL;
-      sig.return_type.val.type = PT_TYPE_CHAR;
-      def->overloads[num++] = sig;
-
-      def->overloads_count = num;
-      break;
-    case PT_JSON_UNQUOTE:
-      num = 0;
-
-      /* one overload */
-
-      /* arg1 */
-      sig.arg1_type.type = pt_arg_type::NORMAL;
-      sig.arg1_type.val.type = PT_TYPE_JSON;
-
-      /* return type */
-      sig.return_type.type = pt_arg_type::NORMAL;
-      sig.return_type.val.type = PT_TYPE_VARCHAR;
-      def->overloads[num++] = sig;
-
-      def->overloads_count = num;
-      break;
-    case PT_JSON_LENGTH:
-      num = 0;
-
-      /* two overloads */
-
-      /* arg1 */
-      sig.arg1_type.type = pt_arg_type::NORMAL;
-      sig.arg1_type.val.type = PT_TYPE_JSON;
-
-      /* arg2 */
-      sig.arg2_type.type = pt_arg_type::NORMAL;
-      sig.arg2_type.val.type = PT_TYPE_CHAR;
-
-      /* return type */
-      sig.return_type.type = pt_arg_type::NORMAL;
-      sig.return_type.val.type = PT_TYPE_INTEGER;
-      def->overloads[num++] = sig;
-
-      /* arg1 */
-      sig.arg1_type.type = pt_arg_type::NORMAL;
-      sig.arg1_type.val.type = PT_TYPE_JSON;
-
-      /* arg2 */
-      sig.arg2_type.type = pt_arg_type::NORMAL;
-      sig.arg2_type.val.type = PT_TYPE_NONE;
-
-      /* return type */
-      sig.return_type.type = pt_arg_type::NORMAL;
-      sig.return_type.val.type = PT_TYPE_INTEGER;
-      def->overloads[num++] = sig;
-
-      def->overloads_count = num;
-      break;
-    case PT_JSON_EXTRACT:
-      num = 0;
-
-      /* one overload */
-
-      /* arg1 */
-      sig.arg1_type.type = pt_arg_type::NORMAL;
-      sig.arg1_type.val.type = PT_TYPE_JSON;
-
-      sig.arg2_type.type = pt_arg_type::NORMAL;
-      sig.arg2_type.val.type = PT_TYPE_CHAR;
-
-      /* return type */
-      sig.return_type.type = pt_arg_type::NORMAL;
-      sig.return_type.val.type = PT_TYPE_JSON;
-      def->overloads[num++] = sig;
-
-      def->overloads_count = num;
-      break;
-    case PT_JSON_PRETTY:
-      num = 0;
-
-      /* one overload */
-
-      /* arg1 */
-      sig.arg1_type.type = pt_arg_type::NORMAL;
-      sig.arg1_type.val.type = PT_TYPE_JSON;
-
-      /* return type */
-      sig.return_type.type = pt_arg_type::NORMAL;
-      sig.return_type.val.type = PT_TYPE_VARCHAR;
-      def->overloads[num++] = sig;
-
-      def->overloads_count = num;
-      break;
     default:
       return false;
     }
@@ -6702,15 +6517,6 @@ pt_is_symmetric_op (const PT_OP_TYPE op)
     case PT_CRC32:
     case PT_SCHEMA_DEF:
     case PT_CONV_TZ:
-    case PT_JSON_CONTAINS:
-    case PT_JSON_TYPE:
-    case PT_JSON_EXTRACT:
-    case PT_JSON_VALID:
-    case PT_JSON_LENGTH:
-    case PT_JSON_DEPTH:
-    case PT_JSON_QUOTE:
-    case PT_JSON_UNQUOTE:
-    case PT_JSON_PRETTY:
       return false;
 
     default:
@@ -12556,23 +12362,31 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
   switch (node->info.function.function_type)
     {
       // JSON functions are migrated to new checking function
-    case F_JSON_OBJECT:
-    case PT_JSON_OBJECTAGG:
     case F_JSON_ARRAY:
-    case PT_JSON_ARRAYAGG:
-    case F_JSON_MERGE:
-    case F_JSON_MERGE_PATCH:
-    case F_JSON_INSERT:
-    case F_JSON_REPLACE:
-    case F_JSON_SET:
     case F_JSON_ARRAY_APPEND:
     case F_JSON_ARRAY_INSERT:
+    case PT_JSON_ARRAYAGG:
+    case F_JSON_CONTAINS:
     case F_JSON_CONTAINS_PATH:
+    case F_JSON_DEPTH:
     case F_JSON_EXTRACT:
-    case F_JSON_REMOVE:
     case F_JSON_GET_ALL_PATHS:
-    case F_JSON_SEARCH:
     case F_JSON_KEYS:
+    case F_JSON_INSERT:
+    case F_JSON_LENGTH:
+    case F_JSON_MERGE:
+    case F_JSON_MERGE_PATCH:
+    case F_JSON_OBJECT:
+    case PT_JSON_OBJECTAGG:
+    case F_JSON_PRETTY:
+    case F_JSON_QUOTE:
+    case F_JSON_REMOVE:
+    case F_JSON_REPLACE:
+    case F_JSON_SEARCH:
+    case F_JSON_SET:
+    case F_JSON_TYPE:
+    case F_JSON_UNQUOTE:
+    case F_JSON_VALID:
       return pt_eval_function_type_new (parser, node);
 
       // legacy functions are still managed by old checking function; all should be migrated though
@@ -12642,38 +12456,12 @@ pt_eval_function_type_new (PARSER_CONTEXT * parser, PT_NODE * node)
   if (pt_list_has_logical_nodes (arg_list))
     {
       pt_cat_error (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-		    MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON, pt_show_function (fcode), "boolean");
+		    MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON, fcode_get_lowercase_name (fcode), "boolean");
       return node;
     }
 
-  Func::Node funcNode (parser, node);
-  // todo - move below code to Func::Node
-  if (funcNode.preprocess ())
-    {
-      if (node->type_enum == PT_TYPE_NONE || node->data_type == NULL)
-	{
-	  auto func_sigs = func_signature::get_signatures (fcode);
-	  assert ("ERR no function signature" && func_sigs != NULL);
-	  if (!func_sigs)
-	    {
-	      pt_cat_error (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NO_SIGNATURES,
-			    pt_func_type_to_string (fcode));
-	      return node;
-	    }
-	  const func_signature *func_sig = funcNode.get_signature (*func_sigs);
-	  if (func_sig == NULL || !funcNode.apply_signature (*func_sig))
-	    {
-	      node->type_enum = PT_TYPE_NA;	//to avoid entering here 2nd time
-	      pt_cat_error (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NO_VALID_FUNCTION_SIGNATURE,
-			    pt_func_type_to_string (fcode));
-	    }
-	  else
-	    {
-	      node = funcNode.set_return_type (*func_sig);
-	    }
-	}
-    }
-
+  func_type::Node funcNode (parser, node);
+  node = funcNode.type_checking ();
   return node;
 }
 
@@ -12736,7 +12524,7 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
   if (pt_list_has_logical_nodes (arg_list))
     {
       PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
-		   pt_show_function (fcode), "boolean");
+		   fcode_get_lowercase_name (fcode), "boolean");
       return node;
     }
 
@@ -12817,7 +12605,7 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 	  && arg_type != PT_TYPE_NA)
 	{
 	  PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INCOMPATIBLE_OPDS,
-		       pt_show_function (fcode), pt_show_type_enum (arg_type));
+		       fcode_get_lowercase_name (fcode), pt_show_type_enum (arg_type));
 	}
       break;
 
@@ -12837,14 +12625,14 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 	    && arg_type != PT_TYPE_NA)
 	  {
 	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INCOMPATIBLE_OPDS,
-			 pt_show_function (fcode), pt_show_type_enum (arg_type));
+			 fcode_get_lowercase_name (fcode), pt_show_type_enum (arg_type));
 	    break;
 	  }
 
 	if (!PT_IS_STRING_TYPE (sep_type) && sep_type != PT_TYPE_NONE)
 	  {
 	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INCOMPATIBLE_OPDS,
-			 pt_show_function (fcode), pt_show_type_enum (sep_type));
+			 fcode_get_lowercase_name (fcode), pt_show_type_enum (sep_type));
 	    break;
 	  }
 
@@ -12852,7 +12640,7 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 	    && arg_type != PT_TYPE_VARNCHAR)
 	  {
 	    PT_ERRORmf3 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OP_NOT_DEFINED_ON,
-			 pt_show_function (fcode), pt_show_type_enum (arg_type), pt_show_type_enum (sep_type));
+			 fcode_get_lowercase_name (fcode), pt_show_type_enum (arg_type), pt_show_type_enum (sep_type));
 	    break;
 	  }
 
@@ -12860,7 +12648,7 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 	    && sep_type != PT_TYPE_VARNCHAR && sep_type != PT_TYPE_NONE)
 	  {
 	    PT_ERRORmf3 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OP_NOT_DEFINED_ON,
-			 pt_show_function (fcode), pt_show_type_enum (arg_type), pt_show_type_enum (sep_type));
+			 fcode_get_lowercase_name (fcode), pt_show_type_enum (arg_type), pt_show_type_enum (sep_type));
 	    break;
 	  }
 
@@ -12868,7 +12656,7 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 	    && sep_type != PT_TYPE_VARBIT && sep_type != PT_TYPE_NONE)
 	  {
 	    PT_ERRORmf3 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OP_NOT_DEFINED_ON,
-			 pt_show_function (fcode), pt_show_type_enum (arg_type), pt_show_type_enum (sep_type));
+			 fcode_get_lowercase_name (fcode), pt_show_type_enum (arg_type), pt_show_type_enum (sep_type));
 	    break;
 	  }
 
@@ -12876,7 +12664,7 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 	    && (sep_type == PT_TYPE_BIT || sep_type == PT_TYPE_VARBIT))
 	  {
 	    PT_ERRORmf3 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OP_NOT_DEFINED_ON,
-			 pt_show_function (fcode), pt_show_type_enum (arg_type), pt_show_type_enum (sep_type));
+			 fcode_get_lowercase_name (fcode), pt_show_type_enum (arg_type), pt_show_type_enum (sep_type));
 	    break;
 	  }
       }
@@ -12931,7 +12719,7 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 	  {
 	    arg_type = PT_TYPE_NONE;
 	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON_INDEX,
-			 pt_show_function (fcode), pt_show_type_enum (arg->type_enum));
+			 fcode_get_lowercase_name (fcode), pt_show_type_enum (arg->type_enum));
 	    break;
 	  }
 
@@ -12948,7 +12736,7 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 		assert (false);	/* invalid data type */
 		arg_type = PT_TYPE_NONE;
 		PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
-			     pt_show_function (fcode), pt_show_type_enum (arg->type_enum));
+			     fcode_get_lowercase_name (fcode), pt_show_type_enum (arg->type_enum));
 		break;
 	      }
 	  }
@@ -13017,24 +12805,26 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 	  case 1:
 	    arg_type = PT_TYPE_NONE;
 	    PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
-			 pt_show_function (fcode), pt_show_type_enum (bad_types[0]));
+			 fcode_get_lowercase_name (fcode), pt_show_type_enum (bad_types[0]));
 	    break;
 	  case 2:
 	    arg_type = PT_TYPE_NONE;
 	    PT_ERRORmf3 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON_2,
-			 pt_show_function (fcode), pt_show_type_enum (bad_types[0]), pt_show_type_enum (bad_types[1]));
+			 fcode_get_lowercase_name (fcode), pt_show_type_enum (bad_types[0]),
+			 pt_show_type_enum (bad_types[1]));
 	    break;
 	  case 3:
 	    arg_type = PT_TYPE_NONE;
 	    PT_ERRORmf4 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON_3,
-			 pt_show_function (fcode), pt_show_type_enum (bad_types[0]), pt_show_type_enum (bad_types[1]),
-			 pt_show_type_enum (bad_types[2]));
+			 fcode_get_lowercase_name (fcode), pt_show_type_enum (bad_types[0]),
+			 pt_show_type_enum (bad_types[1]), pt_show_type_enum (bad_types[2]));
 	    break;
 	  case 4:
 	    arg_type = PT_TYPE_NONE;
 	    PT_ERRORmf5 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON_4,
-			 pt_show_function (fcode), pt_show_type_enum (bad_types[0]), pt_show_type_enum (bad_types[1]),
-			 pt_show_type_enum (bad_types[2]), pt_show_type_enum (bad_types[3]));
+			 fcode_get_lowercase_name (fcode), pt_show_type_enum (bad_types[0]),
+			 pt_show_type_enum (bad_types[1]), pt_show_type_enum (bad_types[2]),
+			 pt_show_type_enum (bad_types[3]));
 	    break;
 	  }
       }
@@ -13067,7 +12857,7 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 	  {
 	    arg_type = PT_TYPE_NONE;
 	    PT_ERRORmf5 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON_4,
-			 pt_show_function (fcode), pt_show_type_enum (arg1_type), pt_show_type_enum (arg2_type),
+			 fcode_get_lowercase_name (fcode), pt_show_type_enum (arg1_type), pt_show_type_enum (arg2_type),
 			 pt_show_type_enum (arg3_type), pt_show_type_enum (arg4_type));
 	    break;
 	  }
@@ -13077,7 +12867,7 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 	  {
 	    arg_type = PT_TYPE_NONE;
 	    PT_ERRORmf5 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON_4,
-			 pt_show_function (fcode), pt_show_type_enum (arg1_type), pt_show_type_enum (arg2_type),
+			 fcode_get_lowercase_name (fcode), pt_show_type_enum (arg1_type), pt_show_type_enum (arg2_type),
 			 pt_show_type_enum (arg3_type), pt_show_type_enum (arg4_type));
 	    break;
 	  }
@@ -13089,7 +12879,7 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 	  {
 	    arg_type = PT_TYPE_NONE;
 	    PT_ERRORmf5 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON_4,
-			 pt_show_function (fcode), pt_show_type_enum (arg1_type), pt_show_type_enum (arg2_type),
+			 fcode_get_lowercase_name (fcode), pt_show_type_enum (arg1_type), pt_show_type_enum (arg2_type),
 			 pt_show_type_enum (arg3_type), pt_show_type_enum (arg4_type));
 	    break;
 	  }
@@ -13099,7 +12889,7 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 	  {
 	    arg_type = PT_TYPE_NONE;
 	    PT_ERRORmf5 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON_4,
-			 pt_show_function (fcode), pt_show_type_enum (arg1_type), pt_show_type_enum (arg2_type),
+			 fcode_get_lowercase_name (fcode), pt_show_type_enum (arg1_type), pt_show_type_enum (arg2_type),
 			 pt_show_type_enum (arg3_type), pt_show_type_enum (arg4_type));
 	    break;
 	  }
@@ -13113,7 +12903,7 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 	  && !PT_IS_STRING_TYPE (arg_type) && !PT_IS_DATE_TIME_TYPE (arg_type) && arg_type != PT_TYPE_MAYBE)
 	{
 	  PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INCOMPATIBLE_OPDS,
-		       pt_show_function (fcode), pt_show_type_enum (arg_type));
+		       fcode_get_lowercase_name (fcode), pt_show_type_enum (arg_type));
 	}
 
       break;
@@ -13388,7 +13178,7 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 	      {
 		arg_type = PT_TYPE_NONE;
 		PT_ERRORmf5 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON_4,
-			     pt_show_function (fcode), pt_show_type_enum (arg1_orig_type),
+			     fcode_get_lowercase_name (fcode), pt_show_type_enum (arg1_orig_type),
 			     pt_show_type_enum (arg2_orig_type), pt_show_type_enum (arg3_orig_type),
 			     pt_show_type_enum (arg4_orig_type));
 	      }
@@ -13397,7 +13187,7 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 	      {
 		arg_type = PT_TYPE_NONE;
 		PT_ERRORmf5 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON_4,
-			     pt_show_function (fcode), pt_show_type_enum (arg1_orig_type),
+			     fcode_get_lowercase_name (fcode), pt_show_type_enum (arg1_orig_type),
 			     pt_show_type_enum (arg2_orig_type), pt_show_type_enum (arg3_orig_type),
 			     pt_show_type_enum (arg4_orig_type));
 	      }
@@ -13406,7 +13196,7 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 	      {
 		arg_type = PT_TYPE_NONE;
 		PT_ERRORmf5 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON_4,
-			     pt_show_function (fcode), pt_show_type_enum (arg1_orig_type),
+			     fcode_get_lowercase_name (fcode), pt_show_type_enum (arg1_orig_type),
 			     pt_show_type_enum (arg2_orig_type), pt_show_type_enum (arg3_orig_type),
 			     pt_show_type_enum (arg4_orig_type));
 	      }
@@ -13415,7 +13205,7 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
 	      {
 		arg_type = PT_TYPE_NONE;
 		PT_ERRORmf5 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON_4,
-			     pt_show_function (fcode), pt_show_type_enum (arg1_orig_type),
+			     fcode_get_lowercase_name (fcode), pt_show_type_enum (arg1_orig_type),
 			     pt_show_type_enum (arg2_orig_type), pt_show_type_enum (arg3_orig_type),
 			     pt_show_type_enum (arg4_orig_type));
 	      }
@@ -13723,7 +13513,8 @@ pt_eval_function_type_old (PARSER_CONTEXT * parser, PT_NODE * node)
   return node;
 
 error_collation:
-  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_COLLATION_OP_ERROR, pt_show_function (fcode));
+  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_COLLATION_OP_ERROR,
+	      fcode_get_lowercase_name (fcode));
 
   return node;
 }
@@ -16596,78 +16387,6 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
     case PT_ABS:
       error = db_abs_dbval (result, arg1);
-      if (error != NO_ERROR)
-	{
-	  PT_ERRORc (parser, o1, er_msg ());
-	  return 0;
-	}
-      break;
-    case PT_JSON_CONTAINS:
-      error = db_json_contains_dbval (arg1, arg2, (o3 == NULL ? NULL : arg3), result);
-      if (error != NO_ERROR)
-	{
-	  PT_ERRORc (parser, o1, er_msg ());
-	  return 0;
-	}
-      break;
-    case PT_JSON_TYPE:
-      error = db_json_type_dbval (arg1, result);
-      if (error != NO_ERROR)
-	{
-	  PT_ERRORc (parser, o1, er_msg ());
-	  return 0;
-	}
-      break;
-    case PT_JSON_EXTRACT:
-      error = db_json_extract_dbval (arg1, arg2, result);
-      if (error != NO_ERROR)
-	{
-	  PT_ERRORc (parser, o1, er_msg ());
-	  return 0;
-	}
-      break;
-    case PT_JSON_VALID:
-      error = db_json_valid_dbval (arg1, result);
-      if (error != NO_ERROR)
-	{
-	  PT_ERRORc (parser, o1, er_msg ());
-	  return 0;
-	}
-      break;
-    case PT_JSON_LENGTH:
-      error = db_json_length_dbval (arg1, (o2 == NULL ? NULL : arg2), result);
-      if (error != NO_ERROR)
-	{
-	  PT_ERRORc (parser, o1, er_msg ());
-	  return 0;
-	}
-      break;
-    case PT_JSON_DEPTH:
-      error = db_json_depth_dbval (arg1, result);
-      if (error != NO_ERROR)
-	{
-	  PT_ERRORc (parser, o1, er_msg ());
-	  return 0;
-	}
-      break;
-    case PT_JSON_QUOTE:
-      error = db_string_quote (arg1, result);
-      if (error != NO_ERROR)
-	{
-	  PT_ERRORc (parser, o1, er_msg ());
-	  return 0;
-	}
-      break;
-    case PT_JSON_UNQUOTE:
-      error = db_json_unquote_dbval (arg1, result);
-      if (error != NO_ERROR)
-	{
-	  PT_ERRORc (parser, o1, er_msg ());
-	  return 0;
-	}
-      break;
-    case PT_JSON_PRETTY:
-      error = db_json_pretty_dbval (arg1, result);
       if (error != NO_ERROR)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -19993,64 +19712,96 @@ pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_TYPE fcode, DB_VALUE 
 	}
       break;
 
-    case F_JSON_OBJECT:
-      error = db_json_object (result, args, num_args);
-      break;
-
     case F_JSON_ARRAY:
-      error = db_json_array (result, args, num_args);
-      break;
-
-    case F_JSON_INSERT:
-      error = db_json_insert (result, args, num_args);
-      break;
-
-    case F_JSON_REPLACE:
-      error = db_json_replace (result, args, num_args);
-      break;
-
-    case F_JSON_SET:
-      error = db_json_set (result, args, num_args);
-      break;
-
-    case F_JSON_KEYS:
-      error = db_json_keys (result, args, num_args);
-      break;
-
-    case F_JSON_REMOVE:
-      error = db_json_remove (result, args, num_args);
+      error = db_evaluate_json_array (result, args, num_args);
       break;
 
     case F_JSON_ARRAY_APPEND:
-      error = db_json_array_append (result, args, num_args);
+      error = db_evaluate_json_array_append (result, args, num_args);
       break;
 
     case F_JSON_ARRAY_INSERT:
-      error = db_json_array_insert (result, args, num_args);
+      error = db_evaluate_json_array_insert (result, args, num_args);
+      break;
+
+    case F_JSON_CONTAINS:
+      error = db_evaluate_json_contains (result, args, num_args);
       break;
 
     case F_JSON_CONTAINS_PATH:
-      error = db_json_contains_path (result, args, num_args);
+      error = db_evaluate_json_contains_path (result, args, num_args);
+      break;
+
+    case F_JSON_DEPTH:
+      error = db_evaluate_json_depth (result, args, num_args);
       break;
 
     case F_JSON_EXTRACT:
-      error = db_json_extract_multiple_paths (result, args, num_args);
-      break;
-
-    case F_JSON_MERGE:
-      error = db_json_merge (result, args, num_args);
-      break;
-
-    case F_JSON_MERGE_PATCH:
-      error = db_json_merge_patch (result, args, num_args);
-      break;
-
-    case F_JSON_SEARCH:
-      error = db_json_search_dbval (result, args, num_args);
+      error = db_evaluate_json_extract (result, args, num_args);
       break;
 
     case F_JSON_GET_ALL_PATHS:
-      error = db_json_get_all_paths (result, args, num_args);
+      error = db_evaluate_json_get_all_paths (result, args, num_args);
+      break;
+
+    case F_JSON_INSERT:
+      error = db_evaluate_json_insert (result, args, num_args);
+      break;
+
+    case F_JSON_KEYS:
+      error = db_evaluate_json_keys (result, args, num_args);
+      break;
+
+    case F_JSON_LENGTH:
+      error = db_evaluate_json_length (result, args, num_args);
+      break;
+
+    case F_JSON_MERGE:
+      error = db_evaluate_json_merge_preserve (result, args, num_args);
+      break;
+
+    case F_JSON_MERGE_PATCH:
+      error = db_evaluate_json_merge_patch (result, args, num_args);
+      break;
+
+    case F_JSON_OBJECT:
+      error = db_evaluate_json_object (result, args, num_args);
+      break;
+
+    case F_JSON_PRETTY:
+      error = db_evaluate_json_pretty (result, args, num_args);
+      break;
+
+    case F_JSON_QUOTE:
+      error = db_evaluate_json_quote (result, args, num_args);
+      break;
+
+    case F_JSON_REPLACE:
+      error = db_evaluate_json_replace (result, args, num_args);
+      break;
+
+    case F_JSON_REMOVE:
+      error = db_evaluate_json_remove (result, args, num_args);
+      break;
+
+    case F_JSON_SEARCH:
+      error = db_evaluate_json_search (result, args, num_args);
+      break;
+
+    case F_JSON_SET:
+      error = db_evaluate_json_set (result, args, num_args);
+      break;
+
+    case F_JSON_TYPE:
+      error = db_evaluate_json_type_dbval (result, args, num_args);
+      break;
+
+    case F_JSON_UNQUOTE:
+      error = db_evaluate_json_unquote (result, args, num_args);
+      break;
+
+    case F_JSON_VALID:
+      error = db_evaluate_json_valid (result, args, num_args);
       break;
 
     default:
@@ -24939,7 +24690,7 @@ pt_check_function_collation (PARSER_CONTEXT * parser, PT_NODE * node)
 
 error_collation:
   PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_COLLATION_OP_ERROR,
-	      pt_show_function (node->info.function.function_type));
+	      fcode_get_lowercase_name (node->info.function.function_type));
   return node;
 }
 
@@ -25031,7 +24782,7 @@ pt_cast_needs_wrap_for_collation (PT_NODE * node, const INTL_CODESET codeset)
 // return         : if input type can have variable size, it returns the variable size. otherwise, returns input type
 // type_enum (in) : any type
 //
-static PT_TYPE_ENUM
+PT_TYPE_ENUM
 pt_to_variable_size_type (PT_TYPE_ENUM type_enum)
 {
   switch (type_enum)
