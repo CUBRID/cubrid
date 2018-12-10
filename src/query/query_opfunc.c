@@ -6381,7 +6381,7 @@ qdata_aggregate_accumulator_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_A
       // for these two situations we just need to merge
     case PT_JSON_ARRAYAGG:
     case PT_JSON_OBJECTAGG:
-      error = db_json_merge (new_acc->value, acc->value);
+      error = db_evaluate_json_merge_preserve (new_acc->value, &acc->value, 1);
       break;
 
     case PT_STDDEV:
@@ -6645,7 +6645,7 @@ qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMUL
       break;
 
     case PT_JSON_ARRAYAGG:
-      if (db_json_arrayagg_dbval_accumulate (value, acc->value) != NO_ERROR)
+      if (db_accumulate_json_arrayagg (value, acc->value) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -6705,7 +6705,7 @@ qdata_aggregate_multiple_values_to_accumulator (THREAD_ENTRY * thread_p, AGGREGA
   switch (func_type)
     {
     case PT_JSON_OBJECTAGG:
-      if (db_json_objectagg_dbval_accumulate (&db_values[0], &db_values[1], acc->value) != NO_ERROR)
+      if (db_accumulate_json_objectagg (&db_values[0], &db_values[1], acc->value) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -8383,88 +8383,96 @@ qdata_evaluate_function (THREAD_ENTRY * thread_p, REGU_VARIABLE * function_p, VA
       return qdata_elt (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
 
     case F_JSON_ARRAY:
-      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple, db_json_array);
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+						       db_evaluate_json_array);
 
     case F_JSON_ARRAY_APPEND:
       return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
-						       db_json_array_append);
+						       db_evaluate_json_array_append);
 
     case F_JSON_ARRAY_INSERT:
       return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
-						       db_json_array_insert);
+						       db_evaluate_json_array_insert);
 
     case F_JSON_CONTAINS:
       return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
-						       db_json_contains_dbval);
+						       db_evaluate_json_contains);
 
     case F_JSON_CONTAINS_PATH:
       return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
-						       db_json_contains_path);
+						       db_evaluate_json_contains_path);
 
     case F_JSON_DEPTH:
       return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
-						       db_json_depth_dbval);
+						       db_evaluate_json_depth);
 
     case F_JSON_EXTRACT:
       return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
-						       db_json_extract_multiple_paths);
+						       db_evaluate_json_extract_multiple_paths);
 
     case F_JSON_GET_ALL_PATHS:
       return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
-						       db_json_get_all_paths);
+						       db_evaluate_json_get_all_paths);
 
     case F_JSON_INSERT:
-      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple, db_json_insert);
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+						       db_evaluate_json_insert);
 
     case F_JSON_KEYS:
-      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple, db_json_keys);
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+						       db_evaluate_json_keys);
 
     case F_JSON_LENGTH:
       return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
-						       db_json_length_dbval);
+						       db_evaluate_json_length);
 
     case F_JSON_MERGE:
-      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple, db_json_merge);
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+						       db_evaluate_json_merge_preserve);
 
     case F_JSON_MERGE_PATCH:
       return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
-						       db_json_merge_patch);
+						       db_evaluate_json_merge_patch);
 
     case F_JSON_OBJECT:
-      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple, db_json_object);
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+						       db_evaluate_json_object);
 
     case F_JSON_PRETTY:
       return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
-						       db_json_pretty_dbval);
+						       db_evaluate_json_pretty);
 
     case F_JSON_QUOTE:
       return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
-						       db_json_quote_dbval);
+						       db_evaluate_json_quote);
 
     case F_JSON_REMOVE:
-      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple, db_json_remove);
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+						       db_evaluate_json_remove);
 
     case F_JSON_REPLACE:
-      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple, db_json_replace);
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+						       db_evaluate_json_replace);
 
     case F_JSON_SEARCH:
       return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
-						       db_json_search_dbval);
+						       db_evaluate_json_search);
 
     case F_JSON_SET:
-      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple, db_json_set);
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+						       db_evaluate_json_set);
 
     case F_JSON_TYPE:
       return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
-						       db_json_type_dbval);
+						       db_evaluate_json_type_dbval);
 
     case F_JSON_UNQUOTE:
       return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
-						       db_json_unquote_dbval);
+						       db_evaluate_json_unquote);
 
     case F_JSON_VALID:
       return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
-						       db_json_valid_dbval);
+						       db_evaluate_json_valid);
 
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);

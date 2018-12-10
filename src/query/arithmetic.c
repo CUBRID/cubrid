@@ -68,6 +68,9 @@ static int get_number_dbval_as_double (double *d, const DB_VALUE * value);
 static int get_number_dbval_as_long_double (long double *ld, const DB_VALUE * value);
 static int db_width_bucket_calculate_numeric (double *result, const DB_VALUE * value1, const DB_VALUE * value2,
 					      const DB_VALUE * value3, const DB_VALUE * value4);
+static int db_evaluate_json_merge_helper (DB_VALUE * result, DB_VALUE * const *arg, int const num_args, bool patch =
+					  false);
+static int is_str_find_all (DB_VALUE * val, bool & find_all);
 
 /*
  * db_floor_dbval () - take floor of db_value
@@ -5070,7 +5073,7 @@ error:
 }
 
 int
-db_json_contains_dbval (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
+db_evaluate_json_contains (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
 {
   int error_code = NO_ERROR;
   JSON_DOC *source_doc;
@@ -5142,7 +5145,7 @@ db_json_contains_dbval (DB_VALUE * result, DB_VALUE * const *arg, int const num_
 }
 
 int
-db_json_type_dbval (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
+db_evaluate_json_type_dbval (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
 {
   db_make_null (result);
   if (num_args != 1)
@@ -5176,7 +5179,7 @@ db_json_type_dbval (DB_VALUE * result, DB_VALUE * const *arg, int const num_args
 }
 
 int
-db_json_valid_dbval (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
+db_evaluate_json_valid (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
 {
   db_make_null (result);
   if (num_args != 1)
@@ -5194,7 +5197,7 @@ db_json_valid_dbval (DB_VALUE * result, DB_VALUE * const *arg, int const num_arg
 }
 
 int
-db_json_length_dbval (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
+db_evaluate_json_length (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
 {
   JSON_DOC *source_doc = NULL;
   int error_code = NO_ERROR;
@@ -5245,7 +5248,7 @@ db_json_length_dbval (DB_VALUE * result, DB_VALUE * const *arg, int const num_ar
 }
 
 int
-db_json_depth_dbval (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
+db_evaluate_json_depth (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
 {
   db_make_null (result);
   if (num_args != 1)
@@ -5271,7 +5274,7 @@ db_json_depth_dbval (DB_VALUE * result, DB_VALUE * const *arg, int const num_arg
 }
 
 int
-db_json_quote_dbval (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
+db_evaluate_json_quote (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
 {
   if (num_args != 1)
     {
@@ -5282,7 +5285,7 @@ db_json_quote_dbval (DB_VALUE * result, DB_VALUE * const *arg, int const num_arg
 }
 
 int
-db_json_unquote_dbval (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
+db_evaluate_json_unquote (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
 {
   int error_code = NO_ERROR;
   db_make_null (result);
@@ -5323,7 +5326,7 @@ db_json_unquote_dbval (DB_VALUE * result, DB_VALUE * const *arg, int const num_a
 }
 
 int
-db_json_pretty_dbval (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
+db_evaluate_json_pretty (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
 {
   int error_code = NO_ERROR;
   db_make_null (result);
@@ -5362,7 +5365,7 @@ db_json_pretty_dbval (DB_VALUE * result, DB_VALUE * const *arg, int const num_ar
 }
 
 int
-db_json_arrayagg_dbval_accumulate (const DB_VALUE * json_db_val, DB_VALUE * json_res)
+db_accumulate_json_arrayagg (const DB_VALUE * json_db_val, DB_VALUE * json_res)
 {
   int error_code = NO_ERROR;
   JSON_DOC *val_doc = NULL;
@@ -5410,7 +5413,7 @@ db_json_arrayagg_dbval_accumulate (const DB_VALUE * json_db_val, DB_VALUE * json
 }
 
 /*
- * db_json_objectagg_dbval_accumulate () - Construct a Member (key-value pair) and add it in the result_json
+ * db_accumulate_json_objectagg () - Construct a Member (key-value pair) and add it in the result_json
  *
  * return                  : error_code
  * json_key (in)           : the key of the pair
@@ -5418,7 +5421,7 @@ db_json_arrayagg_dbval_accumulate (const DB_VALUE * json_db_val, DB_VALUE * json
  * json_res (in)           : the DB_VALUE that contains the document where we want to insert
  */
 int
-db_json_objectagg_dbval_accumulate (const DB_VALUE * json_key, const DB_VALUE * json_db_val, DB_VALUE * json_res)
+db_accumulate_json_objectagg (const DB_VALUE * json_key, const DB_VALUE * json_db_val, DB_VALUE * json_res)
 {
   int error_code = NO_ERROR;
   const char *key_str = NULL;
@@ -5476,42 +5479,8 @@ db_json_objectagg_dbval_accumulate (const DB_VALUE * json_key, const DB_VALUE * 
   return error_code;
 }
 
-/*
- * db_json_merge () - Inserts a JSON_OBJECT/JSON_ARRAY with possibly multiple members in the result_json
- *
- * return                  : error_code
- * json (in)               : the JSON_OBJECT/JSON_ARRAY that we want to insert
- * json_res (in)           : the DB_VALUE that contains the document where we want to insert
- */
-int
-db_json_merge (const DB_VALUE * json, DB_VALUE * json_res)
-{
-  // this case should not be possible because we did the checking before
-  // also the method should be called after we already created the json_res (in the first iteration)
-  if (DB_IS_NULL (json) || DB_IS_NULL (json_res))
-    {
-      assert (false);
-      db_make_null (json_res);
-      return ER_FAILED;
-    }
-
-  JSON_DOC *current_doc = NULL;
-  JSON_DOC *result_doc = NULL;
-
-  // get the current document that we want to insert
-  current_doc = db_get_json_document (json);
-
-  // get the resulting json document
-  result_doc = db_get_json_document (json_res);
-
-  // merge the two jsons (preserve, not patch)
-  db_json_merge_func (current_doc, result_doc, false);
-
-  return NO_ERROR;
-}
-
 //
-// db_json_extract_dbval () - extract path from json DOC
+// db_evaluate_json_extract () - extract path from json DOC
 //
 // return         : error code
 // json (in)      : source JSON
@@ -5519,7 +5488,7 @@ db_json_merge (const DB_VALUE * json, DB_VALUE * json_res)
 // json_res (out) : result JSON
 //
 int
-db_json_extract_dbval (DB_VALUE * json, DB_VALUE * path, DB_VALUE * json_res)
+db_evaluate_json_extract (DB_VALUE * json, DB_VALUE * path, DB_VALUE * json_res)
 {
   JSON_DOC *this_doc = NULL;
   const char *raw_path = NULL;
@@ -5572,8 +5541,8 @@ db_json_extract_dbval (DB_VALUE * json, DB_VALUE * path, DB_VALUE * json_res)
 }
 
 //
-// db_json_extract_multiple_paths () - extract paths from JSON and return a JSON object if there is only one path or
-//                                     a JSON array if there are multiple paths
+// db_evaluate_json_extract_multiple_paths () - extract paths from JSON and return a JSON object if there is only one
+//                                              path or a JSON array if there are multiple paths
 //
 // return        : error code
 // result (in)   : result
@@ -5583,7 +5552,7 @@ db_json_extract_dbval (DB_VALUE * json, DB_VALUE * path, DB_VALUE * json_res)
 // TODO: we need to change the args type of all JSON function to const DB_VALUE *[]
 //
 int
-db_json_extract_multiple_paths (DB_VALUE * result, DB_VALUE * const *args, int num_args)
+db_evaluate_json_extract_multiple_paths (DB_VALUE * result, DB_VALUE * const *args, int num_args)
 {
   db_make_null (result);
 
@@ -5596,7 +5565,7 @@ db_json_extract_multiple_paths (DB_VALUE * result, DB_VALUE * const *args, int n
 
   if (num_args == 2)
     {
-      return db_json_extract_dbval (args[0], args[1], result);
+      return db_evaluate_json_extract (args[0], args[1], result);
     }
 
   // there are multiple paths; the result of extract is a JSON_ARRAY with all extracted values
@@ -5671,6 +5640,861 @@ db_json_extract_multiple_paths (DB_VALUE * result, DB_VALUE * const *args, int n
 }
 
 int
+db_evaluate_json_object (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
+{
+  int i;
+  int error_code = NO_ERROR;
+  JSON_DOC *new_doc = NULL;
+  JSON_DOC *value_doc = NULL;
+  const char *value_key = NULL;
+
+  db_make_null (result);
+
+  if (num_args <= 0)
+    {
+      // is this acceptable?
+      return NO_ERROR;
+    }
+
+  if (num_args % 2 != 0)
+    {
+      assert (false);		// should be caught earlier
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_FAILED;
+    }
+
+  new_doc = db_json_allocate_doc ();
+
+  for (i = 0; i < num_args; i += 2)
+    {
+      if (DB_IS_NULL (arg[i]))
+	{
+	  db_json_delete_doc (new_doc);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_OBJECT_NAME_IS_NULL, 0);
+	  return ER_JSON_OBJECT_NAME_IS_NULL;
+	}
+
+      value_key = db_get_string (arg[i]);
+      error_code = db_value_to_json_value (*arg[i + 1], value_doc);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  db_json_delete_doc (new_doc);
+	  return error_code;
+	}
+
+      error_code = db_json_add_member_to_object (new_doc, value_key, value_doc);
+      db_json_delete_doc (value_doc);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  db_json_delete_doc (new_doc);
+	  return error_code;
+	}
+    }
+
+  db_make_json (result, new_doc, true);
+
+  return NO_ERROR;
+}
+
+int
+db_evaluate_json_array (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
+{
+  int error_code;
+  JSON_DOC *new_doc = NULL;
+  JSON_DOC *value_doc = NULL;
+
+  db_make_null (result);
+
+  if (num_args <= 0)
+    {
+      // is this acceptable?
+      return NO_ERROR;
+    }
+
+  new_doc = db_json_allocate_doc ();
+
+  for (int i = 0; i < num_args; i++)
+    {
+      error_code = db_value_to_json_value (*arg[i], value_doc);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  db_json_delete_doc (new_doc);
+	  return error_code;
+	}
+
+      db_json_add_element_to_array (new_doc, value_doc);
+      db_json_delete_doc (value_doc);
+    }
+
+  db_make_json (result, new_doc, true);
+
+  return NO_ERROR;
+}
+
+int
+db_evaluate_json_insert (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
+{
+  int i, error_code = NO_ERROR;
+  JSON_DOC *new_doc = NULL;
+  JSON_DOC *value_doc = NULL;
+  const char *value_path = NULL;
+
+  db_make_null (result);
+
+  if (num_args < 3 || num_args % 2 == 0)
+    {
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_FAILED;
+    }
+
+  if (DB_IS_NULL (arg[0]))
+    {
+      return db_make_null (result);
+    }
+
+  error_code = db_value_to_json_doc (*arg[0], new_doc);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  for (i = 1; i < num_args; i += 2)
+    {
+      if (DB_IS_NULL (arg[i]))
+	{
+	  db_json_delete_doc (new_doc);
+	  return db_make_null (result);
+	}
+
+      // extract path
+      value_path = db_get_string (arg[i]);
+
+      // extract json value
+      error_code = db_value_to_json_value (*arg[i + 1], value_doc);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  db_json_delete_doc (new_doc);
+	  return error_code;
+	}
+
+      // insert into result the value at required path
+      error_code = db_json_insert_func (value_doc, *new_doc, value_path);
+      db_json_delete_doc (value_doc);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  db_json_delete_doc (new_doc);
+	  return error_code;
+	}
+    }
+
+  db_make_json (result, new_doc, true);
+
+  return NO_ERROR;
+}
+
+int
+db_evaluate_json_replace (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
+{
+  int i, error_code = NO_ERROR;
+  JSON_DOC *new_doc = NULL;
+  JSON_DOC *value_doc = NULL;
+  const char *value_path = NULL;
+
+  db_make_null (result);
+
+  if (num_args < 3 || num_args % 2 == 0)
+    {
+      assert_release (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_FAILED;
+    }
+
+  if (DB_IS_NULL (arg[0]))
+    {
+      return NO_ERROR;
+    }
+
+  error_code = db_value_to_json_doc (*arg[0], new_doc);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  for (i = 1; i < num_args; i += 2)
+    {
+      if (DB_IS_NULL (arg[i]))
+	{
+	  db_json_delete_doc (new_doc);
+	  return db_make_null (result);
+	}
+
+      // extract path
+      value_path = db_get_string (arg[i]);
+
+      // extract json value
+      error_code = db_value_to_json_value (*arg[i + 1], value_doc);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  db_json_delete_doc (new_doc);
+	  return error_code;
+	}
+
+      // insert into result the value at requred path
+      error_code = db_json_replace_func (value_doc, *new_doc, value_path);
+      db_json_delete_doc (value_doc);
+      if (error_code != NO_ERROR)
+	{
+	  db_json_delete_doc (new_doc);
+	  return error_code;
+	}
+    }
+
+  db_make_json (result, new_doc, true);
+
+  return NO_ERROR;
+}
+
+int
+db_evaluate_json_set (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
+{
+  int i, error_code = NO_ERROR;
+  JSON_DOC *new_doc = NULL;
+  JSON_DOC *value_doc = NULL;
+  const char *value_path = NULL;
+
+  db_make_null (result);
+
+  if (num_args < 3 || num_args % 2 == 0)
+    {
+      assert_release (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_FAILED;
+    }
+
+  if (DB_IS_NULL (arg[0]))
+    {
+      return NO_ERROR;
+    }
+
+  error_code = db_value_to_json_doc (*arg[0], new_doc);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  for (i = 1; i < num_args; i += 2)
+    {
+      if (DB_IS_NULL (arg[i]))
+	{
+	  db_json_delete_doc (new_doc);
+	  return db_make_null (result);
+	}
+
+      // extract path
+      value_path = db_get_string (arg[i]);
+
+      // extract json value
+      error_code = db_value_to_json_value (*arg[i + 1], value_doc);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  db_json_delete_doc (new_doc);
+	  return error_code;
+	}
+
+      // insert into result the value at requred path
+      error_code = db_json_set_func (value_doc, *new_doc, value_path);
+      db_json_delete_doc (value_doc);
+      if (error_code != NO_ERROR)
+	{
+	  db_json_delete_doc (new_doc);
+	  return error_code;
+	}
+    }
+
+  db_make_json (result, new_doc, true);
+
+  return NO_ERROR;
+}
+
+int
+db_evaluate_json_keys (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
+{
+  int error_code = NO_ERROR;
+  JSON_DOC *new_doc = NULL;
+  JSON_DOC *result_json = NULL;
+  std::string path;
+  char *str = NULL;
+
+  db_make_null (result);
+
+  if (num_args > 2)
+    {
+      assert_release (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_FAILED;
+    }
+
+  if (DB_IS_NULL (arg[0]))
+    {
+      return NO_ERROR;
+    }
+
+  if (num_args == 1 || DB_IS_NULL (arg[1]))
+    {
+      path = "";
+    }
+  else
+    {
+      path = db_get_string (arg[1]);
+    }
+
+  error_code = db_value_to_json_doc (*arg[0], new_doc);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  result_json = db_json_allocate_doc ();
+  error_code = db_json_keys_func (*new_doc, *result_json, path.c_str ());
+  db_json_delete_doc (new_doc);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      db_json_delete_doc (result_json);
+      return error_code;
+    }
+
+  db_make_json (result, result_json, true);
+
+  return NO_ERROR;
+}
+
+int
+db_evaluate_json_remove (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
+{
+  int i, error_code;
+  JSON_DOC *new_doc = NULL;
+
+  db_make_null (result);
+
+  if (num_args < 2)
+    {
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_FAILED;
+    }
+
+  if (DB_IS_NULL (arg[0]))
+    {
+      return NO_ERROR;
+    }
+
+  error_code = db_value_to_json_doc (*arg[0], new_doc);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  for (i = 1; i < num_args; i++)
+    {
+      if (DB_IS_NULL (arg[i]))
+	{
+	  db_json_delete_doc (new_doc);
+	  return db_make_null (result);
+	}
+
+      error_code = db_json_remove_func (*new_doc, db_get_string (arg[i]));
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  db_json_delete_doc (new_doc);
+	  return error_code;
+	}
+    }
+
+  db_make_json (result, new_doc, true);
+
+  return NO_ERROR;
+}
+
+int
+db_evaluate_json_array_append (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
+{
+  int i, error_code = NO_ERROR;
+  JSON_DOC *new_doc = NULL;
+  JSON_DOC *value_doc = NULL;
+  const char *value_path = NULL;
+
+  db_make_null (result);
+
+  if (num_args < 3 || num_args % 2 == 0)
+    {
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_FAILED;
+    }
+
+  if (DB_IS_NULL (arg[0]))
+    {
+      return NO_ERROR;
+    }
+
+  error_code = db_value_to_json_doc (*arg[0], new_doc);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  for (i = 1; i < num_args; i += 2)
+    {
+      if (DB_IS_NULL (arg[i]))
+	{
+	  db_json_delete_doc (new_doc);
+	  return db_make_null (result);
+	}
+
+      // extract path
+      value_path = db_get_string (arg[i]);
+
+      // extract json value
+      error_code = db_value_to_json_value (*arg[i + 1], value_doc);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  db_json_delete_doc (new_doc);
+	  return error_code;
+	}
+
+      // insert into result the value at required path
+      error_code = db_json_array_append_func (value_doc, *new_doc, value_path);
+      db_json_delete_doc (value_doc);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  db_json_delete_doc (new_doc);
+	  return error_code;
+	}
+    }
+
+  db_make_json (result, new_doc, true);
+
+  return NO_ERROR;
+}
+
+int
+db_evaluate_json_array_insert (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
+{
+  int i, error_code = NO_ERROR;
+  JSON_DOC *new_doc = NULL;
+  JSON_DOC *value_doc = NULL;
+  const char *value_path = NULL;
+
+  db_make_null (result);
+
+  if (num_args < 3 || num_args % 2 == 0)
+    {
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_FAILED;
+    }
+
+  if (DB_IS_NULL (arg[0]))
+    {
+      return NO_ERROR;
+    }
+
+  error_code = db_value_to_json_doc (*arg[0], new_doc);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  for (i = 1; i < num_args; i += 2)
+    {
+      if (DB_IS_NULL (arg[i]))
+	{
+	  db_json_delete_doc (new_doc);
+	  return db_make_null (result);
+	}
+
+      // extract path
+      value_path = db_get_string (arg[i]);
+
+      // extract json value
+      error_code = db_value_to_json_value (*arg[i + 1], value_doc);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  db_json_delete_doc (new_doc);
+	  return error_code;
+	}
+
+      // insert into result the value at required path
+      error_code = db_json_array_insert_func (value_doc, *new_doc, value_path);
+      db_json_delete_doc (value_doc);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  db_json_delete_doc (new_doc);
+	  return error_code;
+	}
+    }
+
+  db_make_json (result, new_doc, true);
+
+  return NO_ERROR;
+}
+
+int
+db_evaluate_json_contains_path (DB_VALUE * result, DB_VALUE * const *arg, const int num_args)
+{
+  bool exists = false;
+  int error_code = NO_ERROR;
+  JSON_DOC *doc = NULL;
+  db_make_null (result);
+
+  if (DB_IS_NULL (arg[0]) || DB_IS_NULL (arg[1]))
+    {
+      return NO_ERROR;
+    }
+
+  error_code = db_value_to_json_doc (*arg[0], doc);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  bool find_all;
+  error_code = is_str_find_all (arg[1], find_all);
+  if (error_code != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
+      error_code = ER_QSTR_INVALID_DATA_TYPE;
+      goto end;
+    }
+
+  for (int i = 2; i < num_args; ++i)
+    {
+      if (DB_IS_NULL (arg[i]))
+	{
+	  goto end;
+	}
+    }
+
+  for (int i = 2; i < num_args; ++i)
+    {
+      const char *path = db_get_string (arg[i]);
+
+      if (path == NULL)
+	{
+	  goto end;
+	}
+
+      error_code = db_json_contains_path (doc, path, exists);
+      if (error_code != NO_ERROR)
+	{
+	  goto end;
+	}
+
+      if (find_all && !exists)
+	{
+	  db_make_int (result, (int) false);
+	  goto end;
+	}
+      if (!find_all && exists)
+	{
+	  db_make_int (result, (int) true);
+	  goto end;
+	}
+    }
+
+  // if we have not returned early last search is decisive
+  db_make_int (result, (int) exists);
+
+end:
+  db_json_delete_doc (doc);
+  return error_code;
+}
+
+static int
+db_evaluate_json_merge_helper (DB_VALUE * result, DB_VALUE * const *arg, int const num_args, bool patch)
+{
+  int i;
+  int error_code;
+  JSON_DOC *accumulator = NULL;
+  JSON_DOC *doc = NULL;
+
+  if (num_args < 2)
+    {
+      db_make_null (result);
+      return NO_ERROR;
+    }
+
+  for (i = 0; i < num_args; i++)
+    {
+      if (DB_IS_NULL (arg[i]))
+	{
+	  db_json_delete_doc (accumulator);
+	  return db_make_null (result);
+	}
+
+      error_code = db_value_to_json_doc (*arg[i], doc);
+      if (error_code != NO_ERROR)
+	{
+	  db_json_delete_doc (accumulator);
+	  return error_code;
+	}
+
+      error_code = db_json_merge_func (doc, accumulator, patch);
+      db_json_delete_doc (doc);
+      if (error_code != NO_ERROR)
+	{
+	  db_json_delete_doc (accumulator);
+	  return error_code;
+	}
+    }
+
+  db_make_json (result, accumulator, true);
+
+  return NO_ERROR;
+}
+
+/*
+ * db_evaluate_json_merge_preserve ()
+ *
+ * this function merges two by two json
+ * so merge (j1, j2, j3, j4) = merge_two (j1, (merge (j2, merge (j3, j4))))
+ *
+ * result (out): the merge result
+ * arg (in): the arguments for the merge function
+ * num_args (in)
+ */
+int
+db_evaluate_json_merge_preserve (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
+{
+  return db_evaluate_json_merge_helper (result, arg, num_args);
+}
+
+/*
+ * db_evaluate_json_merge_patch()
+ *
+ * this function merges two by two json without preserving members having duplicate keys
+ * so merge (j1, j2, j3, j4) = merge_two (j1, (merge (j2, merge (j3, j4))))
+ *
+ * result (out): the merge result
+ * arg (in): the arguments for the merge function
+ * num_args (in)
+ */
+int
+db_evaluate_json_merge_patch (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
+{
+  return db_evaluate_json_merge_helper (result, arg, num_args, true);
+}
+
+/* *INDENT-OFF* */
+
+/*
+ * JSON_SEARCH (json_doc, one/all, pattern [, escape_char, path_1,... path_n])
+ *
+ * db_json_search_dbval ()
+ * function that finds paths of json_values that match the pattern argument
+ * result (out): json string or json array if there are more paths that match
+ * args (in): the arguments for the json_search function
+ * num_args (in)
+ */
+
+int
+db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int num_args)
+{
+  int error_code = NO_ERROR;
+  JSON_DOC *doc = NULL;
+
+  if (num_args < 3)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_FAILED;
+    }
+
+  for (int i = 0; i < num_args; ++i)
+    {
+      // only escape char might be null
+      if (i != 3 && DB_IS_NULL (args[i]))
+        {
+          return db_make_null (result);
+        }
+    }
+
+  error_code = db_value_to_json_doc (*args[0], doc);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  bool find_all;
+  error_code = is_str_find_all (args[1], find_all);
+  if (error_code != NO_ERROR)
+    {
+      db_json_delete_doc (doc);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
+      return ER_QSTR_INVALID_DATA_TYPE;
+    }
+
+  DB_VALUE *pattern = args[2];
+  DB_VALUE *esc_char = nullptr;
+  if (num_args >= 4)
+    {
+      esc_char = args[3];
+    }
+
+  std::vector<std::string> starting_paths;
+  bool wild_card_present = false;
+  for (int i = 4; i < num_args; ++i)
+    {
+      std::string s (db_get_string (args[i]));
+      // todo: improve paths validation
+
+      if (s.find ("*") != std::string::npos)
+	{
+	  wild_card_present = true;
+	  // if we check against wild_cards only at the end we cannot return early when finding a json_value that matches
+	  find_all = true;
+	}
+
+      starting_paths.emplace_back (s);
+    }
+
+  std::vector<std::string> paths;
+  if (wild_card_present || starting_paths.empty ())
+    {
+      std::vector<std::string> default_start_path (1, "$");
+      error_code = db_json_search_func (*doc, pattern, esc_char, find_all, default_start_path, paths);
+    }
+  else
+    {
+      error_code = db_json_search_func (*doc, pattern, esc_char, find_all, starting_paths, paths);
+    }
+  db_json_delete_doc (doc);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  std::vector<int> matches_path (paths.size (), 0);
+
+  std::vector<std::regex> regs;
+  if (wild_card_present)
+    {
+      error_code = db_json_paths_to_regex (starting_paths, regs);
+      if (error_code != NO_ERROR)
+        {
+          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+          return error_code;
+        }
+    }
+
+  for (size_t i = 0; i < paths.size (); ++i)
+    {
+      for (auto &reg : regs)
+        {
+          matches_path[i] |= (int) std::regex_match (paths[i], reg);
+        }
+    }
+
+  JSON_DOC *result_json = nullptr;
+  if (paths.size () == 1)
+    {
+      if (!wild_card_present || matches_path[0] == 1)
+        {
+          error_code = db_json_get_json_from_str (paths[0].c_str (), result_json, paths[0].length ());
+          if (error_code != NO_ERROR)
+            {
+              return error_code;
+            }
+        }
+      return result_json ? db_make_json (result, result_json, true) : db_make_null (result);
+    }
+
+  result_json = db_json_allocate_doc ();
+  for (size_t i = 0; i < paths.size (); ++i)
+    {
+      if (wild_card_present && matches_path[i] == 0)
+        {
+          continue;
+        }
+
+      JSON_DOC *json_array_elem = nullptr;
+
+      error_code = db_json_get_json_from_str (paths[i].c_str (), json_array_elem, paths[i].length ());
+      if (error_code != NO_ERROR)
+        {
+          db_json_delete_doc (result_json);
+          return error_code;
+        }
+
+      db_json_add_element_to_array (result_json, json_array_elem);
+
+      db_json_delete_doc (json_array_elem);
+    }
+
+  return db_make_json (result, result_json, true);
+}
+/* *INDENT-ON* */
+
+int
+db_evaluate_json_get_all_paths (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
+{
+  int error_code = NO_ERROR;
+  JSON_DOC *new_doc = NULL;
+  JSON_DOC *result_json = NULL;
+
+  db_make_null (result);
+
+  if (num_args != 1)
+    {
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_FAILED;
+    }
+
+  if (DB_IS_NULL (arg[0]))
+    {
+      return NO_ERROR;
+    }
+
+  error_code = db_value_to_json_doc (*arg[0], new_doc);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  result_json = db_json_allocate_doc ();
+  error_code = db_json_get_all_paths_func (*new_doc, result_json);
+
+  db_make_json (result, result_json, true);
+
+  // delete new_doc
+  db_json_delete_doc (new_doc);
+
+  return NO_ERROR;
+}
+
+int
 db_least_or_greatest (DB_VALUE * arg1, DB_VALUE * arg2, DB_VALUE * result, bool least)
 {
   int error_code = NO_ERROR;
@@ -5717,4 +6541,29 @@ db_least_or_greatest (DB_VALUE * arg1, DB_VALUE * arg2, DB_VALUE * result, bool 
     }
 
   return error_code;
+}
+
+static int
+is_str_find_all (DB_VALUE * val, bool & find_all)
+{
+  if (DB_IS_NULL (val))
+    {
+      return ER_QSTR_INVALID_DATA_TYPE;
+    }
+
+  // *INDENT-OFF*
+  std::string find_all_str (db_get_string (val));
+  std::transform (find_all_str.begin (), find_all_str.end (), find_all_str.begin (), ::tolower);
+  // *INDENT-ON*
+
+  find_all = false;
+  if (find_all_str == "all")
+    {
+      find_all = true;
+    }
+  if (!find_all && find_all_str != "one")
+    {
+      return ER_QSTR_INVALID_DATA_TYPE;	// todo - set a proper error
+    }
+  return NO_ERROR;
 }

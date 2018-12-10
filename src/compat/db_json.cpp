@@ -1480,7 +1480,7 @@ db_json_contains_path (const JSON_DOC *document, const char *raw_path, bool &res
     }
 
   // path must be JSON pointer
-  // todo: solve json_contains_path for wildcard paths
+  // todo: solve json_contains_path for wild card paths
   error_code = db_json_convert_sql_path_to_pointer (raw_path, json_pointer_string);
   if (error_code != NO_ERROR)
     {
