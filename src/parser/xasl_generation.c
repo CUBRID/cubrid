@@ -3747,16 +3747,20 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	       * value_list Note: cume_dist() and percent_rank() also need special operations. */
 	      if (aggregate_list->function != PT_CUME_DIST && aggregate_list->function != PT_PERCENT_RANK)
 		{
-		  pt_val = parser_new_node (parser, PT_VALUE);
-		  if (pt_val == NULL)
+		  // add dummy output name nodes, one for each argument
+		  for (PT_NODE * it_args = tree->info.function.arg_list; it_args != NULL; it_args = it_args->next)
 		    {
-		      PT_INTERNAL_ERROR (parser, "allocate new node");
-		      return NULL;
-		    }
+		      pt_val = parser_new_node (parser, PT_VALUE);
+		      if (pt_val == NULL)
+			{
+			  PT_INTERNAL_ERROR (parser, "allocate new node");
+			  return NULL;
+			}
 
-		  pt_val->type_enum = PT_TYPE_INTEGER;
-		  pt_val->info.value.data_value.i = 0;
-		  parser_append_node (pt_val, info->out_names);
+		      pt_val->type_enum = PT_TYPE_INTEGER;
+		      pt_val->info.value.data_value.i = 0;
+		      parser_append_node (pt_val, info->out_names);
+		    }
 
 		  // for each element from arg_list we create a corresponding node in the value_list and regu_list
 		  if (pt_node_list_to_value_and_reguvar_list (parser, tree->info.function.arg_list,

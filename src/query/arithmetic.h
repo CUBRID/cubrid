@@ -77,8 +77,9 @@ extern int db_json_depth_dbval (DB_VALUE * result, DB_VALUE * const *args, int n
 extern int db_json_quote_dbval (DB_VALUE * result, DB_VALUE * const *args, int num_args);
 extern int db_json_unquote_dbval (DB_VALUE * result, DB_VALUE * const *args, int num_args);
 extern int db_json_pretty_dbval (DB_VALUE * result, DB_VALUE * const *args, int num_args);
-extern int db_json_arrayagg_dbval_accumulate (DB_VALUE * json_db_val, DB_VALUE * json_res);
-extern int db_json_objectagg_dbval_accumulate (DB_VALUE * json_key, DB_VALUE * json_db_val, DB_VALUE * json_res);
+extern int db_json_arrayagg_dbval_accumulate (const DB_VALUE * json_db_val, DB_VALUE * json_res);
+extern int db_json_objectagg_dbval_accumulate (const DB_VALUE * json_key, const DB_VALUE * json_db_val,
+					       DB_VALUE * json_res);
 extern int db_json_merge (const DB_VALUE * json, DB_VALUE * json_res);	// this is declared twice
 extern int db_least_or_greatest (DB_VALUE * arg1, DB_VALUE * arg2, DB_VALUE * result, bool least);
 #endif /* _ARITHMETIC_H_ */

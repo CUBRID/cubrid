@@ -3075,6 +3075,7 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
   const char *class_name = NULL;
   const char *comment_str = NULL;
   bool do_rollback = false;
+  SM_INDEX_STATUS saved_index_status = SM_NORMAL_INDEX;
 
   /* TODO refactor this code, the code in create_or_drop_index_helper and the code in do_drop_index in order to remove
    * duplicate code */
@@ -3116,6 +3117,8 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
       error = ER_SM_NO_INDEX;
       goto error_exit;
     }
+
+  saved_index_status = idx->index_status;
 
   if (statement->info.index.comment != NULL)
     {
@@ -3305,7 +3308,7 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
 
   error =
     sm_add_constraint (obj, original_ctype, index_name, (const char **) attnames, asc_desc, attrs_prefix_length, false,
-		       p_pred_index_info, func_index_info, comment_str, SM_NORMAL_INDEX);
+		       p_pred_index_info, func_index_info, comment_str, saved_index_status);
   if (error != NO_ERROR)
     {
       goto error_exit;
@@ -5357,6 +5360,7 @@ do_create_partition_constraint (PT_NODE * alter, SM_CLASS * root_class, SM_CLASS
       for (; parts; parts = parts->next)
 	{
 	  MOP subclass_op = parts->info.parts.name->info.name.db_object;
+
 	  if (alter_op == PT_REORG_PARTITION && parts->partition_pruned)
 	    {
 	      continue;		/* reused partition */
@@ -9035,7 +9039,7 @@ do_recreate_renamed_class_indexes (const PARSER_CONTEXT * parser, const char *co
     {
       error = sm_add_constraint (classmop, saved->constraint_type, saved->name, (const char **) saved->att_names,
 				 saved->asc_desc, saved->prefix_length, false, saved->filter_predicate,
-				 saved->func_index_info, saved->comment, SM_NORMAL_INDEX);
+				 saved->func_index_info, saved->comment, saved->index_status);
 
       if (error != NO_ERROR)
 	{
@@ -9147,13 +9151,14 @@ do_copy_indexes (PARSER_CONTEXT * parser, MOP classmop, SM_CLASS * src_class)
 	{
 	  error = sm_add_constraint (classmop, constraint_type, new_cons_name, att_names, index_save_info->asc_desc,
 				     index_save_info->prefix_length, false, index_save_info->filter_predicate,
-				     index_save_info->func_index_info, index_save_info->comment, SM_NORMAL_INDEX);
+				     index_save_info->func_index_info, index_save_info->comment,
+				     index_save_info->index_status);
 	}
       else
 	{
 	  error =
 	    sm_add_constraint (classmop, constraint_type, new_cons_name, att_names, c->asc_desc, c->attrs_prefix_length,
-			       false, c->filter_predicate, c->func_index_info, c->comment, SM_NORMAL_INDEX);
+			       false, c->filter_predicate, c->func_index_info, c->comment, c->index_status);
 	}
       if (error != NO_ERROR)
 	{
@@ -9509,7 +9514,8 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser, PT_NODE * const
 		      error = sm_add_constraint (class_mop, saved_constr->constraint_type, saved_constr->name,
 						 (const char **) saved_constr->att_names, saved_constr->asc_desc,
 						 saved_constr->prefix_length, false, saved_constr->filter_predicate,
-						 saved_constr->func_index_info, saved_constr->comment, SM_NORMAL_INDEX);
+						 saved_constr->func_index_info, saved_constr->comment,
+						 saved_constr->index_status);
 		      if (error != NO_ERROR)
 			{
 			  goto exit;
@@ -13265,7 +13271,7 @@ do_recreate_att_constraints (MOP class_mop, SM_CONSTRAINT_INFO * constr_info_lis
 	  error =
 	    sm_add_constraint (class_mop, constr->constraint_type, constr->name, (const char **) constr->att_names,
 			       constr->asc_desc, constr->prefix_length, false, constr->filter_predicate,
-			       constr->func_index_info, constr->comment, SM_NORMAL_INDEX);
+			       constr->func_index_info, constr->comment, constr->index_status);
 
 	  if (error != NO_ERROR)
 	    {
@@ -14975,7 +14981,7 @@ do_recreate_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_save_info)
 	{
 	  error = sm_add_constraint (classmop, saved->constraint_type, saved->name, (const char **) saved->att_names,
 				     saved->asc_desc, saved->prefix_length, false, saved->filter_predicate,
-				     saved->func_index_info, saved->comment, SM_NORMAL_INDEX);
+				     saved->func_index_info, saved->comment, saved->index_status);
 
 	  if (error != NO_ERROR)
 	    {

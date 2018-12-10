@@ -5362,7 +5362,7 @@ db_json_pretty_dbval (DB_VALUE * result, DB_VALUE * const *arg, int const num_ar
 }
 
 int
-db_json_arrayagg_dbval_accumulate (DB_VALUE * json_db_val, DB_VALUE * json_res)
+db_json_arrayagg_dbval_accumulate (const DB_VALUE * json_db_val, DB_VALUE * json_res)
 {
   int error_code = NO_ERROR;
   JSON_DOC *val_doc = NULL;
@@ -5418,7 +5418,7 @@ db_json_arrayagg_dbval_accumulate (DB_VALUE * json_db_val, DB_VALUE * json_res)
  * json_res (in)           : the DB_VALUE that contains the document where we want to insert
  */
 int
-db_json_objectagg_dbval_accumulate (DB_VALUE * json_key, DB_VALUE * json_db_val, DB_VALUE * json_res)
+db_json_objectagg_dbval_accumulate (const DB_VALUE * json_key, const DB_VALUE * json_db_val, DB_VALUE * json_res)
 {
   int error_code = NO_ERROR;
   const char *key_str = NULL;
@@ -5464,10 +5464,16 @@ db_json_objectagg_dbval_accumulate (DB_VALUE * json_key, DB_VALUE * json_db_val,
       return ER_FAILED;
     }
 
-  db_json_add_member_to_object (result_doc, key_str, val_doc);
+  error_code = db_json_add_member_to_object (result_doc, key_str, val_doc);
+  if (error_code == ER_JSON_DUPLICATE_KEY)
+    {
+      // ignore
+      er_clear ();
+      error_code = NO_ERROR;
+    }
 
   db_json_delete_doc (val_doc);
-  return NO_ERROR;
+  return error_code;
 }
 
 /*
