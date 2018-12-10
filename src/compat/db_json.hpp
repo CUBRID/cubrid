@@ -73,7 +73,7 @@ const char *db_json_get_type_as_str (const JSON_DOC *document);
 unsigned int db_json_get_length (const JSON_DOC *document);
 unsigned int db_json_get_depth (const JSON_DOC *doc);
 int db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<std::string> &raw_path,
-					JSON_DOC *&result);
+					JSON_DOC *&result, bool allow_wildcards = true);
 int db_json_contains_path (const JSON_DOC *document, const std::vector<std::string> &paths, bool find_all,
 			   bool &result);
 char *db_json_get_raw_json_body_from_document (const JSON_DOC *doc);
@@ -139,7 +139,8 @@ JSON_ITERATOR *db_json_create_iterator (const DB_JSON_TYPE &type);
 void db_json_delete_json_iterator (JSON_ITERATOR *&json_itr);
 void db_json_clear_json_iterator (JSON_ITERATOR *&json_itr);
 
-int db_json_convert_pointer_to_sql_path (const char *pointer_path, std::string &sql_path_out);
+int db_json_convert_pointer_to_sql_path (const char *pointer_path, std::string &sql_path_out,
+    bool allow_wildcards = true);
 DB_JSON_TYPE db_json_get_type (const JSON_DOC *doc);
 
 int db_json_get_int_from_document (const JSON_DOC *doc);

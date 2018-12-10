@@ -5181,7 +5181,7 @@ db_json_length_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * r
 	  const char *raw_path = db_get_string (path);
 
           /* *INDENT-OFF* */
-	  error_code = db_json_extract_document_from_path (db_get_json_document (json), std::vector<std::string> (1, raw_path), this_doc);
+	  error_code = db_json_extract_document_from_path (db_get_json_document (json), std::vector<std::string> (1, raw_path), this_doc, false);
           /* *INDENT-ON* */
 	  if (error_code != NO_ERROR)
 	    {

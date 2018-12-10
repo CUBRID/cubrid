@@ -287,7 +287,6 @@ static int print_string_date_token (const STRING_DATE_TOKEN token_type, const IN
 static void convert_locale_number (char *sz, const int size, const INTL_LANG src_locale, const INTL_LANG dst_locale);
 static int parse_tzd (const char *str, const int max_expect_len);
 static int db_json_merge_helper (DB_VALUE * result, DB_VALUE * arg[], int const num_args, bool patch = false);
-static int db_string_escape (const char *src_str, int src_size, char **res_string, int *dest_size);
 
 #define TRIM_FORMAT_STRING(sz, n) {if (strlen(sz) > n) sz[n] = 0;}
 #define WHITESPACE(c) ((c) == ' ' || (c) == '\t' || (c) == '\r' || (c) == '\n')
@@ -1894,7 +1893,7 @@ db_string_substring (const MISC_OPERAND substr_operand, const DB_VALUE * src_str
   return error_status;
 }
 
-static int
+int
 db_string_escape (const char *src_str, int src_size, char **res_string, int *dest_size)
 {
   int dest_crt_pos;

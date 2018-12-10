@@ -1329,10 +1329,12 @@ db_json_value_get_depth (const JSON_VALUE *doc)
  * doc_destination (in)    : destination document
  * paths (in)              : paths from where to extract
  * result (out)            : resulting doc
+ * allow_wildcards         :
  * example                 : json_extract('{"a":["b", 123]}', '/a/1') yields 123
  */
 int
-db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<std::string> &paths, JSON_DOC *&result)
+db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<std::string> &paths, JSON_DOC *&result,
+				    bool allow_wildcards)
 {
   int error_code = NO_ERROR;
 
@@ -1369,7 +1371,7 @@ db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<
   for (const auto &path : paths)
     {
       transformed_paths.emplace_back ();
-      error_code = db_json_convert_pointer_to_sql_path (path.c_str (), transformed_paths.back ());
+      error_code = db_json_convert_pointer_to_sql_path (path.c_str (), transformed_paths.back (), allow_wildcards);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -3290,11 +3292,12 @@ db_json_replace_token_special_chars (std::string &token,
  * db_json_convert_pointer_to_sql_path ()
  * pointer_path (in)
  * sql_path_out (out): the result
+ * allow_wildcards (in):
  * A pointer path is converted to SQL standard path
  * Example: /0/name1/name2/2 -> $[0]."name1"."name2"[2]
  */
 int
-db_json_convert_pointer_to_sql_path (const char *pointer_path, std::string &sql_path_out)
+db_json_convert_pointer_to_sql_path (const char *pointer_path, std::string &sql_path_out, bool allow_wildcards)
 {
   std::string pointer_path_string (pointer_path);
   JSON_PATH_TYPE json_path_type = db_json_get_path_type (pointer_path_string);
@@ -3303,7 +3306,7 @@ db_json_convert_pointer_to_sql_path (const char *pointer_path, std::string &sql_
     {
       // path is not JSON path format; consider it SQL path.
       sql_path_out = pointer_path_string;
-      if (!db_json_sql_path_is_valid (sql_path_out, true))
+      if (!db_json_sql_path_is_valid (sql_path_out, allow_wildcards))
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
 	  return ER_JSON_INVALID_PATH;
@@ -3323,11 +3326,18 @@ db_json_convert_pointer_to_sql_path (const char *pointer_path, std::string &sql_
 
   for (std::size_t i = 0; i < tokens.size (); ++i)
     {
-      // skip first if empty
-      // can special json pointer characters be present in the first token?
-      if (i == 0 && tokens[i] == "")
+      if (i == 0 )
 	{
-	  continue;
+	  // todo: can special json pointer characters be present in the first token?
+	  if (!tokens[0].empty ())
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
+	      return ER_JSON_INVALID_PATH;
+	    }
+	  else
+	    {
+	      continue;
+	    }
 	}
 
       if (db_json_path_is_token_valid_array_index (tokens[i], false))
@@ -3339,8 +3349,12 @@ db_json_convert_pointer_to_sql_path (const char *pointer_path, std::string &sql_
       else
 	{
 	  db_json_replace_token_special_chars (tokens[i], special_chars);
-	  tokens[i].insert (0, "\"");
-	  tokens[i] += '"';
+	  char *quoted_token;
+	  int quoted_size;
+	  db_string_escape (tokens[i].c_str (), tokens[i].size (), &quoted_token, &quoted_size);
+	  tokens[i].resize (quoted_size);
+	  tokens[i].copy (quoted_token, quoted_size);
+	  db_private_free (NULL, quoted_token);
 
 	  std::size_t token_pos = 0;
 	  // todo: clarify escaping things e.g. '"' character in the token needs to be escaped for sure
