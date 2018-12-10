@@ -8408,7 +8408,7 @@ qdata_evaluate_function (THREAD_ENTRY * thread_p, REGU_VARIABLE * function_p, VA
 
     case F_JSON_EXTRACT:
       return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
-						       db_evaluate_json_extract_multiple_paths);
+						       db_evaluate_json_extract);
 
     case F_JSON_GET_ALL_PATHS:
       return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,

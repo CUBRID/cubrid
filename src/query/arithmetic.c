@@ -5480,69 +5480,8 @@ db_accumulate_json_objectagg (const DB_VALUE * json_key, const DB_VALUE * json_d
 }
 
 //
-// db_evaluate_json_extract () - extract path from json DOC
-//
-// return         : error code
-// json (in)      : source JSON
-// path (in)      : path
-// json_res (out) : result JSON
-//
-int
-db_evaluate_json_extract (DB_VALUE * json, DB_VALUE * path, DB_VALUE * json_res)
-{
-  JSON_DOC *this_doc = NULL;
-  const char *raw_path = NULL;
-  JSON_DOC *result_doc = NULL;
-  int error_code = NO_ERROR;
-
-  assert (json != NULL);
-  assert (path != NULL);
-
-  db_make_null (json_res);
-
-  if (DB_IS_NULL (json) || DB_IS_NULL (path))
-    {
-      return NO_ERROR;
-    }
-
-  error_code = db_value_to_json_doc (*json, this_doc);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = db_value_to_json_path (path, F_JSON_EXTRACT, &raw_path);
-  if (error_code != NO_ERROR)
-    {
-      db_json_delete_doc (this_doc);
-      return error_code;
-    }
-
-  error_code = db_json_extract_document_from_path (this_doc, raw_path, result_doc);
-  if (error_code != NO_ERROR)
-    {
-      assert (result_doc == NULL);
-      db_json_delete_doc (this_doc);
-      return error_code;
-    }
-
-  if (result_doc != NULL)
-    {
-      db_make_json (json_res, result_doc, true);
-    }
-  else
-    {
-      db_make_null (json_res);
-    }
-
-  db_json_delete_doc (this_doc);
-
-  return NO_ERROR;
-}
-
-//
-// db_evaluate_json_extract_multiple_paths () - extract paths from JSON and return a JSON object if there is only one
-//                                              path or a JSON array if there are multiple paths
+// db_evaluate_json_extract () - extract paths from JSON and return a JSON object if there is only one path or a JSON
+//                               array if there are multiple paths
 //
 // return        : error code
 // result (in)   : result
@@ -5552,7 +5491,7 @@ db_evaluate_json_extract (DB_VALUE * json, DB_VALUE * path, DB_VALUE * json_res)
 // TODO: we need to change the args type of all JSON function to const DB_VALUE *[]
 //
 int
-db_evaluate_json_extract_multiple_paths (DB_VALUE * result, DB_VALUE * const *args, int num_args)
+db_evaluate_json_extract (DB_VALUE * result, DB_VALUE * const *args, int num_args)
 {
   db_make_null (result);
 
@@ -5561,11 +5500,6 @@ db_evaluate_json_extract_multiple_paths (DB_VALUE * result, DB_VALUE * const *ar
       // should be detected early
       assert (false);
       return ER_FAILED;
-    }
-
-  if (num_args == 2)
-    {
-      return db_evaluate_json_extract (args[0], args[1], result);
     }
 
   // there are multiple paths; the result of extract is a JSON_ARRAY with all extracted values
@@ -5579,7 +5513,7 @@ db_evaluate_json_extract_multiple_paths (DB_VALUE * result, DB_VALUE * const *ar
       return error_code;
     }
 
-  JSON_DOC *result_doc = db_json_allocate_doc ();	// result JSON document; it will be converted to array later
+  JSON_DOC *result_array = NULL;	// result JSON document; it will be converted to array later
   JSON_DOC *extracted_doc = NULL;	// document used for extracting each value
   const DB_VALUE *path_value;
   const char *path_str = NULL;
@@ -5595,7 +5529,7 @@ db_evaluate_json_extract_multiple_paths (DB_VALUE * result, DB_VALUE * const *ar
       if (error_code != NO_ERROR)
 	{
 	  // free docs
-	  db_json_delete_doc (result_doc);
+	  db_json_delete_doc (result_array);
 	  db_json_delete_doc (extracted_doc);
 	  db_json_delete_doc (source_doc);
 	  return error_code;
@@ -5607,7 +5541,7 @@ db_evaluate_json_extract_multiple_paths (DB_VALUE * result, DB_VALUE * const *ar
 	{
 	  ASSERT_ERROR ();
 	  // free docs
-	  db_json_delete_doc (result_doc);
+	  db_json_delete_doc (result_array);
 	  db_json_delete_doc (extracted_doc);
 	  db_json_delete_doc (source_doc);
 	  return error_code;
@@ -5615,7 +5549,23 @@ db_evaluate_json_extract_multiple_paths (DB_VALUE * result, DB_VALUE * const *ar
 
       if (extracted_doc != NULL)
 	{
-	  db_json_add_element_to_array (result_doc, extracted_doc);
+	  if (num_args == 2)
+	    {
+	      // result is extracted document
+	      assert (result_array == NULL);
+	      db_json_delete_doc (source_doc);
+	      db_make_json (result, extracted_doc, true);
+	      return NO_ERROR;
+	    }
+	  else
+	    {
+	      // result is an array with all extracted documents.
+	      if (result_array == NULL)
+		{
+		  result_array = db_json_allocate_doc ();
+		}
+	      db_json_add_element_to_array (result_array, extracted_doc);
+	    }
 	}
       else
 	{
@@ -5627,14 +5577,14 @@ db_evaluate_json_extract_multiple_paths (DB_VALUE * result, DB_VALUE * const *ar
   db_json_delete_doc (extracted_doc);
   db_json_delete_doc (source_doc);
 
-  if (db_json_get_type (result_doc) == DB_JSON_NULL)
+  if (db_json_get_type (result_array) == DB_JSON_NULL)
     {
       // let null result
-      db_json_delete_doc (result_doc);
+      db_json_delete_doc (result_array);
     }
   else
     {
-      db_make_json (result, result_doc, true);
+      db_make_json (result, result_array, true);
     }
   return NO_ERROR;
 }

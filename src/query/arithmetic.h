@@ -79,7 +79,6 @@ extern int db_evaluate_json_contains (DB_VALUE * result, DB_VALUE * const *arg, 
 extern int db_evaluate_json_contains_path (DB_VALUE * result, DB_VALUE * const *arg, const int num_args);
 extern int db_evaluate_json_depth (DB_VALUE * result, DB_VALUE * const *args, int num_args);
 extern int db_evaluate_json_extract (DB_VALUE * result, DB_VALUE * const *args, int num_args);
-extern int db_evaluate_json_extract_multiple_paths (DB_VALUE * result, DB_VALUE * const *args, int num_args);
 extern int db_evaluate_json_get_all_paths (DB_VALUE * result, DB_VALUE * const *arg, int const num_args);
 extern int db_evaluate_json_insert (DB_VALUE * result, DB_VALUE * const *arg, const int num_args);
 extern int db_evaluate_json_keys (DB_VALUE * result, DB_VALUE * const *arg, const int num_args);
