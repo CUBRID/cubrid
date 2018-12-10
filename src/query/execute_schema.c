@@ -9151,7 +9151,8 @@ do_copy_indexes (PARSER_CONTEXT * parser, MOP classmop, SM_CLASS * src_class)
 	{
 	  error = sm_add_constraint (classmop, constraint_type, new_cons_name, att_names, index_save_info->asc_desc,
 				     index_save_info->prefix_length, false, index_save_info->filter_predicate,
-				     index_save_info->func_index_info, index_save_info->comment, c->index_status);
+				     index_save_info->func_index_info, index_save_info->comment,
+				     index_save_info->index_status);
 	}
       else
 	{
