@@ -3317,12 +3317,12 @@ db_json_convert_pointer_to_sql_path (const char *pointer_path, std::string &sql_
 	  int quoted_size;
 	  db_string_escape (tokens[i].c_str (), tokens[i].size (), &quoted_token, &quoted_size);
 	  tokens[i].resize (quoted_size);
-	  tokens[i].assign (quoted_token, quoted_size);
+	  tokens[i].assign (quoted_token, quoted_size - 1);
 	  db_private_free (NULL, quoted_token);
 
 	  std::size_t token_pos = 0;
 	  // todo: clarify escaping things e.g. '"' character in the token needs to be escaped for sure
-	  if (!db_json_path_is_token_valid_quoted_object_key (tokens[i], token_pos) || token_pos < tokens[i].length ())
+	  if (!db_json_path_is_token_valid_quoted_object_key (tokens[i], token_pos))
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
 	      return ER_JSON_INVALID_PATH;
