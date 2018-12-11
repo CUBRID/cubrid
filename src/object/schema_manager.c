@@ -455,9 +455,6 @@ static DB_OBJLIST *sm_fetch_all_objects_internal (DB_OBJECT * op, DB_FETCH_MODE 
 						  LC_FETCH_VERSION_TYPE * force_fetch_version_type);
 static int sm_flush_and_decache_objects_internal (MOP obj, MOP obj_class_mop, int decache);
 
-static void sm_stats_remove_bt_stats_at_position (ATTR_STATS * attr_stats, int position);
-static void sm_stats_remove_online_index_stats (SM_CLASS * class_);
-
 static void sm_free_resident_classes_virtual_query_cache (void);
 
 /*
@@ -3786,10 +3783,6 @@ sm_get_class_with_statistics (MOP classop)
 	  class_->stats = stats;
 	}
     }
-
-  /* Iterate through all constraints and check if there is any of them with online index build in progress. */
-  // TODO - why not filter it in server?
-  sm_stats_remove_online_index_stats (class_);
 
   return class_;
 }
@@ -13942,6 +13935,11 @@ sm_drop_index (MOP classop, const char *constraint_name)
 	{
 	  goto severe_error;
 	}
+
+      if (sm_update_statistics (classop, STATS_WITH_SAMPLING) != NO_ERROR)
+	{
+	  goto severe_error;
+	}
     }
 
 fail_end:
@@ -16387,80 +16385,6 @@ flatten_partition_info (SM_TEMPLATE * def, SM_TEMPLATE * flat)
   return NO_ERROR;
 }
 
-/*
- * sm_stats_remove_online_index_stats () - Removes the online index statistics from the statistics arrays.
- * return        - void
- * class_ (in)   - Class that requested the statistics.
- *
- * Here, we have to remove the stats regarding the possible btid that represents
- * an online index build in progress.
- */
-static void
-sm_stats_remove_online_index_stats (SM_CLASS * class_)
-{
-  SM_CLASS_CONSTRAINT *cons;
-  int i;
-  BTID online_index_btid = BTID_INITIALIZER;
-
-  if (class_ == NULL)
-    {
-      return;
-    }
-
-  for (cons = class_->constraints; cons != NULL; cons = cons->next)
-    {
-      /* Check if there is an online index currently being built or an invisible one. */
-      if (cons->index_status != SM_ONLINE_INDEX_BUILDING_IN_PROGRESS && cons->index_status != SM_INVISIBLE_INDEX)
-	{
-	  continue;
-	}
-
-      online_index_btid = cons->index_btid;
-
-      /* Iterate through all attributes. */
-      for (i = 0; i < class_->stats->n_attrs; i++)
-	{
-	  /* Iterate through all statistics for this attribute and find the one with the same BTID as the online index. */
-	  for (int j = 0; j < class_->stats->attr_stats[i].n_btstats; j++)
-	    {
-	      if (BTID_IS_EQUAL (&class_->stats->attr_stats[i].bt_stats[j].btid, &online_index_btid) == 1)
-		{
-		  sm_stats_remove_bt_stats_at_position (&class_->stats->attr_stats[i], j);
-		  break;
-		}
-	    }
-	}
-    }
-}
-
-static void
-sm_stats_remove_bt_stats_at_position (ATTR_STATS * attr_stats, int position)
-{
-  BTREE_STATS *to_be_moved;
-  int i;
-
-  /* This moves the statistic at the end and makes it unavailable by decrementing the n_btstats */
-  if (attr_stats->bt_stats[position].pkeys != NULL)
-    {
-      /* First free the partial keys. */
-      db_ws_free_and_init (attr_stats->bt_stats[position].pkeys);
-    }
-
-  to_be_moved = &attr_stats->bt_stats[position];
-
-  /* Move the other statistics on a position to the left. */
-  for (i = position; i < attr_stats->n_btstats - 1; i++)
-    {
-      attr_stats->bt_stats[i] = attr_stats->bt_stats[i + 1];
-    }
-
-  /* Set the last position on the cleared statistic. */
-  attr_stats->bt_stats[attr_stats->n_btstats - 1] = *to_be_moved;
-
-  /* Make it unavailable. */
-  attr_stats->n_btstats--;
-}
-
 int
 sm_load_online_index (MOP classmop, const char *constraint_name)
 {
@@ -16685,4 +16609,37 @@ error_return:
     }
 
   return error;
+}
+
+/*
+ * sm_is_index_visible () - Check if the index represented by the BTID is visible.
+ * return                 - bool
+ * constraint_list (in)   - The list of constraints to look into.
+ * btid (in)              - BTID to look for
+ */
+bool
+sm_is_index_visible (SM_CLASS_CONSTRAINT * constraint_list, BTID btid)
+{
+  int error_code = NO_ERROR;
+  SM_CLASS_CONSTRAINT *constr;
+
+  for (constr = constraint_list; constr != NULL; constr = constr->next)
+    {
+      /* Iterate through all constraints. */
+      if (BTID_IS_EQUAL (&constr->index_btid, &btid))
+	{
+	  break;
+	}
+    }
+
+  /* We should always find the constraint. */
+  if (constr == NULL)
+    {
+      assert (false);
+      return false;
+    }
+  else
+    {
+      return (constr->index_status == SM_NORMAL_INDEX);
+    }
 }
