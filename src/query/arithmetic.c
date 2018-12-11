@@ -5533,10 +5533,10 @@ db_evaluate_json_extract (DB_VALUE * result, DB_VALUE * const *args, int num_arg
       const char *path_str = NULL;
       error_code = db_value_to_json_path (path_value, F_JSON_EXTRACT, &path_str);
       if (error_code != NO_ERROR)
-        {
-          db_json_delete_doc (source_doc);
-          return error_code;
-        }
+	{
+	  db_json_delete_doc (source_doc);
+	  return error_code;
+	}
 
       paths.push_back (path_str);
     }
