@@ -13938,39 +13938,9 @@ sm_drop_index (MOP classop, const char *constraint_name)
 	  goto severe_error;
 	}
 
-      error = stats_update_statistics (WS_OID (classop), 0);
-      if (error == NO_ERROR)
+      if (sm_update_statistics (classop, 0) != NO_ERROR)
 	{
-	  /* only recache if the class itself is cached */
-	  if (classop->object != NULL)
-	    {			/* check cache */
-	      /* why are we checking authorization here ? */
-	      error = au_fetch_class_force (classop, &class_, AU_FETCH_READ);
-	      if (error == NO_ERROR)
-		{
-		  if (class_->stats != NULL)
-		    {
-		      stats_free_statistics (class_->stats);
-		      class_->stats = NULL;
-		    }
-
-		  /* make sure the class is flushed before acquiring stats, see comments above in
-		   * sm_get_class_with_statistics */
-		  if (locator_flush_class (classop) != NO_ERROR)
-		    {
-		      assert (er_errid () != NO_ERROR);
-		      goto severe_error;
-		    }
-
-		  /* get the new ones, should do this at the same time as the update operation to avoid two server
-		   * calls */
-		  class_->stats = stats_get_statistics (WS_OID (classop), 0);
-		}
-	    }
-	  else
-	    {
-	      goto severe_error;
-	    }
+	  goto severe_error;
 	}
     }
 
