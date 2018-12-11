@@ -234,7 +234,7 @@ start_check_active:
 }
 
 /*
- * mvcc_satisfies_snapshot () - Check whether a record is valid for 
+ * mvcc_satisfies_snapshot () - Check whether a record is valid for
  *				    a snapshot
  *   return: - SNAPSHOT_SATISFIED: record is valid for snapshot
  *	     - TOO_NEW_FOR_SNAPSHOT: record was either inserted or updated recently; commited after snapshot
@@ -466,7 +466,7 @@ mvcc_satisfies_vacuum (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MV
 }
 
 /*
- * mvcc_satisfies_delete () - Check whether a record is valid for 
+ * mvcc_satisfies_delete () - Check whether a record is valid for
  *			instant snapshot
  *   return: true, if the record is valid for snapshot
  *   thread_p(in): thread entry

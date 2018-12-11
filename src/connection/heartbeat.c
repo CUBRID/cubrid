@@ -97,8 +97,8 @@ bool hb_Proc_shutdown = false;
 
 SOCKET hb_Pipe_to_master = INVALID_SOCKET;
 
-/*    
- * hb_process_type_string () - 
+/*
+ * hb_process_type_string () -
  *   return: process type string
  *
  *   ptype(in):
@@ -118,8 +118,8 @@ hb_process_type_string (int ptype)
   return "invalid";
 }
 
-/*    
- * hb_set_exec_path () - 
+/*
+ * hb_set_exec_path () -
  *   return: none
  *
  *   exec_path(in):
@@ -130,8 +130,8 @@ hb_set_exec_path (char *exec_path)
   strncpy (hb_Exec_path, exec_path, sizeof (hb_Exec_path) - 1);
 }
 
-/*    
- * hb_set_argv () - 
+/*
+ * hb_set_argv () -
  *   return: none
  *
  *   argv(in):
@@ -143,9 +143,9 @@ hb_set_argv (char **argv)
 }
 
 
-/*    
- * css_send_heartbeat_request () - 
- *   return: 
+/*
+ * css_send_heartbeat_request () -
+ *   return:
  *
  *   conn(in):
  *   command(in):
@@ -169,9 +169,9 @@ css_send_heartbeat_request (CSS_CONN_ENTRY * conn, int command)
   return CONNECTION_CLOSED;
 }
 
-/*    
- * css_send_heartbeat_data () - 
- *   return: 
+/*
+ * css_send_heartbeat_data () -
+ *   return:
  *
  *   conn(in):
  *   data(in):
@@ -194,9 +194,9 @@ css_send_heartbeat_data (CSS_CONN_ENTRY * conn, const char *data, int size)
   return CONNECTION_CLOSED;
 }
 
-/*    
- * css_receive_heartbeat_request () - 
- *   return: 
+/*
+ * css_receive_heartbeat_request () -
+ *   return:
  *
  *   conn(in):
  *   command(in):
@@ -221,9 +221,9 @@ css_receive_heartbeat_request (CSS_CONN_ENTRY * conn, int *command)
   return CONNECTION_CLOSED;
 }
 
-/*    
- * css_receive_heartbeat_data () - 
- *   return: 
+/*
+ * css_receive_heartbeat_data () -
+ *   return:
  *
  *   conn(in):
  *   data(in):
@@ -246,8 +246,8 @@ css_receive_heartbeat_data (CSS_CONN_ENTRY * conn, char *data, int size)
   return CONNECTION_CLOSED;
 }
 
-/*    
-* hb_thread_master_reader () - 
+/*
+* hb_thread_master_reader () -
 *   return: none
 *
 *   arg(in):
@@ -279,9 +279,9 @@ hb_thread_master_reader (void *arg)
 }
 
 
-/*    
-* hb_make_set_hbp_register () - 
-*   return: 
+/*
+* hb_make_set_hbp_register () -
+*   return:
 *
 *   type(in):
 */
@@ -349,8 +349,8 @@ hb_deregister_from_master (void)
   return NO_ERROR;
 }
 
-/*    
-* hb_register_to_master () - 
+/*
+* hb_register_to_master () -
 *   return: NO_ERROR or ER_FAILED
 *
 *   conn(in):
@@ -397,8 +397,8 @@ error_return:
   return (ER_FAILED);
 }
 
-/*    
-* hb_process_master_request_info () - 
+/*
+* hb_process_master_request_info () -
 *   return: NO_ERROR or ER_FAILED
 *
 *   conn(in):
@@ -442,8 +442,8 @@ hb_type_to_str (HB_PROC_TYPE type)
     }
 }
 
-/*    
-* hb_process_to_master () - 
+/*
+* hb_process_to_master () -
 *   return: NO_ERROR or ER_FAILED
 *
 *   argv(in):
@@ -575,10 +575,10 @@ hb_pack_server_name (const char *server_name, int *name_length, const char *log_
 
 /*
  * hb_connect_to_master() - connect to the master server
- *   return: conn 
+ *   return: conn
  *   server_name(in): server name
  *   log_path(in): log path
- *   copylogdbyn(in): 
+ *   copylogdbyn(in):
  */
 static CSS_CONN_ENTRY *
 hb_connect_to_master (const char *server_name, const char *log_path, HB_PROC_TYPE type)
@@ -604,8 +604,8 @@ hb_connect_to_master (const char *server_name, const char *log_path, HB_PROC_TYP
   return conn;
 }
 
-/*    
-* hb_create_master_reader () - 
+/*
+* hb_create_master_reader () -
 *   return: NO_ERROR or ER_FAILED
 *
 *   conn(in):
@@ -675,8 +675,8 @@ hb_create_master_reader (void)
 #endif
 }
 
-/*    
-* hb_process_init () - 
+/*
+* hb_process_init () -
 *   return: NO_ERROR or ER_FAILED
 *
 *   server_name(in):
@@ -730,8 +730,8 @@ hb_process_init (const char *server_name, const char *log_path, HB_PROC_TYPE typ
 }
 
 
-/*    
-* hb_process_term () - 
+/*
+* hb_process_term () -
 *   return: none
 *
 *   type(in):

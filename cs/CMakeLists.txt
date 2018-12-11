@@ -55,14 +55,14 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/db_value_printer.cpp
   ${COMPAT_DIR}/db_vdb.c
   ${COMPAT_DIR}/db_virt.c
-  ${COMPAT_DIR}/dbtype_function.c 
+  ${COMPAT_DIR}/dbtype_function.c
   )
 
 set(COMPAT_SOURCES_C
   ${COMPAT_DIR}/dbtype_function.c
   )
-  
-set (COMPAT_HEADERS  
+
+set (COMPAT_HEADERS
   ${COMPAT_DIR}/dbtype_def.h
   ${COMPAT_DIR}/dbtype_function.h
   ${COMPAT_DIR}/dbtype_function.i
@@ -123,6 +123,7 @@ set(BASE_HEADERS
   ${BASE_DIR}/error_code.h
   ${BASE_DIR}/error_context.hpp
   ${BASE_DIR}/error_manager.h
+  ${BASE_DIR}/mem_block.hpp
   ${BASE_DIR}/fileline_location.hpp
   ${BASE_DIR}/packer.hpp
   ${BASE_DIR}/perf.hpp
@@ -130,6 +131,7 @@ set(BASE_HEADERS
   ${BASE_DIR}/pinning.hpp
   ${BASE_DIR}/pinnable_buffer.hpp
   ${BASE_DIR}/packable_object.hpp
+  ${BASE_DIR}/string_buffer.hpp
   ${BASE_DIR}/resource_tracker.hpp
   )
 
@@ -158,6 +160,7 @@ set(PARSER_SOURCES
   ${PARSER_DIR}/cnf.c
   ${PARSER_DIR}/compile.c
   ${PARSER_DIR}/double_byte_support.c
+  ${PARSER_DIR}/func_type.cpp
   ${PARSER_DIR}/keyword.c
   ${PARSER_DIR}/method_transform.c
   ${PARSER_DIR}/name_resolution.c
@@ -165,6 +168,7 @@ set(PARSER_SOURCES
   ${PARSER_DIR}/parse_evaluate.c
   ${PARSER_DIR}/parse_tree.c
   ${PARSER_DIR}/parse_tree_cl.c
+  ${PARSER_DIR}/parse_type.cpp
   ${PARSER_DIR}/parser_support.c
   ${PARSER_DIR}/query_result.c
   ${PARSER_DIR}/scanner_support.c
@@ -173,6 +177,11 @@ set(PARSER_SOURCES
   ${PARSER_DIR}/type_checking.c
   ${PARSER_DIR}/view_transform.c
   ${PARSER_DIR}/xasl_generation.c
+  ${PARSER_DIR}/func_type.cpp
+  )
+set(PARSER_HEADERS
+  ${PARSER_DIR}/func_type.hpp
+  ${PARSER_DIR}/parse_type.hpp
   )
 
 set(OPTIMIZER_SOURCES
@@ -345,7 +354,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${CSQL_LEXER_OUTPUT}
   ${LOADER_LEXER_OUTPUT}
   ${ESQL_GRAMMAR_OUTPUT}
-  ${ESQL_LEXER_OUTPUT} 
+  ${ESQL_LEXER_OUTPUT}
   ${COMPAT_SOURCES_C}
   PROPERTIES LANGUAGE C
   )
@@ -361,6 +370,7 @@ add_library(cubridcs SHARED
   ${CONNECTION_TCP_SOURCE}
   ${COMMUNICATION_SOURCES}
   ${PARSER_SOURCES}
+  ${PARSER_HEADERS}
   ${OPTIMIZER_SOURCES}
   ${QUERY_SOURCES}
   ${OBJECT_SOURCES}

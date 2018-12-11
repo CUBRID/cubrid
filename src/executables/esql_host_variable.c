@@ -171,7 +171,7 @@ pp_clear_host_refs (void)
     {
       HOST_LOD *chain, *next;
 
-      /* 
+      /*
        * Run down the chain of allocated HOST_LOD structures, clearing
        * them as we go but leaving the 'next' fields intact.  When we
        * reach the end, just tack the chain on the the free list, point
@@ -426,7 +426,7 @@ pp_add_struct_field_refs (HOST_VAR * var, int *n_refs)
       result = NULL;
     }
 
-  /* 
+  /*
    * We want to free the incoming host var regardless of whether there
    * were errors or not.  If there were errors, it is obviously
    * unneeded.  If there were no errors, it is still unneeded because
@@ -434,7 +434,7 @@ pp_add_struct_field_refs (HOST_VAR * var, int *n_refs)
    */
   pp_free_host_var (var);
 
-  /* 
+  /*
    * This choice of return value is kind of arbitrary: the important
    * thing is to return some non-NULL pointer so that upper levels
    * won't be deceived into believing that an error occurred.
@@ -568,7 +568,7 @@ pp_check_type (HOST_REF * ref, BITSET typeset, const char *msg)
     }
   else
     {
-      /* 
+      /*
        * Copy the silly message; it's probably also coming straight out
        * of the message catalog stuff, and it will get clobbered by our
        * intervening call to pp_get_msg().
@@ -664,7 +664,7 @@ pp_get_precision (HOST_REF * ref)
 	  break;
 
 	case C_TYPE_CHAR_POINTER:
-	  /* 
+	  /*
 	   * In this case, this means that we will determine the precision
 	   * at runtime by calling strlen().  We could probably emit the
 	   * strlen() code here, but it's less expensive in terms of code
@@ -1474,7 +1474,7 @@ pp_clear_host_lod (HOST_LOD * lod)
       return;
     }
 
-  /* 
+  /*
    * *DON'T* free the character string pointed to by desc.  It is
    * assumed to point to the same string that some host_ref in
    * real_refs points to.

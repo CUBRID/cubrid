@@ -245,7 +245,6 @@ namespace cubxasl
     {
       m_path = NULL;
       m_ordinality = 1;
-      m_need_inc_ordinality = true;
       m_output_columns = NULL;
       m_output_columns_size = 0;
       m_nested_nodes = NULL;

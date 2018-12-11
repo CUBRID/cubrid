@@ -1272,140 +1272,6 @@ qdump_print_value (REGU_VARIABLE * value_p)
     }
 }
 
-const char *
-qdump_function_type_string (FUNC_TYPE ftype)
-{
-  switch (ftype)
-    {
-    case PT_MIN:
-      return "MIN";
-    case PT_MAX:
-      return "MAX";
-    case PT_SUM:
-      return "SUM";
-    case PT_AVG:
-      return "AVG";
-    case PT_STDDEV:
-      return "STDDEV";
-    case PT_STDDEV_POP:
-      return "STDDEV_POP";
-    case PT_STDDEV_SAMP:
-      return "STDDEV_SAMP";
-    case PT_VARIANCE:
-      return "VARIANCE";
-    case PT_VAR_POP:
-      return "VAR_POP";
-    case PT_VAR_SAMP:
-      return "VAR_SAMP";
-    case PT_COUNT:
-      return "COUNT";
-    case PT_COUNT_STAR:
-      return "COUNT_STAR";
-    case PT_CUME_DIST:
-      return "CUME_DIST";
-    case PT_PERCENT_RANK:
-      return "PERCENT_RANK";
-    case PT_LEAD:
-      return "LEAD";
-    case PT_LAG:
-      return "LAG";
-    case PT_GROUPBY_NUM:
-      return "GROUPBY_NUM";
-    case PT_AGG_BIT_AND:
-      return "BIT_AND";
-    case PT_AGG_BIT_OR:
-      return "BIT_OR";
-    case PT_AGG_BIT_XOR:
-      return "BIT_XOR";
-    case PT_TOP_AGG_FUNC:
-      return "TOP_AGG_FUNC";
-    case PT_GROUP_CONCAT:
-      return "GROUP_CONCAT";
-    case PT_GENERIC:
-      return "GENERIC";
-    case PT_ROW_NUMBER:
-      return "ROW_NUMBER";
-    case PT_RANK:
-      return "RANK";
-    case PT_DENSE_RANK:
-      return "DENSE_RANK";
-    case PT_NTILE:
-      return "NTILE";
-    case PT_FIRST_VALUE:
-      return "FIRST_VALUE";
-    case PT_LAST_VALUE:
-      return "LAST_VALUE";
-    case PT_NTH_VALUE:
-      return "NTH_VALUE";
-    case PT_MEDIAN:
-      return "MEDIAN";
-    case PT_PERCENTILE_CONT:
-      return "PERCENTILE_CONT";
-    case PT_PERCENTILE_DISC:
-      return "PERCENTILE_DISC";
-    case PT_JSON_ARRAYAGG:
-      return "JSON_ARRAYAGG";
-    case PT_JSON_OBJECTAGG:
-      return "JSON_OBJECTAGG";
-    case F_TABLE_SET:
-      return "F_TABLE_SET";
-    case F_TABLE_MULTISET:
-      return "F_TABLE_MULTISET";
-    case F_TABLE_SEQUENCE:
-      return "F_TABLE_SEQUENCE";
-    case F_TOP_TABLE_FUNC:
-      return "F_TOP_TABLE_FUNC";
-    case F_MIDXKEY:
-      return "F_MIDXKEY";
-    case F_SET:
-      return "F_SET";
-    case F_MULTISET:
-      return "F_MULTISET";
-    case F_SEQUENCE:
-      return "F_SEQUENCE";
-    case F_VID:
-      return "F_VID";
-    case F_GENERIC:
-      return "F_GENERIC";
-    case F_CLASS_OF:
-      return "F_CLASS_OF";
-    case F_INSERT_SUBSTRING:
-      return "INSERT_SUBSTRING";
-    case F_ELT:
-      return "ELT";
-    case F_JSON_OBJECT:
-      return "JSON_OBJECT";
-    case F_JSON_ARRAY:
-      return "JSON_ARRAY";
-    case F_JSON_INSERT:
-      return "JSON_INSERT";
-    case F_JSON_REPLACE:
-      return "JSON_REPLACE";
-    case F_JSON_SET:
-      return "JSON_SET";
-    case F_JSON_KEYS:
-      return "JSON_KEYS";
-    case F_JSON_REMOVE:
-      return "JSON_REMOVE";
-    case F_JSON_ARRAY_APPEND:
-      return "JSON_ARRAY_APPEND";
-    case F_JSON_ARRAY_INSERT:
-      return "JSON_ARRAY_INSERT";
-    case F_JSON_CONTAINS_PATH:
-      return "JSON_CONTAINS_PATH";
-    case F_JSON_SEARCH:
-      return "JSON_SEARCH";
-    case F_JSON_MERGE:
-      return "JSON_MERGE";
-    case F_JSON_MERGE_PATCH:
-      return "JSON_MERGE_PATCH";
-    case F_JSON_GET_ALL_PATHS:
-      return "JSON_GET_ALL_PATHS";
-    default:
-      return "***UNKNOWN***";
-    }
-}
-
 /*
  * qdump_print_function_value () -
  *   return:
@@ -1426,7 +1292,7 @@ qdump_print_function_value (REGU_VARIABLE * regu_var_p)
     }
 
   fprintf (foutput, "[TYPE_FUNC]");
-  fprintf (foutput, "[%s]", qdump_function_type_string (regu_var_p->value.funcp->ftype));
+  fprintf (foutput, "[%s]", fcode_get_uppercase_name (regu_var_p->value.funcp->ftype));
   fprintf (foutput, "operand-->");
   qdump_print_regu_variable_list (regu_var_p->value.funcp->operand);
 
@@ -1897,7 +1763,7 @@ qdump_print_aggregate_expression (AGGREGATE_TYPE * aggptr)
 {
   fprintf (foutput, "[%s]", qdump_data_type_string (DB_VALUE_DOMAIN_TYPE (aggptr->accumulator.value)));
 
-  fprintf (foutput, "%s(", qdump_function_type_string (aggptr->function));
+  fprintf (foutput, "%s(", fcode_get_uppercase_name (aggptr->function));
 
   fprintf (foutput, "%s ", qdump_option_string (aggptr->option));
 
@@ -2060,7 +1926,7 @@ qdump_check_node (XASL_NODE * xasl_p, QDUMP_XASL_CHECK_NODE * chk_nodes[HASH_NUM
 
   check_node_p->reachable = 1;
 
-  /* 
+  /*
    * Mark the node its access spec references.  You may need to create
    * it if it is a forward reference.
    */

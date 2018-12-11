@@ -165,6 +165,11 @@ extern int smt_change_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name
 						const bool change_first, const char *change_after_attribute,
 						SM_ATTRIBUTE ** found_att);
 
+extern int smt_check_index_exist (SM_TEMPLATE * template_, char **out_shared_cons_name,
+				  DB_CONSTRAINT_TYPE constraint_type, const char *constraint_name,
+				  const char **att_names, const int *asc_desc, const SM_PREDICATE_INFO * filter_index,
+				  const SM_FUNCTION_INFO * function_index);
+
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern void smt_downcase_all_class_info (void);
 #endif

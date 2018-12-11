@@ -32,6 +32,7 @@
 #include "porting.h"        // for pthread_mutex_t, drand48_data
 #include "system.h"         // for UINTPTR, INT64, HL_HEAPID
 
+#include <atomic>
 #include <thread>
 
 #include <cassert>
@@ -228,7 +229,7 @@ namespace cubthread
       int request_fix_count;
       bool victim_request_fail;
       bool interrupted;		/* is this request/transaction interrupted ? */
-      bool shutdown;		/* is server going down? */
+      std::atomic_bool shutdown;		/* is server going down? */
       bool check_interrupt;		/* check_interrupt == false, during fl_alloc* function call. */
       bool wait_for_latch_promote;	/* this thread is waiting for latch promotion */
       entry *next_wait_thrd;

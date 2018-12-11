@@ -1271,7 +1271,7 @@ $ LOADDB
 1202 Json PATH "%1$s" does not exist in %2$s
 1203 Invalid JSON type at path %1$s. Expected %2$s, but found %3$s.
 1204 Json KEY "%1$s" is duplicate
-1205 Reserved error for JSON.
+1205 Invalid type %1$s. Expecting JSON document compatible data type (STRING or JSON).
 1206 Reserved error for JSON.
 1207 Reserved error for JSON.
 1208 Reserved error for JSON.
@@ -1306,8 +1306,10 @@ $ LOADDB
 1237 Cannot change status on %1$s because %2$s is a %3$s.
 1238 Missing value for JSON_TABLE column '%1$s'.
 1239 Cannot coerce value from JSON "%1$s" at path "%2$s" to JSON_TABLE column "%3$s" of domain "%4$s". 
+1240 Online index is not allowed on classes that are part of a hierarchy chain.
+1241 XASL tree needs recompile.
 
-1240 Last Error
+1242 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error en subsistema de error (linea %1$d):
@@ -1766,6 +1768,11 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 298 El CTE recursivo '%1$s' debe referenciarse directamente en su consulta recursiva.
 299 Error en CTE '%1$s': La parte no recursiva y la parte recursiva deben estar conectadas con UNION ALL.
 300 La subconsulta no está permitida en la cláusula DEFAULT.
+301 Could not find signatures for function %1$s()
+302 Incompatible argument type %1$s, expected type is: %2$s.
+303 Unexpected number of arguments %1$d.
+304 Could not find compatible signature for function %1$s()
+305 Signature %1$s is not compatible with function arguments.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Sin memoria virtual: incapaz de asignar %1$d bytes.

@@ -250,7 +250,7 @@ make_mergelist_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * left, PT_NODE * l
 
       if (BITSET_MEMBER (*left_exprs, i) && left_elist != NULL)
 	{
-	  /* Then we added an "extra" column for the expression to the left_elist.  We want to treat that expression as 
+	  /* Then we added an "extra" column for the expression to the left_elist.  We want to treat that expression as
 	   * the outer expression, but we want to leave it off of the list of segments that are projected out of the
 	   * merge. Take it off, but remember it in "outer_attr" so that we can fix up domain info in a little while. */
 	  ls_merge->ls_outer_column[cnt] = left_epos++;
@@ -392,7 +392,7 @@ make_mergelist_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * left, PT_NODE * l
     }
 
   /* these could be sorted out arbitrily. This could make it easier to avoid the wrapper buildlist_proc, when no
-   * expressions, predicates, subqueries, fetches, or aggregation is involved. For now, we always build the same thing, 
+   * expressions, predicates, subqueries, fetches, or aggregation is involved. For now, we always build the same thing,
    * with simple column concatenation. */
 
   for (i = 0; i < left_nlen; i++)
@@ -812,7 +812,7 @@ add_fetch_proc (QO_ENV * env, XASL_NODE * xasl, XASL_NODE * procs)
 
   if (xasl)
     {
-      /* 
+      /*
        * The idea here is that we want these fetches to run *every
        * time* a new candidate row is produced by xasl, which means
        * they should go at the end of this proc's fptr_list.
@@ -914,7 +914,7 @@ add_sort_spec (QO_ENV * env, XASL_NODE * xasl, QO_PLAN * plan, DB_VALUE * ordby_
 
   subplan = plan->plan_un.sort.subplan;
 
-  /* 
+  /*
    * xasl->orderby_list for m-join is added in make_mergelist_proc()
    */
 
@@ -1321,9 +1321,9 @@ make_pred_from_plan (QO_ENV * env, QO_PLAN * plan, PT_NODE ** key_predp, PT_NODE
 
   if (plan->plan_type == QO_PLANTYPE_FOLLOW)
     {
-      /* Don't allow predicates to migrate to fetch_proc access specs; the special handling of NULL doesn't look at the 
+      /* Don't allow predicates to migrate to fetch_proc access specs; the special handling of NULL doesn't look at the
        * access spec, so it will miss predicates that are deposited there.  Always put these things on the if_pred for
-       * now. This needs to get fixed. >>>> Note the same problem is encountered when emulating follow with >>>> joins. 
+       * now. This needs to get fixed. >>>> Note the same problem is encountered when emulating follow with >>>> joins.
        * The access pred must return a row, even if its null. >>>> the rest or the predicate may then be applied. */
       return;
     }
@@ -1376,7 +1376,7 @@ make_if_pred_from_plan (QO_ENV * env, QO_PLAN * plan)
 
   if (plan->plan_type == QO_PLANTYPE_FOLLOW)
     {
-      /* 
+      /*
        * Put all predicates on the if_pred right now, because the "dead
        * end" handling for NULLs won't look at predicates on the access
        * spec.
@@ -1461,7 +1461,7 @@ check_merge_xasl (QO_ENV * env, XASL_NODE * xasl)
   XASL_NODE *merge;
   int i, ncols;
 
-  /* 
+  /*
    * NULL is actually a semi-common case; it can arise under timeout
    * conditions, etc.
    */
@@ -1470,7 +1470,7 @@ check_merge_xasl (QO_ENV * env, XASL_NODE * xasl)
       return NULL;
     }
 
-  /* 
+  /*
    * The mergelist proc isn't necessarily the first thing on the
    * aptr_list; some other procs may have found their way in front of
    * it, and that's not incorrect.  Search until we find a mergelist
@@ -1480,16 +1480,16 @@ check_merge_xasl (QO_ENV * env, XASL_NODE * xasl)
     ;
 
   if (merge == NULL
-      /* 
+      /*
        * Make sure there are two things on the aptr list.
        */
       || merge->type != MERGELIST_PROC || merge->aptr_list == NULL	/* left */
       || merge->aptr_list->next == NULL	/* right */
-      /* 
+      /*
        * Make sure both buildlist gadgets look well-formed.
        */
       || xasl->spec_list == NULL || xasl->val_list == NULL || xasl->outptr_list == NULL
-      /* 
+      /*
        * Make sure the merge_list_info looks plausible.
        */
       || merge->proc.mergelist.outer_xasl == NULL || merge->proc.mergelist.inner_xasl == NULL
@@ -1598,7 +1598,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
     case QO_PLANTYPE_JOIN:
       join_type = plan->plan_un.join.join_type;
 
-      /* 
+      /*
        * The join terms may be EMPTY if this "join" is actually a
        * cartesian product, or if it has been implemented as an
        * index scan on the inner term (in which case it has already
@@ -1623,7 +1623,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
       break;
     }
 
-  /* 
+  /*
    * Because this routine tail-calls itself in several common cases, we
    * could implement those tail calls with a loop back to the beginning
    * of the code.  However, because these calls won't get very deep in
@@ -1634,7 +1634,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
   switch (plan->plan_type)
     {
     case QO_PLANTYPE_SCAN:
-      /* 
+      /*
        * This case only needs to attach the access spec to the incoming
        * XASL node.  The remainder of the interesting initialization
        * (e.g., the val list) of that XASL node is expected to be
@@ -1647,7 +1647,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
       break;
 
     case QO_PLANTYPE_SORT:
-      /* 
+      /*
        * check for top level plan
        */
       if (plan->top_rooted)
@@ -1665,7 +1665,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	    }
 	}
 
-      /* 
+      /*
        * If inner_scans is not empty, this plan is really a subplan of
        * some outer join node, and we need to make xasl scan the
        * contents of the temp file intended to be created by this plan.
@@ -1746,7 +1746,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 		}
 	      else if (is_normal_access_term (term))
 		{
-		  /* Check if join term can be pushed to key filter instead of sargable terms. The index used for inner 
+		  /* Check if join term can be pushed to key filter instead of sargable terms. The index used for inner
 		   * index scan must include all term segments that belong to inner node */
 		  if (qo_is_index_covering_scan (inner) || qo_plan_multi_range_opt (inner))
 		    {
@@ -1789,7 +1789,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	  /* exclude totally after join term and push into inner */
 	  bitset_difference (&predset, &taj_terms);
 
-	  /* 
+	  /*
 	   * In case of outer join, we should not use sarg terms as key filter terms.
 	   * If not, a term, which should be applied after single scan, can be applied
 	   * during btree_range_search. It means that there can be no records fetched
@@ -1810,7 +1810,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	  break;
 
 	case QO_JOINMETHOD_MERGE_JOIN:
-	  /* 
+	  /*
 	   * The optimizer isn't supposed to produce plans in which a
 	   * merge join isn't "shielded" by a sort (temp file) plan,
 	   * precisely because XASL has a difficult time coping with
@@ -1824,7 +1824,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	      break;
 	    }
 
-	  /* 
+	  /*
 	   * In this case, we have to hold on to the accumulated
 	   * predicates and subqueries, and tack them on to the scan
 	   * proc that eventually reads the result of the join.  The
@@ -2144,7 +2144,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 
 	  }
 
-	  /* 
+	  /*
 	   * This can be removed after we trust ourselves some more.
 	   */
 	  xasl = check_merge_xasl (env, xasl);
@@ -2157,7 +2157,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
       break;
 
     case QO_PLANTYPE_FOLLOW:
-      /* 
+      /*
        * Add the fetch proc to the head of the list of fetch procs
        * before recursing.  This means that it will be later in the
        * list than fetch procs that are added during the recursion,
@@ -2206,7 +2206,7 @@ gen_inner (QO_ENV * env, QO_PLAN * plan, BITSET * predset, BITSET * subqueries, 
   PT_NODE *namelist;
   BITSET new_subqueries;
 
-  /* 
+  /*
    * All of the rationale about ordering, etc. presented in the
    * comments in gen_outer also applies here.
    */
@@ -2219,7 +2219,7 @@ gen_inner (QO_ENV * env, QO_PLAN * plan, BITSET * predset, BITSET * subqueries, 
   switch (plan->plan_type)
     {
     case QO_PLANTYPE_SCAN:
-      /* 
+      /*
        * For nl-join and idx-join, we push join edge to sarg term of
        * inner scan to filter out unsatisfied records earlier.
        */
@@ -2233,7 +2233,7 @@ gen_inner (QO_ENV * env, QO_PLAN * plan, BITSET * predset, BITSET * subqueries, 
 
     case QO_PLANTYPE_FOLLOW:
 #if 1
-      /* 
+      /*
        * We have to take care of any sargs that have been passed down
        * from above.  Go ahead and destructively union them into this
        * plan's sarg set: no one will ever look at the plan again
@@ -2243,7 +2243,7 @@ gen_inner (QO_ENV * env, QO_PLAN * plan, BITSET * predset, BITSET * subqueries, 
       fetch = make_fetch_proc (env, plan);
       fetch = add_fetch_proc (env, fetch, fetches);
       fetch = add_subqueries (env, fetch, &new_subqueries);
-      /* 
+      /*
        * Now proceed on with inner generation, passing the augmented
        * list of fetch procs.
        */
@@ -2254,7 +2254,7 @@ gen_inner (QO_ENV * env, QO_PLAN * plan, BITSET * predset, BITSET * subqueries, 
 #endif
 
     case QO_PLANTYPE_JOIN:
-      /* 
+      /*
        * These aren't supposed to show up, but if they do just take the
        * conservative approach of treating them like a sort and
        * whacking their results into a temporary file, and then scan
@@ -2280,7 +2280,7 @@ gen_inner (QO_ENV * env, QO_PLAN * plan, BITSET * predset, BITSET * subqueries, 
       break;
 
     case QO_PLANTYPE_WORST:
-      /* 
+      /*
        * This case should never arise.
        */
       scan = NULL;
@@ -2366,7 +2366,7 @@ qo_to_xasl (QO_PLAN * plan, XASL_NODE * xasl)
       lastxasl = xasl;
       while (lastxasl)
 	{
-	  /* 
+	  /*
 	   * Don't consider only scan pointers here; it's quite
 	   * possible that the correlated subqueries might depend on
 	   * values retrieved by a fetch proc that lives on an fptr.
@@ -4289,7 +4289,7 @@ qo_check_subplan_join_cond_for_multi_range_opt (QO_PLAN * parent, QO_PLAN * subp
 
   assert (node_of_sort_table != NULL && node_of_subplan != NULL);
 
-  /* 
+  /*
    * Scan all the parent's join terms: jt.
    *   If jt is a valid join-term (is a join between sub-plan and sort plan),
    *   the segment that belong to the sort plan must be positioned in index
@@ -4564,7 +4564,7 @@ make_sort_limit_proc (QO_ENV * env, QO_PLAN * plan, PT_NODE * namelist, XASL_NOD
 	  goto cleanup;
 	}
     }
-  /* make o copy of the namelist to extend it with expressions from the ORDER BY clause. The extended list will be used 
+  /* make o copy of the namelist to extend it with expressions from the ORDER BY clause. The extended list will be used
    * to generate the internal listfile scan but will not be used for the actual XASL node. */
   node_list = parser_copy_tree_list (parser, namelist);
   if (node_list == NULL)
@@ -4667,7 +4667,7 @@ qo_get_orderby_num_upper_bound_node (PARSER_CONTEXT * parser, PT_NODE * orderby_
 	}
       else
 	{
-	  /* If right is NULL, the orderby_num pred is invalid and we messed something up somewhere. If it is not NULL, 
+	  /* If right is NULL, the orderby_num pred is invalid and we messed something up somewhere. If it is not NULL,
 	   * this is the node we are looking for. */
 	  *is_new_node = free_right;
 	  return right;

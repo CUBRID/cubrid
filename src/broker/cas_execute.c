@@ -296,7 +296,7 @@ static int create_srv_handle_with_query_result (T_QUERY_RESULT * src_q_result, D
 #define check_class_chn(s) 0
 static int get_client_result_cache_lifetime (DB_SESSION * session, int stmt_id);
 static bool has_stmt_result_set (char stmt_type);
-static bool check_auto_commit_after_fetch_done (T_SRV_HANDLE * srv_handle);
+static bool check_auto_commit_after_getting_result (T_SRV_HANDLE * srv_handle);
 static char *convert_db_value_to_string (DB_VALUE * value, DB_VALUE * value_string);
 static void serialize_collection_as_string (DB_VALUE * col, char **out);
 static void add_fk_info_before (T_FK_INFO_RESULT * pivot, T_FK_INFO_RESULT * pnew);
@@ -1972,6 +1972,14 @@ ux_next_result (T_SRV_HANDLE * srv_handle, char flag, T_NET_BUF * net_buf, T_REQ
 
   srv_handle->cur_result = cur_result;
   (srv_handle->cur_result_index)++;
+
+  if (!has_stmt_result_set (cur_result->stmt_type))
+    {
+      if (check_auto_commit_after_getting_result (srv_handle) == true)
+	{
+	  req_info->need_auto_commit = TRAN_AUTOCOMMIT;
+	}
+    }
 
   return 0;
 
@@ -5035,7 +5043,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 	str = db_get_json_raw_body (val);
 	bytes_size = strlen (str);
 
-	/* no matter which column type is returned to client (JSON or STRING, depending on client version), 
+	/* no matter which column type is returned to client (JSON or STRING, depending on client version),
 	 * the data is always encoded as string */
 	add_res_data_string (net_buf, str, bytes_size, 0, CAS_SCHEMA_DEFAULT_CHARSET, &data_size);
 	db_private_free (NULL, str);
@@ -5362,7 +5370,7 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char f
 
 	  net_buf_cp_int (net_buf, 0, NULL);
 
-	  if (check_auto_commit_after_fetch_done (srv_handle) == true)
+	  if (check_auto_commit_after_getting_result (srv_handle) == true)
 	    {
 	      ux_cursor_close (srv_handle);
 	      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
@@ -5445,7 +5453,7 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char f
       cursor_pos++;
       if (srv_handle->max_row > 0 && cursor_pos > srv_handle->max_row)
 	{
-	  if (check_auto_commit_after_fetch_done (srv_handle) == true)
+	  if (check_auto_commit_after_getting_result (srv_handle) == true)
 	    {
 	      ux_cursor_close (srv_handle);
 	      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
@@ -5461,7 +5469,7 @@ fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char f
 	{
 	  fetch_end_flag = 1;
 
-	  if (check_auto_commit_after_fetch_done (srv_handle) == true)
+	  if (check_auto_commit_after_getting_result (srv_handle) == true)
 	    {
 	      ux_cursor_close (srv_handle);
 	      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
@@ -7155,7 +7163,7 @@ prepare_column_list_info_set (DB_SESSION * session, char prepare_flag, T_QUERY_R
 	      null_type_column[num_cols] = 1;
 	    }
 
-	  /* 
+	  /*
 	   * if (cas_type == CCI_U_TYPE_CHAR && precision < 0)
 	   *   precision = 0;
 	   */
@@ -8559,7 +8567,7 @@ sch_imported_keys (T_NET_BUF * net_buf, char *fktable_name, void **result)
   if (fktable_obj == NULL)
     {
       /* The followings are possible situations.  - A table matching fktable_name does not exist.  - User has no
-       * authorization on the table.  - Other error we do not expect. In these cases, we will send an empty result. And 
+       * authorization on the table.  - Other error we do not expect. In these cases, we will send an empty result. And
        * this rule is also applied to CCI_SCH_EXPORTED_KEYS and CCI_SCH_CROSS_REFERENCE. */
       goto send_response;
     }
@@ -8752,7 +8760,7 @@ sch_exported_keys_or_cross_reference (T_NET_BUF * net_buf, bool find_cross_ref, 
 	    }
 	}
 
-      /* Traverse all constraints in foreign table to find a foreign key referring the primary key. If there is no one, 
+      /* Traverse all constraints in foreign table to find a foreign key referring the primary key. If there is no one,
        * return an error. */
       fk_attr = NULL;
       for (fk_const = db_get_constraints (fktable_obj); fk_const != NULL; fk_const = db_constraint_next (fk_const))
@@ -9642,7 +9650,7 @@ has_stmt_result_set (char stmt_type)
 }
 
 static bool
-check_auto_commit_after_fetch_done (T_SRV_HANDLE * srv_handle)
+check_auto_commit_after_getting_result (T_SRV_HANDLE * srv_handle)
 {
   // To close an updatable cursor is dangerous since it lose locks and updating cursor is allowed before closing it.
 

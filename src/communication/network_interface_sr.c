@@ -301,7 +301,7 @@ need_to_abort_tran (THREAD_ENTRY * thread_p, int *errid)
       flag_abort = true;
     }
 
-  /* 
+  /*
    * DEFENCE CODE:
    *  below block means ER_LK_UNILATERALLY_ABORTED occurs but another error
    *  set after that.
@@ -355,7 +355,7 @@ return_error_to_client (THREAD_ENTRY * thread_p, unsigned int rid)
   flag_abort = need_to_abort_tran (thread_p, &errid);
 
   /* check some errors which require special actions */
-  /* 
+  /*
    * ER_LK_UNILATERALLY_ABORTED may have occurred due to deadlock.
    * If it happened, do server-side rollback of the transaction.
    * If ER_DB_NO_MODIFICATIONS error is occurred in server-side,
@@ -450,7 +450,7 @@ check_client_capabilities (THREAD_ENTRY * thread_p, int client_cap, int rel_comp
     {
       if (rel_compare < 0 && (client_cap & NET_CAP_FORWARD_COMPATIBLE))
 	{
-	  /* 
+	  /*
 	   * The client is older than the server but the client has a forward
 	   * compatible capability.
 	   */
@@ -458,7 +458,7 @@ check_client_capabilities (THREAD_ENTRY * thread_p, int client_cap, int rel_comp
 	}
       if (rel_compare > 0 && (client_cap & NET_CAP_BACKWARD_COMPATIBLE))
 	{
-	  /* 
+	  /*
 	   * The client is newer than the server but the client has a backward
 	   * compatible capability.
 	   */
@@ -573,7 +573,7 @@ server_ping_with_handshake (THREAD_ENTRY * thread_p, unsigned int rid, char *req
       status = CSS_UNPLANNED_SHUTDOWN;
     }
 
-  /* 
+  /*
    * 1. get the result of compatibility check.
    * 2. check if the both capabilities of client and server are compatible.
    * 3. check if the client has a capability to make it compatible.
@@ -1104,7 +1104,7 @@ slocator_repl_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 
 	  success = xlocator_repl_force (thread_p, copy_area, &reply_copy_area);
 
-	  /* 
+	  /*
 	   * Send the descriptor and content to handle errors
 	   */
 
@@ -1234,7 +1234,7 @@ slocator_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int re
 
 	  success = xlocator_force (thread_p, copy_area, num_ignore_error_list, ignore_error_list);
 
-	  /* 
+	  /*
 	   * Send the descriptor part since some information about the objects
 	   * (e.g., OIDs) may be send back to client.
 	   * Don't need to send the content since it is not updated.
@@ -1861,7 +1861,7 @@ slogtb_set_interrupt (THREAD_ENTRY * thread_p, unsigned int rid, char *request, 
   (void) or_unpack_int (request, &set);
   xlogtb_set_interrupt (thread_p, set);
 
-  /* 
+  /*
    *  No reply expected...
    */
 }
@@ -1995,7 +1995,7 @@ slogpb_dump_stat (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
   xlogpb_dump_stat (outfp);
   file_size = ftell (outfp);
 
-  /* 
+  /*
    * Send the file in pieces
    */
   rewind (outfp);
@@ -2019,7 +2019,7 @@ slogpb_dump_stat (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  css_send_abort_to_client (thread_p->conn_entry, rid);
-	  /* 
+	  /*
 	   * Continue sending the stuff that was prmoised to client. In this case
 	   * junk (i.e., whatever it is in the buffers) is sent.
 	   */
@@ -2237,7 +2237,7 @@ sacl_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
   xacl_dump (thread_p, outfp);
   file_size = ftell (outfp);
 
-  /* 
+  /*
    * Send the file in pieces
    */
   rewind (outfp);
@@ -2261,7 +2261,7 @@ sacl_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  css_send_abort_to_client (thread_p->conn_entry, rid);
-	  /* 
+	  /*
 	   * Continue sending the stuff that was prmoised to client. In this case
 	   * junk (i.e., whatever it is in the buffers) is sent.
 	   */
@@ -2315,7 +2315,7 @@ slock_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen
   xlock_dump (thread_p, outfp);
   file_size = ftell (outfp);
 
-  /* 
+  /*
    * Send the file in pieces
    */
   rewind (outfp);
@@ -2339,7 +2339,7 @@ slock_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  css_send_abort_to_client (thread_p->conn_entry, rid);
-	  /* 
+	  /*
 	   * Continue sending the stuff that was prmoised to client. In this case
 	   * junk (i.e., whatever it is in the buffers) is sent.
 	   */
@@ -3325,7 +3325,7 @@ sboot_notify_unregister_client (THREAD_ENTRY * thread_p, unsigned int rid, char 
 
   /* There's an interesting race condition among client, worker thread and connection handler.
    * Please find CBRD-21375 for detail and also see css_connection_handler_thread.
-   * 
+   *
    * It is important to synchronize worker thread with connection handler to avoid the race condition.
    * To change conn->status and send reply to client should be atomic.
    * Otherwise, connection handler may disconnect the connection and it prevents client from receiving the reply.
@@ -3389,7 +3389,7 @@ sboot_backup (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reql
       (void) return_error_to_client (thread_p, rid);
     }
 
-  /* 
+  /*
    * To indicate results we really only need 2 ints, but the remote
    * bo and callback routine was expecting to receive 3 ints.
    */
@@ -3501,7 +3501,7 @@ sboot_check_db_consistency (THREAD_ENTRY * thread_p, unsigned int rid, char *req
     }
 
 function_exit:
-  /* 
+  /*
    * To indicate results we really only need 2 ints, but the remote
    * bo and callback routine was expecting to receive 3 ints.
    */
@@ -4973,9 +4973,12 @@ null_list:
 		}
 	    }
 
-	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_QUERY_EXECUTION_ERROR, 3, error_code,
-		  sql_id ? sql_id : "(UNKNOWN SQL_ID)",
-		  info.sql_user_text ? info.sql_user_text : "(UNKNOWN USER_TEXT)");
+	  if (error_code != ER_QPROC_XASLNODE_RECOMPILE_REQUESTED)
+	    {
+	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_QUERY_EXECUTION_ERROR, 3, error_code,
+		      sql_id ? sql_id : "(UNKNOWN SQL_ID)",
+		      info.sql_user_text ? info.sql_user_text : "(UNKNOWN USER_TEXT)");
+	    }
 
 	  if (sql_id != NULL)
 	    {
@@ -5484,7 +5487,7 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char
   is_tran_auto_commit = IS_TRAN_AUTO_COMMIT (flag);
   xsession_set_tran_auto_commit (thread_p, is_tran_auto_commit);
 
-  /* 
+  /*
    * After this point, xqmgr_prepare_and_execute_query has assumed
    * responsibility for freeing xasl_stream...
    */
@@ -5544,7 +5547,7 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char
 	}
       else
 	{
-	  /* 
+	  /*
 	   * During query execution, ER_LK_UNILATERALLY_ABORTED may have
 	   * occurred.
 	   * xqmgr_sync_query() had set this error
@@ -5745,7 +5748,7 @@ sqmgr_dump_query_plans (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   xqmgr_dump_query_plans (thread_p, outfp);
   file_size = ftell (outfp);
 
-  /* 
+  /*
    * Send the file in pieces
    */
   rewind (outfp);
@@ -5769,7 +5772,7 @@ sqmgr_dump_query_plans (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  css_send_abort_to_client (thread_p->conn_entry, rid);
-	  /* 
+	  /*
 	   * Continue sending the stuff that was prmoised to client. In this case
 	   * junk (i.e., whatever it is in the buffers) is sent.
 	   */
@@ -5824,7 +5827,7 @@ sqmgr_dump_query_cache (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   xqmgr_dump_query_cache (thread_p, outfp);
   file_size = ftell (outfp);
 
-  /* 
+  /*
    * Send the file in pieces
    */
   rewind (outfp);
@@ -5848,7 +5851,7 @@ sqmgr_dump_query_cache (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  css_send_abort_to_client (thread_p->conn_entry, rid);
-	  /* 
+	  /*
 	   * Continue sending the stuff that was prmoised to client. In this case
 	   * junk (i.e., whatever it is in the buffers) is sent.
 	   */
@@ -5979,7 +5982,7 @@ sserial_get_next_value (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   p = or_unpack_int (p, &num_alloc);
   p = or_unpack_int (p, &is_auto_increment);
 
-  /* 
+  /*
    * If a client wants to generate AUTO_INCREMENT value during client-side
    * insertion, a server should update LAST_INSERT_ID on a session.
    */
@@ -6831,7 +6834,7 @@ sthread_dump_cs_stat (THREAD_ENTRY * thread_p, unsigned int rid, char *request, 
 
   file_size = ftell (outfp);
 
-  /* 
+  /*
    * Send the file in pieces
    */
   rewind (outfp);
@@ -6855,7 +6858,7 @@ sthread_dump_cs_stat (THREAD_ENTRY * thread_p, unsigned int rid, char *request, 
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  css_send_abort_to_client (thread_p->conn_entry, rid);
-	  /* 
+	  /*
 	   * Continue sending the stuff that was prmoised to client. In this case
 	   * junk (i.e., whatever it is in the buffers) is sent.
 	   */
@@ -6946,7 +6949,7 @@ slogtb_dump_trantable (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   xlogtb_dump_trantable (thread_p, outfp);
   file_size = ftell (outfp);
 
-  /* 
+  /*
    * Send the file in pieces
    */
   rewind (outfp);
@@ -6970,7 +6973,7 @@ slogtb_dump_trantable (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  css_send_abort_to_client (thread_p->conn_entry, rid);
-	  /* 
+	  /*
 	   * Continue sending the stuff that was prmoised to client. In this case
 	   * junk (i.e., whatever it is in the buffers) is sent.
 	   */
@@ -7060,7 +7063,7 @@ xio_send_user_prompt_to_client (THREAD_ENTRY * thread_p, FILEIO_REMOTE_PROMPT_TY
   prompt_length = (or_packed_string_length (prompt, &strlen1) + or_packed_string_length (failure_prompt, &strlen2)
 		   + OR_INT_SIZE * 2 + or_packed_string_length (secondary_prompt, &strlen3) + OR_INT_SIZE);
 
-  /* 
+  /*
    * Client side caller must be expecting a reply/callback followed
    * by 2 ints, otherwise client will abort due to protocol error
    * Prompt_length tells the receiver how big the followon message is.
@@ -7111,7 +7114,7 @@ xlog_send_log_pages_to_client (THREAD_ENTRY * thread_p, char *logpg_area, int ar
 
   rid = css_get_comm_request_id (thread_p);
 
-  /* 
+  /*
    * Client side caller must be expecting a reply/callback followed
    * by 2 ints, otherwise client will abort due to protocol error
    * Prompt_length tells the receiver how big the followon message is.
@@ -7580,7 +7583,7 @@ sprm_server_dump_parameters (THREAD_ENTRY * thread_p, unsigned int rid, char *re
   xsysprm_dump_server_parameters (outfp);
   file_size = ftell (outfp);
 
-  /* 
+  /*
    * Send the file in pieces
    */
   rewind (outfp);
@@ -7604,7 +7607,7 @@ sprm_server_dump_parameters (THREAD_ENTRY * thread_p, unsigned int rid, char *re
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  css_send_abort_to_client (thread_p->conn_entry, rid);
-	  /* 
+	  /*
 	   * Continue sending the stuff that was prmoised to client. In this case
 	   * junk (i.e., whatever it is in the buffers) is sent.
 	   */

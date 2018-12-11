@@ -418,7 +418,7 @@ vid_upd_instance (MOP mop)
 
   if (vid_is_new_oobj (mop))
     {
-      /* 
+      /*
        * don't fetch new (embryonic) OO instances because they
        * are not there yet. we are buffering OO inserts.
        */
@@ -498,7 +498,7 @@ vid_flush_and_rehash (MOP mop)
     }
   else if (isvid && isbase && !isnew_oo)
     {
-      /* 
+      /*
        * rehash relational proxy mop into its new ws hashtable address.
        * we must not rehash a new OO proxy mop because vid_flush_instance
        * rehashes a new OO proxy mop (please see vid_store_oid_instance).
@@ -574,7 +574,7 @@ vid_allflush (void)
   bool return_code;
   int isvirt;
 
-  /* 
+  /*
    * traverse the resident class list and
    * for each proxy/vclass that has dirty instances
    * call vid_flush_all to flush those dirty instances
@@ -1005,7 +1005,7 @@ vid_compare_non_updatable_objects (MOP mop1, MOP mop2)
 	  db_value_domain_init (&val2, att2->type->id, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	  PRIM_GETMEM (att1->type, att1->domain, mem1, &val1);
 	  PRIM_GETMEM (att2->type, att2->domain, mem2, &val2);
-	  /* 
+	  /*
 	   * Unlike most calls to this function, don't perform coercion
 	   * here so that an exact match can be performed.  Note, this
 	   * formerly called pr_value_equal which did kind of "halfway"
@@ -1120,7 +1120,7 @@ vid_build_non_upd_object (MOP mop, DB_VALUE * seq)
       /* check to see if anyone has this mop pinned */
       if (mop->pinned)
 	{
-	  /* 
+	  /*
 	   * this is a logical error, we can't free the object since
 	   * someone has it pinned.  It will leak.
 	   */
@@ -1178,7 +1178,7 @@ vid_build_non_upd_object (MOP mop, DB_VALUE * seq)
       mop->object = NULL;
       return error;
     }
-  /* 
+  /*
    * lock it to avoid getting a Workspace pin violation
    * later in vid_fetch_instance.
    */
@@ -1357,7 +1357,7 @@ vid_getall_mops (MOP class_mop, SM_CLASS * class_p, DB_FETCH_MODE purpose)
     {
     case DB_FETCH_QUERY_WRITE:
     case DB_FETCH_CLREAD_INSTWRITE:
-      /* 
+      /*
        * we're forced to revert these back to DB_FETCH_WRITE because the
        * proxy locking code downstream recognizes only DB_FETCH_WRITE when
        * requesting xlocks, all other purpose values are treated as slock
@@ -1413,7 +1413,7 @@ vid_vobj_to_object (const DB_VALUE * vobj, DB_OBJECT ** mop)
 
   *mop = NULL;
 
-  /* 
+  /*
    * get vobjs components into: {vclass,bclass,keys}.
    * a proxy instance will have a null vclass.
    * a virtual class instance may have a null bclass.
@@ -1433,7 +1433,7 @@ vid_vobj_to_object (const DB_VALUE * vobj, DB_OBJECT ** mop)
 	  else if (elem_value.domain.general_info.type == DB_TYPE_OBJECT)
 	    {
 	      vclass = db_get_object (&elem_value);
-	      /* 
+	      /*
 	       * we need to guarantee that if this vclass
 	       * exists and it's not yet in the workspace, we must fetch
 	       * it in. Otherwise, db_decode_object() can fail.
@@ -1487,7 +1487,7 @@ vid_vobj_to_object (const DB_VALUE * vobj, DB_OBJECT ** mop)
     }
   if (keys.domain.general_info.is_null == 0)
     {
-      /* 
+      /*
        * does it have a class/proxy component specified?
        * This would mean a real, updatable object.
        */
@@ -1499,7 +1499,7 @@ vid_vobj_to_object (const DB_VALUE * vobj, DB_OBJECT ** mop)
 	}
       else if (keys.domain.general_info.type == DB_TYPE_OBJECT)
 	{
-	  /* 
+	  /*
 	   * The vclass refers to a class, but we left
 	   * the class oid feild empty in the vobj.
 	   */
@@ -1519,7 +1519,7 @@ vid_vobj_to_object (const DB_VALUE * vobj, DB_OBJECT ** mop)
       /* does it have a vclass component? */
       if (!vclass)
 	{
-	  /* 
+	  /*
 	   * with no view, then the result is the object
 	   * we just calculated.
 	   */
@@ -1539,7 +1539,7 @@ vid_vobj_to_object (const DB_VALUE * vobj, DB_OBJECT ** mop)
 	    {
 	      if (keys.domain.general_info.type == DB_TYPE_SEQUENCE)
 		{
-		  /* 
+		  /*
 		   * The vclass refers to a non-updatable view result.
 		   * look it up or install it in the workspace.
 		   */
@@ -1754,7 +1754,7 @@ vid_db_value_size (DB_VALUE * dbval)
 
   val_size = pr_data_writeval_disk_size (dbval);
 
-  /* 
+  /*
    * some OR_PUT functions assume data to be copied is always properly aligned,
    * so we oblige here at the cost of maybe some extra space
    */
@@ -1830,7 +1830,7 @@ vid_pack_vobj (char *buf, OID * view, OID * proxy, DB_VALUE * keys, int *vobj_si
 
   if (buf)
     {
-      /* 
+      /*
        * vobj_size contains alignment bytes.  When we encode this vobj during
        * packing, we need to have known values in the alignment bytes else
        * we can not reconstruct this vobj.  Since we don't know the number of
@@ -1879,7 +1879,7 @@ vid_encode_object (DB_OBJECT * object, char *string, int allocated_length, int *
       return ER_OBJ_BUFFER_TOO_SMALL;
     }
 
-  /* 
+  /*
    * classify the object into one of:
    *  - instance of a class
    *  - instance of a proxy
@@ -1969,13 +1969,13 @@ vid_encode_object (DB_OBJECT * object, char *string, int allocated_length, int *
 	  }
 	else if (is_class > 0)
 	  {
-	    /* 
+	    /*
 	     * it's an instance of a vclass of a class
 	     * represented in vobj form as {view,NULL,keys}
 	     */
 	    string[0] = DB_INSTANCE_OF_A_VCLASS_OF_A_CLASS;
 	    proxy = NULL;
-	    /* 
+	    /*
 	     * since we're doing the reverse of crs_cp_vobj_to_dbvalue,
 	     * we form keys as a DB_TYPE_OBJECT db_value containing real_obj.
 	     * by forming keys this way, we let crs_cp_vobj_to_dbvalue yield
@@ -1987,7 +1987,7 @@ vid_encode_object (DB_OBJECT * object, char *string, int allocated_length, int *
 	  }
 	else
 	  {
-	    /* 
+	    /*
 	     * a vclass of a vclass should have been resolved into
 	     * a vclass of a class or a proxy during compilation,
 	     * therefore it's considered an error at run-time.
@@ -2003,13 +2003,13 @@ vid_encode_object (DB_OBJECT * object, char *string, int allocated_length, int *
 	proxy = NULL;
 	keys = &obj_key;
 
-	/* 
+	/*
 	 * object has values only.  it doesn't have any keys. so we form
 	 * object's values into a sequence of values to become vobj's keys
 	 */
 	seq = db_seq_create (NULL, NULL, 0);
 	db_make_sequence (keys, seq);
-	/* 
+	/*
 	 * there may be a safe way to speed this up by getting
 	 * the values directly and bypassing authorization checks
 	 */

@@ -512,13 +512,13 @@ typedef enum
   SM_NORMAL_INDEX = 1,
   SM_INVISIBLE_INDEX = 2,
   SM_ONLINE_INDEX_BUILDING_IN_PROGRESS = 3,
-  SM_ONLINE_INDEX_BUILDING_DONE = 4,
 
-  SM_RESERVED_INDEX_STATUS1 = 5,
-  SM_RESERVED_INDEX_STATUS2 = 6,
-  SM_RESERVED_INDEX_STATUS3 = 7,
-  SM_RESERVED_INDEX_STATUS4 = 8,
-  SM_RESERVED_INDEX_STATUS5 = 9,
+  SM_RESERVED_INDEX_STATUS1 = 4,
+  SM_RESERVED_INDEX_STATUS2 = 5,
+  SM_RESERVED_INDEX_STATUS3 = 6,
+  SM_RESERVED_INDEX_STATUS4 = 7,
+  SM_RESERVED_INDEX_STATUS5 = 8,
+  SM_RESERVED_INDEX_STATUS6 = 9,
   SM_LAST_INDEX_STATUS = 10
 } SM_INDEX_STATUS;
 
@@ -982,7 +982,7 @@ extern SM_CLASS_CONSTRAINT *classobj_find_constraint_by_name (SM_CLASS_CONSTRAIN
 extern SM_CLASS_CONSTRAINT *classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list,
 							       DB_CONSTRAINT_TYPE new_cons, const char **att_names,
 							       const int *asc_desc);
-extern TP_DOMAIN *classobj_find_cons_index2_col_type_list (SM_CLASS_CONSTRAINT * cons, CLASS_STATS * stats);
+extern TP_DOMAIN *classobj_find_cons_index2_col_type_list (SM_CLASS_CONSTRAINT * cons, OID * root_oid);
 extern void classobj_remove_class_constraint_node (SM_CLASS_CONSTRAINT ** constraints, SM_CLASS_CONSTRAINT * node);
 
 extern int classobj_populate_class_properties (DB_SET ** properties, SM_CLASS_CONSTRAINT * constraints,

@@ -92,7 +92,7 @@ static bool show_scan_Inited = false;
 static SHOW_REQUEST show_Requests[SHOWSTMT_END];
 
 /*
- *  showstmt_scan_init () - initialize the scan functions of 
+ *  showstmt_scan_init () - initialize the scan functions of
  *                          show statments.
  *   return: NULL
  */
@@ -270,7 +270,7 @@ showstmt_next_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 /*
  *  showstmt_start_scan () - before scan.
  *   return: NO_ERROR, or ER_code
- *   thread_p(in): 
+ *   thread_p(in):
  *   s_id(in):
  */
 int
@@ -296,7 +296,7 @@ showstmt_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 /*
  *  showstmt_end_scan () - after scan.
  *   return: NO_ERROR, or ER_code
- *   thread_p(in): 
+ *   thread_p(in):
  *   s_id(in):
  */
 int
@@ -322,7 +322,7 @@ showstmt_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 /*
  *   showstmt_alloc_array_context () - init context for db_values arrays
  *   return: NO_ERROR, or ER_code
- *   thread_p(in): 
+ *   thread_p(in):
  *   num_total(in):
  *   num_col(in):
  */
@@ -360,7 +360,7 @@ on_error:
 /*
  *  showstmt_free_array_context () - free context for db_values arrays
  *   return: NO_ERROR, or ER_code
- *   thread_p(in): 
+ *   thread_p(in):
  *   ctx(in):
  */
 void
@@ -389,7 +389,7 @@ showstmt_free_array_context (THREAD_ENTRY * thread_p, SHOWSTMT_ARRAY_CONTEXT * c
 /*
  *  showstmt_alloc_tuple_in_context () - alloc and return next tuple from context
  *   return:  tuple pointer
- *   thread_p(in): 
+ *   thread_p(in):
  *   ctx(in):
  */
 DB_VALUE *
@@ -797,7 +797,7 @@ thread_scan_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, THREAD_ENTRY
  * thread_start_scan () -  start scan function for show threads
  *   return: NO_ERROR, or ER_code
  *
- *   thread_p(in): 
+ *   thread_p(in):
  *   type (in):
  *   arg_values(in):
  *   arg_cnt(in):

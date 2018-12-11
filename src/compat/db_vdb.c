@@ -543,7 +543,7 @@ db_compile_statement_local (DB_SESSION * session)
       session->stage = (char *) p + session->dimension * sizeof (DB_QUERY_TYPE *);
     }
 
-  /* 
+  /*
    * Compilation Stage
    */
 
@@ -621,7 +621,7 @@ db_compile_statement_local (DB_SESSION * session)
       if (qtype)
 	{
 	  /* NOTE, this is here on purpose. If something is busting because it tries to continue corresponding this
-	   * type information and the list file columns after having jacked with the list file, by for example adding a 
+	   * type information and the list file columns after having jacked with the list file, by for example adding a
 	   * hidden OID column, fix the something else. This needs to give the results as user views the query, ie
 	   * related to the original text. It may guess wrong about attribute/column updatability. Thats what they
 	   * asked for. */
@@ -668,7 +668,7 @@ db_compile_statement_local (DB_SESSION * session)
   session->stage[stmt_ndx] = StatementCompiledStage;
 
 
-  /* 
+  /*
    * Preparation Stage
    */
 
@@ -1614,7 +1614,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
       return er_errid ();
     }
 
-  /* 
+  /*
    * Execution Stage
    */
   er_clear ();
@@ -1739,7 +1739,9 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
     {
       /* now, execute the statement by calling do_execute_statement() */
       err = do_execute_statement (parser, statement);
-      if (err == ER_QPROC_INVALID_XASLNODE && session->stage[stmt_ndx] == StatementPreparedStage)
+      if (((err == ER_QPROC_XASLNODE_RECOMPILE_REQUESTED || err == ER_QPROC_INVALID_XASLNODE)
+	   && session->stage[stmt_ndx] == StatementPreparedStage)
+	  || (err == ER_QPROC_XASLNODE_RECOMPILE_REQUESTED && session->stage[stmt_ndx] == StatementExecutedStage))
 	{
 	  /* The cache entry was deleted before 'execute' */
 	  if (statement->xasl_id)
@@ -1884,7 +1886,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	    case CUBRID_STMT_CALL:
 	    case CUBRID_STMT_INSERT:
 	    case CUBRID_STMT_GET_STATS:
-	      /* csql (in csql.c) may throw away any non-null *result, but we create a DB_QUERY_RESULT structure anyway 
+	      /* csql (in csql.c) may throw away any non-null *result, but we create a DB_QUERY_RESULT structure anyway
 	       * for other callers of db_execute that use the *result like esql_cli.c */
 	      if (pt_is_server_insert_with_generated_keys (parser, statement))
 		{
@@ -1930,7 +1932,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 		      int row_count = err;
 		      err = db_query_tuple_count (qres);
 		      /* We have a special case for REPLACE INTO: pt_node_etc (statement) holds only the inserted row
-		       * but we might have done a delete before. For this case, if err>row_count we will not change the 
+		       * but we might have done a delete before. For this case, if err>row_count we will not change the
 		       * row count */
 		      if (stmt_type == CUBRID_STMT_INSERT)
 			{
@@ -1953,7 +1955,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 		}
 	      else
 		{
-		  /* avoid changing err. it should have been meaningfully set. if err = 0, uci_static will set SQLCA to 
+		  /* avoid changing err. it should have been meaningfully set. if err = 0, uci_static will set SQLCA to
 		   * SQL_NOTFOUND! */
 		}
 	      break;
@@ -2447,7 +2449,7 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx)
   parser->auto_param_count = 0;
   parser->set_host_var = 1;
 
-  /* Multi range optimization check: if host-variables were used (not auto-parameterized), the orderby_num () limit may 
+  /* Multi range optimization check: if host-variables were used (not auto-parameterized), the orderby_num () limit may
    * change and invalidate or validate multi range optimization. Check if query needs to be recompiled. */
   if (!XASL_ID_IS_NULL (&xasl_id)	/* xasl_id should not be null */
       && !statement->info.execute.recompile	/* recompile is already planned */
@@ -3099,10 +3101,10 @@ db_compile_and_execute_queries_internal (const char *CSQL_query, void *result, D
 }
 
 /*
- * db_set_system_generated_statement () - 
+ * db_set_system_generated_statement () -
  *
  * returns  : error status, if an invalid session is given
- *            NO_ERROR 
+ *            NO_ERROR
  * session(in) : contains the SQL query that has been compiled
  *
  */
@@ -3970,6 +3972,7 @@ db_set_statement_auto_commit (DB_SESSION * session, bool auto_commit)
   int stmt_ndx;
   int error_code;
   bool has_user_trigger;
+  int dimension;
 
   assert (session != NULL);
 
@@ -4006,10 +4009,21 @@ db_set_statement_auto_commit (DB_SESSION * session, bool auto_commit)
       return NO_ERROR;
     }
 
-  if (session->dimension > 1 && !session->parser->is_holdable)
+  if (session->dimension > 1)
     {
       /* Search for select. */
-      for (int i = 0; i < session->dimension; i++)
+      if (!session->parser->is_holdable)
+	{
+	  /* Check all statements. */
+	  dimension = session->dimension;
+	}
+      else
+	{
+	  /* Check all statements, except the last one. */
+	  dimension = session->dimension - 1;
+	}
+
+      for (int i = 0; i < dimension; i++)
 	{
 	  if (session->statements[i] != NULL && PT_IS_QUERY_NODE_TYPE (session->statements[i]->node_type))
 	    {

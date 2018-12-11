@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -18,7 +18,7 @@
  */
 
 /*
- * variable_string.c : Flexible strings that allow unlimited appending, 
+ * variable_string.c : Flexible strings that allow unlimited appending,
  *                     prepending, etc.
  */
 
@@ -85,7 +85,7 @@ vs_grow (varstring * vstr, int n)
 	  return ER_FAILED;
 	}
 
-      /* 
+      /*
        * Don't use strcpy here; vs_grow() can be invoked in the middle
        * of string processing while the string isn't properly
        * null-terminated.
@@ -335,7 +335,7 @@ vs_prepend (varstring * vstr, const char *prefix)
   available = CAST_STRLEN (vstr->start - vstr->base);
   if (available < n)
     {
-      /* 
+      /*
        * Make room at the front of the string for the prefix.  If there
        * is enough slop at the end, shift the current string toward the
        * end without growing the string; if not, grow it and then do
@@ -508,7 +508,7 @@ vs_str (varstring * vstr)
     }
   else
     {
-      /* 
+      /*
        * Make sure it's null-terminated by emitting a null character
        * and then backing up the end pointer.
        */

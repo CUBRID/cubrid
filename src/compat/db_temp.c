@@ -678,7 +678,7 @@ dbt_drop_attribute (DB_CTMPL * def, const char *name)
   if ((error == NO_ERROR) && (auto_increment_obj != NULL))
     {
       OID *oidp, serial_obj_id;
-      /* 
+      /*
        * check if user is creator or DBA
        */
       error = au_check_serial_authorization (auto_increment_obj);

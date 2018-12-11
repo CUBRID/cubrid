@@ -19,7 +19,7 @@
 
 
 /*
- * shard_proxy_io.h - 
+ * shard_proxy_io.h -
  */
 
 #ifndef _SHARD_PROXY_IO_H_
@@ -55,11 +55,11 @@
 #define DEFAULT_POLL_INTERVAL   1
 
 /* connection protocol(size : information)
-PROTOCOL_SIZE : CAS_CONNECTION_REPLY_SIZE 
+PROTOCOL_SIZE : CAS_CONNECTION_REPLY_SIZE
 CAS_INFO_SIZE : CAS_INFO_SIZE
-CAS_PID_SIZE : proxy pid 
+CAS_PID_SIZE : proxy pid
 BROKER_INFO_SIZE : broker_info
-CAS_INFO_SIZE : cas_info 
+CAS_INFO_SIZE : cas_info
 */
 
 #define PROTOCOL_SIZE           sizeof(int)

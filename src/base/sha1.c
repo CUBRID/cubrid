@@ -54,7 +54,7 @@
 void SHA1ProcessMessageBlock (SHA1Context *);
 void SHA1PadMessage (SHA1Context *);
 
-/*  
+/*
  *  SHA1Reset
  *
  *  Description:
@@ -88,7 +88,7 @@ SHA1Reset (SHA1Context * context)
   context->Corrupted = 0;
 }
 
-/*  
+/*
  *  SHA1Result
  *
  *  Description:
@@ -123,7 +123,7 @@ SHA1Result (SHA1Context * context)
   return 1;
 }
 
-/*  
+/*
  *  SHA1Input
  *
  *  Description:
@@ -187,7 +187,7 @@ SHA1Input (SHA1Context * context, const unsigned char *message_array, size_t len
     }
 }
 
-/*  
+/*
  *  SHA1ProcessMessageBlock
  *
  *  Description:
@@ -204,7 +204,7 @@ SHA1Input (SHA1Context * context, const unsigned char *message_array, size_t len
  *      Many of the variable names in the SHAContext, especially the
  *      single character names, were used because those were the names
  *      used in the publication.
- *         
+ *
  *
  */
 void
@@ -222,7 +222,7 @@ SHA1ProcessMessageBlock (SHA1Context * context)
   unsigned W[80];		/* Word sequence */
   unsigned A, B, C, D, E;	/* Word buffers */
 
-  /* 
+  /*
    *  Initialize the first 16 words in the array W
    */
   for (t = 0; t < 16; t++)
@@ -297,7 +297,7 @@ SHA1ProcessMessageBlock (SHA1Context * context)
   context->Message_Block_Index = 0;
 }
 
-/*  
+/*
  *  SHA1PadMessage
  *
  *  Description:
@@ -323,7 +323,7 @@ SHA1ProcessMessageBlock (SHA1Context * context)
 void
 SHA1PadMessage (SHA1Context * context)
 {
-  /* 
+  /*
    *  Check to see if the current message block is too small to hold
    *  the initial padding bits and length.  If so, we will pad the
    *  block, process it, and then continue padding into a second
@@ -353,7 +353,7 @@ SHA1PadMessage (SHA1Context * context)
 	}
     }
 
-  /* 
+  /*
    *  Store the message length as the last 8 octets
    */
   context->Message_Block[56] = (context->Length_High >> 24) & 0xFF;

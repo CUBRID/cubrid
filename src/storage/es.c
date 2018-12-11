@@ -90,9 +90,9 @@ es_init (const char *uri)
       ret = es_posix_init (ES_POSIX_PATH_POS (uri));
       if (ret == ER_ES_GENERAL)
 	{
-	  /* 
-	   * If es_posix_init() failed (eg.failed to open base dir), 
-	   * ignore the error in order to start server normally. 
+	  /*
+	   * If es_posix_init() failed (eg.failed to open base dir),
+	   * ignore the error in order to start server normally.
 	   */
 	  ret = NO_ERROR;
 	}

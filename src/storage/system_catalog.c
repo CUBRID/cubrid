@@ -1248,7 +1248,7 @@ catalog_store_attribute_value (THREAD_ENTRY * thread_p, void *value, int length,
     {
       if (length - offset <= catalog_record_p->recdes.area_size - catalog_record_p->offset)
 	{
-	  /* if the size of the value is smaller than or equals to the remaining size of the recdes.data, just copy the 
+	  /* if the size of the value is smaller than or equals to the remaining size of the recdes.data, just copy the
 	   * value into the recdes.data buffer and adjust the offset. */
 	  bufsize = length - offset;
 	  (void) memcpy (catalog_record_p->recdes.data + catalog_record_p->offset, (char *) value + offset, bufsize);
@@ -1453,7 +1453,7 @@ catalog_fetch_attribute_value (THREAD_ENTRY * thread_p, void *value, int length,
 	}
       else
 	{
-	  /* if the size of the value is larger than the whole length of the recdes.data, that means the value has been 
+	  /* if the size of the value is larger than the whole length of the recdes.data, that means the value has been
 	   * stored in N pages, we need to fetch these N pages and read value from them. in first N-1 page, the whole
 	   * page will be read into the value buffer, while in last page, the remaining value will be read into value
 	   * buffer as the existing routine. */
@@ -1578,6 +1578,7 @@ catalog_drop_representation_helper (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VP
   VPID overflow_vpid, new_overflow_vpid;
   PGLENGTH new_space;
   RECDES record = { 0, -1, REC_HOME, NULL };
+  int error_code;
 
   (void) pgbuf_check_page_ptype (thread_p, page_p, PAGE_CATALOG);
 
@@ -1646,9 +1647,12 @@ catalog_drop_representation_helper (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VP
       new_overflow_vpid.volid = CATALOG_GET_PGHEADER_OVFL_PGID_VOLID (record.data);
 
       pgbuf_unfix_and_init (thread_p, overflow_page_p);
-      if (file_dealloc (thread_p, &catalog_Id.vfid, &overflow_vpid, FILE_CATALOG) != NO_ERROR)
+
+      error_code = file_dealloc (thread_p, &catalog_Id.vfid, &overflow_vpid, FILE_CATALOG);
+      if (error_code != NO_ERROR)
 	{
-	  assert (false);
+	  ASSERT_ERROR ();
+	  return error_code;
 	}
       overflow_vpid = new_overflow_vpid;
     }
@@ -3665,7 +3669,7 @@ catalog_drop_old_representations (THREAD_ENTRY * thread_p, OID * class_id_p)
  *   class_id(in): Class identifier
  *   rep_dir_p(out): Representation Directory
  *
- * Note: Get oid of class representation record 
+ * Note: Get oid of class representation record
  */
 int
 xcatalog_check_rep_dir (THREAD_ENTRY * thread_p, OID * class_id_p, OID * rep_dir_p)
@@ -3826,7 +3830,7 @@ catalog_assign_attribute (THREAD_ENTRY * thread_p, DISK_ATTR * disk_attr_p, CATA
  *   catalog_access_info_p(in): access info on catalog; if this is NULL
  *				locking of directory OID is performed here,
  *				otherwise the caller is reponsible for
- *				protecting concurrent access. 
+ *				protecting concurrent access.
  *
  * Note: The disk representation structure for the given class and
  * representation identifier is extracted from the catalog and

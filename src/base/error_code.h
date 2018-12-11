@@ -1547,8 +1547,8 @@
 #define ER_JSON_PATH_DOES_NOT_EXIST                 -1202
 #define ER_JSON_EXPECTED_OTHER_TYPE                 -1203
 #define ER_JSON_DUPLICATE_KEY                       -1204
+#define ER_JSON_EXPECTING_JSON_DOC                  -1205
 
-#define ER_JSON_RESERVED_ERROR_0                    -1205
 #define ER_JSON_RESERVED_ERROR_1                    -1206
 #define ER_JSON_RESERVED_ERROR_2                    -1207
 #define ER_JSON_RESERVED_ERROR_3                    -1208
@@ -1586,8 +1586,11 @@
 #define ER_SM_INDEX_STATUS_CHANGE_NOT_ALLOWED       -1237
 #define ER_JSON_TABLE_ON_EMPTY_ERROR                -1238
 #define ER_JSON_TABLE_ON_ERROR_INCOMP_DOMAIN        -1239
+#define ER_SM_ONLINE_INDEX_ON_HIERARCHY             -1240
 
-#define ER_LAST_ERROR                               -1240
+#define ER_QPROC_XASLNODE_RECOMPILE_REQUESTED       -1241
+
+#define ER_LAST_ERROR                               -1242
 
 /*
  * CAUTION!

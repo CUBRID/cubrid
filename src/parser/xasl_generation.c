@@ -3027,7 +3027,7 @@ pt_flush_classes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 }
 
 /*
- * pt_set_is_system_generated_stmt () - 
+ * pt_set_is_system_generated_stmt () -
  *   return:
  *   parser(in):
  *   tree(in):
@@ -3555,10 +3555,7 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
   REGU_VARIABLE *percentile_regu = NULL;
   AGGREGATE_TYPE *aggregate_list;
   AGGREGATE_INFO *info = (AGGREGATE_INFO *) arg;
-  REGU_VARIABLE_LIST scan_regu_list;
-  REGU_VARIABLE_LIST scan_regu_next_list;
   REGU_VARIABLE_LIST out_list = NULL;
-  REGU_VARIABLE_LIST regu_temp;
   VAL_LIST *value_list;
   MOP classop;
   PT_NODE *group_concat_sep_node_save = NULL;
@@ -3697,7 +3694,7 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 		    {
 		      pr_clone_value (&group_concat_sep_node_save->info.value.db_value,
 				      aggregate_list->accumulator.value2);
-		      /* set the next argument pointer (the separator argument) to NULL in order to avoid impacting the 
+		      /* set the next argument pointer (the separator argument) to NULL in order to avoid impacting the
 		       * regu vars generation. */
 		      tree->info.function.arg_list->next = NULL;
 		      pt_register_orphan_db_value (parser, aggregate_list->accumulator.value2);
@@ -3750,16 +3747,20 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	       * value_list Note: cume_dist() and percent_rank() also need special operations. */
 	      if (aggregate_list->function != PT_CUME_DIST && aggregate_list->function != PT_PERCENT_RANK)
 		{
-		  pt_val = parser_new_node (parser, PT_VALUE);
-		  if (pt_val == NULL)
+		  // add dummy output name nodes, one for each argument
+		  for (PT_NODE * it_args = tree->info.function.arg_list; it_args != NULL; it_args = it_args->next)
 		    {
-		      PT_INTERNAL_ERROR (parser, "allocate new node");
-		      return NULL;
-		    }
+		      pt_val = parser_new_node (parser, PT_VALUE);
+		      if (pt_val == NULL)
+			{
+			  PT_INTERNAL_ERROR (parser, "allocate new node");
+			  return NULL;
+			}
 
-		  pt_val->type_enum = PT_TYPE_INTEGER;
-		  pt_val->info.value.data_value.i = 0;
-		  parser_append_node (pt_val, info->out_names);
+		      pt_val->type_enum = PT_TYPE_INTEGER;
+		      pt_val->info.value.data_value.i = 0;
+		      parser_append_node (pt_val, info->out_names);
+		    }
 
 		  // for each element from arg_list we create a corresponding node in the value_list and regu_list
 		  if (pt_node_list_to_value_and_reguvar_list (parser, tree->info.function.arg_list,
@@ -3947,7 +3948,7 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 
   if (tree->node_type == PT_DOT_)
     {
-      /* This path must have already appeared in the group-by, and is resolved. Convert it to a name so that we can use 
+      /* This path must have already appeared in the group-by, and is resolved. Convert it to a name so that we can use
        * it to get the correct list position later. */
       PT_NODE *next = tree->next;
       tree = tree->info.dot.arg2;
@@ -4667,20 +4668,20 @@ pt_make_json_table_spec_node_internal (PARSER_CONTEXT * parser, PT_JSON_TABLE_NO
     ;
 
   result.m_output_columns =
-    (json_table_column *) pt_alloc_packing_buf (sizeof (json_table_column) * result.m_output_columns_size);
+    (json_table_column *) pt_alloc_packing_buf ((int) (sizeof (json_table_column) * result.m_output_columns_size));
 
   for (itr = jt_node_info->columns, i = 0; itr != NULL; itr = itr->next, i++)
     {
       pt_create_json_table_column (parser, itr, tbl_info, result.m_output_columns[i]);
     }
 
-  // create children 
+  // create children
   result.m_nested_nodes_size = 0;
   for (itr = jt_node_info->nested_paths; itr != NULL; itr = itr->next, ++result.m_nested_nodes_size)
     ;
 
   result.m_nested_nodes =
-    (json_table_node *) pt_alloc_packing_buf (sizeof (json_table_node) * result.m_nested_nodes_size);
+    (json_table_node *) pt_alloc_packing_buf ((int) (sizeof (json_table_node) * result.m_nested_nodes_size));
 
   for (itr = jt_node_info->nested_paths, i = 0; itr != NULL; itr = itr->next, i++)
     {
@@ -5760,7 +5761,7 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
 	  exptyp = TP_DOMAIN_TYPE (regu->domain);
 	  if (parser->set_host_var == 0 && typ == DB_TYPE_NULL)
 	    {
-	      /* If the host variable was not given before by the user, preset it by the expected domain. When the user 
+	      /* If the host variable was not given before by the user, preset it by the expected domain. When the user
 	       * set the host variable, its value will be casted to this domain if necessary. */
 	      (void) db_value_domain_init (val, exptyp, regu->domain->precision, regu->domain->scale);
 	      if (TP_IS_CHAR_TYPE (exptyp))
@@ -6322,20 +6323,29 @@ pt_function_to_regu (PARSER_CONTEXT * parser, PT_NODE * function)
 	case F_ELT:
 	  result_type = pt_node_to_db_type (function);
 	  break;
-	case F_JSON_OBJECT:
 	case F_JSON_ARRAY:
-	case F_JSON_INSERT:
-	case F_JSON_REPLACE:
-	case F_JSON_SET:
-	case F_JSON_KEYS:
-	case F_JSON_REMOVE:
 	case F_JSON_ARRAY_APPEND:
 	case F_JSON_ARRAY_INSERT:
+	case F_JSON_CONTAINS:
 	case F_JSON_CONTAINS_PATH:
+	case F_JSON_DEPTH:
+	case F_JSON_EXTRACT:
+	case F_JSON_GET_ALL_PATHS:
+	case F_JSON_KEYS:
+	case F_JSON_INSERT:
+	case F_JSON_LENGTH:
 	case F_JSON_MERGE:
 	case F_JSON_MERGE_PATCH:
+	case F_JSON_OBJECT:
+	case F_JSON_PRETTY:
+	case F_JSON_QUOTE:
+	case F_JSON_REMOVE:
+	case F_JSON_REPLACE:
 	case F_JSON_SEARCH:
-	case F_JSON_GET_ALL_PATHS:
+	case F_JSON_SET:
+	case F_JSON_TYPE:
+	case F_JSON_UNQUOTE:
+	case F_JSON_VALID:
 	  result_type = pt_node_to_db_type (function);
 	  break;
 	default:
@@ -7162,17 +7172,10 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  || node->info.expr.op == PT_WEEKF || node->info.expr.op == PT_MAKEDATE
 		  || node->info.expr.op == PT_ADDTIME || node->info.expr.op == PT_DEFINE_VARIABLE
 		  || node->info.expr.op == PT_CHR || node->info.expr.op == PT_CLOB_TO_CHAR
-		  || node->info.expr.op == PT_INDEX_PREFIX || node->info.expr.op == PT_FROM_TZ
-		  || node->info.expr.op == PT_JSON_TYPE || node->info.expr.op == PT_JSON_QUOTE
-		  || node->info.expr.op == PT_JSON_UNQUOTE
-		  || node->info.expr.op == PT_JSON_EXTRACT || node->info.expr.op == PT_JSON_VALID
-		  || node->info.expr.op == PT_JSON_LENGTH || node->info.expr.op == PT_JSON_DEPTH
-		  || node->info.expr.op == PT_JSON_PRETTY)
+		  || node->info.expr.op == PT_INDEX_PREFIX || node->info.expr.op == PT_FROM_TZ)
 		{
 		  r1 = pt_to_regu_variable (parser, node->info.expr.arg1, unbox);
-		  if ((node->info.expr.op == PT_CONCAT || node->info.expr.op == PT_JSON_LENGTH
-		       || node->info.expr.op == PT_JSON_QUOTE || node->info.expr.op == PT_JSON_UNQUOTE)
-		      && node->info.expr.arg2 == NULL)
+		  if ((node->info.expr.op == PT_CONCAT) && node->info.expr.arg2 == NULL)
 		    {
 		      r2 = NULL;
 		    }
@@ -7415,8 +7418,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		       || node->info.expr.op == PT_CONCAT_WS || node->info.expr.op == PT_FIELD
 		       || node->info.expr.op == PT_LOCATE || node->info.expr.op == PT_MID
 		       || node->info.expr.op == PT_SUBSTRING_INDEX || node->info.expr.op == PT_MAKETIME
-		       || node->info.expr.op == PT_INDEX_CARDINALITY || node->info.expr.op == PT_NEW_TIME
-		       || node->info.expr.op == PT_JSON_CONTAINS)
+		       || node->info.expr.op == PT_INDEX_CARDINALITY || node->info.expr.op == PT_NEW_TIME)
 		{
 		  r1 = pt_to_regu_variable (parser, node->info.expr.arg1, unbox);
 		  if (node->info.expr.arg2 == NULL && node->info.expr.op == PT_CONCAT_WS)
@@ -7429,8 +7431,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    }
 
 		  if (node->info.expr.arg3 == NULL
-		      && (node->info.expr.op == PT_LOCATE || node->info.expr.op == PT_SUBSTRING
-			  || node->info.expr.op == PT_JSON_CONTAINS))
+		      && (node->info.expr.op == PT_LOCATE || node->info.expr.op == PT_SUBSTRING))
 		    {
 		      r3 = NULL;
 		    }
@@ -7640,34 +7641,6 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 		case PT_CONCAT:
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_CONCAT, domain);
-		  break;
-
-		case PT_JSON_CONTAINS:
-		  regu = pt_make_regu_arith (r1, r2, r3, T_JSON_CONTAINS, domain);
-		  break;
-		case PT_JSON_TYPE:
-		  regu = pt_make_regu_arith (r1, NULL, NULL, T_JSON_TYPE, domain);
-		  break;
-		case PT_JSON_EXTRACT:
-		  regu = pt_make_regu_arith (r1, r2, NULL, T_JSON_EXTRACT, domain);
-		  break;
-		case PT_JSON_VALID:
-		  regu = pt_make_regu_arith (r1, NULL, NULL, T_JSON_VALID, domain);
-		  break;
-		case PT_JSON_LENGTH:
-		  regu = pt_make_regu_arith (r1, r2, NULL, T_JSON_LENGTH, domain);
-		  break;
-		case PT_JSON_DEPTH:
-		  regu = pt_make_regu_arith (r1, NULL, NULL, T_JSON_DEPTH, domain);
-		  break;
-		case PT_JSON_QUOTE:
-		  regu = pt_make_regu_arith (r1, NULL, NULL, T_JSON_QUOTE, domain);
-		  break;
-		case PT_JSON_UNQUOTE:
-		  regu = pt_make_regu_arith (r1, NULL, NULL, T_JSON_UNQUOTE, domain);
-		  break;
-		case PT_JSON_PRETTY:
-		  regu = pt_make_regu_arith (r1, NULL, NULL, T_JSON_PRETTY, domain);
 		  break;
 		case PT_CONCAT_WS:
 		  regu = pt_make_regu_arith (r1, r2, r3, T_CONCAT_WS, domain);
@@ -8897,8 +8870,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  if (value)
 		    {
 		      /* Note that the value in the label table will be destroyed if another assignment is made with
-		       * the same name ! be sure that the lifetime of this regu node will not overlap the processing of 
-		       * another statement that may result in label assignment.  If this can happen, we'll have to copy 
+		       * the same name ! be sure that the lifetime of this regu node will not overlap the processing of
+		       * another statement that may result in label assignment.  If this can happen, we'll have to copy
 		       * the value and remember to free it when the regu node goes away */
 		      regu = pt_make_regu_constant (parser, value, pt_node_to_db_type (node), node);
 		    }
@@ -9365,7 +9338,7 @@ pt_attribute_to_regu (PARSER_CONTEXT * parser, PT_NODE * attr)
       if (table_info)
 	{
 	  /* We have found the attribute at this scope. If we had not, the attribute must have been a correlated
-	   * reference to an attribute at an outer scope. The correlated case is handled below in this "if" statement's 
+	   * reference to an attribute at an outer scope. The correlated case is handled below in this "if" statement's
 	   * "else" clause. Determine if this is relative to a particular class or if the attribute should be relative
 	   * to the placeholder. */
 
@@ -9914,7 +9887,7 @@ pt_to_range_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int nterms, boo
 	  /* is the key value constant(value or host variable)? */
 	  key_infop->is_constant &= (rhs->node_type == PT_VALUE || rhs->node_type == PT_HOST_VAR);
 
-	  /* if it is multi-column index, make one PT_NODE for sequence key value by concatenating all RHS of the terms 
+	  /* if it is multi-column index, make one PT_NODE for sequence key value by concatenating all RHS of the terms
 	   */
 	  if (multi_col)
 	    {
@@ -9945,7 +9918,7 @@ pt_to_range_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int nterms, boo
 	  key_infop->is_constant &= ((llim->node_type == PT_VALUE || llim->node_type == PT_HOST_VAR)
 				     && (ulim->node_type == PT_VALUE || ulim->node_type == PT_HOST_VAR));
 
-	  /* if it is multi-column index, make one PT_NODE for sequence key value by concatenating all RHS of the terms 
+	  /* if it is multi-column index, make one PT_NODE for sequence key value by concatenating all RHS of the terms
 	   */
 	  if (multi_col)
 	    {
@@ -10185,7 +10158,7 @@ pt_to_list_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int nterms, bool
 	  /* is the key value constant(value or host variable)? */
 	  key_infop->is_constant &= (rhs->node_type == PT_VALUE || rhs->node_type == PT_HOST_VAR);
 
-	  /* if it is multi-column index, make one PT_NODE for sequence key value by concatenating all RHS of the terms 
+	  /* if it is multi-column index, make one PT_NODE for sequence key value by concatenating all RHS of the terms
 	   */
 	  if (multi_col)
 	    {
@@ -11286,7 +11259,7 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_, PRED_EXPR * where
 
       if (rangelist_idx == -1)
 	{
-	  /* The last term expression in the array(that is, [nterms - 1]) is interesting because the multi-column index 
+	  /* The last term expression in the array(that is, [nterms - 1]) is interesting because the multi-column index
 	   * scan depends on it. For example: a = ? AND b = ? AND c = ? a = ? AND b = ? AND c RANGE (r1) a = ? AND b =
 	   * ? AND c RANGE (r1, r2, ...) */
 	  rangelist_idx = nterms - 1;
@@ -11294,9 +11267,9 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_, PRED_EXPR * where
 	}
       else
 	{
-	  /* Have non-last EQUAL range term and is only one. For example: a = ? AND b RANGE (r1=, r2=, ...) AND c = ? a 
+	  /* Have non-last EQUAL range term and is only one. For example: a = ? AND b RANGE (r1=, r2=, ...) AND c = ? a
 	   * = ? AND b RANGE (r1=, r2=, ...) AND c RANGE (r1)
-	   * 
+	   *
 	   * but, the following is not permitted. a = ? AND b RANGE (r1=, r2=, ...) AND c RANGE (r1, r2, ...) */
 	  op_type = PT_RANGE;
 	}
@@ -11928,7 +11901,7 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 		  free_and_init (rest_offsets);
 		}
 
-	      /* 
+	      /*
 	       * pt_make_class_spec() will return NULL if passed a
 	       * NULL INDX_INFO *, so there isn't any need to check
 	       * return values here.
@@ -12068,7 +12041,7 @@ pt_to_subquery_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE
       return NULL;
     }
 
-  /* This generates a list of TYPE_POSITION regu_variables There information is stored in a QFILE_TUPLE_VALUE_POSITION, 
+  /* This generates a list of TYPE_POSITION regu_variables There information is stored in a QFILE_TUPLE_VALUE_POSITION,
    * which describes a type and index into a list file. */
   regu_attributes_pred = pt_to_position_regu_variable_list (parser, pred_attrs, tbl_info->value_list, pred_offsets);
   regu_attributes_rest = pt_to_position_regu_variable_list (parser, rest_attrs, tbl_info->value_list, rest_offsets);
@@ -12123,7 +12096,7 @@ pt_to_set_expr_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE
 
   regu_set_expr = pt_to_regu_variable (parser, set_expr, UNBOX_AS_VALUE);
 
-  /* This generates a list of TYPE_POSITION regu_variables There information is stored in a QFILE_TUPLE_VALUE_POSITION, 
+  /* This generates a list of TYPE_POSITION regu_variables There information is stored in a QFILE_TUPLE_VALUE_POSITION,
    * which describes a type and index into a list file. */
   regu_attributes = pt_to_position_regu_variable_list (parser, spec->info.spec.as_attr_list, NULL, NULL);
 
@@ -12166,7 +12139,7 @@ pt_to_cselect_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE 
 
   method_sig_list = pt_to_method_sig_list (parser, cselect, src_derived_tbl->info.spec.as_attr_list);
 
-  /* This generates a list of TYPE_POSITION regu_variables There information is stored in a QFILE_TUPLE_VALUE_POSITION, 
+  /* This generates a list of TYPE_POSITION regu_variables There information is stored in a QFILE_TUPLE_VALUE_POSITION,
    * which describes a type and index into a list file. */
 
   regu_attributes = pt_to_position_regu_variable_list (parser, spec->info.spec.as_attr_list, NULL, NULL);
@@ -12232,7 +12205,7 @@ pt_to_cte_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * ct
     }
   else
     {
-      /* The CTE xasl is null because the recursive part xasl has not been generated yet, but this is not a problem 
+      /* The CTE xasl is null because the recursive part xasl has not been generated yet, but this is not a problem
        * because the recursive part should have access only to the non recursive part.
        * This may also happen with a CTE referenced by another one. If CTE1 is referenced by CTE2, the XASL of CTE1
        * is not completed when reaching this function from CTE2. CTE2 is reached following *next* link of CTE1 before
@@ -12274,8 +12247,8 @@ pt_to_cte_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * ct
   parser->symbols->listfile_unbox = UNBOX_AS_VALUE;
   parser->symbols->current_listfile = NULL;
 
-  /* The where predicate is now evaluated after the val list has been fetched. 
-   * This means that we want to generate "CONSTANT" regu variables instead of "POSITION" regu variables which would 
+  /* The where predicate is now evaluated after the val list has been fetched.
+   * This means that we want to generate "CONSTANT" regu variables instead of "POSITION" regu variables which would
    * happen if parser->symbols->current_listfile != NULL.
    * pred should never use the current instance for fetches either, so we turn off the current_class, if there is one.
    */
@@ -12720,7 +12693,7 @@ pt_uncorr_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continu
 
 	  if (node->info.query.correlation_level == info->level)
 	    {
-	      /* order is important. we are on the way up, so putting things at the tail of the list will end up deeper 
+	      /* order is important. we are on the way up, so putting things at the tail of the list will end up deeper
 	       * nested queries being first, which is required. */
 	      info->xasl = pt_append_xasl (info->xasl, xasl);
 	    }
@@ -12734,7 +12707,7 @@ pt_uncorr_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continu
 
       if (xasl)
 	{
-	  /* The CTE correlation level is kept in the non_recursive_part query and it is handled here since 
+	  /* The CTE correlation level is kept in the non_recursive_part query and it is handled here since
 	   * the CTE subqueries are not accessed for correlation check;
 	   * After validation, the CTE XASL is added to the list */
 
@@ -13285,7 +13258,7 @@ pt_to_fetch_as_scan_proc (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * joi
       return NULL;
     }
 
-  /* This generates a list of TYPE_POSITION regu_variables There information is stored in a QFILE_TUPLE_VALUE_POSITION, 
+  /* This generates a list of TYPE_POSITION regu_variables There information is stored in a QFILE_TUPLE_VALUE_POSITION,
    * which describes a type and index into a list file. */
   regu_attributes_pred = pt_to_position_regu_variable_list (parser, pred_attrs, tbl_info->value_list, pred_offsets);
   regu_attributes_rest = pt_to_position_regu_variable_list (parser, rest_attrs, tbl_info->value_list, rest_offsets);
@@ -13608,7 +13581,7 @@ ptqo_to_list_scan_proc (PARSER_CONTEXT * parser, XASL_NODE * xasl, PROC_TYPE pro
       parser->symbols->listfile_unbox = UNBOX_AS_VALUE;
       parser->symbols->current_listfile = NULL;
 
-      /* The where predicate is now evaluated after the val list has been fetched.  This means that we want to generate 
+      /* The where predicate is now evaluated after the val list has been fetched.  This means that we want to generate
        * "CONSTANT" regu variables instead of "POSITION" regu variables which would happen if
        * parser->symbols->current_listfile != NULL. pred should never user the current instance for fetches either, so
        * we turn off the current_class, if there is one. */
@@ -14043,7 +14016,7 @@ pt_gen_simple_merge_plan (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLA
 
       pt_split_if_instnum (parser, where, &if_part, &instnum_part);
 
-      /* This is NOT temporary till where clauses get sorted out!!! We never want predicates on the scans of the tables 
+      /* This is NOT temporary till where clauses get sorted out!!! We never want predicates on the scans of the tables
        * because merge depend on both tables having the same cardinality which would get screwed up if we pushed
        * predicates down into the table scans. */
       pt_to_pred_terms (parser, if_part, table1->info.spec.id, &xasl->if_pred);
@@ -14774,11 +14747,11 @@ pt_build_analytic_eval_list (PARSER_CONTEXT * parser, ANALYTIC_KEY_METADOMAIN * 
 
 /*
  * pt_initialize_analytic_info () - initialize analytic_info
- *   parser(in): 
- *   analytic_info(out): 
- *   select_node(in): 
- *   select_node_ex(in): 
- *   buidlist(in): 
+ *   parser(in):
+ *   analytic_info(out):
+ *   select_node(in):
+ *   select_node_ex(in):
+ *   buidlist(in):
  */
 static int
 pt_initialize_analytic_info (PARSER_CONTEXT * parser, ANALYTIC_INFO * analytic_info, PT_NODE * select_node,
@@ -14819,7 +14792,7 @@ pt_initialize_analytic_info (PARSER_CONTEXT * parser, ANALYTIC_INFO * analytic_i
 
 /*
  * pt_is_analytic_eval_list_valid () - check the generated eval list
- *   eval_list(in): 
+ *   eval_list(in):
  *
  * NOTE: This function checks the generated list whether it includes an invalid node.
  * This is just a quick fix and should be removed when we fix pt_optimize_analytic_list.
@@ -14844,7 +14817,7 @@ pt_is_analytic_eval_list_valid (ANALYTIC_EVAL_TYPE * eval_list)
 }
 
 /*
- * pt_generate_simple_analytic_eval_type () - generate simple when optimization fails 
+ * pt_generate_simple_analytic_eval_type () - generate simple when optimization fails
  *   info(in/out): analytic info
  *
  * NOTE: This function generates one evaluation structure for an analytic function.
@@ -14911,7 +14884,7 @@ pt_generate_simple_analytic_eval_type (PARSER_CONTEXT * parser, ANALYTIC_INFO * 
 /*
  * pt_optimize_analytic_list () - optimize analytic exectution
  *   info(in/out): analytic info
- *   no_optimization(out): 
+ *   no_optimization(out):
  *
  * NOTE: This function groups together the evaluation of analytic functions
  * that share the same window.
@@ -15319,7 +15292,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	    }
 	}
 
-      /* this one will be altered further on and it's the actual output of the initial scan; will contain group key and 
+      /* this one will be altered further on and it's the actual output of the initial scan; will contain group key and
        * aggregate expressions */
       xasl->outptr_list = pt_to_outlist (parser, group_out_list, NULL, UNBOX_AS_VALUE);
 
@@ -15604,7 +15577,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	      goto analytic_exit_on_error;
 	    }
 
-	  /* FIXME 
+	  /* FIXME
 	   *
 	   * The cloned list will be used when optimization of analytic functions fails.
 	   * Cloning is not necessary for oridinary cases, however I just want to make the lists are same.
@@ -15718,7 +15691,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 		}
 	    }
 
-	  /* substitute references in final select list and register it as query's select list; this is done mostly for 
+	  /* substitute references in final select list and register it as query's select list; this is done mostly for
 	   * printing purposes */
 	  node = select_list_final;
 	  select_list_final = NULL;
@@ -16408,7 +16381,7 @@ pt_plan_set_query (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE proc_type)
   return xasl;
 }
 
-/* 
+/*
  * pt_plan_cte () - converts a PT_NODE tree of a CTE to an XASL tree
  * return: XASL_NODE, NULL indicates error
  * parser(in): context
@@ -16831,7 +16804,7 @@ parser_generate_xasl_proc (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * qu
       switch (node->node_type)
 	{
 	case PT_SELECT:
-	  /* This function is reenterable by pt_plan_query so, query_Plan_dump_fp should be open once at first call and 
+	  /* This function is reenterable by pt_plan_query so, query_Plan_dump_fp should be open once at first call and
 	   * be closed at that call. */
 	  if (query_Plan_dump_filename != NULL)
 	    {
@@ -17962,7 +17935,7 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  XASL_NODE *aptr = xasl->aptr_list;
 
-	  /* 
+	  /*
 	   * in case of 'insert into foo select a from b'
 	   * so there is no serial oid list from values list
 	   */
@@ -18042,7 +18015,7 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 }
 
 /*
- * pt_append_assignment_references () - append names referenced in right side of ON DUPLICATE KEY UPDATE to 
+ * pt_append_assignment_references () - append names referenced in right side of ON DUPLICATE KEY UPDATE to
  *					SELECT list of an INSERT...SELECT statement
  * return : updated node or NULL
  * parser (in)	    : parser context
@@ -18790,7 +18763,7 @@ pt_mvcc_flag_specs_assign_reev (PARSER_CONTEXT * parser, PT_NODE * spec_list, PT
  *						   assignments (and not in
  *						   condition) and have a given
  *						   spec (spec_assign) on the left
- *						   side of assignments. 
+ *						   side of assignments.
  *   return: count of indexes.
  *   parser(in):
  *   spec_assign(in): spec that must be on the left side of assignments
@@ -19094,7 +19067,7 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names, PT_NODE * 
 		  continue;
 		}
 
-	      /* 
+	      /*
 	       * Class will be updated and is outer joined.
 	       *
 	       * We must rewrite all expressions that will be assigned to
@@ -19278,7 +19251,7 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names, PT_NODE * 
 	  && statement->info.query.q.select.from->next != NULL && !pt_has_analytic (parser, statement))
 	{
 
-	  /* In case of an update of a single table joined with other tables group the result of the select by instance 
+	  /* In case of an update of a single table joined with other tables group the result of the select by instance
 	   * oid of the table to be updated */
 
 	  PT_NODE *oid_node = statement->info.query.q.select.list, *group_by;
@@ -19510,7 +19483,7 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       if (abort_reevaluation)
 	{
-	  /* In order to abort reevaluation is enough to clear reevaluation flags from all specs (from both, delete and 
+	  /* In order to abort reevaluation is enough to clear reevaluation flags from all specs (from both, delete and
 	   * select statements) */
 	  for (cl_name_node = aptr_statement->info.query.q.select.from; cl_name_node != NULL;
 	       cl_name_node = cl_name_node->next)
@@ -20119,7 +20092,7 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
     }
   else
     {
-      /* if at least one table involved in reevaluation is a derived table then abort reevaluation and force locking on 
+      /* if at least one table involved in reevaluation is a derived table then abort reevaluation and force locking on
        * select */
       for (p = aptr_statement->info.query.q.select.from; p != NULL; p = p->next)
 	{
@@ -20153,7 +20126,7 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
 	}
     }
 
-  /* In case of locking at select stage add flag used at SELECT ... FOR UPDATE clause to each spec from which rows will 
+  /* In case of locking at select stage add flag used at SELECT ... FOR UPDATE clause to each spec from which rows will
    * be updated. This will ensure that rows will be locked at SELECT stage. */
   if (PT_SELECT_INFO_IS_FLAGED (aptr_statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED))
     {
@@ -20256,7 +20229,7 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
 	  goto cleanup;
 	}
     }
-  /* we iterate through updatable classes from left to right and fill the structures from right to left because we must 
+  /* we iterate through updatable classes from left to right and fill the structures from right to left because we must
    * match the order of OID's in the generated SELECT statement */
   for (p = from, cls_idx = num_classes - 1; cls_idx >= 0 && error == NO_ERROR; p = p->next)
     {
@@ -20552,7 +20525,7 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
 
   update->num_assign_reev_classes = 0;
 
-  /* prepare data for MVCC condition reevaluation. For each class used in reevaluation (condition and assignement) set 
+  /* prepare data for MVCC condition reevaluation. For each class used in reevaluation (condition and assignement) set
    * the position (index) into select list. */
 
   for (cl_name_node = aptr_statement->info.query.q.select.list, cls_idx = 0, cl = 0;
@@ -21039,7 +21012,7 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
   node = parser_walk_tree (parser, node, pt_flush_class_and_null_xasl, NULL, pt_set_is_system_generated_stmt,
 			   &is_system_generated_stmt);
 
-  /* During the above parser_walk_tree the request to get a driver may cause a deadlock. We give up the following steps 
+  /* During the above parser_walk_tree the request to get a driver may cause a deadlock. We give up the following steps
    * and propagate the error messages */
   if (parser->abort || node == NULL)
     {
@@ -21067,7 +21040,7 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
 	  /* This function might be called recursively by some queries. Therefore, if xasl_Supp_info has the allocated
 	   * memory blocks, we should release them to prevent memory leak. The following query is one of them.
 	   * scenario/medium/_02_xtests/xmother.sql delete from x where xstr > concat_str('string 4', 'string 40') on
-	   * (select y from y where yint = add_int(y, 10, 10)); NOTE: Defining xasl_Supp_info in local scope is one of 
+	   * (select y from y where yint = add_int(y, 10, 10)); NOTE: Defining xasl_Supp_info in local scope is one of
 	   * the alternative methods for preventing memory leak. However, it returns a wrong result of a query. */
 	  if (xasl_Supp_info.query_list)
 	    {
@@ -22712,7 +22685,7 @@ pt_numbering_set_continue_post (PARSER_CONTEXT * parser, PT_NODE * node, void *a
 	      && ((child->node_type == PT_FUNCTION && child->info.function.function_type == PT_GROUPBY_NUM)
 		  || (child->node_type == PT_EXPR && PT_IS_NUMBERING_AFTER_EXECUTION (child->info.expr.op))))
 	    {
-	      /* we have a subexpression with numbering functions and we don't have a logical operator therefore we set 
+	      /* we have a subexpression with numbering functions and we don't have a logical operator therefore we set
 	       * the continue flag to ensure we treat all values in the pred evaluation */
 	      *flagp |= PT_PRED_ARG_INSTNUM_CONTINUE;
 	      *flagp |= PT_PRED_ARG_GRBYNUM_CONTINUE;
@@ -23057,7 +23030,7 @@ pt_to_analytic_final_node (PARSER_CONTEXT * parser, PT_NODE * tree, PT_NODE ** e
 
       if (PT_IS_INSTNUM (tree))
 	{
-	  /* inst_num() should be evaluated at the write of output; also set flag so we defer inst_num() incrementation 
+	  /* inst_num() should be evaluated at the write of output; also set flag so we defer inst_num() incrementation
 	   * to output */
 	  (*instnum_flag) |= XASL_INSTNUM_FLAG_EVAL_DEFER;
 	  return tree;
@@ -25701,7 +25674,7 @@ pt_aggregate_info_update_value_and_reguvar_lists (AGGREGATE_INFO * info, VAL_LIS
   pt_merge_regu_var_lists (&info->out_list->valptrp, regu_constant_list);
 
   // also increment list count
-  size_t regu_constant_list_size = 0;
+  int regu_constant_list_size = 0;
 
   for (REGU_VARIABLE_LIST ptr = regu_constant_list; ptr != NULL; ptr = ptr->next, regu_constant_list_size++)
     ;
@@ -25718,8 +25691,8 @@ static void
 pt_aggregate_info_update_scan_regu_list (AGGREGATE_INFO * info, REGU_VARIABLE_LIST scan_regu_list)
 {
   REGU_VARIABLE_LIST tail = NULL;
-  size_t scan_regu_list_size = 0;
-  size_t index = 0;
+  int scan_regu_list_size = 0;
+  int index = 0;
 
   // calculate the size of scan_regu_var_list
   for (tail = scan_regu_list; tail != NULL; tail = tail->next, scan_regu_list_size++)
@@ -25862,7 +25835,7 @@ pt_set_regu_list_pos_descr_from_idx (REGU_VARIABLE_LIST & regu_list, size_t star
   for (REGU_VARIABLE_LIST crt_regu = regu_list; crt_regu != NULL; crt_regu = crt_regu->next)
     {
       assert (crt_regu->value.type == TYPE_POSITION);
-      crt_regu->value.value.pos_descr.pos_no = starting_index++;
+      crt_regu->value.value.pos_descr.pos_no = (int) starting_index++;
     }
 }
 

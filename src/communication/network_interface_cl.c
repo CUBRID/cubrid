@@ -820,7 +820,7 @@ locator_fetch_lockset (LC_LOCKSET * lockset, LC_COPYAREA ** fetch_copyarea)
       *fetch_copyarea = NULL;
     }
 
-  /* 
+  /*
    * We will not need to send the lockset structure any more. We do not
    * need to receive the classes and objects in the lockset structure
    * any longer
@@ -1318,7 +1318,7 @@ locator_assign_oid_batch (LC_OIDSET * oidset)
   char *buffer, *ptr;
   int req_error;
 
-  /* 
+  /*
    * Build a buffer in which to send and receive the goobers.  We'll
    * reuse the same buffer to receive the data as we used to send it.
    * First word is reserved for the return code.
@@ -2497,7 +2497,7 @@ tran_server_commit (bool retain_lock)
       ptr = or_unpack_int (ptr, &should_conn_reset);
       if (should_conn_reset != 0 && log_does_allow_replication ())
 	{
-	  /* 
+	  /*
 	   * fail-back action
 	   * make the client to reconnect to the active server
 	   */
@@ -2553,7 +2553,7 @@ tran_server_abort (void)
       ptr = or_unpack_int (ptr, &should_conn_reset);
       if (should_conn_reset != 0 && log_does_allow_replication ())
 	{
-	  /* 
+	  /*
 	   * fail-back action
 	   * make the client to reconnect to the active server
 	   */
@@ -5593,7 +5593,10 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
   int index_info_size = 0;
   char *stream = NULL;
   int stream_size = 0;
-  LOCK curr_cls_lock;
+  LOCK curr_cls_lock = SCH_M_LOCK;
+
+  // online index should have created the empty b-tree already
+  assert (index_status != SM_ONLINE_INDEX_BUILDING_IN_PROGRESS || !BTID_IS_NULL (btid));
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
@@ -5701,7 +5704,7 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
     net_client_request (NET_SERVER_BTREE_LOADINDEX, request, request_size, reply, OR_ALIGNED_BUF_SIZE (a_reply),
 			stream, stream_size, NULL, 0);
 
-  if (!req_error)
+  if (req_error == NO_ERROR)
     {
       int t;
 
@@ -5710,15 +5713,29 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
       ptr = or_unpack_int (ptr, &t);
       curr_cls_lock = (LOCK) t;
 
-      ptr = or_unpack_btid (ptr, btid);
-      if (error != NO_ERROR)
+      if (index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
 	{
-	  btid = NULL;
+	  BTID local_btid;
+	  ptr = or_unpack_btid (ptr, &local_btid);
+	  if (error != NO_ERROR)
+	    {
+	      btid = NULL;
+	    }
+	  assert (!BTID_IS_NULL (&local_btid));
+	}
+      else
+	{
+	  ptr = or_unpack_btid (ptr, btid);
+	  if (error != NO_ERROR)
+	    {
+	      btid = NULL;
+	    }
 	}
     }
   else
     {
       btid = NULL;
+      error = req_error;
     }
 
   if (index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS && curr_cls_lock != SCH_M_LOCK)
@@ -5741,10 +5758,23 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  btid =
-    xbtree_load_index (thread_p, btid, bt_name, key_type, class_oids, n_classes, n_attrs, attr_ids, attrs_prefix_length,
-		       hfids, unique_pk, not_null_flag, fk_refcls_oid, fk_refcls_pk_btid, fk_name, pred_stream,
-		       pred_stream_size, expr_stream, expr_stream_size, func_col_id, func_attr_index_start);
+  if (index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+    {
+      btid =
+	xbtree_load_online_index (thread_p, btid, bt_name, key_type, class_oids, n_classes, n_attrs, attr_ids,
+				  attrs_prefix_length, hfids, unique_pk, not_null_flag, fk_refcls_oid,
+				  fk_refcls_pk_btid, fk_name, pred_stream, pred_stream_size, expr_stream,
+				  expr_stream_size, func_col_id, func_attr_index_start);
+    }
+  else
+    {
+      btid =
+	xbtree_load_index (thread_p, btid, bt_name, key_type, class_oids, n_classes, n_attrs, attr_ids,
+			   attrs_prefix_length, hfids, unique_pk, not_null_flag, fk_refcls_oid, fk_refcls_pk_btid,
+			   fk_name, pred_stream, pred_stream_size, expr_stream, expr_stream_size, func_col_id,
+			   func_attr_index_start);
+    }
+
   if (btid == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -6483,7 +6513,7 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
 	}
     }
 
-  /* pack XASL file id (XASL_ID), number of parameter values, size of the send data, and query execution mode flag as a 
+  /* pack XASL file id (XASL_ID), number of parameter values, size of the send data, and query execution mode flag as a
    * request data */
   ptr = request;
   OR_PACK_XASL_ID (ptr, xasl_id);
@@ -7115,7 +7145,7 @@ serial_get_next_value (DB_VALUE * value, OID * oid_p, int cached_num, int num_al
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  /* 
+  /*
    * If a client wants to generate AUTO_INCREMENT value during client-side
    * insertion, a server should update LAST_INSERT_ID on a session.
    */
@@ -9671,7 +9701,7 @@ tran_lock_rep_read (LOCK lock_rr_tran)
 }
 
 /*
- * boot_get_server_timezone_checksum () - get the timezone checksum from the 
+ * boot_get_server_timezone_checksum () - get the timezone checksum from the
  *					  server
  *
  * return : error code or no error

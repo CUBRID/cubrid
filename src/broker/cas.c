@@ -2234,7 +2234,7 @@ net_read_process (SOCKET proxy_sock_fd, MSG_HEADER * client_msg_header, T_REQ_IN
 	  remained_timeout -= DEFAULT_CHECK_INTERVAL;
 	}
 
-      /* 
+      /*
        * net_read_header error case. case 1 : disconnect with proxy_sock_fd case 2 : CON_STATUS_IN_TRAN &&
        * session_timeout case 3 : reset_flag is TRUE */
       if (net_read_header (proxy_sock_fd, client_msg_header) < 0)

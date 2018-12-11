@@ -1579,9 +1579,9 @@ or_get_string_size_byte (OR_BUF * buf, int *error)
   return size_prefix;
 }
 
-/* or_get_varchar_compression_lengths() - Function to get the compressed length and the uncompressed length of 
+/* or_get_varchar_compression_lengths() - Function to get the compressed length and the uncompressed length of
  *					  a compressed string.
- * 
+ *
  * return                 : NO_ERROR or error_code.
  * buf(in)                : The buffer where the string is stored.
  * compressed_size(out)   : The compressed size of the string. Set to 0 if the string was not compressed.

@@ -846,7 +846,7 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
 
   /* need to start topop for replication Replication will recognize and realize a special type of update for serial by
    * this top operation log record. If lock_mode is X_LOCK means we created or altered the serial obj in an
-   * uncommitted trans For this case, topop and flush mark are not used, since these may cause problem with replication 
+   * uncommitted trans For this case, topop and flush mark are not used, since these may cause problem with replication
    * log. */
   if (lock_mode != X_LOCK)
     {
@@ -1387,8 +1387,8 @@ serial_alloc_cache_area (int num)
  * return	 : Error Code.
  * thread_p (in) : Thread entry.
  *
- * NOTE that workspace manager is unavailable when restarting from backup. 
- * It is possible to allow SA_MODE executables except restoredb to use the function, 
+ * NOTE that workspace manager is unavailable when restarting from backup.
+ * It is possible to allow SA_MODE executables except restoredb to use the function,
  * however, it is better not to use it in SA_MODE for clarity.
  */
 int
@@ -1419,8 +1419,8 @@ serial_cache_index_btid (THREAD_ENTRY * thread_p)
  * return      : Void.
  * output (in) : Serial index btid.
  *
- * NOTE that workspace manager is unavailable when restarting from backup. 
- * It is possible to allow SA_MODE executables except restoredb to use the function, 
+ * NOTE that workspace manager is unavailable when restarting from backup.
+ * It is possible to allow SA_MODE executables except restoredb to use the function,
  * however, it is better not to use it in SA_MODE for clarity.
  */
 void

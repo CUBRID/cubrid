@@ -118,7 +118,7 @@ overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID * ovf_vpid
   addr.vfid = ovf_vfid;
   addr.offset = 0;
 
-  /* 
+  /*
    * Guess the number of pages. The total number of pages is found by dividing length by page size - the smallest
    * header. Then, we make sure that this estimate is correct. */
   length = recdes->length - (DB_PAGESIZE - (int) offsetof (OVERFLOW_FIRST_PART, data));
@@ -310,7 +310,7 @@ overflow_traverse (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * 
   VPID vpid;
   PAGE_PTR pgptr = NULL;
 
-  /* 
+  /*
    * We don't need to lock the overflow pages since these pages are not
    * shared among several pieces of overflow data. The overflow pages are
    * know by accessing the relocation-overflow record with the appropiate lock
@@ -695,7 +695,7 @@ overflow_get_length (THREAD_ENTRY * thread_p, const VPID * ovf_vpid)
   PAGE_PTR pgptr;
   int length;
 
-  /* 
+  /*
    * We don't need to lock the overflow pages since these pages are not
    * shared among several pieces of overflow data. The overflow pages are
    * know by accessing the relocation-overflow record with the appropiate lock
@@ -746,7 +746,7 @@ overflow_get_nbytes (THREAD_ENTRY * thread_p, const VPID * ovf_vpid, RECDES * re
   int copy_length;
   char *data;
 
-  /* 
+  /*
    * We don't need to lock the overflow pages since these pages are not
    * shared among several pieces of overflow data. The overflow pages are
    * know by accessing the relocation-overflow record with the appropiate lock
@@ -839,7 +839,7 @@ overflow_get_nbytes (THREAD_ENTRY * thread_p, const VPID * ovf_vpid, RECDES * re
 	  copyfrom += copy_length;
 	}
 
-      /* 
+      /*
        * Copy as much as you can when you do not need to continue seeking,
        * and there is something to copy in current page (i.e., not at end
        * of the page) and we are not located at the end of the overflow record.
@@ -938,7 +938,7 @@ overflow_get_capacity (THREAD_ENTRY * thread_p, const VPID * ovf_vpid, int *ovf_
   int hdr_length;
   int ret = NO_ERROR;
 
-  /* 
+  /*
    * We don't need to lock the overflow pages since these pages are not
    * shared among several pieces of overflow data. The overflow pages are
    * know by accessing the relocation-overflow record with the appropiate lock
@@ -1038,7 +1038,7 @@ overflow_dump (THREAD_ENTRY * thread_p, FILE * fp, VPID * ovf_vpid)
   int i;
   int ret = NO_ERROR;
 
-  /* 
+  /*
    * We don't need to lock the overflow pages since these pages are not
    * shared among several pieces of overflow data. The overflow pages are
    * know by accessing the relocation-overflow record with the appropiate lock
