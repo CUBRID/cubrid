@@ -2082,8 +2082,6 @@ void
 sm_final ()
 {
   SM_DESCRIPTOR *d, *next;
-  SM_CLASS *class_;
-  DB_OBJLIST *cl;
 
 #if defined(WINDOWS)
   /* unload any DLL's we may have opened for methods */
@@ -13938,7 +13936,7 @@ sm_drop_index (MOP classop, const char *constraint_name)
 	  goto severe_error;
 	}
 
-      if (sm_update_statistics (classop, 0) != NO_ERROR)
+      if (sm_update_statistics (classop, STATS_WITH_SAMPLING) != NO_ERROR)
 	{
 	  goto severe_error;
 	}
