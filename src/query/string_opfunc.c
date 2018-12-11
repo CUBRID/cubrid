@@ -1907,7 +1907,7 @@ db_string_escape (const char *src_str, int src_size, char **res_string, int *des
 	  special_idx.push_back (i);
 	}
     }
-  *dest_size = (int) (src_size + special_idx.size () + 2 /* quotes */ + 1 /* string terminator */);
+  *dest_size = (int) (src_size + special_idx.size () + 2 /* quotes */  + 1 /* string terminator */ );
   char *result = (char *) db_private_alloc (NULL, *dest_size);
   if (result == NULL)
     {
@@ -1954,9 +1954,9 @@ db_string_quote (const DB_VALUE * str, DB_VALUE * res)
     {
       char *src_str = db_get_string (str);
 
-      char *res_string = NULL;
-      int dest_size;
-      int error_code = db_string_escape (src_str, db_get_string_size (str), &res_string, &dest_size);
+      char *escaped_string = NULL;
+      int escaped_string_size;
+      int error_code = db_string_escape (src_str, db_get_string_size (str), &escaped_string, &escaped_string_size);
       if (error_code)
 	{
 	  return error_code;
@@ -1964,7 +1964,7 @@ db_string_quote (const DB_VALUE * str, DB_VALUE * res)
 
       db_make_null (res);
       DB_TYPE result_type = DB_TYPE_VARCHAR;
-      qstr_make_typed_string (result_type, res, TP_FLOATING_PRECISION_VALUE, result, strlen (result),
+      qstr_make_typed_string (result_type, res, TP_FLOATING_PRECISION_VALUE, escaped_string, escaped_string_size,
 			      db_get_string_codeset (str), db_get_string_collation (str));
 
       res->need_clear = true;
@@ -3113,68 +3113,6 @@ db_string_elt (DB_VALUE * result, DB_VALUE * arg[], int const num_args)
   return NO_ERROR;
 }
 
-  /* *INDENT-OFF* */
-  std::vector<std::string> paths;
-  /* *INDENT-ON* */
-      db_json_delete_doc (doc);
-      goto end;
-      const char *path;
-	  db_json_delete_doc (doc);
-	  goto end;
-      const char *path = db_get_string (arg[i]);
-	  db_json_delete_doc (doc);
-	  goto end;
-      paths.push_back (path);
-    }
-      error_code = db_json_contains_path (doc, path, exists);
-      db_json_delete_doc (doc);
-	  goto end;
-
-  std::vector<std::string> paths;
-  if (wild_card_present || starting_paths.empty ())
-      std::vector<std::string> default_start_path (1, "$");
-
-  std::vector<std::string> transformed_paths;
-  for (const auto &path : starting_paths)
-    transformed_paths.emplace_back();
-      error_code = db_json_search_func (*doc, pattern, esc_char, find_all, starting_paths, paths);
-  }
-      error_code = db_json_paths_to_regex (starting_paths, regs);
-
-  std::vector<std::string> paths;
-  error_code = db_json_search_func (*doc, pattern, esc_char, paths, regs, find_all);
-
-  db_json_delete_doc (doc);
-  if (error_code != NO_ERROR)
-      return error_code;
-    }
-
-  if (paths.empty ())
-          matches_path[i] |= (int) std::regex_match (paths[i], reg);
-      if (!wild_card_present || matches_path[0] == 1)
-      int escaped_size;
-      // todo: escape things between quotes
-      error_code = db_string_escape (paths[0].c_str (), paths[0].size (), &escaped, &escaped_size);
-      if (error_code)
-        db_private_free (NULL, escaped);
-        return error_code;
-      }
-          error_code = db_json_get_json_from_str (paths[0].c_str (), result_json, paths[0].length ());
-      db_private_free (NULL, escaped);
-      return result_json ? db_make_json (result, result_json, true) : db_make_null (result);
-  for (size_t i = 0; i < paths.size (); ++i)
-      JSON_DOC *json_array_elem = nullptr;
-
-      char * escaped;
-      int escaped_size;
-      // escape things between quotes
-      error_code = db_string_escape (paths[i].c_str (), paths[i].size (), &escaped, &escaped_size);
-      if (error_code)
-        db_json_delete_doc (result_json);
-        db_private_free (NULL, escaped);
-          continue;
-      error_code = db_json_get_json_from_str (paths[i].c_str (), json_array_elem, paths[i].length ());
-      db_private_free (NULL, escaped);
 #if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * db_string_byte_length
