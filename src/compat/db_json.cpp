@@ -3317,7 +3317,7 @@ db_json_convert_pointer_to_sql_path (const char *pointer_path, std::string &sql_
 	  int quoted_size;
 	  db_string_escape (tokens[i].c_str (), tokens[i].size (), &quoted_token, &quoted_size);
 	  tokens[i].resize (quoted_size);
-	  tokens[i].copy (quoted_token, quoted_size);
+	  tokens[i].assign (quoted_token, quoted_size);
 	  db_private_free (NULL, quoted_token);
 
 	  std::size_t token_pos = 0;
