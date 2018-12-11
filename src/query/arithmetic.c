@@ -6322,12 +6322,14 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
       char * escaped;
       int escaped_size;
       // todo: escape things between quotes
-      error_code = db_string_escape (paths[0].c_str (), paths[0].size (), &escaped, &escaped_size);
+      error_code = db_string_escape(paths[0].c_str(), paths[0].size(), &escaped, &escaped_size);
       if (error_code)
       {
         db_private_free (NULL, escaped);
         return error_code;
       }
+      paths[0] = escaped;
+      db_json_path_unquote_object_keys(paths[0]);      
       error_code = db_json_get_json_from_str (escaped, result_json, escaped_size);
       db_private_free (NULL, escaped);
       if (error_code != NO_ERROR)
@@ -6343,8 +6345,7 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
       JSON_DOC *json_array_elem = nullptr;
 
       char * escaped;
-      int escaped_size;
-      // escape things between quotes
+      int escaped_size;      
       error_code = db_string_escape (paths[i].c_str (), paths[i].size (), &escaped, &escaped_size);
       if (error_code)
       {
@@ -6352,7 +6353,8 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
         db_private_free (NULL, escaped);
         return error_code;
       }
-
+      paths[i] = escaped;
+      db_json_path_unquote_object_keys (paths[i]);
       error_code = db_json_get_json_from_str (escaped, json_array_elem, escaped_size);
       db_private_free (NULL, escaped);
       if (error_code != NO_ERROR)

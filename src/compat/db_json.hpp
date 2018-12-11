@@ -128,6 +128,7 @@ int db_json_validate_doc (JSON_VALIDATOR *validator, JSON_DOC *doc);
 bool db_json_are_validators_equal (JSON_VALIDATOR *val1, JSON_VALIDATOR *val2);
 int db_json_convert_sql_path_to_pointer (const char *sql_path, std::string &json_pointer_out,
     bool allow_wildcards = false);
+void db_json_path_unquote_object_keys (std::string &sql_path);
 
 void db_json_iterator_next (JSON_ITERATOR &json_itr);
 const JSON_DOC *db_json_iterator_get_document (JSON_ITERATOR &json_itr);

@@ -769,6 +769,7 @@ static int db_json_unpack_object_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_
 static int db_json_unpack_array_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_PRIVATE_MEMPOOL &doc_allocator);
 
 static void db_json_add_element_to_array (JSON_DOC *doc, const JSON_VALUE *value);
+static void db_object_key_unescape (const char *object_key, std::size_t object_key_len, std::string &res);
 
 int JSON_DUPLICATE_KEYS_CHECKER::CallBefore (JSON_VALUE &value)
 {
@@ -3421,6 +3422,62 @@ db_json_convert_sql_path_to_pointer (const char *sql_path, std::string &json_poi
     }
 
   return NO_ERROR;
+}
+
+static void
+db_object_key_unescape (const char *object_key, std::size_t object_key_len, std::string &res)
+{
+  for (std::size_t i = 0; i < object_key_len; ++i)
+    {
+      if (object_key[i] == '\\')
+	{
+	  ++i;
+	}
+      res += object_key[i];
+    }
+}
+
+void
+db_json_path_unquote_object_keys (std::string &sql_path)
+{
+  std::vector<std::size_t> quote_idx;
+
+  bool skip_spaces = true;
+  bool unescaped_backslash = false;
+  // ignore first and last quote
+  for (size_t i = 1; i < sql_path.length () - 1; ++i)
+    {
+      if (i > 0 && !unescaped_backslash && sql_path[i] == '"')
+	{
+	  quote_idx.push_back (i);
+	}
+
+      if (sql_path[i] == '\\')
+	{
+	  unescaped_backslash = !unescaped_backslash;
+	}
+      else
+	{
+	  unescaped_backslash = false;
+	}
+    }
+
+  std::string last_token;
+  std::vector<std::string> unquoted_tokens;
+  assert (quote_idx.size () % 2 == 0);
+  for (int i = ((int) quote_idx.size ()) - 2; i >= 0; i -= 2)
+    {
+      std::string unquoted;
+      db_object_key_unescape (& (sql_path.c_str ()[quote_idx[i] + 1]), quote_idx[i + 1] - quote_idx[i] - 1, unquoted);
+
+      std::size_t start = 0;
+      if (db_json_path_is_token_valid_unquoted_object_key (unquoted, start) && start >= unquoted.length ())
+	{
+	  sql_path.replace (sql_path.begin () + quote_idx[i], sql_path.begin () + quote_idx[i + 1] + 1, unquoted.c_str (),
+			    unquoted.length () - 1);
+	}
+    }
+
 }
 
 /*
