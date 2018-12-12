@@ -661,7 +661,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_DEBUG_BESTSPACE "debug_heap_bestspace"
 #define PRM_NAME_DEBUG_LOG_WRITER "debug_log_writer"
 #define PRM_NAME_DEBUG_AUTOCOMMIT "debug_autocommit"
-#define PRM_NAME_DEBUG_REPLICATION_DATA "debug_replicaiton_data"
+#define PRM_NAME_DEBUG_REPLICATION_DATA "debug_replication_data"
 #define PRM_NAME_TRACK_REQUESTS "track_client_requests"
 #define PRM_NAME_LOG_PGBUF_VICTIM_FLUSH "log_pgbuf_victim_flush"
 #define PRM_NAME_LOG_CHKPT_DETAILED "detailed_checkpoint_logging"
