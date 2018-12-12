@@ -565,7 +565,6 @@ fcode_get_uppercase_name (FUNC_TYPE ftype)
     case F_JSON_VALID:
       return "F_JSON_VALID";
     default:
-      assert (false);
       return "***UNKNOWN***";
     }
 }
@@ -710,7 +709,6 @@ fcode_get_lowercase_name (FUNC_TYPE ftype)
     case F_JSON_VALID:
       return "json_valid";
     default:
-      assert (false);
       return "unknown function";
     }
 }
