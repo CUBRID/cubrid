@@ -659,7 +659,6 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_DEBUG_LOG_ARCHIVES "debug_log_archives"
 #define PRM_NAME_DEBUG_ES "debug_external_storage"
 #define PRM_NAME_DEBUG_BESTSPACE "debug_heap_bestspace"
-#define PRM_NAME_DEBUG_LOG_2PC "debug_log_2pc"
 #define PRM_NAME_DEBUG_LOG_WRITER "debug_log_writer"
 #define PRM_NAME_DEBUG_AUTOCOMMIT "debug_autocommit"
 #define PRM_NAME_DEBUG_REPLICATION_DATA "debug_replicaiton_data"
@@ -2202,10 +2201,6 @@ static unsigned int prm_debug_es_flag = 0;
 bool PRM_DEBUG_BESTSPACE = false;
 static bool prm_debug_bestspace_default = false;
 static unsigned int prm_debug_bestspace_flag = 0;
-
-bool PRM_DEBUG_LOG2PC = false;
-static bool prm_debug_log2pc_default = false;
-static unsigned int prm_debug_log2pc_flag = 0;
 
 bool PRM_DEBUG_LOGWR = false;
 static bool prm_debug_logwr_default = false;
@@ -5649,17 +5644,6 @@ static SYSPRM_PARAM prm_Def[] = {
    &prm_debug_bestspace_flag,
    (void *) &prm_debug_bestspace_default,
    (void *) &PRM_DEBUG_BESTSPACE,
-   (void *) NULL, (void *) NULL,
-   (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
-  {PRM_ID_DEBUG_LOG_2PC,
-   PRM_NAME_DEBUG_LOG_2PC,
-   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
-   PRM_BOOLEAN,
-   &prm_debug_log2pc_flag,
-   (void *) &prm_debug_log2pc_default,
-   (void *) &PRM_DEBUG_LOG2PC,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,

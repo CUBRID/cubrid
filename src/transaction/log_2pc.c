@@ -58,8 +58,6 @@
 #define	CSS_ENABLE_INTERRUPTS
 #endif /* !SERVER_MODE */
 
-#define log_2pc_er_log(...) if (prm_get_bool_value (PRM_ID_DEBUG_LOG_2PC)) _er_log_debug (ARG_FILE_LINE, __VA_ARGS__)
-
 /* Variables */
 struct log_2pc_global_data
 {
@@ -2136,8 +2134,8 @@ log_2pc_recovery_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * log_
 	{
 	  if (ack_list[i] > tdes->coord->num_particps)
 	    {
-	      log_2pc_er_log ("log_2pc_recovery_analysis_info:" " SYSTEM ERROR for log located at %lld|%d",
-			      log_lsa->pageid, log_lsa->offset);
+	      er_log_debug (ARG_FILE_LINE, "log_2pc_recovery_analysis_info:" " SYSTEM ERROR for log located at %lld|%d",
+			    log_lsa->pageid, log_lsa->offset);
 	    }
 	  else
 	    {
