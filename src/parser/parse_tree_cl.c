@@ -17949,6 +17949,7 @@ pt_is_const_expr_node (PT_NODE * node)
 	case PT_INET_NTOA:
 	case PT_CHARSET:
 	case PT_COLLATION:
+	  return pt_is_const_expr_node (node->info.expr.arg1);
 	case PT_COERCIBILITY:
 	  /* coercibility is always folded to constant */
 	  assert (false);
