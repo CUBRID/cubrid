@@ -3013,6 +3013,8 @@ db_json_path_is_token_valid_unquoted_object_key (std::string &path, std::size_t 
     }
   std::size_t i = token_begin;
 
+  // we normalize object_keys by quoting them - e.g. $.objectkey we represent as $."objectkey"
+  path.insert (i++, "\"");
   // todo: this needs change. Besides alphanumerics, object keys can be valid ECMAScript identifiers as defined in
   // http://www.ecma-international.org/ecma-262/5.1/#sec-7.6
   if (i < path.length () && !std::isalpha (static_cast<unsigned char> (path[i])))
@@ -3103,10 +3105,6 @@ db_json_sql_path_is_valid (std::string &sql_path, bool allow_wildcards)
 	      break;
 	    default:
 	      // unquoted object_keys
-	      // we normalize object_keys by quoting them - e.g. $."objectkey" will be representant for $.objectkey
-	      sql_path.insert (i++, "\"");
-	      // finishing " is appended in the following function call
-	      // todo: rename functions to express purpose
 	      if (!db_json_path_is_token_valid_unquoted_object_key (sql_path, i))
 		{
 		  return false;
@@ -3437,13 +3435,13 @@ db_json_path_unquote_object_keys (std::string &sql_path)
       if (tokens[i][0] == '"')
 	{
 	  res += ".";
-	  std::string unquoted = tokens[i].substr (1, tokens[i].size () - 2);
+	  std::string unquoted = tokens[i].substr (1, tokens[i].length () - 2);
 	  std::size_t start = 0;
 
 	  if (db_json_path_is_token_valid_unquoted_object_key (unquoted, start) && start >= unquoted.length ())
 	    {
-	      res.append (unquoted, 0, unquoted.size () -
-			  1 /* quote appended at the end by db_json_path_is_token_valid_unquoted_object_key */);
+	      res.append (unquoted, 1, unquoted.size () -
+			  2 /* quote appended at the end by db_json_path_is_token_valid_unquoted_object_key */);
 	    }
 	  else
 	    {

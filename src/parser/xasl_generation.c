@@ -4643,18 +4643,15 @@ pt_make_json_table_spec_node_internal (PARSER_CONTEXT * parser, PT_JSON_TABLE_NO
   // after set the id, increment
   result.m_id = current_id++;
 
-  // by default expand type is none
-  result.m_expand_type = json_table_expand_type::JSON_TABLE_NO_EXPAND;
-
-  // set the expand type
-
+  // nodes that have wildcard in their paths are the only ones that are iterable
+  result.m_is_iterable_node = false;
   if (result.m_path)
     {
       for (int i = 0; result.m_path[i] != '\0'; ++i)
 	{
 	  if (result.m_path[i] == '*')
 	    {
-	      result.m_expand_type = json_table_expand_type::JSON_TABLE_ARRAY_EXPAND;
+	      result.m_is_iterable_node = true;
 	      break;
 	    }
 	}

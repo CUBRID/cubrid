@@ -81,7 +81,7 @@ namespace cubxasl
       size_t m_nested_nodes_size;
       size_t m_id;                            // identifier for each node
       JSON_ITERATOR *m_iterator;
-      json_table_expand_type m_expand_type;
+      bool m_is_iterable_node;
 
       node (void);
 

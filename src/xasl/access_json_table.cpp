@@ -249,7 +249,7 @@ namespace cubxasl
       m_nested_nodes_size = 0;
       m_id = 0;
       m_iterator = NULL;
-      m_expand_type = json_table_expand_type::JSON_TABLE_NO_EXPAND;
+      m_is_iterable_node = false;
     }
 
     void
@@ -301,7 +301,7 @@ namespace cubxasl
     void
     node::init_iterator ()
     {
-      if (m_expand_type == json_table_expand_type::JSON_TABLE_ARRAY_EXPAND)
+      if (m_is_iterable_node)
 	{
 	  m_iterator = db_json_create_iterator (DB_JSON_TYPE::DB_JSON_ARRAY);
 	}

@@ -6279,8 +6279,6 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
   for (int i = 4; i < num_args; ++i)
     {
       std::string s (db_get_string (args[i]));
-      // TODO: improve paths validation
-      // TODO: only path validation is available?
       starting_paths.emplace_back (s);
     }
 
