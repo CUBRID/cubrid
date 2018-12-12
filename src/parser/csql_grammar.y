@@ -1260,31 +1260,6 @@ int g_original_buffer_len;
 %token ISOLATION
 %token JOIN
 %token JSON
-%token JSON_ARRAY_LEX
-%token JSON_ARRAY_APPEND
-%token JSON_ARRAY_INSERT
-%token JSON_CONTAINS
-%token JSON_CONTAINS_PATH
-%token JSON_DEPTH
-%token JSON_EXTRACT
-%token JSON_GET_ALL_PATHS
-%token JSON_INSERT
-%token JSON_KEYS
-%token JSON_LENGTH
-%token JSON_MERGE
-%token JSON_MERGE_PATCH
-%token JSON_MERGE_PRESERVE
-%token JSON_OBJECT_LEX
-%token JSON_PRETTY
-%token JSON_QUOTE
-%token JSON_REMOVE
-%token JSON_REPLACE
-%token JSON_SEARCH
-%token JSON_SET
-%token JSON_TABLE
-%token JSON_TYPE
-%token JSON_UNQUOTE
-%token JSON_VALID
 %token KEY
 %token KEYLIMIT
 %token LANGUAGE
@@ -1581,7 +1556,32 @@ int g_original_buffer_len;
 %token <cptr> KILL
 %token <cptr> JAVA
 %token <cptr> JSON_ARRAYAGG
+%token <cptr> JSON_ARRAY_LEX
+%token <cptr> JSON_ARRAY_APPEND
+%token <cptr> JSON_ARRAY_INSERT
+%token <cptr> JSON_CONTAINS
+%token <cptr> JSON_CONTAINS_PATH
+%token <cptr> JSON_DEPTH
+%token <cptr> JSON_EXTRACT
+%token <cptr> JSON_GET_ALL_PATHS
+%token <cptr> JSON_INSERT
+%token <cptr> JSON_KEYS
+%token <cptr> JSON_LENGTH
+%token <cptr> JSON_MERGE
+%token <cptr> JSON_MERGE_PATCH
+%token <cptr> JSON_MERGE_PRESERVE
 %token <cptr> JSON_OBJECTAGG
+%token <cptr> JSON_OBJECT_LEX
+%token <cptr> JSON_PRETTY
+%token <cptr> JSON_QUOTE
+%token <cptr> JSON_REMOVE
+%token <cptr> JSON_REPLACE
+%token <cptr> JSON_SEARCH
+%token <cptr> JSON_SET
+%token <cptr> JSON_TABLE
+%token <cptr> JSON_TYPE
+%token <cptr> JSON_UNQUOTE
+%token <cptr> JSON_VALID
 %token <cptr> JOB
 %token <cptr> LAG
 %token <cptr> LAST_VALUE
@@ -21864,6 +21864,7 @@ identifier
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+
 	| JOB
 		{{
 
@@ -21875,6 +21876,276 @@ identifier
 
 		DBG_PRINT}}
 
+	| JSON_ARRAYAGG
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| JSON_ARRAY_LEX
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| JSON_ARRAY_APPEND
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| JSON_ARRAY_INSERT
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| JSON_CONTAINS
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| JSON_CONTAINS_PATH
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| JSON_DEPTH
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| JSON_EXTRACT
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| JSON_GET_ALL_PATHS
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| JSON_INSERT
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| JSON_KEYS
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| JSON_LENGTH
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| JSON_MERGE
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| JSON_MERGE_PATCH
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| JSON_MERGE_PRESERVE
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| JSON_OBJECTAGG
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| JSON_OBJECT_LEX
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| JSON_PRETTY
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| JSON_QUOTE
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| JSON_REMOVE
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| JSON_REPLACE
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| JSON_SEARCH
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| JSON_SET
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| JSON_TABLE
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| JSON_TYPE
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| JSON_UNQUOTE
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| JSON_VALID
+		{{
+
+			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+			if (p)
+			  p->info.name.original = $1;
+			$$ = p;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
 	| KEYS
 		{{
 
@@ -22665,26 +22936,6 @@ identifier
 
 		DBG_PRINT}}
 	| WEEK
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| JSON_ARRAYAGG
-		{{
-
-			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-			if (p)
-			  p->info.name.original = $1;
-			$$ = p;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| JSON_OBJECTAGG
 		{{
 
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);

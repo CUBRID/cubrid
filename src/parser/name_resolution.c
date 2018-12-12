@@ -7023,8 +7023,7 @@ pt_resolve_using_index (PARSER_CONTEXT * parser, PT_NODE * index, PT_NODE * from
 		  return NULL;
 		}
 	      cons = classobj_find_class_index (class_, index->info.name.original);
-	      if (cons != NULL
-		  && (cons->index_status == SM_NORMAL_INDEX || cons->index_status == SM_ONLINE_INDEX_BUILDING_DONE))
+	      if (cons != NULL && (cons->index_status == SM_NORMAL_INDEX))
 		{
 		  /* found the class; resolve index name */
 		  found++;
