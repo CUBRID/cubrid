@@ -4863,7 +4863,7 @@ xts_process (char *ptr, const json_table_node & jtn)
 
   ptr = or_pack_int (ptr, (int) jtn.m_id);
 
-  ptr = or_pack_int (ptr, (int) jtn.m_expand_type);
+  ptr = or_pack_int (ptr, (int) jtn.m_is_iterable_node);
 
   xts_debug_check (jtn, start_ptr, ptr);
 

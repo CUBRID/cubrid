@@ -58,6 +58,7 @@
 #include "query_dump.h"
 #include "parser_support.h"
 #include "compile_context.h"
+#include "db_json.hpp"
 
 #if defined(WINDOWS)
 #include "wintcp.h"
@@ -4643,23 +4644,11 @@ pt_make_json_table_spec_node_internal (PARSER_CONTEXT * parser, PT_JSON_TABLE_NO
   // after set the id, increment
   result.m_id = current_id++;
 
-  // by default expand type is none
-  result.m_expand_type = json_table_expand_type::JSON_TABLE_NO_EXPAND;
-
-  // set the expand type
-  if (json_table_node::str_ends_with (result.m_path, "[*]"))
+  // nodes that have wildcard in their paths are the only ones that are iterable
+  result.m_is_iterable_node = false;
+  if (result.m_path)
     {
-      result.m_expand_type = json_table_expand_type::JSON_TABLE_ARRAY_EXPAND;
-    }
-  else if (json_table_node::str_ends_with (result.m_path, ".*"))
-    {
-      result.m_expand_type = json_table_expand_type::JSON_TABLE_OBJECT_EXPAND;
-    }
-
-  if (result.check_need_expand ())
-    {
-      // trim the path to extract directly from this new path
-      result.set_parent_path ();
+      result.m_is_iterable_node = db_json_path_contains_wildcard (result.m_path);
     }
 
   // create columns

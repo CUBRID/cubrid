@@ -45,6 +45,7 @@
 #include "db_date.h"
 #include "db_json.hpp"
 #include "dbtype.h"
+#include "string_opfunc.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -5105,7 +5106,9 @@ db_evaluate_json_contains (DB_VALUE * result, DB_VALUE * const *arg, int const n
       const char *raw_path = db_get_string (path);
       JSON_DOC *extracted_doc = NULL;
 
-      error_code = db_json_extract_document_from_path (source_doc, raw_path, extracted_doc);
+      /* *INDENT-OFF* */
+      error_code = db_json_extract_document_from_path (source_doc, std::vector<std::string> (1, raw_path), extracted_doc);
+      /* *INDENT-ON* */
       db_json_delete_doc (source_doc);
       if (error_code != NO_ERROR)
 	{
@@ -5242,7 +5245,9 @@ db_evaluate_json_length (DB_VALUE * result, DB_VALUE * const *arg, int const num
       const char *raw_path = db_get_string (path);
       JSON_DOC *extracted_doc = NULL;
 
-      error_code = db_json_extract_document_from_path (source_doc, raw_path, extracted_doc);
+      /* *INDENT-OFF* */
+      error_code = db_json_extract_document_from_path (source_doc, std::vector<std::string> (1, raw_path), extracted_doc, false);
+      /* *INDENT-ON* */
       db_json_delete_doc (source_doc);
       if (error_code != NO_ERROR)
 	{
@@ -5532,88 +5537,42 @@ db_evaluate_json_extract (DB_VALUE * result, DB_VALUE * const *args, int num_arg
       ASSERT_ERROR ();
       return error_code;
     }
-
-  JSON_DOC *result_array = NULL;	// result JSON document; it will be converted to array later
-  JSON_DOC *extracted_doc = NULL;	// document used for extracting each value
-  const DB_VALUE *path_value;
-  const char *path_str = NULL;
-
-  TP_DOMAIN_STATUS domain_status = DOMAIN_COMPATIBLE;
-
+  JSON_DOC *result_doc = NULL;
+  /* *INDENT-OFF* */
+  std::vector<std::string> paths;
+  /* *INDENT-ON* */
   for (int path_idx = 1; path_idx < num_args; path_idx++)
     {
-      path_value = args[path_idx];
-
-      if (db_value_is_null (path_value))
-	{
-	  // free docs
-	  db_json_delete_doc (result_array);
-	  db_json_delete_doc (extracted_doc);
-	  db_json_delete_doc (source_doc);
-	  return NO_ERROR;
-	}
-
-      // paths can only be strings
+      const DB_VALUE *path_value = args[path_idx];
+      const char *path_str = NULL;
       error_code = db_value_to_json_path (path_value, F_JSON_EXTRACT, &path_str);
-      if (error_code != NO_ERROR)
+      if (error_code != NO_ERROR || path_str == NULL)
 	{
-	  // free docs
-	  db_json_delete_doc (result_array);
-	  db_json_delete_doc (extracted_doc);
 	  db_json_delete_doc (source_doc);
 	  return error_code;
 	}
 
-      error_code = db_json_extract_document_from_path (source_doc, path_str, extracted_doc);
-
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  // free docs
-	  db_json_delete_doc (result_array);
-	  db_json_delete_doc (extracted_doc);
-	  db_json_delete_doc (source_doc);
-	  return error_code;
-	}
-
-      if (extracted_doc != NULL)
-	{
-	  if (num_args == 2)
-	    {
-	      // result is extracted document
-	      assert (result_array == NULL);
-	      db_json_delete_doc (source_doc);
-	      db_make_json (result, extracted_doc, true);
-	      return NO_ERROR;
-	    }
-	  else
-	    {
-	      // result is an array with all extracted documents.
-	      if (result_array == NULL)
-		{
-		  result_array = db_json_allocate_doc ();
-		}
-	      db_json_add_element_to_array (result_array, extracted_doc);
-	    }
-	}
-      else
-	{
-	  // continue
-	}
+      paths.push_back (path_str);
+    }
+  error_code = db_json_extract_document_from_path (source_doc, paths, result_doc);
+  if (error_code != NO_ERROR)
+    {
+      db_json_delete_doc (source_doc);
+      ASSERT_ERROR ();
+      return error_code;
     }
 
   // free temporary resources
-  db_json_delete_doc (extracted_doc);
   db_json_delete_doc (source_doc);
 
-  if (db_json_get_type (result_array) == DB_JSON_NULL)
+  if (db_json_get_type (result_doc) == DB_JSON_NULL)
     {
       // let null result
-      db_json_delete_doc (result_array);
+      db_json_delete_doc (result_doc);
     }
   else
     {
-      db_make_json (result, result_array, true);
+      db_make_json (result, result_doc, true);
     }
   return NO_ERROR;
 }
@@ -6145,6 +6104,9 @@ db_evaluate_json_contains_path (DB_VALUE * result, DB_VALUE * const *arg, const 
   bool exists = false;
   int error_code = NO_ERROR;
   JSON_DOC *doc = NULL;
+  /* *INDENT-OFF* */
+  std::vector<std::string> paths;
+  /* *INDENT-ON* */
   db_make_null (result);
 
   if (DB_IS_NULL (arg[0]) || DB_IS_NULL (arg[1]))
@@ -6164,49 +6126,35 @@ db_evaluate_json_contains_path (DB_VALUE * result, DB_VALUE * const *arg, const 
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
       error_code = ER_QSTR_INVALID_DATA_TYPE;
-      goto end;
+      db_json_delete_doc (doc);
+      return error_code;
     }
 
   for (int i = 2; i < num_args; ++i)
     {
+      const char *path;
       if (DB_IS_NULL (arg[i]))
 	{
-	  goto end;
+	  db_json_delete_doc (doc);
+	  return error_code;
 	}
-    }
-
-  for (int i = 2; i < num_args; ++i)
-    {
-      const char *path = db_get_string (arg[i]);
-
+      path = db_get_string (arg[i]);
       if (path == NULL)
 	{
-	  goto end;
+	  db_json_delete_doc (doc);
+	  return error_code;
 	}
-
-      error_code = db_json_contains_path (doc, path, exists);
-      if (error_code != NO_ERROR)
-	{
-	  goto end;
-	}
-
-      if (find_all && !exists)
-	{
-	  db_make_int (result, (int) false);
-	  goto end;
-	}
-      if (!find_all && exists)
-	{
-	  db_make_int (result, (int) true);
-	  goto end;
-	}
+      paths.push_back (path);
     }
 
-  // if we have not returned early last search is decisive
-  db_make_int (result, (int) exists);
+  error_code = db_json_contains_path (doc, paths, find_all, exists);
+  if (error_code != NO_ERROR)
+    {
+      db_json_delete_doc (doc);
+      return error_code;
+    }
 
-end:
-  db_json_delete_doc (doc);
+  db_make_int (result, (int) exists);
   return error_code;
 }
 
@@ -6345,85 +6293,91 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
   for (int i = 4; i < num_args; ++i)
     {
       std::string s (db_get_string (args[i]));
-      // todo: improve paths validation
-
-      if (s.find ("*") != std::string::npos)
-	{
-	  wild_card_present = true;
-	  // if we check against wild_cards only at the end we cannot return early when finding a json_value that matches
-	  find_all = true;
-	}
-
       starting_paths.emplace_back (s);
     }
 
+  std::vector<std::regex> regs;
+  if (starting_paths.empty ())
+    {
+      starting_paths.push_back ("$");
+    }
+
+  std::vector<std::string> transformed_paths;
+  for (const auto &path : starting_paths)
+    {
+      transformed_paths.emplace_back();
+      error_code = db_json_convert_pointer_to_sql_path (path.c_str (), transformed_paths.back ());
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+    }
+
+  error_code = db_json_paths_to_regex (transformed_paths, regs);
+  if (error_code != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return error_code;
+    }
+
   std::vector<std::string> paths;
-  if (wild_card_present || starting_paths.empty ())
-    {
-      std::vector<std::string> default_start_path (1, "$");
-      error_code = db_json_search_func (*doc, pattern, esc_char, find_all, default_start_path, paths);
-    }
-  else
-    {
-      error_code = db_json_search_func (*doc, pattern, esc_char, find_all, starting_paths, paths);
-    }
+  error_code = db_json_search_func (*doc, pattern, esc_char, paths, regs, find_all);
+
   db_json_delete_doc (doc);
   if (error_code != NO_ERROR)
     {
       return error_code;
     }
 
-  std::vector<int> matches_path (paths.size (), 0);
-
-  std::vector<std::regex> regs;
-  if (wild_card_present)
+  if (paths.empty ())
     {
-      error_code = db_json_paths_to_regex (starting_paths, regs);
-      if (error_code != NO_ERROR)
-        {
-          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
-          return error_code;
-        }
-    }
-
-  for (size_t i = 0; i < paths.size (); ++i)
-    {
-      for (auto &reg : regs)
-        {
-          matches_path[i] |= (int) std::regex_match (paths[i], reg);
-        }
+      return db_make_null (result);
     }
 
   JSON_DOC *result_json = nullptr;
   if (paths.size () == 1)
     {
-      if (!wild_card_present || matches_path[0] == 1)
-        {
-          error_code = db_json_get_json_from_str (paths[0].c_str (), result_json, paths[0].length ());
-          if (error_code != NO_ERROR)
-            {
-              return error_code;
-            }
-        }
-      return result_json ? db_make_json (result, result_json, true) : db_make_null (result);
+      char *escaped;
+      int escaped_size;
+
+      db_json_path_unquote_object_keys (paths[0]);
+      error_code = db_string_escape (paths[0].c_str(), paths[0].size (), &escaped, &escaped_size);
+      if (error_code)
+	{
+	  db_private_free (NULL, escaped);
+	  return error_code;
+	}
+      error_code = db_json_get_json_from_str (escaped, result_json, escaped_size);
+      db_private_free (NULL, escaped);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+      return db_make_json (result, result_json, true);
     }
 
   result_json = db_json_allocate_doc ();
-  for (size_t i = 0; i < paths.size (); ++i)
+  for (std::size_t i = 0; i < paths.size (); ++i)
     {
-      if (wild_card_present && matches_path[i] == 0)
-        {
-          continue;
-        }
-
       JSON_DOC *json_array_elem = nullptr;
+      char *escaped;
+      int escaped_size;
 
-      error_code = db_json_get_json_from_str (paths[i].c_str (), json_array_elem, paths[i].length ());
+      db_json_path_unquote_object_keys (paths[i]);
+      error_code = db_string_escape (paths[i].c_str (), paths[i].size (), &escaped, &escaped_size);
+      if (error_code)
+	{
+	  db_json_delete_doc (result_json);
+	  db_private_free (NULL, escaped);
+	  return error_code;
+	}
+      error_code = db_json_get_json_from_str (escaped, json_array_elem, escaped_size);
+      db_private_free (NULL, escaped);
       if (error_code != NO_ERROR)
-        {
-          db_json_delete_doc (result_json);
-          return error_code;
-        }
+	{
+	  db_json_delete_doc (result_json);
+	  return error_code;
+	}
 
       db_json_add_element_to_array (result_json, json_array_elem);
 
