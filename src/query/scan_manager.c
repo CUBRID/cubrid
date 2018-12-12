@@ -3853,7 +3853,7 @@ scan_open_json_table_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, int group
   DB_TYPE single_node_type = DB_TYPE_NULL;
 
   /* scan type is JSON_TABLE SCAN */
-  scan_id->type = S_JSON_TABLE_SCAN;
+  assert (scan_id->type == S_JSON_TABLE_SCAN);
 
   /* initialize SCAN_ID structure */
   /* mvcc_select_lock_needed = false, fixed = true */
