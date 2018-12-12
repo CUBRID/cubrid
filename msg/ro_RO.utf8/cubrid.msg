@@ -1310,7 +1310,7 @@ $ LOADDB
 1241 XASL tree needs recompile.
 1242 Cannot create partition on a class that is part of a hierarchy chain.
 
-1243 Last Error
+1243 Ultima eroare
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Eroare în subsistemul de erori (linia %1$d):

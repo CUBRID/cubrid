@@ -1310,7 +1310,7 @@ $ LOADDB
 1241 XASL tree needs recompile.
 1242 Cannot create partition on a class that is part of a hierarchy chain.
 
-1243 Last Error
+1243 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):

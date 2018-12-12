@@ -1310,7 +1310,7 @@ $ LOADDB
 1241 XASL tree needs recompile.
 1242 Cannot create partition on a class that is part of a hierarchy chain.
 
-1243 Last Error
+1243 Son Hata
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Alt Hata içinde hata (satır %1$d):
