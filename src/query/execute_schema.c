@@ -3720,6 +3720,16 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
       goto end_create;
     }
 
+  /* If the current class is part of a hierarchy and the class is
+   * not partitioned, end this as we do not allow partitions on hierarchies.
+   */
+  if (smclass->partition == NULL && (smclass->users != NULL || smclass->inheritance != NULL))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_NO_PARTITION_ON_HIERARCHIES, 0);
+      error = ER_SM_NO_PARTITION_ON_HIERARCHIES;
+      goto end_create;
+    }
+
   reuse_oid = (smclass->flags & SM_CLASSFLAG_REUSE_OID) ? true : false;
 
   parttemp->info.create_entity.entity_type = PT_CLASS;

@@ -1308,8 +1308,9 @@ $ LOADDB
 1239 Cannot coerce value from JSON "%1$s" at path "%2$s" to JSON_TABLE column "%3$s" of domain "%4$s".
 1240 Online index is not allowed on classes that are part of a hierarchy chain.
 1241 XASL tree needs recompile.
+1242 Cannot create partition on a class that is part of a hierarchy chain.
 
-1242 Ultimo errore
+1243 Ultimo errore
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Errore nel sottosistema di errore (linea %1$d):

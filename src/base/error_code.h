@@ -1590,7 +1590,10 @@
 
 #define ER_QPROC_XASLNODE_RECOMPILE_REQUESTED       -1241
 
-#define ER_LAST_ERROR                               -1242
+#define ER_SM_NO_PARTITION_ON_HIERARCHIES           -1242
+
+
+#define ER_LAST_ERROR                               -1243
 
 /*
  * CAUTION!
