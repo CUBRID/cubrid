@@ -734,7 +734,8 @@ static std::vector<std::string> db_json_split_path_by_delimiters (const std::str
 static std::size_t skip_whitespaces (const std::string &path, std::size_t token_begin);
 static bool db_json_sql_path_is_valid (std::string &sql_path, bool allow_wildcards);
 static bool db_json_path_is_token_valid_quoted_object_key (const std::string &path, std::size_t &token_begin);
-static bool db_json_path_is_token_valid_unquoted_object_key (std::string &path, std::size_t &token_begin);
+static bool db_json_path_quote_and_validate_unquoted_object_key (std::string &path, std::size_t &token_begin);
+static bool db_json_path_is_token_valid_unquoted_object_key (const std::string &path, std::size_t &token_begin);
 static void json_path_strip_whitespaces (std::string &sql_path);
 static int db_json_er_set_path_does_not_exist (const char *file_name, const int line_no, const std::string &path,
     const JSON_DOC *doc);
@@ -2998,14 +2999,38 @@ db_json_path_is_token_valid_quoted_object_key (const std::string &path, std::siz
 }
 
 /*
+ * db_json_path_is_token_valid_unquoted_object_key () - Validate and quote an object_key
+ *
+ * return               : validation result
+ * path (in/out)        : path to be checked
+ * token_begin (in/out) : is replaced with beginning of the next token or path.length ()
+ */
+static bool
+db_json_path_quote_and_validate_unquoted_object_key (std::string &path, std::size_t &token_begin)
+{
+  std::size_t i = token_begin;
+  bool validation_result = db_json_path_is_token_valid_unquoted_object_key (path, i);
+  if (validation_result)
+    {
+      // we normalize object_keys by quoting them - e.g. $.objectkey we represent as $."objectkey"
+      path.insert (token_begin, "\"");
+      path.insert (i + 1, "\"");
+
+      token_begin = skip_whitespaces (path, i + 2 /* we inserted 2 quotation marks */);
+    }
+  return validation_result;
+}
+
+/*
  * db_json_path_is_token_valid_unquoted_object_key () - Check if an unquoted object_key is valid
  *
  * return                  : true/false
  * path (in)               : path to be checked
- * token_begin (in/out)    : beginning offset of the token, is replaced with beginning of the next token or path.length ()
+ * token_begin (in/out)    : beginning offset of the token, is replaced with first char's position
+ *                           outside of the current valid token
  */
 static bool
-db_json_path_is_token_valid_unquoted_object_key (std::string &path, std::size_t &token_begin)
+db_json_path_is_token_valid_unquoted_object_key (const std::string &path, std::size_t &token_begin)
 {
   if (path == "")
     {
@@ -3013,8 +3038,6 @@ db_json_path_is_token_valid_unquoted_object_key (std::string &path, std::size_t 
     }
   std::size_t i = token_begin;
 
-  // we normalize object_keys by quoting them - e.g. $.objectkey we represent as $."objectkey"
-  path.insert (i++, "\"");
   // todo: this needs change. Besides alphanumerics, object keys can be valid ECMAScript identifiers as defined in
   // http://www.ecma-international.org/ecma-262/5.1/#sec-7.6
   if (i < path.length () && !std::isalpha (static_cast<unsigned char> (path[i])))
@@ -3025,10 +3048,8 @@ db_json_path_is_token_valid_unquoted_object_key (std::string &path, std::size_t 
   ++i;
   for (; i < path.length () && std::isalnum (static_cast<unsigned char> (path[i])); ++i);
 
-  // append to object key before space stripping (at the end of the calling function)
-  path.insert (i++, "\"");
+  token_begin = i;
 
-  token_begin = skip_whitespaces (path, i);
   return true;
 }
 
@@ -3105,7 +3126,7 @@ db_json_sql_path_is_valid (std::string &sql_path, bool allow_wildcards)
 	      break;
 	    default:
 	      // unquoted object_keys
-	      if (!db_json_path_is_token_valid_unquoted_object_key (sql_path, i))
+	      if (!db_json_path_quote_and_validate_unquoted_object_key (sql_path, i))
 		{
 		  return false;
 		}
@@ -3421,6 +3442,11 @@ db_json_convert_sql_path_to_pointer (const char *sql_path, std::string &json_poi
   return NO_ERROR;
 }
 
+/*
+ * db_json_path_unquote_object_keys () - Unquote, when possible, object_keys of the json_path
+ *
+ * sql_path (in/out)       : path
+ */
 void
 db_json_path_unquote_object_keys (std::string &sql_path)
 {
@@ -3440,8 +3466,7 @@ db_json_path_unquote_object_keys (std::string &sql_path)
 
 	  if (db_json_path_is_token_valid_unquoted_object_key (unquoted, start) && start >= unquoted.length ())
 	    {
-	      res.append (unquoted, 1, unquoted.size () -
-			  2 /* quote appended at the end by db_json_path_is_token_valid_unquoted_object_key */);
+	      res.append (unquoted);
 	    }
 	  else
 	    {
@@ -3463,7 +3488,7 @@ db_json_path_unquote_object_keys (std::string &sql_path)
  *
  * obj (in)                : current object
  * sql_path (in)           : the path for the current object
- * paths (in)              : vector where we will store all the paths
+ * paths (in/out)          : vector where we will store all the paths
  */
 static void
 db_json_get_paths_helper (const JSON_VALUE &obj, const std::string &sql_path, std::vector<std::string> &paths)

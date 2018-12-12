@@ -1964,7 +1964,7 @@ db_string_quote (const DB_VALUE * str, DB_VALUE * res)
 
       db_make_null (res);
       DB_TYPE result_type = DB_TYPE_VARCHAR;
-      qstr_make_typed_string (result_type, res, TP_FLOATING_PRECISION_VALUE, escaped_string, escaped_string_size,
+      qstr_make_typed_string (result_type, res, TP_FLOATING_PRECISION_VALUE, escaped_string, escaped_string_size - 1,
 			      db_get_string_codeset (str), db_get_string_collation (str));
 
       res->need_clear = true;

@@ -4647,12 +4647,22 @@ pt_make_json_table_spec_node_internal (PARSER_CONTEXT * parser, PT_JSON_TABLE_NO
   result.m_is_iterable_node = false;
   if (result.m_path)
     {
+      bool unescaped_backslash = false;
       for (int i = 0; result.m_path[i] != '\0'; ++i)
 	{
 	  if (result.m_path[i] == '*')
 	    {
 	      result.m_is_iterable_node = true;
 	      break;
+	    }
+
+	  if (result.m_path[i] == '\\')
+	    {
+	      unescaped_backslash = !unescaped_backslash;
+	    }
+	  else
+	    {
+	      unescaped_backslash = false;
 	    }
 	}
     }
