@@ -5187,13 +5187,27 @@ db_evaluate_json_valid (DB_VALUE * result, DB_VALUE * const *arg, int const num_
       assert (false);
       return ER_FAILED;
     }
-  DB_VALUE *json = arg[0];
-  if (DB_IS_NULL (json))
+  DB_VALUE *value = arg[0];
+  if (DB_IS_NULL (value))
     {
       return NO_ERROR;
     }
-  bool valid = db_json_is_valid (db_get_string (json));
-  return db_make_int (result, valid ? 1 : 0);
+  DB_TYPE type = db_value_domain_type (value);
+  bool valid;
+  if (type == DB_TYPE_JSON)
+    {
+      valid = true;
+    }
+  else if (TP_IS_CHAR_TYPE (type))
+    {
+      valid = db_json_is_valid (db_get_string (value));
+    }
+  else
+    {
+      valid = false;
+    }
+  db_make_int (result, valid ? 1 : 0);
+  return NO_ERROR;
 }
 
 int

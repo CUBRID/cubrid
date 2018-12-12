@@ -42,6 +42,11 @@ func_all_signatures sig_ret_int_no_arg =
   {PT_TYPE_INTEGER, {}, {}},
 };
 
+func_all_signatures sig_ret_int_arg_any =
+{
+  {PT_TYPE_INTEGER, {PT_GENERIC_TYPE_ANY}, {}},
+};
+
 func_all_signatures sig_ret_int_arg_doc =
 {
   {PT_TYPE_INTEGER, {PT_GENERIC_TYPE_JSON_DOC}, {}},
@@ -431,7 +436,7 @@ get_signatures (FUNC_TYPE ft)
     case F_JSON_UNQUOTE:
       return &sig_ret_string_arg_jdoc;
     case F_JSON_VALID:
-      return &sig_ret_int_arg_str;
+      return &sig_ret_int_arg_any;
     case PT_FIRST_VALUE:
     case PT_LAST_VALUE:
       return &sig_ret_type0_arg_scalar;
