@@ -6279,10 +6279,10 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
   for (int i = 4; i < num_args; ++i)
     {
       std::string s (db_get_string (args[i]));
-      // todo: improve paths validation
-      // todo: only path validation is available?
+      // TODO: improve paths validation
+      // TODO: only path validation is available?
       starting_paths.emplace_back (s);
-    }  
+    }
 
   std::vector<std::regex> regs;
   if (starting_paths.empty ())
@@ -6292,14 +6292,14 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
 
   std::vector<std::string> transformed_paths;
   for (const auto &path : starting_paths)
-  {
-    transformed_paths.emplace_back();
-    error_code = db_json_convert_pointer_to_sql_path (path.c_str (), transformed_paths.back ());
-    if (error_code != NO_ERROR)
     {
-      return error_code;
+      transformed_paths.emplace_back();
+      error_code = db_json_convert_pointer_to_sql_path (path.c_str (), transformed_paths.back ());
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
     }
-  }
 
   error_code = db_json_paths_to_regex (transformed_paths, regs);
   if (error_code != NO_ERROR)
@@ -6327,13 +6327,14 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
     {
       char *escaped;
       int escaped_size;
+
       db_json_path_unquote_object_keys (paths[0]);
       error_code = db_string_escape (paths[0].c_str(), paths[0].size (), &escaped, &escaped_size);
       if (error_code)
-      {
-        db_private_free (NULL, escaped);
-        return error_code;
-      }
+	{
+	  db_private_free (NULL, escaped);
+	  return error_code;
+	}
       error_code = db_json_get_json_from_str (escaped, result_json, escaped_size);
       db_private_free (NULL, escaped);
       if (error_code != NO_ERROR)
@@ -6347,17 +6348,17 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
   for (std::size_t i = 0; i < paths.size (); ++i)
     {
       JSON_DOC *json_array_elem = nullptr;
-
-      char * escaped;
+      char *escaped;
       int escaped_size;
+
       db_json_path_unquote_object_keys (paths[i]);
       error_code = db_string_escape (paths[i].c_str (), paths[i].size (), &escaped, &escaped_size);
       if (error_code)
-      {
-        db_json_delete_doc (result_json);
-        db_private_free (NULL, escaped);
-        return error_code;
-      }
+	{
+	  db_json_delete_doc (result_json);
+	  db_private_free (NULL, escaped);
+	  return error_code;
+	}
       error_code = db_json_get_json_from_str (escaped, json_array_elem, escaped_size);
       db_private_free (NULL, escaped);
       if (error_code != NO_ERROR)

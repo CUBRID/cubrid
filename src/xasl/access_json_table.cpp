@@ -299,7 +299,7 @@ namespace cubxasl
     }
 
     void
-    node::init_iterator()
+    node::init_iterator ()
     {
       if (m_expand_type == json_table_expand_type::JSON_TABLE_ARRAY_EXPAND)
 	{
