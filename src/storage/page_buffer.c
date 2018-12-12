@@ -3525,7 +3525,7 @@ int
 pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa, const LOG_LSA * prev_chkpt_redo_lsa,
 			LOG_LSA * smallest_lsa, int *flushed_page_cnt)
 {
-#define detailed_er_log(...) if (detailed_logging) er_log_debug (ARG_FILE_LINE, __VA_ARGS__)
+#define detailed_er_log(...) if (detailed_logging) _er_log_debug (ARG_FILE_LINE, __VA_ARGS__)
   PGBUF_BCB *bufptr;
   int bufid;
   int flushed_page_cnt_local = 0;
@@ -3774,7 +3774,7 @@ static int
 pgbuf_flush_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flusher, struct timeval *limit_time,
 		      const LOG_LSA * prev_chkpt_redo_lsa, LOG_LSA * chkpt_smallest_lsa, int *time_rem)
 {
-#define detailed_er_log(...) if (detailed_logging) er_log_debug (ARG_FILE_LINE, __VA_ARGS__)
+#define detailed_er_log(...) if (detailed_logging) _er_log_debug (ARG_FILE_LINE, __VA_ARGS__)
   PGBUF_BCB *bufptr;
   PGBUF_VICTIM_CANDIDATE_LIST *f_list;
   int error = NO_ERROR;

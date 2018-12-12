@@ -7919,7 +7919,7 @@ logpb_exist_log (THREAD_ENTRY * thread_p, const char *db_fullname, const char *l
 LOG_PAGEID
 logpb_checkpoint (THREAD_ENTRY * thread_p)
 {
-#define detailed_er_log(...) if (detailed_logging) er_log_debug (ARG_FILE_LINE, __VA_ARGS__)
+#define detailed_er_log(...) if (detailed_logging) _er_log_debug (ARG_FILE_LINE, __VA_ARGS__)
 
   LOG_TDES *tdes;		/* System transaction descriptor */
   LOG_TDES *act_tdes;		/* Transaction descriptor of an active transaction */

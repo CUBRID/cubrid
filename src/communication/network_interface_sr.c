@@ -224,7 +224,7 @@ stran_server_auto_commit_or_abort (THREAD_ENTRY * thread_p, unsigned int rid, QU
     {
       if (prm_get_bool_value (PRM_ID_DEBUG_AUTOCOMMIT))
 	{
-	  er_log_debug (ARG_FILE_LINE, "stran_server_auto_commit_or_abort: active transaction.\n");
+	  _er_log_debug (ARG_FILE_LINE, "stran_server_auto_commit_or_abort: active transaction.\n");
 	}
       return;
     }
@@ -259,7 +259,7 @@ stran_server_auto_commit_or_abort (THREAD_ENTRY * thread_p, unsigned int rid, QU
       *tran_state = stran_server_commit_internal (thread_p, rid, false, should_conn_reset);
       if (prm_get_bool_value (PRM_ID_DEBUG_AUTOCOMMIT))
 	{
-	  er_log_debug (ARG_FILE_LINE, "stran_server_auto_commit_or_abort: transaction committed. \n");
+	  _er_log_debug (ARG_FILE_LINE, "stran_server_auto_commit_or_abort: transaction committed. \n");
 	}
     }
   else
@@ -273,7 +273,7 @@ stran_server_auto_commit_or_abort (THREAD_ENTRY * thread_p, unsigned int rid, QU
 	  *tran_state = stran_server_abort_internal (thread_p, rid, should_conn_reset);
 	  if (prm_get_bool_value (PRM_ID_DEBUG_AUTOCOMMIT))
 	    {
-	      er_log_debug (ARG_FILE_LINE, "stran_server_auto_commit_or_abort: transaction aborted. \n");
+	      _er_log_debug (ARG_FILE_LINE, "stran_server_auto_commit_or_abort: transaction aborted. \n");
 	    }
 	}
       else
