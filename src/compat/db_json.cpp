@@ -1312,26 +1312,6 @@ db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<
       return NO_ERROR;
     }
 
-  // decide whether we wrap the result in an array
-  bool array_result = false;
-  if (paths.size () > 1)
-    {
-      array_result = true;
-    }
-  else
-    {
-      assert (!paths.empty ());
-      for (std::size_t i = 0; i < paths[0].length (); ++i)
-	{
-	  // todo: check for stars that are outside of quoted object_keys
-	  if (paths[0][i] == '*')
-	    {
-	      array_result = true;
-	      break;
-	    }
-	}
-    }
-
   std::vector<std::string> transformed_paths;
   for (const auto &path : paths)
     {
@@ -1342,6 +1322,17 @@ db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<
 	  ASSERT_ERROR ();
 	  return error_code;
 	}
+    }
+
+  // wrap result in json array in case we have multiple paths or we have a json_path containing wildcards
+  bool array_result = false;
+  if (transformed_paths.size () > 1)
+    {
+      array_result = true;
+    }
+  else
+    {
+      array_result = db_json_path_contains_wildcard (transformed_paths[0].c_str ());
     }
 
   std::vector<JSON_VALUE *> produced;
@@ -3481,6 +3472,45 @@ db_json_path_unquote_object_keys (std::string &sql_path)
     }
 
   sql_path = std::move (res);
+}
+
+/*
+ * db_json_path_contains_wildcard () - Check whether a given sql_path contains wildcards
+ *
+ * sql_path (in)       : null-terminated string
+ */
+bool
+db_json_path_contains_wildcard (const char *sql_path)
+{
+  if (sql_path == NULL)
+    {
+      return false;
+    }
+
+  bool unescaped_backslash = false;
+  bool in_quotes = false;
+  for (std::size_t i = 0; sql_path[i] != '\0'; ++i)
+    {
+      if (!in_quotes && sql_path[i] == '*')
+	{
+	  return true;
+	}
+
+      if (!unescaped_backslash && sql_path[i] == '"')
+	{
+	  in_quotes = !in_quotes;
+	}
+
+      if (sql_path[i] == '\\')
+	{
+	  unescaped_backslash = !unescaped_backslash;
+	}
+      else
+	{
+	  unescaped_backslash = false;
+	}
+    }
+  return false;
 }
 
 /*
