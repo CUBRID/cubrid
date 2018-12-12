@@ -2244,7 +2244,13 @@ db_json_array_shift_values (const JSON_DOC *value, JSON_DOC &doc, const std::str
       return error_code;
     }
 
-  assert (resulting_json_parent != NULL && resulting_json_parent->IsArray ());
+  assert (resulting_json_parent != NULL);
+  if (!resulting_json_parent->IsArray ())
+    {
+      assert (resulting_json_parent->IsObject ());
+      return db_json_er_set_expected_other_type (ARG_FILE_LINE, path, DB_JSON_OBJECT, DB_JSON_ARRAY);
+    }
+
 
   int last_token_index = std::stoi (path.substr (path.find_last_of ('/') + 1));
 
