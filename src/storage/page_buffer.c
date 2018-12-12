@@ -383,6 +383,7 @@ typedef enum
   while (0)
 
 /* use define PGBUF_ORDERED_DEBUG to enable extended debug for ordered fix */
+// todo - is it better to replace with a system parameter?
 #undef PGBUF_ORDERED_DEBUG
 
 #define PGBUF_LRU_ZONE_MIN_RATIO 0.05f

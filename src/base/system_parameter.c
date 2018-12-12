@@ -662,6 +662,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_DEBUG_LOG_2PC "debug_log_2pc"
 #define PRM_NAME_DEBUG_LOG_WRITER "debug_log_writer"
 #define PRM_NAME_DEBUG_AUTOCOMMIT "debug_autocommit"
+#define PRM_NAME_DEBUG_REPLICATION_DATA "debug_replicaiton_data"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
@@ -2206,6 +2207,10 @@ static unsigned int prm_debug_logwr_flag = 0;
 bool PRM_DEBUG_AUTOCOMMIT = false;
 static bool prm_debug_autocommit_default = false;
 static unsigned int prm_debug_autocommit_flag = 0;
+
+bool PRM_DEBUG_REPLICATION_DATA = false;
+static bool prm_debug_replication_data_default = false;
+static unsigned int prm_debug_replication_data_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5658,6 +5663,17 @@ static SYSPRM_PARAM prm_Def[] = {
    &prm_debug_autocommit_flag,
    (void *) &prm_debug_autocommit_default,
    (void *) &PRM_DEBUG_AUTOCOMMIT,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_DEBUG_REPLICATION_DATA,
+   PRM_NAME_DEBUG_REPLICATION_DATA,
+   (PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_debug_replication_data_flag,
+   (void *) &prm_debug_replication_data_default,
+   (void *) &PRM_DEBUG_REPLICATION_DATA,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,

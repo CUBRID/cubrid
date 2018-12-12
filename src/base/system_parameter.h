@@ -428,6 +428,7 @@ enum param_id
   PRM_ID_DEBUG_LOG_2PC,
   PRM_ID_DEBUG_LOGWR,
   PRM_ID_DEBUG_AUTOCOMMIT,
+  PRM_ID_DEBUG_REPLICATION_DATA,
 
   /* change PRM_LAST_ID when adding new system parameters */
   PRM_LAST_ID = PRM_ID_DEBUG_AUTOCOMMIT
