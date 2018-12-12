@@ -249,10 +249,7 @@ retry:
   snprintf (new_path, PATH_MAX, "%s%c%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, filename);
 #endif
 
-  if (prm_get_bool_value (PRM_ID_DEBUG_ES))
-    {
-      er_log_debug (ARG_FILE_LINE, "xes_posix_create_file(): %s\n", new_path);
-    }
+  es_log ("xes_posix_create_file(): %s\n", new_path);
 
 #if defined (WINDOWS)
   fd = open (new_path, O_WRONLY | O_CREAT | O_EXCL | O_BINARY, S_IRWXU);

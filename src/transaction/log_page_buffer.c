@@ -7919,6 +7919,8 @@ logpb_exist_log (THREAD_ENTRY * thread_p, const char *db_fullname, const char *l
 LOG_PAGEID
 logpb_checkpoint (THREAD_ENTRY * thread_p)
 {
+#define detailed_er_log(...) if (detailed_logging) er_log_debug (ARG_FILE_LINE, __VA_ARGS__)
+
   LOG_TDES *tdes;		/* System transaction descriptor */
   LOG_TDES *act_tdes;		/* Transaction descriptor of an active transaction */
   LOG_REC_CHKPT *chkpt, tmp_chkpt;	/* Checkpoint log records */
@@ -7949,6 +7951,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   LOG_PRIOR_NODE *node;
   void *ptr;
   int flushed_page_cnt = 0, vdes;
+  bool detailed_logging = prm_get_bool_value (PRM_ID_LOG_CHKPT_DETAILED);
 
   LOG_CS_ENTER (thread_p);
 
@@ -8014,20 +8017,20 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 
   LOG_CS_EXIT (thread_p);
 
-  er_log_debug (ARG_FILE_LINE, "logpb_checkpoint: call logtb_reflect_global_unique_stats_to_btree()\n");
+  detailed_er_log ("logpb_checkpoint: call logtb_reflect_global_unique_stats_to_btree()\n");
   if (logtb_reflect_global_unique_stats_to_btree (thread_p) != NO_ERROR)
     {
       goto error_cannot_chkpt;
     }
 
-  er_log_debug (ARG_FILE_LINE, "logpb_checkpoint: call pgbuf_flush_checkpoint()\n");
+  detailed_er_log ("logpb_checkpoint: call pgbuf_flush_checkpoint()\n");
   if (pgbuf_flush_checkpoint (thread_p, &newchkpt_lsa, &chkpt_redo_lsa, &tmp_chkpt.redo_lsa, &flushed_page_cnt) !=
       NO_ERROR)
     {
       goto error_cannot_chkpt;
     }
 
-  er_log_debug (ARG_FILE_LINE, "logpb_checkpoint: call fileio_synchronize_all()\n");
+  detailed_er_log ("logpb_checkpoint: call fileio_synchronize_all()\n");
   if (fileio_synchronize_all (thread_p, false) != NO_ERROR)
     {
       goto error_cannot_chkpt;
@@ -8244,7 +8247,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
    * reflects the new location of the last checkpoint log record
    */
   logpb_flush_pages_direct (thread_p);
-  er_log_debug (ARG_FILE_LINE, "logpb_checkpoint: call logpb_flush_all_append_pages()\n");
+  detailed_er_log ("logpb_checkpoint: call logpb_flush_all_append_pages()\n");
 
   /*
    * Flush the log data header and update all checkpoints in volumes to
@@ -8276,7 +8279,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 
   pthread_mutex_unlock (&log_Gl.chkpt_lsa_lock);
 
-  er_log_debug (ARG_FILE_LINE, "logpb_checkpoint: call logpb_flush_header()\n");
+  detailed_er_log ("logpb_checkpoint: call logpb_flush_header()\n");
   logpb_flush_header (thread_p);
 
   /*
@@ -8455,6 +8458,8 @@ error_cannot_chkpt:
   LOG_CS_EXIT (thread_p);
 
   return NULL_PAGEID;
+
+#undef detailed_er_log
 }
 
 /*

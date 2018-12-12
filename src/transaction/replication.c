@@ -263,7 +263,7 @@ repl_add_update_lsa (THREAD_ENTRY * thread_p, const OID * inst_oid)
 
   if (find == false && prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
     {
-      er_log_debug (ARG_FILE_LINE, "can't find out the UPDATE LSA");
+      _er_log_debug (ARG_FILE_LINE, "can't find out the UPDATE LSA");
     }
 
   return error;
@@ -536,10 +536,10 @@ repl_log_insert_statement (THREAD_ENTRY * thread_p, REPL_INFO_SBR * repl_info)
 
   if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
     {
-      er_log_debug (ARG_FILE_LINE,
-		    "repl_log_insert_statement: repl_info_sbr { type %d, name %s, stmt_txt %s, user %s, "
-		    "sys_prm_context %s }\n", repl_info->statement_type, repl_info->name, repl_info->stmt_text,
-		    repl_info->db_user, repl_info->sys_prm_context);
+      _er_log_debug (ARG_FILE_LINE,
+		     "repl_log_insert_statement: repl_info_sbr { type %d, name %s, stmt_txt %s, user %s, "
+		     "sys_prm_context %s }\n", repl_info->statement_type, repl_info->name, repl_info->stmt_text,
+		     repl_info->db_user, repl_info->sys_prm_context);
     }
   LSA_COPY (&repl_rec->lsa, &tdes->tail_lsa);
 

@@ -663,6 +663,9 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_DEBUG_LOG_WRITER "debug_log_writer"
 #define PRM_NAME_DEBUG_AUTOCOMMIT "debug_autocommit"
 #define PRM_NAME_DEBUG_REPLICATION_DATA "debug_replicaiton_data"
+#define PRM_NAME_TRACK_REQUESTS "track_client_requests"
+#define PRM_NAME_LOG_PGBUF_VICTIM_FLUSH "log_pgbuf_victim_flush"
+#define PRM_NAME_LOG_CHKPT_DETAILED "detailed_checkpoint_logging"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
@@ -2200,6 +2203,10 @@ bool PRM_DEBUG_BESTSPACE = false;
 static bool prm_debug_bestspace_default = false;
 static unsigned int prm_debug_bestspace_flag = 0;
 
+bool PRM_DEBUG_LOG2PC = false;
+static bool prm_debug_log2pc_default = false;
+static unsigned int prm_debug_log2pc_flag = 0;
+
 bool PRM_DEBUG_LOGWR = false;
 static bool prm_debug_logwr_default = false;
 static unsigned int prm_debug_logwr_flag = 0;
@@ -2211,6 +2218,18 @@ static unsigned int prm_debug_autocommit_flag = 0;
 bool PRM_DEBUG_REPLICATION_DATA = false;
 static bool prm_debug_replication_data_default = false;
 static unsigned int prm_debug_replication_data_flag = 0;
+
+bool PRM_TRACK_REQUESTS = false;
+static bool prm_track_requests_default = false;
+static unsigned int prm_track_requests_flag = 0;
+
+bool PRM_LOG_PGBUF_VICTIM_FLUSH = false;
+static bool prm_log_pgbuf_victim_flush_default = false;
+static unsigned int prm_log_pgbuf_victim_flush_flag = 0;
+
+bool PRM_LOG_CHKPT_DETAILED = false;
+static bool prm_log_chkpt_detailed_default = false;
+static unsigned int prm_log_chkpt_detailed_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5625,7 +5644,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_DEBUG_BESTSPACE,
    PRM_NAME_DEBUG_BESTSPACE,
-   (PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
    &prm_debug_bestspace_flag,
    (void *) &prm_debug_bestspace_default,
@@ -5638,9 +5657,9 @@ static SYSPRM_PARAM prm_Def[] = {
    PRM_NAME_DEBUG_LOG_2PC,
    (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
-   &prm_debug_bestspace_flag,
-   (void *) &prm_debug_bestspace_default,
-   (void *) &PRM_DEBUG_BESTSPACE,
+   &prm_debug_log2pc_flag,
+   (void *) &prm_debug_log2pc_default,
+   (void *) &PRM_DEBUG_LOG2PC,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
@@ -5674,6 +5693,39 @@ static SYSPRM_PARAM prm_Def[] = {
    &prm_debug_replication_data_flag,
    (void *) &prm_debug_replication_data_default,
    (void *) &PRM_DEBUG_REPLICATION_DATA,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_TRACK_REQUESTS,
+   PRM_NAME_TRACK_REQUESTS,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_track_requests_flag,
+   (void *) &prm_track_requests_default,
+   (void *) &PRM_TRACK_REQUESTS,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_LOG_PGBUF_VICTIM_FLUSH,
+   PRM_NAME_LOG_PGBUF_VICTIM_FLUSH,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_log_pgbuf_victim_flush_flag,
+   (void *) &prm_log_pgbuf_victim_flush_default,
+   (void *) &PRM_LOG_PGBUF_VICTIM_FLUSH,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_LOG_CHKPT_DETAILED,
+   PRM_NAME_LOG_CHKPT_DETAILED,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_log_chkpt_detailed_flag,
+   (void *) &prm_log_chkpt_detailed_default,
+   (void *) &PRM_LOG_CHKPT_DETAILED,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,

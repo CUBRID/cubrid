@@ -3108,9 +3108,12 @@ pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, 
       pthread_mutex_unlock (&pgbuf_Pool.buf_LRU_list[lru_idx].mutex);
     }
 
-  er_log_debug (ARG_FILE_LINE,
-		"pgbuf_flush_victim_candidates: pgbuf_get_victim_candidates_from_lru %d candidates in %d lists \n",
-		victim_cand_count, count_checked_lists);
+  if (prm_get_bool_value (PRM_ID_LOG_PGBUF_VICTIM_FLUSH))
+    {
+      _er_log_debug (ARG_FILE_LINE,
+		     "pgbuf_flush_victim_candidates: pgbuf_get_victim_candidates_from_lru %d candidates in %d lists \n",
+		     victim_cand_count, count_checked_lists);
+    }
 
   return victim_cand_count;
 }
@@ -3154,8 +3157,13 @@ pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, PERF_
   bool direct_victim_waiters = false;
 #endif /* DEBUG && SERVER_MODE */
 
+  bool logging = prm_get_bool_value (PRM_ID_LOG_PGBUF_VICTIM_FLUSH);
+
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_FLUSH_VICTIM_STARTED, 0);
-  er_log_debug (ARG_FILE_LINE, "pgbuf_flush_victim_candidates: start flush victim candidates\n");
+  if (logging)
+    {
+      _er_log_debug (ARG_FILE_LINE, "pgbuf_flush_victim_candidates: start flush victim candidates\n");
+    }
 
 #if !defined(NDEBUG) && defined(SERVER_MODE)
   if (pgbuf_is_page_flush_daemon_available ())
@@ -3260,7 +3268,10 @@ pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, PERF_
   pgbuf_Pool.is_flushing_victims = true;
 #endif
 
-  er_log_debug (ARG_FILE_LINE, "pgbuf_flush_victim_candidates: start flushing collected victim candidates\n");
+  if (logging)
+    {
+      _er_log_debug (ARG_FILE_LINE, "pgbuf_flush_victim_candidates: start flushing collected victim candidates\n");
+    }
   if (perf_tracker->is_perf_tracking)
     {
       UINT64 utime;
@@ -3353,7 +3364,10 @@ repeat:
       if (error != NO_ERROR)
 	{
 	  /* if this shows up in statistics or log, consider it a red flag */
-	  er_log_debug (ARG_FILE_LINE, "pgbuf_flush_victim_candidates: error during flush");
+	  if (logging)
+	    {
+	      _er_log_debug (ARG_FILE_LINE, "pgbuf_flush_victim_candidates: error during flush");
+	    }
 	  goto end;
 	}
       total_flushed_count += flushed_pages;
@@ -3483,8 +3497,11 @@ end:
 #endif /* !NDEBUG */
 #endif /* SERVER_MODE */
 
-  er_log_debug (ARG_FILE_LINE, "pgbuf_flush_victim_candidates: flush %d pages from lru lists. Found LRU:%d/%d",
-		total_flushed_count, victim_count, check_count_lru);
+  if (logging)
+    {
+      _er_log_debug (ARG_FILE_LINE, "pgbuf_flush_victim_candidates: flush %d pages from lru lists. Found LRU:%d/%d",
+		     total_flushed_count, victim_count, check_count_lru);
+    }
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_FLUSH_VICTIM_FINISHED, 1, total_flushed_count);
 
   perfmon_add_stat (thread_p, PSTAT_PB_NUM_FLUSHED, total_flushed_count);
@@ -3508,6 +3525,7 @@ int
 pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa, const LOG_LSA * prev_chkpt_redo_lsa,
 			LOG_LSA * smallest_lsa, int *flushed_page_cnt)
 {
+#define detailed_er_log(...) if (detailed_logging) er_log_debug (ARG_FILE_LINE, __VA_ARGS__)
   PGBUF_BCB *bufptr;
   int bufid;
   int flushed_page_cnt_local = 0;
@@ -3515,9 +3533,10 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
   PGBUF_VICTIM_CANDIDATE_LIST *f_list;
   int collected_bcbs;
   int error = NO_ERROR;
+  bool detailed_logging = prm_get_bool_value (PRM_ID_LOG_CHKPT_DETAILED);
 
-  er_log_debug (ARG_FILE_LINE, "pgbuf_flush_checkpoint start : flush_upto_LSA:%d, prev_chkpt_redo_LSA:%d\n",
-		flush_upto_lsa->pageid, (prev_chkpt_redo_lsa ? prev_chkpt_redo_lsa->pageid : -1));
+  detailed_er_log ("pgbuf_flush_checkpoint start : flush_upto_LSA:%d, prev_chkpt_redo_LSA:%d\n",
+		   flush_upto_lsa->pageid, (prev_chkpt_redo_lsa ? prev_chkpt_redo_lsa->pageid : -1));
 
   if (flushed_page_cnt != NULL)
     {
@@ -3533,7 +3552,7 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
 
   LSA_COPY (&seq_flusher->flush_upto_lsa, flush_upto_lsa);
 
-  er_log_debug (ARG_FILE_LINE, "pgbuf_flush_checkpoint start : start\n");
+  detailed_er_log ("pgbuf_flush_checkpoint start : start\n");
 
   collected_bcbs = 0;
 
@@ -3622,7 +3641,7 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
   pgbuf_Pool.is_checkpoint = false;
 #endif
 
-  er_log_debug (ARG_FILE_LINE, "pgbuf_flush_checkpoint END flushed:%d\n", flushed_page_cnt_local);
+  detailed_er_log ("pgbuf_flush_checkpoint END flushed:%d\n", flushed_page_cnt_local);
 
   if (flushed_page_cnt != NULL)
     {
@@ -3630,6 +3649,8 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
     }
 
   return error;
+
+#undef  detailed_er_log
 }
 
 /*
@@ -3753,6 +3774,7 @@ static int
 pgbuf_flush_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flusher, struct timeval *limit_time,
 		      const LOG_LSA * prev_chkpt_redo_lsa, LOG_LSA * chkpt_smallest_lsa, int *time_rem)
 {
+#define detailed_er_log(...) if (detailed_logging) er_log_debug (ARG_FILE_LINE, __VA_ARGS__)
   PGBUF_BCB *bufptr;
   PGBUF_VICTIM_CANDIDATE_LIST *f_list;
   int error = NO_ERROR;
@@ -3770,6 +3792,7 @@ pgbuf_flush_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flusher, 
   bool ignore_time_limit = false;
   bool flush_if_already_flushed;
   bool locked_bcb = false;
+  bool detailed_logging = prm_get_bool_value (PRM_ID_LOG_CHKPT_DETAILED);
 
   assert (seq_flusher != NULL);
   f_list = seq_flusher->flush_list;
@@ -3820,13 +3843,12 @@ pgbuf_flush_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flusher, 
   flush_per_interval = seq_flusher->flush_cnt;
 #endif /* SERVER_MODE */
 
-  er_log_debug (ARG_FILE_LINE,
-		"pgbuf_flush_seq_list (%s): start_idx:%d, flush_cnt:%d, LSA_flush:%d, "
-		"flush_rate:%.2f, control_flushed:%d, this_interval:%d, "
-		"Est_tot_flush:%.2f, control_intervals:%d, %d Avail_time:%d\n", "chkpt",
-		seq_flusher->flush_idx, seq_flusher->flush_cnt, seq_flusher->flush_upto_lsa.pageid,
-		seq_flusher->flush_rate, seq_flusher->control_flushed, flush_per_interval, control_est_flush_total,
-		seq_flusher->control_intervals_cnt, control_total_cnt_intervals, avail_time_msec);
+  detailed_er_log ("pgbuf_flush_seq_list (%s): start_idx:%d, flush_cnt:%d, LSA_flush:%d, "
+		   "flush_rate:%.2f, control_flushed:%d, this_interval:%d, "
+		   "Est_tot_flush:%.2f, control_intervals:%d, %d Avail_time:%d\n", "chkpt",
+		   seq_flusher->flush_idx, seq_flusher->flush_cnt, seq_flusher->flush_upto_lsa.pageid,
+		   seq_flusher->flush_rate, seq_flusher->control_flushed, flush_per_interval, control_est_flush_total,
+		   seq_flusher->control_intervals_cnt, control_total_cnt_intervals, avail_time_msec);
 
   /* Start to flush */
   cnt_writes = 0;
@@ -3869,10 +3891,9 @@ pgbuf_flush_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flusher, 
 	       * checkpoint reached it. And that it was modified again. And that the new oldest_unflush_lsa is less than
 	       * flush_upto_lsa. It may seem that many planets should align, but let's be conservative and flush again.
 	       */
-	      er_log_debug (ARG_FILE_LINE,
-			    "pgbuf_flush_seq_list: flush again %d|%d; oldest_unflush_lsa=%lld|%d, "
-			    "flush_upto_lsa=%lld|%d \n", VPID_AS_ARGS (&bufptr->vpid),
-			    LSA_AS_ARGS (&bufptr->oldest_unflush_lsa), LSA_AS_ARGS (&seq_flusher->flush_upto_lsa));
+	      detailed_er_log ("pgbuf_flush_seq_list: flush again %d|%d; oldest_unflush_lsa=%lld|%d, "
+			       "flush_upto_lsa=%lld|%d \n", VPID_AS_ARGS (&bufptr->vpid),
+			       LSA_AS_ARGS (&bufptr->oldest_unflush_lsa), LSA_AS_ARGS (&seq_flusher->flush_upto_lsa));
 	      if (pgbuf_bcb_safe_flush_internal (thread_p, bufptr, true, &locked_bcb) == NO_ERROR)
 		{
 		  /* now we should be ok. */
@@ -3986,14 +4007,14 @@ pgbuf_flush_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flusher, 
     }
 #endif /* SERVER_MODE */
 
-  er_log_debug (ARG_FILE_LINE,
-		"pgbuf_flush_seq_list end (%s): %s %s pages : %d written/%d dropped, "
-		"Remaining_time:%d, Avail_time:%d, Curr:%d/%d,", "ckpt",
-		((time_rem_msec <= 0) ? "[Expired] " : ""), (ignore_time_limit ? "[boost]" : ""),
-		seq_flusher->flushed_pages, dropped_pages, time_rem_msec, avail_time_msec, seq_flusher->flush_idx,
-		seq_flusher->flush_cnt);
+  detailed_er_log ("pgbuf_flush_seq_list end (%s): %s %s pages : %d written/%d dropped, "
+		   "Remaining_time:%d, Avail_time:%d, Curr:%d/%d,", "ckpt",
+		   ((time_rem_msec <= 0) ? "[Expired] " : ""), (ignore_time_limit ? "[boost]" : ""),
+		   seq_flusher->flushed_pages, dropped_pages, time_rem_msec, avail_time_msec, seq_flusher->flush_idx,
+		   seq_flusher->flush_cnt);
 
   return error;
+#undef detailed_er_log
 }
 
 /*
@@ -11076,10 +11097,13 @@ pgbuf_flush_page_and_neighbors_fb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, 
 	}
     }
 
-  er_log_debug (ARG_FILE_LINE,
-		"pgbuf_flush_page_and_neighbors_fb: collected_pages:%d, written:%d, back_offset:%d, fwd_offset%d, "
-		"abort_reason:%d", helper->npages, written_pages, helper->back_offset, helper->fwd_offset,
-		abort_reason);
+  if (prm_get_bool_value (PRM_ID_LOG_PGBUF_VICTIM_FLUSH))
+    {
+      _er_log_debug (ARG_FILE_LINE,
+		     "pgbuf_flush_page_and_neighbors_fb: collected_pages:%d, written:%d, back_offset:%d, fwd_offset%d, "
+		     "abort_reason:%d", helper->npages, written_pages, helper->back_offset, helper->fwd_offset,
+		     abort_reason);
+    }
 
   *flushed_pages = written_pages;
   helper->npages = 0;
@@ -13201,12 +13225,6 @@ retry:
 
   private_idx = PGBUF_PRIVATE_LIST_FROM_LRU_INDEX (lru_cand_idx);
 
-  er_log_debug (ARG_FILE_LINE, "pgbuf_assign_private_lru_id: "
-		"%s ID %d will use private LRU %d (LRU_idx:%d). "
-		"List has %d assigned sessions and %d pages\n",
-		(is_vacuum) ? "Vacuum worker" : "Session",
-		id, private_idx, lru_cand_idx, quota->private_lru_session_cnt[private_idx], cnt_lru);
-
   if (lru_cand_zero_sessions != -1)
     {
       if (ATOMIC_INC_32 (&quota->private_lru_session_cnt[private_idx], 1) > 1)
@@ -13243,16 +13261,8 @@ pgbuf_release_private_lru (THREAD_ENTRY * thread_p, const int private_idx)
   if (PGBUF_PAGE_QUOTA_IS_ENABLED && private_idx >= 0 && private_idx < PGBUF_PRIVATE_LRU_COUNT
       && pgbuf_Pool.num_buffers > 0)
     {
-      er_log_debug (ARG_FILE_LINE, "pgbuf_release_private_lru: "
-		    "private_LRU %d (LRU_idx:%d) - session disconnected\n",
-		    private_idx, PGBUF_LRU_INDEX_FROM_PRIVATE (private_idx));
-
       if (ATOMIC_INC_32 (&pgbuf_Pool.quota.private_lru_session_cnt[private_idx], -1) <= 0)
 	{
-	  er_log_debug (ARG_FILE_LINE, "pgbuf_release_private_lru: "
-			"private_LRU %d (LRU_idx:%d) - no active sessions\n",
-			private_idx, PGBUF_LRU_INDEX_FROM_PRIVATE (private_idx));
-
 	  ATOMIC_TAS_32 (&pgbuf_Pool.monitor.lru_activity[PGBUF_LRU_INDEX_FROM_PRIVATE (private_idx)], 0);
 	  /* TODO: is this necessary? */
 	  pgbuf_adjust_quotas (thread_p);
