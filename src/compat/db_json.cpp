@@ -1335,7 +1335,6 @@ db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<
       array_result = db_json_path_contains_wildcard (transformed_paths[0].c_str ());
     }
 
-  std::vector<JSON_VALUE *> produced;
   std::vector<std::regex> regs;
   error_code = db_json_paths_to_regex (transformed_paths, regs, true);
   if (error_code)
@@ -1343,13 +1342,15 @@ db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<
       return error_code;
     }
 
-  const map_func_type &f = [&regs, &produced] (JSON_VALUE &jv, const std::string &crt_path, bool &stop) -> int
+  // we gather extracted values in an array to match with the order of the given path arguments
+  std::vector<std::vector<JSON_VALUE *>> produced_array (transformed_paths.size ());
+  const map_func_type &f = [&regs, &produced_array] (JSON_VALUE &jv, const std::string &crt_path, bool &stop) -> int
   {
-    for (const auto &reg : regs)
+    for (std::size_t i = 0; i < regs.size (); ++i)
       {
-	if (std::regex_match (crt_path, reg))
+	if (std::regex_match (crt_path, regs[i]))
 	  {
-	    produced.push_back (&jv);
+	    produced_array[i].push_back (&jv);
 	  }
       }
     return NO_ERROR;
@@ -1358,26 +1359,39 @@ db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<
   JSON_PATH_MAPPER json_extract_walker (f);
   json_extract_walker.WalkDocument (const_cast<JSON_DOC &> (*document));
 
-  if (produced.size () > 1 || array_result)
+  if (array_result)
     {
-      for (auto p : produced)
+      for (const auto &produced : produced_array)
 	{
+	  for (JSON_VALUE *p : produced)
+	    {
+	      if (result == NULL)
+		{
+		  result = db_json_allocate_doc ();
+		  result->SetArray ();
+		}
+
+	      db_json_add_element_to_array (result, p);
+	    }
+	}
+    }
+  else
+    {
+      for (const auto &produced : produced_array)
+	{
+	  if (produced.empty ())
+	    {
+	      continue;
+	    }
+
 	  if (result == NULL)
 	    {
 	      result = db_json_allocate_doc ();
-	      result->SetArray ();
 	    }
+	  result->CopyFrom (*produced[0], result->GetAllocator ());
 
-	  db_json_add_element_to_array (result, p);
+	  return NO_ERROR;
 	}
-    }
-  else if (!produced.empty ())
-    {
-      if (result == NULL)
-	{
-	  result = db_json_allocate_doc();
-	}
-      result->CopyFrom (*produced[0], result->GetAllocator ());
     }
 
   return NO_ERROR;
