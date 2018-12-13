@@ -561,6 +561,9 @@ static HEAP_HFID_TABLE *heap_Hfid_table = NULL;
     } \
   while (false)
 
+#define heap_bestspace_log(...) \
+  if (prm_get_bool_value (PRM_ID_DEBUG_BESTSPACE)) _er_log_debug (ARG_FILE_LINE, __VA_ARGS__)
+
 #if defined (NDEBUG)
 static PAGE_PTR heap_scan_pb_lock_and_fetch (THREAD_ENTRY * thread_p, const VPID * vpid_ptr, PAGE_FETCH_MODE fetch_mode,
 					     LOCK lock, HEAP_SCANCACHE * scan_cache, PGBUF_WATCHER * pg_watcher);
@@ -3555,11 +3558,10 @@ heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid, int neede
       do
 	{
 	  try_sync++;
-	  er_log_debug (ARG_FILE_LINE,
-			"heap_stats_find_best_page: call heap_stats_sync_bestspace() "
-			"hfid { vfid  { fileid %d volid %d } hpgid %d } hdr_vpid { pageid %d volid %d } "
-			"scan_all %d ", hfid->vfid.fileid, hfid->vfid.volid, hfid->hpgid, hdr_vpidp->pageid,
-			hdr_vpidp->volid, 0);
+	  heap_bestspace_log ("heap_stats_find_best_page: call heap_stats_sync_bestspace() "
+			      "hfid { vfid  { fileid %d volid %d } hpgid %d } hdr_vpid { pageid %d volid %d } "
+			      "scan_all %d ", hfid->vfid.fileid, hfid->vfid.volid, hfid->hpgid, hdr_vpidp->pageid,
+			      hdr_vpidp->volid, 0);
 
 	  num_pages_found = heap_stats_sync_bestspace (thread_p, hfid, heap_hdr, hdr_vpidp, false, true);
 	  if (num_pages_found < 0)
@@ -3768,10 +3770,9 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_
 	    {
 	      if (++num_iterations > max_iterations)
 		{
-		  er_log_debug (ARG_FILE_LINE,
-				"heap_stats_sync_bestspace: num_iterations %d best %d "
-				"next_vpid { pageid %d volid %d }\n", num_iterations, num_high_best, next_vpid.pageid,
-				next_vpid.volid);
+		  heap_bestspace_log ("heap_stats_sync_bestspace: num_iterations %d best %d "
+				      "next_vpid { pageid %d volid %d }\n", num_iterations, num_high_best,
+				      next_vpid.pageid, next_vpid.volid);
 
 		  /* TODO: Do we really need to update the last scanned */
 		  /* in case we found less than 10 pages. */
@@ -3863,10 +3864,9 @@ heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_
       VPID_SET_NULL (&next_vpid);
     }
 
-  er_log_debug (ARG_FILE_LINE,
-		"heap_stats_sync_bestspace: scans from {%d|%d} to {%d|%d}, num_iterations(%d) "
-		"max_iterations(%d) num_high_best(%d)\n", start_vpid.volid, start_vpid.pageid, vpid.volid, vpid.pageid,
-		num_iterations, max_iterations, num_high_best);
+  heap_bestspace_log ("heap_stats_sync_bestspace: scans from {%d|%d} to {%d|%d}, num_iterations(%d) "
+		      "max_iterations(%d) num_high_best(%d)\n", start_vpid.volid, start_vpid.pageid, vpid.volid,
+		      vpid.pageid, num_iterations, max_iterations, num_high_best);
 
   /* If we have scanned all pages, we should update all statistics even if we have not found any hints. This logic is
    * used to handle "select count(*) from table". */

@@ -112,6 +112,8 @@ static int rv;
 #endif /* !SERVER_MODE */
 
 #define logpb_log(...) if (logpb_Logging) _er_log_debug (ARG_FILE_LINE, "LOGPB: " __VA_ARGS__)
+#define log_archive_er_log(...) \
+  if (prm_get_bool_value (PRM_ID_DEBUG_LOG_ARCHIVES)) _er_log_debug (ARG_FILE_LINE, __VA_ARGS__)
 
 #define LOGPB_FIND_BUFPTR(bufid) &log_Pb.buffers[(bufid)]
 
@@ -6995,7 +6997,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
 	}
     }
 
-  er_log_debug (ARG_FILE_LINE, "logpb_archive_active_log, arvhdr->fpageid = %lld\n", arvhdr->fpageid);
+  log_archive_er_log ("logpb_archive_active_log, arvhdr->fpageid = %lld\n", arvhdr->fpageid);
 
   error_code = logpb_set_page_checksum (thread_p, malloc_arv_hdr_pgptr);
   if (error_code != NO_ERROR)
@@ -7196,8 +7198,8 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
 	}
     }
 
-  er_log_debug (ARG_FILE_LINE, "logpb_archive_active_log end, arvhdr->fpageid = %lld, arvhdr->npages = %d\n",
-		arvhdr->fpageid, arvhdr->npages);
+  log_archive_er_log ("logpb_archive_active_log end, arvhdr->fpageid = %lld, arvhdr->npages = %d\n", arvhdr->fpageid,
+		      arvhdr->npages);
 
   free_and_init (malloc_arv_hdr_pgptr);
 
@@ -7360,11 +7362,14 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
 
   if (last_arv_num_to_delete >= 0 && last_arv_num_to_delete >= first_arv_num_to_delete)
     {
-      /* this is too problematic not to log in server error log too! */
-      _er_log_debug (ARG_FILE_LINE, "Purge archives starting with %d and up until %d; "
-		     "vacuum_first_pageid = %d, last_arv_num_for_syscrashes = %d",
-		     first_arv_num_to_delete, last_arv_num_to_delete, vacuum_first_pageid,
-		     log_Gl.hdr.last_arv_num_for_syscrashes);
+      if (prm_get_bool_value (PRM_ID_DEBUG_LOG_ARCHIVES) || VACUUM_IS_ER_LOG_LEVEL_SET (VACUUM_ER_LOG_ARCHIVES))
+	{
+	  /* this is too problematic not to log in server error log too! */
+	  _er_log_debug (ARG_FILE_LINE, "Purge archives starting with %d and up until %d; "
+			 "vacuum_first_pageid = %d, last_arv_num_for_syscrashes = %d",
+			 first_arv_num_to_delete, last_arv_num_to_delete, vacuum_first_pageid,
+			 log_Gl.hdr.last_arv_num_for_syscrashes);
+	}
 
       catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_MAX_ARCHIVES_HAS_BEEN_EXCEEDED);
       if (catmsg == NULL)
@@ -7914,6 +7919,8 @@ logpb_exist_log (THREAD_ENTRY * thread_p, const char *db_fullname, const char *l
 LOG_PAGEID
 logpb_checkpoint (THREAD_ENTRY * thread_p)
 {
+#define detailed_er_log(...) if (detailed_logging) _er_log_debug (ARG_FILE_LINE, __VA_ARGS__)
+
   LOG_TDES *tdes;		/* System transaction descriptor */
   LOG_TDES *act_tdes;		/* Transaction descriptor of an active transaction */
   LOG_REC_CHKPT *chkpt, tmp_chkpt;	/* Checkpoint log records */
@@ -7944,6 +7951,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   LOG_PRIOR_NODE *node;
   void *ptr;
   int flushed_page_cnt = 0, vdes;
+  bool detailed_logging = prm_get_bool_value (PRM_ID_LOG_CHKPT_DETAILED);
 
   LOG_CS_ENTER (thread_p);
 
@@ -8009,20 +8017,20 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 
   LOG_CS_EXIT (thread_p);
 
-  er_log_debug (ARG_FILE_LINE, "logpb_checkpoint: call logtb_reflect_global_unique_stats_to_btree()\n");
+  detailed_er_log ("logpb_checkpoint: call logtb_reflect_global_unique_stats_to_btree()\n");
   if (logtb_reflect_global_unique_stats_to_btree (thread_p) != NO_ERROR)
     {
       goto error_cannot_chkpt;
     }
 
-  er_log_debug (ARG_FILE_LINE, "logpb_checkpoint: call pgbuf_flush_checkpoint()\n");
+  detailed_er_log ("logpb_checkpoint: call pgbuf_flush_checkpoint()\n");
   if (pgbuf_flush_checkpoint (thread_p, &newchkpt_lsa, &chkpt_redo_lsa, &tmp_chkpt.redo_lsa, &flushed_page_cnt) !=
       NO_ERROR)
     {
       goto error_cannot_chkpt;
     }
 
-  er_log_debug (ARG_FILE_LINE, "logpb_checkpoint: call fileio_synchronize_all()\n");
+  detailed_er_log ("logpb_checkpoint: call fileio_synchronize_all()\n");
   if (fileio_synchronize_all (thread_p, false) != NO_ERROR)
     {
       goto error_cannot_chkpt;
@@ -8239,7 +8247,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
    * reflects the new location of the last checkpoint log record
    */
   logpb_flush_pages_direct (thread_p);
-  er_log_debug (ARG_FILE_LINE, "logpb_checkpoint: call logpb_flush_all_append_pages()\n");
+  detailed_er_log ("logpb_checkpoint: call logpb_flush_all_append_pages()\n");
 
   /*
    * Flush the log data header and update all checkpoints in volumes to
@@ -8271,7 +8279,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 
   pthread_mutex_unlock (&log_Gl.chkpt_lsa_lock);
 
-  er_log_debug (ARG_FILE_LINE, "logpb_checkpoint: call logpb_flush_header()\n");
+  detailed_er_log ("logpb_checkpoint: call logpb_flush_header()\n");
   logpb_flush_header (thread_p);
 
   /*
@@ -8450,6 +8458,8 @@ error_cannot_chkpt:
   LOG_CS_EXIT (thread_p);
 
   return NULL_PAGEID;
+
+#undef detailed_er_log
 }
 
 /*
@@ -11891,9 +11901,8 @@ error:
 		    bg_arv_info->start_page_id, bg_arv_info->current_page_id, error_code);
     }
 
-  er_log_debug (ARG_FILE_LINE,
-		"logpb_background_archiving end, hdr->start_page_id = %d, hdr->current_page_id = %d\n",
-		bg_arv_info->start_page_id, bg_arv_info->current_page_id);
+  log_archive_er_log ("logpb_background_archiving end, hdr->start_page_id = %d, hdr->current_page_id = %d\n",
+		      bg_arv_info->start_page_id, bg_arv_info->current_page_id);
 
   return error_code;
 }

@@ -222,7 +222,10 @@ stran_server_auto_commit_or_abort (THREAD_ENTRY * thread_p, unsigned int rid, QU
 
   if (*end_query_allowed == false)
     {
-      er_log_debug (ARG_FILE_LINE, "stran_server_auto_commit_or_abort: active transaction.\n");
+      if (prm_get_bool_value (PRM_ID_DEBUG_AUTOCOMMIT))
+	{
+	  _er_log_debug (ARG_FILE_LINE, "stran_server_auto_commit_or_abort: active transaction.\n");
+	}
       return;
     }
 
@@ -254,7 +257,10 @@ stran_server_auto_commit_or_abort (THREAD_ENTRY * thread_p, unsigned int rid, QU
     {
       /* Needs commit. */
       *tran_state = stran_server_commit_internal (thread_p, rid, false, should_conn_reset);
-      er_log_debug (ARG_FILE_LINE, "stran_server_auto_commit_or_abort: transaction committed. \n");
+      if (prm_get_bool_value (PRM_ID_DEBUG_AUTOCOMMIT))
+	{
+	  _er_log_debug (ARG_FILE_LINE, "stran_server_auto_commit_or_abort: transaction committed. \n");
+	}
     }
   else
     {
@@ -265,7 +271,10 @@ stran_server_auto_commit_or_abort (THREAD_ENTRY * thread_p, unsigned int rid, QU
 	   * In this way, we can avoid abort request.
 	   */
 	  *tran_state = stran_server_abort_internal (thread_p, rid, should_conn_reset);
-	  er_log_debug (ARG_FILE_LINE, "stran_server_auto_commit_or_abort: transaction aborted. \n");
+	  if (prm_get_bool_value (PRM_ID_DEBUG_AUTOCOMMIT))
+	    {
+	      _er_log_debug (ARG_FILE_LINE, "stran_server_auto_commit_or_abort: transaction aborted. \n");
+	    }
 	}
       else
 	{

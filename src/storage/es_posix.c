@@ -249,7 +249,7 @@ retry:
   snprintf (new_path, PATH_MAX, "%s%c%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, filename);
 #endif
 
-  er_log_debug (ARG_FILE_LINE, "xes_posix_create_file(): %s\n", new_path);
+  es_log ("xes_posix_create_file(): %s\n", new_path);
 
 #if defined (WINDOWS)
   fd = open (new_path, O_WRONLY | O_CREAT | O_EXCL | O_BINARY, S_IRWXU);
@@ -300,7 +300,7 @@ xes_posix_write_file (const char *path, const void *buf, size_t count, off_t off
   ssize_t nbytes;
   size_t total = 0;
 
-  er_log_debug (ARG_FILE_LINE, "xes_posix_write_file(%s, count %d offset %ld)\n", path, count, offset);
+  es_log ("xes_posix_write_file(%s, count %d offset %ld)\n", path, count, offset);
 
   /*
    * TODO: This block of codes prevents partial update or writing at advanced
@@ -381,7 +381,7 @@ xes_posix_read_file (const char *path, void *buf, size_t count, off_t offset)
   ssize_t nbytes;
   size_t total = 0;
 
-  er_log_debug (ARG_FILE_LINE, "xes_posix_read_file(%s, count %d offset %ld)\n", path, count, offset);
+  es_log ("xes_posix_read_file(%s, count %d offset %ld)\n", path, count, offset);
 
 #if defined (WINDOWS)
   fd = open (path, O_RDONLY | O_BINARY);
@@ -453,7 +453,7 @@ xes_posix_delete_file (const char *path)
 {
   int ret;
 
-  er_log_debug (ARG_FILE_LINE, "xes_posix_delete_file(%s)\n", path);
+  es_log ("xes_posix_delete_file(%s)\n", path);
 
   ret = unlink (path);
   if (ret < 0)
@@ -505,7 +505,7 @@ retry:
   snprintf (new_path, PATH_MAX, "%s%c%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, filename);
 #endif
 
-  er_log_debug (ARG_FILE_LINE, "xes_posix_copy_file(%s, %s): %s\n", src_path, metaname, new_path);
+  es_log ("xes_posix_copy_file(%s, %s): %s\n", src_path, metaname, new_path);
 
 #if defined (WINDOWS)
   wr_fd = open (new_path, O_WRONLY | O_CREAT | O_EXCL | O_BINARY, S_IRWXU);
@@ -585,7 +585,7 @@ xes_posix_rename_file (const char *src_path, const char *metaname, char *new_pat
 
   es_rename_path ((char *) src_path, new_path, (char *) metaname);
 
-  er_log_debug (ARG_FILE_LINE, "xes_posix_rename_file(%s, %s): %s\n", src_path, metaname, new_path);
+  es_log ("xes_posix_rename_file(%s, %s): %s\n", src_path, metaname, new_path);
 
   ret = os_rename_file (src_path, new_path);
 
@@ -605,7 +605,7 @@ xes_posix_get_file_size (const char *path)
   int ret;
   struct stat pstat;
 
-  er_log_debug (ARG_FILE_LINE, "xes_posix_get_file_size(%s)\n", path);
+  es_log ("xes_posix_get_file_size(%s)\n", path);
 
   ret = stat (path, &pstat);
   if (ret < 0)
@@ -631,7 +631,7 @@ es_local_read_file (const char *path, void *buf, size_t count, off_t offset)
   ssize_t nbytes;
   size_t total = 0;
 
-  er_log_debug (ARG_FILE_LINE, "es_local_read_file(%s, count %d offset %ld)\n", path, count, offset);
+  es_log ("es_local_read_file(%s, count %d offset %ld)\n", path, count, offset);
 
 #if defined (WINDOWS)
   fd = open (path, O_RDONLY | O_BINARY);
@@ -696,7 +696,7 @@ es_local_get_file_size (const char *path)
   int ret;
   struct stat pstat;
 
-  er_log_debug (ARG_FILE_LINE, "es_local_get_file_size(%s)\n", path);
+  es_log ("es_local_get_file_size(%s)\n", path);
 
   ret = stat (path, &pstat);
   if (ret < 0)
