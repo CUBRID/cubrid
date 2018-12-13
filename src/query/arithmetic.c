@@ -6155,6 +6155,7 @@ db_evaluate_json_contains_path (DB_VALUE * result, DB_VALUE * const *arg, const 
     }
 
   db_make_int (result, (int) exists);
+  db_json_delete_doc (doc);
   return error_code;
 }
 
