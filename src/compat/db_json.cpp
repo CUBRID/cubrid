@@ -156,7 +156,7 @@ class JSON_DOC: public rapidjson::GenericDocument <JSON_ENCODING, JSON_PRIVATE_M
 #endif // TODO_OPTIMIZE_JSON_BODY_STRING
 };
 
-typedef std::function<int (JSON_VALUE &, const std::string &, bool &)> map_func_type;
+typedef std::function<int (const JSON_VALUE &, const std::string &, bool &)> map_func_type;
 
 // class JSON_ITERATOR - virtual interface to wrap array and object iterators
 //
@@ -1343,8 +1343,8 @@ db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<
     }
 
   // we gather extracted values in an array to match with the order of the given path arguments
-  std::vector<std::vector<JSON_VALUE *>> produced_array (transformed_paths.size ());
-  const map_func_type &f = [&regs, &produced_array] (JSON_VALUE &jv, const std::string &crt_path, bool &stop) -> int
+  std::vector<std::vector<const JSON_VALUE *>> produced_array (transformed_paths.size ());
+  const map_func_type &f = [&regs, &produced_array] (const JSON_VALUE &jv, const std::string &crt_path, bool &stop) -> int
   {
     for (std::size_t i = 0; i < regs.size (); ++i)
       {
@@ -1363,7 +1363,7 @@ db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<
     {
       for (const auto &produced : produced_array)
 	{
-	  for (JSON_VALUE *p : produced)
+	  for (const JSON_VALUE *p : produced)
 	    {
 	      if (result == NULL)
 		{
@@ -1377,20 +1377,15 @@ db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<
     }
   else
     {
-      for (const auto &produced : produced_array)
+      assert (produced_array.size () == 1 && (produced_array.empty () || produced_array.size () == 1));
+      if (result == NULL)
 	{
-	  if (produced.empty ())
-	    {
-	      continue;
-	    }
+	  result = db_json_allocate_doc ();
+	}
 
-	  if (result == NULL)
-	    {
-	      result = db_json_allocate_doc ();
-	    }
-	  result->CopyFrom (*produced[0], result->GetAllocator ());
-
-	  return NO_ERROR;
+      if (!produced_array[0].empty ())
+	{
+	  result->CopyFrom (*produced_array[0][0], result->GetAllocator ());
 	}
     }
 
@@ -1440,7 +1435,7 @@ db_json_contains_path (const JSON_DOC *document, const std::vector<std::string> 
       found_set[i] = false;
     }
 
-  const map_func_type &f_find = [&regs, &found_set, find_all] (JSON_VALUE &v, const std::string &accumulated_path,
+  const map_func_type &f_find = [&regs, &found_set, find_all] (const JSON_VALUE &v, const std::string &accumulated_path,
 				bool &stop) -> int
   {
     for (std::size_t i = 0; i < regs.size (); ++i)
