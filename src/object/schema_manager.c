@@ -12445,7 +12445,7 @@ update_subclasses (DB_OBJLIST * subclasses)
 		      /* an error has happened */
 		      error = num_indexes;
 		    }
-		  else if (!class_->dont_decache_constraints_or_flush)
+		  else if (!class_->dont_decache_constraints_or_flush && class_->class_type == SM_CLASS_CT)
 		    {
 		      error = sm_update_statistics (sub->op, STATS_WITH_SAMPLING);
 		    }
@@ -12787,10 +12787,13 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
   class_->new_ = NULL;
 
   /* All objects are updated, now we can update class statistics also. */
-  error = sm_update_statistics (template_->op, STATS_WITH_SAMPLING);
-  if (error != NO_ERROR)
+  if (template_->class_type == SM_CLASS_CT)
     {
-      goto error_return;
+      error = sm_update_statistics (template_->op, STATS_WITH_SAMPLING);
+      if (error != NO_ERROR)
+	{
+	  goto error_return;
+	}
     }
 
   classobj_free_template (flat);
