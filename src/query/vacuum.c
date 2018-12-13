@@ -1232,7 +1232,7 @@ vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_m
 			       page_ptr->oid.volid, page_ptr->oid.pageid);
 
 #if defined (NDEBUG)
-	  if (vacuum_is_thread_vacuum_worker (thread_p) && !thread_p->shutdown)
+	  if (!thread_p->shutdown)
 	    {
 	      // unexpected case
 	      // debug crashes; but can release do about it? just try to clean as much as possible
