@@ -2132,9 +2132,8 @@ db_json_search_func (JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALUE *esc
 		     const std::vector<std::regex> &regs, bool find_all)
 {
   std::unordered_set<std::string> paths_gathered;
-  auto f_search = [&regs, &paths, pattern, esc_char, find_all, &paths_gathered] (JSON_VALUE &jv,
-		  const std::string &crt_path,
-		  bool &stop) -> int
+  const map_func_type &f_search = [&regs, &paths, pattern, esc_char, find_all, &paths_gathered] (const JSON_VALUE &jv,
+				  const std::string &crt_path, bool &stop) -> int
   {
     if (!jv.IsString ())
       {
