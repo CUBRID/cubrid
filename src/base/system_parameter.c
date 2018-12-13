@@ -5595,7 +5595,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_DWB_LOGGING,
    PRM_NAME_DWB_LOGGING,
-   (PRM_FOR_SERVER | PRM_USER_CHANGE),	// todo - should this be hidden?
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
    &prm_dwb_logging_flag,
    (void *) &prm_dwb_logging_default,
