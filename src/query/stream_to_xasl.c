@@ -4435,6 +4435,8 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr, ACCESS_SPEC_TYPE
   if (access_spec->type == TARGET_JSON_TABLE)
     {
       // also initialize scan part; it is enough to call it once here, not on each query execution
+      // since we initialize the json table here, we also have to initialize s_id.type
+      access_spec->s_id.type = S_JSON_TABLE_SCAN;
       access_spec->s_id.s.jtid.init (access_spec->s.json_table_node);
     }
 
