@@ -41,9 +41,6 @@ namespace cubload
       void start_line (int object_id) override;
       void process_line (constant_type *cons) override;
       void finish_line () override;
-
-      void on_error (std::string &err_msg) override;
-      void on_failure (std::string &err_msg) override;
   };
 }
 /* *INDENT-ON* */
@@ -57,5 +54,8 @@ extern void ldr_sa_load (cubload::load_args *args, int *status, bool *interrupte
 
 /* log functions */
 extern void print_log_msg (int verbose, const char *fmt, ...);
+
+extern void ldr_increment_err_total ();
+extern void ldr_increment_fails ();
 
 #endif /* _LOAD_SA_LOADER_HPP_ */

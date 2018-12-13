@@ -28,18 +28,18 @@
 #include "heap_attrinfo.h"
 #include "heap_file.h"
 #include "load_common.hpp"
+#include "load_error_handler.hpp"
 
 namespace cubload
 {
 
   // forward declaration
-  class driver;
   class session;
 
   class server_loader : public loader
   {
     public:
-      server_loader (session &session, driver &driver);
+      server_loader (session &session, error_handler &error_handler);
       ~server_loader () override;
 
       void check_class (const char *class_name, int class_id) override;
@@ -51,9 +51,6 @@ namespace cubload
       void process_line (constant_type *cons) override;
       void finish_line () override;
 
-      void on_error (std::string &err_msg) override;
-      void on_failure (std::string &err_msg) override;
-
     private:
       void process_constant (constant_type *cons, int attr_idx);
       void process_monetary_constant (constant_type *cons, tp_domain *domain, db_value *db_val);
@@ -61,7 +58,7 @@ namespace cubload
       void clear ();
 
       session &m_session;
-      driver &m_driver;
+      error_handler &m_error_handler;
 
       OID m_class_oid;
 

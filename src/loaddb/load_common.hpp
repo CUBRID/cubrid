@@ -362,16 +362,6 @@ namespace cubload
        * Called after process_line, should implement login for cleaning up data after insert if required.
        */
       virtual void finish_line () = 0;
-
-      /*
-       * Error handler function
-       */
-      virtual void on_error (std::string &err_msg) = 0;
-
-      /*
-       * Failure handler function
-       */
-      virtual void on_failure (std::string &err_msg) = 0;
   };
 
   ///////////////////// common global functions /////////////////////

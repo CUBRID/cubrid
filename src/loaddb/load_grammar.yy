@@ -30,7 +30,6 @@
 %no-lines
 
 %parse-param { driver &m_driver }
-%parse-param { loader &m_loader }
 
 %define parse.assert
 
@@ -58,7 +57,6 @@ namespace cubload
 // This code will be copied into loader grammar source file
 #include "dbtype.h"
 #include "load_driver.hpp"
-#include "load_scanner.hpp"
 
 #undef yylex
 #define yylex m_driver.get_scanner ().yylex
@@ -191,7 +189,7 @@ loader_start :
   }
   loader_lines
   {
-    m_loader.destroy ();
+    m_driver.get_loader ().destroy ();
   }
   ;
 
@@ -230,7 +228,7 @@ one_line :
   instance_line
   {
     DBG_PRINT ("instance_line");
-    m_loader.finish_line ();
+    m_driver.get_loader ().finish_line ();
     m_driver.get_semantic_helper ().reset_pool_indexes ();
   }
   ;
@@ -250,7 +248,7 @@ command_line :
 id_command :
   CMD_ID IDENTIFIER INT_LIT
   {
-    m_loader.check_class ($2->val, atoi ($3->val));
+    m_driver.get_loader ().check_class ($2->val, atoi ($3->val));
 
     free_string (&$2);
     free_string (&$3);
@@ -260,7 +258,7 @@ id_command :
 class_command :
   CMD_CLASS IDENTIFIER class_command_spec
   {
-    m_loader.setup_class ($2, $3);
+    m_driver.get_loader ().setup_class ($2, $3);
 
     free_string (&$2);
     free_class_command_spec (&$3);
@@ -401,19 +399,19 @@ argument_name :
 instance_line :
   object_id
   {
-    m_loader.start_line ($1);
+    m_driver.get_loader ().start_line ($1);
   }
   |
   object_id constant_list
   {
-    m_loader.start_line ($1);
-    m_loader.process_line ($2);
+    m_driver.get_loader ().start_line ($1);
+    m_driver.get_loader ().process_line ($2);
   }
   |
   constant_list
   {
-    m_loader.start_line (-1);
-    m_loader.process_line ($1);
+    m_driver.get_loader ().start_line (-1);
+    m_driver.get_loader ().process_line ($1);
   }
   ;
 
@@ -787,5 +785,6 @@ monetary :
 void
 cubload::parser::error (const parser::location_type& l, const std::string& m)
 {
-  m_driver.on_error (LOADDB_MSG_SYNTAX_ERR, false, m_driver.scanner_lineno (), m_driver.scanner_text ());
+  m_driver.get_error_handler ().on_error (LOADDB_MSG_SYNTAX_ERR, m_driver.get_scanner ().lineno (),
+					  m_driver.get_scanner ().YYText ());
 }

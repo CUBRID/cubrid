@@ -50,6 +50,7 @@
 #include "language_support.h"
 #include "load_db_value_converter.hpp"
 #include "load_driver.hpp"
+#include "load_error_handler.hpp"
 #include "load_object.h"
 #include "load_object_table.h"
 #include "load_sa_loader.hpp"
@@ -478,6 +479,7 @@ while (0)
 static int ldr_start ();
 static int ldr_destroy (LDR_CONTEXT *context, int err);
 static int ldr_init (load_args *args);
+static void ldr_init_driver ();
 static int ldr_final (void);
 
 static int ldr_init_class_spec (const char *class_name);
@@ -518,8 +520,6 @@ static void ldr_act_set_skip_current_class (char *class_name, size_t size);
 static bool ldr_is_ignore_class (const char *class_name, size_t size);
 
 /* error handling functions */
-static void ldr_increment_err_total ();
-static void ldr_increment_fails (void);
 static void ldr_increment_err_count (LDR_CONTEXT *context, int i);
 
 static void ldr_clear_err_count (LDR_CONTEXT *context);
@@ -999,20 +999,7 @@ namespace cubload
     ldr_Current_context->instance_started = 0;
   }
 
-  void
-  sa_loader::on_error (std::string &err_msg)
-  {
-    ldr_increment_err_total ();
-    fprintf (stderr, "%s", err_msg.c_str ());
-  }
-
-  void
-  sa_loader::on_failure (std::string &err_msg)
-  {
-    ldr_increment_fails ();
-    fprintf (stderr, "%s", err_msg.c_str ());
-  }
-}
+} // namespace cubload
 /* *INDENT-ON* */
 
 /*
@@ -1020,7 +1007,7 @@ namespace cubload
  *    return: void
  *    context(out): context
  */
-static void
+void
 ldr_increment_err_total ()
 {
   if (ldr_Current_context)
@@ -1033,7 +1020,7 @@ ldr_increment_err_total ()
  * ldr_increment_fails - increment Total_fails count
  *    return: void
  */
-static void
+void
 ldr_increment_fails ()
 {
   Total_fails++;
@@ -1613,7 +1600,7 @@ static void
 display_error_line (int adjust)
 {
   fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_LINE),
-	   ldr_Driver->scanner_lineno () + adjust);
+	   ldr_Driver->get_scanner ().lineno () + adjust);
 }
 
 /*
@@ -2874,7 +2861,7 @@ static int
 ldr_nstr_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val)
 {
 
-  db_make_varnchar (val, TP_FLOATING_PRECISION_VALUE, (const DB_C_NCHAR) (str), (int) len, LANG_SYS_CODESET,
+  db_make_varnchar (val, TP_FLOATING_PRECISION_VALUE, (DB_C_NCHAR) str, (int) len, LANG_SYS_CODESET,
 		    LANG_SYS_COLLATION);
   return NO_ERROR;
 }
@@ -4593,7 +4580,7 @@ check_commit (LDR_CONTEXT *context)
 	    {
 	      CHECK_ERR (err, ldr_assign_all_perm_oids ());
 	      CHECK_ERR (err, db_commit_transaction ());
-	      Last_committed_line = ldr_Driver->scanner_lineno () - 1;
+	      Last_committed_line = ldr_Driver->get_scanner ().lineno () - 1;
 	      committed_instances = Total_objects + 1;
 	      display_error_line (-1);
 	      fprintf (stderr,
@@ -4628,7 +4615,7 @@ check_commit (LDR_CONTEXT *context)
 			     msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_COMMITTING));
 	      CHECK_ERR (err, ldr_assign_all_perm_oids ());
 	      CHECK_ERR (err, db_commit_transaction ());
-	      Last_committed_line = ldr_Driver->scanner_lineno () - 1;
+	      Last_committed_line = ldr_Driver->get_scanner ().lineno () - 1;
 	      context->commit_counter = context->args->periodic_commit;
 
 	      /* Invoke post commit callback function */
@@ -6154,6 +6141,24 @@ ldr_final (void)
   return shutdown_error;
 }
 
+static void
+ldr_init_driver ()
+{
+  if (ldr_Driver != NULL)
+    {
+      return;
+    }
+
+  ldr_Driver = new driver ();
+
+  lineno_function line_func = [] { return ldr_Driver->get_scanner ().lineno (); };
+  text_function text_func = [] { return ldr_Driver->get_scanner ().YYText (); };
+  error_handler *error_handler_ = new error_handler (text_func, line_func);
+
+  loader *loader = new sa_loader ();
+  ldr_Driver->initialize (loader, error_handler_);
+}
+
 void
 ldr_sa_load (load_args *args, int *status, bool *interrupted)
 {
@@ -6166,10 +6171,9 @@ ldr_sa_load (load_args *args, int *status, bool *interrupted)
 
   /* *INDENT-OFF* */
   std::ifstream object_file (args->object_file);
-  ldr_Driver = new driver ();
   /* *INDENT-ON* */
 
-  ldr_Driver->initialize<sa_loader> ();
+  ldr_init_driver ();
 
   locator_Dont_check_foreign_key = true;
   ldr_init (args);

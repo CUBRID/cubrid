@@ -26,6 +26,7 @@
 #include "connection_defs.h"
 #include "error_manager.h"
 #include "load_driver.hpp"
+#include "load_error_handler.hpp"
 #include "load_server_loader.hpp"
 #include "log_impl.h"
 #include "resource_shared_pool.hpp"
@@ -79,7 +80,17 @@ namespace cubload
 	    return;
 	  }
 
-	driver->initialize<server_loader> (m_session, *driver);
+	// avoid driver being initialized twice
+	if (!driver->is_initialized ())
+	  {
+	    lineno_function line_func = [driver] { return driver->get_scanner ().lineno (); };
+	    text_function text_func = [driver] { return driver->get_scanner ().YYText (); };
+	    error_handler *error_handler_ = new error_handler (text_func, line_func);
+	    error_handler_->initialize (&m_session);
+
+	    loader *loader = new server_loader (m_session, *error_handler_);
+	    driver->initialize (loader, error_handler_);
+	  }
 
 	context.m_loaddb_driver = driver;
       }

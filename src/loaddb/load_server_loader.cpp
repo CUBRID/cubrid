@@ -24,7 +24,6 @@
 #include "load_server_loader.hpp"
 
 #include "load_db_value_converter.hpp"
-#include "load_driver.hpp"
 #include "load_scanner.hpp"
 #include "load_session.hpp"
 #include "locator_sr.h"
@@ -36,9 +35,9 @@
 
 namespace cubload
 {
-  server_loader::server_loader (session &session, driver &driver)
+  server_loader::server_loader (session &session, error_handler &error_handler)
     : m_session (session)
-    , m_driver (driver)
+    , m_error_handler (error_handler)
     , m_class_oid (OID_INITIALIZER)
     , m_attr_ids (NULL)
     , m_attr_info ()
@@ -89,21 +88,21 @@ namespace cubload
     LC_FIND_CLASSNAME found = xlocator_find_class_oid (&thread_ref, class_name->val, &m_class_oid, IX_LOCK);
     if (found != LC_CLASSNAME_EXIST)
       {
-	m_driver.on_error (LOADDB_MSG_UNKNOWN_CLASS, true, class_name->val);
+	m_error_handler.on_error_with_line (LOADDB_MSG_UNKNOWN_CLASS, class_name->val);
 	return;
       }
 
     error = heap_get_hfid_from_class_oid (&thread_ref, &m_class_oid, &hfid);
     if (error != NO_ERROR)
       {
-	m_driver.on_error (LOADDB_MSG_LOAD_FAIL, true);
+	m_error_handler.on_error_with_line (LOADDB_MSG_LOAD_FAIL);
 	return;
       }
 
     error = heap_scancache_start_modify (&thread_ref, &m_scancache, &hfid, &m_class_oid, SINGLE_ROW_INSERT, NULL);
     if (error != NO_ERROR)
       {
-	m_driver.on_error (LOADDB_MSG_LOAD_FAIL, true);
+	m_error_handler.on_error_with_line (LOADDB_MSG_LOAD_FAIL);
 	m_scancache_started = false;
 	return;
       }
@@ -113,14 +112,14 @@ namespace cubload
     error = heap_attrinfo_start (&thread_ref, &m_class_oid, -1, NULL, &m_attr_info);
     if (error != NO_ERROR)
       {
-	m_driver.on_error (LOADDB_MSG_LOAD_FAIL, true);
+	m_error_handler.on_error_with_line (LOADDB_MSG_LOAD_FAIL);
 	return;
       }
 
     SCAN_CODE scan_code = heap_get_class_record (&thread_ref, &m_class_oid, &recdes, &m_scancache, PEEK);
     if (scan_code != S_SUCCESS)
       {
-	m_driver.on_error (LOADDB_MSG_LOAD_FAIL, true);
+	m_error_handler.on_error_with_line (LOADDB_MSG_LOAD_FAIL);
 	return;
       }
 
@@ -134,7 +133,7 @@ namespace cubload
 	error = or_get_attrname (&recdes, attr_id, &string, &alloced_string);
 	if (error != NO_ERROR)
 	  {
-	    m_driver.on_error (LOADDB_MSG_LOAD_FAIL, true);
+	    m_error_handler.on_error_with_line (LOADDB_MSG_LOAD_FAIL);
 	    return;
 	  }
 
@@ -215,7 +214,7 @@ namespace cubload
     if (attr == NULL)
       {
 	// TODO use LOADDB_MSG_MISSING_DOMAIN message
-	m_driver.on_failure (LOADDB_MSG_LOAD_FAIL, true);
+	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
 	return;
       }
 
@@ -224,7 +223,7 @@ namespace cubload
       case LDR_NULL:
 	if (attr->is_notnull)
 	  {
-	    m_driver.on_error (LOADDB_MSG_LOAD_FAIL, true);
+	    m_error_handler.on_error_with_line (LOADDB_MSG_LOAD_FAIL);
 	    return;
 	  }
       case LDR_INT:
@@ -251,8 +250,8 @@ namespace cubload
 	  }
 	else
 	  {
-	    m_driver.on_error (LOADDB_MSG_CONVERSION_ERROR, true, str != NULL ? str->val : "",
-			       pr_type_name (TP_DOMAIN_TYPE (attr->domain)));
+	    m_error_handler.on_error_with_line (LOADDB_MSG_CONVERSION_ERROR, str != NULL ? str->val : "",
+						pr_type_name (TP_DOMAIN_TYPE (attr->domain)));
 	    return;
 	  }
 
@@ -358,24 +357,11 @@ namespace cubload
 					  UPDATE_INPLACE_NONE, NULL, false);
     if (error != NO_ERROR)
       {
-	m_driver.on_error (LOADDB_MSG_LOAD_FAIL, true);
+	m_error_handler.on_error_with_line (LOADDB_MSG_LOAD_FAIL);
 	return;
       }
 
     m_session.inc_total_objects ();
-  }
-
-  void
-  server_loader::on_error (std::string &err_msg)
-  {
-    m_session.on_error (err_msg);
-  }
-
-  void
-  server_loader::on_failure (std::string &err_msg)
-  {
-    m_session.on_error (err_msg);
-    m_session.fail ();
   }
 
   void
