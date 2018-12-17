@@ -1378,13 +1378,14 @@ db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<
   else
     {
       assert (produced_array.size () == 1 && (produced_array.empty () || produced_array.size () == 1));
-      if (result == NULL)
-	{
-	  result = db_json_allocate_doc ();
-	}
 
       if (!produced_array[0].empty ())
 	{
+	  if (result == NULL)
+	    {
+	      result = db_json_allocate_doc ();
+	    }
+
 	  result->CopyFrom (*produced_array[0][0], result->GetAllocator ());
 	}
     }
