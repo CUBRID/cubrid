@@ -4491,7 +4491,10 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
 	case DB_TYPE_JSON:
 	  if (d->json_validator != NULL)
 	    {
-	      size += or_packed_string_length (db_json_get_schema_raw_from_validator (d->json_validator), NULL);
+	      DB_VALUE temp;
+	      db_make_string (&temp, const_cast < char *>(db_json_get_schema_raw_from_validator (d->json_validator)));
+
+	      size += (*(tp_String.data_lengthval)) (&temp, 1);
 	    }
 	  break;
 
