@@ -29,9 +29,8 @@
 namespace cubload
 {
 
-  error_handler::error_handler (text_function &text_function, lineno_function &lineno_function)
-    : m_text_function (text_function)
-    , m_lineno_function (lineno_function)
+  error_handler::error_handler (lineno_function &lineno_function)
+    : m_lineno_function (lineno_function)
 #if defined (SERVER_MODE)
     , m_session (NULL)
 #endif

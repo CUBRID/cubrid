@@ -95,14 +95,14 @@ namespace cubload
     error = heap_get_hfid_from_class_oid (&thread_ref, &m_class_oid, &hfid);
     if (error != NO_ERROR)
       {
-	m_error_handler.on_error_with_line (LOADDB_MSG_LOAD_FAIL);
+	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
 	return;
       }
 
     error = heap_scancache_start_modify (&thread_ref, &m_scancache, &hfid, &m_class_oid, SINGLE_ROW_INSERT, NULL);
     if (error != NO_ERROR)
       {
-	m_error_handler.on_error_with_line (LOADDB_MSG_LOAD_FAIL);
+	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
 	m_scancache_started = false;
 	return;
       }
@@ -112,14 +112,14 @@ namespace cubload
     error = heap_attrinfo_start (&thread_ref, &m_class_oid, -1, NULL, &m_attr_info);
     if (error != NO_ERROR)
       {
-	m_error_handler.on_error_with_line (LOADDB_MSG_LOAD_FAIL);
+	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
 	return;
       }
 
     SCAN_CODE scan_code = heap_get_class_record (&thread_ref, &m_class_oid, &recdes, &m_scancache, PEEK);
     if (scan_code != S_SUCCESS)
       {
-	m_error_handler.on_error_with_line (LOADDB_MSG_LOAD_FAIL);
+	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
 	return;
       }
 
@@ -133,7 +133,7 @@ namespace cubload
 	error = or_get_attrname (&recdes, attr_id, &string, &alloced_string);
 	if (error != NO_ERROR)
 	  {
-	    m_error_handler.on_error_with_line (LOADDB_MSG_LOAD_FAIL);
+	    m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
 	    return;
 	  }
 
@@ -223,7 +223,7 @@ namespace cubload
       case LDR_NULL:
 	if (attr->is_notnull)
 	  {
-	    m_error_handler.on_error_with_line (LOADDB_MSG_LOAD_FAIL);
+	    m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
 	    return;
 	  }
       case LDR_INT:
@@ -357,7 +357,7 @@ namespace cubload
 					  UPDATE_INPLACE_NONE, NULL, false);
     if (error != NO_ERROR)
       {
-	m_error_handler.on_error_with_line (LOADDB_MSG_LOAD_FAIL);
+	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
 	return;
       }
 

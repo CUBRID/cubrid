@@ -59,6 +59,113 @@ namespace cubload
 ///////////////////// Function definitions /////////////////////
 namespace cubload
 {
+
+  stats::stats ()
+    : defaults (0)
+    , total_objects (0)
+    , last_commit (0)
+    , errors (0)
+    , error_message ()
+    , is_failed (false)
+    , is_completed (false)
+  {
+    //
+  }
+
+  // Copy constructor
+  stats::stats (const stats &copy)
+    : defaults (copy.defaults)
+    , total_objects (copy.total_objects)
+    , last_commit (copy.last_commit)
+    , errors (copy.errors)
+    , error_message (copy.error_message)
+    , is_failed (copy.is_failed)
+    , is_completed (copy.is_completed)
+  {
+    //
+  }
+
+  stats &
+  stats::operator= (const stats &other)
+  {
+    this->defaults = other.defaults;
+    this->total_objects = other.total_objects;
+    this->last_commit = other.last_commit;
+    this->errors = other.errors;
+    this->error_message = other.error_message;
+    this->is_failed = other.is_failed;
+    this->is_completed = other.is_completed;
+
+    return *this;
+  }
+
+  void
+  stats::clear ()
+  {
+    defaults = 0;
+    total_objects = 0;
+    last_commit = 0;
+    errors = 0;
+    error_message.clear ();
+    is_failed = false;
+    is_completed = false;
+  }
+
+  int
+  stats::pack (cubpacking::packer *serializator)
+  {
+    serializator->pack_bigint (&total_objects);
+    serializator->pack_bigint (&last_commit);
+    serializator->pack_int (errors);
+    serializator->pack_string (error_message);
+    serializator->pack_int ((int) is_failed);
+    serializator->pack_int ((int) is_completed);
+
+    return NO_ERROR;
+  }
+
+  int
+  stats::unpack (cubpacking::packer *serializator)
+  {
+    serializator->unpack_bigint (&total_objects);
+    serializator->unpack_bigint (&last_commit);
+    serializator->unpack_int (&errors);
+    serializator->unpack_string (error_message);
+
+    int is_failed_;
+    serializator->unpack_int (&is_failed_);
+    is_failed = (bool) is_failed_;
+
+    int is_completed_;
+    serializator->unpack_int (&is_completed_);
+    is_completed = (bool) is_completed_;
+
+    return NO_ERROR;
+  }
+
+  bool
+  stats::is_equal (const packable_object *other)
+  {
+    // used only in test context
+    assert (false);
+    return true;
+  }
+
+  size_t
+  stats::get_packed_size (cubpacking::packer *serializator)
+  {
+    size_t size = 0;
+
+    size += serializator->get_packed_bigint_size (size); // total_objects
+    size += serializator->get_packed_bigint_size (size); // last_commit
+    size += serializator->get_packed_int_size (size); // errors
+    size += serializator->get_packed_string_size (error_message, size);
+    size += serializator->get_packed_int_size (size); // is_failed
+    size += serializator->get_packed_int_size (size); // is_completed
+
+    return size;
+  }
+
   void
   free_string (string_type **str)
   {

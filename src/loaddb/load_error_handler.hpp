@@ -38,12 +38,11 @@ namespace cubload
 {
 
   using lineno_function = std::function<int ()>;
-  using text_function = std::function<const char *()>;
 
   class error_handler
   {
     public:
-      error_handler (text_function &text_function, lineno_function &lineno_function);
+      error_handler (lineno_function &lineno_function);
 
       ~error_handler () = default; // Destructor
 
@@ -72,7 +71,6 @@ namespace cubload
       template<typename... Args>
       std::string format (const char *fmt, Args &&... args);
 
-      text_function m_text_function;
       lineno_function m_lineno_function;
 #if defined (SERVER_MODE)
       session *m_session;
@@ -101,7 +99,7 @@ namespace cubload
   {
     std::string err_msg;
 
-    err_msg.append (format (get_message_from_catalog (LOADDB_MSG_LINE), m_lineno_function () - 1));
+    err_msg.append (format (get_message_from_catalog (LOADDB_MSG_LINE), m_lineno_function ()));
     err_msg.append (format (get_message_from_catalog (msg_id), std::forward<Args> (args)...));
 
     log_error_message (err_msg, false);
@@ -121,7 +119,7 @@ namespace cubload
   {
     std::string err_msg;
 
-    err_msg.append (format (get_message_from_catalog (LOADDB_MSG_LINE), m_lineno_function () - 1));
+    err_msg.append (format (get_message_from_catalog (LOADDB_MSG_LINE), m_lineno_function ()));
     err_msg.append (format (get_message_from_catalog (msg_id), std::forward<Args> (args)...));
 
     log_error_message (err_msg, true);

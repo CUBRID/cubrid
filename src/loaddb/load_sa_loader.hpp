@@ -50,12 +50,12 @@ extern int ignore_class_num;
 extern char **ignore_class_list;
 
 /* start load functions */
-extern void ldr_sa_load (cubload::load_args *args, int *status, bool *interrupted);
+void ldr_sa_load (cubload::load_args *args, int *status, bool *interrupted);
 
 /* log functions */
-extern void print_log_msg (int verbose, const char *fmt, ...);
+void print_log_msg (int verbose, const char *fmt, ...);
 
-extern void ldr_increment_err_total ();
-extern void ldr_increment_fails ();
+void ldr_increment_err_total ();
+void ldr_increment_fails ();
 
 #endif /* _LOAD_SA_LOADER_HPP_ */

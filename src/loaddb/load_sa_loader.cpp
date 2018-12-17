@@ -6152,8 +6152,7 @@ ldr_init_driver ()
   ldr_Driver = new driver ();
 
   lineno_function line_func = [] { return ldr_Driver->get_scanner ().lineno (); };
-  text_function text_func = [] { return ldr_Driver->get_scanner ().YYText (); };
-  error_handler *error_handler_ = new error_handler (text_func, line_func);
+  error_handler *error_handler_ = new error_handler (line_func);
 
   loader *loader = new sa_loader ();
   ldr_Driver->initialize (loader, error_handler_);

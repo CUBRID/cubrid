@@ -84,8 +84,7 @@ namespace cubload
 	if (!driver->is_initialized ())
 	  {
 	    lineno_function line_func = [driver] { return driver->get_scanner ().lineno (); };
-	    text_function text_func = [driver] { return driver->get_scanner ().YYText (); };
-	    error_handler *error_handler_ = new error_handler (text_func, line_func);
+	    error_handler *error_handler_ = new error_handler (line_func);
 	    error_handler_->initialize (&m_session);
 
 	    loader *loader = new server_loader (m_session, *error_handler_);
