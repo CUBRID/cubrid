@@ -1,3 +1,6 @@
+*
+!./src/*
+
 
 ## Automake files
 Makefile
