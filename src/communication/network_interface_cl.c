@@ -223,7 +223,6 @@ length_const_string (const char *cstring, int *strlen)
   return or_packed_string_length (cstring, strlen);
 }
 
-
 /*
  * length_string_with_null_padding - calculate length with null padding
  *
@@ -3360,7 +3359,6 @@ acl_reload ()
 #endif /* !CS_MODE */
 }
 
-
 /*
  * acl_dump -
  *
@@ -6439,7 +6437,6 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream)
 #endif /* !CS_MODE */
 }
 
-
 /*
  * qmgr_execute_query - Send a SERVER_QM_EXECUTE request to the server
  *
@@ -7434,7 +7431,6 @@ catalog_check_rep_dir (OID * class_id, OID * rep_dir_p)
   return success;
 #endif /* !CS_MODE */
 }
-
 
 /*
  * thread_kill_tran_index -
@@ -9366,7 +9362,6 @@ es_posix_rename_file (const char *src_path, const char *metaname, char *new_path
 #endif
 }
 
-
 /*
  * es_posix_get_file_size () - get the size of an esternal file
  *
@@ -10083,7 +10078,7 @@ locator_demote_class_lock (const OID * class_oid, LOCK lock, LOCK * ex_lock)
 }
 
 int
-loaddb_load_object_file (const char *file_name)
+loaddb_init ()
 {
 #if defined(CS_MODE)
   int req_error;
@@ -10091,13 +10086,26 @@ loaddb_load_object_file (const char *file_name)
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  // TODO: The current code assumes the file is local.
-  // When server and client is in a host and server can also access it, it is the best case.
-  // However, I don't think this is the only usage.
-  // It might be good to extend loaddb to support not only local files but remote ones.
-  // For local files, it is enough to just send the file name.
-  // For remote files, client reads it and sends contents to server.
-  // We may consider to adopt a qualifier: LOCAL or REMOTE.
+  req_error = net_client_request (NET_SERVER_LD_INIT, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      or_unpack_int (reply, &rc);
+    }
+
+  return rc;
+#else /* CS_MODE */
+  return NO_ERROR;
+#endif /* !CS_MODE */
+}
+
+int
+loaddb_load_object_file (const char *file_name)
+{
+#if defined(CS_MODE)
+  int req_error;
+  int rc = NO_ERROR;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
 
   int request_size = length_const_string (file_name, NULL);
   char *request = (char *) malloc (request_size);
@@ -10114,6 +10122,101 @@ loaddb_load_object_file (const char *file_name)
 
   free_and_init (request);
 
+  if (!req_error)
+    {
+      or_unpack_int (reply, &rc);
+    }
+
+  return rc;
+#else /* CS_MODE */
+  return NO_ERROR;
+#endif /* !CS_MODE */
+}
+
+int
+loaddb_load_batch (std::string & batch, int batch_id)
+{
+#if defined(CS_MODE)
+  char *ptr;
+  int req_error;
+  int rc = NO_ERROR;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  int request_size = length_const_string (batch.c_str (), NULL) + OR_INT_SIZE;
+  char *request = (char *) malloc (request_size);
+  if (request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, request_size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  ptr = pack_const_string (request, batch.c_str ());
+  or_pack_int (ptr, batch_id);
+
+  req_error = net_client_request (NET_SERVER_LD_LOAD_BATCH, request, request_size, reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+
+  free_and_init (request);
+
+  if (!req_error)
+    {
+      or_unpack_int (reply, &rc);
+    }
+
+  return rc;
+#else /* CS_MODE */
+  return NO_ERROR;
+#endif /* !CS_MODE */
+}
+
+int
+loaddb_fetch_stats (load_stats * stats)
+{
+#if defined(CS_MODE)
+  char *ptr = NULL;
+  char *data_reply = NULL;
+  int data_reply_size = 0;
+  int error_code = NO_ERROR;
+  OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  error_code = net_client_request2 (NET_SERVER_LD_FETCH_STATS, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
+				    &data_reply, &data_reply_size);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  ptr = or_unpack_int (reply, &data_reply_size);
+  or_unpack_int (ptr, &error_code);
+
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  cubpacking::packer packer (data_reply, data_reply_size);
+  stats->clear ();
+  stats->unpack (&packer);
+
+  return 0;
+#else /* CS_MODE */
+  return NO_ERROR;
+#endif /* !CS_MODE */
+}
+
+int
+loaddb_destroy ()
+{
+#if defined(CS_MODE)
+  int req_error;
+  int rc = NO_ERROR;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  req_error =
+    net_client_request (NET_SERVER_LD_DESTROY, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       or_unpack_int (reply, &rc);

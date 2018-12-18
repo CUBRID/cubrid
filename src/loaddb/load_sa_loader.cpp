@@ -48,11 +48,13 @@
 #include "execute_schema.h"
 #include "intl_support.h"
 #include "language_support.h"
-#include "load_sa_loader.hpp"
 #include "load_db_value_converter.hpp"
 #include "load_driver.hpp"
+#include "load_error_handler.hpp"
 #include "load_object.h"
 #include "load_object_table.h"
+#include "load_sa_loader.hpp"
+#include "load_scanner.hpp"
 #include "locator_cl.h"
 #include "memory_alloc.h"
 #include "message_catalog.h"
@@ -330,7 +332,7 @@ static LDR_CONTEXT *ldr_Current_context = NULL;
 static LDR_CONTEXT ldr_Context;
 
 // Global driver instance for client loader
-static driver ldr_Driver;
+static driver *ldr_Driver;
 
 /*
  * ldr_Hint_locks
@@ -477,6 +479,7 @@ while (0)
 static int ldr_start ();
 static int ldr_destroy (LDR_CONTEXT *context, int err);
 static int ldr_init (load_args *args);
+static void ldr_init_driver ();
 static int ldr_final (void);
 
 static int ldr_init_class_spec (const char *class_name);
@@ -516,7 +519,9 @@ static int ldr_act_add_argument (LDR_CONTEXT *context, const char *name);
 static void ldr_act_set_skip_current_class (char *class_name, size_t size);
 static bool ldr_is_ignore_class (const char *class_name, size_t size);
 
+/* error handling functions */
 static void ldr_increment_err_count (LDR_CONTEXT *context, int i);
+
 static void ldr_clear_err_count (LDR_CONTEXT *context);
 static void ldr_clear_err_total (LDR_CONTEXT *context);
 static const char *ldr_class_name (LDR_CONTEXT *context);
@@ -994,29 +999,32 @@ namespace cubload
     ldr_Current_context->instance_started = 0;
   }
 
-  void
-  sa_loader::load_failed_error ()
-  {
-    display_error_line (0);
-    fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_LOAD_FAIL));
-  }
-
-  void
-  sa_loader::increment_err_total ()
-  {
-    if (ldr_Current_context)
-      {
-	ldr_Current_context->err_total += 1;
-      }
-  }
-
-  void
-  sa_loader::increment_fails ()
-  {
-    Total_fails++;
-  }
-}
+} // namespace cubload
 /* *INDENT-ON* */
+
+/*
+ * ldr_increment_err_total - increment err_total count of the given context
+ *    return: void
+ *    context(out): context
+ */
+void
+ldr_increment_err_total ()
+{
+  if (ldr_Current_context)
+    {
+      ldr_Current_context->err_total += 1;
+    }
+}
+
+/*
+ * ldr_increment_fails - increment Total_fails count
+ *    return: void
+ */
+void
+ldr_increment_fails ()
+{
+  Total_fails++;
+}
 
 /*
  * ldr_increment_err_count - increment err_count of the given context
@@ -1592,7 +1600,7 @@ static void
 display_error_line (int adjust)
 {
   fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_LINE),
-	   ldr_Driver.lineno () + adjust);
+	   ldr_Driver->get_scanner ().lineno () + adjust);
 }
 
 /*
@@ -2853,7 +2861,7 @@ static int
 ldr_nstr_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val)
 {
 
-  db_make_varnchar (val, TP_FLOATING_PRECISION_VALUE, (const DB_C_NCHAR) (str), (int) len, LANG_SYS_CODESET,
+  db_make_varnchar (val, TP_FLOATING_PRECISION_VALUE, (DB_C_NCHAR) str, (int) len, LANG_SYS_CODESET,
 		    LANG_SYS_COLLATION);
   return NO_ERROR;
 }
@@ -4572,7 +4580,7 @@ check_commit (LDR_CONTEXT *context)
 	    {
 	      CHECK_ERR (err, ldr_assign_all_perm_oids ());
 	      CHECK_ERR (err, db_commit_transaction ());
-	      Last_committed_line = ldr_Driver.lineno () - 1;
+	      Last_committed_line = ldr_Driver->get_scanner ().lineno () - 1;
 	      committed_instances = Total_objects + 1;
 	      display_error_line (-1);
 	      fprintf (stderr,
@@ -4607,7 +4615,7 @@ check_commit (LDR_CONTEXT *context)
 			     msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_COMMITTING));
 	      CHECK_ERR (err, ldr_assign_all_perm_oids ());
 	      CHECK_ERR (err, db_commit_transaction ());
-	      Last_committed_line = ldr_Driver.lineno () - 1;
+	      Last_committed_line = ldr_Driver->get_scanner ().lineno () - 1;
 	      context->commit_counter = context->args->periodic_commit;
 
 	      /* Invoke post commit callback function */
@@ -6133,8 +6141,25 @@ ldr_final (void)
   return shutdown_error;
 }
 
+static void
+ldr_init_driver ()
+{
+  if (ldr_Driver != NULL)
+    {
+      return;
+    }
+
+  ldr_Driver = new driver ();
+
+  lineno_function line_func = [] { return ldr_Driver->get_scanner ().lineno (); };
+  error_handler *error_handler_ = new error_handler (line_func);
+
+  loader *loader = new sa_loader ();
+  ldr_Driver->initialize (loader, error_handler_);
+}
+
 void
-ldr_load (load_args *args, int *status, bool *interrupted)
+ldr_sa_load (load_args *args, int *status, bool *interrupted)
 {
   int errors = 0;
   int objects = 0;
@@ -6142,18 +6167,19 @@ ldr_load (load_args *args, int *status, bool *interrupted)
   int fails = 0;
   int lastcommit = 0;
   int ldr_init_ret = NO_ERROR;
+
   /* *INDENT-OFF* */
   std::ifstream object_file (args->object_file);
   /* *INDENT-ON* */
 
+  ldr_init_driver ();
+
   locator_Dont_check_foreign_key = true;
-  print_log_msg (1, "\nStart object loading.\n");
   ldr_init (args);
 
   /* set the flag to indicate what type of interrupts to raise If logging has been disabled set commit flag. If
    * logging is enabled set abort flag. */
 
-  /* *INDENT-OFF* */
   if (args->ignore_logging)
     {
       ldr_Interrupt_type = LDR_STOP_AND_COMMIT_INTERRUPT;
@@ -6162,7 +6188,6 @@ ldr_load (load_args *args, int *status, bool *interrupted)
     {
       ldr_Interrupt_type = LDR_STOP_AND_ABORT_INTERRUPT;
     }
-  /* *INDENT-ON* */
 
   if (args->periodic_commit)
     {
@@ -6179,7 +6204,7 @@ ldr_load (load_args *args, int *status, bool *interrupted)
 	{
 	  ldr_init_ret = ldr_init_class_spec (args->table_name);
 	}
-      ldr_Driver.parse (object_file);
+      ldr_Driver->parse (object_file);
       ldr_stats (&errors, &objects, &defaults, &lastcommit, &fails);
     }
   else
@@ -6239,7 +6264,7 @@ ldr_load (load_args *args, int *status, bool *interrupted)
 		  ldr_init_class_spec (args->table_name);
 		}
 
-	      ldr_Driver.parse (object_file);
+	      ldr_Driver->parse (object_file);
 	      ldr_stats (&errors, &objects, &defaults, &lastcommit, &fails);
 
 	      if (errors)
@@ -6311,6 +6336,11 @@ ldr_load (load_args *args, int *status, bool *interrupted)
 
   ldr_final ();
 
+  if (ldr_Driver != NULL)
+    {
+      delete ldr_Driver;
+      ldr_Driver = NULL;
+    }
   if (object_file.is_open ())
     {
       object_file.close ();

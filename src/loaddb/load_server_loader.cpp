@@ -21,37 +21,35 @@
  * load_server_loader.cpp: Loader server definitions. Updated using design from fast loaddb prototype
  */
 
-#include <map>
+#include "load_server_loader.hpp"
 
 #include "load_db_value_converter.hpp"
-#include "load_server_loader.hpp"
+#include "load_scanner.hpp"
+#include "load_session.hpp"
 #include "locator_sr.h"
 #include "oid.h"
 #include "thread_manager.hpp"
 #include "xserver_interface.h"
 
+#include <map>
+
 namespace cubload
 {
-
-  server_loader::server_loader ()
-    : m_class_oid (OID_INITIALIZER)
+  server_loader::server_loader (session &session, error_handler &error_handler)
+    : m_session (session)
+    , m_error_handler (error_handler)
+    , m_class_oid (OID_INITIALIZER)
     , m_attr_ids (NULL)
     , m_attr_info ()
-    , m_scan_cache ()
-    , m_err_total (0)
-    , m_total_fails (0)
-    , m_scan_cache_started (false)
+    , m_scancache ()
+    , m_scancache_started (false)
   {
     //
   }
 
   server_loader::~server_loader ()
   {
-    if (m_attr_ids != NULL)
-      {
-	delete m_attr_ids;
-	m_attr_ids = NULL;
-      }
+    clear ();
   }
 
   void
@@ -71,8 +69,8 @@ namespace cubload
   {
     // TODO CBRD-21654 refactor this function, as well implement functionality to setup based on loaddb --table cmd option
 
-    HFID hfid;
-    RECDES recdes;
+    hfid hfid;
+    recdes recdes;
     int attr_idx = 0;
     string_type *attr;
     char *string = NULL;
@@ -90,38 +88,38 @@ namespace cubload
     LC_FIND_CLASSNAME found = xlocator_find_class_oid (&thread_ref, class_name->val, &m_class_oid, IX_LOCK);
     if (found != LC_CLASSNAME_EXIST)
       {
-	// FIXME - error handling(reporting)
+	m_error_handler.on_error_with_line (LOADDB_MSG_UNKNOWN_CLASS, class_name->val);
 	return;
       }
 
     error = heap_get_hfid_from_class_oid (&thread_ref, &m_class_oid, &hfid);
     if (error != NO_ERROR)
       {
-	// FIXME - error handling(reporting)
+	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
 	return;
       }
 
-    error = heap_scancache_start_modify (&thread_ref, &m_scan_cache, &hfid, &m_class_oid, SINGLE_ROW_INSERT, NULL);
+    error = heap_scancache_start_modify (&thread_ref, &m_scancache, &hfid, &m_class_oid, SINGLE_ROW_INSERT, NULL);
     if (error != NO_ERROR)
       {
-	// FIXME - error handling(reporting)
-	m_scan_cache_started = false;
+	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
+	m_scancache_started = false;
 	return;
       }
 
-    m_scan_cache_started = true;
+    m_scancache_started = true;
 
     error = heap_attrinfo_start (&thread_ref, &m_class_oid, -1, NULL, &m_attr_info);
     if (error != NO_ERROR)
       {
-	// FIXME - error handling(reporting)
+	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
 	return;
       }
 
-    SCAN_CODE scan_code = heap_get_class_record (&thread_ref, &m_class_oid, &recdes, &m_scan_cache, PEEK);
+    SCAN_CODE scan_code = heap_get_class_record (&thread_ref, &m_class_oid, &recdes, &m_scancache, PEEK);
     if (scan_code != S_SUCCESS)
       {
-	// FIXME - error handling(reporting)
+	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
 	return;
       }
 
@@ -135,7 +133,7 @@ namespace cubload
 	error = or_get_attrname (&recdes, attr_id, &string, &alloced_string);
 	if (error != NO_ERROR)
 	  {
-	    // FIXME - error handling(reporting)
+	    m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
 	    return;
 	  }
 
@@ -167,24 +165,18 @@ namespace cubload
   void
   server_loader::destroy ()
   {
-    if (m_attr_ids != NULL)
-      {
-	delete m_attr_ids;
-	m_attr_ids = NULL;
-      }
+    clear ();
 
     cubthread::entry &thread_ref = cubthread::get_entry ();
 
     heap_attrinfo_end (&thread_ref, &m_attr_info);
 
-    if (m_scan_cache_started)
+    if (m_scancache_started)
       {
-	heap_scancache_end_modify (&thread_ref, &m_scan_cache);
-	m_scan_cache_started = false;
+	heap_scancache_end_modify (&thread_ref, &m_scancache);
+	m_scancache_started = false;
       }
 
-    m_err_total = 0;
-    m_total_fails = 0;
     m_class_oid = OID_INITIALIZER;
   }
 
@@ -198,6 +190,11 @@ namespace cubload
   void
   server_loader::process_line (constant_type *cons)
   {
+    if (m_session.is_failed () || m_attr_ids == NULL)
+      {
+	return;
+      }
+
     int attr_idx = 0;
     constant_type *c, *save;
 
@@ -211,13 +208,13 @@ namespace cubload
   void
   server_loader::process_constant (constant_type *cons, int attr_idx)
   {
-    // TODO CBRD-21654 refactor this function
-    DB_VALUE db_val;
-    OR_ATTRIBUTE *attr = heap_locate_last_attrepr (m_attr_ids[attr_idx], &m_attr_info);
+    db_value db_val;
+    or_attribute *attr = heap_locate_last_attrepr (m_attr_ids[attr_idx], &m_attr_info);
 
     if (attr == NULL)
       {
-	// TODO report an error
+	// TODO use LOADDB_MSG_MISSING_DOMAIN message
+	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
 	return;
       }
 
@@ -226,7 +223,7 @@ namespace cubload
       case LDR_NULL:
 	if (attr->is_notnull)
 	  {
-	    // TODO report an error
+	    m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
 	    return;
 	  }
       case LDR_INT:
@@ -253,7 +250,8 @@ namespace cubload
 	  }
 	else
 	  {
-	    // TODO report an error
+	    m_error_handler.on_error_with_line (LOADDB_MSG_CONVERSION_ERROR, str != NULL ? str->val : "",
+						pr_type_name (TP_DOMAIN_TYPE (attr->domain)));
 	    return;
 	  }
 
@@ -301,7 +299,7 @@ namespace cubload
   }
 
   void
-  server_loader::process_monetary_constant (constant_type *cons, TP_DOMAIN *domain, DB_VALUE *db_val)
+  server_loader::process_monetary_constant (constant_type *cons, tp_domain *domain, db_value *db_val)
   {
     monetary_type *mon = (monetary_type *) cons->val;
     string_type *str = mon->amount;
@@ -341,45 +339,35 @@ namespace cubload
   void
   server_loader::finish_line ()
   {
-    OID oid;
-    int force_count = 0;
-    int pruning_type = 0;
-    int error = NO_ERROR;
-    int op_type = MULTI_ROW_INSERT;
-
-    cubthread::entry &thread_ref = cubthread::get_entry ();
-
-    if (!m_scan_cache_started)
+    if (m_session.is_failed () || !m_scancache_started)
       {
 	return;
       }
 
-    error = locator_attribute_info_force (&thread_ref, &m_scan_cache.node.hfid, &oid, &m_attr_info, NULL, 0,
-					  LC_FLUSH_INSERT, op_type, &m_scan_cache, &force_count, false,
+    OID oid;
+    int error;
+    int force_count = 0;
+    int pruning_type = 0;
+    int op_type = SINGLE_ROW_INSERT;
+    cubthread::entry &thread_ref = cubthread::get_entry ();
+
+    error = locator_attribute_info_force (&thread_ref, &m_scancache.node.hfid, &oid, &m_attr_info, NULL, 0,
+					  LC_FLUSH_INSERT, op_type, &m_scancache, &force_count, false,
 					  REPL_INFO_TYPE_RBR_NORMAL, pruning_type, NULL, NULL, NULL,
 					  UPDATE_INPLACE_NONE, NULL, false);
     if (error != NO_ERROR)
       {
-	// FIXME - error handling(reporting)
+	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
 	return;
       }
+
+    m_session.inc_total_objects ();
   }
 
   void
-  server_loader::load_failed_error ()
+  server_loader::clear ()
   {
-    //
-  }
-
-  void
-  server_loader::increment_err_total ()
-  {
-    m_err_total++;
-  }
-
-  void
-  server_loader::increment_fails ()
-  {
-    m_total_fails++;
+    delete [] m_attr_ids;
+    m_attr_ids = NULL;
   }
 } // namespace cubload

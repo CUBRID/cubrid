@@ -1,18 +1,18 @@
 $
-$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
 $
-$   This program is free software; you can redistribute it and/or modify 
-$   it under the terms of the GNU General Public License as published by 
+$   This program is free software; you can redistribute it and/or modify
+$   it under the terms of the GNU General Public License as published by
 $   the Free Software Foundation; either version 2 of the License, or
 $   (at your option) any later version.
 $
-$  This program is distributed in the hope that it will be useful, 
-$  but WITHOUT ANY WARRANTY; without even the implied warranty of 
-$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
-$  GNU General Public License for more details. 
+$  This program is distributed in the hope that it will be useful,
+$  but WITHOUT ANY WARRANTY; without even the implied warranty of
+$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+$  GNU General Public License for more details.
 $
-$  You should have received a copy of the GNU General Public License 
-$  along with this program; if not, write to the Free Software 
+$  You should have received a copy of the GNU General Public License
+$  along with this program; if not, write to the Free Software
 $  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 $
 
@@ -439,7 +439,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 50 Parola:
 51 \n*** Se actualizează statisticile claselor ***\n
 52 %1$s lânga linia %2$d (textul a fost '%3$s')\n
-53 Eroare lexicală
+53 Eroare lexicală\n
 54 linia %1$d: eroare de sintaxă la \"%2$s\"
 55 absent
 56 în %1$s
@@ -921,7 +921,7 @@ opţiuni valide:\n\
   -L, --log-path=CALE       CALEA către directorul pentru volumele de log copiate\n\
   -m, --mode=MODE           mod de operare; implicit: sync\n\
                             MOD: sync sau semisync sau async\n\
-  -S, --start-page-id=ID    first log page to copy\n 
+  -S, --start-page-id=ID    first log page to copy\n
 
 $set 41 MSGCAT_UTIL_SET_APPLYLOGDB
 21 Introduceţi parola de administrator (DBA):
@@ -1055,7 +1055,7 @@ opţiuni valide:\n\
                       configuraţie a sistemului.\n\
 
 $set 49 MSGCAT_UTIL_SET_TRANLIST
-20 Introduceţi parola pentru %1$s: 
+20 Introduceţi parola pentru %1$s:
 22 Index tranzacţie   Nume utilizator   Nume gazda   ID proces      Nume program\n
 23 -------------------------------------------------------------------------------\n
 24 %1$4d%2$-10s %3$14s %4$14s %5$15d %6$17s\n

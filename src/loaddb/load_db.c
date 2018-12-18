@@ -29,6 +29,7 @@
 #include <stdarg.h>
 #include <assert.h>
 #include <fstream>
+#include <thread>
 
 #if !defined (WINDOWS)
 #include <unistd.h>
@@ -79,7 +80,7 @@ static int get_ignore_class_list (const char *filename);
 static void free_ignoreclasslist (void);
 static int ldr_compare_attribute_with_meta (char *table_name, char *meta, DB_ATTRIBUTE * attribute);
 static int ldr_compare_storage_order (FILE * schema_file);
-static bool ldr_load_on_server ();
+static void ldr_server_load (load_args * args, int *status, bool * interrupted);
 static void get_loaddb_args (UTIL_ARG_MAP * arg_map, load_args * args);
 
 /*
@@ -684,6 +685,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       print_log_msg (1, "%s\n", db_error_string (3));
       util_log_write_errstr ("%s\n", db_error_string (3));
       status = 3;
+      db_end_session ();
       db_shutdown ();
       goto error_return;
     }
@@ -709,6 +711,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	  msg_format = "Error occurred during schema loading." "Aborting current transaction...\n";
 	  util_log_write_errstr (msg_format);
 	  status = 3;
+	  db_end_session ();
 	  db_shutdown ();
 	  print_log_msg (1, " done.\n\nRestart loaddb with '-%c %s:%d' option\n", LOAD_SCHEMA_FILE_S, args.schema_file,
 			 schema_file_start_line);
@@ -734,6 +737,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	  if (ldr_compare_storage_order (schema_file) != NO_ERROR)
 	    {
 	      status = 3;
+	      db_end_session ();
 	      db_shutdown ();
 	      print_log_msg (1, "\nAborting current transaction...\n");
 	      goto error_return;
@@ -745,25 +749,11 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       schema_file = NULL;
     }
 
+  print_log_msg (1, "\nStart object loading.\n");
 #if defined (SA_MODE)
-  ldr_load (&args, &status, &interrupted);
+  ldr_sa_load (&args, &status, &interrupted);
 #else // !SA_MODE = CS_MODE
-  /* TODO
-     bool load_on_server = ldr_load_on_server ();
-     if (load_on_server)
-     {
-     char object_file_abs_path[PATH_MAX];
-     if (realpath (args.object_file, object_file_abs_path) != NULL)
-     {
-     loaddb_load_object_file (object_file_abs_path);
-     }
-     // in fact there is a longer story here
-     }
-     else
-     {
-     // probably some error
-     }
-   */
+  ldr_server_load (&args, &status, &interrupted);
 #endif // !SA_MODE = CS_MODE
 
   /* if index file is specified, do index creation */
@@ -776,6 +766,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	  msg_format = "Error occurred during index loading." "Aborting current transaction...\n";
 	  util_log_write_errstr (msg_format);
 	  status = 3;
+	  db_end_session ();
 	  db_shutdown ();
 	  print_log_msg (1, " done.\n\nRestart loaddb with '-%c %s:%d' option\n", LOAD_INDEX_FILE_S, args.index_file,
 			 index_file_start_line);
@@ -799,6 +790,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
     }
 
   print_log_msg ((int) args.verbose, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_CLOSING));
+  (void) db_end_session ();
   (void) db_shutdown ();
 
   free_ignoreclasslist ();
@@ -1123,17 +1115,6 @@ free_ignoreclasslist (void)
 #endif // SA_MODE
 }
 
-static bool
-ldr_load_on_server ()
-{
-  // TODO CBRD-21654 check if object file contains references
-#if defined (SA_MODE)
-  return false;
-#else
-  return true;
-#endif // SA_MODE
-}
-
 static void
 get_loaddb_args (UTIL_ARG_MAP * arg_map, load_args * args)
 {
@@ -1167,4 +1148,69 @@ get_loaddb_args (UTIL_ARG_MAP * arg_map, load_args * args)
   args->object_file = args->object_file ? args->object_file : (char *) "";
   args->error_file = args->error_file ? args->error_file : (char *) "";
   args->table_name = args->table_name ? args->table_name : (char *) "";
+}
+
+void
+ldr_server_load (load_args * args, int *status, bool * interrupted)
+{
+  int error;
+  char object_file_abs_path[PATH_MAX];
+
+  if (realpath (args->object_file, object_file_abs_path) == NULL)
+    {
+      fprintf (stderr, "ERROR: failed to resolve real path name for %s\n", args->object_file);
+      *status = 3;
+      return;
+    }
+
+  loaddb_init ();
+
+  error = loaddb_load_object_file (object_file_abs_path);
+  if (error == ER_FAILED)
+    {
+      /* *INDENT-OFF* */
+      std::string object_file_abs_path_ (object_file_abs_path);
+      batch_handler handler = [] (std::string & batch, batch_id id) { return loaddb_load_batch (batch, id); };
+      /* *INDENT-ON* */
+
+      error = split (args->periodic_commit, object_file_abs_path_, handler);
+      if (error != NO_ERROR)
+	{
+	  *status = 3;
+	  return;
+	}
+    }
+
+  stats stats;
+  long prev_last_commit = 0;
+  do
+    {
+      loaddb_fetch_stats (&stats);
+
+      if (!stats.error_message.empty ())
+	{
+	  *status = 3;
+	  fprintf (stderr, "%s", stats.error_message.c_str ());
+	}
+      else
+	{
+	  long curr_last_commit = stats.last_commit;
+	  if (curr_last_commit > prev_last_commit)
+	    {
+	      print_log_msg (args->verbose_commit, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
+								   LOADDB_MSG_COMMITTED_INSTANCES), curr_last_commit);
+	      prev_last_commit = curr_last_commit;
+	    }
+	}
+
+	/* *INDENT-OFF* */
+	std::this_thread::sleep_for (std::chrono::milliseconds (100));
+	/* *INDENT-ON* */
+    }
+  while (!(stats.is_completed || stats.is_failed));
+
+  loaddb_destroy ();
+
+  print_log_msg (1, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_INSERT_AND_FAIL_COUNT),
+		 stats.total_objects, stats.errors);
 }

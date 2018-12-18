@@ -24,13 +24,15 @@
 #ifndef _LOAD_SCANNER_HPP_
 #define _LOAD_SCANNER_HPP_
 
+#include "load_error_handler.hpp"
+#include "load_semantic_helper.hpp"
+#include "load_grammar.hpp"
+#include "utility.h"
+
 #if !defined (yyFlexLexerOnce)
 #include <FlexLexer.h>
 #endif
 #include <istream>
-
-#include "load_driver.hpp"
-#include "load_grammar.hpp"
 
 namespace cubload
 {
@@ -38,18 +40,15 @@ namespace cubload
   class scanner : public yyFlexLexer
   {
     public:
-      explicit scanner (driver &driver, loader &loader)
+      scanner (semantic_helper &semantic_helper, error_handler &error_handler)
 	: yyFlexLexer ()
-	, driver_ (driver)
-	, loader_ (loader)
+	, m_semantic_helper (semantic_helper)
+	, m_error_handler (error_handler)
       {
 	//
       };
 
-      virtual ~scanner ()
-      {
-	//
-      };
+      ~scanner () override = default;
 
       /*
        * The main scanner function.
@@ -57,20 +56,20 @@ namespace cubload
        */
       virtual int yylex (parser::semantic_type *yylval, parser::location_type *yylloc);
 
-      /**
+      /*
        * Lexer error function
        * @param msg a description of the lexer error.
        */
       void LexerError (const char *msg) override
       {
-	loader_.load_failed_error ();
-	loader_.increment_fails ();
+	m_error_handler.on_failure_with_line (LOADDB_MSG_LEX_ERROR);
       }
 
     private:
-      driver &driver_;
-      loader &loader_;
+      semantic_helper &m_semantic_helper;
+      error_handler &m_error_handler;
   };
+
 } // namespace cubload
 
 #endif /* _LOAD_SCANNER_HPP_ */

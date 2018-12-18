@@ -354,13 +354,15 @@ set(XASL_HEADERS
 set(LOADDB_SOURCES
   ${BISON_loader_grammar_OUTPUT_SOURCE}
   ${FLEX_loader_lexer_OUTPUTS}
-  ${LOADDB_DIR}/load_sa_loader.cpp
   ${LOADDB_DIR}/load_common.cpp
   ${LOADDB_DIR}/load_db.c
   ${LOADDB_DIR}/load_db_value_converter.cpp
   ${LOADDB_DIR}/load_driver.cpp
+  ${LOADDB_DIR}/load_error_handler.cpp
   ${LOADDB_DIR}/load_object.c
   ${LOADDB_DIR}/load_object_table.c
+  ${LOADDB_DIR}/load_sa_loader.cpp
+  ${LOADDB_DIR}/load_semantic_helper.cpp
   )
 
 if(UNIX)

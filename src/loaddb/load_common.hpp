@@ -24,6 +24,9 @@
 #ifndef _LOAD_COMMON_HPP_
 #define _LOAD_COMMON_HPP_
 
+#include "packable_object.hpp"
+
+#include <cassert>
 #include <functional>
 
 #define NUM_LDR_TYPES (LDR_TYPE_MAX + 1)
@@ -31,6 +34,9 @@
 
 namespace cubload
 {
+
+  using batch_id = int;
+  using batch_handler = std::function<int (std::string &, int)>;
 
   /*
    * loaddb executables command line arguments
@@ -93,7 +99,6 @@ namespace cubload
     LDR_MONETARY,
     LDR_BSTR,                    /* Binary bit strings */
     LDR_XSTR,                    /* Hexidecimal bit strings */
-    LDR_BIGINT,
     LDR_DATETIME,
     LDR_DATETIMELTZ,
     LDR_DATETIMETZ,
@@ -170,6 +175,31 @@ namespace cubload
     int currency_type;
   };
 
+  struct stats : public cubpacking::packable_object
+  {
+    int defaults;
+    std::int64_t total_objects;
+    std::int64_t last_commit;
+    int errors;
+    std::string error_message;
+    bool is_failed;
+    bool is_completed;
+
+    // Default constructor
+    stats ();
+    // Copy constructor
+    stats (const stats &copy);
+    // Assignment operator
+    stats &operator= (const stats &other);
+
+    void clear ();
+
+    int pack (cubpacking::packer *serializator) override;
+    int unpack (cubpacking::packer *serializator) override;
+    bool is_equal (const packable_object *other) override;
+    size_t get_packed_size (cubpacking::packer *serializator) override;
+  };
+
   /*
    * cubload::loader
    *
@@ -244,21 +274,6 @@ namespace cubload
        * Called after process_line, should implement login for cleaning up data after insert if required.
        */
       virtual void finish_line () = 0;
-
-      /*
-       * Display load failed error
-       */
-      virtual void load_failed_error () = 0;
-
-      /*
-       * Increment total error counter
-       */
-      virtual void increment_err_total () = 0;
-
-      /*
-       * Increment failures counter
-       */
-      virtual void increment_fails () = 0;
   };
 
   ///////////////////// common global functions /////////////////////
@@ -271,20 +286,13 @@ namespace cubload
    *    return: NO_ERROR in case of success or ER_FAILED if file does not exists
    *    batch_size(in)      : batch size
    *    object_file_name(in): loaddb object file name (absolute path is required)
-   *    func(in)            : a function for handling/process a batch
+   *    handler(in)         : a function for handling/process a batch
    */
-  int split (int batch_size, std::string &object_file_name, std::function<void (std::string &)> &func);
-
-  /*
-   * Check if a given string starts with a given prefix
-   */
-  bool starts_with (const std::string &str, const std::string &prefix);
-
-  /*
-   * Check if a given string ends with a given suffix
-   */
-  bool ends_with (const std::string &str, const std::string &suffix);
+  int split (int batch_size, std::string &object_file_name, batch_handler &handler);
 
 } // namespace cubload
+
+// alias declaration for legacy C files
+using load_stats = cubload::stats;
 
 #endif /* _LOAD_COMMON_HPP_ */

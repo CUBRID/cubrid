@@ -1,18 +1,18 @@
 $
-$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
 $
-$   This program is free software; you can redistribute it and/or modify 
-$   it under the terms of the GNU General Public License as published by 
+$   This program is free software; you can redistribute it and/or modify
+$   it under the terms of the GNU General Public License as published by
 $   the Free Software Foundation; either version 2 of the License, or
 $   (at your option) any later version.
 $
-$  This program is distributed in the hope that it will be useful, 
-$  but WITHOUT ANY WARRANTY; without even the implied warranty of 
-$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
-$  GNU General Public License for more details. 
+$  This program is distributed in the hope that it will be useful,
+$  but WITHOUT ANY WARRANTY; without even the implied warranty of
+$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+$  GNU General Public License for more details.
 $
-$  You should have received a copy of the GNU General Public License 
-$  along with this program; if not, write to the Free Software 
+$  You should have received a copy of the GNU General Public License
+$  along with this program; if not, write to the Free Software
 $  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 $
 
@@ -297,7 +297,7 @@ copydb: 데이터베이스 복사.\n\
 
 $set 4 MSGCAT_UTIL_SET_CREATEDB
 40 그룹 '%1$s'는 존재하지 않습니다\n
-41 사용자 '%1$s'는 존재하지 않습니다\n 
+41 사용자 '%1$s'는 존재하지 않습니다\n
 42 알 수 없는 명령어 '%1$s'\n
 43 출력 파일 '%1$s' 을(를) 열 수 없습니다.\n
 44 기존 데이터베이스를 삭제할 수 없습니다.\n
@@ -424,16 +424,16 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 47 속성 '%1$s'상의 UNIQUE 위반, NULL로 변환 되었습니다.\n
 48    %1$d 인스턴스\n
 49 클래스 %1$s\n
-50 패스워드: 
+50 패스워드:
 51 \n*** 클래스 통계 정보 갱신 중 ***\n
 52 %1$s 에러가 라인 %2$d에서 발생('%3$s')\n
-53 Lexical 오류
+53 Lexical 오류\n
 54 라인 %1$d: 문법 에러 at \"%2$s\"
-55 missing 
+55 missing
 56 in %1$s
 57 함께 사용할 수 없는 인자 \"%1$s\", 와 \"%2$s\"\n
 58 %1$d 인스턴스가 커밋 되었습니다\n
-59 \n이전 버전의 loaddb를 수행할 수 없습니다.\n 
+59 \n이전 버전의 loaddb를 수행할 수 없습니다.\n
 60 에러 parsing \"%1$s\", as %2$s type.\n
 112   %1$d 개의 인스턴스\r
 113 마지막으로 커밋된 라인 : %1$d
@@ -473,7 +473,7 @@ $set 13 MSGCAT_UTIL_SET_UNLOADDB
 46 %1$d 개의 객체가 (전체 %2$d 객체) 성공적으로 덤프 되었습니다.\n
 47 출력 디렉터리 이름이 너무 깁니다.\n
 48 LSA : %1$d %2$d \n
-49 패스워드: 
+49 패스워드:
 60 \
 unloaddb: 데이터베이스에서 스키마와 객체를 언로드\n\
 사용법: %1$s unloaddb [옵션] <데이터베이스 이름>\n\
@@ -558,7 +558,7 @@ compactdb: 데이터베이스에서 사용되지 않는 영역을 해제.\n\
   -c, --class-lock-timeout          클래스 잠금에 대한 타임아웃\n
 
 $set 15 MSGCAT_UTIL_SET_COMMDB
-21 CUBRID master가 호스트 %1$s 에서 수행 중입니다. %2$s 에 시작되어  
+21 CUBRID master가 호스트 %1$s 에서 수행 중입니다. %2$s 에 시작되어
 22 %1$d 개의 요청을 처리 하였습니다. \n현재 %2$d 개의 서버가 동작 중입니다.\n
 23 %1$s 분 내에 SHUTDOWN 합니다!!!\n
 24 %1$s
@@ -588,7 +588,7 @@ cub_commdb: 이 유틸리티는 더 이상 사용하지 않습니다. 'cubrid' �
 33 마스터는 %1$d 분 후에 shutdown 됩니다.\n
 34 클라이언트로부터의 데이터 수신 에러
 35 한글 database 서버 %1$s 은(는) 현재 수행 중이 아닙니다.
-36 쉘 (%1$s) 를 수행할 수 없습니다. %2$s, %3$s 
+36 쉘 (%1$s) 를 수행할 수 없습니다. %2$s, %3$s
 37 프로세스 fork %1$s, 반환 %2$d, %3$s
 38 %1$s을(를) 수행할 수 없습니다
 39 -i(--immediately)옵션은 --deact-stop-all 옵션이 지정되어야합니다.\n
@@ -811,17 +811,17 @@ $set 31 MSGCAT_UTIL_SET_MIGRATE
 2  필수 인자; 기본값: 없음
 3  호환성 검사
 4  호환성 검사만 수행
-5  백업 경로 
+5  백업 경로
 6  백업 볼륨을 저장할 디렉터리 경로나 디바이스 이름
 20 데이터베이스 '%1$s'가 존재하지 않습니다.
 21 '%1$s'는(은) 버전이 너무 낮아 %2$s으로 마이그레이션 할 수 없습니다.\n
 22 '%1$s'는(은) 마이그레이션이 필요 없습니다.\n
 23 '%1$s'는(은) 마이그레이션이 필요합니다.\n
-24 마이그레이션 후 백업하는 것을 권장합니다. 지금 백업하시겠습니까? (y/n): 
-25 마이그레이션 후 백업하는 것을 권장합니다. 
-26 \n*** 경고: %1$s 으로 마이그레이션 수행 전에 데이터베이스를 백업하십시오 ***\n\n마이그레이션 중 발생할 수 있는 장애를 복구하기 위해서는 반드시 백업이 필요합니다.\n백업 하셨습니까? (y/n): 
+24 마이그레이션 후 백업하는 것을 권장합니다. 지금 백업하시겠습니까? (y/n):
+25 마이그레이션 후 백업하는 것을 권장합니다.
+26 \n*** 경고: %1$s 으로 마이그레이션 수행 전에 데이터베이스를 백업하십시오 ***\n\n마이그레이션 중 발생할 수 있는 장애를 복구하기 위해서는 반드시 백업이 필요합니다.\n백업 하셨습니까? (y/n):
 27 \n1. backupdb 실행 \n2. 새로운 데이터베이스에 대한 새로운 백업 경로 입력. (현재 경로: %1$s) \n3. 종료 \n
-28 \n새로운 데이터베이스에 대한 백업 경로: 
+28 \n새로운 데이터베이스에 대한 백업 경로:
 29 \n마이그레이션 및 백업을 정상적으로 수행했습니다.
 30 백업에 실패했습니다. 다시 백업하십시오.
 31 \n\n*** 경고: 마이그레이션 완료 이후에는 이전 버전의 백업 파일을 이용하여 복구할 수 없습니다.\n이전 버전의 백업 파일은 해당 버전에서만 복구가 가능합니다.\n이전 버전의 백업 파일을 보존하십시오. ***\n
@@ -1000,16 +1000,16 @@ valid options:\n\
   -z, --normalization   정규화 데이터를 덤프; 기본값: 사용 안 함\n
 
 $set 48 MSGCAT_UTIL_SET_SYNCCOLLDB
-43 파티션 기준 컬럼의 콜레이션 "%1$s"를 변경하기 전에 파티션을 삭제해야 합니다.\n클래스\n 
+43 파티션 기준 컬럼의 콜레이션 "%1$s"를 변경하기 전에 파티션을 삭제해야 합니다.\n클래스\n
 44 콜레이션을 업데이트 하기 전에 콜레이션 "%1$s"을 가지는 컬럼의 외래키를 삭제해야 합니다.\n테이블 | 외래키\n
 45 콜레이션 "%1$s"를 가진 클래스는 재정의 해야 합니다.\n클래스\n
 46 콜레이션 "%1$s"를 가지는 표현식을 포함한 함수 인덱스는 재정의 해야 합니다.\n테이블 | 인덱스 | 함수 expression\n
 47 콜레이션 업데이트가 수행되지 않았습니다. 데이터베이스는 변경되지 않았습니다.\n
 48 시스템 테이블 "%1$s"은 새로운 콜레이션으로 업데이트되었습니다.\n
-49 시스템 콜레이션을 업데이트하면 데이터베이스가 손상될 수 있습니다. 계속 하시겠습니까? (y/n)\n 
+49 시스템 콜레이션을 업데이트하면 데이터베이스가 손상될 수 있습니다. 계속 하시겠습니까? (y/n)\n
 50 새로운 시스템 설정에서 데이터베이스에 콜레이션 "%1$s"(Id: %2$d)가 존재하지 않거나 변경되었습니다.\n
 51 콜레이션 "%1$s"를 포함하는 조건을 가진 트리거는 재정의 해야 합니다.\n트리거 | 조건\n
-52 콜레이션 "%1$s"를 포함하는 뷰는 재정의 해야 합니다.\n뷰 | 질의스펙\n 
+52 콜레이션 "%1$s"를 포함하는 뷰는 재정의 해야 합니다.\n뷰 | 질의스펙\n
 53 콜레이션 "%1$s"를 가진 애트리뷰트 도메인은 재정의 해야 합니다.\n테이블 | 애트리뷰트 도메인\n
 54 수동적 검사가 필요합니다.\n\
 데이터베이스에 콜레이션을 강제로 적용하기 전에 "%1$s" 파일을 검사하시기 바랍니다.\n
@@ -1017,8 +1017,8 @@ $set 48 MSGCAT_UTIL_SET_SYNCCOLLDB
 56 데이터베이스는 시스템 콜레이션으로 업데이트 되어야 합니다.\n\
 "cubrid synccolldb -f %1$s"으로 실행 하십시오.\n
 57 데이터베이스에 비해 시스템 설정에는 %1$d개의 새로운 콜레이션이 있습니다.\n
-58 데이터베이스 "%1$s"의 모든 콜레이션은 새로운 시스템 설정 상에 존재합니다.\n 
-59 데이터베이스의 %1$d개의 콜레이션은 설정되지 않았거나 새로운 시스템 콜레이션으로 변경되었습니다.\n 
+58 데이터베이스 "%1$s"의 모든 콜레이션은 새로운 시스템 설정 상에 존재합니다.\n
+59 데이터베이스의 %1$d개의 콜레이션은 설정되지 않았거나 새로운 시스템 콜레이션으로 변경되었습니다.\n
 60 \
 synccolldb: 데이터베이스 콜레이션을 시스템 설정에 정의된 콜레이션에 맞게 업데이트 합니다.\n\
 사용법: %1$s synccolldb [옵션] 데이터베이스-이름\n\
@@ -1030,7 +1030,7 @@ valid options:\n\
   -f, --force-only    데이터베이스의 콜레이션을 새로운 시스템 설정의 콜레이션으로 강제 업데이트 합니다.\n\
 
 $set 49 MSGCAT_UTIL_SET_TRANLIST
-20 사용자 %1$s의 비밀번호를 입력하세요 : 
+20 사용자 %1$s의 비밀번호를 입력하세요 :
 22 트랜잭션인덱스      사용자이름     호스트이름     프로세스 ID     프로그램이름\n
 23 -------------------------------------------------------------------------------\n
 24 %1$4d%2$-10s %3$14s %4$14s %5$15d %6$17s\n

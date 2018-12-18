@@ -850,6 +850,10 @@ net_server_init (void)
   req_p->processing_function = sloaddb_destroy;
   req_p->name = "NET_SERVER_LD_DESTROY";
 
+  req_p = &net_Requests[NET_SERVER_LD_FETCH_STATS];
+  req_p->processing_function = sloaddb_fetch_stats;
+  req_p->name = "NET_SERVER_LD_FETCH_STATS";
+
   /* checksumdb replication */
   req_p = &net_Requests[NET_SERVER_CHKSUM_REPL];
   req_p->action_attribute = IN_TRANSACTION;

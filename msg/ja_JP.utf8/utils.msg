@@ -1,18 +1,18 @@
 $
-$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
 $
-$   This program is free software; you can redistribute it and/or modify 
-$   it under the terms of the GNU General Public License as published by 
+$   This program is free software; you can redistribute it and/or modify
+$   it under the terms of the GNU General Public License as published by
 $   the Free Software Foundation; either version 2 of the License, or
 $   (at your option) any later version.
 $
-$  This program is distributed in the hope that it will be useful, 
-$  but WITHOUT ANY WARRANTY; without even the implied warranty of 
-$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
-$  GNU General Public License for more details. 
+$  This program is distributed in the hope that it will be useful,
+$  but WITHOUT ANY WARRANTY; without even the implied warranty of
+$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+$  GNU General Public License for more details.
 $
-$  You should have received a copy of the GNU General Public License 
-$  along with this program; if not, write to the Free Software 
+$  You should have received a copy of the GNU General Public License
+$  along with this program; if not, write to the Free Software
 $  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 $
 
@@ -297,7 +297,7 @@ copydb: データーベースコピー。\n\
 
 $set 4 MSGCAT_UTIL_SET_CREATEDB
 40 グループ「%1$s」は存在しません。\n
-41 ユーザー「%1$s」は存在しません。\n 
+41 ユーザー「%1$s」は存在しません。\n
 42 正しくないコマンド「%1$s」\n
 43 出力ファイル「%1$s」が開けられません。\n
 44 既存データベースが削除できません。\n
@@ -424,16 +424,16 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 47 アトリビュート「%1$s」のUNIQUE違反。NULLに変換しました。\n
 48    %1$d インスタンス\n
 49 クラス %1$s\n
-50 パスワード: 
+50 パスワード:
 51 \n*** クラススタティスティックス情報を更新中 ***\n
 52 %1$sエラーがライン%2$dで発生「%3$s」\n
-53 Lexicalエラー
+53 Lexicalエラー\n
 54 ライン %1$d: 「%2$s」で文法エラー
 55 missing
 56 in %1$s
 57 一緒に使えないパラメーター「%1$s」と「%2$s」\n
 58 %1$dインスタンスをコミットしました。\n
-59 \n以前バージョンのloaddbが実行できません。\n 
+59 \n以前バージョンのloaddbが実行できません。\n
 60 「%1$s」を「%2$s」タイプにパーシングエラー \n
 112   %1$d個のインスタンス\r
 113 最後にコミットされたライン : %1$d
@@ -472,7 +472,7 @@ $set 13 MSGCAT_UTIL_SET_UNLOADDB
 46 %1$dこのオブジェクトが(全体%2$d個)問題なくダンプされました。\n
 47 出力ディレクトリー名が長過ぎます。\n
 48 LSA : %1$d %2$d \n
-49 パスワード: 
+49 パスワード:
 60 \
 unloaddb: データベースからスキーマとオブジェクトをアンロード\n\
 使い方: %1$s unloaddb [オプション] <データベース名>\n\
@@ -587,7 +587,7 @@ cub_commdb: このユーティリティーは使わないでください。そ�
 33 マスター%1$d分あとにシャットダウンします。\n
 34 クライアントーからでーたが受け取れない。
 35 データベースサーバー%1$sは現在作動中ではありません。
-36 シェル「%1$s」が始まりません。%2$s, %3$s 
+36 シェル「%1$s」が始まりません。%2$s, %3$s
 37 プロセスfork %1$s, 返還 %2$d, %3$s
 38 %1$sが実行せきません。
 39 -i(--immediately) オプションは、--deact-stop-all オプションと一緒に使用する必要があります。\n
@@ -816,11 +816,11 @@ $set 31 MSGCAT_UTIL_SET_MIGRATE
 21 「%1$s」はバージョンが低すぎるので「%2$s」にマイグレーションできません。\n
 22 「%1$s」はマイグレーションが要りません。\n
 23 「%1$s」はマイグレーションが必要です。\n
-24 マイグレーションの後、バックアップすることをおすすめします。今バックアップしますか？ (y/n): 
+24 マイグレーションの後、バックアップすることをおすすめします。今バックアップしますか？ (y/n):
 25 マイグレーションの後、バックアップすることをおすすめします。
-26 \n*** 警告: %1$sにマイグレーションする前にデータベースをバックアップしてください ***\n\nマイグレーションの途中に問題が発生する恐れがあるので、障害を復旧するために必ずバックアップが必要になります。\nバックアップしましたか？ (y/n): 
+26 \n*** 警告: %1$sにマイグレーションする前にデータベースをバックアップしてください ***\n\nマイグレーションの途中に問題が発生する恐れがあるので、障害を復旧するために必ずバックアップが必要になります。\nバックアップしましたか？ (y/n):
 27 \n1. バックアップ実行 \n2. 新しいデータベースのバックアップパスを入力。(現在バックアップパス: %1$s) \n3. 終了 \n
-28 \n新しいデータベースのバックアップパス: 
+28 \n新しいデータベースのバックアップパス:
 29 \nマイグレーションとバックアップを問題なく完了しました。
 30 バックアップに失敗しました。また遣り直してください。
 31 \n\n*** 警告: マイグレーションが完了すると、以前バージョンのバックアップファイルを使って復旧できません。\n以前バージョンのバックアップファイルは、当バージョンでしか復旧できません。\n以前バージョンのバックアップファイルを保存してください。 ***\n
@@ -902,7 +902,7 @@ copylogdb: サーバーからログページをコピー\n\
   -L, --log-path=PATH         コピーしたログボリュームのディレクトリーパス\n\
   -m, --mode=MODE             運営モード; デフォルト: sync\n\
                               MODE: sync or semisync or async\n\
-  -S, --start-page-id=ID      first log page to copy\n 
+  -S, --start-page-id=ID      first log page to copy\n
 
 $set 41 MSGCAT_UTIL_SET_APPLYLOGDB
 21 DBAパスワードを入力してください。:
@@ -1032,7 +1032,7 @@ synccolldb: データベースのコーレーションをシステムコーレ�
   -f, --force-only    データベースのコーレーションをシステムの新しいコーレーションに強制更新します。\n\
 
 $set 49 MSGCAT_UTIL_SET_TRANLIST
-20 「%1$s」のパスワードを入力してください: 
+20 「%1$s」のパスワードを入力してください:
 22 トランザクションーインデックス  ユーザー名     ホスト名     プロセスID     プログラム名\n
 23 -------------------------------------------------------------------------------\n
 24 %1$4d%2$-10s %3$14s %4$14s %5$15d %6$17s\n

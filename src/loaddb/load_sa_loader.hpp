@@ -41,22 +41,21 @@ namespace cubload
       void start_line (int object_id) override;
       void process_line (constant_type *cons) override;
       void finish_line () override;
-
-      void load_failed_error () override;
-      void increment_err_total () override;
-      void increment_fails () override;
   };
 }
 /* *INDENT-ON* */
 
 /* Global variables */
-extern char **ignore_class_list;
 extern int ignore_class_num;
+extern char **ignore_class_list;
 
 /* start load functions */
-extern void ldr_load (cubload::load_args *args, int *status, bool *interrupted);
+void ldr_sa_load (cubload::load_args *args, int *status, bool *interrupted);
 
 /* log functions */
-extern void print_log_msg (int verbose, const char *fmt, ...);
+void print_log_msg (int verbose, const char *fmt, ...);
+
+void ldr_increment_err_total ();
+void ldr_increment_fails ();
 
 #endif /* _LOAD_SA_LOADER_HPP_ */

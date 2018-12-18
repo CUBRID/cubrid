@@ -1,18 +1,18 @@
 $
-$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
 $
-$   This program is free software; you can redistribute it and/or modify 
-$   it under the terms of the GNU General Public License as published by 
+$   This program is free software; you can redistribute it and/or modify
+$   it under the terms of the GNU General Public License as published by
 $   the Free Software Foundation; either version 2 of the License, or
 $   (at your option) any later version.
 $
-$  This program is distributed in the hope that it will be useful, 
-$  but WITHOUT ANY WARRANTY; without even the implied warranty of 
-$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
-$  GNU General Public License for more details. 
+$  This program is distributed in the hope that it will be useful,
+$  but WITHOUT ANY WARRANTY; without even the implied warranty of
+$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+$  GNU General Public License for more details.
 $
-$  You should have received a copy of the GNU General Public License 
-$  along with this program; if not, write to the Free Software 
+$  You should have received a copy of the GNU General Public License
+$  along with this program; if not, write to the Free Software
 $  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 $
 
@@ -427,7 +427,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 50 Şifre:
 51 \n*** Sınıf istatistikleri güncelleniyor ***\n
 52 %2$d hat yakınlarındaki %1$s (metin '%3$s' oldu)\n
-53 Sözcüksel hata
+53 Sözcüksel hata\n
 54 satır %1$d: \"%2$s\" içinde syntax hata
 55 eksik
 56 %1$s de
@@ -903,7 +903,7 @@ geçerli seçenekler:\n\
   -L, --log-path=PATH         Kopyalanan log yoğunlukları için dizin PATH\n\
   -m, --mode=MODE             çalışma modu, varsayılan: sync\n\
                               MODE: sync veya semisync veya async\n\
-  -S, --start-page-id=ID      ilk log sayfası kopyalamak\n 
+  -S, --start-page-id=ID      ilk log sayfası kopyalamak\n
 
 $set 41 MSGCAT_UTIL_SET_APPLYLOGDB
 21 DBA şifrenizi girin:
@@ -1033,7 +1033,7 @@ geçerli seçenekler:\n\
   -f, --force-only    derlemeleri veri tabanında yeni sistem konfigürasyonu ile aynı olacak şekilde günceller.\n\
 
 $set 49 MSGCAT_UTIL_SET_TRANLIST
-20 %1$s şifre gir: 
+20 %1$s şifre gir:
 22 Tran index          User name      Host name      Process id      Program name\n
 23 -------------------------------------------------------------------------------\n
 24 %1$4d%2$-10s %3$14s %4$14s %5$15d %6$17s\n

@@ -47,6 +47,7 @@
 #include "log_impl.h"
 #include "parse_tree.h"
 #include "xasl.h"
+#include "load_common.hpp"
 #include "timezone_lib_common.h"
 
 // forward definitions
@@ -408,5 +409,9 @@ extern int netcl_spacedb (SPACEDB_ALL * spaceall, SPACEDB_ONEVOL ** spacevols, S
 
 extern int locator_demote_class_lock (const OID * class_oid, LOCK lock, LOCK * ex_lock);
 
+extern int loaddb_init ();
 extern int loaddb_load_object_file (const char *file_name);
+extern int loaddb_load_batch (std::string & batch, int batch_id);
+extern int loaddb_fetch_stats (load_stats * stats);
+extern int loaddb_destroy ();
 #endif /* _NETWORK_INTERFACE_CL_H_ */

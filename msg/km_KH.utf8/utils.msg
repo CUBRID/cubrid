@@ -1,18 +1,18 @@
 $
-$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+$ Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
 $
-$   This program is free software; you can redistribute it and/or modify 
-$   it under the terms of the GNU General Public License as published by 
+$   This program is free software; you can redistribute it and/or modify
+$   it under the terms of the GNU General Public License as published by
 $   the Free Software Foundation; either version 2 of the License, or
 $   (at your option) any later version.
 $
-$  This program is distributed in the hope that it will be useful, 
-$  but WITHOUT ANY WARRANTY; without even the implied warranty of 
-$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
-$  GNU General Public License for more details. 
+$  This program is distributed in the hope that it will be useful,
+$  but WITHOUT ANY WARRANTY; without even the implied warranty of
+$  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+$  GNU General Public License for more details.
 $
-$  You should have received a copy of the GNU General Public License 
-$  along with this program; if not, write to the Free Software 
+$  You should have received a copy of the GNU General Public License
+$  along with this program; if not, write to the Free Software
 $  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 $
 
@@ -428,7 +428,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 50 Password:
 51 \n*** Updating class statistics ***\n
 52 %1$s near line %2$d (text was '%3$s')\n
-53 Lexical error
+53 Lexical error\n
 54 line %1$d: syntax error at \"%2$s\"
 55 missing
 56 in %1$s
@@ -905,7 +905,7 @@ valid options:\n\
   -L, --log-path=PATH         directory PATH for copied log volumes\n\
   -m, --mode=MODE             operation mode; default: sync\n\
                               MODE: sync or semisync or async\n\
-  -S, --start-page-id=ID      first log page to copy\n 
+  -S, --start-page-id=ID      first log page to copy\n
 
 $set 41 MSGCAT_UTIL_SET_APPLYLOGDB
 21 Enter DBA password:
@@ -1035,7 +1035,7 @@ valid options:\n\
   -f, --force-only    Updates the collations in databases to be same as the collations of new sytem configuration.\n\
 
 $set 49 MSGCAT_UTIL_SET_TRANLIST
-20 Enter %1$s password: 
+20 Enter %1$s password:
 22 Tran index          User name      Host name      Process id      Program name\n
 23 -------------------------------------------------------------------------------\n
 24 %1$4d%2$-10s %3$14s %4$14s %5$15d %6$17s\n
