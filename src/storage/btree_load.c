@@ -949,8 +949,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
       if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
 	{
 	  _er_log_debug (ARG_FILE_LINE, "DEBUG_BTREE: load built index btid (%d, (%d, %d)).",
-			 load_args->btid->sys_btid->root_pageid, load_args->btid->sys_btid->vfid.volid,
-			 load_args->btid->sys_btid->vfid.fileid);
+			 btid_int.sys_btid->root_pageid, btid_int.sys_btid->vfid.volid, btid_int.sys_btid->vfid.fileid);
 	}
 
 #if !defined(NDEBUG)
@@ -962,8 +961,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
       if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
 	{
 	  _er_log_debug (ARG_FILE_LINE, "DEBUG_BTREE: load didn't build any leaves btid (%d, (%d, %d)).",
-			 load_args->btid->sys_btid->root_pageid, load_args->btid->sys_btid->vfid.volid,
-			 load_args->btid->sys_btid->vfid.fileid);
+			 btid_int.sys_btid->root_pageid, btid_int.sys_btid->vfid.volid, btid_int.sys_btid->vfid.fileid);
 	}
       /* redo an empty index, but first destroy the one we created. the safest way is to abort changes so far. */
       log_sysop_abort (thread_p);
@@ -1041,13 +1039,18 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
     {
       _er_log_debug (ARG_FILE_LINE, "BTREE_DEBUG: load finished successful index btid(%d, (%d, %d)).",
-		     load_args->btid->sys_btid->root_pageid, load_args->btid->sys_btid->vfid.volid,
-		     load_args->btid->sys_btid->vfid.fileid);
+		     btid_int.sys_btid->root_pageid, btid_int.sys_btid->vfid.volid, btid_int.sys_btid->vfid.fileid);
     }
 
   return btid;
 
 error:
+
+  if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
+    {
+      _er_log_debug (ARG_FILE_LINE, "BTREE_DEBUG: load aborted index btid(%d, (%d, %d)).",
+		     btid_int.sys_btid->root_pageid, btid_int.sys_btid->vfid.volid, btid_int.sys_btid->vfid.fileid);
+    }
 
   if (!BTID_IS_NULL (&btid_global_stats))
     {
@@ -1132,13 +1135,6 @@ error:
   if (is_sysop_started)
     {
       log_sysop_abort (thread_p);
-    }
-
-  if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
-    {
-      _er_log_debug (ARG_FILE_LINE, "BTREE_DEBUG: load aborted index btid(%d, (%d, %d)).",
-		     load_args->btid->sys_btid->root_pageid, load_args->btid->sys_btid->vfid.volid,
-		     load_args->btid->sys_btid->vfid.fileid);
     }
 
   return NULL;

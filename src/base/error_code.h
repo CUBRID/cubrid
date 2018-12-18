@@ -1547,8 +1547,8 @@
 #define ER_JSON_PATH_DOES_NOT_EXIST                 -1202
 #define ER_JSON_EXPECTED_OTHER_TYPE                 -1203
 #define ER_JSON_DUPLICATE_KEY                       -1204
+#define ER_JSON_EXPECTING_JSON_DOC                  -1205
 
-#define ER_JSON_RESERVED_ERROR_0                    -1205
 #define ER_JSON_RESERVED_ERROR_1                    -1206
 #define ER_JSON_RESERVED_ERROR_2                    -1207
 #define ER_JSON_RESERVED_ERROR_3                    -1208
@@ -1590,7 +1590,10 @@
 
 #define ER_QPROC_XASLNODE_RECOMPILE_REQUESTED       -1241
 
-#define ER_LAST_ERROR                               -1242
+#define ER_SM_NO_PARTITION_ON_HIERARCHIES           -1242
+
+
+#define ER_LAST_ERROR                               -1243
 
 /*
  * CAUTION!

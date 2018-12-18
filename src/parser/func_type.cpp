@@ -37,17 +37,32 @@
 //   ... but there are cases when the cast should be made
 //   but neither one of them is OK
 
-std::vector<func_signature> func_signature::integer =
+func_all_signatures sig_ret_int_no_arg =
 {
   {PT_TYPE_INTEGER, {}, {}},
 };
 
-std::vector<func_signature> func_signature::bigint =
+func_all_signatures sig_ret_int_arg_any =
+{
+  {PT_TYPE_INTEGER, {PT_GENERIC_TYPE_ANY}, {}},
+};
+
+func_all_signatures sig_ret_int_arg_doc =
+{
+  {PT_TYPE_INTEGER, {PT_GENERIC_TYPE_JSON_DOC}, {}},
+};
+
+func_all_signatures sig_ret_int_arg_str =
+{
+  {PT_TYPE_INTEGER, {PT_GENERIC_TYPE_STRING}, {}},
+};
+
+func_all_signatures sig_ret_bigint =
 {
   {PT_TYPE_BIGINT, {}, {}},
 };
 
-std::vector<func_signature> func_signature::percentile_cont =
+func_all_signatures sig_of_percentile_cont =
 {
 #if 1
   {PT_TYPE_MAYBE, {PT_GENERIC_TYPE_NUMBER}, {}},
@@ -63,7 +78,7 @@ std::vector<func_signature> func_signature::percentile_cont =
 #endif
 };
 
-std::vector<func_signature> func_signature::percentile_disc =
+func_all_signatures sig_of_percentile_disc =
 {
   {PT_TYPE_MAYBE, {PT_GENERIC_TYPE_NUMBER}, {}},
   {0, {PT_GENERIC_TYPE_DATETIME}, {}},
@@ -71,33 +86,33 @@ std::vector<func_signature> func_signature::percentile_disc =
   {0, {PT_TYPE_MAYBE}, {}},
 };
 
-std::vector<func_signature> func_signature::bigint_discrete =
+func_all_signatures sig_ret_bigint_arg_discrete =
 {
   {PT_TYPE_BIGINT, {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}},
   {PT_TYPE_BIGINT, {PT_TYPE_NA}, {}}, //not needed???
 };
 
-std::vector<func_signature> func_signature::avg =
+func_all_signatures sig_of_avg =
 {
   {PT_TYPE_DOUBLE, {PT_GENERIC_TYPE_NUMBER}, {}},
 };
 
-std::vector<func_signature> func_signature::double_number =
+func_all_signatures sig_ret_double_arg_number =
 {
   {PT_TYPE_DOUBLE, {PT_GENERIC_TYPE_NUMBER}, {}},
 };
 
-std::vector<func_signature> func_signature::count_star =
+func_all_signatures sig_of_count_star =
 {
   {PT_TYPE_INTEGER, {}, {}},
 };
 
-std::vector<func_signature> func_signature::count =
+func_all_signatures sig_of_count =
 {
   {PT_TYPE_INTEGER, {PT_GENERIC_TYPE_ANY}, {}},
 };
 
-std::vector<func_signature> func_signature::sum =
+func_all_signatures sig_of_sum =
 {
   {0, {PT_GENERIC_TYPE_NUMBER}, {}},
   {0, {PT_TYPE_MAYBE}, {}},
@@ -106,13 +121,13 @@ std::vector<func_signature> func_signature::sum =
   {0, {PT_TYPE_SEQUENCE}, {}},
 };
 
-std::vector<func_signature> func_signature::double_r_any =
+func_all_signatures sig_ret_double_arg_r_any =
 {
   {PT_TYPE_DOUBLE, {}, {}},
   {PT_TYPE_DOUBLE, {}, {PT_GENERIC_TYPE_ANY}},
 };
 
-std::vector<func_signature> func_signature::ntile =
+func_all_signatures sig_of_ntile =
 {
   {PT_TYPE_INTEGER, {PT_GENERIC_TYPE_NUMBER}, {}}, //argument value will be truncated at execution
 };
@@ -120,7 +135,7 @@ std::vector<func_signature> func_signature::ntile =
 /*cannot define a clear signature because casting depends on actual value
   MEDIAN('123456')     <=> MEDIAN(double) -> double
   MEDIAN('2018-03-14') <=> MEDIAN(date)   -> date  */
-std::vector<func_signature> func_signature::median =
+func_all_signatures sig_of_median =
 {
   {PT_TYPE_MAYBE, {PT_GENERIC_TYPE_NUMBER}, {}}, //if ret type is double => tests with median(int) will fail
   {0, {PT_GENERIC_TYPE_DATETIME}, {}},
@@ -128,12 +143,12 @@ std::vector<func_signature> func_signature::median =
   {0, {PT_TYPE_MAYBE}, {}}, //DISCUSSION: can we get rid of MAYBE here??? prepare median(?)...execute with date'2018-06-13'
 };
 
-std::vector<func_signature> func_signature::type0_nr_or_str =
+func_all_signatures sig_ret_type0_arg_scalar =
 {
   {0, {PT_GENERIC_TYPE_SCALAR}, {}},
 };
 
-std::vector<func_signature> func_signature::type0_nr_or_str_discrete =
+func_all_signatures sig_ret_type0_arg_nr_or_str_discrete =
 {
   {0, {PT_GENERIC_TYPE_NUMBER, PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}},
   {0, {PT_GENERIC_TYPE_DATETIME, PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}},
@@ -142,7 +157,7 @@ std::vector<func_signature> func_signature::type0_nr_or_str_discrete =
   {0, {PT_TYPE_ENUMERATION, PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}},
 };
 
-std::vector<func_signature> func_signature::group_concat =
+func_all_signatures sig_of_group_concat =
 {
   {PT_TYPE_VARCHAR, {PT_TYPE_ENUMERATION, PT_GENERIC_TYPE_CHAR}, {}}, //needed because pt_are_equivalent_types(PT_GENERIC_TYPE_CHAR, PT_TYPE_ENUMERATION) and casting to VCHR will affect order
   {PT_TYPE_VARCHAR, {PT_TYPE_ENUMERATION, PT_GENERIC_TYPE_NCHAR}, {}},
@@ -170,7 +185,7 @@ std::vector<func_signature> func_signature::group_concat =
 #endif
 };
 
-std::vector<func_signature> func_signature::lead_lag =
+func_all_signatures sig_of_lead_lag =
 {
   {0, {PT_GENERIC_TYPE_NUMBER}, {}},
   {0, {PT_GENERIC_TYPE_STRING}, {}},
@@ -179,74 +194,86 @@ std::vector<func_signature> func_signature::lead_lag =
   {0, {PT_GENERIC_TYPE_SEQUENCE}, {}},
 };
 
-std::vector<func_signature> func_signature::elt =
+func_all_signatures sig_of_elt =
 {
   {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {PT_TYPE_VARCHAR}}, //get_current_result() expects args to be VCHAR, not just equivalent
   {PT_TYPE_VARNCHAR, {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {PT_TYPE_VARNCHAR}}, //get_current_result() expects args to be VNCHAR, not just equivalent
   {PT_TYPE_NULL, {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}},
 };
 
-std::vector<func_signature> func_signature::insert =
+func_all_signatures sig_of_insert_substring =
 {
   {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_CHAR, PT_TYPE_INTEGER, PT_TYPE_INTEGER, PT_GENERIC_TYPE_CHAR}, {}},
-  {PT_TYPE_VARNCHAR, {PT_GENERIC_TYPE_NCHAR, PT_TYPE_INTEGER, PT_TYPE_INTEGER, 0}, {}},
+  {PT_TYPE_VARNCHAR, {PT_GENERIC_TYPE_NCHAR, PT_TYPE_INTEGER, PT_TYPE_INTEGER, PT_TYPE_VARNCHAR}, {}},
 
-  {0, {3, PT_TYPE_INTEGER, PT_TYPE_INTEGER, PT_GENERIC_TYPE_NCHAR}, {}}, //for insert(?, i, i, n'nchar')
-  {0, {3, PT_TYPE_INTEGER, PT_TYPE_INTEGER, PT_GENERIC_TYPE_STRING}, {}}, //for insert(?, i, i, 'char or anything else')
+  //{0, {3, PT_TYPE_INTEGER, PT_TYPE_INTEGER, PT_GENERIC_TYPE_NCHAR}, {}}, //for insert(?, i, i, n'nchar')
+  //{0, {3, PT_TYPE_INTEGER, PT_TYPE_INTEGER, PT_GENERIC_TYPE_STRING}, {}}, //for insert(?, i, i, 'char or anything else')
 };
 
-std::vector<func_signature> func_signature::json_r_key_val =
+func_all_signatures sig_ret_json_arg_r_jkey_jval =
 {
   {PT_TYPE_JSON, {}, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_JSON_VAL}},
 };
 
-std::vector<func_signature> func_signature::json_r_val =
+func_all_signatures sig_json_arg_r_jval =
 {
   {PT_TYPE_JSON, {}, {PT_GENERIC_TYPE_JSON_VAL}},
 };
 
-std::vector<func_signature> func_signature::json_doc =
+func_all_signatures sig_ret_json_arg_jdoc =
 {
   {PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC}, {}},
 };
 
-std::vector<func_signature> func_signature::json_doc_r_doc =
+func_all_signatures sig_ret_json_arg_jdoc_r_jdoc =
 {
   {PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC}, {PT_GENERIC_TYPE_JSON_DOC}},
 };
 
-std::vector<func_signature> func_signature::json_doc_path =
+func_all_signatures sig_ret_json_arg_jdoc_jpath =
 {
   {PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC, PT_GENERIC_TYPE_STRING}, {}},
 };
 
-std::vector<func_signature> func_signature::json_doc_r_path =
+func_all_signatures sig_ret_json_arg_jdoc_r_jpath =
 {
   {PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC}, {PT_GENERIC_TYPE_STRING}},
 };
 
-std::vector<func_signature> func_signature::json_doc_str_r_path =
+func_all_signatures sig_ret_json_arg_jdoc_str_r_jpath =
 {
   {PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC, PT_GENERIC_TYPE_STRING}, {PT_GENERIC_TYPE_STRING}},
 };
 
-std::vector<func_signature> func_signature::json_doc_r_path_val =
+func_all_signatures sig_ret_json_arg_jdoc_r_jpath_jval =
 {
   {PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC}, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_JSON_VAL}},
 };
 
-std::vector<func_signature> func_signature::json_contains_path =
+func_all_signatures sig_of_json_contains =
+{
+  {PT_TYPE_INTEGER, {PT_GENERIC_TYPE_JSON_DOC, PT_GENERIC_TYPE_JSON_DOC}, {}},
+  {PT_TYPE_INTEGER, {PT_GENERIC_TYPE_JSON_DOC, PT_GENERIC_TYPE_JSON_DOC, PT_GENERIC_TYPE_STRING}, {}},
+};
+
+func_all_signatures sig_of_json_contains_path =
 {
   {PT_TYPE_INTEGER, {PT_GENERIC_TYPE_JSON_DOC, PT_GENERIC_TYPE_STRING}, {PT_GENERIC_TYPE_STRING}},
 };
 
-std::vector<func_signature> func_signature::json_keys =
+func_all_signatures sig_of_json_keys =
 {
   {PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC}, {}},
   {PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC, PT_GENERIC_TYPE_STRING}, {}},
 };
 
-std::vector<func_signature> func_signature::json_search =
+func_all_signatures sig_of_json_length =
+{
+  {PT_TYPE_INTEGER, {PT_GENERIC_TYPE_JSON_DOC}, {}},
+  {PT_TYPE_INTEGER, {PT_GENERIC_TYPE_JSON_DOC, PT_GENERIC_TYPE_STRING}, {}},
+};
+
+func_all_signatures sig_of_json_search =
 {
 // all signatures: json_doc, one_or_all_str, search_str[, escape_char[, path] ... -> JSON_DOC
 // first overload: json_doc, one_or_all_str, search_str:
@@ -261,283 +288,173 @@ std::vector<func_signature> func_signature::json_search =
   },
 };
 
-std::vector<func_signature> func_signature::json_arrayagg =
+func_all_signatures sig_of_json_arrayagg =
 {
   {PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_VAL}, {}}
 };
 
-std::vector<func_signature> func_signature::json_objectagg =
+func_all_signatures sig_of_json_objectagg =
 {
   {PT_TYPE_JSON, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_JSON_VAL}, {}}
 };
 
-std::vector<func_signature> func_signature::set_r_any =
+func_all_signatures sig_ret_set_arg_r_any =
 {
   {PT_TYPE_SET, {}, {PT_GENERIC_TYPE_ANY}},
 };
 
-std::vector<func_signature> func_signature::multiset_r_any =
+func_all_signatures sig_ret_multiset_arg_r_any =
 {
   {PT_TYPE_MULTISET, {}, {PT_GENERIC_TYPE_ANY}},
 };
 
-std::vector<func_signature> func_signature::sequence_r_any =
+func_all_signatures sig_ret_sequence_arg_r_any =
 {
   {PT_TYPE_SEQUENCE, {}, {PT_GENERIC_TYPE_ANY}},
 };
 
-std::vector<func_signature> func_signature::generic =
+func_all_signatures sig_of_generic =
 {
   {0, {PT_GENERIC_TYPE_ANY}, {}},
 };
 
-std::vector<func_signature> *
-func_signature::get_signatures (FUNC_TYPE ft)
+func_all_signatures sig_ret_string_arg_jdoc =
 {
-  switch (ft)
-    {
-    case PT_MIN:
-    case PT_MAX:
-      return &type0_nr_or_str;
-    case PT_SUM:
-      return &sum;
-    case PT_AVG:
-      return &avg;
-    case PT_STDDEV:
-    case PT_VARIANCE:
-    case PT_STDDEV_POP:
-    case PT_VAR_POP:
-    case PT_STDDEV_SAMP:
-    case PT_VAR_SAMP:
-      return &double_number;
-    case PT_COUNT:
-      return &count;
-    case PT_COUNT_STAR:
-      return &count_star;
-    case PT_GROUPBY_NUM:
-      return &bigint;
-    case PT_AGG_BIT_AND:
-    case PT_AGG_BIT_OR:
-    case PT_AGG_BIT_XOR:
-      return &bigint_discrete;
-    case PT_GROUP_CONCAT:
-      return &group_concat;
-    case PT_ROW_NUMBER:
-    case PT_RANK:
-    case PT_DENSE_RANK:
-      return &integer;
-    case PT_NTILE:
-      return &ntile;
-    case PT_TOP_AGG_FUNC:
-      return nullptr;
-    case PT_LEAD:
-    case PT_LAG:
-      return &lead_lag;
-    case PT_GENERIC:
-      return &generic;
-    case F_SET:
-    case F_TABLE_SET:
-      return &set_r_any;
-    case F_MULTISET:
-    case F_TABLE_MULTISET:
-      return &multiset_r_any;
-    case F_SEQUENCE:
-    case F_TABLE_SEQUENCE:
-      return &sequence_r_any;
-    case F_TOP_TABLE_FUNC:
-      return nullptr;
-    case F_MIDXKEY:
-      return nullptr;
-    case F_VID:
-    case F_GENERIC:
-    case F_CLASS_OF:
-      return nullptr;
-    case F_INSERT_SUBSTRING:
-      return &insert;
-    case F_ELT:
-      return &elt;
-    case F_JSON_ARRAY:
-      return &json_r_val;
-    case F_JSON_ARRAY_APPEND:
-    case F_JSON_ARRAY_INSERT:
-      return &json_doc_r_path_val;
-    case F_JSON_CONTAINS_PATH:
-      return &json_contains_path;
-    case F_JSON_EXTRACT:
-      return &json_doc_r_path;
-    case F_JSON_GET_ALL_PATHS:
-      return &json_doc;
-    case F_JSON_INSERT:
-      return &json_doc_r_path_val;
-    case F_JSON_KEYS:
-      return &json_keys;
-    case F_JSON_MERGE:
-    case F_JSON_MERGE_PATCH:
-      return &json_doc_r_doc;
-    case F_JSON_OBJECT:
-      return &json_r_key_val;
-    case F_JSON_REMOVE:
-      return &json_doc_r_path;
-    case F_JSON_REPLACE:
-      return &json_doc_r_path_val;
-    case F_JSON_SEARCH:
-      return &json_search;
-    case F_JSON_SET:
-      return &json_doc_r_path_val;
-    case PT_FIRST_VALUE:
-    case PT_LAST_VALUE:
-      return &type0_nr_or_str;
-    case PT_NTH_VALUE:
-      return &type0_nr_or_str_discrete;
-    case PT_MEDIAN:
-      return &median;
-    case PT_CUME_DIST:
-    case PT_PERCENT_RANK:
-      return &double_r_any;
-    case PT_PERCENTILE_CONT:
-      return &percentile_cont;
-    case PT_PERCENTILE_DISC:
-      return &percentile_disc;
-    case PT_JSON_ARRAYAGG:
-      return &json_arrayagg;
-    case PT_JSON_OBJECTAGG:
-      return &json_objectagg;
-    default:
-      assert (false);
-      return nullptr;
-    }
-}
+  {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_JSON_DOC}, {}},
+};
 
-const char *pt_func_type_to_string (FUNC_TYPE ft)
+func_all_signatures sig_ret_type0_arg_str =
+{
+  {0, {PT_GENERIC_TYPE_STRING}, {}},
+};
+
+func_all_signatures *
+get_signatures (FUNC_TYPE ft)
 {
   switch (ft)
     {
     case PT_MIN:
-      return "MIN";
     case PT_MAX:
-      return "MAX";
+      return &sig_ret_type0_arg_scalar;
     case PT_SUM:
-      return "SUM";
+      return &sig_of_sum;
     case PT_AVG:
-      return "AVG";
+      return &sig_of_avg;
     case PT_STDDEV:
-      return "STDDEV";
     case PT_VARIANCE:
-      return "VARIANCE";
     case PT_STDDEV_POP:
-      return "STDDEV_POP";
     case PT_VAR_POP:
-      return "VAR_POP";
     case PT_STDDEV_SAMP:
-      return "STDDEV_SAMP";
     case PT_VAR_SAMP:
-      return "VAR_SAMP";
+      return &sig_ret_double_arg_number;
     case PT_COUNT:
-      return "COUNT";
+      return &sig_of_count;
     case PT_COUNT_STAR:
-      return "COUNT_STAR";
+      return &sig_of_count_star;
     case PT_GROUPBY_NUM:
-      return "GROUPBY_NUM";
+      return &sig_ret_bigint;
     case PT_AGG_BIT_AND:
-      return "AGG_BIT_AND";
     case PT_AGG_BIT_OR:
-      return "AGG_BIT_OR";
     case PT_AGG_BIT_XOR:
-      return "AGG_BIT_XOR";
+      return &sig_ret_bigint_arg_discrete;
     case PT_GROUP_CONCAT:
-      return "GROUP_CONCAT";
+      return &sig_of_group_concat;
     case PT_ROW_NUMBER:
-      return "ROW_NUMBER";
     case PT_RANK:
-      return "RANK";
     case PT_DENSE_RANK:
-      return "DENSE_RANK";
+      return &sig_ret_int_no_arg;
     case PT_NTILE:
-      return "NTILE";
+      return &sig_of_ntile;
     case PT_TOP_AGG_FUNC:
-      return "TOP_AGG_FUNC";
+      return nullptr;
     case PT_LEAD:
-      return "LEAD";
     case PT_LAG:
-      return "LAG";
+      return &sig_of_lead_lag;
     case PT_GENERIC:
-      return "GENERIC";
+      return &sig_of_generic;
     case F_SET:
-      return "F_SET";
     case F_TABLE_SET:
-      return "F_TABLE_SET";
+      return &sig_ret_set_arg_r_any;
     case F_MULTISET:
-      return "F_MULTISET";
     case F_TABLE_MULTISET:
-      return "F_TABLE_MULTISET";
+      return &sig_ret_multiset_arg_r_any;
     case F_SEQUENCE:
-      return "F_SEQUENCE";
     case F_TABLE_SEQUENCE:
-      return "F_TABLE_SEQUENCE";
+      return &sig_ret_sequence_arg_r_any;
     case F_TOP_TABLE_FUNC:
-      return "F_TOP_TABLE_FUNC";
+      return nullptr;
     case F_MIDXKEY:
-      return "F_MIDXKEY";
+      return nullptr;
     case F_VID:
-      return "F_VID";
     case F_GENERIC:
-      return "F_GENERIC";
     case F_CLASS_OF:
-      return "F_CLASS_OF";
+      return nullptr;
     case F_INSERT_SUBSTRING:
-      return "INSERT_SUBSTRING";
+      return &sig_of_insert_substring;
     case F_ELT:
-      return "ELT";
+      return &sig_of_elt;
     case F_JSON_ARRAY:
-      return "JSON_ARRAY";
+      return &sig_json_arg_r_jval;
     case F_JSON_ARRAY_APPEND:
-      return "JSON_ARRAY_APPEND";
     case F_JSON_ARRAY_INSERT:
-      return "JSON_ARRAY_INSERT";
+      return &sig_ret_json_arg_jdoc_r_jpath_jval;
+    case F_JSON_CONTAINS:
+      return &sig_of_json_contains;
     case F_JSON_CONTAINS_PATH:
-      return "JSON_CONTAINS_PATH";
+      return &sig_of_json_contains_path;
+    case F_JSON_DEPTH:
+      return &sig_ret_int_arg_doc;
     case F_JSON_EXTRACT:
-      return "JSON_EXTRACT";
+      return &sig_ret_json_arg_jdoc_r_jpath;
     case F_JSON_GET_ALL_PATHS:
-      return "JSON_GET_ALL_PATHS";
+      return &sig_ret_json_arg_jdoc;
     case F_JSON_INSERT:
-      return "JSON_INSERT";
+      return &sig_ret_json_arg_jdoc_r_jpath_jval;
     case F_JSON_KEYS:
-      return "JSON_KEYS";
+      return &sig_of_json_keys;
+    case F_JSON_LENGTH:
+      return &sig_of_json_length;
     case F_JSON_MERGE:
-      return "JSON_MERGE";
     case F_JSON_MERGE_PATCH:
-      return "JSON_MERGE_PATH";
+      return &sig_ret_json_arg_jdoc_r_jdoc;
     case F_JSON_OBJECT:
-      return "JSON_OBJECT";
+      return &sig_ret_json_arg_r_jkey_jval;
+    case F_JSON_PRETTY:
+      return &sig_ret_string_arg_jdoc;
+    case F_JSON_QUOTE:
+      return &sig_ret_type0_arg_str;
     case F_JSON_REMOVE:
-      return "JSON_REMOVE";
+      return &sig_ret_json_arg_jdoc_r_jpath;
     case F_JSON_REPLACE:
-      return "JSON_REPLACE";
+      return &sig_ret_json_arg_jdoc_r_jpath_jval;
     case F_JSON_SEARCH:
-      return "JSON_SEARCH";
+      return &sig_of_json_search;
     case F_JSON_SET:
-      return "JSON_SET";
+      return &sig_ret_json_arg_jdoc_r_jpath_jval;
+    case F_JSON_TYPE:
+      return &sig_ret_string_arg_jdoc;
+    case F_JSON_UNQUOTE:
+      return &sig_ret_string_arg_jdoc;
+    case F_JSON_VALID:
+      return &sig_ret_int_arg_any;
     case PT_FIRST_VALUE:
-      return "FIRST_VALUE";
     case PT_LAST_VALUE:
-      return "LAST_VALUE";
+      return &sig_ret_type0_arg_scalar;
     case PT_NTH_VALUE:
-      return "NTH_VALUE";
+      return &sig_ret_type0_arg_nr_or_str_discrete;
     case PT_MEDIAN:
-      return "MEDIAN";
+      return &sig_of_median;
     case PT_CUME_DIST:
-      return "CUME_DIST";
     case PT_PERCENT_RANK:
-      return "PERCENT_RANK";
+      return &sig_ret_double_arg_r_any;
     case PT_PERCENTILE_CONT:
-      return "PERCENTILE_CONT";
+      return &sig_of_percentile_cont;
     case PT_PERCENTILE_DISC:
-      return "PERCENTILE_DISC";
+      return &sig_of_percentile_disc;
     case PT_JSON_ARRAYAGG:
-      return "JSON_ARRAYAGG";
+      return &sig_of_json_arrayagg;
     case PT_JSON_OBJECTAGG:
-      return "JSON_OBJECTAGG";
+      return &sig_of_json_objectagg;
     default:
       assert (false);
       return nullptr;
@@ -586,521 +503,748 @@ func_signature::to_string_buffer (string_buffer &sb) const
   pt_arg_type_to_string_buffer (ret, sb);
 }
 
-bool
-Func::cmp_types_equivalent (const pt_arg_type &type, pt_type_enum type_enum)
+namespace func_type
 {
-  assert (type.type != pt_arg_type::INDEX);
-  return type_enum == PT_TYPE_NULL || pt_are_equivalent_types (type, type_enum);
-}
+  argument_resolve::argument_resolve ()
+    : m_type (PT_TYPE_NONE)
+    , m_check_coll_infer (false)
+    , m_coll_infer ()
+  {
+    //
+  }
 
-bool
-Func::cmp_types_castable (const pt_arg_type &type, pt_type_enum type_enum) //is possible to cast type_enum -> type?
-{
-  assert (type.type != pt_arg_type::INDEX);
-  if (type_enum == PT_TYPE_NULL)
-    {
-      return true; // PT_TYPE_NULL is castable to any type
-    }
-  if (type_enum == PT_TYPE_MAYBE)
-    {
-      return true; // consider this castable, and truth will be told after late binding
-    }
-  if (type.type == pt_arg_type::NORMAL)
-    {
-      switch (type.val.type)
-	{
-	case PT_TYPE_INTEGER:
-	  return (PT_IS_NUMERIC_TYPE (type_enum) || PT_IS_STRING_TYPE (type_enum));
-	case PT_TYPE_BIGINT:
-	  return (PT_IS_DISCRETE_NUMBER_TYPE (type_enum));
-	case PT_TYPE_VARCHAR:
-	  return (PT_IS_SIMPLE_CHAR_STRING_TYPE (type_enum) || PT_IS_NUMERIC_TYPE (type_enum)
-		  || PT_IS_DATE_TIME_TYPE (type_enum) || PT_IS_BIT_STRING_TYPE (type_enum)
-		  || type_enum == PT_TYPE_ENUMERATION); //monetary should be here???
-	case PT_TYPE_VARNCHAR:
-	  return (PT_IS_NATIONAL_CHAR_STRING_TYPE (type_enum) || PT_IS_NUMERIC_TYPE (type_enum)
-		  || PT_IS_DATE_TIME_TYPE (type_enum) || PT_IS_BIT_STRING_TYPE (type_enum)
-		  || type_enum == PT_TYPE_ENUMERATION); //monetary should be here???
-	default:
-	  return type.val.type == type_enum;
-	}
-    }
+  signature_compatibility::signature_compatibility ()
+    : m_compat (type_compatibility::INCOMPATIBLE)
+    , m_args_resolve {}
+    , m_common_collation {}
+    , m_collation_action (TP_DOMAIN_COLL_LEAVE)
+    , m_signature (NULL)
+  {
+    //
+  }
 
-  //type.type == pt_arg_type::GENERIC
-  switch (type.val.generic_type)
-    {
-    case PT_GENERIC_TYPE_NUMBER:
-      return (PT_IS_NUMERIC_TYPE (type_enum) || PT_IS_STRING_TYPE (type_enum) || type_enum == PT_TYPE_JSON);
+  bool
+  is_type_with_collation (PT_TYPE_ENUM type)
+  {
+    return PT_HAS_COLLATION (type) || type == PT_TYPE_MAYBE;
+  }
 
-    case PT_GENERIC_TYPE_DISCRETE_NUMBER:
-      return (PT_IS_NUMERIC_TYPE (type_enum) || PT_IS_STRING_TYPE (type_enum));
+  bool
+  can_signature_have_collation (const pt_arg_type &arg_sig)
+  {
+    switch (arg_sig.type)
+      {
+      case pt_arg_type::NORMAL:
+	// types that can have collations
+	return is_type_with_collation (arg_sig.val.type);
 
-    case PT_GENERIC_TYPE_ANY:
-    case PT_GENERIC_TYPE_PRIMITIVE:
-    case PT_GENERIC_TYPE_STRING:
-    case PT_GENERIC_TYPE_STRING_VARYING:
-    case PT_GENERIC_TYPE_BIT:
-      // any non-set?
-      return !PT_IS_COLLECTION_TYPE (type_enum);
+      case pt_arg_type::GENERIC:
+	// all generic that can accept string (and result is still string)
+	return arg_sig.val.generic_type == PT_GENERIC_TYPE_STRING
+	       || arg_sig.val.generic_type == PT_GENERIC_TYPE_STRING_VARYING
+	       || arg_sig.val.generic_type == PT_GENERIC_TYPE_CHAR
+	       || arg_sig.val.generic_type == PT_GENERIC_TYPE_NCHAR
+	       || arg_sig.val.generic_type == PT_GENERIC_TYPE_PRIMITIVE
+	       || arg_sig.val.generic_type == PT_GENERIC_TYPE_ANY
+	       || arg_sig.val.generic_type == PT_GENERIC_TYPE_SCALAR;
 
-    case PT_GENERIC_TYPE_CHAR:
-      return (PT_IS_NUMERIC_TYPE (type_enum) || PT_IS_SIMPLE_CHAR_STRING_TYPE (type_enum)
-	      || PT_IS_DATE_TIME_TYPE (type_enum) || type_enum == PT_TYPE_JSON);
+      case pt_arg_type::INDEX:
+      default:
+	assert (false);
+	return false;
+      }
+  }
 
-    case PT_GENERIC_TYPE_NCHAR:
-      return (PT_IS_NUMERIC_TYPE (type_enum) || PT_IS_NATIONAL_CHAR_STRING_TYPE (type_enum)
-	      || PT_IS_DATE_TIME_TYPE (type_enum) || type_enum == PT_TYPE_JSON);
+  bool
+  cmp_types_equivalent (const pt_arg_type &type, pt_type_enum type_enum)
+  {
+    assert (type.type != pt_arg_type::INDEX);
+    return type_enum == PT_TYPE_NULL || pt_are_equivalent_types (type, type_enum);
+  }
 
-    case PT_GENERIC_TYPE_DATE:
-    case PT_GENERIC_TYPE_DATETIME:
-      return PT_IS_STRING_TYPE (type_enum) || PT_IS_DATE_TIME_TYPE (type_enum);
+  bool
+  cmp_types_castable (const pt_arg_type &type, pt_type_enum type_enum) //is possible to cast type_enum -> type?
+  {
+    assert (type.type != pt_arg_type::INDEX);
+    if (type_enum == PT_TYPE_NULL)
+      {
+	return true; // PT_TYPE_NULL is castable to any type
+      }
+    if (type_enum == PT_TYPE_MAYBE)
+      {
+	return true; // consider this castable, and truth will be told after late binding
+      }
+    if (type.type == pt_arg_type::NORMAL)
+      {
+	switch (type.val.type)
+	  {
+	  case PT_TYPE_INTEGER:
+	    return (PT_IS_NUMERIC_TYPE (type_enum) || PT_IS_STRING_TYPE (type_enum));
+	  case PT_TYPE_BIGINT:
+	    return (PT_IS_DISCRETE_NUMBER_TYPE (type_enum));
+	  case PT_TYPE_VARCHAR:
+	    return (PT_IS_SIMPLE_CHAR_STRING_TYPE (type_enum) || PT_IS_NUMERIC_TYPE (type_enum)
+		    || PT_IS_DATE_TIME_TYPE (type_enum) || PT_IS_BIT_STRING_TYPE (type_enum)
+		    || type_enum == PT_TYPE_ENUMERATION); //monetary should be here???
+	  case PT_TYPE_VARNCHAR:
+	    return (PT_IS_NATIONAL_CHAR_STRING_TYPE (type_enum) || PT_IS_NUMERIC_TYPE (type_enum)
+		    || PT_IS_DATE_TIME_TYPE (type_enum) || PT_IS_BIT_STRING_TYPE (type_enum)
+		    || type_enum == PT_TYPE_ENUMERATION); //monetary should be here???
+	  default:
+	    return type.val.type == type_enum;
+	  }
+      }
 
-    case PT_GENERIC_TYPE_SCALAR:
-      return !PT_IS_COLLECTION_TYPE (type_enum);
+    //type.type == pt_arg_type::GENERIC
+    switch (type.val.generic_type)
+      {
+      case PT_GENERIC_TYPE_NUMBER:
+	return (PT_IS_NUMERIC_TYPE (type_enum) || PT_IS_STRING_TYPE (type_enum) || type_enum == PT_TYPE_JSON);
 
-    case PT_GENERIC_TYPE_JSON_DOC:
-    case PT_GENERIC_TYPE_JSON_VAL:
-      // it will be resolved at runtime
-      return PT_IS_NUMERIC_TYPE (type_enum);      // numerics can be converted to json
+      case PT_GENERIC_TYPE_DISCRETE_NUMBER:
+	return (PT_IS_NUMERIC_TYPE (type_enum) || PT_IS_STRING_TYPE (type_enum));
 
-    case PT_GENERIC_TYPE_SEQUENCE:
-      // todo -
-      return false;
+      case PT_GENERIC_TYPE_ANY:
+      case PT_GENERIC_TYPE_PRIMITIVE:
+      case PT_GENERIC_TYPE_STRING:
+      case PT_GENERIC_TYPE_STRING_VARYING:
+      case PT_GENERIC_TYPE_BIT:
+	// any non-set?
+	return !PT_IS_COLLECTION_TYPE (type_enum);
 
-    case PT_GENERIC_TYPE_LOB:
-      // todo -
-      return false;
+      case PT_GENERIC_TYPE_CHAR:
+	return (PT_IS_NUMERIC_TYPE (type_enum) || PT_IS_SIMPLE_CHAR_STRING_TYPE (type_enum)
+		|| PT_IS_DATE_TIME_TYPE (type_enum) || type_enum == PT_TYPE_JSON);
 
-    case PT_GENERIC_TYPE_QUERY:
-      // ??
-      assert (false);
-      return false;
+      case PT_GENERIC_TYPE_NCHAR:
+	return (PT_IS_NUMERIC_TYPE (type_enum) || PT_IS_NATIONAL_CHAR_STRING_TYPE (type_enum)
+		|| PT_IS_DATE_TIME_TYPE (type_enum) || type_enum == PT_TYPE_JSON);
 
-    default:
-      assert (false);
-      return false;
-    }
-}
+      case PT_GENERIC_TYPE_DATE:
+      case PT_GENERIC_TYPE_DATETIME:
+	return PT_IS_STRING_TYPE (type_enum) || PT_IS_DATE_TIME_TYPE (type_enum);
 
-parser_node *
-Func::Node::get_arg (size_t index)
-{
-  for (auto arg = m_node->info.function.arg_list; arg; arg = arg->next, --index)
-    {
-      if (index == 0)
-	{
-	  return arg;
-	}
-    }
-  return NULL;
-}
+      case PT_GENERIC_TYPE_SCALAR:
+	return !PT_IS_COLLECTION_TYPE (type_enum);
 
-parser_node *
-Func::Node::cast (parser_node *prev, parser_node *arg, pt_type_enum type, int p, int s, parser_node *dt)
-{
-  if (type == arg->type_enum) //no cast needed
-    {
-      return arg;
-    }
-  arg = pt_wrap_with_cast_op (m_parser, arg, type, p, s, dt);
-  if (arg == NULL) //memory allocation failed
-    {
-      return NULL;
-    }
-  if (prev)
-    {
-      prev->next = arg;
-    }
-  else
-    {
-      m_node->info.function.arg_list = arg;
-    }
-  return arg;
-}
+      case PT_GENERIC_TYPE_JSON_VAL:
+	// it will be resolved at runtime
+	return PT_IS_NUMERIC_TYPE (type_enum);      // numerics can be converted to a json value
 
-bool
-Func::Node::preprocess ()
-{
-  auto arg_list = m_node->info.function.arg_list;
-  switch (m_node->info.function.function_type)
-    {
-    case F_GENERIC:
-    case F_CLASS_OF: //move it to the beginning of pt_eval_function_type() ... not without complicating the code
-      m_node->type_enum = (arg_list) ? arg_list->type_enum : PT_TYPE_NONE;
-      return false; //no need to continue with generic code
-    case F_INSERT_SUBSTRING:
-    {
-      std::vector<parser_node *> args; //preallocate!?
-      int i = 0;
-      for (auto arg = m_node->info.function.arg_list; arg; arg = arg->next)
-	{
-	  args.push_back (arg);
-	}
-      if (args[0] && args[0]->type_enum == PT_TYPE_MAYBE && args[3] && args[3]->type_enum == PT_TYPE_MAYBE)
-	{
-	  args[0] = cast (NULL, args[0], PT_TYPE_VARCHAR, 0, 0, NULL);
-	  args[3] = cast (args[2], args[3], PT_TYPE_VARCHAR, 0, 0, NULL);
-	}
-      break;
-    }
-    case PT_GROUP_CONCAT: //ToDo: try withut this!
-    {
-      auto arg1 = m_node->info.function.arg_list;
-      if (arg1 != NULL)
-	{
-	  auto arg2 = arg1->next;
-	  if (arg2 != NULL)
-	    {
-	      if ((PT_IS_SIMPLE_CHAR_STRING_TYPE (arg1->type_enum) && PT_IS_NATIONAL_CHAR_STRING_TYPE (arg2->type_enum))
-		  || (PT_IS_SIMPLE_CHAR_STRING_TYPE (arg2->type_enum)
-		      && PT_IS_NATIONAL_CHAR_STRING_TYPE (arg1->type_enum)))
-		{
-		  pt_cat_error (m_parser, m_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OP_NOT_DEFINED_ON,
-				pt_show_function (PT_GROUP_CONCAT), pt_show_type_enum (arg1->type_enum),
-				pt_show_type_enum (arg2->type_enum));
-		  m_node->type_enum = PT_TYPE_VARCHAR;
-		  return false;
-		}
-	    }
-	}
-      break;
-    }
-    default:
-      ;
-    }
-  return true;
-}
+      case PT_GENERIC_TYPE_JSON_DOC:
+	return false;     // only equivalent types
 
-const char *
-Func::Node::get_types (const std::vector<func_signature> &signatures, size_t index, string_buffer &sb)
-{
-  for (auto &signature: signatures)
-    {
-      auto i = index;
-      if (index < signature.fix.size ())
-	{
-	  pt_arg_type_to_string_buffer (signature.fix[i], sb);
-	  sb (", ");
-	}
-      else
-	{
-	  i -= signature.fix.size ();
-	  if (signature.rep.size () > 0)
-	    {
-	      i %= signature.rep.size ();
-	      pt_arg_type_to_string_buffer (signature.rep[i], sb);
-	      sb (", ");
-	    }
-	}
-    }
-  return sb.get_buffer ();
-}
+      case PT_GENERIC_TYPE_SEQUENCE:
+	// todo -
+	return false;
 
-const func_signature *
-Func::Node::get_signature (const std::vector<func_signature> &signatures)
-{
-  if (pt_has_error (m_parser))
-    {
-      return nullptr;
-    }
-  pt_reset_error (m_parser);
+      case PT_GENERIC_TYPE_LOB:
+	// todo -
+	return false;
 
-  const func_signature *signature = nullptr;
-  size_t arg_count = static_cast<size_t> (pt_length_of_list (m_node->info.function.arg_list));
-  std::vector<argument_compatibility> args_compat;
-  args_compat.resize (arg_count);
+      case PT_GENERIC_TYPE_QUERY:
+	// ??
+	assert (false);
+	return false;
 
-  int sigIndex = 0;
-  for (auto &sig: signatures)
-    {
-      ++sigIndex;
-      parser_node *arg = m_node->info.function.arg_list;
-      bool matchEquivalent = true;
-      bool matchCastable = true;
-      size_t argIndex = 0;
+      default:
+	assert (false);
+	return false;
+      }
+  }
 
-      m_compat.m_signature_compat = type_compatibility::EQUIVALENT;
+  parser_node *
+  Node::get_arg (size_t index)
+  {
+    for (auto arg = m_node->info.function.arg_list; arg; arg = arg->next, --index)
+      {
+	if (index == 0)
+	  {
+	    return arg;
+	  }
+      }
+    return NULL;
+  }
 
-      //check fix part of the signature
-      for (auto &fix: sig.fix)
-	{
-	  if (arg == NULL)
-	    {
-	      invalid_arg_count_error (arg_count, sig);
-	      m_compat.m_signature_compat = type_compatibility::INCOMPATIBLE;
-	      break;
-	    }
-	  auto t = ((fix.type == pt_arg_type::INDEX) ? sig.fix[fix.val.index] : fix);
+  parser_node *
+  Node::apply_argument (parser_node *prev, parser_node *arg, const argument_resolve &arg_res)
+  {
+    parser_node *save_next = arg->next;
 
-	  check_arg_compat (t, arg, args_compat[argIndex]);
-	  if (args_compat[argIndex].m_compat == type_compatibility::INCOMPATIBLE)
-	    {
-	      invalid_arg_error (t, arg, sig);
-	      m_compat.m_signature_compat = type_compatibility::INCOMPATIBLE;
-	      break;
-	    }
-	  else if (args_compat[argIndex].m_compat == type_compatibility::COERCIBLE)
-	    {
-	      // demote signature to coercible
-	      m_compat.m_signature_compat = type_compatibility::COERCIBLE;
-	    }
+    if (arg_res.m_type != arg->type_enum)
+      {
+	arg = pt_wrap_with_cast_op (m_parser, arg, arg_res.m_type, TP_FLOATING_PRECISION_VALUE, 0, NULL);
+	if (arg == NULL)
+	  {
+	    assert (false);
+	    return NULL;
+	  }
+      }
+    if (m_best_signature.m_common_collation.coll_id != -1 && arg_res.m_check_coll_infer)
+      {
+	if (m_best_signature.m_common_collation.coll_id != arg_res.m_coll_infer.coll_id)
+	  {
+	    PT_NODE *new_node = pt_coerce_node_collation (m_parser, arg, m_best_signature.m_common_collation.coll_id,
+				m_best_signature.m_common_collation.codeset,
+				arg_res.m_coll_infer.can_force_cs, false, arg_res.m_type,
+				PT_TYPE_NONE);
+	    if (new_node != NULL)
+	      {
+		arg = new_node;
+	      }
+	    else
+	      {
+		// what if it is null?
+	      }
+	  }
+      }
 
-	  ++argIndex;
-	  arg = arg->next;
-	}
-      if (m_compat.m_signature_compat == type_compatibility::INCOMPATIBLE)
-	{
-	  continue;
-	}
-      if ((arg != NULL && sig.rep.size () == 0) || (arg == NULL && sig.rep.size () != 0))
-	{
-	  // number of arguments don't match
-	  invalid_arg_count_error (arg_count, sig);
-	  continue;
-	}
+    // restore links
+    if (prev != NULL)
+      {
+	prev->next = arg;
+      }
+    else
+      {
+	m_node->info.function.arg_list = arg;
+      }
+    arg->next = save_next;
 
-      //check repetitive args
-      int index = 0;
-      for (; arg; arg = arg->next, index = (index + 1) % sig.rep.size ())
-	{
-	  auto &rep = sig.rep[index];
-	  auto t = ((rep.type == pt_arg_type::INDEX) ? sig.rep[rep.val.index] : rep);
+    return arg;
+  }
 
-	  check_arg_compat (t, arg, args_compat[argIndex]);
-	  if (args_compat[argIndex].m_compat == type_compatibility::INCOMPATIBLE)
-	    {
-	      invalid_arg_error (t, arg, sig);
-	      m_compat.m_signature_compat = type_compatibility::INCOMPATIBLE;
-	      break;
-	    }
-	  else if (args_compat[argIndex].m_compat == type_compatibility::COERCIBLE)
-	    {
-	      // demote signature to coercible
-	      m_compat.m_signature_compat = type_compatibility::COERCIBLE;
-	    }
-	  ++argIndex;
-	}
-      if (index != 0 && m_compat.m_signature_compat != type_compatibility::INCOMPATIBLE)
-	{
-	  invalid_arg_count_error (arg_count, sig);
-	  m_compat.m_signature_compat = type_compatibility::INCOMPATIBLE;
-	  continue;
-	}
+  PT_NODE *
+  Node::type_checking ()
+  {
+    if (m_node->info.function.is_type_checked)
+      {
+	// already checked
+	return m_node;
+      }
 
-      if (m_compat.m_signature_compat == type_compatibility::EQUIVALENT)
-	{
-	  signature = &sig;
-	  m_compat.m_args_compat = std::move (args_compat);
-	  break; //stop at 1st equivalent signature
-	}
-      if (m_compat.m_signature_compat == type_compatibility::COERCIBLE && signature == nullptr)
-	{
-	  //don't stop, continue because it is possible to find an equivalent signature later
-	  signature = &sig;
-	  m_compat.m_args_compat = args_compat;
-	}
-    }
-  if (signature)
-    {
-      pt_reset_error (m_parser); //signature found => clear error messages accumulated during signature checking
-    }
-  return signature;
-}
+    if (preprocess ())
+      {
+	auto func_sigs = get_signatures (m_node->info.function.function_type);
+	assert ("ERR no function signature" && func_sigs != NULL);
+	if (!func_sigs)
+	  {
+	    pt_cat_error (m_parser, m_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NO_SIGNATURES,
+			  fcode_get_uppercase_name (m_node->info.function.function_type));
+	    return m_node;
+	  }
+	const func_signature *func_sig = get_signature (*func_sigs);
+	if (func_sig == NULL || !apply_signature (*func_sig))
+	  {
+	    m_node->type_enum = PT_TYPE_NA;
+	    pt_cat_error (m_parser, m_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NO_VALID_FUNCTION_SIGNATURE,
+			  fcode_get_uppercase_name (m_node->info.function.function_type));
+	  }
+	else
+	  {
+	    set_return_type (*func_sig);
+	  }
+      }
+    else
+      {
+	// do nothing??
+      }
+    m_node->info.function.is_type_checked = true;
+    return m_node;
+  }
 
-void
-Func::Node::set_return_type (const func_signature &signature)
-{
-  parser_node *arg_list = m_node->info.function.arg_list;
-  if (m_node->type_enum == PT_TYPE_NONE || m_node->data_type == NULL) //return type
-    {
-      // todo - make this really generic
+  bool
+  Node::preprocess ()
+  {
+    auto arg_list = m_node->info.function.arg_list;
+    switch (m_node->info.function.function_type)
+      {
+      case F_GENERIC:
+      case F_CLASS_OF: //move it to the beginning of pt_eval_function_type() ... not without complicating the code
+	m_node->type_enum = (arg_list) ? arg_list->type_enum : PT_TYPE_NONE;
+	return false; //no need to continue with generic code
+      case PT_GROUP_CONCAT: //ToDo: try without this!
+      {
+	auto arg1 = m_node->info.function.arg_list;
+	if (arg1 != NULL)
+	  {
+	    auto arg2 = arg1->next;
+	    if (arg2 != NULL)
+	      {
+		if ((PT_IS_SIMPLE_CHAR_STRING_TYPE (arg1->type_enum) && PT_IS_NATIONAL_CHAR_STRING_TYPE (arg2->type_enum))
+		    || (PT_IS_SIMPLE_CHAR_STRING_TYPE (arg2->type_enum)
+			&& PT_IS_NATIONAL_CHAR_STRING_TYPE (arg1->type_enum)))
+		  {
+		    pt_cat_error (m_parser, m_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OP_NOT_DEFINED_ON,
+				  fcode_get_lowercase_name (PT_GROUP_CONCAT), pt_show_type_enum (arg1->type_enum),
+				  pt_show_type_enum (arg2->type_enum));
+		    m_node->type_enum = PT_TYPE_VARCHAR;
+		    return false;
+		  }
+	      }
+	  }
+	break;
+      }
+      default:
+	;
+      }
+    return true;
+  }
 
-      //set node->type_enum
-      switch (signature.ret.type)
-	{
-	case pt_arg_type::NORMAL:
-	  m_node->type_enum = signature.ret.val.type;
-	  break;
-	case pt_arg_type::GENERIC:
-	  assert (false);
-	  break;
-	case pt_arg_type::INDEX:
-	  parser_node *node = get_arg (signature.ret.val.index);
-	  if (node)
-	    {
-	      m_node->type_enum = node->type_enum;
-	    }
-	  break;
-	}
-      //set node->data_type
-      switch (m_node->info.function.function_type)
-	{
-	case PT_MAX:
-	case PT_MIN:
-	case PT_LEAD:
-	case PT_LAG:
-	case PT_FIRST_VALUE:
-	case PT_LAST_VALUE:
-	case PT_NTH_VALUE:
-	  m_node->data_type = (arg_list ? parser_copy_tree_list (m_parser, arg_list->data_type) : NULL);
-	  break;
-	case PT_SUM:
-	  m_node->data_type = (arg_list ? parser_copy_tree_list (m_parser, arg_list->data_type) : NULL);
-	  if (arg_list && arg_list->type_enum == PT_TYPE_NUMERIC && m_node->data_type)
-	    {
-	      m_node->data_type->info.data_type.precision = DB_MAX_NUMERIC_PRECISION;
-	    }
-	  break;
-	case F_ELT:
-	  m_node->data_type = pt_make_prim_data_type (m_parser, m_node->type_enum);
-	  if (m_node->data_type)
-	    {
-	      m_node->data_type->info.data_type.precision =
-		      (m_node->type_enum == PT_TYPE_VARNCHAR ? DB_MAX_VARNCHAR_PRECISION : DB_MAX_VARCHAR_PRECISION);
-	      m_node->data_type->info.data_type.dec_precision = 0;
-	    }
-	  break;
-	case PT_GROUP_CONCAT:
-	case F_INSERT_SUBSTRING:
-	  m_node->data_type = pt_make_prim_data_type (m_parser, m_node->type_enum);
-	  if (m_node->data_type)
-	    {
-	      m_node->data_type->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
-	    }
-	  break;
-	case F_SET:
-	case F_MULTISET:
-	case F_SEQUENCE:
-	  pt_add_type_to_set (m_parser, arg_list, &m_node->data_type);
-	  break;
-	case F_TABLE_SET:
-	case F_TABLE_MULTISET:
-	case F_TABLE_SEQUENCE:
-	  pt_add_type_to_set (m_parser, pt_get_select_list (m_parser, arg_list), &m_node->data_type);
-	  break;
-	default:
-	  m_node->data_type = NULL;
-	}
-    }
-}
+  const char *
+  Node::get_types (const func_all_signatures &signatures, size_t index, string_buffer &sb)
+  {
+    for (auto &signature: signatures)
+      {
+	auto i = index;
+	if (index < signature.fix.size ())
+	  {
+	    pt_arg_type_to_string_buffer (signature.fix[i], sb);
+	    sb (", ");
+	  }
+	else
+	  {
+	    i -= signature.fix.size ();
+	    if (signature.rep.size () > 0)
+	      {
+		i %= signature.rep.size ();
+		pt_arg_type_to_string_buffer (signature.rep[i], sb);
+		sb (", ");
+	      }
+	  }
+      }
+    return sb.get_buffer ();
+  }
 
-bool
-Func::Node::apply_signature (const func_signature &signature)
-{
-  FUNC_TYPE func_type = m_node->info.function.function_type;
-  parser_node *arg = m_node->info.function.arg_list;
-  parser_node *prev = NULL;
-  size_t arg_pos = 0;
+  const func_signature *
+  Node::get_signature (const func_all_signatures &signatures)
+  {
+    if (pt_has_error (m_parser))
+      {
+	return nullptr;
+      }
+    pt_reset_error (m_parser);
 
-  for (auto type: signature.fix) //check fixed part of the function signature
-    {
-      if (arg == NULL)
-	{
-	  assert (false);
-	  return false;
-	}
-      assert (m_compat.m_args_compat[arg_pos].m_compat != type_compatibility::INCOMPATIBLE);
+    const func_signature *signature = nullptr;
+    size_t arg_count = static_cast<size_t> (pt_length_of_list (m_node->info.function.arg_list));
+    signature_compatibility sgn_compat;
 
-      if (m_compat.m_args_compat[arg_pos].m_type != arg->type_enum)
-	{
-	  arg = cast (prev, arg, m_compat.m_args_compat[arg_pos].m_type, TP_FLOATING_PRECISION_VALUE, 0, NULL);
-	  if (arg == NULL)
-	    {
-	      assert (false);
-	      return false;
-	    }
-	}
+    int sigIndex = 0;
+    for (auto &sig: signatures)
+      {
+	++sigIndex;
+	parser_node *arg = m_node->info.function.arg_list;
+	bool matchEquivalent = true;
+	bool matchCastable = true;
+	size_t arg_idx = 0;
 
-      ++arg_pos;
-      prev = arg;
-      arg = arg->next;
-    }
+	sgn_compat.m_args_resolve.resize (arg_count);
+	sgn_compat.m_compat = type_compatibility::EQUIVALENT;
+	sgn_compat.m_signature = &sig;
+	// collation action is initialized as leave. if string-signature arguments are all maybes, then it will remain
+	// leave, and is decided at runtime. if any argument is string, it will be set to TP_DOMAIN_COLL_NORMAL.
+	sgn_compat.m_collation_action = TP_DOMAIN_COLL_LEAVE;
 
-  if (arg != NULL && signature.rep.size () == 0)
-    {
-      assert (false);
-      return false;
-    }
+	//check fix part of the signature
+	for (auto &fix: sig.fix)
+	  {
+	    if (arg == NULL)
+	      {
+		invalid_arg_count_error (arg_count, sig);
+		sgn_compat.m_compat = type_compatibility::INCOMPATIBLE;
+		break;
+	      }
 
-  //check repetitive part of the function signature
-  int index = 0;
-  for (; arg != NULL; prev = arg, arg = arg->next, index = (index + 1) % signature.rep.size (), ++arg_pos)
-    {
-      if (m_compat.m_args_compat[arg_pos].m_compat == type_compatibility::EQUIVALENT)
-	{
-	  // arg is good as is
-	}
-      else
-	{
-	  assert (m_compat.m_args_compat[arg_pos].m_compat == type_compatibility::COERCIBLE);
-	  arg = cast (prev, arg, m_compat.m_args_compat[arg_pos].m_type, TP_FLOATING_PRECISION_VALUE, 0, NULL);
-	  if (arg == NULL)
-	    {
-	      assert (false);
-	      return false;
-	    }
-	}
-    }
-  if (index != 0)
-    {
-      assert (false);
-      return false;
-    }
+	    // todo - index type signature should copy argument type, not argument signature
+	    auto t = ((fix.type == pt_arg_type::INDEX) ? sig.fix[fix.val.index] : fix);
 
-  return true;
-}
+	    if (!check_arg_compat (t, arg, sgn_compat, sgn_compat.m_args_resolve[arg_idx]))
+	      {
+		break;
+	      }
 
-void
-Func::Node::check_arg_compat (const pt_arg_type &arg_signature, const PT_NODE *arg_node,
-			      argument_compatibility &compat)
-{
-  compat.m_type = PT_TYPE_NONE;
-  compat.m_compat = type_compatibility::INCOMPATIBLE;
+	    ++arg_idx;
+	    arg = arg->next;
+	  }
+	if (sgn_compat.m_compat == type_compatibility::INCOMPATIBLE)
+	  {
+	    continue;
+	  }
+	if ((arg != NULL && sig.rep.size () == 0) || (arg == NULL && sig.rep.size () != 0))
+	  {
+	    // number of arguments don't match
+	    invalid_arg_count_error (arg_count, sig);
+	    continue;
+	  }
 
-  // todo - equivalent type & coercible type checks should all be in a the same place to have a better view of how
-  //        each type can convert to another
+	//check repetitive args
+	int index = 0;
+	for (; arg; arg = arg->next, index = (index + 1) % sig.rep.size ())
+	  {
+	    auto &rep = sig.rep[index];
+	    // todo - index type signature should copy argument type, not argument signature
+	    auto t = ((rep.type == pt_arg_type::INDEX) ? sig.rep[rep.val.index] : rep);
 
-  if (cmp_types_equivalent (arg_signature, arg_node->type_enum))
-    {
-      compat.m_compat = type_compatibility::EQUIVALENT;
-      compat.m_type = pt_get_equivalent_type (arg_signature, arg_node->type_enum);
-    }
-  else if (cmp_types_castable (arg_signature, arg_node->type_enum))
-    {
-      compat.m_compat = type_compatibility::COERCIBLE;
-      compat.m_type = pt_get_equivalent_type (arg_signature, arg_node->type_enum);
-    }
+	    if (!check_arg_compat (t, arg, sgn_compat, sgn_compat.m_args_resolve[arg_idx]))
+	      {
+		break;
+	      }
+	    ++arg_idx;
+	  }
+	if (index != 0 && sgn_compat.m_compat != type_compatibility::INCOMPATIBLE)
+	  {
+	    invalid_arg_count_error (arg_count, sig);
+	    sgn_compat.m_compat = type_compatibility::INCOMPATIBLE;
+	    continue;
+	  }
 
-  // if compatible, pt_get_equivalent_type should return a valid type. but we need to double-check
-  if (compat.m_compat != type_compatibility::INCOMPATIBLE && compat.m_type == PT_TYPE_NONE)
-    {
-      assert (false);
-      compat.m_compat = type_compatibility::INCOMPATIBLE;
-    }
-}
+	if (sgn_compat.m_compat == type_compatibility::EQUIVALENT)
+	  {
+	    m_best_signature = std::move (sgn_compat);
+	    break; //stop at 1st equivalent signature
+	  }
+	if (sgn_compat.m_compat == type_compatibility::COERCIBLE && m_best_signature.m_signature == NULL)
+	  {
+	    //don't stop, continue because it is possible to find an equivalent signature later
+	    m_best_signature = sgn_compat;
+	  }
+      }
+    if (m_best_signature.m_signature != NULL)
+      {
+	// signature found => clear error messages accumulated during signature checking
+	pt_reset_error (m_parser);
+      }
+    return m_best_signature.m_signature;
+  }
 
-void
-Func::Node::invalid_arg_error (const pt_arg_type &arg_sgn, const PT_NODE *arg_node, const func_signature &func_sgn)
-{
-  string_buffer expected_sb;
-  string_buffer sgn_sb;
+  void
+  Node::set_return_type (const func_signature &signature)
+  {
+    parser_node *arg_list = m_node->info.function.arg_list;
+    if (m_node->type_enum == PT_TYPE_NONE || m_node->data_type == NULL) //return type
+      {
+	// todo - make this really generic
 
-  pt_arg_type_to_string_buffer (arg_sgn, expected_sb);
-  func_sgn.to_string_buffer (sgn_sb);
+	//set node->type_enum
+	switch (signature.ret.type)
+	  {
+	  case pt_arg_type::NORMAL:
+	    m_node->type_enum = signature.ret.val.type;
+	    break;
+	  case pt_arg_type::GENERIC:
+	    assert (false);
+	    break;
+	  case pt_arg_type::INDEX:
+	  {
+	    parser_node *arg_node = get_arg (signature.ret.val.index);
+	    if (arg_node != NULL)
+	      {
+		m_node->type_enum = arg_node->type_enum;
+		if (m_node->type_enum == PT_TYPE_MAYBE && arg_node->expected_domain != NULL)
+		  {
+		    m_node->type_enum = pt_db_to_type_enum (arg_node->expected_domain->type->id);
+		  }
+		if (arg_node->data_type != NULL)
+		  {
+		    m_node->data_type = parser_copy_tree_list (m_parser, arg_node->data_type);
+		  }
+	      }
+	    else
+	      {
+		// ??
+		assert (false);
+	      }
+	    break;
+	  }
+	  }
+	// set node->data_type
+	// todo - remove this switch
+	switch (m_node->info.function.function_type)
+	  {
+	  case PT_MAX:
+	  case PT_MIN:
+	  case PT_LEAD:
+	  case PT_LAG:
+	  case PT_FIRST_VALUE:
+	  case PT_LAST_VALUE:
+	  case PT_NTH_VALUE:
+	    m_node->data_type = (arg_list ? parser_copy_tree_list (m_parser, arg_list->data_type) : NULL);
+	    break;
+	  case PT_SUM:
+	    m_node->data_type = (arg_list ? parser_copy_tree_list (m_parser, arg_list->data_type) : NULL);
+	    if (arg_list && arg_list->type_enum == PT_TYPE_NUMERIC && m_node->data_type)
+	      {
+		m_node->data_type->info.data_type.precision = DB_MAX_NUMERIC_PRECISION;
+	      }
+	    break;
+	  case F_ELT:
+	    m_node->data_type = pt_make_prim_data_type (m_parser, m_node->type_enum);
+	    if (m_node->data_type)
+	      {
+		m_node->data_type->info.data_type.precision =
+			(m_node->type_enum == PT_TYPE_VARNCHAR ? DB_MAX_VARNCHAR_PRECISION : DB_MAX_VARCHAR_PRECISION);
+		m_node->data_type->info.data_type.dec_precision = 0;
+	      }
+	    break;
+	  case PT_GROUP_CONCAT:
+	  case F_INSERT_SUBSTRING:
+	    m_node->data_type = pt_make_prim_data_type (m_parser, m_node->type_enum);
+	    if (m_node->data_type)
+	      {
+		m_node->data_type->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
+	      }
+	    break;
+	  case F_SET:
+	  case F_MULTISET:
+	  case F_SEQUENCE:
+	    pt_add_type_to_set (m_parser, arg_list, &m_node->data_type);
+	    break;
+	  case F_TABLE_SET:
+	  case F_TABLE_MULTISET:
+	  case F_TABLE_SEQUENCE:
+	    pt_add_type_to_set (m_parser, pt_get_select_list (m_parser, arg_list), &m_node->data_type);
+	    break;
+	  default:
+	    // m_node->data_type = NULL;
+	    break;
+	  }
 
-  pt_cat_error (m_parser, arg_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTYPECHECK_INCOMPATIBLE_TYPE,
-		pt_show_type_enum (arg_node->type_enum), expected_sb.get_buffer (), sgn_sb.get_buffer ());
-}
+	if (m_node->data_type == NULL)
+	  {
+	    m_node->data_type = pt_make_prim_data_type (m_parser, m_node->type_enum);
+	  }
+	if (m_node->data_type != NULL && PT_IS_STRING_TYPE (m_node->type_enum))
+	  {
+	    // always return string without precision
+	    m_node->type_enum = pt_to_variable_size_type (m_node->type_enum);
+	    m_node->data_type->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
+	  }
+      }
+    else
+      {
+	// when is this already set??
+      }
 
-void
-Func::Node::invalid_arg_count_error (std::size_t arg_count, const func_signature &func_sgn)
-{
-  string_buffer sgn_sb;
-  func_sgn.to_string_buffer (sgn_sb);
+    // set collation on result node... I am not sure this is correct
+    if (PT_HAS_COLLATION (m_node->type_enum) && m_best_signature.m_common_collation.coll_id != -1)
+      {
+	pt_coll_infer result_coll_infer;
+	if (is_type_with_collation (m_node->type_enum) && m_best_signature.m_collation_action == TP_DOMAIN_COLL_LEAVE
+	    && m_node->data_type != NULL)
+	  {
+	    // all maybes case. leave collation coming from arguments
+	    m_node->data_type->info.data_type.collation_flag = TP_DOMAIN_COLL_LEAVE;
+	  }
+	else if (pt_get_collation_info (m_node, &result_coll_infer)
+		 && m_best_signature.m_common_collation.coll_id != result_coll_infer.coll_id)
+	  {
+	    parser_node *new_node = pt_coerce_node_collation (m_parser, m_node,
+				    m_best_signature.m_common_collation.coll_id,
+				    m_best_signature.m_common_collation.codeset,
+				    true, false, PT_TYPE_VARCHAR, PT_TYPE_NONE);
+	    if (new_node != NULL)
+	      {
+		m_node = new_node;
+	      }
+	  }
+      }
+  }
 
-  pt_cat_error (m_parser, m_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTYPECHECK_ARGS_COUNT,
-		(int) arg_count, sgn_sb.get_buffer ());
-}
+  bool
+  Node::apply_signature (const func_signature &signature)
+  {
+    FUNC_TYPE func_type = m_node->info.function.function_type;
+    parser_node *arg = m_node->info.function.arg_list;
+    parser_node *prev = NULL;
+    size_t arg_pos = 0;
+
+    // check fixed part of the function signature
+    for (auto type: signature.fix)
+      {
+	if (arg == NULL)
+	  {
+	    assert (false);
+	    return false;
+	  }
+
+	arg = apply_argument (prev, arg, m_best_signature.m_args_resolve[arg_pos]);
+	if (arg == NULL)
+	  {
+	    assert (false);
+	    return false;
+	  }
+
+	++arg_pos;
+	prev = arg;
+	arg = arg->next;
+      }
+
+    if (arg != NULL && signature.rep.size () == 0)
+      {
+	assert (false);
+	return false;
+      }
+
+    //check repetitive part of the function signature
+    int index = 0;
+    for (; arg != NULL; prev = arg, arg = arg->next, index = (index + 1) % signature.rep.size (), ++arg_pos)
+      {
+	arg = apply_argument (prev, arg, m_best_signature.m_args_resolve[arg_pos]);
+	if (arg == NULL)
+	  {
+	    assert (false);
+	    return false;
+	  }
+      }
+    if (index != 0)
+      {
+	assert (false);
+	return false;
+      }
+
+    return true;
+  }
+
+  bool
+  Node::check_arg_compat (const pt_arg_type &arg_signature, const PT_NODE *arg_node,
+			  signature_compatibility &compat, argument_resolve &arg_res)
+  {
+    arg_res.m_type = PT_TYPE_NONE;
+
+    // todo - equivalent type & coercible type checks should all be in a the same place to have a better view of how
+    //        each type can convert to another
+
+    if (cmp_types_equivalent (arg_signature, arg_node->type_enum))
+      {
+	arg_res.m_type = pt_get_equivalent_type (arg_signature, arg_node->type_enum);
+      }
+    else if (cmp_types_castable (arg_signature, arg_node->type_enum))
+      {
+	compat.m_compat = type_compatibility::COERCIBLE;
+	arg_res.m_type = pt_get_equivalent_type (arg_signature, arg_node->type_enum);
+      }
+    else
+      {
+	compat.m_compat = type_compatibility::INCOMPATIBLE;
+	invalid_arg_error (arg_signature, arg_node, *compat.m_signature);
+	return false;
+      }
+
+    // if compatible, pt_get_equivalent_type should return a valid type. but we need to double-check
+    if (arg_res.m_type == PT_TYPE_NONE)
+      {
+	assert (false);
+	compat.m_compat = type_compatibility::INCOMPATIBLE;
+	invalid_arg_error (arg_signature, arg_node, *compat.m_signature);
+	return false;
+      }
+
+    // three conditions should be met to require collation inference:
+    //
+    //  1. argument signature should allow collation. e.g. all generic strings allow collations, but json docs and values
+    //     don't allow
+    //
+    //  2. equivalent type should have collation.
+    //
+    //  3. original argument type should have collation. if it doesn't have, it doesn't affect common collation.
+    //     NOTE - if first two conditions are true and this is false, we don't do collation inference, but argument will
+    //            be coerced to common collation.
+    //
+    // todo - what happens when all arguments are maybe??
+    //
+    // NOTE:
+    //  Most of the time, first and second conditions are similar. There are cases when first condition is false and
+    //  second is true. I don't know at this moment if second argument can be false while first is true. To be on the
+    //  safe side, we check them both.
+    //
+    if (!can_signature_have_collation (arg_signature) || !is_type_with_collation (arg_res.m_type))
+      {
+	// collation does not matter for this argument
+	arg_res.m_coll_infer.coll_id = -1;
+	arg_res.m_check_coll_infer = false;
+      }
+    else
+      {
+	// collation matters for this argument
+	arg_res.m_coll_infer.coll_id = -1;
+	arg_res.m_check_coll_infer = true;
+	if (is_type_with_collation (arg_node->type_enum) && pt_get_collation_info (arg_node, &arg_res.m_coll_infer))
+	  {
+	    // do collation inference
+	    int common_coll;
+	    INTL_CODESET common_cs;
+	    if (compat.m_common_collation.coll_id == -1)
+	      {
+		compat.m_common_collation.coll_id = arg_res.m_coll_infer.coll_id;
+		compat.m_common_collation.codeset = arg_res.m_coll_infer.codeset;
+		compat.m_common_collation.can_force_cs = arg_res.m_coll_infer.can_force_cs;
+		compat.m_common_collation.coerc_level = arg_res.m_coll_infer.coerc_level;
+	      }
+	    else if (pt_common_collation (&compat.m_common_collation, &arg_res.m_coll_infer, NULL, 2, false,
+					  &common_coll, &common_cs) == NO_ERROR)
+	      {
+		compat.m_common_collation.coll_id = common_coll;
+		compat.m_common_collation.codeset = common_cs;
+	      }
+	    else
+	      {
+		// todo: we'll need a clear error here
+		compat.m_compat = type_compatibility::INCOMPATIBLE;
+		invalid_coll_error (*compat.m_signature);
+		return false;
+	      }
+
+	    if (arg_node->type_enum != PT_TYPE_MAYBE)
+	      {
+		compat.m_collation_action = TP_DOMAIN_COLL_NORMAL;
+	      }
+	  }
+	else
+	  {
+	    // third condition is not met; this argument does not contribute to common collation.
+	  }
+      }
+    return true;
+  }
+
+  void
+  Node::invalid_arg_error (const pt_arg_type &arg_sgn, const PT_NODE *arg_node, const func_signature &func_sgn)
+  {
+    string_buffer expected_sb;
+    string_buffer sgn_sb;
+
+    pt_arg_type_to_string_buffer (arg_sgn, expected_sb);
+    func_sgn.to_string_buffer (sgn_sb);
+
+    pt_cat_error (m_parser, arg_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INCOMPATIBLE_ARGUMENT_TYPE,
+		  pt_show_type_enum (arg_node->type_enum), expected_sb.get_buffer ());
+    pt_cat_error (m_parser, m_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INCOMPATIBLE_SIGNATURE,
+		  sgn_sb.get_buffer ());
+  }
+
+  void
+  Node::invalid_coll_error (const func_signature &func_sgn)
+  {
+    string_buffer sgn_sb;
+    func_sgn.to_string_buffer (sgn_sb);
+
+    pt_cat_error (m_parser, m_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_COLLATION_OP_ERROR,
+		  fcode_get_lowercase_name (m_node->info.function.function_type));
+    pt_cat_error (m_parser, m_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INCOMPATIBLE_SIGNATURE,
+		  sgn_sb.get_buffer ());
+  }
+
+  void
+  Node::invalid_arg_count_error (std::size_t arg_count, const func_signature &func_sgn)
+  {
+    string_buffer sgn_sb;
+    func_sgn.to_string_buffer (sgn_sb);
+
+    pt_cat_error (m_parser, m_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_WRONG_ARGS_COUNT,
+		  (int) arg_count);
+    pt_cat_error (m_parser, m_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INCOMPATIBLE_SIGNATURE,
+		  sgn_sb.get_buffer ());
+  }
+} // namespace func_type
 
 /*
  * pt_are_equivalent_types () - check if a node type is equivalent with a
@@ -1268,7 +1412,7 @@ pt_get_equivalent_type (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM arg_type)
     case PT_GENERIC_TYPE_ANY:
       if (arg_type == PT_TYPE_LOGICAL)
 	{
-	  /* if PT_TYPE_LOGICAL apprears for a PT_GENERIC_TYPE_ANY, it should be converted to PT_TYPE_INTEGER. */
+	  /* if PT_TYPE_LOGICAL appears for a PT_GENERIC_TYPE_ANY, it should be converted to PT_TYPE_INTEGER. */
 	  return PT_TYPE_INTEGER;
 	}
       return arg_type;
@@ -1340,10 +1484,6 @@ pt_get_equivalent_type (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM arg_type)
       if (pt_is_json_doc_type (arg_type))
 	{
 	  return arg_type;
-	}
-      else if (PT_IS_NUMERIC_TYPE (arg_type))
-	{
-	  return PT_TYPE_JSON;
 	}
       else
 	{

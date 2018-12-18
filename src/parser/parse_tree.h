@@ -1476,15 +1476,6 @@ typedef enum
   PT_CRC32,
   PT_SCHEMA_DEF,
   PT_CONV_TZ,
-  PT_JSON_CONTAINS,
-  PT_JSON_TYPE,
-  PT_JSON_EXTRACT,
-  PT_JSON_VALID,
-  PT_JSON_LENGTH,
-  PT_JSON_DEPTH,
-  PT_JSON_QUOTE,
-  PT_JSON_UNQUOTE,
-  PT_JSON_PRETTY,
 
   /* This is the last entry. Please add a new one before it. */
   PT_LAST_OPCODE
@@ -2278,6 +2269,7 @@ struct pt_function_info
   PT_NODE *order_by;		/* ordering PT_SORT_SPEC for GROUP_CONCAT */
   PT_NODE *percentile;		/* percentile for PERCENTILE_CONT, PERCENTILE_DISC */
   bool is_order_dependent;	/* true if function is order dependent */
+  bool is_type_checked;		/* true if type is already checked, false otherwise... is this safe? */
   int coll_modifier;		/* collation modifier = collation + 1 */
   struct
   {
@@ -3676,6 +3668,19 @@ struct pt_coll_infer
 				 * for auto-CAST expressions around numbers: initially the string data type of CAST is
 				 * created with system charset by generic type checking but that charset can be forced
 				 * to another charset (of another argument) if this flag is set */
+
+#ifdef __cplusplus
+  // *INDENT-OFF*
+    pt_coll_infer ()
+      : coll_id (-1)
+      , codeset (INTL_CODESET_NONE)
+      , coerc_level (PT_COLLATION_NOT_APPLICABLE)
+      , can_force_cs (true)
+  {
+    //
+  }
+  // *INDENT-ON*
+#endif				// c++
 };
 
 void pt_init_node (PT_NODE * node, PT_NODE_TYPE node_type);

@@ -1059,15 +1059,6 @@ typedef enum
   T_CURRENT_DATE,
   T_CURRENT_TIME,
   T_CONV_TZ,
-  T_JSON_CONTAINS,
-  T_JSON_TYPE,
-  T_JSON_EXTRACT,
-  T_JSON_VALID,
-  T_JSON_QUOTE,
-  T_JSON_UNQUOTE,
-  T_JSON_LENGTH,
-  T_JSON_DEPTH,
-  T_JSON_PRETTY,
 } OPERATOR_TYPE;		/* arithmetic operator types */
 
 typedef enum
@@ -1104,10 +1095,10 @@ typedef enum
 
   /* "normal" functions, arguments are values */
   F_SET, F_MULTISET, F_SEQUENCE, F_VID, F_GENERIC, F_CLASS_OF,
-  F_INSERT_SUBSTRING, F_ELT, F_JSON_OBJECT, F_JSON_ARRAY, F_JSON_MERGE, F_JSON_MERGE_PATCH,
-  F_JSON_INSERT, F_JSON_REMOVE, F_JSON_ARRAY_APPEND, F_JSON_GET_ALL_PATHS,
-  F_JSON_REPLACE, F_JSON_SET, F_JSON_KEYS, F_JSON_ARRAY_INSERT, F_JSON_SEARCH,
-  F_JSON_CONTAINS_PATH, F_JSON_EXTRACT,
+  F_INSERT_SUBSTRING, F_ELT, F_JSON_OBJECT, F_JSON_ARRAY, F_JSON_MERGE, F_JSON_MERGE_PATCH, F_JSON_INSERT,
+  F_JSON_REMOVE, F_JSON_ARRAY_APPEND, F_JSON_GET_ALL_PATHS, F_JSON_REPLACE, F_JSON_SET, F_JSON_KEYS,
+  F_JSON_ARRAY_INSERT, F_JSON_SEARCH, F_JSON_CONTAINS_PATH, F_JSON_EXTRACT, F_JSON_CONTAINS, F_JSON_DEPTH,
+  F_JSON_LENGTH, F_JSON_PRETTY, F_JSON_QUOTE, F_JSON_TYPE, F_JSON_UNQUOTE, F_JSON_VALID,
 
   /* only for FIRST_VALUE. LAST_VALUE, NTH_VALUE analytic functions */
   PT_FIRST_VALUE, PT_LAST_VALUE, PT_NTH_VALUE,
@@ -1118,6 +1109,16 @@ typedef enum
   PT_PERCENTILE_CONT,
   PT_PERCENTILE_DISC
 } FUNC_TYPE;
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif				// c++
+  const char *fcode_get_lowercase_name (FUNC_TYPE ftype);
+  const char *fcode_get_uppercase_name (FUNC_TYPE ftype);
+#ifdef __cplusplus
+}
+#endif				// c++
 
 /************************************************************************/
 /* QUERY                                                                */

@@ -79,6 +79,7 @@ struct sm_constraint_info
   SM_FOREIGN_KEY_ACTION fk_update_action;
   DB_CONSTRAINT_TYPE constraint_type;
   const char *comment;
+  SM_INDEX_STATUS index_status;	// Used to save index_status in case of rebuild or moving the constraint
 };
 
 extern ROOT_CLASS sm_Root_class;
@@ -320,5 +321,6 @@ extern int sm_rename_foreign_key_ref (MOP ref_clsop, const BTID * btid, const ch
 #endif
 
 extern int sm_find_subclass_in_hierarchy (MOP hierarchy, MOP class_mop, bool * found);
+extern bool sm_is_index_visible (SM_CLASS_CONSTRAINT * constraint_list, BTID btid);
 
 #endif /* _SCHEMA_MANAGER_H_ */

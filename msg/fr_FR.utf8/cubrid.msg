@@ -1271,7 +1271,7 @@ $ LOADDB
 1202 Json PATH "%1$s" does not exist in %2$s
 1203 Invalid JSON type at path %1$s. Expected %2$s, but found %3$s.
 1204 Json KEY "%1$s" is duplicate
-1205 Reserved error for JSON.
+1205 Invalid type %1$s. Expecting JSON document compatible data type (STRING or JSON).
 1206 Reserved error for JSON.
 1207 Reserved error for JSON.
 1208 Reserved error for JSON.
@@ -1308,8 +1308,9 @@ $ LOADDB
 1239 Cannot coerce value from JSON "%1$s" at path "%2$s" to JSON_TABLE column "%3$s" of domain "%4$s". 
 1240 Online index is not allowed on classes that are part of a hierarchy chain.
 1241 XASL tree needs recompile.
+1242 Cannot create partition on a class that is part of a hierarchy chain.
 
-1242 Dernière erreur
+1243 Dernière erreur
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Erreur dans le sous-système d'erreur (ligne %1$d):
@@ -1769,9 +1770,10 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 299 Erreur dans CTE '%1$s': la partie non récursive et la partie récursive doivent être connectées avec UNION ALL.
 300 La sous-requête n'est pas autorisée dans la clause DEFAULT.
 301 Could not find signatures for function %1$s()
-302 Incompatible argument type %1$s, expected type is: %2$s. Invalid signature %3$s.
-303 Unexpected number of arguments %1$d. Invalid signature %2$s.
+302 Incompatible argument type %1$s, expected type is: %2$s.
+303 Unexpected number of arguments %1$d.
 304 Could not find compatible signature for function %1$s()
+305 Signature %1$s is not compatible with function arguments.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Mémoire virtuelle épuisée: impossible d'allouer %1$d octets.

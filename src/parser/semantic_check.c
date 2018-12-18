@@ -42,6 +42,7 @@
 #include "view_transform.h"
 #include "show_meta.h"
 #include "partition.h"
+#include "db_json.hpp"
 
 #include "dbtype.h"
 #define PT_CHAIN_LENGTH 10
@@ -198,6 +199,7 @@ static PT_NODE *pt_check_single_valued_node (PARSER_CONTEXT * parser, PT_NODE * 
 static PT_NODE *pt_check_single_valued_node_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 						  int *continue_walk);
 static void pt_check_into_clause (PARSER_CONTEXT * parser, PT_NODE * qry);
+static int pt_check_json_table_paths (PT_NODE * node);
 static PT_NODE *pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_gen_isnull_preds (PARSER_CONTEXT * parser, PT_NODE * pred, PT_CHAIN_INFO * chain);
 static PT_NODE *pt_path_chain (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
@@ -4037,7 +4039,7 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
 		      node_ptr,
 		      MSGCAT_SET_PARSER_SEMANTIC,
 		      MSGCAT_SEMANTIC_DEFAULT_EXPR_NOT_ALLOWED,
-		      pt_show_function (node_ptr->info.function.function_type));
+		      fcode_get_lowercase_name (node_ptr->info.function.function_type));
 	  goto end;
 	}
 
@@ -5213,21 +5215,29 @@ pt_find_partition_column_count_func (PT_NODE * func, PT_NODE ** name_node)
     {
     case F_INSERT_SUBSTRING:
     case F_ELT:
-    case F_JSON_OBJECT:
     case F_JSON_ARRAY:
-    case F_JSON_INSERT:
-    case F_JSON_REPLACE:
-    case F_JSON_SET:
-    case F_JSON_KEYS:
-    case F_JSON_REMOVE:
     case F_JSON_ARRAY_APPEND:
     case F_JSON_ARRAY_INSERT:
+    case F_JSON_CONTAINS:
     case F_JSON_CONTAINS_PATH:
+    case F_JSON_DEPTH:
     case F_JSON_EXTRACT:
-    case F_JSON_SEARCH:
+    case F_JSON_GET_ALL_PATHS:
+    case F_JSON_KEYS:
+    case F_JSON_INSERT:
+    case F_JSON_LENGTH:
     case F_JSON_MERGE:
     case F_JSON_MERGE_PATCH:
-    case F_JSON_GET_ALL_PATHS:
+    case F_JSON_OBJECT:
+    case F_JSON_PRETTY:
+    case F_JSON_QUOTE:
+    case F_JSON_REMOVE:
+    case F_JSON_REPLACE:
+    case F_JSON_SEARCH:
+    case F_JSON_SET:
+    case F_JSON_TYPE:
+    case F_JSON_UNQUOTE:
+    case F_JSON_VALID:
       break;
     default:
       return 0;			/* unsupported function */
@@ -9300,6 +9310,51 @@ pt_check_into_clause (PARSER_CONTEXT * parser, PT_NODE * qry)
 }
 
 /*
+ * pt_check_json_table_paths () - check if json_table's paths are all valid
+ *
+ *   return:  NO_ERROR or ER_JSON_INVALID_PATH
+ *   node(in): json_table node
+ */
+static int
+pt_check_json_table_paths (PT_NODE * node)
+{
+  assert (node != NULL && node->node_type == PT_JSON_TABLE_NODE);
+
+  std::string path;
+
+  int error_code = db_json_convert_sql_path_to_pointer (node->info.json_table_node_info.path, path, true);
+  if (error_code)
+    {
+      return error_code;
+    }
+
+  for (PT_NODE * col = node->info.json_table_node_info.columns; col; col = col->next)
+    {
+      if (col->info.json_table_column_info.func == JSON_TABLE_ORDINALITY)
+	{
+	  // ORDINALITY columns do not have a path
+	  assert (col->info.json_table_column_info.path == NULL);
+	  continue;
+	}
+      error_code = db_json_convert_sql_path_to_pointer (col->info.json_table_column_info.path, path, true);
+      if (error_code)
+	{
+	  return error_code;
+	}
+    }
+
+  for (PT_NODE * nested_col = node->info.json_table_node_info.nested_paths; nested_col; nested_col = nested_col->next)
+    {
+      error_code = pt_check_json_table_paths (nested_col);
+      if (error_code)
+	{
+	  return error_code;
+	}
+    }
+  return NO_ERROR;
+}
+
+/*
  * pt_semantic_check_local () - checks semantics on a particular statement
  *   return:
  *   parser(in):
@@ -10031,6 +10086,13 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_WANT_TYPE,
 		      pt_show_type_enum (PT_TYPE_JSON));
 	}
+
+      if (pt_check_json_table_paths (node->info.json_table_info.tree))
+	{
+	  ASSERT_ERROR ();
+	  PT_ERRORc (parser, node, er_msg ());
+	}
+
       break;
 
     default:			/* other node types */
@@ -11097,10 +11159,7 @@ pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs, PT_NODE * rhs)
   else
     {
       SEMAN_COMPATIBLE_INFO sci = {
-	0, PT_TYPE_NONE, 0, 0, false,
-	{0, INTL_CODESET_NONE, PT_COLLATION_NOT_COERC, false}
-	,
-	NULL
+	0, PT_TYPE_NONE, 0, 0, false, pt_coll_infer (), NULL
       };
       bool is_cast_allowed = true;
 
@@ -15129,7 +15188,7 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *a
 	case PT_FUNCTION_HOLDER:
 	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
 		      MSGCAT_SEMANTIC_FUNCTION_CANNOT_BE_USED_FOR_FILTER_INDEX,
-		      pt_show_function (node->info.expr.arg1->info.function.function_type));
+		      fcode_get_lowercase_name (node->info.expr.arg1->info.function.function_type));
 	  info->is_valid_expr = false;
 	  break;
 
@@ -15152,27 +15211,35 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *a
 	  /* the functions above are used in the argument IN (values list) expression */
 	case F_ELT:
 	case F_INSERT_SUBSTRING:
-	case F_JSON_OBJECT:
 	case F_JSON_ARRAY:
-	case F_JSON_INSERT:
-	case F_JSON_REPLACE:
-	case F_JSON_SET:
-	case F_JSON_KEYS:
-	case F_JSON_REMOVE:
 	case F_JSON_ARRAY_APPEND:
 	case F_JSON_ARRAY_INSERT:
-	case F_JSON_SEARCH:
+	case F_JSON_CONTAINS:
 	case F_JSON_CONTAINS_PATH:
+	case F_JSON_DEPTH:
 	case F_JSON_EXTRACT:
+	case F_JSON_GET_ALL_PATHS:
+	case F_JSON_KEYS:
+	case F_JSON_INSERT:
+	case F_JSON_LENGTH:
 	case F_JSON_MERGE:
 	case F_JSON_MERGE_PATCH:
-	case F_JSON_GET_ALL_PATHS:
+	case F_JSON_OBJECT:
+	case F_JSON_PRETTY:
+	case F_JSON_QUOTE:
+	case F_JSON_REMOVE:
+	case F_JSON_REPLACE:
+	case F_JSON_SEARCH:
+	case F_JSON_SET:
+	case F_JSON_TYPE:
+	case F_JSON_UNQUOTE:
+	case F_JSON_VALID:
 	  /* valid expression, nothing to do */
 	  break;
 	default:
 	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
 		      MSGCAT_SEMANTIC_FUNCTION_CANNOT_BE_USED_FOR_FILTER_INDEX,
-		      pt_show_function (node->info.function.function_type));
+		      fcode_get_lowercase_name (node->info.function.function_type));
 	  info->is_valid_expr = false;
 	  break;
 	}

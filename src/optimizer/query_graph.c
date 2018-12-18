@@ -3270,22 +3270,30 @@ get_expr_fcode_rank (FUNC_TYPE fcode)
   switch (fcode)
     {
     case F_ELT:
-    case F_JSON_OBJECT:
+      return RANK_EXPR_LIGHT;
     case F_JSON_ARRAY:
-    case F_JSON_REMOVE:
     case F_JSON_ARRAY_APPEND:
     case F_JSON_ARRAY_INSERT:
-    case F_JSON_SEARCH:
+    case F_JSON_CONTAINS:
     case F_JSON_CONTAINS_PATH:
+    case F_JSON_DEPTH:
     case F_JSON_EXTRACT:
+    case F_JSON_GET_ALL_PATHS:
+    case F_JSON_KEYS:
+    case F_JSON_INSERT:
+    case F_JSON_LENGTH:
     case F_JSON_MERGE:
     case F_JSON_MERGE_PATCH:
-    case F_JSON_GET_ALL_PATHS:
-    case F_JSON_INSERT:
+    case F_JSON_OBJECT:
+    case F_JSON_PRETTY:
+    case F_JSON_QUOTE:
+    case F_JSON_REMOVE:
     case F_JSON_REPLACE:
+    case F_JSON_SEARCH:
     case F_JSON_SET:
-    case F_JSON_KEYS:
-      return RANK_EXPR_LIGHT;
+    case F_JSON_TYPE:
+    case F_JSON_UNQUOTE:
+    case F_JSON_VALID:
     case F_INSERT_SUBSTRING:
       return RANK_EXPR_MEDIUM;
     default:
@@ -4828,7 +4836,7 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg, const char *expr_st
   cum_statsp = &attr_infop->cum_stats;
   cum_statsp->type = pt_type_enum_to_db (QO_SEG_PT_NODE (seg)->type_enum);
   cum_statsp->valid_limits = false;
-  cum_statsp->is_indexed = true;
+  cum_statsp->is_indexed = false;
   cum_statsp->leafs = cum_statsp->pages = cum_statsp->height = 0;
   cum_statsp->keys = 0;
   cum_statsp->key_type = NULL;
@@ -4843,7 +4851,6 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg, const char *expr_st
       if (stats->attr_stats == NULL)
 	{
 	  /* the attribute statistics of the class were not set */
-	  cum_statsp->is_indexed = false;
 	  continue;
 	  /* We'll consider the segment to be indexed only if all of the attributes it represents are indexed. The
 	   * current optimization strategy makes it inconvenient to try to construct "mixed" (segment and index) scans
@@ -4856,6 +4863,12 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg, const char *expr_st
 	  /* search the attribute from the class information */
 	  attr_statsp = stats->attr_stats;
 	  n_attrs = stats->n_attrs;
+
+	  if (consp->index_status != SM_NORMAL_INDEX)
+	    {
+	      /* Skip not normal indexes. */
+	      continue;
+	    }
 
 	  if (consp->func_index_info && consp->func_index_info->col_id == 0
 	      && !intl_identifier_casecmp (expr_str, consp->func_index_info->expr_str))
@@ -4872,7 +4885,6 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg, const char *expr_st
 	      if (j == n_attrs)
 		{
 		  /* attribute not found, what happens to the class attribute? */
-		  cum_statsp->is_indexed = false;
 		  continue;
 		}
 
@@ -4890,6 +4902,11 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg, const char *expr_st
 		  /* first time */
 		  cum_statsp->valid_limits = true;
 		}
+
+	      /* This should always happen. We must find a matching index. */
+	      assert (j < attr_statsp->n_btstats);
+
+	      cum_statsp->is_indexed = true;
 
 	      cum_statsp->leafs += bstatsp->leafs;
 	      cum_statsp->pages += bstatsp->pages;
@@ -4949,6 +4966,7 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
   const char *name;
   int n, i, j;
   int n_func_indexes;
+  int n_unavail_indexes;
   SM_CLASS_CONSTRAINT *consp;
   CLASS_STATS *stats;
   bool is_reserved_name = false;
@@ -5061,17 +5079,23 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 	}
 
       n_func_indexes = 0;
+      n_unavail_indexes = 0;
       for (j = 0; j < attr_statsp->n_btstats; j++)
 	{
 	  if (attr_statsp->bt_stats[j].has_function == 1)
 	    {
 	      n_func_indexes++;
 	    }
+
+	  if (!sm_is_index_visible (class_info_entryp->smclass->constraints, attr_statsp->bt_stats->btid))
+	    {
+	      n_unavail_indexes++;
+	    }
 	}
 
-      if (attr_statsp->n_btstats - n_func_indexes <= 0 || !attr_statsp->bt_stats)
+      if ((attr_statsp->n_btstats - (n_func_indexes + n_unavail_indexes) <= 0) || (!attr_statsp->bt_stats))
 	{
-	  /* the attribute does not have any index */
+	  /* the attribute does not have any usable index */
 	  cum_statsp->is_indexed = false;
 	  continue;
 	  /* We'll consider the segment to be indexed only if all of the attributes it represents are indexed. The
@@ -5105,7 +5129,7 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 		}
 	    }
 
-	  if (consp)		/* is unique index */
+	  if (consp && consp->index_status == SM_NORMAL_INDEX)	/* is unique index */
 	    {
 	      /* is class hierarchy index: set unique index statistics */
 	      cum_statsp->leafs = bt_statsp->leafs;
@@ -6973,7 +6997,7 @@ qo_is_usable_index (SM_CLASS_CONSTRAINT * constraint, QO_NODE * nodep)
       return false;
     }
 
-  if (constraint->index_status != SM_NORMAL_INDEX && constraint->index_status != SM_ONLINE_INDEX_BUILDING_DONE)
+  if (constraint->index_status != SM_NORMAL_INDEX)
     {
       // building or invisible
       return false;

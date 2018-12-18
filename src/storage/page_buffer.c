@@ -59,9 +59,6 @@
 #if defined(SERVER_MODE)
 #include "connection_error.h"
 #endif /* SERVER_MODE */
-#if defined(PAGE_STATISTICS)
-#include "boot_sr.h"
-#endif /* PAGE_STATISTICS */
 #if defined(ENABLE_SYSTEMTAP)
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
@@ -386,13 +383,8 @@ typedef enum
   while (0)
 
 /* use define PGBUF_ORDERED_DEBUG to enable extended debug for ordered fix */
+// todo - is it better to replace with a system parameter?
 #undef PGBUF_ORDERED_DEBUG
-
-#if defined(PAGE_STATISTICS)
-#define PGBUF_LATCH_MODE_COUNT  (PGBUF_LATCH_INVALID - PGBUF_NO_LATCH + 1)
-#define PGBUF_MAX_FIXED_SOURCES 5000
-#define PGBUF_MAX_FIXED_SOURCE_LEN 64
-#endif /* PAGE_STATISTICS */
 
 #define PGBUF_LRU_ZONE_MIN_RATIO 0.05f
 #define PGBUF_LRU_ZONE_MAX_RATIO 0.90f
@@ -828,50 +820,6 @@ struct pgbuf_victim_candidate_list
   VPID vpid;			/* page id of the page managed by the BCB */
 };
 
-#if defined(PAGE_STATISTICS)
-typedef struct pgbuf_page_stat PGBUF_PAGE_STAT;
-struct pgbuf_page_stat
-{
-  int volid;
-  int pageid;
-  int latch_cnt[PGBUF_LATCH_MODE_COUNT];
-  struct timeval latch_time[PGBUF_LATCH_MODE_COUNT];
-};
-
-typedef struct pgbuf_vol_stat PGBUF_VOL_STAT;
-struct pgbuf_vol_stat
-{
-  int volid;
-  int npages;
-  PGBUF_PAGE_STAT *page_stat;
-};
-
-#if !defined(NDEBUG)
-typedef struct pgbuf_fixed_source PGBUF_FIXED_SOURCE;
-struct pgbuf_fixed_source
-{
-  UINT64 count;
-  char name[PGBUF_MAX_FIXED_SOURCE_LEN];
-};
-#endif /* NDEBUG */
-
-typedef struct pgbuf_ps_info PGBUF_PS_INFO;
-struct pgbuf_ps_info
-{
-  int nvols;
-  int last_perm_vol;
-  int ps_init_called;
-  PGBUF_VOL_STAT *vol_stat;
-
-#if !defined(NDEBUG)
-  pthread_mutex_t page_fixed_sources_mutex;
-  MHT_TABLE *ht_page_fixed_sources;
-  PGBUF_FIXED_SOURCE fixed_source[PGBUF_MAX_FIXED_SOURCES];
-  int fixed_source_used;
-#endif				/* NDEBUG */
-};
-#endif /* PAGE_STATISTICS */
-
 static PGBUF_BUFFER_POOL pgbuf_Pool;	/* The buffer Pool */
 static PGBUF_BATCH_FLUSH_HELPER pgbuf_Flush_helper;
 
@@ -885,10 +833,6 @@ static char pgbuf_Guard[8] = { MEM_REGION_GUARD_MARK, MEM_REGION_GUARD_MARK, MEM
   MEM_REGION_GUARD_MARK
 };
 #endif /* CUBRID_DEBUG */
-
-#if defined(PAGE_STATISTICS)
-static PGBUF_PS_INFO ps_info;
-#endif /* PAGE_STATISTICS */
 
 #define AOUT_HASH_DIVIDE_RATIO 1000
 #define AOUT_HASH_IDX(vpid, list) ((vpid)->pageid % list->num_hashes)
@@ -1072,20 +1016,6 @@ static void pgbuf_scramble (FILEIO_PAGE * iopage);
 static void pgbuf_dump (void);
 static int pgbuf_is_consistent (const PGBUF_BCB * bufptr, int likely_bad_after_fixcnt);
 #endif /* CUBRID_DEBUG */
-
-#if defined(PAGE_STATISTICS)
-static int pgbuf_initialize_statistics (void);
-static void pgbuf_initialize_vol_stat (PGBUF_VOL_STAT * vs);
-static int pgbuf_finalize_statistics (void);
-static void pgbuf_dump_statistics (FILE * ps_log);
-#if !defined(NDEBUG)
-static unsigned int pgbuf_hash_fixed_source (const void *key_source, unsigned int htsize);
-static int pgbuf_compare_fixed_source (const void *key_source1, const void *key_source2);
-static int pgbuf_compare_fixed_source_for_sort (const void *fix_source1, const void *fix_source2);
-static void pgbuf_add_fixed_source_stat (THREAD_ENTRY * thread_p, const char *caller_file, const int caller_line,
-					 PERF_PAGE_MODE perf_page_found, PAGE_PTR pgptr);
-#endif /* NDEBUG */
-#endif /* PAGE_STATISTICS */
 
 #if !defined(NDEBUG)
 static void pgbuf_add_fixed_at (PGBUF_HOLDER * holder, const char *caller_file, int caller_line, bool reset);
@@ -1416,14 +1346,6 @@ pgbuf_initialize (void)
       }
   }
 
-#if defined(PAGE_STATISTICS)
-  if (pgbuf_initialize_statistics () < 0)
-    {
-      fprintf (stderr, "pgbuf_initialize_statistics() failed\n");
-      goto error;
-    }
-#endif /* PAGE_STATISTICS */
-
   /* TODO[arnia] : not required, if done in monitor initialization */
   pgbuf_Pool.monitor.dirties_cnt = 0;
 
@@ -1523,13 +1445,6 @@ pgbuf_finalize (void)
 #if defined(CUBRID_DEBUG)
   pgbuf_dump_if_any_fixed ();
 #endif /* CUBRID_DEBUG */
-
-#if defined(PAGE_STATISTICS)
-  if (pgbuf_finalize_statistics () < 0)
-    {
-      fprintf (stderr, "pgbuf_finalize_statistics() failed\n");
-    }
-#endif /* PAGE_STATISTICS */
 
   /* final task for buffer hash table */
   if (pgbuf_Pool.buf_hash_table != NULL)
@@ -2160,12 +2075,6 @@ try_again:
     {
       pgbuf_bcb_update_flags (thread_p, bufptr, 0, PGBUF_BCB_TO_VACUUM_FLAG);
     }
-
-#if defined(PAGE_STATISTICS)
-#if !defined(NDEBUG)
-  pgbuf_add_fixed_source_stat (thread_p, caller_file, caller_line, perf.perf_page_found, pgptr);
-#endif /* NDEBUG */
-#endif /* PAGE_STATISTICS */
 
   PGBUF_BCB_CHECK_MUTEX_LEAKS ();
 
@@ -3199,9 +3108,12 @@ pgbuf_get_victim_candidates_from_lru (THREAD_ENTRY * thread_p, int check_count, 
       pthread_mutex_unlock (&pgbuf_Pool.buf_LRU_list[lru_idx].mutex);
     }
 
-  er_log_debug (ARG_FILE_LINE,
-		"pgbuf_flush_victim_candidates: pgbuf_get_victim_candidates_from_lru %d candidates in %d lists \n",
-		victim_cand_count, count_checked_lists);
+  if (prm_get_bool_value (PRM_ID_LOG_PGBUF_VICTIM_FLUSH))
+    {
+      _er_log_debug (ARG_FILE_LINE,
+		     "pgbuf_flush_victim_candidates: pgbuf_get_victim_candidates_from_lru %d candidates in %d lists \n",
+		     victim_cand_count, count_checked_lists);
+    }
 
   return victim_cand_count;
 }
@@ -3245,8 +3157,13 @@ pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, PERF_
   bool direct_victim_waiters = false;
 #endif /* DEBUG && SERVER_MODE */
 
+  bool logging = prm_get_bool_value (PRM_ID_LOG_PGBUF_VICTIM_FLUSH);
+
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_FLUSH_VICTIM_STARTED, 0);
-  er_log_debug (ARG_FILE_LINE, "pgbuf_flush_victim_candidates: start flush victim candidates\n");
+  if (logging)
+    {
+      _er_log_debug (ARG_FILE_LINE, "pgbuf_flush_victim_candidates: start flush victim candidates\n");
+    }
 
 #if !defined(NDEBUG) && defined(SERVER_MODE)
   if (pgbuf_is_page_flush_daemon_available ())
@@ -3351,7 +3268,10 @@ pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, PERF_
   pgbuf_Pool.is_flushing_victims = true;
 #endif
 
-  er_log_debug (ARG_FILE_LINE, "pgbuf_flush_victim_candidates: start flushing collected victim candidates\n");
+  if (logging)
+    {
+      _er_log_debug (ARG_FILE_LINE, "pgbuf_flush_victim_candidates: start flushing collected victim candidates\n");
+    }
   if (perf_tracker->is_perf_tracking)
     {
       UINT64 utime;
@@ -3444,7 +3364,10 @@ repeat:
       if (error != NO_ERROR)
 	{
 	  /* if this shows up in statistics or log, consider it a red flag */
-	  er_log_debug (ARG_FILE_LINE, "pgbuf_flush_victim_candidates: error during flush");
+	  if (logging)
+	    {
+	      _er_log_debug (ARG_FILE_LINE, "pgbuf_flush_victim_candidates: error during flush");
+	    }
 	  goto end;
 	}
       total_flushed_count += flushed_pages;
@@ -3574,8 +3497,11 @@ end:
 #endif /* !NDEBUG */
 #endif /* SERVER_MODE */
 
-  er_log_debug (ARG_FILE_LINE, "pgbuf_flush_victim_candidates: flush %d pages from lru lists. Found LRU:%d/%d",
-		total_flushed_count, victim_count, check_count_lru);
+  if (logging)
+    {
+      _er_log_debug (ARG_FILE_LINE, "pgbuf_flush_victim_candidates: flush %d pages from lru lists. Found LRU:%d/%d",
+		     total_flushed_count, victim_count, check_count_lru);
+    }
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_FLUSH_VICTIM_FINISHED, 1, total_flushed_count);
 
   perfmon_add_stat (thread_p, PSTAT_PB_NUM_FLUSHED, total_flushed_count);
@@ -3599,6 +3525,7 @@ int
 pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa, const LOG_LSA * prev_chkpt_redo_lsa,
 			LOG_LSA * smallest_lsa, int *flushed_page_cnt)
 {
+#define detailed_er_log(...) if (detailed_logging) _er_log_debug (ARG_FILE_LINE, __VA_ARGS__)
   PGBUF_BCB *bufptr;
   int bufid;
   int flushed_page_cnt_local = 0;
@@ -3606,9 +3533,10 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
   PGBUF_VICTIM_CANDIDATE_LIST *f_list;
   int collected_bcbs;
   int error = NO_ERROR;
+  bool detailed_logging = prm_get_bool_value (PRM_ID_LOG_CHKPT_DETAILED);
 
-  er_log_debug (ARG_FILE_LINE, "pgbuf_flush_checkpoint start : flush_upto_LSA:%d, prev_chkpt_redo_LSA:%d\n",
-		flush_upto_lsa->pageid, (prev_chkpt_redo_lsa ? prev_chkpt_redo_lsa->pageid : -1));
+  detailed_er_log ("pgbuf_flush_checkpoint start : flush_upto_LSA:%d, prev_chkpt_redo_LSA:%d\n",
+		   flush_upto_lsa->pageid, (prev_chkpt_redo_lsa ? prev_chkpt_redo_lsa->pageid : -1));
 
   if (flushed_page_cnt != NULL)
     {
@@ -3624,7 +3552,7 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
 
   LSA_COPY (&seq_flusher->flush_upto_lsa, flush_upto_lsa);
 
-  er_log_debug (ARG_FILE_LINE, "pgbuf_flush_checkpoint start : start\n");
+  detailed_er_log ("pgbuf_flush_checkpoint start : start\n");
 
   collected_bcbs = 0;
 
@@ -3713,7 +3641,7 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
   pgbuf_Pool.is_checkpoint = false;
 #endif
 
-  er_log_debug (ARG_FILE_LINE, "pgbuf_flush_checkpoint END flushed:%d\n", flushed_page_cnt_local);
+  detailed_er_log ("pgbuf_flush_checkpoint END flushed:%d\n", flushed_page_cnt_local);
 
   if (flushed_page_cnt != NULL)
     {
@@ -3721,6 +3649,8 @@ pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flush_upto_lsa,
     }
 
   return error;
+
+#undef  detailed_er_log
 }
 
 /*
@@ -3844,6 +3774,7 @@ static int
 pgbuf_flush_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flusher, struct timeval *limit_time,
 		      const LOG_LSA * prev_chkpt_redo_lsa, LOG_LSA * chkpt_smallest_lsa, int *time_rem)
 {
+#define detailed_er_log(...) if (detailed_logging) _er_log_debug (ARG_FILE_LINE, __VA_ARGS__)
   PGBUF_BCB *bufptr;
   PGBUF_VICTIM_CANDIDATE_LIST *f_list;
   int error = NO_ERROR;
@@ -3861,6 +3792,7 @@ pgbuf_flush_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flusher, 
   bool ignore_time_limit = false;
   bool flush_if_already_flushed;
   bool locked_bcb = false;
+  bool detailed_logging = prm_get_bool_value (PRM_ID_LOG_CHKPT_DETAILED);
 
   assert (seq_flusher != NULL);
   f_list = seq_flusher->flush_list;
@@ -3911,13 +3843,12 @@ pgbuf_flush_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flusher, 
   flush_per_interval = seq_flusher->flush_cnt;
 #endif /* SERVER_MODE */
 
-  er_log_debug (ARG_FILE_LINE,
-		"pgbuf_flush_seq_list (%s): start_idx:%d, flush_cnt:%d, LSA_flush:%d, "
-		"flush_rate:%.2f, control_flushed:%d, this_interval:%d, "
-		"Est_tot_flush:%.2f, control_intervals:%d, %d Avail_time:%d\n", "chkpt",
-		seq_flusher->flush_idx, seq_flusher->flush_cnt, seq_flusher->flush_upto_lsa.pageid,
-		seq_flusher->flush_rate, seq_flusher->control_flushed, flush_per_interval, control_est_flush_total,
-		seq_flusher->control_intervals_cnt, control_total_cnt_intervals, avail_time_msec);
+  detailed_er_log ("pgbuf_flush_seq_list (%s): start_idx:%d, flush_cnt:%d, LSA_flush:%d, "
+		   "flush_rate:%.2f, control_flushed:%d, this_interval:%d, "
+		   "Est_tot_flush:%.2f, control_intervals:%d, %d Avail_time:%d\n", "chkpt",
+		   seq_flusher->flush_idx, seq_flusher->flush_cnt, seq_flusher->flush_upto_lsa.pageid,
+		   seq_flusher->flush_rate, seq_flusher->control_flushed, flush_per_interval, control_est_flush_total,
+		   seq_flusher->control_intervals_cnt, control_total_cnt_intervals, avail_time_msec);
 
   /* Start to flush */
   cnt_writes = 0;
@@ -3960,10 +3891,9 @@ pgbuf_flush_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flusher, 
 	       * checkpoint reached it. And that it was modified again. And that the new oldest_unflush_lsa is less than
 	       * flush_upto_lsa. It may seem that many planets should align, but let's be conservative and flush again.
 	       */
-	      er_log_debug (ARG_FILE_LINE,
-			    "pgbuf_flush_seq_list: flush again %d|%d; oldest_unflush_lsa=%lld|%d, "
-			    "flush_upto_lsa=%lld|%d \n", VPID_AS_ARGS (&bufptr->vpid),
-			    LSA_AS_ARGS (&bufptr->oldest_unflush_lsa), LSA_AS_ARGS (&seq_flusher->flush_upto_lsa));
+	      detailed_er_log ("pgbuf_flush_seq_list: flush again %d|%d; oldest_unflush_lsa=%lld|%d, "
+			       "flush_upto_lsa=%lld|%d \n", VPID_AS_ARGS (&bufptr->vpid),
+			       LSA_AS_ARGS (&bufptr->oldest_unflush_lsa), LSA_AS_ARGS (&seq_flusher->flush_upto_lsa));
 	      if (pgbuf_bcb_safe_flush_internal (thread_p, bufptr, true, &locked_bcb) == NO_ERROR)
 		{
 		  /* now we should be ok. */
@@ -4077,14 +4007,14 @@ pgbuf_flush_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flusher, 
     }
 #endif /* SERVER_MODE */
 
-  er_log_debug (ARG_FILE_LINE,
-		"pgbuf_flush_seq_list end (%s): %s %s pages : %d written/%d dropped, "
-		"Remaining_time:%d, Avail_time:%d, Curr:%d/%d,", "ckpt",
-		((time_rem_msec <= 0) ? "[Expired] " : ""), (ignore_time_limit ? "[boost]" : ""),
-		seq_flusher->flushed_pages, dropped_pages, time_rem_msec, avail_time_msec, seq_flusher->flush_idx,
-		seq_flusher->flush_cnt);
+  detailed_er_log ("pgbuf_flush_seq_list end (%s): %s %s pages : %d written/%d dropped, "
+		   "Remaining_time:%d, Avail_time:%d, Curr:%d/%d,", "ckpt",
+		   ((time_rem_msec <= 0) ? "[Expired] " : ""), (ignore_time_limit ? "[boost]" : ""),
+		   seq_flusher->flushed_pages, dropped_pages, time_rem_msec, avail_time_msec, seq_flusher->flush_idx,
+		   seq_flusher->flush_cnt);
 
   return error;
+#undef detailed_er_log
 }
 
 /*
@@ -10632,359 +10562,6 @@ pgbuf_is_consistent (const PGBUF_BCB * bufptr, int likely_bad_after_fixcnt)
 }
 #endif /* CUBRID_DEBUG */
 
-#if defined(PAGE_STATISTICS)
-/*
- * pgbuf_initialize_vol_stat () -
- *   return: void
- *   vs(in):
- */
-static void
-pgbuf_initialize_vol_stat (PGBUF_VOL_STAT * vs)
-{
-  vs->volid = NULL_VOLID;
-  vs->npages = 0;
-  vs->page_stat = NULL;
-}
-
-/*
- * pgbuf_initialize_statistics () -
- *   return:
- *   void(in):
- */
-static int
-pgbuf_initialize_statistics (void)
-{
-  int i;
-  int volid = -1, pageid = -1;
-  PGBUF_PAGE_STAT *ps;
-  PGBUF_VOL_STAT *vs;
-
-  fprintf (stderr, "o Initialize page statistics structure\n");
-
-  if (ps_info.ps_init_called == 1)
-    {
-      pgbuf_finalize_statistics ();
-    }
-
-#if !defined(NDEBUG)
-  pthread_mutex_init (&ps_info.page_fixed_sources_mutex, NULL);
-  ps_info.ht_page_fixed_sources =
-    mht_create ("PGBUF_FIXED_SOURCES", PGBUF_MAX_FIXED_SOURCES, pgbuf_hash_fixed_source, pgbuf_compare_fixed_source);
-  ps_info.fixed_source_used = 0;
-
-  for (i = 0; i < PGBUF_MAX_FIXED_SOURCES; i++)
-    {
-      ps_info.fixed_source[i].count = 0;
-      ps_info.fixed_source[i].name[0] = '\0';
-    }
-#endif /* NDEBUG */
-
-  ps_info.nvols = xboot_find_number_permanent_volumes (NULL);
-  fprintf (stderr, "o ps_info.nvols = %d\n", ps_info.nvols);
-  if (ps_info.nvols == 0)
-    {
-      return 0;
-    }
-
-  ps_info.last_perm_vol = xboot_find_last_permanent ();
-
-  ps_info.vol_stat = (PGBUF_VOL_STAT *) malloc (sizeof (PGBUF_VOL_STAT) * (ps_info.last_perm_vol + 1));
-  if (ps_info.vol_stat == NULL)
-    {
-      return -1;
-    }
-
-  for (volid = LOG_DBFIRST_VOLID; volid <= ps_info.last_perm_vol; volid++)
-    {
-      pgbuf_initialize_vol_stat (&ps_info.vol_stat[volid]);
-    }
-
-  for (volid = LOG_DBFIRST_VOLID; volid != NULL_VOLID; volid = fileio_find_next_perm_volume (NULL, volid))
-    {
-      vs = &ps_info.vol_stat[volid];
-      vs->volid = volid;
-      vs->npages = xdisk_get_total_numpages (NULL, volid);
-      fprintf (stderr, "volid(%d) : npages(%d)\n", vs->volid, vs->npages);
-
-      vs->page_stat = (PGBUF_PAGE_STAT *) malloc (sizeof (PGBUF_PAGE_STAT) * vs->npages);
-      if (vs->page_stat == NULL)
-	{
-	  return -1;
-	}
-
-      for (pageid = 0; pageid < vs->npages; pageid++)
-	{
-	  ps = &vs->page_stat[pageid];
-	  memset (ps, 0, sizeof (PGBUF_PAGE_STAT));
-	  ps->volid = volid;
-	  ps->pageid = pageid;
-	}
-    }
-
-  ps_info.ps_init_called = 1;
-
-  return 0;
-}
-
-/*
- * pgbuf_finalize_statistics () -
- *   return:
- */
-static int
-pgbuf_finalize_statistics (void)
-{
-  int volid = -1, pageid = -1;
-  PGBUF_VOL_STAT *vs;
-  FILE *ps_log;
-  char ps_log_filename[128];
-
-#if !defined(NDEBUG)
-  {
-    int i;
-    UINT64 sum_sources = 0;
-
-    _er_log_debug (ARG_FILE_LINE, "\nPBFIX: Worker threads:%d\n\n", thread_num_total_threads ());
-
-    _er_log_debug (ARG_FILE_LINE, "\nPBFIX: Transactions:%d\n\n", log_Gl.trantable.num_total_indices);
-
-    _er_log_debug (ARG_FILE_LINE, "\nPBFIX: Fix source found:%d\n\n", ps_info.fixed_source_used);
-
-    qsort (ps_info.fixed_source, ps_info.fixed_source_used, sizeof (ps_info.fixed_source[0]),
-	   pgbuf_compare_fixed_source_for_sort);
-    for (i = 0; i < PGBUF_MAX_FIXED_SOURCES; i++)
-      {
-	if (i < ps_info.fixed_source_used)
-	  {
-	    _er_log_debug (ARG_FILE_LINE, "\nPBFIX: %s, %d", ps_info.fixed_source[i].name,
-			   ps_info.fixed_source[i].count);
-	    sum_sources += ps_info.fixed_source[i].count;
-	  }
-      }
-    _er_log_debug (ARG_FILE_LINE, "\nPBFIX: Total from sources:%d\n\n", sum_sources);
-
-    mht_destroy (ps_info.ht_page_fixed_sources);
-    ps_info.ht_page_fixed_sources = NULL;
-    pthread_mutex_destroy (&ps_info.page_fixed_sources_mutex);
-  }
-#endif /* NDEBUG */
-
-  fprintf (stderr, "o Finalize page statistics structure\n");
-
-  sprintf (ps_log_filename, "ps.log", getpid ());
-  ps_log = fopen (ps_log_filename, "w");
-
-  if (ps_log != NULL)
-    {
-      /* write ps_info */
-      fwrite (&ps_info, sizeof (ps_info), 1, ps_log);
-      fwrite (ps_info.vol_stat, sizeof (PGBUF_VOL_STAT), ps_info.nvols, ps_log);
-
-      for (volid = LOG_DBFIRST_VOLID; volid <= ps_info.last_perm_vol; volid++)
-	{
-	  vs = &ps_info.vol_stat[volid];
-	  if (vs->volid != NULL_VOLID)
-	    {
-	      fwrite (vs->page_stat, sizeof (PGBUF_PAGE_STAT), vs->npages, ps_log);
-	    }
-	}
-
-      fclose (ps_log);
-    }
-  else
-    {
-      fprintf (stderr, "Cannot create %s\n", ps_log_filename);
-    }
-
-  if (ps_info.ps_init_called == 0)
-    {
-      return 0;
-    }
-
-  for (volid = LOG_DBFIRST_VOLID; volid <= ps_info.last_perm_vol; volid++)
-    {
-      vs = &ps_info.vol_stat[volid];
-      if (vs->page_stat)
-	{
-	  free_and_init (vs->page_stat);
-	}
-    }
-
-  if (ps_info.vol_stat)
-    {
-      free_and_init (ps_info.vol_stat);
-    }
-
-  ps_info.nvols = 0;
-  ps_info.last_perm_vol = NULL_VOLID;
-  ps_info.ps_init_called = 0;
-
-  return 0;
-}
-
-/*
- * pgbuf_dump_statistics () -
- *   return:
- *   ps_log(in):
- */
-static void
-pgbuf_dump_statistics (FILE * ps_log)
-{
-  int volid = -1, pageid = -1;
-  PGBUF_PAGE_STAT *ps;
-  PGBUF_VOL_STAT *vs;
-
-  fprintf (stderr, "o Dump page statistics structure\n");
-
-  /* write ps_info */
-  fwrite (&ps_info, sizeof (ps_info), 1, ps_log);
-  fwrite (ps_info.vol_stat, sizeof (PGBUF_VOL_STAT), ps_info.nvols, ps_log);
-
-  for (volid = LOG_DBFIRST_VOLID; volid <= ps_info.last_perm_vol; volid++)
-    {
-      vs = &ps_info.vol_stat[volid];
-      if (vs->volid == NULL_VOLID)
-	{
-	  continue;
-	}
-      fwrite (vs->page_stat, sizeof (PGBUF_PAGE_STAT), vs->npages, ps_log);
-
-      for (pageid = 0; pageid < vs->npages; pageid++)
-	{
-	  ps = &vs->page_stat[pageid];
-	  memset (ps, 0, sizeof (PGBUF_PAGE_STAT));
-	  ps->volid = volid;
-	  ps->pageid = pageid;
-	}
-    }
-}
-
-#if !defined(NDEBUG)
-/*
- * pgbuf_hash_fixed_source () -
- */
-static unsigned int
-pgbuf_hash_fixed_source (const void *key_source, unsigned int htsize)
-{
-  const char *source;
-  unsigned int sum = 0;
-
-  source = (const char *) key_source;
-
-  while (*source != '\0')
-    {
-      sum = (sum << 5) - sum + (unsigned int) *source;
-      source++;
-    }
-
-  sum = (sum % htsize);
-  return sum;
-}
-
-/*
- * pgbuf_compare_fixed_source () -
- */
-static int
-pgbuf_compare_fixed_source (const void *key_source1, const void *key_source2)
-{
-  const char *source1 = (const char *) key_source1;
-  const char *source2 = (const char *) key_source2;
-
-  return (strcmp (source1, source2) == 0) ? 1 : 0;
-}
-
-/*
- * pgbuf_compare_fixed_source_for_sort () -
- */
-static int
-pgbuf_compare_fixed_source_for_sort (const void *fix_source1, const void *fix_source2)
-{
-  return (int) (((PGBUF_FIXED_SOURCE *) fix_source2)->count - ((PGBUF_FIXED_SOURCE *) fix_source1)->count);
-}
-
-/*
- * pgbuf_add_fixed_source_stat () -
- */
-static void
-pgbuf_add_fixed_source_stat (THREAD_ENTRY * thread_p, const char *caller_file, const int caller_line,
-			     PERF_PAGE_MODE perf_page_found, PAGE_PTR pgptr)
-{
-  char buf[PGBUF_MAX_FIXED_SOURCE_LEN];
-  const char *p;
-  int thread_index;
-  int tran_index;
-  static bool max_capacity_err = false;
-  UINT64 *count_fixed_source;
-
-#if !defined (SERVER_MODE)
-  thread_index = 0;
-  tran_index = 0;
-#else
-  if (thread_p == NULL)
-    {
-      thread_index = 0;
-      tran_index = 0;
-    }
-  else
-    {
-      thread_index = thread_p->index;
-      tran_index = thread_p->tran_index;
-    }
-#endif
-
-  p = (char *) caller_file + strlen (caller_file);
-  while (p)
-    {
-      if (p == caller_file)
-	{
-	  break;
-	}
-
-      if (*p == '/' || *p == '\\')
-	{
-	  p++;
-	  break;
-	}
-
-      p--;
-    }
-
-  snprintf (buf, sizeof (buf) - 1, "%s:%d:%d:%d", p, caller_line, tran_index, perf_page_found);
-
-  pthread_mutex_lock (&ps_info.page_fixed_sources_mutex);
-  count_fixed_source = mht_get (ps_info.ht_page_fixed_sources, buf);
-  if (count_fixed_source != NULL)
-    {
-      *count_fixed_source += 1;
-    }
-  else
-    {
-      if (ps_info.fixed_source_used < PGBUF_MAX_FIXED_SOURCES)
-	{
-	  char *new_key;
-	  count_fixed_source = &(ps_info.fixed_source[ps_info.fixed_source_used].count);
-	  *count_fixed_source = 1;
-
-	  new_key = ps_info.fixed_source[ps_info.fixed_source_used].name;
-	  strcpy (new_key, buf);
-	  if (mht_put (ps_info.ht_page_fixed_sources, new_key, count_fixed_source) != NULL)
-	    {
-	      ps_info.fixed_source_used += 1;
-	    }
-	}
-      else
-	{
-	  if (max_capacity_err == false)
-	    {
-	      _er_log_debug (ARG_FILE_LINE, "PBFIX:Too many page fix sources :%d", ps_info.fixed_source_used);
-	    }
-	  max_capacity_err = true;
-	}
-    }
-  pthread_mutex_unlock (&ps_info.page_fixed_sources_mutex);
-}
-#endif /* NDEBUG */
-#endif /* PAGE_STATISTICS */
-
 #if !defined(NDEBUG)
 static void
 pgbuf_add_fixed_at (PGBUF_HOLDER * holder, const char *caller_file, int caller_line, bool reset)
@@ -11520,10 +11097,13 @@ pgbuf_flush_page_and_neighbors_fb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, 
 	}
     }
 
-  er_log_debug (ARG_FILE_LINE,
-		"pgbuf_flush_page_and_neighbors_fb: collected_pages:%d, written:%d, back_offset:%d, fwd_offset%d, "
-		"abort_reason:%d", helper->npages, written_pages, helper->back_offset, helper->fwd_offset,
-		abort_reason);
+  if (prm_get_bool_value (PRM_ID_LOG_PGBUF_VICTIM_FLUSH))
+    {
+      _er_log_debug (ARG_FILE_LINE,
+		     "pgbuf_flush_page_and_neighbors_fb: collected_pages:%d, written:%d, back_offset:%d, fwd_offset%d, "
+		     "abort_reason:%d", helper->npages, written_pages, helper->back_offset, helper->fwd_offset,
+		     abort_reason);
+    }
 
   *flushed_pages = written_pages;
   helper->npages = 0;
@@ -13645,12 +13225,6 @@ retry:
 
   private_idx = PGBUF_PRIVATE_LIST_FROM_LRU_INDEX (lru_cand_idx);
 
-  er_log_debug (ARG_FILE_LINE, "pgbuf_assign_private_lru_id: "
-		"%s ID %d will use private LRU %d (LRU_idx:%d). "
-		"List has %d assigned sessions and %d pages\n",
-		(is_vacuum) ? "Vacuum worker" : "Session",
-		id, private_idx, lru_cand_idx, quota->private_lru_session_cnt[private_idx], cnt_lru);
-
   if (lru_cand_zero_sessions != -1)
     {
       if (ATOMIC_INC_32 (&quota->private_lru_session_cnt[private_idx], 1) > 1)
@@ -13687,16 +13261,8 @@ pgbuf_release_private_lru (THREAD_ENTRY * thread_p, const int private_idx)
   if (PGBUF_PAGE_QUOTA_IS_ENABLED && private_idx >= 0 && private_idx < PGBUF_PRIVATE_LRU_COUNT
       && pgbuf_Pool.num_buffers > 0)
     {
-      er_log_debug (ARG_FILE_LINE, "pgbuf_release_private_lru: "
-		    "private_LRU %d (LRU_idx:%d) - session disconnected\n",
-		    private_idx, PGBUF_LRU_INDEX_FROM_PRIVATE (private_idx));
-
       if (ATOMIC_INC_32 (&pgbuf_Pool.quota.private_lru_session_cnt[private_idx], -1) <= 0)
 	{
-	  er_log_debug (ARG_FILE_LINE, "pgbuf_release_private_lru: "
-			"private_LRU %d (LRU_idx:%d) - no active sessions\n",
-			private_idx, PGBUF_LRU_INDEX_FROM_PRIVATE (private_idx));
-
 	  ATOMIC_TAS_32 (&pgbuf_Pool.monitor.lru_activity[PGBUF_LRU_INDEX_FROM_PRIVATE (private_idx)], 0);
 	  /* TODO: is this necessary? */
 	  pgbuf_adjust_quotas (thread_p);

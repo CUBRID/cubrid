@@ -13343,7 +13343,16 @@ mr_data_lengthmem_varnchar (void *memptr, TP_DOMAIN * domain, int disk)
       if (cur != NULL)
 	{
 	  len = *(int *) cur;
-	  len = or_packed_varchar_length (len);
+	  if (len >= OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
+	    {
+	      /* Skip the length of the string */
+	      len = pr_get_compression_length ((cur + sizeof (int)), len) + PRIM_TEMPORARY_DISK_SIZE;
+	      len = or_packed_varchar_length (len) - PRIM_TEMPORARY_DISK_SIZE;
+	    }
+	  else
+	    {
+	      len = or_packed_varchar_length (len);
+	    }
 	}
     }
 
@@ -16655,7 +16664,6 @@ mr_setmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
     {
       return NO_ERROR;
     }
-
   doc = db_get_json_document (value);
   if (doc != NULL)
     {

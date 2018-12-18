@@ -56,6 +56,8 @@
 static int prev_ha_server_state = HA_SERVER_STATE_NA;
 static bool logwr_need_shutdown = false;
 
+#define logwr_er_log(...) if (prm_get_bool_value (PRM_ID_DEBUG_LOGWR)) _er_log_debug (ARG_FILE_LINE, __VA_ARGS__)
+
 static int logwr_check_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr);
 
 #if defined(CS_MODE)
@@ -809,7 +811,7 @@ logwr_writev_append_pages (LOG_PAGE ** to_flush, DKNPAGES npages)
 	      return to_flush;
 	    }
 	  bg_arv_info->current_page_id = fpageid + (npages - 1);
-	  er_log_debug (ARG_FILE_LINE, "background archiving  current_page_id[%lld], fpageid[%lld], npages[%d]",
+	  logwr_er_log ("background archiving  current_page_id[%lld], fpageid[%lld], npages[%d]",
 			bg_arv_info->current_page_id, fpageid, npages);
 
 	  error = logwr_flush_bgarv_header_page ();
@@ -967,7 +969,7 @@ logwr_flush_all_append_pages (void)
     }
   logwr_Gl.num_toflush = 0;
 
-  er_log_debug (ARG_FILE_LINE, "logwr_write_log_pages, flush_page_count(%d)\n", flush_page_count);
+  logwr_er_log ("logwr_write_log_pages, flush_page_count(%d)\n", flush_page_count);
 
   return NO_ERROR;
 }
@@ -1097,7 +1099,7 @@ logwr_flush_header_page (void)
     }
   prev_ha_server_state = logwr_Gl.hdr.ha_server_state;
 
-  er_log_debug (ARG_FILE_LINE, "logwr_flush_header_page, ha_server_state=%s, ha_file_status=%s\n",
+  logwr_er_log ("logwr_flush_header_page, ha_server_state=%s, ha_file_status=%s\n",
 		css_ha_server_state_string ((HA_SERVER_STATE) logwr_Gl.hdr.ha_server_state),
 		logwr_log_ha_filestat_to_string ((LOG_HA_FILESTAT) logwr_Gl.hdr.ha_file_status));
 }
@@ -1315,7 +1317,7 @@ logwr_archive_active_log (void)
   error_code =
     log_dump_log_info (logwr_Gl.loginf_path, false, catmsg, arvhdr->arv_num, archive_name, arvhdr->fpageid,
 		       arvhdr->fpageid + arvhdr->npages - 1);
-  er_log_debug (ARG_FILE_LINE, "logwr_archive_active_log, arv_num(%d), fpageid(%lld) lpageid(%lld)\n", arvhdr->arv_num,
+  logwr_er_log ("logwr_archive_active_log, arv_num(%d), fpageid(%lld) lpageid(%lld)\n", arvhdr->arv_num,
 		arvhdr->fpageid, arvhdr->fpageid + arvhdr->npages - 1);
 
   free_and_init (malloc_arv_hdr_pgptr);
@@ -2136,8 +2138,7 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p, char *logpg_area, int *logpg_used
       entry->tmp_last_sent_eof_lsa.offset = NULL_OFFSET;
     }
 
-  er_log_debug (ARG_FILE_LINE,
-		"logwr_pack_log_pages, fpageid(%lld), lpageid(%lld), num_pages(%lld),"
+  logwr_er_log ("logwr_pack_log_pages, fpageid(%lld), lpageid(%lld), num_pages(%lld),"
 		"\n status(%d)\n", fpageid, lpageid, num_logpgs, entry->status);
 
   return NO_ERROR;
@@ -2284,7 +2285,7 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid, LOGWR_MO
       /* In case that a non-ASYNC mode client internally uses ASYNC mode */
       orig_mode = MAX (mode, orig_mode);
 
-      er_log_debug (ARG_FILE_LINE, "[tid:%ld] xlogwr_get_log_pages, fpageid(%lld), mode(%s)\n",
+      logwr_er_log ("[tid:%ld] xlogwr_get_log_pages, fpageid(%lld), mode(%s)\n",
 		    thread_p->get_posix_id (), first_pageid,
 		    (mode == LOGWR_MODE_SYNC ? "sync" : (mode == LOGWR_MODE_ASYNC ? "async" : "semisync")));
 
@@ -2485,7 +2486,7 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid, LOGWR_MO
 
 error:
 
-  er_log_debug (ARG_FILE_LINE, "[tid:%ld] xlogwr_get_log_pages, error(%d)\n", thread_p->get_posix_id (), error_code);
+  logwr_er_log ("[tid:%ld] xlogwr_get_log_pages, error(%d)\n", thread_p->get_posix_id (), error_code);
 
   logwr_cs_exit (thread_p, &check_cs_own);
   logwr_write_end (thread_p, writer_info, entry, status);

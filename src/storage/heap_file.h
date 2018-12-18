@@ -362,6 +362,7 @@ extern int heap_classrepr_decache (THREAD_ENTRY * thread_p, const OID * class_oi
 extern int heap_classrepr_dump_anyfixed (void);
 #endif /* DEBUG_CLASSREPR_CACHE */
 extern int heap_manager_initialize (void);
+extern int heap_classrepr_restart_cache (void);
 extern int heap_manager_finalize (void);
 extern int heap_assign_address (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * oid,
 				int expected_length);

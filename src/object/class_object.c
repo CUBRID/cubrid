@@ -1214,13 +1214,6 @@ classobj_put_index (DB_SEQ ** properties, SM_CONSTRAINT_TYPE type, const char *c
     }
 
   /* add index status. */
-  /*  If the index_status is set to SM_ONLINE_INDEX_BUILDING_DONE, we must change it to NORMAL_INDEX since
-   *  the index has finished loading and the temporary status was set to avoid some previous checks.
-   */
-  if (index_status == SM_ONLINE_INDEX_BUILDING_DONE)
-    {
-      index_status = SM_NORMAL_INDEX;
-    }
   db_make_int (&value, index_status);
   classobj_put_value_and_iterate (constraint, constraint_seq_index, value);
 
@@ -4000,14 +3993,15 @@ classobj_is_possible_constraint (SM_CONSTRAINT_TYPE existed, DB_CONSTRAINT_TYPE 
  */
 
 TP_DOMAIN *
-classobj_find_cons_index2_col_type_list (SM_CLASS_CONSTRAINT * cons, CLASS_STATS * stats)
+classobj_find_cons_index2_col_type_list (SM_CLASS_CONSTRAINT * cons, OID * root_oid)
 {
   TP_DOMAIN *key_type = NULL;
   int i, j;
   ATTR_STATS *attr_statsp;
   BTREE_STATS *bt_statsp;
+  CLASS_STATS *local_stats = NULL;
 
-  if (!cons || !stats)
+  if (!cons)
     {
       return NULL;		/* invalid args */
     }
@@ -4017,8 +4011,20 @@ classobj_find_cons_index2_col_type_list (SM_CLASS_CONSTRAINT * cons, CLASS_STATS
       return NULL;		/* give up */
     }
 
-  attr_statsp = stats->attr_stats;
-  for (i = 0; i < stats->n_attrs && !key_type; i++, attr_statsp++)
+  if (OID_ISNULL (root_oid))
+    {
+      return NULL;
+    }
+
+  /* Get local stats including invisible indexes. */
+  local_stats = stats_get_statistics (root_oid, 0);
+  if (local_stats == NULL)
+    {
+      return NULL;
+    }
+
+  attr_statsp = local_stats->attr_stats;
+  for (i = 0; i < local_stats->n_attrs && !key_type; i++, attr_statsp++)
     {
       bt_statsp = attr_statsp->bt_stats;
       for (j = 0; j < attr_statsp->n_btstats && !key_type; j++, bt_statsp++)
@@ -4034,6 +4040,11 @@ classobj_find_cons_index2_col_type_list (SM_CLASS_CONSTRAINT * cons, CLASS_STATS
     {
       /* get the column key-type of multi-column index */
       key_type = key_type->setdomain;
+    }
+
+  if (local_stats != NULL)
+    {
+      stats_free_statistics (local_stats);
     }
 
   return key_type;

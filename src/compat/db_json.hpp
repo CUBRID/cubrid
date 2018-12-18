@@ -72,8 +72,10 @@ bool db_json_is_valid (const char *json_str);
 const char *db_json_get_type_as_str (const JSON_DOC *document);
 unsigned int db_json_get_length (const JSON_DOC *document);
 unsigned int db_json_get_depth (const JSON_DOC *doc);
-int db_json_extract_document_from_path (const JSON_DOC *document, const char *raw_path, JSON_DOC *&result);
-int db_json_contains_path (const JSON_DOC *document, const char *raw_path, bool &result);
+int db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<std::string> &raw_path,
+					JSON_DOC *&result, bool allow_wildcards = true);
+int db_json_contains_path (const JSON_DOC *document, const std::vector<std::string> &paths, bool find_all,
+			   bool &result);
 char *db_json_get_raw_json_body_from_document (const JSON_DOC *doc);
 
 char *db_json_get_json_body_from_document (const JSON_DOC &doc);
@@ -104,9 +106,10 @@ int db_json_keys_func (const JSON_DOC &doc, JSON_DOC &result_json, const char *r
 int db_json_array_append_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path);
 int db_json_array_insert_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path);
 int db_json_remove_func (JSON_DOC &doc, const char *raw_path);
-int db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<std::regex> &regs);
-int db_json_search_func (JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALUE *esc_char, bool find_all,
-			 std::vector<std::string> &starting_paths, std::vector<std::string> &paths);
+int db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<std::regex> &regs,
+			    bool match_exactly = false);
+int db_json_search_func (JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALUE *esc_char,
+			 std::vector<std::string> &paths, const std::vector<std::regex> &regs, bool find_all);
 int db_json_merge_func (const JSON_DOC *source, JSON_DOC *&dest, bool patch);
 int db_json_get_all_paths_func (const JSON_DOC &doc, JSON_DOC *&result_json);
 void db_json_pretty_func (const JSON_DOC &doc, char *&result_str);
@@ -123,6 +126,10 @@ void db_json_delete_doc (JSON_DOC *&doc);
 void db_json_delete_validator (JSON_VALIDATOR *&validator);
 int db_json_validate_doc (JSON_VALIDATOR *validator, JSON_DOC *doc);
 bool db_json_are_validators_equal (JSON_VALIDATOR *val1, JSON_VALIDATOR *val2);
+int db_json_convert_sql_path_to_pointer (const char *sql_path, std::string &json_pointer_out,
+    bool allow_wildcards = false);
+void db_json_path_unquote_object_keys (std::string &sql_path);
+bool db_json_path_contains_wildcard (const char *sql_path);
 
 void db_json_iterator_next (JSON_ITERATOR &json_itr);
 const JSON_DOC *db_json_iterator_get_document (JSON_ITERATOR &json_itr);
@@ -134,6 +141,8 @@ JSON_ITERATOR *db_json_create_iterator (const DB_JSON_TYPE &type);
 void db_json_delete_json_iterator (JSON_ITERATOR *&json_itr);
 void db_json_clear_json_iterator (JSON_ITERATOR *&json_itr);
 
+int db_json_convert_pointer_to_sql_path (const char *pointer_path, std::string &sql_path_out,
+    bool allow_wildcards = true);
 DB_JSON_TYPE db_json_get_type (const JSON_DOC *doc);
 
 int db_json_get_int_from_document (const JSON_DOC *doc);

@@ -95,10 +95,6 @@ static int add_resolution (SM_TEMPLATE * template_, MOP super_class, const char 
 static int delete_resolution (SM_TEMPLATE * template_, MOP super_class, const char *name, SM_NAME_SPACE name_space);
 static int smt_add_attribute_to_list (SM_ATTRIBUTE ** att_list, SM_ATTRIBUTE * att, const bool add_first,
 				      const char *add_after_attribute);
-static int smt_check_index_exist (SM_TEMPLATE * template_, char **out_shared_cons_name,
-				  DB_CONSTRAINT_TYPE constraint_type, const char *constraint_name,
-				  const char **att_names, const int *asc_desc, const SM_PREDICATE_INFO * filter_index,
-				  const SM_FUNCTION_INFO * function_index);
 static int smt_change_attribute (SM_TEMPLATE * template_, const char *name, const char *new_name,
 				 const char *new_domain_string, DB_DOMAIN * new_domain, const SM_NAME_SPACE name_space,
 				 const bool change_first, const char *change_after_attribute,
@@ -1557,13 +1553,10 @@ smt_add_constraint_to_property (SM_TEMPLATE * template_, SM_CONSTRAINT_TYPE type
   /*
    *  Check if the constraint already exists. Skip it if we have an online index building done.
    */
-  if (index_status != SM_ONLINE_INDEX_BUILDING_DONE)
+  if (classobj_find_prop_constraint (template_->properties, constraint, constraint_name, &cnstr_val))
     {
-      if (classobj_find_prop_constraint (template_->properties, constraint, constraint_name, &cnstr_val))
-	{
-	  ERROR1 (error, ER_SM_CONSTRAINT_EXISTS, constraint_name);
-	  goto end;
-	}
+      ERROR1 (error, ER_SM_CONSTRAINT_EXISTS, constraint_name);
+      goto end;
     }
 
   if (classobj_put_index (&template_->properties, type, constraint_name, atts, asc_desc, attr_prefix_length, NULL,
@@ -1876,7 +1869,7 @@ smt_drop_constraint (SM_TEMPLATE * template_, const char **att_names, const char
  *   filter_index(in): filter index info
  *   function_index(in): function index info
  */
-static int
+int
 smt_check_index_exist (SM_TEMPLATE * template_, char **out_shared_cons_name, DB_CONSTRAINT_TYPE constraint_type,
 		       const char *constraint_name, const char **att_names, const int *asc_desc,
 		       const SM_PREDICATE_INFO * filter_index, const SM_FUNCTION_INFO * function_index)
@@ -1956,15 +1949,11 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
 
   assert (template_ != NULL);
 
-  /* Skip this check if we have an online index building done. */
-  if (index_status != SM_ONLINE_INDEX_BUILDING_DONE)
+  error = smt_check_index_exist (template_, &shared_cons_name, constraint_type, constraint_name, att_names,
+				 asc_desc, filter_index, function_index);
+  if (error != NO_ERROR)
     {
-      error = smt_check_index_exist (template_, &shared_cons_name, constraint_type, constraint_name, att_names,
-				     asc_desc, filter_index, function_index);
-      if (error != NO_ERROR)
-	{
-	  goto error_return;
-	}
+      goto error_return;
     }
 
   constraint = SM_MAP_CONSTRAINT_TO_ATTFLAG (constraint_type);
