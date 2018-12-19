@@ -73,6 +73,14 @@ typedef enum
   KEY_LOCK_ESCALATED = 2
 } KEY_LOCK_ESCALATION;
 
+
+typedef enum
+{
+  LK_ENTRY_ACTIVE = 0,		/* Active lock entry. */
+  LK_ENTRY_MARK_DELETED = 1,	/* Mark deleted lock entry. */
+  LK_ENTRY_DISCONEECTED = 2	/* Disconnected lock entry. */
+} LK_ENTRY_STATUS;
+
 /*****************************/
 /* Lock Heap Entry Structure */
 /*****************************/
@@ -96,6 +104,8 @@ struct lk_entry
   int instant_lock_count;	/* number of instant lock requests */
   int bind_index_in_tran;
   XASL_ID xasl_id;
+  LK_ENTRY_STATUS status;	/* the status */
+  int resource_version;
 #else				/* not SERVER_MODE */
   int dummy;
 #endif				/* not SERVER_MODE */
@@ -152,11 +162,12 @@ struct lk_composite_lock
 /* type of locking resource */
 typedef enum
 {
-  LOCK_RESOURCE_INSTANCE,	/* An instance resource */
-  LOCK_RESOURCE_CLASS,		/* A class resource */
-  LOCK_RESOURCE_ROOT_CLASS,	/* A root class resource */
-  LOCK_RESOURCE_OBJECT		/* An object resource */
+  LOCK_RESOURCE_INSTANCE = 0x01,	/* An instance resource */
+  LOCK_RESOURCE_CLASS = 0x10,	/* A class resource */
+  LOCK_RESOURCE_ROOT_CLASS = 0x100,	/* A root class resource */
+  LOCK_RESOURCE_OBJECT = 0x1000	/* An object resource */
 } LOCK_RESOURCE_TYPE;
+#define LOCK_IS_ANY_CLASS_RESOURCE_TYPE(res_type) ((res_type) & (LOCK_RESOURCE_ROOT_CLASS | LOCK_RESOURCE_CLASS))
 
 /*
  * Lock Resource key structure
@@ -185,6 +196,20 @@ struct lk_res
   LK_RES *hash_next;		/* for hash chain */
   LK_RES *stack;		/* for freelist */
   UINT64 del_id;		/* delete transaction ID (for latch free) */
+  /*
+   * Short desription:
+   * 64 bytes used to improve unlocking. It keeps the highest lock (less than IX),
+   * counts how many such locks are holded by transaction, the resource version and flag.  
+   * Instead of releasing class lock, we can mark as deleted. The next transacion, can activate it.
+   * If total holder mode changes, then recomputes the highest lock and the counter. Do not allow
+   * to mark delete, if have waiters or lock > IX_LOCK.
+   * The version is used to detect whether a lock entry refers an older resource lock. If true,
+   * the lock entry must be deallocated.
+   */
+  volatile UINT64 highest_lock_info;
+
+  /* Count transactions that executes atomic mark/unmark delete. */
+  volatile int count_atomic_mark_delete;
 };
 
 #if defined(SERVER_MODE)
