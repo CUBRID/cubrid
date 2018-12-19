@@ -1591,6 +1591,14 @@ boot_client_all_finalize (bool is_er_final)
 	{
 	  db_private_free_and_init (NULL, boot_Server_credential.host_name);
 	}
+      if (boot_Server_credential.lob_path)
+	{
+	  db_private_free_and_init (NULL, boot_Server_credential.lob_path);
+	}
+      if (boot_Server_credential.db_lang)
+	{
+	  db_private_free_and_init (NULL, boot_Server_credential.db_lang);
+	}
 
       showstmt_metadata_final ();
       tran_free_savepoint_list ();
