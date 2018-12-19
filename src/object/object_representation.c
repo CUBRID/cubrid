@@ -4142,11 +4142,17 @@ static int
 or_packed_json_schema_length (const char *json_schema)
 {
   DB_VALUE val;
+  int len;
+
   // *INDENT-OFF*
   db_make_string (&val, const_cast <char*>(json_schema));
   // *INDENT-ON*
 
-  return (*(tp_String.data_lengthval)) (&val, 1);
+  len = (*(tp_String.data_lengthval)) (&val, 1);
+
+  pr_clear_value (&val);
+
+  return len;
 }
 
 /*
