@@ -2872,7 +2872,7 @@ lock_grant_blocked_waiter (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 {
   LK_ENTRY *prev_waiter;
   LK_ENTRY *waiter, *w;
-  LOCK mode /*, new_total_holder_mode */ ;
+  LOCK mode;
   bool change_total_waiters_mode = false;
   int error_code = NO_ERROR;
   LOCK_COMPATIBILITY compat;
@@ -5876,6 +5876,7 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
   OID *oid_rr = NULL;
   HEAP_SCANCACHE scan_cache;
   OID real_class_oid;
+  LOCK total_holders_mode;
 
   memset (time_val, 0, sizeof (time_val));
 
@@ -6004,9 +6005,17 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
     }
 
   /* dump total modes of holders and waiters */
+  if (LK_RES_HAS_HIGHEST_LOCK_INFO_DISABLED (res_ptr))
+    {
+      total_holders_mode = res_ptr->total_waiters_mode;
+    }
+  else
+    {
+      total_holders_mode = LK_GET_HIGHEST_LOCK_MODE (ATOMIC_INC_64 (&(res_ptr)->highest_lock_info, 0LL));
+    }
+
   fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_TOTAL_MODE),
-	   LOCK_TO_LOCKMODE_STRING (res_ptr->total_holders_mode),
-	   LOCK_TO_LOCKMODE_STRING (res_ptr->total_waiters_mode));
+	   LOCK_TO_LOCKMODE_STRING (total_holders_mode), LOCK_TO_LOCKMODE_STRING (res_ptr->total_waiters_mode));
 
   num_holders = num_blocked_holders = 0;
   if (res_ptr->holder != NULL)
@@ -11612,12 +11621,6 @@ lock_resource_recompute_total_modes (THREAD_ENTRY * thread_p, LK_RES * res_ptr, 
       assert (mode != NA_LOCK);
     }
   *total_waiters_mode = mode;
-
-  /* Checek whether I can still remain in mark/unmark delete mode. Use this mode whenever is possible since is faster. */
-  //     if (res_ptr->total_waiters_mode == NULL_LOCK && res_ptr->total_holders_mode <= IX_LOCK)
-  //{
-  //  lock_res_recompute_highest_lock_info (thread_p, res_ptr);
-  //}    
 }
 #endif
 
