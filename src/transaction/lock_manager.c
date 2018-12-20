@@ -233,22 +233,22 @@ typedef enum
 
 /* Various constants and macros used to mark delete lock entries. */
 /* Set active lock entry. */
-#define LK_ENTRY_SET_ACTIVE(entry) (ATOMIC_TAS_32 (&((int)(entry)->status), LK_ENTRY_ACTIVE))
+#define LK_ENTRY_SET_ACTIVE(entry) (ATOMIC_TAS_32 (&(entry)->status, LK_ENTRY_ACTIVE))
 
 /* Is active lock entry? */
-#define LK_ENTRY_IS_ACTIVE(entry) (entry->status == LK_ENTRY_ACTIVE)
+#define LK_ENTRY_IS_ACTIVE(entry) (ATOMIC_INC_32 (&(entry)->status, 0) == LK_ENTRY_ACTIVE)
 
 /* Set mark deleted lock entry. */
-#define LK_ENTRY_SET_MARK_DELETED(entry) (ATOMIC_TAS_32 (&((int)(entry)->status, LK_ENTRY_MARK_DELETED))
+#define LK_ENTRY_SET_MARK_DELETED(entry) (ATOMIC_TAS_32 (&((entry)->status, LK_ENTRY_MARK_DELETED))
 
 /* Is mark deleted lock entry? */
-#define LK_ENTRY_IS_MARK_DELETED(entry) (entry->status == LK_ENTRY_MARK_DELETED)
+#define LK_ENTRY_IS_MARK_DELETED(entry) (ATOMIC_INC_32 (&(entry)->status, 0) == LK_ENTRY_MARK_DELETED)
 
 /* Set disconnected lock entry */
-#define LK_ENTRY_SET_DISCONNECTED(entry) (ATOMIC_TAS_32 (&((int)(entry)->status, LK_ENTRY_DISCONEECTED))
+#define LK_ENTRY_SET_DISCONNECTED(entry) (ATOMIC_TAS_32 (&(entry)->status, LK_ENTRY_DISCONECTED))
 
 /* Is disconnected lock entry? */
-#define LK_ENTRY_IS_DISCONNECTED(entry) (entry->status == LK_ENTRY_DISCONEECTED)
+#define LK_ENTRY_IS_DISCONNECTED(entry) (ATOMIC_INC_32 (&(entry)->status, 0) == LK_ENTRY_DISCONECTED)
 
 /* Get counter of resource highest lock mode. */
 /* The number of bits for each field. */
@@ -1696,7 +1696,7 @@ lock_insert_into_tran_non2pl_list (LK_ENTRY * non2pl, int owner_tran_index)
 
   /* The caller is holding a resource mutex */
 
-  assert (LK_ENTRY_IS_ACTIVE (non2pl));
+  assert (non2pl != NULL && LK_ENTRY_IS_ACTIVE (non2pl));
   if (owner_tran_index != non2pl->tran_index)
     {
       assert (owner_tran_index == non2pl->tran_index);
@@ -1739,6 +1739,7 @@ lock_delete_from_tran_non2pl_list (LK_ENTRY * non2pl, int owner_tran_index)
 
   /* The caller is holding a resource mutex */
 
+  assert (non2pl != NULL && LK_ENTRY_IS_ACTIVE (non2pl));
   if (owner_tran_index != non2pl->tran_index)
     {
       assert (owner_tran_index == non2pl->tran_index);
@@ -2387,6 +2388,7 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
   LOG_TDES *tdes;
 
   /* The threads must not hold a page latch to be blocked on a lock request. */
+  assert (entry_ptr != NULL && LK_ENTRY_IS_ACTIVE (entry_ptr));
   assert (lock_is_safe_lock_with_page (thread_p, entry_ptr) || !pgbuf_has_perm_pages_fixed (thread_p));
 
   /* The caller is holding the thread entry mutex */
@@ -3698,7 +3700,7 @@ start:
 	      if (entry_ptr != NULL)
 		{
 		  assert (LK_ENTRY_IS_MARK_DELETED (entry_ptr));
-		  if (!ATOMIC_CAS_32 (&((int) entry_ptr->status), LK_ENTRY_MARK_DELETED, LK_ENTRY_ACTIVE))
+		  if (!ATOMIC_CAS_32 (&entry_ptr->status, LK_ENTRY_MARK_DELETED, LK_ENTRY_ACTIVE))
 		    {
 		      /* MNO tpossible. */
 		      return false;
@@ -4454,7 +4456,7 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
       /* Set mark deleted. */
       if (!is_non2pl_lock)
 	{
-	  if (!ATOMIC_CAS_32 (&((int) entry_ptr->status), LK_ENTRY_ACTIVE, LK_ENTRY_MARK_DELETED))
+	  if (!ATOMIC_CAS_32 (&entry_ptr->status, LK_ENTRY_ACTIVE, LK_ENTRY_MARK_DELETED))
 	    {
 	      assert (false);
 	    }
@@ -4709,7 +4711,7 @@ lock_internal_demote_class_lock (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, 
   bool disabled_mark_deletion;
 
   /* The caller is not holding any mutex */
-  assert (entry_ptr != NULL);
+  assert (entry_ptr != NULL && LK_ENTRY_IS_ACTIVE (entry_ptr));
 
   res_ptr = entry_ptr->res_head;
 
@@ -4721,7 +4723,6 @@ lock_internal_demote_class_lock (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, 
   disabled_mark_deletion = false;
   assert (LOCK_IS_ANY_CLASS_RESOURCE_TYPE (res_ptr->key.type));
 
-  assert (LK_ENTRY_SET_ACTIVE (entry_ptr));
   disabled_mark_deletion = LK_RES_HAS_HIGHEST_LOCK_INFO_DISABLED (res_ptr);
   if (!disabled_mark_deletion)
     {
@@ -5148,10 +5149,10 @@ lock_update_non2pl_list (THREAD_ENTRY * thread_p, LK_RES * res_ptr, int tran_ind
   curr = res_ptr->non2pl;
   while (curr != NULL)
     {
+      assert (LK_ENTRY_IS_ACTIVE (curr));
       if (curr->tran_index == tran_index)
 	{			/* same transaction */
 	  /* remove current non2pl entry */
-	  assert (LK_ENTRY_IS_ACTIVE (curr));
 	  next = curr->next;
 	  if (prev == NULL)
 	    {
@@ -10828,7 +10829,7 @@ lock_atomic_set_mark_delete (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
     }
   while (true);
 
-  if (!ATOMIC_CAS_32 (&((int) entry_ptr->status), LK_ENTRY_ACTIVE, LK_ENTRY_MARK_DELETED))
+  if (!ATOMIC_CAS_32 (&entry_ptr->status, LK_ENTRY_ACTIVE, LK_ENTRY_MARK_DELETED))
     {
       /* Impossible. Other transaction can't disconnect entries while count_atomic_mark_delete > 0. */
       assert (false);
@@ -11466,7 +11467,7 @@ lock_res_disconnect_mark_deleted_entries (THREAD_ENTRY * thread_p, LK_RES * res_
 	    }
 
 	  /* Mark as disconnect ended. */
-	  if (!ATOMIC_CAS_32 (&((int) curr->status), LK_ENTRY_MARK_DELETED, LK_ENTRY_DISCONEECTED))
+	  if (!ATOMIC_CAS_32 (&curr->status, LK_ENTRY_MARK_DELETED, LK_ENTRY_DISCONECTED))
 	    {
 	      /* Imppossible. No other transaction can modify the value. */
 	      assert (false);

@@ -78,7 +78,7 @@ typedef enum
 {
   LK_ENTRY_ACTIVE = 0,		/* Active lock entry. */
   LK_ENTRY_MARK_DELETED = 1,	/* Mark deleted lock entry. */
-  LK_ENTRY_DISCONEECTED = 2	/* Disconnected lock entry. */
+  LK_ENTRY_DISCONECTED = 2	/* Disconnected lock entry. */
 } LK_ENTRY_STATUS;
 
 /*****************************/
@@ -104,8 +104,8 @@ struct lk_entry
   int instant_lock_count;	/* number of instant lock requests */
   int bind_index_in_tran;
   XASL_ID xasl_id;
-  LK_ENTRY_STATUS status;	/* the status */
   int resource_version;
+  int status;			/* the status */
 #else				/* not SERVER_MODE */
   int dummy;
 #endif				/* not SERVER_MODE */
