@@ -105,10 +105,6 @@ namespace cubstream
       /* last position which must be flushed */
       stream_position m_target_flush_position;
 
-      /* position acknowledged as by stream file from were it starts the flush;
-       * it corresponds to dropable position when last flushed was notified; used to avoid spamming of flusher */
-      stream_position m_ack_start_flush_position;
-
       stream_position m_req_start_flush_position;
 
       cubstream::stream::notify_func_t m_start_flush_handler;
@@ -147,7 +143,7 @@ namespace cubstream
 		   const int print_digits = DEFAULT_FILENAME_DIGITS)
 	: m_stream (stream_arg)
       {
-	init (file_size, print_digits);
+	init (0, file_size, print_digits);
       };
 
       ~stream_file ()
@@ -155,7 +151,8 @@ namespace cubstream
 	finalize ();
       };
 
-      void init (const size_t file_size = DEFAULT_VOLUME_SIZE,
+      void init (const stream_position& start_append_pos = 0,
+                 const size_t file_size = DEFAULT_VOLUME_SIZE,
 		 const int print_digits = DEFAULT_FILENAME_DIGITS);
 
       void set_path (const std::string &path)
@@ -173,7 +170,7 @@ namespace cubstream
 
       int read (const stream_position &pos, char *buf, const size_t amount);
 
-      int drop_volumes_to_pos (const stream_position &drop_pos);
+      int drop_volumes_to_pos (const stream_position &drop_pos, bool force_set = false);
 
       size_t get_volume_size (void)
       {
@@ -192,17 +189,14 @@ namespace cubstream
 	  }
       }
 
-      stream_position get_ack_start_flush_position (void)
+      stream_position get_last_flushed_position (void)
       {
-	return m_ack_start_flush_position;
-      }
-
-      void set_ack_start_flush_position (const stream_position &pos)
-      {
-	m_ack_start_flush_position = pos + 1;
+	return m_append_position;
       }
 
       void start_flush (const stream_position &start_position, const size_t amount_to_flush);
+
+      void force_start_flush (void);
 
       void wait_flush_signal (stream_position &start_position, stream_position &target_position);
 

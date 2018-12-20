@@ -94,7 +94,7 @@ namespace cubstream
     public:
       stream ();
 
-      int init (const stream_position &start_position = 0);
+      virtual int init (const stream_position &start_position = 0);
 
       virtual int write (const size_t byte_count, write_func_t &write_action) = 0;
 

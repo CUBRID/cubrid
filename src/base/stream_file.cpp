@@ -86,8 +86,6 @@ namespace cubstream
 		return;
 	      }
 
-	    m_stream_file.set_ack_start_flush_position (curr_pos);
-
 	    size_t amount_to_copy = MIN (end_pos - curr_pos, BUFFER_SIZE);
 
 	    err = m_stream.read (curr_pos, amount_to_copy, m_copy_to_buffer_func);
@@ -105,8 +103,8 @@ namespace cubstream
 	      }
 
 	    curr_pos += amount_to_copy;
-
 	    m_stream.set_last_recyclable_pos (curr_pos);
+
 	  }
       }
 
@@ -129,22 +127,21 @@ namespace cubstream
   };
 
 
-  void stream_file::init (const size_t file_size, const int print_digits)
+  void stream_file::init (const stream_position& start_append_pos, const size_t file_size, const int print_digits)
   {
     m_stream.set_stream_file (this);
 
-    m_strict_append_mode = UNCONTIGUOUS_APPEND_MODE;
+    m_strict_append_mode = STRICT_APPEND_MODE;
 
     m_base_filename = m_stream.name ();
     m_desired_volume_size = file_size;
     m_filename_digits_seqno = print_digits;
 
-    m_append_position = 0;
+    m_append_position = start_append_pos;
     m_drop_position = std::numeric_limits<stream_position>::max ();
 
-    m_target_flush_position = 0;
-    m_ack_start_flush_position = 0;
-    m_req_start_flush_position = 0;
+    m_target_flush_position = start_append_pos;
+    m_req_start_flush_position = start_append_pos;
 
     m_start_vol_seqno = 0;
 
@@ -166,7 +163,8 @@ namespace cubstream
     std::map<int,int>::iterator it;
 
     m_is_stopped = true;
-    start_flush (0, 0);
+    
+    force_start_flush ();
 
     cubthread::get_manager ()->destroy_daemon (m_write_daemon);
 
@@ -334,7 +332,7 @@ namespace cubstream
    * a file containing data after drop_pos is not removed
    *
    */
-  int stream_file::drop_volumes_to_pos (const stream_position &drop_pos)
+  int stream_file::drop_volumes_to_pos (const stream_position &drop_pos, bool force_set)
   {
     stream_position curr_pos;
     int err = NO_ERROR;
@@ -373,7 +371,7 @@ namespace cubstream
       }
 
     drop_lock.lock ();
-    if (actual_drop_pos > m_drop_position)
+    if (actual_drop_pos > m_drop_position || force_set == true)
       {
 	m_drop_position = actual_drop_pos;
       }
@@ -682,20 +680,16 @@ namespace cubstream
 	m_append_position = pos;
 	force_drop_pos = m_append_position;
       }
+    assert (m_append_position + amount <= m_target_flush_position);
     flush_lock.unlock ();
 
-    if (force_drop_pos)
+    if (force_drop_pos > 0)
       {
 	drop_volumes_to_pos (force_drop_pos);
       }
 
     curr_pos = pos;
     rem_amount = amount;
-
-    stream_position stream_last_committed = m_stream.get_last_committed_pos ();
-    assert (m_append_position + amount <= stream_last_committed);
-
-    assert (m_append_position + amount <= m_stream.get_last_committed_pos ());
 
     if (curr_pos + amount > m_append_position)
       {
@@ -803,36 +797,46 @@ namespace cubstream
 
   void stream_file::start_flush (const stream_position &start_position, const size_t amount_to_flush)
   {
-    if (amount_to_flush == 0 || start_position < m_append_position)
-      {
-	return;
-      }
-
     std::unique_lock<std::mutex> ulock (m_flush_mutex);
-    if (amount_to_flush > 0 && start_position >= m_req_start_flush_position)
+    assert (start_position + amount_to_flush <= m_stream.get_last_committed_pos ());
+    if (start_position > m_req_start_flush_position
+        || m_req_start_flush_position == 0
+        || (start_position + amount_to_flush > m_target_flush_position))
       {
-	m_req_start_flush_position = start_position;
-	m_target_flush_position = start_position + amount_to_flush;
+        if (start_position > m_req_start_flush_position)
+          {
+            m_req_start_flush_position = start_position;
+          }
+
+        if (start_position + amount_to_flush > m_target_flush_position)
+          {
+	    m_target_flush_position = start_position + amount_to_flush;
+          }
 
 	assert (m_req_start_flush_position < m_target_flush_position);
-	assert (m_req_start_flush_position >= m_append_position);
+        assert (m_target_flush_position <= m_stream.get_last_committed_pos ());
 
 	m_flush_cv.notify_one ();
       }
   }
+
+  void stream_file::force_start_flush (void)
+    {
+      std::unique_lock<std::mutex> ulock (m_flush_mutex);
+      m_flush_cv.notify_one ();
+    }
 
   void stream_file::wait_flush_signal (stream_position &start_position, stream_position &target_position)
   {
     std::unique_lock<std::mutex> ulock (m_flush_mutex);
     /* check again against m_append_position : it may change after the previous loop of flush daemon  */
     m_flush_cv.wait (ulock, [&] { return m_is_stopped ||
-					 (m_target_flush_position > 0
-					  && m_req_start_flush_position >= m_append_position);
+					 (m_append_position < m_target_flush_position);
 				});
 
-    start_position = m_req_start_flush_position;
+    start_position = m_append_position;
     target_position = m_target_flush_position;
-    assert (start_position >= m_append_position);
+    assert (target_position >= m_append_position);
   }
 
   void stream_file::check_file (void)

@@ -37,14 +37,16 @@ namespace cubstream
     : m_bip_buffer (buffer_capacity),
       m_reserved_positions (max_appenders)
   {
-    m_oldest_readable_position = 0;
+    m_oldest_buffered_position = 0;
 
     /* TODO : system parameter */
     m_trigger_flush_to_disk_size = buffer_capacity / 2;
 
-    m_max_allowed_dirty = 80 * buffer_capacity / 100;
+    m_threshold_block_reserve = 80 * buffer_capacity / 100;
+    m_threshold_resume_reserve = 70 * buffer_capacity / 100;
 
-    assert (m_max_allowed_dirty > m_trigger_flush_to_disk_size);
+    assert (m_threshold_block_reserve > m_trigger_flush_to_disk_size);
+    assert (m_threshold_resume_reserve > m_trigger_flush_to_disk_size);
 
     m_trigger_min_to_read_size = 16;
 
@@ -52,6 +54,7 @@ namespace cubstream
     m_stat_reserve_buffer_spins = 0;
     m_stat_read_not_enough_data_cnt = 0;
     m_stat_read_not_in_buffer_cnt = 0;
+    m_stat_read_not_in_buffer_wait_for_flush_cnt = 0;
     m_stat_read_no_readable_pos_cnt = 0;
     m_stat_read_buffer_failed_cnt = 0;
 
@@ -63,6 +66,13 @@ namespace cubstream
   multi_thread_stream::~multi_thread_stream ()
   {
     assert (m_append_position - m_read_position == 0);
+  }
+
+  int multi_thread_stream::init (const stream_position &start_position)
+  {
+    stream::init (start_position);
+    m_oldest_buffered_position = start_position;
+    return NO_ERROR;
   }
 
   /*
@@ -371,10 +381,11 @@ namespace cubstream
   char *multi_thread_stream::reserve_with_buffer (const size_t amount, stream_reserve_context *&reserved_context)
   {
     char *ptr = NULL;
+    bool need_read_range_adjust = true;
 
     assert (amount > 0);
 
-    if (m_append_position - m_last_recyclable_pos > m_max_allowed_dirty)
+    if (need_block_reserve (amount))
       {
 	/* flush or reader are not keeping up with the writers */
 	wait_for_flush_or_readers (m_last_committed_pos, m_append_position);
@@ -382,7 +393,7 @@ namespace cubstream
 
     m_buffer_mutex.lock ();
 
-    while (m_append_position - m_last_recyclable_pos > m_max_allowed_dirty)
+    while (need_block_reserve (amount))
       {
 	m_buffer_mutex.unlock ();
 	/* flush or reader are not keeping up with the writers */
@@ -403,7 +414,7 @@ namespace cubstream
 	    continue;
 	  }
 
-	ptr = (char *) m_bip_buffer.reserve (amount);
+	ptr = (char *) m_bip_buffer.reserve (amount, need_read_range_adjust);
 	if (ptr != NULL)
 	  {
 	    break;
@@ -421,6 +432,24 @@ namespace cubstream
     reserved_context->start_pos = m_append_position;
 
     m_append_position += amount;
+
+    if (need_read_range_adjust)
+      {
+        const char *ptr_trail_a;
+        const char *ptr_trail_b;
+        size_t amount_trail_a, amount_trail_b, total_in_buffer;
+
+        m_bip_buffer.get_read_ranges (ptr_trail_b, amount_trail_b, ptr_trail_a, amount_trail_a);
+
+        total_in_buffer = amount_trail_b + amount_trail_a;
+
+        stream_position prev_oldest_readable_position = m_oldest_buffered_position;
+
+        m_oldest_buffered_position = m_last_committed_pos - total_in_buffer;
+
+        assert (m_oldest_buffered_position <= m_last_recyclable_pos);
+        assert (m_stream_file->get_max_available_from_pos (m_oldest_buffered_position) >= 0);
+      }
 
     /* set pointer under mutex lock, a "commit" call may collapse up to position of this slot */
     reserved_context->ptr = ptr;
@@ -519,11 +548,12 @@ namespace cubstream
 	return NULL;
       }
 
-    if (req_start_pos < m_oldest_readable_position)
+    if (req_start_pos < m_oldest_buffered_position)
       {
 	m_stat_read_not_in_buffer_cnt++;
 
-	size_t bytes_available_file = m_stream_file->get_max_available_from_pos (req_start_pos);
+        size_t bytes_available_file = wait_for_flush (req_start_pos, amount);
+
 	actual_read_bytes = std::min (bytes_available_file, amount);
 
 	read_context.file_buffer = new char[actual_read_bytes];
@@ -544,7 +574,7 @@ namespace cubstream
 	return read_context.file_buffer;
       }
 
-    std::unique_lock<std::mutex> ulock (m_buffer_mutex);
+    std::unique_lock<std::mutex> bip_buf_ulock (m_buffer_mutex);
     /* update mapped positions according to buffer pointers */
     const char *ptr_trail_a;
     const char *ptr_trail_b;
@@ -565,13 +595,19 @@ namespace cubstream
 
     total_in_buffer = amount_trail_b + amount_trail_a;
 
-    m_oldest_readable_position = m_last_committed_pos - total_in_buffer;
+    m_oldest_buffered_position = m_last_committed_pos - total_in_buffer;
+    assert (m_oldest_buffered_position <= m_last_recyclable_pos);
+    assert (m_stream_file->get_max_available_from_pos (m_oldest_buffered_position) >= 0);
 
-    if (req_start_pos < m_oldest_readable_position)
+    if (req_start_pos < m_oldest_buffered_position)
       {
+        /* part of range no longer in buffer, read from file */
+        bip_buf_ulock.unlock ();
+
 	m_stat_read_not_in_buffer_cnt++;
 
-	size_t bytes_available_file = m_stream_file->get_max_available_from_pos (req_start_pos);
+        size_t bytes_available_file = wait_for_flush (req_start_pos, amount);
+
 	actual_read_bytes = std::min (bytes_available_file, amount);
 
 	read_context.file_buffer = new char[actual_read_bytes];
@@ -646,7 +682,7 @@ namespace cubstream
      * greater than the position with which the stream_file flush thread has already started to flush */
     if (m_filled_stream_handler
 	&& fill_factor > 1.0f
-	&& start_flush_pos >= m_stream_file->get_ack_start_flush_position ())
+	&& start_flush_pos >= m_stream_file->get_last_flushed_position ())
       {
 	m_filled_stream_handler (start_flush_pos, flush_amount);
       }
@@ -667,8 +703,24 @@ namespace cubstream
     m_recyclable_pos_cv.wait (local_lock,
 			      [&] { return m_is_stopped ||
 					   (last_append_pos - m_last_recyclable_pos <
-					    m_max_allowed_dirty);
+					    m_threshold_resume_reserve);
 				  });
+  }
+
+  size_t multi_thread_stream::wait_for_flush (const stream_position &req_pos, const size_t amount)
+  {
+    /* TODO : use cond var instead of sleep ? */
+    size_t bytes_available_file;
+    size_t min_bytes_to_read_from_file = std::min (MIN_BYTES_TO_READ_FROM_FILE, amount);
+    do
+    {
+      m_stat_read_not_in_buffer_wait_for_flush_cnt++;
+      bytes_available_file = m_stream_file->get_max_available_from_pos (req_pos);
+      std::this_thread::sleep_for (std::chrono::microseconds (WAIT_FOR_FILE_SLEEP_MICROSECS));
+    }
+    while (bytes_available_file < min_bytes_to_read_from_file);
+
+    return bytes_available_file;
   }
 
   void multi_thread_stream::set_last_recyclable_pos (const stream_position &pos)

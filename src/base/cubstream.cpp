@@ -46,6 +46,9 @@ namespace cubstream
   {
     m_append_position = start_position;
     m_read_position = start_position;
+    
+    m_last_committed_pos = start_position;
+    m_last_recyclable_pos = start_position;
 
     return NO_ERROR;
   }
