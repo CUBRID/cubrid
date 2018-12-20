@@ -30,6 +30,7 @@
 
 namespace test_stream
 {
+//#define GENERATE_RANDOM
 
   int write_action (const cubstream::stream_position pos, char *ptr, const size_t byte_count)
   {
@@ -104,7 +105,11 @@ namespace test_stream
     size_t i = 0;
     while (i < len)
       {
+#if defined(GENERATE_RANDOM)
 	str[i] = chars[std::rand () % sizeof (chars)];
+#else
+        str[i] = 'A';
+#endif
 	i++;
       }
     str[i] = '\0';
@@ -260,27 +265,48 @@ namespace test_stream
     b1 = std::rand ();
     for (unsigned int i = 0; i < sizeof (int_a) / sizeof (int_a[0]); i++)
       {
+#if defined (GENERATE_RANDOM)
 	int_a[i] = std::rand ();
+#else
+        int_a[i] = 1000;
+#endif
       }
     for (unsigned int i = 0; i < sizeof (values) / sizeof (values[0]); i++)
       {
 	switch (std::rand () % 5)
 	  {
 	  case 0:
+#if defined (GENERATE_RANDOM)
 	    db_make_int (&values[i], std::rand());
+#else
+            db_make_int (&values[i], 10000);
+#endif
 	    break;
 	  case 1:
+#if defined (GENERATE_RANDOM)
 	    db_make_short (&values[i], std::rand());
+#else
+            db_make_short (&values[i], 100);
+#endif
 	    break;
 	  case 2:
+#if defined (GENERATE_RANDOM)
 	    db_make_bigint (&values[i], std::rand());
+#else
+            db_make_bigint (&values[i], 100000);
+#endif
 	    break;
 	  case 3:
+#if defined (GENERATE_RANDOM)
 	    db_make_double (&values[i], (double) std::rand() / (std::rand() + 1.0f));
+#else
+            db_make_double (&values[i], (double) 11);
+#endif
 	    break;
 	  case 4:
 	    str_size = std::rand () % 1000 + 1;
 	    tmp_str = (char *) db_private_alloc (NULL, str_size + 1);
+            generate_str (tmp_str, str_size);
 	    db_make_char (&values[i], (int) str_size, tmp_str, (int) str_size, INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY);
 	    values[i].need_clear = true;
 	    break;
@@ -289,13 +315,13 @@ namespace test_stream
 
     generate_str (small_str, sizeof (small_str) - 1);
 
-    str_size = std::rand () % 10000 + 1;
+    str_size = std::rand () % 2000 + 1;
     tmp_str = new char[str_size + 1];
     generate_str (tmp_str, str_size);
     large_str = std::string (tmp_str);
     delete []tmp_str;
 
-    str_size = std::rand () % 10000 + 1;
+    str_size = std::rand () % 2000 + 1;
     tmp_str = new char[str_size + 1];
     generate_str (tmp_str, str_size);
     str1 = std::string (tmp_str);
@@ -873,8 +899,11 @@ namespace test_stream
 	  }
 	se_unpack_array[se->get_mvcc_id()] = se;
 	*/
-	res = se->is_equal (se_array[se->get_mvcc_id()]);
-	assert (res == 1);
+        if (se_array != NULL)
+          {
+	    res = se->is_equal (se_array[se->get_mvcc_id()]);
+	    assert (res == 1);
+          }
 	delete se;
 
 	stream_context_manager::g_unpacked_entries_cnt++;
@@ -1545,7 +1574,38 @@ namespace test_stream
 	read_byte_worker_pool->execute (read_byte_task);
       }
 
-    std::this_thread::sleep_for (std::chrono::seconds (test_duration));
+    std::chrono::system_clock::time_point start_test_time = std::chrono::system_clock::now ();
+
+    std::chrono::system_clock::time_point now_time;
+    std::chrono::system_clock::time_point last_print_time = start_test_time;
+    int time_in_sec;
+    do
+      {
+        std::this_thread::sleep_for (std::chrono::seconds (1));
+        now_time = std::chrono::system_clock::now ();
+        int delta_time_in_sec = std::chrono::duration_cast<std::chrono::seconds>(now_time - last_print_time).count ();
+        time_in_sec = std::chrono::duration_cast<std::chrono::seconds>(now_time - start_test_time).count ();
+
+        if (delta_time_in_sec > 10)
+          {
+            std::cout << "Recyclable_pos: " << stream_context_manager::g_stream->get_last_recyclable_pos () << " (" << stream_context_manager::g_stream->get_last_recyclable_pos () / time_in_sec / 1024 << " KB/s)";
+            std::cout << " Last_committed: " << stream_context_manager::g_stream->get_last_committed_pos () << " (" << stream_context_manager::g_stream->get_last_committed_pos () / time_in_sec / 1024 << " KB/s)" << std::endl;
+            std::cout << "Serial_read_pos: " << stream_context_manager::g_stream->get_curr_read_position () << " (" << stream_context_manager::g_stream->get_curr_read_position () / time_in_sec / 1024 << " KB/s)" << std::endl;
+            std::cout << "Parallel read pos: ";
+            for (i = 0; i < stream_context_manager::g_read_byte_threads; i++)
+              {
+                std::cout << stream_context_manager::g_read_positions[i] << " (" << stream_context_manager::g_read_positions[i] / time_in_sec / 1024 << " KB/s),";
+              }
+
+            std::cout << std::endl;
+            std::cout << std::endl;
+
+            last_print_time = now_time;
+          }
+      }
+    while (time_in_sec < test_duration);
+
+
     stream_context_manager::g_stop_packer = true;
     stream_context_manager::g_pause_unpacker = false;
     std::cout << "      Stopping packers" << std::endl;
@@ -1593,6 +1653,131 @@ namespace test_stream
       }
 
     std::cout << "Done" << std::endl;
+
+    my_stream_file->drop_volumes_to_pos (stream_context_manager::g_stream->get_last_recyclable_pos () +
+					 my_stream_file->get_volume_size ());
+
+    delete my_stream_file;
+
+    /* turn back on updating drop pos from readers */
+    stream_context_manager::update_drop_pos_from_readers = true;
+
+    return res;
+
+#undef TEST_PACK_THREADS
+#undef TEST_UNPACK_THREADS
+#undef TEST_READ_BYTE_THREADS
+#undef TEST_ENTRIES
+#undef TEST_OBJS_IN_ENTRIES_CNT
+  }
+
+
+  int test_stream_file_reader (const unsigned long long stream_read_start,
+                               const unsigned long long stream_max_pos,
+			   const size_t stream_buffer_size,
+			   const size_t file_size)
+  {
+    int res = 0;
+    int i;
+    int test_duration = 10000;
+    init_common_cubrid_modules ();
+
+    /* create objects */
+    std::cout << "  Testing reading from existing stream file"
+	      << std::endl;
+    /* create a stream for packing and add pack objects to stream */
+    stream_ready_notifier stream_ready_notify_handler;
+
+    cubstream::multi_thread_stream test_stream_for_read (stream_buffer_size, 1);
+    test_stream_for_read.set_name ("stream_for_pack_mt");
+    test_stream_for_read.set_buffer_reserve_margin (100 * 1024);
+    test_stream_for_read.init (stream_max_pos);
+    test_stream_for_read.force_set_read_position (stream_read_start);
+
+    cubstream::stream_file *my_stream_file = new cubstream::stream_file (test_stream_for_read, file_size);
+    my_stream_file->init (stream_max_pos);
+    my_stream_file->drop_volumes_to_pos (0, true);
+
+    /* path is current folder */
+    system ("mkdir test_stream_folder");
+    my_stream_file->set_path ("test_stream_folder");
+    stream_context_manager::g_stream = &test_stream_for_read;
+ 
+    cubthread::entry_workpool *unpacking_worker_pool  = NULL;
+    stream_context_manager::g_unpack_threads = 1;
+    stream_context_manager::g_read_byte_threads = 0;
+    if (stream_context_manager::g_unpack_threads > 0)
+      {
+	unpacking_worker_pool =
+		cub_th_m->create_worker_pool (stream_context_manager::g_unpack_threads,
+					      stream_context_manager::g_unpack_threads, NULL, &ctx_m2, 1, false);
+      }
+
+    std::this_thread::sleep_for (std::chrono::milliseconds (1));
+
+    stream_unpack_task *unpacking_task = NULL;
+    for (i = 0; i < stream_context_manager::g_unpack_threads; i++)
+      {
+	unpacking_task = new stream_unpack_task ();
+	unpacking_task->m_reader_id = i + stream_context_manager::g_read_byte_threads;
+	unpacking_worker_pool->execute (unpacking_task);
+      }
+
+    std::chrono::system_clock::time_point start_test_time = std::chrono::system_clock::now ();
+
+    std::chrono::system_clock::time_point now_time;
+    std::chrono::system_clock::time_point last_print_time = start_test_time;
+    int time_in_sec;
+    do
+      {
+        std::this_thread::sleep_for (std::chrono::seconds (1));
+        now_time = std::chrono::system_clock::now ();
+        int delta_time_in_sec = std::chrono::duration_cast<std::chrono::seconds>(now_time - last_print_time).count ();
+        time_in_sec = std::chrono::duration_cast<std::chrono::seconds>(now_time - start_test_time).count ();
+
+        if (delta_time_in_sec > 10)
+          {
+            std::cout << "Recyclable_pos: " << stream_context_manager::g_stream->get_last_recyclable_pos () << " (" << stream_context_manager::g_stream->get_last_recyclable_pos () / time_in_sec / 1024 << " KB/s)";
+            std::cout << " Last_committed: " << stream_context_manager::g_stream->get_last_committed_pos () << " (" << stream_context_manager::g_stream->get_last_committed_pos () / time_in_sec / 1024 << " KB/s)" << std::endl;
+            std::cout << "Serial_read_pos: " << stream_context_manager::g_stream->get_curr_read_position () << " (" << stream_context_manager::g_stream->get_curr_read_position () / time_in_sec / 1024 << " KB/s)" << std::endl;
+            std::cout << "Parallel read pos: ";
+            for (i = 0; i < stream_context_manager::g_read_byte_threads; i++)
+              {
+                std::cout << stream_context_manager::g_read_positions[i] << " (" << stream_context_manager::g_read_positions[i] / time_in_sec / 1024 << " KB/s),";
+              }
+
+            std::cout << std::endl;
+            std::cout << std::endl;
+
+            last_print_time = now_time;
+          }
+      }
+    while (time_in_sec < test_duration);
+
+
+    stream_context_manager::g_stop_packer = true;
+    stream_context_manager::g_pause_unpacker = false;
+    std::cout << "      Stopping packers" << std::endl;
+
+    stream_context_manager::g_stream->set_stop ();
+    while (stream_context_manager::g_running_packers.any ()
+	   || stream_context_manager::g_running_readers.any ())
+      {
+	std::this_thread::sleep_for (std::chrono::milliseconds (100));
+      }
+
+    if (stream_context_manager::g_unpack_threads > 0)
+      {
+	unpacking_worker_pool->stop_execution ();
+      }
+    /* wait for thread manager thread to end */
+    if (stream_context_manager::g_unpack_threads > 0)
+      {
+	cub_th_m->destroy_worker_pool (unpacking_worker_pool);
+      }
+
+
+     std::cout << "Done" << std::endl;
 
     my_stream_file->drop_volumes_to_pos (stream_context_manager::g_stream->get_last_recyclable_pos () +
 					 my_stream_file->get_volume_size ());

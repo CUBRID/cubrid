@@ -63,16 +63,29 @@ int main ()
   /* Test write then read to stream with stream file:      stream_buffer_size, file_size, desired_amount */
   //test_module (global_error, test_stream::test_stream_file2, 256 * 1024, 1024, 1 * 1024 * 1024);
 
-
+#if 1
   /* MT test with multiple writers/readers and stream file: */
   test_module (global_error, test_stream::test_stream_file_mt, 
-    1,  /* pack_threads */
-    1,  /* unpack_threads (serial) : this should be 0 or 1 (we cannot read serail with multiple threads) */
-    1,                /* read threads (byte) */
+    4,  /* pack_threads */
+    1,  /* unpack_threads (serial) : this should be 0 or 1 (we cannot read serial with multiple threads) */
+    4,                /* read threads (byte) */
     2 * 1024 * 1024,  /* BIP buffer size (stream buffer) */
     100 * 1024 * 1024,  /* stream file size (chunk) */
     111120                /* duration (seconds) */
     );
+#endif
+
+#if 0
+  /* MT test with multiple writers/readers and stream file: */
+  test_module (global_error, test_stream::test_stream_file_reader, 
+    0,  /* start serial read position */
+    1000 * 1024 * 1024,  /* commit & append position (assumed size of stream); file should exist and have that content */
+    2 * 1024 * 1024,  /* BIP buffer size (stream buffer) */
+    100 * 1024 * 1024  /* stream file size (chunk): should match exactly with actual volumes !!! */
+    );
+#endif
+
+
   
   
   /* add more tests here */

@@ -54,6 +54,11 @@ namespace test_stream
                            const size_t file_size,
                            const int test_duration);
 
+  int test_stream_file_reader (const unsigned long long stream_read_start,
+                               const unsigned long long stream_max_pos,
+			   const size_t stream_buffer_size,
+			   const size_t file_size);
+
   
   int write_action (const cubstream::stream_position pos, char *ptr, const size_t byte_count);
 
@@ -235,6 +240,11 @@ namespace test_stream
 	serializator->unpack_int ((int *) &m_header.mvcc_id);
 	serializator->unpack_int ((int *) &m_header.count_objects);
 	serializator->unpack_int (&m_header.data_size);
+
+        assert (m_header.count_objects < 100);
+        assert (m_header.data_size < 1000000);
+        assert (m_header.mvcc_id < 1000);
+        assert (m_header.tran_id < 1000);
 
 	return NO_ERROR;
       };
