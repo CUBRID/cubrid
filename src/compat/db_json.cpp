@@ -1800,7 +1800,6 @@ db_json_path_points_to_array_cell (JSON_DOC &doc, const std::string &path, JSON_
     }
 
   resulting_json_parent = pointer_parent.Get (doc);
-
   // the parent does not exist
   if (resulting_json_parent == NULL)
     {
@@ -1862,7 +1861,7 @@ db_json_resolve_json_parent (JSON_DOC &doc, const std::string &path, JSON_VALUE 
 
   if (last_token != "0")
     {
-      // we don't wrap the parent if it is the first element, we wrap then unwrap:
+      // we don't wrap the parent if last token is "0":
       // JSON_INSERT ('{"a": 1}', '$.a[0]', 10) = {"a": 1}   and   JSON_SET ('{"a": 1}', '$.a[0]', 10) = {"a": 10}
       db_json_value_wrap_as_array (*resulting_json_parent, doc.GetAllocator ());
     }
@@ -1979,6 +1978,14 @@ db_json_insert_func (const JSON_DOC *doc_to_be_inserted, JSON_DOC &doc_destinati
   return db_json_insert_helper (doc_to_be_inserted, doc_destination, p, json_pointer_string, false);
 }
 
+/*
+ * db_json_replace_autowrap_scalar () - handle JSON_REPLACE ('{"a": 1}', '$.a[0]', 10) = {"a": 10} case
+ *
+ * return                  : error if the parent path is not a scalar and the last path token is not "0"
+ * new_value (in)          : the value to be set at the specified path
+ * path (in)               : specified path
+ * doc (in)                : json document
+ */
 static int
 db_json_replace_autowrap_scalar (const JSON_VALUE *new_value, const std::string &path, JSON_DOC &doc)
 {
@@ -1990,6 +1997,12 @@ db_json_replace_autowrap_scalar (const JSON_VALUE *new_value, const std::string 
     }
 
   JSON_POINTER pointer_parent (path.substr (0, found).c_str ());
+  if (!pointer_parent.IsValid ())
+    {
+      /* this shouldn't happen */
+      assert (false);
+      return ER_FAILED;
+    }
   JSON_VALUE *resulting_json_parent = pointer_parent.Get (doc);
 
   const std::string &last_token = path.substr (found + 1);
@@ -2000,6 +2013,8 @@ db_json_replace_autowrap_scalar (const JSON_VALUE *new_value, const std::string 
 
   JSON_VALUE value_copy (*new_value, doc.GetAllocator ());
   resulting_json_parent->Swap (value_copy);
+
+  return NO_ERROR;
 }
 
 /*
