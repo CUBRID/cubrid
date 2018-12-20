@@ -61,6 +61,7 @@
 #include "object_printer.hpp"
 #include "string_buffer.hpp"
 #include "dbtype.h"
+#include "parser_allocator.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -9110,22 +9111,8 @@ pt_make_query_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
   assert (table_name->node_type == PT_NAME);
 
   /* *INDENT-OFF* */
-  string_buffer strbuf {
-    [&parser] (mem::block &block, size_t len)
-    {
-      size_t dim = block.dim ? block.dim : 1;
-
-      for (; dim < block.dim + len; dim *= 2) // calc next power of 2 >= b.dim+len
-	;
-
-      mem::block b{ dim, (char *) parser_alloc (parser, (const int) dim) };
-      memcpy (b.ptr, block.ptr, block.dim); // copy old content
-      block = std::move (b);
-    },
-    [](mem::block &block) //no need to deallocate for parser_context
-    {
-    }
-  };
+  parser_block_allocator alloc (parser);
+  string_buffer strbuf (alloc);
   /* *INDENT-ON* */
 
   pt_help_show_create_table (parser, table_name, strbuf);

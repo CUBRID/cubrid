@@ -34,6 +34,8 @@
 #include <typeinfo>
 #include <array>
 
+using namespace mem;
+
 namespace test_memalloc
 {
 
@@ -146,11 +148,10 @@ namespace test_memalloc
     unsigned append_count = AppendCount;
 
     /* first test extensible array */
-    std::allocator<char> allocator;
-    extensible_array<char, AppendSize *AppendCount> xarr (allocator);
+    appendable_array<char, AppendSize *AppendCount> xarr;
 
     run_test (global_error,
-	      test_append_strings<extensible_array<char, AppendSize *AppendCount> >,
+	      test_append_strings<appendable_array<char, AppendSize *AppendCount> >,
 	      std::ref (compare_result),
 	      std::ref (xarr),
 	      test_string_buffer_types::EXTENSIBLE_ARRAY,
@@ -184,10 +185,10 @@ namespace test_memalloc
    */
   static void
   test_extensible_array_correctness_append (int &global_error, test_common::perf_compare &test_compare,
-      extensible_array<char, SIZE_64> &xarr_buf,
+      appendable_array<char, SIZE_64> &xarr_buf,
       std::string &string_buf, size_t append_size)
   {
-    run_test (global_error, test_append_strings<extensible_array<char, SIZE_64> >, test_compare, xarr_buf,
+    run_test (global_error, test_append_strings<appendable_array<char, SIZE_64> >, test_compare, xarr_buf,
 	      test_string_buffer_types::EXTENSIBLE_ARRAY, append_size, 1);
     run_test (global_error, test_append_strings<std::string>, test_compare, string_buf,
 	      test_string_buffer_types::CSTYLE_STRING, append_size, 1);
@@ -218,8 +219,7 @@ namespace test_memalloc
     const size_t APPEND_COUNT = 6;
 
     std::string verifier;
-    std::allocator<char> allocator;
-    extensible_array<char, SIZE_64> xarr (allocator);
+    appendable_array<char, SIZE_64> xarr;
 
     test_common::perf_compare compare_result (string_buffer_names, append_step_names);
 

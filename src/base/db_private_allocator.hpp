@@ -17,7 +17,6 @@
  *
  */
 
-
 /*
  * db_private_allocator.hpp - Typed C++ allocator - reference http://en.cppreference.com/w/cpp/concept/Allocator
  */
