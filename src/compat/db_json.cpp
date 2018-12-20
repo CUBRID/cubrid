@@ -749,12 +749,11 @@ static const char *db_json_get_json_type_as_str (const DB_JSON_TYPE &json_type);
 static int db_json_er_set_expected_other_type (const char *file_name, const int line_no, const std::string &path,
     const DB_JSON_TYPE &found_type, const DB_JSON_TYPE &expected_type,
     const DB_JSON_TYPE &expected_type_optional = DB_JSON_NULL);
-static int db_json_array_shift_values (const JSON_DOC *value, JSON_DOC &doc, const std::string &path);
+static int db_json_array_shift_values (const JSON_DOC *value, JSON_DOC &doc, JSON_POINTER &p, const std::string &path);
 static int db_json_path_points_to_array_cell (JSON_DOC &doc, const std::string &path,
     JSON_VALUE *&resulting_json_parent);
 static int db_json_replace_autowrap_scalar (const JSON_VALUE *new_value, const std::string &path, JSON_DOC &doc);
 static int db_json_resolve_json_parent (JSON_DOC &doc, const std::string &path, JSON_VALUE *&resulting_json_parent);
-static int db_json_array_insert_helper (const JSON_DOC *value, JSON_DOC &doc, JSON_POINTER &p, const std::string &path);
 static int db_json_insert_helper (const JSON_DOC *value, JSON_DOC &doc, JSON_POINTER &p, const std::string &path,
 				  bool replace);
 static int db_json_contains_duplicate_keys (JSON_DOC &doc);
@@ -1870,23 +1869,6 @@ db_json_resolve_json_parent (JSON_DOC &doc, const std::string &path, JSON_VALUE 
 }
 
 static int
-db_json_array_insert_helper (const JSON_DOC *value, JSON_DOC &doc, JSON_POINTER &p, const std::string &path)
-{
-  int error_code = NO_ERROR;
-  JSON_VALUE *resulting_json_parent = NULL;
-
-  // we don't need result_json_parent after this statement
-  error_code = db_json_path_points_to_array_cell (doc, path, resulting_json_parent);
-  if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return error_code;
-    }
-
-  return db_json_array_shift_values (value, doc, path);
-}
-
-static int
 db_json_insert_helper (const JSON_DOC *value, JSON_DOC &doc, JSON_POINTER &p, const std::string &path, bool replace)
 {
   int error_code = NO_ERROR;
@@ -1917,7 +1899,7 @@ db_json_insert_helper (const JSON_DOC *value, JSON_DOC &doc, JSON_POINTER &p, co
 
       if (last_token_index >= resulting_json_parent->GetArray ().Size ())
 	{
-	  resulting_json_parent->GetArray ().PushBack (value_copy, doc.GetAllocator ());
+	  p.Set (doc, *value, doc.GetAllocator ());
 	}
       else if (replace)
 	{
@@ -2380,7 +2362,7 @@ db_json_array_append_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw
 }
 
 static int
-db_json_array_shift_values (const JSON_DOC *value, JSON_DOC &doc, const std::string &path)
+db_json_array_shift_values (const JSON_DOC *value, JSON_DOC &doc, JSON_POINTER &p, const std::string &path)
 {
   int error_code = NO_ERROR;
   JSON_VALUE *resulting_json_parent = NULL;
@@ -2392,8 +2374,22 @@ db_json_array_shift_values (const JSON_DOC *value, JSON_DOC &doc, const std::str
       return error_code;
     }
 
-  // std::stoi cannot throw an exception because last token was already validated in db_json_path_points_to_array_cell () call
-  int last_token_index = std::stoi (path.substr (path.find_last_of ('/') + 1));
+  const std::string &last_token = path.substr (path.find_last_of ('/') + 1);
+  int last_token_index;
+  if (last_token == "-")
+    {
+      last_token_index = resulting_json_parent->GetArray ().Size ();
+    }
+  else
+    {
+      last_token_index = std::stoi (last_token);
+    }
+
+  if (last_token_index >= resulting_json_parent->GetArray ().Size ())
+    {
+      p.Set (doc, *value,doc.GetAllocator ());
+      return NO_ERROR;
+    }
 
   // add the value at the end of the array
   JSON_VALUE value_copy (*value, doc.GetAllocator ());
@@ -2444,15 +2440,8 @@ db_json_array_insert_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw
       return ER_JSON_INVALID_PATH;
     }
 
-  JSON_VALUE *resulting_json = p.Get (doc);
-  if (resulting_json != NULL)
-    {
-      // need to shift any following values to the right
-      return db_json_array_shift_values (value, doc, json_pointer_string);
-    }
-
   // here starts the INSERTION part
-  return db_json_array_insert_helper (value, doc, p, json_pointer_string);
+  return db_json_array_shift_values (value, doc, p, json_pointer_string);
 }
 
 DB_JSON_TYPE
