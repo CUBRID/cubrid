@@ -25,6 +25,8 @@
 
 #include "parser.h"
 
+#include <cstring>
+
 parser_block_allocator::parser_block_allocator (parser_context *parser)
   : mem::block_allocator (std::bind (&parser_block_allocator::alloc, this, std::placeholders::_1,
 				     std::placeholders::_2),

@@ -34,6 +34,9 @@ namespace mem
   template <size_t Size>
   class appendible_block : public mem::extensible_stack_block<Size>
   {
+    private:
+      using base_type = mem::extensible_stack_block<Size>;
+
     public:
 
       appendible_block ()
@@ -148,8 +151,8 @@ namespace mem
   void
   appendible_block<Size>::append (const char *source, size_t length)
   {
-    extend_to (m_size + length);
-    std::memcpy (get_ptr () + m_size, source, length);
+    base_type::extend_to (m_size + length);
+    std::memcpy (base_type::get_ptr () + m_size, source, length);
     m_size += length;
   }
 
@@ -192,10 +195,10 @@ namespace mem
   }
 
   template <typename T, size_t Size>
-  typename T *
+  T *
   appendable_array<T, Size>::get_append_ptr ()
   {
-    return get_data_ptr () + m_size;
+    return base_type::get_data_ptr () + m_size;
   }
 
   template <typename T, size_t Size>
@@ -206,7 +209,7 @@ namespace mem
     base_type::extend_to (m_size + length);
 
     // copy data at the end of the array
-    std::memcpy (get_data_ptr () + m_size, source, length * sizeof (T));
+    std::memcpy (base_type::get_data_ptr () + m_size, source, length * sizeof (T));
     m_size += length;
   }
 

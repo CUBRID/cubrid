@@ -204,7 +204,7 @@ namespace mem
 
       void extend_by (size_t additional_bytes)
       {
-	if (m_ext_block.ptr == NULL)
+	if (m_use_stack)
 	  {
 	    m_ext_block.extend_to (m_stack.SIZE + additional_bytes);
 	  }

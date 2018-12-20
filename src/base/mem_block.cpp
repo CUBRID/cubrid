@@ -24,6 +24,8 @@
 
 #include <functional>
 
+#include <cstring>
+
 namespace mem
 {
   void
