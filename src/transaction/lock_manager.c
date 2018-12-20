@@ -236,19 +236,19 @@ typedef enum
 #define LK_ENTRY_SET_ACTIVE(entry) (ATOMIC_TAS_32 (&((int)(entry)->status), LK_ENTRY_ACTIVE))
 
 /* Is active lock entry? */
-#define LK_ENTRY_IS_ACTIVE(entry) (ATOMIC_INC_32 (&((int)(entry)->status), 0) == LK_ENTRY_ACTIVE)
+#define LK_ENTRY_IS_ACTIVE(entry) (entry->status == LK_ENTRY_ACTIVE)
 
 /* Set mark deleted lock entry. */
 #define LK_ENTRY_SET_MARK_DELETED(entry) (ATOMIC_TAS_32 (&((int)(entry)->status, LK_ENTRY_MARK_DELETED))
 
 /* Is mark deleted lock entry? */
-#define LK_ENTRY_IS_MARK_DELETED(entry) (ATOMIC_INC_32 (&((int)(entry)->status), 0) == LK_ENTRY_MARK_DELETED)
+#define LK_ENTRY_IS_MARK_DELETED(entry) (entry->status == LK_ENTRY_MARK_DELETED)
 
 /* Set disconnected lock entry */
 #define LK_ENTRY_SET_DISCONNECTED(entry) (ATOMIC_TAS_32 (&((int)(entry)->status, LK_ENTRY_DISCONEECTED))
 
 /* Is disconnected lock entry? */
-#define LK_ENTRY_IS_DISCONNECTED(entry) (ATOMIC_INC_32 (&((int)(entry)->status), 0) == LK_ENTRY_DISCONEECTED)
+#define LK_ENTRY_IS_DISCONNECTED(entry) (entry->status == LK_ENTRY_DISCONEECTED)
 
 /* Get counter of resource highest lock mode. */
 /* The number of bits for each field. */
@@ -3764,7 +3764,7 @@ start:
       lock_insert_into_tran_hold_list (entry_ptr, tran_index);
 
       /* Set total holders mode and increment */
-      /* TODO - skip computation in mark delete mode*/
+      /* TODO - skip computation in mark delete mode */
       res_ptr->total_holders_mode = lock;
 
       /* Record number of acquired locks */
