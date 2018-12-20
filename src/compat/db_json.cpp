@@ -752,9 +752,11 @@ static int db_json_er_set_expected_other_type (const char *file_name, const int 
 static int db_json_array_shift_values (const JSON_DOC *value, JSON_DOC &doc, const std::string &path);
 static int db_json_path_points_to_array_cell (JSON_DOC &doc, const std::string &path,
     JSON_VALUE *&resulting_json_parent);
+static int db_json_replace_autowrap_scalar (const JSON_VALUE *new_value, const std::string &path, JSON_DOC &doc);
 static int db_json_resolve_json_parent (JSON_DOC &doc, const std::string &path, JSON_VALUE *&resulting_json_parent);
 static int db_json_array_insert_helper (const JSON_DOC *value, JSON_DOC &doc, JSON_POINTER &p, const std::string &path);
-static int db_json_insert_helper (const JSON_DOC *value, JSON_DOC &doc, JSON_POINTER &p, const std::string &path);
+static int db_json_insert_helper (const JSON_DOC *value, JSON_DOC &doc, JSON_POINTER &p, const std::string &path,
+				  bool replace);
 static int db_json_contains_duplicate_keys (JSON_DOC &doc);
 
 STATIC_INLINE JSON_VALUE &db_json_doc_to_value (JSON_DOC &doc) __attribute__ ((ALWAYS_INLINE));
@@ -1810,7 +1812,6 @@ db_json_path_points_to_array_cell (JSON_DOC &doc, const std::string &path, JSON_
   if (db_json_get_type_of_value (resulting_json_parent) != DB_JSON_ARRAY
       || !db_json_path_is_token_valid_array_index (last_token, false))
     {
-      // TODO: add error "path does not point to array cell"
       return db_json_er_set_expected_other_type (ARG_FILE_LINE, path, DB_JSON_OBJECT, DB_JSON_ARRAY);
     }
 
@@ -1847,22 +1848,23 @@ db_json_resolve_json_parent (JSON_DOC &doc, const std::string &path, JSON_VALUE 
   // found type of parent
   DB_JSON_TYPE parent_json_type = db_json_get_type_of_value (resulting_json_parent);
 
-  // we can insert only in JSON_OBJECT or JSON_ARRAY, else throw an error
-  if (parent_json_type != DB_JSON_OBJECT && parent_json_type != DB_JSON_ARRAY)
-    {
-      return db_json_er_set_expected_other_type (ARG_FILE_LINE, path, parent_json_type, DB_JSON_OBJECT, DB_JSON_ARRAY);
-    }
-
   const std::string &last_token = path.substr (found + 1);
   bool token_is_valid_index = db_json_path_is_token_valid_array_index (last_token, false);
 
-  if (parent_json_type == DB_JSON_ARRAY && !token_is_valid_index)
+  if ((parent_json_type == DB_JSON_ARRAY || parent_json_type != DB_JSON_OBJECT) && !token_is_valid_index)
     {
       return db_json_er_set_expected_other_type (ARG_FILE_LINE, path, parent_json_type, DB_JSON_OBJECT);
     }
   if (parent_json_type == DB_JSON_OBJECT && token_is_valid_index)
     {
       return db_json_er_set_expected_other_type (ARG_FILE_LINE, path, parent_json_type, DB_JSON_ARRAY);
+    }
+
+  if (last_token != "0")
+    {
+      // we don't wrap the parent if it is the first element, we wrap then unwrap:
+      // JSON_INSERT ('{"a": 1}', '$.a[0]', 10) = {"a": 1}   and   JSON_SET ('{"a": 1}', '$.a[0]', 10) = {"a": 10}
+      db_json_value_wrap_as_array (*resulting_json_parent, doc.GetAllocator ());
     }
 
   return NO_ERROR;
@@ -1886,12 +1888,11 @@ db_json_array_insert_helper (const JSON_DOC *value, JSON_DOC &doc, JSON_POINTER 
 }
 
 static int
-db_json_insert_helper (const JSON_DOC *value, JSON_DOC &doc, JSON_POINTER &p, const std::string &path)
+db_json_insert_helper (const JSON_DOC *value, JSON_DOC &doc, JSON_POINTER &p, const std::string &path, bool replace)
 {
   int error_code = NO_ERROR;
   JSON_VALUE *resulting_json_parent = NULL;
 
-  // we don't need result_json_parent after this statement
   error_code = db_json_resolve_json_parent (doc, path, resulting_json_parent);
   if (error_code != NO_ERROR)
     {
@@ -1899,8 +1900,35 @@ db_json_insert_helper (const JSON_DOC *value, JSON_DOC &doc, JSON_POINTER &p, co
       return error_code;
     }
 
-  // put the value at the specified path
-  p.Set (doc, *value, doc.GetAllocator ());
+  JSON_VALUE value_copy (*value, doc.GetAllocator ());
+
+  if (resulting_json_parent->IsArray ())
+    {
+      // std::stoi cannot throw an exception because last token was already validated in db_json_resolve_json_parent () call
+      int last_token_index = std::stoi (path.substr (path.find_last_of ('/') + 1));
+      if (last_token_index >= resulting_json_parent->GetArray ().Size ())
+	{
+	  resulting_json_parent->GetArray ().PushBack (value_copy, doc.GetAllocator ());
+	}
+      else if (replace)
+	{
+	  resulting_json_parent->GetArray ()[last_token_index].Swap (value_copy);
+	}
+    }
+  else if (resulting_json_parent->IsObject ())
+    {
+      p.Set (doc, *value, doc.GetAllocator ());
+    }
+  else
+    {
+      int last_token_index = std::stoi (path.substr (path.find_last_of ('/') + 1));
+      assert (last_token_index == 0);
+      // we do not autowrap the scalar parent if token_index is 0
+      if (replace)
+	{
+	  resulting_json_parent->Swap (value_copy);
+	}
+    }
 
   return error_code;
 }
@@ -1944,12 +1972,34 @@ db_json_insert_func (const JSON_DOC *doc_to_be_inserted, JSON_DOC &doc_destinati
 
   if (p.Get (doc_destination) != NULL)
     {
-      // if it exists, just ignore
-      // todo: is this a good behavior?
+      // if it exists, json_insert does not replace the existing value
       return NO_ERROR;
     }
 
-  return db_json_insert_helper (doc_to_be_inserted, doc_destination, p, json_pointer_string);
+  return db_json_insert_helper (doc_to_be_inserted, doc_destination, p, json_pointer_string, false);
+}
+
+static int
+db_json_replace_autowrap_scalar (const JSON_VALUE *new_value, const std::string &path, JSON_DOC &doc)
+{
+  std::size_t found = path.find_last_of ('/');
+  if (found == std::string::npos)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
+      return ER_JSON_INVALID_PATH;
+    }
+
+  JSON_POINTER pointer_parent (path.substr (0, found).c_str ());
+  JSON_VALUE *resulting_json_parent = pointer_parent.Get (doc);
+
+  const std::string &last_token = path.substr (found + 1);
+  if (resulting_json_parent->IsArray () || resulting_json_parent->IsObject () || last_token != "0")
+    {
+      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, path, &doc);
+    }
+
+  JSON_VALUE value_copy (*new_value, doc.GetAllocator ());
+  resulting_json_parent->Swap (value_copy);
 }
 
 /*
@@ -1991,9 +2041,7 @@ db_json_replace_func (const JSON_DOC *new_value, JSON_DOC &doc, const char *raw_
 
   if (p.Get (doc) == NULL)
     {
-      // if the path does not exist, raise an error
-      // the user should know that the command will have no effect
-      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, json_pointer_string, &doc);
+      return db_json_replace_autowrap_scalar (new_value, json_pointer_string, doc);
     }
 
   // replace the value from the specified path with the new value
@@ -2049,7 +2097,7 @@ db_json_set_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path)
     }
 
   // here starts the INSERTION part
-  return db_json_insert_helper (value, doc, p, json_pointer_string);
+  return db_json_insert_helper (value, doc, p, json_pointer_string, true);
 }
 
 /*
