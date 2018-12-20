@@ -1859,7 +1859,7 @@ db_json_resolve_json_parent (JSON_DOC &doc, const std::string &path, JSON_VALUE 
       return db_json_er_set_expected_other_type (ARG_FILE_LINE, path, parent_json_type, DB_JSON_ARRAY);
     }
 
-  if (token_is_valid_index && last_token != "0")
+  if (parent_json_type != DB_JSON_ARRAY && token_is_valid_index && last_token != "0")
     {
       // we don't wrap the parent if last token is "0":
       // JSON_INSERT ('{"a": 1}', '$.a[0]', 10) = {"a": 1}   and   JSON_SET ('{"a": 1}', '$.a[0]', 10) = {"a": 10}
@@ -1903,8 +1903,18 @@ db_json_insert_helper (const JSON_DOC *value, JSON_DOC &doc, JSON_POINTER &p, co
 
   if (resulting_json_parent->IsArray ())
     {
-      // std::stoi cannot throw an exception because last token was already validated in db_json_resolve_json_parent () call
-      int last_token_index = std::stoi (path.substr (path.find_last_of ('/') + 1));
+      const std::string &last_token = path.substr (path.find_last_of ('/') + 1);
+
+      int last_token_index;
+      if (last_token == "-")
+	{
+	  last_token_index = resulting_json_parent->GetArray ().Size ();
+	}
+      else
+	{
+	  last_token_index = std::stoi (last_token);
+	}
+
       if (last_token_index >= resulting_json_parent->GetArray ().Size ())
 	{
 	  resulting_json_parent->GetArray ().PushBack (value_copy, doc.GetAllocator ());
@@ -2003,7 +2013,14 @@ db_json_replace_autowrap_scalar (const JSON_VALUE *new_value, const std::string 
       assert (false);
       return ER_FAILED;
     }
+
   JSON_VALUE *resulting_json_parent = pointer_parent.Get (doc);
+  // the parent does not exist
+  if (resulting_json_parent == NULL)
+    {
+      // we can only create a child value, not both parent and child
+      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, path.substr (0, found), &doc);
+    }
 
   const std::string &last_token = path.substr (found + 1);
   if (resulting_json_parent->IsArray () || resulting_json_parent->IsObject () || last_token != "0")
