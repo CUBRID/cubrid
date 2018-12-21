@@ -3907,7 +3907,7 @@ start:
       wait_entry_ptr = res_ptr->waiter;
       while (wait_entry_ptr != NULL)
 	{
-	  assert (LK_ENTRY_IS_ACTIVE (entry_ptr));
+	  assert (LK_ENTRY_IS_ACTIVE (wait_entry_ptr));
 	  if (wait_entry_ptr->tran_index == tran_index)
 	    {
 	      break;
