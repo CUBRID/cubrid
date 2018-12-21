@@ -535,10 +535,10 @@ namespace cubstream
                 assert (false);
                 return -1;
               }
-
-            close (fd);
-            /* closed and fall through to reopen */
           }
+
+        close (fd);
+        /* closed and fall through to reopen */
       }
 #if defined (WINDOWS)
     fd = open (file_path, O_RDWR | O_BINARY | flags);
