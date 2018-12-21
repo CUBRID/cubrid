@@ -33,6 +33,9 @@
 
 namespace cubstream
 {
+  const size_t multi_thread_stream::MIN_BYTES_TO_READ_FROM_FILE;
+  const int multi_thread_stream::WAIT_FOR_FILE_SLEEP_MICROSECS;
+
   multi_thread_stream::multi_thread_stream (const size_t buffer_capacity, const int max_appenders)
     : m_bip_buffer (buffer_capacity),
       m_reserved_positions (max_appenders)
