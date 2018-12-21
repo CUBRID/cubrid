@@ -4478,19 +4478,20 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
 	  bool has_non_2pl = (res_ptr->non2pl != NULL);
 	  /* Enable mark delete that will force highest lock recomputation. */
 	  assert (LK_RES_HAS_HIGHEST_LOCK_INFO_DISABLED (res_ptr));
-	  if (!lock_resource_enable_mark_delete (thread_p, res_ptr, !has_non_2pl))
-	    {
-	      /* Can't enable mark delete. Disconnect all entries to avoid situation when an allocated resource
-	       * is not used long time.
-	       */
-	      lock_res_disconnect_mark_deleted_entries (thread_p, res_ptr);
-	      if (entry_ptr && LK_ENTRY_IS_DISCONNECTED (entry_ptr))
-		{
-		  lock_remove_disconnected_entry_and_init (thread_p, entry_ptr, is_non2pl_lock);
-		}
-	      lock_remove_resource_and_init (thread_p, res_ptr);
-	      return;
-	    }
+	  lock_resource_enable_mark_delete (thread_p, res_ptr, false);
+	  // if (!lock_resource_enable_mark_delete (thread_p, res_ptr, !has_non_2pl))
+	  //   {
+	  //     /* Can't enable mark delete. Disconnect all entries to avoid situation when an allocated resource
+	  //      * is not used long time.
+	  //      */
+	  //     lock_res_disconnect_mark_deleted_entries (thread_p, res_ptr);
+	  //     if (entry_ptr && LK_ENTRY_IS_DISCONNECTED (entry_ptr))
+	  //{
+	  //  lock_remove_disconnected_entry_and_init (thread_p, entry_ptr, is_non2pl_lock);
+	  //}
+	  //     lock_remove_resource_and_init (thread_p, res_ptr);
+	  //     return;
+	  //   }
 	}
 
       /* We are in mark deleteion mode or the resource was removed. */
