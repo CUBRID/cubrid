@@ -516,22 +516,40 @@ namespace cubstream
   {
     int fd;
 
-#if defined (WINDOWS)
     if ((flags & FILE_CREATE_FLAG) == FILE_CREATE_FLAG)
       {
-	fd = _sopen (file_path, O_RDWR | O_CREAT | O_BINARY, _SH_DENYWR, 0600);
+        fd = create_file (file_path);
+        if (fd < 0 && errno == EACCES)
+          {
+            if (std::remove (file_path) != 0)
+              {
+	        er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_TRYING_TO_REMOVE_PERMANENT_VOLUME, 1,
+				     file_path);
+	        return ER_BO_TRYING_TO_REMOVE_PERMANENT_VOLUME;
+              }
+
+            fd = create_file (file_path);
+            if (fd < 0)
+              {
+                /* TODO[arnia] : error */
+                assert (false);
+                return -1;
+              }
+
+            close (fd);
+            /* closed and fall through to reopen */
+          }
       }
-    else
-      {
-	fd = open (file_path, O_RDWR | O_BINARY | flags);
-      }
+#if defined (WINDOWS)
+    fd = open (file_path, O_RDWR | O_BINARY | flags);
 #else
-    fd = open (file_path, O_RDWR | flags);
+    fd = open (file_path, O_RDWR);
 #endif
 
     if (fd < 0)
       {
 	/* TODO[arnia] : error */
+        assert (false);
       }
 
     return fd;
@@ -542,7 +560,7 @@ namespace cubstream
     int fd;
 
 #if defined (WINDOWS)
-    fd = open (file_path, O_RDWR | O_BINARY | O_CREAT | O_EXCL);
+    fd = _sopen (file_path, O_RDWR | O_CREAT | O_BINARY, _SH_DENYWR, 0600);
 #else
     fd = open (file_path, O_RDWR | O_CREAT | O_EXCL);
 #endif
