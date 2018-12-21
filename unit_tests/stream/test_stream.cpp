@@ -1594,6 +1594,10 @@ namespace test_stream
 
         if (delta_time_in_sec > 10)
           {
+            cubstream::stream_position lowest_read_pos = std::numeric_limits<cubstream::stream_position>::max ();
+
+            lowest_read_pos = stream_context_manager::g_stream->get_curr_read_position ();
+
             std::cout << "Recyclable_pos: " << stream_context_manager::g_stream->get_last_recyclable_pos () << " (" << stream_context_manager::g_stream->get_last_recyclable_pos () / time_in_sec / 1024 << " KB/s)";
             std::cout << " Last_committed: " << stream_context_manager::g_stream->get_last_committed_pos () << " (" << stream_context_manager::g_stream->get_last_committed_pos () / time_in_sec / 1024 << " KB/s)" << std::endl;
             std::cout << "Serial_read_pos: " << stream_context_manager::g_stream->get_curr_read_position () << " (" << stream_context_manager::g_stream->get_curr_read_position () / time_in_sec / 1024 << " KB/s)" << std::endl;
@@ -1601,12 +1605,23 @@ namespace test_stream
             for (i = 0; i < stream_context_manager::g_read_byte_threads; i++)
               {
                 std::cout << stream_context_manager::g_read_positions[i] << " (" << stream_context_manager::g_read_positions[i] / time_in_sec / 1024 << " KB/s),";
+                if (stream_context_manager::g_read_positions[i] < lowest_read_pos)
+                  {
+                    lowest_read_pos = stream_context_manager::g_read_positions[i];
+                  }
               }
 
             std::cout << std::endl;
             std::cout << std::endl;
 
             last_print_time = now_time;
+
+            if (lowest_read_pos < std::numeric_limits<cubstream::stream_position>::max ())
+              {
+                std::cout << "Drop volumes up position "<< lowest_read_pos << std::endl;
+                cubstream::stream_file *stream_file_p = stream_context_manager::g_stream->get_stream_file();
+                stream_file_p->drop_volumes_to_pos (lowest_read_pos);
+              }
           }
       }
     while (time_in_sec < test_duration);
@@ -1740,9 +1755,12 @@ namespace test_stream
         now_time = std::chrono::system_clock::now ();
         int delta_time_in_sec = std::chrono::duration_cast<std::chrono::seconds>(now_time - last_print_time).count ();
         time_in_sec = std::chrono::duration_cast<std::chrono::seconds>(now_time - start_test_time).count ();
-
         if (delta_time_in_sec > 10)
           {
+            cubstream::stream_position lowest_read_pos = std::numeric_limits<cubstream::stream_position>::max ();
+
+            lowest_read_pos = stream_context_manager::g_stream->get_curr_read_position ();
+
             std::cout << "Recyclable_pos: " << stream_context_manager::g_stream->get_last_recyclable_pos () << " (" << stream_context_manager::g_stream->get_last_recyclable_pos () / time_in_sec / 1024 << " KB/s)";
             std::cout << " Last_committed: " << stream_context_manager::g_stream->get_last_committed_pos () << " (" << stream_context_manager::g_stream->get_last_committed_pos () / time_in_sec / 1024 << " KB/s)" << std::endl;
             std::cout << "Serial_read_pos: " << stream_context_manager::g_stream->get_curr_read_position () << " (" << stream_context_manager::g_stream->get_curr_read_position () / time_in_sec / 1024 << " KB/s)" << std::endl;
@@ -1750,12 +1768,23 @@ namespace test_stream
             for (i = 0; i < stream_context_manager::g_read_byte_threads; i++)
               {
                 std::cout << stream_context_manager::g_read_positions[i] << " (" << stream_context_manager::g_read_positions[i] / time_in_sec / 1024 << " KB/s),";
+                if (stream_context_manager::g_read_positions[i] < lowest_read_pos)
+                  {
+                    lowest_read_pos = stream_context_manager::g_read_positions[i];
+                  }
               }
 
             std::cout << std::endl;
             std::cout << std::endl;
 
             last_print_time = now_time;
+
+            if (lowest_read_pos < std::numeric_limits<cubstream::stream_position>::max ())
+              {
+                std::cout << "Drop volumes up position "<< lowest_read_pos << std::endl;
+                cubstream::stream_file *stream_file_p = stream_context_manager::g_stream->get_stream_file();
+                //stream_file_p->drop_volumes_to_pos (lowest_read_pos);
+              }
           }
       }
     while (time_in_sec < test_duration);
