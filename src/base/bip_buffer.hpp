@@ -111,6 +111,11 @@ namespace mem
 	m_reserve_margin = margin;
       };
 
+      const size_t get_reserve_margin (void)
+      {
+	return m_reserve_margin;
+      };
+
       const char *reserve (const size_t amount, bool &need_read_range_adjust)
       {
 	const char *reserved_ptr = NULL;

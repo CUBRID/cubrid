@@ -403,7 +403,7 @@ namespace test_stream
     char *tmp_str;
     size_t str_size;
 
-    str_size = std::rand () % 10000 + 1;
+    str_size = std::rand () % 1000 + 1;
     tmp_str = new char[str_size + 1];
     generate_str (tmp_str, str_size);
     large_str = std::string (tmp_str);
@@ -835,6 +835,7 @@ namespace test_stream
     stream_context_manager::g_running_readers.set (m_reader_id);
     std::cout << "      Start unpacking thread " << std::endl;
 
+    test_stream_entry *prev_se = NULL;
     for (i = 0; ; i++)
       {
 	test_stream_entry *se = new test_stream_entry (stream_context_manager::g_stream);
@@ -904,7 +905,12 @@ namespace test_stream
 	    res = se->is_equal (se_array[se->get_mvcc_id()]);
 	    assert (res == 1);
           }
-	delete se;
+        if (prev_se != NULL)
+          {
+            delete prev_se;
+          }
+        prev_se = se;
+	//delete se;
 
 	stream_context_manager::g_unpacked_entries_cnt++;
 
@@ -1452,7 +1458,7 @@ namespace test_stream
 #define TEST_UNPACK_THREADS (unpack_threads)
 #define TEST_READ_BYTE_THREADS (read_bytes_threads)
 #define TEST_ENTRIES (TEST_PACK_THREADS * 20)
-#define TEST_OBJS_IN_ENTRIES_CNT 20
+#define TEST_OBJS_IN_ENTRIES_CNT 1
 
     int res = 0;
     int i, j;

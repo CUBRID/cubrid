@@ -27,7 +27,7 @@
 #include "thread_worker_pool.hpp"
 #include "thread_entry_task.hpp"
 #include <vector>
-
+#include <iostream>
 
 namespace test_stream
 {
@@ -241,10 +241,12 @@ namespace test_stream
 	serializator->unpack_int ((int *) &m_header.count_objects);
 	serializator->unpack_int (&m_header.data_size);
 
+#if 0
         assert (m_header.count_objects < 100);
         assert (m_header.data_size < 1000000);
         assert (m_header.mvcc_id < 1000);
         assert (m_header.tran_id < 1000);
+#endif
 
 	return NO_ERROR;
       };

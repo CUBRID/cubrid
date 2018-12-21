@@ -79,7 +79,7 @@ int main ()
   /* MT test with multiple writers/readers and stream file: */
   test_module (global_error, test_stream::test_stream_file_reader, 
     0,  /* start serial read position */
-    1000 * 1024 * 1024,  /* commit & append position (assumed size of stream); file should exist and have that content */
+    100 * 1024 * 1024,  /* commit & append position (assumed size of stream); file should exist and have that content */
     2 * 1024 * 1024,  /* BIP buffer size (stream buffer) */
     100 * 1024 * 1024  /* stream file size (chunk): should match exactly with actual volumes !!! */
     );
