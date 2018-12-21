@@ -443,11 +443,13 @@ namespace cubstream
 
         total_in_buffer = amount_trail_b + amount_trail_a;
 
-        stream_position prev_oldest_readable_position = m_oldest_buffered_position;
+        stream_position prev_oldest_buffered_position = m_oldest_buffered_position;
+        stream_position local_last_recyclable = m_last_recyclable_pos;
 
         m_oldest_buffered_position = m_last_committed_pos - total_in_buffer;
 
-        assert (m_oldest_buffered_position <= m_last_recyclable_pos);
+        assert (m_oldest_buffered_position <= local_last_recyclable);
+        assert (local_last_recyclable <= m_last_recyclable_pos);
         assert (m_stream_file->get_max_available_from_pos (m_oldest_buffered_position) >= 0);
       }
 
@@ -561,6 +563,7 @@ namespace cubstream
 	  {
 	    return NULL;
 	  }
+        read_context.buffer_size = actual_read_bytes;
 
 	err = m_stream_file->read (req_start_pos, read_context.file_buffer, actual_read_bytes);
 	if (err != NO_ERROR)
@@ -615,6 +618,7 @@ namespace cubstream
 	  {
 	    return NULL;
 	  }
+        read_context.buffer_size = actual_read_bytes;
 
 	err = m_stream_file->read (req_start_pos, read_context.file_buffer, actual_read_bytes);
 	if (err != NO_ERROR)
@@ -673,7 +677,7 @@ namespace cubstream
       }
   }
 
-  void multi_thread_stream::wake_up_flusher (float fill_factor, const stream_position &start_flush_pos,
+  void multi_thread_stream::wake_up_flusher (float fill_factor, const stream_position start_flush_pos,
       const size_t flush_amount)
   {
     /* wake up flusher (if any) :
@@ -695,10 +699,10 @@ namespace cubstream
   void multi_thread_stream::wait_for_flush_or_readers (const stream_position &last_commit_pos,
       const stream_position &last_append_pos)
   {
-    /* set fill factor to force a flush */
-    std::unique_lock<std::mutex> local_lock (m_recyclable_pos_mutex);
     wake_up_flusher (2.0f, m_last_recyclable_pos, last_commit_pos - m_last_recyclable_pos);
 
+    /* set fill factor to force a flush */
+    std::unique_lock<std::mutex> local_lock (m_recyclable_pos_mutex);
     /* wait until flusher/senders advances m_last_recyclable_pos */
     m_recyclable_pos_cv.wait (local_lock,
 			      [&] { return m_is_stopped ||

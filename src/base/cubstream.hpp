@@ -87,7 +87,7 @@ namespace cubstream
        * last position which may be recycled (the underlying memory associated may be recycled)
        * is checked by stream notify (e.g. flush to disk), and updated by flusher/external clients;
        */
-      stream_position m_last_recyclable_pos;
+      volatile stream_position m_last_recyclable_pos;
 
       std::string m_stream_name;
 
@@ -118,7 +118,7 @@ namespace cubstream
 	return m_last_committed_pos;
       }
 
-      const stream_position &get_last_recyclable_pos (void)
+      const stream_position get_last_recyclable_pos (void)
       {
 	return m_last_recyclable_pos;
       }

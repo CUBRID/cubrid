@@ -100,13 +100,14 @@ namespace cubstream
        * (used when reading for stream's buffer) */
       struct stream_read_context
       {
-	stream_read_context () : file_buffer (NULL), read_latch_page_idx (0) {}
+	stream_read_context () : file_buffer (NULL), buffer_size (0), read_latch_page_idx (0) {}
 	~stream_read_context ()
 	{
 	  assert (file_buffer == NULL);
 	}
 
 	char *file_buffer;
+        size_t buffer_size;
 	mem::buffer_latch_read_id read_latch_page_idx;
       };
 
@@ -218,8 +219,9 @@ namespace cubstream
          *   beyond the recyclable position
          */
         return (m_append_position > m_last_recyclable_pos + m_threshold_block_reserve
-                || (m_last_committed_pos > m_oldest_buffered_position + m_threshold_block_reserve
-                    && m_oldest_buffered_position + reserve_amount > m_last_recyclable_pos)) ? true : false;
+                || (m_last_committed_pos > m_oldest_buffered_position + m_trigger_flush_to_disk_size
+                    && m_oldest_buffered_position + reserve_amount
+                       + m_bip_buffer.get_reserve_margin () > m_last_recyclable_pos)) ? true : false;
       }
 
       /* fill factor : if < 1 : no need to flush or throttle the appenders ; if > 1 : need to flush and/or throttle */
@@ -245,7 +247,7 @@ namespace cubstream
 	return m_stream_file;
       }
 
-      void wake_up_flusher (float fill_factor, const stream_position &start_flush_pos, const size_t flush_amount);
+      void wake_up_flusher (float fill_factor, const stream_position start_flush_pos, const size_t flush_amount);
       void wait_for_flush_or_readers (const stream_position &last_commit_pos, const stream_position &last_append_pos);
       size_t wait_for_flush (const stream_position &req_pos, const size_t min_amount);
       void set_last_recyclable_pos (const stream_position &pos);
