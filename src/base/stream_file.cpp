@@ -764,9 +764,6 @@ namespace cubstream
     m_append_position += amount;
     flush_lock.unlock ();
 
-    /* TODO : only in debug mode */
-    check_file ();
-
     return NO_ERROR;
   }
 
@@ -868,30 +865,4 @@ namespace cubstream
     target_position = m_target_flush_position;
     assert (target_position >= m_append_position);
   }
-
-  void stream_file::check_file (void)
-  {
-    int retry_cnt = 0;
-    stream_position pos = m_drop_position;
-    while (pos < m_append_position)
-      {
-	int vol_seqno = get_vol_seqno_from_stream_pos (pos);
-	int fd = get_file_desc_from_vol_seqno (vol_seqno);
-	if (fd <= 0)
-	  {
-            /* this may be a race with drop event for m_drop_position value */
-            retry_cnt++;
-            if (retry_cnt > 2)
-              {
-	        assert (false);
-                return;
-              }
-            /* restart with refresh value of drop position */
-            pos = m_drop_position;
-            continue;
-	  }
-	pos += m_desired_volume_size;
-      }
-  }
-
 } /* namespace cubstream */

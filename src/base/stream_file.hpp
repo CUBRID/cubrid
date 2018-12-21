@@ -140,8 +140,6 @@ namespace cubstream
       size_t read_buffer (const int vol_seqno, const size_t volume_offset, char *buf, const size_t amount);
       size_t write_buffer (const int vol_seqno, const size_t volume_offset, const char *buf, const size_t amount);
 
-      void check_file (void);
-
     public:
       stream_file (multi_thread_stream &stream_arg, const size_t file_size = DEFAULT_VOLUME_SIZE,
 		   const int print_digits = DEFAULT_FILENAME_DIGITS)
