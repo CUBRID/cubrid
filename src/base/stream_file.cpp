@@ -344,6 +344,10 @@ namespace cubstream
     stream_position actual_drop_pos = std::min (drop_pos, m_append_position);
     u_flush_lock.unlock ();
 
+    drop_lock.lock ();
+    stream_position last_full_vol_drop_pos = m_start_vol_seqno * m_desired_volume_size;
+    drop_lock.unlock ();
+
     while (curr_pos < actual_drop_pos)
       {
 	size_t volume_offset;
@@ -357,6 +361,7 @@ namespace cubstream
 	    if (vol_seqno >= m_start_vol_seqno)
 	      {
 		m_start_vol_seqno = vol_seqno + 1;
+                last_full_vol_drop_pos = m_start_vol_seqno * m_desired_volume_size;
 	      }
 	    drop_lock.unlock ();
 
@@ -370,9 +375,13 @@ namespace cubstream
       }
 
     drop_lock.lock ();
-    if (actual_drop_pos > m_drop_position || force_set == true)
+    if (last_full_vol_drop_pos > m_drop_position)
       {
-	m_drop_position = actual_drop_pos;
+	m_drop_position = last_full_vol_drop_pos;
+      }
+    if (force_set == true)
+      {
+        m_drop_position = actual_drop_pos;
       }
     drop_lock.unlock ();
 
