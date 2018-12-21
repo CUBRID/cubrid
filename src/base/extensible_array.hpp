@@ -57,6 +57,11 @@ namespace mem
       template <typename T>
       inline void append (const T &obj);
 
+      std::size_t get_size () const
+      {
+	return m_size;
+      }
+
     private:
       inline void reset ();
 
@@ -82,23 +87,16 @@ namespace mem
 
       const T *get_array (void)
       {
-	return get_data_ptr ();
-      }
-
-      size_t get_memsize () const
-      {
-	return base_type::get_size ();
+	return reinterpret_cast<const T *> (base_type::get_read_ptr ());
       }
 
     protected:
       T *get_data_ptr ()
       {
-	return (T *) base_type::get_ptr ();
+	return reinterpret_cast<T *> (base_type::get_ptr ());
       }
 
-    private:
-
-      size_t get_memsize_for_count (size_t count)
+      size_t get_memsize_for_count (size_t count) const
       {
 	return count * sizeof (T);
       }
@@ -119,6 +117,11 @@ namespace mem
       inline void copy (const T *source, size_t length);      // overwrite entire array
 
       inline size_t get_size (void) const;                    // get current size
+
+      size_t get_memsize () const
+      {
+	return base_type::get_memsize_for_count (m_size);
+      }
 
     private:
       inline void reset (void);                               // reset array

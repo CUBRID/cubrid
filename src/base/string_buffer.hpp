@@ -63,6 +63,13 @@ class string_buffer
     {
     }
 
+    string_buffer (const mem::block_allocator &alloc, size_t initial_size)
+      : string_buffer (alloc)
+    {
+      m_ext_block.extend_to (initial_size);
+      m_ext_block.get_ptr ()[m_len] = '\0';
+    }
+
     const char *get_buffer () const
     {
       return this->m_ext_block.get_ptr ();
@@ -117,7 +124,7 @@ void string_buffer::operator+= (const char ch)
       assert (m_ext_block.get_ptr ()[m_len] == '\0');
 
       // (m_len + 1) is the current number of chars including ending '\0'
-      m_ext_block.extend_to (m_len + 1);
+      m_ext_block.extend_to (m_len + 2);
     }
 
   m_ext_block.get_ptr ()[m_len] = ch;
@@ -130,7 +137,7 @@ template<typename... Args> int string_buffer::operator() (Args &&... args)
 
   assert (len >= 0);
 
-  m_ext_block.extend_to (m_len + size_t (len) + 1);
+  m_ext_block.extend_to (m_len + size_t (len) + 2);
 
   snprintf (m_ext_block.get_ptr () + m_len, m_ext_block.get_size () - m_len, std::forward<Args> (args)...);
   m_len += len;

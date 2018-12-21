@@ -173,6 +173,7 @@ namespace mem
       {
 	char *ret_ptr = m_block.ptr;
 	m_block.ptr = NULL;
+	m_block.dim = 0;
 	return ret_ptr;
       }
 
@@ -233,11 +234,6 @@ namespace mem
       const char *get_read_ptr () const
       {
 	return m_use_stack ? m_stack.get_read_ptr () : m_ext_block.get_ptr ();
-      }
-
-      std::size_t get_size () const
-      {
-	return m_use_stack ? m_stack.SIZE : m_ext_block.get_size ();
       }
 
     private:

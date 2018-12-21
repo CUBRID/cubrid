@@ -742,7 +742,8 @@ void
 help_fprint_value (THREAD_ENTRY * thread_p, FILE * fp, const DB_VALUE * value)
 {
 /* *INDENT-OFF* */
-  string_buffer sb (mem::PRIVATE_BLOCK_ALLOCATOR);
+  const size_t BUFFER_SIZE = 1024;
+  string_buffer sb (mem::PRIVATE_BLOCK_ALLOCATOR, BUFFER_SIZE);
 /* *INDENT-ON* */
 
   db_value_printer printer (sb);

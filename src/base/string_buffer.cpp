@@ -21,12 +21,13 @@
  */
 
 #include "string_buffer.hpp"
+
 #include <memory.h>
 
 void string_buffer::add_bytes (size_t len, char *bytes)
 {
   assert (bytes != NULL);
-  m_ext_block.extend_to (m_len + len + 1);
+  m_ext_block.extend_to (m_len + len + 2);
   memcpy (m_ext_block.get_ptr () + m_len, bytes, len);
   m_len += len;
   m_ext_block.get_ptr ()[m_len] = '\0';

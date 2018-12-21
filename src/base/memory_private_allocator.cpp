@@ -30,7 +30,7 @@ namespace mem
   {
     if (b.ptr == NULL || b.dim == 0)
       {
-	b.ptr = (char *) db_private_alloc (NULL, size);
+	b.ptr = (char *) db_private_alloc (NULL, (int) size);
 	b.dim = size;
       }
     else if (size <= b.dim)
@@ -39,11 +39,16 @@ namespace mem
       }
     else
       {
-	char *new_ptr = (char *) db_private_realloc (NULL, b.ptr, size);
+	size_t new_size = b.dim;
+	while (new_size < size)
+	  {
+	    new_size *= 2;
+	  }
+	char *new_ptr = (char *) db_private_realloc (NULL, b.ptr, (int) new_size);
 	if (new_ptr != NULL)
 	  {
 	    b.ptr = new_ptr;
-	    b.dim = size;
+	    b.dim = new_size;
 	  }
 	else
 	  {
