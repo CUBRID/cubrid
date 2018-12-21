@@ -42,7 +42,6 @@
 #include <cstdio>     /* for std::remove */
 #include <limits>     /* for std::numeric_limits */
 
-
 namespace cubstream
 {
 
@@ -575,6 +574,7 @@ namespace cubstream
 
 #if defined (WINDOWS)
     /* TODO : use Windows API for paralel reads */
+    m_io_mutex.lock ();
     off_t actual_offset = lseek (fd, (long) volume_offset, SEEK_SET);
     if (actual_offset != volume_offset)
       {
@@ -584,6 +584,7 @@ namespace cubstream
       {
 	actual_read = ::read (fd, buf, amount);
       }
+    m_io_mutex.unlock ();
 #else
     actual_read = pread (fd, (void *) buf, amount, volume_offset);
 #endif
@@ -616,8 +617,10 @@ namespace cubstream
       }
 
 #if defined (WINDOWS)
+    m_io_mutex.lock ();
     lseek (fd, (long ) volume_offset, SEEK_SET);
     actual_write = ::write (fd, buf, amount);
+    m_io_mutex.unlock ();
 #else
     actual_write = pwrite (fd, buf, amount, volume_offset);
 #endif

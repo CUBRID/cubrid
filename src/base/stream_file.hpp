@@ -117,6 +117,10 @@ namespace cubstream
 
       static const int FILE_CREATE_FLAG;
 
+#if defined (WINDOWS)
+      std::mutex m_io_mutex;
+#endif
+
     protected:
       int get_file_desc_from_vol_seqno (const int vol_seqno);
       int get_vol_seqno_from_stream_pos (const stream_position &pos);
