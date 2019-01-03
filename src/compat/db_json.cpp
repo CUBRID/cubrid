@@ -1799,10 +1799,8 @@ db_json_path_points_to_array_cell (JSON_DOC &doc, const std::string &path, JSON_
     }
 
   resulting_json_parent = pointer_parent.Get (doc);
-  // the parent does not exist
   if (resulting_json_parent == NULL)
     {
-      // we can only create a child value, not both parent and child
       return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, path.substr (0, found), &doc);
     }
 
@@ -1810,6 +1808,8 @@ db_json_path_points_to_array_cell (JSON_DOC &doc, const std::string &path, JSON_
   if (db_json_get_type_of_value (resulting_json_parent) != DB_JSON_ARRAY
       || !db_json_path_is_token_valid_array_index (last_token, false))
     {
+      // todo: There are object keys that are valid token indexes (e.g. $."111" passes array_index validation).
+      //       So, there is a need to check for the dor symbol in the path before it is transformed to json_pointer
       return db_json_er_set_expected_other_type (ARG_FILE_LINE, path, DB_JSON_OBJECT, DB_JSON_ARRAY);
     }
 
@@ -1836,10 +1836,8 @@ db_json_resolve_json_parent (JSON_DOC &doc, const std::string &path, JSON_VALUE 
     }
 
   resulting_json_parent = pointer_parent.Get (doc);
-  // the parent does not exist
   if (resulting_json_parent == NULL)
     {
-      // we can only create a child value, not both parent and child
       return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, path.substr (0, found), &doc);
     }
 
@@ -1997,10 +1995,8 @@ db_json_replace_autowrap_scalar (const JSON_VALUE *new_value, const std::string 
     }
 
   JSON_VALUE *resulting_json_parent = pointer_parent.Get (doc);
-  // the parent does not exist
   if (resulting_json_parent == NULL)
     {
-      // we can only create a child value, not both parent and child
       return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, path.substr (0, found), &doc);
     }
 
@@ -2387,7 +2383,7 @@ db_json_array_shift_values (const JSON_DOC *value, JSON_DOC &doc, JSON_POINTER &
 
   if (last_token_index >= resulting_json_parent->GetArray ().Size ())
     {
-      p.Set (doc, *value,doc.GetAllocator ());
+      p.Set (doc, *value, doc.GetAllocator ());
       return NO_ERROR;
     }
 
