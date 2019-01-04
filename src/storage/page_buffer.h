@@ -234,8 +234,8 @@ struct pgbuf_watcher
 };
 
 // *INDENT-OFF*
-using pgbuf_aligned_buffer = mem::stack_block<(size_t) IO_MAX_PAGE_SIZE>;
-using pgbuf_resizable_buffer = mem::extensible_stack_block<(size_t) IO_MAX_PAGE_SIZE>;
+using pgbuf_aligned_buffer = cubmem::stack_block<(size_t) IO_MAX_PAGE_SIZE>;
+using pgbuf_resizable_buffer = cubmem::extensible_stack_block<(size_t) IO_MAX_PAGE_SIZE>;
 // *INDENT-ON*
 
 extern HFID *pgbuf_ordered_null_hfid;

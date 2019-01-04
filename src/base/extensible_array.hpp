@@ -29,13 +29,13 @@
 
 #include <memory>
 
-namespace mem
+namespace cubmem
 {
   template <size_t Size>
-  class appendible_block : public mem::extensible_stack_block<Size>
+  class appendible_block : public cubmem::extensible_stack_block<Size>
   {
     private:
-      using base_type = mem::extensible_stack_block<Size>;
+      using base_type = cubmem::extensible_stack_block<Size>;
 
     public:
 
@@ -98,7 +98,7 @@ namespace mem
 
       size_t m_size;                                          // current size
   };
-} // namespace mem
+} // namespace cubmem
 
 /************************************************************************/
 /* Implementation                                                       */
@@ -107,7 +107,7 @@ namespace mem
 #include <cassert>
 #include <cstring>
 
-namespace mem
+namespace cubmem
 {
   //
   //  appendible_block
@@ -278,6 +278,6 @@ namespace mem
     m_size = 0;
   }
 
-} // namespace mem
+} // namespace cubmem
 
 #endif /* !EXTENSIBLE_ARRAY_HPP_ */

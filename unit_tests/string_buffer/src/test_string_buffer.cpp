@@ -52,20 +52,20 @@ char stack_buf[sizeof (prefix) + N + sizeof (suffix)]; // working buffer
 allocator::stack stack_allocator (stack_buf, sizeof (stack_buf));
 allocator::affix<allocator::stack, prefix, suffix> affix_allocator (stack_allocator);
 
-void temp_extend (mem::block &block, size_t len)
+void temp_extend (cubmem::block &block, size_t len)
 {
-  mem::block b = affix_allocator.allocate (block.dim + len);
+  cubmem::block b = affix_allocator.allocate (block.dim + len);
   memcpy (b.ptr, block.ptr, block.dim);
   affix_allocator.deallocate (std::move (block));
   block = std::move (b);
 }
 
-void temp_dealloc (mem::block &block)
+void temp_dealloc (cubmem::block &block)
 {
   affix_allocator.deallocate (std::move (block));
 }
 
-mem::block_allocator AFFIX_BLOCK_ALLOCATOR { temp_extend, temp_dealloc };
+cubmem::block_allocator AFFIX_BLOCK_ALLOCATOR { temp_extend, temp_dealloc };
 
 class test_string_buffer
 {
@@ -138,7 +138,7 @@ class test_string_buffer
 	  ERR ("[%s(%d)] StrBuf() {\"%s\"} expect{\"%s\"}", file, line, m_sb.get_buffer(), m_ref);
 	  return;
 	}
-      const mem::block block { m_sb.len (), const_cast<char *> (m_sb.get_buffer ()) };
+      const cubmem::block block { m_sb.len (), const_cast<char *> (m_sb.get_buffer ()) };
       if (affix_allocator.check (block))//check overflow
 	{
 	  ERR ("[%s(%d)] StrBuf() memory corruption", file, line);
@@ -163,7 +163,7 @@ class test_string_buffer
 	  ERR ("[%s(%d)] StrBuf() {\"%s\"} expect {\"%s\"}", file, line, m_sb.get_buffer(), m_ref);
 	  return;
 	}
-      const mem::block block { m_sb.len (), const_cast<char *> (m_sb.get_buffer ()) };
+      const cubmem::block block { m_sb.len (), const_cast<char *> (m_sb.get_buffer ()) };
       if (affix_allocator.check (block))
 	{
 	  ERR ("[%s(%d)] StrBuf() memory corruption", file, line);

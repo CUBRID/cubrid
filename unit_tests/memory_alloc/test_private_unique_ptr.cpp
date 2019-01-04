@@ -30,7 +30,7 @@
 #include <iostream>
 #include <memory>
 
-using namespace mem;
+using namespace cubmem;
 
 namespace test_memalloc
 {
@@ -40,7 +40,7 @@ namespace test_memalloc
   test_private_unique_ptr_swap()
   {
     custom_thread_entry cte;
-    mem::private_allocator<char> private_alloc (cte.get_thread_entry());
+    cubmem::private_allocator<char> private_alloc (cte.get_thread_entry());
 
     char *a = private_alloc.allocate (SIZE_64);
     char *b = private_alloc.allocate (SIZE_64);
@@ -69,7 +69,7 @@ namespace test_memalloc
     std::cout << TAB << "testing pointer is freed when the desctructor of PRIVATE_UNIQUE_PTR is called" << std::endl;
     custom_thread_entry cte;
     T *ptr = nullptr;
-    mem::private_allocator<T> private_alloc (cte.get_thread_entry());
+    cubmem::private_allocator<T> private_alloc (cte.get_thread_entry());
 
     ptr = private_alloc.allocate (SIZE_64);
     *ptr = T();
@@ -85,7 +85,7 @@ namespace test_memalloc
     std::cout << TAB << "testing release function of PRIVATE_UNIQUE_PTR" << std::endl;
     custom_thread_entry cte;
     T *ptr = nullptr;
-    mem::private_allocator<T> private_alloc (cte.get_thread_entry());
+    cubmem::private_allocator<T> private_alloc (cte.get_thread_entry());
 
     ptr = private_alloc.allocate (SIZE_64);
     *ptr = T();

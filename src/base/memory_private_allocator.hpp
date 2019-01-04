@@ -33,7 +33,7 @@ namespace cubthread
   class entry;
 };
 
-namespace mem
+namespace cubmem
 {
   /* private_allocator -
    *
@@ -172,7 +172,7 @@ namespace mem
   };
 
   extern const block_allocator PRIVATE_BLOCK_ALLOCATOR;
-} // namespace mem
+} // namespace cubmem
 
 //////////////////////////////////////////////////////////////////////////
 //
@@ -180,7 +180,7 @@ namespace mem
 //
 //////////////////////////////////////////////////////////////////////////
 
-namespace mem
+namespace cubmem
 {
   //
   // private_allocator
@@ -341,6 +341,6 @@ namespace mem
   {
     return *m_smart_ptr.get ();
   }
-} // namespace mem
+} // namespace cubmem
 
 #endif // _MEMORY_PRIVATE_ALLOCATOR_HPP_

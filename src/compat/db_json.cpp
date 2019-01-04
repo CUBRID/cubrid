@@ -3189,7 +3189,7 @@ db_json_er_set_path_does_not_exist (const char *file_name, const int line_no, co
 
   // get the json body
   char *raw_json_body = db_json_get_raw_json_body_from_document (doc);
-  mem::private_unique_ptr<char> unique_ptr (raw_json_body, NULL);
+  cubmem::private_unique_ptr<char> unique_ptr (raw_json_body, NULL);
 
   er_set (ER_ERROR_SEVERITY, file_name, line_no, ER_JSON_PATH_DOES_NOT_EXIST, 2,
 	  sql_path_string.c_str (), raw_json_body);

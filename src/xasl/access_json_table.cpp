@@ -51,7 +51,7 @@ namespace cubxasl
 
 	case JSON_TABLE_THROW_ERROR:
 	{
-	  mem::private_unique_ptr<char> unique_ptr_json_body (db_json_get_raw_json_body_from_document (&input), NULL);
+	  cubmem::private_unique_ptr<char> unique_ptr_json_body (db_json_get_raw_json_body_from_document (&input), NULL);
 
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_TABLE_ON_ERROR_INCOMP_DOMAIN, 4,
 		  unique_ptr_json_body.get (), m_path, m_column_name,

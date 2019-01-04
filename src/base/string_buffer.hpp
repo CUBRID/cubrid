@@ -57,13 +57,13 @@ class string_buffer
       m_len = 0; //dtor
     }
 
-    string_buffer (const mem::block_allocator &alloc)
+    string_buffer (const cubmem::block_allocator &alloc)
       : m_len {0}
       , m_ext_block { alloc }
     {
     }
 
-    string_buffer (const mem::block_allocator &alloc, size_t initial_size)
+    string_buffer (const cubmem::block_allocator &alloc, size_t initial_size)
       : string_buffer (alloc)
     {
       m_ext_block.extend_to (initial_size);
@@ -108,7 +108,7 @@ class string_buffer
     void operator= (string_buffer &&) = delete;                   //move assign
 
     size_t m_len;                                                 //current content length not including ending '\0'
-    mem::extensible_block m_ext_block;
+    cubmem::extensible_block m_ext_block;
 };
 
 //implementation for small (inline) methods

@@ -27,7 +27,7 @@
 #include "thread_manager.hpp"
 #endif // SERVER_MODE
 
-namespace mem
+namespace cubmem
 {
   void
   private_block_allocate (block &b, size_t size)
@@ -152,4 +152,4 @@ namespace mem
     (void) thread_p;
 #endif
   }
-} // namespace mem
+} // namespace cubmem

@@ -126,9 +126,9 @@ namespace test_memalloc
   }
   template <typename T>
   void
-  init_allocator (custom_thread_entry &cte, mem::private_allocator<T> *&alloc, test_allocator_type &type_out)
+  init_allocator (custom_thread_entry &cte, cubmem::private_allocator<T> *&alloc, test_allocator_type &type_out)
   {
-    alloc = new mem::private_allocator<T> (cte.get_thread_entry ());
+    alloc = new cubmem::private_allocator<T> (cte.get_thread_entry ());
     type_out = test_allocator_type::PRIVATE;
   }
 

@@ -39,7 +39,7 @@
 #include <cassert>
 #include <cinttypes>
 
-namespace mem
+namespace cubmem
 {
   const size_t DEFAULT_ALIGNMENT = 8;
   template <typename T>
@@ -118,10 +118,10 @@ namespace mem
    * - able to extend/reallocate to accommodate additional bytes
    * - owns the memory by default and it will free the memory in destructor unless it is moved:
    *    {
-   *        mem::block_ext block{some_realloc, some_dealloc};//some_realloc/dealloc = functions, functors or lambdas
+   *        cubmem::block_ext block{some_realloc, some_dealloc};//some_realloc/dealloc = functions, functors or lambdas
    *        //...
    *        //move it or it will be deallocated; simple copy => compiler error because it is not designed to be copied
-   *        mem::block b = std::move(block);
+   *        cubmem::block b = std::move(block);
    *    }
    */
   struct extensible_block
@@ -172,13 +172,13 @@ namespace mem
       extensible_block m_ext_block;
       bool m_use_stack;
   };
-} // namespace mem
+} // namespace cubmem
 
 //////////////////////////////////////////////////////////////////////////
 // inline/template implementation
 //////////////////////////////////////////////////////////////////////////
 
-namespace mem
+namespace cubmem
 {
   //
   // alignment
@@ -405,6 +405,6 @@ namespace mem
   {
     return m_use_stack ? m_stack.get_read_ptr () : m_ext_block.get_read_ptr ();
   }
-} // namespace mem
+} // namespace cubmem
 
 #endif // _MEM_BLOCK_HPP_

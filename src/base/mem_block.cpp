@@ -25,7 +25,7 @@
 #include <functional>
 #include <cstring>
 
-namespace mem
+namespace cubmem
 {
   void
   standard_alloc (block &b, size_t size)
@@ -142,4 +142,4 @@ namespace mem
     m_dealloc_f = other.m_dealloc_f;
     return *this;
   }
-} // namespace mem
+} // namespace cubmem

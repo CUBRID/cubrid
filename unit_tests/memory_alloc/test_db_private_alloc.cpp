@@ -43,13 +43,13 @@ namespace test_memalloc
 
   /* Expand fn_arg<Alloc<T> > with the three possible allocator */
 #define FUNC_ALLOCS_AS_ARGS(fn_arg, type_arg) \
-  fn_arg<mem::private_allocator<type_arg> >, \
+  fn_arg<cubmem::private_allocator<type_arg> >, \
   fn_arg<std::allocator<type_arg> >, \
   fn_arg<mallocator<type_arg> >
 
   /* Expand fn_arg<T, Alloc<T> > with the three possible allocator */
 #define FUNC_TYPE_AND_ALLOCS_AS_ARGS(fn_arg, type_arg) \
-  fn_arg<type_arg, mem::private_allocator<type_arg> >, \
+  fn_arg<type_arg, cubmem::private_allocator<type_arg> >, \
   fn_arg<type_arg, std::allocator<type_arg> >, \
   fn_arg<type_arg, mallocator<type_arg> >
 
@@ -141,7 +141,7 @@ namespace test_memalloc
 
     {
       custom_thread_entry cte;
-      mem::private_allocator<T> private_alloc (cte.get_thread_entry());
+      cubmem::private_allocator<T> private_alloc (cte.get_thread_entry());
 
       std::cout << prefix << "alloc 64" << std::endl;
       ptr = private_alloc.allocate (SIZE_64);
@@ -152,7 +152,7 @@ namespace test_memalloc
 
     {
       custom_thread_entry cte;
-      mem::private_allocator<T> private_alloc (cte.get_thread_entry());
+      cubmem::private_allocator<T> private_alloc (cte.get_thread_entry());
       std::cout << prefix << "alloc 1M" << std::endl;
       ptr = private_alloc.allocate (SIZE_1_M);
       *ptr = T();
@@ -162,7 +162,7 @@ namespace test_memalloc
 
     {
       custom_thread_entry cte;
-      mem::private_allocator<T> private_alloc (cte.get_thread_entry());
+      cubmem::private_allocator<T> private_alloc (cte.get_thread_entry());
 
       std::cout << prefix << "alloc 64x64" << std::endl;
       std::array<T *, SIZE_64> ptr_array;
@@ -180,10 +180,10 @@ namespace test_memalloc
 
     {
       custom_thread_entry cte;
-      mem::private_allocator<T> private_alloc (cte.get_thread_entry());
+      cubmem::private_allocator<T> private_alloc (cte.get_thread_entry());
 
       /* test containers */
-      std::vector<T, mem::private_allocator<T>> vec (private_alloc);
+      std::vector<T, cubmem::private_allocator<T>> vec (private_alloc);
       vec.resize (SIZE_64);
       vec.resize (SIZE_ONE_K);
       vec.resize (SIZE_16_K);

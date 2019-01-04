@@ -1007,7 +1007,7 @@ namespace cubthread
   {
     worker *refp = NULL;
     const std::size_t AVAILABLE_STACK_DEFAULT_SIZE = 1024;
-    mem::appendable_array<worker *, AVAILABLE_STACK_DEFAULT_SIZE> available_stack;
+    cubmem::appendable_array<worker *, AVAILABLE_STACK_DEFAULT_SIZE> available_stack;
 
     // how this works:
     //

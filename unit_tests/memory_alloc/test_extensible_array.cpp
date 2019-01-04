@@ -34,7 +34,7 @@
 #include <typeinfo>
 #include <array>
 
-using namespace mem;
+using namespace cubmem;
 
 namespace test_memalloc
 {

@@ -28,16 +28,16 @@
 #include <cstring>
 
 parser_block_allocator::parser_block_allocator (parser_context *parser)
-  : mem::block_allocator (std::bind (&parser_block_allocator::alloc, this, std::placeholders::_1,
-				     std::placeholders::_2),
-			  std::bind (&parser_block_allocator::dealloc, this, std::placeholders::_1))
+  : cubmem::block_allocator (std::bind (&parser_block_allocator::alloc, this, std::placeholders::_1,
+					std::placeholders::_2),
+			     std::bind (&parser_block_allocator::dealloc, this, std::placeholders::_1))
   , m_parser (parser)
 {
   //
 }
 
 void
-parser_block_allocator::alloc (mem::block &b, size_t size)
+parser_block_allocator::alloc (cubmem::block &b, size_t size)
 {
   if (b.ptr == NULL || b.dim == 0)
     {
@@ -65,7 +65,7 @@ parser_block_allocator::alloc (mem::block &b, size_t size)
 }
 
 void
-parser_block_allocator::dealloc (mem::block &b)
+parser_block_allocator::dealloc (cubmem::block &b)
 {
   // no deallocation
 }

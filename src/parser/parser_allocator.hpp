@@ -29,15 +29,15 @@
 // forward def
 struct parser_context;
 
-class parser_block_allocator : public mem::block_allocator
+class parser_block_allocator : public cubmem::block_allocator
 {
   public:
     parser_block_allocator () = delete;
     parser_block_allocator (parser_context *parser);
 
   private:
-    void alloc (mem::block &b, size_t size);
-    void dealloc (mem::block &b);
+    void alloc (cubmem::block &b, size_t size);
+    void dealloc (cubmem::block &b);
 
     parser_context *m_parser;
 };

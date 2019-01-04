@@ -9956,7 +9956,7 @@ char *
 pr_valstring (THREAD_ENTRY * threade, DB_VALUE * val)
 {
   const size_t BUFFER_SIZE = 1024;
-  string_buffer sb (mem::PRIVATE_BLOCK_ALLOCATOR, BUFFER_SIZE);
+  string_buffer sb (cubmem::PRIVATE_BLOCK_ALLOCATOR, BUFFER_SIZE);
 
   if (val == NULL)
     {

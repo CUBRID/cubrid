@@ -87,7 +87,7 @@ namespace cubstream
 	size_t written_bytes;
       };
 
-      mem::bip_buffer<BIP_BUFFER_READ_PAGES_COUNT> m_bip_buffer;
+      cubmem::bip_buffer<BIP_BUFFER_READ_PAGES_COUNT> m_bip_buffer;
 
       /* oldest readable position : updated according to buffer availability:
        * oldest stream position available from bip_buffer
@@ -96,7 +96,7 @@ namespace cubstream
        */
       stream_position m_oldest_readable_position;
 
-      mem::collapsable_circular_queue<stream_reserve_context> m_reserved_positions;
+      cubmem::collapsable_circular_queue<stream_reserve_context> m_reserved_positions;
 
       /* threshold size of unread stream content not read which triggers signaling "filled" event
        * such event may be throttling the reserve calls on stream (the stream content needs to be saved to disk)
@@ -129,8 +129,8 @@ namespace cubstream
       char *reserve_with_buffer (const size_t amount, stream_reserve_context *&reserved_context);
 
       char *get_data_from_pos (const stream_position &req_start_pos, const size_t amount,
-			       size_t &actual_read_bytes, mem::buffer_latch_read_id &read_latch_page_idx);
-      int unlatch_read_data (const mem::buffer_latch_read_id &read_latch_page_idx);
+			       size_t &actual_read_bytes, cubmem::buffer_latch_read_id &read_latch_page_idx);
+      int unlatch_read_data (const cubmem::buffer_latch_read_id &read_latch_page_idx);
 
       int wait_for_data (const size_t amount, const STREAM_SKIP_MODE skip_mode);
 

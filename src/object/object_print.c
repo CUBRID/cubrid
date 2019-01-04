@@ -741,7 +741,7 @@ void
 help_fprint_value (THREAD_ENTRY * thread_p, FILE * fp, const DB_VALUE * value)
 {
   const size_t BUFFER_SIZE = 1024;
-  string_buffer sb (mem::PRIVATE_BLOCK_ALLOCATOR, BUFFER_SIZE);
+  string_buffer sb (cubmem::PRIVATE_BLOCK_ALLOCATOR, BUFFER_SIZE);
 
   db_value_printer printer (sb);
   printer.describe_value (value);
