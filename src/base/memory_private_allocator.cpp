@@ -18,7 +18,7 @@
  */
 
 //
-// memory_private_allocator.hpp - extension to memory_alloc.h private allocation
+// memory_private_allocator.cpp - extension to memory_alloc.h private allocation
 //
 
 #include "memory_private_allocator.hpp"

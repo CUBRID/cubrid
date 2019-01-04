@@ -23,7 +23,6 @@
 #include "mem_block.hpp"
 
 #include <functional>
-
 #include <cstring>
 
 namespace mem
@@ -44,7 +43,9 @@ namespace mem
       {
 	char *new_ptr = new char[size];
 	std::memcpy (new_ptr, b.ptr, b.dim);
+
 	delete[] b.ptr;
+
 	b.ptr = new_ptr;
 	b.dim = size;
       }
@@ -75,10 +76,15 @@ namespace mem
     else
       {
 	size_t new_size;
-	for (new_size = b.dim; new_size < size; new_size *= 2);
+
+	for (new_size = b.dim; new_size < size; new_size *= 2)
+	  ;
+
 	char *new_ptr = new char[new_size];
 	std::memcpy (new_ptr, b.ptr, b.dim);
+
 	delete[] b.ptr;
+
 	b.ptr = new_ptr;
 	b.dim = size;
       }

@@ -2523,10 +2523,8 @@ pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
   int error = NO_ERROR;
   unsigned int save_custom = parser->custom_print;
 
-  /* *INDENT-OFF* */
   parser_block_allocator alloc (parser);
   string_buffer sb (alloc);
-  /* *INDENT-ON* */
 
   db_value_printer printer (sb);
   if (val == NULL)

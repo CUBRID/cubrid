@@ -61,8 +61,7 @@ namespace mem
     public:
       private_unique_ptr (T *ptr, THREAD_ENTRY *thread_p)
       {
-	smart_ptr = std::unique_ptr<T, private_unique_ptr_deleter <T> >
-		    (ptr, private_unique_ptr_deleter <T> (thread_p));
+	smart_ptr = std::unique_ptr<T, private_unique_ptr_deleter<T>> (ptr, private_unique_ptr_deleter<T> (thread_p));
       }
 
       T *get ()
@@ -87,16 +86,16 @@ namespace mem
 
       T *operator-> () const
       {
-	return smart_ptr.get();
+	return smart_ptr.get ();
       }
 
       T &operator* () const
       {
-	return *smart_ptr.get();
+	return *smart_ptr.get ();
       }
 
     private:
-      std::unique_ptr <T, private_unique_ptr_deleter <T> >smart_ptr;
+      std::unique_ptr<T, private_unique_ptr_deleter<T>> smart_ptr;
   };
 
   extern const block_allocator PRIVATE_BLOCK_ALLOCATOR;

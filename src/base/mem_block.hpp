@@ -120,6 +120,7 @@ namespace mem
 	return *this;
       }
   };
+
   extern const block_allocator STANDARD_BLOCK_ALLOCATOR;
   extern const block_allocator EXPONENTIAL_STANDARD_BLOCK_ALLOCATOR;
   extern const block_allocator CSTYLE_BLOCK_ALLOCATOR;

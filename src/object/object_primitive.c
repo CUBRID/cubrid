@@ -9956,10 +9956,8 @@ pr_data_writeval (OR_BUF * buf, DB_VALUE * value)
 char *
 pr_valstring (THREAD_ENTRY * threade, DB_VALUE * val)
 {
-/* *INDENT-OFF* */
   const size_t BUFFER_SIZE = 1024;
   string_buffer sb (mem::PRIVATE_BLOCK_ALLOCATOR, BUFFER_SIZE);
-/* *INDENT-ON* */
 
   if (val == NULL)
     {

@@ -51,9 +51,13 @@ parser_block_allocator::alloc (mem::block &b, size_t size)
   else
     {
       size_t new_size;
-      for (new_size = b.dim; new_size < size; new_size *= 2);
+
+      for (new_size = b.dim; new_size < size; new_size *= 2)
+	;
+
       char *new_ptr = (char *) parser_alloc (m_parser, (const int) new_size);
       std::memcpy (new_ptr, b.ptr, b.dim);
+
       // no freeing
       b.ptr = new_ptr;
       b.dim = new_size;
