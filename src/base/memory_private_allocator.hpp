@@ -131,6 +131,8 @@ namespace mem
   HL_HEAPID get_private_heapid (cubthread::entry *&thread_p);
   void *private_heap_allocate (cubthread::entry *thread_p, HL_HEAPID heapid, size_t size);
   void private_heap_deallocate (cubthread::entry *thread_p, HL_HEAPID heapid, void *ptr);
+  void register_private_allocator (cubthread::entry *thread_p);
+  void deregister_private_allocator (cubthread::entry *thread_p);
 
   // private_pointer_deleter - deleter for pointer allocated with private allocator
   //
@@ -188,10 +190,7 @@ namespace mem
     : m_thread_p (thread_p)
   {
     m_heapid = get_private_heapid (m_thread_p);
-#if !defined (NDEBUG)
-    /* also register the allocator in thread entry */
-    m_thread_p->count_private_allocators++;
-#endif /* DEBUG */
+    register_private_allocator (m_thread_p);
   }
 
   template <typename T>
@@ -199,10 +198,7 @@ namespace mem
   {
     m_thread_p = other.m_thread_p;
     m_heapid = other.m_heapid;
-#if !defined (NDEBUG)
-    /* also register the allocator in thread entry */
-    m_thread_p->count_private_allocators++;
-#endif /* DEBUG */
+    register_private_allocator (m_thread_p);
   }
 
   template <typename T>
@@ -211,19 +207,13 @@ namespace mem
   {
     m_thread_p = other.get_thread_entry ();
     m_heapid = other.get_heapid ();
-#if !defined (NDEBUG)
-    /* also register the allocator in thread entry */
-    this->m_thread_p->count_private_allocators++;
-#endif /* DEBUG */
+    register_private_allocator (m_thread_p);
   }
 
   template <typename T>
   private_allocator<T>::~private_allocator ()
   {
-#if !defined (NDEBUG)
-    /* deregister allocator from thread entry */
-    m_thread_p->count_private_allocators--;
-#endif /* DEBUG */
+    deregister_private_allocator (m_thread_p);
   }
 
   template <typename T>

@@ -132,4 +132,24 @@ namespace mem
 	db_private_free (thread_p, ptr);
       }
   }
+
+  void
+  register_private_allocator (cubthread::entry *thread_p)
+  {
+#if defined (SERVER_MODE) && !defined (NDEBUG)
+    thread_p->count_private_allocators++;
+#else
+    (void) thread_p;
+#endif
+  }
+
+  void
+  deregister_private_allocator (cubthread::entry *thread_p)
+  {
+#if defined (SERVER_MODE) && !defined (NDEBUG)
+    thread_p->count_private_allocators--;
+#else
+    (void) thread_p;
+#endif
+  }
 } // namespace mem
