@@ -277,7 +277,7 @@ typedef enum
 
 /* Decrement counter of resource highest lock mode. */
 #define LK_DEC_HIGHEST_LOCK_COUNTER(highest_lock_info) \
-  (assert (((highest_lock_info) & LK_RES_HIGHEST_LOCK_COUNTER_MASK) > 0),  \
+  (assert (((highest_lock_info) & LK_RES_HIGHEST_LOCK_COUNTER_MASK) > 0ULL),  \
    (highest_lock_info) - LK_RES_HIGHEST_LOCK_COUNTER_INCREMENT)
 
 /* Reset counter of resource highest lock mode. */
@@ -317,7 +317,7 @@ typedef enum
 
 /* Has highest lock enabled? */
 #define LK_HAS_HIGHEST_LOCK_INFO_ENABLED(highest_lock_info) \
-  (((highest_lock_info) & LK_RES_HIGHEST_LOCK_FLAG) != 0)
+  (((highest_lock_info) & LK_RES_HIGHEST_LOCK_FLAG) != 0ULL)
 
 /* Has highest lock disabled? */
 #define LK_HAS_HIGHEST_LOCK_INFO_DISABLED(highest_lock_info) \
@@ -325,7 +325,7 @@ typedef enum
 
 /* Has resource highest lock enabled? */
 #define LK_RES_HAS_HIGHEST_LOCK_INFO_ENABLED(res_ptr) \
-  ((ATOMIC_INC_64 (&(res_ptr)->highest_lock_info, 0LL) & LK_RES_HIGHEST_LOCK_FLAG) != 0)
+  ((ATOMIC_INC_64 (&(res_ptr)->highest_lock_info, 0LL) & LK_RES_HIGHEST_LOCK_FLAG) != 0ULL)
 
 /* Has resource highest lock disabled? */
 #define LK_RES_HAS_HIGHEST_LOCK_INFO_DISABLED(res_ptr) \
@@ -3695,11 +3695,26 @@ start:
 	      /* Activate the entry, if not already activate it. */
 	      if (entry_ptr != NULL)
 		{
+		  /* TO DO - entry_ptr is in holderl list */
 		  assert (LK_ENTRY_IS_MARK_DELETED (entry_ptr));
 		  if (!ATOMIC_CAS_32 (&entry_ptr->status, LK_ENTRY_MARK_DELETED, LK_ENTRY_ACTIVE))
 		    {
 		      /* MNO tpossible. */
 		      return false;
+		    }
+
+		  entry_ptr->granted_mode = lock;
+		  assert (entry_ptr->granted_mode <=
+			  LK_GET_HIGHEST_LOCK_MODE (ATOMIC_INC_64 (&(res_ptr)->highest_lock_info, 0LL)));
+		  entry_ptr->count = 0;
+		  entry_ptr->instant_lock_count = 0;
+		  if (class_entry != NULL /*&& LK_ENTRY_IS_ACTIVE (class_entry) */ )
+		    {
+		      entry_ptr->class_entry = class_entry;
+		    }
+		  else
+		    {
+		      entry_ptr->class_entry = NULL;
 		    }
 		}
 	    }
@@ -3747,7 +3762,7 @@ start:
       res_ptr->holder = entry_ptr;
 
       /* to manage granules */
-      if (class_entry != NULL && LK_ENTRY_IS_ACTIVE (class_entry))
+      if (class_entry != NULL /* && LK_ENTRY_IS_ACTIVE (class_entry) */ )
 	{
 	  entry_ptr->class_entry = class_entry;
 	}
@@ -3765,6 +3780,11 @@ start:
       if (LK_RES_HAS_HIGHEST_LOCK_INFO_DISABLED (res_ptr))
 	{
 	  res_ptr->total_holders_mode = lock;
+	}
+      else
+	{
+	  assert (entry_ptr->granted_mode <=
+		  LK_GET_HIGHEST_LOCK_MODE (ATOMIC_INC_64 (&(res_ptr)->highest_lock_info, 0LL)));
 	}
 
       /* Record number of acquired locks */
@@ -3829,7 +3849,7 @@ start:
 	    }
 
 	  /* to manage granules */
-	  if (class_entry != NULL && LK_ENTRY_IS_ACTIVE (class_entry))
+	  if (class_entry != NULL /*&& LK_ENTRY_IS_ACTIVE (class_entry) */ )
 	    {
 	      entry_ptr->class_entry = class_entry;
 	    }
@@ -3849,6 +3869,11 @@ start:
 	      assert (lock >= NULL_LOCK && res_ptr->total_holders_mode >= NULL_LOCK);
 	      res_ptr->total_holders_mode = lock_Conv[lock][res_ptr->total_holders_mode];
 	      assert (res_ptr->total_holders_mode != NA_LOCK);
+	    }
+	  else
+	    {
+	      assert (entry_ptr->granted_mode <=
+		      LK_GET_HIGHEST_LOCK_MODE (ATOMIC_INC_64 (&(res_ptr)->highest_lock_info, 0LL)));
 	    }
 
 	  /* add the lock entry into the transaction hold list */
@@ -4046,6 +4071,13 @@ lock_tran_lk_entry:
 	    }
 	}
 
+      if (!LK_RES_HAS_HIGHEST_LOCK_INFO_DISABLED (res_ptr))
+	{
+	  LOCK lock_mode = LK_GET_HIGHEST_LOCK_MODE (ATOMIC_INC_64 (&(res_ptr)->highest_lock_info, 0LL));
+	  assert (entry_ptr->granted_mode <= lock_mode);
+	}
+
+
       if (is_res_mutex_locked)
 	{
 	  pthread_mutex_unlock (&res_ptr->res_mutex);
@@ -4111,9 +4143,15 @@ lock_tran_lk_entry:
 	  res_ptr->total_holders_mode = lock_Conv[lock][res_ptr->total_holders_mode];
 	  assert (res_ptr->total_holders_mode != NA_LOCK);
 	}
+      else
+	{
+	  assert (entry_ptr->granted_mode <=
+		  LK_GET_HIGHEST_LOCK_MODE (ATOMIC_INC_64 (&(res_ptr)->highest_lock_info, 0LL)));
+	}
 
       lock_update_non2pl_list (thread_p, res_ptr, tran_index, lock);
       assert (is_res_mutex_locked);
+
       pthread_mutex_unlock (&res_ptr->res_mutex);
 
       goto lock_conversion_treatement;
@@ -4206,7 +4244,7 @@ lock_tran_lk_entry:
 
   entry_ptr->thrd_entry = thread_p;
 
-  assert (!LK_RES_HAS_HIGHEST_LOCK_INFO_DISABLED (res_ptr));
+  assert (LK_RES_HAS_HIGHEST_LOCK_INFO_DISABLED (res_ptr));
   assert (lock >= NULL_LOCK && res_ptr->total_holders_mode >= NULL_LOCK);
   res_ptr->total_holders_mode = lock_Conv[lock][res_ptr->total_holders_mode];
   assert (res_ptr->total_holders_mode != NA_LOCK);
@@ -4327,7 +4365,7 @@ lock_conversion_treatement:
   if (lock_conversion == false)
     {
       /* to manage granules */
-      if (class_entry != NULL && LK_ENTRY_IS_ACTIVE (class_entry))
+      if (class_entry != NULL /*&& LK_ENTRY_IS_ACTIVE (class_entry) */ )
 	{
 	  entry_ptr->class_entry = class_entry;
 	}
@@ -4479,16 +4517,18 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
 	  /* Enable mark delete that will force highest lock recomputation. */
 	  assert (LK_RES_HAS_HIGHEST_LOCK_INFO_DISABLED (res_ptr));
 	  lock_resource_enable_mark_delete (thread_p, res_ptr, false);
-	  // if (!lock_resource_enable_mark_delete (thread_p, res_ptr, !has_non_2pl))
+
+	  /* TODO - fixme */
+	  //if (!lock_resource_enable_mark_delete (thread_p, res_ptr, !has_non_2pl))
 	  //   {
 	  //     /* Can't enable mark delete. Disconnect all entries to avoid situation when an allocated resource
 	  //      * is not used long time.
 	  //      */
 	  //     lock_res_disconnect_mark_deleted_entries (thread_p, res_ptr);
 	  //     if (entry_ptr && LK_ENTRY_IS_DISCONNECTED (entry_ptr))
-	  //{
-	  //  lock_remove_disconnected_entry_and_init (thread_p, entry_ptr, is_non2pl_lock);
-	  //}
+	  //        {
+	  //          lock_remove_disconnected_entry_and_init (thread_p, entry_ptr, is_non2pl_lock);
+	  //        }
 	  //     lock_remove_resource_and_init (thread_p, res_ptr);
 	  //     return;
 	  //   }
@@ -10827,7 +10867,7 @@ lock_atomic_set_mark_delete (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
 
       new_highest_lock_info = old_highest_lock_info;
       lock_remove_lock_from_highest_lock_info (thread_p, &new_highest_lock_info, entry_ptr->granted_mode);
-      if (LK_GET_HIGHEST_LOCK_COUNTER (new_highest_lock_info) == 0)
+      if (LK_GET_HIGHEST_LOCK_COUNTER (new_highest_lock_info) == 0ULL)
 	{
 	  /* Can't atomically set the highest info. Needs highest lock info recomputation. */
 	  return false;
@@ -10935,6 +10975,11 @@ lock_atomic_reset_mark_delete (THREAD_ENTRY * thread_p, int tran_index, LK_ENTRY
 	  return false;
 	}
 
+      if (LK_GET_HIGHEST_LOCK_MODE (old_highest_lock_info) != LK_GET_HIGHEST_LOCK_MODE (new_highest_lock_info))
+	{
+	  new_highest_lock_info = LK_INC_HIGHEST_LOCK_VERSION (new_highest_lock_info);
+	}
+
       /* Starts reset mark delete.  Others, can't disconnect my entry, while count_atomic_mark_delete > 0. */
       count_atomic_mark_delete = ATOMIC_INC_32 (&res_ptr->count_atomic_mark_delete, 1);
       assert (res_ptr->count_atomic_mark_delete > 0);
@@ -10966,6 +11011,7 @@ lock_atomic_reset_mark_delete (THREAD_ENTRY * thread_p, int tran_index, LK_ENTRY
   assert (LK_ENTRY_IS_MARK_DELETED (entry_ptr));
 
   entry_ptr->granted_mode = requested_lock_mode;
+  assert (entry_ptr->granted_mode <= LK_GET_HIGHEST_LOCK_MODE (ATOMIC_INC_64 (&(res_ptr)->highest_lock_info, 0LL)));
   entry_ptr->count = 1;
   if (is_instant_duration)
     {
@@ -10973,11 +11019,18 @@ lock_atomic_reset_mark_delete (THREAD_ENTRY * thread_p, int tran_index, LK_ENTRY
       assert (entry_ptr->instant_lock_count > 0);
     }
   entry_ptr->resource_version = LK_GET_HIGHEST_LOCK_VERSION (res_ptr->highest_lock_info);
-  if (class_entry != NULL && LK_ENTRY_IS_ACTIVE (class_entry))
+  if (class_entry != NULL /*&& LK_ENTRY_IS_ACTIVE (class_entry) */ )
     {
       entry_ptr->class_entry = class_entry;
       lock_increment_class_granules (class_entry);
     }
+  else
+    {
+      entry_ptr->class_entry = NULL;
+    }
+
+  assert (entry_ptr->tran_index == tran_index);
+  assert (entry_ptr->thrd_entry == NULL);
 
   LK_ENTRY_SET_ACTIVE (entry_ptr);
 
@@ -11131,7 +11184,7 @@ lock_remove_lock_from_resource_highest_lock_info (THREAD_ENTRY * thread_p, LK_RE
       /* Remove released lock. */
       new_highest_lock_info = old_highest_lock_info;
       lock_remove_lock_from_highest_lock_info (thread_p, &new_highest_lock_info, lock);
-      if (LK_GET_HIGHEST_LOCK_COUNTER (new_highest_lock_info) == 0)
+      if (LK_GET_HIGHEST_LOCK_COUNTER (new_highest_lock_info) == 0ULL)
 	{
 	  /* Disable mark deletion, since I need to recompute highest lock info. */
 	  new_highest_lock_info = LK_DISABLE_HIGHEST_LOCK_INFO (new_highest_lock_info);
@@ -11179,7 +11232,7 @@ lock_add_lock_to_highest_lock_info (THREAD_ENTRY * thread_p, UINT64 * highest_lo
 
   local_highest_lock_info = *highest_lock_info;
   /* Get highest lock. */
-  if (LK_GET_HIGHEST_LOCK_COUNTER (local_highest_lock_info) > 0)
+  if (LK_GET_HIGHEST_LOCK_COUNTER (local_highest_lock_info) > 0ULL)
     {
       res_highest_lock_mode = (LOCK) LK_GET_HIGHEST_LOCK_MODE (local_highest_lock_info);
     }
@@ -11239,7 +11292,7 @@ lock_is_compatible_with_highest_lock_info (THREAD_ENTRY * thread_p, UINT64 highe
     }
 
   /* Get highest lock. */
-  if (LK_GET_HIGHEST_LOCK_COUNTER (highest_lock_info) > 0)
+  if (LK_GET_HIGHEST_LOCK_COUNTER (highest_lock_info) > 0ULL)
     {
       res_highest_lock_mode = (LOCK) LK_GET_HIGHEST_LOCK_MODE (highest_lock_info);
     }
