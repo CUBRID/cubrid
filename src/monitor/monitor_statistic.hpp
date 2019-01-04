@@ -496,14 +496,14 @@ namespace cubmonitor
   void
   gauge_statistic<Rep>::collect (const Rep &value)
   {
-    set_value (value);
+    this->set_value (value);
   }
 
   template <typename Rep>
   void
   gauge_atomic_statistic<Rep>::collect (const Rep &value)
   {
-    set_value (value);
+    this->set_value (value);
   }
 
   template <typename Rep>
@@ -545,7 +545,7 @@ namespace cubmonitor
   {
     if (value < this->get_value ())
       {
-	set_value (value);
+	this->set_value (value);
       }
   }
 

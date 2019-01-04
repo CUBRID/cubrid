@@ -223,12 +223,12 @@ namespace test_packing
 
 /////////////////////////////
 
-  void buffer_manager::allocate_bufer (mem::pinnable_buffer *&buf, const size_t &amount)
+  void buffer_manager::allocate_bufer (cubmem::pinnable_buffer *&buf, const size_t &amount)
   {
     char *ptr;
     ptr = new char[amount];
 
-    mem::pinnable_buffer *new_buf = new mem::pinnable_buffer;
+    cubmem::pinnable_buffer *new_buf = new cubmem::pinnable_buffer;
     new_buf->init (ptr, amount, this);
 
     buffers.push_back (new_buf);
@@ -294,8 +294,8 @@ namespace test_packing
     size_t buf_size = 1024 * 1024;
     ptr1 = new char[buf_size];
     ptr2 = new char[buf_size];
-    mem::pinnable_buffer buf1 (ptr1, buf_size);
-    mem::pinnable_buffer buf2 (ptr2, buf_size);
+    cubmem::pinnable_buffer buf1 (ptr1, buf_size);
+    cubmem::pinnable_buffer buf2 (ptr2, buf_size);
     cubpacking::packer packer_instance (buf1.get_buffer (), buf1.get_buffer_size ());
     cubpacking::packer unpacker_instance (buf2.get_buffer (), buf2.get_buffer_size ());
 
@@ -344,7 +344,7 @@ namespace test_packing
     int res = 0;
 
     buffer_manager bm;
-    mem::pinnable_buffer *buf[100];
+    cubmem::pinnable_buffer *buf[100];
 
     for (int i = 0; i < 100; i++)
       {
