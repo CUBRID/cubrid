@@ -73,6 +73,8 @@ namespace mem
       block &operator= (const block &) = delete;
   };
 
+  // stack_block - 8-byte aligned stack block of size S
+  //
   template <size_t S>
   class stack_block
   {
@@ -80,14 +82,8 @@ namespace mem
       static const size_t SIZE = S;
 
       stack_block (void) = default;
-      char *get_ptr (void)
-      {
-	return &m_buf[0];
-      }
-      const char *get_read_ptr () const
-      {
-	return &m_buf[0];
-      }
+      inline char *get_ptr (void);
+      inline const char *get_read_ptr () const;
 
     private:
       union
@@ -97,6 +93,9 @@ namespace mem
       };
   };
 
+  // block_allocator - allocation, deallocation and reallocation of memory blocks. it preserves the contents of the
+  //                   block on reallocation
+  //
   struct block_allocator
   {
     public:
@@ -107,20 +106,10 @@ namespace mem
       dealloc_func m_dealloc_f;              // deallocator
 
       block_allocator () = delete;
-      block_allocator (const alloc_func &alloc_f, const dealloc_func &dealloc_f)
-	: m_alloc_f (alloc_f)
-	, m_dealloc_f (dealloc_f)
-      {
-      }
+      block_allocator (const alloc_func &alloc_f, const dealloc_func &dealloc_f);
 
-      block_allocator &operator= (const block_allocator &other)
-      {
-	m_alloc_f = other.m_alloc_f;
-	m_dealloc_f = other.m_dealloc_f;
-	return *this;
-      }
+      block_allocator &operator= (const block_allocator &other);
   };
-
   extern const block_allocator STANDARD_BLOCK_ALLOCATOR;
   extern const block_allocator EXPONENTIAL_STANDARD_BLOCK_ALLOCATOR;
   extern const block_allocator CSTYLE_BLOCK_ALLOCATOR;
@@ -146,37 +135,14 @@ namespace mem
       inline extensible_block &operator= (extensible_block &&b);                   //move assignment
 
       inline void extend_by (size_t additional_bytes);
-      inline void extend_to (size_t total_bytes)
-      {
-	if (total_bytes <= m_block.dim)
-	  {
-	    return;
-	  }
-	extend_by (total_bytes - m_block.dim);
-      }
+      inline void extend_to (size_t total_bytes);
 
-      char *get_ptr () const
-      {
-	return m_block.ptr;
-      }
+      inline char *get_ptr ();
+      inline const char *get_read_ptr () const;
 
-      const char *get_read_ptr () const
-      {
-	return m_block.ptr;
-      }
+      inline std::size_t get_size () const;
 
-      std::size_t get_size () const
-      {
-	return m_block.dim;
-      }
-
-      char *release_ptr ()
-      {
-	char *ret_ptr = m_block.ptr;
-	m_block.ptr = NULL;
-	m_block.dim = 0;
-	return ret_ptr;
-      }
+      inline char *release_ptr ();
 
     private:
       block m_block;
@@ -186,56 +152,20 @@ namespace mem
       extensible_block &operator= (const extensible_block &) = delete;  //copy assignment
   };
 
+  // extensible_stack_block - extensible memory block that start with as a stack_block
+  //
   template <size_t S>
   class extensible_stack_block
   {
     public:
-      extensible_stack_block ()
-	: m_stack ()
-	, m_ext_block ()
-	, m_use_stack (true)
-      {
-      }
+      extensible_stack_block ();
+      extensible_stack_block (const block_allocator &alloc);
 
-      extensible_stack_block (const block_allocator &alloc)
-	: m_stack ()
-	, m_ext_block (alloc)
-	, m_use_stack (true)
-      {
-      }
+      inline void extend_by (size_t additional_bytes);
+      inline void extend_to (size_t total_bytes);
 
-      void extend_by (size_t additional_bytes)
-      {
-	if (m_use_stack)
-	  {
-	    m_ext_block.extend_to (m_stack.SIZE + additional_bytes);
-	  }
-	else
-	  {
-	    m_ext_block.extend_by (additional_bytes);
-	  }
-	m_use_stack = false;
-      }
-
-      void extend_to (size_t total_bytes)
-      {
-	if (total_bytes <= m_stack.SIZE)
-	  {
-	    return;
-	  }
-	m_ext_block.extend_to (total_bytes);
-	m_use_stack = false;
-      }
-
-      char *get_ptr ()
-      {
-	return m_use_stack ? m_stack.get_ptr () : m_ext_block.get_ptr ();
-      }
-
-      const char *get_read_ptr () const
-      {
-	return m_use_stack ? m_stack.get_read_ptr () : m_ext_block.get_ptr ();
-      }
+      inline char *get_ptr ();
+      inline const char *get_read_ptr () const;
 
     private:
       stack_block<S> m_stack;
@@ -316,7 +246,24 @@ namespace mem
   }
 
   //
-  // block_ext
+  // stack_block
+  //
+  template <size_t S>
+  char *
+  stack_block<S>::get_ptr (void)
+  {
+    return &m_buf[0];
+  }
+
+  template <size_t S>
+  const char *
+  stack_block<S>::get_read_ptr (void) const
+  {
+    return &m_buf[0];
+  }
+
+  //
+  // extensible_block
   //
   extensible_block::extensible_block ()
     : extensible_block { STANDARD_BLOCK_ALLOCATOR }
@@ -360,6 +307,103 @@ namespace mem
   extensible_block::extend_by (size_t additional_bytes)
   {
     m_allocator->m_alloc_f (m_block, m_block.dim + additional_bytes);
+  }
+
+  void
+  extensible_block::extend_to (size_t total_bytes)
+  {
+    if (total_bytes <= m_block.dim)
+      {
+	return;
+      }
+    extend_by (total_bytes - m_block.dim);
+  }
+
+  char *
+  extensible_block::get_ptr ()
+  {
+    return m_block.ptr;
+  }
+
+  const char *
+  extensible_block::get_read_ptr () const
+  {
+    return m_block.ptr;
+  }
+
+  std::size_t
+  extensible_block::get_size () const
+  {
+    return m_block.dim;
+  }
+
+  char *
+  extensible_block::release_ptr ()
+  {
+    char *ret_ptr = m_block.ptr;
+    m_block.ptr = NULL;
+    m_block.dim = 0;
+    return ret_ptr;
+  }
+
+  //
+  // extensible_stack_block
+  //
+  template <size_t S>
+  extensible_stack_block<S>::extensible_stack_block ()
+    : m_stack ()
+    , m_ext_block ()
+    , m_use_stack (true)
+  {
+  }
+
+  template <size_t S>
+  extensible_stack_block<S>::extensible_stack_block (const block_allocator &alloc)
+    : m_stack ()
+    , m_ext_block (alloc)
+    , m_use_stack (true)
+  {
+  }
+
+  template <size_t S>
+  void
+  extensible_stack_block<S>::extend_by (size_t additional_bytes)
+  {
+    if (m_use_stack)
+      {
+	m_ext_block.extend_to (m_stack.SIZE + additional_bytes);
+      }
+    else
+      {
+	m_ext_block.extend_by (additional_bytes);
+      }
+    m_use_stack = false;
+  }
+
+  template <size_t S>
+  void
+  extensible_stack_block<S>::extend_to (size_t total_bytes)
+  {
+    if (total_bytes <= m_stack.SIZE)
+      {
+	return;
+      }
+    m_ext_block.extend_to (total_bytes);
+    m_use_stack = false;
+  }
+
+  template <size_t S>
+  char *
+  extensible_stack_block<S>::get_ptr ()
+  {
+    return m_use_stack ? m_stack.get_ptr () : m_ext_block.get_ptr ();
+  }
+
+  template <size_t S>
+  const char *
+  extensible_stack_block<S>::get_read_ptr () const
+  {
+    return m_use_stack ? m_stack.get_read_ptr () : m_ext_block.get_read_ptr ();
   }
 } // namespace mem
 

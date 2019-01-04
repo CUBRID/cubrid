@@ -72,7 +72,7 @@ class string_buffer
 
     const char *get_buffer () const
     {
-      return this->m_ext_block.get_ptr ();
+      return this->m_ext_block.get_read_ptr ();
     }
 
     void clear ()

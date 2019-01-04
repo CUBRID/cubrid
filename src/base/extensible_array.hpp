@@ -39,17 +39,8 @@ namespace mem
 
     public:
 
-      appendible_block ()
-	: extensible_stack_block<Size> ()
-	, m_size (0)
-      {
-      }
-
-      appendible_block (const block_allocator &alloc)
-	: extensible_stack_block<Size> (alloc)
-	, m_size (0)
-      {
-      }
+      appendible_block ();
+      appendible_block (const block_allocator &alloc);
 
       inline void append (const char *source, size_t length);    // append at the end of existing data
       inline void copy (const char *source, size_t length);      // overwrite entire array
@@ -57,10 +48,7 @@ namespace mem
       template <typename T>
       inline void append (const T &obj);
 
-      std::size_t get_size () const
-      {
-	return m_size;
-      }
+      inline std::size_t get_size () const;
 
     private:
       inline void reset ();
@@ -75,31 +63,15 @@ namespace mem
       using base_type = extensible_stack_block<sizeof (T) * Size>;
 
     public:
-      void extend_by (size_t count)
-      {
-	base_type::extend_by (get_memsize_for_count (count));
-      }
+      void extend_by (size_t count);
+      void extend_to (size_t count);
 
-      void extend_to (size_t count)
-      {
-	base_type::extend_to (get_memsize_for_count (count));
-      }
-
-      const T *get_array (void)
-      {
-	return reinterpret_cast<const T *> (base_type::get_read_ptr ());
-      }
+      const T *get_array (void) const;
 
     protected:
-      T *get_data_ptr ()
-      {
-	return reinterpret_cast<T *> (base_type::get_ptr ());
-      }
+      T *get_data_ptr ();
 
-      size_t get_memsize_for_count (size_t count) const
-      {
-	return count * sizeof (T);
-      }
+      size_t get_memsize_for_count (size_t count) const;
   };
 
   template <typename T, size_t S>
@@ -118,10 +90,7 @@ namespace mem
 
       inline size_t get_size (void) const;                    // get current size
 
-      size_t get_memsize () const
-      {
-	return base_type::get_memsize_for_count (m_size);
-      }
+      size_t get_memsize () const;
 
     private:
       inline void reset (void);                               // reset array
@@ -143,6 +112,27 @@ namespace mem
   //
   //  appendible_block
   //
+  template <size_t Size>
+  appendible_block<Size>::appendible_block ()
+    : extensible_stack_block<Size> ()
+    , m_size (0)
+  {
+  }
+
+  template <size_t Size>
+  appendible_block<Size>::appendible_block (const block_allocator &alloc)
+    : extensible_stack_block<Size> (alloc)
+    , m_size (0)
+  {
+  }
+
+  template <size_t Size>
+  std::size_t
+  appendible_block<Size>::get_size () const
+  {
+    return m_size;
+  }
+
   template <size_t Size>
   void
   appendible_block<Size>::reset ()
@@ -175,8 +165,49 @@ namespace mem
     append (source, length);
   }
 
+  //
+  // extensible_array
+  //
   template <typename T, size_t Size>
-  inline appendable_array<T, Size>::appendable_array (void)
+  void
+  extensible_array<T, Size>::extend_by (size_t count)
+  {
+    base_type::extend_by (get_memsize_for_count (count));
+  }
+
+  template <typename T, size_t Size>
+  void
+  extensible_array<T, Size>::extend_to (size_t count)
+  {
+    base_type::extend_to (get_memsize_for_count (count));
+  }
+
+  template <typename T, size_t Size>
+  const T *
+  extensible_array<T, Size>::get_array (void) const
+  {
+    return reinterpret_cast<const T *> (base_type::get_read_ptr ());
+  }
+
+  template <typename T, size_t Size>
+  T *
+  extensible_array<T, Size>::get_data_ptr ()
+  {
+    return reinterpret_cast<T *> (base_type::get_ptr ());
+  }
+
+  template <typename T, size_t Size>
+  size_t
+  extensible_array<T, Size>::get_memsize_for_count (size_t count) const
+  {
+    return count * sizeof (T);
+  }
+
+  //
+  // appendable_array
+  //
+  template <typename T, size_t Size>
+  appendable_array<T, Size>::appendable_array (void)
     : base_type ()
     , m_size (0)
   {
@@ -184,7 +215,7 @@ namespace mem
   }
 
   template <typename T, size_t Size>
-  inline appendable_array<T, Size>::appendable_array (const block_allocator &allocator)
+  appendable_array<T, Size>::appendable_array (const block_allocator &allocator)
     : base_type (allocator)
     , m_size (0)
   {
@@ -192,7 +223,7 @@ namespace mem
   }
 
   template <typename T, size_t Size>
-  inline appendable_array<T, Size>::~appendable_array ()
+  appendable_array<T, Size>::~appendable_array ()
   {
     // empty
   }
@@ -217,7 +248,7 @@ namespace mem
   }
 
   template <typename T, size_t Size>
-  inline void
+  void
   appendable_array<T, Size>::copy (const T *source, size_t length)
   {
     // copy = reset + append
@@ -226,14 +257,22 @@ namespace mem
   }
 
   template <typename T, size_t Size>
-  inline size_t
+  size_t
   appendable_array<T, Size>::get_size (void) const
   {
     return m_size;
   }
 
+  template<typename T, size_t S>
+  size_t
+  appendable_array<T, S>::get_memsize () const
+  {
+    return base_type::get_memsize_for_count (m_size);
+  }
+
   template <typename T, size_t Size>
-  inline void appendable_array<T, Size>::reset (void)
+  void
+  appendable_array<T, Size>::reset (void)
   {
     // set size to zero
     m_size = 0;

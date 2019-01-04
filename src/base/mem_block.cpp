@@ -124,5 +124,22 @@ namespace mem
     b.dim = 0;
   }
 
-  // const block_allocator CSTYLE_BLOCK_ALLOCATOR { cstyle_alloc, cstyle_dealloc };
+  const block_allocator CSTYLE_BLOCK_ALLOCATOR { cstyle_alloc, cstyle_dealloc };
+
+  //
+  // block_allocator
+  //
+  block_allocator::block_allocator (const alloc_func &alloc_f, const dealloc_func &dealloc_f)
+    : m_alloc_f (alloc_f)
+    , m_dealloc_f (dealloc_f)
+  {
+  }
+
+  block_allocator &
+  block_allocator::operator= (const block_allocator &other)
+  {
+    m_alloc_f = other.m_alloc_f;
+    m_dealloc_f = other.m_dealloc_f;
+    return *this;
+  }
 } // namespace mem

@@ -230,7 +230,7 @@ int main (int argc, char **argv)
 #if !defined (_MSC_VER) || (_MSC_VER >= 1700)
   if (flags & FL_TIME)
     {
-      printf ("%.9lf ms (iterations: %d)\n", std::chrono::duration<double, std::milli> (t1 - t0).count (), N);
+      printf ("%.9lf ms (iterations: %zu)\n", std::chrono::duration<double, std::milli> (t1 - t0).count (), N);
     }
 #endif
 
