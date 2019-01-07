@@ -62,6 +62,7 @@ record_descriptor::record_descriptor (const recdes &rec)
       m_recdes.area_size = rec.length;
       m_recdes.length = m_recdes.area_size;
       m_own_data = m_recdes.data = (char *) db_private_alloc (NULL, m_recdes.area_size);
+      assert (m_own_data != NULL);
       std::memcpy (m_recdes.data, rec.data, m_recdes.length);
 
       m_data_source = data_source::COPIED;  // we assume this is a copied record
@@ -139,7 +140,7 @@ record_descriptor::resize (cubthread::entry *thread_p, std::size_t required_size
   if (m_own_data == NULL)
     {
       m_own_data = (char *) db_private_alloc (thread_p, static_cast<int> (required_size));
-
+      assert (m_own_data != NULL);
       if (copy_data)
 	{
 	  assert (m_recdes.data != NULL);
@@ -149,13 +150,12 @@ record_descriptor::resize (cubthread::entry *thread_p, std::size_t required_size
   else
     {
       m_own_data = (char *) db_private_realloc (thread_p, m_own_data, static_cast<int> (required_size));
-
+      assert (m_own_data != NULL);
       if (copy_data)
 	{
 	  // realloc copied data
 	}
     }
-
 
   m_recdes.data = m_own_data;
   m_recdes.area_size = (int) required_size;
