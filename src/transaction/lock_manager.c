@@ -1562,10 +1562,9 @@ lock_delete_from_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran_index)
 
   tran_lock = &lk_Gl.tran_lock_table[entry_ptr->tran_index];
   lock_resource_type = entry_ptr->res_head->key.type;
-  if (!LK_ENTRY_IS_ACTIVE (entry_ptr)
-      && entry_ptr->resource_version != LK_GET_HIGHEST_LOCK_VERSION (entry_ptr->res_head->highest_lock_info))
+  if (!LK_ENTRY_IS_ACTIVE (entry_ptr))
     {
-      /* Since the lock entry is not active, definitely is a class lock.  Check whether is root or not. */
+      /* Since the lock entry is not active, definitely is a class lock. Check whether is root or not. */
       if (entry_ptr == tran_lock->root_class_hold)
 	{
 	  lock_resource_type = LOCK_RESOURCE_ROOT_CLASS;
@@ -4511,10 +4510,13 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
     }
   else
     {
-      if (lock_atomic_set_mark_delete (thread_p, entry_ptr))
+      if (LK_ENTRY_IS_DISCONNECTED (entry_ptr))
 	{
-	  /* Succesfully mark deleted. Nothing to do. */
-	  return;
+	  if (lock_atomic_set_mark_delete (thread_p, entry_ptr))
+	    {
+	      /* Succesfully mark deleted. Nothing to do. */
+	      return;
+	    }
 	}
       else if (LK_ENTRY_IS_DISCONNECTED (entry_ptr))
 	{
@@ -4563,22 +4565,20 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
 	  bool has_non_2pl = (res_ptr->non2pl != NULL);
 	  /* Enable mark delete that will force highest lock recomputation. */
 	  assert (LK_RES_HAS_HIGHEST_LOCK_INFO_DISABLED (res_ptr));
-	  lock_resource_enable_mark_delete (thread_p, res_ptr, false);
 
-	  /* TODO - fixme */
-	  //if (!lock_resource_enable_mark_delete (thread_p, res_ptr, !has_non_2pl))
-	  //   {
-	  //     /* Can't enable mark delete. Disconnect all entries to avoid situation when an allocated resource
-	  //      * is not used long time.
-	  //      */
-	  //     lock_res_disconnect_mark_deleted_entries (thread_p, res_ptr);
-	  //     if (entry_ptr && LK_ENTRY_IS_DISCONNECTED (entry_ptr))
-	  //        {
-	  //          lock_remove_disconnected_entry_and_init (thread_p, entry_ptr, is_non2pl_lock);
-	  //        }
-	  //     lock_remove_resource_and_init (thread_p, res_ptr);
-	  //     return;
-	  //   }
+	  if (!lock_resource_enable_mark_delete (thread_p, res_ptr, !has_non_2pl))
+	    {
+	      /* Can't enable mark delete since has null lock. Disconnect all entries to avoid situation when all
+	       * allocated resources are not used long time. Then, remove resource since all entries are disconnected.
+	       */
+	      lock_res_disconnect_mark_deleted_entries (thread_p, res_ptr);
+	      if (entry_ptr && LK_ENTRY_IS_DISCONNECTED (entry_ptr))
+		{
+		  lock_remove_disconnected_entry_and_init (thread_p, entry_ptr, is_non2pl_lock);
+		}
+	      lock_remove_resource_and_init (thread_p, res_ptr);
+	      return;
+	    }
 	}
 
       /* We are in mark deleteion mode or the resource was removed. */
@@ -11640,11 +11640,11 @@ lock_res_disconnect_mark_deleted_entries (THREAD_ENTRY * thread_p, LK_RES * res_
   curr = res_ptr->holder;
   while (curr != NULL)
     {
-      /* Check whether is mark as deleted. */
-      if (LK_ENTRY_IS_MARK_DELETED (curr))
+      next = curr->next;
+
+      /* If mark deleted status, replace it with disconnect status. Then, remove from resource holder. */
+      if (ATOMIC_CAS_32 (&curr->status, LK_ENTRY_MARK_DELETED, LK_ENTRY_DISCONECTED))
 	{
-	  /* Mark as disconnect started. */
-	  next = curr->next;
 	  if (prev == NULL)
 	    {
 	      res_ptr->holder = next;
@@ -11653,21 +11653,13 @@ lock_res_disconnect_mark_deleted_entries (THREAD_ENTRY * thread_p, LK_RES * res_
 	    {
 	      prev->next = next;
 	    }
-
-	  /* Mark as disconnect ended. */
-	  if (!ATOMIC_CAS_32 (&curr->status, LK_ENTRY_MARK_DELETED, LK_ENTRY_DISCONECTED))
-	    {
-	      /* Imppossible. No other transaction can modify the value. */
-	      assert (false);
-	    }
-
-	  curr = next;
 	}
       else
 	{
 	  prev = curr;
-	  curr = curr->next;
 	}
+
+      curr = next;
     }
 }
 #endif /* SERVER_MODE */
