@@ -654,6 +654,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_REPL_GENERATOR_BUFFER_SIZE "replication_generator_buffer_size"
 #define PRM_NAME_REPL_CONSUMER_BUFFER_SIZE "replication_consumer_buffer_size"
 
+#define PRM_NAME_LOCK_TRACE_DEBUG "lock_trace_debug"
+
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
 #define PRM_VALUE_MIN "MIN"
@@ -2173,6 +2175,10 @@ UINT64 PRM_REPL_CONSUMER_BUFFER_SIZE = 10 * 1024 * 1024;
 static UINT64 prm_repl_consumer_buffer_size_default = 10 * 1024 * 1024;
 static UINT64 prm_repl_consumer_buffer_size_lower = 100 * 1024;
 static unsigned int prm_repl_consumer_buffer_size_flag = 0;
+
+bool PRM_LOCK_TRACE_DEBUG = false;
+static bool prm_lock_trace_debug_default = false;
+static unsigned int prm_lock_trace_debug_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5548,6 +5554,17 @@ static SYSPRM_PARAM prm_Def[] = {
    &prm_dwb_logging_flag,
    (void *) &prm_dwb_logging_default,
    (void *) &PRM_DWB_LOGGING,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_LOCK_TRACE_DEBUG,
+   PRM_NAME_LOCK_TRACE_DEBUG,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_lock_trace_debug_flag,
+   (void *) &prm_lock_trace_debug_default,
+   (void *) &PRM_LOCK_TRACE_DEBUG,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,

@@ -231,107 +231,120 @@ typedef enum
 #define MSGCAT_LK_MVCC_INFO			46
 #define MSGCAT_LK_LASTONE                       47
 
-/* Various constants and macros used to mark delete lock entries. */
-/* Set active lock entry. */
+#if defined(SERVER_MODE)
+
+ /* Various constants and macros used to mark delete lock entries. */
+ /* Set active lock entry. */
 #define LK_ENTRY_SET_ACTIVE(entry) (ATOMIC_TAS_32 (&(entry)->status, LK_ENTRY_ACTIVE))
 
-/* Is active lock entry? */
+ /* Is active lock entry? */
 #define LK_ENTRY_IS_ACTIVE(entry) (ATOMIC_INC_32 (&(entry)->status, 0) == LK_ENTRY_ACTIVE)
 
-/* Is mark deleted lock entry? */
+ /* Is mark deleted lock entry? */
 #define LK_ENTRY_IS_MARK_DELETED(entry) (ATOMIC_INC_32 (&(entry)->status, 0) == LK_ENTRY_MARK_DELETED)
 
-/* Is disconnected lock entry? */
+ /* Is disconnected lock entry? */
 #define LK_ENTRY_IS_DISCONNECTED(entry) (ATOMIC_INC_32 (&(entry)->status, 0) == LK_ENTRY_DISCONECTED)
 
-/* Get counter of resource highest lock mode. */
-/* The number of bits for each field. */
+ /* Get counter of resource highest lock mode. */
+ /* The number of bits for each field. */
 #define LK_RES_HIGHEST_LOCK_COUNTER_NUM_BITS                32
 #define LK_RES_HIGHEST_LOCK_VERSION_NUM_BITS                24
 #define LK_RES_HIGHEST_LOCK_COUNTER_AND_VERSION_NUM_BITS    56
 #define LK_RES_HIGHEST_LOCK_MODE_NUM_BITS                    4
 #define LK_RES_HIGHEST_LOCK_FLAGS_NUM_BITS                   4	/* Reserved 4, used only one */
 
-/* Counter mask and increment. */
+ /* Counter mask and increment. */
 #define LK_RES_HIGHEST_LOCK_COUNTER_MASK                    0x00000000ffffffffULL
 #define LK_RES_HIGHEST_LOCK_COUNTER_INCREMENT               0x0000000000000001ULL
 
-/* Lock version mask and increment. */
+ /* Lock version mask and increment. */
 #define LK_RES_HIGHEST_LOCK_VERSION_MASK                    0x00ffffff00000000ULL
 #define LK_RES_HIGHEST_LOCK_VERSION_INCREMENT               0x0000000100000000ULL
 
-/* Lock mode mask. */
+ /* Lock mode mask. */
 #define LK_RES_HIGHEST_LOCK_MODE_MASK                       0x0f00000000000000ULL
 
-/* Invalid flag.*/
+ /* Invalid flag. */
 #define LK_RES_HIGHEST_LOCK_FLAG                    0x8000000000000000ULL
 
-/* Get counter of resource highest lock mode. */
+ /* Get counter of resource highest lock mode. */
 #define LK_GET_HIGHEST_LOCK_COUNTER(highest_lock_info) \
   ((highest_lock_info) & LK_RES_HIGHEST_LOCK_COUNTER_MASK)
 
-/* Increment counter of resource highest lock mode. */
+ /* Increment counter of resource highest lock mode. */
 #define LK_RES_INC_HIGHEST_LOCK_COUNTER(highest_lock_info) \
   (assert (((highest_lock_info) & LK_RES_HIGHEST_LOCK_COUNTER_MASK) < LK_RES_HIGHEST_LOCK_COUNTER_MASK),  \
    (highest_lock_info) + LK_RES_HIGHEST_LOCK_COUNTER_INCREMENT)
 
-/* Decrement counter of resource highest lock mode. */
+ /* Decrement counter of resource highest lock mode. */
 #define LK_DEC_HIGHEST_LOCK_COUNTER(highest_lock_info) \
   (assert (((highest_lock_info) & LK_RES_HIGHEST_LOCK_COUNTER_MASK) > 0ULL),  \
    (highest_lock_info) - LK_RES_HIGHEST_LOCK_COUNTER_INCREMENT)
 
-/* Reset counter of resource highest lock mode. */
+ /* Reset counter of resource highest lock mode. */
 #define LK_RESET_HIGHEST_LOCK_COUNTER(highest_lock_info) \
   ((highest_lock_info) & ~ LK_RES_HIGHEST_LOCK_COUNTER_MASK)
 
-/* Set counter of resource highest lock mode. */
+ /* Set counter of resource highest lock mode. */
 #define LK_SET_HIGHEST_LOCK_COUNTER(highest_lock_info, cnt) \
   (((highest_lock_info) & ~ LK_RES_HIGHEST_LOCK_COUNTER_MASK) | (cnt))
 
-/* Get version of highest lock info. */
+ /* Get version of highest lock info. */
 #define LK_GET_HIGHEST_LOCK_VERSION(highest_lock_info) \
   (((highest_lock_info) & LK_RES_HIGHEST_LOCK_VERSION_MASK) >> LK_RES_HIGHEST_LOCK_COUNTER_NUM_BITS)
 
-/* Increment version of highest lock info. */
+ /* Increment version of highest lock info. */
 #define LK_INC_HIGHEST_LOCK_VERSION(highest_lock_info) \
   (assert (((highest_lock_info) & LK_RES_HIGHEST_LOCK_VERSION_MASK) <= LK_RES_HIGHEST_LOCK_VERSION_MASK),  \
    ((highest_lock_info) & LK_RES_HIGHEST_LOCK_VERSION_MASK) < (LK_RES_HIGHEST_LOCK_VERSION_MASK)  \
    ? (highest_lock_info + LK_RES_HIGHEST_LOCK_VERSION_INCREMENT) \
    : ((highest_lock_info) & ~ LK_RES_HIGHEST_LOCK_VERSION_MASK))
 
-/* Get highest lock mode. */
+ /* Get highest lock mode. */
 #define LK_GET_HIGHEST_LOCK_MODE(highest_lock_info) \
   ((LOCK) (((highest_lock_info) & LK_RES_HIGHEST_LOCK_MODE_MASK) >> LK_RES_HIGHEST_LOCK_COUNTER_AND_VERSION_NUM_BITS))
 
-/* Set highest lock mode. */
+ /* Set highest lock mode. */
 #define LK_SET_HIGHEST_LOCK_MODE(highest_lock_info, lock_mode) \
   (((highest_lock_info) & ~LK_RES_HIGHEST_LOCK_MODE_MASK) | ((UINT64)lock_mode << LK_RES_HIGHEST_LOCK_COUNTER_AND_VERSION_NUM_BITS))
 
-/* Disable highest lock info. */
+ /* Disable highest lock info. */
 #define LK_DISABLE_HIGHEST_LOCK_INFO(highest_lock_info) \
   ((highest_lock_info) & ~LK_RES_HIGHEST_LOCK_FLAG)
 
-/* Enable highest lock info. */
+ /* Enable highest lock info. */
 #define LK_ENABLE_HIGHEST_LOCK_INFO(highest_lock_info) \
   ((highest_lock_info) | LK_RES_HIGHEST_LOCK_FLAG)
 
-/* Has highest lock enabled? */
+ /* Has highest lock enabled? */
 #define LK_HAS_HIGHEST_LOCK_INFO_ENABLED(highest_lock_info) \
   (((highest_lock_info) & LK_RES_HIGHEST_LOCK_FLAG) != 0ULL)
 
-/* Has highest lock disabled? */
+ /* Has highest lock disabled? */
 #define LK_HAS_HIGHEST_LOCK_INFO_DISABLED(highest_lock_info) \
   (!LK_HAS_HIGHEST_LOCK_INFO_ENABLED (highest_lock_info))
 
-/* Has resource highest lock enabled? */
+ /* Has resource highest lock enabled? */
 #define LK_RES_HAS_HIGHEST_LOCK_INFO_ENABLED(res_ptr) \
   ((ATOMIC_INC_64 (&(res_ptr)->highest_lock_info, 0LL) & LK_RES_HIGHEST_LOCK_FLAG) != 0ULL)
 
-/* Has resource highest lock disabled? */
+ /* Has resource highest lock disabled? */
 #define LK_RES_HAS_HIGHEST_LOCK_INFO_DISABLED(res_ptr) \
   (!LK_RES_HAS_HIGHEST_LOCK_INFO_ENABLED(res_ptr))
 
-#if defined(SERVER_MODE)
+#if !defined (NDEBUG)
+typedef struct lk_debug_trace_info LK_DEBUG_TRACE_INFO;
+struct lk_debug_trace_info
+{
+  UINT64 old_highest_lock_info;
+  UINT64 new_highest_lock_info;
+  OID oid;
+  int tran_index;
+  int line;
+  LOCK lock;
+};
+#endif
 
 typedef struct lk_lockinfo LK_LOCKINFO;
 struct lk_lockinfo
@@ -692,6 +705,15 @@ STATIC_INLINE void lock_remove_disconnected_entry (THREAD_ENTRY * thread_p, LK_E
     lock_remove_disconnected_entry ((thread_p), (entry_ptr), (add_lock_to_non2pl)); \
     (entry_ptr) = NULL; \
   } while (0)
+
+#if !defined (NDEBUG)
+STATIC_INLINE int lock_debug_add_trace_info (UINT64 old_highest_lock_info, UINT64 new_highest_lock_info, OID * oid,
+					     int tran_index, LOCK lock, int line) __attribute__ ((ALWAYS_INLINE));
+
+#define LK_DEBUG_TRACE_INFO_ARR_SIZE 10000
+LK_DEBUG_TRACE_INFO *lk_debug_trace_arr = NULL;
+unsigned int idx_lk_debug_trace_arr = 0;
+#endif /* !NDEBUG */
 
 // *INDENT-OFF*
 static cubthread::daemon *lock_Deadlock_detect_daemon = NULL;
@@ -10879,6 +10901,14 @@ lock_atomic_set_mark_delete (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
 
       if (ATOMIC_CAS_64 (&res_ptr->highest_lock_info, old_highest_lock_info, new_highest_lock_info))
 	{
+#if !defined (NDEBUG)
+	  if (prm_get_bool_value (PRM_ID_LOCK_TRACE_DEBUG))
+	    {
+	      (void) lock_debug_add_trace_info (old_highest_lock_info, new_highest_lock_info, &res_ptr->key.oid,
+						thread_p->tran_index, entry_ptr->granted_mode, __LINE__);
+	    }
+#endif
+
 	  break;
 	}
 
@@ -10903,7 +10933,7 @@ lock_atomic_set_mark_delete (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
 
   return true;
 }
-#endif
+#endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
 /*
@@ -10986,6 +11016,15 @@ lock_atomic_reset_mark_delete (THREAD_ENTRY * thread_p, int tran_index, LK_ENTRY
 
       if (ATOMIC_CAS_64 (&res_ptr->highest_lock_info, old_highest_lock_info, new_highest_lock_info))
 	{
+#if !defined (NDEBUG)
+	  {
+	    if (prm_get_bool_value (PRM_ID_LOCK_TRACE_DEBUG))
+	      {
+		(void) lock_debug_add_trace_info (old_highest_lock_info, new_highest_lock_info, &res_ptr->key.oid,
+						  thread_p->tran_index, requested_lock_mode, __LINE__);
+	      }
+	  }
+#endif
 	  break;
 	}
 
@@ -11040,7 +11079,7 @@ lock_atomic_reset_mark_delete (THREAD_ENTRY * thread_p, int tran_index, LK_ENTRY
 
   return true;
 }
-#endif
+#endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
 /*
@@ -11066,7 +11105,7 @@ lock_remove_lock_from_highest_lock_info (THREAD_ENTRY * thread_p, UINT64 * highe
       *highest_lock_info = LK_DEC_HIGHEST_LOCK_COUNTER (*highest_lock_info);
     }
 }
-#endif
+#endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
 /*
@@ -11105,9 +11144,19 @@ lock_add_lock_to_resource_highest_lock_info (THREAD_ENTRY * thread_p, LK_RES * r
     }
   while (!ATOMIC_CAS_64 (&res_ptr->highest_lock_info, old_highest_lock_info, new_highest_lock_info));
 
+#if !defined (NDEBUG)
+  {
+    if (prm_get_bool_value (PRM_ID_LOCK_TRACE_DEBUG))
+      {
+	(void) lock_debug_add_trace_info (old_highest_lock_info, new_highest_lock_info, &res_ptr->key.oid,
+					  thread_p->tran_index, lock, __LINE__);
+      }
+  }
+#endif
+
   return true;
 }
-#endif
+#endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
 /*
@@ -11141,7 +11190,7 @@ lock_is_compatible_with_resource_highest_lock_info (THREAD_ENTRY * thread_p, LK_
 
   return compat;
 }
-#endif
+#endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
 /*
@@ -11193,6 +11242,16 @@ lock_remove_lock_from_resource_highest_lock_info (THREAD_ENTRY * thread_p, LK_RE
     }
   while (!ATOMIC_CAS_64 (&res_ptr->highest_lock_info, old_highest_lock_info, new_highest_lock_info));
 
+#if !defined (NDEBUG)
+  {
+    if (prm_get_bool_value (PRM_ID_LOCK_TRACE_DEBUG))
+      {
+	(void) lock_debug_add_trace_info (old_highest_lock_info, new_highest_lock_info, &res_ptr->key.oid,
+					  thread_p->tran_index, lock, __LINE__);
+      }
+  }
+#endif
+
   if (*disabled_mark_deletion)
     {
       /* Disabled mark deletion. We may need lock entry information. */
@@ -11205,7 +11264,7 @@ lock_remove_lock_from_resource_highest_lock_info (THREAD_ENTRY * thread_p, LK_RE
 
   return true;
 }
-#endif
+#endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
 /*
@@ -11267,7 +11326,7 @@ lock_add_lock_to_highest_lock_info (THREAD_ENTRY * thread_p, UINT64 * highest_lo
 
   return true;
 }
-#endif
+#endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
 /*
@@ -11311,7 +11370,7 @@ lock_is_compatible_with_highest_lock_info (THREAD_ENTRY * thread_p, UINT64 highe
 
   return true;
 }
-#endif
+#endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
 /*
@@ -11370,9 +11429,19 @@ lock_resource_enable_mark_delete (THREAD_ENTRY * thread_p, LK_RES * res_ptr, boo
       assert (false);
     }
 
+#if !defined (NDEBUG)
+  {
+    if (prm_get_bool_value (PRM_ID_LOCK_TRACE_DEBUG))
+      {
+	(void) lock_debug_add_trace_info (old_highest_lock_info, new_highest_lock_info, &res_ptr->key.oid,
+					  thread_p->tran_index, highest_lock_mode, __LINE__);
+      }
+  }
+#endif
+
   return true;
 }
-#endif
+#endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
 /*
@@ -11410,6 +11479,17 @@ lock_resource_disable_mark_delete (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
     }
   while (!ATOMIC_CAS_64 (&res_ptr->highest_lock_info, old_highest_lock_info, new_highest_lock_info));
 
+#if !defined (NDEBUG)
+  {
+    if (prm_get_bool_value (PRM_ID_LOCK_TRACE_DEBUG))
+      {
+	(void) lock_debug_add_trace_info (old_highest_lock_info, new_highest_lock_info, &res_ptr->key.oid,
+					  thread_p->tran_index, LK_GET_HIGHEST_LOCK_MODE (new_highest_lock_info),
+					  __LINE__);
+      }
+  }
+#endif
+
   while (ATOMIC_INC_32 (&res_ptr->count_atomic_mark_delete, 0) > 0)
     {
       /* Waits to finish all atomic set/reset mark delete. This happens rare. */
@@ -11425,7 +11505,7 @@ lock_resource_disable_mark_delete (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
   res_ptr->total_holders_mode = total_holders_mode;
   res_ptr->total_waiters_mode = total_waiters_mode;
 }
-#endif
+#endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
 /*
@@ -11453,7 +11533,7 @@ lock_resource_can_enable_mark_delete (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 
   return true;
 }
-#endif
+#endif /* SERVER_MODE */
 
 #if defined (SERVER_MODE)
 /*
@@ -11508,7 +11588,7 @@ lock_res_recompute_highest_lock_info (THREAD_ENTRY * thread_p, LK_RES * res_ptr,
   *highest_lock_mode = max_mode;
   *cnt_highest_lock_mode = cnt_max_mode;
 }
-#endif
+#endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
 /*
@@ -11665,7 +11745,7 @@ lock_resource_recompute_total_modes (THREAD_ENTRY * thread_p, LK_RES * res_ptr, 
     }
   *total_waiters_mode = mode;
 }
-#endif
+#endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
 /*
@@ -11702,4 +11782,35 @@ lock_remove_disconnected_entry (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, b
   /* free the lock entry */
   lock_free_entry (tran_index, t_entry, &lk_Gl.obj_free_entry_list, entry_ptr);
 }
-#endif
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE) && !defined (NDEBUG)
+STATIC_INLINE int
+lock_debug_add_trace_info (UINT64 old_highest_lock_info, UINT64 new_highest_lock_info, OID * oid, int tran_index,
+			   LOCK lock, int line)
+{
+  unsigned int local_idx_lk_debug_trace_arr;
+  if (lk_debug_trace_arr == NULL)
+    {
+      lk_debug_trace_arr = (LK_DEBUG_TRACE_INFO *) malloc (sizeof (LK_DEBUG_TRACE_INFO) * LK_DEBUG_TRACE_INFO_ARR_SIZE);
+      if (lk_debug_trace_arr == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  sizeof (LK_DEBUG_TRACE_INFO) * LK_DEBUG_TRACE_INFO_ARR_SIZE);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      idx_lk_debug_trace_arr = 0;
+    }
+
+  local_idx_lk_debug_trace_arr = idx_lk_debug_trace_arr++;
+  local_idx_lk_debug_trace_arr = local_idx_lk_debug_trace_arr % 10000;
+  lk_debug_trace_arr[local_idx_lk_debug_trace_arr].old_highest_lock_info = old_highest_lock_info;
+  lk_debug_trace_arr[local_idx_lk_debug_trace_arr].new_highest_lock_info = new_highest_lock_info;
+  COPY_OID (&lk_debug_trace_arr[local_idx_lk_debug_trace_arr].oid, oid);
+  lk_debug_trace_arr[local_idx_lk_debug_trace_arr].tran_index = tran_index;
+  lk_debug_trace_arr[local_idx_lk_debug_trace_arr].line = __LINE__;
+  lk_debug_trace_arr[local_idx_lk_debug_trace_arr].lock = lock;
+
+  return NO_ERROR;
+}
+#endif /* defined (SERVER_MODE) && !defined (NDEBUG) */
