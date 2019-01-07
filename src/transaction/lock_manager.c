@@ -1561,10 +1561,13 @@ lock_delete_from_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran_index)
     }
 
   tran_lock = &lk_Gl.tran_lock_table[entry_ptr->tran_index];
-  lock_resource_type = entry_ptr->res_head->key.type;
-  if (!LK_ENTRY_IS_ACTIVE (entry_ptr))
+  if (!LK_ENTRY_IS_DISCONNECTED (entry_ptr))
     {
-      /* Since the lock entry is not active, definitely is a class lock. Check whether is root or not. */
+      lock_resource_type = entry_ptr->res_head->key.type;
+    }
+  else
+    {
+      /* Since the lock entry was disconnected, definitely is a class lock. Check whether is root or not. */
       if (entry_ptr == tran_lock->root_class_hold)
 	{
 	  lock_resource_type = LOCK_RESOURCE_ROOT_CLASS;
