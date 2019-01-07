@@ -3817,6 +3817,13 @@ start:
 
       /* release all mutexes */
       assert (is_res_mutex_locked);
+#if !defined (NDEBUG)
+      if (!LK_RES_HAS_HIGHEST_LOCK_INFO_DISABLED (res_ptr))
+	{
+	  LOCK lock_mode = LK_GET_HIGHEST_LOCK_MODE (ATOMIC_INC_64 (&(res_ptr)->highest_lock_info, 0LL));
+	  assert (entry_ptr->granted_mode <= lock_mode);
+	}
+#endif /* !defined (NDEBUG) */
       pthread_mutex_unlock (&res_ptr->res_mutex);
 
       *entry_addr_ptr = entry_ptr;
@@ -3908,6 +3915,14 @@ start:
 #if defined(LK_TRACE_OBJECT)
 	  LK_MSG_LOCK_ACQUIRED (entry_ptr);
 #endif /* LK_TRACE_OBJECT */
+
+#if !defined (NDEBUG)
+	  if (!LK_RES_HAS_HIGHEST_LOCK_INFO_DISABLED (res_ptr))
+	    {
+	      LOCK lock_mode = LK_GET_HIGHEST_LOCK_MODE (ATOMIC_INC_64 (&(res_ptr)->highest_lock_info, 0LL));
+	      assert (entry_ptr->granted_mode <= lock_mode);
+	    }
+#endif /* !defined (NDEBUG) */
 
 	  assert (is_res_mutex_locked);
 	  pthread_mutex_unlock (&res_ptr->res_mutex);
@@ -4072,6 +4087,14 @@ lock_tran_lk_entry:
 
   if (new_mode == entry_ptr->granted_mode)
     {
+#if !defined (NDEBUG)
+      if (!LK_RES_HAS_HIGHEST_LOCK_INFO_DISABLED (res_ptr))
+	{
+	  LOCK lock_mode = LK_GET_HIGHEST_LOCK_MODE (ATOMIC_INC_64 (&(res_ptr)->highest_lock_info, 0LL));
+	  assert (entry_ptr->granted_mode <= lock_mode);
+	}
+#endif /* !defined (NDEBUG) */
+
       /* A request with either a less exclusive or an equal mode of lock. No need to update highest lock with counter. */
       entry_ptr->count += 1;
       if (is_instant_duration)
@@ -4093,11 +4116,13 @@ lock_tran_lk_entry:
 	    }
 	}
 
+#if !defined (NDEBUG)
       if (!LK_RES_HAS_HIGHEST_LOCK_INFO_DISABLED (res_ptr))
 	{
 	  LOCK lock_mode = LK_GET_HIGHEST_LOCK_MODE (ATOMIC_INC_64 (&(res_ptr)->highest_lock_info, 0LL));
 	  assert (entry_ptr->granted_mode <= lock_mode);
 	}
+#endif /* !defined (NDEBUG) */
 
 
       if (is_res_mutex_locked)
