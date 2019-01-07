@@ -193,6 +193,10 @@ static int online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, H
 				 PRED_EXPR_WITH_CONTEXT * filter_pred, int *attrs_prefix_length,
 				 HEAP_CACHE_ATTRINFO * attr_info, HEAP_SCANCACHE * scancache, int unique_pk);
 
+/* Global variables needed for the Index Builder */
+INT64 ib_error = NO_ERROR;
+INT64 ib_tasks_running = 0LL;
+
 /*
  * btree_get_node_header () -
  *
@@ -4749,6 +4753,7 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 		      HEAP_SCANCACHE * scancache, int unique_pk)
 {
   int ret = NO_ERROR, eval_res;
+  INT64 local_error = NO_ERROR;
   OID cur_oid;
   RECDES cur_record;
   int cur_class;
@@ -4761,6 +4766,10 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
   DB_VALUE *p_dbvalue;
   int *p_prefix_length;
   char midxkey_buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_midxkey_buf;
+  cubthread::entry_workpool * ib_workpool =
+    cubthread::get_manager ()->create_worker_pool (16, 32, "Online index loader pool", NULL,
+						   1, cubthread::is_logging_configured (cubthread::
+											LOG_WORKER_POOL_TRAN_WORKERS));
 
   aligned_midxkey_buf = PTR_ALIGN (midxkey_buf, MAX_ALIGNMENT);
   db_make_null (&dbvalue);
@@ -4852,17 +4861,56 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 	}
 
       /* Dispatch the insert operation */
-      ret = btree_online_index_dispatcher (thread_p, btid_int->sys_btid, p_dbvalue, &class_oids[cur_class], &cur_oid,
-					   unique_pk, BTREE_OP_ONLINE_INDEX_IB_INSERT, NULL);
+
+      /*ret = btree_online_index_dispatcher (thread_p, btid_int->sys_btid, p_dbvalue, &class_oids[cur_class], &cur_oid,
+         unique_pk, BTREE_OP_ONLINE_INDEX_IB_INSERT, NULL); */
+
+      index_builder_loader_task *load_task =
+	new index_builder_loader_task (thread_p, btid_int->sys_btid, p_dbvalue, &class_oids[cur_class],
+				       &cur_oid, unique_pk, &ib_error, &ib_tasks_running);
+
+      cubthread::get_manager ()->push_task (ib_workpool, load_task);
+
+      /* Increment tasks started. */
+      ATOMIC_INC_64 (&ib_tasks_running, 1LL);
+
       /* Clear the index key. */
       pr_clear_value (p_dbvalue);
 
-      if (ret != NO_ERROR)
+      local_error = ATOMIC_INC_64 (&ib_error, 0LL);
+      if (local_error != NO_ERROR)
 	{
-	  return ret;
+	  /* Also stop all threads. */
+	  cubthread::get_manager ()->destroy_worker_pool (ib_workpool);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, (int) local_error, 0);
+	  return (int) local_error;
+	}
+    }
+
+  INT64 tasks_completed = 0;
+
+  /* Check if the workerpool is empty */
+  do
+    {
+      tasks_completed = ATOMIC_INC_64 (&ib_tasks_running, 0LL);
+
+      local_error = ATOMIC_INC_64 (&ib_error, 0LL);
+      if (local_error != NO_ERROR)
+	{
+	  /* Also stop all threads. */
+	  cubthread::get_manager ()->destroy_worker_pool (ib_workpool);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, (int) local_error, 0);
+	  return (int) local_error;
 	}
 
+      /* Wait for threads to finish. */
+      sleep (0.01);
+
     }
+  while (tasks_completed != 0LL);
+
+  assert (tasks_completed == 0LL);
+  cubthread::get_manager ()->destroy_worker_pool (ib_workpool);
 
   return ret;
 }

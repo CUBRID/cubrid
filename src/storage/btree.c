@@ -53,6 +53,7 @@
 #include "fault_injection.h"
 #include "dbtype.h"
 #include "thread_manager.hpp"
+#include "thread_entry_task.hpp"
 
 #define BTREE_HEALTH_CHECK
 
