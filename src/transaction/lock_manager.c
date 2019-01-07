@@ -4513,7 +4513,7 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
     }
   else
     {
-      if (LK_ENTRY_IS_DISCONNECTED (entry_ptr))
+      if (!LK_ENTRY_IS_DISCONNECTED (entry_ptr))
 	{
 	  if (lock_atomic_set_mark_delete (thread_p, entry_ptr))
 	    {
@@ -4521,7 +4521,7 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
 	      return;
 	    }
 	}
-      else if (LK_ENTRY_IS_DISCONNECTED (entry_ptr))
+      else
 	{
 	  /* Remove disconnected entry, without mutex acquisition. */
 	  lock_remove_disconnected_entry_and_init (thread_p, entry_ptr, false);
