@@ -51,8 +51,19 @@ typedef void JSON_ITERATOR;
 class comp_regex
 {
     cub_regex_t m_bsd_regex;
+    int error_code = NO_ERROR;
+    const std::string m_pattern;
+    bool m_moved_from;
   public:
     comp_regex (const std::string &pattern);
+    comp_regex (comp_regex &o) = delete;
+    comp_regex (comp_regex &&o)
+      : m_bsd_regex (o.m_bsd_regex)
+      , m_pattern (std::move (o.m_pattern))
+    {
+      // transfer resource ownership
+      o.m_moved_from = true;
+    }
 
     int reg_exec (const std::string &str) const
     {
@@ -64,7 +75,10 @@ class comp_regex
 
     ~comp_regex ()
     {
-      cub_regfree (&m_bsd_regex);
+      if (!m_moved_from)
+	{
+	  cub_regfree (&m_bsd_regex);
+	}
     }
 };
 

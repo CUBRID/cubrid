@@ -124,16 +124,14 @@ wrap_free (void *dummy, void *p)
 }
 
 comp_regex::comp_regex (const std::string &pattern)
+  : m_pattern (pattern)
 {
-  const bool is_case_sensitive = false;
-
   cub_regset_malloc (&wrap_malloc);
   cub_regset_realloc (&wrap_realloc);
   cub_regset_free (wrap_free);
 
-
-  int error_code = cub_regcomp (&m_bsd_regex, pattern.c_str(),
-				CUB_REG_EXTENDED | CUB_REG_ICASE);
+  error_code = cub_regcomp (&m_bsd_regex, pattern.c_str(),
+			    CUB_REG_EXTENDED | CUB_REG_NOSUB);
 
   // todo: do not ignore compilation error
 }
@@ -729,8 +727,9 @@ static bool match_regex (const std::string &str, const cub_regex_impl &reg)
     {
       /* should not reach on this */
       // assert (false);
+      return false;
     }
-  return false;
+  return true;
 #else
   return std::regex_match (crt_path, reg);
 #endif
@@ -2102,6 +2101,7 @@ db_json_remove_func (JSON_DOC &doc, const char *raw_path)
 int
 db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<cub_regex_impl> &regs, bool match_exactly)
 {
+  regs.reserve (paths.size ());
   for (auto &wild_card : paths)
     {
       std::stringstream ss;
@@ -2157,19 +2157,19 @@ db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<cub_r
 	}
 
       regs.push_back (cub_regex_impl (ss.str ()));
-      // todo: treat the std::regex_error somehow
-
-//      try
-//	{
-//	  regs.push_back (cub_regex_impl (ss.str ()));
-//	}
-//      catch (std::regex_error &e)
-//	{
-//	  // regex compilation exception
-//	  (void) e;
-//	  assert (false);
-//	  return ER_FAILED;
-//	}
+      try
+	{
+	  regs.push_back (cub_regex_impl (ss.str ()));
+	}
+#ifdef _USE_LIBREGEX_
+      catch (std::regex_error &e)
+	{
+	  // regex compilation exception
+	  (void) e;
+	  assert (false);
+	  return ER_FAILED;
+	}
+#endif
     }
   return NO_ERROR;
 }
