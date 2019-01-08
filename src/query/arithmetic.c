@@ -6306,10 +6306,11 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
   std::vector<std::string> transformed_paths;
   for (const auto &path : starting_paths)
     {
-      transformed_paths.emplace_back();
+      transformed_paths.emplace_back ();
       error_code = db_json_convert_pointer_to_sql_path (path.c_str (), transformed_paths.back ());
       if (error_code != NO_ERROR)
 	{
+	  db_json_delete_doc (doc);
 	  return error_code;
 	}
     }
@@ -6318,6 +6319,7 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
   if (error_code != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      db_json_delete_doc (doc);
       return error_code;
     }
 
