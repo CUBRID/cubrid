@@ -198,17 +198,27 @@ struct lk_res
   UINT64 del_id;		/* delete transaction ID (for latch free) */
   /*
    * Short desription:
-   * 64 bytes used to improve unlocking. It keeps the highest lock (less than IX),
-   * counts how many such locks are holded by transaction, the resource version and flag.  
-   * Instead of releasing class lock, we can mark as deleted. The next transacion, can activate it.
-   * If total holder mode changes, then recomputes the highest lock and the counter. Do not allow
-   * to mark delete, if have waiters or lock > IX_LOCK.
-   * The version is used to detect whether a lock entry refers an older resource lock. If true,
-   * the lock entry must be deallocated.
+   * 64 bytes used to improve class lock/unlock. It is used only when total holders mode is less than IX and
+   * there is no waiter. It keeps the highest lock mode, counts how many such locks are holded by transactions,
+   * the resource version and flag.
+   * The flag is used to enable/disable mark delete mechanism. When it is enabled, the other fields are used to
+   * attomically acquire/release lock without using the resource mutex. Also, in this case, total modes fields are
+   * not used. Instead of releasing class lock entry, we can mark it as deleted (lock_atomic_set_mark_delete).
+   * The next transacion, will reactivate it (lock_atomic_reset_mark_delete).
+   * When the flag is disabled, the other fields of highest_lock_info are not used. Instead it is used the old
+   * lock mechanism is used (total modes and mutex).
+   * The version is used to detect whether a lock entry refers a logically removed resource. So, the resource
+   * version is stored also in lock entry. Up to databse shutdown, resources are logically removed.
+   * The version increases when highest lock mode is modified or the resource is logically deleted.
+   * A resource is logically removed when there is no active lock entry in its lists.
+   * Before removing it, all mark deleted entries (LK_ENTRY_MARK_DELETED) are disconnected (LK_ENTRY_DISCONECTED).
+   * It is the owner responsibility to remove its disconnected entries.
    */
   volatile UINT64 highest_lock_info;
 
-  /* Count transactions that executes atomic mark/unmark delete. */
+  /* Count transactions that executes atomic mark/unmark delete. It is used by the transaction that disable
+   * mark delete mode to detect whether there are concurrent trancactions that still executes set/reset mark delete.
+   */
   volatile int count_atomic_mark_delete;
 };
 

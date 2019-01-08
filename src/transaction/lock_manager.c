@@ -3721,11 +3721,10 @@ start:
 	      /* Activate the entry, if not already activate it. */
 	      if (entry_ptr != NULL)
 		{
-		  /* TO DO - entry_ptr is in holderl list */
 		  assert (LK_ENTRY_IS_MARK_DELETED (entry_ptr));
 		  if (!ATOMIC_CAS_32 (&entry_ptr->status, LK_ENTRY_MARK_DELETED, LK_ENTRY_ACTIVE))
 		    {
-		      /* MNO tpossible. */
+		      /* Not possible. */
 		      return false;
 		    }
 
@@ -3734,7 +3733,7 @@ start:
 			  LK_GET_HIGHEST_LOCK_MODE (ATOMIC_INC_64 (&(res_ptr)->highest_lock_info, 0LL)));
 		  entry_ptr->count = 0;
 		  entry_ptr->instant_lock_count = 0;
-		  if (class_entry != NULL /*&& LK_ENTRY_IS_ACTIVE (class_entry) */ )
+		  if (class_entry != NULL)
 		    {
 		      entry_ptr->class_entry = class_entry;
 		    }
@@ -3788,7 +3787,7 @@ start:
       res_ptr->holder = entry_ptr;
 
       /* to manage granules */
-      if (class_entry != NULL /* && LK_ENTRY_IS_ACTIVE (class_entry) */ )
+      if (class_entry != NULL)
 	{
 	  entry_ptr->class_entry = class_entry;
 	}
@@ -3882,7 +3881,7 @@ start:
 	    }
 
 	  /* to manage granules */
-	  if (class_entry != NULL /*&& LK_ENTRY_IS_ACTIVE (class_entry) */ )
+	  if (class_entry != NULL)
 	    {
 	      entry_ptr->class_entry = class_entry;
 	    }
@@ -4416,7 +4415,7 @@ lock_conversion_treatement:
   if (lock_conversion == false)
     {
       /* to manage granules */
-      if (class_entry != NULL /*&& LK_ENTRY_IS_ACTIVE (class_entry) */ )
+      if (class_entry != NULL)
 	{
 	  entry_ptr->class_entry = class_entry;
 	}
@@ -10979,17 +10978,21 @@ lock_atomic_set_mark_delete (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
  *
  *   Note: This function is a fast way of acquiring a lock. It adds the lock mode to highest lock info and 
  * sets the lock entry fields. This is done in a atomic manner, so the resource mutex aquisition is not needed.
- * It is used for class locks acquisition. 
- * When a transaction ends, its lock entry is mark as deleted. When next transaction require class locks,
- * it reset the previously mark deletd entry. When this mechanism is used, the resource mutex is not acquired,
- * thus improving the performance. This mechanism is used when requested mode is at most IX_LOCK and have no waiters.
- * Any transaction can disable mark delete mode, when requested lock mode is too strong, by setting the flag in
- * resource highest_lock_info. Disabling is possible only after acquiring resource mutex and after waiting to complete
- * all transactions that executes a mark delete operation. Then, the resource total modes are recomputed. After
- * disabling mark delete mode all transactions requires resource mutex acquisition at lock/unlock request.
- * When unlocking all strong lock and don't have waiters, the mark delete mode can be reactivated. Thus, 
- * the resource mutex. Then, sets the flag in resource highest_lock_info, thus blocking any access to the resource. 
- * Finally, we recompute highest lock info, before releasing the resource mutex.
+ * It is used for class locks acquisition.
+ * When a transaction ends, its lock entry is mark as deleted (LK_ENTRY_MARK_DELETED). When next transaction require
+ * same class lock, it reset the previously mark deleted entry (LK_ENTRY_ACTIVE). When this mechanism is used,
+ * the resource mutex is not acquired, thus improving the performance. This mechanism is used when requested mode
+ * is at most IX_LOCK and there is no waiter.
+ * Any transaction can disable mark delete mode. This currently happens when requested lock mode is too strong
+ * (> IX_LOCK or incompatible with previously acquired locks).
+ * Mark delete mode is activated when LK_RES_HIGHEST_LOCK_FLAG is set in highest lock info of resource.
+ * Disabling it (lock_resource_disable_mark_delete) starts with acquiring resource mutex and removes
+ * LK_RES_HIGHEST_LOCK_FLAG. Then, waits all transactions that still executes a mark delete operation to complete.
+ * Then, the resource total modes are recomputed.
+ * While mark delete mode is disabled, all transactions requires resource mutex acquisition at lock/unlock request.
+ * Re-enabling (lock_resource_enable_rk_delete) mark delete mode is done when unlocking all strong locks.
+*  In that case, first, the resource mutex is acquired. Then, LK_RES_HIGHEST_LOCK_FLAG flag is set in resource
+ * highest_lock_info. Finally, highest lock info is recomputed, before releasing the resource mutex.
  */
 STATIC_INLINE bool
 lock_atomic_reset_mark_delete (THREAD_ENTRY * thread_p, int tran_index, LK_ENTRY * entry_ptr, LOCK requested_lock_mode,
@@ -11006,7 +11009,6 @@ lock_atomic_reset_mark_delete (THREAD_ENTRY * thread_p, int tran_index, LK_ENTRY
   assert (!LK_ENTRY_IS_ACTIVE (entry_ptr));
 
   /* Try to activate the mark deleted entry. */
-
   do
     {
       /* Get the highest lock with version and flags. */
@@ -11067,18 +11069,17 @@ lock_atomic_reset_mark_delete (THREAD_ENTRY * thread_p, int tran_index, LK_ENTRY
   while (true);
 
 
-  /* If we are in mark delete mode (no strong lock request), the transactions does not uses lock entry information.
-   * Instead, they read/update highest lock info. However, when mark delete mode must be disabled, we need to know
-   * each lock entry status, since we need to recompute total modes. In that case, we have to be sure that there
-   * is no transaction that executes set/reset mark delete. This is done with count_atomic_mark_delete and 
-   * LK_RES_HIGHEST_LOCK_FLAG. The transaction that wants to disable the mark delete mode, acquire the mutex and set
-   * LK_RES_HIGHEST_LOCK_FLAG flat, thus blocking any new set/reset call of concurrent transaction. Then, before
+  /* When we are in mark delete mode (no strong lock), the lock entry information are used only by the thread owner.
+   * The other transactions uses highest lock info. However, when mark delete is disabled, we need to know each
+   * lock entry status, since we need to recompute total modes. In that case, we have to be sure that there is no
+   * transaction that executes set/reset mark delete. This is done with count_atomic_mark_delete and
+   * LK_RES_HIGHEST_LOCK_FLAG. The transaction that wants to disable the mark delete mode, acquire the mutex and
+   * remove LK_RES_HIGHEST_LOCK_FLAG flag, thus blocking any new set/reset call of concurrent transaction. Then, before
    * computing total modes, it waits while count_atomic_mark_delete is greater than 0. This means, that waits for
-   * concurrent set/reset previously started and not finished yet.
+   * concurrent set/reset mark delete previously started and not finished yet.
    * Another possibility is to include count_atomic_mark_delete as a field into resource highest_lock_info. However,
    * it should be better to have distinct fields.
    */
-
   assert (LK_ENTRY_IS_MARK_DELETED (entry_ptr));
 
   entry_ptr->granted_mode = requested_lock_mode;
@@ -11090,7 +11091,7 @@ lock_atomic_reset_mark_delete (THREAD_ENTRY * thread_p, int tran_index, LK_ENTRY
       assert (entry_ptr->instant_lock_count > 0);
     }
   entry_ptr->resource_version = LK_GET_HIGHEST_LOCK_VERSION (res_ptr->highest_lock_info);
-  if (class_entry != NULL /*&& LK_ENTRY_IS_ACTIVE (class_entry) */ )
+  if (class_entry != NULL)
     {
       entry_ptr->class_entry = class_entry;
       lock_increment_class_granules (class_entry);
