@@ -103,7 +103,40 @@ class JSON_PRIVATE_ALLOCATOR
     void *Malloc (size_t size);
     void *Realloc (void *originalPtr, size_t originalSize, size_t newSize);
     static void Free (void *ptr);
-};
+} regex_guy;
+
+static void *
+wrap_malloc (void *dummy, size_t s)
+{
+  return regex_guy.Malloc (s);
+}
+
+static void *
+wrap_realloc (void *dummy, void *p, size_t s)
+{
+  return regex_guy.Realloc (p, s, s);
+}
+
+static void
+wrap_free (void *dummy, void *p)
+{
+  JSON_PRIVATE_ALLOCATOR::Free (dummy);
+}
+
+comp_regex::comp_regex (const std::string &pattern)
+{
+  const bool is_case_sensitive = false;
+
+  cub_regset_malloc (&wrap_malloc);
+  cub_regset_realloc (&wrap_realloc);
+  cub_regset_free (wrap_free);
+
+
+  int error_code = cub_regcomp (&m_bsd_regex, pattern.c_str(),
+				CUB_REG_EXTENDED | CUB_REG_ICASE);
+
+  // todo: do not ignore compilation error
+}
 
 #if TODO_OPTIMIZE_JSON_BODY_STRING
 struct JSON_RAW_STRING_DELETER
@@ -682,6 +715,26 @@ class JSON_PRETTY_WRITER : public JSON_BASE_HANDLER
     static const size_t LEVEL_INDENT_UNIT = 2;    // number of white spaces of indent level
     std::stack<level_context> m_level_stack;      // keep track of the current iterable (ARRAY/OBJECT)
 };
+
+static bool match_regex (const std::string &str, const cub_regex_impl &reg)
+{
+  int error_code = NO_ERROR;
+#ifdef _USE_LIBREGEX_
+  error_code = reg.reg_exec (str);
+  if (error_code == CUB_REG_NOMATCH)
+    {
+      return false;
+    }
+  if (error_code != CUB_REG_OKAY)
+    {
+      /* should not reach on this */
+      // assert (false);
+    }
+  return false;
+#else
+  return std::regex_match (crt_path, reg);
+#endif
+}
 
 const bool JSON_PRIVATE_ALLOCATOR::kNeedFree = true;
 const int JSON_DOC::MAX_CHUNK_SIZE = 64 * 1024; /* TODO does 64K serve our needs? */
@@ -1336,7 +1389,7 @@ db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<
       array_result = db_json_path_contains_wildcard (transformed_paths[0].c_str ());
     }
 
-  std::vector<std::regex> regs;
+  std::vector<cub_regex_impl> regs;
   error_code = db_json_paths_to_regex (transformed_paths, regs, true);
   if (error_code)
     {
@@ -1349,7 +1402,7 @@ db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<
   {
     for (std::size_t i = 0; i < regs.size (); ++i)
       {
-	if (std::regex_match (crt_path, regs[i]))
+	if (match_regex (crt_path, regs[i]))
 	  {
 	    produced_array[i].push_back (&jv);
 	  }
@@ -1424,7 +1477,7 @@ db_json_contains_path (const JSON_DOC *document, const std::vector<std::string> 
 	}
     }
 
-  std::vector<std::regex> regs;
+  std::vector<cub_regex_impl> regs;
   error_code = db_json_paths_to_regex (transformed_paths, regs);
   if (error_code != NO_ERROR)
     {
@@ -1442,7 +1495,7 @@ db_json_contains_path (const JSON_DOC *document, const std::vector<std::string> 
   {
     for (std::size_t i = 0; i < regs.size (); ++i)
       {
-	if (!found_set[i] && std::regex_match (accumulated_path, regs[i]))
+	if (!found_set[i] && match_regex (accumulated_path, regs[i]))
 	  {
 	    found_set[i] = true;
 	    if (!find_all)
@@ -2047,7 +2100,7 @@ db_json_remove_func (JSON_DOC &doc, const char *raw_path)
  *
  */
 int
-db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<std::regex> &regs, bool match_exactly)
+db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<cub_regex_impl> &regs, bool match_exactly)
 {
   for (auto &wild_card : paths)
     {
@@ -2103,17 +2156,20 @@ db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<std::
 	  ss << "[^[:space:]]*";
 	}
 
-      try
-	{
-	  regs.push_back (std::regex (ss.str ()));
-	}
-      catch (std::regex_error &e)
-	{
-	  // regex compilation exception
-	  (void) e;
-	  assert (false);
-	  return ER_FAILED;
-	}
+      regs.push_back (cub_regex_impl (ss.str ()));
+      // todo: treat the std::regex_error somehow
+
+//      try
+//	{
+//	  regs.push_back (cub_regex_impl (ss.str ()));
+//	}
+//      catch (std::regex_error &e)
+//	{
+//	  // regex compilation exception
+//	  (void) e;
+//	  assert (false);
+//	  return ER_FAILED;
+//	}
     }
   return NO_ERROR;
 }
@@ -2131,7 +2187,7 @@ db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<std::
  */
 int
 db_json_search_func (JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALUE *esc_char, std::vector<std::string> &paths,
-		     const std::vector<std::regex> &regs, bool find_all)
+		     const std::vector<cub_regex_impl> &regs, bool find_all)
 {
   std::unordered_set<std::string> paths_gathered;
   const map_func_type &f_search = [&regs, &paths, pattern, esc_char, find_all, &paths_gathered] (const JSON_VALUE &jv,
@@ -2161,7 +2217,7 @@ db_json_search_func (JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALUE *esc
 
     for (std::size_t i = 0; i < regs.size (); ++i)
       {
-	if (std::regex_match (crt_path, regs[i]) && paths_gathered.find (crt_path) == paths_gathered.end ())
+	if (match_regex (crt_path, regs[i]) && paths_gathered.find (crt_path) == paths_gathered.end ())
 	  {
 	    paths.push_back (crt_path);
 	    paths_gathered.insert (crt_path);

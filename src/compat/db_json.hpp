@@ -23,6 +23,8 @@
 
 #ifndef _DB_JSON_HPP_
 #define _DB_JSON_HPP_
+#ifndef _USE_LIBREGEX_
+#define _USE_LIBREGEX_
 
 #include "error_manager.h"
 #include "object_representation.h"
@@ -42,6 +44,35 @@ typedef void JSON_ITERATOR;
 #include <functional>
 #include <regex>
 #include <vector>
+
+// For gcc version < 4.9.0
+#include "libregex38a/regex38a.h"
+
+class comp_regex
+{
+    cub_regex_t m_bsd_regex;
+  public:
+    comp_regex (const std::string &pattern);
+
+    int reg_exec (const std::string &str) const
+    {
+      const char *tmp_str = str.c_str ();
+      assert (strlen (tmp_str) == str.length ());
+
+      return cub_regexec (&m_bsd_regex, str.c_str (), str.length () + 1, 0, NULL, 0);
+    }
+
+    ~comp_regex ()
+    {
+      cub_regfree (&m_bsd_regex);
+    }
+};
+
+#ifdef _USE_LIBREGEX_
+typedef comp_regex cub_regex_impl;
+#else
+typedef std::regex comp_regex;
+#endif
 
 /*
  * these also double as type precedence
@@ -106,10 +137,10 @@ int db_json_keys_func (const JSON_DOC &doc, JSON_DOC &result_json, const char *r
 int db_json_array_append_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path);
 int db_json_array_insert_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path);
 int db_json_remove_func (JSON_DOC &doc, const char *raw_path);
-int db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<std::regex> &regs,
+int db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<cub_regex_impl> &regs,
 			    bool match_exactly = false);
 int db_json_search_func (JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALUE *esc_char,
-			 std::vector<std::string> &paths, const std::vector<std::regex> &regs, bool find_all);
+			 std::vector<std::string> &paths, const std::vector<cub_regex_impl> &regs, bool find_all);
 int db_json_merge_func (const JSON_DOC *source, JSON_DOC *&dest, bool patch);
 int db_json_get_all_paths_func (const JSON_DOC &doc, JSON_DOC *&result_json);
 void db_json_pretty_func (const JSON_DOC &doc, char *&result_str);
@@ -190,4 +221,5 @@ db_json_convert_string_and_call (const char *json_raw, size_t json_raw_length, F
 
 #endif /* defined (__cplusplus) */
 
+#endif /* _USE_LIBREGEX_ */
 #endif /* _DB_JSON_HPP_ */

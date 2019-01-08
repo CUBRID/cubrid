@@ -6297,7 +6297,7 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
       starting_paths.emplace_back (s);
     }
 
-  std::vector<std::regex> regs;
+  std::vector<cub_regex_impl> regs;
   if (starting_paths.empty ())
     {
       starting_paths.push_back ("$");
