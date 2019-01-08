@@ -136,10 +136,14 @@ comp_regex::comp_regex (const std::string &pattern)
   cub_regset_realloc (&wrap_realloc);
   cub_regset_free (wrap_free);
 
-  error_code = cub_regcomp (&m_bsd_regex, pattern.c_str(),
-			    CUB_REG_EXTENDED | CUB_REG_NOSUB);
+  int error_code = cub_regcomp (&m_bsd_regex, pattern.c_str (),
+				CUB_REG_EXTENDED);
 
-  // todo: do not ignore compilation error
+  if (error_code != CUB_REG_OKAY)
+    {
+      // todo: convert CUB_REG errors to appropriate regex_error or add appropriate errcodes for the exceptions
+      throw std::regex_error (std::regex_constants::error_type::error_backref);
+    }
 }
 
 #if TODO_OPTIMIZE_JSON_BODY_STRING
@@ -722,20 +726,8 @@ class JSON_PRETTY_WRITER : public JSON_BASE_HANDLER
 
 static bool match_regex (const std::string &str, const cub_regex_impl &reg)
 {
-  int error_code = NO_ERROR;
 #ifdef _USE_LIBREGEX_
-  error_code = reg.reg_exec (str);
-  if (error_code == CUB_REG_NOMATCH)
-    {
-      return false;
-    }
-  if (error_code != CUB_REG_OKAY)
-    {
-      /* should not reach on this */
-      // assert (false);
-      return false;
-    }
-  return true;
+  return reg.reg_match (str);
 #else
   return std::regex_match (crt_path, reg);
 #endif
@@ -2162,12 +2154,10 @@ db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<cub_r
 	  ss << "[^[:space:]]*";
 	}
 
-      regs.push_back (cub_regex_impl (ss.str ()));
       try
 	{
 	  regs.push_back (cub_regex_impl (ss.str ()));
 	}
-#ifdef _USE_LIBREGEX_
       catch (std::regex_error &e)
 	{
 	  // regex compilation exception
@@ -2175,7 +2165,6 @@ db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<cub_r
 	  assert (false);
 	  return ER_FAILED;
 	}
-#endif
     }
   return NO_ERROR;
 }

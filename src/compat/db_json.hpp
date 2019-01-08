@@ -51,9 +51,8 @@ typedef void JSON_ITERATOR;
 class comp_regex
 {
     cub_regex_t m_bsd_regex;
-    int error_code = NO_ERROR;
     const std::string m_pattern;
-    bool m_moved_from;
+    bool m_moved_from = false;
   public:
     comp_regex (const std::string &pattern);
     comp_regex (comp_regex &o) = delete;
@@ -61,16 +60,43 @@ class comp_regex
       : m_bsd_regex (o.m_bsd_regex)
       , m_pattern (std::move (o.m_pattern))
     {
+      if (o.m_moved_from)
+	{
+	  // todo: assert before init
+	  assert (false);
+	}
+
       // transfer resource ownership
       o.m_moved_from = true;
     }
 
-    int reg_exec (const std::string &str) const
+    bool reg_match (const std::string &str) const
     {
       const char *tmp_str = str.c_str ();
       assert (strlen (tmp_str) == str.length ());
 
-      return cub_regexec (&m_bsd_regex, str.c_str (), str.length () + 1, 0, NULL, 0);
+      int nr_matches;
+      cub_regmatch_t match[1];
+      int ret_code = cub_regexec (&m_bsd_regex, str.c_str (), str.length (), 1, match, 0);
+
+      if (ret_code == CUB_REG_NOMATCH)
+	{
+	  return false;
+	}
+
+      if (ret_code != CUB_REG_OKAY)
+	{
+	  /* should not reach on this */
+	  // assert (false);
+	  return false;
+	}
+
+      if (match->rm_so == 0 && match->rm_eo == str.length ())
+	{
+	  return true;
+	}
+
+      return false;
     }
 
     ~comp_regex ()
