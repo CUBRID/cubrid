@@ -103,24 +103,30 @@ class JSON_PRIVATE_ALLOCATOR
     void *Malloc (size_t size);
     void *Realloc (void *originalPtr, size_t originalSize, size_t newSize);
     static void Free (void *ptr);
-} regex_guy;
+};
 
 static void *
 wrap_malloc (void *dummy, size_t s)
 {
-  return regex_guy.Malloc (s);
+  return db_private_alloc (NULL, s);
 }
 
 static void *
 wrap_realloc (void *dummy, void *p, size_t s)
 {
-  return regex_guy.Realloc (p, s, s);
+  if (s == 0)
+    {
+      db_private_free (NULL, p);
+      return NULL;
+    }
+
+  return db_private_realloc (NULL, p, s);
 }
 
 static void
 wrap_free (void *dummy, void *p)
 {
-  JSON_PRIVATE_ALLOCATOR::Free (dummy);
+  db_private_free (NULL, p);
 }
 
 comp_regex::comp_regex (const std::string &pattern)
