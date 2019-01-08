@@ -872,6 +872,8 @@ lock_alloc_resource (void)
     {
       pthread_mutex_init (&(res_ptr->res_mutex), NULL);
     }
+  res_ptr->highest_lock_info = 0;
+  res_ptr->count_atomic_mark_delete = 0;
   return res_ptr;
 }
 
@@ -908,8 +910,6 @@ lock_init_resource (void *res)
   res_ptr->waiter = NULL;
   res_ptr->non2pl = NULL;
   res_ptr->hash_next = NULL;
-  res_ptr->highest_lock_info = 0;
-  res_ptr->count_atomic_mark_delete = 0;
 
   return NO_ERROR;
 }
@@ -928,7 +928,6 @@ lock_uninit_resource (void *res)
   assert (res_ptr->waiter == NULL);
   assert (res_ptr->non2pl == NULL);
 
-  res_ptr->highest_lock_info = LK_INC_HIGHEST_LOCK_VERSION (res_ptr->highest_lock_info);
   /* TO BE FILLED IN AS NECESSARY */
   return NO_ERROR;
 }
@@ -1129,8 +1128,6 @@ lock_initialize_resource (LK_RES * res_ptr)
   res_ptr->waiter = NULL;
   res_ptr->non2pl = NULL;
   res_ptr->hash_next = NULL;
-  res_ptr->highest_lock_info = 0;
-  res_ptr->count_atomic_mark_delete = 0;
 }
 
 /* initialize lock resource as allocated state */
@@ -1392,6 +1389,11 @@ lock_remove_resource (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 {
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_RES);
   int success = 0, rc;
+
+  if (LOCK_IS_ANY_CLASS_RESOURCE_TYPE (res_ptr->key.type))
+    {
+      res_ptr->highest_lock_info = LK_INC_HIGHEST_LOCK_VERSION (res_ptr->highest_lock_info);
+    }
 
   assert (res_ptr->holder == NULL && res_ptr->waiter == NULL && res_ptr->non2pl == NULL);
   rc = lf_hash_delete_already_locked (t_entry, &lk_Gl.obj_hash_table, (void *) &res_ptr->key, res_ptr, &success);
@@ -3712,7 +3714,7 @@ start:
 	}
 
       /* Existing resource. */
-      if (!LK_RES_HAS_HIGHEST_LOCK_INFO_DISABLED (res_ptr))
+      if (LK_RES_HAS_HIGHEST_LOCK_INFO_ENABLED (res_ptr))
 	{
 	  if (lock_add_lock_to_resource_highest_lock_info (thread_p, res_ptr, lock))
 	    {
@@ -3820,7 +3822,7 @@ start:
       /* release all mutexes */
       assert (is_res_mutex_locked);
 #if !defined (NDEBUG)
-      if (!LK_RES_HAS_HIGHEST_LOCK_INFO_DISABLED (res_ptr))
+      if (LK_RES_HAS_HIGHEST_LOCK_INFO_ENABLED (res_ptr))
 	{
 	  LOCK lock_mode = LK_GET_HIGHEST_LOCK_MODE (ATOMIC_INC_64 (&(res_ptr)->highest_lock_info, 0LL));
 	  assert (entry_ptr->granted_mode <= lock_mode);
@@ -3919,7 +3921,7 @@ start:
 #endif /* LK_TRACE_OBJECT */
 
 #if !defined (NDEBUG)
-	  if (!LK_RES_HAS_HIGHEST_LOCK_INFO_DISABLED (res_ptr))
+	  if (LK_RES_HAS_HIGHEST_LOCK_INFO_ENABLED (res_ptr))
 	    {
 	      LOCK lock_mode = LK_GET_HIGHEST_LOCK_MODE (ATOMIC_INC_64 (&(res_ptr)->highest_lock_info, 0LL));
 	      assert (entry_ptr->granted_mode <= lock_mode);
@@ -4090,7 +4092,7 @@ lock_tran_lk_entry:
   if (new_mode == entry_ptr->granted_mode)
     {
 #if !defined (NDEBUG)
-      if (!LK_RES_HAS_HIGHEST_LOCK_INFO_DISABLED (res_ptr))
+      if (LK_RES_HAS_HIGHEST_LOCK_INFO_ENABLED (res_ptr))
 	{
 	  LOCK lock_mode = LK_GET_HIGHEST_LOCK_MODE (ATOMIC_INC_64 (&(res_ptr)->highest_lock_info, 0LL));
 	  assert (entry_ptr->granted_mode <= lock_mode);
@@ -4119,7 +4121,7 @@ lock_tran_lk_entry:
 	}
 
 #if !defined (NDEBUG)
-      if (!LK_RES_HAS_HIGHEST_LOCK_INFO_DISABLED (res_ptr))
+      if (LK_RES_HAS_HIGHEST_LOCK_INFO_ENABLED (res_ptr))
 	{
 	  LOCK lock_mode = LK_GET_HIGHEST_LOCK_MODE (ATOMIC_INC_64 (&(res_ptr)->highest_lock_info, 0LL));
 	  assert (entry_ptr->granted_mode <= lock_mode);
@@ -4149,7 +4151,7 @@ lock_tran_lk_entry:
       if (LOCK_IS_ANY_CLASS_RESOURCE_TYPE (res_ptr->key.type))
 	{
 	  /* If mark deletion disabled, nothing to do. */
-	  if (!LK_RES_HAS_HIGHEST_LOCK_INFO_DISABLED (res_ptr)
+	  if (LK_RES_HAS_HIGHEST_LOCK_INFO_ENABLED (res_ptr)
 	      && !lock_add_lock_to_resource_highest_lock_info (thread_p, res_ptr, lock))
 	    {
 	      /* Disable mark deletion. Will be re-enabled when release all strong locks.
@@ -4535,7 +4537,7 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
   res_ptr = entry_ptr->res_head;
   rv = pthread_mutex_lock (&res_ptr->res_mutex);
 
-  if (LOCK_IS_ANY_CLASS_RESOURCE_TYPE (res_ptr->key.type) && !LK_RES_HAS_HIGHEST_LOCK_INFO_DISABLED (res_ptr))
+  if (LOCK_IS_ANY_CLASS_RESOURCE_TYPE (res_ptr->key.type) && LK_RES_HAS_HIGHEST_LOCK_INFO_ENABLED (res_ptr))
     {
       /* Remove the lock and recomputes highest lock info, if necessary. */
       if (!lock_remove_lock_from_resource_highest_lock_info (thread_p, res_ptr, entry_ptr->granted_mode,
@@ -4585,7 +4587,7 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
 	}
 
       /* We are in mark deleteion mode or the resource was removed. */
-      assert (res_ptr == NULL || !LK_RES_HAS_HIGHEST_LOCK_INFO_DISABLED (res_ptr));
+      assert (res_ptr == NULL || LK_RES_HAS_HIGHEST_LOCK_INFO_ENABLED (res_ptr));
       pthread_mutex_unlock (&res_ptr->res_mutex);
       return;
     }
@@ -4881,7 +4883,7 @@ lock_internal_demote_class_lock (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, 
   /* demote the class lock(granted mode) of the lock entry */
   holder->granted_mode = to_be_lock;
 
-  if (!LK_RES_HAS_HIGHEST_LOCK_INFO_DISABLED (res_ptr))
+  if (LK_RES_HAS_HIGHEST_LOCK_INFO_ENABLED (res_ptr))
     {
       /* No need to recompute total holder mode. No waiters also. */
       assert (res_ptr->waiter == NULL);
@@ -11018,12 +11020,14 @@ lock_atomic_reset_mark_delete (THREAD_ENTRY * thread_p, int tran_index, LK_ENTRY
 	}
 
       /* Check whether is same resource (the version) and my lock entry was disconnected. */
-      if (entry_ptr->resource_version !=
-	  LK_GET_HIGHEST_LOCK_VERSION (old_highest_lock_info) && !LK_ENTRY_IS_MARK_DELETED (entry_ptr))
+      if (entry_ptr->resource_version != LK_GET_HIGHEST_LOCK_VERSION (old_highest_lock_info))
 	{
 	  /* Someone else disconected me, the entry is obsolete and can be deallocated/resused. */
 	  assert (!LK_ENTRY_IS_ACTIVE (entry_ptr));
-	  return false;
+	  if (LK_ENTRY_IS_DISCONNECTED (entry_ptr))
+	    {
+	      return false;
+	    }
 	}
 
       new_highest_lock_info = old_highest_lock_info;
@@ -11058,7 +11062,7 @@ lock_atomic_reset_mark_delete (THREAD_ENTRY * thread_p, int tran_index, LK_ENTRY
 
       /* Restore counters and try again. If other disable mark delete mode, I can detect by checking the flag. */
       count_atomic_mark_delete = ATOMIC_INC_32 (&res_ptr->count_atomic_mark_delete, -1);
-      assert (res_ptr->count_atomic_mark_delete >= 0);
+      assert (count_atomic_mark_delete >= 0);
     }
   while (true);
 
@@ -11103,7 +11107,7 @@ lock_atomic_reset_mark_delete (THREAD_ENTRY * thread_p, int tran_index, LK_ENTRY
 
   /* Ends reset mark delete. */
   count_atomic_mark_delete = ATOMIC_INC_32 (&res_ptr->count_atomic_mark_delete, -1);
-  assert (res_ptr->count_atomic_mark_delete >= 0);
+  assert (count_atomic_mark_delete >= 0);
 
   return true;
 }
