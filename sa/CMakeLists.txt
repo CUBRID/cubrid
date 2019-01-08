@@ -344,12 +344,16 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/oid.c
   ${STORAGE_DIR}/overflow_file.c
   ${STORAGE_DIR}/page_buffer.c
+  ${STORAGE_DIR}/record_descriptor.cpp
   ${STORAGE_DIR}/slotted_page.c
   ${STORAGE_DIR}/statistics_cl.c
   ${STORAGE_DIR}/statistics_sr.c
   ${STORAGE_DIR}/storage_common.c
   ${STORAGE_DIR}/system_catalog.c
   )
+set(STORAGE_HEADERS
+  ${STORAGE_DIR}/record_descriptor.hpp
+)
 
 set(SESSION_SOURCES
   ${SESSION_DIR}/session.c
@@ -476,6 +480,7 @@ add_library(cubridsa SHARED
   ${JSP_SOURCES}
   ${THREAD_SOURCES}
   ${TRANSACTION_SOURCES}
+  ${STORAGE_HEADERS}
   ${STORAGE_SOURCES}
   ${ES_SOURCES}
   ${SESSION_SOURCES}
