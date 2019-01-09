@@ -11362,7 +11362,7 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       break;
     case PT_CAST:
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
-      if (p->info.expr.arg1 != NULL && PT_EXPR_INFO_IS_FLAGED (p, PT_EXPR_INFO_CAST_COLL_MODIFIER))
+      if (PT_EXPR_INFO_IS_FLAGED (p, PT_EXPR_INFO_CAST_COLL_MODIFIER))
 	{
 	  /* CAST op with this flag does not transform into T_CAST */
 	  char buf[PT_MEMB_BUF_SIZE];
@@ -11370,7 +11370,11 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 
 	  sprintf (buf, " collate %s", lang_get_collation_name (PT_GET_COLLATION_MODIFIER (p)));
 
-	  if (p->info.expr.arg1->node_type == PT_VALUE)
+	  if (p->info.expr.arg1 == NULL)
+	    {
+	      /* Do nothing. */
+	    }
+	  else if (p->info.expr.arg1->node_type == PT_VALUE)
 	    {
 	      PT_NODE *v = p->info.expr.arg1;
 	      int v_coll_id;
