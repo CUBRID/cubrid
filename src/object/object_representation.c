@@ -106,6 +106,8 @@ static int or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int
 static int or_varbit_length_internal (int bitlen, int align);
 static int or_varchar_length_internal (int charlen, int align);
 static int or_put_varbit_internal (OR_BUF * buf, char *string, int bitlen, int align);
+static int or_packed_json_schema_length (const char *json_schema);
+static int or_packed_json_validator_length (JSON_VALIDATOR * json_validator);
 static char *or_unpack_var_table_internal (char *ptr, int nvars, OR_VARINFO * vars, int offset_size);
 static char or_mvcc_get_flag (RECDES * record);
 static void or_mvcc_set_flag (RECDES * record, char flags);
@@ -4131,6 +4133,45 @@ or_packed_string_length (const char *string, int *strlenp)
 }
 
 /*
+ * or_packed_json_schema_length - Determines the number of bytes required to hold
+ * the packed representation of a json_schema.
+ *    return: length of packed json_schema
+ *    json_schema(in): json_schema
+ */
+static int
+or_packed_json_schema_length (const char *json_schema)
+{
+  DB_VALUE val;
+  int len;
+
+  // *INDENT-OFF*
+  db_make_string (&val, const_cast <char*>(json_schema));
+  // *INDENT-ON*
+
+  len = (*(tp_String.data_lengthval)) (&val, 1);
+
+  pr_clear_value (&val);
+
+  return len;
+}
+
+/*
+ * or_packed_json_validator_length - Determines the number of bytes required to hold
+ * the packed representation of a json_validator.
+ *    return: length of packed json_validator
+ *    json_validator(in): json_validator
+ */
+static int
+or_packed_json_validator_length (JSON_VALIDATOR * json_validator)
+{
+  if (json_validator == NULL)
+    {
+      return 0;
+    }
+  return or_packed_json_schema_length (db_json_get_schema_raw_from_validator (json_validator));
+}
+
+/*
  * or_packed_stream_length - Determines the number of bytes required to hold
  * the packed representation of a stream.
  *    return: length of packed stream
@@ -4489,10 +4530,7 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
 	  break;
 
 	case DB_TYPE_JSON:
-	  if (d->json_validator != NULL)
-	    {
-	      size += or_packed_string_length (db_json_get_schema_raw_from_validator (d->json_validator), NULL);
-	    }
+	  size += or_packed_json_validator_length (d->json_validator);
 	  break;
 
 	default:

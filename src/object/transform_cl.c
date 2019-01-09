@@ -2190,8 +2190,10 @@ disk_to_domain2 (OR_BUF * buf)
 	  assert_release (false);
 	  tp_domain_free (domain);
 	  free_var_table (vars);
+	  db_private_free_and_init (NULL, schema_raw);
 	  return NULL;
 	}
+      db_private_free_and_init (NULL, schema_raw);
     }
 
   free_var_table (vars);

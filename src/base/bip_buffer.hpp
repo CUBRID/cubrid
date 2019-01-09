@@ -32,7 +32,7 @@
 #include <assert.h>
 #include <bitset>
 
-namespace mem
+namespace cubmem
 {
   /*
    * Implementation of a enhanced Bipartite circular buffer : returns a contiguous memory for append
@@ -201,7 +201,7 @@ namespace mem
 	return NO_ERROR;
       };
 
-      int start_read (const char *ptr, const size_t amount, mem::buffer_latch_read_id &latched_page_idx)
+      int start_read (const char *ptr, const size_t amount, cubmem::buffer_latch_read_id &latched_page_idx)
       {
 	int start_page_idx;
 
@@ -274,7 +274,7 @@ namespace mem
 	return NO_ERROR;
       };
 
-      int end_read (const mem::buffer_latch_read_id &page_idx)
+      int end_read (const cubmem::buffer_latch_read_id &page_idx)
       {
 	assert (page_idx >= 0 && page_idx < P);
 
@@ -517,6 +517,6 @@ namespace mem
       std::uint64_t m_cycles;
   };
 
-} /* namespace mem */
+} /* namespace cubmem */
 
 #endif /* _BIP_BUFFER_HPP_ */

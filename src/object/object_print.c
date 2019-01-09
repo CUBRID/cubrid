@@ -25,7 +25,6 @@
 
 #include "object_print.h"
 #include "config.h"
-#include "db_private_allocator.hpp"
 #include "db_value_printer.hpp"
 #include "mem_block.hpp"
 
@@ -60,6 +59,7 @@
 #endif /* !defined (SERVER_MODE) */
 #include "string_buffer.hpp"
 #include "dbtype.h"
+#include "memory_private_allocator.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -740,23 +740,8 @@ help_print_info (const char *command, FILE * fpp)
 void
 help_fprint_value (THREAD_ENTRY * thread_p, FILE * fp, const DB_VALUE * value)
 {
-/* *INDENT-OFF* */
-  db_private_allocator<char> private_allocator{thread_p};
-  string_buffer sb{
-    [&private_allocator] (mem::block& block, size_t len)
-    {
-      mem::block b{block.dim + len, private_allocator.allocate (block.dim + len)};
-      memcpy (b.ptr, block.ptr, block.dim);
-      private_allocator.deallocate (block.ptr);
-      block = std::move (b);
-    },
-    [&private_allocator] (mem::block& block)
-    {
-      private_allocator.deallocate (block.ptr);
-      block = {};
-    }
-  };
-/* *INDENT-ON* */
+  const size_t BUFFER_SIZE = 1024;
+  string_buffer sb (cubmem::PRIVATE_BLOCK_ALLOCATOR, BUFFER_SIZE);
 
   db_value_printer printer (sb);
   printer.describe_value (value);

@@ -44,7 +44,6 @@
 #include "tz_support.h"
 #include "file_io.h"
 #include "db_json.hpp"
-#include "db_private_allocator.hpp"
 #include <utility>
 
 #if !defined (SERVER_MODE)
@@ -55,6 +54,7 @@
 #endif /* !defined (SERVER_MODE) */
 
 #include "dbtype.h"
+#include "memory_private_allocator.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -9955,33 +9955,21 @@ pr_data_writeval (OR_BUF * buf, DB_VALUE * value)
 char *
 pr_valstring (THREAD_ENTRY * threade, DB_VALUE * val)
 {
-/* *INDENT-OFF* */
-  string_buffer sb {
-    [&threade] (mem::block &block, size_t len)
-    {
-      block.ptr = (char *) db_private_realloc (threade, block.ptr, block.dim + len);
-      block.dim += len;
-    },
-    [&threade] (mem::block &block)
-    {
-      db_private_free (threade, block.ptr);
-      block = {};
-    }
-  };
-/* *INDENT-ON* */
+  const size_t BUFFER_SIZE = 1024;
+  string_buffer sb (cubmem::PRIVATE_BLOCK_ALLOCATOR, BUFFER_SIZE);
 
   if (val == NULL)
     {
       /* space with terminating NULL */
       sb ("(null)");
-      return sb.move_ptr ();
+      return sb.release_ptr ();
     }
 
   if (DB_IS_NULL (val))
     {
       /* space with terminating NULL */
       sb ("NULL");
-      return sb.move_ptr ();
+      return sb.release_ptr ();
     }
 
   DB_TYPE dbval_type = DB_VALUE_DOMAIN_TYPE (val);
@@ -9993,7 +9981,7 @@ pr_valstring (THREAD_ENTRY * threade, DB_VALUE * val)
     }
 
   (*(pr_type->sptrfunc)) (val, sb);
-  return sb.move_ptr ();	//caller should use db_private_free() to deallocate it
+  return sb.release_ptr ();	//caller should use db_private_free() to deallocate it
 }
 #endif //defined (SERVER_MODE) || defined (SA_MODE)
 

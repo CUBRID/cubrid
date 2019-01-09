@@ -51,6 +51,7 @@
 #include "dbi.h"
 #include "string_buffer.hpp"
 #include "dbtype.h"
+#include "parser_allocator.hpp"
 
 #include <malloc.h>
 
@@ -2522,24 +2523,8 @@ pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
   int error = NO_ERROR;
   unsigned int save_custom = parser->custom_print;
 
-  /* *INDENT-OFF* */
-  string_buffer sb
-  {
-    [&parser] (mem::block &block, size_t len)
-    {
-      size_t dim = block.dim ? block.dim : 1;
-
-      for (; dim < block.dim + len; dim *= 2)	//calc next power of 2 >= b.dim+len
-	 ;
-
-      mem::block b { dim, (char *) parser_alloc (parser, (const int) dim) };
-      memcpy (b.ptr, block.ptr, block.dim);
-      block = std::move (b);
-    }, [](mem::block &block)
-    {
-    }				//no need to deallocate for parser_context
-  };
-  /* *INDENT-ON* */
+  parser_block_allocator alloc (parser);
+  string_buffer sb (alloc);
 
   db_value_printer printer (sb);
   if (val == NULL)

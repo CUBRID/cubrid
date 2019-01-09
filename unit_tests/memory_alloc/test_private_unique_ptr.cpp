@@ -24,10 +24,13 @@
 
 /* headers from cubrid */
 #include "memory_alloc.h"
+#include "memory_private_allocator.hpp"
 
 /* system headers */
 #include <iostream>
 #include <memory>
+
+using namespace cubmem;
 
 namespace test_memalloc
 {
@@ -37,17 +40,17 @@ namespace test_memalloc
   test_private_unique_ptr_swap()
   {
     custom_thread_entry cte;
-    db_private_allocator<char> private_alloc (cte.get_thread_entry());
+    cubmem::private_allocator<char> private_alloc (cte.get_thread_entry());
 
     char *a = private_alloc.allocate (SIZE_64);
     char *b = private_alloc.allocate (SIZE_64);
 
     // copy something different in each buffer
     strcpy (a, "1");
-    PRIVATE_UNIQUE_PTR<char> pa (a, cte.get_thread_entry());
+    private_unique_ptr<char> pa (a, cte.get_thread_entry());
 
     strcpy (b, "2");
-    PRIVATE_UNIQUE_PTR<char> pb (b, cte.get_thread_entry());
+    private_unique_ptr<char> pb (b, cte.get_thread_entry());
 
     pa.swap (pb);
 
@@ -66,13 +69,13 @@ namespace test_memalloc
     std::cout << TAB << "testing pointer is freed when the desctructor of PRIVATE_UNIQUE_PTR is called" << std::endl;
     custom_thread_entry cte;
     T *ptr = nullptr;
-    db_private_allocator<T> private_alloc (cte.get_thread_entry());
+    cubmem::private_allocator<T> private_alloc (cte.get_thread_entry());
 
     ptr = private_alloc.allocate (SIZE_64);
     *ptr = T();
     * (ptr + SIZE_64 - 1) = T();
 
-    PRIVATE_UNIQUE_PTR<char> priv_uniq_ptr (ptr, cte.get_thread_entry());
+    private_unique_ptr<char> priv_uniq_ptr (ptr, cte.get_thread_entry());
   }
 
   template<typename T>
@@ -82,13 +85,13 @@ namespace test_memalloc
     std::cout << TAB << "testing release function of PRIVATE_UNIQUE_PTR" << std::endl;
     custom_thread_entry cte;
     T *ptr = nullptr;
-    db_private_allocator<T> private_alloc (cte.get_thread_entry());
+    cubmem::private_allocator<T> private_alloc (cte.get_thread_entry());
 
     ptr = private_alloc.allocate (SIZE_64);
     *ptr = T();
     * (ptr + SIZE_64 - 1) = T();
 
-    PRIVATE_UNIQUE_PTR<T> priv_uniq_ptr (ptr, cte.get_thread_entry());
+    private_unique_ptr<T> priv_uniq_ptr (ptr, cte.get_thread_entry());
 
     T *ptr_release = priv_uniq_ptr.release();
 
@@ -124,7 +127,7 @@ namespace test_memalloc
 
     custom_thread_entry cte;
     Foo *ptr = (Foo *) db_private_alloc (cte.get_thread_entry(), sizeof (Foo));
-    PRIVATE_UNIQUE_PTR<Foo> priv_uniq_ptr (ptr, cte.get_thread_entry());
+    private_unique_ptr<Foo> priv_uniq_ptr (ptr, cte.get_thread_entry());
 
     priv_uniq_ptr->test_arrow_operator();
     test_dereference_operator (*priv_uniq_ptr);
