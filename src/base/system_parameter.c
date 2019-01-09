@@ -666,6 +666,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_LOG_PGBUF_VICTIM_FLUSH "log_pgbuf_victim_flush"
 #define PRM_NAME_LOG_CHKPT_DETAILED "detailed_checkpoint_logging"
 
+#define PRM_NAME_IB_NO_THREADS "ib_no_threads"
+
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
 #define PRM_VALUE_MIN "MIN"
@@ -2225,6 +2227,10 @@ static unsigned int prm_log_pgbuf_victim_flush_flag = 0;
 bool PRM_LOG_CHKPT_DETAILED = false;
 static bool prm_log_chkpt_detailed_default = false;
 static unsigned int prm_log_chkpt_detailed_flag = 0;
+
+int PRM_IB_NO_THREADS = 4;
+static int prm_ib_no_threads_default = 4;
+static unsigned int prm_ib_no_threads_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5710,6 +5716,17 @@ static SYSPRM_PARAM prm_Def[] = {
    &prm_log_chkpt_detailed_flag,
    (void *) &prm_log_chkpt_detailed_default,
    (void *) &PRM_LOG_CHKPT_DETAILED,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_IB_NO_THREADS,
+   PRM_NAME_IB_NO_THREADS,
+   (PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_USER_CHANGE),
+   PRM_INTEGER,
+   &prm_max_recursion_sql_depth_flag,
+   (void *) &prm_ib_no_threads_default,
+   (void *) &PRM_IB_NO_THREADS,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,

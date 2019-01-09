@@ -4766,9 +4766,10 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
   int *p_prefix_length;
   char midxkey_buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_midxkey_buf;
   cubthread::entry_workpool * ib_workpool =
-    cubthread::get_manager ()->create_worker_pool (1, 32, "Online index loader pool", NULL,
-						   4, cubthread::is_logging_configured (cubthread::
-											LOG_WORKER_POOL_TRAN_WORKERS));
+    cubthread::get_manager ()->create_worker_pool (prm_get_integer_value (PRM_ID_IB_NO_THREADS), 32,
+						   "Online index loader pool", NULL, 1,
+						   cubthread::is_logging_configured (cubthread::
+										     LOG_WORKER_POOL_TRAN_WORKERS));
 
   aligned_midxkey_buf = PTR_ALIGN (midxkey_buf, MAX_ALIGNMENT);
   p_func_idx_info = func_idx_info.expr ? &func_idx_info : NULL;
@@ -4863,21 +4864,6 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 	}
 
       /* Dispatch the insert operation */
-
-      /*if (no_objects > 0)
-         {
-         ret = btree_online_index_dispatcher (thread_p, btid_int->sys_btid, p_dbvalue, &class_oids[cur_class], &cur_oid,
-         unique_pk, BTREE_OP_ONLINE_INDEX_IB_INSERT, NULL);
-         if (ret != NO_ERROR)
-         {
-         ASSERT_ERROR ();
-         return ret;
-         }
-         no_objects--;
-         pr_clear_value (&dbvalue);
-         continue;
-         } */
-
       index_builder_loader_task *load_task = new index_builder_loader_task (btid_int->sys_btid, &class_oids[cur_class],
 									    &cur_oid, unique_pk, &ib_error,
 									    &ib_tasks_running);
