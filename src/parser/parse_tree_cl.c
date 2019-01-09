@@ -11362,7 +11362,7 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       break;
     case PT_CAST:
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
-      if (PT_EXPR_INFO_IS_FLAGED (p, PT_EXPR_INFO_CAST_COLL_MODIFIER))
+      if (p->info.expr.arg1 != NULL && PT_EXPR_INFO_IS_FLAGED (p, PT_EXPR_INFO_CAST_COLL_MODIFIER))
 	{
 	  /* CAST op with this flag does not transform into T_CAST */
 	  char buf[PT_MEMB_BUF_SIZE];
@@ -11408,7 +11408,8 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	      q = pt_append_nulstring (parser, r1, buf);
 	    }
 	}
-      else if (p->info.expr.cast_type->info.data_type.collation_flag != TP_DOMAIN_COLL_NORMAL)
+      else if (p->info.expr.cast_type != NULL
+	       && p->info.expr.cast_type->info.data_type.collation_flag != TP_DOMAIN_COLL_NORMAL)
 	{
 	  assert (PT_HAS_COLLATION (p->info.expr.cast_type->type_enum));
 	  assert (p->data_type == NULL || p->data_type->type_enum == p->info.expr.cast_type->type_enum);
