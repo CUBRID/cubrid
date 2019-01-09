@@ -4762,17 +4762,15 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
   PR_EVAL_FNC filter_eval_fnc;
   DB_TYPE single_node_type = DB_TYPE_NULL;
   int attr_offset;
-  DB_VALUE dbvalue;
   DB_VALUE *p_dbvalue;
   int *p_prefix_length;
   char midxkey_buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_midxkey_buf;
   cubthread::entry_workpool * ib_workpool =
-    cubthread::get_manager ()->create_worker_pool (16, 32, "Online index loader pool", NULL,
-						   1, cubthread::is_logging_configured (cubthread::
+    cubthread::get_manager ()->create_worker_pool (1, 32, "Online index loader pool", NULL,
+						   4, cubthread::is_logging_configured (cubthread::
 											LOG_WORKER_POOL_TRAN_WORKERS));
 
   aligned_midxkey_buf = PTR_ALIGN (midxkey_buf, MAX_ALIGNMENT);
-  db_make_null (&dbvalue);
   p_func_idx_info = func_idx_info.expr ? &func_idx_info : NULL;
   filter_eval_fnc = (filter_pred != NULL) ? eval_fnc (thread_p, filter_pred->pred, &single_node_type) : NULL;
 
@@ -4787,6 +4785,10 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
   /* Start extracting from heap. */
   for (;;)
     {
+      DB_VALUE dbvalue;
+
+      db_make_null (&dbvalue);
+
       /* Scan from heap and insert into the index. */
       attr_offset = cur_class * n_attrs;
 
@@ -4862,20 +4864,31 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 
       /* Dispatch the insert operation */
 
-      /*ret = btree_online_index_dispatcher (thread_p, btid_int->sys_btid, p_dbvalue, &class_oids[cur_class], &cur_oid,
-         unique_pk, BTREE_OP_ONLINE_INDEX_IB_INSERT, NULL); */
+      /*if (no_objects > 0)
+         {
+         ret = btree_online_index_dispatcher (thread_p, btid_int->sys_btid, p_dbvalue, &class_oids[cur_class], &cur_oid,
+         unique_pk, BTREE_OP_ONLINE_INDEX_IB_INSERT, NULL);
+         if (ret != NO_ERROR)
+         {
+         ASSERT_ERROR ();
+         return ret;
+         }
+         no_objects--;
+         pr_clear_value (&dbvalue);
+         continue;
+         } */
 
-      index_builder_loader_task *load_task =
-	new index_builder_loader_task (thread_p, btid_int->sys_btid, p_dbvalue, &class_oids[cur_class],
-				       &cur_oid, unique_pk, &ib_error, &ib_tasks_running);
+      index_builder_loader_task *load_task = new index_builder_loader_task (btid_int->sys_btid, &class_oids[cur_class],
+									    &cur_oid, unique_pk, &ib_error,
+									    &ib_tasks_running);
+
+      load_task->set_key (p_dbvalue);
+      load_task->set_tran_index (thread_p->tran_index);
 
       cubthread::get_manager ()->push_task (ib_workpool, load_task);
 
       /* Increment tasks started. */
       ATOMIC_INC_64 (&ib_tasks_running, 1LL);
-
-      /* Clear the index key. */
-      pr_clear_value (p_dbvalue);
 
       local_error = ATOMIC_INC_64 (&ib_error, 0LL);
       if (local_error != NO_ERROR)
@@ -4885,6 +4898,9 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, (int) local_error, 0);
 	  return (int) local_error;
 	}
+
+      /* Clear index key. */
+      pr_clear_value (p_dbvalue);
     }
 
   INT64 tasks_completed = 0;

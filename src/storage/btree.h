@@ -754,66 +754,23 @@ class index_builder_loader_task: public cubthread::entry_task
   private:
     int tran_index;
     BTID btid;
-    DB_VALUE * key;
+    DB_VALUE key;
     OID class_oid, oid;
     int unique_pk;
     INT64 *error;
     INT64 *tasks_executed;
+    HL_HEAPID private_heap_id;
 
   public:
-    index_builder_loader_task (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid, OID * oid, int unique_pk,
-          INT64 *ib_error, INT64 *tasks_executed)
-    {
-      this->tran_index = thread_p->tran_index;
-      BTID_COPY (&this->btid, btid);
-      this->key = db_value_copy (key);
-      COPY_OID (&this->class_oid, class_oid);
-      COPY_OID (&this->oid, oid);
-      this->unique_pk = unique_pk;
-      this->error = ib_error;
-      this->tasks_executed = tasks_executed;
-    }
+    index_builder_loader_task (BTID * btid, OID * class_oid, OID * oid, int unique_pk,
+      INT64 *ib_error, INT64 *tasks_executed);
 
-    ~index_builder_loader_task ()
-      {
-        pr_clear_value (this->key);
-      }
+    void set_key (DB_VALUE * key);
+    void set_tran_index (int tran_index);
+    
+    ~index_builder_loader_task();
 
-    void execute (cubthread::entry &thread_ref) override
-    {
-      int ret = NO_ERROR;
-      INT64 err = ATOMIC_INC_64 (this->error, 0LL);
-
-      if (err != NO_ERROR)
-        {
-          return;
-        }
-
-      thread_ref.tran_index = this->tran_index;
-
-      ret = btree_online_index_dispatcher (&thread_ref, &btid, key, &class_oid, &oid,
-					   unique_pk, BTREE_OP_ONLINE_INDEX_IB_INSERT, NULL);
-
-      if (ret != NO_ERROR)
-        {
-          err = ATOMIC_INC_64 (this->error, 0LL);
-          if (err != NO_ERROR)
-            {
-              return;
-            }
-
-          if (!ATOMIC_CAS_64 (this->error, err, (INT64) ret))
-            {
-              /* Error was already set by someone else. We end execution. */
-              return;
-            }
-        }
-
-      /* Increment tasks completed. */
-      ATOMIC_INC_64 (this->tasks_executed, -1LL);
-
-      return;
-    }
+    void execute(cubthread::entry & thread_ref);
 };
 
 // *INDENT-ON*

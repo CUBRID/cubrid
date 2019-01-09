@@ -35128,3 +35128,83 @@ btree_is_single_object_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE_
   assert (offset_after_key == record->length);
   return true;
 }
+
+index_builder_loader_task::index_builder_loader_task (BTID * btid, OID * class_oid, OID * oid, int unique_pk,
+						      INT64 * ib_error, INT64 * tasks_executed)
+{
+  BTID_COPY (&this->btid, btid);
+  COPY_OID (&this->class_oid, class_oid);
+  COPY_OID (&this->oid, oid);
+  this->unique_pk = unique_pk;
+  this->error = ib_error;
+  this->tasks_executed = tasks_executed;
+}
+
+index_builder_loader_task::~index_builder_loader_task ()
+{
+  THREAD_ENTRY *local_entry = thread_get_thread_entry_info ();
+  HL_HEAPID save_heap_id = local_entry->private_heap_id;
+
+  local_entry->private_heap_id = HL_NULL_HEAPID;
+
+  pr_clear_value (&this->key);
+
+  local_entry->private_heap_id = save_heap_id;
+}
+
+void
+index_builder_loader_task::set_key (DB_VALUE * key)
+{
+  THREAD_ENTRY *local_entry = thread_get_thread_entry_info ();
+  HL_HEAPID save_heap_id = local_entry->private_heap_id;
+
+  local_entry->private_heap_id = HL_NULL_HEAPID;
+
+  qdata_copy_db_value (&this->key, key);
+
+  local_entry->private_heap_id = save_heap_id;
+}
+
+void
+index_builder_loader_task::set_tran_index (int tran_index)
+{
+  this->tran_index = tran_index;
+}
+
+void
+index_builder_loader_task::execute (cubthread::entry & thread_ref)
+{
+  int ret = NO_ERROR;
+  INT64 err = ATOMIC_INC_64 (this->error, 0LL);
+
+  if (err != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  thread_ref.tran_index = this->tran_index;
+
+  ret = btree_online_index_dispatcher (&thread_ref, &this->btid, &this->key, &this->class_oid, &this->oid,
+				       this->unique_pk, BTREE_OP_ONLINE_INDEX_IB_INSERT, NULL);
+
+  if (ret != NO_ERROR)
+    {
+      err = ATOMIC_INC_64 (this->error, 0LL);
+      if (err != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+
+      if (!ATOMIC_CAS_64 (this->error, err, (INT64) ret))
+	{
+	  /* Error was already set by someone else. We end execution. */
+	  goto cleanup;
+	}
+    }
+
+  /* Increment tasks completed. */
+  ATOMIC_INC_64 (this->tasks_executed, -1LL);
+
+cleanup:
+  return;
+}
