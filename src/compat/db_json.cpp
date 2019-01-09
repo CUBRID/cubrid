@@ -142,7 +142,7 @@ comp_regex::comp_regex (const std::string &pattern)
   if (error_code != CUB_REG_OKAY)
     {
       // todo: convert CUB_REG errors to appropriate regex_error or add appropriate errcodes for the exceptions
-      throw std::regex_error (std::regex_constants::error_type::error_backref);
+      //throw std::regex_error (std::regex_constants::error_type::error_backref);
     }
 }
 
@@ -2129,19 +2129,26 @@ db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<cub_r
 	    case '*':
 	      if (i < wild_card.length () - 1 && wild_card[i + 1] == '*')
 		{
-		  // wild_card '**'. Match any string
-		  ss << "[([:alnum:]|\\.|\\[|\\]|\")]*";
+		  // todo: It would be better to be more restrictive in the accepted characters,
+		  // however, accepting ']' in the language seems troublesome in libregex
+		  // e.g. the pattern "(\[|\])*" does not match "]" as expected
+		  ss << "([^[:space:]])*";
 		  ++i;
 		}
 	      else if (i > 0 && wild_card[i - 1] == '[')
 		{
 		  // wild_card '[*]'. Match numbers only
-		  ss << "[0-9]+";
+		  ss << "([0-9])+";
+		}
+	      else if (i > 0 && wild_card[i - 1] == '.')
+		{
+		  // wild_card '.*'. Match any string between quotes (path must have been validated before)
+		  ss << "\"([^[:space:]])*\"";
 		}
 	      else
 		{
-		  // wild_card '.*'. Match alphanumerics only
-		  ss << "\"[[:alnum:]]*\"";
+		  // not a wildcard '$."*"'
+		  ss << "\\*";
 		}
 	      break;
 	    default:
@@ -2151,7 +2158,7 @@ db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<cub_r
 	}
       if (!match_exactly)
 	{
-	  ss << "[^[:space:]]*";
+	  ss << "([^[:space:]])*";
 	}
 
       try

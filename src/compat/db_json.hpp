@@ -72,12 +72,8 @@ class comp_regex
 
     bool reg_match (const std::string &str) const
     {
-      const char *tmp_str = str.c_str ();
-      assert (strlen (tmp_str) == str.length ());
-
-      int nr_matches;
-      cub_regmatch_t match[1];
-      int ret_code = cub_regexec (&m_bsd_regex, str.c_str (), str.length (), 1, match, 0);
+      cub_regmatch_t match;
+      int ret_code = cub_regexec (&m_bsd_regex, str.c_str (), str.length (), 1, &match, 0);
 
       if (ret_code == CUB_REG_NOMATCH)
 	{
@@ -91,12 +87,14 @@ class comp_regex
 	  return false;
 	}
 
-      if (match->rm_so == 0 && match->rm_eo == str.length ())
+      if (match.rm_so != 0 || match.rm_eo != str.length ())
 	{
-	  return true;
+	  /* regex should have matched the whole pattern */
+	  // assert (false);
+	  return false;
 	}
 
-      return false;
+      return true;
     }
 
     ~comp_regex ()
