@@ -11372,7 +11372,7 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 
 	  if (p->info.expr.arg1 == NULL)
 	    {
-	      /* Do nothing. */
+	      /* Do nothing. It must be an error case. */
 	    }
 	  else if (p->info.expr.arg1->node_type == PT_VALUE)
 	    {
