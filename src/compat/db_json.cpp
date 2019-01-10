@@ -130,7 +130,6 @@ wrap_free (void *dummy, void *p)
 }
 
 libregex_wrapper::libregex_wrapper (const std::string &pattern)
-  : m_pattern (pattern)
 {
   cub_regset_malloc (&wrap_malloc);
   cub_regset_realloc (&wrap_realloc);
@@ -729,7 +728,7 @@ static bool match_regex (const std::string &str, const cub_regex_impl &reg)
 #ifdef _USE_LIBREGEX_
   return reg.reg_match (str);
 #else
-  return std::regex_match (crt_path, reg);
+  return std::regex_match (str, reg);
 #endif
 }
 
@@ -2161,7 +2160,7 @@ db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<cub_r
 	}
       if (!match_exactly)
 	{
-	  ss << "([^[$]])*";
+	  ss << "([^$])*";
 	}
       // match end of string
       ss << "$";

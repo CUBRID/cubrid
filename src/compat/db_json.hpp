@@ -23,8 +23,6 @@
 
 #ifndef _DB_JSON_HPP_
 #define _DB_JSON_HPP_
-#ifndef _USE_LIBREGEX_
-#define _USE_LIBREGEX_
 
 #include "error_manager.h"
 #include "object_representation.h"
@@ -44,21 +42,17 @@ typedef void JSON_ITERATOR;
 #include <functional>
 #include <regex>
 #include <vector>
-
-// For gcc version < 4.9.0
 #include "libregex38a/regex38a.h"
 
 class libregex_wrapper
 {
     cub_regex_t m_bsd_regex;
-    const std::string m_pattern;
     bool m_moved_from = false;
   public:
     libregex_wrapper (const std::string &pattern);
     libregex_wrapper (libregex_wrapper &o) = delete;
     libregex_wrapper (libregex_wrapper &&o)
       : m_bsd_regex (o.m_bsd_regex)
-      , m_pattern (std::move (o.m_pattern))
     {
       if (o.m_moved_from)
 	{
@@ -82,7 +76,7 @@ class libregex_wrapper
       if (ret_code != CUB_REG_OKAY)
 	{
 	  /* should not reach on this */
-	  // assert (false);
+	  assert (false);
 	  return false;
 	}
 
@@ -101,7 +95,7 @@ class libregex_wrapper
 #ifdef _USE_LIBREGEX_
 typedef libregex_wrapper cub_regex_impl;
 #else
-typedef std::regex comp_regex;
+typedef std::regex cub_regex_impl;
 #endif
 
 /*
@@ -251,5 +245,4 @@ db_json_convert_string_and_call (const char *json_raw, size_t json_raw_length, F
 
 #endif /* defined (__cplusplus) */
 
-#endif /* _USE_LIBREGEX_ */
 #endif /* _DB_JSON_HPP_ */
