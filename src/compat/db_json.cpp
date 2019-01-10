@@ -129,7 +129,7 @@ wrap_free (void *dummy, void *p)
   db_private_free (NULL, p);
 }
 
-comp_regex::comp_regex (const std::string &pattern)
+libregex_wrapper::libregex_wrapper (const std::string &pattern)
   : m_pattern (pattern)
 {
   cub_regset_malloc (&wrap_malloc);
@@ -2103,6 +2103,8 @@ db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<cub_r
   for (auto &wild_card : paths)
     {
       std::stringstream ss;
+      // match start of string
+      ss << "^";
       for (size_t i = 0; i < wild_card.length (); ++i)
 	{
 	  switch (wild_card[i])
@@ -2114,7 +2116,7 @@ db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<cub_r
 	      ss << "\\[";
 	      break;
 	    case ']':
-	      ss << "\\]";
+	      ss << "]";
 	      break;
 	    case '.':
 	      ss << "\\.";
@@ -2129,10 +2131,8 @@ db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<cub_r
 	    case '*':
 	      if (i < wild_card.length () - 1 && wild_card[i + 1] == '*')
 		{
-		  // todo: It would be better to be more restrictive in the accepted characters,
-		  // however, accepting ']' in the language seems troublesome in libregex
-		  // e.g. the pattern "(\[|\])*" does not match "]" as expected
-		  ss << "([^[:space:]])*";
+		  // wild_card '**'. Match any string
+		  ss << ".*";
 		  ++i;
 		}
 	      else if (i > 0 && wild_card[i - 1] == '[')
@@ -2143,11 +2143,14 @@ db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<cub_r
 	      else if (i > 0 && wild_card[i - 1] == '.')
 		{
 		  // wild_card '.*'. Match any string between quotes (path must have been validated before)
-		  ss << "\"([^[:space:]])*\"";
+		  // match strings between quotes that do not contain unescaped quotes
+		  // todo: there are other characters that require same treatment as quotes they can be treated
+		  // they can be treated by applying the same pattern
+		  ss << "\"(([^\"\\])*|([\\]([\\][\\])*\")*)*\"";
 		}
 	      else
 		{
-		  // not a wildcard '$."*"'
+		  // Not a wildcard '$."*"'
 		  ss << "\\*";
 		}
 	      break;
@@ -2158,12 +2161,17 @@ db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<cub_r
 	}
       if (!match_exactly)
 	{
-	  ss << "([^[:space:]])*";
+	  ss << "([^[$]])*";
 	}
+      // match end of string
+      ss << "$";
 
+#ifdef _USE_LIBREGEX_
+      regs.emplace_back (ss.str ());
+#else
       try
 	{
-	  regs.push_back (cub_regex_impl (ss.str ()));
+	  regs.emplace_back (ss.str (), std::regex_constants::extended);
 	}
       catch (std::regex_error &e)
 	{
@@ -2172,6 +2180,7 @@ db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<cub_r
 	  assert (false);
 	  return ER_FAILED;
 	}
+#endif /* _USE_LIBREGEX_ */
     }
   return NO_ERROR;
 }

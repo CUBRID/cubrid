@@ -48,15 +48,15 @@ typedef void JSON_ITERATOR;
 // For gcc version < 4.9.0
 #include "libregex38a/regex38a.h"
 
-class comp_regex
+class libregex_wrapper
 {
     cub_regex_t m_bsd_regex;
     const std::string m_pattern;
     bool m_moved_from = false;
   public:
-    comp_regex (const std::string &pattern);
-    comp_regex (comp_regex &o) = delete;
-    comp_regex (comp_regex &&o)
+    libregex_wrapper (const std::string &pattern);
+    libregex_wrapper (libregex_wrapper &o) = delete;
+    libregex_wrapper (libregex_wrapper &&o)
       : m_bsd_regex (o.m_bsd_regex)
       , m_pattern (std::move (o.m_pattern))
     {
@@ -72,8 +72,7 @@ class comp_regex
 
     bool reg_match (const std::string &str) const
     {
-      cub_regmatch_t match;
-      int ret_code = cub_regexec (&m_bsd_regex, str.c_str (), str.length (), 1, &match, 0);
+      int ret_code = cub_regexec (&m_bsd_regex, str.c_str (), str.length (), 0, NULL, 0);
 
       if (ret_code == CUB_REG_NOMATCH)
 	{
@@ -87,17 +86,10 @@ class comp_regex
 	  return false;
 	}
 
-      if (match.rm_so != 0 || match.rm_eo != str.length ())
-	{
-	  /* regex should have matched the whole pattern */
-	  // assert (false);
-	  return false;
-	}
-
       return true;
     }
 
-    ~comp_regex ()
+    ~libregex_wrapper ()
     {
       if (!m_moved_from)
 	{
@@ -107,7 +99,7 @@ class comp_regex
 };
 
 #ifdef _USE_LIBREGEX_
-typedef comp_regex cub_regex_impl;
+typedef libregex_wrapper cub_regex_impl;
 #else
 typedef std::regex comp_regex;
 #endif
