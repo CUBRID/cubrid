@@ -39,7 +39,6 @@
 #include "object_domain.h"
 #include "language_support.h"
 #include "intl_support.h"
-#include "object_primitive.h"
 #include "memory_alloc.h"
 
 #define DB_CURRENCY_DEFAULT db_get_currency_default()

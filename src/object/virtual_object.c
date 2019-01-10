@@ -32,6 +32,7 @@
 #include "virtual_object.h"
 #include "set_object.h"
 #include "object_accessor.h"
+#include "object_primitive.h"
 #include "db.h"
 #include "schema_manager.h"
 #include "view_transform.h"

@@ -52,6 +52,7 @@
 #include "locator.h"
 #include "transform_cl.h"
 #include "object_accessor.h"
+#include "object_primitive.h"
 #include "set_object.h"
 
 #include "message_catalog.h"

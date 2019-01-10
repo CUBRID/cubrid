@@ -32,8 +32,10 @@
 #include <string.h>
 #include <assert.h>
 
-#include "mem_block.hpp"
 #include "object_primitive.h"
+
+#include "mem_block.hpp"
+#include "object_domain.h"
 #include "string_buffer.hpp"
 
 #include "system_parameter.h"
@@ -807,7 +809,6 @@ static DB_VALUE_COMPARE_RESULT mr_data_cmpdisk_numeric (void *mem1, void *mem2, 
 							int total_order, int *start_colp);
 static DB_VALUE_COMPARE_RESULT mr_cmpval_numeric (DB_VALUE * value1, DB_VALUE * value2, int do_coercion,
 						  int total_order, int *start_colp, int collation);
-static void pr_init_ordered_mem_sizes (void);
 static void mr_initmem_resultset (void *mem, TP_DOMAIN * domain);
 static int mr_setmem_resultset (void *mem, TP_DOMAIN * domain, DB_VALUE * value);
 static int mr_getmem_resultset (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy);
@@ -877,10 +878,6 @@ static DB_VALUE_COMPARE_RESULT mr_cmpval_json (DB_VALUE * value1, DB_VALUE * val
 static AREA *Value_area = NULL;
 
 int pr_Inhibit_oid_promotion = PR_INHIBIT_OID_PROMOTION_DEFAULT;
-/* The sizes of the primitive types in descending order */
-int pr_ordered_mem_sizes[PR_TYPE_TOTAL];
-/* The number of items in pr_ordered_mem_sizes */
-int pr_ordered_mem_size_total = 0;
 
 int pr_Enable_string_compression = true;
 PR_TYPE tp_Null = {
@@ -1843,8 +1840,6 @@ pr_area_init (void)
       return er_errid ();
     }
 
-  pr_init_ordered_mem_sizes ();
-
   return NO_ERROR;
 }
 
@@ -2228,79 +2223,6 @@ pr_copy_value (DB_VALUE * value)
     }
   return new_;
 }
-
-#if defined(ENABLE_UNUSED_FUNCTION)
-/*
- * pr_share_value - This is used to copy the contents of one value
- * container to another WITHOUT introducing a new copy of any indirect
- * data (like strings or sets).
- *    return: new value
- *    src(in): source value
- *    dest(out): destination value
- * Note:
- *    However, everything is set up properly so that the dst value
- *    can follow the normal db_value_clear protocol.
- *
- *    WARNING: src will be valid only as long as dst is.  That is, after dst
- *    gets cleared, src will have dangling pointers unless it has also been
- *    cleared.  Use with care.
- */
-int
-pr_share_value (DB_VALUE * src, DB_VALUE * dst)
-{
-  if (src && dst && src != dst)
-    {
-      *dst = *src;
-      dst->need_clear = false;
-      if (pr_is_set_type (DB_VALUE_DOMAIN_TYPE (src)) && !DB_IS_NULL (src))
-	{
-	  /*
-	   * This bites... isn't there a function for adding a
-	   * reference to a set?
-	   */
-	  src->data.set->ref_count += 1;
-	}
-    }
-  return NO_ERROR;
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
-
-#if defined(ENABLE_UNUSED_FUNCTION)
-/*
- * pr_copy_string - copy string
- *    return: copied string
- *    str(in): string to copy
- */
-char *
-pr_copy_string (const char *str)
-{
-  char *copy;
-
-  copy = NULL;
-  if (str != NULL)
-    {
-      copy = (char *) db_private_alloc (NULL, strlen (str) + 1);
-      if (copy != NULL)
-	strcpy (copy, str);
-    }
-
-  return copy;
-}
-
- /*
-  * pr_free_string - free copied string
-  *
-  * str(in): copied string
-  */
-void
-pr_free_string (char *str)
-{
-  if (str != NULL)
-    {
-      db_private_free (NULL, str);
-    }
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * TYPE NULL
@@ -5703,27 +5625,7 @@ mr_cmpval_object (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
 
 #if !defined (SERVER_MODE)
 
-/*
- * pr_write_mop - write an OID to a disk representation buffer given a MOP
- * instead of a WS_MEMOID.
- *    return:
- *    buf(): transformer buffer
- *    mop(): mop to transform
- * Note:
- *    mr_write_object can't be used because it takes a WS_MEMOID as is the
- *    case for object references in instances.
- *    This must stay in sync with mr_write_object above !
- */
-void
-pr_write_mop (OR_BUF * buf, MOP mop)
-{
-  DB_VALUE value;
 
-  mr_initval_object (&value, 0, 0);
-  db_make_object (&value, mop);
-  mr_data_writeval_object (buf, &value);
-  mr_setval_object (&value, NULL, false);
-}
 #endif /* !SERVER_MODE */
 
 static void
@@ -8811,40 +8713,6 @@ mr_cmpval_numeric (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int to
  * PRIMITIVE TYPE SUPPORT ROUTINES
  */
 
-
-
-/*
- * pr_init_ordered_mem_sizes - orders the sizes of primitive types in
- * descending order.
- *    return: void
- */
-static void
-pr_init_ordered_mem_sizes (void)
-{
-  int t, last_size, cur_size;
-
-  pr_ordered_mem_size_total = 0;
-
-  last_size = 500;
-  while (1)
-    {
-      cur_size = -1;
-      for (t = 0; t < PR_TYPE_TOTAL; ++t)
-	{
-	  if (tp_Type_id_map[t]->size > cur_size && tp_Type_id_map[t]->size < last_size)
-	    {
-	      cur_size = tp_Type_id_map[t]->size;
-	    }
-	}
-      pr_ordered_mem_sizes[pr_ordered_mem_size_total++] = last_size = cur_size;
-      if (cur_size <= 0)
-	{
-	  break;
-	}
-    }
-}
-
-
 /*
  * pr_type_from_id - maps a type identifier such as DB_TYPE_INTEGER into its
  * corresponding primitive type descriptor structures.
@@ -9938,6 +9806,27 @@ pr_data_writeval (OR_BUF * buf, DB_VALUE * value)
  * MISCELLANEOUS TYPE-RELATED HELPER FUNCTIONS
  */
 
+void
+pr_share_value (DB_VALUE * src, DB_VALUE * dst)
+{
+  if (src == NULL || dst == NULL || src == dst)
+    {
+      // do nothing
+      return;
+    }
+  *dst = *src;
+  dst->need_clear = false;
+
+  if (db_value_domain_type (src) == DB_TYPE_STRING || db_value_domain_type (src) == DB_TYPE_VARNCHAR)
+    {
+      dst->data.ch.info.compressed_need_clear = false;
+    }
+
+  if (pr_is_set_type (DB_VALUE_DOMAIN_TYPE (src)) && !DB_IS_NULL (src))
+    {
+      src->data.set->ref_count++;
+    }
+}
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 /*

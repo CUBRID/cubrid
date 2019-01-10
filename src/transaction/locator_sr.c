@@ -12448,8 +12448,8 @@ locator_prefetch_index_page_internal (THREAD_ENTRY * thread_p, BTID * btid, OID 
       goto free_and_return;
     }
 
-  PR_SHARE_VALUE (key, &key_val_range.key1);
-  PR_SHARE_VALUE (key, &key_val_range.key2);
+  pr_share_value (key, &key_val_range.key1);
+  pr_share_value (key, &key_val_range.key2);
   key_val_range.range = GE_LE;
   key_val_range.num_index_term = 0;
 

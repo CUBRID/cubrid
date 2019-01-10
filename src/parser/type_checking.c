@@ -48,6 +48,7 @@
 #include "arithmetic.h"
 #include "string_opfunc.h"
 #include "object_domain.h"
+#include "object_primitive.h"
 #include "semantic_check.h"
 #include "xasl_generation.h"
 #include "language_support.h"

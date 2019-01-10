@@ -49,6 +49,7 @@
 #include "network.h"
 #include "authenticate.h"
 #include "schema_manager.h"
+#include "object_primitive.h"
 #include "object_accessor.h"
 #include "db.h"
 #include "loader_object_table.h"

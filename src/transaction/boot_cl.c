@@ -84,7 +84,7 @@
 #include "show_meta.h"
 #include "tz_support.h"
 #include "dbtype.h"
-
+#include "object_primitive.h"
 
 #if defined(CS_MODE)
 #include "network.h"

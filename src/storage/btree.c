@@ -5968,8 +5968,8 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OI
   /* Find if key has any objects. */
 
   /* Define range of scan. */
-  PR_SHARE_VALUE (key, &key_val_range.key1);
-  PR_SHARE_VALUE (key, &key_val_range.key2);
+  pr_share_value (key, &key_val_range.key1);
+  pr_share_value (key, &key_val_range.key2);
   key_val_range.range = GE_LE;
   key_val_range.num_index_term = 0;
 
@@ -8369,8 +8369,8 @@ btree_keyoid_checkscan_check (THREAD_ENTRY * thread_p, BTREE_CHECKSCAN * btscan,
 
   assert (!pr_is_set_type (DB_VALUE_DOMAIN_TYPE (key)));
 
-  PR_SHARE_VALUE (key, &key_val_range.key1);
-  PR_SHARE_VALUE (key, &key_val_range.key2);
+  pr_share_value (key, &key_val_range.key1);
+  pr_share_value (key, &key_val_range.key2);
   key_val_range.range = GE_LE;
   key_val_range.num_index_term = 0;
 

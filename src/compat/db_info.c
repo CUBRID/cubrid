@@ -35,6 +35,7 @@
 #include "mem_block.hpp"
 #include "network_interface_cl.h"
 #include "object_accessor.h"
+#include "object_primitive.h"
 #include "object_print.h"
 #include "object_printer.hpp"
 #include "parser.h"

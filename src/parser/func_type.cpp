@@ -23,6 +23,7 @@
 
 #include "func_type.hpp"
 #include "message_catalog.h"
+#include "object_primitive.h"
 #include "parse_tree.h"
 #include "parser.h"
 #include "parser_message.h"

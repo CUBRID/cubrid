@@ -32,6 +32,7 @@
 #include "parser.h"
 #include "xasl_generation.h"
 
+#include "object_primitive.h"
 #include "optimizer.h"
 #include "query_graph.h"
 #include "query_planner.h"

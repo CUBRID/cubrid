@@ -3151,7 +3151,7 @@ tp_domain_resolve_default_w_coll (DB_TYPE type, int coll_id, TP_DOMAIN_COLL_ACTI
  *    dbuf(out): if not NULL, founded domain initialized on dbuf
  */
 TP_DOMAIN *
-tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
+tp_domain_resolve_value (const DB_VALUE * val, TP_DOMAIN * dbuf)
 {
   TP_DOMAIN *domain;
   DB_TYPE value_type;
@@ -3299,7 +3299,7 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 
 	  /*
 	   * Convert references to the "floating" precisions to actual
-	   * precisions.  This may not be necessary or desireable?
+	   * precisions. This may not be necessary or desirable?
 	   * Zero seems to pop up occasionally in DB_VALUE precisions, until
 	   * this is fixed, treat it as the floater for the variable width
 	   * types.

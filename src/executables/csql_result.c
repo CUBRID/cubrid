@@ -30,11 +30,11 @@
 #include <assert.h>
 
 #include "csql.h"
+#include "dbtype.h"
 #include "memory_alloc.h"
+#include "object_primitive.h"
 #include "porting.h"
 #include "transaction_cl.h"
-
-#include "dbtype.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))

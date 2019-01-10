@@ -23,10 +23,11 @@
 
 #ident "$Id$"
 
-#include "replication_object.hpp"
+#include "memory_alloc.h"
+#include "object_primitive.h"
 #include "object_representation.h"
 #include "thread_manager.hpp"
-#include "memory_alloc.h"
+#include "replication_object.hpp"
 
 namespace cubreplication
 {

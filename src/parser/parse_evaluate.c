@@ -37,6 +37,7 @@
 #include "parser_message.h"
 #include "execute_statement.h"
 #include "object_domain.h"
+#include "object_primitive.h"
 #include "object_template.h"
 #include "work_space.h"
 #include "virtual_object.h"

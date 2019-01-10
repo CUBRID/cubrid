@@ -41,6 +41,7 @@
 #include "authenticate.h"
 #include "transaction_cl.h"
 #include "execute_schema.h"
+#include "object_primitive.h"
 
 #define COMPACT_MIN_PAGES 1
 #define COMPACT_MAX_PAGES 20

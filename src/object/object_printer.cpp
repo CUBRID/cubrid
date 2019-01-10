@@ -30,6 +30,7 @@
 #include "dbtype.h"
 #include "misc_string.h"
 #include "object_domain.h"
+#include "object_primitive.h"
 #include "object_print_util.hpp"
 #include "parse_tree.h"
 #include "schema_manager.h"
