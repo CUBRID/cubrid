@@ -34,18 +34,20 @@
 
 #include "object_primitive.h"
 
+#include "db_json.hpp"
+#include "elo.h"
+#include "error_manager.h"
+#include "file_io.h"
 #include "mem_block.hpp"
 #include "object_domain.h"
-#include "string_buffer.hpp"
-
-#include "system_parameter.h"
-#include "set_object.h"
-#include "elo.h"
 #include "object_print.h"
+#include "object_representation.h"
+#include "set_object.h"
+#include "string_buffer.hpp"
 #include "string_opfunc.h"
+#include "system_parameter.h"
 #include "tz_support.h"
-#include "file_io.h"
-#include "db_json.hpp"
+
 #include <utility>
 
 #if !defined (SERVER_MODE)
@@ -9618,7 +9620,7 @@ pr_midxkey_init_boundbits (char *bufptr, int n_atts)
  */
 
 int
-pr_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals, TP_DOMAIN * dbvals_domain_list)
+pr_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals, struct tp_domain *dbvals_domain_list)
 {
   int i;
   TP_DOMAIN *dom;
@@ -9788,7 +9790,7 @@ pr_index_writeval_disk_size (DB_VALUE * value)
 }
 
 void
-pr_data_writeval (OR_BUF * buf, DB_VALUE * value)
+pr_data_writeval (struct or_buf *buf, DB_VALUE * value)
 {
   PR_TYPE *type;
   DB_TYPE dbval_type;
@@ -9882,7 +9884,7 @@ pr_valstring (THREAD_ENTRY * threade, DB_VALUE * val)
  *    domain(in): enumeration domain against which the value is checked.
  */
 int
-pr_complete_enum_value (DB_VALUE * value, TP_DOMAIN * domain)
+pr_complete_enum_value (DB_VALUE * value, struct tp_domain *domain)
 {
   unsigned short short_val;
   char *str_val;
@@ -15866,7 +15868,7 @@ mr_cmpval_enumeration (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, in
  * decompressed_size(in)			  : The uncompressed data size.
  */
 int
-pr_get_compressed_data_from_buffer (OR_BUF * buf, char *data, int compressed_size, int decompressed_size)
+pr_get_compressed_data_from_buffer (struct or_buf *buf, char *data, int compressed_size, int decompressed_size)
 {
   int rc = NO_ERROR;
 
@@ -16001,7 +16003,7 @@ cleanup:
  *	to the write of the DB_VALUE in the buffer.
  */
 int
-pr_get_size_and_write_string_to_buffer (OR_BUF * buf, char *val_p, DB_VALUE * value, int *val_size, int align)
+pr_get_size_and_write_string_to_buffer (struct or_buf *buf, char *val_p, DB_VALUE * value, int *val_size, int align)
 {
   char *compressed_string = NULL, *string = NULL, *str = NULL;
   int rc = NO_ERROR, str_length = 0, length = 0;
