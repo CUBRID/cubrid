@@ -256,9 +256,6 @@ extern PR_TYPE *tp_Type_id_map[];
  */
 
 /* Type structure accessors */
-#define PR_TYPE_FROM_ID(type) ((type) <= DB_TYPE_LAST && (type) != DB_TYPE_TABLE \
-                               ? tp_Type_id_map[(int)(type)] : NULL)
-
 extern PR_TYPE *pr_type_from_id (DB_TYPE id);
 extern PR_TYPE *pr_find_type (const char *name);
 extern const char *pr_type_name (DB_TYPE id);

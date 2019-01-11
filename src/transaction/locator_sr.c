@@ -8431,7 +8431,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 
       new_isnull = db_value_is_null (new_key);
       old_isnull = db_value_is_null (old_key);
-      pr_type = PR_TYPE_FROM_ID (dbval_type);
+      pr_type = pr_type_from_id (dbval_type);
       if (pr_type == NULL)
 	{
 	  error_code = ER_FAILED;

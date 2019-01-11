@@ -6622,7 +6622,7 @@ or_packed_value_size (const DB_VALUE * value, int collapse_null, int include_dom
     }
 
   dbval_type = DB_VALUE_DOMAIN_TYPE (value);
-  type = PR_TYPE_FROM_ID (dbval_type);
+  type = pr_type_from_id (dbval_type);
 
   if (type == NULL)
     {
@@ -6712,7 +6712,7 @@ or_put_value (OR_BUF * buf, DB_VALUE * value, int collapse_null, int include_dom
     }
 
   dbval_type = DB_VALUE_DOMAIN_TYPE (value);
-  type = PR_TYPE_FROM_ID (dbval_type);
+  type = pr_type_from_id (dbval_type);
 
   if (type == NULL)
     {
@@ -6971,7 +6971,7 @@ or_pack_mem_value (char *ptr, DB_VALUE * value, int *packed_len_except_alignment
   ptr_to_packed_value = buf->ptr;
 
   dbval_type = DB_VALUE_DOMAIN_TYPE (value);
-  type = PR_TYPE_FROM_ID (dbval_type);
+  type = pr_type_from_id (dbval_type);
   if (type == NULL)
     {
       return NULL;

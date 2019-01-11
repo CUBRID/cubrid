@@ -2172,7 +2172,7 @@ pr_clone_value (const DB_VALUE * src, DB_VALUE * dest)
 	    }
 	  else if (src != dest)
 	    {
-	      type = PR_TYPE_FROM_ID (src_dbtype);
+	      type = pr_type_from_id (src_dbtype);
 	      if (type != NULL)
 		{
 		  /*
@@ -8748,7 +8748,7 @@ pr_type_name (DB_TYPE id)
   const char *name = NULL;
   PR_TYPE *type;
 
-  type = PR_TYPE_FROM_ID (id);
+  type = pr_type_from_id (id);
 
   if (type != NULL)
     {
@@ -8822,7 +8822,7 @@ pr_is_variable_type (DB_TYPE id)
   PR_TYPE *type;
   int is_variable = 0;
 
-  type = PR_TYPE_FROM_ID (id);
+  type = pr_type_from_id (id);
   if (type != NULL)
     {
       is_variable = type->variable_p;
@@ -9022,7 +9022,7 @@ pr_value_mem_size (DB_VALUE * value)
 
   size = 0;
   dbval_type = DB_VALUE_DOMAIN_TYPE (value);
-  type = PR_TYPE_FROM_ID (dbval_type);
+  type = pr_type_from_id (dbval_type);
   if (type != NULL)
     {
       if (type->data_lengthval != NULL)
@@ -9735,7 +9735,7 @@ pr_data_writeval_disk_size (DB_VALUE * value)
   DB_TYPE dbval_type;
 
   dbval_type = DB_VALUE_DOMAIN_TYPE (value);
-  type = PR_TYPE_FROM_ID (dbval_type);
+  type = pr_type_from_id (dbval_type);
 
   assert (type != NULL);
 
@@ -9768,7 +9768,7 @@ pr_index_writeval_disk_size (DB_VALUE * value)
   DB_TYPE dbval_type;
 
   dbval_type = DB_VALUE_DOMAIN_TYPE (value);
-  type = PR_TYPE_FROM_ID (dbval_type);
+  type = pr_type_from_id (dbval_type);
 
   assert (type != NULL);
 
@@ -9796,7 +9796,7 @@ pr_data_writeval (struct or_buf *buf, DB_VALUE * value)
   DB_TYPE dbval_type;
 
   dbval_type = DB_VALUE_DOMAIN_TYPE (value);
-  type = PR_TYPE_FROM_ID (dbval_type);
+  type = pr_type_from_id (dbval_type);
   if (type == NULL)
     {
       type = tp_Type_null;	/* handle strange arguments with NULL */
@@ -9864,7 +9864,7 @@ pr_valstring (THREAD_ENTRY * threade, DB_VALUE * val)
     }
 
   DB_TYPE dbval_type = DB_VALUE_DOMAIN_TYPE (val);
-  PR_TYPE *pr_type = PR_TYPE_FROM_ID (dbval_type);
+  PR_TYPE *pr_type = pr_type_from_id (dbval_type);
 
   if (pr_type == NULL)
     {

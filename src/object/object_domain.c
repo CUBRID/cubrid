@@ -985,7 +985,7 @@ domain_init (TP_DOMAIN * domain, DB_TYPE type_id)
 
   domain->next = NULL;
   domain->next_list = NULL;
-  domain->type = PR_TYPE_FROM_ID (type_id);
+  domain->type = pr_type_from_id (type_id);
   domain->precision = 0;
   domain->scale = 0;
   domain->class_mop = NULL;
@@ -10794,7 +10794,7 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
 	{
 	  PR_TYPE *pr_type;
 
-	  pr_type = PR_TYPE_FROM_ID (vtype1);
+	  pr_type = pr_type_from_id (vtype1);
 	  assert (pr_type != NULL);
 
 	  if (pr_type)

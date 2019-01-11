@@ -1184,7 +1184,7 @@ get_old (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr, int repid, int bound_b
 	  start = buf->ptr;
 	  for (i = 0; i < oldrep->fixed_count && rat != NULL && attmap != NULL; i++, rat = rat->next)
 	    {
-	      type = PR_TYPE_FROM_ID (rat->typeid_);
+	      type = pr_type_from_id (rat->typeid_);
 	      if (type == NULL)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_INVALID_REPRESENTATION, 1,
@@ -1251,7 +1251,7 @@ get_old (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr, int repid, int bound_b
 	    {
 	      for (i = 0; i < oldrep->variable_count && rat != NULL && attmap != NULL; i++, rat = rat->next)
 		{
-		  type = PR_TYPE_FROM_ID (rat->typeid_);
+		  type = pr_type_from_id (rat->typeid_);
 		  if (type == NULL)
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_INVALID_REPRESENTATION, 1,
@@ -2349,7 +2349,7 @@ disk_to_metharg (OR_BUF * buf)
 	}
       else
 	{
-	  arg->type = PR_TYPE_FROM_ID (argtype);
+	  arg->type = pr_type_from_id (argtype);
 	}
       arg->index = or_get_int (buf, &rc);
       arg->domain =
@@ -3005,7 +3005,7 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
 
       att->id = or_get_int (buf, &rc);
       dbval_type = (DB_TYPE) or_get_int (buf, &rc);
-      att->type = PR_TYPE_FROM_ID (dbval_type);
+      att->type = pr_type_from_id (dbval_type);
       att->offset = or_get_int (buf, &rc);
       att->offset = 0;		/* calculated later */
       att->order = or_get_int (buf, &rc);

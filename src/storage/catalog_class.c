@@ -1728,7 +1728,7 @@ catcls_get_or_value_from_domain (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VAL
     {
       /* enumerations are stored as a collection of strings */
       TP_DOMAIN *string_dom = tp_domain_resolve_default (DB_TYPE_STRING);
-      PR_TYPE *seq_type = PR_TYPE_FROM_ID (DB_TYPE_SEQUENCE);
+      PR_TYPE *seq_type = pr_type_from_id (DB_TYPE_SEQUENCE);
 
       TP_DOMAIN *domain = tp_domain_construct (DB_TYPE_SEQUENCE, NULL, 0, 0, string_dom);
       if (domain == NULL)

@@ -4599,7 +4599,7 @@ void
 btree_dump_key (THREAD_ENTRY * thread_p, FILE * fp, DB_VALUE * key)
 {
   DB_TYPE key_type = DB_VALUE_DOMAIN_TYPE (key);
-  PR_TYPE *pr_type = PR_TYPE_FROM_ID (key_type);
+  PR_TYPE *pr_type = pr_type_from_id (key_type);
 
   assert (pr_type != NULL);
 
@@ -18514,7 +18514,7 @@ btree_set_unknown_key_error (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * ke
     }
 
   err_key = pr_valstring (thread_p, key);
-  pr_type = PR_TYPE_FROM_ID (DB_VALUE_DOMAIN_TYPE (key));
+  pr_type = pr_type_from_id (DB_VALUE_DOMAIN_TYPE (key));
 
   er_set (severity, ARG_FILE_LINE, ER_BTREE_UNKNOWN_KEY, 5, (err_key != NULL) ? err_key : "_NULL_KEY",
 	  btid->vfid.fileid, btid->vfid.volid, btid->root_pageid,
