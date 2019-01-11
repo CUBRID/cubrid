@@ -905,7 +905,8 @@ int JSON_PATH_MAPPER::CallOnKeyIterate (JSON_VALUE &key)
   std::string object_key = key.GetString ();
   for (auto it = object_key.begin (); it != object_key.end (); ++it)
     {
-      if (*it == '"')
+      // todo: take care of all chars that need escaping during simple object key -> object key conversion
+      if (*it == '"' || *it == '\\')
 	{
 	  it = object_key.insert (it, '\\') + 1;
 	}
