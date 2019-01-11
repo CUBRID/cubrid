@@ -258,7 +258,7 @@ if(UNIX)
     endif(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.4.7)
 
     if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.9.0)
-      add_compile_definitions(_USE_LIBEREGEX_)
+      add_definitions(-D_USE_LIBEREGEX_)
     endif(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.9.0)
 
     set(CMAKE_C_FLAGS_DEBUG "-ggdb -fno-inline -fno-omit-frame-pointer")
