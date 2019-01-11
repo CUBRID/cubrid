@@ -46,27 +46,27 @@ typedef void JSON_ITERATOR;
 
 class libregex_wrapper
 {
-    cub_regex_t m_bsd_regex;
+    cub_regex_t m_reg;
     bool m_moved_from = false;
   public:
     libregex_wrapper (const std::string &pattern);
     libregex_wrapper (libregex_wrapper &o) = delete;
     libregex_wrapper (libregex_wrapper &&o)
-      : m_bsd_regex (o.m_bsd_regex)
     {
       if (o.m_moved_from)
 	{
-	  // todo: assert before init
+	  // trying to move from a moved-from object
 	  assert (false);
 	}
 
       // transfer resource ownership
+      m_reg = o.m_reg;
       o.m_moved_from = true;
     }
 
     bool reg_match (const std::string &str) const
     {
-      int ret_code = cub_regexec (&m_bsd_regex, str.c_str (), str.length (), 0, NULL, 0);
+      int ret_code = cub_regexec (&m_reg, str.c_str (), str.length (), 0, NULL, 0);
 
       if (ret_code == CUB_REG_NOMATCH)
 	{
@@ -87,7 +87,7 @@ class libregex_wrapper
     {
       if (!m_moved_from)
 	{
-	  cub_regfree (&m_bsd_regex);
+	  cub_regfree (&m_reg);
 	}
     }
 };

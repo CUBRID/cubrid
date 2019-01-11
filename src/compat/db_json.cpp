@@ -135,13 +135,14 @@ libregex_wrapper::libregex_wrapper (const std::string &pattern)
   cub_regset_realloc (&wrap_realloc);
   cub_regset_free (wrap_free);
 
-  int error_code = cub_regcomp (&m_bsd_regex, pattern.c_str (),
+  int error_code = cub_regcomp (&m_reg, pattern.c_str (),
 				CUB_REG_EXTENDED);
 
   if (error_code != CUB_REG_OKAY)
     {
       // todo: convert CUB_REG errors to appropriate regex_error or add appropriate errcodes for the exceptions
       //throw std::regex_error (std::regex_constants::error_type::error_backref);
+      assert (false);
     }
 }
 
