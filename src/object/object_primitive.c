@@ -9808,28 +9808,6 @@ pr_data_writeval (struct or_buf *buf, DB_VALUE * value)
  * MISCELLANEOUS TYPE-RELATED HELPER FUNCTIONS
  */
 
-void
-pr_share_value (DB_VALUE * src, DB_VALUE * dst)
-{
-  if (src == NULL || dst == NULL || src == dst)
-    {
-      // do nothing
-      return;
-    }
-  *dst = *src;
-  dst->need_clear = false;
-
-  if (db_value_domain_type (src) == DB_TYPE_STRING || db_value_domain_type (src) == DB_TYPE_VARNCHAR)
-    {
-      dst->data.ch.info.compressed_need_clear = false;
-    }
-
-  if (pr_is_set_type (DB_VALUE_DOMAIN_TYPE (src)) && !DB_IS_NULL (src))
-    {
-      src->data.set->ref_count++;
-    }
-}
-
 #if defined (SERVER_MODE) || defined (SA_MODE)
 /*
  * pr_valstring - Take the value and formats it using the sptrfunc member of

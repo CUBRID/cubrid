@@ -284,7 +284,30 @@ extern "C"
 #include "dbtype_function.i"
 
 #ifdef __cplusplus
+
+  // todo - find a better solution
+  inline void pr_share_value (DB_VALUE * src, DB_VALUE * dst)
+  {
+    if (src == NULL || dst == NULL || src == dst)
+      {
+	// do nothing
+	return;
+      }
+     *dst = *src;
+    dst->need_clear = false;
+
+    DB_TYPE type = db_value_domain_type (src);
+    if (type == DB_TYPE_STRING || type == DB_TYPE_VARNCHAR)
+      {
+	dst->data.ch.info.compressed_need_clear = false;
+      }
+
+    if ((TP_IS_SET_TYPE (type) || type == DB_TYPE_VOBJ) && !DB_IS_NULL (src))
+      {
+	src->data.set->ref_count++;
+      }
+  }
 }
 #endif
 
-#endif				/* _DBTYPE_H_ */
+#endif /* _DBTYPE_H_ */
