@@ -901,7 +901,16 @@ int JSON_PATH_MAPPER::CallOnKeyIterate (JSON_VALUE &key)
   m_accumulated_paths.pop ();
   std::string path_item = m_accumulated_paths.top ();
   path_item += ".\"";
-  path_item += key.GetString ();
+
+  std::string object_key = key.GetString ();
+  for (auto it = object_key.begin (); it != object_key.end (); ++it)
+    {
+      if (*it == '"')
+	{
+	  it = object_key.insert (it, '\\') + 1;
+	}
+    }
+  path_item += object_key;
   path_item += "\"";
 
   m_accumulated_paths.push (path_item);
@@ -2120,12 +2129,15 @@ db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<cub_r
 	    case '.':
 	      ss << "\\.";
 	      break;
-	    // todo: gather all characters that need escaping in regex string to be together
+	    // todo: probably most special characters for POSIX regex language should be escaped
 	    case '^':
 	      ss << "\\^";
 	      break;
 	    case '|':
 	      ss << "\\|";
+	      break;
+	    case '\\':
+	      ss << "\\\\";
 	      break;
 	    case '*':
 	      if (i < wild_card.length () - 1 && wild_card[i + 1] == '*')
