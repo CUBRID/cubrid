@@ -40,63 +40,7 @@ typedef void JSON_ITERATOR;
 #if defined (__cplusplus)
 
 #include <functional>
-#include <regex>
 #include <vector>
-#include "libregex38a/regex38a.h"
-
-class libregex_wrapper
-{
-    cub_regex_t m_reg;
-    bool m_moved_from = false;
-  public:
-    libregex_wrapper (const std::string &pattern);
-    libregex_wrapper (libregex_wrapper &o) = delete;
-    libregex_wrapper (libregex_wrapper &&o)
-    {
-      if (o.m_moved_from)
-	{
-	  // trying to move from a moved-from object
-	  assert (false);
-	}
-
-      // transfer resource ownership
-      m_reg = o.m_reg;
-      o.m_moved_from = true;
-    }
-
-    bool reg_match (const std::string &str) const
-    {
-      int ret_code = cub_regexec (&m_reg, str.c_str (), str.length (), 0, NULL, 0);
-
-      if (ret_code == CUB_REG_NOMATCH)
-	{
-	  return false;
-	}
-
-      if (ret_code != CUB_REG_OKAY)
-	{
-	  /* should not reach on this */
-	  assert (false);
-	  return false;
-	}
-
-      return true;
-    }
-
-    ~libregex_wrapper ()
-    {
-      if (!m_moved_from)
-	{
-	  cub_regfree (&m_reg);
-	}
-    }
-};
-
-#ifdef _USE_LIBREGEX_
-typedef libregex_wrapper cub_regex_impl;
-#else
-typedef std::regex cub_regex_impl;
-#endif
 
 /*
  * these also double as type precedence
@@ -161,10 +105,10 @@ int db_json_keys_func (const JSON_DOC &doc, JSON_DOC &result_json, const char *r
 int db_json_array_append_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path);
 int db_json_array_insert_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path);
 int db_json_remove_func (JSON_DOC &doc, const char *raw_path);
-int db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<cub_regex_impl> &regs,
+int db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<std::string> &regs,
 			    bool match_exactly = false);
 int db_json_search_func (JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALUE *esc_char,
-			 std::vector<std::string> &paths, const std::vector<cub_regex_impl> &regs, bool find_all);
+			 std::vector<std::string> &paths, const std::vector<std::string> &regs, bool find_all);
 int db_json_merge_func (const JSON_DOC *source, JSON_DOC *&dest, bool patch);
 int db_json_get_all_paths_func (const JSON_DOC &doc, JSON_DOC *&result_json);
 void db_json_pretty_func (const JSON_DOC &doc, char *&result_str);
