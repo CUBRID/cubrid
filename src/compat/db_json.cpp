@@ -141,7 +141,6 @@ libregex_wrapper::libregex_wrapper (const std::string &pattern)
   if (error_code != CUB_REG_OKAY)
     {
       // todo: convert CUB_REG errors to appropriate regex_error or add appropriate errcodes for the exceptions
-      //throw std::regex_error (std::regex_constants::error_type::error_backref);
       assert (false);
     }
 }
@@ -2131,7 +2130,7 @@ db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<cub_r
 	    case '.':
 	      ss << "\\.";
 	      break;
-	    // todo: probably most special characters for POSIX regex language should be escaped
+	    // todo: probably most of the special characters for POSIX regex language should be escaped
 	    case '^':
 	      ss << "\\^";
 	      break;
@@ -2157,7 +2156,7 @@ db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<cub_r
 		{
 		  // wild_card '.*'. Match any string between quotes (path must have been validated before)
 		  // match strings between quotes that do not contain unescaped quotes
-		  // todo: there are other characters that require same treatment as quotes they can be treated
+		  // todo: there are other characters that require same treatment as quotes;
 		  // they can be treated by applying the same pattern
 		  ss << "\"(([^\"\\])*|([\\]([\\][\\])*\")*)*\"";
 		}

@@ -27,10 +27,6 @@
 #include "error_manager.h"
 #include "object_representation.h"
 
-#ifndef _USE_LIBREGEX_
-#define _USE_LIBREGEX_
-#endif
-
 #if defined (__cplusplus)
 class JSON_DOC;
 class JSON_VALIDATOR;
