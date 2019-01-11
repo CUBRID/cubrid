@@ -4276,10 +4276,6 @@ db_string_like (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB_
   return ((*result == V_ERROR) ? ER_QSTR_INVALID_ESCAPE_SEQUENCE : error_status);
 }
 
-
-#ifndef _USE_LIBREGEX_
-#define _USE_LIBREGEX_
-#endif
 extern int
 regex_matches (const char *pattern, const char *str, int reg_flags, bool * match)
 {
