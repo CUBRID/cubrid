@@ -4350,7 +4350,7 @@ regex_matches (const char *pattern, const char *str, int reg_flags, bool * match
       break;
 
     default:
-      int rx_err_len = (int) cub_regerror (ret_code, reg, reg_err_buf, REGEX_MAX_ERROR_MSG_SIZE);
+      int rx_err_len = (int) cub_regerror (rx_code, reg, reg_err_buf, REGEX_MAX_ERROR_MSG_SIZE);
       error_status = ER_REGEX_EXEC_ERROR;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1, reg_err_buf);
       *match = false;
