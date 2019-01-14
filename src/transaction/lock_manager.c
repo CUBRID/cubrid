@@ -669,8 +669,7 @@ STATIC_INLINE bool lock_add_lock_to_resource_highest_lock_info (THREAD_ENTRY * t
 STATIC_INLINE bool lock_is_compatible_with_resource_highest_lock_info (THREAD_ENTRY * thread_p, LK_RES * res_ptr,
 								       LOCK lock) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool lock_remove_lock_from_resource_highest_lock_info (THREAD_ENTRY * thread_p, LK_RES * res_ptr,
-								     LK_ENTRY * entry_ptr, bool is_non2pl_lock,
-								     bool force_enabling)
+								     LOCK lock, bool * disabled_mark_deletion)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool lock_add_lock_to_highest_lock_info (THREAD_ENTRY * thread_p, UINT64 * highest_lock_info, LOCK lock)
   __attribute__ ((ALWAYS_INLINE));
@@ -4470,7 +4469,7 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
   LK_ENTRY *from_whom;
   LOCK mode, granted_mode;
   int rv;
-  bool is_non2pl_lock;
+  bool disabled_mark_deletion, is_non2pl_lock;
 
 #if defined(LK_DUMP)
   if (lk_Gl.dump_level >= 1)
@@ -4499,9 +4498,6 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
       return;
     }
 
-  /* hold resource mutex */
-  is_non2pl_lock = (release_flag == false && move_to_non2pl == true) ? true : false;
-
   if (release_flag == false)
     {
       entry_ptr->count--;
@@ -4520,7 +4516,7 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
     {
       if (!LK_ENTRY_IS_DISCONNECTED (entry_ptr))
 	{
-	  if (!is_non2pl_lock && lock_atomic_set_mark_delete (thread_p, entry_ptr))
+	  if (lock_atomic_set_mark_delete (thread_p, entry_ptr))
 	    {
 	      /* Succesfully mark deleted. Nothing to do. */
 	      return;
@@ -4534,29 +4530,64 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
 	}
     }
 
+  /* hold resource mutex */
+  is_non2pl_lock = (release_flag == false && move_to_non2pl == true) ? true : false;
+
   res_ptr = entry_ptr->res_head;
   rv = pthread_mutex_lock (&res_ptr->res_mutex);
 
   if (LOCK_IS_ANY_CLASS_RESOURCE_TYPE (res_ptr->key.type) && LK_RES_HAS_HIGHEST_LOCK_INFO_ENABLED (res_ptr))
     {
       /* Remove the lock and recomputes highest lock info, if necessary. */
-      if (!lock_remove_lock_from_resource_highest_lock_info (thread_p, res_ptr, entry_ptr, is_non2pl_lock, false))
+      if (!lock_remove_lock_from_resource_highest_lock_info (thread_p, res_ptr, entry_ptr->granted_mode,
+							     &disabled_mark_deletion))
 	{
 	  /* Not possible, since I'm the mutex owner. */
 	  assert (false);
 	}
 
-      if (res_ptr->holder == NULL && res_ptr->waiter == NULL && res_ptr->non2pl == NULL)
+      /* Set mark deleted. */
+      if (!is_non2pl_lock)
 	{
-	  lock_remove_resource_and_init (thread_p, res_ptr);
+	  if (!ATOMIC_CAS_32 (&entry_ptr->status, LK_ENTRY_ACTIVE, LK_ENTRY_MARK_DELETED))
+	    {
+	      assert (false);
+	    }
 	}
       else
 	{
-	  /* We are in mark deleteion mode or the resource was removed. */
-	  assert (res_ptr == NULL || LK_RES_HAS_HIGHEST_LOCK_INFO_ENABLED (res_ptr));
-	  pthread_mutex_unlock (&res_ptr->res_mutex);
+	  if (!lock_res_disconnect_entry_from_holder_list (thread_p, res_ptr, entry_ptr))
+	    {
+	      assert (false);
+	    }
+	  lock_remove_disconnected_entry_and_init (thread_p, entry_ptr, true);
 	}
 
+      /* Check whether I disabled mark deletion. */
+      if (disabled_mark_deletion)
+	{
+	  bool has_non_2pl = (res_ptr->non2pl != NULL);
+	  /* Enable mark delete that will force highest lock recomputation. */
+	  assert (LK_RES_HAS_HIGHEST_LOCK_INFO_DISABLED (res_ptr));
+
+	  if (!lock_resource_enable_mark_delete (thread_p, res_ptr, !has_non_2pl))
+	    {
+	      /* Can't enable mark delete since has null lock. Disconnect all entries to avoid situation when all
+	       * allocated resources are not used long time. Then, remove resource since all entries are disconnected.
+	       */
+	      lock_res_disconnect_mark_deleted_entries (thread_p, res_ptr);
+	      if (entry_ptr && LK_ENTRY_IS_DISCONNECTED (entry_ptr))
+		{
+		  lock_remove_disconnected_entry_and_init (thread_p, entry_ptr, is_non2pl_lock);
+		}
+	      lock_remove_resource_and_init (thread_p, res_ptr);
+	      return;
+	    }
+	}
+
+      /* We are in mark deleteion mode or the resource was removed. */
+      assert (res_ptr == NULL || LK_RES_HAS_HIGHEST_LOCK_INFO_ENABLED (res_ptr));
+      pthread_mutex_unlock (&res_ptr->res_mutex);
       return;
     }
 
@@ -4771,6 +4802,7 @@ lock_internal_demote_class_lock (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, 
   LK_ENTRY *holder, *h;		/* lock entry pointer */
   LOCK total_mode;
   int rv;
+  bool disabled_mark_deletion;
 
   /* The caller is not holding any mutex */
   assert (entry_ptr != NULL && LK_ENTRY_IS_ACTIVE (entry_ptr));
@@ -4782,20 +4814,25 @@ lock_internal_demote_class_lock (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, 
   res_ptr = entry_ptr->res_head;
   rv = pthread_mutex_lock (&res_ptr->res_mutex);
 
+  disabled_mark_deletion = false;
   assert (LOCK_IS_ANY_CLASS_RESOURCE_TYPE (res_ptr->key.type));
 
-  if (LK_RES_HAS_HIGHEST_LOCK_INFO_ENABLED (res_ptr))
+  disabled_mark_deletion = LK_RES_HAS_HIGHEST_LOCK_INFO_DISABLED (res_ptr);
+  if (!disabled_mark_deletion)
     {
-      /* TO DO - demote lock in highest lock info. Simulate with remove/add for now. */
-      if (!lock_remove_lock_from_resource_highest_lock_info (thread_p, res_ptr, entry_ptr, false, true))
+      if (!lock_remove_lock_from_resource_highest_lock_info (thread_p, res_ptr, entry_ptr->granted_mode,
+							     &disabled_mark_deletion))
 	{
 	  /* Not possible, since I'm the mutex owner. */
 	  assert (false);
 	}
 
-      if (!ATOMIC_CAS_32 (&entry_ptr->status, LK_ENTRY_MARK_DELETED, LK_ENTRY_ACTIVE))
+      if (disabled_mark_deletion)
 	{
-	  assert (false);
+	  /* Enable mark delete that will force highest lock recomputation. */
+	  assert (LK_RES_HAS_HIGHEST_LOCK_INFO_DISABLED (res_ptr));
+	  (void) lock_resource_enable_mark_delete (thread_p, res_ptr, false);
+	  disabled_mark_deletion = false;
 	}
 
       if (!lock_add_lock_to_resource_highest_lock_info (thread_p, res_ptr, to_be_lock))
@@ -11196,30 +11233,21 @@ lock_is_compatible_with_resource_highest_lock_info (THREAD_ENTRY * thread_p, LK_
  *
  *   thread_p(in): thread entry
  *   res_ptr(in): the resource
- *   entry_ptr(in): lock to remove from resource highest lock info
- *   is_non2pl_lock(in): true, if is non two phase lock
- *   force_enabling(in): true, if force enabling
+ *   lock(in): lock to remove from resource highest lock info
+ *   disabled_mark_deletion(out): true, if mark deletion is disabled
  *
- * Note: The caller is holding the resource mutex. This function remove lock from highest lock info. If the highest lock count
- *  becomes 0 then highest lock info must be recomputed. This may be done attomically. This means that mark delete mode must be
- *  disabled. So, int this case, disable mark delete mode and then try to re-enable it. If recomputed mode is NULL_LOCK then
- *  then disconnect all lock entries.
- *  TODO - find a better name
+ * Note: The caller is holding the resource mutex.
  */
 STATIC_INLINE bool
-lock_remove_lock_from_resource_highest_lock_info (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK_ENTRY * entry_ptr,
-						  bool is_non2pl_lock, bool force_enabling)
+lock_remove_lock_from_resource_highest_lock_info (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LOCK lock,
+						  bool * disabled_mark_deletion)
 {
   UINT64 old_highest_lock_info, new_highest_lock_info;
-  LOCK lock;
-  bool disabled_mark_deletion;
-  assert (res_ptr != NULL && entry_ptr != NULL && entry_ptr->blocked_mode == NULL_LOCK
-	  && LOCK_IS_ANY_CLASS_RESOURCE_TYPE (res_ptr->key.type));
+  assert (LOCK_IS_ANY_CLASS_RESOURCE_TYPE (res_ptr->key.type));
 
-  lock = entry_ptr->granted_mode;
   do
     {
-      disabled_mark_deletion = false;
+      *disabled_mark_deletion = false;
 
       /* Get the highest lock with version and flags. */
       old_highest_lock_info = ATOMIC_INC_64 (&res_ptr->highest_lock_info, 0LL);
@@ -11228,6 +11256,7 @@ lock_remove_lock_from_resource_highest_lock_info (THREAD_ENTRY * thread_p, LK_RE
       if (LK_HAS_HIGHEST_LOCK_INFO_DISABLED (old_highest_lock_info))
 	{
 	  /* Someone else notified that mark /unmark deleted mode is not allowed. I can't access highest lock info */
+	  *disabled_mark_deletion = true;
 	  return false;
 	}
 
@@ -11241,7 +11270,7 @@ lock_remove_lock_from_resource_highest_lock_info (THREAD_ENTRY * thread_p, LK_RE
 	{
 	  /* Disable mark deletion, since I need to recompute highest lock info. */
 	  new_highest_lock_info = LK_DISABLE_HIGHEST_LOCK_INFO (new_highest_lock_info);
-	  disabled_mark_deletion = true;
+	  *disabled_mark_deletion = true;
 	}
     }
   while (!ATOMIC_CAS_64 (&res_ptr->highest_lock_info, old_highest_lock_info, new_highest_lock_info));
@@ -11256,60 +11285,13 @@ lock_remove_lock_from_resource_highest_lock_info (THREAD_ENTRY * thread_p, LK_RE
   }
 #endif
 
-  if (disabled_mark_deletion)
+  if (*disabled_mark_deletion)
     {
       /* Disabled mark deletion. We may need lock entry information. */
       while (ATOMIC_INC_32 (&res_ptr->count_atomic_mark_delete, 0) > 0)
 	{
 	  /* Waits to finish all atomic set/reset mark delete. This happens rare. */
 	  thread_sleep (10);
-	}
-    }
-
-  /* Set mark deleted. */
-  if (!is_non2pl_lock)
-    {
-      if (!ATOMIC_CAS_32 (&entry_ptr->status, LK_ENTRY_ACTIVE, LK_ENTRY_MARK_DELETED))
-	{
-	  assert (false);
-	}
-    }
-  else
-    {
-      if (!lock_res_disconnect_entry_from_holder_list (thread_p, res_ptr, entry_ptr))
-	{
-	  assert (false);
-	}
-      lock_remove_disconnected_entry_and_init (thread_p, entry_ptr, true);
-    }
-
-  /* Check whether I disabled mark deletion. */
-  if (disabled_mark_deletion)
-    {
-      bool skip_enable_if_null_lock;
-
-      if (force_enabling || res_ptr->non2pl != NULL)
-	{
-	  skip_enable_if_null_lock = false;
-	}
-      else
-	{
-	  skip_enable_if_null_lock = true;
-	}
-
-      /* Enable mark delete that will force highest lock recomputation. */
-      assert (LK_RES_HAS_HIGHEST_LOCK_INFO_DISABLED (res_ptr));
-
-      if (!lock_resource_enable_mark_delete (thread_p, res_ptr, skip_enable_if_null_lock))
-	{
-	  /* Can't enable mark delete since has null lock. Disconnect all entries to avoid situation when all
-	   * allocated resources are not used long time. Then, remove resource since all entries are disconnected.
-	   */
-	  lock_res_disconnect_mark_deleted_entries (thread_p, res_ptr);
-	  if (entry_ptr && LK_ENTRY_IS_DISCONNECTED (entry_ptr))
-	    {
-	      lock_remove_disconnected_entry_and_init (thread_p, entry_ptr, is_non2pl_lock);
-	    }
 	}
     }
 
