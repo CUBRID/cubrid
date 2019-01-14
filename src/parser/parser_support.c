@@ -5197,7 +5197,7 @@ regu_domain_init (SM_DOMAIN * ptr)
 {
   ptr->next = NULL;
   ptr->next_list = NULL;
-  ptr->type = PR_TYPE_FROM_ID (DB_TYPE_INTEGER);
+  ptr->type = pr_type_from_id (DB_TYPE_INTEGER);
   ptr->precision = 0;
   ptr->scale = 0;
   ptr->class_mop = NULL;

@@ -44,6 +44,7 @@
 #include "parser_message.h"
 #include "virtual_object.h"
 #include "set_object.h"
+#include "object_primitive.h"
 #include "object_print.h"
 #include "object_representation.h"
 #include "intl_support.h"

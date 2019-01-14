@@ -443,7 +443,7 @@ extern "C"
   TP_DOMAIN *tp_domain_find_object (DB_TYPE type, OID * class_oid, struct db_object *class_, bool is_desc);
   TP_DOMAIN *tp_domain_find_set (DB_TYPE type, TP_DOMAIN * setdomain, bool is_desc);
   TP_DOMAIN *tp_domain_find_enumeration (const DB_ENUMERATION * enumeration, bool is_desc);
-  TP_DOMAIN *tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf);
+  TP_DOMAIN *tp_domain_resolve_value (const DB_VALUE * val, TP_DOMAIN * dbuf);
 #if defined(ENABLE_UNUSED_FUNCTION)
   TP_DOMAIN *tp_create_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * domain);
 #endif				/* ENABLE_UNUSED_FUNCTION */

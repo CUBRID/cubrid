@@ -36,6 +36,7 @@
 #include "execute_schema.h"
 #include "view_transform.h"
 #include "parser.h"
+#include "object_primitive.h"
 
 #include "dbtype.h"
 

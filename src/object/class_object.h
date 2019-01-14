@@ -34,9 +34,11 @@
 
 #include "object_domain.h"
 #include "work_space.h"
-#include "object_primitive.h"
 #include "storage_common.h"
 #include "statistics.h"
+
+// forward definitions
+struct pr_type;
 
 /*
  *    This macro should be used whenever comparisons need to be made
@@ -439,7 +441,7 @@ struct sm_attribute
 {
   SM_COMPONENT header;		/* next, name, header */
 
-  PR_TYPE *type;		/* basic type */
+  struct pr_type *type;		/* basic type */
   TP_DOMAIN *domain;		/* allowable types */
 
   MOP class_mop;		/* origin class */
@@ -554,7 +556,7 @@ struct sm_method_argument
 {
   struct sm_method_argument *next;
 
-  PR_TYPE *type;		/* basic type */
+  struct pr_type *type;		/* basic type */
   TP_DOMAIN *domain;		/* full domain */
   int index;			/* argument index (one based) */
 };
@@ -991,7 +993,7 @@ extern int classobj_populate_class_properties (DB_SET ** properties, SM_CLASS_CO
 extern bool classobj_class_has_indexes (SM_CLASS * class_);
 
 /* Attribute */
-extern SM_ATTRIBUTE *classobj_make_attribute (const char *name, PR_TYPE * type, SM_NAME_SPACE name_space);
+extern SM_ATTRIBUTE *classobj_make_attribute (const char *name, struct pr_type *type, SM_NAME_SPACE name_space);
 extern SM_ATTRIBUTE *classobj_copy_attribute (SM_ATTRIBUTE * src, const char *alias);
 extern int classobj_copy_attlist (SM_ATTRIBUTE * attlist, MOP filter_class, int ordered, SM_ATTRIBUTE ** copy_ptr);
 

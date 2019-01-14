@@ -205,6 +205,7 @@ static int tf_attribute_default_expr_to_property (SM_ATTRIBUTE * attr_list);
 static int partition_info_to_disk (OR_BUF * buf, SM_PARTITION * partition_info);
 static SM_PARTITION *disk_to_partition_info (OR_BUF * buf);
 static int partition_info_size (SM_PARTITION * partition_info);
+static void or_pack_mop (OR_BUF * buf, MOP mop);
 
 #if defined(ENABLE_UNUSED_FUNCTION)
 /*
@@ -1183,7 +1184,7 @@ get_old (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr, int repid, int bound_b
 	  start = buf->ptr;
 	  for (i = 0; i < oldrep->fixed_count && rat != NULL && attmap != NULL; i++, rat = rat->next)
 	    {
-	      type = PR_TYPE_FROM_ID (rat->typeid_);
+	      type = pr_type_from_id (rat->typeid_);
 	      if (type == NULL)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_INVALID_REPRESENTATION, 1,
@@ -1250,7 +1251,7 @@ get_old (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr, int repid, int bound_b
 	    {
 	      for (i = 0; i < oldrep->variable_count && rat != NULL && attmap != NULL; i++, rat = rat->next)
 		{
-		  type = PR_TYPE_FROM_ID (rat->typeid_);
+		  type = pr_type_from_id (rat->typeid_);
 		  if (type == NULL)
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_INVALID_REPRESENTATION, 1,
@@ -1629,7 +1630,29 @@ object_set_size (DB_OBJLIST * list)
 }
 
 /*
- * put_object_set - Translates a list objects into the disk represenataion of a
+ * or_pack_mop - write an OID to a disk representation buffer given a MOP
+ * instead of a WS_MEMOID.
+ *    return:
+ *    buf(): transformer buffer
+ *    mop(): mop to transform
+ * Note:
+ *    mr_write_object can't be used because it takes a WS_MEMOID as is the
+ *    case for object references in instances.
+ *    This must stay in sync with mr_write_object above !
+ */
+static void
+or_pack_mop (OR_BUF * buf, MOP mop)
+{
+  DB_VALUE value;
+
+  tp_Object.initval (&value, 0, 0);
+  db_make_object (&value, mop);
+  tp_Object.data_writeval (buf, &value);
+  tp_Object.setval (&value, NULL, false);
+}
+
+/*
+ * put_object_set - Translates a list objects into the disk representation of a
  * sequence of objects
  *    return: on overflow, or_overflow will call longjmp and jump to the outer
  *            caller
@@ -1667,14 +1690,14 @@ put_object_set (OR_BUF * buf, DB_OBJLIST * list)
   or_put_int (buf, OR_INT_SIZE);	/* size of the domain */
   or_put_domain (buf, &tp_Object_domain, 0, 0);	/* actual domain */
 
-  /* should be using something other than pr_write_mop here ! */
+  /* should be using something other than or_pack_mop here ! */
   for (l = list; l != NULL; l = l->next)
     {
       if (WS_IS_DELETED (l->op))
 	{
 	  continue;
 	}
-      pr_write_mop (buf, l->op);
+      or_pack_mop (buf, l->op);
     }
 
   return NO_ERROR;
@@ -2074,7 +2097,7 @@ domain_to_disk (OR_BUF * buf, TP_DOMAIN * domain)
   or_put_int (buf, domain->scale);
   or_put_int (buf, domain->codeset);
   or_put_int (buf, domain->collation_id);
-  pr_write_mop (buf, domain->class_mop);
+  or_pack_mop (buf, domain->class_mop);
 
   put_substructure_set (buf, (DB_LIST *) domain->setdomain, (LWRITER) domain_to_disk, &tf_Metaclass_domain.mc_classoid,
 			tf_Metaclass_domain.mc_repid);
@@ -2326,7 +2349,7 @@ disk_to_metharg (OR_BUF * buf)
 	}
       else
 	{
-	  arg->type = PR_TYPE_FROM_ID (argtype);
+	  arg->type = pr_type_from_id (argtype);
 	}
       arg->index = or_get_int (buf, &rc);
       arg->domain =
@@ -2515,7 +2538,7 @@ method_to_disk (OR_BUF * buf, SM_METHOD * method)
 
   /* ATTRIBUTES */
   /* source class oid */
-  pr_write_mop (buf, method->class_mop);
+  or_pack_mop (buf, method->class_mop);
   or_put_int (buf, method->id);
 
   /* name */
@@ -2634,7 +2657,7 @@ methfile_to_disk (OR_BUF * buf, SM_METHOD_FILE * file)
   /* ATTRIBUTES */
 
   /* class */
-  pr_write_mop (buf, file->class_mop);
+  or_pack_mop (buf, file->class_mop);
 
   /* name */
   put_string (buf, file->name);
@@ -2865,7 +2888,7 @@ attribute_to_disk (OR_BUF * buf, SM_ATTRIBUTE * att)
   or_put_int (buf, (int) att->type->id);
   or_put_int (buf, 0);		/* memory offsets are now calculated after loading */
   or_put_int (buf, att->order);
-  pr_write_mop (buf, att->class_mop);
+  or_pack_mop (buf, att->class_mop);
   or_put_int (buf, att->flags);
 
   /* index BTID */
@@ -2982,7 +3005,7 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
 
       att->id = or_get_int (buf, &rc);
       dbval_type = (DB_TYPE) or_get_int (buf, &rc);
-      att->type = PR_TYPE_FROM_ID (dbval_type);
+      att->type = pr_type_from_id (dbval_type);
       att->offset = or_get_int (buf, &rc);
       att->offset = 0;		/* calculated later */
       att->order = or_get_int (buf, &rc);
@@ -3143,7 +3166,7 @@ resolution_to_disk (OR_BUF * buf, SM_RESOLUTION * res)
   buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
 
   /* ATTRIBUTES */
-  pr_write_mop (buf, res->class_mop);
+  or_pack_mop (buf, res->class_mop);
   name_space = (int) res->name_space;	/* kludge for ansi */
   or_put_int (buf, name_space);
   put_string (buf, res->name);
@@ -3623,7 +3646,7 @@ put_class_attributes (OR_BUF * buf, SM_CLASS * class_)
   or_put_int (buf, (int) class_->class_type);
 
   /* owner object */
-  pr_write_mop (buf, class_->owner);
+  or_pack_mop (buf, class_->owner);
   or_put_int (buf, (int) class_->collation_id);
 
 

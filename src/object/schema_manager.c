@@ -5208,7 +5208,7 @@ sm_type_name (DB_TYPE id)
 {
   PR_TYPE *type;
 
-  type = PR_TYPE_FROM_ID (id);
+  type = pr_type_from_id (id);
   if (type != NULL)
     {
       return type->name;

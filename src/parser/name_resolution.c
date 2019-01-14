@@ -35,6 +35,7 @@
 #include "semantic_check.h"
 #include "dbtype.h"
 #include "object_domain.h"
+#include "object_primitive.h"
 #include "memory_alloc.h"
 #include "intl_support.h"
 #include "memory_hash.h"

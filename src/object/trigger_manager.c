@@ -36,6 +36,7 @@
 #include "work_space.h"
 #include "schema_manager.h"
 #include "object_accessor.h"
+#include "object_primitive.h"
 #include "object_print.h"
 #include "set_object.h"
 #include "authenticate.h"

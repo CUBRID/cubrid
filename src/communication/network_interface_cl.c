@@ -50,6 +50,7 @@
 #endif /* defined (SA_MODE) */
 #include "oid.h"
 #include "error_manager.h"
+#include "object_primitive.h"
 #include "object_representation.h"
 #include "log_comm.h"
 #include "log_writer.h"

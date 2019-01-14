@@ -42,6 +42,7 @@
 #include "schema_manager.h"
 #include "schema_template.h"
 #include "object_accessor.h"
+#include "object_primitive.h"
 #include "set_object.h"
 #include "virtual_object.h"
 #include "parser.h"

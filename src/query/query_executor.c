@@ -11117,7 +11117,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	  else
 	    {
 	      OR_BUF buf;
-	      PR_TYPE *pr_type = PR_TYPE_FROM_ID (attr->type);
+	      PR_TYPE *pr_type = pr_type_from_id (attr->type);
 	      bool copy = (pr_is_set_type (attr->type)) ? true : false;
 	      if (pr_type != NULL)
 		{
@@ -22864,7 +22864,7 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 
 		  disk_length = attrepr->current_default_value.val_length;
 		  copy = (pr_is_set_type (attrepr->type)) ? true : false;
-		  pr_type = PR_TYPE_FROM_ID (attrepr->type);
+		  pr_type = pr_type_from_id (attrepr->type);
 		  if (pr_type)
 		    {
 		      (*(pr_type->data_readval)) (&buf, out_values[idx_val], attrepr->domain, disk_length, copy, NULL,
