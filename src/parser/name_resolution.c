@@ -35,6 +35,7 @@
 #include "semantic_check.h"
 #include "dbtype.h"
 #include "object_domain.h"
+#include "object_primitive.h"
 #include "memory_alloc.h"
 #include "intl_support.h"
 #include "memory_hash.h"
@@ -10144,7 +10145,12 @@ pt_bind_name_to_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
       return node;
     }
 
-  assert (!pt_resolved (node));
+  if (pt_resolved (node))
+    {
+      assert (node->info.name.spec_id == spec->info.spec.id);
+      return node;
+    }
+
   node->info.name.spec_id = spec->info.spec.id;
   node->info.name.resolved = spec->info.spec.range_var->info.name.original;
   node->info.name.meta_class = PT_NORMAL;	// so far, only normals are used.

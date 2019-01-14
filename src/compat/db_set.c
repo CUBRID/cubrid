@@ -31,10 +31,11 @@
 #include <ctype.h>
 #include <string.h>
 
-#include "set_object.h"
-#include "error_manager.h"
 #include "db.h"
 #include "dbtype.h"
+#include "error_manager.h"
+#include "object_primitive.h"
+#include "set_object.h"
 
 #define ERROR_SET(error, code) \
   do {                     \

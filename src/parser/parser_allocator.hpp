@@ -14,21 +14,32 @@
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *
  */
 
-/*
- * string_buffer.cpp
- */
+//
+// parser_allocator.hpp - C++ extensions to parser allocation
+//
 
-#include "string_buffer.hpp"
+#ifndef _PARSER_ALLOCATOR_HPP_
+#define _PARSER_ALLOCATOR_HPP_
 
-#include <memory.h>
+#include "mem_block.hpp"
 
-void string_buffer::add_bytes (size_t len, char *bytes)
+// forward def
+struct parser_context;
+
+class parser_block_allocator : public cubmem::block_allocator
 {
-  assert (bytes != NULL);
-  m_ext_block.extend_to (m_len + len + 2);
-  memcpy (m_ext_block.get_ptr () + m_len, bytes, len);
-  m_len += len;
-  m_ext_block.get_ptr ()[m_len] = '\0';
-}
+  public:
+    parser_block_allocator () = delete;
+    parser_block_allocator (parser_context *parser);
+
+  private:
+    void alloc (cubmem::block &b, size_t size);
+    void dealloc (cubmem::block &b);
+
+    parser_context *m_parser;
+};
+
+#endif // _PARSER_ALLOCATOR_HPP_

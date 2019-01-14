@@ -172,6 +172,7 @@ extern int nchar_compare (const unsigned char *string1, int size1, const unsigne
 			  INTL_CODESET codeset);
 extern int bit_compare (const unsigned char *string1, int size1, const unsigned char *string2, int size2);
 extern int varbit_compare (const unsigned char *string1, int size1, const unsigned char *string2, int size2);
+extern int regex_matches (const char *pattern, const char *str, int reg_flags, bool * match);
 extern int get_last_day (int month, int year);
 extern int get_day (int month, int day, int year);
 

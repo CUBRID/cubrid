@@ -44,6 +44,7 @@
 #endif /* defined (SA_MODE) */
 
 #include "dbtype.h"
+#include "object_primitive.h"
 
 #if !defined(SERVER_MODE)
 extern unsigned int db_on_server;

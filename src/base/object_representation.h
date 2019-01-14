@@ -1505,7 +1505,8 @@ extern SETOBJ *or_get_set (OR_BUF * buf, struct tp_domain *domain);
 extern int or_disk_set_size (OR_BUF * buf, struct tp_domain *domain, DB_TYPE * set_type);
 
 /* DB_VALUE functions */
-extern int or_packed_value_size (DB_VALUE * value, int collapse_null, int include_domain, int include_domain_classoids);
+extern int or_packed_value_size (const DB_VALUE * value, int collapse_null, int include_domain,
+				 int include_domain_classoids);
 
 extern int or_put_value (OR_BUF * buf, DB_VALUE * value, int collapse_null, int include_domain,
 			 int include_domain_classoids);
@@ -1514,7 +1515,7 @@ extern int or_get_value (OR_BUF * buf, DB_VALUE * value, struct tp_domain *domai
 
 extern char *or_pack_value (char *buf, DB_VALUE * value);
 extern char *or_pack_mem_value (char *ptr, DB_VALUE * value, int *packed_len_except_alignment);
-extern char *or_unpack_value (char *buf, DB_VALUE * value);
+extern char *or_unpack_value (const char *buf, DB_VALUE * value);
 extern char *or_unpack_mem_value (char *buf, DB_VALUE * value);
 
 extern int or_packed_enumeration_size (const DB_ENUMERATION * e);

@@ -18,13 +18,16 @@
  */
 
 #include "test_stream.hpp"
-#include "object_representation.h"
+
+#include "dbtype.h"
 #include "multi_thread_stream.hpp"
+#include "object_primitive.h"
+#include "object_representation.h"
 #include "thread_compat.hpp"
+#include "thread_entry.hpp"
 #include "thread_manager.hpp"
 #include "thread_task.hpp"
-#include "thread_entry.hpp"
-#include "dbtype.h"
+
 #include <iostream>
 
 namespace test_stream

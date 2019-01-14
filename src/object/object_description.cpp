@@ -89,7 +89,7 @@ int object_description::init (struct db_object *op)
   db_value_clear (&value);
   db_make_null (&value);
 
-  this->oid = sb.move_ptr ();
+  this->oid = sb.release_ptr ();
 
   if (class_->ordered_attributes != NULL)
     {
@@ -118,7 +118,7 @@ int object_description::init (struct db_object *op)
 	      db_get (op, attribute_p->header.name, &value);
 	      printer.describe_value (&value);
 	    }
-	  strs[i] = sb.move_ptr ();
+	  strs[i] = sb.release_ptr ();
 	  i++;
 	}
 

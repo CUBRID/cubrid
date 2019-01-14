@@ -2776,7 +2776,7 @@ emit_domain_def (DB_DOMAIN * domains)
   for (domain = domains; domain != NULL; domain = db_domain_next (domain))
     {
       type = TP_DOMAIN_TYPE (domain);
-      prtype = PR_TYPE_FROM_ID (type);
+      prtype = pr_type_from_id (type);
       if (prtype == NULL)
 	{
 	  continue;

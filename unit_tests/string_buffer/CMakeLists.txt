@@ -7,6 +7,8 @@ INCLUDE_DIRECTORIES(
 set(SRC
     ${BASE_DIR}/string_buffer.hpp
     ${BASE_DIR}/string_buffer.cpp
+    ${BASE_DIR}/mem_block.cpp
+    ${BASE_DIR}/mem_block.hpp
     src/allocator_affix.hpp
     src/allocator_stack.hpp
     src/test_string_buffer.cpp
