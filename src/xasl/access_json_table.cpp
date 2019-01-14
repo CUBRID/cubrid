@@ -256,6 +256,7 @@ namespace cubxasl
     void
     node::clear_columns (bool is_final_clear)
     {
+      init_ordinality ();
       for (size_t i = 0; i < m_output_columns_size; ++i)
 	{
 	  column *output_column = &m_output_columns[i];
@@ -267,7 +268,6 @@ namespace cubxasl
 
 	  (void) pr_clear_value (output_column->m_output_value_pointer);
 	  (void) db_make_null (output_column->m_output_value_pointer);
-	  (void) init_ordinality ();
 	}
     }
 
