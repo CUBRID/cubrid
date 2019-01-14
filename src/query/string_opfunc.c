@@ -4322,24 +4322,24 @@ regex_matches (const char *pattern, const char *str, int reg_flags, bool * match
       error_status = ER_REGEX_COMPILE_ERROR;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1, e.what ());
       *match = false;
-      return ER_REGEX_COMPILE_ERROR;
+      return error_status;
     }
   /* *INDENT-ON* */
   return NO_ERROR;
 
 #else
   cub_regex_t *reg = NULL;
-  int ret_code = regex_compile (reg, pattern, reg_flags);
-  if (ret_code != CUB_REG_OKAY)
+  error_status = regex_compile (reg, pattern, reg_flags);
+  if (error_status != NO_ERROR)
     {
       ASSERT_ERROR ();
-      return ER_REGEX_COMPILE_ERROR;
+      return error_status;
     }
 
-  ret_code = cub_regexec (reg, str, strlen (str), 0, NULL, 0);
+  int rx_code = cub_regexec (reg, str, strlen (str), 0, NULL, 0);
 
   char reg_err_buf[REGEX_MAX_ERROR_MSG_SIZE] = { '\0' };
-  switch (ret_code)
+  switch (rx_code)
     {
     case CUB_REG_OKAY:
       *match = true;
@@ -4395,12 +4395,12 @@ regex_compile (cub_regex_t * &rx_compiled_regex, const char *rx_compiled_pattern
       /* regex compilation error */
       char rx_err_buf[REGEX_MAX_ERROR_MSG_SIZE] = { '\0' };
       int rx_err_len = (int) cub_regerror (rx_err, rx_compiled_regex, rx_err_buf, REGEX_MAX_ERROR_MSG_SIZE);
-      int error_status = ER_REGEX_COMPILE_ERROR;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1, rx_err_buf);
       db_private_free_and_init (NULL, rx_compiled_regex);
+      return ER_REGEX_COMPILE_ERROR;
     }
 
-  return rx_err;
+  return NO_ERROR;
 }
 
 /*
