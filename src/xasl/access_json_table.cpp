@@ -243,7 +243,7 @@ namespace cubxasl
     node::init ()
     {
       m_path = NULL;
-      m_ordinality = 1;
+      init_ordinality ();
       m_output_columns = NULL;
       m_output_columns_size = 0;
       m_nested_nodes = NULL;
@@ -267,6 +267,7 @@ namespace cubxasl
 
 	  (void) pr_clear_value (output_column->m_output_value_pointer);
 	  (void) db_make_null (output_column->m_output_value_pointer);
+	  (void) init_ordinality ();
 	}
     }
 
@@ -306,6 +307,12 @@ namespace cubxasl
 	{
 	  m_iterator = db_json_create_iterator (DB_JSON_TYPE::DB_JSON_ARRAY);
 	}
+    }
+
+    void
+    node::init_ordinality()
+    {
+      m_ordinality = 1;
     }
 
     spec_node::spec_node ()
