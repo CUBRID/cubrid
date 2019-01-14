@@ -4276,6 +4276,10 @@ db_string_like (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB_
   return ((*result == V_ERROR) ? ER_QSTR_INVALID_ESCAPE_SEQUENCE : error_status);
 }
 
+#ifndef _USE_LIBREGEX_
+#define _USE_LIBREGEX_
+#endif
+
 extern int
 regex_matches (const char *pattern, const char *str, int reg_flags, bool * match)
 {
@@ -4399,6 +4403,8 @@ regex_compile (cub_regex_t * &rx_compiled_regex, const char *rx_compiled_pattern
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1, rx_err_buf);
       db_private_free_and_init (NULL, rx_compiled_regex);
     }
+
+  return rx_err;
 }
 
 /*
@@ -4542,11 +4548,12 @@ db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB
       memcpy (rx_compiled_pattern, pattern_char_string_p, pattern_length);
       rx_compiled_pattern[pattern_length] = '\0';
 
-      int error_code = regex_compile (rx_compiled_regex, rx_compiled_pattern,
-				      CUB_REG_EXTENDED | CUB_REG_NOSUB | (is_case_sensitive ? 0 : CUB_REG_ICASE));
-      if (error_code != NO_ERROR)
+      rx_err = regex_compile (rx_compiled_regex, rx_compiled_pattern,
+			      CUB_REG_EXTENDED | CUB_REG_NOSUB | (is_case_sensitive ? 0 : CUB_REG_ICASE));
+      if (rx_err != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
+	  *result = V_ERROR;
 	  goto cleanup;
 	}
     }
@@ -4564,7 +4571,7 @@ db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB
       break;
 
     default:
-      int rx_err_len = (int) cub_regerror (rx_err, rx_compiled_regex, rx_err_buf, REGEX_MAX_ERROR_MSG_SIZE);
+      rx_err_len = (int) cub_regerror (rx_err, rx_compiled_regex, rx_err_buf, REGEX_MAX_ERROR_MSG_SIZE);
       error_status = ER_REGEX_EXEC_ERROR;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1, rx_err_buf);
       *result = V_ERROR;
@@ -4607,7 +4614,7 @@ cleanup:
     }
 
   /* return */
-  return error_status;
+  return rx_err;
 }
 
 /*
