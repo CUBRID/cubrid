@@ -4886,7 +4886,10 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 	}
 
       /* Clear index key. */
-      pr_clear_value (p_dbvalue);
+      if (p_dbvalue != &dbvalue)
+	{
+	  pr_clear_value (p_dbvalue);
+	}
     }
 
   INT64 tasks_completed = 0;

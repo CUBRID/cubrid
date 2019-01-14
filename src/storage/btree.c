@@ -35160,7 +35160,7 @@ index_builder_loader_task::set_key (DB_VALUE * key)
 
   local_entry->private_heap_id = HL_NULL_HEAPID;
 
-  qdata_copy_db_value (&this->key, key);
+  this->key = *db_value_copy (key);
 
   local_entry->private_heap_id = save_heap_id;
 }
