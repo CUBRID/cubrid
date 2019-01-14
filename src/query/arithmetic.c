@@ -35,6 +35,7 @@
 #include <ieeefp.h>
 #endif
 
+#include <algorithm>
 #include "arithmetic.h"
 #include "error_manager.h"
 #include "object_primitive.h"
@@ -6297,7 +6298,7 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
       starting_paths.emplace_back (s);
     }
 
-  std::vector<std::regex> regs;
+  std::vector<std::string> regs;
   if (starting_paths.empty ())
     {
       starting_paths.push_back ("$");
