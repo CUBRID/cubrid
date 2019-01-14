@@ -4395,9 +4395,10 @@ regex_compile (cub_regex_t * &rx_compiled_regex, const char *rx_compiled_pattern
       /* regex compilation error */
       char rx_err_buf[REGEX_MAX_ERROR_MSG_SIZE] = { '\0' };
       int rx_err_len = (int) cub_regerror (rx_err, rx_compiled_regex, rx_err_buf, REGEX_MAX_ERROR_MSG_SIZE);
+      int error_status = ER_REGEX_COMPILE_ERROR;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1, rx_err_buf);
       db_private_free_and_init (NULL, rx_compiled_regex);
-      return ER_REGEX_COMPILE_ERROR;
+      return error_status;
     }
 
   return NO_ERROR;
@@ -4544,9 +4545,9 @@ db_string_rlike (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB
       memcpy (rx_compiled_pattern, pattern_char_string_p, pattern_length);
       rx_compiled_pattern[pattern_length] = '\0';
 
-      rx_err = regex_compile (rx_compiled_regex, rx_compiled_pattern,
-			      CUB_REG_EXTENDED | CUB_REG_NOSUB | (is_case_sensitive ? 0 : CUB_REG_ICASE));
-      if (rx_err != NO_ERROR)
+      error_status = regex_compile (rx_compiled_regex, rx_compiled_pattern,
+				    CUB_REG_EXTENDED | CUB_REG_NOSUB | (is_case_sensitive ? 0 : CUB_REG_ICASE));
+      if (error_status != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  *result = V_ERROR;
@@ -4610,7 +4611,7 @@ cleanup:
     }
 
   /* return */
-  return rx_err;
+  return error_status;
 }
 
 /*
