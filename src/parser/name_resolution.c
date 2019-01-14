@@ -10147,7 +10147,7 @@ pt_bind_name_to_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 
   if (pt_resolved (node))
     {
-      assert (node->info.name.spec_id = spec->info.spec.id);
+      assert (node->info.name.spec_id == spec->info.spec.id);
       return node;
     }
 
