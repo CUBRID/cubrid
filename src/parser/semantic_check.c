@@ -9322,8 +9322,7 @@ pt_check_json_table_paths (PT_NODE * node)
   assert (node != NULL && node->node_type == PT_JSON_TABLE_NODE);
 
   std::string path;
-
-  int error_code = db_json_convert_sql_path_to_pointer (node->info.json_table_node_info.path, path, true);
+  int error_code = db_json_convert_pointer_to_sql_path (node->info.json_table_node_info.path, path, true);
   if (error_code)
     {
       return error_code;
@@ -9337,7 +9336,7 @@ pt_check_json_table_paths (PT_NODE * node)
 	  assert (col->info.json_table_column_info.path == NULL);
 	  continue;
 	}
-      error_code = db_json_convert_sql_path_to_pointer (col->info.json_table_column_info.path, path, true);
+      error_code = db_json_convert_pointer_to_sql_path (col->info.json_table_column_info.path, path, true);
       if (error_code)
 	{
 	  return error_code;

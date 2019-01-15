@@ -6342,7 +6342,7 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
   if (paths.size () == 1)
     {
       char *escaped;
-      int escaped_size;
+      size_t escaped_size;
 
       db_json_path_unquote_object_keys (paths[0]);
       error_code = db_string_escape (paths[0].c_str(), paths[0].size (), &escaped, &escaped_size);
@@ -6365,7 +6365,7 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
     {
       JSON_DOC *json_array_elem = nullptr;
       char *escaped;
-      int escaped_size;
+      size_t escaped_size;
 
       db_json_path_unquote_object_keys (paths[i]);
       error_code = db_string_escape (paths[i].c_str (), paths[i].size (), &escaped, &escaped_size);

@@ -120,9 +120,58 @@ typedef rapidjson::UTF8 <> JSON_ENCODING;
 typedef rapidjson::MemoryPoolAllocator <JSON_PRIVATE_ALLOCATOR> JSON_PRIVATE_MEMPOOL;
 typedef rapidjson::GenericValue <JSON_ENCODING, JSON_PRIVATE_MEMPOOL> JSON_VALUE;
 typedef rapidjson::GenericPointer <JSON_VALUE> JSON_POINTER;
+typedef rapidjson::GenericPointer <JSON_VALUE>::Token TOKEN;
 typedef rapidjson::GenericStringBuffer<JSON_ENCODING, JSON_PRIVATE_ALLOCATOR> JSON_STRING_BUFFER;
 typedef rapidjson::GenericMemberIterator<true, JSON_ENCODING, JSON_PRIVATE_MEMPOOL>::Iterator JSON_MEMBER_ITERATOR;
 typedef rapidjson::GenericArray<true, JSON_VALUE>::ConstValueIterator JSON_VALUE_ITERATOR;
+
+static const unsigned kPointerInvalidIndex = ~unsigned (0);
+
+class JSON_PATH
+{
+  public:
+    std::string dump_json_pointer () const
+    {
+      std::string res;
+      const TOKEN *token_last = p.GetTokens () + p.GetTokenCount ();
+      for (const TOKEN *token = p.GetTokens (); token != token_last; ++token)
+	{
+	  res += "/";
+	  res += token->name;
+	}
+      return std::move (res);
+    }
+
+    std::string dump_json_path () const
+    {
+      std::string res = "$";
+      const TOKEN *token_last = p.GetTokens () + p.GetTokenCount ();
+      for (const TOKEN *token = p.GetTokens (); token != token_last; ++token)
+	{
+	  if (token->index != kPointerInvalidIndex)
+	    {
+	      res += "[";
+	      res += token->name;
+	      res += "]";
+	    }
+	  else
+	    {
+	      res += ".";
+	      res += token->name;
+	    }
+	}
+      return std::move (res);
+    }
+
+    JSON_PATH (const JSON_POINTER &o)
+      : p (o)
+    {
+      //
+    }
+
+  private :
+    JSON_POINTER p;
+};
 
 class JSON_DOC: public rapidjson::GenericDocument <JSON_ENCODING, JSON_PRIVATE_MEMPOOL>
 {
@@ -752,9 +801,8 @@ static int db_json_er_set_expected_other_type (const char *file_name, const int 
     const DB_JSON_TYPE &found_type, const DB_JSON_TYPE &expected_type,
     const DB_JSON_TYPE &expected_type_optional = DB_JSON_NULL);
 static int db_json_array_shift_values (const JSON_DOC *value, JSON_DOC &doc, JSON_POINTER &p, const std::string &path);
-static int db_json_path_points_to_array_cell (JSON_DOC &doc, const std::string &path,
-    JSON_VALUE *&resulting_json_parent);
-static int db_json_replace_autowrap_scalar (const JSON_VALUE *new_value, const std::string &path, JSON_DOC &doc);
+static int db_json_path_points_to_array_cell (const JSON_POINTER &path);
+static int db_json_replace_autowrap_scalar (const JSON_VALUE *new_value, const JSON_POINTER &path, JSON_DOC &doc);
 static int db_json_resolve_json_parent (JSON_DOC &doc, const std::string &path, JSON_VALUE *&resulting_json_parent);
 static int db_json_insert_helper (const JSON_DOC *value, JSON_DOC &doc, JSON_POINTER &p, const std::string &path,
 				  bool replace);
@@ -1809,37 +1857,15 @@ db_json_copy_doc (JSON_DOC &dest, const JSON_DOC *src)
 }
 
 static int
-db_json_path_points_to_array_cell (JSON_DOC &doc, const std::string &path, JSON_VALUE *&resulting_json_parent)
+db_json_path_points_to_array_cell (const JSON_POINTER &p)
 {
-  std::size_t found = path.find_last_of ('/');
-  if (found == std::string::npos)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
-      return ER_JSON_INVALID_PATH;
-    }
+  const TOKEN *tokens = p.GetTokens ();
+  size_t token_cnt = p.GetTokenCount ();
 
-  // parent pointer
-  JSON_POINTER pointer_parent (path.substr (0, found).c_str ());
-  if (!pointer_parent.IsValid ())
+  if (token_cnt == 0 || tokens[token_cnt - 1].index == kPointerInvalidIndex)
     {
-      /* this shouldn't happen */
-      assert (false);
-      return ER_FAILED;
-    }
-
-  resulting_json_parent = pointer_parent.Get (doc);
-  if (resulting_json_parent == NULL)
-    {
-      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, path.substr (0, found), &doc);
-    }
-
-  const std::string &last_token = path.substr (found + 1);
-  if (db_json_get_type_of_value (resulting_json_parent) != DB_JSON_ARRAY
-      || !db_json_path_is_token_valid_array_index (last_token, false))
-    {
-      // todo: There are object keys that are valid token indexes (e.g. $."111" passes array_index validation).
-      //       So, there is a need to check for the dor symbol in the path before it is transformed to json_pointer
-      return db_json_er_set_expected_other_type (ARG_FILE_LINE, path, DB_JSON_OBJECT, DB_JSON_ARRAY);
+      return db_json_er_set_expected_other_type (ARG_FILE_LINE, JSON_PATH (p).dump_json_path (), DB_JSON_OBJECT,
+	     DB_JSON_ARRAY);
     }
 
   return NO_ERROR;
@@ -1848,33 +1874,26 @@ db_json_path_points_to_array_cell (JSON_DOC &doc, const std::string &path, JSON_
 static int
 db_json_resolve_json_parent (JSON_DOC &doc, const std::string &path, JSON_VALUE *&resulting_json_parent)
 {
-  std::size_t found = path.find_last_of ('/');
-  if (found == std::string::npos)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
-      return ER_JSON_INVALID_PATH;
-    }
-
-  // parent pointer
-  JSON_POINTER pointer_parent (path.substr (0, found).c_str ());
-  if (!pointer_parent.IsValid ())
+  JSON_POINTER p (path.c_str ());
+  if (!p.IsValid ())
     {
       /* this shouldn't happen */
       assert (false);
       return ER_FAILED;
     }
+  const JSON_POINTER pointer_parent (p.GetTokens (), p.GetTokenCount () - 1);
 
   resulting_json_parent = pointer_parent.Get (doc);
   if (resulting_json_parent == NULL)
     {
-      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, path.substr (0, found), &doc);
+      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, JSON_PATH (pointer_parent).dump_json_path (), &doc);
     }
 
   // found type of parent
   DB_JSON_TYPE parent_json_type = db_json_get_type_of_value (resulting_json_parent);
 
-  const std::string &last_token = path.substr (found + 1);
-  bool token_is_valid_index = db_json_path_is_token_valid_array_index (last_token, false);
+  const TOKEN &last_token = p.GetTokens () [p.GetTokenCount () - 1];
+  bool token_is_valid_index = last_token.index != kPointerInvalidIndex;
 
   if ((parent_json_type == DB_JSON_ARRAY || parent_json_type != DB_JSON_OBJECT) && !token_is_valid_index)
     {
@@ -1885,7 +1904,7 @@ db_json_resolve_json_parent (JSON_DOC &doc, const std::string &path, JSON_VALUE 
       return db_json_er_set_expected_other_type (ARG_FILE_LINE, path, parent_json_type, DB_JSON_ARRAY);
     }
 
-  if (parent_json_type != DB_JSON_ARRAY && token_is_valid_index && last_token != "0")
+  if (parent_json_type != DB_JSON_ARRAY && token_is_valid_index && last_token.index != 1)
     {
       // we don't wrap the parent if last token is "0":
       // JSON_INSERT ('{"a": 1}', '$.a[0]', 10) = {"a": 1}   and   JSON_SET ('{"a": 1}', '$.a[0]', 10) = {"a": 10}
@@ -1914,7 +1933,7 @@ db_json_insert_helper (const JSON_DOC *value, JSON_DOC &doc, JSON_POINTER &p, co
     {
       const std::string &last_token = path.substr (path.find_last_of ('/') + 1);
 
-      int last_token_index;
+      unsigned last_token_index;
       if (last_token == "-")
 	{
 	  last_token_index = resulting_json_parent->GetArray ().Size ();
@@ -2006,33 +2025,20 @@ db_json_insert_func (const JSON_DOC *doc_to_be_inserted, JSON_DOC &doc_destinati
  * doc (in)                : json document
  */
 static int
-db_json_replace_autowrap_scalar (const JSON_VALUE *new_value, const std::string &path, JSON_DOC &doc)
+db_json_replace_autowrap_scalar (const JSON_VALUE *new_value, const JSON_POINTER &p, JSON_DOC &doc)
 {
-  std::size_t found = path.find_last_of ('/');
-  if (found == std::string::npos)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
-      return ER_JSON_INVALID_PATH;
-    }
-
-  JSON_POINTER pointer_parent (path.substr (0, found).c_str ());
-  if (!pointer_parent.IsValid ())
-    {
-      /* this shouldn't happen */
-      assert (false);
-      return ER_FAILED;
-    }
+  const JSON_POINTER pointer_parent (p.GetTokens (), p.GetTokenCount ());
 
   JSON_VALUE *resulting_json_parent = pointer_parent.Get (doc);
   if (resulting_json_parent == NULL)
     {
-      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, path.substr (0, found), &doc);
+      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, JSON_PATH (pointer_parent).dump_json_path (), &doc);
     }
 
-  const std::string &last_token = path.substr (found + 1);
-  if (resulting_json_parent->IsArray () || resulting_json_parent->IsObject () || last_token != "0")
+  const TOKEN &last_token = p.GetTokens () [p.GetTokenCount () - 1];
+  if (resulting_json_parent->IsArray () || resulting_json_parent->IsObject () || last_token.index != 1)
     {
-      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, path, &doc);
+      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, JSON_PATH (p).dump_json_path (), &doc);
     }
 
   JSON_VALUE value_copy (*new_value, doc.GetAllocator ());
@@ -2080,7 +2086,7 @@ db_json_replace_func (const JSON_DOC *new_value, JSON_DOC &doc, const char *raw_
 
   if (p.Get (doc) == NULL)
     {
-      return db_json_replace_autowrap_scalar (new_value, json_pointer_string, doc);
+      return db_json_replace_autowrap_scalar (new_value, p, doc);
     }
 
   // replace the value from the specified path with the new value
@@ -2407,25 +2413,18 @@ db_json_array_shift_values (const JSON_DOC *value, JSON_DOC &doc, JSON_POINTER &
   int error_code = NO_ERROR;
   JSON_VALUE *resulting_json_parent = NULL;
 
-  error_code = db_json_path_points_to_array_cell (doc, path, resulting_json_parent);
+  error_code = db_json_path_points_to_array_cell (p);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
       return error_code;
     }
 
-  const std::string &last_token = path.substr (path.find_last_of ('/') + 1);
-  int last_token_index;
-  if (last_token == "-")
-    {
-      last_token_index = resulting_json_parent->GetArray ().Size ();
-    }
-  else
-    {
-      last_token_index = std::stoi (last_token);
-    }
+  const JSON_POINTER parent_pointer (p.GetTokens (), p.GetTokenCount () - 1);
+  const TOKEN &last_token = p.GetTokens () [p.GetTokenCount () - 1];
+  resulting_json_parent = parent_pointer.Get (doc);
 
-  if (last_token_index >= resulting_json_parent->GetArray ().Size ())
+  if (last_token.index >= resulting_json_parent->GetArray ().Size ())
     {
       p.Set (doc, *value, doc.GetAllocator ());
       return NO_ERROR;
@@ -2436,7 +2435,7 @@ db_json_array_shift_values (const JSON_DOC *value, JSON_DOC &doc, JSON_POINTER &
   resulting_json_parent->GetArray ().PushBack (value_copy, doc.GetAllocator ());
 
   // move the value to its correct index by swapping adjacent values
-  for (int i = resulting_json_parent->GetArray ().Size () - 1; i > last_token_index; --i)
+  for (unsigned i = resulting_json_parent->GetArray ().Size () - 1; i > last_token.index; --i)
     {
       resulting_json_parent->GetArray ()[i].Swap (resulting_json_parent->GetArray ()[i - 1]);
     }
@@ -3466,57 +3465,37 @@ db_json_convert_pointer_to_sql_path (const char *pointer_path, std::string &sql_
 
   std::unordered_map<std::string, std::string> special_chars;
   sql_path_out = "$";
-
   db_json_build_path_special_chars (json_path_type, special_chars);
 
-  // starting the conversion of path
-  // first we need to split into tokens
-  std::vector<std::string> tokens = db_json_split_path_by_delimiters (pointer_path_string, db_Json_pointer_delimiters,
-				    true);
-
-  for (std::size_t i = 0; i < tokens.size (); ++i)
+  JSON_POINTER jp (pointer_path);
+  if (!jp.IsValid ())
     {
-      if (i == 0 )
-	{
-	  // todo: can special json pointer characters be present in the first token?
-	  if (!tokens[0].empty ())
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
-	      return ER_JSON_INVALID_PATH;
-	    }
-	  else
-	    {
-	      continue;
-	    }
-	}
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
+      return ER_JSON_INVALID_PATH;
+    }
 
-      if (db_json_path_is_token_valid_array_index (tokens[i], false))
+  const TOKEN *tokens = jp.GetTokens ();
+  size_t token_cnt = jp.GetTokenCount ();
+  for (std::size_t i = 0; i < token_cnt; ++i)
+    {
+      if (tokens[i].index != kPointerInvalidIndex)
 	{
 	  sql_path_out += "[";
-	  sql_path_out += tokens[i];
+	  sql_path_out += tokens[i].name;
 	  sql_path_out += "]";
 	}
       else
 	{
-	  db_json_replace_token_special_chars (tokens[i], special_chars);
-	  char *quoted_token;
-	  int quoted_size;
-	  db_string_escape (tokens[i].c_str (), tokens[i].size (), &quoted_token, &quoted_size);
-	  tokens[i].resize (quoted_size);
-	  tokens[i].assign (quoted_token, quoted_size - 1);
-	  db_private_free (NULL, quoted_token);
-
-	  std::size_t token_pos = 0;
-	  // todo: clarify escaping things e.g. '"' character in the token needs to be escaped for sure
-	  if (!db_json_path_is_token_valid_quoted_object_key (tokens[i], token_pos))
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
-	      return ER_JSON_INVALID_PATH;
-	    }
+	  std::string temp_str (tokens[i].name);
+	  db_json_replace_token_special_chars (temp_str, special_chars);
+	  char *quoted_token = NULL;
+	  size_t quoted_size;
+	  (void) db_string_escape (temp_str.c_str (), temp_str.length (), &quoted_token, &quoted_size);
 
 	  sql_path_out += ".";
-	  // replace special characters if necessary based on mapper
-	  sql_path_out += tokens[i];
+	  sql_path_out += quoted_token;
+
+	  db_private_free (NULL, quoted_token);
 	}
     }
 
@@ -3571,7 +3550,7 @@ db_json_remove_leading_zeros_index (std::string &index)
  * Example: $[0]."name1".name2[2] -> /0/name1/name2/2
  */
 int
-db_json_convert_sql_path_to_pointer (const char *sql_path, std::string &json_pointer_out, bool allow_wildcards)
+db_json_convert_sql_path_to_pointer (const char *sql_path, std::string &json_pointer_out)
 {
   std::string sql_path_string (sql_path);
   JSON_PATH_TYPE json_path_type = db_json_get_path_type (sql_path_string);
@@ -3584,7 +3563,7 @@ db_json_convert_sql_path_to_pointer (const char *sql_path, std::string &json_poi
       return NO_ERROR;
     }
 
-  if (!db_json_sql_path_is_valid (sql_path_string, allow_wildcards))
+  if (!db_json_sql_path_is_valid (sql_path_string, false))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
       return ER_JSON_INVALID_PATH;
