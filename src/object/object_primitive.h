@@ -28,7 +28,6 @@
 #ident "$Id$"
 
 #include "dbtype_def.h"
-#include "thread_compat.hpp"
 
 #include <stdio.h>
 #include <vector>
@@ -313,7 +312,7 @@ extern int pr_Inhibit_oid_promotion;
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 /* Helper function for DB_VALUE printing; caller must free_and_init result. */
-extern char *pr_valstring (THREAD_ENTRY *, DB_VALUE *);
+extern char *pr_valstring (DB_VALUE *);
 #endif //defined (SERVER_MODE) || defined (SA_MODE)
 
 /* area init */

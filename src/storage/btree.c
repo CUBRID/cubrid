@@ -18373,7 +18373,7 @@ btree_set_error (THREAD_ENTRY * thread_p, DB_VALUE * key, OID * obj_oid, OID * c
 
   if (key && obj_oid)
     {
-      keyval = pr_valstring (thread_p, key);
+      keyval = pr_valstring (key);
       if (keyval)
 	{
 	  snprintf (oid_msg_buf, OID_MSG_BUF_SIZE, "(OID: %d|%d|%d)", obj_oid->volid, obj_oid->pageid, obj_oid->slotid);
@@ -18513,7 +18513,7 @@ btree_set_unknown_key_error (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * ke
       severity = ER_ERROR_SEVERITY;
     }
 
-  err_key = pr_valstring (thread_p, key);
+  err_key = pr_valstring (key);
   pr_type = pr_type_from_id (DB_VALUE_DOMAIN_TYPE (key));
 
   er_set (severity, ARG_FILE_LINE, ER_BTREE_UNKNOWN_KEY, 5, (err_key != NULL) ? err_key : "_NULL_KEY",
@@ -22060,7 +22060,7 @@ btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid, OI
     {
       char *val_print = NULL;
 
-      val_print = pr_valstring (thread_p, keyval);
+      val_print = pr_valstring (keyval);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, fk_name, (val_print ? val_print : "unknown value"));
       if (val_print)
 	{
@@ -26296,7 +26296,7 @@ btree_fix_root_for_insert (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
   if (insert_helper->log_operations && insert_helper->printed_key == NULL)
     {
       /* This is postponed here to make sure midxkey domain was initialized. */
-      insert_helper->printed_key = pr_valstring (thread_p, key);
+      insert_helper->printed_key = pr_valstring (key);
       (void) SHA1Compute ((unsigned char *) insert_helper->printed_key, strlen (insert_helper->printed_key),
 			  &insert_helper->printed_key_sha1);
     }
@@ -27787,7 +27787,7 @@ btree_key_lock_and_append_object_unique (THREAD_ENTRY * thread_p, BTID_INT * bti
 	  /* Unique constraint violation. */
 	  if (prm_get_bool_value (PRM_ID_UNIQUE_ERROR_KEY_VALUE))
 	    {
-	      char *keyval = pr_valstring (thread_p, key);
+	      char *keyval = pr_valstring (key);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UNIQUE_VIOLATION_WITHKEY, 1,
 		      (keyval == NULL) ? "(null)" : keyval);
 	      if (keyval != NULL)
@@ -27860,7 +27860,7 @@ btree_key_lock_and_append_object_unique (THREAD_ENTRY * thread_p, BTID_INT * bti
 	  /* Not multi-update operation or there would be more than two objects visible. Unique constraint violation. */
 	  if (prm_get_bool_value (PRM_ID_UNIQUE_ERROR_KEY_VALUE))
 	    {
-	      char *keyval = pr_valstring (thread_p, key);
+	      char *keyval = pr_valstring (key);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UNIQUE_VIOLATION_WITHKEY, 1,
 		      (keyval == NULL) ? "(null)" : keyval);
 	      if (keyval != NULL)
@@ -29109,7 +29109,7 @@ btree_rv_record_modify_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is
 		  (void) btree_read_record (thread_p, &btid_int_for_debug, rcv->pgptr, &update_record, &key,
 					    &leaf_rec_info, node_type, &clear_key, &offset_after_key, PEEK_KEY_VALUE,
 					    NULL);
-		  printed_key = pr_valstring (thread_p, &key);
+		  printed_key = pr_valstring (&key);
 		  btree_clear_key_value (&clear_key, &key);
 
 		  (void) btree_unpack_object (update_record.data, &btid_int_for_debug, node_type, &update_record,
@@ -29212,7 +29212,7 @@ btree_rv_record_modify_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is
 	      btree_init_temp_key_value (&clear_key, &key);
 	      (void) btree_read_record (thread_p, &btid_int_for_debug, rcv->pgptr, &update_record, &key, &leaf_rec_info,
 					node_type, &clear_key, &offset_after_key, PEEK_KEY_VALUE, NULL);
-	      printed_key = pr_valstring (thread_p, &key);
+	      printed_key = pr_valstring (&key);
 	      btree_clear_key_value (&clear_key, &key);
 	    }
 
@@ -29836,7 +29836,7 @@ btree_fix_root_for_delete (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
   if (delete_helper->log_operations)
     {
       /* Key must be printed. */
-      delete_helper->printed_key = pr_valstring (thread_p, key);
+      delete_helper->printed_key = pr_valstring (key);
       (void) SHA1Compute ((unsigned char *) delete_helper->printed_key, strlen (delete_helper->printed_key),
 			  &delete_helper->printed_key_sha1);
     }

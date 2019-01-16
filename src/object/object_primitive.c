@@ -9822,7 +9822,7 @@ pr_data_writeval (struct or_buf *buf, DB_VALUE * value)
  *    representations into error messages and the like.
  */
 char *
-pr_valstring (THREAD_ENTRY * threade, DB_VALUE * val)
+pr_valstring (DB_VALUE * val)
 {
   const size_t BUFFER_SIZE = 1024;
   string_buffer sb (cubmem::PRIVATE_BLOCK_ALLOCATOR, BUFFER_SIZE);
