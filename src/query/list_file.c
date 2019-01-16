@@ -37,7 +37,7 @@
 #include "dbtype.h"
 #include "error_manager.h"
 #include "object_primitive.h"
-#include "object_print.h"
+#include "db_value_printer.hpp"
 #include "query_manager.h"
 #include "query_opfunc.h"
 #include "stream_to_xasl.h"
@@ -5203,7 +5203,7 @@ qfile_print_list_cache_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *ke
   for (i = 0; i < ent->param_values.size; i++)
     {
       fprintf (fp, " ");
-      help_fprint_value (thread_p, fp, &ent->param_values.vals[i]);
+      db_fprint_value (fp, &ent->param_values.vals[i]);
     }
 
   fprintf (fp, " ]\n");

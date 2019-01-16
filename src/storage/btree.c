@@ -4607,7 +4607,7 @@ btree_dump_key (THREAD_ENTRY * thread_p, FILE * fp, DB_VALUE * key)
     {
 #if 1
       fprintf (fp, " ");
-      (*(pr_type->fptrfunc)) (thread_p, fp, key);
+      (*(pr_type->fptrfunc)) (fp, key);
       fprintf (fp, " ");
 
 #else /* debug routine - DO NOT DELETE ME */

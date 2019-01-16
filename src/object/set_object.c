@@ -30,12 +30,11 @@
 #include <stdio.h>
 #include <assert.h>
 
-#include "set_object.h"
+#include "db_value_printer.hpp"
+#include "dbtype.h"
 #include "error_manager.h"
 #include "object_primitive.h"
-#include "object_print.h"
-#include "dbtype.h"
-
+#include "set_object.h"
 
 #if !defined(SERVER_MODE)
 #include "locator_cl.h"
@@ -6125,7 +6124,7 @@ setobj_print (FILE * fp, COL * col)
   fprintf (fp, "{");
   for (i = 0; i < col->size; i++)
     {
-      help_fprint_value (NULL, fp, INDEX (col, i));
+      db_fprint_value (fp, INDEX (col, i));
       if (i < col->size - 1)
 	{
 	  fprintf (fp, ", ");

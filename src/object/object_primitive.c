@@ -34,13 +34,13 @@
 
 #include "object_primitive.h"
 
+#include "db_value_printer.hpp"
 #include "db_json.hpp"
 #include "elo.h"
 #include "error_manager.h"
 #include "file_io.h"
 #include "mem_block.hpp"
 #include "object_domain.h"
-#include "object_print.h"
 #include "object_representation.h"
 #include "set_object.h"
 #include "string_buffer.hpp"
@@ -884,8 +884,8 @@ int pr_Inhibit_oid_promotion = PR_INHIBIT_OID_PROMOTION_DEFAULT;
 int pr_Enable_string_compression = true;
 PR_TYPE tp_Null = {
   "*NULL*", DB_TYPE_NULL, 0, 0, 0, 0,
-  help_fprint_value,
-  help_sprint_value,
+  db_fprint_value,
+  db_sprint_value,
   mr_initmem_null,
   mr_initval_null,
   mr_setmem_null,
@@ -911,8 +911,8 @@ PR_TYPE *tp_Type_null = &tp_Null;
 
 PR_TYPE tp_Integer = {
   "integer", DB_TYPE_INTEGER, 0, sizeof (int), sizeof (int), 4,
-  help_fprint_value,
-  help_sprint_value,
+  db_fprint_value,
+  db_sprint_value,
   mr_initmem_int,
   mr_initval_int,
   mr_setmem_int,
@@ -938,8 +938,8 @@ PR_TYPE *tp_Type_integer = &tp_Integer;
 
 PR_TYPE tp_Short = {
   "smallint", DB_TYPE_SHORT, 0, sizeof (short), sizeof (short), 2,
-  help_fprint_value,
-  help_sprint_value,
+  db_fprint_value,
+  db_sprint_value,
   mr_initmem_short,
   mr_initval_short,
   mr_setmem_short,
@@ -965,8 +965,8 @@ PR_TYPE *tp_Type_short = &tp_Short;
 
 PR_TYPE tp_Bigint = {
   "bigint", DB_TYPE_BIGINT, 0, sizeof (DB_BIGINT), sizeof (DB_BIGINT), 4,
-  help_fprint_value,
-  help_sprint_value,
+  db_fprint_value,
+  db_sprint_value,
   mr_initmem_bigint,
   mr_initval_bigint,
   mr_setmem_bigint,
@@ -992,8 +992,8 @@ PR_TYPE *tp_Type_bigint = &tp_Bigint;
 
 PR_TYPE tp_Float = {
   "float", DB_TYPE_FLOAT, 0, sizeof (float), sizeof (float), 4,
-  help_fprint_value,
-  help_sprint_value,
+  db_fprint_value,
+  db_sprint_value,
   mr_initmem_float,
   mr_initval_float,
   mr_setmem_float,
@@ -1019,8 +1019,8 @@ PR_TYPE *tp_Type_float = &tp_Float;
 
 PR_TYPE tp_Double = {
   "double", DB_TYPE_DOUBLE, 0, sizeof (double), sizeof (double), 4,
-  help_fprint_value,
-  help_sprint_value,
+  db_fprint_value,
+  db_sprint_value,
   mr_initmem_double,
   mr_initval_double,
   mr_setmem_double,
@@ -1046,8 +1046,8 @@ PR_TYPE *tp_Type_double = &tp_Double;
 
 PR_TYPE tp_Time = {
   "time", DB_TYPE_TIME, 0, sizeof (DB_TIME), OR_TIME_SIZE, 4,
-  help_fprint_value,
-  help_sprint_value,
+  db_fprint_value,
+  db_sprint_value,
   mr_initmem_time,
   mr_initval_time,
   mr_setmem_time,
@@ -1073,8 +1073,8 @@ PR_TYPE *tp_Type_time = &tp_Time;
 
 PR_TYPE tp_Utime = {
   "timestamp", DB_TYPE_TIMESTAMP, 0, sizeof (DB_UTIME), OR_UTIME_SIZE, 4,
-  help_fprint_value,
-  help_sprint_value,
+  db_fprint_value,
+  db_sprint_value,
   mr_initmem_utime,
   mr_initval_utime,
   mr_setmem_utime,
@@ -1101,8 +1101,8 @@ PR_TYPE *tp_Type_utime = &tp_Utime;
 PR_TYPE tp_Timestamptz = {
   "timestamptz", DB_TYPE_TIMESTAMPTZ, 0, sizeof (DB_TIMESTAMPTZ),
   OR_TIMESTAMPTZ_SIZE, 4,
-  help_fprint_value,
-  help_sprint_value,
+  db_fprint_value,
+  db_sprint_value,
   mr_initmem_timestamptz,
   mr_initval_timestamptz,
   mr_setmem_timestamptz,
@@ -1131,8 +1131,8 @@ PR_TYPE *tp_Type_Timestamptz = &tp_Timestamptz;
 PR_TYPE tp_Timestampltz = {
   "timestampltz", DB_TYPE_TIMESTAMPLTZ, 0, sizeof (DB_UTIME), OR_UTIME_SIZE,
   4,
-  help_fprint_value,
-  help_sprint_value,
+  db_fprint_value,
+  db_sprint_value,
   mr_initmem_utime,
   mr_initval_timestampltz,
   mr_setmem_utime,
@@ -1156,8 +1156,8 @@ PR_TYPE tp_Timestampltz = {
 
 PR_TYPE tp_Datetime = {
   "datetime", DB_TYPE_DATETIME, 0, sizeof (DB_DATETIME), OR_DATETIME_SIZE, 4,
-  help_fprint_value,
-  help_sprint_value,
+  db_fprint_value,
+  db_sprint_value,
   mr_initmem_datetime,
   mr_initval_datetime,
   mr_setmem_datetime,
@@ -1184,8 +1184,8 @@ PR_TYPE *tp_Type_datetime = &tp_Datetime;
 PR_TYPE tp_Datetimetz = {
   "datetimetz", DB_TYPE_DATETIMETZ, 0, sizeof (DB_DATETIMETZ),
   OR_DATETIMETZ_SIZE, 4,
-  help_fprint_value,
-  help_sprint_value,
+  db_fprint_value,
+  db_sprint_value,
   mr_initmem_datetimetz,
   mr_initval_datetimetz,
   mr_setmem_datetimetz,
@@ -1214,8 +1214,8 @@ PR_TYPE *tp_Type_Datetimetz = &tp_Datetimetz;
 PR_TYPE tp_Datetimeltz = {
   "datetimeltz", DB_TYPE_DATETIMELTZ, 0, sizeof (DB_DATETIME),
   OR_DATETIME_SIZE, 4,
-  help_fprint_value,
-  help_sprint_value,
+  db_fprint_value,
+  db_sprint_value,
   mr_initmem_datetime,
   mr_initval_datetimeltz,
   mr_setmem_datetime,
@@ -1241,8 +1241,8 @@ PR_TYPE *tp_Type_datetimeltz = &tp_Datetimeltz;
 
 PR_TYPE tp_Monetary = {
   "monetary", DB_TYPE_MONETARY, 0, sizeof (DB_MONETARY), OR_MONETARY_SIZE, 4,
-  help_fprint_value,
-  help_sprint_value,
+  db_fprint_value,
+  db_sprint_value,
   mr_initmem_money,
   mr_initval_money,
   mr_setmem_money,
@@ -1268,8 +1268,8 @@ PR_TYPE *tp_Type_monetary = &tp_Monetary;
 
 PR_TYPE tp_Date = {
   "date", DB_TYPE_DATE, 0, sizeof (DB_DATE), OR_DATE_SIZE, 4,
-  help_fprint_value,
-  help_sprint_value,
+  db_fprint_value,
+  db_sprint_value,
   mr_initmem_date,
   mr_initval_date,
   mr_setmem_date,
@@ -1303,8 +1303,8 @@ PR_TYPE *tp_Type_date = &tp_Date;
 
 PR_TYPE tp_Object = {
   "object", DB_TYPE_OBJECT, 0, MR_OID_SIZE, OR_OID_SIZE, 4,
-  help_fprint_value,
-  help_sprint_value,
+  db_fprint_value,
+  db_sprint_value,
   mr_initmem_object,
   mr_initval_object,
   mr_setmem_object,
@@ -1330,8 +1330,8 @@ PR_TYPE *tp_Type_object = &tp_Object;
 
 PR_TYPE tp_Elo = {		/* todo: remove me */
   "*elo*", DB_TYPE_ELO, 1, sizeof (DB_ELO *), 0, 8,
-  help_fprint_value,
-  help_sprint_value,
+  db_fprint_value,
+  db_sprint_value,
   mr_initmem_elo,
   mr_initval_elo,
   mr_setmem_elo,
@@ -1357,8 +1357,8 @@ PR_TYPE *tp_Type_elo = &tp_Elo;
 
 PR_TYPE tp_Blob = {
   "blob", DB_TYPE_BLOB, 1, sizeof (DB_ELO *), 0, 8,
-  help_fprint_value,
-  help_sprint_value,
+  db_fprint_value,
+  db_sprint_value,
   mr_initmem_elo,
   mr_initval_blob,
   mr_setmem_elo,
@@ -1384,8 +1384,8 @@ PR_TYPE *tp_Type_blob = &tp_Blob;
 
 PR_TYPE tp_Clob = {
   "clob", DB_TYPE_CLOB, 1, sizeof (DB_ELO *), 0, 8,
-  help_fprint_value,
-  help_sprint_value,
+  db_fprint_value,
+  db_sprint_value,
   mr_initmem_elo,
   mr_initval_clob,
   mr_setmem_elo,
@@ -1411,8 +1411,8 @@ PR_TYPE *tp_Type_clob = &tp_Clob;
 
 PR_TYPE tp_Variable = {
   "*variable*", DB_TYPE_VARIABLE, 1, sizeof (DB_VALUE), 0, 4,
-  help_fprint_value,
-  help_sprint_value,
+  db_fprint_value,
+  db_sprint_value,
   NULL,				/* initmem */
   mr_initval_variable,
   NULL,				/* setmem */
@@ -1438,8 +1438,8 @@ PR_TYPE *tp_Type_variable = &tp_Variable;
 
 PR_TYPE tp_Substructure = {
   "*substructure*", DB_TYPE_SUB, 1, sizeof (void *), 0, 8,
-  help_fprint_value,
-  help_sprint_value,
+  db_fprint_value,
+  db_sprint_value,
   mr_initmem_sub,
   mr_initval_sub,
   mr_setmem_sub,
@@ -1465,8 +1465,8 @@ PR_TYPE *tp_Type_substructure = &tp_Substructure;
 
 PR_TYPE tp_Pointer = {
   "*pointer*", DB_TYPE_POINTER, 0, sizeof (void *), 0, 4,
-  help_fprint_value,
-  help_sprint_value,
+  db_fprint_value,
+  db_sprint_value,
   mr_initmem_ptr,
   mr_initval_ptr,
   mr_setmem_ptr,
@@ -1492,8 +1492,8 @@ PR_TYPE *tp_Type_pointer = &tp_Pointer;
 
 PR_TYPE tp_Error = {
   "*error*", DB_TYPE_ERROR, 0, sizeof (int), 0, 4,
-  help_fprint_value,
-  help_sprint_value,
+  db_fprint_value,
+  db_sprint_value,
   mr_initmem_error,
   mr_initval_error,
   mr_setmem_error,
@@ -1526,8 +1526,8 @@ PR_TYPE *tp_Type_error = &tp_Error;
  */
 PR_TYPE tp_Oid = {
   "*oid*", DB_TYPE_OID, 0, sizeof (OID), OR_OID_SIZE, 4,
-  help_fprint_value,
-  help_sprint_value,
+  db_fprint_value,
+  db_sprint_value,
   mr_initmem_oid,
   mr_initval_oid,
   mr_setmem_oid,
@@ -1553,8 +1553,8 @@ PR_TYPE *tp_Type_oid = &tp_Oid;
 
 PR_TYPE tp_Set = {
   "set", DB_TYPE_SET, 1, sizeof (SETOBJ *), 0, 4,
-  help_fprint_value,
-  help_sprint_value,
+  db_fprint_value,
+  db_sprint_value,
   mr_initmem_set,
   mr_initval_set,
   mr_setmem_set,
@@ -1580,8 +1580,8 @@ PR_TYPE *tp_Type_set = &tp_Set;
 
 PR_TYPE tp_Multiset = {
   "multiset", DB_TYPE_MULTISET, 1, sizeof (SETOBJ *), 0, 4,
-  help_fprint_value,
-  help_sprint_value,
+  db_fprint_value,
+  db_sprint_value,
   mr_initmem_set,
   mr_initval_multiset,
   mr_setmem_set,
@@ -1607,8 +1607,8 @@ PR_TYPE *tp_Type_multiset = &tp_Multiset;
 
 PR_TYPE tp_Sequence = {
   "sequence", DB_TYPE_SEQUENCE, 1, sizeof (SETOBJ *), 0, 4,
-  help_fprint_value,
-  help_sprint_value,
+  db_fprint_value,
+  db_sprint_value,
   mr_initmem_set,
   mr_initval_sequence,
   mr_setmem_set,
@@ -1634,8 +1634,8 @@ PR_TYPE *tp_Type_sequence = &tp_Sequence;
 
 PR_TYPE tp_Midxkey = {
   "midxkey", DB_TYPE_MIDXKEY, 1, 0, 0, 1,
-  help_fprint_value,
-  help_sprint_value,
+  db_fprint_value,
+  db_sprint_value,
   NULL,				/* initmem */
   mr_initval_midxkey,
   NULL,				/* setmem */
@@ -1661,8 +1661,8 @@ PR_TYPE *tp_Type_midxkey = &tp_Midxkey;
 
 PR_TYPE tp_Vobj = {
   "*vobj*", DB_TYPE_VOBJ, 1, sizeof (SETOBJ *), 0, 8,
-  help_fprint_value,
-  help_sprint_value,
+  db_fprint_value,
+  db_sprint_value,
   mr_initmem_set,
   mr_initval_vobj,
   mr_setmem_set,
@@ -1688,8 +1688,8 @@ PR_TYPE *tp_Type_vobj = &tp_Vobj;
 
 PR_TYPE tp_Numeric = {
   "numeric", DB_TYPE_NUMERIC, 0, 0, 0, 1,
-  help_fprint_value,
-  help_sprint_value,
+  db_fprint_value,
+  db_sprint_value,
   mr_initmem_numeric,
   mr_initval_numeric,
   mr_setmem_numeric,
@@ -1716,8 +1716,8 @@ PR_TYPE *tp_Type_numeric = &tp_Numeric;
 PR_TYPE tp_Enumeration = {
   "enum", DB_TYPE_ENUMERATION, 0, sizeof (unsigned short),
   sizeof (unsigned short), sizeof (unsigned short),
-  help_fprint_value,
-  help_sprint_value,
+  db_fprint_value,
+  db_sprint_value,
   mr_initmem_enumeration,
   mr_initval_enumeration,
   mr_setmem_enumeration,
@@ -1796,8 +1796,8 @@ PR_TYPE *tp_Type_id_map[] = {
 PR_TYPE tp_ResultSet = {
   "resultset", DB_TYPE_RESULTSET, 0, sizeof (DB_RESULTSET),
   sizeof (DB_RESULTSET), 4,
-  help_fprint_value,
-  help_sprint_value,
+  db_fprint_value,
+  db_sprint_value,
   mr_initmem_resultset,
   mr_initval_resultset,
   mr_setmem_resultset,
@@ -11270,8 +11270,8 @@ mr_cmpval_string2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coer
 
 PR_TYPE tp_String = {
   "character varying", DB_TYPE_STRING, 1, sizeof (const char *), 0, 1,
-  help_fprint_value,
-  help_sprint_value,
+  db_fprint_value,
+  db_sprint_value,
   mr_initmem_string,
   mr_initval_string,
   mr_setmem_string,
@@ -12109,8 +12109,8 @@ mr_cmpval_char2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coerci
 
 PR_TYPE tp_Char = {
   "character", DB_TYPE_CHAR, 0, 0, 0, 1,
-  help_fprint_value,
-  help_sprint_value,
+  db_fprint_value,
+  db_sprint_value,
   mr_initmem_char,
   mr_initval_char,
   mr_setmem_char,
@@ -13006,8 +13006,8 @@ mr_cmpval_nchar2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coerc
 
 PR_TYPE tp_NChar = {
   "national character", DB_TYPE_NCHAR, 0, 0, 0, 1,
-  help_fprint_value,
-  help_sprint_value,
+  db_fprint_value,
+  db_sprint_value,
   mr_initmem_nchar,
   mr_initval_nchar,
   mr_setmem_nchar,
@@ -14116,8 +14116,8 @@ mr_cmpval_varnchar2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_co
 PR_TYPE tp_VarNChar = {
   "national character varying", DB_TYPE_VARNCHAR, 1, sizeof (const char *), 0,
   1,
-  help_fprint_value,
-  help_sprint_value,
+  db_fprint_value,
+  db_sprint_value,
   mr_initmem_varnchar,
   mr_initval_varnchar,
   mr_setmem_varnchar,
@@ -14851,8 +14851,8 @@ mr_cmpval_bit2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coercio
 
 PR_TYPE tp_Bit = {
   "bit", DB_TYPE_BIT, 0, 0, 0, 1,
-  help_fprint_value,
-  help_sprint_value,
+  db_fprint_value,
+  db_sprint_value,
   mr_initmem_bit,
   mr_initval_bit,
   mr_setmem_bit,
@@ -15546,8 +15546,8 @@ mr_cmpval_varbit2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coer
 
 PR_TYPE tp_VarBit = {
   "bit varying", DB_TYPE_VARBIT, 1, sizeof (const char *), 0, 1,
-  help_fprint_value,
-  help_sprint_value,
+  db_fprint_value,
+  db_sprint_value,
   mr_initmem_varbit,
   mr_initval_varbit,
   mr_setmem_varbit,
@@ -16459,8 +16459,8 @@ error:
 PR_TYPE tp_Json = {
   "json", DB_TYPE_JSON, 1, sizeof (DB_JSON), 0,
   1,
-  help_fprint_value,
-  help_sprint_value,
+  db_fprint_value,
+  db_sprint_value,
   mr_initmem_json,
   mr_initval_json,
   mr_setmem_json,

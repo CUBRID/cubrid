@@ -62,6 +62,7 @@
 #endif /* ENABLE_SYSTEMTAP */
 #include "dbtype.h"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
+#include "db_value_printer.hpp"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -2750,7 +2751,7 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid, 
 		{
 		  (*(pr_type->data_readval)) (&buf, &def_dbvalue, attrepr->domain, disk_length, copy, NULL, 0);
 
-		  db_value_fprint (stdout, &def_dbvalue);
+		  db_fprint_value (stdout, &def_dbvalue);
 		  (void) pr_clear_value (&def_dbvalue);
 		}
 	      else
@@ -10520,7 +10521,7 @@ heap_attrinfo_dump (THREAD_ENTRY * thread_p, FILE * fp, HEAP_CACHE_ATTRINFO * at
 
       fprintf (fp, "  Memory_value_format:\n");
       fprintf (fp, "    value = ");
-      db_value_fprint (fp, &value->dbvalue);
+      db_fprint_value (fp, &value->dbvalue);
       fprintf (fp, "\n\n");
     }
 

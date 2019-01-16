@@ -50,7 +50,7 @@
 #include "schema_manager.h"
 #include "server_interface.h"
 #include "load_object.h"
-#include "object_print.h"
+#include "db_value_printer.hpp"
 #include "network_interface_cl.h"
 
 #include "message_catalog.h"
@@ -1644,7 +1644,7 @@ desc_value_fprint (FILE * fp, DB_VALUE * value)
       break;
 
     default:
-      db_value_fprint (fp, value);
+      db_fprint_value (fp, value);
       break;
     }
 }

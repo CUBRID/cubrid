@@ -36,7 +36,7 @@
 #include "system_parameter.h"
 #include "error_manager.h"
 #include "db.h"
-#include "object_print.h"
+#include "db_value_printer.hpp"
 #include "string_opfunc.h"
 #include "set_object.h"
 #include "cnv.h"
@@ -1661,7 +1661,7 @@ db_value_print (const DB_VALUE * value)
 
   if (value != NULL)
     {
-      help_fprint_value (NULL, stdout, value);
+      db_fprint_value (stdout, value);
     }
 
 }
@@ -1679,9 +1679,8 @@ db_value_fprint (FILE * fp, const DB_VALUE * value)
 
   if (fp != NULL && value != NULL)
     {
-      help_fprint_value (NULL, fp, value);
+      db_fprint_value (fp, value);
     }
-
 }
 
 /*

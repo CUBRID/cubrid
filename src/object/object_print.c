@@ -730,35 +730,7 @@ help_print_info (const char *command, FILE * fpp)
 
 #endif /* defined (SERVER_MODE) */
 
-/*
- * help_fprint_value() -  Prints a description of the contents of a DB_VALUE
- *                        to the file
- *   return: none
- *   fp(in) : FILE stream pointer
- *   value(in) : value to print
- */
-void
-help_fprint_value (THREAD_ENTRY * thread_p, FILE * fp, const DB_VALUE * value)
-{
-  const size_t BUFFER_SIZE = 1024;
-  string_buffer sb (cubmem::PRIVATE_BLOCK_ALLOCATOR, BUFFER_SIZE);
 
-  db_value_printer printer (sb);
-  printer.describe_value (value);
-  fprintf (fp, "%.*s", (int) sb.len (), sb.get_buffer ());
-}
-
-/*
- * help_sprint_value() - This places a printed representation of the supplied value in a buffer.
- *   value(in) : value to describe
- *   sb(in/out) : auto resizable buffer to contain description
- */
-void
-help_sprint_value (const DB_VALUE * value, string_buffer & sb)
-{
-  db_value_printer printer (sb);
-  printer.describe_value (value);
-}
 
 /*
  * help_fprint_describe_comment() - Print description of a comment to a file.

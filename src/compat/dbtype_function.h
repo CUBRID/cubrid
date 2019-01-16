@@ -256,7 +256,7 @@ extern "C"
   extern int db_value_free (DB_VALUE * value);
   extern int db_value_clear_array (DB_VALUE_ARRAY * value_array);
   extern void db_value_print (const DB_VALUE * value);
-  extern void db_value_fprint (FILE * fp, const DB_VALUE * value);
+  extern void db_fprint_value (FILE * fp, const DB_VALUE * value);
   extern int db_value_coerce (const DB_VALUE * src, DB_VALUE * dest, const DB_DOMAIN * desired_domain);
 
   extern int db_value_equal (const DB_VALUE * value1, const DB_VALUE * value2);
