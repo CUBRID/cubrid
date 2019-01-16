@@ -800,12 +800,11 @@ static const char *db_json_get_json_type_as_str (const DB_JSON_TYPE &json_type);
 static int db_json_er_set_expected_other_type (const char *file_name, const int line_no, const std::string &path,
     const DB_JSON_TYPE &found_type, const DB_JSON_TYPE &expected_type,
     const DB_JSON_TYPE &expected_type_optional = DB_JSON_NULL);
-static int db_json_array_shift_values (const JSON_DOC *value, JSON_DOC &doc, JSON_POINTER &p, const std::string &path);
+static int db_json_array_shift_values (const JSON_DOC *value, JSON_DOC &doc, JSON_POINTER &p);
 static int db_json_path_points_to_array_cell (const JSON_POINTER &path);
 static int db_json_replace_autowrap_scalar (const JSON_VALUE *new_value, const JSON_POINTER &path, JSON_DOC &doc);
-static int db_json_resolve_json_parent (JSON_DOC &doc, const std::string &path, JSON_VALUE *&resulting_json_parent);
-static int db_json_insert_helper (const JSON_DOC *value, JSON_DOC &doc, JSON_POINTER &p, const std::string &path,
-				  bool replace);
+static int db_json_resolve_json_parent (JSON_DOC &doc, const JSON_POINTER &p, JSON_VALUE *&resulting_json_parent);
+static int db_json_insert_helper (const JSON_DOC *value, JSON_DOC &doc, JSON_POINTER &p, bool replace);
 static int db_json_contains_duplicate_keys (JSON_DOC &doc);
 
 STATIC_INLINE JSON_VALUE &db_json_doc_to_value (JSON_DOC &doc) __attribute__ ((ALWAYS_INLINE));
@@ -1872,15 +1871,8 @@ db_json_path_points_to_array_cell (const JSON_POINTER &p)
 }
 
 static int
-db_json_resolve_json_parent (JSON_DOC &doc, const std::string &path, JSON_VALUE *&resulting_json_parent)
+db_json_resolve_json_parent (JSON_DOC &doc, const JSON_POINTER &p, JSON_VALUE *&resulting_json_parent)
 {
-  JSON_POINTER p (path.c_str ());
-  if (!p.IsValid ())
-    {
-      /* this shouldn't happen */
-      assert (false);
-      return ER_FAILED;
-    }
   const JSON_POINTER pointer_parent (p.GetTokens (), p.GetTokenCount () - 1);
 
   resulting_json_parent = pointer_parent.Get (doc);
@@ -1897,11 +1889,13 @@ db_json_resolve_json_parent (JSON_DOC &doc, const std::string &path, JSON_VALUE 
 
   if ((parent_json_type == DB_JSON_ARRAY || parent_json_type != DB_JSON_OBJECT) && !token_is_valid_index)
     {
-      return db_json_er_set_expected_other_type (ARG_FILE_LINE, path, parent_json_type, DB_JSON_OBJECT);
+      return db_json_er_set_expected_other_type (ARG_FILE_LINE, JSON_PATH (p).dump_json_path (), parent_json_type,
+	     DB_JSON_OBJECT);
     }
   if (parent_json_type == DB_JSON_OBJECT && token_is_valid_index)
     {
-      return db_json_er_set_expected_other_type (ARG_FILE_LINE, path, parent_json_type, DB_JSON_ARRAY);
+      return db_json_er_set_expected_other_type (ARG_FILE_LINE, JSON_PATH (p).dump_json_path(), parent_json_type,
+	     DB_JSON_ARRAY);
     }
 
   if (parent_json_type != DB_JSON_ARRAY && token_is_valid_index && last_token.index != 1)
@@ -1915,12 +1909,12 @@ db_json_resolve_json_parent (JSON_DOC &doc, const std::string &path, JSON_VALUE 
 }
 
 static int
-db_json_insert_helper (const JSON_DOC *value, JSON_DOC &doc, JSON_POINTER &p, const std::string &path, bool replace)
+db_json_insert_helper (const JSON_DOC *value, JSON_DOC &doc, JSON_POINTER &p, bool replace)
 {
   int error_code = NO_ERROR;
   JSON_VALUE *resulting_json_parent = NULL;
 
-  error_code = db_json_resolve_json_parent (doc, path, resulting_json_parent);
+  error_code = db_json_resolve_json_parent (doc, p, resulting_json_parent);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -1928,28 +1922,18 @@ db_json_insert_helper (const JSON_DOC *value, JSON_DOC &doc, JSON_POINTER &p, co
     }
 
   JSON_VALUE value_copy (*value, doc.GetAllocator ());
+  const TOKEN &last_token = p.GetTokens () [p.GetTokenCount ()];
 
   if (resulting_json_parent->IsArray ())
     {
-      const std::string &last_token = path.substr (path.find_last_of ('/') + 1);
-
-      unsigned last_token_index;
-      if (last_token == "-")
-	{
-	  last_token_index = resulting_json_parent->GetArray ().Size ();
-	}
-      else
-	{
-	  last_token_index = std::stoi (last_token);
-	}
-
-      if (last_token_index >= resulting_json_parent->GetArray ().Size ())
+      assert (last_token.index != kPointerInvalidIndex);
+      if (last_token.index >= resulting_json_parent->GetArray ().Size ())
 	{
 	  p.Set (doc, *value, doc.GetAllocator ());
 	}
       else if (replace)
 	{
-	  resulting_json_parent->GetArray ()[last_token_index].Swap (value_copy);
+	  resulting_json_parent->GetArray ()[last_token.index].Swap (value_copy);
 	}
     }
   else if (resulting_json_parent->IsObject ())
@@ -1958,8 +1942,7 @@ db_json_insert_helper (const JSON_DOC *value, JSON_DOC &doc, JSON_POINTER &p, co
     }
   else
     {
-      int last_token_index = std::stoi (path.substr (path.find_last_of ('/') + 1));
-      assert (last_token_index == 0);
+      assert (last_token.index == 0);
       // we do not autowrap the scalar parent if token_index is 0
       if (replace)
 	{
@@ -2013,7 +1996,7 @@ db_json_insert_func (const JSON_DOC *doc_to_be_inserted, JSON_DOC &doc_destinati
       return NO_ERROR;
     }
 
-  return db_json_insert_helper (doc_to_be_inserted, doc_destination, p, json_pointer_string, false);
+  return db_json_insert_helper (doc_to_be_inserted, doc_destination, p, false);
 }
 
 /*
@@ -2142,7 +2125,7 @@ db_json_set_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path)
     }
 
   // here starts the INSERTION part
-  return db_json_insert_helper (value, doc, p, json_pointer_string, true);
+  return db_json_insert_helper (value, doc, p, true);
 }
 
 /*
@@ -2408,7 +2391,7 @@ db_json_array_append_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw
 }
 
 static int
-db_json_array_shift_values (const JSON_DOC *value, JSON_DOC &doc, JSON_POINTER &p, const std::string &path)
+db_json_array_shift_values (const JSON_DOC *value, JSON_DOC &doc, JSON_POINTER &p)
 {
   int error_code = NO_ERROR;
   JSON_VALUE *resulting_json_parent = NULL;
@@ -2423,6 +2406,18 @@ db_json_array_shift_values (const JSON_DOC *value, JSON_DOC &doc, JSON_POINTER &
   const JSON_POINTER parent_pointer (p.GetTokens (), p.GetTokenCount () - 1);
   const TOKEN &last_token = p.GetTokens () [p.GetTokenCount () - 1];
   resulting_json_parent = parent_pointer.Get (doc);
+
+  if (resulting_json_parent == NULL || resulting_json_parent->IsObject ())
+    {
+      // todo: do autowrap objects?
+      return db_json_er_set_expected_other_type (ARG_FILE_LINE, JSON_PATH (p).dump_json_path (), DB_JSON_OBJECT,
+	     DB_JSON_ARRAY);
+    }
+
+  if (!resulting_json_parent->IsArray ())
+    {
+      resulting_json_parent->SetArray ();
+    }
 
   if (last_token.index >= resulting_json_parent->GetArray ().Size ())
     {
@@ -2480,7 +2475,7 @@ db_json_array_insert_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw
     }
 
   // here starts the INSERTION part
-  return db_json_array_shift_values (value, doc, p, json_pointer_string);
+  return db_json_array_shift_values (value, doc, p);
 }
 
 DB_JSON_TYPE
