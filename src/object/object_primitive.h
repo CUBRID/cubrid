@@ -423,26 +423,26 @@ pr_type::initval (DB_VALUE * value, int precision, int scale) const
   (*f_initval) (value, precision, scale);
 }
 
-inline int
+int
 pr_type::setmem (void * memptr, const tp_domain * domain, const DB_VALUE * value) const
 {
   // Assign a value into instance memory, copy the value.
   return (*f_setmem) (memptr, const_cast<tp_domain *> (domain), const_cast<DB_VALUE *> (value));
 }
 
-inline int
+int
 pr_type::getmem (void * memptr, const tp_domain * domain, DB_VALUE * value, bool copy) const
 {
   return (*f_getmem) (memptr, const_cast<tp_domain *> (domain), value, copy);
 }
 
-inline int
+int
 pr_type::setval (DB_VALUE * dest, const DB_VALUE * src, bool copy) const
 {
   return (*f_setval) (dest, src, copy);
 }
 
-inline int
+int
 pr_type::data_lengthmem (const void * memptr, const tp_domain * domain, int disk) const
 {
   if (is_fixed_size ())
@@ -455,7 +455,7 @@ pr_type::data_lengthmem (const void * memptr, const tp_domain * domain, int disk
     }
 }
 
-inline int
+int
 pr_type::data_lengthval (const DB_VALUE * value, int disk) const
 {
   if (is_fixed_size ())
@@ -468,31 +468,31 @@ pr_type::data_lengthval (const DB_VALUE * value, int disk) const
     }
 }
 
-inline void
+void
 pr_type::data_writemem (or_buf * buf, const void * memptr, const tp_domain * domain) const
 {
   (*f_data_writemem) (buf, const_cast<void *> (memptr), const_cast <tp_domain *> (domain));
 }
 
-inline void
+void
 pr_type::data_readmem (or_buf * buf, void * memptr, const tp_domain * domain, int size) const
 {
   (*f_data_readmem) (buf, memptr, const_cast<tp_domain *> (domain), size);
 }
 
-inline int
+int
 pr_type::data_writeval (or_buf * buf, const DB_VALUE * value) const
 {
   return (*f_data_writeval) (buf, const_cast<DB_VALUE *> (value));
 }
 
-inline int
+int
 pr_type::data_readval (or_buf * buf, DB_VALUE * value, const tp_domain * domain, int size, bool copy, char * copy_buf, int copy_buf_len) const
 {
   return (*f_data_readval) (buf, value, const_cast<tp_domain *> (domain), size, copy, copy_buf, copy_buf_len);
 }
 
-inline int
+int
 pr_type::index_lengthmem (const void * memptr, const tp_domain * domain) const
 {
   if (is_fixed_size ())
@@ -505,7 +505,7 @@ pr_type::index_lengthmem (const void * memptr, const tp_domain * domain) const
     }
 }
 
-inline int
+int
 pr_type::index_lengthval (const DB_VALUE * value) const
 {
   if (is_fixed_size ())
@@ -518,26 +518,26 @@ pr_type::index_lengthval (const DB_VALUE * value) const
     }
 }
 
-inline int
+int
 pr_type::index_writeval (or_buf * buf, const DB_VALUE * value) const
 {
   return (*f_index_writeval) (buf, const_cast<DB_VALUE *> (value));
 }
 
-inline int
+int
 pr_type::index_readval (or_buf * buf, DB_VALUE * value, const tp_domain * domain, int size, bool copy, char * copy_buf, int copy_buf_len) const
 {
   return (*f_index_readval) (buf, value, const_cast<tp_domain *> (domain), size, copy, copy_buf, copy_buf_len);
 }
 
-inline DB_VALUE_COMPARE_RESULT
+DB_VALUE_COMPARE_RESULT
 pr_type::index_cmpdisk (const void * memptr1, const void * memptr2, const tp_domain * domain, int do_coercion, int total_order, int * start_colp) const
 {
   return (*f_index_cmpdisk) (const_cast<void *> (memptr1), const_cast<void *> (memptr2),
                              const_cast<tp_domain *> (domain), do_coercion, total_order, start_colp);
 }
 
-inline void
+void
 pr_type::freemem (void * memptr) const
 {
   if (f_freemem != NULL)
@@ -546,14 +546,14 @@ pr_type::freemem (void * memptr) const
     }
  }
 
-inline DB_VALUE_COMPARE_RESULT
+DB_VALUE_COMPARE_RESULT
 pr_type::data_cmpdisk (const void * memptr1, const void * memptr2, const tp_domain * domain, int do_coercion, int total_order, int * start_colp) const
 {
   return (*f_data_cmpdisk) (const_cast<void *> (memptr1), const_cast<void *> (memptr2),
                             const_cast<tp_domain *> (domain), do_coercion, total_order, start_colp);
 }
 
-inline DB_VALUE_COMPARE_RESULT
+DB_VALUE_COMPARE_RESULT
 pr_type::cmpval (const DB_VALUE * value, const DB_VALUE * value2, int do_coercion, int total_order, int * start_colp, int collation) const
 {
   return (*f_cmpval) (const_cast<DB_VALUE *> (value), const_cast<DB_VALUE *> (value2), do_coercion, total_order,
