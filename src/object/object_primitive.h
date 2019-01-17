@@ -34,7 +34,8 @@
 
 #include "dbtype_def.h"
 
-#include <stdio.h>
+#include <cassert>
+#include <cstdio>
 #include <vector>
 
 // forward definitions
@@ -51,6 +52,34 @@ struct or_buf;
 typedef struct pr_type
 {
   public:
+    typedef void (*initmem_function_type) (void *memptr, struct tp_domain * domain);
+    typedef void (*initval_function_type) (DB_VALUE * value, int precision, int scale);
+    typedef int (*setmem_function_type) (void *memptr, struct tp_domain * domain, DB_VALUE * value);
+    typedef int (*getmem_function_type) (void *memptr, struct tp_domain * domain, DB_VALUE * value, bool copy);
+    typedef int (*setval_function_type) (DB_VALUE * dest, const DB_VALUE * src, bool copy);
+    typedef int (*data_lengthmem_function_type) (void *memptr, struct tp_domain * domain, int disk);
+    typedef int (*data_lengthval_function_type) (DB_VALUE * value, int disk);
+    typedef void (*data_writemem_function_type) (struct or_buf * buf, void *memptr, struct tp_domain * domain);
+    typedef void (*data_readmem_function_type) (struct or_buf * buf, void *memptr, struct tp_domain * domain, int size);
+    typedef int (*data_writeval_function_type) (struct or_buf * buf, DB_VALUE * value);
+    typedef int (*data_readval_function_type) (struct or_buf * buf, DB_VALUE * value, struct tp_domain * domain, int size, bool copy,
+                                               char *copy_buf, int copy_buf_len);
+    typedef int (*index_lengthmem_function_type) (void *memptr, struct tp_domain * domain);
+    typedef int (*index_lengthval_function_type) (DB_VALUE * value);
+    typedef int (*index_writeval_function_type) (struct or_buf * buf, DB_VALUE * value);
+    typedef int (*index_readval_function_type) (struct or_buf * buf, DB_VALUE * value, struct tp_domain * domain,
+                                                int size, bool copy, char *copy_buf, int copy_buf_len);
+    typedef DB_VALUE_COMPARE_RESULT (*index_cmpdisk_function_type) (void *memptr1, void *memptr2,
+                                                                    struct tp_domain * domain, int do_coercion,
+                                                                    int total_order, int *start_colp);
+    typedef void (*freemem_function_type) (void *memptr);
+    typedef DB_VALUE_COMPARE_RESULT (*data_cmpdisk_function_type) (void *memptr1, void *memptr2, tp_domain * domain,
+                                                                   int do_coercion, int total_order, int *start_colp);
+    typedef DB_VALUE_COMPARE_RESULT (*cmpval_function_type) (DB_VALUE * value, DB_VALUE * value2, int do_coercion,
+                                                             int total_order, int *start_colp, int collation);
+
+    // all member variables:
+  public:
     /* internal identifier name */
     const char *name;
     DB_TYPE id;
@@ -59,70 +88,58 @@ typedef struct pr_type
     int disksize;
     int alignment;
 
-
-    typedef DB_VALUE_COMPARE_RESULT (*data_cmpdisk_function_type) (void *memptr1, void *memptr2, tp_domain * domain,
-                                                                   int do_coercion, int total_order, int *start_colp);
-    typedef DB_VALUE_COMPARE_RESULT (*cmpval_function_type) (DB_VALUE * value, DB_VALUE * value2, int do_coercion,
-                                                             int total_order, int *start_colp, int collation);
-
-  public:
-    /* initialize memory */
-    void (*f_initmem) (void *memptr, struct tp_domain * domain);
-    /* initialize DB_VALUE */
-    void (*f_initval) (DB_VALUE * value, int precision, int scale);
-    int (*f_setmem) (void *memptr, struct tp_domain * domain, DB_VALUE * value);
-    /* zero to avoid copying if possible */
-    int (*f_getmem) (void *memptr, struct tp_domain * domain, DB_VALUE * value, bool copy);
-    /* set DB_VALUE from DB_VALUE */
-    int (*f_setval) (DB_VALUE * dest, const DB_VALUE * src, bool copy);
-    /* return memory size */
-    int (*f_data_lengthmem) (void *memptr, struct tp_domain * domain, int disk);
-    /* return DB_VALUE size */
-    int (*f_data_lengthval) (DB_VALUE * value, int disk);
-    /* write disk rep from memory */
-    void (*f_data_writemem) (struct or_buf * buf, void *memptr, struct tp_domain * domain);
-    /* read disk rep to memory */
-    void (*f_data_readmem) (struct or_buf * buf, void *memptr, struct tp_domain * domain, int size);
-    /* write disk rep from DB_VALUE */
-    int (*f_data_writeval) (struct or_buf * buf, DB_VALUE * value);
-    /* read disk rep to DB_VALUE */
-    int (*f_data_readval) (struct or_buf * buf, DB_VALUE * value, struct tp_domain * domain, int size, bool copy,
-		         char *copy_buf, int copy_buf_len);
-    /* btree memory size */
-    int (*f_index_lengthmem) (void *memptr, struct tp_domain * domain);
-    /* return DB_VALUE size */
-    int (*f_index_lengthval) (DB_VALUE * value);
-    /* write btree rep from DB_VALUE */
-    int (*f_index_writeval) (struct or_buf * buf, DB_VALUE * value);
-    /* read btree rep to DB_VALUE */
-    int (*f_index_readval) (struct or_buf * buf, DB_VALUE * value, struct tp_domain * domain, int size, bool copy,
-			    char *copy_buf, int copy_buf_len);
-    /* btree value compare */
-    DB_VALUE_COMPARE_RESULT (*f_index_cmpdisk) (void *memptr1, void *memptr2, struct tp_domain * domain,
-                                                int do_coercion, int total_order, int *start_colp);
-    /* free memory for swap or GC */
-    void (*f_freemem) (void *memptr);
-    /* memory value compare */
+  protected:
+    initmem_function_type f_initmem;
+    initval_function_type f_initval;
+    setmem_function_type f_setmem;
+    getmem_function_type f_getmem;
+    setval_function_type f_setval;
+    data_lengthmem_function_type f_data_lengthmem;
+    data_lengthval_function_type f_data_lengthval;
+    data_writemem_function_type f_data_writemem;
+    data_readmem_function_type f_data_readmem;
+    data_writeval_function_type f_data_writeval;
+    data_readval_function_type f_data_readval;
+    index_lengthmem_function_type f_index_lengthmem;
+    index_lengthval_function_type f_index_lengthval;
+    index_writeval_function_type f_index_writeval;
+    index_readval_function_type f_index_readval;
+    index_cmpdisk_function_type f_index_cmpdisk;
+    freemem_function_type f_freemem;
     data_cmpdisk_function_type f_data_cmpdisk;
     cmpval_function_type f_cmpval;
 
   public:
+    pr_type () = delete;
+    pr_type (const char *name_arg, DB_TYPE id_arg, int varp_arg, int size_arg, int disksize_arg, int align_arg,
+             initmem_function_type initmem_f_arg, initval_function_type initval_f_arg,
+             setmem_function_type setmem_f_arg, getmem_function_type getmem_f_arg, setval_function_type setval_f_arg,
+             data_lengthmem_function_type data_lengthmem_f_arg, data_lengthval_function_type data_lengthval_f_arg,
+             data_writemem_function_type data_writemem_f_arg, data_readmem_function_type data_readmem_f_arg,
+             data_writeval_function_type data_writeval_f_arg, data_readval_function_type data_readval_f_arg,
+             index_lengthmem_function_type index_lengthmem_f_arg, index_lengthval_function_type index_lengthval_f_arg,
+             index_writeval_function_type index_writeval_f_arg, index_readval_function_type index_readval_f_arg,
+             index_cmpdisk_function_type index_cmpdisk_f_arg, freemem_function_type freemem_f_arg,
+             data_cmpdisk_function_type data_cmpdisk_f_arg, cmpval_function_type cmpval_f_arg);
 
     // todo - remove all the const stripping code from function implementation; signatures for all internal functions
     //        (prefixed by f_) and their various implementations inside object_primitive.c should be updated.
     //        postponed for a better days and better design
 
     // setters/getters
+    inline const char *get_name () const;
+    inline DB_TYPE get_id () const;
+    inline size_t get_alignment () const;
+
     inline void set_data_cmpdisk_function (data_cmpdisk_function_type data_cmpdisk_arg);
     inline data_cmpdisk_function_type get_data_cmpdisk_function () const;
 
     void set_cmpval_function (cmpval_function_type cmpval_arg);
     cmpval_function_type get_cmpval_function () const;
 
-    // checking fixed size - actually all functions should return same value, but this is a legacy issue
-    // todo - replace with a single fixed size check function
-    inline bool is_data_lengthmem_fixed () const;
-    inline bool is_data_lengthval_fixed () const;
+    // is fixed/variable
+    inline bool is_fixed_size () const;
+    inline bool is_variable_size () const;
 
     // operations for in-memory representations
     inline void initmem (void *memptr, const tp_domain * domain) const;
@@ -149,7 +166,6 @@ typedef struct pr_type
 
     // operations for index representations (ordered)
     inline int index_lengthmem (const void *memptr, const tp_domain * domain) const;
-    inline bool is_index_lengthval_fixed () const;
     inline int index_lengthval (const DB_VALUE * value) const;
     inline int index_writeval (struct or_buf * buf, const DB_VALUE * value) const;
     inline int index_readval (struct or_buf * buf, DB_VALUE * value, const tp_domain * domain, int size, bool copy,
@@ -333,31 +349,62 @@ extern int pr_Enable_string_compression;
 // Inline/template implementation
 //////////////////////////////////////////////////////////////////////////
 // *INDENT-OFF*
+const char *
+pr_type::get_name () const
+{
+  return name;
+}
+
+DB_TYPE
+pr_type::get_id () const
+{
+  return id;
+}
+
+size_t
+pr_type::get_alignment () const
+{
+  return (size_t) alignment;
+}
+
 void
 pr_type::set_data_cmpdisk_function (data_cmpdisk_function_type data_cmpdisk_arg)
 {
   f_data_cmpdisk = data_cmpdisk_arg;
 }
 
-inline pr_type::data_cmpdisk_function_type
+pr_type::data_cmpdisk_function_type
 pr_type::get_data_cmpdisk_function () const
 {
   return f_data_cmpdisk;
 }
 
-inline void
+void
 pr_type::set_cmpval_function (cmpval_function_type cmpval_arg)
 {
   f_cmpval = cmpval_arg;
 }
 
-inline pr_type::cmpval_function_type
+pr_type::cmpval_function_type
 pr_type::get_cmpval_function () const
 {
   return f_cmpval;
 }
 
-inline void
+bool
+pr_type::is_variable_size () const
+{
+  assert (f_data_lengthmem != NULL && f_data_lengthval != NULL && f_index_lengthval != NULL);
+  return variable_p != 0;
+}
+
+bool
+pr_type::is_fixed_size () const
+{
+  return !is_variable_size ();
+}
+
+void
 pr_type::initmem (void * memptr, const tp_domain * domain) const
 {
   /*
@@ -369,7 +416,7 @@ pr_type::initmem (void * memptr, const tp_domain * domain) const
   (*f_initmem) (memptr, const_cast<tp_domain *> (domain));
 }
 
-inline void
+void
 pr_type::initval (DB_VALUE * value, int precision, int scale) const
 {
   (*f_initval) (value, precision, scale);
@@ -394,16 +441,10 @@ pr_type::setval (DB_VALUE * dest, const DB_VALUE * src, bool copy) const
   return (*f_setval) (dest, src, copy);
 }
 
-inline bool
-pr_type::is_data_lengthmem_fixed () const
-{
-  return (f_data_lengthmem == NULL);
-}
-
 inline int
 pr_type::data_lengthmem (const void * memptr, const tp_domain * domain, int disk) const
 {
-  if (is_data_lengthmem_fixed ())
+  if (is_fixed_size ())
     {
       return disksize;
     }
@@ -413,16 +454,10 @@ pr_type::data_lengthmem (const void * memptr, const tp_domain * domain, int disk
     }
 }
 
-inline bool
-pr_type::is_data_lengthval_fixed () const
-{
-  return f_data_lengthval == NULL;
-}
-
 inline int
 pr_type::data_lengthval (const DB_VALUE * value, int disk) const
 {
-  if (is_data_lengthval_fixed ())
+  if (is_fixed_size ())
     {
       return disksize;
     }
@@ -469,16 +504,10 @@ pr_type::index_lengthmem (const void * memptr, const tp_domain * domain) const
     }
 }
 
-inline bool
-pr_type::is_index_lengthval_fixed () const
-{
-  return f_index_lengthval == NULL;
-}
-
 inline int
 pr_type::index_lengthval (const DB_VALUE * value) const
 {
-  if (is_index_lengthval_fixed ())
+  if (is_fixed_size ())
     {
       return disksize;
     }

@@ -7835,7 +7835,7 @@ qdata_get_tuple_value_size_from_dbval (DB_VALUE * dbval_p)
       if (type_p)
 	{
 	  val_size = type_p->data_lengthval (dbval_p, 1);
-	  if (!type_p->is_data_lengthval_fixed ())
+	  if (type_p->is_variable_size ())
 	    {
 	      if (pr_is_string_type (dbval_type))
 		{

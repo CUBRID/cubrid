@@ -146,6 +146,47 @@ extern unsigned int db_on_server;
 #define IS_FLOATING_PRECISION(prec) \
   ((prec) == TP_FLOATING_PRECISION_VALUE)
 
+// *INDENT-OFF*
+pr_type::pr_type (const char * name_arg, DB_TYPE id_arg, int varp_arg, int size_arg, int disksize_arg, int align_arg,
+                  initmem_function_type initmem_f_arg, initval_function_type initval_f_arg,
+                  setmem_function_type setmem_f_arg, getmem_function_type getmem_f_arg,
+                  setval_function_type setval_f_arg, data_lengthmem_function_type data_lengthmem_f_arg,
+                  data_lengthval_function_type data_lengthval_f_arg, data_writemem_function_type data_writemem_f_arg,
+                  data_readmem_function_type data_readmem_f_arg, data_writeval_function_type data_writeval_f_arg,
+                  data_readval_function_type data_readval_f_arg, index_lengthmem_function_type index_lengthmem_f_arg,
+                  index_lengthval_function_type index_lengthval_f_arg,
+                  index_writeval_function_type index_writeval_f_arg, index_readval_function_type index_readval_f_arg,
+                  index_cmpdisk_function_type index_cmpdisk_f_arg, freemem_function_type freemem_f_arg,
+                  data_cmpdisk_function_type data_cmpdisk_f_arg, cmpval_function_type cmpval_f_arg)
+  : name {name_arg}
+  , id {}
+  , variable_p {varp_arg}
+  , size {size_arg}
+  , disksize {disksize_arg}
+  , alignment {align_arg}
+  , f_initmem {initmem_f_arg}
+  , f_initval {initval_f_arg}
+  , f_setmem {setmem_f_arg}
+  , f_getmem {getmem_f_arg}
+  , f_setval {setval_f_arg}
+  , f_data_lengthmem {data_lengthmem_f_arg}
+  , f_data_lengthval {data_lengthval_f_arg}
+  , f_data_writemem {data_writemem_f_arg}
+  , f_data_readmem {data_readmem_f_arg}
+  , f_data_writeval {data_writeval_f_arg}
+  , f_data_readval {data_readval_f_arg}
+  , f_index_lengthmem {index_lengthmem_f_arg}
+  , f_index_lengthval {index_lengthval_f_arg}
+  , f_index_writeval {index_writeval_f_arg}
+  , f_index_readval {index_readval_f_arg}
+  , f_index_cmpdisk {index_cmpdisk_f_arg}
+  , f_freemem {freemem_f_arg}
+  , f_data_cmpdisk {data_cmpdisk_f_arg}
+  , f_cmpval {cmpval_f_arg}
+  {
+  }
+// *INDENT-ON*
+
 static void mr_initmem_string (void *mem, TP_DOMAIN * domain);
 static int mr_setmem_string (void *memptr, TP_DOMAIN * domain, DB_VALUE * value);
 static int mr_getmem_string (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy);

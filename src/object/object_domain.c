@@ -10973,14 +10973,13 @@ tp_value_equal (const DB_VALUE * value1, const DB_VALUE * value2, int do_coercio
 int
 tp_domain_disk_size (TP_DOMAIN * domain)
 {
-  if (domain->type->variable_p)
+  if (domain->type->is_variable_size ())
     {
       return -1;
     }
 
-  if (!domain->type->is_data_lengthmem_fixed ()
-      && (domain->type->id == DB_TYPE_CHAR || domain->type->id == DB_TYPE_NCHAR || domain->type->id == DB_TYPE_BIT)
-      && domain->precision == TP_FLOATING_PRECISION_VALUE)
+  if ((domain->type->get_id () == DB_TYPE_CHAR || domain->type->get_id () == DB_TYPE_NCHAR
+       || domain->type->get_id () == DB_TYPE_BIT) && domain->precision == TP_FLOATING_PRECISION_VALUE)
     {
       return -1;
     }
@@ -11000,9 +10999,9 @@ tp_domain_disk_size (TP_DOMAIN * domain)
 int
 tp_domain_memory_size (TP_DOMAIN * domain)
 {
-  if (!domain->type->is_data_lengthmem_fixed ()
-      && (domain->type->id == DB_TYPE_CHAR || domain->type->id == DB_TYPE_NCHAR || domain->type->id == DB_TYPE_BIT)
-      && domain->precision == TP_FLOATING_PRECISION_VALUE)
+  if (domain->type->is_variable_size ()
+      && (domain->type->get_id () == DB_TYPE_CHAR || domain->type->get_id () == DB_TYPE_NCHAR
+	  || domain->type->get_id () == DB_TYPE_BIT) && domain->precision == TP_FLOATING_PRECISION_VALUE)
     {
       return -1;
     }
