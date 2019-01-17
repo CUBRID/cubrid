@@ -62,8 +62,7 @@ enum DB_JSON_TYPE
 enum class JSON_PATH_TYPE
 {
   JSON_PATH_SQL_JSON,
-  JSON_PATH_POINTER,
-  JSON_PATH_EMPTY
+  JSON_PATH_POINTER
 };
 
 /* C functions */

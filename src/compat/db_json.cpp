@@ -161,15 +161,14 @@ class JSON_DOC: public rapidjson::GenericDocument <JSON_ENCODING, JSON_PRIVATE_M
 #endif // TODO_OPTIMIZE_JSON_BODY_STRING
 };
 
-
-class JSON_PATH
+class JSON_PATH : public JSON_POINTER
 {
   public:
-    std::string dump_json_pointer() const
+    std::string dump_json_pointer () const
     {
       std::string res;
-      const TOKEN *token_last = get_last_token();
-      for (const TOKEN *token = p.GetTokens(); token != token_last; ++token)
+      const TOKEN *token_last = get_last_token ();
+      for (const TOKEN *token = GetTokens (); token != token_last; ++token)
 	{
 	  res += "/";
 	  res += token->name;
@@ -177,11 +176,11 @@ class JSON_PATH
       return std::move (res);
     }
 
-    std::string dump_json_path() const
+    std::string dump_json_path () const
     {
       std::string res = "$";
-      const TOKEN *token_last = get_last_token();
-      for (const TOKEN *token = p.GetTokens(); token != token_last; ++token)
+      const TOKEN *token_last = get_last_token ();
+      for (const TOKEN *token = GetTokens (); token != token_last; ++token)
 	{
 	  if (token->index != kPointerInvalidIndex)
 	    {
@@ -198,52 +197,29 @@ class JSON_PATH
       return std::move (res);
     }
 
-    const TOKEN *get_last_token() const
+    const TOKEN *get_last_token () const
     {
-      size_t token_cnt = p.GetTokenCount();
+      size_t token_cnt = GetTokenCount ();
 
-      return token_cnt > 0 ? p.GetTokens() + (token_cnt - 1) : NULL;
+      return token_cnt > 0 ? GetTokens () + (token_cnt - 1) : NULL;
     }
 
-    const TOKEN *get_first_token() const
+    const TOKEN *get_first_token () const
     {
-      return p.GetTokens();
-    }
-
-    JSON_VALUE *get (JSON_DOC &jd) const
-    {
-      return p.Get (jd);
-    }
-
-    bool is_valid() const
-    {
-      return p.IsValid();
-    }
-
-    void set (JSON_DOC &jd, const JSON_VALUE &jv, JSON_PRIVATE_MEMPOOL &alloc)
-    {
-      p.Set (jd, jv, alloc);
+      return GetTokens ();
     }
 
     explicit JSON_PATH (const char *path)
-      : p (path)
+      : JSON_POINTER (path)
     {
 
     }
 
     explicit JSON_PATH (const JSON_POINTER &o)
-      : p (o)
+      : JSON_POINTER (o)
     {
 
     }
-
-    const JSON_POINTER &as_json_pointer () const
-    {
-      return p;
-    }
-
-  private:
-    JSON_POINTER p;
 };
 
 typedef std::function<int (const JSON_VALUE &, const std::string &, bool &)> map_func_type;
@@ -1954,7 +1930,7 @@ db_json_insert_helper (const JSON_DOC *value, JSON_DOC &doc, JSON_PATH &p, bool 
   int error_code = NO_ERROR;
   JSON_VALUE *resulting_json_parent = NULL;
 
-  error_code = db_json_resolve_json_parent (doc, p.as_json_pointer (), resulting_json_parent);
+  error_code = db_json_resolve_json_parent (doc, p, resulting_json_parent);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -1970,7 +1946,7 @@ db_json_insert_helper (const JSON_DOC *value, JSON_DOC &doc, JSON_PATH &p, bool 
       if ((last_token->length == 1 && last_token->name[0] == '-')
 	  || last_token->index >= resulting_json_parent->GetArray ().Size ())
 	{
-	  p.set (doc, *value, doc.GetAllocator ());
+	  p.Set (doc, *value, doc.GetAllocator ());
 	}
       else if (replace)
 	{
@@ -1979,7 +1955,7 @@ db_json_insert_helper (const JSON_DOC *value, JSON_DOC &doc, JSON_PATH &p, bool 
     }
   else if (resulting_json_parent->IsObject ())
     {
-      p.set (doc, *value, doc.GetAllocator ());
+      p.Set (doc, *value, doc.GetAllocator ());
     }
   else
     {
@@ -2025,13 +2001,13 @@ db_json_insert_func (const JSON_DOC *doc_to_be_inserted, JSON_DOC &doc_destinati
 
   JSON_PATH p (json_pointer_string.c_str ());
 
-  if (!p.is_valid ())
+  if (!p.IsValid ())
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
       return ER_JSON_INVALID_PATH;
     }
 
-  if (p.get (doc_destination) != NULL)
+  if (p.Get (doc_destination) != NULL)
     {
       // if it exists, json_insert does not replace the existing value
       return NO_ERROR;
@@ -2151,17 +2127,17 @@ db_json_set_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path)
   JSON_PATH p (json_pointer_string.c_str ());
   JSON_VALUE *resulting_json = NULL;
 
-  if (!p.is_valid ())
+  if (!p.IsValid ())
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
       return ER_JSON_INVALID_PATH;
     }
 
-  resulting_json = p.get (doc);
+  resulting_json = p.Get (doc);
   if (resulting_json != NULL)
     {
       // replace the old value with the new one if the path exists
-      p.set (doc, *value, doc.GetAllocator ());
+      p.Set (doc, *value, doc.GetAllocator ());
       return NO_ERROR;
     }
 
@@ -3592,8 +3568,7 @@ db_json_convert_sql_path_to_pointer (const char *sql_path, std::string &json_poi
   std::string sql_path_string (sql_path);
   JSON_PATH_TYPE json_path_type = db_json_get_path_type (sql_path_string);
 
-  if (json_path_type == JSON_PATH_TYPE::JSON_PATH_EMPTY
-      || json_path_type == JSON_PATH_TYPE::JSON_PATH_POINTER)
+  if (json_path_type == JSON_PATH_TYPE::JSON_PATH_POINTER)
     {
       // path is not SQL path format; consider it JSON pointer.
       json_pointer_out = sql_path_string;
