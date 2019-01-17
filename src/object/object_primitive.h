@@ -370,8 +370,10 @@ pr_type::get_alignment () const
 bool
 pr_type::is_variable_size () const
 {
-  assert (f_data_lengthmem != NULL && f_data_lengthval != NULL
-          && f_index_lengthval != NULL && f_index_lengthmem != NULL);
+  // if variable, we need to have length computing functions
+  assert (variable_p == 0
+          || (f_data_lengthmem != NULL && f_data_lengthval != NULL
+              && f_index_lengthval != NULL && f_index_lengthmem != NULL));
   return variable_p != 0;
 }
 
