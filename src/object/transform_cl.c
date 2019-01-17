@@ -703,7 +703,7 @@ put_attributes (OR_BUF * buf, char *obj, SM_CLASS * class_)
   start = buf->ptr;
   for (att = class_->attributes; att != NULL && !att->type->variable_p; att = (SM_ATTRIBUTE *) att->header.next)
     {
-      PRIM_WRITE (att->type, att->domain, buf, obj + att->offset);
+      att->type->data_writemem (buf, obj + att->offset, att->domain);
     }
 
   /* bring the end of the fixed width block up to proper alignment */
@@ -727,7 +727,7 @@ put_attributes (OR_BUF * buf, char *obj, SM_CLASS * class_)
 
   for (; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
     {
-      PRIM_WRITE (att->type, att->domain, buf, obj + att->offset);
+      att->type->data_writemem (buf, obj + att->offset, att->domain);
     }
   return NO_ERROR;
 }
@@ -958,7 +958,7 @@ get_current (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr, int bound_bit_flag
 	{
 	  att = &(class_->attributes[i]);
 	  mem = obj + att->offset;
-	  PRIM_READ (att->type, att->domain, buf, mem, -1);
+	  att->type->data_readmem (buf, mem, att->domain, -1);
 	}
 
       /* round up to a to the end of the fixed block */
@@ -980,7 +980,7 @@ get_current (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr, int bound_bit_flag
 	    {
 	      att = &(class_->attributes[i]);
 	      mem = obj + att->offset;
-	      PRIM_READ (att->type, att->domain, buf, mem, vars[j]);
+	      att->type->data_readmem (buf, mem, att->domain, vars[j]);
 	    }
 	}
     }
@@ -1053,11 +1053,11 @@ clear_new_unbound (char *obj, SM_CLASS * class_, SM_REPRESENTATION * oldrep)
 	{
 	  mem = obj + att->offset;
 	  /* initialize in case there isn't an initial value */
-	  PRIM_INITMEM (att->type, mem, att->domain);
+	  att->type->f_initmem (mem, att->domain);
 	  if (!DB_IS_NULL (&att->default_value.original_value))
 	    {
 	      /* assign the initial value, should check for non-existance ? */
-	      PRIM_SETMEM (att->type, att->domain, mem, &att->default_value.original_value);
+	      att->type->setmem (mem, att->domain, &att->default_value.original_value);
 	      if (!att->type->variable_p)
 		{
 		  OBJ_SET_BOUND_BIT (obj, att->storage_order);
@@ -1188,11 +1188,11 @@ get_old (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr, int repid, int bound_b
 
 	      if (attmap[i] == NULL)
 		{
-		  PRIM_READ (type, rat->domain, buf, NULL, -1);
+		  type->data_readmem (buf, NULL, rat->domain, -1);
 		}
 	      else
 		{
-		  PRIM_READ (type, rat->domain, buf, obj + attmap[i]->offset, -1);
+		  type->data_readmem (buf, obj + attmap[i]->offset, rat->domain, -1);
 		}
 	    }
 
@@ -1253,11 +1253,11 @@ get_old (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr, int repid, int bound_b
 		  att_index = oldrep->fixed_count + i;
 		  if (attmap[att_index] == NULL)
 		    {
-		      PRIM_READ (type, rat->domain, buf, NULL, vars[i]);
+		      type->data_readmem (buf, NULL, rat->domain, vars[i]);
 		    }
 		  else
 		    {
-		      PRIM_READ (type, rat->domain, buf, obj + attmap[att_index]->offset, vars[i]);
+		      type->data_readmem (buf, obj + attmap[att_index]->offset, rat->domain, vars[i]);
 		    }
 		}
 	    }

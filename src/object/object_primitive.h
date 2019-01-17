@@ -127,7 +127,7 @@ typedef struct pr_type
     // operations for in-memory representations
     inline void initmem (void *memptr, const tp_domain * domain) const;
     inline int setmem (void *memptr, const tp_domain * domain, const DB_VALUE * value) const;
-    inline int getmem (void *memptr, const tp_domain * domain, DB_VALUE * value, bool copy) const;
+    inline int getmem (void *memptr, const tp_domain * domain, DB_VALUE * value, bool copy = true) const;
     inline int data_lengthmem (const void *memptr, const tp_domain * domain, int disk) const;
     inline void freemem (void *memptr) const;
 
@@ -243,71 +243,6 @@ extern PR_TYPE *tp_Type_json;
 
 extern PR_TYPE *tp_Type_id_map[];
 
-
-/* PRIMITIVE TYPE MACROS
- *
- * These provide a shell around the calling of primitive type operators
- * so they look nicer.  We used to have "VAL" oriented functions here too
- * but with the new DB_VALUE system, these aren't really necessary any more.
- * It probably wouldn't hurt to phase these out either.
- */
-
-/* PRIM_INITMEM
- *
- * Initialize an attribute value in instance memory
- * For fixed witdh attributes, it tries to zero out the memory.  This isn't a
- * requirement but it makes the object block look cleaner in the debugger.
- * For variable width attributes, it makes sure the pointers are NULL.
- */
-#define PRIM_INITMEM(type, mem, domain) ((type)->initmem (mem, domain))
-
-/* PRIM_SETMEM
- * Assign a value into instance memory, copy the value.
- */
-#define PRIM_SETMEM(type, domain, mem, value) ((type)->setmem (mem, domain, value))
-
-/* PRIM_GETMEM
- * Get a value from instance memory, copy the value.
- */
-#define PRIM_GETMEM(type, domain, mem, value) \
-  ((type)->getmem (mem, domain, value, true))
-
-/* PRIM_GETMEM_NOCOPY
- * The "nocopy" option for "getmem" is intended only for internal processes
- * that need to access the values but don't want the overhead of copying,
- * particularly for strings.  The only user of this right now is the UNIQUE
- * register logic.
- */
-#define PRIM_GETMEM_NOCOPY(type, domain, mem, value) \
-  ((type)->getmem (mem, domain, value, false))
-
-/* PRIM_FREEMEM
- * Free any external storage in instance memory that may have been allocated on
- * behalf of a type.
- */
-#define PRIM_FREEMEM(type, mem) ((type)->freemem (mem))
-
-/* PRIM_READ
- * Read a value from a disk buffer into instance memory.
- */
-#define PRIM_READ(type, domain, tr, mem, len) \
-  ((type)->data_readmem (tr, mem, domain, len))
-
-/* PRIM_WRITE
- * Write a value from instance memory into a disk buffer.
- */
-#define PRIM_WRITE(type, domain, tr, mem) ((type)->data_writemem (tr, mem, domain))
-
-#define PRIM_WRITEVAL(type, buf, val) ((type)->writeval) (buf, val))
-#define PRIM_LENGTHVAL(type, val, size) ((type)->lengthval (val, size))
-
-/* PRIM_SET_NULL
- * set a db_value to NULL
- */
-#define PRIM_SET_NULL(db_value_ptr) \
-    ((db_value_ptr)->domain.general_info.is_null = 1, \
-     (db_value_ptr)->need_clear = false)
-
 /*
  * EXTERNAL FUNCTIONS
  */
@@ -324,9 +259,6 @@ extern int pr_is_variable_type (DB_TYPE type);
 
 /* Size calculators */
 
-#if defined(ENABLE_UNUSED_FUNCTION)
-extern int pr_disk_size (PR_TYPE * type, void *mem);
-#endif
 extern int pr_mem_size (PR_TYPE * type);
 extern int pr_total_mem_size (PR_TYPE * type, void *mem);
 extern int pr_value_mem_size (DB_VALUE * value);
@@ -428,6 +360,12 @@ pr_type::get_cmpval_function () const
 inline void
 pr_type::initmem (void * memptr, const tp_domain * domain) const
 {
+  /*
+   * Initialize an attribute value in instance memory
+   * For fixed width attributes, it tries to zero out the memory. This isn't a requirement but it makes the object
+   * block look cleaner in the debugger.
+   * For variable width attributes, it makes sure the pointers are NULL.
+   */
   (*f_initmem) (memptr, const_cast<tp_domain *> (domain));
 }
 
@@ -440,6 +378,7 @@ pr_type::initval (DB_VALUE * value, int precision, int scale) const
 inline int
 pr_type::setmem (void * memptr, const tp_domain * domain, const DB_VALUE * value) const
 {
+  // Assign a value into instance memory, copy the value.
   return (*f_setmem) (memptr, const_cast<tp_domain *> (domain), const_cast<DB_VALUE *> (value));
 }
 

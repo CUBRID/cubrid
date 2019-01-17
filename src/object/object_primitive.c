@@ -2005,7 +2005,7 @@ pr_clear_value (DB_VALUE * value)
     }
 
   /* always make sure the value gets cleared */
-  PRIM_SET_NULL (value);
+  db_make_null (value);
   value->need_clear = false;
 
   return NO_ERROR;
@@ -4979,7 +4979,7 @@ mr_setval_object (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 #if !defined (SERVER_MODE)
   if (DB_IS_NULL (src))
     {
-      PRIM_SET_NULL (dest);
+      db_make_null (dest);
     }
   /* can get here on the server when dispatching through set element domains */
   else if (DB_VALUE_TYPE (src) == DB_TYPE_OID)
@@ -5015,7 +5015,7 @@ mr_setval_object (DB_VALUE * dest, const DB_VALUE * src, bool copy)
    */
   if (DB_IS_NULL (src) || DB_VALUE_TYPE (src) != DB_TYPE_OID)
     {
-      PRIM_SET_NULL (dest);
+      db_make_null (dest);
     }
   else
     {
@@ -5639,7 +5639,7 @@ getmem_elo_with_type (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool c
 
   if (memptr == NULL)
     {
-      PRIM_SET_NULL (value);
+      db_make_null (value);
       return r;
     }
 
@@ -5647,7 +5647,7 @@ getmem_elo_with_type (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool c
 
   if (elo == NULL || elo->size < 0)
     {
-      PRIM_SET_NULL (value);
+      db_make_null (value);
       return r;
     }
 
@@ -5697,7 +5697,7 @@ setval_elo_with_type (DB_VALUE * dest, const DB_VALUE * src, bool copy, DB_TYPE 
 
   if (DB_IS_NULL (src) || db_get_elo (src) == NULL)
     {
-      PRIM_SET_NULL (dest);
+      db_make_null (dest);
       return NO_ERROR;
     }
 
@@ -6261,7 +6261,7 @@ mr_setval_ptr (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 {
   if (DB_IS_NULL (src))
     {
-      PRIM_SET_NULL (dest);
+      db_make_null (dest);
       return NO_ERROR;
     }
   else
@@ -6393,7 +6393,7 @@ mr_setval_error (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 {
   if (DB_IS_NULL (src))
     {
-      PRIM_SET_NULL (dest);
+      db_make_null (dest);
       return NO_ERROR;
     }
   else
@@ -6557,7 +6557,7 @@ mr_setval_oid (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 
   if (DB_IS_NULL (src))
     {
-      PRIM_SET_NULL (dest);
+      db_make_null (dest);
       return NO_ERROR;
     }
   else
@@ -6923,7 +6923,7 @@ err_set:
     default:
       break;
     }
-  PRIM_SET_NULL (dest);
+  db_make_null (dest);
   return error;
 }
 
@@ -8857,39 +8857,9 @@ pr_mem_size (PR_TYPE * type)
   return type->size;
 }
 
-#if defined(ENABLE_UNUSED_FUNCTION)
-/*
- * pr_disk_size - Determine the number of bytes of disk storage required for
- * a value.
- *    return: disk size of an instance attribute
- *    type(in): type identifier
- *    mem(in): pointer to memory for value
- * Note:
- *    The value must be in instance memory format, NOT DB_VALUE format.
- *    If you have a DB_VALUE, use pr_value_disk_size.
- *    This is called by the transformer when calculating sizes and offset
- *    tables for instances.
- */
-int
-pr_disk_size (PR_TYPE * type, void *mem)
-{
-  int size;
-
-  if (type->lengthmem != NULL)
-    {
-      size = (*type->lengthmem) (mem, NULL, 1);
-    }
-  else
-    {
-      size = type->disksize;
-    }
-  return size;
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
-
 /*
  * pr_total_mem_size - returns the total amount of storage used for a memory
- * attribute including any external allocatons (for strings etc.).
+ * attribute including any external allocations (for strings etc.).
  *    return: total memory size of type
  *    type(in): type identifier
  *    mem(in): pointer to memory for value

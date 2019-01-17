@@ -4806,8 +4806,8 @@ qexec_cmp_tpl_vals_merge (QFILE_TUPLE * left_tval, TP_DOMAIN ** left_dom, QFILE_
 
   for (i = 0; i < tval_cnt; i++)
     {
-      PRIM_SET_NULL (&left_dbval);
-      PRIM_SET_NULL (&right_dbval);
+      db_make_null (&left_dbval);
+      db_make_null (&right_dbval);
 
       /* get tpl values into db_values for the comparison */
 
@@ -17528,7 +17528,7 @@ qexec_gby_finalize_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, int 
 		  *g_outp->accumulator.value = *d_aggp->accumulator.value;
 		  /* Don't use db_make_null here to preserve the type information. */
 
-		  PRIM_SET_NULL (d_aggp->accumulator.value);
+		  db_make_null (d_aggp->accumulator.value);
 		}
 
 	      /* should not touch d_aggp->value2 */

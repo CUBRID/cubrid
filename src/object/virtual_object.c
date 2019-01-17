@@ -959,8 +959,8 @@ vid_compare_non_updatable_objects (MOP mop1, MOP mop2)
 	{
 	  db_value_domain_init (&val1, att1->type->id, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	  db_value_domain_init (&val2, att1->type->id, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-	  PRIM_GETMEM (att1->type, att1->domain, mem1, &val1);
-	  PRIM_GETMEM (att2->type, att2->domain, mem2, &val2);
+	  att1->type->getmem (mem1, att1->domain, &val1);
+	  att1->type->getmem (mem2, att2->domain, &val2);
 	  set1 = db_get_set (&val1);
 	  set2 = db_get_set (&val2);
 	  db_value_put_null (&val1);
@@ -981,8 +981,8 @@ vid_compare_non_updatable_objects (MOP mop1, MOP mop2)
 	{
 	  db_value_domain_init (&val1, DB_TYPE_OBJECT, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	  db_value_domain_init (&val2, DB_TYPE_OBJECT, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-	  PRIM_GETMEM (att1->type, att1->domain, mem1, &val1);
-	  PRIM_GETMEM (att2->type, att2->domain, mem2, &val2);
+	  att1->type->getmem (mem1, att1->domain, &val1);
+	  att1->type->getmem (mem2, att2->domain, &val2);
 	  attobj1 = db_get_object (&val1);
 	  attobj2 = db_get_object (&val2);
 	  db_value_put_null (&val1);
@@ -1004,8 +1004,8 @@ vid_compare_non_updatable_objects (MOP mop1, MOP mop2)
 	{
 	  db_value_domain_init (&val1, att1->type->id, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	  db_value_domain_init (&val2, att2->type->id, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-	  PRIM_GETMEM (att1->type, att1->domain, mem1, &val1);
-	  PRIM_GETMEM (att2->type, att2->domain, mem2, &val2);
+	  att1->type->getmem (mem1, att1->domain, &val1);
+	  att1->type->getmem (mem2, att2->domain, &val2);
 	  /*
 	   * Unlike most calls to this function, don't perform coercion
 	   * here so that an exact match can be performed.  Note, this

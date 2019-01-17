@@ -1386,10 +1386,10 @@ classobj_put_foreign_key_ref (DB_SEQ ** properties, SM_FOREIGN_KEY_INFO * fk_inf
   int fk_container_pos, pk_seq_pos;
   int err = NO_ERROR;
 
-  PRIM_SET_NULL (&prop_val);
-  PRIM_SET_NULL (&pk_val);
-  PRIM_SET_NULL (&fk_container_val);
-  PRIM_SET_NULL (&fk_val);
+  db_make_null (&prop_val);
+  db_make_null (&pk_val);
+  db_make_null (&fk_container_val);
+  db_make_null (&fk_val);
 
   if (classobj_get_prop (*properties, SM_PROPERTY_PRIMARY_KEY, &prop_val) <= 0)
     {
@@ -1456,7 +1456,7 @@ classobj_put_foreign_key_ref (DB_SEQ ** properties, SM_FOREIGN_KEY_INFO * fk_inf
     {
       /* retrieve the last element */
       DB_VALUE save_last;
-      PRIM_SET_NULL (&save_last);
+      db_make_null (&save_last);
       err = set_get_element (pk_seq, size - 1, &save_last);
       if (err != NO_ERROR)
 	{
@@ -1466,7 +1466,7 @@ classobj_put_foreign_key_ref (DB_SEQ ** properties, SM_FOREIGN_KEY_INFO * fk_inf
 
       /* Retrieve status. */
       DB_VALUE save_status;
-      PRIM_SET_NULL (&save_status);
+      db_make_null (&save_status);
       err = set_get_element (pk_seq, size - 2, &save_status);
       if (err != NO_ERROR)
 	{
@@ -1547,12 +1547,12 @@ classobj_rename_foreign_key_ref (DB_SEQ ** properties, const BTID * btid, const 
   char *name = NULL;
   int found = 0;
 
-  PRIM_SET_NULL (&prop_val);
-  PRIM_SET_NULL (&pk_val);
-  PRIM_SET_NULL (&fk_container_val);
-  PRIM_SET_NULL (&fk_val);
-  PRIM_SET_NULL (&new_fk_val);
-  PRIM_SET_NULL (&new_name_val);
+  db_make_null (&prop_val);
+  db_make_null (&pk_val);
+  db_make_null (&fk_container_val);
+  db_make_null (&fk_val);
+  db_make_null (&new_fk_val);
+  db_make_null (&new_name_val);
 
   if (classobj_get_prop (*properties, SM_PROPERTY_PRIMARY_KEY, &prop_val) <= 0)
     {
@@ -1585,8 +1585,8 @@ classobj_rename_foreign_key_ref (DB_SEQ ** properties, const BTID * btid, const 
       /* find the position of the existing FK ref */
       for (i = 0; i < fk_container_len; i++)
 	{
-	  PRIM_SET_NULL (&fk_val);
-	  PRIM_SET_NULL (&name_val);
+	  db_make_null (&fk_val);
+	  db_make_null (&name_val);
 
 	  err = set_get_element (fk_container, i, &fk_val);
 	  if (err != NO_ERROR)
@@ -1716,11 +1716,11 @@ classobj_drop_foreign_key_ref (DB_SEQ ** properties, const BTID * btid, const ch
   int volid, pageid, fileid;
   int err = NO_ERROR;
 
-  PRIM_SET_NULL (&prop_val);
-  PRIM_SET_NULL (&pk_val);
-  PRIM_SET_NULL (&fk_container_val);
-  PRIM_SET_NULL (&fk_val);
-  PRIM_SET_NULL (&btid_val);
+  db_make_null (&prop_val);
+  db_make_null (&pk_val);
+  db_make_null (&fk_container_val);
+  db_make_null (&fk_val);
+  db_make_null (&btid_val);
 
   if (classobj_get_prop (*properties, SM_PROPERTY_PRIMARY_KEY, &prop_val) <= 0)
     {

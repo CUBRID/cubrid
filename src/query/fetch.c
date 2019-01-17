@@ -815,7 +815,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_FLOOR:
       if (DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_floor_dbval (arithptr->value, peek_right) != NO_ERROR)
 	{
@@ -826,7 +826,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_CEIL:
       if (DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_ceil_dbval (arithptr->value, peek_right) != NO_ERROR)
 	{
@@ -837,7 +837,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_SIGN:
       if (DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_sign_dbval (arithptr->value, peek_right) != NO_ERROR)
 	{
@@ -848,7 +848,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_ABS:
       if (DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_abs_dbval (arithptr->value, peek_right) != NO_ERROR)
 	{
@@ -859,7 +859,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_EXP:
       if (DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_exp_dbval (arithptr->value, peek_right) != NO_ERROR)
 	{
@@ -870,7 +870,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_SQRT:
       if (DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_sqrt_dbval (arithptr->value, peek_right) != NO_ERROR)
 	{
@@ -881,7 +881,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_SIN:
       if (DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_sin_dbval (arithptr->value, peek_right) != NO_ERROR)
 	{
@@ -892,7 +892,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_COS:
       if (DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_cos_dbval (arithptr->value, peek_right) != NO_ERROR)
 	{
@@ -903,7 +903,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_TAN:
       if (DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_tan_dbval (arithptr->value, peek_right) != NO_ERROR)
 	{
@@ -914,7 +914,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_COT:
       if (DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_cot_dbval (arithptr->value, peek_right) != NO_ERROR)
 	{
@@ -925,7 +925,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_LN:
       if (DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_log_generic_dbval (arithptr->value, peek_right, -1 /* convention for e base */ ) !=
 	       NO_ERROR)
@@ -937,7 +937,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_LOG2:
       if (DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_log_generic_dbval (arithptr->value, peek_right, 2) != NO_ERROR)
 	{
@@ -948,7 +948,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_LOG10:
       if (DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_log_generic_dbval (arithptr->value, peek_right, 10) != NO_ERROR)
 	{
@@ -959,7 +959,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_ACOS:
       if (DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_acos_dbval (arithptr->value, peek_right) != NO_ERROR)
 	{
@@ -970,7 +970,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_ASIN:
       if (DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_asin_dbval (arithptr->value, peek_right) != NO_ERROR)
 	{
@@ -981,7 +981,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_DEGREES:
       if (DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_degrees_dbval (arithptr->value, peek_right) != NO_ERROR)
 	{
@@ -992,7 +992,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_DATE:
       if (DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_date_dbval (arithptr->value, peek_right, arithptr->domain) != NO_ERROR)
 	{
@@ -1003,7 +1003,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_TIME:
       if (DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_time_dbval (arithptr->value, peek_right, arithptr->domain) != NO_ERROR)
 	{
@@ -1018,7 +1018,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_RADIANS:
       if (DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_radians_dbval (arithptr->value, peek_right) != NO_ERROR)
 	{
@@ -1055,7 +1055,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
       if (DB_IS_NULL (peek_right))
 	{
 	  /* an instance does not exist to do increment */
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else
 	{
@@ -1080,7 +1080,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_CHR:
       if (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_string_chr (arithptr->value, peek_left, peek_right) != NO_ERROR)
 	{
@@ -1091,7 +1091,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_INSTR:
       if (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_string_instr (peek_left, peek_right, peek_third, arithptr->value) != NO_ERROR)
 	{
@@ -1102,7 +1102,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_POSITION:
       if (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_string_position (peek_left, peek_right, arithptr->value) != NO_ERROR)
 	{
@@ -1113,7 +1113,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_FINDINSET:
       if (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_find_string_in_in_set (peek_left, peek_right, arithptr->value) != NO_ERROR)
 	{
@@ -1124,7 +1124,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_SUBSTRING:
       if (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right) || (arithptr->thirdptr && DB_IS_NULL (peek_third)))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (prm_get_integer_value (PRM_ID_COMPAT_MODE) == COMPAT_MYSQL)
 	{
@@ -1200,7 +1200,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_OCTET_LENGTH:
       if (DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else
 	{
@@ -1211,7 +1211,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_BIT_LENGTH:
       if (DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (DB_VALUE_DOMAIN_TYPE (peek_right) == DB_TYPE_BIT || DB_VALUE_DOMAIN_TYPE (peek_right) == DB_TYPE_VARBIT)
 	{
@@ -1230,7 +1230,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_CHAR_LENGTH:
       if (DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else
 	{
@@ -1241,7 +1241,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_LOWER:
       if (DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_string_lower (peek_right, arithptr->value) != NO_ERROR)
 	{
@@ -1252,7 +1252,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_UPPER:
       if (DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_string_upper (peek_right, arithptr->value) != NO_ERROR)
 	{
@@ -1263,7 +1263,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_HEX:
       if (DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_hex (peek_right, arithptr->value) != NO_ERROR)
 	{
@@ -1274,7 +1274,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_ASCII:
       if (DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_ascii (peek_right, arithptr->value) != NO_ERROR)
 	{
@@ -1285,7 +1285,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_CONV:
       if (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right) || DB_IS_NULL (peek_third))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else
 	{
@@ -1299,7 +1299,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_BIN:
       if (DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_bigint_to_binary_string (peek_right, arithptr->value) != NO_ERROR)
 	{
@@ -1310,7 +1310,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_MD5:
       if (DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_string_md5 (peek_right, arithptr->value) != NO_ERROR)
 	{
@@ -1321,7 +1321,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_SHA_ONE:
       if (DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_string_sha_one (peek_right, arithptr->value) != NO_ERROR)
 	{
@@ -1332,7 +1332,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_AES_ENCRYPT:
       if (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_string_aes_encrypt (peek_left, peek_right, arithptr->value) != NO_ERROR)
 	{
@@ -1343,7 +1343,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_AES_DECRYPT:
       if (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_string_aes_decrypt (peek_left, peek_right, arithptr->value) != NO_ERROR)
 	{
@@ -1354,7 +1354,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_SHA_TWO:
       if (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_string_sha_two (peek_left, peek_right, arithptr->value) != NO_ERROR)
 	{
@@ -1365,7 +1365,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_TO_BASE64:
       if (DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_string_to_base64 (peek_right, arithptr->value) != NO_ERROR)
 	{
@@ -1376,7 +1376,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_FROM_BASE64:
       if (DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_string_from_base64 (peek_right, arithptr->value) != NO_ERROR)
 	{
@@ -1387,7 +1387,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_SPACE:
       if (DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_string_space (peek_right, arithptr->value) != NO_ERROR)
 	{
@@ -1412,7 +1412,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	}
       if (DB_IS_NULL (peek_left) || (peek_right && DB_IS_NULL (peek_right)))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_string_trim (arithptr->misc_operand, peek_right, peek_left, arithptr->value) != NO_ERROR)
 	{
@@ -1437,7 +1437,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	}
       if (DB_IS_NULL (peek_left) || (peek_right && DB_IS_NULL (peek_right)))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_string_trim (LEADING, peek_right, peek_left, arithptr->value) != NO_ERROR)
 	{
@@ -1462,7 +1462,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	}
       if (DB_IS_NULL (peek_left) || (peek_right && DB_IS_NULL (peek_right)))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_string_trim (TRAILING, peek_right, peek_left, arithptr->value) != NO_ERROR)
 	{
@@ -1473,7 +1473,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_FROM_UNIXTIME:
       if (DB_IS_NULL (peek_left))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_from_unixtime (peek_left, peek_right, peek_third, arithptr->value, arithptr->domain) != NO_ERROR)
 	{
@@ -1498,7 +1498,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	}
       if (DB_IS_NULL (peek_left) || (peek_third && DB_IS_NULL (peek_third)))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_string_pad (LEADING, peek_left, peek_right, peek_third, arithptr->value) != NO_ERROR)
 	{
@@ -1523,7 +1523,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	}
       if (DB_IS_NULL (peek_left) || (peek_third && DB_IS_NULL (peek_third)))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_string_pad (TRAILING, peek_left, peek_right, peek_third, arithptr->value) != NO_ERROR)
 	{
@@ -1548,7 +1548,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	}
       if (DB_IS_NULL (peek_left) || (peek_third && DB_IS_NULL (peek_third)))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_string_replace (peek_left, peek_right, peek_third, arithptr->value) != NO_ERROR)
 	{
@@ -1572,7 +1572,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	}
       if (DB_IS_NULL (peek_left))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_string_translate (peek_left, peek_right, peek_third, arithptr->value) != NO_ERROR)
 	{
@@ -1583,7 +1583,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_ADD_MONTHS:
       if (DB_IS_NULL (peek_left))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_add_months (peek_left, peek_right, arithptr->value) != NO_ERROR)
 	{
@@ -1594,7 +1594,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_LAST_DAY:
       if (DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_last_day (peek_right, arithptr->value) != NO_ERROR)
 	{
@@ -1605,7 +1605,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_TIME_FORMAT:
       if (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_time_format (peek_left, peek_right, peek_third, arithptr->value, arithptr->domain) != NO_ERROR)
 	{
@@ -1618,7 +1618,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_DAY:
       if (DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (get_year_month_or_day (peek_right, arithptr->opcode, arithptr->value) != NO_ERROR)
 	{
@@ -1641,7 +1641,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_QUARTER:
       if (DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_get_date_quarter (peek_right, arithptr->value) != NO_ERROR)
 	{
@@ -1653,7 +1653,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_DAYOFWEEK:
       if (DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (get_date_weekday (peek_right, arithptr->opcode, arithptr->value) != NO_ERROR)
 	{
@@ -1664,7 +1664,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_DAYOFYEAR:
       if (DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_get_date_dayofyear (peek_right, arithptr->value) != NO_ERROR)
 	{
@@ -1675,7 +1675,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_TODAYS:
       if (DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_get_date_totaldays (peek_right, arithptr->value) != NO_ERROR)
 	{
@@ -1686,7 +1686,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_FROMDAYS:
       if (DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_get_date_from_days (peek_right, arithptr->value) != NO_ERROR)
 	{
@@ -1697,7 +1697,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_TIMETOSEC:
       if (DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_convert_time_to_sec (peek_right, arithptr->value) != NO_ERROR)
 	{
@@ -1708,7 +1708,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_SECTOTIME:
       if (DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_convert_sec_to_time (peek_right, arithptr->value) != NO_ERROR)
 	{
@@ -1719,7 +1719,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_TIMESTAMP:
       if (DB_IS_NULL (peek_left) || (peek_right != NULL && DB_IS_NULL (peek_right)))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else
 	{
@@ -1734,7 +1734,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_LIKE_UPPER_BOUND:
       if (DB_IS_NULL (peek_left))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else
 	{
@@ -1750,7 +1750,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_MAKEDATE:
       if (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else
 	{
@@ -1764,7 +1764,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_ADDTIME:
       if (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else
 	{
@@ -1778,7 +1778,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_MAKETIME:
       if (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right) || DB_IS_NULL (peek_third))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else
 	{
@@ -1792,7 +1792,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_WEEK:
       if (DB_IS_NULL (peek_left))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else
 	{
@@ -1808,7 +1808,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	{
 	  if (DB_IS_NULL (peek_right))
 	    {
-	      PRIM_SET_NULL (arithptr->value);
+	      db_make_null (arithptr->value);
 	    }
 	  else if (db_unix_timestamp (peek_right, arithptr->value) != NO_ERROR)
 	    {
@@ -1846,7 +1846,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_MONTHS_BETWEEN:
       if (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_months_between (peek_left, peek_right, arithptr->value) != NO_ERROR)
 	{
@@ -1857,7 +1857,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_ATAN2:
       if (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_atan2_dbval (arithptr->value, peek_left, peek_right) != NO_ERROR)
 	{
@@ -1868,7 +1868,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_ATAN:
       if (DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_atan_dbval (arithptr->value, peek_right) != NO_ERROR)
 	{
@@ -1879,7 +1879,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_FORMAT:
       if (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_format (peek_left, peek_right, peek_third, arithptr->value, arithptr->domain) != NO_ERROR)
 	{
@@ -1890,7 +1890,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_DATE_FORMAT:
       if (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_date_format (peek_left, peek_right, peek_third, arithptr->value, arithptr->domain) != NO_ERROR)
 	{
@@ -1902,7 +1902,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_STR_TO_DATE:
       if (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right) || DB_IS_NULL (peek_third))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_str_to_date (peek_left, peek_right, peek_third, arithptr->value, regu_var->domain) != NO_ERROR)
 	{
@@ -1913,7 +1913,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_ADDDATE:
       if (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_date_add_interval_days (arithptr->value, peek_left, peek_right) != NO_ERROR)
 	{
@@ -1924,7 +1924,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_DATE_ADD:
       if (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else
 	{
@@ -1939,7 +1939,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_SUBDATE:
       if (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_date_sub_interval_days (arithptr->value, peek_left, peek_right) != NO_ERROR)
 	{
@@ -1950,7 +1950,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_DATEDIFF:
       if (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_date_diff (peek_left, peek_right, arithptr->value) != NO_ERROR)
 	{
@@ -1961,7 +1961,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_TIMEDIFF:
       if (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_time_diff (peek_left, peek_right, arithptr->value) != NO_ERROR)
 	{
@@ -1972,7 +1972,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_DATE_SUB:
       if (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right) || DB_IS_NULL (peek_third))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else
 	{
@@ -2113,7 +2113,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_TO_CHAR:
       if (DB_IS_NULL (peek_left))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_to_char (peek_left, peek_right, peek_third, arithptr->value, arithptr->domain) != NO_ERROR)
 	{
@@ -2125,7 +2125,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_BLOB_TO_BIT:
       if (DB_IS_NULL (peek_left))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_blob_to_bit (peek_left, peek_right, arithptr->value) != NO_ERROR)
 	{
@@ -2137,7 +2137,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_CLOB_TO_CHAR:
       if (DB_IS_NULL (peek_left))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_clob_to_char (peek_left, peek_right, arithptr->value) != NO_ERROR)
 	{
@@ -2149,7 +2149,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_BIT_TO_BLOB:
       if (DB_IS_NULL (peek_left))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (DB_VALUE_DOMAIN_TYPE (peek_left) == DB_TYPE_BIT || DB_VALUE_DOMAIN_TYPE (peek_left) == DB_TYPE_VARBIT)
 	{
@@ -2171,7 +2171,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_CHAR_TO_CLOB:
       if (DB_IS_NULL (peek_left))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_char_to_clob (peek_left, arithptr->value) != NO_ERROR)
 	{
@@ -2183,7 +2183,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_LOB_LENGTH:
       if (DB_IS_NULL (peek_left))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (DB_VALUE_DOMAIN_TYPE (peek_left) == DB_TYPE_BLOB)
 	{
@@ -2206,7 +2206,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_TO_DATE:
       if (DB_IS_NULL (peek_left))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_to_date (peek_left, peek_right, peek_third, arithptr->value) != NO_ERROR)
 	{
@@ -2217,7 +2217,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_TO_TIME:
       if (DB_IS_NULL (peek_left))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_to_time (peek_left, peek_right, peek_third, DB_TYPE_TIME, arithptr->value) != NO_ERROR)
 	{
@@ -2228,7 +2228,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_TO_TIMESTAMP:
       if (DB_IS_NULL (peek_left))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_to_timestamp (peek_left, peek_right, peek_third, DB_TYPE_TIMESTAMP, arithptr->value) != NO_ERROR)
 	{
@@ -2239,7 +2239,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_TO_DATETIME:
       if (DB_IS_NULL (peek_left))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_to_datetime (peek_left, peek_right, peek_third, DB_TYPE_DATETIME, arithptr->value) != NO_ERROR)
 	{
@@ -2250,7 +2250,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_TO_NUMBER:
       if (DB_IS_NULL (peek_left))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else
 	{
@@ -2269,7 +2269,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
       assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
       if (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else
 	{
@@ -2292,7 +2292,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
       assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
       if (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right) || DB_IS_NULL (peek_third))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else
 	{
@@ -2386,7 +2386,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	  status = tp_value_cast (peek_right, arithptr->value, arithptr->domain, false);
 	  if (status != NO_ERROR)
 	    {
-	      PRIM_SET_NULL (arithptr->value);
+	      db_make_null (arithptr->value);
 	    }
 	}
       break;
@@ -2608,14 +2608,14 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_CONCAT_WS:
       if (DB_IS_NULL (peek_third))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	  break;
 	}
       if (arithptr->rightptr != NULL)
 	{
 	  if (DB_IS_NULL (peek_left) && DB_IS_NULL (peek_right))
 	    {
-	      PRIM_SET_NULL (arithptr->value);
+	      db_make_null (arithptr->value);
 	    }
 	  else if (DB_IS_NULL (peek_left))
 	    {
@@ -2656,7 +2656,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	{
 	  if (DB_IS_NULL (peek_left))
 	    {
-	      PRIM_SET_NULL (arithptr->value);
+	      db_make_null (arithptr->value);
 	    }
 	  else
 	    {
@@ -2757,7 +2757,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_REPEAT:
       if (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else
 	{
@@ -2771,7 +2771,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_LEFT:
       if (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else
 	{
@@ -2795,7 +2795,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_RIGHT:
       if (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else
 	{
@@ -2817,7 +2817,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	    }
 	  if (DB_IS_NULL (&tmp_val))
 	    {
-	      PRIM_SET_NULL (arithptr->value);
+	      db_make_null (arithptr->value);
 	      break;
 	    }
 
@@ -2847,7 +2847,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_LOCATE:
       if (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right) || (arithptr->thirdptr && DB_IS_NULL (peek_third)))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else
 	{
@@ -2909,7 +2909,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_SUBSTRING_INDEX:
       if (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right) || DB_IS_NULL (peek_third))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else
 	{
@@ -2923,7 +2923,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_MID:
       if (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right) || DB_IS_NULL (peek_third))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else
 	{
@@ -2984,7 +2984,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_STRCMP:
       if (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else
 	{
@@ -3010,7 +3010,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_REVERSE:
       if (DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else
 	{
@@ -3042,7 +3042,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	target_domain = regu_var->domain;
 	if (DB_IS_NULL (peek_left))
 	  {
-	    PRIM_SET_NULL (arithptr->value);
+	    db_make_null (arithptr->value);
 	    break;
 	  }
 	else if (target_domain == NULL)
@@ -3058,7 +3058,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	cmp_res = tp_value_compare_with_error (peek_left, peek_right, 1, 0, &can_compare);
 	if (cmp_res == DB_EQ)
 	  {
-	    PRIM_SET_NULL (arithptr->value);
+	    db_make_null (arithptr->value);
 	  }
 	else if (cmp_res == DB_UNK && can_compare == false)
 	  {
@@ -3363,7 +3363,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_INDEX_CARDINALITY:
       if (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right) || DB_IS_NULL (peek_third))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else
 	{
@@ -3394,7 +3394,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_INET_ATON:
       if (DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_inet_aton (arithptr->value, peek_right) != NO_ERROR)
 	{
@@ -3405,7 +3405,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_INET_NTOA:
       if (DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_inet_ntoa (arithptr->value, peek_right) != NO_ERROR)
 	{
@@ -3490,7 +3490,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 
 	if (DB_IS_NULL (peek_right))
 	  {
-	    PRIM_SET_NULL (arithptr->value);
+	    db_make_null (arithptr->value);
 	  }
 	else
 	  {
@@ -3505,7 +3505,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_NEW_TIME:
       if (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right) || DB_IS_NULL (peek_third))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else
 	{
@@ -3519,7 +3519,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_FROM_TZ:
       if (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else
 	{
@@ -3533,7 +3533,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_CONV_TZ:
       if (DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else
 	{
@@ -3547,7 +3547,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_TO_DATETIME_TZ:
       if (DB_IS_NULL (peek_left))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_to_datetime (peek_left, peek_right, peek_third, DB_TYPE_DATETIMETZ, arithptr->value) != NO_ERROR)
 	{
@@ -3558,7 +3558,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_TO_TIMESTAMP_TZ:
       if (DB_IS_NULL (peek_left))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_to_timestamp (peek_left, peek_right, peek_third, DB_TYPE_TIMESTAMPTZ, arithptr->value) != NO_ERROR)
 	{
@@ -3584,7 +3584,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
     case T_CRC32:
       if (DB_IS_NULL (peek_right))
 	{
-	  PRIM_SET_NULL (arithptr->value);
+	  db_make_null (arithptr->value);
 	}
       else if (db_crc32_dbval (arithptr->value, peek_right) != NO_ERROR)
 	{
@@ -4636,7 +4636,7 @@ get_hour_minute_or_second (const DB_VALUE * datetime, OPERATOR_TYPE op_type, DB_
 
   if (DB_IS_NULL (datetime))
     {
-      PRIM_SET_NULL (db_value);
+      db_make_null (db_value);
       return NO_ERROR;
     }
 

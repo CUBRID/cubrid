@@ -1720,7 +1720,7 @@ ldr_null_db_generic (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBU
   else
     {
       mem = context->mobj + att->offset;
-      CHECK_ERR (err, PRIM_SETMEM (att->domain->type, att->domain, mem, NULL));
+      CHECK_ERR (err, att->domain->type->setmem (mem, att->domain, NULL));
       if (!att->domain->type->variable_p)
 	OBJ_CLEAR_BOUND_BIT (context->mobj, att->storage_order);
     }
@@ -2023,7 +2023,7 @@ ldr_int_db_bigint (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE
     }
 
   mem = context->mobj + att->offset;
-  CHECK_ERR (err, PRIM_SETMEM (att->domain->type, att->domain, mem, &val));
+  CHECK_ERR (err, att->domain->type->setmem (mem, att->domain, &val));
   OBJ_SET_BOUND_BIT (context->mobj, att->storage_order);
 
 error_exit:
@@ -2078,7 +2078,7 @@ ldr_int_db_int (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE * 
     }
 
   mem = context->mobj + att->offset;
-  CHECK_ERR (err, PRIM_SETMEM (att->domain->type, att->domain, mem, &val));
+  CHECK_ERR (err, att->domain->type->setmem (mem, att->domain, &val));
   OBJ_SET_BOUND_BIT (context->mobj, att->storage_order);
 
 error_exit:
@@ -2134,7 +2134,7 @@ ldr_int_db_short (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE 
     }
 
   mem = context->mobj + att->offset;
-  CHECK_ERR (err, PRIM_SETMEM (att->domain->type, att->domain, mem, &val));
+  CHECK_ERR (err, att->domain->type->setmem (mem, att->domain, &val));
   OBJ_SET_BOUND_BIT (context->mobj, att->storage_order);
 
 error_exit:
@@ -2237,7 +2237,7 @@ ldr_str_db_char (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE *
   val.data.ch.medium.compressed_buf = NULL;
   val.data.ch.medium.compressed_size = 0;
   mem = context->mobj + att->offset;
-  CHECK_ERR (err, PRIM_SETMEM (att->domain->type, att->domain, mem, &val));
+  CHECK_ERR (err, att->domain->type->setmem (mem, att->domain, &val));
   OBJ_SET_BOUND_BIT (context->mobj, att->storage_order);
 
 error_exit:
@@ -2307,7 +2307,7 @@ ldr_str_db_varchar (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUT
   val.data.ch.medium.compressed_size = 0;
 
   mem = context->mobj + att->offset;
-  CHECK_ERR (err, PRIM_SETMEM (att->domain->type, att->domain, mem, &val));
+  CHECK_ERR (err, att->domain->type->setmem (mem, att->domain, &val));
   /*
    * No bound bit to be set for a variable length attribute.
    */
@@ -2724,7 +2724,7 @@ ldr_real_db_float (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE
     val.data.f = (float) d;
 
   mem = context->mobj + att->offset;
-  CHECK_ERR (err, PRIM_SETMEM (att->domain->type, att->domain, mem, &val));
+  CHECK_ERR (err, att->domain->type->setmem (mem, att->domain, &val));
   OBJ_SET_BOUND_BIT (context->mobj, att->storage_order);
 
 error_exit:
@@ -2766,7 +2766,7 @@ ldr_real_db_double (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUT
     val.data.d = d;
 
   mem = context->mobj + att->offset;
-  CHECK_ERR (err, PRIM_SETMEM (att->domain->type, att->domain, mem, &val));
+  CHECK_ERR (err, att->domain->type->setmem (mem, att->domain, &val));
   OBJ_SET_BOUND_BIT (context->mobj, att->storage_order);
 
 error_exit:
@@ -2818,7 +2818,7 @@ ldr_date_db_date (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE 
 
   CHECK_ERR (err, ldr_date_elem (context, str, len, &val));
   mem = context->mobj + att->offset;
-  CHECK_ERR (err, PRIM_SETMEM (att->domain->type, att->domain, mem, &val));
+  CHECK_ERR (err, att->domain->type->setmem (mem, att->domain, &val));
   OBJ_SET_BOUND_BIT (context->mobj, att->storage_order);
 
 error_exit:
@@ -2862,7 +2862,7 @@ ldr_time_db_time (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE 
 
   CHECK_ERR (err, ldr_time_elem (context, str, len, &val));
   mem = context->mobj + att->offset;
-  CHECK_ERR (err, PRIM_SETMEM (att->domain->type, att->domain, mem, &val));
+  CHECK_ERR (err, att->domain->type->setmem (mem, att->domain, &val));
   OBJ_SET_BOUND_BIT (context->mobj, att->storage_order);
 
 error_exit:
@@ -2906,7 +2906,7 @@ ldr_timestamp_db_timestamp (LDR_CONTEXT * context, const char *str, int len, SM_
 
   CHECK_ERR (err, ldr_timestamp_elem (context, str, len, &val));
   mem = context->mobj + att->offset;
-  CHECK_ERR (err, PRIM_SETMEM (att->domain->type, att->domain, mem, &val));
+  CHECK_ERR (err, att->domain->type->setmem (mem, att->domain, &val));
   OBJ_SET_BOUND_BIT (context->mobj, att->storage_order);
 
 error_exit:
@@ -2974,7 +2974,7 @@ ldr_timestamptz_db_timestamptz (LDR_CONTEXT * context, const char *str, int len,
 
   CHECK_ERR (err, ldr_timestamptz_elem (context, str, len, &val));
   mem = context->mobj + att->offset;
-  CHECK_ERR (err, PRIM_SETMEM (att->domain->type, att->domain, mem, &val));
+  CHECK_ERR (err, att->domain->type->setmem (mem, att->domain, &val));
   OBJ_SET_BOUND_BIT (context->mobj, att->storage_order);
 
 error_exit:
@@ -2998,7 +2998,7 @@ ldr_timestampltz_db_timestampltz (LDR_CONTEXT * context, const char *str, int le
 
   CHECK_ERR (err, ldr_timestampltz_elem (context, str, len, &val));
   mem = context->mobj + att->offset;
-  CHECK_ERR (err, PRIM_SETMEM (att->domain->type, att->domain, mem, &val));
+  CHECK_ERR (err, att->domain->type->setmem (mem, att->domain, &val));
   OBJ_SET_BOUND_BIT (context->mobj, att->storage_order);
 
 error_exit:
@@ -3042,7 +3042,7 @@ ldr_datetime_db_datetime (LDR_CONTEXT * context, const char *str, int len, SM_AT
 
   CHECK_ERR (err, ldr_datetime_elem (context, str, len, &val));
   mem = context->mobj + att->offset;
-  CHECK_ERR (err, PRIM_SETMEM (att->domain->type, att->domain, mem, &val));
+  CHECK_ERR (err, att->domain->type->setmem (mem, att->domain, &val));
   OBJ_SET_BOUND_BIT (context->mobj, att->storage_order);
 
 error_exit:
@@ -3110,7 +3110,7 @@ ldr_datetimetz_db_datetimetz (LDR_CONTEXT * context, const char *str, int len, S
 
   CHECK_ERR (err, ldr_datetimetz_elem (context, str, len, &val));
   mem = context->mobj + att->offset;
-  CHECK_ERR (err, PRIM_SETMEM (att->domain->type, att->domain, mem, &val));
+  CHECK_ERR (err, att->domain->type->setmem (mem, att->domain, &val));
   OBJ_SET_BOUND_BIT (context->mobj, att->storage_order);
 
 error_exit:
@@ -3134,7 +3134,7 @@ ldr_datetimeltz_db_datetimeltz (LDR_CONTEXT * context, const char *str, int len,
 
   CHECK_ERR (err, ldr_datetimeltz_elem (context, str, len, &val));
   mem = context->mobj + att->offset;
-  CHECK_ERR (err, PRIM_SETMEM (att->domain->type, att->domain, mem, &val));
+  CHECK_ERR (err, att->domain->type->setmem (mem, att->domain, &val));
   OBJ_SET_BOUND_BIT (context->mobj, att->storage_order);
 
 error_exit:
@@ -3461,7 +3461,7 @@ ldr_elo_ext_db_elo (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUT
   name[new_len] = '\0';
   CHECK_ERR (err, ldr_elo_ext_elem (context, name, new_len, &val));
   mem = context->mobj + att->offset;
-  CHECK_ERR (err, PRIM_SETMEM (att->domain->type, att->domain, mem, &val));
+  CHECK_ERR (err, att->domain->type->setmem (mem, att->domain, &val));
   /* No bound bit to be set for a variable length attribute. */
 
 error_exit:
@@ -3834,7 +3834,7 @@ ldr_class_oid_db_object (LDR_CONTEXT * context, const char *str, int len, SM_ATT
   else
     {
       mem = context->mobj + att->offset;
-      CHECK_ERR (err, PRIM_SETMEM (att->domain->type, att->domain, mem, &val));
+      CHECK_ERR (err, att->domain->type->setmem (mem, att->domain, &val));
       OBJ_SET_BOUND_BIT (context->mobj, att->storage_order);
     }
 
@@ -3911,7 +3911,7 @@ ldr_oid_db_object (LDR_CONTEXT * context, const char *str, int len, SM_ATTRIBUTE
 
   mem = context->mobj + att->offset;
 
-  CHECK_ERR (err, PRIM_SETMEM (att->domain->type, att->domain, mem, &val));
+  CHECK_ERR (err, att->domain->type->setmem (mem, att->domain, &val));
   OBJ_SET_BOUND_BIT (context->mobj, att->storage_order);
 
 error_exit:
@@ -3980,7 +3980,7 @@ ldr_monetary_db_monetary (LDR_CONTEXT * context, const char *str, int len, SM_AT
 
   CHECK_ERR (err, ldr_monetary_elem (context, str, len, &val));
   mem = context->mobj + att->offset;
-  CHECK_ERR (err, PRIM_SETMEM (att->domain->type, att->domain, mem, &val));
+  CHECK_ERR (err, att->domain->type->setmem (mem, att->domain, &val));
   OBJ_SET_BOUND_BIT (context->mobj, att->storage_order);
 
 error_exit:
