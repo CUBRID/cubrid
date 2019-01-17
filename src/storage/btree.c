@@ -35175,8 +35175,10 @@ void
 index_builder_loader_task::execute (cubthread::entry & thread_ref)
 {
   int ret = NO_ERROR;
-  INT64 err = ATOMIC_INC_64 (this->error, 0LL);
+  INT64 err;
 
+  /* Check for possible errors set by the other threads. */
+  err = ATOMIC_INC_64 (this->error, 0LL);
   if (err != NO_ERROR)
     {
       goto cleanup;
@@ -35195,6 +35197,7 @@ index_builder_loader_task::execute (cubthread::entry & thread_ref)
 	  goto cleanup;
 	}
 
+      /* Set the error so that other threads may stop execution. */
       if (!ATOMIC_CAS_64 (this->error, err, (INT64) ret))
 	{
 	  /* Error was already set by someone else. We end execution. */

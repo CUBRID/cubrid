@@ -4876,6 +4876,7 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
       /* Increment tasks started. */
       ATOMIC_INC_64 (&ib_tasks_running, 1LL);
 
+      /* Check for possible errors. */
       local_error = ATOMIC_INC_64 (&ib_error, 0LL);
       if (local_error != NO_ERROR)
 	{
