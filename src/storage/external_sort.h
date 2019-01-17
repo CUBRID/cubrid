@@ -33,7 +33,6 @@
 
 #include "error_manager.h"
 #include "query_list.h"
-#include "object_primitive.h"
 #include "storage_common.h"
 #include "thread_compat.hpp"
 

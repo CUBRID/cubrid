@@ -39,9 +39,6 @@
 #include "overflow_file.h"
 #include "xserver_interface.h"
 #include "scan_manager.h"
-#if defined(SERVER_MODE)
-#endif /* SERVER_MODE */
-#include "object_primitive.h"
 #include "fetch.h"
 #include "locator_sr.h"
 #include "network_interface_sr.h"	/* TODO: remove; used for xcallback_console_print */
