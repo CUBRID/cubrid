@@ -185,6 +185,30 @@ pr_type::pr_type (const char * name_arg, DB_TYPE id_arg, int varp_arg, int size_
   , f_cmpval {cmpval_f_arg}
   {
   }
+
+void
+pr_type::set_data_cmpdisk_function (data_cmpdisk_function_type data_cmpdisk_arg)
+{
+  f_data_cmpdisk = data_cmpdisk_arg;
+}
+
+pr_type::data_cmpdisk_function_type
+pr_type::get_data_cmpdisk_function () const
+{
+  return f_data_cmpdisk;
+}
+
+void
+pr_type::set_cmpval_function (cmpval_function_type cmpval_arg)
+{
+  f_cmpval = cmpval_arg;
+}
+
+pr_type::cmpval_function_type
+pr_type::get_cmpval_function () const
+{
+  return f_cmpval;
+}
 // *INDENT-ON*
 
 static void mr_initmem_string (void *mem, TP_DOMAIN * domain);

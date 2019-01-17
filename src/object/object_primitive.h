@@ -62,8 +62,8 @@ typedef struct pr_type
     typedef void (*data_writemem_function_type) (struct or_buf * buf, void *memptr, struct tp_domain * domain);
     typedef void (*data_readmem_function_type) (struct or_buf * buf, void *memptr, struct tp_domain * domain, int size);
     typedef int (*data_writeval_function_type) (struct or_buf * buf, DB_VALUE * value);
-    typedef int (*data_readval_function_type) (struct or_buf * buf, DB_VALUE * value, struct tp_domain * domain, int size, bool copy,
-                                               char *copy_buf, int copy_buf_len);
+    typedef int (*data_readval_function_type) (struct or_buf * buf, DB_VALUE * value, struct tp_domain * domain,
+                                               int size, bool copy, char *copy_buf, int copy_buf_len);
     typedef int (*index_lengthmem_function_type) (void *memptr, struct tp_domain * domain);
     typedef int (*index_lengthval_function_type) (DB_VALUE * value);
     typedef int (*index_writeval_function_type) (struct or_buf * buf, DB_VALUE * value);
@@ -131,11 +131,11 @@ typedef struct pr_type
     inline DB_TYPE get_id () const;
     inline size_t get_alignment () const;
 
-    inline void set_data_cmpdisk_function (data_cmpdisk_function_type data_cmpdisk_arg);
-    inline data_cmpdisk_function_type get_data_cmpdisk_function () const;
+    void set_data_cmpdisk_function (data_cmpdisk_function_type data_cmpdisk_arg);
+    data_cmpdisk_function_type get_data_cmpdisk_function () const;
 
-    inline void set_cmpval_function (cmpval_function_type cmpval_arg);
-    inline cmpval_function_type get_cmpval_function () const;
+    void set_cmpval_function (cmpval_function_type cmpval_arg);
+    cmpval_function_type get_cmpval_function () const;
 
     // is fixed/variable
     inline bool is_fixed_size () const;
@@ -365,30 +365,6 @@ size_t
 pr_type::get_alignment () const
 {
   return (size_t) alignment;
-}
-
-void
-pr_type::set_data_cmpdisk_function (data_cmpdisk_function_type data_cmpdisk_arg)
-{
-  f_data_cmpdisk = data_cmpdisk_arg;
-}
-
-pr_type::data_cmpdisk_function_type
-pr_type::get_data_cmpdisk_function () const
-{
-  return f_data_cmpdisk;
-}
-
-void
-pr_type::set_cmpval_function (cmpval_function_type cmpval_arg)
-{
-  f_cmpval = cmpval_arg;
-}
-
-pr_type::cmpval_function_type
-pr_type::get_cmpval_function () const
-{
-  return f_cmpval;
 }
 
 bool
