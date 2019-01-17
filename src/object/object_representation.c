@@ -4148,7 +4148,7 @@ or_packed_json_schema_length (const char *json_schema)
   db_make_string (&val, const_cast <char*>(json_schema));
   // *INDENT-ON*
 
-  len = (*(tp_String.data_lengthval)) (&val, 1);
+  len = tp_String.data_lengthval (&val, 1);
 
   pr_clear_value (&val);
 
@@ -6661,16 +6661,7 @@ or_packed_value_size (const DB_VALUE * value, int collapse_null, int include_dom
 	      return size;
 	    }
 	}
-      if (type->data_lengthval == NULL)
-	{
-	  size += type->disksize;
-	}
-      else
-	{
-	  // todo - adding const to data_lengthval is a complicated story due to string compression
-	  // for now, just strip const from value
-	  size += (*(type->data_lengthval)) (CONST_CAST (DB_VALUE *, value), 1);
-	}
+      size += type->data_lengthval (value, 1);
     }
 
   /* Values must as a unit be aligned to a word boundary.  We can't do this inside the writeval function because that
@@ -6756,7 +6747,7 @@ or_put_value (OR_BUF * buf, DB_VALUE * value, int collapse_null, int include_dom
       /* probably should blow off writing the value if we couldn't determine the domain ? */
       if (rc == NO_ERROR)
 	{
-	  rc = (*(type->data_writeval)) (buf, value);
+	  rc = type->data_writeval (buf, value);
 	}
     }
 
@@ -6882,12 +6873,12 @@ or_get_value (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int expected, 
 	{
 	  if (value)
 	    {
-	      (*(domain->type->data_readval)) (buf, value, domain, expected, copy, NULL, 0);
+	      domain->type->data_readval (buf, value, domain, expected, copy, NULL, 0);
 	    }
 	  else
 	    {
 	      /* the NULL value, will cause readval to skip the value */
-	      (*(domain->type->data_readval)) (buf, NULL, domain, expected, false, NULL, 0);
+	      domain->type->data_readval (buf, NULL, domain, expected, false, NULL, 0);
 	    }
 
 	  if (rc != NO_ERROR)
@@ -7007,7 +6998,7 @@ or_pack_mem_value (char *ptr, DB_VALUE * value, int *packed_len_except_alignment
       if (rc == NO_ERROR)
 	{
 	  or_get_align64 (buf);
-	  rc = (*(type->data_writeval)) (buf, value);
+	  rc = type->data_writeval (buf, value);
 	}
     }
 
@@ -7092,7 +7083,7 @@ or_unpack_mem_value (char *ptr, DB_VALUE * value)
     }
   else
     {
-      rc = (*(domain->type->data_readval)) (buf, value, domain, -1, true, NULL, 0);
+      rc = domain->type->data_readval (buf, value, domain, -1, true, NULL, 0);
       if (rc != NO_ERROR)
 	{
 	  return NULL;
@@ -7608,7 +7599,7 @@ or_packed_enumeration_size (const DB_ENUMERATION * enumeration)
       db_make_varchar (&value, TP_FLOATING_PRECISION_VALUE, DB_GET_ENUM_ELEM_STRING (db_enum),
 		       DB_GET_ENUM_ELEM_STRING_SIZE (db_enum), DB_GET_ENUM_ELEM_CODESET (db_enum),
 		       LANG_GET_BINARY_COLLATION (DB_GET_ENUM_ELEM_CODESET (db_enum)));
-      size += (*(tp_String.data_lengthval)) (&value, 1);
+      size += tp_String.data_lengthval (&value, 1);
       pr_clear_value (&value);
     }
 
@@ -7644,7 +7635,7 @@ or_put_enumeration (OR_BUF * buf, const DB_ENUMERATION * enumeration)
       db_make_varchar (&value, TP_FLOATING_PRECISION_VALUE, DB_GET_ENUM_ELEM_STRING (db_enum),
 		       DB_GET_ENUM_ELEM_STRING_SIZE (db_enum), DB_GET_ENUM_ELEM_CODESET (db_enum),
 		       enumeration->collation_id);
-      rc = (*(tp_String.data_writeval)) (buf, &value);
+      rc = tp_String.data_writeval (buf, &value);
       pr_clear_value (&value);
 
       if (rc != NO_ERROR)
@@ -7710,7 +7701,7 @@ or_get_enumeration (OR_BUF * buf, DB_ENUMERATION * enumeration)
        */
       db_make_null (&value);
 
-      error = (*(tp_String.data_readval)) (buf, &value, NULL, -1, false, NULL, 0);
+      error = tp_String.data_readval (buf, &value, NULL, -1, false, NULL, 0);
       if (error != NO_ERROR)
 	{
 	  goto error_return;
@@ -8709,7 +8700,7 @@ or_get_json_schema (OR_BUF * buf, REFPTR (char, schema))
 
   ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
 
-  rc = (*(tp_String.data_readval)) (buf, &schema_value, NULL, -1, false, NULL, 0);
+  rc = tp_String.data_readval (buf, &schema_value, NULL, -1, false, NULL, 0);
   if (rc != NO_ERROR)
     {
       return rc;
@@ -8745,7 +8736,7 @@ or_put_json_schema (OR_BUF * buf, const char *schema)
       db_make_string_by_const_str (&schema_raw, schema);
     }
 
-  rc = (*(tp_String.data_writeval)) (buf, &schema_raw);
+  rc = tp_String.data_writeval (buf, &schema_raw);
   if (rc != NO_ERROR)
     {
       goto exit;

@@ -1797,7 +1797,7 @@ vid_pack_db_value (char *lbuf, DB_VALUE * dbval)
 
   or_init (&buf, lbuf, val_size);
 
-  if ((*(pr_type->data_writeval)) (&buf, dbval) != NO_ERROR)
+  if (pr_type->data_writeval (&buf, dbval) != NO_ERROR)
     {
       return NULL;
     }

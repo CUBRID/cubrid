@@ -32,6 +32,7 @@
 #include "btree.h"
 
 #include "btree_load.h"
+#include "db_value_printer.hpp"
 #include "file_manager.h"
 #include "slotted_page.h"
 #include "log_manager.h"
@@ -2039,7 +2040,7 @@ btree_store_overflow_key (THREAD_ENTRY * thread_p, BTID_INT * btid, DB_VALUE * k
 
   or_init (&buf, rec.data, rec.area_size);
 
-  if ((*(pr_type->index_writeval)) (&buf, key_ptr) != NO_ERROR)
+  if (pr_type->index_writeval (&buf, key_ptr) != NO_ERROR)
     {
       goto exit_on_error;
     }
@@ -2128,7 +2129,7 @@ btree_load_overflow_key (THREAD_ENTRY * thread_p, BTID_INT * btid, VPID * first_
   or_init (&buf, rec.data, rec.length);
 
   /* we always copy overflow keys */
-  if ((*(pr_type->index_readval)) (&buf, key, btid->key_type, -1, true, NULL, 0) != NO_ERROR)
+  if (pr_type->index_readval (&buf, key, btid->key_type, -1, true, NULL, 0) != NO_ERROR)
     {
       goto exit_on_error;
     }
@@ -4136,7 +4137,7 @@ btree_write_record (THREAD_ENTRY * thread_p, BTID_INT * btid, void *node_rec, DB
 	  pr_type = btid->nonleaf_key_type->type;
 	}
 
-      error_code = (*(pr_type->index_writeval)) (&buf, key);
+      error_code = pr_type->index_writeval (&buf, key);
       if (error_code != NO_ERROR)
 	{
 	  assert_release (false);
@@ -4463,7 +4464,7 @@ btree_read_record_without_decompression (THREAD_ENTRY * thread_p, BTID_INT * bti
 	}
 
       old_ptr = buf.ptr;
-      rc = (*(pr_type->index_readval)) (&buf, key, key_domain, -1, *clear_key, copy_key_buf, copy_key_buf_len);
+      rc = pr_type->index_readval (&buf, key, key_domain, -1, *clear_key, copy_key_buf, copy_key_buf_len);
       if (rc != NO_ERROR)
 	{
 	  return rc;
@@ -4596,56 +4597,11 @@ btree_dump_root_header (THREAD_ENTRY * thread_p, FILE * fp, PAGE_PTR page_ptr)
  *   key(in):
  */
 void
-btree_dump_key (THREAD_ENTRY * thread_p, FILE * fp, DB_VALUE * key)
+btree_dump_key (FILE * fp, const DB_VALUE * key)
 {
-  DB_TYPE key_type = DB_VALUE_DOMAIN_TYPE (key);
-  PR_TYPE *pr_type = pr_type_from_id (key_type);
-
-  assert (pr_type != NULL);
-
-  if (pr_type)
-    {
-#if 1
-      fprintf (fp, " ");
-      (*(pr_type->fptrfunc)) (fp, key);
-      fprintf (fp, " ");
-
-#else /* debug routine - DO NOT DELETE ME */
-      /* simple dump for debug */
-      /* dump ' ' to ' +' */
-      char buff[4096];
-      int i, j, c;
-
-      (*(pr_type->sptrfunc)) (key, buff, 4096);
-
-      for (i = 0, j = 0; i < 4096; i++, j++)
-	{
-	  buff[j] = buff[i];
-
-	  if (buff[i] == 0)
-	    {
-	      break;
-	    }
-
-	  c = 0;
-	  while (buff[i] == ' ' && i > 1 && buff[i - 1] == ' ')
-	    {
-	      c++;
-	      i++;
-	    }
-
-	  if (c > 1)
-	    {
-	      j++;
-	      buff[j] = '+';
-	    }
-	}
-
-      fprintf (fp, " ");
-      fprintf (fp, buff);
-      fprintf (fp, " ");
-#endif
-    }
+  fprintf (fp, " ");
+  db_fprint_value (fp, key);
+  fprintf (fp, " ");
 }
 
 /*
@@ -4700,7 +4656,7 @@ btree_dump_leaf_record (THREAD_ENTRY * thread_p, FILE * fp, BTID_INT * btid, REC
   fprintf (fp, "Key_Len: %d Ovfl_Page: {%d , %d} ", key_len, leaf_record.ovfl.volid, leaf_record.ovfl.pageid);
 
   fprintf (fp, "Key: ");
-  btree_dump_key (thread_p, fp, &key);
+  btree_dump_key (fp, &key);
 
   btree_clear_key_value (&clear_key, &key);
 
@@ -4945,7 +4901,7 @@ btree_dump_non_leaf_record (THREAD_ENTRY * thread_p, FILE * fp, BTID_INT * btid,
     {
       key_len = btree_get_disk_size_of_key (&key);
       fprintf (fp, "Key_Len: %d  Key: ", key_len);
-      btree_dump_key (thread_p, fp, &key);
+      btree_dump_key (fp, &key);
     }
   else
     {
@@ -12101,7 +12057,7 @@ btree_find_split_point (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
 
       m_clear_key = false;
 
-      (*(pr_type->setval)) (mid_key, key, m_clear_key);
+      pr_type->setval (mid_key, key, m_clear_key);
     }
   else
     {
@@ -12510,7 +12466,7 @@ btree_recompress_record (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * 
 
   /* Pack new key. */
   or_init (&write_key_buffer, record->data + offset_before_key, new_key_len);
-  (*btid_int->key_type->type->index_writeval) (&write_key_buffer, &recompress_key);
+  btid_int->key_type->type->index_writeval (&write_key_buffer, &recompress_key);
   or_align (&write_key_buffer, INT_ALIGNMENT);
   assert (write_key_buffer.ptr == write_key_buffer.endptr);
 
@@ -12746,14 +12702,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   if (node_type == BTREE_LEAF_NODE)
     {
       PR_TYPE *pr_type = btid->key_type->type;
-      if (pr_type->index_lengthval)
-	{
-	  sep_key_len = (*pr_type->index_lengthval) (sep_key);
-	}
-      else
-	{
-	  sep_key_len = pr_type->disksize;
-	}
+      sep_key_len = pr_type->index_lengthval (sep_key);
 
       if (sep_key_len < BTREE_MAX_KEYLEN_INPAGE && sep_key_len <= qheader->max_key_len)
 	{
@@ -13328,12 +13277,7 @@ btree_split_test (THREAD_ENTRY * thread_p, BTID_INT * btid, DB_VALUE * key, VPID
 	  PR_TYPE *pr_type;
 
 	  pr_type = btid->key_type->type;
-	  sep_key_len = pr_type->disksize;
-
-	  if (pr_type->index_lengthval)
-	    {
-	      sep_key_len = (*pr_type->index_lengthval) (sep_key);
-	    }
+	  sep_key_len = pr_type->index_lengthval (sep_key);
 
 	  if (sep_key_len < BTREE_MAX_KEYLEN_INPAGE)
 	    {
@@ -13598,14 +13542,7 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
 
       pr_type = btid->key_type->type;
 
-      if (pr_type->index_lengthval)
-	{
-	  sep_key_len = (*pr_type->index_lengthval) (sep_key);
-	}
-      else
-	{
-	  sep_key_len = pr_type->disksize;
-	}
+      sep_key_len = pr_type->index_lengthval (sep_key);
 
       if (sep_key_len < BTREE_MAX_KEYLEN_INPAGE && sep_key_len <= pheader->node.max_key_len)
 	{
@@ -16679,7 +16616,7 @@ btree_rv_save_keyval_for_undo (BTID_INT * btid, DB_VALUE * key, OID * cls_oid, O
   /* Save key. */
   or_init (&buf, datap, key_len);
   pr_type = btid->key_type->type;
-  ret = (*(pr_type->index_writeval)) (&buf, key);
+  ret = pr_type->index_writeval (&buf, key);
   if (ret != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -16859,7 +16796,7 @@ btree_rv_save_keyval_for_undo_two_objects (BTID_INT * btid, DB_VALUE * key, BTRE
   /* Save key. */
   or_init (&buf, datap, key_len);
   pr_type = btid->key_type->type;
-  error_code = (*(pr_type->index_writeval)) (&buf, key);
+  error_code = pr_type->index_writeval (&buf, key);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -17527,8 +17464,7 @@ btree_rv_read_keyval_info_nocopy (THREAD_ENTRY * thread_p, char *datap, int data
       key_size = CAST_BUFLEN (buf.endptr - buf.ptr);
     }
 
-  error_code = (*(pr_type->index_readval)) (&buf, key, btid->key_type, key_size, false /* not copy */ ,
-					    NULL, 0);
+  error_code = pr_type->index_readval (&buf, key, btid->key_type, key_size, false /* not copy */ , NULL, 0);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -18730,7 +18666,7 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain, int
       if (TP_ARE_COMPARABLE_KEY_TYPES (key1_type, key2_type) && TP_ARE_COMPARABLE_KEY_TYPES (key1_type, dom_type)
 	  && TP_ARE_COMPARABLE_KEY_TYPES (key2_type, dom_type))
 	{
-	  c = (*(key_domain->type->cmpval)) (key1, key2, do_coercion, total_order, NULL, key_domain->collation_id);
+	  c = key_domain->type->cmpval (key1, key2, do_coercion, total_order, NULL, key_domain->collation_id);
 	}
       else
 	{
@@ -18801,7 +18737,7 @@ btree_compare_individual_key_value (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN 
     }
 
   /* both are not null values */
-  c = (*(key_domain->type->cmpval)) (key1, key2, 1, 1, NULL, key_domain->collation_id);
+  c = key_domain->type->cmpval (key1, key2, 1, 1, NULL, key_domain->collation_id);
 
   if (key_domain->is_desc)
     {
@@ -21940,7 +21876,7 @@ btree_check_valid_record (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * rec
 	      db_make_null (&rec_key_value);
 	      key_domain = btid->key_type;
 	      pr_type = key_domain->type;
-	      if ((*(pr_type->index_readval)) (&buffer, &rec_key_value, key_domain, -1, true, NULL, 0) != NO_ERROR)
+	      if (pr_type->index_readval (&buffer, &rec_key_value, key_domain, -1, true, NULL, 0) != NO_ERROR)
 		{
 		  assert (false);
 		  return ER_FAILED;
@@ -29811,8 +29747,8 @@ btree_fix_root_for_delete (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
 	}
 
       /* Read key. */
-      error_code = (*(pr_type->index_readval)) (delete_helper->buffered_key, key, btid_int->key_type, key_size,
-						false /* not copy */ , NULL, 0);
+      error_code = pr_type->index_readval (delete_helper->buffered_key, key, btid_int->key_type, key_size,
+					   false /* not copy */ , NULL, 0);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();

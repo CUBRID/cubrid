@@ -4829,7 +4829,7 @@ qexec_cmp_tpl_vals_merge (QFILE_TUPLE * left_tval, TP_DOMAIN ** left_dom, QFILE_
       /* Do not copy the string--just use the pointer.  The pr_ routines for strings and sets have different semantics
        * for length. */
       left_is_set = pr_is_set_type (TP_DOMAIN_TYPE (left_dom[i])) ? true : false;
-      if ((*(left_dom[i]->type->data_readval)) (&buf, &left_dbval, left_dom[i], -1, left_is_set, NULL, 0) != NO_ERROR)
+      if (left_dom[i]->type->data_readval (&buf, &left_dbval, left_dom[i], -1, left_is_set, NULL, 0) != NO_ERROR)
 	{
 	  cmp = DB_UNK;		/* is error */
 	  break;
@@ -4844,7 +4844,7 @@ qexec_cmp_tpl_vals_merge (QFILE_TUPLE * left_tval, TP_DOMAIN ** left_dom, QFILE_
       /* Do not copy the string--just use the pointer.  The pr_ routines for strings and sets have different semantics
        * for length. */
       right_is_set = pr_is_set_type (TP_DOMAIN_TYPE (rght_dom[i])) ? true : false;
-      if ((*(rght_dom[i]->type->data_readval)) (&buf, &right_dbval, rght_dom[i], -1, right_is_set, NULL, 0) != NO_ERROR)
+      if (rght_dom[i]->type->data_readval (&buf, &right_dbval, rght_dom[i], -1, right_is_set, NULL, 0) != NO_ERROR)
 	{
 	  cmp = DB_UNK;		/* is error */
 	  goto clear;
@@ -11126,8 +11126,8 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		  switch (_setjmp (buf.env))
 		    {
 		    case 0:
-		      error = (*(pr_type->data_readval)) (&buf, &insert_val, attr->domain,
-							  attr->current_default_value.val_length, copy, NULL, 0);
+		      error = pr_type->data_readval (&buf, &insert_val, attr->domain,
+						     attr->current_default_value.val_length, copy, NULL, 0);
 		      if (error != NO_ERROR)
 			{
 			  GOTO_EXIT_ON_ERROR;
@@ -15618,8 +15618,8 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
     PR_TYPE bf2df_str_type = tp_String;
 
     bf2df_str_domain.type = &bf2df_str_type;
-    bf2df_str_type.data_cmpdisk = bf2df_str_cmpdisk;
-    bf2df_str_type.cmpval = bf2df_str_cmpval;
+    bf2df_str_type.set_data_cmpdisk_function (bf2df_str_cmpdisk);
+    bf2df_str_type.set_cmpval_function (bf2df_str_cmpval);
 
     /* init sort list */
     bf2df_sort_list.next = NULL;
@@ -16219,7 +16219,7 @@ qexec_set_tuple_column_value (QFILE_TUPLE tpl, int index, DB_VALUE * valp, TP_DO
 
       OR_BUF_INIT (buf, ptr, length);
 
-      if ((*(pr_type->data_writeval)) (&buf, valp) != NO_ERROR)
+      if (pr_type->data_writeval (&buf, valp) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -16262,7 +16262,7 @@ qexec_get_tuple_column_value (QFILE_TUPLE tpl, int index, DB_VALUE * valp, TP_DO
 
       OR_BUF_INIT (buf, ptr, length);
 
-      if ((*(pr_type->data_readval)) (&buf, valp, domain, -1, false, NULL, 0) != NO_ERROR)
+      if (pr_type->data_readval (&buf, valp, domain, -1, false, NULL, 0) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -16402,7 +16402,7 @@ qexec_compare_valptr_with_tuple (OUTPTR_LIST * outptr_list, QFILE_TUPLE tpl, QFI
       else
 	{
 	  or_init (&buf, (char *) tuple + QFILE_TUPLE_VALUE_HEADER_SIZE, length1);
-	  if ((*(pr_type_p->data_readval)) (&buf, &dbval1, domp, -1, copy, NULL, 0) != NO_ERROR)
+	  if (pr_type_p->data_readval (&buf, &dbval1, domp, -1, copy, NULL, 0) != NO_ERROR)
 	    {
 	      return ER_FAILED;
 	    }
@@ -16422,7 +16422,7 @@ qexec_compare_valptr_with_tuple (OUTPTR_LIST * outptr_list, QFILE_TUPLE tpl, QFI
 	}
       else
 	{
-	  equal = ((*(pr_type_p->cmpval)) (&dbval1, dbvalp2, 0, 1, NULL, domp->collation_id) == DB_EQ);
+	  equal = pr_type_p->cmpval (&dbval1, dbvalp2, 0, 1, NULL, domp->collation_id) == DB_EQ;
 	}
 
       if (copy || DB_NEED_CLEAR (&dbval1))
@@ -22867,8 +22867,7 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 		  pr_type = pr_type_from_id (attrepr->type);
 		  if (pr_type)
 		    {
-		      (*(pr_type->data_readval)) (&buf, out_values[idx_val], attrepr->domain, disk_length, copy, NULL,
-						  0);
+		      pr_type->data_readval (&buf, out_values[idx_val], attrepr->domain, disk_length, copy, NULL, 0);
 		      valcnv_convert_value_to_string (out_values[idx_val]);
 		    }
 		  else

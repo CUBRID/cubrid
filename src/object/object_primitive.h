@@ -20,6 +20,11 @@
 
 /*
  * object_primitive.h: Definitions related to primitive types.
+ *
+ *    Basic operations with primitive types supported by database - numerics, strings, time, sets, json, so on
+ *
+ *    It includes compare functions for various representations (db_value, in-memory, disk data and index) and
+ *    conversions between db_value and other representations.
  */
 
 #ifndef _OBJECT_PRIMITIVE_H_
@@ -42,64 +47,118 @@ struct or_buf;
  *    This structure defines the information and operations available
  *    for primitive types.
  */
+// *INDENT-OFF*
 typedef struct pr_type
 {
-  /* internal identifier name */
-  const char *name;
-  DB_TYPE id;
-  int variable_p;
-  int size;
-  int disksize;
-  int alignment;
-  /* print dbvalue to file */
-  void (*fptrfunc) (FILE * fp, const DB_VALUE * value);
-  /* print dbvalue to buffer */
-  void (*sptrfunc) (const DB_VALUE * value, string_buffer & sb);
+  public:
+    /* internal identifier name */
+    const char *name;
+    DB_TYPE id;
+    int variable_p;
+    int size;
+    int disksize;
+    int alignment;
 
-  /* initialize memory */
-  void (*initmem) (void *memptr, struct tp_domain * domain);
-  /* initialize DB_VALUE */
-  void (*initval) (DB_VALUE * value, int precision, int scale);
-  int (*setmem) (void *memptr, struct tp_domain * domain, DB_VALUE * value);
-  /* zero to avoid copying if possible */
-  int (*getmem) (void *memptr, struct tp_domain * domain, DB_VALUE * value, bool copy);
-  /* set DB_VALUE from DB_VALUE */
-  int (*setval) (DB_VALUE * dest, const DB_VALUE * src, bool copy);
-  /* return memory size */
-  int (*data_lengthmem) (void *memptr, struct tp_domain * domain, int disk);
-  /* return DB_VALUE size */
-  int (*data_lengthval) (DB_VALUE * value, int disk);
-  /* write disk rep from memory */
-  void (*data_writemem) (struct or_buf * buf, void *memptr, struct tp_domain * domain);
-  /* read disk rep to memory */
-  void (*data_readmem) (struct or_buf * buf, void *memptr, struct tp_domain * domain, int size);
-  /* write disk rep from DB_VALUE */
-  int (*data_writeval) (struct or_buf * buf, DB_VALUE * value);
-  /* read disk rep to DB_VALUE */
-  int (*data_readval) (struct or_buf * buf, DB_VALUE * value, struct tp_domain * domain, int size, bool copy,
-		       char *copy_buf, int copy_buf_len);
-  /* btree memory size */
-  int (*index_lengthmem) (void *memptr, struct tp_domain * domain);
-  /* return DB_VALUE size */
-  int (*index_lengthval) (DB_VALUE * value);
-  /* write btree rep from DB_VALUE */
-  int (*index_writeval) (struct or_buf * buf, DB_VALUE * value);
-  /* read btree rep to DB_VALUE */
-  int (*index_readval) (struct or_buf * buf, DB_VALUE * value, struct tp_domain * domain, int size, bool copy,
-			char *copy_buf, int copy_buf_len);
-  /* btree value compare */
-    DB_VALUE_COMPARE_RESULT (*index_cmpdisk) (void *memptr1, void *memptr2, struct tp_domain * domain, int do_coercion,
-					      int total_order, int *start_colp);
-  /* free memory for swap or GC */
-  void (*freemem) (void *memptr);
-  /* memory value compare */
-    DB_VALUE_COMPARE_RESULT (*data_cmpdisk) (void *memptr1, void *memptr2, struct tp_domain * domain, int do_coercion,
-					     int total_order, int *start_colp);
-  /* db value compare */
-    DB_VALUE_COMPARE_RESULT (*cmpval) (DB_VALUE * value, DB_VALUE * value2, int do_coercion, int total_order,
-				       int *start_colp, int collation);
+
+    typedef DB_VALUE_COMPARE_RESULT (*data_cmpdisk_function_type) (void *memptr1, void *memptr2, tp_domain * domain,
+                                                                   int do_coercion, int total_order, int *start_colp);
+    typedef DB_VALUE_COMPARE_RESULT (*cmpval_function_type) (DB_VALUE * value, DB_VALUE * value2, int do_coercion,
+                                                             int total_order, int *start_colp, int collation);
+
+  public:
+    /* initialize memory */
+    void (*f_initmem) (void *memptr, struct tp_domain * domain);
+    /* initialize DB_VALUE */
+    void (*f_initval) (DB_VALUE * value, int precision, int scale);
+    int (*f_setmem) (void *memptr, struct tp_domain * domain, DB_VALUE * value);
+    /* zero to avoid copying if possible */
+    int (*f_getmem) (void *memptr, struct tp_domain * domain, DB_VALUE * value, bool copy);
+    /* set DB_VALUE from DB_VALUE */
+    int (*f_setval) (DB_VALUE * dest, const DB_VALUE * src, bool copy);
+    /* return memory size */
+    int (*f_data_lengthmem) (void *memptr, struct tp_domain * domain, int disk);
+    /* return DB_VALUE size */
+    int (*f_data_lengthval) (DB_VALUE * value, int disk);
+    /* write disk rep from memory */
+    void (*f_data_writemem) (struct or_buf * buf, void *memptr, struct tp_domain * domain);
+    /* read disk rep to memory */
+    void (*f_data_readmem) (struct or_buf * buf, void *memptr, struct tp_domain * domain, int size);
+    /* write disk rep from DB_VALUE */
+    int (*f_data_writeval) (struct or_buf * buf, DB_VALUE * value);
+    /* read disk rep to DB_VALUE */
+    int (*f_data_readval) (struct or_buf * buf, DB_VALUE * value, struct tp_domain * domain, int size, bool copy,
+		         char *copy_buf, int copy_buf_len);
+    /* btree memory size */
+    int (*f_index_lengthmem) (void *memptr, struct tp_domain * domain);
+    /* return DB_VALUE size */
+    int (*f_index_lengthval) (DB_VALUE * value);
+    /* write btree rep from DB_VALUE */
+    int (*f_index_writeval) (struct or_buf * buf, DB_VALUE * value);
+    /* read btree rep to DB_VALUE */
+    int (*f_index_readval) (struct or_buf * buf, DB_VALUE * value, struct tp_domain * domain, int size, bool copy,
+			    char *copy_buf, int copy_buf_len);
+    /* btree value compare */
+    DB_VALUE_COMPARE_RESULT (*f_index_cmpdisk) (void *memptr1, void *memptr2, struct tp_domain * domain,
+                                                int do_coercion, int total_order, int *start_colp);
+    /* free memory for swap or GC */
+    void (*f_freemem) (void *memptr);
+    /* memory value compare */
+    data_cmpdisk_function_type f_data_cmpdisk;
+    cmpval_function_type f_cmpval;
+
+  public:
+
+    // todo - remove all the const stripping code from function implementation; signatures for all internal functions
+    //        (prefixed by f_) and their various implementations inside object_primitive.c should be updated.
+    //        postponed for a better days and better design
+
+    // setters/getters
+    inline void set_data_cmpdisk_function (data_cmpdisk_function_type data_cmpdisk_arg);
+    inline data_cmpdisk_function_type get_data_cmpdisk_function () const;
+
+    void set_cmpval_function (cmpval_function_type cmpval_arg);
+    cmpval_function_type get_cmpval_function () const;
+
+    // checking fixed size - actually all functions should return same value, but this is a legacy issue
+    // todo - replace with a single fixed size check function
+    inline bool is_data_lengthmem_fixed () const;
+    inline bool is_data_lengthval_fixed () const;
+
+    // operations for in-memory representations
+    inline void initmem (void *memptr, const tp_domain * domain) const;
+    inline int setmem (void *memptr, const tp_domain * domain, const DB_VALUE * value) const;
+    inline int getmem (void *memptr, const tp_domain * domain, DB_VALUE * value, bool copy) const;
+    inline int data_lengthmem (const void *memptr, const tp_domain * domain, int disk) const;
+    inline void freemem (void *memptr) const;
+
+    // operations for db_value's
+    inline void initval (DB_VALUE * value, int precision, int scale) const;
+    inline int setval (DB_VALUE * dest, const DB_VALUE * src, bool copy) const;
+    inline int data_lengthval (const DB_VALUE * value, int disk) const;
+    inline DB_VALUE_COMPARE_RESULT cmpval (const DB_VALUE * value, const DB_VALUE * value2, int do_coercion,
+                                           int total_order, int *start_colp, int collation) const;
+
+    // operations for disk representation (as usually stored in heap files and list files)
+    inline void data_writemem (struct or_buf * buf, const void *memptr, const tp_domain * domain) const;
+    inline void data_readmem (struct or_buf * buf, void *memptr, const tp_domain * domain, int size) const;
+    inline int data_writeval (struct or_buf * buf, const DB_VALUE * value) const;
+    inline int data_readval (struct or_buf * buf, DB_VALUE * value, const tp_domain * domain, int size, bool copy,
+                             char *copy_buf, int copy_buf_len) const;
+    inline DB_VALUE_COMPARE_RESULT data_cmpdisk (const void *memptr1, const void *memptr2, const tp_domain * domain,
+                                                 int do_coercion, int total_order, int *start_colp) const;
+
+    // operations for index representations (ordered)
+    inline int index_lengthmem (const void *memptr, const tp_domain * domain) const;
+    inline bool is_index_lengthval_fixed () const;
+    inline int index_lengthval (const DB_VALUE * value) const;
+    inline int index_writeval (struct or_buf * buf, const DB_VALUE * value) const;
+    inline int index_readval (struct or_buf * buf, DB_VALUE * value, const tp_domain * domain, int size, bool copy,
+                              char *copy_buf, int copy_buf_len) const;
+    inline DB_VALUE_COMPARE_RESULT index_cmpdisk (const void *memptr1, const void *memptr2, const tp_domain * domain,
+                                                  int do_coercion, int total_order, int *start_colp) const;
+    
 } PR_TYPE, *PRIM;
-
+// *INDENT-ON*
 
 /*
  * PRIMITIVE TYPE STRUCTURES
@@ -200,18 +259,18 @@ extern PR_TYPE *tp_Type_id_map[];
  * requirement but it makes the object block look cleaner in the debugger.
  * For variable width attributes, it makes sure the pointers are NULL.
  */
-#define PRIM_INITMEM(type, mem, domain) (*((type)->initmem))(mem, domain)
+#define PRIM_INITMEM(type, mem, domain) ((type)->initmem (mem, domain))
 
 /* PRIM_SETMEM
  * Assign a value into instance memory, copy the value.
  */
-#define PRIM_SETMEM(type, domain, mem, value) (*((type)->setmem))(mem, domain, value)
+#define PRIM_SETMEM(type, domain, mem, value) ((type)->setmem (mem, domain, value))
 
 /* PRIM_GETMEM
  * Get a value from instance memory, copy the value.
  */
 #define PRIM_GETMEM(type, domain, mem, value) \
-  (*((type)->getmem))(mem, domain, value, true)
+  ((type)->getmem (mem, domain, value, true))
 
 /* PRIM_GETMEM_NOCOPY
  * The "nocopy" option for "getmem" is intended only for internal processes
@@ -220,28 +279,27 @@ extern PR_TYPE *tp_Type_id_map[];
  * register logic.
  */
 #define PRIM_GETMEM_NOCOPY(type, domain, mem, value) \
-  (*((type)->getmem))(mem, domain, value, false)
+  ((type)->getmem (mem, domain, value, false))
 
 /* PRIM_FREEMEM
  * Free any external storage in instance memory that may have been allocated on
  * behalf of a type.
  */
-#define PRIM_FREEMEM(type, mem) \
-  if (type->freemem != NULL) (*((type)->freemem))(mem)
+#define PRIM_FREEMEM(type, mem) ((type)->freemem (mem))
 
 /* PRIM_READ
  * Read a value from a disk buffer into instance memory.
  */
 #define PRIM_READ(type, domain, tr, mem, len) \
-  (*((type)->data_readmem))(tr, mem, domain, len)
+  ((type)->data_readmem (tr, mem, domain, len))
 
 /* PRIM_WRITE
  * Write a value from instance memory into a disk buffer.
  */
-#define PRIM_WRITE(type, domain, tr, mem) (*((type)->data_writemem))(tr, mem, domain)
+#define PRIM_WRITE(type, domain, tr, mem) ((type)->data_writemem (tr, mem, domain))
 
-#define PRIM_WRITEVAL(type, buf, val) (*((type)->writeval))(buf, val)
-#define PRIM_LENGTHVAL(type, val, size) (*((type)->lengthval))(val, size)
+#define PRIM_WRITEVAL(type, buf, val) ((type)->writeval) (buf, val))
+#define PRIM_LENGTHVAL(type, val, size) ((type)->lengthval (val, size))
 
 /* PRIM_SET_NULL
  * set a db_value to NULL
@@ -310,10 +368,8 @@ extern int pr_midxkey_common_prefix (DB_VALUE * key1, DB_VALUE * key2);
 
 extern int pr_Inhibit_oid_promotion;
 
-#if defined (SERVER_MODE) || defined (SA_MODE)
 /* Helper function for DB_VALUE printing; caller must free_and_init result. */
-extern char *pr_valstring (DB_VALUE *);
-#endif //defined (SERVER_MODE) || defined (SA_MODE)
+extern char *pr_valstring (const DB_VALUE *);
 
 /* area init */
 extern int pr_area_init (void);
@@ -340,5 +396,201 @@ extern int pr_Enable_string_compression;
 
 /* Worst case scenario for compression from their FAQ */
 #define LZO_COMPRESSED_STRING_SIZE(str_length) ((str_length) + ((str_length) / 16) + 64 + 3)
+
+//////////////////////////////////////////////////////////////////////////
+// Inline/template implementation
+//////////////////////////////////////////////////////////////////////////
+// *INDENT-OFF*
+void
+pr_type::set_data_cmpdisk_function (data_cmpdisk_function_type data_cmpdisk_arg)
+{
+  f_data_cmpdisk = data_cmpdisk_arg;
+}
+
+inline pr_type::data_cmpdisk_function_type
+pr_type::get_data_cmpdisk_function () const
+{
+  return f_data_cmpdisk;
+}
+
+inline void
+pr_type::set_cmpval_function (cmpval_function_type cmpval_arg)
+{
+  f_cmpval = cmpval_arg;
+}
+
+inline pr_type::cmpval_function_type
+pr_type::get_cmpval_function () const
+{
+  return f_cmpval;
+}
+
+inline void
+pr_type::initmem (void * memptr, const tp_domain * domain) const
+{
+  (*f_initmem) (memptr, const_cast<tp_domain *> (domain));
+}
+
+inline void
+pr_type::initval (DB_VALUE * value, int precision, int scale) const
+{
+  (*f_initval) (value, precision, scale);
+}
+
+inline int
+pr_type::setmem (void * memptr, const tp_domain * domain, const DB_VALUE * value) const
+{
+  return (*f_setmem) (memptr, const_cast<tp_domain *> (domain), const_cast<DB_VALUE *> (value));
+}
+
+inline int
+pr_type::getmem (void * memptr, const tp_domain * domain, DB_VALUE * value, bool copy) const
+{
+  return (*f_getmem) (memptr, const_cast<tp_domain *> (domain), value, copy);
+}
+
+inline int
+pr_type::setval (DB_VALUE * dest, const DB_VALUE * src, bool copy) const
+{
+  return (*f_setval) (dest, src, copy);
+}
+
+inline bool
+pr_type::is_data_lengthmem_fixed () const
+{
+  return (f_data_lengthmem == NULL);
+}
+
+inline int
+pr_type::data_lengthmem (const void * memptr, const tp_domain * domain, int disk) const
+{
+  if (is_data_lengthmem_fixed ())
+    {
+      return disksize;
+    }
+  else
+    {
+      return (*f_data_lengthmem) (const_cast<void *> (memptr), const_cast<tp_domain *> (domain), disk);
+    }
+}
+
+inline bool
+pr_type::is_data_lengthval_fixed () const
+{
+  return f_data_lengthval == NULL;
+}
+
+inline int
+pr_type::data_lengthval (const DB_VALUE * value, int disk) const
+{
+  if (is_data_lengthval_fixed ())
+    {
+      return disksize;
+    }
+  else
+    {
+      return (*f_data_lengthval) (const_cast<DB_VALUE *> (value), disk);
+    }
+}
+
+inline void
+pr_type::data_writemem (or_buf * buf, const void * memptr, const tp_domain * domain) const
+{
+  (*f_data_writemem) (buf, const_cast<void *> (memptr), const_cast <tp_domain *> (domain));
+}
+
+inline void
+pr_type::data_readmem (or_buf * buf, void * memptr, const tp_domain * domain, int size) const
+{
+  (*f_data_readmem) (buf, memptr, const_cast<tp_domain *> (domain), size);
+}
+
+inline int
+pr_type::data_writeval (or_buf * buf, const DB_VALUE * value) const
+{
+  return (*f_data_writeval) (buf, const_cast<DB_VALUE *> (value));
+}
+
+inline int
+pr_type::data_readval (or_buf * buf, DB_VALUE * value, const tp_domain * domain, int size, bool copy, char * copy_buf, int copy_buf_len) const
+{
+  return (*f_data_readval) (buf, value, const_cast<tp_domain *> (domain), size, copy, copy_buf, copy_buf_len);
+}
+
+inline int
+pr_type::index_lengthmem (const void * memptr, const tp_domain * domain) const
+{
+  if (f_index_lengthmem == NULL)
+    {
+      return disksize;
+    }
+  else
+    {
+      return (*f_index_lengthmem) (const_cast<void *> (memptr), const_cast<tp_domain *> (domain));
+    }
+}
+
+inline bool
+pr_type::is_index_lengthval_fixed () const
+{
+  return f_index_lengthval == NULL;
+}
+
+inline int
+pr_type::index_lengthval (const DB_VALUE * value) const
+{
+  if (is_index_lengthval_fixed ())
+    {
+      return disksize;
+    }
+  else
+    {
+      return (*f_index_lengthval) (const_cast<DB_VALUE *> (value));
+    }
+}
+
+inline int
+pr_type::index_writeval (or_buf * buf, const DB_VALUE * value) const
+{
+  return (*f_index_writeval) (buf, const_cast<DB_VALUE *> (value));
+}
+
+inline int
+pr_type::index_readval (or_buf * buf, DB_VALUE * value, const tp_domain * domain, int size, bool copy, char * copy_buf, int copy_buf_len) const
+{
+  return (*f_index_readval) (buf, value, const_cast<tp_domain *> (domain), size, copy, copy_buf, copy_buf_len);
+}
+
+inline DB_VALUE_COMPARE_RESULT
+pr_type::index_cmpdisk (const void * memptr1, const void * memptr2, const tp_domain * domain, int do_coercion, int total_order, int * start_colp) const
+{
+  return (*f_index_cmpdisk) (const_cast<void *> (memptr1), const_cast<void *> (memptr2),
+                             const_cast<tp_domain *> (domain), do_coercion, total_order, start_colp);
+}
+
+inline void
+pr_type::freemem (void * memptr) const
+{
+  if (f_freemem != NULL)
+    {
+      (*f_freemem) (memptr);
+    }
+ }
+
+inline DB_VALUE_COMPARE_RESULT
+pr_type::data_cmpdisk (const void * memptr1, const void * memptr2, const tp_domain * domain, int do_coercion, int total_order, int * start_colp) const
+{
+  return (*f_data_cmpdisk) (const_cast<void *> (memptr1), const_cast<void *> (memptr2),
+                            const_cast<tp_domain *> (domain), do_coercion, total_order, start_colp);
+}
+
+inline DB_VALUE_COMPARE_RESULT
+pr_type::cmpval (const DB_VALUE * value, const DB_VALUE * value2, int do_coercion, int total_order, int * start_colp, int collation) const
+{
+  return (*f_cmpval) (const_cast<DB_VALUE *> (value), const_cast<DB_VALUE *> (value2), do_coercion, total_order,
+                      start_colp, collation);
+}
+
+// *INDENT-ON*
 
 #endif /* _OBJECT_PRIMITIVE_H_ */

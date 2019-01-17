@@ -984,7 +984,7 @@ db_string_truncate (DB_VALUE * value, const int precision)
 			   db_get_string_codeset (value), db_get_string_collation (value));
 
 	  pr_clear_value (value);
-	  (*(tp_String.setval)) (value, &src_value, true);
+	  tp_String.setval (value, &src_value, true);
 
 	  pr_clear_value (&src_value);
 	}
@@ -1009,7 +1009,7 @@ db_string_truncate (DB_VALUE * value, const int precision)
 			db_get_string_codeset (value), db_get_string_collation (value));
 
 	  pr_clear_value (value);
-	  (*(tp_Char.setval)) (value, &src_value, true);
+	  tp_Char.setval (value, &src_value, true);
 
 	  pr_clear_value (&src_value);
 
@@ -1035,7 +1035,7 @@ db_string_truncate (DB_VALUE * value, const int precision)
 			    db_get_string_codeset (value), db_get_string_collation (value));
 
 	  pr_clear_value (value);
-	  (*(tp_VarNChar.setval)) (value, &src_value, true);
+	  tp_VarNChar.setval (value, &src_value, true);
 
 	  pr_clear_value (&src_value);
 	}
@@ -1060,7 +1060,7 @@ db_string_truncate (DB_VALUE * value, const int precision)
 			 db_get_string_codeset (value), db_get_string_collation (value));
 
 	  pr_clear_value (value);
-	  (*(tp_NChar.setval)) (value, &src_value, true);
+	  tp_NChar.setval (value, &src_value, true);
 
 	  pr_clear_value (&src_value);
 
@@ -1083,7 +1083,7 @@ db_string_truncate (DB_VALUE * value, const int precision)
 	  db_make_bit (&src_value, precision << 3, string, precision << 3);
 
 	  pr_clear_value (value);
-	  (*(tp_Bit.setval)) (value, &src_value, true);
+	  tp_Bit.setval (value, &src_value, true);
 
 	  pr_clear_value (&src_value);
 	}
@@ -1105,7 +1105,7 @@ db_string_truncate (DB_VALUE * value, const int precision)
 	  db_make_varbit (&src_value, precision << 3, string, precision << 3);
 
 	  pr_clear_value (value);
-	  (*(tp_VarBit.setval)) (value, &src_value, true);
+	  tp_VarBit.setval (value, &src_value, true);
 
 	  pr_clear_value (&src_value);
 
@@ -4911,7 +4911,7 @@ valcnv_convert_value_to_string (DB_VALUE * value_p)
 		       (char *) buf_p->bytes, CAST_STRLEN (buf_p->length), LANG_SYS_CODESET, LANG_SYS_COLLATION);
 
       pr_clear_value (value_p);
-      (*(tp_String.setval)) (value_p, &src_value, true);
+      tp_String.setval (value_p, &src_value, true);
 
       pr_clear_value (&src_value);
       free_and_init (buf_p->bytes);

@@ -1709,14 +1709,7 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	    }
 	}
 
-      if (dom->type->index_lengthval == NULL)
-	{
-	  buf_size += dom->type->disksize;
-	}
-      else
-	{
-	  buf_size += (*(dom->type->index_lengthval)) (val);
-	}
+      buf_size += dom->type->index_lengthval (val);
     }
 
   /* add more domain to setdomain for partial key */
@@ -1790,7 +1783,7 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	    }
 	}
 
-      (*((dom->type)->index_writeval)) (&buf, val);
+      dom->type->index_writeval (&buf, val);
       OR_ENABLE_BOUND_BIT (nullmap_ptr, i);
     }
 
