@@ -159,7 +159,7 @@ pr_type::pr_type (const char * name_arg, DB_TYPE id_arg, int varp_arg, int size_
                   index_cmpdisk_function_type index_cmpdisk_f_arg, freemem_function_type freemem_f_arg,
                   data_cmpdisk_function_type data_cmpdisk_f_arg, cmpval_function_type cmpval_f_arg)
   : name {name_arg}
-  , id {}
+  , id {id_arg}
   , variable_p {varp_arg}
   , size {size_arg}
   , disksize {disksize_arg}
@@ -8937,7 +8937,14 @@ pr_mem_size (PR_TYPE * type)
 int
 pr_total_mem_size (PR_TYPE * type, void *mem)
 {
-  return type->data_lengthmem (mem, NULL, 0);
+  if (type->is_variable_size ())
+    {
+      return type->data_lengthmem (mem, NULL, 0);
+    }
+  else
+    {
+      return type->size;
+    }
 }
 
 /*
@@ -8977,7 +8984,14 @@ pr_value_mem_size (DB_VALUE * value)
   type = pr_type_from_id (dbval_type);
   if (type != NULL)
     {
-      return type->data_lengthval (value, 0);
+      if (type->is_variable_size ())
+	{
+	  return type->data_lengthval (value, 0);
+	}
+      else
+	{
+	  return type->size;
+	}
     }
   else
     {

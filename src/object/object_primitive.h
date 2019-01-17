@@ -370,10 +370,6 @@ pr_type::get_alignment () const
 bool
 pr_type::is_variable_size () const
 {
-  // if variable, we need to have length computing functions
-  assert (variable_p == 0
-          || (f_data_lengthmem != NULL && f_data_lengthval != NULL
-              && f_index_lengthval != NULL && f_index_lengthmem != NULL));
   return variable_p != 0;
 }
 
@@ -429,6 +425,7 @@ pr_type::data_lengthmem (const void * memptr, const tp_domain * domain, int disk
     }
   else
     {
+      assert (f_data_lengthmem != NULL);
       return (*f_data_lengthmem) (const_cast<void *> (memptr), const_cast<tp_domain *> (domain), disk);
     }
 }
@@ -442,6 +439,7 @@ pr_type::data_lengthval (const DB_VALUE * value, int disk) const
     }
   else
     {
+      assert (f_data_lengthval != NULL);
       return (*f_data_lengthval) (const_cast<DB_VALUE *> (value), disk);
     }
 }
@@ -479,6 +477,7 @@ pr_type::index_lengthmem (const void * memptr, const tp_domain * domain) const
     }
   else
     {
+      assert (f_index_lengthmem != NULL);
       return (*f_index_lengthmem) (const_cast<void *> (memptr), const_cast<tp_domain *> (domain));
     }
 }
@@ -492,6 +491,7 @@ pr_type::index_lengthval (const DB_VALUE * value) const
     }
   else
     {
+      assert (f_index_lengthval != NULL);
       return (*f_index_lengthval) (const_cast<DB_VALUE *> (value));
     }
 }

@@ -11005,8 +11005,14 @@ tp_domain_memory_size (TP_DOMAIN * domain)
     {
       return -1;
     }
-
-  return domain->type->data_lengthmem (NULL, domain, 0);
+  if (domain->type->is_variable_size ())
+    {
+      return domain->type->data_lengthmem (NULL, domain, 0);
+    }
+  else
+    {
+      return domain->type->size;
+    }
 }
 
 /*
