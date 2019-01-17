@@ -1898,7 +1898,7 @@ obj_alloc (SM_CLASS * class_, int bound_bit_status)
       for (att = class_->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
 	{
 	  mem = obj + att->offset;
-	  att->domain->type->f_initmem (mem, att->domain);
+	  att->domain->type->initmem (mem, att->domain);
 	}
     }
 

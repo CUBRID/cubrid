@@ -134,8 +134,8 @@ typedef struct pr_type
     inline void set_data_cmpdisk_function (data_cmpdisk_function_type data_cmpdisk_arg);
     inline data_cmpdisk_function_type get_data_cmpdisk_function () const;
 
-    void set_cmpval_function (cmpval_function_type cmpval_arg);
-    cmpval_function_type get_cmpval_function () const;
+    inline void set_cmpval_function (cmpval_function_type cmpval_arg);
+    inline cmpval_function_type get_cmpval_function () const;
 
     // is fixed/variable
     inline bool is_fixed_size () const;
@@ -394,7 +394,8 @@ pr_type::get_cmpval_function () const
 bool
 pr_type::is_variable_size () const
 {
-  assert (f_data_lengthmem != NULL && f_data_lengthval != NULL && f_index_lengthval != NULL);
+  assert (f_data_lengthmem != NULL && f_data_lengthval != NULL
+          && f_index_lengthval != NULL && f_index_lengthmem != NULL);
   return variable_p != 0;
 }
 
@@ -494,7 +495,7 @@ pr_type::data_readval (or_buf * buf, DB_VALUE * value, const tp_domain * domain,
 inline int
 pr_type::index_lengthmem (const void * memptr, const tp_domain * domain) const
 {
-  if (f_index_lengthmem == NULL)
+  if (is_fixed_size ())
     {
       return disksize;
     }
