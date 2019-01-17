@@ -2168,7 +2168,7 @@ db_json_remove_func (JSON_DOC &doc, const char *raw_path)
 
   JSON_POINTER p (json_pointer_string.c_str ());
 
-  if (!p.IsValid ())
+  if (!p.IsValid () || p.GetTokenCount () == 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
       return ER_JSON_INVALID_PATH;
@@ -2393,12 +2393,10 @@ db_json_array_append_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw
 
   // the specified path is not an array
   // it means we have just one element at the specified path
-  if (!resulting_json->IsArray ())
-    {
-      // we need to create an array with the value from the specified path
-      // example: for json {"a" : "b"} and path '/a' --> {"a" : ["b"]}
-      db_json_value_wrap_as_array (*resulting_json, doc.GetAllocator ());
-    }
+
+  // we need to create an array with the value from the specified path
+  // example: for json {"a" : "b"} and path '/a' --> {"a" : ["b"]}
+  db_json_value_wrap_as_array (*resulting_json, doc.GetAllocator ());
 
   // add the value at the end of the array
   JSON_VALUE value_copy (*value, doc.GetAllocator ());
@@ -2431,10 +2429,7 @@ db_json_array_shift_values (const JSON_DOC *value, JSON_DOC &doc, JSON_POINTER &
 	     DB_JSON_ARRAY);
     }
 
-  if (!resulting_json_parent->IsArray ())
-    {
-      resulting_json_parent->SetArray ();
-    }
+  db_json_value_wrap_as_array (*resulting_json_parent, doc.GetAllocator ());
 
   if ((last_token.length == 1 && last_token.name[0] == '-')
       || last_token.index >= resulting_json_parent->GetArray ().Size ())
@@ -4204,17 +4199,16 @@ bool JSON_DOC::IsLeaf ()
 static void
 db_json_value_wrap_as_array (JSON_VALUE &value, JSON_PRIVATE_MEMPOOL &allocator)
 {
+  if (value.IsArray ())
+    {
+      return;
+    }
+
   JSON_VALUE swap_value;
 
   swap_value.SetArray ();
   swap_value.PushBack (value, allocator);
   swap_value.Swap (value);
-}
-
-static void
-db_json_doc_wrap_as_array (JSON_DOC &doc)
-{
-  return db_json_value_wrap_as_array (doc, doc.GetAllocator ());
 }
 
 int
