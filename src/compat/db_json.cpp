@@ -2027,7 +2027,7 @@ db_json_insert_func (const JSON_DOC *doc_to_be_inserted, JSON_DOC &doc_destinati
 static int
 db_json_replace_autowrap_scalar (const JSON_VALUE *new_value, const JSON_POINTER &p, JSON_DOC &doc)
 {
-  const JSON_POINTER pointer_parent (p.GetTokens (), p.GetTokenCount ());
+  const JSON_POINTER pointer_parent (p.GetTokens (), p.GetTokenCount () - 1);
 
   JSON_VALUE *resulting_json_parent = pointer_parent.Get (doc);
   if (resulting_json_parent == NULL)
@@ -2036,7 +2036,7 @@ db_json_replace_autowrap_scalar (const JSON_VALUE *new_value, const JSON_POINTER
     }
 
   const TOKEN &last_token = p.GetTokens () [p.GetTokenCount () - 1];
-  if (resulting_json_parent->IsArray () || resulting_json_parent->IsObject () || last_token.index != 1)
+  if (resulting_json_parent->IsArray () || resulting_json_parent->IsObject () || last_token.index != 0)
     {
       return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, JSON_PATH (p).dump_json_path (), &doc);
     }
