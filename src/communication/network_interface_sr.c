@@ -9821,28 +9821,24 @@ sloaddb_load_object_file (THREAD_ENTRY * thread_p, unsigned int rid, char *reque
 void
 sloaddb_load_batch (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  char *ptr;
-  char *batch;
-  int batch_id;
-  int error = NO_ERROR;
+  int error_code = NO_ERROR;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  ptr = or_unpack_string (request, &batch);
-  or_unpack_int (ptr, &batch_id);
-
   /* *INDENT-OFF* */
-  std::string batch_str (batch);
+  cubpacking::packer packer (request, (size_t) reqlen);
   /* *INDENT-ON* */
+
+  load_batch batch;
+  batch.unpack (&packer);
 
   load_session *session = NULL;
   session_get_load_session (thread_p, session);
   assert (session != NULL);
-  error = session->load_batch (*thread_p, batch_str, batch_id);
 
-  db_private_free (thread_p, batch);
+  error_code = session->load_batch (*thread_p, batch);
 
-  or_pack_int (reply, error);
+  or_pack_int (reply, error_code);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
@@ -9860,7 +9856,7 @@ sloaddb_fetch_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 
   load_stats loaddb_stats = session->get_stats ();
 
-    /* *INDENT-OFF* */
+  /* *INDENT-OFF* */
   cubpacking::packer packer;
   /* *INDENT-ON* */
   size_t data_reply_size = loaddb_stats.get_packed_size (&packer);

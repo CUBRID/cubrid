@@ -10134,16 +10134,19 @@ loaddb_load_object_file (const char *file_name)
 }
 
 int
-loaddb_load_batch (std::string & batch, int batch_id)
+loaddb_load_batch (load_batch & batch)
 {
 #if defined(CS_MODE)
-  char *ptr;
   int req_error;
   int rc = NO_ERROR;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  int request_size = length_const_string (batch.c_str (), NULL) + OR_INT_SIZE;
+  /* *INDENT-OFF* */
+  cubpacking::packer packer;
+  /* *INDENT-ON* */
+
+  size_t request_size = batch.get_packed_size (&packer);
   char *request = (char *) malloc (request_size);
   if (request == NULL)
     {
@@ -10151,10 +10154,10 @@ loaddb_load_batch (std::string & batch, int batch_id)
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  ptr = pack_const_string (request, batch.c_str ());
-  or_pack_int (ptr, batch_id);
+  packer.init (request, request_size);
+  batch.pack (&packer);
 
-  req_error = net_client_request (NET_SERVER_LD_LOAD_BATCH, request, request_size, reply,
+  req_error = net_client_request (NET_SERVER_LD_LOAD_BATCH, request, (int) request_size, reply,
 				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
 
   free_and_init (request);

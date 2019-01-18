@@ -36,7 +36,35 @@ namespace cubload
 {
 
   using batch_id = int;
-  using batch_handler = std::function<int (std::string &, int)>;
+  using class_id = int;
+
+  const class_id NULL_CLASS_ID = 0;
+  const batch_id NULL_BATCH_ID = 0;
+  const batch_id FIRST_BATCH_ID = 1;
+
+  struct batch : public cubpacking::packable_object
+  {
+    class_id m_class_id;
+    batch_id m_batch_id;
+    bool m_handle_async;
+    std::string m_content;
+
+    batch ();
+    batch (class_id class_id, batch_id batch_id, std::string &content, bool handle_async);
+
+    batch (batch &&other) noexcept; // MoveConstructible
+    batch &operator= (batch &&other) noexcept; // MoveAssignable
+
+    batch (const batch &copy) = delete; // Not CopyConstructible
+    batch &operator= (const batch &copy) = delete; // Not CopyAssignable
+
+    int pack (cubpacking::packer *serializator) override;
+    int unpack (cubpacking::packer *serializator) override;
+    bool is_equal (const packable_object *other) override;
+    size_t get_packed_size (cubpacking::packer *serializator) override;
+  };
+
+  using batch_handler = std::function<int (batch &)>;
 
   /*
    * loaddb executables command line arguments
@@ -294,5 +322,6 @@ namespace cubload
 
 // alias declaration for legacy C files
 using load_stats = cubload::stats;
+using load_batch = cubload::batch;
 
 #endif /* _LOAD_COMMON_HPP_ */

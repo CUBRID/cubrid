@@ -62,7 +62,15 @@ namespace cubload
   error_handler::log_error_message (std::string &err_msg, bool fail)
   {
 #if defined (SERVER_MODE)
+    if (er_has_error ())
+      {
+	// if there is an error set via er_set then report it as well
+	err_msg.append (std::string (er_msg ()));
+	err_msg.append ("\n");
+      }
+
     m_session->on_error (err_msg);
+
     if (fail)
       {
 	m_session->fail ();

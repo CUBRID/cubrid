@@ -40,7 +40,7 @@ namespace cubload
   {
     public:
       server_loader (session &session, error_handler &error_handler);
-      ~server_loader () override;
+      ~server_loader () override = default;
 
       void check_class (const char *class_name, int class_id) override;
       int setup_class (const char *class_name) override;
@@ -51,22 +51,31 @@ namespace cubload
       void process_line (constant_type *cons) override;
       void finish_line () override;
 
+      void init (cubthread::entry *thread_ref, class_id class_id);
+
     private:
-      void process_constant (constant_type *cons, int attr_idx);
+      void process_constant (constant_type *cons, attribute &attr);
       void process_monetary_constant (constant_type *cons, tp_domain *domain, db_value *db_val);
 
-      void clear ();
+      void locate_class (const char *class_name, OID *class_oid);
+
+      void register_class (const char *class_name);
+      void register_class_attributes (string_type *attr_list);
+
+      void start_scancache_modify (heap_scancache *scancache);
 
       session &m_session;
       error_handler &m_error_handler;
 
-      OID m_class_oid;
+      cubthread::entry *m_thread_ref;
 
-      ATTR_ID *m_attr_ids;
       heap_cache_attrinfo m_attr_info;
 
       heap_scancache m_scancache;
       bool m_scancache_started;
+
+      class_id m_class_id;
+      class_entry *m_class_entry;
   };
 
 } // namespace cubload
