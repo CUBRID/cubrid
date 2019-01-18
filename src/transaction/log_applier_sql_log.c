@@ -31,6 +31,7 @@
 #include <unistd.h>
 #include "log_applier_sql_log.h"
 #include "system_parameter.h"
+#include "object_primitive.h"
 #include "object_template.h"
 #include "object_print.h"
 #include "error_manager.h"

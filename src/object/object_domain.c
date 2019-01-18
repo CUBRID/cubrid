@@ -985,7 +985,7 @@ domain_init (TP_DOMAIN * domain, DB_TYPE type_id)
 
   domain->next = NULL;
   domain->next_list = NULL;
-  domain->type = PR_TYPE_FROM_ID (type_id);
+  domain->type = pr_type_from_id (type_id);
   domain->precision = 0;
   domain->scale = 0;
   domain->class_mop = NULL;
@@ -3151,7 +3151,7 @@ tp_domain_resolve_default_w_coll (DB_TYPE type, int coll_id, TP_DOMAIN_COLL_ACTI
  *    dbuf(out): if not NULL, founded domain initialized on dbuf
  */
 TP_DOMAIN *
-tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
+tp_domain_resolve_value (const DB_VALUE * val, TP_DOMAIN * dbuf)
 {
   TP_DOMAIN *domain;
   DB_TYPE value_type;
@@ -3299,7 +3299,7 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 
 	  /*
 	   * Convert references to the "floating" precisions to actual
-	   * precisions.  This may not be necessary or desireable?
+	   * precisions. This may not be necessary or desirable?
 	   * Zero seems to pop up occasionally in DB_VALUE precisions, until
 	   * this is fixed, treat it as the floater for the variable width
 	   * types.
@@ -10794,7 +10794,7 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
 	{
 	  PR_TYPE *pr_type;
 
-	  pr_type = PR_TYPE_FROM_ID (vtype1);
+	  pr_type = pr_type_from_id (vtype1);
 	  assert (pr_type != NULL);
 
 	  if (pr_type)

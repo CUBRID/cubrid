@@ -322,7 +322,7 @@ qdata_copy_db_value (DB_VALUE * dest_p, DB_VALUE * src_p)
   (void) pr_clear_value (dest_p);
 
   src_type = DB_VALUE_DOMAIN_TYPE (src_p);
-  pr_type_p = PR_TYPE_FROM_ID (src_type);
+  pr_type_p = pr_type_from_id (src_type);
   if (pr_type_p == NULL)
     {
       return false;
@@ -371,7 +371,7 @@ qdata_copy_db_value_to_tuple_value (DB_VALUE * dbval_p, bool clear_compressed_st
       val_p = (char *) tuple_val_p + QFILE_TUPLE_VALUE_HEADER_SIZE;
 
       dbval_type = DB_VALUE_DOMAIN_TYPE (dbval_p);
-      pr_type = PR_TYPE_FROM_ID (dbval_type);
+      pr_type = pr_type_from_id (dbval_type);
       if (pr_type == NULL)
 	{
 	  return ER_FAILED;
@@ -6878,7 +6878,7 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	    }
 
 	  dbval_type = DB_VALUE_DOMAIN_TYPE (db_value_p);
-	  pr_type_p = PR_TYPE_FROM_ID (dbval_type);
+	  pr_type_p = pr_type_from_id (dbval_type);
 
 	  if (pr_type_p == NULL)
 	    {
@@ -7544,7 +7544,7 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 			      PR_TYPE *tmp_pr_type;
 			      DB_TYPE dbval_type = DB_VALUE_DOMAIN_TYPE (&dbval);
 
-			      tmp_pr_type = PR_TYPE_FROM_ID (dbval_type);
+			      tmp_pr_type = pr_type_from_id (dbval_type);
 			      if (tmp_pr_type == NULL)
 				{
 				  (void) pr_clear_value (&dbval);
@@ -7831,7 +7831,7 @@ qdata_get_tuple_value_size_from_dbval (DB_VALUE * dbval_p)
   else
     {
       dbval_type = DB_VALUE_DOMAIN_TYPE (dbval_p);
-      type_p = PR_TYPE_FROM_ID (dbval_type);
+      type_p = pr_type_from_id (dbval_type);
       if (type_p)
 	{
 	  if (type_p->data_lengthval == NULL)
@@ -8574,7 +8574,7 @@ qdata_convert_table_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype, REGU_VARIABL
 	{
 	  /* grab column i and add it to the col */
 	  type = TP_DOMAIN_TYPE (list_id_p->type_list.domp[i]);
-	  pr_type_p = PR_TYPE_FROM_ID (type);
+	  pr_type_p = pr_type_from_id (type);
 	  if (pr_type_p == NULL)
 	    {
 	      qfile_close_scan (thread_p, &scan_id);
@@ -10394,7 +10394,7 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, V
     {
       /* handle distincts by adding to the temp list file */
       dbval_type = DB_VALUE_DOMAIN_TYPE (&dbval);
-      pr_type_p = PR_TYPE_FROM_ID (dbval_type);
+      pr_type_p = pr_type_from_id (dbval_type);
 
       if (pr_type_p == NULL)
 	{
@@ -10667,7 +10667,7 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, V
 	  (void) pr_clear_value (func_p->value);
 	  (void) pr_clear_value (func_p->value2);
 	  dbval_type = DB_VALUE_DOMAIN_TYPE (func_p->value);
-	  pr_type_p = PR_TYPE_FROM_ID (dbval_type);
+	  pr_type_p = pr_type_from_id (dbval_type);
 	  if (pr_type_p == NULL)
 	    {
 	      error = ER_FAILED;
@@ -10909,7 +10909,7 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, V
       /* copy resultant operand value to analytic node */
       (void) pr_clear_value (func_p->value);
       dbval_type = DB_VALUE_DOMAIN_TYPE (func_p->value);
-      pr_type_p = PR_TYPE_FROM_ID (dbval_type);
+      pr_type_p = pr_type_from_id (dbval_type);
       if (pr_type_p == NULL)
 	{
 	  error = ER_FAILED;
@@ -11073,7 +11073,7 @@ qdata_finalize_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, b
 		      PR_TYPE *tmp_pr_type;
 		      DB_TYPE dbval_type = DB_VALUE_DOMAIN_TYPE (&dbval);
 
-		      tmp_pr_type = PR_TYPE_FROM_ID (dbval_type);
+		      tmp_pr_type = pr_type_from_id (dbval_type);
 		      if (tmp_pr_type == NULL)
 			{
 			  (void) pr_clear_value (&dbval);
@@ -12015,7 +12015,7 @@ qdata_calculate_aggregate_cume_dist_percent_rank (THREAD_ENTRY * thread_p, AGGRE
       else
 	{
 	  /* non-NULL values comparison */
-	  pr_type_p = PR_TYPE_FROM_ID (DB_VALUE_DOMAIN_TYPE (val_node));
+	  pr_type_p = pr_type_from_id (DB_VALUE_DOMAIN_TYPE (val_node));
 	  cmp = (*(pr_type_p->cmpval)) (val_node, info_p->const_array[i], 1, 0, NULL,
 					regu_var_node->value.domain->collation_id);
 

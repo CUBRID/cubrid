@@ -43,6 +43,7 @@
 #include "parser.h"
 #include "parser_message.h"
 #include "object_domain.h"
+#include "object_primitive.h"
 #include "schema_manager.h"
 #include "view_transform.h"
 #include "execute_statement.h"

@@ -35,6 +35,7 @@
 
 #include "dbi.h"
 #include "object_accessor.h"
+#include "object_primitive.h"
 #include "locator_cl.h"
 #include "virtual_object.h"
 #include "dbtype.h"

@@ -90,6 +90,7 @@ namespace cubxasl
       void clear_iterators (bool is_final_clear);
       void clear_tree (bool is_final_clear);
       void init_iterator ();
+      void init_ordinality ();
     };
 
     struct spec_node

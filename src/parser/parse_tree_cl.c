@@ -11370,7 +11370,11 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 
 	  sprintf (buf, " collate %s", lang_get_collation_name (PT_GET_COLLATION_MODIFIER (p)));
 
-	  if (p->info.expr.arg1->node_type == PT_VALUE)
+	  if (p->info.expr.arg1 == NULL)
+	    {
+	      /* Do nothing. It must be an error case. */
+	    }
+	  else if (p->info.expr.arg1->node_type == PT_VALUE)
 	    {
 	      PT_NODE *v = p->info.expr.arg1;
 	      int v_coll_id;
@@ -11408,7 +11412,8 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	      q = pt_append_nulstring (parser, r1, buf);
 	    }
 	}
-      else if (p->info.expr.cast_type->info.data_type.collation_flag != TP_DOMAIN_COLL_NORMAL)
+      else if (p->info.expr.cast_type != NULL
+	       && p->info.expr.cast_type->info.data_type.collation_flag != TP_DOMAIN_COLL_NORMAL)
 	{
 	  assert (PT_HAS_COLLATION (p->info.expr.cast_type->type_enum));
 	  assert (p->data_type == NULL || p->data_type->type_enum == p->info.expr.cast_type->type_enum);

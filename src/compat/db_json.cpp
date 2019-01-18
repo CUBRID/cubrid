@@ -59,6 +59,7 @@
 #include "dbtype.h"
 #include "memory_alloc.h"
 #include "memory_private_allocator.hpp"
+#include "object_primitive.h"
 #include "query_dump.h"
 #include "string_opfunc.h"
 #include "system_parameter.h"
@@ -852,7 +853,17 @@ int JSON_PATH_MAPPER::CallOnKeyIterate (JSON_VALUE &key)
   m_accumulated_paths.pop ();
   std::string path_item = m_accumulated_paths.top ();
   path_item += ".\"";
-  path_item += key.GetString ();
+
+  std::string object_key = key.GetString ();
+  for (auto it = object_key.begin (); it != object_key.end (); ++it)
+    {
+      // todo: take care of all chars that need escaping during simple object key -> object key conversion
+      if (*it == '"' || *it == '\\')
+	{
+	  it = object_key.insert (it, '\\') + 1;
+	}
+    }
+  path_item += object_key;
   path_item += "\"";
 
   m_accumulated_paths.push (path_item);
@@ -1336,7 +1347,7 @@ db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<
       array_result = db_json_path_contains_wildcard (transformed_paths[0].c_str ());
     }
 
-  std::vector<std::regex> regs;
+  std::vector<std::string> regs;
   error_code = db_json_paths_to_regex (transformed_paths, regs, true);
   if (error_code)
     {
@@ -1349,7 +1360,16 @@ db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<
   {
     for (std::size_t i = 0; i < regs.size (); ++i)
       {
-	if (std::regex_match (crt_path, regs[i]))
+	bool path_compatible;
+	int error_code = regex_matches (regs[i].c_str (), crt_path.c_str (), CUB_REG_EXTENDED, &path_compatible);
+	if (error_code)
+	  {
+	    ASSERT_ERROR ();
+	    stop = true;
+	    return error_code;
+	  }
+
+	if (path_compatible)
 	  {
 	    produced_array[i].push_back (&jv);
 	  }
@@ -1424,7 +1444,7 @@ db_json_contains_path (const JSON_DOC *document, const std::vector<std::string> 
 	}
     }
 
-  std::vector<std::regex> regs;
+  std::vector<std::string> regs;
   error_code = db_json_paths_to_regex (transformed_paths, regs);
   if (error_code != NO_ERROR)
     {
@@ -1442,7 +1462,15 @@ db_json_contains_path (const JSON_DOC *document, const std::vector<std::string> 
   {
     for (std::size_t i = 0; i < regs.size (); ++i)
       {
-	if (!found_set[i] && std::regex_match (accumulated_path, regs[i]))
+	bool path_compatible;
+	int error_code = regex_matches (regs[i].c_str (), accumulated_path.c_str (), CUB_REG_EXTENDED, &path_compatible);
+	if (error_code)
+	  {
+	    ASSERT_ERROR ();
+	    stop = true;
+	    return error_code;
+	  }
+	if (!found_set[i] && path_compatible)
 	  {
 	    found_set[i] = true;
 	    if (!find_all)
@@ -2041,20 +2069,23 @@ db_json_remove_func (JSON_DOC &doc, const char *raw_path)
  * transform path strings into regexes by escaping special characters '$', '[', '.', ']' and
  * replace [*], .*, ** with patterns that match accordingly
  *
- * paths (in): json path strings
- * regs (in/out): resulting regexes
+ * paths (in): json paths
+ * regs (in/out): resulting regex patterns
  * match_exactly (in) : whether to match whole string or to match any prefix
  *
  */
 int
-db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<std::regex> &regs, bool match_exactly)
+db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<std::string> &regs, bool match_exactly)
 {
-  for (auto &wild_card : paths)
+  regs.reserve (paths.size ());
+  for (auto &path : paths)
     {
       std::stringstream ss;
-      for (size_t i = 0; i < wild_card.length (); ++i)
+      // match start of string
+      ss << "^";
+      for (size_t i = 0; i < path.length (); ++i)
 	{
-	  switch (wild_card[i])
+	  switch (path[i])
 	    {
 	    case '$':
 	      ss << "\\$";
@@ -2063,57 +2094,60 @@ db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<std::
 	      ss << "\\[";
 	      break;
 	    case ']':
-	      ss << "\\]";
+	      ss << "]";
 	      break;
 	    case '.':
 	      ss << "\\.";
 	      break;
-	    // todo: gather all characters that need escaping in regex string to be together
+	    // todo: probably most of the special characters for POSIX regex language should be escaped
 	    case '^':
 	      ss << "\\^";
 	      break;
 	    case '|':
 	      ss << "\\|";
 	      break;
+	    case '\\':
+	      ss << "\\\\";
+	      break;
 	    case '*':
-	      if (i < wild_card.length () - 1 && wild_card[i + 1] == '*')
+	      if (i < path.length () - 1 && path[i + 1] == '*')
 		{
 		  // wild_card '**'. Match any string
-		  ss << "[([:alnum:]|\\.|\\[|\\]|\")]*";
+		  ss << ".*";
 		  ++i;
 		}
-	      else if (i > 0 && wild_card[i - 1] == '[')
+	      else if (i > 0 && path[i - 1] == '[')
 		{
 		  // wild_card '[*]'. Match numbers only
-		  ss << "[0-9]+";
+		  ss << "([0-9])+";
+		}
+	      else if (i > 0 && path[i - 1] == '.')
+		{
+		  // wild_card '.*'. Match any string between quotes (path must have been validated before)
+		  // match strings between quotes that do not contain unescaped quotes
+		  // todo: there are other characters that require same treatment as quotes;
+		  // they can be treated by applying the same pattern
+		  ss << "\"(([^\"\\])*|([\\]([\\][\\])*\")*)*\"";
 		}
 	      else
 		{
-		  // wild_card '.*'. Match alphanumerics only
-		  ss << "\"[[:alnum:]]*\"";
+		  // Not a wildcard '$."*"'
+		  ss << "\\*";
 		}
 	      break;
 	    default:
-	      ss << wild_card[i];
+	      ss << path[i];
 	      break;
 	    }
 	}
       if (!match_exactly)
 	{
-	  ss << "[^[:space:]]*";
+	  ss << "([^$])*";
 	}
+      // match end of string
+      ss << "$";
 
-      try
-	{
-	  regs.push_back (std::regex (ss.str ()));
-	}
-      catch (std::regex_error &e)
-	{
-	  // regex compilation exception
-	  (void) e;
-	  assert (false);
-	  return ER_FAILED;
-	}
+      regs.emplace_back (ss.str ());
     }
   return NO_ERROR;
 }
@@ -2131,7 +2165,7 @@ db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<std::
  */
 int
 db_json_search_func (JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALUE *esc_char, std::vector<std::string> &paths,
-		     const std::vector<std::regex> &regs, bool find_all)
+		     const std::vector<std::string> &regs, bool find_all)
 {
   std::unordered_set<std::string> paths_gathered;
   const map_func_type &f_search = [&regs, &paths, pattern, esc_char, find_all, &paths_gathered] (const JSON_VALUE &jv,
@@ -2161,7 +2195,16 @@ db_json_search_func (JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALUE *esc
 
     for (std::size_t i = 0; i < regs.size (); ++i)
       {
-	if (std::regex_match (crt_path, regs[i]) && paths_gathered.find (crt_path) == paths_gathered.end ())
+	bool path_compatible;
+	int error_code = regex_matches (regs[i].c_str (), crt_path.c_str (), CUB_REG_EXTENDED, &path_compatible);
+	if (error_code)
+	  {
+	    ASSERT_ERROR ();
+	    stop = true;
+	    return error_code;
+	  }
+
+	if (path_compatible && paths_gathered.find (crt_path) == paths_gathered.end ())
 	  {
 	    paths.push_back (crt_path);
 	    paths_gathered.insert (crt_path);

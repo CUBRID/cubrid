@@ -45,6 +45,7 @@
 #include "set_object.h"
 #include "intl_support.h"
 #include "virtual_object.h"
+#include "object_primitive.h"
 #include "object_template.h"
 #include "db_json.hpp"
 

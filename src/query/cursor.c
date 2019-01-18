@@ -371,7 +371,7 @@ cursor_copy_vobj_to_dbvalue (OR_BUF * buffer_p, DB_VALUE * value_p)
   DB_OBJECT *object_p;
   PR_TYPE *pr_type;
 
-  pr_type = PR_TYPE_FROM_ID (DB_TYPE_VOBJ);
+  pr_type = pr_type_from_id (DB_TYPE_VOBJ);
   if (pr_type == NULL)
     {
       return ER_FAILED;

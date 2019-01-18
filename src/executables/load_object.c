@@ -805,7 +805,7 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bo
       start = buf->ptr;
       for (i = 0; i < oldrep->fixed_count && rat != NULL; i++, rat = rat->next)
 	{
-	  type = PR_TYPE_FROM_ID (rat->typeid_);
+	  type = pr_type_from_id (rat->typeid_);
 	  if (type == NULL)
 	    {
 	      goto abort_on_error;
@@ -862,7 +862,7 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bo
       /* variable */
       for (i = 0; i < oldrep->variable_count && rat != NULL; i++, rat = rat->next)
 	{
-	  type = PR_TYPE_FROM_ID (rat->typeid_);
+	  type = pr_type_from_id (rat->typeid_);
 	  if (type == NULL)
 	    {
 	      goto abort_on_error;
