@@ -35,7 +35,7 @@ namespace cubload
 {
 
   // class_entry
-  class_entry::class_entry (std::string class_name, OID &class_oid, class_id class_id, int attr_count)
+  class_entry::class_entry (std::string &class_name, OID &class_oid, class_id class_id, int attr_count)
     : m_class_id (class_id)
     , m_class_oid (class_oid)
     , m_class_name (std::move (class_name))
@@ -64,7 +64,12 @@ namespace cubload
   attribute &
   class_entry::get_attribute (int index)
   {
-    assert (m_attr_count_checker == m_attr_count && index < m_attributes.size ());
+    // check that all attributes were registered
+    assert (m_attr_count_checker == m_attr_count);
+
+    // assert that index is within the range
+    assert (0 <= index && ((std::size_t) index) < m_attributes.size ());
+
     return m_attributes[index];
   }
 

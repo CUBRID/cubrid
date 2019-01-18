@@ -93,7 +93,7 @@ namespace cubload
   class class_entry
   {
     public:
-      class_entry (std::string class_name, OID &class_oid, class_id class_id, int attr_count);
+      class_entry (std::string &class_name, OID &class_oid, class_id class_id, int attr_count);
       ~class_entry () = default;
 
       class_entry (class_entry &&other) = delete;
