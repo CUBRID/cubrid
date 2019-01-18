@@ -748,30 +748,4 @@ extern int btree_online_index_check_unique_constraint (THREAD_ENTRY * thread_p, 
 extern int btree_get_class_oid_of_unique_btid (THREAD_ENTRY * thread_p, BTID * btid, OID * class_oid);
 extern bool btree_is_btid_online_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid);
 
-// *INDENT-OFF*
-class index_builder_loader_task: public cubthread::entry_task
-{
-  private:
-    int tran_index;
-    BTID btid;
-    DB_VALUE key;
-    OID class_oid, oid;
-    int unique_pk;
-    INT64 *error;             // Error code to be set by all the threads.
-    INT64 *tasks_executed;    // Incremented each time a task finishes execution. 
-
-  public:
-    index_builder_loader_task (BTID * btid, OID * class_oid, OID * oid, int unique_pk,
-                               INT64 *ib_error, INT64 *tasks_executed);
-
-    void set_key (DB_VALUE * key);
-    void set_tran_index (int tran_index);
-    
-    ~index_builder_loader_task ();
-
-    void execute(cubthread::entry & thread_ref);
-};
-
-// *INDENT-ON*
-
 #endif /* _BTREE_H_ */

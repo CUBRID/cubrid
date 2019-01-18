@@ -282,4 +282,41 @@ extern int btree_get_prefix_separator (const DB_VALUE * key1, const DB_VALUE * k
 
 extern int btree_get_asc_desc (THREAD_ENTRY * thread_p, BTID * btid, int col_idx, int *asc_desc);
 
+// *INDENT-OFF*
+class index_builder_loader_task: public cubthread::entry_task
+{
+  private:
+    int tran_index;
+    BTID btid;
+    DB_VALUE key;
+    OID class_oid, oid;
+    int unique_pk;
+    INT64 *error;             // Error code to be set by all the threads.
+    INT64 *tasks_executed;    // Incremented each time a task finishes execution. 
+
+  public:
+    index_builder_loader_task (BTID * btid, OID * class_oid, OID * oid, int unique_pk,
+                               INT64 *ib_error, INT64 *tasks_executed);
+
+    void set_key (DB_VALUE * key);
+    void set_tran_index (int tran_index);
+    
+    ~index_builder_loader_task ();
+
+    void execute(cubthread::entry & thread_ref);
+};
+
+class btree_index_builder_load_context
+{
+  INT64 *m_ib_error;
+  INT64 *m_tasks_running;
+  int m_tran_index;
+
+  btree_index_builder_load_context (int tran_index);
+  ~btree_index_builder_load_context ();
+};
+
+// *INDENT-ON*
+
+
 #endif /* _BTREE_LOAD_H_ */

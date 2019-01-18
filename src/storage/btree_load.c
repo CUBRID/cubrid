@@ -43,6 +43,7 @@
 #include "thread_entry.hpp"
 #include "xserver_interface.h"
 #include "xasl.h"
+#include "memory_private_allocator.hpp"
 
 typedef struct sort_args SORT_ARGS;
 struct sort_args
@@ -4919,4 +4920,86 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
   cubthread::get_manager ()->destroy_worker_pool (ib_workpool);
 
   return ret;
+}
+
+index_builder_loader_task::index_builder_loader_task (BTID * btid, OID * class_oid, OID * oid, int unique_pk,
+						      INT64 * ib_error, INT64 * tasks_executed)
+{
+  BTID_COPY (&this->btid, btid);
+  COPY_OID (&this->class_oid, class_oid);
+  COPY_OID (&this->oid, oid);
+  this->unique_pk = unique_pk;
+  this->error = ib_error;
+  this->tasks_executed = tasks_executed;
+}
+
+index_builder_loader_task::~index_builder_loader_task ()
+{
+  cubmem::private_allocator < void *>().switch_to_global_allocator_and_call < int (DB_VALUE *),
+    DB_VALUE * >(pr_clear_value, &key);
+}
+
+void
+index_builder_loader_task::set_key (DB_VALUE * key)
+{
+  this->key = *db_value_copy (key);
+}
+
+void
+index_builder_loader_task::set_tran_index (int tran_index)
+{
+  this->tran_index = tran_index;
+}
+
+void
+index_builder_loader_task::execute (cubthread::entry & thread_ref)
+{
+  int ret = NO_ERROR;
+  INT64 err;
+
+  /* Check for possible errors set by the other threads. */
+  err = ATOMIC_INC_64 (this->error, 0LL);
+  if (err != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  thread_ref.tran_index = this->tran_index;
+
+  ret = btree_online_index_dispatcher (&thread_ref, &this->btid, &this->key, &this->class_oid, &this->oid,
+				       this->unique_pk, BTREE_OP_ONLINE_INDEX_IB_INSERT, NULL);
+
+  if (ret != NO_ERROR)
+    {
+      err = ATOMIC_INC_64 (this->error, 0LL);
+      if (err != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+
+      /* Set the error so that other threads may stop execution. */
+      if (!ATOMIC_CAS_64 (this->error, err, (INT64) ret))
+	{
+	  /* Error was already set by someone else. We end execution. */
+	  goto cleanup;
+	}
+    }
+
+  /* Increment tasks completed. */
+  ATOMIC_INC_64 (this->tasks_executed, -1LL);
+
+cleanup:
+  return;
+}
+
+btree_index_builder_load_context::btree_index_builder_load_context (int tran_index)
+{
+  *m_ib_error = 0;
+  *m_tasks_running = 0;
+  m_tran_index = tran_index;
+}
+
+btree_index_builder_load_context::~btree_index_builder_load_context ()
+{
+
 }

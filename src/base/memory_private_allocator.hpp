@@ -105,6 +105,8 @@ namespace cubmem
       /* db_private_alloc accessors */
       cubthread::entry *get_thread_entry () const;
       HL_HEAPID get_heapid () const;
+      template <typename Func, typename ... Args>
+      inline void switch_to_global_allocator_and_call (Func && func, Args &&... args);
 
     private:
 
@@ -208,6 +210,20 @@ namespace cubmem
     m_thread_p = other.get_thread_entry ();
     m_heapid = other.get_heapid ();
     register_private_allocator (m_thread_p);
+  }
+
+  template<typename T>
+  template<typename Func, typename ...Args>
+  inline void private_allocator<T>::switch_to_global_allocator_and_call(Func && func, Args && ...args)
+  {
+    /* Switch to global context. */
+    THREAD_ENTRY *local_entry = thread_get_thread_entry_info ();
+    HL_HEAPID save_heap_id = local_entry->private_heap_id;
+
+    func (std::forward<Args> (args)...);
+
+    /* switch back to private*/
+    local_entry->private_heap_id = save_heap_id;
   }
 
   template <typename T>
