@@ -60,6 +60,7 @@
 #include "message_catalog.h"
 #include "network.h"
 #include "object_accessor.h"
+#include "object_primitive.h"
 #include "porting.h"
 #include "schema_manager.h"
 #include "set_object.h"

@@ -25,13 +25,9 @@
 
 #include "load_db_value_converter.hpp"
 #include "load_scanner.hpp"
-#include "load_session.hpp"
 #include "locator_sr.h"
-#include "oid.h"
-#include "thread_manager.hpp"
+#include "object_primitive.h"
 #include "xserver_interface.h"
-
-#include <map>
 
 namespace cubload
 {
