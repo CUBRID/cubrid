@@ -124,7 +124,7 @@ typedef rapidjson::GenericStringBuffer<JSON_ENCODING, JSON_PRIVATE_ALLOCATOR> JS
 typedef rapidjson::GenericMemberIterator<true, JSON_ENCODING, JSON_PRIVATE_MEMPOOL>::Iterator JSON_MEMBER_ITERATOR;
 typedef rapidjson::GenericArray<true, JSON_VALUE>::ConstValueIterator JSON_VALUE_ITERATOR;
 
-static const unsigned kPointerInvalidIndex = ~unsigned (0);
+static const rapidjson::SizeType kPointerInvalidIndex = rapidjson::kPointerInvalidIndex;
 
 class JSON_DOC: public rapidjson::GenericDocument <JSON_ENCODING, JSON_PRIVATE_MEMPOOL>
 {
@@ -184,6 +184,8 @@ class JSON_PATH : public rapidjson::GenericPointer <JSON_VALUE>
     {
       return GetTokens ();
     }
+
+    int resolve_json_parent (JSON_DOC &doc, JSON_VALUE *&resulting_json_parent) const;
 
     bool points_to_array_cell () const
     {
@@ -817,7 +819,6 @@ static int db_json_er_set_expected_other_type (const char *file_name, const int 
     const DB_JSON_TYPE &expected_type_optional = DB_JSON_NULL);
 static int db_json_array_shift_values (const JSON_DOC *value, JSON_DOC &doc, JSON_PATH &p);
 static int db_json_replace_autowrap_scalar (const JSON_VALUE *new_value, const JSON_PATH &path, JSON_DOC &doc);
-static int db_json_resolve_json_parent (JSON_DOC &doc, const JSON_PATH &p, JSON_VALUE *&resulting_json_parent);
 static int db_json_insert_helper (const JSON_DOC *value, JSON_DOC &doc, JSON_PATH &p, bool replace);
 static int db_json_contains_duplicate_keys (JSON_DOC &doc);
 
@@ -862,6 +863,50 @@ JSON_PATH::db_json_build_path_special_chars (const JSON_PATH_TYPE &json_path_typ
 	  special_chars.insert (std::make_pair (it->second, it->first));
 	}
     }
+}
+
+int
+JSON_PATH::resolve_json_parent (JSON_DOC &doc, JSON_VALUE *&resulting_json_parent) const
+{
+  if (GetTokenCount () == 0)
+    {
+      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, dump_json_path (), &doc);
+    }
+
+  const JSON_PATH pointer_parent (GetTokens (), GetTokenCount () - 1);
+
+  resulting_json_parent = pointer_parent.Get (doc);
+  if (resulting_json_parent == NULL)
+    {
+      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, pointer_parent.dump_json_path (), &doc);
+    }
+
+  // found type of parent
+  DB_JSON_TYPE parent_json_type = db_json_get_type_of_value (resulting_json_parent);
+
+  const TOKEN &last_token = *get_last_token ();
+  bool token_is_valid_index = last_token.index != kPointerInvalidIndex || (last_token.length == 1
+			      && last_token.name[0] == '-');
+
+  if ((parent_json_type == DB_JSON_ARRAY || parent_json_type != DB_JSON_OBJECT) && !token_is_valid_index)
+    {
+      return db_json_er_set_expected_other_type (ARG_FILE_LINE, dump_json_path (), parent_json_type,
+	     DB_JSON_OBJECT);
+    }
+  if (parent_json_type == DB_JSON_OBJECT && token_is_valid_index)
+    {
+      return db_json_er_set_expected_other_type (ARG_FILE_LINE, dump_json_path (), parent_json_type,
+	     DB_JSON_ARRAY);
+    }
+
+  if (parent_json_type != DB_JSON_ARRAY && token_is_valid_index && last_token.index != 0)
+    {
+      // we don't wrap the parent if last token is "0":
+      // JSON_INSERT ('{"a": 1}', '$.a[0]', 10) = {"a": 1}   and   JSON_SET ('{"a": 1}', '$.a[0]', 10) = {"a": 10}
+      db_json_value_wrap_as_array (*resulting_json_parent, doc.GetAllocator ());
+    }
+
+  return NO_ERROR;
 }
 
 std::string
@@ -1986,51 +2031,12 @@ db_json_copy_doc (JSON_DOC &dest, const JSON_DOC *src)
 }
 
 static int
-db_json_resolve_json_parent (JSON_DOC &doc, const JSON_PATH &p, JSON_VALUE *&resulting_json_parent)
-{
-  const JSON_PATH pointer_parent (p.GetTokens (), p.GetTokenCount () - 1);
-
-  resulting_json_parent = pointer_parent.Get (doc);
-  if (resulting_json_parent == NULL)
-    {
-      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, pointer_parent.dump_json_path (), &doc);
-    }
-
-  // found type of parent
-  DB_JSON_TYPE parent_json_type = db_json_get_type_of_value (resulting_json_parent);
-
-  const TOKEN &last_token = *p.get_last_token ();
-  bool token_is_valid_index = last_token.index != kPointerInvalidIndex || (last_token.length == 1
-			      && last_token.name[0] == '-');
-
-  if ((parent_json_type == DB_JSON_ARRAY || parent_json_type != DB_JSON_OBJECT) && !token_is_valid_index)
-    {
-      return db_json_er_set_expected_other_type (ARG_FILE_LINE, p.dump_json_path (), parent_json_type,
-	     DB_JSON_OBJECT);
-    }
-  if (parent_json_type == DB_JSON_OBJECT && token_is_valid_index)
-    {
-      return db_json_er_set_expected_other_type (ARG_FILE_LINE, p.dump_json_path (), parent_json_type,
-	     DB_JSON_ARRAY);
-    }
-
-  if (parent_json_type != DB_JSON_ARRAY && token_is_valid_index && last_token.index != 0)
-    {
-      // we don't wrap the parent if last token is "0":
-      // JSON_INSERT ('{"a": 1}', '$.a[0]', 10) = {"a": 1}   and   JSON_SET ('{"a": 1}', '$.a[0]', 10) = {"a": 10}
-      db_json_value_wrap_as_array (*resulting_json_parent, doc.GetAllocator ());
-    }
-
-  return NO_ERROR;
-}
-
-static int
 db_json_insert_helper (const JSON_DOC *value, JSON_DOC &doc, JSON_PATH &p, bool replace)
 {
   int error_code = NO_ERROR;
   JSON_VALUE *resulting_json_parent = NULL;
 
-  error_code = db_json_resolve_json_parent (doc, p, resulting_json_parent);
+  error_code = p.resolve_json_parent (doc, resulting_json_parent);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -4101,13 +4107,21 @@ db_json_path_is_token_valid_array_index (const std::string &str, bool allow_wild
       return true;
     }
 
-  ++last_non_space;
-  for (auto it = str.cbegin () + start; it < str.cbegin () + last_non_space; ++it)
+  // Remaining invalid cases are: 1. Non-digits are present
+  //                              2. Index overflows Rapidjson's index representation type
+  rapidjson::SizeType n = 0;
+  for (auto it = str.cbegin () + start; it < str.cbegin () + last_non_space + 1; ++it)
     {
       if (!std::isdigit (static_cast<unsigned char> (*it)))
 	{
 	  return false;
 	}
+      rapidjson::SizeType m = n * 10 + static_cast<unsigned> (*it - '0');
+      if (m < n)
+	{
+	  return false;
+	}
+      n = m;
     }
 
   // this is a valid array index
