@@ -39,6 +39,7 @@
 #include "parser.h"
 #include "error_code.h"
 #include "error_manager.h"
+#include "object_primitive.h"
 #include "object_representation.h"
 #include "optimizer.h"
 #include "query_graph.h"

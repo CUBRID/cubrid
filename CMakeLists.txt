@@ -257,6 +257,10 @@ if(UNIX)
       message(SEND_ERROR "Cannot compile with gcc version ${CMAKE_CXX_COMPILER_VERSION}. Require at least 4.4.7.")
     endif(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.4.7)
 
+    if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.9.0)
+      add_definitions(-D_USE_LIBREGEX_)
+    endif(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.9.0)
+
     set(CMAKE_C_FLAGS_DEBUG "-ggdb -fno-inline -fno-omit-frame-pointer")
     set(CMAKE_CXX_FLAGS_DEBUG "-Wall -ggdb -fno-inline -fno-omit-frame-pointer -std=c++0x")
     set(CMAKE_C_FLAGS_RELEASE "-ggdb -O2 -DNDEBUG -finline-functions -fno-omit-frame-pointer -std=c++0x")

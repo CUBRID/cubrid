@@ -30,5 +30,4 @@
 #include "language_support.h"
 #include "intl_support.h"
 #include "memory_alloc.h"
-#include "object_primitive.h"
 #include "dbtype_function.i"

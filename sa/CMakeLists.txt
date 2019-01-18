@@ -62,6 +62,8 @@ set(BASE_SOURCES
   ${BASE_DIR}/porting.c
   ${BASE_DIR}/area_alloc.c
   ${BASE_DIR}/fixed_alloc.c
+  ${BASE_DIR}/mem_block.cpp
+  ${BASE_DIR}/memory_private_allocator.cpp
   ${BASE_DIR}/memory_alloc.c
   ${BASE_DIR}/databases_file.c
   ${BASE_DIR}/encryption.c
@@ -113,7 +115,10 @@ set(BASE_HEADERS
   ${BASE_DIR}/error_code.h
   ${BASE_DIR}/error_context.hpp
   ${BASE_DIR}/error_manager.h
+  ${BASE_DIR}/extensible_array.hpp
   ${BASE_DIR}/fileline_location.hpp
+  ${BASE_DIR}/mem_block.hpp
+  ${BASE_DIR}/memory_private_allocator.cpp
   ${BASE_DIR}/packer.hpp
   ${BASE_DIR}/perf.hpp
   ${BASE_DIR}/perf_def.hpp
@@ -156,6 +161,7 @@ set(PARSER_SOURCES
   ${PARSER_DIR}/parse_tree.c
   ${PARSER_DIR}/parse_tree_cl.c
   ${PARSER_DIR}/parse_type.cpp
+  ${PARSER_DIR}/parser_allocator.cpp
   ${PARSER_DIR}/parser_support.c
   ${PARSER_DIR}/query_result.c
   ${PARSER_DIR}/scanner_support.c
@@ -168,6 +174,7 @@ set(PARSER_SOURCES
 set(PARSER_HEADERS
   ${PARSER_DIR}/func_type.hpp
   ${PARSER_DIR}/parse_type.hpp
+  ${PARSER_DIR}/parser_allocator.hpp
   )
 
 set(OPTIMIZER_SOURCES
@@ -313,28 +320,32 @@ set(TRANSACTION_SOURCES
 set(STORAGE_SOURCES
   ${STORAGE_DIR}/btree.c
   ${STORAGE_DIR}/btree_load.c
-  ${STORAGE_DIR}/system_catalog.c
   ${STORAGE_DIR}/catalog_class.c
   ${STORAGE_DIR}/compactdb_sr.c
+  ${STORAGE_DIR}/double_write_buffer.c
   ${STORAGE_DIR}/disk_manager.c
-  ${STORAGE_DIR}/storage_common.c
+  ${STORAGE_DIR}/es.c
+  ${STORAGE_DIR}/es_common.c
+  ${STORAGE_DIR}/es_owfs.c
+  ${STORAGE_DIR}/es_posix.c
   ${STORAGE_DIR}/extendible_hash.c
+  ${STORAGE_DIR}/external_sort.c
+  ${STORAGE_DIR}/file_io.c
   ${STORAGE_DIR}/file_manager.c
   ${STORAGE_DIR}/heap_file.c
-  ${STORAGE_DIR}/file_io.c
   ${STORAGE_DIR}/oid.c
   ${STORAGE_DIR}/overflow_file.c
   ${STORAGE_DIR}/page_buffer.c
-  ${STORAGE_DIR}/double_write_buffer.c
+  ${STORAGE_DIR}/record_descriptor.cpp
+  ${STORAGE_DIR}/slotted_page.c
   ${STORAGE_DIR}/statistics_cl.c
   ${STORAGE_DIR}/statistics_sr.c
-  ${STORAGE_DIR}/slotted_page.c
-  ${STORAGE_DIR}/external_sort.c
-  ${STORAGE_DIR}/es_common.c
-  ${STORAGE_DIR}/es.c
-  ${STORAGE_DIR}/es_posix.c
-  ${STORAGE_DIR}/es_owfs.c
+  ${STORAGE_DIR}/storage_common.c
+  ${STORAGE_DIR}/system_catalog.c
   )
+set(STORAGE_HEADERS
+  ${STORAGE_DIR}/record_descriptor.hpp
+)
 
 set(SESSION_SOURCES
   ${SESSION_DIR}/session.c
@@ -470,6 +481,7 @@ add_library(cubridsa SHARED
   ${JSP_SOURCES}
   ${THREAD_SOURCES}
   ${TRANSACTION_SOURCES}
+  ${STORAGE_HEADERS}
   ${STORAGE_SOURCES}
   ${ES_SOURCES}
   ${SESSION_SOURCES}

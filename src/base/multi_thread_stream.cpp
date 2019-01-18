@@ -110,7 +110,7 @@ namespace cubstream
     char *ptr;
     size_t actual_read_bytes = 0;
     char *local_buffer = NULL;
-    mem::buffer_latch_read_id read_latch_page_idx;
+    cubmem::buffer_latch_read_id read_latch_page_idx;
     int read_bytes;
 
     ptr = get_data_from_pos (first_pos, byte_count, actual_read_bytes, read_latch_page_idx);
@@ -188,7 +188,7 @@ namespace cubstream
     char *ptr;
     size_t actual_read_bytes = 0;
     char *local_buffer = NULL;
-    mem::buffer_latch_read_id read_latch_page_idx;
+    cubmem::buffer_latch_read_id read_latch_page_idx;
     stream_position to_read_pos;
     stream_position trail_pos;
     size_t payload_size;
@@ -273,7 +273,7 @@ namespace cubstream
     int err = NO_ERROR;
     char *ptr;
     size_t contiguous_bytes_in_buffer = 0;
-    mem::buffer_latch_read_id read_latch_page_idx;
+    cubmem::buffer_latch_read_id read_latch_page_idx;
     int read_bytes;
 
     ptr = get_data_from_pos (first_pos, byte_count, contiguous_bytes_in_buffer, read_latch_page_idx);
@@ -483,7 +483,7 @@ namespace cubstream
    *  7. release mutex
    */
   char *multi_thread_stream::get_data_from_pos (const stream_position &req_start_pos, const size_t amount,
-      size_t &actual_read_bytes, mem::buffer_latch_read_id &read_latch_page_idx)
+      size_t &actual_read_bytes, cubmem::buffer_latch_read_id &read_latch_page_idx)
   {
     int err = NO_ERROR;
     char *ptr = NULL;
@@ -563,7 +563,7 @@ namespace cubstream
     return ptr;
   }
 
-  int multi_thread_stream::unlatch_read_data (const mem::buffer_latch_read_id &read_latch_page_idx)
+  int multi_thread_stream::unlatch_read_data (const cubmem::buffer_latch_read_id &read_latch_page_idx)
   {
     std::unique_lock<std::mutex> ulock (m_buffer_mutex);
     m_bip_buffer.end_read (read_latch_page_idx);

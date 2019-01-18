@@ -2745,7 +2745,7 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid, 
 
 	      disk_length = attrepr->default_value.val_length;
 	      copy = (pr_is_set_type (attrepr->type)) ? true : false;
-	      pr_type = PR_TYPE_FROM_ID (attrepr->type);
+	      pr_type = pr_type_from_id (attrepr->type);
 	      if (pr_type)
 		{
 		  (*(pr_type->data_readval)) (&buf, &def_dbvalue, attrepr->domain, disk_length, copy, NULL, 0);
@@ -10153,7 +10153,7 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
 	   * semantics for length. A negative length value for strings means "don't copy the string, just use the
 	   * pointer". For sets, don't translate the set into memory representation at this time.  It will only be
 	   * translated when needed. */
-	  pr_type = PR_TYPE_FROM_ID (attrepr->type);
+	  pr_type = pr_type_from_id (attrepr->type);
 	  if (pr_type)
 	    {
 	      (*(pr_type->data_readval)) (&buf, &value->dbvalue, attrepr->domain, disk_length, false, NULL, 0);
@@ -11170,7 +11170,7 @@ heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HE
       goto exit_on_error;
     }
 
-  pr_type = PR_TYPE_FROM_ID (value->last_attrepr->type);
+  pr_type = pr_type_from_id (value->last_attrepr->type);
   if (pr_type == NULL)
     {
       goto exit_on_error;

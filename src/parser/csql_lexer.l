@@ -438,13 +438,14 @@ int yybuffer_pos;
 										csql_yylval.cptr = pt_makename(yytext);
 										return JOB; }
 [jJ][sS][oO][nN]							{ begin_token(yytext);  return JSON; }
-[jJ][sS][oO][nN][_][aA][rR][rR][aA][yY]					{ begin_token(yytext);
-                                                                                // JSON_ARRAY conflicts with jansson.h
-                                                                                return JSON_ARRAY_LEX; }
-[jJ][sS][oO][nN][_][aA][rR][rR][aA][yY][_][aA][pP][pP][eE][nN][dD]	{ begin_token(yytext);
+[jJ][sS][oO][nN][_][aA][rR][rR][aA][yY]	                                { begin_token(yytext);
+										// JSON_ARRAY conflicts with jansson.h
+										csql_yylval.cptr = pt_makename(yytext);
+										return JSON_ARRAY_LEX; }
+[jJ][sS][oO][nN][_][aA][rR][rR][aA][yY][_][aA][pP][pP][eE][nN][dD]      { begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return JSON_ARRAY_APPEND; }
-[jJ][sS][oO][nN][_][aA][rR][rR][aA][yY][aA][gG][gG]			{ begin_token(yytext);
+[jJ][sS][oO][nN][_][aA][rR][rR][aA][yY][aA][gG][gG]                     { begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return JSON_ARRAYAGG; }
 [jJ][sS][oO][nN][_][aA][rR][rR][aA][yY][_][iI][nN][sS][eE][rR][tT]      { begin_token(yytext);

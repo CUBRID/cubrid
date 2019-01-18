@@ -35,6 +35,7 @@
 #include "jansson.h"
 
 #include "parser.h"
+#include "object_primitive.h"
 #include "optimizer.h"
 #include "query_planner.h"
 #include "query_graph.h"

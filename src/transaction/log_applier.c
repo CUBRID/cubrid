@@ -41,6 +41,7 @@
 #include "message_catalog.h"
 #include "log_compress.h"
 #include "parser.h"
+#include "object_primitive.h"
 #include "object_print.h"
 #include "db.h"
 #include "object_accessor.h"

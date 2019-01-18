@@ -26,6 +26,7 @@
 #include "load_db_value_converter.hpp"
 #include "load_scanner.hpp"
 #include "locator_sr.h"
+#include "object_primitive.h"
 #include "xserver_interface.h"
 
 namespace cubload

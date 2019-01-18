@@ -8431,7 +8431,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 
       new_isnull = db_value_is_null (new_key);
       old_isnull = db_value_is_null (old_key);
-      pr_type = PR_TYPE_FROM_ID (dbval_type);
+      pr_type = pr_type_from_id (dbval_type);
       if (pr_type == NULL)
 	{
 	  error_code = ER_FAILED;
@@ -12448,8 +12448,8 @@ locator_prefetch_index_page_internal (THREAD_ENTRY * thread_p, BTID * btid, OID 
       goto free_and_return;
     }
 
-  PR_SHARE_VALUE (key, &key_val_range.key1);
-  PR_SHARE_VALUE (key, &key_val_range.key2);
+  pr_share_value (key, &key_val_range.key1);
+  pr_share_value (key, &key_val_range.key2);
   key_val_range.range = GE_LE;
   key_val_range.num_index_term = 0;
 

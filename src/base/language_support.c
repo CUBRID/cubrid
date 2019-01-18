@@ -37,6 +37,7 @@
 #include "chartype.h"
 #include "environment_variable.h"
 #include "memory_hash.h"
+#include "object_primitive.h"
 #include "util_func.h"
 #if !defined(WINDOWS)
 #include <dlfcn.h>

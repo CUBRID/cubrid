@@ -84,7 +84,7 @@
 #include "show_meta.h"
 #include "tz_support.h"
 #include "dbtype.h"
-
+#include "object_primitive.h"
 
 #if defined(CS_MODE)
 #include "network.h"
@@ -1590,6 +1590,14 @@ boot_client_all_finalize (bool is_er_final)
       if (boot_Server_credential.host_name)
 	{
 	  db_private_free_and_init (NULL, boot_Server_credential.host_name);
+	}
+      if (boot_Server_credential.lob_path)
+	{
+	  db_private_free_and_init (NULL, boot_Server_credential.lob_path);
+	}
+      if (boot_Server_credential.db_lang)
+	{
+	  db_private_free_and_init (NULL, boot_Server_credential.db_lang);
 	}
 
       showstmt_metadata_final ();

@@ -32,19 +32,22 @@
 #include <string.h>
 #include <assert.h>
 
-#include "mem_block.hpp"
 #include "object_primitive.h"
-#include "string_buffer.hpp"
 
-#include "system_parameter.h"
-#include "set_object.h"
-#include "elo.h"
-#include "object_print.h"
-#include "string_opfunc.h"
-#include "tz_support.h"
-#include "file_io.h"
 #include "db_json.hpp"
-#include "db_private_allocator.hpp"
+#include "elo.h"
+#include "error_manager.h"
+#include "file_io.h"
+#include "mem_block.hpp"
+#include "object_domain.h"
+#include "object_print.h"
+#include "object_representation.h"
+#include "set_object.h"
+#include "string_buffer.hpp"
+#include "string_opfunc.h"
+#include "system_parameter.h"
+#include "tz_support.h"
+
 #include <utility>
 
 #if !defined (SERVER_MODE)
@@ -55,6 +58,7 @@
 #endif /* !defined (SERVER_MODE) */
 
 #include "dbtype.h"
+#include "memory_private_allocator.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -807,7 +811,6 @@ static DB_VALUE_COMPARE_RESULT mr_data_cmpdisk_numeric (void *mem1, void *mem2, 
 							int total_order, int *start_colp);
 static DB_VALUE_COMPARE_RESULT mr_cmpval_numeric (DB_VALUE * value1, DB_VALUE * value2, int do_coercion,
 						  int total_order, int *start_colp, int collation);
-static void pr_init_ordered_mem_sizes (void);
 static void mr_initmem_resultset (void *mem, TP_DOMAIN * domain);
 static int mr_setmem_resultset (void *mem, TP_DOMAIN * domain, DB_VALUE * value);
 static int mr_getmem_resultset (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy);
@@ -877,10 +880,6 @@ static DB_VALUE_COMPARE_RESULT mr_cmpval_json (DB_VALUE * value1, DB_VALUE * val
 static AREA *Value_area = NULL;
 
 int pr_Inhibit_oid_promotion = PR_INHIBIT_OID_PROMOTION_DEFAULT;
-/* The sizes of the primitive types in descending order */
-int pr_ordered_mem_sizes[PR_TYPE_TOTAL];
-/* The number of items in pr_ordered_mem_sizes */
-int pr_ordered_mem_size_total = 0;
 
 int pr_Enable_string_compression = true;
 PR_TYPE tp_Null = {
@@ -1843,8 +1842,6 @@ pr_area_init (void)
       return er_errid ();
     }
 
-  pr_init_ordered_mem_sizes ();
-
   return NO_ERROR;
 }
 
@@ -2175,7 +2172,7 @@ pr_clone_value (const DB_VALUE * src, DB_VALUE * dest)
 	    }
 	  else if (src != dest)
 	    {
-	      type = PR_TYPE_FROM_ID (src_dbtype);
+	      type = pr_type_from_id (src_dbtype);
 	      if (type != NULL)
 		{
 		  /*
@@ -2228,79 +2225,6 @@ pr_copy_value (DB_VALUE * value)
     }
   return new_;
 }
-
-#if defined(ENABLE_UNUSED_FUNCTION)
-/*
- * pr_share_value - This is used to copy the contents of one value
- * container to another WITHOUT introducing a new copy of any indirect
- * data (like strings or sets).
- *    return: new value
- *    src(in): source value
- *    dest(out): destination value
- * Note:
- *    However, everything is set up properly so that the dst value
- *    can follow the normal db_value_clear protocol.
- *
- *    WARNING: src will be valid only as long as dst is.  That is, after dst
- *    gets cleared, src will have dangling pointers unless it has also been
- *    cleared.  Use with care.
- */
-int
-pr_share_value (DB_VALUE * src, DB_VALUE * dst)
-{
-  if (src && dst && src != dst)
-    {
-      *dst = *src;
-      dst->need_clear = false;
-      if (pr_is_set_type (DB_VALUE_DOMAIN_TYPE (src)) && !DB_IS_NULL (src))
-	{
-	  /*
-	   * This bites... isn't there a function for adding a
-	   * reference to a set?
-	   */
-	  src->data.set->ref_count += 1;
-	}
-    }
-  return NO_ERROR;
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
-
-#if defined(ENABLE_UNUSED_FUNCTION)
-/*
- * pr_copy_string - copy string
- *    return: copied string
- *    str(in): string to copy
- */
-char *
-pr_copy_string (const char *str)
-{
-  char *copy;
-
-  copy = NULL;
-  if (str != NULL)
-    {
-      copy = (char *) db_private_alloc (NULL, strlen (str) + 1);
-      if (copy != NULL)
-	strcpy (copy, str);
-    }
-
-  return copy;
-}
-
- /*
-  * pr_free_string - free copied string
-  *
-  * str(in): copied string
-  */
-void
-pr_free_string (char *str)
-{
-  if (str != NULL)
-    {
-      db_private_free (NULL, str);
-    }
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * TYPE NULL
@@ -5703,27 +5627,7 @@ mr_cmpval_object (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
 
 #if !defined (SERVER_MODE)
 
-/*
- * pr_write_mop - write an OID to a disk representation buffer given a MOP
- * instead of a WS_MEMOID.
- *    return:
- *    buf(): transformer buffer
- *    mop(): mop to transform
- * Note:
- *    mr_write_object can't be used because it takes a WS_MEMOID as is the
- *    case for object references in instances.
- *    This must stay in sync with mr_write_object above !
- */
-void
-pr_write_mop (OR_BUF * buf, MOP mop)
-{
-  DB_VALUE value;
 
-  mr_initval_object (&value, 0, 0);
-  db_make_object (&value, mop);
-  mr_data_writeval_object (buf, &value);
-  mr_setval_object (&value, NULL, false);
-}
 #endif /* !SERVER_MODE */
 
 static void
@@ -8811,40 +8715,6 @@ mr_cmpval_numeric (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int to
  * PRIMITIVE TYPE SUPPORT ROUTINES
  */
 
-
-
-/*
- * pr_init_ordered_mem_sizes - orders the sizes of primitive types in
- * descending order.
- *    return: void
- */
-static void
-pr_init_ordered_mem_sizes (void)
-{
-  int t, last_size, cur_size;
-
-  pr_ordered_mem_size_total = 0;
-
-  last_size = 500;
-  while (1)
-    {
-      cur_size = -1;
-      for (t = 0; t < PR_TYPE_TOTAL; ++t)
-	{
-	  if (tp_Type_id_map[t]->size > cur_size && tp_Type_id_map[t]->size < last_size)
-	    {
-	      cur_size = tp_Type_id_map[t]->size;
-	    }
-	}
-      pr_ordered_mem_sizes[pr_ordered_mem_size_total++] = last_size = cur_size;
-      if (cur_size <= 0)
-	{
-	  break;
-	}
-    }
-}
-
-
 /*
  * pr_type_from_id - maps a type identifier such as DB_TYPE_INTEGER into its
  * corresponding primitive type descriptor structures.
@@ -8878,7 +8748,7 @@ pr_type_name (DB_TYPE id)
   const char *name = NULL;
   PR_TYPE *type;
 
-  type = PR_TYPE_FROM_ID (id);
+  type = pr_type_from_id (id);
 
   if (type != NULL)
     {
@@ -8952,7 +8822,7 @@ pr_is_variable_type (DB_TYPE id)
   PR_TYPE *type;
   int is_variable = 0;
 
-  type = PR_TYPE_FROM_ID (id);
+  type = pr_type_from_id (id);
   if (type != NULL)
     {
       is_variable = type->variable_p;
@@ -9152,7 +9022,7 @@ pr_value_mem_size (DB_VALUE * value)
 
   size = 0;
   dbval_type = DB_VALUE_DOMAIN_TYPE (value);
-  type = PR_TYPE_FROM_ID (dbval_type);
+  type = pr_type_from_id (dbval_type);
   if (type != NULL)
     {
       if (type->data_lengthval != NULL)
@@ -9750,7 +9620,7 @@ pr_midxkey_init_boundbits (char *bufptr, int n_atts)
  */
 
 int
-pr_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals, TP_DOMAIN * dbvals_domain_list)
+pr_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals, struct tp_domain *dbvals_domain_list)
 {
   int i;
   TP_DOMAIN *dom;
@@ -9865,7 +9735,7 @@ pr_data_writeval_disk_size (DB_VALUE * value)
   DB_TYPE dbval_type;
 
   dbval_type = DB_VALUE_DOMAIN_TYPE (value);
-  type = PR_TYPE_FROM_ID (dbval_type);
+  type = pr_type_from_id (dbval_type);
 
   assert (type != NULL);
 
@@ -9898,7 +9768,7 @@ pr_index_writeval_disk_size (DB_VALUE * value)
   DB_TYPE dbval_type;
 
   dbval_type = DB_VALUE_DOMAIN_TYPE (value);
-  type = PR_TYPE_FROM_ID (dbval_type);
+  type = pr_type_from_id (dbval_type);
 
   assert (type != NULL);
 
@@ -9920,13 +9790,13 @@ pr_index_writeval_disk_size (DB_VALUE * value)
 }
 
 void
-pr_data_writeval (OR_BUF * buf, DB_VALUE * value)
+pr_data_writeval (struct or_buf *buf, DB_VALUE * value)
 {
   PR_TYPE *type;
   DB_TYPE dbval_type;
 
   dbval_type = DB_VALUE_DOMAIN_TYPE (value);
-  type = PR_TYPE_FROM_ID (dbval_type);
+  type = pr_type_from_id (dbval_type);
   if (type == NULL)
     {
       type = tp_Type_null;	/* handle strange arguments with NULL */
@@ -9937,7 +9807,6 @@ pr_data_writeval (OR_BUF * buf, DB_VALUE * value)
 /*
  * MISCELLANEOUS TYPE-RELATED HELPER FUNCTIONS
  */
-
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 /*
@@ -9955,37 +9824,25 @@ pr_data_writeval (OR_BUF * buf, DB_VALUE * value)
 char *
 pr_valstring (THREAD_ENTRY * threade, DB_VALUE * val)
 {
-/* *INDENT-OFF* */
-  string_buffer sb {
-    [&threade] (mem::block &block, size_t len)
-    {
-      block.ptr = (char *) db_private_realloc (threade, block.ptr, block.dim + len);
-      block.dim += len;
-    },
-    [&threade] (mem::block &block)
-    {
-      db_private_free (threade, block.ptr);
-      block = {};
-    }
-  };
-/* *INDENT-ON* */
+  const size_t BUFFER_SIZE = 1024;
+  string_buffer sb (cubmem::PRIVATE_BLOCK_ALLOCATOR, BUFFER_SIZE);
 
   if (val == NULL)
     {
       /* space with terminating NULL */
       sb ("(null)");
-      return sb.move_ptr ();
+      return sb.release_ptr ();
     }
 
   if (DB_IS_NULL (val))
     {
       /* space with terminating NULL */
       sb ("NULL");
-      return sb.move_ptr ();
+      return sb.release_ptr ();
     }
 
   DB_TYPE dbval_type = DB_VALUE_DOMAIN_TYPE (val);
-  PR_TYPE *pr_type = PR_TYPE_FROM_ID (dbval_type);
+  PR_TYPE *pr_type = pr_type_from_id (dbval_type);
 
   if (pr_type == NULL)
     {
@@ -9993,7 +9850,7 @@ pr_valstring (THREAD_ENTRY * threade, DB_VALUE * val)
     }
 
   (*(pr_type->sptrfunc)) (val, sb);
-  return sb.move_ptr ();	//caller should use db_private_free() to deallocate it
+  return sb.release_ptr ();	//caller should use db_private_free() to deallocate it
 }
 #endif //defined (SERVER_MODE) || defined (SA_MODE)
 
@@ -10005,7 +9862,7 @@ pr_valstring (THREAD_ENTRY * threade, DB_VALUE * val)
  *    domain(in): enumeration domain against which the value is checked.
  */
 int
-pr_complete_enum_value (DB_VALUE * value, TP_DOMAIN * domain)
+pr_complete_enum_value (DB_VALUE * value, struct tp_domain *domain)
 {
   unsigned short short_val;
   char *str_val;
@@ -15989,7 +15846,7 @@ mr_cmpval_enumeration (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, in
  * decompressed_size(in)			  : The uncompressed data size.
  */
 int
-pr_get_compressed_data_from_buffer (OR_BUF * buf, char *data, int compressed_size, int decompressed_size)
+pr_get_compressed_data_from_buffer (struct or_buf *buf, char *data, int compressed_size, int decompressed_size)
 {
   int rc = NO_ERROR;
 
@@ -16124,7 +15981,7 @@ cleanup:
  *	to the write of the DB_VALUE in the buffer.
  */
 int
-pr_get_size_and_write_string_to_buffer (OR_BUF * buf, char *val_p, DB_VALUE * value, int *val_size, int align)
+pr_get_size_and_write_string_to_buffer (struct or_buf *buf, char *val_p, DB_VALUE * value, int *val_size, int align)
 {
   char *compressed_string = NULL, *string = NULL, *str = NULL;
   int rc = NO_ERROR, str_length = 0, length = 0;

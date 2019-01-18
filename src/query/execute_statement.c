@@ -67,6 +67,7 @@
 #include "optimizer.h"
 #include "memory_alloc.h"
 #include "object_domain.h"
+#include "object_primitive.h"
 #include "trigger_manager.h"
 #include "release_string.h"
 #include "object_accessor.h"
