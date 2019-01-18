@@ -46,6 +46,7 @@
 #include "dbtype.h"
 #include "parser.h"
 #include "object_domain.h"
+#include "object_primitive.h"
 #include "db.h"
 #include "object_accessor.h"
 #include "set_object.h"

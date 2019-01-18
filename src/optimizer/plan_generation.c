@@ -32,6 +32,7 @@
 #include "parser.h"
 #include "xasl_generation.h"
 
+#include "object_primitive.h"
 #include "optimizer.h"
 #include "query_graph.h"
 #include "query_planner.h"
@@ -3419,6 +3420,21 @@ qo_check_iscan_for_multi_range_opt (QO_PLAN * plan)
   if ((query->info.query.q.select.hint & PT_HINT_NO_MULTI_RANGE_OPT) != 0)
     {
       /* NO_MULTI_RANGE_OPT was hinted */
+      return false;
+    }
+  if (pt_has_aggregate (parser, query))
+    {
+      // CBRD-22696
+      //
+      // MRO XASL is flawed when query has aggregate. MRO depends on order by list, which is generated based on
+      // query's select list. Then it uses pointers from XASL outptr_list, which is normally also generated based
+      // on query's select list.
+      //
+      // In case of group by and/or aggregates, XASL outptr_list is used as input list for group by/aggregate. As a
+      // consequence, MRO is broken; sometimes it will fallback to normal index scan (because pointers do not match),
+      // but sometimes a safe-guard is hit (when order by position number is not found in outptr_list).
+      //
+      // until a proper fix is found, MRO is disabled for aggregate queries.
       return false;
     }
   all_distinct = query->info.query.all_distinct;

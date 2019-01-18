@@ -49,6 +49,7 @@
 #include "transform.h"
 #include "set_object.h"
 #include "object_accessor.h"
+#include "object_primitive.h"
 #include "memory_hash.h"
 #include "locator_cl.h"
 #include "xasl_support.h"

@@ -70,7 +70,7 @@ pt_find_size_from_dbtype (const DB_TYPE db_type)
 
   if (db_type != DB_TYPE_NULL)
     {
-      type = PR_TYPE_FROM_ID (db_type);
+      type = pr_type_from_id (db_type);
       if (type && !(type->variable_p))
 	{
 	  size = pr_mem_size (type);
@@ -187,7 +187,7 @@ pt_set_domain_class (SM_DOMAIN * dom, const PT_NODE * nam, const DB_OBJECT * vir
   if (!dom || !nam || nam->node_type != PT_NAME)
     return;
 
-  dom->type = PR_TYPE_FROM_ID (DB_TYPE_OBJECT);
+  dom->type = pr_type_from_id (DB_TYPE_OBJECT);
   if (virt != NULL)
     {
       dom->class_mop = (DB_OBJECT *) virt;
@@ -257,7 +257,7 @@ pt_get_src_domain (PARSER_CONTEXT * parser, const PT_NODE * s, const PT_NODE * s
     }
 
   /* if s is not a path expression then its source domain is DB_TYPE_NULL */
-  result->type = PR_TYPE_FROM_ID (DB_TYPE_NULL);
+  result->type = pr_type_from_id (DB_TYPE_NULL);
 
   /* make leaf point to the last leaf name node */
   if (s->node_type == PT_DOT_)

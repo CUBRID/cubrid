@@ -34,9 +34,9 @@ namespace test_packing
   class buffer_manager : public cubbase::pinner
   {
     private:
-      std::vector<mem::pinnable_buffer *> buffers;
+      std::vector<cubmem::pinnable_buffer *> buffers;
     public:
-      void allocate_bufer (mem::pinnable_buffer *&buf, const size_t &amount);
+      void allocate_bufer (cubmem::pinnable_buffer *&buf, const size_t &amount);
 
       void free_storage();
 

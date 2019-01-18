@@ -452,7 +452,7 @@ namespace cubscan
     void
     scanner::reset_ordinality (cubxasl::json_table::node &node)
     {
-      node.m_ordinality = 1;
+      node.init_ordinality ();
 
       for (size_t i = 0; i < node.m_nested_nodes_size; ++i)
 	{

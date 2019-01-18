@@ -53,6 +53,7 @@
 #include "environment_variable.h"
 #include "authenticate.h"
 #include "dbtype.h"
+#include "object_primitive.h"
 
 #define UCI_OPT_UNSAFE_NULL     0x0001
 

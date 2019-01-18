@@ -27,6 +27,7 @@
 #include "dbtype.h"
 #include "error_code.h"
 #include "error_manager.h"
+#include "memory_private_allocator.hpp"
 #include "object_primitive.h"
 
 #include <cassert>
@@ -50,7 +51,7 @@ namespace cubxasl
 
 	case JSON_TABLE_THROW_ERROR:
 	{
-	  PRIVATE_UNIQUE_PTR<char> unique_ptr_json_body (db_json_get_raw_json_body_from_document (&input), NULL);
+	  cubmem::private_unique_ptr<char> unique_ptr_json_body (db_json_get_raw_json_body_from_document (&input), NULL);
 
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_TABLE_ON_ERROR_INCOMP_DOMAIN, 4,
 		  unique_ptr_json_body.get (), m_path, m_column_name,
@@ -242,7 +243,7 @@ namespace cubxasl
     node::init ()
     {
       m_path = NULL;
-      m_ordinality = 1;
+      init_ordinality ();
       m_output_columns = NULL;
       m_output_columns_size = 0;
       m_nested_nodes = NULL;
@@ -255,6 +256,7 @@ namespace cubxasl
     void
     node::clear_columns (bool is_final_clear)
     {
+      init_ordinality ();
       for (size_t i = 0; i < m_output_columns_size; ++i)
 	{
 	  column *output_column = &m_output_columns[i];
@@ -305,6 +307,12 @@ namespace cubxasl
 	{
 	  m_iterator = db_json_create_iterator (DB_JSON_TYPE::DB_JSON_ARRAY);
 	}
+    }
+
+    void
+    node::init_ordinality()
+    {
+      m_ordinality = 1;
     }
 
     spec_node::spec_node ()

@@ -30,6 +30,7 @@
 #include "query_method.h"
 #include "object_accessor.h"
 #include "jsp_cl.h"
+#include "object_primitive.h"
 #include "object_representation.h"
 #include "network.h"
 #include "network_interface_cl.h"

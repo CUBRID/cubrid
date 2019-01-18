@@ -4142,11 +4142,17 @@ static int
 or_packed_json_schema_length (const char *json_schema)
 {
   DB_VALUE val;
+  int len;
+
   // *INDENT-OFF*
   db_make_string (&val, const_cast <char*>(json_schema));
   // *INDENT-ON*
 
-  return (*(tp_String.data_lengthval)) (&val, 1);
+  len = (*(tp_String.data_lengthval)) (&val, 1);
+
+  pr_clear_value (&val);
+
+  return len;
 }
 
 /*
@@ -6603,7 +6609,7 @@ or_disk_set_size (OR_BUF * buf, TP_DOMAIN * set_domain, DB_TYPE * set_type)
  *    include_domain_classoids(in): non-zero to include the domain class OIDs
  */
 int
-or_packed_value_size (DB_VALUE * value, int collapse_null, int include_domain, int include_domain_classoids)
+or_packed_value_size (const DB_VALUE * value, int collapse_null, int include_domain, int include_domain_classoids)
 {
   PR_TYPE *type;
   TP_DOMAIN *domain;
@@ -6616,7 +6622,7 @@ or_packed_value_size (DB_VALUE * value, int collapse_null, int include_domain, i
     }
 
   dbval_type = DB_VALUE_DOMAIN_TYPE (value);
-  type = PR_TYPE_FROM_ID (dbval_type);
+  type = pr_type_from_id (dbval_type);
 
   if (type == NULL)
     {
@@ -6661,7 +6667,9 @@ or_packed_value_size (DB_VALUE * value, int collapse_null, int include_domain, i
 	}
       else
 	{
-	  size += (*(type->data_lengthval)) (value, 1);
+	  // todo - adding const to data_lengthval is a complicated story due to string compression
+	  // for now, just strip const from value
+	  size += (*(type->data_lengthval)) (CONST_CAST (DB_VALUE *, value), 1);
 	}
     }
 
@@ -6704,7 +6712,7 @@ or_put_value (OR_BUF * buf, DB_VALUE * value, int collapse_null, int include_dom
     }
 
   dbval_type = DB_VALUE_DOMAIN_TYPE (value);
-  type = PR_TYPE_FROM_ID (dbval_type);
+  type = pr_type_from_id (dbval_type);
 
   if (type == NULL)
     {
@@ -6963,7 +6971,7 @@ or_pack_mem_value (char *ptr, DB_VALUE * value, int *packed_len_except_alignment
   ptr_to_packed_value = buf->ptr;
 
   dbval_type = DB_VALUE_DOMAIN_TYPE (value);
-  type = PR_TYPE_FROM_ID (dbval_type);
+  type = pr_type_from_id (dbval_type);
   if (type == NULL)
     {
       return NULL;
@@ -7034,12 +7042,12 @@ or_pack_mem_value (char *ptr, DB_VALUE * value, int *packed_len_except_alignment
  *    details.
  */
 char *
-or_unpack_value (char *buf, DB_VALUE * value)
+or_unpack_value (const char *buf, DB_VALUE * value)
 {
   OR_BUF orbuf;
 
   buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
-  or_init (&orbuf, buf, 0);
+  or_init (&orbuf, CONST_CAST (char *, buf) /* it is for read */ , 0);
   or_get_value (&orbuf, value, NULL, -1, true);
 
   return orbuf.ptr;

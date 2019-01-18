@@ -1798,7 +1798,7 @@ qfile_fast_intval_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
   else
     {
       DB_TYPE dbval_type = DB_VALUE_DOMAIN_TYPE (v2);
-      PR_TYPE *pr_type = PR_TYPE_FROM_ID (dbval_type);
+      PR_TYPE *pr_type = pr_type_from_id (dbval_type);
       OR_BUF buf;
 
       QFILE_PUT_TUPLE_VALUE_FLAG (tuple_p, V_BOUND);
@@ -1877,7 +1877,7 @@ qfile_fast_val_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p
   else
     {
       DB_TYPE dbval_type = DB_VALUE_DOMAIN_TYPE (val);
-      PR_TYPE *pr_type = PR_TYPE_FROM_ID (dbval_type);
+      PR_TYPE *pr_type = pr_type_from_id (dbval_type);
       OR_BUF buf;
 
       QFILE_PUT_TUPLE_VALUE_FLAG (tuple_p, V_BOUND);

@@ -59,6 +59,7 @@
 #include "broker_filename.h"
 #include "cas_sql_log2.h"
 #include "dbtype.h"
+#include "object_primitive.h"
 
 static FN_RETURN fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
 				      int *ret_srv_h_id);
