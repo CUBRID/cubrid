@@ -4766,7 +4766,7 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
   int *p_prefix_length;
   char midxkey_buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_midxkey_buf;
   cubthread::entry_workpool * ib_workpool =
-    cubthread::get_manager ()->create_worker_pool (prm_get_integer_value (PRM_ID_IB_NO_THREADS), 32,
+    cubthread::get_manager ()->create_worker_pool (prm_get_integer_value (PRM_ID_INDEX_BUILDER_THREAD_COUNT), 32,
 						   "Online index loader pool", NULL, 1,
 						   cubthread::is_logging_configured (cubthread::
 										     LOG_WORKER_POOL_TRAN_WORKERS));
