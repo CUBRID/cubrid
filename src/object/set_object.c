@@ -655,7 +655,7 @@ col_null_values (COL * col, long bottomvalue, long topvalue)
     {
       for (; bottomvalue <= topvalue; bottomvalue++)
 	{
-	  db_make_null (INDEX (col, bottomvalue));
+	  PRIM_SET_NULL (INDEX (col, bottomvalue));
 	}
     }
   return;
@@ -1454,7 +1454,7 @@ col_insert (COL * col, long colindex, DB_VALUE * val)
       /* If this should be cloned, the caller should do it. This primitive just allows the assignment to the right
        * location in the collection */
       col->array[blockindex][offset] = *val;
-      db_make_null (val);
+      PRIM_SET_NULL (val);
       col->lastinsert = colindex;
     }
 
@@ -1533,7 +1533,7 @@ col_delete (COL * col, long colindex)
    *
    * Also, just in case the DB_VALUE pointed to an object, set the object pointer to NULL so that the GC doesn't get
    * confused. - JB */
-  db_make_null (INDEX (col, (col->size - 1)));
+  PRIM_SET_NULL (INDEX (col, (col->size - 1)));
   INDEX (col, (col->size - 1))->data.op = NULL;
 
   col->size--;
@@ -1699,7 +1699,7 @@ col_drop (COL * col, DB_VALUE * val)
     {
       if (col->coltype == DB_TYPE_SEQUENCE)
 	{
-	  db_make_null (INDEX (col, i));
+	  PRIM_SET_NULL (INDEX (col, i));
 	}
       else
 	{
@@ -6212,7 +6212,7 @@ setobj_put_value (COL * col, int index, DB_VALUE * value)
   /* if the value was added successfully, make sure caller does not inadvertantly clear or use this value container */
   if (error == NO_ERROR)
     {
-      db_make_null (value);
+      PRIM_SET_NULL (value);
     }
 
   return error;

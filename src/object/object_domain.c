@@ -10973,7 +10973,7 @@ tp_value_equal (const DB_VALUE * value1, const DB_VALUE * value2, int do_coercio
 int
 tp_domain_disk_size (TP_DOMAIN * domain)
 {
-  if (domain->type->is_variable_size ())
+  if (domain->type->is_always_variable ())
     {
       return -1;
     }
@@ -10986,7 +10986,7 @@ tp_domain_disk_size (TP_DOMAIN * domain)
 
   assert (domain->precision != TP_FLOATING_PRECISION_VALUE);
 
-  return domain->type->data_lengthmem (NULL, domain, 1);
+  return domain->type->get_disk_size_of_mem (NULL, domain);
 }
 
 
@@ -10999,20 +10999,13 @@ tp_domain_disk_size (TP_DOMAIN * domain)
 int
 tp_domain_memory_size (TP_DOMAIN * domain)
 {
-  if (domain->type->is_variable_size ()
-      && (domain->type->get_id () == DB_TYPE_CHAR || domain->type->get_id () == DB_TYPE_NCHAR
-	  || domain->type->get_id () == DB_TYPE_BIT) && domain->precision == TP_FLOATING_PRECISION_VALUE)
+  if ((domain->type->get_id () == DB_TYPE_CHAR || domain->type->get_id () == DB_TYPE_NCHAR
+       || domain->type->get_id () == DB_TYPE_BIT) && domain->precision == TP_FLOATING_PRECISION_VALUE)
     {
       return -1;
     }
-  if (domain->type->is_variable_size ())
-    {
-      return domain->type->data_lengthmem (NULL, domain, 0);
-    }
-  else
-    {
-      return domain->type->size;
-    }
+
+  return domain->type->get_mem_size_of_mem (NULL, domain);
 }
 
 /*

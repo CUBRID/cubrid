@@ -619,7 +619,7 @@ put_varinfo (OR_BUF * buf, char *obj, SM_CLASS * class_, int offset_size)
 	  att = &class_->attributes[a];
 	  mem = obj + att->offset;
 
-	  len = att->domain->type->data_lengthmem (mem, att->domain, 1);
+	  len = att->domain->type->get_disk_size_of_mem (mem, att->domain);
 
 	  or_put_offset_internal (buf, offset, offset_size);
 	  offset += len;
@@ -659,7 +659,7 @@ re_check:
 	  att = &class_->attributes[a];
 	  mem = obj + att->offset;
 
-	  size += att->domain->type->data_lengthmem (mem, att->domain, 1);
+	  size += att->domain->type->get_disk_size_of_mem (mem, att->domain);
 	}
     }
 
@@ -1469,7 +1469,7 @@ string_disk_size (const char *string)
 
   db_make_varnchar (&value, TP_FLOATING_PRECISION_VALUE, (const DB_C_NCHAR) string, str_length, LANG_SYS_CODESET,
 		    LANG_SYS_COLLATION);
-  length = tp_VarNChar.data_lengthval (&value, 1);
+  length = tp_VarNChar.get_disk_size_of_value (&value);
 
   /* Clear the compressed_string of DB_VALUE */
   pr_clear_compressed_string (&value);
@@ -1936,7 +1936,7 @@ property_list_size (DB_SEQ * properties)
       if (max)
 	{
 	  db_make_sequence (&value, properties);
-	  size = tp_Sequence.data_lengthval (&value, 1);
+	  size = tp_Sequence.get_disk_size_of_value (&value);
 	}
     }
   return size;

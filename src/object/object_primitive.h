@@ -138,20 +138,26 @@ typedef struct pr_type
     cmpval_function_type get_cmpval_function () const;
 
     // is fixed/variable
-    inline bool is_fixed_size () const;
-    inline bool is_variable_size () const;
+    inline bool is_always_variable () const;
+    inline bool is_size_computed () const;
+
+    // size functions
+    inline int get_mem_size_of_mem (const void *mem, const tp_domain * domain = NULL) const;
+    inline int get_disk_size_of_mem (const void *mem, const tp_domain * domain = NULL) const;
+    inline int get_index_size_of_mem (const void *memptr, const tp_domain * domain) const;
+    inline int get_mem_size_of_value (const DB_VALUE * value) const;
+    inline int get_disk_size_of_value (const DB_VALUE * value) const;
+    inline int get_index_size_of_value (const DB_VALUE * value) const;
 
     // operations for in-memory representations
     inline void initmem (void *memptr, const tp_domain * domain) const;
     inline int setmem (void *memptr, const tp_domain * domain, const DB_VALUE * value) const;
     inline int getmem (void *memptr, const tp_domain * domain, DB_VALUE * value, bool copy = true) const;
-    inline int data_lengthmem (const void *memptr, const tp_domain * domain, int disk) const;
     inline void freemem (void *memptr) const;
 
     // operations for db_value's
     inline void initval (DB_VALUE * value, int precision, int scale) const;
     inline int setval (DB_VALUE * dest, const DB_VALUE * src, bool copy) const;
-    inline int data_lengthval (const DB_VALUE * value, int disk) const;
     inline DB_VALUE_COMPARE_RESULT cmpval (const DB_VALUE * value, const DB_VALUE * value2, int do_coercion,
                                            int total_order, int *start_colp, int collation) const;
 
@@ -165,8 +171,6 @@ typedef struct pr_type
                                                  int do_coercion, int total_order, int *start_colp) const;
 
     // operations for index representations (ordered)
-    inline int index_lengthmem (const void *memptr, const tp_domain * domain) const;
-    inline int index_lengthval (const DB_VALUE * value) const;
     inline int index_writeval (struct or_buf * buf, const DB_VALUE * value) const;
     inline int index_readval (struct or_buf * buf, DB_VALUE * value, const tp_domain * domain, int size, bool copy,
                               char *copy_buf, int copy_buf_len) const;
@@ -263,6 +267,13 @@ extern PR_TYPE *tp_Type_id_map[];
  * EXTERNAL FUNCTIONS
  */
 
+inline void
+PRIM_SET_NULL (DB_VALUE * value)
+{
+  value->domain.general_info.is_null = 1;
+  value->need_clear = false;
+}
+
 /* Type structure accessors */
 extern PR_TYPE *pr_type_from_id (DB_TYPE id);
 extern PR_TYPE *pr_find_type (const char *name);
@@ -275,9 +286,8 @@ extern int pr_is_variable_type (DB_TYPE type);
 
 /* Size calculators */
 
-extern int pr_mem_size (PR_TYPE * type);
-extern int pr_total_mem_size (PR_TYPE * type, void *mem);
-extern int pr_value_mem_size (DB_VALUE * value);
+extern int pr_mem_size (const PR_TYPE * type);
+extern int pr_value_mem_size (const DB_VALUE * value);
 
 /* DB_VALUE constructors */
 
@@ -368,15 +378,74 @@ pr_type::get_alignment () const
 }
 
 bool
-pr_type::is_variable_size () const
+pr_type::is_always_variable () const
 {
+  // NOTE - this is not reliable to determine if a type is always fixed size or not. Numeric type is not variable, but
+  // it has size computing functions!
   return variable_p != 0;
 }
 
 bool
-pr_type::is_fixed_size () const
+pr_type::is_size_computed () const
 {
-  return !is_variable_size ();
+  assert ((f_data_lengthmem == NULL) == (f_data_lengthval == NULL));
+  return f_data_lengthmem != NULL && f_data_lengthval != NULL;
+}
+
+int
+pr_type::get_disk_size_of_mem (const void *mem, const tp_domain * domain) const
+{
+  if (f_data_lengthmem != NULL)
+    {
+      return (*f_data_lengthmem) (const_cast<void *> (mem), const_cast<tp_domain *> (domain), 1);
+    }
+  else
+    {
+      assert (disksize != 0 || id == DB_TYPE_NULL);
+      return disksize;
+    }
+}
+
+int
+pr_type::get_mem_size_of_mem (const void *mem, const tp_domain * domain) const
+{
+  if (f_data_lengthmem != NULL)
+    {
+      return (*f_data_lengthmem) (const_cast<void *> (mem), const_cast<tp_domain *> (domain), 0);
+    }
+  else
+    {
+      assert (size != 0 || id == DB_TYPE_NULL);
+      return size;
+    }
+}
+
+int
+pr_type::get_mem_size_of_value (const DB_VALUE * value) const
+{
+  if (f_data_lengthval != NULL)
+    {
+      return (*f_data_lengthval) (const_cast<DB_VALUE *> (value), 0);
+    }
+  else
+    {
+      assert (size != 0 || id == DB_TYPE_NULL);
+      return size;
+    }
+}
+
+int
+pr_type::get_disk_size_of_value (const DB_VALUE * value) const
+{
+  if (f_data_lengthval != NULL)
+    {
+      return (*f_data_lengthval) (const_cast<DB_VALUE *> (value), 1);
+    }
+  else
+    {
+      assert (disksize != 0 || id == DB_TYPE_NULL);
+      return disksize;
+    }
 }
 
 void
@@ -416,34 +485,6 @@ pr_type::setval (DB_VALUE * dest, const DB_VALUE * src, bool copy) const
   return (*f_setval) (dest, src, copy);
 }
 
-int
-pr_type::data_lengthmem (const void * memptr, const tp_domain * domain, int disk) const
-{
-  if (is_fixed_size ())
-    {
-      return disksize;
-    }
-  else
-    {
-      assert (f_data_lengthmem != NULL);
-      return (*f_data_lengthmem) (const_cast<void *> (memptr), const_cast<tp_domain *> (domain), disk);
-    }
-}
-
-int
-pr_type::data_lengthval (const DB_VALUE * value, int disk) const
-{
-  if (is_fixed_size ())
-    {
-      return disksize;
-    }
-  else
-    {
-      assert (f_data_lengthval != NULL);
-      return (*f_data_lengthval) (const_cast<DB_VALUE *> (value), disk);
-    }
-}
-
 void
 pr_type::data_writemem (or_buf * buf, const void * memptr, const tp_domain * domain) const
 {
@@ -463,36 +504,38 @@ pr_type::data_writeval (or_buf * buf, const DB_VALUE * value) const
 }
 
 int
-pr_type::data_readval (or_buf * buf, DB_VALUE * value, const tp_domain * domain, int size, bool copy, char * copy_buf, int copy_buf_len) const
+pr_type::data_readval (or_buf * buf, DB_VALUE * value, const tp_domain * domain, int size, bool copy, char * copy_buf,
+                       int copy_buf_len) const
 {
   return (*f_data_readval) (buf, value, const_cast<tp_domain *> (domain), size, copy, copy_buf, copy_buf_len);
 }
 
 int
-pr_type::index_lengthmem (const void * memptr, const tp_domain * domain) const
+pr_type::get_index_size_of_mem (const void * memptr, const tp_domain * domain) const
 {
-  if (is_fixed_size ())
+  if (f_index_lengthmem != NULL)
     {
-      return disksize;
+      return (*f_index_lengthmem) (const_cast<void *> (memptr), const_cast<tp_domain *> (domain));
+      
     }
   else
     {
-      assert (f_index_lengthmem != NULL);
-      return (*f_index_lengthmem) (const_cast<void *> (memptr), const_cast<tp_domain *> (domain));
+      assert (disksize != 0 || id == DB_TYPE_NULL);
+      return disksize;
     }
 }
 
 int
-pr_type::index_lengthval (const DB_VALUE * value) const
+pr_type::get_index_size_of_value (const DB_VALUE * value) const
 {
-  if (is_fixed_size ())
+  if (f_index_lengthval != NULL)
     {
-      return disksize;
+      return (*f_index_lengthval) (const_cast<DB_VALUE *> (value));
     }
   else
     {
-      assert (f_index_lengthval != NULL);
-      return (*f_index_lengthval) (const_cast<DB_VALUE *> (value));
+      assert (disksize != 0 || id == DB_TYPE_NULL);
+      return disksize;
     }
 }
 
@@ -503,13 +546,15 @@ pr_type::index_writeval (or_buf * buf, const DB_VALUE * value) const
 }
 
 int
-pr_type::index_readval (or_buf * buf, DB_VALUE * value, const tp_domain * domain, int size, bool copy, char * copy_buf, int copy_buf_len) const
+pr_type::index_readval (or_buf * buf, DB_VALUE * value, const tp_domain * domain, int size, bool copy, char * copy_buf,
+                        int copy_buf_len) const
 {
   return (*f_index_readval) (buf, value, const_cast<tp_domain *> (domain), size, copy, copy_buf, copy_buf_len);
 }
 
 DB_VALUE_COMPARE_RESULT
-pr_type::index_cmpdisk (const void * memptr1, const void * memptr2, const tp_domain * domain, int do_coercion, int total_order, int * start_colp) const
+pr_type::index_cmpdisk (const void * memptr1, const void * memptr2, const tp_domain * domain, int do_coercion,
+                        int total_order, int * start_colp) const
 {
   return (*f_index_cmpdisk) (const_cast<void *> (memptr1), const_cast<void *> (memptr2),
                              const_cast<tp_domain *> (domain), do_coercion, total_order, start_colp);
@@ -525,14 +570,16 @@ pr_type::freemem (void * memptr) const
  }
 
 DB_VALUE_COMPARE_RESULT
-pr_type::data_cmpdisk (const void * memptr1, const void * memptr2, const tp_domain * domain, int do_coercion, int total_order, int * start_colp) const
+pr_type::data_cmpdisk (const void * memptr1, const void * memptr2, const tp_domain * domain, int do_coercion,
+                       int total_order, int * start_colp) const
 {
   return (*f_data_cmpdisk) (const_cast<void *> (memptr1), const_cast<void *> (memptr2),
                             const_cast<tp_domain *> (domain), do_coercion, total_order, start_colp);
 }
 
 DB_VALUE_COMPARE_RESULT
-pr_type::cmpval (const DB_VALUE * value, const DB_VALUE * value2, int do_coercion, int total_order, int * start_colp, int collation) const
+pr_type::cmpval (const DB_VALUE * value, const DB_VALUE * value2, int do_coercion, int total_order, int * start_colp,
+                 int collation) const
 {
   return (*f_cmpval) (const_cast<DB_VALUE *> (value), const_cast<DB_VALUE *> (value2), do_coercion, total_order,
                       start_colp, collation);

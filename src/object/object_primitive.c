@@ -2070,7 +2070,7 @@ pr_clear_value (DB_VALUE * value)
     }
 
   /* always make sure the value gets cleared */
-  db_make_null (value);
+  PRIM_SET_NULL (value);
   value->need_clear = false;
 
   return NO_ERROR;
@@ -8917,34 +8917,9 @@ pr_find_type (const char *name)
  *
  */
 int
-pr_mem_size (PR_TYPE * type)
+pr_mem_size (const PR_TYPE * type)
 {
   return type->size;
-}
-
-/*
- * pr_total_mem_size - returns the total amount of storage used for a memory
- * attribute including any external allocations (for strings etc.).
- *    return: total memory size of type
- *    type(in): type identifier
- *    mem(in): pointer to memory for value
- * Note:
- *    The length function is not defined to accept a DB_VALUE so
- *    this had better be in memory format!
- *    Called by sm_object_size to calculate total size for an object.
- *
- */
-int
-pr_total_mem_size (PR_TYPE * type, void *mem)
-{
-  if (type->is_variable_size ())
-    {
-      return type->data_lengthmem (mem, NULL, 0);
-    }
-  else
-    {
-      return type->size;
-    }
 }
 
 /*
@@ -8972,26 +8947,20 @@ pr_total_mem_size (PR_TYPE * type, void *mem)
  *    value(in): value to examine
  * Note:
  *    Does not include the amount of space necessary for the DB_VALUE.
- *    Used by some statistics modules that calculate memory sizes of strucures.
+ *    Used by some statistics modules that calculate memory sizes of structures.
  */
 int
-pr_value_mem_size (DB_VALUE * value)
+pr_value_mem_size (const DB_VALUE * value)
 {
   PR_TYPE *type;
   DB_TYPE dbval_type;
 
   dbval_type = DB_VALUE_DOMAIN_TYPE (value);
   type = pr_type_from_id (dbval_type);
+  assert (type != NULL);
   if (type != NULL)
     {
-      if (type->is_variable_size ())
-	{
-	  return type->data_lengthval (value, 0);
-	}
-      else
-	{
-	  return type->size;
-	}
+      return type->get_mem_size_of_value (value);
     }
   else
     {
@@ -9015,7 +8984,7 @@ pr_midxkey_element_disk_size (char *mem, DB_DOMAIN * domain)
    */
   assert (!(domain->type->variable_p && !QSTR_IS_VARIABLE_LENGTH (TP_DOMAIN_TYPE (domain))));
 
-  return domain->type->index_lengthmem (mem, domain);
+  return domain->type->get_index_size_of_mem (mem, domain);
 }
 
 /*
@@ -9689,7 +9658,7 @@ pr_data_writeval_disk_size (DB_VALUE * value)
 
   if (type)
     {
-      return type->data_lengthval (value, 1);
+      return type->get_disk_size_of_value (value);
     }
 
   return 0;
@@ -9715,7 +9684,7 @@ pr_index_writeval_disk_size (DB_VALUE * value)
 
   if (type)
     {
-      return type->index_lengthval (value);
+      return type->get_index_size_of_value (value);
     }
 
   return 0;

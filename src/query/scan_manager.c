@@ -1709,7 +1709,7 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	    }
 	}
 
-      buf_size += dom->type->index_lengthval (val);
+      buf_size += dom->type->get_index_size_of_value (val);
     }
 
   /* add more domain to setdomain for partial key */
@@ -2386,13 +2386,13 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
       if (range >= GE_INF && range <= GT_INF)
 	{
 	  pr_clear_value (&key_vals[0].key2);
-	  db_make_null (&key_vals[0].key2);
+	  PRIM_SET_NULL (&key_vals[0].key2);
 	}
 
       if (range >= INF_LE && range <= INF_LT)
 	{
 	  pr_clear_value (&key_vals[0].key1);
-	  db_make_null (&key_vals[0].key1);
+	  PRIM_SET_NULL (&key_vals[0].key1);
 	}
 
       if (key_vals[0].is_truncated == true)
@@ -2411,8 +2411,8 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
 
 	  pr_clear_value (&key_vals[0].key1);
 	  pr_clear_value (&key_vals[0].key2);
-	  db_make_null (&key_vals[0].key1);
-	  db_make_null (&key_vals[0].key2);
+	  PRIM_SET_NULL (&key_vals[0].key1);
+	  PRIM_SET_NULL (&key_vals[0].key2);
 
 	  assert_release (key_vals[0].num_index_term == 0);
 	}
@@ -2556,7 +2556,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
 	  if (range >= GE_INF && range <= GT_INF)
 	    {
 	      pr_clear_value (&key_vals[iscan_id->curr_keyno].key2);
-	      db_make_null (&key_vals[iscan_id->curr_keyno].key2);
+	      PRIM_SET_NULL (&key_vals[iscan_id->curr_keyno].key2);
 	    }
 
 	  if (key_vals[iscan_id->curr_keyno].is_truncated == true)
@@ -2567,7 +2567,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
 	  if (range >= INF_LE && range <= INF_LT)
 	    {
 	      pr_clear_value (&key_vals[iscan_id->curr_keyno].key1);
-	      db_make_null (&key_vals[iscan_id->curr_keyno].key1);
+	      PRIM_SET_NULL (&key_vals[iscan_id->curr_keyno].key1);
 	    }
 
 	  if (range == INF_INF)
@@ -2588,8 +2588,8 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
 
 	      pr_clear_value (&key_vals[0].key1);
 	      pr_clear_value (&key_vals[0].key2);
-	      db_make_null (&key_vals[0].key1);
-	      db_make_null (&key_vals[0].key2);
+	      PRIM_SET_NULL (&key_vals[0].key1);
+	      PRIM_SET_NULL (&key_vals[0].key2);
 	    }
 
 	  key_vals[iscan_id->curr_keyno].range = range;

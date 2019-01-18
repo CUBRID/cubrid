@@ -4148,7 +4148,7 @@ or_packed_json_schema_length (const char *json_schema)
   db_make_string (&val, const_cast <char*>(json_schema));
   // *INDENT-ON*
 
-  len = tp_String.data_lengthval (&val, 1);
+  len = tp_String.get_disk_size_of_value (&val);
 
   pr_clear_value (&val);
 
@@ -6661,7 +6661,7 @@ or_packed_value_size (const DB_VALUE * value, int collapse_null, int include_dom
 	      return size;
 	    }
 	}
-      size += type->data_lengthval (value, 1);
+      size += type->get_disk_size_of_value (value);
     }
 
   /* Values must as a unit be aligned to a word boundary.  We can't do this inside the writeval function because that
@@ -7599,7 +7599,7 @@ or_packed_enumeration_size (const DB_ENUMERATION * enumeration)
       db_make_varchar (&value, TP_FLOATING_PRECISION_VALUE, DB_GET_ENUM_ELEM_STRING (db_enum),
 		       DB_GET_ENUM_ELEM_STRING_SIZE (db_enum), DB_GET_ENUM_ELEM_CODESET (db_enum),
 		       LANG_GET_BINARY_COLLATION (DB_GET_ENUM_ELEM_CODESET (db_enum)));
-      size += tp_String.data_lengthval (&value, 1);
+      size += tp_String.get_disk_size_of_value (&value);
       pr_clear_value (&value);
     }
 

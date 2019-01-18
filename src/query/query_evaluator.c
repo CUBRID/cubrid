@@ -338,7 +338,7 @@ eval_some_eval (DB_VALUE * item, DB_SET * set, REL_OP rel_operator)
   DB_LOGICAL res, t_res;
   DB_VALUE elem_val;
 
-  db_make_null (&elem_val);
+  PRIM_SET_NULL (&elem_val);
 
   res = V_FALSE;
 
@@ -464,7 +464,7 @@ eval_item_card_set (DB_VALUE * item, DB_SET * set, REL_OP rel_operator)
   DB_LOGICAL res;
   DB_VALUE elem_val;
 
-  db_make_null (&elem_val);
+  PRIM_SET_NULL (&elem_val);
 
   num = 0;
 
@@ -546,7 +546,7 @@ eval_some_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * l
       return V_ERROR;
     }
 
-  db_make_null (&list_val);
+  PRIM_SET_NULL (&list_val);
 
   if (list_id->tuple_cnt == 0)
     {
@@ -693,7 +693,7 @@ eval_item_card_sort_list (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_I
       return ER_FAILED;
     }
 
-  db_make_null (&list_val);
+  PRIM_SET_NULL (&list_val);
   card = 0;
 
   if (qfile_open_list_scan (list_id, &s_id) != NO_ERROR)
@@ -779,8 +779,8 @@ eval_sub_multi_set_to_sort_list (THREAD_ENTRY * thread_p, DB_SET * set1, QFILE_L
   DB_VALUE elem_val, elem_val2;
   int found;
 
-  db_make_null (&elem_val);
-  db_make_null (&elem_val2);
+  PRIM_SET_NULL (&elem_val);
+  PRIM_SET_NULL (&elem_val2);
 
   card = set_size (set1);
   if (card == 0)
@@ -907,8 +907,8 @@ eval_sub_sort_list_to_multi_set (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
       return V_ERROR;
     }
 
-  db_make_null (&list_val);
-  db_make_null (&list_val2);
+  PRIM_SET_NULL (&list_val);
+  PRIM_SET_NULL (&list_val2);
 
   if (list_id->tuple_cnt == 0)
     {
@@ -1083,8 +1083,8 @@ eval_sub_sort_list_to_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
       return V_ERROR;
     }
 
-  db_make_null (&list_val);
-  db_make_null (&list_val2);
+  PRIM_SET_NULL (&list_val);
+  PRIM_SET_NULL (&list_val2);
 
   if (list_id1->tuple_cnt == 0)
     {

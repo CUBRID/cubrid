@@ -2414,7 +2414,7 @@ db_get_schema_def_dbval (DB_VALUE * result, DB_VALUE * name_val)
   assert (result != (DB_VALUE *) NULL);
   if (DB_IS_NULL (name_val))
     {
-      db_make_null (result);
+      PRIM_SET_NULL (result);
       return NO_ERROR;
     }
 
@@ -2450,7 +2450,7 @@ db_get_schema_def_dbval (DB_VALUE * result, DB_VALUE * name_val)
   return error_status;
 
 error:
-  db_make_null (result);
+  PRIM_SET_NULL (result);
   if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
     {
       return NO_ERROR;

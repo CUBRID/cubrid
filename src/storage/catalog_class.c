@@ -572,7 +572,7 @@ catcls_guess_record_length (OR_VALUE * value_p)
     {
       data_type = DB_VALUE_DOMAIN_TYPE (&attrs_p[i].value);
       map_p = tp_Type_id_map[data_type];
-      length += map_p->data_lengthval (&attrs_p[i].value, 1);
+      length += map_p->get_disk_size_of_value (&attrs_p[i].value);
     }
 
   return (length);

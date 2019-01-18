@@ -12699,7 +12699,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   if (node_type == BTREE_LEAF_NODE)
     {
       PR_TYPE *pr_type = btid->key_type->type;
-      sep_key_len = pr_type->index_lengthval (sep_key);
+      sep_key_len = pr_type->get_index_size_of_value (sep_key);
 
       if (sep_key_len < BTREE_MAX_KEYLEN_INPAGE && sep_key_len <= qheader->max_key_len)
 	{
@@ -13274,7 +13274,7 @@ btree_split_test (THREAD_ENTRY * thread_p, BTID_INT * btid, DB_VALUE * key, VPID
 	  PR_TYPE *pr_type;
 
 	  pr_type = btid->key_type->type;
-	  sep_key_len = pr_type->index_lengthval (sep_key);
+	  sep_key_len = pr_type->get_index_size_of_value (sep_key);
 
 	  if (sep_key_len < BTREE_MAX_KEYLEN_INPAGE)
 	    {
@@ -13539,7 +13539,7 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
 
       pr_type = btid->key_type->type;
 
-      sep_key_len = pr_type->index_lengthval (sep_key);
+      sep_key_len = pr_type->get_index_size_of_value (sep_key);
 
       if (sep_key_len < BTREE_MAX_KEYLEN_INPAGE && sep_key_len <= pheader->node.max_key_len)
 	{

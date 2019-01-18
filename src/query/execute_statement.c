@@ -11504,7 +11504,7 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constra
 
       if (val != NULL && !DB_IS_NULL (val))
 	{
-	  buf_size += attr_dom->type->index_lengthval (val);
+	  buf_size += attr_dom->type->get_index_size_of_value (val);
 	}
 
       if (setdomain == NULL)

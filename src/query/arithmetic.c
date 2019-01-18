@@ -5031,7 +5031,7 @@ db_crc32_dbval (DB_VALUE * result, DB_VALUE * value)
 
   if (DB_IS_NULL (value))
     {
-      db_make_null (result);
+      PRIM_SET_NULL (result);
       return error_status;
     }
   else
@@ -5058,7 +5058,7 @@ db_crc32_dbval (DB_VALUE * result, DB_VALUE * value)
   return error_status;
 
 error:
-  db_make_null (result);
+  PRIM_SET_NULL (result);
   if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
     {
       er_clear ();

@@ -4806,8 +4806,8 @@ qexec_cmp_tpl_vals_merge (QFILE_TUPLE * left_tval, TP_DOMAIN ** left_dom, QFILE_
 
   for (i = 0; i < tval_cnt; i++)
     {
-      db_make_null (&left_dbval);
-      db_make_null (&right_dbval);
+      PRIM_SET_NULL (&left_dbval);
+      PRIM_SET_NULL (&right_dbval);
 
       /* get tpl values into db_values for the comparison */
 
@@ -17484,6 +17484,7 @@ qexec_gby_finalize_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, int 
   XASL_NODE *xptr;
   DB_LOGICAL ev_res;
   XASL_STATE *xasl_state = gbstate->xasl_state;
+  int error_code = NO_ERROR;
 
   if (gbstate->state != NO_ERROR)
     {
@@ -17498,16 +17499,20 @@ qexec_gby_finalize_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, int 
 
   assert (gbstate->g_dim[N].d_flag != GROUPBY_DIM_FLAG_NONE);
 
-  if (qdata_finalize_aggregate_list (thread_p, gbstate->g_dim[N].d_agg_list, keep_list_file) != NO_ERROR)
+  error_code = qdata_finalize_aggregate_list (thread_p, gbstate->g_dim[N].d_agg_list, keep_list_file);
+  if (error_code != NO_ERROR)
     {
+      ASSERT_ERROR ();
       GOTO_EXIT_ON_ERROR;
     }
 
   /* evaluate subqueries in HAVING predicate */
   for (xptr = gbstate->eptr_list; xptr; xptr = xptr->next)
     {
-      if (qexec_execute_mainblock (thread_p, xptr, xasl_state, NULL) != NO_ERROR)
+      error_code = qexec_execute_mainblock (thread_p, xptr, xasl_state, NULL);
+      if (error_code != NO_ERROR)
 	{
+	  ASSERT_ERROR ();
 	  GOTO_EXIT_ON_ERROR;
 	}
     }
@@ -17528,7 +17533,7 @@ qexec_gby_finalize_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, int 
 		  *g_outp->accumulator.value = *d_aggp->accumulator.value;
 		  /* Don't use db_make_null here to preserve the type information. */
 
-		  db_make_null (d_aggp->accumulator.value);
+		  PRIM_SET_NULL (d_aggp->accumulator.value);
 		}
 
 	      /* should not touch d_aggp->value2 */
@@ -17553,6 +17558,7 @@ qexec_gby_finalize_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, int 
       ev_res = eval_pred (thread_p, gbstate->having_pred, &xasl_state->vd, NULL);
       if (ev_res == V_ERROR)
 	{
+	  ASSERT_ERROR_AND_SET (error_code);
 	  GOTO_EXIT_ON_ERROR;
 	}
       else if (ev_res != V_TRUE)
@@ -17569,6 +17575,7 @@ qexec_gby_finalize_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, int 
       ev_res = qexec_eval_grbynum_pred (thread_p, gbstate);
       if (ev_res == V_ERROR)
 	{
+	  ASSERT_ERROR_AND_SET (error_code);
 	  GOTO_EXIT_ON_ERROR;
 	}
       if (ev_res == V_TRUE)
@@ -17609,9 +17616,11 @@ qexec_gby_finalize_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, int 
 	   * leave it as it is. */
 	  if (false)
 	    {
-	      if (qexec_add_composite_lock (thread_p, gbstate->g_outptr_list->valptrp, xasl_state,
-					    gbstate->composite_lock, gbstate->upd_del_class_cnt, NULL) != NO_ERROR)
+	      error_code = qexec_add_composite_lock (thread_p, gbstate->g_outptr_list->valptrp, xasl_state,
+						     gbstate->composite_lock, gbstate->upd_del_class_cnt, NULL);
+	      if (error_code != NO_ERROR)
 		{
+		  ASSERT_ERROR ();
 		  GOTO_EXIT_ON_ERROR;
 		}
 	    }
@@ -17624,6 +17633,7 @@ qexec_gby_finalize_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, int 
     qexec_generate_tuple_descriptor (thread_p, gbstate->output_file, gbstate->g_outptr_list, &xasl_state->vd);
   if (tpldescr_status == QPROC_TPLDESCR_FAILURE)
     {
+      ASSERT_ERROR_AND_SET (error_code);
       GOTO_EXIT_ON_ERROR;
     }
 
@@ -17631,8 +17641,10 @@ qexec_gby_finalize_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, int 
     {
     case QPROC_TPLDESCR_SUCCESS:
       /* generate tuple into list file page */
-      if (qfile_generate_tuple_into_list (thread_p, gbstate->output_file, T_NORMAL) != NO_ERROR)
+      error_code = qfile_generate_tuple_into_list (thread_p, gbstate->output_file, T_NORMAL);
+      if (error_code != NO_ERROR)
 	{
+	  ASSERT_ERROR ();
 	  GOTO_EXIT_ON_ERROR;
 	}
       break;
@@ -17647,17 +17659,22 @@ qexec_gby_finalize_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, int 
 	  gbstate->output_tplrec->tpl = (QFILE_TUPLE) db_private_alloc (thread_p, DB_PAGESIZE);
 	  if (gbstate->output_tplrec->tpl == NULL)
 	    {
+	      assert (false);
 	      GOTO_EXIT_ON_ERROR;
 	    }
 	}
-      if (qdata_copy_valptr_list_to_tuple (thread_p, gbstate->g_outptr_list, &xasl_state->vd, gbstate->output_tplrec) !=
-	  NO_ERROR)
+      error_code = qdata_copy_valptr_list_to_tuple (thread_p, gbstate->g_outptr_list, &xasl_state->vd,
+						    gbstate->output_tplrec);
+      if (error_code != NO_ERROR)
 	{
+	  ASSERT_ERROR ();
 	  GOTO_EXIT_ON_ERROR;
 	}
 
-      if (qfile_add_tuple_to_list (thread_p, gbstate->output_file, gbstate->output_tplrec->tpl) != NO_ERROR)
+      error_code = qfile_add_tuple_to_list (thread_p, gbstate->output_file, gbstate->output_tplrec->tpl);
+      if (error_code != NO_ERROR)
 	{
+	  ASSERT_ERROR ();
 	  GOTO_EXIT_ON_ERROR;
 	}
       break;
@@ -17669,13 +17686,12 @@ qexec_gby_finalize_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, int 
   gbstate->xasl->groupby_stats.rows++;
 
 wrapup:
-  /* clear agg_list, since we moved aggreate values here beforehand */
+  /* clear agg_list, since we moved aggregate values here beforehand */
   QEXEC_CLEAR_AGG_LIST_VALUE (gbstate->g_dim[N].d_agg_list);
   return;
 
 exit_on_error:
-  assert (er_errid () != NO_ERROR);
-  gbstate->state = er_errid ();
+  ASSERT_ERROR_AND_SET (gbstate->state);
   goto wrapup;
 }
 
