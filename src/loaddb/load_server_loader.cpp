@@ -38,10 +38,36 @@ namespace cubload
     , m_attr_info ()
     , m_scancache ()
     , m_scancache_started (false)
-    , m_class_id (NULL_CLASS_ID)
+    , m_clsid (NULL_CLASS_ID)
     , m_class_entry (NULL)
   {
     //
+  }
+
+  void
+  server_loader::init (class_id clsid)
+  {
+    m_clsid = clsid;
+    m_thread_ref = &cubthread::get_entry ();
+
+    m_class_entry = m_session.get_class_registry ().get_class_entry (clsid);
+    if (m_class_entry == NULL)
+      {
+	return;
+      }
+
+    start_scancache_modify (&m_scancache);
+    if (!m_session.is_failed ())
+      {
+	m_scancache_started = true;
+      }
+
+    OID &class_oid =  m_class_entry->get_class_oid ();
+    int error_code = heap_attrinfo_start (m_thread_ref, &class_oid, -1, NULL, &m_attr_info);
+    if (error_code != NO_ERROR)
+      {
+	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
+      }
   }
 
   void
@@ -67,7 +93,7 @@ namespace cubload
   void
   server_loader::setup_class (string_type *class_name, class_command_spec_type *cmd_spec)
   {
-    assert (m_class_id != NULL_CLASS_ID);
+    assert (m_clsid != NULL_CLASS_ID);
 
     if (class_name == NULL || class_name->val == NULL)
       {
@@ -93,7 +119,7 @@ namespace cubload
 	m_scancache_started = false;
       }
 
-    m_class_id = NULL_CLASS_ID;
+    m_clsid = NULL_CLASS_ID;
     m_class_entry = NULL;
     m_thread_ref = NULL;
   }
@@ -283,32 +309,6 @@ namespace cubload
   }
 
   void
-  server_loader::init (cubthread::entry *thread_ref, class_id class_id)
-  {
-    m_class_id = class_id;
-    m_thread_ref = thread_ref;
-
-    m_class_entry = m_session.get_class_registry ().get_class_entry (class_id);
-    if (m_class_entry == NULL)
-      {
-	return;
-      }
-
-    start_scancache_modify (&m_scancache);
-    if (!m_session.is_failed ())
-      {
-	m_scancache_started = true;
-      }
-
-    OID &class_oid =  m_class_entry->get_class_oid ();
-    int error_code = heap_attrinfo_start (m_thread_ref, &class_oid, -1, NULL, &m_attr_info);
-    if (error_code != NO_ERROR)
-      {
-	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
-      }
-  }
-
-  void
   server_loader::locate_class (const char *class_name, OID *class_oid)
   {
     LC_FIND_CLASSNAME found = xlocator_find_class_oid (m_thread_ref, class_name, class_oid, IX_LOCK);
@@ -337,7 +337,7 @@ namespace cubload
 	return;
       }
 
-    m_class_entry = m_session.get_class_registry ().register_class (class_name, m_class_id, class_oid,
+    m_class_entry = m_session.get_class_registry ().register_class (class_name, m_clsid, class_oid,
 		    attr_info.num_values);
 
     heap_attrinfo_end (m_thread_ref, &attr_info);

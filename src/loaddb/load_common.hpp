@@ -44,13 +44,13 @@ namespace cubload
 
   struct batch : public cubpacking::packable_object
   {
-    class_id m_class_id;
+    class_id m_clsid;
     batch_id m_batch_id;
     bool m_handle_async;
     std::string m_content;
 
     batch ();
-    batch (class_id class_id, batch_id batch_id, std::string &content, bool handle_async);
+    batch (class_id clsid, batch_id batch_id, std::string &content, bool handle_async);
 
     batch (batch &&other) noexcept; // MoveConstructible
     batch &operator= (batch &&other) noexcept; // MoveAssignable
@@ -247,12 +247,20 @@ namespace cubload
       virtual ~loader () = default; // Destructor
 
       /*
+       * Function to initialize loader instance
+       *
+       *    return: void
+       *    clsid(in): generated id of the class
+       */
+      virtual void init (class_id clsid) = 0;
+
+      /*
        * Function to check a class, it is called when a line of the following form "%id foo 42" is reached
        *    in loaddb object file (where class_name will be "foo" and class_id will be 42)
        *
        *    return: void
        *    class_name(in): name of the class
-       *    class_id(in)  : id of the class
+       *    class_id(in)  : id of the class from the object file
        */
       virtual void check_class (const char *class_name, int class_id) = 0;
 
@@ -322,6 +330,5 @@ namespace cubload
 
 // alias declaration for legacy C files
 using load_stats = cubload::stats;
-using load_batch = cubload::batch;
 
 #endif /* _LOAD_COMMON_HPP_ */

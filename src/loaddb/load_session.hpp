@@ -93,7 +93,7 @@ namespace cubload
   class class_entry
   {
     public:
-      class_entry (std::string &class_name, OID &class_oid, class_id class_id, int attr_count);
+      class_entry (std::string &class_name, OID &class_oid, class_id clsid, int attr_count);
       ~class_entry () = default;
 
       class_entry (class_entry &&other) = delete;
@@ -107,7 +107,7 @@ namespace cubload
       attribute &get_attribute (int index);
 
     private:
-      class_id m_class_id;
+      class_id m_clsid;
       OID m_class_oid;
       std::string m_class_name;
 
@@ -128,14 +128,14 @@ namespace cubload
       class_registry &operator= (class_registry &&other) = delete; // Not MoveAssignable
       class_registry &operator= (const class_registry &copy) = delete;  // Not CopyAssignable
 
-      class_entry *get_class_entry (class_id class_id);
-      class_entry *register_class (const char *class_name, class_id class_id, OID class_oid, int attr_count);
+      class_entry *get_class_entry (class_id clsid);
+      class_entry *register_class (const char *class_name, class_id clsid, OID class_oid, int attr_count);
 
     private:
       std::mutex m_mutex;
       std::unordered_map<class_id, class_entry *> m_class_by_id;
 
-      class_entry *get_class_entry_without_lock (class_id class_id);
+      class_entry *get_class_entry_without_lock (class_id clsid);
   };
 
   class loaddb_worker_context_manager;

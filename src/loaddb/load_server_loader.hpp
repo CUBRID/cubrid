@@ -42,6 +42,8 @@ namespace cubload
       server_loader (session &session, error_handler &error_handler);
       ~server_loader () override = default;
 
+      void init (class_id clsid) override;
+
       void check_class (const char *class_name, int class_id) override;
       int setup_class (const char *class_name) override;
       void setup_class (string_type *class_name, class_command_spec_type *cmd_spec) override;
@@ -50,8 +52,6 @@ namespace cubload
       void start_line (int object_id) override;
       void process_line (constant_type *cons) override;
       void finish_line () override;
-
-      void init (cubthread::entry *thread_ref, class_id class_id);
 
     private:
       void process_constant (constant_type *cons, attribute &attr);
@@ -74,7 +74,7 @@ namespace cubload
       heap_scancache m_scancache;
       bool m_scancache_started;
 
-      class_id m_class_id;
+      class_id m_clsid;
       class_entry *m_class_entry;
   };
 

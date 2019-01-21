@@ -33,6 +33,8 @@ namespace cubload
   class sa_loader : public loader
   {
     public:
+      void init (class_id clsid) override;
+
       void check_class (const char *class_name, int class_id) override;
       int setup_class (const char *class_name) override;
       void setup_class (string_type *class_name, class_command_spec_type *cmd_spec) override;

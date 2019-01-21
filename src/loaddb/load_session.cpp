@@ -35,8 +35,8 @@ namespace cubload
 {
 
   // class_entry
-  class_entry::class_entry (std::string &class_name, OID &class_oid, class_id class_id, int attr_count)
-    : m_class_id (class_id)
+  class_entry::class_entry (std::string &class_name, OID &class_oid, class_id clsid, int attr_count)
+    : m_clsid (clsid)
     , m_class_oid (class_oid)
     , m_class_name (std::move (class_name))
     , m_attr_count (attr_count)
@@ -91,36 +91,36 @@ namespace cubload
   }
 
   class_entry *
-  class_registry::register_class (const char *class_name, class_id class_id, OID class_oid, int attr_count)
+  class_registry::register_class (const char *class_name, class_id clsid, OID class_oid, int attr_count)
   {
     std::unique_lock<std::mutex> ulock (m_mutex);
 
-    class_entry *c_entry = get_class_entry_without_lock (class_id);
+    class_entry *c_entry = get_class_entry_without_lock (clsid);
     if (c_entry != NULL)
       {
 	return c_entry;
       }
 
     std::string c_name (class_name);
-    c_entry  = new class_entry (c_name, class_oid, class_id, attr_count);
+    c_entry  = new class_entry (c_name, class_oid, clsid, attr_count);
 
-    m_class_by_id.insert (std::make_pair (class_id, c_entry));
+    m_class_by_id.insert (std::make_pair (clsid, c_entry));
 
     return c_entry;
   }
 
   class_entry *
-  class_registry::get_class_entry (class_id class_id)
+  class_registry::get_class_entry (class_id clsid)
   {
     std::unique_lock<std::mutex> ulock (m_mutex);
 
-    return get_class_entry_without_lock (class_id);
+    return get_class_entry_without_lock (clsid);
   }
 
   class_entry *
-  class_registry::get_class_entry_without_lock (class_id class_id)
+  class_registry::get_class_entry_without_lock (class_id clsid)
   {
-    auto found = m_class_by_id.find (class_id);
+    auto found = m_class_by_id.find (clsid);
     if (found != m_class_by_id.end ())
       {
 	return found->second;
@@ -148,6 +148,7 @@ namespace cubload
 	: m_session (session)
 	, m_pool_size (pool_size)
 	, m_driver_pool (NULL)
+	, m_conn_entry (*cubthread::get_entry ().conn_entry)
       {
 	// +1 in case when a driver will be required by session::load_batch function
 	m_driver_pool = new resource_shared_pool<driver> (pool_size + 1);
@@ -174,6 +175,9 @@ namespace cubload
       void on_create (cubthread::entry &context) override
       {
 	context.m_loaddb_driver = claim_driver ();
+
+	// save connection entry
+	context.conn_entry = &m_conn_entry;
       }
 
       void on_retire (cubthread::entry &context) override
@@ -185,12 +189,14 @@ namespace cubload
 
 	retire_driver (*context.m_loaddb_driver);
 	context.m_loaddb_driver = NULL;
+	context.conn_entry = NULL;
       }
 
     private:
       session &m_session;
       unsigned int m_pool_size;
       resource_shared_pool<driver> *m_driver_pool;
+      css_conn_entry &m_conn_entry;
 
       void init_driver (driver *driver)
       {
@@ -226,10 +232,9 @@ namespace cubload
     public:
       load_worker () = delete; // Default c-tor: deleted.
 
-      load_worker (batch &batch, session &session, css_conn_entry conn_entry)
+      load_worker (batch &batch, session &session)
 	: m_batch (std::move (batch))
 	, m_session (session)
-	, m_conn_entry (conn_entry)
       {
 	//
       }
@@ -241,18 +246,16 @@ namespace cubload
 	    return;
 	  }
 
-	// save connection entry
-	thread_ref.conn_entry = &m_conn_entry;
+	assert (thread_ref.m_loaddb_driver != NULL);
 
 	logtb_assign_tran_index (&thread_ref, NULL_TRANID, TRAN_ACTIVE, NULL, NULL, TRAN_LOCK_INFINITE_WAIT,
 				 TRAN_DEFAULT_ISOLATION_LEVEL ());
 
-	server_loader &loader = dynamic_cast<server_loader &> (thread_ref.m_loaddb_driver->get_loader ());
-	loader.init (&thread_ref, m_batch.m_class_id);
+	thread_ref.m_loaddb_driver->get_loader ().init (m_batch.m_clsid);
 
 	// start parsing
 	std::istringstream iss (m_batch.m_content);
-	int ret = thread_ref.m_loaddb_driver->parse (iss); // parse documentation says that 0 is returned if parsing succeeds
+	int ret = thread_ref.m_loaddb_driver->parse (iss); // parse doc says that 0 is returned if parsing succeeds
 
 	if (m_session.is_failed () || ret != 0 || er_errid_if_has_error () != NO_ERROR)
 	  {
@@ -282,7 +285,6 @@ namespace cubload
     private:
       batch m_batch;
       session &m_session;
-      css_conn_entry m_conn_entry;
   };
 
   session::session (SESSION_ID id)
@@ -447,7 +449,7 @@ namespace cubload
     if (batch.m_handle_async)
       {
 	// if batch.m_handle_async is true then batch content contains just objects so push a new task on worker pool
-	cubthread::get_manager ()->push_task (m_worker_pool, new load_worker (batch, *this, *thread_ref.conn_entry));
+	cubthread::get_manager ()->push_task (m_worker_pool, new load_worker (batch, *this));
       }
     else
       {
@@ -455,7 +457,7 @@ namespace cubload
 	// and we need to register the class and return immediately. Execute the load_worker task on current thread
 	thread_ref.m_loaddb_driver = m_wp_context_manager->claim_driver ();
 
-	cubthread::get_manager ()->push_task (NULL, new load_worker (batch, *this, *thread_ref.conn_entry));
+	cubthread::get_manager ()->push_task (NULL, new load_worker (batch, *this));
 
 	m_wp_context_manager->retire_driver (*thread_ref.m_loaddb_driver);
       }

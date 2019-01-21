@@ -645,6 +645,13 @@ namespace cubload
 {
 
   void
+  sa_loader::init (class_id clsid)
+  {
+    (void) clsid;
+    // do nothing on SA_MODE
+  }
+
+  void
   sa_loader::check_class (const char *class_name, int class_id)
   {
     DB_OBJECT *class_;

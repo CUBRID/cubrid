@@ -9827,9 +9827,9 @@ sloaddb_load_batch (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 
   /* *INDENT-OFF* */
   cubpacking::packer packer (request, (size_t) reqlen);
+  cubload::batch batch;
   /* *INDENT-ON* */
 
-  load_batch batch;
   batch.unpack (&packer);
 
   load_session *session = NULL;

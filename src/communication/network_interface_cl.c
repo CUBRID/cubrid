@@ -10135,7 +10135,7 @@ loaddb_load_object_file (const char *file_name)
 }
 
 int
-loaddb_load_batch (load_batch & batch)
+loaddb_load_batch (cubload::batch & batch)
 {
 #if defined(CS_MODE)
   int req_error;
