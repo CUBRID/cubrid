@@ -194,10 +194,6 @@ static int online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, H
 				 PRED_EXPR_WITH_CONTEXT * filter_pred, int *attrs_prefix_length,
 				 HEAP_CACHE_ATTRINFO * attr_info, HEAP_SCANCACHE * scancache, int unique_pk);
 
-/* Global variables needed for the Index Builder */
-INT64 ib_error = NO_ERROR;
-INT64 ib_tasks_running = 0LL;
-
 /*
  * btree_get_node_header () -
  *
@@ -4766,6 +4762,7 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
   DB_VALUE *p_dbvalue;
   int *p_prefix_length;
   char midxkey_buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_midxkey_buf;
+  INDEX_BUILDER_LOADER_CONTEXT load_context = INDEX_BUILDER_LOADER_CONTEXT_INITIALIZER;
   cubthread::entry_workpool * ib_workpool =
     cubthread::get_manager ()->create_worker_pool (prm_get_integer_value (PRM_ID_INDEX_BUILDER_THREAD_COUNT), 32,
 						   "Online index loader pool", NULL, 1,
@@ -4866,19 +4863,18 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 
       /* Dispatch the insert operation */
       index_builder_loader_task *load_task = new index_builder_loader_task (btid_int->sys_btid, &class_oids[cur_class],
-									    &cur_oid, unique_pk, &ib_error,
-									    &ib_tasks_running);
+									    &cur_oid, unique_pk);
 
       load_task->set_key (p_dbvalue);
-      load_task->set_tran_index (thread_p->tran_index);
+      load_task->set_load_context (load_context);
 
       cubthread::get_manager ()->push_task (ib_workpool, load_task);
 
       /* Increment tasks started. */
-      ATOMIC_INC_64 (&ib_tasks_running, 1LL);
+      ATOMIC_INC_64 (&load_context.m_tasks_executed, 1LL);
 
       /* Check for possible errors. */
-      local_error = ATOMIC_INC_64 (&ib_error, 0LL);
+      local_error = ATOMIC_INC_64 (&load_context.m_ib_error, 0LL);
       if (local_error != NO_ERROR)
 	{
 	  /* Also stop all threads. */
@@ -4899,9 +4895,9 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
   /* Check if the workerpool is empty */
   do
     {
-      tasks_completed = ATOMIC_INC_64 (&ib_tasks_running, 0LL);
+      tasks_completed = ATOMIC_INC_64 (&load_context.m_tasks_executed, 0LL);
 
-      local_error = ATOMIC_INC_64 (&ib_error, 0LL);
+      local_error = ATOMIC_INC_64 (&load_context.m_ib_error, 0LL);
       if (local_error != NO_ERROR)
 	{
 	  /* Also stop all threads. */
@@ -4911,8 +4907,7 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 	}
 
       /* Wait for threads to finish. */
-      sleep (0.01);
-
+      thread_sleep (10);
     }
   while (tasks_completed != 0LL);
 
@@ -4922,33 +4917,26 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
   return ret;
 }
 
-index_builder_loader_task::index_builder_loader_task (BTID * btid, OID * class_oid, OID * oid, int unique_pk,
-						      INT64 * ib_error, INT64 * tasks_executed)
+index_builder_loader_task::index_builder_loader_task (BTID * btid, OID * class_oid, OID * oid, int unique_pk)
 {
   BTID_COPY (&this->btid, btid);
   COPY_OID (&this->class_oid, class_oid);
   COPY_OID (&this->oid, oid);
   this->unique_pk = unique_pk;
-  this->error = ib_error;
-  this->tasks_executed = tasks_executed;
 }
 
+// *INDENT-OFF*
 index_builder_loader_task::~index_builder_loader_task ()
 {
   cubmem::private_allocator < void *>().switch_to_global_allocator_and_call < int (DB_VALUE *),
     DB_VALUE * >(pr_clear_value, &key);
 }
+// *INDENT-ON*
 
 void
 index_builder_loader_task::set_key (DB_VALUE * key)
 {
   this->key = *db_value_copy (key);
-}
-
-void
-index_builder_loader_task::set_tran_index (int tran_index)
-{
-  this->tran_index = tran_index;
 }
 
 void
@@ -4958,27 +4946,27 @@ index_builder_loader_task::execute (cubthread::entry & thread_ref)
   INT64 err;
 
   /* Check for possible errors set by the other threads. */
-  err = ATOMIC_INC_64 (this->error, 0LL);
+  err = ATOMIC_INC_64 (&this->load_context.m_ib_error, 0LL);
   if (err != NO_ERROR)
     {
       goto cleanup;
     }
 
-  thread_ref.tran_index = this->tran_index;
+  thread_ref.tran_index = this->load_context.m_tran_index;
 
-  ret = btree_online_index_dispatcher (&thread_ref, &this->btid, &this->key, &this->class_oid, &this->oid,
-				       this->unique_pk, BTREE_OP_ONLINE_INDEX_IB_INSERT, NULL);
+  ret = btree_online_index_dispatcher (&thread_ref, &btid, &key, &class_oid, &oid,
+				       unique_pk, BTREE_OP_ONLINE_INDEX_IB_INSERT, NULL);
 
   if (ret != NO_ERROR)
     {
-      err = ATOMIC_INC_64 (this->error, 0LL);
+      err = ATOMIC_INC_64 (&this->load_context.m_ib_error, 0LL);
       if (err != NO_ERROR)
 	{
 	  goto cleanup;
 	}
 
       /* Set the error so that other threads may stop execution. */
-      if (!ATOMIC_CAS_64 (this->error, err, (INT64) ret))
+      if (!ATOMIC_CAS_64 (&this->load_context.m_ib_error, err, (INT64) ret))
 	{
 	  /* Error was already set by someone else. We end execution. */
 	  goto cleanup;
@@ -4986,20 +4974,14 @@ index_builder_loader_task::execute (cubthread::entry & thread_ref)
     }
 
   /* Increment tasks completed. */
-  ATOMIC_INC_64 (this->tasks_executed, -1LL);
+  ATOMIC_INC_64 (&this->load_context.m_tasks_executed, -1LL);
 
 cleanup:
   return;
 }
 
-btree_index_builder_load_context::btree_index_builder_load_context (int tran_index)
+void
+index_builder_loader_task::set_load_context (INDEX_BUILDER_LOADER_CONTEXT & load_context)
 {
-  *m_ib_error = 0;
-  *m_tasks_running = 0;
-  m_tran_index = tran_index;
-}
-
-btree_index_builder_load_context::~btree_index_builder_load_context ()
-{
-
+  this->load_context = load_context;
 }
