@@ -146,22 +146,17 @@ namespace cubload
     public:
       loaddb_worker_context_manager (session &session, unsigned int pool_size)
 	: m_session (session)
-	, m_pool_size (pool_size)
-	, m_driver_pool (NULL)
+	, m_driver_pool (pool_size + 1) // +1 in case when a driver will be required by session::load_batch function
 	, m_conn_entry (*cubthread::get_entry ().conn_entry)
       {
-	// +1 in case when a driver will be required by session::load_batch function
-	m_driver_pool = new resource_shared_pool<driver> (pool_size + 1);
+	//
       }
 
-      ~loaddb_worker_context_manager () override
-      {
-	delete m_driver_pool;
-      }
+      ~loaddb_worker_context_manager () override = default;
 
       driver *claim_driver ()
       {
-	driver *driver = m_driver_pool->claim ();
+	driver *driver = m_driver_pool.claim ();
 	init_driver (driver);
 
 	return driver;
@@ -169,7 +164,7 @@ namespace cubload
 
       void retire_driver (driver &claimed)
       {
-	m_driver_pool->retire (claimed);
+	m_driver_pool.retire (claimed);
       }
 
       void on_create (cubthread::entry &context) override
@@ -194,8 +189,7 @@ namespace cubload
 
     private:
       session &m_session;
-      unsigned int m_pool_size;
-      resource_shared_pool<driver> *m_driver_pool;
+      resource_shared_pool<driver> m_driver_pool;
       css_conn_entry &m_conn_entry;
 
       void init_driver (driver *driver)
@@ -300,15 +294,15 @@ namespace cubload
     , m_class_registry ()
     , m_stats ()
     , m_stats_mutex ()
-    , m_pool_size (0)
   {
-    m_pool_size = std::max<unsigned int> (2, std::thread::hardware_concurrency ()); // start at least 2 loaddb threads
+    // start at least 2 loaddb threads
+    unsigned int pool_size = std::max<unsigned int> (2, std::thread::hardware_concurrency ());
 
     std::string worker_pool_name ("loaddb-workers_session-");
     worker_pool_name.append (std::to_string (id));
 
-    m_wp_context_manager = new loaddb_worker_context_manager (*this, m_pool_size);
-    m_worker_pool = cubthread::get_manager ()->create_worker_pool (m_pool_size, m_pool_size, worker_pool_name.c_str (),
+    m_wp_context_manager = new loaddb_worker_context_manager (*this, pool_size);
+    m_worker_pool = cubthread::get_manager ()->create_worker_pool (pool_size, pool_size, worker_pool_name.c_str (),
 		    m_wp_context_manager, 1, false, true);
   }
 

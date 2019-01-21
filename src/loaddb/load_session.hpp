@@ -231,8 +231,6 @@ namespace cubload
 
       stats m_stats; // load db stats
       std::mutex m_stats_mutex;
-
-      unsigned int m_pool_size;
   };
 
 } // namespace cubload
