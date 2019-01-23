@@ -2289,6 +2289,7 @@ db_json_set_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path)
   switch (p.apply_path (doc))
     {
     case PATH_APPLY_RES::VALUE_EXISTS:
+      p.set (doc, *value);
       return NO_ERROR;
     case PATH_APPLY_RES::PARENT_VALUE_EXISTS:
       if (p.points_to_array_cell ())
@@ -2612,12 +2613,18 @@ db_json_array_insert_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw
   switch (p.apply_path (doc))
     {
     case PATH_APPLY_RES::VALUE_EXISTS:
+      if (!p.points_to_array_cell ())
+	{
+	  return db_json_er_set_expected_other_type (ARG_FILE_LINE, p.dump_json_path (),
+		 db_json_get_type_of_value (p.get (doc)),
+		 DB_JSON_ARRAY);
+	}
       return db_json_array_insert_op (value, doc, p);
     case PATH_APPLY_RES::PARENT_VALUE_EXISTS:
       if (!p.points_to_array_cell ())
 	{
 	  return db_json_er_set_expected_other_type (ARG_FILE_LINE, p.dump_json_path (),
-		 db_json_get_type_of_value (p.get_parent ().get (doc)),
+		 db_json_get_type_of_value (p.get (doc)),
 		 DB_JSON_ARRAY);
 	}
       db_json_value_wrap_as_array (*p.get_parent ().get (doc), doc.GetAllocator ());
