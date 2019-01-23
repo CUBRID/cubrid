@@ -4917,6 +4917,22 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
   return ret;
 }
 
+template < typename T > template < typename Func, typename...Args > inline void
+  cubmem::private_allocator <
+T >::switch_to_global_allocator_and_call (Func && func, Args && ... args)
+{
+  /* Switch to global context. */
+  m_thread_p = get_thread_entry ();
+  m_heapid = get_heapid ();
+
+  m_thread_p->private_heap_id = -1;
+
+  func (std::forward < Args > (args)...);
+
+  /* switch back to private */
+  m_thread_p->private_heap_id = m_heapid;
+}
+
 index_builder_loader_task::index_builder_loader_task (BTID * btid, OID * class_oid, OID * oid, int unique_pk)
 {
   BTID_COPY (&this->btid, btid);
@@ -4928,8 +4944,8 @@ index_builder_loader_task::index_builder_loader_task (BTID * btid, OID * class_o
 // *INDENT-OFF*
 index_builder_loader_task::~index_builder_loader_task ()
 {
-  cubmem::private_allocator < void *>().switch_to_global_allocator_and_call < int (DB_VALUE *),
-    DB_VALUE * >(pr_clear_value, &key);
+  cubmem::private_allocator<char> local_allocator;
+  local_allocator.switch_to_global_allocator_and_call < int (DB_VALUE *), DB_VALUE * >(pr_clear_value, &key);
 }
 // *INDENT-ON*
 
