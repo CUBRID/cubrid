@@ -6308,7 +6308,7 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
   for (const auto &path : starting_paths)
     {
       transformed_paths.emplace_back ();
-      error_code = db_json_convert_pointer_to_sql_path (path.c_str (), transformed_paths.back ());
+      error_code = db_json_normalize_path (path.c_str (), transformed_paths.back ());
       if (error_code != NO_ERROR)
 	{
 	  db_json_delete_doc (doc);
