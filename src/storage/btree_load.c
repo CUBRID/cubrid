@@ -4975,18 +4975,9 @@ index_builder_loader_task::execute (cubthread::entry & thread_ref)
 
   if (ret != NO_ERROR)
     {
-      err = ATOMIC_INC_64 (&this->load_context->m_ib_error, 0LL);
-      if (err != NO_ERROR)
-	{
-	  goto cleanup;
-	}
-
-      /* Set the error so that other threads may stop execution. */
-      if (!ATOMIC_CAS_64 (&this->load_context->m_ib_error, err, (INT64) ret))
-	{
-	  /* Error was already set by someone else. We end execution. */
-	  goto cleanup;
-	}
+      /* Set the error. */
+      ATOMIC_TAS_64 (&this->load_context->m_ib_error, (INT64) ret);
+      goto cleanup;
     }
 
   /* Increment tasks completed. */
