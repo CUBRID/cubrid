@@ -4962,27 +4962,27 @@ index_builder_loader_task::execute (cubthread::entry & thread_ref)
   INT64 err;
 
   /* Check for possible errors set by the other threads. */
-  err = ATOMIC_INC_64 (&this->load_context.m_ib_error, 0LL);
+  err = ATOMIC_INC_64 (&this->load_context->m_ib_error, 0LL);
   if (err != NO_ERROR)
     {
       goto cleanup;
     }
 
-  thread_ref.tran_index = this->load_context.m_tran_index;
+  thread_ref.tran_index = this->load_context->m_tran_index;
 
   ret = btree_online_index_dispatcher (&thread_ref, &btid, &key, &class_oid, &oid,
 				       unique_pk, BTREE_OP_ONLINE_INDEX_IB_INSERT, NULL);
 
   if (ret != NO_ERROR)
     {
-      err = ATOMIC_INC_64 (&this->load_context.m_ib_error, 0LL);
+      err = ATOMIC_INC_64 (&this->load_context->m_ib_error, 0LL);
       if (err != NO_ERROR)
 	{
 	  goto cleanup;
 	}
 
       /* Set the error so that other threads may stop execution. */
-      if (!ATOMIC_CAS_64 (&this->load_context.m_ib_error, err, (INT64) ret))
+      if (!ATOMIC_CAS_64 (&this->load_context->m_ib_error, err, (INT64) ret))
 	{
 	  /* Error was already set by someone else. We end execution. */
 	  goto cleanup;
@@ -4990,7 +4990,7 @@ index_builder_loader_task::execute (cubthread::entry & thread_ref)
     }
 
   /* Increment tasks completed. */
-  ATOMIC_INC_64 (&this->load_context.m_tasks_executed, -1LL);
+  ATOMIC_INC_64 (&this->load_context->m_tasks_executed, -1LL);
 
 cleanup:
   return;
@@ -4999,5 +4999,5 @@ cleanup:
 void
 index_builder_loader_task::set_load_context (INDEX_BUILDER_LOADER_CONTEXT & load_context)
 {
-  this->load_context = load_context;
+  this->load_context = &load_context;
 }

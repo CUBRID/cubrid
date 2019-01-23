@@ -298,7 +298,7 @@ public:
     DB_VALUE key;
     OID class_oid, oid;
     int unique_pk;
-    INDEX_BUILDER_LOADER_CONTEXT load_context; // Loader context.
+    INDEX_BUILDER_LOADER_CONTEXT *load_context; // Loader context.
 
     index_builder_loader_task (BTID * btid, OID * class_oid, OID * oid, int unique_pk);
 
