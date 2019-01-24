@@ -185,7 +185,7 @@ namespace cubload
        *    thread_ref(in): thread entry
        *    batch(in)     : a batch from loaddb object
        */
-      int load_batch (cubthread::entry &thread_ref, batch &batch);
+      int load_batch (cubthread::entry &thread_ref, const batch &batch);
 
       /*
        * Load object file entirely on the the server

@@ -55,7 +55,7 @@ namespace cubload
     batch (batch &&other) noexcept; // MoveConstructible
     batch &operator= (batch &&other) noexcept; // MoveAssignable
 
-    batch (const batch &copy) = delete; // Not CopyConstructible
+    batch (const batch &copy) = default; // Not CopyConstructible // TODO CBRD-22660 we should not allow copy
     batch &operator= (const batch &copy) = delete; // Not CopyAssignable
 
     int pack (cubpacking::packer *serializator) override;
@@ -64,7 +64,7 @@ namespace cubload
     size_t get_packed_size (cubpacking::packer *serializator) override;
   };
 
-  using batch_handler = std::function<int (batch &)>;
+  using batch_handler = std::function<int (const batch &)>;
 
   /*
    * loaddb executables command line arguments

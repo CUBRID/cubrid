@@ -226,7 +226,7 @@ namespace cubload
     public:
       load_worker () = delete; // Default c-tor: deleted.
 
-      load_worker (batch &batch, session &session)
+      load_worker (const batch &batch, session &session)
 	: m_batch (std::move (batch))
 	, m_session (session)
       {
@@ -417,7 +417,7 @@ namespace cubload
   }
 
   int
-  session::load_batch (cubthread::entry &thread_ref, batch &batch)
+  session::load_batch (cubthread::entry &thread_ref, const batch &batch)
   {
     batch_id current_max_id;
 
@@ -462,7 +462,7 @@ namespace cubload
   int
   session::load_file (cubthread::entry &thread_ref, std::string &file_name)
   {
-    batch_handler handler = [this, &thread_ref] (batch &batch)
+    batch_handler handler = [this, &thread_ref] (const batch &batch)
     {
       return load_batch (thread_ref, batch);
     };

@@ -10135,7 +10135,7 @@ loaddb_load_object_file (const char *file_name)
 }
 
 int
-loaddb_load_batch (cubload::batch & batch)
+loaddb_load_batch (const cubload::batch & batch)
 {
 #if defined(CS_MODE)
   int req_error;
@@ -10145,9 +10145,11 @@ loaddb_load_batch (cubload::batch & batch)
 
   /* *INDENT-OFF* */
   cubpacking::packer packer;
+  // TODO remove const_cast when packer will be separated into packer and unpacker
+  cubload::batch &batch_ = const_cast <cubload::batch &> (batch);
   /* *INDENT-ON* */
 
-  size_t request_size = batch.get_packed_size (&packer);
+  size_t request_size = batch_.get_packed_size (&packer);
   char *request = (char *) malloc (request_size);
   if (request == NULL)
     {
@@ -10156,7 +10158,7 @@ loaddb_load_batch (cubload::batch & batch)
     }
 
   packer.init (request, request_size);
-  batch.pack (&packer);
+  batch_.pack (&packer);
 
   req_error = net_client_request (NET_SERVER_LD_LOAD_BATCH, request, (int) request_size, reply,
 				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);

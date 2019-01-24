@@ -411,7 +411,7 @@ extern int locator_demote_class_lock (const OID * class_oid, LOCK lock, LOCK * e
 
 extern int loaddb_init ();
 extern int loaddb_load_object_file (const char *file_name);
-extern int loaddb_load_batch (cubload::batch & batch);
+extern int loaddb_load_batch (const cubload::batch & batch);
 extern int loaddb_fetch_stats (load_stats * stats);
 extern int loaddb_destroy ();
 #endif /* _NETWORK_INTERFACE_CL_H_ */
