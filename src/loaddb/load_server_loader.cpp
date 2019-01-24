@@ -56,7 +56,7 @@ namespace cubload
 	return;
       }
 
-    start_scancache_modify (&m_scancache);
+    start_scancache ();
     if (!m_session.is_failed ())
       {
 	m_scancache_started = true;
@@ -346,7 +346,7 @@ namespace cubload
   void
   server_loader::register_class_attributes (string_type *attr_list)
   {
-    start_scancache_modify (&m_scancache);
+    start_scancache ();
 
     OID &class_oid = m_class_entry->get_class_oid ();
 
@@ -419,7 +419,7 @@ namespace cubload
   }
 
   void
-  server_loader::start_scancache_modify (heap_scancache *scancache)
+  server_loader::start_scancache ()
   {
     hfid hfid;
     OID &class_oid = m_class_entry->get_class_oid ();
@@ -431,7 +431,7 @@ namespace cubload
 	return;
       }
 
-    error_code = heap_scancache_start_modify (m_thread_ref, scancache, &hfid, &class_oid, SINGLE_ROW_INSERT, NULL);
+    error_code = heap_scancache_start_modify (m_thread_ref, &m_scancache, &hfid, &class_oid, SINGLE_ROW_INSERT, NULL);
     if (error_code != NO_ERROR)
       {
 	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);

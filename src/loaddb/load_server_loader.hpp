@@ -62,7 +62,7 @@ namespace cubload
       void register_class (const char *class_name);
       void register_class_attributes (string_type *attr_list);
 
-      void start_scancache_modify (heap_scancache *scancache);
+      void start_scancache ();
 
       session &m_session;
       error_handler &m_error_handler;
