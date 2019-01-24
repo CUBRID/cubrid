@@ -1014,10 +1014,8 @@ bool JSON_PATH::is_last_array_index_less_than (size_t size) const
 bool JSON_PATH::is_last_token_array_index_zero () const
 {
   const TOKEN *last_token = get_last_token ();
-  // a call to apply_path returning VALUE_EXISTS_WRAPPED should have been made
   assert (last_token != NULL);
-  return (last_token->index != kPointerInvalidIndex && last_token->index >= 1) || (last_token->length == 1
-	 && last_token->name[0] == '-');
+  return (last_token->index != kPointerInvalidIndex && last_token->index == 0);
 }
 
 bool JSON_PATH::points_to_array_cell () const
@@ -2301,8 +2299,12 @@ db_json_replace_func (const JSON_DOC *new_value, JSON_DOC &doc, const char *raw_
       if (p.is_last_token_array_index_zero ())
 	{
 	  parent_path.set (doc, *new_value);
+	  return NO_ERROR;
 	}
-      return NO_ERROR;
+      else
+	{
+	  return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, parent_path.dump_json_path (), &doc);
+	}
     }
     case PATH_APPLY_RES::NO_VALUE:
       return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p.dump_json_path (), &doc);
