@@ -791,13 +791,6 @@ class JSON_PATH : protected rapidjson::GenericPointer <JSON_VALUE>
 
     std::string dump_json_path () const;
 
-    const TOKEN *get_last_token () const
-    {
-      size_t token_cnt = GetTokenCount ();
-
-      return token_cnt > 0 ? GetTokens () + (token_cnt - 1) : NULL;
-    }
-
     JSON_VALUE *get (JSON_DOC &jd) const
     {
       return Get (jd);
@@ -823,6 +816,13 @@ class JSON_PATH : protected rapidjson::GenericPointer <JSON_VALUE>
       return Erase (jd);
     }
 
+    const TOKEN *get_last_token () const
+    {
+      size_t token_cnt = GetTokenCount ();
+
+      return token_cnt > 0 ? GetTokens () + (token_cnt - 1) : NULL;
+    }
+
     const JSON_PATH get_parent () const
     {
       if (GetTokenCount () == 0)
@@ -846,11 +846,6 @@ class JSON_PATH : protected rapidjson::GenericPointer <JSON_VALUE>
       assert (last_token != NULL);
       return (last_token->index != kPointerInvalidIndex && last_token->index >= 1) || (last_token->length == 1
 	     && last_token->name[0] == '-');
-    }
-
-    const TOKEN *get_first_token () const
-    {
-      return GetTokens ();
     }
 
     bool points_to_array_cell () const
@@ -918,7 +913,6 @@ class JSON_PATH : protected rapidjson::GenericPointer <JSON_VALUE>
     int assign_pointer (const std::string &pointer_path);
     void db_json_replace_token_special_chars (std::string &token,
 	const std::unordered_map<std::string, std::string> &special_chars) const;
-
 };
 
 typedef JSON_PATH::JSON_PATH_APPLY_RESULT PATH_APPLY_RES;
