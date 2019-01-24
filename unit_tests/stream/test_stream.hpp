@@ -112,12 +112,12 @@ namespace test_stream
 
     public:
       ~po1();
-      int pack (cubpacking::packer *serializator);
-      int unpack (cubpacking::packer *serializator);
+      void pack (cubpacking::packer *serializator) const;
+      void unpack (cubpacking::unpacker *deserializator);
 
       bool is_equal (const packable_object *other);
 
-      size_t get_packed_size (cubpacking::packer *serializator);
+      size_t get_packed_size (cubpacking::packer *serializator) const;
 
       void generate_obj (void);
   };
@@ -132,12 +132,12 @@ namespace test_stream
     public:
       ~po2() {};
 
-      int pack (cubpacking::packer *serializator);
-      int unpack (cubpacking::packer *serializator);
+      void pack (cubpacking::packer *serializator) const;
+      void unpack (cubpacking::unpacker *deserializator);
 
       bool is_equal (const packable_object *other);
 
-      size_t get_packed_size (cubpacking::packer *serializator);
+      size_t get_packed_size (cubpacking::packer *serializator) const;
 
       void generate_obj (void);
   };
@@ -156,9 +156,12 @@ namespace test_stream
       test_stream_entry_header m_header;
 
       cubpacking::packer m_serializator;
+      cubpacking::unpacker m_deserializator;
 
     public:
-      test_stream_entry (cubstream::multi_thread_stream *stream_p) : entry (stream_p) { };
+      test_stream_entry (cubstream::multi_thread_stream *stream_p)
+	: entry (stream_p)
+      { };
 
       packable_factory *get_builder ();
 
@@ -218,11 +221,11 @@ namespace test_stream
 
       int unpack_stream_entry_header ()
       {
-	cubpacking::packer *serializator = get_packer ();
-	serializator->unpack_int ((int *) &m_header.tran_id);
-	serializator->unpack_int ((int *) &m_header.mvcc_id);
-	serializator->unpack_int ((int *) &m_header.count_objects);
-	serializator->unpack_int (&m_header.data_size);
+	cubpacking::unpacker *serializator = get_unpacker ();
+	serializator->unpack_int (m_header.tran_id);
+	serializator->unpack_int (m_header.mvcc_id);
+	serializator->unpack_int (reinterpret_cast<int &> (m_header.count_objects)); // is this safe?
+	serializator->unpack_int (m_header.data_size);
 
 	return NO_ERROR;
       };
@@ -235,6 +238,11 @@ namespace test_stream
       cubpacking::packer *get_packer ()
       {
 	return &m_serializator;
+      };
+
+      cubpacking::unpacker *get_unpacker ()
+      {
+	return &m_deserializator;
       };
 
       bool is_equal (const cubstream::entry<cubpacking::packable_object> *other)

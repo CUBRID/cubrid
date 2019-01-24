@@ -113,66 +113,51 @@ namespace test_stream
   }
 
   /* po1 */
-  int po1::pack (cubpacking::packer *serializator)
+  void po1::pack (cubpacking::packer *serializator) const
   {
-    int res = 0;
-
     serializator->pack_int (po1::ID);
 
     serializator->pack_int (i1);
-    serializator->pack_short (&sh1);
-    serializator->pack_bigint (&b1);
+    serializator->pack_short (sh1);
+    serializator->pack_bigint (b1);
     serializator->pack_int_array (int_a, sizeof (int_a) / sizeof (int_a[0]));
     serializator->pack_int_vector (int_v);
     for (unsigned int i = 0; i < sizeof (values) / sizeof (values[0]); i++)
       {
 	serializator->pack_db_value (values[i]);
       }
-    res = serializator->pack_small_string (small_str);
-    assert (res == 0);
-    res = serializator->pack_large_string (large_str);
-    assert (res == 0);
+    serializator->pack_small_string (small_str);
+    serializator->pack_large_string (large_str);
 
-    res = serializator->pack_string (str1);
-    assert (res == 0);
+    serializator->pack_string (str1);
 
-    res = serializator->pack_c_string (str2, strlen (str2));
-    assert (res == 0);
-
-    return NO_ERROR;
+    serializator->pack_c_string (str2, strlen (str2));
   }
 
-  int po1::unpack (cubpacking::packer *serializator)
+  void po1::unpack (cubpacking::unpacker *deserializator)
   {
     int cnt;
-    int res;
 
-    serializator->unpack_int (&cnt);
+    deserializator->unpack_int (cnt);
     assert (cnt == po1::ID);
 
-    serializator->unpack_int (&i1);
-    serializator->unpack_short (&sh1);
-    serializator->unpack_bigint (&b1);
-    serializator->unpack_int_array (int_a, cnt);
+    deserializator->unpack_int (i1);
+    deserializator->unpack_short (sh1);
+    deserializator->unpack_bigint (b1);
+    deserializator->unpack_int_array (int_a, cnt);
     assert (cnt == sizeof (int_a) / sizeof (int_a[0]));
 
-    serializator->unpack_int_vector (int_v);
+    deserializator->unpack_int_vector (int_v);
 
     for (unsigned int i = 0; i < sizeof (values) / sizeof (values[0]); i++)
       {
-	serializator->unpack_db_value (&values[i]);
+	deserializator->unpack_db_value (values[i]);
       }
-    res = serializator->unpack_small_string (small_str, sizeof (small_str));
-    assert (res == 0);
-    res = serializator->unpack_large_string (large_str);
-    assert (res == 0);
+    deserializator->unpack_small_string (small_str, sizeof (small_str));
+    deserializator->unpack_large_string (large_str);
 
-    res = serializator->unpack_string (str1);
-    assert (res == 0);
-    res = serializator->unpack_c_string (str2, sizeof (str2));
-    assert (res == 0);
-
-    return NO_ERROR;
+    deserializator->unpack_string (str1);
+    deserializator->unpack_c_string (str2, sizeof (str2));
   }
 
   bool po1::is_equal (const cubpacking::packable_object *other)
@@ -229,7 +214,7 @@ namespace test_stream
     return true;
   }
 
-  size_t po1::get_packed_size (cubpacking::packer *serializator)
+  size_t po1::get_packed_size (cubpacking::packer *serializator) const
   {
     size_t entry_size = 0;
     /* ID :*/
@@ -317,31 +302,20 @@ namespace test_stream
       }
   }
   /* po2 */
-  int po2::pack (cubpacking::packer *serializator)
+  void po2::pack (cubpacking::packer *serializator) const
   {
-    int res = 0;
+    serializator->pack_int (po2::ID);
 
-    res = serializator->pack_int (po2::ID);
-    assert (res == 0);
-
-    res = serializator->pack_large_string (large_str);
-    assert (res == 0);
-
-    return NO_ERROR;
+    serializator->pack_large_string (large_str);
   }
 
-  int po2::unpack (cubpacking::packer *serializator)
+  void po2::unpack (cubpacking::unpacker *deserializator)
   {
-    int res;
     int id;
 
-    serializator->unpack_int (&id);
-    assert (id == po2::ID);
+    deserializator->unpack_int (id);
 
-    res = serializator->unpack_large_string (large_str);
-    assert (res == 0);
-
-    return NO_ERROR;
+    deserializator->unpack_large_string (large_str);
   }
 
   bool po2::is_equal (const cubpacking::packable_object *other)
@@ -362,7 +336,7 @@ namespace test_stream
     return true;
   }
 
-  size_t po2::get_packed_size (cubpacking::packer *serializator)
+  size_t po2::get_packed_size (cubpacking::packer *serializator) const
   {
     size_t entry_size = 0;
     /* ID :*/

@@ -39,60 +39,46 @@ namespace test_packing
     str[i] = '\0';
   }
 
-  int po1::pack (cubpacking::packer *serializator)
+  void po1::pack (cubpacking::packer *serializator) const
   {
-    int res = 0;
     serializator->pack_int (i1);
-    serializator->pack_short (&sh1);
-    serializator->pack_bigint (&b1);
+    serializator->pack_short (sh1);
+    serializator->pack_bigint (b1);
     serializator->pack_int_array (int_a, sizeof (int_a) / sizeof (int_a[0]));
     serializator->pack_int_vector (int_v);
     for (int i = 0; i < sizeof (values) / sizeof (values[0]); i++)
       {
 	serializator->pack_db_value (values[i]);
       }
-    res = serializator->pack_small_string (small_str);
-    assert (res == 0);
-    res = serializator->pack_large_string (large_str);
-    assert (res == 0);
+    serializator->pack_small_string (small_str);
+    serializator->pack_large_string (large_str);
 
-    res = serializator->pack_string (str1);
-    assert (res == 0);
+    serializator->pack_string (str1);
 
-    res = serializator->pack_c_string (str2, sizeof (str2) - 1);
-    assert (res == 0);
-
-    return NO_ERROR;
+    serializator->pack_c_string (str2, sizeof (str2) - 1);
   }
 
-  int po1::unpack (cubpacking::packer *serializator)
+  void po1::unpack (cubpacking::unpacker *deserializator)
   {
-    int cnt;
-    int res;
+    int cnt = 0;
 
-    serializator->unpack_int (&i1);
-    serializator->unpack_short (&sh1);
-    serializator->unpack_bigint (&b1);
-    serializator->unpack_int_array (int_a, cnt);
+    deserializator->unpack_int (i1);
+    deserializator->unpack_short (sh1);
+    deserializator->unpack_bigint (b1);
+    deserializator->unpack_int_array (int_a, cnt);
     assert (cnt == sizeof (int_a) / sizeof (int_a[0]));
 
-    serializator->unpack_int_vector (int_v);
+    deserializator->unpack_int_vector (int_v);
 
     for (int i = 0; i < sizeof (values) / sizeof (values[0]); i++)
       {
-	serializator->unpack_db_value (&values[i]);
+	deserializator->unpack_db_value (values[i]);
       }
-    res = serializator->unpack_small_string (small_str, sizeof (small_str));
-    assert (res == 0);
-    res = serializator->unpack_large_string (large_str);
-    assert (res == 0);
+    deserializator->unpack_small_string (small_str, sizeof (small_str));
+    deserializator->unpack_large_string (large_str);
 
-    res = serializator->unpack_string (str1);
-    assert (res == 0);
-    res = serializator->unpack_c_string (str2, sizeof (str2));
-    assert (res == 0);
-
-    return NO_ERROR;
+    deserializator->unpack_string (str1);
+    deserializator->unpack_c_string (str2, sizeof (str2));
   }
 
   bool po1::is_equal (const cubpacking::packable_object *other)
@@ -149,7 +135,7 @@ namespace test_packing
     return true;
   }
 
-  size_t po1::get_packed_size (cubpacking::packer *serializator)
+  size_t po1::get_packed_size (cubpacking::packer *serializator) const
   {
     size_t entry_size = 0;
 
@@ -157,7 +143,7 @@ namespace test_packing
     entry_size += serializator->get_packed_short_size (entry_size);
     entry_size += serializator->get_packed_bigint_size (entry_size);
     entry_size += serializator->get_packed_int_vector_size (entry_size, sizeof (int_a) / sizeof (int_a[0]));
-    entry_size += serializator->get_packed_int_vector_size (entry_size, int_v.size ());
+    entry_size += serializator->get_packed_int_vector_size (entry_size, (int) int_v.size ());
     for (int i = 0; i < sizeof (values) / sizeof (values[0]); i++)
       {
 	entry_size += serializator->get_packed_db_value_size (values[i], int_v.size ());
@@ -201,7 +187,8 @@ namespace test_packing
 	  case 4:
 	    str_size = std::rand () % 1000 + 1;
 	    tmp_str = new char[str_size + 1];
-	    db_make_char (&values[i], str_size, tmp_str, str_size, INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY);
+	    db_make_char (&values[i], (int) str_size, tmp_str, (int) str_size, INTL_CODESET_ISO88591,
+			  LANG_COLL_ISO_BINARY);
 	    break;
 	  }
       }
@@ -296,8 +283,9 @@ namespace test_packing
     ptr2 = new char[buf_size];
     cubmem::pinnable_buffer buf1 (ptr1, buf_size);
     cubmem::pinnable_buffer buf2 (ptr2, buf_size);
-    cubpacking::packer packer_instance (buf1.get_buffer (), buf1.get_buffer_size ());
-    cubpacking::packer unpacker_instance (buf2.get_buffer (), buf2.get_buffer_size ());
+
+    cubpacking::packer packer_instance { buf1.get_buffer (), buf1.get_buffer_size () };
+    cubpacking::unpacker unpacker_instance { buf2.get_buffer (), buf2.get_buffer_size () };
 
     obj_size = 0;
     for (i = 0; i < TEST_OBJ_CNT; i++)
@@ -309,16 +297,14 @@ namespace test_packing
 
     for (i = 0; i < TEST_OBJ_CNT; i++)
       {
-	res = test_objects[i].pack (&packer_instance);
-	assert (res == NO_ERROR);
+	test_objects[i].pack (&packer_instance);
       }
 
     memcpy (buf2.get_buffer (), buf1.get_buffer (), buf1.get_buffer_size());
 
     for (i = 0; i < TEST_OBJ_CNT; i++)
       {
-	res = test_objects_unpack[i].unpack (&unpacker_instance);
-	assert (res == NO_ERROR);
+	test_objects_unpack[i].unpack (&unpacker_instance);
       }
 
     for (i = 0; i < TEST_OBJ_CNT; i++)
