@@ -175,13 +175,6 @@ class JSON_PATH : protected rapidjson::GenericPointer <JSON_VALUE>
     typedef rapidjson::GenericPointer<JSON_VALUE> JSON_POINTER;
 
   public:
-    enum class JSON_TOKEN_TYPE
-    {
-      OBJECT_NAME,
-      ARRAY_INDEX,
-      ARRAY_LAST
-    };
-
     enum class JSON_PATH_TYPE
     {
       JSON_PATH_SQL_JSON,
@@ -195,7 +188,7 @@ class JSON_PATH : protected rapidjson::GenericPointer <JSON_VALUE>
       NO_VALUE
     };
 
-    std::string dump_json_path () const;
+    std::string dump_json_path (bool skip_json_pointer_minus) const;
 
     JSON_VALUE *get (JSON_DOC &jd) const;
 
@@ -919,7 +912,7 @@ JSON_PATH::build_special_chars_map (const JSON_PATH_TYPE &json_path_type,
 }
 
 std::string
-JSON_PATH::dump_json_path () const
+JSON_PATH::dump_json_path (bool skip_json_pointer_minus = true) const
 {
   std::unordered_map<std::string, std::string> special_chars;
   build_special_chars_map (JSON_PATH_TYPE::JSON_PATH_POINTER, special_chars);
@@ -931,6 +924,11 @@ JSON_PATH::dump_json_path () const
     {
       if (tokens[i].index != kPointerInvalidIndex || (tokens[i].length == 1 && tokens[i].name[0] == '-'))
 	{
+	  if (tokens[i].index == kPointerInvalidIndex && skip_json_pointer_minus)
+	    {
+	      continue;
+	    }
+
 	  res += "[";
 	  res += tokens[i].name;
 	  res += "]";
@@ -1010,7 +1008,7 @@ bool JSON_PATH::is_last_array_index_less_than (size_t size) const
   const TOKEN *last_token = get_last_token ();
   assert (last_token != NULL && ((last_token->length == 1 && last_token->name[0] == '-')
 				 || (last_token->index != kPointerInvalidIndex)));
-  return (last_token->length == 1 && last_token->name[0] == '-') || last_token->index >= size;
+  return ! ((last_token->length == 1 && last_token->name[0] == '-') || last_token->index >= size);
 }
 
 bool JSON_PATH::is_last_token_array_index_zero () const
@@ -2624,9 +2622,10 @@ db_json_array_insert_op (const JSON_VALUE *value, JSON_DOC &doc, const JSON_PATH
 
   size_t array_size = json_parent->GetArray ().Size ();
 
-  if (p.is_last_array_index_less_than (array_size))
+  if (!p.is_last_array_index_less_than (array_size))
     {
       p.set (doc, *value);
+      return;
     }
 
   json_parent->GetArray ().PushBack (1 /* dummy json_value */, doc.GetAllocator ());
@@ -3597,7 +3596,7 @@ db_json_normalize_path (const char *pointer_path, std::string &sql_path_out, boo
       return error_code;
     }
 
-  sql_path_out = jp.dump_json_path ();
+  sql_path_out = jp.dump_json_path (false);
 
   return NO_ERROR;
 }
