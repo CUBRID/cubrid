@@ -58,12 +58,12 @@ namespace test_packing
 
     public:
 
-      void pack (cubpacking::packer *serializator) const;
-      void unpack (cubpacking::unpacker *deserializator);
+      void pack (cubpacking::packer &serializator) const;
+      void unpack (cubpacking::unpacker &deserializator);
 
       bool is_equal (const packable_object *other);
 
-      size_t get_packed_size (cubpacking::packer *serializator) const;
+      size_t get_packed_size (cubpacking::packer &serializator) const;
 
       void generate_obj (void);
   };

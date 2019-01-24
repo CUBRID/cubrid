@@ -82,10 +82,10 @@ namespace cubreplication
 	m_statement = str;
       };
 
-      void pack (cubpacking::packer *serializator) const;
-      void unpack (cubpacking::unpacker *deserializator);
+      void pack (cubpacking::packer &serializator) const;
+      void unpack (cubpacking::unpacker &deserializator);
 
-      size_t get_packed_size (cubpacking::packer *serializator) const;
+      size_t get_packed_size (cubpacking::packer &serializator) const;
   };
 
   class single_row_repl_entry : public replication_object
@@ -120,10 +120,10 @@ namespace cubreplication
 
       void copy_and_add_changed_value (const int att_id, DB_VALUE *db_val);
 
-      void pack (cubpacking::packer *serializator) const;
-      void unpack (cubpacking::unpacker *deserializator);
+      void pack (cubpacking::packer &serializator) const;
+      void unpack (cubpacking::unpacker &deserializator);
 
-      size_t get_packed_size (cubpacking::packer *serializator) const;
+      size_t get_packed_size (cubpacking::packer &serializator) const;
   };
 
 } /* namespace cubreplication */

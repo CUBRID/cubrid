@@ -39,46 +39,46 @@ namespace test_packing
     str[i] = '\0';
   }
 
-  void po1::pack (cubpacking::packer *serializator) const
+  void po1::pack (cubpacking::packer &serializator) const
   {
-    serializator->pack_int (i1);
-    serializator->pack_short (sh1);
-    serializator->pack_bigint (b1);
-    serializator->pack_int_array (int_a, sizeof (int_a) / sizeof (int_a[0]));
-    serializator->pack_int_vector (int_v);
+    serializator.pack_int (i1);
+    serializator.pack_short (sh1);
+    serializator.pack_bigint (b1);
+    serializator.pack_int_array (int_a, sizeof (int_a) / sizeof (int_a[0]));
+    serializator.pack_int_vector (int_v);
     for (int i = 0; i < sizeof (values) / sizeof (values[0]); i++)
       {
-	serializator->pack_db_value (values[i]);
+	serializator.pack_db_value (values[i]);
       }
-    serializator->pack_small_string (small_str);
-    serializator->pack_large_string (large_str);
+    serializator.pack_small_string (small_str);
+    serializator.pack_large_string (large_str);
 
-    serializator->pack_string (str1);
+    serializator.pack_string (str1);
 
-    serializator->pack_c_string (str2, sizeof (str2) - 1);
+    serializator.pack_c_string (str2, sizeof (str2) - 1);
   }
 
-  void po1::unpack (cubpacking::unpacker *deserializator)
+  void po1::unpack (cubpacking::unpacker &deserializator)
   {
     int cnt = 0;
 
-    deserializator->unpack_int (i1);
-    deserializator->unpack_short (sh1);
-    deserializator->unpack_bigint (b1);
-    deserializator->unpack_int_array (int_a, cnt);
+    deserializator.unpack_int (i1);
+    deserializator.unpack_short (sh1);
+    deserializator.unpack_bigint (b1);
+    deserializator.unpack_int_array (int_a, cnt);
     assert (cnt == sizeof (int_a) / sizeof (int_a[0]));
 
-    deserializator->unpack_int_vector (int_v);
+    deserializator.unpack_int_vector (int_v);
 
     for (int i = 0; i < sizeof (values) / sizeof (values[0]); i++)
       {
-	deserializator->unpack_db_value (values[i]);
+	deserializator.unpack_db_value (values[i]);
       }
-    deserializator->unpack_small_string (small_str, sizeof (small_str));
-    deserializator->unpack_large_string (large_str);
+    deserializator.unpack_small_string (small_str, sizeof (small_str));
+    deserializator.unpack_large_string (large_str);
 
-    deserializator->unpack_string (str1);
-    deserializator->unpack_c_string (str2, sizeof (str2));
+    deserializator.unpack_string (str1);
+    deserializator.unpack_c_string (str2, sizeof (str2));
   }
 
   bool po1::is_equal (const cubpacking::packable_object *other)
@@ -135,24 +135,24 @@ namespace test_packing
     return true;
   }
 
-  size_t po1::get_packed_size (cubpacking::packer *serializator) const
+  size_t po1::get_packed_size (cubpacking::packer &serializator) const
   {
     size_t entry_size = 0;
 
-    entry_size += serializator->get_packed_int_size (entry_size);
-    entry_size += serializator->get_packed_short_size (entry_size);
-    entry_size += serializator->get_packed_bigint_size (entry_size);
-    entry_size += serializator->get_packed_int_vector_size (entry_size, sizeof (int_a) / sizeof (int_a[0]));
-    entry_size += serializator->get_packed_int_vector_size (entry_size, (int) int_v.size ());
+    entry_size += serializator.get_packed_int_size (entry_size);
+    entry_size += serializator.get_packed_short_size (entry_size);
+    entry_size += serializator.get_packed_bigint_size (entry_size);
+    entry_size += serializator.get_packed_int_vector_size (entry_size, sizeof (int_a) / sizeof (int_a[0]));
+    entry_size += serializator.get_packed_int_vector_size (entry_size, (int) int_v.size ());
     for (int i = 0; i < sizeof (values) / sizeof (values[0]); i++)
       {
-	entry_size += serializator->get_packed_db_value_size (values[i], int_v.size ());
+	entry_size += serializator.get_packed_db_value_size (values[i], int_v.size ());
       }
-    entry_size += serializator->get_packed_small_string_size (small_str, entry_size);
-    entry_size += serializator->get_packed_large_string_size (large_str, entry_size);
+    entry_size += serializator.get_packed_small_string_size (small_str, entry_size);
+    entry_size += serializator.get_packed_large_string_size (large_str, entry_size);
 
-    entry_size += serializator->get_packed_string_size (str1, entry_size);
-    entry_size += serializator->get_packed_c_string_size (str2, sizeof (str2), entry_size);
+    entry_size += serializator.get_packed_string_size (str1, entry_size);
+    entry_size += serializator.get_packed_c_string_size (str2, sizeof (str2), entry_size);
     return entry_size;
   }
 
@@ -290,21 +290,21 @@ namespace test_packing
     obj_size = 0;
     for (i = 0; i < TEST_OBJ_CNT; i++)
       {
-	obj_size += test_objects[i].get_packed_size (&packer_instance);
+	obj_size += test_objects[i].get_packed_size (packer_instance);
       }
 
     //assert (obj_size < buf1.get_buffer_size ());
 
     for (i = 0; i < TEST_OBJ_CNT; i++)
       {
-	test_objects[i].pack (&packer_instance);
+	test_objects[i].pack (packer_instance);
       }
 
     memcpy (buf2.get_buffer (), buf1.get_buffer (), buf1.get_buffer_size());
 
     for (i = 0; i < TEST_OBJ_CNT; i++)
       {
-	test_objects_unpack[i].unpack (&unpacker_instance);
+	test_objects_unpack[i].unpack (unpacker_instance);
       }
 
     for (i = 0; i < TEST_OBJ_CNT; i++)

@@ -94,10 +94,10 @@ namespace cubstream
 #if !defined (NDEBUG)
 	    const char *start_ptr = serializator->get_curr_ptr ();
 	    const char *curr_ptr;
-	    size_t entry_size = m_packable_entries[i]->get_packed_size (serializator);
+	    size_t entry_size = m_packable_entries[i]->get_packed_size (*serializator);
 #endif
 
-	    m_packable_entries[i]->pack (serializator);
+	    m_packable_entries[i]->pack (*serializator);
 
 #if !defined (NDEBUG)
 	    curr_ptr = serializator->get_curr_ptr ();
@@ -177,7 +177,7 @@ namespace cubstream
 
 	    /* unpack one replication entry */
 	    add_packable_entry (packable_entry);
-	    packable_entry->unpack (deserializator);
+	    packable_entry->unpack (*deserializator);
 	  }
 	deserializator->align (MAX_ALIGNMENT);
 
@@ -290,7 +290,7 @@ namespace cubstream
 	for (i = 0; i < m_packable_entries.size (); i++)
 	  {
 	    total_size = DB_ALIGN (total_size, MAX_ALIGNMENT);
-	    entry_size = m_packable_entries[i]->get_packed_size (serializator);
+	    entry_size = m_packable_entries[i]->get_packed_size (*serializator);
 	    total_size += entry_size;
 	  }
 

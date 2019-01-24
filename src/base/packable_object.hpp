@@ -36,8 +36,8 @@ namespace cubpacking
   {
     public:
       virtual ~packable_object () {};
-      virtual void pack (packer *serializator) const = 0;
-      virtual void unpack (unpacker *deserializator) = 0;
+      virtual void pack (packer &serializator) const = 0;
+      virtual void unpack (unpacker &deserializator) = 0;
 
       virtual bool is_equal (const packable_object *other)
       {
@@ -45,7 +45,7 @@ namespace cubpacking
       }
 
       /* used at packing to get info on how much memory to reserve */
-      virtual size_t get_packed_size (packer *serializator) const = 0;
+      virtual size_t get_packed_size (packer &serializator) const = 0;
   };
 
 } /* namespace cubpacking */

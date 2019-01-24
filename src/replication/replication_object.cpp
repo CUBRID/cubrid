@@ -121,7 +121,7 @@ namespace cubreplication
     (void) db_change_private_heap (NULL, save_heapid);
   }
 
-  size_t single_row_repl_entry::get_packed_size (cubpacking::packer *serializator) const
+  size_t single_row_repl_entry::get_packed_size (cubpacking::packer &serializator) const
   {
     size_t i;
     size_t entry_size = 0;
@@ -129,48 +129,48 @@ namespace cubreplication
     /* we assume that offset start has already MAX_ALIGNMENT */
 
     /* type of packed object + type of RBR entry */
-    entry_size += 2 * serializator->get_packed_int_size (entry_size);
+    entry_size += 2 * serializator.get_packed_int_size (entry_size);
 
-    entry_size += serializator->get_packed_int_vector_size (entry_size, (int) changed_attributes.size ());
+    entry_size += serializator.get_packed_int_vector_size (entry_size, (int) changed_attributes.size ());
 
-    entry_size += serializator->get_packed_small_string_size (m_class_name, entry_size);
+    entry_size += serializator.get_packed_small_string_size (m_class_name, entry_size);
 
-    entry_size += serializator->get_packed_db_value_size (m_key_value, entry_size);
+    entry_size += serializator.get_packed_db_value_size (m_key_value, entry_size);
 
     /* count of new_values */
-    entry_size += serializator->get_packed_int_size (entry_size);
+    entry_size += serializator.get_packed_int_size (entry_size);
 
     for (i = 0; i < m_new_values.size (); i++)
       {
-	entry_size += serializator->get_packed_db_value_size (m_new_values[i], entry_size);
+	entry_size += serializator.get_packed_db_value_size (m_new_values[i], entry_size);
       }
 
     return entry_size;
   }
 
-  void single_row_repl_entry::pack (cubpacking::packer *serializator) const
+  void single_row_repl_entry::pack (cubpacking::packer &serializator) const
   {
     size_t i;
 
-    serializator->pack_int (single_row_repl_entry::PACKING_ID);
+    serializator.pack_int (single_row_repl_entry::PACKING_ID);
 
-    serializator->pack_int ((int) m_type);
+    serializator.pack_int ((int) m_type);
 
-    serializator->pack_int_vector (changed_attributes);
+    serializator.pack_int_vector (changed_attributes);
 
-    serializator->pack_small_string (m_class_name);
+    serializator.pack_small_string (m_class_name);
 
-    serializator->pack_db_value (m_key_value);
+    serializator.pack_db_value (m_key_value);
 
-    serializator->pack_int ((int) m_new_values.size ());
+    serializator.pack_int ((int) m_new_values.size ());
 
     for (i = 0; i < m_new_values.size (); i++)
       {
-	serializator->pack_db_value (m_new_values[i]);
+	serializator.pack_db_value (m_new_values[i]);
       }
   }
 
-  void single_row_repl_entry::unpack (cubpacking::unpacker *deserializator)
+  void single_row_repl_entry::unpack (cubpacking::unpacker &deserializator)
   {
     int count_new_values = 0;
     int i;
@@ -181,24 +181,24 @@ namespace cubreplication
     save_heapid = db_private_set_heapid_to_thread (NULL, 0);
 #endif
     /* create id */
-    deserializator->unpack_int (int_val);
+    deserializator.unpack_int (int_val);
 
     /* RBR type */
-    deserializator->unpack_int (int_val);
+    deserializator.unpack_int (int_val);
     m_type = (REPL_ENTRY_TYPE) int_val;
 
-    deserializator->unpack_int_vector (changed_attributes);
+    deserializator.unpack_int_vector (changed_attributes);
 
-    deserializator->unpack_small_string (m_class_name, sizeof (m_class_name) - 1);
+    deserializator.unpack_small_string (m_class_name, sizeof (m_class_name) - 1);
 
-    deserializator->unpack_db_value (m_key_value);
+    deserializator.unpack_db_value (m_key_value);
 
-    deserializator->unpack_int (count_new_values);
+    deserializator.unpack_int (count_new_values);
 
     for (i = 0; i < count_new_values; i++)
       {
 	m_new_values.emplace_back ();
-	deserializator->unpack_db_value (m_new_values.back ());
+	deserializator.unpack_db_value (m_new_values.back ());
       }
 
 #if defined (SERVER_MODE)
@@ -225,30 +225,30 @@ namespace cubreplication
     return true;
   }
 
-  size_t sbr_repl_entry::get_packed_size (cubpacking::packer *serializator) const
+  size_t sbr_repl_entry::get_packed_size (cubpacking::packer &serializator) const
   {
     /* we assume that offset start has already MAX_ALIGNMENT */
 
     /* type of packed object */
-    size_t entry_size = serializator->get_packed_int_size (0);
+    size_t entry_size = serializator.get_packed_int_size (0);
 
-    entry_size += serializator->get_packed_large_string_size (m_statement, entry_size);
+    entry_size += serializator.get_packed_large_string_size (m_statement, entry_size);
 
     return entry_size;
   }
 
-  void sbr_repl_entry::pack (cubpacking::packer *serializator) const
+  void sbr_repl_entry::pack (cubpacking::packer &serializator) const
   {
-    serializator->pack_int (sbr_repl_entry::PACKING_ID);
-    serializator->pack_large_string (m_statement);
+    serializator.pack_int (sbr_repl_entry::PACKING_ID);
+    serializator.pack_large_string (m_statement);
   }
 
-  void sbr_repl_entry::unpack (cubpacking::unpacker *deserializator)
+  void sbr_repl_entry::unpack (cubpacking::unpacker &deserializator)
   {
     int entry_type_not_used;
 
-    deserializator->unpack_int (entry_type_not_used);
-    deserializator->unpack_large_string (m_statement);
+    deserializator.unpack_int (entry_type_not_used);
+    deserializator.unpack_large_string (m_statement);
   }
 
 } /* namespace cubreplication */
