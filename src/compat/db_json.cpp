@@ -2250,7 +2250,8 @@ db_json_insert_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path)
 	    }
 	  else
 	    {
-	      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p.dump_json_path (), &doc);
+	      return db_json_er_set_expected_other_type (ARG_FILE_LINE, p.get_parent ().dump_json_path (),
+		     p.get_parent ().get_value_type (doc), DB_JSON_OBJECT);
 	    }
 	}
       return NO_ERROR;
