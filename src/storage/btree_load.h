@@ -282,38 +282,4 @@ extern int btree_get_prefix_separator (const DB_VALUE * key1, const DB_VALUE * k
 
 extern int btree_get_asc_desc (THREAD_ENTRY * thread_p, BTID * btid, int col_idx, int *asc_desc);
 
-typedef struct index_builder_loader_context INDEX_BUILDER_LOADER_CONTEXT;
-struct index_builder_loader_context
-{
-  INT64 m_ib_error;
-  INT64 m_tasks_executed;
-  int m_tran_index;
-};
-
-// *INDENT-OFF*
-class index_builder_loader_task: public cubthread::entry_task
-{
-public:
-    BTID btid;
-    DB_VALUE key;
-    OID class_oid, oid;
-    int unique_pk;
-    INDEX_BUILDER_LOADER_CONTEXT *load_context; // Loader context.
-
-    index_builder_loader_task (BTID * btid, OID * class_oid, OID * oid, int unique_pk);
-
-    void set_key (DB_VALUE * key);
-    void set_load_context (INDEX_BUILDER_LOADER_CONTEXT& load_context);
-    
-    ~index_builder_loader_task ();
-
-    void execute(cubthread::entry & thread_ref);
-};
-
-// *INDENT-ON*
-
-#define INDEX_BUILDER_LOADER_CONTEXT_INITIALIZER {0, 0, 0}
-
-
-
 #endif /* _BTREE_LOAD_H_ */

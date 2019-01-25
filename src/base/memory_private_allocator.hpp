@@ -105,8 +105,6 @@ namespace cubmem
       /* db_private_alloc accessors */
       cubthread::entry *get_thread_entry () const;
       HL_HEAPID get_heapid () const;
-      template <typename Func, typename ...Args>
-      inline void switch_to_global_allocator_and_call (Func && func, Args &&... args);
 
     private:
 
@@ -344,5 +342,27 @@ namespace cubmem
     return *m_smart_ptr.get ();
   }
 } // namespace cubmem
+
+template <typename Func, typename ...Args>
+inline void switch_to_global_allocator_and_call (Func && func, Args &&... args);
+
+template < typename Func, typename...Args >
+void
+switch_to_global_allocator_and_call (Func && func, Args && ... args)
+{
+#if defined(SERVER_MODE)
+  /* Switch to global context. */
+  HL_HEAPID save_id;
+
+  save_id = db_private_set_heapid_to_thread (NULL, 0);
+#endif //SERVER_MODE
+
+  func (std::forward < Args > (args)...);
+
+#if defined(SERVER_MODE)
+  /* switch back to private */
+  (void) db_private_set_heapid_to_thread (NULL, save_id);
+#endif //SERVER_MODE
+}
 
 #endif // _MEMORY_PRIVATE_ALLOCATOR_HPP_
