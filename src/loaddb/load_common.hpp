@@ -46,11 +46,10 @@ namespace cubload
   {
     class_id m_clsid;
     batch_id m_batch_id;
-    bool m_handle_async;
     std::string m_content;
 
     batch ();
-    batch (class_id clsid, batch_id batch_id, std::string &content, bool handle_async);
+    batch (class_id clsid, batch_id batch_id, std::string &content);
 
     batch (batch &&other) noexcept; // MoveConstructible
     batch &operator= (batch &&other) noexcept; // MoveAssignable
@@ -65,6 +64,7 @@ namespace cubload
   };
 
   using batch_handler = std::function<int (const batch &)>;
+  using class_install_handler = std::function<int (const class_id, const std::string &)>;
 
   /*
    * loaddb executables command line arguments
@@ -229,25 +229,19 @@ namespace cubload
   };
 
   /*
-   * cubload::loader
+   * cubload::class_installer
    *
    * description
-   *    A pure virtual class that serves as an interface for inserting rows by the loaddb. Currently there are two
-   *    implementations of this class: server_loader and client_load.
-   *        * server_loader: A loader that is running on the cub_server on multi-threaded environment
-   *        * sa_loader    : Contains old loaddb code base and is running on SA mode (single threaded environment)
    *
    * how to use
-   *    Loader is used by the cubload::driver, which later is passed to the cubload::parser. The parser class will then
-   *    call specific functions on different grammar rules.
    */
-  class loader
+  class class_installer
   {
     public:
-      virtual ~loader () = default; // Destructor
+      virtual ~class_installer () = default; // Destructor
 
       /*
-       * Function to initialize loader instance
+       * Function to initialize class installer instance
        *
        *    return: void
        *    clsid(in): generated id of the class
@@ -272,7 +266,7 @@ namespace cubload
        *    return: NO_ERROR in case of success or error code otherwise
        *    class_name(in): name of the class pass to loaddb executable
        */
-      virtual int setup_class (const char *class_name) = 0;
+      virtual int install_class (const char *class_name) = 0;
 
       /*
        * Function to set up a class, class attributes and class constructor. It is called when a line of the following
@@ -283,7 +277,35 @@ namespace cubload
        *    cmd_spec(in)  : class command specification which contains
        *                        attribute list and class constructor specification
        */
-      virtual void setup_class (string_type *class_name, class_command_spec_type *cmd_spec) = 0;
+      virtual void install_class (string_type *class_name, class_command_spec_type *cmd_spec) = 0;
+  };
+
+  /*
+   * cubload::object_loader
+   *
+   * description
+   *    A pure virtual class that serves as an interface for inserting rows by the loaddb. Currently there are two
+   *    implementations of this class: server loader and client loader.
+   *        * server_object_loader: A object loader that is running on the cub_server on multi-threaded environment
+   *        * sa_object_loader    : Contains old loaddb code base and is running
+   *                                on SA mode (single threaded environment)
+   *
+   * how to use
+   *    Loader is used by the cubload::driver, which later is passed to the cubload::parser. The parser class will then
+   *    call specific functions on different grammar rules.
+   */
+  class object_loader
+  {
+    public:
+      virtual ~object_loader () = default; // Destructor
+
+      /*
+       * Function to initialize object loader instance
+       *
+       *    return: void
+       *    clsid(in): generated id of the class
+       */
+      virtual void init (class_id clsid) = 0;
 
       /*
        * Destroy function called when loader grammar reached the end of the loaddb object file
@@ -324,7 +346,8 @@ namespace cubload
    *    object_file_name(in): loaddb object file name (absolute path is required)
    *    handler(in)         : a function for handling/process a batch
    */
-  int split (int batch_size, std::string &object_file_name, batch_handler &handler);
+  int split (int batch_size, const std::string &object_file_name, class_install_handler &c_handler,
+	     batch_handler &b_handler);
 
 } // namespace cubload
 

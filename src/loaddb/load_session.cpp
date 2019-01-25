@@ -34,101 +34,54 @@
 namespace cubload
 {
 
-  // class_entry
-  class_entry::class_entry (std::string &class_name, OID &class_oid, class_id clsid, int attr_count)
-    : m_clsid (clsid)
-    , m_class_oid (class_oid)
-    , m_class_name (std::move (class_name))
-    , m_attr_count (attr_count)
-    , m_attr_count_checker (0)
-    , m_attributes ()
-  {
-    //
-  }
+  void init_driver (driver *driver, session &session);
+
+  int invoke_parser (driver *driver, class_id clsid, const std::string &buf);
+}
+
+namespace cubload
+{
 
   void
-  class_entry::register_attribute (ATTR_ID attr_id, std::string attr_name, or_attribute *attr_repr)
+  init_driver (driver *driver, session &session)
   {
-    assert (m_attr_count_checker < m_attr_count);
-
-    m_attributes.emplace_back (attr_id, attr_name, attr_repr);
-    m_attr_count_checker++;
-  }
-
-  OID &
-  class_entry::get_class_oid ()
-  {
-    return m_class_oid;
-  }
-
-  attribute &
-  class_entry::get_attribute (int index)
-  {
-    // check that all attributes were registered
-    assert (m_attr_count_checker == m_attr_count);
-
-    // assert that index is within the range
-    assert (0 <= index && ((std::size_t) index) < m_attributes.size ());
-
-    return m_attributes[index];
-  }
-
-  // class_registry
-  class_registry::class_registry ()
-    : m_mutex ()
-    , m_class_by_id ()
-  {
-    //
-  }
-
-  class_registry::~class_registry ()
-  {
-    for (auto &it : m_class_by_id)
+    if (driver == NULL)
       {
-	delete it.second;
-      }
-    m_class_by_id.clear ();
-  }
-
-  class_entry *
-  class_registry::register_class (const char *class_name, class_id clsid, OID class_oid, int attr_count)
-  {
-    std::unique_lock<std::mutex> ulock (m_mutex);
-
-    class_entry *c_entry = get_class_entry_without_lock (clsid);
-    if (c_entry != NULL)
-      {
-	return c_entry;
+	session.fail ();
+	assert (false);
+	return;
       }
 
-    std::string c_name (class_name);
-    c_entry  = new class_entry (c_name, class_oid, clsid, attr_count);
+    // avoid driver being initialized twice
+    if (driver->is_initialized ())
+      {
+	return;
+      }
 
-    m_class_by_id.insert (std::make_pair (clsid, c_entry));
+    lineno_function line_func = [driver] { return driver->get_scanner ().lineno (); };
+    error_handler *error_handler_ = new error_handler (line_func);
+    error_handler_->initialize (&session);
 
-    return c_entry;
+    class_installer *cls_installer = new server_class_installer (session, *error_handler_);
+    object_loader *obj_loader = new server_object_loader (session, *error_handler_);
+
+    driver->initialize (cls_installer, obj_loader, error_handler_);
   }
 
-  class_entry *
-  class_registry::get_class_entry (class_id clsid)
+  int
+  invoke_parser (driver *driver, class_id clsid, const std::string &buf)
   {
-    std::unique_lock<std::mutex> ulock (m_mutex);
-
-    return get_class_entry_without_lock (clsid);
-  }
-
-  class_entry *
-  class_registry::get_class_entry_without_lock (class_id clsid)
-  {
-    auto found = m_class_by_id.find (clsid);
-    if (found != m_class_by_id.end ())
+    if (driver == NULL || !driver->is_initialized ())
       {
-	return found->second;
+	return ER_FAILED;
       }
-    else
-      {
-	return NULL;
-      }
+
+    driver->get_object_loader ().init (clsid);
+    driver->get_class_installer ().init (clsid);
+
+    // start parsing
+    std::istringstream iss (buf);
+    return driver->parse (iss);
   }
 
   /*
@@ -146,7 +99,7 @@ namespace cubload
     public:
       loaddb_worker_context_manager (session &session, unsigned int pool_size)
 	: m_session (session)
-	, m_driver_pool (pool_size + 1) // +1 in case when a driver will be required by session::load_batch function
+	, m_driver_pool (pool_size)
 	, m_conn_entry (*cubthread::get_entry ().conn_entry)
       {
 	//
@@ -154,22 +107,12 @@ namespace cubload
 
       ~loaddb_worker_context_manager () override = default;
 
-      driver *claim_driver ()
-      {
-	driver *driver = m_driver_pool.claim ();
-	init_driver (driver);
-
-	return driver;
-      }
-
-      void retire_driver (driver &claimed)
-      {
-	m_driver_pool.retire (claimed);
-      }
-
       void on_create (cubthread::entry &context) override
       {
-	context.m_loaddb_driver = claim_driver ();
+	driver *driver = m_driver_pool.claim ();
+	init_driver (driver, m_session);
+
+	context.m_loaddb_driver = driver;
 
 	// save connection entry
 	context.conn_entry = &m_conn_entry;
@@ -182,7 +125,8 @@ namespace cubload
 	    return;
 	  }
 
-	retire_driver (*context.m_loaddb_driver);
+	m_driver_pool.retire (*context.m_loaddb_driver);
+
 	context.m_loaddb_driver = NULL;
 	context.conn_entry = NULL;
       }
@@ -191,27 +135,6 @@ namespace cubload
       session &m_session;
       resource_shared_pool<driver> m_driver_pool;
       css_conn_entry &m_conn_entry;
-
-      void init_driver (driver *driver)
-      {
-	if (driver == NULL)
-	  {
-	    m_session.fail ();
-	    assert (false);
-	    return;
-	  }
-
-	// avoid driver being initialized twice
-	if (!driver->is_initialized ())
-	  {
-	    lineno_function line_func = [driver] { return driver->get_scanner ().lineno (); };
-	    error_handler *error_handler_ = new error_handler (line_func);
-	    error_handler_->initialize (&m_session);
-
-	    loader *loader = new server_loader (m_session, *error_handler_);
-	    driver->initialize (loader, error_handler_);
-	  }
-      }
   };
 
   /*
@@ -240,18 +163,13 @@ namespace cubload
 	    return;
 	  }
 
-	assert (thread_ref.m_loaddb_driver != NULL);
-
 	logtb_assign_tran_index (&thread_ref, NULL_TRANID, TRAN_ACTIVE, NULL, NULL, TRAN_LOCK_INFINITE_WAIT,
 				 TRAN_DEFAULT_ISOLATION_LEVEL ());
 
-	thread_ref.m_loaddb_driver->get_loader ().init (m_batch.m_clsid);
+	// parse doc says that 0 is returned if parsing succeeds
+	int parser_ret = invoke_parser (thread_ref.m_loaddb_driver, m_batch.m_clsid, m_batch.m_content);
 
-	// start parsing
-	std::istringstream iss (m_batch.m_content);
-	int ret = thread_ref.m_loaddb_driver->parse (iss); // parse doc says that 0 is returned if parsing succeeds
-
-	if (m_session.is_failed () || ret != 0 || er_errid_if_has_error () != NO_ERROR)
+	if (m_session.is_failed () || parser_ret != 0 || er_errid_if_has_error () != NO_ERROR)
 	  {
 	    // if a batch transaction was aborted then abort entire loaddb session
 	    m_session.fail ();
@@ -294,6 +212,7 @@ namespace cubload
     , m_class_registry ()
     , m_stats ()
     , m_stats_mutex ()
+    , m_driver (NULL)
   {
     // start at least 2 loaddb threads
     unsigned int pool_size = std::max<unsigned int> (2, std::thread::hardware_concurrency ());
@@ -304,6 +223,9 @@ namespace cubload
     m_wp_context_manager = new loaddb_worker_context_manager (*this, pool_size);
     m_worker_pool = cubthread::get_manager ()->create_worker_pool (pool_size, pool_size, worker_pool_name.c_str (),
 		    m_wp_context_manager, 1, false, true);
+
+    m_driver = new driver ();
+    init_driver (m_driver, *this);
   }
 
   session::~session ()
@@ -417,6 +339,22 @@ namespace cubload
   }
 
   int
+  session::install_class (cubthread::entry &thread_ref, const class_id clsid, const std::string &buf)
+  {
+    // parse doc says that 0 is returned if parsing succeeds
+    int parser_ret = invoke_parser (m_driver, clsid, buf);
+    int error_code = er_errid_if_has_error ();
+
+    if (is_failed () || parser_ret != NO_ERROR || error_code != NO_ERROR)
+      {
+	fail ();
+	return error_code;
+      }
+
+    return NO_ERROR;
+  }
+
+  int
   session::load_batch (cubthread::entry &thread_ref, const batch &batch)
   {
     batch_id current_max_id;
@@ -440,34 +378,25 @@ namespace cubload
 	return ER_FAILED;
       }
 
-    if (batch.m_handle_async)
-      {
-	// if batch.m_handle_async is true then batch content contains just objects so push a new task on worker pool
-	cubthread::get_manager ()->push_task (m_worker_pool, new load_worker (batch, *this));
-      }
-    else
-      {
-	// if batch.m_handle_async is false then it means that we have batch content starting with '%class' or '%line'
-	// and we need to register the class and return immediately. Execute the load_worker task on current thread
-	thread_ref.m_loaddb_driver = m_wp_context_manager->claim_driver ();
-
-	cubthread::get_manager ()->push_task (NULL, new load_worker (batch, *this));
-
-	m_wp_context_manager->retire_driver (*thread_ref.m_loaddb_driver);
-      }
+    cubthread::get_manager ()->push_task (m_worker_pool, new load_worker (batch, *this));
 
     return NO_ERROR;
   }
 
   int
-  session::load_file (cubthread::entry &thread_ref, std::string &file_name)
+  session::load_file (cubthread::entry &thread_ref, const std::string &file_name)
   {
-    batch_handler handler = [this, &thread_ref] (const batch &batch)
+    batch_handler b_handler = [this, &thread_ref] (const batch &batch)
     {
       return load_batch (thread_ref, batch);
     };
 
-    return split (m_batch_size, file_name, handler);
+    class_install_handler c_handler = [this, &thread_ref] (const class_id clsid, const std::string &buf)
+    {
+      return install_class (thread_ref, clsid, buf);
+    };
+
+    return split (m_batch_size, file_name, c_handler, b_handler);
   }
 
   stats

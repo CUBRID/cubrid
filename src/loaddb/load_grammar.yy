@@ -189,7 +189,7 @@ loader_start :
   }
   loader_lines
   {
-    m_driver.get_loader ().destroy ();
+    m_driver.get_object_loader ().destroy ();
   }
   ;
 
@@ -228,7 +228,7 @@ one_line :
   instance_line
   {
     DBG_PRINT ("instance_line");
-    m_driver.get_loader ().finish_line ();
+    m_driver.get_object_loader ().finish_line ();
     m_driver.get_semantic_helper ().reset_pool_indexes ();
   }
   ;
@@ -248,7 +248,7 @@ command_line :
 id_command :
   CMD_ID IDENTIFIER INT_LIT
   {
-    m_driver.get_loader ().check_class ($2->val, atoi ($3->val));
+    m_driver.get_class_installer ().check_class ($2->val, atoi ($3->val));
 
     free_string (&$2);
     free_string (&$3);
@@ -258,7 +258,7 @@ id_command :
 class_command :
   CMD_CLASS IDENTIFIER class_command_spec
   {
-    m_driver.get_loader ().setup_class ($2, $3);
+    m_driver.get_class_installer ().install_class ($2, $3);
 
     free_string (&$2);
     free_class_command_spec (&$3);
@@ -399,19 +399,19 @@ argument_name :
 instance_line :
   object_id
   {
-    m_driver.get_loader ().start_line ($1);
+    m_driver.get_object_loader ().start_line ($1);
   }
   |
   object_id constant_list
   {
-    m_driver.get_loader ().start_line ($1);
-    m_driver.get_loader ().process_line ($2);
+    m_driver.get_object_loader ().start_line ($1);
+    m_driver.get_object_loader ().process_line ($2);
   }
   |
   constant_list
   {
-    m_driver.get_loader ().start_line (-1);
-    m_driver.get_loader ().process_line ($1);
+    m_driver.get_object_loader ().start_line (-1);
+    m_driver.get_object_loader ().process_line ($1);
   }
   ;
 

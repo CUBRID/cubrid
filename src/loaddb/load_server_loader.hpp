@@ -36,17 +36,61 @@ namespace cubload
   // forward declaration
   class session;
 
-  class server_loader : public loader
+  class server_base_loader
   {
     public:
-      server_loader (session &session, error_handler &error_handler);
-      ~server_loader () override = default;
+      server_base_loader () = delete;
+      server_base_loader (session &session, error_handler &error_handler);
+      virtual ~server_base_loader () = default;
+
+    protected:
+      session &m_session;
+      error_handler &m_error_handler;
+      cubthread::entry *m_thread_ref;
+
+      class_id m_clsid;
+
+      bool m_attrinfo_started;
+      heap_cache_attrinfo m_attrinfo;
+
+      bool m_scancache_started;
+      heap_scancache m_scancache;
+
+      void start_scancache (const OID &class_oid);
+      void stop_scancache ();
+
+      void start_attrinfo (const OID &class_oid);
+      void stop_attrinfo ();
+  };
+
+  class server_class_installer : protected server_base_loader, public class_installer
+  {
+    public:
+      server_class_installer () = delete;
+      server_class_installer (session &session, error_handler &error_handler);
+      ~server_class_installer () override = default;
 
       void init (class_id clsid) override;
 
       void check_class (const char *class_name, int class_id) override;
-      int setup_class (const char *class_name) override;
-      void setup_class (string_type *class_name, class_command_spec_type *cmd_spec) override;
+      int install_class (const char *class_name) override;
+      void install_class (string_type *class_name, class_command_spec_type *cmd_spec) override;
+
+    private:
+      void locate_class (const char *class_name, OID &class_oid);
+
+      void register_class (const char *class_name, string_type *attr_list);
+      void register_class_attributes (class_entry *cls_entry, string_type *attr_list);
+  };
+
+  class server_object_loader : protected server_base_loader, public object_loader
+  {
+    public:
+      server_object_loader () = delete;
+      server_object_loader (session &session, error_handler &error_handler);
+      ~server_object_loader () override = default;
+
+      void init (class_id clsid) override;
       void destroy () override;
 
       void start_line (int object_id) override;
@@ -57,24 +101,6 @@ namespace cubload
       void process_constant (constant_type *cons, attribute &attr);
       void process_monetary_constant (constant_type *cons, tp_domain *domain, db_value *db_val);
 
-      void locate_class (const char *class_name, OID *class_oid);
-
-      void register_class (const char *class_name);
-      void register_class_attributes (string_type *attr_list);
-
-      void start_scancache ();
-
-      session &m_session;
-      error_handler &m_error_handler;
-
-      cubthread::entry *m_thread_ref;
-
-      heap_cache_attrinfo m_attr_info;
-
-      heap_scancache m_scancache;
-      bool m_scancache_started;
-
-      class_id m_clsid;
       class_entry *m_class_entry;
   };
 

@@ -30,14 +30,26 @@
 namespace cubload
 {
 
-  class sa_loader : public loader
+  class sa_class_installer : public class_installer
   {
     public:
+      sa_class_installer () = default;
+      ~sa_class_installer () override = default;
+
       void init (class_id clsid) override;
 
       void check_class (const char *class_name, int class_id) override;
-      int setup_class (const char *class_name) override;
-      void setup_class (string_type *class_name, class_command_spec_type *cmd_spec) override;
+      int install_class (const char *class_name) override;
+      void install_class (string_type *class_name, class_command_spec_type *cmd_spec) override;
+  };
+
+  class sa_object_loader : public object_loader
+  {
+    public:
+      sa_object_loader () = default;
+      ~sa_object_loader () override = default;
+
+      void init (class_id clsid) override;
       void destroy () override;
 
       void start_line (int object_id) override;

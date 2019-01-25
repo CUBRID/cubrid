@@ -645,14 +645,14 @@ namespace cubload
 {
 
   void
-  sa_loader::init (class_id clsid)
+  sa_class_installer::init (class_id clsid)
   {
     (void) clsid;
     // do nothing on SA_MODE
   }
 
   void
-  sa_loader::check_class (const char *class_name, int class_id)
+  sa_class_installer::check_class (const char *class_name, int class_id)
   {
     DB_OBJECT *class_;
     int err = NO_ERROR;
@@ -695,7 +695,7 @@ namespace cubload
   }
 
   int
-  sa_loader::setup_class (const char *class_name)
+  sa_class_installer::install_class (const char *class_name)
   {
     ldr_act_init_context (ldr_Current_context, class_name, strlen (class_name));
 
@@ -707,7 +707,7 @@ namespace cubload
   }
 
   void
-  sa_loader::setup_class (string_type *class_name, class_command_spec_type *cmd_spec)
+  sa_class_installer::install_class (string_type *class_name, class_command_spec_type *cmd_spec)
   {
     if (class_name == NULL)
       {
@@ -717,7 +717,7 @@ namespace cubload
     if (cmd_spec == NULL)
       {
 	// fallback on default attribute list
-	setup_class (class_name->val);
+	install_class (class_name->val);
 	return;
       }
 
@@ -756,7 +756,14 @@ namespace cubload
   }
 
   void
-  sa_loader::destroy ()
+  sa_object_loader::init (class_id clsid)
+  {
+    (void) clsid;
+    // do nothing on SA_MODE
+  }
+
+  void
+  sa_object_loader::destroy ()
   {
     /* do not display duplicate error msg */
     int err = er_filter_errid (false);
@@ -767,7 +774,7 @@ namespace cubload
   }
 
   /*
-   * sa_loader::start_line - Finishes off the previous instance and resets the
+   * sa_object_loader::start_line - Finishes off the previous instance and resets the
    *                                     context to deal with a new instance.
    *    return: void
    *    object_id(in): id of current instance.
@@ -775,7 +782,7 @@ namespace cubload
    *    This is called when a new instance if found by the parser.
    */
   void
-  sa_loader::start_line (int object_id)
+  sa_object_loader::start_line (int object_id)
   {
     // moved from grammar file;
     skip_current_instance = false;
@@ -796,7 +803,7 @@ namespace cubload
   }
 
   void
-  sa_loader::process_line (constant_type *cons)
+  sa_object_loader::process_line (constant_type *cons)
   {
     constant_type *c, *save;
 
@@ -913,7 +920,7 @@ namespace cubload
   }
 
   /*
-   * sa_loader::finish_line - Completes an instance line.
+   * sa_object_loader::finish_line - Completes an instance line.
    *    return: void
    * Note:
    *   If there are missing attributes/arguments an error is flagged. The
@@ -922,7 +929,7 @@ namespace cubload
    *   are flushed.
    */
   void
-  sa_loader::finish_line ()
+  sa_object_loader::finish_line ()
   {
     int err = NO_ERROR;
 
@@ -6162,8 +6169,9 @@ ldr_init_driver ()
   lineno_function line_func = [] { return ldr_Driver->get_scanner ().lineno (); };
   error_handler *error_handler_ = new error_handler (line_func);
 
-  loader *loader = new sa_loader ();
-  ldr_Driver->initialize (loader, error_handler_);
+  class_installer *cls_installer = new sa_class_installer ();
+  object_loader *obj_loader = new sa_object_loader ();
+  ldr_Driver->initialize (cls_installer, obj_loader, error_handler_);
 }
 
 void

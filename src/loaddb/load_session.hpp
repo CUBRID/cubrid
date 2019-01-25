@@ -25,119 +25,19 @@
 #define _LOAD_SESSION_HPP_
 
 #include "dbtype_def.h"
-#include "heap_file.h"
+#include "load_class_registry.hpp"
 #include "load_common.hpp"
-#include "object_representation_sr.h"
-#include "storage_common.h"
 #include "thread_manager.hpp"
 #include "thread_worker_pool.hpp"
 
 #include <atomic>
 #include <condition_variable>
 #include <mutex>
-#include <unordered_map>
-#include <vector>
 
 namespace cubload
 {
 
-  struct attribute
-  {
-    attribute (ATTR_ID attr_id, std::string attr_name, or_attribute *attr_repr)
-      : m_attr_id (attr_id)
-      , m_attr_name (std::move (attr_name))
-      , m_attr_repr (attr_repr)
-    {
-      //
-    }
-
-    attribute (attribute &&other) noexcept
-      : m_attr_id (other.m_attr_id)
-      , m_attr_name (std::move (other.m_attr_name))
-      , m_attr_repr (other.m_attr_repr)
-    {
-      //
-    }
-
-    attribute (const attribute &copy)
-      : m_attr_id (copy.m_attr_id)
-      , m_attr_name (copy.m_attr_name)
-      , m_attr_repr (copy.m_attr_repr)
-    {
-      //
-    }
-
-    attribute &operator= (attribute &&other) noexcept
-    {
-      m_attr_id = other.m_attr_id;
-      m_attr_name = std::move (other.m_attr_name);
-      m_attr_repr = other.m_attr_repr;
-
-      return *this;
-    }
-
-    attribute &operator= (const attribute &copy)
-    {
-      m_attr_id = copy.m_attr_id;
-      m_attr_name = copy.m_attr_name;
-      m_attr_repr = copy.m_attr_repr;
-
-      return *this;
-    }
-
-    ATTR_ID m_attr_id;
-    std::string m_attr_name;
-    or_attribute *m_attr_repr;
-  };
-
-  class class_entry
-  {
-    public:
-      class_entry (std::string &class_name, OID &class_oid, class_id clsid, int attr_count);
-      ~class_entry () = default;
-
-      class_entry (class_entry &&other) = delete;
-      class_entry (const class_entry &copy) = delete;
-      class_entry &operator= (class_entry &&other) = delete;
-      class_entry &operator= (const class_entry &copy) = delete;
-
-      void register_attribute (ATTR_ID attr_id, std::string attr_name, or_attribute *attr_repr);
-
-      OID &get_class_oid ();
-      attribute &get_attribute (int index);
-
-    private:
-      class_id m_clsid;
-      OID m_class_oid;
-      std::string m_class_name;
-
-      int m_attr_count;
-      int m_attr_count_checker;
-      std::vector<attribute> m_attributes;
-  };
-
-  class class_registry
-  {
-    public:
-      class_registry ();
-      ~class_registry ();
-
-      class_registry (class_registry &&other) = delete; // Not MoveConstructible
-      class_registry (const class_registry &copy) = delete; // Not CopyConstructible
-
-      class_registry &operator= (class_registry &&other) = delete; // Not MoveAssignable
-      class_registry &operator= (const class_registry &copy) = delete;  // Not CopyAssignable
-
-      class_entry *get_class_entry (class_id clsid);
-      class_entry *register_class (const char *class_name, class_id clsid, OID class_oid, int attr_count);
-
-    private:
-      std::mutex m_mutex;
-      std::unordered_map<class_id, class_entry *> m_class_by_id;
-
-      class_entry *get_class_entry_without_lock (class_id clsid);
-  };
-
+  class driver;
   class loaddb_worker_context_manager;
 
   /*
@@ -178,6 +78,8 @@ namespace cubload
       session &operator= (session &&other) = delete; // Move operator: deleted
       session &operator= (const session &copy) = delete; // Copy operator: deleted
 
+      int install_class (cubthread::entry &thread_ref, const class_id clsid, const std::string &buf);
+
       /*
        * Load a batch from object file on the the server
        *
@@ -194,7 +96,7 @@ namespace cubload
        *    thread_ref(in)    : thread entry
        *    file_name(in)     : loaddb object file name (absolute path is required)
        */
-      int load_file (cubthread::entry &thread_ref, std::string &file_name);
+      int load_file (cubthread::entry &thread_ref, const std::string &file_name);
 
       void wait_for_completion ();
       void wait_for_previous_batch (batch_id id);
@@ -231,6 +133,8 @@ namespace cubload
 
       stats m_stats; // load db stats
       std::mutex m_stats_mutex;
+
+      driver *m_driver;
   };
 
 } // namespace cubload

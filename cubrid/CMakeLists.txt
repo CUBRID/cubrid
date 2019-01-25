@@ -316,6 +316,7 @@ set(XASL_HEADERS
 set(LOADDB_SOURCES
   ${BISON_loader_grammar_OUTPUT_SOURCE}
   ${FLEX_loader_lexer_OUTPUTS}
+  ${LOADDB_DIR}/load_class_registry.cpp
   ${LOADDB_DIR}/load_common.cpp
   ${LOADDB_DIR}/load_db_value_converter.cpp
   ${LOADDB_DIR}/load_driver.cpp

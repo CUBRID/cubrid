@@ -76,20 +76,22 @@ namespace cubload
       // Destructor
       ~driver ();
 
-      void initialize (loader *loader, error_handler *error_handler);
+      void initialize (class_installer *cls_installer, object_loader *obj_loader, error_handler *error_handler);
       bool is_initialized ();
 
       // Parse functions
       int parse (std::istream &iss);
 
-      loader &get_loader ();
+      class_installer &get_class_installer ();
+      object_loader &get_object_loader ();
       semantic_helper &get_semantic_helper ();
       error_handler &get_error_handler ();
       scanner &get_scanner ();
 
     private:
       scanner *m_scanner;
-      loader *m_loader;
+      class_installer *m_class_installer;
+      object_loader *m_object_loader;
       error_handler *m_error_handler;
       semantic_helper m_semantic_helper;
 

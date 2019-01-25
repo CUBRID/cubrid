@@ -32,8 +32,7 @@ namespace cubload
   /*
    * A wrapper function for calling batch handler. Used by split function and does some extra checks
    */
-  int handle_batch (batch_handler &handler, class_id clsid, std::string &batch_content, batch_id &batch_id,
-		    bool handle_async = true);
+  int handle_batch (batch_handler &handler, class_id clsid, std::string &batch_content, batch_id &batch_id);
 
   /*
    * Check if a given string starts with a given prefix
@@ -58,16 +57,14 @@ namespace cubload
   batch::batch ()
     : m_clsid (NULL_CLASS_ID)
     , m_batch_id (NULL_BATCH_ID)
-    , m_handle_async (true)
     , m_content ()
   {
     //
   }
 
-  batch::batch (class_id clsid, batch_id batch_id, std::string &content, bool handle_async)
+  batch::batch (class_id clsid, batch_id batch_id, std::string &content)
     : m_clsid (clsid)
     , m_batch_id (batch_id)
-    , m_handle_async (handle_async)
     , m_content (content)
   {
     //
@@ -96,8 +93,6 @@ namespace cubload
   {
     serializator->pack_int (m_clsid);
     serializator->pack_int (m_batch_id);
-    short handle_async = static_cast<short> (m_handle_async ? 1 : 0);
-    serializator->pack_short (&handle_async);
     serializator->pack_string (m_content);
 
     return NO_ERROR;
@@ -108,9 +103,6 @@ namespace cubload
   {
     serializator->unpack_int (&m_clsid);
     serializator->unpack_int (&m_batch_id);
-    short handle_async;
-    serializator->unpack_short (&handle_async);
-    m_handle_async = handle_async == 1;
     serializator->unpack_string (m_content);
 
     return NO_ERROR;
@@ -300,7 +292,7 @@ namespace cubload
   }
 
   int
-  split (int batch_size, std::string &object_file_name, batch_handler &handler)
+  split (int batch_size, const std::string &object_file_name, class_install_handler &c_handler, batch_handler &b_handler)
   {
     int error_code;
     int rows = 0;
@@ -328,7 +320,7 @@ namespace cubload
 	      {
 		// in case of class line collect remaining for current class
 		// and start new batch for the new class
-		error_code = handle_batch (handler, clsid, batch_buffer, batch_id);
+		error_code = handle_batch (b_handler, clsid, batch_buffer, batch_id);
 		if (error_code != NO_ERROR)
 		  {
 		    object_file.close ();
@@ -343,7 +335,7 @@ namespace cubload
 	      }
 
 	    line.append ("\n"); // feed lexer with new line
-	    error_code = handle_batch (handler, clsid, line, batch_id, false);
+	    error_code = c_handler (clsid, line);
 	    if (error_code != NO_ERROR)
 	      {
 		object_file.close ();
@@ -371,7 +363,7 @@ namespace cubload
 	    // check if we have a full batch
 	    if ((rows % batch_size) == 0)
 	      {
-		error_code = handle_batch (handler, clsid, batch_buffer, batch_id);
+		error_code = handle_batch (b_handler, clsid, batch_buffer, batch_id);
 		if (error_code != NO_ERROR)
 		  {
 		    object_file.close ();
@@ -382,7 +374,7 @@ namespace cubload
       }
 
     // collect remaining rows
-    error_code = handle_batch (handler, clsid, batch_buffer, batch_id);
+    error_code = handle_batch (b_handler, clsid, batch_buffer, batch_id);
 
     object_file.close ();
 
@@ -390,8 +382,7 @@ namespace cubload
   }
 
   int
-  handle_batch (batch_handler &handler, class_id clsid, std::string &batch_content, batch_id &batch_id,
-		bool handle_async)
+  handle_batch (batch_handler &handler, class_id clsid, std::string &batch_content, batch_id &batch_id)
   {
     if (batch_content.empty ())
       {
@@ -399,7 +390,7 @@ namespace cubload
 	return NO_ERROR;
       }
 
-    batch batch_ (clsid, ++batch_id, batch_content, handle_async);
+    batch batch_ (clsid, ++batch_id, batch_content);
     int error_code = handler (batch_);
 
     // prepare to start new batch for the class

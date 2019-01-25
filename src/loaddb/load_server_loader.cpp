@@ -31,67 +31,113 @@
 
 namespace cubload
 {
-  server_loader::server_loader (session &session, error_handler &error_handler)
+
+  server_base_loader::server_base_loader (session &session, error_handler &error_handler)
     : m_session (session)
     , m_error_handler (error_handler)
     , m_thread_ref (NULL)
-    , m_attr_info ()
-    , m_scancache ()
-    , m_scancache_started (false)
     , m_clsid (NULL_CLASS_ID)
-    , m_class_entry (NULL)
+    , m_attrinfo_started (false)
+    , m_attrinfo ()
+    , m_scancache_started (false)
+    , m_scancache ()
   {
     //
   }
 
   void
-  server_loader::init (class_id clsid)
+  server_base_loader::start_scancache (const OID &class_oid)
   {
-    m_clsid = clsid;
-    m_thread_ref = &cubthread::get_entry ();
+    hfid hfid;
 
-    m_class_entry = m_session.get_class_registry ().get_class_entry (clsid);
-    if (m_class_entry == NULL)
+    int error_code = heap_get_hfid_from_class_oid (m_thread_ref, &class_oid, &hfid);
+    if (error_code != NO_ERROR)
+      {
+	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
+	return;
+      }
+
+    error_code = heap_scancache_start_modify (m_thread_ref, &m_scancache, &hfid, &class_oid, SINGLE_ROW_INSERT, NULL);
+    if (error_code != NO_ERROR)
+      {
+	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
+	return;
+      }
+
+    m_scancache_started = true;
+  }
+
+  void
+  server_base_loader::stop_scancache ()
+  {
+    if (!m_scancache_started)
       {
 	return;
       }
 
-    start_scancache ();
-    if (!m_session.is_failed ())
-      {
-	m_scancache_started = true;
-      }
-
-    OID &class_oid =  m_class_entry->get_class_oid ();
-    int error_code = heap_attrinfo_start (m_thread_ref, &class_oid, -1, NULL, &m_attr_info);
-    if (error_code != NO_ERROR)
-      {
-	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
-      }
+    heap_scancache_end_modify (m_thread_ref, &m_scancache);
+    m_scancache_started = false;
   }
 
   void
-  server_loader::check_class (const char *class_name, int class_id)
+  server_base_loader::start_attrinfo (const OID &class_oid)
+  {
+    int error_code = heap_attrinfo_start (m_thread_ref, &class_oid, -1, NULL, &m_attrinfo);
+    if (error_code != NO_ERROR)
+      {
+	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
+	return;
+      }
+
+    m_attrinfo_started = true;
+  }
+
+  void
+  server_base_loader::stop_attrinfo ()
+  {
+    if (!m_attrinfo_started)
+      {
+	return;
+      }
+
+    heap_attrinfo_end (m_thread_ref, &m_attrinfo);
+    m_attrinfo_started = false;
+  }
+
+  server_class_installer::server_class_installer (session &session, error_handler &error_handler)
+    : server_base_loader (session, error_handler)
+  {
+    //
+  }
+
+  void
+  server_class_installer::init (class_id clsid)
+  {
+    m_clsid = clsid;
+    m_thread_ref = &cubthread::get_entry ();
+  }
+
+  void
+  server_class_installer::check_class (const char *class_name, int class_id)
   {
     (void) class_id;
-
     OID class_oid;
-    locate_class (class_name, &class_oid);
+
+    locate_class (class_name, class_oid);
   }
 
   int
-  server_loader::setup_class (const char *class_name)
+  server_class_installer::install_class (const char *class_name)
   {
     (void) class_name;
 
-    register_class (class_name);
-    register_class_attributes (NULL);
+    register_class (class_name, NULL);
 
     return NO_ERROR;
   }
 
   void
-  server_loader::setup_class (string_type *class_name, class_command_spec_type *cmd_spec)
+  server_class_installer::install_class (string_type *class_name, class_command_spec_type *cmd_spec)
   {
     assert (m_clsid != NULL_CLASS_ID);
 
@@ -100,24 +146,138 @@ namespace cubload
 	return;
       }
 
-    register_class (class_name->val);
-    register_class_attributes (cmd_spec == NULL ? NULL : cmd_spec->attr_list);
+    register_class (class_name->val, cmd_spec == NULL ? NULL : cmd_spec->attr_list);
+  }
 
-    OID &class_oid = m_class_entry->get_class_oid ();
+  void
+  server_class_installer::locate_class (const char *class_name, OID &class_oid)
+  {
+    LC_FIND_CLASSNAME found = xlocator_find_class_oid (m_thread_ref, class_name, &class_oid, IX_LOCK);
+    if (found != LC_CLASSNAME_EXIST)
+      {
+	m_error_handler.on_failure_with_line (LOADDB_MSG_UNKNOWN_CLASS, class_name);
+      }
+  }
 
-    // lock class when batch starts, it will be unlocked on transaction commit/abort, see load_parse_task::execute
+  void
+  server_class_installer::register_class (const char *class_name, string_type *attr_list)
+  {
+    OID class_oid;
+
+    locate_class (class_name, class_oid);
+    start_attrinfo (class_oid);
+
+    if (m_session.is_failed ())
+      {
+	// return in case when attrinfo wasn't started or couldn't locate the class
+	return;
+      }
+
+    int attr_count = m_attrinfo.num_values;
+    class_entry *c_entry = m_session.get_class_registry ().register_class (class_name, m_clsid, class_oid, attr_count);
+
+    register_class_attributes (c_entry, attr_list);
+
+    stop_attrinfo ();
+  }
+
+  void
+  server_class_installer::register_class_attributes (class_entry *c_entry, string_type *attr_list)
+  {
+    recdes recdes;
+    const OID &class_oid = c_entry->get_class_oid ();
+
+    start_scancache (class_oid);
+    SCAN_CODE scan_code = heap_get_class_record (m_thread_ref, &class_oid, &recdes, &m_scancache, PEEK);
+    stop_scancache ();
+
+    if (scan_code != S_SUCCESS)
+      {
+	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
+	return;
+      }
+
+    // collect class attribute names
+    std::map<std::string, ATTR_ID> attr_map;
+    for (int i = 0; i < m_attrinfo.num_values; ++i)
+      {
+	char *attr_name = NULL;
+	int free_attr_name = 0;
+	ATTR_ID attr_id = m_attrinfo.values[i].attrid;
+
+	int error_code = or_get_attrname (&recdes, attr_id, &attr_name, &free_attr_name);
+	if (error_code != NO_ERROR)
+	  {
+	    m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
+	    return;
+	  }
+
+	std::string attr_name_ (attr_name);
+	if (attr_list == NULL)
+	  {
+	    // if attr_list is NULL then register attributes in default order
+	    or_attribute *attrepr = heap_locate_last_attrepr (attr_id, &m_attrinfo);
+	    c_entry->register_attribute (attr_id, attr_name_, attrepr);
+	  }
+	else
+	  {
+	    attr_map.insert (std::make_pair (attr_name_, attr_id));
+	  }
+
+	// free attr_name if it was allocated
+	if (attr_name != NULL && free_attr_name == 1)
+	  {
+	    db_private_free_and_init (m_thread_ref, attr_name);
+	  }
+      }
+
+    // register attributes in specific order required by attr_list
+    int attr_idx = 0;
+    for (string_type *attr = attr_list; attr != NULL; attr = attr->next, attr_idx++)
+      {
+	std::string attr_name_ (attr->val);
+	ATTR_ID attr_id = attr_map.at (attr_name_);
+
+	or_attribute *attrepr = heap_locate_last_attrepr (attr_id, &m_attrinfo);
+
+	c_entry->register_attribute (attr_id, attr_name_, attrepr);
+      }
+  }
+
+  server_object_loader::server_object_loader (session &session, error_handler &error_handler)
+    : server_base_loader (session, error_handler)
+    , m_class_entry (NULL)
+  {
+    //
+  }
+
+  void
+  server_object_loader::init (class_id clsid)
+  {
+    m_clsid = clsid;
+    m_thread_ref = &cubthread::get_entry ();
+
+    assert (m_class_entry == NULL);
+    m_class_entry = m_session.get_class_registry ().get_class_entry (clsid);
+    if (m_class_entry == NULL)
+      {
+	return;
+      }
+
+    const OID &class_oid = m_class_entry->get_class_oid ();
+
+    start_scancache (class_oid);
+    start_attrinfo (class_oid);
+
+    // lock class when batch starts, it will be unlocked on transaction commit/abort, see load_worker::execute
     lock_object (m_thread_ref, &class_oid, oid_Root_class_oid, IX_LOCK, LK_UNCOND_LOCK);
   }
 
   void
-  server_loader::destroy ()
+  server_object_loader::destroy ()
   {
-    heap_attrinfo_end (m_thread_ref, &m_attr_info);
-    if (m_scancache_started)
-      {
-	heap_scancache_end_modify (m_thread_ref, &m_scancache);
-	m_scancache_started = false;
-      }
+    stop_attrinfo ();
+    stop_scancache ();
 
     m_clsid = NULL_CLASS_ID;
     m_class_entry = NULL;
@@ -125,16 +285,16 @@ namespace cubload
   }
 
   void
-  server_loader::start_line (int object_id)
+  server_object_loader::start_line (int object_id)
   {
     (void) object_id;
 
     // clear db values
-    heap_attrinfo_clear_dbvalues (&m_attr_info);
+    heap_attrinfo_clear_dbvalues (&m_attrinfo);
   }
 
   void
-  server_loader::process_line (constant_type *cons)
+  server_object_loader::process_line (constant_type *cons)
   {
     if (m_session.is_failed ())
       {
@@ -151,7 +311,7 @@ namespace cubload
   }
 
   void
-  server_loader::process_constant (constant_type *cons, attribute &attr)
+  server_object_loader::process_constant (constant_type *cons, attribute &attr)
   {
     db_value db_val;
 
@@ -239,13 +399,13 @@ namespace cubload
 	free_and_init (cons);
       }
 
-    OID &class_oid = m_class_entry->get_class_oid ();
+    const OID &class_oid = m_class_entry->get_class_oid ();
 
-    heap_attrinfo_set (&class_oid, attr.m_attr_id, &db_val, &m_attr_info);
+    heap_attrinfo_set (&class_oid, attr.m_attr_id, &db_val, &m_attrinfo);
   }
 
   void
-  server_loader::process_monetary_constant (constant_type *cons, tp_domain *domain, db_value *db_val)
+  server_object_loader::process_monetary_constant (constant_type *cons, tp_domain *domain, db_value *db_val)
   {
     monetary_type *mon = (monetary_type *) cons->val;
     string_type *str = mon->amount;
@@ -283,7 +443,7 @@ namespace cubload
   }
 
   void
-  server_loader::finish_line ()
+  server_object_loader::finish_line ()
   {
     if (m_session.is_failed () || !m_scancache_started)
       {
@@ -295,7 +455,7 @@ namespace cubload
     int pruning_type = 0;
     int op_type = SINGLE_ROW_INSERT;
 
-    int error_code = locator_attribute_info_force (m_thread_ref, &m_scancache.node.hfid, &oid, &m_attr_info, NULL, 0,
+    int error_code = locator_attribute_info_force (m_thread_ref, &m_scancache.node.hfid, &oid, &m_attrinfo, NULL, 0,
 		     LC_FLUSH_INSERT, op_type, &m_scancache, &force_count, false,
 		     REPL_INFO_TYPE_RBR_NORMAL, pruning_type, NULL, NULL, NULL,
 		     UPDATE_INPLACE_NONE, NULL, false);
@@ -306,136 +466,6 @@ namespace cubload
       }
 
     m_session.inc_total_objects ();
-  }
-
-  void
-  server_loader::locate_class (const char *class_name, OID *class_oid)
-  {
-    LC_FIND_CLASSNAME found = xlocator_find_class_oid (m_thread_ref, class_name, class_oid, IX_LOCK);
-    if (found != LC_CLASSNAME_EXIST)
-      {
-	m_error_handler.on_failure_with_line (LOADDB_MSG_UNKNOWN_CLASS, class_name);
-      }
-  }
-
-  void
-  server_loader::register_class (const char *class_name)
-  {
-    OID class_oid;
-
-    locate_class (class_name, &class_oid);
-    if (m_session.is_failed ())
-      {
-	return;
-      }
-
-    heap_cache_attrinfo attr_info;
-    int error_code = heap_attrinfo_start (m_thread_ref, &class_oid, -1, NULL, &attr_info);
-    if (error_code != NO_ERROR)
-      {
-	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
-	return;
-      }
-
-    m_class_entry = m_session.get_class_registry ().register_class (class_name, m_clsid, class_oid,
-		    attr_info.num_values);
-
-    heap_attrinfo_end (m_thread_ref, &attr_info);
-  }
-
-  void
-  server_loader::register_class_attributes (string_type *attr_list)
-  {
-    start_scancache ();
-
-    OID &class_oid = m_class_entry->get_class_oid ();
-
-    heap_cache_attrinfo attr_info;
-    int error_code = heap_attrinfo_start (m_thread_ref, &class_oid, -1, NULL, &attr_info);
-    if (error_code != NO_ERROR)
-      {
-	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
-	return;
-      }
-
-    recdes recdes;
-    SCAN_CODE scan_code = heap_get_class_record (m_thread_ref, &class_oid, &recdes, &m_scancache, PEEK);
-    if (scan_code != S_SUCCESS)
-      {
-	heap_attrinfo_end (m_thread_ref, &attr_info);
-	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
-	return;
-      }
-
-    heap_scancache_end_modify (m_thread_ref, &m_scancache);
-
-    // collect class attribute names
-    std::map<std::string, ATTR_ID> attr_map;
-    for (int i = 0; i < attr_info.num_values; i++)
-      {
-	char *attr_name = NULL;
-	int free_attr_name = 0;
-	ATTR_ID attr_id = attr_info.values[i].attrid;
-
-	error_code = or_get_attrname (&recdes, attr_id, &attr_name, &free_attr_name);
-	if (error_code != NO_ERROR)
-	  {
-	    m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
-	    return;
-	  }
-
-	std::string attr_name_ (attr_name);
-	if (attr_list == NULL)
-	  {
-	    // if attr_list is NULL then register attributes in default order
-	    or_attribute *attrepr = heap_locate_last_attrepr (attr_id, &attr_info);
-	    m_class_entry->register_attribute (attr_id, attr_name_, attrepr);
-	  }
-	else
-	  {
-	    attr_map.insert (std::make_pair (attr_name_, attr_id));
-	  }
-
-	// free attr_name if it was allocated
-	if (attr_name != NULL && free_attr_name == 1)
-	  {
-	    db_private_free_and_init (m_thread_ref, attr_name);
-	  }
-      }
-
-    // register attributes in specific order required by attr_list
-    int attr_idx = 0;
-    for (string_type *attr = attr_list; attr != NULL; attr = attr->next, attr_idx++)
-      {
-	std::string attr_name_ (attr->val);
-	ATTR_ID attr_id = attr_map.at (attr_name_);
-
-	or_attribute *attrepr = heap_locate_last_attrepr (attr_id, &attr_info);
-
-	m_class_entry->register_attribute (attr_id, attr_name_, attrepr);
-      }
-
-    heap_attrinfo_end (m_thread_ref, &attr_info);
-  }
-
-  void
-  server_loader::start_scancache ()
-  {
-    hfid hfid;
-    OID &class_oid = m_class_entry->get_class_oid ();
-
-    int error_code = heap_get_hfid_from_class_oid (m_thread_ref, &class_oid, &hfid);
-    if (error_code != NO_ERROR)
-      {
-	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
-	return;
-      }
-
-    error_code = heap_scancache_start_modify (m_thread_ref, &m_scancache, &hfid, &class_oid, SINGLE_ROW_INSERT, NULL);
-    if (error_code != NO_ERROR)
-      {
-	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
-      }
   }
 
 } // namespace cubload
