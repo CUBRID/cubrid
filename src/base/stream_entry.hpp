@@ -120,12 +120,12 @@ namespace cubstream
       int prepare_func (const stream_position &data_start_pos, char *ptr, const size_t header_size,
 			size_t &payload_size)
       {
-	cubpacking::unpacker *serializator = get_unpacker ();
+	cubpacking::unpacker *deserializator = get_unpacker ();
 	int error_code;
 
 	assert (header_size == get_packed_header_size ());
 
-	serializator->set_buffer (ptr, header_size);
+	deserializator->set_buffer (ptr, header_size);
 
 	error_code = unpack_stream_entry_header ();
 	if (error_code != NO_ERROR)

@@ -572,7 +572,7 @@ namespace cubpacking
   }
 
   void
-  packer::assign_or_buf (const size_t size, or_buf &buf)
+  packer::delegate_to_or_buf (const size_t size, or_buf &buf)
   {
     check_range (m_ptr, m_end_ptr, size);
     m_ptr += size;
@@ -580,7 +580,7 @@ namespace cubpacking
   }
 
   void
-  unpacker::assign_or_buf (const size_t size, or_buf &buf)
+  unpacker::delegate_to_or_buf (const size_t size, or_buf &buf)
   {
     check_range (m_ptr, m_end_ptr, size);
     m_ptr += size;

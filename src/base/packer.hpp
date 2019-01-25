@@ -90,7 +90,7 @@ namespace cubpacking
       // packer should gradually replace OR_BUF, but they will coexist for a while. there will be functionality
       // strictly dependent on or_buf, so packer will have to cede at least some of the packing to or_buf
       //
-      void assign_or_buf (const size_t size, or_buf &buf);
+      void delegate_to_or_buf (const size_t size, or_buf &buf);
 
       const char *get_curr_ptr (void)
       {
@@ -187,7 +187,7 @@ namespace cubpacking
       // packer should gradually replace OR_BUF, but they will coexist for a while. there will be functionality
       // strictly dependent on or_buf, so packer will have to cede at least some of the packing to or_buf
       //
-      void assign_or_buf (const size_t size, or_buf &buf);
+      void delegate_to_or_buf (const size_t size, or_buf &buf);
 
     private:
       const char *m_start_ptr; /* start of buffer */
