@@ -4801,7 +4801,7 @@ xts_process (char *ptr, const json_table_column & jtc)
   ptr = or_pack_domain (ptr, jtc.m_domain, 0, 0);
 
   // save path
-  assert (jtc.m_path != NULL && strlen (jtc.m_path) > 0);
+  assert (jtc.m_path != NULL);
   offset = xts_save_string (jtc.m_path);
   if (offset == ER_FAILED)
     {
@@ -4810,7 +4810,7 @@ xts_process (char *ptr, const json_table_column & jtc)
   ptr = or_pack_int (ptr, offset);
 
   // save column_name
-  assert (jtc.m_column_name != NULL && strlen (jtc.m_column_name) > 0);
+  assert (jtc.m_column_name != NULL);
   offset = xts_save_string (jtc.m_column_name);
   if (offset == ER_FAILED)
     {

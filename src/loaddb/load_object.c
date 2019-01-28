@@ -48,7 +48,7 @@
 #include "schema_manager.h"
 #include "server_interface.h"
 #include "load_object.h"
-#include "object_print.h"
+#include "db_value_printer.hpp"
 #include "network_interface_cl.h"
 
 #include "message_catalog.h"
@@ -666,7 +666,7 @@ get_desc_current (OR_BUF * buf, SM_CLASS * class_, DESC_OBJ * obj, int bound_bit
       else
 	{
 	  /* read the disk value into the db_value */
-	  (*(att->type->data_readval)) (buf, &obj->values[i], att->domain, -1, true, NULL, 0);
+	  att->type->data_readval (buf, &obj->values[i], att->domain, -1, true, NULL, 0);
 	}
     }
 
@@ -689,7 +689,7 @@ get_desc_current (OR_BUF * buf, SM_CLASS * class_, DESC_OBJ * obj, int bound_bit
       for (i = class_->fixed_count, j = 0; i < class_->att_count && j < class_->variable_count;
 	   i++, j++, att = (SM_ATTRIBUTE *) att->header.next)
 	{
-	  (*(att->type->data_readval)) (buf, &obj->values[i], att->domain, vars[j], true, NULL, 0);
+	  att->type->data_readval (buf, &obj->values[i], att->domain, vars[j], true, NULL, 0);
 	}
 
       free_and_init (vars);
@@ -800,12 +800,12 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bo
 	  if (attmap[i] == NULL)
 	    {
 	      /* its gone, skip over it */
-	      (*(type->data_readval)) (buf, NULL, rat->domain, -1, true, NULL, 0);
+	      type->data_readval (buf, NULL, rat->domain, -1, true, NULL, 0);
 	    }
 	  else
 	    {
 	      /* its real, get it into the proper value */
-	      (*(type->data_readval)) (buf, &obj->values[attmap[i]->storage_order], rat->domain, -1, true, NULL, 0);
+	      type->data_readval (buf, &obj->values[attmap[i]->storage_order], rat->domain, -1, true, NULL, 0);
 	    }
 	}
 
@@ -857,13 +857,13 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bo
 	  if (attmap[att_index] == NULL)
 	    {
 	      /* its null, skip over it */
-	      (*(type->data_readval)) (buf, NULL, rat->domain, vars[i], true, NULL, 0);
+	      type->data_readval (buf, NULL, rat->domain, vars[i], true, NULL, 0);
 	    }
 	  else
 	    {
 	      /* read it into the proper value */
-	      (*(type->data_readval)) (buf, &obj->values[attmap[att_index]->storage_order], rat->domain, vars[i], true,
-				       NULL, 0);
+	      type->data_readval (buf, &obj->values[attmap[att_index]->storage_order], rat->domain, vars[i], true, NULL,
+				  0);
 	    }
 	}
 
@@ -1626,7 +1626,7 @@ desc_value_fprint (FILE * fp, DB_VALUE * value)
       break;
 
     default:
-      db_value_fprint (fp, value);
+      db_fprint_value (fp, value);
       break;
     }
 }

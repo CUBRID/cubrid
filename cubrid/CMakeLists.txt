@@ -228,7 +228,6 @@ set(QUERY_HEADERS
 
 set(OBJECT_SOURCES
   ${OBJECT_DIR}/elo.c
-  ${OBJECT_DIR}/object_print.c
   ${OBJECT_DIR}/set_object.c
   ${OBJECT_DIR}/object_representation.c
   ${OBJECT_DIR}/object_primitive.c

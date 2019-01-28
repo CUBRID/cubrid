@@ -619,14 +619,7 @@ put_varinfo (OR_BUF * buf, char *obj, SM_CLASS * class_, int offset_size)
 	  att = &class_->attributes[a];
 	  mem = obj + att->offset;
 
-	  if (att->domain->type->data_lengthmem != NULL)
-	    {
-	      len = (*(att->domain->type->data_lengthmem)) (mem, att->domain, 1);
-	    }
-	  else
-	    {
-	      len = att->domain->type->disksize;
-	    }
+	  len = att->domain->type->get_disk_size_of_mem (mem, att->domain);
 
 	  or_put_offset_internal (buf, offset, offset_size);
 	  offset += len;
@@ -666,14 +659,7 @@ re_check:
 	  att = &class_->attributes[a];
 	  mem = obj + att->offset;
 
-	  if (att->domain->type->data_lengthmem != NULL)
-	    {
-	      size += (*(att->domain->type->data_lengthmem)) (mem, att->domain, 1);
-	    }
-	  else
-	    {
-	      size += att->domain->type->disksize;
-	    }
+	  size += att->domain->type->get_disk_size_of_mem (mem, att->domain);
 	}
     }
 
@@ -717,7 +703,7 @@ put_attributes (OR_BUF * buf, char *obj, SM_CLASS * class_)
   start = buf->ptr;
   for (att = class_->attributes; att != NULL && !att->type->variable_p; att = (SM_ATTRIBUTE *) att->header.next)
     {
-      PRIM_WRITE (att->type, att->domain, buf, obj + att->offset);
+      att->type->data_writemem (buf, obj + att->offset, att->domain);
     }
 
   /* bring the end of the fixed width block up to proper alignment */
@@ -741,7 +727,7 @@ put_attributes (OR_BUF * buf, char *obj, SM_CLASS * class_)
 
   for (; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
     {
-      PRIM_WRITE (att->type, att->domain, buf, obj + att->offset);
+      att->type->data_writemem (buf, obj + att->offset, att->domain);
     }
   return NO_ERROR;
 }
@@ -972,7 +958,7 @@ get_current (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr, int bound_bit_flag
 	{
 	  att = &(class_->attributes[i]);
 	  mem = obj + att->offset;
-	  PRIM_READ (att->type, att->domain, buf, mem, -1);
+	  att->type->data_readmem (buf, mem, att->domain, -1);
 	}
 
       /* round up to a to the end of the fixed block */
@@ -994,7 +980,7 @@ get_current (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr, int bound_bit_flag
 	    {
 	      att = &(class_->attributes[i]);
 	      mem = obj + att->offset;
-	      PRIM_READ (att->type, att->domain, buf, mem, vars[j]);
+	      att->type->data_readmem (buf, mem, att->domain, vars[j]);
 	    }
 	}
     }
@@ -1067,11 +1053,11 @@ clear_new_unbound (char *obj, SM_CLASS * class_, SM_REPRESENTATION * oldrep)
 	{
 	  mem = obj + att->offset;
 	  /* initialize in case there isn't an initial value */
-	  PRIM_INITMEM (att->type, mem, att->domain);
+	  att->type->initmem (mem, att->domain);
 	  if (!DB_IS_NULL (&att->default_value.original_value))
 	    {
 	      /* assign the initial value, should check for non-existance ? */
-	      PRIM_SETMEM (att->type, att->domain, mem, &att->default_value.original_value);
+	      att->type->setmem (mem, att->domain, &att->default_value.original_value);
 	      if (!att->type->variable_p)
 		{
 		  OBJ_SET_BOUND_BIT (obj, att->storage_order);
@@ -1202,11 +1188,11 @@ get_old (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr, int repid, int bound_b
 
 	      if (attmap[i] == NULL)
 		{
-		  PRIM_READ (type, rat->domain, buf, NULL, -1);
+		  type->data_readmem (buf, NULL, rat->domain, -1);
 		}
 	      else
 		{
-		  PRIM_READ (type, rat->domain, buf, obj + attmap[i]->offset, -1);
+		  type->data_readmem (buf, obj + attmap[i]->offset, rat->domain, -1);
 		}
 	    }
 
@@ -1267,11 +1253,11 @@ get_old (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr, int repid, int bound_b
 		  att_index = oldrep->fixed_count + i;
 		  if (attmap[att_index] == NULL)
 		    {
-		      PRIM_READ (type, rat->domain, buf, NULL, vars[i]);
+		      type->data_readmem (buf, NULL, rat->domain, vars[i]);
 		    }
 		  else
 		    {
-		      PRIM_READ (type, rat->domain, buf, obj + attmap[att_index]->offset, vars[i]);
+		      type->data_readmem (buf, obj + attmap[att_index]->offset, rat->domain, vars[i]);
 		    }
 		}
 	    }
@@ -1483,7 +1469,7 @@ string_disk_size (const char *string)
 
   db_make_varnchar (&value, TP_FLOATING_PRECISION_VALUE, (const DB_C_NCHAR) string, str_length, LANG_SYS_CODESET,
 		    LANG_SYS_COLLATION);
-  length = (*(tp_VarNChar.data_lengthval)) (&value, 1);
+  length = tp_VarNChar.get_disk_size_of_value (&value);
 
   /* Clear the compressed_string of DB_VALUE */
   pr_clear_compressed_string (&value);
@@ -1528,7 +1514,7 @@ get_string (OR_BUF * buf, int length)
   my_domain.collation_id = LANG_SYS_COLLATION;
   my_domain.collation_flag = TP_DOMAIN_COLL_NORMAL;
 
-  (*(tp_VarNChar.data_readval)) (buf, &value, &my_domain, length, true, NULL, 0);
+  tp_VarNChar.data_readval (buf, &value, &my_domain, length, true, NULL, 0);
 
   if (DB_VALUE_TYPE (&value) == DB_TYPE_VARNCHAR)
     {
@@ -1570,7 +1556,7 @@ put_string (OR_BUF * buf, const char *string)
 
   db_make_varnchar (&value, TP_FLOATING_PRECISION_VALUE, (const DB_C_NCHAR) string, str_length, LANG_SYS_CODESET,
 		    LANG_SYS_COLLATION);
-  (*(tp_VarNChar.data_writeval)) (buf, &value);
+  tp_VarNChar.data_writeval (buf, &value);
   pr_clear_value (&value);
 }
 
@@ -1732,7 +1718,7 @@ get_object_set (OR_BUF * buf, int expected)
        * Get a MOP, could assume classes mops here and make sure the resulting
        * MOP is stamped with the sm_Root_class_mop class ?
        */
-      (*(tp_Object.data_readval)) (buf, &value, NULL, -1, true, NULL, 0);
+      tp_Object.data_readval (buf, &value, NULL, -1, true, NULL, 0);
       op = db_get_object (&value);
       if (op != NULL)
 	{
@@ -1950,7 +1936,7 @@ property_list_size (DB_SEQ * properties)
       if (max)
 	{
 	  db_make_sequence (&value, properties);
-	  size = (*(tp_Sequence.data_lengthval)) (&value, 1);
+	  size = tp_Sequence.get_disk_size_of_value (&value);
 	}
     }
   return size;
@@ -1977,7 +1963,7 @@ put_property_list (OR_BUF * buf, DB_SEQ * properties)
   if (max)
     {
       db_make_sequence (&value, properties);
-      (*(tp_Sequence.data_writeval)) (buf, &value);
+      tp_Sequence.data_writeval (buf, &value);
     }
 }
 
@@ -2007,7 +1993,7 @@ get_property_list (OR_BUF * buf, int expected_size)
   properties = NULL;
   if (expected_size)
     {
-      (*(tp_Sequence.data_readval)) (buf, &value, NULL, expected_size, true, NULL, 0);
+      tp_Sequence.data_readval (buf, &value, NULL, expected_size, true, NULL, 0);
       properties = db_get_set (&value);
       if (properties == NULL)
 	or_abort (buf);		/* trouble allocating a handle */
@@ -2107,7 +2093,7 @@ domain_to_disk (OR_BUF * buf, TP_DOMAIN * domain)
   if (domain->json_validator)
     {
       db_make_string_by_const_str (&schema_value, db_json_get_schema_raw_from_validator (domain->json_validator));
-      (*(tp_String.data_writeval)) (buf, &schema_value);
+      tp_String.data_writeval (buf, &schema_value);
       pr_clear_value (&schema_value);
     }
   if (start + offset != buf->ptr)
@@ -2167,7 +2153,7 @@ disk_to_domain2 (OR_BUF * buf)
    * Could use readval, and extract the OID out of the already swizzled
    * MOP too.
    */
-  (*(tp_Oid.data_readmem)) (buf, &oid, NULL, -1);
+  tp_Oid.data_readmem (buf, &oid, NULL, -1);
   domain->class_oid = oid;
 
   /* swizzle the pointer, we know we're on the client here */
@@ -2603,7 +2589,7 @@ disk_to_method (OR_BUF * buf, SM_METHOD * method)
       method->header.name_space = ID_NULL;
 
       /* CLASS */
-      (*(tp_Object.data_readval)) (buf, &value, NULL, -1, true, NULL, 0);
+      tp_Object.data_readval (buf, &value, NULL, -1, true, NULL, 0);
       method->class_mop = db_get_object (&value);
       method->id = or_get_int (buf, &rc);
       method->function = NULL;
@@ -2722,7 +2708,7 @@ disk_to_methfile (OR_BUF * buf)
       else
 	{
 	  /* class */
-	  (*(tp_Object.data_readval)) (buf, &value, NULL, -1, true, NULL, 0);
+	  tp_Object.data_readval (buf, &value, NULL, -1, true, NULL, 0);
 	  file->class_mop = db_get_object (&value);
 
 	  /* name */
@@ -3010,7 +2996,7 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
       att->offset = 0;		/* calculated later */
       att->order = or_get_int (buf, &rc);
 
-      (*(tp_Object.data_readval)) (buf, &value, NULL, -1, true, NULL, 0);
+      tp_Object.data_readval (buf, &value, NULL, -1, true, NULL, 0);
       att->class_mop = db_get_object (&value);
       /* prevents clear on next readval call */
       db_value_put_null (&value);
@@ -3236,13 +3222,13 @@ disk_to_resolution (OR_BUF * buf)
     }
   else
     {
-      (*(tp_Object.data_readval)) (buf, &value, NULL, -1, true, NULL, 0);
+      tp_Object.data_readval (buf, &value, NULL, -1, true, NULL, 0);
       class_ = db_get_object (&value);
       if (class_ == NULL)
 	{
 	  (void) or_get_int (buf, &rc);
-	  (*(tp_VarNChar.data_readval)) (buf, NULL, NULL, vars[ORC_RES_NAME_INDEX].length, true, NULL, 0);
-	  (*(tp_VarNChar.data_readval)) (buf, NULL, NULL, vars[ORC_RES_ALIAS_INDEX].length, true, NULL, 0);
+	  tp_VarNChar.data_readval (buf, NULL, NULL, vars[ORC_RES_NAME_INDEX].length, true, NULL, 0);
+	  tp_VarNChar.data_readval (buf, NULL, NULL, vars[ORC_RES_ALIAS_INDEX].length, true, NULL, 0);
 	}
       else
 	{
@@ -3984,7 +3970,7 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
   class_->class_type = (SM_CLASS_TYPE) or_get_int (buf, &rc);
 
   /* owner object */
-  (*(tp_Object.data_readval)) (buf, &value, NULL, -1, true, NULL, 0);
+  tp_Object.data_readval (buf, &value, NULL, -1, true, NULL, 0);
   class_->owner = db_get_object (&value);
   class_->collation_id = or_get_int (buf, &rc);
 

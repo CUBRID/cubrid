@@ -576,7 +576,7 @@ eval_some_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * l
 	{
 	  OR_BUF_INIT (buf, ptr, length);
 
-	  if ((*(pr_type->data_readval)) (&buf, &list_val, list_id->type_list.domp[0], -1, true, NULL, 0) != NO_ERROR)
+	  if (pr_type->data_readval (&buf, &list_val, list_id->type_list.domp[0], -1, true, NULL, 0) != NO_ERROR)
 	    {
 	      qfile_close_scan (thread_p, &s_id);
 	      return V_ERROR;
@@ -718,7 +718,7 @@ eval_item_card_sort_list (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_I
 
       OR_BUF_INIT (buf, ptr, length);
 
-      (*(pr_type->data_readval)) (&buf, &list_val, list_id->type_list.domp[0], -1, true, NULL, 0);
+      pr_type->data_readval (&buf, &list_val, list_id->type_list.domp[0], -1, true, NULL, 0);
 
       rc = eval_value_rel_cmp (item, &list_val, R_LT, NULL);
       if (rc == V_ERROR)
@@ -947,7 +947,7 @@ eval_sub_sort_list_to_multi_set (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 
       OR_BUF_INIT (buf, ptr, length);
 
-      (*(pr_type->data_readval)) (&buf, &list_val, list_id->type_list.domp[0], -1, true, NULL, 0);
+      pr_type->data_readval (&buf, &list_val, list_id->type_list.domp[0], -1, true, NULL, 0);
 
       if (list_on == true)
 	{
@@ -955,7 +955,7 @@ eval_sub_sort_list_to_multi_set (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 
 	  or_init (&buf, p_tplp + QFILE_TUPLE_VALUE_HEADER_SIZE, QFILE_GET_TUPLE_VALUE_LENGTH (p_tplp));
 
-	  (*(pr_type->data_readval)) (&buf, &list_val2, list_id->type_list.domp[0], -1, true, NULL, 0);
+	  pr_type->data_readval (&buf, &list_val2, list_id->type_list.domp[0], -1, true, NULL, 0);
 
 	  rc = eval_value_rel_cmp (&list_val, &list_val2, R_EQ, NULL);
 	  if (rc == V_ERROR)
@@ -1015,7 +1015,7 @@ eval_sub_sort_list_to_multi_set (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 
       or_init (&buf, p_tplp + QFILE_TUPLE_VALUE_HEADER_SIZE, QFILE_GET_TUPLE_VALUE_LENGTH (p_tplp));
 
-      (*(pr_type->data_readval)) (&buf, &list_val2, list_id->type_list.domp[0], -1, true, NULL, 0);
+      pr_type->data_readval (&buf, &list_val2, list_id->type_list.domp[0], -1, true, NULL, 0);
 
       card2 = eval_item_card_set (&list_val2, set, R_EQ);
       if (card2 == ER_FAILED)
@@ -1123,7 +1123,7 @@ eval_sub_sort_list_to_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 
       OR_BUF_INIT (buf, ptr, length);
 
-      (*(pr_type->data_readval)) (&buf, &list_val, list_id1->type_list.domp[0], -1, true, NULL, 0);
+      pr_type->data_readval (&buf, &list_val, list_id1->type_list.domp[0], -1, true, NULL, 0);
 
       if (list_on == true)
 	{
@@ -1131,7 +1131,7 @@ eval_sub_sort_list_to_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 
 	  or_init (&buf, p_tplp + QFILE_TUPLE_VALUE_HEADER_SIZE, QFILE_GET_TUPLE_VALUE_LENGTH (p_tplp));
 
-	  (*(pr_type->data_readval)) (&buf, &list_val2, list_id1->type_list.domp[0], -1, true, NULL, 0);
+	  pr_type->data_readval (&buf, &list_val2, list_id1->type_list.domp[0], -1, true, NULL, 0);
 
 	  rc = eval_value_rel_cmp (&list_val, &list_val2, R_EQ, NULL);
 
@@ -1192,7 +1192,7 @@ eval_sub_sort_list_to_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 
       or_init (&buf, p_tplp + QFILE_TUPLE_VALUE_HEADER_SIZE, QFILE_GET_TUPLE_VALUE_LENGTH (p_tplp));
 
-      if ((*(pr_type->data_readval)) (&buf, &list_val2, list_id1->type_list.domp[0], -1, true, NULL, 0) != NO_ERROR)
+      if (pr_type->data_readval (&buf, &list_val2, list_id1->type_list.domp[0], -1, true, NULL, 0) != NO_ERROR)
 	{
 	  res = V_ERROR;
 	  goto end;
