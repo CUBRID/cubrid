@@ -163,8 +163,7 @@ namespace cubload
       }
 
     // register attributes in specific order required by attr_list
-    int attr_idx = 0;
-    for (string_type *str_attr = attr_list; str_attr != NULL; str_attr = str_attr->next, attr_idx++)
+    for (string_type *str_attr = attr_list; str_attr != NULL; str_attr = str_attr->next)
       {
 	std::string attr_name_ (str_attr->val);
 	ATTR_ID attr_id = attr_map.at (attr_name_);
@@ -245,8 +244,7 @@ namespace cubload
 	return;
       }
 
-    int attr_idx = 0;
-
+    std::size_t attr_idx = 0;
     for (constant_type *c = cons; c != NULL; c = c->next, attr_idx++)
       {
 	const attribute &attr = m_class_entry->get_attribute (attr_idx);

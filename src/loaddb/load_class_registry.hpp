@@ -64,7 +64,7 @@ namespace cubload
       class_entry &operator= (const class_entry &copy) = delete; // Not CopyAssignable
 
       const OID &get_class_oid () const;
-      const attribute &get_attribute (int index) const;
+      const attribute &get_attribute (std::size_t index) const;
 
     private:
       class_id m_clsid;

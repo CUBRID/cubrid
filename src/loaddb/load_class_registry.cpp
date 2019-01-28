@@ -62,10 +62,10 @@ namespace cubload
   }
 
   const attribute &
-  class_entry::get_attribute (int index) const
+  class_entry::get_attribute (std::size_t index) const
   {
     // assert that index is within the range
-    assert (0 <= index && ((std::size_t) index) < m_attributes.size ());
+    assert (index < m_attributes.size ());
 
     return *m_attributes[index];
   }
