@@ -305,13 +305,13 @@ namespace cubload
 
     for (constant_type *c = cons; c != NULL; c = c->next, attr_idx++)
       {
-	attribute &attr = m_class_entry->get_attribute (attr_idx);
+	const attribute &attr = m_class_entry->get_attribute (attr_idx);
 	process_constant (c, attr);
       }
   }
 
   void
-  server_object_loader::process_constant (constant_type *cons, attribute &attr)
+  server_object_loader::process_constant (constant_type *cons, const attribute &attr)
   {
     db_value db_val;
 

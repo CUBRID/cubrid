@@ -53,7 +53,7 @@ namespace cubload
     return m_class_oid;
   }
 
-  attribute &
+  const attribute &
   class_entry::get_attribute (int index)
   {
     // check that all attributes were registered

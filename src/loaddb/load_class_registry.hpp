@@ -98,7 +98,7 @@ namespace cubload
       void register_attribute (ATTR_ID attr_id, std::string attr_name, or_attribute *attr_repr);
 
       const OID &get_class_oid () const;
-      attribute &get_attribute (int index);
+      const attribute &get_attribute (int index);
 
     private:
       class_id m_clsid;

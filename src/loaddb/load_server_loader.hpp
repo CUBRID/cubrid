@@ -98,7 +98,7 @@ namespace cubload
       void finish_line () override;
 
     private:
-      void process_constant (constant_type *cons, attribute &attr);
+      void process_constant (constant_type *cons, const attribute &attr);
       void process_monetary_constant (constant_type *cons, tp_domain *domain, db_value *db_val);
 
       class_entry *m_class_entry;
