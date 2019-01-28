@@ -32,19 +32,22 @@
 #include <string.h>
 #include <assert.h>
 
-#include "mem_block.hpp"
 #include "object_primitive.h"
-#include "string_buffer.hpp"
 
-#include "system_parameter.h"
-#include "set_object.h"
-#include "elo.h"
-#include "object_print.h"
-#include "string_opfunc.h"
-#include "tz_support.h"
-#include "file_io.h"
+#include "db_value_printer.hpp"
 #include "db_json.hpp"
-#include "db_private_allocator.hpp"
+#include "elo.h"
+#include "error_manager.h"
+#include "file_io.h"
+#include "mem_block.hpp"
+#include "object_domain.h"
+#include "object_representation.h"
+#include "set_object.h"
+#include "string_buffer.hpp"
+#include "string_opfunc.h"
+#include "system_parameter.h"
+#include "tz_support.h"
+
 #include <utility>
 
 #if !defined (SERVER_MODE)
@@ -55,6 +58,7 @@
 #endif /* !defined (SERVER_MODE) */
 
 #include "dbtype.h"
+#include "memory_private_allocator.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -141,6 +145,71 @@ extern unsigned int db_on_server;
 
 #define IS_FLOATING_PRECISION(prec) \
   ((prec) == TP_FLOATING_PRECISION_VALUE)
+
+// *INDENT-OFF*
+pr_type::pr_type (const char * name_arg, DB_TYPE id_arg, int varp_arg, int size_arg, int disksize_arg, int align_arg,
+                  initmem_function_type initmem_f_arg, initval_function_type initval_f_arg,
+                  setmem_function_type setmem_f_arg, getmem_function_type getmem_f_arg,
+                  setval_function_type setval_f_arg, data_lengthmem_function_type data_lengthmem_f_arg,
+                  data_lengthval_function_type data_lengthval_f_arg, data_writemem_function_type data_writemem_f_arg,
+                  data_readmem_function_type data_readmem_f_arg, data_writeval_function_type data_writeval_f_arg,
+                  data_readval_function_type data_readval_f_arg, index_lengthmem_function_type index_lengthmem_f_arg,
+                  index_lengthval_function_type index_lengthval_f_arg,
+                  index_writeval_function_type index_writeval_f_arg, index_readval_function_type index_readval_f_arg,
+                  index_cmpdisk_function_type index_cmpdisk_f_arg, freemem_function_type freemem_f_arg,
+                  data_cmpdisk_function_type data_cmpdisk_f_arg, cmpval_function_type cmpval_f_arg)
+  : name {name_arg}
+  , id {id_arg}
+  , variable_p {varp_arg}
+  , size {size_arg}
+  , disksize {disksize_arg}
+  , alignment {align_arg}
+  , f_initmem {initmem_f_arg}
+  , f_initval {initval_f_arg}
+  , f_setmem {setmem_f_arg}
+  , f_getmem {getmem_f_arg}
+  , f_setval {setval_f_arg}
+  , f_data_lengthmem {data_lengthmem_f_arg}
+  , f_data_lengthval {data_lengthval_f_arg}
+  , f_data_writemem {data_writemem_f_arg}
+  , f_data_readmem {data_readmem_f_arg}
+  , f_data_writeval {data_writeval_f_arg}
+  , f_data_readval {data_readval_f_arg}
+  , f_index_lengthmem {index_lengthmem_f_arg}
+  , f_index_lengthval {index_lengthval_f_arg}
+  , f_index_writeval {index_writeval_f_arg}
+  , f_index_readval {index_readval_f_arg}
+  , f_index_cmpdisk {index_cmpdisk_f_arg}
+  , f_freemem {freemem_f_arg}
+  , f_data_cmpdisk {data_cmpdisk_f_arg}
+  , f_cmpval {cmpval_f_arg}
+  {
+  }
+
+void
+pr_type::set_data_cmpdisk_function (data_cmpdisk_function_type data_cmpdisk_arg)
+{
+  f_data_cmpdisk = data_cmpdisk_arg;
+}
+
+pr_type::data_cmpdisk_function_type
+pr_type::get_data_cmpdisk_function () const
+{
+  return f_data_cmpdisk;
+}
+
+void
+pr_type::set_cmpval_function (cmpval_function_type cmpval_arg)
+{
+  f_cmpval = cmpval_arg;
+}
+
+pr_type::cmpval_function_type
+pr_type::get_cmpval_function () const
+{
+  return f_cmpval;
+}
+// *INDENT-ON*
 
 static void mr_initmem_string (void *mem, TP_DOMAIN * domain);
 static int mr_setmem_string (void *memptr, TP_DOMAIN * domain, DB_VALUE * value);
@@ -807,7 +876,6 @@ static DB_VALUE_COMPARE_RESULT mr_data_cmpdisk_numeric (void *mem1, void *mem2, 
 							int total_order, int *start_colp);
 static DB_VALUE_COMPARE_RESULT mr_cmpval_numeric (DB_VALUE * value1, DB_VALUE * value2, int do_coercion,
 						  int total_order, int *start_colp, int collation);
-static void pr_init_ordered_mem_sizes (void);
 static void mr_initmem_resultset (void *mem, TP_DOMAIN * domain);
 static int mr_setmem_resultset (void *mem, TP_DOMAIN * domain, DB_VALUE * value);
 static int mr_getmem_resultset (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy);
@@ -877,16 +945,10 @@ static DB_VALUE_COMPARE_RESULT mr_cmpval_json (DB_VALUE * value1, DB_VALUE * val
 static AREA *Value_area = NULL;
 
 int pr_Inhibit_oid_promotion = PR_INHIBIT_OID_PROMOTION_DEFAULT;
-/* The sizes of the primitive types in descending order */
-int pr_ordered_mem_sizes[PR_TYPE_TOTAL];
-/* The number of items in pr_ordered_mem_sizes */
-int pr_ordered_mem_size_total = 0;
 
 int pr_Enable_string_compression = true;
 PR_TYPE tp_Null = {
   "*NULL*", DB_TYPE_NULL, 0, 0, 0, 0,
-  help_fprint_value,
-  help_sprint_value,
   mr_initmem_null,
   mr_initval_null,
   mr_setmem_null,
@@ -912,8 +974,6 @@ PR_TYPE *tp_Type_null = &tp_Null;
 
 PR_TYPE tp_Integer = {
   "integer", DB_TYPE_INTEGER, 0, sizeof (int), sizeof (int), 4,
-  help_fprint_value,
-  help_sprint_value,
   mr_initmem_int,
   mr_initval_int,
   mr_setmem_int,
@@ -939,8 +999,6 @@ PR_TYPE *tp_Type_integer = &tp_Integer;
 
 PR_TYPE tp_Short = {
   "smallint", DB_TYPE_SHORT, 0, sizeof (short), sizeof (short), 2,
-  help_fprint_value,
-  help_sprint_value,
   mr_initmem_short,
   mr_initval_short,
   mr_setmem_short,
@@ -966,8 +1024,6 @@ PR_TYPE *tp_Type_short = &tp_Short;
 
 PR_TYPE tp_Bigint = {
   "bigint", DB_TYPE_BIGINT, 0, sizeof (DB_BIGINT), sizeof (DB_BIGINT), 4,
-  help_fprint_value,
-  help_sprint_value,
   mr_initmem_bigint,
   mr_initval_bigint,
   mr_setmem_bigint,
@@ -993,8 +1049,6 @@ PR_TYPE *tp_Type_bigint = &tp_Bigint;
 
 PR_TYPE tp_Float = {
   "float", DB_TYPE_FLOAT, 0, sizeof (float), sizeof (float), 4,
-  help_fprint_value,
-  help_sprint_value,
   mr_initmem_float,
   mr_initval_float,
   mr_setmem_float,
@@ -1020,8 +1074,6 @@ PR_TYPE *tp_Type_float = &tp_Float;
 
 PR_TYPE tp_Double = {
   "double", DB_TYPE_DOUBLE, 0, sizeof (double), sizeof (double), 4,
-  help_fprint_value,
-  help_sprint_value,
   mr_initmem_double,
   mr_initval_double,
   mr_setmem_double,
@@ -1047,8 +1099,6 @@ PR_TYPE *tp_Type_double = &tp_Double;
 
 PR_TYPE tp_Time = {
   "time", DB_TYPE_TIME, 0, sizeof (DB_TIME), OR_TIME_SIZE, 4,
-  help_fprint_value,
-  help_sprint_value,
   mr_initmem_time,
   mr_initval_time,
   mr_setmem_time,
@@ -1074,8 +1124,6 @@ PR_TYPE *tp_Type_time = &tp_Time;
 
 PR_TYPE tp_Utime = {
   "timestamp", DB_TYPE_TIMESTAMP, 0, sizeof (DB_UTIME), OR_UTIME_SIZE, 4,
-  help_fprint_value,
-  help_sprint_value,
   mr_initmem_utime,
   mr_initval_utime,
   mr_setmem_utime,
@@ -1100,10 +1148,7 @@ PR_TYPE tp_Utime = {
 PR_TYPE *tp_Type_utime = &tp_Utime;
 
 PR_TYPE tp_Timestamptz = {
-  "timestamptz", DB_TYPE_TIMESTAMPTZ, 0, sizeof (DB_TIMESTAMPTZ),
-  OR_TIMESTAMPTZ_SIZE, 4,
-  help_fprint_value,
-  help_sprint_value,
+  "timestamptz", DB_TYPE_TIMESTAMPTZ, 0, sizeof (DB_TIMESTAMPTZ), OR_TIMESTAMPTZ_SIZE, 4,
   mr_initmem_timestamptz,
   mr_initval_timestamptz,
   mr_setmem_timestamptz,
@@ -1130,10 +1175,7 @@ PR_TYPE *tp_Type_Timestamptz = &tp_Timestamptz;
 /* timestamp with locale time zone has the same storage and primitives as
  * (simple) timestamp */
 PR_TYPE tp_Timestampltz = {
-  "timestampltz", DB_TYPE_TIMESTAMPLTZ, 0, sizeof (DB_UTIME), OR_UTIME_SIZE,
-  4,
-  help_fprint_value,
-  help_sprint_value,
+  "timestampltz", DB_TYPE_TIMESTAMPLTZ, 0, sizeof (DB_UTIME), OR_UTIME_SIZE, 4,
   mr_initmem_utime,
   mr_initval_timestampltz,
   mr_setmem_utime,
@@ -1157,8 +1199,6 @@ PR_TYPE tp_Timestampltz = {
 
 PR_TYPE tp_Datetime = {
   "datetime", DB_TYPE_DATETIME, 0, sizeof (DB_DATETIME), OR_DATETIME_SIZE, 4,
-  help_fprint_value,
-  help_sprint_value,
   mr_initmem_datetime,
   mr_initval_datetime,
   mr_setmem_datetime,
@@ -1183,10 +1223,7 @@ PR_TYPE tp_Datetime = {
 PR_TYPE *tp_Type_datetime = &tp_Datetime;
 
 PR_TYPE tp_Datetimetz = {
-  "datetimetz", DB_TYPE_DATETIMETZ, 0, sizeof (DB_DATETIMETZ),
-  OR_DATETIMETZ_SIZE, 4,
-  help_fprint_value,
-  help_sprint_value,
+  "datetimetz", DB_TYPE_DATETIMETZ, 0, sizeof (DB_DATETIMETZ), OR_DATETIMETZ_SIZE, 4,
   mr_initmem_datetimetz,
   mr_initval_datetimetz,
   mr_setmem_datetimetz,
@@ -1213,10 +1250,7 @@ PR_TYPE *tp_Type_Datetimetz = &tp_Datetimetz;
 /* datetime with locale time zone has the same storage and primitives as
  * (simple) datetime */
 PR_TYPE tp_Datetimeltz = {
-  "datetimeltz", DB_TYPE_DATETIMELTZ, 0, sizeof (DB_DATETIME),
-  OR_DATETIME_SIZE, 4,
-  help_fprint_value,
-  help_sprint_value,
+  "datetimeltz", DB_TYPE_DATETIMELTZ, 0, sizeof (DB_DATETIME), OR_DATETIME_SIZE, 4,
   mr_initmem_datetime,
   mr_initval_datetimeltz,
   mr_setmem_datetime,
@@ -1242,8 +1276,6 @@ PR_TYPE *tp_Type_datetimeltz = &tp_Datetimeltz;
 
 PR_TYPE tp_Monetary = {
   "monetary", DB_TYPE_MONETARY, 0, sizeof (DB_MONETARY), OR_MONETARY_SIZE, 4,
-  help_fprint_value,
-  help_sprint_value,
   mr_initmem_money,
   mr_initval_money,
   mr_setmem_money,
@@ -1269,8 +1301,6 @@ PR_TYPE *tp_Type_monetary = &tp_Monetary;
 
 PR_TYPE tp_Date = {
   "date", DB_TYPE_DATE, 0, sizeof (DB_DATE), OR_DATE_SIZE, 4,
-  help_fprint_value,
-  help_sprint_value,
   mr_initmem_date,
   mr_initval_date,
   mr_setmem_date,
@@ -1304,8 +1334,6 @@ PR_TYPE *tp_Type_date = &tp_Date;
 
 PR_TYPE tp_Object = {
   "object", DB_TYPE_OBJECT, 0, MR_OID_SIZE, OR_OID_SIZE, 4,
-  help_fprint_value,
-  help_sprint_value,
   mr_initmem_object,
   mr_initval_object,
   mr_setmem_object,
@@ -1331,8 +1359,6 @@ PR_TYPE *tp_Type_object = &tp_Object;
 
 PR_TYPE tp_Elo = {		/* todo: remove me */
   "*elo*", DB_TYPE_ELO, 1, sizeof (DB_ELO *), 0, 8,
-  help_fprint_value,
-  help_sprint_value,
   mr_initmem_elo,
   mr_initval_elo,
   mr_setmem_elo,
@@ -1358,8 +1384,6 @@ PR_TYPE *tp_Type_elo = &tp_Elo;
 
 PR_TYPE tp_Blob = {
   "blob", DB_TYPE_BLOB, 1, sizeof (DB_ELO *), 0, 8,
-  help_fprint_value,
-  help_sprint_value,
   mr_initmem_elo,
   mr_initval_blob,
   mr_setmem_elo,
@@ -1385,8 +1409,6 @@ PR_TYPE *tp_Type_blob = &tp_Blob;
 
 PR_TYPE tp_Clob = {
   "clob", DB_TYPE_CLOB, 1, sizeof (DB_ELO *), 0, 8,
-  help_fprint_value,
-  help_sprint_value,
   mr_initmem_elo,
   mr_initval_clob,
   mr_setmem_elo,
@@ -1412,8 +1434,6 @@ PR_TYPE *tp_Type_clob = &tp_Clob;
 
 PR_TYPE tp_Variable = {
   "*variable*", DB_TYPE_VARIABLE, 1, sizeof (DB_VALUE), 0, 4,
-  help_fprint_value,
-  help_sprint_value,
   NULL,				/* initmem */
   mr_initval_variable,
   NULL,				/* setmem */
@@ -1439,8 +1459,6 @@ PR_TYPE *tp_Type_variable = &tp_Variable;
 
 PR_TYPE tp_Substructure = {
   "*substructure*", DB_TYPE_SUB, 1, sizeof (void *), 0, 8,
-  help_fprint_value,
-  help_sprint_value,
   mr_initmem_sub,
   mr_initval_sub,
   mr_setmem_sub,
@@ -1466,8 +1484,6 @@ PR_TYPE *tp_Type_substructure = &tp_Substructure;
 
 PR_TYPE tp_Pointer = {
   "*pointer*", DB_TYPE_POINTER, 0, sizeof (void *), 0, 4,
-  help_fprint_value,
-  help_sprint_value,
   mr_initmem_ptr,
   mr_initval_ptr,
   mr_setmem_ptr,
@@ -1493,8 +1509,6 @@ PR_TYPE *tp_Type_pointer = &tp_Pointer;
 
 PR_TYPE tp_Error = {
   "*error*", DB_TYPE_ERROR, 0, sizeof (int), 0, 4,
-  help_fprint_value,
-  help_sprint_value,
   mr_initmem_error,
   mr_initval_error,
   mr_setmem_error,
@@ -1527,8 +1541,6 @@ PR_TYPE *tp_Type_error = &tp_Error;
  */
 PR_TYPE tp_Oid = {
   "*oid*", DB_TYPE_OID, 0, sizeof (OID), OR_OID_SIZE, 4,
-  help_fprint_value,
-  help_sprint_value,
   mr_initmem_oid,
   mr_initval_oid,
   mr_setmem_oid,
@@ -1554,8 +1566,6 @@ PR_TYPE *tp_Type_oid = &tp_Oid;
 
 PR_TYPE tp_Set = {
   "set", DB_TYPE_SET, 1, sizeof (SETOBJ *), 0, 4,
-  help_fprint_value,
-  help_sprint_value,
   mr_initmem_set,
   mr_initval_set,
   mr_setmem_set,
@@ -1581,8 +1591,6 @@ PR_TYPE *tp_Type_set = &tp_Set;
 
 PR_TYPE tp_Multiset = {
   "multiset", DB_TYPE_MULTISET, 1, sizeof (SETOBJ *), 0, 4,
-  help_fprint_value,
-  help_sprint_value,
   mr_initmem_set,
   mr_initval_multiset,
   mr_setmem_set,
@@ -1608,8 +1616,6 @@ PR_TYPE *tp_Type_multiset = &tp_Multiset;
 
 PR_TYPE tp_Sequence = {
   "sequence", DB_TYPE_SEQUENCE, 1, sizeof (SETOBJ *), 0, 4,
-  help_fprint_value,
-  help_sprint_value,
   mr_initmem_set,
   mr_initval_sequence,
   mr_setmem_set,
@@ -1635,8 +1641,6 @@ PR_TYPE *tp_Type_sequence = &tp_Sequence;
 
 PR_TYPE tp_Midxkey = {
   "midxkey", DB_TYPE_MIDXKEY, 1, 0, 0, 1,
-  help_fprint_value,
-  help_sprint_value,
   NULL,				/* initmem */
   mr_initval_midxkey,
   NULL,				/* setmem */
@@ -1662,8 +1666,6 @@ PR_TYPE *tp_Type_midxkey = &tp_Midxkey;
 
 PR_TYPE tp_Vobj = {
   "*vobj*", DB_TYPE_VOBJ, 1, sizeof (SETOBJ *), 0, 8,
-  help_fprint_value,
-  help_sprint_value,
   mr_initmem_set,
   mr_initval_vobj,
   mr_setmem_set,
@@ -1689,8 +1691,6 @@ PR_TYPE *tp_Type_vobj = &tp_Vobj;
 
 PR_TYPE tp_Numeric = {
   "numeric", DB_TYPE_NUMERIC, 0, 0, 0, 1,
-  help_fprint_value,
-  help_sprint_value,
   mr_initmem_numeric,
   mr_initval_numeric,
   mr_setmem_numeric,
@@ -1715,10 +1715,7 @@ PR_TYPE tp_Numeric = {
 PR_TYPE *tp_Type_numeric = &tp_Numeric;
 
 PR_TYPE tp_Enumeration = {
-  "enum", DB_TYPE_ENUMERATION, 0, sizeof (unsigned short),
-  sizeof (unsigned short), sizeof (unsigned short),
-  help_fprint_value,
-  help_sprint_value,
+  "enum", DB_TYPE_ENUMERATION, 0, sizeof (unsigned short), sizeof (unsigned short), sizeof (unsigned short),
   mr_initmem_enumeration,
   mr_initval_enumeration,
   mr_setmem_enumeration,
@@ -1795,10 +1792,7 @@ PR_TYPE *tp_Type_id_map[] = {
 };
 
 PR_TYPE tp_ResultSet = {
-  "resultset", DB_TYPE_RESULTSET, 0, sizeof (DB_RESULTSET),
-  sizeof (DB_RESULTSET), 4,
-  help_fprint_value,
-  help_sprint_value,
+  "resultset", DB_TYPE_RESULTSET, 0, sizeof (DB_RESULTSET), sizeof (DB_RESULTSET), 4,
   mr_initmem_resultset,
   mr_initval_resultset,
   mr_setmem_resultset,
@@ -1842,8 +1836,6 @@ pr_area_init (void)
       assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
-
-  pr_init_ordered_mem_sizes ();
 
   return NO_ERROR;
 }
@@ -2175,7 +2167,7 @@ pr_clone_value (const DB_VALUE * src, DB_VALUE * dest)
 	    }
 	  else if (src != dest)
 	    {
-	      type = PR_TYPE_FROM_ID (src_dbtype);
+	      type = pr_type_from_id (src_dbtype);
 	      if (type != NULL)
 		{
 		  /*
@@ -2184,7 +2176,7 @@ pr_clone_value (const DB_VALUE * src, DB_VALUE * dest)
 		   * destination domain.  No need to do it twice.
 		   * Make sure the COPY flag is set in the setval call.
 		   */
-		  (*(type->setval)) (dest, src, true);
+		  type->setval (dest, src, true);
 		}
 	      else
 		{
@@ -2228,79 +2220,6 @@ pr_copy_value (DB_VALUE * value)
     }
   return new_;
 }
-
-#if defined(ENABLE_UNUSED_FUNCTION)
-/*
- * pr_share_value - This is used to copy the contents of one value
- * container to another WITHOUT introducing a new copy of any indirect
- * data (like strings or sets).
- *    return: new value
- *    src(in): source value
- *    dest(out): destination value
- * Note:
- *    However, everything is set up properly so that the dst value
- *    can follow the normal db_value_clear protocol.
- *
- *    WARNING: src will be valid only as long as dst is.  That is, after dst
- *    gets cleared, src will have dangling pointers unless it has also been
- *    cleared.  Use with care.
- */
-int
-pr_share_value (DB_VALUE * src, DB_VALUE * dst)
-{
-  if (src && dst && src != dst)
-    {
-      *dst = *src;
-      dst->need_clear = false;
-      if (pr_is_set_type (DB_VALUE_DOMAIN_TYPE (src)) && !DB_IS_NULL (src))
-	{
-	  /*
-	   * This bites... isn't there a function for adding a
-	   * reference to a set?
-	   */
-	  src->data.set->ref_count += 1;
-	}
-    }
-  return NO_ERROR;
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
-
-#if defined(ENABLE_UNUSED_FUNCTION)
-/*
- * pr_copy_string - copy string
- *    return: copied string
- *    str(in): string to copy
- */
-char *
-pr_copy_string (const char *str)
-{
-  char *copy;
-
-  copy = NULL;
-  if (str != NULL)
-    {
-      copy = (char *) db_private_alloc (NULL, strlen (str) + 1);
-      if (copy != NULL)
-	strcpy (copy, str);
-    }
-
-  return copy;
-}
-
- /*
-  * pr_free_string - free copied string
-  *
-  * str(in): copied string
-  */
-void
-pr_free_string (char *str)
-{
-  if (str != NULL)
-    {
-      db_private_free (NULL, str);
-    }
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * TYPE NULL
@@ -5125,7 +5044,7 @@ mr_setval_object (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 #if !defined (SERVER_MODE)
   if (DB_IS_NULL (src))
     {
-      PRIM_SET_NULL (dest);
+      db_make_null (dest);
     }
   /* can get here on the server when dispatching through set element domains */
   else if (DB_VALUE_TYPE (src) == DB_TYPE_OID)
@@ -5161,7 +5080,7 @@ mr_setval_object (DB_VALUE * dest, const DB_VALUE * src, bool copy)
    */
   if (DB_IS_NULL (src) || DB_VALUE_TYPE (src) != DB_TYPE_OID)
     {
-      PRIM_SET_NULL (dest);
+      db_make_null (dest);
     }
   else
     {
@@ -5703,27 +5622,7 @@ mr_cmpval_object (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
 
 #if !defined (SERVER_MODE)
 
-/*
- * pr_write_mop - write an OID to a disk representation buffer given a MOP
- * instead of a WS_MEMOID.
- *    return:
- *    buf(): transformer buffer
- *    mop(): mop to transform
- * Note:
- *    mr_write_object can't be used because it takes a WS_MEMOID as is the
- *    case for object references in instances.
- *    This must stay in sync with mr_write_object above !
- */
-void
-pr_write_mop (OR_BUF * buf, MOP mop)
-{
-  DB_VALUE value;
 
-  mr_initval_object (&value, 0, 0);
-  db_make_object (&value, mop);
-  mr_data_writeval_object (buf, &value);
-  mr_setval_object (&value, NULL, false);
-}
 #endif /* !SERVER_MODE */
 
 static void
@@ -5805,7 +5704,7 @@ getmem_elo_with_type (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool c
 
   if (memptr == NULL)
     {
-      PRIM_SET_NULL (value);
+      db_make_null (value);
       return r;
     }
 
@@ -5813,7 +5712,7 @@ getmem_elo_with_type (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool c
 
   if (elo == NULL || elo->size < 0)
     {
-      PRIM_SET_NULL (value);
+      db_make_null (value);
       return r;
     }
 
@@ -5863,7 +5762,7 @@ setval_elo_with_type (DB_VALUE * dest, const DB_VALUE * src, bool copy, DB_TYPE 
 
   if (DB_IS_NULL (src) || db_get_elo (src) == NULL)
     {
-      PRIM_SET_NULL (dest);
+      db_make_null (dest);
       return NO_ERROR;
     }
 
@@ -6427,7 +6326,7 @@ mr_setval_ptr (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 {
   if (DB_IS_NULL (src))
     {
-      PRIM_SET_NULL (dest);
+      db_make_null (dest);
       return NO_ERROR;
     }
   else
@@ -6559,7 +6458,7 @@ mr_setval_error (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 {
   if (DB_IS_NULL (src))
     {
-      PRIM_SET_NULL (dest);
+      db_make_null (dest);
       return NO_ERROR;
     }
   else
@@ -6723,7 +6622,7 @@ mr_setval_oid (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 
   if (DB_IS_NULL (src))
     {
-      PRIM_SET_NULL (dest);
+      db_make_null (dest);
       return NO_ERROR;
     }
   else
@@ -7089,7 +6988,7 @@ err_set:
     default:
       break;
     }
-  PRIM_SET_NULL (dest);
+  db_make_null (dest);
   return error;
 }
 
@@ -7837,13 +7736,13 @@ pr_midxkey_compare_element (char *mem1, char *mem2, TP_DOMAIN * dom1, TP_DOMAIN 
   db_make_null (&val1);
   db_make_null (&val2);
 
-  if ((*(dom1->type->index_readval)) (&buf_val1, &val1, dom1, -1, false, NULL, 0) != NO_ERROR)
+  if (dom1->type->index_readval (&buf_val1, &val1, dom1, -1, false, NULL, 0) != NO_ERROR)
     {
       error = true;
       goto clean_up;
     }
 
-  if ((*(dom2->type->index_readval)) (&buf_val2, &val2, dom2, -1, false, NULL, 0) != NO_ERROR)
+  if (dom2->type->index_readval (&buf_val2, &val2, dom2, -1, false, NULL, 0) != NO_ERROR)
     {
       error = true;
       goto clean_up;
@@ -8002,7 +7901,7 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
 	  /* check for val1 and val2 same domain */
 	  if (dom1 == dom2 || tp_domain_match (dom1, dom2, TP_EXACT_MATCH))
 	    {
-	      c = (*(dom1->type->index_cmpdisk)) (mem1, mem2, dom1, do_coercion, total_order, NULL);
+	      c = dom1->type->index_cmpdisk (mem1, mem2, dom1, do_coercion, total_order, NULL);
 	    }
 	  else
 	    {			/* coercion and comparison */
@@ -8811,40 +8710,6 @@ mr_cmpval_numeric (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int to
  * PRIMITIVE TYPE SUPPORT ROUTINES
  */
 
-
-
-/*
- * pr_init_ordered_mem_sizes - orders the sizes of primitive types in
- * descending order.
- *    return: void
- */
-static void
-pr_init_ordered_mem_sizes (void)
-{
-  int t, last_size, cur_size;
-
-  pr_ordered_mem_size_total = 0;
-
-  last_size = 500;
-  while (1)
-    {
-      cur_size = -1;
-      for (t = 0; t < PR_TYPE_TOTAL; ++t)
-	{
-	  if (tp_Type_id_map[t]->size > cur_size && tp_Type_id_map[t]->size < last_size)
-	    {
-	      cur_size = tp_Type_id_map[t]->size;
-	    }
-	}
-      pr_ordered_mem_sizes[pr_ordered_mem_size_total++] = last_size = cur_size;
-      if (cur_size <= 0)
-	{
-	  break;
-	}
-    }
-}
-
-
 /*
  * pr_type_from_id - maps a type identifier such as DB_TYPE_INTEGER into its
  * corresponding primitive type descriptor structures.
@@ -8878,7 +8743,7 @@ pr_type_name (DB_TYPE id)
   const char *name = NULL;
   PR_TYPE *type;
 
-  type = PR_TYPE_FROM_ID (id);
+  type = pr_type_from_id (id);
 
   if (type != NULL)
     {
@@ -8952,7 +8817,7 @@ pr_is_variable_type (DB_TYPE id)
   PR_TYPE *type;
   int is_variable = 0;
 
-  type = PR_TYPE_FROM_ID (id);
+  type = pr_type_from_id (id);
   if (type != NULL)
     {
       is_variable = type->variable_p;
@@ -9052,68 +8917,9 @@ pr_find_type (const char *name)
  *
  */
 int
-pr_mem_size (PR_TYPE * type)
+pr_mem_size (const PR_TYPE * type)
 {
   return type->size;
-}
-
-#if defined(ENABLE_UNUSED_FUNCTION)
-/*
- * pr_disk_size - Determine the number of bytes of disk storage required for
- * a value.
- *    return: disk size of an instance attribute
- *    type(in): type identifier
- *    mem(in): pointer to memory for value
- * Note:
- *    The value must be in instance memory format, NOT DB_VALUE format.
- *    If you have a DB_VALUE, use pr_value_disk_size.
- *    This is called by the transformer when calculating sizes and offset
- *    tables for instances.
- */
-int
-pr_disk_size (PR_TYPE * type, void *mem)
-{
-  int size;
-
-  if (type->lengthmem != NULL)
-    {
-      size = (*type->lengthmem) (mem, NULL, 1);
-    }
-  else
-    {
-      size = type->disksize;
-    }
-  return size;
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
-
-/*
- * pr_total_mem_size - returns the total amount of storage used for a memory
- * attribute including any external allocatons (for strings etc.).
- *    return: total memory size of type
- *    type(in): type identifier
- *    mem(in): pointer to memory for value
- * Note:
- *    The length function is not defined to accept a DB_VALUE so
- *    this had better be in memory format!
- *    Called by sm_object_size to calculate total size for an object.
- *
- */
-int
-pr_total_mem_size (PR_TYPE * type, void *mem)
-{
-  int size;
-
-  if (type->data_lengthmem != NULL)
-    {
-      size = (*type->data_lengthmem) (mem, NULL, 0);
-    }
-  else
-    {
-      size = type->size;
-    }
-
-  return size;
 }
 
 /*
@@ -9141,31 +8947,25 @@ pr_total_mem_size (PR_TYPE * type, void *mem)
  *    value(in): value to examine
  * Note:
  *    Does not include the amount of space necessary for the DB_VALUE.
- *    Used by some statistics modules that calculate memory sizes of strucures.
+ *    Used by some statistics modules that calculate memory sizes of structures.
  */
 int
-pr_value_mem_size (DB_VALUE * value)
+pr_value_mem_size (const DB_VALUE * value)
 {
   PR_TYPE *type;
-  int size;
   DB_TYPE dbval_type;
 
-  size = 0;
   dbval_type = DB_VALUE_DOMAIN_TYPE (value);
-  type = PR_TYPE_FROM_ID (dbval_type);
+  type = pr_type_from_id (dbval_type);
+  assert (type != NULL);
   if (type != NULL)
     {
-      if (type->data_lengthval != NULL)
-	{
-	  size = (*type->data_lengthval) (value, 0);
-	}
-      else
-	{
-	  size = type->size;
-	}
+      return type->get_mem_size_of_value (value);
     }
-
-  return size;
+  else
+    {
+      return 0;
+    }
 }
 
 /*
@@ -9178,26 +8978,13 @@ pr_value_mem_size (DB_VALUE * value)
 int
 pr_midxkey_element_disk_size (char *mem, DB_DOMAIN * domain)
 {
-  int disk_size = 0;
-
   /*
    * variable types except VARCHAR, VARNCHAR, and VARBIT
    * cannot be a member of midxkey
    */
   assert (!(domain->type->variable_p && !QSTR_IS_VARIABLE_LENGTH (TP_DOMAIN_TYPE (domain))));
 
-  if (domain->type->index_lengthmem != NULL)
-    {
-      disk_size = (*(domain->type->index_lengthmem)) (mem, domain);
-    }
-  else
-    {
-      assert (!domain->type->variable_p);
-
-      disk_size = domain->type->disksize;
-    }
-
-  return disk_size;
+  return domain->type->get_index_size_of_mem (mem, domain);
 }
 
 /*
@@ -9544,7 +9331,7 @@ pr_midxkey_get_element_internal (const DB_MIDXKEY * midxkey, int index, DB_VALUE
 	  or_advance (buf, advance_size);
 	}
 
-      error = (*(domain->type->index_readval)) (buf, value, domain, -1, copy, NULL, 0);
+      error = domain->type->index_readval (buf, value, domain, -1, copy, NULL, 0);
       if (error != NO_ERROR)
 	{
 	  goto exit_on_error;
@@ -9750,7 +9537,7 @@ pr_midxkey_init_boundbits (char *bufptr, int n_atts)
  */
 
 int
-pr_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals, TP_DOMAIN * dbvals_domain_list)
+pr_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals, struct tp_domain *dbvals_domain_list)
 {
   int i;
   TP_DOMAIN *dom;
@@ -9813,7 +9600,7 @@ pr_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals, T
 	  continue;		/* skip and go ahead */
 	}
 
-      (*((dom->type)->index_writeval)) (&buf, &dbvals[i]);
+      dom->type->index_writeval (&buf, &dbvals[i]);
 
       OR_ENABLE_BOUND_BIT (bound_bits, midxkey->ncolumns + i);
     }				/* for (i = 0, ...) */
@@ -9865,20 +9652,13 @@ pr_data_writeval_disk_size (DB_VALUE * value)
   DB_TYPE dbval_type;
 
   dbval_type = DB_VALUE_DOMAIN_TYPE (value);
-  type = PR_TYPE_FROM_ID (dbval_type);
+  type = pr_type_from_id (dbval_type);
 
   assert (type != NULL);
 
   if (type)
     {
-      if (type->data_lengthval == NULL)
-	{
-	  return type->disksize;
-	}
-      else
-	{
-	  return (*(type->data_lengthval)) (value, 1);
-	}
+      return type->get_disk_size_of_value (value);
     }
 
   return 0;
@@ -9898,48 +9678,37 @@ pr_index_writeval_disk_size (DB_VALUE * value)
   DB_TYPE dbval_type;
 
   dbval_type = DB_VALUE_DOMAIN_TYPE (value);
-  type = PR_TYPE_FROM_ID (dbval_type);
+  type = pr_type_from_id (dbval_type);
 
   assert (type != NULL);
 
   if (type)
     {
-      if (type->index_lengthval == NULL)
-	{
-	  assert (!type->variable_p);
-
-	  return type->disksize;
-	}
-      else
-	{
-	  return (*(type->index_lengthval)) (value);
-	}
+      return type->get_index_size_of_value (value);
     }
 
   return 0;
 }
 
 void
-pr_data_writeval (OR_BUF * buf, DB_VALUE * value)
+pr_data_writeval (struct or_buf *buf, DB_VALUE * value)
 {
   PR_TYPE *type;
   DB_TYPE dbval_type;
 
   dbval_type = DB_VALUE_DOMAIN_TYPE (value);
-  type = PR_TYPE_FROM_ID (dbval_type);
+  type = pr_type_from_id (dbval_type);
   if (type == NULL)
     {
       type = tp_Type_null;	/* handle strange arguments with NULL */
     }
-  (*(type->data_writeval)) (buf, value);
+  type->data_writeval (buf, value);
 }
 
 /*
  * MISCELLANEOUS TYPE-RELATED HELPER FUNCTIONS
  */
 
-
-#if defined (SERVER_MODE) || defined (SA_MODE)
 /*
  * pr_valstring - Take the value and formats it using the sptrfunc member of
  * the pr_type vector for the appropriate type.
@@ -9953,49 +9722,23 @@ pr_data_writeval (OR_BUF * buf, DB_VALUE * value)
  *    representations into error messages and the like.
  */
 char *
-pr_valstring (THREAD_ENTRY * threade, DB_VALUE * val)
+pr_valstring (const DB_VALUE * val)
 {
-/* *INDENT-OFF* */
-  string_buffer sb {
-    [&threade] (mem::block &block, size_t len)
-    {
-      block.ptr = (char *) db_private_realloc (threade, block.ptr, block.dim + len);
-      block.dim += len;
-    },
-    [&threade] (mem::block &block)
-    {
-      db_private_free (threade, block.ptr);
-      block = {};
-    }
-  };
-/* *INDENT-ON* */
+  const size_t BUFFER_SIZE = 1024;
+  string_buffer sb (cubmem::PRIVATE_BLOCK_ALLOCATOR, BUFFER_SIZE);
 
-  if (val == NULL)
+  if (val == NULL || DB_IS_NULL (val))
     {
       /* space with terminating NULL */
       sb ("(null)");
-      return sb.move_ptr ();
     }
-
-  if (DB_IS_NULL (val))
+  else
     {
-      /* space with terminating NULL */
-      sb ("NULL");
-      return sb.move_ptr ();
+      db_sprint_value (val, sb);
     }
 
-  DB_TYPE dbval_type = DB_VALUE_DOMAIN_TYPE (val);
-  PR_TYPE *pr_type = PR_TYPE_FROM_ID (dbval_type);
-
-  if (pr_type == NULL)
-    {
-      return NULL;
-    }
-
-  (*(pr_type->sptrfunc)) (val, sb);
-  return sb.move_ptr ();	//caller should use db_private_free() to deallocate it
+  return sb.release_ptr ();	//caller should use db_private_free() to deallocate it
 }
-#endif //defined (SERVER_MODE) || defined (SA_MODE)
 
 /*
  * pr_complete_enum_value - Sets both index and string of a enum value in case
@@ -10005,7 +9748,7 @@ pr_valstring (THREAD_ENTRY * threade, DB_VALUE * val)
  *    domain(in): enumeration domain against which the value is checked.
  */
 int
-pr_complete_enum_value (DB_VALUE * value, TP_DOMAIN * domain)
+pr_complete_enum_value (DB_VALUE * value, struct tp_domain *domain)
 {
   unsigned short short_val;
   char *str_val;
@@ -11413,8 +11156,6 @@ mr_cmpval_string2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coer
 
 PR_TYPE tp_String = {
   "character varying", DB_TYPE_STRING, 1, sizeof (const char *), 0, 1,
-  help_fprint_value,
-  help_sprint_value,
   mr_initmem_string,
   mr_initval_string,
   mr_setmem_string,
@@ -12252,8 +11993,6 @@ mr_cmpval_char2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coerci
 
 PR_TYPE tp_Char = {
   "character", DB_TYPE_CHAR, 0, 0, 0, 1,
-  help_fprint_value,
-  help_sprint_value,
   mr_initmem_char,
   mr_initval_char,
   mr_setmem_char,
@@ -13149,8 +12888,6 @@ mr_cmpval_nchar2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coerc
 
 PR_TYPE tp_NChar = {
   "national character", DB_TYPE_NCHAR, 0, 0, 0, 1,
-  help_fprint_value,
-  help_sprint_value,
   mr_initmem_nchar,
   mr_initval_nchar,
   mr_setmem_nchar,
@@ -13343,7 +13080,16 @@ mr_data_lengthmem_varnchar (void *memptr, TP_DOMAIN * domain, int disk)
       if (cur != NULL)
 	{
 	  len = *(int *) cur;
-	  len = or_packed_varchar_length (len);
+	  if (len >= OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
+	    {
+	      /* Skip the length of the string */
+	      len = pr_get_compression_length ((cur + sizeof (int)), len) + PRIM_TEMPORARY_DISK_SIZE;
+	      len = or_packed_varchar_length (len) - PRIM_TEMPORARY_DISK_SIZE;
+	    }
+	  else
+	    {
+	      len = or_packed_varchar_length (len);
+	    }
 	}
     }
 
@@ -14248,10 +13994,7 @@ mr_cmpval_varnchar2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_co
 #endif
 
 PR_TYPE tp_VarNChar = {
-  "national character varying", DB_TYPE_VARNCHAR, 1, sizeof (const char *), 0,
-  1,
-  help_fprint_value,
-  help_sprint_value,
+  "national character varying", DB_TYPE_VARNCHAR, 1, sizeof (const char *), 0, 1,
   mr_initmem_varnchar,
   mr_initval_varnchar,
   mr_setmem_varnchar,
@@ -14985,8 +14728,6 @@ mr_cmpval_bit2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coercio
 
 PR_TYPE tp_Bit = {
   "bit", DB_TYPE_BIT, 0, 0, 0, 1,
-  help_fprint_value,
-  help_sprint_value,
   mr_initmem_bit,
   mr_initval_bit,
   mr_setmem_bit,
@@ -15680,8 +15421,6 @@ mr_cmpval_varbit2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coer
 
 PR_TYPE tp_VarBit = {
   "bit varying", DB_TYPE_VARBIT, 1, sizeof (const char *), 0, 1,
-  help_fprint_value,
-  help_sprint_value,
   mr_initmem_varbit,
   mr_initval_varbit,
   mr_setmem_varbit,
@@ -15980,7 +15719,7 @@ mr_cmpval_enumeration (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, in
  * decompressed_size(in)			  : The uncompressed data size.
  */
 int
-pr_get_compressed_data_from_buffer (OR_BUF * buf, char *data, int compressed_size, int decompressed_size)
+pr_get_compressed_data_from_buffer (struct or_buf *buf, char *data, int compressed_size, int decompressed_size)
 {
   int rc = NO_ERROR;
 
@@ -16115,7 +15854,7 @@ cleanup:
  *	to the write of the DB_VALUE in the buffer.
  */
 int
-pr_get_size_and_write_string_to_buffer (OR_BUF * buf, char *val_p, DB_VALUE * value, int *val_size, int align)
+pr_get_size_and_write_string_to_buffer (struct or_buf *buf, char *val_p, DB_VALUE * value, int *val_size, int align)
 {
   char *compressed_string = NULL, *string = NULL, *str = NULL;
   int rc = NO_ERROR, str_length = 0, length = 0;
@@ -16591,10 +16330,7 @@ error:
 }
 
 PR_TYPE tp_Json = {
-  "json", DB_TYPE_JSON, 1, sizeof (DB_JSON), 0,
-  1,
-  help_fprint_value,
-  help_sprint_value,
+  "json", DB_TYPE_JSON, 1, sizeof (DB_JSON), 0, 1,
   mr_initmem_json,
   mr_initval_json,
   mr_setmem_json,
@@ -16655,7 +16391,6 @@ mr_setmem_json (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
     {
       return NO_ERROR;
     }
-
   doc = db_get_json_document (value);
   if (doc != NULL)
     {

@@ -31,7 +31,6 @@
 #include "error_manager.h"
 #include "query_list.h"
 #include "storage_common.h"
-#include "object_primitive.h"
 #include "object_representation.h"
 
 enum

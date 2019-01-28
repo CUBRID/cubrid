@@ -460,7 +460,7 @@ stx_build (THREAD_ENTRY *thread_p, char *ptr, cubxasl::json_table::node &jtn)
   jtn.m_id = (size_t) temp_int;
 
   ptr = or_unpack_int (ptr, &temp_int);
-  jtn.m_expand_type = (json_table_expand_type) temp_int;
+  jtn.m_is_iterable_node = (bool) temp_int;
 
   return ptr;
 }
@@ -537,7 +537,7 @@ xasl_stream_compare (const cubxasl::json_table::node &first, const cubxasl::json
       return false;
     }
 
-  if (first.m_expand_type != second.m_expand_type)
+  if (first.m_is_iterable_node != second.m_is_iterable_node)
     {
       return false;
     }

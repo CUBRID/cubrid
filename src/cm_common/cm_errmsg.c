@@ -18,7 +18,7 @@
  */
 
 /*
- * cm_errmsg.c - 
+ * cm_errmsg.c -
  */
 
 #include "cm_portable.h"

@@ -656,6 +656,16 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_DATA_FILE_ADVISE "data_file_os_advise"
 
+#define PRM_NAME_DEBUG_LOG_ARCHIVES "debug_log_archives"
+#define PRM_NAME_DEBUG_ES "debug_external_storage"
+#define PRM_NAME_DEBUG_BESTSPACE "debug_heap_bestspace"
+#define PRM_NAME_DEBUG_LOG_WRITER "debug_log_writer"
+#define PRM_NAME_DEBUG_AUTOCOMMIT "debug_autocommit"
+#define PRM_NAME_DEBUG_REPLICATION_DATA "debug_replication_data"
+#define PRM_NAME_TRACK_REQUESTS "track_client_requests"
+#define PRM_NAME_LOG_PGBUF_VICTIM_FLUSH "log_pgbuf_victim_flush"
+#define PRM_NAME_LOG_CHKPT_DETAILED "detailed_checkpoint_logging"
+
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
 #define PRM_VALUE_MIN "MIN"
@@ -695,7 +705,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_DIFFER_UNIT     0x00004000	/* parameter unit need to be changed */
 #define PRM_FOR_HA_CONTEXT  0x00008000	/* should be replicated into HA log applier */
 
-#define PRM_GET_SERVER      0x00010000	/* return the value of server parameter from client/server parameter. Note that 
+#define PRM_GET_SERVER      0x00010000	/* return the value of server parameter from client/server parameter. Note that
 					 * this flag only can be set if the parameter has PRM_FOR_CLIENT,
 					 * PRM_FOR_SERVER, and PRM_USER_CHANGE flags. */
 
@@ -2177,10 +2187,44 @@ static UINT64 prm_repl_consumer_buffer_size_lower = 100 * 1024;
 static unsigned int prm_repl_consumer_buffer_size_flag = 0;
 
 int PRM_DATA_FILE_ADVISE = 0;
-
 static int prm_data_file_advise_default = 0;
-
 static unsigned int prm_data_file_advise_flag = 0;
+
+bool PRM_DEBUG_LOG_ARCHIVES = false;
+static bool prm_debug_log_archives_default = false;
+static unsigned int prm_debug_log_archives_flag = 0;
+
+bool PRM_DEBUG_ES = false;
+static bool prm_debug_es_default = false;
+static unsigned int prm_debug_es_flag = 0;
+
+bool PRM_DEBUG_BESTSPACE = false;
+static bool prm_debug_bestspace_default = false;
+static unsigned int prm_debug_bestspace_flag = 0;
+
+bool PRM_DEBUG_LOGWR = false;
+static bool prm_debug_logwr_default = false;
+static unsigned int prm_debug_logwr_flag = 0;
+
+bool PRM_DEBUG_AUTOCOMMIT = false;
+static bool prm_debug_autocommit_default = false;
+static unsigned int prm_debug_autocommit_flag = 0;
+
+bool PRM_DEBUG_REPLICATION_DATA = false;
+static bool prm_debug_replication_data_default = false;
+static unsigned int prm_debug_replication_data_flag = 0;
+
+bool PRM_TRACK_REQUESTS = false;
+static bool prm_track_requests_default = false;
+static unsigned int prm_track_requests_flag = 0;
+
+bool PRM_LOG_PGBUF_VICTIM_FLUSH = false;
+static bool prm_log_pgbuf_victim_flush_default = false;
+static unsigned int prm_log_pgbuf_victim_flush_flag = 0;
+
+bool PRM_LOG_CHKPT_DETAILED = false;
+static bool prm_log_chkpt_detailed_default = false;
+static unsigned int prm_log_chkpt_detailed_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -4435,7 +4479,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  /* All the compound parameters *must* be at the end of the array so that the changes they cause are not overridden by 
+  /* All the compound parameters *must* be at the end of the array so that the changes they cause are not overridden by
    * other parameters (for example in sysprm_load_and_init the parameters are set to their default in the order they
    * are found in this array). */
   {PRM_ID_COMPAT_MODE,
@@ -5551,7 +5595,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_DWB_LOGGING,
    PRM_NAME_DWB_LOGGING,
-   (PRM_FOR_SERVER | PRM_USER_CHANGE),
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
    &prm_dwb_logging_flag,
    (void *) &prm_dwb_logging_default,
@@ -5570,7 +5614,106 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL}
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_DEBUG_LOG_ARCHIVES,
+   PRM_NAME_DEBUG_LOG_ARCHIVES,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_debug_log_archives_flag,
+   (void *) &prm_debug_log_archives_default,
+   (void *) &PRM_DEBUG_LOG_ARCHIVES,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_DEBUG_ES,
+   PRM_NAME_DEBUG_ES,
+   (PRM_USER_CHANGE | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_debug_es_flag,
+   (void *) &prm_debug_es_default,
+   (void *) &PRM_DEBUG_ES,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_DEBUG_BESTSPACE,
+   PRM_NAME_DEBUG_BESTSPACE,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_debug_bestspace_flag,
+   (void *) &prm_debug_bestspace_default,
+   (void *) &PRM_DEBUG_BESTSPACE,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_DEBUG_LOGWR,
+   PRM_NAME_DEBUG_LOG_WRITER,
+   (PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_debug_logwr_flag,
+   (void *) &prm_debug_logwr_default,
+   (void *) &PRM_DEBUG_LOGWR,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_DEBUG_AUTOCOMMIT,
+   PRM_NAME_DEBUG_AUTOCOMMIT,
+   (PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_debug_autocommit_flag,
+   (void *) &prm_debug_autocommit_default,
+   (void *) &PRM_DEBUG_AUTOCOMMIT,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_DEBUG_REPLICATION_DATA,
+   PRM_NAME_DEBUG_REPLICATION_DATA,
+   (PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_debug_replication_data_flag,
+   (void *) &prm_debug_replication_data_default,
+   (void *) &PRM_DEBUG_REPLICATION_DATA,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_TRACK_REQUESTS,
+   PRM_NAME_TRACK_REQUESTS,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_track_requests_flag,
+   (void *) &prm_track_requests_default,
+   (void *) &PRM_TRACK_REQUESTS,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_LOG_PGBUF_VICTIM_FLUSH,
+   PRM_NAME_LOG_PGBUF_VICTIM_FLUSH,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_log_pgbuf_victim_flush_flag,
+   (void *) &prm_log_pgbuf_victim_flush_default,
+   (void *) &PRM_LOG_PGBUF_VICTIM_FLUSH,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_LOG_CHKPT_DETAILED,
+   PRM_NAME_LOG_CHKPT_DETAILED,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_log_chkpt_detailed_flag,
+   (void *) &prm_log_chkpt_detailed_default,
+   (void *) &PRM_LOG_CHKPT_DETAILED,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
 };
 
 #define NUM_PRM ((int)(sizeof(prm_Def)/sizeof(prm_Def[0])))
@@ -6126,7 +6269,7 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool 
     }
 #endif /* !CS_MODE */
 
-  /* 
+  /*
    * Read installation configuration file - $CUBRID/conf/cubrid.conf
    * or use conf_file if exist
    */
@@ -6189,7 +6332,7 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool 
       return r;
     }
 
-  /* 
+  /*
    * If a parameter is not given, set it by default
    */
   for (i = 0; i < NUM_PRM; i++)
@@ -6210,7 +6353,7 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool 
   init_server_timezone_parameter ();
 #endif
 
-  /* 
+  /*
    * Perform system parameter check and tuning.
    */
   prm_check_environment ();
@@ -6222,7 +6365,7 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool 
     }
 #endif
 
-  /* 
+  /*
    * Perform forced system parameter setting.
    */
   for (i = 0; i < DIM (prm_Def); i++)
@@ -6798,6 +6941,20 @@ prm_log_pages_to_size (void *out_val, SYSPRM_DATATYPE out_type, void *in_val, SY
 
       *size_value = (UINT64) (page_value * LOG_PAGESIZE);
     }
+  else if (out_type == PRM_INTEGER && in_type == PRM_INTEGER)
+    {
+      int *size_value = (int *) out_val;
+      int page_value = *(int *) in_val;
+      UINT64 t;
+
+      t = ((UINT64) page_value) * LOG_PAGESIZE;
+      if (t > INT_MAX)
+	{
+	  return PRM_ERR_BAD_VALUE;
+	}
+
+      *size_value = (int) t;
+    }
   else
     {
       assert_release (false);
@@ -6866,7 +7023,21 @@ prm_sec_to_msec (void *out_val, SYSPRM_DATATYPE out_type, void *in_val, SYSPRM_D
       UINT64 *msec_value = (UINT64 *) out_val;
       int sec_value = *(int *) in_val;
 
-      *msec_value = (UINT64) sec_value *ONE_SEC;
+      *msec_value = ((UINT64) sec_value) * ONE_SEC;
+    }
+  else if (out_type == PRM_INTEGER && in_type == PRM_INTEGER)
+    {
+      int *msec_value = (int *) out_val;
+      int sec_value = *(int *) in_val;
+      UINT64 t;
+
+      t = ((UINT64) sec_value) * ONE_SEC;
+      if (t > INT_MAX)
+	{
+	  return PRM_ERR_BAD_VALUE;
+	}
+
+      *msec_value = (int) t;
     }
   else
     {
@@ -7029,7 +7200,7 @@ prm_equal_to_ori (void *out_val, SYSPRM_DATATYPE out_type, void *in_val, SYSPRM_
 static int
 prm_check_parameters (void)
 {
-  /* 
+  /*
    * ha_node_list and ha_db_list should be not null for ha_mode=yes|replica
    */
   if (PRM_HA_MODE != HA_MODE_OFF)
@@ -8356,7 +8527,7 @@ sysprm_get_param_range (SYSPRM_PARAM * prm, void *min, void *max)
 
 /*
  * sysprm_get_range - returns the minimum and maximum value
- *                    for a paramter, given by its name 
+ *                    for a paramter, given by its name
  *   return: error code
  *   pname (in): parameter name
  *   min (out): the minimum possible value for the parameter
@@ -12005,7 +12176,7 @@ sysprm_init_intl_param (void)
   /* intl system parameters are session based and depend on system language; The language is read from DB (and client
    * from server), after the system parameters module was initialized and default values read from configuration file.
    * This function avoids to override any value already read from config. If no values are set from config, then this
-   * function sets the values according to the default language. On client (CAS), we set the client copy of the value, 
+   * function sets the values according to the default language. On client (CAS), we set the client copy of the value,
    * and also the cached session parameter value (which is the default starting value, when the existing CAS serves
    * another session) is intialized. */
 

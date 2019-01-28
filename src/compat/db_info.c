@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -35,6 +35,7 @@
 #include "mem_block.hpp"
 #include "network_interface_cl.h"
 #include "object_accessor.h"
+#include "object_primitive.h"
 #include "object_print.h"
 #include "object_printer.hpp"
 #include "parser.h"
@@ -557,7 +558,7 @@ db_is_deleted (DB_OBJECT * obj)
       return 0;
     }
 
-  /* if this is the deleted object error, then its deleted, the test for the MOP deleted flag should be unnecessary but 
+  /* if this is the deleted object error, then its deleted, the test for the MOP deleted flag should be unnecessary but
    * be safe. */
   if (error == ER_HEAP_UNKNOWN_OBJECT || WS_IS_DELETED (obj))
     {
@@ -810,7 +811,7 @@ db_get_attribute (DB_OBJECT * obj, const char *name)
 }
 
 /*
- * db_get_attribute_by_name() - This function returns a structure that 
+ * db_get_attribute_by_name() - This function returns a structure that
  *    describes the definition of an attribute.
  * return : an attribute descriptor
  * class_name(in): class name
@@ -2080,7 +2081,7 @@ db_constraint_asc_desc (DB_CONSTRAINT * constraint)
 }
 
 /*
- * db_constraint_prefix_length() - This function returns an array of 
+ * db_constraint_prefix_length() - This function returns an array of
  *				  prefix length info
  * return non-NULL terminated integer array
  * constraint: constraint descriptor

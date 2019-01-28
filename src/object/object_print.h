@@ -26,53 +26,36 @@
 
 #ident "$Id$"
 
+#include "dbtype_def.h"
+
 #include <stdio.h>
 
-#include "dbtype_def.h"
-#include "thread_compat.hpp"
+#if defined(SERVER_MODE)
+#error Does not belong to server module
+#endif //defined(SERVER_MODE)
 
-#if !defined (SERVER_MODE)
-#include "parse_tree.h"
-#endif /* !SERVER_MODE */
-
-class string_buffer;
-
-#ifdef __cplusplus
-extern "C"
-{
-#endif
-
-#if !defined (SERVER_MODE)
-
-  struct trigger_description;
+struct trigger_description;
 
 /* HELP FUNCTIONS */
 
 /* Trigger help */
-  int help_trigger_names (char ***names_ptr);
+int help_trigger_names (char ***names_ptr);
 
 /* This can be used to free the class name list or the trigger name list */
-  void help_free_names (char **names);
+void help_free_names (char **names);
 
 
 /* Class/Instance printing */
-  void help_fprint_obj (FILE * fp, MOP obj);
+void help_fprint_obj (FILE * fp, MOP obj);
 
 /* Class name help */
-  extern char **help_class_names (const char *qualifier);
-  extern void help_free_class_names (char **names);
+extern char **help_class_names (const char *qualifier);
+extern void help_free_class_names (char **names);
 
 /* Misc help */
-  void help_print_info (const char *command, FILE * fpp);
-  int help_describe_mop (DB_OBJECT * obj, char *buffer, int maxlen);
-#endif				/* !SERVER_MODE */
+void help_print_info (const char *command, FILE * fpp);
+int help_describe_mop (DB_OBJECT * obj, char *buffer, int maxlen);
 
-  void help_fprint_value (THREAD_ENTRY * thread_p, FILE * fp, const DB_VALUE * value);
-  void help_sprint_value (const DB_VALUE * value, string_buffer & sb);
-  void help_fprint_describe_comment (FILE * fp, const char *comment);
+void help_fprint_describe_comment (FILE * fp, const char *comment);
 
-#ifdef __cplusplus
-}
-#endif
-
-#endif				/* _OBJECT_PRINT_H */
+#endif /* _OBJECT_PRINT_H */

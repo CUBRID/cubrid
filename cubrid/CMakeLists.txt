@@ -94,8 +94,10 @@ set(BASE_SOURCES
   ${BASE_DIR}/locale_support.c
   ${BASE_DIR}/lock_free.c
   ${BASE_DIR}/md5.c
+  ${BASE_DIR}/mem_block.cpp
   ${BASE_DIR}/memory_alloc.c
   ${BASE_DIR}/memory_hash.c
+  ${BASE_DIR}/memory_private_allocator.cpp
   ${BASE_DIR}/message_catalog.c
   ${BASE_DIR}/misc_string.c
   ${BASE_DIR}/mprec.c
@@ -122,14 +124,13 @@ set(BASE_SOURCES
   ${BASE_DIR}/xml_parser.c
   )
 set (BASE_HEADERS
-  ${BASE_DIR}/contiguous_memory_buffer.hpp
-  ${BASE_DIR}/db_private_allocator.hpp
   ${BASE_DIR}/error_code.h
   ${BASE_DIR}/error_context.hpp
   ${BASE_DIR}/error_manager.h
   ${BASE_DIR}/extensible_array.hpp
   ${BASE_DIR}/fileline_location.hpp
   ${BASE_DIR}/mem_block.hpp
+  ${BASE_DIR}/memory_private_allocator.hpp
   ${BASE_DIR}/packer.hpp
   ${BASE_DIR}/perf.hpp
   ${BASE_DIR}/perf_def.hpp
@@ -227,7 +228,6 @@ set(QUERY_HEADERS
 
 set(OBJECT_SOURCES
   ${OBJECT_DIR}/elo.c
-  ${OBJECT_DIR}/object_print.c
   ${OBJECT_DIR}/set_object.c
   ${OBJECT_DIR}/object_representation.c
   ${OBJECT_DIR}/object_primitive.c
@@ -272,26 +272,30 @@ set(TRANSACTION_SOURCES
 set(STORAGE_SOURCES
   ${STORAGE_DIR}/btree.c
   ${STORAGE_DIR}/btree_load.c
-  ${STORAGE_DIR}/system_catalog.c
   ${STORAGE_DIR}/catalog_class.c
   ${STORAGE_DIR}/compactdb_sr.c
+  ${STORAGE_DIR}/double_write_buffer.c
   ${STORAGE_DIR}/disk_manager.c
-  ${STORAGE_DIR}/storage_common.c
+  ${STORAGE_DIR}/es.c
+  ${STORAGE_DIR}/es_common.c
+  ${STORAGE_DIR}/es_posix.c
   ${STORAGE_DIR}/extendible_hash.c
+  ${STORAGE_DIR}/external_sort.c
+  ${STORAGE_DIR}/file_io.c
   ${STORAGE_DIR}/file_manager.c
   ${STORAGE_DIR}/heap_file.c
-  ${STORAGE_DIR}/file_io.c
   ${STORAGE_DIR}/oid.c
   ${STORAGE_DIR}/overflow_file.c
   ${STORAGE_DIR}/page_buffer.c
-  ${STORAGE_DIR}/double_write_buffer.c
-  ${STORAGE_DIR}/statistics_sr.c
+  ${STORAGE_DIR}/record_descriptor.cpp
   ${STORAGE_DIR}/slotted_page.c
-  ${STORAGE_DIR}/external_sort.c
-  ${STORAGE_DIR}/es_common.c
-  ${STORAGE_DIR}/es.c
-  ${STORAGE_DIR}/es_posix.c
+  ${STORAGE_DIR}/statistics_sr.c
+  ${STORAGE_DIR}/storage_common.c
+  ${STORAGE_DIR}/system_catalog.c
   )
+set(STORAGE_HEADERS
+  ${STORAGE_DIR}/record_descriptor.hpp
+)
 
 set(SESSION_SOURCES
   ${SESSION_DIR}/session.c
@@ -386,6 +390,7 @@ set (CUBRID_LIB_HEADERS
   ${QUERY_HEADERS}
   ${REPLICATION_HEADERS}
   ${THREAD_HEADERS}
+  ${STORAGE_HEADERS}
   ${STREAM_HEADERS}
   ${XASL_HEADERS}
   )

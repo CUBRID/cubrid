@@ -1,19 +1,19 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -29,7 +29,7 @@
 
 #ident "$Id$"
 
-/* 
+/*
  * Transaction branch identification: XID and NULLXID:
  */
 #define XIDDATASIZE    128	/* size in bytes */
@@ -119,7 +119,7 @@ struct xa_switch_t
 #define TMJOIN		0x00200000L	/* caller is joining existing transaction branch */
 #define TMMIGRATE	0x00100000L	/* caller intends to perform migration */
 
-/* 
+/*
  * ax_() return codes (transaction manager reports to resource manager)
  */
 #define TM_JOIN		2	/* caller is joining existing transaction branch */
@@ -129,7 +129,7 @@ struct xa_switch_t
 #define TMER_INVAL	-2	/* invalid arguments were given */
 #define TMER_PROTO	-3	/* routine invoked in an improper context */
 
-/* 
+/*
  * xa_() return codes (resource manager reports to transaction manager)
  */
 #define XA_RBBASE	100	/* The inclusive lower bound of the rollback codes */

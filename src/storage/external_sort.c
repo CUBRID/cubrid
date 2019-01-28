@@ -148,7 +148,7 @@ struct sort_param
   FILE_CONTENTS file_contents[2 * SORT_MAX_HALF_FILES];	/* Contents of each temporary file */
 
   VOL_LIST vol_list;		/* Temporary volume information list */
-  char *internal_memory;	/* Internal_memory used for internal sorting phase and as input/output buffers for temp 
+  char *internal_memory;	/* Internal_memory used for internal sorting phase and as input/output buffers for temp
 				 * files during merging phase */
   int tot_runs;			/* Total number of runs */
   int tot_buffers;		/* Size of internal memory used in terms of number of buffers it occupies */
@@ -648,7 +648,7 @@ sort_spage_get_record (PAGE_PTR pgptr, INT16 slotid, RECDES * recdes, bool peek_
       return S_DOESNT_EXIST;
     }
 
-  /* 
+  /*
    * If peeking, the address of the data in the descriptor is set to the
    * address of the record in the buffer. Otherwise, the record is copied
    * onto the area specified by the descriptor
@@ -664,7 +664,7 @@ sort_spage_get_record (PAGE_PTR pgptr, INT16 slotid, RECDES * recdes, bool peek_
 
       if (sptr->rlength > recdes->area_size)
 	{
-	  /* 
+	  /*
 	   * DOES NOT FIT
 	   * Give a hint to the user of the needed length. Hint is given as a
 	   * negative value
@@ -1495,7 +1495,7 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
       goto cleanup;
     }
 
-  /* 
+  /*
    * Don't allocate any temp files yet, since we may not need them.
    * We'll allocate them on the fly as the need arises.
    *
@@ -2613,7 +2613,7 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
 	}
       else
 	{
-	  /* 
+	  /*
 	   * The only way to get here is if we had exactly one record to
 	   * sort, and that record required overflow pages.  In that case we
 	   * have done a ridiculous amount of work, but there doesn't seem to
@@ -2995,7 +2995,7 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 
 		  if (act_infiles == 1)
 		    {
-		      /* 
+		      /*
 		       * There is only one active input file (i.e. there is
 		       * only one input run to produce the output run). So,
 		       * there is no need to perform the merging actions. All
@@ -3289,7 +3289,7 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 
 			      if (sort_spage_insert (out_cur_bufaddr, &smallest_elem_ptr[min]) == NULL_SLOTID)
 				{
-				  /* 
+				  /*
 				   * Slotted page module refuses to insert a
 				   * short size record (a temporary record that
 				   * was already in a slotted page) to an empty
@@ -3327,7 +3327,7 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 
 			      if (sort_spage_insert (out_cur_bufaddr, &smallest_elem_ptr[min]) == NULL_SLOTID)
 				{
-				  /* 
+				  /*
 				   * Slotted page module refuses to insert a
 				   * short size record (a temporary record that
 				   * was already in a slotted page) to an empty
@@ -3776,7 +3776,7 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 		    {
 		      /* ONE ACTIVE INFILE */
 
-		      /* 
+		      /*
 		       * There is only one active input file (i.e. there is
 		       * only one input run to produce the output run). So,
 		       * there is no need to perform the merging actions. All
@@ -4049,7 +4049,7 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 
 			  if (sort_spage_insert (out_cur_bufaddr, &smallest_elem_ptr[min]) == NULL_SLOTID)
 			    {
-			      /* 
+			      /*
 			       * Slotted page module refuses to insert a short
 			       * size record (a temporary record that was
 			       * already in a slotted page) to an empty page.
@@ -4086,7 +4086,7 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 
 			  if (sort_spage_insert (out_cur_bufaddr, &smallest_elem_ptr[min]) == NULL_SLOTID)
 			    {
-			      /* 
+			      /*
 			       * Slotted page module refuses to insert a short
 			       * size record (a temporary record that was
 			       * already in a slotted page) to an empty page.

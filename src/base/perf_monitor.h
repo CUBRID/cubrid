@@ -1274,7 +1274,7 @@ perfmon_is_perf_tracking_and_active (int activation_flag)
 /*
  * perfmon_is_perf_tracking_force () - Skips the check for active threads if the always_collect
  *				       flag is set to true
- *				       
+ *				
  * return	        : true or false
  * always_collect (in)  : flag that tells that we should always collect statistics
  *

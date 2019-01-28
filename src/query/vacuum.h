@@ -157,9 +157,9 @@ struct vacuum_worker
 
 // inline vacuum functions replacing old macros
 STATIC_INLINE VACUUM_WORKER *vacuum_get_vacuum_worker (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE bool vacuum_is_thread_vacuum (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE bool vacuum_is_thread_vacuum_worker (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE bool vacuum_is_thread_vacuum_master (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool vacuum_is_thread_vacuum (const THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool vacuum_is_thread_vacuum_worker (const THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool vacuum_is_thread_vacuum_master (const THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE bool vacuum_is_skip_undo_allowed (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE LOG_TDES *vacuum_get_worker_tdes (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE VACUUM_WORKER_STATE vacuum_get_worker_state (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
@@ -181,21 +181,21 @@ vacuum_get_vacuum_worker (THREAD_ENTRY * thread_p)
 }
 
 bool
-vacuum_is_thread_vacuum (THREAD_ENTRY * thread_p)
+vacuum_is_thread_vacuum (const THREAD_ENTRY * thread_p)
 {
   assert (thread_p != NULL);
   return thread_p != NULL && (thread_p->type == TT_VACUUM_MASTER || thread_p->type == TT_VACUUM_WORKER);
 }
 
 bool
-vacuum_is_thread_vacuum_worker (THREAD_ENTRY * thread_p)
+vacuum_is_thread_vacuum_worker (const THREAD_ENTRY * thread_p)
 {
   assert (thread_p != NULL);
   return thread_p != NULL && thread_p->type == TT_VACUUM_WORKER;
 }
 
 bool
-vacuum_is_thread_vacuum_master (THREAD_ENTRY * thread_p)
+vacuum_is_thread_vacuum_master (const THREAD_ENTRY * thread_p)
 {
   assert (thread_p != NULL);
   return thread_p != NULL && thread_p->type == TT_VACUUM_MASTER;

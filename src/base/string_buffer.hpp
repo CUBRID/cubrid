@@ -44,12 +44,11 @@
 #include <functional>
 
 class string_buffer
-  : public mem::block_ext
 {
   public:
     string_buffer ()
-      : mem::block_ext ()
-      , m_len (0)
+      : m_len (0)
+      , m_ext_block ()
     {
     }
 
@@ -58,25 +57,30 @@ class string_buffer
       m_len = 0; //dtor
     }
 
-    string_buffer (std::function<void (block &b, size_t n)> extend, std::function<void (block &b)> dealloc)
-      : mem::block_ext {extend, dealloc}
-      , m_len {0}
+    string_buffer (const cubmem::block_allocator &alloc)
+      : m_len {0}
+      , m_ext_block { alloc }
     {
     }
 
-    using mem::block_ext::move_ptr;
+    string_buffer (const cubmem::block_allocator &alloc, size_t initial_size)
+      : string_buffer (alloc)
+    {
+      m_ext_block.extend_to (initial_size);
+      m_ext_block.get_ptr ()[m_len] = '\0';
+    }
 
     const char *get_buffer () const
     {
-      return this->ptr;
+      return this->m_ext_block.get_read_ptr ();
     }
 
     void clear ()
     {
-      if (ptr)
+      if (m_ext_block.get_ptr () != NULL)
 	{
 	  m_len = 0;
-	  ptr[m_len] = '\0';
+	  *m_ext_block.get_ptr () = '\0';
 	}
     }
 
@@ -86,42 +90,45 @@ class string_buffer
       return m_len;
     }
 
+    char *release_ptr ()
+    {
+      return m_ext_block.release_ptr ();
+    }
+
     inline void operator+= (const char ch);                       //add a single char
 
-    void add_bytes (size_t len, void *bytes);                     //add "len" bytes (can have '\0' in the middle)
+    void add_bytes (size_t len, char *bytes);                     //add "len" bytes (can have '\0' in the middle)
 
     template<typename... Args> inline int operator() (Args &&... args); //add with printf format
 
   private:
-    size_t m_len;                                                 //current content length not including ending '\0'
-
     string_buffer (const string_buffer &) = delete;               //copy ctor
     string_buffer (string_buffer &&) = delete;                    //move ctor
     void operator= (const string_buffer &) = delete;              //copy assign
     void operator= (string_buffer &&) = delete;                   //move assign
+
+    size_t m_len;                                                 //current content length not including ending '\0'
+    cubmem::extensible_block m_ext_block;
 };
 
 //implementation for small (inline) methods
 
 void string_buffer::operator+= (const char ch)
 {
-  if (dim == 0)
+  if (m_ext_block.get_size () == 0)
     {
-      extend (2); // 2 new bytes needed: ch + '\0'
+      m_ext_block.extend_to (2); // 2 new bytes needed: ch + '\0'
     }
   else
     {
-      assert (ptr[m_len] == '\0');
+      assert (m_ext_block.get_ptr ()[m_len] == '\0');
 
       // (m_len + 1) is the current number of chars including ending '\0'
-      if (dim <= m_len + 1)
-	{
-	  extend (1);
-	}
+      m_ext_block.extend_to (m_len + 2);
     }
 
-  ptr[m_len] = ch;
-  ptr[++m_len] = '\0';
+  m_ext_block.get_ptr ()[m_len] = ch;
+  m_ext_block.get_ptr ()[++m_len] = '\0';
 }
 
 template<typename... Args> int string_buffer::operator() (Args &&... args)
@@ -130,12 +137,9 @@ template<typename... Args> int string_buffer::operator() (Args &&... args)
 
   assert (len >= 0);
 
-  if (dim <= m_len + size_t (len) + 1)
-    {
-      extend (m_len + size_t (len) + 1 - dim); //ask to extend to fit at least additional len chars
-    }
+  m_ext_block.extend_to (m_len + size_t (len) + 2);
 
-  snprintf (ptr + m_len, dim - m_len, std::forward<Args> (args)...);
+  snprintf (m_ext_block.get_ptr () + m_len, m_ext_block.get_size () - m_len, std::forward<Args> (args)...);
   m_len += len;
 
   return len;

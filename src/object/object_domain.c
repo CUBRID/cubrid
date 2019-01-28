@@ -985,7 +985,7 @@ domain_init (TP_DOMAIN * domain, DB_TYPE type_id)
 
   domain->next = NULL;
   domain->next_list = NULL;
-  domain->type = PR_TYPE_FROM_ID (type_id);
+  domain->type = pr_type_from_id (type_id);
   domain->precision = 0;
   domain->scale = 0;
   domain->class_mop = NULL;
@@ -3151,7 +3151,7 @@ tp_domain_resolve_default_w_coll (DB_TYPE type, int coll_id, TP_DOMAIN_COLL_ACTI
  *    dbuf(out): if not NULL, founded domain initialized on dbuf
  */
 TP_DOMAIN *
-tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
+tp_domain_resolve_value (const DB_VALUE * val, TP_DOMAIN * dbuf)
 {
   TP_DOMAIN *domain;
   DB_TYPE value_type;
@@ -3299,7 +3299,7 @@ tp_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * dbuf)
 
 	  /*
 	   * Convert references to the "floating" precisions to actual
-	   * precisions.  This may not be necessary or desireable?
+	   * precisions. This may not be necessary or desirable?
 	   * Zero seems to pop up occasionally in DB_VALUE precisions, until
 	   * this is fixed, treat it as the floater for the variable width
 	   * types.
@@ -10794,7 +10794,7 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
 	{
 	  PR_TYPE *pr_type;
 
-	  pr_type = PR_TYPE_FROM_ID (vtype1);
+	  pr_type = pr_type_from_id (vtype1);
 	  assert (pr_type != NULL);
 
 	  if (pr_type)
@@ -10895,7 +10895,7 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
 		}
 	      else
 		{
-		  result = (*(pr_type->cmpval)) (v1, v2, do_coercion, total_order, NULL, common_coll);
+		  result = pr_type->cmpval (v1, v2, do_coercion, total_order, NULL, common_coll);
 		}
 
 	      if (result == DB_UNK)
@@ -10959,7 +10959,7 @@ tp_value_equal (const DB_VALUE * value1, const DB_VALUE * value2, int do_coercio
 
 
 /*
- * tp_domain_disk_size - Caluclate the disk size necessary to store a value
+ * tp_domain_disk_size - Calculate the disk size necessary to store a value
  * for a particular domain.
  *    return: disk size in bytes. -1 if this is a variable width domain or
  *            floating precision in fixed domain.
@@ -10973,38 +10973,20 @@ tp_value_equal (const DB_VALUE * value1, const DB_VALUE * value2, int do_coercio
 int
 tp_domain_disk_size (TP_DOMAIN * domain)
 {
-  int size;
-
-  if (domain->type->variable_p)
+  if (domain->type->is_always_variable ())
     {
       return -1;
     }
 
-  if (domain->type->data_lengthmem != NULL
-      && (domain->type->id == DB_TYPE_CHAR || domain->type->id == DB_TYPE_NCHAR || domain->type->id == DB_TYPE_BIT)
-      && domain->precision == TP_FLOATING_PRECISION_VALUE)
+  if ((domain->type->get_id () == DB_TYPE_CHAR || domain->type->get_id () == DB_TYPE_NCHAR
+       || domain->type->get_id () == DB_TYPE_BIT) && domain->precision == TP_FLOATING_PRECISION_VALUE)
     {
       return -1;
     }
 
   assert (domain->precision != TP_FLOATING_PRECISION_VALUE);
 
-  /*
-   * Use the "lengthmem" function here with a NULL pointer.  The size will
-   * not be dependent on the actual value.
-   * The decision of whether or not to use the lengthmem function probably
-   * should be based on the value of "disksize" ?
-   */
-  if (domain->type->data_lengthmem != NULL)
-    {
-      size = (*(domain->type->data_lengthmem)) (NULL, domain, 1);
-    }
-  else
-    {
-      size = domain->type->disksize;
-    }
-
-  return size;
+  return domain->type->get_disk_size_of_mem (NULL, domain);
 }
 
 
@@ -11017,30 +10999,13 @@ tp_domain_disk_size (TP_DOMAIN * domain)
 int
 tp_domain_memory_size (TP_DOMAIN * domain)
 {
-  int size;
-
-  if (domain->type->data_lengthmem != NULL
-      && (domain->type->id == DB_TYPE_CHAR || domain->type->id == DB_TYPE_NCHAR || domain->type->id == DB_TYPE_BIT)
-      && domain->precision == TP_FLOATING_PRECISION_VALUE)
+  if ((domain->type->get_id () == DB_TYPE_CHAR || domain->type->get_id () == DB_TYPE_NCHAR
+       || domain->type->get_id () == DB_TYPE_BIT) && domain->precision == TP_FLOATING_PRECISION_VALUE)
     {
       return -1;
     }
 
-  /*
-   * Use the "lengthmem" function here with a NULL pointer and a "disk"
-   * flag of zero.
-   * This will cause it to return the instance memory size.
-   */
-  if (domain->type->data_lengthmem != NULL)
-    {
-      size = (*(domain->type->data_lengthmem)) (NULL, domain, 0);
-    }
-  else
-    {
-      size = domain->type->size;
-    }
-
-  return size;
+  return domain->type->get_mem_size_of_mem (NULL, domain);
 }
 
 /*
@@ -11068,7 +11033,7 @@ tp_init_value_domain (TP_DOMAIN * domain, DB_VALUE * value)
     }
   else
     {
-      (*(domain->type->initval)) (value, domain->precision, domain->scale);
+      domain->type->initval (value, domain->precision, domain->scale);
     }
 }
 

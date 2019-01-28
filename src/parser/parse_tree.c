@@ -603,7 +603,7 @@ pt_append_string_for (const PARSER_CONTEXT * parser, char *old_string, const cha
       new_tail_length += 2;	/* for opening/closing "'" */
     }
 
-  /* if we did not find old_string at the end of a string buffer, or if there is not room to concatenate the tail, copy 
+  /* if we did not find old_string at the end of a string buffer, or if there is not room to concatenate the tail, copy
    * both to new string */
   if ((string == NULL) || ((string->block_end - string->last_string_end) < new_tail_length))
     {
@@ -688,7 +688,7 @@ pt_append_bytes_for (const PARSER_CONTEXT * parser, PARSER_VARCHAR * old_string,
   /* here, you know you have two non-NULL pointers */
   string = pt_find_string_block (parser, (char *) old_string);
 
-  /* if we did not find old_string at the end of a string buffer, or if there is not room to concatenate the tail, copy 
+  /* if we did not find old_string at the end of a string buffer, or if there is not room to concatenate the tail, copy
    * both to new string */
   if ((string == NULL) || ((string->block_end - string->last_string_end) < new_tail_length))
     {
@@ -903,7 +903,7 @@ parser_free_node (const PARSER_CONTEXT * parser, PT_NODE * node)
     {
       db_value_clear (&node->info.insert_value.value);
     }
-  /* 
+  /*
    * Always set the node type to maximum.  This may
    * keep us from doing bad things to the free list if we try to free
    * this structure more than once.  We shouldn't be doing that (i.e.,

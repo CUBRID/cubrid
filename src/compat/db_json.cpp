@@ -58,6 +58,8 @@
 
 #include "dbtype.h"
 #include "memory_alloc.h"
+#include "memory_private_allocator.hpp"
+#include "object_primitive.h"
 #include "query_dump.h"
 #include "string_opfunc.h"
 #include "system_parameter.h"
@@ -79,10 +81,12 @@
 #include <algorithm>
 #include <locale>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include <stack>
 #include <memory>
 #include <climits>
+#include <functional>
 
 #include <cctype>
 
@@ -153,6 +157,8 @@ class JSON_DOC: public rapidjson::GenericDocument <JSON_ENCODING, JSON_PRIVATE_M
     /* mutable std::string json_body; */
 #endif // TODO_OPTIMIZE_JSON_BODY_STRING
 };
+
+typedef std::function<int (const JSON_VALUE &, const std::string &, bool &)> map_func_type;
 
 // class JSON_ITERATOR - virtual interface to wrap array and object iterators
 //
@@ -476,6 +482,9 @@ class JSON_WALKER
 
   private:
     int WalkValue (JSON_VALUE &value);
+
+  protected:
+    bool m_stop;
 };
 
 /*
@@ -495,38 +504,22 @@ class JSON_DUPLICATE_KEYS_CHECKER : public JSON_WALKER
     int CallBefore (JSON_VALUE &value) override;
 };
 
-class JSON_SEARCHER : public JSON_WALKER
+class JSON_PATH_MAPPER : public JSON_WALKER
 {
   public:
-    JSON_SEARCHER (const std::string &starting_path, const DB_VALUE *pattern, const DB_VALUE *esc_char, bool find_all,
-		   std::vector<std::string> &paths)
-      : m_starting_path (starting_path)
-      , m_found_paths (paths)
-      , m_find_all (find_all)
-      , m_skip_other_matches (false)
-      , m_pattern (pattern)
-      , m_esc_char (esc_char)
-    {
-      //
-    }
-
-    ~JSON_SEARCHER () override = default;
+    JSON_PATH_MAPPER (map_func_type func);
+    JSON_PATH_MAPPER (JSON_PATH_MAPPER &) = delete;
+    ~JSON_PATH_MAPPER () override = default;
 
   private:
-
     int CallBefore (JSON_VALUE &value) override;
     int CallAfter (JSON_VALUE &value) override;
     int CallOnArrayIterate () override;
     int CallOnKeyIterate (JSON_VALUE &key) override;
 
+    map_func_type m_producer;
     std::stack<unsigned int> m_index;
-    std::vector <std::string> path_items;
-    const std::string &m_starting_path;
-    std::vector<std::string> &m_found_paths;
-    bool m_find_all;
-    bool m_skip_other_matches;
-    const DB_VALUE *m_pattern;
-    const DB_VALUE *m_esc_char;
+    std::stack<std::string> m_accumulated_paths;
 };
 
 class JSON_SERIALIZER_LENGTH : public JSON_BASE_HANDLER
@@ -731,26 +724,27 @@ static void db_json_copy_doc (JSON_DOC &dest, const JSON_DOC *src);
 
 static void db_json_get_paths_helper (const JSON_VALUE &obj, const std::string &sql_path,
 				      std::vector<std::string> &paths);
-static int db_json_search_helper (JSON_DOC &obj, const DB_VALUE *pattern, const DB_VALUE *esc_char,
-				  bool find_all, const std::string &sql_path, bool &found, std::vector<std::string> &paths);
 static void db_json_normalize_path (std::string &path_string);
 static void db_json_remove_leading_zeros_index (std::string &index);
 static bool db_json_isspace (const unsigned char &ch);
 static bool db_json_iszero (const unsigned char &ch);
-static int db_json_convert_pointer_to_sql_path (const char *pointer_path, std::string &sql_path_out);
-static int db_json_convert_sql_path_to_pointer (const char *sql_path, std::string &json_pointer_out);
 static JSON_PATH_TYPE db_json_get_path_type (std::string &path_string);
 static void db_json_build_path_special_chars (const JSON_PATH_TYPE &json_path_type,
     std::unordered_map<std::string, std::string> &special_chars);
 static std::vector<std::string> db_json_split_path_by_delimiters (const std::string &path,
-    const std::string &delim);
-static bool db_json_sql_path_is_valid (std::string &sql_path);
+    const std::string &delim, bool allow_empty);
+static std::size_t skip_whitespaces (const std::string &path, std::size_t token_begin);
+static bool db_json_sql_path_is_valid (std::string &sql_path, bool allow_wildcards);
+static bool db_json_path_is_token_valid_quoted_object_key (const std::string &path, std::size_t &token_begin);
+static bool db_json_path_quote_and_validate_unquoted_object_key (std::string &path, std::size_t &token_begin);
+static bool db_json_path_is_token_valid_unquoted_object_key (const std::string &path, std::size_t &token_begin);
+static void json_path_strip_whitespaces (std::string &sql_path);
 static int db_json_er_set_path_does_not_exist (const char *file_name, const int line_no, const std::string &path,
     const JSON_DOC *doc);
 static void db_json_replace_token_special_chars (std::string &token,
     const std::unordered_map<std::string, std::string> &special_chars);
-static bool db_json_path_is_token_valid_array_index (const std::string &str, std::size_t start = 0,
-    std::size_t end = 0);
+static bool db_json_path_is_token_valid_array_index (const std::string &str, bool allow_wildcards,
+    std::size_t start = 0, std::size_t end = 0);
 static void db_json_doc_wrap_as_array (JSON_DOC &doc);
 static void db_json_value_wrap_as_array (JSON_VALUE &value, JSON_PRIVATE_MEMPOOL &allocator);
 static const char *db_json_get_json_type_as_str (const DB_JSON_TYPE &json_type);
@@ -776,6 +770,8 @@ static int db_json_unpack_bigint_to_value (OR_BUF *buf, JSON_VALUE &value);
 static int db_json_unpack_bool_to_value (OR_BUF *buf, JSON_VALUE &value);
 static int db_json_unpack_object_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_PRIVATE_MEMPOOL &doc_allocator);
 static int db_json_unpack_array_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_PRIVATE_MEMPOOL &doc_allocator);
+
+static void db_json_add_element_to_array (JSON_DOC *doc, const JSON_VALUE *value);
 
 int JSON_DUPLICATE_KEYS_CHECKER::CallBefore (JSON_VALUE &value)
 {
@@ -803,13 +799,15 @@ int JSON_DUPLICATE_KEYS_CHECKER::CallBefore (JSON_VALUE &value)
   return NO_ERROR;
 }
 
-int JSON_SEARCHER::CallBefore (JSON_VALUE &value)
+JSON_PATH_MAPPER::JSON_PATH_MAPPER (map_func_type func)
+  : m_producer (func)
+  , m_accumulated_paths ()
 {
-  if (m_skip_other_matches)
-    {
-      return NO_ERROR;
-    }
+  m_accumulated_paths.push ("$");
+}
 
+int JSON_PATH_MAPPER::CallBefore (JSON_VALUE &value)
+{
   if (value.IsArray ())
     {
       m_index.push (0);
@@ -817,62 +815,15 @@ int JSON_SEARCHER::CallBefore (JSON_VALUE &value)
 
   if (value.IsObject () || value.IsArray ())
     {
-      path_items.emplace_back ();
+      // should not be used. Only add a stack level
+      m_accumulated_paths.push ("");
     }
 
   return NO_ERROR;
 }
 
-int JSON_SEARCHER::CallAfter (JSON_VALUE &value)
+int JSON_PATH_MAPPER::CallAfter (JSON_VALUE &value)
 {
-  if (m_skip_other_matches)
-    {
-      return NO_ERROR;
-    }
-
-  int error_code = NO_ERROR;
-
-  if (value.IsString ())
-    {
-      const char *json_str = value.GetString ();
-      DB_VALUE str_val;
-
-      db_make_null (&str_val);
-      error_code = db_make_string (&str_val, (char *) json_str);
-      if (error_code)
-	{
-	  return error_code;
-	}
-
-      int match;
-      error_code = db_string_like (&str_val, m_pattern, m_esc_char, &match);
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
-	}
-
-      if (match)
-	{
-	  std::stringstream full_path;
-
-	  full_path << "\"" << m_starting_path;
-	  for (const auto &item : path_items)
-	    {
-	      full_path << item;
-	    }
-	  full_path << "\"";
-
-	  m_found_paths.emplace_back (full_path.str ());
-
-	  if (!m_find_all)
-	    {
-	      m_skip_other_matches = true;
-	      // todo: change WalkValue() to stop search after first matching value is found;
-	      // in current implementation full search pointless search is performed
-	    }
-	}
-    }
-
   if (value.IsArray ())
     {
       m_index.pop ();
@@ -880,38 +831,42 @@ int JSON_SEARCHER::CallAfter (JSON_VALUE &value)
 
   if (value.IsArray () || value.IsObject ())
     {
-      path_items.pop_back ();
+      m_accumulated_paths.pop ();
     }
-
-  return error_code;
+  return m_producer (value, m_accumulated_paths.top (), m_stop);
 }
 
-int JSON_SEARCHER::CallOnKeyIterate (JSON_VALUE &key)
+int JSON_PATH_MAPPER::CallOnArrayIterate ()
 {
-  if (m_skip_other_matches)
-    {
-      return NO_ERROR;
-    }
-
-  std::string path_item = ".";
-  path_item += key.GetString ();
-
-  path_items.back () = path_item;
-  return NO_ERROR;
-}
-
-int JSON_SEARCHER::CallOnArrayIterate ()
-{
-  if (m_skip_other_matches)
-    {
-      return NO_ERROR;
-    }
-
-  std::string path_item = "[";
+  m_accumulated_paths.pop ();
+  std::string path_item = m_accumulated_paths.top ();
+  path_item += "[";
   path_item += std::to_string (m_index.top ()++);
   path_item += "]";
 
-  path_items.back () = path_item;
+  m_accumulated_paths.push (path_item);
+  return NO_ERROR;
+}
+
+int JSON_PATH_MAPPER::CallOnKeyIterate (JSON_VALUE &key)
+{
+  m_accumulated_paths.pop ();
+  std::string path_item = m_accumulated_paths.top ();
+  path_item += ".\"";
+
+  std::string object_key = key.GetString ();
+  for (auto it = object_key.begin (); it != object_key.end (); ++it)
+    {
+      // todo: take care of all chars that need escaping during simple object key -> object key conversion
+      if (*it == '"' || *it == '\\')
+	{
+	  it = object_key.insert (it, '\\') + 1;
+	}
+    }
+  path_item += object_key;
+  path_item += "\"";
+
+  m_accumulated_paths.push (path_item);
   return NO_ERROR;
 }
 
@@ -1198,44 +1153,8 @@ db_json_get_type_as_str (const JSON_DOC *document)
   assert (document != NULL);
   assert (!document->HasParseError ());
 
-  if (document->IsArray ())
-    {
-      return "JSON_ARRAY";
-    }
-  else if (document->IsObject ())
-    {
-      return "JSON_OBJECT";
-    }
-  else if (document->IsInt ())
-    {
-      return "INTEGER";
-    }
-  else if (document->IsInt64 ())
-    {
-      return "BIGINT";
-    }
-  else if (document->IsDouble ())
-    {
-      return "DOUBLE";
-    }
-  else if (document->IsString ())
-    {
-      return "STRING";
-    }
-  else if (document->IsNull ())
-    {
-      return "JSON_NULL";
-    }
-  else if (document->IsBool ())
-    {
-      return "BOOLEAN";
-    }
-  else
-    {
-      /* we shouldn't get here */
-      assert (false);
-      return "UNKNOWN";
-    }
+  const JSON_VALUE *to_valuep = &db_json_doc_to_value (*document);
+  return db_json_get_json_type_as_str (db_json_get_type_of_value (to_valuep));
 }
 
 static const char *
@@ -1385,15 +1304,16 @@ db_json_value_get_depth (const JSON_VALUE *doc)
  * return                  : error code
  * doc_to_be_inserted (in) : document to be inserted
  * doc_destination (in)    : destination document
- * raw_path (in)           : insertion path
+ * paths (in)              : paths from where to extract
+ * result (out)            : resulting doc
+ * allow_wildcards         :
  * example                 : json_extract('{"a":["b", 123]}', '/a/1') yields 123
  */
-
 int
-db_json_extract_document_from_path (const JSON_DOC *document, const char *raw_path, JSON_DOC *&result)
+db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<std::string> &paths, JSON_DOC *&result,
+				    bool allow_wildcards)
 {
   int error_code = NO_ERROR;
-  std::string json_pointer_string;
 
   if (document == NULL)
     {
@@ -1404,47 +1324,90 @@ db_json_extract_document_from_path (const JSON_DOC *document, const char *raw_pa
       return NO_ERROR;
     }
 
-  // path must be JSON pointer
-  error_code = db_json_convert_sql_path_to_pointer (raw_path, json_pointer_string);
-  if (error_code != NO_ERROR)
+  std::vector<std::string> transformed_paths;
+  for (const auto &path : paths)
     {
-      ASSERT_ERROR ();
-      return error_code;
+      transformed_paths.emplace_back ();
+      error_code = db_json_convert_pointer_to_sql_path (path.c_str (), transformed_paths.back (), allow_wildcards);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
     }
 
-  JSON_POINTER p (json_pointer_string.c_str ());
-  const JSON_VALUE *resulting_json = NULL;
-
-  if (!p.IsValid ())
+  // wrap result in json array in case we have multiple paths or we have a json_path containing wildcards
+  bool array_result = false;
+  if (transformed_paths.size () > 1)
     {
-      if (result != NULL)
-	{
-	  delete result;
-	}
-      result = NULL;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
-      return ER_JSON_INVALID_PATH;
-    }
-
-  // the json from the specified path
-  resulting_json = p.Get (*document);
-
-  DB_JSON_TYPE type = db_json_get_type (document);
-
-  if (resulting_json != NULL)
-    {
-      if (result == NULL)
-	{
-	  result = db_json_allocate_doc ();
-	}
-
-      result->CopyFrom (*resulting_json, result->GetAllocator ());
+      array_result = true;
     }
   else
     {
-      if (result != NULL)
+      array_result = db_json_path_contains_wildcard (transformed_paths[0].c_str ());
+    }
+
+  std::vector<std::string> regs;
+  error_code = db_json_paths_to_regex (transformed_paths, regs, true);
+  if (error_code)
+    {
+      return error_code;
+    }
+
+  // we gather extracted values in an array to match with the order of the given path arguments
+  std::vector<std::vector<const JSON_VALUE *>> produced_array (transformed_paths.size ());
+  const map_func_type &f = [&regs, &produced_array] (const JSON_VALUE &jv, const std::string &crt_path, bool &stop) -> int
+  {
+    for (std::size_t i = 0; i < regs.size (); ++i)
+      {
+	bool path_compatible;
+	int error_code = regex_matches (regs[i].c_str (), crt_path.c_str (), CUB_REG_EXTENDED, &path_compatible);
+	if (error_code)
+	  {
+	    ASSERT_ERROR ();
+	    stop = true;
+	    return error_code;
+	  }
+
+	if (path_compatible)
+	  {
+	    produced_array[i].push_back (&jv);
+	  }
+      }
+    return NO_ERROR;
+  };
+
+  JSON_PATH_MAPPER json_extract_walker (f);
+  json_extract_walker.WalkDocument (const_cast<JSON_DOC &> (*document));
+
+  if (array_result)
+    {
+      for (const auto &produced : produced_array)
 	{
-	  result->SetNull ();
+	  for (const JSON_VALUE *p : produced)
+	    {
+	      if (result == NULL)
+		{
+		  result = db_json_allocate_doc ();
+		  result->SetArray ();
+		}
+
+	      db_json_add_element_to_array (result, p);
+	    }
+	}
+    }
+  else
+    {
+      assert (produced_array.size () == 1 && (produced_array.empty () || produced_array.size () == 1));
+
+      if (!produced_array[0].empty ())
+	{
+	  if (result == NULL)
+	    {
+	      result = db_json_allocate_doc ();
+	    }
+
+	  result->CopyFrom (*produced_array[0][0], result->GetAllocator ());
 	}
     }
 
@@ -1456,43 +1419,87 @@ db_json_extract_document_from_path (const JSON_DOC *document, const char *raw_pa
  *
  * return                  : error code
  * document (in)           : document where to search
- * raw_path (in)           : check path
+ * paths (in)              : paths
+ * find_all (in)           : whether the document needs to contain all paths
  * result (out)            : true/false
  */
 int
-db_json_contains_path (const JSON_DOC *document, const char *raw_path, bool &result)
+db_json_contains_path (const JSON_DOC *document, const std::vector<std::string> &paths, bool find_all, bool &result)
 {
   int error_code = NO_ERROR;
-  std::string json_pointer_string;
-
-  result = false;
-
   if (document == NULL)
     {
       return false;
     }
 
-  // path must be JSON pointer
-  error_code = db_json_convert_sql_path_to_pointer (raw_path, json_pointer_string);
+  std::vector<std::string> transformed_paths;
+  for (const auto &path : paths)
+    {
+      transformed_paths.emplace_back ();
+      error_code = db_json_convert_pointer_to_sql_path (path.c_str (), transformed_paths.back ());
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+    }
+
+  std::vector<std::string> regs;
+  error_code = db_json_paths_to_regex (transformed_paths, regs);
   if (error_code != NO_ERROR)
     {
-      ASSERT_ERROR ();
       return error_code;
     }
 
-  JSON_POINTER p (json_pointer_string.c_str ());
-  const JSON_VALUE *resulting_json = NULL;
-
-  if (!p.IsValid ())
+  std::unique_ptr<bool[]> found_set (new bool[paths.size ()]);
+  for (std::size_t i = 0; i < paths.size (); ++i)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
-      return ER_JSON_INVALID_PATH;
+      found_set[i] = false;
     }
 
-  resulting_json = p.Get (*document);
-  if (resulting_json != NULL)
+  const map_func_type &f_find = [&regs, &found_set, find_all] (const JSON_VALUE &v, const std::string &accumulated_path,
+				bool &stop) -> int
+  {
+    for (std::size_t i = 0; i < regs.size (); ++i)
+      {
+	bool path_compatible;
+	int error_code = regex_matches (regs[i].c_str (), accumulated_path.c_str (), CUB_REG_EXTENDED, &path_compatible);
+	if (error_code)
+	  {
+	    ASSERT_ERROR ();
+	    stop = true;
+	    return error_code;
+	  }
+	if (!found_set[i] && path_compatible)
+	  {
+	    found_set[i] = true;
+	    if (!find_all)
+	      {
+		stop = true;
+		return NO_ERROR;
+	      }
+	  }
+      }
+    return NO_ERROR;
+  };
+
+  JSON_PATH_MAPPER json_contains_path_walker (f_find);
+  // todo: remove const_cast
+  json_contains_path_walker.WalkDocument (const_cast<JSON_DOC &> (*document));
+
+  result = find_all;
+  for (std::size_t i = 0; i < paths.size (); ++i)
     {
-      result = true;
+      if (find_all && !found_set[i])
+	{
+	  result = false;
+	  return NO_ERROR;
+	}
+      if (!find_all && found_set[i])
+	{
+	  result = true;
+	  return NO_ERROR;
+	}
     }
 
   return NO_ERROR;
@@ -1679,6 +1686,27 @@ db_json_add_element_to_array (JSON_DOC *doc, const JSON_DOC *value)
   doc->PushBack (new_doc, doc->GetAllocator ());
 }
 
+static void
+db_json_add_element_to_array (JSON_DOC *doc, const JSON_VALUE *value)
+{
+  JSON_VALUE new_doc;
+
+  if (!doc->IsArray ())
+    {
+      doc->SetArray ();
+    }
+
+  if (value == NULL)
+    {
+      new_doc.SetNull ();
+    }
+  else
+    {
+      new_doc.CopyFrom (*value, doc->GetAllocator ());
+    }
+  doc->PushBack (new_doc, doc->GetAllocator ());
+}
+
 /*
 * db_json_contains_duplicate_keys () - Checks at parse time if a json document has duplicate keys
 *
@@ -1813,7 +1841,7 @@ db_json_resolve_json_parent (JSON_DOC &doc, const std::string &path, JSON_VALUE 
     }
 
   const std::string &last_token = path.substr (found + 1);
-  bool token_is_valid_index = db_json_path_is_token_valid_array_index (last_token);
+  bool token_is_valid_index = db_json_path_is_token_valid_array_index (last_token, false);
 
   if (parent_json_type == DB_JSON_ARRAY && !token_is_valid_index)
     {
@@ -2041,20 +2069,23 @@ db_json_remove_func (JSON_DOC &doc, const char *raw_path)
  * transform path strings into regexes by escaping special characters '$', '[', '.', ']' and
  * replace [*], .*, ** with patterns that match accordingly
  *
- * paths (in): json path strings
- * regs (in/out): resulting regexes
+ * paths (in): json paths
+ * regs (in/out): resulting regex patterns
+ * match_exactly (in) : whether to match whole string or to match any prefix
  *
  */
 int
-db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<std::regex> &regs)
+db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<std::string> &regs, bool match_exactly)
 {
-  for (auto &wild_card : paths)
+  regs.reserve (paths.size ());
+  for (auto &path : paths)
     {
       std::stringstream ss;
-      ss << '"';
-      for (size_t i = 0; i < wild_card.length (); ++i)
+      // match start of string
+      ss << "^";
+      for (size_t i = 0; i < path.length (); ++i)
 	{
-	  switch (wild_card[i])
+	  switch (path[i])
 	    {
 	    case '$':
 	      ss << "\\$";
@@ -2063,47 +2094,60 @@ db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<std::
 	      ss << "\\[";
 	      break;
 	    case ']':
-	      ss << "\\]";
+	      ss << "]";
 	      break;
 	    case '.':
 	      ss << "\\.";
 	      break;
+	    // todo: probably most of the special characters for POSIX regex language should be escaped
+	    case '^':
+	      ss << "\\^";
+	      break;
+	    case '|':
+	      ss << "\\|";
+	      break;
+	    case '\\':
+	      ss << "\\\\";
+	      break;
 	    case '*':
-	      if (i < wild_card.length () - 1 && wild_card[i + 1] == '*')
+	      if (i < path.length () - 1 && path[i + 1] == '*')
 		{
 		  // wild_card '**'. Match any string
-		  ss << "[([:alnum:]|\\.|\\[|\\])]+";
+		  ss << ".*";
 		  ++i;
 		}
-	      else if (i > 0 && wild_card[i - 1] == '[')
+	      else if (i > 0 && path[i - 1] == '[')
 		{
 		  // wild_card '[*]'. Match numbers only
-		  ss << "[0-9]+";
+		  ss << "([0-9])+";
+		}
+	      else if (i > 0 && path[i - 1] == '.')
+		{
+		  // wild_card '.*'. Match any string between quotes (path must have been validated before)
+		  // match strings between quotes that do not contain unescaped quotes
+		  // todo: there are other characters that require same treatment as quotes;
+		  // they can be treated by applying the same pattern
+		  ss << "\"(([^\"\\])*|([\\]([\\][\\])*\")*)*\"";
 		}
 	      else
 		{
-		  // wild_card '.*'. Match alphanumerics only
-		  ss << "[[:alnum:]]+";
+		  // Not a wildcard '$."*"'
+		  ss << "\\*";
 		}
 	      break;
 	    default:
-	      ss << wild_card[i];
+	      ss << path[i];
 	      break;
 	    }
 	}
-      ss << "[^[:space:]]*" << '"';
+      if (!match_exactly)
+	{
+	  ss << "([^$])*";
+	}
+      // match end of string
+      ss << "$";
 
-      try
-	{
-	  regs.push_back (std::regex (ss.str ()));
-	}
-      catch (std::regex_error &e)
-	{
-	  // regex compilation exception
-	  (void) e;
-	  assert (false);
-	  return ER_FAILED;
-	}
+      regs.emplace_back (ss.str ());
     }
   return NO_ERROR;
 }
@@ -2115,44 +2159,69 @@ db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<std::
  * doc (in)                : json document
  * pattern (in)            : pattern to match against
  * esc_char (in)           : escape sequence used to match the pattern
- * starting_paths (in)     : prefixes used in the search
  * paths (out)             : full paths found
+ * regs (in)               : compiled regexes
+ * find_all (in)           : whether we need to gather all matches
  */
 int
-db_json_search_func (JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALUE *esc_char, bool find_all,
-		     std::vector<std::string> &starting_paths, std::vector<std::string> &paths)
+db_json_search_func (JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALUE *esc_char, std::vector<std::string> &paths,
+		     const std::vector<std::string> &regs, bool find_all)
 {
-  for (auto &starting_path : starting_paths)
-    {
-      JSON_DOC *resolved = nullptr;
-      // todo: improve by avoiding copying a sub-document into resolved
-      int error_code = db_json_extract_document_from_path (&doc, starting_path.c_str (), resolved);
+  std::unordered_set<std::string> paths_gathered;
+  const map_func_type &f_search = [&regs, &paths, pattern, esc_char, find_all, &paths_gathered] (const JSON_VALUE &jv,
+				  const std::string &crt_path, bool &stop) -> int
+  {
+    if (!jv.IsString ())
+      {
+	return NO_ERROR;
+      }
 
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
-	}
+    const char *json_str = jv.GetString ();
+    DB_VALUE str_val;
 
-      if (resolved == nullptr)
-	{
-	  continue;
-	}
+    db_make_null (&str_val);
+    int error_code = db_make_string (&str_val, (char *) json_str);
+    if (error_code)
+      {
+	return error_code;
+      }
 
-      bool found = false;
-      error_code = db_json_search_helper (*resolved, pattern, esc_char, find_all, starting_path, found, paths);
-      db_json_delete_doc (resolved);
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
-	}
+    int match;
+    error_code = db_string_like (&str_val, pattern, esc_char, &match);
+    if (error_code != NO_ERROR || !match)
+      {
+	return error_code;
+      }
 
-      if (found && !find_all)
-	{
-	  break;
-	}
-    }
+    for (std::size_t i = 0; i < regs.size (); ++i)
+      {
+	bool path_compatible;
+	int error_code = regex_matches (regs[i].c_str (), crt_path.c_str (), CUB_REG_EXTENDED, &path_compatible);
+	if (error_code)
+	  {
+	    ASSERT_ERROR ();
+	    stop = true;
+	    return error_code;
+	  }
 
-  return NO_ERROR;
+	if (path_compatible && paths_gathered.find (crt_path) == paths_gathered.end ())
+	  {
+	    paths.push_back (crt_path);
+	    paths_gathered.insert (crt_path);
+	    if (!find_all)
+	      {
+		stop = true;
+		return NO_ERROR;
+	      }
+	  }
+      }
+
+    return NO_ERROR;
+    // no regex was matched
+  };
+
+  JSON_PATH_MAPPER json_search_walker (f_search);
+  return json_search_walker.WalkDocument (doc);
 }
 
 /*
@@ -2228,7 +2297,13 @@ db_json_array_shift_values (const JSON_DOC *value, JSON_DOC &doc, const std::str
       return error_code;
     }
 
-  assert (resulting_json_parent != NULL && resulting_json_parent->IsArray ());
+  assert (resulting_json_parent != NULL);
+  if (!resulting_json_parent->IsArray ())
+    {
+      assert (resulting_json_parent->IsObject ());
+      return db_json_er_set_expected_other_type (ARG_FILE_LINE, path, DB_JSON_OBJECT, DB_JSON_ARRAY);
+    }
+
 
   int last_token_index = std::stoi (path.substr (path.find_last_of ('/') + 1));
 
@@ -2782,17 +2857,13 @@ db_json_get_path_type (std::string &path_string)
 {
   db_json_normalize_path (path_string);
 
-  if (path_string.empty ())
+  if (path_string.empty () || path_string[0] != '$')
     {
-      return JSON_PATH_TYPE::JSON_PATH_EMPTY;
-    }
-  else if (path_string[0] == '$')
-    {
-      return JSON_PATH_TYPE::JSON_PATH_SQL_JSON;
+      return JSON_PATH_TYPE::JSON_PATH_POINTER;
     }
   else
     {
-      return JSON_PATH_TYPE::JSON_PATH_POINTER;
+      return JSON_PATH_TYPE::JSON_PATH_SQL_JSON;
     }
 }
 
@@ -2826,10 +2897,11 @@ db_json_build_path_special_chars (const JSON_PATH_TYPE &json_path_type,
  * db_json_split_path_by_delimiters ()
  * path (in)
  * delim (in) supports multiple delimiters
+ * allow_empty (in) whether to allow empty tokens e.g. json_pointer -> json_path needs to allow empty tokens
  * returns a vector with tokens split by delimiters from the given string
  */
 static std::vector<std::string>
-db_json_split_path_by_delimiters (const std::string &path, const std::string &delim)
+db_json_split_path_by_delimiters (const std::string &path, const std::string &delim, bool allow_empty)
 {
   std::vector<std::string> tokens;
   std::size_t start = 0;
@@ -2858,11 +2930,10 @@ db_json_split_path_by_delimiters (const std::string &path, const std::string &de
       else if (path[end] != '"' || ((end >= 1) && path[end - 1] != '\\'))
 	{
 	  const std::string &substring = path.substr (start, end - start);
-	  if (!substring.empty ())
+	  if (!substring.empty () || allow_empty)
 	    {
 	      tokens.push_back (substring);
 	    }
-
 	  start = end + 1;
 	}
 
@@ -2870,7 +2941,7 @@ db_json_split_path_by_delimiters (const std::string &path, const std::string &de
     }
 
   const std::string &substring = path.substr (start, end);
-  if (!substring.empty ())
+  if (!substring.empty () || allow_empty)
     {
       tokens.push_back (substring);
     }
@@ -2878,7 +2949,7 @@ db_json_split_path_by_delimiters (const std::string &path, const std::string &de
   std::size_t tokens_size = tokens.size ();
   for (std::size_t i = 0; i < tokens_size; i++)
     {
-      if (db_json_path_is_token_valid_array_index (tokens[i]))
+      if (db_json_path_is_token_valid_array_index (tokens[i], false))
 	{
 	  db_json_remove_leading_zeros_index (tokens[i]);
 	}
@@ -2888,16 +2959,160 @@ db_json_split_path_by_delimiters (const std::string &path, const std::string &de
 }
 
 /*
+ * json_path_strip_whitespaces () - Remove whitespaces in json_path
+ *
+ * sql_path (in/out)       : json path
+ * NOTE: This can be only called after validation because spaces are not allowed in some cases (e.g. $[1 1] is illegal)
+ */
+static void
+json_path_strip_whitespaces (std::string &sql_path)
+{
+  std::string result;
+  result.reserve (sql_path.length () + 1);
+
+  bool skip_spaces = true;
+  bool unescaped_backslash = false;
+  for (size_t i = 0; i < sql_path.length (); ++i)
+    {
+      if (i > 0 && !unescaped_backslash && sql_path[i] == '"')
+	{
+	  skip_spaces = !skip_spaces;
+	}
+
+      if (sql_path[i] == '\\')
+	{
+	  unescaped_backslash = !unescaped_backslash;
+	}
+      else
+	{
+	  unescaped_backslash = false;
+	}
+
+      if (skip_spaces && sql_path[i] == ' ')
+	{
+	  continue;
+	}
+
+      result.push_back (sql_path[i]);
+    }
+
+  sql_path = std::move (result);
+}
+
+/*
+* skip_whitespaces  () - Advance offset to first non_space
+*
+* return              : offset of first non_space character
+* sql_path (in)       : path
+* pos (in)            : starting position offset
+*/
+static std::size_t
+skip_whitespaces (const std::string &path, std::size_t pos)
+{
+  for (; pos < path.length () && path[pos] == ' '; ++pos);
+  return pos;
+}
+
+/*
+ * db_json_path_is_token_valid_quoted_object_key () - Check if a quoted object_key is valid
+ *
+ * return                  : true/false
+ * path (in)               : path to be checked
+ * token_begin (in/out)    : beginning offset of the token, is replaced with beginning of the next token or path.length ()
+ */
+static bool
+db_json_path_is_token_valid_quoted_object_key (const std::string &path, std::size_t &token_begin)
+{
+  std::size_t i = token_begin + 1;
+  bool unescaped_backslash = false;
+  std::size_t backslash_nr = 0;
+  // stop at unescaped '"'; note that there should be an odd nr of backslashes before '"' for it to be escaped
+  for (; i < path.length () && (path[i] != '"' || unescaped_backslash); ++i)
+    {
+      if (path[i] == '\\')
+	{
+	  unescaped_backslash = !unescaped_backslash;
+	}
+      else
+	{
+	  unescaped_backslash = false;
+	}
+    }
+
+  if (i == path.length ())
+    {
+      return false;
+    }
+
+  token_begin = skip_whitespaces (path, i + 1);
+  return true;
+}
+
+/*
+ * db_json_path_is_token_valid_unquoted_object_key () - Validate and quote an object_key
+ *
+ * return               : validation result
+ * path (in/out)        : path to be checked
+ * token_begin (in/out) : is replaced with beginning of the next token or path.length ()
+ */
+static bool
+db_json_path_quote_and_validate_unquoted_object_key (std::string &path, std::size_t &token_begin)
+{
+  std::size_t i = token_begin;
+  bool validation_result = db_json_path_is_token_valid_unquoted_object_key (path, i);
+  if (validation_result)
+    {
+      // we normalize object_keys by quoting them - e.g. $.objectkey we represent as $."objectkey"
+      path.insert (token_begin, "\"");
+      path.insert (i + 1, "\"");
+
+      token_begin = skip_whitespaces (path, i + 2 /* we inserted 2 quotation marks */);
+    }
+  return validation_result;
+}
+
+/*
+ * db_json_path_is_token_valid_unquoted_object_key () - Check if an unquoted object_key is valid
+ *
+ * return                  : true/false
+ * path (in)               : path to be checked
+ * token_begin (in/out)    : beginning offset of the token, is replaced with first char's position
+ *                           outside of the current valid token
+ */
+static bool
+db_json_path_is_token_valid_unquoted_object_key (const std::string &path, std::size_t &token_begin)
+{
+  if (path == "")
+    {
+      return false;
+    }
+  std::size_t i = token_begin;
+
+  // todo: this needs change. Besides alphanumerics, object keys can be valid ECMAScript identifiers as defined in
+  // http://www.ecma-international.org/ecma-262/5.1/#sec-7.6
+  if (i < path.length () && !std::isalpha (static_cast<unsigned char> (path[i])))
+    {
+      return false;
+    }
+
+  ++i;
+  for (; i < path.length () && std::isalnum (static_cast<unsigned char> (path[i])); ++i);
+
+  token_begin = i;
+
+  return true;
+}
+
+/*
  * db_json_sql_path_is_valid () - Check if a given path is a SQL valid path
  *
  * return                  : true/false
- * sql_path (in)           : path to be checked
+ * sql_path (in/out)       : path to be checked
+ * allow_wild_cards (in)   : whether json_path wildcards are allowed
  */
 static bool
-db_json_sql_path_is_valid (std::string &sql_path)
+db_json_sql_path_is_valid (std::string &sql_path, bool allow_wildcards)
 {
-  std::size_t end_bracket_offset;
-
   // skip leading white spaces
   db_json_normalize_path (sql_path);
   if (sql_path.empty ())
@@ -2912,63 +3127,75 @@ db_json_sql_path_is_valid (std::string &sql_path)
       return false;
     }
   // start parsing path string by skipping dollar character
-  for (std::size_t i = 1; i < sql_path.length (); ++i)
+  std::size_t i = skip_whitespaces (sql_path, 1);
+  while (i < sql_path.length ())
     {
-      // to begin a next token we have only 2 possibilities:
+      // to begin a next token we have only 3 possibilities:
       // with dot we start an object name
       // with bracket we start an index
+      // with * we have the beginning of a '**' wildcard
       switch (sql_path[i])
 	{
 	case '[':
-	  end_bracket_offset = sql_path.find_first_of (']', ++i);
+	{
+	  std::size_t end_bracket_offset;
+	  i = skip_whitespaces (sql_path, i + 1);
+
+	  end_bracket_offset = sql_path.find_first_of (']', i);
 	  if (end_bracket_offset == std::string::npos)
 	    {
-	      // unacceptable
-	      assert (false);
 	      return false;
 	    }
-	  if (!db_json_path_is_token_valid_array_index (sql_path, i, end_bracket_offset))
+	  if (!db_json_path_is_token_valid_array_index (sql_path, allow_wildcards, i, end_bracket_offset))
 	    {
-	      // expecting a valid index
 	      return false;
 	    }
-	  // move to ']'. i will be incremented.
-	  i = end_bracket_offset;
+	  i = skip_whitespaces (sql_path, end_bracket_offset + 1);
+	  break;
+	}
+	case '.':
+	  i = skip_whitespaces (sql_path, i + 1);
+	  if (i == sql_path.length ())
+	    {
+	      return false;
+	    }
+	  switch (sql_path[i])
+	    {
+	    case '"':
+	      if (!db_json_path_is_token_valid_quoted_object_key (sql_path, i))
+		{
+		  return false;
+		}
+	      break;
+	    case '*':
+	      if (!allow_wildcards)
+		{
+		  return false;
+		}
+	      i = skip_whitespaces (sql_path, i + 1);
+	      break;
+	    default:
+	      // unquoted object_keys
+	      if (!db_json_path_quote_and_validate_unquoted_object_key (sql_path, i))
+		{
+		  return false;
+		}
+	      break;
+	    }
 	  break;
 
-	case '.':
-	  i++;
-
-	  if (sql_path[i] == '"')
+	case '*':
+	  // only ** wildcard is allowed in this case
+	  if (!allow_wildcards || ++i >= sql_path.length () || sql_path[i] != '*')
 	    {
-	      i++;
-
-	      // right now this method accepts escaped quotes with backslash
-	      while (i < sql_path.length () && (sql_path[i] != '"' || sql_path[i - 1] == '\\'))
-		{
-		  i++;
-		}
-
-	      if (i == sql_path.length ())
-		{
-		  return false;
-		}
+	      return false;
 	    }
-	  else
+
+	  i = skip_whitespaces (sql_path, i + 1);
+	  if (i == sql_path.length ())
 	    {
-	      // we can have an object name without quotes only if the first character is a letter
-	      // otherwise we need to put in between quotes
-	      if (!std::isalpha (sql_path[i++]))
-		{
-		  return false;
-		}
-
-	      while (i < sql_path.length () && (sql_path[i] != '.' && sql_path[i] != '['))
-		{
-		  i++;
-		}
-
-	      i--;
+	      // ** wildcard requires suffix
+	      return false;
 	    }
 	  break;
 
@@ -2976,7 +3203,7 @@ db_json_sql_path_is_valid (std::string &sql_path)
 	  return false;
 	}
     }
-
+  json_path_strip_whitespaces (sql_path);
   return true;
 }
 
@@ -3005,7 +3232,7 @@ db_json_er_set_path_does_not_exist (const char *file_name, const int line_no, co
 
   // get the json body
   char *raw_json_body = db_json_get_raw_json_body_from_document (doc);
-  PRIVATE_UNIQUE_PTR<char> unique_ptr (raw_json_body, NULL);
+  cubmem::private_unique_ptr<char> unique_ptr (raw_json_body, NULL);
 
   er_set (ER_ERROR_SEVERITY, file_name, line_no, ER_JSON_PATH_DOES_NOT_EXIST, 2,
 	  sql_path_string.c_str (), raw_json_body);
@@ -3098,20 +3325,25 @@ db_json_replace_token_special_chars (std::string &token,
  * db_json_convert_pointer_to_sql_path ()
  * pointer_path (in)
  * sql_path_out (out): the result
+ * allow_wildcards (in):
  * A pointer path is converted to SQL standard path
  * Example: /0/name1/name2/2 -> $[0]."name1"."name2"[2]
  */
-static int
-db_json_convert_pointer_to_sql_path (const char *pointer_path, std::string &sql_path_out)
+int
+db_json_convert_pointer_to_sql_path (const char *pointer_path, std::string &sql_path_out, bool allow_wildcards)
 {
   std::string pointer_path_string (pointer_path);
   JSON_PATH_TYPE json_path_type = db_json_get_path_type (pointer_path_string);
 
-  if (json_path_type == JSON_PATH_TYPE::JSON_PATH_EMPTY
-      || json_path_type == JSON_PATH_TYPE::JSON_PATH_SQL_JSON)
+  if (json_path_type == JSON_PATH_TYPE::JSON_PATH_SQL_JSON)
     {
       // path is not JSON path format; consider it SQL path.
       sql_path_out = pointer_path_string;
+      if (!db_json_sql_path_is_valid (sql_path_out, allow_wildcards))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
+	  return ER_JSON_INVALID_PATH;
+	}
       return NO_ERROR;
     }
 
@@ -3122,23 +3354,52 @@ db_json_convert_pointer_to_sql_path (const char *pointer_path, std::string &sql_
 
   // starting the conversion of path
   // first we need to split into tokens
-  std::vector<std::string> tokens = db_json_split_path_by_delimiters (pointer_path_string, db_Json_pointer_delimiters);
+  std::vector<std::string> tokens = db_json_split_path_by_delimiters (pointer_path_string, db_Json_pointer_delimiters,
+				    true);
 
-  for (std::string &token : tokens)
+  for (std::size_t i = 0; i < tokens.size (); ++i)
     {
-      if (db_json_path_is_token_valid_array_index (token))
+      if (i == 0 )
+	{
+	  // todo: can special json pointer characters be present in the first token?
+	  if (!tokens[0].empty ())
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
+	      return ER_JSON_INVALID_PATH;
+	    }
+	  else
+	    {
+	      continue;
+	    }
+	}
+
+      if (db_json_path_is_token_valid_array_index (tokens[i], false))
 	{
 	  sql_path_out += "[";
-	  sql_path_out += token;
+	  sql_path_out += tokens[i];
 	  sql_path_out += "]";
 	}
       else
 	{
-	  sql_path_out += ".\"";
+	  db_json_replace_token_special_chars (tokens[i], special_chars);
+	  char *quoted_token;
+	  int quoted_size;
+	  db_string_escape (tokens[i].c_str (), tokens[i].size (), &quoted_token, &quoted_size);
+	  tokens[i].resize (quoted_size);
+	  tokens[i].assign (quoted_token, quoted_size - 1);
+	  db_private_free (NULL, quoted_token);
+
+	  std::size_t token_pos = 0;
+	  // todo: clarify escaping things e.g. '"' character in the token needs to be escaped for sure
+	  if (!db_json_path_is_token_valid_quoted_object_key (tokens[i], token_pos))
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
+	      return ER_JSON_INVALID_PATH;
+	    }
+
+	  sql_path_out += ".";
 	  // replace special characters if necessary based on mapper
-	  db_json_replace_token_special_chars (token, special_chars);
-	  sql_path_out += token;
-	  sql_path_out += "\"";
+	  sql_path_out += tokens[i];
 	}
     }
 
@@ -3192,8 +3453,8 @@ db_json_remove_leading_zeros_index (std::string &index)
  * An sql_path is converted to rapidjson standard path
  * Example: $[0]."name1".name2[2] -> /0/name1/name2/2
  */
-static int
-db_json_convert_sql_path_to_pointer (const char *sql_path, std::string &json_pointer_out)
+int
+db_json_convert_sql_path_to_pointer (const char *sql_path, std::string &json_pointer_out, bool allow_wildcards)
 {
   std::string sql_path_string (sql_path);
   JSON_PATH_TYPE json_path_type = db_json_get_path_type (sql_path_string);
@@ -3206,7 +3467,7 @@ db_json_convert_sql_path_to_pointer (const char *sql_path, std::string &json_poi
       return NO_ERROR;
     }
 
-  if (!db_json_sql_path_is_valid (sql_path_string))
+  if (!db_json_sql_path_is_valid (sql_path_string, allow_wildcards))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
       return ER_JSON_INVALID_PATH;
@@ -3217,7 +3478,8 @@ db_json_convert_sql_path_to_pointer (const char *sql_path, std::string &json_poi
   db_json_build_path_special_chars (json_path_type, special_chars);
 
   // first we need to split into tokens
-  std::vector<std::string> tokens = db_json_split_path_by_delimiters (sql_path_string, db_Json_sql_path_delimiters);
+  std::vector<std::string> tokens = db_json_split_path_by_delimiters (sql_path_string, db_Json_sql_path_delimiters,
+				    false);
 
   // build json pointer
   json_pointer_out = "";
@@ -3231,22 +3493,83 @@ db_json_convert_sql_path_to_pointer (const char *sql_path, std::string &json_poi
 }
 
 /*
- * db_json_get_paths_helper () - Recursive function to get the paths from a json object matching a pattern
+ * db_json_path_unquote_object_keys () - Unquote, when possible, object_keys of the json_path
  *
- * obj (in)                : current object
- * pattern (in)            : the pattern to search for
- * esc_char (in)           : esc_char used to find values that match the pattern
- * find_all (in)           : whether to continue search after finding a match
- * sql_path (in)           : current path in the json search tree
- * paths (out)             : the paths found, whose pointed values match the pattern
+ * sql_path (in/out)       : path
  */
-static int
-db_json_search_helper (JSON_DOC &obj, const DB_VALUE *pattern, const DB_VALUE *esc_char, bool find_all,
-		       const std::string &sql_path, bool &found, std::vector<std::string> &paths)
+void
+db_json_path_unquote_object_keys (std::string &sql_path)
 {
-  JSON_SEARCHER json_search_walker (sql_path, pattern, esc_char, find_all, paths);
+  // note: sql_path should not have wildcards, it comes as output of json_search function
+  auto tokens = db_json_split_path_by_delimiters (sql_path, ".[", false);
+  std::size_t crt_idx = 0;
+  std::string res = "$";
 
-  return json_search_walker.WalkDocument (obj);
+  assert (!tokens.empty () && tokens[0] == "$");
+  for (std::size_t i = 1; i < tokens.size (); ++i)
+    {
+      if (tokens[i][0] == '"')
+	{
+	  res += ".";
+	  std::string unquoted = tokens[i].substr (1, tokens[i].length () - 2);
+	  std::size_t start = 0;
+
+	  if (db_json_path_is_token_valid_unquoted_object_key (unquoted, start) && start >= unquoted.length ())
+	    {
+	      res.append (unquoted);
+	    }
+	  else
+	    {
+	      res += tokens[i];
+	    }
+	}
+      else
+	{
+	  res += "[";
+	  res += tokens[i];
+	}
+    }
+
+  sql_path = std::move (res);
+}
+
+/*
+ * db_json_path_contains_wildcard () - Check whether a given sql_path contains wildcards
+ *
+ * sql_path (in)       : null-terminated string
+ */
+bool
+db_json_path_contains_wildcard (const char *sql_path)
+{
+  if (sql_path == NULL)
+    {
+      return false;
+    }
+
+  bool unescaped_backslash = false;
+  bool in_quotes = false;
+  for (std::size_t i = 0; sql_path[i] != '\0'; ++i)
+    {
+      if (!in_quotes && sql_path[i] == '*')
+	{
+	  return true;
+	}
+
+      if (!unescaped_backslash && sql_path[i] == '"')
+	{
+	  in_quotes = !in_quotes;
+	}
+
+      if (sql_path[i] == '\\')
+	{
+	  unescaped_backslash = !unescaped_backslash;
+	}
+      else
+	{
+	  unescaped_backslash = false;
+	}
+    }
+  return false;
 }
 
 /*
@@ -3254,7 +3577,7 @@ db_json_search_helper (JSON_DOC &obj, const DB_VALUE *pattern, const DB_VALUE *e
  *
  * obj (in)                : current object
  * sql_path (in)           : the path for the current object
- * paths (in)              : vector where we will store all the paths
+ * paths (in/out)          : vector where we will store all the paths
  */
 static void
 db_json_get_paths_helper (const JSON_VALUE &obj, const std::string &sql_path, std::vector<std::string> &paths)
@@ -3595,7 +3918,7 @@ db_value_to_json_path (const DB_VALUE *path_value, FUNC_TYPE fcode, const char *
   if (!TP_IS_CHAR_TYPE (db_value_domain_type (path_value)))
     {
       int error_code = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 2, qdump_function_type_string (fcode), "STRING");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 2, fcode_get_uppercase_name (fcode), "STRING");
       return error_code;
     }
   *path_str = db_get_string (path_value);
@@ -3615,8 +3938,15 @@ db_value_to_json_doc (const DB_VALUE &db_val, REFPTR (JSON_DOC, json_doc))
 {
   int error_code = NO_ERROR;
 
+  if (db_value_is_null (&db_val))
+    {
+      json_doc = db_json_allocate_doc ();
+      db_json_make_document_null (json_doc);
+      return NO_ERROR;
+    }
+
   json_doc = NULL;
-  switch (DB_VALUE_DOMAIN_TYPE (&db_val))
+  switch (db_value_domain_type (&db_val))
     {
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
@@ -3640,8 +3970,9 @@ db_value_to_json_doc (const DB_VALUE &db_val, REFPTR (JSON_DOC, json_doc))
 
     default:
       // todo: more specific error
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
-      return ER_QSTR_INVALID_DATA_TYPE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_EXPECTING_JSON_DOC, 1,
+	      pr_type_name (db_value_domain_type (&db_val)));
+      return ER_JSON_EXPECTING_JSON_DOC;
     }
 }
 
@@ -3659,7 +3990,7 @@ db_value_to_json_value (const DB_VALUE &db_val, REFPTR (JSON_DOC, json_val))
 {
   json_val = NULL;
 
-  if (DB_IS_NULL (&db_val))
+  if (db_value_is_null (&db_val))
     {
       json_val = db_json_allocate_doc ();
       db_json_make_document_null (json_val);
@@ -3674,6 +4005,15 @@ db_value_to_json_value (const DB_VALUE &db_val, REFPTR (JSON_DOC, json_val))
     case DB_TYPE_VARNCHAR:
       json_val = db_json_allocate_doc ();
       db_json_set_string_to_doc (json_val, db_get_string (&db_val));
+      break;
+
+    case DB_TYPE_ENUMERATION:
+      json_val = db_json_allocate_doc ();
+      {
+	std::string enum_str;
+	enum_str.append (db_get_enum_string (&db_val), (size_t) db_get_enum_string_size (&db_val));
+	db_json_set_string_to_doc (json_val, enum_str.c_str ());
+      }
       break;
 
     default:
@@ -3695,13 +4035,15 @@ db_value_to_json_value (const DB_VALUE &db_val, REFPTR (JSON_DOC, json_val))
  * db_json_path_is_token_valid_array_index () - verify if token is a valid array index. token can be a substring of
  *                                              first argument (by default the entire argument).
  *
- * return     : true if all token characters are digits (valid index)
- * str (in)   : token or the string that token belong to
- * start (in) : start of token; default is start of string
- * end (in)   : end of token; default is end of string; 0 is considered default value
+ * return          : true if all token characters are digits followed by spaces (valid index)
+ * str (in)        : token or the string that token belong to
+ * allow_wildcards : whether json_path wildcards are allowed
+ * start (in)      : start of token; default is start of string
+ * end (in)        : end of token; default is end of string; 0 is considered default value
  */
 static bool
-db_json_path_is_token_valid_array_index (const std::string &str, std::size_t start, std::size_t end)
+db_json_path_is_token_valid_array_index (const std::string &str, bool allow_wildcards, std::size_t start,
+    std::size_t end)
 {
   // json pointer will corespond the symbol '-' to JSON_ARRAY length
   // so if we have the json {"A":[1,2,3]} and the path /A/-
@@ -3716,15 +4058,29 @@ db_json_path_is_token_valid_array_index (const std::string &str, std::size_t sta
       // default is end of string
       end = str.length ();
     }
-  for (auto it = str.cbegin () + start; it < str.cbegin () + end; it++)
+
+  if (start == end)
     {
-      if (!std::isdigit (*it))
+      return false;
+    }
+
+  std::size_t last_non_space = end - 1;
+  for (; last_non_space > start && str[last_non_space] == ' '; --last_non_space);
+  if (allow_wildcards && start == last_non_space && str[start] == '*')
+    {
+      return true;
+    }
+
+  ++last_non_space;
+  for (auto it = str.cbegin () + start; it < str.cbegin () + last_non_space; ++it)
+    {
+      if (!std::isdigit (static_cast<unsigned char> (*it)))
 	{
 	  return false;
 	}
     }
 
-  // all are digits; this is a valid array index
+  // this is a valid array index
   return true;
 }
 
@@ -3756,6 +4112,7 @@ db_json_doc_wrap_as_array (JSON_DOC &doc)
 int
 JSON_WALKER::WalkDocument (JSON_DOC &document)
 {
+  m_stop = false;
   return WalkValue (db_json_doc_to_value (document));
 }
 
@@ -3764,11 +4121,19 @@ JSON_WALKER::WalkValue (JSON_VALUE &value)
 {
   int error_code = NO_ERROR;
 
+  if (m_stop)
+    {
+      return NO_ERROR;
+    }
   error_code = CallBefore (value);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
       return error_code;
+    }
+  if (m_stop)
+    {
+      return NO_ERROR;
     }
 
   if (value.IsObject ())
@@ -3776,11 +4141,19 @@ JSON_WALKER::WalkValue (JSON_VALUE &value)
       for (auto it = value.MemberBegin (); it != value.MemberEnd (); ++it)
 	{
 	  CallOnKeyIterate (it->name);
+	  if (m_stop)
+	    {
+	      return NO_ERROR;
+	    }
 	  error_code = WalkValue (it->value);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
 	      return error_code;
+	    }
+	  if (m_stop)
+	    {
+	      return NO_ERROR;
 	    }
 	}
     }
@@ -3789,11 +4162,19 @@ JSON_WALKER::WalkValue (JSON_VALUE &value)
       for (JSON_VALUE *it = value.Begin (); it != value.End (); ++it)
 	{
 	  CallOnArrayIterate ();
+	  if (m_stop)
+	    {
+	      return NO_ERROR;
+	    }
 	  error_code = WalkValue (*it);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
 	      return error_code;
+	    }
+	  if (m_stop)
+	    {
+	      return NO_ERROR;
 	    }
 	}
     }

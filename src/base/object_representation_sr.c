@@ -543,7 +543,7 @@ orc_subclasses_from_record (RECDES * record, int *array_size, OID ** array_ptr)
 	}
       insert = i;
 
-      /* 
+      /*
        * check for array extension.
        * Add one in the comparison since a NULL_OID is set at the end of the
        * array
@@ -574,7 +574,7 @@ orc_subclasses_from_record (RECDES * record, int *array_size, OID ** array_ptr)
 	  max = newsize;
 	}
 
-      /* Advance past the set header, the domain size, and the "object" domain. Note that this assumes we are not using 
+      /* Advance past the set header, the domain size, and the "object" domain. Note that this assumes we are not using
        * a bound bit array even though this is a fixed width homogeneous set.  Probably not a good assumption. */
       ptr = subset + OR_SET_HEADER_SIZE + OR_INT_SIZE + OR_INT_SIZE;
 
@@ -779,7 +779,7 @@ or_class_subclasses (RECDES * record, int *array_size, OID ** array_ptr)
 	}
       insert = i;
 
-      /* 
+      /*
        * check for array extension.
        * Add one in the comparison since a NULL_OID is set at the end of the
        * array
@@ -811,7 +811,7 @@ or_class_subclasses (RECDES * record, int *array_size, OID ** array_ptr)
 	  max = newsize;
 	}
 
-      /* Advance past the set header, the domain size, and the "object" domain. Note that this assumes we are not using 
+      /* Advance past the set header, the domain size, and the "object" domain. Note that this assumes we are not using
        * a bound bit array even though this is a fixed width homogeneous set.  Probably not a good assumption. */
       ptr = subset + OR_SET_HEADER_SIZE + OR_INT_SIZE + OR_INT_SIZE;
 
@@ -896,7 +896,7 @@ or_get_hierarchy_helper (THREAD_ENTRY * thread_p, OID * source_class, OID * clas
 
   if (!found)
     {
-      /* check if we are dealing with a partition class in which the unique constraint stands as a local index and each 
+      /* check if we are dealing with a partition class in which the unique constraint stands as a local index and each
        * partition has it's own btree */
       if (or_rep->has_partition_info > 0 && partition_local_index != NULL)
 	{
@@ -908,7 +908,7 @@ or_get_hierarchy_helper (THREAD_ENTRY * thread_p, OID * source_class, OID * clas
 	}
     }
 
-  /* 
+  /*
    *  For each subclass, recurse ...
    *  Unfortunately, this information is not available in the OR_CLASSREP
    *  structure, so we'll digress into the RECDES structure for it.  It
@@ -924,7 +924,7 @@ or_get_hierarchy_helper (THREAD_ENTRY * thread_p, OID * source_class, OID * clas
 
   if (nsubs)
     {
-      /* Advance past the set header, the domain size, and the "object" domain. Note that this assumes we are not using 
+      /* Advance past the set header, the domain size, and the "object" domain. Note that this assumes we are not using
        * a bound bit array even though this is a fixed width homogeneous set.  Probably not a good assumption. */
       ptr = subset + OR_SET_HEADER_SIZE + OR_INT_SIZE + OR_INT_SIZE;
 
@@ -1863,7 +1863,7 @@ or_install_btids_class (OR_CLASSREP * rep, BTID * id, DB_SEQ * constraint_seq, i
   index->func_index_info = NULL;
   index->index_status = OR_NO_INDEX;
 
-  /* 
+  /*
    * For each attribute ID in the set,
    *   Extract the attribute ID,
    *   Find the matching attribute and insert the pointer into the array.
@@ -2171,7 +2171,7 @@ or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq, BTREE_T
       return;
     }
 
-  /* 
+  /*
    *  Assign the B-tree ID.
    *  For the first attribute name in the constraint,
    *    cache the constraint in the attribute.
@@ -2188,7 +2188,7 @@ or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq, BTREE_T
       (void) or_install_btids_attribute (rep, att_id, &id);
     }
 
-  /* 
+  /*
    *  Assign the B-tree ID to the class.
    *  Cache the constraint in the class with pointer to the attributes.
    *  This is just a different way to store the BTID's.
@@ -2219,7 +2219,7 @@ or_install_btids (OR_CLASSREP * rep, DB_SEQ * props)
   int i;
   int n_btids;
 
-  /* 
+  /*
    *  The first thing to do is to determine how many unique and index
    *  BTIDs we have.  We need this up front so that we can allocate
    *  the OR_INDEX structure in the class (rep).
@@ -2903,7 +2903,7 @@ or_get_old_representation (RECDES * record, int repid, int do_indexes)
   rep->class_attrs = NULL;
   rep->indexes = NULL;
 
-  /* at this point, disk_rep points to the beginning of the representation object and "fixed" points at the first fixed 
+  /* at this point, disk_rep points to the beginning of the representation object and "fixed" points at the first fixed
    * width attribute. */
 
   n_fixed = OR_GET_INT (fixed + ORC_REP_FIXED_COUNT_OFFSET);
@@ -2934,7 +2934,7 @@ or_get_old_representation (RECDES * record, int repid, int do_indexes)
    * OR_VAR_TABLE_ELEMENT_OFFSET. */
   attset = disk_rep + OR_VAR_TABLE_ELEMENT_OFFSET (disk_rep, ORC_REP_ATTRIBUTES_INDEX);
 
-  /* Calculate the offset to the first fixed width attribute in instances of this class.  Save the start of this region 
+  /* Calculate the offset to the first fixed width attribute in instances of this class.  Save the start of this region
    * so we can calculate the total fixed witdh size. */
   start = offset = 0;
 
@@ -3164,7 +3164,7 @@ or_get_all_representation (RECDES * record, bool do_indexes, int *count)
 	  OID_SET_NULL (&(att->classoid));
 	  BTID_SET_NULL (&(att->index));
 
-	  /* Extract the full domain for this attribute, think about caching here it will add some time that may not be 
+	  /* Extract the full domain for this attribute, think about caching here it will add some time that may not be
 	   * necessary. */
 	  if (OR_VAR_TABLE_ELEMENT_LENGTH (repatt, ORC_REPATT_DOMAIN_INDEX) == 0)
 	    {
@@ -3752,7 +3752,7 @@ or_find_diskattr (RECDES * record, int attr_id)
     {
       if (type_attr == 0)
 	{
-	  /* 
+	  /*
 	   * INSTANCE ATTRIBUTES
 	   *
 	   * find the start of the "set_of(attribute)" fix/variable attribute
@@ -3763,7 +3763,7 @@ or_find_diskattr (RECDES * record, int attr_id)
 	}
       else if (type_attr == 1)
 	{
-	  /* 
+	  /*
 	   * SHARED ATTRIBUTES
 	   *
 	   * find the start of the "set_of(shared attributes)" attribute
@@ -3774,7 +3774,7 @@ or_find_diskattr (RECDES * record, int attr_id)
 	}
       else
 	{
-	  /* 
+	  /*
 	   * CLASS ATTRIBUTES
 	   *
 	   * find the start of the "set_of(class attributes)" attribute
@@ -3786,7 +3786,7 @@ or_find_diskattr (RECDES * record, int attr_id)
 
       for (i = 0, found = false; i < n_attrs && found == false; i++)
 	{
-	  /* 
+	  /*
 	   * diskatt will now be pointing at the offset table for this attribute.
 	   * this is logically the "start" of this nested object.
 	   *
@@ -3834,14 +3834,14 @@ or_get_attr_string (RECDES * record, int attr_id, int attr_index, char **string,
   diskatt = (char *) or_find_diskattr (record, attr_id);
   if (diskatt != NULL)
     {
-      /* 
+      /*
        * diskatt now points to the attribute that we are interested in.
        * Get the attribute name.
        */
       offset = OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, attr_index);
       attr = diskatt + offset;
 
-      /* 
+      /*
        * Get boundary of the attribute, that is, the offset of next attribute.
        * Regardless the next attribute exists or not,
        * the "offset_next" is always retrievable.
@@ -3849,7 +3849,7 @@ or_get_attr_string (RECDES * record, int attr_id, int attr_index, char **string,
        */
       offset_next = OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, attr_index + 1);
 
-      /* 
+      /*
        * kludge kludge kludge
        * This is now an encoded "varchar" string, we need to skip over the
        * length before returning it.  Note that this also depends on the

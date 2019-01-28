@@ -27,6 +27,7 @@
 #include "dbtype.h"
 #include "error_code.h"
 #include "error_manager.h"
+#include "memory_private_allocator.hpp"
 #include "object_primitive.h"
 
 #include <cassert>
@@ -50,7 +51,7 @@ namespace cubxasl
 
 	case JSON_TABLE_THROW_ERROR:
 	{
-	  PRIVATE_UNIQUE_PTR<char> unique_ptr_json_body (db_json_get_raw_json_body_from_document (&input), NULL);
+	  cubmem::private_unique_ptr<char> unique_ptr_json_body (db_json_get_raw_json_body_from_document (&input), NULL);
 
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_TABLE_ON_ERROR_INCOMP_DOMAIN, 4,
 		  unique_ptr_json_body.get (), m_path, m_column_name,
@@ -129,7 +130,7 @@ namespace cubxasl
       JSON_DOC *docp = NULL;
       TP_DOMAIN_STATUS status_cast = TP_DOMAIN_STATUS::DOMAIN_COMPATIBLE;
 
-      error_code = db_json_extract_document_from_path (&input, m_path, docp);
+      error_code = db_json_extract_document_from_path (&input, std::vector<std::string> (1, m_path), docp);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -176,7 +177,7 @@ namespace cubxasl
       bool result = false;
       TP_DOMAIN_STATUS status_cast = TP_DOMAIN_STATUS::DOMAIN_COMPATIBLE;
 
-      error_code = db_json_contains_path (&input, m_path, result);
+      error_code = db_json_contains_path (&input, std::vector<std::string> (1, m_path), false, result);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -198,8 +199,6 @@ namespace cubxasl
     int
     column::evaluate_ordinality (size_t ordinality)
     {
-      TP_DOMAIN_STATUS status_cast = TP_DOMAIN_STATUS::DOMAIN_COMPATIBLE;
-
       assert (m_domain->type->id == DB_TYPE_INTEGER);
 
       db_make_int (m_output_value_pointer, ordinality);
@@ -244,19 +243,20 @@ namespace cubxasl
     node::init ()
     {
       m_path = NULL;
-      m_ordinality = 1;
+      init_ordinality ();
       m_output_columns = NULL;
       m_output_columns_size = 0;
       m_nested_nodes = NULL;
       m_nested_nodes_size = 0;
       m_id = 0;
       m_iterator = NULL;
-      m_expand_type = json_table_expand_type::JSON_TABLE_NO_EXPAND;
+      m_is_iterable_node = false;
     }
 
     void
     node::clear_columns (bool is_final_clear)
     {
+      init_ordinality ();
       for (size_t i = 0; i < m_output_columns_size; ++i)
 	{
 	  column *output_column = &m_output_columns[i];
@@ -300,62 +300,19 @@ namespace cubxasl
 	}
     }
 
-    bool
-    node::str_ends_with (const std::string &str, const std::string &end)
-    {
-      return end.size () <= str.size () && str.compare (str.size () - end.size (), end.size (), end) == 0;
-    }
-
-    bool
-    node::check_need_expand () const
-    {
-      return m_expand_type != json_table_expand_type::JSON_TABLE_NO_EXPAND;
-    }
-
-    void
-    node::set_parent_path ()
-    {
-      if (!check_need_expand ())
-	{
-	  assert (false);
-	  return;
-	}
-
-      if (m_expand_type == json_table_expand_type::JSON_TABLE_ARRAY_EXPAND)
-	{
-	  std::string s (m_path);
-	  s.assign (s.substr (0, s.size () - 3));
-
-	  // will only shrink
-
-	  strcpy (m_path, s.c_str ());
-	  m_path[s.size ()] = 0;
-	}
-      else if (m_expand_type == json_table_expand_type::JSON_TABLE_OBJECT_EXPAND)
-	{
-	  std::string s (m_path);
-	  s.assign (s.substr (0, s.size () - 2));
-
-	  // will only shrink
-	  strcpy (m_path, s.c_str ());
-	  m_path[s.size ()] = 0;
-	}
-    }
-
     void
     node::init_iterator ()
     {
-      if (check_need_expand ())
+      if (m_is_iterable_node)
 	{
-	  if (m_expand_type == json_table_expand_type::JSON_TABLE_ARRAY_EXPAND)
-	    {
-	      m_iterator = db_json_create_iterator (DB_JSON_TYPE::DB_JSON_ARRAY);
-	    }
-	  else if (m_expand_type == json_table_expand_type::JSON_TABLE_OBJECT_EXPAND)
-	    {
-	      m_iterator = db_json_create_iterator (DB_JSON_TYPE::DB_JSON_OBJECT);
-	    }
+	  m_iterator = db_json_create_iterator (DB_JSON_TYPE::DB_JSON_ARRAY);
 	}
+    }
+
+    void
+    node::init_ordinality()
+    {
+      m_ordinality = 1;
     }
 
     spec_node::spec_node ()

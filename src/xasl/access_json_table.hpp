@@ -81,7 +81,7 @@ namespace cubxasl
       size_t m_nested_nodes_size;
       size_t m_id;                            // identifier for each node
       JSON_ITERATOR *m_iterator;
-      json_table_expand_type m_expand_type;
+      bool m_is_iterable_node;
 
       node (void);
 
@@ -89,11 +89,8 @@ namespace cubxasl
       void clear_columns (bool is_final_clear);
       void clear_iterators (bool is_final_clear);
       void clear_tree (bool is_final_clear);
-
-      bool check_need_expand () const;
-      static bool str_ends_with (const std::string &str, const std::string &end);
-      void set_parent_path ();
       void init_iterator ();
+      void init_ordinality ();
     };
 
     struct spec_node

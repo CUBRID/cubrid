@@ -24,55 +24,32 @@
 #ident "$Id$"
 
 #include "object_print.h"
-#include "config.h"
-#include "db_private_allocator.hpp"
-#include "db_value_printer.hpp"
-#include "mem_block.hpp"
 
-#include <stdlib.h>
-#include <float.h>
-#include <string.h>
-#include <ctype.h>
-#include <assert.h>
-
-
-#include "error_manager.h"
-#if !defined (SERVER_MODE)
+#include "authenticate.h"
 #include "chartype.h"
 #include "class_description.hpp"
-#include "misc_string.h"
 #include "dbi.h"
-#include "schema_manager.h"
-#include "trigger_description.hpp"
-#include "trigger_manager.h"
-#include "virtual_object.h"
-#include "set_object.h"
-#include "parse_tree.h"
-#include "parser.h"
-#include "transaction_cl.h"
+#include "dbtype.h"
+#include "error_manager.h"
+#include "locator_cl.h"
+#include "message_catalog.h"
 #include "msgcat_help.hpp"
 #include "network_interface_cl.h"
 #include "object_description.hpp"
-#include "object_printer.hpp"
 #include "object_print_util.hpp"
-#include "class_object.h"
-#include "work_space.h"
-#endif /* !defined (SERVER_MODE) */
+#include "object_printer.hpp"
+#include "schema_manager.h"
 #include "string_buffer.hpp"
-#include "dbtype.h"
+#include "trigger_description.hpp"
+#include "trigger_manager.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
-#if !defined(SERVER_MODE)
-
 #define MATCH_TOKEN(string, token) \
   ((string == NULL) ? 0 : intl_mbs_casecmp(string, token) == 0)
 
-extern unsigned int db_on_server;
-
-static char **obj_print_read_section (FILE * fp);
 static char *obj_print_next_token (char *ptr, char *buf);
 
 /* This will be in one of the language directories under $CUBRID/msg */
@@ -728,53 +705,6 @@ help_print_info (const char *command, FILE * fpp)
     }
 }
 
-#endif /* defined (SERVER_MODE) */
-
-/*
- * help_fprint_value() -  Prints a description of the contents of a DB_VALUE
- *                        to the file
- *   return: none
- *   fp(in) : FILE stream pointer
- *   value(in) : value to print
- */
-void
-help_fprint_value (THREAD_ENTRY * thread_p, FILE * fp, const DB_VALUE * value)
-{
-/* *INDENT-OFF* */
-  db_private_allocator<char> private_allocator{thread_p};
-  string_buffer sb{
-    [&private_allocator] (mem::block& block, size_t len)
-    {
-      mem::block b{block.dim + len, private_allocator.allocate (block.dim + len)};
-      memcpy (b.ptr, block.ptr, block.dim);
-      private_allocator.deallocate (block.ptr);
-      block = std::move (b);
-    },
-    [&private_allocator] (mem::block& block)
-    {
-      private_allocator.deallocate (block.ptr);
-      block = {};
-    }
-  };
-/* *INDENT-ON* */
-
-  db_value_printer printer (sb);
-  printer.describe_value (value);
-  fprintf (fp, "%.*s", (int) sb.len (), sb.get_buffer ());
-}
-
-/*
- * help_sprint_value() - This places a printed representation of the supplied value in a buffer.
- *   value(in) : value to describe
- *   sb(in/out) : auto resizable buffer to contain description
- */
-void
-help_sprint_value (const DB_VALUE * value, string_buffer & sb)
-{
-  db_value_printer printer (sb);
-  printer.describe_value (value);
-}
-
 /*
  * help_fprint_describe_comment() - Print description of a comment to a file.
  *   return: N/A
@@ -783,7 +713,6 @@ help_sprint_value (const DB_VALUE * value, string_buffer & sb)
 void
 help_fprint_describe_comment (FILE * fp, const char *comment)
 {
-#if !defined (SERVER_MODE)
   string_buffer sb;
   object_printer printer (sb);
 
@@ -792,5 +721,4 @@ help_fprint_describe_comment (FILE * fp, const char *comment)
 
   printer.describe_comment (comment);
   fprintf (fp, "%.*s", int (sb.len ()), sb.get_buffer ());
-#endif /* !defined (SERVER_MODE) */
 }

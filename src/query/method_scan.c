@@ -44,6 +44,7 @@
 #endif /* defined (SA_MODE) */
 
 #include "dbtype.h"
+#include "object_primitive.h"
 
 #if !defined(SERVER_MODE)
 extern unsigned int db_on_server;
@@ -202,7 +203,7 @@ method_close_scan (THREAD_ENTRY * thread_p, METHOD_SCAN_BUFFER * scan_buffer_p)
 #ifdef SERVER_MODE
   VACOMM_BUFFER *vacomm_buffer_p;
 
-  /* 
+  /*
    * If the method scan is being closed before the client is done, the status could be zero (1st buffer not received)
    * or METHOD_SUCCESS (last buffer not received). */
 
@@ -292,7 +293,7 @@ method_invoke_from_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
     {
       return ER_FAILED;
     }
-  /* 
+  /*
    * Make sure that these containers get initialized with meaningful
    * bits.  It's possible to wind up in method_clear_scan_buffer() without ever
    * having actually received any method results, and if that happens
@@ -474,7 +475,7 @@ method_receive_results_for_stand_alone (METHOD_SCAN_BUFFER * scan_buffer_p)
 
 	  if (meth_sig->class_name != NULL)
 	    {
-	      /* Don't call the method if the object is NULL or it has been deleted.  A method call on a NULL object is 
+	      /* Don't call the method if the object is NULL or it has been deleted.  A method call on a NULL object is
 	       * NULL. */
 	      if (!DB_IS_NULL (scan_buffer_p->valptrs[0]))
 		{

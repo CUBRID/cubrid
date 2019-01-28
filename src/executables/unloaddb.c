@@ -155,7 +155,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 
   sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
-  /* 
+  /*
    * Open db
    */
   if (user == NULL || user[0] == '\0')
@@ -301,7 +301,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 	}
     }
 
-  /* 
+  /*
    * Shutdown db
    */
   error = db_shutdown ();

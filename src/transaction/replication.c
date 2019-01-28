@@ -261,9 +261,9 @@ repl_add_update_lsa (THREAD_ENTRY * thread_p, const OID * inst_oid)
 	}
     }
 
-  if (find == false)
+  if (find == false && prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
     {
-      er_log_debug (ARG_FILE_LINE, "can't find out the UPDATE LSA");
+      _er_log_debug (ARG_FILE_LINE, "can't find out the UPDATE LSA");
     }
 
   return error;
@@ -412,14 +412,14 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
 	}
       break;
     case RVREPL_DATA_UPDATE:
-      /* 
+      /*
        * for the update case, this function is called before the heap
        * file update, so we don't need to LSA for update log here.
        */
       LSA_SET_NULL (&repl_rec->lsa);
       break;
     case RVREPL_DATA_DELETE:
-      /* 
+      /*
        * for the delete case, we don't need to find out the target
        * LSA. Delete is operation is possible without "After Image"
        */
@@ -534,15 +534,18 @@ repl_log_insert_statement (THREAD_ENTRY * thread_p, REPL_INFO_SBR * repl_info)
   ptr = or_pack_string_with_length (ptr, repl_info->db_user, strlen3);
   ptr = or_pack_string_with_length (ptr, repl_info->sys_prm_context, strlen4);
 
-  er_log_debug (ARG_FILE_LINE,
-		"repl_log_insert_statement: repl_info_sbr { type %d, name %s, stmt_txt %s, user %s, "
-		"sys_prm_context %s }\n", repl_info->statement_type, repl_info->name, repl_info->stmt_text,
-		repl_info->db_user, repl_info->sys_prm_context);
+  if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
+    {
+      _er_log_debug (ARG_FILE_LINE,
+		     "repl_log_insert_statement: repl_info_sbr { type %d, name %s, stmt_txt %s, user %s, "
+		     "sys_prm_context %s }\n", repl_info->statement_type, repl_info->name, repl_info->stmt_text,
+		     repl_info->db_user, repl_info->sys_prm_context);
+    }
   LSA_COPY (&repl_rec->lsa, &tdes->tail_lsa);
 
   if (tdes->fl_mark_repl_recidx != -1 && tdes->cur_repl_record >= tdes->fl_mark_repl_recidx)
     {
-      /* 
+      /*
        * statement replication does not check log conflicts, so
        * use repl_start_flush_mark with caution.
        */

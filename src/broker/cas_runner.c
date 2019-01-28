@@ -985,7 +985,7 @@ read_conf (void)
   fp = fopen (conf_file, "r");
   if (fp == NULL)
     {
-      /* 
+      /*
        * fprintf(stderr, "fopen error [%s]\n", CAS_RUNNER_CONF); return -1; */
       return 0;
     }

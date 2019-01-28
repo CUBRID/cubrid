@@ -1467,9 +1467,8 @@ dwb_slots_hash_insert (THREAD_ENTRY * thread_p, VPID * vpid, DWB_SLOT * slot, in
 	      VPID_SET_NULL (&slots_hash_entry->slot->vpid);
 	      fileio_initialize_res (thread_p, slots_hash_entry->slot->io_page, IO_PAGESIZE);
 
-	      _er_log_debug (ARG_FILE_LINE,
-			     "Found same page with same LSA in same block - %d - at positions (%d, %d) \n",
-			     slots_hash_entry->slot->position_in_block, slot->position_in_block);
+	      dwb_log ("Found same page with same LSA in same block - %d - at positions (%d, %d) \n",
+		       slots_hash_entry->slot->position_in_block, slot->position_in_block);
 	    }
 	  else
 	    {
@@ -1485,10 +1484,9 @@ dwb_slots_hash_insert (THREAD_ENTRY * thread_p, VPID * vpid, DWB_SLOT * slot, in
 		  assert ((old_block->version < new_block->version)
 			  || (old_block->version == new_block->version && old_block->block_no < new_block->block_no));
 
-		  _er_log_debug (ARG_FILE_LINE,
-				 "Found same page with same LSA in 2 different blocks old = (%d, %d), new = (%d,%d) \n",
-				 old_block_no, slots_hash_entry->slot->position_in_block, new_block->block_no,
-				 slot->position_in_block);
+		  dwb_log ("Found same page with same LSA in 2 different blocks old = (%d, %d), new = (%d,%d) \n",
+			   old_block_no, slots_hash_entry->slot->position_in_block, new_block->block_no,
+			   slot->position_in_block);
 		}
 #endif
 	    }
@@ -4109,7 +4107,7 @@ static bool
 dwb_is_flush_block_daemon_available (void)
 {
 #if defined (SERVER_MODE)
-  return dwb_flush_block_daemon != NULL;
+  return prm_get_bool_value (PRM_ID_ENABLE_DWB_FLUSH_THREAD) == true && dwb_flush_block_daemon != NULL;
 #else
   return false;
 #endif
@@ -4123,7 +4121,7 @@ static bool
 dwb_is_flush_block_helper_daemon_available (void)
 {
 #if defined (SERVER_MODE)
-  return dwb_flush_block_helper_daemon != NULL;
+  return prm_get_bool_value (PRM_ID_ENABLE_DWB_FLUSH_THREAD) == true && dwb_flush_block_helper_daemon != NULL;
 #else
   return false;
 #endif
@@ -4138,7 +4136,8 @@ static bool
 dwb_flush_block_daemon_is_running (void)
 {
 #if defined (SERVER_MODE)
-  return ((dwb_flush_block_daemon != NULL) && (dwb_flush_block_daemon->is_running ()));
+  return (prm_get_bool_value (PRM_ID_ENABLE_DWB_FLUSH_THREAD) == true && (dwb_flush_block_daemon != NULL)
+	  && (dwb_flush_block_daemon->is_running ()));
 #else
   return false;
 #endif /* SERVER_MODE */
@@ -4153,7 +4152,8 @@ static bool
 dwb_flush_block_helper_daemon_is_running (void)
 {
 #if defined (SERVER_MODE)
-  return ((dwb_flush_block_helper_daemon != NULL) && (dwb_flush_block_helper_daemon->is_running ()));
+  return (prm_get_bool_value (PRM_ID_ENABLE_DWB_FLUSH_THREAD) == true && (dwb_flush_block_helper_daemon != NULL)
+	  && (dwb_flush_block_helper_daemon->is_running ()));
 #else
   return false;
 #endif /* SERVER_MODE */

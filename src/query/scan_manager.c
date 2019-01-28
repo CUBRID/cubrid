@@ -371,7 +371,7 @@ scan_restore_range_details (ISS_RANGE_DETAILS * rdp_src, INDX_SCAN_ID * isidp_de
 static SCAN_CODE
 scan_get_next_iss_value (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SCAN_ID * isidp)
 {
-  /* we are being called either before any other btree range search, or after somebody finished a real range search and 
+  /* we are being called either before any other btree range search, or after somebody finished a real range search and
    * wants to advance to the next value for the first column of the index. */
 
   INDEX_SKIP_SCAN *iss = NULL;
@@ -719,7 +719,7 @@ scan_init_indx_coverage (THREAD_ENTRY * thread_p, int coverage_enabled, OUTPTR_L
       goto exit_on_error;
     }
 
-  /* 
+  /*
    * Covering index scan needs large-size memory buffer in order to decrease
    * the number of times doing stop-and-resume during btree_range_search.
    * To do it, QFILE_FLAG_USE_KEY_BUFFER is introduced. If the flag is set,
@@ -1709,14 +1709,7 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	    }
 	}
 
-      if (dom->type->index_lengthval == NULL)
-	{
-	  buf_size += dom->type->disksize;
-	}
-      else
-	{
-	  buf_size += (*(dom->type->index_lengthval)) (val);
-	}
+      buf_size += dom->type->get_index_size_of_value (val);
     }
 
   /* add more domain to setdomain for partial key */
@@ -1790,7 +1783,7 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	    }
 	}
 
-      (*((dom->type)->index_writeval)) (&buf, val);
+      dom->type->index_writeval (&buf, val);
       OR_ENABLE_BOUND_BIT (nullmap_ptr, i);
     }
 
@@ -2255,7 +2248,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
 	  key_cnt = iscan_id->key_cnt = check_key_vals (key_vals, key_cnt, merge_key_ranges);
 	}
 
-      /* if is order by skip and first column is descending, the order will be reversed so reverse the key ranges to be 
+      /* if is order by skip and first column is descending, the order will be reversed so reverse the key ranges to be
        * desc. */
       if ((indx_infop->range_type == R_KEYLIST || indx_infop->range_type == R_RANGELIST)
 	  && ((indx_infop->orderby_desc && indx_infop->orderby_skip)
@@ -2273,7 +2266,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
       iscan_id->curr_keyno = 0;
     }
 
-  /* 
+  /*
    * init vars to execute B+tree key range search
    */
 
@@ -3853,7 +3846,7 @@ scan_open_json_table_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, int group
   DB_TYPE single_node_type = DB_TYPE_NULL;
 
   /* scan type is JSON_TABLE SCAN */
-  scan_id->type = S_JSON_TABLE_SCAN;
+  assert (scan_id->type == S_JSON_TABLE_SCAN);
 
   /* initialize SCAN_ID structure */
   /* mvcc_select_lock_needed = false, fixed = true */
@@ -5712,7 +5705,7 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 			      return S_ERROR;
 			    }
 			}
-		      /* if this the current scan is not done (i.e. the buffer was full and we need to fetch more rows, 
+		      /* if this the current scan is not done (i.e. the buffer was full and we need to fetch more rows,
 		       * do not go to the next value */
 		      go_to_next_iss_value = BTREE_END_OF_SCAN (&isidp->bt_scan)
 			&& (isidp->indx_info->range_type == R_KEY || isidp->indx_info->range_type == R_RANGE);

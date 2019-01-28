@@ -49,9 +49,9 @@
 #define MAX_ELEMENT_NAME  30
 
 #define MAX_ENCODE_LEN  10
-/* 
+/*
  * start_xxxxxxxxx - XML element start function
- *		       function be called when an element starts 
+ *		       function be called when an element starts
  *
  * return: 0 validation OK enter this element , 1 validation NOK do not enter
  *         -1 error abort parsing
@@ -62,7 +62,7 @@ typedef int (*ELEM_START_FUNC) (void *, const char **);
 
 /*
  * end_xxxxxxxxx - XML element end function
- *		     function be called when an element starts 
+ *		     function be called when an element starts
  *
  * return: 0 parser OK, non-zero value if parser NOK and stop parsing
  * (data): user data
@@ -72,7 +72,7 @@ typedef int (*ELEM_END_FUNC) (void *, const char *);
 
 /*
  * handle_xxxxxxxxx - XML element data content handle function
- *			function be called for element data content 
+ *			function be called for element data content
  *
  * return: 0 handling OK, non-zero if handling NOK and stop parsing
  * (data): user data

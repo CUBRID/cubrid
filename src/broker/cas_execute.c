@@ -74,6 +74,7 @@
 #include "dbi.h"
 #include "dbtype.h"
 #include "memory_alloc.h"
+#include "object_primitive.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -5062,7 +5063,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 	str = db_get_json_raw_body (val);
 	bytes_size = strlen (str);
 
-	/* no matter which column type is returned to client (JSON or STRING, depending on client version), 
+	/* no matter which column type is returned to client (JSON or STRING, depending on client version),
 	 * the data is always encoded as string */
 	add_res_data_string (net_buf, str, bytes_size, 0, CAS_SCHEMA_DEFAULT_CHARSET, &data_size);
 	db_private_free (NULL, str);
@@ -7182,7 +7183,7 @@ prepare_column_list_info_set (DB_SESSION * session, char prepare_flag, T_QUERY_R
 	      null_type_column[num_cols] = 1;
 	    }
 
-	  /* 
+	  /*
 	   * if (cas_type == CCI_U_TYPE_CHAR && precision < 0)
 	   *   precision = 0;
 	   */
@@ -8586,7 +8587,7 @@ sch_imported_keys (T_NET_BUF * net_buf, char *fktable_name, void **result)
   if (fktable_obj == NULL)
     {
       /* The followings are possible situations.  - A table matching fktable_name does not exist.  - User has no
-       * authorization on the table.  - Other error we do not expect. In these cases, we will send an empty result. And 
+       * authorization on the table.  - Other error we do not expect. In these cases, we will send an empty result. And
        * this rule is also applied to CCI_SCH_EXPORTED_KEYS and CCI_SCH_CROSS_REFERENCE. */
       goto send_response;
     }
@@ -8779,7 +8780,7 @@ sch_exported_keys_or_cross_reference (T_NET_BUF * net_buf, bool find_cross_ref, 
 	    }
 	}
 
-      /* Traverse all constraints in foreign table to find a foreign key referring the primary key. If there is no one, 
+      /* Traverse all constraints in foreign table to find a foreign key referring the primary key. If there is no one,
        * return an error. */
       fk_attr = NULL;
       for (fk_const = db_get_constraints (fktable_obj); fk_const != NULL; fk_const = db_constraint_next (fk_const))
