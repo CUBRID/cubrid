@@ -9822,14 +9822,14 @@ void
 sloaddb_install_class (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   /* *INDENT-OFF* */
-  cubpacking::packer packer (request, (size_t) reqlen);
+  cubpacking::unpacker unpacker (request, (size_t) reqlen);
   cubload::batch batch;
 
   cubload::class_id clsid;
-  packer.unpack_int (&clsid);
+  unpacker.unpack_int (clsid);
 
   std::string buf;
-  packer.unpack_string (buf);
+  unpacker.unpack_string (buf);
   /* *INDENT-ON* */
 
   load_session *session = NULL;
@@ -9853,11 +9853,11 @@ sloaddb_load_batch (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
   /* *INDENT-OFF* */
-  cubpacking::packer packer (request, (size_t) reqlen);
+  cubpacking::unpacker unpacker (request, (size_t) reqlen);
   cubload::batch batch;
   /* *INDENT-ON* */
 
-  batch.unpack (&packer);
+  batch.unpack (unpacker);
 
   load_session *session = NULL;
   session_get_load_session (thread_p, session);
@@ -9886,7 +9886,7 @@ sloaddb_fetch_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   /* *INDENT-OFF* */
   cubpacking::packer packer;
   /* *INDENT-ON* */
-  size_t data_reply_size = loaddb_stats.get_packed_size (&packer);
+  size_t data_reply_size = loaddb_stats.get_packed_size (packer);
 
   char *data_reply = (char *) db_private_alloc (thread_p, data_reply_size);
   if (data_reply == NULL)
@@ -9895,12 +9895,12 @@ sloaddb_fetch_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  packer.init (data_reply, data_reply_size);
+  packer.set_buffer (data_reply, data_reply_size);
 
   ptr = or_pack_int (reply, (int) data_reply_size);
   or_pack_int (ptr, error_code);
 
-  loaddb_stats.pack (&packer);
+  loaddb_stats.pack (packer);
 
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), data_reply,
 				     (int) data_reply_size);

@@ -10151,7 +10151,7 @@ loaddb_install_class (const cubload::class_id clsid, const std::string & buf)
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  packer.init (request, request_size);
+  packer.set_buffer (request, request_size);
   packer.pack_int (clsid);
   packer.pack_string (buf);
 
@@ -10185,11 +10185,9 @@ loaddb_load_batch (const cubload::batch & batch)
 
   /* *INDENT-OFF* */
   cubpacking::packer packer;
-  // TODO remove const_cast when packer will be separated into packer and unpacker
-  cubload::batch &batch_ = const_cast <cubload::batch &> (batch);
   /* *INDENT-ON* */
 
-  size_t request_size = batch_.get_packed_size (&packer);
+  size_t request_size = batch.get_packed_size (packer);
   char *request = (char *) malloc (request_size);
   if (request == NULL)
     {
@@ -10197,8 +10195,8 @@ loaddb_load_batch (const cubload::batch & batch)
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  packer.init (request, request_size);
-  batch_.pack (&packer);
+  packer.set_buffer (request, request_size);
+  batch.pack (packer);
 
   req_error = net_client_request (NET_SERVER_LD_LOAD_BATCH, request, (int) request_size, reply,
 				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
@@ -10242,9 +10240,9 @@ loaddb_fetch_stats (load_stats * stats)
       return error_code;
     }
 
-  cubpacking::packer packer (data_reply, data_reply_size);
+  cubpacking::unpacker unpacker (data_reply, data_reply_size);
   stats->clear ();
-  stats->unpack (&packer);
+  stats->unpack (unpacker);
 
   return 0;
 #else /* CS_MODE */

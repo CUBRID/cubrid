@@ -88,45 +88,30 @@ namespace cubload
     return *this;
   }
 
-  int
-  batch::pack (cubpacking::packer *serializator)
+  void
+  batch::pack (cubpacking::packer &serializator) const
   {
-    serializator->pack_int (m_clsid);
-    serializator->pack_int (m_batch_id);
-    serializator->pack_string (m_content);
-
-    return NO_ERROR;
+    serializator.pack_int (m_clsid);
+    serializator.pack_int (m_batch_id);
+    serializator.pack_string (m_content);
   }
 
-  int
-  batch::unpack (cubpacking::packer *serializator)
+  void
+  batch::unpack (cubpacking::unpacker &deserializator)
   {
-    serializator->unpack_int (&m_clsid);
-    serializator->unpack_int (&m_batch_id);
-    serializator->unpack_string (m_content);
-
-    return NO_ERROR;
-  }
-
-  bool
-  batch::is_equal (const packable_object *other)
-  {
-    (void) other;
-
-    // used only in test context
-    assert (false);
-    return true;
+    deserializator.unpack_int (m_clsid);
+    deserializator.unpack_int (m_batch_id);
+    deserializator.unpack_string (m_content);
   }
 
   size_t
-  batch::get_packed_size (cubpacking::packer *serializator)
+  batch::get_packed_size (cubpacking::packer &serializator) const
   {
     size_t size = 0;
 
-    size += serializator->get_packed_int_size (size);
-    size += serializator->get_packed_int_size (size);
-    size += serializator->get_packed_short_size (size);
-    size += serializator->get_packed_string_size (m_content, size);
+    size += serializator.get_packed_int_size (size);
+    size += serializator.get_packed_int_size (size);
+    size += serializator.get_packed_string_size (m_content, size);
 
     return size;
   }
@@ -182,59 +167,42 @@ namespace cubload
     is_completed = false;
   }
 
-  int
-  stats::pack (cubpacking::packer *serializator)
+  void
+  stats::pack (cubpacking::packer &serializator) const
   {
-    serializator->pack_bigint (&total_objects);
-    serializator->pack_bigint (&last_commit);
-    serializator->pack_int (errors);
-    serializator->pack_string (error_message);
-    serializator->pack_int ((int) is_failed);
-    serializator->pack_int ((int) is_completed);
-
-    return NO_ERROR;
+    serializator.pack_int (defaults);
+    serializator.pack_bigint (total_objects);
+    serializator.pack_bigint (last_commit);
+    serializator.pack_int (errors);
+    serializator.pack_string (error_message);
+    serializator.pack_bool (is_failed);
+    serializator.pack_bool (is_completed);
   }
 
-  int
-  stats::unpack (cubpacking::packer *serializator)
+  void
+  stats::unpack (cubpacking::unpacker &deserializator)
   {
-    serializator->unpack_bigint (&total_objects);
-    serializator->unpack_bigint (&last_commit);
-    serializator->unpack_int (&errors);
-    serializator->unpack_string (error_message);
-
-    int is_failed_;
-    serializator->unpack_int (&is_failed_);
-    is_failed = (bool) is_failed_;
-
-    int is_completed_;
-    serializator->unpack_int (&is_completed_);
-    is_completed = (bool) is_completed_;
-
-    return NO_ERROR;
-  }
-
-  bool
-  stats::is_equal (const packable_object *other)
-  {
-    (void) other;
-
-    // used only in test context
-    assert (false);
-    return true;
+    deserializator.unpack_int (defaults);
+    deserializator.unpack_bigint (total_objects);
+    deserializator.unpack_bigint (last_commit);
+    deserializator.unpack_int (errors);
+    deserializator.unpack_string (error_message);
+    deserializator.unpack_bool (is_failed);
+    deserializator.unpack_bool (is_completed);
   }
 
   size_t
-  stats::get_packed_size (cubpacking::packer *serializator)
+  stats::get_packed_size (cubpacking::packer &serializator) const
   {
     size_t size = 0;
 
-    size += serializator->get_packed_bigint_size (size); // total_objects
-    size += serializator->get_packed_bigint_size (size); // last_commit
-    size += serializator->get_packed_int_size (size); // errors
-    size += serializator->get_packed_string_size (error_message, size);
-    size += serializator->get_packed_int_size (size); // is_failed
-    size += serializator->get_packed_int_size (size); // is_completed
+    size += serializator.get_packed_int_size (size); // defaults
+    size += serializator.get_packed_bigint_size (size); // total_objects
+    size += serializator.get_packed_bigint_size (size); // last_commit
+    size += serializator.get_packed_int_size (size); // errors
+    size += serializator.get_packed_string_size (error_message, size);
+    size += serializator.get_packed_bool_size (size); // is_failed
+    size += serializator.get_packed_bool_size (size); // is_completed
 
     return size;
   }

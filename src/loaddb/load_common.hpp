@@ -57,10 +57,9 @@ namespace cubload
     batch (const batch &copy) = default; // Not CopyConstructible // TODO CBRD-22660 we should not allow copy
     batch &operator= (const batch &copy) = delete; // Not CopyAssignable
 
-    int pack (cubpacking::packer *serializator) override;
-    int unpack (cubpacking::packer *serializator) override;
-    bool is_equal (const packable_object *other) override;
-    size_t get_packed_size (cubpacking::packer *serializator) override;
+    void pack (cubpacking::packer &serializator) const override;
+    void unpack (cubpacking::unpacker &deserializator) override;
+    size_t get_packed_size (cubpacking::packer &serializator) const override;
   };
 
   using batch_handler = std::function<int (const batch &)>;
@@ -222,10 +221,9 @@ namespace cubload
 
     void clear ();
 
-    int pack (cubpacking::packer *serializator) override;
-    int unpack (cubpacking::packer *serializator) override;
-    bool is_equal (const packable_object *other) override;
-    size_t get_packed_size (cubpacking::packer *serializator) override;
+    void pack (cubpacking::packer &serializator) const override;
+    void unpack (cubpacking::unpacker &deserializator) override;
+    size_t get_packed_size (cubpacking::packer &serializator) const override;
   };
 
   /*
