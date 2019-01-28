@@ -36,54 +36,30 @@ namespace cubload
   // forward declaration
   class session;
 
-  class server_base_loader
-  {
-    public:
-      server_base_loader () = delete;
-      server_base_loader (session &session, error_handler &error_handler);
-      virtual ~server_base_loader () = default;
-
-    protected:
-      session &m_session;
-      error_handler &m_error_handler;
-      cubthread::entry *m_thread_ref;
-
-      class_id m_clsid;
-
-      bool m_attrinfo_started;
-      heap_cache_attrinfo m_attrinfo;
-
-      bool m_scancache_started;
-      heap_scancache m_scancache;
-
-      void start_scancache (const OID &class_oid);
-      void stop_scancache ();
-
-      void start_attrinfo (const OID &class_oid);
-      void stop_attrinfo ();
-  };
-
-  class server_class_installer : protected server_base_loader, public class_installer
+  class server_class_installer : public class_installer
   {
     public:
       server_class_installer () = delete;
       server_class_installer (session &session, error_handler &error_handler);
       ~server_class_installer () override = default;
 
-      void init (class_id clsid) override;
+      void set_class_id (class_id clsid) override;
 
       void check_class (const char *class_name, int class_id) override;
       int install_class (const char *class_name) override;
       void install_class (string_type *class_name, class_command_spec_type *cmd_spec) override;
 
     private:
-      void locate_class (const char *class_name, OID &class_oid);
+      session &m_session;
+      error_handler &m_error_handler;
 
-      void register_class (const char *class_name, string_type *attr_list);
-      void register_class_attributes (class_entry *cls_entry, string_type *attr_list);
+      class_id m_clsid;
+
+      void locate_class (const char *class_name, OID &class_oid);
+      void register_class_with_attributes (const char *class_name, string_type *attr_list);
   };
 
-  class server_object_loader : protected server_base_loader, public object_loader
+  class server_object_loader : public object_loader
   {
     public:
       server_object_loader () = delete;
@@ -101,7 +77,24 @@ namespace cubload
       void process_constant (constant_type *cons, const attribute &attr);
       void process_monetary_constant (constant_type *cons, tp_domain *domain, db_value *db_val);
 
-      class_entry *m_class_entry;
+      void start_scancache (const OID &class_oid);
+      void stop_scancache ();
+
+      void start_attrinfo (const OID &class_oid);
+      void stop_attrinfo ();
+
+      session &m_session;
+      error_handler &m_error_handler;
+      cubthread::entry *m_thread_ref;
+
+      class_id m_clsid;
+
+      const class_entry *m_class_entry;
+      bool m_attrinfo_started;
+      heap_cache_attrinfo m_attrinfo;
+
+      bool m_scancache_started;
+      heap_scancache m_scancache;
   };
 
 } // namespace cubload

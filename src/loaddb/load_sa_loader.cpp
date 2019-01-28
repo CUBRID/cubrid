@@ -645,7 +645,7 @@ namespace cubload
 {
 
   void
-  sa_class_installer::init (class_id clsid)
+  sa_class_installer::set_class_id (class_id clsid)
   {
     (void) clsid;
     // do nothing on SA_MODE

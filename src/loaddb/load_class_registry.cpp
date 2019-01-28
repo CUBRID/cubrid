@@ -26,25 +26,33 @@
 namespace cubload
 {
 
-  // class_entry
-  class_entry::class_entry (std::string &class_name, OID &class_oid, class_id clsid, int attr_count)
-    : m_clsid (clsid)
-    , m_class_oid (class_oid)
-    , m_class_name (std::move (class_name))
-    , m_attr_count (attr_count)
-    , m_attr_count_checker (0)
-    , m_attributes ()
+  // attribute
+  attribute::attribute (ATTR_ID attr_id, std::string attr_name, or_attribute *attr_repr)
+    : m_attr_id (attr_id)
+    , m_attr_name (std::move (attr_name))
+    , m_attr_repr (attr_repr)
   {
     //
   }
 
-  void
-  class_entry::register_attribute (ATTR_ID attr_id, std::string attr_name, or_attribute *attr_repr)
+  // class_entry
+  class_entry::class_entry (std::string &class_name, OID &class_oid, class_id clsid,
+			    std::vector<const attribute *> &attributes)
+    : m_clsid (clsid)
+    , m_class_oid (class_oid)
+    , m_class_name (std::move (class_name))
+    , m_attributes (attributes.size ())
   {
-    assert (m_attr_count_checker < m_attr_count);
+    std::copy (attributes.begin (), attributes.end (), m_attributes.begin ());
+  }
 
-    m_attributes.emplace_back (attr_id, attr_name, attr_repr);
-    m_attr_count_checker++;
+  class_entry::~class_entry ()
+  {
+    for (const attribute *attr : m_attributes)
+      {
+	delete attr;
+      }
+    m_attributes.clear ();
   }
 
   const OID &
@@ -54,15 +62,12 @@ namespace cubload
   }
 
   const attribute &
-  class_entry::get_attribute (int index)
+  class_entry::get_attribute (int index) const
   {
-    // check that all attributes were registered
-    assert (m_attr_count_checker == m_attr_count);
-
     // assert that index is within the range
     assert (0 <= index && ((std::size_t) index) < m_attributes.size ());
 
-    return m_attributes[index];
+    return *m_attributes[index];
   }
 
   // class_registry
@@ -82,26 +87,26 @@ namespace cubload
     m_class_by_id.clear ();
   }
 
-  class_entry *
-  class_registry::register_class (const char *class_name, class_id clsid, OID class_oid, int attr_count)
+  void
+  class_registry::register_class (const char *class_name, class_id clsid, OID class_oid,
+				  std::vector<const attribute *> &attributes)
   {
     std::unique_lock<std::mutex> ulock (m_mutex);
 
-    class_entry *c_entry = get_class_entry_without_lock (clsid);
+    const class_entry *c_entry = get_class_entry_without_lock (clsid);
     if (c_entry != NULL)
       {
-	return c_entry;
+	// class was registered already
+	return;
       }
 
     std::string c_name (class_name);
-    c_entry  = new class_entry (c_name, class_oid, clsid, attr_count);
+    c_entry = new class_entry (c_name, class_oid, clsid, attributes);
 
     m_class_by_id.insert (std::make_pair (clsid, c_entry));
-
-    return c_entry;
   }
 
-  class_entry *
+  const class_entry *
   class_registry::get_class_entry (class_id clsid)
   {
     std::unique_lock<std::mutex> ulock (m_mutex);
@@ -109,7 +114,7 @@ namespace cubload
     return get_class_entry_without_lock (clsid);
   }
 
-  class_entry *
+  const class_entry *
   class_registry::get_class_entry_without_lock (class_id clsid)
   {
     auto found = m_class_by_id.find (clsid);

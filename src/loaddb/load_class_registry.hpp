@@ -37,47 +37,14 @@ namespace cubload
 
   struct attribute
   {
-    attribute (ATTR_ID attr_id, std::string attr_name, or_attribute *attr_repr)
-      : m_attr_id (attr_id)
-      , m_attr_name (std::move (attr_name))
-      , m_attr_repr (attr_repr)
-    {
-      //
-    }
+    attribute () = delete; // Not DefaultConstructible
+    attribute (ATTR_ID attr_id, std::string attr_name, or_attribute *attr_repr);
 
-    attribute (attribute &&other) noexcept
-      : m_attr_id (other.m_attr_id)
-      , m_attr_name (std::move (other.m_attr_name))
-      , m_attr_repr (other.m_attr_repr)
-    {
-      //
-    }
+    attribute (attribute &&other) = delete; // Not MoveConstructible
+    attribute (const attribute &copy) = delete; // Not CopyConstructible
 
-    attribute (const attribute &copy)
-      : m_attr_id (copy.m_attr_id)
-      , m_attr_name (copy.m_attr_name)
-      , m_attr_repr (copy.m_attr_repr)
-    {
-      //
-    }
-
-    attribute &operator= (attribute &&other) noexcept
-    {
-      m_attr_id = other.m_attr_id;
-      m_attr_name = std::move (other.m_attr_name);
-      m_attr_repr = other.m_attr_repr;
-
-      return *this;
-    }
-
-    attribute &operator= (const attribute &copy)
-    {
-      m_attr_id = copy.m_attr_id;
-      m_attr_name = copy.m_attr_name;
-      m_attr_repr = copy.m_attr_repr;
-
-      return *this;
-    }
+    attribute &operator= (attribute &&other) = delete; // Not MoveAssignable
+    attribute &operator= (const attribute &copy) = delete; // Not CopyAssignable
 
     ATTR_ID m_attr_id;
     std::string m_attr_name;
@@ -87,27 +54,23 @@ namespace cubload
   class class_entry
   {
     public:
-      class_entry (std::string &class_name, OID &class_oid, class_id clsid, int attr_count);
-      ~class_entry () = default;
+      class_entry () = delete; // Not DefaultConstructible
+      class_entry (std::string &class_name, OID &class_oid, class_id clsid, std::vector<const attribute *> &attributes);
+      ~class_entry ();
 
-      class_entry (class_entry &&other) = delete;
-      class_entry (const class_entry &copy) = delete;
-      class_entry &operator= (class_entry &&other) = delete;
-      class_entry &operator= (const class_entry &copy) = delete;
-
-      void register_attribute (ATTR_ID attr_id, std::string attr_name, or_attribute *attr_repr);
+      class_entry (class_entry &&other) = delete; // Not MoveConstructible
+      class_entry (const class_entry &copy) = delete; // Not CopyConstructible
+      class_entry &operator= (class_entry &&other) = delete; // Not MoveAssignable
+      class_entry &operator= (const class_entry &copy) = delete; // Not CopyAssignable
 
       const OID &get_class_oid () const;
-      const attribute &get_attribute (int index);
+      const attribute &get_attribute (int index) const;
 
     private:
       class_id m_clsid;
       OID m_class_oid;
       std::string m_class_name;
-
-      int m_attr_count;
-      int m_attr_count_checker;
-      std::vector<attribute> m_attributes;
+      std::vector<const attribute *> m_attributes;
   };
 
   class class_registry
@@ -120,16 +83,17 @@ namespace cubload
       class_registry (const class_registry &copy) = delete; // Not CopyConstructible
 
       class_registry &operator= (class_registry &&other) = delete; // Not MoveAssignable
-      class_registry &operator= (const class_registry &copy) = delete;  // Not CopyAssignable
+      class_registry &operator= (const class_registry &copy) = delete; // Not CopyAssignable
 
-      class_entry *get_class_entry (class_id clsid);
-      class_entry *register_class (const char *class_name, class_id clsid, OID class_oid, int attr_count);
+      const class_entry *get_class_entry (class_id clsid);
+      void register_class (const char *class_name, class_id clsid, OID class_oid,
+			   std::vector<const attribute *> &attributes);
 
     private:
       std::mutex m_mutex;
-      std::unordered_map<class_id, class_entry *> m_class_by_id;
+      std::unordered_map<class_id, const class_entry *> m_class_by_id;
 
-      class_entry *get_class_entry_without_lock (class_id clsid);
+      const class_entry *get_class_entry_without_lock (class_id clsid) ;
   };
 
 } // namespace cubload

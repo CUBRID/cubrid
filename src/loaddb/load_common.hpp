@@ -239,12 +239,12 @@ namespace cubload
       virtual ~class_installer () = default; // Destructor
 
       /*
-       * Function to initialize class installer instance
+       * Function set class_id for class installer instance
        *
        *    return: void
        *    clsid(in): generated id of the class
        */
-      virtual void init (class_id clsid) = 0;
+      virtual void set_class_id (class_id clsid) = 0;
 
       /*
        * Function to check a class, it is called when a line of the following form "%id foo 42" is reached

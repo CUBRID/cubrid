@@ -77,7 +77,7 @@ namespace cubload
       }
 
     driver->get_object_loader ().init (clsid);
-    driver->get_class_installer ().init (clsid);
+    driver->get_class_installer ().set_class_id (clsid);
 
     // start parsing
     std::istringstream iss (buf);
@@ -169,7 +169,7 @@ namespace cubload
 	// parse doc says that 0 is returned if parsing succeeds
 	int parser_ret = invoke_parser (thread_ref.m_loaddb_driver, m_batch.m_clsid, m_batch.m_content);
 
-	if (m_session.is_failed () || parser_ret != 0 || er_errid_if_has_error () != NO_ERROR)
+	if (m_session.is_failed () || parser_ret != NO_ERROR || er_errid_if_has_error () != NO_ERROR)
 	  {
 	    // if a batch transaction was aborted then abort entire loaddb session
 	    m_session.fail ();

@@ -36,7 +36,7 @@ namespace cubload
       sa_class_installer () = default;
       ~sa_class_installer () override = default;
 
-      void init (class_id clsid) override;
+      void set_class_id (class_id clsid) override;
 
       void check_class (const char *class_name, int class_id) override;
       int install_class (const char *class_name) override;
