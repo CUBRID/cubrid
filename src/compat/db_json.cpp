@@ -181,13 +181,6 @@ class JSON_PATH : protected rapidjson::GenericPointer <JSON_VALUE>
       JSON_PATH_POINTER
     };
 
-    enum class JSON_PATH_APPLY_RESULT
-    {
-      VALUE_EXISTS,
-      PARENT_VALUE_EXISTS,
-      NO_VALUE
-    };
-
     std::string dump_json_path (bool skip_json_pointer_minus) const;
 
     JSON_VALUE *get (JSON_DOC &jd) const;
@@ -212,7 +205,7 @@ class JSON_PATH : protected rapidjson::GenericPointer <JSON_VALUE>
 
     bool points_to_array_cell () const;
 
-    JSON_PATH_APPLY_RESULT apply_path (JSON_DOC &jd) const;
+    bool parent_exists (JSON_DOC &jd) const;
 
     int init (const char *path);
 
@@ -233,7 +226,6 @@ class JSON_PATH : protected rapidjson::GenericPointer <JSON_VALUE>
 };
 
 typedef JSON_PATH::JSON_PATH_TYPE JSON_PATH_TYPE;
-typedef JSON_PATH::JSON_PATH_APPLY_RESULT PATH_APPLY_RES;
 
 // class JSON_ITERATOR - virtual interface to wrap array and object iterators
 //
@@ -813,9 +805,6 @@ static const char *db_json_get_json_type_as_str (const DB_JSON_TYPE &json_type);
 static int db_json_er_set_expected_other_type (const char *file_name, const int line_no, const std::string &path,
     const DB_JSON_TYPE &found_type, const DB_JSON_TYPE &expected_type,
     const DB_JSON_TYPE &expected_type_optional = DB_JSON_NULL);
-static void db_json_array_append_op (const JSON_VALUE *value, JSON_DOC &doc, const JSON_PATH &p);
-static void db_json_array_insert_op (const JSON_VALUE *value, JSON_DOC &doc, const JSON_PATH &p);
-static int db_json_insert_op (const JSON_DOC *value, JSON_DOC &doc, const JSON_PATH &p, bool replace);
 static int db_json_contains_duplicate_keys (JSON_DOC &doc);
 
 STATIC_INLINE JSON_VALUE &db_json_doc_to_value (JSON_DOC &doc) __attribute__ ((ALWAYS_INLINE));
@@ -1029,27 +1018,19 @@ bool JSON_PATH::points_to_array_cell () const
   return true;
 }
 
-PATH_APPLY_RES JSON_PATH::apply_path (JSON_DOC &jd) const
+bool JSON_PATH::parent_exists (JSON_DOC &jd) const
 {
-  JSON_VALUE *v = get (jd);
-  if (v != NULL)
-    {
-      return JSON_PATH_APPLY_RESULT::VALUE_EXISTS;
-    }
-
   if (GetTokenCount () == 0)
     {
-      return JSON_PATH_APPLY_RESULT::NO_VALUE;
+      return false;
     }
 
-  const JSON_PATH parent_path = get_parent ();
-  v = parent_path.get (jd);
-  if (v != NULL)
+  if (get_parent ().get (jd) != NULL)
     {
-      return JSON_PATH_APPLY_RESULT::PARENT_VALUE_EXISTS;
+      return true;
     }
 
-  return JSON_PATH_APPLY_RESULT::NO_VALUE;
+  return false;
 }
 
 
@@ -2164,46 +2145,6 @@ db_json_copy_doc (JSON_DOC &dest, const JSON_DOC *src)
     }
 }
 
-static void
-db_json_array_append_op (const JSON_VALUE *value, JSON_DOC &doc, const JSON_PATH &p)
-{
-  JSON_VALUE *json_val = p.get (doc);
-  JSON_VALUE value_copy (*value, doc.GetAllocator ());
-
-  db_json_value_wrap_as_array (*json_val, doc.GetAllocator ());
-  json_val->GetArray ().PushBack (value_copy, doc.GetAllocator ());
-}
-
-static int
-db_json_insert_op (const JSON_DOC *value, JSON_DOC &doc, const JSON_PATH &p, bool replace)
-{
-  const JSON_PATH parent_path = p.get_parent ();
-  JSON_VALUE *parent_json_val = parent_path.get (doc);
-
-  if (db_json_get_type_of_value (parent_json_val) != DB_JSON_ARRAY)
-    {
-      if (p.is_last_token_array_index_zero ())
-	{
-	  // autowrap and set
-	  db_json_value_wrap_as_array (*parent_json_val, doc.GetAllocator ());
-	  p.set (doc, *value);
-	}
-      else
-	{
-	  if (replace)
-	    {
-	      parent_path.set (doc, *value);
-	    }
-	}
-    }
-  else
-    {
-      p.set (doc, *value);
-    }
-
-  return NO_ERROR;
-}
-
 /*
  * db_json_insert_func () - Insert a document into destination document at given path
  *
@@ -2230,36 +2171,70 @@ db_json_insert_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path)
       return error_code;
     }
 
-  switch (p.apply_path (doc))
+  if (p.get_last_token () == NULL)
     {
-    case PATH_APPLY_RES::VALUE_EXISTS:
+      // ignore if root
       return NO_ERROR;
-    case PATH_APPLY_RES::PARENT_VALUE_EXISTS:
+    }
+
+  if (!p.parent_exists (doc))
     {
-      if (p.points_to_array_cell ())
+      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p.dump_json_path (), &doc);
+    }
+
+  JSON_VALUE *parent_val = p.get_parent ().get (doc);
+
+  if (p.points_to_array_cell ())
+    {
+      if (p.is_last_token_array_index_zero ())
 	{
-	  return db_json_insert_op (value, doc, p, false);
-	}
-      else
-	{
-	  if (p.get_parent ().get_value_type (doc) == DB_JSON_OBJECT)
+	  if (db_json_get_type_of_value (parent_val) == DB_JSON_ARRAY)
 	    {
-	      p.set (doc, *value);
+	      if (p.is_last_array_index_less_than (parent_val->GetArray ().Size ()))
+		{
+		  return NO_ERROR;
+		}
+	      else
+		{
+		  p.set (doc, *value);
+		}
 	    }
 	  else
 	    {
-	      return db_json_er_set_expected_other_type (ARG_FILE_LINE, p.get_parent ().dump_json_path (),
-		     p.get_parent ().get_value_type (doc), DB_JSON_OBJECT);
+	      // we ignore a trailing 0 array index. We found a value => no op
+	      return NO_ERROR;
 	    }
 	}
-      return NO_ERROR;
+      else
+	{
+	  db_json_value_wrap_as_array (*parent_val, doc.GetAllocator ());
+	  if (p.is_last_array_index_less_than (parent_val->GetArray ().Size ()))
+	    {
+	      return NO_ERROR;
+	    }
+	  else
+	    {
+	      p.set (doc, *value);
+	    }
+	}
     }
-    case PATH_APPLY_RES::NO_VALUE:
-      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p.dump_json_path (), &doc);
-    default:
-      assert (false);
-      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p.dump_json_path (), &doc);
+  else
+    {
+      if (db_json_get_type_of_value (parent_val) != DB_JSON_OBJECT)
+	{
+	  return db_json_er_set_expected_other_type (ARG_FILE_LINE, p.get_parent ().dump_json_path (),
+		 db_json_get_type_of_value (p.get (doc)), DB_JSON_OBJECT);
+	}
+      if (p.get (doc) != NULL)
+	{
+	  return NO_ERROR;
+	}
+      else
+	{
+	  p.set (doc, *value);
+	}
     }
+  return NO_ERROR;
 }
 
 /*
@@ -2288,30 +2263,35 @@ db_json_replace_func (const JSON_DOC *new_value, JSON_DOC &doc, const char *raw_
       return error_code;
     }
 
-  switch (p.apply_path (doc))
+  if (p.get_last_token() == NULL)
     {
-    case PATH_APPLY_RES::VALUE_EXISTS:
+      // treat root as a special case, because it does not have a parent
       p.set (doc, *new_value);
       return NO_ERROR;
-    case PATH_APPLY_RES::PARENT_VALUE_EXISTS:
+    }
+
+  if (!p.parent_exists (doc))
     {
-      const JSON_PATH parent_path = p.get_parent ();
+      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p.dump_json_path (), &doc);
+    }
+
+  JSON_PATH parent = p.get_parent ();
+  // replace when we either find the path or we find the path without a trailing 0 array index
+  if (p.get (doc) == NULL)
+    {
       if (p.is_last_token_array_index_zero ())
 	{
-	  parent_path.set (doc, *new_value);
-	  return NO_ERROR;
+	  if (p.get_parent ().get (doc) == NULL)
+	    {
+	      return NO_ERROR;
+	    }
+	  p.get_parent ().set (doc, *new_value);
 	}
-      else
-	{
-	  return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, parent_path.dump_json_path (), &doc);
-	}
+      return NO_ERROR;
     }
-    case PATH_APPLY_RES::NO_VALUE:
-      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p.dump_json_path (), &doc);
-    default:
-      assert (false);
-      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p.dump_json_path (), &doc);
-    }
+  p.set (doc, *new_value);
+
+  return NO_ERROR;
 }
 
 /*
@@ -2340,34 +2320,51 @@ db_json_set_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path)
       return error_code;
     }
 
-  switch (p.apply_path (doc))
+  if (p.get_last_token() == NULL)
     {
-    case PATH_APPLY_RES::VALUE_EXISTS:
+      // treat root as a special case, because it does not have a parent
       p.set (doc, *value);
       return NO_ERROR;
-    case PATH_APPLY_RES::PARENT_VALUE_EXISTS:
-      if (p.points_to_array_cell ())
+    }
+
+  if (!p.parent_exists (doc))
+    {
+      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p.dump_json_path (), &doc);
+    }
+
+  JSON_VALUE *parent_val = p.get_parent ().get (doc);
+
+  if (p.points_to_array_cell ())
+    {
+      if (p.is_last_token_array_index_zero ())
 	{
-	  return db_json_insert_op (value, doc, p, true);
-	}
-      else
-	{
-	  if (p.get_parent ().get_value_type (doc) == DB_JSON_OBJECT)
+	  if (db_json_get_type_of_value (parent_val) == DB_JSON_ARRAY)
 	    {
 	      p.set (doc, *value);
 	    }
 	  else
 	    {
-	      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p.dump_json_path (), &doc);
+	      // we ignore a trailing 0 array index and we replace what we found
+	      p.get_parent ().set (doc, *value);
 	    }
 	}
-      return NO_ERROR;
-    case PATH_APPLY_RES::NO_VALUE:
-      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p.dump_json_path (), &doc);
-    default:
-      assert (false);
-      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p.dump_json_path (), &doc);
+      else
+	{
+	  db_json_value_wrap_as_array (*parent_val, doc.GetAllocator ());
+	  p.set (doc, *value);
+	}
     }
+  else
+    {
+      if (db_json_get_type_of_value (parent_val) != DB_JSON_OBJECT)
+	{
+	  return db_json_er_set_expected_other_type (ARG_FILE_LINE, p.get_parent ().dump_json_path (),
+		 db_json_get_type_of_value (p.get (doc)), DB_JSON_OBJECT);
+	}
+      p.set (doc, *value);
+    }
+
+  return NO_ERROR;
 }
 
 /*
@@ -2592,51 +2589,59 @@ db_json_array_append_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw
       return error_code;
     }
 
-  switch (p.apply_path (doc))
+  JSON_VALUE value_copy (*value, doc.GetAllocator());
+  JSON_VALUE *json_val = p.get (doc);
+
+  if (p.get_last_token () == NULL)
     {
-    case PATH_APPLY_RES::VALUE_EXISTS:
-      db_json_array_append_op (value, doc, p);
+      // treat root as a special case, because it does not have a parent
+      db_json_value_wrap_as_array (*json_val, doc.GetAllocator ());
+      json_val->GetArray ().PushBack (value_copy, doc.GetAllocator ());
       return NO_ERROR;
-    case PATH_APPLY_RES::PARENT_VALUE_EXISTS:
+    }
+
+  if (!p.parent_exists (doc))
     {
-      if (!p.is_last_token_array_index_zero ())
+      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p.dump_json_path (), &doc);
+    }
+
+  JSON_VALUE *parent_val = p.get_parent ().get (doc);
+
+  if (p.points_to_array_cell ())
+    {
+      if (db_json_get_type_of_value (parent_val) == DB_JSON_ARRAY)
+	{
+	  if (!p.is_last_array_index_less_than (parent_val->GetArray ().Size ()))
+	    {
+	      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p.dump_json_path (), &doc);
+	    }
+
+	  db_json_value_wrap_as_array (*json_val, doc.GetAllocator ());
+	  json_val->GetArray ().PushBack (value_copy, doc.GetAllocator ());
+	}
+      else
+	{
+	  if (!p.is_last_token_array_index_zero ())
+	    {
+	      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p.dump_json_path (), &doc);
+	    }
+
+	  db_json_value_wrap_as_array (*parent_val, doc.GetAllocator ());
+	  json_val->GetArray ().PushBack (value_copy, doc.GetAllocator ());
+	}
+    }
+  else
+    {
+      // only valid case is when path exists and its parent is a json object
+      if (db_json_get_type_of_value (parent_val) != DB_JSON_OBJECT)
 	{
 	  return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p.dump_json_path (), &doc);
 	}
-      // if last array_index is 0 we autowrap the parent
-      const JSON_PATH parent = p.get_parent ();
-      db_json_array_append_op (value, doc, parent);
-      return NO_ERROR;
-    }
-    case PATH_APPLY_RES::NO_VALUE:
-      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p.dump_json_path (), &doc);
-    default:
-      assert (false);
-      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p.dump_json_path (), &doc);
-    }
-}
 
-static void
-db_json_array_insert_op (const JSON_VALUE *value, JSON_DOC &doc, const JSON_PATH &p)
-{
-  const JSON_PATH parent_path = p.get_parent ();
-  const TOKEN &last_token = *p.get_last_token ();
-  JSON_VALUE *json_parent = parent_path.get (doc);
-
-  size_t array_size = json_parent->GetArray ().Size ();
-
-  if (!p.is_last_array_index_less_than (array_size))
-    {
-      p.set (doc, *value);
-      return;
+      db_json_value_wrap_as_array (*json_val, doc.GetAllocator ());
+      json_val->GetArray ().PushBack (value_copy, doc.GetAllocator ());
     }
-
-  json_parent->GetArray ().PushBack (1 /* dummy json_value */, doc.GetAllocator ());
-  for (rapidjson::SizeType i = json_parent->GetArray ().Size () - 1; i >= last_token.index + 1; --i)
-    {
-      json_parent->GetArray ()[i] = std::move (json_parent->GetArray ()[i - 1]);
-    }
-  p.set (doc, *value);
+  return NO_ERROR;
 }
 
 /*
@@ -2671,20 +2676,31 @@ db_json_array_insert_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw
 	     db_json_get_type_of_value (p.get (doc)), DB_JSON_ARRAY);
     }
 
-  switch (p.apply_path (doc))
+  if (!p.parent_exists (doc))
     {
-    case PATH_APPLY_RES::PARENT_VALUE_EXISTS:
-      db_json_value_wrap_as_array (*p.get_parent ().get (doc), doc.GetAllocator ());
-    // fall through
-    case PATH_APPLY_RES::VALUE_EXISTS:
-      db_json_array_insert_op (value, doc, p);
-      return NO_ERROR;
-    case PATH_APPLY_RES::NO_VALUE:
-      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p.dump_json_path (), &doc);
-    default:
-      assert (false);
       return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p.dump_json_path (), &doc);
     }
+
+  db_json_value_wrap_as_array (*p.get_parent ().get (doc), doc.GetAllocator ());
+
+  const JSON_PATH parent_path = p.get_parent ();
+  JSON_VALUE *json_parent = parent_path.get (doc);
+
+  if (!p.is_last_array_index_less_than (json_parent->GetArray ().Size ()))
+    {
+      p.set (doc, *value);
+      return NO_ERROR;
+    }
+
+  json_parent->GetArray ().PushBack (1 /* dummy json_value */, doc.GetAllocator ());
+  const TOKEN &last_token = *p.get_last_token ();
+  for (rapidjson::SizeType i = json_parent->GetArray ().Size () - 1; i >= last_token.index + 1; --i)
+    {
+      json_parent->GetArray ()[i] = std::move (json_parent->GetArray ()[i - 1]);
+    }
+  p.set (doc, *value);
+
+  return NO_ERROR;
 }
 
 DB_JSON_TYPE
