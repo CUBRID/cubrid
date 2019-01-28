@@ -1716,11 +1716,11 @@ classobj_drop_foreign_key_ref (DB_SEQ ** properties, const BTID * btid, const ch
   int volid, pageid, fileid;
   int err = NO_ERROR;
 
-  PRIM_SET_NULL (&prop_val);
-  PRIM_SET_NULL (&pk_val);
-  PRIM_SET_NULL (&fk_container_val);
-  PRIM_SET_NULL (&fk_val);
-  PRIM_SET_NULL (&btid_val);
+  db_make_null (&prop_val);
+  db_make_null (&pk_val);
+  db_make_null (&fk_container_val);
+  db_make_null (&fk_val);
+  db_make_null (&btid_val);
 
   if (classobj_get_prop (*properties, SM_PROPERTY_PRIMARY_KEY, &prop_val) <= 0)
     {

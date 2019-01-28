@@ -4120,7 +4120,7 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
 	    {
 	      char *val_print = NULL;
 
-	      val_print = pr_valstring (thread_p, key_dbvalue);
+	      val_print = pr_valstring (key_dbvalue);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, index->fk->fkname,
 		      (val_print ? val_print : "unknown value"));
 	      error_code = ER_FK_INVALID;
@@ -9458,7 +9458,7 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, HFID * hfid, 
 		    {
 		      char *key_dmp;
 
-		      key_dmp = pr_valstring (thread_p, key);
+		      key_dmp = pr_valstring (key);
 
 		      if (!OID_ISNULL (class_oid))
 			{
@@ -9908,7 +9908,7 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, OID * 
 			{
 			  char *key_dmp;
 
-			  key_dmp = pr_valstring (thread_p, key);
+			  key_dmp = pr_valstring (key);
 			  if (!OID_ISNULL (class_oid))
 			    {
 			      if (heap_get_class_name (thread_p, class_oid, &classname) != NO_ERROR)

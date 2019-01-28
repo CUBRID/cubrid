@@ -11504,14 +11504,7 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constra
 
       if (val != NULL && !DB_IS_NULL (val))
 	{
-	  if (attr_dom->type->index_lengthval != NULL)
-	    {
-	      buf_size += (*(attr_dom->type->index_lengthval)) (val);
-	    }
-	  else
-	    {
-	      buf_size += attr_dom->type->disksize;
-	    }
+	  buf_size += attr_dom->type->get_index_size_of_value (val);
 	}
 
       if (setdomain == NULL)
@@ -11559,7 +11552,7 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constra
 
       if (val != NULL && !DB_IS_NULL (val))
 	{
-	  (*((dom->type)->index_writeval)) (&buf, val);
+	  dom->type->index_writeval (&buf, val);
 	  OR_ENABLE_BOUND_BIT (bound_bits, i);
 	}
       else

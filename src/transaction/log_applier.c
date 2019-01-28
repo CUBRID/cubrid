@@ -42,7 +42,7 @@
 #include "log_compress.h"
 #include "parser.h"
 #include "object_primitive.h"
-#include "object_print.h"
+#include "db_value_printer.hpp"
 #include "db.h"
 #include "object_accessor.h"
 #include "locator_cl.h"
@@ -3539,7 +3539,7 @@ la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL 
       else
 	{
 	  /* read the disk value into the db_value */
-	  (*(att->type->data_readval)) (buf, &value, att->domain, -1, true, NULL, 0);
+	  att->type->data_readval (buf, &value, att->domain, -1, true, NULL, 0);
 	}
 
       /* update the column */
@@ -3573,7 +3573,7 @@ la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL 
   for (i = sm_class->fixed_count, j = 0; i < sm_class->att_count && j < sm_class->variable_count;
        i++, j++, att = (SM_ATTRIBUTE *) att->header.next)
     {
-      (*(att->type->data_readval)) (buf, &value, att->domain, vars[j], true, NULL, 0);
+      att->type->data_readval (buf, &value, att->domain, vars[j], true, NULL, 0);
       v_start += vars[j];
       buf->ptr = v_start;
 
@@ -4658,7 +4658,7 @@ la_flush_repl_items (bool immediate)
 		}
 
 	      sb.clear ();
-	      help_sprint_value (&flush_err->pkey_value, sb);
+	      db_sprint_value (&flush_err->pkey_value, sb);
 	      snprintf (pkey_str, sizeof (pkey_str) - 1, sb.get_buffer ());
 
 	      if (LC_IS_FLUSH_INSERT (flush_err->operation) == true)
@@ -4846,7 +4846,7 @@ la_apply_delete_log (LA_ITEM * item)
 	  if (sl_write_delete_sql (item->class_name, mclass, la_get_item_pk_value (item)) != NO_ERROR)
 	    {
 	      sb.clear ();
-	      help_sprint_value (&item->key, sb);
+	      db_sprint_value (&item->key, sb);
 	      snprintf (sql_log_err, sizeof (sql_log_err), "failed to write SQL log. class: %s, key: %s",
 			item->class_name, sb.get_buffer ());
 
@@ -4867,7 +4867,7 @@ la_apply_delete_log (LA_ITEM * item)
   if (error != NO_ERROR)
     {
       sb.clear ();
-      help_sprint_value (la_get_item_pk_value (item), sb);
+      db_sprint_value (la_get_item_pk_value (item), sb);
 #if defined (LA_VERBOSE_DEBUG)
       er_log_debug (ARG_FILE_LINE, "apply_delete : error %d %s\n\tclass %s key %s\n", error, er_msg (),
 		    item->class_name, sb.get_buffer ());
@@ -5016,7 +5016,7 @@ la_apply_update_log (LA_ITEM * item)
       if (sql_logging_failed == true)
 	{
 	  sb.clear ();
-	  help_sprint_value (la_get_item_pk_value (item), sb);
+	  db_sprint_value (la_get_item_pk_value (item), sb);
 	  snprintf (sql_log_err, sizeof (sql_log_err), "failed to write SQL log. class: %s, key: %s", item->class_name,
 		    sb.get_buffer ());
 
@@ -5030,7 +5030,7 @@ end:
   if (error != NO_ERROR)
     {
       sb.clear ();
-      help_sprint_value (la_get_item_pk_value (item), sb);
+      db_sprint_value (la_get_item_pk_value (item), sb);
 #if defined (LA_VERBOSE_DEBUG)
       er_log_debug (ARG_FILE_LINE, "apply_update : error %d %s\n\tclass %s key %s\n", error, er_msg (),
 		    item->class_name, sb.get_buffer ());
@@ -5199,7 +5199,7 @@ la_apply_insert_log (LA_ITEM * item)
       if (sql_logging_failed == true)
 	{
 	  sb.clear ();
-	  help_sprint_value (la_get_item_pk_value (item), sb);
+	  db_sprint_value (la_get_item_pk_value (item), sb);
 	  snprintf (sql_log_err, sizeof (sql_log_err), "failed to write SQL log. class: %s, key: %s", item->class_name,
 		    sb.get_buffer ());
 
@@ -5213,7 +5213,7 @@ end:
   if (error != NO_ERROR)
     {
       sb.clear ();
-      help_sprint_value (la_get_item_pk_value (item), sb);
+      db_sprint_value (la_get_item_pk_value (item), sb);
 #if defined (LA_VERBOSE_DEBUG)
       er_log_debug (ARG_FILE_LINE, "apply_insert : error %d %s\n\tclass %s key %s\n", error, er_msg (),
 		    item->class_name, sb.get_buffer ());
@@ -5679,7 +5679,7 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
 	      errid = er_errid ();
 
 	      sb.clear ();
-	      help_sprint_value (la_get_item_pk_value (item), sb);
+	      db_sprint_value (la_get_item_pk_value (item), sb);
 	      sprintf (error_string, "[%s,%s] %s", item->class_name, sb.get_buffer (), db_error_string (1));
 	      er_log_debug (ARG_FILE_LINE, "Internal system failure: %s", error_string);
 
