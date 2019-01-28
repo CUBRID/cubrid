@@ -4643,56 +4643,6 @@ sm_is_partition (MOP classmop, MOP supermop)
   return 0;
 }
 
-#if defined(ENABLE_UNUSED_FUNCTION)
-/*
- * sm_object_size() - Walk through the instance or class and tally up
- *    the number of bytes used for storing the various object components.
- *    Information function only.  Not guaranteed acurate but should
- *    always be maintained as close as possible.
- *   return: memory byte size of object
- *   op(in): class or instance object
- */
-
-int
-sm_object_size (MOP op)
-{
-  SM_CLASS *class_;
-  SM_ATTRIBUTE *att;
-  MOBJ obj;
-  int size, pin;
-
-  size = 0;
-  if (locator_is_class (op, DB_FETCH_READ))
-    {
-      if (au_fetch_class (op, &class_, AU_FETCH_READ, AU_SELECT) == NO_ERROR)
-	{
-	  size = classobj_class_size (class_);
-	}
-    }
-  else
-    {
-      if (au_fetch_class (op, &class_, AU_FETCH_READ, AU_SELECT) == NO_ERROR)
-	{
-	  if (au_fetch_instance (op, &obj, AU_FETCH_READ, AU_SELECT) == NO_ERROR)
-	    {
-	      /* wouldn't have to pin here since we don't allocate storage but can't hurt to be safe */
-	      pin = ws_pin (op, 1);
-	      size = class_->object_size;
-	      for (att = class_->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
-		{
-		  if (att->type->variable_p)
-		    {
-		      size += pr_total_mem_size (att->type, obj + att->offset);
-		    }
-		}
-	      (void) ws_pin (op, pin);
-	    }
-	}
-    }
-
-  return size;
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
 /*
  * sm_object_size_quick() - Calculate the memory size of an instance.
  *    Called only by the workspace statistics functions.
@@ -4715,7 +4665,7 @@ sm_object_size_quick (SM_CLASS * class_, MOBJ obj)
 	{
 	  if (att->type->variable_p)
 	    {
-	      size += pr_total_mem_size (att->type, obj + att->offset);
+	      size += att->type->get_mem_size_of_mem (obj + att->offset);
 	    }
 	}
     }

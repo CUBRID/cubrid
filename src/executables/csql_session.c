@@ -30,10 +30,12 @@
 #include <signal.h>
 #include <assert.h>
 
+#include "csql.h"
+
 #include "class_description.hpp"
 #include "porting.h"
-#include "csql.h"
 #include "memory_alloc.h"
+#include "object_print.h"
 #include "util_func.h"
 #include "network_interface_cl.h"
 #include "unicode_support.h"

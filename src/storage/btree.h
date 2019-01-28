@@ -731,7 +731,7 @@ extern DB_VALUE_COMPARE_RESULT btree_compare_key (DB_VALUE * key1, DB_VALUE * ke
 						  int do_coercion, int total_order, int *start_colp);
 extern PERF_PAGE_TYPE btree_get_perf_btree_page_type (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr);
 
-extern void btree_dump_key (THREAD_ENTRY * thread_p, FILE * fp, DB_VALUE * key);
+extern void btree_dump_key (FILE * fp, const DB_VALUE * key);
 
 extern int btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * cls_oid,
 					  OID * oid, int unique, BTREE_OP_PURPOSE purpose, LOG_LSA * undo_nxlsa);
