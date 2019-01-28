@@ -38,7 +38,6 @@ namespace cubload
 {
 
   class driver;
-  class loaddb_worker_context_manager;
 
   /*
    * cubload::session
@@ -127,7 +126,7 @@ namespace cubload
       std::atomic<batch_id> m_max_batch_id;
 
       cubthread::entry_workpool *m_worker_pool;
-      loaddb_worker_context_manager *m_wp_context_manager;
+      cubthread::entry_manager *m_wp_context_manager;
 
       class_registry m_class_registry;
 
