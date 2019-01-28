@@ -230,6 +230,8 @@ namespace cubload
 
   session::~session ()
   {
+    delete m_driver;
+
     cubthread::get_manager ()->destroy_worker_pool (m_worker_pool);
     delete m_wp_context_manager;
   }
