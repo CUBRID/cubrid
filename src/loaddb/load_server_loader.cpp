@@ -114,8 +114,6 @@ namespace cubload
 
     heap_scancache_quick_start_with_class_oid (&thread_ref, &scancache, &class_oid);
     SCAN_CODE scan_code = heap_get_class_record (&thread_ref, &class_oid, &recdes, &scancache, PEEK);
-    heap_scancache_end (&thread_ref, &scancache);
-
     if (scan_code != S_SUCCESS)
       {
 	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
@@ -136,6 +134,7 @@ namespace cubload
 	error_code = or_get_attrname (&recdes, attr_id, &attr_name, &free_attr_name);
 	if (error_code != NO_ERROR)
 	  {
+	    heap_scancache_end (&thread_ref, &scancache);
 	    heap_attrinfo_end (&thread_ref, &attrinfo);
 	    m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
 	    return;
@@ -177,6 +176,7 @@ namespace cubload
     assert ((std::size_t) attrinfo.num_values == attributes.size ());
     m_session.get_class_registry ().register_class (class_name, m_clsid, class_oid, attributes);
 
+    heap_scancache_end (&thread_ref, &scancache);
     heap_attrinfo_end (&thread_ref, &attrinfo);
   }
 
