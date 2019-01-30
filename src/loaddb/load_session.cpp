@@ -36,7 +36,7 @@ namespace cubload
 
   void init_driver (driver *driver, session &session);
 
-  int invoke_parser (driver *driver, class_id clsid, const std::string &buf);
+  bool invoke_parser (driver *driver, class_id clsid, const std::string &buf);
 }
 
 namespace cubload
@@ -68,20 +68,22 @@ namespace cubload
     driver->initialize (cls_installer, obj_loader, error_handler_);
   }
 
-  int
+  bool
   invoke_parser (driver *driver, class_id clsid, const std::string &buf)
   {
     if (driver == NULL || !driver->is_initialized ())
       {
-	return ER_FAILED;
+	return false;
       }
 
     driver->get_object_loader ().init (clsid);
     driver->get_class_installer ().set_class_id (clsid);
 
-    // start parsing
+    // parse doc says that 0 is returned if parsing succeeds
     std::istringstream iss (buf);
-    return driver->parse (iss);
+    bool parser_result = driver->parse (iss) == 0;
+
+    return parser_result;
   }
 
   /*
@@ -166,10 +168,9 @@ namespace cubload
 	logtb_assign_tran_index (&thread_ref, NULL_TRANID, TRAN_ACTIVE, NULL, NULL, TRAN_LOCK_INFINITE_WAIT,
 				 TRAN_DEFAULT_ISOLATION_LEVEL ());
 
-	// parse doc says that 0 is returned if parsing succeeds
-	int parser_ret = invoke_parser (thread_ref.m_loaddb_driver, m_batch.m_clsid, m_batch.m_content);
+	bool parser_result = invoke_parser (thread_ref.m_loaddb_driver, m_batch.m_clsid, m_batch.m_content);
 
-	if (m_session.is_failed () || parser_ret != NO_ERROR || er_errid_if_has_error () != NO_ERROR)
+	if (m_session.is_failed () || !parser_result || er_errid_if_has_error () != NO_ERROR)
 	  {
 	    // if a batch transaction was aborted then abort entire loaddb session
 	    m_session.fail ();
@@ -343,11 +344,10 @@ namespace cubload
   int
   session::install_class (cubthread::entry &thread_ref, const class_id clsid, const std::string &buf)
   {
-    // parse doc says that 0 is returned if parsing succeeds
-    int parser_ret = invoke_parser (m_driver, clsid, buf);
+    bool parser_result = invoke_parser (m_driver, clsid, buf);
     int error_code = er_errid_if_has_error ();
 
-    if (is_failed () || parser_ret != NO_ERROR || error_code != NO_ERROR)
+    if (is_failed () || !parser_result || error_code != NO_ERROR)
       {
 	fail ();
 	return error_code;

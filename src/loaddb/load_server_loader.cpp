@@ -116,6 +116,8 @@ namespace cubload
     SCAN_CODE scan_code = heap_get_class_record (&thread_ref, &class_oid, &recdes, &scancache, PEEK);
     if (scan_code != S_SUCCESS)
       {
+	heap_scancache_end (&thread_ref, &scancache);
+	heap_attrinfo_end (&thread_ref, &attrinfo);
 	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
 	return;
       }
