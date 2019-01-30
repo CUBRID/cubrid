@@ -62,6 +62,7 @@
 #endif /* ENABLE_SYSTEMTAP */
 #include "dbtype.h"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
+#include "db_value_printer.hpp"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -2748,9 +2749,9 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid, 
 	      pr_type = pr_type_from_id (attrepr->type);
 	      if (pr_type)
 		{
-		  (*(pr_type->data_readval)) (&buf, &def_dbvalue, attrepr->domain, disk_length, copy, NULL, 0);
+		  pr_type->data_readval (&buf, &def_dbvalue, attrepr->domain, disk_length, copy, NULL, 0);
 
-		  db_value_fprint (stdout, &def_dbvalue);
+		  db_fprint_value (stdout, &def_dbvalue);
 		  (void) pr_clear_value (&def_dbvalue);
 		}
 	      else
@@ -10156,7 +10157,7 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
 	  pr_type = pr_type_from_id (attrepr->type);
 	  if (pr_type)
 	    {
-	      (*(pr_type->data_readval)) (&buf, &value->dbvalue, attrepr->domain, disk_length, false, NULL, 0);
+	      pr_type->data_readval (&buf, &value->dbvalue, attrepr->domain, disk_length, false, NULL, 0);
 	    }
 	  value->state = HEAP_READ_ATTRVALUE;
 	  break;
@@ -10259,7 +10260,7 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, H
       OR_BUF buf;
 
       or_init (&buf, disk_data, -1);
-      (*(att->domain->type->data_readval)) (&buf, value, att->domain, -1, false, NULL, 0);
+      att->domain->type->data_readval (&buf, value, att->domain, -1, false, NULL, 0);
     }
 
   return NO_ERROR;
@@ -10520,7 +10521,7 @@ heap_attrinfo_dump (THREAD_ENTRY * thread_p, FILE * fp, HEAP_CACHE_ATTRINFO * at
 
       fprintf (fp, "  Memory_value_format:\n");
       fprintf (fp, "    value = ");
-      db_value_fprint (fp, &value->dbvalue);
+      db_fprint_value (fp, &value->dbvalue);
       fprintf (fp, "\n\n");
     }
 
@@ -11203,7 +11204,7 @@ heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HE
        * the source only if it's a set-valued thing (that's the purpose
        * of the third argument).
        */
-      ret = (*(pr_type->setval)) (&value->dbvalue, attr_val, TP_IS_SET_TYPE (pr_type->id));
+      ret = pr_type->setval (&value->dbvalue, attr_val, TP_IS_SET_TYPE (pr_type->id));
     }
   else
     {
@@ -11667,7 +11668,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 		   * Write the value.
 		   */
 		  OR_ENABLE_BOUND_BIT (ptr_bound, value->last_attrepr->position);
-		  (*(pr_type->data_writeval)) (buf, dbvalue);
+		  pr_type->data_writeval (buf, dbvalue);
 		}
 	    }
 	  else
@@ -11750,7 +11751,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 			}
 		    }
 
-		  (*(pr_type->data_writeval)) (buf, dbvalue);
+		  pr_type->data_writeval (buf, dbvalue);
 		  ptr_varvals = buf->ptr;
 		}
 	    }
@@ -12332,7 +12333,7 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
 
 	  if (!db_value_is_null (func_res))
 	    {
-	      (*(func_domain->type->index_writeval)) (&buf, func_res);
+	      func_domain->type->index_writeval (&buf, func_res);
 	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
 	    }
 
@@ -12370,7 +12371,7 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index, H
       error = heap_midxkey_get_value (recdes, atts[i], &value, attrinfo);
       if (error == NO_ERROR && !db_value_is_null (&value))
 	{
-	  (*(atts[i]->domain->type->index_writeval)) (&buf, &value);
+	  atts[i]->domain->type->index_writeval (&buf, &value);
 	  OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
 	}
 
@@ -12509,7 +12510,7 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 	  if (!db_value_is_null (func_res))
 	    {
 	      TP_DOMAIN *domain = tp_domain_resolve_default ((DB_TYPE) func_res->domain.general_info.type);
-	      (*(domain->type->index_writeval)) (&buf, func_res);
+	      domain->type->index_writeval (&buf, func_res);
 	      OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
 	    }
 	  k++;
@@ -12523,7 +12524,7 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
       error = heap_midxkey_get_value (recdes, att, &value, attrinfo);
       if (error == NO_ERROR && !db_value_is_null (&value))
 	{
-	  (*(att->domain->type->index_writeval)) (&buf, &value);
+	  att->domain->type->index_writeval (&buf, &value);
 	  OR_ENABLE_BOUND_BIT (nullmap_ptr, k);
 	}
 

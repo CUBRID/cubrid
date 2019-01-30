@@ -1514,7 +1514,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
 	      /* is the first leaf When the types of leaf node are char, nchar, bit, the type that is saved on non-leaf
 	       * node is different. non-leaf spec (char -> varchar, nchar -> varnchar, bit -> varbit) hence it should
 	       * be configured by using setval of nonleaf_key_type. */
-	      ret = (*(load_args->btid->nonleaf_key_type->type->setval)) (&prefix_key, &first_key, true);
+	      ret = load_args->btid->nonleaf_key_type->type->setval (&prefix_key, &first_key, true);
 	      if (ret != NO_ERROR)
 		{
 		  assert (!"setval error");
@@ -2291,8 +2291,8 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *
 	  key_size = CAST_STRLEN (buf.endptr - buf.ptr);
 	}
 
-      ret = (*(load_args->btid->key_type->type->data_readval)) (&buf, &this_key, load_args->btid->key_type, key_size,
-								copy, NULL, 0);
+      ret = load_args->btid->key_type->type->data_readval (&buf, &this_key, load_args->btid->key_type, key_size, copy,
+							   NULL, 0);
       if (ret != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_CORRUPTED, 0);
@@ -2824,7 +2824,7 @@ btree_dump_sort_output (const RECDES * recdes, LOAD_ARGS * load_args)
     }
 
   printf ("Attribute: ");
-  btree_dump_key (&this_key);
+  btree_dump_key (stdout, &this_key);
   printf ("   Volid: %d", this_oid.volid);
   printf ("   Pageid: %d", this_oid.pageid);
   printf ("   Slotid: %d\n", this_oid.slotid);
@@ -3241,7 +3241,7 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 
 	  assert (buf.ptr == PTR_ALIGN (buf.ptr, INT_ALIGNMENT));
 
-	  if ((*(sort_args->key_type->type->data_writeval)) (&buf, dbvalue_ptr) != NO_ERROR)
+	  if (sort_args->key_type->type->data_writeval (&buf, dbvalue_ptr) != NO_ERROR)
 	    {
 	      goto nofit;
 	    }
@@ -3394,7 +3394,7 @@ compare_driver (const void *first, const void *second, void *arg)
 	    }
 
 	  /* check for val1 and val2 same domain */
-	  c = (*(dom->type->index_cmpdisk)) (mem1, mem2, dom, 0, 1, NULL);
+	  c = dom->type->index_cmpdisk (mem1, mem2, dom, 0, 1, NULL);
 	  assert (c == DB_LT || c == DB_EQ || c == DB_GT);
 
 	  if (c != DB_EQ)
@@ -3420,13 +3420,13 @@ compare_driver (const void *first, const void *second, void *arg)
       OR_BUF_INIT (buf_val1, mem1, -1);
       OR_BUF_INIT (buf_val2, mem2, -1);
 
-      if ((*(key_type->type->data_readval)) (&buf_val1, &val1, key_type, -1, false, NULL, 0) != NO_ERROR)
+      if (key_type->type->data_readval (&buf_val1, &val1, key_type, -1, false, NULL, 0) != NO_ERROR)
 	{
 	  assert (false);
 	  return DB_UNK;
 	}
 
-      if ((*(key_type->type->data_readval)) (&buf_val2, &val2, key_type, -1, false, NULL, 0) != NO_ERROR)
+      if (key_type->type->data_readval (&buf_val2, &val2, key_type, -1, false, NULL, 0) != NO_ERROR)
 	{
 	  assert (false);
 	  return DB_UNK;
@@ -3941,7 +3941,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	  else if (!found)
 	    {
 	      /* Value was not found at all, it means the foreign key is invalid. */
-	      val_print = pr_valstring (thread_p, &fk_key);
+	      val_print = pr_valstring (&fk_key);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, sort_args->fk_name,
 		      (val_print ? val_print : "unknown value"));
 	      ret = ER_FK_INVALID;
@@ -3967,7 +3967,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	      if (!pk_has_slot_visible)
 		{
 		  /* No visible object in current page, but the key was located here. Should not happen often. */
-		  val_print = pr_valstring (thread_p, &fk_key);
+		  val_print = pr_valstring (&fk_key);
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, sort_args->fk_name,
 			  (val_print ? val_print : "unknown value"));
 		  ret = ER_FK_INVALID;
@@ -4002,7 +4002,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 		{
 		  /* The primary key has ended, but the value from foreign key was not found. */
 		  /* Foreign key is invalid. Set error. */
-		  val_print = pr_valstring (thread_p, &fk_key);
+		  val_print = pr_valstring (&fk_key);
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, sort_args->fk_name,
 			  (val_print ? val_print : "unknown value"));
 		  ret = ER_FK_INVALID;
@@ -4025,7 +4025,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	      else
 		{
 		  /* Fk is invalid. Set error. */
-		  val_print = pr_valstring (thread_p, &fk_key);
+		  val_print = pr_valstring (&fk_key);
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, sort_args->fk_name,
 			  (val_print ? val_print : "unknown value"));
 		  ret = ER_FK_INVALID;

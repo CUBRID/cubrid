@@ -3828,8 +3828,8 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 
 	  OR_BUF_INIT (buf, ptr, length);
 
-	  if ((*(pr_type->data_readval)) (&buf, *peek_dbval, regu_var->value.pos_descr.dom, -1, false /* Don't copy */ ,
-					  NULL, 0) != NO_ERROR)
+	  if (pr_type->data_readval (&buf, *peek_dbval, regu_var->value.pos_descr.dom, -1, false /* Don't copy */ ,
+				     NULL, 0) != NO_ERROR)
 	    {
 	      goto exit_on_error;
 	    }
@@ -4300,8 +4300,7 @@ fetch_peek_dbval_pos (REGU_VARIABLE * regu_var, QFILE_TUPLE tpl, int pos, DB_VAL
 
       OR_BUF_INIT (buf, ptr, length);
       /* read value from the tuple */
-      if ((*(pr_type->data_readval)) (&buf, *peek_dbval, pos_descr->dom, -1, false /* Don't copy */ ,
-				      NULL, 0) != NO_ERROR)
+      if (pr_type->data_readval (&buf, *peek_dbval, pos_descr->dom, -1, false /* Don't copy */ , NULL, 0) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}

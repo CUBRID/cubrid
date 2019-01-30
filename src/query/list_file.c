@@ -37,7 +37,7 @@
 #include "dbtype.h"
 #include "error_manager.h"
 #include "object_primitive.h"
-#include "object_print.h"
+#include "db_value_printer.hpp"
 #include "query_manager.h"
 #include "query_opfunc.h"
 #include "stream_to_xasl.h"
@@ -650,7 +650,7 @@ qfile_compare_tuple_values (QFILE_TUPLE tuple1, QFILE_TUPLE tuple2, TP_DOMAIN * 
   else
     {
       or_init (&buf, (char *) tuple1 + QFILE_TUPLE_VALUE_HEADER_SIZE, length1);
-      rc = (*(pr_type_p->data_readval)) (&buf, &dbval1, domain_p, -1, is_copy, NULL, 0);
+      rc = pr_type_p->data_readval (&buf, &dbval1, domain_p, -1, is_copy, NULL, 0);
       if (rc != NO_ERROR)
 	{
 	  return ER_FAILED;
@@ -667,7 +667,7 @@ qfile_compare_tuple_values (QFILE_TUPLE tuple1, QFILE_TUPLE tuple2, TP_DOMAIN * 
   else
     {
       or_init (&buf, (char *) tuple2 + QFILE_TUPLE_VALUE_HEADER_SIZE, length2);
-      rc = (*(pr_type_p->data_readval)) (&buf, &dbval2, domain_p, -1, is_copy, NULL, 0);
+      rc = pr_type_p->data_readval (&buf, &dbval2, domain_p, -1, is_copy, NULL, 0);
       if (rc != NO_ERROR)
 	{
 	  pr_clear_value (&dbval1);
@@ -689,7 +689,7 @@ qfile_compare_tuple_values (QFILE_TUPLE tuple1, QFILE_TUPLE tuple2, TP_DOMAIN * 
     }
   else
     {
-      *compare_result = (*(pr_type_p->cmpval)) (&dbval1, &dbval2, 0, 1, NULL, domain_p->collation_id);
+      *compare_result = pr_type_p->cmpval (&dbval1, &dbval2, 0, 1, NULL, domain_p->collation_id);
     }
 
   pr_clear_value (&dbval1);
@@ -884,7 +884,7 @@ qfile_print_tuple (QFILE_TUPLE_VALUE_TYPE_LIST * type_list_p, QFILE_TUPLE tuple)
 	  or_init (&buf, tuple_p + QFILE_TUPLE_VALUE_HEADER_SIZE, QFILE_GET_TUPLE_VALUE_LENGTH (tuple_p));
 	  (*(pr_type_p->readval)) (&buf, &dbval, type_list_p->domp[i], -1, true, NULL, 0);
 
-	  (*(pr_type_p->fptrfunc)) (NULL, stdout, &dbval);
+	  db_fprint_value (stdout, &dbval);
 	  if (pr_is_set_type (pr_type_p->id))
 	    {
 	      pr_clear_value (&dbval);
@@ -1805,7 +1805,7 @@ qfile_fast_intval_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
       QFILE_PUT_TUPLE_VALUE_LENGTH (tuple_p, tuple_value_size);
 
       OR_BUF_INIT (buf, tuple_p + QFILE_TUPLE_VALUE_HEADER_SIZE, tuple_value_size);
-      if (pr_type == NULL || (*(pr_type->data_writeval)) (&buf, v2) != NO_ERROR)
+      if (pr_type == NULL || pr_type->data_writeval (&buf, v2) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -1884,7 +1884,7 @@ qfile_fast_val_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p
       QFILE_PUT_TUPLE_VALUE_LENGTH (tuple_p, tuple_value_size);
 
       OR_BUF_INIT (buf, tuple_p + QFILE_TUPLE_VALUE_HEADER_SIZE, tuple_value_size);
-      if (pr_type == NULL || (*(pr_type->data_writeval)) (&buf, val) != NO_ERROR)
+      if (pr_type == NULL || pr_type->data_writeval (&buf, val) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -3663,11 +3663,11 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p, Q
 
 	  if (p->pos_descr.dom->type->id == DB_TYPE_VARIABLE)
 	    {
-	      subkey->sort_f = types->domp[i]->type->data_cmpdisk;
+	      subkey->sort_f = types->domp[i]->type->get_data_cmpdisk_function ();
 	    }
 	  else
 	    {
-	      subkey->sort_f = p->pos_descr.dom->type->data_cmpdisk;
+	      subkey->sort_f = p->pos_descr.dom->type->get_data_cmpdisk_function ();
 	    }
 
 	  subkey->is_desc = (p->s_order == S_ASC) ? 0 : 1;
@@ -3694,7 +3694,7 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p, Q
 	  subkey->col_dom = types->domp[i];
 	  subkey->cmp_dom = NULL;
 	  subkey->use_cmp_dom = false;
-	  subkey->sort_f = types->domp[i]->type->data_cmpdisk;
+	  subkey->sort_f = types->domp[i]->type->get_data_cmpdisk_function ();
 	  subkey->is_desc = 0;
 	  subkey->is_nulls_first = 1;
 	}
@@ -5203,7 +5203,7 @@ qfile_print_list_cache_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *ke
   for (i = 0; i < ent->param_values.size; i++)
     {
       fprintf (fp, " ");
-      help_fprint_value (thread_p, fp, &ent->param_values.vals[i]);
+      db_fprint_value (fp, &ent->param_values.vals[i]);
     }
 
   fprintf (fp, " ]\n");
@@ -5480,7 +5480,7 @@ qfile_delete_list_cache_entry (THREAD_ENTRY * thread_p, void *data, void *args)
 
 	      if (lent->param_values.size > 0)
 		{
-		  s = pr_valstring (thread_p, &lent->param_values.vals[0]);
+		  s = pr_valstring (&lent->param_values.vals[0]);
 		}
 
 	      er_log_debug (ARG_FILE_LINE,
@@ -6101,7 +6101,7 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr, con
     {
       char *s;
 
-      s = ((lent->param_values.size > 0) ? pr_valstring (thread_p, &lent->param_values.vals[0]) : NULL);
+      s = ((lent->param_values.size > 0) ? pr_valstring (&lent->param_values.vals[0]) : NULL);
       er_log_debug (ARG_FILE_LINE, "ls_update_list_cache_ent: mht_rem failed for param_values { %d %s ...}\n",
 		    lent->param_values.size, s ? s : "(null)");
       if (s)
@@ -6473,7 +6473,7 @@ qfile_set_tuple_column_value (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p
 	{
 	  OR_BUF_INIT (buf, ptr, length);
 
-	  if ((*(pr_type->data_writeval)) (&buf, value_p) != NO_ERROR)
+	  if (pr_type->data_writeval (&buf, value_p) != NO_ERROR)
 	    {
 	      error = ER_FAILED;
 	      goto cleanup;
@@ -6512,7 +6512,7 @@ qfile_set_tuple_column_value (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p
 	{
 	  OR_BUF_INIT (buf, ptr, length);
 
-	  if ((*(pr_type->data_writeval)) (&buf, value_p) != NO_ERROR)
+	  if (pr_type->data_writeval (&buf, value_p) != NO_ERROR)
 	    {
 	      error = ER_FAILED;
 	      goto cleanup;
@@ -6659,8 +6659,8 @@ qfile_compare_with_interpolation_domain (char *fp0, char *fp1, SUBKEY_INFO * sub
 
       OR_BUF_INIT (buf0, d0, QFILE_GET_TUPLE_VALUE_LENGTH (fp0));
       error =
-	(subkey->col_dom->type->data_readval) (&buf0, &val0, subkey->col_dom, QFILE_GET_TUPLE_VALUE_LENGTH (fp0), false,
-					       NULL, 0);
+	subkey->col_dom->type->data_readval (&buf0, &val0, subkey->col_dom, QFILE_GET_TUPLE_VALUE_LENGTH (fp0), false,
+					     NULL, 0);
       if (error != NO_ERROR || DB_IS_NULL (&val0))
 	{
 	  goto end;
@@ -6685,16 +6685,16 @@ qfile_compare_with_interpolation_domain (char *fp0, char *fp1, SUBKEY_INFO * sub
   OR_BUF_INIT (buf0, d0, QFILE_GET_TUPLE_VALUE_LENGTH (fp0));
   OR_BUF_INIT (buf1, d1, QFILE_GET_TUPLE_VALUE_LENGTH (fp1));
   error =
-    (subkey->col_dom->type->data_readval) (&buf0, &val0, subkey->col_dom, QFILE_GET_TUPLE_VALUE_LENGTH (fp0), false,
-					   NULL, 0);
+    subkey->col_dom->type->data_readval (&buf0, &val0, subkey->col_dom, QFILE_GET_TUPLE_VALUE_LENGTH (fp0), false,
+					 NULL, 0);
   if (error != NO_ERROR)
     {
       goto end;
     }
 
   error =
-    (subkey->col_dom->type->data_readval) (&buf1, &val1, subkey->col_dom, QFILE_GET_TUPLE_VALUE_LENGTH (fp1), false,
-					   NULL, 0);
+    subkey->col_dom->type->data_readval (&buf1, &val1, subkey->col_dom, QFILE_GET_TUPLE_VALUE_LENGTH (fp1), false,
+					 NULL, 0);
   if (error != NO_ERROR)
     {
       goto end;
