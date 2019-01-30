@@ -2635,7 +2635,7 @@ db_json_array_append_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw
 
 /*
  * db_json_array_insert_func () - In a given JSON document, Insert the given value in the array at the path
- *                                or at the path ignoring a trailing 0 array index (if inserting at full path would fail)
+ *                                or at the path ignoring a trailing 0 array index (if insert at full path would fail)
  *
  * return                  : error code
  * value (in)              : the value to be added in the array
