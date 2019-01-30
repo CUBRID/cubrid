@@ -197,6 +197,8 @@ class JSON_PATH : protected rapidjson::GenericPointer <JSON_VALUE>
 
     const TOKEN *get_last_token () const;
 
+    bool is_root_path () const;
+
     const JSON_PATH get_parent () const;
 
     bool is_last_array_index_less_than (size_t size) const;
@@ -974,6 +976,11 @@ const TOKEN *JSON_PATH::get_last_token () const
   size_t token_cnt = GetTokenCount ();
 
   return token_cnt > 0 ? GetTokens () + (token_cnt - 1) : NULL;
+}
+
+bool JSON_PATH::is_root_path () const
+{
+  return GetTokenCount () == 0;
 }
 
 const JSON_PATH JSON_PATH::get_parent () const
@@ -2146,7 +2153,8 @@ db_json_copy_doc (JSON_DOC &dest, const JSON_DOC *src)
 }
 
 /*
- * db_json_insert_func () - Insert a document into destination document at given path
+ * db_json_insert_func () - Insert a value into the destination document at the given path or at the path ignoring a trailing
+ *                          0 array index (if insert at full path would fail). JSON_INSERT results in no-op if a value is found
  *
  * return                  : error code
  * value (in)              : document to be inserted
@@ -2171,9 +2179,8 @@ db_json_insert_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path)
       return error_code;
     }
 
-  if (p.get_last_token () == NULL)
+  if (p.is_root_path ())
     {
-      // ignore if root
       return NO_ERROR;
     }
 
@@ -2186,24 +2193,10 @@ db_json_insert_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path)
 
   if (p.points_to_array_cell ())
     {
-      if (p.is_last_token_array_index_zero ())
+      if (p.is_last_token_array_index_zero () && db_json_get_type_of_value (parent_val) != DB_JSON_ARRAY)
 	{
-	  if (db_json_get_type_of_value (parent_val) == DB_JSON_ARRAY)
-	    {
-	      if (p.is_last_array_index_less_than (parent_val->GetArray ().Size ()))
-		{
-		  return NO_ERROR;
-		}
-	      else
-		{
-		  p.set (doc, *value);
-		}
-	    }
-	  else
-	    {
-	      // we ignore a trailing 0 array index. We found a value => no op
-	      return NO_ERROR;
-	    }
+	  // we ignore a trailing 0 array index. We found a value => no op
+	  return NO_ERROR;
 	}
       else
 	{
@@ -2238,7 +2231,8 @@ db_json_insert_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path)
 }
 
 /*
- * db_json_replace_func () - Replaces the value from the specified path in a JSON document with a new value
+ * db_json_replace_func () - Replaces the value from the specified path or at the path ignoring a trailing 0 array index
+ *                           (if the full path does not exist) in a JSON document with a new value.
  *
  * return                  : error code
  * new_value (in)          : the value to be set at the specified path
@@ -2263,9 +2257,8 @@ db_json_replace_func (const JSON_DOC *new_value, JSON_DOC &doc, const char *raw_
       return error_code;
     }
 
-  if (p.get_last_token() == NULL)
+  if (p.is_root_path ())
     {
-      // treat root as a special case, because it does not have a parent
       p.set (doc, *new_value);
       return NO_ERROR;
     }
@@ -2276,15 +2269,10 @@ db_json_replace_func (const JSON_DOC *new_value, JSON_DOC &doc, const char *raw_
     }
 
   JSON_PATH parent = p.get_parent ();
-  // replace when we either find the path or we find the path without a trailing 0 array index
   if (p.get (doc) == NULL)
     {
       if (p.is_last_token_array_index_zero ())
 	{
-	  if (p.get_parent ().get (doc) == NULL)
-	    {
-	      return NO_ERROR;
-	    }
 	  p.get_parent ().set (doc, *new_value);
 	}
       return NO_ERROR;
@@ -2295,7 +2283,8 @@ db_json_replace_func (const JSON_DOC *new_value, JSON_DOC &doc, const char *raw_
 }
 
 /*
- * db_json_set_func () - Inserts or updates data in a JSON document at a specified path
+ * db_json_set_func () - Inserts or updates data in a JSON document at a specified path or at the path ignoring a trailing 0 array index
+ *                       (if the full path does not exist) in a JSON document with a new value.
  *
  * return                  : error code
  * value (in)              : the value to be set at the specified path
@@ -2320,9 +2309,8 @@ db_json_set_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path)
       return error_code;
     }
 
-  if (p.get_last_token() == NULL)
+  if (p.is_root_path ())
     {
-      // treat root as a special case, because it does not have a parent
       p.set (doc, *value);
       return NO_ERROR;
     }
@@ -2564,7 +2552,8 @@ db_json_search_func (JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALUE *esc
 }
 
 /*
- * db_json_array_append_func () - Append the value to the end of the indicated array within a JSON document
+ * db_json_array_append_func () - In a given JSON document, append the value to the end of the array indicated by the path
+ *                                or at the path ignoring a trailing 0 array index (if appending at full path would fail)
  *
  * return                  : error code
  * value (in)              : the value to be added in the array
@@ -2592,9 +2581,8 @@ db_json_array_append_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw
   JSON_VALUE value_copy (*value, doc.GetAllocator());
   JSON_VALUE *json_val = p.get (doc);
 
-  if (p.get_last_token () == NULL)
+  if (p.is_root_path ())
     {
-      // treat root as a special case, because it does not have a parent
       db_json_value_wrap_as_array (*json_val, doc.GetAllocator ());
       json_val->GetArray ().PushBack (value_copy, doc.GetAllocator ());
       return NO_ERROR;
@@ -2616,6 +2604,7 @@ db_json_array_append_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw
 	      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p.dump_json_path (), &doc);
 	    }
 
+	  assert (json_val != NULL);
 	  db_json_value_wrap_as_array (*json_val, doc.GetAllocator ());
 	  json_val->GetArray ().PushBack (value_copy, doc.GetAllocator ());
 	}
@@ -2627,7 +2616,7 @@ db_json_array_append_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw
 	    }
 
 	  db_json_value_wrap_as_array (*parent_val, doc.GetAllocator ());
-	  json_val->GetArray ().PushBack (value_copy, doc.GetAllocator ());
+	  parent_val->GetArray ().PushBack (value_copy, doc.GetAllocator ());
 	}
     }
   else
@@ -2645,7 +2634,8 @@ db_json_array_append_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw
 }
 
 /*
- * db_json_array_insert_func () - Insert the value to the path from the indicated array within a JSON document
+ * db_json_array_insert_func () - In a given JSON document, Insert the given value in the array at the path
+ *                                or at the path ignoring a trailing 0 array index (if inserting at full path would fail)
  *
  * return                  : error code
  * value (in)              : the value to be added in the array
@@ -2692,7 +2682,7 @@ db_json_array_insert_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw
       return NO_ERROR;
     }
 
-  json_parent->GetArray ().PushBack (1 /* dummy json_value */, doc.GetAllocator ());
+  json_parent->GetArray ().PushBack (JSON_VALUE (), doc.GetAllocator ());
   const TOKEN &last_token = *p.get_last_token ();
   for (rapidjson::SizeType i = json_parent->GetArray ().Size () - 1; i >= last_token.index + 1; --i)
     {
