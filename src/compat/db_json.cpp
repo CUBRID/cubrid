@@ -2268,7 +2268,6 @@ db_json_replace_func (const JSON_DOC *new_value, JSON_DOC &doc, const char *raw_
       return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p.dump_json_path (), &doc);
     }
 
-  JSON_PATH parent = p.get_parent ();
   if (p.get (doc) == NULL)
     {
       if (p.is_last_token_array_index_zero ())
@@ -2309,7 +2308,9 @@ db_json_set_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path)
       return error_code;
     }
 
-  if (p.is_root_path ())
+  // todo: find a cleaner solution for '$."111"' case
+  // test if exists for now
+  if (p.get (doc) != NULL)
     {
       p.set (doc, *value);
       return NO_ERROR;
@@ -2622,7 +2623,7 @@ db_json_array_append_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw
   else
     {
       // only valid case is when path exists and its parent is a json object
-      if (db_json_get_type_of_value (parent_val) != DB_JSON_OBJECT)
+      if (db_json_get_type_of_value (parent_val) != DB_JSON_OBJECT || json_val == NULL)
 	{
 	  return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p.dump_json_path (), &doc);
 	}
