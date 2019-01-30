@@ -3642,21 +3642,6 @@ db_check_single_query (DB_SESSION * session)
   return NO_ERROR;
 }
 
-int
-db_check_single_query_and_set_error (DB_SESSION * session)
-{
-  int error_code = NO_ERROR;
-
-  error_code = db_check_single_query (session);
-  if (error_code != NO_ERROR)
-    {
-      error_code = ER_IT_MULTIPLE_STATEMENT;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
-    }
-
-  return error_code;
-}
-
 #if !defined (SERVER_MODE)
 /*
  * db_get_parser() - This function returns session's parser
