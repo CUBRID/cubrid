@@ -31,6 +31,8 @@ namespace test_packing
 
   int test_packing_buffer1 (void);
 
+  int test_packing_all (void);
+
   class buffer_manager : public cubbase::pinner
   {
     private:
