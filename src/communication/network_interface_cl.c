@@ -10135,16 +10135,15 @@ loaddb_load_object_file (const char *file_name)
 }
 
 int
-loaddb_load_batch (std::string & batch, int batch_id)
+loaddb_install_class (const cubload::class_id clsid, const std::string & buf)
 {
 #if defined(CS_MODE)
-  char *ptr;
-  int req_error;
-  int rc = NO_ERROR;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  cubpacking::packer packer;
 
-  int request_size = length_const_string (batch.c_str (), NULL) + OR_INT_SIZE;
+  size_t request_size = 0;
+  request_size += packer.get_packed_int_size (request_size);
+  request_size += packer.get_packed_string_size (buf, request_size);
+
   char *request = (char *) malloc (request_size);
   if (request == NULL)
     {
@@ -10152,10 +10151,54 @@ loaddb_load_batch (std::string & batch, int batch_id)
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  ptr = pack_const_string (request, batch.c_str ());
-  or_pack_int (ptr, batch_id);
+  packer.set_buffer (request, request_size);
+  packer.pack_int (clsid);
+  packer.pack_string (buf);
 
-  req_error = net_client_request (NET_SERVER_LD_LOAD_BATCH, request, request_size, reply,
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int req_error = net_client_request (NET_SERVER_LD_INSTALL_CLASS, request, (int) request_size, reply,
+				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+
+  free_and_init (request);
+
+  int rc = NO_ERROR;
+  if (!req_error)
+    {
+      or_unpack_int (reply, &rc);
+    }
+
+  return rc;
+#else /* CS_MODE */
+  return NO_ERROR;
+#endif /* !CS_MODE */
+}
+
+int
+loaddb_load_batch (const cubload::batch & batch)
+{
+#if defined(CS_MODE)
+  int req_error;
+  int rc = NO_ERROR;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  /* *INDENT-OFF* */
+  cubpacking::packer packer;
+  /* *INDENT-ON* */
+
+  size_t request_size = batch.get_packed_size (packer);
+  char *request = (char *) malloc (request_size);
+  if (request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, request_size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  packer.set_buffer (request, request_size);
+  batch.pack (packer);
+
+  req_error = net_client_request (NET_SERVER_LD_LOAD_BATCH, request, (int) request_size, reply,
 				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
 
   free_and_init (request);
@@ -10197,9 +10240,9 @@ loaddb_fetch_stats (load_stats * stats)
       return error_code;
     }
 
-  cubpacking::packer packer (data_reply, data_reply_size);
+  cubpacking::unpacker unpacker (data_reply, data_reply_size);
   stats->clear ();
-  stats->unpack (&packer);
+  stats->unpack (unpacker);
 
   return 0;
 #else /* CS_MODE */

@@ -842,6 +842,10 @@ net_server_init (void)
   req_p->processing_function = sloaddb_load_object_file;
   req_p->name = "NET_SERVER_LD_LOAD_OBJECT_FILE";
 
+  req_p = &net_Requests[NET_SERVER_LD_INSTALL_CLASS];
+  req_p->processing_function = sloaddb_install_class;
+  req_p->name = "NET_SERVER_LD_INSTALL_CLASS";
+
   req_p = &net_Requests[NET_SERVER_LD_LOAD_BATCH];
   req_p->processing_function = sloaddb_load_batch;
   req_p->name = "NET_SERVER_LD_LOAD_BATCH";

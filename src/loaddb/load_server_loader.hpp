@@ -36,15 +36,37 @@ namespace cubload
   // forward declaration
   class session;
 
-  class server_loader : public loader
+  class server_class_installer : public class_installer
   {
     public:
-      server_loader (session &session, error_handler &error_handler);
-      ~server_loader () override;
+      server_class_installer () = delete;
+      server_class_installer (session &session, error_handler &error_handler);
+      ~server_class_installer () override = default;
+
+      void set_class_id (class_id clsid) override;
 
       void check_class (const char *class_name, int class_id) override;
-      int setup_class (const char *class_name) override;
-      void setup_class (string_type *class_name, class_command_spec_type *cmd_spec) override;
+      int install_class (const char *class_name) override;
+      void install_class (string_type *class_name, class_command_spec_type *cmd_spec) override;
+
+    private:
+      session &m_session;
+      error_handler &m_error_handler;
+
+      class_id m_clsid;
+
+      void locate_class (const char *class_name, OID &class_oid);
+      void register_class_with_attributes (const char *class_name, string_type *attr_list);
+  };
+
+  class server_object_loader : public object_loader
+  {
+    public:
+      server_object_loader () = delete;
+      server_object_loader (session &session, error_handler &error_handler);
+      ~server_object_loader () override = default;
+
+      void init (class_id clsid) override;
       void destroy () override;
 
       void start_line (int object_id) override;
@@ -52,21 +74,27 @@ namespace cubload
       void finish_line () override;
 
     private:
-      void process_constant (constant_type *cons, int attr_idx);
+      void process_constant (constant_type *cons, const attribute &attr);
       void process_monetary_constant (constant_type *cons, tp_domain *domain, db_value *db_val);
 
-      void clear ();
+      void start_scancache (const OID &class_oid);
+      void stop_scancache ();
+
+      void start_attrinfo (const OID &class_oid);
+      void stop_attrinfo ();
 
       session &m_session;
       error_handler &m_error_handler;
+      cubthread::entry *m_thread_ref;
 
-      OID m_class_oid;
+      class_id m_clsid;
 
-      ATTR_ID *m_attr_ids;
-      heap_cache_attrinfo m_attr_info;
+      const class_entry *m_class_entry;
+      bool m_attrinfo_started;
+      heap_cache_attrinfo m_attrinfo;
 
-      heap_scancache m_scancache;
       bool m_scancache_started;
+      heap_scancache m_scancache;
   };
 
 } // namespace cubload

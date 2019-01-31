@@ -30,7 +30,8 @@ namespace cubload
 
   driver::driver ()
     : m_scanner (NULL)
-    , m_loader (NULL)
+    , m_class_installer (NULL)
+    , m_object_loader (NULL)
     , m_error_handler (NULL)
     , m_semantic_helper ()
     , m_is_initialized (false)
@@ -40,8 +41,11 @@ namespace cubload
 
   driver::~driver ()
   {
-    delete m_loader;
-    m_loader = NULL;
+    delete m_class_installer;
+    m_class_installer = NULL;
+
+    delete m_object_loader;
+    m_object_loader = NULL;
 
     delete m_scanner;
     m_scanner = NULL;
@@ -51,11 +55,12 @@ namespace cubload
   }
 
   void
-  driver::initialize (loader *loader, error_handler *error_handler)
+  driver::initialize (class_installer *cls_installer, object_loader *obj_loader, error_handler *error_handler)
   {
     assert (!m_is_initialized);
 
-    m_loader = loader;
+    m_object_loader = obj_loader;
+    m_class_installer = cls_installer;
     m_error_handler = error_handler;
     m_scanner = new scanner (m_semantic_helper, *m_error_handler);
     m_is_initialized = true;
@@ -73,16 +78,22 @@ namespace cubload
     m_scanner->switch_streams (&iss);
     m_semantic_helper.reset ();
 
-    assert (m_loader != NULL);
+    assert (m_class_installer != NULL && m_object_loader != NULL);
     parser parser (*this);
 
     return parser.parse ();
   }
 
-  loader &
-  driver::get_loader ()
+  class_installer &
+  driver::get_class_installer ()
   {
-    return *m_loader;
+    return *m_class_installer;
+  }
+
+  object_loader &
+  driver::get_object_loader ()
+  {
+    return *m_object_loader;
   }
 
   semantic_helper &

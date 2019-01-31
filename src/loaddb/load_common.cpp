@@ -23,13 +23,7 @@
 
 #include "load_common.hpp"
 
-#include "error_code.h"
-#include "memory_alloc.h"
-
-#include <cassert>
 #include <fstream>
-#include <stdarg.h>
-#include <string>
 
 ///////////////////// Function declarations /////////////////////
 namespace cubload
@@ -38,7 +32,7 @@ namespace cubload
   /*
    * A wrapper function for calling batch handler. Used by split function and does some extra checks
    */
-  int handle_batch (std::string &class_line, std::string &batch, batch_id &id, batch_handler &handler);
+  int handle_batch (batch_handler &handler, class_id clsid, std::string &batch_content, batch_id &batch_id);
 
   /*
    * Check if a given string starts with a given prefix
@@ -59,6 +53,68 @@ namespace cubload
 ///////////////////// Function definitions /////////////////////
 namespace cubload
 {
+
+  batch::batch ()
+    : m_clsid (NULL_CLASS_ID)
+    , m_batch_id (NULL_BATCH_ID)
+    , m_content ()
+  {
+    //
+  }
+
+  batch::batch (class_id clsid, batch_id batch_id, std::string &content)
+    : m_clsid (clsid)
+    , m_batch_id (batch_id)
+    , m_content (content)
+  {
+    //
+  }
+
+  batch::batch (batch &&other) noexcept
+    : m_clsid (other.m_clsid)
+    , m_batch_id (other.m_batch_id)
+    , m_content (std::move (other.m_content))
+  {
+    //
+  }
+
+  batch &
+  batch::operator= (batch &&other) noexcept
+  {
+    m_clsid = other.m_clsid;
+    m_batch_id = other.m_batch_id;
+    m_content = std::move (other.m_content);
+
+    return *this;
+  }
+
+  void
+  batch::pack (cubpacking::packer &serializator) const
+  {
+    serializator.pack_int (m_clsid);
+    serializator.pack_int (m_batch_id);
+    serializator.pack_string (m_content);
+  }
+
+  void
+  batch::unpack (cubpacking::unpacker &deserializator)
+  {
+    deserializator.unpack_int (m_clsid);
+    deserializator.unpack_int (m_batch_id);
+    deserializator.unpack_string (m_content);
+  }
+
+  size_t
+  batch::get_packed_size (cubpacking::packer &serializator) const
+  {
+    size_t size = 0;
+
+    size += serializator.get_packed_int_size (size);
+    size += serializator.get_packed_int_size (size);
+    size += serializator.get_packed_string_size (m_content, size);
+
+    return size;
+  }
 
   stats::stats ()
     : defaults (0)
@@ -111,57 +167,42 @@ namespace cubload
     is_completed = false;
   }
 
-  int
-  stats::pack (cubpacking::packer *serializator)
+  void
+  stats::pack (cubpacking::packer &serializator) const
   {
-    serializator->pack_bigint (&total_objects);
-    serializator->pack_bigint (&last_commit);
-    serializator->pack_int (errors);
-    serializator->pack_string (error_message);
-    serializator->pack_int ((int) is_failed);
-    serializator->pack_int ((int) is_completed);
-
-    return NO_ERROR;
+    serializator.pack_int (defaults);
+    serializator.pack_bigint (total_objects);
+    serializator.pack_bigint (last_commit);
+    serializator.pack_int (errors);
+    serializator.pack_string (error_message);
+    serializator.pack_bool (is_failed);
+    serializator.pack_bool (is_completed);
   }
 
-  int
-  stats::unpack (cubpacking::packer *serializator)
+  void
+  stats::unpack (cubpacking::unpacker &deserializator)
   {
-    serializator->unpack_bigint (&total_objects);
-    serializator->unpack_bigint (&last_commit);
-    serializator->unpack_int (&errors);
-    serializator->unpack_string (error_message);
-
-    int is_failed_;
-    serializator->unpack_int (&is_failed_);
-    is_failed = (bool) is_failed_;
-
-    int is_completed_;
-    serializator->unpack_int (&is_completed_);
-    is_completed = (bool) is_completed_;
-
-    return NO_ERROR;
-  }
-
-  bool
-  stats::is_equal (const packable_object *other)
-  {
-    // used only in test context
-    assert (false);
-    return true;
+    deserializator.unpack_int (defaults);
+    deserializator.unpack_bigint (total_objects);
+    deserializator.unpack_bigint (last_commit);
+    deserializator.unpack_int (errors);
+    deserializator.unpack_string (error_message);
+    deserializator.unpack_bool (is_failed);
+    deserializator.unpack_bool (is_completed);
   }
 
   size_t
-  stats::get_packed_size (cubpacking::packer *serializator)
+  stats::get_packed_size (cubpacking::packer &serializator) const
   {
     size_t size = 0;
 
-    size += serializator->get_packed_bigint_size (size); // total_objects
-    size += serializator->get_packed_bigint_size (size); // last_commit
-    size += serializator->get_packed_int_size (size); // errors
-    size += serializator->get_packed_string_size (error_message, size);
-    size += serializator->get_packed_int_size (size); // is_failed
-    size += serializator->get_packed_int_size (size); // is_completed
+    size += serializator.get_packed_int_size (size); // defaults
+    size += serializator.get_packed_bigint_size (size); // total_objects
+    size += serializator.get_packed_bigint_size (size); // last_commit
+    size += serializator.get_packed_int_size (size); // errors
+    size += serializator.get_packed_string_size (error_message, size);
+    size += serializator.get_packed_bool_size (size); // is_failed
+    size += serializator.get_packed_bool_size (size); // is_completed
 
     return size;
   }
@@ -219,12 +260,12 @@ namespace cubload
   }
 
   int
-  split (int batch_size, std::string &object_file_name, batch_handler &handler)
+  split (int batch_size, const std::string &object_file_name, class_install_handler &c_handler, batch_handler &b_handler)
   {
-    int error;
+    int error_code;
     int rows = 0;
-    batch_id id = 0;
-    std::string class_line;
+    batch_id batch_id = 0;
+    class_id clsid = 0;
     std::string batch_buffer;
     std::ifstream object_file (object_file_name, std::fstream::in);
 
@@ -238,29 +279,36 @@ namespace cubload
 
     for (std::string line; std::getline (object_file, line);)
       {
-	if (starts_with (line, "%id"))
-	  {
-	    // do nothing for now
-	    continue;
-	  }
+	bool is_id_line = starts_with (line, "%id");
+	bool is_class_line = starts_with (line, "%class");
 
-	if (starts_with (line, "%class"))
+	if (is_id_line || is_class_line)
 	  {
-	    // in case of class line collect remaining for current class
-	    // and start new batch for the new class
-	    error = handle_batch (class_line, batch_buffer, id, handler);
-	    if (error != NO_ERROR)
+	    if (is_class_line)
 	      {
-		object_file.close ();
-		return error;
+		// in case of class line collect remaining for current class
+		// and start new batch for the new class
+		error_code = handle_batch (b_handler, clsid, batch_buffer, batch_id);
+		if (error_code != NO_ERROR)
+		  {
+		    object_file.close ();
+		    return error_code;
+		  }
+
+		++clsid;
+
+		// rewind forward rows counter until batch is full
+		for (; (rows % batch_size) != 0; rows++)
+		  ;
 	      }
 
-	    // store new class line
-	    class_line = line;
-
-	    // rewind forward rows counter until batch is full
-	    for (; (rows % batch_size) != 0; rows++)
-	      ;
+	    line.append ("\n"); // feed lexer with new line
+	    error_code = c_handler (clsid, line);
+	    if (error_code != NO_ERROR)
+	      {
+		object_file.close ();
+		return error_code;
+	      }
 
 	    continue;
 	  }
@@ -278,57 +326,45 @@ namespace cubload
 	// this means that the row ends on the last line that does not end with '+' (plus) character
 	if (!ends_with (line, "+"))
 	  {
-	    rows++;
+	    ++rows;
 
 	    // check if we have a full batch
 	    if ((rows % batch_size) == 0)
 	      {
-		error = handle_batch (class_line, batch_buffer, id, handler);
-		if (error != NO_ERROR)
+		error_code = handle_batch (b_handler, clsid, batch_buffer, batch_id);
+		if (error_code != NO_ERROR)
 		  {
 		    object_file.close ();
-		    return error;
+		    return error_code;
 		  }
 	      }
 	  }
       }
 
     // collect remaining rows
-    error = handle_batch (class_line, batch_buffer, id, handler);
+    error_code = handle_batch (b_handler, clsid, batch_buffer, batch_id);
 
     object_file.close ();
 
-    return error;
+    return error_code;
   }
 
   int
-  handle_batch (std::string &class_line, std::string &batch, batch_id &id, batch_handler &handler)
+  handle_batch (batch_handler &handler, class_id clsid, std::string &batch_content, batch_id &batch_id)
   {
-    if (!batch.empty () && class_line.empty ())
-      {
-	// batch must have a class
-	assert (false);
-	return ER_FAILED;
-      }
-    if (batch.empty ())
+    if (batch_content.empty ())
       {
 	// batch is empty, therefore do nothing and return
 	return NO_ERROR;
       }
 
-    std::string buffer;
-    buffer.reserve (class_line.size () + buffer.size () + 1); // 1 is for \n character
-
-    buffer.append (class_line);
-    buffer.append ("\n");
-    buffer.append (batch);
-
-    int ret = handler (buffer, ++id);
+    batch batch_ (clsid, ++batch_id, batch_content);
+    int error_code = handler (batch_);
 
     // prepare to start new batch for the class
-    batch.clear ();
+    batch_content.clear ();
 
-    return ret;
+    return error_code;
   }
 
   inline bool

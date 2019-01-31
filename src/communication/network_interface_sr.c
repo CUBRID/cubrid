@@ -9819,30 +9819,53 @@ sloaddb_load_object_file (THREAD_ENTRY * thread_p, unsigned int rid, char *reque
 }
 
 void
-sloaddb_load_batch (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+sloaddb_install_class (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  char *ptr;
-  char *batch;
-  int batch_id;
-  int error = NO_ERROR;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-
-  ptr = or_unpack_string (request, &batch);
-  or_unpack_int (ptr, &batch_id);
-
   /* *INDENT-OFF* */
-  std::string batch_str (batch);
+  cubpacking::unpacker unpacker (request, (size_t) reqlen);
+  cubload::batch batch;
+
+  cubload::class_id clsid;
+  unpacker.unpack_int (clsid);
+
+  std::string buf;
+  unpacker.unpack_string (buf);
   /* *INDENT-ON* */
 
   load_session *session = NULL;
   session_get_load_session (thread_p, session);
   assert (session != NULL);
-  error = session->load_batch (*thread_p, batch_str, batch_id);
 
-  db_private_free (thread_p, batch);
+  int error_code = session->install_class (*thread_p, clsid, buf);
 
-  or_pack_int (reply, error);
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  or_pack_int (reply, error_code);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+void
+sloaddb_load_batch (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  int error_code = NO_ERROR;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  /* *INDENT-OFF* */
+  cubpacking::unpacker unpacker (request, (size_t) reqlen);
+  cubload::batch batch;
+  /* *INDENT-ON* */
+
+  batch.unpack (unpacker);
+
+  load_session *session = NULL;
+  session_get_load_session (thread_p, session);
+  assert (session != NULL);
+
+  error_code = session->load_batch (*thread_p, batch);
+
+  or_pack_int (reply, error_code);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
@@ -9860,10 +9883,10 @@ sloaddb_fetch_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 
   load_stats loaddb_stats = session->get_stats ();
 
-    /* *INDENT-OFF* */
+  /* *INDENT-OFF* */
   cubpacking::packer packer;
   /* *INDENT-ON* */
-  size_t data_reply_size = loaddb_stats.get_packed_size (&packer);
+  size_t data_reply_size = loaddb_stats.get_packed_size (packer);
 
   char *data_reply = (char *) db_private_alloc (thread_p, data_reply_size);
   if (data_reply == NULL)
@@ -9872,12 +9895,12 @@ sloaddb_fetch_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  packer.init (data_reply, data_reply_size);
+  packer.set_buffer (data_reply, data_reply_size);
 
   ptr = or_pack_int (reply, (int) data_reply_size);
   or_pack_int (ptr, error_code);
 
-  loaddb_stats.pack (&packer);
+  loaddb_stats.pack (packer);
 
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), data_reply,
 				     (int) data_reply_size);

@@ -25,6 +25,7 @@
 #define _LOAD_SESSION_HPP_
 
 #include "dbtype_def.h"
+#include "load_class_registry.hpp"
 #include "load_common.hpp"
 #include "thread_manager.hpp"
 #include "thread_worker_pool.hpp"
@@ -36,8 +37,7 @@
 namespace cubload
 {
 
-  const batch_id NULL_BATCH_ID = -1;
-  const batch_id FIRST_BATCH_ID = 1;
+  class driver;
 
   /*
    * cubload::session
@@ -62,8 +62,8 @@ namespace cubload
    *
    *    or
    *
-   *    std::string batch = "<batch>"; // get batch from client
-   *    session.load_batch (*thread_p, batch, batch_id);
+   *    cubload::batch batch = "<batch>"; // get batch from client
+   *    session.load_batch (*thread_p, batch);
    */
   class session
   {
@@ -71,11 +71,13 @@ namespace cubload
       explicit session (SESSION_ID id);
       ~session ();
 
-      session (session &&copy) = delete; // Move c-tor: deleted
+      session (session &&other) = delete; // Move c-tor: deleted
       session (const session &copy) = delete; // Copy c-tor: deleted
 
       session &operator= (session &&other) = delete; // Move operator: deleted
-      session &operator= (const session &other) = delete; // Copy operator: deleted
+      session &operator= (const session &copy) = delete; // Copy operator: deleted
+
+      int install_class (cubthread::entry &thread_ref, const class_id clsid, const std::string &buf);
 
       /*
        * Load a batch from object file on the the server
@@ -83,9 +85,8 @@ namespace cubload
        *    return: NO_ERROR in case of success or a error code in case of failure.
        *    thread_ref(in): thread entry
        *    batch(in)     : a batch from loaddb object
-       *    id(in)        : id of the batch
        */
-      int load_batch (cubthread::entry &thread_ref, std::string &batch, batch_id id);
+      int load_batch (cubthread::entry &thread_ref, const batch &batch);
 
       /*
        * Load object file entirely on the the server
@@ -94,7 +95,7 @@ namespace cubload
        *    thread_ref(in)    : thread entry
        *    file_name(in)     : loaddb object file name (absolute path is required)
        */
-      int load_file (cubthread::entry &thread_ref, std::string &file_name);
+      int load_file (cubthread::entry &thread_ref, const std::string &file_name);
 
       void wait_for_completion ();
       void wait_for_previous_batch (batch_id id);
@@ -107,6 +108,8 @@ namespace cubload
 
       stats get_stats ();
       void inc_total_objects ();
+
+      class_registry &get_class_registry ();
 
     private:
       void notify_waiting_threads ();
@@ -125,10 +128,12 @@ namespace cubload
       cubthread::entry_workpool *m_worker_pool;
       cubthread::entry_manager *m_wp_context_manager;
 
+      class_registry m_class_registry;
+
       stats m_stats; // load db stats
       std::mutex m_stats_mutex;
 
-      unsigned int m_pool_size;
+      driver *m_driver;
   };
 
 } // namespace cubload
