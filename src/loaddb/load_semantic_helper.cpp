@@ -263,7 +263,6 @@ namespace cubload
     reset_pool_indexes ();
 
     m_in_instance_line = true;
-    m_qstr_buf.~extensible_block ();
     m_qstr_buf_p = NULL;
     m_use_qstr_buf = false;
     m_qstr_buf_idx = 0;
