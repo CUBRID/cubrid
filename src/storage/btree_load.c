@@ -152,9 +152,10 @@ struct btree_scan_partition_info
 
 struct index_builder_loader_context
 {
-  INT64 m_ib_error;
-  INT64 m_tasks_executed;
+  std::atomic_flag m_has_error;
+  std::atomic < std::uint64_t > m_tasks_executed;
   int m_tran_index;
+  int m_error_code;
 };
 
 // *INDENT-OFF*
@@ -4781,7 +4782,6 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 		      HEAP_SCANCACHE * scancache, int unique_pk)
 {
   int ret = NO_ERROR, eval_res;
-  INT64 local_error = NO_ERROR;
   OID cur_oid;
   RECDES cur_record;
   int cur_class;
@@ -4901,16 +4901,15 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
       cubthread::get_manager ()->push_task (ib_workpool, load_task);
 
       /* Increment tasks started. */
-      ATOMIC_INC_64 (&load_context.m_tasks_executed, 1LL);
+      load_context.m_tasks_executed++;
 
       /* Check for possible errors. */
-      local_error = ATOMIC_INC_64 (&load_context.m_ib_error, 0LL);
-      if (local_error != NO_ERROR)
+      if (load_context.m_error_code != NO_ERROR)
 	{
 	  /* Also stop all threads. */
 	  cubthread::get_manager ()->destroy_worker_pool (ib_workpool);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, (int) local_error, 0);
-	  return (int) local_error;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, load_context.m_error_code, 0);
+	  return load_context.m_error_code;
 	}
 
       /* Clear index key. */
@@ -4920,28 +4919,23 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 	}
     }
 
-  INT64 tasks_completed = 0;
-
   /* Check if the workerpool is empty */
   do
     {
-      tasks_completed = ATOMIC_INC_64 (&load_context.m_tasks_executed, 0LL);
-
-      local_error = ATOMIC_INC_64 (&load_context.m_ib_error, 0LL);
-      if (local_error != NO_ERROR)
+      if (load_context.m_error_code != NO_ERROR)
 	{
 	  /* Also stop all threads. */
 	  cubthread::get_manager ()->destroy_worker_pool (ib_workpool);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, (int) local_error, 0);
-	  return (int) local_error;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, load_context.m_error_code, 0);
+	  return load_context.m_error_code;
 	}
 
       /* Wait for threads to finish. */
       thread_sleep (10);
     }
-  while (tasks_completed != 0LL);
+  while (load_context.m_tasks_executed != 0UL);
 
-  assert (tasks_completed == 0LL);
+  assert (load_context.m_tasks_executed == 0LL);
   cubthread::get_manager ()->destroy_worker_pool (ib_workpool);
 
   return ret;
@@ -4954,9 +4948,10 @@ index_builder_loader_task::index_builder_loader_task (BTID * btid, OID * class_o
   COPY_OID (&m_class_oid, class_oid);
   COPY_OID (&m_oid, oid);
   m_unique_pk = unique_pk;
-  m_load_context.m_ib_error = 0;
+  m_load_context.m_has_error.clear ();
   m_load_context.m_tasks_executed = 0;
   m_load_context.m_tran_index = thread_get_thread_entry_info ()->tran_index;
+  m_load_context.m_error_code = NO_ERROR;
 }
 
 // *INDENT-OFF*
@@ -4976,11 +4971,9 @@ void
 index_builder_loader_task::execute (cubthread::entry & thread_ref)
 {
   int ret = NO_ERROR;
-  INT64 err;
 
   /* Check for possible errors set by the other threads. */
-  err = ATOMIC_INC_64 (&m_load_context.m_ib_error, 0LL);
-  if (err != NO_ERROR)
+  if (m_load_context.m_error_code != NO_ERROR)
     {
       goto cleanup;
     }
@@ -4993,12 +4986,20 @@ index_builder_loader_task::execute (cubthread::entry & thread_ref)
   if (ret != NO_ERROR)
     {
       /* Set the error. */
-      ATOMIC_TAS_64 (&m_load_context.m_ib_error, (INT64) ret);
+      while (m_load_context.m_has_error.test_and_set (std::memory_order_acquire))
+	{
+	  ;			// spin
+	}
+
+      m_load_context.m_error_code = ret;
+
+      /* Clear. */
+      m_load_context.m_has_error.clear ();
       goto cleanup;
     }
 
-  /* Increment tasks completed. */
-  ATOMIC_INC_64 (&m_load_context.m_tasks_executed, -1LL);
+  /* Decrement tasks executed. */
+  m_load_context.m_tasks_executed--;
 
 cleanup:
   return;
