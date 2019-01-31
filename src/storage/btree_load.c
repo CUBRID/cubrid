@@ -4792,6 +4792,7 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
   int attr_offset;
   DB_VALUE *p_dbvalue;
   int *p_prefix_length;
+  uint64_t tasks_started = 0;
   char midxkey_buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_midxkey_buf;
   index_builder_loader_context load_context;
   cubthread::entry_workpool * ib_workpool =
@@ -4811,6 +4812,9 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 
   /* Do not let the page fixed after an extract. */
   scancache->cache_last_fix_page = false;
+
+  load_context.m_error_code = NO_ERROR;
+  load_context.m_tasks_executed = 0UL;
 
   /* Start extracting from heap. */
   for (;;)
@@ -4901,7 +4905,7 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
       cubthread::get_manager ()->push_task (ib_workpool, load_task);
 
       /* Increment tasks started. */
-      load_context.m_tasks_executed++;
+      tasks_started++;
 
       /* Check for possible errors. */
       if (load_context.m_error_code != NO_ERROR)
@@ -4933,9 +4937,9 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
       /* Wait for threads to finish. */
       thread_sleep (10);
     }
-  while (load_context.m_tasks_executed != 0UL);
+  while (load_context.m_tasks_executed != tasks_started);
 
-  assert (load_context.m_tasks_executed == 0LL);
+  assert (load_context.m_tasks_executed == tasks_started);
   cubthread::get_manager ()->destroy_worker_pool (ib_workpool);
 
   return ret;
@@ -4949,9 +4953,7 @@ index_builder_loader_task::index_builder_loader_task (BTID * btid, OID * class_o
   COPY_OID (&m_oid, oid);
   m_unique_pk = unique_pk;
   m_load_context.m_has_error.clear ();
-  m_load_context.m_tasks_executed = 0;
   m_load_context.m_tran_index = thread_get_thread_entry_info ()->tran_index;
-  m_load_context.m_error_code = NO_ERROR;
 }
 
 // *INDENT-OFF*
@@ -4998,8 +5000,8 @@ index_builder_loader_task::execute (cubthread::entry & thread_ref)
       goto cleanup;
     }
 
-  /* Decrement tasks executed. */
-  m_load_context.m_tasks_executed--;
+  /* Increment tasks executed. */
+  m_load_context.m_tasks_executed++;
 
 cleanup:
   return;
