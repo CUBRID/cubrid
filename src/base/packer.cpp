@@ -24,8 +24,11 @@
 #ident "$Id$"
 
 #include "packer.hpp"
+
 #include "dbtype_def.h"
+#include "memory_alloc.h"
 #include "object_representation.h"
+#include "packable_object.hpp"
 
 #include <vector>
 #include <string>
@@ -105,6 +108,18 @@ namespace cubpacking
     m_ptr += OR_INT_SIZE;
   }
 
+  size_t
+  packer::get_packed_size_overloaded (int value, size_t curr_offset)
+  {
+    return get_packed_int_size (curr_offset);
+  }
+
+  void
+  packer::pack_overloaded (int value)
+  {
+    pack_int (value);
+  }
+
   void
   unpacker::unpack_int (int &value)
   {
@@ -113,6 +128,12 @@ namespace cubpacking
 
     value = OR_GET_INT (m_ptr);
     m_ptr += OR_INT_SIZE;
+  }
+
+  void
+  unpacker::unpack_overloaded (int &value)
+  {
+    unpack_int (value);
   }
 
   void
@@ -136,6 +157,18 @@ namespace cubpacking
     pack_int (value ? 1 : 0);
   }
 
+  size_t
+  packer::get_packed_size_overloaded (bool value, size_t curr_offset)
+  {
+    return get_packed_bool_size (curr_offset);
+  }
+
+  void
+  packer::pack_overloaded (bool value)
+  {
+    pack_bool (value);
+  }
+
   void
   unpacker::unpack_bool (bool &value)
   {
@@ -143,6 +176,12 @@ namespace cubpacking
     unpack_int (int_val);
     assert (int_val == 1 || int_val == 0);
     value = int_val != 0;
+  }
+
+  void
+  unpacker::unpack_overloaded (bool &value)
+  {
+    unpack_bool (value);
   }
 
   size_t
@@ -161,6 +200,18 @@ namespace cubpacking
     m_ptr += OR_SHORT_SIZE;
   }
 
+  size_t
+  packer::get_packed_size_overloaded (short value, size_t curr_offset)
+  {
+    return get_packed_short_size (curr_offset);
+  }
+
+  void
+  packer::pack_overloaded (short value)
+  {
+    pack_short (value);
+  }
+
   void
   unpacker::unpack_short (short &value)
   {
@@ -169,6 +220,12 @@ namespace cubpacking
 
     value = OR_GET_SHORT (m_ptr);
     m_ptr += OR_SHORT_SIZE;
+  }
+
+  void
+  unpacker::unpack_overloaded (short &value)
+  {
+    unpack_short (value);
   }
 
   size_t
@@ -207,6 +264,30 @@ namespace cubpacking
     m_ptr += OR_BIGINT_SIZE;
   }
 
+  size_t
+  packer::get_packed_size_overloaded (const std::int64_t &value, size_t curr_offset)
+  {
+    return get_packed_bigint_size (curr_offset);
+  }
+
+  size_t
+  packer::get_packed_size_overloaded (const std::uint64_t &value, size_t curr_offset)
+  {
+    return get_packed_bigint_size (curr_offset);
+  }
+
+  void
+  packer::pack_overloaded (const std::int64_t &value)
+  {
+    pack_bigint (value);
+  }
+
+  void
+  packer::pack_overloaded (const std::uint64_t &value)
+  {
+    pack_bigint (value);
+  }
+
   void
   unpacker::unpack_bigint (std::uint64_t &value)
   {
@@ -215,6 +296,18 @@ namespace cubpacking
 
     OR_GET_INT64 (m_ptr, &value);
     m_ptr += OR_BIGINT_SIZE;
+  }
+
+  void
+  unpacker::unpack_overloaded (std::int64_t &value)
+  {
+    unpack_bigint (value);
+  }
+
+  void
+  unpacker::unpack_overloaded (std::uint64_t &value)
+  {
+    unpack_bigint (value);
   }
 
   void
@@ -299,7 +392,7 @@ namespace cubpacking
   }
 
   size_t
-  packer::get_packed_db_value_size (const DB_VALUE &value, size_t curr_offset)
+  packer::get_packed_db_value_size (const db_value &value, size_t curr_offset)
   {
     size_t aligned_offset = DB_ALIGN (curr_offset, MAX_ALIGNMENT);
     size_t unaligned_size = or_packed_value_size (&value, 1, 1, 0);
@@ -308,7 +401,7 @@ namespace cubpacking
   }
 
   void
-  packer::pack_db_value (const DB_VALUE &value)
+  packer::pack_db_value (const db_value &value)
   {
     char *old_ptr;
 
@@ -318,14 +411,26 @@ namespace cubpacking
     check_range (m_ptr, m_end_ptr, value_size);
     old_ptr = m_ptr;
 
-    m_ptr = or_pack_value (m_ptr, (DB_VALUE *) &value);
+    m_ptr = or_pack_value (m_ptr, (db_value *) &value);
     assert (old_ptr + value_size == m_ptr);
 
     check_range (m_ptr, m_end_ptr, 0);
   }
 
+  size_t
+  packer::get_packed_size_overloaded (const db_value &value, size_t curr_offset)
+  {
+    return get_packed_db_value_size (value, curr_offset);
+  }
+
   void
-  unpacker::unpack_db_value (DB_VALUE &value)
+  packer::pack_overloaded (const db_value &value)
+  {
+    pack_db_value (value);
+  }
+
+  void
+  unpacker::unpack_db_value (db_value &value)
   {
     const char *old_ptr;
 
@@ -337,6 +442,12 @@ namespace cubpacking
     assert (old_ptr + value_size == m_ptr);
 
     check_range (m_ptr, m_end_ptr, 0);
+  }
+
+  void
+  unpacker::unpack_overloaded (db_value &value)
+  {
+    unpack_db_value (value);
   }
 
   size_t
@@ -473,6 +584,18 @@ namespace cubpacking
     pack_c_string (str.c_str (), len);
   }
 
+  size_t
+  packer::get_packed_size_overloaded (const std::string &value, size_t curr_offset)
+  {
+    return get_packed_string_size (value, curr_offset);
+  }
+
+  void
+  packer::pack_overloaded (const std::string &str)
+  {
+    pack_string (str);
+  }
+
   void
   unpacker::unpack_string (std::string &str)
   {
@@ -496,6 +619,12 @@ namespace cubpacking
 
 	align (INT_ALIGNMENT);
       }
+  }
+
+  void
+  unpacker::unpack_overloaded (std::string &str)
+  {
+    return unpack_string (str);
   }
 
   size_t
@@ -534,10 +663,8 @@ namespace cubpacking
   }
 
   void
-  unpacker::unpack_c_string (char *str, const size_t max_str_size)
+  unpacker::unpack_string_size (size_t &len)
   {
-    size_t len;
-
     check_range (m_ptr, m_end_ptr, 1);
     len = OR_GET_BYTE (m_ptr);
     if (len == LARGE_STRING_CODE)
@@ -553,6 +680,18 @@ namespace cubpacking
       {
 	m_ptr++;
       }
+    if (len > 0)
+      {
+	check_range (m_ptr, m_end_ptr, len);
+      }
+  }
+
+  void
+  unpacker::unpack_c_string (char *str, const size_t max_str_size)
+  {
+    size_t len = 0;
+
+    unpack_string_size (len);
 
     if (len >= max_str_size)
       {
@@ -561,8 +700,7 @@ namespace cubpacking
       }
     if (len > 0)
       {
-	check_range (m_ptr, m_end_ptr, len);
-	memcpy (str, m_ptr, len);
+	std::memcpy (str, m_ptr, len);
 	m_ptr += len;
       }
 
@@ -572,11 +710,122 @@ namespace cubpacking
   }
 
   void
+  unpacker::unpack_string_to_memblock (cubmem::extensible_block &blk)
+  {
+    size_t len;
+    unpack_string_size (len);
+
+    // make sure memory size is enough
+    blk.extend_to (len + 1);
+
+    if (len > 0)
+      {
+	std::memcpy (blk.get_ptr (), m_ptr, len);
+	m_ptr += len;
+      }
+    blk.get_ptr ()[len] = '\0';
+
+    align (INT_ALIGNMENT);
+  }
+
+  size_t
+  packer::get_packed_size_overloaded (const packable_object &po, size_t curr_offset)
+  {
+    // align first
+    size_t aligned_offset = DB_ALIGN (curr_offset, MAX_ALIGNMENT);
+    return po.get_packed_size (*this) + aligned_offset - curr_offset;
+  }
+
+  void
+  packer::pack_overloaded (const packable_object &po)
+  {
+    po.pack (*this);
+  }
+
+  void
+  cubpacking::unpacker::unpack_overloaded (packable_object &po)
+  {
+    po.unpack (*this);
+  }
+
+  const char *
+  unpacker::get_curr_ptr (void)
+  {
+    return m_ptr;
+  }
+
+  void
+  unpacker::align (const size_t req_alignment)
+  {
+    m_ptr = PTR_ALIGN (m_ptr, req_alignment);
+  }
+
+  size_t
+  unpacker::get_current_size (void)
+  {
+    return get_curr_ptr () - get_buffer_start ();
+  }
+
+  const char *
+  unpacker::get_buffer_start (void)
+  {
+    return m_start_ptr;
+  }
+
+  const char *
+  unpacker::get_buffer_end (void)
+  {
+    return m_end_ptr;
+  }
+
+  bool
+  unpacker::is_ended (void)
+  {
+    return get_curr_ptr () == get_buffer_end ();
+  }
+
+  void
   packer::delegate_to_or_buf (const size_t size, or_buf &buf)
   {
     check_range (m_ptr, m_end_ptr, size);
     m_ptr += size;
     OR_BUF_INIT (buf, m_ptr, size);
+  }
+
+  const char *
+  packer::get_curr_ptr (void)
+  {
+    return m_ptr;
+  }
+
+  size_t
+  packer::get_current_size (void)
+  {
+    return get_curr_ptr () - get_buffer_start ();
+  }
+
+  void
+  packer::align (const size_t req_alignment)
+  {
+    m_ptr = PTR_ALIGN (m_ptr, req_alignment);
+  }
+
+  const char *
+  packer::get_buffer_start (void)
+  {
+    return m_start_ptr;
+  }
+
+  const char *
+  packer::get_buffer_end (void)
+  {
+    return m_end_ptr;
+  }
+
+  bool
+  packer::is_ended (void)
+  {
+    return get_curr_ptr () == get_buffer_end ();
   }
 
   void
