@@ -2270,10 +2270,12 @@ db_json_replace_func (const JSON_DOC *new_value, JSON_DOC &doc, const char *raw_
 
   if (p.get (doc) == NULL)
     {
-      if (p.is_last_token_array_index_zero ())
+      if (!p.is_last_token_array_index_zero ())
 	{
-	  p.get_parent ().set (doc, *new_value);
+	  return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p.dump_json_path (), &doc);
 	}
+
+      p.get_parent ().set (doc, *new_value);
       return NO_ERROR;
     }
   p.set (doc, *new_value);
