@@ -18,11 +18,13 @@
  */
 
 #include "test_packing.hpp"
+
+#include "dbtype.h"
+#include "mem_block.hpp"
+#include "object_representation.h"
 #include "pinnable_buffer.hpp"
 #include "thread_compat.hpp"
 #include "thread_manager.hpp"
-#include "object_representation.h"
-#include "dbtype.h"
 
 namespace test_packing
 {
@@ -146,7 +148,7 @@ namespace test_packing
     entry_size += serializator.get_packed_int_vector_size (entry_size, (int) int_v.size ());
     for (int i = 0; i < sizeof (values) / sizeof (values[0]); i++)
       {
-	entry_size += serializator.get_packed_db_value_size (values[i], int_v.size ());
+	entry_size += serializator.get_packed_db_value_size (values[i], entry_size);
       }
     entry_size += serializator.get_packed_small_string_size (small_str, entry_size);
     entry_size += serializator.get_packed_large_string_size (large_str, entry_size);
@@ -351,5 +353,56 @@ namespace test_packing
     res = (bm.check_references () == true) ? 0 : -1;
 
     return res;
+  }
+
+  int test_packing_all (void)
+  {
+    po1 po_pack_1;
+    po1 po_pack_2;
+    po1 po_unpack_1;
+    po1 po_unpack_2;
+
+    po_pack_1.generate_obj ();
+    po_pack_2.generate_obj ();
+
+    cubpacking::packer serializer;
+    cubpacking::unpacker deserializer;
+
+    cubmem::extensible_block eb;
+
+    serializer.set_buffer_and_pack_all (eb, po_pack_1.i1, po_pack_1.b1, po_pack_1.sh1, po_pack_1.values[0],
+					po_pack_1.str1, po_pack_2);
+
+    deserializer.set_buffer (serializer.get_buffer_start (), serializer.get_current_size ());
+    deserializer.unpack_all (po_unpack_1.i1, po_unpack_1.b1, po_unpack_1.sh1, po_unpack_1.values[0],
+			     po_unpack_1.str1, po_unpack_2);
+
+    if (po_pack_1.i1 != po_unpack_1.i1)
+      {
+	assert (false);
+	return ER_FAILED;
+      }
+    if (po_pack_1.b1 != po_unpack_1.b1)
+      {
+	assert (false);
+	return ER_FAILED;
+      }
+    if (po_pack_1.sh1 != po_unpack_1.sh1)
+      {
+	assert (false);
+	return ER_FAILED;
+      }
+    if (po_pack_1.str1 != po_unpack_1.str1)
+      {
+	assert (false);
+	return ER_FAILED;
+      }
+    if (!po_pack_2.is_equal (&po_unpack_2))
+      {
+	assert (false);
+	return ER_FAILED;
+      }
+
+    return NO_ERROR;
   }
 }
