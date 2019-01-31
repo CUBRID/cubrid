@@ -9822,15 +9822,12 @@ void
 sloaddb_install_class (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   /* *INDENT-OFF* */
-  cubpacking::unpacker unpacker (request, (size_t) reqlen);
-  cubload::batch batch;
-
-  cubload::class_id clsid;
-  unpacker.unpack_int (clsid);
-
   std::string buf;
-  unpacker.unpack_string (buf);
+  cubload::class_id clsid;
   /* *INDENT-ON* */
+
+  packing_unpacker unpacker (request, (size_t) reqlen);
+  unpacker.unpack_all (clsid, buf);
 
   load_session *session = NULL;
   session_get_load_session (thread_p, session);
@@ -9852,8 +9849,9 @@ sloaddb_load_batch (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
+  packing_unpacker unpacker (request, (size_t) reqlen);
+
   /* *INDENT-OFF* */
-  cubpacking::unpacker unpacker (request, (size_t) reqlen);
   cubload::batch batch;
   /* *INDENT-ON* */
 
@@ -9883,9 +9881,7 @@ sloaddb_fetch_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 
   load_stats loaddb_stats = session->get_stats ();
 
-  /* *INDENT-OFF* */
-  cubpacking::packer packer;
-  /* *INDENT-ON* */
+  packing_packer packer;
   size_t data_reply_size = loaddb_stats.get_packed_size (packer);
 
   char *data_reply = (char *) db_private_alloc (thread_p, data_reply_size);

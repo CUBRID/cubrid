@@ -25,6 +25,7 @@
 #define _LOAD_SEMANTIC_HELPER_HPP_
 
 #include "load_common.hpp"
+#include "mem_block.hpp"
 
 namespace cubload
 {
@@ -79,14 +80,7 @@ namespace cubload
       string_type *make_string_by_buffer ();
       string_type *make_string_by_yytext (const char *text, int text_size);
 
-      constructor_spec_type *make_constructor_spec (string_type *id_name, string_type *arg_list);
-      class_command_spec_type *make_class_command_spec (int qualifier, string_type *attr_list,
-	  constructor_spec_type *ctor_spec);
-
       constant_type *make_constant (int type, void *val);
-      object_ref_type *make_object_ref_by_class_id (string_type *class_id);
-      object_ref_type *make_object_ref_by_class_name (string_type *class_name);
-      constant_type *make_monetary_constant (int currency_type, string_type *amount);
       constant_type *make_real (string_type *str);
 
       void reset_pool_indexes ();
@@ -110,30 +104,21 @@ namespace cubload
       constant_type m_constant_pool[CONSTANT_POOL_SIZE];
 
       // quoted string buffer pool
-      char *m_qstr_buffer; // using when pool overflow
+      bool m_use_qstr_buf;
+
+      cubmem::extensible_block m_qstr_buf; // using when pool overflow
       char *m_qstr_buf_p;
-      bool m_use_qstr_buffer;
-      char **m_qstr_buf_pool;
       std::size_t m_qstr_buf_idx;
+
+      char **m_qstr_buf_pool;
       std::size_t m_qstr_buf_pool_idx;
-      std::size_t m_qstr_buffer_size;
 
       /* private functions */
-      string_type *make_string ();
-      object_ref_type *make_object_ref ();
-      monetary_type *make_monetary_value (int currency_type, string_type *amount);
+      string_type *make_string (char *val, std::size_t size, bool need_free_val);
       bool is_utf8_valid (string_type *str);
       bool use_copy_buf_pool (std::size_t str_size);
-      void alloc_qstr_buffer (std::size_t size);
-      void realloc_qstr_buffer (std::size_t new_size);
-
-      void initialize ();
-      void destroy ();
 
       // template private functions
-      template<typename T>
-      T *alloc_ldr_type ();
-
       template<typename T>
       T *append_list (T *head, T *tail);
   }; // class semantic_helper

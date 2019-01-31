@@ -74,8 +74,8 @@ namespace cubload
       void finish_line () override;
 
     private:
-      void process_constant (constant_type *cons, const attribute &attr);
-      void process_monetary_constant (constant_type *cons, tp_domain *domain, db_value *db_val);
+      int process_constant (constant_type *cons, const attribute &attr, db_value *db_val);
+      int process_monetary_constant (constant_type *cons, const attribute &attr, db_value *db_val);
 
       void start_scancache (const OID &class_oid);
       void stop_scancache ();

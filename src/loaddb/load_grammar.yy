@@ -250,8 +250,11 @@ id_command :
   {
     m_driver.get_class_installer ().check_class ($2->val, atoi ($3->val));
 
-    free_string (&$2);
-    free_string (&$3);
+    $2->destroy ();
+    $2 = NULL;
+
+    $3->destroy ();
+    $3 = NULL;
   }
   ;
 
@@ -260,8 +263,11 @@ class_command :
   {
     m_driver.get_class_installer ().install_class ($2, $3);
 
-    free_string (&$2);
-    free_class_command_spec (&$3);
+    $2->destroy ();
+    $2 = NULL;
+
+    delete $3;
+    $3 = NULL;
   }
   ;
 
@@ -269,25 +275,25 @@ class_command_spec :
   attribute_list
   {
     DBG_PRINT ("attribute_list");
-    $$ = m_driver.get_semantic_helper ().make_class_command_spec (LDR_ATTRIBUTE_ANY, $1, NULL);
+    $$ = new class_command_spec_type (LDR_ATTRIBUTE_ANY, $1, NULL);
   }
   |
   attribute_list constructor_spec
   {
     DBG_PRINT ("attribute_list constructor_spec");
-    $$ = m_driver.get_semantic_helper ().make_class_command_spec (LDR_ATTRIBUTE_ANY, $1, $2);
+    $$ = new class_command_spec_type (LDR_ATTRIBUTE_ANY, $1, $2);
   }
   |
   attribute_list_qualifier attribute_list
   {
     DBG_PRINT ("attribute_list_qualifier attribute_list");
-    $$ = m_driver.get_semantic_helper ().make_class_command_spec ($1, $2, NULL);
+    $$ = new class_command_spec_type ($1, $2, NULL);
   }
   |
   attribute_list_qualifier attribute_list constructor_spec
   {
     DBG_PRINT ("attribute_list_qualifier attribute_list constructor_spec");
-    $$ = m_driver.get_semantic_helper ().make_class_command_spec ($1, $2, $3);
+    $$ = new class_command_spec_type ($1, $2, $3);
   }
   ;
 
@@ -353,7 +359,7 @@ attribute_name :
 constructor_spec :
   CMD_CONSTRUCTOR IDENTIFIER constructor_argument_list
   {
-    $$ = m_driver.get_semantic_helper ().make_constructor_spec ($2, $3);
+    $$ = new constructor_spec_type ($2, $3);
   }
   ;
 
@@ -578,12 +584,12 @@ object_reference :
 class_identifier:
   INT_LIT
   {
-    $$ = m_driver.get_semantic_helper ().make_object_ref_by_class_id ($1);
+    $$ = new object_ref_type ($1, NULL);
   }
   |
   IDENTIFIER
   {
-    $$ = m_driver.get_semantic_helper ().make_object_ref_by_class_name ($1);
+    $$ = new object_ref_type (NULL, $1);
   }
   ;
 
@@ -655,127 +661,127 @@ ref_type :
 monetary :
   DOLLAR_SYMBOL REAL_LIT
   {
-    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_DOLLAR, $2);
+    $$ = m_driver.get_semantic_helper ().make_constant (LDR_MONETARY, new monetary_type ($2, DB_CURRENCY_DOLLAR));
   }
   |
   YEN_SYMBOL REAL_LIT
   {
-    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_YEN, $2);
+    $$ = m_driver.get_semantic_helper ().make_constant (LDR_MONETARY, new monetary_type ($2, DB_CURRENCY_YEN));
   }
   |
   WON_SYMBOL REAL_LIT
   {
-    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_WON, $2);
+    $$ = m_driver.get_semantic_helper ().make_constant (LDR_MONETARY, new monetary_type ($2, DB_CURRENCY_WON));
   }
   |
   TURKISH_LIRA_CURRENCY REAL_LIT
   {
-    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_TL, $2);
+    $$ = m_driver.get_semantic_helper ().make_constant (LDR_MONETARY, new monetary_type ($2, DB_CURRENCY_TL));
   }
   |
   BACKSLASH REAL_LIT
   {
-    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_WON, $2);
+    $$ = m_driver.get_semantic_helper ().make_constant (LDR_MONETARY, new monetary_type ($2, DB_CURRENCY_WON));
   }
   |
   BRITISH_POUND_SYMBOL REAL_LIT
   {
-    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_BRITISH_POUND, $2);
+    $$ = m_driver.get_semantic_helper ().make_constant (LDR_MONETARY, new monetary_type ($2, DB_CURRENCY_BRITISH_POUND));
   }
   |
   CAMBODIAN_RIEL_SYMBOL REAL_LIT
   {
-    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_CAMBODIAN_RIEL, $2);
+    $$ = m_driver.get_semantic_helper ().make_constant (LDR_MONETARY, new monetary_type ($2, DB_CURRENCY_CAMBODIAN_RIEL));
   }
   |
   CHINESE_RENMINBI_SYMBOL REAL_LIT
   {
-    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_CHINESE_RENMINBI, $2);
+    $$ = m_driver.get_semantic_helper ().make_constant (LDR_MONETARY, new monetary_type ($2, DB_CURRENCY_CHINESE_RENMINBI));
   }
   |
   INDIAN_RUPEE_SYMBOL REAL_LIT
   {
-    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_INDIAN_RUPEE, $2);
+    $$ = m_driver.get_semantic_helper ().make_constant (LDR_MONETARY, new monetary_type ($2, DB_CURRENCY_INDIAN_RUPEE));
   }
   |
   RUSSIAN_RUBLE_SYMBOL REAL_LIT
   {
-    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_RUSSIAN_RUBLE, $2);
+    $$ = m_driver.get_semantic_helper ().make_constant (LDR_MONETARY, new monetary_type ($2, DB_CURRENCY_RUSSIAN_RUBLE));
   }
   |
   AUSTRALIAN_DOLLAR_SYMBOL REAL_LIT
   {
-    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_AUSTRALIAN_DOLLAR, $2);
+    $$ = m_driver.get_semantic_helper ().make_constant (LDR_MONETARY, new monetary_type ($2, DB_CURRENCY_AUSTRALIAN_DOLLAR));
   }
   |
   CANADIAN_DOLLAR_SYMBOL REAL_LIT
   {
-    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_CANADIAN_DOLLAR, $2);
+    $$ = m_driver.get_semantic_helper ().make_constant (LDR_MONETARY, new monetary_type ($2, DB_CURRENCY_CANADIAN_DOLLAR));
   }
   |
   BRASILIAN_REAL_SYMBOL REAL_LIT
   {
-    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_BRASILIAN_REAL, $2);
+    $$ = m_driver.get_semantic_helper ().make_constant (LDR_MONETARY, new monetary_type ($2, DB_CURRENCY_BRASILIAN_REAL));
   }
   |
   ROMANIAN_LEU_SYMBOL REAL_LIT
   {
-    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_ROMANIAN_LEU, $2);
+    $$ = m_driver.get_semantic_helper ().make_constant (LDR_MONETARY, new monetary_type ($2, DB_CURRENCY_ROMANIAN_LEU));
   }
   |
   EURO_SYMBOL REAL_LIT
   {
-    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_EURO, $2);
+    $$ = m_driver.get_semantic_helper ().make_constant (LDR_MONETARY, new monetary_type ($2, DB_CURRENCY_EURO));
   }
   |
   SWISS_FRANC_SYMBOL REAL_LIT
   {
-    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_SWISS_FRANC, $2);
+    $$ = m_driver.get_semantic_helper ().make_constant (LDR_MONETARY, new monetary_type ($2, DB_CURRENCY_SWISS_FRANC));
   }
   |
   DANISH_KRONE_SYMBOL REAL_LIT
   {
-    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_DANISH_KRONE, $2);
+    $$ = m_driver.get_semantic_helper ().make_constant (LDR_MONETARY, new monetary_type ($2, DB_CURRENCY_DANISH_KRONE));
   }
   |
   NORWEGIAN_KRONE_SYMBOL REAL_LIT
   {
-    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_NORWEGIAN_KRONE, $2);
+    $$ = m_driver.get_semantic_helper ().make_constant (LDR_MONETARY, new monetary_type ($2, DB_CURRENCY_NORWEGIAN_KRONE));
   }
   |
   BULGARIAN_LEV_SYMBOL REAL_LIT
   {
-    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_BULGARIAN_LEV, $2);
+    $$ = m_driver.get_semantic_helper ().make_constant (LDR_MONETARY, new monetary_type ($2, DB_CURRENCY_BULGARIAN_LEV));
   }
   |
   VIETNAMESE_DONG_SYMBOL REAL_LIT
   {
-    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_VIETNAMESE_DONG, $2);
+    $$ = m_driver.get_semantic_helper ().make_constant (LDR_MONETARY, new monetary_type ($2, DB_CURRENCY_VIETNAMESE_DONG));
   }
   |
   CZECH_KORUNA_SYMBOL REAL_LIT
   {
-    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_CZECH_KORUNA, $2);
+    $$ = m_driver.get_semantic_helper ().make_constant (LDR_MONETARY, new monetary_type ($2, DB_CURRENCY_CZECH_KORUNA));
   }
   |
   POLISH_ZLOTY_SYMBOL REAL_LIT
   {
-    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_POLISH_ZLOTY, $2);
+    $$ = m_driver.get_semantic_helper ().make_constant (LDR_MONETARY, new monetary_type ($2, DB_CURRENCY_POLISH_ZLOTY));
   }
   |
   SWEDISH_KRONA_SYMBOL REAL_LIT
   {
-    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_SWEDISH_KRONA, $2);
+    $$ = m_driver.get_semantic_helper ().make_constant (LDR_MONETARY, new monetary_type ($2, DB_CURRENCY_SWEDISH_KRONA));
   }
   |
   CROATIAN_KUNA_SYMBOL REAL_LIT
   {
-    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_CROATIAN_KUNA, $2);
+    $$ = m_driver.get_semantic_helper ().make_constant (LDR_MONETARY, new monetary_type ($2, DB_CURRENCY_CROATIAN_KUNA));
   }
   |
   SERBIAN_DINAR_SYMBOL REAL_LIT
   {
-    $$ = m_driver.get_semantic_helper ().make_monetary_constant (DB_CURRENCY_SERBIAN_DINAR, $2);
+    $$ = m_driver.get_semantic_helper ().make_constant (LDR_MONETARY, new monetary_type ($2, DB_CURRENCY_SERBIAN_DINAR));
   }
   ;
 %%

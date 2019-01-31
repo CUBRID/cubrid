@@ -805,8 +805,6 @@ namespace cubload
   void
   sa_object_loader::process_line (constant_type *cons)
   {
-    constant_type *c, *save;
-
     CHECK_SKIP ();
 
     if (cons != NULL && ldr_Current_context->num_attrs == 0)
@@ -822,9 +820,10 @@ namespace cubload
 	return;
       }
 
-    for (c = cons; c; c = save)
+    constant_type *next;
+    for (constant_type *c = cons; c != NULL; c = next)
       {
-	save = c->next;
+	next = c->next;
 
 	switch (c->type)
 	  {
@@ -850,7 +849,7 @@ namespace cubload
 	      string_type *str = (string_type *) c->val;
 
 	      (*ldr_act) (ldr_Current_context, str->val, str->size, (data_type) c->type);
-	      free_string (&str);
+	      str->destroy ();
 	    }
 	    break;
 
@@ -867,7 +866,7 @@ namespace cubload
 
 	      if (full_mon_str_len >= sizeof (full_mon_str))
 		{
-		  full_mon_str_p = (char *) malloc (full_mon_str_len + 1);
+		  full_mon_str_p = new char[full_mon_str_len + 1];
 		}
 
 	      strcpy (full_mon_str_p, curr_str);
@@ -876,10 +875,10 @@ namespace cubload
 	      (*ldr_act) (ldr_Current_context, full_mon_str_p, strlen (full_mon_str_p), (data_type) c->type);
 	      if (full_mon_str_p != full_mon_str)
 		{
-		  free_and_init (full_mon_str_p);
+		  delete [] full_mon_str_p;
 		}
-	      free_string (&str);
-	      free_and_init (mon);
+
+	      delete mon;
 	    }
 	    break;
 
@@ -893,7 +892,7 @@ namespace cubload
 	      string_type *str = (string_type *) c->val;
 
 	      (*ldr_act) (ldr_Current_context, str->val, strlen (str->val), (data_type) c->type);
-	      free_string (&str);
+	      str->destroy ();
 	    }
 	    break;
 
@@ -912,10 +911,7 @@ namespace cubload
 	    break;
 	  }
 
-	if (c->need_free)
-	  {
-	    free_and_init (c);
-	  }
+	  c->destroy ();
       }
   }
 
@@ -6576,22 +6572,7 @@ ldr_process_object_ref (object_ref_type *ref, int type)
 	}
     }
 
-  if (ref->class_id)
-    {
-      free_string (& (ref->class_id));
-    }
-
-  if (ref->class_name)
-    {
-      free_string (& (ref->class_name));
-    }
-
-  if (ref->instance_number)
-    {
-      free_string (& (ref->instance_number));
-    }
-
-  free_and_init (ref);
+  delete ref;
 }
 
 static int
