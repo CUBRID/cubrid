@@ -7639,6 +7639,30 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
   return node;
 }
 
+static PT_NODE *
+pt_fold_constants_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  if (node == NULL)
+    {
+      return node;
+    }
+
+  // check if constant folding for sub-tree should be suppressed
+  switch (node->node_type)
+    {
+    case PT_FUNCTION:
+      if (node->info.function.function_type == F_BENCHMARK)
+	{
+	  // we want to test full execution of sub-tree; don't fold it!
+	  *continue_walk = PT_LIST_WALK;
+	}
+      break;
+    default:
+      // nope
+      break;
+    }
+}
+
 /*
  * pt_fold_constants () - perform constant folding on the specified node
  *   return	: the node after constant folding
@@ -7671,6 +7695,11 @@ pt_fold_constants (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *cont
       break;
     case PT_FUNCTION:
       node = pt_fold_const_function (parser, node);
+      if (node->info.function.function_type == F_BENCHMARK)
+	{
+	  // restore walking; I hope this was continue_walk!
+	  *continue_walk = PT_CONTINUE_WALK;
+	}
       break;
     default:
       break;
