@@ -200,7 +200,7 @@ static PT_NODE *pt_check_single_valued_node (PARSER_CONTEXT * parser, PT_NODE * 
 static PT_NODE *pt_check_single_valued_node_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 						  int *continue_walk);
 static void pt_check_into_clause (PARSER_CONTEXT * parser, PT_NODE * qry);
-static int pt_check_json_table_paths (PT_NODE * node);
+static int pt_check_json_table_node (PARSER_CONTEXT * pareser, PT_NODE * node);
 static PT_NODE *pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_gen_isnull_preds (PARSER_CONTEXT * parser, PT_NODE * pred, PT_CHAIN_INFO * chain);
 static PT_NODE *pt_path_chain (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
@@ -9311,13 +9311,13 @@ pt_check_into_clause (PARSER_CONTEXT * parser, PT_NODE * qry)
 }
 
 /*
- * pt_check_json_table_paths () - check if json_table's paths are all valid
+ * pt_check_json_table_node () - check json_table's paths and type check ON_ERROR & ON_EMPTY
  *
  *   return:  NO_ERROR or ER_JSON_INVALID_PATH
  *   node(in): json_table node
  */
 static int
-pt_check_json_table_paths (PT_NODE * node)
+pt_check_json_table_node (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   assert (node != NULL && node->node_type == PT_JSON_TABLE_NODE);
 
@@ -9330,13 +9330,38 @@ pt_check_json_table_paths (PT_NODE * node)
 
   for (PT_NODE * col = node->info.json_table_node_info.columns; col; col = col->next)
     {
-      if (col->info.json_table_column_info.func == JSON_TABLE_ORDINALITY)
+      PT_JSON_TABLE_COLUMN_INFO & col_info = col->info.json_table_column_info;
+      if (col_info.on_empty.m_behavior == JSON_TABLE_DEFAULT_VALUE)
+	{
+	  assert (col_info.on_empty.m_default_value != NULL);
+	  TP_DOMAIN *domain = pt_xasl_node_to_domain (parser, col);
+	  TP_DOMAIN_STATUS status_cast =
+	    tp_value_cast (col_info.on_empty.m_default_value, col_info.on_empty.m_default_value, domain, false);
+	  if (status_cast != DOMAIN_COMPATIBLE)
+	    {
+	      return tp_domain_status_er_set (status_cast, ARG_FILE_LINE, col_info.on_empty.m_default_value, domain);
+	    }
+	}
+
+      if (col_info.on_error.m_behavior == JSON_TABLE_DEFAULT_VALUE)
+	{
+	  assert (col_info.on_error.m_default_value != NULL);
+	  TP_DOMAIN *domain = pt_xasl_node_to_domain (parser, col);
+	  TP_DOMAIN_STATUS status_cast =
+	    tp_value_cast (col_info.on_error.m_default_value, col_info.on_error.m_default_value, domain, false);
+	  if (status_cast != DOMAIN_COMPATIBLE)
+	    {
+	      return tp_domain_status_er_set (status_cast, ARG_FILE_LINE, col_info.on_error.m_default_value, domain);
+	    }
+	}
+
+      if (col_info.func == JSON_TABLE_ORDINALITY)
 	{
 	  // ORDINALITY columns do not have a path
-	  assert (col->info.json_table_column_info.path == NULL);
+	  assert (col_info.path == NULL);
 	  continue;
 	}
-      error_code = db_json_normalize_path (col->info.json_table_column_info.path, path, true);
+      error_code = db_json_normalize_path (col_info.path, path, true);
       if (error_code)
 	{
 	  return error_code;
@@ -9345,7 +9370,7 @@ pt_check_json_table_paths (PT_NODE * node)
 
   for (PT_NODE * nested_col = node->info.json_table_node_info.nested_paths; nested_col; nested_col = nested_col->next)
     {
-      error_code = pt_check_json_table_paths (nested_col);
+      error_code = pt_check_json_table_node (parser, nested_col);
       if (error_code)
 	{
 	  return error_code;
@@ -10087,7 +10112,7 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 		      pt_show_type_enum (PT_TYPE_JSON));
 	}
 
-      if (pt_check_json_table_paths (node->info.json_table_info.tree))
+      if (pt_check_json_table_node (parser, node->info.json_table_info.tree))
 	{
 	  ASSERT_ERROR ();
 	  PT_ERRORc (parser, node, er_msg ());
