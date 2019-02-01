@@ -17095,7 +17095,12 @@ reserved_func
 		DBG_PRINT}}
         | BENCHMARK '(' expression_list ')'
 		{{
-                    $$ = parser_make_func_with_arg_count (this_parser, F_BENCHMARK, $3, 2, 2);
+                    PT_NODE *func_node = parser_make_func_with_arg_count (this_parser, F_BENCHMARK, $3, 2, 2);
+                    if (func_node != NULL)
+                      {
+                        func_node->do_not_fold = 1;
+                      }
+                    $$ = func_node;
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
 	;

@@ -10172,7 +10172,7 @@ qdata_benchmark (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR 
       return NO_ERROR;
     }
 
-  INT64 count;
+  INT64 count = 0;
 
   switch (db_value_domain_type (count_value))
     {
