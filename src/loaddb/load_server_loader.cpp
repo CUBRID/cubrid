@@ -247,8 +247,7 @@ namespace cubload
       }
 
     std::size_t attr_idx = 0;
-    constant_type *next = NULL;
-    for (constant_type *c = cons; c != NULL; c = next, attr_idx++)
+    for (constant_type *c = cons; c != NULL; c = c->next, attr_idx++)
       {
 	const attribute &attr = m_class_entry->get_attribute (attr_idx);
 	if (attr.m_attr_repr == NULL)
@@ -264,8 +263,6 @@ namespace cubload
 	  {
 	    heap_attrinfo_set (&m_class_entry->get_class_oid (), attr.m_attr_id, &db_val, &m_attrinfo);
 	  }
-
-	next = c->next;
       }
   }
 

@@ -820,11 +820,8 @@ namespace cubload
 	return;
       }
 
-    constant_type *next;
-    for (constant_type *c = cons; c != NULL; c = next)
+    for (constant_type *c = cons; c != NULL; c = c->next)
       {
-	next = c->next;
-
 	switch (c->type)
 	  {
 	  case LDR_NULL:
