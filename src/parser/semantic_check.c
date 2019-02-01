@@ -9333,6 +9333,7 @@ pt_check_json_table_node (PARSER_CONTEXT * parser, PT_NODE * node)
       PT_JSON_TABLE_COLUMN_INFO & col_info = col->info.json_table_column_info;
       if (col_info.on_empty.m_behavior == JSON_TABLE_DEFAULT_VALUE)
 	{
+	  assert (col_info.on_empty.m_default_value != NULL);
 	  TP_DOMAIN *domain = pt_xasl_node_to_domain (parser, col);
 	  TP_DOMAIN_STATUS status_cast =
 	    tp_value_cast (col_info.on_empty.m_default_value, col_info.on_empty.m_default_value, domain, false);
@@ -9344,7 +9345,7 @@ pt_check_json_table_node (PARSER_CONTEXT * parser, PT_NODE * node)
 
       if (col_info.on_error.m_behavior == JSON_TABLE_DEFAULT_VALUE)
 	{
-	  assert (col_info.on_error.m_default_value);
+	  assert (col_info.on_error.m_default_value != NULL);
 	  TP_DOMAIN *domain = pt_xasl_node_to_domain (parser, col);
 	  TP_DOMAIN_STATUS status_cast =
 	    tp_value_cast (col_info.on_error.m_default_value, col_info.on_error.m_default_value, domain, false);
