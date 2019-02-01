@@ -67,6 +67,27 @@ static int get_hour_minute_or_second (const DB_VALUE * datetime, OPERATOR_TYPE o
 static int get_year_month_or_day (const DB_VALUE * src_date, OPERATOR_TYPE op, DB_VALUE * result);
 static int get_date_weekday (const DB_VALUE * src_date, OPERATOR_TYPE op, DB_VALUE * result);
 
+// C++ code
+// *INDENT-OFF*
+// todo - find a better place for reguvar mapper
+using map_reguvar_func = std::function<void (regu_variable_node &regu, bool & stop)>;
+static void map_reguvar_tree (regu_variable_node &regu, map_reguvar_func & f);
+
+map_reguvar_func map_reguvar_force_not_constant_arithmetic = [] (regu_variable_node &regu, bool & stop)
+  {
+  switch (regu.type)
+    {
+    case TYPE_INARITH:
+    case TYPE_OUTARITH:
+    case TYPE_FUNC:
+      REGU_VARIABLE_SET_FLAG (&regu, REGU_VARIABLE_FETCH_NOT_CONST);
+      break;
+    default:
+      break;
+    }
+  };
+// *INDENT-ON*
+
 /*
  * fetch_peek_arith () -
  *   return: NO_ERROR or ER_code
@@ -4114,6 +4135,12 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	      }
 	      break;
 
+	    case F_BENCHMARK:
+	      // not only that this is "not constant", we need to make sure the whole nested operation is always
+	      // executed, even if all their operands are constants
+	      map_reguvar_tree (*regu_var, map_reguvar_force_not_constant_arithmetic);
+	      not_const++;
+
 	    default:
 	      not_const++;	/* is not constant */
 	      break;
@@ -4824,3 +4851,88 @@ error_exit:
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
   return error_status;
 }
+
+// *INDENT-OFF*
+// C++ implementation stuff
+
+using map_reguvar_func = std::function<void(regu_variable_node &regu, bool &stop)>;
+
+// map_reguvar_tree - recursive "walker" of regu variable tree applying function argument
+//
+// NOTE:
+//    stop argument may be used for interrupting mapper
+//
+//    !!! implementation is not mature; only arithmetic and function children are mapped.
+static void
+map_reguvar_tree (regu_variable_node &regu, map_reguvar_func & f, bool &stop)
+{
+  f (regu, stop);
+  if (stop)
+    {
+      return;
+    }
+  switch (regu.type)
+    {
+    case TYPE_INARITH:
+    case TYPE_OUTARITH:
+      if (regu.value.arithptr == NULL)
+        {
+          assert (false);
+          return;
+        }
+      if (regu.value.arithptr->leftptr)
+        {
+          map_reguvar_tree (*regu.value.arithptr->leftptr, std::forward<map_reguvar_func> (f), stop);
+          if (stop)
+            {
+              return;
+            }
+        }
+      if (regu.value.arithptr->rightptr)
+        {
+          map_reguvar_tree (*regu.value.arithptr->rightptr, std::forward<map_reguvar_func> (f), stop);
+          if (stop)
+            {
+              return;
+            }
+        }
+      if (regu.value.arithptr->rightptr)
+        {
+          map_reguvar_tree (*regu.value.arithptr->thirdptr, std::forward<map_reguvar_func> (f), stop);
+          if (stop)
+            {
+              return;
+            }
+        }
+      break;
+    case TYPE_FUNC:
+      if (regu.value.funcp == NULL)
+        {
+          assert (false);
+          return;
+        }
+      for (regu_variable_list_node *operand = regu.value.funcp->operand; operand != NULL; operand = operand->next)
+        {
+          map_reguvar_tree (operand->value, std::forward<map_reguvar_func> (f), stop);
+          if (stop)
+            {
+              return;
+            }
+        }
+      break;
+    case TYPE_REGUVAL_LIST:
+    case TYPE_REGU_VAR_LIST:
+      // should we map?
+      break;
+    default:
+      break;
+    }
+}
+
+static void
+map_reguvar_tree (regu_variable_node &regu, map_reguvar_func & f)
+{
+  bool stop = false;
+  map_reguvar_tree (regu, f, stop);
+}
+// *INDENT-ON*
