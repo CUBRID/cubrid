@@ -4143,6 +4143,7 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	case F_TABLE_SEQUENCE:
 	case F_GENERIC:
 	case F_CLASS_OF:
+	case F_BENCHMARK:
 	  /* is not constant */
 	  assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
 	  assert (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_NOT_CONST));
