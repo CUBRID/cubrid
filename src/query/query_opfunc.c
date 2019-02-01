@@ -52,6 +52,8 @@
 
 #include "dbtype.h"
 
+#include <chrono>
+
 #define NOT_NULL_VALUE(a, b)	((a) ? (a) : (b))
 #define INITIAL_OID_STACK_SIZE  1
 
@@ -10196,6 +10198,9 @@ qdata_benchmark (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR 
       return ER_OBJ_INVALID_ARGUMENTS;
     }
 
+  using bench_clock = std::chrono::system_clock;
+  bench_clock::time_point start_timept = bench_clock::now ();
+
   for (INT64 step = 0; step < count; step++)
     {
       // we're trying to benchmark the expression in target reguvar by running it many times. even if all operands are
@@ -10213,7 +10218,10 @@ qdata_benchmark (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR 
       pr_clear_value (target_value);
     }
 
-  db_make_int (function_p->value, 0);
+  bench_clock::time_point end_timept = bench_clock::now ();
+  std::chrono::duration < double >secs = end_timept - start_timept;
+
+  db_make_double (function_p->value, secs.count ());
   return NO_ERROR;
 }
 

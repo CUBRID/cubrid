@@ -331,7 +331,7 @@ func_all_signatures sig_ret_type0_arg_str =
 
 func_all_signatures sig_of_benchmark =
 {
-  {PT_TYPE_INTEGER, {PT_GENERIC_TYPE_DISCRETE_NUMBER, PT_GENERIC_TYPE_ANY}, {}},
+  {PT_TYPE_DOUBLE, {PT_GENERIC_TYPE_DISCRETE_NUMBER, PT_GENERIC_TYPE_ANY}, {}},
 };
 
 func_all_signatures *
