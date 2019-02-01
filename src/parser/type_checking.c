@@ -12362,6 +12362,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   switch (node->info.function.function_type)
     {
+    case F_BENCHMARK:
       // JSON functions are migrated to new checking function
     case F_JSON_ARRAY:
     case F_JSON_ARRAY_APPEND:

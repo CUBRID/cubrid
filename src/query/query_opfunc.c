@@ -210,6 +210,8 @@ static int qdata_insert_substring_function (THREAD_ENTRY * thread_p, FUNCTION_TY
 
 static int qdata_elt (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
 		      QFILE_TUPLE tuple);
+static int qdata_benchmark (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
+			    OID * obj_oid_p, QFILE_TUPLE tuple);
 
 static int qdata_convert_operands_to_value_and_call (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p,
 						     VAL_DESCR * val_desc_p, OID * obj_oid_p, QFILE_TUPLE tuple,
@@ -8403,6 +8405,9 @@ qdata_evaluate_function (THREAD_ENTRY * thread_p, REGU_VARIABLE * function_p, VA
     case F_ELT:
       return qdata_elt (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
 
+    case F_BENCHMARK:
+      return qdata_benchmark (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+
     case F_JSON_ARRAY:
       return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
 						       db_evaluate_json_array);
@@ -10124,6 +10129,88 @@ fast_exit:
 
 error_exit:
   return error_status;
+}
+
+//
+// qdata_benchmark () - "benchmark" function execution; repeatedly run nested operation
+//
+static int
+qdata_benchmark (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
+		 QFILE_TUPLE tuple)
+{
+  assert (function_p);
+
+  if (function_p == NULL || function_p->operand == NULL || function_p->operand->next == NULL)
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+
+  if (function_p->value == NULL)
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+
+  db_make_null (function_p->value);
+
+  REGU_VARIABLE *count_reguvar = &function_p->operand->value;
+  REGU_VARIABLE *target_reguvar = &function_p->operand->next->value;
+
+  DB_VALUE *count_value = NULL;
+  DB_VALUE *target_value = NULL;
+
+  int error = fetch_peek_dbval (thread_p, count_reguvar, val_desc_p, NULL, obj_oid_p, tuple, &count_value);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error;
+    }
+
+  if (db_value_is_null (count_value))
+    {
+      return NO_ERROR;
+    }
+
+  INT64 count;
+
+  switch (db_value_domain_type (count_value))
+    {
+    case DB_TYPE_SMALLINT:
+      count = STATIC_CAST (INT64, db_get_short (count_value));
+      break;
+    case DB_TYPE_INTEGER:
+      count = STATIC_CAST (INT64, db_get_int (count_value));
+      break;
+    case DB_TYPE_BIGINT:
+      count = db_get_bigint (count_value);
+      break;
+    default:
+      assert (false);
+      return ER_FAILED;
+    }
+
+  if (count <= 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  for (INT64 step = 0; step < count; step++)
+    {
+      // we're trying to benchmark the expression in target reguvar by running it many times. however, some operations
+      // may be optimized on the second "fetch", e.g. executing a nested XASL or fetching record attributes.
+      error = fetch_peek_dbval (thread_p, target_reguvar, val_desc_p, NULL, obj_oid_p, tuple, &target_value);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error;
+	}
+      pr_clear_value (target_value);
+    }
+
+  db_make_int (function_p->value, 0);
+  return NO_ERROR;
 }
 
 static int

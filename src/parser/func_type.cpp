@@ -329,6 +329,11 @@ func_all_signatures sig_ret_type0_arg_str =
   {0, {PT_GENERIC_TYPE_STRING}, {}},
 };
 
+func_all_signatures sig_of_benchmark =
+{
+  {PT_TYPE_INTEGER, {PT_GENERIC_TYPE_DISCRETE_NUMBER, PT_GENERIC_TYPE_ANY}, {}},
+};
+
 func_all_signatures *
 get_signatures (FUNC_TYPE ft)
 {
@@ -394,6 +399,8 @@ get_signatures (FUNC_TYPE ft)
       return &sig_of_insert_substring;
     case F_ELT:
       return &sig_of_elt;
+    case F_BENCHMARK:
+      return &sig_of_benchmark;
     case F_JSON_ARRAY:
       return &sig_json_arg_r_jval;
     case F_JSON_ARRAY_APPEND:
