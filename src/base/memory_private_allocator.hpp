@@ -350,19 +350,15 @@ template < typename Func, typename...Args >
 void
 switch_to_global_allocator_and_call (Func && func, Args && ... args)
 {
-#if defined(SERVER_MODE)
-  /* Switch to global context. */
   HL_HEAPID save_id;
 
-  save_id = db_private_set_heapid_to_thread (NULL, 0);
-#endif //SERVER_MODE
+  // Switch to global
+  save_id = db_change_private_heap (NULL, 0);
 
   func (std::forward < Args > (args)...);
 
-#if defined(SERVER_MODE)
-  /* switch back to private */
-  (void) db_private_set_heapid_to_thread (NULL, save_id);
-#endif //SERVER_MODE
+  // Switch back
+  (void) db_change_private_heap (NULL, save_id);
 }
 
 #endif // _MEMORY_PRIVATE_ALLOCATOR_HPP_

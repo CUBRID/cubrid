@@ -306,8 +306,8 @@ qdata_set_value_list_to_null (VAL_LIST * val_list_p)
  *
  * Note: Copy source value to destination value.
  */
-int
-qdata_copy_db_value (DB_VALUE * dest_p, DB_VALUE * src_p)
+bool
+qdata_copy_db_value (DB_VALUE * dest_p, const DB_VALUE * src_p)
 {
   PR_TYPE *pr_type_p;
   DB_TYPE src_type;

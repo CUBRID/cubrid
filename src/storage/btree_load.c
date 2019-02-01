@@ -150,15 +150,15 @@ struct btree_scan_partition_info
   BTID btid;			/* BTID of the current partition. */
 };
 
+// *INDENT-OFF*
 struct index_builder_loader_context
 {
-  std::atomic_flag m_has_error;
-  std::atomic < std::uint64_t > m_tasks_executed;
+  std::atomic_bool m_has_error;
+  std::atomic <std::uint64_t> m_tasks_executed;
   int m_tran_index;
   int m_error_code;
 };
 
-// *INDENT-OFF*
 class index_builder_loader_task: public cubthread::entry_task
 {
 private:
@@ -169,11 +169,10 @@ private:
     index_builder_loader_context & m_load_context; // Loader context.
 
 public:
-    index_builder_loader_task(BTID * btid, OID * class_oid, OID * oid, int unique_pk,
+    index_builder_loader_task(const BTID * btid, const OID * class_oid, const OID * oid, int unique_pk,
                               index_builder_loader_context & load_context);
     
-    void set_key (DB_VALUE * key);
-    
+    void set_key (const DB_VALUE * key);
 
     ~index_builder_loader_task ();
 
@@ -4795,11 +4794,13 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
   uint64_t tasks_started = 0;
   char midxkey_buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_midxkey_buf;
   index_builder_loader_context load_context;
+  // *INDENT-OFF*
   cubthread::entry_workpool * ib_workpool =
-    cubthread::get_manager ()->create_worker_pool (prm_get_integer_value (PRM_ID_INDEX_BUILDER_THREAD_COUNT), 32,
+   thread_get_manager()->create_worker_pool (prm_get_integer_value (PRM_ID_INDEX_BUILDER_THREAD_COUNT), 32,
 						   "Online index loader pool", NULL, 1,
 						   cubthread::is_logging_configured (cubthread::
 										     LOG_WORKER_POOL_TRAN_WORKERS));
+  // *INDENT-ON*
 
   aligned_midxkey_buf = PTR_ALIGN (midxkey_buf, MAX_ALIGNMENT);
   p_func_idx_info = func_idx_info.expr ? &func_idx_info : NULL;
@@ -4902,69 +4903,75 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 
       load_task->set_key (p_dbvalue);
 
-      cubthread::get_manager ()->push_task (ib_workpool, load_task);
+      thread_get_manager ()->push_task (ib_workpool, load_task);
 
       /* Increment tasks started. */
       tasks_started++;
-
-      /* Check for possible errors. */
-      if (load_context.m_error_code != NO_ERROR)
-	{
-	  /* Also stop all threads. */
-	  cubthread::get_manager ()->destroy_worker_pool (ib_workpool);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, load_context.m_error_code, 0);
-	  return load_context.m_error_code;
-	}
 
       /* Clear index key. */
       if (p_dbvalue != &dbvalue)
 	{
 	  pr_clear_value (p_dbvalue);
 	}
+
+      /* Check for possible errors. */
+      if (load_context.m_has_error)
+	{
+	  /* Also stop all threads. */
+	  thread_get_manager ()->destroy_worker_pool (ib_workpool);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, load_context.m_error_code, 0);
+	  return load_context.m_error_code;
+	}
     }
 
   /* Check if the workerpool is empty */
   do
     {
-      if (load_context.m_error_code != NO_ERROR)
+      if (load_context.m_has_error != NO_ERROR)
 	{
 	  /* Also stop all threads. */
-	  cubthread::get_manager ()->destroy_worker_pool (ib_workpool);
+	  thread_get_manager ()->destroy_worker_pool (ib_workpool);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, load_context.m_error_code, 0);
 	  return load_context.m_error_code;
 	}
 
       /* Wait for threads to finish. */
       thread_sleep (10);
+
+      /* Check for interrupts. */
+      if (er_errid () == ER_INTERRUPTED)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	  return ER_INTERRUPTED;
+	}
     }
   while (load_context.m_tasks_executed != tasks_started);
 
   assert (load_context.m_tasks_executed == tasks_started);
-  cubthread::get_manager ()->destroy_worker_pool (ib_workpool);
+  thread_get_manager ()->destroy_worker_pool (ib_workpool);
 
   return ret;
 }
 
-index_builder_loader_task::index_builder_loader_task (BTID * btid, OID * class_oid, OID * oid, int unique_pk, index_builder_loader_context & load_context):m_load_context
-  (load_context)
+// *INDENT-OFF*
+index_builder_loader_task::index_builder_loader_task (const BTID * btid, const OID * class_oid, const OID * oid, int unique_pk, index_builder_loader_context & load_context)
+                                                      :m_load_context (load_context)
 {
   BTID_COPY (&m_btid, btid);
   COPY_OID (&m_class_oid, class_oid);
   COPY_OID (&m_oid, oid);
   m_unique_pk = unique_pk;
-  m_load_context.m_has_error.clear ();
+  m_load_context.m_has_error = false;
   m_load_context.m_tran_index = thread_get_thread_entry_info ()->tran_index;
 }
 
-// *INDENT-OFF*
 index_builder_loader_task::~index_builder_loader_task ()
 {
   switch_to_global_allocator_and_call <int(DB_VALUE *), DB_VALUE * >(pr_clear_value, &m_key);
 }
-// *INDENT-ON*
 
 void
-index_builder_loader_task::set_key (DB_VALUE * key)
+index_builder_loader_task::set_key (const DB_VALUE * key)
 {
   switch_to_global_allocator_and_call (qdata_copy_db_value, &m_key, key);
 }
@@ -4975,7 +4982,7 @@ index_builder_loader_task::execute (cubthread::entry & thread_ref)
   int ret = NO_ERROR;
 
   /* Check for possible errors set by the other threads. */
-  if (m_load_context.m_error_code != NO_ERROR)
+  if (m_load_context.m_has_error)
     {
       goto cleanup;
     }
@@ -4985,19 +4992,12 @@ index_builder_loader_task::execute (cubthread::entry & thread_ref)
   ret = btree_online_index_dispatcher (&thread_ref, &m_btid, &m_key, &m_class_oid, &m_oid,
 				       m_unique_pk, BTREE_OP_ONLINE_INDEX_IB_INSERT, NULL);
 
-  if (ret != NO_ERROR)
+  if (ret != NO_ERROR && !m_load_context.m_has_error)
     {
-      /* Set the error. */
-      while (m_load_context.m_has_error.test_and_set (std::memory_order_acquire))
-	{
-	  ;			// spin
-	}
-
-      m_load_context.m_error_code = ret;
-
-      /* Clear. */
-      m_load_context.m_has_error.clear ();
-      goto cleanup;
+      if (!m_load_context.m_has_error.exchange (true, std::memory_order_acquire))
+        {
+          m_load_context.m_error_code = ret;
+        }
     }
 
   /* Increment tasks executed. */
@@ -5006,3 +5006,4 @@ index_builder_loader_task::execute (cubthread::entry & thread_ref)
 cleanup:
   return;
 }
+// *INDENT-ON*
