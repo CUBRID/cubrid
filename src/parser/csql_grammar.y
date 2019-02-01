@@ -17095,7 +17095,7 @@ reserved_func
 		DBG_PRINT}}
         | BENCHMARK '(' expression_list ')'
 		{{
-                    $$ = parser_make_func_with_arg_count (this_parser, F_JSON_UNQUOTE, $3, 2, 2);
+                    $$ = parser_make_func_with_arg_count (this_parser, F_JSON_BENCHMARK, $3, 2, 2);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
 	;
