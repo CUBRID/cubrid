@@ -222,11 +222,6 @@ func_all_signatures sig_ret_json_arg_r_jkey_jval =
   {PT_TYPE_JSON, {}, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_JSON_VAL}},
 };
 
-func_all_signatures sig_json_arg_r_jval =
-{
-  {PT_TYPE_JSON, {}, {PT_GENERIC_TYPE_JSON_VAL}},
-};
-
 func_all_signatures sig_json_arg_r_jval_or_empty =
 {
   {PT_TYPE_JSON, {}, {PT_GENERIC_TYPE_JSON_VAL}},
@@ -236,11 +231,6 @@ func_all_signatures sig_json_arg_r_jval_or_empty =
 func_all_signatures sig_ret_json_arg_jdoc =
 {
   {PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC}, {}},
-};
-
-func_all_signatures sig_ret_json_arg_jdoc_r_jdoc =
-{
-  {PT_TYPE_JSON, {PT_GENERIC_TYPE_JSON_DOC}, {PT_GENERIC_TYPE_JSON_DOC}},
 };
 
 func_all_signatures sig_ret_json_arg_jdoc_jpath =
