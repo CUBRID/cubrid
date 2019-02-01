@@ -27,6 +27,8 @@
 #include "load_common.hpp"
 #include "mem_block.hpp"
 
+#include <forward_list>
+
 namespace cubload
 {
   // Constants sizes
@@ -83,17 +85,18 @@ namespace cubload
       constant_type *make_constant (int type, void *val);
       constant_type *make_real (string_type *str);
 
-      void reset_pool_indexes ();
+      void reset_after_line ();
+      void reset_after_batch ();
+
       bool in_instance_line ();
       void set_in_instance_line (bool in_instance_line);
-
-      void reset ();
 
     private:
       bool m_in_instance_line;
 
       std::size_t m_string_pool_idx;
       string_type m_string_pool[STRING_POOL_SIZE];
+      std::forward_list<string_type *> m_string_list;
 
       // buffer pool for copying yytext and qstr_buffer
       std::size_t m_copy_buf_pool_idx;
@@ -102,12 +105,13 @@ namespace cubload
       // constant pool
       std::size_t m_constant_pool_idx;
       constant_type m_constant_pool[CONSTANT_POOL_SIZE];
+      std::forward_list<constant_type *> m_constant_list;
 
       // quoted string buffer pool
       bool m_use_qstr_buf;
 
       cubmem::extensible_block m_qstr_buf; // using when pool overflow
-      char *m_qstr_buf_p;
+      char *m_qstr_buf_ptr;
       std::size_t m_qstr_buf_idx;
 
       char **m_qstr_buf_pool;
@@ -115,8 +119,15 @@ namespace cubload
 
       /* private functions */
       string_type *make_string (char *val, std::size_t size, bool need_free_val);
+      string_type *make_string_and_copy (const char *src, size_t str_size);
+
+      void extend_quoted_string_buffer (size_t new_size);
+
       bool is_utf8_valid (string_type *str);
       bool use_copy_buf_pool (std::size_t str_size);
+
+      void clear ();
+      void clear_string_pool ();
 
       // template private functions
       template<typename T>

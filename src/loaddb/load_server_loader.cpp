@@ -266,7 +266,6 @@ namespace cubload
 	  }
 
 	next = c->next;
-	c->destroy ();
       }
   }
 
@@ -350,8 +349,7 @@ namespace cubload
       case LDR_SYS_USER:
       case LDR_SYS_CLASS:
       {
-	str = reinterpret_cast<string_type *> (cons->val);
-
+	// str = reinterpret_cast<string_type *> (cons->val);
 	//conv_func func = get_conv_func (cons->type, attr->domain->type->id);
 	//func (str->val, attr->domain, db_val);
       }
@@ -369,11 +367,6 @@ namespace cubload
       default:
 	error_code = ER_FAILED;
 	break;
-      }
-
-    if (str != NULL)
-      {
-	str->destroy ();
       }
 
     return error_code;

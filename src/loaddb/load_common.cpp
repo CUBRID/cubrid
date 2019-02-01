@@ -124,9 +124,13 @@ namespace cubload
     , val (NULL)
     , size (0)
     , need_free_val (false)
-    , need_free_self (false)
   {
     //
+  }
+
+  string_type::~string_type ()
+  {
+    destroy ();
   }
 
   string_type::string_type (char *val, std::size_t size, bool need_free_val)
@@ -135,7 +139,6 @@ namespace cubload
     , val (val)
     , size (size)
     , need_free_val (need_free_val)
-    , need_free_self (false)
   {
     //
   }
@@ -151,10 +154,6 @@ namespace cubload
 	size = 0;
 	need_free_val = false;
       }
-    if (need_free_self)
-      {
-	delete this;
-      }
   }
 
   constructor_spec_type::constructor_spec_type (string_type *id_name, string_type *arg_list)
@@ -162,21 +161,6 @@ namespace cubload
     , arg_list (arg_list)
   {
     //
-  }
-
-  constructor_spec_type::~constructor_spec_type ()
-  {
-    string_type *next = NULL;
-    for (string_type *arg = arg_list; arg != NULL; arg = next)
-      {
-	next = arg->next;
-	arg->destroy ();
-      }
-
-    if (id_name != NULL)
-      {
-	id_name->destroy ();
-      }
   }
 
   class_command_spec_type::class_command_spec_type (int qualifier, string_type *attr_list,
@@ -188,24 +172,11 @@ namespace cubload
     //
   }
 
-  class_command_spec_type::~class_command_spec_type ()
-  {
-    string_type *next = NULL;
-    for (string_type *attr = attr_list; attr != NULL; attr = next)
-      {
-	next = attr->next;
-	attr->destroy ();
-      }
-
-    delete ctor_spec;
-  }
-
   constant_type::constant_type ()
     : next (NULL)
     , last (NULL)
     , val (NULL)
     , type (-1)
-    , need_free (false)
   {
     //
   }
@@ -215,18 +186,8 @@ namespace cubload
     , last (NULL)
     , val (val)
     , type (type)
-    , need_free (false)
   {
     //
-  }
-
-  void
-  constant_type::destroy ()
-  {
-    if (need_free)
-      {
-	delete this;
-      }
   }
 
   object_ref_type::object_ref_type (string_type *class_id, string_type *class_name)
@@ -237,35 +198,11 @@ namespace cubload
     //
   }
 
-  object_ref_type::~object_ref_type ()
-  {
-    if (class_id != NULL)
-      {
-	class_id->destroy ();
-      }
-    if (class_name != NULL)
-      {
-	class_name->destroy ();
-      }
-    if (instance_number != NULL)
-      {
-	instance_number->destroy ();
-      }
-  }
-
   monetary_type::monetary_type (string_type *amount, int currency_type)
     : amount (amount)
     , currency_type (currency_type)
   {
     //
-  }
-
-  monetary_type::~monetary_type ()
-  {
-    if (amount != NULL)
-      {
-	amount->destroy ();
-      }
   }
 
   stats::stats ()

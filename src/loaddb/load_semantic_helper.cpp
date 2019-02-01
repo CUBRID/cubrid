@@ -35,13 +35,15 @@ namespace cubload
     : m_in_instance_line (true)
     , m_string_pool_idx (0)
     , m_string_pool {}
+    , m_string_list ()
     , m_copy_buf_pool_idx (0)
     , m_copy_buf_pool {}
     , m_constant_pool_idx (0)
     , m_constant_pool {}
+    , m_constant_list ()
     , m_use_qstr_buf (false)
-    , m_qstr_buf ()
-    , m_qstr_buf_p (NULL)
+    , m_qstr_buf (cubmem::EXPONENTIAL_STANDARD_BLOCK_ALLOCATOR)
+    , m_qstr_buf_ptr (NULL)
     , m_qstr_buf_idx (0)
     , m_qstr_buf_pool (NULL)
     , m_qstr_buf_pool_idx (0)
@@ -60,6 +62,9 @@ namespace cubload
 	delete [] m_qstr_buf_pool[i];
       }
     delete [] m_qstr_buf_pool;
+
+    clear ();
+    clear_string_pool ();
   }
 
   void
@@ -67,36 +72,20 @@ namespace cubload
   {
     if (m_use_qstr_buf)
       {
-	if (m_qstr_buf_idx >= m_qstr_buf.get_size ())
-	  {
-	    // double qstr_buffer memory size
-	    m_qstr_buf.extend_by (m_qstr_buf.get_size ());
-	    m_qstr_buf_p = m_qstr_buf.get_ptr ();
-	  }
+	extend_quoted_string_buffer (m_qstr_buf_idx + 1);
       }
     else
       {
 	if (m_qstr_buf_idx >= MAX_QUOTED_STR_BUF_SIZE)
 	  {
-	    if (m_qstr_buf.get_ptr () != NULL && m_qstr_buf.get_size () <= MAX_QUOTED_STR_BUF_SIZE)
-	      {
-		// reset qstr buffer
-		m_qstr_buf.~extensible_block ();
-	      }
+	    extend_quoted_string_buffer (MAX_QUOTED_STR_BUF_SIZE * 2);
 
-	    if (m_qstr_buf.get_ptr () == NULL)
-	      {
-		m_qstr_buf.extend_to (MAX_QUOTED_STR_BUF_SIZE * 2);
-	      }
-
-	    std::memcpy (m_qstr_buf.get_ptr (), m_qstr_buf_p, m_qstr_buf_idx);
-	    m_qstr_buf_p = m_qstr_buf.get_ptr ();
 	    m_qstr_buf_pool_idx--;
 	    m_use_qstr_buf = true;
 	  }
       }
 
-    m_qstr_buf_p[m_qstr_buf_idx++] = c;
+    m_qstr_buf_ptr[m_qstr_buf_idx++] = c;
   }
 
   string_type *
@@ -116,17 +105,12 @@ namespace cubload
   {
     if (m_qstr_buf_pool_idx < QUOTED_STR_BUF_POOL_SIZE)
       {
-	m_qstr_buf_p = &m_qstr_buf_pool[m_qstr_buf_pool_idx++][0];
+	m_qstr_buf_ptr = &m_qstr_buf_pool[m_qstr_buf_pool_idx++][0];
 	m_use_qstr_buf = false;
       }
     else
       {
-	if (m_qstr_buf.get_ptr () == NULL)
-	  {
-	    m_qstr_buf.extend_to (MAX_QUOTED_STR_BUF_SIZE);
-	  }
-
-	m_qstr_buf_p = m_qstr_buf.get_ptr ();
+	extend_quoted_string_buffer (MAX_QUOTED_STR_BUF_SIZE);
 	m_use_qstr_buf = true;
       }
 
@@ -141,25 +125,15 @@ namespace cubload
 
     if (!m_use_qstr_buf)
       {
-	str = make_string (m_qstr_buf_p, str_size, false);
+	str = make_string (m_qstr_buf_ptr, str_size, false);
       }
     else
       {
-	if (use_copy_buf_pool (str_size))
-	  {
-	    str = make_string (&m_copy_buf_pool[m_copy_buf_pool_idx++][0], str_size, false);
-	  }
-	else
-	  {
-	    str = make_string (new char[m_qstr_buf_idx], str_size, true);
-	  }
+	str = make_string_and_copy (m_qstr_buf_ptr, str_size);
       }
-
-    std::memcpy (str->val, m_qstr_buf_p, m_qstr_buf_idx);
 
     if (!is_utf8_valid (str))
       {
-	str->destroy ();
 	return NULL;
       }
 
@@ -169,24 +143,11 @@ namespace cubload
   string_type *
   semantic_helper::make_string_by_yytext (const char *text, int text_size)
   {
-    string_type *str = NULL;
     std::size_t str_size = (std::size_t) text_size;
-
-    if (use_copy_buf_pool (str_size))
-      {
-	str = make_string (&m_copy_buf_pool[m_copy_buf_pool_idx++][0], str_size, false);
-      }
-    else
-      {
-	str = make_string (new char[str_size + 1], str_size, true);
-      }
-
-    std::memcpy (str->val, text, str_size);
-    str->val[str_size] = '\0';
+    string_type *str = make_string_and_copy (text, str_size);
 
     if (!is_utf8_valid (str))
       {
-	str->destroy ();
 	return NULL;
       }
 
@@ -201,14 +162,15 @@ namespace cubload
     if (m_constant_pool_idx < CONSTANT_POOL_SIZE)
       {
 	con = &m_constant_pool[m_constant_pool_idx++];
-	con->need_free = false;
 	con->type = type;
 	con->val = val;
       }
     else
       {
 	con = new constant_type (type, val);
-	con->need_free = true;
+
+	// collect allocated constants in order to free the memory later
+	m_constant_list.push_front (con);
       }
 
     return con;
@@ -237,12 +199,14 @@ namespace cubload
   }
 
   void
-  semantic_helper::reset_pool_indexes ()
+  semantic_helper::reset_after_line ()
   {
     m_string_pool_idx = 0;
     m_copy_buf_pool_idx = 0;
     m_qstr_buf_pool_idx = 0;
     m_constant_pool_idx = 0;
+
+    clear_string_pool ();
   }
 
   bool
@@ -258,12 +222,13 @@ namespace cubload
   }
 
   void
-  semantic_helper::reset ()
+  semantic_helper::reset_after_batch ()
   {
-    reset_pool_indexes ();
+    clear ();
+    reset_after_line ();
 
     m_in_instance_line = true;
-    m_qstr_buf_p = NULL;
+    m_qstr_buf_ptr = NULL;
     m_use_qstr_buf = false;
     m_qstr_buf_idx = 0;
   }
@@ -276,7 +241,6 @@ namespace cubload
     if (m_string_pool_idx < STRING_POOL_SIZE)
       {
 	str = &m_string_pool[m_string_pool_idx++];
-	str->need_free_self = false;
 	str->val = val;
 	str->size = size;
 	str->need_free_val = need_free_val;
@@ -284,10 +248,41 @@ namespace cubload
     else
       {
 	str = new string_type (val, size, need_free_val);
-	str->need_free_self = true;
+
+	// collect allocated string types in order to free the memory later
+	m_string_list.push_front (str);
       }
 
     return str;
+  }
+
+  string_type *
+  semantic_helper::make_string_and_copy (const char *src, size_t str_size)
+  {
+    string_type *str;
+
+    if (use_copy_buf_pool (str_size))
+      {
+	str = make_string (&m_copy_buf_pool[m_copy_buf_pool_idx++][0], str_size, false);
+      }
+    else
+      {
+	// +1 for string null terminator
+	str = make_string (new char[str_size + 1], str_size, true);
+      }
+
+    std::memcpy (str->val, src, str_size);
+    str->val[str_size] = '\0';
+
+    return str;
+  }
+
+  void
+  semantic_helper::extend_quoted_string_buffer (size_t new_size)
+  {
+    m_qstr_buf.extend_to (new_size);
+    // make sure that quoted string buffer points to new memory location
+    m_qstr_buf_ptr = m_qstr_buf.get_ptr ();
   }
 
   bool
@@ -308,6 +303,32 @@ namespace cubload
   semantic_helper::use_copy_buf_pool (std::size_t str_size)
   {
     return m_copy_buf_pool_idx < COPY_BUF_POOL_SIZE && str_size < MAX_COPY_BUF_SIZE;
+  }
+
+  void
+  semantic_helper::clear ()
+  {
+    for (auto &str : m_string_list)
+      {
+	delete str;
+      }
+    m_string_list.clear ();
+
+    for (auto &con : m_constant_list)
+      {
+	delete con;
+      }
+    m_constant_list.clear ();
+  }
+
+  void
+  semantic_helper::clear_string_pool ()
+  {
+    for (string_type &str : m_string_pool)
+      {
+	// might be that some of the str.val within from m_string_pool where dynamically allocated
+	str.destroy();
+      }
   }
 
   template<typename T>

@@ -161,7 +161,7 @@ namespace cubload
   {
     string_type ();
     string_type (char *val, std::size_t size, bool need_free_val);
-    ~string_type () = default;
+    ~string_type ();
 
     void destroy ();
 
@@ -170,14 +170,13 @@ namespace cubload
     char *val;
     size_t size;
     bool need_free_val;
-    bool need_free_self;
   };
 
   struct constructor_spec_type
   {
     constructor_spec_type () = delete;
     constructor_spec_type (string_type *id_name, string_type *arg_list);
-    ~constructor_spec_type ();
+    ~constructor_spec_type () = default;
 
     string_type *id_name;
     string_type *arg_list;
@@ -187,7 +186,7 @@ namespace cubload
   {
     class_command_spec_type () = delete;
     class_command_spec_type (int qualifier, string_type *attr_list, constructor_spec_type *ctor_spec);
-    ~class_command_spec_type ();
+    ~class_command_spec_type () = default;
 
     int qualifier;
     string_type *attr_list;
@@ -200,20 +199,17 @@ namespace cubload
     constant_type (int type, void *val);
     ~constant_type () = default;
 
-    void destroy ();
-
     constant_type *next;
     constant_type *last;
     void *val;
     int type;
-    bool need_free;
   };
 
   struct object_ref_type
   {
     object_ref_type () = delete;
     object_ref_type (string_type *class_id, string_type *class_name);
-    ~object_ref_type ();
+    ~object_ref_type () = default;
 
     string_type *class_id;
     string_type *class_name;
@@ -224,7 +220,7 @@ namespace cubload
   {
     monetary_type () = delete;
     monetary_type (string_type *amount, int currency_type);
-    ~monetary_type ();
+    ~monetary_type () = default;
 
     string_type *amount;
     int currency_type;

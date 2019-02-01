@@ -849,7 +849,6 @@ namespace cubload
 	      string_type *str = (string_type *) c->val;
 
 	      (*ldr_act) (ldr_Current_context, str->val, str->size, (data_type) c->type);
-	      str->destroy ();
 	    }
 	    break;
 
@@ -892,7 +891,6 @@ namespace cubload
 	      string_type *str = (string_type *) c->val;
 
 	      (*ldr_act) (ldr_Current_context, str->val, strlen (str->val), (data_type) c->type);
-	      str->destroy ();
 	    }
 	    break;
 
@@ -910,8 +908,6 @@ namespace cubload
 	  default:
 	    break;
 	  }
-
-	  c->destroy ();
       }
   }
 

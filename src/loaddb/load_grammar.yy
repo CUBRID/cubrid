@@ -222,14 +222,14 @@ one_line :
   command_line
   {
     DBG_PRINT ("command_line");
-    m_driver.get_semantic_helper ().reset_pool_indexes ();
+    m_driver.get_semantic_helper ().reset_after_line ();
   }
   |
   instance_line
   {
     DBG_PRINT ("instance_line");
     m_driver.get_object_loader ().finish_line ();
-    m_driver.get_semantic_helper ().reset_pool_indexes ();
+    m_driver.get_semantic_helper ().reset_after_line ();
   }
   ;
 
@@ -249,12 +249,6 @@ id_command :
   CMD_ID IDENTIFIER INT_LIT
   {
     m_driver.get_class_installer ().check_class ($2->val, atoi ($3->val));
-
-    $2->destroy ();
-    $2 = NULL;
-
-    $3->destroy ();
-    $3 = NULL;
   }
   ;
 
@@ -262,9 +256,6 @@ class_command :
   CMD_CLASS IDENTIFIER class_command_spec
   {
     m_driver.get_class_installer ().install_class ($2, $3);
-
-    $2->destroy ();
-    $2 = NULL;
 
     delete $3;
     $3 = NULL;
