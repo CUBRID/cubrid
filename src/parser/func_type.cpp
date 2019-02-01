@@ -211,6 +211,12 @@ func_all_signatures sig_of_insert_substring =
   //{0, {3, PT_TYPE_INTEGER, PT_TYPE_INTEGER, PT_GENERIC_TYPE_STRING}, {}}, //for insert(?, i, i, 'char or anything else')
 };
 
+func_all_signatures sig_ret_json_arg_r_jkey_jval_or_empty =
+{
+  {PT_TYPE_JSON, {}, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_JSON_VAL}},
+  {PT_TYPE_JSON, {}, {}}
+};
+
 func_all_signatures sig_ret_json_arg_r_jkey_jval =
 {
   {PT_TYPE_JSON, {}, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_JSON_VAL}},
@@ -219,6 +225,12 @@ func_all_signatures sig_ret_json_arg_r_jkey_jval =
 func_all_signatures sig_json_arg_r_jval =
 {
   {PT_TYPE_JSON, {}, {PT_GENERIC_TYPE_JSON_VAL}},
+};
+
+func_all_signatures sig_json_arg_r_jval_or_empty =
+{
+  {PT_TYPE_JSON, {}, {PT_GENERIC_TYPE_JSON_VAL}},
+  {PT_TYPE_JSON, {}, {}}
 };
 
 func_all_signatures sig_ret_json_arg_jdoc =
@@ -395,7 +407,7 @@ get_signatures (FUNC_TYPE ft)
     case F_ELT:
       return &sig_of_elt;
     case F_JSON_ARRAY:
-      return &sig_json_arg_r_jval;
+      return &sig_json_arg_r_jval_or_empty;
     case F_JSON_ARRAY_APPEND:
     case F_JSON_ARRAY_INSERT:
       return &sig_ret_json_arg_jdoc_r_jpath_jval;
@@ -419,7 +431,7 @@ get_signatures (FUNC_TYPE ft)
     case F_JSON_MERGE_PATCH:
       return &sig_ret_json_arg_jdoc_r_jdoc;
     case F_JSON_OBJECT:
-      return &sig_ret_json_arg_r_jkey_jval;
+      return &sig_ret_json_arg_r_jkey_jval_or_empty;
     case F_JSON_PRETTY:
       return &sig_ret_string_arg_jdoc;
     case F_JSON_QUOTE:

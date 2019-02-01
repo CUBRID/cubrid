@@ -16951,9 +16951,9 @@ reserved_func
                     $$ = parser_make_func_with_arg_count_mod2 (this_parser, F_JSON_ARRAY_INSERT, $3, 3, 0, 1);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-        | JSON_ARRAY_LEX '(' expression_list ')'
+        | JSON_ARRAY_LEX '(' opt_expression_list ')'
 		{{
-                    $$ = parser_make_func_with_arg_count (this_parser, F_JSON_ARRAY, $3, 1, 0);
+                    $$ = parser_make_func_with_arg_count (this_parser, F_JSON_ARRAY, $3, 0, 0);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
 	| JSON_CONTAINS '(' expression_list ')'
@@ -17011,9 +17011,9 @@ reserved_func
                     $$ = parser_make_func_with_arg_count (this_parser, F_JSON_MERGE, $3, 2, 0);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
-        | JSON_OBJECT_LEX '(' expression_list ')'
+        | JSON_OBJECT_LEX '(' opt_expression_list ')'
 		{{
-                    $$ = parser_make_func_with_arg_count_mod2 (this_parser, F_JSON_OBJECT, $3, 1, 0, 0);
+                    $$ = parser_make_func_with_arg_count_mod2 (this_parser, F_JSON_OBJECT, $3, 0, 0, 0);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
         | JSON_PRETTY '(' expression_list ')'

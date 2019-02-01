@@ -114,6 +114,8 @@ int db_json_validate_json (const char *json_body);
 int db_json_load_validator (const char *json_schema_raw, JSON_VALIDATOR *&validator);
 JSON_VALIDATOR *db_json_copy_validator (JSON_VALIDATOR *validator);
 JSON_DOC *db_json_allocate_doc ();
+JSON_DOC *db_json_make_json_object ();
+JSON_DOC *db_json_make_json_array ();
 void db_json_delete_doc (JSON_DOC *&doc);
 void db_json_delete_validator (JSON_VALIDATOR *&validator);
 int db_json_validate_doc (JSON_VALIDATOR *validator, JSON_DOC *doc);

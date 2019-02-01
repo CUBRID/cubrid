@@ -12421,7 +12421,8 @@ pt_eval_function_type_new (PARSER_CONTEXT * parser, PT_NODE * node)
 
   PT_NODE *arg_list = node->info.function.arg_list;
   if (!arg_list && fcode != PT_COUNT_STAR && fcode != PT_GROUPBY_NUM && fcode != PT_ROW_NUMBER && fcode != PT_RANK &&
-      fcode != PT_DENSE_RANK && fcode != PT_CUME_DIST && fcode != PT_PERCENT_RANK)
+      fcode != PT_DENSE_RANK && fcode != PT_CUME_DIST && fcode != PT_PERCENT_RANK && fcode != F_JSON_ARRAY &&
+      fcode != F_JSON_OBJECT)
     {
       pt_cat_error (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTION_NO_ARGS,
 		    pt_short_print (parser, node));
@@ -19681,10 +19682,9 @@ pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_TYPE fcode, DB_VALUE 
   int error = NO_ERROR, i;
 
   assert (parser != NULL);
-  assert (args != NULL);
   assert (result != NULL);
 
-  if (!args || !result)
+  if (!result)
     {
       return 0;
     }
@@ -19934,11 +19934,7 @@ pt_fold_const_function (PARSER_CONTEXT * parser, PT_NODE * func)
       result->line_number = line;
       result->column_number = column;
       result->alias_print = alias_print;
-      if (result->node_type == PT_FUNCTION)
-	{
-	  assert (result->info.function.arg_list != NULL);
-	}
-      else if (result->node_type == PT_VALUE)
+      if (result->node_type == PT_VALUE)
 	{
 	  /* temporary set location to a 0 the location will be updated after const folding at the upper level : the
 	   * parent node is a PT_EXPR node with a PT_FUNCTION_HOLDER operator type */
@@ -19997,12 +19993,14 @@ pt_evaluate_function (PARSER_CONTEXT * parser, PT_NODE * func, DB_VALUE * dbval_
       ++num_args;
       operand = operand->next;
     }
-  assert (num_args > 0);
 
-  arg_array = (DB_VALUE **) calloc (num_args, sizeof (DB_VALUE *));
-  if (arg_array == NULL)
+  if (num_args != 0)
     {
-      goto end;
+      arg_array = (DB_VALUE **) calloc (num_args, sizeof (DB_VALUE *));
+      if (arg_array == NULL)
+	{
+	  goto end;
+	}
     }
 
   /* convert all operands to DB_VALUE arguments */
