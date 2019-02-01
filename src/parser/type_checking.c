@@ -7662,6 +7662,8 @@ pt_fold_constants_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
       // nope
       break;
     }
+
+  return node;
 }
 
 /*
