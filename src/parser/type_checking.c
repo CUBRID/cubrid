@@ -7697,11 +7697,14 @@ pt_fold_constants_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
       node = pt_fold_const_expr (parser, node, arg);
       break;
     case PT_FUNCTION:
-      node = pt_fold_const_function (parser, node);
       if (node->info.function.function_type == F_BENCHMARK)
 	{
 	  // restore walking; I hope this was continue_walk!
 	  *continue_walk = PT_CONTINUE_WALK;
+	}
+      else
+	{
+	  node = pt_fold_const_function (parser, node);
 	}
       break;
     default:
