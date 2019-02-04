@@ -6313,6 +6313,7 @@ pt_function_to_regu (PARSER_CONTEXT * parser, PT_NODE * function)
 	case F_ELT:
 	  result_type = pt_node_to_db_type (function);
 	  break;
+	case F_BENCHMARK:
 	case F_JSON_ARRAY:
 	case F_JSON_ARRAY_APPEND:
 	case F_JSON_ARRAY_INSERT:
