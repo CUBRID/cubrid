@@ -84,6 +84,7 @@ namespace cubload
 
       constant_type *make_constant (int type, void *val);
       constant_type *make_real (string_type *str);
+      constant_type *make_monetary_constant (int currency_type, string_type *amount);
 
       void reset_after_line ();
       void reset_after_batch ();
@@ -127,7 +128,6 @@ namespace cubload
       bool use_copy_buf_pool (std::size_t str_size);
 
       void clear ();
-      void clear_string_pool ();
 
       // template private functions
       template<typename T>

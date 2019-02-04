@@ -64,7 +64,6 @@ namespace cubload
     delete [] m_qstr_buf_pool;
 
     clear ();
-    clear_string_pool ();
   }
 
   void
@@ -198,15 +197,21 @@ namespace cubload
       }
   }
 
+  constant_type *
+  semantic_helper::make_monetary_constant (int currency_type, string_type *amount)
+  {
+    return make_constant (LDR_MONETARY, new monetary_type (amount, currency_type));
+  }
+
   void
   semantic_helper::reset_after_line ()
   {
+    clear ();
+
     m_string_pool_idx = 0;
     m_copy_buf_pool_idx = 0;
     m_qstr_buf_pool_idx = 0;
     m_constant_pool_idx = 0;
-
-    clear_string_pool ();
   }
 
   bool
@@ -224,7 +229,6 @@ namespace cubload
   void
   semantic_helper::reset_after_batch ()
   {
-    clear ();
     reset_after_line ();
 
     m_in_instance_line = true;
@@ -308,27 +312,24 @@ namespace cubload
   void
   semantic_helper::clear ()
   {
-    for (auto &str : m_string_list)
+    size_t string_pool_end = std::min (m_string_pool_idx + 1, STRING_POOL_SIZE);
+    for (size_t i = 0; i < string_pool_end; ++i)
+      {
+	// might be that some of the str.val within from m_string_pool where dynamically allocated
+	m_string_pool[i].destroy ();
+      }
+
+    for (string_type *str : m_string_list)
       {
 	delete str;
       }
     m_string_list.clear ();
 
-    for (auto &con : m_constant_list)
+    for (constant_type *con : m_constant_list)
       {
 	delete con;
       }
     m_constant_list.clear ();
-  }
-
-  void
-  semantic_helper::clear_string_pool ()
-  {
-    for (string_type &str : m_string_pool)
-      {
-	// might be that some of the str.val within from m_string_pool where dynamically allocated
-	str.destroy();
-      }
   }
 
   template<typename T>
