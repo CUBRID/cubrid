@@ -223,7 +223,8 @@ static PT_NODE *pt_to_false_subquery (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_eval_recursive_expr_type (PARSER_CONTEXT * parser, PT_NODE * gl_expr);
 static PT_NODE *pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-static PT_NODE *pt_fold_constants (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static PT_NODE *pt_fold_constants_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static PT_NODE *pt_fold_constants_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static void pt_chop_to_one_select_item (PARSER_CONTEXT * parser, PT_NODE * node);
 static bool pt_is_able_to_determine_return_type (const PT_OP_TYPE op);
 static PT_NODE *pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node);
@@ -7639,8 +7640,34 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
   return node;
 }
 
+static PT_NODE *
+pt_fold_constants_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  if (node == NULL)
+    {
+      return node;
+    }
+
+  // check if constant folding for sub-tree should be suppressed
+  switch (node->node_type)
+    {
+    case PT_FUNCTION:
+      if (node->info.function.function_type == F_BENCHMARK)
+	{
+	  // we want to test full execution of sub-tree; don't fold it!
+	  *continue_walk = PT_LIST_WALK;
+	}
+      break;
+    default:
+      // nope
+      break;
+    }
+
+  return node;
+}
+
 /*
- * pt_fold_constants () - perform constant folding on the specified node
+ * pt_fold_constants_post () - perform constant folding on the specified node
  *   return	: the node after constant folding
  *
  *   parser(in)	: the parser context
@@ -7649,7 +7676,7 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
  *   continue_walk(in):
  */
 static PT_NODE *
-pt_fold_constants (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+pt_fold_constants_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   SEMANTIC_CHK_INFO *sc_info = (SEMANTIC_CHK_INFO *) arg;
 
@@ -7670,7 +7697,15 @@ pt_fold_constants (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *cont
       node = pt_fold_const_expr (parser, node, arg);
       break;
     case PT_FUNCTION:
-      node = pt_fold_const_function (parser, node);
+      if (node->info.function.function_type == F_BENCHMARK)
+	{
+	  // restore walking; I hope this was continue_walk!
+	  *continue_walk = PT_CONTINUE_WALK;
+	}
+      else
+	{
+	  node = pt_fold_const_function (parser, node);
+	}
       break;
     default:
       break;
@@ -7678,7 +7713,7 @@ pt_fold_constants (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *cont
 
   if (node == NULL)
     {
-      PT_INTERNAL_ERROR (parser, "pt_fold_constants");
+      PT_INTERNAL_ERROR (parser, "pt_fold_constants_post");
       return NULL;
     }
 
@@ -12362,6 +12397,7 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   switch (node->info.function.function_type)
     {
+    case F_BENCHMARK:
       // JSON functions are migrated to new checking function
     case F_JSON_ARRAY:
     case F_JSON_ARRAY_APPEND:
@@ -20095,7 +20131,7 @@ pt_semantic_type (PARSER_CONTEXT * parser, PT_NODE * tree, SEMANTIC_CHK_INFO * s
   /* do type checking */
   tree = parser_walk_tree (parser, tree, pt_eval_type_pre, sc_info_ptr, pt_eval_type, sc_info_ptr);
   /* do constant folding */
-  tree = parser_walk_tree (parser, tree, NULL, NULL, pt_fold_constants, sc_info_ptr);
+  tree = parser_walk_tree (parser, tree, pt_fold_constants_pre, NULL, pt_fold_constants_post, sc_info_ptr);
   if (pt_has_error (parser))
     {
       tree = NULL;

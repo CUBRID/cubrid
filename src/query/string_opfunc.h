@@ -201,7 +201,7 @@ extern int db_string_space (DB_VALUE const *count, DB_VALUE * result);
 extern int db_string_insert_substring (DB_VALUE * src_string, const DB_VALUE * position, const DB_VALUE * length,
 				       DB_VALUE * sub_string, DB_VALUE * result);
 extern int db_string_elt (DB_VALUE * result, DB_VALUE * args[], int const num_args);
-extern int db_string_escape (const char *src_str, int src_size, char **res_string, int *dest_size);
+extern int db_string_escape (const char *src_str, size_t src_size, char **res_string, size_t * dest_size);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern int db_string_byte_length (const DB_VALUE * string, DB_VALUE * byte_count);

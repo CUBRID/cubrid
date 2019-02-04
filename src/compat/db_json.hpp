@@ -59,13 +59,6 @@ enum DB_JSON_TYPE
   DB_JSON_BOOL,
 };
 
-enum class JSON_PATH_TYPE
-{
-  JSON_PATH_SQL_JSON,
-  JSON_PATH_POINTER,
-  JSON_PATH_EMPTY
-};
-
 /* C functions */
 bool db_json_is_valid (const char *json_str);
 const char *db_json_get_type_as_str (const JSON_DOC *document);
@@ -125,8 +118,6 @@ void db_json_delete_doc (JSON_DOC *&doc);
 void db_json_delete_validator (JSON_VALIDATOR *&validator);
 int db_json_validate_doc (JSON_VALIDATOR *validator, JSON_DOC *doc);
 bool db_json_are_validators_equal (JSON_VALIDATOR *val1, JSON_VALIDATOR *val2);
-int db_json_convert_sql_path_to_pointer (const char *sql_path, std::string &json_pointer_out,
-    bool allow_wildcards = false);
 void db_json_path_unquote_object_keys (std::string &sql_path);
 bool db_json_path_contains_wildcard (const char *sql_path);
 
@@ -140,8 +131,8 @@ JSON_ITERATOR *db_json_create_iterator (const DB_JSON_TYPE &type);
 void db_json_delete_json_iterator (JSON_ITERATOR *&json_itr);
 void db_json_clear_json_iterator (JSON_ITERATOR *&json_itr);
 
-int db_json_convert_pointer_to_sql_path (const char *pointer_path, std::string &sql_path_out,
-    bool allow_wildcards = true);
+int db_json_normalize_path (const char *pointer_path, std::string &sql_path_out,
+			    bool allow_wildcards = true);
 DB_JSON_TYPE db_json_get_type (const JSON_DOC *doc);
 
 int db_json_get_int_from_document (const JSON_DOC *doc);

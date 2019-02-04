@@ -86,7 +86,7 @@ namespace cubmem
 	delete[] b.ptr;
 
 	b.ptr = new_ptr;
-	b.dim = size;
+	b.dim = new_size;
       }
   }
 
