@@ -1112,6 +1112,7 @@ int g_original_buffer_len;
 %token AVG
 %token BEFORE
 %token BEGIN_
+%token BENCHMARK
 %token BETWEEN
 %token BIGINT
 %token BINARY
@@ -17091,6 +17092,11 @@ reserved_func
 		    PT_NODE *extract_expr = parser_make_expr_with_func (this_parser, F_JSON_EXTRACT, first_arg);
 		    $$ = parser_make_expr_with_func (this_parser, F_JSON_UNQUOTE, extract_expr);
                     PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
+        | BENCHMARK '(' expression_list ')'
+		{{
+                    $$ = parser_make_func_with_arg_count (this_parser, F_BENCHMARK, $3, 2, 2);
+		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		DBG_PRINT}}
 	;
 
