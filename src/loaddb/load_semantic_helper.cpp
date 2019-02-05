@@ -26,6 +26,7 @@
 #include "error_manager.h"
 #include "language_support.h"
 
+#include <algorithm>
 #include <cstring>
 
 namespace cubload
