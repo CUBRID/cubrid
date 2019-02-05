@@ -222,14 +222,14 @@ one_line :
   command_line
   {
     DBG_PRINT ("command_line");
-    m_driver.get_semantic_helper ().reset_pool_indexes ();
+    m_driver.get_semantic_helper ().reset_after_line ();
   }
   |
   instance_line
   {
     DBG_PRINT ("instance_line");
     m_driver.get_object_loader ().finish_line ();
-    m_driver.get_semantic_helper ().reset_pool_indexes ();
+    m_driver.get_semantic_helper ().reset_after_line ();
   }
   ;
 
@@ -249,9 +249,6 @@ id_command :
   CMD_ID IDENTIFIER INT_LIT
   {
     m_driver.get_class_installer ().check_class ($2->val, atoi ($3->val));
-
-    free_string (&$2);
-    free_string (&$3);
   }
   ;
 
@@ -260,8 +257,8 @@ class_command :
   {
     m_driver.get_class_installer ().install_class ($2, $3);
 
-    free_string (&$2);
-    free_class_command_spec (&$3);
+    delete $3;
+    $3 = NULL;
   }
   ;
 
@@ -269,25 +266,25 @@ class_command_spec :
   attribute_list
   {
     DBG_PRINT ("attribute_list");
-    $$ = m_driver.get_semantic_helper ().make_class_command_spec (LDR_ATTRIBUTE_ANY, $1, NULL);
+    $$ = new class_command_spec_type (LDR_ATTRIBUTE_ANY, $1, NULL);
   }
   |
   attribute_list constructor_spec
   {
     DBG_PRINT ("attribute_list constructor_spec");
-    $$ = m_driver.get_semantic_helper ().make_class_command_spec (LDR_ATTRIBUTE_ANY, $1, $2);
+    $$ = new class_command_spec_type (LDR_ATTRIBUTE_ANY, $1, $2);
   }
   |
   attribute_list_qualifier attribute_list
   {
     DBG_PRINT ("attribute_list_qualifier attribute_list");
-    $$ = m_driver.get_semantic_helper ().make_class_command_spec ($1, $2, NULL);
+    $$ = new class_command_spec_type ($1, $2, NULL);
   }
   |
   attribute_list_qualifier attribute_list constructor_spec
   {
     DBG_PRINT ("attribute_list_qualifier attribute_list constructor_spec");
-    $$ = m_driver.get_semantic_helper ().make_class_command_spec ($1, $2, $3);
+    $$ = new class_command_spec_type ($1, $2, $3);
   }
   ;
 
@@ -353,7 +350,7 @@ attribute_name :
 constructor_spec :
   CMD_CONSTRUCTOR IDENTIFIER constructor_argument_list
   {
-    $$ = m_driver.get_semantic_helper ().make_constructor_spec ($2, $3);
+    $$ = new constructor_spec_type ($2, $3);
   }
   ;
 
@@ -578,12 +575,12 @@ object_reference :
 class_identifier:
   INT_LIT
   {
-    $$ = m_driver.get_semantic_helper ().make_object_ref_by_class_id ($1);
+    $$ = new object_ref_type ($1, NULL);
   }
   |
   IDENTIFIER
   {
-    $$ = m_driver.get_semantic_helper ().make_object_ref_by_class_name ($1);
+    $$ = new object_ref_type (NULL, $1);
   }
   ;
 

@@ -23,6 +23,8 @@
 
 #include "load_common.hpp"
 
+#include "error_code.h"
+
 #include <fstream>
 
 ///////////////////// Function declarations /////////////////////
@@ -116,6 +118,93 @@ namespace cubload
     return size;
   }
 
+  string_type::string_type ()
+    : next (NULL)
+    , last (NULL)
+    , val (NULL)
+    , size (0)
+    , need_free_val (false)
+  {
+    //
+  }
+
+  string_type::~string_type ()
+  {
+    destroy ();
+  }
+
+  string_type::string_type (char *val, std::size_t size, bool need_free_val)
+    : next (NULL)
+    , last (NULL)
+    , val (val)
+    , size (size)
+    , need_free_val (need_free_val)
+  {
+    //
+  }
+
+  void
+  string_type::destroy ()
+  {
+    if (need_free_val)
+      {
+	delete [] val;
+
+	val = NULL;
+	size = 0;
+	need_free_val = false;
+      }
+  }
+
+  constructor_spec_type::constructor_spec_type (string_type *id_name, string_type *arg_list)
+    : id_name (id_name)
+    , arg_list (arg_list)
+  {
+    //
+  }
+
+  class_command_spec_type::class_command_spec_type (int qualifier, string_type *attr_list,
+      constructor_spec_type *ctor_spec)
+    : qualifier (qualifier)
+    , attr_list (attr_list)
+    , ctor_spec (ctor_spec)
+  {
+    //
+  }
+
+  constant_type::constant_type ()
+    : next (NULL)
+    , last (NULL)
+    , val (NULL)
+    , type (-1)
+  {
+    //
+  }
+
+  constant_type::constant_type (int type, void *val)
+    : next (NULL)
+    , last (NULL)
+    , val (val)
+    , type (type)
+  {
+    //
+  }
+
+  object_ref_type::object_ref_type (string_type *class_id, string_type *class_name)
+    : class_id (class_id)
+    , class_name (class_name)
+    , instance_number (NULL)
+  {
+    //
+  }
+
+  monetary_type::monetary_type (string_type *amount, int currency_type)
+    : amount (amount)
+    , currency_type (currency_type)
+  {
+    //
+  }
+
   stats::stats ()
     : defaults (0)
     , total_objects (0)
@@ -205,58 +294,6 @@ namespace cubload
     size += serializator.get_packed_bool_size (size); // is_completed
 
     return size;
-  }
-
-  void
-  free_string (string_type **str)
-  {
-    if (str == NULL || *str == NULL)
-      {
-	return;
-      }
-
-    string_type *str_ = *str;
-
-    if (str_->need_free_val)
-      {
-	free_and_init (str_->val);
-      }
-    if (str_->need_free_self)
-      {
-	free_and_init (str_);
-	*str = NULL;
-      }
-  }
-
-  void
-  free_class_command_spec (class_command_spec_type **class_cmd_spec)
-  {
-    if (class_cmd_spec == NULL || *class_cmd_spec == NULL)
-      {
-	return;
-      }
-
-    string_type *attr, *arg;
-    class_command_spec_type *class_cmd_spec_ = *class_cmd_spec;
-
-    if (class_cmd_spec_->ctor_spec)
-      {
-	for (arg = class_cmd_spec_->ctor_spec->arg_list; arg; arg = arg->next)
-	  {
-	    free_string (&arg);
-	  }
-
-	free_string (&class_cmd_spec_->ctor_spec->id_name);
-	free_and_init (class_cmd_spec_->ctor_spec);
-      }
-
-    for (attr = class_cmd_spec_->attr_list; attr; attr = attr->next)
-      {
-	free_string (&attr);
-      }
-
-    free_and_init (class_cmd_spec_);
-    *class_cmd_spec = NULL;
   }
 
   int

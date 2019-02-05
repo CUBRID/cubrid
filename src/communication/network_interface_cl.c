@@ -10138,29 +10138,16 @@ int
 loaddb_install_class (const cubload::class_id clsid, const std::string & buf)
 {
 #if defined(CS_MODE)
-  cubpacking::packer packer;
+  packing_packer packer;
+  cubmem::extensible_block eb;
 
-  size_t request_size = 0;
-  request_size += packer.get_packed_int_size (request_size);
-  request_size += packer.get_packed_string_size (buf, request_size);
-
-  char *request = (char *) malloc (request_size);
-  if (request == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, request_size);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
-  packer.set_buffer (request, request_size);
-  packer.pack_int (clsid);
-  packer.pack_string (buf);
+  packer.set_buffer_and_pack_all (eb, clsid, buf);
 
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
-  int req_error = net_client_request (NET_SERVER_LD_INSTALL_CLASS, request, (int) request_size, reply,
-				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
 
-  free_and_init (request);
+  int req_error = net_client_request (NET_SERVER_LD_INSTALL_CLASS, eb.get_ptr (), (int) packer.get_current_size (),
+				      reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
 
   int rc = NO_ERROR;
   if (!req_error)
@@ -10183,9 +10170,7 @@ loaddb_load_batch (const cubload::batch & batch)
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  /* *INDENT-OFF* */
-  cubpacking::packer packer;
-  /* *INDENT-ON* */
+  packing_packer packer;
 
   size_t request_size = batch.get_packed_size (packer);
   char *request = (char *) malloc (request_size);
@@ -10240,7 +10225,7 @@ loaddb_fetch_stats (load_stats * stats)
       return error_code;
     }
 
-  cubpacking::unpacker unpacker (data_reply, data_reply_size);
+  packing_unpacker unpacker (data_reply, data_reply_size);
   stats->clear ();
   stats->unpack (unpacker);
 

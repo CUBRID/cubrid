@@ -76,7 +76,7 @@ namespace cubload
   driver::parse (std::istream &iss)
   {
     m_scanner->switch_streams (&iss);
-    m_semantic_helper.reset ();
+    m_semantic_helper.reset_after_batch ();
 
     assert (m_class_installer != NULL && m_object_loader != NULL);
     parser parser (*this);

@@ -250,7 +250,19 @@ namespace cubload
     for (constant_type *c = cons; c != NULL; c = c->next, attr_idx++)
       {
 	const attribute &attr = m_class_entry->get_attribute (attr_idx);
-	process_constant (c, attr);
+	if (attr.m_attr_repr == NULL)
+	  {
+	    // TODO use LOADDB_MSG_MISSING_DOMAIN message
+	    m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
+	    return;
+	  }
+
+	db_value db_val;
+	int error_code = process_constant (c, attr, &db_val);
+	if (error_code == NO_ERROR)
+	  {
+	    heap_attrinfo_set (&m_class_entry->get_class_oid (), attr.m_attr_id, &db_val, &m_attrinfo);
+	  }
       }
   }
 
@@ -280,25 +292,19 @@ namespace cubload
     m_session.inc_total_objects ();
   }
 
-  void
-  server_object_loader::process_constant (constant_type *cons, const attribute &attr)
+  int
+  server_object_loader::process_constant (constant_type *cons, const attribute &attr, db_value *db_val)
   {
-    db_value db_val;
-
-    if (attr.m_attr_repr == NULL)
-      {
-	// TODO use LOADDB_MSG_MISSING_DOMAIN message
-	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
-	return;
-      }
+    string_type *str = NULL;
+    int error_code = NO_ERROR;
 
     switch (cons->type)
       {
       case LDR_NULL:
 	if (attr.m_attr_repr->is_notnull)
 	  {
+	    error_code = ER_FAILED;
 	    m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
-	    return;
 	  }
       case LDR_INT:
       case LDR_FLOAT:
@@ -315,25 +321,23 @@ namespace cubload
       case LDR_STR:
       case LDR_NSTR:
       {
-	string_type *str = (string_type *) cons->val;
-	conv_func &func = get_conv_func ((data_type) cons->type, attr.m_attr_repr->domain->type->id);
+	str = reinterpret_cast<string_type *> (cons->val);
+	conv_func &func = get_conv_func ((data_type) cons->type, TP_DOMAIN_TYPE (attr.m_attr_repr->domain));
 
 	if (func != NULL)
 	  {
-	    func (str != NULL ? str->val : NULL, attr.m_attr_repr->domain, &db_val);
+	    func (str != NULL ? str->val : NULL, attr.m_attr_repr->domain, db_val);
 	  }
 	else
 	  {
+	    error_code = ER_FAILED;
 	    m_error_handler.on_error_with_line (LOADDB_MSG_CONVERSION_ERROR, str != NULL ? str->val : "",
 						pr_type_name (TP_DOMAIN_TYPE (attr.m_attr_repr->domain)));
-	    return;
 	  }
-
-	free_string (&str);
       }
       break;
       case LDR_MONETARY:
-	process_monetary_constant (cons, attr.m_attr_repr->domain, &db_val);
+	error_code = process_monetary_constant (cons, attr, db_val);
 	break;
       case LDR_BSTR:
       case LDR_XSTR:
@@ -342,12 +346,9 @@ namespace cubload
       case LDR_SYS_USER:
       case LDR_SYS_CLASS:
       {
-	string_type *str = (string_type *) cons->val;
-
+	// str = reinterpret_cast<string_type *> (cons->val);
 	//conv_func func = get_conv_func (cons->type, attr->domain->type->id);
-	//func (str->val, attr->domain, &db_val);
-
-	free_string (&str);
+	//func (str->val, attr->domain, db_val);
       }
       break;
 
@@ -361,23 +362,18 @@ namespace cubload
 	break;
 
       default:
+	error_code = ER_FAILED;
 	break;
       }
 
-    if (cons->need_free)
-      {
-	free_and_init (cons);
-      }
-
-    const OID &class_oid = m_class_entry->get_class_oid ();
-
-    heap_attrinfo_set (&class_oid, attr.m_attr_id, &db_val, &m_attrinfo);
+    return error_code;
   }
 
-  void
-  server_object_loader::process_monetary_constant (constant_type *cons, tp_domain *domain, db_value *db_val)
+  int
+  server_object_loader::process_monetary_constant (constant_type *cons, const attribute &attr, db_value *db_val)
   {
-    monetary_type *mon = (monetary_type *) cons->val;
+    int error_code = NO_ERROR;
+    monetary_type *mon = reinterpret_cast<monetary_type *> (cons->val);
     string_type *str = mon->amount;
 
     /* buffer size for monetary : numeric size + grammar currency symbol + string terminator */
@@ -390,26 +386,32 @@ namespace cubload
 
     if (full_mon_str_len >= sizeof (full_mon_str))
       {
-	full_mon_str_p = (char *) malloc (full_mon_str_len + 1);
+	full_mon_str_p = new char[full_mon_str_len + 1];
       }
 
-    strcpy (full_mon_str_p, curr_str);
-    strcat (full_mon_str_p, str->val);
+    std::strcpy (full_mon_str_p, curr_str);
+    std::strcat (full_mon_str_p, str->val);
 
-    conv_func &func = get_conv_func ((data_type) cons->type, domain->type->id);
+    conv_func &func = get_conv_func ((data_type) cons->type, TP_DOMAIN_TYPE (attr.m_attr_repr->domain));
     if (func != NULL)
       {
-	func (str->val, domain, db_val);
+	func (full_mon_str_p, attr.m_attr_repr->domain, db_val);
+      }
+    else
+      {
+	error_code = ER_FAILED;
+	m_error_handler.on_error_with_line (LOADDB_MSG_CONVERSION_ERROR, full_mon_str_p,
+					    pr_type_name (TP_DOMAIN_TYPE (attr.m_attr_repr->domain)));
       }
 
     if (full_mon_str_p != full_mon_str)
       {
-	free_and_init (full_mon_str_p);
+	delete [] full_mon_str_p;
       }
 
-    // free memory
-    free_string (&str);
-    free_and_init (mon);
+    delete mon;
+
+    return error_code;
   }
 
   void

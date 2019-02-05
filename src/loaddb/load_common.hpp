@@ -159,22 +159,35 @@ namespace cubload
 
   struct string_type
   {
+    string_type ();
+    string_type (char *val, std::size_t size, bool need_free_val);
+    ~string_type ();
+
+    void destroy ();
+
     string_type *next;
     string_type *last;
     char *val;
     size_t size;
     bool need_free_val;
-    bool need_free_self;
   };
 
   struct constructor_spec_type
   {
+    constructor_spec_type () = delete;
+    constructor_spec_type (string_type *id_name, string_type *arg_list);
+    ~constructor_spec_type () = default;
+
     string_type *id_name;
     string_type *arg_list;
   };
 
   struct class_command_spec_type
   {
+    class_command_spec_type () = delete;
+    class_command_spec_type (int qualifier, string_type *attr_list, constructor_spec_type *ctor_spec);
+    ~class_command_spec_type () = default;
+
     int qualifier;
     string_type *attr_list;
     constructor_spec_type *ctor_spec;
@@ -182,15 +195,22 @@ namespace cubload
 
   struct constant_type
   {
+    constant_type ();
+    constant_type (int type, void *val);
+    ~constant_type () = default;
+
     constant_type *next;
     constant_type *last;
     void *val;
     int type;
-    bool need_free;
   };
 
   struct object_ref_type
   {
+    object_ref_type () = delete;
+    object_ref_type (string_type *class_id, string_type *class_name);
+    ~object_ref_type () = default;
+
     string_type *class_id;
     string_type *class_name;
     string_type *instance_number;
@@ -198,6 +218,10 @@ namespace cubload
 
   struct monetary_type
   {
+    monetary_type () = delete;
+    monetary_type (string_type *amount, int currency_type);
+    ~monetary_type () = default;
+
     string_type *amount;
     int currency_type;
   };
@@ -332,9 +356,7 @@ namespace cubload
       virtual void finish_line () = 0;
   };
 
-  ///////////////////// common global functions /////////////////////
-  void free_string (string_type **str);
-  void free_class_command_spec (class_command_spec_type **class_cmd_spec);
+///////////////////// common global functions /////////////////////
 
   /*
    * Splits a loaddb object file into batches of a given size.

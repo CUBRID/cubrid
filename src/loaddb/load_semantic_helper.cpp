@@ -26,62 +26,66 @@
 #include "error_manager.h"
 #include "language_support.h"
 
+#include <algorithm>
+#include <cstring>
+
 namespace cubload
 {
 
   semantic_helper::semantic_helper ()
-    : m_string_pool {}
+    : m_in_instance_line (true)
+    , m_string_pool_idx (0)
+    , m_string_pool {}
+    , m_string_list ()
+    , m_copy_buf_pool_idx (0)
     , m_copy_buf_pool {}
+    , m_constant_pool_idx (0)
     , m_constant_pool {}
-    , m_qstr_buf_pool {}
+    , m_constant_list ()
+    , m_use_qstr_buf (false)
+    , m_qstr_buf (cubmem::EXPONENTIAL_STANDARD_BLOCK_ALLOCATOR)
+    , m_qstr_buf_ptr (NULL)
+    , m_qstr_buf_idx (0)
+    , m_qstr_buf_pool (NULL)
+    , m_qstr_buf_pool_idx (0)
   {
-    initialize ();
+    m_qstr_buf_pool = new char *[QUOTED_STR_BUF_POOL_SIZE];
+    for (std::size_t i = 0; i < QUOTED_STR_BUF_POOL_SIZE; ++i)
+      {
+	m_qstr_buf_pool[i] = new char[MAX_QUOTED_STR_BUF_SIZE];
+      }
   }
 
   semantic_helper::~semantic_helper ()
   {
-    destroy ();
+    for (std::size_t i = 0; i < QUOTED_STR_BUF_POOL_SIZE; ++i)
+      {
+	delete [] m_qstr_buf_pool[i];
+      }
+    delete [] m_qstr_buf_pool;
+
+    clear ();
   }
 
   void
   semantic_helper::append_char (char c)
   {
-    if (m_use_qstr_buffer)
+    if (m_use_qstr_buf)
       {
-	if (m_qstr_buf_idx >= m_qstr_buffer_size)
-	  {
-	    realloc_qstr_buffer (m_qstr_buffer_size * 2);
-	    m_qstr_buf_p = m_qstr_buffer;
-	  }
+	extend_quoted_string_buffer (m_qstr_buf_idx + 1);
       }
     else
       {
 	if (m_qstr_buf_idx >= MAX_QUOTED_STR_BUF_SIZE)
 	  {
-	    if (m_qstr_buffer != NULL && m_qstr_buffer_size <= MAX_QUOTED_STR_BUF_SIZE)
-	      {
-		free_and_init (m_qstr_buffer);
-		m_qstr_buffer = NULL;
-	      }
+	    extend_quoted_string_buffer (MAX_QUOTED_STR_BUF_SIZE * 2);
 
-	    if (m_qstr_buffer == NULL)
-	      {
-		alloc_qstr_buffer (MAX_QUOTED_STR_BUF_SIZE * 2);
-		if (m_qstr_buffer == NULL)
-		  {
-		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_MEMORY_ERROR, 0);
-		    return;
-		  }
-	      }
-
-	    memcpy (m_qstr_buffer, m_qstr_buf_p, m_qstr_buf_idx);
-	    m_qstr_buf_p = m_qstr_buffer;
 	    m_qstr_buf_pool_idx--;
-	    m_use_qstr_buffer = true;
+	    m_use_qstr_buf = true;
 	  }
       }
 
-    m_qstr_buf_p[m_qstr_buf_idx++] = c;
+    m_qstr_buf_ptr[m_qstr_buf_idx++] = c;
   }
 
   string_type *
@@ -101,23 +105,13 @@ namespace cubload
   {
     if (m_qstr_buf_pool_idx < QUOTED_STR_BUF_POOL_SIZE)
       {
-	m_qstr_buf_p = &m_qstr_buf_pool[m_qstr_buf_pool_idx++][0];
-	m_use_qstr_buffer = false;
+	m_qstr_buf_ptr = &m_qstr_buf_pool[m_qstr_buf_pool_idx++][0];
+	m_use_qstr_buf = false;
       }
     else
       {
-	if (m_qstr_buffer == NULL)
-	  {
-	    alloc_qstr_buffer (MAX_QUOTED_STR_BUF_SIZE);
-	    if (m_qstr_buffer == NULL)
-	      {
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_MEMORY_ERROR, 0);
-		return;
-	      }
-	  }
-
-	m_qstr_buf_p = m_qstr_buffer;
-	m_use_qstr_buffer = true;
+	extend_quoted_string_buffer (MAX_QUOTED_STR_BUF_SIZE);
+	m_use_qstr_buf = true;
       }
 
     m_qstr_buf_idx = 0;
@@ -126,49 +120,20 @@ namespace cubload
   string_type *
   semantic_helper::make_string_by_buffer ()
   {
-    string_type *str = make_string ();
-    if (str == NULL)
-      {
-	return NULL;
-      }
+    string_type *str = NULL;
+    std::size_t str_size = m_qstr_buf_idx - 1;
 
-    str->size = m_qstr_buf_idx - 1;
-
-    if (!m_use_qstr_buffer)
+    if (!m_use_qstr_buf)
       {
-	str->val = m_qstr_buf_p;
-	str->need_free_val = false;
+	str = make_string (m_qstr_buf_ptr, str_size, false);
       }
     else
       {
-	if (use_copy_buf_pool (str->size))
-	  {
-	    str->val = &m_copy_buf_pool[m_copy_buf_pool_idx++][0];
-	    str->need_free_val = false;
-	  }
-	else
-	  {
-	    str->val = (char *) malloc (m_qstr_buf_idx);
-	    if (str->val == NULL)
-	      {
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_MEMORY_ERROR, 0);
-	      }
-
-	    str->need_free_val = true;
-	  }
+	str = make_string_and_copy (m_qstr_buf_ptr, str_size);
       }
-
-    if (str->val == NULL)
-      {
-	free_string (&str);
-	return NULL;
-      }
-
-    memcpy (str->val, m_qstr_buf_p, m_qstr_buf_idx);
 
     if (!is_utf8_valid (str))
       {
-	free_string (&str);
 	return NULL;
       }
 
@@ -178,74 +143,15 @@ namespace cubload
   string_type *
   semantic_helper::make_string_by_yytext (const char *text, int text_size)
   {
-    string_type *str = make_string ();
-    if (str == NULL)
-      {
-	return NULL;
-      }
-
-    str->size = (std::size_t) text_size;
-
-    if (use_copy_buf_pool (str->size))
-      {
-	str->val = &m_copy_buf_pool[m_copy_buf_pool_idx++][0];
-	str->need_free_val = false;
-      }
-    else
-      {
-	str->val = (char *) malloc (str->size + 1);
-	if (str->val == NULL)
-	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_MEMORY_ERROR, 0);
-	  }
-
-	str->need_free_val = true;
-      }
-
-    if (str->val == NULL)
-      {
-	free_string (&str);
-	return NULL;
-      }
-
-    memcpy (str->val, text, str->size);
-    str->val[str->size] = '\0';
+    std::size_t str_size = (std::size_t) text_size;
+    string_type *str = make_string_and_copy (text, str_size);
 
     if (!is_utf8_valid (str))
       {
-	free_string (&str);
 	return NULL;
       }
 
     return str;
-  }
-
-  constructor_spec_type *
-  semantic_helper::make_constructor_spec (string_type *id_name, string_type *arg_list)
-  {
-    constructor_spec_type *spec = alloc_ldr_type<constructor_spec_type> ();
-    if (spec != NULL)
-      {
-	spec->id_name= id_name;
-	spec->arg_list = arg_list;
-      }
-
-    return spec;
-  }
-
-  class_command_spec_type *
-  semantic_helper::make_class_command_spec (int qualifier, string_type *attr_list,
-      constructor_spec_type *ctor_spec)
-  {
-    class_command_spec_type *spec = alloc_ldr_type<class_command_spec_type> ();
-    if (spec != NULL)
-      {
-	spec->qualifier = qualifier;
-	spec->attr_list = attr_list;
-	spec->ctor_spec = ctor_spec;
-      }
-
-    return spec;
   }
 
   constant_type *
@@ -256,50 +162,18 @@ namespace cubload
     if (m_constant_pool_idx < CONSTANT_POOL_SIZE)
       {
 	con = &m_constant_pool[m_constant_pool_idx++];
-	con->need_free = false;
+	con->type = type;
+	con->val = val;
       }
     else
       {
-	con = alloc_ldr_type<constant_type> ();
-	if (con == NULL)
-	  {
-	    return NULL;
-	  }
+	con = new constant_type (type, val);
 
-	con->need_free = true;
+	// collect allocated constants in order to free the memory later
+	m_constant_list.push_front (con);
       }
 
-    con->type = type;
-    con->val = val;
-
     return con;
-  }
-
-  object_ref_type *
-  semantic_helper::make_object_ref_by_class_id (string_type *class_id)
-  {
-    object_ref_type *ref = make_object_ref ();
-
-    ref->class_id = class_id;
-
-    return ref;
-  }
-
-  object_ref_type *
-  semantic_helper::make_object_ref_by_class_name (string_type *class_name)
-  {
-    object_ref_type *ref = make_object_ref ();
-
-    ref->class_name = class_name;
-
-    return ref;
-  }
-
-  constant_type *
-  semantic_helper::make_monetary_constant (int currency_type, string_type *amount)
-  {
-    monetary_type *mon_value = make_monetary_value (currency_type, amount);
-    return make_constant (LDR_MONETARY, mon_value);
   }
 
   constant_type *
@@ -324,9 +198,17 @@ namespace cubload
       }
   }
 
-  void
-  semantic_helper::reset_pool_indexes ()
+  constant_type *
+  semantic_helper::make_monetary_constant (int currency_type, string_type *amount)
   {
+    return make_constant (LDR_MONETARY, new monetary_type (amount, currency_type));
+  }
+
+  void
+  semantic_helper::reset_after_line ()
+  {
+    clear ();
+
     m_string_pool_idx = 0;
     m_copy_buf_pool_idx = 0;
     m_qstr_buf_pool_idx = 0;
@@ -346,67 +228,66 @@ namespace cubload
   }
 
   void
-  semantic_helper::reset ()
+  semantic_helper::reset_after_batch ()
   {
-    reset_pool_indexes ();
+    reset_after_line ();
 
     m_in_instance_line = true;
-    m_qstr_buffer = NULL;
-    m_qstr_buf_p = NULL;
-    m_use_qstr_buffer = false;
+    m_qstr_buf_ptr = NULL;
+    m_use_qstr_buf = false;
     m_qstr_buf_idx = 0;
-    m_qstr_buffer_size = 0;
   }
 
   string_type *
-  semantic_helper::make_string ()
+  semantic_helper::make_string (char *val, std::size_t size, bool need_free_val)
   {
     string_type *str = NULL;
 
     if (m_string_pool_idx < STRING_POOL_SIZE)
       {
 	str = &m_string_pool[m_string_pool_idx++];
-	str->need_free_self = false;
+	str->val = val;
+	str->size = size;
+	str->need_free_val = need_free_val;
       }
     else
       {
-	str = alloc_ldr_type<string_type> ();
-	if (str == NULL)
-	  {
-	    return NULL;
-	  }
+	str = new string_type (val, size, need_free_val);
 
-	str->need_free_self = true;
+	// collect allocated string types in order to free the memory later
+	m_string_list.push_front (str);
       }
 
     return str;
   }
 
-  object_ref_type *
-  semantic_helper::make_object_ref ()
+  string_type *
+  semantic_helper::make_string_and_copy (const char *src, size_t str_size)
   {
-    object_ref_type *ref = alloc_ldr_type<object_ref_type> ();
-    if (ref != NULL)
+    string_type *str;
+
+    if (use_copy_buf_pool (str_size))
       {
-	ref->class_id = NULL;
-	ref->class_name = NULL;
-	ref->instance_number = NULL;
+	str = make_string (&m_copy_buf_pool[m_copy_buf_pool_idx++][0], str_size, false);
+      }
+    else
+      {
+	// +1 for string null terminator
+	str = make_string (new char[str_size + 1], str_size, true);
       }
 
-    return ref;
+    std::memcpy (str->val, src, str_size);
+    str->val[str_size] = '\0';
+
+    return str;
   }
 
-  monetary_type *
-  semantic_helper::make_monetary_value (int currency_type, string_type *amount)
+  void
+  semantic_helper::extend_quoted_string_buffer (size_t new_size)
   {
-    monetary_type *mon_value = alloc_ldr_type<monetary_type> ();
-    if (mon_value != NULL)
-      {
-	mon_value->amount = amount;
-	mon_value->currency_type = currency_type;
-      }
-
-    return mon_value;
+    m_qstr_buf.extend_to (new_size);
+    // make sure that quoted string buffer points to new memory location
+    m_qstr_buf_ptr = m_qstr_buf.get_ptr ();
   }
 
   bool
@@ -430,67 +311,27 @@ namespace cubload
   }
 
   void
-  semantic_helper::alloc_qstr_buffer (std::size_t size)
+  semantic_helper::clear ()
   {
-    m_qstr_buffer_size = size;
-    m_qstr_buffer = (char *) malloc (size);
+    size_t string_pool_end = std::min (m_string_pool_idx + 1, STRING_POOL_SIZE);
+    for (size_t i = 0; i < string_pool_end; ++i)
+      {
+	// might be that some of the str.val within from m_string_pool where dynamically allocated
+	m_string_pool[i].destroy ();
+      }
+
+    for (string_type *str : m_string_list)
+      {
+	delete str;
+      }
+    m_string_list.clear ();
+
+    for (constant_type *con : m_constant_list)
+      {
+	delete con;
+      }
+    m_constant_list.clear ();
   }
-
-  void
-  semantic_helper::realloc_qstr_buffer (std::size_t new_size)
-  {
-    char *new_qstr_buffer = (char *) realloc (m_qstr_buffer, new_size);
-    if (new_qstr_buffer != NULL)
-      {
-	m_qstr_buffer_size = new_size;
-	m_qstr_buffer = new_qstr_buffer;
-      }
-    else
-      {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_MEMORY_ERROR, 0);
-	// avoid leak, free previously allocated memory
-	free (m_qstr_buffer);
-      }
-  }
-
-  void
-  semantic_helper::initialize ()
-  {
-    reset ();
-
-    m_qstr_buf_pool = new char *[QUOTED_STR_BUF_POOL_SIZE];
-    for (std::size_t i = 0; i < QUOTED_STR_BUF_POOL_SIZE; ++i)
-      {
-	m_qstr_buf_pool[i] = new char[MAX_QUOTED_STR_BUF_SIZE];
-      }
-  }
-
-  void
-  semantic_helper::destroy ()
-  {
-    for (std::size_t i = 0; i < QUOTED_STR_BUF_POOL_SIZE; ++i)
-      {
-	delete [] m_qstr_buf_pool[i];
-      }
-    delete [] m_qstr_buf_pool;
-  }
-
-  template<typename T>
-  T *
-  semantic_helper::alloc_ldr_type ()
-  {
-    T *ptr = (T *) malloc (sizeof (T));
-
-    if (ptr != NULL)
-      {
-	return ptr;
-      }
-    else
-      {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_MEMORY_ERROR, 0);
-	return NULL;
-      }
-  };
 
   template<typename T>
   T *
