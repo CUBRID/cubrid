@@ -169,6 +169,7 @@ static std::vector<std::pair<std::string, std::string>> uri_fragment_conversions
 };
 static const char *db_Json_pointer_delimiters = "/";
 static const char *db_Json_sql_path_delimiters = "$.[]\"";
+static const std::string posix_extended_special_chars = ".[{()\\*+?|^$";
 
 class JSON_PATH : protected rapidjson::GenericPointer <JSON_VALUE>
 {
@@ -790,6 +791,7 @@ static void db_json_remove_leading_zeros_index (std::string &index);
 static bool db_json_isspace (const unsigned char &ch);
 static bool db_json_iszero (const unsigned char &ch);
 static JSON_PATH_TYPE db_json_get_path_type (std::string &path_string);
+static bool is_regex_posix_extended_special_char (char chr);
 static std::vector<std::string> db_json_split_path_by_delimiters (const std::string &path,
     const std::string &delim, bool allow_empty);
 static std::size_t skip_whitespaces (const std::string &path, std::size_t token_begin);
@@ -2415,31 +2417,8 @@ db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<std::
       ss << "^";
       for (size_t i = 0; i < path.length (); ++i)
 	{
-	  switch (path[i])
+	  if (path[i] == '*')
 	    {
-	    case '$':
-	      ss << "\\$";
-	      break;
-	    case '[':
-	      ss << "\\[";
-	      break;
-	    case ']':
-	      ss << "]";
-	      break;
-	    case '.':
-	      ss << "\\.";
-	      break;
-	    // todo: probably most of the special characters for POSIX regex language should be escaped
-	    case '^':
-	      ss << "\\^";
-	      break;
-	    case '|':
-	      ss << "\\|";
-	      break;
-	    case '\\':
-	      ss << "\\\\";
-	      break;
-	    case '*':
 	      if (i < path.length () - 1 && path[i + 1] == '*')
 		{
 		  // wild_card '**'. Match any string
@@ -2464,15 +2443,21 @@ db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<std::
 		  // Not a wildcard '$."*"'
 		  ss << "\\*";
 		}
-	      break;
-	    default:
+	      continue;
+	    }
+
+	  if (is_regex_posix_extended_special_char (path[i]))
+	    {
+	      ss << "\\" << path[i];
+	    }
+	  else
+	    {
 	      ss << path[i];
-	      break;
 	    }
 	}
       if (!match_exactly)
 	{
-	  ss << "([^$])*";
+	  ss << ".*";
 	}
       // match end of string
       ss << "$";
@@ -3194,6 +3179,12 @@ db_json_get_path_type (std::string &path_string)
     {
       return JSON_PATH_TYPE::JSON_PATH_SQL_JSON;
     }
+}
+
+static
+bool is_regex_posix_extended_special_char (char chr)
+{
+  return posix_extended_special_chars.find (chr) != std::string::npos;
 }
 
 /*
