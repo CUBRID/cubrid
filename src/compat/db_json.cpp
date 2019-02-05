@@ -2909,6 +2909,20 @@ JSON_DOC *db_json_allocate_doc ()
   return doc;
 }
 
+JSON_DOC *db_json_make_json_object ()
+{
+  JSON_DOC *doc = new JSON_DOC ();
+  doc->SetObject ();
+  return doc;
+}
+
+JSON_DOC *db_json_make_json_array ()
+{
+  JSON_DOC *doc = new JSON_DOC();
+  doc->SetArray ();
+  return doc;
+}
+
 void db_json_delete_doc (JSON_DOC *&doc)
 {
   delete doc;

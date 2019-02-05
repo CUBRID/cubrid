@@ -5589,12 +5589,6 @@ db_evaluate_json_object (DB_VALUE * result, DB_VALUE * const *arg, int const num
 
   db_make_null (result);
 
-  if (num_args <= 0)
-    {
-      // is this acceptable?
-      return NO_ERROR;
-    }
-
   if (num_args % 2 != 0)
     {
       assert (false);		// should be caught earlier
@@ -5602,7 +5596,7 @@ db_evaluate_json_object (DB_VALUE * result, DB_VALUE * const *arg, int const num
       return ER_FAILED;
     }
 
-  new_doc = db_json_allocate_doc ();
+  new_doc = db_json_make_json_object ();
 
   for (i = 0; i < num_args; i += 2)
     {
@@ -5646,13 +5640,7 @@ db_evaluate_json_array (DB_VALUE * result, DB_VALUE * const *arg, int const num_
 
   db_make_null (result);
 
-  if (num_args <= 0)
-    {
-      // is this acceptable?
-      return NO_ERROR;
-    }
-
-  new_doc = db_json_allocate_doc ();
+  new_doc = db_json_make_json_array ();
 
   for (int i = 0; i < num_args; i++)
     {
