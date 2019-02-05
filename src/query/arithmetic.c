@@ -6178,15 +6178,17 @@ db_evaluate_json_merge_helper (DB_VALUE * result, DB_VALUE * const *arg, int con
     {
       if (DB_IS_NULL (arg[i]))
 	{
-	  db_json_delete_doc (accumulator);
-	  return db_make_null (result);
+	  doc = db_json_allocate_doc ();
+	  db_json_make_document_null (doc);
 	}
-
-      error_code = db_value_to_json_doc (*arg[i], doc);
-      if (error_code != NO_ERROR)
+      else
 	{
-	  db_json_delete_doc (accumulator);
-	  return error_code;
+	  error_code = db_value_to_json_doc (*arg[i], doc);
+	  if (error_code != NO_ERROR)
+	    {
+	      db_json_delete_doc (accumulator);
+	      return error_code;
+	    }
 	}
 
       error_code = db_json_merge_func (doc, accumulator, patch);
