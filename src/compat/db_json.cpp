@@ -4663,7 +4663,7 @@ bool JSON_PRETTY_WRITER::Null ()
 {
   WriteDelimiters ();
 
-  m_buffer.append ("NULL");
+  m_buffer.append ("null");
 
   return true;
 }
