@@ -2359,7 +2359,8 @@ db_json_set_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path)
 }
 
 /*
- * db_json_remove_func () - Removes data from a JSON document at the specified path
+ * db_json_remove_func () - Removes data from a JSON document at the specified at the path ignoring a trailing 0 array index
+ *                          (if the full path does not exist)
  *
  * return                  : error code
  * doc (in)                : json document
@@ -2376,10 +2377,20 @@ db_json_remove_func (JSON_DOC &doc, const char *raw_path)
       return error_code;
     }
 
-  // if the path does not exist, the user should know that the path has no effect
+  if (!p.parent_exists (doc))
+    {
+      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p.dump_json_path (), &doc);
+    }
+
   if (p.get (doc) == NULL)
     {
-      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, raw_path, &doc);
+      if (!p.is_last_token_array_index_zero () || p.get_parent ().is_root_path ())
+	{
+	  return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p.dump_json_path (), &doc);
+	}
+
+      p.get_parent ().erase (doc);
+      return NO_ERROR;
     }
 
   // erase the value from the specified path
