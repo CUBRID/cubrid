@@ -143,7 +143,7 @@ char *db_json_get_bool_as_str_from_document (const JSON_DOC *doc);
 bool db_json_get_bool_from_document (const JSON_DOC *doc);
 char *db_json_copy_string_from_document (const JSON_DOC *doc);
 
-void db_json_set_string_to_doc (JSON_DOC *doc, const char *str);
+void db_json_set_string_to_doc (JSON_DOC *doc, const char *str, unsigned len);
 void db_json_set_double_to_doc (JSON_DOC *doc, double d);
 void db_json_set_int_to_doc (JSON_DOC *doc, int i);
 void db_json_set_bigint_to_doc (JSON_DOC *doc, std::int64_t i);
