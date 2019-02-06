@@ -2377,6 +2377,13 @@ db_json_remove_func (JSON_DOC &doc, const char *raw_path)
       return error_code;
     }
 
+  if (p.is_root_path ())
+    {
+      // json_remove on root is invalid
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
+      return ER_JSON_INVALID_PATH;
+    }
+
   if (!p.parent_exists (doc))
     {
       return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p.dump_json_path (), &doc);
@@ -2393,13 +2400,7 @@ db_json_remove_func (JSON_DOC &doc, const char *raw_path)
       return NO_ERROR;
     }
 
-  // erase the value from the specified path
-  if (!p.erase (doc))
-    {
-      // json_remove on root is invalid
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
-      return ER_JSON_INVALID_PATH;
-    }
+  p.erase (doc);
 
   return NO_ERROR;
 }
