@@ -375,6 +375,7 @@ int yybuffer_pos;
 [hH][oO][uU][rR]_[mM][iI][lL][lL][iI][sS][eE][cC][oO][nN][dD]		{ begin_token(yytext);   return HOUR_MILLISECOND; }
 [hH][oO][uU][rR]_[sS][eE][cC][oO][nN][dD]				{ begin_token(yytext);   return HOUR_SECOND; }
 [hH][oO][uU][rR]_[mM][iI][nN][uU][tT][eE]				{ begin_token(yytext);   return HOUR_MINUTE; }
+[iI][bB]_[tT][hH][rR][eE][aA][dD][sS]					{ begin_token(yytext);	 return IB_THREADS; }
 [iI][dD][eE][nN][tT][iI][tT][yY]					{ begin_token(yytext);   return IDENTITY; }
 [iI][fF]								{ begin_token(yytext);   return IF; }
 [iI][fF][nN][uU][lL][lL]						{ begin_token(yytext);

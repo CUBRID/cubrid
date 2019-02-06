@@ -4794,9 +4794,16 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
   uint64_t tasks_started = 0;
   char midxkey_buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_midxkey_buf;
   index_builder_loader_context load_context;
+  int thread_count = prm_get_integer_value (PRM_ID_INDEX_BUILDER_THREAD_COUNT);
+
+  if (thread_count == 0)
+    {
+      // No parallelism.
+      thread_count = 1;
+    }
   // *INDENT-OFF*
   cubthread::entry_workpool * ib_workpool =
-   thread_get_manager()->create_worker_pool (prm_get_integer_value (PRM_ID_INDEX_BUILDER_THREAD_COUNT), 32,
+   thread_get_manager()->create_worker_pool (thread_count, 32,
 						   "Online index loader pool", NULL, 1,
 						   cubthread::is_logging_configured (cubthread::
 										     LOG_WORKER_POOL_TRAN_WORKERS));
@@ -4927,6 +4934,8 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
   /* Check if the workerpool is empty */
   do
     {
+      bool dummy_continue_checking = true;
+
       if (load_context.m_has_error != NO_ERROR)
 	{
 	  /* Also stop all threads. */
@@ -4939,9 +4948,10 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
       thread_sleep (10);
 
       /* Check for interrupts. */
-      if (er_errid () == ER_INTERRUPTED)
+      if (logtb_is_interrupted (thread_p, true, &dummy_continue_checking))
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	  thread_get_manager ()->destroy_worker_pool (ib_workpool);
 	  return ER_INTERRUPTED;
 	}
     }
@@ -4963,6 +4973,7 @@ index_builder_loader_task::index_builder_loader_task (const BTID * btid, const O
   m_unique_pk = unique_pk;
   m_load_context.m_has_error = false;
   m_load_context.m_tran_index = thread_get_thread_entry_info ()->tran_index;
+  db_make_null (&m_key);
 }
 
 index_builder_loader_task::~index_builder_loader_task ()

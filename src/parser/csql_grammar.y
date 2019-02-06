@@ -1237,6 +1237,7 @@ int g_original_buffer_len;
 %token HOUR_MILLISECOND
 %token HOUR_SECOND
 %token HOUR_MINUTE
+%token IB_THREADS
 %token IDENTITY
 %token IF
 %token IGNORE_
@@ -1311,6 +1312,7 @@ int g_original_buffer_len;
 %token OCTET_LENGTH
 %token OF
 %token OFF_
+%token ONLINE
 %token ON_
 %token ONLY
 %token OPTIMIZATION
@@ -1604,7 +1606,6 @@ int g_original_buffer_len;
 %token <cptr> NTILE
 %token <cptr> NULLS
 %token <cptr> OFFSET
-%token <cptr> ONLINE
 %token <cptr> OPEN
 %token <cptr> PATH
 %token <cptr> OWNER
@@ -2836,6 +2837,16 @@ create_stmt
 				     {
 					/* Online index. */
 					node->info.index.index_status = SM_ONLINE_INDEX_BUILDING_IN_PROGRESS;
+
+					if ($14 > 1)
+						{
+							node->info.index.ib_threads = $14;
+						}
+					else
+						{
+							node->info.index.ib_threads = 0;
+						}
+
 				     }
 
 
@@ -4374,6 +4385,19 @@ opt_with_online
 		{{
 
 			$$ = 1;
+
+		DBG_PRINT}}
+	| WITH ONLINE IB_THREADS '=' unsigned_integer
+		{{
+			// Set the minimum to 2 threads.
+			if ($5->info.value.data_value.i < 2)
+				{
+					$$ = 2;
+				}
+			else
+				{
+					$$ = $5->info.value.data_value.i;
+				}
 
 		DBG_PRINT}}
 	;
@@ -22286,16 +22310,6 @@ identifier
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| ONLINE
-               {{
-
-                       PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-                       if (p)
-                         p->info.name.original = $1;
-                       $$ = p;
-                       PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-               DBG_PRINT}}
 	| OPEN
 		{{
 

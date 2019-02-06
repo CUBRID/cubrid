@@ -2959,6 +2959,11 @@ do_create_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 
   index_name = statement->info.index.index_name ? statement->info.index.index_name->info.name.original : NULL;
 
+  if (statement->info.index.index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+    {
+      prm_set_integer_value (PRM_ID_INDEX_BUILDER_THREAD_COUNT, statement->info.index.ib_threads);
+    }
+
   error =
     create_or_drop_index_helper (parser, index_name, statement->info.index.reverse, statement->info.index.unique,
 				 statement->info.index.indexed_class, statement->info.index.column_names,
