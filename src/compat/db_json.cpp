@@ -4007,9 +4007,9 @@ db_json_value_is_contained_in_doc_helper (const JSON_VALUE *doc, const JSON_VALU
   return error_code;
 }
 
-void db_json_set_string_to_doc (JSON_DOC *doc, const char *str)
+void db_json_set_string_to_doc (JSON_DOC *doc, const char *str, unsigned len)
 {
-  doc->SetString (str, doc->GetAllocator ());
+  doc->SetString (str, len, doc->GetAllocator ());
 }
 
 void db_json_set_double_to_doc (JSON_DOC *doc, double d)
@@ -4157,16 +4157,11 @@ db_value_to_json_value (const DB_VALUE &db_val, REFPTR (JSON_DOC, json_val))
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
       json_val = db_json_allocate_doc ();
-      db_json_set_string_to_doc (json_val, db_get_string (&db_val));
+      db_json_set_string_to_doc (json_val, db_get_string (&db_val), (unsigned) db_get_string_size (&db_val));
       break;
-
     case DB_TYPE_ENUMERATION:
       json_val = db_json_allocate_doc ();
-      {
-	std::string enum_str;
-	enum_str.append (db_get_enum_string (&db_val), (size_t) db_get_enum_string_size (&db_val));
-	db_json_set_string_to_doc (json_val, enum_str.c_str ());
-      }
+      db_json_set_string_to_doc (json_val, db_get_enum_string (&db_val), (unsigned) db_get_enum_string_size (&db_val));
       break;
 
     default:
