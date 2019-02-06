@@ -2359,7 +2359,7 @@ db_json_set_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path)
 }
 
 /*
- * db_json_remove_func () - Removes data from a JSON document at the specified at the path ignoring a trailing 0 array index
+ * db_json_remove_func () - Removes data from a JSON document at the specified path or at the path ignoring a trailing 0 array index
  *                          (if the full path does not exist)
  *
  * return                  : error code
