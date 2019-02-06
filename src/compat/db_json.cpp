@@ -4153,6 +4153,7 @@ db_value_to_json_value (const DB_VALUE &db_val, REFPTR (JSON_DOC, json_val))
     case DB_TYPE_VARNCHAR:
       json_val = db_json_allocate_doc ();
       db_json_set_string_to_doc (json_val, db_get_string (&db_val), (unsigned) db_get_string_size (&db_val));
+      break;
     case DB_TYPE_ENUMERATION:
       json_val = db_json_allocate_doc ();
       db_json_set_string_to_doc (json_val, db_get_enum_string (&db_val), (unsigned) db_get_enum_string_size (&db_val));
