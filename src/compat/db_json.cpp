@@ -4136,7 +4136,6 @@ db_value_to_json_doc (const DB_VALUE &db_val, REFPTR (JSON_DOC, json_doc))
 int
 db_value_to_json_value (const DB_VALUE &db_val, REFPTR (JSON_DOC, json_val))
 {
-  int error_code = NO_ERROR;
   json_val = NULL;
 
   if (db_value_is_null (&db_val))
@@ -4152,14 +4151,10 @@ db_value_to_json_value (const DB_VALUE &db_val, REFPTR (JSON_DOC, json_val))
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
-      error_code = db_json_get_json_from_str (db_get_string (&db_val), json_val, db_get_string_size (&db_val));
-      if (error_code != NO_ERROR)
-	{
-	  assert (json_val == NULL);
-	  ASSERT_ERROR ();
-	}
-      return error_code;
-
+    {
+      std::string str (db_get_string (&db_val), (size_t) db_get_string_size (&db_val));
+      db_json_set_string_to_doc (json_val, str.c_str ());
+    }
     case DB_TYPE_ENUMERATION:
       json_val = db_json_allocate_doc ();
       {
