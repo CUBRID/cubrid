@@ -18886,7 +18886,7 @@ pt_print_json_table_node (PARSER_CONTEXT * parser, PT_NODE * p)
 
   for (PT_NODE * nested = p->info.json_table_node_info.nested_paths; nested != NULL; nested = nested->next)
     {
-      // ', nested path ' print nested      
+      // 'nested path ' print nested ', '
       pstr = pt_append_nulstring (parser, pstr, "nested path ");
       substr = pt_print_bytes (parser, p->info.json_table_node_info.nested_paths);
       pstr = pt_append_varchar (parser, pstr, substr);
