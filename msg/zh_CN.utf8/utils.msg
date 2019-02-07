@@ -435,6 +435,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 58 %1$d 个实例被提交\n
 59 \n无法调用非优化版本的loaddb.\n
 60 将 \"%1$s\" 解析为 %2$s 类型时出错.\n
+61 Object Reference is not supported in CS mode.\n
 112   %1$d 个实例\r
 113 最后提交的行 : %1$d
 114 错误控制文件

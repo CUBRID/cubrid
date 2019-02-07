@@ -61,6 +61,12 @@ namespace cubload
     return m_class_oid;
   }
 
+  const char *
+  class_entry::get_class_name () const
+  {
+    return m_class_name.c_str ();
+  }
+
   const attribute &
   class_entry::get_attribute (std::size_t index) const
   {
@@ -68,6 +74,12 @@ namespace cubload
     assert (index < m_attributes.size ());
 
     return *m_attributes[index];
+  }
+
+  size_t
+  class_entry::get_attributes_size () const
+  {
+    return m_attributes.size ();
   }
 
   // class_registry

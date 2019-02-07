@@ -435,6 +435,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 58 %1$d instanzioni committed\n
 59 \nImpossibile richiamare la versione non ottimizzata di loaddb.\n
 60 Errore durante l'analisi di \"%1$s\", come tipo %2$s.\n
+61 Object Reference is not supported in CS mode.\n
 112   %1$d instanze\r
 113 Ultima linea committed : %1$d
 114 error-control-file

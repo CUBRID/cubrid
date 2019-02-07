@@ -59,12 +59,20 @@ namespace cubload
   }
 
   void
+  error_handler::on_failure ()
+  {
+    std::string empty;
+    log_error_message (empty, true);
+  }
+
+  void
   error_handler::log_error_message (std::string &err_msg, bool fail)
   {
 #if defined (SERVER_MODE)
-    if (er_has_error ())
+    if (er_errid () != NO_ERROR && (er_has_error () || er_get_severity () == ER_WARNING_SEVERITY))
       {
 	// if there is an error set via er_set then report it as well
+	err_msg.append (format (get_message_from_catalog (LOADDB_MSG_LINE), m_lineno_function ()));
 	err_msg.append (std::string (er_msg ()));
 	err_msg.append ("\n");
       }

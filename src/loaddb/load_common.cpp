@@ -176,12 +176,12 @@ namespace cubload
     : next (NULL)
     , last (NULL)
     , val (NULL)
-    , type (-1)
+    , type (LDR_NULL)
   {
     //
   }
 
-  constant_type::constant_type (int type, void *val)
+  constant_type::constant_type (data_type type, void *val)
     : next (NULL)
     , last (NULL)
     , val (val)

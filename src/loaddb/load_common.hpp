@@ -196,13 +196,13 @@ namespace cubload
   struct constant_type
   {
     constant_type ();
-    constant_type (int type, void *val);
+    constant_type (data_type type, void *val);
     ~constant_type () = default;
 
     constant_type *next;
     constant_type *last;
     void *val;
-    int type;
+    data_type type;
   };
 
   struct object_ref_type

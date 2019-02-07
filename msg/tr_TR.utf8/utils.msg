@@ -435,6 +435,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 58 %1$d taahhüt örnekleri\n
 59 \nLoaddb olmayan-optimize edilmiş sürümü çağırılamaz.\n
 60 Hata ayrıştırma \"%1$s\", gibi %2$s tür.\n
+61 Object Reference is not supported in CS mode.\n
 112   %1$d örnekleri\r
 113 Son kararlı hattı: %1$d
 114 hata-kontrol-dosyası

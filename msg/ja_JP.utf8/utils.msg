@@ -435,6 +435,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 58 %1$dインスタンスをコミットしました。\n
 59 \n以前バージョンのloaddbが実行できません。\n
 60 「%1$s」を「%2$s」タイプにパーシングエラー \n
+61 Object Reference is not supported in CS mode.\n
 112   %1$d個のインスタンス\r
 113 最後にコミットされたライン : %1$d
 114 エラーコントロールファイル
