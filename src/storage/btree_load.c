@@ -223,7 +223,8 @@ static int btree_is_slot_visible (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE
 static int online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids, OID * class_oids,
 				 int n_classes, int *attrids, int n_attrs, FUNCTION_INDEX_INFO func_idx_info,
 				 PRED_EXPR_WITH_CONTEXT * filter_pred, int *attrs_prefix_length,
-				 HEAP_CACHE_ATTRINFO * attr_info, HEAP_SCANCACHE * scancache, int unique_pk);
+				 HEAP_CACHE_ATTRINFO * attr_info, HEAP_SCANCACHE * scancache, int unique_pk,
+				 int ib_thread_count);
 
 /*
  * btree_get_node_header () -
@@ -4379,7 +4380,7 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 			  OID * class_oids, int n_classes, int n_attrs, int *attr_ids, int *attrs_prefix_length,
 			  HFID * hfids, int unique_pk, int not_null_flag, OID * fk_refcls_oid, BTID * fk_refcls_pk_btid,
 			  const char *fk_name, char *pred_stream, int pred_stream_size, char *func_pred_stream,
-			  int func_pred_stream_size, int func_col_id, int func_attr_index_start)
+			  int func_pred_stream_size, int func_col_id, int func_attr_index_start, int ib_thread_count)
 {
   int cur_class, attr_offset;
   BTID_INT btid_int;
@@ -4558,7 +4559,7 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
       ret =
 	online_index_builder (thread_p, &btid_int, &hfids[cur_class], &class_oids[cur_class], n_classes, attr_ids,
 			      n_attrs, func_index_info, filter_pred, attrs_prefix_length, &attr_info, &scan_cache,
-			      unique_pk);
+			      unique_pk, ib_thread_count);
       if (ret != NO_ERROR)
 	{
 	  break;
@@ -4778,7 +4779,7 @@ static int
 online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids, OID * class_oids, int n_classes,
 		      int *attrids, int n_attrs, FUNCTION_INDEX_INFO func_idx_info,
 		      PRED_EXPR_WITH_CONTEXT * filter_pred, int *attrs_prefix_length, HEAP_CACHE_ATTRINFO * attr_info,
-		      HEAP_SCANCACHE * scancache, int unique_pk)
+		      HEAP_SCANCACHE * scancache, int unique_pk, int ib_thread_count)
 {
   int ret = NO_ERROR, eval_res;
   OID cur_oid;
@@ -4794,16 +4795,10 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
   uint64_t tasks_started = 0;
   char midxkey_buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_midxkey_buf;
   index_builder_loader_context load_context;
-  int thread_count = prm_get_integer_value (PRM_ID_INDEX_BUILDER_THREAD_COUNT);
 
-  if (thread_count == 0)
-    {
-      // No parallelism.
-      thread_count = 1;
-    }
   // *INDENT-OFF*
   cubthread::entry_workpool * ib_workpool =
-   thread_get_manager()->create_worker_pool (thread_count, 32,
+   thread_get_manager()->create_worker_pool (ib_thread_count, 32,
 						   "Online index loader pool", NULL, 1,
 						   cubthread::is_logging_configured (cubthread::
 										     LOG_WORKER_POOL_TRAN_WORKERS));

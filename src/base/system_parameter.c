@@ -666,8 +666,6 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_LOG_PGBUF_VICTIM_FLUSH "log_pgbuf_victim_flush"
 #define PRM_NAME_LOG_CHKPT_DETAILED "detailed_checkpoint_logging"
 
-#define PRM_NAME_INDEX_BUILDER_THREAD_COUNT "ib_no_threads"
-
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
 #define PRM_VALUE_MIN "MIN"
@@ -2227,12 +2225,6 @@ static unsigned int prm_log_pgbuf_victim_flush_flag = 0;
 bool PRM_LOG_CHKPT_DETAILED = false;
 static bool prm_log_chkpt_detailed_default = false;
 static unsigned int prm_log_chkpt_detailed_flag = 0;
-
-int PRM_INDEX_BUILDER_THREAD_COUNT = 1;
-static int prm_index_builder_thread_count_default = 1;
-static int prm_index_builder_thread_count_upper = 8;
-static int prm_index_builder_thread_count_lower = 1;
-static unsigned int prm_index_builder_thread_count_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5719,18 +5711,6 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_log_chkpt_detailed_default,
    (void *) &PRM_LOG_CHKPT_DETAILED,
    (void *) NULL, (void *) NULL,
-   (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
-  {PRM_ID_INDEX_BUILDER_THREAD_COUNT,
-   PRM_NAME_INDEX_BUILDER_THREAD_COUNT,
-   (PRM_FOR_SERVER),
-   PRM_INTEGER,
-   &prm_max_recursion_sql_depth_flag,
-   (void *) &prm_index_builder_thread_count_default,
-   (void *) &PRM_INDEX_BUILDER_THREAD_COUNT,
-   (void *) &prm_index_builder_thread_count_upper,
-   (void *) &prm_index_builder_thread_count_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
