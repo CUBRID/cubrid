@@ -3832,6 +3832,7 @@ sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int
   char *expr_stream = NULL;
   int csserror;
   int index_status = 0;
+  int ib_thread_count = 0;
 
   ptr = or_unpack_btid (request, &btid);
   ptr = or_unpack_string_nocopy (ptr, &bt_name);
@@ -3916,13 +3917,20 @@ sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int
     }
 
   ptr = or_unpack_int (ptr, &index_status);	/* Get index status. */
+  ptr = or_unpack_int (ptr, &ib_thread_count);	/* Get thread count. */
   if (index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
     {
+      /* Set the sys param to the new thread_count. */
+      prm_set_integer_value (PRM_ID_INDEX_BUILDER_THREAD_COUNT, ib_thread_count);
+
       return_btid =
 	xbtree_load_online_index (thread_p, &btid, bt_name, key_type, class_oids, n_classes, n_attrs, attr_ids,
 				  attr_prefix_lengths, hfids, unique_pk, not_null_flag, &fk_refcls_oid,
 				  &fk_refcls_pk_btid, fk_name, pred_stream, pred_stream_size, expr_stream,
 				  expr_stream_size, func_col_id, func_attr_index_start);
+
+      /* Set the sys param to the default thread_count. */
+      prm_set_integer_value (PRM_ID_INDEX_BUILDER_THREAD_COUNT, 1);
     }
   else
     {

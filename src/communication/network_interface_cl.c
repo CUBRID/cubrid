@@ -5625,7 +5625,8 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
 		  + OR_BTID_ALIGNED_SIZE	/* fk_refcls_pk_btid */
 		  + or_packed_string_length (fk_name, &fk_strlen)	/* fk_name */
 		  + index_info_size	/* filter predicate or function index stream size */
-		  + OR_INT_SIZE /* Index status */ );
+		  + OR_INT_SIZE	/* Index status */
+		  + OR_INT_SIZE /* Thread count */ );
 
   request = (char *) malloc (request_size);
   if (request == NULL)
@@ -5700,6 +5701,7 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
     }
 
   ptr = or_pack_int (ptr, index_status);	/* Index status. */
+  ptr = or_pack_int (ptr, ib_get_thread_count ());	// Thread count needed for parallel building
 
   req_error =
     net_client_request (NET_SERVER_BTREE_LOADINDEX, request, request_size, reply, OR_ALIGNED_BUF_SIZE (a_reply),

@@ -377,6 +377,8 @@ static int do_recreate_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_s
 
 static int do_alter_index_status (PARSER_CONTEXT * parser, const PT_NODE * statement);
 
+int ib_thread_count = 0;
+
 /*
  * Function Group :
  * DO functions for alter statement
@@ -2961,7 +2963,7 @@ do_create_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 
   if (statement->info.index.index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
     {
-      prm_set_integer_value (PRM_ID_INDEX_BUILDER_THREAD_COUNT, statement->info.index.ib_threads);
+      ib_thread_count = statement->info.index.ib_threads > 1 ? statement->info.index.ib_threads : 1;
     }
 
   error =
@@ -15103,4 +15105,10 @@ error_exit:
   error = (error == NO_ERROR && (error = er_errid ()) == NO_ERROR) ? ER_FAILED : error;
 
   goto end;
+}
+
+int
+ib_get_thread_count ()
+{
+  return ib_thread_count;
 }

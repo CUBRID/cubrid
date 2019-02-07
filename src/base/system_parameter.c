@@ -2228,8 +2228,8 @@ bool PRM_LOG_CHKPT_DETAILED = false;
 static bool prm_log_chkpt_detailed_default = false;
 static unsigned int prm_log_chkpt_detailed_flag = 0;
 
-int PRM_INDEX_BUILDER_THREAD_COUNT = 4;
-static int prm_index_builder_thread_count_default = 4;
+int PRM_INDEX_BUILDER_THREAD_COUNT = 1;
+static int prm_index_builder_thread_count_default = 1;
 static int prm_index_builder_thread_count_upper = 8;
 static int prm_index_builder_thread_count_lower = 1;
 static unsigned int prm_index_builder_thread_count_flag = 0;
