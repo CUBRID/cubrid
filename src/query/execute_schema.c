@@ -2963,7 +2963,7 @@ do_create_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 
   if (statement->info.index.index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
     {
-      ib_thread_count = statement->info.index.ib_threads > 1 ? statement->info.index.ib_threads : 1;
+      ib_thread_count = statement->info.index.ib_threads;
     }
 
   error =

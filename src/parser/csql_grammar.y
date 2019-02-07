@@ -1237,7 +1237,6 @@ int g_original_buffer_len;
 %token HOUR_MILLISECOND
 %token HOUR_SECOND
 %token HOUR_MINUTE
-%token IB_THREADS
 %token IDENTITY
 %token IF
 %token IGNORE_
@@ -1325,6 +1324,7 @@ int g_original_buffer_len;
 %token OUTPUT
 %token OVER
 %token OVERLAPS
+%token PARALLEL
 %token PARAMETERS
 %token PARTIAL
 %token PARTITION
@@ -2837,16 +2837,7 @@ create_stmt
 				     {
 					/* Online index. */
 					node->info.index.index_status = SM_ONLINE_INDEX_BUILDING_IN_PROGRESS;
-
-					if ($14 > 1)
-						{
-							node->info.index.ib_threads = $14;
-						}
-					else
-						{
-							node->info.index.ib_threads = 0;
-						}
-
+					node->info.index.ib_threads = $14;
 				     }
 
 
@@ -4387,18 +4378,14 @@ opt_with_online
 			$$ = 1;
 
 		DBG_PRINT}}
-	| WITH ONLINE IB_THREADS '=' unsigned_integer
+	| WITH ONLINE PARALLEL
 		{{
-			// Set the minimum to 2 threads.
-			if ($5->info.value.data_value.i < 2)
-				{
-					$$ = 2;
-				}
-			else
-				{
-					$$ = $5->info.value.data_value.i;
-				}
-
+			// Default thread count. 
+			$$ = 4;
+		DBG_PRINT}}
+	| WITH ONLINE PARALLEL unsigned_integer
+		{{
+			$$ = $4->info.value.data_value.i;
 		DBG_PRINT}}
 	;
 

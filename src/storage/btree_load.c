@@ -4816,6 +4816,7 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
   /* Do not let the page fixed after an extract. */
   scancache->cache_last_fix_page = false;
 
+  load_context.m_has_error = false;
   load_context.m_error_code = NO_ERROR;
   load_context.m_tasks_executed = 0UL;
 
