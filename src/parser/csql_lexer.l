@@ -138,6 +138,7 @@ int yybuffer_pos;
 										return AUTO_INCREMENT; }
 [aA][vV][gG]								{ begin_token(yytext);   return AVG; }
 [bB][eE][fF][oO][rR][eE]						{ begin_token(yytext);   return BEFORE; }
+[bB][eE][nN][cC][hH][mM][aA][rR][kK]					{ begin_token(yytext);   return BENCHMARK; }
 [bB][eE][tT][wW][eE][eE][nN]						{ begin_token(yytext);   return BETWEEN; }
 [bB][iI][gG][iI][nN][tT]						{ begin_token(yytext);   return BIGINT;}
 [bB][iI][nN][aA][rR][yY]						{ begin_token(yytext);   return BINARY;}
