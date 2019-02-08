@@ -6176,14 +6176,12 @@ db_evaluate_json_merge_preserve (DB_VALUE * result, DB_VALUE * const *arg, const
 	  db_json_delete_doc (accumulator);
 	  return db_make_null (result);
 	}
-      else
+
+      error_code = db_value_to_json_doc (*arg[i], doc);
+      if (error_code != NO_ERROR)
 	{
-	  error_code = db_value_to_json_doc (*arg[i], doc);
-	  if (error_code != NO_ERROR)
-	    {
-	      db_json_delete_doc (accumulator);
-	      return error_code;
-	    }
+	  db_json_delete_doc (accumulator);
+	  return error_code;
 	}
 
       error_code = db_json_merge_preserve_func (doc, accumulator);
@@ -6230,14 +6228,12 @@ db_evaluate_json_merge_patch (DB_VALUE * result, DB_VALUE * const *arg, const in
 	  doc = db_json_allocate_doc ();
 	  db_json_make_document_null (doc);
 	}
-      else
+
+      error_code = db_value_to_json_doc (*arg[i], doc);
+      if (error_code != NO_ERROR)
 	{
-	  error_code = db_value_to_json_doc (*arg[i], doc);
-	  if (error_code != NO_ERROR)
-	    {
-	      db_json_delete_doc (accumulator);
-	      return error_code;
-	    }
+	  db_json_delete_doc (accumulator);
+	  return error_code;
 	}
 
       error_code = db_json_merge_patch_func (doc, accumulator);
