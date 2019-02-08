@@ -28,7 +28,6 @@
 #include "heap_attrinfo.h"
 #include "heap_file.h"
 #include "load_common.hpp"
-#include "load_error_handler.hpp"
 
 #include <vector>
 
@@ -37,6 +36,9 @@ namespace cubload
 
   // forward declaration
   class session;
+  class attribute;
+  class class_entry;
+  class error_handler;
 
   class server_class_installer : public class_installer
   {

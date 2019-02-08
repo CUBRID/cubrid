@@ -30,7 +30,7 @@
 namespace cubload
 {
   // forward declaration
-  struct attribute;
+  class attribute;
 
   typedef int (*conv_func) (const char *, const attribute *, db_value *);
 

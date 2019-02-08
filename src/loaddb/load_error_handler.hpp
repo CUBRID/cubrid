@@ -42,7 +42,7 @@ namespace cubload
   class error_handler
   {
     public:
-      error_handler (lineno_function &lineno_function);
+      explicit error_handler (lineno_function &lineno_function);
 
       ~error_handler () = default; // Destructor
 

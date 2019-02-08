@@ -23,8 +23,9 @@
 
 #include "load_server_loader.hpp"
 
+#include "load_class_registry.hpp"
 #include "load_db_value_converter.hpp"
-#include "load_scanner.hpp"
+#include "load_error_handler.hpp"
 #include "locator_sr.h"
 #include "object_primitive.h"
 #include "set_object.h"
@@ -107,6 +108,7 @@ namespace cubload
       }
 
     int error_code = heap_attrinfo_start (&thread_ref, &class_oid, -1, NULL, &attrinfo);
+    assert (attrinfo.num_values != -1);
     if (error_code != NO_ERROR)
       {
 	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
@@ -128,7 +130,7 @@ namespace cubload
     std::vector<const attribute *> attributes;
     attributes.reserve ((std::size_t) attrinfo.num_values);
 
-    for (std::size_t attr_index = 0; attr_index < attrinfo.num_values; ++attr_index)
+    for (std::size_t attr_index = 0; attr_index < (std::size_t) attrinfo.num_values; ++attr_index)
       {
 	char *attr_name = NULL;
 	int free_attr_name = 0;
