@@ -41,10 +41,6 @@
 #include "query_evaluator.h"
 #include "lock_manager.h"
 #include "recovery.h"
-#include "thread_entry.hpp"
-#include "thread_worker_pool.hpp"
-#include "thread_entry_task.hpp"
-#include "thread_manager.hpp"
 
 #define SINGLE_ROW_INSERT    1
 #define SINGLE_ROW_DELETE    2

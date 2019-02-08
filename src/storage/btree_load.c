@@ -40,7 +40,8 @@
 #include "partition_sr.h"
 #include "query_executor.h"
 #include "stream_to_xasl.h"
-#include "thread_entry.hpp"
+#include "thread_manager.hpp"
+#include "thread_entry_task.hpp"
 #include "xserver_interface.h"
 #include "xasl.h"
 #include "memory_private_allocator.hpp"
@@ -154,7 +155,7 @@ struct btree_scan_partition_info
 struct index_builder_loader_context
 {
   std::atomic_bool m_has_error;
-  std::atomic <std::uint64_t> m_tasks_executed;
+  std::atomic<std::uint64_t> m_tasks_executed;
   int m_tran_index;
   int m_error_code;
 };
@@ -169,14 +170,14 @@ private:
     index_builder_loader_context & m_load_context; // Loader context.
 
 public:
-    index_builder_loader_task(const BTID * btid, const OID * class_oid, const OID * oid, int unique_pk,
-                              index_builder_loader_context & load_context);
+    index_builder_loader_task (const BTID * btid, const OID * class_oid, const OID * oid, int unique_pk,
+                               index_builder_loader_context & load_context);
     
     void set_key (const DB_VALUE * key);
 
     ~index_builder_loader_task ();
 
-    void execute(cubthread::entry & thread_ref);
+    void execute (cubthread::entry & thread_ref);
 };
 
 // *INDENT-ON*
@@ -4798,10 +4799,8 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 
   // *INDENT-OFF*
   cubthread::entry_workpool * ib_workpool =
-   thread_get_manager()->create_worker_pool (ib_thread_count, 32,
-						   "Online index loader pool", NULL, 1,
-						   cubthread::is_logging_configured (cubthread::
-										     LOG_WORKER_POOL_TRAN_WORKERS));
+    thread_get_manager()->create_worker_pool (ib_thread_count, 32, "Online index loader pool", NULL, 1,
+					      cubthread::is_logging_configured (cubthread::LOG_WORKER_POOL_TRAN_WORKERS));
   // *INDENT-ON*
 
   aligned_midxkey_buf = PTR_ALIGN (midxkey_buf, MAX_ALIGNMENT);
@@ -4960,8 +4959,9 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 }
 
 // *INDENT-OFF*
-index_builder_loader_task::index_builder_loader_task (const BTID * btid, const OID * class_oid, const OID * oid, int unique_pk, index_builder_loader_context & load_context)
-                                                      :m_load_context (load_context)
+index_builder_loader_task::index_builder_loader_task (const BTID * btid, const OID * class_oid, const OID * oid,
+                                                      int unique_pk, index_builder_loader_context & load_context)
+  :m_load_context (load_context)
 {
   BTID_COPY (&m_btid, btid);
   COPY_OID (&m_class_oid, class_oid);
@@ -4974,13 +4974,13 @@ index_builder_loader_task::index_builder_loader_task (const BTID * btid, const O
 
 index_builder_loader_task::~index_builder_loader_task ()
 {
-  switch_to_global_allocator_and_call <int(DB_VALUE *), DB_VALUE * >(pr_clear_value, &m_key);
+  cubmem::switch_to_global_allocator_and_call (pr_clear_value, &m_key);
 }
 
 void
 index_builder_loader_task::set_key (const DB_VALUE * key)
 {
-  switch_to_global_allocator_and_call (qdata_copy_db_value, &m_key, key);
+  cubmem::switch_to_global_allocator_and_call (qdata_copy_db_value, &m_key, key);
 }
 
 void
@@ -4991,7 +4991,7 @@ index_builder_loader_task::execute (cubthread::entry & thread_ref)
   /* Check for possible errors set by the other threads. */
   if (m_load_context.m_has_error)
     {
-      goto cleanup;
+      return;
     }
 
   thread_ref.tran_index = m_load_context.m_tran_index;
@@ -4999,18 +4999,18 @@ index_builder_loader_task::execute (cubthread::entry & thread_ref)
   ret = btree_online_index_dispatcher (&thread_ref, &m_btid, &m_key, &m_class_oid, &m_oid,
 				       m_unique_pk, BTREE_OP_ONLINE_INDEX_IB_INSERT, NULL);
 
-  if (ret != NO_ERROR && !m_load_context.m_has_error)
+  if (ret != NO_ERROR)
     {
       if (!m_load_context.m_has_error.exchange (true, std::memory_order_acquire))
         {
           m_load_context.m_error_code = ret;
+          // TODO: We need a mechanism to also copy the error message!!
         }
     }
 
   /* Increment tasks executed. */
   m_load_context.m_tasks_executed++;
 
-cleanup:
   return;
 }
 // *INDENT-ON*
