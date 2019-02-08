@@ -60,6 +60,12 @@ namespace cubload
     return *m_repr;
   }
 
+  const tp_domain &
+  attribute::get_domain () const
+  {
+    return *m_repr->domain;
+  }
+
   // class_entry
   class_entry::class_entry (std::string &class_name, OID &class_oid, class_id clsid,
 			    std::vector<const attribute *> &attributes)

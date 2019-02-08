@@ -350,11 +350,9 @@ namespace cubload
     int char_count = 0;
     int str_len = (int) strlen (str);
 
-    tp_domain *domain = attr->get_repr ().domain;
-    assert (domain != NULL);
-
-    int precision = domain->precision;
-    unsigned char codeset = domain->codeset;
+    const tp_domain &domain = attr->get_domain ();
+    int precision = domain.precision;
+    unsigned char codeset = domain.codeset;
 
     db_make_char (val, 1, (char *) "a", 1, LANG_SYS_CODESET, LANG_SYS_COLLATION);
 
@@ -413,11 +411,9 @@ namespace cubload
     int char_count = 0;
     int str_len = (int) strlen (str);
 
-    tp_domain *domain = attr->get_repr ().domain;
-    assert (domain != NULL);
-
-    int precision = domain->precision;
-    unsigned char codeset = domain->codeset;
+    const tp_domain &domain = attr->get_domain ();
+    int precision = domain.precision;
+    unsigned char codeset = domain.codeset;
 
     db_make_varchar (val, 1, (char *) "a", 1, LANG_SYS_CODESET, LANG_SYS_COLLATION);
 
@@ -494,8 +490,7 @@ namespace cubload
     /* The ascii representation should be ok, check for overflow */
     if (str_ptr == str || OR_CHECK_FLOAT_OVERFLOW (d))
       {
-	tp_domain *domain = attr->get_repr ().domain;
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, domain->type->get_name ());
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, attr->get_domain ().type->get_name ());
 	return ER_IT_DATA_OVERFLOW;
       }
     else
@@ -518,8 +513,7 @@ namespace cubload
     /* The ascii representation should be ok, check for overflow */
     if (str_ptr == str || OR_CHECK_DOUBLE_OVERFLOW (d))
       {
-	tp_domain *domain = attr->get_repr ().domain;
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, domain->type->get_name ());
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, attr->get_domain ().type->get_name ());
 	return ER_IT_DATA_OVERFLOW;
       }
     else
@@ -725,16 +719,8 @@ namespace cubload
 
     temp.need_clear = true;
 
-    tp_domain *domain = attr->get_repr ().domain;
-    if (domain == NULL)
-      {
-	error_code = db_value_domain_init (val, DB_TYPE_BIT, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-      }
-    else
-      {
-	error_code = db_value_domain_init (val, domain->type->id, domain->precision, domain->scale);
-      }
-
+    const tp_domain &domain = attr->get_domain ();
+    error_code = db_value_domain_init (val, domain.type->id, domain.precision, domain.scale);
     if (error_code != NO_ERROR)
       {
 	// TODO CBRD-22271 log LOADDB_MSG_PARSE_ERROR
@@ -802,16 +788,8 @@ namespace cubload
 
     temp.need_clear = true;
 
-    tp_domain *domain = attr->get_repr ().domain;
-    if (domain == NULL)
-      {
-	error_code = db_value_domain_init (val, DB_TYPE_BIT, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-      }
-    else
-      {
-	error_code = db_value_domain_init (val, domain->type->id, domain->precision, domain->scale);
-      }
-
+    const tp_domain &domain = attr->get_domain ();
+    error_code = db_value_domain_init (val, domain.type->id, domain.precision, domain.scale);
     if (error_code != NO_ERROR)
       {
 	// TODO CBRD-22271 log LOADDB_MSG_PARSE_ERROR

@@ -51,6 +51,7 @@ namespace cubload
       const char *get_name () const;
       std::size_t get_index () const;
       const or_attribute &get_repr () const;
+      const tp_domain &get_domain () const;
 
     private:
       const ATTR_ID m_id;

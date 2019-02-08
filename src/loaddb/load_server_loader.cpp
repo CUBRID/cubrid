@@ -397,7 +397,7 @@ namespace cubload
     char *token = str != NULL ? str->val : NULL;
 
     db_value &db_val = get_attribute_db_value (attr.get_index ());
-    conv_func &func = get_conv_func (cons->type, attr.get_repr ().domain->type->get_id ());
+    conv_func &func = get_conv_func (cons->type, attr.get_domain ().type->get_id ());
 
     int error_code = func (token, &attr, &db_val);
     if (error_code != NO_ERROR)
@@ -432,7 +432,7 @@ namespace cubload
     std::strcat (full_mon_str_p, str->val);
 
     db_value &db_val = get_attribute_db_value (attr.get_index ());
-    conv_func &func = get_conv_func (cons->type, attr.get_repr ().domain->type->get_id ());
+    conv_func &func = get_conv_func (cons->type, attr.get_domain ().type->get_id ());
 
     error_code = func (full_mon_str_p, &attr, &db_val);
     if (error_code != NO_ERROR)
@@ -454,18 +454,18 @@ namespace cubload
   server_object_loader::process_collection_constant (constant_type *cons, const attribute &attr)
   {
     int error_code = NO_ERROR;
-    tp_domain *domain = attr.get_repr ().domain;
+    const tp_domain &domain = attr.get_domain ();
 
-    if (!TP_IS_SET_TYPE (domain->type->get_id ()))
+    if (!TP_IS_SET_TYPE (domain.type->get_id ()))
       {
 	error_code = ER_LDR_DOMAIN_MISMATCH;
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 4, attr.get_name (), m_class_entry->get_class_name (),
-		pr_type_name (DB_TYPE_SET), domain->type->get_name ());
+		pr_type_name (DB_TYPE_SET), domain.type->get_name ());
 
 	return error_code;
       }
 
-    DB_COLLECTION *set = set_create_with_domain (domain, 0);
+    DB_COLLECTION *set = set_create_with_domain (const_cast<tp_domain *> (&domain), 0);
     if (set == NULL)
       {
 	error_code = er_errid ();
