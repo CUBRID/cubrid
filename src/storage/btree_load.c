@@ -4911,10 +4911,7 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
       tasks_started++;
 
       /* Clear index key. */
-      if (p_dbvalue != &dbvalue)
-	{
-	  pr_clear_value (p_dbvalue);
-	}
+      pr_clear_value (p_dbvalue);
 
       /* Check for possible errors. */
       if (load_context.m_has_error)
