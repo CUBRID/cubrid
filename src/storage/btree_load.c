@@ -4958,7 +4958,7 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 // *INDENT-OFF*
 index_builder_loader_task::index_builder_loader_task (const BTID * btid, const OID * class_oid, const OID * oid,
                                                       int unique_pk, index_builder_loader_context & load_context)
-  :m_load_context (load_context)
+  : m_load_context (load_context)
 {
   BTID_COPY (&m_btid, btid);
   COPY_OID (&m_class_oid, class_oid);
@@ -4998,7 +4998,7 @@ index_builder_loader_task::execute (cubthread::entry & thread_ref)
 
   if (ret != NO_ERROR)
     {
-      if (!m_load_context.m_has_error.exchange (true, std::memory_order_acquire))
+      if (!m_load_context.m_has_error.exchange (true))
         {
           m_load_context.m_error_code = ret;
           // TODO: We need a mechanism to also copy the error message!!
