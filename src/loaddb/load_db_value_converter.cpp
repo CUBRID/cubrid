@@ -350,7 +350,7 @@ namespace cubload
     int char_count = 0;
     int str_len = (int) strlen (str);
 
-    tp_domain *domain = attr->get_repr().domain;
+    tp_domain *domain = attr->get_repr ().domain;
     assert (domain != NULL);
 
     int precision = domain->precision;
