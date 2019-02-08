@@ -2662,8 +2662,8 @@ db_json_array_insert_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw
 
   if (!p.points_to_array_cell ())
     {
-      return db_json_er_set_expected_other_type (ARG_FILE_LINE, p.dump_json_path (),
-	     db_json_get_type_of_value (p.get (doc)), DB_JSON_ARRAY);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_PATH_IS_NOT_ARRAY_CELL, 1, p.dump_json_path ().c_str ());
+      return ER_JSON_PATH_IS_NOT_ARRAY_CELL;
     }
 
   if (!p.parent_exists (doc))
