@@ -6223,12 +6223,6 @@ db_evaluate_json_merge_patch (DB_VALUE * result, DB_VALUE * const *arg, const in
 
   for (int i = 0; i < num_args; i++)
     {
-      if (DB_IS_NULL (arg[i]))
-	{
-	  doc = db_json_allocate_doc ();
-	  db_json_make_document_null (doc);
-	}
-
       error_code = db_value_to_json_doc (*arg[i], doc);
       if (error_code != NO_ERROR)
 	{
