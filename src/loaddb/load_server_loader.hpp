@@ -76,10 +76,10 @@ namespace cubload
       void finish_line () override;
 
     private:
-      int process_constant (constant_type *cons, const attribute &attr, db_value *db_val);
-      int process_generic_constant (constant_type *cons, const attribute &attr, db_value *db_val);
-      int process_monetary_constant (constant_type *cons, const attribute &attr, db_value *db_val);
-      int process_collection_constant (constant_type *cons, const attribute &attr, db_value *db_val);
+      int process_constant (constant_type *cons, const attribute &attr);
+      int process_generic_constant (constant_type *cons, const attribute &attr);
+      int process_monetary_constant (constant_type *cons, const attribute &attr);
+      int process_collection_constant (constant_type *cons, const attribute &attr);
 
       void clear_db_values ();
       db_value &get_attribute_db_value (size_t attr_index);

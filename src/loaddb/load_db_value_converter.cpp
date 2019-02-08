@@ -191,14 +191,14 @@ namespace cubload
   mismatch (const char *str, const attribute *attr, db_value *val)
   {
     int error_code = ER_OBJ_DOMAIN_CONFLICT;
-    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, attr->m_attr_name.c_str ());
+    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, attr->get_name ());
     return error_code;
   }
 
   int
   to_db_null (const char *str, const attribute *attr, db_value *val)
   {
-    if (attr->m_attr_repr->is_notnull)
+    if (attr->get_repr ().is_notnull)
       {
 	return mismatch (str, attr, val);
       }
@@ -350,7 +350,7 @@ namespace cubload
     int char_count = 0;
     int str_len = (int) strlen (str);
 
-    tp_domain *domain = attr->m_attr_repr->domain;
+    tp_domain *domain = attr->get_repr().domain;
     assert (domain != NULL);
 
     int precision = domain->precision;
@@ -413,7 +413,7 @@ namespace cubload
     int char_count = 0;
     int str_len = (int) strlen (str);
 
-    tp_domain *domain = attr->m_attr_repr->domain;
+    tp_domain *domain = attr->get_repr ().domain;
     assert (domain != NULL);
 
     int precision = domain->precision;
@@ -494,7 +494,7 @@ namespace cubload
     /* The ascii representation should be ok, check for overflow */
     if (str_ptr == str || OR_CHECK_FLOAT_OVERFLOW (d))
       {
-	tp_domain *domain = attr->m_attr_repr->domain;
+	tp_domain *domain = attr->get_repr ().domain;
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, domain->type->get_name ());
 	return ER_IT_DATA_OVERFLOW;
       }
@@ -518,7 +518,7 @@ namespace cubload
     /* The ascii representation should be ok, check for overflow */
     if (str_ptr == str || OR_CHECK_DOUBLE_OVERFLOW (d))
       {
-	tp_domain *domain = attr->m_attr_repr->domain;
+	tp_domain *domain = attr->get_repr ().domain;
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, domain->type->get_name ());
 	return ER_IT_DATA_OVERFLOW;
       }
@@ -710,7 +710,7 @@ namespace cubload
 	db_private_free_and_init (NULL, bstring);
 
 	error_code = ER_OBJ_DOMAIN_CONFLICT;
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, attr->m_attr_name.c_str ());
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, attr->get_name ());
 
 	// TODO CBRD-22271 log LOADDB_MSG_PARSE_ERROR
 	return error_code;
@@ -725,7 +725,7 @@ namespace cubload
 
     temp.need_clear = true;
 
-    tp_domain *domain = attr->m_attr_repr->domain;
+    tp_domain *domain = attr->get_repr ().domain;
     if (domain == NULL)
       {
 	error_code = db_value_domain_init (val, DB_TYPE_BIT, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
@@ -749,7 +749,7 @@ namespace cubload
 	db_value_clear (val);
 
 	error_code = ER_OBJ_DOMAIN_CONFLICT;
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, attr->m_attr_name.c_str ());
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, attr->get_name ());
 
 	// TODO CBRD-22271 log LOADDB_MSG_PARSE_ERROR
 	return error_code;
@@ -787,7 +787,7 @@ namespace cubload
 	db_private_free_and_init (NULL, bstring);
 
 	error_code = ER_OBJ_DOMAIN_CONFLICT;
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, attr->m_attr_name.c_str ());
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, attr->get_name ());
 
 	// TODO CBRD-22271 log LOADDB_MSG_PARSE_ERROR
 	return error_code;
@@ -802,7 +802,7 @@ namespace cubload
 
     temp.need_clear = true;
 
-    tp_domain *domain = attr->m_attr_repr->domain;
+    tp_domain *domain = attr->get_repr ().domain;
     if (domain == NULL)
       {
 	error_code = db_value_domain_init (val, DB_TYPE_BIT, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
@@ -825,7 +825,7 @@ namespace cubload
 	db_value_clear (val);
 
 	error_code = ER_OBJ_DOMAIN_CONFLICT;
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, attr->m_attr_name.c_str ());
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, attr->get_name ());
 
 	// TODO CBRD-22271 log LOADDB_MSG_PARSE_ERROR
 	return error_code;

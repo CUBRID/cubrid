@@ -35,20 +35,28 @@
 namespace cubload
 {
 
-  struct attribute
+  class attribute
   {
-    attribute () = delete; // Not DefaultConstructible
-    attribute (ATTR_ID attr_id, std::string attr_name, or_attribute *attr_repr);
+    public:
+      attribute () = delete; // Not DefaultConstructible
+      attribute (ATTR_ID id, std::string &name, std::size_t index, or_attribute *repr);
 
-    attribute (attribute &&other) = delete; // Not MoveConstructible
-    attribute (const attribute &copy) = delete; // Not CopyConstructible
+      attribute (attribute &&other) = delete; // Not MoveConstructible
+      attribute (const attribute &copy) = delete; // Not CopyConstructible
 
-    attribute &operator= (attribute &&other) = delete; // Not MoveAssignable
-    attribute &operator= (const attribute &copy) = delete; // Not CopyAssignable
+      attribute &operator= (attribute &&other) = delete; // Not MoveAssignable
+      attribute &operator= (const attribute &copy) = delete; // Not CopyAssignable
 
-    ATTR_ID m_attr_id;
-    std::string m_attr_name;
-    or_attribute *m_attr_repr;
+      ATTR_ID get_id () const;
+      const char *get_name () const;
+      std::size_t get_index () const;
+      const or_attribute &get_repr () const;
+
+    private:
+      const ATTR_ID m_id;
+      const std::string m_name;
+      const std::size_t m_index;
+      const or_attribute *m_repr;
   };
 
   class class_entry
