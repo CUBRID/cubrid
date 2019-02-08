@@ -3016,22 +3016,21 @@ db_json_merge_patch_values (const JSON_VALUE &source, JSON_VALUE &dest, JSON_PRI
 }
 
 /*
- * db_json_merge_func () - Merge the source json into destination json
+ * db_json_merge_patch_func () - Merge the source json into destination json and patch
+ *                               members having duplicate keys
  *
  * return                   : error code
  * dest (in)                : json where to merge
  * source (in)              : json to merge
- * patch (in)               : how to handle duplicate keys
  *
  * example                  : let x = { "a": 1, "b": 2 }
  *                                y = { "a": 3, "c": 4 }
  *                                z = { "a": 5, "d": 6 }
  *
- * result PATCH             : {"a": 5, "b": 2, "c": 4, "d": 6}
- * result PRESERVE          : {"a": [1, 3, 5], "b": 2, "c": 4, "d": 6}
+ * JSON_MERGE_PATCH (x, y, z) = {"a": 5, "b": 2, "c": 4, "d": 6}
  */
 int
-db_json_merge_func (const JSON_DOC *source, JSON_DOC *&dest, bool patch)
+db_json_merge_patch_func (const JSON_DOC *source, JSON_DOC *&dest)
 {
   if (dest == NULL)
     {
@@ -3043,14 +3042,39 @@ db_json_merge_func (const JSON_DOC *source, JSON_DOC *&dest, bool patch)
   const JSON_VALUE &source_value = db_json_doc_to_value (*source);
   JSON_VALUE &dest_value = db_json_doc_to_value (*dest);
 
-  if (patch)
+  db_json_merge_patch_values (source_value, dest_value, dest->GetAllocator ());
+
+  return NO_ERROR;
+}
+
+/*
+ * db_json_merge_preserve_func () - Merge the source json into destination json preserving
+ *                                  members having duplicate keys
+ *
+ * return                   : error code
+ * dest (in)                : json where to merge
+ * source (in)              : json to merge
+ *
+ * example                  : let x = { "a": 1, "b": 2 }
+ *                                y = { "a": 3, "c": 4 }
+ *                                z = { "a": 5, "d": 6 }
+ *
+ * JSON_MERGE_PRESERVE (x, y, z) = {"a": [1, 3, 5], "b": 2, "c": 4, "d": 6}
+ */
+int
+db_json_merge_preserve_func (const JSON_DOC *source, JSON_DOC *&dest)
+{
+  if (dest == NULL)
     {
-      db_json_merge_patch_values (source_value, dest_value, dest->GetAllocator ());
+      dest = db_json_allocate_doc ();
+      db_json_copy_doc (*dest, source);
+      return NO_ERROR;
     }
-  else
-    {
-      db_json_merge_preserve_values (source_value, dest_value, dest->GetAllocator ());
-    }
+
+  const JSON_VALUE &source_value = db_json_doc_to_value (*source);
+  JSON_VALUE &dest_value = db_json_doc_to_value (*dest);
+
+  db_json_merge_preserve_values (source_value, dest_value, dest->GetAllocator ());
 
   return NO_ERROR;
 }
