@@ -2778,7 +2778,7 @@ db_json_merge_two_json_objects_patch (const JSON_VALUE &source, JSON_VALUE &dest
 	      db_json_merge_patch_values (itr->value, dest[name], allocator);
 	    }
 	}
-      else
+      else if (!itr->value.IsNull ())
 	{
 	  db_json_object_add_member (itr->name, itr->value, dest, allocator);
 	}
