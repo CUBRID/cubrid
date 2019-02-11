@@ -3005,19 +3005,17 @@ db_json_merge_preserve_values (const JSON_VALUE &source, JSON_VALUE &dest, JSON_
 static void
 db_json_merge_patch_values (const JSON_VALUE &source, JSON_VALUE &dest, JSON_PRIVATE_MEMPOOL &allocator)
 {
-  if (!dest.IsObject ())
+  if (source.IsObject ())
     {
-      // for non-objects we remove data, set them to empty objects and then we patch
-      dest.SetObject ();
-    }
-
-  if (!source.IsObject ())
-    {
-      dest.CopyFrom (source, allocator);
+      if (!dest.IsObject ())
+	{
+	  dest.SetObject ();
+	}
+      db_json_merge_two_json_objects_patch (source, dest, allocator);
     }
   else
     {
-      db_json_merge_two_json_objects_patch (source, dest, allocator);
+      dest.CopyFrom (source, allocator);
     }
 }
 
