@@ -6149,8 +6149,8 @@ db_evaluate_json_contains_path (DB_VALUE * result, DB_VALUE * const *arg, const 
 /*
  * db_evaluate_json_merge_preserve ()
  *
- * this function accumulate-merges jsons, preserving members having duplicate keys
- * so merge (j1, j2, j3, j4) = merge_two (j1, (merge (j2, merge (j3, j4))))
+ * this function accumulate-merges jsons preserving members having duplicate keys
+ * so merge (j1, j2, j3, j4) = merge (j1, (merge (j2, merge (j3, j4))))
  *
  * result (out): the merge result
  * arg (in): the arguments for the merge function
@@ -6169,14 +6169,17 @@ db_evaluate_json_merge_preserve (DB_VALUE * result, DB_VALUE * const *arg, const
       return NO_ERROR;
     }
 
-  for (int i = 0; i < num_args; i++)
+  for (int i = 0; i < num_args; ++i)
     {
       if (DB_IS_NULL (arg[i]))
 	{
-	  db_json_delete_doc (accumulator);
-	  return db_make_null (result);
+	  db_make_null (result);
+	  return NO_ERROR;
 	}
+    }
 
+  for (int i = 0; i < num_args; ++i)
+    {
       error_code = db_value_to_json_doc (*arg[i], doc);
       if (error_code != NO_ERROR)
 	{
@@ -6201,8 +6204,8 @@ db_evaluate_json_merge_preserve (DB_VALUE * result, DB_VALUE * const *arg, const
 /*
  * db_evaluate_json_merge_patch ()
  *
- * this function accumulate-merges jsons amd patches members having duplicate keys
- * so merge (j1, j2, j3, j4) = merge_two (j1, (merge (j2, merge (j3, j4))))
+ * this function accumulate-merges jsons and patches members having duplicate keys
+ * so merge (j1, j2, j3, j4) = merge (j1, (merge (j2, merge (j3, j4))))
  *
  * result (out): the merge result
  * arg (in): the arguments for the merge function
@@ -6221,7 +6224,16 @@ db_evaluate_json_merge_patch (DB_VALUE * result, DB_VALUE * const *arg, const in
       return NO_ERROR;
     }
 
-  for (int i = 0; i < num_args; i++)
+  for (int i = 0; i < num_args; ++i)
+    {
+      if (DB_IS_NULL (arg[i]))
+	{
+	  db_make_null (result);
+	  return NO_ERROR;
+	}
+    }
+
+  for (int i = 0; i < num_args; ++i)
     {
       error_code = db_value_to_json_doc (*arg[i], doc);
       if (error_code != NO_ERROR)
