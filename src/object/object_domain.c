@@ -11577,6 +11577,12 @@ tp_domain_status_er_set (TP_DOMAIN_STATUS status, const char *file_name, const i
 #endif
       error = er_errid ();
 
+      if (error == ER_JSON_INVALID_JSON)
+	{
+	  // We keep invalid json errors that happend during cast since they are more descriptive
+	  return error;
+	}
+
       if (error == ER_IT_DATA_OVERFLOW)
 	{
 	  status = DOMAIN_OVERFLOW;
