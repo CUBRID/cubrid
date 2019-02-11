@@ -70,8 +70,6 @@ static int get_number_dbval_as_double (double *d, const DB_VALUE * value);
 static int get_number_dbval_as_long_double (long double *ld, const DB_VALUE * value);
 static int db_width_bucket_calculate_numeric (double *result, const DB_VALUE * value1, const DB_VALUE * value2,
 					      const DB_VALUE * value3, const DB_VALUE * value4);
-static int db_evaluate_json_merge_helper (DB_VALUE * result, DB_VALUE * const *arg, int const num_args, bool patch =
-					  false);
 static int is_str_find_all (DB_VALUE * val, bool & find_all);
 
 /*
@@ -6148,10 +6146,19 @@ db_evaluate_json_contains_path (DB_VALUE * result, DB_VALUE * const *arg, const 
   return error_code;
 }
 
-static int
-db_evaluate_json_merge_helper (DB_VALUE * result, DB_VALUE * const *arg, int const num_args, bool patch)
+/*
+ * db_evaluate_json_merge_preserve ()
+ *
+ * this function accumulate-merges jsons preserving members having duplicate keys
+ * so merge (j1, j2, j3, j4) = merge (j1, (merge (j2, merge (j3, j4))))
+ *
+ * result (out): the merge result
+ * arg (in): the arguments for the merge function
+ * num_args (in)
+ */
+int
+db_evaluate_json_merge_preserve (DB_VALUE * result, DB_VALUE * const *arg, const int num_args)
 {
-  int i;
   int error_code;
   JSON_DOC *accumulator = NULL;
   JSON_DOC *doc = NULL;
@@ -6162,14 +6169,17 @@ db_evaluate_json_merge_helper (DB_VALUE * result, DB_VALUE * const *arg, int con
       return NO_ERROR;
     }
 
-  for (i = 0; i < num_args; i++)
+  for (int i = 0; i < num_args; ++i)
     {
       if (DB_IS_NULL (arg[i]))
 	{
-	  db_json_delete_doc (accumulator);
-	  return db_make_null (result);
+	  db_make_null (result);
+	  return NO_ERROR;
 	}
+    }
 
+  for (int i = 0; i < num_args; ++i)
+    {
       error_code = db_value_to_json_doc (*arg[i], doc);
       if (error_code != NO_ERROR)
 	{
@@ -6177,7 +6187,7 @@ db_evaluate_json_merge_helper (DB_VALUE * result, DB_VALUE * const *arg, int con
 	  return error_code;
 	}
 
-      error_code = db_json_merge_func (doc, accumulator, patch);
+      error_code = db_json_merge_preserve_func (doc, accumulator);
       db_json_delete_doc (doc);
       if (error_code != NO_ERROR)
 	{
@@ -6192,35 +6202,58 @@ db_evaluate_json_merge_helper (DB_VALUE * result, DB_VALUE * const *arg, int con
 }
 
 /*
- * db_evaluate_json_merge_preserve ()
+ * db_evaluate_json_merge_patch ()
  *
- * this function merges two by two json
- * so merge (j1, j2, j3, j4) = merge_two (j1, (merge (j2, merge (j3, j4))))
+ * this function accumulate-merges jsons and patches members having duplicate keys
+ * so merge (j1, j2, j3, j4) = merge (j1, (merge (j2, merge (j3, j4))))
  *
  * result (out): the merge result
  * arg (in): the arguments for the merge function
  * num_args (in)
  */
 int
-db_evaluate_json_merge_preserve (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
+db_evaluate_json_merge_patch (DB_VALUE * result, DB_VALUE * const *arg, const int num_args)
 {
-  return db_evaluate_json_merge_helper (result, arg, num_args);
-}
+  int error_code;
+  JSON_DOC *accumulator = NULL;
+  JSON_DOC *doc = NULL;
 
-/*
- * db_evaluate_json_merge_patch()
- *
- * this function merges two by two json without preserving members having duplicate keys
- * so merge (j1, j2, j3, j4) = merge_two (j1, (merge (j2, merge (j3, j4))))
- *
- * result (out): the merge result
- * arg (in): the arguments for the merge function
- * num_args (in)
- */
-int
-db_evaluate_json_merge_patch (DB_VALUE * result, DB_VALUE * const *arg, int const num_args)
-{
-  return db_evaluate_json_merge_helper (result, arg, num_args, true);
+  if (num_args < 2)
+    {
+      db_make_null (result);
+      return NO_ERROR;
+    }
+
+  for (int i = 0; i < num_args; ++i)
+    {
+      if (DB_IS_NULL (arg[i]))
+	{
+	  db_make_null (result);
+	  return NO_ERROR;
+	}
+    }
+
+  for (int i = 0; i < num_args; ++i)
+    {
+      error_code = db_value_to_json_doc (*arg[i], doc);
+      if (error_code != NO_ERROR)
+	{
+	  db_json_delete_doc (accumulator);
+	  return error_code;
+	}
+
+      error_code = db_json_merge_patch_func (doc, accumulator);
+      db_json_delete_doc (doc);
+      if (error_code != NO_ERROR)
+	{
+	  db_json_delete_doc (accumulator);
+	  return error_code;
+	}
+    }
+
+  db_make_json (result, accumulator, true);
+
+  return NO_ERROR;
 }
 
 /* *INDENT-OFF* */

@@ -102,7 +102,8 @@ int db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<s
 			    bool match_exactly = false);
 int db_json_search_func (JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALUE *esc_char,
 			 std::vector<std::string> &paths, const std::vector<std::string> &regs, bool find_all);
-int db_json_merge_func (const JSON_DOC *source, JSON_DOC *&dest, bool patch);
+int db_json_merge_patch_func (const JSON_DOC *source, JSON_DOC *&dest);
+int db_json_merge_preserve_func (const JSON_DOC *source, JSON_DOC *&dest);
 int db_json_get_all_paths_func (const JSON_DOC &doc, JSON_DOC *&result_json);
 void db_json_pretty_func (const JSON_DOC &doc, char *&result_str);
 int db_json_unquote (const JSON_DOC &doc, char *&result_str);
