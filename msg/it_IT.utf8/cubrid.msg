@@ -1467,6 +1467,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 126 Lunghezza massima di class/vclass comment è %1$d bytes.
 127 Lunghezza massima di un commento è %1$d bytes.
 128 Invalid number of arguments for JSON_OBJECTAGG
+129 PARALLEL count argument must be between %1d and %2d.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Memoria esaurita.

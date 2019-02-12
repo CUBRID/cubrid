@@ -618,9 +618,6 @@ int g_original_buffer_len;
 }
 
 
-
-
-
 /* define rule type (number) */
 /*{{{*/
 %type <boolean> opt_reverse
@@ -642,7 +639,7 @@ int g_original_buffer_len;
 %type <number> of_avg_max_etc
 %type <number> of_leading_trailing_both
 %type <number> datetime_field
-%type <number> opt_invisible
+%type <boolean> opt_invisible
 %type <number> opt_paren_plus
 %type <number> opt_with_fullscan
 %type <number> opt_with_online
@@ -2707,7 +2704,7 @@ create_stmt
 			PT_NODE *ocs = parser_new_node(this_parser, PT_SPEC);
 			PARSER_SAVE_ERR_CONTEXT (node, @$.buffer_pos)
 
-			if ($5 && $12)
+		        if ($5 && $12)
 			  {
 			    /* Currently, not allowed unique with filter/function index.
 			       However, may be introduced later, if it will be usefull.
@@ -2816,31 +2813,33 @@ create_stmt
 				      }
 				  }
 			      }
-			     node->info.index.where = $12;
-			     node->info.index.column_names = col;
-			     node->info.index.comment = $13;
+			    node->info.index.where = $12;
+			    node->info.index.column_names = col;
+			    node->info.index.comment = $13;
 
-			     if ($14 && $15)
-				     {
-					/* We do not allow invisible and online index at the same time. */
-					PT_ERRORm (this_parser, node,
-						       MSGCAT_SET_PARSER_SYNTAX,
-						       MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
-				     }
-			     node->info.index.index_status = SM_NORMAL_INDEX;
-			     if ($15)
-				     {
-					/* Invisible index. */
-					node->info.index.index_status = SM_INVISIBLE_INDEX;
-				     }
-			     else if ($14)
-				     {
-					/* Online index. */
-					node->info.index.index_status = SM_ONLINE_INDEX_BUILDING_IN_PROGRESS;
-					node->info.index.ib_threads = $14;
-				     }
-
-
+                            int with_online_ret = $14;  // 0 for normal, 1 for online no parallel,
+                                                        // thread_count + 1 for parallel
+                            bool is_online = with_online_ret > 0;
+                            bool is_invisible = $15;
+                            
+                            if (is_online && is_invisible)
+                              {
+                                /* We do not allow invisible and online index at the same time. */
+                                PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SYNTAX,
+                                           MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+                              }
+                            node->info.index.index_status = SM_NORMAL_INDEX;
+                            if (is_invisible)
+                              {
+                                /* Invisible index. */
+                                node->info.index.index_status = SM_INVISIBLE_INDEX;
+                              }
+                            else if (is_online)
+                              {
+                                /* Online index. */
+                                node->info.index.index_status = SM_ONLINE_INDEX_BUILDING_IN_PROGRESS;
+                                node->info.index.ib_threads = with_online_ret - 1;
+                              }
 			  }
 		      $$ = node;
 
@@ -4338,13 +4337,13 @@ only_class_name_list
 opt_invisible
 	: /* empty */
 		{{
- 			$$ = 0;
+ 			$$ = false;
 
 		DBG_PRINT}}
 	| INVISIBLE
 		{{
 
-			$$ = 1;
+			$$ = true;
 
 		DBG_PRINT}}
 	;
@@ -4368,24 +4367,27 @@ opt_with_fullscan
 opt_with_online
 	: /* empty */
 		{{
-
 			$$ = 0;
 
 		DBG_PRINT}}
 	| WITH ONLINE
 		{{
 
-			$$ = 1;
+			$$ = 1;  // thread count is 0
 
-		DBG_PRINT}}
-	| WITH ONLINE PARALLEL
-		{{
-			// Default thread count. 
-			$$ = 4;
 		DBG_PRINT}}
 	| WITH ONLINE PARALLEL unsigned_integer
 		{{
-			$$ = $4->info.value.data_value.i;
+                        const int MIN_COUNT = 1;
+                        const int MAX_COUNT = 16;
+                        int thread_count = $4->info.value.data_value.i;
+                        if (thread_count < MIN_COUNT || thread_count > MAX_COUNT)
+                          {
+                            // todo - might be better to have a node here
+                            pt_cat_error (this_parser, NULL, MSGCAT_SET_PARSER_SYNTAX,
+                                          MSGCAT_SYNTAX_INVALID_PARALLEL_ARGUMENT, MIN_COUNT, MAX_COUNT);
+                          }
+			$$ = thread_count + 1;
 		DBG_PRINT}}
 	;
 
@@ -9793,12 +9795,12 @@ attr_constraint_def
 	;
 
 attr_index_def
-	: index_or_key
-	  identifier
-	  index_column_name_list
-	  opt_where_clause
-	  opt_comment_spec
-	  opt_invisible
+	: index_or_key              /* 1 */
+	  identifier                /* 2 */
+	  index_column_name_list    /* 3 */
+	  opt_where_clause          /* 4 */
+	  opt_comment_spec          /* 5 */
+	  opt_invisible             /* 6 */
 		{{
 			int arg_count = 0, prefix_col_count = 0;
 			PT_NODE* node = parser_new_node(this_parser,
@@ -27534,4 +27536,3 @@ pt_jt_append_column_or_nested_node (PT_NODE * jt_node, PT_NODE * jt_col_or_neste
         parser_append_node (jt_col_or_nested, jt_node->info.json_table_node_info.nested_paths);
     }
 }
-

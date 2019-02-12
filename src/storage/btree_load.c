@@ -226,6 +226,7 @@ static int online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, H
 				 PRED_EXPR_WITH_CONTEXT * filter_pred, int *attrs_prefix_length,
 				 HEAP_CACHE_ATTRINFO * attr_info, HEAP_SCANCACHE * scancache, int unique_pk,
 				 int ib_thread_count);
+static bool btree_is_worker_pool_logging_true ();
 
 /*
  * btree_get_node_header () -
@@ -4796,11 +4797,13 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
   uint64_t tasks_started = 0;
   char midxkey_buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_midxkey_buf;
   index_builder_loader_context load_context;
+  bool is_parallel = ib_thread_count > 0;
 
   // *INDENT-OFF*
+  // a worker pool is built only of loading is done in parallel
   cubthread::entry_workpool * ib_workpool =
-    thread_get_manager()->create_worker_pool (ib_thread_count, 32, "Online index loader pool", NULL, 1,
-					      cubthread::is_logging_configured (cubthread::LOG_WORKER_POOL_TRAN_WORKERS));
+    is_parallel ? thread_get_manager()->create_worker_pool (ib_thread_count, 32, "Online index loader pool", NULL, 1,
+                                                            btree_is_worker_pool_logging_true ()) : NULL;
   // *INDENT-ON*
 
   aligned_midxkey_buf = PTR_ALIGN (midxkey_buf, MAX_ALIGNMENT);
@@ -4956,6 +4959,12 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 }
 
 // *INDENT-OFF*
+static bool
+btree_is_worker_pool_logging_true ()
+{
+  return cubthread::is_logging_configured (cubthread::LOG_WORKER_POOL_INDEX_BUILDER);
+}
+
 index_builder_loader_task::index_builder_loader_task (const BTID * btid, const OID * class_oid, const OID * oid,
                                                       int unique_pk, index_builder_loader_context & load_context)
   : m_load_context (load_context)

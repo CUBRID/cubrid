@@ -1467,6 +1467,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 126 class/vclassコメントの最大長は%1$dバイトです。
 127 コメントの最大長は%1$dバイトです。
 128 Invalid number of arguments for JSON_OBJECTAGG
+129 PARALLEL count argument must be between %1d and %2d.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 メモリーが足りません。

@@ -1468,6 +1468,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 126 一个class或vclass的comment的最大长度是 %1$d 字节.
 127 一个comment的最大长度是 %1$d 字节.
 128 Invalid number of arguments for JSON_OBJECTAGG
+129 PARALLEL count argument must be between %1d and %2d.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 内存耗尽.
