@@ -172,6 +172,11 @@ namespace cubmem
   };
 
   extern const block_allocator PRIVATE_BLOCK_ALLOCATOR;
+
+  // Calls func with the global heap set for allocating memory
+  template <typename Func, typename ...Args>
+  inline void switch_to_global_allocator_and_call (Func && func, Args &&... args);
+
 } // namespace cubmem
 
 //////////////////////////////////////////////////////////////////////////
@@ -209,7 +214,7 @@ namespace cubmem
     m_heapid = other.get_heapid ();
     register_private_allocator (m_thread_p);
   }
-
+  
   template <typename T>
   private_allocator<T>::~private_allocator ()
   {
@@ -341,6 +346,23 @@ namespace cubmem
   {
     return *m_smart_ptr.get ();
   }
+
+  template < typename Func, typename...Args >
+  void
+  switch_to_global_allocator_and_call (Func && func, Args && ... args)
+  {
+    HL_HEAPID save_id;
+
+    // Switch to global
+    save_id = db_change_private_heap (NULL, 0);
+
+    func (std::forward < Args > (args)...);
+
+    // Switch back
+    (void) db_change_private_heap (NULL, save_id);
+  }
 } // namespace cubmem
+
+
 
 #endif // _MEMORY_PRIVATE_ALLOCATOR_HPP_

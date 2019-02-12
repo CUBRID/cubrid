@@ -743,4 +743,5 @@ extern int btree_online_index_check_unique_constraint (THREAD_ENTRY * thread_p, 
 						       OID * class_oid);
 extern int btree_get_class_oid_of_unique_btid (THREAD_ENTRY * thread_p, BTID * btid, OID * class_oid);
 extern bool btree_is_btid_online_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid);
+
 #endif /* _BTREE_H_ */

@@ -1467,6 +1467,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 126 Lungimea maximă a comentariilor class/vclass este %1$d bytes.
 127 Lungimea maximă a comentariilor este %1$d bytes.
 128 Invalid number of arguments for JSON_OBJECTAGG
+129 PARALLEL count argument must be between %1$d and %2$d.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Memorie epuizată.
