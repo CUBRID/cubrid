@@ -469,7 +469,7 @@ assign_null_value (MOP op, SM_ATTRIBUTE * att, char *mem)
     }
   else
     {
-      if (PRIM_SETMEM (att->domain->type, att->domain, mem, NULL))
+      if (att->domain->type->setmem (mem, att->domain, NULL))
 	{
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
@@ -566,7 +566,7 @@ assign_set_value (MOP op, SM_ATTRIBUTE * att, char *mem, SETREF * setref)
 	      break;
 	    }
 
-	  error = PRIM_SETMEM (att->domain->type, att->domain, mem, &val);
+	  error = att->domain->type->setmem (mem, att->domain, &val);
 	  db_value_put_null (&val);
 
 	  if (error == NO_ERROR)
@@ -676,7 +676,7 @@ obj_assign_value (MOP op, SM_ATTRIBUTE * att, char *mem, DB_VALUE * value)
 	      /* uncomplicated assignment, use the primitive type macros */
 	      if (mem != NULL)
 		{
-		  error = PRIM_SETMEM (att->domain->type, att->domain, mem, value);
+		  error = att->domain->type->setmem (mem, att->domain, value);
 		  if (!error && !att->domain->type->variable_p)
 		    {
 		      if (ws_find (op, &object) == WS_FIND_MOP_DELETED || object == NULL)
@@ -1086,7 +1086,7 @@ get_object_value (MOP op, SM_ATTRIBUTE * att, char *mem, DB_VALUE * source, DB_V
   if (mem != NULL)
     {
       db_make_object (&curval, NULL);
-      if (PRIM_GETMEM (att->domain->type, att->domain, mem, &curval))
+      if (att->domain->type->getmem (mem, att->domain, &curval))
 	{
 	  ASSERT_ERROR_AND_SET (rc);
 	  return rc;
@@ -1146,7 +1146,7 @@ get_object_value (MOP op, SM_ATTRIBUTE * att, char *mem, DB_VALUE * source, DB_V
 	{
 	  if (mem != NULL)
 	    {
-	      if (PRIM_SETMEM (att->domain->type, att->domain, mem, NULL))
+	      if (att->domain->type->setmem (mem, att->domain, NULL))
 		{
 		  ASSERT_ERROR_AND_SET (rc);
 		  return rc;
@@ -1216,7 +1216,7 @@ get_set_value (MOP op, SM_ATTRIBUTE * att, char *mem, DB_VALUE * source, DB_VALU
   if (mem != NULL)
     {
       db_value_domain_init (&setval, TP_DOMAIN_TYPE (att->domain), DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-      if (PRIM_GETMEM (att->domain->type, att->domain, mem, &setval))
+      if (att->domain->type->getmem (mem, att->domain, &setval))
 	{
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
@@ -1346,7 +1346,7 @@ obj_get_value (MOP op, SM_ATTRIBUTE * att, void *mem, DB_VALUE * source, DB_VALU
 	{
 	  if (mem != NULL)
 	    {
-	      error = PRIM_GETMEM (att->domain->type, att->domain, mem, dest);
+	      error = att->domain->type->getmem (mem, att->domain, dest);
 	    }
 	  else
 	    {
@@ -1898,7 +1898,7 @@ obj_alloc (SM_CLASS * class_, int bound_bit_status)
       for (att = class_->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
 	{
 	  mem = obj + att->offset;
-	  PRIM_INITMEM (att->domain->type, mem, att->domain);
+	  att->domain->type->initmem (mem, att->domain);
 	}
     }
 
@@ -2069,7 +2069,7 @@ obj_free_memory (SM_CLASS * class_, MOBJ obj)
   for (att = class_->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
     {
       mem = ((char *) obj) + att->offset;
-      PRIM_FREEMEM (att->domain->type, mem);
+      att->domain->type->freemem (mem);
     }
 
   db_ws_free (obj);

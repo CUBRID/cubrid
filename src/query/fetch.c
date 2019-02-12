@@ -3828,8 +3828,8 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 
 	  OR_BUF_INIT (buf, ptr, length);
 
-	  if ((*(pr_type->data_readval)) (&buf, *peek_dbval, regu_var->value.pos_descr.dom, -1, false /* Don't copy */ ,
-					  NULL, 0) != NO_ERROR)
+	  if (pr_type->data_readval (&buf, *peek_dbval, regu_var->value.pos_descr.dom, -1, false /* Don't copy */ ,
+				     NULL, 0) != NO_ERROR)
 	    {
 	      goto exit_on_error;
 	    }
@@ -4143,6 +4143,7 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	case F_TABLE_SEQUENCE:
 	case F_GENERIC:
 	case F_CLASS_OF:
+	case F_BENCHMARK:
 	  /* is not constant */
 	  assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
 	  assert (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_NOT_CONST));
@@ -4300,8 +4301,7 @@ fetch_peek_dbval_pos (REGU_VARIABLE * regu_var, QFILE_TUPLE tpl, int pos, DB_VAL
 
       OR_BUF_INIT (buf, ptr, length);
       /* read value from the tuple */
-      if ((*(pr_type->data_readval)) (&buf, *peek_dbval, pos_descr->dom, -1, false /* Don't copy */ ,
-				      NULL, 0) != NO_ERROR)
+      if (pr_type->data_readval (&buf, *peek_dbval, pos_descr->dom, -1, false /* Don't copy */ , NULL, 0) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -4824,3 +4824,108 @@ error_exit:
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
   return error_status;
 }
+
+// *INDENT-OFF*
+// C++ implementation stuff
+
+using map_reguvar_func = std::function<void(regu_variable_node &regu, bool &stop)>;
+
+const map_reguvar_func map_reguvar_force_not_constant_arithmetic = [] (regu_variable_node &regu, bool & stop)
+  {
+  switch (regu.type)
+    {
+    case TYPE_INARITH:
+    case TYPE_OUTARITH:
+    case TYPE_FUNC:
+      REGU_VARIABLE_SET_FLAG (&regu, REGU_VARIABLE_FETCH_NOT_CONST);
+      break;
+    default:
+      break;
+    }
+  };
+
+// map_reguvar_tree - recursive "walker" of regu variable tree applying function argument
+//
+// NOTE:
+//    stop argument may be used for interrupting mapper
+//
+//    !!! implementation is not mature; only arithmetic and function children are mapped.
+static void
+map_reguvar_tree (regu_variable_node &regu, const map_reguvar_func & f, bool &stop)
+{
+  f (regu, stop);
+  if (stop)
+    {
+      return;
+    }
+  switch (regu.type)
+    {
+    case TYPE_INARITH:
+    case TYPE_OUTARITH:
+      if (regu.value.arithptr == NULL)
+        {
+          assert (false);
+          return;
+        }
+      if (regu.value.arithptr->leftptr)
+        {
+          map_reguvar_tree (*regu.value.arithptr->leftptr, f, stop);
+          if (stop)
+            {
+              return;
+            }
+        }
+      if (regu.value.arithptr->rightptr)
+        {
+          map_reguvar_tree (*regu.value.arithptr->rightptr, f, stop);
+          if (stop)
+            {
+              return;
+            }
+        }
+      if (regu.value.arithptr->rightptr)
+        {
+          map_reguvar_tree (*regu.value.arithptr->thirdptr, f, stop);
+          if (stop)
+            {
+              return;
+            }
+        }
+      break;
+    case TYPE_FUNC:
+      if (regu.value.funcp == NULL)
+        {
+          assert (false);
+          return;
+        }
+      for (regu_variable_list_node *operand = regu.value.funcp->operand; operand != NULL; operand = operand->next)
+        {
+          map_reguvar_tree (operand->value, f, stop);
+          if (stop)
+            {
+              return;
+            }
+        }
+      break;
+    case TYPE_REGUVAL_LIST:
+    case TYPE_REGU_VAR_LIST:
+      // should we map?
+      break;
+    default:
+      break;
+    }
+}
+
+static void
+map_reguvar_tree (regu_variable_node &regu, const map_reguvar_func & f)
+{
+  bool stop = false;
+  map_reguvar_tree (regu, f, stop);
+}
+
+void
+fetch_force_not_const_recursive (REGU_VARIABLE & reguvar)
+{
+  map_reguvar_tree (reguvar, map_reguvar_force_not_constant_arithmetic);
+}
+// *INDENT-ON*

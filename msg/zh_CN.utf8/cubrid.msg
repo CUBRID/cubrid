@@ -1273,7 +1273,7 @@ $ LOADDB
 1203 Invalid JSON type at path %1$s. Expected %2$s, but found %3$s.
 1204 Json KEY "%1$s" is duplicate
 1205 Invalid type %1$s. Expecting JSON document compatible data type (STRING or JSON).
-1206 Reserved error for JSON.
+1206 Json PATH "%1$s" does not address a cell in an Json ARRAY.
 1207 Reserved error for JSON.
 1208 Reserved error for JSON.
 1209 Reserved error for JSON.

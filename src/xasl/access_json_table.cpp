@@ -201,7 +201,7 @@ namespace cubxasl
     {
       assert (m_domain->type->id == DB_TYPE_INTEGER);
 
-      db_make_int (m_output_value_pointer, ordinality);
+      db_make_int (m_output_value_pointer, (int) ordinality);
 
       return NO_ERROR;
     }

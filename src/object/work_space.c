@@ -967,7 +967,7 @@ ws_rehash_vmop (MOP mop, MOBJ classobj, DB_VALUE * newkey)
 		  /* Sets won't work as key components */
 		  mem = inst + att->offset;
 		  db_value_domain_init (&val, att->type->id, att->domain->precision, att->domain->scale);
-		  PRIM_GETMEM (att->type, att->domain, mem, &val);
+		  att->type->getmem (mem, att->domain, &val);
 		  if ((DB_VALUE_TYPE (value) == DB_TYPE_STRING) && (db_get_string (value) == NULL))
 		    {
 		      db_make_null (value);

@@ -1519,7 +1519,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 	    {
 	      char *s;
 
-	      s = (params.size > 0) ? pr_valstring (thread_p, &params.vals[0]) : NULL;
+	      s = (params.size > 0) ? pr_valstring (&params.vals[0]) : NULL;
 	      er_log_debug (ARG_FILE_LINE,
 			    "xqmgr_execute_query: ls_update_xasl failed "
 			    "xasl_id { sha1 { %08x | %08x | %08x | %08x | %08x } time_stored { %d sec %d usec } } "

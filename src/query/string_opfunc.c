@@ -1894,15 +1894,15 @@ db_string_substring (const MISC_OPERAND substr_operand, const DB_VALUE * src_str
 }
 
 int
-db_string_escape (const char *src_str, int src_size, char **res_string, int *dest_size)
+db_string_escape (const char *src_str, size_t src_size, char **res_string, size_t * dest_size)
 {
-  int dest_crt_pos;
-  int src_last_pos;
+  size_t dest_crt_pos;
+  size_t src_last_pos;
 
   // *INDENT-OFF*
-  std::vector<int> special_idx;
+  std::vector<size_t> special_idx;
   // *INDENT-ON*
-  for (int i = 0; i < src_size; ++i)
+  for (size_t i = 0; i < src_size; ++i)
     {
       unsigned char uc = (unsigned char) src_str[i];
       if (ESCAPE_CHAR (uc))
@@ -1910,7 +1910,7 @@ db_string_escape (const char *src_str, int src_size, char **res_string, int *des
 	  special_idx.push_back (i);
 	}
     }
-  *dest_size = (int) (src_size + special_idx.size () + 2 /* quotes */  + 1 /* string terminator */ );
+  *dest_size = src_size + special_idx.size () + 2 /* quotes */  + 1 /* string terminator */ ;
   char *result = (char *) db_private_alloc (NULL, *dest_size);
   if (result == NULL)
     {
@@ -1920,9 +1920,9 @@ db_string_escape (const char *src_str, int src_size, char **res_string, int *des
   result[0] = '"';
   dest_crt_pos = 1;
   src_last_pos = 0;
-  for (int i = 0; i < special_idx.size (); ++i)
+  for (size_t i = 0; i < special_idx.size (); ++i)
     {
-      int len = special_idx[i] - src_last_pos;
+      size_t len = special_idx[i] - src_last_pos;
       memcpy (&result[dest_crt_pos], &src_str[src_last_pos], len);
       dest_crt_pos += len;
       result[dest_crt_pos] = '\\';
@@ -1958,7 +1958,7 @@ db_string_quote (const DB_VALUE * str, DB_VALUE * res)
       char *src_str = db_get_string (str);
 
       char *escaped_string = NULL;
-      int escaped_string_size;
+      size_t escaped_string_size;
       int error_code = db_string_escape (src_str, db_get_string_size (str), &escaped_string, &escaped_string_size);
       if (error_code)
 	{
@@ -1967,8 +1967,9 @@ db_string_quote (const DB_VALUE * str, DB_VALUE * res)
 
       db_make_null (res);
       DB_TYPE result_type = DB_TYPE_VARCHAR;
-      qstr_make_typed_string (result_type, res, TP_FLOATING_PRECISION_VALUE, escaped_string, escaped_string_size - 1,
-			      db_get_string_codeset (str), db_get_string_collation (str));
+      qstr_make_typed_string (result_type, res, TP_FLOATING_PRECISION_VALUE, escaped_string,
+			      (int) escaped_string_size - 1, db_get_string_codeset (str),
+			      db_get_string_collation (str));
 
       res->need_clear = true;
       return NO_ERROR;

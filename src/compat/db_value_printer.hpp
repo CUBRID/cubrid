@@ -26,6 +26,8 @@
 #ifndef _DB_VALUE_PRINTER_HPP_
 #define _DB_VALUE_PRINTER_HPP_
 
+#include <cstdio>
+
 struct db_collection;
 struct db_midxkey;
 struct db_monetary;
@@ -53,5 +55,8 @@ class db_value_printer
     void describe_midxkey (const db_midxkey *midxkey, int help_Max_set_elements=20);  //former describe_midxkey()
     void describe_set (const db_collection *set, int help_Max_set_elements=20);       //former describe_set()
 };
+
+void db_fprint_value (FILE *fp, const db_value *value);
+void db_sprint_value (const db_value *value, string_buffer &sb);
 
 #endif //_DB_VALUE_PRINTER_HPP_

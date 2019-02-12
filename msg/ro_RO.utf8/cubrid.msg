@@ -1272,7 +1272,7 @@ $ LOADDB
 1203 Tipul JSON-ului de la calea %1$s este invalid. Expected %2$s, dar am gasit %3$s.
 1204 Cheia "%1$s" din json este duplicata
 1205 Invalid type %1$s. Expecting JSON document compatible data type (STRING or JSON).
-1206 Reserved error for JSON.
+1206 Calea Json "%1$s" nu adresează un element al unui Json ARRAY.
 1207 Reserved error for JSON.
 1208 Reserved error for JSON.
 1209 Reserved error for JSON.
