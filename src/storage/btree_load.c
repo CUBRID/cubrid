@@ -158,22 +158,25 @@ struct index_builder_loader_context
   std::atomic<std::uint64_t> m_tasks_executed;
   int m_tran_index;
   int m_error_code;
+  const TP_DOMAIN* m_key_type;
 };
 
 class index_builder_loader_task: public cubthread::entry_task
 {
 private:
     BTID m_btid;
-    DB_VALUE m_key;
+    std::vector<DB_VALUE> m_keys;
     OID m_class_oid, m_oid;
     int m_unique_pk;
     index_builder_loader_context & m_load_context; // Loader context.
+    size_t m_memsize;
 
 public:
     index_builder_loader_task (const BTID * btid, const OID * class_oid, const OID * oid, int unique_pk,
                                index_builder_loader_context & load_context);
     
-    void set_key (const DB_VALUE * key);
+    bool set_key (const DB_VALUE * key);
+    void clear_keys ();
 
     ~index_builder_loader_task ();
 
@@ -225,7 +228,7 @@ static int online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, H
 				 int n_classes, int *attrids, int n_attrs, FUNCTION_INDEX_INFO func_idx_info,
 				 PRED_EXPR_WITH_CONTEXT * filter_pred, int *attrs_prefix_length,
 				 HEAP_CACHE_ATTRINFO * attr_info, HEAP_SCANCACHE * scancache, int unique_pk,
-				 int ib_thread_count);
+				 int ib_thread_count, const TP_DOMAIN * key_type);
 static bool btree_is_worker_pool_logging_true ();
 
 /*
@@ -4561,7 +4564,7 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
       ret =
 	online_index_builder (thread_p, &btid_int, &hfids[cur_class], &class_oids[cur_class], n_classes, attr_ids,
 			      n_attrs, func_index_info, filter_pred, attrs_prefix_length, &attr_info, &scan_cache,
-			      unique_pk, ib_thread_count);
+			      unique_pk, ib_thread_count, key_type);
       if (ret != NO_ERROR)
 	{
 	  break;
@@ -4781,7 +4784,7 @@ static int
 online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids, OID * class_oids, int n_classes,
 		      int *attrids, int n_attrs, FUNCTION_INDEX_INFO func_idx_info,
 		      PRED_EXPR_WITH_CONTEXT * filter_pred, int *attrs_prefix_length, HEAP_CACHE_ATTRINFO * attr_info,
-		      HEAP_SCANCACHE * scancache, int unique_pk, int ib_thread_count)
+		      HEAP_SCANCACHE * scancache, int unique_pk, int ib_thread_count, const TP_DOMAIN * key_type)
 {
   int ret = NO_ERROR, eval_res;
   OID cur_oid;
@@ -4798,6 +4801,7 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
   char midxkey_buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_midxkey_buf;
   index_builder_loader_context load_context;
   bool is_parallel = ib_thread_count > 0;
+  index_builder_loader_task *load_task = NULL;
 
   // *INDENT-OFF*
   // a worker pool is built only of loading is done in parallel
@@ -4821,6 +4825,7 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
   load_context.m_has_error = false;
   load_context.m_error_code = NO_ERROR;
   load_context.m_tasks_executed = 0UL;
+  load_context.m_key_type = key_type;
 
   /* Start extracting from heap. */
   for (;;)
@@ -4903,12 +4908,16 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 	}
 
       /* Dispatch the insert operation */
-      index_builder_loader_task *load_task = new index_builder_loader_task (btid_int->sys_btid, &class_oids[cur_class],
-									    &cur_oid, unique_pk, load_context);
-
-      load_task->set_key (p_dbvalue);
-
-      thread_get_manager ()->push_task (ib_workpool, load_task);
+      if (load_task == NULL)
+	{
+	  load_task = new index_builder_loader_task (btid_int->sys_btid, &class_oids[cur_class], &cur_oid, unique_pk,
+						     load_context);
+	}
+      if (load_task->set_key (p_dbvalue))
+	{
+	  thread_get_manager ()->push_task (ib_workpool, load_task);
+	  load_task = NULL;
+	}
 
       /* Increment tasks started. */
       tasks_started++;
@@ -4975,18 +4984,32 @@ index_builder_loader_task::index_builder_loader_task (const BTID * btid, const O
   m_unique_pk = unique_pk;
   m_load_context.m_has_error = false;
   m_load_context.m_tran_index = thread_get_thread_entry_info ()->tran_index;
-  db_make_null (&m_key);
+  m_memsize = 0;
 }
 
 index_builder_loader_task::~index_builder_loader_task ()
 {
-  cubmem::switch_to_global_allocator_and_call (pr_clear_value, &m_key);
+  cubmem::switch_to_global_allocator_and_call ([this] { clear_keys (); });
+}
+
+bool
+index_builder_loader_task::set_key (const DB_VALUE * key)
+{
+  m_keys.emplace_back ();
+  db_value& last_key = m_keys.back ();
+  db_make_null (&last_key);
+  cubmem::switch_to_global_allocator_and_call (qdata_copy_db_value, &last_key, key);
+  m_memsize += m_load_context.m_key_type->type->get_disk_size_of_value (&last_key);
+  return (m_memsize > (size_t) prm_get_bigint_value (PRM_ID_IB_TASK_MEMSIZE));
 }
 
 void
-index_builder_loader_task::set_key (const DB_VALUE * key)
+index_builder_loader_task::clear_keys ()
 {
-  cubmem::switch_to_global_allocator_and_call (qdata_copy_db_value, &m_key, key);
+  for (auto key : m_keys)
+    {
+      pr_clear_value (&key);
+    }
 }
 
 void
@@ -5002,16 +5025,22 @@ index_builder_loader_task::execute (cubthread::entry & thread_ref)
 
   thread_ref.tran_index = m_load_context.m_tran_index;
 
-  ret = btree_online_index_dispatcher (&thread_ref, &m_btid, &m_key, &m_class_oid, &m_oid,
-				       m_unique_pk, BTREE_OP_ONLINE_INDEX_IB_INSERT, NULL);
-
-  if (ret != NO_ERROR)
+  for (auto& key : m_keys)
     {
-      if (!m_load_context.m_has_error.exchange (true))
+      ret = btree_online_index_dispatcher (&thread_ref, &m_btid, &key, &m_class_oid, &m_oid,
+				           m_unique_pk, BTREE_OP_ONLINE_INDEX_IB_INSERT, NULL);
+
+      if (ret != NO_ERROR)
         {
-          m_load_context.m_error_code = ret;
-          // TODO: We need a mechanism to also copy the error message!!
+          if (!m_load_context.m_has_error.exchange (true))
+            {
+              m_load_context.m_error_code = ret;
+              // TODO: We need a mechanism to also copy the error message!!
+            }
+          break;
         }
+
+      cubmem::switch_to_global_allocator_and_call (pr_clear_value, &key);
     }
 
   /* Increment tasks executed. */

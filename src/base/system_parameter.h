@@ -432,8 +432,10 @@ enum param_id
   PRM_ID_LOG_PGBUF_VICTIM_FLUSH,
   PRM_ID_LOG_CHKPT_DETAILED,
 
+  PRM_ID_IB_TASK_MEMSIZE,
+
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_LOG_CHKPT_DETAILED
+  PRM_LAST_ID = PRM_ID_IB_TASK_MEMSIZE
 };
 typedef enum param_id PARAM_ID;
 

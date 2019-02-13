@@ -665,6 +665,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_TRACK_REQUESTS "track_client_requests"
 #define PRM_NAME_LOG_PGBUF_VICTIM_FLUSH "log_pgbuf_victim_flush"
 #define PRM_NAME_LOG_CHKPT_DETAILED "detailed_checkpoint_logging"
+#define PRM_NAME_IB_TASK_MEMSIZE "index_load_task_memsize"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
@@ -2225,6 +2226,12 @@ static unsigned int prm_log_pgbuf_victim_flush_flag = 0;
 bool PRM_LOG_CHKPT_DETAILED = false;
 static bool prm_log_chkpt_detailed_default = false;
 static unsigned int prm_log_chkpt_detailed_flag = 0;
+
+UINT64 PRM_IB_TASK_MEMSIZE = 16 * ONE_M;
+static bool prm_ib_task_memsize_default = 16 * ONE_M;
+static UINT64 prm_ib_task_memsize_lower = ONE_K;
+static UINT64 prm_ib_task_memsize_upper = 128 * ONE_M;
+static unsigned int prm_ib_task_memsize_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5711,6 +5718,17 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_log_chkpt_detailed_default,
    (void *) &PRM_LOG_CHKPT_DETAILED,
    (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_IB_TASK_MEMSIZE,
+   PRM_NAME_IB_TASK_MEMSIZE,
+   (PRM_FOR_SERVER | PRM_SIZE_UNIT | PRM_HIDDEN),
+   PRM_BIGINT,
+   &prm_ib_task_memsize_flag,
+   (void *) &prm_ib_task_memsize_default,
+   (void *) &PRM_IB_TASK_MEMSIZE,
+   (void *) &prm_ib_task_memsize_upper, (void *) &prm_ib_task_memsize_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
