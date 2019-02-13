@@ -5063,7 +5063,7 @@ index_builder_loader_task::execute (cubthread::entry & thread_ref)
   /* Increment tasks executed. */
   if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
     {
-      _er_log_debug (ARG_FILE_LINE, "Finished task; loaded %z keys\n", key_count);
+      _er_log_debug (ARG_FILE_LINE, "Finished task; loaded %zu keys\n", key_count);
     }
   m_load_context.m_tasks_executed++;
 }

@@ -2228,7 +2228,7 @@ static bool prm_log_chkpt_detailed_default = false;
 static unsigned int prm_log_chkpt_detailed_flag = 0;
 
 UINT64 PRM_IB_TASK_MEMSIZE = 16 * ONE_M;
-static bool prm_ib_task_memsize_default = 16 * ONE_M;
+static UINT64 prm_ib_task_memsize_default = 16 * ONE_M;
 static UINT64 prm_ib_task_memsize_lower = ONE_K;
 static UINT64 prm_ib_task_memsize_upper = 128 * ONE_M;
 static unsigned int prm_ib_task_memsize_flag = 0;
