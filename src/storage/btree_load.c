@@ -161,23 +161,29 @@ struct index_builder_loader_context
   const TP_DOMAIN* m_key_type;
 };
 
+struct index_builder_key_oid
+{
+  DB_VALUE m_key;
+  OID m_oid;
+};
+
 class index_builder_loader_task: public cubthread::entry_task
 {
   private:
     BTID m_btid;
-    std::vector<DB_VALUE> m_keys;
-    OID m_class_oid, m_oid;
+    std::vector<index_builder_key_oid> m_keys_oids;
+    OID m_class_oid;
     int m_unique_pk;
     index_builder_loader_context & m_load_context; // Loader context.
     size_t m_memsize;
 
   public:
-    index_builder_loader_task (const BTID * btid, const OID * class_oid, const OID * oid, int unique_pk,
+    index_builder_loader_task (const BTID * btid, const OID * class_oid, int unique_pk,
                                index_builder_loader_context & load_context);
     ~index_builder_loader_task ();
     
     // add key to key set and return true if task is ready for execution, false otherwise
-    bool set_key (const DB_VALUE * key);
+    bool set_key (const DB_VALUE * key, const OID& oid);
     bool has_keys () const;
 
     void execute (cubthread::entry & thread_ref);
@@ -4913,10 +4919,10 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
       /* Dispatch the insert operation */
       if (load_task == NULL)
 	{
-	  load_task.reset (new index_builder_loader_task (btid_int->sys_btid, &class_oids[cur_class], &cur_oid,
-                                                          unique_pk, load_context));
+	  load_task.reset (new index_builder_loader_task (btid_int->sys_btid, &class_oids[cur_class], unique_pk,
+                                                          load_context));
 	}
-      if (load_task->set_key (p_dbvalue))
+      if (load_task->set_key (p_dbvalue, cur_oid))
 	{
 	  thread_get_manager ()->push_task (ib_workpool, load_task.release ());
           /* Increment tasks started. */
@@ -4981,13 +4987,12 @@ btree_is_worker_pool_logging_true ()
   return cubthread::is_logging_configured (cubthread::LOG_WORKER_POOL_INDEX_BUILDER);
 }
 
-index_builder_loader_task::index_builder_loader_task (const BTID * btid, const OID * class_oid, const OID * oid,
-                                                      int unique_pk, index_builder_loader_context & load_context)
+index_builder_loader_task::index_builder_loader_task (const BTID * btid, const OID * class_oid, int unique_pk,
+                                                      index_builder_loader_context & load_context)
   : m_load_context (load_context)
 {
   BTID_COPY (&m_btid, btid);
   COPY_OID (&m_class_oid, class_oid);
-  COPY_OID (&m_oid, oid);
   m_unique_pk = unique_pk;
   m_load_context.m_has_error = false;
   m_load_context.m_tran_index = thread_get_thread_entry_info ()->tran_index;
@@ -5000,12 +5005,16 @@ index_builder_loader_task::~index_builder_loader_task ()
 }
 
 bool
-index_builder_loader_task::set_key (const DB_VALUE * key)
+index_builder_loader_task::set_key (const DB_VALUE * key, const OID& oid)
 {
-  m_keys.emplace_back ();
-  db_value& last_key = m_keys.back ();
+  m_keys_oids.emplace_back ();
+
+  m_keys_oids.back ().m_oid = oid;
+
+  db_value& last_key = m_keys_oids.back ().m_key;
   db_make_null (&last_key);
   cubmem::switch_to_global_allocator_and_call (qdata_copy_db_value, &last_key, key);
+
   m_memsize += m_load_context.m_key_type->type->get_disk_size_of_value (&last_key);
   m_memsize += OR_OID_SIZE;
   m_memsize = DB_ALIGN (m_memsize, BTREE_MAX_ALIGN);
@@ -5015,15 +5024,15 @@ index_builder_loader_task::set_key (const DB_VALUE * key)
 bool
 index_builder_loader_task::has_keys () const
 {
-  return !m_keys.empty ();
+  return !m_keys_oids.empty ();
 }
 
 void
 index_builder_loader_task::clear_keys ()
 {
-  for (auto key : m_keys)
+  for (auto& key_oid : m_keys_oids)
     {
-      pr_clear_value (&key);
+      pr_clear_value (&key_oid.m_key);
     }
 }
 
@@ -5041,9 +5050,9 @@ index_builder_loader_task::execute (cubthread::entry & thread_ref)
 
   thread_ref.tran_index = m_load_context.m_tran_index;
 
-  for (auto& key : m_keys)
+  for (auto& key_oid : m_keys_oids)
     {
-      ret = btree_online_index_dispatcher (&thread_ref, &m_btid, &key, &m_class_oid, &m_oid,
+      ret = btree_online_index_dispatcher (&thread_ref, &m_btid, &key_oid.m_key, &m_class_oid, &key_oid.m_oid,
 				           m_unique_pk, BTREE_OP_ONLINE_INDEX_IB_INSERT, NULL);
 
       if (ret != NO_ERROR)
@@ -5056,7 +5065,7 @@ index_builder_loader_task::execute (cubthread::entry & thread_ref)
           break;
         }
 
-      cubmem::switch_to_global_allocator_and_call (pr_clear_value, &key);
+      cubmem::switch_to_global_allocator_and_call (pr_clear_value, &key_oid.m_key);
       key_count++;
     }
 
