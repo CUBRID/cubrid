@@ -163,7 +163,7 @@ struct index_builder_loader_context
 
 class index_builder_loader_task: public cubthread::entry_task
 {
-private:
+  private:
     BTID m_btid;
     std::vector<DB_VALUE> m_keys;
     OID m_class_oid, m_oid;
@@ -171,16 +171,19 @@ private:
     index_builder_loader_context & m_load_context; // Loader context.
     size_t m_memsize;
 
-public:
+  public:
     index_builder_loader_task (const BTID * btid, const OID * class_oid, const OID * oid, int unique_pk,
                                index_builder_loader_context & load_context);
-    
-    bool set_key (const DB_VALUE * key);
-    void clear_keys ();
-
     ~index_builder_loader_task ();
+    
+    // add key to key set and return true if task is ready for execution, false otherwise
+    bool set_key (const DB_VALUE * key);
+    bool has_keys () const;
 
     void execute (cubthread::entry & thread_ref);
+
+  private:
+    void clear_keys ();
 };
 
 // *INDENT-ON*
@@ -4801,7 +4804,7 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
   char midxkey_buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_midxkey_buf;
   index_builder_loader_context load_context;
   bool is_parallel = ib_thread_count > 0;
-  index_builder_loader_task *load_task = NULL;
+  std::unique_ptr<index_builder_loader_task> load_task = NULL;
 
   // *INDENT-OFF*
   // a worker pool is built only of loading is done in parallel
@@ -4910,17 +4913,15 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
       /* Dispatch the insert operation */
       if (load_task == NULL)
 	{
-	  load_task = new index_builder_loader_task (btid_int->sys_btid, &class_oids[cur_class], &cur_oid, unique_pk,
-						     load_context);
+	  load_task.reset (new index_builder_loader_task (btid_int->sys_btid, &class_oids[cur_class], &cur_oid,
+                                                          unique_pk, load_context));
 	}
       if (load_task->set_key (p_dbvalue))
 	{
-	  thread_get_manager ()->push_task (ib_workpool, load_task);
-	  load_task = NULL;
+	  thread_get_manager ()->push_task (ib_workpool, load_task.release ());
+          /* Increment tasks started. */
+          tasks_started++;
 	}
-
-      /* Increment tasks started. */
-      tasks_started++;
 
       /* Clear index key. */
       pr_clear_value (p_dbvalue);
@@ -4933,6 +4934,12 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, load_context.m_error_code, 0);
 	  return load_context.m_error_code;
 	}
+    }
+  if (load_task != NULL && load_task->has_keys ())
+    {
+      thread_get_manager ()->push_task (ib_workpool, load_task.release ());
+      /* Increment tasks started. */
+      tasks_started++;
     }
 
   /* Check if the workerpool is empty */
@@ -5000,7 +5007,15 @@ index_builder_loader_task::set_key (const DB_VALUE * key)
   db_make_null (&last_key);
   cubmem::switch_to_global_allocator_and_call (qdata_copy_db_value, &last_key, key);
   m_memsize += m_load_context.m_key_type->type->get_disk_size_of_value (&last_key);
+  m_memsize += OR_OID_SIZE;
+  m_memsize = DB_ALIGN (m_memsize, BTREE_MAX_ALIGN);
   return (m_memsize > (size_t) prm_get_bigint_value (PRM_ID_IB_TASK_MEMSIZE));
+}
+
+bool
+index_builder_loader_task::has_keys () const
+{
+  return !m_keys.empty ();
 }
 
 void
@@ -5016,6 +5031,7 @@ void
 index_builder_loader_task::execute (cubthread::entry & thread_ref)
 {
   int ret = NO_ERROR;
+  size_t key_count = 0;
 
   /* Check for possible errors set by the other threads. */
   if (m_load_context.m_has_error)
@@ -5041,11 +5057,14 @@ index_builder_loader_task::execute (cubthread::entry & thread_ref)
         }
 
       cubmem::switch_to_global_allocator_and_call (pr_clear_value, &key);
+      key_count++;
     }
 
   /* Increment tasks executed. */
+  if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
+    {
+      _er_log_debug (ARG_FILE_LINE, "Finished task; loaded %z keys\n", key_count);
+    }
   m_load_context.m_tasks_executed++;
-
-  return;
 }
 // *INDENT-ON*
