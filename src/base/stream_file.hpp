@@ -154,8 +154,8 @@ namespace cubstream
 	finalize ();
       };
 
-      void init (const stream_position& start_append_pos = 0,
-                 const size_t file_size = DEFAULT_VOLUME_SIZE,
+      void init (const stream_position &start_append_pos = 0,
+		 const size_t file_size = DEFAULT_VOLUME_SIZE,
 		 const int print_digits = DEFAULT_FILENAME_DIGITS);
 
       void set_path (const std::string &path)
@@ -209,7 +209,7 @@ namespace cubstream
       }
       void stop_daemon (void)
       {
-        m_is_stopped = true;
+	m_is_stopped = true;
       }
   };
 

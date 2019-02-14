@@ -126,7 +126,7 @@ namespace cubstream
   };
 
 
-  void stream_file::init (const stream_position& start_append_pos, const size_t file_size, const int print_digits)
+  void stream_file::init (const stream_position &start_append_pos, const size_t file_size, const int print_digits)
   {
     m_stream.set_stream_file (this);
 
@@ -162,7 +162,7 @@ namespace cubstream
     std::map<int,int>::iterator it;
 
     m_is_stopped = true;
-    
+
     force_start_flush ();
 
     cubthread::get_manager ()->destroy_daemon (m_write_daemon);
@@ -361,7 +361,7 @@ namespace cubstream
 	    if (vol_seqno >= m_start_vol_seqno)
 	      {
 		m_start_vol_seqno = vol_seqno + 1;
-                last_full_vol_drop_pos = m_start_vol_seqno * m_desired_volume_size;
+		last_full_vol_drop_pos = m_start_vol_seqno * m_desired_volume_size;
 	      }
 	    drop_lock.unlock ();
 
@@ -381,7 +381,7 @@ namespace cubstream
       }
     if (force_set == true)
       {
-        m_drop_position = actual_drop_pos;
+	m_drop_position = actual_drop_pos;
       }
     drop_lock.unlock ();
 
@@ -527,27 +527,27 @@ namespace cubstream
 
     if ((flags & FILE_CREATE_FLAG) == FILE_CREATE_FLAG)
       {
-        fd = create_file (file_path);
-        if (fd < 0 && errno == EACCES)
-          {
-            if (std::remove (file_path) != 0)
-              {
-	        er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_TRYING_TO_REMOVE_PERMANENT_VOLUME, 1,
+	fd = create_file (file_path);
+	if (fd < 0 && errno == EACCES)
+	  {
+	    if (std::remove (file_path) != 0)
+	      {
+		er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_TRYING_TO_REMOVE_PERMANENT_VOLUME, 1,
 				     file_path);
-	        return ER_BO_TRYING_TO_REMOVE_PERMANENT_VOLUME;
-              }
+		return ER_BO_TRYING_TO_REMOVE_PERMANENT_VOLUME;
+	      }
 
-            fd = create_file (file_path);
-            if (fd < 0)
-              {
-                /* TODO[arnia] : error */
-                assert (false);
-                return -1;
-              }
-          }
+	    fd = create_file (file_path);
+	    if (fd < 0)
+	      {
+		/* TODO[arnia] : error */
+		assert (false);
+		return -1;
+	      }
+	  }
 
-        close (fd);
-        /* closed and fall through to reopen */
+	close (fd);
+	/* closed and fall through to reopen */
       }
 #if defined (WINDOWS)
     fd = open (file_path, O_RDWR | O_BINARY | flags);
@@ -558,7 +558,7 @@ namespace cubstream
     if (fd < 0)
       {
 	/* TODO[arnia] : error */
-        assert (false);
+	assert (false);
       }
 
     return fd;
@@ -826,36 +826,36 @@ namespace cubstream
   {
     if (start_position < get_last_flushed_position ())
       {
-        return;
+	return;
       }
     std::unique_lock<std::mutex> ulock (m_flush_mutex);
     assert (start_position + amount_to_flush <= m_stream.get_last_committed_pos ());
     if (start_position > m_req_start_flush_position
-        || m_req_start_flush_position == 0
-        || (start_position + amount_to_flush > m_target_flush_position))
+	|| m_req_start_flush_position == 0
+	|| (start_position + amount_to_flush > m_target_flush_position))
       {
-        if (start_position > m_req_start_flush_position)
-          {
-            m_req_start_flush_position = start_position;
-          }
+	if (start_position > m_req_start_flush_position)
+	  {
+	    m_req_start_flush_position = start_position;
+	  }
 
-        if (start_position + amount_to_flush > m_target_flush_position)
-          {
+	if (start_position + amount_to_flush > m_target_flush_position)
+	  {
 	    m_target_flush_position = start_position + amount_to_flush;
-          }
+	  }
 
 	assert (m_req_start_flush_position < m_target_flush_position);
-        assert (m_target_flush_position <= m_stream.get_last_committed_pos ());
+	assert (m_target_flush_position <= m_stream.get_last_committed_pos ());
 
 	m_flush_cv.notify_one ();
       }
   }
 
   void stream_file::force_start_flush (void)
-    {
-      std::unique_lock<std::mutex> ulock (m_flush_mutex);
-      m_flush_cv.notify_one ();
-    }
+  {
+    std::unique_lock<std::mutex> ulock (m_flush_mutex);
+    m_flush_cv.notify_one ();
+  }
 
   void stream_file::wait_flush_signal (stream_position &start_position, stream_position &target_position)
   {
