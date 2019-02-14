@@ -42,7 +42,7 @@ struct heap_cache_attrinfo
 
 /* declare ahead XASL node. */
 struct xasl_node;
-typedef struct xasl_node XASL_NODE;
+
 #define REGU_VARIABLE_XASL(r)      ((r)->xasl)
 
 typedef enum
@@ -419,7 +419,7 @@ struct regu_variable_node
   TP_DOMAIN *domain;		/* domain of the value in this regu variable */
   TP_DOMAIN *original_domain;	/* original domain, used at execution in case of XASL clones */
   DB_VALUE *vfetch_to;		/* src db_value to fetch into in qp_fetchvlist */
-  XASL_NODE *xasl;		/* query xasl pointer */
+  xasl_node *xasl;		/* query xasl pointer */
   union regu_data_value
   {
     /* fields used by both XASL interpreter and regulator */

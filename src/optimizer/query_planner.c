@@ -49,8 +49,8 @@
 #include "xasl_generation.h"
 #include "schema_manager.h"
 #include "network_interface_cl.h"
-
 #include "dbtype.h"
+#include "regu_var.h"
 
 #define INDENT_INCR		4
 #define INDENT_FMT		"%*c"

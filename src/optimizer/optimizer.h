@@ -38,10 +38,10 @@
 #include "parser.h"
 #include "release_string.h"
 #include "parser.h"
-#include "xasl.h"
 
 // forward definitions
 struct xasl_node;
+struct regu_variable_node;
 
 /*
  * These #defines are used in conjunction with assert() to announce
@@ -142,8 +142,8 @@ typedef enum
 
 typedef struct qo_limit_info
 {
-  REGU_VARIABLE *lower;
-  REGU_VARIABLE *upper;
+  regu_variable_node *lower;
+  regu_variable_node *upper;
 } QO_LIMIT_INFO;
 
 extern QO_NODE *lookup_node (PT_NODE * attr, QO_ENV * env, PT_NODE ** entity);

@@ -53,7 +53,6 @@ struct compile_context;
 struct xasl_node_header;
 struct xasl_stream;
 
-
 /* killtran supporting structures and functions */
 typedef struct one_tran_info ONE_TRAN_INFO;
 struct one_tran_info

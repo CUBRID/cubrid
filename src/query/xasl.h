@@ -50,7 +50,8 @@
 struct binary_heap;
 #endif // SERVER_MODE || SA_MODE
 
-
+struct xasl_node;
+typedef struct xasl_node XASL_NODE;
 
 /* XASL HEADER */
 /*
