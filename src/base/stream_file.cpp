@@ -824,6 +824,10 @@ namespace cubstream
 
   void stream_file::start_flush (const stream_position &start_position, const size_t amount_to_flush)
   {
+    if (start_position < get_last_flushed_position ())
+      {
+        return;
+      }
     std::unique_lock<std::mutex> ulock (m_flush_mutex);
     assert (start_position + amount_to_flush <= m_stream.get_last_committed_pos ());
     if (start_position > m_req_start_flush_position

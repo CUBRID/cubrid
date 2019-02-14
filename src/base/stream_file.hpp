@@ -102,7 +102,8 @@ namespace cubstream
        * even if exceeds the digits in filename */
       int m_filename_digits_seqno;
 
-      /* last position which must be flushed */
+      /* last position which must be flushed; this is the position imposed to flusher to be reached
+       * (it may not be appended yet) */
       stream_position m_target_flush_position;
 
       stream_position m_req_start_flush_position;
@@ -205,6 +206,10 @@ namespace cubstream
       bool is_stopped (void)
       {
 	return m_is_stopped;
+      }
+      void stop_daemon (void)
+      {
+        m_is_stopped = true;
       }
   };
 

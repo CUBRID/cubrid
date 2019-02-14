@@ -587,6 +587,7 @@ namespace test_stream
 
     /* create a stream for packing and add pack objects to stream */
     cubstream::multi_thread_stream test_stream_for_pack (10 * 1024 * 1024, 10);
+    test_stream_for_pack.set_buffer_reserve_margin (5 * 1024 * 1024);
 
     test_stream_entry se (&test_stream_for_pack);
 
@@ -762,6 +763,11 @@ namespace test_stream
 		res = -1;
 		assert (false);
 	      }
+
+            cubstream::stream_position drop_pos = test_stream_for_pack.get_curr_read_position ();
+
+            test_stream_for_pack.set_last_recyclable_pos (drop_pos);
+
 	  }
       }
     std::cout << "Done" << std::endl;
@@ -930,12 +936,14 @@ namespace test_stream
     int err = NO_ERROR;
     stream_read_partial_copy_context my_read_handler;
     int my_read_cnt = 0;
+    bool is_stop = false;
 
     stream_context_manager::g_running_readers.set (m_reader_id);
     std::cout << "      Start reading (as byte stream) thread " << std::endl;
 
     while (stream_context_manager::g_running_packers.any () && stream_context_manager::g_stop_packer == false)
       {
+        int spin_read = 0;
 	to_read = 1 + std::rand () % 1024;
 
 	do
@@ -946,8 +954,22 @@ namespace test_stream
 		break;
 	      }
 	    std::this_thread::sleep_for (std::chrono::microseconds (10));
+            spin_read++;
+
+            if (spin_read > 100
+                && (stream_context_manager::g_running_packers.any () == false
+                    && stream_context_manager::g_stop_packer == true))
+              {
+                is_stop = true;
+                break;
+              }
 	  }
 	while (my_curr_pos + to_read > last_committed_pos);
+
+        if (is_stop)
+          {
+            break;
+          }
 
 
 	err = stream_context_manager::g_stream->read_partial (my_curr_pos, to_read, actual_read_bytes,
@@ -1287,6 +1309,19 @@ namespace test_stream
 #undef TEST_OBJS_IN_ENTRIES_CNT
   }
 
+  class mts_dummy : public cubstream::multi_thread_stream
+    {
+      public:
+        mts_dummy (const size_t buffer_capacity, const int max_appenders)
+          : cubstream::multi_thread_stream (buffer_capacity, max_appenders)
+          {
+          }
+
+      void force_last_committed (const cubstream::stream_position &pos)
+        {
+          m_last_committed_pos = pos;
+        }
+    };
 
   int test_stream_file1 (size_t file_size, size_t desired_amount, size_t buffer_size)
   {
@@ -1295,11 +1330,12 @@ namespace test_stream
 
     init_common_cubrid_modules ();
 
-    cubstream::multi_thread_stream *my_stream = new cubstream::multi_thread_stream (stream_buffer_size, 100);
+    mts_dummy *my_stream = new mts_dummy (stream_buffer_size, 100);
 
     my_stream->set_name ("my_test_stream");
 
     cubstream::stream_file *my_stream_file = new cubstream::stream_file (*my_stream, file_size, 2);
+    my_stream_file->stop_daemon ();
 
     /* path is current folder */
     system ("mkdir test_stream_folder");
@@ -1329,6 +1365,10 @@ namespace test_stream
       {
 	int amount = std::rand () % buffer_size;
 	amount = (amount == 0) ? 10 : amount;
+        
+        my_stream->force_last_committed (stream_pos + amount);
+        my_stream_file->start_flush (stream_pos, amount);
+
 	res = my_stream_file->write (stream_pos, buffer, amount);
 	if (res < 0)
 	  {
@@ -1447,6 +1487,11 @@ namespace test_stream
     return res;
   }
 
+  stream_context_manager ctx_sf1;
+  stream_context_manager ctx_sf2;
+  stream_context_manager ctx_sf3;
+
+
   int test_stream_file_mt (const int pack_threads,
 			   const int unpack_threads,
 			   const int read_bytes_threads,
@@ -1503,6 +1548,8 @@ namespace test_stream
 
     memset (stream_context_manager::g_read_positions, 0, sizeof (stream_context_manager::g_read_positions));
 
+    stream_context_manager::g_stop_packer = false;
+    stream_context_manager::g_pause_unpacker = false;
     stream_context_manager::g_running_packers.reset ();
     stream_context_manager::g_running_readers.reset ();
     /* drop position of stream should be updated only by flusher */
@@ -1537,14 +1584,14 @@ namespace test_stream
 
     cubthread::entry_workpool *packing_worker_pool =
 	    cub_th_m->create_worker_pool (stream_context_manager::g_pack_threads,
-					  stream_context_manager::g_pack_threads, NULL, &ctx_m1, 1, false);
+					  stream_context_manager::g_pack_threads, NULL, &ctx_sf1, 1, false);
 
     cubthread::entry_workpool *unpacking_worker_pool  = NULL;
     if (stream_context_manager::g_unpack_threads > 0)
       {
 	unpacking_worker_pool =
 		cub_th_m->create_worker_pool (stream_context_manager::g_unpack_threads,
-					      stream_context_manager::g_unpack_threads, NULL, &ctx_m2, 1, false);
+					      stream_context_manager::g_unpack_threads, NULL, &ctx_sf2, 1, false);
       }
 
     cubthread::entry_workpool *read_byte_worker_pool = NULL;
@@ -1552,7 +1599,7 @@ namespace test_stream
       {
 	read_byte_worker_pool =
 		cub_th_m->create_worker_pool (stream_context_manager::g_read_byte_threads,
-					      stream_context_manager::g_read_byte_threads, NULL, &ctx_m3, 1, false);
+					      stream_context_manager::g_read_byte_threads, NULL, &ctx_sf3, 1, false);
       }
 
     for (i = 0; i < stream_context_manager::g_pack_threads; i++)

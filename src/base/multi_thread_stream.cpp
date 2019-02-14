@@ -453,7 +453,7 @@ namespace cubstream
 
         assert (m_oldest_buffered_position <= local_last_recyclable);
         assert (local_last_recyclable <= m_last_recyclable_pos);
-        assert (m_stream_file->get_max_available_from_pos (m_oldest_buffered_position) >= 0);
+        assert (m_stream_file == NULL || m_stream_file->get_max_available_from_pos (m_oldest_buffered_position) >= 0);
       }
 
     /* set pointer under mutex lock, a "commit" call may collapse up to position of this slot */
@@ -603,7 +603,7 @@ namespace cubstream
 
     m_oldest_buffered_position = m_last_committed_pos - total_in_buffer;
     assert (m_oldest_buffered_position <= m_last_recyclable_pos);
-    assert (m_stream_file->get_max_available_from_pos (m_oldest_buffered_position) >= 0);
+    assert (m_stream_file == NULL || m_stream_file->get_max_available_from_pos (m_oldest_buffered_position) >= 0);
 
     if (req_start_pos < m_oldest_buffered_position)
       {
@@ -685,11 +685,9 @@ namespace cubstream
   {
     /* wake up flusher (if any) :
      * fill_factor : ratio of flush to disk trigger size occupied in the stream buffer
-     * start_flush_pos >= m_stream_file->get_ack_start_flush_position : current start flush position should be
-     * greater than the position with which the stream_file flush thread has already started to flush */
+     */
     if (m_filled_stream_handler
-	&& fill_factor > 1.0f
-	&& start_flush_pos >= m_stream_file->get_last_flushed_position ())
+	&& fill_factor > 1.0f)
       {
 	m_filled_stream_handler (start_flush_pos, flush_amount);
       }
