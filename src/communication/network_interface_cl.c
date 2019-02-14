@@ -5626,7 +5626,8 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
 		  + OR_BTID_ALIGNED_SIZE	/* fk_refcls_pk_btid */
 		  + or_packed_string_length (fk_name, &fk_strlen)	/* fk_name */
 		  + index_info_size	/* filter predicate or function index stream size */
-		  + OR_INT_SIZE /* Index status */ );
+		  + OR_INT_SIZE	/* Index status */
+		  + OR_INT_SIZE /* Thread count */ );
 
   request = (char *) malloc (request_size);
   if (request == NULL)
@@ -5701,6 +5702,7 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
     }
 
   ptr = or_pack_int (ptr, index_status);	/* Index status. */
+  ptr = or_pack_int (ptr, ib_get_thread_count ());	// Thread count needed for parallel building
 
   req_error =
     net_client_request (NET_SERVER_BTREE_LOADINDEX, request, request_size, reply, OR_ALIGNED_BUF_SIZE (a_reply),
@@ -5766,7 +5768,7 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
 	xbtree_load_online_index (thread_p, btid, bt_name, key_type, class_oids, n_classes, n_attrs, attr_ids,
 				  attrs_prefix_length, hfids, unique_pk, not_null_flag, fk_refcls_oid,
 				  fk_refcls_pk_btid, fk_name, pred_stream, pred_stream_size, expr_stream,
-				  expr_stream_size, func_col_id, func_attr_index_start);
+				  expr_stream_size, func_col_id, func_attr_index_start, 1);
     }
   else
     {

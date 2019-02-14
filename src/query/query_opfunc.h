@@ -74,7 +74,7 @@ struct hierarchy_aggregate_helper
 };
 
 extern void qdata_set_value_list_to_null (val_list_node * val_list);
-extern int qdata_copy_db_value (DB_VALUE * dbval1, DB_VALUE * dbval2);
+extern bool qdata_copy_db_value (DB_VALUE * dbval1, const DB_VALUE * dbval2);
 
 extern int qdata_copy_db_value_to_tuple_value (DB_VALUE * dbval, bool clear_compressed_string, char *tvalp,
 					       int *tval_size);

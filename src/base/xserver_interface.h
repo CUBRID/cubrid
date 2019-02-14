@@ -174,7 +174,7 @@ extern BTID *xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, con
 				       int *attrs_prefix_length, HFID * hfids, int unique_pk, int not_null_flag,
 				       OID * fk_refcls_oid, BTID * fk_refcls_pk_btid, const char *fk_name,
 				       char *pred_stream, int pred_stream_size, char *expr_stream, int expr_steram_size,
-				       int func_col_id, int func_attr_index_start);
+				       int func_col_id, int func_attr_index_start, int ib_thread_count);
 
 extern int xbtree_delete_index (THREAD_ENTRY * thread_p, BTID * btid);
 extern BTREE_SEARCH xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE scan_op_type,

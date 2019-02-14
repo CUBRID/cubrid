@@ -1950,6 +1950,7 @@ struct pt_index_info
   bool reverse;			/* REVERSE */
   bool unique;			/* UNIQUE specified? */
   SM_INDEX_STATUS index_status;	/* Index status : NORMAL / ONLINE / INVISIBLE */
+  int ib_threads;
 };
 
 /* CREATE USER INFO */
