@@ -48,12 +48,14 @@
 
 // forward definitions
 struct indx_info;
+typedef struct indx_info INDX_INFO;
 struct key_range;
 struct key_val_range;
 struct method_sig_list;
 struct pred_expr;
 struct regu_variable_list_node;
 struct val_descr;
+typedef struct val_descr VAL_DESCR;
 struct valptr_list_node;
 
 /*
@@ -117,7 +119,7 @@ struct indx_cov
   QFILE_TUPLE_VALUE_TYPE_LIST *type_list;	/* type list */
   QFILE_TUPLE_RECORD *tplrec;	/* tuple record */
   QFILE_LIST_SCAN_ID *lsid;	/* list file scan identifier */
-  val_descr *val_descr;		/* val descriptor */
+  VAL_DESCR *val_descr;		/* val descriptor */
   valptr_list_node *output_val_list;	/* output val list */
   regu_variable_list_node *regu_val_list;	/* regulator variable list */
   QUERY_ID query_id;		/* query id */
@@ -175,7 +177,7 @@ struct index_skip_scan
 /* typedef struct indx_scan_id INDX_SCAN_ID; - already defined in btree.h */
 struct indx_scan_id
 {
-  indx_info *indx_info;		/* index information */
+  INDX_INFO *indx_info;		/* index information */
   BTREE_TYPE bt_type;		/* index type */
   int bt_num_attrs;		/* num of attributes of the index key */
   ATTR_ID *bt_attr_ids;		/* attr id array of the index key */
@@ -224,7 +226,7 @@ struct indx_scan_id
 typedef struct index_node_scan_id INDEX_NODE_SCAN_ID;
 struct index_node_scan_id
 {
-  indx_info *indx_info;		/* index information */
+  INDX_INFO *indx_info;		/* index information */
   SCAN_PRED scan_pred;		/* scan predicates */
   BTREE_NODE_SCAN btns;
   bool caches_inited;		/* are the caches initialized?? */

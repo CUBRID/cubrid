@@ -44,6 +44,7 @@
 struct qfile_list_id;
 struct qproc_db_value_list;
 struct method_sig_list;
+typedef struct method_sig_list METHOD_SIG_LIST;
 struct val_list_node;
 
 #ifdef SERVER_MODE
@@ -70,7 +71,7 @@ typedef struct method_info METHOD_INFO;
 struct method_info
 {
   qfile_list_id *list_id;	/* list id for arguments */
-  method_sig_list *method_sig_list;	/* method signatures */
+  METHOD_SIG_LIST *method_sig_list;	/* method signatures */
 };
 
 typedef struct method_scan_buffer METHOD_SCAN_BUFFER;

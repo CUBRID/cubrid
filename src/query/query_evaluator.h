@@ -44,9 +44,11 @@
 
 // forward definitions
 struct pred_expr;
+typedef struct pred_expr PRED_EXPR;
 struct regu_variable_list_node;
 struct regu_variable_node;
 struct val_descr;
+typedef struct val_descr VAL_DESCR;
 struct val_list_node;
 
 typedef DB_LOGICAL (*PR_EVAL_FNC) (THREAD_ENTRY * thread_p, pred_expr *, val_descr *, OID *);
@@ -87,7 +89,7 @@ typedef struct scan_pred SCAN_PRED;
 struct scan_pred
 {
   regu_variable_list_node *regu_list;	/* regu list for predicates (or filters) */
-  pred_expr *pred_expr;		/* predicate expressions */
+  PRED_EXPR *pred_expr;		/* predicate expressions */
   PR_EVAL_FNC pr_eval_fnc;	/* predicate evaluation function */
 };
 
@@ -108,7 +110,7 @@ struct filter_info
   SCAN_PRED *scan_pred;		/* predicates of the filter */
   SCAN_ATTRS *scan_attrs;	/* attributes scanning info */
   val_list_node *val_list;	/* value list */
-  val_descr *val_descr;		/* value descriptor */
+  VAL_DESCR *val_descr;		/* value descriptor */
 
   /* class information */
   OID *class_oid;		/* class OID */
