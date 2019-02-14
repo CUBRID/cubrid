@@ -46,6 +46,7 @@
 #include "string_opfunc.h"
 #include "server_interface.h"
 #include "query_opfunc.h"
+#include "regu_var.h"
 #include "tz_support.h"
 #include "db_date.h"
 #include "xasl.h"
@@ -54,12 +55,12 @@
 
 #include "dbtype.h"
 
-static int fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR * vd, OID * obj_oid,
+static int fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr * vd, OID * obj_oid,
 			     QFILE_TUPLE tpl, DB_VALUE ** peek_dbval);
 static int fetch_peek_dbval_pos (REGU_VARIABLE * regu_var, QFILE_TUPLE tpl, int pos, DB_VALUE ** peek_dbval,
 				 QFILE_TUPLE * next_tpl);
 static int fetch_peek_min_max_value_of_width_bucket_func (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
-							  VAL_DESCR * vd, OID * obj_oid, QFILE_TUPLE tpl,
+							  val_descr * vd, OID * obj_oid, QFILE_TUPLE tpl,
 							  DB_VALUE ** min, DB_VALUE ** max);
 
 static bool is_argument_wrapped_with_cast_op (const REGU_VARIABLE * regu_var);
@@ -77,7 +78,7 @@ static int get_date_weekday (const DB_VALUE * src_date, OPERATOR_TYPE op, DB_VAL
  *   peek_dbval(out): Set to the value resulting from the fetch operation
  */
 static int
-fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR * vd, OID * obj_oid, QFILE_TUPLE tpl,
+fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr * vd, OID * obj_oid, QFILE_TUPLE tpl,
 		  DB_VALUE ** peek_dbval)
 {
   ARITH_TYPE *arithptr;
@@ -3755,7 +3756,7 @@ error:
  *
  */
 int
-fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR * vd, OID * class_oid, OID * obj_oid,
+fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr * vd, OID * class_oid, OID * obj_oid,
 		  QFILE_TUPLE tpl, DB_VALUE ** peek_dbval)
 {
   int length;
@@ -3969,7 +3970,7 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	    case F_JSON_UNQUOTE:
 	    case F_JSON_VALID:
 	      {
-		REGU_VARIABLE_LIST operand;
+		regu_variable_list_node *operand;
 
 		operand = funcp->operand;
 
@@ -4024,7 +4025,7 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
 	    case F_ELT:
 	      /* should sync with qdata_elt () */
 	      {
-		REGU_VARIABLE_LIST operand;
+		regu_variable_list_node *operand;
 		DB_VALUE *index = NULL;
 		DB_TYPE index_type;
 		DB_BIGINT idx = 0;
@@ -4324,7 +4325,7 @@ fetch_peek_dbval_pos (REGU_VARIABLE * regu_var, QFILE_TUPLE tpl, int pos, DB_VAL
  *   max(out): the upper bound of width_bucket
  */
 static int
-fetch_peek_min_max_value_of_width_bucket_func (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR * vd,
+fetch_peek_min_max_value_of_width_bucket_func (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr * vd,
 					       OID * obj_oid, QFILE_TUPLE tpl, DB_VALUE ** min, DB_VALUE ** max)
 {
   int er_status = NO_ERROR;
@@ -4438,7 +4439,7 @@ error:
  * see fetch_peek_dbval().
  */
 int
-fetch_copy_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR * vd, OID * class_oid, OID * obj_oid,
+fetch_copy_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr * vd, OID * class_oid, OID * obj_oid,
 		  QFILE_TUPLE tpl, DB_VALUE * dbval)
 {
   int result;
@@ -4498,10 +4499,10 @@ fetch_copy_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR *
  *   peek(int):
  */
 int
-fetch_val_list (THREAD_ENTRY * thread_p, REGU_VARIABLE_LIST regu_list, VAL_DESCR * vd, OID * class_oid, OID * obj_oid,
-		QFILE_TUPLE tpl, int peek)
+fetch_val_list (THREAD_ENTRY * thread_p, regu_variable_list_node * regu_list, val_descr * vd, OID * class_oid,
+		OID * obj_oid, QFILE_TUPLE tpl, int peek)
 {
-  REGU_VARIABLE_LIST regup;
+  regu_variable_list_node *regup;
   QFILE_TUPLE next_tpl;
   int rc, pos, next_pos;
   DB_VALUE *tmp;
@@ -4577,9 +4578,9 @@ fetch_val_list (THREAD_ENTRY * thread_p, REGU_VARIABLE_LIST regu_list, VAL_DESCR
  *   regu_list(in/out): Regulator Variable list
  */
 void
-fetch_init_val_list (REGU_VARIABLE_LIST regu_list)
+fetch_init_val_list (regu_variable_list_node * regu_list)
 {
-  REGU_VARIABLE_LIST regu_p;
+  regu_variable_list_node *regu_p;
   REGU_VARIABLE *regu_var;
 
   for (regu_p = regu_list; regu_p; regu_p = regu_p->next)

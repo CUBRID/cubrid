@@ -33,11 +33,18 @@
 
 #include "dbtype_def.h"
 #include "method_def.hpp"
-#include "regu_var.h"
 #ifndef SERVER_MODE
 #include "work_space.h"
 #include "cursor.h"
 #endif /* SERVER_MODE */
+#include "storage_common.h"
+#include "thread_compat.hpp"
+
+// forward definitions
+struct qfile_list_id;
+struct qproc_db_value_list;
+struct method_sig_list;
+struct val_list_node;
 
 #ifdef SERVER_MODE
 #define VACOMM_BUFFER_SIZE 4096
@@ -62,14 +69,14 @@ struct vacomm_buffer
 typedef struct method_info METHOD_INFO;
 struct method_info
 {
-  QFILE_LIST_ID *list_id;	/* list id for arguments */
-  METHOD_SIG_LIST *method_sig_list;	/* method signatures */
+  qfile_list_id *list_id;	/* list id for arguments */
+  method_sig_list *method_sig_list;	/* method signatures */
 };
 
 typedef struct method_scan_buffer METHOD_SCAN_BUFFER;
 struct method_scan_buffer
 {				/* value array scanbuf */
-  QPROC_DB_VALUE_LIST dbval_list;	/* ptrs into the value array */
+  qproc_db_value_list *dbval_list;	/* ptrs into the value array */
   union
   {				/* ctl info based on type */
     METHOD_INFO method_ctl;
@@ -87,8 +94,8 @@ struct method_scan_buffer
 #endif				/* SERVER_MODE */
 };
 
-extern int method_open_scan (THREAD_ENTRY * thread_p, METHOD_SCAN_BUFFER * scan_buf, QFILE_LIST_ID * list_id,
-			     METHOD_SIG_LIST * method_sig_list);
+extern int method_open_scan (THREAD_ENTRY * thread_p, METHOD_SCAN_BUFFER * scan_buf, qfile_list_id * list_id,
+			     method_sig_list * method_sig_list);
 extern int method_close_scan (THREAD_ENTRY * thread_p, METHOD_SCAN_BUFFER * scan_buf);
-extern SCAN_CODE method_scan_next (THREAD_ENTRY * thread_p, METHOD_SCAN_BUFFER * scan_buf, VAL_LIST * val_list);
+extern SCAN_CODE method_scan_next (THREAD_ENTRY * thread_p, METHOD_SCAN_BUFFER * scan_buf, val_list_node * val_list);
 #endif /* _METHOD_SCAN_H_ */

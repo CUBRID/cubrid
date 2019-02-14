@@ -42,6 +42,7 @@
 #include "tz_support.h"
 #include "db_date.h"
 #include "dbtype.h"
+#include "string_opfunc.h"
 #include "thread_manager.hpp"
 
 #define IS_SUBSET(value)        (value).sub.count >= 0

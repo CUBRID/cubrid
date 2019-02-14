@@ -42,6 +42,9 @@
 #include "lock_manager.h"
 #include "recovery.h"
 
+// forward definition
+struct key_val_range;
+
 #define SINGLE_ROW_INSERT    1
 #define SINGLE_ROW_DELETE    2
 #define SINGLE_ROW_UPDATE    3
@@ -631,7 +634,7 @@ extern int btree_rv_undo_global_unique_stats_commit (THREAD_ENTRY * thread_p, LO
 #include "scan_manager.h"
 
 extern int btree_keyval_search (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE scan_op_type,
-				BTREE_SCAN * BTS, KEY_VAL_RANGE * key_val_range, OID * class_oid, FILTER_INFO * filter,
+				BTREE_SCAN * BTS, key_val_range * key_val_range, OID * class_oid, FILTER_INFO * filter,
 				INDX_SCAN_ID * isidp, bool is_all_class_srch);
 extern int btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PROCESS_KEY_FUNC * key_func);
 extern int btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
@@ -693,7 +696,7 @@ extern void btree_get_root_vpid_from_btid (THREAD_ENTRY * thread_p, BTID * btid,
 extern int btree_get_btid_from_file (THREAD_ENTRY * thread_p, const VFID * vfid, BTID * btid_out);
 
 extern int btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid, INDX_SCAN_ID * index_scan_id_p,
-			      KEY_VAL_RANGE * key_val_range, FILTER_INFO * filter, const OID * match_class_oid,
+			      key_val_range * key_val_range, FILTER_INFO * filter, const OID * match_class_oid,
 			      DB_BIGINT * key_limit_upper, DB_BIGINT * key_limit_lower, bool need_to_check_null,
 			      void *bts_other);
 
