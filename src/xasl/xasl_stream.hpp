@@ -152,6 +152,7 @@ void stx_restore (THREAD_ENTRY *thread_p, char *&ptr, T *&target);
 // Template and inline implementation
 //////////////////////////////////////////////////////////////////////////
 
+#include "object_representation.h"
 #include "system.h"
 
 #include <cassert>
