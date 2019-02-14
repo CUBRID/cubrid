@@ -178,12 +178,19 @@ class index_builder_loader_task: public cubthread::entry_task
     size_t m_memsize;
 
   public:
+    enum batch_key_status
+    {
+      BATCH_EMPTY,
+      BATCH_CONTINUE,
+      BATCH_FULL
+    };
+
     index_builder_loader_task (const BTID * btid, const OID * class_oid, int unique_pk,
                                index_builder_loader_context & load_context);
     ~index_builder_loader_task ();
     
     // add key to key set and return true if task is ready for execution, false otherwise
-    bool set_key (const DB_VALUE * key, const OID& oid);
+    batch_key_status add_key (const DB_VALUE * key, const OID& oid);
     bool has_keys () const;
 
     void execute (cubthread::entry & thread_ref);
@@ -4921,7 +4928,7 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 	  load_task.reset (new index_builder_loader_task (btid_int->sys_btid, &class_oids[cur_class], unique_pk,
                                                           load_context));
 	}
-      if (load_task->set_key (p_dbvalue, cur_oid))
+      if (load_task->add_key (p_dbvalue, cur_oid) == index_builder_loader_task::BATCH_FULL)
 	{
 	  thread_get_manager ()->push_task (ib_workpool, load_task.release ());
           /* Increment tasks started. */
@@ -5002,8 +5009,8 @@ index_builder_loader_task::~index_builder_loader_task ()
   cubmem::switch_to_global_allocator_and_call ([this] { clear_keys (); });
 }
 
-bool
-index_builder_loader_task::set_key (const DB_VALUE * key, const OID& oid)
+index_builder_loader_task::batch_key_status
+index_builder_loader_task::add_key (const DB_VALUE * key, const OID& oid)
 {
   m_keys_oids.emplace_back ();
 
@@ -5016,7 +5023,7 @@ index_builder_loader_task::set_key (const DB_VALUE * key, const OID& oid)
   m_memsize += m_load_context.m_key_type->type->get_disk_size_of_value (&last_key);
   m_memsize += OR_OID_SIZE;
   m_memsize = DB_ALIGN (m_memsize, BTREE_MAX_ALIGN);
-  return (m_memsize > (size_t) prm_get_bigint_value (PRM_ID_IB_TASK_MEMSIZE));
+  return (m_memsize > (size_t) prm_get_bigint_value (PRM_ID_IB_TASK_MEMSIZE)) ? BATCH_FULL : BATCH_CONTINUE;
 }
 
 bool
