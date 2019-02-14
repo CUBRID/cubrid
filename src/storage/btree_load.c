@@ -4789,6 +4789,7 @@ error:
   return NULL;
 }
 
+// *INDENT-OFF*
 static int
 online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids, OID * class_oids, int n_classes,
 		      int *attrids, int n_attrs, FUNCTION_INDEX_INFO func_idx_info,
@@ -4812,12 +4813,10 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
   bool is_parallel = ib_thread_count > 0;
   std::unique_ptr<index_builder_loader_task> load_task = NULL;
 
-  // *INDENT-OFF*
   // a worker pool is built only of loading is done in parallel
   cubthread::entry_workpool * ib_workpool =
     is_parallel ? thread_get_manager()->create_worker_pool (ib_thread_count, 32, "Online index loader pool", NULL, 1,
                                                             btree_is_worker_pool_logging_true ()) : NULL;
-  // *INDENT-ON*
 
   aligned_midxkey_buf = PTR_ALIGN (midxkey_buf, MAX_ALIGNMENT);
   p_func_idx_info = func_idx_info.expr ? &func_idx_info : NULL;
@@ -4948,7 +4947,7 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
       tasks_started++;
     }
 
-  /* Check if the workerpool is empty */
+  /* Check if the worker pool is empty */
   do
     {
       bool dummy_continue_checking = true;
@@ -4980,7 +4979,6 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
   return ret;
 }
 
-// *INDENT-OFF*
 static bool
 btree_is_worker_pool_logging_true ()
 {
