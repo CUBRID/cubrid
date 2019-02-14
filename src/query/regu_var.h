@@ -396,25 +396,25 @@ struct function_node
   FUNC_TYPE ftype;		/* function to call */
 };
 
+/* regular variable flags */
+const int REGU_VARIABLE_HIDDEN_COLUMN = 0x01;	/* does not go to list file */
+const int REGU_VARIABLE_FIELD_COMPARE = 0x02;	/* for FIELD function, marks the bottom of regu tree */
+const int REGU_VARIABLE_FIELD_NESTED = 0x04;	/* for FIELD function, reguvar is child in T_FIELD tree */
+const int REGU_VARIABLE_APPLY_COLLATION = 0x08;	/* Apply collation from domain; flag used in context of COLLATE
+						 * modifier */
+const int REGU_VARIABLE_ANALYTIC_WINDOW = 0x10;	/* for analytic window func */
+const int REGU_VARIABLE_INFER_COLLATION = 0x20;	/* infer collation for default parameter */
+const int REGU_VARIABLE_FETCH_ALL_CONST = 0x40;	/* is all constant */
+const int REGU_VARIABLE_FETCH_NOT_CONST = 0x80;	/* is not constant */
+const int REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE = 0x100;	/* clears regu variable at clone decache */
+
 struct regu_variable_node
 {
   REGU_DATATYPE type;
 
-  /* regu variable flags */
-#define REGU_VARIABLE_HIDDEN_COLUMN		0x01	/* does not go to list file */
-#define REGU_VARIABLE_FIELD_COMPARE		0x02	/* for FIELD function, marks the bottom of regu tree */
-#define REGU_VARIABLE_FIELD_NESTED		0x04	/* for FIELD function, reguvar is child in T_FIELD tree */
-#define REGU_VARIABLE_APPLY_COLLATION		0x08	/* Apply collation from domain; flag used in context of COLLATE
-							 * modifier */
-#define REGU_VARIABLE_ANALYTIC_WINDOW		0x10	/* for analytic window func */
-#define REGU_VARIABLE_INFER_COLLATION		0x20	/* infer collation for default parameter */
-#define REGU_VARIABLE_FETCH_ALL_CONST		0x40	/* is all constant */
-#define REGU_VARIABLE_FETCH_NOT_CONST		0x80	/* is not constant */
-#define REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE   0x100	/* clears regu variable at clone decache */
   int flags;			/* flags */
-#define REGU_VARIABLE_IS_FLAGED(e, f)    ((e)->flags & (short) (f))
-#define REGU_VARIABLE_SET_FLAG(e, f)     (e)->flags |= (short) (f)
-#define REGU_VARIABLE_CLEAR_FLAG(e, f)   (e)->flags &= (short) ~(f)
+
+
 
   TP_DOMAIN *domain;		/* domain of the value in this regu variable */
   TP_DOMAIN *original_domain;	/* original domain, used at execution in case of XASL clones */
@@ -600,5 +600,33 @@ struct method_sig_list
   int num_methods;		/* number of signatures */
 };
 typedef struct method_sig_list METHOD_SIG_LIST;
+
+// regular variable flag functions
+// note - uppercase names are used because they used to be macros.
+inline bool REGU_VARIABLE_IS_FLAGED (const regu_variable_node * regu, int flag);
+inline void REGU_VARIABLE_SET_FLAG (regu_variable_node * regu, int flag);
+inline void REGU_VARIABLE_CLEAR_FLAG (regu_variable_node * regu, int flag);
+
+//////////////////////////////////////////////////////////////////////////
+// inline/template implementation
+//////////////////////////////////////////////////////////////////////////
+
+bool
+REGU_VARIABLE_IS_FLAGED (const regu_variable_node * regu, int flag)
+{
+  return (regu->flags & flag) != 0;
+}
+
+void
+REGU_VARIABLE_SET_FLAG (regu_variable_node * regu, int flag)
+{
+  regu->flags |= flag;
+}
+
+void
+REGU_VARIABLE_CLEAR_FLAG (regu_variable_node * regu, int flag)
+{
+  regu->flags &= ~flag;
+}
 
 #endif /* _REGU_VAR_H_ */
