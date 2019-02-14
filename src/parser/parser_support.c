@@ -23,8 +23,8 @@
 
 #ident "$Id$"
 
-
 #include "config.h"
+#include "xasl.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -3885,7 +3885,7 @@ regu_dbvallist_alloc (void)
  *
  * Note: Memory allocation function for QPROC_DB_VALUE_LIST.
  */
-QPROC_DB_VALUE_LIST
+qproc_db_value_list *
 regu_dbvlist_alloc (void)
 {
   QPROC_DB_VALUE_LIST ptr;
@@ -3931,7 +3931,7 @@ regu_dbvallist_init (QPROC_DB_VALUE_LIST ptr)
  *
  * Note: Memory allocation function for REGU_VARIABLE.
  */
-REGU_VARIABLE *
+regu_variable_node *
 regu_var_alloc (void)
 {
   REGU_VARIABLE *ptr;
@@ -3973,7 +3973,7 @@ regu_var_init (REGU_VARIABLE * ptr)
  *
  * Note: Memory allocation function for REGU_VARIABLE_LIST.
  */
-REGU_VARIABLE_LIST
+regu_variable_list_node *
 regu_varlist_alloc (void)
 {
   REGU_VARIABLE_LIST ptr;
@@ -4016,7 +4016,7 @@ regu_varlist_init (REGU_VARIABLE_LIST ptr)
  * Note: Memory allocation function for arrays of REGU_VARIABLE
  *       pointers allocated with the default memory manager.
  */
-REGU_VARIABLE **
+regu_variable_node **
 regu_varptr_array_alloc (int size)
 {
   REGU_VARIABLE **ptr;
@@ -4054,7 +4054,7 @@ regu_varlist_list_init (REGU_VARLIST_LIST ptr)
  * regu_varlist_list_alloc () -
  *   return:
  */
-REGU_VARLIST_LIST
+regu_varlist_list_node *
 regu_varlist_list_alloc (void)
 {
   REGU_VARLIST_LIST ptr;
@@ -4084,7 +4084,7 @@ regu_varlist_list_alloc (void)
  *
  * Note: Memory allocation function for VAL_LIST.
  */
-VAL_LIST *
+val_list_node *
 regu_vallist_alloc (void)
 {
   VAL_LIST *ptr;
@@ -4122,7 +4122,7 @@ regu_vallist_init (VAL_LIST * ptr)
  *
  * Note: Memory allocation function for OUTPTR_LIST.
  */
-OUTPTR_LIST *
+valptr_list_node *
 regu_outlist_alloc (void)
 {
   OUTPTR_LIST *ptr;
@@ -4161,7 +4161,7 @@ regu_outlist_init (OUTPTR_LIST * ptr)
  * return	 : Allocated memory pointer.
  * int size (in) : Array size.
  */
-OUTPTR_LIST **
+valptr_list_node **
 regu_outlistptr_array_alloc (int size)
 {
   OUTPTR_LIST **ptr;
@@ -4845,7 +4845,7 @@ regu_spec_init (ACCESS_SPEC_TYPE * ptr, TARGET_TYPE type)
  *
  * Note: Memory allocation function for INDX_INFO.
  */
-INDX_INFO *
+indx_info *
 regu_index_alloc (void)
 {
   INDX_INFO *ptr;
@@ -5122,7 +5122,7 @@ regu_free_listid (QFILE_LIST_ID * list_id)
  *
  * Note: Memory allocation function for QFILE_SORTED_LIST_ID.
  */
-QFILE_SORTED_LIST_ID *
+qfile_sorted_list_id *
 regu_srlistid_alloc (void)
 {
   QFILE_SORTED_LIST_ID *ptr;
@@ -5399,7 +5399,7 @@ regu_int_array_db_alloc (int size)
  *
  * Note: Memory allocation function for HEAP_CACHE_ATTRINFO
  */
-HEAP_CACHE_ATTRINFO *
+heap_cache_attrinfo *
 regu_cache_attrinfo_alloc (void)
 {
   HEAP_CACHE_ATTRINFO *ptr;
@@ -5556,7 +5556,7 @@ regu_upddel_class_info_init (UPDDEL_CLASS_INFO * ptr)
  *
  * Note: Memory allocation function for arrays of UPDDEL_CLASS_INFO
  */
-UPDDEL_CLASS_INFO *
+upddel_class_info *
 regu_upddel_class_info_array_alloc (int size)
 {
   UPDDEL_CLASS_INFO *ptr;
@@ -5587,7 +5587,7 @@ regu_upddel_class_info_array_alloc (int size)
  * regu_odku_info_alloc () - memory allocation for ODKU_INFO objects
  * return : allocated object or NULL
  */
-ODKU_INFO *
+odku_info *
 regu_odku_info_alloc (void)
 {
   ODKU_INFO *ptr;
@@ -5629,7 +5629,7 @@ regu_update_assignment_init (UPDATE_ASSIGNMENT * ptr)
  *
  * Note: Memory allocation function for arrays of UPDATE_ASSIGNMENT
  */
-UPDATE_ASSIGNMENT *
+update_assignment *
 regu_update_assignment_array_alloc (int size)
 {
   UPDATE_ASSIGNMENT *ptr;
@@ -5680,7 +5680,7 @@ regu_method_sig_init (METHOD_SIG * ptr)
  *
  * Note: Memory allocation function for METHOD_SIG.
  */
-METHOD_SIG *
+method_sig_node *
 regu_method_sig_alloc (void)
 {
   METHOD_SIG *ptr;
@@ -5764,7 +5764,7 @@ regu_method_sig_list_init (METHOD_SIG_LIST * ptr)
  *
  * Note: Memory allocation function for METHOD_SIG_LIST
  */
-METHOD_SIG_LIST *
+method_sig_list *
 regu_method_sig_list_alloc (void)
 {
   METHOD_SIG_LIST *ptr;
@@ -5829,7 +5829,7 @@ regu_free_method_sig_list (METHOD_SIG_LIST * method_sig_list)
  * regu_selupd_list_alloc () -
  *   return:
  */
-SELUPD_LIST *
+selupd_list *
 regu_selupd_list_alloc (void)
 {
   SELUPD_LIST *ptr;
@@ -5868,7 +5868,7 @@ regu_selupd_list_init (SELUPD_LIST * ptr)
  * regu_regu_value_list_alloc () -
  *   return:
  */
-REGU_VALUE_LIST *
+regu_value_list *
 regu_regu_value_list_alloc (void)
 {
   REGU_VALUE_LIST *regu_value_list = NULL;
@@ -5906,7 +5906,7 @@ regu_regu_value_list_init (REGU_VALUE_LIST * regu_value_list)
  * regu_regu_value_item_alloc () -
  *   return:
  */
-REGU_VALUE_ITEM *
+regu_value_item *
 regu_regu_value_item_alloc (void)
 {
   REGU_VALUE_ITEM *regu_value_item = NULL;

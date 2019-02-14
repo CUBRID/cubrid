@@ -35,6 +35,7 @@
 
 #include "dbtype.h"
 #include "error_manager.h"
+#include "xasl.h"
 #include "xasl_stream.hpp"
 
 static ACCESS_SPEC_TYPE *stx_restore_access_spec_type (THREAD_ENTRY * thread_p, char **ptr, void *arg);
@@ -152,7 +153,7 @@ static char *stx_unpack_long (char *tmp, long *ptr);
  * xasl_stream (in)    : xasl stream.
  */
 int
-stx_map_stream_to_xasl_node_header (THREAD_ENTRY * thread_p, XASL_NODE_HEADER * xasl_header_p, char *xasl_stream)
+stx_map_stream_to_xasl_node_header (THREAD_ENTRY * thread_p, xasl_node_header * xasl_header_p, char *xasl_stream)
 {
   int xasl_stream_header_size = 0, offset = 0;
   char *ptr = NULL;
@@ -188,7 +189,7 @@ stx_map_stream_to_xasl_node_header (THREAD_ENTRY * thread_p, XASL_NODE_HEADER * 
  * xasl_unpack_info_ptr. The free function is stx_free_xasl_unpack_info().
  */
 int
-stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, XASL_NODE ** xasl_tree, bool use_xasl_clone, char *xasl_stream,
+stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, xasl_node ** xasl_tree, bool use_xasl_clone, char *xasl_stream,
 			int xasl_stream_size, void **xasl_unpack_info_ptr)
 {
   XASL_NODE *xasl;
@@ -264,7 +265,7 @@ end:
  *       (*pred)->unpack_info by calling stx_free_xasl_unpack_info().
  */
 int
-stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p, PRED_EXPR_WITH_CONTEXT ** pred, char *pred_stream,
+stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p, pred_expr_with_context ** pred, char *pred_stream,
 			       int pred_stream_size)
 {
   PRED_EXPR_WITH_CONTEXT *pwc = NULL;
@@ -324,7 +325,7 @@ end:
  *   xasl_unpack_info_ptr(in)   : pointer to where to return the pack info
  */
 int
-stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p, FUNC_PRED ** xasl, char *xasl_stream, int xasl_stream_size,
+stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p, func_pred ** xasl, char *xasl_stream, int xasl_stream_size,
 			     void **xasl_unpack_info_ptr)
 {
   FUNC_PRED *p_xasl = NULL;
@@ -6431,7 +6432,7 @@ stx_unpack_long (char *tmp, long *ptr)
  *   analytic(in/out)    :
  */
 void
-stx_init_analytic_type_unserialized_fields (ANALYTIC_TYPE * analytic)
+stx_init_analytic_type_unserialized_fields (analytic_list_node * analytic)
 {
   assert (analytic != NULL);
 

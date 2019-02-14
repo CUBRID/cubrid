@@ -946,7 +946,7 @@ qfile_set_dirty_page_and_skip_logging (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
  * xasl_header_p (out) : pointer to XASL node header
  */
 void
-qfile_load_xasl_node_header (THREAD_ENTRY * thread_p, char *xasl_stream, XASL_NODE_HEADER * xasl_header_p)
+qfile_load_xasl_node_header (THREAD_ENTRY * thread_p, char *xasl_stream, xasl_node_header * xasl_header_p)
 {
   if (xasl_header_p == NULL)
     {
@@ -6340,7 +6340,7 @@ qfile_has_next_page (PAGE_PTR page_p)
  *
  */
 int
-qfile_update_domains_on_type_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, VALPTR_LIST * valptr_list_p)
+qfile_update_domains_on_type_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, valptr_list_node * valptr_list_p)
 {
   REGU_VARIABLE_LIST reg_var_p;
   int i, count = 0;

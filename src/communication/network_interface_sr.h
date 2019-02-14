@@ -31,9 +31,13 @@
 #error Belongs to server module
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
-#include "list_file.h"
+#include "log_comm.h"
+#include "method_scan.h"
 #include "thread_compat.hpp"
-#include "xasl.h"
+
+// forward definitions
+struct method_sig_list;
+struct qfile_list_id;
 
 extern TRAN_STATE return_error_to_client (THREAD_ENTRY * thread_p, unsigned int rid);
 extern int server_ping_with_handshake (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
@@ -137,8 +141,8 @@ extern void smnt_server_stop_stats (THREAD_ENTRY * thread_p, unsigned int rid, c
 extern void smnt_server_copy_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void smnt_server_copy_global_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sct_check_rep_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-extern int xs_send_method_call_info_to_client (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id,
-					       METHOD_SIG_LIST * method_sig_list);
+extern int xs_send_method_call_info_to_client (THREAD_ENTRY * thread_p, qfile_list_id * list_id,
+					       method_sig_list * methsg_list);
 extern int xs_receive_data_from_client (THREAD_ENTRY * thread_p, char **area, int *datasize);
 extern int xs_receive_data_from_client_with_timeout (THREAD_ENTRY * thread_p, char **area, int *datasize, int timeout);
 extern int xs_send_action_to_client (THREAD_ENTRY * thread_p, VACOMM_BUFFER_CLIENT_ACTION action);

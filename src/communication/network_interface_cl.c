@@ -68,6 +68,7 @@
 #if defined (SA_MODE)
 #include "thread_manager.hpp"
 #endif // SA_MODE
+#include "xasl.h"
 
 /*
  * Use db_clear_private_heap instead of db_destroy_private_heap
@@ -4730,7 +4731,7 @@ error:
  */
 int
 csession_get_prepared_statement (const char *name, XASL_ID * xasl_id, char **stmt_info,
-				 XASL_NODE_HEADER * xasl_header_p)
+				 xasl_node_header * xasl_header_p)
 {
 #if defined (CS_MODE)
   int req_error = NO_ERROR;
@@ -6284,7 +6285,7 @@ qfile_get_list_file_page (QUERY_ID query_id, VOLID volid, PAGEID pageid, char *b
  * NOTE: If xasl_header_p is not null, also XASL node header will be requested
  */
 int
-qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream)
+qmgr_prepare_query (COMPILE_CONTEXT * context, xasl_stream * stream)
 {
 #if defined(CS_MODE)
   int error = NO_ERROR;

@@ -32,6 +32,7 @@
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
 #include "dbtype_def.h"
+#include "method_def.hpp"
 #include "regu_var.h"
 #ifndef SERVER_MODE
 #include "work_space.h"

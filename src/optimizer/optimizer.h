@@ -40,6 +40,9 @@
 #include "parser.h"
 #include "xasl.h"
 
+// forward definitions
+struct xasl_node;
+
 /*
  * These #defines are used in conjunction with assert() to announce
  * unexpected conditions.
@@ -109,7 +112,7 @@ struct qo_summary
   double fixed_cpu_cost, fixed_io_cost;
   double variable_cpu_cost, variable_io_cost;
   double cardinality;
-  XASL_NODE *xasl;
+  xasl_node *xasl;
 };
 
 typedef struct
@@ -153,7 +156,7 @@ extern void qo_get_optimization_param (void *, QO_PARAM, ...);
 extern bool qo_need_skip_execution (void);
 extern void qo_set_optimization_param (void *, QO_PARAM, ...);
 extern QO_PLAN *qo_optimize_query (PARSER_CONTEXT *, PT_NODE *);
-extern XASL_NODE *qo_to_xasl (QO_PLAN *, XASL_NODE *);
+extern xasl_node *qo_to_xasl (QO_PLAN *, xasl_node *);
 extern void qo_plan_discard (QO_PLAN *);
 extern void qo_plan_dump (QO_PLAN *, FILE *);
 extern const char *qo_plan_set_cost_fn (const char *, int);
@@ -183,16 +186,16 @@ extern void qo_abort (QO_ENV *, const char *, int);
 
 extern double qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr);
 
-extern XASL_NODE *qo_add_hq_iterations_access_spec (QO_PLAN * plan, XASL_NODE * xasl);
+extern xasl_node *qo_add_hq_iterations_access_spec (QO_PLAN * plan, xasl_node * xasl);
 
-extern QO_LIMIT_INFO *qo_get_key_limit_from_instnum (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xasl);
+extern QO_LIMIT_INFO *qo_get_key_limit_from_instnum (PARSER_CONTEXT * parser, QO_PLAN * plan, xasl_node * xasl);
 
-extern QO_LIMIT_INFO *qo_get_key_limit_from_ordbynum (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xasl,
+extern QO_LIMIT_INFO *qo_get_key_limit_from_ordbynum (PARSER_CONTEXT * parser, QO_PLAN * plan, xasl_node * xasl,
 						      bool ignore_lower);
 
 extern bool qo_check_iscan_for_multi_range_opt (QO_PLAN * plan);
 extern bool qo_check_join_for_multi_range_opt (QO_PLAN * plan);
 extern int qo_find_subplan_using_multi_range_opt (QO_PLAN * plan, QO_PLAN ** result, int *join_idx);
-extern void qo_top_plan_print_json (PARSER_CONTEXT * parser, XASL_NODE * xasl, PT_NODE * select, QO_PLAN * plan);
-extern void qo_top_plan_print_text (PARSER_CONTEXT * parser, XASL_NODE * xasl, PT_NODE * select, QO_PLAN * plan);
+extern void qo_top_plan_print_json (PARSER_CONTEXT * parser, xasl_node * xasl, PT_NODE * select, QO_PLAN * plan);
+extern void qo_top_plan_print_text (PARSER_CONTEXT * parser, xasl_node * xasl, PT_NODE * select, QO_PLAN * plan);
 #endif /* _OPTIMIZER_H_ */
