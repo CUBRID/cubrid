@@ -43,6 +43,7 @@
 #include "stream_to_xasl.h"
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"	// for thread_sleep
+#include "xasl.h"
 
 /* TODO */
 #if !defined (SERVER_MODE)

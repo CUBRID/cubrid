@@ -32,6 +32,7 @@
 
 #include <assert.h>
 
+#include "btree.h"		// for SINGLE_ROW_UPDATE
 #include "thread_compat.hpp"
 #include "heap_file.h"
 #include "dbtype.h"
