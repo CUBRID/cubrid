@@ -233,8 +233,8 @@ struct rlike_eval_term
   REGU_VARIABLE *src;
   REGU_VARIABLE *pattern;
   REGU_VARIABLE *case_sensitive;
-  cub_regex_t *compiled_regex;
-  char *compiled_pattern;
+  mutable cub_regex_t *compiled_regex;
+  mutable char *compiled_pattern;
 };
 typedef struct rlike_eval_term RLIKE_EVAL_TERM;
 

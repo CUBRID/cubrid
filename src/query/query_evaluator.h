@@ -51,7 +51,7 @@ struct val_descr;
 typedef struct val_descr VAL_DESCR;
 struct val_list_node;
 
-typedef DB_LOGICAL (*PR_EVAL_FNC) (THREAD_ENTRY * thread_p, pred_expr *, val_descr *, OID *);
+typedef DB_LOGICAL (*PR_EVAL_FNC) (THREAD_ENTRY * thread_p, const pred_expr *, val_descr *, OID *);
 
 typedef enum
 {
@@ -324,16 +324,16 @@ struct mvcc_reev_data
     } \
   while (0)
 
-extern DB_LOGICAL eval_pred (THREAD_ENTRY * thread_p, pred_expr * pr, val_descr * vd, OID * obj_oid);
-extern DB_LOGICAL eval_pred_comp0 (THREAD_ENTRY * thread_p, pred_expr * pr, val_descr * vd, OID * obj_oid);
-extern DB_LOGICAL eval_pred_comp1 (THREAD_ENTRY * thread_p, pred_expr * pr, val_descr * vd, OID * obj_oid);
-extern DB_LOGICAL eval_pred_comp2 (THREAD_ENTRY * thread_p, pred_expr * pr, val_descr * vd, OID * obj_oid);
-extern DB_LOGICAL eval_pred_comp3 (THREAD_ENTRY * thread_p, pred_expr * pr, val_descr * vd, OID * obj_oid);
-extern DB_LOGICAL eval_pred_alsm4 (THREAD_ENTRY * thread_p, pred_expr * pr, val_descr * vd, OID * obj_oid);
-extern DB_LOGICAL eval_pred_alsm5 (THREAD_ENTRY * thread_p, pred_expr * pr, val_descr * vd, OID * obj_oid);
-extern DB_LOGICAL eval_pred_like6 (THREAD_ENTRY * thread_p, pred_expr * pr, val_descr * vd, OID * obj_oid);
-extern DB_LOGICAL eval_pred_rlike7 (THREAD_ENTRY * thread_p, pred_expr * pr, val_descr * vd, OID * obj_oid);
-extern PR_EVAL_FNC eval_fnc (THREAD_ENTRY * thread_p, pred_expr * pr, DB_TYPE * single_node_type);
+extern DB_LOGICAL eval_pred (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * obj_oid);
+extern DB_LOGICAL eval_pred_comp0 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * obj_oid);
+extern DB_LOGICAL eval_pred_comp1 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * obj_oid);
+extern DB_LOGICAL eval_pred_comp2 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * obj_oid);
+extern DB_LOGICAL eval_pred_comp3 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * obj_oid);
+extern DB_LOGICAL eval_pred_alsm4 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * obj_oid);
+extern DB_LOGICAL eval_pred_alsm5 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * obj_oid);
+extern DB_LOGICAL eval_pred_like6 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * obj_oid);
+extern DB_LOGICAL eval_pred_rlike7 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * obj_oid);
+extern PR_EVAL_FNC eval_fnc (THREAD_ENTRY * thread_p, const pred_expr * pr, DB_TYPE * single_node_type);
 extern DB_LOGICAL eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdes, HEAP_SCANCACHE * scan_cache,
 				    FILTER_INFO * filter);
 extern DB_LOGICAL eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, FILTER_INFO * filter);
