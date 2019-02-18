@@ -73,9 +73,10 @@ namespace cubload
   }
 
   int
-  driver::parse (std::istream &iss)
+  driver::parse (std::istream &iss, int line_offset)
   {
     m_scanner->switch_streams (&iss);
+    m_scanner->set_lineno (line_offset);
     m_semantic_helper.reset_after_batch ();
 
     assert (m_class_installer != NULL && m_object_loader != NULL);

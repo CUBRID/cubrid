@@ -80,7 +80,7 @@ namespace cubload
       bool is_initialized ();
 
       // Parse functions
-      int parse (std::istream &iss);
+      int parse (std::istream &iss, int line_offset = 0);
 
       class_installer &get_class_installer ();
       object_loader &get_object_loader ();

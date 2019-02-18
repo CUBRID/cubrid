@@ -42,28 +42,35 @@ namespace cubload
   const batch_id NULL_BATCH_ID = 0;
   const batch_id FIRST_BATCH_ID = 1;
 
-  struct batch : public cubpacking::packable_object
+  class batch : public cubpacking::packable_object
   {
-    class_id m_clsid;
-    batch_id m_batch_id;
-    std::string m_content;
+    public:
+      batch ();
+      batch (batch_id id, class_id clsid, std::string &content, int line_offset);
 
-    batch ();
-    batch (class_id clsid, batch_id batch_id, std::string &content);
+      batch (batch &&other) noexcept; // MoveConstructible
+      batch &operator= (batch &&other) noexcept; // MoveAssignable
 
-    batch (batch &&other) noexcept; // MoveConstructible
-    batch &operator= (batch &&other) noexcept; // MoveAssignable
+      batch (const batch &copy) = default; // Not CopyConstructible // TODO CBRD-22660 we should not allow copy
+      batch &operator= (const batch &copy) = delete; // Not CopyAssignable
 
-    batch (const batch &copy) = default; // Not CopyConstructible // TODO CBRD-22660 we should not allow copy
-    batch &operator= (const batch &copy) = delete; // Not CopyAssignable
+      batch_id get_id () const;
+      class_id get_class_id () const;
+      int get_line_offset () const;
+      const std::string &get_content () const;
 
-    void pack (cubpacking::packer &serializator) const override;
-    void unpack (cubpacking::unpacker &deserializator) override;
-    size_t get_packed_size (cubpacking::packer &serializator) const override;
+      void pack (cubpacking::packer &serializator) const override;
+      void unpack (cubpacking::unpacker &deserializator) override;
+      size_t get_packed_size (cubpacking::packer &serializator) const override;
+
+    private:
+      batch_id m_id;
+      class_id m_clsid;
+      std::string m_content;
+      int m_line_offset;
   };
 
   using batch_handler = std::function<int (const batch &)>;
-  using class_install_handler = std::function<int (const class_id, const std::string &)>;
 
   /*
    * loaddb executables command line arguments
@@ -364,10 +371,10 @@ namespace cubload
    *    return: NO_ERROR in case of success or ER_FAILED if file does not exists
    *    batch_size(in)      : batch size
    *    object_file_name(in): loaddb object file name (absolute path is required)
-   *    handler(in)         : a function for handling/process a batch
+   *    c_handler(in)       : a function for handling/process a %class or %id line from object file
+   *    b_handler(in)       : a function for handling/process a batch of objects
    */
-  int split (int batch_size, const std::string &object_file_name, class_install_handler &c_handler,
-	     batch_handler &b_handler);
+  int split (int batch_size, const std::string &object_file_name, batch_handler &c_handler, batch_handler &b_handler);
 
 } // namespace cubload
 

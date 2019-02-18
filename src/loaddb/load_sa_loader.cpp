@@ -65,6 +65,7 @@
 #include "schema_manager.h"
 #include "set_object.h"
 #include "system_parameter.h"
+#include "thread_manager.hpp"
 #include "transaction_cl.h"
 #include "trigger_manager.h"
 #include "utility.h"
@@ -6155,11 +6156,12 @@ ldr_init_driver ()
 
   ldr_Driver = new driver ();
 
-  lineno_function line_func = [] { return ldr_Driver->get_scanner ().lineno (); };
-  error_handler *error_handler_ = new error_handler (line_func);
+  cubthread::get_entry ().m_loaddb_driver = ldr_Driver;
 
+  error_handler *error_handler_ = new error_handler ();
   class_installer *cls_installer = new sa_class_installer ();
   object_loader *obj_loader = new sa_object_loader ();
+
   ldr_Driver->initialize (cls_installer, obj_loader, error_handler_);
 }
 
@@ -6345,6 +6347,7 @@ ldr_sa_load (load_args *args, int *status, bool *interrupted)
     {
       delete ldr_Driver;
       ldr_Driver = NULL;
+      cubthread::get_entry ().m_loaddb_driver = NULL;
     }
   if (object_file.is_open ())
     {

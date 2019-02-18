@@ -1153,7 +1153,6 @@ get_loaddb_args (UTIL_ARG_MAP * arg_map, load_args * args)
 void
 ldr_server_load (load_args * args, int *status, bool * interrupted)
 {
-  int error;
   char object_file_abs_path[PATH_MAX];
 
   if (realpath (args->object_file, object_file_abs_path) == NULL)
@@ -1165,8 +1164,8 @@ ldr_server_load (load_args * args, int *status, bool * interrupted)
 
   loaddb_init ();
 
-  error = loaddb_load_object_file (object_file_abs_path);
-  if (error == ER_FAILED)
+  int error_code = loaddb_load_object_file (object_file_abs_path);
+  if (error_code == ER_FILE_UNKNOWN_FILE)
     {
       /* *INDENT-OFF* */
       std::string object_file_abs_path_ (object_file_abs_path);
@@ -1174,18 +1173,19 @@ ldr_server_load (load_args * args, int *status, bool * interrupted)
       {
 	return loaddb_load_batch (batch);
       };
-      class_install_handler c_handler = [] (const class_id clsid, const std::string &buf)
+      batch_handler c_handler = [] (const batch &batch)
       {
-	return loaddb_install_class (clsid, buf);
+	return loaddb_install_class (batch);
       };
       /* *INDENT-ON* */
 
-      error = split (args->periodic_commit, object_file_abs_path_, c_handler, b_handler);
-      if (error != NO_ERROR)
-	{
-	  *status = 3;
-	  return;
-	}
+      error_code = split (args->periodic_commit, object_file_abs_path_, c_handler, b_handler);
+    }
+
+  if (error_code != NO_ERROR)
+    {
+      *status = 3;
+      return;
     }
 
   stats stats;

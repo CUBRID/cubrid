@@ -9826,19 +9826,19 @@ sloaddb_load_object_file (THREAD_ENTRY * thread_p, unsigned int rid, char *reque
 void
 sloaddb_install_class (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
+  packing_unpacker unpacker (request, (size_t) reqlen);
+
   /* *INDENT-OFF* */
-  std::string buf;
-  cubload::class_id clsid;
+  cubload::batch batch;
   /* *INDENT-ON* */
 
-  packing_unpacker unpacker (request, (size_t) reqlen);
-  unpacker.unpack_all (clsid, buf);
+  batch.unpack (unpacker);
 
   load_session *session = NULL;
   session_get_load_session (thread_p, session);
   assert (session != NULL);
 
-  int error_code = session->install_class (*thread_p, clsid, buf);
+  int error_code = session->install_class (*thread_p, batch);
 
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);

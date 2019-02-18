@@ -23,34 +23,33 @@
 
 #include "load_error_handler.hpp"
 
+#include "load_driver.hpp"
 #include "load_sa_loader.hpp"
+#if defined (SERVER_MODE)
+#include "load_session.hpp"
+#endif
 #include "message_catalog.h"
+#include "thread_manager.hpp"
 
 namespace cubload
 {
 
-  error_handler::error_handler (lineno_function &lineno_function)
-    : m_lineno_function (lineno_function)
 #if defined (SERVER_MODE)
-    , m_session (NULL)
-#endif
+  error_handler::error_handler (session &session)
+    : m_session (session)
   {
     //
   }
-
-#if defined (SERVER_MODE)
-  void
-  error_handler::initialize (session *session)
-  {
-    if (m_session != NULL)
-      {
-	assert (false);
-	return;
-      }
-
-    m_session = session;
-  }
 #endif
+
+  int
+  error_handler::get_lineno ()
+  {
+    cubthread::entry &thread_ref = cubthread::get_entry ();
+    assert (thread_ref.m_loaddb_driver != NULL);
+
+    return thread_ref.m_loaddb_driver->get_scanner ().lineno () + 1;
+  }
 
   char *
   error_handler::get_message_from_catalog (MSGCAT_LOADDB_MSG msg_id)
@@ -72,16 +71,16 @@ namespace cubload
     if (er_errid () != NO_ERROR && (er_has_error () || er_get_severity () == ER_WARNING_SEVERITY))
       {
 	// if there is an error set via er_set then report it as well
-	err_msg.append (format (get_message_from_catalog (LOADDB_MSG_LINE), m_lineno_function ()));
+	err_msg.append (format (get_message_from_catalog (LOADDB_MSG_LINE), get_lineno ()));
 	err_msg.append (std::string (er_msg ()));
 	err_msg.append ("\n");
       }
 
-    m_session->on_error (err_msg);
+    m_session.on_error (err_msg);
 
     if (fail)
       {
-	m_session->fail ();
+	m_session.fail ();
       }
 #elif defined (SA_MODE)
     if (fail)

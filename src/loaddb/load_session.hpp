@@ -77,7 +77,14 @@ namespace cubload
       session &operator= (session &&other) = delete; // Move operator: deleted
       session &operator= (const session &copy) = delete; // Copy operator: deleted
 
-      int install_class (cubthread::entry &thread_ref, const class_id clsid, const std::string &buf);
+      /*
+       * Check and install a class from object file on the the server
+       *
+       *    return: NO_ERROR in case of success or a error code in case of failure.
+       *    thread_ref(in): thread entry
+       *    batch(in)     : a batch where content is a line starting with '%id' or '%class' from object file
+       */
+      int install_class (cubthread::entry &thread_ref, const batch &batch);
 
       /*
        * Load a batch from object file on the the server
