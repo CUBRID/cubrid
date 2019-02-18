@@ -30,8 +30,14 @@
 #include "libregex38a/regex38a.h"
 #include "string_opfunc.h"
 
-/* declare ahead XASL node. */
+// *INDENT-OFF*
+
+// forward definitions
 struct xasl_node;
+namespace cubxasl
+{
+  struct aggregate_list_node;
+} // namespace cubxasl
 
 #define REGU_VARIABLE_XASL(r)      ((r)->xasl)
 
@@ -59,7 +65,6 @@ typedef enum
 /* declare ahead REGU_VARIABLE */
 typedef struct regu_variable_node REGU_VARIABLE;
 typedef struct regu_variable_list_node *REGU_VARIABLE_LIST;	/* TODO */
-typedef struct aggregate_list_node AGGREGATE_TYPE;
 typedef struct analytic_list_node ANALYTIC_TYPE;
 
 /*
@@ -295,51 +300,6 @@ struct arith_list_node
   struct drand48_data *rand_seed;	/* seed to be used to generate pseudo-random sequence */
 };
 
-typedef struct aggregate_accumulator AGGREGATE_ACCUMULATOR;
-struct aggregate_accumulator
-{
-  DB_VALUE *value;		/* value of the aggregate */
-  DB_VALUE *value2;		/* for GROUP_CONCAT, STTDEV and VARIANCE */
-  int curr_cnt;			/* current number of items */
-  bool clear_value_at_clone_decache;	/* true, if need to clear value at clone decache */
-  bool clear_value2_at_clone_decache;	/* true, if need to clear value2 at clone decache */
-};
-
-#if defined (SERVER_MODE) || defined (SA_MODE)
-typedef struct aggregate_accumulator_domain AGGREGATE_ACCUMULATOR_DOMAIN;
-struct aggregate_accumulator_domain
-{
-  TP_DOMAIN *value_dom;		/* domain of value */
-  TP_DOMAIN *value2_dom;	/* domain of value2 */
-};
-#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
-
-typedef struct aggregate_percentile_info AGGREGATE_PERCENTILE_INFO;
-struct aggregate_percentile_info
-{
-  double cur_group_percentile;	/* current percentile value */
-  REGU_VARIABLE *percentile_reguvar;
-};
-
-#if defined (SERVER_MODE) || defined (SA_MODE)
-typedef struct aggregate_dist_percent_info AGGREGATE_DIST_PERCENT_INFO;
-struct aggregate_dist_percent_info
-{
-  DB_VALUE **const_array;
-  int list_len;
-  int nlargers;
-};
-#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
-
-typedef union aggregate_specific_function_info AGGREGATE_SPECIFIC_FUNCTION_INFO;
-union aggregate_specific_function_info
-{
-  AGGREGATE_PERCENTILE_INFO percentile;	/* PERCENTILE_CONT and PERCENTILE_DISC */
-#if defined (SERVER_MODE) || defined (SA_MODE)
-  AGGREGATE_DIST_PERCENT_INFO dist_percent;	/* CUME_DIST and PERCENT_RANK */
-#endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
-};
-
 typedef struct analytic_ntile_function_info ANALYTIC_NTILE_FUNCTION_INFO;
 struct analytic_ntile_function_info
 {
@@ -416,7 +376,7 @@ struct regu_variable_node
     DB_VALUE dbval;		/* for DB_VALUE values */
     DB_VALUE *dbvalptr;		/* for constant values */
     ARITH_TYPE *arithptr;	/* arithmetic expression */
-    AGGREGATE_TYPE *aggptr;	/* aggregate expression */
+    cubxasl::aggregate_list_node *aggptr;	/* aggregate expression */
     ATTR_DESCR attr_descr;	/* attribute information */
     QFILE_TUPLE_VALUE_POSITION pos_descr;	/* list file columns */
     QFILE_SORTED_LIST_ID *srlist_id;	/* sorted list identifier for subquery results */
@@ -447,26 +407,7 @@ struct regu_ptr_list_node
   REGU_VARIABLE *var_p;		/* Regulator variable pointer */
 };
 
-struct aggregate_list_node
-{
-  AGGREGATE_TYPE *next;		/* next aggregate node */
-  TP_DOMAIN *domain;		/* domain of the result */
-  TP_DOMAIN *original_domain;	/* original domain of the result */
-  FUNC_TYPE function;		/* aggregate function name */
-  QUERY_OPTIONS option;		/* DISTINCT/ALL option */
-  DB_TYPE opr_dbtype;		/* Operand values data type */
-  DB_TYPE original_opr_dbtype;	/* Original operand values data type */
-  REGU_VARIABLE_LIST operands;	/* list of operands (one operand per function argument) */
-  QFILE_LIST_ID *list_id;	/* used for distinct handling */
-  int flag_agg_optimize;
-  BTID btid;
-  SORT_LIST *sort_list;		/* for sorting elements before aggregation; used by GROUP_CONCAT */
-  AGGREGATE_SPECIFIC_FUNCTION_INFO info;	/* variables for specific functions */
-  AGGREGATE_ACCUMULATOR accumulator;	/* holds runtime values, only for evaluation */
-#if defined (SERVER_MODE) || defined (SA_MODE)
-  AGGREGATE_ACCUMULATOR_DOMAIN accumulator_domain;	/* holds domain info on accumulator */
-#endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
-};
+
 
 struct analytic_list_node
 {
@@ -618,5 +559,7 @@ REGU_VARIABLE_CLEAR_FLAG (regu_variable_node * regu, int flag)
 {
   regu->flags &= ~flag;
 }
+
+// *INDENT-ON*
 
 #endif /* _REGU_VAR_H_ */

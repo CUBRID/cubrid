@@ -34,6 +34,7 @@
 #include "regu_var.h"
 #include "storage_common.h"
 #include "string_opfunc.h"
+#include "xasl_aggregate.hpp"
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 #include "external_sort.h"

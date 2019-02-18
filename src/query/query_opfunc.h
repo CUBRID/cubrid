@@ -36,11 +36,8 @@
 #include <string>
 
 // forward definitions
-struct aggregate_accumulator;
-struct aggregate_accumulator_domain;
 struct aggregate_hash_key;
 struct aggregate_hash_value;
-struct aggregate_list_node;
 struct analytic_list_node;
 struct function_node;
 struct mht_table;
@@ -49,6 +46,13 @@ struct tp_domain;
 struct val_descr;
 struct val_list_node;
 struct valptr_list_node;
+
+namespace cubxasl
+{
+  struct aggregate_accumulator;
+  struct aggregate_accumulator_domain;
+  struct aggregate_list_node;
+}				// namespace cubxasl
 
 #define UNBOUND(x) ((x)->val_flag == V_UNBOUND || (x)->type == DB_TYPE_NULL)
 
@@ -95,28 +99,32 @@ extern int qdata_divide_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * 
 extern int qdata_unary_minus_dbval (DB_VALUE * res, DB_VALUE * dbval1);
 extern int qdata_extract_dbval (const MISC_OPERAND extr_operand, DB_VALUE * dbval, DB_VALUE * res, tp_domain * domain);
 extern int qdata_strcat_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res, tp_domain * domain);
-extern int qdata_initialize_aggregate_list (THREAD_ENTRY * thread_p, aggregate_list_node * agg_list, QUERY_ID query_id);
-extern int qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p, aggregate_accumulator * acc,
-						 aggregate_accumulator_domain * domain, FUNC_TYPE func_type,
-						 tp_domain * func_domain, DB_VALUE * value);
 
 /* *INDENT-OFF* */
-extern int qdata_aggregate_multiple_values_to_accumulator (THREAD_ENTRY * thread_p, aggregate_accumulator * acc,
-                                                           aggregate_accumulator_domain * domain, FUNC_TYPE func_type,
-                                                           tp_domain * func_domain,
+extern int qdata_initialize_aggregate_list (THREAD_ENTRY * thread_p, cubxasl::aggregate_list_node * agg_list,
+                                            QUERY_ID query_id);
+extern int qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p, cubxasl::aggregate_accumulator * acc,
+						 cubxasl::aggregate_accumulator_domain * domain, FUNC_TYPE func_type,
+						 tp_domain * func_domain, DB_VALUE * value);
+extern int qdata_aggregate_multiple_values_to_accumulator (THREAD_ENTRY * thread_p,
+                                                           cubxasl::aggregate_accumulator * acc,
+                                                           cubxasl::aggregate_accumulator_domain * domain,
+                                                           FUNC_TYPE func_type, tp_domain * func_domain,
                                                            std::vector<DB_VALUE> & db_values);
+extern int qdata_aggregate_accumulator_to_accumulator (THREAD_ENTRY * thread_p, cubxasl::aggregate_accumulator * acc,
+						       cubxasl::aggregate_accumulator_domain * acc_dom,
+                                                       FUNC_TYPE func_type, tp_domain * func_domain,
+                                                       cubxasl::aggregate_accumulator * new_acc);
+extern int qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, cubxasl::aggregate_list_node * agg_list,
+                                          val_descr * vd, cubxasl::aggregate_accumulator * alt_acc_list);
+extern int qdata_evaluate_aggregate_optimize (THREAD_ENTRY * thread_p, cubxasl::aggregate_list_node * agg_ptr,
+                                              HFID * hfid, OID * partition_cls_oid);
+extern int qdata_evaluate_aggregate_hierarchy (THREAD_ENTRY * thread_p, cubxasl::aggregate_list_node * agg_ptr,
+                                               HFID * root_hfid, BTID * root_btid, HIERARCHY_AGGREGATE_HELPER * helper);
+extern int qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, cubxasl::aggregate_list_node * agg_list,
+                                          bool keep_list_file);
 /* *INDENT-ON* */
 
-extern int qdata_aggregate_accumulator_to_accumulator (THREAD_ENTRY * thread_p, aggregate_accumulator * acc,
-						       aggregate_accumulator_domain * acc_dom, FUNC_TYPE func_type,
-						       tp_domain * func_domain, aggregate_accumulator * new_acc);
-extern int qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, aggregate_list_node * agg_list, val_descr * vd,
-					  aggregate_accumulator * alt_acc_list);
-extern int qdata_evaluate_aggregate_optimize (THREAD_ENTRY * thread_p, aggregate_list_node * agg_ptr, HFID * hfid,
-					      OID * partition_cls_oid);
-extern int qdata_evaluate_aggregate_hierarchy (THREAD_ENTRY * thread_p, aggregate_list_node * agg_ptr, HFID * root_hfid,
-					       BTID * root_btid, HIERARCHY_AGGREGATE_HELPER * helper);
-extern int qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, aggregate_list_node * agg_list, bool keep_list_file);
 extern int qdata_initialize_analytic_func (THREAD_ENTRY * thread_p, analytic_list_node * func_p, QUERY_ID query_id);
 extern int qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, analytic_list_node * func_p, val_descr * vd);
 extern int qdata_finalize_analytic_func (THREAD_ENTRY * thread_p, analytic_list_node * func_p, bool is_same_group);
@@ -180,17 +188,20 @@ extern DB_VALUE_COMPARE_RESULT qdata_agg_hkey_compare (aggregate_hash_key * ckey
 						       int *diff_pos);
 extern int qdata_agg_hkey_eq (const void *key1, const void *key2);
 extern aggregate_hash_key *qdata_copy_agg_hkey (THREAD_ENTRY * thread_p, aggregate_hash_key * key);
-extern void qdata_load_agg_hvalue_in_agg_list (aggregate_hash_value * value, aggregate_list_node * agg_list,
+// *INDENT-OFF*
+extern void qdata_load_agg_hvalue_in_agg_list (aggregate_hash_value * value, cubxasl::aggregate_list_node * agg_list,
 					       bool copy_vals);
 extern int qdata_save_agg_hentry_to_list (THREAD_ENTRY * thread_p, aggregate_hash_key * key,
 					  aggregate_hash_value * value, DB_VALUE * temp_dbval_array,
 					  qfile_list_id * list_id);
 extern int qdata_load_agg_hentry_from_tuple (THREAD_ENTRY * thread_p, QFILE_TUPLE tuple, aggregate_hash_key * key,
 					     aggregate_hash_value * value, tp_domain ** key_dom,
-					     aggregate_accumulator_domain ** acc_dom);
+					     cubxasl::aggregate_accumulator_domain ** acc_dom);
 extern SCAN_CODE qdata_load_agg_hentry_from_list (THREAD_ENTRY * thread_p, qfile_list_scan_id * list_scan_id,
 						  aggregate_hash_key * key, aggregate_hash_value * value,
-						  tp_domain ** key_dom, aggregate_accumulator_domain ** acc_dom);
+						  tp_domain ** key_dom,
+                                                  cubxasl::aggregate_accumulator_domain ** acc_dom);
+// *INDENT-ON*
 extern int qdata_save_agg_htable_to_list (THREAD_ENTRY * thread_p, mht_table * hash_table,
 					  qfile_list_id * tuple_list_id, qfile_list_id * partial_list_id,
 					  DB_VALUE * temp_dbval_array);

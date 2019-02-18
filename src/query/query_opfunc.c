@@ -53,6 +53,7 @@
 #include "db_json.hpp"
 #include "arithmetic.h"
 #include "xasl.h"
+#include "xasl_aggregate.hpp"
 
 #include "dbtype.h"
 
@@ -193,7 +194,7 @@ static int qdata_divide_double_to_dbval (DB_VALUE * double_val_p, DB_VALUE * dbv
 static int qdata_divide_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p);
 static int qdata_divide_monetary_to_dbval (DB_VALUE * monetary_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p);
 
-static int qdata_process_distinct_or_sort (THREAD_ENTRY * thread_p, aggregate_list_node * agg_p, QUERY_ID query_id);
+static int qdata_process_distinct_or_sort (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_p, QUERY_ID query_id);
 
 static DB_VALUE *qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 							      VAL_DESCR * val_desc_p);
@@ -207,9 +208,9 @@ static int qdata_get_class_of_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE *
 static int qdata_convert_table_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype, REGU_VARIABLE * func,
 				       VAL_DESCR * val_desc_p);
 
-static int qdata_group_concat_first_value (THREAD_ENTRY * thread_p, aggregate_list_node * agg_p, DB_VALUE * dbvalue);
+static int qdata_group_concat_first_value (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_p, DB_VALUE * dbvalue);
 
-static int qdata_group_concat_value (THREAD_ENTRY * thread_p, aggregate_list_node * agg_p, DB_VALUE * dbvalue);
+static int qdata_group_concat_value (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_p, DB_VALUE * dbvalue);
 
 static int qdata_insert_substring_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
 					    OID * obj_oid_p, QFILE_TUPLE tuple);
@@ -224,10 +225,10 @@ static int qdata_convert_operands_to_value_and_call (THREAD_ENTRY * thread_p, FU
 						     int (*function_to_call) (DB_VALUE *, DB_VALUE * const *,
 									      int const));
 
-static int qdata_calculate_aggregate_cume_dist_percent_rank (THREAD_ENTRY * thread_p, aggregate_list_node * agg_p,
+static int qdata_calculate_aggregate_cume_dist_percent_rank (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_p,
 							     VAL_DESCR * val_desc_p);
 
-static int qdata_update_agg_interpolation_func_value_and_domain (aggregate_list_node * agg_p, DB_VALUE * val);
+static int qdata_update_agg_interpolation_func_value_and_domain (AGGREGATE_TYPE * agg_p, DB_VALUE * val);
 
 static int qdata_evaluate_interpolation_function (THREAD_ENTRY * thread_p, void *func_p, QFILE_LIST_SCAN_ID * scan_id,
 						  bool is_analytic);
@@ -6230,7 +6231,7 @@ qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
  */
 
 static int
-qdata_process_distinct_or_sort (THREAD_ENTRY * thread_p, aggregate_list_node * agg_p, QUERY_ID query_id)
+qdata_process_distinct_or_sort (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_p, QUERY_ID query_id)
 {
   QFILE_TUPLE_VALUE_TYPE_LIST type_list;
   QFILE_LIST_ID *list_id_p;
@@ -6291,9 +6292,9 @@ qdata_process_distinct_or_sort (THREAD_ENTRY * thread_p, aggregate_list_node * a
  * Note: Initialize the aggregate expression list.
  */
 int
-qdata_initialize_aggregate_list (THREAD_ENTRY * thread_p, aggregate_list_node * agg_list_p, QUERY_ID query_id)
+qdata_initialize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_list_p, QUERY_ID query_id)
 {
-  aggregate_list_node *agg_p;
+  AGGREGATE_TYPE *agg_p;
 
   for (agg_p = agg_list_p; agg_p != NULL; agg_p = agg_p->next)
     {
@@ -6360,9 +6361,9 @@ qdata_initialize_aggregate_list (THREAD_ENTRY * thread_p, aggregate_list_node * 
  *   new_acc(in): source2 accumulator
  */
 int
-qdata_aggregate_accumulator_to_accumulator (THREAD_ENTRY * thread_p, aggregate_accumulator * acc,
-					    aggregate_accumulator_domain * acc_dom, FUNC_TYPE func_type,
-					    tp_domain * func_domain, aggregate_accumulator * new_acc)
+qdata_aggregate_accumulator_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMULATOR * acc,
+					    AGGREGATE_ACCUMULATOR_DOMAIN * acc_dom, FUNC_TYPE func_type,
+					    tp_domain * func_domain, AGGREGATE_ACCUMULATOR * new_acc)
 {
   TP_DOMAIN *double_domain;
   int error = NO_ERROR;
@@ -6465,8 +6466,8 @@ qdata_aggregate_accumulator_to_accumulator (THREAD_ENTRY * thread_p, aggregate_a
  *   value_next(int): value of the second argument; used only for JSON_OBJECTAGG
  */
 int
-qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p, aggregate_accumulator * acc,
-				      aggregate_accumulator_domain * domain, FUNC_TYPE func_type,
+qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMULATOR * acc,
+				      AGGREGATE_ACCUMULATOR_DOMAIN * domain, FUNC_TYPE func_type,
 				      tp_domain * func_domain, DB_VALUE * value)
 {
   DB_VALUE squared;
@@ -6691,8 +6692,8 @@ qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p, aggregate_accumul
 
 /* *INDENT-OFF* */
 int
-qdata_aggregate_multiple_values_to_accumulator (THREAD_ENTRY * thread_p, aggregate_accumulator * acc,
-						aggregate_accumulator_domain * domain, FUNC_TYPE func_type,
+qdata_aggregate_multiple_values_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMULATOR * acc,
+						AGGREGATE_ACCUMULATOR_DOMAIN * domain, FUNC_TYPE func_type,
 						tp_domain * func_domain, std::vector<DB_VALUE> & db_values)
 {
   // we have only one argument so aggregate only the first db_value
@@ -6741,10 +6742,10 @@ qdata_aggregate_multiple_values_to_accumulator (THREAD_ENTRY * thread_p, aggrega
  *        the GROUP_CONCAT and MEDIAN function.
  */
 int
-qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, aggregate_list_node * agg_list_p, VAL_DESCR * val_desc_p,
-			       aggregate_accumulator * alt_acc_list)
+qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_list_p, VAL_DESCR * val_desc_p,
+			       AGGREGATE_ACCUMULATOR * alt_acc_list)
 {
-  aggregate_list_node *agg_p;
+  AGGREGATE_TYPE *agg_p;
   AGGREGATE_ACCUMULATOR *accumulator;
   DB_VALUE *percentile_val = NULL;
   PR_TYPE *pr_type_p;
@@ -7115,7 +7116,7 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, aggregate_list_node * ag
  *		    will be retrieved from the heap.
  */
 int
-qdata_evaluate_aggregate_optimize (THREAD_ENTRY * thread_p, aggregate_list_node * agg_p, HFID * hfid_p, OID * super_oid)
+qdata_evaluate_aggregate_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_p, HFID * hfid_p, OID * super_oid)
 {
   int oid_count = 0, null_count = 0, key_count = 0;
   int flag_btree_stat_needed = true;
@@ -7198,7 +7199,7 @@ qdata_evaluate_aggregate_optimize (THREAD_ENTRY * thread_p, aggregate_list_node 
  * helper (in)	  : hierarchy helper
  */
 int
-qdata_evaluate_aggregate_hierarchy (THREAD_ENTRY * thread_p, aggregate_list_node * agg_p, HFID * root_hfid,
+qdata_evaluate_aggregate_hierarchy (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_p, HFID * root_hfid,
 				    BTID * root_btid, HIERARCHY_AGGREGATE_HELPER * helper)
 {
   int error = NO_ERROR, i, cmp = DB_EQ, cur_cnt = 0;
@@ -7332,10 +7333,10 @@ cleanup:
  * Note: Make the final evaluation on the aggregate expression list.
  */
 int
-qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, aggregate_list_node * agg_list_p, bool keep_list_file)
+qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_list_p, bool keep_list_file)
 {
   int error = NO_ERROR;
-  aggregate_list_node *agg_p;
+  AGGREGATE_TYPE *agg_p;
   DB_VALUE sqr_val;
   DB_VALUE dbval;
   DB_VALUE xavgval, xavg_1val, x2avgval;
@@ -9804,7 +9805,7 @@ error:
  *   dbvalue(in)  : current value
  */
 int
-qdata_group_concat_first_value (THREAD_ENTRY * thread_p, aggregate_list_node * agg_p, DB_VALUE * dbvalue)
+qdata_group_concat_first_value (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_p, DB_VALUE * dbvalue)
 {
   TP_DOMAIN *result_domain;
   DB_TYPE agg_type;
@@ -9872,7 +9873,7 @@ qdata_group_concat_first_value (THREAD_ENTRY * thread_p, aggregate_list_node * a
  *   dbvalue(in)  : current value
  */
 int
-qdata_group_concat_value (THREAD_ENTRY * thread_p, aggregate_list_node * agg_p, DB_VALUE * dbvalue)
+qdata_group_concat_value (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_p, DB_VALUE * dbvalue)
 {
   TP_DOMAIN *result_domain;
   DB_TYPE agg_type;
@@ -11997,7 +11998,7 @@ end:
  *
  */
 static int
-qdata_calculate_aggregate_cume_dist_percent_rank (THREAD_ENTRY * thread_p, aggregate_list_node * agg_p,
+qdata_calculate_aggregate_cume_dist_percent_rank (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_p,
 						  VAL_DESCR * val_desc_p)
 {
   DB_VALUE *val_node, **val_node_p;
@@ -12578,7 +12579,7 @@ qdata_copy_agg_hkey (THREAD_ENTRY * thread_p, aggregate_hash_key * key)
  *   copy_vals(in): true for deep copy of DB_VALUES, false for shallow copy
  */
 void
-qdata_load_agg_hvalue_in_agg_list (aggregate_hash_value * value, aggregate_list_node * agg_list, bool copy_vals)
+qdata_load_agg_hvalue_in_agg_list (aggregate_hash_value * value, AGGREGATE_TYPE * agg_list, bool copy_vals)
 {
   int i = 0;
   DB_TYPE db_type;
@@ -12740,7 +12741,7 @@ cleanup:
 int
 qdata_load_agg_hentry_from_tuple (THREAD_ENTRY * thread_p, QFILE_TUPLE tuple, aggregate_hash_key * key,
 				  aggregate_hash_value * value, tp_domain ** key_dom,
-				  aggregate_accumulator_domain ** acc_dom)
+				  AGGREGATE_ACCUMULATOR_DOMAIN ** acc_dom)
 {
   QFILE_TUPLE_VALUE_FLAG flag;
   DB_VALUE int_val;
@@ -12869,7 +12870,7 @@ qdata_load_agg_hentry_from_tuple (THREAD_ENTRY * thread_p, QFILE_TUPLE tuple, ag
 SCAN_CODE
 qdata_load_agg_hentry_from_list (THREAD_ENTRY * thread_p, qfile_list_scan_id * list_scan_id, aggregate_hash_key * key,
 				 aggregate_hash_value * value, tp_domain ** key_dom,
-				 aggregate_accumulator_domain ** acc_dom)
+				 AGGREGATE_ACCUMULATOR_DOMAIN ** acc_dom)
 {
   SCAN_CODE sc;
   QFILE_TUPLE_RECORD tuple_rec;
@@ -12961,7 +12962,7 @@ qdata_save_agg_htable_to_list (THREAD_ENTRY * thread_p, mht_table * hash_table, 
  *
  */
 static int
-qdata_update_agg_interpolation_func_value_and_domain (aggregate_list_node * agg_p, DB_VALUE * dbval)
+qdata_update_agg_interpolation_func_value_and_domain (AGGREGATE_TYPE * agg_p, DB_VALUE * dbval)
 {
   int error = NO_ERROR;
   DB_TYPE dbval_type;
@@ -13084,7 +13085,7 @@ qdata_evaluate_interpolation_function (THREAD_ENTRY * thread_p, void *func_p, QF
   int tuple_count;
   double row_num_d, f_row_num_d, c_row_num_d, percentile_d;
   FUNC_TYPE function;
-  aggregate_list_node *agg_p = NULL;
+  AGGREGATE_TYPE *agg_p = NULL;
   ANALYTIC_TYPE *ana_p = NULL;
   double cur_group_percentile;
 
@@ -13100,7 +13101,7 @@ qdata_evaluate_interpolation_function (THREAD_ENTRY * thread_p, void *func_p, QF
     }
   else
     {
-      agg_p = (aggregate_list_node *) func_p;
+      agg_p = (AGGREGATE_TYPE *) func_p;
       assert (QPROC_IS_INTERPOLATION_FUNC (agg_p));
 
       function = agg_p->function;
