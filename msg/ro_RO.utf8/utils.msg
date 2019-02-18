@@ -447,6 +447,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 58 %1$d instanţe commise (salvate)\n
 59 \nNu se poate invoca versiunea neoptimizată a lui loaddb.\n
 60 Eroare la parsarea lui \"%1$s\", ca fiind de tip %2$s.\n
+61 Object Reference is not supported in CS mode.\n
 112   %1$d instanţe\r
 113 Ultima linie salvata (prin commit) : %1$d
 114 error-control-file

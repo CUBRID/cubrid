@@ -170,7 +170,7 @@ namespace cubload
 
 	bool parser_result = invoke_parser (thread_ref.m_loaddb_driver, m_batch.m_clsid, m_batch.m_content);
 
-	if (m_session.is_failed () || !parser_result || er_errid_if_has_error () != NO_ERROR)
+	if (m_session.is_failed () || !parser_result || er_has_error ())
 	  {
 	    // if a batch transaction was aborted then abort entire loaddb session
 	    m_session.fail ();
@@ -345,11 +345,16 @@ namespace cubload
   session::install_class (cubthread::entry &thread_ref, const class_id clsid, const std::string &buf)
   {
     bool parser_result = invoke_parser (m_driver, clsid, buf);
-    int error_code = er_errid_if_has_error ();
 
-    if (is_failed () || !parser_result || error_code != NO_ERROR)
+    if (is_failed () || !parser_result || er_has_error ())
       {
 	fail ();
+
+	int error_code = er_errid_if_has_error ();
+	if (error_code == NO_ERROR)
+	  {
+	    error_code = ER_FAILED;
+	  }
 	return error_code;
       }
 

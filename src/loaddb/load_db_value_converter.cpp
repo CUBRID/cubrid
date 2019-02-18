@@ -27,10 +27,12 @@
 #include "db_json.hpp"
 #include "dbtype.h"
 #include "language_support.h"
+#include "load_class_registry.hpp"
 #include "numeric_opfunc.h"
 #include "object_domain.h"
 #include "object_primitive.h"
 #include "object_representation.h"
+#include "string_opfunc.h"
 
 #include <array>
 
@@ -45,26 +47,33 @@ const std::size_t MAX_DIGITS_FOR_BIGINT = 19; // default for 64 bit signed big i
 namespace cubload
 {
   // TODO CBRD-21654 reuse conversion function in load_sa_loader.cpp source file
-  void to_db_null (const char *str, const tp_domain *domain, db_value *val);
-  void to_db_short (const char *str, const tp_domain *domain, db_value *val);
-  void to_db_int (const char *str, const tp_domain *domain, db_value *val);
-  void to_db_bigint (const char *str, const tp_domain *domain, db_value *val);
-  void to_db_char (const char *str, const tp_domain *domain, db_value *val);
-  void to_db_varchar (const char *str, const tp_domain *domain, db_value *val);
-  void to_db_string (const char *str, const tp_domain *domain, db_value *val);
-  void to_db_float (const char *str, const tp_domain *domain, db_value *val);
-  void to_db_double (const char *str, const tp_domain *domain, db_value *val);
-  void to_db_numeric (const char *str, const tp_domain *domain, db_value *val);
-  void to_db_date (const char *str, const tp_domain *domain, db_value *val);
-  void to_db_time (const char *str, const tp_domain *domain, db_value *val);
-  void to_db_timestamp (const char *str, const tp_domain *domain, db_value *val);
-  void to_db_timestampltz (const char *str, const tp_domain *domain, db_value *val);
-  void to_db_timestamptz (const char *str, const tp_domain *domain, db_value *val);
-  void to_db_datetime (const char *str, const tp_domain *domain, db_value *val);
-  void to_db_datetimeltz (const char *str, const tp_domain *domain, db_value *val);
-  void to_db_datetimetz (const char *str, const tp_domain *domain, db_value *val);
-  void to_db_json (const char *str, const tp_domain *domain, db_value *val);
-  void to_db_monetary (const char *str, const tp_domain *domain, db_value *val);
+  int mismatch (const char *str, const attribute *attr, db_value *val);
+  int to_db_null (const char *str, const attribute *attr, db_value *val);
+  int to_db_short (const char *str, const attribute *attr, db_value *val);
+  int to_db_int (const char *str, const attribute *attr, db_value *val);
+  int to_db_int_set (const char *str, const attribute *attr, db_value *val);
+  int to_db_bigint (const char *str, const attribute *attr, db_value *val);
+  int to_db_char (const char *str, const attribute *attr, db_value *val);
+  int to_db_varchar (const char *str, const attribute *attr, db_value *val);
+  int to_db_make_varnchar (const char *str, const attribute *attr, db_value *val);
+  int to_db_string (const char *str, const attribute *attr, db_value *val);
+  int to_db_float (const char *str, const attribute *attr, db_value *val);
+  int to_db_double (const char *str, const attribute *attr, db_value *val);
+  int to_db_numeric (const char *str, const attribute *attr, db_value *val);
+  int to_db_date (const char *str, const attribute *attr, db_value *val);
+  int to_db_time (const char *str, const attribute *attr, db_value *val);
+  int to_db_timestamp (const char *str, const attribute *attr, db_value *val);
+  int to_db_timestampltz (const char *str, const attribute *attr, db_value *val);
+  int to_db_timestamptz (const char *str, const attribute *attr, db_value *val);
+  int to_db_datetime (const char *str, const attribute *attr, db_value *val);
+  int to_db_datetimeltz (const char *str, const attribute *attr, db_value *val);
+  int to_db_datetimetz (const char *str, const attribute *attr, db_value *val);
+  int to_db_json (const char *str, const attribute *attr, db_value *val);
+  int to_db_monetary (const char *str, const attribute *attr, db_value *val);
+  int to_db_varbit_from_bin_str (const char *str, const attribute *attr, db_value *val);
+  int to_db_varbit_from_hex_str (const char *str, const attribute *attr, db_value *val);
+  int to_db_elo_ext (const char *str, const attribute *attr, db_value *val);
+  int to_db_elo_int (const char *str, const attribute *attr, db_value *val);
 
   using conv_setters = std::array<std::array<conv_func, NUM_LDR_TYPES>, NUM_DB_TYPES>;
 
@@ -81,8 +90,37 @@ namespace cubload
 	setters_[i][LDR_NULL] = &to_db_null;
       }
 
+    // used within collection
+    DB_TYPE set_types[3] = {DB_TYPE_SET, DB_TYPE_MULTISET, DB_TYPE_SEQUENCE};
+    for (DB_TYPE &set_type : set_types)
+      {
+	setters_[set_type][LDR_INT] = &to_db_int_set;
+	setters_[set_type][LDR_STR] = &to_db_string;
+	setters_[set_type][LDR_NSTR] = &to_db_make_varnchar;
+	setters_[set_type][LDR_NUMERIC] = &to_db_numeric;
+	setters_[set_type][LDR_DOUBLE] = &to_db_double;
+	setters_[set_type][LDR_FLOAT] = &to_db_float;
+	setters_[set_type][LDR_DATE] = &to_db_date;
+	setters_[set_type][LDR_TIME] = &to_db_time;
+	setters_[set_type][LDR_TIMESTAMP] = &to_db_timestamp;
+	setters_[set_type][LDR_TIMESTAMPLTZ] = &to_db_timestampltz;
+	setters_[set_type][LDR_TIMESTAMPTZ] = &to_db_timestamptz;
+	setters_[set_type][LDR_DATETIME] = &to_db_datetime;
+	setters_[set_type][LDR_DATETIMELTZ] = &to_db_datetimeltz;
+	setters_[set_type][LDR_DATETIMETZ] = &to_db_datetimetz;
+	setters_[set_type][LDR_BSTR] = &to_db_varbit_from_bin_str;
+	setters_[set_type][LDR_XSTR] = &to_db_varbit_from_hex_str;
+	setters_[set_type][LDR_MONETARY] = &to_db_monetary;
+	setters_[set_type][LDR_ELO_EXT] = &to_db_elo_ext;
+	setters_[set_type][LDR_ELO_INT] = &to_db_elo_int;
+	setters_[set_type][LDR_JSON] = &to_db_json;
+      }
+
     setters_[DB_TYPE_CHAR][LDR_STR] = &to_db_char;
+    setters_[DB_TYPE_NCHAR][LDR_NSTR] = &to_db_make_varnchar;
+
     setters_[DB_TYPE_VARCHAR][LDR_STR] = &to_db_varchar;
+    setters_[DB_TYPE_VARNCHAR][LDR_NSTR] = &to_db_make_varnchar;
 
     setters_[DB_TYPE_BIGINT][LDR_INT] = &to_db_bigint;
     setters_[DB_TYPE_INTEGER][LDR_INT] = &to_db_int;
@@ -103,20 +141,36 @@ namespace cubload
     setters_[DB_TYPE_NUMERIC][LDR_DOUBLE] = &to_db_numeric;
     setters_[DB_TYPE_NUMERIC][LDR_FLOAT] = &to_db_numeric;
 
+    setters_[DB_TYPE_BIT][LDR_BSTR] = &to_db_varbit_from_bin_str;
+    setters_[DB_TYPE_BIT][LDR_XSTR] = &to_db_varbit_from_hex_str;
+    setters_[DB_TYPE_VARBIT][LDR_BSTR] = &to_db_varbit_from_bin_str;
+    setters_[DB_TYPE_VARBIT][LDR_XSTR] = &to_db_varbit_from_hex_str;
+
+    setters_[DB_TYPE_BLOB][LDR_ELO_EXT] = &to_db_elo_ext;
+    setters_[DB_TYPE_BLOB][LDR_ELO_INT] = &to_db_elo_int;
+    setters_[DB_TYPE_CLOB][LDR_ELO_EXT] = &to_db_elo_ext;
+    setters_[DB_TYPE_CLOB][LDR_ELO_INT] = &to_db_elo_int;
+
     setters_[DB_TYPE_JSON][LDR_STR] = &to_db_json;
     setters_[DB_TYPE_MONETARY][LDR_MONETARY] = &to_db_monetary;
 
+    setters_[DB_TYPE_DATE][LDR_STR] = &to_db_string;
+    setters_[DB_TYPE_TIME][LDR_STR] = &to_db_string;
+    setters_[DB_TYPE_DATETIME][LDR_STR] = &to_db_string;
+    setters_[DB_TYPE_DATETIMETZ][LDR_STR] = &to_db_string;
+    setters_[DB_TYPE_DATETIMELTZ][LDR_STR] = &to_db_string;
+    setters_[DB_TYPE_TIMESTAMP][LDR_STR] = &to_db_string;
+    setters_[DB_TYPE_TIMESTAMPTZ][LDR_STR] = &to_db_string;
+    setters_[DB_TYPE_TIMESTAMPLTZ][LDR_STR] = &to_db_string;
+
     setters_[DB_TYPE_DATE][LDR_DATE] = &to_db_date;
     setters_[DB_TYPE_TIME][LDR_TIME] = &to_db_time;
-
     setters_[DB_TYPE_DATETIME][LDR_DATETIME] = &to_db_datetime;
-    setters_[DB_TYPE_DATETIMELTZ][LDR_DATETIMELTZ] = &to_db_datetimeltz;
     setters_[DB_TYPE_DATETIMETZ][LDR_DATETIMETZ] = &to_db_datetimetz;
-
-    setters_[DB_TYPE_TIMESTAMP][LDR_STR] = &to_db_timestamp;
+    setters_[DB_TYPE_DATETIMELTZ][LDR_DATETIMELTZ] = &to_db_datetimeltz;
     setters_[DB_TYPE_TIMESTAMP][LDR_TIMESTAMP] = &to_db_timestamp;
-    setters_[DB_TYPE_TIMESTAMPLTZ][LDR_TIMESTAMPLTZ] = &to_db_timestampltz;
     setters_[DB_TYPE_TIMESTAMPTZ][LDR_TIMESTAMPTZ] = &to_db_timestamptz;
+    setters_[DB_TYPE_TIMESTAMPLTZ][LDR_TIMESTAMPLTZ] = &to_db_timestampltz;
 
     return setters_;
   }
@@ -124,19 +178,39 @@ namespace cubload
   conv_func &
   get_conv_func (const data_type ldr_type, const DB_TYPE db_type)
   {
-    return setters[db_type][ldr_type];
+    conv_func &c_func = setters[db_type][ldr_type];
+    if (c_func == NULL)
+      {
+	c_func = &mismatch;
+      }
+
+    return c_func;
   }
 
-  void
-  to_db_null (const char *str, const tp_domain *domain, db_value *val)
+  int
+  mismatch (const char *str, const attribute *attr, db_value *val)
   {
-    db_make_null (val);
+    int error_code = ER_OBJ_DOMAIN_CONFLICT;
+    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, attr->get_name ());
+    return error_code;
   }
 
-  void
-  to_db_short (const char *str, const tp_domain *domain, db_value *val)
+  int
+  to_db_null (const char *str, const attribute *attr, db_value *val)
   {
-    int result = 0;
+    if (attr->get_repr ().is_notnull)
+      {
+	return mismatch (str, attr, val);
+      }
+    else
+      {
+	return db_make_null (val);
+      }
+  }
+
+  int
+  to_db_short (const char *str, const attribute *attr, db_value *val)
+  {
     char *str_ptr;
     size_t str_len = strlen (str);
 
@@ -152,7 +226,8 @@ namespace cubload
 
 	if (str_ptr == str || OR_CHECK_SHORT_OVERFLOW (d))
 	  {
-	    // TODO CBRD-21654 handle error
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (DB_TYPE_SHORT));
+	    return ER_IT_DATA_OVERFLOW;
 	  }
 	else
 	  {
@@ -162,20 +237,21 @@ namespace cubload
     else
       {
 	int i_val;
-	result = parse_int (&i_val, str, 10);
-
-	if (result != 0)
+	int error_code = parse_int (&i_val, str, 10);
+	if (error_code != 0)
 	  {
-	    // TODO CBRD-21654 handle error
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (DB_TYPE_SHORT));
+	    return ER_IT_DATA_OVERFLOW;
 	  }
 	val->data.sh = (short) i_val;
       }
+
+    return NO_ERROR;
   }
 
-  void
-  to_db_int (const char *str, const tp_domain *domain, db_value *val)
+  int
+  to_db_int (const char *str, const attribute *attr, db_value *val)
   {
-    int result = 0;
     char *str_ptr;
     size_t str_len = strlen (str);
 
@@ -186,10 +262,11 @@ namespace cubload
      * entered this can take the slower route. */
     if (str_len < MAX_DIGITS_FOR_INT || (str_len == MAX_DIGITS_FOR_INT && (str[0] == '0' || str[0] == '1')))
       {
-	result = parse_int (&val->data.i, str, 10);
-	if (result != 0)
+	int error_code = parse_int (&val->data.i, str, 10);
+	if (error_code != 0)
 	  {
-	    // TODO CBRD-21654 handle error
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (DB_TYPE_INTEGER));
+	    return ER_IT_DATA_OVERFLOW;
 	  }
       }
     else
@@ -199,19 +276,38 @@ namespace cubload
 
 	if (str_ptr == str || OR_CHECK_INT_OVERFLOW (d))
 	  {
-	    // TODO CBRD-21654 handle error
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (DB_TYPE_INTEGER));
+	    return ER_IT_DATA_OVERFLOW;
 	  }
 	else
 	  {
 	    val->data.i = (int) std::round (d);
 	  }
       }
+
+    return NO_ERROR;
   }
 
-  void
-  to_db_bigint (const char *str, const tp_domain *domain, db_value *val)
+  /**
+   * Used in case of collection when if int overflows fallback to bigint
+   */
+  int
+  to_db_int_set (const char *str, const attribute *attr, db_value *val)
   {
-    int result = 0;
+    int error_code = to_db_int (str, attr, val);
+    if (error_code == ER_IT_DATA_OVERFLOW)
+      {
+	// if there is overflow on integer, try as bigint
+	er_clear ();
+	error_code = to_db_bigint (str, attr, val);
+      }
+
+    return error_code;
+  }
+
+  int
+  to_db_bigint (const char *str, const attribute *attr, db_value *val)
+  {
     size_t str_len = strlen (str);
 
     db_make_bigint (val, 0);
@@ -221,10 +317,11 @@ namespace cubload
      * entered this can take the slower route. */
     if (str_len < MAX_DIGITS_FOR_BIGINT || (str_len == MAX_DIGITS_FOR_BIGINT && str[0] != '9'))
       {
-	result = parse_bigint (&val->data.bigint, str, 10);
-	if (result != 0)
+	int error_code = parse_bigint (&val->data.bigint, str, 10);
+	if (error_code != 0)
 	  {
-	    // TODO CBRD-21654 handle error
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (DB_TYPE_BIGINT));
+	    return ER_IT_DATA_OVERFLOW;
 	  }
       }
     else
@@ -235,25 +332,27 @@ namespace cubload
 	numeric_coerce_dec_str_to_num (str, num.d.buf);
 	if (numeric_coerce_num_to_bigint (num.d.buf, 0, &tmp_bigint) != NO_ERROR)
 	  {
-	    // TODO CBRD-21654 handle error
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (DB_TYPE_BIGINT));
+	    return ER_IT_DATA_OVERFLOW;
 	  }
 	else
 	  {
 	    val->data.bigint = tmp_bigint;
 	  }
       }
+
+    return NO_ERROR;
   }
 
-  void
-  to_db_char (const char *str, const tp_domain *domain, db_value *val)
+  int
+  to_db_char (const char *str, const attribute *attr, db_value *val)
   {
     int char_count = 0;
     int str_len = (int) strlen (str);
 
-    assert (domain != NULL);
-
-    int precision = domain->precision;
-    unsigned char codeset = domain->codeset;
+    const tp_domain &domain = attr->get_domain ();
+    int precision = domain.precision;
+    unsigned char codeset = domain.codeset;
 
     db_make_char (val, 1, (char *) "a", 1, LANG_SYS_CODESET, LANG_SYS_COLLATION);
 
@@ -289,7 +388,8 @@ namespace cubload
 	    /*
 	     * It's a genuine violation; raise an error.
 	     */
-	    // TODO CBRD-21654 handle error
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (DB_TYPE_CHAR));
+	    return ER_IT_DATA_OVERFLOW;
 	  }
       }
 
@@ -301,18 +401,19 @@ namespace cubload
     val->data.ch.medium.buf = (char *) str;
     val->data.ch.medium.compressed_buf = NULL;
     val->data.ch.medium.compressed_size = 0;
+
+    return NO_ERROR;
   }
 
-  void
-  to_db_varchar (const char *str, const tp_domain *domain, db_value *val)
+  int
+  to_db_varchar (const char *str, const attribute *attr, db_value *val)
   {
     int char_count = 0;
     int str_len = (int) strlen (str);
 
-    assert (domain != NULL);
-
-    int precision = domain->precision;
-    unsigned char codeset = domain->codeset;
+    const tp_domain &domain = attr->get_domain ();
+    int precision = domain.precision;
+    unsigned char codeset = domain.codeset;
 
     db_make_varchar (val, 1, (char *) "a", 1, LANG_SYS_CODESET, LANG_SYS_COLLATION);
 
@@ -347,7 +448,8 @@ namespace cubload
 	    /*
 	     * It's a genuine violation; raise an error.
 	     */
-	    // TODO CBRD-21654 handle error
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (DB_TYPE_VARCHAR));
+	    return ER_IT_DATA_OVERFLOW;
 	  }
       }
 
@@ -359,21 +461,25 @@ namespace cubload
     val->data.ch.info.compressed_need_clear = (unsigned char) false;
     val->data.ch.medium.compressed_buf = NULL;
     val->data.ch.medium.compressed_size = 0;
+
+    return NO_ERROR;
   }
 
-  void
-  to_db_string (const char *str, const tp_domain *domain, db_value *val)
+  int to_db_make_varnchar (const char *str, const attribute *attr, db_value *val)
   {
-    int ret = db_make_string (val, (char *) str);
-
-    if (ret != NO_ERROR)
-      {
-	// TODO CBRD-21654 handle error
-      }
+    size_t str_len = strlen (str);
+    return db_make_varnchar (val, TP_FLOATING_PRECISION_VALUE, (DB_C_NCHAR) str, (int) str_len, LANG_SYS_CODESET,
+			     LANG_SYS_COLLATION);
   }
 
-  void
-  to_db_float (const char *str, const tp_domain *domain, db_value *val)
+  int
+  to_db_string (const char *str, const attribute *attr, db_value *val)
+  {
+    return db_make_string (val, (char *) str);
+  }
+
+  int
+  to_db_float (const char *str, const attribute *attr, db_value *val)
   {
     double d;
     char *str_ptr;
@@ -384,16 +490,19 @@ namespace cubload
     /* The ascii representation should be ok, check for overflow */
     if (str_ptr == str || OR_CHECK_FLOAT_OVERFLOW (d))
       {
-	// TODO CBRD-21654 handle error
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, attr->get_domain ().type->get_name ());
+	return ER_IT_DATA_OVERFLOW;
       }
     else
       {
 	val->data.f = (float) d;
       }
+
+    return NO_ERROR;
   }
 
-  void
-  to_db_double (const char *str, const tp_domain *domain, db_value *val)
+  int
+  to_db_double (const char *str, const attribute *attr, db_value *val)
   {
     double d;
     char *str_ptr;
@@ -404,97 +513,69 @@ namespace cubload
     /* The ascii representation should be ok, check for overflow */
     if (str_ptr == str || OR_CHECK_DOUBLE_OVERFLOW (d))
       {
-	// TODO CBRD-21654 handle error
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, attr->get_domain ().type->get_name ());
+	return ER_IT_DATA_OVERFLOW;
       }
     else
       {
 	val->data.d = d;
       }
+
+    return NO_ERROR;
   }
 
-  void
-  to_db_numeric (const char *str, const tp_domain *domain, db_value *val)
+  int
+  to_db_numeric (const char *str, const attribute *attr, db_value *val)
   {
-    int ret;
     size_t str_len = strlen (str);
 
     int precision = (int) str_len - 1 - (str[0] == '+' || str[0] == '-' || str[0] == '.');
     int scale = (int) str_len - (int) strcspn (str, ".") - 1;
 
-    ret = db_value_domain_init (val, DB_TYPE_NUMERIC, precision, scale);
-    if (ret != NO_ERROR)
+    int error_code = db_value_domain_init (val, DB_TYPE_NUMERIC, precision, scale);
+    if (error_code != NO_ERROR)
       {
-	// TODO CBRD-21654 handle error
-	return;
+	return error_code;
       }
 
-    ret = db_value_put (val, DB_TYPE_C_CHAR, (char *) str, (int) str_len);
-    if (ret != NO_ERROR)
-      {
-	// TODO CBRD-21654 handle error
-      }
+    return db_value_put (val, DB_TYPE_C_CHAR, (char *) str, (int) str_len);
   }
 
-  void
-  to_db_date (const char *str, const tp_domain *domain, db_value *val)
+  int
+  to_db_date (const char *str, const attribute *attr, db_value *val)
   {
-    int ret;
-
     db_make_date (val, 1, 1, 1996);
 
-    ret = db_string_to_date (str, &val->data.date);
-    if (ret != NO_ERROR)
-      {
-	// TODO CBRD-21654 handle error
-      }
+    return db_string_to_date (str, &val->data.date);
   }
 
-  void
-  to_db_time (const char *str, const tp_domain *domain, db_value *val)
+  int
+  to_db_time (const char *str, const attribute *attr, db_value *val)
   {
-    int ret;
-
     db_make_time (val, 0, 0, 0);
 
-    ret = db_string_to_time (str, &val->data.time);
-    if (ret != NO_ERROR)
-      {
-	// TODO CBRD-21654 handle error
-      }
+    return db_string_to_time (str, &val->data.time);
   }
 
-  void
-  to_db_timestamp (const char *str, const tp_domain *domain, db_value *val)
+  int
+  to_db_timestamp (const char *str, const attribute *attr, db_value *val)
   {
-    int ret;
-
     db_make_timestamp (val, 0);
 
-    ret = db_string_to_timestamp (str, &val->data.utime);
-    if (ret != NO_ERROR)
-      {
-	// TODO CBRD-21654 handle error
-      }
+    return  db_string_to_timestamp (str, &val->data.utime);
   }
 
-  void
-  to_db_timestampltz (const char *str, const tp_domain *domain, db_value *val)
+  int
+  to_db_timestampltz (const char *str, const attribute *attr, db_value *val)
   {
-    int ret;
-
     db_make_timestampltz (val, 0);
 
-    ret = db_string_to_timestampltz (str, &val->data.utime);
-    if (ret != NO_ERROR)
-      {
-	// TODO CBRD-21654 handle error
-      }
+    return db_string_to_timestampltz (str, &val->data.utime);
   }
 
-  void
-  to_db_timestamptz (const char *str, const tp_domain *domain, db_value *val)
+  int
+  to_db_timestamptz (const char *str, const attribute *attr, db_value *val)
   {
-    int ret;
     bool has_zone;
     DB_TIMESTAMPTZ timestamptz;
 
@@ -503,49 +584,34 @@ namespace cubload
 
     db_make_timestamptz (val, &timestamptz);
 
-    ret = db_string_to_timestamptz (str, &val->data.timestamptz, &has_zone);
-    if (ret != NO_ERROR)
-      {
-	// TODO CBRD-21654 handle error
-      }
+    return db_string_to_timestamptz (str, &val->data.timestamptz, &has_zone);
   }
 
-  void
-  to_db_datetime (const char *str, const tp_domain *domain, db_value *val)
+  int
+  to_db_datetime (const char *str, const attribute *attr, db_value *val)
   {
-    int ret;
     DB_DATETIME datetime;
 
     db_datetime_encode (&datetime, 1, 1, 1996, 0, 0, 0, 0);
     db_make_datetime (val, &datetime);
 
-    ret = db_string_to_datetime (str, &val->data.datetime);
-    if (ret != NO_ERROR)
-      {
-	// TODO CBRD-21654 handle error
-      }
+    return db_string_to_datetime (str, &val->data.datetime);
   }
 
-  void
-  to_db_datetimeltz (const char *str, const tp_domain *domain, db_value *val)
+  int
+  to_db_datetimeltz (const char *str, const attribute *attr, db_value *val)
   {
-    int ret;
     DB_DATETIME datetime;
 
     db_datetime_encode (&datetime, 1, 1, 1996, 0, 0, 0, 0);
     db_make_datetimeltz (val, &datetime);
 
-    ret = db_string_to_datetimeltz (str, &val->data.datetime);
-    if (ret != NO_ERROR)
-      {
-	// TODO CBRD-21654 handle error
-      }
+    return db_string_to_datetimeltz (str, &val->data.datetime);
   }
 
-  void
-  to_db_datetimetz (const char *str, const tp_domain *domain, db_value *val)
+  int
+  to_db_datetimetz (const char *str, const attribute *attr, db_value *val)
   {
-    int ret;
     bool has_zone;
     DB_DATETIME datetime;
     DB_DATETIMETZ datetimetz;
@@ -557,32 +623,27 @@ namespace cubload
 
     db_make_datetimetz (val, &datetimetz);
 
-    ret = db_string_to_datetimetz (str, &val->data.datetimetz, &has_zone);
-    if (ret != NO_ERROR)
-      {
-	// TODO CBRD-21654 handle error
-      }
+    return db_string_to_datetimetz (str, &val->data.datetimetz, &has_zone);
   }
 
-  void
-  to_db_json (const char *str, const tp_domain *domain, db_value *val)
+  int
+  to_db_json (const char *str, const attribute *attr, db_value *val)
   {
     JSON_DOC *document = NULL;
-    int ret = NO_ERROR;
     size_t json_len = strlen (str);
 
-    ret = db_json_get_json_from_str (str, document, json_len);
-    if (ret != NO_ERROR)
+    int error_code = db_json_get_json_from_str (str, document, json_len);
+    if (error_code != NO_ERROR)
       {
 	assert (document == NULL);
-	// TODO CBRD-21654 handle error
+	return error_code;
       }
 
-    db_make_json (val, document, true);
+    return db_make_json (val, document, true);
   }
 
-  void
-  to_db_monetary (const char *str, const tp_domain *domain, db_value *val)
+  int
+  to_db_monetary (const char *str, const attribute *attr, db_value *val)
   {
     char *str_ptr;
     double amt;
@@ -608,14 +669,281 @@ namespace cubload
 
     if (str == str_ptr || OR_CHECK_DOUBLE_OVERFLOW (amt))
       {
-	// TODO CBRD-21654 handle error
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (DB_TYPE_MONETARY));
+	return ER_IT_DATA_OVERFLOW;
       }
     else
       {
-	if (db_make_monetary (val, currency_type, amt) != NO_ERROR)
-	  {
-	    // TODO CBRD-21654 handle error
-	  }
+	return db_make_monetary (val, currency_type, amt);
       }
+  }
+
+  int
+  to_db_varbit_from_bin_str (const char *str, const attribute *attr, db_value *val)
+  {
+    int error_code = NO_ERROR;
+    char *bstring;
+    db_value temp;
+    std::size_t dest_size;
+    std::size_t str_len = strlen (str);
+    tp_domain temp_domain, *domain_ptr = NULL;
+
+    dest_size = (str_len + 7) / 8;
+
+    bstring = (char *) db_private_alloc (NULL, dest_size + 1);
+    if (bstring == NULL)
+      {
+	error_code = er_errid ();
+	assert (error_code != NO_ERROR);
+
+	return error_code;
+      }
+
+    if (qstr_bit_to_bin (bstring, (int) dest_size, const_cast<char *> (str), (int) str_len) != (int) str_len)
+      {
+	db_private_free_and_init (NULL, bstring);
+
+	error_code = ER_OBJ_DOMAIN_CONFLICT;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, attr->get_name ());
+
+	// TODO CBRD-22271 log LOADDB_MSG_PARSE_ERROR
+	return error_code;
+      }
+
+    error_code = db_make_varbit (&temp, TP_FLOATING_PRECISION_VALUE, bstring, (int) str_len);
+    if (error_code != NO_ERROR)
+      {
+	db_private_free_and_init (NULL, bstring);
+	return error_code;
+      }
+
+    temp.need_clear = true;
+
+    const tp_domain &domain = attr->get_domain ();
+    error_code = db_value_domain_init (val, domain.type->id, domain.precision, domain.scale);
+    if (error_code != NO_ERROR)
+      {
+	// TODO CBRD-22271 log LOADDB_MSG_PARSE_ERROR
+	db_value_clear (&temp);
+	return error_code;
+      }
+
+    domain_ptr = tp_domain_resolve_value (val, &temp_domain);
+
+    if (tp_value_cast (&temp, val, domain_ptr, false) != DOMAIN_COMPATIBLE)
+      {
+	db_value_clear (val);
+
+	error_code = ER_OBJ_DOMAIN_CONFLICT;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, attr->get_name ());
+
+	// TODO CBRD-22271 log LOADDB_MSG_PARSE_ERROR
+	return error_code;
+      }
+    db_value_clear (&temp);
+
+    return error_code;
+  }
+
+  int
+  to_db_varbit_from_hex_str (const char *str, const attribute *attr, db_value *val)
+  {
+    int error_code = NO_ERROR;
+    char *bstring = NULL;
+    db_value temp;
+    std::size_t dest_size;
+    std::size_t str_len = strlen (str);
+    tp_domain *domain_ptr, temp_domain;
+
+    db_make_null (&temp);
+
+    dest_size = (str_len + 1) / 2;
+
+    bstring = (char *) db_private_alloc (NULL, dest_size + 1);
+    if (bstring == NULL)
+      {
+	error_code = er_errid ();
+	assert (error_code != NO_ERROR);
+
+	return error_code;
+      }
+
+    if (qstr_hex_to_bin (bstring, (int) dest_size, const_cast<char *> (str), (int) str_len) != (int) str_len)
+      {
+	db_private_free_and_init (NULL, bstring);
+
+	error_code = ER_OBJ_DOMAIN_CONFLICT;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, attr->get_name ());
+
+	// TODO CBRD-22271 log LOADDB_MSG_PARSE_ERROR
+	return error_code;
+      }
+
+    error_code = db_make_varbit (&temp, TP_FLOATING_PRECISION_VALUE, bstring, ((int) str_len) * 4);
+    if (error_code != NO_ERROR)
+      {
+	db_private_free_and_init (NULL, bstring);
+	return error_code;
+      }
+
+    temp.need_clear = true;
+
+    const tp_domain &domain = attr->get_domain ();
+    error_code = db_value_domain_init (val, domain.type->id, domain.precision, domain.scale);
+    if (error_code != NO_ERROR)
+      {
+	// TODO CBRD-22271 log LOADDB_MSG_PARSE_ERROR
+	db_value_clear (&temp);
+	return error_code;
+      }
+
+    domain_ptr = tp_domain_resolve_value (val, &temp_domain);
+    if (tp_value_cast (&temp, val, domain_ptr, false))
+      {
+	db_value_clear (val);
+
+	error_code = ER_OBJ_DOMAIN_CONFLICT;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, attr->get_name ());
+
+	// TODO CBRD-22271 log LOADDB_MSG_PARSE_ERROR
+	return error_code;
+      }
+    db_value_clear (&temp);
+
+    return error_code;
+  }
+
+  int
+  to_db_elo_ext (const char *str, const attribute *attr, db_value *val)
+  {
+    db_elo elo;
+    INT64 size;
+    DB_TYPE type;
+    size_t new_len;
+    char *locator = NULL;
+    char *meta_data = NULL;
+    int error_code = NO_ERROR;
+    char *str_start_ptr = NULL, *str_end_ptr = NULL;
+    const char *meta_start_ptr = NULL, *meta_end_ptr = NULL;
+    const char *locator_start_ptr = NULL, *locator_end_ptr = NULL;
+
+    if (str[0] == '\"')
+      {
+	str++;
+      }
+
+    new_len = strlen (str);
+    if (new_len && str[new_len - 1] == '\"')
+      {
+	new_len--;
+      }
+
+    assert (new_len > 0);
+    assert (str[0] == 'B' || str[0] == 'C');
+
+    if (str[0] == 'B')
+      {
+	type = DB_TYPE_BLOB;
+      }
+    else
+      {
+	type = DB_TYPE_CLOB;
+      }
+
+    /* size */
+    str_start_ptr = (char *) (str + 1);
+    str_end_ptr = strchr (str_start_ptr, '|');
+    if (str_end_ptr == NULL || str_end_ptr - str_start_ptr == 0)
+      {
+	error_code = ER_LDR_ELO_INPUT_FILE;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, str);
+
+	return error_code;
+      }
+
+    /* locator */
+    locator_start_ptr = str_end_ptr + 1;
+    locator_end_ptr = strchr (locator_start_ptr, '|');
+    if (locator_end_ptr == NULL || locator_end_ptr - locator_start_ptr == 0)
+      {
+	error_code = ER_LDR_ELO_INPUT_FILE;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, str);
+
+	return error_code;
+      }
+
+    /* meta_data */
+    meta_end_ptr = meta_start_ptr = locator_end_ptr + 1;
+    while (*meta_end_ptr)
+      {
+	meta_end_ptr++;
+      }
+
+    int ret = str_to_int64 (&size, &str_end_ptr, str_start_ptr, 10);
+    if (ret != 0 || size < 0)
+      {
+	error_code = ER_LDR_ELO_INPUT_FILE;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, str);
+
+	return error_code;
+      }
+
+    size_t locator_size = locator_end_ptr - locator_start_ptr;
+    locator = (char *) db_private_alloc (NULL, locator_size + 1);
+    if (locator == NULL)
+      {
+	error_code = er_errid ();
+	assert (error_code != NO_ERROR);
+
+	return error_code;
+      }
+
+    std::memcpy (locator, locator_start_ptr, locator_size);
+    locator[locator_size] = '\0';
+
+    size_t meta_data_size = meta_end_ptr - meta_start_ptr;
+    if (meta_data_size > 0)
+      {
+	meta_data = (char *) db_private_alloc (NULL, meta_data_size + 1);
+	if (meta_data == NULL)
+	  {
+	    db_private_free_and_init (NULL, locator);
+
+	    error_code = er_errid ();
+	    assert (error_code != NO_ERROR);
+
+	    return error_code;
+	  }
+
+	std::memcpy (meta_data, meta_start_ptr, meta_data_size);
+	meta_data[meta_data_size] = '\0';
+      }
+
+    elo_init_structure (&elo);
+    elo.size = size;
+    elo.locator = locator;
+    elo.meta_data = meta_data;
+    elo.type = ELO_FBO;
+
+    error_code = db_make_elo (val, type, &elo);
+    if (error_code != NO_ERROR)
+      {
+	db_private_free_and_init (NULL, locator);
+	db_private_free_and_init (NULL, meta_data);
+
+	return error_code;
+      }
+
+    val->need_clear = true;
+
+    return NO_ERROR;
+  }
+
+  int
+  to_db_elo_int (const char *str, const attribute *attr, db_value *val)
+  {
+    /* not implemented. should not be called */
+    assert (0);
+    return ER_FAILED;
   }
 }

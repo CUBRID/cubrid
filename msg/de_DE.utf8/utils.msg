@@ -435,6 +435,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 58 %1$d Instanzen festgeschrieben\n
 59 \nNicht optimierte Version von loaddb kann nicht aufgerufen werden.\n
 60 Parse-Fehler \"%1$s\", wie %2$s Typ.\n
+61 Object Reference is not supported in CS mode.\n
 112   %1$d Instanzen\r
 113 Letzte festgeschriebene Zeile: %1$d
 114 Fehler-Kontroll-Datei

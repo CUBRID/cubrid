@@ -27,12 +27,43 @@ namespace cubload
 {
 
   // attribute
-  attribute::attribute (ATTR_ID attr_id, std::string attr_name, or_attribute *attr_repr)
-    : m_attr_id (attr_id)
-    , m_attr_name (std::move (attr_name))
-    , m_attr_repr (attr_repr)
+  attribute::attribute (ATTR_ID id, std::string &name, std::size_t index, or_attribute *repr)
+    : m_id (id)
+    , m_name (std::move (name))
+    , m_index (index)
+    , m_repr (repr)
   {
     //
+  }
+
+  ATTR_ID
+  attribute::get_id () const
+  {
+    return m_id;
+  }
+
+  const char *
+  attribute::get_name () const
+  {
+    return m_name.c_str ();
+  }
+
+  std::size_t
+  attribute::get_index () const
+  {
+    return m_index;
+  }
+
+  const or_attribute &
+  attribute::get_repr () const
+  {
+    return *m_repr;
+  }
+
+  const tp_domain &
+  attribute::get_domain () const
+  {
+    return *m_repr->domain;
   }
 
   // class_entry
@@ -61,6 +92,12 @@ namespace cubload
     return m_class_oid;
   }
 
+  const char *
+  class_entry::get_class_name () const
+  {
+    return m_class_name.c_str ();
+  }
+
   const attribute &
   class_entry::get_attribute (std::size_t index) const
   {
@@ -68,6 +105,12 @@ namespace cubload
     assert (index < m_attributes.size ());
 
     return *m_attributes[index];
+  }
+
+  size_t
+  class_entry::get_attributes_size () const
+  {
+    return m_attributes.size ();
   }
 
   // class_registry

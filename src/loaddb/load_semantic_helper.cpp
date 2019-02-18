@@ -78,7 +78,12 @@ namespace cubload
       {
 	if (m_qstr_buf_idx >= MAX_QUOTED_STR_BUF_SIZE)
 	  {
+	    char *qstr_buf_tmp = m_qstr_buf_ptr;
 	    extend_quoted_string_buffer (MAX_QUOTED_STR_BUF_SIZE * 2);
+
+	    // in case we switch from m_qstr_buf_pool to m_qstr_buf
+	    // we need to copy accumulated data to the new memory location
+	    std::memcpy (m_qstr_buf_ptr, qstr_buf_tmp, m_qstr_buf_idx);
 
 	    m_qstr_buf_pool_idx--;
 	    m_use_qstr_buf = true;
@@ -162,12 +167,12 @@ namespace cubload
     if (m_constant_pool_idx < CONSTANT_POOL_SIZE)
       {
 	con = &m_constant_pool[m_constant_pool_idx++];
-	con->type = type;
+	con->type = (data_type) type;
 	con->val = val;
       }
     else
       {
-	con = new constant_type (type, val);
+	con = new constant_type ((data_type) type, val);
 
 	// collect allocated constants in order to free the memory later
 	m_constant_list.push_front (con);

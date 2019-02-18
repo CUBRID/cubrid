@@ -435,6 +435,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 58 %1$d 인스턴스가 커밋 되었습니다\n
 59 \n이전 버전의 loaddb를 수행할 수 없습니다.\n
 60 에러 parsing \"%1$s\", as %2$s type.\n
+61 Object Reference is not supported in CS mode.\n
 112   %1$d 개의 인스턴스\r
 113 마지막으로 커밋된 라인 : %1$d
 114 에러 제어 파일

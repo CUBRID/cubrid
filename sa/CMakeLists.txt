@@ -367,7 +367,6 @@ set(LOADDB_SOURCES
   ${FLEX_loader_lexer_OUTPUTS}
   ${LOADDB_DIR}/load_common.cpp
   ${LOADDB_DIR}/load_db.c
-  ${LOADDB_DIR}/load_db_value_converter.cpp
   ${LOADDB_DIR}/load_driver.cpp
   ${LOADDB_DIR}/load_error_handler.cpp
   ${LOADDB_DIR}/load_object.c

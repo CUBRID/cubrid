@@ -437,6 +437,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 58 %1$d instances validées\n
 59 \nImpossible d'invoquer la non-optimisé version de loaddb.\n
 60 Erreur d'analyse du \"%1$s\", comme type %2$s.\n
+61 Object Reference is not supported in CS mode.\n
 112   %1$d instances\r
 113 Dernière ligne validée: %1$d
 114 error-control-file

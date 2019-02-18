@@ -42,7 +42,7 @@ namespace cubload
   class error_handler
   {
     public:
-      error_handler (lineno_function &lineno_function);
+      explicit error_handler (lineno_function &lineno_function);
 
       ~error_handler () = default; // Destructor
 
@@ -52,6 +52,9 @@ namespace cubload
 
       template<typename... Args>
       void on_error (MSGCAT_LOADDB_MSG msg_id, Args &&... args);
+
+      // just log er_msg from error_manager and fail the session
+      void on_failure ();
 
       template<typename... Args>
       void on_error_with_line (MSGCAT_LOADDB_MSG msg_id, Args &&... args);

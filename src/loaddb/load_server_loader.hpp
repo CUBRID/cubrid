@@ -28,13 +28,17 @@
 #include "heap_attrinfo.h"
 #include "heap_file.h"
 #include "load_common.hpp"
-#include "load_error_handler.hpp"
+
+#include <vector>
 
 namespace cubload
 {
 
   // forward declaration
   class session;
+  class attribute;
+  class class_entry;
+  class error_handler;
 
   class server_class_installer : public class_installer
   {
@@ -74,8 +78,13 @@ namespace cubload
       void finish_line () override;
 
     private:
-      int process_constant (constant_type *cons, const attribute &attr, db_value *db_val);
-      int process_monetary_constant (constant_type *cons, const attribute &attr, db_value *db_val);
+      int process_constant (constant_type *cons, const attribute &attr);
+      int process_generic_constant (constant_type *cons, const attribute &attr);
+      int process_monetary_constant (constant_type *cons, const attribute &attr);
+      int process_collection_constant (constant_type *cons, const attribute &attr);
+
+      void clear_db_values ();
+      db_value &get_attribute_db_value (size_t attr_index);
 
       void start_scancache (const OID &class_oid);
       void stop_scancache ();
@@ -92,6 +101,7 @@ namespace cubload
       const class_entry *m_class_entry;
       bool m_attrinfo_started;
       heap_cache_attrinfo m_attrinfo;
+      std::vector<db_value> m_db_values;
 
       bool m_scancache_started;
       heap_scancache m_scancache;

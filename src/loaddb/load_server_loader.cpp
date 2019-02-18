@@ -23,10 +23,12 @@
 
 #include "load_server_loader.hpp"
 
+#include "load_class_registry.hpp"
 #include "load_db_value_converter.hpp"
-#include "load_scanner.hpp"
+#include "load_error_handler.hpp"
 #include "locator_sr.h"
 #include "object_primitive.h"
+#include "set_object.h"
 #include "xserver_interface.h"
 
 namespace cubload
@@ -106,6 +108,7 @@ namespace cubload
       }
 
     int error_code = heap_attrinfo_start (&thread_ref, &class_oid, -1, NULL, &attrinfo);
+    assert (attrinfo.num_values != -1);
     if (error_code != NO_ERROR)
       {
 	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
@@ -127,11 +130,11 @@ namespace cubload
     std::vector<const attribute *> attributes;
     attributes.reserve ((std::size_t) attrinfo.num_values);
 
-    for (int i = 0; i < attrinfo.num_values; ++i)
+    for (std::size_t attr_index = 0; attr_index < (std::size_t) attrinfo.num_values; ++attr_index)
       {
 	char *attr_name = NULL;
 	int free_attr_name = 0;
-	ATTR_ID attr_id = attrinfo.values[i].attrid;
+	ATTR_ID attr_id = attrinfo.values[attr_index].attrid;
 
 	error_code = or_get_attrname (&recdes, attr_id, &attr_name, &free_attr_name);
 	if (error_code != NO_ERROR)
@@ -146,8 +149,9 @@ namespace cubload
 	if (attr_list == NULL)
 	  {
 	    // if attr_list is NULL then register attributes in default order
-	    or_attribute *attrepr = heap_locate_last_attrepr (attr_id, &attrinfo);
-	    const attribute *attr = new attribute (attr_id, attr_name_, attrepr);
+	    or_attribute *attr_repr = heap_locate_last_attrepr (attr_id, &attrinfo);
+	    assert (attr_repr != NULL && attr_repr->domain != NULL);
+	    const attribute *attr = new attribute (attr_id, attr_name_, attr_index, attr_repr);
 
 	    attributes.push_back (attr);
 	  }
@@ -164,13 +168,15 @@ namespace cubload
       }
 
     // register attributes in specific order required by attr_list
-    for (string_type *str_attr = attr_list; str_attr != NULL; str_attr = str_attr->next)
+    std::size_t attr_index = 0;
+    for (string_type *str_attr = attr_list; str_attr != NULL; str_attr = str_attr->next, ++attr_index)
       {
 	std::string attr_name_ (str_attr->val);
 	ATTR_ID attr_id = attr_map.at (attr_name_);
 
-	or_attribute *attrepr = heap_locate_last_attrepr (attr_id, &attrinfo);
-	const attribute *attr = new attribute (attr_id, attr_name_, attrepr);
+	or_attribute *attr_repr = heap_locate_last_attrepr (attr_id, &attrinfo);
+	assert (attr_repr != NULL && attr_repr->domain != NULL);
+	const attribute *attr = new attribute (attr_id, attr_name_, attr_index, attr_repr);
 
 	attributes.push_back (attr);
       }
@@ -190,6 +196,7 @@ namespace cubload
     , m_class_entry (NULL)
     , m_attrinfo_started (false)
     , m_attrinfo ()
+    , m_db_values ()
     , m_scancache_started (false)
     , m_scancache ()
   {
@@ -233,9 +240,6 @@ namespace cubload
   server_object_loader::start_line (int object_id)
   {
     (void) object_id;
-
-    // clear db values
-    heap_attrinfo_clear_dbvalues (&m_attrinfo);
   }
 
   void
@@ -246,23 +250,41 @@ namespace cubload
 	return;
       }
 
-    std::size_t attr_idx = 0;
-    for (constant_type *c = cons; c != NULL; c = c->next, attr_idx++)
+    std::size_t attr_index = 0;
+    std::size_t attr_size = m_class_entry->get_attributes_size ();
+
+    if (cons != NULL && attr_size == 0)
       {
-	const attribute &attr = m_class_entry->get_attribute (attr_idx);
-	if (attr.m_attr_repr == NULL)
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_NO_CLASS_OR_NO_ATTRIBUTE, 0);
+	m_error_handler.on_failure ();
+	return;
+      }
+
+    for (constant_type *c = cons; c != NULL; c = c->next, attr_index++)
+      {
+	if (attr_index == attr_size)
 	  {
-	    // TODO use LOADDB_MSG_MISSING_DOMAIN message
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_VALUE_OVERFLOW, 1, attr_index);
+	    m_error_handler.on_failure ();
+	    return;
+	  }
+
+	const attribute &attr = m_class_entry->get_attribute (attr_index);
+	int error_code = process_constant (c, attr);
+	if (error_code != NO_ERROR)
+	  {
 	    m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
 	    return;
 	  }
 
-	db_value db_val;
-	int error_code = process_constant (c, attr, &db_val);
-	if (error_code == NO_ERROR)
-	  {
-	    heap_attrinfo_set (&m_class_entry->get_class_oid (), attr.m_attr_id, &db_val, &m_attrinfo);
-	  }
+	db_value &db_val = get_attribute_db_value (attr_index);
+	heap_attrinfo_set (&m_class_entry->get_class_oid (), attr.get_id (), &db_val, &m_attrinfo);
+      }
+
+    if (attr_index < attr_size)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_MISSING_ATTRIBUTES, 2, attr_size, attr_index);
+	m_error_handler.on_failure ();
       }
   }
 
@@ -285,15 +307,17 @@ namespace cubload
 		     UPDATE_INPLACE_NONE, NULL, false);
     if (error_code != NO_ERROR)
       {
-	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
+	m_error_handler.on_failure ();
 	return;
       }
 
     m_session.inc_total_objects ();
+
+    clear_db_values ();
   }
 
   int
-  server_object_loader::process_constant (constant_type *cons, const attribute &attr, db_value *db_val)
+  server_object_loader::process_constant (constant_type *cons, const attribute &attr)
   {
     string_type *str = NULL;
     int error_code = NO_ERROR;
@@ -301,11 +325,6 @@ namespace cubload
     switch (cons->type)
       {
       case LDR_NULL:
-	if (attr.m_attr_repr->is_notnull)
-	  {
-	    error_code = ER_FAILED;
-	    m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
-	  }
       case LDR_INT:
       case LDR_FLOAT:
       case LDR_DOUBLE:
@@ -320,45 +339,47 @@ namespace cubload
       case LDR_DATETIMETZ:
       case LDR_STR:
       case LDR_NSTR:
-      {
-	str = reinterpret_cast<string_type *> (cons->val);
-	conv_func &func = get_conv_func ((data_type) cons->type, TP_DOMAIN_TYPE (attr.m_attr_repr->domain));
-
-	if (func != NULL)
-	  {
-	    func (str != NULL ? str->val : NULL, attr.m_attr_repr->domain, db_val);
-	  }
-	else
-	  {
-	    error_code = ER_FAILED;
-	    m_error_handler.on_error_with_line (LOADDB_MSG_CONVERSION_ERROR, str != NULL ? str->val : "",
-						pr_type_name (TP_DOMAIN_TYPE (attr.m_attr_repr->domain)));
-	  }
-      }
-      break;
-      case LDR_MONETARY:
-	error_code = process_monetary_constant (cons, attr, db_val);
-	break;
       case LDR_BSTR:
       case LDR_XSTR:
       case LDR_ELO_INT:
       case LDR_ELO_EXT:
+	error_code = process_generic_constant (cons, attr);
+	break;
+
+      case LDR_MONETARY:
+	error_code = process_monetary_constant (cons, attr);
+	break;
+
+      case LDR_COLLECTION:
+	error_code = process_collection_constant (reinterpret_cast<constant_type *> (cons->val), attr);
+	break;
+
       case LDR_SYS_USER:
       case LDR_SYS_CLASS:
       {
-	// str = reinterpret_cast<string_type *> (cons->val);
-	//conv_func func = get_conv_func (cons->type, attr->domain->type->id);
-	//func (str->val, attr->domain, db_val);
+	const char *class_name;
+	str = reinterpret_cast<string_type *> (cons->val);
+
+	if (str != NULL && str->val != NULL)
+	  {
+	    class_name = str->val;
+	  }
+	else
+	  {
+	    class_name = cons->type == LDR_SYS_USER ? "db_user" : "*system class*";
+	  }
+
+	error_code = ER_FAILED;
+	m_error_handler.on_error_with_line (LOADDB_MSG_UNAUTHORIZED_CLASS, class_name);
       }
       break;
 
       case LDR_OID:
       case LDR_CLASS_OID:
-	//ldr_process_object_ref ((object_ref_type *) cons->val, cons->type);
-	break;
-
-      case LDR_COLLECTION:
-	// TODO CBRD-21654 add support for collections
+	// Object References and Class Object Reference are not supported by server loaddb implementation
+	assert (false);
+	error_code = ER_FAILED;
+	m_error_handler.on_failure_with_line (LOADDB_MSG_OID_NOT_SUPPORTED);
 	break;
 
       default:
@@ -370,7 +391,25 @@ namespace cubload
   }
 
   int
-  server_object_loader::process_monetary_constant (constant_type *cons, const attribute &attr, db_value *db_val)
+  server_object_loader::process_generic_constant (constant_type *cons, const attribute &attr)
+  {
+    string_type *str = reinterpret_cast<string_type *> (cons->val);
+    char *token = str != NULL ? str->val : NULL;
+
+    db_value &db_val = get_attribute_db_value (attr.get_index ());
+    conv_func &func = get_conv_func (cons->type, attr.get_domain ().type->get_id ());
+
+    int error_code = func (token, &attr, &db_val);
+    if (error_code != NO_ERROR)
+      {
+	return error_code;
+      }
+
+    return error_code;
+  }
+
+  int
+  server_object_loader::process_monetary_constant (constant_type *cons, const attribute &attr)
   {
     int error_code = NO_ERROR;
     monetary_type *mon = reinterpret_cast<monetary_type *> (cons->val);
@@ -382,7 +421,7 @@ namespace cubload
 
     /* In Loader grammar always print symbol before value (position of currency symbol is not localized) */
     char *curr_str = intl_get_money_esc_ISO_symbol ((DB_CURRENCY) mon->currency_type);
-    size_t full_mon_str_len = (strlen (str->val) + strlen (curr_str));
+    size_t full_mon_str_len = (str->size + strlen (curr_str));
 
     if (full_mon_str_len >= sizeof (full_mon_str))
       {
@@ -392,16 +431,13 @@ namespace cubload
     std::strcpy (full_mon_str_p, curr_str);
     std::strcat (full_mon_str_p, str->val);
 
-    conv_func &func = get_conv_func ((data_type) cons->type, TP_DOMAIN_TYPE (attr.m_attr_repr->domain));
-    if (func != NULL)
+    db_value &db_val = get_attribute_db_value (attr.get_index ());
+    conv_func &func = get_conv_func (cons->type, attr.get_domain ().type->get_id ());
+
+    error_code = func (full_mon_str_p, &attr, &db_val);
+    if (error_code != NO_ERROR)
       {
-	func (full_mon_str_p, attr.m_attr_repr->domain, db_val);
-      }
-    else
-      {
-	error_code = ER_FAILED;
-	m_error_handler.on_error_with_line (LOADDB_MSG_CONVERSION_ERROR, full_mon_str_p,
-					    pr_type_name (TP_DOMAIN_TYPE (attr.m_attr_repr->domain)));
+	return error_code;
       }
 
     if (full_mon_str_p != full_mon_str)
@@ -412,6 +448,95 @@ namespace cubload
     delete mon;
 
     return error_code;
+  }
+
+  int
+  server_object_loader::process_collection_constant (constant_type *cons, const attribute &attr)
+  {
+    int error_code = NO_ERROR;
+    const tp_domain &domain = attr.get_domain ();
+
+    if (!TP_IS_SET_TYPE (domain.type->get_id ()))
+      {
+	error_code = ER_LDR_DOMAIN_MISMATCH;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 4, attr.get_name (), m_class_entry->get_class_name (),
+		pr_type_name (DB_TYPE_SET), domain.type->get_name ());
+
+	return error_code;
+      }
+
+    DB_COLLECTION *set = set_create_with_domain (const_cast<tp_domain *> (&domain), 0);
+    if (set == NULL)
+      {
+	error_code = er_errid ();
+	assert (error_code != NO_ERROR);
+
+	return error_code;
+      }
+
+    db_value &db_val = get_attribute_db_value (attr.get_index ());
+    for (constant_type *c = cons; c != NULL; c = c->next)
+      {
+	if (c->type == LDR_COLLECTION)
+	  {
+	    error_code = ER_LDR_NESTED_SET;
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+	  }
+	else if (c->type == LDR_MONETARY)
+	  {
+	    error_code = process_monetary_constant (c, attr);
+	  }
+	else
+	  {
+	    error_code = process_generic_constant (c, attr);
+	  }
+
+	if (error_code != NO_ERROR)
+	  {
+	    set_free (set);
+	    return error_code;
+	  }
+
+	// add element to the set (db_val will be cloned, so it is safe to reuse same variable)
+	error_code = set_add_element (set, &db_val);
+	if (error_code != NO_ERROR)
+	  {
+	    set_free (set);
+	    return error_code;
+	  }
+      }
+
+    db_make_collection (&db_val, set);
+
+    return error_code;
+  }
+
+  void
+  server_object_loader::clear_db_values ()
+  {
+    size_t n_values = m_db_values.size ();
+    if (m_attrinfo.num_values > 0 && m_attrinfo.num_values < (int) m_db_values.size ())
+      {
+	n_values = (size_t) m_attrinfo.num_values;
+      }
+
+    for (size_t i = 0; i < n_values; ++i)
+      {
+	db_value_clear (&m_db_values[i]);
+      }
+
+    heap_attrinfo_clear_dbvalues (&m_attrinfo);
+  }
+
+  db_value &
+  server_object_loader::get_attribute_db_value (size_t attr_index)
+  {
+    if (attr_index == m_db_values.size ())
+      {
+	m_db_values.emplace_back ();
+      }
+
+    return m_db_values[attr_index];
   }
 
   void

@@ -845,7 +845,7 @@ namespace cubload
 	    {
 	      string_type *str = (string_type *) c->val;
 
-	      (*ldr_act) (ldr_Current_context, str->val, str->size, (data_type) c->type);
+	      (*ldr_act) (ldr_Current_context, str->val, str->size, c->type);
 	    }
 	    break;
 
@@ -858,7 +858,7 @@ namespace cubload
 	      char *full_mon_str_p = full_mon_str;
 	      /* In Loader grammar always print symbol before value (position of currency symbol is not localized) */
 	      char *curr_str = intl_get_money_esc_ISO_symbol ((DB_CURRENCY) mon->currency_type);
-	      size_t full_mon_str_len = (strlen (str->val) + strlen (curr_str));
+	      size_t full_mon_str_len = (str->size + strlen (curr_str));
 
 	      if (full_mon_str_len >= sizeof (full_mon_str))
 		{
@@ -868,7 +868,7 @@ namespace cubload
 	      strcpy (full_mon_str_p, curr_str);
 	      strcat (full_mon_str_p, str->val);
 
-	      (*ldr_act) (ldr_Current_context, full_mon_str_p, strlen (full_mon_str_p), (data_type) c->type);
+	      (*ldr_act) (ldr_Current_context, full_mon_str_p, strlen (full_mon_str_p), c->type);
 	      if (full_mon_str_p != full_mon_str)
 		{
 		  delete [] full_mon_str_p;
@@ -887,7 +887,7 @@ namespace cubload
 	    {
 	      string_type *str = (string_type *) c->val;
 
-	      (*ldr_act) (ldr_Current_context, str->val, strlen (str->val), (data_type) c->type);
+	      (*ldr_act) (ldr_Current_context, str->val, str->size, c->type);
 	    }
 	    break;
 
@@ -2697,17 +2697,17 @@ static int
 ldr_bstr_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val)
 {
   int err = NO_ERROR;
-  int dest_size;
+  size_t dest_size;
   char *bstring;
   TP_DOMAIN *domain;
   DB_VALUE temp;
   TP_DOMAIN *domain_ptr, temp_domain;
 
-  dest_size = ((int) len + 7) / 8;
+  dest_size = (len + 7) / 8;
 
   CHECK_PTR (err, bstring = (char *) db_private_alloc (NULL, dest_size + 1));
 
-  if (qstr_bit_to_bin (bstring, dest_size, (char *) str, (int) len) != len)
+  if (qstr_bit_to_bin (bstring, dest_size, (char *) str, (int) len) != (int) len)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_DOMAIN_CONFLICT, 1,
 	      context->attrs[context->next_attr].att->header.name);
@@ -2777,7 +2777,7 @@ static int
 ldr_xstr_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val)
 {
   int err = NO_ERROR;
-  int dest_size;
+  size_t dest_size;
   char *bstring = NULL;
   TP_DOMAIN *domain;
   DB_VALUE temp;
@@ -2785,7 +2785,7 @@ ldr_xstr_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val)
 
   db_make_null (&temp);
 
-  dest_size = ((int) len + 1) / 2;
+  dest_size = (len + 1) / 2;
 
   CHECK_PTR (err, bstring = (char *) db_private_alloc (NULL, dest_size + 1));
 
@@ -3785,7 +3785,7 @@ ldr_elo_ext_db_elo (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIB
   DB_VALUE val;
   char name_buf[8196];
   char *name = NULL;
-  int new_len;
+  size_t new_len;
 
   db_make_null (&val);
 
@@ -5466,7 +5466,7 @@ construct_instance (LDR_CONTEXT *context)
   SM_CLASS *class_;
   SM_COMPONENT **comp_ptr = NULL;
 
-  for (i = 0, a = context->arg_index; i < context->arg_count && err == NO_ERROR && i < LDR_MAX_ARGS; i++, a++)
+  for (i = 0, a = context->arg_index; i < context->arg_count && err == NO_ERROR && i < (int) LDR_MAX_ARGS; i++, a++)
     {
       err =
 	      (* (elem_converter[context->attrs[a].parser_type])) (context, context->attrs[a].parser_str,
@@ -5953,7 +5953,7 @@ ldr_init_loader (LDR_CONTEXT *context)
   db_make_datetimetz (&ldr_datetimetz_tmpl, &datetimetz);
   db_make_elo (&ldr_blob_tmpl, DB_TYPE_BLOB, null_elo);
   db_make_elo (&ldr_clob_tmpl, DB_TYPE_CLOB, null_elo);
-  db_make_bit (&ldr_bit_tmpl, 1, "0", 1);
+  db_make_bit (&ldr_bit_tmpl, 1, (DB_C_BIT) "0", 1);
   db_make_json (&ldr_json_tmpl, NULL, false);
 
   /*
