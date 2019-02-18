@@ -47,6 +47,7 @@
 
 #include "log_manager.h"
 
+#include "btree.h"
 #include "recovery.h"
 #include "xserver_interface.h"
 #include "page_buffer.h"
@@ -76,6 +77,7 @@
 #include "thread_daemon.hpp"
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
+#include "xasl_cache.h"
 
 #include "dbtype.h"
 

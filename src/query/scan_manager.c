@@ -39,6 +39,7 @@
 #include "btree_load.h"
 #include "perf_monitor.h"
 #include "query_manager.h"
+#include "regu_var.h"
 #include "locator_sr.h"
 #include "object_primitive.h"
 #include "query_opfunc.h"
@@ -132,12 +133,12 @@ static int scan_Iscan_oid_buf_list_count = 0;
 
 #define SCAN_ISCAN_OID_BUF_LIST_DEFAULT_SIZE 10
 
-static void scan_init_scan_pred (SCAN_PRED * scan_pred_p, REGU_VARIABLE_LIST regu_list, PRED_EXPR * pred_expr,
+static void scan_init_scan_pred (SCAN_PRED * scan_pred_p, regu_variable_list_node * regu_list, PRED_EXPR * pred_expr,
 				 PR_EVAL_FNC pr_eval_fnc);
 static void scan_init_scan_attrs (SCAN_ATTRS * scan_attrs_p, int num_attrs, ATTR_ID * attr_ids,
 				  HEAP_CACHE_ATTRINFO * attr_cache);
-static int scan_init_indx_coverage (THREAD_ENTRY * thread_p, int coverage_enabled, OUTPTR_LIST * output_val_list,
-				    REGU_VARIABLE_LIST regu_val_list, VAL_DESCR * vd, QUERY_ID query_id,
+static int scan_init_indx_coverage (THREAD_ENTRY * thread_p, int coverage_enabled, valptr_list_node * output_val_list,
+				    regu_variable_list_node * regu_val_list, VAL_DESCR * vd, QUERY_ID query_id,
 				    int max_key_len, int func_index_col_id, INDX_COV * indx_cov);
 static int scan_alloc_oid_list (BTREE_ISCAN_OID_LIST ** oid_list_p);
 static int scan_alloc_iscan_oid_buf_list (BTREE_ISCAN_OID_LIST ** oid_list);
@@ -158,8 +159,8 @@ static int scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_
 static int scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_limit_upper,
 				  DB_BIGINT * key_limit_lower);
 static void scan_init_scan_id (SCAN_ID * scan_id, bool force_select_lock, SCAN_OPERATION_TYPE scan_op_type, int fixed,
-			       int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, VAL_LIST * val_list,
-			       VAL_DESCR * vd);
+			       int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval,
+			       val_list_node * val_list, VAL_DESCR * vd);
 static int scan_init_index_key_limit (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, KEY_INFO * key_infop,
 				      VAL_DESCR * vd);
 static SCAN_CODE scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
@@ -179,8 +180,8 @@ static SCAN_CODE scan_next_value_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_i
 static SCAN_CODE scan_next_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_handle_single_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id, QP_SCAN_FUNC next_scan);
 static SCAN_CODE scan_prev_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
-static void resolve_domains_on_list_scan (LLIST_SCAN_ID * llsidp, VAL_LIST * ref_val_list);
-static void resolve_domain_on_regu_operand (REGU_VARIABLE * regu_var, VAL_LIST * ref_val_list,
+static void resolve_domains_on_list_scan (LLIST_SCAN_ID * llsidp, val_list_node * ref_val_list);
+static void resolve_domain_on_regu_operand (REGU_VARIABLE * regu_var, val_list_node * ref_val_list,
 					    QFILE_TUPLE_VALUE_TYPE_LIST * p_type_list);
 static int scan_init_multi_range_optimization (THREAD_ENTRY * thread_p, MULTI_RANGE_OPT * multi_range_opt,
 					       bool use_range_opt, int max_size);
@@ -616,7 +617,7 @@ scan_get_next_iss_value (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SCAN_I
  *   return: none
  */
 static void
-scan_init_scan_pred (SCAN_PRED * scan_pred_p, REGU_VARIABLE_LIST regu_list, PRED_EXPR * pred_expr,
+scan_init_scan_pred (SCAN_PRED * scan_pred_p, regu_variable_list_node * regu_list, PRED_EXPR * pred_expr,
 		     PR_EVAL_FNC pr_eval_fnc)
 {
   assert (scan_pred_p != NULL);
@@ -645,9 +646,9 @@ scan_init_scan_attrs (SCAN_ATTRS * scan_attrs_p, int num_attrs, ATTR_ID * attr_i
  *   return: none
  */
 void
-scan_init_filter_info (FILTER_INFO * filter_info_p, SCAN_PRED * scan_pred, SCAN_ATTRS * scan_attrs, VAL_LIST * val_list,
-		       VAL_DESCR * val_descr, OID * class_oid, int btree_num_attrs, ATTR_ID * btree_attr_ids,
-		       int *num_vstr_ptr, ATTR_ID * vstr_ids)
+scan_init_filter_info (FILTER_INFO * filter_info_p, SCAN_PRED * scan_pred, SCAN_ATTRS * scan_attrs,
+		       val_list_node * val_list, VAL_DESCR * val_descr, OID * class_oid, int btree_num_attrs,
+		       ATTR_ID * btree_attr_ids, int *num_vstr_ptr, ATTR_ID * vstr_ids)
 {
   assert (filter_info_p != NULL);
 
@@ -676,8 +677,8 @@ scan_init_filter_info (FILTER_INFO * filter_info_p, SCAN_PRED * scan_pred, SCAN_
  * indx_cov(in/out): index coverage data
  */
 static int
-scan_init_indx_coverage (THREAD_ENTRY * thread_p, int coverage_enabled, OUTPTR_LIST * output_val_list,
-			 REGU_VARIABLE_LIST regu_val_list, VAL_DESCR * vd, QUERY_ID query_id, int max_key_len,
+scan_init_indx_coverage (THREAD_ENTRY * thread_p, int coverage_enabled, valptr_list_node * output_val_list,
+			 regu_variable_list_node * regu_val_list, VAL_DESCR * vd, QUERY_ID query_id, int max_key_len,
 			 int func_index_col_id, INDX_COV * indx_cov)
 {
   int err = NO_ERROR;
@@ -1479,7 +1480,7 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
   int buf_size, nullmap_size;
   unsigned char *bits;
 
-  REGU_VARIABLE_LIST operand;
+  regu_variable_list_node *operand;
 
   char *nullmap_ptr;		/* ponter to boundbits */
   char *key_ptr;		/* current position in key */
@@ -1881,7 +1882,7 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY
   int curr_key_prefix_length = 0;
   int count;
   int ret = NO_ERROR;
-  REGU_VARIABLE_LIST requ_list;
+  regu_variable_list_node *requ_list;
   DB_TYPE db_type;
   int key_len;
 
@@ -2156,7 +2157,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
 {
   INDX_SCAN_ID *iscan_id;
   FILTER_INFO key_filter;
-  INDX_INFO *indx_infop;
+  indx_info *indx_infop;
   BTREE_SCAN *bts;
   int key_cnt, i;
   KEY_VAL_RANGE *key_vals;
@@ -2168,7 +2169,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
   /* pointer to INDX_SCAN_ID structure */
   iscan_id = &s_id->s.isid;
 
-  /* pointer to INDX_INFO in INDX_SCAN_ID structure */
+  /* pointer to indx_info in INDX_SCAN_ID structure */
   indx_infop = iscan_id->indx_info;
 
   /* pointer to index scan info. structure */
@@ -2304,7 +2305,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
   else
     {
       /* Clear output val list to avoid memory leak. */
-      REGU_VARIABLE_LIST p;
+      regu_variable_list_node *p;
       for (p = iscan_id->indx_cov.regu_val_list; p; p = p->next)
 	{
 	  pr_clear_value (p->value.vfetch_to);
@@ -2715,7 +2716,7 @@ exit_on_error:
  */
 static void
 scan_init_scan_id (SCAN_ID * scan_id, bool mvcc_select_lock_needed, SCAN_OPERATION_TYPE scan_op_type, int fixed,
-		   int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, VAL_LIST * val_list,
+		   int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, val_list_node * val_list,
 		   VAL_DESCR * vd)
 {
   scan_id->status = S_OPENED;
@@ -2774,13 +2775,13 @@ int
 scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 		     /* fields of SCAN_ID */
 		     bool mvcc_select_lock_needed, SCAN_OPERATION_TYPE scan_op_type, int fixed, int grouped,
-		     QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, VAL_LIST * val_list, VAL_DESCR * vd,
+		     QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, val_list_node * val_list, VAL_DESCR * vd,
 		     /* fields of HEAP_SCAN_ID */
-		     OID * cls_oid, HFID * hfid, REGU_VARIABLE_LIST regu_list_pred, PRED_EXPR * pr,
-		     REGU_VARIABLE_LIST regu_list_rest, int num_attrs_pred, ATTR_ID * attrids_pred,
+		     OID * cls_oid, HFID * hfid, regu_variable_list_node * regu_list_pred, PRED_EXPR * pr,
+		     regu_variable_list_node * regu_list_rest, int num_attrs_pred, ATTR_ID * attrids_pred,
 		     HEAP_CACHE_ATTRINFO * cache_pred, int num_attrs_rest, ATTR_ID * attrids_rest,
 		     HEAP_CACHE_ATTRINFO * cache_rest, SCAN_TYPE scan_type, DB_VALUE ** cache_recordinfo,
-		     REGU_VARIABLE_LIST regu_list_recordinfo)
+		     regu_variable_list_node * regu_list_recordinfo)
 {
   HEAP_SCAN_ID *hsidp;
   DB_TYPE single_node_type = DB_TYPE_NULL;
@@ -2846,10 +2847,10 @@ scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 int
 scan_open_heap_page_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 			  /* fields of SCAN_ID */
-			  VAL_LIST * val_list, VAL_DESCR * vd,
+			  val_list_node * val_list, VAL_DESCR * vd,
 			  /* fields of HEAP_SCAN_ID */
 			  OID * cls_oid, HFID * hfid, PRED_EXPR * pr, SCAN_TYPE scan_type, DB_VALUE ** cache_page_info,
-			  REGU_VARIABLE_LIST regu_list_page_info)
+			  regu_variable_list_node * regu_list_page_info)
 {
   HEAP_PAGE_SCAN_ID *hpsidp = NULL;
   DB_TYPE single_node_type = DB_TYPE_NULL;
@@ -2895,11 +2896,11 @@ scan_open_heap_page_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 int
 scan_open_class_attr_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 			   /* fields of SCAN_ID */
-			   int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, VAL_LIST * val_list,
-			   VAL_DESCR * vd,
+			   int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval,
+			   val_list_node * val_list, VAL_DESCR * vd,
 			   /* fields of HEAP_SCAN_ID */
-			   OID * cls_oid, HFID * hfid, REGU_VARIABLE_LIST regu_list_pred, PRED_EXPR * pr,
-			   REGU_VARIABLE_LIST regu_list_rest, int num_attrs_pred, ATTR_ID * attrids_pred,
+			   OID * cls_oid, HFID * hfid, regu_variable_list_node * regu_list_pred, PRED_EXPR * pr,
+			   regu_variable_list_node * regu_list_rest, int num_attrs_pred, ATTR_ID * attrids_pred,
 			   HEAP_CACHE_ATTRINFO * cache_pred, int num_attrs_rest, ATTR_ID * attrids_rest,
 			   HEAP_CACHE_ATTRINFO * cache_rest)
 {
@@ -2982,13 +2983,13 @@ int
 scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 		      /* fields of SCAN_ID */
 		      bool mvcc_select_lock_needed, SCAN_OPERATION_TYPE scan_op_type, int fixed, int grouped,
-		      QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, VAL_LIST * val_list, VAL_DESCR * vd,
+		      QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, val_list_node * val_list, VAL_DESCR * vd,
 		      /* fields of INDX_SCAN_ID */
-		      INDX_INFO * indx_info, OID * cls_oid, HFID * hfid, REGU_VARIABLE_LIST regu_list_key,
-		      PRED_EXPR * pr_key, REGU_VARIABLE_LIST regu_list_pred, PRED_EXPR * pr,
-		      REGU_VARIABLE_LIST regu_list_rest, PRED_EXPR * pr_range, REGU_VARIABLE_LIST regu_list_range,
-		      OUTPTR_LIST * output_val_list,
-		      REGU_VARIABLE_LIST regu_val_list, int num_attrs_key, ATTR_ID * attrids_key,
+		      indx_info * indx_info, OID * cls_oid, HFID * hfid, regu_variable_list_node * regu_list_key,
+		      PRED_EXPR * pr_key, regu_variable_list_node * regu_list_pred, PRED_EXPR * pr,
+		      regu_variable_list_node * regu_list_rest, PRED_EXPR * pr_range,
+		      regu_variable_list_node * regu_list_range, valptr_list_node * output_val_list,
+		      regu_variable_list_node * regu_val_list, int num_attrs_key, ATTR_ID * attrids_key,
 		      HEAP_CACHE_ATTRINFO * cache_key, int num_attrs_pred, ATTR_ID * attrids_pred,
 		      HEAP_CACHE_ATTRINFO * cache_pred, int num_attrs_rest, ATTR_ID * attrids_rest,
 		      HEAP_CACHE_ATTRINFO * cache_rest, int num_attrs_range, ATTR_ID * attrids_range,
@@ -3332,11 +3333,11 @@ exit_on_error:
 int
 scan_open_index_key_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 			       /* fields of SCAN_ID */
-			       VAL_LIST * val_list, VAL_DESCR * vd,
+			       val_list_node * val_list, VAL_DESCR * vd,
 			       /* fields of INDX_SCAN_ID */
-			       INDX_INFO * indx_info, OID * cls_oid, HFID * hfid, PRED_EXPR * pr,
-			       OUTPTR_LIST * output_val_list, bool iscan_oid_order, QUERY_ID query_id,
-			       DB_VALUE ** key_info_values, REGU_VARIABLE_LIST key_info_regu_list)
+			       indx_info * indx_info, OID * cls_oid, HFID * hfid, PRED_EXPR * pr,
+			       valptr_list_node * output_val_list, bool iscan_oid_order, QUERY_ID query_id,
+			       DB_VALUE ** key_info_values, regu_variable_list_node * key_info_regu_list)
 {
   int ret = NO_ERROR;
   INDX_SCAN_ID *isidp = NULL;
@@ -3536,10 +3537,10 @@ exit_on_error:
 int
 scan_open_index_node_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				/* fields of SCAN_ID */
-				VAL_LIST * val_list, VAL_DESCR * vd,
+				val_list_node * val_list, VAL_DESCR * vd,
 				/* fields of INDX_SCAN_ID */
-				INDX_INFO * indx_info, PRED_EXPR * pr, DB_VALUE ** node_info_values,
-				REGU_VARIABLE_LIST node_info_regu_list)
+				indx_info * indx_info, PRED_EXPR * pr, DB_VALUE ** node_info_values,
+				regu_variable_list_node * node_info_regu_list)
 {
   INDEX_NODE_SCAN_ID *idx_nsid_p = NULL;
   VPID root_vpid;
@@ -3608,11 +3609,11 @@ scan_open_index_node_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 int
 scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 		     /* fields of SCAN_ID */
-		     int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, VAL_LIST * val_list,
+		     int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, val_list_node * val_list,
 		     VAL_DESCR * vd,
 		     /* fields of LLIST_SCAN_ID */
-		     QFILE_LIST_ID * list_id, REGU_VARIABLE_LIST regu_list_pred, PRED_EXPR * pr,
-		     REGU_VARIABLE_LIST regu_list_rest)
+		     QFILE_LIST_ID * list_id, regu_variable_list_node * regu_list_pred, PRED_EXPR * pr,
+		     regu_variable_list_node * regu_list_rest)
 {
   LLIST_SCAN_ID *llsidp;
   DB_TYPE single_node_type = DB_TYPE_NULL;
@@ -3655,14 +3656,14 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 int
 scan_open_showstmt_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 			 /* fields of SCAN_ID */
-			 int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, VAL_LIST * val_list,
+			 int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, val_list_node * val_list,
 			 VAL_DESCR * vd,
 			 /* fields of SHOWSTMT_SCAN_ID */
-			 PRED_EXPR * pr, SHOWSTMT_TYPE show_type, REGU_VARIABLE_LIST arg_list)
+			 PRED_EXPR * pr, SHOWSTMT_TYPE show_type, regu_variable_list_node * arg_list)
 {
   SHOWSTMT_SCAN_ID *stsidp;
   int i, arg_cnt, out_cnt;
-  REGU_VARIABLE_LIST regu_var_p;
+  regu_variable_list_node *regu_var_p;
   REGU_VARIABLE *regu;
   QPROC_DB_VALUE_LIST valp;
   DB_VALUE **arg_values = NULL, **out_values = NULL;
@@ -3764,10 +3765,10 @@ exit_on_error:
 int
 scan_open_values_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 		       /* fields of SCAN_ID */
-		       int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, VAL_LIST * val_list,
+		       int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, val_list_node * val_list,
 		       VAL_DESCR * vd,
 		       /* fields of REGU_VALUES_SCAN_ID */
-		       VALPTR_LIST * valptr_list)
+		       valptr_list_node * valptr_list)
 {
   REGU_VALUES_SCAN_ID *rvsidp;
 
@@ -3802,10 +3803,10 @@ scan_open_values_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 int
 scan_open_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 		    /* fields of SCAN_ID */
-		    int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, VAL_LIST * val_list,
+		    int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, val_list_node * val_list,
 		    VAL_DESCR * vd,
 		    /* fields of SET_SCAN_ID */
-		    REGU_VARIABLE * set_ptr, REGU_VARIABLE_LIST regu_list_pred, PRED_EXPR * pr)
+		    REGU_VARIABLE * set_ptr, regu_variable_list_node * regu_list_pred, PRED_EXPR * pr)
 {
   SET_SCAN_ID *ssidp;
   DB_TYPE single_node_type = DB_TYPE_NULL;
@@ -3841,7 +3842,7 @@ scan_open_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
  */
 int
 scan_open_json_table_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, int grouped, QPROC_SINGLE_FETCH single_fetch,
-			   DB_VALUE * join_dbval, VAL_LIST * val_list, VAL_DESCR * vd, PRED_EXPR * pr)
+			   DB_VALUE * join_dbval, val_list_node * val_list, VAL_DESCR * vd, PRED_EXPR * pr)
 {
   DB_TYPE single_node_type = DB_TYPE_NULL;
 
@@ -3877,10 +3878,10 @@ scan_open_json_table_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, int group
 int
 scan_open_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 		       /* fields of SCAN_ID */
-		       int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, VAL_LIST * val_list,
+		       int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, val_list_node * val_list,
 		       VAL_DESCR * vd,
 		       /* */
-		       QFILE_LIST_ID * list_id, METHOD_SIG_LIST * meth_sig_list)
+		       QFILE_LIST_ID * list_id, method_sig_list * meth_sig_list)
 {
   /* scan type is METHOD SCAN */
   scan_id->type = S_METHOD_SCAN;
@@ -3911,7 +3912,7 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   SET_SCAN_ID *ssidp = NULL;
   REGU_VALUES_SCAN_ID *rvsidp = NULL;
   REGU_VALUE_LIST *regu_value_list = NULL;
-  REGU_VARIABLE_LIST list_node = NULL;
+  regu_variable_list_node *list_node = NULL;
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
   JSON_TABLE_SCAN_ID *jtidp = NULL;
 
@@ -4974,7 +4975,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   LOG_LSA ref_lsa;
   bool is_peeking;
   OBJECT_GET_STATUS object_get_status;
-  REGU_VARIABLE_LIST p;
+  regu_variable_list_node *p;
 
   hsidp = &scan_id->s.hsid;
   if (scan_id->mvcc_select_lock_needed)
@@ -5854,7 +5855,7 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
   SCAN_CODE sp_scan;
   DB_LOGICAL ev_res;
   RECDES recdes;
-  INDX_INFO *indx_infop;
+  indx_info *indx_infop;
   BTID *btid;
   char *indx_name_p;
   char *class_name_p;
@@ -6332,7 +6333,7 @@ static SCAN_CODE
 scan_next_value_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 {
   REGU_VALUES_SCAN_ID *rvsidp;
-  REGU_VARIABLE_LIST list_node;
+  regu_variable_list_node *list_node;
   REGU_VALUE_LIST *regu_value_list;
   int i;
 
@@ -6490,7 +6491,7 @@ scan_next_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   SCAN_CODE qp_scan;
   DB_LOGICAL ev_res;
   REGU_VARIABLE *func;
-  REGU_VARIABLE_LIST ptr;
+  regu_variable_list_node *ptr;
   int size;
 
   ssidp = &scan_id->s.ssid;
@@ -6619,7 +6620,7 @@ scan_next_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 {
   VA_SCAN_ID *vaidp;
   SCAN_CODE qp_scan;
-  VAL_LIST vl;
+  val_list_node vl;
   QPROC_DB_VALUE_LIST src_valp;
   QPROC_DB_VALUE_LIST dest_valp;
 
@@ -7204,14 +7205,14 @@ reverse_key_list (KEY_VAL_RANGE * key_vals, int key_cnt)
  *   predicates;
  *
  *   llsidp (in/out): pointer to list scan id structure
- *   ref_val_list (in): list of DB_VALUEs (VAL_LIST) used as reference
+ *   ref_val_list (in): list of DB_VALUEs (val_list_node) used as reference
  *
  *  Note : this function is used in context of HV late binding
  */
 static void
-resolve_domains_on_list_scan (LLIST_SCAN_ID * llsidp, VAL_LIST * ref_val_list)
+resolve_domains_on_list_scan (LLIST_SCAN_ID * llsidp, val_list_node * ref_val_list)
 {
-  REGU_VARIABLE_LIST scan_regu = NULL;
+  regu_variable_list_node *scan_regu = NULL;
 
   assert (llsidp != NULL);
 
@@ -7299,13 +7300,13 @@ resolve_domains_on_list_scan (LLIST_SCAN_ID * llsidp, VAL_LIST * ref_val_list)
  *    from a scan list; helper functions for 'resolve_domains_on_list_scan'
  *
  *   regu_var (in/out): regulator variable with unresolved domain
- *   ref_val_list (in): list of DB_VALUEs (VAL_LIST) used for cross-checking
+ *   ref_val_list (in): list of DB_VALUEs (val_list_node) used for cross-checking
  *   p_type_list (in): list of domains used as reference
  *
  *  Note : this function is used in context of HV late binding
  */
 static void
-resolve_domain_on_regu_operand (REGU_VARIABLE * regu_var, VAL_LIST * ref_val_list,
+resolve_domain_on_regu_operand (REGU_VARIABLE * regu_var, val_list_node * ref_val_list,
 				QFILE_TUPLE_VALUE_TYPE_LIST * p_type_list)
 {
   assert (regu_var != NULL);
@@ -7422,7 +7423,7 @@ scan_dump_key_into_tuple (THREAD_ENTRY * thread_p, INDX_SCAN_ID * iscan_id, DB_V
 			  QFILE_TUPLE_RECORD * tplrec)
 {
   int error;
-  REGU_VARIABLE_LIST p;
+  regu_variable_list_node *p;
 
   if (iscan_id == NULL || iscan_id->indx_cov.val_descr == NULL || iscan_id->indx_cov.output_val_list == NULL
       || iscan_id->rest_attrs.attr_cache == NULL)

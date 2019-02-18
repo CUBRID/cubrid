@@ -1272,7 +1272,7 @@ $ LOADDB
 1203 Tipul JSON-ului de la calea %1$s este invalid. Expected %2$s, dar am gasit %3$s.
 1204 Cheia "%1$s" din json este duplicata
 1205 Invalid type %1$s. Expecting JSON document compatible data type (STRING or JSON).
-1206 Reserved error for JSON.
+1206 Calea Json "%1$s" nu adresează un element al unui Json ARRAY.
 1207 Reserved error for JSON.
 1208 Reserved error for JSON.
 1209 Reserved error for JSON.
@@ -1467,6 +1467,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 126 Lungimea maximă a comentariilor class/vclass este %1$d bytes.
 127 Lungimea maximă a comentariilor este %1$d bytes.
 128 Invalid number of arguments for JSON_OBJECTAGG
+129 PARALLEL count argument must be between %1$d and %2$d.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Memorie epuizată.

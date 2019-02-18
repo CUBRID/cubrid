@@ -53,6 +53,7 @@
 #include "network_interface_cl.h"
 #include "transaction_cl.h"
 #include "dbtype.h"
+#include "xasl.h"
 
 #define BUF_SIZE 1024
 

@@ -30,6 +30,7 @@
 #include "stream_to_xasl.h"
 #include "system_parameter.h"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
+#include "xasl.h"
 
 typedef struct fpcache_ent FPCACHE_ENTRY;
 struct fpcache_ent
@@ -341,7 +342,7 @@ fpcache_copy_key (void *src, void *dest)
  * filter_pred (out) : Filter predicate expression (with context - unpack buffer).
  */
 int
-fpcache_claim (THREAD_ENTRY * thread_p, BTID * btid, OR_PREDICATE * or_pred, PRED_EXPR_WITH_CONTEXT ** filter_pred)
+fpcache_claim (THREAD_ENTRY * thread_p, BTID * btid, or_predicate * or_pred, pred_expr_with_context ** filter_pred)
 {
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_FPCACHE);
   FPCACHE_ENTRY *fpcache_entry = NULL;
@@ -415,7 +416,7 @@ fpcache_claim (THREAD_ENTRY * thread_p, BTID * btid, OR_PREDICATE * or_pred, PRE
  * filter_pred (in) : Filter predicate expression.
  */
 int
-fpcache_retire (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid, PRED_EXPR_WITH_CONTEXT * filter_pred)
+fpcache_retire (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid, pred_expr_with_context * filter_pred)
 {
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_FPCACHE);
   FPCACHE_ENTRY *fpcache_entry = NULL;

@@ -78,6 +78,8 @@
 #include "compile_context.h"
 #include "load_session.hpp"
 #include "session.h"
+#include "xasl.h"
+#include "xasl_cache.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -3828,6 +3830,7 @@ sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int
   char *expr_stream = NULL;
   int csserror;
   int index_status = 0;
+  int ib_thread_count = 0;
 
   ptr = or_unpack_btid (request, &btid);
   ptr = or_unpack_string_nocopy (ptr, &bt_name);
@@ -3912,13 +3915,15 @@ sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int
     }
 
   ptr = or_unpack_int (ptr, &index_status);	/* Get index status. */
+  ptr = or_unpack_int (ptr, &ib_thread_count);	/* Get thread count. */
+
   if (index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
     {
       return_btid =
 	xbtree_load_online_index (thread_p, &btid, bt_name, key_type, class_oids, n_classes, n_attrs, attr_ids,
 				  attr_prefix_lengths, hfids, unique_pk, not_null_flag, &fk_refcls_oid,
 				  &fk_refcls_pk_btid, fk_name, pred_stream, pred_stream_size, expr_stream,
-				  expr_stream_size, func_col_id, func_attr_index_start);
+				  expr_stream_size, func_col_id, func_attr_index_start, ib_thread_count);
     }
   else
     {
@@ -6236,7 +6241,7 @@ sct_check_rep_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int
  * NOTE:
  */
 int
-xs_send_method_call_info_to_client (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, METHOD_SIG_LIST * method_sig_list)
+xs_send_method_call_info_to_client (THREAD_ENTRY * thread_p, qfile_list_id * list_id, method_sig_list * methsg_list)
 {
   int length = 0;
   char *databuf;
@@ -6247,7 +6252,7 @@ xs_send_method_call_info_to_client (THREAD_ENTRY * thread_p, QFILE_LIST_ID * lis
 
   rid = css_get_comm_request_id (thread_p);
   length = or_listid_length ((void *) list_id);
-  length += or_method_sig_list_length ((void *) method_sig_list);
+  length += or_method_sig_list_length ((void *) methsg_list);
   ptr = or_pack_int (reply, (int) METHOD_CALL);
   ptr = or_pack_int (ptr, length);
 
@@ -6263,7 +6268,7 @@ xs_send_method_call_info_to_client (THREAD_ENTRY * thread_p, QFILE_LIST_ID * lis
     }
 
   ptr = or_pack_listid (databuf, (void *) list_id);
-  ptr = or_pack_method_sig_list (ptr, (void *) method_sig_list);
+  ptr = or_pack_method_sig_list (ptr, (void *) methsg_list);
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), databuf, length);
   db_private_free_and_init (thread_p, databuf);
   return NO_ERROR;

@@ -34,6 +34,9 @@
 #include "thread_compat.hpp"
 #include "tz_support.h"
 
+// forward definitions
+struct xasl_cache_ent;
+
 extern int session_states_init (THREAD_ENTRY * thread_p);
 extern void session_states_finalize (THREAD_ENTRY * thread_p);
 extern int session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id);
@@ -52,7 +55,7 @@ extern int session_set_session_parameters (THREAD_ENTRY * thread_p, SESSION_PARA
 extern int session_create_prepared_statement (THREAD_ENTRY * thread_p, char *name, char *alias_print, SHA1Hash * sha1,
 					      char *info, int info_len);
 extern int session_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name, char **info, int *info_len,
-					   XASL_CACHE_ENTRY ** xasl_entry);
+					   xasl_cache_ent ** xasl_entry);
 extern int session_delete_prepared_statement (THREAD_ENTRY * thread_p, const char *name);
 extern int login_user (THREAD_ENTRY * thread_p, const char *username);
 extern int session_set_session_variables (THREAD_ENTRY * thread_p, DB_VALUE * values, const int count);

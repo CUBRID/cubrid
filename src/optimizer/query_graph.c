@@ -55,11 +55,11 @@
 #include "memory_alloc.h"
 #include "environment_variable.h"
 #include "util_func.h"
-
 #include "locator_cl.h"
 #include "object_domain.h"
 #include "network_interface_cl.h"
 #include "dbtype.h"
+#include "xasl.h"
 
 /* figure out how many bytes a QO_USING_INDEX struct with n entries requires */
 #define SIZEOF_USING_INDEX(n) \

@@ -31,6 +31,7 @@
 #include "error_manager.h"
 #include "storage_common.h"
 #include "recovery.h"
+#include "thread_compat.hpp"
 
 #define DISK_VOLHEADER_PAGE      0	/* Page of the volume header */
 

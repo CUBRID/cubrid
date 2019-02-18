@@ -25,6 +25,7 @@
 
 #include "memory_alloc.h"
 #include "object_representation.h"
+#include "xasl.h"
 
 #if !defined(SERVER_MODE)
 static XASL_UNPACK_INFO *xasl_Unpack_info = NULL;

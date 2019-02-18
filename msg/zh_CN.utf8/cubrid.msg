@@ -1273,7 +1273,7 @@ $ LOADDB
 1203 Invalid JSON type at path %1$s. Expected %2$s, but found %3$s.
 1204 Json KEY "%1$s" is duplicate
 1205 Invalid type %1$s. Expecting JSON document compatible data type (STRING or JSON).
-1206 Reserved error for JSON.
+1206 Json PATH "%1$s" does not address a cell in an Json ARRAY.
 1207 Reserved error for JSON.
 1208 Reserved error for JSON.
 1209 Reserved error for JSON.
@@ -1468,6 +1468,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 126 一个class或vclass的comment的最大长度是 %1$d 字节.
 127 一个comment的最大长度是 %1$d 字节.
 128 Invalid number of arguments for JSON_OBJECTAGG
+129 PARALLEL count argument must be between %1$d and %2$d.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 内存耗尽.

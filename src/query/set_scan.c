@@ -29,8 +29,9 @@
 
 #include "set_scan.h"
 
-#include "fetch.h"
 #include "dbtype.h"
+#include "fetch.h"
+#include "regu_var.h"
 
 /*
  * qproc_next_set_scan () -
