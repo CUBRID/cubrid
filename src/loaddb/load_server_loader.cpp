@@ -23,12 +23,14 @@
 
 #include "load_server_loader.hpp"
 
+#include "btree.h"
 #include "load_class_registry.hpp"
 #include "load_db_value_converter.hpp"
 #include "load_error_handler.hpp"
 #include "locator_sr.h"
 #include "object_primitive.h"
 #include "set_object.h"
+#include "string_opfunc.h"
 #include "xserver_interface.h"
 
 namespace cubload
