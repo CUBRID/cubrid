@@ -1630,7 +1630,7 @@ log_rv_analysis_sysop_end (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_l
   // 3. is atomic system operation equal or more recent to system operation last parent?
   if (!LSA_ISNULL (&tdes->rcv.atomic_sysop_start_lsa)	/* 1 */
       && LSA_GT (&tdes->rcv.atomic_sysop_start_lsa, &tdes->rcv.sysop_start_postpone_lsa)	/* 2 */
-      && LSA_GE (&tdes->rcv.atomic_sysop_start_lsa, &sysop_end->lastparent_lsa) /* 3 */ )
+      && LSA_GT (&tdes->rcv.atomic_sysop_start_lsa, &sysop_end->lastparent_lsa) /* 3 */ )
     {
       /* reset tdes->rcv.atomic_sysop_start_lsa */
       LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
@@ -4166,6 +4166,11 @@ log_recovery_abort_all_atomic_sysops (THREAD_ENTRY * thread_p)
 static void
 log_recovery_abort_atomic_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 {
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
+  LOG_PAGE *log_pgptr = NULL;
+  LOG_RECORD_HEADER *log_rec;
+  LOG_LSA prev_atomic_sysop_start_lsa;
+
   if (tdes == NULL || tdes->trid == NULL_TRANID)
     {
       /* Nothing to do */
@@ -4227,11 +4232,22 @@ log_recovery_abort_atomic_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 		    LSA_AS_ARGS (&tdes->rcv.atomic_sysop_start_lsa));
     }
 
+  /* Get transaction lsa that precede atomic_sysop_start_lsa. */
+  aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
+  if (logpb_fetch_page (thread_p, &tdes->rcv.atomic_sysop_start_lsa, LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
+    {
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_abort_atomic_sysop");
+      return;
+    }
+  log_rec = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &tdes->rcv.atomic_sysop_start_lsa);
+  LSA_COPY (&prev_atomic_sysop_start_lsa, &log_rec->prev_tranlsa);
+
   /* rollback. simulate a new system op */
   log_sysop_start (thread_p);
 
-  /* hack last parent to stop at tdes->rcv.atomic_sysop_start_lsa */
-  tdes->topops.stack[tdes->topops.last].lastparent_lsa = tdes->rcv.atomic_sysop_start_lsa;
+  /* hack last parent to stop at transaction lsa that precede atomic_sysop_start_lsa. */
+  LSA_COPY (&tdes->topops.stack[tdes->topops.last].lastparent_lsa, &prev_atomic_sysop_start_lsa);
 
   /* rollback */
   log_sysop_abort (thread_p);
