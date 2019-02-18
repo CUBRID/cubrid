@@ -23,18 +23,21 @@
 
 #ident "$Id$"
 
-#include "config.h"
-
-#include "db.h"
-#include "xasl_support.h"
 #include "query_method.h"
-#include "object_accessor.h"
+
+#include "config.h"
+#include "db.h"
+#include "dbtype.h"
 #include "jsp_cl.h"
-#include "object_primitive.h"
-#include "object_representation.h"
+#include "method_def.hpp"
 #include "network.h"
 #include "network_interface_cl.h"
-#include "dbtype.h"
+#include "object_accessor.h"
+#include "object_primitive.h"
+#include "object_representation.h"
+#include "query_list.h"
+#include "regu_var.h"
+#include "xasl_support.h"
 
 static int method_initialize_vacomm_buffer (VACOMM_BUFFER * vacomm_buffer, unsigned int rc, char *host,
 					    char *server_name);
@@ -265,8 +268,8 @@ method_send_error_to_server (unsigned int rc, char *host_p, char *server_name_p)
  *   method_sig_list(in): Method signatures
  */
 int
-method_invoke_for_server (unsigned int rc, char *host_p, char *server_name_p, QFILE_LIST_ID * list_id_p,
-			  METHOD_SIG_LIST * method_sig_list_p)
+method_invoke_for_server (unsigned int rc, char *host_p, char *server_name_p, qfile_list_id * list_id_p,
+			  method_sig_list * method_sig_list_p)
 {
   DB_VALUE *val_list_p = NULL;
   DB_VALUE **values_p;

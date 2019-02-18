@@ -35,16 +35,17 @@
 #include "dbtype.h"
 #include "external_sort.h"
 #include "heap_file.h"
+#include "memory_private_allocator.hpp"
 #include "object_primitive.h"
 #include "partition.h"
 #include "partition_sr.h"
 #include "query_executor.h"
+#include "query_opfunc.h"
 #include "stream_to_xasl.h"
 #include "thread_manager.hpp"
 #include "thread_entry_task.hpp"
 #include "xserver_interface.h"
 #include "xasl.h"
-#include "memory_private_allocator.hpp"
 
 typedef struct sort_args SORT_ARGS;
 struct sort_args

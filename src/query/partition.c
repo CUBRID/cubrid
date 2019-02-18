@@ -29,8 +29,10 @@
 #include "dbtype.h"
 #include "stream_to_xasl.h"
 #include "query_executor.h"
+#include "query_opfunc.h"
 #include "object_primitive.h"
 #include "dbtype.h"
+#include "xasl.h"
 
 typedef enum match_status
 {
@@ -2804,7 +2806,7 @@ partition_prune_index_scan (PRUNING_CONTEXT * pinfo)
  * access_spec (in) : access spec to prune
  */
 int
-partition_prune_spec (THREAD_ENTRY * thread_p, VAL_DESCR * vd, ACCESS_SPEC_TYPE * spec)
+partition_prune_spec (THREAD_ENTRY * thread_p, val_descr * vd, access_spec_node * spec)
 {
   int error = NO_ERROR;
   PRUNING_CONTEXT pinfo;
@@ -3588,8 +3590,8 @@ cleanup:
  * helper (in/out)   : aggregate helper
  */
 int
-partition_load_aggregate_helper (PRUNING_CONTEXT * pcontext, ACCESS_SPEC_TYPE * spec, int pruned_count,
-				 BTID * root_btid, HIERARCHY_AGGREGATE_HELPER * helper)
+partition_load_aggregate_helper (PRUNING_CONTEXT * pcontext, access_spec_node * spec, int pruned_count,
+				 BTID * root_btid, hierarchy_aggregate_helper * helper)
 {
   int error = NO_ERROR, i = 0;
   char *btree_name = NULL;

@@ -50,7 +50,8 @@
 struct binary_heap;
 #endif // SERVER_MODE || SA_MODE
 
-
+struct xasl_node;
+typedef struct xasl_node XASL_NODE;
 
 /* XASL HEADER */
 /*
@@ -770,25 +771,6 @@ struct set_spec_node
   REGU_VARIABLE_LIST set_regu_list;	/* regulator variable list */
   REGU_VARIABLE *set_ptr;	/* set regu variable */
 };
-
-#define VACOMM_BUFFER_HEADER_SIZE           (OR_INT_SIZE * 3)
-#define VACOMM_BUFFER_HEADER_LENGTH_OFFSET  (0)
-#define VACOMM_BUFFER_HEADER_STATUS_OFFSET  (OR_INT_SIZE)
-#define VACOMM_BUFFER_HEADER_NO_VALS_OFFSET (OR_INT_SIZE * 2)
-#define VACOMM_BUFFER_HEADER_ERROR_OFFSET   (OR_INT_SIZE * 2)
-
-typedef enum
-{
-  METHOD_SUCCESS = 1,
-  METHOD_EOF,
-  METHOD_ERROR
-} METHOD_CALL_STATUS;
-
-typedef enum
-{
-  VACOMM_BUFFER_SEND = 1,
-  VACOMM_BUFFER_ABORT
-} VACOMM_BUFFER_CLIENT_ACTION;
 
 struct method_spec_node
 {

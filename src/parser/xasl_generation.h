@@ -31,10 +31,12 @@
 #error Does not belong to server module
 #endif /* defined (SERVER_MODE) */
 
-#include "parser.h"
-#include "object_domain.h"
 #include "dbtype_def.h"
+#include "object_domain.h"
 #include "optimizer.h"
+#include "parser.h"
+#include "regu_var.h"
+#include "xasl.h"
 
 #define MATCH_ALL       1
 

@@ -34,6 +34,10 @@
 #include "optimizer.h"
 #include "query_bitset.h"
 
+// forward definitions
+struct analytic_eval_type;
+struct xasl_node;
+
 #define QO_CPU_WEIGHT   0.0025
 
 typedef enum
@@ -165,7 +169,7 @@ struct qo_plan
       SORT_LIST *sort_list;
 #endif
       QO_PLAN *subplan;
-      XASL_NODE *xasl;
+      xasl_node *xasl;
     } sort;
 
     struct
@@ -189,7 +193,7 @@ struct qo_plan
   } plan_un;
 
   QO_PLAN_ULTI_RANGE_OPT_USE multi_range_opt_use;	/* used to determine if this plan uses multi range opt */
-  ANALYTIC_EVAL_TYPE *analytic_eval_list;	/* analytic evaluation list */
+  analytic_eval_type *analytic_eval_list;	/* analytic evaluation list */
   bool has_sort_limit;		/* true if this plan or one if its subplans is a SORT-LIMIT plan */
   bool use_iscan_descending;
 };

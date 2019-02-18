@@ -30,6 +30,7 @@
 
 #include "system_catalog.h"
 
+#include "btree.h"		// for single/multi ops
 #include "error_manager.h"
 #include "heap_file.h"
 #include "transform.h"
@@ -41,6 +42,7 @@
 #include "tz_support.h"
 #include "db_date.h"
 #include "dbtype.h"
+#include "string_opfunc.h"
 #include "thread_manager.hpp"
 
 #define IS_SUBSET(value)        (value).sub.count >= 0

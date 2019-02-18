@@ -24,21 +24,33 @@
 #ifndef _XASL_STREAM_HPP_
 #define _XASL_STREAM_HPP_
 
+#include "json_table_def.h"
 #include "thread_compat.hpp"
-#include "xasl.h"
+
+#include <cstddef>
 
 // forward def
 struct db_value;
 struct regu_variable_node;
 
-const std::size_t MAX_PTR_BLOCKS = 256;
-const std::size_t OFFSETS_PER_BLOCK = 4096;
-const std::size_t START_PTR_PER_BLOCK = 15;
+namespace cubxasl
+{
+  namespace json_table
+  {
+    struct column;
+    struct node;
+    struct spec_node;
+  } // namespace json_table
+} // namespace cubxasl
+
+const size_t MAX_PTR_BLOCKS = 256;
+const size_t OFFSETS_PER_BLOCK = 4096;
+const size_t START_PTR_PER_BLOCK = 15;
 /*
  * the linear byte stream for store the given XASL tree is allocated
  * and expanded dynamically on demand by the following amount of bytes
  */
-const std::size_t STREAM_EXPANSION_UNIT = OFFSETS_PER_BLOCK * sizeof (int);
+const size_t STREAM_EXPANSION_UNIT = OFFSETS_PER_BLOCK * sizeof (int);
 
 const int XASL_STREAM_ALIGN_UNIT = sizeof (double);
 const int XASL_STREAM_ALIGN_MASK = XASL_STREAM_ALIGN_UNIT - 1;
@@ -114,7 +126,7 @@ char *stx_build (THREAD_ENTRY *thread_p, char *ptr, db_value &val);
 char *stx_build (THREAD_ENTRY *thread_p, char *ptr, regu_variable_node &reguvar);
 
 // dependencies not ported
-char *stx_build_db_value (THREAD_ENTRY *thread_p, char *tmp, DB_VALUE *ptr);
+char *stx_build_db_value (THREAD_ENTRY *thread_p, char *tmp, db_value *ptr);
 char *stx_build_string (THREAD_ENTRY *thread_p, char *tmp, char *ptr);
 
 // restore string; return restored string, updates stream pointer
@@ -139,6 +151,12 @@ void stx_restore (THREAD_ENTRY *thread_p, char *&ptr, T *&target);
 //////////////////////////////////////////////////////////////////////////
 // Template and inline implementation
 //////////////////////////////////////////////////////////////////////////
+
+#include "object_representation.h"
+#include "system.h"
+
+#include <cassert>
+
 int
 xasl_stream_make_align (int x)
 {

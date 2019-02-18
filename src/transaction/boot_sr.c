@@ -44,6 +44,7 @@
 
 #include "boot_sr.h"
 
+#include "btree.h"
 #include "chartype.h"
 #include "error_manager.h"
 #include "system_parameter.h"
@@ -61,15 +62,18 @@
 #include "intl_support.h"
 #include "serial.h"
 #include "server_interface.h"
+#include "jansson.h"
 #include "jsp_sr.h"
 #include "xserver_interface.h"
 #include "session.h"
 #include "event_log.h"
 #include "tz_support.h"
 #include "filter_pred_cache.h"
+#include "scan_manager.h"
 #include "slotted_page.h"
 #include "thread_manager.hpp"
 #include "double_write_buffer.h"
+#include "xasl_cache.h"
 
 #if defined(SERVER_MODE)
 #include "connection_sr.h"
