@@ -10142,25 +10142,15 @@ loaddb_install_class (const cubload::batch & batch)
 {
 #if defined(CS_MODE)
   packing_packer packer;
+  cubmem::extensible_block eb;
 
-  size_t request_size = batch.get_packed_size (packer);
-  char *request = (char *) malloc (request_size);
-  if (request == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, request_size);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
-  packer.set_buffer (request, request_size);
-  batch.pack (packer);
+  packer.set_buffer_and_pack_all (eb, batch);
 
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  int req_error = net_client_request (NET_SERVER_LD_INSTALL_CLASS, request, (int) request_size, reply,
-				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
-
-  free_and_init (request);
+  int req_error = net_client_request (NET_SERVER_LD_INSTALL_CLASS, eb.get_ptr (), (int) packer.get_current_size (),
+				      reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
 
   int rc = NO_ERROR;
   if (!req_error)
@@ -10184,22 +10174,12 @@ loaddb_load_batch (const cubload::batch & batch)
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
   packing_packer packer;
+  cubmem::extensible_block eb;
 
-  size_t request_size = batch.get_packed_size (packer);
-  char *request = (char *) malloc (request_size);
-  if (request == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, request_size);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
+  packer.set_buffer_and_pack_all (eb, batch);
 
-  packer.set_buffer (request, request_size);
-  batch.pack (packer);
-
-  req_error = net_client_request (NET_SERVER_LD_LOAD_BATCH, request, (int) request_size, reply,
+  req_error = net_client_request (NET_SERVER_LD_LOAD_BATCH, eb.get_ptr (), (int) packer.get_current_size (), reply,
 				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
-
-  free_and_init (request);
 
   if (!req_error)
     {
@@ -10216,27 +10196,19 @@ int
 loaddb_fetch_stats (load_stats * stats)
 {
 #if defined(CS_MODE)
-  char *ptr = NULL;
   char *data_reply = NULL;
   int data_reply_size = 0;
-  int error_code = NO_ERROR;
-  OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  error_code = net_client_request2 (NET_SERVER_LD_FETCH_STATS, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
-				    &data_reply, &data_reply_size);
+  int error_code = net_client_request2 (NET_SERVER_LD_FETCH_STATS, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL,
+					0, &data_reply, &data_reply_size);
   if (error_code != NO_ERROR)
     {
       return error_code;
     }
 
-  ptr = or_unpack_int (reply, &data_reply_size);
-  or_unpack_int (ptr, &error_code);
-
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
+  or_unpack_int (reply, &data_reply_size);
 
   packing_unpacker unpacker (data_reply, data_reply_size);
   stats->clear ();

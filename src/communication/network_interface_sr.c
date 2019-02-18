@@ -9875,9 +9875,7 @@ sloaddb_load_batch (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 void
 sloaddb_fetch_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  int error_code = NO_ERROR;
-  char *ptr = NULL;
-  OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
   load_session *session = NULL;
@@ -9887,29 +9885,14 @@ sloaddb_fetch_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   load_stats loaddb_stats = session->get_stats ();
 
   packing_packer packer;
-  size_t data_reply_size = loaddb_stats.get_packed_size (packer);
+  cubmem::extensible_block eb;
 
-  char *data_reply = (char *) db_private_alloc (thread_p, data_reply_size);
-  if (data_reply == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, data_reply_size);
-      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-    }
+  packer.set_buffer_and_pack_all (eb, loaddb_stats);
 
-  packer.set_buffer (data_reply, data_reply_size);
+  or_pack_int (reply, (int) packer.get_current_size ());
 
-  ptr = or_pack_int (reply, (int) data_reply_size);
-  or_pack_int (ptr, error_code);
-
-  loaddb_stats.pack (packer);
-
-  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), data_reply,
-				     (int) data_reply_size);
-
-  if (data_reply != NULL)
-    {
-      db_private_free (thread_p, data_reply);
-    }
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), eb.get_ptr (),
+				     (int) packer.get_current_size ());
 }
 
 void
