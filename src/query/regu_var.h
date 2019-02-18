@@ -24,21 +24,11 @@
 #ifndef _REGU_VAR_H_
 #define _REGU_VAR_H_
 
+#include "heap_attrinfo.h"
 #include "object_domain.h"
 #include "query_list.h"
 #include "libregex38a/regex38a.h"
 #include "string_opfunc.h"
-
-#if defined (SERVER_MODE) || defined (SA_MODE)
-#include "heap_attrinfo.h"
-#else /* !defined (SERVER_MODE) && !defined (SA_MODE) */
-/* XASL generation uses pointer to heap_cache_attrinfo. we need to just declare a dummy struct here. */
-typedef struct heap_cache_attrinfo HEAP_CACHE_ATTRINFO;
-struct heap_cache_attrinfo
-{
-  int dummy;
-};
-#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
 /* declare ahead XASL node. */
 struct xasl_node;
