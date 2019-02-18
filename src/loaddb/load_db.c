@@ -1185,7 +1185,6 @@ ldr_server_load (load_args * args, int *status, bool * interrupted)
   if (error_code != NO_ERROR)
     {
       *status = 3;
-      return;
     }
 
   stats stats;
@@ -1214,7 +1213,7 @@ ldr_server_load (load_args * args, int *status, bool * interrupted)
 	std::this_thread::sleep_for (std::chrono::milliseconds (100));
 	/* *INDENT-ON* */
     }
-  while (!(stats.is_completed || stats.is_failed));
+  while (!(stats.is_completed || stats.is_failed) && *status != 3);
 
   loaddb_destroy ();
 
