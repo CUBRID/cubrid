@@ -36,7 +36,7 @@ namespace cubload
 
   void init_driver (driver *driver, session &session);
 
-  bool invoke_parser (driver *driver, class_id clsid, const std::string &buf);
+  bool invoke_parser (driver *driver, const batch &batch_);
 }
 
 namespace cubload
@@ -58,10 +58,7 @@ namespace cubload
 	return;
       }
 
-    lineno_function line_func = [driver] { return driver->get_scanner ().lineno (); };
-    error_handler *error_handler_ = new error_handler (line_func);
-    error_handler_->initialize (&session);
-
+    error_handler *error_handler_ = new error_handler (session);
     class_installer *cls_installer = new server_class_installer (session, *error_handler_);
     object_loader *obj_loader = new server_object_loader (session, *error_handler_);
 
@@ -69,21 +66,21 @@ namespace cubload
   }
 
   bool
-  invoke_parser (driver *driver, class_id clsid, const std::string &buf)
+  invoke_parser (driver *driver, const batch &batch_)
   {
     if (driver == NULL || !driver->is_initialized ())
       {
 	return false;
       }
 
-    driver->get_object_loader ().init (clsid);
-    driver->get_class_installer ().set_class_id (clsid);
+    driver->get_object_loader ().init (batch_.get_class_id ());
+    driver->get_class_installer ().set_class_id (batch_.get_class_id ());
 
     // parse doc says that 0 is returned if parsing succeeds
-    std::istringstream iss (buf);
-    bool parser_result = driver->parse (iss) == 0;
+    std::istringstream iss (batch_.get_content ());
+    int parser_result = driver->parse (iss, batch_.get_line_offset ());
 
-    return parser_result;
+    return parser_result == 0;
   }
 
   /*
@@ -168,7 +165,7 @@ namespace cubload
 	logtb_assign_tran_index (&thread_ref, NULL_TRANID, TRAN_ACTIVE, NULL, NULL, TRAN_LOCK_INFINITE_WAIT,
 				 TRAN_DEFAULT_ISOLATION_LEVEL ());
 
-	bool parser_result = invoke_parser (thread_ref.m_loaddb_driver, m_batch.m_clsid, m_batch.m_content);
+	bool parser_result = invoke_parser (thread_ref.m_loaddb_driver, m_batch);
 
 	if (m_session.is_failed () || !parser_result || er_has_error ())
 	  {
@@ -180,19 +177,19 @@ namespace cubload
 	else
 	  {
 	    // order batch commits, therefore wait until previous batch is committed
-	    m_session.wait_for_previous_batch (m_batch.m_batch_id);
+	    m_session.wait_for_previous_batch (m_batch.get_id ());
 
 	    xtran_server_commit (&thread_ref, false);
 
 	    // TODO fix last_commit assignment
-	    //m_session.m_stats.last_commit = m_batch_id * m_session.m_batch_size;
+	    //m_session.m_stats.last_commit = m_batch.get_id () * m_session.m_batch_size;
 	  }
 
 	// free transaction index
 	logtb_free_tran_index (&thread_ref, thread_ref.tran_index);
 
 	// notify session that batch is done
-	m_session.notify_batch_done (m_batch.m_batch_id);
+	m_session.notify_batch_done (m_batch.get_id ());
       }
 
     private:
@@ -342,23 +339,27 @@ namespace cubload
   }
 
   int
-  session::install_class (cubthread::entry &thread_ref, const class_id clsid, const std::string &buf)
+  session::install_class (cubthread::entry &thread_ref, const batch &batch)
   {
-    bool parser_result = invoke_parser (m_driver, clsid, buf);
+    thread_ref.m_loaddb_driver = m_driver;
+
+    int error_code = NO_ERROR;
+    bool parser_result = invoke_parser (m_driver, batch);
 
     if (is_failed () || !parser_result || er_has_error ())
       {
 	fail ();
 
-	int error_code = er_errid_if_has_error ();
+	error_code = er_errid_if_has_error ();
 	if (error_code == NO_ERROR)
 	  {
 	    error_code = ER_FAILED;
 	  }
-	return error_code;
       }
 
-    return NO_ERROR;
+    thread_ref.m_loaddb_driver = NULL;
+
+    return error_code;
   }
 
   int
@@ -369,18 +370,18 @@ namespace cubload
     do
       {
 	current_max_id = m_max_batch_id.load ();
-	if (current_max_id >= batch.m_batch_id)
+	if (current_max_id >= batch.get_id ())
 	  {
 	    // max is already stored
 	    break;
 	  }
       }
-    while (!m_max_batch_id.compare_exchange_strong (current_max_id, batch.m_batch_id));
+    while (!m_max_batch_id.compare_exchange_strong (current_max_id, batch.get_id ()));
 
-    if (batch.m_content.empty ())
+    if (batch.get_content ().empty ())
       {
 	// nothing to do, just notify that batch processing is done
-	notify_batch_done (batch.m_batch_id);
+	notify_batch_done (batch.get_id ());
 	assert (false);
 	return ER_FAILED;
       }
@@ -398,9 +399,9 @@ namespace cubload
       return load_batch (thread_ref, batch);
     };
 
-    class_install_handler c_handler = [this, &thread_ref] (const class_id clsid, const std::string &buf)
+    batch_handler c_handler = [this, &thread_ref] (const batch &batch)
     {
-      return install_class (thread_ref, clsid, buf);
+      return install_class (thread_ref, batch);
     };
 
     return split (m_batch_size, file_name, c_handler, b_handler);

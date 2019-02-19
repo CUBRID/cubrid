@@ -50,6 +50,11 @@ namespace cubload
 
       ~scanner () override = default;
 
+      void set_lineno (int line_offset)
+      {
+	yylineno = line_offset;
+      }
+
       /*
        * The main scanner function.
        * See load_lexer.l file for method declaration

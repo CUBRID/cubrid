@@ -34,7 +34,8 @@ namespace cubload
   /*
    * A wrapper function for calling batch handler. Used by split function and does some extra checks
    */
-  int handle_batch (batch_handler &handler, class_id clsid, std::string &batch_content, batch_id &batch_id);
+  int handle_batch (batch_handler &handler, class_id clsid, std::string &batch_content, batch_id &batch_id,
+		    int line_offset);
 
   /*
    * Check if a given string starts with a given prefix
@@ -57,25 +58,28 @@ namespace cubload
 {
 
   batch::batch ()
-    : m_clsid (NULL_CLASS_ID)
-    , m_batch_id (NULL_BATCH_ID)
+    : m_id (NULL_BATCH_ID)
+    , m_clsid (NULL_CLASS_ID)
     , m_content ()
+    , m_line_offset (0)
   {
     //
   }
 
-  batch::batch (class_id clsid, batch_id batch_id, std::string &content)
-    : m_clsid (clsid)
-    , m_batch_id (batch_id)
+  batch::batch (batch_id id, class_id clsid, std::string &content, int line_offset)
+    : m_id (id)
+    , m_clsid (clsid)
     , m_content (content)
+    , m_line_offset (line_offset)
   {
     //
   }
 
   batch::batch (batch &&other) noexcept
-    : m_clsid (other.m_clsid)
-    , m_batch_id (other.m_batch_id)
+    : m_id (other.m_id)
+    , m_clsid (other.m_clsid)
     , m_content (std::move (other.m_content))
+    , m_line_offset (other.m_line_offset)
   {
     //
   }
@@ -83,27 +87,54 @@ namespace cubload
   batch &
   batch::operator= (batch &&other) noexcept
   {
+    m_id = other.m_id;
     m_clsid = other.m_clsid;
-    m_batch_id = other.m_batch_id;
     m_content = std::move (other.m_content);
+    m_line_offset = other.m_line_offset;
 
     return *this;
+  }
+
+  batch_id
+  batch::get_id () const
+  {
+    return m_id;
+  }
+
+  class_id
+  batch::get_class_id () const
+  {
+    return m_clsid;
+  }
+
+  int
+  batch::get_line_offset () const
+  {
+    return m_line_offset;
+  }
+
+  const std::string &
+  batch::get_content () const
+  {
+    return m_content;
   }
 
   void
   batch::pack (cubpacking::packer &serializator) const
   {
+    serializator.pack_int (m_id);
     serializator.pack_int (m_clsid);
-    serializator.pack_int (m_batch_id);
     serializator.pack_string (m_content);
+    serializator.pack_int (m_line_offset);
   }
 
   void
   batch::unpack (cubpacking::unpacker &deserializator)
   {
+    deserializator.unpack_int (m_id);
     deserializator.unpack_int (m_clsid);
-    deserializator.unpack_int (m_batch_id);
     deserializator.unpack_string (m_content);
+    deserializator.unpack_int (m_line_offset);
   }
 
   size_t
@@ -111,9 +142,10 @@ namespace cubload
   {
     size_t size = 0;
 
-    size += serializator.get_packed_int_size (size);
-    size += serializator.get_packed_int_size (size);
+    size += serializator.get_packed_int_size (size); // m_id
+    size += serializator.get_packed_int_size (size); // m_clsid
     size += serializator.get_packed_string_size (m_content, size);
+    size += serializator.get_packed_int_size (size); // m_line_offset
 
     return size;
   }
@@ -297,24 +329,26 @@ namespace cubload
   }
 
   int
-  split (int batch_size, const std::string &object_file_name, class_install_handler &c_handler, batch_handler &b_handler)
+  split (int batch_size, const std::string &object_file_name, batch_handler &c_handler, batch_handler &b_handler)
   {
     int error_code;
     int rows = 0;
-    batch_id batch_id = 0;
+    int lineno = 0;
+    int line_offset = 0;
     class_id clsid = 0;
+    batch_id batch_id = 0;
     std::string batch_buffer;
     std::ifstream object_file (object_file_name, std::fstream::in);
 
     if (!object_file)
       {
 	// file does not exists on server, let client do the split operation
-	return ER_FAILED;
+	return ER_FILE_UNKNOWN_FILE;
       }
 
     assert (batch_size > 0);
 
-    for (std::string line; std::getline (object_file, line);)
+    for (std::string line; std::getline (object_file, line); ++lineno)
       {
 	bool is_id_line = starts_with (line, "%id");
 	bool is_class_line = starts_with (line, "%class");
@@ -325,7 +359,7 @@ namespace cubload
 	      {
 		// in case of class line collect remaining for current class
 		// and start new batch for the new class
-		error_code = handle_batch (b_handler, clsid, batch_buffer, batch_id);
+		error_code = handle_batch (b_handler, clsid, batch_buffer, batch_id, line_offset);
 		if (error_code != NO_ERROR)
 		  {
 		    object_file.close ();
@@ -340,13 +374,15 @@ namespace cubload
 	      }
 
 	    line.append ("\n"); // feed lexer with new line
-	    error_code = c_handler (clsid, line);
+	    batch c_batch (batch_id, clsid, line, lineno);
+	    error_code = c_handler (c_batch);
 	    if (error_code != NO_ERROR)
 	      {
 		object_file.close ();
 		return error_code;
 	      }
 
+	    line_offset = lineno;
 	    continue;
 	  }
 
@@ -368,7 +404,8 @@ namespace cubload
 	    // check if we have a full batch
 	    if ((rows % batch_size) == 0)
 	      {
-		error_code = handle_batch (b_handler, clsid, batch_buffer, batch_id);
+		error_code = handle_batch (b_handler, clsid, batch_buffer, batch_id, line_offset);
+		line_offset = lineno;
 		if (error_code != NO_ERROR)
 		  {
 		    object_file.close ();
@@ -379,7 +416,7 @@ namespace cubload
       }
 
     // collect remaining rows
-    error_code = handle_batch (b_handler, clsid, batch_buffer, batch_id);
+    error_code = handle_batch (b_handler, clsid, batch_buffer, batch_id, line_offset);
 
     object_file.close ();
 
@@ -387,7 +424,7 @@ namespace cubload
   }
 
   int
-  handle_batch (batch_handler &handler, class_id clsid, std::string &batch_content, batch_id &batch_id)
+  handle_batch (batch_handler &handler, class_id clsid, std::string &batch_content, batch_id &batch_id, int line_offset)
   {
     if (batch_content.empty ())
       {
@@ -395,7 +432,7 @@ namespace cubload
 	return NO_ERROR;
       }
 
-    batch batch_ (clsid, ++batch_id, batch_content);
+    batch batch_ (++batch_id, clsid, batch_content, line_offset);
     int error_code = handler (batch_);
 
     // prepare to start new batch for the class

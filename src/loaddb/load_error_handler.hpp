@@ -25,30 +25,26 @@
 #define _LOAD_ERROR_HANDLER_HPP_
 
 #include "load_common.hpp"
-#if defined (SERVER_MODE)
-#include "load_session.hpp"
-#endif
 #include "utility.h"
 
-#include <functional>
 #include <memory>
 #include <string>
 
 namespace cubload
 {
 
-  using lineno_function = std::function<int ()>;
+  class session;
 
   class error_handler
   {
     public:
-      explicit error_handler (lineno_function &lineno_function);
+#if defined (SERVER_MODE)
+      explicit error_handler (session &session);
+#else
+      error_handler () = default;
+#endif
 
       ~error_handler () = default; // Destructor
-
-#if defined (SERVER_MODE)
-      void initialize (session *session);
-#endif
 
       template<typename... Args>
       void on_error (MSGCAT_LOADDB_MSG msg_id, Args &&... args);
@@ -66,6 +62,7 @@ namespace cubload
       void on_failure_with_line (MSGCAT_LOADDB_MSG msg_id, Args &&... args);
 
     private:
+      int get_lineno ();
       char *get_message_from_catalog (MSGCAT_LOADDB_MSG msg_id);
 
       void log_error_message (std::string &err_msg, bool fail);
@@ -74,9 +71,8 @@ namespace cubload
       template<typename... Args>
       std::string format (const char *fmt, Args &&... args);
 
-      lineno_function m_lineno_function;
 #if defined (SERVER_MODE)
-      session *m_session;
+      session &m_session;
 #endif
   };
 }
@@ -102,7 +98,7 @@ namespace cubload
   {
     std::string err_msg;
 
-    err_msg.append (format (get_message_from_catalog (LOADDB_MSG_LINE), m_lineno_function ()));
+    err_msg.append (format (get_message_from_catalog (LOADDB_MSG_LINE), get_lineno ()));
     err_msg.append (format (get_message_from_catalog (msg_id), std::forward<Args> (args)...));
 
     log_error_message (err_msg, false);
@@ -122,7 +118,7 @@ namespace cubload
   {
     std::string err_msg;
 
-    err_msg.append (format (get_message_from_catalog (LOADDB_MSG_LINE), m_lineno_function ()));
+    err_msg.append (format (get_message_from_catalog (LOADDB_MSG_LINE), get_lineno ()));
     err_msg.append (format (get_message_from_catalog (msg_id), std::forward<Args> (args)...));
 
     log_error_message (err_msg, true);

@@ -398,7 +398,7 @@ namespace cubload
     val->data.ch.info.is_max_string = (unsigned char) false;
     val->data.ch.info.compressed_need_clear = (unsigned char) false;
     val->data.ch.medium.size = str_len;
-    val->data.ch.medium.buf = (char *) str;
+    val->data.ch.medium.buf = const_cast<char *> (str);
     val->data.ch.medium.compressed_buf = NULL;
     val->data.ch.medium.compressed_size = 0;
 
@@ -455,7 +455,7 @@ namespace cubload
 
     val->domain.char_info.length = char_count;
     val->data.ch.medium.size = str_len;
-    val->data.ch.medium.buf = (char *) str;
+    val->data.ch.medium.buf = const_cast<char *> (str);
     val->data.ch.info.style = MEDIUM_STRING;
     val->data.ch.info.is_max_string = (unsigned char) false;
     val->data.ch.info.compressed_need_clear = (unsigned char) false;
@@ -475,7 +475,7 @@ namespace cubload
   int
   to_db_string (const char *str, const attribute *attr, db_value *val)
   {
-    return db_make_string (val, (char *) str);
+    return db_make_string (val, const_cast<char *> (str));
   }
 
   int
@@ -538,7 +538,7 @@ namespace cubload
 	return error_code;
       }
 
-    return db_value_put (val, DB_TYPE_C_CHAR, (char *) str, (int) str_len);
+    return db_value_put (val, DB_TYPE_C_CHAR, (void *) str, (int) str_len);
   }
 
   int
