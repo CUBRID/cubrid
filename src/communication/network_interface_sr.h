@@ -231,4 +231,5 @@ extern void sloaddb_install_class (THREAD_ENTRY * thread_p, unsigned int rid, ch
 extern void sloaddb_load_batch (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sloaddb_fetch_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sloaddb_destroy (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sloaddb_interrupt (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 #endif /* _NETWORK_INTERFACE_SR_H_ */

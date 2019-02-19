@@ -315,7 +315,7 @@ namespace cubload
 	return;
       }
 
-    m_session.inc_total_objects ();
+    m_session.stats_update_total_objects ();
 
     clear_db_values ();
   }

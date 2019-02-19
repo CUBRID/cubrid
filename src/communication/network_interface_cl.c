@@ -10085,12 +10085,12 @@ int
 loaddb_init ()
 {
 #if defined(CS_MODE)
-  int req_error;
-  int rc = NO_ERROR;
+  int rc = ER_FAILED;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  req_error = net_client_request (NET_SERVER_LD_INIT, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  int req_error =
+    net_client_request (NET_SERVER_LD_INIT, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       or_unpack_int (reply, &rc);
@@ -10103,29 +10103,20 @@ loaddb_init ()
 }
 
 int
-loaddb_load_object_file (const char *file_name)
+loaddb_load_object_file (std::string & object_file_name)
 {
 #if defined(CS_MODE)
-  int req_error;
-  int rc = NO_ERROR;
+  int rc = ER_FAILED;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  int request_size = length_const_string (file_name, NULL);
-  char *request = (char *) malloc (request_size);
-  if (request == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, request_size);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
+  packing_packer packer;
+  cubmem::extensible_block eb;
 
-  pack_const_string (request, file_name);
+  packer.set_buffer_and_pack_all (eb, object_file_name);
 
-  req_error = net_client_request (NET_SERVER_LD_LOAD_OBJECT_FILE, request, request_size, reply,
-				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
-
-  free_and_init (request);
-
+  int req_error = net_client_request (NET_SERVER_LD_LOAD_OBJECT_FILE, eb.get_ptr (), (int) packer.get_current_size (),
+				      reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       or_unpack_int (reply, &rc);
@@ -10141,6 +10132,7 @@ int
 loaddb_install_class (const cubload::batch & batch)
 {
 #if defined(CS_MODE)
+  int rc = ER_FAILED;
   packing_packer packer;
   cubmem::extensible_block eb;
 
@@ -10151,8 +10143,6 @@ loaddb_install_class (const cubload::batch & batch)
 
   int req_error = net_client_request (NET_SERVER_LD_INSTALL_CLASS, eb.get_ptr (), (int) packer.get_current_size (),
 				      reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
-
-  int rc = NO_ERROR;
   if (!req_error)
     {
       or_unpack_int (reply, &rc);
@@ -10168,8 +10158,7 @@ int
 loaddb_load_batch (const cubload::batch & batch)
 {
 #if defined(CS_MODE)
-  int req_error;
-  int rc = NO_ERROR;
+  int rc = ER_FAILED;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
@@ -10178,9 +10167,8 @@ loaddb_load_batch (const cubload::batch & batch)
 
   packer.set_buffer_and_pack_all (eb, batch);
 
-  req_error = net_client_request (NET_SERVER_LD_LOAD_BATCH, eb.get_ptr (), (int) packer.get_current_size (), reply,
-				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
-
+  int req_error = net_client_request (NET_SERVER_LD_LOAD_BATCH, eb.get_ptr (), (int) packer.get_current_size (), reply,
+				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       or_unpack_int (reply, &rc);
@@ -10201,20 +10189,25 @@ loaddb_fetch_stats (load_stats * stats)
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  int error_code = net_client_request2 (NET_SERVER_LD_FETCH_STATS, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL,
-					0, &data_reply, &data_reply_size);
-  if (error_code != NO_ERROR)
+  int req_error = net_client_request2 (NET_SERVER_LD_FETCH_STATS, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL,
+				       0, &data_reply, &data_reply_size);
+  if (req_error != NO_ERROR)
     {
-      return error_code;
+      return req_error;
     }
 
   or_unpack_int (reply, &data_reply_size);
+
+  if (data_reply_size == 0)
+    {
+      return ER_FAILED;
+    }
 
   packing_unpacker unpacker (data_reply, data_reply_size);
   stats->clear ();
   stats->unpack (unpacker);
 
-  return 0;
+  return req_error;
 #else /* CS_MODE */
   return NO_ERROR;
 #endif /* !CS_MODE */
@@ -10224,13 +10217,33 @@ int
 loaddb_destroy ()
 {
 #if defined(CS_MODE)
-  int req_error;
-  int rc = NO_ERROR;
+  int rc = ER_FAILED;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  req_error =
+  int req_error =
     net_client_request (NET_SERVER_LD_DESTROY, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      or_unpack_int (reply, &rc);
+    }
+
+  return rc;
+#else /* CS_MODE */
+  return NO_ERROR;
+#endif /* !CS_MODE */
+}
+
+int
+loaddb_interrupt ()
+{
+#if defined(CS_MODE)
+  int rc = ER_FAILED;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  int req_error =
+    net_client_request (NET_SERVER_LD_INTERRUPT, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       or_unpack_int (reply, &rc);

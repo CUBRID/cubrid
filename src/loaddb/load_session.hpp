@@ -114,7 +114,8 @@ namespace cubload
       bool is_failed ();
 
       stats get_stats ();
-      void inc_total_objects ();
+      void stats_update_total_objects ();
+      void stats_update_last_commit (int last_commit);
 
       class_registry &get_class_registry ();
 

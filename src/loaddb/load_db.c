@@ -67,6 +67,7 @@ static int index_file_start_line = 1;
 static FILE *loaddb_log_file;
 
 int interrupt_query = false;
+bool load_interrupted = false;
 
 static int ldr_validate_object_file (FILE * outfp, const char *argv0, load_args * args);
 static int ldr_check_file_name_and_line_no (load_args * args);
@@ -80,8 +81,12 @@ static int get_ignore_class_list (const char *filename);
 static void free_ignoreclasslist (void);
 static int ldr_compare_attribute_with_meta (char *table_name, char *meta, DB_ATTRIBUTE * attribute);
 static int ldr_compare_storage_order (FILE * schema_file);
-static void ldr_server_load (load_args * args, int *status, bool * interrupted);
 static void get_loaddb_args (UTIL_ARG_MAP * arg_map, load_args * args);
+
+static void ldr_server_load (load_args * args, int *status, bool * interrupted);
+static void register_signal_handlers ();
+static int load_object_file (load_args * args);
+static void print_er_msg ();
 
 /*
  * print_log_msg - print log message
@@ -114,6 +119,17 @@ print_log_msg (int verbose, const char *fmt, ...)
     {
       assert (false);
     }
+}
+
+static void
+print_er_msg ()
+{
+  if (!er_has_error ())
+    {
+      return;
+    }
+
+  fprintf (stderr, "%s\n", er_msg ());
 }
 
 /*
@@ -1150,40 +1166,23 @@ get_loaddb_args (UTIL_ARG_MAP * arg_map, load_args * args)
   args->table_name = args->table_name ? args->table_name : (char *) "";
 }
 
-void
+static void
 ldr_server_load (load_args * args, int *status, bool * interrupted)
 {
-  char object_file_abs_path[PATH_MAX];
+  register_signal_handlers ();
 
-  if (realpath (args->object_file, object_file_abs_path) == NULL)
+  int error_code = loaddb_init ();
+  if (error_code != NO_ERROR)
     {
-      fprintf (stderr, "ERROR: failed to resolve real path name for %s\n", args->object_file);
+      print_er_msg ();
       *status = 3;
       return;
     }
 
-  loaddb_init ();
-
-  int error_code = loaddb_load_object_file (object_file_abs_path);
-  if (error_code == ER_FILE_UNKNOWN_FILE)
-    {
-      /* *INDENT-OFF* */
-      std::string object_file_abs_path_ (object_file_abs_path);
-      batch_handler b_handler = [] (const batch &batch)
-      {
-	return loaddb_load_batch (batch);
-      };
-      batch_handler c_handler = [] (const batch &batch)
-      {
-	return loaddb_install_class (batch);
-      };
-      /* *INDENT-ON* */
-
-      error_code = split (args->periodic_commit, object_file_abs_path_, c_handler, b_handler);
-    }
-
+  error_code = load_object_file (args);
   if (error_code != NO_ERROR)
     {
+      print_er_msg ();
       *status = 3;
     }
 
@@ -1191,7 +1190,20 @@ ldr_server_load (load_args * args, int *status, bool * interrupted)
   long prev_last_commit = 0;
   do
     {
-      loaddb_fetch_stats (&stats);
+      if (load_interrupted)
+	{
+	  *interrupted = true;
+	  *status = 3;
+	  break;
+	}
+
+      error_code = loaddb_fetch_stats (&stats);
+      if (error_code != NO_ERROR)
+	{
+	  print_er_msg ();
+	  *status = 3;
+	  break;
+	}
 
       if (!stats.error_message.empty ())
 	{
@@ -1215,8 +1227,70 @@ ldr_server_load (load_args * args, int *status, bool * interrupted)
     }
   while (!(stats.is_completed || stats.is_failed) && *status != 3);
 
-  loaddb_destroy ();
-
+  loaddb_fetch_stats (&stats);
   print_log_msg (1, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_INSERT_AND_FAIL_COUNT),
-		 stats.total_objects, stats.errors);
+		 stats.last_commit, stats.errors);
+
+  error_code = loaddb_destroy ();
+  if (error_code != NO_ERROR)
+    {
+      print_er_msg ();
+      *status = 3;
+      return;
+    }
+}
+
+static void
+register_signal_handlers ()
+{
+  /* *INDENT-OFF* */
+  SIG_HANDLER sig_handler = [] ()
+  {
+    load_interrupted = true;
+    loaddb_interrupt ();
+    print_er_msg ();
+
+    print_log_msg (1, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_SIG1));
+    fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_INTERRUPTED_ABORT));
+  };
+  /* *INDENT-ON* */
+
+  // register handlers for SIGINT and SIGQUIT signals
+  util_arm_signal_handlers (sig_handler, sig_handler);
+}
+
+
+static int
+load_object_file (load_args * args)
+{
+  // resolve absolute path for the object file
+  char object_file_abs_path[PATH_MAX];
+  if (realpath (args->object_file, object_file_abs_path) == NULL)
+    {
+      fprintf (stderr, "ERROR: failed to resolve real path name for %s\n", args->object_file);
+      return ER_FAILED;
+    }
+
+  /* *INDENT-OFF* */
+  std::string object_file_abs_path_str (object_file_abs_path);
+  /* *INDENT-ON* */
+
+  int error_code = loaddb_load_object_file (object_file_abs_path_str);
+  if (error_code == ER_FILE_UNKNOWN_FILE)
+    {
+      /* *INDENT-OFF* */
+      batch_handler b_handler = [] (const batch &batch)
+      {
+	return loaddb_load_batch (batch);
+      };
+      batch_handler c_handler = [] (const batch &batch)
+      {
+	return loaddb_install_class (batch);
+      };
+      /* *INDENT-ON* */
+
+      error_code = split (args->periodic_commit, object_file_abs_path_str, c_handler, b_handler);
+    }
+
+  return error_code;
 }

@@ -46,7 +46,7 @@ namespace cubload
   {
     public:
       batch ();
-      batch (batch_id id, class_id clsid, std::string &content, int line_offset);
+      batch (batch_id id, class_id clsid, std::string &content, int line_offset, int rows);
 
       batch (batch &&other) noexcept; // MoveConstructible
       batch &operator= (batch &&other) noexcept; // MoveAssignable
@@ -58,6 +58,7 @@ namespace cubload
       class_id get_class_id () const;
       int get_line_offset () const;
       const std::string &get_content () const;
+      int get_rows_number () const;
 
       void pack (cubpacking::packer &serializator) const override;
       void unpack (cubpacking::unpacker &deserializator) override;
@@ -68,6 +69,7 @@ namespace cubload
       class_id m_clsid;
       std::string m_content;
       int m_line_offset;
+      int m_rows;
   };
 
   using batch_handler = std::function<int (const batch &)>;
@@ -236,8 +238,8 @@ namespace cubload
   struct stats : public cubpacking::packable_object
   {
     int defaults;
-    std::int64_t total_objects;
-    std::int64_t last_commit;
+    int total_objects;
+    int last_commit;
     int errors;
     std::string error_message;
     bool is_failed;
