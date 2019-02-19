@@ -29,10 +29,12 @@
 
 #if defined (__cplusplus)
 class JSON_DOC;
+class JSON_PATH;
 class JSON_VALIDATOR;
 class JSON_ITERATOR;
 #else
 typedef void JSON_DOC;
+typedef void JSON_PATH;
 typedef void JSON_VALIDATOR;
 typedef void JSON_ITERATOR;
 #endif
@@ -101,7 +103,7 @@ int db_json_remove_func (JSON_DOC &doc, const char *raw_path);
 int db_json_paths_to_regex (const std::vector<std::string> &paths, std::vector<std::string> &regs,
 			    bool match_exactly = false);
 int db_json_search_func (JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALUE *esc_char,
-			 std::vector<std::string> &paths, const std::vector<std::string> &regs, bool find_all);
+			 std::vector<std::string> &paths, const std::vector<std::string> &starting_paths, bool find_all);
 int db_json_merge_patch_func (const JSON_DOC *source, JSON_DOC *&dest);
 int db_json_merge_preserve_func (const JSON_DOC *source, JSON_DOC *&dest);
 int db_json_get_all_paths_func (const JSON_DOC &doc, JSON_DOC *&result_json);
@@ -134,7 +136,8 @@ JSON_ITERATOR *db_json_create_iterator (const DB_JSON_TYPE &type);
 void db_json_delete_json_iterator (JSON_ITERATOR *&json_itr);
 void db_json_clear_json_iterator (JSON_ITERATOR *&json_itr);
 
-int db_json_normalize_path (const char *pointer_path, std::string &sql_path_out,
+int db_json_path_validate_external (const char *pointer_path, bool allow_wildcards);
+int db_json_normalize_path (const char *pointer_path, JSON_PATH &json_path,
 			    bool allow_wildcards = true);
 DB_JSON_TYPE db_json_get_type (const JSON_DOC *doc);
 

@@ -44,6 +44,7 @@
 #include "partition.h"
 #include "db_json.hpp"
 #include "object_primitive.h"
+#include "db_json.hpp"
 
 #include "dbtype.h"
 #define PT_CHAIN_LENGTH 10
@@ -9321,8 +9322,7 @@ pt_check_json_table_node (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   assert (node != NULL && node->node_type == PT_JSON_TABLE_NODE);
 
-  std::string path;
-  int error_code = db_json_normalize_path (node->info.json_table_node_info.path, path, true);
+  int error_code = db_json_path_validate_external (node->info.json_table_node_info.path, true);
   if (error_code)
     {
       return error_code;
@@ -9361,7 +9361,7 @@ pt_check_json_table_node (PARSER_CONTEXT * parser, PT_NODE * node)
 	  assert (col_info.path == NULL);
 	  continue;
 	}
-      error_code = db_json_normalize_path (col_info.path, path, true);
+      error_code = db_json_path_validate_external (col_info.path, true);
       if (error_code)
 	{
 	  return error_code;
