@@ -269,7 +269,7 @@ class JSON_PATH : protected rapidjson::GenericPointer <JSON_VALUE>
     };
 
     // todo: find a way to avoid passing reference to get other_tokens.end ()
-    bool match (std::vector<PATH_TOKEN>::const_iterator &it1, std::vector<PATH_TOKEN>::const_iterator &it2,
+    bool match (const std::vector<PATH_TOKEN>::const_iterator &it1, const std::vector<PATH_TOKEN>::const_iterator &it2,
 		const std::vector<PATH_TOKEN> &other_tokens, bool match_prefix = false) const
     {
       if (it1 == m_path_tokens.end () && it2 == other_tokens.end ())
@@ -3705,7 +3705,7 @@ db_json_er_set_path_does_not_exist (const char *file_name, const int line_no, co
   cubmem::private_unique_ptr<char> unique_ptr (raw_json_body, NULL);
 
   er_set (ER_ERROR_SEVERITY, file_name, line_no, ER_JSON_PATH_DOES_NOT_EXIST, 2,
-	  json_path.dump_json_path (), raw_json_body);
+	  json_path.dump_json_path ().c_str (), raw_json_body);
 
   return ER_JSON_PATH_DOES_NOT_EXIST;
 }
@@ -3736,7 +3736,7 @@ db_json_er_set_expected_other_type (const char *file_name, const int line_no, co
     }
 
   er_set (ER_ERROR_SEVERITY, file_name, line_no, ER_JSON_EXPECTED_OTHER_TYPE, 3,
-	  json_path.dump_json_path (), expected_type_str.c_str (), found_type_str);
+	  json_path.dump_json_path ().c_str (), expected_type_str.c_str (), found_type_str);
 
   return ER_JSON_EXPECTED_OTHER_TYPE;
 }
