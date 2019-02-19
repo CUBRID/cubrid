@@ -1421,4 +1421,12 @@ typedef enum
   KILLSTMT_QUERY = 1,
 } KILLSTMT_TYPE;
 
+// query module
+typedef enum
+{
+  HS_NONE = 0,			/* no hash aggregation */
+  HS_ACCEPT_ALL,		/* accept tuples in hash table */
+  HS_REJECT_ALL			/* reject tuples, use normal sort-based aggregation */
+} AGGREGATE_HASH_STATE;
+
 #endif /* _STORAGE_COMMON_H_ */

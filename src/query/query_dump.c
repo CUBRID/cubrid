@@ -35,6 +35,7 @@
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #endif // SERVER_MODE
 #include "xasl.h"
+#include "xasl_aggregate.hpp"
 
 #define foutput stdout
 

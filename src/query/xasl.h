@@ -34,7 +34,6 @@
 #include "regu_var.h"
 #include "storage_common.h"
 #include "string_opfunc.h"
-#include "xasl_aggregate.hpp"
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 #include "external_sort.h"
@@ -111,13 +110,6 @@ struct xasl_node_header
 #if defined (SERVER_MODE) || defined (SA_MODE)
 typedef enum
 {
-  HS_NONE = 0,			/* no hash aggregation */
-  HS_ACCEPT_ALL,		/* accept tuples in hash table */
-  HS_REJECT_ALL			/* reject tuples, use normal sort-based aggregation */
-} AGGREGATE_HASH_STATE;
-
-typedef enum
-{
   XASL_CLEARED,
   XASL_SUCCESS,
   XASL_FAILURE,
@@ -139,6 +131,14 @@ typedef struct method_spec_node METHOD_SPEC_TYPE;
 typedef struct reguval_list_spec_node REGUVAL_LIST_SPEC_TYPE;
 typedef union hybrid_node HYBRID_NODE;
 
+// *INDENT-OFF*
+namespace cubxasl
+{
+  struct aggregate_list_node;
+} // namespace cubxasl
+using AGGREGATE_TYPE = cubxasl::aggregate_list_node;
+// *INDENT-ON*
+
 #if defined (SERVER_MODE) || defined (SA_MODE)
 typedef struct groupby_stat GROUPBY_STATS;
 typedef struct orderby_stat ORDERBY_STATS;
@@ -147,8 +147,13 @@ typedef struct xasl_stat XASL_STATS;
 typedef struct topn_tuple TOPN_TUPLE;
 typedef struct topn_tuples TOPN_TUPLES;
 
-typedef struct aggregate_hash_value AGGREGATE_HASH_VALUE;
-typedef struct aggregate_hash_key AGGREGATE_HASH_KEY;
+// *INDENT-OFF*
+namespace cubquery
+{
+  struct aggregate_hash_context;
+}
+using AGGREGATE_HASH_CONTEXT = cubquery::aggregate_hash_context;
+// *INDENT-ON*
 
 typedef struct partition_spec_node PARTITION_SPEC_TYPE;
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
@@ -190,38 +195,7 @@ struct selupd_list
 };
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
-typedef struct aggregate_hash_context AGGREGATE_HASH_CONTEXT;
-struct aggregate_hash_context
-{
-  /* hash table stuff */
-  MHT_TABLE *hash_table;	/* memory hash table for hash aggregate eval */
-  AGGREGATE_HASH_KEY *temp_key;	/* temporary key used for fetch */
-  AGGREGATE_HASH_STATE state;	/* state of hash aggregation */
-  TP_DOMAIN **key_domains;	/* hash key domains */
-  AGGREGATE_ACCUMULATOR_DOMAIN **accumulator_domains;	/* accumulator domains */
 
-  /* runtime statistics stuff */
-  int hash_size;		/* hash table size */
-  int group_count;		/* groups processed in hash table */
-  int tuple_count;		/* tuples processed in hash table */
-
-  /* partial list file stuff */
-  SCAN_CODE part_scan_code;	/* scan status of partial list file */
-  QFILE_LIST_ID *part_list_id;	/* list with partial accumulators */
-  QFILE_LIST_ID *sorted_part_list_id;	/* sorted list with partial acc's */
-  QFILE_LIST_SCAN_ID part_scan_id;	/* scan on partial list */
-  DB_VALUE *temp_dbval_array;	/* temporary array of dbvalues, used for saving entries to list files */
-
-  /* partial list file sort stuff */
-  QFILE_TUPLE_RECORD input_tuple;	/* tuple record used while sorting */
-  SORTKEY_INFO sort_key;	/* sort key for partial list */
-  RECDES tuple_recdes;		/* tuple recdes */
-  AGGREGATE_HASH_KEY *curr_part_key;	/* current partial key */
-  AGGREGATE_HASH_KEY *temp_part_key;	/* temporary partial key */
-  AGGREGATE_HASH_VALUE *curr_part_value;	/* current partial value */
-  AGGREGATE_HASH_VALUE *temp_part_value;	/* temporary partial value */
-  int sorted_count;
-};
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 /*update/delete class info structure */
@@ -329,7 +303,7 @@ struct buildlist_proc_node
 #if defined (SERVER_MODE) || defined (SA_MODE)
   EHID *upddel_oid_locator_ehids;	/* array of temporary extensible hash for UPDATE/DELETE generated SELECT
 					 * statement */
-  AGGREGATE_HASH_CONTEXT agg_hash_context;	/* hash aggregate context, not serialized */
+  AGGREGATE_HASH_CONTEXT *agg_hash_context;	/* hash aggregate context, not serialized */
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
   int g_agg_domains_resolved;	/* domain status (not serialized) */
 };
@@ -659,25 +633,6 @@ struct xasl_stream
                             GET_XASL_HEADER_N_OID_LIST(header) * sizeof(OID) + \
                             GET_XASL_HEADER_N_OID_LIST(header) * sizeof(int))) = (cnt))
 
-#if defined (SERVER_MODE) || defined (SA_MODE)
-/* aggregate evaluation hash value */
-struct aggregate_hash_value
-{
-  int curr_size;		/* last computed size of structure */
-  int tuple_count;		/* # of tuples aggregated in structure */
-  int func_count;		/* # of functions (i.e. accumulators) */
-  AGGREGATE_ACCUMULATOR *accumulators;	/* function accumulators */
-  QFILE_TUPLE_RECORD first_tuple;	/* first aggregated tuple */
-};
-
-/* aggregate evaluation hash key */
-struct aggregate_hash_key
-{
-  int val_count;		/* key size */
-  bool free_values;		/* true if values need to be freed */
-  DB_VALUE **values;		/* value array */
-};
-#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 /************************************************************************/
 /* access spec                                                          */

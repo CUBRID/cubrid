@@ -28,6 +28,7 @@
 #include "fetch.h"
 #include "dbtype.h"
 #include "stream_to_xasl.h"
+#include "query_aggregate.hpp"
 #include "query_executor.h"
 #include "query_opfunc.h"
 #include "object_primitive.h"
@@ -3591,7 +3592,7 @@ cleanup:
  */
 int
 partition_load_aggregate_helper (PRUNING_CONTEXT * pcontext, access_spec_node * spec, int pruned_count,
-				 BTID * root_btid, hierarchy_aggregate_helper * helper)
+				 BTID * root_btid, HIERARCHY_AGGREGATE_HELPER * helper)
 {
   int error = NO_ERROR, i = 0;
   char *btree_name = NULL;

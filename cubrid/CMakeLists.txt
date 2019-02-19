@@ -207,6 +207,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/method_scan.c
   ${QUERY_DIR}/numeric_opfunc.c
   ${QUERY_DIR}/partition.c
+  ${QUERY_DIR}/query_aggregate.cpp
   ${QUERY_DIR}/query_dump.c
   ${QUERY_DIR}/query_evaluator.c
   ${QUERY_DIR}/query_executor.c
@@ -223,6 +224,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/xasl_cache.c
   )
 set(QUERY_HEADERS
+  ${QUERY_DIR}/query_aggregate.hpp
   ${QUERY_DIR}/scan_json_table.hpp
   )
 

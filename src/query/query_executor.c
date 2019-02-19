@@ -38,6 +38,7 @@
 #include "porting.h"
 #include "error_manager.h"
 #include "partition_sr.h"
+#include "query_aggregate.hpp"
 #include "query_opfunc.h"
 #include "fetch.h"
 #include "dbtype.h"
@@ -70,6 +71,7 @@
 #include "thread_entry.hpp"
 #include "regu_var.h"
 #include "xasl.h"
+#include "xasl_aggregate.hpp"
 
 #define GOTO_EXIT_ON_ERROR \
   do \
@@ -1195,7 +1197,7 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	    }
 
 	  if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.g_hash_eligible
-	      && xasl->proc.buildlist.agg_hash_context.state != HS_REJECT_ALL)
+	      && xasl->proc.buildlist.agg_hash_context->state != HS_REJECT_ALL)
 	    {
 	      /* aggregate using hash table */
 	      if (qexec_hash_gby_agg_tuple (thread_p, xasl, xasl_state, &xasl->proc.buildlist, tplrec,
@@ -3687,7 +3689,7 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 			  BUILDLIST_PROC_NODE * proc, QFILE_TUPLE_RECORD * tplrec, QFILE_TUPLE_DESCRIPTOR * tpldesc,
 			  QFILE_LIST_ID * groupby_list, bool * output_tuple)
 {
-  AGGREGATE_HASH_CONTEXT *context = &proc->agg_hash_context;
+  AGGREGATE_HASH_CONTEXT *context = proc->agg_hash_context;
   AGGREGATE_HASH_KEY *key = context->temp_key;
   AGGREGATE_HASH_VALUE *value;
   HENTRY_PTR hentry;
@@ -4409,7 +4411,7 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
 				      buildlist->eptr_list, buildlist->g_agg_list, buildlist->g_regu_list,
 				      buildlist->g_val_list, buildlist->g_outptr_list, buildlist->g_hk_sort_regu_list,
 				      buildlist->g_with_rollup != 0, buildlist->g_hash_eligible,
-				      &buildlist->agg_hash_context, xasl, xasl_state, &list_id->type_list,
+				      buildlist->agg_hash_context, xasl, xasl_state, &list_id->type_list,
 				      tplrec) == NULL)
     {
       GOTO_EXIT_ON_ERROR;
@@ -18420,7 +18422,7 @@ qexec_resolve_domains_for_group_by (BUILDLIST_PROC_NODE * buildlist, OUTPTR_LIST
   /* update hash aggregation domains */
   if (buildlist->g_hash_eligible)
     {
-      AGGREGATE_HASH_CONTEXT *context = &buildlist->agg_hash_context;
+      AGGREGATE_HASH_CONTEXT *context = buildlist->agg_hash_context;
       int i, index;
 
       /* update key domains */
@@ -24752,30 +24754,33 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
     {
       return NO_ERROR;
     }
+  assert (proc->agg_hash_context == NULL);
+
+  proc->agg_hash_context = (AGGREGATE_HASH_CONTEXT *) db_private_alloc (thread_p, sizeof (*proc->agg_hash_context));
 
   /* clear fields (in case of error, things will get properly disposed) */
-  proc->agg_hash_context.key_domains = NULL;
-  proc->agg_hash_context.accumulator_domains = NULL;
-  proc->agg_hash_context.temp_dbval_array = NULL;
-  proc->agg_hash_context.part_list_id = NULL;
-  proc->agg_hash_context.sorted_part_list_id = NULL;
-  proc->agg_hash_context.hash_table = NULL;
-  proc->agg_hash_context.temp_key = NULL;
-  proc->agg_hash_context.temp_part_key = NULL;
-  proc->agg_hash_context.curr_part_key = NULL;
-  proc->agg_hash_context.temp_part_value = NULL;
-  proc->agg_hash_context.curr_part_value = NULL;
-  proc->agg_hash_context.sort_key.key = NULL;
-  proc->agg_hash_context.sort_key.nkeys = 0;
+  proc->agg_hash_context->key_domains = NULL;
+  proc->agg_hash_context->accumulator_domains = NULL;
+  proc->agg_hash_context->temp_dbval_array = NULL;
+  proc->agg_hash_context->part_list_id = NULL;
+  proc->agg_hash_context->sorted_part_list_id = NULL;
+  proc->agg_hash_context->hash_table = NULL;
+  proc->agg_hash_context->temp_key = NULL;
+  proc->agg_hash_context->temp_part_key = NULL;
+  proc->agg_hash_context->curr_part_key = NULL;
+  proc->agg_hash_context->temp_part_value = NULL;
+  proc->agg_hash_context->curr_part_value = NULL;
+  proc->agg_hash_context->sort_key.key = NULL;
+  proc->agg_hash_context->sort_key.nkeys = 0;
 
   /*
    * create temporary dbvalue array
    */
   if (proc->g_func_count > 0)
     {
-      proc->agg_hash_context.temp_dbval_array =
+      proc->agg_hash_context->temp_dbval_array =
 	(DB_VALUE *) db_private_alloc (thread_p, sizeof (DB_VALUE) * proc->g_func_count);
-      if (proc->agg_hash_context.temp_dbval_array == NULL)
+      if (proc->agg_hash_context->temp_dbval_array == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 		  sizeof (DB_VALUE) * proc->g_func_count);
@@ -24786,9 +24791,9 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
   /*
    * keep key domains
    */
-  proc->agg_hash_context.key_domains =
+  proc->agg_hash_context->key_domains =
     (TP_DOMAIN **) db_private_alloc (thread_p, sizeof (TP_DOMAIN *) * proc->g_hkey_size);
-  if (proc->agg_hash_context.key_domains == NULL)
+  if (proc->agg_hash_context->key_domains == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (TP_DOMAIN *) * proc->g_hkey_size);
       goto exit_on_error;
@@ -24798,7 +24803,7 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
   for (i = 0; i < proc->g_hkey_size; i++, regu_list = regu_list->next)
     {
       assert (regu_list);
-      proc->agg_hash_context.key_domains[i] = regu_list->value.domain;
+      proc->agg_hash_context->key_domains[i] = regu_list->value.domain;
     }
 
   /*
@@ -24806,11 +24811,11 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
    */
   if (proc->g_func_count > 0)
     {
-      proc->agg_hash_context.accumulator_domains =
+      proc->agg_hash_context->accumulator_domains =
 	(AGGREGATE_ACCUMULATOR_DOMAIN **) db_private_alloc (thread_p,
 							    sizeof (AGGREGATE_ACCUMULATOR_DOMAIN *) *
 							    proc->g_func_count);
-      if (proc->agg_hash_context.accumulator_domains == NULL)
+      if (proc->agg_hash_context->accumulator_domains == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 		  sizeof (AGGREGATE_ACCUMULATOR_DOMAIN *) * proc->g_func_count);
@@ -24821,7 +24826,7 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
       for (i = 0; i < proc->g_func_count; i++, agg_list = agg_list->next)
 	{
 	  assert (agg_list);
-	  proc->agg_hash_context.accumulator_domains[i] = &agg_list->accumulator_domain;
+	  proc->agg_hash_context->accumulator_domains[i] = &agg_list->accumulator_domain;
 	}
     }
 
@@ -24862,55 +24867,56 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
   type_list.domp[value_count++] = &tp_Integer_domain;
 
   /* create sort key */
-  proc->agg_hash_context.sort_key.key = NULL;
-  proc->agg_hash_context.sort_key.nkeys = 0;
+  proc->agg_hash_context->sort_key.key = NULL;
+  proc->agg_hash_context->sort_key.nkeys = 0;
 
   /* create list files */
-  proc->agg_hash_context.part_list_id = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, 0);
-  proc->agg_hash_context.sorted_part_list_id = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, 0);
+  proc->agg_hash_context->part_list_id = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, 0);
+  proc->agg_hash_context->sorted_part_list_id = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, 0);
 
   /* create tuple descriptor for partial list files */
-  proc->agg_hash_context.part_list_id->tpl_descr.f_cnt = type_list.type_cnt;
-  proc->agg_hash_context.part_list_id->tpl_descr.f_valp = (DB_VALUE **) malloc (sizeof (DB_VALUE) * type_list.type_cnt);
-  if (proc->agg_hash_context.part_list_id->tpl_descr.f_valp == NULL)
+  proc->agg_hash_context->part_list_id->tpl_descr.f_cnt = type_list.type_cnt;
+  proc->agg_hash_context->part_list_id->tpl_descr.f_valp =
+    (DB_VALUE **) malloc (sizeof (DB_VALUE) * type_list.type_cnt);
+  if (proc->agg_hash_context->part_list_id->tpl_descr.f_valp == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE) * type_list.type_cnt);
       goto exit_on_error;
     }
-  proc->agg_hash_context.part_list_id->tpl_descr.clear_f_val_at_clone_decache =
+  proc->agg_hash_context->part_list_id->tpl_descr.clear_f_val_at_clone_decache =
     (bool *) malloc (sizeof (bool) * type_list.type_cnt);
-  if (proc->agg_hash_context.part_list_id->tpl_descr.clear_f_val_at_clone_decache == NULL)
+  if (proc->agg_hash_context->part_list_id->tpl_descr.clear_f_val_at_clone_decache == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (bool) * type_list.type_cnt);
       goto exit_on_error;
     }
   for (i = 0; i < type_list.type_cnt; i++)
     {
-      proc->agg_hash_context.part_list_id->tpl_descr.clear_f_val_at_clone_decache[i] = false;
+      proc->agg_hash_context->part_list_id->tpl_descr.clear_f_val_at_clone_decache[i] = false;
     }
 
-  proc->agg_hash_context.sorted_part_list_id->tpl_descr.f_cnt = type_list.type_cnt;
-  proc->agg_hash_context.sorted_part_list_id->tpl_descr.f_valp =
+  proc->agg_hash_context->sorted_part_list_id->tpl_descr.f_cnt = type_list.type_cnt;
+  proc->agg_hash_context->sorted_part_list_id->tpl_descr.f_valp =
     (DB_VALUE **) malloc (sizeof (DB_VALUE) * type_list.type_cnt);
-  if (proc->agg_hash_context.sorted_part_list_id->tpl_descr.f_valp == NULL)
+  if (proc->agg_hash_context->sorted_part_list_id->tpl_descr.f_valp == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE) * type_list.type_cnt);
       goto exit_on_error;
     }
-  proc->agg_hash_context.sorted_part_list_id->tpl_descr.clear_f_val_at_clone_decache =
+  proc->agg_hash_context->sorted_part_list_id->tpl_descr.clear_f_val_at_clone_decache =
     (bool *) malloc (sizeof (bool) * type_list.type_cnt);
-  if (proc->agg_hash_context.sorted_part_list_id->tpl_descr.clear_f_val_at_clone_decache == NULL)
+  if (proc->agg_hash_context->sorted_part_list_id->tpl_descr.clear_f_val_at_clone_decache == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (bool) * type_list.type_cnt);
       goto exit_on_error;
     }
   for (i = 0; i < type_list.type_cnt; i++)
     {
-      proc->agg_hash_context.sorted_part_list_id->tpl_descr.clear_f_val_at_clone_decache[i] = false;
+      proc->agg_hash_context->sorted_part_list_id->tpl_descr.clear_f_val_at_clone_decache[i] = false;
     }
 
   /* initialize scan; this way we can call qfile_close_scan on an unopened scan without repercussions */
-  proc->agg_hash_context.part_scan_id.status = S_CLOSED;
+  proc->agg_hash_context->part_scan_id.status = S_CLOSED;
 
   /* free memory */
   db_private_free (thread_p, type_list.domp);
@@ -24918,27 +24924,27 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
   /*
    * create hash table
    */
-  proc->agg_hash_context.hash_table =
+  proc->agg_hash_context->hash_table =
     mht_create ("Hash aggregate evaluation", HASH_AGGREGATE_DEFAULT_TABLE_SIZE, qdata_hash_agg_hkey, qdata_agg_hkey_eq);
-  if (proc->agg_hash_context.hash_table == NULL)
+  if (proc->agg_hash_context->hash_table == NULL)
     {
       goto exit_on_error;
     }
   else
     {
       /* we need the least recently used list */
-      proc->agg_hash_context.hash_table->build_lru_list = true;
+      proc->agg_hash_context->hash_table->build_lru_list = true;
     }
 
   /*
    * create temp keys
    */
-  proc->agg_hash_context.temp_key = qdata_alloc_agg_hkey (thread_p, proc->g_hkey_size, false);
-  proc->agg_hash_context.temp_part_key = qdata_alloc_agg_hkey (thread_p, proc->g_hkey_size, true);
-  proc->agg_hash_context.curr_part_key = qdata_alloc_agg_hkey (thread_p, proc->g_hkey_size, true);
+  proc->agg_hash_context->temp_key = qdata_alloc_agg_hkey (thread_p, proc->g_hkey_size, false);
+  proc->agg_hash_context->temp_part_key = qdata_alloc_agg_hkey (thread_p, proc->g_hkey_size, true);
+  proc->agg_hash_context->curr_part_key = qdata_alloc_agg_hkey (thread_p, proc->g_hkey_size, true);
 
-  if (proc->agg_hash_context.temp_key == NULL || proc->agg_hash_context.temp_part_key == NULL
-      || proc->agg_hash_context.curr_part_key == NULL)
+  if (proc->agg_hash_context->temp_key == NULL || proc->agg_hash_context->temp_part_key == NULL
+      || proc->agg_hash_context->curr_part_key == NULL)
     {
       goto exit_on_error;
     }
@@ -24946,10 +24952,10 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
   /*
    * create temp values
    */
-  proc->agg_hash_context.temp_part_value = qdata_alloc_agg_hvalue (thread_p, proc->g_func_count);
-  proc->agg_hash_context.curr_part_value = qdata_alloc_agg_hvalue (thread_p, proc->g_func_count);
+  proc->agg_hash_context->temp_part_value = qdata_alloc_agg_hvalue (thread_p, proc->g_func_count);
+  proc->agg_hash_context->curr_part_value = qdata_alloc_agg_hvalue (thread_p, proc->g_func_count);
 
-  if (proc->agg_hash_context.temp_part_value == NULL || proc->agg_hash_context.curr_part_value == NULL)
+  if (proc->agg_hash_context->temp_part_value == NULL || proc->agg_hash_context->curr_part_value == NULL)
     {
       goto exit_on_error;
     }
@@ -24957,25 +24963,25 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
   /*
    * initialize recdes
    */
-  proc->agg_hash_context.tuple_recdes.data = 0;
-  proc->agg_hash_context.tuple_recdes.type = 0;
-  proc->agg_hash_context.tuple_recdes.length = 0;
-  proc->agg_hash_context.tuple_recdes.area_size = 0;
+  proc->agg_hash_context->tuple_recdes.data = 0;
+  proc->agg_hash_context->tuple_recdes.type = 0;
+  proc->agg_hash_context->tuple_recdes.length = 0;
+  proc->agg_hash_context->tuple_recdes.area_size = 0;
 
   /*
    * initialize sort input tuple
    */
-  proc->agg_hash_context.input_tuple.size = 0;
-  proc->agg_hash_context.input_tuple.tpl = NULL;
+  proc->agg_hash_context->input_tuple.size = 0;
+  proc->agg_hash_context->input_tuple.tpl = NULL;
 
   /*
    * initialize remaining fields
    */
-  proc->agg_hash_context.hash_size = 0;
-  proc->agg_hash_context.group_count = 0;
-  proc->agg_hash_context.tuple_count = 0;
-  proc->agg_hash_context.sorted_count = 0;
-  proc->agg_hash_context.state = HS_ACCEPT_ALL;
+  proc->agg_hash_context->hash_size = 0;
+  proc->agg_hash_context->group_count = 0;
+  proc->agg_hash_context->tuple_count = 0;
+  proc->agg_hash_context->sorted_count = 0;
+  proc->agg_hash_context->state = HS_ACCEPT_ALL;
 
   /* all ok */
   return NO_ERROR;
@@ -24999,102 +25005,110 @@ qexec_free_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * proc
     {
       return;
     }
+  if (proc->agg_hash_context == NULL)
+    {
+      // nothing to free
+      return;
+    }
 
   /* free value array */
-  if (proc->agg_hash_context.temp_dbval_array != NULL)
+  if (proc->agg_hash_context->temp_dbval_array != NULL)
     {
-      db_private_free (thread_p, proc->agg_hash_context.temp_dbval_array);
-      proc->agg_hash_context.temp_dbval_array = NULL;
+      db_private_free (thread_p, proc->agg_hash_context->temp_dbval_array);
+      proc->agg_hash_context->temp_dbval_array = NULL;
     }
 
   /* free domain lists */
-  if (proc->agg_hash_context.accumulator_domains != NULL)
+  if (proc->agg_hash_context->accumulator_domains != NULL)
     {
-      db_private_free (thread_p, proc->agg_hash_context.accumulator_domains);
-      proc->agg_hash_context.accumulator_domains = NULL;
+      db_private_free (thread_p, proc->agg_hash_context->accumulator_domains);
+      proc->agg_hash_context->accumulator_domains = NULL;
     }
 
-  if (proc->agg_hash_context.key_domains != NULL)
+  if (proc->agg_hash_context->key_domains != NULL)
     {
-      db_private_free (thread_p, proc->agg_hash_context.key_domains);
-      proc->agg_hash_context.key_domains = NULL;
+      db_private_free (thread_p, proc->agg_hash_context->key_domains);
+      proc->agg_hash_context->key_domains = NULL;
     }
 
   /* free sort key */
-  qfile_clear_sort_key_info (&proc->agg_hash_context.sort_key);
+  qfile_clear_sort_key_info (&proc->agg_hash_context->sort_key);
 
   /* free entries and hash table */
-  if (proc->agg_hash_context.hash_table != NULL)
+  if (proc->agg_hash_context->hash_table != NULL)
     {
-      (void) mht_clear (proc->agg_hash_context.hash_table, qdata_free_agg_hentry, (void *) thread_p);
-      mht_destroy (proc->agg_hash_context.hash_table);
+      (void) mht_clear (proc->agg_hash_context->hash_table, qdata_free_agg_hentry, (void *) thread_p);
+      mht_destroy (proc->agg_hash_context->hash_table);
 
-      proc->agg_hash_context.hash_table = NULL;
+      proc->agg_hash_context->hash_table = NULL;
     }
 
   /* close scan */
-  qfile_close_scan (thread_p, &proc->agg_hash_context.part_scan_id);
+  qfile_close_scan (thread_p, &proc->agg_hash_context->part_scan_id);
 
   /* free partial lists */
-  if (proc->agg_hash_context.part_list_id != NULL)
+  if (proc->agg_hash_context->part_list_id != NULL)
     {
-      qfile_close_list (thread_p, proc->agg_hash_context.part_list_id);
-      qfile_destroy_list (thread_p, proc->agg_hash_context.part_list_id);
-      qfile_free_list_id (proc->agg_hash_context.part_list_id);
-      proc->agg_hash_context.part_list_id = NULL;
+      qfile_close_list (thread_p, proc->agg_hash_context->part_list_id);
+      qfile_destroy_list (thread_p, proc->agg_hash_context->part_list_id);
+      qfile_free_list_id (proc->agg_hash_context->part_list_id);
+      proc->agg_hash_context->part_list_id = NULL;
     }
 
-  if (proc->agg_hash_context.sorted_part_list_id != NULL)
+  if (proc->agg_hash_context->sorted_part_list_id != NULL)
     {
-      qfile_close_list (thread_p, proc->agg_hash_context.sorted_part_list_id);
-      qfile_destroy_list (thread_p, proc->agg_hash_context.sorted_part_list_id);
-      qfile_free_list_id (proc->agg_hash_context.sorted_part_list_id);
-      proc->agg_hash_context.sorted_part_list_id = NULL;
+      qfile_close_list (thread_p, proc->agg_hash_context->sorted_part_list_id);
+      qfile_destroy_list (thread_p, proc->agg_hash_context->sorted_part_list_id);
+      qfile_free_list_id (proc->agg_hash_context->sorted_part_list_id);
+      proc->agg_hash_context->sorted_part_list_id = NULL;
     }
 
   /* free temp keys and values */
-  if (proc->agg_hash_context.temp_key != NULL)
+  if (proc->agg_hash_context->temp_key != NULL)
     {
-      qdata_free_agg_hkey (thread_p, proc->agg_hash_context.temp_key);
-      proc->agg_hash_context.temp_key = NULL;
+      qdata_free_agg_hkey (thread_p, proc->agg_hash_context->temp_key);
+      proc->agg_hash_context->temp_key = NULL;
     }
 
-  if (proc->agg_hash_context.temp_part_key != NULL)
+  if (proc->agg_hash_context->temp_part_key != NULL)
     {
-      qdata_free_agg_hkey (thread_p, proc->agg_hash_context.temp_part_key);
-      proc->agg_hash_context.temp_part_key = NULL;
+      qdata_free_agg_hkey (thread_p, proc->agg_hash_context->temp_part_key);
+      proc->agg_hash_context->temp_part_key = NULL;
     }
 
-  if (proc->agg_hash_context.curr_part_key != NULL)
+  if (proc->agg_hash_context->curr_part_key != NULL)
     {
-      qdata_free_agg_hkey (thread_p, proc->agg_hash_context.curr_part_key);
-      proc->agg_hash_context.curr_part_key = NULL;
+      qdata_free_agg_hkey (thread_p, proc->agg_hash_context->curr_part_key);
+      proc->agg_hash_context->curr_part_key = NULL;
     }
 
-  if (proc->agg_hash_context.temp_part_value != NULL)
+  if (proc->agg_hash_context->temp_part_value != NULL)
     {
-      qdata_free_agg_hvalue (thread_p, proc->agg_hash_context.temp_part_value);
-      proc->agg_hash_context.temp_part_value = NULL;
+      qdata_free_agg_hvalue (thread_p, proc->agg_hash_context->temp_part_value);
+      proc->agg_hash_context->temp_part_value = NULL;
     }
 
-  if (proc->agg_hash_context.curr_part_value != NULL)
+  if (proc->agg_hash_context->curr_part_value != NULL)
     {
-      qdata_free_agg_hvalue (thread_p, proc->agg_hash_context.curr_part_value);
-      proc->agg_hash_context.curr_part_value = NULL;
+      qdata_free_agg_hvalue (thread_p, proc->agg_hash_context->curr_part_value);
+      proc->agg_hash_context->curr_part_value = NULL;
     }
 
   /* free recdes area */
-  if (proc->agg_hash_context.tuple_recdes.data != NULL)
+  if (proc->agg_hash_context->tuple_recdes.data != NULL)
     {
-      db_private_free (thread_p, proc->agg_hash_context.tuple_recdes.data);
-      proc->agg_hash_context.tuple_recdes.data = NULL;
-      proc->agg_hash_context.tuple_recdes.area_size = 0;
+      db_private_free (thread_p, proc->agg_hash_context->tuple_recdes.data);
+      proc->agg_hash_context->tuple_recdes.data = NULL;
+      proc->agg_hash_context->tuple_recdes.area_size = 0;
     }
 
   /* reinit counters */
-  proc->agg_hash_context.hash_size = 0;
-  proc->agg_hash_context.group_count = 0;
-  proc->agg_hash_context.tuple_count = 0;
+  proc->agg_hash_context->hash_size = 0;
+  proc->agg_hash_context->group_count = 0;
+  proc->agg_hash_context->tuple_count = 0;
+
+  db_private_free (thread_p, proc->agg_hash_context);
+  proc->agg_hash_context = NULL;
 }
 
 /*

@@ -36,6 +36,7 @@
 #include "dbtype.h"
 #include "error_manager.h"
 #include "xasl.h"
+#include "xasl_aggregate.hpp"
 #include "xasl_stream.hpp"
 
 static ACCESS_SPEC_TYPE *stx_restore_access_spec_type (THREAD_ENTRY * thread_p, char **ptr, void *arg);
@@ -2742,7 +2743,7 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr, BUILDLIST_PROC_NOD
     }
 
   ptr = or_unpack_int (ptr, (int *) &stx_build_list_proc->g_hash_eligible);
-  memset (&stx_build_list_proc->agg_hash_context, 0, sizeof (AGGREGATE_HASH_CONTEXT));
+  stx_build_list_proc->agg_hash_context = NULL;
 
   ptr = or_unpack_int (ptr, (int *) &stx_build_list_proc->g_output_first_tuple);
   ptr = or_unpack_int (ptr, (int *) &stx_build_list_proc->g_hkey_size);

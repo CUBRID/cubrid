@@ -29,10 +29,12 @@
 #include <assert.h>
 #include <search.h>
 
+#include "xasl_generation.h"
+
 #include "misc_string.h"
 #include "error_manager.h"
 #include "parser.h"
-#include "xasl_generation.h"
+#include "xasl_aggregate.hpp"
 #include "xasl_support.h"
 #include "db.h"
 #include "environment_variable.h"

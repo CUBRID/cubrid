@@ -61,6 +61,7 @@
 #include "string_buffer.hpp"
 #include "dbtype.h"
 #include "parser_allocator.hpp"
+#include "xasl_aggregate.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
