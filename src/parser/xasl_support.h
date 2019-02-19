@@ -30,12 +30,13 @@
 #error Does not belong to server module
 #endif /* defined (SERVER_MODE) */
 
+#include "class_object.h"
+#include "object_domain.h"
+#include "object_representation.h"
 #include "oid.h"
 #include "storage_common.h"
-#include "object_representation.h"
-#include "object_domain.h"
 #include "xasl.h"
-#include "class_object.h"
+#include "xasl_analytic.hpp"
 
 /* for regu_machead () */
 extern DB_VALUE *regu_dbval_alloc (void);

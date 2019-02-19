@@ -37,6 +37,7 @@
 #include "error_manager.h"
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
+#include "xasl_analytic.hpp"
 #include "xasl_stream.hpp"
 
 static ACCESS_SPEC_TYPE *stx_restore_access_spec_type (THREAD_ENTRY * thread_p, char **ptr, void *arg);
@@ -523,7 +524,7 @@ stx_restore_analytic_type (THREAD_ENTRY * thread_p, char *ptr)
       return NULL;
     }
 
-  stx_init_analytic_type_unserialized_fields (analytic);
+  analytic->init ();
 
   return analytic;
 }
@@ -6426,26 +6427,6 @@ stx_unpack_long (char *tmp, long *ptr)
   return tmp;
 }
 #endif
-
-/*
- * stx_init_analytic_type_unserialized_fields () - make other fields initialized
- *   return:
- *   analytic(in/out)    :
- */
-void
-stx_init_analytic_type_unserialized_fields (analytic_list_node * analytic)
-{
-  assert (analytic != NULL);
-
-  /* is_first_exec_time */
-  analytic->is_first_exec_time = true;
-
-  /* part_value */
-  db_make_null (&analytic->part_value);
-
-  /* curr_cnt */
-  analytic->curr_cnt = 0;
-}
 
 char *
 stx_build (THREAD_ENTRY * thread_p, char *ptr, regu_variable_node & reguvar)

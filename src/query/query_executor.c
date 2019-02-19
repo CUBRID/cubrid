@@ -39,6 +39,7 @@
 #include "error_manager.h"
 #include "partition_sr.h"
 #include "query_aggregate.hpp"
+#include "query_analytic.hpp"
 #include "query_opfunc.h"
 #include "fetch.h"
 #include "dbtype.h"
@@ -72,6 +73,7 @@
 #include "regu_var.h"
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
+#include "xasl_analytic.hpp"
 
 #define GOTO_EXIT_ON_ERROR \
   do \
@@ -2028,7 +2030,7 @@ qexec_clear_analytic_function_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p,
 	  p->domain = p->original_domain;
 	  p->opr_dbtype = p->original_opr_dbtype;
 	  pg_cnt += qexec_clear_regu_var (thread_p, xasl_p, &p->operand, is_final);
-	  stx_init_analytic_type_unserialized_fields (p);
+	  p->init ();
 	}
     }
 

@@ -33,7 +33,6 @@
 #include "thread_compat.hpp"
 
 // forward definitions
-struct analytic_list_node;
 struct function_node;
 struct regu_variable_node;
 struct tp_domain;
@@ -76,13 +75,6 @@ extern int qdata_unary_minus_dbval (DB_VALUE * res, DB_VALUE * dbval1);
 extern int qdata_extract_dbval (const MISC_OPERAND extr_operand, DB_VALUE * dbval, DB_VALUE * res, tp_domain * domain);
 extern int qdata_strcat_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res, tp_domain * domain);
 
-/* *INDENT-OFF* */
-
-/* *INDENT-ON* */
-
-extern int qdata_initialize_analytic_func (THREAD_ENTRY * thread_p, analytic_list_node * func_p, QUERY_ID query_id);
-extern int qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, analytic_list_node * func_p, val_descr * vd);
-extern int qdata_finalize_analytic_func (THREAD_ENTRY * thread_p, analytic_list_node * func_p, bool is_same_group);
 extern int qdata_get_single_tuple_from_list_id (THREAD_ENTRY * thread_p, qfile_list_id * list_id,
 						val_list_node * single_tuple);
 extern int qdata_get_valptr_type_list (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list,
@@ -129,7 +121,5 @@ extern int qdata_get_interpolation_function_result (THREAD_ENTRY * thread_p, qfi
 						    FUNC_TYPE function);
 extern int qdata_update_interpolation_func_value_and_domain (DB_VALUE * src_val, DB_VALUE * dest_val,
 							     tp_domain ** domain);
-extern int qdata_evaluate_interpolation_function (THREAD_ENTRY * thread_p, void *func_p, QFILE_LIST_SCAN_ID * scan_id,
-						  bool is_analytic);
 
 #endif /* _QUERY_OPFUNC_H_ */

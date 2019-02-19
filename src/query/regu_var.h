@@ -65,7 +65,6 @@ typedef enum
 /* declare ahead REGU_VARIABLE */
 typedef struct regu_variable_node REGU_VARIABLE;
 typedef struct regu_variable_list_node *REGU_VARIABLE_LIST;	/* TODO */
-typedef struct analytic_list_node ANALYTIC_TYPE;
 
 /*
  *       	         CATALOG STRUCTURES
@@ -300,44 +299,6 @@ struct arith_list_node
   struct drand48_data *rand_seed;	/* seed to be used to generate pseudo-random sequence */
 };
 
-typedef struct analytic_ntile_function_info ANALYTIC_NTILE_FUNCTION_INFO;
-struct analytic_ntile_function_info
-{
-  bool is_null;			/* is function result NULL? */
-  int bucket_count;		/* number of required buckets */
-};
-
-typedef struct analytic_cume_percent_function_info ANALYTIC_CUME_PERCENT_FUNCTION_INFO;
-struct analytic_cume_percent_function_info
-{
-  int last_pos;			/* record the current position of the rows that are no larger than the current row */
-  double last_res;		/* record the last result */
-};
-
-typedef struct analytic_percentile_function_info ANALYTIC_PERCENTILE_FUNCTION_INFO;
-struct analytic_percentile_function_info
-{
-  double cur_group_percentile;	/* current percentile value */
-  REGU_VARIABLE *percentile_reguvar;	/* percentile value of the new tuple if this is not the same as
-					 * cur_gourp_percentile, an error is raised. */
-};
-
-typedef union analytic_function_info ANALYTIC_FUNCTION_INFO;
-union analytic_function_info
-{
-  ANALYTIC_NTILE_FUNCTION_INFO ntile;
-  ANALYTIC_PERCENTILE_FUNCTION_INFO percentile;
-  ANALYTIC_CUME_PERCENT_FUNCTION_INFO cume_percent;
-};
-
-typedef struct analytic_eval_type ANALYTIC_EVAL_TYPE;
-struct analytic_eval_type
-{
-  ANALYTIC_EVAL_TYPE *next;	/* next eval group */
-  ANALYTIC_TYPE *head;		/* analytic type list */
-  SORT_LIST *sort_list;		/* partition sort */
-};
-
 typedef struct function_node FUNCTION_TYPE;
 struct function_node
 {
@@ -405,42 +366,6 @@ struct regu_ptr_list_node
 {
   REGU_PTR_LIST next;		/* Next node */
   REGU_VARIABLE *var_p;		/* Regulator variable pointer */
-};
-
-
-
-struct analytic_list_node
-{
-  ANALYTIC_TYPE *next;		/* next analytic node */
-
-  /* constant fields, XASL serialized */
-  FUNC_TYPE function;		/* analytic function type */
-  QUERY_OPTIONS option;		/* DISTINCT/ALL option */
-  TP_DOMAIN *domain;		/* domain of the result */
-  TP_DOMAIN *original_domain;	/* domain of the result */
-
-  DB_TYPE opr_dbtype;		/* operand data type */
-  DB_TYPE original_opr_dbtype;	/* original operand data type */
-  REGU_VARIABLE operand;	/* operand */
-
-  int flag;			/* flags */
-  int sort_prefix_size;		/* number of PARTITION BY cols in sort list */
-  int sort_list_size;		/* the total size of the sort list */
-  int offset_idx;		/* index of offset value in select list (for LEAD/LAG/NTH_value functions) */
-  int default_idx;		/* index of default value in select list (for LEAD/LAG functions) */
-  bool from_last;		/* begin at the last or first row */
-  bool ignore_nulls;		/* ignore or respect NULL values */
-  bool is_const_operand;	/* is the operand a constant or a host var for MEDIAN function */
-
-  /* runtime values */
-  ANALYTIC_FUNCTION_INFO info;	/* custom function runtime values */
-  QFILE_LIST_ID *list_id;	/* used for distinct handling */
-  DB_VALUE *value;		/* value of the aggregate */
-  DB_VALUE *value2;		/* for STTDEV and VARIANCE */
-  DB_VALUE *out_value;		/* DB_VALUE used for output */
-  DB_VALUE part_value;		/* partition temporary accumulator */
-  int curr_cnt;			/* current number of items */
-  bool is_first_exec_time;	/* the fist time to be executed */
 };
 
 typedef struct qproc_db_value_list *QPROC_DB_VALUE_LIST;	/* TODO */

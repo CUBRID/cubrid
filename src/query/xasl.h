@@ -135,8 +135,10 @@ typedef union hybrid_node HYBRID_NODE;
 namespace cubxasl
 {
   struct aggregate_list_node;
+  struct analytic_eval_type;
 } // namespace cubxasl
 using AGGREGATE_TYPE = cubxasl::aggregate_list_node;
+using ANALYTIC_EVAL_TYPE = cubxasl::analytic_eval_type;
 // *INDENT-ON*
 
 #if defined (SERVER_MODE) || defined (SA_MODE)

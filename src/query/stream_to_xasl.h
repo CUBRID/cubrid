@@ -27,7 +27,6 @@
 #include "thread_compat.hpp"
 
 // forward definitions
-struct analytic_list_node;
 struct func_pred;
 struct pred_expr_with_context;
 struct xasl_node;
@@ -43,6 +42,5 @@ extern int stx_map_stream_to_xasl_node_header (THREAD_ENTRY * thread_p, xasl_nod
 					       char *xasl_stream);
 extern void stx_free_xasl_unpack_info (void *unpack_info_ptr);
 extern void stx_free_additional_buff (THREAD_ENTRY * thread_p, void *unpack_info_ptr);
-extern void stx_init_analytic_type_unserialized_fields (analytic_list_node * analytic);
 
 #endif /* _STREAM_TO_XASL_H_ */

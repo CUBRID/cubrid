@@ -59,6 +59,8 @@ static int qdata_calculate_aggregate_cume_dist_percent_rank (cubthread::entry *t
     cubxasl::aggregate_list_node *agg_p,
     VAL_DESCR *val_desc_p);
 static int qdata_update_agg_interpolation_func_value_and_domain (cubxasl::aggregate_list_node *agg_p, DB_VALUE *val);
+static int qdata_aggregate_interpolation (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_p,
+    QFILE_LIST_SCAN_ID *scan_id);
 
 static int qdata_group_concat_first_value (THREAD_ENTRY *thread_p, AGGREGATE_TYPE *agg_p, DB_VALUE *dbvalue);
 static int qdata_group_concat_value (THREAD_ENTRY *thread_p, AGGREGATE_TYPE *agg_p, DB_VALUE *dbvalue);
@@ -1321,7 +1323,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 		  /* median and percentile funcs don't need to read all rows */
 		  if (list_id_p->tuple_cnt > 0 && QPROC_IS_INTERPOLATION_FUNC (agg_p))
 		    {
-		      error = qdata_evaluate_interpolation_function (thread_p, agg_p, &scan_id, false);
+		      error = qdata_aggregate_interpolation (thread_p, agg_p, &scan_id);
 		      if (error != NO_ERROR)
 			{
 			  ASSERT_ERROR ();
@@ -2852,4 +2854,65 @@ qdata_group_concat_value (THREAD_ENTRY *thread_p, AGGREGATE_TYPE *agg_p, DB_VALU
   pr_clear_value (&tmp_val);
 
   return NO_ERROR;
+}
+
+static int
+qdata_aggregate_interpolation (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_p,
+			       QFILE_LIST_SCAN_ID *scan_id)
+{
+  int error = NO_ERROR;
+  int tuple_count;
+  double row_num_d, f_row_num_d, c_row_num_d, percentile_d;
+  FUNC_TYPE function;
+  double cur_group_percentile;
+
+  assert (agg_p != NULL && scan_id != NULL && scan_id->status == S_OPENED);
+  assert (QPROC_IS_INTERPOLATION_FUNC (agg_p));
+
+  function = agg_p->function;
+  cur_group_percentile = agg_p->info.percentile.cur_group_percentile;
+
+  tuple_count = scan_id->list_id.tuple_cnt;
+  if (tuple_count < 1)
+    {
+      return NO_ERROR;
+    }
+
+  if (function == PT_MEDIAN)
+    {
+      percentile_d = 0.5;
+    }
+  else
+    {
+      percentile_d = cur_group_percentile;
+
+      if (function == PT_PERCENTILE_DISC)
+	{
+	  percentile_d = ceil (percentile_d * tuple_count) / tuple_count;
+	}
+    }
+
+  row_num_d = ((double) (tuple_count - 1)) * percentile_d;
+  f_row_num_d = floor (row_num_d);
+
+  if (function == PT_PERCENTILE_DISC)
+    {
+      c_row_num_d = f_row_num_d;
+    }
+  else
+    {
+      c_row_num_d = ceil (row_num_d);
+    }
+
+  error =
+	  qdata_get_interpolation_function_result (thread_p, scan_id, scan_id->list_id.type_list.domp[0], 0, row_num_d,
+	      f_row_num_d, c_row_num_d, agg_p->accumulator.value, &agg_p->domain,
+	      agg_p->function);
+
+  if (error == NO_ERROR)
+    {
+      agg_p->opr_dbtype = TP_DOMAIN_TYPE (agg_p->domain);
+    }
+
+  return error;
 }

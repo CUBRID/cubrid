@@ -41,6 +41,7 @@
 #include "memory_alloc.h"
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
+#include "xasl_analytic.hpp"
 #include "xasl_stream.hpp"
 
 #define    BYTE_SIZE        OR_INT_SIZE

@@ -35,6 +35,7 @@
 #include "error_manager.h"
 #include "parser.h"
 #include "xasl_aggregate.hpp"
+#include "xasl_analytic.hpp"
 #include "xasl_support.h"
 #include "db.h"
 #include "environment_variable.h"
