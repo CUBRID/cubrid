@@ -437,7 +437,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 60 에러 parsing \"%1$s\", as %2$s type.\n
 61 Object Reference is not supported in CS mode.\n
 112   %1$d 개의 인스턴스\r
-113 마지막으로 커밋된 라인 : %1$d
+113 마지막으로 커밋된 라인 : %1$d\n
 114 에러 제어 파일
 115 로드 시에 에러 제어를 위한 입력 파일
 116 총 %1$8d 개의 객체가 삽입되었으며, %2$d 개의 객체가 실패하였습니다.\n

@@ -437,7 +437,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 60 将 \"%1$s\" 解析为 %2$s 类型时出错.\n
 61 Object Reference is not supported in CS mode.\n
 112   %1$d 个实例\r
-113 最后提交的行 : %1$d
+113 最后提交的行 : %1$d\n
 114 错误控制文件
 115 在加载过程中输入文件来控制错误
 116 共插入了 %1$8d 个对象, 其中 %2$d 个对象插入失败.\n

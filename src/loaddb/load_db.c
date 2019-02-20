@@ -1229,7 +1229,17 @@ ldr_server_load (load_args * args, int *status, bool * interrupted)
     }
   while (!(stats.is_completed || stats.is_failed) && *status != 3);
 
+  // fetch latest stats before destroying the session
   loaddb_fetch_stats (&stats);
+
+  if (load_interrupted)
+    {
+      print_log_msg (1, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_SIG1));
+      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_LINE),
+	       stats.current_line.load ());
+      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_INTERRUPTED_ABORT));
+    }
+
   print_log_msg (1, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_INSERT_AND_FAIL_COUNT),
 		 stats.rows_committed, stats.rows_failed);
 
@@ -1238,7 +1248,12 @@ ldr_server_load (load_args * args, int *status, bool * interrupted)
     {
       print_er_msg ();
       *status = 3;
-      return;
+    }
+
+  if (load_interrupted)
+    {
+      print_log_msg (1, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_LAST_COMMITTED_LINE),
+		     stats.last_committed_line);
     }
 }
 
@@ -1250,10 +1265,6 @@ register_signal_handlers ()
   {
     load_interrupted = true;
     loaddb_interrupt ();
-    print_er_msg ();
-
-    print_log_msg (1, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_SIG1));
-    fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_INTERRUPTED_ABORT));
   };
   /* *INDENT-ON* */
 

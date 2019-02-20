@@ -252,6 +252,8 @@ namespace cubload
 
   stats::stats ()
     : rows_committed (0)
+    , current_line {0}
+    , last_committed_line (0)
     , rows_failed (0)
     , error_message ()
     , is_failed (false)
@@ -263,6 +265,8 @@ namespace cubload
   // Copy constructor
   stats::stats (const stats &copy)
     : rows_committed (copy.rows_committed)
+    , current_line {copy.current_line.load ()}
+    , last_committed_line (copy.last_committed_line)
     , rows_failed (copy.rows_failed)
     , error_message (copy.error_message)
     , is_failed (copy.is_failed)
@@ -275,6 +279,8 @@ namespace cubload
   stats::operator= (const stats &other)
   {
     this->rows_committed = other.rows_committed;
+    this->current_line.store (other.current_line.load ());
+    this->last_committed_line = other.last_committed_line;
     this->rows_failed = other.rows_failed;
     this->error_message = other.error_message;
     this->is_failed = other.is_failed;
@@ -287,6 +293,8 @@ namespace cubload
   stats::clear ()
   {
     rows_committed = 0;
+    current_line.store (0);
+    last_committed_line = 0;
     rows_failed = 0;
     error_message.clear ();
     is_failed = false;
@@ -297,6 +305,8 @@ namespace cubload
   stats::pack (cubpacking::packer &serializator) const
   {
     serializator.pack_int (rows_committed);
+    serializator.pack_int (current_line.load ());
+    serializator.pack_int (last_committed_line);
     serializator.pack_int (rows_failed);
     serializator.pack_string (error_message);
     serializator.pack_bool (is_failed);
@@ -307,6 +317,12 @@ namespace cubload
   stats::unpack (cubpacking::unpacker &deserializator)
   {
     deserializator.unpack_int (rows_committed);
+
+    int current_line_;
+    deserializator.unpack_int (current_line_);
+    current_line.store (current_line_);
+
+    deserializator.unpack_int (last_committed_line);
     deserializator.unpack_int (rows_failed);
     deserializator.unpack_string (error_message);
     deserializator.unpack_bool (is_failed);
@@ -319,6 +335,8 @@ namespace cubload
     size_t size = 0;
 
     size += serializator.get_packed_int_size (size); // rows_committed
+    size += serializator.get_packed_int_size (size); // current_line
+    size += serializator.get_packed_int_size (size); // last_committed_line
     size += serializator.get_packed_int_size (size); // rows_failed
     size += serializator.get_packed_string_size (error_message, size);
     size += serializator.get_packed_bool_size (size); // is_failed

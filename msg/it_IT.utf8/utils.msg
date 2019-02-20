@@ -437,7 +437,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 60 Errore durante l'analisi di \"%1$s\", come tipo %2$s.\n
 61 Object Reference is not supported in CS mode.\n
 112   %1$d instanze\r
-113 Ultima linea committed : %1$d
+113 Ultima linea committed : %1$d\n
 114 error-control-file
 115 file di input per il controllo di errori durante il carico
 116 Total %8d object(s) inserted, %d object(s) failed.\n

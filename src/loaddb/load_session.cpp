@@ -180,7 +180,8 @@ namespace cubload
 	logtb_assign_tran_index (&thread_ref, NULL_TRANID, TRAN_ACTIVE, NULL, NULL, TRAN_LOCK_INFINITE_WAIT,
 				 TRAN_DEFAULT_ISOLATION_LEVEL ());
 
-	bool parser_result = invoke_parser (thread_ref.m_loaddb_driver, m_batch);
+	driver *driver = thread_ref.m_loaddb_driver;
+	bool parser_result = invoke_parser (driver, m_batch);
 
 	if (m_session.is_failed () || !parser_result || er_has_error ())
 	  {
@@ -196,7 +197,9 @@ namespace cubload
 
 	    xtran_server_commit (&thread_ref, false);
 
+	    // update load statistics after commit
 	    m_session.stats_update_rows_committed (m_batch.get_rows_number ());
+	    m_session.stats_update_last_committed_line (driver->get_scanner ().lineno () + 1);
 	  }
 
 	// free transaction index
@@ -346,6 +349,49 @@ namespace cubload
     m_stats.rows_committed += rows_committed;
   }
 
+  void
+  session::stats_update_last_committed_line (int last_committed_line)
+  {
+    if (last_committed_line <= m_stats.last_committed_line)
+      {
+	return;
+      }
+
+    std::unique_lock<std::mutex> ulock (m_stats_mutex);
+
+    // check if failed after lock was acquired
+    if (last_committed_line <= m_stats.last_committed_line)
+      {
+	return;
+      }
+
+    m_stats.last_committed_line = last_committed_line;
+  }
+
+  void
+  session::stats_update_current_line (int current_line)
+  {
+    update_atomic_value_with_max (m_stats.current_line, current_line);
+  }
+
+  template<typename T>
+  void
+  session::update_atomic_value_with_max (std::atomic<T> &atomic_val, T new_max)
+  {
+    int curr_max;
+
+    do
+      {
+	curr_max = atomic_val.load ();
+	if (curr_max >= new_max)
+	  {
+	    // max is already stored
+	    break;
+	  }
+      }
+    while (!atomic_val.compare_exchange_strong (curr_max, new_max));
+  }
+
   class_registry &
   session::get_class_registry ()
   {
@@ -386,18 +432,7 @@ namespace cubload
   int
   session::load_batch (cubthread::entry &thread_ref, const batch &batch)
   {
-    batch_id current_max_id;
-
-    do
-      {
-	current_max_id = m_max_batch_id.load ();
-	if (current_max_id >= batch.get_id ())
-	  {
-	    // max is already stored
-	    break;
-	  }
-      }
-    while (!m_max_batch_id.compare_exchange_strong (current_max_id, batch.get_id ()));
+    update_atomic_value_with_max (m_max_batch_id, batch.get_id ());
 
     if (batch.get_content ().empty ())
       {

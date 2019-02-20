@@ -26,6 +26,7 @@
 
 #include "packable_object.hpp"
 
+#include <atomic>
 #include <cassert>
 #include <functional>
 
@@ -238,6 +239,8 @@ namespace cubload
   struct stats : public cubpacking::packable_object
   {
     int rows_committed; // equivalent of 'last_commit' from SA_MODE
+    std::atomic_int current_line;
+    int last_committed_line;
     int rows_failed; // // equivalent of 'errors' from SA_MODE
     std::string error_message;
     bool is_failed;
