@@ -100,6 +100,7 @@ namespace cubload
 	: m_session (session)
 	, m_driver_pool (pool_size)
 	, m_conn_entry (*cubthread::get_entry ().conn_entry)
+	, m_interrupted (false)
       {
 	//
       }
@@ -130,10 +131,24 @@ namespace cubload
 	context.conn_entry = NULL;
       }
 
+      void stop_execution (cubthread::entry &context) override
+      {
+	if (m_interrupted)
+	  {
+	    xlogtb_set_interrupt (&context, true);
+	  }
+      }
+
+      void interrupt ()
+      {
+	m_interrupted = true;
+      }
+
     private:
       session &m_session;
       resource_shared_pool<driver> m_driver_pool;
       css_conn_entry &m_conn_entry;
+      bool m_interrupted;
   };
 
   /*
@@ -315,6 +330,13 @@ namespace cubload
   {
     std::unique_lock<std::mutex> ulock (m_stats_mutex);
     return m_stats.is_failed;
+  }
+
+  void
+  session::interrupt ()
+  {
+    m_wp_context_manager->interrupt ();
+    fail ();
   }
 
   void

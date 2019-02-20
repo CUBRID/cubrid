@@ -9978,7 +9978,7 @@ sloaddb_interrupt (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int
     {
       assert (session != NULL);
 
-      session->fail ();
+      session->interrupt ();
       session->wait_for_completion ();
     }
 
