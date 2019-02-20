@@ -4564,7 +4564,6 @@ pt_make_class_access_spec (PARSER_CONTEXT * parser, PT_NODE * flat, DB_OBJECT * 
   spec->s.cls_node.num_attrs_key = pt_cnt_attrs (attr_list_key);
   spec->s.cls_node.attrids_key = regu_int_array_alloc (spec->s.cls_node.num_attrs_key);
 
-
   assert_release (spec->s.cls_node.num_attrs_key != 0
 		  || (spec->s.cls_node.num_attrs_key == 0 && attr_list_key == NULL));
 

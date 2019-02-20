@@ -91,8 +91,8 @@ template <typename T>
 void regu_array_alloc (T **ptr, size_t size);
 
 /* for regu_machead_array () */
-inline int *regu_int_array_alloc (int size);
-inline OID *regu_oid_array_alloc (int size);
+int *regu_int_array_alloc (int size);
+OID *regu_oid_array_alloc (int size);
 
 void regu_dbval_type_init (db_value *ptr, DB_TYPE type);
 
@@ -129,6 +129,11 @@ template <typename T>
 void
 regu_array_alloc (T **ptr, size_t size)
 {
+  if (size == 0)
+    {
+      *ptr = NULL;
+      return;
+    }
   *ptr = reinterpret_cast<T *> (pt_alloc_packing_buf ((int) (sizeof (T) * size)));
   if (*ptr == NULL)
     {
@@ -139,24 +144,6 @@ regu_array_alloc (T **ptr, size_t size)
     {
       regu_init ((*ptr)[idx]);
     }
-}
-
-int *
-regu_int_array_alloc (int size)
-{
-  int *ret_array = NULL;
-  assert (size > 0);
-  regu_array_alloc (&ret_array, (size_t) size);
-  return ret_array;
-}
-
-OID *
-regu_oid_array_alloc (int size)
-{
-  OID *ret_array = NULL;
-  assert (size > 0);
-  regu_array_alloc (&ret_array, (size_t) size);
-  return ret_array;
 }
 
 #endif /* _XASL_REGU_ALLOC_HPP_ */

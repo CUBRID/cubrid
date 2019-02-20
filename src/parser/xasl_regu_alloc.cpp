@@ -412,3 +412,19 @@ regu_init (db_value &dbval)
 {
   regu_dbval_type_init (&dbval, DB_TYPE_NULL);
 }
+
+int *
+regu_int_array_alloc (int size)
+{
+  int *ret_array = NULL;
+  regu_array_alloc (&ret_array, (size_t) size);
+  return ret_array;
+}
+
+OID *
+regu_oid_array_alloc (int size)
+{
+  OID *ret_array = NULL;
+  regu_array_alloc (&ret_array, (size_t) size);
+  return ret_array;
+}
