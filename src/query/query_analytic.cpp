@@ -33,6 +33,8 @@
 #include "xasl.h"                           // QPROC_IS_INTERPOLATION_FUNC
 #include "xasl_analytic.hpp"
 
+#include <cmath>
+
 static int qdata_analytic_interpolation (cubthread::entry *thread_p, cubxasl::analytic_list_node *ana_p,
     QFILE_LIST_SCAN_ID *scan_id);
 

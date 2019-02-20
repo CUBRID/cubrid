@@ -40,6 +40,8 @@
 #include "xasl.h"                           // QPROC_IS_INTERPOLATION_FUNC
 #include "xasl_aggregate.hpp"
 
+#include <cmath>
+
 using namespace cubquery;
 
 //

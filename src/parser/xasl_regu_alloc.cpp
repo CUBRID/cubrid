@@ -33,6 +33,8 @@
 #include "xasl_analytic.hpp"
 #include "xasl_predicate.hpp"
 
+#include <cstring>
+
 static void regu_xasl_proc_init (xasl_node &node, PROC_TYPE type);
 static void regu_spec_target_init (access_spec_node &spec, TARGET_TYPE type);
 
@@ -249,7 +251,7 @@ void
 regu_init (qfile_sorted_list_id &list_id)
 {
   list_id.list_id = NULL;
-  list_id.sorted = NULL;
+  list_id.sorted = 0;
 }
 
 void
