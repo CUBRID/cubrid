@@ -251,10 +251,8 @@ namespace cubload
   }
 
   stats::stats ()
-    : defaults (0)
-    , total_objects (0)
-    , last_commit (0)
-    , errors (0)
+    : rows_committed (0)
+    , rows_failed (0)
     , error_message ()
     , is_failed (false)
     , is_completed (false)
@@ -264,10 +262,8 @@ namespace cubload
 
   // Copy constructor
   stats::stats (const stats &copy)
-    : defaults (copy.defaults)
-    , total_objects (copy.total_objects)
-    , last_commit (copy.last_commit)
-    , errors (copy.errors)
+    : rows_committed (copy.rows_committed)
+    , rows_failed (copy.rows_failed)
     , error_message (copy.error_message)
     , is_failed (copy.is_failed)
     , is_completed (copy.is_completed)
@@ -278,10 +274,8 @@ namespace cubload
   stats &
   stats::operator= (const stats &other)
   {
-    this->defaults = other.defaults;
-    this->total_objects = other.total_objects;
-    this->last_commit = other.last_commit;
-    this->errors = other.errors;
+    this->rows_committed = other.rows_committed;
+    this->rows_failed = other.rows_failed;
     this->error_message = other.error_message;
     this->is_failed = other.is_failed;
     this->is_completed = other.is_completed;
@@ -292,10 +286,8 @@ namespace cubload
   void
   stats::clear ()
   {
-    defaults = 0;
-    total_objects = 0;
-    last_commit = 0;
-    errors = 0;
+    rows_committed = 0;
+    rows_failed = 0;
     error_message.clear ();
     is_failed = false;
     is_completed = false;
@@ -304,10 +296,8 @@ namespace cubload
   void
   stats::pack (cubpacking::packer &serializator) const
   {
-    serializator.pack_int (defaults);
-    serializator.pack_int (total_objects);
-    serializator.pack_int (last_commit);
-    serializator.pack_int (errors);
+    serializator.pack_int (rows_committed);
+    serializator.pack_int (rows_failed);
     serializator.pack_string (error_message);
     serializator.pack_bool (is_failed);
     serializator.pack_bool (is_completed);
@@ -316,10 +306,8 @@ namespace cubload
   void
   stats::unpack (cubpacking::unpacker &deserializator)
   {
-    deserializator.unpack_int (defaults);
-    deserializator.unpack_int (total_objects);
-    deserializator.unpack_int (last_commit);
-    deserializator.unpack_int (errors);
+    deserializator.unpack_int (rows_committed);
+    deserializator.unpack_int (rows_failed);
     deserializator.unpack_string (error_message);
     deserializator.unpack_bool (is_failed);
     deserializator.unpack_bool (is_completed);
@@ -330,10 +318,8 @@ namespace cubload
   {
     size_t size = 0;
 
-    size += serializator.get_packed_int_size (size); // defaults
-    size += serializator.get_packed_int_size (size); // total_objects
-    size += serializator.get_packed_int_size (size); // last_commit
-    size += serializator.get_packed_int_size (size); // errors
+    size += serializator.get_packed_int_size (size); // rows_committed
+    size += serializator.get_packed_int_size (size); // rows_failed
     size += serializator.get_packed_string_size (error_message, size);
     size += serializator.get_packed_bool_size (size); // is_failed
     size += serializator.get_packed_bool_size (size); // is_completed

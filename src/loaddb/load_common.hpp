@@ -237,10 +237,8 @@ namespace cubload
 
   struct stats : public cubpacking::packable_object
   {
-    int defaults;
-    int total_objects;
-    int last_commit;
-    int errors;
+    int rows_committed; // equivalent of 'last_commit' from SA_MODE
+    int rows_failed; // // equivalent of 'errors' from SA_MODE
     std::string error_message;
     bool is_failed;
     bool is_completed;

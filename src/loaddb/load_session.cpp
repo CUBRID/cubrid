@@ -181,7 +181,7 @@ namespace cubload
 
 	    xtran_server_commit (&thread_ref, false);
 
-	    m_session.stats_update_last_commit (m_batch.get_rows_number ());
+	    m_session.stats_update_rows_committed (m_batch.get_rows_number ());
 	  }
 
 	// free transaction index
@@ -283,7 +283,7 @@ namespace cubload
   {
     std::unique_lock<std::mutex> ulock (m_stats_mutex);
 
-    m_stats.errors++;
+    m_stats.rows_failed++;
     m_stats.error_message.append (err_msg);
   }
 
@@ -318,17 +318,10 @@ namespace cubload
   }
 
   void
-  session::stats_update_total_objects ()
+  session::stats_update_rows_committed (int rows_committed)
   {
     std::unique_lock<std::mutex> ulock (m_stats_mutex);
-    m_stats.total_objects++;
-  }
-
-  void
-  session::stats_update_last_commit (int last_commit)
-  {
-    std::unique_lock<std::mutex> ulock (m_stats_mutex);
-    m_stats.last_commit += last_commit;
+    m_stats.rows_committed += rows_committed;
   }
 
   class_registry &

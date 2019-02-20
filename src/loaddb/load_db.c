@@ -1187,7 +1187,7 @@ ldr_server_load (load_args * args, int *status, bool * interrupted)
     }
 
   stats stats;
-  long prev_last_commit = 0;
+  int prev_rows_committed = 0;
   do
     {
       if (load_interrupted)
@@ -1212,12 +1212,14 @@ ldr_server_load (load_args * args, int *status, bool * interrupted)
 	}
       else
 	{
-	  long curr_last_commit = stats.last_commit;
-	  if (curr_last_commit > prev_last_commit)
+	  int curr_rows_committed = stats.rows_committed;
+	  // log committed instances msg only there was a commit since last check
+	  if (curr_rows_committed > prev_rows_committed)
 	    {
-	      print_log_msg (args->verbose_commit, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
-								   LOADDB_MSG_COMMITTED_INSTANCES), curr_last_commit);
-	      prev_last_commit = curr_last_commit;
+	      char *committed_instances_msg = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
+							      LOADDB_MSG_COMMITTED_INSTANCES);
+	      print_log_msg (args->verbose_commit, committed_instances_msg, curr_rows_committed);
+	      prev_rows_committed = curr_rows_committed;
 	    }
 	}
 
@@ -1229,7 +1231,7 @@ ldr_server_load (load_args * args, int *status, bool * interrupted)
 
   loaddb_fetch_stats (&stats);
   print_log_msg (1, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_INSERT_AND_FAIL_COUNT),
-		 stats.last_commit, stats.errors);
+		 stats.rows_committed, stats.rows_failed);
 
   error_code = loaddb_destroy ();
   if (error_code != NO_ERROR)

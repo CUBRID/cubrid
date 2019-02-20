@@ -484,8 +484,6 @@ static int ldr_init (load_args *args);
 static void ldr_init_driver ();
 static int ldr_final (void);
 
-static int ldr_init_class_spec (const char *class_name);
-
 /* Statistics updating/retrieving functions */
 static void ldr_stats (int *errors, int *objects, int *defaults, int *lastcommit, int *fails);
 static int ldr_update_statistics (void);
@@ -722,8 +720,6 @@ namespace cubload
 	return;
       }
 
-    string_type *arg, *attr;
-
     // setup class
     ldr_act_set_skip_current_class (class_name->val, class_name->size);
     ldr_act_init_context (ldr_Current_context, class_name->val, class_name->size);
@@ -734,7 +730,7 @@ namespace cubload
 	ldr_act_restrict_attributes (ldr_Current_context, (attribute_type) cmd_spec->qualifier);
       }
 
-    for (attr = cmd_spec->attr_list; attr; attr = attr->next)
+    for (string_type *attr = cmd_spec->attr_list; attr; attr = attr->next)
       {
 	ldr_act_add_attr (ldr_Current_context, attr->val, attr->size);
       }
@@ -749,7 +745,7 @@ namespace cubload
 	    ldr_act_set_constructor (ldr_Current_context, cmd_spec->ctor_spec->id_name->val);
 	  }
 
-	for (arg = cmd_spec->ctor_spec->arg_list; arg; arg = arg->next)
+	for (string_type *arg = cmd_spec->ctor_spec->arg_list; arg; arg = arg->next)
 	  {
 	    ldr_act_add_argument (ldr_Current_context, arg->val);
 	  }
@@ -1156,7 +1152,7 @@ static int
 select_set_domain (LDR_CONTEXT *context, TP_DOMAIN *domain, TP_DOMAIN **set_domain_ptr)
 {
   int err = NO_ERROR;
-  TP_DOMAIN *best, *d;
+  TP_DOMAIN *best = NULL;
 
   /*
    * Must pick an appropriate set domain, probably we should pick
@@ -1164,8 +1160,7 @@ select_set_domain (LDR_CONTEXT *context, TP_DOMAIN *domain, TP_DOMAIN **set_doma
    * In practice, this won't ever happen until we allow nested
    * sets or union domains.
    */
-  best = NULL;
-  for (d = domain; d != NULL && best == NULL; d = d->next)
+  for (TP_DOMAIN *d = domain; d != NULL && best == NULL; d = d->next)
     {
       if (TP_IS_SET_TYPE (TP_DOMAIN_TYPE (d)))
 	{
@@ -1210,7 +1205,7 @@ static int
 check_object_domain (LDR_CONTEXT *context, DB_OBJECT *class_, DB_OBJECT **actual_class)
 {
   int err = NO_ERROR;
-  TP_DOMAIN *domain, *best, *d;
+  TP_DOMAIN *domain = NULL, *best = NULL;
 
   GET_DOMAIN (context, domain);
 
@@ -1224,7 +1219,7 @@ check_object_domain (LDR_CONTEXT *context, DB_OBJECT *class_, DB_OBJECT **actual
 	}
       else
 	{
-	  for (d = domain; d != NULL; d = d->next)
+	  for (TP_DOMAIN *d = domain; d != NULL; d = d->next)
 	    {
 	      if (d->type == tp_Type_object)
 		{
@@ -1282,14 +1277,14 @@ static int
 check_class_domain (LDR_CONTEXT *context)
 {
   int err = NO_ERROR;
-  TP_DOMAIN *domain, *d;
+  TP_DOMAIN *domain = NULL;
 
   GET_DOMAIN (context, domain);
 
   /* the domain must support "object" */
   if (domain != NULL)
     {
-      for (d = domain; d != NULL; d = d->next)
+      for (TP_DOMAIN *d = domain; d != NULL; d = d->next)
 	{
 	  if (d->type == tp_Type_object && d->class_mop == NULL)
 	    {
@@ -6209,7 +6204,7 @@ ldr_sa_load (load_args *args, int *status, bool *interrupted)
 		     msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_CHECKING));
       if (args->table_name[0] != '\0')
 	{
-	  ldr_init_ret = ldr_init_class_spec (args->table_name);
+	  ldr_init_ret = ldr_Driver->get_class_installer ().install_class (args->table_name);
 	}
       ldr_Driver->parse (object_file);
       ldr_stats (&errors, &objects, &defaults, &lastcommit, &fails);
@@ -6268,7 +6263,7 @@ ldr_sa_load (load_args *args, int *status, bool *interrupted)
 	    {
 	      if (args->table_name[0] != '\0')
 		{
-		  ldr_init_class_spec (args->table_name);
+		  ldr_Driver->get_class_installer ().install_class (args->table_name);
 		}
 
 	      ldr_Driver->parse (object_file);
@@ -6427,10 +6422,9 @@ static int
 ldr_update_statistics (void)
 {
   int err = NO_ERROR;
-  CLASS_TABLE *table;
   const char *class_name = NULL;
 
-  for (table = Classes; table != NULL && !err; table = table->next)
+  for (CLASS_TABLE *table = Classes; table != NULL && !err; table = table->next)
     {
       if (table->total_inserts)
 	{
@@ -6572,18 +6566,10 @@ ldr_process_object_ref (object_ref_type *ref, int type)
 }
 
 static int
-ldr_init_class_spec (const char *class_name)
-{
-  // TODO CBRD-21654 function moved to sa_loader, use that one
-  return NO_ERROR;
-}
-
-static int
 ldr_act_add_class_all_attrs (const char *class_name)
 {
   int err = NO_ERROR;
   SM_CLASS *class_;
-  SM_ATTRIBUTE *att;
   DB_OBJECT *class_mop;
 
   RETURN_IF_NOT_VALID_WITH (ldr_Current_context, ER_FAILED);
@@ -6609,7 +6595,7 @@ ldr_act_add_class_all_attrs (const char *class_name)
 
   CHECK_ERR (err, au_fetch_class (class_mop, &class_, AU_FETCH_READ, AU_SELECT));
 
-  for (att = class_->ordered_attributes; att != NULL; att = att->order_link)
+  for (SM_ATTRIBUTE *att = class_->ordered_attributes; att != NULL; att = att->order_link)
     {
       ldr_act_add_attr (ldr_Current_context, att->header.name, strlen (att->header.name));
     }
