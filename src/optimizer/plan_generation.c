@@ -37,7 +37,6 @@
 #include "system_parameter.h"
 #include "xasl.h"
 #include "xasl_generation.h"
-#include "xasl_support.h"
 
 typedef int (*ELIGIBILITY_FN) (QO_TERM *);
 

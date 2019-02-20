@@ -1113,4 +1113,8 @@ extern SM_PARTITION *classobj_copy_partition_info (SM_PARTITION * partition_info
 extern int classobj_change_constraint_status (DB_SEQ * properties, SM_CLASS_CONSTRAINT * cons,
 					      SM_INDEX_STATUS index_status);
 
+SM_DOMAIN *sm_domain_alloc ();
+void sm_domain_free (SM_DOMAIN * ptr);
+SM_DOMAIN *sm_domain_copy (SM_DOMAIN * ptr);
+
 #endif /* _CLASS_OBJECT_H_ */

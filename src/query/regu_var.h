@@ -263,6 +263,8 @@ struct regu_value_item
 {
   REGU_VARIABLE *value;		/* REGU_VARIABLE */
   REGU_VALUE_ITEM *next;	/* next item */
+
+  regu_value_item () = default;
 };
 
 typedef struct regu_value_list REGU_VALUE_LIST;
@@ -271,6 +273,8 @@ struct regu_value_list
   REGU_VALUE_ITEM *regu_list;	/* list head */
   REGU_VALUE_ITEM *current_value;	/* current used item */
   int count;
+
+  regu_value_list () = default;
 };
 
 typedef struct valptr_list_node VALPTR_LIST;
@@ -279,6 +283,8 @@ struct valptr_list_node
 {
   REGU_VARIABLE_LIST valptrp;	/* value pointer list */
   int valptr_cnt;		/* value count */
+
+  valptr_list_node () = default;
 };
 
 typedef struct arith_list_node ARITH_TYPE;
@@ -346,6 +352,8 @@ struct regu_variable_node
     REGU_VALUE_LIST *reguval_list;	/* for "values" query */
     REGU_VARIABLE_LIST regu_var_list;	/* for CUME_DIST and PERCENT_RANK */
   } value;
+
+  regu_variable_node () = default;
 };
 
 struct regu_variable_list_node
@@ -359,6 +367,8 @@ struct regu_varlist_list_node
 {
   REGU_VARLIST_LIST next;	/* Next mode */
   REGU_VARIABLE_LIST list;	/* Pointer of regular variable list */
+
+  regu_varlist_list_node () = default;
 };
 
 typedef struct regu_ptr_list_node *REGU_PTR_LIST;	/* TODO */
@@ -374,6 +384,8 @@ struct qproc_db_value_list
   QPROC_DB_VALUE_LIST next;
   DB_VALUE *val;
   TP_DOMAIN *dom;
+
+  qproc_db_value_list () = default;
 };
 
 typedef struct val_list_node VAL_LIST;	/* value list */
@@ -381,6 +393,8 @@ struct val_list_node
 {
   QPROC_DB_VALUE_LIST valp;	/* first value node */
   int val_cnt;			/* value count */
+
+  val_list_node () = default;
 };
 
 typedef struct key_val_range KEY_VAL_RANGE;
@@ -448,12 +462,16 @@ struct method_sig_node
   METHOD_TYPE method_type;	/* instance or class method */
   int num_method_args;		/* number of arguments */
   int *method_arg_pos;		/* arg position in list file */
+
+  method_sig_node () = default;
 };
 
 struct method_sig_list
 {				/* signature for methods */
   METHOD_SIG *method_sig;	/* one method signature */
   int num_methods;		/* number of signatures */
+
+  method_sig_list () = default;
 };
 typedef struct method_sig_list METHOD_SIG_LIST;
 

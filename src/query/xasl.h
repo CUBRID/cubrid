@@ -240,6 +240,8 @@ struct odku_info
   UPDATE_ASSIGNMENT *assignments;	/* assignments */
   HEAP_CACHE_ATTRINFO *attr_info;	/* attr info */
   int *attr_ids;		/* ID's of attributes (array) */
+
+    odku_info () = default;
 };
 
 /* new type used by function index for cleaner code */
@@ -248,6 +250,8 @@ struct func_pred
 {
   REGU_VARIABLE *func_regu;	/* function expression regulator variable */
   HEAP_CACHE_ATTRINFO *cache_attrinfo;
+
+    func_pred () = default;
 };
 
 /* UNION_PROC, DIFFERENCE_PROC, INTERSECTION_PROC */
