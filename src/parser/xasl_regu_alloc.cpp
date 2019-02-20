@@ -256,7 +256,7 @@ void
 regu_init (cubxasl::pred_expr &pr)
 {
   pr.type = T_NOT_TERM;
-  pr.pe.not_term = NULL;
+  pr.pe.m_not_term = NULL;
 }
 
 void

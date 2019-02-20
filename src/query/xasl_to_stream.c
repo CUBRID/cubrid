@@ -4138,11 +4138,11 @@ xts_process_pred_expr (char *ptr, const PRED_EXPR * pred_expr)
       break;
 
     case T_EVAL_TERM:
-      ptr = xts_process_eval_term (ptr, &pred_expr->pe.eval_term);
+      ptr = xts_process_eval_term (ptr, &pred_expr->pe.m_eval_term);
       break;
 
     case T_NOT_TERM:
-      offset = xts_save_pred_expr (pred_expr->pe.not_term);
+      offset = xts_save_pred_expr (pred_expr->pe.m_not_term);
       if (offset == ER_FAILED)
 	{
 	  return NULL;
@@ -6261,7 +6261,7 @@ xts_sizeof_pred_expr (const PRED_EXPR * pred_expr)
       break;
 
     case T_EVAL_TERM:
-      tmp_size = xts_sizeof_eval_term (&pred_expr->pe.eval_term);
+      tmp_size = xts_sizeof_eval_term (&pred_expr->pe.m_eval_term);
       if (tmp_size == ER_FAILED)
 	{
 	  return ER_FAILED;

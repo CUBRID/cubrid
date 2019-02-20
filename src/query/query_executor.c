@@ -724,16 +724,16 @@ qexec_eval_instnum_pred (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 
       /* this case is for: select * from table limit 3, or select * from table where rownum <= 3 and we can change
        * operator <= to < and reevaluate last condition. (to stop scan at this time) */
-      if (pr->type == T_EVAL_TERM && pr->pe.eval_term.et_type == T_COMP_EVAL_TERM
-	  && (pr->pe.eval_term.et.et_comp.lhs->type == TYPE_CONSTANT
-	      && pr->pe.eval_term.et.et_comp.rhs->type == TYPE_POS_VALUE)
-	  && xasl->instnum_pred->pe.eval_term.et.et_comp.rel_op == R_LE)
+      if (pr->type == T_EVAL_TERM && pr->pe.m_eval_term.et_type == T_COMP_EVAL_TERM
+	  && (pr->pe.m_eval_term.et.et_comp.lhs->type == TYPE_CONSTANT
+	      && pr->pe.m_eval_term.et.et_comp.rhs->type == TYPE_POS_VALUE)
+	  && xasl->instnum_pred->pe.m_eval_term.et.et_comp.rel_op == R_LE)
 	{
-	  xasl->instnum_pred->pe.eval_term.et.et_comp.rel_op = R_LT;
+	  xasl->instnum_pred->pe.m_eval_term.et.et_comp.rel_op = R_LT;
 	  /* evaluate predicate */
 	  ev_res = eval_pred (thread_p, xasl->instnum_pred, &xasl_state->vd, NULL);
 
-	  xasl->instnum_pred->pe.eval_term.et.et_comp.rel_op = R_LE;
+	  xasl->instnum_pred->pe.m_eval_term.et.et_comp.rel_op = R_LE;
 
 	  if (ev_res != V_TRUE)
 	    {
@@ -1700,11 +1700,11 @@ qexec_clear_pred (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, PRED_EXPR * pr, b
       pg_cnt += qexec_clear_pred (thread_p, xasl_p, expr, is_final);
       break;
     case T_EVAL_TERM:
-      switch (pr->pe.eval_term.et_type)
+      switch (pr->pe.m_eval_term.et_type)
 	{
 	case T_COMP_EVAL_TERM:
 	  {
-	    COMP_EVAL_TERM *et_comp = &pr->pe.eval_term.et.et_comp;
+	    COMP_EVAL_TERM *et_comp = &pr->pe.m_eval_term.et.et_comp;
 
 	    pg_cnt += qexec_clear_regu_var (thread_p, xasl_p, et_comp->lhs, is_final);
 	    pg_cnt += qexec_clear_regu_var (thread_p, xasl_p, et_comp->rhs, is_final);
@@ -1712,7 +1712,7 @@ qexec_clear_pred (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, PRED_EXPR * pr, b
 	  break;
 	case T_ALSM_EVAL_TERM:
 	  {
-	    ALSM_EVAL_TERM *et_alsm = &pr->pe.eval_term.et.et_alsm;
+	    ALSM_EVAL_TERM *et_alsm = &pr->pe.m_eval_term.et.et_alsm;
 
 	    pg_cnt += qexec_clear_regu_var (thread_p, xasl_p, et_alsm->elem, is_final);
 	    pg_cnt += qexec_clear_regu_var (thread_p, xasl_p, et_alsm->elemset, is_final);
@@ -1720,7 +1720,7 @@ qexec_clear_pred (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, PRED_EXPR * pr, b
 	  break;
 	case T_LIKE_EVAL_TERM:
 	  {
-	    LIKE_EVAL_TERM *et_like = &pr->pe.eval_term.et.et_like;
+	    LIKE_EVAL_TERM *et_like = &pr->pe.m_eval_term.et.et_like;
 
 	    pg_cnt += qexec_clear_regu_var (thread_p, xasl_p, et_like->src, is_final);
 	    pg_cnt += qexec_clear_regu_var (thread_p, xasl_p, et_like->pattern, is_final);
@@ -1729,7 +1729,7 @@ qexec_clear_pred (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, PRED_EXPR * pr, b
 	  break;
 	case T_RLIKE_EVAL_TERM:
 	  {
-	    RLIKE_EVAL_TERM *et_rlike = &pr->pe.eval_term.et.et_rlike;
+	    RLIKE_EVAL_TERM *et_rlike = &pr->pe.m_eval_term.et.et_rlike;
 
 	    pg_cnt += qexec_clear_regu_var (thread_p, xasl_p, et_rlike->src, is_final);
 	    pg_cnt += qexec_clear_regu_var (thread_p, xasl_p, et_rlike->pattern, is_final);
@@ -1752,7 +1752,7 @@ qexec_clear_pred (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, PRED_EXPR * pr, b
 	}
       break;
     case T_NOT_TERM:
-      pg_cnt += qexec_clear_pred (thread_p, xasl_p, pr->pe.not_term, is_final);
+      pg_cnt += qexec_clear_pred (thread_p, xasl_p, pr->pe.m_not_term, is_final);
       break;
     }
 
@@ -7363,11 +7363,11 @@ qexec_reset_pred_expr (PRED_EXPR * pred)
       qexec_reset_pred_expr (pred->pe.m_pred.rhs);
       break;
     case T_EVAL_TERM:
-      switch (pred->pe.eval_term.et_type)
+      switch (pred->pe.m_eval_term.et_type)
 	{
 	case T_COMP_EVAL_TERM:
 	  {
-	    COMP_EVAL_TERM *et_comp = &pred->pe.eval_term.et.et_comp;
+	    COMP_EVAL_TERM *et_comp = &pred->pe.m_eval_term.et.et_comp;
 
 	    qexec_reset_regu_variable (et_comp->lhs);
 	    qexec_reset_regu_variable (et_comp->rhs);
@@ -7375,7 +7375,7 @@ qexec_reset_pred_expr (PRED_EXPR * pred)
 	  break;
 	case T_ALSM_EVAL_TERM:
 	  {
-	    ALSM_EVAL_TERM *et_alsm = &pred->pe.eval_term.et.et_alsm;
+	    ALSM_EVAL_TERM *et_alsm = &pred->pe.m_eval_term.et.et_alsm;
 
 	    qexec_reset_regu_variable (et_alsm->elem);
 	    qexec_reset_regu_variable (et_alsm->elemset);
@@ -7383,7 +7383,7 @@ qexec_reset_pred_expr (PRED_EXPR * pred)
 	  break;
 	case T_LIKE_EVAL_TERM:
 	  {
-	    LIKE_EVAL_TERM *et_like = &pred->pe.eval_term.et.et_like;
+	    LIKE_EVAL_TERM *et_like = &pred->pe.m_eval_term.et.et_like;
 
 	    qexec_reset_regu_variable (et_like->src);
 	    qexec_reset_regu_variable (et_like->pattern);
@@ -7392,7 +7392,7 @@ qexec_reset_pred_expr (PRED_EXPR * pred)
 	  break;
 	case T_RLIKE_EVAL_TERM:
 	  {
-	    RLIKE_EVAL_TERM *et_rlike = &pred->pe.eval_term.et.et_rlike;
+	    RLIKE_EVAL_TERM *et_rlike = &pred->pe.m_eval_term.et.et_rlike;
 	    qexec_reset_regu_variable (et_rlike->case_sensitive);
 	    qexec_reset_regu_variable (et_rlike->pattern);
 	    qexec_reset_regu_variable (et_rlike->src);
@@ -7400,7 +7400,7 @@ qexec_reset_pred_expr (PRED_EXPR * pred)
 	}
       break;
     case T_NOT_TERM:
-      qexec_reset_pred_expr (pred->pe.not_term);
+      qexec_reset_pred_expr (pred->pe.m_not_term);
       break;
     }
 }
@@ -16114,31 +16114,31 @@ qexec_replace_prior_regu_vars_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pred, X
       break;
 
     case T_EVAL_TERM:
-      switch (pred->pe.eval_term.et_type)
+      switch (pred->pe.m_eval_term.et_type)
 	{
 	case T_COMP_EVAL_TERM:
-	  qexec_replace_prior_regu_vars (thread_p, pred->pe.eval_term.et.et_comp.lhs, xasl);
-	  qexec_replace_prior_regu_vars (thread_p, pred->pe.eval_term.et.et_comp.rhs, xasl);
+	  qexec_replace_prior_regu_vars (thread_p, pred->pe.m_eval_term.et.et_comp.lhs, xasl);
+	  qexec_replace_prior_regu_vars (thread_p, pred->pe.m_eval_term.et.et_comp.rhs, xasl);
 	  break;
 
 	case T_ALSM_EVAL_TERM:
-	  qexec_replace_prior_regu_vars (thread_p, pred->pe.eval_term.et.et_alsm.elem, xasl);
-	  qexec_replace_prior_regu_vars (thread_p, pred->pe.eval_term.et.et_alsm.elemset, xasl);
+	  qexec_replace_prior_regu_vars (thread_p, pred->pe.m_eval_term.et.et_alsm.elem, xasl);
+	  qexec_replace_prior_regu_vars (thread_p, pred->pe.m_eval_term.et.et_alsm.elemset, xasl);
 	  break;
 
 	case T_LIKE_EVAL_TERM:
-	  qexec_replace_prior_regu_vars (thread_p, pred->pe.eval_term.et.et_like.pattern, xasl);
-	  qexec_replace_prior_regu_vars (thread_p, pred->pe.eval_term.et.et_like.src, xasl);
+	  qexec_replace_prior_regu_vars (thread_p, pred->pe.m_eval_term.et.et_like.pattern, xasl);
+	  qexec_replace_prior_regu_vars (thread_p, pred->pe.m_eval_term.et.et_like.src, xasl);
 	  break;
 	case T_RLIKE_EVAL_TERM:
-	  qexec_replace_prior_regu_vars (thread_p, pred->pe.eval_term.et.et_rlike.pattern, xasl);
-	  qexec_replace_prior_regu_vars (thread_p, pred->pe.eval_term.et.et_rlike.src, xasl);
+	  qexec_replace_prior_regu_vars (thread_p, pred->pe.m_eval_term.et.et_rlike.pattern, xasl);
+	  qexec_replace_prior_regu_vars (thread_p, pred->pe.m_eval_term.et.et_rlike.src, xasl);
 	  break;
 	}
       break;
 
     case T_NOT_TERM:
-      qexec_replace_prior_regu_vars_pred (thread_p, pred->pe.not_term, xasl);
+      qexec_replace_prior_regu_vars_pred (thread_p, pred->pe.m_not_term, xasl);
       break;
     }
 }
@@ -24470,9 +24470,9 @@ qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL
   if (pred->type == T_EVAL_TERM)
     {
       /* This should be TYPE_CONSTANT comp TYPE_VALUE. If not, we bail out */
-      lhs = pred->pe.eval_term.et.et_comp.lhs;
-      rhs = pred->pe.eval_term.et.et_comp.rhs;
-      op = pred->pe.eval_term.et.et_comp.rel_op;
+      lhs = pred->pe.m_eval_term.et.et_comp.lhs;
+      rhs = pred->pe.m_eval_term.et.et_comp.rhs;
+      op = pred->pe.m_eval_term.et.et_comp.rel_op;
       if (lhs->type != TYPE_CONSTANT)
 	{
 	  if (lhs->type != TYPE_POS_VALUE && lhs->type != TYPE_DBVAL)
@@ -24487,7 +24487,7 @@ qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL
 
 	  /* reverse comparison */
 	  rhs = lhs;
-	  lhs = pred->pe.eval_term.et.et_comp.rhs;
+	  lhs = pred->pe.m_eval_term.et.et_comp.rhs;
 	  switch (op)
 	    {
 	    case R_GT:
@@ -24678,17 +24678,17 @@ qexec_clear_pred_xasl (THREAD_ENTRY * thread_p, PRED_EXPR * pred)
       break;
     case T_EVAL_TERM:
       /* operands of type TYPE_LIST_ID are the XASLs we need to clear list files for */
-      if (pred->pe.eval_term.et_type == T_COMP_EVAL_TERM)
+      if (pred->pe.m_eval_term.et_type == T_COMP_EVAL_TERM)
 	{
-	  COMP_EVAL_TERM *et_comp = &pred->pe.eval_term.et.et_comp;
+	  COMP_EVAL_TERM *et_comp = &pred->pe.m_eval_term.et.et_comp;
 	  if (et_comp->rel_op == R_EXISTS && et_comp->lhs->type == TYPE_LIST_ID)
 	    {
 	      qexec_clear_head_lists (thread_p, et_comp->lhs->xasl);
 	    }
 	}
-      else if (pred->pe.eval_term.et_type == T_ALSM_EVAL_TERM)
+      else if (pred->pe.m_eval_term.et_type == T_ALSM_EVAL_TERM)
 	{
-	  ALSM_EVAL_TERM *et_alsm = &pred->pe.eval_term.et.et_alsm;
+	  ALSM_EVAL_TERM *et_alsm = &pred->pe.m_eval_term.et.et_alsm;
 	  if (et_alsm->elemset->type == TYPE_LIST_ID)
 	    {
 	      qexec_clear_head_lists (thread_p, et_alsm->elemset->xasl);
@@ -24698,7 +24698,7 @@ qexec_clear_pred_xasl (THREAD_ENTRY * thread_p, PRED_EXPR * pred)
        * TYPE_LIST_ID operands */
       break;
     case T_NOT_TERM:
-      qexec_clear_pred_xasl (thread_p, pred->pe.not_term);
+      qexec_clear_pred_xasl (thread_p, pred->pe.m_not_term);
       break;
     }
 }

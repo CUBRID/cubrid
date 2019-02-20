@@ -1799,7 +1799,7 @@ eval_pred (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * 
       break;
 
     case T_EVAL_TERM:
-      switch (pr->pe.eval_term.et_type)
+      switch (pr->pe.m_eval_term.et_type)
 	{
 	case T_COMP_EVAL_TERM:
 	  /*
@@ -1808,7 +1808,7 @@ eval_pred (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * 
 	   * Each datatype defines its own meaning of relationship
 	   * indicated by one of the relational operators.
 	   */
-	  et_comp = &pr->pe.eval_term.et.et_comp;
+	  et_comp = &pr->pe.m_eval_term.et.et_comp;
 
 	  /* evaluate NULL predicate, if specified */
 	  if (et_comp->rel_op == R_NULL)
@@ -1920,7 +1920,7 @@ eval_pred (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * 
 	    DB_TYPE rhs_type = DB_TYPE_UNKNOWN;
 	    bool rhs_is_set = false;
 
-	    et_alsm = &pr->pe.eval_term.et.et_alsm;
+	    et_alsm = &pr->pe.m_eval_term.et.et_alsm;
 
 	    /*
 	     * Note: According to ANSI, if the set or list file is empty,
@@ -2017,7 +2017,7 @@ eval_pred (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * 
 	  break;
 
 	case T_LIKE_EVAL_TERM:
-	  et_like = &pr->pe.eval_term.et.et_like;
+	  et_like = &pr->pe.m_eval_term.et.et_like;
 
 	  /* fetch source text expression */
 	  if (fetch_peek_dbval (thread_p, et_like->src, vd, NULL, obj_oid, NULL, &peek_val1) != NO_ERROR)
@@ -2070,7 +2070,7 @@ eval_pred (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * 
       break;
 
     case T_NOT_TERM:
-      result = eval_pred (thread_p, pr->pe.not_term, vd, obj_oid);
+      result = eval_pred (thread_p, pr->pe.m_not_term, vd, obj_oid);
       /* negate the result */
       result = eval_negative (result);
       break;
@@ -2104,7 +2104,7 @@ eval_pred_comp0 (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, 
   peek_val1 = NULL;
   peek_val2 = NULL;
 
-  et_comp = &pr->pe.eval_term.et.et_comp;
+  et_comp = &pr->pe.m_eval_term.et.et_comp;
 
   /*
    * fetch left hand size and right hand size values, if one of
@@ -2152,7 +2152,7 @@ eval_pred_comp1 (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, 
 
   peek_val1 = NULL;
 
-  et_comp = &pr->pe.eval_term.et.et_comp;
+  et_comp = &pr->pe.m_eval_term.et.et_comp;
 
   if (fetch_peek_dbval (thread_p, et_comp->lhs, vd, NULL, obj_oid, NULL, &peek_val1) != NO_ERROR)
     {
@@ -2191,7 +2191,7 @@ eval_pred_comp2 (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, 
 
   peek_val1 = NULL;
 
-  et_comp = &pr->pe.eval_term.et.et_comp;
+  et_comp = &pr->pe.m_eval_term.et.et_comp;
 
   /* evaluate EXISTS predicate, if specified */
   /* leaf node should refer to either a set or list file */
@@ -2249,7 +2249,7 @@ eval_pred_comp3 (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, 
   peek_val1 = NULL;
   peek_val2 = NULL;
 
-  et_comp = &pr->pe.eval_term.et.et_comp;
+  et_comp = &pr->pe.m_eval_term.et.et_comp;
 
   /*
    * fetch left hand size and right hand size values, if one of
@@ -2307,7 +2307,7 @@ eval_pred_alsm4 (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, 
   peek_val1 = NULL;
   peek_val2 = NULL;
 
-  et_alsm = &pr->pe.eval_term.et.et_alsm;
+  et_alsm = &pr->pe.m_eval_term.et.et_alsm;
 
   /*
    * Note: According to ANSI, if the set or list file is empty,
@@ -2373,7 +2373,7 @@ eval_pred_alsm5 (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, 
 
   peek_val1 = NULL;
 
-  et_alsm = &pr->pe.eval_term.et.et_alsm;
+  et_alsm = &pr->pe.m_eval_term.et.et_alsm;
 
   /* execute linked query */
   EXECUTE_REGU_VARIABLE_XASL (thread_p, et_alsm->elemset, vd);
@@ -2433,7 +2433,7 @@ eval_pred_like6 (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, 
   peek_val2 = NULL;
   peek_val3 = NULL;
 
-  et_like = &pr->pe.eval_term.et.et_like;
+  et_like = &pr->pe.m_eval_term.et.et_like;
 
   /* fetch source text expression */
   if (fetch_peek_dbval (thread_p, et_like->src, vd, NULL, obj_oid, NULL, &peek_val1) != NO_ERROR)
@@ -2491,7 +2491,7 @@ eval_pred_rlike7 (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd,
   peek_val2 = NULL;
   peek_val3 = NULL;
 
-  et_rlike = &pr->pe.eval_term.et.et_rlike;
+  et_rlike = &pr->pe.m_eval_term.et.et_rlike;
 
   /* fetch source text expression */
   if (fetch_peek_dbval (thread_p, et_rlike->src, vd, NULL, obj_oid, NULL, &peek_val1) != NO_ERROR)
@@ -2552,10 +2552,10 @@ eval_fnc (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, DB_TYPE * single_node_t
 
   if (pr->type == T_EVAL_TERM)
     {
-      switch (pr->pe.eval_term.et_type)
+      switch (pr->pe.m_eval_term.et_type)
 	{
 	case T_COMP_EVAL_TERM:
-	  et_comp = &pr->pe.eval_term.et.et_comp;
+	  et_comp = &pr->pe.m_eval_term.et.et_comp;
 
 	  /*
 	   * et_comp->type can be DB_TYPE_NULL,
@@ -2580,7 +2580,7 @@ eval_fnc (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, DB_TYPE * single_node_t
 	  return (PR_EVAL_FNC) eval_pred_comp0;
 
 	case T_ALSM_EVAL_TERM:
-	  et_alsm = &pr->pe.eval_term.et.et_alsm;
+	  et_alsm = &pr->pe.m_eval_term.et.et_alsm;
 
 	  /*
 	   * et_alsm->item_type can be DB_TYPE_NULL,

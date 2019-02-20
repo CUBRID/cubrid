@@ -97,8 +97,6 @@ namespace cubxasl
 {
   // forward definitions
   struct pred_expr;
-  //typedef struct pred PRED;
-  //typedef struct eval_term EVAL_TERM;
 
   struct pred
   {
@@ -157,8 +155,8 @@ namespace cubxasl
     union
     {
       pred m_pred;
-      eval_term eval_term;
-      pred_expr *not_term;
+      eval_term m_eval_term;
+      pred_expr *m_not_term;
     } pe;
     TYPE_PRED_EXPR type;
   };

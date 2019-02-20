@@ -7278,7 +7278,7 @@ resolve_domains_on_list_scan (LLIST_SCAN_ID * llsidp, val_list_node * ref_val_li
 
   if (llsidp->scan_pred.pred_expr->type == T_EVAL_TERM)
     {
-      EVAL_TERM ev_t = llsidp->scan_pred.pred_expr->pe.eval_term;
+      EVAL_TERM ev_t = llsidp->scan_pred.pred_expr->pe.m_eval_term;
 
       if (ev_t.et_type == T_COMP_EVAL_TERM)
 	{

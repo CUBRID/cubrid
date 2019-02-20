@@ -1171,7 +1171,7 @@ pt_make_pred_term_not (const PRED_EXPR * arg1)
       if (pred)
 	{
 	  pred->type = T_NOT_TERM;
-	  pred->pe.not_term = (PRED_EXPR *) arg1;
+	  pred->pe.m_not_term = (PRED_EXPR *) arg1;
 	}
     }
 
@@ -1199,10 +1199,10 @@ pt_make_pred_term_comp (const REGU_VARIABLE * arg1, const REGU_VARIABLE * arg2, 
 
       if (pred)
 	{
-	  COMP_EVAL_TERM *et_comp = &pred->pe.eval_term.et.et_comp;
+	  COMP_EVAL_TERM *et_comp = &pred->pe.m_eval_term.et.et_comp;
 
 	  pred->type = T_EVAL_TERM;
-	  pred->pe.eval_term.et_type = T_COMP_EVAL_TERM;
+	  pred->pe.m_eval_term.et_type = T_COMP_EVAL_TERM;
 	  et_comp->lhs = (REGU_VARIABLE *) arg1;
 	  et_comp->rhs = (REGU_VARIABLE *) arg2;
 	  et_comp->rel_op = rop;
@@ -1235,10 +1235,10 @@ pt_make_pred_term_some_all (const REGU_VARIABLE * arg1, const REGU_VARIABLE * ar
 
       if (pred)
 	{
-	  ALSM_EVAL_TERM *et_alsm = &pred->pe.eval_term.et.et_alsm;
+	  ALSM_EVAL_TERM *et_alsm = &pred->pe.m_eval_term.et.et_alsm;
 
 	  pred->type = T_EVAL_TERM;
-	  pred->pe.eval_term.et_type = T_ALSM_EVAL_TERM;
+	  pred->pe.m_eval_term.et_type = T_ALSM_EVAL_TERM;
 	  et_alsm->elem = (REGU_VARIABLE *) arg1;
 	  et_alsm->elemset = (REGU_VARIABLE *) arg2;
 	  et_alsm->rel_op = rop;
@@ -1268,10 +1268,10 @@ pt_make_pred_term_like (const REGU_VARIABLE * arg1, const REGU_VARIABLE * arg2, 
 
       if (pred)
 	{
-	  LIKE_EVAL_TERM *et_like = &pred->pe.eval_term.et.et_like;
+	  LIKE_EVAL_TERM *et_like = &pred->pe.m_eval_term.et.et_like;
 
 	  pred->type = T_EVAL_TERM;
-	  pred->pe.eval_term.et_type = T_LIKE_EVAL_TERM;
+	  pred->pe.m_eval_term.et_type = T_LIKE_EVAL_TERM;
 	  et_like->src = (REGU_VARIABLE *) arg1;
 	  et_like->pattern = (REGU_VARIABLE *) arg2;
 	  et_like->esc_char = (REGU_VARIABLE *) arg3;
@@ -1305,9 +1305,9 @@ pt_make_pred_term_rlike (REGU_VARIABLE * arg1, REGU_VARIABLE * arg2, REGU_VARIAB
       return NULL;
     }
 
-  et_rlike = &pred->pe.eval_term.et.et_rlike;
+  et_rlike = &pred->pe.m_eval_term.et.et_rlike;
   pred->type = T_EVAL_TERM;
-  pred->pe.eval_term.et_type = T_RLIKE_EVAL_TERM;
+  pred->pe.m_eval_term.et_type = T_RLIKE_EVAL_TERM;
   et_rlike->src = arg1;
   et_rlike->pattern = arg2;
   et_rlike->case_sensitive = case_sensitive;
@@ -21925,32 +21925,32 @@ pt_get_pred_regu_variable_p_list (const PRED_EXPR * pred, int *err)
       break;
 
     case T_EVAL_TERM:
-      switch (pred->pe.eval_term.et_type)
+      switch (pred->pe.m_eval_term.et_type)
 	{
 	case T_COMP_EVAL_TERM:
-	  nextl = pt_get_var_regu_variable_p_list (pred->pe.eval_term.et.et_comp.lhs, false, err);
-	  nextr = pt_get_var_regu_variable_p_list (pred->pe.eval_term.et.et_comp.rhs, false, err);
+	  nextl = pt_get_var_regu_variable_p_list (pred->pe.m_eval_term.et.et_comp.lhs, false, err);
+	  nextr = pt_get_var_regu_variable_p_list (pred->pe.m_eval_term.et.et_comp.rhs, false, err);
 	  break;
 
 	case T_ALSM_EVAL_TERM:
-	  nextl = pt_get_var_regu_variable_p_list (pred->pe.eval_term.et.et_alsm.elem, false, err);
-	  nextr = pt_get_var_regu_variable_p_list (pred->pe.eval_term.et.et_alsm.elemset, false, err);
+	  nextl = pt_get_var_regu_variable_p_list (pred->pe.m_eval_term.et.et_alsm.elem, false, err);
+	  nextr = pt_get_var_regu_variable_p_list (pred->pe.m_eval_term.et.et_alsm.elemset, false, err);
 	  break;
 
 	case T_LIKE_EVAL_TERM:
-	  nextl = pt_get_var_regu_variable_p_list (pred->pe.eval_term.et.et_like.pattern, false, err);
-	  nextr = pt_get_var_regu_variable_p_list (pred->pe.eval_term.et.et_like.src, false, err);
+	  nextl = pt_get_var_regu_variable_p_list (pred->pe.m_eval_term.et.et_like.pattern, false, err);
+	  nextr = pt_get_var_regu_variable_p_list (pred->pe.m_eval_term.et.et_like.src, false, err);
 	  break;
 
 	case T_RLIKE_EVAL_TERM:
-	  nextl = pt_get_var_regu_variable_p_list (pred->pe.eval_term.et.et_rlike.pattern, false, err);
-	  nextr = pt_get_var_regu_variable_p_list (pred->pe.eval_term.et.et_rlike.src, false, err);
+	  nextl = pt_get_var_regu_variable_p_list (pred->pe.m_eval_term.et.et_rlike.pattern, false, err);
+	  nextr = pt_get_var_regu_variable_p_list (pred->pe.m_eval_term.et.et_rlike.src, false, err);
 	  break;
 	}
       break;
 
     case T_NOT_TERM:
-      nextl = pt_get_pred_regu_variable_p_list (pred->pe.not_term, err);
+      nextl = pt_get_pred_regu_variable_p_list (pred->pe.m_not_term, err);
       break;
     }
 

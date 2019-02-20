@@ -3960,19 +3960,19 @@ stx_build_pred_expr (THREAD_ENTRY * thread_p, char *ptr, PRED_EXPR * pred_expr)
       break;
 
     case T_EVAL_TERM:
-      ptr = stx_build_eval_term (thread_p, ptr, &pred_expr->pe.eval_term);
+      ptr = stx_build_eval_term (thread_p, ptr, &pred_expr->pe.m_eval_term);
       break;
 
     case T_NOT_TERM:
       ptr = or_unpack_int (ptr, &offset);
       if (offset == 0)
 	{
-	  pred_expr->pe.not_term = NULL;
+	  pred_expr->pe.m_not_term = NULL;
 	}
       else
 	{
-	  pred_expr->pe.not_term = stx_restore_pred_expr (thread_p, &xasl_unpack_info->packed_xasl[offset]);
-	  if (pred_expr->pe.not_term == NULL)
+	  pred_expr->pe.m_not_term = stx_restore_pred_expr (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+	  if (pred_expr->pe.m_not_term == NULL)
 	    {
 	      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
 	      return NULL;

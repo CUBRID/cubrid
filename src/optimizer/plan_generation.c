@@ -3005,14 +3005,14 @@ qo_get_limit_from_eval_term (PARSER_CONTEXT * parser, PRED_EXPR * pred, REGU_PTR
   TP_DOMAIN *dom_bigint = tp_domain_resolve_default (DB_TYPE_BIGINT);
   REGU_VARIABLE *regu_one, *regu_low;
 
-  if (pred == NULL || pred->type != T_EVAL_TERM || pred->pe.eval_term.et_type != T_COMP_EVAL_TERM)
+  if (pred == NULL || pred->type != T_EVAL_TERM || pred->pe.m_eval_term.et_type != T_COMP_EVAL_TERM)
     {
       return false;
     }
 
-  lhs = pred->pe.eval_term.et.et_comp.lhs;
-  rhs = pred->pe.eval_term.et.et_comp.rhs;
-  op = pred->pe.eval_term.et.et_comp.rel_op;
+  lhs = pred->pe.m_eval_term.et.et_comp.lhs;
+  rhs = pred->pe.m_eval_term.et.et_comp.rhs;
+  op = pred->pe.m_eval_term.et.et_comp.rel_op;
 
   if (!lhs || !rhs)
     {
@@ -3028,8 +3028,8 @@ qo_get_limit_from_eval_term (PARSER_CONTEXT * parser, PRED_EXPR * pred, REGU_PTR
   /* switch the ops to transform into instnum rel_op value/hostvar */
   if (rhs->type == TYPE_CONSTANT)
     {
-      rhs = pred->pe.eval_term.et.et_comp.lhs;
-      lhs = pred->pe.eval_term.et.et_comp.rhs;
+      rhs = pred->pe.m_eval_term.et.et_comp.lhs;
+      lhs = pred->pe.m_eval_term.et.et_comp.rhs;
       switch (op)
 	{
 	case R_LE:

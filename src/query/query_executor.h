@@ -51,6 +51,7 @@ struct tp_domain;
 struct valptr_list_node;
 struct xasl_node;
 struct xasl_state;
+using XASL_STATE = xasl_state;
 
 #define QEXEC_NULL_COMMAND_ID   -1	/* Invalid command identifier */
 
@@ -70,7 +71,7 @@ struct val_descr
   DB_TIMESTAMP sys_epochtime;
   long lrand;
   double drand;
-  xasl_state *xasl_state;	/* XASL_STATE pointer */
+  XASL_STATE *xasl_state;	/* XASL_STATE pointer */
 };				/* Value Descriptor */
 
 extern qfile_list_id *qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt,

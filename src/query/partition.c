@@ -1898,7 +1898,7 @@ partition_match_pred_expr (PRUNING_CONTEXT * pinfo, const PRED_EXPR * pr, PRUNIN
       }
 
     case T_EVAL_TERM:
-      switch (pr->pe.eval_term.et_type)
+      switch (pr->pe.m_eval_term.et_type)
 	{
 	case T_COMP_EVAL_TERM:
 	  {
@@ -1906,9 +1906,9 @@ partition_match_pred_expr (PRUNING_CONTEXT * pinfo, const PRED_EXPR * pr, PRUNIN
 	    REGU_VARIABLE *left, *right;
 	    PRUNING_OP op;
 
-	    left = pr->pe.eval_term.et.et_comp.lhs;
-	    right = pr->pe.eval_term.et.et_comp.rhs;
-	    op = partition_rel_op_to_pruning_op (pr->pe.eval_term.et.et_comp.rel_op);
+	    left = pr->pe.m_eval_term.et.et_comp.lhs;
+	    right = pr->pe.m_eval_term.et.et_comp.rhs;
+	    op = partition_rel_op_to_pruning_op (pr->pe.m_eval_term.et.et_comp.rel_op);
 
 	    status = MATCH_NOT_FOUND;
 	    if (partition_do_regu_variables_match (pinfo, left, part_expr))
@@ -1927,11 +1927,11 @@ partition_match_pred_expr (PRUNING_CONTEXT * pinfo, const PRED_EXPR * pr, PRUNIN
 	    REGU_VARIABLE *regu, *list;
 	    PRUNING_OP op;
 
-	    regu = pr->pe.eval_term.et.et_alsm.elem;
-	    list = pr->pe.eval_term.et.et_alsm.elemset;
-	    op = partition_rel_op_to_pruning_op (pr->pe.eval_term.et.et_alsm.rel_op);
+	    regu = pr->pe.m_eval_term.et.et_alsm.elem;
+	    list = pr->pe.m_eval_term.et.et_alsm.elemset;
+	    op = partition_rel_op_to_pruning_op (pr->pe.m_eval_term.et.et_alsm.rel_op);
 	    /* adjust rel_op based on the QL_FLAG of the alsm eval node */
-	    if (pr->pe.eval_term.et.et_alsm.eq_flag == F_SOME)
+	    if (pr->pe.m_eval_term.et.et_alsm.eq_flag == F_SOME)
 	      {
 		if (op == PO_EQ)
 		  {

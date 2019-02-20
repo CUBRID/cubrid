@@ -1464,7 +1464,7 @@ qdump_print_rlike_eval_term (EVAL_TERM * term_p)
 static bool
 qdump_print_eval_term (PRED_EXPR * pred_p)
 {
-  EVAL_TERM *term = &pred_p->pe.eval_term;
+  EVAL_TERM *term = &pred_p->pe.m_eval_term;
 
   switch (term->et_type)
     {
@@ -1506,7 +1506,7 @@ qdump_print_term (PRED_EXPR * pred_p)
     case T_NOT_TERM:
       fprintf (foutput, "(NOT ");
 
-      if (!qdump_print_predicate (pred_p->pe.not_term))
+      if (!qdump_print_predicate (pred_p->pe.m_not_term))
 	{
 	  return false;
 	}
