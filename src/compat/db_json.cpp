@@ -310,11 +310,6 @@ class JSON_PATH : protected rapidjson::GenericPointer <JSON_VALUE>
       m_path_tokens.emplace_back (std::move (path_token));
     }
 
-    void emplace_top_token (PATH_TOKEN &&path_token)
-    {
-      m_path_tokens.back () = std::move (path_token);
-    }
-
     void pop ()
     {
       m_path_tokens.pop_back ();
@@ -1312,7 +1307,7 @@ int JSON_PATH_MAPPER::CallOnArrayIterate ()
   // todo: instead of pop + push, increment the last token
   m_accumulated_paths.pop ();
 
-  m_accumulated_paths.emplace_top_token (JSON_PATH::PATH_TOKEN {JSON_PATH::PATH_TOKEN::array_index, std::to_string (m_index.top ()++) });
+  m_accumulated_paths.emplace_back (JSON_PATH::PATH_TOKEN {JSON_PATH::PATH_TOKEN::array_index, std::to_string (m_index.top ()++) });
 
   return NO_ERROR;
 }
@@ -1334,7 +1329,7 @@ int JSON_PATH_MAPPER::CallOnKeyIterate (JSON_VALUE &key)
   path_item += object_key;
   path_item += "\"";
 
-  m_accumulated_paths.emplace_top_token (JSON_PATH::PATH_TOKEN{ JSON_PATH::PATH_TOKEN::object_key, path_item });
+  m_accumulated_paths.emplace_back (JSON_PATH::PATH_TOKEN{ JSON_PATH::PATH_TOKEN::object_key, path_item });
   return NO_ERROR;
 }
 
@@ -3783,6 +3778,7 @@ db_json_normalize_path (const char *pointer_path, JSON_PATH &json_path, bool all
       return error_code;
     }
 
+  db_json_normalize_path (json_path.dump_json_path ().c_str (), json_path, allow_wildcards);
   return NO_ERROR;
 }
 
