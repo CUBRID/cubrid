@@ -359,7 +359,7 @@ namespace cubload
 
     std::unique_lock<std::mutex> ulock (m_stats_mutex);
 
-    // check if failed after lock was acquired
+    // check if again after lock was acquired
     if (last_committed_line <= m_stats.last_committed_line)
       {
 	return;
