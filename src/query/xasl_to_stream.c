@@ -42,6 +42,7 @@
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
 #include "xasl_analytic.hpp"
+#include "xasl_predicate.hpp"
 #include "xasl_stream.hpp"
 
 #define    BYTE_SIZE        OR_INT_SIZE
@@ -4133,7 +4134,7 @@ xts_process_pred_expr (char *ptr, const PRED_EXPR * pred_expr)
   switch (pred_expr->type)
     {
     case T_PRED:
-      ptr = xts_process_pred (ptr, &pred_expr->pe.pred);
+      ptr = xts_process_pred (ptr, &pred_expr->pe.m_pred);
       break;
 
     case T_EVAL_TERM:
@@ -4178,7 +4179,7 @@ xts_process_pred (char *ptr, const PRED * pred)
   /* Traverse right-linear chains of AND/OR terms */
   while (rhs->type == T_PRED)
     {
-      pred = &rhs->pe.pred;
+      pred = &rhs->pe.m_pred;
 
       offset = xts_save_pred_expr (pred->lhs);	/* lhs */
       if (offset == ER_FAILED)
@@ -6251,7 +6252,7 @@ xts_sizeof_pred_expr (const PRED_EXPR * pred_expr)
   switch (pred_expr->type)
     {
     case T_PRED:
-      tmp_size = xts_sizeof_pred (&pred_expr->pe.pred);
+      tmp_size = xts_sizeof_pred (&pred_expr->pe.m_pred);
       if (tmp_size == ER_FAILED)
 	{
 	  return ER_FAILED;
@@ -6320,7 +6321,7 @@ xts_sizeof_pred (const PRED * pred)
   /* Traverse right-linear chains of AND/OR terms */
   while (rhs->type == T_PRED)
     {
-      pred = &rhs->pe.pred;
+      pred = &rhs->pe.m_pred;
 
       size += (PTR_SIZE		/* lhs */
 	       + OR_INT_SIZE);	/* bool_op */

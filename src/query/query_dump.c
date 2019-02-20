@@ -36,6 +36,7 @@
 #endif // SERVER_MODE
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
+#include "xasl_predicate.hpp"
 
 #define foutput stdout
 
@@ -1555,12 +1556,12 @@ qdump_print_lhs_predicate (PRED_EXPR * pred_p)
 {
   fprintf (foutput, "(");
 
-  if (!qdump_print_predicate (pred_p->pe.pred.lhs))
+  if (!qdump_print_predicate (pred_p->pe.m_pred.lhs))
     {
       return false;
     }
 
-  fprintf (foutput, " %s ", qdump_bool_operator_string (pred_p->pe.pred.bool_op));
+  fprintf (foutput, " %s ", qdump_bool_operator_string (pred_p->pe.m_pred.bool_op));
 
   return true;
 }
@@ -1591,7 +1592,7 @@ qdump_print_predicate (PRED_EXPR * pred_p)
       parn_cnt = 1;
 
       /* Traverse right-linear chains of AND/OR terms */
-      for (pred_p = pred_p->pe.pred.rhs; pred_p->type == T_PRED; pred_p = pred_p->pe.pred.rhs)
+      for (pred_p = pred_p->pe.m_pred.rhs; pred_p->type == T_PRED; pred_p = pred_p->pe.m_pred.rhs)
 	{
 	  if (qdump_print_lhs_predicate (pred_p) == false)
 	    {

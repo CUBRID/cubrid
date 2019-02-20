@@ -214,6 +214,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/query_executor.c
   ${QUERY_DIR}/query_manager.c
   ${QUERY_DIR}/query_opfunc.c
+  ${QUERY_DIR}/query_reevaluation.cpp
   ${QUERY_DIR}/scan_json_table.cpp
   ${QUERY_DIR}/scan_manager.c
   ${QUERY_DIR}/serial.c
@@ -227,6 +228,7 @@ set(QUERY_SOURCES
 set(QUERY_HEADERS
   ${QUERY_DIR}/query_aggregate.hpp
   ${QUERY_DIR}/query_analytic.hpp
+  ${QUERY_DIR}/query_reevaluation.hpp
   ${QUERY_DIR}/scan_json_table.hpp
   )
 

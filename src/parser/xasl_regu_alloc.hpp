@@ -39,7 +39,6 @@ struct db_value;
 struct function_node;
 struct indx_info;
 struct key_range;
-struct pred_expr;
 struct pred_expr_with_context;
 struct qfile_list_id;
 struct qfile_sorted_list_id;
@@ -56,6 +55,7 @@ namespace cubxasl
 {
   struct aggregate_list_node;
   struct analytic_list_node;
+  struct pred_expr;
 }
 
 template <typename T>
@@ -64,7 +64,7 @@ void regu_init (T &t);
 void regu_init (db_value &dbval);
 void regu_init (regu_variable_node &regu);
 void regu_init (regu_variable_list_node &regu_varlist);
-void regu_init (pred_expr &pr);
+void regu_init (cubxasl::pred_expr &pr);
 void regu_init (indx_info &ii);
 void regu_init (tp_domain &dom);
 void regu_init (selupd_list &selupd);

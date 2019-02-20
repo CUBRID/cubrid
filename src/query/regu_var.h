@@ -37,6 +37,7 @@ struct xasl_node;
 namespace cubxasl
 {
   struct aggregate_list_node;
+  struct pred_expr;
 } // namespace cubxasl
 
 #define REGU_VARIABLE_XASL(r)      ((r)->xasl)
@@ -118,144 +119,6 @@ struct xasl_state
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 /************************************************************************/
-/* Predicate                                                            */
-/************************************************************************/
-
-/* PRED */
-typedef struct pred_expr PRED_EXPR;
-typedef struct pred PRED;
-typedef struct eval_term EVAL_TERM;
-
-typedef enum
-{
-  T_PRED = 1,
-  T_EVAL_TERM,
-  T_NOT_TERM
-} TYPE_PRED_EXPR;
-
-typedef enum
-{
-  B_AND = 1,
-  B_OR,
-  B_XOR,
-  B_IS,
-  B_IS_NOT
-} BOOL_OP;
-
-struct pred
-{
-  PRED_EXPR *lhs;
-  PRED_EXPR *rhs;
-  BOOL_OP bool_op;
-};
-
-typedef enum
-{
-  T_COMP_EVAL_TERM = 1,
-  T_ALSM_EVAL_TERM,
-  T_LIKE_EVAL_TERM,
-  T_RLIKE_EVAL_TERM
-} TYPE_EVAL_TERM;
-
-typedef enum
-{
-  R_NONE = 0,
-  R_EQ = 1,
-  R_NE,
-  R_GT,
-  R_GE,
-  R_LT,
-  R_LE,
-  R_NULL,
-  R_EXISTS,
-  R_LIKE,
-  R_EQ_SOME,
-  R_NE_SOME,
-  R_GT_SOME,
-  R_GE_SOME,
-  R_LT_SOME,
-  R_LE_SOME,
-  R_EQ_ALL,
-  R_NE_ALL,
-  R_GT_ALL,
-  R_GE_ALL,
-  R_LT_ALL,
-  R_LE_ALL,
-  R_SUBSET,
-  R_SUPERSET,
-  R_SUBSETEQ,
-  R_SUPERSETEQ,
-  R_EQ_TORDER,
-  R_NULLSAFE_EQ
-} REL_OP;
-
-typedef enum
-{
-  F_ALL = 1,
-  F_SOME
-} QL_FLAG;
-
-struct comp_eval_term
-{
-  REGU_VARIABLE *lhs;
-  REGU_VARIABLE *rhs;
-  REL_OP rel_op;
-  DB_TYPE type;
-};
-typedef struct comp_eval_term COMP_EVAL_TERM;
-
-struct alsm_eval_term
-{
-  REGU_VARIABLE *elem;
-  REGU_VARIABLE *elemset;
-  QL_FLAG eq_flag;
-  REL_OP rel_op;
-  DB_TYPE item_type;
-};
-typedef struct alsm_eval_term ALSM_EVAL_TERM;
-
-struct like_eval_term
-{
-  REGU_VARIABLE *src;
-  REGU_VARIABLE *pattern;
-  REGU_VARIABLE *esc_char;
-};
-typedef struct like_eval_term LIKE_EVAL_TERM;
-
-struct rlike_eval_term
-{
-  REGU_VARIABLE *src;
-  REGU_VARIABLE *pattern;
-  REGU_VARIABLE *case_sensitive;
-  mutable cub_regex_t *compiled_regex;
-  mutable char *compiled_pattern;
-};
-typedef struct rlike_eval_term RLIKE_EVAL_TERM;
-
-struct eval_term
-{
-  TYPE_EVAL_TERM et_type;
-  union
-  {
-    COMP_EVAL_TERM et_comp;
-    ALSM_EVAL_TERM et_alsm;
-    LIKE_EVAL_TERM et_like;
-    RLIKE_EVAL_TERM et_rlike;
-  } et;
-};
-
-struct pred_expr
-{
-  union
-  {
-    PRED pred;
-    EVAL_TERM eval_term;
-    PRED_EXPR *not_term;
-  } pe;
-  TYPE_PRED_EXPR type;
-};
-
-/************************************************************************/
 /* Regu stuff                                                           */
 /************************************************************************/
 typedef struct regu_value_item REGU_VALUE_ITEM;
@@ -299,7 +162,7 @@ struct arith_list_node
   REGU_VARIABLE *thirdptr;	/* third operand */
   OPERATOR_TYPE opcode;		/* operator value */
   MISC_OPERAND misc_operand;	/* currently used for trim qualifier and datetime extract field specifier */
-  PRED_EXPR *pred;		/* predicate expression */
+  cubxasl::pred_expr *pred;		/* predicate expression */
 
   /* NOTE: The following member is only used on server internally. */
   struct drand48_data *rand_seed;	/* seed to be used to generate pseudo-random sequence */

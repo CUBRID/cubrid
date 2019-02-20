@@ -37,6 +37,7 @@
 #include "system_parameter.h"
 #include "xasl.h"
 #include "xasl_generation.h"
+#include "xasl_predicate.hpp"
 
 typedef int (*ELIGIBILITY_FN) (QO_TERM *);
 
@@ -3152,10 +3153,10 @@ qo_get_limit_from_instnum_pred (PARSER_CONTEXT * parser, PRED_EXPR * pred, REGU_
       return false;
     }
 
-  if (pred->type == T_PRED && pred->pe.pred.bool_op == B_AND)
+  if (pred->type == T_PRED && pred->pe.m_pred.bool_op == B_AND)
     {
-      return (qo_get_limit_from_instnum_pred (parser, pred->pe.pred.lhs, lower, upper)
-	      && qo_get_limit_from_instnum_pred (parser, pred->pe.pred.rhs, lower, upper));
+      return (qo_get_limit_from_instnum_pred (parser, pred->pe.m_pred.lhs, lower, upper)
+	      && qo_get_limit_from_instnum_pred (parser, pred->pe.m_pred.rhs, lower, upper));
     }
 
   if (pred->type == T_EVAL_TERM)

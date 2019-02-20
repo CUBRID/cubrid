@@ -34,6 +34,7 @@
 #include "object_primitive.h"
 #include "dbtype.h"
 #include "xasl.h"
+#include "xasl_predicate.hpp"
 
 typedef enum match_status
 {
@@ -1841,7 +1842,7 @@ partition_match_pred_expr (PRUNING_CONTEXT * pinfo, const PRED_EXPR * pr, PRUNIN
 	 * partitions matching the right PRED_EXPR and merge or intersect the lists */
 	PRUNING_BITSET left_set, right_set;
 	MATCH_STATUS lstatus, rstatus;
-	BOOL_OP op = pr->pe.pred.bool_op;
+	BOOL_OP op = pr->pe.m_pred.bool_op;
 
 	if (op != B_AND && op != B_OR)
 	  {
@@ -1853,21 +1854,21 @@ partition_match_pred_expr (PRUNING_CONTEXT * pinfo, const PRED_EXPR * pr, PRUNIN
 	pruningset_init (&left_set, PARTITIONS_COUNT (pinfo));
 	pruningset_init (&right_set, PARTITIONS_COUNT (pinfo));
 
-	lstatus = partition_match_pred_expr (pinfo, pr->pe.pred.lhs, &left_set);
-	rstatus = partition_match_pred_expr (pinfo, pr->pe.pred.rhs, &right_set);
+	lstatus = partition_match_pred_expr (pinfo, pr->pe.m_pred.lhs, &left_set);
+	rstatus = partition_match_pred_expr (pinfo, pr->pe.m_pred.rhs, &right_set);
 
 	if (op == B_AND)
 	  {
 	    /* do intersection between left and right */
 	    if (lstatus == MATCH_NOT_FOUND)
 	      {
-		/* pr->pe.pred.lhs does not refer part_expr so return right */
+		/* pr->pe.m_pred.lhs does not refer part_expr so return right */
 		pruningset_copy (pruned, &right_set);
 		status = rstatus;
 	      }
 	    else if (rstatus == MATCH_NOT_FOUND)
 	      {
-		/* pr->pe.pred.rhs does not refer part_expr so return right */
+		/* pr->pe.m_pred.rhs does not refer part_expr so return right */
 		pruningset_copy (pruned, &left_set);
 		status = lstatus;
 	      }

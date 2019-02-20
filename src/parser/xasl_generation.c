@@ -36,6 +36,7 @@
 #include "parser.h"
 #include "xasl_aggregate.hpp"
 #include "xasl_analytic.hpp"
+#include "xasl_predicate.hpp"
 #include "xasl_regu_alloc.hpp"
 #include "db.h"
 #include "environment_variable.h"
@@ -1141,9 +1142,9 @@ pt_make_pred_expr_pred (const PRED_EXPR * arg1, const PRED_EXPR * arg2, const BO
       if (pred)
 	{
 	  pred->type = T_PRED;
-	  pred->pe.pred.lhs = (PRED_EXPR *) arg1;
-	  pred->pe.pred.rhs = (PRED_EXPR *) arg2;
-	  pred->pe.pred.bool_op = bop;
+	  pred->pe.m_pred.lhs = (PRED_EXPR *) arg1;
+	  pred->pe.m_pred.rhs = (PRED_EXPR *) arg2;
+	  pred->pe.m_pred.bool_op = bop;
 	}
     }
 
@@ -21919,8 +21920,8 @@ pt_get_pred_regu_variable_p_list (const PRED_EXPR * pred, int *err)
   switch (pred->type)
     {
     case T_PRED:
-      nextl = pt_get_pred_regu_variable_p_list (pred->pe.pred.lhs, err);
-      nextr = pt_get_pred_regu_variable_p_list (pred->pe.pred.rhs, err);
+      nextl = pt_get_pred_regu_variable_p_list (pred->pe.m_pred.lhs, err);
+      nextr = pt_get_pred_regu_variable_p_list (pred->pe.m_pred.rhs, err);
       break;
 
     case T_EVAL_TERM:

@@ -41,6 +41,7 @@
 #include "query_executor.h"
 #include "dbtype.h"
 #include "thread_entry.hpp"
+#include "xasl_predicate.hpp"
 
 #define UNKNOWN_CARD   -2	/* Unknown cardinality of a set member */
 
@@ -1646,7 +1647,7 @@ eval_set_list_cmp (THREAD_ENTRY * thread_p, const COMP_EVAL_TERM * et_comp, val_
  *              necessary error code is set and V_ERROR is returned.
  */
 DB_LOGICAL
-eval_pred (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * obj_oid)
+eval_pred (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * obj_oid)
 {
   const COMP_EVAL_TERM *et_comp;
   const ALSM_EVAL_TERM *et_alsm;
@@ -1654,7 +1655,7 @@ eval_pred (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * 
   DB_VALUE *peek_val1, *peek_val2, *peek_val3;
   DB_LOGICAL result = V_UNKNOWN;
   int regexp_res;
-  const pred_expr *t_pr;
+  const PRED_EXPR *t_pr;
   QFILE_SORTED_LIST_ID *srlist_id;
 
   peek_val1 = NULL;
@@ -1674,22 +1675,22 @@ eval_pred (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * 
   switch (pr->type)
     {
     case T_PRED:
-      switch (pr->pe.pred.bool_op)
+      switch (pr->pe.m_pred.bool_op)
 	{
 	case B_AND:
 	  /* 'pt_to_pred_expr()' will generate right-linear tree */
 	  result = V_TRUE;
-	  for (t_pr = pr; result == V_TRUE && t_pr->type == T_PRED && t_pr->pe.pred.bool_op == B_AND;
-	       t_pr = t_pr->pe.pred.rhs)
+	  for (t_pr = pr; result == V_TRUE && t_pr->type == T_PRED && t_pr->pe.m_pred.bool_op == B_AND;
+	       t_pr = t_pr->pe.m_pred.rhs)
 	    {
 	      if (result == V_UNKNOWN)
 		{
-		  result = eval_pred (thread_p, t_pr->pe.pred.lhs, vd, obj_oid);
+		  result = eval_pred (thread_p, t_pr->pe.m_pred.lhs, vd, obj_oid);
 		  result = (result == V_TRUE) ? V_UNKNOWN : result;
 		}
 	      else
 		{
-		  result = eval_pred (thread_p, t_pr->pe.pred.lhs, vd, obj_oid);
+		  result = eval_pred (thread_p, t_pr->pe.m_pred.lhs, vd, obj_oid);
 		}
 
 	      if (result == V_FALSE || result == V_ERROR)
@@ -1712,17 +1713,17 @@ eval_pred (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * 
 	case B_OR:
 	  /* 'pt_to_pred_expr()' will generate right-linear tree */
 	  result = V_FALSE;
-	  for (t_pr = pr; result == V_FALSE && t_pr->type == T_PRED && t_pr->pe.pred.bool_op == B_OR;
-	       t_pr = t_pr->pe.pred.rhs)
+	  for (t_pr = pr; result == V_FALSE && t_pr->type == T_PRED && t_pr->pe.m_pred.bool_op == B_OR;
+	       t_pr = t_pr->pe.m_pred.rhs)
 	    {
 	      if (result == V_UNKNOWN)
 		{
-		  result = eval_pred (thread_p, t_pr->pe.pred.lhs, vd, obj_oid);
+		  result = eval_pred (thread_p, t_pr->pe.m_pred.lhs, vd, obj_oid);
 		  result = (result == V_FALSE) ? V_UNKNOWN : result;
 		}
 	      else
 		{
-		  result = eval_pred (thread_p, t_pr->pe.pred.lhs, vd, obj_oid);
+		  result = eval_pred (thread_p, t_pr->pe.m_pred.lhs, vd, obj_oid);
 		}
 
 	      if (result == V_TRUE || result == V_ERROR)
@@ -1746,8 +1747,8 @@ eval_pred (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * 
 	  {
 	    DB_LOGICAL result_lhs, result_rhs;
 
-	    result_lhs = eval_pred (thread_p, pr->pe.pred.lhs, vd, obj_oid);
-	    result_rhs = eval_pred (thread_p, pr->pe.pred.rhs, vd, obj_oid);
+	    result_lhs = eval_pred (thread_p, pr->pe.m_pred.lhs, vd, obj_oid);
+	    result_rhs = eval_pred (thread_p, pr->pe.m_pred.rhs, vd, obj_oid);
 
 	    if (result_lhs == V_ERROR || result_rhs == V_ERROR)
 	      {
@@ -1773,8 +1774,8 @@ eval_pred (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * 
 	  {
 	    DB_LOGICAL result_lhs, result_rhs;
 
-	    result_lhs = eval_pred (thread_p, pr->pe.pred.lhs, vd, obj_oid);
-	    result_rhs = eval_pred (thread_p, pr->pe.pred.rhs, vd, obj_oid);
+	    result_lhs = eval_pred (thread_p, pr->pe.m_pred.lhs, vd, obj_oid);
+	    result_rhs = eval_pred (thread_p, pr->pe.m_pred.rhs, vd, obj_oid);
 
 	    if (result_lhs == V_ERROR || result_rhs == V_ERROR)
 	      {
@@ -1782,11 +1783,11 @@ eval_pred (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * 
 	      }
 	    else if (result_lhs == result_rhs)
 	      {
-		result = (pr->pe.pred.bool_op == B_IS) ? V_TRUE : V_FALSE;
+		result = (pr->pe.m_pred.bool_op == B_IS) ? V_TRUE : V_FALSE;
 	      }
 	    else
 	      {
-		result = (pr->pe.pred.bool_op == B_IS) ? V_FALSE : V_TRUE;
+		result = (pr->pe.m_pred.bool_op == B_IS) ? V_FALSE : V_TRUE;
 	      }
 	  }
 	  break;
@@ -2095,7 +2096,7 @@ exit:
  * Note: single node regular comparison predicate
  */
 DB_LOGICAL
-eval_pred_comp0 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * obj_oid)
+eval_pred_comp0 (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * obj_oid)
 {
   const COMP_EVAL_TERM *et_comp;
   DB_VALUE *peek_val1, *peek_val2;
@@ -2144,7 +2145,7 @@ eval_pred_comp0 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, 
  * Note: single leaf node NULL predicate
  */
 DB_LOGICAL
-eval_pred_comp1 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * obj_oid)
+eval_pred_comp1 (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * obj_oid)
 {
   const COMP_EVAL_TERM *et_comp;
   DB_VALUE *peek_val1;
@@ -2183,7 +2184,7 @@ eval_pred_comp1 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, 
  * Note: single node EXIST predicate
  */
 DB_LOGICAL
-eval_pred_comp2 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * obj_oid)
+eval_pred_comp2 (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * obj_oid)
 {
   const COMP_EVAL_TERM *et_comp;
   DB_VALUE *peek_val1;
@@ -2240,7 +2241,7 @@ eval_pred_comp2 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, 
  * Note: single node lhs or rhs list file predicate
  */
 DB_LOGICAL
-eval_pred_comp3 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * obj_oid)
+eval_pred_comp3 (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * obj_oid)
 {
   const COMP_EVAL_TERM *et_comp;
   DB_VALUE *peek_val1, *peek_val2;
@@ -2298,7 +2299,7 @@ eval_pred_comp3 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, 
  * Note: single node all/some predicate with a set
  */
 DB_LOGICAL
-eval_pred_alsm4 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * obj_oid)
+eval_pred_alsm4 (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * obj_oid)
 {
   const ALSM_EVAL_TERM *et_alsm;
   DB_VALUE *peek_val1, *peek_val2;
@@ -2364,7 +2365,7 @@ eval_pred_alsm4 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, 
  * Note: single node all/some  predicate with a list file
  */
 DB_LOGICAL
-eval_pred_alsm5 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * obj_oid)
+eval_pred_alsm5 (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * obj_oid)
 {
   const ALSM_EVAL_TERM *et_alsm;
   DB_VALUE *peek_val1;
@@ -2422,7 +2423,7 @@ eval_pred_alsm5 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, 
  * Note: single node like predicate
  */
 DB_LOGICAL
-eval_pred_like6 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * obj_oid)
+eval_pred_like6 (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * obj_oid)
 {
   const LIKE_EVAL_TERM *et_like;
   DB_VALUE *peek_val1, *peek_val2, *peek_val3;
@@ -2480,7 +2481,7 @@ eval_pred_like6 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, 
  * Note: single node like predicate
  */
 DB_LOGICAL
-eval_pred_rlike7 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * obj_oid)
+eval_pred_rlike7 (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * obj_oid)
 {
   const RLIKE_EVAL_TERM *et_rlike;
   DB_VALUE *peek_val1, *peek_val2, *peek_val3;
@@ -2536,7 +2537,7 @@ eval_pred_rlike7 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd,
  *   single_node_type(in):
  */
 PR_EVAL_FNC
-eval_fnc (THREAD_ENTRY * thread_p, const pred_expr * pr, DB_TYPE * single_node_type)
+eval_fnc (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, DB_TYPE * single_node_type)
 {
   // todo - thread_p is never used
 

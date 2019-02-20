@@ -31,6 +31,7 @@
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
 #include "xasl_analytic.hpp"
+#include "xasl_predicate.hpp"
 
 static void regu_xasl_proc_init (xasl_node &node, PROC_TYPE type);
 static void regu_spec_target_init (access_spec_node &spec, TARGET_TYPE type);
@@ -252,7 +253,7 @@ regu_init (qfile_sorted_list_id &list_id)
 }
 
 void
-regu_init (pred_expr &pr)
+regu_init (cubxasl::pred_expr &pr)
 {
   pr.type = T_NOT_TERM;
   pr.pe.not_term = NULL;

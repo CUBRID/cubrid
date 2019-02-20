@@ -49,6 +49,7 @@
 #include "xasl_cache.h"
 #include "stream_to_xasl.h"
 #include "query_manager.h"
+#include "query_reevaluation.hpp"
 #include "extendible_hash.h"
 #include "replication.h"
 #include "elo.h"
@@ -74,6 +75,7 @@
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
 #include "xasl_analytic.hpp"
+#include "xasl_predicate.hpp"
 
 #define GOTO_EXIT_ON_ERROR \
   do \
@@ -1681,10 +1683,10 @@ qexec_clear_pred (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, PRED_EXPR * pr, b
   switch (pr->type)
     {
     case T_PRED:
-      pg_cnt += qexec_clear_pred (thread_p, xasl_p, pr->pe.pred.lhs, is_final);
-      for (expr = pr->pe.pred.rhs; expr && expr->type == T_PRED; expr = expr->pe.pred.rhs)
+      pg_cnt += qexec_clear_pred (thread_p, xasl_p, pr->pe.m_pred.lhs, is_final);
+      for (expr = pr->pe.m_pred.rhs; expr && expr->type == T_PRED; expr = expr->pe.m_pred.rhs)
 	{
-	  pg_cnt += qexec_clear_pred (thread_p, xasl_p, expr->pe.pred.lhs, is_final);
+	  pg_cnt += qexec_clear_pred (thread_p, xasl_p, expr->pe.m_pred.lhs, is_final);
 	}
       pg_cnt += qexec_clear_pred (thread_p, xasl_p, expr, is_final);
       break;
@@ -7348,8 +7350,8 @@ qexec_reset_pred_expr (PRED_EXPR * pred)
   switch (pred->type)
     {
     case T_PRED:
-      qexec_reset_pred_expr (pred->pe.pred.lhs);
-      qexec_reset_pred_expr (pred->pe.pred.rhs);
+      qexec_reset_pred_expr (pred->pe.m_pred.lhs);
+      qexec_reset_pred_expr (pred->pe.m_pred.rhs);
       break;
     case T_EVAL_TERM:
       switch (pred->pe.eval_term.et_type)
@@ -8688,7 +8690,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
   (void) logtb_get_mvcc_snapshot (thread_p);
 
   mvcc_upddel_reev_data.copyarea = NULL;
-  SET_MVCC_UPDATE_REEV_DATA (&mvcc_reev_data, &mvcc_upddel_reev_data, V_TRUE);
+  mvcc_reev_data.set_update_reevaluation (mvcc_upddel_reev_data);
   class_oid_cnt = update->num_classes;
   mvcc_reev_class_cnt = update->num_reev_classes;
 
@@ -9625,7 +9627,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 
   class_oid_cnt = delete_->num_classes;
   mvcc_reev_class_cnt = delete_->num_reev_classes;
-  SET_MVCC_UPDATE_REEV_DATA (&mvcc_reev_data, &mvcc_upddel_reev_data, V_TRUE);
+  mvcc_reev_data.set_update_reevaluation (mvcc_upddel_reev_data);
 
   mvcc_upddel_reev_data.copyarea = NULL;
 
@@ -12433,8 +12435,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
   SCAN_CODE scan_code;
   MVCC_INFO *curr_mvcc_info = NULL;
   LOG_TDES *tdes = NULL;
-  SCAN_ID *scan_id = NULL;
-  FILTER_INFO range_filter, key_filter, data_filter;
+  UPDDEL_MVCC_COND_REEVAL upd_reev;
   MVCC_SCAN_REEV_DATA mvcc_sel_reev_data;
   MVCC_REEV_DATA mvcc_reev_data, *p_mvcc_reev_data = NULL;
   bool clear_list_id = false;
@@ -12447,14 +12448,10 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
   if (QEXEC_SEL_UPD_USE_REEVALUATION (xasl))
     {
       /* need reevaluation in this function */
-      scan_id = &xasl->spec_list->s_id;
-
-      /* initialize range and key filter, data filter already initialized */
-      INIT_FILTER_INFO_FOR_SCAN_REEV (scan_id, &range_filter, &key_filter, &data_filter);
-      /* init scan reevaluation structure */
-      INIT_SCAN_REEV_DATA (&mvcc_sel_reev_data, &range_filter, &key_filter, &data_filter, &scan_id->qualification);
-      /* set reevaluation data */
-      SET_MVCC_SELECT_REEV_DATA (&mvcc_reev_data, &mvcc_sel_reev_data, V_TRUE);
+      upd_reev.init (xasl->spec_list->s_id);
+      mvcc_sel_reev_data.set_filters (upd_reev);
+      mvcc_sel_reev_data.qualification = &xasl->spec_list->s_id.qualification;
+      mvcc_reev_data.set_scan_reevaluation (mvcc_sel_reev_data);
       p_mvcc_reev_data = &mvcc_reev_data;
 
       /* clear list id if all reevaluations result is false */
@@ -16103,8 +16100,8 @@ qexec_replace_prior_regu_vars_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pred, X
   switch (pred->type)
     {
     case T_PRED:
-      qexec_replace_prior_regu_vars_pred (thread_p, pred->pe.pred.lhs, xasl);
-      qexec_replace_prior_regu_vars_pred (thread_p, pred->pe.pred.rhs, xasl);
+      qexec_replace_prior_regu_vars_pred (thread_p, pred->pe.m_pred.lhs, xasl);
+      qexec_replace_prior_regu_vars_pred (thread_p, pred->pe.m_pred.rhs, xasl);
       break;
 
     case T_EVAL_TERM:
@@ -23263,9 +23260,6 @@ static int
 qexec_upddel_mvcc_set_filters (THREAD_ENTRY * thread_p, XASL_NODE * aptr_list,
 			       UPDDEL_MVCC_COND_REEVAL * mvcc_reev_class, OID * class_oid)
 {
-  SCAN_ID *scan_id = NULL;
-  HEAP_SCAN_ID *hsidp = NULL;
-  INDX_SCAN_ID *isidp = NULL;
   ACCESS_SPEC_TYPE *curr_spec = NULL;
 
   while (aptr_list != NULL && curr_spec == NULL)
@@ -23283,44 +23277,8 @@ qexec_upddel_mvcc_set_filters (THREAD_ENTRY * thread_p, XASL_NODE * aptr_list,
       return ER_FAILED;
     }
 
+  mvcc_reev_class->init (curr_spec->s_id);
   mvcc_reev_class->cls_oid = *class_oid;
-
-  scan_id = &curr_spec->s_id;
-  switch (scan_id->type)
-    {
-    case S_HEAP_SCAN:
-      {
-	hsidp = &scan_id->s.hsid;
-	scan_init_filter_info (&mvcc_reev_class->range_filter, NULL, NULL, NULL, NULL, NULL, 0, NULL, NULL, NULL);
-	scan_init_filter_info (&mvcc_reev_class->key_filter, NULL, NULL, NULL, NULL, NULL, 0, NULL, NULL, NULL);
-	scan_init_filter_info (&mvcc_reev_class->data_filter, &hsidp->scan_pred, &hsidp->pred_attrs, scan_id->val_list,
-			       scan_id->vd, &hsidp->cls_oid, 0, NULL, NULL, NULL);
-	mvcc_reev_class->rest_attrs = &hsidp->rest_attrs;
-	mvcc_reev_class->rest_regu_list = hsidp->rest_regu_list;
-	mvcc_reev_class->qualification = scan_id->qualification;
-      }
-      break;
-
-    case S_INDX_SCAN:
-      {
-	isidp = &scan_id->s.isid;
-	scan_init_filter_info (&mvcc_reev_class->range_filter, &isidp->range_pred, &isidp->range_attrs,
-			       scan_id->val_list, scan_id->vd, &isidp->cls_oid, 0, NULL, &isidp->num_vstr,
-			       isidp->vstr_ids);
-	scan_init_filter_info (&mvcc_reev_class->key_filter, &isidp->key_pred, &isidp->key_attrs, scan_id->val_list,
-			       scan_id->vd, &isidp->cls_oid, isidp->bt_num_attrs, isidp->bt_attr_ids, &isidp->num_vstr,
-			       isidp->vstr_ids);
-	scan_init_filter_info (&mvcc_reev_class->data_filter, &isidp->scan_pred, &isidp->pred_attrs, scan_id->val_list,
-			       scan_id->vd, &isidp->cls_oid, 0, NULL, NULL, NULL);
-	mvcc_reev_class->rest_attrs = &isidp->rest_attrs;
-	mvcc_reev_class->rest_regu_list = isidp->rest_regu_list;
-	mvcc_reev_class->qualification = scan_id->qualification;
-      }
-      break;
-
-    default:
-      break;
-    }
 
   return NO_ERROR;
 }
@@ -24462,15 +24420,15 @@ qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL
   db_make_null (&left_bound);
   db_make_null (&right_bound);
 
-  if (pred->type == T_PRED && pred->pe.pred.bool_op == B_AND)
+  if (pred->type == T_PRED && pred->pe.m_pred.bool_op == B_AND)
     {
-      error = qexec_get_orderbynum_upper_bound (thread_p, pred->pe.pred.lhs, vd, &left_bound);
+      error = qexec_get_orderbynum_upper_bound (thread_p, pred->pe.m_pred.lhs, vd, &left_bound);
       if (error != NO_ERROR)
 	{
 	  goto error_return;
 	}
 
-      error = qexec_get_orderbynum_upper_bound (thread_p, pred->pe.pred.rhs, vd, &right_bound);
+      error = qexec_get_orderbynum_upper_bound (thread_p, pred->pe.m_pred.rhs, vd, &right_bound);
       if (error != NO_ERROR)
 	{
 	  goto error_return;
@@ -24702,10 +24660,10 @@ qexec_clear_pred_xasl (THREAD_ENTRY * thread_p, PRED_EXPR * pred)
   switch (pred->type)
     {
     case T_PRED:
-      qexec_clear_pred_xasl (thread_p, pred->pe.pred.lhs);
-      for (pr = pred->pe.pred.rhs; pr && pr->type == T_PRED; pr = pr->pe.pred.rhs)
+      qexec_clear_pred_xasl (thread_p, pred->pe.m_pred.lhs);
+      for (pr = pred->pe.m_pred.rhs; pr && pr->type == T_PRED; pr = pr->pe.m_pred.rhs)
 	{
-	  qexec_clear_pred_xasl (thread_p, pr->pe.pred.lhs);
+	  qexec_clear_pred_xasl (thread_p, pr->pe.m_pred.lhs);
 	}
       qexec_clear_pred_xasl (thread_p, pr);
       break;

@@ -44,7 +44,9 @@
 namespace cubxasl
 {
   struct analytic_list_node;
+  struct pred_expr;
 } // namespace cubxasl
+using PRED_EXPR = cubxasl::pred_expr;
 // *INDENT-ON*
 
 #define MATCH_ALL       1

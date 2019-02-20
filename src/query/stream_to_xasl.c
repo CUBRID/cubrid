@@ -38,6 +38,7 @@
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
 #include "xasl_analytic.hpp"
+#include "xasl_predicate.hpp"
 #include "xasl_stream.hpp"
 
 static ACCESS_SPEC_TYPE *stx_restore_access_spec_type (THREAD_ENTRY * thread_p, char **ptr, void *arg);
@@ -3955,7 +3956,7 @@ stx_build_pred_expr (THREAD_ENTRY * thread_p, char *ptr, PRED_EXPR * pred_expr)
   switch (pred_expr->type)
     {
     case T_PRED:
-      ptr = stx_build_pred (thread_p, ptr, &pred_expr->pe.pred);
+      ptr = stx_build_pred (thread_p, ptr, &pred_expr->pe.m_pred);
       break;
 
     case T_EVAL_TERM:
@@ -4028,7 +4029,7 @@ stx_build_pred (THREAD_ENTRY * thread_p, char *ptr, PRED * pred)
 
       rhs->type = T_PRED;
 
-      pred = &rhs->pe.pred;
+      pred = &rhs->pe.m_pred;
 
       /* lhs */
       ptr = or_unpack_int (ptr, &offset);

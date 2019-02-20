@@ -50,6 +50,7 @@
 #include "tz_support.h"
 #include "db_date.h"
 #include "xasl.h"
+#include "xasl_predicate.hpp"
 #include "query_executor.h"
 #include "thread_entry.hpp"
 
@@ -4352,7 +4353,7 @@ fetch_peek_min_max_value_of_width_bucket_func (THREAD_ENTRY * thread_p, REGU_VAR
       goto error;
     }
 
-  pred = &pred_expr->pe.pred;
+  pred = &pred_expr->pe.m_pred;
   if (pred->lhs == NULL || pred->lhs->type != T_EVAL_TERM)
     {
       er_status = ER_QPROC_INVALID_XASLNODE;
