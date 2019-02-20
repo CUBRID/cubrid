@@ -316,7 +316,7 @@ namespace cubload
 	return;
       }
 
-    m_session.stats_update_current_line (m_thread_ref->m_loaddb_driver->get_scanner ().lineno() + 1);
+    m_session.stats_update_current_line (m_thread_ref->m_loaddb_driver->get_scanner ().lineno () + 1);
     clear_db_values ();
   }
 
