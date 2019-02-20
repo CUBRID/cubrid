@@ -31,7 +31,7 @@
 
 #include "dbtype.h"
 #include "fetch.h"
-#include "regu_var.h"
+#include "xasl.h"
 
 /*
  * qproc_next_set_scan () -

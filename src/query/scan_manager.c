@@ -40,13 +40,14 @@
 #include "perf_monitor.h"
 #include "query_manager.h"
 #include "query_evaluator.h"
+#include "query_opfunc.h"
 #include "query_reevaluation.hpp"
 #include "regu_var.h"
 #include "locator_sr.h"
 #include "object_primitive.h"
-#include "query_opfunc.h"
 #include "dbtype.h"
 #include "xasl_predicate.hpp"
+#include "xasl.h"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)

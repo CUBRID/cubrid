@@ -40,8 +40,6 @@ namespace cubxasl
   struct pred_expr;
 } // namespace cubxasl
 
-#define REGU_VARIABLE_XASL(r)      ((r)->xasl)
-
 typedef enum
 {
   /* types used by both XASL interpreter and regulator */
@@ -81,42 +79,14 @@ struct attr_descr_node
   HEAP_CACHE_ATTRINFO *cache_attrinfo;	/* used to cache catalog info */
   DB_VALUE *cache_dbvalp;	/* cached value for particular attr */
   /* in cache_attrinfo */
+
+  void reset ()
+  {
+    id = -1;
+    type = DB_TYPE_NULL;
+    cache_dbvalp = NULL;
+  }
 };				/* Attribute Descriptor */
-
-#define UT_CLEAR_ATTR_DESCR(ptr) \
-  do \
-    { \
-      (ptr)->id = -1; \
-      (ptr)->type = DB_TYPE_NULL; \
-      (ptr)->cache_dbvalp = NULL; \
-    } \
-  while (0)
-
-#if defined (SERVER_MODE) || defined (SA_MODE)
-/*
- *       	   ESQL POSITIONAL VALUES RELATED TYPEDEFS
- */
-typedef struct xasl_state XASL_STATE;
-
-typedef struct val_descr VAL_DESCR;
-struct val_descr
-{
-  DB_VALUE *dbval_ptr;		/* Array of values */
-  int dbval_cnt;		/* Value Count */
-  DB_DATETIME sys_datetime;
-  DB_TIMESTAMP sys_epochtime;
-  long lrand;
-  double drand;
-  XASL_STATE *xasl_state;	/* XASL_STATE pointer */
-};				/* Value Descriptor */
-
-struct xasl_state
-{
-  VAL_DESCR vd;			/* Value Descriptor */
-  QUERY_ID query_id;		/* Query associated with XASL */
-  int qp_xasl_line;		/* Error line */
-};
-#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 /************************************************************************/
 /* Regu stuff                                                           */
@@ -194,8 +164,6 @@ struct regu_variable_node
 
   int flags;			/* flags */
 
-
-
   TP_DOMAIN *domain;		/* domain of the value in this regu variable */
   TP_DOMAIN *original_domain;	/* original domain, used at execution in case of XASL clones */
   DB_VALUE *vfetch_to;		/* src db_value to fetch into in qp_fetchvlist */
@@ -240,103 +208,6 @@ struct regu_ptr_list_node
   REGU_PTR_LIST next;		/* Next node */
   REGU_VARIABLE *var_p;		/* Regulator variable pointer */
 };
-
-typedef struct qproc_db_value_list *QPROC_DB_VALUE_LIST;	/* TODO */
-struct qproc_db_value_list
-{
-  QPROC_DB_VALUE_LIST next;
-  DB_VALUE *val;
-  TP_DOMAIN *dom;
-
-  qproc_db_value_list () = default;
-};
-
-typedef struct val_list_node VAL_LIST;	/* value list */
-struct val_list_node
-{
-  QPROC_DB_VALUE_LIST valp;	/* first value node */
-  int val_cnt;			/* value count */
-
-  val_list_node () = default;
-};
-
-typedef struct key_val_range KEY_VAL_RANGE;
-struct key_val_range
-{
-  RANGE range;
-  DB_VALUE key1;
-  DB_VALUE key2;
-  bool is_truncated;
-  int num_index_term;		/* #terms associated with index key range */
-};
-
-typedef struct key_range KEY_RANGE;
-struct key_range
-{
-  REGU_VARIABLE *key1;		/* pointer to first key value */
-  REGU_VARIABLE *key2;		/* pointer to second key value */
-  RANGE range;			/* range spec; GE_LE, GT_LE, GE_LT, GT_LT, GE_INF, GT_INF, INF_LT, INF_LE, INF_INF */
-};				/* key range structure */
-
-typedef struct key_info KEY_INFO;
-struct key_info
-{
-  KEY_RANGE *key_ranges;	/* a list of key ranges */
-  int key_cnt;			/* key count */
-  bool is_constant;		/* every key value is a constant */
-  bool key_limit_reset;		/* should key limit reset at each range */
-  bool is_user_given_keylimit;	/* true if user specifies key limit */
-  REGU_VARIABLE *key_limit_l;	/* lower key limit */
-  REGU_VARIABLE *key_limit_u;	/* upper key limit */
-};				/* key information structure */
-
-typedef struct indx_info INDX_INFO;
-struct indx_info
-{
-  BTID btid;			/* index identifier */
-  int coverage;			/* index coverage state */
-  OID class_oid;
-  RANGE_TYPE range_type;	/* range type */
-  KEY_INFO key_info;		/* key information */
-  int orderby_desc;		/* first column of the order by is desc */
-  int groupby_desc;		/* first column of the group by is desc */
-  int use_desc_index;		/* using descending index */
-  int orderby_skip;		/* order by skip information */
-  int groupby_skip;		/* group by skip information */
-  int use_iss;			/* flag set if using index skip scan */
-  int func_idx_col_id;		/* function expression column position, if the index is a function index */
-  KEY_RANGE iss_range;		/* placeholder range used for ISS; must be created on the broker */
-  int ils_prefix_len;		/* index loose scan prefix length */
-};				/* index information structure */
-
-typedef enum
-{
-  METHOD_IS_NONE = 0,
-  METHOD_IS_INSTANCE_METHOD = 1,
-  METHOD_IS_CLASS_METHOD
-} METHOD_TYPE;
-
-typedef struct method_sig_node METHOD_SIG;
-struct method_sig_node
-{				/* method signature */
-  METHOD_SIG *next;
-  char *method_name;		/* method name */
-  char *class_name;		/* class for the method */
-  METHOD_TYPE method_type;	/* instance or class method */
-  int num_method_args;		/* number of arguments */
-  int *method_arg_pos;		/* arg position in list file */
-
-  method_sig_node () = default;
-};
-
-struct method_sig_list
-{				/* signature for methods */
-  METHOD_SIG *method_sig;	/* one method signature */
-  int num_methods;		/* number of signatures */
-
-  method_sig_list () = default;
-};
-typedef struct method_sig_list METHOD_SIG_LIST;
 
 // regular variable flag functions
 // note - uppercase names are used because they used to be macros.

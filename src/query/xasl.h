@@ -29,7 +29,9 @@
 #include <assert.h>
 
 #include "access_json_table.hpp"
+#include "access_spec.hpp"
 #include "memory_hash.h"
+#include "method_def.hpp"
 #include "query_list.h"
 #include "regu_var.h"
 #include "storage_common.h"
@@ -186,6 +188,25 @@ typedef enum
   CTE_PROC
 } PROC_TYPE;
 
+typedef struct qproc_db_value_list *QPROC_DB_VALUE_LIST;	/* TODO */
+struct qproc_db_value_list
+{
+  QPROC_DB_VALUE_LIST next;
+  DB_VALUE *val;
+  TP_DOMAIN *dom;
+
+    qproc_db_value_list () = default;
+};
+
+typedef struct val_list_node VAL_LIST;	/* value list */
+struct val_list_node
+{
+  QPROC_DB_VALUE_LIST valp;	/* first value node */
+  int val_cnt;			/* value count */
+
+    val_list_node () = default;
+};
+
 /* To handle selected update list, click counter related */
 typedef struct selupd_list SELUPD_LIST;
 struct selupd_list
@@ -197,10 +218,6 @@ struct selupd_list
   REGU_VARLIST_LIST select_list;	/* Regu list to be selected */
   int wait_msecs;		/* lock timeout in milliseconds */
 };
-
-#if defined (SERVER_MODE) || defined (SA_MODE)
-
-#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 /*update/delete class info structure */
 typedef struct upddel_class_info UPDDEL_CLASS_INFO;
@@ -473,7 +490,7 @@ struct cte_proc_node
 #define EXECUTE_REGU_VARIABLE_XASL(thread_p, r, v) \
   do \
     { \
-      XASL_NODE *_x = REGU_VARIABLE_XASL(r); \
+      XASL_NODE *_x = (r)->xasl; \
       \
       /* check for xasl node */ \
       if (_x) \
@@ -500,7 +517,7 @@ struct cte_proc_node
   while (0)
 
 #define CHECK_REGU_VARIABLE_XASL_STATUS(r) \
-    (REGU_VARIABLE_XASL(r) ? (REGU_VARIABLE_XASL(r))->status : XASL_SUCCESS)
+    ((r)->xasl != NULL ? ((r)->xasl)->status : XASL_SUCCESS)
 
 #define QPROC_IS_INTERPOLATION_FUNC(func_p) \
   (((func_p)->function == PT_MEDIAN) \

@@ -4979,7 +4979,7 @@ xts_process_regu_variable (char *ptr, const REGU_VARIABLE * regu_var)
     }
   ptr = or_pack_int (ptr, offset);
 
-  offset = xts_save_xasl_node (REGU_VARIABLE_XASL (regu_var));
+  offset = xts_save_xasl_node (regu_var->xasl);
   if (offset == ER_FAILED)
     {
       return NULL;

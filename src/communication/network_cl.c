@@ -47,7 +47,7 @@
 #include "environment_variable.h"
 #include "boot_cl.h"
 #include "query_method.h"
-#include "regu_var.h"		// METHOD_SIG, METHOD_SIG_LIST
+#include "method_def.hpp"
 #include "release_string.h"
 #include "log_comm.h"
 #include "file_io.h"
@@ -1565,44 +1565,6 @@ net_client_request_3_data (int request, char *argbuf, int argsize, char *databuf
   return rc;
 }
 
-// todo - move me
-/*
- * regu_free_method_sig () -
- *   return:
- *   method_sig(in)     : pointer to a method_sig
- *
- * Note: Free function for METHOD_SIG using free_and_init.
- */
-void
-regu_free_method_sig (METHOD_SIG * method_sig)
-{
-  if (method_sig != NULL)
-    {
-      regu_free_method_sig (method_sig->next);
-      db_private_free_and_init (NULL, method_sig->method_name);
-      db_private_free_and_init (NULL, method_sig->class_name);
-      db_private_free_and_init (NULL, method_sig->method_arg_pos);
-      db_private_free_and_init (NULL, method_sig);
-    }
-}
-
-/*
- * regu_free_method_sig_list () -
- *   return:
- *   method_sig_list(in)        : pointer to a method_sig_list
- *
- * Note: Free function for METHOD_SIG_LIST using free_and_init.
- */
-void
-regu_free_method_sig_list (METHOD_SIG_LIST * method_sig_list)
-{
-  if (method_sig_list != NULL)
-    {
-      regu_free_method_sig (method_sig_list->method_sig);
-      db_private_free_and_init (NULL, method_sig_list);
-    }
-}
-
 /*
  * net_client_request_with_callback -
  *
@@ -1890,7 +1852,7 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 			  method_invoke_for_server (rc, net_Server_host, net_Server_name, method_call_list_id,
 						    method_call_sig_list);
 			cursor_free_self_list_id (method_call_list_id);
-			regu_free_method_sig_list (method_call_sig_list);
+			method_sig_list_freemem (method_call_sig_list);
 			if (error != NO_ERROR)
 			  {
 			    assert (er_errid () != NO_ERROR);

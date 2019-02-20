@@ -33,17 +33,16 @@
 #include <setjmp.h>
 #include <assert.h>
 
-#include "object_representation.h"
-#include "error_manager.h"
-#include "oid.h"
-#include "set_object.h"
-#include "file_io.h"
-#include "regu_var.h"
-#include "object_primitive.h"
-#include "query_list.h"
 #include "db_json.hpp"
-
 #include "dbtype.h"
+#include "error_manager.h"
+#include "file_io.h"
+#include "method_def.hpp"
+#include "object_primitive.h"
+#include "object_representation.h"
+#include "oid.h"
+#include "query_list.h"
+#include "set_object.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -7210,7 +7209,7 @@ or_unpack_recdes (char *buf, RECDES ** recdes)
  *    Kludge, the arguments are passed in as void* so we can avoid
  *    unfortunate circular dependencies between query_list.h and or.h
  *    query_list.h is included at the top of this file so we have the
- *    information necesary for casting.
+ *    information necessary for casting.
  */
 char *
 or_unpack_listid (char *ptr, void *listid_ptr)

@@ -375,6 +375,7 @@ set(XASL_SOURCES
   )
 set(XASL_HEADERS
   ${XASL_DIR}/access_json_table.hpp
+  ${XASL_DIR}/access_spec.hpp
   ${XASL_DIR}/compile_context.h
   ${XASL_DIR}/xasl_aggregate.hpp
   ${XASL_DIR}/xasl_analytic.hpp

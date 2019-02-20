@@ -1191,8 +1191,6 @@ qdump_data_type_string (DB_TYPE type)
 static bool
 qdump_print_value (REGU_VARIABLE * value_p)
 {
-  XASL_NODE *xasl_p;
-
   if (value_p == NULL)
     {
       fprintf (foutput, "NIL");
@@ -1203,10 +1201,9 @@ qdump_print_value (REGU_VARIABLE * value_p)
     {
       fprintf (foutput, "[HIDDEN_COLUMN]");
     }
-  xasl_p = REGU_VARIABLE_XASL (value_p);
-  if (xasl_p)
+  if (value_p->xasl)
     {
-      fprintf (foutput, "[xasl:%p]", xasl_p);
+      fprintf (foutput, "[xasl:%p]", value_p->xasl);
     }
 
   fprintf (foutput, "[");

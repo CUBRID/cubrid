@@ -6390,7 +6390,7 @@ stx_init_regu_variable (REGU_VARIABLE * regu)
   regu->value.val_pos = 0;
   regu->vfetch_to = NULL;
   regu->domain = NULL;
-  REGU_VARIABLE_XASL (regu) = NULL;
+  regu->xasl = NULL;
 }
 
 #if defined(ENABLE_UNUSED_FUNCTION)

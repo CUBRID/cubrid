@@ -6403,7 +6403,7 @@ pt_make_regu_subquery (PARSER_CONTEXT * parser, XASL_NODE * xasl, const UNBOX un
 
       /* set as linked to regu var */
       XASL_SET_FLAG (xasl, XASL_LINK_TO_REGU_VARIABLE);
-      REGU_VARIABLE_XASL (regu) = xasl;
+      regu->xasl = xasl;
 
       xasl->is_single_tuple = (unbox != UNBOX_AS_TABLE);
       if (xasl->is_single_tuple)
@@ -6486,7 +6486,7 @@ pt_make_regu_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /* set as linked to regu var */
   XASL_SET_FLAG (xasl, XASL_LINK_TO_REGU_VARIABLE);
-  REGU_VARIABLE_XASL (regu) = xasl;
+  regu->xasl = xasl;
   regu->type = TYPE_CONSTANT;
   regu->value.dbvalptr = xasl->proc.insert.obj_oid;
 
@@ -9251,7 +9251,7 @@ pt_to_regu_attr_descr (PARSER_CONTEXT * parser, DB_OBJECT * class_object, HEAP_C
     }
 
   attr_descr = &regu->value.attr_descr;
-  UT_CLEAR_ATTR_DESCR (attr_descr);
+  attr_descr->reset ();
 
   regu->type =
     (sharedp) ? TYPE_SHARED_ATTR_ID : (attr->info.name.meta_class == PT_META_ATTR) ? TYPE_CLASS_ATTR_ID : TYPE_ATTR_ID;
@@ -13110,7 +13110,7 @@ pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list, SELUPD_LIST ** selu
 		    {
 		      /* set as linked to regu var */
 		      XASL_SET_FLAG (xasl, XASL_LINK_TO_REGU_VARIABLE);
-		      REGU_VARIABLE_XASL (regu) = xasl;
+		      regu->xasl = xasl;
 		    }
 
 		  if (xasl->is_single_tuple)

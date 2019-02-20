@@ -43,4 +43,35 @@ typedef enum
 #define VACOMM_BUFFER_HEADER_NO_VALS_OFFSET (OR_INT_SIZE * 2)
 #define VACOMM_BUFFER_HEADER_ERROR_OFFSET   (OR_INT_SIZE * 2)
 
+typedef enum
+{
+  METHOD_IS_NONE = 0,
+  METHOD_IS_INSTANCE_METHOD = 1,
+  METHOD_IS_CLASS_METHOD
+} METHOD_TYPE;
+
+typedef struct method_sig_node METHOD_SIG;
+struct method_sig_node
+{
+  /* method signature */
+  METHOD_SIG *next;
+  char *method_name;		/* method name */
+  char *class_name;		/* class for the method */
+  METHOD_TYPE method_type;	/* instance or class method */
+  int num_method_args;		/* number of arguments */
+  int *method_arg_pos;		/* arg position in list file */
+
+  method_sig_node () = default;
+};
+
+struct method_sig_list
+{
+  /* signature for methods */
+  METHOD_SIG *method_sig;	/* one method signature */
+  int num_methods;		/* number of signatures */
+
+  method_sig_list () = default;
+};
+typedef struct method_sig_list METHOD_SIG_LIST;
+
 #endif // _METHOD_DEF_H_

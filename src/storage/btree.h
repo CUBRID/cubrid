@@ -33,6 +33,7 @@
 
 #include "config.h"
 
+#include "access_spec.hpp"
 #include "storage_common.h"
 #include "oid.h"
 #include "statistics.h"

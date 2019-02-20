@@ -43,11 +43,8 @@ namespace cubxasl
   struct analytic_list_node;
 } // namespace cubxasl
 
-extern int qdata_initialize_analytic_func (cubthread::entry *thread_p, cubxasl::analytic_list_node *func_p,
-    QUERY_ID query_id);
-extern int qdata_evaluate_analytic_func (cubthread::entry *thread_p, cubxasl::analytic_list_node *func_p,
-    val_descr *vd);
-extern int qdata_finalize_analytic_func (cubthread::entry *thread_p, cubxasl::analytic_list_node *func_p,
-    bool is_same_group);
+int qdata_initialize_analytic_func (cubthread::entry *thread_p, cubxasl::analytic_list_node *func_p, QUERY_ID query_id);
+int qdata_evaluate_analytic_func (cubthread::entry *thread_p, cubxasl::analytic_list_node *func_p, val_descr *vd);
+int qdata_finalize_analytic_func (cubthread::entry *thread_p, cubxasl::analytic_list_node *func_p, bool is_same_group);
 
 #endif // _QUERY_ANALYTIC_HPP_

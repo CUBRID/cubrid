@@ -39,6 +39,7 @@ struct tp_domain;
 struct val_descr;
 struct val_list_node;
 struct valptr_list_node;
+struct xasl_state;
 
 #define UNBOUND(x) ((x)->val_flag == V_UNBOUND || (x)->type == DB_TYPE_NULL)
 

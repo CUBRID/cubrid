@@ -77,6 +77,15 @@
 #include "xasl_analytic.hpp"
 #include "xasl_predicate.hpp"
 
+// XASL_STATE
+typedef struct xasl_state XASL_STATE;
+struct xasl_state
+{
+  VAL_DESCR vd;			/* Value Descriptor */
+  QUERY_ID query_id;		/* Query associated with XASL */
+  int qp_xasl_line;		/* Error line */
+};
+
 #define GOTO_EXIT_ON_ERROR \
   do \
     { \
@@ -24674,7 +24683,7 @@ qexec_clear_pred_xasl (THREAD_ENTRY * thread_p, PRED_EXPR * pred)
 	  COMP_EVAL_TERM *et_comp = &pred->pe.eval_term.et.et_comp;
 	  if (et_comp->rel_op == R_EXISTS && et_comp->lhs->type == TYPE_LIST_ID)
 	    {
-	      qexec_clear_head_lists (thread_p, REGU_VARIABLE_XASL (et_comp->lhs));
+	      qexec_clear_head_lists (thread_p, et_comp->lhs->xasl);
 	    }
 	}
       else if (pred->pe.eval_term.et_type == T_ALSM_EVAL_TERM)
@@ -24682,7 +24691,7 @@ qexec_clear_pred_xasl (THREAD_ENTRY * thread_p, PRED_EXPR * pred)
 	  ALSM_EVAL_TERM *et_alsm = &pred->pe.eval_term.et.et_alsm;
 	  if (et_alsm->elemset->type == TYPE_LIST_ID)
 	    {
-	      qexec_clear_head_lists (thread_p, REGU_VARIABLE_XASL (et_alsm->elemset));
+	      qexec_clear_head_lists (thread_p, et_alsm->elemset->xasl);
 	    }
 	}
       /* no need to check into eval terms of type T_LIKE_EVAL_TERM and T_RLIKE_EVAL_TERM since they don't have
