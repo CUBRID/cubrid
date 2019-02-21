@@ -3597,7 +3597,7 @@ validate_and_make_json_path (std::string &sql_path, bool allow_wildcards, JSON_P
 	    }
 	  else
 	    {
-	      built_json_path.emplace_back ({ JSON_PATH::PATH_TOKEN::token_type::array_index, sql_path.substr (i + 1, end_bracket_offset - i - 1)});
+	      built_json_path.emplace_back ({ JSON_PATH::PATH_TOKEN::token_type::array_index, sql_path.substr (i, end_bracket_offset - i)});
 	    }
 
 	  i = skip_whitespaces (sql_path, end_bracket_offset + 1);
