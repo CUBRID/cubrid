@@ -7391,7 +7391,7 @@ static void
 la_get_adaptive_time_commit_interval (int *time_commit_interval, int *delay_hist)
 {
   int delay;
-  int max_commit_interval;
+  int max_commit_interval = 0;
   float avg_delay;
   static int delay_hist_idx = 0;
 
@@ -7403,8 +7403,9 @@ la_get_adaptive_time_commit_interval (int *time_commit_interval, int *delay_hist
     {
       return;
     }
-
+#if defined (ENABLE_OLD_REPLICATION)
   max_commit_interval = prm_get_integer_value (PRM_ID_HA_APPLYLOGDB_MAX_COMMIT_INTERVAL_IN_MSECS);
+#endif
 
   if (delay > LA_MAX_TOLERABLE_DELAY)
     {
@@ -7787,7 +7788,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
   bool clear_owner;
   int now = 0, last_eof_time = 0;
   LOG_LSA last_eof_lsa;
-  int time_commit_interval;
+  int time_commit_interval = 0;
   int delay_hist[LA_NUM_DELAY_HISTORY];
   int i;
   int remove_arv_interval_in_secs;
@@ -7916,7 +7917,9 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
     {
       delay_hist[i] = -1;
     }
+#if defined (ENABLE_OLD_REPLICATION)
   time_commit_interval = prm_get_integer_value (PRM_ID_HA_APPLYLOGDB_MAX_COMMIT_INTERVAL_IN_MSECS);
+#endif
 
   if (prm_get_integer_value (PRM_ID_HA_REPL_FILTER_TYPE) != REPL_FILTER_NONE)
     {
