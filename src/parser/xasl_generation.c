@@ -8990,7 +8990,7 @@ pt_make_reserved_value_list (PARSER_CONTEXT * parser, PT_RESERVED_NAME_TYPE type
   PT_GET_RESERVED_NAME_FIRST_AND_LAST (type, start, end);
   size = end - start + 1;
 
-  regu_array_alloc (value_list, size);
+  regu_array_alloc < DB_VALUE * >(&value_list, size);
   if (value_list)
     {
       /* initialize values */
@@ -10129,7 +10129,7 @@ pt_to_list_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int nterms, bool
     }
 
   /* allocate regu variable list and sequence value list */
-  regu_array_alloc (regu_var_list, n_elem);
+  regu_array_alloc (&regu_var_list, n_elem);
   if (!regu_var_list)
     {
       goto error;
@@ -10363,8 +10363,8 @@ pt_to_rangelist_key (PARSER_CONTEXT * parser, PT_NODE ** term_exprs, int nterms,
     }
 
   /* allocate regu variable list and sequence value list */
-  regu_array_alloc (regu_var_list1, n_elem);
-  regu_array_alloc (regu_var_list2, n_elem);
+  regu_array_alloc (&regu_var_list1, n_elem);
+  regu_array_alloc (&regu_var_list2, n_elem);
   range_list = (RANGE *) malloc (sizeof (RANGE) * n_elem);
   if (!regu_var_list1 || !regu_var_list2 || !range_list)
     {
@@ -17812,7 +17812,7 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	;
 
       /* alloc valptr_lists for each list of values */
-      regu_array_alloc (insert->valptr_lists, insert->num_val_lists);
+      regu_array_alloc (&insert->valptr_lists, insert->num_val_lists);
       if (insert->valptr_lists == NULL)
 	{
 	  return NULL;
