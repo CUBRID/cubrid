@@ -268,41 +268,9 @@ class JSON_PATH : protected rapidjson::GenericPointer <JSON_VALUE>
       }
     };
 
-    // todo: find a way to avoid passing reference to get other_tokens.end ()
-    bool match (const std::vector<PATH_TOKEN>::const_iterator &it1, const std::vector<PATH_TOKEN>::const_iterator &it2,
-		const std::vector<PATH_TOKEN> &other_tokens, bool match_prefix = false) const
-    {
-      if (it1 == m_path_tokens.end () && it2 == other_tokens.end ())
-	{
-	  return true;
-	}
-
-      if (it1 == m_path_tokens.end ())
-	{
-	  return match_prefix;
-	}
-
-      if (it2 == other_tokens.end ())
-	{
-	  // note that in case of double wildcard we have guaranteed a token after it
-	  return false;
-	}
-
-      // todo: dense double_wildcard path_tokens would make matching O(n*m*k)
-      // is it worth to use momoisation for O((n+m)*k)? (this case is rare)
-      if (it1->type == PATH_TOKEN::double_wild_card)
-	{
-	  return match (it1 + 1, it2 + 1, other_tokens, match_prefix) || match (it1, it2 + 1, other_tokens, match_prefix);
-	}
-
-      return it1->match (*it2) && match (it1 + 1, it2 + 1, other_tokens, match_prefix);
-    }
-
     bool match (const JSON_PATH &other, bool match_prefix = false) const
     {
-      match (m_path_tokens.begin (), other.m_path_tokens.begin (), other.m_path_tokens, match_prefix);
-
-      return true;
+      return match (m_path_tokens.begin (), other.m_path_tokens.begin (), other.m_path_tokens, match_prefix);
     }
 
     void emplace_back (PATH_TOKEN &&path_token)
@@ -339,6 +307,34 @@ class JSON_PATH : protected rapidjson::GenericPointer <JSON_VALUE>
 
     void replace_special_chars_in_tokens (std::string &token,
 					  const std::unordered_map<std::string, std::string> &special_chars) const;
+
+    // todo: find a way to avoid passing reference to get other_tokens.end ()
+    bool match (const std::vector<PATH_TOKEN>::const_iterator &it1, const std::vector<PATH_TOKEN>::const_iterator &it2,
+		const std::vector<PATH_TOKEN> &other_tokens, bool match_prefix = false) const
+    {
+      if (it1 == m_path_tokens.end () && it2 == other_tokens.end ())
+	{
+	  return true;
+	}
+
+      if (it1 == m_path_tokens.end ())
+	{
+	  return match_prefix;
+	}
+
+      if (it2 == other_tokens.end ())
+	{
+	  // note that in case of double wildcard we have guaranteed a token after it
+	  return false;
+	}
+
+      if (it1->type == PATH_TOKEN::double_wild_card)
+	{
+	  return match (it1 + 1, it2, other_tokens, match_prefix) || match (it1, it2 + 1, other_tokens, match_prefix);
+	}
+
+      return it1->match (*it2) && match (it1 + 1, it2 + 1, other_tokens, match_prefix);
+    }
 
     std::vector<PATH_TOKEN> m_path_tokens;
 };
@@ -1315,7 +1311,7 @@ int JSON_PATH_MAPPER::CallOnArrayIterate ()
 int JSON_PATH_MAPPER::CallOnKeyIterate (JSON_VALUE &key)
 {
   m_accumulated_paths.pop ();
-  std::string path_item;
+  std::string path_item = "\"";
 
   std::string object_key = key.GetString ();
   for (auto it = object_key.begin (); it != object_key.end (); ++it)
@@ -1823,7 +1819,6 @@ db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<
 
 	if (path_compatible)
 	  {
-	    stop = true;
 	    produced_array[i].push_back (&jv);
 	  }
       }
@@ -3562,6 +3557,8 @@ validate_and_make_json_path (std::string &sql_path, bool allow_wildcards, JSON_P
       return false;
     }
 
+  built_json_path.m_backend_json_format = JSON_PATH::JSON_PATH_TYPE::JSON_PATH_SQL_JSON;
+
   if (sql_path[0] != '$')
     {
       // first character should always be '$'
@@ -3570,7 +3567,6 @@ validate_and_make_json_path (std::string &sql_path, bool allow_wildcards, JSON_P
   // start parsing path string by skipping dollar character
   std::size_t i = skip_whitespaces (sql_path, 1);
 
-  built_json_path.m_backend_json_format = JSON_PATH::JSON_PATH_TYPE::JSON_PATH_SQL_JSON;
   while (i < sql_path.length ())
     {
       // to begin a next token we have only 3 possibilities:
@@ -3601,7 +3597,7 @@ validate_and_make_json_path (std::string &sql_path, bool allow_wildcards, JSON_P
 	    }
 	  else
 	    {
-	      built_json_path.emplace_back ({ JSON_PATH::PATH_TOKEN::token_type::array_index, sql_path.substr (i + 1, end_bracket_offset)});
+	      built_json_path.emplace_back ({ JSON_PATH::PATH_TOKEN::token_type::array_index, sql_path.substr (i + 1, end_bracket_offset - i - 1)});
 	    }
 
 	  i = skip_whitespaces (sql_path, end_bracket_offset + 1);
@@ -3622,7 +3618,7 @@ validate_and_make_json_path (std::string &sql_path, bool allow_wildcards, JSON_P
 		{
 		  return false;
 		}
-	      built_json_path.emplace_back ({ JSON_PATH::PATH_TOKEN::token_type::object_key, sql_path.substr (old_idx, i)});
+	      built_json_path.emplace_back ({ JSON_PATH::PATH_TOKEN::token_type::object_key, sql_path.substr (old_idx, i - old_idx)});
 	      break;
 	    }
 	    case '*':
@@ -3641,7 +3637,7 @@ validate_and_make_json_path (std::string &sql_path, bool allow_wildcards, JSON_P
 		{
 		  return false;
 		}
-	      built_json_path.emplace_back ({ JSON_PATH::PATH_TOKEN::token_type::object_key, sql_path.substr (old_idx, i)});
+	      built_json_path.emplace_back ({ JSON_PATH::PATH_TOKEN::token_type::object_key, sql_path.substr (old_idx, i - old_idx)});
 	      break;
 	    }
 	    }
