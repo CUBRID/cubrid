@@ -3620,9 +3620,6 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 						      MSGCAT_SEMANTIC_OUT_OF_MEMORY));
 	      return tree;
 	    }
-	  regu_alloc (aggregate_list->accumulator.value);
-	  regu_alloc (aggregate_list->accumulator.value2);
-	  regu_alloc (aggregate_list->list_id);
 	  if (aggregate_list->accumulator.value == NULL || aggregate_list->accumulator.value2 == NULL
 	      || aggregate_list->list_id == NULL)
 	    {

@@ -296,6 +296,10 @@ regu_init (cubxasl::aggregate_list_node &agg)
   agg.list_id = NULL;
   agg.sort_list = NULL;
   std::memset (&agg.info, 0, sizeof (AGGREGATE_SPECIFIC_FUNCTION_INFO));
+
+  regu_alloc (agg.accumulator.value);
+  regu_alloc (agg.accumulator.value2);
+  regu_alloc (agg.list_id);
 }
 
 void
