@@ -24723,9 +24723,7 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
     {
       return NO_ERROR;
     }
-  assert (proc->agg_hash_context == NULL);
-
-  proc->agg_hash_context = (AGGREGATE_HASH_CONTEXT *) db_private_alloc (thread_p, sizeof (*proc->agg_hash_context));
+  assert (proc->agg_hash_context != NULL);
 
   /* clear fields (in case of error, things will get properly disposed) */
   proc->agg_hash_context->key_domains = NULL;
@@ -24972,11 +24970,6 @@ qexec_free_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * proc
 {
   if (!proc->g_hash_eligible)
     {
-      return;
-    }
-  if (proc->agg_hash_context == NULL)
-    {
-      // nothing to free
       return;
     }
 

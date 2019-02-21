@@ -35,6 +35,7 @@
 
 #include "dbtype.h"
 #include "error_manager.h"
+#include "query_aggregate.hpp"
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
 #include "xasl_analytic.hpp"
@@ -2931,6 +2932,9 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr, BUILDLIST_PROC_NOD
     }
 
   ptr = or_unpack_int (ptr, (int *) &stx_build_list_proc->a_instnum_flag);
+
+  stx_build_list_proc->agg_hash_context =
+    (AGGREGATE_HASH_CONTEXT *) stx_alloc_struct (thread_p, sizeof (*stx_build_list_proc->agg_hash_context));
 
   return ptr;
 
