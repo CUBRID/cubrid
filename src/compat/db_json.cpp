@@ -1020,7 +1020,7 @@ JSON_PATH::dump_json_path (bool skip_json_pointer_minus = true) const
 {
   if (m_backend_json_format == JSON_PATH_TYPE::JSON_PATH_SQL_JSON)
     {
-      std::string res = "$.";
+      std::string res = "$";
 
       for (const auto &tkn : m_path_tokens)
 	{
@@ -1032,7 +1032,8 @@ JSON_PATH::dump_json_path (bool skip_json_pointer_minus = true) const
 	      res += ']';
 	      break;
 	    case PATH_TOKEN::object_key:
-	      res+= tkn.token_string;
+	      res += '.';
+	      res += tkn.token_string;
 	      break;
 	    default:
 	      // assert (false);
