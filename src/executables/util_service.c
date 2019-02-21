@@ -316,6 +316,7 @@ static int us_hb_server_stop (HA_CONF * ha_conf, const char *db_name);
 
 static int us_hb_process_start (HA_CONF * ha_conf, const char *db_name, bool check_result);
 static int us_hb_process_stop (HA_CONF * ha_conf, const char *db_name);
+static int us_hb_deactivate (const char *hostname, bool immediate_stop);
 #if defined (ENABLE_OLD_REPLICATION)
 static int us_hb_process_copylogdb (int command_type, HA_CONF * ha_conf, const char *db_name, const char *node_name,
 				    const char *remote_host);
