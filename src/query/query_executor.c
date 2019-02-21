@@ -25068,9 +25068,6 @@ qexec_free_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * proc
   proc->agg_hash_context->hash_size = 0;
   proc->agg_hash_context->group_count = 0;
   proc->agg_hash_context->tuple_count = 0;
-
-  db_private_free (thread_p, proc->agg_hash_context);
-  proc->agg_hash_context = NULL;
 }
 
 /*
