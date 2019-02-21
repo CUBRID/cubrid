@@ -59,6 +59,8 @@ regu_init (xasl_node &node)
   node.option = Q_ALL;
   node.iscan_oid_order = prm_get_bool_value (PRM_ID_BT_INDEX_SCAN_OID_ORDER);
   node.scan_op_type = S_SELECT;
+
+  regu_alloc (node.list_id);
 }
 
 void
@@ -249,23 +251,10 @@ regu_init (qfile_list_id &list_id)
 }
 
 void
-regu_init (qfile_sorted_list_id &list_id)
-{
-  list_id.list_id = NULL;
-  list_id.sorted = 0;
-}
-
-void
 regu_init (cubxasl::pred_expr &pr)
 {
   pr.type = T_NOT_TERM;
   pr.pe.m_not_term = NULL;
-}
-
-void
-regu_init (pred_expr_with_context &pred)
-{
-  std::memset (&pred, 0, sizeof (pred));
 }
 
 void
@@ -280,6 +269,8 @@ regu_init (arith_list_node &arith)
   arith.thirdptr = NULL;
   arith.misc_operand = LEADING;
   arith.rand_seed = NULL;
+
+  regu_alloc (arith.value);
 }
 
 void
@@ -288,6 +279,8 @@ regu_init (function_node &fnode)
   fnode.value = NULL;
   fnode.ftype = (FUNC_TYPE) 0;
   fnode.operand = NULL;
+
+  regu_alloc (fnode.value);
 }
 
 void
@@ -302,7 +295,7 @@ regu_init (cubxasl::aggregate_list_node &agg)
   agg.operands = NULL;
   agg.list_id = NULL;
   agg.sort_list = NULL;
-  memset (&agg.info, 0, sizeof (AGGREGATE_SPECIFIC_FUNCTION_INFO));
+  std::memset (&agg.info, 0, sizeof (AGGREGATE_SPECIFIC_FUNCTION_INFO));
 }
 
 void
@@ -324,6 +317,9 @@ regu_init (cubxasl::analytic_list_node &ana)
   ana.from_last = false;
   ana.ignore_nulls = false;
   ana.is_const_operand = false;
+
+  regu_alloc (ana.list_id);
+  regu_alloc (ana.value2);
 }
 
 void
