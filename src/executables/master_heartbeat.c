@@ -5859,6 +5859,7 @@ hb_kill_process (pid_t * pids, int count)
   return;
 }
 
+#if defined (ENABLE_OLD_REPLICATION)
 /*
  * hb_kill_all_heartbeat_process -
  *   return: none
@@ -5907,6 +5908,7 @@ hb_kill_all_heartbeat_process (char **str)
 
   free (pids);
 }
+#endif /* ENABLE_OLD_REPLICATION */
 
 /*
  * hb_deregister_by_pid -

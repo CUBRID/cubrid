@@ -84,8 +84,10 @@ typedef enum
   ACCESS_CONTROL,
   RESET,
   INFO,
+#if defined (ENABLE_OLD_REPLICATION) 
   SC_COPYLOGDB,
   SC_APPLYLOGDB,
+#endif
   GET_SHARID,
   TEST,
   REPLICATION
@@ -195,8 +197,10 @@ static UTIL_SERVICE_OPTION_MAP_T us_Service_map[] = {
 #define COMMAND_TYPE_ACL        "acl"
 #define COMMAND_TYPE_RESET      "reset"
 #define COMMAND_TYPE_INFO       "info"
+#if defined (ENABLE_OLD_REPLICATION)
 #define COMMAND_TYPE_COPYLOGDB  "copylogdb"
 #define COMMAND_TYPE_APPLYLOGDB "applylogdb"
+#endif
 #define COMMAND_TYPE_GETID      "getid"
 #define COMMAND_TYPE_TEST       "test"
 #define COMMAND_TYPE_REPLICATION	"replication"
@@ -215,8 +219,10 @@ static UTIL_SERVICE_OPTION_MAP_T us_Command_map[] = {
   {ACCESS_CONTROL, COMMAND_TYPE_ACL, MASK_SERVER | MASK_BROKER},
   {RESET, COMMAND_TYPE_RESET, MASK_BROKER},
   {INFO, COMMAND_TYPE_INFO, MASK_BROKER},
+#if defined (ENABLE_OLD_REPLICATION) 
   {SC_COPYLOGDB, COMMAND_TYPE_COPYLOGDB, MASK_HEARTBEAT},
   {SC_APPLYLOGDB, COMMAND_TYPE_APPLYLOGDB, MASK_HEARTBEAT},
+#endif
   {GET_SHARID, COMMAND_TYPE_GETID, MASK_BROKER},
   {TEST, COMMAND_TYPE_TEST, MASK_BROKER},
   {REPLICATION, COMMAND_TYPE_REPLICATION, MASK_HEARTBEAT},
@@ -255,7 +261,9 @@ static int process_heartbeat_stop (HA_CONF * ha_conf, int argc, const char **arg
 static int process_heartbeat_deregister (int argc, const char **argv);
 static int process_heartbeat_status (int argc, const char **argv);
 static int process_heartbeat_reload (int argc, const char **argv);
+#if defined (ENABLE_OLD_REPLICATION)  
 static int process_heartbeat_util (HA_CONF * ha_conf, int command_type, int argc, const char **argv);
+#endif
 static int process_heartbeat_replication (HA_CONF * ha_conf, int argc, const char **argv);
 
 static int proc_execute_internal (const char *file, const char *args[], bool wait_child, bool close_output,
@@ -287,15 +295,16 @@ static bool ha_make_mem_size (char *mem_size, int size, int value);
 static bool ha_is_registered (const char *args, const char *hostname);
 
 #if !defined(WINDOWS)
+#if defined (ENABLE_OLD_REPLICATION)
 static int us_hb_copylogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf, const char *db_name, const char *node_name,
 				  const char *remote_host);
 static int us_hb_copylogdb_stop (HA_CONF * ha_conf, const char *db_name, const char *node_name,
 				 const char *remote_host);
-
 static int us_hb_applylogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf, const char *db_name,
 				   const char *node_name, const char *remote_host);
 static int us_hb_applylogdb_stop (HA_CONF * ha_conf, const char *db_name, const char *node_name,
 				  const char *remote_host);
+#endif /* ENABLE_OLD_REPLICATION */
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 static int us_hb_utils_start (dynamic_array * pids, HA_CONF * ha_conf, const char *db_name, const char *node_name);
@@ -305,13 +314,15 @@ static int us_hb_utils_stop (HA_CONF * ha_conf, const char *db_name, const char 
 static int us_hb_server_start (HA_CONF * ha_conf, const char *db_name);
 static int us_hb_server_stop (HA_CONF * ha_conf, const char *db_name);
 
+#if defined (ENABLE_OLD_REPLICATION)
 static int us_hb_process_start (HA_CONF * ha_conf, const char *db_name, bool check_result);
 static int us_hb_process_stop (HA_CONF * ha_conf, const char *db_name);
-
 static int us_hb_process_copylogdb (int command_type, HA_CONF * ha_conf, const char *db_name, const char *node_name,
 				    const char *remote_host);
 static int us_hb_process_applylogdb (int command_type, HA_CONF * ha_conf, const char *db_name, const char *node_name,
 				     const char *remote_host);
+#endif /* ENABLE_OLD_REPLICATION */
+
 #if defined (ENABLE_UNUSED_FUNCTION)
 static int us_hb_process_server (int command_type, HA_CONF * ha_conf, const char *db_name);
 #endif /* ENABLE_UNUSED_FUNCTION */
@@ -362,12 +373,14 @@ command_string (int command_type)
     case ACCESS_CONTROL:
       command = PRINT_CMD_ACL;
       break;
+#if defined (ENABLE_OLD_REPLICATION) 
     case SC_COPYLOGDB:
       command = PRINT_CMD_COPYLOGDB;
       break;
     case SC_APPLYLOGDB:
       command = PRINT_CMD_APPLYLOGDB;
       break;
+#endif
     case TEST:
       command = PRINT_CMD_TEST;
       break;
@@ -2366,6 +2379,7 @@ ha_is_registered (const char *args, const char *hostname)
   return false;
 }
 
+#if defined (ENABLE_OLD_REPLICATION)
 static int
 ha_argv_to_args (char *args, int size, const char **argv, HB_PROC_TYPE type)
 {
@@ -2939,6 +2953,7 @@ ret:
   print_result (UTIL_APPLYLOGDB, status, STOP);
   return status;
 }
+#endif /* ENABLE_OLD_REPLICATION */
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 static int
@@ -3064,12 +3079,14 @@ us_hb_process_start (HA_CONF * ha_conf, const char *db_name, bool check_result)
 
   print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_HA_PROCS_NAME, PRINT_CMD_START);
 
+#if defined (ENABLE_OLD_REPLICATION)
   pids = da_create (100, sizeof (int));
   if (pids == NULL)
     {
       status = ER_GENERIC_ERROR;
       goto ret;
     }
+#endif /* ENABLE_OLD_REPLICATION */
 
   status = us_hb_server_start (ha_conf, db_name);
   if (status != NO_ERROR)
@@ -3077,6 +3094,7 @@ us_hb_process_start (HA_CONF * ha_conf, const char *db_name, bool check_result)
       goto ret;
     }
 
+#if defined (ENABLE_OLD_REPLICATION)
   status = us_hb_copylogdb_start (pids, ha_conf, db_name, NULL, NULL);
   if (status != NO_ERROR)
     {
@@ -3102,12 +3120,15 @@ us_hb_process_start (HA_CONF * ha_conf, const char *db_name, bool check_result)
 	    }
 	}
     }
+#endif /* ENABLE_OLD_REPLICATION */
 
 ret:
+#if defined (ENABLE_OLD_REPLICATION)
   if (pids)
     {
       da_destroy (pids);
     }
+#endif /* ENABLE_OLD_REPLICATION */
 
   print_result (PRINT_HA_PROCS_NAME, status, START);
   return status;
@@ -3182,6 +3203,7 @@ us_hb_deactivate (const char *hostname, bool immediate_stop)
   return NO_ERROR;
 }
 
+#if defined (ENABLE_OLD_REPLICATION)
 static int
 us_hb_process_stop (HA_CONF * ha_conf, const char *db_name)
 {
@@ -3376,6 +3398,7 @@ ret:
 
   return status;
 }
+#endif /* ENABLE_OLD_REPLICATION */
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 static int
@@ -3593,6 +3616,7 @@ ret:
   return status;
 }
 
+/* TODO[replication]: */
 /*
  * us_hb_util_get_options -
  * return: NO_ERROR or error code 
@@ -3764,6 +3788,7 @@ process_heartbeat_start (HA_CONF * ha_conf, int argc, const char **argv)
 	}
     }
 
+#if defined (ENABLE_OLD_REPLICATION) 
   status = us_hb_process_start (ha_conf, db_name, true);
   if (status != NO_ERROR)
     {
@@ -3776,6 +3801,7 @@ process_heartbeat_start (HA_CONF * ha_conf, int argc, const char **argv)
 	  (void) us_hb_process_stop (ha_conf, db_name);
 	}
     }
+#endif /* ENABLE_OLD_REPLICATION */
 
 ret:
   print_result (PRINT_HEARTBEAT_NAME, status, START);
@@ -3838,8 +3864,9 @@ process_heartbeat_stop (HA_CONF * ha_conf, int argc, const char **argv)
 	      util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_HA_MODE);
 	      goto ret;
 	    }
-
+#if defined (ENABLE_OLD_REPLICATION) 
 	  status = us_hb_process_stop (ha_conf, db_name);
+#endif
 	}
       else
 	{
@@ -4064,6 +4091,7 @@ process_heartbeat_reload (int argc, const char **argv)
   return status;
 }
 
+#if defined (ENABLE_OLD_REPLICATION) 
 #if !defined(WINDOWS)
 /*
  * process_heartbeat_util -
@@ -4134,6 +4162,7 @@ ret:
   print_result (PRINT_HEARTBEAT_NAME, status, command_type);
   return status;
 }
+#endif /* ENABLE_OLD_REPLICATION */
 
 /*
  * process_heartbeat_replication -
@@ -4181,6 +4210,7 @@ process_heartbeat_replication (HA_CONF * ha_conf, int argc, const char **argv)
 	UTIL_COMMDB_NAME, COMMDB_HA_ACTIVATE, NULL
       };
       status = proc_execute (UTIL_COMMDB_NAME, args, true, false, false, NULL);
+#if defined (ENABLE_OLD_REPLICATION)
       if (status == NO_ERROR)
 	{
 	  if (sub_command_type == START)
@@ -4202,6 +4232,7 @@ process_heartbeat_replication (HA_CONF * ha_conf, int argc, const char **argv)
 	      status = NO_ERROR;
 	    }
 	}
+#endif /* ENABLE_OLD_REPLICATION */
     }
   else
     {
@@ -4269,10 +4300,12 @@ process_heartbeat (int command_type, int argc, const char **argv)
     case RELOAD:
       status = process_heartbeat_reload (argc, argv);
       break;
+#if defined (ENABLE_OLD_REPLICATION)  
     case SC_COPYLOGDB:
     case SC_APPLYLOGDB:
       status = process_heartbeat_util (&ha_conf, command_type, argc, argv);
       break;
+#endif
     case REPLICATION:
       status = process_heartbeat_replication (&ha_conf, argc, argv);
       break;

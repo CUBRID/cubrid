@@ -486,8 +486,6 @@ EXPORTS
     unloaddb
     csql
     changemode
-    copylogdb
-    applylogdb
     statdump
     compactdb
     acldb

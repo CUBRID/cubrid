@@ -375,11 +375,13 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_HA_PING_HOSTS "ha_ping_hosts"
 
+#if defined (ENABLE_OLD_REPLICATION)
 #define PRM_NAME_HA_APPLYLOGDB_RETRY_ERROR_LIST "ha_applylogdb_retry_error_list"
 
 #define PRM_NAME_HA_APPLYLOGDB_IGNORE_ERROR_LIST "ha_applylogdb_ignore_error_list"
 
 #define PRM_NAME_HA_APPLYLOGDB_LOG_WAIT_TIME_IN_SECS "ha_applylogdb_log_wait_time_in_secs"
+#endif
 
 #define PRM_NAME_HA_SQL_LOGGING "ha_enable_sql_logging"
 
@@ -1485,6 +1487,7 @@ const char *PRM_HA_PING_HOSTS = "";
 static const char *prm_ha_ping_hosts_default = NULL;
 static unsigned int prm_ha_ping_hosts_flag = 0;
 
+#if defined (ENABLE_OLD_REPLICATION)
 int *PRM_HA_APPLYLOGDB_RETRY_ERROR_LIST = int_list_initial;
 static bool *prm_ha_applylogdb_retry_error_list_default = NULL;
 static unsigned int prm_ha_applylogdb_retry_error_list_flag = 0;
@@ -1497,6 +1500,7 @@ int PRM_HA_APPLYLOGDB_LOG_WAIT_TIME_IN_SECS = -1;
 static int prm_ha_applylogdb_log_wait_time_in_secs_default = -1;
 static int prm_ha_applylogdb_log_wait_time_in_secs_lower = -1;
 static unsigned int prm_ha_applylogdb_log_wait_time_in_secs_flag = 0;
+#endif /* ENABLE_OLD_REPLICATION */
 
 bool PRM_HA_SQL_LOGGING = false;
 static bool prm_ha_sql_logging_default = false;
@@ -1542,11 +1546,13 @@ static int prm_ha_delay_limit_delta_in_secs_upper = INT_MAX;
 static int prm_ha_delay_limit_delta_in_secs_lower = 0;
 static unsigned int prm_ha_delay_limit_delta_in_secs_flag = 0;
 
+#if defined (ENABLE_OLD_REPLICATION)
 int PRM_HA_APPLYLOGDB_MAX_COMMIT_INTERVAL_IN_MSECS = 500;
 static int prm_ha_applylogdb_max_commit_interval_in_msecs_default = 500;
 static int prm_ha_applylogdb_max_commit_interval_in_msecs_upper = INT_MAX;
 static int prm_ha_applylogdb_max_commit_interval_in_msecs_lower = 0;
 static unsigned int prm_ha_applylogdb_max_commit_interval_in_msecs_flag = 0;
+#endif
 
 int PRM_HA_CHECK_DISK_FAILURE_INTERVAL_IN_SECS = 15;
 static int prm_ha_check_disk_failure_interval_in_secs_default = 15;
@@ -3762,6 +3768,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+#if defined (ENABLE_OLD_REPLICATION)
   {PRM_ID_HA_APPLYLOGDB_RETRY_ERROR_LIST,
    PRM_NAME_HA_APPLYLOGDB_RETRY_ERROR_LIST,
    (PRM_FOR_CLIENT | PRM_FOR_HA),
@@ -3795,6 +3802,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+#endif /* ENABLE_OLD_REPLICATION */
   {PRM_ID_HA_SQL_LOGGING,
    PRM_NAME_HA_SQL_LOGGING,
    (PRM_FOR_CLIENT | PRM_FOR_HA),
@@ -3889,6 +3897,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) prm_msec_to_sec,
    (DUP_PRM_FUNC) prm_sec_to_msec},
+ #if defined (ENABLE_OLD_REPLICATION)
   {PRM_ID_HA_APPLYLOGDB_MAX_COMMIT_INTERVAL_IN_MSECS,
    PRM_NAME_HA_APPLYLOGDB_MAX_COMMIT_INTERVAL_IN_MSECS,
    (PRM_FOR_CLIENT | PRM_FOR_HA),
@@ -3913,6 +3922,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+#endif /* ENABLE_OLD_REPLICATION */
   {PRM_ID_HA_CHECK_DISK_FAILURE_INTERVAL_IN_SECS,
    PRM_NAME_HA_CHECK_DISK_FAILURE_INTERVAL_IN_SECS,
    (PRM_FOR_CLIENT | PRM_FOR_HA | PRM_TIME_UNIT | PRM_DIFFER_UNIT | PRM_RELOADABLE),

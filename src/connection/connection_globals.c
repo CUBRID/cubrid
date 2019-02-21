@@ -152,6 +152,7 @@ css_is_ha_client (BOOT_CLIENT_TYPE client_type)
   return BOOT_LOG_REPLICATOR_TYPE (client_type);
 }
 
+/* TODO[replication]: */
 /*
  * css_get_required_conn_num_for_ha() - calculate the number
  *      of connections required for HA

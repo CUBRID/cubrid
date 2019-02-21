@@ -2214,10 +2214,12 @@ la_ignore_on_error (int errid)
 
   errid = abs (errid);
 
+#if defined (ENABLE_OLD_REPLICATION)
   if (sysprm_find_err_in_integer_list (PRM_ID_HA_APPLYLOGDB_IGNORE_ERROR_LIST, errid))
     {
       return true;
     }
+#endif
 
   return false;
 }
@@ -2251,12 +2253,13 @@ la_retry_on_error (int errid)
     {
       return true;
     }
-
+#if defined (ENABLE_OLD_REPLICATION)
   errid = abs (errid);
   if (sysprm_find_err_in_integer_list (PRM_ID_HA_APPLYLOGDB_RETRY_ERROR_LIST, errid))
     {
       return true;
     }
+#endif /* ENABLE_OLD_REPLICATION */
 
   return false;
 }
@@ -8004,8 +8007,11 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 	    }
 
 	  memcpy (&final_log_hdr, la_Info.act_log.log_hdr, sizeof (LOG_HEADER));
-
-	  if (prm_get_integer_value (PRM_ID_HA_APPLYLOGDB_LOG_WAIT_TIME_IN_SECS) >= 0)
+          int dummy_wait = 0;
+#if defined (ENABLE_OLD_REPLICATION)
+          dummy_wait = prm_get_integer_value (PRM_ID_HA_APPLYLOGDB_LOG_WAIT_TIME_IN_SECS)
+#endif
+	  if (dummy_wait >= 0)
 	    {
 	      if (final_log_hdr.ha_server_state == HA_SERVER_STATE_DEAD
 		  && LSA_EQ (&last_eof_lsa, &final_log_hdr.eof_lsa))
@@ -8013,7 +8019,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 		  now = time (NULL);
 		  assert_release (now >= last_eof_time);
 
-		  if ((now - last_eof_time) >= prm_get_integer_value (PRM_ID_HA_APPLYLOGDB_LOG_WAIT_TIME_IN_SECS))
+		  if ((now - last_eof_time) >= dummy_wait)
 		    {
 		      clear_owner = true;
 		      error = la_unlock_dbname (&la_Info.db_lockf_vdes, la_slave_db_name, clear_owner);
