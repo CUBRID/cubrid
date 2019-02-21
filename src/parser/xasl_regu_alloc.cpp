@@ -64,6 +64,7 @@ regu_init (xasl_node &node)
 void
 regu_xasl_proc_init (xasl_node &node, PROC_TYPE type)
 {
+  node.type = type;
   switch (type)
     {
     case UNION_PROC:
