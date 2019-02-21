@@ -2415,8 +2415,10 @@ ha_argv_to_args (char *args, int size, const char **argv, HB_PROC_TYPE type)
 
   return status;
 }
+#endif /* ENABLE_OLD_REPLICATION */
 
 #if !defined(WINDOWS)
+#if defined (ENABLE_OLD_REPLICATION)
 static int
 us_hb_copylogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf, const char *db_name, const char *node_name,
 		       const char *remote_host)
