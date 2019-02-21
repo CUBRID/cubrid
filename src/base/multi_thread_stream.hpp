@@ -29,7 +29,6 @@
 #include "bip_buffer.hpp"
 #include "collapsable_circular_queue.hpp"
 #include "cubstream.hpp"
-#include "stream_io.hpp"
 
 #include <condition_variable>
 #include <mutex>
@@ -38,6 +37,7 @@
 
 namespace cubstream
 {
+  class stream_file;
   /* stream with capability to write/read concurrently
    * the read, read_partial, read_serial, write require a function argument to perform custom write/read operation;
    * Interface:
@@ -71,6 +71,15 @@ namespace cubstream
     public:
       static const int BIP_BUFFER_READ_PAGES_COUNT = 64;
 
+      /* The minimum amount of space to read from file;
+       * when data is not found in BIP buffer, read from file is used;
+       * however, the stream file flush daemon may have not flushed yet the desired range;
+       * we need to wait for it to flush
+       */
+      static const size_t MIN_BYTES_TO_READ_FROM_FILE = 16 * 1024;
+
+      static const int WAIT_FOR_FILE_SLEEP_MICROSECS = 500;
+
       enum STREAM_SKIP_MODE
       {
 	STREAM_DONT_SKIP = 0,
@@ -87,14 +96,29 @@ namespace cubstream
 	size_t written_bytes;
       };
 
+      /* read context holds a file_buffer (used in case we read the data from stream_file) or a latch read
+       * (used when reading for stream's buffer) */
+      struct stream_read_context
+      {
+	stream_read_context () : file_buffer (NULL), buffer_size (0), read_latch_page_idx (0) {}
+	~stream_read_context ()
+	{
+	  assert (file_buffer == NULL);
+	}
+
+	char *file_buffer;
+        size_t buffer_size;
+	mem::buffer_latch_read_id read_latch_page_idx;
+      };
+
       mem::bip_buffer<BIP_BUFFER_READ_PAGES_COUNT> m_bip_buffer;
 
-      /* oldest readable position : updated according to buffer availability:
+      /* oldest position of strem still in buffer : updated according to buffer availability:
        * oldest stream position available from bip_buffer
        * after reserve, this value is expected to increase, so if any reader needs to get a position
        * older than this, there is no need to check the buffer or reserved queue
        */
-      stream_position m_oldest_readable_position;
+      stream_position m_oldest_buffered_position;
 
       mem::collapsable_circular_queue<stream_reserve_context> m_reserved_positions;
 
@@ -103,40 +127,62 @@ namespace cubstream
        */
       size_t m_trigger_flush_to_disk_size;
 
+      /* the range for difference (append_position - m_last_recyclable_pos) when stream reserve blocks:
+       * if the append continues beyond this range, we may loose unflushed (or un-read by all readers) data;
+       * normally, we can set this to buffer_capacity, but due to contiguous requirement of allocation, in practice,
+       * this limit is lower;
+       * if this is set to zero, we can afford to loose data (unread and unflushed).
+       */
+      size_t m_threshold_block_reserve;
+
+      /* the range for difference (append_position - m_last_recyclable_pos) when stream reserve may resume */
+      size_t m_threshold_resume_reserve;
+
+      /* mutex accessing/updating recyclable position */
+      std::mutex m_recyclable_pos_mutex;
+
+      /* updating and waiting for recyclable position cv uses m_recyclable_pos_mutex */
+      std::condition_variable m_recyclable_pos_cv;
+
       /* the minimum amount committed to stream which may be read (to avoid notifications in case of too small data) */
       size_t m_trigger_min_to_read_size;
 
+      /* mutex for reserve/reading for attached bip_buffer */
       std::mutex m_buffer_mutex;
-
-      stream_io *m_io;
 
       /* serial read cv uses m_buffer_mutex */
       std::condition_variable m_serial_read_cv;
       bool m_is_stopped;
+
+      stream_file *m_stream_file;
 
       /* stats counters */
       std::uint64_t m_stat_reserve_queue_spins;
       std::uint64_t m_stat_reserve_buffer_spins;
       std::uint64_t m_stat_read_not_enough_data_cnt;
       std::uint64_t m_stat_read_not_in_buffer_cnt;
+      std::uint64_t m_stat_read_not_in_buffer_wait_for_flush_cnt;
       std::uint64_t m_stat_read_no_readable_pos_cnt;
       std::uint64_t m_stat_read_buffer_failed_cnt;
 
     protected:
       /* should be called when serialization of a stream entry ends */
-      int commit_append (stream_reserve_context *reserve_context);
+      void commit_append (stream_reserve_context *reserve_context);
 
       char *reserve_with_buffer (const size_t amount, stream_reserve_context *&reserved_context);
 
       char *get_data_from_pos (const stream_position &req_start_pos, const size_t amount,
-			       size_t &actual_read_bytes, mem::buffer_latch_read_id &read_latch_page_idx);
-      int unlatch_read_data (const mem::buffer_latch_read_id &read_latch_page_idx);
+			       size_t &actual_read_bytes, stream_read_context &read_context);
+      void unlatch_read_data (const mem::buffer_latch_read_id &read_latch_page_idx);
+
+      void release_read_context (stream_read_context &read_context);
 
       int wait_for_data (const size_t amount, const STREAM_SKIP_MODE skip_mode);
 
     public:
       multi_thread_stream (const size_t buffer_capacity, const int max_appenders);
       virtual ~multi_thread_stream ();
+      int init (const stream_position &start_position = 0);
 
       int write (const size_t byte_count, write_func_t &write_action);
       int read_partial (const stream_position first_pos, const size_t byte_count, size_t &actual_read_bytes,
@@ -154,17 +200,57 @@ namespace cubstream
 	m_trigger_min_to_read_size = min_read_size;
       }
 
+      void set_threshold_block_reserve (const size_t threshold)
+      {
+	m_threshold_block_reserve = threshold;
+      }
+
+      void set_threshold_resume_reserve (const size_t threshold)
+      {
+	m_threshold_resume_reserve = threshold;
+      }
+
+      bool need_block_reserve (const size_t reserve_amount)
+      {
+        /* we need to protect:
+         * - append will run out of buffer space (would overwrite old unflushed/unrecycled data)
+         * - after reserve success, the reserve margin invalidates old data of buffer: we need to adjust
+         *   oldest buffered position ==> we need to prevent increasing oldest buffered position
+         *   beyond the recyclable position
+         */
+        return (m_append_position > m_last_recyclable_pos + m_threshold_block_reserve
+                || (m_last_committed_pos > m_oldest_buffered_position + m_trigger_flush_to_disk_size
+                    && m_oldest_buffered_position + reserve_amount
+                       + m_bip_buffer.get_reserve_margin () > m_last_recyclable_pos)) ? true : false;
+      }
+
       /* fill factor : if < 1 : no need to flush or throttle the appenders ; if > 1 : need to flush and/or throttle */
       float stream_fill_factor (void)
       {
-	return ((float) m_append_position - (float) m_last_dropable_pos) / (float) m_trigger_flush_to_disk_size;
+	return ((float) m_last_committed_pos - (float) m_last_recyclable_pos) / (float) m_trigger_flush_to_disk_size;
       };
 
       void set_stop (void)
       {
 	m_is_stopped = true;
 	m_serial_read_cv.notify_one ();
+	m_recyclable_pos_cv.notify_one ();
       }
+
+      void set_stream_file (stream_file *sf)
+      {
+	m_stream_file = sf;
+      }
+
+      stream_file *get_stream_file (void)
+      {
+	return m_stream_file;
+      }
+
+      void wake_up_flusher (float fill_factor, const stream_position start_flush_pos, const size_t flush_amount);
+      void wait_for_flush_or_readers (const stream_position &last_commit_pos, const stream_position &last_append_pos);
+      size_t wait_for_flush (const stream_position &req_pos, const size_t min_amount);
+      void set_last_recyclable_pos (const stream_position &pos);
   };
 
 } /* namespace cubstream */

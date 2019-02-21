@@ -27,7 +27,7 @@
 #include "thread_worker_pool.hpp"
 #include "thread_entry_task.hpp"
 #include <vector>
-
+#include <iostream>
 
 namespace test_stream
 {
@@ -43,6 +43,23 @@ namespace test_stream
   /* testing of stream with packable objects and multiple cubstream:entry using multiple threads */
   int test_stream_mt (void);
 
+  /* testing of stream file */
+  int test_stream_file1 (size_t file_size, size_t desired_amount, size_t buffer_size);
+  int test_stream_file2 (size_t stream_buffer_size, size_t file_size, size_t desired_amount);
+
+  int test_stream_file_mt (const int pack_threads,
+                           const int unpack_threads,
+                           const int read_bytes_threads,
+                           const size_t stream_buffer_size,
+                           const size_t file_size,
+                           const int test_duration);
+
+  int test_stream_file_reader (const unsigned long long stream_read_start,
+                               const unsigned long long stream_max_pos,
+			   const size_t stream_buffer_size,
+			   const size_t file_size);
+
+  
   int write_action (const cubstream::stream_position pos, char *ptr, const size_t byte_count);
 
   class stream_read_partial_context
@@ -224,6 +241,13 @@ namespace test_stream
 	serializator->unpack_int ((int *) &m_header.count_objects);
 	serializator->unpack_int (&m_header.data_size);
 
+#if 0
+        assert (m_header.count_objects < 100);
+        assert (m_header.data_size < 1000000);
+        assert (m_header.mvcc_id < 1000);
+        assert (m_header.tran_id < 1000);
+#endif
+
 	return NO_ERROR;
       };
 
@@ -299,6 +323,8 @@ namespace test_stream
       static std::bitset<1024> g_running_readers;
 
       static void update_stream_drop_position (void);
+
+      static bool update_drop_pos_from_readers;
   };
 
   class stream_pack_task : public cubthread::task<cubthread::entry>

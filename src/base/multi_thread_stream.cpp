@@ -24,20 +24,32 @@
 #ident "$Id$"
 
 #include "multi_thread_stream.hpp"
+#include "stream_file.hpp"
 
 #include "error_code.h"
 #include "error_manager.h"
 
+#include <algorithm>  /* for std::min */
+
 namespace cubstream
 {
+  const size_t multi_thread_stream::MIN_BYTES_TO_READ_FROM_FILE;
+  const int multi_thread_stream::WAIT_FOR_FILE_SLEEP_MICROSECS;
+
   multi_thread_stream::multi_thread_stream (const size_t buffer_capacity, const int max_appenders)
     : m_bip_buffer (buffer_capacity),
       m_reserved_positions (max_appenders)
   {
-    m_oldest_readable_position = 0;
+    m_oldest_buffered_position = 0;
 
     /* TODO : system parameter */
     m_trigger_flush_to_disk_size = buffer_capacity / 2;
+
+    m_threshold_block_reserve = 80 * buffer_capacity / 100;
+    m_threshold_resume_reserve = 70 * buffer_capacity / 100;
+
+    assert (m_threshold_block_reserve > m_trigger_flush_to_disk_size);
+    assert (m_threshold_resume_reserve > m_trigger_flush_to_disk_size);
 
     m_trigger_min_to_read_size = 16;
 
@@ -45,15 +57,25 @@ namespace cubstream
     m_stat_reserve_buffer_spins = 0;
     m_stat_read_not_enough_data_cnt = 0;
     m_stat_read_not_in_buffer_cnt = 0;
+    m_stat_read_not_in_buffer_wait_for_flush_cnt = 0;
     m_stat_read_no_readable_pos_cnt = 0;
     m_stat_read_buffer_failed_cnt = 0;
 
     m_is_stopped = false;
+
+    m_stream_file = NULL;
   }
 
   multi_thread_stream::~multi_thread_stream ()
   {
     assert (m_append_position - m_read_position == 0);
+  }
+
+  int multi_thread_stream::init (const stream_position &start_position)
+  {
+    stream::init (start_position);
+    m_oldest_buffered_position = start_position;
+    return NO_ERROR;
   }
 
   /*
@@ -83,11 +105,11 @@ namespace cubstream
 
     reserve_context->written_bytes = written_bytes;
 
-    err = commit_append (reserve_context);
+    commit_append (reserve_context);
 
     if (written_bytes < 0)
       {
-	err = ER_FAILED;
+	ASSERT_ERROR_AND_SET (err);
       }
 
     return (err < 0) ? err : written_bytes;
@@ -110,13 +132,13 @@ namespace cubstream
     char *ptr;
     size_t actual_read_bytes = 0;
     char *local_buffer = NULL;
-    mem::buffer_latch_read_id read_latch_page_idx;
+    stream_read_context read_context;
     int read_bytes;
 
-    ptr = get_data_from_pos (first_pos, byte_count, actual_read_bytes, read_latch_page_idx);
+    ptr = get_data_from_pos (first_pos, byte_count, actual_read_bytes, read_context);
     if (ptr == NULL)
       {
-	err = ER_FAILED;
+	ASSERT_ERROR_AND_SET (err);
 	return err;
       }
 
@@ -128,17 +150,16 @@ namespace cubstream
 	local_buffer = new char[byte_count];
 
 	memcpy (local_buffer, ptr, actual_read_bytes);
-	unlatch_read_data (read_latch_page_idx);
+	release_read_context (read_context);
 
-	ptr = get_data_from_pos (next_pos, byte_count - actual_read_bytes, next_actual_read_bytes,
-				 read_latch_page_idx);
+	ptr = get_data_from_pos (next_pos, byte_count - actual_read_bytes, next_actual_read_bytes, read_context);
 	if (ptr == NULL || next_actual_read_bytes != byte_count - actual_read_bytes)
 	  {
-	    err = ER_FAILED;
+	    ASSERT_ERROR_AND_SET (err);
 
 	    if (ptr != NULL)
 	      {
-		unlatch_read_data (read_latch_page_idx);
+		release_read_context (read_context);
 	      }
 
 	    delete [] local_buffer;
@@ -149,8 +170,7 @@ namespace cubstream
 
 	memcpy (local_buffer + actual_read_bytes, ptr, next_actual_read_bytes);
 
-	unlatch_read_data (read_latch_page_idx);
-
+	release_read_context (read_context);
 	ptr = local_buffer;
       }
 
@@ -158,7 +178,7 @@ namespace cubstream
 
     if (ptr != local_buffer)
       {
-	err = unlatch_read_data (read_latch_page_idx);
+	release_read_context (read_context);
       }
     else
       {
@@ -188,7 +208,7 @@ namespace cubstream
     char *ptr;
     size_t actual_read_bytes = 0;
     char *local_buffer = NULL;
-    mem::buffer_latch_read_id read_latch_page_idx;
+    stream_read_context read_context;
     stream_position to_read_pos;
     stream_position trail_pos;
     size_t payload_size;
@@ -208,10 +228,10 @@ namespace cubstream
 
     to_read_pos = m_read_position;
 
-    ptr = get_data_from_pos (to_read_pos, amount, actual_read_bytes, read_latch_page_idx);
+    ptr = get_data_from_pos (to_read_pos, amount, actual_read_bytes, read_context);
     if (ptr == NULL)
       {
-	err = ER_FAILED;
+	ASSERT_ERROR_AND_SET (err);
 	return err;
       }
 
@@ -223,17 +243,16 @@ namespace cubstream
 	local_buffer = new char[amount];
 
 	memcpy (local_buffer, ptr, actual_read_bytes);
-	unlatch_read_data (read_latch_page_idx);
+	release_read_context (read_context);
 
-	ptr = get_data_from_pos (next_pos, amount - actual_read_bytes, next_actual_read_bytes,
-				 read_latch_page_idx);
+	ptr = get_data_from_pos (next_pos, amount - actual_read_bytes, next_actual_read_bytes, read_context);
 	if (ptr == NULL || next_actual_read_bytes != amount - actual_read_bytes)
 	  {
-	    err = ER_FAILED;
+	    ASSERT_ERROR_AND_SET (err);
 
 	    if (ptr != NULL)
 	      {
-		unlatch_read_data (read_latch_page_idx);
+		release_read_context (read_context);
 	      }
 
 	    delete [] local_buffer;
@@ -244,7 +263,7 @@ namespace cubstream
 
 	memcpy (local_buffer + actual_read_bytes, ptr, next_actual_read_bytes);
 
-	unlatch_read_data (read_latch_page_idx);
+	release_read_context (read_context);
 
 	ptr = local_buffer;
       }
@@ -254,7 +273,7 @@ namespace cubstream
 
     if (ptr != local_buffer)
       {
-	unlatch_read_data (read_latch_page_idx);
+	release_read_context (read_context);
       }
     else
       {
@@ -273,19 +292,19 @@ namespace cubstream
     int err = NO_ERROR;
     char *ptr;
     size_t contiguous_bytes_in_buffer = 0;
-    mem::buffer_latch_read_id read_latch_page_idx;
+    stream_read_context read_context;
     int read_bytes;
 
-    ptr = get_data_from_pos (first_pos, byte_count, contiguous_bytes_in_buffer, read_latch_page_idx);
+    ptr = get_data_from_pos (first_pos, byte_count, contiguous_bytes_in_buffer, read_context);
     if (ptr == NULL)
       {
-	err = ER_FAILED;
+	ASSERT_ERROR_AND_SET (err);
 	return err;
       }
 
     read_bytes = read_partial_action (ptr, contiguous_bytes_in_buffer, actual_read_bytes);
 
-    err = unlatch_read_data (read_latch_page_idx);
+    release_read_context (read_context);
 
     return (err < 0) ? err : read_bytes;
   }
@@ -298,12 +317,11 @@ namespace cubstream
    *  3. notifies the m_ready_pos_handler handler that new amount is ready to be read
    *     (only if threshold is reached compared to previous notified position)
    */
-  int multi_thread_stream::commit_append (stream_reserve_context *reserve_context)
+  void multi_thread_stream::commit_append (stream_reserve_context *reserve_context)
   {
     stream_reserve_context *last_used_context = NULL;
     bool collapsed_reserve;
     char *ptr_commit;
-    int err = NO_ERROR;
     stream_position new_completed_position = reserve_context->start_pos + reserve_context->reserved_amount;
     bool signal_data_ready = false;
 
@@ -341,34 +359,51 @@ namespace cubstream
 	stream_position save_last_notified_commited_pos = m_last_notified_committed_pos;
 	size_t committed_bytes = new_completed_position - m_last_notified_committed_pos;
 
-	err = m_ready_pos_handler (save_last_notified_commited_pos, committed_bytes);
+	m_ready_pos_handler (save_last_notified_commited_pos, committed_bytes);
+	m_last_notified_committed_pos = new_completed_position;
       }
-
-    return err;
   }
 
   /*
    * Reserve phase of append:
-   *  1. queue->produce : tries adds slot in queue (further data is filled later);
+   *  1. check if enough space to reserve; if not - wait for flush or all readers
+   *  2. queue->produce : tries adds slot in queue (further data is filled later);
    *     it repeats this steps until successful
-   *  2. buffer->reserve : tries to reserve the amount in buffer;
+   *  3. buffer->reserve : tries to reserve the amount in buffer;
    *     if unsuccessful, reverts the first step (still under mutex), release the mutex and restarts from (1)
    *     (this allows other threads to unlatch reads, advance commit pointer - to unblock the situation)
-   *  3. increase the m_append_position of stream
-   *  4. init/fills-in reserve context data (reserved position, reserved pointer, amount)
-   *  5. release mutex
-   *  6. if needed, notifies m_filled_stream_handler that too much data was appended since drop position
-   *     drop_position is a logical position in past of stream; this is set by an aggregator of "interested" clients
-   *     of stream data and instructs the stream up to which position is safe to drop the data;
+   *  4. increase the m_append_position of stream
+   *  5. init/fills-in reserve context data (reserved position, reserved pointer, amount)
+   *  6. release mutex
+   *  7. if needed, notifies m_filled_stream_handler that too much data was appended since recycle position
+   *     m_last_recyclable_pos is a logical position in past of stream;
+   *     this is set by an aggregator of "interested" clients of stream data and instructs the stream up to
+   *     which position is safe to recycle the data;
    *     the interested clients may be : normal readers or the readers which saves the data to disk (for persistence)
    */
   char *multi_thread_stream::reserve_with_buffer (const size_t amount, stream_reserve_context *&reserved_context)
   {
     char *ptr = NULL;
+    bool need_read_range_adjust = true;
 
     assert (amount > 0);
 
+    if (need_block_reserve (amount))
+      {
+	/* flush or reader are not keeping up with the writers */
+	wait_for_flush_or_readers (m_last_committed_pos, m_append_position);
+      }
+
     m_buffer_mutex.lock ();
+
+    while (need_block_reserve (amount))
+      {
+	m_buffer_mutex.unlock ();
+	/* flush or reader are not keeping up with the writers */
+	wait_for_flush_or_readers (m_last_committed_pos, m_append_position);
+	m_buffer_mutex.lock ();
+      }
+
     while (1)
       {
 	reserved_context = m_reserved_positions.produce ();
@@ -382,7 +417,7 @@ namespace cubstream
 	    continue;
 	  }
 
-	ptr = (char *) m_bip_buffer.reserve (amount);
+	ptr = (char *) m_bip_buffer.reserve (amount, need_read_range_adjust);
 	if (ptr != NULL)
 	  {
 	    break;
@@ -401,22 +436,38 @@ namespace cubstream
 
     m_append_position += amount;
 
-    /* set pointer under mutex lock, a "commit" call may collapse until this slot */
+    if (need_read_range_adjust)
+      {
+	const char *ptr_trail_a;
+	const char *ptr_trail_b;
+	size_t amount_trail_a, amount_trail_b, total_in_buffer;
+
+	m_bip_buffer.get_read_ranges (ptr_trail_b, amount_trail_b, ptr_trail_a, amount_trail_a);
+
+	total_in_buffer = amount_trail_b + amount_trail_a;
+
+	stream_position prev_oldest_buffered_position = m_oldest_buffered_position;
+	stream_position local_last_recyclable = m_last_recyclable_pos;
+
+	m_oldest_buffered_position = m_last_committed_pos - total_in_buffer;
+
+	assert (m_oldest_buffered_position <= local_last_recyclable);
+	assert (local_last_recyclable <= m_last_recyclable_pos);
+	assert (m_stream_file == NULL || m_stream_file->get_max_available_from_pos (m_oldest_buffered_position) >= 0);
+      }
+
+    /* set pointer under mutex lock, a "commit" call may collapse up to position of this slot */
     reserved_context->ptr = ptr;
     reserved_context->reserved_amount = amount;
     reserved_context->written_bytes = 0;
 
-    float stream_fill = stream_fill_factor ();
-    stream_position drop_pos = m_last_dropable_pos;
-    size_t produced_since_drop = m_append_position - m_last_dropable_pos;
+    stream_position start_flush_pos = m_last_recyclable_pos;
+    stream_position end_flush_pos = m_last_committed_pos;
 
     m_buffer_mutex.unlock ();
 
-    /* notify that stream content needs to be saved, otherwise it may be overwritten in bip_buffer */
-    if (m_filled_stream_handler && stream_fill >= 1.0f)
-      {
-	m_filled_stream_handler (drop_pos, produced_since_drop);
-      }
+    float stream_fill = (float) (end_flush_pos - start_flush_pos) / (float) m_trigger_flush_to_disk_size;
+    wake_up_flusher (stream_fill, start_flush_pos, end_flush_pos - start_flush_pos);
 
     return ptr;
   }
@@ -471,11 +522,11 @@ namespace cubstream
    * this must be in the same scope with a unlatch_read_data call (to make sure the read latch is released)
    * if portion of range is still in buffer, it reads the available amount, returning the actual read amount and
    * a read latch id
-   * if no range can be found in bip_buffer, the stream_io is used to provide the range from disk
-   * TODO: read_latch_page_idx type will change to account of reading from stream_file source.
+   * if no range can be found in bip_buffer, the stream_file is used to provide the range from disk
+   * read_context contains the either the file buffer or latch id in stream buffer
    *
    *  1. if needed, wait for data to be committed
-   *  2. if part of range is not in bip_buffer, use stream_io to get range
+   *  2. if part of range is not in bip_buffer, use stream_file to get range
    *  3. acquire mutex
    *  4. bip_buffer.get_read_ranges : get available readable ranges from bip_buffer
    *  5. convert logical range into physical range
@@ -483,7 +534,7 @@ namespace cubstream
    *  7. release mutex
    */
   char *multi_thread_stream::get_data_from_pos (const stream_position &req_start_pos, const size_t amount,
-      size_t &actual_read_bytes, mem::buffer_latch_read_id &read_latch_page_idx)
+      size_t &actual_read_bytes, stream_read_context &read_context)
   {
     int err = NO_ERROR;
     char *ptr = NULL;
@@ -502,16 +553,34 @@ namespace cubstream
 	return NULL;
       }
 
-    if (req_start_pos < m_oldest_readable_position)
+    if (req_start_pos < m_oldest_buffered_position)
       {
 	m_stat_read_not_in_buffer_cnt++;
-	/* not in buffer anymore request it from stream_io */
-	/* TODO[arnia] */
-	// m_io->read (req_start_pos, buf, amount);
-	return NULL;
+
+	size_t bytes_available_file = wait_for_flush (req_start_pos, amount);
+
+	actual_read_bytes = std::min (bytes_available_file, amount);
+
+	read_context.file_buffer = new char[actual_read_bytes];
+	if (read_context.file_buffer == NULL)
+	  {
+	    return NULL;
+	  }
+	read_context.buffer_size = actual_read_bytes;
+
+	err = m_stream_file->read (req_start_pos, read_context.file_buffer, actual_read_bytes);
+	if (err != NO_ERROR)
+	  {
+	    actual_read_bytes = 0;
+	    ASSERT_ERROR ();
+	    release_read_context (read_context);
+	    return NULL;
+	  }
+
+	return read_context.file_buffer;
       }
 
-    std::unique_lock<std::mutex> ulock (m_buffer_mutex);
+    std::unique_lock<std::mutex> bip_buf_ulock (m_buffer_mutex);
     /* update mapped positions according to buffer pointers */
     const char *ptr_trail_a;
     const char *ptr_trail_b;
@@ -521,21 +590,48 @@ namespace cubstream
     if (amount_trail_a == 0 && amount_trail_b == 0)
       {
 	/* no readable regions */
+	assert (false);
+	/* TODO : set different error */
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_NO_MORE_DATA, 3, this->name ().c_str (), req_start_pos,
+		amount);
 	m_stat_read_no_readable_pos_cnt++;
+	release_read_context (read_context);
 	return NULL;
       }
 
     total_in_buffer = amount_trail_b + amount_trail_a;
 
-    m_oldest_readable_position = m_last_committed_pos - total_in_buffer;
+    m_oldest_buffered_position = m_last_committed_pos - total_in_buffer;
+    assert (m_oldest_buffered_position <= m_last_recyclable_pos);
+    assert (m_stream_file == NULL || m_stream_file->get_max_available_from_pos (m_oldest_buffered_position) >= 0);
 
-    if (req_start_pos < m_oldest_readable_position)
+    if (req_start_pos < m_oldest_buffered_position)
       {
+	/* part of range no longer in buffer, read from file */
+	bip_buf_ulock.unlock ();
+
 	m_stat_read_not_in_buffer_cnt++;
-	/* not in buffer anymore request it from stream_io */
-	/* TODO: */
-	// m_io->read (req_start_pos, buf, amount);
-	return NULL;
+
+	size_t bytes_available_file = wait_for_flush (req_start_pos, amount);
+
+	actual_read_bytes = std::min (bytes_available_file, amount);
+
+	read_context.file_buffer = new char[actual_read_bytes];
+	if (read_context.file_buffer == NULL)
+	  {
+	    return NULL;
+	  }
+	read_context.buffer_size = actual_read_bytes;
+
+	err = m_stream_file->read (req_start_pos, read_context.file_buffer, actual_read_bytes);
+	if (err != NO_ERROR)
+	  {
+	    ASSERT_ERROR ();
+	    release_read_context (read_context);
+	    return NULL;
+	  }
+
+	return read_context.file_buffer;
       }
 
     if (m_last_committed_pos - req_start_pos <= amount_trail_b)
@@ -544,31 +640,104 @@ namespace cubstream
 	 * this includes case when B does not exit - from start of buffer) */
 	ptr = (char *) ptr_trail_b + amount_trail_b - (m_last_committed_pos - req_start_pos);
 	assert (ptr_trail_b + amount_trail_b > ptr);
-	actual_read_bytes = MIN ((int) amount, ptr_trail_b + amount_trail_b - ptr);
+	actual_read_bytes = MIN (amount, ptr_trail_b + amount_trail_b - ptr);
       }
     else
       {
 	ptr = (char *) ptr_trail_a + amount_trail_a - (m_last_committed_pos - req_start_pos - amount_trail_b);
 	assert (ptr_trail_a + amount_trail_a > ptr);
-	actual_read_bytes = MIN ((int) amount, ptr_trail_a + amount_trail_a - ptr);
+	actual_read_bytes = MIN (amount, ptr_trail_a + amount_trail_a - ptr);
       }
 
-    err = m_bip_buffer.start_read (ptr, actual_read_bytes, read_latch_page_idx);
+    err = m_bip_buffer.start_read (ptr, actual_read_bytes, read_context.read_latch_page_idx);
     if (err != NO_ERROR)
       {
 	m_stat_read_buffer_failed_cnt++;
+	release_read_context (read_context);
+	/* TODO : set error */
 	return NULL;
       }
 
     return ptr;
   }
 
-  int multi_thread_stream::unlatch_read_data (const mem::buffer_latch_read_id &read_latch_page_idx)
+  void multi_thread_stream::unlatch_read_data (const mem::buffer_latch_read_id &read_latch_page_idx)
   {
     std::unique_lock<std::mutex> ulock (m_buffer_mutex);
     m_bip_buffer.end_read (read_latch_page_idx);
+  }
 
-    return NO_ERROR;
+  void multi_thread_stream::release_read_context (stream_read_context &read_context)
+  {
+    if (read_context.file_buffer != NULL)
+      {
+	delete[] read_context.file_buffer;
+	read_context.file_buffer = NULL;
+      }
+    else
+      {
+	unlatch_read_data (read_context.read_latch_page_idx);
+      }
+  }
+
+  void multi_thread_stream::wake_up_flusher (float fill_factor, const stream_position start_flush_pos,
+      const size_t flush_amount)
+  {
+    /* wake up flusher (if any) :
+     * fill_factor : ratio of flush to disk trigger size occupied in the stream buffer
+     */
+    if (m_filled_stream_handler
+	&& fill_factor > 1.0f)
+      {
+	m_filled_stream_handler (start_flush_pos, flush_amount);
+      }
+  }
+
+  /*
+   *  wait_for_flush_or_readers : waits until stream has enough free space made by flusher (or set of readers)
+   *                              This should be called by only writer threads
+   */
+  void multi_thread_stream::wait_for_flush_or_readers (const stream_position &last_commit_pos,
+      const stream_position &last_append_pos)
+  {
+    wake_up_flusher (2.0f, m_last_recyclable_pos, last_commit_pos - m_last_recyclable_pos);
+
+    /* set fill factor to force a flush */
+    std::unique_lock<std::mutex> local_lock (m_recyclable_pos_mutex);
+    /* wait until flusher/senders advances m_last_recyclable_pos */
+    m_recyclable_pos_cv.wait (local_lock,
+			      [&] { return m_is_stopped ||
+					   (last_append_pos - m_last_recyclable_pos <
+					    m_threshold_resume_reserve);
+				  });
+  }
+
+  size_t multi_thread_stream::wait_for_flush (const stream_position &req_pos, const size_t amount)
+  {
+    /* TODO : use cond var instead of sleep ? */
+    size_t bytes_available_file;
+    size_t min_bytes_to_read_from_file = std::min (MIN_BYTES_TO_READ_FROM_FILE, amount);
+    do
+      {
+	m_stat_read_not_in_buffer_wait_for_flush_cnt++;
+	bytes_available_file = m_stream_file->get_max_available_from_pos (req_pos);
+	std::this_thread::sleep_for (std::chrono::microseconds (WAIT_FOR_FILE_SLEEP_MICROSECS));
+      }
+    while (bytes_available_file < min_bytes_to_read_from_file);
+
+    return bytes_available_file;
+  }
+
+  void multi_thread_stream::set_last_recyclable_pos (const stream_position &pos)
+  {
+    std::unique_lock<std::mutex> local_lock (m_recyclable_pos_mutex);
+    if (pos > m_last_recyclable_pos)
+      {
+	m_last_recyclable_pos = pos;
+	local_lock.unlock ();
+
+	m_recyclable_pos_cv.notify_one ();
+      }
   }
 
 } /* namespace cubstream */

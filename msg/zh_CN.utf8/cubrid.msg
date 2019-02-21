@@ -1284,10 +1284,10 @@ $ LOADDB
 1214 Reserved error for JSON.
 1215 No more data to read from stream %1$s at position %2$lld, amount %3$zu.
 1216 Invalid object id %1$d when trying to unpack.
-1217 Reserved error for stream/replication.
-1218 Reserved error for stream/replication.
-1219 Reserved error for stream/replication.
-1220 Reserved error for stream/replication.
+1217 Invalid read from stream file %1$s at position %2$lld, amount %3$lld.
+1218 Invalid write to stream file %1$s at position %2$lld, amount %3$lld.
+1219 Cannot read from stream volume %1$s at offset %2$lld, amount %3$lld.
+1220 Cannot write to stream volume %1$s at offset %2$lld, amount %3$lld.
 1221 Reserved error for stream/replication.
 1222 Reserved error for stream/replication.
 1223 Reserved error for stream/replication.
