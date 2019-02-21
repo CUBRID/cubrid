@@ -4092,8 +4092,8 @@ process_heartbeat_reload (int argc, const char **argv)
   return status;
 }
 
-#if defined (ENABLE_OLD_REPLICATION) 
 #if !defined(WINDOWS)
+#if defined (ENABLE_OLD_REPLICATION) 
 /*
  * process_heartbeat_util -
  *
@@ -4246,7 +4246,7 @@ ret:
   print_result (PRINT_HEARTBEAT_NAME, status, REPLICATION);
   return status;
 }
-#endif
+#endif /* WINDOWS */
 
 /*
  * process_heartbeat -
