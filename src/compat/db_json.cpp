@@ -261,7 +261,7 @@ class JSON_PATH : protected rapidjson::GenericPointer <JSON_VALUE>
 	  case object_key:
 	    return other.type == object_key && token_string == other.token_string;
 	  case array_index:
-	    return other.type == array_index && token_string == token_string;
+	    return other.type == array_index && token_string == other.token_string;
 	  default:
 	    return false;
 	  }
@@ -1018,6 +1018,31 @@ JSON_PATH::build_special_chars_map (const JSON_PATH_TYPE &json_path_type,
 std::string
 JSON_PATH::dump_json_path (bool skip_json_pointer_minus = true) const
 {
+  if (m_backend_json_format == JSON_PATH_TYPE::JSON_PATH_SQL_JSON)
+    {
+      std::string res = "$.";
+
+      for (const auto &tkn : m_path_tokens)
+	{
+	  switch (tkn.type)
+	    {
+	    case PATH_TOKEN::array_index:
+	      res += '[';
+	      res += tkn.token_string;
+	      res += ']';
+	      break;
+	    case PATH_TOKEN::object_key:
+	      res+= tkn.token_string;
+	      break;
+	    default:
+	      // assert (false);
+	      break;
+	    }
+	}
+
+      return res;
+    }
+
   std::unordered_map<std::string, std::string> special_chars;
   build_special_chars_map (JSON_PATH_TYPE::JSON_PATH_POINTER, special_chars);
 
@@ -1265,7 +1290,7 @@ JSON_PATH_MAPPER::JSON_PATH_MAPPER (map_func_type func)
   : m_producer (func)
   , m_accumulated_paths ()
 {
-
+  m_accumulated_paths.m_backend_json_format = JSON_PATH::JSON_PATH_TYPE::JSON_PATH_SQL_JSON;
 }
 
 int JSON_PATH_MAPPER::CallBefore (JSON_VALUE &value)
@@ -2618,7 +2643,7 @@ db_json_search_func (JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALUE *esc
 
     for (std::size_t i = 0; i < json_paths.size (); ++i)
       {
-	bool path_compatible = json_paths[i].match (crt_path);
+	bool path_compatible = json_paths[i].match (crt_path, true);
 
 	if (path_compatible)
 	  {
