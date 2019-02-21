@@ -224,24 +224,11 @@ class JSON_PATH : protected rapidjson::GenericPointer <JSON_VALUE>
 	array_index_wild_card,
 	double_wild_card,
 	object_key,
-	array_index,
-	merged,
-	NOT_RESOLVED
+	array_index
       } type;
 
       // todo: optimize representation (e.g. have an ull for indexes)
       std::string token_string;
-
-      // could also validate
-      void resolve_type ()
-      {
-	// todo: maybe no need?
-      }
-
-      bool mergeable () const
-      {
-	return type == token_type::merged || type == token_type::array_index || type == token_type::object_key;
-      }
 
       bool is_wildcard () const
       {
@@ -1195,7 +1182,7 @@ int JSON_PATH::init (const char *path)
 JSON_PATH::JSON_PATH ()
   : JSON_POINTER ("")
 {
-
+  m_backend_json_format = JSON_PATH_TYPE::JSON_PATH_POINTER;
 }
 
 JSON_PATH::JSON_PATH (const TOKEN *tokens, size_t token_cnt)
@@ -1203,6 +1190,7 @@ JSON_PATH::JSON_PATH (const TOKEN *tokens, size_t token_cnt)
 {
   // this object does not get owernship over the TOKEN* resources and does not dealloc them
   // during destruction
+  m_backend_json_format = JSON_PATH_TYPE::JSON_PATH_POINTER;
 }
 
 /*
