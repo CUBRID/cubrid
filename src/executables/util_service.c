@@ -314,9 +314,9 @@ static int us_hb_utils_stop (HA_CONF * ha_conf, const char *db_name, const char 
 static int us_hb_server_start (HA_CONF * ha_conf, const char *db_name);
 static int us_hb_server_stop (HA_CONF * ha_conf, const char *db_name);
 
-#if defined (ENABLE_OLD_REPLICATION)
 static int us_hb_process_start (HA_CONF * ha_conf, const char *db_name, bool check_result);
 static int us_hb_process_stop (HA_CONF * ha_conf, const char *db_name);
+#if defined (ENABLE_OLD_REPLICATION)
 static int us_hb_process_copylogdb (int command_type, HA_CONF * ha_conf, const char *db_name, const char *node_name,
 				    const char *remote_host);
 static int us_hb_process_applylogdb (int command_type, HA_CONF * ha_conf, const char *db_name, const char *node_name,
@@ -3203,7 +3203,6 @@ us_hb_deactivate (const char *hostname, bool immediate_stop)
   return NO_ERROR;
 }
 
-#if defined (ENABLE_OLD_REPLICATION)
 static int
 us_hb_process_stop (HA_CONF * ha_conf, const char *db_name)
 {
@@ -3211,6 +3210,7 @@ us_hb_process_stop (HA_CONF * ha_conf, const char *db_name)
 
   print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_HA_PROCS_NAME, PRINT_CMD_STOP);
 
+#if defined (ENABLE_OLD_REPLICATION)
   status = us_hb_copylogdb_stop (ha_conf, db_name, NULL, NULL);
   if (status != NO_ERROR)
     {
@@ -3222,6 +3222,7 @@ us_hb_process_stop (HA_CONF * ha_conf, const char *db_name)
     {
       goto ret;
     }
+#endif /* ENABLE_OLD_REPLICATION */
 
   status = us_hb_server_stop (ha_conf, db_name);
 
@@ -3230,6 +3231,7 @@ ret:
   return status;
 }
 
+#if defined (ENABLE_OLD_REPLICATION)
 static int
 us_hb_process_copylogdb (int command_type, HA_CONF * ha_conf, const char *db_name, const char *node_name,
 			 const char *remote_host)
@@ -3788,7 +3790,6 @@ process_heartbeat_start (HA_CONF * ha_conf, int argc, const char **argv)
 	}
     }
 
-#if defined (ENABLE_OLD_REPLICATION) 
   status = us_hb_process_start (ha_conf, db_name, true);
   if (status != NO_ERROR)
     {
@@ -3801,7 +3802,6 @@ process_heartbeat_start (HA_CONF * ha_conf, int argc, const char **argv)
 	  (void) us_hb_process_stop (ha_conf, db_name);
 	}
     }
-#endif /* ENABLE_OLD_REPLICATION */
 
 ret:
   print_result (PRINT_HEARTBEAT_NAME, status, START);
@@ -3864,9 +3864,7 @@ process_heartbeat_stop (HA_CONF * ha_conf, int argc, const char **argv)
 	      util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_HA_MODE);
 	      goto ret;
 	    }
-#if defined (ENABLE_OLD_REPLICATION) 
 	  status = us_hb_process_stop (ha_conf, db_name);
-#endif
 	}
       else
 	{
