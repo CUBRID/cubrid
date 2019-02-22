@@ -17,7 +17,6 @@
  *
  */
 
-
 /*
  * parse_tree.h - Parse tree structures and types
  */
@@ -34,14 +33,15 @@
 #include <setjmp.h>
 #include <assert.h>
 
-#include "config.h"
-#include "jansson.h"
-#include "cursor.h"
-#include "string_opfunc.h"
-#include "message_catalog.h"
 #include "authenticate.h"
+#include "compile_context.h"
+#include "config.h"
+#include "cursor.h"
+#include "jansson.h"
+#include "json_table_def.h"
+#include "message_catalog.h"
+#include "string_opfunc.h"
 #include "system_parameter.h"
-#include "xasl.h"
 
 #define MAX_PRINT_ERROR_CONTEXT_LENGTH 64
 
@@ -547,7 +547,6 @@
 
 #endif /* !SERVER_MODE */
 
-
 /* NODE FUNCTION DECLARATIONS */
 #define IS_UPDATE_OBJ(node) (node->node_type == PT_UPDATE && node->info.update.object_parameter)
 
@@ -896,12 +895,14 @@ enum pt_node_type
   PT_KILL_STMT,
   PT_VACUUM,
   PT_WITH_CLAUSE,
+  PT_JSON_TABLE,
+  PT_JSON_TABLE_NODE,
+  PT_JSON_TABLE_COLUMN,
 
   PT_NODE_NUMBER,		/* This is the number of node types */
   PT_LAST_NODE_NUMBER = PT_NODE_NUMBER
 };
 typedef enum pt_node_type PT_NODE_TYPE;
-
 
 /* Enumerated Data Types for expressions with a VALUE */
 enum pt_type_enum
@@ -1138,7 +1139,11 @@ typedef enum
 
   PT_IS_SHOWSTMT,		/* query is SHOWSTMT */
   PT_IS_CTE_REC_SUBQUERY,
-  PT_IS_CTE_NON_REC_SUBQUERY
+  PT_IS_CTE_NON_REC_SUBQUERY,
+
+  PT_DERIVED_JSON_TABLE,	// json table spec derivation
+
+  // todo: separate into relevant enumerations
 } PT_MISC_TYPE;
 
 /* Enumerated join type */
@@ -1198,7 +1203,6 @@ typedef enum
   PT_HINT_SELECT_KEY_INFO = 0x80000000	/* 1000 0000 0000 0000 0000 0000 0000 0000 */
     /* SELECT key information from index b-tree instead of table record data */
 } PT_HINT_ENUM;
-
 
 /* Codes for error messages */
 
@@ -1294,14 +1298,12 @@ typedef enum
   PT_CONSTRAIN_CHECK
 } PT_CONSTRAINT_TYPE;
 
-
 typedef enum
 {
   PT_PARTITION_HASH = 0,
   PT_PARTITION_RANGE,
   PT_PARTITION_LIST
 } PT_PARTITION_TYPE;
-
 
 typedef enum
 {
@@ -1312,7 +1314,6 @@ typedef enum
   PT_TABLE_OPTION_COLLATION,
   PT_TABLE_OPTION_COMMENT
 } PT_TABLE_OPTION_TYPE;
-
 
 typedef enum
 {
@@ -1475,18 +1476,10 @@ typedef enum
   PT_CRC32,
   PT_SCHEMA_DEF,
   PT_CONV_TZ,
-  PT_JSON_CONTAINS,
-  PT_JSON_TYPE,
-  PT_JSON_EXTRACT,
-  PT_JSON_VALID,
-  PT_JSON_LENGTH,
-  PT_JSON_DEPTH,
-  PT_JSON_SEARCH,
 
   /* This is the last entry. Please add a new one before it. */
   PT_LAST_OPCODE
 } PT_OP_TYPE;
-
 
 /* the virtual query mechanism needs to put oid columns on non-updatable
  * virtual query guys, hence the "trust me" part.
@@ -1687,6 +1680,10 @@ typedef struct pt_set_timezone_info PT_SET_TIMEZONE_INFO;
 
 typedef struct pt_flat_spec_info PT_FLAT_SPEC_INFO;
 
+typedef struct pt_json_table_info PT_JSON_TABLE_INFO;
+typedef struct pt_json_table_node_info PT_JSON_TABLE_NODE_INFO;
+typedef struct pt_json_table_column_info PT_JSON_TABLE_COLUMN_INFO;
+
 typedef PT_NODE *(*PT_NODE_FUNCTION) (PARSER_CONTEXT * p, PT_NODE * tree, void *arg);
 
 typedef PT_NODE *(*PT_NODE_WALK_FUNCTION) (PARSER_CONTEXT * p, PT_NODE * tree, void *arg, int *continue_walk);
@@ -1756,8 +1753,6 @@ struct parser_hint
   PT_NODE *arg_list;
   PT_HINT_ENUM hint;
 };
-
-
 
 struct pt_alter_info
 {
@@ -1955,6 +1950,7 @@ struct pt_index_info
   bool reverse;			/* REVERSE */
   bool unique;			/* UNIQUE specified? */
   SM_INDEX_STATUS index_status;	/* Index status : NORMAL / ONLINE / INVISIBLE */
+  int ib_threads;
 };
 
 /* CREATE USER INFO */
@@ -2067,7 +2063,6 @@ struct pt_data_type_info
   PARSER_VARCHAR *json_schema;
 };
 
-
 /* DELETE */
 struct pt_delete_info
 {
@@ -2099,7 +2094,6 @@ struct pt_dot_info
   PT_NODE *arg1;		/* PT_EXPR etc.  first argument */
   PT_NODE *arg2;		/* PT_EXPR etc.  possible second argument */
   PT_NODE *selector;		/* only set if selector used A[SELECTOR].B */
-  PT_OP_TYPE op;		/* binary or unary op code */
   short tag_click_counter;	/* 0: normal name, 1: click counter name */
   int coll_modifier;		/* collation modifier = collation + 1 */
 };
@@ -2155,6 +2149,7 @@ struct pt_spec_info
   PT_NODE *flat_entity_list;	/* PT_NAME (list) resolved class's */
   PT_NODE *method_list;		/* PT_METHOD_CALL list with this entity as the target */
   PT_NODE *partition;		/* PT_NAME of the specified partition */
+  PT_NODE *json_table;		/* JSON TABLE definition tree */
   UINTPTR id;			/* entity spec unique id # */
   PT_MISC_TYPE only_all;	/* PT_ONLY or PT_ALL */
   PT_MISC_TYPE meta_class;	/* enum 0 or PT_META */
@@ -2258,7 +2253,6 @@ struct pt_expr_info
   int coll_modifier;		/* collation modifier = collation + 1 */
 };
 
-
 /* FILE PATH INFO */
 struct pt_file_path_info
 {
@@ -2276,6 +2270,7 @@ struct pt_function_info
   PT_NODE *order_by;		/* ordering PT_SORT_SPEC for GROUP_CONCAT */
   PT_NODE *percentile;		/* percentile for PERCENTILE_CONT, PERCENTILE_DISC */
   bool is_order_dependent;	/* true if function is order dependent */
+  bool is_type_checked;		/* true if type is already checked, false otherwise... is this safe? */
   int coll_modifier;		/* collation modifier = collation + 1 */
   struct
   {
@@ -2382,7 +2377,6 @@ struct pt_method_call_info
 				 * original method call. */
 };
 
-
 /* Info for METHOD DEFs */
 struct pt_method_def_info
 {
@@ -2391,7 +2385,6 @@ struct pt_method_def_info
   PT_NODE *function_name;	/* PT_VALUE (string) */
   PT_MISC_TYPE mthd_type;	/* PT_NORMAL or ... */
 };
-
 
 /*
  * Reserved names section
@@ -2582,7 +2575,7 @@ struct pt_name_info
 #define PT_NAME_ALLOW_REUSABLE_OID 512	/* ignore the REUSABLE_OID restrictions for this name */
 #define PT_NAME_GENERATED_DERIVED_SPEC 1024	/* attribute generated from derived spec */
 #define PT_NAME_FOR_UPDATE	   2048	/* Table name in FOR UPDATE clause */
-#define PT_NAME_REAL_TABLE	   4096	/* name of table/column belongs to a real table */
+#define PT_NAME_DEFAULTF_ACCEPTS   4096	/* name of table/column that default function accepts: real table's, cte's */
 
   short flag;
 #define PT_NAME_INFO_IS_FLAGED(e, f)    ((e)->info.name.flag & (short) (f))
@@ -2593,6 +2586,7 @@ struct pt_name_info
   PT_NODE *indx_key_limit;	/* key limits for index name */
   int coll_modifier;		/* collation modifier = collation + 1 */
   PT_RESERVED_NAME_ID reserved_id;	/* used to identify reserved name */
+  size_t json_table_column_index;	/* will be used only for json_table to gather attributes in the correct order */
 };
 
 /*
@@ -2639,7 +2633,6 @@ struct pt_rename_info
   PT_MISC_TYPE attr_or_mthd;
   PT_MISC_TYPE entity_type;
 };
-
 
 /* Info for RENAME TRIGGER  */
 struct pt_rename_trigger_info
@@ -2725,26 +2718,26 @@ struct pt_select_info
   unsigned single_table_opt:1;	/* hq optimized for single table */
 };
 
-#define PT_SELECT_INFO_ANSI_JOIN	1	/* has ANSI join? */
-#define PT_SELECT_INFO_ORACLE_OUTER	2	/* has Oracle's outer join operator? */
-#define PT_SELECT_INFO_DUMMY		4	/* is dummy (i.e., 'SELECT * FROM x') ? */
-#define PT_SELECT_INFO_HAS_AGG		8	/* has any type of aggregation? */
-#define PT_SELECT_INFO_HAS_ANALYTIC	16	/* has analytic functions */
-#define PT_SELECT_INFO_MULTI_UPDATE_AGG	32	/* is query for multi-table update using aggregate */
-#define PT_SELECT_INFO_IDX_SCHEMA	64	/* is show index query */
-#define PT_SELECT_INFO_COLS_SCHEMA	128	/* is show columns query */
-#define PT_SELECT_FULL_INFO_COLS_SCHEMA	256	/* is show columns query */
-#define PT_SELECT_INFO_IS_MERGE_QUERY	512	/* is a query of a merge stmt */
-#define	PT_SELECT_INFO_LIST_PUSHER	1024	/* dummy subquery that pushes a list file descriptor to be used at
-						 * server as its own result */
-#define PT_SELECT_INFO_NO_STRICT_OID_CHECK  2048	/* normally, only OIDs of updatable views are allowed in parse
+#define PT_SELECT_INFO_ANSI_JOIN	     0x01	/* has ANSI join? */
+#define PT_SELECT_INFO_ORACLE_OUTER	     0x02	/* has Oracle's outer join operator? */
+#define PT_SELECT_INFO_DUMMY		     0x04	/* is dummy (i.e., 'SELECT * FROM x') ? */
+#define PT_SELECT_INFO_HAS_AGG		     0x08	/* has any type of aggregation? */
+#define PT_SELECT_INFO_HAS_ANALYTIC	     0x10	/* has analytic functions */
+#define PT_SELECT_INFO_MULTI_UPDATE_AGG	     0x20	/* is query for multi-table update using aggregate */
+#define PT_SELECT_INFO_IDX_SCHEMA	     0x40	/* is show index query */
+#define PT_SELECT_INFO_COLS_SCHEMA	     0x80	/* is show columns query */
+#define PT_SELECT_FULL_INFO_COLS_SCHEMA	   0x0100	/* is show columns query */
+#define PT_SELECT_INFO_IS_MERGE_QUERY	   0x0200	/* is a query of a merge stmt */
+#define	PT_SELECT_INFO_LIST_PUSHER	   0x0400	/* dummy subquery that pushes a list file descriptor to be used at
+							 * server as its own result */
+#define PT_SELECT_INFO_NO_STRICT_OID_CHECK 0x0800	/* normally, only OIDs of updatable views are allowed in parse
 							 * trees; however, for MERGE and UPDATE we sometimes want to
 							 * allow OIDs of partially updatable views */
-#define PT_SELECT_INFO_IS_UPD_DEL_QUERY	4096	/* set if select was built for an UPDATE or DELETE statement */
-#define PT_SELECT_INFO_FOR_UPDATE	8192	/* FOR UPDATE clause is active */
-#define PT_SELECT_INFO_DISABLE_LOOSE_SCAN   16384	/* loose scan not possible on query */
-#define PT_SELECT_INFO_MVCC_LOCK_NEEDED	    32768	/* lock returned rows */
-#define PT_SELECT_INFO_READ_ONLY 65536	/* read-only system generated queries like show statement */
+#define PT_SELECT_INFO_IS_UPD_DEL_QUERY	   0x1000	/* set if select was built for an UPDATE or DELETE statement */
+#define PT_SELECT_INFO_FOR_UPDATE	   0x2000	/* FOR UPDATE clause is active */
+#define PT_SELECT_INFO_DISABLE_LOOSE_SCAN  0x4000	/* loose scan not possible on query */
+#define PT_SELECT_INFO_MVCC_LOCK_NEEDED	   0x8000	/* lock returned rows */
+#define PT_SELECT_INFO_READ_ONLY         0x010000	/* read-only system generated queries like show statement */
 
 #define PT_SELECT_INFO_IS_FLAGED(s, f)  \
           ((s)->info.query.q.select.flag & (f))
@@ -2793,7 +2786,6 @@ struct pt_query_info
     PT_UNION_INFO union_;
   } q;
 };
-
 
 /* Info for Set Optimization Level statement */
 struct pt_set_opt_lvl_info
@@ -3062,7 +3054,6 @@ union pt_data_value
   PT_ENUM_ELEMENT enumeration;
 };
 
-
 /* Info for the VALUE node */
 struct pt_value_info
 {
@@ -3083,7 +3074,6 @@ struct pt_value_info
   int host_var_index;		/* save the host_var index which it comes from. -1 means it is a normal value. it does
 				 * not come from any host_var. */
 };
-
 
 /* Info for the ZZ_ERROR_MSG node */
 struct PT_ZZ_ERROR_MSG_INFO
@@ -3245,6 +3235,31 @@ struct pt_insert_value_info
   int replace_names;		/* true if names in evaluated node need to be replaced */
 };
 
+struct pt_json_table_column_info
+{
+  PT_NODE *name;
+  // domain is stored in parser node
+  char *path;
+  size_t index;			// will be used to store the columns in the correct order
+  enum json_table_column_function func;
+  struct json_table_column_behavior on_error;
+  struct json_table_column_behavior on_empty;
+};
+
+struct pt_json_table_node_info
+{
+  PT_NODE *columns;
+  PT_NODE *nested_paths;
+  const char *path;
+};
+
+struct pt_json_table_info
+{
+  PT_NODE *expr;
+  PT_NODE *tree;
+  bool is_correlated;
+};
+
 /* Info field of the basic NODE
   If 'xyz' is the name of the field, then the structure type should be
   struct PT_XYZ_INFO xyz;
@@ -3298,6 +3313,9 @@ union pt_statement_info
   PT_INSERT_INFO insert;
   PT_INSERT_VALUE_INFO insert_value;
   PT_ISOLATION_LVL_INFO isolation_lvl;
+  PT_JSON_TABLE_INFO json_table_info;
+  PT_JSON_TABLE_NODE_INFO json_table_node_info;
+  PT_JSON_TABLE_COLUMN_INFO json_table_column_info;
   PT_MERGE_INFO merge;
   PT_METHOD_CALL_INFO method_call;
   PT_METHOD_DEF_INFO method_def;
@@ -3347,7 +3365,6 @@ union pt_statement_info
   PT_KILLSTMT_INFO killstmt;
   PT_WITH_CLAUSE_INFO with_clause;
 };
-
 
 /*
  * auxiliary structures for tree walking operations related to aggregates
@@ -3652,8 +3669,22 @@ struct pt_coll_infer
 				 * for auto-CAST expressions around numbers: initially the string data type of CAST is
 				 * created with system charset by generic type checking but that charset can be forced
 				 * to another charset (of another argument) if this flag is set */
+
+#ifdef __cplusplus
+  // *INDENT-OFF*
+    pt_coll_infer ()
+      : coll_id (-1)
+      , codeset (INTL_CODESET_NONE)
+      , coerc_level (PT_COLLATION_NOT_APPLICABLE)
+      , can_force_cs (true)
+  {
+    //
+  }
+  // *INDENT-ON*
+#endif				// c++
 };
 
+void pt_init_node (PT_NODE * node, PT_NODE_TYPE node_type);
 
 #ifdef __cplusplus
 extern "C"
@@ -3662,12 +3693,9 @@ extern "C"
   void *parser_allocate_string_buffer (const PARSER_CONTEXT * parser, const int length, const int align);
   bool pt_is_json_value_type (PT_TYPE_ENUM type);
   bool pt_is_json_doc_type (PT_TYPE_ENUM type);
-  bool pt_is_json_object_name (PT_TYPE_ENUM type);
-  bool pt_is_json_path (PT_TYPE_ENUM type);
 #ifdef __cplusplus
 }
 #endif
-
 
 #if !defined (SERVER_MODE)
 #ifdef __cplusplus

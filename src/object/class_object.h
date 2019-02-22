@@ -34,9 +34,11 @@
 
 #include "object_domain.h"
 #include "work_space.h"
-#include "object_primitive.h"
 #include "storage_common.h"
 #include "statistics.h"
+
+// forward definitions
+struct pr_type;
 
 /*
  *    This macro should be used whenever comparisons need to be made
@@ -439,7 +441,7 @@ struct sm_attribute
 {
   SM_COMPONENT header;		/* next, name, header */
 
-  PR_TYPE *type;		/* basic type */
+  struct pr_type *type;		/* basic type */
   TP_DOMAIN *domain;		/* allowable types */
 
   MOP class_mop;		/* origin class */
@@ -512,13 +514,13 @@ typedef enum
   SM_NORMAL_INDEX = 1,
   SM_INVISIBLE_INDEX = 2,
   SM_ONLINE_INDEX_BUILDING_IN_PROGRESS = 3,
-  SM_ONLINE_INDEX_BUILDING_DONE = 4,
 
-  SM_RESERVED_INDEX_STATUS1 = 5,
-  SM_RESERVED_INDEX_STATUS2 = 6,
-  SM_RESERVED_INDEX_STATUS3 = 7,
-  SM_RESERVED_INDEX_STATUS4 = 8,
-  SM_RESERVED_INDEX_STATUS5 = 9,
+  SM_RESERVED_INDEX_STATUS1 = 4,
+  SM_RESERVED_INDEX_STATUS2 = 5,
+  SM_RESERVED_INDEX_STATUS3 = 6,
+  SM_RESERVED_INDEX_STATUS4 = 7,
+  SM_RESERVED_INDEX_STATUS5 = 8,
+  SM_RESERVED_INDEX_STATUS6 = 9,
   SM_LAST_INDEX_STATUS = 10
 } SM_INDEX_STATUS;
 
@@ -554,7 +556,7 @@ struct sm_method_argument
 {
   struct sm_method_argument *next;
 
-  PR_TYPE *type;		/* basic type */
+  struct pr_type *type;		/* basic type */
   TP_DOMAIN *domain;		/* full domain */
   int index;			/* argument index (one based) */
 };
@@ -953,8 +955,7 @@ extern int classobj_rename_constraint (DB_SEQ * properties, const char *prop_nam
 				       const char *new_name);
 #endif
 
-extern int classobj_change_constraint_comment (DB_SEQ * properties, SM_CLASS_CONSTRAINT *cons,
-					       const char *comment);
+extern int classobj_change_constraint_comment (DB_SEQ * properties, SM_CLASS_CONSTRAINT * cons, const char *comment);
 
 extern int classobj_get_cached_constraint (SM_CONSTRAINT * constraints, SM_CONSTRAINT_TYPE type, BTID * id);
 extern bool classobj_has_class_unique_constraint (SM_CLASS_CONSTRAINT * constraints);
@@ -983,7 +984,7 @@ extern SM_CLASS_CONSTRAINT *classobj_find_constraint_by_name (SM_CLASS_CONSTRAIN
 extern SM_CLASS_CONSTRAINT *classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list,
 							       DB_CONSTRAINT_TYPE new_cons, const char **att_names,
 							       const int *asc_desc);
-extern TP_DOMAIN *classobj_find_cons_index2_col_type_list (SM_CLASS_CONSTRAINT * cons, CLASS_STATS * stats);
+extern TP_DOMAIN *classobj_find_cons_index2_col_type_list (SM_CLASS_CONSTRAINT * cons, OID * root_oid);
 extern void classobj_remove_class_constraint_node (SM_CLASS_CONSTRAINT ** constraints, SM_CLASS_CONSTRAINT * node);
 
 extern int classobj_populate_class_properties (DB_SET ** properties, SM_CLASS_CONSTRAINT * constraints,
@@ -992,7 +993,7 @@ extern int classobj_populate_class_properties (DB_SET ** properties, SM_CLASS_CO
 extern bool classobj_class_has_indexes (SM_CLASS * class_);
 
 /* Attribute */
-extern SM_ATTRIBUTE *classobj_make_attribute (const char *name, PR_TYPE * type, SM_NAME_SPACE name_space);
+extern SM_ATTRIBUTE *classobj_make_attribute (const char *name, struct pr_type *type, SM_NAME_SPACE name_space);
 extern SM_ATTRIBUTE *classobj_copy_attribute (SM_ATTRIBUTE * src, const char *alias);
 extern int classobj_copy_attlist (SM_ATTRIBUTE * attlist, MOP filter_class, int ordered, SM_ATTRIBUTE ** copy_ptr);
 
@@ -1109,7 +1110,7 @@ extern SM_PARTITION *classobj_make_partition_info (void);
 extern void classobj_free_partition_info (SM_PARTITION * partition_info);
 extern SM_PARTITION *classobj_copy_partition_info (SM_PARTITION * partition_info);
 
-extern int classobj_change_constraint_status (DB_SEQ * properties, SM_CLASS_CONSTRAINT *cons,
+extern int classobj_change_constraint_status (DB_SEQ * properties, SM_CLASS_CONSTRAINT * cons,
 					      SM_INDEX_STATUS index_status);
 
 #endif /* _CLASS_OBJECT_H_ */

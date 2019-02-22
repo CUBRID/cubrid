@@ -59,7 +59,7 @@ namespace allocator
 	m_stop = m_ptr + size;
       }
 
-      mem::block allocate (size_t size)
+      cubmem::block allocate (size_t size)
       {
 	//round to next aligned?! natural allignment
 	//...
@@ -67,10 +67,10 @@ namespace allocator
 	  {
 	    return {};
 	  }
-	return mem::block{size, (m_start += size, m_start - size)};
+	return cubmem::block{size, (m_start += size, m_start - size)};
       }
 
-      void deallocate (mem::block b)
+      void deallocate (cubmem::block b)
       {
 	//assert(owns(blk));
 	if ((char *) b.ptr + b.dim == m_start) // last allocated block
@@ -79,7 +79,7 @@ namespace allocator
 	  }
       }
 
-      bool owns (mem::block b)
+      bool owns (cubmem::block b)
       {
 	return (m_ptr <= b.ptr && b.ptr + b.dim <= m_stop);
       }

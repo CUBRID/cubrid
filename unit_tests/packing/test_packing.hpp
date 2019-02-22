@@ -31,12 +31,14 @@ namespace test_packing
 
   int test_packing_buffer1 (void);
 
+  int test_packing_all (void);
+
   class buffer_manager : public cubbase::pinner
   {
     private:
-      std::vector<mem::pinnable_buffer *> buffers;
+      std::vector<cubmem::pinnable_buffer *> buffers;
     public:
-      void allocate_bufer (mem::pinnable_buffer *&buf, const size_t &amount);
+      void allocate_bufer (cubmem::pinnable_buffer *&buf, const size_t &amount);
 
       void free_storage();
 
@@ -58,12 +60,12 @@ namespace test_packing
 
     public:
 
-      int pack (cubpacking::packer *serializator);
-      int unpack (cubpacking::packer *serializator);
+      void pack (cubpacking::packer &serializator) const;
+      void unpack (cubpacking::unpacker &deserializator);
 
       bool is_equal (const packable_object *other);
 
-      size_t get_packed_size (cubpacking::packer *serializator, std::size_t start_offset = 0);
+      size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset = 0) const;
 
       void generate_obj (void);
   };

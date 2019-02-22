@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -29,9 +29,9 @@
 #include <string.h>
 #include <assert.h>
 
+#include "dbtype.h"
 #include "dbi.h"
 #include "utility.h"
-#include "dbtype.h"
 #include "language_support.h"
 #include "message_catalog.h"
 #include "memory_alloc.h"
@@ -533,11 +533,11 @@ constant :
   | sql2_date 		{ $$ = $1; }
   | sql2_time 		{ $$ = $1; }
   | sql2_timestamp 	{ $$ = $1; }
-  | sql2_timestampltz 	{ $$ = $1; }  
+  | sql2_timestampltz 	{ $$ = $1; }
   | sql2_timestamptz 	{ $$ = $1; }
   | utime 		{ $$ = $1; }
   | sql2_datetime 	{ $$ = $1; }
-  | sql2_datetimeltz 	{ $$ = $1; }  
+  | sql2_datetimeltz 	{ $$ = $1; }
   | sql2_datetimetz 	{ $$ = $1; }
   | NULL_         	{ $$ = loader_make_constant(LDR_NULL, NULL); }
   | TIME_LIT4     	{ $$ = loader_make_constant(LDR_TIME, $1); }
@@ -617,7 +617,7 @@ sql2_timestampltz :
     $$ = loader_make_constant (LDR_TIMESTAMPLTZ, $3);
   }
   ;
-  
+
 sql2_timestamptz :
   TIMESTAMPTZ Quote SQS_String_Body
   {
@@ -645,7 +645,7 @@ sql2_datetimeltz :
     $$ = loader_make_constant (LDR_DATETIMELTZ, $3);
   }
   ;
-  
+
 sql2_datetimetz :
   DATETIMETZ Quote SQS_String_Body
   {
@@ -695,7 +695,7 @@ class_identifier:
     ref->class_id = $1;
     ref->class_name = NULL;
     ref->instance_number = NULL;
-    
+
     $$ = ref;
   }
   |
@@ -714,7 +714,7 @@ class_identifier:
     ref->class_id = NULL;
     ref->class_name = $1;
     ref->instance_number = NULL;
-    
+
     $$ = ref;
   }
   ;
@@ -791,175 +791,175 @@ monetary :
   DOLLAR_SYMBOL REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_DOLLAR, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
   }
   |
   YEN_SYMBOL REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_YEN, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
   }
   |
   WON_SYMBOL REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_WON, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
   }
   |
   TURKISH_LIRA_CURRENCY REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_TL, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
-  }  
+  }
   |
   BACKSLASH REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_WON, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
   }
   |
   BRITISH_POUND_SYMBOL REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_BRITISH_POUND, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
   }
   |
   CAMBODIAN_RIEL_SYMBOL REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_CAMBODIAN_RIEL, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
   }
   |
   CHINESE_RENMINBI_SYMBOL REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_CHINESE_RENMINBI, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
   }
   |
   INDIAN_RUPEE_SYMBOL REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_INDIAN_RUPEE, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
   }
   |
   RUSSIAN_RUBLE_SYMBOL REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_RUSSIAN_RUBLE, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
   }
   |
   AUSTRALIAN_DOLLAR_SYMBOL REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_AUSTRALIAN_DOLLAR, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
   }
   |
   CANADIAN_DOLLAR_SYMBOL REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_CANADIAN_DOLLAR, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
   }
   |
   BRASILIAN_REAL_SYMBOL REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_BRASILIAN_REAL, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
   }
   |
   ROMANIAN_LEU_SYMBOL REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_ROMANIAN_LEU, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
   }
   |
   EURO_SYMBOL REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_EURO, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
   }
   |
   SWISS_FRANC_SYMBOL REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_SWISS_FRANC, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
   }
   |
   DANISH_KRONE_SYMBOL REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_DANISH_KRONE, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
   }
   |
   NORWEGIAN_KRONE_SYMBOL REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_NORWEGIAN_KRONE, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
   }
   |
   BULGARIAN_LEV_SYMBOL REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_BULGARIAN_LEV, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
   }
   |
   VIETNAMESE_DONG_SYMBOL REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_VIETNAMESE_DONG, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
   }
   |
   CZECH_KORUNA_SYMBOL REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_CZECH_KORUNA, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
   }
   |
   POLISH_ZLOTY_SYMBOL REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_POLISH_ZLOTY, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
   }
   |
   SWEDISH_KRONA_SYMBOL REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_SWEDISH_KRONA, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
   }
   |
   CROATIAN_KUNA_SYMBOL REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_CROATIAN_KUNA, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
   }
   |
   SERBIAN_DINAR_SYMBOL REAL_LIT
   {
     LDR_MONETARY_VALUE *mon_value = loader_make_monetary_value (DB_CURRENCY_SERBIAN_DINAR, $2);
-    
+
     $$ = loader_make_constant (LDR_MONETARY, mon_value);
   }
   ;

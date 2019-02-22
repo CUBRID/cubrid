@@ -41,7 +41,6 @@
 #include "misc_string.h"
 #include "dbi.h"
 #include "error_manager.h"
-#include "object_print.h"
 #include "memory_alloc.h"
 
 #if defined(WINDOWS)

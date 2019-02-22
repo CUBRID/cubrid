@@ -1473,7 +1473,7 @@ is_server_running (const char *type, const char *server_name, int pid)
 	  sleep (1);
 
 	  /* A child process is defunct because the SIGCHLD signal ignores. */
-	  /* 
+	  /*
 	   * if (waitpid (pid, &status, WNOHANG) == -1) { perror ("waitpid"); } */
 	}
       else
@@ -3434,7 +3434,7 @@ us_hb_process_server (int command_type, HA_CONF * ha_conf, const char *db_name)
 
 /*
  * us_hb_stop_get_options -
- * return: NO_ERROR or error code 
+ * return: NO_ERROR or error code
  *
  *      db_name(out):
  *      db_name_size(in):
@@ -3534,7 +3534,7 @@ ret:
 
 /*
  * us_hb_status_get_options -
- * return: NO_ERROR or error code 
+ * return: NO_ERROR or error code
  *
  *      verbose(out):
  *      remote_host_name(out):
@@ -3624,7 +3624,7 @@ ret:
 /* TODO[replication]: */
 /*
  * us_hb_util_get_options -
- * return: NO_ERROR or error code 
+ * return: NO_ERROR or error code
  *
  *      db_name(out):
  *      db_name_size(in):

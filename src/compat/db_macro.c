@@ -36,7 +36,7 @@
 #include "system_parameter.h"
 #include "error_manager.h"
 #include "db.h"
-#include "object_print.h"
+#include "db_value_printer.hpp"
 #include "string_opfunc.h"
 #include "set_object.h"
 #include "cnv.h"
@@ -44,6 +44,7 @@
 #if !defined(SERVER_MODE)
 #include "object_accessor.h"
 #endif
+#include "elo.h"
 #include "db_elo.h"
 #include "numeric_opfunc.h"
 #include "object_primitive.h"
@@ -983,7 +984,7 @@ db_string_truncate (DB_VALUE * value, const int precision)
 			   db_get_string_codeset (value), db_get_string_collation (value));
 
 	  pr_clear_value (value);
-	  (*(tp_String.setval)) (value, &src_value, true);
+	  tp_String.setval (value, &src_value, true);
 
 	  pr_clear_value (&src_value);
 	}
@@ -1008,7 +1009,7 @@ db_string_truncate (DB_VALUE * value, const int precision)
 			db_get_string_codeset (value), db_get_string_collation (value));
 
 	  pr_clear_value (value);
-	  (*(tp_Char.setval)) (value, &src_value, true);
+	  tp_Char.setval (value, &src_value, true);
 
 	  pr_clear_value (&src_value);
 
@@ -1034,7 +1035,7 @@ db_string_truncate (DB_VALUE * value, const int precision)
 			    db_get_string_codeset (value), db_get_string_collation (value));
 
 	  pr_clear_value (value);
-	  (*(tp_VarNChar.setval)) (value, &src_value, true);
+	  tp_VarNChar.setval (value, &src_value, true);
 
 	  pr_clear_value (&src_value);
 	}
@@ -1059,7 +1060,7 @@ db_string_truncate (DB_VALUE * value, const int precision)
 			 db_get_string_codeset (value), db_get_string_collation (value));
 
 	  pr_clear_value (value);
-	  (*(tp_NChar.setval)) (value, &src_value, true);
+	  tp_NChar.setval (value, &src_value, true);
 
 	  pr_clear_value (&src_value);
 
@@ -1082,7 +1083,7 @@ db_string_truncate (DB_VALUE * value, const int precision)
 	  db_make_bit (&src_value, precision << 3, string, precision << 3);
 
 	  pr_clear_value (value);
-	  (*(tp_Bit.setval)) (value, &src_value, true);
+	  tp_Bit.setval (value, &src_value, true);
 
 	  pr_clear_value (&src_value);
 	}
@@ -1104,7 +1105,7 @@ db_string_truncate (DB_VALUE * value, const int precision)
 	  db_make_varbit (&src_value, precision << 3, string, precision << 3);
 
 	  pr_clear_value (value);
-	  (*(tp_VarBit.setval)) (value, &src_value, true);
+	  tp_VarBit.setval (value, &src_value, true);
 
 	  pr_clear_value (&src_value);
 
@@ -1660,7 +1661,7 @@ db_value_print (const DB_VALUE * value)
 
   if (value != NULL)
     {
-      help_fprint_value (NULL, stdout, value);
+      db_fprint_value (stdout, value);
     }
 
 }
@@ -1678,9 +1679,8 @@ db_value_fprint (FILE * fp, const DB_VALUE * value)
 
   if (fp != NULL && value != NULL)
     {
-      help_fprint_value (NULL, fp, value);
+      db_fprint_value (fp, value);
     }
-
 }
 
 /*
@@ -1899,7 +1899,7 @@ transfer_string (char *dst, int *xflen, int *outlen, const int dstlen,
 
   if (dstlen > srclen)
     {
-      /* 
+      /*
        * No truncation; copy the data and blank pad if necessary.
        */
       memcpy (dst, src, srclen);
@@ -1923,7 +1923,7 @@ transfer_string (char *dst, int *xflen, int *outlen, const int dstlen,
     }
   else
     {
-      /* 
+      /*
        * Truncation is necessary; put as many bytes as possible into
        * the receiving buffer and null-terminate it (i.e., it receives
        * at most dstlen-1 bytes).  If there is not outlen indicator by
@@ -2092,7 +2092,7 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type, void *buf, const int buf
       goto invalid_args;
     }
 
-  /* 
+  /*
    * *outlen will be non-zero only when converting to a character
    * output and truncation is necessary.  All other cases should set
    * *outlen to 0 unless a NULL is encountered (which case we've
@@ -2103,7 +2103,7 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type, void *buf, const int buf
       *outlen = 0;
     }
 
-  /* 
+  /*
    * The numeric conversions below probably ought to be checking for
    * overflow and complaining when it happens.  For example, trying to
    * get a double out into a DB_C_SHORT is likely to overflow; the
@@ -2434,7 +2434,7 @@ db_value_get (DB_VALUE * value, const DB_TYPE_C c_type, void *buf, const int buf
 	    break;
 	  case DB_TYPE_C_MONETARY:
 	    {
-	      /* 
+	      /*
 	       * WARNING: this works only so long as DB_C_MONETARY
 	       * is typedef'ed as a DB_MONETARY.  If that changes,
 	       * so must this.
@@ -3052,7 +3052,7 @@ coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
 	  }
 	else
 	  {
-	    /* 
+	    /*
 	     *  If the precision is not specified, fix it to
 	     *  the input precision otherwise db_bit_string_coerce()
 	     *  will fail.
@@ -3356,7 +3356,7 @@ coerce_numeric_to_dbvalue (DB_VALUE * value, char *buf, const DB_TYPE_C c_type)
 	switch (db_type)
 	  {
 	  case DB_TYPE_NUMERIC:
-	    /* 
+	    /*
 	     *  We need a better way to convert a numerical C type
 	     *  into a NUMERIC.  This will have to suffice for now.
 	     */
@@ -3471,7 +3471,7 @@ coerce_binary_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
 	db_make_varchar (&tmp_value, DB_DEFAULT_PRECISION, buf,
 			 QSTR_NUM_BYTES (buflen), LANG_SYS_CODESET, LANG_SYS_COLLATION);
 
-	/* 
+	/*
 	 *  If the precision is not specified, fix it to
 	 *  the input precision otherwise db_char_string_coerce()
 	 *  will fail.
@@ -3508,7 +3508,7 @@ coerce_binary_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
 	db_make_varnchar (&tmp_value, DB_DEFAULT_PRECISION, buf,
 			  QSTR_NUM_BYTES (buflen), LANG_SYS_CODESET, LANG_SYS_COLLATION);
 
-	/* 
+	/*
 	 *  If the precision is not specified, fix it to
 	 *  the input precision otherwise db_char_string_coerce()
 	 *  will fail.
@@ -3620,7 +3620,7 @@ coerce_date_to_dbvalue (DB_VALUE * value, char *buf)
 	    db_make_null (&tmp_value);
 	    qstr_make_typed_string (db_type, &tmp_value, length, tmp, length, LANG_SYS_CODESET, LANG_SYS_COLLATION);
 
-	    /* 
+	    /*
 	     *  If the precision is not specified, fix it to
 	     *  the input precision otherwise db_char_string_coerce()
 	     *  will fail.
@@ -3701,7 +3701,7 @@ coerce_time_to_dbvalue (DB_VALUE * value, char *buf)
 	    db_make_null (&tmp_value);
 	    qstr_make_typed_string (db_type, &tmp_value, length, tmp, length, LANG_SYS_CODESET, LANG_SYS_COLLATION);
 
-	    /* 
+	    /*
 	     *  If the precision is not specified, fix it to
 	     *  the input precision otherwise db_char_string_coerce()
 	     *  will fail.
@@ -3780,7 +3780,7 @@ coerce_timestamp_to_dbvalue (DB_VALUE * value, char *buf)
 	    db_make_null (&tmp_value);
 	    qstr_make_typed_string (db_type, &tmp_value, length, tmp, length, LANG_SYS_CODESET, LANG_SYS_COLLATION);
 
-	    /* 
+	    /*
 	     *  If the precision is not specified, fix it to
 	     *  the input precision otherwise db_char_string_coerce()
 	     *  will fail.
@@ -3885,7 +3885,7 @@ coerce_datetime_to_dbvalue (DB_VALUE * value, char *buf)
 	    db_make_null (&tmp_value);
 	    qstr_make_typed_string (db_type, &tmp_value, length, tmp, length, LANG_SYS_CODESET, LANG_SYS_COLLATION);
 
-	    /* 
+	    /*
 	     *  If the precision is not specified, fix it to
 	     *  the input precision otherwise db_char_string_coerce()
 	     *  will fail.
@@ -4911,7 +4911,7 @@ valcnv_convert_value_to_string (DB_VALUE * value_p)
 		       (char *) buf_p->bytes, CAST_STRLEN (buf_p->length), LANG_SYS_CODESET, LANG_SYS_COLLATION);
 
       pr_clear_value (value_p);
-      (*(tp_String.setval)) (value_p, &src_value, true);
+      tp_String.setval (value_p, &src_value, true);
 
       pr_clear_value (&src_value);
       free_and_init (buf_p->bytes);
@@ -4933,7 +4933,7 @@ db_set_connect_status (int status)
 }
 
 /*
- * db_default_expression_string() - 
+ * db_default_expression_string() -
  * return : string opcode of default expression
  * default_expr_type(in):
  */
@@ -4998,6 +4998,12 @@ db_convert_json_into_scalar (const DB_VALUE * src, DB_VALUE * dest)
 	db_make_int (dest, val);
 	break;
       }
+    case DB_JSON_BIGINT:
+      {
+	int64_t val = db_json_get_bigint_from_document (doc);
+	db_make_bigint (dest, val);
+	break;
+      }
     case DB_JSON_DOUBLE:
       {
 	double val = db_json_get_double_from_document (doc);
@@ -5041,6 +5047,8 @@ db_is_json_value_type (DB_TYPE type)
     case DB_TYPE_DOUBLE:
     case DB_TYPE_JSON:
     case DB_TYPE_NUMERIC:
+    case DB_TYPE_BIGINT:
+    case DB_TYPE_ENUMERATION:
       return true;
     default:
       return false;
@@ -5140,4 +5148,3 @@ db_value_is_corrupted (const DB_VALUE * value)
 
   return false;
 }
-

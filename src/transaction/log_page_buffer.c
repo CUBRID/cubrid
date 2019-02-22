@@ -112,6 +112,8 @@ static int rv;
 #endif /* !SERVER_MODE */
 
 #define logpb_log(...) if (logpb_Logging) _er_log_debug (ARG_FILE_LINE, "LOGPB: " __VA_ARGS__)
+#define log_archive_er_log(...) \
+  if (prm_get_bool_value (PRM_ID_DEBUG_LOG_ARCHIVES)) _er_log_debug (ARG_FILE_LINE, __VA_ARGS__)
 
 #define LOGPB_FIND_BUFPTR(bufid) &log_Pb.buffers[(bufid)]
 
@@ -415,8 +417,6 @@ static int logpb_fetch_header_from_active_log (THREAD_ENTRY * thread_p, const ch
 					       const char *logpath, const char *prefix_logname, LOG_HEADER * hdr,
 					       LOG_PAGE * log_pgptr);
 static int logpb_compute_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int *checksum_crc32);
-STATIC_INLINE int logpb_set_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
-  __attribute__ ((ALWAYS_INLINE));
 static int logpb_page_has_valid_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, bool * has_valid_checksum);
 
 /*
@@ -440,7 +440,7 @@ logpb_get_log_buffer_index (LOG_PAGEID log_pageid)
  * return: the coresponding buffer
  * log_pg (in) : the log page
  * NOTE: the function finds the index of the log page and returns
- * the coresponding buffer 
+ * the coresponding buffer
  */
 STATIC_INLINE LOG_BUFFER *
 logpb_get_log_buffer (LOG_PAGE * log_pg)
@@ -452,7 +452,8 @@ logpb_get_log_buffer (LOG_PAGE * log_pg)
       return &log_Pb.header_buffer;
     }
 
-  index = (int) ((char *) log_pg - (char *) log_Pb.pages_area) / LOG_PAGESIZE;
+  assert ((UINT64) ((char *) log_pg - (char *) log_Pb.pages_area) / LOG_PAGESIZE < INT_MAX);
+  index = (int) ((UINT64) ((char *) log_pg - (char *) log_Pb.pages_area) / LOG_PAGESIZE);
 
   /* Safe guard: index is valid. */
   assert (index >= 0 && index < log_Pb.num_buffers);
@@ -490,11 +491,19 @@ logpb_initialize_log_buffer (LOG_BUFFER * log_buffer_p, LOG_PAGE * log_pg)
  * log_pgptr (in) : log page pointer
  * checksum_crc32(out): computed checksum
  *   Note: Currently CRC32 is used as checksum.
+ *   Note: any changes to this requires changes to logwr_check_page_checksum
  */
 static int
 logpb_compute_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int *checksum_crc32)
 {
   int error_code = NO_ERROR, saved_checksum_crc32;
+  const int block_size = 4096;
+  const int max_num_pages = IO_MAX_PAGE_SIZE / block_size;
+  const int sample_nbytes = 16;
+  int sampling_offset;
+  char buf[max_num_pages * sample_nbytes * 2];
+  const int num_pages = LOG_PAGESIZE / block_size;
+  const size_t sizeof_buf = num_pages * sample_nbytes * 2;
 
   assert (log_pgptr != NULL && checksum_crc32 != NULL);
 
@@ -504,8 +513,21 @@ logpb_compute_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int 
   /* Resets checksum to not affect the new computation. */
   log_pgptr->hdr.checksum = 0;
 
-  /* Computes the page checksum. */
-  error_code = crypt_crc32 (thread_p, (char *) log_pgptr, LOG_PAGESIZE, checksum_crc32);
+  char *p = buf;
+  for (int i = 0; i < num_pages; i++)
+    {
+      // first
+      sampling_offset = (i * block_size);
+      memcpy (p, ((char *) log_pgptr) + sampling_offset, sample_nbytes);
+      p += sample_nbytes;
+
+      // last
+      sampling_offset = (i * block_size) + (block_size - sample_nbytes);
+      memcpy (p, ((char *) log_pgptr) + sampling_offset, sample_nbytes);
+      p += sample_nbytes;
+    }
+
+  error_code = crypt_crc32 (thread_p, (char *) buf, sizeof_buf, checksum_crc32);
 
   /* Restores the saved checksum */
   log_pgptr->hdr.checksum = saved_checksum_crc32;
@@ -520,7 +542,7 @@ logpb_compute_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int 
  * log_pgptr (in) : log page pointer
  *   Note: Currently CRC32 is used as checksum.
  */
-STATIC_INLINE int
+int
 logpb_set_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
 {
   int error_code = NO_ERROR, checksum_crc32;
@@ -650,7 +672,7 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
 
   logpb_Logging = prm_get_bool_value (PRM_ID_LOGPB_LOGGING_DEBUG);
 
-  /* 
+  /*
    * Create an area to keep the number of desired buffers
    */
   log_Pb.num_buffers = prm_get_integer_value (PRM_ID_LOG_NBUFFERS);
@@ -847,7 +869,7 @@ logpb_invalidate_pool (THREAD_ENTRY * thread_p)
       return;
     }
 
-  /* 
+  /*
    * Flush any append dirty buffers at this moment.
    * Then, invalidate any buffer that it is not fixed and dirty
    */
@@ -894,7 +916,7 @@ logpb_create_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid)
  *       if the actual pageid differs from the buffer pageid, it means that it should
  *       be invalidated - it contains another page - and it is flushed to disk, if it
  *       is dirty. Now, if the pageid is null , we have a clear log page. If the fetch
- *       mode is NEW_PAGE, it set the fields in the buffer, else, if it is OLD_PAGE, 
+ *       mode is NEW_PAGE, it set the fields in the buffer, else, if it is OLD_PAGE,
  *       it brings the page from the disk. The last case is if the page is not NULL, and
  *       it is equal with the pageid. This means it is an OLD_PAGE request, and it returns
  *       that page.
@@ -1171,11 +1193,11 @@ logpb_flush_page (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
 
   if (bufptr->dirty == true)
     {
-      /* 
+      /*
        * The buffer is dirty, flush it
        */
 
-      /* 
+      /*
        * Even when the log has been open with the o_sync option, force a sync
        * since some Operationg system (HP) seems that does not have the effect
        * of forcing the page to disk without doing fync
@@ -1511,7 +1533,7 @@ logpb_create_header_page (THREAD_ENTRY * thread_p)
  *
  *   to_hdr(in): New log header
  *   from_hdr(in): Source log header
- * 
+ *
  * NOTE: Copy a log header.
  */
 static int
@@ -1752,7 +1774,7 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_LSA * req_lsa, LOG_CS_ACCESS_MODE
   LSA_COPY (&append_lsa, &log_Gl.hdr.append_lsa);
   LSA_COPY (&append_prev_lsa, &log_Gl.append.prev_lsa);
 
-  /* 
+  /*
    * This If block ensure belows,
    *  case 1. log page (of pageid) is in log page buffer (not prior_lsa list)
    *  case 2. EOL record which is written temporarily by
@@ -1767,7 +1789,7 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_LSA * req_lsa, LOG_CS_ACCESS_MODE
 
       assert (LSA_LE (&log_Gl.append.prev_lsa, &log_Gl.hdr.append_lsa));
 
-      /* 
+      /*
        * copy prior lsa list to log page buffer to ensure that required
        * pageid is in log page buffer
        */
@@ -1779,7 +1801,7 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, LOG_LSA * req_lsa, LOG_CS_ACCESS_MODE
       LOG_CS_EXIT (thread_p);
     }
 
-  /* 
+  /*
    * most of the cases, we don't need calling logpb_copy_page with LOG_CS exclusive access,
    * if needed, we acquire READ mode in logpb_copy_page
    */
@@ -1963,7 +1985,7 @@ exit:
       tsc_getticks (&end_tick);
       tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
       fix_wait_time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
-      /* log page fix time : use dummy values for latch type and conditional type; use PERF_PAGE_MODE_OLD_LOCK_WAIT and 
+      /* log page fix time : use dummy values for latch type and conditional type; use PERF_PAGE_MODE_OLD_LOCK_WAIT and
        * PERF_PAGE_MODE_OLD_IN_BUFFER for page type : page is not found in log page buffer and must be read from
        * archive vs page is found in log page buffer */
       if (fix_wait_time > 0)
@@ -2001,9 +2023,9 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_AC
 
   if (access_mode == LOG_CS_SAFE_READER)
     {
-      /* This is added here to block others from creating new archive or mounting/dismounting archives while the vacuum 
+      /* This is added here to block others from creating new archive or mounting/dismounting archives while the vacuum
        * workers is trying to fetch its page from file. */
-      /* This was first done only for active pages. This allowed other transaction create a new archive from active log 
+      /* This was first done only for active pages. This allowed other transaction create a new archive from active log
        * after calling logpb_is_page_in_archive. Therefore the logpb_to_physical_pageid became flawed. */
       LOG_CS_ENTER_READ_MODE (thread_p);
       log_csect_entered = true;
@@ -2032,7 +2054,7 @@ logpb_read_page_from_file (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_AC
     {
       LOG_PHY_PAGEID phy_pageid;
 
-      /* 
+      /*
        * Page is contained in the active log.
        * Find the corresponding physical page and read the page form disk.
        */
@@ -2123,7 +2145,7 @@ logpb_read_page_from_active_log (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, int
   logpb_log ("called logpb_read_page_from_active_log with pageid = %lld and num_pages = %d\n", (long long int) pageid,
 	     num_pages);
 
-  /* 
+  /*
    * Page is contained in the active log.
    * Find the corresponding physical page and read the page from disk.
    */
@@ -2230,6 +2252,7 @@ logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_PAG
  * return: iopagesize or -1
  *
  *   db_fullname(in): Full name of the database
+ *   force_read_log_header(in): force to read log header
  *   logpath(in): Directory where the log volumes reside
  *   prefix_logname(in): Name of the log volumes. It is usually set as database
  *                      name. For example, if the value is equal to "db", the
@@ -2251,9 +2274,9 @@ logpb_write_page_to_disk (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, LOG_PAG
  * NOTE:Find some database creation parameters such as pagesize, creation time, and disk compatability.
  */
 PGLENGTH
-logpb_find_header_parameters (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
-			      const char *prefix_logname, PGLENGTH * io_page_size, PGLENGTH * log_page_size,
-			      INT64 * creation_time, float *db_compatibility, int *db_charset)
+logpb_find_header_parameters (THREAD_ENTRY * thread_p, const bool force_read_log_header, const char *db_fullname,
+			      const char *logpath, const char *prefix_logname, PGLENGTH * io_page_size,
+			      PGLENGTH * log_page_size, INT64 * creation_time, float *db_compatibility, int *db_charset)
 {
   static LOG_HEADER hdr;	/* Log header */
   static bool is_header_read_from_file = false;
@@ -2261,6 +2284,12 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p, const char *db_fullname, 
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *aligned_log_pgbuf;
   LOG_PAGE *log_pgptr = NULL;
   int error_code = NO_ERROR;
+
+  if (force_read_log_header)
+    {
+      is_header_read_from_file = false;
+      is_log_header_validated = false;
+    }
 
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
@@ -2330,7 +2359,7 @@ logpb_find_header_parameters (THREAD_ENTRY * thread_p, const char *db_fullname, 
 
   if (strcmp (hdr.prefix_name, prefix_logname) != 0)
     {
-      /* 
+      /*
        * This does not look like the log or the log was renamed. Incompatible
        * prefix name with the prefix stored on disk
        */
@@ -2399,14 +2428,14 @@ logpb_fetch_start_append_page (THREAD_ENTRY * thread_p)
 
   if (log_Gl.append.log_pgptr != NULL)
     {
-      /* 
+      /*
        * Somehow we already have an append page, flush all current append page
        * and start form scratch
        */
       logpb_invalid_all_append_pages (thread_p);
     }
 
-  /* 
+  /*
    * Fetch the start append page
    */
 
@@ -2417,7 +2446,7 @@ logpb_fetch_start_append_page (THREAD_ENTRY * thread_p)
     }
 
   logpb_set_nxio_lsa (&log_Gl.hdr.append_lsa);
-  /* 
+  /*
    * Save this log append page as an active page to be flushed at a later
    * time if the page is modified (dirty).
    * We must save the log append pages in the order that they are defined
@@ -2433,7 +2462,7 @@ logpb_fetch_start_append_page (THREAD_ENTRY * thread_p)
 
   if (flush_info->num_toflush >= flush_info->max_toflush)
     {
-      /* 
+      /*
        * Force the dirty pages including the current one at this moment
        */
       need_flush = true;
@@ -2530,7 +2559,7 @@ logpb_next_append_page (THREAD_ENTRY * thread_p, LOG_SETDIRTY current_setdirty)
   log_Gl.hdr.append_lsa.pageid++;
   log_Gl.hdr.append_lsa.offset = 0;
 
-  /* 
+  /*
    * Is the next logical page to archive, currently located at the physical
    * location of the next logical append page ? (Remember the log is a RING).
    * If so, we need to archive the log from the next logical page to archive
@@ -2543,7 +2572,7 @@ logpb_next_append_page (THREAD_ENTRY * thread_p, LOG_SETDIRTY current_setdirty)
       logpb_archive_active_log (thread_p);
     }
 
-  /* 
+  /*
    * Has the log been cycled ?
    */
   if (LOGPB_IS_FIRST_PHYSICAL_PAGE (log_Gl.hdr.append_lsa.pageid))
@@ -2554,7 +2583,7 @@ logpb_next_append_page (THREAD_ENTRY * thread_p, LOG_SETDIRTY current_setdirty)
       logpb_flush_header (thread_p);
     }
 
-  /* 
+  /*
    * Fetch the next page as a newly defined append page. Append pages are
    * always new pages
    */
@@ -2573,7 +2602,7 @@ logpb_next_append_page (THREAD_ENTRY * thread_p, LOG_SETDIRTY current_setdirty)
   }
 #endif /* CUBRID_DEBUG */
 
-  /* 
+  /*
    * Save this log append page as an active page to be flushed at a later
    * time if the page is modified (dirty).
    * We must save the log append pages in the order that they are defined
@@ -4327,6 +4356,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 
   LOGWR_INFO *writer_info = &log_Gl.writer_info;
   LOGWR_ENTRY *entry;
+  THREAD_ENTRY *wait_thread_p;
 #endif /* SERVER_MODE */
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
@@ -4348,7 +4378,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
     }
   else if (flush_info->num_toflush == 1)
     {
-      /* 
+      /*
        * Don't need to do anything if the page is not dirty.
        *
        * This block is used to avoid updating the last page with an end of file log when it is not needed at all.
@@ -4376,7 +4406,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 
     if (verbose_dump == -1)
       {
-	/* 
+	/*
 	 * Do we want to dump the buffer pool for future verification
 	 */
 	if ((env_value = envvar_get ("LOG_FLUSH_VERBOSE_DUMP")) != NULL)
@@ -4445,7 +4475,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
    *       for now I chose a solution similar to the implementation used before the log page buffer redesign.
    */
 
-  /* 
+  /*
    * Add an end of log marker to detect the end of the log.
    * The marker should be added at the end of the log if there is only one page to be flushed.
    * That is, if we are not in the middle of appending a new log record. Otherwise, we need to change the label of
@@ -4527,7 +4557,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
       goto error;
     }
 
-  /* 
+  /*
    * Now flush all contiguous log append dirty pages. The first log append dirty page is flushed at the end,
    * so we can synchronize it with the rest.
    */
@@ -4558,8 +4588,25 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	{
 	  if (entry->status == LOGWR_STATUS_WAIT)
 	    {
-	      entry->status = LOGWR_STATUS_FETCH;
-	      logtb_wakeup_thread_with_tran_index (entry->thread_p->tran_index, THREAD_LOGWR_RESUMED);
+	      wait_thread_p = entry->thread_p;
+	      assert (wait_thread_p != thread_p);
+
+	      thread_lock_entry (wait_thread_p);
+
+	      /* If THREAD_RESUME_DUE_TO_INTERRUPT, do not set the entry status to avoid deadlock
+	       * between flush_end_cond and CSECT_LOG.
+	       */
+	      if (thread_p->resume_status != THREAD_RESUME_DUE_TO_INTERRUPT)
+		{
+		  /* Still waiting for LOGWR. */
+		  entry->status = LOGWR_STATUS_FETCH;
+		  if (wait_thread_p->resume_status == THREAD_LOGWR_SUSPENDED)
+		    {
+		      thread_wakeup_already_had_mutex (wait_thread_p, THREAD_LOGWR_RESUMED);
+		    }
+		}
+
+	      thread_unlock_entry (wait_thread_p);
 	    }
 	  entry = entry->next;
 	}
@@ -4788,7 +4835,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
   curr_flush_count = flush_info->num_toflush;
 #endif /* CUBRID_DEBUG */
 
-  /* 
+  /*
    * Change the log sequence address to indicate the next append address to flush and synchronize
    */
   if (log_Pb.partial_append.status == LOGPB_APPENDREC_PARTIAL_ENDED)
@@ -5158,7 +5205,7 @@ logpb_invalid_all_append_pages (THREAD_ENTRY * thread_p)
 
   if (log_Gl.append.log_pgptr != NULL)
     {
-      /* 
+      /*
        * Somehow we already have an append page, flush all current append page
        * and start form scratch
        */
@@ -5253,7 +5300,7 @@ logpb_start_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header)
   log_rec = (LOG_RECORD_HEADER *) LOG_APPEND_PTR ();
   *log_rec = *header;
 
-  /* 
+  /*
    * If the header of the append page does not have the offset set to the
    * first log record, this is the first log record in the page, set to it.
    */
@@ -5280,7 +5327,7 @@ logpb_start_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header)
 
       LSA_COPY (&log_Gl.append.prev_lsa, &log_Gl.hdr.append_lsa);
 
-      /* 
+      /*
        * Set the page dirty, increase and align the append offset
        */
       LOG_APPEND_SETDIRTY_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER));
@@ -5303,7 +5350,7 @@ prior_lsa_start_append (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_TDES
 
   node->log_header.trid = tdes->trid;
 
-  /* 
+  /*
    * Link the record with the previous transaction record for quick undos.
    * Link the record backward for backward traversal of the log.
    */
@@ -5313,13 +5360,13 @@ prior_lsa_start_append (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_TDES
   LSA_COPY (&node->log_header.back_lsa, &log_Gl.prior_info.prev_lsa);
   LSA_SET_NULL (&node->log_header.forw_lsa);
 
-  /* 
+  /*
    * Remember the address of new append record
    */
   LSA_COPY (&tdes->tail_lsa, &log_Gl.prior_info.prior_lsa);
   LSA_COPY (&tdes->undo_nxlsa, &log_Gl.prior_info.prior_lsa);
 
-  /* 
+  /*
    * Is this the first log record of transaction ?
    */
 
@@ -5329,7 +5376,7 @@ prior_lsa_start_append (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_TDES
     }
 
   LSA_COPY (&log_Gl.prior_info.prev_lsa, &log_Gl.prior_info.prior_lsa);
-  /* 
+  /*
    * Set the page dirty, increase and align the append offset
    */
   LOG_PRIOR_LSA_APPEND_ADD_ALIGN (sizeof (LOG_RECORD_HEADER));
@@ -5360,7 +5407,7 @@ logpb_append_data (THREAD_ENTRY * thread_p, int length, const char *data)
       return;
     }
 
-  /* 
+  /*
    * Align if needed,
    * don't set it dirty since this function has not updated
    */
@@ -5376,7 +5423,7 @@ logpb_append_data (THREAD_ENTRY * thread_p, int length, const char *data)
 	{
 	  if (ptr >= last_ptr)
 	    {
-	      /* 
+	      /*
 	       * Get next page and set the current one dirty
 	       */
 	      logpb_next_append_page (thread_p, LOG_SET_DIRTY);
@@ -5405,7 +5452,7 @@ logpb_append_data (THREAD_ENTRY * thread_p, int length, const char *data)
       log_Gl.hdr.append_lsa.offset += length;
     }
 
-  /* 
+  /*
    * Align the data for future appends.
    * Indicate that modifications were done
    */
@@ -5424,7 +5471,7 @@ prior_lsa_append_data (int length)
       return;
     }
 
-  /* 
+  /*
    * Align if needed,
    * don't set it dirty since this function has not updated
    */
@@ -5440,7 +5487,7 @@ prior_lsa_append_data (int length)
 	{
 	  if (current_offset >= last_offset)
 	    {
-	      /* 
+	      /*
 	       * Get next page and set the current one dirty
 	       */
 	      log_Gl.prior_info.prior_lsa.pageid++;
@@ -5469,7 +5516,7 @@ prior_lsa_append_data (int length)
       log_Gl.prior_info.prior_lsa.offset += length;
     }
 
-  /* 
+  /*
    * Align the data for future appends.
    * Indicate that modifications were done
    */
@@ -5503,7 +5550,7 @@ logpb_append_crumbs (THREAD_ENTRY * thread_p, int num_crumbs, const LOG_CRUMB * 
       return;
     }
 
-  /* 
+  /*
    * Align if needed,
    * don't set it dirty since this function has not updated
    */
@@ -5523,7 +5570,7 @@ logpb_append_crumbs (THREAD_ENTRY * thread_p, int num_crumbs, const LOG_CRUMB * 
 	  {
 	    if (ptr >= last_ptr)
 	      {
-		/* 
+		/*
 		 * Get next page and set the current one dirty
 		 */
 		logpb_next_append_page (thread_p, LOG_SET_DIRTY);
@@ -5553,7 +5600,7 @@ logpb_append_crumbs (THREAD_ENTRY * thread_p, int num_crumbs, const LOG_CRUMB * 
 	}
     }
 
-  /* 
+  /*
    * Align the data for future appends.
    * Indicate that modifications were done
    */
@@ -5574,7 +5621,7 @@ prior_lsa_append_crumbs (THREAD_ENTRY * thread_p, int num_crumbs, const LOG_CRUM
       return;
     }
 
-  /* 
+  /*
    * Align if needed,
    * don't set it dirty since this function has not updated
    */
@@ -5593,7 +5640,7 @@ prior_lsa_append_crumbs (THREAD_ENTRY * thread_p, int num_crumbs, const LOG_CRUM
 	  {
 	    if (current_offset >= last_offset)
 	      {
-		/* 
+		/*
 		 * Get next page and set the current one dirty
 		 */
 		log_Gl.prior_info.prior_lsa.pageid++;
@@ -5622,7 +5669,7 @@ prior_lsa_append_crumbs (THREAD_ENTRY * thread_p, int num_crumbs, const LOG_CRUM
 	}
     }
 
-  /* 
+  /*
    * Align the data for future appends.
    * Indicate that modifications were done
    */
@@ -5652,7 +5699,7 @@ logpb_end_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header)
   LOG_APPEND_ALIGN (thread_p, LOG_DONT_SET_DIRTY);
   LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT (thread_p, sizeof (LOG_RECORD_HEADER));
 
-  /* 
+  /*
    * Find the log_rec portion of the append record, it may not be in the
    * current append buffer since it can be stored in several buffers. Then,
    * make the log_rec point to next future append record, unless it is
@@ -5786,7 +5833,7 @@ logpb_get_guess_archive_num (THREAD_ENTRY * thread_p, LOG_PAGEID pageid)
       return arv_num;
     }
 
-  /* 
+  /*
    * Guess by looking into the log information file. This is just a guess
    */
   fp = fopen (log_Name_info, "r");
@@ -5808,7 +5855,7 @@ logpb_get_guess_archive_num (THREAD_ENTRY * thread_p, LOG_PAGEID pageid)
 
 		  if (pageid < from_pageid)
 		    {
-		      /* 
+		      /*
 		       * keep looking.
 		       * There is likely a hole in the archive process due to media
 		       * crashes off or the log information contains some missing
@@ -5833,7 +5880,7 @@ logpb_get_guess_archive_num (THREAD_ENTRY * thread_p, LOG_PAGEID pageid)
 
   if (arv_num == -1)
     {
-      /* 
+      /*
        * If I have a log active, use it to find out a better archive number
        * for initial search
        */
@@ -5843,7 +5890,7 @@ logpb_get_guess_archive_num (THREAD_ENTRY * thread_p, LOG_PAGEID pageid)
 	}
       else
 	{
-	  /* 
+	  /*
 	   * We do not have a clue what it is available. Don't have log active
 	   * and likely we did not have backups.
 	   * Must trace for available archive volumes
@@ -5853,7 +5900,7 @@ logpb_get_guess_archive_num (THREAD_ENTRY * thread_p, LOG_PAGEID pageid)
     }
   else if (isfound == false && last_arvnum == arv_num && log_Gl.append.vdes != NULL_VOLDES)
     {
-      /* 
+      /*
        * The log archive was chopped somehow.
        */
       arv_num = log_Gl.hdr.nxarv_num - 1;
@@ -5914,7 +5961,7 @@ logpb_create_volume_info (const char *db_fullname)
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANNOT_CREATE_VOL, 2, volinfo_fullname, db_fullname);
       return ER_BO_CANNOT_CREATE_VOL;
     }
-  /* 
+  /*
    * Write information about:
    * the active log and the first volume of the database
    * in the volume information file
@@ -6449,7 +6496,7 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE *
 	  return NULL;
 	}
 
-      /* 
+      /*
        * Guess the archive where that page is stored
        */
 
@@ -6477,7 +6524,7 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE *
 		{
 		  if (difftime64 ((time_t) arv_hdr->db_creation, (time_t) log_Gl.hdr.db_creation) != 0)
 		    {
-		      /* 
+		      /*
 		       * This volume does not belong to the database. For now, assume
 		       * that it is not only. Later, we will give this error to user
 		       */
@@ -6490,7 +6537,7 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE *
 
       if (error_code != NO_ERROR)
 	{
-	  /* 
+	  /*
 	   * The volume is not online. Ask for it later (below). But first try to
 	   * make the best guess for the archive number.
 	   */
@@ -6561,7 +6608,7 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE *
 	    {
 	      if (direction == 0)
 		{
-		  /* 
+		  /*
 		   * Define the direction by looking for desired page
 		   */
 		  if (arv_hdr != NULL)
@@ -6587,7 +6634,7 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE *
 			    }
 			  else
 			    {
-			      /* 
+			      /*
 			       * Start looking from the last archive.
 			       * Optimized for UNDO.. This is not so bad since this branch
 			       * will be reached only when the guess archive is not
@@ -6604,7 +6651,7 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE *
 		{
 		  if (direction == -1)
 		    {
-		      /* 
+		      /*
 		       * Try an older archive.
 		       * The page that I am looking MUST be smaller than the first
 		       * page in current archive
@@ -6634,13 +6681,13 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE *
 		}
 	      else
 		{
-		  /* 
+		  /*
 		   * The archive number is not increased the first time in the loop,
 		   * so we can ask for it when it is not available.
 		   */
 		  if (first_time != true)
 		    {
-		      /* 
+		      /*
 		       * If we do not have the log active, we don't really know how to
 		       * continue, we could be looping forever.
 		       */
@@ -6665,7 +6712,7 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE *
 		    }
 		  else
 		    {
-		      /* 
+		      /*
 		       * This is likely an incomplete recovery (restore).
 		       * We do not have the active log and we are looking for a log page
 		       */
@@ -6696,7 +6743,7 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE *
 
 	      is_in_crash_recovery = log_is_in_crash_recovery ();
 
-	      /* 
+	      /*
 	       * The archive is not online.
 	       */
 	      if (is_in_crash_recovery == true)
@@ -6787,7 +6834,7 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE *
 		{
 		  if (difftime64 ((time_t) arv_hdr->db_creation, (time_t) log_Gl.hdr.db_creation) != 0)
 		    {
-		      /* 
+		      /*
 		       * This volume does not belong to the database. For now, assume
 		       * that it is not only. Later, we will give this error to user
 		       */
@@ -6910,7 +6957,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
   arvhdr->next_trid = log_Gl.hdr.next_trid;
   arvhdr->arv_num = log_Gl.hdr.nxarv_num;
 
-  /* 
+  /*
    * All pages must be archived... even the ones with unactive log records
    * This is the desired parameter to support multimedia crashes.
    *
@@ -6928,7 +6975,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
 
   arvhdr->npages = (DKNPAGES) (last_pageid - arvhdr->fpageid + 1);
 
-  /* 
+  /*
    * Now create the archive and start copying pages
    */
 
@@ -6953,7 +7000,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
 	}
     }
 
-  er_log_debug (ARG_FILE_LINE, "logpb_archive_active_log, arvhdr->fpageid = %lld\n", arvhdr->fpageid);
+  log_archive_er_log ("logpb_archive_active_log, arvhdr->fpageid = %lld\n", arvhdr->fpageid);
 
   error_code = logpb_set_page_checksum (thread_p, malloc_arv_hdr_pgptr);
   if (error_code != NO_ERROR)
@@ -7024,7 +7071,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
     }
   else
     {
-      /* 
+      /*
        * Make sure that the whole log archive is in physical storage at this
        * moment. System volume. No need to sync DWB.
        */
@@ -7154,8 +7201,8 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
 	}
     }
 
-  er_log_debug (ARG_FILE_LINE, "logpb_archive_active_log end, arvhdr->fpageid = %lld, arvhdr->npages = %d\n",
-		arvhdr->fpageid, arvhdr->npages);
+  log_archive_er_log ("logpb_archive_active_log end, arvhdr->fpageid = %lld, arvhdr->npages = %d\n", arvhdr->fpageid,
+		      arvhdr->npages);
 
   free_and_init (malloc_arv_hdr_pgptr);
 
@@ -7318,11 +7365,14 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
 
   if (last_arv_num_to_delete >= 0 && last_arv_num_to_delete >= first_arv_num_to_delete)
     {
-      /* this is too problematic not to log in server error log too! */
-      _er_log_debug (ARG_FILE_LINE, "Purge archives starting with %d and up until %d; "
-		     "vacuum_first_pageid = %d, last_arv_num_for_syscrashes = %d",
-		     first_arv_num_to_delete, last_arv_num_to_delete, vacuum_first_pageid,
-		     log_Gl.hdr.last_arv_num_for_syscrashes);
+      if (prm_get_bool_value (PRM_ID_DEBUG_LOG_ARCHIVES) || VACUUM_IS_ER_LOG_LEVEL_SET (VACUUM_ER_LOG_ARCHIVES))
+	{
+	  /* this is too problematic not to log in server error log too! */
+	  _er_log_debug (ARG_FILE_LINE, "Purge archives starting with %d and up until %d; "
+			 "vacuum_first_pageid = %d, last_arv_num_for_syscrashes = %d",
+			 first_arv_num_to_delete, last_arv_num_to_delete, vacuum_first_pageid,
+			 log_Gl.hdr.last_arv_num_for_syscrashes);
+	}
 
       catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_MAX_ARCHIVES_HAS_BEEN_EXCEEDED);
       if (catmsg == NULL)
@@ -7388,7 +7438,7 @@ logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info_reason)
     {
       if (LSA_LT (&log_Gl.hdr.chkpt_lsa, &flush_upto_lsa))
 	{
-	  /* 
+	  /*
 	   * Reset the checkpoint record to the first possible active page and
 	   * flush the log header before the archives are removed
 	   */
@@ -7620,7 +7670,7 @@ logpb_copy_from_log (THREAD_ENTRY * thread_p, char *area, int length, LOG_LSA * 
   int copy_length;		/* Length to copy into area */
   int area_offset;		/* The area offset */
 
-  /* 
+  /*
    * If the data is contained in only one buffer, copy the data in one
    * statement, otherwise, copy it in parts
    */
@@ -7698,7 +7748,7 @@ logpb_verify_length (const char *db_fullname, const char *log_path, const char *
       pathname_max = DB_MAX_PATH_LENGTH;
     }
 
-  /* 
+  /*
    * Make sure that names of volumes (information and log volumes), that is,
    * OS files will not exceed the maximum allowed value.
    */
@@ -7719,7 +7769,7 @@ logpb_verify_length (const char *db_fullname, const char *log_path, const char *
       return ER_LOG_PREFIX_NAME_IS_TOO_LONG;
     }
 
-  /* 
+  /*
    * Make sure that the length for the volume is OK
    */
 
@@ -7731,7 +7781,7 @@ logpb_verify_length (const char *db_fullname, const char *log_path, const char *
       return ER_BO_FULL_DATABASE_NAME_IS_TOO_LONG;
     }
 
-  /* 
+  /*
    * First create a new log for the new database. This log is not a copy of
    * of the old log; it is a newly created one.
    */
@@ -7747,7 +7797,7 @@ logpb_verify_length (const char *db_fullname, const char *log_path, const char *
 
   if (length + volmax_suffix > pathname_max)
     {
-      /* 
+      /*
        * Database name is too long.
        * Path + prefix < pathname_max - 2
        */
@@ -7812,7 +7862,7 @@ logpb_initialize_log_names (THREAD_ENTRY * thread_p, const char *db_fullname, co
   /* Save the log Prefix */
   strcpy (log_Prefix, prefix_logname);
 
-  /* 
+  /*
    * Build Name of log active
    */
   fileio_make_log_active_name (log_Name_active, log_Path, log_Prefix);
@@ -7872,12 +7922,14 @@ logpb_exist_log (THREAD_ENTRY * thread_p, const char *db_fullname, const char *l
 LOG_PAGEID
 logpb_checkpoint (THREAD_ENTRY * thread_p)
 {
+#define detailed_er_log(...) if (detailed_logging) _er_log_debug (ARG_FILE_LINE, __VA_ARGS__)
+
   LOG_TDES *tdes;		/* System transaction descriptor */
   LOG_TDES *act_tdes;		/* Transaction descriptor of an active transaction */
   LOG_REC_CHKPT *chkpt, tmp_chkpt;	/* Checkpoint log records */
   LOG_INFO_CHKPT_TRANS *chkpt_trans;	/* Checkpoint tdes */
   LOG_INFO_CHKPT_TRANS *chkpt_one;	/* Checkpoint tdes for one tran */
-  LOG_INFO_CHKPT_SYSOP *chkpt_topops;	/* Checkpoint top system operations that are in commit postpone 
+  LOG_INFO_CHKPT_SYSOP *chkpt_topops;	/* Checkpoint top system operations that are in commit postpone
 					 * mode */
   LOG_INFO_CHKPT_SYSOP *chkpt_topone;	/* One top system ope */
   LOG_LSA chkpt_lsa;		/* copy of log_Gl.hdr.chkpt_lsa */
@@ -7901,7 +7953,8 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   int last_arv_num_not_needed;
   LOG_PRIOR_NODE *node;
   void *ptr;
-  int flushed_page_cnt = 0;
+  int flushed_page_cnt = 0, vdes;
+  bool detailed_logging = prm_get_bool_value (PRM_ID_LOG_CHKPT_DETAILED);
 
   LOG_CS_ENTER (thread_p);
 
@@ -7912,7 +7965,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
       return NULL_PAGEID;
     }
 
-  /* 
+  /*
    * Critical section is entered several times to allow other transaction to
    * use the log manger
    */
@@ -7924,7 +7977,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 	  log_Gl.chkpt_redo_lsa.pageid);
   er_log_debug (ARG_FILE_LINE, "start checkpoint\n");
 
-  /* 
+  /*
    * Indicate that the checkpoint process is running. Don't run another one,
    * until we are done with the present one.
    */
@@ -7934,11 +7987,10 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   tdes = LOG_FIND_TDES (LOG_SYSTEM_TRAN_INDEX);
   if (tdes == NULL)
     {
-      LOG_CS_EXIT (thread_p);
-      return NULL_PAGEID;
+      goto error_cannot_chkpt;
     }
 
-  /* 
+  /*
    * FLUSH all append LOG PAGES and flush all DIRTY DATA PAGES whose LSA
    * are SMALLER OR EQUAL than newchkpt_lsa value and find the next redo
    * point.
@@ -7955,39 +8007,35 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   node = prior_lsa_alloc_and_copy_data (thread_p, LOG_START_CHKPT, RV_NOT_DEFINED, NULL, 0, NULL, 0, NULL);
   if (node == NULL)
     {
-      LOG_CS_EXIT (thread_p);
-      return NULL_PAGEID;
+      goto error_cannot_chkpt;
     }
 
   newchkpt_lsa = prior_lsa_next_record (thread_p, node, tdes);
   assert (!LSA_ISNULL (&newchkpt_lsa));
 
-  /* 
+  /*
    * Modify log header to record present checkpoint. The header is flushed
    * later
    */
 
   LOG_CS_EXIT (thread_p);
 
-  er_log_debug (ARG_FILE_LINE, "logpb_checkpoint: call logtb_reflect_global_unique_stats_to_btree()\n");
+  detailed_er_log ("logpb_checkpoint: call logtb_reflect_global_unique_stats_to_btree()\n");
   if (logtb_reflect_global_unique_stats_to_btree (thread_p) != NO_ERROR)
     {
-      LOG_CS_ENTER (thread_p);
       goto error_cannot_chkpt;
     }
 
-  er_log_debug (ARG_FILE_LINE, "logpb_checkpoint: call pgbuf_flush_checkpoint()\n");
+  detailed_er_log ("logpb_checkpoint: call pgbuf_flush_checkpoint()\n");
   if (pgbuf_flush_checkpoint (thread_p, &newchkpt_lsa, &chkpt_redo_lsa, &tmp_chkpt.redo_lsa, &flushed_page_cnt) !=
       NO_ERROR)
     {
-      LOG_CS_ENTER (thread_p);
       goto error_cannot_chkpt;
     }
 
-  er_log_debug (ARG_FILE_LINE, "logpb_checkpoint: call fileio_synchronize_all()\n");
+  detailed_er_log ("logpb_checkpoint: call fileio_synchronize_all()\n");
   if (fileio_synchronize_all (thread_p, false) != NO_ERROR)
     {
-      LOG_CS_ENTER (thread_p);
       goto error_cannot_chkpt;
     }
 
@@ -8005,7 +8053,9 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   if (!LSA_ISNULL (&tmp_chkpt.redo_lsa))
     {
       if (LSA_ISNULL (&log_Gl.flushed_lsa_lower_bound) || LSA_GT (&tmp_chkpt.redo_lsa, &log_Gl.flushed_lsa_lower_bound))
-	LSA_COPY (&log_Gl.flushed_lsa_lower_bound, &tmp_chkpt.redo_lsa);
+	{
+	  LSA_COPY (&log_Gl.flushed_lsa_lower_bound, &tmp_chkpt.redo_lsa);
+	}
     }
 #endif /* SERVER_MODE */
 
@@ -8029,7 +8079,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   LSA_SET_NULL (&smallest_lsa);
   for (i = 0, ntrans = 0, ntops = 0; i < log_Gl.trantable.num_total_indices; i++)
     {
-      /* 
+      /*
        * Don't checkpoint current system transaction. That is, the one of
        * checkpoint process
        */
@@ -8050,7 +8100,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 	  LSA_COPY (&chkpt_one->tail_lsa, &act_tdes->tail_lsa);
 	  if (chkpt_one->state == TRAN_UNACTIVE_ABORTED)
 	    {
-	      /* 
+	      /*
 	       * Transaction is in the middle of an abort, since rollback does
 	       * is not run in a critical section. Set the undo point to be the
 	       * same as its tail. The recovery process will read the last
@@ -8082,14 +8132,14 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 	}
     }
 
-  /* 
+  /*
    * Reset the structure to the correct number of transactions and
    * recalculate the length
    */
   tmp_chkpt.ntrans = ntrans;
   length_all_chkpt_trans = sizeof (*chkpt_trans) * tmp_chkpt.ntrans;
 
-  /* 
+  /*
    * Scan again if there were any top system operations in the process of being committed.
    * NOTE that we checkpoint top system operations only when there are in the
    * process of commit. Not knowledge of top system operations that are not
@@ -8114,7 +8164,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
       /* CHECKPOINTING THE TOP ACTIONS */
       for (i = 0, ntrans = 0, ntops = 0; i < log_Gl.trantable.num_total_indices; i++)
 	{
-	  /* 
+	  /*
 	   * Don't checkpoint current system transaction. That is, the one of
 	   * checkpoint process
 	   */
@@ -8174,9 +8224,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 	}
       pthread_mutex_unlock (&log_Gl.prior_info.prior_lsa_mutex);
       TR_TABLE_CS_EXIT (thread_p);
-      LOG_CS_EXIT (thread_p);
-
-      return NULL_PAGEID;
+      goto error_cannot_chkpt;
     }
 
   chkpt = (LOG_REC_CHKPT *) node->data_header;
@@ -8196,15 +8244,15 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
       free_and_init (chkpt_topops);
     }
 
-  /* 
+  /*
    * END append
    * Flush the page since we are going to flush the log header which
    * reflects the new location of the last checkpoint log record
    */
   logpb_flush_pages_direct (thread_p);
-  er_log_debug (ARG_FILE_LINE, "logpb_checkpoint: call logpb_flush_all_append_pages()\n");
+  detailed_er_log ("logpb_checkpoint: call logpb_flush_all_append_pages()\n");
 
-  /* 
+  /*
    * Flush the log data header and update all checkpoints in volumes to
    * point to new checkpoint
    */
@@ -8234,17 +8282,17 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 
   pthread_mutex_unlock (&log_Gl.chkpt_lsa_lock);
 
-  er_log_debug (ARG_FILE_LINE, "logpb_checkpoint: call logpb_flush_header()\n");
+  detailed_er_log ("logpb_checkpoint: call logpb_flush_header()\n");
   logpb_flush_header (thread_p);
 
-  /* 
+  /*
    * Exit from the log critical section since we are going to call another
    * module which may be blocked on a lock.
    */
 
   LOG_CS_EXIT (thread_p);
 
-  /* 
+  /*
    * Record the checkpoint address on every volume header
    */
   curr_last_perm_volid = xboot_find_last_permanent (thread_p);
@@ -8254,17 +8302,34 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
     {
       /* When volid is greater than boot_Db_parm->last_perm_volid, it means that the volume is now adding. We don't
        * need to care for the new volumes in here. */
-      (void) disk_set_checkpoint (thread_p, volid, &chkpt_lsa);
+      if (disk_set_checkpoint (thread_p, volid, &chkpt_lsa) != NO_ERROR)
+	{
+	  goto error_cannot_chkpt;
+	}
+
+      /* When setting the checkpoint, the header page modification is not logged. However, other concurrent
+       * transaction may modify meanwhile the header page (with logging). Since writing data page is preceded by
+       * log sync, we are sure that WAL is not violated. We only need to sync the data volume. Probably, it is better
+       * to sync it now - as soon as possible. If we are postponing volume sync, we may write on disk more data pages
+       * twice (the data pages modified before checkpoint - other than volume header page, written on disk at the
+       * beginning of the checkpoint, modified again by concurrent transaction, written on disk again in checkpoint
+       * due to volume header page modification).
+       */
+      vdes = fileio_get_volume_descriptor (volid);
+      if (fileio_synchronize (thread_p, vdes, fileio_get_volume_label (vdes, PEEK), FILEIO_SYNC_ALSO_FLUSH_DWB) != vdes)
+	{
+	  goto error_cannot_chkpt;
+	}
     }
 
-  /* 
+  /*
    * Get the critical section again, so we can check if any archive can be
    * declare as un-needed
    */
 
   LOG_CS_ENTER (thread_p);
 
-  /* 
+  /*
    * If the log archives are not needed for any normal undos and redos,
    * indicate so. However, the log archives may be needed during media
    * crash recovery.
@@ -8357,13 +8422,13 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 	}
     }
 
-  /* 
+  /*
    * Checkpoint process is not running any longer. Indicate when do we expect
    * it to run.
    */
 
   log_Gl.run_nxchkpt_atpageid = (log_Gl.hdr.append_lsa.pageid + log_Gl.chkpt_every_npages);
-  /* 
+  /*
    * Clear all tail and heads information of current system transaction
    */
   logtb_clear_tdes (thread_p, tdes);
@@ -8380,15 +8445,24 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_CHECKPOINT_FINISHED, 3, log_Gl.hdr.chkpt_lsa.pageid,
 	  log_Gl.chkpt_redo_lsa.pageid, flushed_page_cnt);
   er_log_debug (ARG_FILE_LINE, "end checkpoint\n");
+
   return tmp_chkpt.redo_lsa.pageid;
 
   /* ******** */
 error_cannot_chkpt:
-  assert (LOG_CS_OWN_WRITE_MODE (thread_p));
+  if (!LOG_CS_OWN_WRITE_MODE (thread_p))
+    {
+      LOG_CS_ENTER (thread_p);
+    }
+
   /* to immediately execute the next checkpoint. */
   log_Gl.run_nxchkpt_atpageid = log_Gl.hdr.append_lsa.pageid;
+
   LOG_CS_EXIT (thread_p);
+
   return NULL_PAGEID;
+
+#undef detailed_er_log
 }
 
 /*
@@ -8459,9 +8533,10 @@ logpb_backup_for_volume (THREAD_ENTRY * thread_p, VOLID volid, LOG_LSA * chkpt_l
 {
   DISK_VOLPURPOSE volpurpose;
   PAGEID vol_sys_lastpage;
+  int vdes;
   int error_code = NO_ERROR;
 
-  /* 
+  /*
    * Determine the purpose of the volume.  For most volumes we need to
    * backup every page, but for temporary volumes we only need the system
    * pages.
@@ -8473,7 +8548,7 @@ logpb_backup_for_volume (THREAD_ENTRY * thread_p, VOLID volid, LOG_LSA * chkpt_l
     }
   else if (volpurpose == DB_TEMPORARY_DATA_PURPOSE)
     {
-      /* 
+      /*
        * Do not allow incremental backups of temp volumes; but since we
        * only backup the system pages, they be only a handfull of pages.
        */
@@ -8484,7 +8559,7 @@ logpb_backup_for_volume (THREAD_ENTRY * thread_p, VOLID volid, LOG_LSA * chkpt_l
       vol_sys_lastpage = -1;	/* must backup entire volume */
     }
 
-  /* 
+  /*
    * Reset the checkpoint of the volume to backup and flush all its dirty
    * pages, so that the the backup reflects the actual state of the volume
    * as much as possible
@@ -8505,7 +8580,13 @@ logpb_backup_for_volume (THREAD_ENTRY * thread_p, VOLID volid, LOG_LSA * chkpt_l
       return error_code;
     }
 
-  /* 
+  vdes = fileio_get_volume_descriptor (volid);
+  if (fileio_synchronize (thread_p, vdes, fileio_get_volume_label (vdes, PEEK), FILEIO_SYNC_ALSO_FLUSH_DWB) != vdes)
+    {
+      return ER_FAILED;
+    }
+
+  /*
    * Create the backup file/volume and copy the content onto it.
    *
    * Note that the copy is done from disk to disk. The page buffer pool is
@@ -8594,10 +8675,24 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
   time_t tmp_time;
   char time_val[CTIME_MAX];
 
+#if defined (SERVER_MODE)
+  // check whether there is ongoing backup.
+  LOG_CS_ENTER (thread_p);
+  if (log_Gl.backup_in_progress == true)
+    {
+      LOG_CS_EXIT (thread_p);
+      error_code = ER_LOG_BKUP_DUPLICATE_REQUESTS;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+      return error_code;
+    }
+
+  log_Gl.backup_in_progress = true;
+  LOG_CS_EXIT (thread_p);
+#endif /* SERVER_MODE */
 
   memset (&session, 0, sizeof (FILEIO_BACKUP_SESSION));
 
-  /* 
+  /*
    * Determine the absolute path that corresponds with the desired location.
    */
   if (allbackup_path == NULL)
@@ -8621,29 +8716,22 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
       goto error;
     }
 
-  /* 
+  /*
    * Determine the first log archive that will be needed to insure
-   * consistency if we are forced to restore the database with nothing
-   * but this backup.
+   * consistency if we are forced to restore the database with nothing but this backup.
    * first_arv_needed may need to be based on what archive chkpt_lsa is in.
    */
-  LOG_CS_ENTER (thread_p);
-#if defined(SERVER_MODE)
-  if (log_Gl.backup_in_progress == true)
-    {
-      LOG_CS_EXIT (thread_p);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_BKUP_DUPLICATE_REQUESTS, 0);
-      error_code = ER_LOG_BKUP_DUPLICATE_REQUESTS;
-      goto error;
-    }
 
-  log_Gl.backup_in_progress = true;
-  LOG_CS_EXIT (thread_p);
-
+#if defined (SERVER_MODE)
   print_backupdb_waiting_reason = false;
   wait_checkpoint_begin_time = time (NULL);
 loop:
+#endif /* SERVER_MODE */
+
+  // actually, it is not really necessary for SA but just for code consistency.
   LOG_CS_ENTER (thread_p);
+
+#if defined (SERVER_MODE)
   /* check if checkpoint is in progress */
   if (log_Gl.run_nxchkpt_atpageid == NULL_PAGEID)
     {
@@ -8741,7 +8829,7 @@ loop:
       break;
     }
 
-  /* 
+  /*
    * Check for existing backup volumes in this location, and warn
    * the user that they will be destroyed.
    */
@@ -8779,7 +8867,7 @@ loop:
 
   if (session.bkup.dtype != FILEIO_BACKUP_VOL_DEVICE)
     {
-      /* 
+      /*
        * Delete previous backup volumes from this level.  The first
        * loop tries to determine if indeed there will be anything to
        * unformat/delete, while the second loop does the actual deletions.
@@ -8830,7 +8918,7 @@ loop:
   /* Throw away the old names and make room for new names */
   fileio_clear_backup_info_level (backup_level, false, FILEIO_FIRST_BACKUP_VOL_INFO);
 
-  /* 
+  /*
    * Aside: all backup level related log hdr stuff should be in its own
    * array, including log_Gl (but I am hesitant to change it to avoid subtly
    * changing the disk rep). So for now, only have lower levels think array.
@@ -8944,13 +9032,13 @@ loop:
 	  break;
 	case LOG_DBLOG_INFO_VOLID:
 	case LOG_DBLOG_BKUPINFO_VOLID:
-	  /* 
+	  /*
 	   * These information volumes are backed-up at the very end.
 	   */
 	  volid++;
 	  continue;
 	case LOG_DBLOG_ACTIVE_VOLID:
-	  /* 
+	  /*
 	   * Archiving log active must be done after all data volumes
 	   * have been backed up (in order to insure we get all of the
 	   * log records needed to restore consistency).
@@ -8988,7 +9076,7 @@ loop:
   while (volid != NULL_VOLID);
 
 #if defined(SERVER_MODE)
-  /* 
+  /*
    * Only when in client/server, we may need to force an archive
    * of the current log active if there were any active transactions
    * before or during the backup.
@@ -9014,7 +9102,7 @@ loop:
 	}
     }
 #else /* SERVER_MODE */
-  /* 
+  /*
    * In stand-alone, there can be no other activity modifying the log
    * so we do not have to keep any log records to be consistent.
    */
@@ -9056,7 +9144,7 @@ loop:
 	}
     }
 
-  /* 
+  /*
    * We must store the final bkvinf file at the very end of the backup
    * to have the best chance of having all of the information in it.
    * Note: that there is a window that the last bkvinf entry still not being
@@ -9177,7 +9265,7 @@ loop:
   /* ********* */
 error:
 
-  /* 
+  /*
    * Destroy the backup that has been created.
    */
   fileio_abort_backup (thread_p, &session, bkup_in_progress);
@@ -9218,7 +9306,7 @@ logpb_update_backup_volume_info (const char *bkupinfo_file_name)
       return error_code;
     }
 
-  /* 
+  /*
    * If an error occurs while writing, should allow the user to try again.
    */
   error_code = fileio_write_backup_info_entries (backup_volinfo_fp, FILEIO_FIRST_BACKUP_VOL_INFO);
@@ -9355,8 +9443,8 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 
   LOG_CS_ENTER (thread_p);
 
-  if (logpb_find_header_parameters (thread_p, db_fullname, logpath, prefix_logname, &db_iopagesize, &log_page_size,
-				    &db_creation, &db_compatibility, &dummy) == -1)
+  if (logpb_find_header_parameters (thread_p, true, db_fullname, logpath, prefix_logname, &db_iopagesize,
+				    &log_page_size, &db_creation, &db_compatibility, &dummy) == -1)
     {
       db_iopagesize = IO_PAGESIZE;
       log_page_size = LOG_PAGESIZE;
@@ -9366,7 +9454,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 
   fileio_page_bitmap_list_init (&page_bitmap_list);
 
-  /* 
+  /*
    * Must lock the database if possible. Would be nice to have a way
    * to lock the db somehow even when the lgat file does not exist.
    */
@@ -9469,7 +9557,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 
       if (first_time && db_iopagesize != bkdb_iopagesize)
 	{
-	  /* 
+	  /*
 	   * Pagesize is incorrect. We need to undefine anything that has been
 	   * created with old pagesize and start again.
 	   * If we do not have a log, we should reset the pagesize and start the
@@ -9477,7 +9565,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 	   */
 	  if (log_Gl.append.vdes == NULL_VOLDES)
 	    {
-	      /* 
+	      /*
 	       * Reset the page size
 	       */
 	      if (db_set_page_size (bkdb_iopagesize, log_page_size) != NO_ERROR)
@@ -9572,7 +9660,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 		  remember_pages = true;
 		}
 
-	      /* 
+	      /*
 	       * Another volume/file to restore
 	       */
 	      switch (to_volid)
@@ -9584,7 +9672,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 		case LOG_DBLOG_ARCHIVE_VOLID:
 
 		  /* We can only take the most recent information, and we do not want to overwrite it with out of data
-		   * information from earlier backups.  This is because we are applying the restoration in reverse time 
+		   * information from earlier backups.  This is because we are applying the restoration in reverse time
 		   * order. */
 		  if (!first_time)
 		    {
@@ -9617,9 +9705,9 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 	      else
 		{
 		  total_pages = (DKNPAGES) CEIL_PTVDIV (session->dbfile.nbytes, IO_PAGESIZE);
-		  /* 
+		  /*
 		   * Create a page_bitmap to remember the id's of pages
-		   * that have been written. We only need to write the page 
+		   * that have been written. We only need to write the page
 		   * (once) from the most recent backup.
 		   */
 		  page_bitmap = fileio_page_bitmap_list_find (&page_bitmap_list, to_volid);
@@ -9755,7 +9843,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 error:
   if (restore_in_progress)
     {
-      /* 
+      /*
        * We have probably already restored something to their database
        * and therefore they need to be sure and try another restore until
        * they succeed.
@@ -9847,7 +9935,7 @@ static int
 logpb_start_where_path (const char *to_db_fullname, const char *toext_path, const char **toext_name, char **ext_path,
 			char **alloc_extpath, const char *fileof_vols_and_wherepaths, FILE ** where_paths_fp)
 {
-  /* 
+  /*
    * Get the name of extensions to be used when "fileof_vols_and_wherepaths"
    * is not given.
    */
@@ -9857,7 +9945,7 @@ logpb_start_where_path (const char *to_db_fullname, const char *toext_path, cons
   *ext_path = NULL;
   *where_paths_fp = NULL;
 
-  /* 
+  /*
    * Where are the volumes going to be placed ?
    *   - All or them at same place: toext_path or the same as database
    *   - The user indicated where to create each individual copy
@@ -9865,7 +9953,7 @@ logpb_start_where_path (const char *to_db_fullname, const char *toext_path, cons
 
   if (fileof_vols_and_wherepaths != NULL)
     {
-      /* 
+      /*
        * The user seems to want to spread the volumes over several locations.
        * User must indicate where each individual database volume is going to
        * be placed.
@@ -9878,13 +9966,13 @@ logpb_start_where_path (const char *to_db_fullname, const char *toext_path, cons
 	  return ER_LOG_USER_FILE_UNKNOWN;
 	}
     }
-  /* 
+  /*
    * Either all copies are created at the same place, or each individual
    * volumes is copied at the original volume location
    */
   if (toext_path == NULL)
     {
-      /* 
+      /*
        * Each volume is copied to the same place where the original volume
        * resides
        */
@@ -9954,7 +10042,7 @@ logpb_next_where_path (const char *to_db_fullname, const char *toext_path, const
   current_vlabel = fileio_get_volume_label (volid, PEEK);
   sprintf (format_string, "%%d %%%ds %%%ds", PATH_MAX - 1, PATH_MAX - 1);
 
-  /* 
+  /*
    * If a file for paths was given, get the name of the "to" volume from it
    */
   if (where_paths_fp != NULL)
@@ -9965,7 +10053,7 @@ logpb_next_where_path (const char *to_db_fullname, const char *toext_path, const
 		  fileof_vols_and_wherepaths, num_perm_vols);
 	  return ER_LOG_USER_FILE_WITHOUT_ENOUGH_ENTRIES;
 	}
-      /* 
+      /*
        * Primary volume must be identical to database name
        */
       if (volid == LOG_DBFIRST_VOLID && strcmp (to_volname, to_db_fullname) != 0)
@@ -10021,11 +10109,11 @@ logpb_next_where_path (const char *to_db_fullname, const char *toext_path, const
     }
   else
     {
-      /* 
+      /*
        * The decision is done consulting the arguments of the function
        */
 
-      /* 
+      /*
        * Primary volume must be identical to database name
        */
       if (volid == LOG_DBFIRST_VOLID)
@@ -10036,7 +10124,7 @@ logpb_next_where_path (const char *to_db_fullname, const char *toext_path, const
 	{
 	  if (toext_path == NULL)
 	    {
-	      /* 
+	      /*
 	       * The volume is copied to the same place where the original volume
 	       * resides
 	       */
@@ -10101,7 +10189,7 @@ logpb_copy_volume (THREAD_ENTRY * thread_p, VOLID from_volid, const char *to_vol
       return ER_FAILED;
     }
 
-  /* 
+  /*
    * Change the name of the volume, its database creation time and its
    * checkpoint lsa
    */
@@ -10112,7 +10200,7 @@ logpb_copy_volume (THREAD_ENTRY * thread_p, VOLID from_volid, const char *to_vol
   logpb_flush_pages_direct (thread_p);
   (void) pgbuf_flush_all_unfixed_and_set_lsa_as_null (thread_p, LOG_DBCOPY_VOLID);
 
-  /* 
+  /*
    * To set the LSA of temp volume to special temp LSA (-2,-2).
    * Especially, in case of copydb.
    */
@@ -10198,7 +10286,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
 
   db_creation = time (NULL);
 
-  /* 
+  /*
    * Make sure that the length name of the volumes are OK
    */
 
@@ -10212,7 +10300,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
   /* Do not use DWB at copy DB. In case of crash the data may be recreated from log. */
   dwb_destroy (thread_p);
 
-  /* 
+  /*
    * Create the DATABASE VOLUME INFORMATION file
    */
   error_code = logpb_create_volume_info (to_db_fullname);
@@ -10221,7 +10309,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
       goto error;
     }
 
-  /* 
+  /*
    * Create a LOG INFORMATION FILE
    */
 
@@ -10247,7 +10335,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
       goto error;
     }
 
-  /* 
+  /*
    * FIRST CREATE A NEW LOG FOR THE NEW DATABASE. This log is not a copy of
    * of the old log; it is a newly created one.
    * Compose the LOG name for the ACTIVE portion of the log.
@@ -10282,7 +10370,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
       goto error;
     }
 
-  /* 
+  /*
    * Write an end of log mark at first append page. This is used to detect the
    * end of new log
    */
@@ -10316,11 +10404,11 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
       goto error;
     }
 
-  /* 
+  /*
    * Initialize the active log header from the old log.
    */
 
-  /* 
+  /*
    * Now, modify the log header. Similar than log_create
    */
   to_malloc_log_pgptr->hdr.logical_pageid = LOGPB_HEADER_PAGE_ID;
@@ -10359,11 +10447,11 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
   /* Dismount the copy of the log */
   fileio_dismount (thread_p, to_vdes);
 
-  /* 
+  /*
    * Start the COPYING all INFORMATION VOLUMES
    */
 
-  /* 
+  /*
    * Prepare the where path for the volumes according to the input
    */
 
@@ -10398,7 +10486,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
 	}
     }
 
-  /* 
+  /*
    * We need to change the name of the volumes in our internal tables.
    * That is, first volume points to second volume
    *          second volume points to third volume
@@ -10429,7 +10517,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
 		}
 	    }
 
-	  /* 
+	  /*
 	   * The previous volume must point to new volume
 	   */
 
@@ -10463,7 +10551,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
 	      break;
 	    }
 
-	  /* 
+	  /*
 	   * Now, mount the current volume
 	   */
 	  volid = (VOLID) fromfile_volid;
@@ -10517,7 +10605,7 @@ error:
   fileio_make_log_info_name (to_volname, to_logpath, to_prefix_logname);
   fileio_unformat (thread_p, to_volname);
 
-  /* 
+  /*
    * Rewind the volume information to destroy any created volumes if any
    */
 
@@ -10605,7 +10693,7 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols, co
       toext_path = real_pathbuf;
     }
 
-  /* 
+  /*
    * Make sure that the length name of the volumes are OK
    */
 
@@ -10680,7 +10768,7 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols, co
 
   if (force_delete)
     {
-      /* 
+      /*
        * REMOVE ONLINE BACKUPS OF PRESENT DATABASE
        * Obtain the name of the backups from the backup volume information file.
        */
@@ -10703,14 +10791,14 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols, co
 	}
     }
 
-  /* 
+  /*
    * REMOVE ANY LOG ARCHIVES from present database
    */
 
   for (i = log_Gl.hdr.last_deleted_arv_num + 1; i < log_Gl.hdr.nxarv_num; i++)
     {
       fileio_make_log_archive_name (from_volname, log_Archive_path, log_Prefix, i);
-      /* 
+      /*
        * Just to avoid the warning, the volume is check first
        */
       if (fileio_is_volume_exist (from_volname) == true)
@@ -10719,11 +10807,11 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols, co
 	}
     }
 
-  /* 
+  /*
    * RENAME LOG ACTIVE
    */
 
-  /* 
+  /*
    * Modify the name in the log header. Similar from log_create
    */
 
@@ -10769,11 +10857,11 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols, co
 	}
     }
 
-  /* 
+  /*
    * Create the DATABASE VOLUME INFORMATION file
    */
 
-  /* 
+  /*
    * Destroy the old VOLUME INFORMATION AND LOG INFORMATION. Then, create
    * them back.
    */
@@ -10811,7 +10899,7 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols, co
       goto error;
     }
 
-  /* 
+  /*
    * Add the backup information and the log active to the volume
    * information
    */
@@ -10831,11 +10919,11 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols, co
       goto error;
     }
 
-  /* 
+  /*
    * Start the RENAMING all DATA VOLUMES
    */
 
-  /* 
+  /*
    * Prepare the where path for the volumes according to the input
    */
 
@@ -10866,7 +10954,7 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols, co
 	  goto error;
 	}
 
-      /* 
+      /*
        * We need to change the name of the volumes in our internal tables.
        * That is, first volume points to second volume
        *          second volume points to third volume
@@ -10884,7 +10972,7 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols, co
 	    }
 	}
 
-      /* 
+      /*
        * Now flush every single page of this volume, dismount the volume, rename
        * the volume, and mount the volume
        */
@@ -11012,7 +11100,7 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *db_fulln
   int error_code = NO_ERROR;
   char format_string[64];
 
-  /* 
+  /*
    * FIRST: Destroy data volumes of the database.
    * That is, the log, and information files are not removed at this point.
    */
@@ -11020,7 +11108,7 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *db_fulln
   /* If the system is not restarted, read the header directly from disk */
   if (num_perm_vols < 0 || log_Gl.trantable.area == NULL || log_Pb.buffers == NULL)
     {
-      /* 
+      /*
        * The system is not restarted. Read the log header from disk and remove
        * the data volumes by reading the database volume information
        */
@@ -11069,7 +11157,7 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *db_fulln
 	  fileio_dismount (thread_p, log_Gl.append.vdes);
 	  log_Gl.append.vdes = NULL_VOLDES;
 	  loghdr = &disk_hdr;
-	  /* 
+	  /*
 	   * Make sure that the log is a log file and that it is compatible
 	   * with the running database and system
 	   */
@@ -11098,7 +11186,7 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *db_fulln
 	    }
 	}
 
-      /* 
+      /*
        * DESTROY DATA VOLUMES using the database volume information since
        * the database system is not restarted.
        *
@@ -11120,7 +11208,7 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *db_fulln
 		}
 
 	      volid = (VOLID) read_int_volid;
-	      /* 
+	      /*
 	       * Remove data volumes at this point
 	       */
 	      switch (volid)
@@ -11146,7 +11234,7 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *db_fulln
   else
     {
       loghdr = &log_Gl.hdr;
-      /* 
+      /*
        * DESTROY DATA VOLUMES
        */
       for (volid = LOG_DBFIRST_VOLID; volid != NULL_VOLID; volid = fileio_find_next_perm_volume (thread_p, volid))
@@ -11166,9 +11254,16 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *db_fulln
   fileio_make_volume_info_name (vol_fullname, db_fullname);
   fileio_unformat (thread_p, vol_fullname);
 
+  /* Destroy DWB, if still exists. */
+  fileio_make_dwb_name (vol_fullname, log_Path, log_Prefix);
+  if (fileio_is_volume_exist (vol_fullname))
+    {
+      fileio_unformat (thread_p, vol_fullname);
+    }
+
   if (force_delete)
     {
-      /* 
+      /*
        * SECOND: Destroy backups of data volumes, and the backup log information
        *         The backups are located by reading the backup info log.
        */
@@ -11191,7 +11286,7 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *db_fulln
 	}
     }
 
-  /* 
+  /*
    * THIRD: Destroy log active, online log archives, and log information
    */
 
@@ -11368,7 +11463,7 @@ logpb_fatal_error_internal (THREAD_ENTRY * thread_p, bool log_exit, bool need_fl
   vsnprintf (msg, LINE_MAX, fmt, ap);
   er_set (ER_FATAL_ERROR_SEVERITY, file_name, lineno, ER_LOG_FATAL_ERROR, 1, msg);
 
-  /* 
+  /*
    * Flush any unfixed, dirty pages before the system exits. This is done
    * to make sure that all committed actions are reflected on disk.
    * Unfortunately, we may be placing some uncommitted action od disk. This
@@ -11394,12 +11489,12 @@ logpb_fatal_error_internal (THREAD_ENTRY * thread_p, bool log_exit, bool need_fl
 	  else
 	    {
 	      /* TODO : valid code ?? */
-	      /* 
+	      /*
 	       * if ((tmp_lsa1.pageid = log_Gl.append.nxio_lsa.pageid - 1) < 0) tmp_lsa1.pageid = 0; */
 	      tmp_lsa1.pageid = 0;
 	    }
 
-	  /* 
+	  /*
 	   * Flush as much as you can without forcing the current unfinish log
 	   * record.
 	   */
@@ -11424,7 +11519,7 @@ logpb_fatal_error_internal (THREAD_ENTRY * thread_p, bool log_exit, bool need_fl
 
   fprintf (stderr, "%s\n", er_msg ());
 
-  /* 
+  /*
    * If error message log is different from terminal or /dev/null..indicate
    * that additional information can be found in the error log file
    */
@@ -11445,7 +11540,7 @@ logpb_fatal_error_internal (THREAD_ENTRY * thread_p, bool log_exit, bool need_fl
       boot_donot_shutdown_server_at_exit ();
       boot_server_status (BOOT_SERVER_DOWN);
 #else /* SERVER_MODE */
-      /* 
+      /*
        * The following crap is added to the standalone version to avoid the
        * client to continue accessing the database system in presence of
        * call on exit functions of the applications.
@@ -11809,9 +11904,8 @@ error:
 		    bg_arv_info->start_page_id, bg_arv_info->current_page_id, error_code);
     }
 
-  er_log_debug (ARG_FILE_LINE,
-		"logpb_background_archiving end, hdr->start_page_id = %d, hdr->current_page_id = %d\n",
-		bg_arv_info->start_page_id, bg_arv_info->current_page_id);
+  log_archive_er_log ("logpb_background_archiving end, hdr->start_page_id = %d, hdr->current_page_id = %d\n",
+		      bg_arv_info->start_page_id, bg_arv_info->current_page_id);
 
   return error_code;
 }
@@ -12232,9 +12326,9 @@ logpb_perm_status_to_string (enum LOG_PSTATUS val)
 }
 
 /*
- * logpb_find_oldest_available_page_id() - return the oldest log pageid 
+ * logpb_find_oldest_available_page_id() - return the oldest log pageid
  *
- *   return: log pageid 
+ *   return: log pageid
  */
 LOG_PAGEID
 logpb_find_oldest_available_page_id (THREAD_ENTRY * thread_p)

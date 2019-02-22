@@ -35,7 +35,6 @@
 #if defined(WINDOWS)
 #include "porting.h"
 #endif /* ! WINDOWS */
-#include "regu_var.h"
 #include "thread_compat.hpp"
 
 #include <assert.h>
@@ -43,7 +42,16 @@
 #include <stdlib.h>
 #endif // not WINDOWS
 
-typedef DB_LOGICAL (*PR_EVAL_FNC) (THREAD_ENTRY * thread_p, PRED_EXPR *, VAL_DESCR *, OID *);
+// forward definitions
+struct pred_expr;
+typedef struct pred_expr PRED_EXPR;
+struct regu_variable_list_node;
+struct regu_variable_node;
+struct val_descr;
+typedef struct val_descr VAL_DESCR;
+struct val_list_node;
+
+typedef DB_LOGICAL (*PR_EVAL_FNC) (THREAD_ENTRY * thread_p, const pred_expr *, val_descr *, OID *);
 
 typedef enum
 {
@@ -80,7 +88,7 @@ typedef enum
 typedef struct scan_pred SCAN_PRED;
 struct scan_pred
 {
-  REGU_VARIABLE_LIST regu_list;	/* regu list for predicates (or filters) */
+  regu_variable_list_node *regu_list;	/* regu list for predicates (or filters) */
   PRED_EXPR *pred_expr;		/* predicate expressions */
   PR_EVAL_FNC pr_eval_fnc;	/* predicate evaluation function */
 };
@@ -90,7 +98,7 @@ typedef struct scan_attrs SCAN_ATTRS;
 struct scan_attrs
 {
   ATTR_ID *attr_ids;		/* array of attributes id */
-  HEAP_CACHE_ATTRINFO *attr_cache;	/* attributes access cache */
+  heap_cache_attrinfo *attr_cache;	/* attributes access cache */
   int num_attrs;		/* number of attributes */
 };
 
@@ -101,7 +109,7 @@ struct filter_info
   /* filter information */
   SCAN_PRED *scan_pred;		/* predicates of the filter */
   SCAN_ATTRS *scan_attrs;	/* attributes scanning info */
-  VAL_LIST *val_list;		/* value list */
+  val_list_node *val_list;	/* value list */
   VAL_DESCR *val_descr;		/* value descriptor */
 
   /* class information */
@@ -125,7 +133,7 @@ struct update_mvcc_reev_assignment
 {
   int att_id;			/* index in the class attributes array */
   DB_VALUE *constant;		/* constant to be assigned to an attribute or NULL */
-  REGU_VARIABLE *regu_right;	/* regu variable for right side of an assignment */
+  regu_variable_node *regu_right;	/* regu variable for right side of an assignment */
   UPDATE_MVCC_REEV_ASSIGNMENT *next;	/* link to the next assignment */
 };
 
@@ -140,7 +148,7 @@ struct upddel_mvcc_cond_reeval
   FILTER_INFO key_filter;	/* key_filter */
   FILTER_INFO range_filter;	/* range filter */
   QPROC_QUALIFICATION qualification;	/* see QPROC_QUALIFICATION; used for both input and output parameter */
-  REGU_VARIABLE_LIST rest_regu_list;	/* regulator variable list */
+  regu_variable_list_node *rest_regu_list;	/* regulator variable list */
   SCAN_ATTRS *rest_attrs;	/* attribute info for attribute that is not involved in current filter */
   UPDDEL_MVCC_COND_REEVAL *next;	/* next upddel_mvcc_cond_reeval structure that will be processed on
 					 * reevaluation */
@@ -169,9 +177,9 @@ struct mvcc_update_reev_data
   UPDATE_MVCC_REEV_ASSIGNMENT *curr_assigns;	/* list of assignments to the attributes of this class */
   HEAP_CACHE_ATTRINFO *curr_attrinfo;	/* attribute info for performing assignments */
 
-  PRED_EXPR *cons_pred;
+  pred_expr *cons_pred;
   LC_COPYAREA *copyarea;	/* used to build the tuple to be stored to disk after reevaluation */
-  VAL_DESCR *vd;		/* values descriptor */
+  val_descr *vd;		/* values descriptor */
   RECDES *new_recdes;		/* record descriptor after assignment reevaluation */
 };
 
@@ -316,16 +324,16 @@ struct mvcc_reev_data
     } \
   while (0)
 
-extern DB_LOGICAL eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * obj_oid);
-extern DB_LOGICAL eval_pred_comp0 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * obj_oid);
-extern DB_LOGICAL eval_pred_comp1 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * obj_oid);
-extern DB_LOGICAL eval_pred_comp2 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * obj_oid);
-extern DB_LOGICAL eval_pred_comp3 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * obj_oid);
-extern DB_LOGICAL eval_pred_alsm4 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * obj_oid);
-extern DB_LOGICAL eval_pred_alsm5 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * obj_oid);
-extern DB_LOGICAL eval_pred_like6 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * obj_oid);
-extern DB_LOGICAL eval_pred_rlike7 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * obj_oid);
-extern PR_EVAL_FNC eval_fnc (THREAD_ENTRY * thread_p, PRED_EXPR * pr, DB_TYPE * single_node_type);
+extern DB_LOGICAL eval_pred (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * obj_oid);
+extern DB_LOGICAL eval_pred_comp0 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * obj_oid);
+extern DB_LOGICAL eval_pred_comp1 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * obj_oid);
+extern DB_LOGICAL eval_pred_comp2 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * obj_oid);
+extern DB_LOGICAL eval_pred_comp3 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * obj_oid);
+extern DB_LOGICAL eval_pred_alsm4 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * obj_oid);
+extern DB_LOGICAL eval_pred_alsm5 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * obj_oid);
+extern DB_LOGICAL eval_pred_like6 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * obj_oid);
+extern DB_LOGICAL eval_pred_rlike7 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * obj_oid);
+extern PR_EVAL_FNC eval_fnc (THREAD_ENTRY * thread_p, const pred_expr * pr, DB_TYPE * single_node_type);
 extern DB_LOGICAL eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdes, HEAP_SCANCACHE * scan_cache,
 				    FILTER_INFO * filter);
 extern DB_LOGICAL eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, FILTER_INFO * filter);

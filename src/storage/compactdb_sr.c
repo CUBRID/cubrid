@@ -32,6 +32,7 @@
 
 #include <assert.h>
 
+#include "btree.h"		// for SINGLE_ROW_UPDATE
 #include "thread_compat.hpp"
 #include "heap_file.h"
 #include "dbtype.h"
@@ -492,7 +493,7 @@ end:
 }
 
 
- /* 
+ /*
   * boot_compact_db - compact specified classes
   * HEAP_CACHE_ATTRINFO structure
   *    return: error status

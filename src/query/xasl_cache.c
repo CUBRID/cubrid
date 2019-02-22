@@ -23,20 +23,21 @@
 
 #ident "$Id$"
 
-#include <assert.h>
-
-#include "config.h"
-
 #include "xasl_cache.h"
+
+#include "binaryheap.h"
+#include "compile_context.h"
+#include "config.h"
+#include "list_file.h"
 #include "perf_monitor.h"
 #include "query_executor.h"
-#include "list_file.h"
-#include "binaryheap.h"
-#include "statistics_sr.h"
 #include "query_manager.h"
+#include "statistics_sr.h"
 #include "stream_to_xasl.h"
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
+
+#include <assert.h>
 
 #define XCACHE_ENTRY_MARK_DELETED	    ((INT32) 0x80000000)
 #define XCACHE_ENTRY_TO_BE_RECOMPILED	    ((INT32) 0x40000000)
@@ -737,7 +738,8 @@ xcache_hash_key (void *key, int hash_table_size)
  * sha1 (in)	      : SHA-1 hash.
  * search_mode(in)    : search mode (for prepare or generic)
  * xcache_entry (out) : XASL cache entry if found.
- * rt_check (out)     : True if recompile is needed (due to recompile threshold).
+ * rt_check (out)     : Set NULL if recompile threshold should not be checked.
+ *                      Returns recompile result flag (due to recompile threshold).
  *
  *  Note:
  *
@@ -764,7 +766,7 @@ xcache_hash_key (void *key, int hash_table_size)
  */
 int
 xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, const XASL_CACHE_SEARCH_MODE search_mode,
-		  XASL_CACHE_ENTRY ** xcache_entry, bool * rt_check)
+		  XASL_CACHE_ENTRY ** xcache_entry, xasl_cache_rt_check_result * rt_check)
 {
   XASL_ID lookup_key;
   int error_code = NO_ERROR;
@@ -821,20 +823,29 @@ xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, const XASL_CAC
       if (search_mode == XASL_CACHE_SEARCH_FOR_PREPARE
 	  && ((*xcache_entry)->xasl_id.cache_flag & XCACHE_ENTRY_RECOMPILED_REQUESTED) != 0)
 	{
-	  /* this is first prepare_query request after an execute_query detected the recompile case 
+	  /* this is first prepare_query request after an execute_query detected the recompile case
 	   * (the same client which received the execute_query error ER_QPROC_INVALID_XASLNODE, sends this request)
 	   * We need to re-ask client to also send the recompiled XASL (this coresponds to step 3 in Notes).
 	   */
-	  *rt_check = true;
+	  *rt_check = XASL_CACHE_RECOMPILE_PREPARE;
 	}
       else
 	{
-	  *rt_check = xcache_check_recompilation_threshold (thread_p, *xcache_entry);
-	  if (*rt_check)
+	  bool recompile_needed = xcache_check_recompilation_threshold (thread_p, *xcache_entry);
+	  if (recompile_needed)
 	    {
 	      /* We need to recompile. */
 	      xcache_unfix (thread_p, *xcache_entry);
 	      *xcache_entry = NULL;
+	      if (search_mode == XASL_CACHE_SEARCH_FOR_EXECUTE)
+		{
+		  *rt_check = XASL_CACHE_RECOMPILE_EXECUTE;
+		}
+	      else
+		{
+		  assert (search_mode == XASL_CACHE_SEARCH_FOR_PREPARE);
+		  *rt_check = XASL_CACHE_RECOMPILE_PREPARE;
+		}
 
 	      return NO_ERROR;
 	    }
@@ -850,7 +861,8 @@ xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, const XASL_CAC
 }
 
 /*
- * xcache_find_xasl_id () - Find XASL cache entry by XASL_ID. Besides matching SHA-1, we have to match time_stored.
+ * xcache_find_xasl_id_for_execute () - Find XASL cache entry by XASL_ID. Besides matching SHA-1, we have to match
+ *                                      time_stored.
  *
  * return	      : NO_ERROR.
  * thread_p (in)      : Thread entry.
@@ -859,15 +871,15 @@ xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, const XASL_CAC
  * xclone (out)	      : XASL_CLONE (obtained from cache or loaded).
  */
 int
-xcache_find_xasl_id (THREAD_ENTRY * thread_p, const XASL_ID * xid, XASL_CACHE_ENTRY ** xcache_entry,
-		     XASL_CLONE * xclone)
+xcache_find_xasl_id_for_execute (THREAD_ENTRY * thread_p, const XASL_ID * xid, XASL_CACHE_ENTRY ** xcache_entry,
+				 XASL_CLONE * xclone)
 {
   int error_code = NO_ERROR;
   HL_HEAPID save_heapid = 0;
   int oid_index;
   int lock_result;
   bool use_xasl_clone = false;
-  bool recompile_due_to_threshold = false;
+  xasl_cache_rt_check_result recompile_due_to_threshold = XASL_CACHE_RECOMPILE_NOT_NEEDED;
 
   assert (xid != NULL);
   assert (xcache_entry != NULL && *xcache_entry == NULL);
@@ -883,6 +895,12 @@ xcache_find_xasl_id (THREAD_ENTRY * thread_p, const XASL_ID * xid, XASL_CACHE_EN
   if (*xcache_entry == NULL)
     {
       /* No entry was found. */
+      if (recompile_due_to_threshold == XASL_CACHE_RECOMPILE_EXECUTE)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_XASLNODE_RECOMPILE_REQUESTED, 0);
+	  perfmon_inc_stat (thread_p, PSTAT_PC_NUM_INVALID_XASL_ID);
+	  return ER_QPROC_XASLNODE_RECOMPILE_REQUESTED;
+	}
       return NO_ERROR;
     }
   if ((*xcache_entry)->xasl_id.time_stored.sec != xid->time_stored.sec
@@ -1321,7 +1339,7 @@ xcache_need_cleanup (void)
  * xcache_entry (out) : XASL cache entry.
  */
 int
-xcache_insert (THREAD_ENTRY * thread_p, const COMPILE_CONTEXT * context, XASL_STREAM * stream,
+xcache_insert (THREAD_ENTRY * thread_p, const compile_context * context, XASL_STREAM * stream,
 	       int n_oid, const OID * class_oids, const int *class_locks, const int *tcards,
 	       XASL_CACHE_ENTRY ** xcache_entry)
 {
@@ -1709,7 +1727,7 @@ xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XA
 	      /* Mark entry as deleted. */
 	      if (xcache_entry_mark_deleted (thread_p, xcache_entry))
 		{
-		  /* 
+		  /*
 		   * Successfully marked for delete. Save it to delete after the iteration.
 		   * No need to acquire the clone mutex, since I'm the unique user.
 		   */
@@ -2367,7 +2385,7 @@ xcache_check_recompilation_threshold (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY 
 
 /*
  * xcache_get_entry_count () - Returns the number of xasl cache entries
- *					     
+ *					
  *
  * return : the number of xasl cache entries
  */

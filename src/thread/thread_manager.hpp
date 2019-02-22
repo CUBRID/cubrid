@@ -281,6 +281,7 @@ namespace cubthread
   const int LOG_WORKER_POOL_VACUUM = 0x100;
   const int LOG_WORKER_POOL_CONNECTIONS = 0x200;
   const int LOG_WORKER_POOL_TRAN_WORKERS = 0x400;
+  const int LOG_WORKER_POOL_INDEX_BUILDER = 0x800;
   const int LOG_WORKER_POOL_ALL = 0xFF00;    // reserved for thread worker pools
 
   // daemons flags

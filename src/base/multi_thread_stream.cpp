@@ -661,7 +661,7 @@ namespace cubstream
     return ptr;
   }
 
-  void multi_thread_stream::unlatch_read_data (const mem::buffer_latch_read_id &read_latch_page_idx)
+  void multi_thread_stream::unlatch_read_data (const cubmem::buffer_latch_read_id &read_latch_page_idx)
   {
     std::unique_lock<std::mutex> ulock (m_buffer_mutex);
     m_bip_buffer.end_read (read_latch_page_idx);

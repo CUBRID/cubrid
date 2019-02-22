@@ -801,6 +801,18 @@ struct rvfun RV_fun[] = {
    NULL,
    NULL,
    NULL},
+  {RVBT_ONLINE_INDEX_UNDO_TRAN_INSERT,
+   "RVBT_ONLINE_INDEX_UNDO_TRAN_INSERT",
+   btree_rv_keyval_undo_online_index_tran_insert,
+   btree_rv_redo_record_modify,
+   btree_rv_keyval_dump,
+   log_rv_dump_hexa},
+  {RVBT_ONLINE_INDEX_UNDO_TRAN_DELETE,
+   "RVBT_ONLINE_INDEX_UNDO_TRAN_DELETE",
+   btree_rv_keyval_undo_online_index_tran_delete,
+   btree_rv_redo_record_modify,
+   btree_rv_keyval_dump,
+   log_rv_dump_hexa},
 
 };
 

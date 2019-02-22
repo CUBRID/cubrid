@@ -1884,7 +1884,6 @@ db_make_string_copy (DB_VALUE * value, const char *str)
 
   if (error != NO_ERROR)
     {
-      pr_clear_value (value);
       return error;
     }
 

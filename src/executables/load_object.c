@@ -50,7 +50,7 @@
 #include "schema_manager.h"
 #include "server_interface.h"
 #include "load_object.h"
-#include "object_print.h"
+#include "db_value_printer.hpp"
 #include "network_interface_cl.h"
 
 #include "message_catalog.h"
@@ -341,7 +341,7 @@ put_attributes (OR_BUF * buf, DESC_OBJ * obj)
 	}
     }
 
-  /* 
+  /*
    * Write fixed attribute values, if unbound, leave zero or garbage
    * it doesn't matter, if the attribute is bound, set the appropriate
    * bit in the bound bit array
@@ -401,7 +401,7 @@ put_attributes (OR_BUF * buf, DESC_OBJ * obj)
   if (bits != NULL)
     {
       or_put_data (buf, bits, bsize);
-      /* 
+      /*
        * We do not need the bits array anymore, lets free it now.
        * the pr_data_writeval() function can perform a longjmp()
        * back to the calling function if we get an overflow,
@@ -602,7 +602,7 @@ desc_obj_to_disk (DESC_OBJ * obj, RECDES * record, bool * index_flag)
     {
       assert (false);		/* impossible case */
 
-      /* 
+      /*
        * error, currently can only be from buffer overflow
        * might be nice to store the "size guess" from the class
        * SHOULD BE USING TF_STATUS LIKE tf_mem_to_disk, need to
@@ -678,7 +678,7 @@ get_desc_current (OR_BUF * buf, SM_CLASS * class_, DESC_OBJ * obj, int bound_bit
       else
 	{
 	  /* read the disk value into the db_value */
-	  (*(att->type->data_readval)) (buf, &obj->values[i], att->domain, -1, true, NULL, 0);
+	  att->type->data_readval (buf, &obj->values[i], att->domain, -1, true, NULL, 0);
 	}
     }
 
@@ -701,7 +701,7 @@ get_desc_current (OR_BUF * buf, SM_CLASS * class_, DESC_OBJ * obj, int bound_bit
       for (i = class_->fixed_count, j = 0; i < class_->att_count && j < class_->variable_count;
 	   i++, j++, att = (SM_ATTRIBUTE *) att->header.next)
 	{
-	  (*(att->type->data_readval)) (buf, &obj->values[i], att->domain, vars[j], true, NULL, 0);
+	  att->type->data_readval (buf, &obj->values[i], att->domain, vars[j], true, NULL, 0);
 	}
 
       free_and_init (vars);
@@ -805,7 +805,7 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bo
       start = buf->ptr;
       for (i = 0; i < oldrep->fixed_count && rat != NULL; i++, rat = rat->next)
 	{
-	  type = PR_TYPE_FROM_ID (rat->typeid_);
+	  type = pr_type_from_id (rat->typeid_);
 	  if (type == NULL)
 	    {
 	      goto abort_on_error;
@@ -814,12 +814,12 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bo
 	  if (attmap[i] == NULL)
 	    {
 	      /* its gone, skip over it */
-	      (*(type->data_readval)) (buf, NULL, rat->domain, -1, true, NULL, 0);
+	      type->data_readval (buf, NULL, rat->domain, -1, true, NULL, 0);
 	    }
 	  else
 	    {
 	      /* its real, get it into the proper value */
-	      (*(type->data_readval)) (buf, &obj->values[attmap[i]->storage_order], rat->domain, -1, true, NULL, 0);
+	      type->data_readval (buf, &obj->values[attmap[i]->storage_order], rat->domain, -1, true, NULL, 0);
 	    }
 	}
 
@@ -828,7 +828,7 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bo
       or_advance (buf, (padded_size - fixed_size));
 
 
-      /* 
+      /*
        * sigh, we now have to process the bound bits in much the same way as the
        * attributes above, it would be nice if these could be done in parallel
        * but we don't have the fixed size of the old representation so we
@@ -862,7 +862,7 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bo
       /* variable */
       for (i = 0; i < oldrep->variable_count && rat != NULL; i++, rat = rat->next)
 	{
-	  type = PR_TYPE_FROM_ID (rat->typeid_);
+	  type = pr_type_from_id (rat->typeid_);
 	  if (type == NULL)
 	    {
 	      goto abort_on_error;
@@ -872,17 +872,17 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bo
 	  if (attmap[att_index] == NULL)
 	    {
 	      /* its null, skip over it */
-	      (*(type->data_readval)) (buf, NULL, rat->domain, vars[i], true, NULL, 0);
+	      type->data_readval (buf, NULL, rat->domain, vars[i], true, NULL, 0);
 	    }
 	  else
 	    {
 	      /* read it into the proper value */
-	      (*(type->data_readval)) (buf, &obj->values[attmap[att_index]->storage_order], rat->domain, vars[i], true,
-				       NULL, 0);
+	      type->data_readval (buf, &obj->values[attmap[att_index]->storage_order], rat->domain, vars[i], true, NULL,
+				  0);
 	    }
 	}
 
-      /* 
+      /*
        * initialize new values
        */
       for (i = 0, att = class_->attributes; att != NULL; i++, att = (SM_ATTRIBUTE *) att->header.next)
@@ -897,7 +897,7 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bo
 	    }
 	  if (found == NULL)
 	    {
-	      /* 
+	      /*
 	       * formerly used copy_value which converted MOP values to OID
 	       * values, is this really necessary ?
 	       */
@@ -1124,7 +1124,7 @@ exit_on_error:
 static int
 bfmt_print (int bfmt, const DB_VALUE * the_db_bit, char *string, int max_size)
 {
-  /* 
+  /*
    * Description:
    */
   int length = 0;
@@ -1255,7 +1255,7 @@ print_quoted_str (TEXT_OUTPUT * tout, char *str, int len, int max_token_len)
 	  write_len = CAST_STRLEN (internal_quote_p - p + 1);
 	  CHECK_PRINT_ERROR (text_print (tout, p, write_len, NULL));
 	  left_nbytes -= (write_len + 1);
-	  /* 
+	  /*
 	   * write internal "'" as "''", check for still has something to
 	   * work
 	   */
@@ -1644,7 +1644,7 @@ desc_value_fprint (FILE * fp, DB_VALUE * value)
       break;
 
     default:
-      db_value_fprint (fp, value);
+      db_fprint_value (fp, value);
       break;
     }
 }

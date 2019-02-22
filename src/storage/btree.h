@@ -42,6 +42,9 @@
 #include "lock_manager.h"
 #include "recovery.h"
 
+// forward definition
+struct key_val_range;
+
 #define SINGLE_ROW_INSERT    1
 #define SINGLE_ROW_DELETE    2
 #define SINGLE_ROW_UPDATE    3
@@ -201,7 +204,7 @@ struct btree_scan
 
   bool key_range_max_value_equal;
 
-  /* 
+  /*
    * cur_leaf_lsa
    */
   LOG_LSA cur_leaf_lsa;		/* page LSA of current leaf page */
@@ -465,7 +468,7 @@ enum btree_op_purpose
   BTREE_OP_INSERT_NEW_OBJECT,	/* Insert a new object into b-tree along with its insert MVCCID. */
   BTREE_OP_INSERT_MVCC_DELID,	/* Insert delete MVCCID for object when deleted. */
   BTREE_OP_INSERT_MARK_DELETED,	/* Mark object as deleted. This is used on a unique index of a non-MVCC class. It is
-				 * very similar to BTREE_OP_INSERT_MVCC_DELID. The differences are: 1. The context they 
+				 * very similar to BTREE_OP_INSERT_MVCC_DELID. The differences are: 1. The context they
 				 * are used for. MVCC delete is used to delete from MVCC-enabled classes. Mark deleted
 				 * is used for unique indexes of MVCC-disabled classes like db_serial. 2. Mark deleted
 				 * is followed by a postpone operation which removes the object after commit. 3. Mark
@@ -475,7 +478,7 @@ enum btree_op_purpose
   BTREE_OP_DELETE_OBJECT_PHYSICAL,	/* Physically delete an object from b-tree when MVCC is enabled. */
   BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED,	/* Physical delete was postponed. */
   BTREE_OP_DELETE_UNDO_INSERT,	/* Undo insert */
-  BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD,	/* Undo insert into unique index, when multi-update exception to unique 
+  BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD,	/* Undo insert into unique index, when multi-update exception to unique
 						 * constraint violation is applied. Previous visible object must be
 						 * returned to first position in record. */
   BTREE_OP_DELETE_UNDO_INSERT_DELID,	/* Remove only delete MVCCID for an object in b-tree. It is called when object
@@ -485,7 +488,16 @@ enum btree_op_purpose
   BTREE_OP_DELETE_VACUUM_INSID,	/* Remove only insert MVCCID for an object in b-tree. It is called by vacuum when the
 				 * object becomes visible to all running transactions. */
 
-  BTREE_OP_NOTIFY_VACUUM	/* Notify vacuum of an object in need of cleanup. */
+  BTREE_OP_NOTIFY_VACUUM,	/* Notify vacuum of an object in need of cleanup. */
+
+  /* Below purposes are used during online index loading. */
+  BTREE_OP_ONLINE_INDEX_IB_INSERT,	/* Insert done by the Index Builder. */
+  BTREE_OP_ONLINE_INDEX_IB_DELETE,	/* Delete done by the Index Builder. */
+  BTREE_OP_ONLINE_INDEX_TRAN_INSERT,	/* Insert done by a transaction. */
+  BTREE_OP_ONLINE_INDEX_TRAN_INSERT_DF,	/* Insert done by a transaction with DELETE_FLAG set. */
+  BTREE_OP_ONLINE_INDEX_UNDO_TRAN_INSERT,	/* Undo an insert */
+  BTREE_OP_ONLINE_INDEX_TRAN_DELETE,	/* Delete done by a transaction. */
+  BTREE_OP_ONLINE_INDEX_UNDO_TRAN_DELETE	/* Undo a delete. */
 };
 typedef enum btree_op_purpose BTREE_OP_PURPOSE;
 
@@ -622,7 +634,7 @@ extern int btree_rv_undo_global_unique_stats_commit (THREAD_ENTRY * thread_p, LO
 #include "scan_manager.h"
 
 extern int btree_keyval_search (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE scan_op_type,
-				BTREE_SCAN * BTS, KEY_VAL_RANGE * key_val_range, OID * class_oid, FILTER_INFO * filter,
+				BTREE_SCAN * BTS, key_val_range * key_val_range, OID * class_oid, FILTER_INFO * filter,
 				INDX_SCAN_ID * isidp, bool is_all_class_srch);
 extern int btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PROCESS_KEY_FUNC * key_func);
 extern int btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
@@ -684,7 +696,7 @@ extern void btree_get_root_vpid_from_btid (THREAD_ENTRY * thread_p, BTID * btid,
 extern int btree_get_btid_from_file (THREAD_ENTRY * thread_p, const VFID * vfid, BTID * btid_out);
 
 extern int btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid, INDX_SCAN_ID * index_scan_id_p,
-			      KEY_VAL_RANGE * key_val_range, FILTER_INFO * filter, const OID * match_class_oid,
+			      key_val_range * key_val_range, FILTER_INFO * filter, const OID * match_class_oid,
 			      DB_BIGINT * key_limit_upper, DB_BIGINT * key_limit_lower, bool need_to_check_null,
 			      void *bts_other);
 
@@ -722,6 +734,17 @@ extern DB_VALUE_COMPARE_RESULT btree_compare_key (DB_VALUE * key1, DB_VALUE * ke
 						  int do_coercion, int total_order, int *start_colp);
 extern PERF_PAGE_TYPE btree_get_perf_btree_page_type (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr);
 
-extern void btree_dump_key (THREAD_ENTRY * thread_p, FILE * fp, DB_VALUE * key);
+extern void btree_dump_key (FILE * fp, const DB_VALUE * key);
+
+extern int btree_online_index_dispatcher (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * cls_oid,
+					  OID * oid, int unique, BTREE_OP_PURPOSE purpose, LOG_LSA * undo_nxlsa);
+
+extern int btree_rv_keyval_undo_online_index_tran_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv);
+extern int btree_rv_keyval_undo_online_index_tran_delete (THREAD_ENTRY * thread_p, LOG_RCV * recv);
+
+extern int btree_online_index_check_unique_constraint (THREAD_ENTRY * thread_p, BTID * btid, const char *index_name,
+						       OID * class_oid);
+extern int btree_get_class_oid_of_unique_btid (THREAD_ENTRY * thread_p, BTID * btid, OID * class_oid);
+extern bool btree_is_btid_online_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid);
 
 #endif /* _BTREE_H_ */

@@ -46,6 +46,7 @@ const char *output_dirname = NULL;
 char *input_filename = NULL;
 FILE *output_file = NULL;
 TEXT_OUTPUT object_output = { NULL, NULL, 0, 0, NULL };
+
 TEXT_OUTPUT *obj_out = &object_output;
 int page_size = 4096;
 int cached_pages = 100;
@@ -154,7 +155,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 
   sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
-  /* 
+  /*
    * Open db
    */
   if (user == NULL || user[0] == '\0')
@@ -300,7 +301,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 	}
     }
 
-  /* 
+  /*
    * Shutdown db
    */
   error = db_shutdown ();

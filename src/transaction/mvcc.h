@@ -235,7 +235,7 @@ struct mvcc_info
   MVCCID id;
 
   /* recent_snapshot_lowest_active_mvccid - the lowest active MVCCID computed for the most recent snapshot of current
-   * transaction. This field help to know faster whether an MVCCID is active or not. Thus, mvccid older than this field 
+   * transaction. This field help to know faster whether an MVCCID is active or not. Thus, mvccid older than this field
    * are not active anymore */
   MVCCID recent_snapshot_lowest_active_mvccid;
 

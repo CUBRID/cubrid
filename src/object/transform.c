@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -572,7 +572,7 @@ tf_compile_meta_classes ()
 	    }
 	  else if (class_->mc_n_variable)
 	    {
-	      /* 
+	      /*
 	       * can't have fixed width attributes AFTER variable width
 	       * attributes
 	       */
@@ -580,7 +580,7 @@ tf_compile_meta_classes ()
 	    }
 	  else
 	    {
-	      /* 
+	      /*
 	       * need a domain for size calculations, since we don't use
 	       * any parameterized types this isn't necessary but we still must
 	       * have it to call tp_domain_isk_size().
@@ -603,7 +603,7 @@ tf_compile_meta_classes ()
 int
 tf_install_meta_classes ()
 {
-  /* 
+  /*
    * no longer making catalog entries, eventually build the meta-class object
    * here
    */

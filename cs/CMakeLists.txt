@@ -55,14 +55,14 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/db_value_printer.cpp
   ${COMPAT_DIR}/db_vdb.c
   ${COMPAT_DIR}/db_virt.c
-  ${COMPAT_DIR}/dbtype_function.c 
+  ${COMPAT_DIR}/dbtype_function.c
   )
 
 set(COMPAT_SOURCES_C
   ${COMPAT_DIR}/dbtype_function.c
   )
-  
-set (COMPAT_HEADERS  
+
+set (COMPAT_HEADERS
   ${COMPAT_DIR}/dbtype_def.h
   ${COMPAT_DIR}/dbtype_function.h
   ${COMPAT_DIR}/dbtype_function.i
@@ -92,8 +92,10 @@ set(BASE_SOURCES
   ${BASE_DIR}/locale_support.c
   ${BASE_DIR}/lock_free.c
   ${BASE_DIR}/md5.c
+  ${BASE_DIR}/mem_block.cpp
   ${BASE_DIR}/memory_alloc.c
   ${BASE_DIR}/memory_hash.c
+  ${BASE_DIR}/memory_private_allocator.cpp
   ${BASE_DIR}/message_catalog.c
   ${BASE_DIR}/misc_string.c
   ${BASE_DIR}/mprec.c
@@ -123,6 +125,9 @@ set(BASE_HEADERS
   ${BASE_DIR}/error_code.h
   ${BASE_DIR}/error_context.hpp
   ${BASE_DIR}/error_manager.h
+  ${BASE_DIR}/extensible_array.hpp
+  ${BASE_DIR}/mem_block.hpp
+  ${BASE_DIR}/memory_private_allocator.hpp
   ${BASE_DIR}/fileline_location.hpp
   ${BASE_DIR}/packer.hpp
   ${BASE_DIR}/perf.hpp
@@ -130,6 +135,7 @@ set(BASE_HEADERS
   ${BASE_DIR}/pinning.hpp
   ${BASE_DIR}/pinnable_buffer.hpp
   ${BASE_DIR}/packable_object.hpp
+  ${BASE_DIR}/string_buffer.hpp
   ${BASE_DIR}/resource_tracker.hpp
   )
 
@@ -158,6 +164,7 @@ set(PARSER_SOURCES
   ${PARSER_DIR}/cnf.c
   ${PARSER_DIR}/compile.c
   ${PARSER_DIR}/double_byte_support.c
+  ${PARSER_DIR}/func_type.cpp
   ${PARSER_DIR}/keyword.c
   ${PARSER_DIR}/method_transform.c
   ${PARSER_DIR}/name_resolution.c
@@ -165,6 +172,8 @@ set(PARSER_SOURCES
   ${PARSER_DIR}/parse_evaluate.c
   ${PARSER_DIR}/parse_tree.c
   ${PARSER_DIR}/parse_tree_cl.c
+  ${PARSER_DIR}/parse_type.cpp
+  ${PARSER_DIR}/parser_allocator.cpp
   ${PARSER_DIR}/parser_support.c
   ${PARSER_DIR}/query_result.c
   ${PARSER_DIR}/scanner_support.c
@@ -173,6 +182,12 @@ set(PARSER_SOURCES
   ${PARSER_DIR}/type_checking.c
   ${PARSER_DIR}/view_transform.c
   ${PARSER_DIR}/xasl_generation.c
+  ${PARSER_DIR}/func_type.cpp
+  )
+set(PARSER_HEADERS
+  ${PARSER_DIR}/func_type.hpp
+  ${PARSER_DIR}/parse_type.hpp
+  ${PARSER_DIR}/parser_allocator.hpp
   )
 
 set(OPTIMIZER_SOURCES
@@ -246,6 +261,16 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/es_common.c
   ${STORAGE_DIR}/es.c
   ${STORAGE_DIR}/es_posix.c
+  )
+  
+set(XASL_SOURCES
+  ${XASL_DIR}/access_json_table.cpp
+  ${XASL_DIR}/xasl_stream.cpp
+  )
+set(XASL_HEADERS
+  ${XASL_DIR}/access_json_table.hpp
+  ${XASL_DIR}/compile_context.h
+  ${XASL_DIR}/xasl_stream.hpp
   )
 
 list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)
@@ -325,6 +350,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${STORAGE_SOURCES}
   ${ES_SOURCES}
   ${PROBES_OBJECT}
+  ${XASL_SOURCES}
   PROPERTIES LANGUAGE CXX
   )
 SET_SOURCE_FILES_PROPERTIES(
@@ -334,7 +360,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${CSQL_LEXER_OUTPUT}
   ${LOADER_LEXER_OUTPUT}
   ${ESQL_GRAMMAR_OUTPUT}
-  ${ESQL_LEXER_OUTPUT} 
+  ${ESQL_LEXER_OUTPUT}
   ${COMPAT_SOURCES_C}
   PROPERTIES LANGUAGE C
   )
@@ -350,6 +376,7 @@ add_library(cubridcs SHARED
   ${CONNECTION_TCP_SOURCE}
   ${COMMUNICATION_SOURCES}
   ${PARSER_SOURCES}
+  ${PARSER_HEADERS}
   ${OPTIMIZER_SOURCES}
   ${QUERY_SOURCES}
   ${OBJECT_SOURCES}
@@ -358,6 +385,8 @@ add_library(cubridcs SHARED
   ${STORAGE_SOURCES}
   ${ES_SOURCES}
   ${PROBES_OBJECT}
+  ${XASL_SOURCES}
+  ${XASL_HEADERS}
   )
 set_target_properties(cubridcs PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 

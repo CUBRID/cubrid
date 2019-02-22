@@ -403,7 +403,7 @@ area_alloc (AREA * area)
 	}
     }
 
-  /* Step 3: if not found, add a new block. Then find free entry in this new block. 
+  /* Step 3: if not found, add a new block. Then find free entry in this new block.
    * Only one thread is allowed to add a new block at a moment.
    */
   rv = pthread_mutex_lock (&area->area_mutex);

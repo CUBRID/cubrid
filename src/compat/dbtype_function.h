@@ -75,7 +75,7 @@
 #define DB_MAKE_SEQ DB_MAKE_SEQUENCE
 
 /* new preferred interface */
-  /*  todo: This following macro had in its previous version another call to 
+  /*  todo: This following macro had in its previous version another call to
    *  db_value_domain_init(). Now it has been removed but it needs to be
    *  checked if its still correct!!!.
    */

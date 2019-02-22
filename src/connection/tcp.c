@@ -180,7 +180,7 @@ css_hostname_to_ip (const char *host, unsigned char *ip_addr)
 {
   in_addr_t in_addr;
 
-  /* 
+  /*
    * First try to convert to the host name as a dotted-decimal number.
    * Only if that fails do we call gethostbyname.
    */
@@ -262,14 +262,14 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr, socklen_t * sl
   struct sockaddr_un unix_saddr;
   in_addr_t in_addr;
 
-  /* 
+  /*
    * Construct address for TCP socket
    */
   memset ((void *) &tcp_saddr, 0, sizeof (tcp_saddr));
   tcp_saddr.sin_family = AF_INET;
   tcp_saddr.sin_port = htons (port);
 
-  /* 
+  /*
    * First try to convert to the host name as a dotten-decimal number.
    * Only if that fails do we call gethostbyname.
    */
@@ -333,7 +333,7 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr, socklen_t * sl
 #endif /* !HAVE_GETHOSTBYNAME_R */
     }
 
-  /* 
+  /*
    * Compare with the TCP address with localhost.
    * If it is, use Unix domain socket rather than TCP for the performance
    */
@@ -398,7 +398,7 @@ css_tcp_client_open_with_retry (const char *host, int port, bool will_retry)
 	  css_sockopt (sd);
 	}
 
-      /* 
+      /*
        * If we get an ECONNREFUSED from the connect, we close the socket, and
        * retry again. This is needed since the backlog parameter of the SUN
        * machine is too small (See man page of listen...see BUG section).
@@ -425,7 +425,7 @@ css_tcp_client_open_with_retry (const char *host, int port, bool will_retry)
 	    }
 	  else
 	    {
-	      /* 
+	      /*
 	       * Wait a little bit to change the load of the server.
 	       * Don't wait for more than 1/2 min or the timeout period
 	       */
@@ -434,7 +434,7 @@ css_tcp_client_open_with_retry (const char *host, int port, bool will_retry)
 		  sleep_nsecs = 30;
 		}
 
-	      /* 
+	      /*
 	       * Sleep only when we have not timed out. That is, when nsecs is
 	       * negative.
 	       */
@@ -455,7 +455,7 @@ css_tcp_client_open_with_retry (const char *host, int port, bool will_retry)
 	  will_retry = false;	/* Don't retry */
 	}
 
-      /* 
+      /*
        * According to the Sun man page of connect & listen. When a connect
        * was forcefully rejected. The calling program must close the
        * socket descriptor, before another connect is retried.
@@ -620,7 +620,7 @@ css_tcp_master_open (int port, SOCKET * sockfd)
   int reuseaddr_flag = 1;
   struct stat unix_socket_stat;
 
-  /* 
+  /*
    * We have to create a socket ourselves and bind our well-known address to it.
    */
 
@@ -641,13 +641,13 @@ css_tcp_master_open (int port, SOCKET * sockfd)
   unix_srv_addr.sun_family = AF_UNIX;
   strncpy (unix_srv_addr.sun_path, css_get_master_domain_path (), sizeof (unix_srv_addr.sun_path) - 1);
 
-  /* 
+  /*
    * Create the socket and Bind our local address so that any
    * client may send to us.
    */
 
 retry:
-  /* 
+  /*
    * Allow the new master to rebind the CUBRID port even if there are
    * clients with open connections from previous masters.
    */
@@ -680,7 +680,7 @@ retry:
       return ERR_CSS_TCP_BIND_ABORT;
     }
 
-  /* 
+  /*
    * And set the listen parameter, telling the system that we're
    * ready to accept incoming connection requests.
    */
@@ -691,7 +691,7 @@ retry:
       return ERR_CSS_TCP_ACCEPT_ERROR;
     }
 
-  /* 
+  /*
    * Since the master now forks /M drivers, make sure we do a close
    * on exec on the socket.
    */
@@ -854,7 +854,7 @@ css_tcp_setup_server_datagram (char *pathname, SOCKET * sockfd)
       return false;
     }
 
-  /* 
+  /*
    * some operating system does not set the permission for unix domain socket.
    * so a server can't connect to master which is initiated by other user.
    */
@@ -931,7 +931,7 @@ css_tcp_master_datagram (char *path_name, SOCKET * sockfd)
 
   do
     {
-      /* 
+      /*
        * If we get an ECONNREFUSED from the connect, we close the socket, and
        * retry again. This is needed since the backlog parameter of the SUN
        * machine is too small (See man page of listen...see BUG section).
@@ -1286,7 +1286,7 @@ in_cksum (u_short * addr, int len)
   int sum = 0;
   u_short answer = 0;
 
-  /* 
+  /*
    * Our algorithm is simple, using a 32 bit accumulator (sum), we add
    * sequential 16 bit words to it, and at the end, fold back all the
    * carry bits from the top 16 bits into the lower 16 bits.
@@ -1389,7 +1389,7 @@ css_ping (SOCKET sd, struct sockaddr_in *sa_send, int timeout)
 	  ip = (struct ip *) recvbuf;
 	  hlen = (ip->ip_hl) << 2;
 	  icmp = (struct icmp *) (recvbuf + hlen);
-	  /* 
+	  /*
 	   * We did received somthing, but is it what we were expecting?
 	   * Is is ICMP_ECHO_REPLY packet with the proper PID value?
 	   */
@@ -1465,7 +1465,7 @@ css_peer_alive (SOCKET sd, int timeout)
   saddr.sin_port = htons (7);	/* port ECHO */
   n = connect (nsd, (struct sockaddr *) &saddr, slen);
 
-  /* 
+  /*
    * Connection will be established or refused immediately.
    * Either way it means that the peer host is alive.
    */

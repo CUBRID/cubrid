@@ -83,7 +83,7 @@ XML_ELEMENT_DEF xml_elem_XML = { "XML", XML_ROOT_DEPTH, NULL, NULL, NULL };
 
 
 /*
- * xml_init_schema_tree() - initializes the XML parsing schema 
+ * xml_init_schema_tree() - initializes the XML parsing schema
  *   return: tree parse schema (root node)
  *   element_array(in): array of definition nodes (XML elements)
  *   count(in): count of nodes in the array
@@ -120,7 +120,7 @@ xml_init_schema_tree (XML_ELEMENT_DEF ** element_array, const int count)
 }
 
 /*
- * xml_destroy_schema_tree() - frees the XML parsing schema 
+ * xml_destroy_schema_tree() - frees the XML parsing schema
  *   return:
  *   pt(in): tree parse schema (root node)
  */
@@ -245,7 +245,7 @@ create_xml_node (XML_ELEMENT_DEF * new_elem)
 
 /*
  * add_xml_element() - creates and element node based on its definition and
- *		       inserts it into the XML schema parser 
+ *		       inserts it into the XML schema parser
  *
  *   return: XML error code
  *   xml_node(in): tree parse schema (root node)
@@ -605,7 +605,7 @@ check_xml_elem_name (XML_ELEMENT * el, const char *check_el_name)
  * xml_header_validation_utf8() - XML header validation function;
  *				  expat callback function
  *
- *   return: 
+ *   return:
  *   userData(in): user data
  *   version(in):
  *   encoding(in):
@@ -634,7 +634,7 @@ xml_header_validation_utf8 (void *userData, const XML_Char * version, const XML_
  * xml_elem_start() - XML element start function;
  *		      expat callback function
  *
- *   return: 
+ *   return:
  *   data(in): user data
  *   parsed_el_name(in): element name
  *   attr(in): array of pairs for XML attribute and value (strings) of current
@@ -764,7 +764,7 @@ xml_elem_start (void *data, const char *parsed_el_name, const char **attr)
 /*
  * xml_elem_end() - XML element end function; expat callback function
  *
- *   return: 
+ *   return:
  *   data(in): user data
  *   parsed_el_name(in): element name
  */
@@ -818,7 +818,7 @@ xml_elem_end (void *data, const char *parsed_el_name)
  * xml_data_handler() - XML element element content handling function;
  *			expat callback function
  *
- *   return: 
+ *   return:
  *   data(in): user data
  *   s(in): content buffer
  *   len(in): length (in XML_Char) of content buffer

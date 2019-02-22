@@ -74,10 +74,10 @@ namespace cubreplication
 
       bool is_equal (const cubpacking::packable_object *other);
 
-      int pack (cubpacking::packer *serializator);
-      int unpack (cubpacking::packer *serializator);
+      void pack (cubpacking::packer &serializator) const;
+      void unpack (cubpacking::unpacker &deserializator);
 
-      std::size_t get_packed_size (cubpacking::packer *serializator, std::size_t start_offset = 0);
+      std::size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset = 0) const;
 
       void stringify (string_buffer &str) override final;
   };
@@ -98,9 +98,9 @@ namespace cubreplication
     protected:
       virtual ~single_row_repl_entry ();
 
-      virtual int pack (cubpacking::packer *serializator);
-      virtual int unpack (cubpacking::packer *serializator);
-      virtual std::size_t get_packed_size (cubpacking::packer *serializator, std::size_t start_offset = 0);
+      virtual void pack (cubpacking::packer &serializator) const;
+      virtual void unpack (cubpacking::unpacker &deserializator);
+      virtual std::size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset = 0) const;
 
       void stringify (string_buffer &str) override;
 
@@ -121,9 +121,9 @@ namespace cubreplication
       rec_des_row_repl_entry () = default;
       ~rec_des_row_repl_entry ();
 
-      virtual int pack (cubpacking::packer *serializator) final;
-      virtual int unpack (cubpacking::packer *serializator) final;
-      virtual std::size_t get_packed_size (cubpacking::packer *serializator, std::size_t start_offset = 0) final;
+      virtual void pack (cubpacking::packer &serializator) const final;
+      virtual void unpack (cubpacking::unpacker &deserializator) final;
+      virtual std::size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset = 0) const final;
 
       bool is_equal (const cubpacking::packable_object *other) final;
       void stringify (string_buffer &str) final;
@@ -144,9 +144,9 @@ namespace cubreplication
 
       void copy_and_add_changed_value (const ATTR_ID att_id, const DB_VALUE &db_val);
 
-      virtual int pack (cubpacking::packer *serializator) override final;
-      virtual int unpack (cubpacking::packer *serializator) override final;
-      virtual std::size_t get_packed_size (cubpacking::packer *serializator, std::size_t start_offset = 0) override final;
+      virtual void pack (cubpacking::packer &serializator) const override final;
+      virtual void unpack (cubpacking::unpacker &deserializator) override final;
+      virtual std::size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset = 0) const override final;
 
       bool is_equal (const cubpacking::packable_object *other) override final;
       void stringify (string_buffer &str) override final;

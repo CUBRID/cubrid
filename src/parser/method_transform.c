@@ -908,7 +908,7 @@ meth_translate_spec (PARSER_CONTEXT * parser, PT_NODE * spec, void *void_arg, in
 			      table1->info.spec.referenced_attrs);
 
   /* replace the PT_NAME parameters of the method calls with the derived attributes from the first table of the merge.
-   * We use the referenced attrs list instead of the as_attr_list because it has the resolved field filled in.  We must 
+   * We use the referenced attrs list instead of the as_attr_list because it has the resolved field filled in.  We must
    * first skip over the non-PT_NAME parameters. */
   tmp = table1->info.spec.referenced_attrs;
   for (i = 0; i < num_method_params + num_hierarchical_exprs; i++)
@@ -919,9 +919,9 @@ meth_translate_spec (PARSER_CONTEXT * parser, PT_NODE * spec, void *void_arg, in
 				 num_referenced_attrs);
 
   /* replace all method calls from this spec in the original statement with their new derived attributes which are
-   * first on the new_spec's as_attr_list.  We use the referenced_attrs list instead of the as_attr_list because it has 
+   * first on the new_spec's as_attr_list.  We use the referenced_attrs list instead of the as_attr_list because it has
    * the resolved field filled in.
-   * 
+   *
    * * Since new_spec->info.spec.path_entities is a copy of the original spec's, we also need to replace any method
    * calls in this tree. */
   meth_replace_method_calls (parser, info->root, table2->info.spec.derived_table, new_spec->info.spec.referenced_attrs,
@@ -945,10 +945,10 @@ meth_translate_spec (PARSER_CONTEXT * parser, PT_NODE * spec, void *void_arg, in
   /* now that we've finished copy stuff to the derived table, reset ids */
   derived1 = mq_reset_paths (parser, derived1, derived1->info.query.q.select.from);
 
-  /* replace references to the old spec's referenced_attr list with derived attrs from the new_spec's as_attr_list.  We 
+  /* replace references to the old spec's referenced_attr list with derived attrs from the new_spec's as_attr_list.  We
    * need to skip over derived attrs for the method calls.  Again, we use the referenced_attrs list instead of the
    * as_attr_list because it has the resolved field filled in.
-   * 
+   *
    * * Since table2 and new_spec path_entities are a copy of the original spec's, we also need to replace any
    * referenced attrs in these trees. */
   tmp = new_spec->info.spec.referenced_attrs;

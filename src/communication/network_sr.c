@@ -1022,7 +1022,10 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
   assert (func != NULL);
   if (func)
     {
-      er_log_debug (ARG_FILE_LINE, "net_server_request(): request %s\n", net_Requests[request].name);
+      if (prm_get_bool_value (PRM_ID_TRACK_REQUESTS))
+	{
+	  _er_log_debug (ARG_FILE_LINE, "net_server_request(): request %s\n", net_Requests[request].name);
+	}
 
       thread_p->push_resource_tracks ();
 

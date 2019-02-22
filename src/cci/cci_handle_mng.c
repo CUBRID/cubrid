@@ -929,7 +929,7 @@ req_handle_col_info_free (T_REQ_HANDLE * req_handle)
 void
 req_handle_content_free (T_REQ_HANDLE * req_handle, int reuse)
 {
-  /* 
+  /*
    * For reusing invalidated req handle, sql_text and prepare flag of req handle are needed. So, they must not be
    * freed. */
 

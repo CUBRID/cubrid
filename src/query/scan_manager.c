@@ -39,6 +39,7 @@
 #include "btree_load.h"
 #include "perf_monitor.h"
 #include "query_manager.h"
+#include "regu_var.h"
 #include "locator_sr.h"
 #include "object_primitive.h"
 #include "query_opfunc.h"
@@ -132,12 +133,12 @@ static int scan_Iscan_oid_buf_list_count = 0;
 
 #define SCAN_ISCAN_OID_BUF_LIST_DEFAULT_SIZE 10
 
-static void scan_init_scan_pred (SCAN_PRED * scan_pred_p, REGU_VARIABLE_LIST regu_list, PRED_EXPR * pred_expr,
+static void scan_init_scan_pred (SCAN_PRED * scan_pred_p, regu_variable_list_node * regu_list, PRED_EXPR * pred_expr,
 				 PR_EVAL_FNC pr_eval_fnc);
 static void scan_init_scan_attrs (SCAN_ATTRS * scan_attrs_p, int num_attrs, ATTR_ID * attr_ids,
 				  HEAP_CACHE_ATTRINFO * attr_cache);
-static int scan_init_indx_coverage (THREAD_ENTRY * thread_p, int coverage_enabled, OUTPTR_LIST * output_val_list,
-				    REGU_VARIABLE_LIST regu_val_list, VAL_DESCR * vd, QUERY_ID query_id,
+static int scan_init_indx_coverage (THREAD_ENTRY * thread_p, int coverage_enabled, valptr_list_node * output_val_list,
+				    regu_variable_list_node * regu_val_list, VAL_DESCR * vd, QUERY_ID query_id,
 				    int max_key_len, int func_index_col_id, INDX_COV * indx_cov);
 static int scan_alloc_oid_list (BTREE_ISCAN_OID_LIST ** oid_list_p);
 static int scan_alloc_iscan_oid_buf_list (BTREE_ISCAN_OID_LIST ** oid_list);
@@ -158,8 +159,8 @@ static int scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_
 static int scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_limit_upper,
 				  DB_BIGINT * key_limit_lower);
 static void scan_init_scan_id (SCAN_ID * scan_id, bool force_select_lock, SCAN_OPERATION_TYPE scan_op_type, int fixed,
-			       int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, VAL_LIST * val_list,
-			       VAL_DESCR * vd);
+			       int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval,
+			       val_list_node * val_list, VAL_DESCR * vd);
 static int scan_init_index_key_limit (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, KEY_INFO * key_infop,
 				      VAL_DESCR * vd);
 static SCAN_CODE scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
@@ -174,12 +175,13 @@ static SCAN_CODE scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID *
 static SCAN_CODE scan_next_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_showstmt_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
+static SCAN_CODE scan_next_json_table_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_value_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_handle_single_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id, QP_SCAN_FUNC next_scan);
 static SCAN_CODE scan_prev_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
-static void resolve_domains_on_list_scan (LLIST_SCAN_ID * llsidp, VAL_LIST * ref_val_list);
-static void resolve_domain_on_regu_operand (REGU_VARIABLE * regu_var, VAL_LIST * ref_val_list,
+static void resolve_domains_on_list_scan (LLIST_SCAN_ID * llsidp, val_list_node * ref_val_list);
+static void resolve_domain_on_regu_operand (REGU_VARIABLE * regu_var, val_list_node * ref_val_list,
 					    QFILE_TUPLE_VALUE_TYPE_LIST * p_type_list);
 static int scan_init_multi_range_optimization (THREAD_ENTRY * thread_p, MULTI_RANGE_OPT * multi_range_opt,
 					       bool use_range_opt, int max_size);
@@ -370,7 +372,7 @@ scan_restore_range_details (ISS_RANGE_DETAILS * rdp_src, INDX_SCAN_ID * isidp_de
 static SCAN_CODE
 scan_get_next_iss_value (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SCAN_ID * isidp)
 {
-  /* we are being called either before any other btree range search, or after somebody finished a real range search and 
+  /* we are being called either before any other btree range search, or after somebody finished a real range search and
    * wants to advance to the next value for the first column of the index. */
 
   INDEX_SKIP_SCAN *iss = NULL;
@@ -615,7 +617,7 @@ scan_get_next_iss_value (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SCAN_I
  *   return: none
  */
 static void
-scan_init_scan_pred (SCAN_PRED * scan_pred_p, REGU_VARIABLE_LIST regu_list, PRED_EXPR * pred_expr,
+scan_init_scan_pred (SCAN_PRED * scan_pred_p, regu_variable_list_node * regu_list, PRED_EXPR * pred_expr,
 		     PR_EVAL_FNC pr_eval_fnc)
 {
   assert (scan_pred_p != NULL);
@@ -644,9 +646,9 @@ scan_init_scan_attrs (SCAN_ATTRS * scan_attrs_p, int num_attrs, ATTR_ID * attr_i
  *   return: none
  */
 void
-scan_init_filter_info (FILTER_INFO * filter_info_p, SCAN_PRED * scan_pred, SCAN_ATTRS * scan_attrs, VAL_LIST * val_list,
-		       VAL_DESCR * val_descr, OID * class_oid, int btree_num_attrs, ATTR_ID * btree_attr_ids,
-		       int *num_vstr_ptr, ATTR_ID * vstr_ids)
+scan_init_filter_info (FILTER_INFO * filter_info_p, SCAN_PRED * scan_pred, SCAN_ATTRS * scan_attrs,
+		       val_list_node * val_list, VAL_DESCR * val_descr, OID * class_oid, int btree_num_attrs,
+		       ATTR_ID * btree_attr_ids, int *num_vstr_ptr, ATTR_ID * vstr_ids)
 {
   assert (filter_info_p != NULL);
 
@@ -675,8 +677,8 @@ scan_init_filter_info (FILTER_INFO * filter_info_p, SCAN_PRED * scan_pred, SCAN_
  * indx_cov(in/out): index coverage data
  */
 static int
-scan_init_indx_coverage (THREAD_ENTRY * thread_p, int coverage_enabled, OUTPTR_LIST * output_val_list,
-			 REGU_VARIABLE_LIST regu_val_list, VAL_DESCR * vd, QUERY_ID query_id, int max_key_len,
+scan_init_indx_coverage (THREAD_ENTRY * thread_p, int coverage_enabled, valptr_list_node * output_val_list,
+			 regu_variable_list_node * regu_val_list, VAL_DESCR * vd, QUERY_ID query_id, int max_key_len,
 			 int func_index_col_id, INDX_COV * indx_cov)
 {
   int err = NO_ERROR;
@@ -718,7 +720,7 @@ scan_init_indx_coverage (THREAD_ENTRY * thread_p, int coverage_enabled, OUTPTR_L
       goto exit_on_error;
     }
 
-  /* 
+  /*
    * Covering index scan needs large-size memory buffer in order to decrease
    * the number of times doing stop-and-resume during btree_range_search.
    * To do it, QFILE_FLAG_USE_KEY_BUFFER is introduced. If the flag is set,
@@ -1478,7 +1480,7 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
   int buf_size, nullmap_size;
   unsigned char *bits;
 
-  REGU_VARIABLE_LIST operand;
+  regu_variable_list_node *operand;
 
   char *nullmap_ptr;		/* ponter to boundbits */
   char *key_ptr;		/* current position in key */
@@ -1708,14 +1710,7 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	    }
 	}
 
-      if (dom->type->index_lengthval == NULL)
-	{
-	  buf_size += dom->type->disksize;
-	}
-      else
-	{
-	  buf_size += (*(dom->type->index_lengthval)) (val);
-	}
+      buf_size += dom->type->get_index_size_of_value (val);
     }
 
   /* add more domain to setdomain for partial key */
@@ -1789,7 +1784,7 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	    }
 	}
 
-      (*((dom->type)->index_writeval)) (&buf, val);
+      dom->type->index_writeval (&buf, val);
       OR_ENABLE_BOUND_BIT (nullmap_ptr, i);
     }
 
@@ -1887,7 +1882,7 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY
   int curr_key_prefix_length = 0;
   int count;
   int ret = NO_ERROR;
-  REGU_VARIABLE_LIST requ_list;
+  regu_variable_list_node *requ_list;
   DB_TYPE db_type;
   int key_len;
 
@@ -2162,7 +2157,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
 {
   INDX_SCAN_ID *iscan_id;
   FILTER_INFO key_filter;
-  INDX_INFO *indx_infop;
+  indx_info *indx_infop;
   BTREE_SCAN *bts;
   int key_cnt, i;
   KEY_VAL_RANGE *key_vals;
@@ -2174,7 +2169,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
   /* pointer to INDX_SCAN_ID structure */
   iscan_id = &s_id->s.isid;
 
-  /* pointer to INDX_INFO in INDX_SCAN_ID structure */
+  /* pointer to indx_info in INDX_SCAN_ID structure */
   indx_infop = iscan_id->indx_info;
 
   /* pointer to index scan info. structure */
@@ -2254,7 +2249,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
 	  key_cnt = iscan_id->key_cnt = check_key_vals (key_vals, key_cnt, merge_key_ranges);
 	}
 
-      /* if is order by skip and first column is descending, the order will be reversed so reverse the key ranges to be 
+      /* if is order by skip and first column is descending, the order will be reversed so reverse the key ranges to be
        * desc. */
       if ((indx_infop->range_type == R_KEYLIST || indx_infop->range_type == R_RANGELIST)
 	  && ((indx_infop->orderby_desc && indx_infop->orderby_skip)
@@ -2272,7 +2267,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
       iscan_id->curr_keyno = 0;
     }
 
-  /* 
+  /*
    * init vars to execute B+tree key range search
    */
 
@@ -2310,7 +2305,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
   else
     {
       /* Clear output val list to avoid memory leak. */
-      REGU_VARIABLE_LIST p;
+      regu_variable_list_node *p;
       for (p = iscan_id->indx_cov.regu_val_list; p; p = p->next)
 	{
 	  pr_clear_value (p->value.vfetch_to);
@@ -2721,7 +2716,7 @@ exit_on_error:
  */
 static void
 scan_init_scan_id (SCAN_ID * scan_id, bool mvcc_select_lock_needed, SCAN_OPERATION_TYPE scan_op_type, int fixed,
-		   int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, VAL_LIST * val_list,
+		   int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, val_list_node * val_list,
 		   VAL_DESCR * vd)
 {
   scan_id->status = S_OPENED;
@@ -2780,13 +2775,13 @@ int
 scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 		     /* fields of SCAN_ID */
 		     bool mvcc_select_lock_needed, SCAN_OPERATION_TYPE scan_op_type, int fixed, int grouped,
-		     QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, VAL_LIST * val_list, VAL_DESCR * vd,
+		     QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, val_list_node * val_list, VAL_DESCR * vd,
 		     /* fields of HEAP_SCAN_ID */
-		     OID * cls_oid, HFID * hfid, REGU_VARIABLE_LIST regu_list_pred, PRED_EXPR * pr,
-		     REGU_VARIABLE_LIST regu_list_rest, int num_attrs_pred, ATTR_ID * attrids_pred,
+		     OID * cls_oid, HFID * hfid, regu_variable_list_node * regu_list_pred, PRED_EXPR * pr,
+		     regu_variable_list_node * regu_list_rest, int num_attrs_pred, ATTR_ID * attrids_pred,
 		     HEAP_CACHE_ATTRINFO * cache_pred, int num_attrs_rest, ATTR_ID * attrids_rest,
 		     HEAP_CACHE_ATTRINFO * cache_rest, SCAN_TYPE scan_type, DB_VALUE ** cache_recordinfo,
-		     REGU_VARIABLE_LIST regu_list_recordinfo)
+		     regu_variable_list_node * regu_list_recordinfo)
 {
   HEAP_SCAN_ID *hsidp;
   DB_TYPE single_node_type = DB_TYPE_NULL;
@@ -2852,10 +2847,10 @@ scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 int
 scan_open_heap_page_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 			  /* fields of SCAN_ID */
-			  VAL_LIST * val_list, VAL_DESCR * vd,
+			  val_list_node * val_list, VAL_DESCR * vd,
 			  /* fields of HEAP_SCAN_ID */
 			  OID * cls_oid, HFID * hfid, PRED_EXPR * pr, SCAN_TYPE scan_type, DB_VALUE ** cache_page_info,
-			  REGU_VARIABLE_LIST regu_list_page_info)
+			  regu_variable_list_node * regu_list_page_info)
 {
   HEAP_PAGE_SCAN_ID *hpsidp = NULL;
   DB_TYPE single_node_type = DB_TYPE_NULL;
@@ -2901,11 +2896,11 @@ scan_open_heap_page_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 int
 scan_open_class_attr_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 			   /* fields of SCAN_ID */
-			   int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, VAL_LIST * val_list,
-			   VAL_DESCR * vd,
+			   int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval,
+			   val_list_node * val_list, VAL_DESCR * vd,
 			   /* fields of HEAP_SCAN_ID */
-			   OID * cls_oid, HFID * hfid, REGU_VARIABLE_LIST regu_list_pred, PRED_EXPR * pr,
-			   REGU_VARIABLE_LIST regu_list_rest, int num_attrs_pred, ATTR_ID * attrids_pred,
+			   OID * cls_oid, HFID * hfid, regu_variable_list_node * regu_list_pred, PRED_EXPR * pr,
+			   regu_variable_list_node * regu_list_rest, int num_attrs_pred, ATTR_ID * attrids_pred,
 			   HEAP_CACHE_ATTRINFO * cache_pred, int num_attrs_rest, ATTR_ID * attrids_rest,
 			   HEAP_CACHE_ATTRINFO * cache_rest)
 {
@@ -2988,13 +2983,13 @@ int
 scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 		      /* fields of SCAN_ID */
 		      bool mvcc_select_lock_needed, SCAN_OPERATION_TYPE scan_op_type, int fixed, int grouped,
-		      QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, VAL_LIST * val_list, VAL_DESCR * vd,
+		      QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, val_list_node * val_list, VAL_DESCR * vd,
 		      /* fields of INDX_SCAN_ID */
-		      INDX_INFO * indx_info, OID * cls_oid, HFID * hfid, REGU_VARIABLE_LIST regu_list_key,
-		      PRED_EXPR * pr_key, REGU_VARIABLE_LIST regu_list_pred, PRED_EXPR * pr,
-		      REGU_VARIABLE_LIST regu_list_rest, PRED_EXPR * pr_range, REGU_VARIABLE_LIST regu_list_range,
-		      OUTPTR_LIST * output_val_list,
-		      REGU_VARIABLE_LIST regu_val_list, int num_attrs_key, ATTR_ID * attrids_key,
+		      indx_info * indx_info, OID * cls_oid, HFID * hfid, regu_variable_list_node * regu_list_key,
+		      PRED_EXPR * pr_key, regu_variable_list_node * regu_list_pred, PRED_EXPR * pr,
+		      regu_variable_list_node * regu_list_rest, PRED_EXPR * pr_range,
+		      regu_variable_list_node * regu_list_range, valptr_list_node * output_val_list,
+		      regu_variable_list_node * regu_val_list, int num_attrs_key, ATTR_ID * attrids_key,
 		      HEAP_CACHE_ATTRINFO * cache_key, int num_attrs_pred, ATTR_ID * attrids_pred,
 		      HEAP_CACHE_ATTRINFO * cache_pred, int num_attrs_rest, ATTR_ID * attrids_rest,
 		      HEAP_CACHE_ATTRINFO * cache_rest, int num_attrs_range, ATTR_ID * attrids_range,
@@ -3338,11 +3333,11 @@ exit_on_error:
 int
 scan_open_index_key_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 			       /* fields of SCAN_ID */
-			       VAL_LIST * val_list, VAL_DESCR * vd,
+			       val_list_node * val_list, VAL_DESCR * vd,
 			       /* fields of INDX_SCAN_ID */
-			       INDX_INFO * indx_info, OID * cls_oid, HFID * hfid, PRED_EXPR * pr,
-			       OUTPTR_LIST * output_val_list, bool iscan_oid_order, QUERY_ID query_id,
-			       DB_VALUE ** key_info_values, REGU_VARIABLE_LIST key_info_regu_list)
+			       indx_info * indx_info, OID * cls_oid, HFID * hfid, PRED_EXPR * pr,
+			       valptr_list_node * output_val_list, bool iscan_oid_order, QUERY_ID query_id,
+			       DB_VALUE ** key_info_values, regu_variable_list_node * key_info_regu_list)
 {
   int ret = NO_ERROR;
   INDX_SCAN_ID *isidp = NULL;
@@ -3542,10 +3537,10 @@ exit_on_error:
 int
 scan_open_index_node_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				/* fields of SCAN_ID */
-				VAL_LIST * val_list, VAL_DESCR * vd,
+				val_list_node * val_list, VAL_DESCR * vd,
 				/* fields of INDX_SCAN_ID */
-				INDX_INFO * indx_info, PRED_EXPR * pr, DB_VALUE ** node_info_values,
-				REGU_VARIABLE_LIST node_info_regu_list)
+				indx_info * indx_info, PRED_EXPR * pr, DB_VALUE ** node_info_values,
+				regu_variable_list_node * node_info_regu_list)
 {
   INDEX_NODE_SCAN_ID *idx_nsid_p = NULL;
   VPID root_vpid;
@@ -3614,11 +3609,11 @@ scan_open_index_node_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 int
 scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 		     /* fields of SCAN_ID */
-		     int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, VAL_LIST * val_list,
+		     int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, val_list_node * val_list,
 		     VAL_DESCR * vd,
 		     /* fields of LLIST_SCAN_ID */
-		     QFILE_LIST_ID * list_id, REGU_VARIABLE_LIST regu_list_pred, PRED_EXPR * pr,
-		     REGU_VARIABLE_LIST regu_list_rest)
+		     QFILE_LIST_ID * list_id, regu_variable_list_node * regu_list_pred, PRED_EXPR * pr,
+		     regu_variable_list_node * regu_list_rest)
 {
   LLIST_SCAN_ID *llsidp;
   DB_TYPE single_node_type = DB_TYPE_NULL;
@@ -3640,7 +3635,7 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   scan_init_scan_pred (&llsidp->scan_pred, regu_list_pred, pr,
 		       ((pr) ? eval_fnc (thread_p, pr, &single_node_type) : NULL));
 
-  /* regulator vairable list for other than predicates */
+  /* regulator variable list for other than predicates */
   llsidp->rest_regu_list = regu_list_rest;
 
   return NO_ERROR;
@@ -3661,14 +3656,14 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 int
 scan_open_showstmt_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 			 /* fields of SCAN_ID */
-			 int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, VAL_LIST * val_list,
+			 int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, val_list_node * val_list,
 			 VAL_DESCR * vd,
 			 /* fields of SHOWSTMT_SCAN_ID */
-			 PRED_EXPR * pr, SHOWSTMT_TYPE show_type, REGU_VARIABLE_LIST arg_list)
+			 PRED_EXPR * pr, SHOWSTMT_TYPE show_type, regu_variable_list_node * arg_list)
 {
   SHOWSTMT_SCAN_ID *stsidp;
   int i, arg_cnt, out_cnt;
-  REGU_VARIABLE_LIST regu_var_p;
+  regu_variable_list_node *regu_var_p;
   REGU_VARIABLE *regu;
   QPROC_DB_VALUE_LIST valp;
   DB_VALUE **arg_values = NULL, **out_values = NULL;
@@ -3770,10 +3765,10 @@ exit_on_error:
 int
 scan_open_values_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 		       /* fields of SCAN_ID */
-		       int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, VAL_LIST * val_list,
+		       int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, val_list_node * val_list,
 		       VAL_DESCR * vd,
 		       /* fields of REGU_VALUES_SCAN_ID */
-		       VALPTR_LIST * valptr_list)
+		       valptr_list_node * valptr_list)
 {
   REGU_VALUES_SCAN_ID *rvsidp;
 
@@ -3808,10 +3803,10 @@ scan_open_values_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 int
 scan_open_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 		    /* fields of SCAN_ID */
-		    int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, VAL_LIST * val_list,
+		    int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, val_list_node * val_list,
 		    VAL_DESCR * vd,
 		    /* fields of SET_SCAN_ID */
-		    REGU_VARIABLE * set_ptr, REGU_VARIABLE_LIST regu_list_pred, PRED_EXPR * pr)
+		    REGU_VARIABLE * set_ptr, regu_variable_list_node * regu_list_pred, PRED_EXPR * pr)
 {
   SET_SCAN_ID *ssidp;
   DB_TYPE single_node_type = DB_TYPE_NULL;
@@ -3836,6 +3831,37 @@ scan_open_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 }
 
 /*
+ * scan_open_json_table_scan () -
+ *   return: NO_ERROR
+ *   scan_id(out): Scan identifier
+ *   grouped(in):
+ *   single_fetch(in):
+ *   join_dbval(in):
+ *   val_list(in):
+ *   vd(in):
+ */
+int
+scan_open_json_table_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, int grouped, QPROC_SINGLE_FETCH single_fetch,
+			   DB_VALUE * join_dbval, val_list_node * val_list, VAL_DESCR * vd, PRED_EXPR * pr)
+{
+  DB_TYPE single_node_type = DB_TYPE_NULL;
+
+  /* scan type is JSON_TABLE SCAN */
+  assert (scan_id->type == S_JSON_TABLE_SCAN);
+
+  /* initialize SCAN_ID structure */
+  /* mvcc_select_lock_needed = false, fixed = true */
+  scan_init_scan_id (scan_id, false, S_SELECT, true, grouped, single_fetch, join_dbval, val_list, vd);
+
+  // scan_init_scan_pred
+  scan_init_scan_pred (&scan_id->s.jtid.get_predicate (), NULL, pr,
+		       ((pr) ? eval_fnc (thread_p, pr, &single_node_type) : NULL));
+  scan_id->s.jtid.set_value_descriptor (vd);
+
+  return NO_ERROR;
+}
+
+/*
  * scan_open_method_scan () -
  *   return: NO_ERROR, or ER_code
  *   scan_id(out): Scan identifier
@@ -3852,10 +3878,10 @@ scan_open_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 int
 scan_open_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 		       /* fields of SCAN_ID */
-		       int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, VAL_LIST * val_list,
+		       int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, val_list_node * val_list,
 		       VAL_DESCR * vd,
 		       /* */
-		       QFILE_LIST_ID * list_id, METHOD_SIG_LIST * meth_sig_list)
+		       QFILE_LIST_ID * list_id, method_sig_list * meth_sig_list)
 {
   /* scan type is METHOD SCAN */
   scan_id->type = S_METHOD_SCAN;
@@ -3886,8 +3912,9 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   SET_SCAN_ID *ssidp = NULL;
   REGU_VALUES_SCAN_ID *rvsidp = NULL;
   REGU_VALUE_LIST *regu_value_list = NULL;
-  REGU_VARIABLE_LIST list_node = NULL;
+  regu_variable_list_node *list_node = NULL;
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
+  JSON_TABLE_SCAN_ID *jtidp = NULL;
 
   switch (scan_id->type)
     {
@@ -4142,6 +4169,11 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       db_make_null (&ssidp->set);
       break;
 
+    case S_JSON_TABLE_SCAN:
+      jtidp = &scan_id->s.jtid;
+      // todo: what else to add here?
+      break;
+
     case S_METHOD_SCAN:
       break;
 
@@ -4286,6 +4318,7 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 
     case S_CLASS_ATTR_SCAN:
     case S_SET_SCAN:
+    case S_JSON_TABLE_SCAN:
       s_id->position = S_BEFORE;
       break;
 
@@ -4294,7 +4327,6 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
       status = S_ERROR;
       break;
     }				/* switch (s_id->type) */
-
 
   return status;
 }
@@ -4322,8 +4354,8 @@ scan_next_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
     case S_HEAP_SCAN_RECORD_INFO:
     case S_HEAP_PAGE_SCAN:
       if (s_id->grouped)
-	{			/* grouped, fixed scan */
-
+	{
+	  /* grouped, fixed scan */
 	  if (s_id->direction == S_FORWARD)
 	    {
 	      sp_scan = heap_scanrange_to_following (thread_p, &s_id->s.hsid.scan_range, NULL);
@@ -4333,13 +4365,39 @@ scan_next_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	      sp_scan = heap_scanrange_to_prior (thread_p, &s_id->s.hsid.scan_range, NULL);
 	    }
 
-	  return ((sp_scan == S_SUCCESS) ? S_SUCCESS : (sp_scan == S_END) ? S_END : S_ERROR);
+	  if (sp_scan == S_SUCCESS || sp_scan == S_END)
+	    {
+	      return sp_scan;
+	    }
+	  else
+	    {
+	      return S_ERROR;
+	    }
 	}
       else
 	{
-	  return ((s_id->direction ==
-		   S_FORWARD) ? ((s_id->position == S_BEFORE) ? S_SUCCESS : S_END) : ((s_id->position ==
-										       S_AFTER) ? S_SUCCESS : S_END));
+	  if (s_id->direction == S_FORWARD)
+	    {
+	      if (s_id->position == S_BEFORE)
+		{
+		  return S_SUCCESS;
+		}
+	      else
+		{
+		  return S_END;
+		}
+	    }
+	  else
+	    {
+	      if (s_id->position == S_AFTER)
+		{
+		  return S_SUCCESS;
+		}
+	      else
+		{
+		  return S_END;
+		}
+	    }
 	}
 
     case S_INDX_SCAN:
@@ -4385,7 +4443,6 @@ scan_next_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	      s_id->position = S_AFTER;
 	      return S_END;
 	    }
-
 	}
       else
 	{
@@ -4406,6 +4463,7 @@ scan_next_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
     case S_SHOWSTMT_SCAN:
     case S_SET_SCAN:
     case S_METHOD_SCAN:
+    case S_JSON_TABLE_SCAN:
     case S_VALUES_SCAN:
       return (s_id->position == S_BEFORE) ? S_SUCCESS : S_END;
 
@@ -4431,6 +4489,7 @@ scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   REGU_VALUES_SCAN_ID *rvsidp;
   SET_SCAN_ID *ssidp;
   KEY_VAL_RANGE *key_vals;
+  JSON_TABLE_SCAN_ID *jtidp;
   int i;
 
   if (scan_id == NULL)
@@ -4522,6 +4581,11 @@ scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
     case S_SET_SCAN:
       ssidp = &scan_id->s.ssid;
       pr_clear_value (&ssidp->set);
+      break;
+
+    case S_JSON_TABLE_SCAN:
+      jtidp = &scan_id->s.jtid;
+      jtidp->end (thread_p);
       break;
 
     case S_METHOD_SCAN:
@@ -4680,6 +4744,9 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
     case S_METHOD_SCAN:
       method_close_scan (thread_p, &scan_id->s.vaid.scan_buf);
+      break;
+
+    case S_JSON_TABLE_SCAN:
       break;
 
     default:
@@ -4853,6 +4920,10 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       status = scan_next_set_scan (thread_p, scan_id);
       break;
 
+    case S_JSON_TABLE_SCAN:
+      status = scan_next_json_table_scan (thread_p, scan_id);
+      break;
+
     case S_METHOD_SCAN:
       status = scan_next_method_scan (thread_p, scan_id);
       break;
@@ -4904,7 +4975,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   LOG_LSA ref_lsa;
   bool is_peeking;
   OBJECT_GET_STATUS object_get_status;
-  REGU_VARIABLE_LIST p;
+  regu_variable_list_node *p;
 
   hsidp = &scan_id->s.hsid;
   if (scan_id->mvcc_select_lock_needed)
@@ -5635,7 +5706,7 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 			      return S_ERROR;
 			    }
 			}
-		      /* if this the current scan is not done (i.e. the buffer was full and we need to fetch more rows, 
+		      /* if this the current scan is not done (i.e. the buffer was full and we need to fetch more rows,
 		       * do not go to the next value */
 		      go_to_next_iss_value = BTREE_END_OF_SCAN (&isidp->bt_scan)
 			&& (isidp->indx_info->range_type == R_KEY || isidp->indx_info->range_type == R_RANGE);
@@ -5784,7 +5855,7 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
   SCAN_CODE sp_scan;
   DB_LOGICAL ev_res;
   RECDES recdes;
-  INDX_INFO *indx_infop;
+  indx_info *indx_infop;
   BTID *btid;
   char *indx_name_p;
   char *class_name_p;
@@ -5816,6 +5887,15 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
 	}
 
       return S_DOESNT_EXIST;	/* not qualified, continue to the next tuple */
+    }
+  else if (sp_scan == S_ERROR)
+    {
+      ASSERT_ERROR ();
+      return sp_scan;
+    }
+  else
+    {
+      assert (sp_scan == S_SUCCESS || sp_scan == S_SUCCESS_CHN_UPTODATE);
     }
 
 
@@ -6253,7 +6333,7 @@ static SCAN_CODE
 scan_next_value_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 {
   REGU_VALUES_SCAN_ID *rvsidp;
-  REGU_VARIABLE_LIST list_node;
+  regu_variable_list_node *list_node;
   REGU_VALUE_LIST *regu_value_list;
   int i;
 
@@ -6411,7 +6491,7 @@ scan_next_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   SCAN_CODE qp_scan;
   DB_LOGICAL ev_res;
   REGU_VARIABLE *func;
-  REGU_VARIABLE_LIST ptr;
+  regu_variable_list_node *ptr;
   int size;
 
   ssidp = &scan_id->s.ssid;
@@ -6443,7 +6523,6 @@ scan_next_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   /* evaluate set expression and put resultant set in DB_VALUE */
   while ((qp_scan = qproc_next_set_scan (thread_p, scan_id)) == S_SUCCESS)
     {
-
       assert (scan_id->val_list != NULL);
       assert (scan_id->val_list->val_cnt == 1);
 
@@ -6496,10 +6575,37 @@ scan_next_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	}
 
       return S_SUCCESS;
-
     }				/* while ((qp_scan = ) == S_SUCCESS) */
 
   return qp_scan;
+}
+
+/*
+ * scan_next_json_table_scan () - The scan is moved to the next json_table scan item.
+ *   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR)
+ *   scan_id(in/out): Scan identifier
+ *
+ * Note: If there are no more scan items, S_END is returned. If an error occurs, S_ERROR is returned.
+ */
+static SCAN_CODE
+scan_next_json_table_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
+{
+  int error_code = NO_ERROR;
+
+  // the status of the scan will be put in scan_id->status
+  error_code = scan_id->s.jtid.next_scan (thread_p, *scan_id);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return S_ERROR;
+    }
+
+  if (scan_id->status == S_ENDED)
+    {
+      return S_END;
+    }
+
+  return S_SUCCESS;
 }
 
 /*
@@ -6514,7 +6620,7 @@ scan_next_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 {
   VA_SCAN_ID *vaidp;
   SCAN_CODE qp_scan;
-  VAL_LIST vl;
+  val_list_node vl;
   QPROC_DB_VALUE_LIST src_valp;
   QPROC_DB_VALUE_LIST dest_valp;
 
@@ -6540,7 +6646,6 @@ scan_next_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   for (src_valp = vl.valp, dest_valp = scan_id->val_list->valp; src_valp && dest_valp;
        src_valp = src_valp->next, dest_valp = dest_valp->next)
     {
-
       if (DB_IS_NULL (src_valp->val))
 	{
 	  pr_clear_value (dest_valp->val);
@@ -6556,9 +6661,9 @@ scan_next_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	{
 	  return S_ERROR;
 	}
+
       pr_clear_value (src_valp->val);
       free_and_init (src_valp->val);
-
     }
 
   return S_SUCCESS;
@@ -6743,7 +6848,6 @@ scan_prev_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   DB_LOGICAL ev_res;
   QFILE_TUPLE_RECORD tplrec;
 
-
   switch (scan_id->type)
     {
     case S_LIST_SCAN:
@@ -6754,7 +6858,6 @@ scan_prev_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
       while ((qp_scan = qfile_scan_list_prev (thread_p, &llsidp->lsid, &tplrec, PEEK)) == S_SUCCESS)
 	{
-
 	  /* fetch the values for the predicate from the tuple */
 	  if (scan_id->val_list)
 	    {
@@ -6829,9 +6932,10 @@ scan_prev_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	      llsidp->tplrecp->size = tplrec.size;
 	      llsidp->tplrecp->tpl = tplrec.tpl;
 	    }
-	  return S_SUCCESS;
 
-	}			/* while ((qp_scan = ...) == S_SUCCESS) */
+	  return S_SUCCESS;
+	}
+
       if (qp_scan == S_END)
 	{
 	  scan_id->position = S_BEFORE;
@@ -6843,7 +6947,6 @@ scan_prev_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
       return S_ERROR;
     }				/* switch (scan_id->type) */
-
 }
 
 /*
@@ -6875,7 +6978,6 @@ scan_save_scan_pos (SCAN_ID * s_id, SCAN_POS * scan_pos)
   scan_pos->position = s_id->position;
   qfile_save_current_scan_tuple_position (&s_id->s.llsid.lsid, &scan_pos->ls_tplpos);
 }
-
 
 /*
  * scan_jump_scan_pos () - Jump to the given scan position and move the scan
@@ -7103,14 +7205,14 @@ reverse_key_list (KEY_VAL_RANGE * key_vals, int key_cnt)
  *   predicates;
  *
  *   llsidp (in/out): pointer to list scan id structure
- *   ref_val_list (in): list of DB_VALUEs (VAL_LIST) used as reference
+ *   ref_val_list (in): list of DB_VALUEs (val_list_node) used as reference
  *
  *  Note : this function is used in context of HV late binding
  */
 static void
-resolve_domains_on_list_scan (LLIST_SCAN_ID * llsidp, VAL_LIST * ref_val_list)
+resolve_domains_on_list_scan (LLIST_SCAN_ID * llsidp, val_list_node * ref_val_list)
 {
-  REGU_VARIABLE_LIST scan_regu = NULL;
+  regu_variable_list_node *scan_regu = NULL;
 
   assert (llsidp != NULL);
 
@@ -7198,13 +7300,13 @@ resolve_domains_on_list_scan (LLIST_SCAN_ID * llsidp, VAL_LIST * ref_val_list)
  *    from a scan list; helper functions for 'resolve_domains_on_list_scan'
  *
  *   regu_var (in/out): regulator variable with unresolved domain
- *   ref_val_list (in): list of DB_VALUEs (VAL_LIST) used for cross-checking
+ *   ref_val_list (in): list of DB_VALUEs (val_list_node) used for cross-checking
  *   p_type_list (in): list of domains used as reference
  *
  *  Note : this function is used in context of HV late binding
  */
 static void
-resolve_domain_on_regu_operand (REGU_VARIABLE * regu_var, VAL_LIST * ref_val_list,
+resolve_domain_on_regu_operand (REGU_VARIABLE * regu_var, val_list_node * ref_val_list,
 				QFILE_TUPLE_VALUE_TYPE_LIST * p_type_list)
 {
   assert (regu_var != NULL);
@@ -7232,12 +7334,10 @@ resolve_domain_on_regu_operand (REGU_VARIABLE * regu_var, VAL_LIST * ref_val_lis
 	  regu_var->domain = p_type_list->domp[pos];
 	}
     }
-
 }
 
 /*
- * scan_init_multi_range_optimization () - initialize structure for multiple
- *				range optimization
+ * scan_init_multi_range_optimization () - initialize structure for multiple range optimization
  *
  *   return: error code
  *
@@ -7306,8 +7406,7 @@ exit_on_error:
 }
 
 /*
- * scan_dump_key_into_tuple () - outputs the value stored in 'key' into the
- *				 tuple 'tplrec'
+ * scan_dump_key_into_tuple () - outputs the value stored in 'key' into the tuple 'tplrec'
  *
  *   return: error code
  *   iscan_id(in):
@@ -7324,7 +7423,7 @@ scan_dump_key_into_tuple (THREAD_ENTRY * thread_p, INDX_SCAN_ID * iscan_id, DB_V
 			  QFILE_TUPLE_RECORD * tplrec)
 {
   int error;
-  REGU_VARIABLE_LIST p;
+  regu_variable_list_node *p;
 
   if (iscan_id == NULL || iscan_id->indx_cov.val_descr == NULL || iscan_id->indx_cov.output_val_list == NULL
       || iscan_id->rest_attrs.attr_cache == NULL)
@@ -7332,9 +7431,8 @@ scan_dump_key_into_tuple (THREAD_ENTRY * thread_p, INDX_SCAN_ID * iscan_id, DB_V
       return ER_FAILED;
     }
 
-  error =
-    btree_attrinfo_read_dbvalues (thread_p, key, iscan_id->bt_attr_ids, iscan_id->bt_num_attrs,
-				  iscan_id->rest_attrs.attr_cache, -1);
+  error = btree_attrinfo_read_dbvalues (thread_p, key, iscan_id->bt_attr_ids, iscan_id->bt_num_attrs,
+					iscan_id->rest_attrs.attr_cache, -1);
   if (error != NO_ERROR)
     {
       return error;
@@ -7351,10 +7449,8 @@ scan_dump_key_into_tuple (THREAD_ENTRY * thread_p, INDX_SCAN_ID * iscan_id, DB_V
       return error;
     }
 
-  error =
-    qdata_copy_valptr_list_to_tuple (thread_p, iscan_id->indx_cov.output_val_list, iscan_id->indx_cov.val_descr,
-				     tplrec);
-
+  error = qdata_copy_valptr_list_to_tuple (thread_p, iscan_id->indx_cov.output_val_list, iscan_id->indx_cov.val_descr,
+					   tplrec);
   if (error != NO_ERROR)
     {
       return error;
@@ -7365,7 +7461,6 @@ scan_dump_key_into_tuple (THREAD_ENTRY * thread_p, INDX_SCAN_ID * iscan_id, DB_V
 
 
 #if defined (SERVER_MODE)
-
 /*
  * scan_print_stats_json () -
  * return:
@@ -7381,12 +7476,13 @@ scan_print_stats_json (SCAN_ID * scan_id, json_t * scan_stats)
       return;
     }
 
-  scan =
-    json_pack ("{s:i, s:I, s:I}", "time", TO_MSEC (scan_id->scan_stats.elapsed_scan), "fetch",
-	       scan_id->scan_stats.num_fetches, "ioread", scan_id->scan_stats.num_ioreads);
+  scan = json_pack ("{s:i, s:I, s:I}", "time", TO_MSEC (scan_id->scan_stats.elapsed_scan), "fetch",
+		    scan_id->scan_stats.num_fetches, "ioread", scan_id->scan_stats.num_ioreads);
 
-  if (scan_id->type == S_HEAP_SCAN || scan_id->type == S_LIST_SCAN)
+  switch (scan_id->type)
     {
+    case S_HEAP_SCAN:
+    case S_LIST_SCAN:
       json_object_set_new (scan, "readrows", json_integer (scan_id->scan_stats.read_rows));
       json_object_set_new (scan, "rows", json_integer (scan_id->scan_stats.qualified_rows));
 
@@ -7398,9 +7494,9 @@ scan_print_stats_json (SCAN_ID * scan_id, json_t * scan_stats)
 	{
 	  json_object_set_new (scan_stats, "temp", scan);
 	}
-    }
-  else if (scan_id->type == S_INDX_SCAN)
-    {
+      break;
+
+    case S_INDX_SCAN:
       json_object_set_new (scan, "readkeys", json_integer (scan_id->scan_stats.read_keys));
       json_object_set_new (scan, "filteredkeys", json_integer (scan_id->scan_stats.qualified_keys));
       json_object_set_new (scan, "rows", json_integer (scan_id->scan_stats.key_qualified_rows));
@@ -7412,9 +7508,8 @@ scan_print_stats_json (SCAN_ID * scan_id, json_t * scan_stats)
 	}
       else
 	{
-	  lookup =
-	    json_pack ("{s:i, s:i}", "time", TO_MSEC (scan_id->scan_stats.elapsed_lookup), "rows",
-		       scan_id->scan_stats.data_qualified_rows);
+	  lookup = json_pack ("{s:i, s:i}", "time", TO_MSEC (scan_id->scan_stats.elapsed_lookup), "rows",
+			      scan_id->scan_stats.data_qualified_rows);
 
 	  json_object_set_new (scan_stats, "lookup", lookup);
 	}
@@ -7433,26 +7528,27 @@ scan_print_stats_json (SCAN_ID * scan_id, json_t * scan_stats)
 	{
 	  json_object_set_new (scan_stats, "loose", json_true ());
 	}
-    }
-  else if (scan_id->type == S_SHOWSTMT_SCAN)
-    {
+      break;
+
+    case S_SHOWSTMT_SCAN:
       json_object_set_new (scan_stats, "show", scan);
-    }
-  else if (scan_id->type == S_SET_SCAN)
-    {
+      break;
+
+    case S_SET_SCAN:
       json_object_set_new (scan_stats, "set", scan);
-    }
-  else if (scan_id->type == S_METHOD_SCAN)
-    {
+      break;
+
+    case S_METHOD_SCAN:
       json_object_set_new (scan_stats, "method", scan);
-    }
-  else if (scan_id->type == S_CLASS_ATTR_SCAN)
-    {
+      break;
+
+    case S_CLASS_ATTR_SCAN:
       json_object_set_new (scan_stats, "class_attr", scan);
-    }
-  else
-    {
+      break;
+
+    default:
       json_object_set_new (scan_stats, "noscan", scan);
+      break;
     }
 }
 
@@ -7469,48 +7565,52 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
       return;
     }
 
-  if (scan_id->type == S_HEAP_SCAN)
+  switch (scan_id->type)
     {
+    case S_HEAP_SCAN:
       fprintf (fp, "(heap");
-    }
-  else if (scan_id->type == S_INDX_SCAN)
-    {
+      break;
+
+    case S_INDX_SCAN:
       fprintf (fp, "(btree");
-    }
-  else if (scan_id->type == S_LIST_SCAN)
-    {
+      break;
+
+    case S_LIST_SCAN:
       fprintf (fp, "(temp");
-    }
-  else if (scan_id->type == S_SHOWSTMT_SCAN)
-    {
+      break;
+
+    case S_SHOWSTMT_SCAN:
       fprintf (fp, "(show");
-    }
-  else if (scan_id->type == S_SET_SCAN)
-    {
+      break;
+
+    case S_SET_SCAN:
       fprintf (fp, "(set");
-    }
-  else if (scan_id->type == S_METHOD_SCAN)
-    {
+      break;
+
+    case S_METHOD_SCAN:
       fprintf (fp, "(method");
-    }
-  else if (scan_id->type == S_CLASS_ATTR_SCAN)
-    {
+      break;
+
+    case S_CLASS_ATTR_SCAN:
       fprintf (fp, "(class_attr");
-    }
-  else
-    {
+      break;
+
+    default:
       fprintf (fp, "(noscan");
+      break;
     }
 
   fprintf (fp, " time: %d, fetch: %lld, ioread: %lld", TO_MSEC (scan_id->scan_stats.elapsed_scan),
 	   (long long int) scan_id->scan_stats.num_fetches, (long long int) scan_id->scan_stats.num_ioreads);
 
-  if (scan_id->type == S_HEAP_SCAN || scan_id->type == S_LIST_SCAN)
+  switch (scan_id->type)
     {
+    case S_HEAP_SCAN:
+    case S_LIST_SCAN:
       fprintf (fp, ", readrows: %d, rows: %d)", scan_id->scan_stats.read_rows, scan_id->scan_stats.qualified_rows);
-    }
-  else if (scan_id->type == S_INDX_SCAN)
-    {
+      break;
+
+    case S_INDX_SCAN:
       fprintf (fp, ", readkeys: %d, filteredkeys: %d, rows: %d", scan_id->scan_stats.read_keys,
 	       scan_id->scan_stats.qualified_keys, scan_id->scan_stats.key_qualified_rows);
 
@@ -7540,10 +7640,11 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
 	  fprintf (fp, " (lookup time: %d, rows: %d)", TO_MSEC (scan_id->scan_stats.elapsed_lookup),
 		   scan_id->scan_stats.data_qualified_rows);
 	}
-    }
-  else
-    {
+      break;
+
+    default:
       fprintf (fp, ")");
+      break;
     }
 }
 #endif

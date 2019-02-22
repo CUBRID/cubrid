@@ -28,20 +28,21 @@
 
 #include <assert.h>
 
-#include "storage_common.h"
+#include "access_json_table.hpp"
 #include "memory_hash.h"
-#include "string_opfunc.h"
 #include "query_list.h"
 #include "regu_var.h"
+#include "storage_common.h"
+#include "string_opfunc.h"
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
+#include "external_sort.h"
+#include "heap_file.h"
 #if defined (ENABLE_COMPOSITE_LOCK)
 #include "lock_manager.h"
 #endif /* defined (ENABLE_COMPOSITE_LOCK) */
-#include "external_sort.h"
 #include "object_representation_sr.h"
 #include "scan_manager.h"
-#include "heap_file.h"
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
@@ -49,26 +50,8 @@
 struct binary_heap;
 #endif // SERVER_MODE || SA_MODE
 
-/*
- * COMPILE_CONTEXT cover from user input query string to generated xasl
- */
-typedef struct compile_context COMPILE_CONTEXT;
-struct compile_context
-{
-  XASL_NODE *xasl;
-
-  char *sql_user_text;		/* original query statement that user input */
-  int sql_user_text_len;	/* length of sql_user_text */
-
-  char *sql_hash_text;		/* rewrited query string which is used as hash key */
-
-  char *sql_plan_text;		/* plans for this query */
-  int sql_plan_alloc_size;	/* query_plan alloc size */
-  bool is_xasl_pinned_reference;	/* to pin xasl cache entry */
-  bool recompile_xasl_pinned;	/* whether recompile again after xasl cache entry has been pinned */
-  bool recompile_xasl;
-  SHA1Hash sha1;
-};
+struct xasl_node;
+typedef struct xasl_node XASL_NODE;
 
 /* XASL HEADER */
 /*
@@ -500,7 +483,7 @@ struct cte_proc_node
 #define XASL_RETURN_GENERATED_KEYS    0x2000	/* return generated keys */
 #define XASL_NO_FIXED_SCAN	      0x4000	/* disable fixed scan for this proc */
 
-#define XASL_IS_FLAGED(x, f)        ((x)->flag & (int) (f))
+#define XASL_IS_FLAGED(x, f)        (((x)->flag & (int) (f)) != 0)
 #define XASL_SET_FLAG(x, f)         (x)->flag |= (int) (f)
 #define XASL_CLEAR_FLAG(x, f)       (x)->flag &= (int) ~(f)
 
@@ -705,6 +688,7 @@ typedef enum
   TARGET_CLASS_ATTR,
   TARGET_LIST,
   TARGET_SET,
+  TARGET_JSON_TABLE,
   TARGET_METHOD,
   TARGET_REGUVAL_LIST,
   TARGET_SHOWSTMT
@@ -714,6 +698,7 @@ typedef enum
 {
   ACCESS_METHOD_SEQUENTIAL,	/* sequential scan access */
   ACCESS_METHOD_INDEX,		/* indexed access */
+  ACCESS_METHOD_JSON_TABLE,	/* json table scan access */
   ACCESS_METHOD_SCHEMA,		/* schema access */
   ACCESS_METHOD_SEQUENTIAL_RECORD_INFO,	/* sequential scan that will read record info */
   ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN,	/* sequential scan access that only scans pages without accessing record data */
@@ -775,12 +760,6 @@ struct list_spec_node
   XASL_NODE *xasl_node;		/* the XASL node that contains the list file identifier */
 };
 
-typedef enum
-{
-  KILLSTMT_TRAN = 0,
-  KILLSTMT_QUERY = 1,
-} KILLSTMT_TYPE;
-
 struct showstmt_spec_node
 {
   SHOWSTMT_TYPE show_type;	/* show statement type */
@@ -792,25 +771,6 @@ struct set_spec_node
   REGU_VARIABLE_LIST set_regu_list;	/* regulator variable list */
   REGU_VARIABLE *set_ptr;	/* set regu variable */
 };
-
-#define VACOMM_BUFFER_HEADER_SIZE           (OR_INT_SIZE * 3)
-#define VACOMM_BUFFER_HEADER_LENGTH_OFFSET  (0)
-#define VACOMM_BUFFER_HEADER_STATUS_OFFSET  (OR_INT_SIZE)
-#define VACOMM_BUFFER_HEADER_NO_VALS_OFFSET (OR_INT_SIZE * 2)
-#define VACOMM_BUFFER_HEADER_ERROR_OFFSET   (OR_INT_SIZE * 2)
-
-typedef enum
-{
-  METHOD_SUCCESS = 1,
-  METHOD_EOF,
-  METHOD_ERROR
-} METHOD_CALL_STATUS;
-
-typedef enum
-{
-  VACOMM_BUFFER_SEND = 1,
-  VACOMM_BUFFER_ABORT
-} VACOMM_BUFFER_CLIENT_ACTION;
 
 struct method_spec_node
 {
@@ -834,6 +794,7 @@ union hybrid_node
   SET_SPEC_TYPE set_node;	/* set specification */
   METHOD_SPEC_TYPE method_node;	/* method specification */
   REGUVAL_LIST_SPEC_TYPE reguval_list_node;	/* reguval_list specification */
+  json_table_spec_node json_table_node;	/* json_table specification */
 };				/* class/list access specification */
 
 /*
@@ -885,6 +846,9 @@ union hybrid_node
 #define ACCESS_SPEC_METHOD_SPEC(ptr) \
         ((ptr)->s.method_node)
 
+#define ACCESS_SPEC_JSON_TABLE_SPEC(ptr) \
+        ((ptr)->s.json_table_node)
+
 #define ACCESS_SPEC_METHOD_XASL_NODE(ptr) \
         ((ptr)->s.method_node.xasl_node)
 
@@ -896,6 +860,15 @@ union hybrid_node
 
 #define ACCESS_SPEC_METHOD_LIST_ID(ptr) \
         (ACCESS_SPEC_METHOD_XASL_NODE(ptr)->list_id)
+
+#define ACCESS_SPEC_JSON_TABLE_ROOT_NODE(ptr) \
+        ((ptr)->s.json_table_node.m_root_node)
+
+#define ACCESS_SPEC_JSON_TABLE_REGU_VAR(ptr) \
+        ((ptr)->s.json_table_node.m_json_reguvar)
+
+#define ACCESS_SPEC_JSON_TABLE_M_NODE_COUNT(ptr) \
+        ((ptr)->s.json_table_node.m_node_count)
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 struct orderby_stat
@@ -1002,7 +975,7 @@ struct xasl_node
   ACCESS_SPEC_TYPE *merge_spec;	/* merge spec. node */
   VAL_LIST *val_list;		/* output-value list */
   VAL_LIST *merge_val_list;	/* value list for the merge spec */
-  XASL_NODE *aptr_list;		/* first uncorrelated subquery */
+  XASL_NODE *aptr_list;		/* CTEs and uncorrelated subquery. CTEs are guaranteed always before the subqueries */
   XASL_NODE *bptr_list;		/* OBJFETCH_PROC list */
   XASL_NODE *dptr_list;		/* corr. subquery list */
   PRED_EXPR *after_join_pred;	/* after-join predicate */
@@ -1040,7 +1013,7 @@ struct xasl_node
 				 * UPDATE/DELETE in MVCC */
 #if defined (ENABLE_COMPOSITE_LOCK)
   /* note: upon reactivation, you may face header cross reference issues */
-  LK_COMPOSITE_LOCK composite_lock;	/* flag and lock block for composite locking for queries which obtain candidate 
+  LK_COMPOSITE_LOCK composite_lock;	/* flag and lock block for composite locking for queries which obtain candidate
 					 * rows for updates/deletes. */
 #endif				/* defined (ENABLE_COMPOSITE_LOCK) */
   union

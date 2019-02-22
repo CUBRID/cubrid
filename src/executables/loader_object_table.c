@@ -3,7 +3,7 @@
  *
  *   This program is free software; you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or 
+ *   the Free Software Foundation; either version 2 of the License, or
  *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
@@ -134,7 +134,7 @@ realloc_instance_table (CLASS_TABLE * table, int newcount)
   INST_INFO *tmp_inst_info;
   int i;
 
-  /* 
+  /*
    * only do this if the new count is larger than the existing
    * table, shouldn't see this
    */
@@ -403,7 +403,7 @@ otable_prepare (void)
 
   for (table = Classes; table != NULL && !error; table = table->next)
     {
-      /* 
+      /*
        * If we already have an instance table, initialize the fields it
        * contains. This shouldn't be necessary.
        */

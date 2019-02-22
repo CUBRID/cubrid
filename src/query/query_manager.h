@@ -36,7 +36,9 @@
 #include "list_file.h"
 #include "storage_common.h"
 #include "thread_compat.hpp"
-#include "xasl_cache.h"
+
+// forward definitions
+struct xasl_cache_ent;
 
 #define qmgr_free_old_page_and_init(thread_p, page_p, tfile_vfidp) \
   do \
@@ -63,10 +65,10 @@ typedef enum
   QMGR_TRAN_RUNNING,		/* Running transaction */
   QMGR_TRAN_DELAYED_START,	/* Suspended transaction: waiting for all the waiting transactions to be served */
   QMGR_TRAN_WAITING,		/* Suspended transaction: waiting for a query file page to be freed. */
-  QMGR_TRAN_RESUME_TO_DEALLOCATE,	/* Transaction has been resumed to deallocate all query pages. Transaction will 
+  QMGR_TRAN_RESUME_TO_DEALLOCATE,	/* Transaction has been resumed to deallocate all query pages. Transaction will
 					 * have to restart the query */
   QMGR_TRAN_RESUME_DUE_DEADLOCK,	/* Transaction has been resumed to deallocate all query pages. The transaction
-					 * was involved in a deadlock. Transaction will have to restart the query. Note 
+					 * was involved in a deadlock. Transaction will have to restart the query. Note
 					 * that the transaction is not aborted. */
   QMGR_TRAN_TERMINATED		/* Terminated transaction */
 } QMGR_TRAN_STATUS;
@@ -120,7 +122,7 @@ struct qmgr_query_entry
 {
   QUERY_ID query_id;		/* unique query identifier */
   XASL_ID xasl_id;		/* XASL tree storage identifier */
-  XASL_CACHE_ENTRY *xasl_ent;	/* XASL cache entry for this query */
+  xasl_cache_ent *xasl_ent;	/* XASL cache entry for this query */
   QFILE_LIST_ID *list_id;	/* result list file identifier */
   QFILE_LIST_CACHE_ENTRY *list_ent;	/* list cache entry for this query */
   QMGR_QUERY_ENTRY *next;

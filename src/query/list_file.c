@@ -37,12 +37,13 @@
 #include "dbtype.h"
 #include "error_manager.h"
 #include "object_primitive.h"
-#include "object_print.h"
+#include "db_value_printer.hpp"
 #include "query_manager.h"
 #include "query_opfunc.h"
 #include "stream_to_xasl.h"
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"	// for thread_sleep
+#include "xasl.h"
 
 /* TODO */
 #if !defined (SERVER_MODE)
@@ -128,7 +129,7 @@ union qfile_pooled_list_cache_entry
     QFILE_LIST_CACHE_ENTRY entry;	/* list cache entry data */
   } s;
   char dummy[FIXED_SIZE_OF_POOLED_LIST_CACHE_ENTRY];
-  /* 
+  /*
    * 4K size including list cache entry itself
    * and reserved spaces for list_cache_ent.param_values
    */
@@ -650,7 +651,7 @@ qfile_compare_tuple_values (QFILE_TUPLE tuple1, QFILE_TUPLE tuple2, TP_DOMAIN * 
   else
     {
       or_init (&buf, (char *) tuple1 + QFILE_TUPLE_VALUE_HEADER_SIZE, length1);
-      rc = (*(pr_type_p->data_readval)) (&buf, &dbval1, domain_p, -1, is_copy, NULL, 0);
+      rc = pr_type_p->data_readval (&buf, &dbval1, domain_p, -1, is_copy, NULL, 0);
       if (rc != NO_ERROR)
 	{
 	  return ER_FAILED;
@@ -667,7 +668,7 @@ qfile_compare_tuple_values (QFILE_TUPLE tuple1, QFILE_TUPLE tuple2, TP_DOMAIN * 
   else
     {
       or_init (&buf, (char *) tuple2 + QFILE_TUPLE_VALUE_HEADER_SIZE, length2);
-      rc = (*(pr_type_p->data_readval)) (&buf, &dbval2, domain_p, -1, is_copy, NULL, 0);
+      rc = pr_type_p->data_readval (&buf, &dbval2, domain_p, -1, is_copy, NULL, 0);
       if (rc != NO_ERROR)
 	{
 	  pr_clear_value (&dbval1);
@@ -689,7 +690,7 @@ qfile_compare_tuple_values (QFILE_TUPLE tuple1, QFILE_TUPLE tuple2, TP_DOMAIN * 
     }
   else
     {
-      *compare_result = (*(pr_type_p->cmpval)) (&dbval1, &dbval2, 0, 1, NULL, domain_p->collation_id);
+      *compare_result = pr_type_p->cmpval (&dbval1, &dbval2, 0, 1, NULL, domain_p->collation_id);
     }
 
   pr_clear_value (&dbval1);
@@ -884,7 +885,7 @@ qfile_print_tuple (QFILE_TUPLE_VALUE_TYPE_LIST * type_list_p, QFILE_TUPLE tuple)
 	  or_init (&buf, tuple_p + QFILE_TUPLE_VALUE_HEADER_SIZE, QFILE_GET_TUPLE_VALUE_LENGTH (tuple_p));
 	  (*(pr_type_p->readval)) (&buf, &dbval, type_list_p->domp[i], -1, true, NULL, 0);
 
-	  (*(pr_type_p->fptrfunc)) (NULL, stdout, &dbval);
+	  db_fprint_value (stdout, &dbval);
 	  if (pr_is_set_type (pr_type_p->id))
 	    {
 	      pr_clear_value (&dbval);
@@ -946,7 +947,7 @@ qfile_set_dirty_page_and_skip_logging (THREAD_ENTRY * thread_p, PAGE_PTR page_p,
  * xasl_header_p (out) : pointer to XASL node header
  */
 void
-qfile_load_xasl_node_header (THREAD_ENTRY * thread_p, char *xasl_stream, XASL_NODE_HEADER * xasl_header_p)
+qfile_load_xasl_node_header (THREAD_ENTRY * thread_p, char *xasl_stream, xasl_node_header * xasl_header_p)
 {
   if (xasl_header_p == NULL)
     {
@@ -1278,7 +1279,7 @@ qfile_allocate_new_page (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, PAG
   QFILE_PUT_TUPLE_COUNT (new_page_p, 0);
   QFILE_PUT_PREV_VPID (new_page_p, &list_id_p->last_vpid);
 
-  /* 
+  /*
    * For streaming query support, set next_vpid differently
    */
   if (is_ovf_page)
@@ -1338,7 +1339,7 @@ qfile_allocate_new_ovf_page (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
   QFILE_PUT_OVERFLOW_TUPLE_PAGE_SIZE (new_page_p, *tuple_page_size_p);
   QFILE_PUT_OVERFLOW_VPID_NULL (new_page_p);
 
-  /* 
+  /*
    * connect the previous page to this page and free,
    * if it is not the first page
    */
@@ -1798,14 +1799,14 @@ qfile_fast_intval_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
   else
     {
       DB_TYPE dbval_type = DB_VALUE_DOMAIN_TYPE (v2);
-      PR_TYPE *pr_type = PR_TYPE_FROM_ID (dbval_type);
+      PR_TYPE *pr_type = pr_type_from_id (dbval_type);
       OR_BUF buf;
 
       QFILE_PUT_TUPLE_VALUE_FLAG (tuple_p, V_BOUND);
       QFILE_PUT_TUPLE_VALUE_LENGTH (tuple_p, tuple_value_size);
 
       OR_BUF_INIT (buf, tuple_p + QFILE_TUPLE_VALUE_HEADER_SIZE, tuple_value_size);
-      if (pr_type == NULL || (*(pr_type->data_writeval)) (&buf, v2) != NO_ERROR)
+      if (pr_type == NULL || pr_type->data_writeval (&buf, v2) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -1877,14 +1878,14 @@ qfile_fast_val_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p
   else
     {
       DB_TYPE dbval_type = DB_VALUE_DOMAIN_TYPE (val);
-      PR_TYPE *pr_type = PR_TYPE_FROM_ID (dbval_type);
+      PR_TYPE *pr_type = pr_type_from_id (dbval_type);
       OR_BUF buf;
 
       QFILE_PUT_TUPLE_VALUE_FLAG (tuple_p, V_BOUND);
       QFILE_PUT_TUPLE_VALUE_LENGTH (tuple_p, tuple_value_size);
 
       OR_BUF_INIT (buf, tuple_p + QFILE_TUPLE_VALUE_HEADER_SIZE, tuple_value_size);
-      if (pr_type == NULL || (*(pr_type->data_writeval)) (&buf, val) != NO_ERROR)
+      if (pr_type == NULL || pr_type->data_writeval (&buf, val) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -2902,7 +2903,7 @@ qfile_reallocate_tuple (QFILE_TUPLE_RECORD * tuple_record_p, int tuple_size)
     }
   else
     {
-      /* 
+      /*
        * Don't leak the original tuple if we get a malloc failure!
        */
       tuple = (QFILE_TUPLE) db_private_realloc (NULL, tuple_record_p->tpl, tuple_size);
@@ -3026,7 +3027,7 @@ qfile_make_sort_key (THREAD_ENTRY * thread_p, SORTKEY_INFO * key_info_p, RECDES 
 	      memcpy (data, field_data, QFILE_TUPLE_VALUE_HEADER_SIZE + field_length);
 	    }
 
-	  /* 
+	  /*
 	   * Always pretend that we copied the data, even if we didn't.
 	   * That will allow us to find out how big the record really needs
 	   * to be.
@@ -3067,7 +3068,7 @@ qfile_make_sort_key (THREAD_ENTRY * thread_p, SORTKEY_INFO * key_info_p, RECDES 
 		  sort_record_p->s.offset[i] = offset;
 		  memcpy (data, field_data, QFILE_TUPLE_VALUE_HEADER_SIZE + field_length);
 		}
-	      /* 
+	      /*
 	       * Always pretend that we copied the data, even if we didn't.
 	       * That will allow us to find out how big the record really
 	       * needs to be.
@@ -3296,7 +3297,7 @@ qfile_put_next_sort_item (THREAD_ENTRY * thread_p, const RECDES * recdes_p, void
 	  QFILE_GET_OVERFLOW_VPID (&vpid, page_p);
 	  if (vpid.pageid == NULL_PAGEID)
 	    {
-	      /* 
+	      /*
 	       * This is the normal case of a non-overflow tuple.  We can use
 	       * the page image directly, since we know that the tuple resides
 	       * entirely on that page.
@@ -3308,7 +3309,7 @@ qfile_put_next_sort_item (THREAD_ENTRY * thread_p, const RECDES * recdes_p, void
 	    {
 	      assert (NULL_PAGEID < vpid.pageid);	/* should not be NULL_PAGEID_IN_PROGRESS */
 
-	      /* 
+	      /*
 	       * Rats; this tuple requires overflow pages.  We need to copy
 	       * all of the pages from the input file to the output file.
 	       */
@@ -3333,7 +3334,7 @@ qfile_put_next_sort_item (THREAD_ENTRY * thread_p, const RECDES * recdes_p, void
 	    {
 	      if (key_p->s.offset[i] != 0)
 		{
-		  /* 
+		  /*
 		   * Remember, the offset[] value points to the start of the
 		   * value's *data* (i.e., after the valflag/vallen nonsense),
 		   * and is measured from the start of the sort_rec.
@@ -3358,7 +3359,7 @@ qfile_put_next_sort_item (THREAD_ENTRY * thread_p, const RECDES * recdes_p, void
 	    {
 	      /* BIG QFILE_TUPLE */
 
-	      /* 
+	      /*
 	       * We didn't record the original vpid, and we should just
 	       * reconstruct the original record from this sort key (rather
 	       * than pressure the page buffer pool by reading in the original
@@ -3580,7 +3581,7 @@ qfile_get_estimated_pages_for_sorting (QFILE_LIST_ID * list_id_p, SORTKEY_INFO *
     {
       /* P_sort_key */
 
-      /* 
+      /*
        * Every Part sort key record will have one int of overhead
        * per field in the key (for the offset vector).
        */
@@ -3591,7 +3592,7 @@ qfile_get_estimated_pages_for_sorting (QFILE_LIST_ID * list_id_p, SORTKEY_INFO *
     {
       /* A_sort_key */
 
-      /* 
+      /*
        * Every Part sort key record will have one int of overhead
        * per field in the key (for the offset vector).
        */
@@ -3663,11 +3664,11 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p, Q
 
 	  if (p->pos_descr.dom->type->id == DB_TYPE_VARIABLE)
 	    {
-	      subkey->sort_f = types->domp[i]->type->data_cmpdisk;
+	      subkey->sort_f = types->domp[i]->type->get_data_cmpdisk_function ();
 	    }
 	  else
 	    {
-	      subkey->sort_f = p->pos_descr.dom->type->data_cmpdisk;
+	      subkey->sort_f = p->pos_descr.dom->type->get_data_cmpdisk_function ();
 	    }
 
 	  subkey->is_desc = (p->s_order == S_ASC) ? 0 : 1;
@@ -3694,7 +3695,7 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p, Q
 	  subkey->col_dom = types->domp[i];
 	  subkey->cmp_dom = NULL;
 	  subkey->use_cmp_dom = false;
-	  subkey->sort_f = types->domp[i]->type->data_cmpdisk;
+	  subkey->sort_f = types->domp[i]->type->get_data_cmpdisk_function ();
 	  subkey->is_desc = 0;
 	  subkey->is_nulls_first = 1;
 	}
@@ -5135,7 +5136,7 @@ qfile_free_list_cache_entry (THREAD_ENTRY * thread_p, void *data, void *args)
       return ER_FAILED;
     }
 
-  /* 
+  /*
    * Clear out parameter values. (DB_VALUE containers)
    * Remind that the parameter values are cloned in global heap context(0)
    */
@@ -5203,7 +5204,7 @@ qfile_print_list_cache_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *ke
   for (i = 0; i < ent->param_values.size; i++)
     {
       fprintf (fp, " ");
-      help_fprint_value (thread_p, fp, &ent->param_values.vals[i]);
+      db_fprint_value (fp, &ent->param_values.vals[i]);
     }
 
   fprintf (fp, " ]\n");
@@ -5480,7 +5481,7 @@ qfile_delete_list_cache_entry (THREAD_ENTRY * thread_p, void *data, void *args)
 
 	      if (lent->param_values.size > 0)
 		{
-		  s = pr_valstring (thread_p, &lent->param_values.vals[0]);
+		  s = pr_valstring (&lent->param_values.vals[0]);
 		}
 
 	      er_log_debug (ARG_FILE_LINE,
@@ -5839,7 +5840,7 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr, con
   tran_isolation = logtb_find_isolation (tran_index);
 #endif /* SERVER_MODE */
 
-  /* 
+  /*
    * The other competing thread which is running the same query
    * already updated this entry after that this and the thread had failed
    * to find the query in the cache.
@@ -5979,7 +5980,7 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr, con
       /* select more victims if insufficient */
       if (k < qfile_List_cache_candidate.num_victims)
 	{
-	  /* 
+	  /*
 	   * The above victim selection algorithm is not completed yet.
 	   * Two double linked lists for list cache entries are needed to
 	   * implement the algorithm efficiently. One for creation time, and
@@ -6045,7 +6046,7 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr, con
   lent->param_values.size = params->size;
   lent->param_values.vals = qfile_get_list_cache_entry_param_values (lent);
 
-  /* 
+  /*
    * Copy parameter values. (DB_VALUE containers)
    * Changing private heap to the global one (0, malloc/free) is
    * needed because cloned db values last beyond request processing time
@@ -6101,7 +6102,7 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int *list_ht_no_ptr, con
     {
       char *s;
 
-      s = ((lent->param_values.size > 0) ? pr_valstring (thread_p, &lent->param_values.vals[0]) : NULL);
+      s = ((lent->param_values.size > 0) ? pr_valstring (&lent->param_values.vals[0]) : NULL);
       er_log_debug (ARG_FILE_LINE, "ls_update_list_cache_ent: mht_rem failed for param_values { %d %s ...}\n",
 		    lent->param_values.size, s ? s : "(null)");
       if (s)
@@ -6340,7 +6341,7 @@ qfile_has_next_page (PAGE_PTR page_p)
  *
  */
 int
-qfile_update_domains_on_type_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, VALPTR_LIST * valptr_list_p)
+qfile_update_domains_on_type_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, valptr_list_node * valptr_list_p)
 {
   REGU_VARIABLE_LIST reg_var_p;
   int i, count = 0;
@@ -6473,7 +6474,7 @@ qfile_set_tuple_column_value (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p
 	{
 	  OR_BUF_INIT (buf, ptr, length);
 
-	  if ((*(pr_type->data_writeval)) (&buf, value_p) != NO_ERROR)
+	  if (pr_type->data_writeval (&buf, value_p) != NO_ERROR)
 	    {
 	      error = ER_FAILED;
 	      goto cleanup;
@@ -6512,7 +6513,7 @@ qfile_set_tuple_column_value (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p
 	{
 	  OR_BUF_INIT (buf, ptr, length);
 
-	  if ((*(pr_type->data_writeval)) (&buf, value_p) != NO_ERROR)
+	  if (pr_type->data_writeval (&buf, value_p) != NO_ERROR)
 	    {
 	      error = ER_FAILED;
 	      goto cleanup;
@@ -6659,8 +6660,8 @@ qfile_compare_with_interpolation_domain (char *fp0, char *fp1, SUBKEY_INFO * sub
 
       OR_BUF_INIT (buf0, d0, QFILE_GET_TUPLE_VALUE_LENGTH (fp0));
       error =
-	(subkey->col_dom->type->data_readval) (&buf0, &val0, subkey->col_dom, QFILE_GET_TUPLE_VALUE_LENGTH (fp0), false,
-					       NULL, 0);
+	subkey->col_dom->type->data_readval (&buf0, &val0, subkey->col_dom, QFILE_GET_TUPLE_VALUE_LENGTH (fp0), false,
+					     NULL, 0);
       if (error != NO_ERROR || DB_IS_NULL (&val0))
 	{
 	  goto end;
@@ -6685,16 +6686,16 @@ qfile_compare_with_interpolation_domain (char *fp0, char *fp1, SUBKEY_INFO * sub
   OR_BUF_INIT (buf0, d0, QFILE_GET_TUPLE_VALUE_LENGTH (fp0));
   OR_BUF_INIT (buf1, d1, QFILE_GET_TUPLE_VALUE_LENGTH (fp1));
   error =
-    (subkey->col_dom->type->data_readval) (&buf0, &val0, subkey->col_dom, QFILE_GET_TUPLE_VALUE_LENGTH (fp0), false,
-					   NULL, 0);
+    subkey->col_dom->type->data_readval (&buf0, &val0, subkey->col_dom, QFILE_GET_TUPLE_VALUE_LENGTH (fp0), false,
+					 NULL, 0);
   if (error != NO_ERROR)
     {
       goto end;
     }
 
   error =
-    (subkey->col_dom->type->data_readval) (&buf1, &val1, subkey->col_dom, QFILE_GET_TUPLE_VALUE_LENGTH (fp1), false,
-					   NULL, 0);
+    subkey->col_dom->type->data_readval (&buf1, &val1, subkey->col_dom, QFILE_GET_TUPLE_VALUE_LENGTH (fp1), false,
+					 NULL, 0);
   if (error != NO_ERROR)
     {
       goto end;

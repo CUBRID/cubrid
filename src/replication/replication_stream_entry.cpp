@@ -67,8 +67,8 @@ namespace cubreplication
     assert (m_header.mvccid != MVCCID_NULL);
 
     m_header.count_replication_entries = (int) m_packable_entries.size ();
-    serializator->pack_bigint (&m_header.prev_record);
-    serializator->pack_bigint (&m_header.mvccid);
+    serializator->pack_bigint (m_header.prev_record);
+    serializator->pack_bigint (m_header.mvccid);
 
     assert ((m_header.count_replication_entries & stream_entry_header::COUNT_VALUE_MASK)
 	    == m_header.count_replication_entries);
@@ -86,19 +86,19 @@ namespace cubreplication
 
   int stream_entry::unpack_stream_entry_header ()
   {
-    cubpacking::packer *serializator = get_packer ();
+    cubpacking::unpacker *serializator = get_unpacker ();
     unsigned int count_and_flags;
     unsigned int state_flags;
 
-    serializator->unpack_bigint (&m_header.prev_record);
-    serializator->unpack_bigint (&m_header.mvccid);
-    serializator->unpack_int ((int *) &count_and_flags);
+    serializator->unpack_bigint (m_header.prev_record);
+    serializator->unpack_bigint (m_header.mvccid);
+    serializator->unpack_int (reinterpret_cast<int &> (count_and_flags)); // is this safe?s
 
     state_flags = (count_and_flags & stream_entry_header::STATE_MASK) >> (32 - stream_entry_header::STATE_BITS);
     m_header.tran_state = (stream_entry_header::TRAN_STATE) state_flags;
 
     m_header.count_replication_entries = count_and_flags & stream_entry_header::COUNT_VALUE_MASK;
-    serializator->unpack_int (&m_header.data_size);
+    serializator->unpack_int (m_header.data_size);
 
     return NO_ERROR;
   }

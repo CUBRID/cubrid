@@ -1332,7 +1332,7 @@ extern char *or_unpack_date (char *ptr, DB_DATE * date);
 extern char *or_unpack_monetary (char *ptr, DB_MONETARY * money);
 extern char *or_unpack_utime (char *ptr, DB_UTIME * utime);
 #endif
-extern char *or_unpack_stream (char *ptr, char *stream, size_t len);
+extern char *or_unpack_stream (const char *ptr, char *stream, size_t len);
 extern char *or_unpack_string (char *ptr, char **string);
 extern char *or_unpack_string_alloc (char *ptr, char **string);
 extern char *or_unpack_string_nocopy (char *ptr, char **string);
@@ -1505,7 +1505,8 @@ extern SETOBJ *or_get_set (OR_BUF * buf, struct tp_domain *domain);
 extern int or_disk_set_size (OR_BUF * buf, struct tp_domain *domain, DB_TYPE * set_type);
 
 /* DB_VALUE functions */
-extern int or_packed_value_size (DB_VALUE * value, int collapse_null, int include_domain, int include_domain_classoids);
+extern int or_packed_value_size (const DB_VALUE * value, int collapse_null, int include_domain,
+				 int include_domain_classoids);
 
 extern int or_put_value (OR_BUF * buf, DB_VALUE * value, int collapse_null, int include_domain,
 			 int include_domain_classoids);
@@ -1514,7 +1515,7 @@ extern int or_get_value (OR_BUF * buf, DB_VALUE * value, struct tp_domain *domai
 
 extern char *or_pack_value (char *buf, DB_VALUE * value);
 extern char *or_pack_mem_value (char *ptr, DB_VALUE * value, int *packed_len_except_alignment);
-extern char *or_unpack_value (char *buf, DB_VALUE * value);
+extern char *or_unpack_value (const char *buf, DB_VALUE * value);
 extern char *or_unpack_mem_value (char *buf, DB_VALUE * value);
 
 extern int or_packed_enumeration_size (const DB_ENUMERATION * e);
@@ -1579,9 +1580,9 @@ or_get_string_size_byte (OR_BUF * buf, int *error)
   return size_prefix;
 }
 
-/* or_get_varchar_compression_lengths() - Function to get the compressed length and the uncompressed length of 
+/* or_get_varchar_compression_lengths() - Function to get the compressed length and the uncompressed length of
  *					  a compressed string.
- * 
+ *
  * return                 : NO_ERROR or error_code.
  * buf(in)                : The buffer where the string is stored.
  * compressed_size(out)   : The compressed size of the string. Set to 0 if the string was not compressed.

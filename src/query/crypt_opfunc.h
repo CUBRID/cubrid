@@ -18,7 +18,7 @@
  */
 
 /*
- *	Crypt_opfunc.h: 
+ *	Crypt_opfunc.h:
  */
 
 #ifndef _CRYPT_OPFUNC_H_

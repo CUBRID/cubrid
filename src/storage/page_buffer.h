@@ -30,10 +30,11 @@
 #include "config.h"
 
 #include "error_manager.h"
-#include "storage_common.h"
 #include "disk_manager.h"
 #include "lock_manager.h"
+#include "mem_block.hpp"
 #include "perf_monitor.h"
+#include "storage_common.h"
 
 #define FREE			true	/* Free page buffer */
 #define DONT_FREE		false	/* Don't free the page buffer */
@@ -157,10 +158,10 @@ extern const VPID vpid_Null_vpid;
 
 typedef enum
 {
-  OLD_PAGE = 0,			/* Fetch page that should be allocated and already existing either in page buffer or on 
+  OLD_PAGE = 0,			/* Fetch page that should be allocated and already existing either in page buffer or on
 				 * disk. Must pass validation test and must be fixed from disk if it doesn't exist in
 				 * buffer. */
-  NEW_PAGE,			/* Fetch newly allocated page. Must pass validation test but it can be created directly 
+  NEW_PAGE,			/* Fetch newly allocated page. Must pass validation test but it can be created directly
 				 * in buffer without fixing from disk. */
   OLD_PAGE_IF_IN_BUFFER,	/* Fetch existing page only if is valid and if it exists in page buffer. Page may be
 				 * deallocated or flushed and invalidated from buffer, in which case fixing page is not
@@ -231,6 +232,11 @@ struct pgbuf_watcher
   char init_at[256];
 #endif
 };
+
+// *INDENT-OFF*
+using pgbuf_aligned_buffer = cubmem::stack_block<(size_t) IO_MAX_PAGE_SIZE>;
+using pgbuf_resizable_buffer = cubmem::extensible_stack_block<(size_t) IO_MAX_PAGE_SIZE>;
+// *INDENT-ON*
 
 extern HFID *pgbuf_ordered_null_hfid;
 

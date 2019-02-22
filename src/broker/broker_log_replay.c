@@ -723,6 +723,10 @@ get_cci_type (char *p)
     {
       type = CCI_U_TYPE_ENUM;
     }
+  else if (strcmp (p, "JSON") == 0)
+    {
+      type = CCI_U_TYPE_JSON;
+    }
   else
     {
       type = -1;
@@ -934,7 +938,7 @@ get_sql_time_info (char *sql_log, T_SQL_INFO * info)
 static void
 update_diff_time_statistics (double diff_time)
 {
-  /* 
+  /*
    * we save count of query witch have specific diff time
    * to use when order with diff time
    */
@@ -1333,7 +1337,7 @@ print_result_with_sort (FILE * outfp, int print_diff_time_lower, int num_query, 
 	}
       else
 	{
-	  /* 
+	  /*
 	   * if sql's diff time is shorter than diff_time_lower,
 	   * write in next temp file. it will be read next time.
 	   */
@@ -1406,7 +1410,7 @@ print_result (FILE * outfp, double max_diff_time, double min_diff_time, int temp
 	    {
 	      return;
 	    }
-	  /* 
+	  /*
 	   * we don't sort last diff time query to avoid ordering size excess SORT_BUF_SIZE
 	   * in genaral, many sql have same diff time. so, this help decrease needless sorting
 	   */

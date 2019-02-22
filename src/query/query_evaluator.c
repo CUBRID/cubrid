@@ -34,6 +34,7 @@
 #include "fetch.h"
 #include "list_file.h"
 #include "object_primitive.h"
+#include "regu_var.h"
 #include "set_object.h"
 #include "xasl.h"
 #include "dbtype.h"
@@ -46,7 +47,7 @@
 static DB_LOGICAL eval_negative (DB_LOGICAL res);
 static DB_LOGICAL eval_logical_result (DB_LOGICAL res1, DB_LOGICAL res2);
 static DB_LOGICAL eval_value_rel_cmp (DB_VALUE * dbval1, DB_VALUE * dbval2, REL_OP rel_operator,
-				      COMP_EVAL_TERM * et_comp);
+				      const COMP_EVAL_TERM * et_comp);
 static DB_LOGICAL eval_some_eval (DB_VALUE * item, DB_SET * set, REL_OP rel_operator);
 static DB_LOGICAL eval_all_eval (DB_VALUE * item, DB_SET * set, REL_OP rel_operator);
 static int eval_item_card_set (DB_VALUE * item, DB_SET * set, REL_OP rel_operator);
@@ -79,7 +80,7 @@ static DB_LOGICAL eval_sort_list_to_multi_set (THREAD_ENTRY * thread_p, QFILE_LI
 					       REL_OP rel_operator);
 static DB_LOGICAL eval_sort_list_to_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id1,
 					       QFILE_LIST_ID * list_id2, REL_OP rel_operator);
-static DB_LOGICAL eval_set_list_cmp (THREAD_ENTRY * thread_p, COMP_EVAL_TERM * et_comp, VAL_DESCR * vd,
+static DB_LOGICAL eval_set_list_cmp (THREAD_ENTRY * thread_p, const COMP_EVAL_TERM * et_comp, val_descr * vd,
 				     DB_VALUE * dbval1, DB_VALUE * dbval2);
 
 /*
@@ -144,14 +145,14 @@ eval_logical_result (DB_LOGICAL res1, DB_LOGICAL res2)
  *   et_comp(in): compound evaluation term
  */
 static DB_LOGICAL
-eval_value_rel_cmp (DB_VALUE * dbval1, DB_VALUE * dbval2, REL_OP rel_operator, COMP_EVAL_TERM * et_comp)
+eval_value_rel_cmp (DB_VALUE * dbval1, DB_VALUE * dbval2, REL_OP rel_operator, const COMP_EVAL_TERM * et_comp)
 {
   int result;
   bool comparable = true;
   DB_TYPE vtype1, vtype2;
   TP_DOMAIN *dom;
 
-  /* 
+  /*
    * we get here for either an ordinal comparison or a set comparison.
    * Set comparisons are R_SUBSET, R_SUBSETEQ, R_SUPERSET, R_SUPSERSETEQ.
    * All others are ordinal comparisons.
@@ -400,7 +401,7 @@ eval_all_eval (DB_VALUE * item, DB_SET * set, REL_OP rel_operator)
 {
   DB_LOGICAL some_res;
 
-  /* 
+  /*
    * use the some quantifier first on a negated relational operator
    * then find the result boolean value for the all quantifier
    */
@@ -576,7 +577,7 @@ eval_some_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * l
 	{
 	  OR_BUF_INIT (buf, ptr, length);
 
-	  if ((*(pr_type->data_readval)) (&buf, &list_val, list_id->type_list.domp[0], -1, true, NULL, 0) != NO_ERROR)
+	  if (pr_type->data_readval (&buf, &list_val, list_id->type_list.domp[0], -1, true, NULL, 0) != NO_ERROR)
 	    {
 	      qfile_close_scan (thread_p, &s_id);
 	      return V_ERROR;
@@ -718,7 +719,7 @@ eval_item_card_sort_list (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_I
 
       OR_BUF_INIT (buf, ptr, length);
 
-      (*(pr_type->data_readval)) (&buf, &list_val, list_id->type_list.domp[0], -1, true, NULL, 0);
+      pr_type->data_readval (&buf, &list_val, list_id->type_list.domp[0], -1, true, NULL, 0);
 
       rc = eval_value_rel_cmp (item, &list_val, R_LT, NULL);
       if (rc == V_ERROR)
@@ -947,7 +948,7 @@ eval_sub_sort_list_to_multi_set (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 
       OR_BUF_INIT (buf, ptr, length);
 
-      (*(pr_type->data_readval)) (&buf, &list_val, list_id->type_list.domp[0], -1, true, NULL, 0);
+      pr_type->data_readval (&buf, &list_val, list_id->type_list.domp[0], -1, true, NULL, 0);
 
       if (list_on == true)
 	{
@@ -955,7 +956,7 @@ eval_sub_sort_list_to_multi_set (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 
 	  or_init (&buf, p_tplp + QFILE_TUPLE_VALUE_HEADER_SIZE, QFILE_GET_TUPLE_VALUE_LENGTH (p_tplp));
 
-	  (*(pr_type->data_readval)) (&buf, &list_val2, list_id->type_list.domp[0], -1, true, NULL, 0);
+	  pr_type->data_readval (&buf, &list_val2, list_id->type_list.domp[0], -1, true, NULL, 0);
 
 	  rc = eval_value_rel_cmp (&list_val, &list_val2, R_EQ, NULL);
 	  if (rc == V_ERROR)
@@ -1015,7 +1016,7 @@ eval_sub_sort_list_to_multi_set (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 
       or_init (&buf, p_tplp + QFILE_TUPLE_VALUE_HEADER_SIZE, QFILE_GET_TUPLE_VALUE_LENGTH (p_tplp));
 
-      (*(pr_type->data_readval)) (&buf, &list_val2, list_id->type_list.domp[0], -1, true, NULL, 0);
+      pr_type->data_readval (&buf, &list_val2, list_id->type_list.domp[0], -1, true, NULL, 0);
 
       card2 = eval_item_card_set (&list_val2, set, R_EQ);
       if (card2 == ER_FAILED)
@@ -1123,7 +1124,7 @@ eval_sub_sort_list_to_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 
       OR_BUF_INIT (buf, ptr, length);
 
-      (*(pr_type->data_readval)) (&buf, &list_val, list_id1->type_list.domp[0], -1, true, NULL, 0);
+      pr_type->data_readval (&buf, &list_val, list_id1->type_list.domp[0], -1, true, NULL, 0);
 
       if (list_on == true)
 	{
@@ -1131,7 +1132,7 @@ eval_sub_sort_list_to_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 
 	  or_init (&buf, p_tplp + QFILE_TUPLE_VALUE_HEADER_SIZE, QFILE_GET_TUPLE_VALUE_LENGTH (p_tplp));
 
-	  (*(pr_type->data_readval)) (&buf, &list_val2, list_id1->type_list.domp[0], -1, true, NULL, 0);
+	  pr_type->data_readval (&buf, &list_val2, list_id1->type_list.domp[0], -1, true, NULL, 0);
 
 	  rc = eval_value_rel_cmp (&list_val, &list_val2, R_EQ, NULL);
 
@@ -1192,7 +1193,7 @@ eval_sub_sort_list_to_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 
       or_init (&buf, p_tplp + QFILE_TUPLE_VALUE_HEADER_SIZE, QFILE_GET_TUPLE_VALUE_LENGTH (p_tplp));
 
-      if ((*(pr_type->data_readval)) (&buf, &list_val2, list_id1->type_list.domp[0], -1, true, NULL, 0) != NO_ERROR)
+      if (pr_type->data_readval (&buf, &list_val2, list_id1->type_list.domp[0], -1, true, NULL, 0) != NO_ERROR)
 	{
 	  res = V_ERROR;
 	  goto end;
@@ -1521,7 +1522,7 @@ eval_sort_list_to_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id1, 
  * Note: Perform set/set, set/list, and list/list comparisons.
  */
 static DB_LOGICAL
-eval_set_list_cmp (THREAD_ENTRY * thread_p, COMP_EVAL_TERM * et_comp, VAL_DESCR * vd, DB_VALUE * dbval1,
+eval_set_list_cmp (THREAD_ENTRY * thread_p, const COMP_EVAL_TERM * et_comp, val_descr * vd, DB_VALUE * dbval1,
 		   DB_VALUE * dbval2)
 {
   QFILE_LIST_ID *t_list_id;
@@ -1536,7 +1537,7 @@ eval_set_list_cmp (THREAD_ENTRY * thread_p, COMP_EVAL_TERM * et_comp, VAL_DESCR 
 	  return V_ERROR;
 	}
 
-      /* 
+      /*
        * lhs value refers to a list file. for efficiency reasons
        * first sort the list file
        */
@@ -1564,7 +1565,7 @@ eval_set_list_cmp (THREAD_ENTRY * thread_p, COMP_EVAL_TERM * et_comp, VAL_DESCR 
 	      return V_ERROR;
 	    }
 
-	  /* 
+	  /*
 	   * rhs value refers to a list file. for efficiency reasons
 	   * first sort the list file
 	   */
@@ -1601,7 +1602,7 @@ eval_set_list_cmp (THREAD_ENTRY * thread_p, COMP_EVAL_TERM * et_comp, VAL_DESCR 
 	  return V_ERROR;
 	}
 
-      /* 
+      /*
        * rhs value refers to a list file. for efficiency reasons
        * first sort the list file
        */
@@ -1645,15 +1646,15 @@ eval_set_list_cmp (THREAD_ENTRY * thread_p, COMP_EVAL_TERM * et_comp, VAL_DESCR 
  *              necessary error code is set and V_ERROR is returned.
  */
 DB_LOGICAL
-eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * obj_oid)
+eval_pred (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * obj_oid)
 {
-  COMP_EVAL_TERM *et_comp;
-  ALSM_EVAL_TERM *et_alsm;
-  LIKE_EVAL_TERM *et_like;
+  const COMP_EVAL_TERM *et_comp;
+  const ALSM_EVAL_TERM *et_alsm;
+  const LIKE_EVAL_TERM *et_like;
   DB_VALUE *peek_val1, *peek_val2, *peek_val3;
   DB_LOGICAL result = V_UNKNOWN;
   int regexp_res;
-  PRED_EXPR *t_pr;
+  const pred_expr *t_pr;
   QFILE_SORTED_LIST_ID *srlist_id;
 
   peek_val1 = NULL;
@@ -1800,7 +1801,7 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * obj_oi
       switch (pr->pe.eval_term.et_type)
 	{
 	case T_COMP_EVAL_TERM:
-	  /* 
+	  /*
 	   * compound evaluation terms are used to test relationships
 	   * such as equality, greater than etc. between two items
 	   * Each datatype defines its own meaning of relationship
@@ -1861,7 +1862,7 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * obj_oi
 	      break;
 	    }
 
-	  /* 
+	  /*
 	   * fetch left hand size and right hand size values, if one of
 	   * values are unbound, result = V_UNKNOWN
 	   */
@@ -1905,7 +1906,7 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * obj_oi
 	    }
 	  else
 	    {
-	      /* 
+	      /*
 	       * general case: compare values, db_value_compare will
 	       * take care of any coercion necessary.
 	       */
@@ -1920,7 +1921,7 @@ eval_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * obj_oi
 
 	    et_alsm = &pr->pe.eval_term.et.et_alsm;
 
-	    /* 
+	    /*
 	     * Note: According to ANSI, if the set or list file is empty,
 	     * the result of comparison is true/false for ALL/SOME,
 	     * regardless of whether lhs value is bound or not.
@@ -2094,9 +2095,9 @@ exit:
  * Note: single node regular comparison predicate
  */
 DB_LOGICAL
-eval_pred_comp0 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * obj_oid)
+eval_pred_comp0 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * obj_oid)
 {
-  COMP_EVAL_TERM *et_comp;
+  const COMP_EVAL_TERM *et_comp;
   DB_VALUE *peek_val1, *peek_val2;
 
   peek_val1 = NULL;
@@ -2104,7 +2105,7 @@ eval_pred_comp0 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * 
 
   et_comp = &pr->pe.eval_term.et.et_comp;
 
-  /* 
+  /*
    * fetch left hand size and right hand size values, if one of
    * values are unbound, return V_UNKNOWN
    */
@@ -2126,7 +2127,7 @@ eval_pred_comp0 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * 
       return V_UNKNOWN;
     }
 
-  /* 
+  /*
    * general case: compare values, db_value_compare will
    * take care of any coercion necessary.
    */
@@ -2143,9 +2144,9 @@ eval_pred_comp0 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * 
  * Note: single leaf node NULL predicate
  */
 DB_LOGICAL
-eval_pred_comp1 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * obj_oid)
+eval_pred_comp1 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * obj_oid)
 {
-  COMP_EVAL_TERM *et_comp;
+  const COMP_EVAL_TERM *et_comp;
   DB_VALUE *peek_val1;
 
   peek_val1 = NULL;
@@ -2182,9 +2183,9 @@ eval_pred_comp1 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * 
  * Note: single node EXIST predicate
  */
 DB_LOGICAL
-eval_pred_comp2 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * obj_oid)
+eval_pred_comp2 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * obj_oid)
 {
-  COMP_EVAL_TERM *et_comp;
+  const COMP_EVAL_TERM *et_comp;
   DB_VALUE *peek_val1;
 
   peek_val1 = NULL;
@@ -2239,9 +2240,9 @@ eval_pred_comp2 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * 
  * Note: single node lhs or rhs list file predicate
  */
 DB_LOGICAL
-eval_pred_comp3 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * obj_oid)
+eval_pred_comp3 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * obj_oid)
 {
-  COMP_EVAL_TERM *et_comp;
+  const COMP_EVAL_TERM *et_comp;
   DB_VALUE *peek_val1, *peek_val2;
 
   peek_val1 = NULL;
@@ -2249,7 +2250,7 @@ eval_pred_comp3 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * 
 
   et_comp = &pr->pe.eval_term.et.et_comp;
 
-  /* 
+  /*
    * fetch left hand size and right hand size values, if one of
    * values are unbound, result = V_UNKNOWN
    */
@@ -2297,9 +2298,9 @@ eval_pred_comp3 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * 
  * Note: single node all/some predicate with a set
  */
 DB_LOGICAL
-eval_pred_alsm4 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * obj_oid)
+eval_pred_alsm4 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * obj_oid)
 {
-  ALSM_EVAL_TERM *et_alsm;
+  const ALSM_EVAL_TERM *et_alsm;
   DB_VALUE *peek_val1, *peek_val2;
 
   peek_val1 = NULL;
@@ -2307,7 +2308,7 @@ eval_pred_alsm4 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * 
 
   et_alsm = &pr->pe.eval_term.et.et_alsm;
 
-  /* 
+  /*
    * Note: According to ANSI, if the set or list file is empty,
    *       the result of comparison is true/false for ALL/SOME,
    *       regardles of whether lhs value is bound or not.
@@ -2363,9 +2364,9 @@ eval_pred_alsm4 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * 
  * Note: single node all/some  predicate with a list file
  */
 DB_LOGICAL
-eval_pred_alsm5 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * obj_oid)
+eval_pred_alsm5 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * obj_oid)
 {
-  ALSM_EVAL_TERM *et_alsm;
+  const ALSM_EVAL_TERM *et_alsm;
   DB_VALUE *peek_val1;
   QFILE_SORTED_LIST_ID *srlist_id;
 
@@ -2380,7 +2381,7 @@ eval_pred_alsm5 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * 
       return V_ERROR;
     }
 
-  /* 
+  /*
    * Note: According to ANSI, if the set or list file is empty,
    *       the result of comparison is true/false for ALL/SOME,
    *       regardless of whether lhs value is bound or not.
@@ -2421,9 +2422,9 @@ eval_pred_alsm5 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * 
  * Note: single node like predicate
  */
 DB_LOGICAL
-eval_pred_like6 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * obj_oid)
+eval_pred_like6 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * obj_oid)
 {
-  LIKE_EVAL_TERM *et_like;
+  const LIKE_EVAL_TERM *et_like;
   DB_VALUE *peek_val1, *peek_val2, *peek_val3;
   int regexp_res;
 
@@ -2479,9 +2480,9 @@ eval_pred_like6 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * 
  * Note: single node like predicate
  */
 DB_LOGICAL
-eval_pred_rlike7 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID * obj_oid)
+eval_pred_rlike7 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * obj_oid)
 {
-  RLIKE_EVAL_TERM *et_rlike;
+  const RLIKE_EVAL_TERM *et_rlike;
   DB_VALUE *peek_val1, *peek_val2, *peek_val3;
   int regexp_res;
 
@@ -2535,10 +2536,12 @@ eval_pred_rlike7 (THREAD_ENTRY * thread_p, PRED_EXPR * pr, VAL_DESCR * vd, OID *
  *   single_node_type(in):
  */
 PR_EVAL_FNC
-eval_fnc (THREAD_ENTRY * thread_p, PRED_EXPR * pr, DB_TYPE * single_node_type)
+eval_fnc (THREAD_ENTRY * thread_p, const pred_expr * pr, DB_TYPE * single_node_type)
 {
-  COMP_EVAL_TERM *et_comp;
-  ALSM_EVAL_TERM *et_alsm;
+  // todo - thread_p is never used
+
+  const COMP_EVAL_TERM *et_comp;
+  const ALSM_EVAL_TERM *et_alsm;
 
   *single_node_type = DB_TYPE_NULL;
   if (pr == NULL)
@@ -2553,7 +2556,7 @@ eval_fnc (THREAD_ENTRY * thread_p, PRED_EXPR * pr, DB_TYPE * single_node_type)
 	case T_COMP_EVAL_TERM:
 	  et_comp = &pr->pe.eval_term.et.et_comp;
 
-	  /* 
+	  /*
 	   * et_comp->type can be DB_TYPE_NULL,
 	   * in the case of positional variables
 	   */
@@ -2578,7 +2581,7 @@ eval_fnc (THREAD_ENTRY * thread_p, PRED_EXPR * pr, DB_TYPE * single_node_type)
 	case T_ALSM_EVAL_TERM:
 	  et_alsm = &pr->pe.eval_term.et.et_alsm;
 
-	  /* 
+	  /*
 	   * et_alsm->item_type can be DB_TYPE_NULL,
 	   * in the case of positional variables
 	   */
@@ -2603,7 +2606,7 @@ eval_fnc (THREAD_ENTRY * thread_p, PRED_EXPR * pr, DB_TYPE * single_node_type)
 }
 
 /*
- * update_logical_result () - checks DB_LOGICAL value and qualification 
+ * update_logical_result () - checks DB_LOGICAL value and qualification
  *   return: new DB_LOGICAL value and qualification (if needed)
  *   thread_p(in):
  *   ev_res(in): logical value to be checked
@@ -2766,7 +2769,7 @@ eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdesp, HEAP_SCA
 
       if (oid == NULL && recdesp == NULL && filterp->val_list)
 	{
-	  /* 
+	  /*
 	   * In the case of class attribute scan, we should fetch regu_list
 	   * before pred evaluation because eval_pred*() functions do not
 	   * know class OID so that TYPE_CLASSOID regu cannot be handled
@@ -2795,7 +2798,7 @@ eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdesp, HEAP_SCA
 
   if (ev_res == V_TRUE && scan_predp->regu_list && filterp->val_list)
     {
-      /* 
+      /*
        * fetch the values for the regu variable list of the data filter
        * from the cached attribute information
        */
@@ -2934,7 +2937,7 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, FILTER_INFO * filter
 
 	      if (j >= filterp->btree_num_attrs)
 		{
-		  /* 
+		  /*
 		   * the attribute exists in key filter scan cache, but it is
 		   * not a member of attributes consisting index key
 		   */
@@ -2999,7 +3002,7 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, FILTER_INFO * filter
 	  attrvalue->state = HEAP_WRITTEN_ATTRVALUE;
 	}
 
-      /* 
+      /*
        * evaluate the predicates of the key filter
        * using the given key value
        */
