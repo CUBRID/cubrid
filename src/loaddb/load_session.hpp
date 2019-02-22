@@ -38,6 +38,7 @@ namespace cubload
 {
 
   class driver;
+  class loaddb_worker_context_manager;
 
   /*
    * cubload::session
@@ -113,14 +114,21 @@ namespace cubload
       void fail ();
       bool is_failed ();
 
+      void interrupt ();
+
       stats get_stats ();
-      void inc_total_objects ();
+      void stats_update_rows_committed (int rows_committed);
+      void stats_update_last_committed_line (int last_committed_line);
+      void stats_update_current_line (int current_line);
 
       class_registry &get_class_registry ();
 
     private:
       void notify_waiting_threads ();
       bool is_completed ();
+
+      template<typename T>
+      void update_atomic_value_with_max (std::atomic<T> &atomic_val, T new_max);
 
       std::mutex m_commit_mutex;
       std::condition_variable m_commit_cond_var;
@@ -133,7 +141,7 @@ namespace cubload
       std::atomic<batch_id> m_max_batch_id;
 
       cubthread::entry_workpool *m_worker_pool;
-      cubthread::entry_manager *m_wp_context_manager;
+      loaddb_worker_context_manager *m_wp_context_manager;
 
       class_registry m_class_registry;
 

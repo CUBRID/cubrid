@@ -644,6 +644,7 @@ net_histo_setup_names (void)
   net_Req_buffer[NET_SERVER_LD_INSTALL_CLASS].name = "NET_SERVER_LD_INSTALL_CLASS";
   net_Req_buffer[NET_SERVER_LD_LOAD_BATCH].name = "NET_SERVER_LD_LOAD_BATCH";
   net_Req_buffer[NET_SERVER_LD_DESTROY].name = "NET_SERVER_LD_DESTROY";
+  net_Req_buffer[NET_SERVER_LD_INTERRUPT].name = "NET_SERVER_LD_INTERRUPT";
 }
 
 /*

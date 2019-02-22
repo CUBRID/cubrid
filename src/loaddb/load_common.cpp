@@ -35,7 +35,7 @@ namespace cubload
    * A wrapper function for calling batch handler. Used by split function and does some extra checks
    */
   int handle_batch (batch_handler &handler, class_id clsid, std::string &batch_content, batch_id &batch_id,
-		    int line_offset);
+		    int line_offset, int &rows);
 
   /*
    * Check if a given string starts with a given prefix
@@ -62,15 +62,17 @@ namespace cubload
     , m_clsid (NULL_CLASS_ID)
     , m_content ()
     , m_line_offset (0)
+    , m_rows (0)
   {
     //
   }
 
-  batch::batch (batch_id id, class_id clsid, std::string &content, int line_offset)
+  batch::batch (batch_id id, class_id clsid, std::string &content, int line_offset, int rows)
     : m_id (id)
     , m_clsid (clsid)
     , m_content (content)
     , m_line_offset (line_offset)
+    , m_rows (rows)
   {
     //
   }
@@ -80,6 +82,7 @@ namespace cubload
     , m_clsid (other.m_clsid)
     , m_content (std::move (other.m_content))
     , m_line_offset (other.m_line_offset)
+    , m_rows (other.m_rows)
   {
     //
   }
@@ -91,6 +94,7 @@ namespace cubload
     m_clsid = other.m_clsid;
     m_content = std::move (other.m_content);
     m_line_offset = other.m_line_offset;
+    m_rows = other.m_rows;
 
     return *this;
   }
@@ -119,6 +123,12 @@ namespace cubload
     return m_content;
   }
 
+  int
+  batch::get_rows_number () const
+  {
+    return m_rows;
+  }
+
   void
   batch::pack (cubpacking::packer &serializator) const
   {
@@ -126,6 +136,7 @@ namespace cubload
     serializator.pack_int (m_clsid);
     serializator.pack_string (m_content);
     serializator.pack_int (m_line_offset);
+    serializator.pack_int (m_rows);
   }
 
   void
@@ -135,6 +146,7 @@ namespace cubload
     deserializator.unpack_int (m_clsid);
     deserializator.unpack_string (m_content);
     deserializator.unpack_int (m_line_offset);
+    deserializator.unpack_int (m_rows);
   }
 
   size_t
@@ -146,6 +158,7 @@ namespace cubload
     size += serializator.get_packed_int_size (size); // m_clsid
     size += serializator.get_packed_string_size (m_content, size);
     size += serializator.get_packed_int_size (size); // m_line_offset
+    size += serializator.get_packed_int_size (size); // m_rows
 
     return size;
   }
@@ -238,10 +251,10 @@ namespace cubload
   }
 
   stats::stats ()
-    : defaults (0)
-    , total_objects (0)
-    , last_commit (0)
-    , errors (0)
+    : rows_committed (0)
+    , current_line {0}
+    , last_committed_line (0)
+    , rows_failed (0)
     , error_message ()
     , is_failed (false)
     , is_completed (false)
@@ -251,10 +264,10 @@ namespace cubload
 
   // Copy constructor
   stats::stats (const stats &copy)
-    : defaults (copy.defaults)
-    , total_objects (copy.total_objects)
-    , last_commit (copy.last_commit)
-    , errors (copy.errors)
+    : rows_committed (copy.rows_committed)
+    , current_line {copy.current_line.load ()}
+    , last_committed_line (copy.last_committed_line)
+    , rows_failed (copy.rows_failed)
     , error_message (copy.error_message)
     , is_failed (copy.is_failed)
     , is_completed (copy.is_completed)
@@ -265,10 +278,10 @@ namespace cubload
   stats &
   stats::operator= (const stats &other)
   {
-    this->defaults = other.defaults;
-    this->total_objects = other.total_objects;
-    this->last_commit = other.last_commit;
-    this->errors = other.errors;
+    this->rows_committed = other.rows_committed;
+    this->current_line.store (other.current_line.load ());
+    this->last_committed_line = other.last_committed_line;
+    this->rows_failed = other.rows_failed;
     this->error_message = other.error_message;
     this->is_failed = other.is_failed;
     this->is_completed = other.is_completed;
@@ -279,10 +292,10 @@ namespace cubload
   void
   stats::clear ()
   {
-    defaults = 0;
-    total_objects = 0;
-    last_commit = 0;
-    errors = 0;
+    rows_committed = 0;
+    current_line.store (0);
+    last_committed_line = 0;
+    rows_failed = 0;
     error_message.clear ();
     is_failed = false;
     is_completed = false;
@@ -291,10 +304,10 @@ namespace cubload
   void
   stats::pack (cubpacking::packer &serializator) const
   {
-    serializator.pack_int (defaults);
-    serializator.pack_bigint (total_objects);
-    serializator.pack_bigint (last_commit);
-    serializator.pack_int (errors);
+    serializator.pack_int (rows_committed);
+    serializator.pack_int (current_line.load ());
+    serializator.pack_int (last_committed_line);
+    serializator.pack_int (rows_failed);
     serializator.pack_string (error_message);
     serializator.pack_bool (is_failed);
     serializator.pack_bool (is_completed);
@@ -303,10 +316,14 @@ namespace cubload
   void
   stats::unpack (cubpacking::unpacker &deserializator)
   {
-    deserializator.unpack_int (defaults);
-    deserializator.unpack_bigint (total_objects);
-    deserializator.unpack_bigint (last_commit);
-    deserializator.unpack_int (errors);
+    deserializator.unpack_int (rows_committed);
+
+    int current_line_;
+    deserializator.unpack_int (current_line_);
+    current_line.store (current_line_);
+
+    deserializator.unpack_int (last_committed_line);
+    deserializator.unpack_int (rows_failed);
     deserializator.unpack_string (error_message);
     deserializator.unpack_bool (is_failed);
     deserializator.unpack_bool (is_completed);
@@ -317,10 +334,10 @@ namespace cubload
   {
     size_t size = 0;
 
-    size += serializator.get_packed_int_size (size); // defaults
-    size += serializator.get_packed_bigint_size (size); // total_objects
-    size += serializator.get_packed_bigint_size (size); // last_commit
-    size += serializator.get_packed_int_size (size); // errors
+    size += serializator.get_packed_int_size (size); // rows_committed
+    size += serializator.get_packed_int_size (size); // current_line
+    size += serializator.get_packed_int_size (size); // last_committed_line
+    size += serializator.get_packed_int_size (size); // rows_failed
     size += serializator.get_packed_string_size (error_message, size);
     size += serializator.get_packed_bool_size (size); // is_failed
     size += serializator.get_packed_bool_size (size); // is_completed
@@ -332,7 +349,8 @@ namespace cubload
   split (int batch_size, const std::string &object_file_name, batch_handler &c_handler, batch_handler &b_handler)
   {
     int error_code;
-    int rows = 0;
+    int total_rows = 0;
+    int batch_rows = 0;
     int lineno = 0;
     int line_offset = 0;
     class_id clsid = 0;
@@ -359,7 +377,7 @@ namespace cubload
 	      {
 		// in case of class line collect remaining for current class
 		// and start new batch for the new class
-		error_code = handle_batch (b_handler, clsid, batch_buffer, batch_id, line_offset);
+		error_code = handle_batch (b_handler, clsid, batch_buffer, batch_id, line_offset, batch_rows);
 		if (error_code != NO_ERROR)
 		  {
 		    object_file.close ();
@@ -368,13 +386,13 @@ namespace cubload
 
 		++clsid;
 
-		// rewind forward rows counter until batch is full
-		for (; (rows % batch_size) != 0; rows++)
+		// rewind forward total_rows counter until batch is full
+		for (; (total_rows % batch_size) != 0; total_rows++)
 		  ;
 	      }
 
 	    line.append ("\n"); // feed lexer with new line
-	    batch c_batch (batch_id, clsid, line, lineno);
+	    batch c_batch (batch_id, clsid, line, lineno, 1);
 	    error_code = c_handler (c_batch);
 	    if (error_code != NO_ERROR)
 	      {
@@ -399,12 +417,13 @@ namespace cubload
 	// this means that the row ends on the last line that does not end with '+' (plus) character
 	if (!ends_with (line, "+"))
 	  {
-	    ++rows;
+	    ++total_rows;
+	    ++batch_rows;
 
 	    // check if we have a full batch
-	    if ((rows % batch_size) == 0)
+	    if ((total_rows % batch_size) == 0)
 	      {
-		error_code = handle_batch (b_handler, clsid, batch_buffer, batch_id, line_offset);
+		error_code = handle_batch (b_handler, clsid, batch_buffer, batch_id, line_offset, batch_rows);
 		line_offset = lineno;
 		if (error_code != NO_ERROR)
 		  {
@@ -416,7 +435,7 @@ namespace cubload
       }
 
     // collect remaining rows
-    error_code = handle_batch (b_handler, clsid, batch_buffer, batch_id, line_offset);
+    error_code = handle_batch (b_handler, clsid, batch_buffer, batch_id, line_offset, batch_rows);
 
     object_file.close ();
 
@@ -424,7 +443,8 @@ namespace cubload
   }
 
   int
-  handle_batch (batch_handler &handler, class_id clsid, std::string &batch_content, batch_id &batch_id, int line_offset)
+  handle_batch (batch_handler &handler, class_id clsid, std::string &batch_content, batch_id &batch_id, int line_offset,
+		int &rows)
   {
     if (batch_content.empty ())
       {
@@ -432,11 +452,12 @@ namespace cubload
 	return NO_ERROR;
       }
 
-    batch batch_ (++batch_id, clsid, batch_content, line_offset);
+    batch batch_ (++batch_id, clsid, batch_content, line_offset, rows);
     int error_code = handler (batch_);
 
     // prepare to start new batch for the class
     batch_content.clear ();
+    rows = 0;
 
     return error_code;
   }

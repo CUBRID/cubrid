@@ -100,6 +100,7 @@ namespace cubload
 	: m_session (session)
 	, m_driver_pool (pool_size)
 	, m_conn_entry (*cubthread::get_entry ().conn_entry)
+	, m_interrupted (false)
       {
 	//
       }
@@ -130,10 +131,24 @@ namespace cubload
 	context.conn_entry = NULL;
       }
 
+      void stop_execution (cubthread::entry &context) override
+      {
+	if (m_interrupted)
+	  {
+	    xlogtb_set_interrupt (&context, true);
+	  }
+      }
+
+      void interrupt ()
+      {
+	m_interrupted = true;
+      }
+
     private:
       session &m_session;
       resource_shared_pool<driver> m_driver_pool;
       css_conn_entry &m_conn_entry;
+      bool m_interrupted;
   };
 
   /*
@@ -165,7 +180,8 @@ namespace cubload
 	logtb_assign_tran_index (&thread_ref, NULL_TRANID, TRAN_ACTIVE, NULL, NULL, TRAN_LOCK_INFINITE_WAIT,
 				 TRAN_DEFAULT_ISOLATION_LEVEL ());
 
-	bool parser_result = invoke_parser (thread_ref.m_loaddb_driver, m_batch);
+	driver *driver = thread_ref.m_loaddb_driver;
+	bool parser_result = invoke_parser (driver, m_batch);
 
 	if (m_session.is_failed () || !parser_result || er_has_error ())
 	  {
@@ -181,8 +197,9 @@ namespace cubload
 
 	    xtran_server_commit (&thread_ref, false);
 
-	    // TODO fix last_commit assignment
-	    //m_session.m_stats.last_commit = m_batch.get_id () * m_session.m_batch_size;
+	    // update load statistics after commit
+	    m_session.stats_update_rows_committed (m_batch.get_rows_number ());
+	    m_session.stats_update_last_committed_line (driver->get_scanner ().lineno () + 1);
 	  }
 
 	// free transaction index
@@ -284,7 +301,7 @@ namespace cubload
   {
     std::unique_lock<std::mutex> ulock (m_stats_mutex);
 
-    m_stats.errors++;
+    m_stats.rows_failed++;
     m_stats.error_message.append (err_msg);
   }
 
@@ -319,10 +336,60 @@ namespace cubload
   }
 
   void
-  session::inc_total_objects ()
+  session::interrupt ()
+  {
+    m_wp_context_manager->interrupt ();
+    fail ();
+  }
+
+  void
+  session::stats_update_rows_committed (int rows_committed)
   {
     std::unique_lock<std::mutex> ulock (m_stats_mutex);
-    m_stats.total_objects++;
+    m_stats.rows_committed += rows_committed;
+  }
+
+  void
+  session::stats_update_last_committed_line (int last_committed_line)
+  {
+    if (last_committed_line <= m_stats.last_committed_line)
+      {
+	return;
+      }
+
+    std::unique_lock<std::mutex> ulock (m_stats_mutex);
+
+    // check if again after lock was acquired
+    if (last_committed_line <= m_stats.last_committed_line)
+      {
+	return;
+      }
+
+    m_stats.last_committed_line = last_committed_line;
+  }
+
+  void
+  session::stats_update_current_line (int current_line)
+  {
+    update_atomic_value_with_max (m_stats.current_line, current_line);
+  }
+
+  template<typename T>
+  void
+  session::update_atomic_value_with_max (std::atomic<T> &atomic_val, T new_max)
+  {
+    int curr_max;
+
+    do
+      {
+	curr_max = atomic_val.load ();
+	if (curr_max >= new_max)
+	  {
+	    // max is already stored
+	    break;
+	  }
+      }
+    while (!atomic_val.compare_exchange_strong (curr_max, new_max));
   }
 
   class_registry &
@@ -365,18 +432,7 @@ namespace cubload
   int
   session::load_batch (cubthread::entry &thread_ref, const batch &batch)
   {
-    batch_id current_max_id;
-
-    do
-      {
-	current_max_id = m_max_batch_id.load ();
-	if (current_max_id >= batch.get_id ())
-	  {
-	    // max is already stored
-	    break;
-	  }
-      }
-    while (!m_max_batch_id.compare_exchange_strong (current_max_id, batch.get_id ()));
+    update_atomic_value_with_max (m_max_batch_id, batch.get_id ());
 
     if (batch.get_content ().empty ())
       {

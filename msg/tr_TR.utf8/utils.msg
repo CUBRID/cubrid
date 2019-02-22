@@ -437,7 +437,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 60 Hata ayrıştırma \"%1$s\", gibi %2$s tür.\n
 61 Object Reference is not supported in CS mode.\n
 112   %1$d örnekleri\r
-113 Son kararlı hattı: %1$d
+113 Son kararlı hattı: %1$d\n
 114 hata-kontrol-dosyası
 115 yükleme sırasında bir hata(lar) kontrol etmek için giriş dosyası
 116 Toplam %1$8d nesne (ler) eklenen, %2$d nesne (ler) başarısız oldu.\n

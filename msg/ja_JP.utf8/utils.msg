@@ -437,7 +437,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 60 「%1$s」を「%2$s」タイプにパーシングエラー \n
 61 Object Reference is not supported in CS mode.\n
 112   %1$d個のインスタンス\r
-113 最後にコミットされたライン : %1$d
+113 最後にコミットされたライン : %1$d\n
 114 エラーコントロールファイル
 115 ロードする時にエラー制御のための入力ファイル
 116 Total %1$8d object(s) inserted, %2$d object(s) failed.\n

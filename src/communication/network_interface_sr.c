@@ -9782,44 +9782,57 @@ slocator_demote_class_lock (THREAD_ENTRY * thread_p, unsigned int rid, char *req
 void
 sloaddb_init (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  int ret;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
   SESSION_ID session_id;
-
   session_get_session_id (thread_p, &session_id);
 
-  /* *INDENT-OFF* */
-  ret = session_set_load_session (thread_p, new load_session (session_id));
-  /* *INDENT-ON* */
+  load_session *session = new load_session (session_id);
 
-  or_pack_int (reply, ret);
+  int error_code = session_set_load_session (thread_p, session);
+  if (error_code != NO_ERROR)
+    {
+      delete session;
+    }
+
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  or_pack_int (reply, error_code);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 void
 sloaddb_load_object_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  int ret;
-  char *object_file_name;
+  packing_unpacker unpacker (request, (size_t) reqlen);
+
+  /* *INDENT-OFF* */
+  std::string object_file_name;
+  /* *INDENT-ON* */
+
+  unpacker.unpack_string (object_file_name);
+
+  load_session *session = NULL;
+  int error_code = session_get_load_session (thread_p, session);
+  if (error_code == NO_ERROR)
+    {
+      assert (session != NULL);
+      error_code = session->load_file (*thread_p, object_file_name);
+    }
+  else
+    {
+      if (er_errid () == NO_ERROR || !er_has_error ())
+	{
+	  error_code = ER_LDR_INVALID_STATE;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+	}
+
+      return_error_to_client (thread_p, rid);
+    }
+
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  or_unpack_string (request, &object_file_name);
-
-  /* *INDENT-OFF* */
-  std::string object_file_name_str (object_file_name);
-  /* *INDENT-ON* */
-
-  load_session *session = NULL;
-  session_get_load_session (thread_p, session);
-  assert (session != NULL);
-  ret = session->load_file (*thread_p, object_file_name_str);
-
-  db_private_free (thread_p, object_file_name);
-
-  or_pack_int (reply, ret);
-
+  or_pack_int (reply, error_code);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
@@ -9835,10 +9848,22 @@ sloaddb_install_class (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   batch.unpack (unpacker);
 
   load_session *session = NULL;
-  session_get_load_session (thread_p, session);
-  assert (session != NULL);
+  int error_code = session_get_load_session (thread_p, session);
+  if (error_code == NO_ERROR)
+    {
+      assert (session != NULL);
+      error_code = session->install_class (*thread_p, batch);
+    }
+  else
+    {
+      if (er_errid () == NO_ERROR || !er_has_error ())
+	{
+	  error_code = ER_LDR_INVALID_STATE;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+	}
 
-  int error_code = session->install_class (*thread_p, batch);
+      return_error_to_client (thread_p, rid);
+    }
 
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
@@ -9850,10 +9875,6 @@ sloaddb_install_class (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 void
 sloaddb_load_batch (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  int error_code = NO_ERROR;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-
   packing_unpacker unpacker (request, (size_t) reqlen);
 
   /* *INDENT-OFF* */
@@ -9864,9 +9885,25 @@ sloaddb_load_batch (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 
   load_session *session = NULL;
   session_get_load_session (thread_p, session);
-  assert (session != NULL);
+  int error_code = session_get_load_session (thread_p, session);
+  if (error_code == NO_ERROR)
+    {
+      assert (session != NULL);
+      error_code = session->load_batch (*thread_p, batch);
+    }
+  else
+    {
+      if (er_errid () == NO_ERROR || !er_has_error ())
+	{
+	  error_code = ER_LDR_INVALID_STATE;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+	}
 
-  error_code = session->load_batch (*thread_p, batch);
+      return_error_to_client (thread_p, rid);
+    }
+
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
 
   or_pack_int (reply, error_code);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
@@ -9875,40 +9912,79 @@ sloaddb_load_batch (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 void
 sloaddb_fetch_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-
-  load_session *session = NULL;
-  session_get_load_session (thread_p, session);
-  assert (session != NULL);
-
-  load_stats loaddb_stats = session->get_stats ();
-
   packing_packer packer;
   cubmem::extensible_block eb;
 
-  packer.set_buffer_and_pack_all (eb, loaddb_stats);
+  char *buffer = NULL;
+  int buffer_size = 0;
 
-  or_pack_int (reply, (int) packer.get_current_size ());
+  load_session *session = NULL;
+  int error_code = session_get_load_session (thread_p, session);
+  if (error_code == NO_ERROR)
+    {
+      assert (session != NULL);
+      load_stats loaddb_stats = session->get_stats ();
 
-  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), eb.get_ptr (),
-				     (int) packer.get_current_size ());
+      packer.set_buffer_and_pack_all (eb, loaddb_stats);
+
+      buffer = eb.get_ptr ();
+      buffer_size = (int) packer.get_current_size ();
+    }
+  else
+    {
+      if (er_errid () == NO_ERROR || !er_has_error ())
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_INVALID_STATE, 0);
+	}
+
+      return_error_to_client (thread_p, rid);
+    }
+
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  or_pack_int (reply, buffer_size);
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), buffer,
+				     buffer_size);
 }
 
 void
 sloaddb_destroy (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
+  load_session *session = NULL;
+  int error_code = session_get_load_session (thread_p, session);
+  if (error_code == NO_ERROR)
+    {
+      assert (session != NULL);
+
+      session->wait_for_completion ();
+      delete session;
+      session_set_load_session (thread_p, NULL);
+    }
+
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
+  or_pack_int (reply, error_code);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+void
+sloaddb_interrupt (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
   load_session *session = NULL;
-  session_get_load_session (thread_p, session);
-  assert (session != NULL);
+  int error_code = session_get_load_session (thread_p, session);
+  if (error_code == NO_ERROR)
+    {
+      assert (session != NULL);
 
-  session->wait_for_completion ();
-  delete session;
-  session_set_load_session (thread_p, NULL);
+      session->interrupt ();
+      session->wait_for_completion ();
+    }
 
-  or_pack_int (reply, NO_ERROR);
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  or_pack_int (reply, error_code);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }

@@ -26,6 +26,7 @@
 #include "btree.h"
 #include "load_class_registry.hpp"
 #include "load_db_value_converter.hpp"
+#include "load_driver.hpp"
 #include "load_error_handler.hpp"
 #include "load_session.hpp"
 #include "locator_sr.h"
@@ -315,8 +316,7 @@ namespace cubload
 	return;
       }
 
-    m_session.inc_total_objects ();
-
+    m_session.stats_update_current_line (m_thread_ref->m_loaddb_driver->get_scanner ().lineno () + 1);
     clear_db_values ();
   }
 
