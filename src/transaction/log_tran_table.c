@@ -1939,7 +1939,10 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
   LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
 
-  tdes->replication_log_generator.clear_transaction ();
+  if (VACUUM_IS_THREAD_VACUUM (thread_p))
+    {
+      tdes->replication_log_generator.clear_transaction ();
+    }
 }
 
 /*
