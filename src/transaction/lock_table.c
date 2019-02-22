@@ -119,7 +119,7 @@ LOCK_COMPATIBILITY lock_Comp[11][11] = {
  * -----------------------------------------------------------------------------------------------
  *         | N/A  NON2PL   NULL  SCH-S     IS      S     IX    SIX      U      X  SCH-M
  * -----------------------------------------------------------------------------------------------
- *     N/A | N/A     N/A    N/A    N/A    N/A    N/A    N/A    N/A    N/A    N/A    N/A  
+ *     N/A | N/A     N/A    N/A    N/A    N/A    N/A    N/A    N/A    N/A    N/A    N/A
  *
  *  NON2PL | N/A     N/A    N/A    N/A    N/A    N/A    N/A    N/A    N/A    N/A    N/A
  *

@@ -33,7 +33,7 @@
 
 #include <stdio.h>
 
-#include "dbdef.h"
+#include "dbtype_def.h"
 #include "replication.h"
 #include "server_interface.h"
 #include "perf_monitor.h"
@@ -46,7 +46,12 @@
 #include "language_support.h"
 #include "log_impl.h"
 #include "parse_tree.h"
-#include "xasl.h"
+#include "timezone_lib_common.h"
+
+// forward definitions
+struct compile_context;
+struct xasl_node_header;
+struct xasl_stream;
 
 /* killtran supporting structures and functions */
 typedef struct one_tran_info ONE_TRAN_INFO;
@@ -206,7 +211,7 @@ extern int btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_t
 			     int n_attrs, int *attr_ids, int *attrs_prefix_length, HFID * hfids, int unique_pk,
 			     int not_null_flag, OID * fk_refcls_oid, BTID * fk_refcls_pk_btid, const char *fk_name,
 			     char *pred_stream, int pred_stream_size, char *expr_stream, int expr_stream_size,
-			     int func_col_id, int func_attr_index_start);
+			     int func_col_id, int func_attr_index_start, SM_INDEX_STATUS index_status);
 extern int btree_delete_index (BTID * btid);
 extern int locator_log_force_nologging (void);
 extern int locator_remove_class_from_index (OID * oid, BTID * btid, HFID * hfid);
@@ -216,7 +221,7 @@ extern BTREE_SEARCH btree_find_multi_uniques (OID * class_oid, int pruning_type,
 					      int count, SCAN_OPERATION_TYPE op_type, OID ** oids, int *oids_count);
 extern int btree_class_test_unique (char *buf, int buf_size);
 extern int qfile_get_list_file_page (QUERY_ID query_id, VOLID volid, PAGEID pageid, char *buffer, int *buffer_size);
-extern int qmgr_prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream);
+extern int qmgr_prepare_query (struct compile_context *context, xasl_stream * stream);
 
 extern QFILE_LIST_ID *qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt,
 					  const DB_VALUE * dbvals, QUERY_FLAG flag, CACHE_TIME * clt_cache_time,
@@ -382,7 +387,7 @@ extern int csession_reset_cur_insert_id (void);
 extern int csession_create_prepared_statement (const char *name, const char *alias_print, char *stmt_info,
 					       int info_length);
 extern int csession_get_prepared_statement (const char *name, XASL_ID * xasl_id, char **stmt_info,
-					    XASL_NODE_HEADER * xasl_header_p);
+					    xasl_node_header * xasl_header_p);
 
 extern int csession_delete_prepared_statement (const char *name);
 

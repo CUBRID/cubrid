@@ -38,7 +38,9 @@
 #include "system_parameter.h"
 #include "connection_support.h"
 #include "log_applier.h"
+#include "crypt_opfunc.h"
 #if defined(SERVER_MODE)
+#include "log_manager.h"
 #include "server_support.h"
 #include "network_interface_sr.h"
 #else /* !defined(SERVER_MODE) */
@@ -54,6 +56,11 @@
 
 static int prev_ha_server_state = HA_SERVER_STATE_NA;
 static bool logwr_need_shutdown = false;
+
+#define logwr_er_log(...) if (prm_get_bool_value (PRM_ID_DEBUG_LOGWR)) _er_log_debug (ARG_FILE_LINE, __VA_ARGS__)
+
+static int logwr_check_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr);
+
 #if defined(CS_MODE)
 LOGWR_GLOBAL logwr_Gl = {
   /* log header */
@@ -185,7 +192,7 @@ logwr_fetch_header_page (LOG_PAGE * log_pgptr, int vol_fd)
 
   assert (log_pgptr != NULL);
 
-  /* 
+  /*
    * Page is contained in the active log.
    * Find the corresponding physical page and read the page form disk.
    */
@@ -673,9 +680,9 @@ logwr_set_hdr_and_flush_info (void)
 
 
 /*
- * logwr_copy_necessary_log - 
+ * logwr_copy_necessary_log -
 
- * return: 
+ * return:
  *   to_pageid(in): page id
  *
  * Note: copy active log to background archive file.
@@ -763,6 +770,8 @@ logwr_writev_append_pages (LOG_PAGE ** to_flush, DKNPAGES npages)
     {
       fpageid = to_flush[0]->hdr.logical_pageid;
 
+      (void) logwr_check_page_checksum (NULL, *to_flush);
+
       /* 1. archive temp write */
       if (prm_get_bool_value (PRM_ID_LOG_BACKGROUND_ARCHIVING))
 	{
@@ -775,7 +784,7 @@ logwr_writev_append_pages (LOG_PAGE ** to_flush, DKNPAGES npages)
 	      return to_flush;
 	    }
 
-	  /* If there exist empty page between current_page_id and (fpageid-1) copy missing logs to background archive 
+	  /* If there exist empty page between current_page_id and (fpageid-1) copy missing logs to background archive
 	   * log file */
 	  if (bg_arv_info->current_page_id < fpageid - 1 || bg_arv_info->current_page_id == NULL_PAGEID)
 	    {
@@ -803,7 +812,7 @@ logwr_writev_append_pages (LOG_PAGE ** to_flush, DKNPAGES npages)
 	      return to_flush;
 	    }
 	  bg_arv_info->current_page_id = fpageid + (npages - 1);
-	  er_log_debug (ARG_FILE_LINE, "background archiving  current_page_id[%lld], fpageid[%lld], npages[%d]",
+	  logwr_er_log ("background archiving  current_page_id[%lld], fpageid[%lld], npages[%d]",
 			bg_arv_info->current_page_id, fpageid, npages);
 
 	  error = logwr_flush_bgarv_header_page ();
@@ -862,7 +871,7 @@ logwr_flush_all_append_pages (void)
 
       if (idxflush != -1 && prv_pgptr != NULL)
 	{
-	  /* 
+	  /*
 	   * This append log page should be dirty and contiguous to previous
 	   * append page. If it is not, we need to flush the accumulated pages
 	   * up to this point, and then start accumulating pages again.
@@ -873,7 +882,7 @@ logwr_flush_all_append_pages (void)
 	  if ((pageid != prv_pageid + 1)
 	      || (logwr_to_physical_pageid (pageid) != logwr_to_physical_pageid (prv_pageid) + 1))
 	    {
-	      /* 
+	      /*
 	       * This page is not contiguous.
 	       *
 	       * Flush the accumulated contiguous pages
@@ -887,7 +896,7 @@ logwr_flush_all_append_pages (void)
 		{
 		  need_sync = true;
 
-		  /* 
+		  /*
 		   * Start over the accumulation of pages
 		   */
 
@@ -899,7 +908,7 @@ logwr_flush_all_append_pages (void)
 
       if (idxflush == -1)
 	{
-	  /* 
+	  /*
 	   * This page should be included in the flush
 	   */
 	  idxflush = i;
@@ -910,7 +919,7 @@ logwr_flush_all_append_pages (void)
       prv_pgptr = pgptr;
     }
 
-  /* 
+  /*
    * If there are any accumulated pages, flush them at this point
    */
 
@@ -932,7 +941,7 @@ logwr_flush_all_append_pages (void)
 	}
     }
 
-  /* 
+  /*
    * Make sure that all of the above log writes are synchronized with any
    * future log writes. That is, the pages should be stored on physical disk.
    */
@@ -961,7 +970,7 @@ logwr_flush_all_append_pages (void)
     }
   logwr_Gl.num_toflush = 0;
 
-  er_log_debug (ARG_FILE_LINE, "logwr_write_log_pages, flush_page_count(%d)\n", flush_page_count);
+  logwr_er_log ("logwr_write_log_pages, flush_page_count(%d)\n", flush_page_count);
 
   return NO_ERROR;
 }
@@ -1091,7 +1100,7 @@ logwr_flush_header_page (void)
     }
   prev_ha_server_state = logwr_Gl.hdr.ha_server_state;
 
-  er_log_debug (ARG_FILE_LINE, "logwr_flush_header_page, ha_server_state=%s, ha_file_status=%s\n",
+  logwr_er_log ("logwr_flush_header_page, ha_server_state=%s, ha_file_status=%s\n",
 		css_ha_server_state_string ((HA_SERVER_STATE) logwr_Gl.hdr.ha_server_state),
 		logwr_log_ha_filestat_to_string ((LOG_HA_FILESTAT) logwr_Gl.hdr.ha_file_status));
 }
@@ -1144,7 +1153,7 @@ logwr_archive_active_log (void)
   arvhdr->arv_num = logwr_Gl.last_arv_num;
   arvhdr->npages = (DKNPAGES) (logwr_Gl.last_arv_lpageid - arvhdr->fpageid + 1);
 
-  /* 
+  /*
    * Now create the archive and start copying pages
    */
 
@@ -1216,7 +1225,7 @@ logwr_archive_active_log (void)
   /* Now start dumping the current active pages to archive */
   for (; pageid <= logwr_Gl.last_arv_lpageid; pageid += num_pages, ar_phy_pageid += num_pages)
     {
-      /* 
+      /*
        * Page is contained in the active log.
        * Find the corresponding physical page and read the page form disk.
        */
@@ -1309,7 +1318,7 @@ logwr_archive_active_log (void)
   error_code =
     log_dump_log_info (logwr_Gl.loginf_path, false, catmsg, arvhdr->arv_num, archive_name, arvhdr->fpageid,
 		       arvhdr->fpageid + arvhdr->npages - 1);
-  er_log_debug (ARG_FILE_LINE, "logwr_archive_active_log, arv_num(%d), fpageid(%lld) lpageid(%lld)\n", arvhdr->arv_num,
+  logwr_er_log ("logwr_archive_active_log, arv_num(%d), fpageid(%lld) lpageid(%lld)\n", arvhdr->arv_num,
 		arvhdr->fpageid, arvhdr->fpageid + arvhdr->npages - 1);
 
   free_and_init (malloc_arv_hdr_pgptr);
@@ -1377,7 +1386,7 @@ logwr_write_log_pages (void)
 	}
     }
 
-  /* 
+  /*
    * LWT sets the archiving flag at the time when it sends new active page
    * after archiving finished, so that logwr_archive_active_log() should
    * be executed before logwr_flush_all_append_pages().
@@ -1667,6 +1676,73 @@ logwr_copy_log_file (const char *db_name, const char *log_path, int mode, INT64 
   return ER_FAILED;
 }
 #endif /* !CS_MODE */
+
+
+
+/*
+ * logwr_compute_page_checksum - Computes log page checksum.
+ * return: error code
+ * thread_p (in) : thread entry
+ * log_pgptr (in) : log page pointer
+ * checksum_crc32(out): computed checksum
+ *   Note: Currently CRC32 is used as checksum.
+ *   Note: this is a copy of logpb_compute_page_checksum
+ */
+static int
+logwr_check_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
+{
+  int error_code = NO_ERROR, saved_checksum_crc32;
+  const int block_size = 4096;
+  const int max_num_pages = IO_MAX_PAGE_SIZE / block_size;
+  const int sample_nbytes = 16;
+  int sampling_offset;
+  char buf[max_num_pages * sample_nbytes * 2];
+  const int num_pages = LOG_PAGESIZE / block_size;
+  const size_t sizeof_buf = num_pages * sample_nbytes * 2;
+  int checksum_crc32;
+
+  assert (log_pgptr != NULL);
+
+  /* Save the old page checksum. */
+  saved_checksum_crc32 = log_pgptr->hdr.checksum;
+  if (saved_checksum_crc32 == 0)
+    {
+      return NO_ERROR;
+    }
+
+  /* Resets checksum to not affect the new computation. */
+  log_pgptr->hdr.checksum = 0;
+
+  char *p = buf;
+  for (int i = 0; i < num_pages; i++)
+    {
+      // first
+      sampling_offset = (i * block_size);
+      memcpy (p, ((char *) log_pgptr) + sampling_offset, sample_nbytes);
+      p += sample_nbytes;
+
+      // last
+      sampling_offset = (i * block_size) + (block_size - sample_nbytes);
+      memcpy (p, ((char *) log_pgptr) + sampling_offset, sample_nbytes);
+      p += sample_nbytes;
+    }
+
+  error_code = crypt_crc32 (thread_p, (char *) buf, sizeof_buf, &checksum_crc32);
+
+  /* Restores the saved checksum */
+  log_pgptr->hdr.checksum = saved_checksum_crc32;
+
+  if (checksum_crc32 != saved_checksum_crc32)
+    {
+      _er_log_debug (ARG_FILE_LINE,
+		     "logwr_check_page_checksum: log page %lld has checksum = %d, computed checksum = %d\n",
+		     (long long int) log_pgptr->hdr.logical_pageid, saved_checksum_crc32, checksum_crc32);
+      assert (false);
+      return ER_FAILED;
+    }
+
+  return error_code;
+}
 
 /*
  * logwr_log_ha_filestat_to_string() - return the string alias of enum value
@@ -2033,6 +2109,16 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p, char *logpg_area, int *logpg_used
 		}
 	    }
 
+	  if (pageid >= nxio_lsa.pageid)
+	    {
+	      /* page is not flushed yet, may be changed : update checksum before send */
+	      (void) logpb_set_page_checksum (thread_p, log_pgptr);
+	    }
+	  else
+	    {
+	      (void) logwr_check_page_checksum (thread_p, log_pgptr);
+	    }
+
 	  assert (pageid == (log_pgptr->hdr.logical_pageid));
 	  p += LOG_PAGESIZE;
 	}
@@ -2053,8 +2139,7 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p, char *logpg_area, int *logpg_used
       entry->tmp_last_sent_eof_lsa.offset = NULL_OFFSET;
     }
 
-  er_log_debug (ARG_FILE_LINE,
-		"logwr_pack_log_pages, fpageid(%lld), lpageid(%lld), num_pages(%lld),"
+  logwr_er_log ("logwr_pack_log_pages, fpageid(%lld), lpageid(%lld), num_pages(%lld),"
 		"\n status(%d)\n", fpageid, lpageid, num_logpgs, entry->status);
 
   return NO_ERROR;
@@ -2201,7 +2286,7 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid, LOGWR_MO
       /* In case that a non-ASYNC mode client internally uses ASYNC mode */
       orig_mode = MAX (mode, orig_mode);
 
-      er_log_debug (ARG_FILE_LINE, "[tid:%ld] xlogwr_get_log_pages, fpageid(%lld), mode(%s)\n",
+      logwr_er_log ("[tid:%ld] xlogwr_get_log_pages, fpageid(%lld), mode(%s)\n",
 		    thread_p->get_posix_id (), first_pageid,
 		    (mode == LOGWR_MODE_SYNC ? "sync" : (mode == LOGWR_MODE_ASYNC ? "async" : "semisync")));
 
@@ -2331,9 +2416,9 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid, LOGWR_MO
 	}
 
       /* In case of async mode, unregister the writer and wakeup LFT to finish */
-      /* 
+      /*
        * The result mode is the following.
-       * 
+       *
        * transition \ req mode | req_sync req_async ----------------------------------------- delay -> delay | n/a
        * ASYNC delay -> done | n/a SYNC wait -> delay | SYNC ASYNC wait -> done | SYNC ASYNC */
 
@@ -2402,7 +2487,7 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid, LOGWR_MO
 
 error:
 
-  er_log_debug (ARG_FILE_LINE, "[tid:%ld] xlogwr_get_log_pages, error(%d)\n", thread_p->get_posix_id (), error_code);
+  logwr_er_log ("[tid:%ld] xlogwr_get_log_pages, error(%d)\n", thread_p->get_posix_id (), error_code);
 
   logwr_cs_exit (thread_p, &check_cs_own);
   logwr_write_end (thread_p, writer_info, entry, status);

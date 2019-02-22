@@ -526,7 +526,7 @@ hb_job_queue (HB_JOB * jobs, unsigned int job_type, HB_JOB_ARG * arg, unsigned i
   rv = pthread_mutex_lock (&jobs->lock);
   for (job = &(jobs->jobs); *job; job = &((*job)->next))
     {
-      /* 
+      /*
        * compare expire time of new job and current job
        * until new job's expire is larger than current's
        */
@@ -630,14 +630,14 @@ hb_job_set_expire_and_reorder (HB_JOB * jobs, unsigned int job_type, unsigned in
 
   memcpy ((void *) &(target_job->expire), (void *) &now, sizeof (struct timeval));
 
-  /* 
+  /*
    * so now we change target job's turn to adjust sorted queue
    */
   hb_list_remove ((HB_LIST *) target_job);
 
   for (job = &(jobs->jobs); *job; job = &((*job)->next))
     {
-      /* 
+      /*
        * compare expiration time of target job and current job
        * until target job's expire is larger than current's
        */
@@ -763,7 +763,7 @@ hb_cluster_is_isolated (void)
 }
 
 /*
- * hb_cluster_is_received_heartbeat_from_all() - 
+ * hb_cluster_is_received_heartbeat_from_all() -
  *   return: whether current node received heartbeat from all node
  */
 static bool
@@ -1302,7 +1302,7 @@ hb_cluster_job_failback (HB_JOB_ARG * arg)
 	    {
 	      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 
-	      /* 
+	      /*
 	       * in case that memory allocation fails,
 	       * kill all cub_server processes with SIGKILL
 	       */
@@ -1458,7 +1458,7 @@ hb_cluster_calc_score (void)
   for (node = hb_Cluster->nodes; node; node = node->next)
     {
       /* If this node does not receive heartbeat message over than prm_get_integer_value (PRM_ID_HA_MAX_HEARTBEAT_GAP)
-       * times, (or sufficient time has been elapsed from the last received heartbeat message time), this node does not 
+       * times, (or sufficient time has been elapsed from the last received heartbeat message time), this node does not
        * know what other node state is. */
       if (node->heartbeat_gap > prm_get_integer_value (PRM_ID_HA_MAX_HEARTBEAT_GAP)
 	  || (!HB_IS_INITIALIZED_TIME (node->last_recv_hbtime)
@@ -1707,7 +1707,7 @@ hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from, s
 	      }
 	  }
 
-	/* 
+	/*
 	 * if heartbeat group id is mismatch, ignore heartbeat
 	 */
 	if (strcmp (hbp_header->group_id, hb_Cluster->group_id))
@@ -1716,7 +1716,7 @@ hb_cluster_receive_heartbeat (char *buffer, int len, struct sockaddr_in *from, s
 	    return;
 	  }
 
-	/* 
+	/*
 	 * must send heartbeat response in order to avoid split-brain
 	 * when heartbeat configuration changed
 	 */
@@ -1802,7 +1802,7 @@ hb_hostname_to_sin_addr (const char *host, struct in_addr *addr)
 {
   in_addr_t in_addr;
 
-  /* 
+  /*
    * First try to convert to the host name as a dotten-decimal number.
    * Only if that fails do we call gethostbyname.
    */
@@ -1885,7 +1885,7 @@ hb_hostname_n_port_to_sockaddr (const char *host, int port, struct sockaddr *sad
   int error = NO_ERROR;
   struct sockaddr_in udp_saddr;
 
-  /* 
+  /*
    * Construct address for UDP socket
    */
   memset ((void *) &udp_saddr, 0, sizeof (udp_saddr));
@@ -2241,7 +2241,7 @@ hb_is_heartbeat_valid (char *host_name, char *group_id, struct sockaddr_in *from
   return HB_VALID_NO_ERROR;
 }
 
-/* 
+/*
  * hb_valid_result_string() -
  */
 static const char *
@@ -3819,8 +3819,8 @@ hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY * conn, SOCKET sfd)
     {
       MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "unexpected process's state. " "(fd:%d, pid:%d, state:%d, args:{%s}). \n",
 			   sfd, proc->pid, proc->state, proc->args);
-      /* 
-       * Do not delete process entry. 
+      /*
+       * Do not delete process entry.
        * process entry will be removed by resource job.
        */
 
@@ -6784,7 +6784,7 @@ hb_return_proc_state_by_fd (int sfd)
 
 /*
  * hb_is_hang_process() -
- *   return: 
+ *   return:
  *
  *   sfd(in):
  */

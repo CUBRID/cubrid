@@ -28,7 +28,6 @@
 
 #include "memory_alloc.h"
 #include "dbtype_def.h"
-#include "dbdef.h"
 #include "class_object.h"
 
 /*
@@ -88,7 +87,7 @@ typedef struct tr_trigger
   char *temp_refname;
   int class_attribute;
 
-  /* 
+  /*
    * copy of the "cache coherency number" from the instance, used
    * to detect when the object gets modified and the trigger cache
    * needs to be re-evaluated

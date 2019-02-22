@@ -218,7 +218,7 @@ main (int argc, char *argv[])
   proxy_Keep_running = true;
   while (proxy_Keep_running == true)
     {
-      /* 
+      /*
        * Since every operation in proxy main is non-blocking
        * (which is not the case in cas main),
        * proxy_set_hang_check_time is placed at the beginning and

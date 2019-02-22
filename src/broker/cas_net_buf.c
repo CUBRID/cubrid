@@ -831,17 +831,17 @@ net_error_append_shard_info (char *err_buf, const char *err_msg, int buf_size)
   return strlen (err_buf);
 }
 
-/* net_buf_cp_cas_type_and_charset - 
+/* net_buf_cp_cas_type_and_charset -
  *			 sends the type information into a network buffer
  *		         The cas_type is expected to be encoded by function
  *			 'set_extended_cas_type'. The network buffer bytes will
- *			 be encoded as:  
+ *			 be encoded as:
  *			      MSB byte : 1CCR RHHH : C = collection code bits
  *					 R = reserved bits
  *					 H = charset
  *			      (please note the bit 7 is 1)
  *			      LSB byte : TTTT TTTT : T = type bits
- *			    
+ *			
  */
 int
 net_buf_cp_cas_type_and_charset (T_NET_BUF * net_buf, unsigned char cas_type, unsigned char charset)

@@ -347,7 +347,7 @@ shard_shm_initialize_shm_proxy (T_BROKER_INFO * br_info_p)
 
   for (i = 0; i < num_proxy; i++)
     {
-      /* 
+      /*
        * SHARD TODO : what to do when min_num_proxy is different
        *              from max_num_proxy ?
        */
@@ -854,7 +854,7 @@ shard_shm_get_max_context (int max_num_appl_server)
       max_num_appl_server = 1;
     }
 
-  /* 
+  /*
    * In case, max_num_appl_server < max_num_shard,
    * shard's max_num_appl_server might be tuned.
    * so, we need to reserve enough RESERVED_FD.

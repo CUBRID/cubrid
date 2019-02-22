@@ -257,6 +257,10 @@ if(UNIX)
       message(SEND_ERROR "Cannot compile with gcc version ${CMAKE_CXX_COMPILER_VERSION}. Require at least 4.4.7.")
     endif(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.4.7)
 
+    if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.9.0)
+      add_definitions(-D_USE_LIBREGEX_)
+    endif(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.9.0)
+
     set(CMAKE_C_FLAGS_DEBUG "-ggdb -fno-inline -fno-omit-frame-pointer")
     set(CMAKE_CXX_FLAGS_DEBUG "-Wall -ggdb -fno-inline -fno-omit-frame-pointer -std=c++0x")
     set(CMAKE_C_FLAGS_RELEASE "-ggdb -O2 -DNDEBUG -finline-functions -fno-omit-frame-pointer -std=c++0x")
@@ -487,7 +491,7 @@ set(THREAD_DIR               ${CMAKE_SOURCE_DIR}/src/thread)
 set(TOOLS_DIR                ${CMAKE_SOURCE_DIR}/src/tools)
 set(TRANSACTION_DIR          ${CMAKE_SOURCE_DIR}/src/transaction)
 set(WIN_TOOLS_DIR            ${CMAKE_SOURCE_DIR}/src/win_tools)
-
+set(XASL_DIR                 ${CMAKE_SOURCE_DIR}/src/xasl)
 
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 include_directories(
@@ -513,6 +517,7 @@ include_directories(
   src/thread
   src/tools
   src/transaction
+  src/xasl
   )
 
 include(CheckFunctionExists)

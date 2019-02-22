@@ -46,7 +46,7 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/db_admin.c
   ${COMPAT_DIR}/db_class.c
   ${COMPAT_DIR}/db_date.c
-  ${COMPAT_DIR}/db_elo.c 
+  ${COMPAT_DIR}/db_elo.c
   ${COMPAT_DIR}/db_info.c
   ${COMPAT_DIR}/db_json.cpp
   ${COMPAT_DIR}/db_macro.c
@@ -70,6 +70,8 @@ set(BASE_SOURCES
   ${BASE_DIR}/porting.c
   ${BASE_DIR}/area_alloc.c
   ${BASE_DIR}/fixed_alloc.c
+  ${BASE_DIR}/mem_block.cpp
+  ${BASE_DIR}/memory_private_allocator.cpp
   ${BASE_DIR}/memory_alloc.c
   ${BASE_DIR}/databases_file.c
   ${BASE_DIR}/encryption.c
@@ -121,7 +123,10 @@ set(BASE_HEADERS
   ${BASE_DIR}/error_code.h
   ${BASE_DIR}/error_context.hpp
   ${BASE_DIR}/error_manager.h
+  ${BASE_DIR}/extensible_array.hpp
   ${BASE_DIR}/fileline_location.hpp
+  ${BASE_DIR}/mem_block.hpp
+  ${BASE_DIR}/memory_private_allocator.cpp
   ${BASE_DIR}/packer.hpp
   ${BASE_DIR}/perf.hpp
   ${BASE_DIR}/perf_def.hpp
@@ -152,24 +157,32 @@ set(COMMUNICATION_SOURCES
 set(PARSER_SOURCES
   ${BISON_csql_grammar_OUTPUTS}
   ${FLEX_csql_lexer_OUTPUTS}
-  ${PARSER_DIR}/parser_support.c
-  ${PARSER_DIR}/show_meta.c
-  ${PARSER_DIR}/double_byte_support.c
-  ${PARSER_DIR}/method_transform.c
   ${PARSER_DIR}/cnf.c
   ${PARSER_DIR}/compile.c
+  ${PARSER_DIR}/double_byte_support.c
+  ${PARSER_DIR}/func_type.cpp
+  ${PARSER_DIR}/keyword.c
+  ${PARSER_DIR}/method_transform.c
+  ${PARSER_DIR}/name_resolution.c
   ${PARSER_DIR}/parse_dbi.c
   ${PARSER_DIR}/parse_evaluate.c
-  ${PARSER_DIR}/keyword.c
-  ${PARSER_DIR}/parse_tree_cl.c
   ${PARSER_DIR}/parse_tree.c
+  ${PARSER_DIR}/parse_tree_cl.c
+  ${PARSER_DIR}/parse_type.cpp
+  ${PARSER_DIR}/parser_allocator.cpp
+  ${PARSER_DIR}/parser_support.c
   ${PARSER_DIR}/query_result.c
-  ${PARSER_DIR}/name_resolution.c
-  ${PARSER_DIR}/semantic_check.c
-  ${PARSER_DIR}/type_checking.c
-  ${PARSER_DIR}/xasl_generation.c
   ${PARSER_DIR}/scanner_support.c
+  ${PARSER_DIR}/semantic_check.c
+  ${PARSER_DIR}/show_meta.c
+  ${PARSER_DIR}/type_checking.c
   ${PARSER_DIR}/view_transform.c
+  ${PARSER_DIR}/xasl_generation.c
+  )
+set(PARSER_HEADERS
+  ${PARSER_DIR}/func_type.hpp
+  ${PARSER_DIR}/parse_type.hpp
+  ${PARSER_DIR}/parser_allocator.hpp
   )
 
 set(OPTIMIZER_SOURCES
@@ -181,32 +194,36 @@ set(OPTIMIZER_SOURCES
   )
 
 set(QUERY_SOURCES
+  ${QUERY_DIR}/arithmetic.c
+  ${QUERY_DIR}/crypt_opfunc.c
+  ${QUERY_DIR}/cursor.c
   ${QUERY_DIR}/execute_schema.c
   ${QUERY_DIR}/execute_statement.c
-  ${QUERY_DIR}/arithmetic.c
-  ${QUERY_DIR}/cursor.c
-  ${QUERY_DIR}/query_dump.c
-  ${QUERY_DIR}/query_evaluator.c
   ${QUERY_DIR}/fetch.c
   ${QUERY_DIR}/filter_pred_cache.c
   ${QUERY_DIR}/list_file.c
+  ${QUERY_DIR}/method_scan.c
   ${QUERY_DIR}/numeric_opfunc.c
+  ${QUERY_DIR}/partition.c
   ${QUERY_DIR}/query_cl.c
+  ${QUERY_DIR}/query_dump.c
+  ${QUERY_DIR}/query_evaluator.c
+  ${QUERY_DIR}/query_executor.c
   ${QUERY_DIR}/query_manager.c
+  ${QUERY_DIR}/query_opfunc.c
+  ${QUERY_DIR}/scan_json_table.cpp
   ${QUERY_DIR}/scan_manager.c
   ${QUERY_DIR}/serial.c
   ${QUERY_DIR}/set_scan.c
-  ${QUERY_DIR}/string_opfunc.c
-  ${QUERY_DIR}/method_scan.c
-  ${QUERY_DIR}/query_executor.c
   ${QUERY_DIR}/show_scan.c
-  ${QUERY_DIR}/partition.c
-  ${QUERY_DIR}/query_opfunc.c
-  ${QUERY_DIR}/xasl_to_stream.c
   ${QUERY_DIR}/stream_to_xasl.c
-  ${QUERY_DIR}/crypt_opfunc.c
+  ${QUERY_DIR}/string_opfunc.c
   ${QUERY_DIR}/vacuum.c
   ${QUERY_DIR}/xasl_cache.c
+  ${QUERY_DIR}/xasl_to_stream.c
+  )
+set(QUERY_HEADERS
+  ${QUERY_DIR}/scan_json_table.hpp
   )
 
 set(OBJECT_SOURCES
@@ -318,32 +335,46 @@ set(TRANSACTION_SOURCES
 set(STORAGE_SOURCES
   ${STORAGE_DIR}/btree.c
   ${STORAGE_DIR}/btree_load.c
-  ${STORAGE_DIR}/system_catalog.c
   ${STORAGE_DIR}/catalog_class.c
   ${STORAGE_DIR}/compactdb_sr.c
+  ${STORAGE_DIR}/double_write_buffer.c
   ${STORAGE_DIR}/disk_manager.c
-  ${STORAGE_DIR}/storage_common.c
+  ${STORAGE_DIR}/es.c
+  ${STORAGE_DIR}/es_common.c
+  ${STORAGE_DIR}/es_owfs.c
+  ${STORAGE_DIR}/es_posix.c
   ${STORAGE_DIR}/extendible_hash.c
+  ${STORAGE_DIR}/external_sort.c
+  ${STORAGE_DIR}/file_io.c
   ${STORAGE_DIR}/file_manager.c
   ${STORAGE_DIR}/heap_file.c
-  ${STORAGE_DIR}/file_io.c
   ${STORAGE_DIR}/oid.c
   ${STORAGE_DIR}/overflow_file.c
   ${STORAGE_DIR}/page_buffer.c
-  ${STORAGE_DIR}/double_write_buffer.c
+  ${STORAGE_DIR}/record_descriptor.cpp
+  ${STORAGE_DIR}/slotted_page.c
   ${STORAGE_DIR}/statistics_cl.c
   ${STORAGE_DIR}/statistics_sr.c
-  ${STORAGE_DIR}/slotted_page.c
-  ${STORAGE_DIR}/external_sort.c
-  ${STORAGE_DIR}/es_common.c
-  ${STORAGE_DIR}/es.c
-  ${STORAGE_DIR}/es_posix.c
-  ${STORAGE_DIR}/es_owfs.c
+  ${STORAGE_DIR}/storage_common.c
+  ${STORAGE_DIR}/system_catalog.c
   )
+set(STORAGE_HEADERS
+  ${STORAGE_DIR}/record_descriptor.hpp
+)
 
 set(SESSION_SOURCES
   ${SESSION_DIR}/session.c
   ${SESSION_DIR}/session_sr.c
+  )
+
+set(XASL_SOURCES
+  ${XASL_DIR}/access_json_table.cpp
+  ${XASL_DIR}/xasl_stream.cpp
+  )
+set(XASL_HEADERS
+  ${XASL_DIR}/access_json_table.hpp
+  ${XASL_DIR}/compile_context.h
+  ${XASL_DIR}/xasl_stream.hpp
   )
 
 if(UNIX)
@@ -418,6 +449,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${ES_SOURCES}
   ${SESSION_SOURCES}
   ${PROBES_OBJECT}
+  ${XASL_SOURCES}
   PROPERTIES LANGUAGE CXX
   )
 
@@ -443,7 +475,9 @@ add_library(cubridsa SHARED
   ${CONNECTION_TCP_SOURCE}
   ${COMMUNICATION_SOURCES}
   ${PARSER_SOURCES}
+  ${PARSER_HEADERS}
   ${OPTIMIZER_SOURCES}
+  ${QUERY_HEADERS}
   ${QUERY_SOURCES}
   ${OBJECT_SOURCES}
   ${REPLICATION_HEADERS}
@@ -453,11 +487,14 @@ add_library(cubridsa SHARED
   ${JSP_SOURCES}
   ${THREAD_SOURCES}
   ${TRANSACTION_SOURCES}
+  ${STORAGE_HEADERS}
   ${STORAGE_SOURCES}
   ${ES_SOURCES}
   ${SESSION_SOURCES}
   ${PROBES_OBJECT}
   ${COMPAT_SOURCES_C}
+  ${XASL_SOURCES}
+  ${XASL_HEADERS}
   )
 set_target_properties(cubridsa PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 

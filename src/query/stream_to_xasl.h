@@ -21,26 +21,28 @@
 #define _STREAM_TO_XASL_H_
 
 #if !defined (SERVER_MODE) && !defined (SA_MODE)
-#error Belongs to server module
-#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
-
-#include "thread_compat.hpp"
-#include "xasl.h"
-
-#if !defined (SERVER_MODE) && !defined (SA_MODE)
 #error Belongs only to server or stand-alone modules.
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
-extern int stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, XASL_NODE ** xasl_tree, bool use_xasl_clone,
+#include "thread_compat.hpp"
+
+// forward definitions
+struct analytic_list_node;
+struct func_pred;
+struct pred_expr_with_context;
+struct xasl_node;
+struct xasl_node_header;
+
+extern int stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, xasl_node ** xasl_tree, bool use_xasl_clone,
 				   char *xasl_stream, int xasl_stream_size, void **xasl_unpack_info_ptr);
-extern int stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p, PRED_EXPR_WITH_CONTEXT ** pred_expr_tree,
+extern int stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p, pred_expr_with_context ** pred_expr_tree,
 					  char *pred_stream, int pred_stream_size);
-extern int stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p, FUNC_PRED ** xasl, char *xasl_stream,
+extern int stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p, func_pred ** xasl, char *xasl_stream,
 					int xasl_stream_size, void **xasl_unpack_info_ptr);
-extern int stx_map_stream_to_xasl_node_header (THREAD_ENTRY * thread_p, XASL_NODE_HEADER * xasl_header_p,
+extern int stx_map_stream_to_xasl_node_header (THREAD_ENTRY * thread_p, xasl_node_header * xasl_header_p,
 					       char *xasl_stream);
 extern void stx_free_xasl_unpack_info (void *unpack_info_ptr);
 extern void stx_free_additional_buff (THREAD_ENTRY * thread_p, void *unpack_info_ptr);
-extern void stx_init_analytic_type_unserialized_fields (ANALYTIC_TYPE * analytic);
+extern void stx_init_analytic_type_unserialized_fields (analytic_list_node * analytic);
 
 #endif /* _STREAM_TO_XASL_H_ */

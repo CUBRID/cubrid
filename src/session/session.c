@@ -48,10 +48,11 @@
 #include "lock_free.h"
 #include "object_primitive.h"
 #include "dbtype.h"
+#include "string_opfunc.h"
 #include "thread_daemon.hpp"
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
-
+#include "xasl_cache.h"
 
 
 #if !defined(SERVER_MODE)
@@ -694,7 +695,7 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id)
       return ER_FAILED;
     }
 
-  /* inserted key might have been incremented; if last_session_id was not modified in the meantime, store the new value 
+  /* inserted key might have been incremented; if last_session_id was not modified in the meantime, store the new value
    */
   ATOMIC_CAS_32 (&sessions.last_session_id, next_session_id, *id);
 
@@ -1818,7 +1819,7 @@ error:
  */
 int
 session_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name, char **info, int *info_len,
-				XASL_CACHE_ENTRY ** xasl_entry)
+				xasl_cache_ent ** xasl_entry)
 {
   SESSION_STATE *state_p = NULL;
   PREPARED_STATEMENT *stmt_p = NULL;

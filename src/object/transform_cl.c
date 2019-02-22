@@ -205,6 +205,7 @@ static int tf_attribute_default_expr_to_property (SM_ATTRIBUTE * attr_list);
 static int partition_info_to_disk (OR_BUF * buf, SM_PARTITION * partition_info);
 static SM_PARTITION *disk_to_partition_info (OR_BUF * buf);
 static int partition_info_size (SM_PARTITION * partition_info);
+static void or_pack_mop (OR_BUF * buf, MOP mop);
 
 #if defined(ENABLE_UNUSED_FUNCTION)
 /*
@@ -224,7 +225,7 @@ tf_find_temporary_oids (LC_OIDSET * oidset, MOBJ classobj, MOBJ obj)
   DB_TYPE type;
   SETOBJ *col;
 
-  /* 
+  /*
    * Do this only for instance objects.  This means that class objects
    * with temporary oids in, say, class variables won't get flushed at
    * this time, but that's probably ok.  They'll get flushed as part of
@@ -312,7 +313,7 @@ optimize_sets (SM_CLASS * class_, MOBJ volatile obj)
 
 	  if (col)
 	    {
-	      /* 
+	      /*
 	       * col now has the collection pointer.
 	       * sort it before we flush. The sort operation will produce
 	       * batched permanent oid's on demand if needed.
@@ -507,7 +508,7 @@ tf_need_permanent_oid (OR_BUF * buf, DB_OBJECT * obj)
 
   oidp = NULL;
 
-  /* 
+  /*
    * if we have a fixup buffer, and this is NOT a class object, then make
    * an entry for it.
    */
@@ -526,7 +527,7 @@ tf_need_permanent_oid (OR_BUF * buf, DB_OBJECT * obj)
     }
   else
     {
-      /* 
+      /*
        * couldn't make a fixup buffer entry, go to the server and assign
        * it in the usual way.
        */
@@ -618,14 +619,7 @@ put_varinfo (OR_BUF * buf, char *obj, SM_CLASS * class_, int offset_size)
 	  att = &class_->attributes[a];
 	  mem = obj + att->offset;
 
-	  if (att->domain->type->data_lengthmem != NULL)
-	    {
-	      len = (*(att->domain->type->data_lengthmem)) (mem, att->domain, 1);
-	    }
-	  else
-	    {
-	      len = att->domain->type->disksize;
-	    }
+	  len = att->domain->type->get_disk_size_of_mem (mem, att->domain);
 
 	  or_put_offset_internal (buf, offset, offset_size);
 	  offset += len;
@@ -665,14 +659,7 @@ re_check:
 	  att = &class_->attributes[a];
 	  mem = obj + att->offset;
 
-	  if (att->domain->type->data_lengthmem != NULL)
-	    {
-	      size += (*(att->domain->type->data_lengthmem)) (mem, att->domain, 1);
-	    }
-	  else
-	    {
-	      size += att->domain->type->disksize;
-	    }
+	  size += att->domain->type->get_disk_size_of_mem (mem, att->domain);
 	}
     }
 
@@ -709,14 +696,14 @@ put_attributes (OR_BUF * buf, char *obj, SM_CLASS * class_)
   char *start;
   int pad;
 
-  /* 
+  /*
    * write fixed attribute values, if unbound, leave zero or garbage
    * it doesn't really matter.
    */
   start = buf->ptr;
   for (att = class_->attributes; att != NULL && !att->type->variable_p; att = (SM_ATTRIBUTE *) att->header.next)
     {
-      PRIM_WRITE (att->type, att->domain, buf, obj + att->offset);
+      att->type->data_writemem (buf, obj + att->offset, att->domain);
     }
 
   /* bring the end of the fixed width block up to proper alignment */
@@ -740,7 +727,7 @@ put_attributes (OR_BUF * buf, char *obj, SM_CLASS * class_)
 
   for (; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
     {
-      PRIM_WRITE (att->type, att->domain, buf, obj + att->offset);
+      att->type->data_writemem (buf, obj + att->offset, att->domain);
     }
   return NO_ERROR;
 }
@@ -821,7 +808,7 @@ tf_mem_to_disk (MOP classmop, MOBJ classobj, MOBJ volatile obj, RECDES * record,
 
       if (OID_ISTEMP (WS_OID (classmop)))
 	{
-	  /* 
+	  /*
 	   * since this isn't a mem_oid, can't rely on write_oid to do this,
 	   * don't bother making this part of the deferred fixup stuff yet.
 	   */
@@ -863,7 +850,7 @@ tf_mem_to_disk (MOP classmop, MOBJ classobj, MOBJ volatile obj, RECDES * record,
       /* see if there are any indexes */
       has_index = classobj_class_has_indexes (class_);
 
-      /* 
+      /*
        * assign permanent OID's and make the necessary adjustments in
        * the packed buffer.
        */
@@ -872,7 +859,7 @@ tf_mem_to_disk (MOP classmop, MOBJ classobj, MOBJ volatile obj, RECDES * record,
 	  status = TF_ERROR;
 	}
 
-      /* 
+      /*
        * Now that we know the object has been packed up safely, it's safe
        * to update the coherency number of the in-memory image.
        */
@@ -948,7 +935,7 @@ get_current (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr, int bound_bit_flag
 	}
     }
 
-  /* 
+  /*
    * if there are no bound bits on disk, allocate the instance block
    * with all the bits turned on, we have to assume that the values
    * are non-null
@@ -971,7 +958,7 @@ get_current (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr, int bound_bit_flag
 	{
 	  att = &(class_->attributes[i]);
 	  mem = obj + att->offset;
-	  PRIM_READ (att->type, att->domain, buf, mem, -1);
+	  att->type->data_readmem (buf, mem, att->domain, -1);
 	}
 
       /* round up to a to the end of the fixed block */
@@ -993,7 +980,7 @@ get_current (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr, int bound_bit_flag
 	    {
 	      att = &(class_->attributes[i]);
 	      mem = obj + att->offset;
-	      PRIM_READ (att->type, att->domain, buf, mem, vars[j]);
+	      att->type->data_readmem (buf, mem, att->domain, vars[j]);
 	    }
 	}
     }
@@ -1066,11 +1053,11 @@ clear_new_unbound (char *obj, SM_CLASS * class_, SM_REPRESENTATION * oldrep)
 	{
 	  mem = obj + att->offset;
 	  /* initialize in case there isn't an initial value */
-	  PRIM_INITMEM (att->type, mem, att->domain);
+	  att->type->initmem (mem, att->domain);
 	  if (!DB_IS_NULL (&att->default_value.original_value))
 	    {
 	      /* assign the initial value, should check for non-existance ? */
-	      PRIM_SETMEM (att->type, att->domain, mem, &att->default_value.original_value);
+	      att->type->setmem (mem, att->domain, &att->default_value.original_value);
 	      if (!att->type->variable_p)
 		{
 		  OBJ_SET_BOUND_BIT (obj, att->storage_order);
@@ -1114,7 +1101,7 @@ get_old (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr, int repid, int bound_b
     }
   else
     {
-      /* 
+      /*
        * if there are no bound bits on disk, allocate the instance block
        * with all the bits turned on, we have to assume that the values
        * are non-null
@@ -1127,7 +1114,7 @@ get_old (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr, int repid, int bound_b
 	}
       else
 	{
-	  /* 
+	  /*
 	   * read the variable offset table, can't we just leave this on
 	   * disk ?
 	   */
@@ -1183,7 +1170,7 @@ get_old (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr, int repid, int bound_b
 	  start = buf->ptr;
 	  for (i = 0; i < oldrep->fixed_count && rat != NULL && attmap != NULL; i++, rat = rat->next)
 	    {
-	      type = PR_TYPE_FROM_ID (rat->typeid_);
+	      type = pr_type_from_id (rat->typeid_);
 	      if (type == NULL)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_INVALID_REPRESENTATION, 1,
@@ -1201,11 +1188,11 @@ get_old (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr, int repid, int bound_b
 
 	      if (attmap[i] == NULL)
 		{
-		  PRIM_READ (type, rat->domain, buf, NULL, -1);
+		  type->data_readmem (buf, NULL, rat->domain, -1);
 		}
 	      else
 		{
-		  PRIM_READ (type, rat->domain, buf, obj + attmap[i]->offset, -1);
+		  type->data_readmem (buf, obj + attmap[i]->offset, rat->domain, -1);
 		}
 	    }
 
@@ -1214,7 +1201,7 @@ get_old (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr, int repid, int bound_b
 	  or_advance (buf, (padded_size - fixed_size));
 
 
-	  /* 
+	  /*
 	   * sigh, we now have to process the bound bits in much the same way
 	   * as the attributes above, it would be nice if these could be done
 	   * in parallel but we don't have the fixed size of the old
@@ -1250,7 +1237,7 @@ get_old (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr, int repid, int bound_b
 	    {
 	      for (i = 0; i < oldrep->variable_count && rat != NULL && attmap != NULL; i++, rat = rat->next)
 		{
-		  type = PR_TYPE_FROM_ID (rat->typeid_);
+		  type = pr_type_from_id (rat->typeid_);
 		  if (type == NULL)
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_INVALID_REPRESENTATION, 1,
@@ -1266,11 +1253,11 @@ get_old (OR_BUF * buf, SM_CLASS * class_, MOBJ * obj_ptr, int repid, int bound_b
 		  att_index = oldrep->fixed_count + i;
 		  if (attmap[att_index] == NULL)
 		    {
-		      PRIM_READ (type, rat->domain, buf, NULL, vars[i]);
+		      type->data_readmem (buf, NULL, rat->domain, vars[i]);
 		    }
 		  else
 		    {
-		      PRIM_READ (type, rat->domain, buf, obj + attmap[att_index]->offset, vars[i]);
+		      type->data_readmem (buf, obj + attmap[att_index]->offset, rat->domain, vars[i]);
 		    }
 		}
 	    }
@@ -1482,7 +1469,7 @@ string_disk_size (const char *string)
 
   db_make_varnchar (&value, TP_FLOATING_PRECISION_VALUE, (const DB_C_NCHAR) string, str_length, LANG_SYS_CODESET,
 		    LANG_SYS_COLLATION);
-  length = (*(tp_VarNChar.data_lengthval)) (&value, 1);
+  length = tp_VarNChar.get_disk_size_of_value (&value);
 
   /* Clear the compressed_string of DB_VALUE */
   pr_clear_compressed_string (&value);
@@ -1511,13 +1498,13 @@ get_string (OR_BUF * buf, int length)
   char *string = NULL;
   DB_DOMAIN my_domain;
 
-  /* 
+  /*
    * Make sure this starts off initialized so "readval" won't try to free
    * any existing contents.
    */
   db_make_null (&value);
 
-  /* 
+  /*
    * The domain here is always a server side VARNCHAR.  Set a temporary
    * domain to reflect this.
    */
@@ -1527,7 +1514,7 @@ get_string (OR_BUF * buf, int length)
   my_domain.collation_id = LANG_SYS_COLLATION;
   my_domain.collation_flag = TP_DOMAIN_COLL_NORMAL;
 
-  (*(tp_VarNChar.data_readval)) (buf, &value, &my_domain, length, true, NULL, 0);
+  tp_VarNChar.data_readval (buf, &value, &my_domain, length, true, NULL, 0);
 
   if (DB_VALUE_TYPE (&value) == DB_TYPE_VARNCHAR)
     {
@@ -1569,7 +1556,7 @@ put_string (OR_BUF * buf, const char *string)
 
   db_make_varnchar (&value, TP_FLOATING_PRECISION_VALUE, (const DB_C_NCHAR) string, str_length, LANG_SYS_CODESET,
 		    LANG_SYS_COLLATION);
-  (*(tp_VarNChar.data_writeval)) (buf, &value);
+  tp_VarNChar.data_writeval (buf, &value);
   pr_clear_value (&value);
 }
 
@@ -1629,7 +1616,29 @@ object_set_size (DB_OBJLIST * list)
 }
 
 /*
- * put_object_set - Translates a list objects into the disk represenataion of a
+ * or_pack_mop - write an OID to a disk representation buffer given a MOP
+ * instead of a WS_MEMOID.
+ *    return:
+ *    buf(): transformer buffer
+ *    mop(): mop to transform
+ * Note:
+ *    mr_write_object can't be used because it takes a WS_MEMOID as is the
+ *    case for object references in instances.
+ *    This must stay in sync with mr_write_object above !
+ */
+static void
+or_pack_mop (OR_BUF * buf, MOP mop)
+{
+  DB_VALUE value;
+
+  tp_Object.initval (&value, 0, 0);
+  db_make_object (&value, mop);
+  tp_Object.data_writeval (buf, &value);
+  tp_Object.setval (&value, NULL, false);
+}
+
+/*
+ * put_object_set - Translates a list objects into the disk representation of a
  * sequence of objects
  *    return: on overflow, or_overflow will call longjmp and jump to the outer
  *            caller
@@ -1667,14 +1676,14 @@ put_object_set (OR_BUF * buf, DB_OBJLIST * list)
   or_put_int (buf, OR_INT_SIZE);	/* size of the domain */
   or_put_domain (buf, &tp_Object_domain, 0, 0);	/* actual domain */
 
-  /* should be using something other than pr_write_mop here ! */
+  /* should be using something other than or_pack_mop here ! */
   for (l = list; l != NULL; l = l->next)
     {
       if (WS_IS_DELETED (l->op))
 	{
 	  continue;
 	}
-      pr_write_mop (buf, l->op);
+      or_pack_mop (buf, l->op);
     }
 
   return NO_ERROR;
@@ -1705,11 +1714,11 @@ get_object_set (OR_BUF * buf, int expected)
   count = or_skip_set_header (buf);
   for (i = 0; i < count; i++)
     {
-      /* 
+      /*
        * Get a MOP, could assume classes mops here and make sure the resulting
        * MOP is stamped with the sm_Root_class_mop class ?
        */
-      (*(tp_Object.data_readval)) (buf, &value, NULL, -1, true, NULL, 0);
+      tp_Object.data_readval (buf, &value, NULL, -1, true, NULL, 0);
       op = db_get_object (&value);
       if (op != NULL)
 	{
@@ -1758,7 +1767,7 @@ substructure_set_size (DB_LIST * list, LSIZER function)
 
   if (count)
     {
-      /* 
+      /*
        * we have elements to store, in that case we need to add the
        * common substructure header at the front and an offset table
        */
@@ -1927,7 +1936,7 @@ property_list_size (DB_SEQ * properties)
       if (max)
 	{
 	  db_make_sequence (&value, properties);
-	  size = (*(tp_Sequence.data_lengthval)) (&value, 1);
+	  size = tp_Sequence.get_disk_size_of_value (&value);
 	}
     }
   return size;
@@ -1954,7 +1963,7 @@ put_property_list (OR_BUF * buf, DB_SEQ * properties)
   if (max)
     {
       db_make_sequence (&value, properties);
-      (*(tp_Sequence.data_writeval)) (buf, &value);
+      tp_Sequence.data_writeval (buf, &value);
     }
 }
 
@@ -1984,7 +1993,7 @@ get_property_list (OR_BUF * buf, int expected_size)
   properties = NULL;
   if (expected_size)
     {
-      (*(tp_Sequence.data_readval)) (buf, &value, NULL, expected_size, true, NULL, 0);
+      tp_Sequence.data_readval (buf, &value, NULL, expected_size, true, NULL, 0);
       properties = db_get_set (&value);
       if (properties == NULL)
 	or_abort (buf);		/* trouble allocating a handle */
@@ -1993,7 +2002,7 @@ get_property_list (OR_BUF * buf, int expected_size)
 	  max = set_size (properties);
 	  if (!max)
 	    {
-	      /* 
+	      /*
 	       * there is an empty sequence here, get rid of it so we don't
 	       * have to carry it around
 	       */
@@ -2074,7 +2083,7 @@ domain_to_disk (OR_BUF * buf, TP_DOMAIN * domain)
   or_put_int (buf, domain->scale);
   or_put_int (buf, domain->codeset);
   or_put_int (buf, domain->collation_id);
-  pr_write_mop (buf, domain->class_mop);
+  or_pack_mop (buf, domain->class_mop);
 
   put_substructure_set (buf, (DB_LIST *) domain->setdomain, (LWRITER) domain_to_disk, &tf_Metaclass_domain.mc_classoid,
 			tf_Metaclass_domain.mc_repid);
@@ -2084,7 +2093,7 @@ domain_to_disk (OR_BUF * buf, TP_DOMAIN * domain)
   if (domain->json_validator)
     {
       db_make_string_by_const_str (&schema_value, db_json_get_schema_raw_from_validator (domain->json_validator));
-      (*(tp_String.data_writeval)) (buf, &schema_value);
+      tp_String.data_writeval (buf, &schema_value);
       pr_clear_value (&schema_value);
     }
   if (start + offset != buf->ptr)
@@ -2139,12 +2148,12 @@ disk_to_domain2 (OR_BUF * buf)
       assert (domain->collation_id == LANG_COLL_ISO_BINARY);
       domain->codeset = INTL_CODESET_ISO88591;
     }
-  /* 
+  /*
    * Read the domain class OID without promoting it to a MOP.
    * Could use readval, and extract the OID out of the already swizzled
    * MOP too.
    */
-  (*(tp_Oid.data_readmem)) (buf, &oid, NULL, -1);
+  tp_Oid.data_readmem (buf, &oid, NULL, -1);
   domain->class_oid = oid;
 
   /* swizzle the pointer, we know we're on the client here */
@@ -2190,8 +2199,10 @@ disk_to_domain2 (OR_BUF * buf)
 	  assert_release (false);
 	  tp_domain_free (domain);
 	  free_var_table (vars);
+	  db_private_free_and_init (NULL, schema_raw);
 	  return NULL;
 	}
+      db_private_free_and_init (NULL, schema_raw);
     }
 
   free_var_table (vars);
@@ -2324,7 +2335,7 @@ disk_to_metharg (OR_BUF * buf)
 	}
       else
 	{
-	  arg->type = PR_TYPE_FROM_ID (argtype);
+	  arg->type = pr_type_from_id (argtype);
 	}
       arg->index = or_get_int (buf, &rc);
       arg->domain =
@@ -2441,7 +2452,7 @@ disk_to_methsig (OR_BUF * buf)
 	  fname = get_string (buf, vars[ORC_METHSIG_FUNCTION_NAME_INDEX].length);
 	  sig->sql_definition = get_string (buf, vars[ORC_METHSIG_SQL_DEF_INDEX].length);
 
-	  /* 
+	  /*
 	   * KLUDGE: older databases have the function name string stored with
 	   * a prepended '_' character for the sun.  Now, since we don't do this
 	   * until we actually have to dynamic link the function, we have to
@@ -2513,7 +2524,7 @@ method_to_disk (OR_BUF * buf, SM_METHOD * method)
 
   /* ATTRIBUTES */
   /* source class oid */
-  pr_write_mop (buf, method->class_mop);
+  or_pack_mop (buf, method->class_mop);
   or_put_int (buf, method->id);
 
   /* name */
@@ -2578,7 +2589,7 @@ disk_to_method (OR_BUF * buf, SM_METHOD * method)
       method->header.name_space = ID_NULL;
 
       /* CLASS */
-      (*(tp_Object.data_readval)) (buf, &value, NULL, -1, true, NULL, 0);
+      tp_Object.data_readval (buf, &value, NULL, -1, true, NULL, 0);
       method->class_mop = db_get_object (&value);
       method->id = or_get_int (buf, &rc);
       method->function = NULL;
@@ -2632,7 +2643,7 @@ methfile_to_disk (OR_BUF * buf, SM_METHOD_FILE * file)
   /* ATTRIBUTES */
 
   /* class */
-  pr_write_mop (buf, file->class_mop);
+  or_pack_mop (buf, file->class_mop);
 
   /* name */
   put_string (buf, file->name);
@@ -2697,7 +2708,7 @@ disk_to_methfile (OR_BUF * buf)
       else
 	{
 	  /* class */
-	  (*(tp_Object.data_readval)) (buf, &value, NULL, -1, true, NULL, 0);
+	  tp_Object.data_readval (buf, &value, NULL, -1, true, NULL, 0);
 	  file->class_mop = db_get_object (&value);
 
 	  /* name */
@@ -2863,11 +2874,11 @@ attribute_to_disk (OR_BUF * buf, SM_ATTRIBUTE * att)
   or_put_int (buf, (int) att->type->id);
   or_put_int (buf, 0);		/* memory offsets are now calculated after loading */
   or_put_int (buf, att->order);
-  pr_write_mop (buf, att->class_mop);
+  or_pack_mop (buf, att->class_mop);
   or_put_int (buf, att->flags);
 
   /* index BTID */
-  /* 
+  /*
    * The index member of the attribute structure has been removed.  Indexes
    * are now stored on the class property list.  We still need to store
    * something out to disk since the disk representation has not changed.
@@ -2962,7 +2973,7 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
     }
   else
     {
-      /* 
+      /*
        * must be sure to initialize these, the function classobj_make_attribute
        * should be split into creation & initialization functions so we can
        * have a single function that initializes the various fields.  As it
@@ -2980,12 +2991,12 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
 
       att->id = or_get_int (buf, &rc);
       dbval_type = (DB_TYPE) or_get_int (buf, &rc);
-      att->type = PR_TYPE_FROM_ID (dbval_type);
+      att->type = pr_type_from_id (dbval_type);
       att->offset = or_get_int (buf, &rc);
       att->offset = 0;		/* calculated later */
       att->order = or_get_int (buf, &rc);
 
-      (*(tp_Object.data_readval)) (buf, &value, NULL, -1, true, NULL, 0);
+      tp_Object.data_readval (buf, &value, NULL, -1, true, NULL, 0);
       att->class_mop = db_get_object (&value);
       /* prevents clear on next readval call */
       db_value_put_null (&value);
@@ -2995,7 +3006,7 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
       fileid = or_get_int (buf, &rc);
 
       /* index BTID */
-      /* 
+      /*
        * Read the NULL BTID from disk.  There is no place to put this so
        * ignore it.  - JB
        */
@@ -3141,7 +3152,7 @@ resolution_to_disk (OR_BUF * buf, SM_RESOLUTION * res)
   buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
 
   /* ATTRIBUTES */
-  pr_write_mop (buf, res->class_mop);
+  or_pack_mop (buf, res->class_mop);
   name_space = (int) res->name_space;	/* kludge for ansi */
   or_put_int (buf, name_space);
   put_string (buf, res->name);
@@ -3211,13 +3222,13 @@ disk_to_resolution (OR_BUF * buf)
     }
   else
     {
-      (*(tp_Object.data_readval)) (buf, &value, NULL, -1, true, NULL, 0);
+      tp_Object.data_readval (buf, &value, NULL, -1, true, NULL, 0);
       class_ = db_get_object (&value);
       if (class_ == NULL)
 	{
 	  (void) or_get_int (buf, &rc);
-	  (*(tp_VarNChar.data_readval)) (buf, NULL, NULL, vars[ORC_RES_NAME_INDEX].length, true, NULL, 0);
-	  (*(tp_VarNChar.data_readval)) (buf, NULL, NULL, vars[ORC_RES_ALIAS_INDEX].length, true, NULL, 0);
+	  tp_VarNChar.data_readval (buf, NULL, NULL, vars[ORC_RES_NAME_INDEX].length, true, NULL, 0);
+	  tp_VarNChar.data_readval (buf, NULL, NULL, vars[ORC_RES_ALIAS_INDEX].length, true, NULL, 0);
 	}
       else
 	{
@@ -3621,7 +3632,7 @@ put_class_attributes (OR_BUF * buf, SM_CLASS * class_)
   or_put_int (buf, (int) class_->class_type);
 
   /* owner object */
-  pr_write_mop (buf, class_->owner);
+  or_pack_mop (buf, class_->owner);
   or_put_int (buf, (int) class_->collation_id);
 
 
@@ -3660,7 +3671,7 @@ put_class_attributes (OR_BUF * buf, SM_CLASS * class_)
   put_substructure_set (buf, (DB_LIST *) class_->query_spec, (LWRITER) query_spec_to_disk,
 			&tf_Metaclass_query_spec.mc_classoid, tf_Metaclass_query_spec.mc_repid);
 
-  /* 
+  /*
    * triggers - for simplicity, convert the cache into a flattened
    * list of object id's
    */
@@ -3693,8 +3704,8 @@ class_to_disk (OR_BUF * buf, SM_CLASS * class_)
   int offset;
 
   /* kludge, we may have to do some last minute adj of the class structures before saving.  In particular, some of the
-   * attribute fields need to be placed in the attribute property list because there are no corresponding fields in the 
-   * disk representation.  This may result in storage allocation which because we don't have modern computers may fail. 
+   * attribute fields need to be placed in the attribute property list because there are no corresponding fields in the
+   * disk representation.  This may result in storage allocation which because we don't have modern computers may fail.
    * This function does all of the various checking up front so we don't have to detect it later in the substructure
    * conversion routines */
   if (!check_class_structure (class_))
@@ -3959,7 +3970,7 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
   class_->class_type = (SM_CLASS_TYPE) or_get_int (buf, &rc);
 
   /* owner object */
-  (*(tp_Object.data_readval)) (buf, &value, NULL, -1, true, NULL, 0);
+  tp_Object.data_readval (buf, &value, NULL, -1, true, NULL, 0);
   class_->owner = db_get_object (&value);
   class_->collation_id = or_get_int (buf, &rc);
 
@@ -4032,7 +4043,7 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
   install_substructure_set (buf, (DB_LIST *) class_->class_methods, (VREADER) disk_to_method,
 			    vars[ORC_CLASS_METHODS_INDEX].length);
 
-  /* 
+  /*
    * fix up the name_space tags, could do this later but easier just
    * to assume that they're set up correctly
    */
@@ -4316,7 +4327,7 @@ tf_disk_to_class (OID * oid, RECDES * record)
       break;
 
     default:
-      /* 
+      /*
        * make sure to clear the class that was being created,
        * an appropriate error will have been set
        */
@@ -4365,7 +4376,7 @@ tf_class_to_disk (MOBJ classobj, RECDES * record)
       tf_compile_meta_classes ();
     }
 
-  /* 
+  /*
    * don't worry about deferred fixup for classes, we don't usually have
    * many temporary OIDs in classes.
    */
@@ -4382,7 +4393,7 @@ tf_class_to_disk (MOBJ classobj, RECDES * record)
       rc = tf_attribute_default_expr_to_property (class_->attributes);
     }
 
-  /* 
+  /*
    * test - this isn't necessary but we've been having a class size related
    * bug that I want to try to catch - take this out when we're sure
    */
@@ -4440,7 +4451,7 @@ tf_class_to_disk (MOBJ classobj, RECDES * record)
       /* fprintf(stdout, "Saved class in %d bytes\n", record->length); */
       break;
 
-      /* 
+      /*
        * if the longjmp status was anything other than ER_TF_BUFFER_OVERFLOW,
        * it represents an error condition and er_set will have been called
        */
@@ -4692,7 +4703,7 @@ tf_set_size (DB_SET * set)
       return 0;
     }
 
-  /* 
+  /*
    * Doesn't matter which set function we call, they all use the
    * Don't have to synthesize a domain, we can get the one out
    * of the set itself.
@@ -4745,7 +4756,7 @@ tf_pack_set (DB_SET * set, char *buffer, int buffer_size, int *actual_bytes)
     case 0:
       error = NO_ERROR;
 
-      /* 
+      /*
        * Doesn't matter which set function we pick, all the types are the same.
        * Don't have to pass in domain either since the type will be
        * self-describing.
@@ -4759,7 +4770,7 @@ tf_pack_set (DB_SET * set, char *buffer, int buffer_size, int *actual_bytes)
 	}
       break;
 
-      /* 
+      /*
        * something happened, if it was ER_TF_BUFFER_OVERFLOW, return
        * the desired size as a negative number
        */

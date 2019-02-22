@@ -99,7 +99,7 @@ static REL_COMPATIBILITY rel_get_compatible_internal (const char *base_rel_str, 
 /*
  * Disk (database image) Version Compatibility
  */
-static float disk_compatibility_level = 10.13f;
+static float disk_compatibility_level = 10.15f;
 
 /*
  * rel_copy_version_string - version string of the product
@@ -353,7 +353,7 @@ rel_compare (const char *rel_a, const char *rel_b)
   int a, b, retval = 0;
   char *a_temp, *b_temp, *end_p;
 
-  /* 
+  /*
    * If we get a NULL for one of the values (and we shouldn't), guess that
    * the versions are the same.
    */
@@ -363,12 +363,12 @@ rel_compare (const char *rel_a, const char *rel_b)
     }
   else
     {
-      /* 
+      /*
        * Compare strings
        */
       a_temp = (char *) rel_a;
       b_temp = (char *) rel_b;
-      /* 
+      /*
        * The following loop terminates if we determine that one string
        * is greater than the other, or we reach the end of one of the
        * strings.
@@ -387,7 +387,7 @@ rel_compare (const char *rel_a, const char *rel_b)
 	    {
 	      retval = 1;
 	    }
-	  /* 
+	  /*
 	   * This skips over the '.'.
 	   * This means that "?..?" will parse out to "?.?".
 	   */
@@ -410,7 +410,7 @@ rel_compare (const char *rel_a, const char *rel_b)
 
       if (!retval)
 	{
-	  /* 
+	  /*
 	   * Both strings are the same up to this point.  If the rest is zeros,
 	   * they're still equal.
 	   */

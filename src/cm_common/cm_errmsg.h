@@ -18,7 +18,7 @@
  */
 
 /*
- * cm_errmsg.h - 
+ * cm_errmsg.h -
  */
 
 #ifndef _CM_ERRMSG_H_

@@ -249,7 +249,7 @@ es_open_owfs (const char *mds_ip, const char *svc_code)
   ES_OWFS_FSH *fsh;
 
   rv = pthread_mutex_lock (&es_lock);
-  /* 
+  /*
    * initialize owfs if it is first time
    */
   if (!es_owfs_initialized)
@@ -271,7 +271,7 @@ es_open_owfs (const char *mds_ip, const char *svc_code)
       es_owfs_initialized = true;
     }
 
-  /* 
+  /*
    * find open fs in the cache
    */
   ES_LIST_FOR_EACH (lh, &es_fslist)
@@ -284,7 +284,7 @@ es_open_owfs (const char *mds_ip, const char *svc_code)
       }
   }
 
-  /* 
+  /*
    * open new fs
    */
   fsh = es_new_fsh (mds_ip, svc_code);
@@ -312,7 +312,7 @@ es_owfs_init (const char *base_path)
 
   assert (base_path != NULL);
 
-  /* 
+  /*
    * get MDS IP and SVC CODE
    */
   /* must start with '//' */

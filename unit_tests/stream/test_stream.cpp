@@ -18,14 +18,17 @@
  */
 
 #include "test_stream.hpp"
-#include "object_representation.h"
+
+#include "dbtype.h"
 #include "multi_thread_stream.hpp"
 #include "stream_file.hpp"
+#include "object_primitive.h"
+#include "object_representation.h"
 #include "thread_compat.hpp"
+#include "thread_entry.hpp"
 #include "thread_manager.hpp"
 #include "thread_task.hpp"
-#include "thread_entry.hpp"
-#include "dbtype.h"
+
 #include <iostream>
 
 namespace test_stream
@@ -116,66 +119,51 @@ namespace test_stream
   }
 
   /* po1 */
-  int po1::pack (cubpacking::packer *serializator)
+  void po1::pack (cubpacking::packer &serializer) const
   {
-    int res = 0;
+    serializer.pack_int (po1::ID);
 
-    serializator->pack_int (po1::ID);
-
-    serializator->pack_int (i1);
-    serializator->pack_short (&sh1);
-    serializator->pack_bigint (&b1);
-    serializator->pack_int_array (int_a, sizeof (int_a) / sizeof (int_a[0]));
-    serializator->pack_int_vector (int_v);
+    serializer.pack_int (i1);
+    serializer.pack_short (sh1);
+    serializer.pack_bigint (b1);
+    serializer.pack_int_array (int_a, sizeof (int_a) / sizeof (int_a[0]));
+    serializer.pack_int_vector (int_v);
     for (unsigned int i = 0; i < sizeof (values) / sizeof (values[0]); i++)
       {
-	serializator->pack_db_value (values[i]);
+	serializer.pack_db_value (values[i]);
       }
-    res = serializator->pack_small_string (small_str);
-    assert (res == 0);
-    res = serializator->pack_large_string (large_str);
-    assert (res == 0);
+    serializer.pack_small_string (small_str);
+    serializer.pack_large_string (large_str);
 
-    res = serializator->pack_string (str1);
-    assert (res == 0);
+    serializer.pack_string (str1);
 
-    res = serializator->pack_c_string (str2, strlen (str2));
-    assert (res == 0);
-
-    return NO_ERROR;
+    serializer.pack_c_string (str2, strlen (str2));
   }
 
-  int po1::unpack (cubpacking::packer *serializator)
+  void po1::unpack (cubpacking::unpacker &deserializer)
   {
     int cnt;
-    int res;
 
-    serializator->unpack_int (&cnt);
+    deserializer.unpack_int (cnt);
     assert (cnt == po1::ID);
 
-    serializator->unpack_int (&i1);
-    serializator->unpack_short (&sh1);
-    serializator->unpack_bigint (&b1);
-    serializator->unpack_int_array (int_a, cnt);
+    deserializer.unpack_int (i1);
+    deserializer.unpack_short (sh1);
+    deserializer.unpack_bigint (b1);
+    deserializer.unpack_int_array (int_a, cnt);
     assert (cnt == sizeof (int_a) / sizeof (int_a[0]));
 
-    serializator->unpack_int_vector (int_v);
+    deserializer.unpack_int_vector (int_v);
 
     for (unsigned int i = 0; i < sizeof (values) / sizeof (values[0]); i++)
       {
-	serializator->unpack_db_value (&values[i]);
+	deserializer.unpack_db_value (values[i]);
       }
-    res = serializator->unpack_small_string (small_str, sizeof (small_str));
-    assert (res == 0);
-    res = serializator->unpack_large_string (large_str);
-    assert (res == 0);
+    deserializer.unpack_small_string (small_str, sizeof (small_str));
+    deserializer.unpack_large_string (large_str);
 
-    res = serializator->unpack_string (str1);
-    assert (res == 0);
-    res = serializator->unpack_c_string (str2, sizeof (str2));
-    assert (res == 0);
-
-    return NO_ERROR;
+    deserializer.unpack_string (str1);
+    deserializer.unpack_c_string (str2, sizeof (str2));
   }
 
   bool po1::is_equal (const cubpacking::packable_object *other)
@@ -232,26 +220,26 @@ namespace test_stream
     return true;
   }
 
-  std::size_t po1::get_packed_size (cubpacking::packer *serializator, std::size_t start_offset)
+  size_t po1::get_packed_size (cubpacking::packer &serializer, std::size_t start_offset) const
   {
     size_t entry_size = 0;
     /* ID :*/
-    entry_size += serializator->get_packed_int_size (entry_size);
+    entry_size += serializer.get_packed_int_size (entry_size);
 
-    entry_size += serializator->get_packed_int_size (entry_size);
-    entry_size += serializator->get_packed_short_size (entry_size);
-    entry_size += serializator->get_packed_bigint_size (entry_size);
-    entry_size += serializator->get_packed_int_vector_size (entry_size, sizeof (int_a) / sizeof (int_a[0]));
-    entry_size += serializator->get_packed_int_vector_size (entry_size, (int) int_v.size ());
+    entry_size += serializer.get_packed_int_size (entry_size);
+    entry_size += serializer.get_packed_short_size (entry_size);
+    entry_size += serializer.get_packed_bigint_size (entry_size);
+    entry_size += serializer.get_packed_int_vector_size (entry_size, sizeof (int_a) / sizeof (int_a[0]));
+    entry_size += serializer.get_packed_int_vector_size (entry_size, (int) int_v.size ());
     for (unsigned int i = 0; i < sizeof (values) / sizeof (values[0]); i++)
       {
-	entry_size += serializator->get_packed_db_value_size (values[i], entry_size);
+	entry_size += serializer.get_packed_db_value_size (values[i], entry_size);
       }
-    entry_size += serializator->get_packed_small_string_size (small_str, entry_size);
-    entry_size += serializator->get_packed_large_string_size (large_str, entry_size);
+    entry_size += serializer.get_packed_small_string_size (small_str, entry_size);
+    entry_size += serializer.get_packed_large_string_size (large_str, entry_size);
 
-    entry_size += serializator->get_packed_string_size (str1, entry_size);
-    entry_size += serializator->get_packed_c_string_size (str2, strlen (str2), entry_size);
+    entry_size += serializer.get_packed_string_size (str1, entry_size);
+    entry_size += serializer.get_packed_c_string_size (str2, strlen (str2), entry_size);
     return entry_size;
   }
 
@@ -341,31 +329,20 @@ namespace test_stream
       }
   }
   /* po2 */
-  int po2::pack (cubpacking::packer *serializator)
+  void po2::pack (cubpacking::packer &serializer) const
   {
-    int res = 0;
+    serializer.pack_int (po2::ID);
 
-    res = serializator->pack_int (po2::ID);
-    assert (res == 0);
-
-    res = serializator->pack_large_string (large_str);
-    assert (res == 0);
-
-    return NO_ERROR;
+    serializer.pack_large_string (large_str);
   }
 
-  int po2::unpack (cubpacking::packer *serializator)
+  void po2::unpack (cubpacking::unpacker &deserializer)
   {
-    int res;
     int id;
 
-    serializator->unpack_int (&id);
-    assert (id == po2::ID);
+    deserializer.unpack_int (id);
 
-    res = serializator->unpack_large_string (large_str);
-    assert (res == 0);
-
-    return NO_ERROR;
+    deserializer.unpack_large_string (large_str);
   }
 
   bool po2::is_equal (const cubpacking::packable_object *other)
@@ -385,14 +362,14 @@ namespace test_stream
     return true;
   }
 
-  std::size_t po2::get_packed_size (cubpacking::packer *serializator, std::size_t start_offset)
+  size_t po2::get_packed_size (cubpacking::packer &serializer, std::size_t start_offset) const
   {
     size_t entry_size = 0;
     /* ID :*/
-    entry_size += serializator->get_packed_int_size (entry_size);
+    entry_size += serializer.get_packed_int_size (entry_size);
 
 
-    entry_size += serializator->get_packed_large_string_size (large_str, entry_size);
+    entry_size += serializer.get_packed_large_string_size (large_str, entry_size);
 
     return entry_size;
   }

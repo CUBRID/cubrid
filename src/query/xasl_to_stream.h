@@ -28,10 +28,14 @@
 #error Does not belong to server module
 #endif /* defined (SERVER_MODE) */
 
-#include "xasl.h"
+// forward definition
+struct func_pred;
+struct pred_expr_with_context;
+struct xasl_node;
+struct xasl_stream;
 
-extern int xts_map_xasl_to_stream (const XASL_NODE * xasl, XASL_STREAM * stream);
-extern int xts_map_filter_pred_to_stream (const PRED_EXPR_WITH_CONTEXT * pred, char **stream, int *size);
-extern int xts_map_func_pred_to_stream (const FUNC_PRED * xasl, char **stream, int *size);
+extern int xts_map_xasl_to_stream (const xasl_node * xasl, xasl_stream * stream);
+extern int xts_map_filter_pred_to_stream (const pred_expr_with_context * pred, char **stream, int *size);
+extern int xts_map_func_pred_to_stream (const func_pred * xasl, char **stream, int *size);
 
 #endif /* !_XASL_TO_STREAM_H_ */

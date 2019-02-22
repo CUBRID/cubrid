@@ -1,19 +1,19 @@
-/* Copyright (C) 2002-2013 Free Software Foundation, Inc.              
-   This file is part of the GNU C Library.                             
-   Contributed by Ulrich Drepper <drepper@redhat.com>, 2002.           
-                                                                       
-   The GNU C Library is free software; you can redistribute it and/or  
-   modify it under the terms of the GNU Lesser General Public          
-   License as published by the Free Software Foundation; either        
-   version 2.1 of the License, or (at your option) any later version.  
+/* Copyright (C) 2002-2013 Free Software Foundation, Inc.
+   This file is part of the GNU C Library.
+   Contributed by Ulrich Drepper <drepper@redhat.com>, 2002.
+
+   The GNU C Library is free software; you can redistribute it and/or
+   modify it under the terms of the GNU Lesser General Public
+   License as published by the Free Software Foundation; either
+   version 2.1 of the License, or (at your option) any later version.
 
    The GNU C Library is distributed in the hope that it will be useful,
-   but WITHOUT ANY WARRANTY; without even the implied warranty of      
-   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU   
-   Lesser General Public License for more details.                     
-                                                                       
-   You should have received a copy of the GNU Lesser General Public    
-   License along with the GNU C Library; if not, see                   
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+   Lesser General Public License for more details.
+
+   You should have received a copy of the GNU Lesser General Public
+   License along with the GNU C Library; if not, see
    <http://www.gnu.org/licenses/>.  */
 
 /*
@@ -35,16 +35,16 @@ TSC_UINT64
 get_clockfreq (void)
 {
 #if defined (WINDOWS)
-  /* 
-   * Note: It has been implemented for Windows. 
+  /*
+   * Note: It has been implemented for Windows.
    */
   LARGE_INTEGER fr;
   QueryPerformanceFrequency (&fr);
   return (TSC_UINT64) fr.QuadPart;
 
 #elif defined (LINUX)
-  /* 
-   * Note: The implementation is derived from glibc-2.18. 
+  /*
+   * Note: The implementation is derived from glibc-2.18.
    */
 
   /* We read the information from the /proc filesystem.  It contains at least one line like cpu MHz : 497.840237 or
@@ -101,8 +101,8 @@ get_clockfreq (void)
   return result;
 
 #else
-  /* 
-   * Note: Unknown OS. the return value will not be used. 
+  /*
+   * Note: Unknown OS. the return value will not be used.
    */
   return 1;
 

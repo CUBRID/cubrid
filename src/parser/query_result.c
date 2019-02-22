@@ -70,7 +70,7 @@ pt_find_size_from_dbtype (const DB_TYPE db_type)
 
   if (db_type != DB_TYPE_NULL)
     {
-      type = PR_TYPE_FROM_ID (db_type);
+      type = pr_type_from_id (db_type);
       if (type && !(type->variable_p))
 	{
 	  size = pr_mem_size (type);
@@ -187,7 +187,7 @@ pt_set_domain_class (SM_DOMAIN * dom, const PT_NODE * nam, const DB_OBJECT * vir
   if (!dom || !nam || nam->node_type != PT_NAME)
     return;
 
-  dom->type = PR_TYPE_FROM_ID (DB_TYPE_OBJECT);
+  dom->type = pr_type_from_id (DB_TYPE_OBJECT);
   if (virt != NULL)
     {
       dom->class_mop = (DB_OBJECT *) virt;
@@ -257,7 +257,7 @@ pt_get_src_domain (PARSER_CONTEXT * parser, const PT_NODE * s, const PT_NODE * s
     }
 
   /* if s is not a path expression then its source domain is DB_TYPE_NULL */
-  result->type = PR_TYPE_FROM_ID (DB_TYPE_NULL);
+  result->type = pr_type_from_id (DB_TYPE_NULL);
 
   /* make leaf point to the last leaf name node */
   if (s->node_type == PT_DOT_)
@@ -454,12 +454,12 @@ pt_get_select_list (PARSER_CONTEXT * parser, PT_NODE * query)
       assert (query->parser_id == parser->id);
       if (select_list && select_list->parser_id != parser->id)
 	{
-	  /* 
+	  /*
 	   * Union PT_NODE keeps select_list as reference
 	   * this case means, this parser copy other parsers tree
 	   * but union.info.select_list points old reference
-	   * 
-	   * this function can free & realloc select_list->data_type 
+	   *
+	   * this function can free & realloc select_list->data_type
 	   * so, to prevent modifying (other parser's) original
 	   * tree, deep copy select_list in this parser's context
 	   */
@@ -915,7 +915,7 @@ pt_fillin_type_size (PARSER_CONTEXT * parser, PT_NODE * query, DB_QUERY_TYPE * l
 
   if (oids_included == 1)
     {
-      /* 
+      /*
        * prepend single oid column onto the type list
        * the first node of the select list will be the oid column.
        */

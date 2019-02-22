@@ -177,7 +177,7 @@ re_check:
 	}
     }
 
-  /* 
+  /*
    * if we couldn't make an exact estimate, return a negative number indicating
    * the minimum size to expect
    */
@@ -215,7 +215,7 @@ get_class_heap (MOP classop, SM_CLASS * class_)
   if (HFID_IS_NULL (hfid))
     {
       /* could also accomplish this by creating a single instance */
-      /* 
+      /*
        * make sure the class is fetched for update so that it will be
        * marked dirty and stored with the new heap
        */
@@ -481,7 +481,7 @@ disk_insert_instance_using_mobj (MOP classop, MOBJ classobj, MOBJ obj, OID * oid
 
   Diskrec->length = 0;
 
-  /* 
+  /*
    * tf_mem_to_disk() is used to get an estimate of the disk space requirements
    * for the object. When dealing with collections the estimate returned is
    * not always a good one, hence we need to enclose this block in a loop
@@ -569,7 +569,7 @@ disk_update_instance_using_mobj (MOP classop, MOBJ classobj, MOBJ obj, OID * oid
   TF_STATUS tf_status = TF_SUCCESS;
 
   Diskrec->length = 0;
-  /* 
+  /*
    * tf_mem_to_disk() is used to get an estimate of the disk space requirements
    * for the object. When dealing with collections the estimate returned is
    * not always a good one, hence we need to enclose this block in a loop

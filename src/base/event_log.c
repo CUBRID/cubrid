@@ -422,7 +422,7 @@ event_log_bind_values (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_index, i
 
   for (i = 0; i < tdes->bind_history[bind_index].size; i++)
     {
-      val_str = pr_valstring (thread_p, &tdes->bind_history[bind_index].vals[i]);
+      val_str = pr_valstring (&tdes->bind_history[bind_index].vals[i]);
       fprintf (log_fp, "%*cbind: %s\n", indent, ' ', (val_str == NULL) ? "(null)" : val_str);
 
       if (val_str != NULL)

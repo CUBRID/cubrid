@@ -1,19 +1,19 @@
 /*
  * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -27,6 +27,10 @@
 
 #ident "$Id$"
 #include "dbtype_def.h"
+
+// forward def
+struct method_sig_list;
+struct qfile_list_id;
 
 #define VACOMM_BUFFER_SIZE 4096
 
@@ -46,7 +50,7 @@ struct vacomm_buffer
 
 extern int method_send_error_to_server (unsigned int rc, char *host, char *server_name);
 
-extern int method_invoke_for_server (unsigned int rc, char *host, char *server_name, QFILE_LIST_ID * list_id,
-				     METHOD_SIG_LIST * method_sig_list);
+extern int method_invoke_for_server (unsigned int rc, char *host, char *server_name, qfile_list_id * list_id,
+				     method_sig_list * method_sig_list);
 
 #endif /* _QUERY_METHOD_H_ */
