@@ -23,6 +23,8 @@
 
 #include "load_class_registry.hpp"
 
+#include <algorithm>
+
 namespace cubload
 {
 
@@ -155,6 +157,13 @@ namespace cubload
     std::unique_lock<std::mutex> ulock (m_mutex);
 
     return get_class_entry_without_lock (clsid);
+  }
+
+  void
+  class_registry::get_all_class_entries (std::vector<const class_entry *> &entries) const
+  {
+    std::transform (m_class_by_id.begin (), m_class_by_id.end (), std::back_inserter (entries),
+		    std::bind (&class_map::value_type::second, std::placeholders::_1));
   }
 
   const class_entry *

@@ -59,10 +59,6 @@ namespace cubload
 }
 /* *INDENT-ON* */
 
-/* Global variables */
-extern int ignore_class_num;
-extern char **ignore_class_list;
-
 /* start load functions */
 void ldr_sa_load (cubload::load_args *args, int *status, bool *interrupted);
 

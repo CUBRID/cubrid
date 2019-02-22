@@ -9782,10 +9782,18 @@ slocator_demote_class_lock (THREAD_ENTRY * thread_p, unsigned int rid, char *req
 void
 sloaddb_init (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
+  packing_unpacker unpacker (request, (size_t) reqlen);
+
+  /* *INDENT-OFF* */
+  cubload::load_args args;
+  /* *INDENT-ON* */
+
+  args.unpack (unpacker);
+
   SESSION_ID session_id;
   session_get_session_id (thread_p, &session_id);
 
-  load_session *session = new load_session (session_id);
+  load_session *session = new load_session (args, session_id);
 
   int error_code = session_set_load_session (thread_p, session);
   if (error_code != NO_ERROR)
@@ -9803,20 +9811,12 @@ sloaddb_init (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reql
 void
 sloaddb_load_object_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  packing_unpacker unpacker (request, (size_t) reqlen);
-
-  /* *INDENT-OFF* */
-  std::string object_file_name;
-  /* *INDENT-ON* */
-
-  unpacker.unpack_string (object_file_name);
-
   load_session *session = NULL;
   int error_code = session_get_load_session (thread_p, session);
   if (error_code == NO_ERROR)
     {
       assert (session != NULL);
-      error_code = session->load_file (*thread_p, object_file_name);
+      error_code = session->load_file (*thread_p);
     }
   else
     {
@@ -9958,8 +9958,14 @@ sloaddb_destroy (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int r
       assert (session != NULL);
 
       session->wait_for_completion ();
+      session->update_class_statistics (*thread_p);
       delete session;
       session_set_load_session (thread_p, NULL);
+    }
+
+  if (er_errid () != NO_ERROR || er_has_error ())
+    {
+      return_error_to_client (thread_p, rid);
     }
 
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;

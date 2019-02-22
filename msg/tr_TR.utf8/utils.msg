@@ -445,9 +445,11 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 118 Sınıf adının uzunluğu en fazla %1$d bayttır.\n
 120 \
 loaddb: Veritabanına veri alma nesneler ve şemalar.\n\
-kullanım: %1$s loaddb [SEÇENEK] database-name\n\
+kullanım: %1$s loaddb [SEÇENEK] database-name[@host]\n\
 \n\
 geçerli seçenekler:\n\
+  -S, --SA-mode                 stand-alone modu yürütme\n\
+  -C, --CS-mode                 istemci-sunucu modunda yürütme\n\
   -u, --user=ID                 veritabanı erişimi için kullanıcı kimliği; varsayılan: "public"\n\
   -p, --password=PASS           kullanıcı şifresi; varsayılan: hiçbir\n\
       --data-file-check-only    yük olmadan veri dosyası için sözdizimi kontrol edin; varsayılan: yükleme kontrol ettikten sonra\n\
@@ -460,6 +462,8 @@ geçerli seçenekler:\n\
   -s, --schema-file=FILE[:LINE] FILE ile LINE şeması oluşturun\n\
   -i, --index-file=FILE[:LINE]  FILE ile LINE dizin oluşturun\n\
   -d, --data-file=FILE          FILE ile yük verileri\n\
+      --server-data-file=FILE   load data with FILE on server,\n\
+                                absolute path must be provided and the file must exist on server file system\n\
   -t, --table=TABLE             Veri belgeleri içi kaybolan düzeyindeki şeflerin forum adıdır\n\
       --error-control-file=FILE Yükleme sırasında bir hata (lar) kontrol etmek için FILE\n\
       --ignore-class-file=FILE  yük atlamak sınıf adları girdi dosyası\n

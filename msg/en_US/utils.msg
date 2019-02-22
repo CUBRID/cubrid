@@ -446,9 +446,11 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 118 Maximum length of class name is %1$d bytes.\n
 120 \
 loaddb: Import objects and schemas to the database.\n\
-usage: %1$s loaddb [OPTION] database-name\n\
+usage: %1$s loaddb [OPTION] database-name[@host]\n\
 \n\
 valid options:\n\
+  -S, --SA-mode                 standalone mode execution\n\
+  -C, --CS-mode                 client-server mode execution\n\
   -u, --user=ID                 user ID for database access; default: "public"\n\
   -p, --password=PASS           user password; default: none\n\
       --data-file-check-only    check syntax for data file without load; default: loading after checking\n\
@@ -461,6 +463,8 @@ valid options:\n\
   -s, --schema-file=FILE[:LINE] create schema from LINE with FILE\n\
   -i, --index-file=FILE[:LINE]  create index from LINE with FILE\n\
   -d, --data-file=FILE          load data with FILE\n\
+      --server-data-file=FILE   load data with FILE on server,\n\
+                                absolute path must be provided and the file must exist on server file system\n\
   -t, --table=TABLE             table name that is substituted for missing class header in data file\n\
       --error-control-file=FILE FILE to control error(s) during loading\n\
       --ignore-class-file=FILE  input file of class names that skip load\n

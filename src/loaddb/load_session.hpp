@@ -58,8 +58,7 @@ namespace cubload
    *    cubload::session *session = NULL;
    *    session_get_loaddb_context (thread_p, session);
    *
-   *    std::string file_name = "<file>"; // the absolute path of the loaddb object file
-   *    session.load_file (*thread_p, file_name);
+   *    session.load_file (*thread_p);
    *
    *    or
    *
@@ -69,7 +68,7 @@ namespace cubload
   class session
   {
     public:
-      explicit session (SESSION_ID id);
+      session (load_args &args, SESSION_ID id);
       ~session ();
 
       session (session &&other) = delete; // Move c-tor: deleted
@@ -101,9 +100,8 @@ namespace cubload
        *
        *    return: NO_ERROR in case of success or ER_FAILED if file does not exists
        *    thread_ref(in)    : thread entry
-       *    file_name(in)     : loaddb object file name (absolute path is required)
        */
-      int load_file (cubthread::entry &thread_ref, const std::string &file_name);
+      int load_file (cubthread::entry &thread_ref);
 
       void wait_for_completion ();
       void wait_for_previous_batch (batch_id id);
@@ -121,6 +119,8 @@ namespace cubload
       void stats_update_last_committed_line (int last_committed_line);
       void stats_update_current_line (int current_line);
 
+      void update_class_statistics (cubthread::entry &thread_ref);
+
       class_registry &get_class_registry ();
 
     private:
@@ -136,7 +136,7 @@ namespace cubload
       std::mutex m_completion_mutex;
       std::condition_variable m_completion_cond_var;
 
-      int m_batch_size;
+      load_args m_args;
       std::atomic<batch_id> m_last_batch_id;
       std::atomic<batch_id> m_max_batch_id;
 

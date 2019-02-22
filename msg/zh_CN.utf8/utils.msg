@@ -445,9 +445,11 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 118 类名的最大长度是 %1$d 字节.\n
 120 \
 loaddb: 将对象和结构导入到数据库.\n\
-用法: %1$s loaddb [选项] 数据库名\n\
+用法: %1$s loaddb [选项] 数据库名[@主机名]\n\
 \n\
 可用选项:\n\
+  -S, --SA-mode                 单机模式执行\n\
+  -C, --CS-mode                 客户端-服务器模式执行\n\
   -u, --user=ID                 用于访问数据库的用户ID; 默认: "public"\n\
   -p, --password=PASS           用户密码; 默认: 空\n\
       --data-file-check-only    对数据文件进行语法检测而不加载; 默认: 检测之后加载\n\
@@ -460,6 +462,8 @@ loaddb: 将对象和结构导入到数据库.\n\
   -s, --schema-file=FILE[:LINE] 从文件 FILE 的第 LINE 行创建结构(schema)\n\
   -i, --index-file=FILE[:LINE]  从文件 FILE 的第 LINE 行创建索引\n\
   -d, --data-file=FILE          从文件 FILE 读取数据\n\
+      --server-data-file=FILE   load data with FILE on server,\n\
+                                absolute path must be provided and the file must exist on server file system\n\
   -t, --table=TABLE             用TABLE名替代数据文件中找不到表头的表\n\
       --error-control-file=FILE 指定文件 FILE 用来描述在读取数据过程中如何处理特定的错误\n\
       --ignore-class-file=FILE  指定文件 FILE 用来描述要忽略掉的类\n

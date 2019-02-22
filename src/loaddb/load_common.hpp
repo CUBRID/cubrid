@@ -29,6 +29,7 @@
 #include <atomic>
 #include <cassert>
 #include <functional>
+#include <vector>
 
 #define NUM_LDR_TYPES (LDR_TYPE_MAX + 1)
 #define NUM_DB_TYPES (DB_TYPE_LAST + 1)
@@ -41,6 +42,7 @@ namespace cubload
 
   const class_id NULL_CLASS_ID = 0;
   const batch_id NULL_BATCH_ID = 0;
+  const class_id FIRST_CLASS_ID = 1;
   const batch_id FIRST_BATCH_ID = 1;
 
   class batch : public cubpacking::packable_object
@@ -78,12 +80,20 @@ namespace cubload
   /*
    * loaddb executables command line arguments
    */
-  struct load_args
+  struct load_args : public cubpacking::packable_object
   {
-    char *volume;
-    char *input_file;
-    char *user_name;
-    char *password;
+    load_args ();
+
+    void pack (cubpacking::packer &serializator) const override;
+    void unpack (cubpacking::unpacker &deserializator) override;
+    size_t get_packed_size (cubpacking::packer &serializator) const override;
+
+    int parse_ignore_class_file ();
+
+    std::string volume;
+    std::string input_file;
+    std::string user_name;
+    std::string password;
     bool syntax_check;
     bool load_only;
     int estimated_size;
@@ -92,14 +102,16 @@ namespace cubload
     int periodic_commit;
     bool verbose_commit;
     bool no_oid_hint;
-    char *schema_file;
-    char *index_file;
-    char *object_file;
-    char *error_file;
+    std::string schema_file;
+    std::string index_file;
+    std::string object_file;
+    std::string server_object_file;
+    std::string error_file;
     bool ignore_logging;
-    char *table_name;
-    char *ignore_class_file;
     bool compare_storage_order;
+    std::string table_name;
+    std::string ignore_class_file;
+    std::vector<std::string> ignore_classes;
   };
 
   /*

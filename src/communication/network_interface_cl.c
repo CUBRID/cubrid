@@ -10082,15 +10082,20 @@ locator_demote_class_lock (const OID * class_oid, LOCK lock, LOCK * ex_lock)
 }
 
 int
-loaddb_init ()
+loaddb_init (cubload::load_args & args)
 {
 #if defined(CS_MODE)
   int rc = ER_FAILED;
+  packing_packer packer;
+  cubmem::extensible_block eb;
+
+  packer.set_buffer_and_pack_all (eb, args);
+
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  int req_error =
-    net_client_request (NET_SERVER_LD_INIT, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  int req_error = net_client_request (NET_SERVER_LD_INIT, eb.get_ptr (), (int) packer.get_current_size (), reply,
+				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       or_unpack_int (reply, &rc);
@@ -10103,20 +10108,15 @@ loaddb_init ()
 }
 
 int
-loaddb_load_object_file (std::string & object_file_name)
+loaddb_load_object_file ()
 {
 #if defined(CS_MODE)
   int rc = ER_FAILED;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  packing_packer packer;
-  cubmem::extensible_block eb;
-
-  packer.set_buffer_and_pack_all (eb, object_file_name);
-
-  int req_error = net_client_request (NET_SERVER_LD_LOAD_OBJECT_FILE, eb.get_ptr (), (int) packer.get_current_size (),
-				      reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  int req_error = net_client_request (NET_SERVER_LD_LOAD_OBJECT_FILE, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply),
+				      NULL, 0, NULL, 0);
   if (!req_error)
     {
       or_unpack_int (reply, &rc);

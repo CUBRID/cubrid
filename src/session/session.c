@@ -370,7 +370,7 @@ session_state_uninit (void *st)
   // on uninit abort and delete loaddb session
   if (session->load_session_p != NULL)
     {
-      session->load_session_p->fail ();
+      session->load_session_p->interrupt ();
       session->load_session_p->wait_for_completion ();
 
       delete session->load_session_p;

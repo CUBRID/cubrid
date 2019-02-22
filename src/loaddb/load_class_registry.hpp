@@ -97,12 +97,15 @@ namespace cubload
       class_registry &operator= (const class_registry &copy) = delete; // Not CopyAssignable
 
       const class_entry *get_class_entry (class_id clsid);
+      void get_all_class_entries (std::vector<const class_entry *> &entries) const;
       void register_class (const char *class_name, class_id clsid, OID class_oid,
 			   std::vector<const attribute *> &attributes);
 
     private:
+      using class_map = std::unordered_map<class_id, const class_entry *>;
+
       std::mutex m_mutex;
-      std::unordered_map<class_id, const class_entry *> m_class_by_id;
+      class_map m_class_by_id;
 
       const class_entry *get_class_entry_without_lock (class_id clsid) ;
   };

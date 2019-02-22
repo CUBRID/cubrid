@@ -317,8 +317,6 @@ struct ldr_context
   int default_count;		/* the number of instances with */
 };
 
-char **ignore_class_list = NULL;
-int ignore_class_num = 0;
 static bool skip_current_class = false;
 static bool skip_current_instance = false;
 
@@ -6202,9 +6200,9 @@ ldr_sa_load (load_args *args, int *status, bool *interrupted)
     {
       print_log_msg ((int) args->verbose,
 		     msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_CHECKING));
-      if (args->table_name[0] != '\0')
+      if (!args->table_name.empty ())
 	{
-	  ldr_init_ret = ldr_Driver->get_class_installer ().install_class (args->table_name);
+	  ldr_init_ret = ldr_Driver->get_class_installer ().install_class (args->table_name.c_str ());
 	}
       ldr_Driver->parse (object_file);
       ldr_stats (&errors, &objects, &defaults, &lastcommit, &fails);
@@ -6261,9 +6259,9 @@ ldr_sa_load (load_args *args, int *status, bool *interrupted)
 	    }
 	  else
 	    {
-	      if (args->table_name[0] != '\0')
+	      if (!args->table_name.empty ())
 		{
-		  ldr_Driver->get_class_installer ().install_class (args->table_name);
+		  ldr_Driver->get_class_installer ().install_class (args->table_name.c_str ());
 		}
 
 	      ldr_Driver->parse (object_file);
@@ -6482,9 +6480,6 @@ ldr_act_set_skip_current_class (char *class_name, size_t size)
 static bool
 ldr_is_ignore_class (const char *class_name, size_t size)
 {
-  int i;
-  char **p;
-
   if (class_name == NULL)
     {
       return false;
@@ -6495,14 +6490,11 @@ ldr_is_ignore_class (const char *class_name, size_t size)
       return true;
     }
 
-  if (ignore_class_list != NULL)
+  for (std::string &ignore_class : ldr_Current_context->args->ignore_classes)
     {
-      for (i = 0, p = ignore_class_list; i < ignore_class_num; i++, p++)
+      if (intl_identifier_ncasecmp (ignore_class.c_str (), class_name, (int) MAX (ignore_class.size (), size)) == 0)
 	{
-	  if (intl_identifier_ncasecmp (*p, class_name, (int) MAX (strlen (*p), size)) == 0)
-	    {
-	      return true;
-	    }
+	  return true;
 	}
     }
 
