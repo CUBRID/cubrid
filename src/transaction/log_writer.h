@@ -27,7 +27,12 @@
 #ident "$Id$"
 
 #include <stdio.h>
+
+#if defined (SERVER_MODE)
 #include "log_impl.h"
+#else
+#include "log_comm.h"
+#endif
 
 typedef struct logwr_context LOGWR_CONTEXT;
 struct logwr_context

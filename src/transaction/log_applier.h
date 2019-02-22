@@ -26,9 +26,7 @@
 
 #ident "$Id$"
 
-#if defined (CS_MODE)
-#include "log_impl.h"
-#endif /* CS_MODE */
+#include "log_comm.h"
 
 #define LA_RETRY_ON_ERROR(error) \
   ((error == ER_LK_UNILATERALLY_ABORTED)              || \

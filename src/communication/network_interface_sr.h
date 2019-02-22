@@ -33,7 +33,6 @@
 
 #include "file_io.h"
 #include "log_comm.h"
-#include "log_impl.h"
 #include "method_scan.h"
 #include "thread_compat.hpp"
 

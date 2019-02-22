@@ -28,7 +28,7 @@
 #ident "$Id$"
 
 #include "error_manager.h"
-#include "log_comm.h"
+#include "storage_common.h"
 #include "thread_compat.hpp"
 
 #include <stdio.h>

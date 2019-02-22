@@ -443,7 +443,7 @@ event_log_bind_values (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_index, i
  *   writer_time(in): time spent by last LWT (normally same as flush wait time)
  */
 void
-event_log_log_flush_thr_wait (THREAD_ENTRY * thread_p, int flush_count, LOG_CLIENTIDS * client_info, int flush_time,
+event_log_log_flush_thr_wait (THREAD_ENTRY * thread_p, int flush_count, log_clientids * client_info, int flush_time,
 			      int flush_wait_time, int writer_time)
 {
   FILE *log_fp;

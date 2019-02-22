@@ -44,7 +44,7 @@
 #include "connection_defs.h"
 #include "log_writer.h"
 #include "language_support.h"
-#include "log_impl.h"
+#include "log_comm.h"
 #include "parse_tree.h"
 #include "timezone_lib_common.h"
 
@@ -151,10 +151,6 @@ extern TRAN_STATE tran_server_2pc_prepare (void);
 extern int tran_server_2pc_recovery_prepared (int gtrids[], int size);
 extern int tran_server_2pc_attach_global_tran (int gtrid);
 extern TRAN_STATE tran_server_2pc_prepare_global_tran (int gtrid);
-#if defined (ENABLE_UNUSED_FUNCTION)
-extern int tran_server_start_topop (LOG_LSA * topop_lsa);
-extern TRAN_STATE tran_server_end_topop (LOG_RESULT_TOPOP result, LOG_LSA * topop_lsa);
-#endif
 extern int tran_server_savepoint (const char *savept_name, LOG_LSA * savept_lsa);
 extern TRAN_STATE tran_server_partial_abort (const char *savept_name, LOG_LSA * savept_lsa);
 extern const char *tran_get_tranlist_state_name (TRAN_STATE state);

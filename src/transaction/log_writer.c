@@ -30,10 +30,12 @@
 #if !defined(WINDOWS)
 #include <dirent.h>
 #endif /* !WINDOWNS */
+#include <signal.h>
 
 #include "log_writer.h"
 
 #include "error_manager.h"
+#include "file_io.h"
 #include "message_catalog.h"
 #include "system_parameter.h"
 #include "connection_support.h"

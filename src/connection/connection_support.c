@@ -66,7 +66,7 @@
 #else /* WINDOWS */
 #include "tcp.h"
 #endif /* !WINDOWS */
-#include "log_impl.h"
+#include "log_comm.h"
 #if defined(SERVER_MODE)
 #include "connection_sr.h"
 #else

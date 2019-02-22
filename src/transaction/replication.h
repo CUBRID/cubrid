@@ -30,7 +30,7 @@
 
 #include "config.h"
 #include "error_manager.h"
-#if defined(SERVER_MODE) || defined(SA_MODE)
+#if defined (SERVER_MODE) || defined (SA_MODE)
 #include "log_impl.h"
 #endif /* defined(SERVER_MODE) || defined(SA_MODE) */
 #include "memory_alloc.h"

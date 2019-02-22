@@ -34,9 +34,10 @@
 #endif // SERVER_MODE
 
 // project includes
+#include "connection_globals.h"
 #include "error_manager.h"
-#include "log_impl.h"
 #include "lock_free.h"
+#include "log_comm.h"
 #include "resource_shared_pool.hpp"
 #include "system_parameter.h"
 

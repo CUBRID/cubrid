@@ -76,7 +76,7 @@
 #include "environment_variable.h"
 #include "connection_error.h"
 #include "release_string.h"
-#include "log_impl.h"
+#include "log_comm.h"
 #include "fault_injection.h"
 #if defined (SERVER_MODE)
 #include "vacuum.h"
