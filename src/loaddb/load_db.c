@@ -23,37 +23,20 @@
 
 #include "config.h"
 
-#include <stdio.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <stdarg.h>
-#include <assert.h>
-#include <fstream>
-#include <thread>
-
-#if !defined (WINDOWS)
-#include <unistd.h>
-#include <sys/param.h>
-#endif
-#include "porting.h"
+#include "chartype.h"
 #include "db.h"
-#include "utility.h"
-#include "misc_string.h"
+#include "load_object.h"
 #if defined (SA_MODE)
 #include "load_sa_loader.hpp"
 #endif // SA_MODE
-#include "load_object.h"
-#include "environment_variable.h"
-#include "message_catalog.h"
-#include "chartype.h"
+#include "network_interface_cl.h"
+#include "porting.h"
 #include "schema_manager.h"
 #include "transform.h"
-#include "server_interface.h"
-#include "authenticate.h"
-#include "dbi.h"
-#include "network_interface_cl.h"
-#include "util_func.h"
-#include "load_common.hpp"
+#include "utility.h"
+
+#include <fstream>
+#include <thread>
 
 #define LOAD_INDEX_MIN_SORT_BUFFER_PAGES 8192
 #define LOAD_INDEX_MIN_SORT_BUFFER_PAGES_STRING "8192"
@@ -71,9 +54,6 @@ bool load_interrupted = false;
 
 static int ldr_validate_object_file (const char *argv0, load_args * args);
 static int ldr_check_file_name_and_line_no (load_args * args);
-#if defined (WINDOWS)
-static int run_proc (char *path, char *cmd_line);
-#endif /* WINDOWS */
 static int loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode);
 static void ldr_exec_query_interrupt_handler (void);
 static int ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start_line, load_args * args);
@@ -239,49 +219,6 @@ ldr_check_file_name_and_line_no (load_args * args)
 
   return 0;
 }
-
-#if defined (WINDOWS)
-/*
- * run_proc - run a process with a given command_line
- *    return: 0 for success, non-zero otherwise
- *    path(in): progarm path
- *    cmd_line(in): command line
- */
-static int
-run_proc (char *path, char *cmd_line)
-{
-  STARTUPINFO start_info;
-  PROCESS_INFORMATION proc_info;
-  BOOL status;
-
-  GetStartupInfo (&start_info);
-  start_info.wShowWindow = SW_HIDE;
-  start_info.dwFlags = STARTF_USESTDHANDLES;
-  start_info.hStdInput = GetStdHandle (STD_INPUT_HANDLE);
-  start_info.hStdOutput = GetStdHandle (STD_OUTPUT_HANDLE);
-  start_info.hStdError = GetStdHandle (STD_ERROR_HANDLE);
-
-  status = CreateProcess (path, cmd_line, NULL, NULL, true, 0, NULL, NULL, &start_info, &proc_info);
-  if (status == false)
-    {
-      LPVOID lpMsgBuf;
-      if (FormatMessage
-	  (FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL,
-	   GetLastError (), MAKELANGID (LANG_NEUTRAL, SUBLANG_DEFAULT), (LPTSTR) & lpMsgBuf, 0, NULL))
-	{
-	  printf ("%s\n", (const char *) lpMsgBuf);
-	  LocalFree (lpMsgBuf);
-	}
-
-      return -1;
-    }
-
-  WaitForSingleObject (proc_info.hProcess, INFINITE);
-  CloseHandle (proc_info.hProcess);
-  CloseHandle (proc_info.hThread);
-  return 0;
-}
-#endif /* WINDOWS */
 
 static char *
 ldr_get_token (char *str, char **out_str, char start, char end)
@@ -924,7 +861,7 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 
   util_arm_signal_handlers (&ldr_exec_query_interrupt_handler, &ldr_exec_query_interrupt_handler);
 
-  while (1)
+  while (true)
     {
       if (interrupt_query)
 	{
