@@ -728,8 +728,8 @@ typedef enum
 } T_CCI_DATASOURCE_KEY;
 
 #if !defined(CAS)
-#ifdef DBDEF_HEADER_
-typedef int T_CCI_TRAN_ISOLATION;
+#if defined (DBDEF_HEADER_) || defined (_DBTYPE_DEF_H_)
+typedef int T_CCI_TRAN_ISOLATION;	// todo - alias for DB_TRAN_ISOLATION
 #else
 typedef enum
 {
