@@ -1049,8 +1049,9 @@ struct log_tdes
 
   LOG_RCV_TDES rcv;
 
+  // *INDENT-OFF*
 #if defined (SERVER_MODE) || defined (SA_MODE)
-    cubreplication::log_generator replication_log_generator;
+  cubreplication::log_generator replication_log_generator;
 #endif
 
   bool is_active_worker_transaction () const;
@@ -1062,6 +1063,7 @@ struct log_tdes
   bool is_under_sysop () const;
   void lock_topop ();
   void unlock_topop ();
+  // *INDENT-ON*
 };
 
 typedef struct log_addr_tdesarea LOG_ADDR_TDESAREA;
