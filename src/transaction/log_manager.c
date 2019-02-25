@@ -3578,19 +3578,14 @@ log_sysop_start (THREAD_ENTRY * thread_p)
     {
       if (VACUUM_IS_THREAD_VACUUM (thread_p))
 	{
-	  /* Vacuum worker state should be either VACUUM_WORKER_STATE_EXECUTE or VACUUM_WORKER_STATE_TOPOP (or
-	   * VACUUM_WORKER_STATE_RECOVERY during database recovery phase). */
-	  assert (vacuum_worker_state_is_execute (thread_p) || vacuum_worker_state_is_topop (thread_p)
-		  || vacuum_worker_state_is_recovery (thread_p));
+	  /* should not be in process log */
+	  assert (vacuum_worker_state_is_execute (thread_p));
 
 	  vacuum_er_log (VACUUM_ER_LOG_TOPOPS | VACUUM_ER_LOG_WORKER,
 			 "Start system operation. Current worker tdes: tdes->trid=%d, tdes->topops.last=%d, "
 			 "tdes->tail_lsa=(%lld, %d). Worker state=%d.", tdes->trid, tdes->topops.last,
 			 (long long int) tdes->tail_lsa.pageid, (int) tdes->tail_lsa.offset,
 			 vacuum_get_worker_state (thread_p));
-
-	  /* Change worker state to VACUUM_WORKER_STATE_TOPOP */
-	  vacuum_set_worker_state (thread_p, VACUUM_WORKER_STATE_TOPOP);
 	}
 
       thread_p->get_system_tdes ()->on_sysop_start ();
@@ -3732,17 +3727,7 @@ log_sysop_end_final (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 
       if (VACUUM_IS_THREAD_VACUUM (thread_p) && tdes->topops.last < 0)
 	{
-	  if (LOG_ISRESTARTED ())
-	    {
-	      /* Change the worker state back to VACUUM_WORKER_STATE_EXECUTE. */
-	      vacuum_set_worker_state (thread_p, VACUUM_WORKER_STATE_EXECUTE);
-	    }
-	  else
-	    {
-	      /* Change the worker state back to VACUUM_WORKER_STATE_RECOVERY. */
-	      vacuum_set_worker_state (thread_p, VACUUM_WORKER_STATE_RECOVERY);
-	    }
-
+	  assert (vacuum_worker_state_is_execute (thread_p));
 	  vacuum_er_log (VACUUM_ER_LOG_TOPOPS,
 			 "Ended all top operations. Tdes: tdes->trid=%d tdes->head_lsa=(%lld, %d), "
 			 "tdes->tail_lsa=(%lld, %d), tdes->undo_nxlsa=(%lld, %d), "
@@ -4260,9 +4245,10 @@ log_can_skip_undo_logging (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const
       return false;
     }
 
-  if (vacuum_is_skip_undo_allowed (thread_p))
+  if (tdes->is_system_worker_transaction () && !tdes->is_under_sysop ())
     {
       /* If vacuum worker has not started a system operation, it can skip using undo logging. */
+      // note - maybe it is better to add an assert (false)?
       return true;
     }
 

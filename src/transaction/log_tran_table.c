@@ -1341,7 +1341,6 @@ logtb_rv_find_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid, const L
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
   int tran_index;
-  VACUUM_WORKER *worker;
 
   if (logtb_is_system_worker_tranid (trid))
     {
