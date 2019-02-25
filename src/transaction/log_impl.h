@@ -1741,7 +1741,7 @@ extern bool logtb_set_check_interrupt (THREAD_ENTRY * thread_p, bool flag);
 extern bool logtb_get_check_interrupt (THREAD_ENTRY * thread_p);
 extern int logpb_set_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr);
 
-extern LOG_TDES *logtb_find_current_tdes (THREAD_ENTRY * thread_p);
+extern LOG_TDES *logtb_find_current_tdes (THREAD_ENTRY * thread_p = NULL);
 extern LOG_TDES *logtb_get_current_system_tdes (THREAD_ENTRY * thread_p = NULL);
 
 //////////////////////////////////////////////////////////////////////////
