@@ -1678,6 +1678,7 @@ db_json_insert_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path)
       ASSERT_ERROR ();
       return error_code;
     }
+  p.switch_to_pointer_format ();
 
   if (p.is_root_path ())
     {
@@ -1756,6 +1757,7 @@ db_json_replace_func (const JSON_DOC *new_value, JSON_DOC &doc, const char *raw_
       ASSERT_ERROR ();
       return error_code;
     }
+  p.switch_to_pointer_format ();
 
   if (p.is_root_path ())
     {
@@ -1809,6 +1811,7 @@ db_json_set_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path)
       ASSERT_ERROR ();
       return error_code;
     }
+  p.switch_to_pointer_format ();
 
   // todo: find a cleaner solution for '$."111"' case
   // test if exists for now
@@ -1876,6 +1879,7 @@ db_json_remove_func (JSON_DOC &doc, const char *raw_path)
       ASSERT_ERROR ();
       return error_code;
     }
+  p.switch_to_pointer_format ();
 
   if (p.is_root_path ())
     {
@@ -2005,6 +2009,7 @@ db_json_array_append_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw
       ASSERT_ERROR ();
       return error_code;
     }
+  p.switch_to_pointer_format ();
 
   JSON_VALUE value_copy (*value, doc.GetAllocator());
   JSON_VALUE *json_val = p.get (doc)[0];
@@ -2087,6 +2092,7 @@ db_json_array_insert_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw
       ASSERT_ERROR ();
       return error_code;
     }
+  p.switch_to_pointer_format ();
 
   if (!p.points_to_array_cell ())
     {

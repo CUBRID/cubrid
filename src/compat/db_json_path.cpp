@@ -677,6 +677,18 @@ bool JSON_PATH::contains_wildcard () const
   return false;
 }
 
+void JSON_PATH::switch_to_pointer_format ()
+{
+  if (m_backend_json_format == JSON_PATH_TYPE::JSON_PATH_POINTER)
+    {
+      return;
+    }
+
+  std::string json_pointer = dump_json_pointer ();
+  m_backend_json_format == JSON_PATH_TYPE::JSON_PATH_POINTER;
+  init (json_pointer.c_str ());
+}
+
 /*
  * build_special_chars_map ()
  * json_path_type (in)
@@ -701,6 +713,19 @@ JSON_PATH::build_special_chars_map (const JSON_PATH_TYPE &json_path_type,
 	  special_chars.insert (std::make_pair (it->second, it->first));
 	}
     }
+}
+
+std::string
+JSON_PATH::dump_json_pointer () const
+{
+  std::string res;
+  for (const PATH_TOKEN &tkn : m_path_tokens)
+    {
+      res += '/';
+      res += tkn.token_string;
+    }
+
+  return res;
 }
 
 std::string
@@ -785,12 +810,12 @@ DB_JSON_TYPE JSON_PATH::get_value_type (const JSON_DOC &jd) const
 
 JSON_VALUE &JSON_PATH::set (JSON_DOC &jd, const JSON_VALUE &jv) const
 {
-  return Set (jd, jv, jd.GetAllocator());
+  return Set (jd, jv, jd.GetAllocator ());
 }
 
 JSON_VALUE &JSON_PATH::set (JSON_DOC &jd, JSON_VALUE &jv) const
 {
-  return Set (jd, jv, jd.GetAllocator());
+  return Set (jd, jv, jd.GetAllocator ());
 }
 
 bool JSON_PATH::erase (JSON_DOC &jd) const
@@ -798,21 +823,21 @@ bool JSON_PATH::erase (JSON_DOC &jd) const
   return Erase (jd);
 }
 
-const TOKEN *JSON_PATH::get_last_token() const
+const TOKEN *JSON_PATH::get_last_token () const
 {
-  size_t token_cnt = GetTokenCount();
+  size_t token_cnt = GetTokenCount ();
 
-  return token_cnt > 0 ? GetTokens() + (token_cnt - 1) : NULL;
+  return token_cnt > 0 ? GetTokens () + (token_cnt - 1) : NULL;
 }
 
-bool JSON_PATH::is_root_path() const
+bool JSON_PATH::is_root_path () const
 {
-  return GetTokenCount() == 0;
+  return GetTokenCount () == 0;
 }
 
-const JSON_PATH JSON_PATH::get_parent() const
+const JSON_PATH JSON_PATH::get_parent () const
 {
-  if (GetTokenCount() == 0)
+  if (GetTokenCount () == 0)
     {
       // this should not happen
       assert (false);
@@ -821,29 +846,34 @@ const JSON_PATH JSON_PATH::get_parent() const
     }
   else
     {
-      JSON_PATH parent (GetTokens(), GetTokenCount() - 1);
+      JSON_PATH parent (GetTokens (), GetTokenCount () - 1);
       return parent;
     }
 }
 
 bool JSON_PATH::is_last_array_index_less_than (size_t size) const
 {
-  const TOKEN *last_token = get_last_token();
+  const TOKEN *last_token = get_last_token ();
   assert (last_token != NULL && ((last_token->length == 1 && last_token->name[0] == '-')
 				 || (last_token->index != kPointerInvalidIndex)));
   return ! ((last_token->length == 1 && last_token->name[0] == '-') || last_token->index >= size);
 }
 
-bool JSON_PATH::is_last_token_array_index_zero() const
+bool JSON_PATH::is_last_token_array_index_zero () const
 {
-  const TOKEN *last_token = get_last_token();
+  const TOKEN *last_token = get_last_token ();
   assert (last_token != NULL);
   return (last_token->index != kPointerInvalidIndex && last_token->index == 0);
 }
 
-bool JSON_PATH::points_to_array_cell() const
+bool JSON_PATH::points_to_array_cell () const
 {
-  const TOKEN *last_token = get_last_token();
+  if (m_backend_json_format == JSON_PATH_TYPE::JSON_PATH_SQL_JSON)
+    {
+      return !m_path_tokens.empty () && m_path_tokens.back ().type == PATH_TOKEN::token_type::array_index;
+    }
+
+  const TOKEN *last_token = get_last_token ();
   if (last_token == NULL || (last_token->index == kPointerInvalidIndex && ! (last_token->length == 1
 			     && last_token->name[0] == '-')))
     {
@@ -854,12 +884,12 @@ bool JSON_PATH::points_to_array_cell() const
 
 bool JSON_PATH::parent_exists (JSON_DOC &jd) const
 {
-  if (GetTokenCount() == 0)
+  if (GetTokenCount () == 0)
     {
       return false;
     }
 
-  if (get_parent().get (jd)[0] != NULL)
+  if (get_parent ().get (jd)[0] != NULL)
     {
       return true;
     }
@@ -926,8 +956,8 @@ int
 JSON_PATH::assign_pointer (const std::string &pointer_path)
 {
   // Call assignment operator on base class object
-  JSON_POINTER::operator= (JSON_POINTER (pointer_path.c_str()));
-  if (!IsValid())
+  JSON_POINTER::operator= (JSON_POINTER (pointer_path.c_str ()));
+  if (!IsValid ())
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
       return ER_JSON_INVALID_PATH;

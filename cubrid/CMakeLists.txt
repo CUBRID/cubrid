@@ -30,8 +30,8 @@ set(COMPAT_SOURCES
   )
 set (COMPAT_HEADERS
   ${COMPAT_DIR}/dbtype_def.h
-  ${COMPAT_DIR}/db_json_path.hpp
   ${COMPAT_DIR}/db_json.hpp
+  ${COMPAT_DIR}/db_json_path.hpp
   ${COMPAT_DIR}/db_json_types_internal.hpp
   ${COMPAT_DIR}/dbtype_function.i
   ${COMPAT_DIR}/dbtype_function.h

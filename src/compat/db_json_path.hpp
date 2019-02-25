@@ -41,6 +41,8 @@ class JSON_PATH : protected rapidjson::GenericPointer<JSON_VALUE>
       JSON_PATH_POINTER
     };
 
+    std::string dump_json_pointer () const;
+
     std::string dump_json_path (bool skip_json_pointer_minus = true) const;
 
     std::vector<JSON_VALUE *> get (JSON_DOC &jd) const;
@@ -105,6 +107,9 @@ class JSON_PATH : protected rapidjson::GenericPointer<JSON_VALUE>
     JSON_PATH_TYPE m_backend_json_format;
 
     bool contains_wildcard () const;
+
+    // quick fix for handling get_parent logics
+    void switch_to_pointer_format ();
 
   private:
     int replace_json_pointer (const char *sql_path);
