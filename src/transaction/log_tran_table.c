@@ -7764,7 +7764,7 @@ log_tdes::is_system_transaction () const
 bool
 log_tdes::is_system_main_transaction () const
 {
-  return is_system_transaction () && trid == NULL_TRANID;
+  return is_system_transaction () && trid == LOG_SYSTEM_TRANID;
 }
 
 bool

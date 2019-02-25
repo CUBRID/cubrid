@@ -3130,7 +3130,7 @@ log_append_ha_server_state (THREAD_ENTRY * thread_p, int state)
     {
       return;
     }
-  assert (tdes->is_active_worker_transaction ());
+  assert (tdes->is_active_worker_transaction () || tdes->is_system_main_transaction ());
 
   node = prior_lsa_alloc_and_copy_data (thread_p, LOG_DUMMY_HA_SERVER_STATE, RV_NOT_DEFINED, NULL, 0, NULL, 0, NULL);
   if (node == NULL)
@@ -5579,7 +5579,7 @@ log_commit (THREAD_ENTRY * thread_p, int tran_index, bool retain_lock)
       error_code = ER_LOG_UNKNOWN_TRANINDEX;
       return TRAN_UNACTIVE_UNKNOWN;
     }
-  assert (tdes->is_active_worker_transaction ());
+  assert (!tdes->is_system_worker_transaction ());
 
   if (!LOG_ISTRAN_ACTIVE (tdes) && !LOG_ISTRAN_2PC_PREPARE (tdes) && LOG_ISRESTARTED ())
     {
@@ -5696,7 +5696,7 @@ log_abort (THREAD_ENTRY * thread_p, int tran_index)
       error_code = ER_LOG_UNKNOWN_TRANINDEX;
       return TRAN_UNACTIVE_UNKNOWN;
     }
-  assert (tdes->is_active_worker_transaction ());
+  assert (!tdes->is_system_worker_transaction ());
 
   if (LOG_HAS_LOGGING_BEEN_IGNORED ())
     {
@@ -5884,7 +5884,7 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
   TRAN_STATE state;		/* State of transaction */
 
   assert (iscommitted == LOG_COMMIT || iscommitted == LOG_ABORT);
-  assert (tdes->is_active_worker_transaction ());
+  assert (!tdes->is_system_worker_transaction ());
 
   state = tdes->state;
 
@@ -6003,7 +6003,7 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
   int wait_msecs;
 
   assert (iscommitted == LOG_COMMIT || iscommitted == LOG_ABORT);
-  assert (tdes->is_active_worker_transaction ());
+  assert (!tdes->is_system_worker_transaction ());
 
   state = tdes->state;
 
