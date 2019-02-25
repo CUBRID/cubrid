@@ -677,18 +677,6 @@ bool JSON_PATH::contains_wildcard () const
   return false;
 }
 
-void JSON_PATH::switch_to_pointer_format ()
-{
-  if (m_backend_json_format == JSON_PATH_TYPE::JSON_PATH_POINTER)
-    {
-      return;
-    }
-
-  std::string json_pointer = dump_json_pointer ();
-  m_backend_json_format == JSON_PATH_TYPE::JSON_PATH_POINTER;
-  init (json_pointer.c_str ());
-}
-
 /*
  * build_special_chars_map ()
  * json_path_type (in)
@@ -949,7 +937,21 @@ JSON_PATH::replace_json_pointer (const char *sql_path)
       return ER_JSON_INVALID_PATH;
     }
 
-  return NO_ERROR;
+  std::unordered_map<std::string, std::string> special_chars;
+
+  build_special_chars_map (json_path_type, special_chars);
+
+  // split in tokens and convert to JSON pointer format
+  std::vector<std::string> tokens = db_json_split_path_by_delimiters (sql_path_string, db_Json_sql_path_delimiters,
+				    false);
+  sql_path_string = "";
+  for (unsigned int i = 0; i < tokens.size (); ++i)
+    {
+      replace_special_chars_in_tokens (tokens[i], special_chars);
+      sql_path_string += "/" + tokens[i];
+    }
+
+  return assign_pointer (sql_path_string);
 }
 
 int
@@ -962,5 +964,6 @@ JSON_PATH::assign_pointer (const std::string &pointer_path)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
       return ER_JSON_INVALID_PATH;
     }
+  m_backend_json_format = JSON_PATH_TYPE::JSON_PATH_POINTER;
   return NO_ERROR;
 }

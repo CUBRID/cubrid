@@ -108,9 +108,6 @@ class JSON_PATH : protected rapidjson::GenericPointer<JSON_VALUE>
 
     bool contains_wildcard () const;
 
-    // quick fix for handling get_parent logics
-    void switch_to_pointer_format ();
-
   private:
     int replace_json_pointer (const char *sql_path);
 
