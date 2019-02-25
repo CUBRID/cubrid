@@ -318,7 +318,7 @@ need_to_abort_tran (THREAD_ENTRY * thread_p, int *errid)
    *  set after that.
    *  So, re-set that error to rollback in client side.
    */
-  tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  tdes = logtb_find_current_tdes (thread_p);
   if (tdes != NULL && tdes->tran_abort_reason != TRAN_NORMAL && flag_abort == false)
     {
       flag_abort = true;
@@ -358,7 +358,7 @@ return_error_to_client (THREAD_ENTRY * thread_p, unsigned int rid)
   conn = thread_p->conn_entry;
   assert (conn != NULL);
 
-  tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  tdes = logtb_find_current_tdes (thread_p);
   if (tdes != NULL)
     {
       tran_state = tdes->state;
@@ -4964,7 +4964,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
     }
 
   end_query_allowed = IS_QUERY_EXECUTE_WITH_COMMIT (query_flag);
-  tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  tdes = logtb_find_current_tdes (thread_p);
   tran_state = tdes->state;
   has_updated = false;
 

@@ -47,6 +47,7 @@
 #include <assert.h>
 
 #include "log_impl.h"
+#include "log_system_tran.hpp"
 #include "error_manager.h"
 #include "system_parameter.h"
 #include "xserver_interface.h"
@@ -130,7 +131,6 @@ static int logtb_expand_trantable (THREAD_ENTRY * thread_p, int num_new_indices)
 static int logtb_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid, TRAN_STATE state,
 				      const BOOT_CLIENT_CREDENTIAL * client_credential, TRAN_STATE * current_state,
 				      int wait_msecs, TRAN_ISOLATION isolation);
-static void logtb_initialize_tdes (LOG_TDES * tdes, int tran_index);
 static LOG_ADDR_TDESAREA *logtb_allocate_tdes_area (int num_indices);
 static void logtb_initialize_trantable (TRANTABLE * trantable_p);
 static int logtb_initialize_system_tdes (THREAD_ENTRY * thread_p);
@@ -1353,10 +1353,11 @@ logtb_rv_find_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid, const L
       vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
 		     "Log entry (%lld, %d) belongs to vacuum worker "
 		     "tdes. tdes->trid=%d, tdes->tail_lsa=(%lld, %d). ", (long long int) log_lsa->pageid,
-		     (int) log_lsa->offset, worker->tdes->trid, (long long int) worker->tdes->tail_lsa.pageid,
-		     (int) worker->tdes->tail_lsa.offset);
+		     (int) log_lsa->offset, worker->sys_tdes->get_tdes ()->trid,
+		     (long long int) worker->sys_tdes->get_tdes ()->tail_lsa.pageid,
+		     (int) worker->sys_tdes->get_tdes ()->tail_lsa.offset);
 
-      return worker->tdes;
+      return worker->sys_tdes->get_tdes ();
     }
 
   /*
@@ -1406,7 +1407,7 @@ logtb_rv_find_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid, const L
 void
 logtb_rv_assign_mvccid_for_undo_recovery (THREAD_ENTRY * thread_p, MVCCID mvccid)
 {
-  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  LOG_TDES *tdes = logtb_find_current_tdes (thread_p);
 
   assert (tdes != NULL);
   assert (MVCCID_IS_VALID (mvccid));
@@ -1951,7 +1952,7 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
  *   tdes(in/out): Transaction descriptor
  *   tran_index(in): Transaction index
  */
-static void
+void
 logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
 {
   int i, r;
@@ -2840,7 +2841,7 @@ logtb_find_current_tran_lsa (THREAD_ENTRY * thread_p)
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
 
-  tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  tdes = logtb_find_current_tdes (thread_p);
   return ((tdes != NULL) ? &tdes->tail_lsa : NULL);
 }
 
@@ -3416,12 +3417,6 @@ logtb_is_current_active (THREAD_ENTRY * thread_p)
   LOG_TDES *tdes;		/* Transaction descriptor */
   int tran_index;
 
-  if (VACUUM_IS_THREAD_VACUUM (thread_p))
-    {
-      /* Vacuum workers/master are always considered active (since they have no transactions). */
-      return true;
-    }
-
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
 
@@ -3431,6 +3426,7 @@ logtb_is_current_active (THREAD_ENTRY * thread_p)
     }
   else
     {
+      assert (tdes == NULL || tdes->is_normal_transaction ());
       return false;
     }
 }
@@ -4738,7 +4734,7 @@ logtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p)
 {
   LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
 
-  if (tdes->tran_index == LOG_SYSTEM_TRAN_INDEX || VACUUM_IS_THREAD_VACUUM (thread_p))
+  if (!tdes->is_normal_transaction ())
     {
       /* System transactions do not have snapshots */
       return NULL;
@@ -5204,43 +5200,6 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
     }
 }
 
-#if defined(ENABLE_UNUSED_FUNCTION)
-/*
- * logtb_set_current_tran_index - set index of current transaction
- *
- * return: tran_index or NULL_TRAN_INDEX
- *
- *   tran_index(in): Transaction index to acquire by current execution
- *
- * Note: The current execution acquire the given index. If the given
- *              index is not register, it is not set, an NULL_TRAN_INDEX is
- *              set instead.
- */
-int
-logtb_set_current_tran_index (THREAD_ENTRY * thread_p, int tran_index)
-{
-  LOG_TDES *tdes;		/* Transaction descriptor */
-  int index;			/* The returned index value */
-
-  tdes = LOG_FIND_TDES (tran_index);
-  if (tdes != NULL && tdes->trid != NULL_TRANID)
-    {
-      index = tran_index;
-    }
-  else
-    {
-      index = NULL_TRAN_INDEX;
-    }
-
-  if (index == tran_index)
-    {
-      LOG_SET_CURRENT_TRAN_INDEX (thread_p, index);
-    }
-
-  return index;
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
-
 /*
  * logtb_set_loose_end_tdes -
  *
@@ -5369,7 +5328,7 @@ log_find_unilaterally_largest_undo_lsa (THREAD_ENTRY * thread_p)
 	  /* Worker doesn't need any recovery. */
 	  continue;
 	}
-      tdes = worker->tdes;
+      tdes = worker->sys_tdes->get_tdes ();
       if (max == NULL || LSA_LT (max, &tdes->undo_nxlsa))
 	{
 	  max = &tdes->undo_nxlsa;
@@ -6630,7 +6589,7 @@ logtb_update_global_unique_stats_by_delta (THREAD_ENTRY * thread_p, BTID * btid,
 {
   int error_code = NO_ERROR;
   GLOBAL_UNIQUE_STATS *stats = NULL;
-  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  LOG_TDES *tdes = logtb_find_current_tdes (thread_p);
   int num_oids, num_nulls, num_keys;
 
   if (oid_delta == 0 && key_delta == 0 && null_delta == 0)
@@ -7765,3 +7724,97 @@ logtb_get_check_interrupt (THREAD_ENTRY * thread_p)
   return tran_get_check_interrupt ();
 #endif // not SERVER_MODE = SA_MODE
 }
+
+LOG_TDES *
+logtb_get_current_system_tdes (THREAD_ENTRY * thread_p)
+{
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+  assert (thread_p->tran_index == LOG_SYSTEM_TRAN_INDEX);
+  if (thread_p->get_system_tdes () != NULL)
+    {
+      return thread_p->get_system_tdes ()->get_tdes ();
+    }
+  else
+    {
+      return log_Gl.trantable.all_tdes[LOG_SYSTEM_TRAN_INDEX];
+    }
+}
+
+LOG_TDES *
+logtb_find_current_tdes (THREAD_ENTRY * thread_p)
+{
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+  if (thread_p->tran_index == LOG_SYSTEM_TRAN_INDEX)
+    {
+      return logtb_get_current_system_tdes (thread_p);
+    }
+  else if (thread_p->tran_index > LOG_SYSTEM_TRAN_INDEX && thread_p->tran_index < log_Gl.trantable.num_total_indices)
+    {
+      return log_Gl.trantable.all_tdes[thread_p->tran_index];
+    }
+  else
+    {
+      return NULL;
+    }
+}
+
+// *INDENT-OFF*
+// C++
+
+bool
+log_tdes::is_normal_transaction () const
+{
+  return tran_index > LOG_SYSTEM_TRAN_INDEX && tran_index < log_Gl.trantable.num_total_indices;
+}
+
+bool
+log_tdes::is_system_transaction () const
+{
+  return tran_index == LOG_SYSTEM_TRAN_INDEX;
+}
+
+bool
+log_tdes::is_allowed_sysop () const
+{
+  return is_normal_transaction () || trid < NULL_TRANID;
+}
+
+bool
+log_tdes::is_under_sysop () const
+{
+  return topops.last >= 0;
+}
+
+bool
+log_tdes::is_allowed_undo () const
+{
+  return is_normal_transaction () || is_under_sysop ();
+}
+
+void
+log_tdes::lock_topop ()
+{
+  if (LOG_ISRESTARTED () && is_normal_transaction ())
+    {
+      int r = rmutex_lock (NULL, &rmutex_topop);
+      assert (r == NO_ERROR);
+    }
+}
+
+void
+log_tdes::unlock_topop ()
+{
+  if (LOG_ISRESTARTED () && is_normal_transaction ())
+    {
+      int r = rmutex_unlock (NULL, &rmutex_topop);
+      assert (r == NO_ERROR);
+    }
+}
+
+// *INDENT-ON*

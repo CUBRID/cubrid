@@ -1634,7 +1634,7 @@ copy_bind_value_to_tdes (THREAD_ENTRY * thread_p, int num_bind_vals, DB_VALUE * 
   int i;
   HL_HEAPID save_heap_id;
 
-  tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  tdes = logtb_find_current_tdes (thread_p);
   if (tdes == NULL)
     {
       return ER_FAILED;

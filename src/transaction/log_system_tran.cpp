@@ -64,8 +64,10 @@ void
 log_system_tdes::retire_tdes ()
 {
   std::unique_lock<std::mutex> ulock (systb_Mutex);
-
-  systb_Free_tdes_list.push_front (m_tdes);
+  if (m_tdes != NULL)
+    {
+      systb_Free_tdes_list.push_front (m_tdes);
+    }
   m_tdes = NULL;
 }
 
@@ -78,6 +80,7 @@ log_system_tdes::get_tdes ()
 void
 log_system_tdes::on_sysop_start ()
 {
+  assert (m_tdes != NULL);
   if (m_tdes->topops.last < 0)
     {
       assert (m_tdes->topops.last == -1);
@@ -87,5 +90,19 @@ log_system_tdes::on_sysop_start ()
       LSA_SET_NULL (&m_tdes->tail_topresult_lsa);
       LSA_SET_NULL (&m_tdes->rcv.tran_start_postpone_lsa);
       LSA_SET_NULL (&m_tdes->rcv.sysop_start_postpone_lsa);
+    }
+}
+
+void
+log_system_tdes::on_sysop_end ()
+{
+  assert (m_tdes != NULL);
+  if (m_tdes->topops.last < 0)
+    {
+      assert (m_tdes->topops.last == -1);
+      LSA_SET_NULL (&m_tdes->head_lsa);
+      LSA_SET_NULL (&m_tdes->tail_lsa);
+      LSA_SET_NULL (&m_tdes->undo_nxlsa);
+      LSA_SET_NULL (&m_tdes->tail_topresult_lsa);
     }
 }

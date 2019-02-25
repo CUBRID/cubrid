@@ -32,6 +32,7 @@
 #include "lockfree_circular_queue.hpp"
 #include "log_compress.h"
 #include "log_impl.h"
+#include "log_system_tran.hpp"
 #include "mvcc.h"
 #include "overflow_file.h"
 #include "page_buffer.h"
@@ -921,7 +922,7 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * 
     }
 
   /* Initialize master worker. */
-  vacuum_Master.tdes = NULL;
+  vacuum_Master.sys_tdes = NULL;
   vacuum_Master.drop_files_version = 0;
   vacuum_Master.state = VACUUM_WORKER_STATE_EXECUTE;	/* Master is always in execution state. */
   vacuum_Master.log_zip_p = NULL;
@@ -950,7 +951,7 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * 
       vacuum_Workers[i].private_lru_index = pgbuf_assign_private_lru (thread_p, true, i);
       vacuum_Workers[i].heap_objects = NULL;
       vacuum_Workers[i].heap_objects_capacity = 0;
-      vacuum_Workers[i].tdes = NULL;
+      vacuum_Workers[i].sys_tdes = NULL;
       vacuum_Workers[i].prefetch_log_buffer = NULL;
       vacuum_Workers[i].prefetch_first_pageid = NULL_PAGEID;
       vacuum_Workers[i].prefetch_last_pageid = NULL_PAGEID;
@@ -968,26 +969,14 @@ vacuum_initialize (THREAD_ENTRY * thread_p, int vacuum_log_block_npages, VFID * 
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
     }
-  vacuum_Master.tdes = (LOG_TDES *) malloc (sizeof (LOG_TDES));
-  if (vacuum_Master.tdes == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LOG_TDES));
-      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-      goto error;
-    }
-  logtb_initialize_vacuum_thread_tdes (vacuum_Master.tdes, LOG_VACUUM_MASTER_TRANID);
+  vacuum_Master.sys_tdes = new log_system_tdes ();
+  vacuum_Master.sys_tdes->claim_tdes ();
 
   /* Allocate transaction descriptors for vacuum workers. */
   for (i = 0; i < VACUUM_MAX_WORKER_COUNT; i++)
     {
-      vacuum_Workers[i].tdes = (LOG_TDES *) malloc (sizeof (LOG_TDES));
-      if (vacuum_Workers[i].tdes == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LOG_TDES));
-	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-	  goto error;
-	}
-      logtb_initialize_vacuum_thread_tdes (vacuum_Workers[i].tdes, VACUUM_WORKER_INDEX_TO_TRANID (i));
+      vacuum_Workers[i].sys_tdes = new log_system_tdes ();
+      vacuum_Workers[i].sys_tdes->claim_tdes ();
     }
 
   vacuum_Global_oldest_active_blockers_counter = 0;
@@ -3078,7 +3067,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
     }
 
   assert (worker != NULL);
-  assert (worker->tdes->topops.last == -1);
+  assert (!worker->sys_tdes->get_tdes ()->is_under_sysop ());
 
   PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
   PERF_UTIME_TRACKER_START (thread_p, &job_time_tracker);
@@ -3343,11 +3332,11 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 
       /* do not leak system ops */
       assert (worker->state == VACUUM_WORKER_STATE_EXECUTE);
-      assert (worker->tdes->topops.last == -1);
+      assert (!worker->sys_tdes->get_tdes ()->is_under_sysop ());
     }
 
   assert (worker->state == VACUUM_WORKER_STATE_EXECUTE);
-  assert (worker->tdes->topops.last == -1);
+  assert (!worker->sys_tdes->get_tdes ()->is_under_sysop ());
 
   error_code = vacuum_heap (thread_p, worker, threshold_mvccid, was_interrupted);
   if (error_code != NO_ERROR)
@@ -3356,7 +3345,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
       goto end;
     }
   assert (worker->state == VACUUM_WORKER_STATE_EXECUTE);
-  assert (worker->tdes->topops.last == -1);
+  assert (!worker->sys_tdes->get_tdes ()->is_under_sysop ());
 
   perfmon_add_stat (thread_p, PSTAT_VAC_NUM_VACUUMED_LOG_PAGES, vacuum_Data.log_block_npages);
 
@@ -3364,7 +3353,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 
 end:
 
-  assert (worker->tdes->topops.last == -1);
+  assert (!worker->sys_tdes->get_tdes ()->is_under_sysop ());
 
   worker->state = VACUUM_WORKER_STATE_INACTIVE;
   if (!sa_mode_partial_block)
@@ -3455,7 +3444,7 @@ vacuum_worker_allocate_resources (THREAD_ENTRY * thread_p, VACUUM_WORKER * worke
     }
 
   /* Safe guard - it is assumed that transaction descriptor is already initialized. */
-  assert (worker->tdes != NULL);
+  assert (worker->sys_tdes != NULL && worker->sys_tdes->get_tdes () != NULL);
 
   worker->allocated_resources = true;
 
@@ -3493,12 +3482,7 @@ vacuum_finalize_worker (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker_info)
     {
       free_and_init (worker_info->postpone_redo_data_buffer);
     }
-  if (worker_info->tdes != NULL)
-    {
-      logtb_finalize_tdes (thread_p, worker_info->tdes);
-
-      free_and_init (worker_info->tdes);
-    }
+  delete worker_info->sys_tdes;
   if (worker_info->prefetch_log_buffer != NULL)
     {
       free_and_init (worker_info->prefetch_log_buffer);
@@ -3550,7 +3534,7 @@ vacuum_rv_finish_worker_recovery (THREAD_ENTRY * thread_p, TRANID trid)
   if (trid == LOG_VACUUM_MASTER_TRANID)
     {
       vacuum_Master.state = VACUUM_WORKER_STATE_EXECUTE;	/* Master is always in execute state. */
-      vacuum_Master.tdes->state = TRAN_ACTIVE;
+      vacuum_Master.sys_tdes->get_tdes ()->state = TRAN_ACTIVE;
 
       vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS | VACUUM_ER_LOG_MASTER, "%s",
 		     "Finished recovery for vacuum master.");
@@ -3571,7 +3555,7 @@ vacuum_rv_finish_worker_recovery (THREAD_ENTRY * thread_p, TRANID trid)
   /* Reset vacuum worker state */
   vacuum_Workers[worker_index].state = VACUUM_WORKER_STATE_INACTIVE;
   /* Reset vacuum worker transaction descriptor */
-  vacuum_Workers[worker_index].tdes->state = TRAN_ACTIVE;
+  vacuum_Workers[worker_index].sys_tdes->get_tdes ()->state = TRAN_ACTIVE;
 }
 
 /*
@@ -5801,7 +5785,7 @@ vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid)
   VACUUM_DROPPED_FILES_PAGE *page = NULL, *new_page = NULL;
   INT16 position = -1;
   LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
-  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  LOG_TDES *tdes = logtb_find_current_tdes (thread_p);
   bool found = false;
   PAGE_TYPE ptype = PAGE_DROPPED_FILES;
 
@@ -8120,6 +8104,12 @@ vacuum_reset_data_after_copydb (THREAD_ENTRY * thread_p)
   vacuum_unfix_first_and_last_data_page (thread_p);
 
   return NO_ERROR;
+}
+
+log_tdes *
+vacuum_get_worker_tdes (THREAD_ENTRY * thread_p)
+{
+  return vacuum_get_vacuum_worker (thread_p)->sys_tdes->get_tdes ();
 }
 
 // *INDENT-OFF*

@@ -569,7 +569,7 @@ repl_start_flush_mark (THREAD_ENTRY * thread_p)
 {
   LOG_TDES *tdes;
 
-  tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  tdes = logtb_find_current_tdes (thread_p);
 
   if (tdes == NULL)
     {
@@ -599,7 +599,7 @@ repl_end_flush_mark (THREAD_ENTRY * thread_p, bool need_undo)
   LOG_TDES *tdes;
   int i;
 
-  tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  tdes = logtb_find_current_tdes (thread_p);
 
   if (tdes == NULL)
     {

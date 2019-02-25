@@ -527,7 +527,7 @@ logpb_compute_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int 
       p += sample_nbytes;
     }
 
-  error_code = crypt_crc32 (thread_p, (char *) buf, sizeof_buf, checksum_crc32);
+  error_code = crypt_crc32 (thread_p, (char *) buf, (int) sizeof_buf, checksum_crc32);
 
   /* Restores the saved checksum */
   log_pgptr->hdr.checksum = saved_checksum_crc32;
@@ -3263,7 +3263,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
       assert (LOG_IS_MVCC_OP_RECORD_TYPE (node->log_header.type));
       assert (LOG_IS_MVCC_OPERATION (rcvindex));
 
-      tdes = LOG_FIND_CURRENT_TDES (thread_p);
+      tdes = logtb_find_current_tdes (thread_p);
       if (tdes == NULL || !MVCCID_IS_VALID (tdes->mvccinfo.id))
 	{
 	  assert_release (false);

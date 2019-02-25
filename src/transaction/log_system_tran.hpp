@@ -37,6 +37,7 @@ class log_system_tdes
     log_tdes *get_tdes ();
 
     void on_sysop_start ();
+    void on_sysop_end ();
 
   private:
     log_tdes *m_tdes;

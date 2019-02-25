@@ -13897,7 +13897,7 @@ pgbuf_rv_dealloc_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   assert (pgbuf_get_page_ptype (thread_p, page_deallocated) == PAGE_UNKNOWN);
   pgbuf_set_page_ptype (thread_p, page_deallocated, ptype);
   log_append_compensate_with_undo_nxlsa (thread_p, RVPGBUF_COMPENSATE_DEALLOC, vpid, rcv->offset, page_deallocated, 0,
-					 NULL, LOG_FIND_CURRENT_TDES (thread_p), &rcv->reference_lsa);
+					 NULL, logtb_find_current_tdes (thread_p), &rcv->reference_lsa);
   pgbuf_set_dirty_and_free (thread_p, page_deallocated);
   return NO_ERROR;
 }

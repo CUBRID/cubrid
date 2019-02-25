@@ -34,6 +34,7 @@
 
 #include "log_impl.h"
 #include "log_manager.h"
+#include "log_system_tran.hpp"
 #include "recovery.h"
 #include "error_manager.h"
 #include "system_parameter.h"
@@ -4169,7 +4170,7 @@ log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
     {
       LSA_SET_NULL (&first_postpone_to_apply);
 
-      assert (!VACUUM_IS_THREAD_VACUUM (thread_p));
+      assert (tdes->is_normal_transaction ());
       assert (!LSA_ISNULL (&tdes->rcv.tran_start_postpone_lsa));
 
       /*
@@ -4256,7 +4257,7 @@ log_recovery_finish_all_postpone (THREAD_ENTRY * thread_p)
 	  continue;
 	}
       vacuum_rv_convert_thread_to_vacuum (thread_p, trid, save_thread_type);
-      tdes = worker->tdes;
+      tdes = worker->sys_tdes->get_tdes ();
 
       vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
 		     "Finish postpone for tdes: tdes->trid=%d, tdes->state=%d, tdes->topops.last=%d.",
@@ -4311,7 +4312,7 @@ log_recovery_abort_all_atomic_sysops (THREAD_ENTRY * thread_p)
 	  continue;
 	}
       vacuum_rv_convert_thread_to_vacuum (thread_p, trid, save_thread_type);
-      tdes = worker->tdes;
+      tdes = worker->sys_tdes->get_tdes ();
 
       vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
 		     "Finish postpone for tdes: tdes->trid=%d, tdes->state=%d, tdes->topops.last=%d.",
@@ -4470,7 +4471,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
   for (tran_id = LOG_FIRST_VACUUM_WORKER_TRANID; tran_id <= LOG_LAST_VACUUM_WORKER_TRANID; tran_id++)
     {
       worker = vacuum_rv_get_worker_by_trid (thread_p, tran_id);
-      if (worker->state == VACUUM_WORKER_STATE_RECOVERY && LSA_ISNULL (&worker->tdes->undo_nxlsa))
+      if (worker->state == VACUUM_WORKER_STATE_RECOVERY && LSA_ISNULL (&worker->sys_tdes->get_tdes ()->undo_nxlsa))
 	{
 	  /* Nothing to recover for this worker */
 	  vacuum_rv_finish_worker_recovery (thread_p, tran_id);
@@ -4522,7 +4523,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 	      worker = vacuum_rv_get_worker_by_trid (thread_p, tran_id);
 	      if (worker->state == VACUUM_WORKER_STATE_RECOVERY)
 		{
-		  tdes = worker->tdes;
+		  tdes = worker->sys_tdes->get_tdes ();
 		}
 	      else
 		{

@@ -136,6 +136,7 @@ namespace cubthread
     , m_pgbuf_tracker (*new cubbase::pgbuf_tracker (PGBUF_TRACK_NAME, ENABLE_TRACKERS, PGBUF_TRACK_MAX_ITEMS,
 		       PGBUF_TRACK_RES_NAME, PGBUF_TRACK_MAX_AMOUNT))
     , m_csect_tracker (*new cubsync::critical_section_tracker (ENABLE_TRACKERS))
+    , m_systdes (NULL)
   {
     if (pthread_mutex_init (&tran_index_lock, NULL) != 0)
       {
@@ -263,6 +264,8 @@ namespace cubthread
 #if !defined (NDEBUG)
     fi_thread_final (this);
 #endif // DEBUG
+
+    assert (m_systdes == NULL);
 
     m_cleared = true;
   }
