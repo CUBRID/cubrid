@@ -321,11 +321,11 @@ namespace cubload
 	  }
 
 	const char *fmt= "%s";
-	char class_name [line.size ()];
+	std::string class_name (line.size (), '\0');
 
 	// scan first string, and ignore rest of the line
-	sscanf (line.c_str (), fmt, class_name);
-	ignore_classes.emplace_back ((const char *) class_name, strlen (class_name));
+	sscanf (line.c_str (), fmt, class_name.c_str ());
+	ignore_classes.emplace_back (class_name.c_str (), strlen (class_name.c_str ()));
       }
 
     return NO_ERROR;
