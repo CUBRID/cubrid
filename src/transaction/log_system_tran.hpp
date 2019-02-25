@@ -65,4 +65,4 @@ class log_system_tdes
     log_tdes *m_tdes;
 };
 
-#endif _LOG_SYSTEM_TRAN_HPP_
+#endif // _LOG_SYSTEM_TRAN_HPP_
