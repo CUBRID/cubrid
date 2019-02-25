@@ -29,19 +29,12 @@ namespace cubload
 {
 
   // attribute
-  attribute::attribute (ATTR_ID id, std::string &name, std::size_t index, or_attribute *repr)
-    : m_id (id)
-    , m_name (std::move (name))
+  attribute::attribute (std::string &name, std::size_t index, or_attribute *repr)
+    : m_name (std::move (name))
     , m_index (index)
     , m_repr (repr)
   {
     //
-  }
-
-  ATTR_ID
-  attribute::get_id () const
-  {
-    return m_id;
   }
 
   const char *
