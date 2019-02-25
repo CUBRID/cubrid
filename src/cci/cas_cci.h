@@ -495,7 +495,7 @@ typedef enum
 } T_CCI_ERROR_CODE;
 
 #if !defined(CAS)
-#ifdef DBDEF_HEADER_
+#if defined (DBDEF_HEADER_) || defined (_DBTYPE_DEF_H_)
 typedef int T_CCI_CUBRID_STMT;
 #else
 typedef enum
