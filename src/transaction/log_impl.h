@@ -1053,8 +1053,10 @@ struct log_tdes
     cubreplication::log_generator replication_log_generator;
 #endif
 
-  bool is_normal_transaction () const;
+  bool is_active_worker_transaction () const;
   bool is_system_transaction () const;
+  bool is_system_main_transaction () const;
+  bool is_system_worker_transaction () const;
   bool is_allowed_undo () const;
   bool is_allowed_sysop () const;
   bool is_under_sysop () const;
@@ -1637,7 +1639,7 @@ extern void logtb_set_to_system_tran_index (THREAD_ENTRY * thread_p);
 extern LOG_LSA *logtb_find_largest_lsa (THREAD_ENTRY * thread_p);
 #endif
 extern int logtb_set_num_loose_end_trans (THREAD_ENTRY * thread_p);
-extern LOG_LSA *log_find_unilaterally_largest_undo_lsa (THREAD_ENTRY * thread_p);
+extern void log_find_unilaterally_largest_undo_lsa (THREAD_ENTRY * thread_p, LOG_LSA & max_undo_lsa);
 extern void logtb_find_smallest_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa);
 extern void logtb_find_smallest_and_largest_active_pages (THREAD_ENTRY * thread_p, LOG_PAGEID * smallest,
 							  LOG_PAGEID * largest);
@@ -1762,6 +1764,12 @@ LOG_FIND_TDES (int tran_index)
     {
       return NULL;
     }
+}
+
+inline bool
+logtb_is_system_worker_tranid (TRANID trid)
+{
+  return trid < NULL_TRANID;
 }
 
 #endif /* _LOG_IMPL_H_ */

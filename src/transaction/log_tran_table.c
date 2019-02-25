@@ -1343,21 +1343,11 @@ logtb_rv_find_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid, const L
   int tran_index;
   VACUUM_WORKER *worker;
 
-  if (LOG_IS_VACUUM_THREAD_TRANID (trid))
+  if (logtb_is_system_worker_tranid (trid))
     {
-      /* This must be the log of a vacuum worker system operation. Use vacuum worker transaction descriptor. */
-      worker = vacuum_rv_get_worker_by_trid (thread_p, trid);
-      /* Set worker state to recovery. */
-      worker->state = VACUUM_WORKER_STATE_RECOVERY;
-
-      vacuum_er_log (VACUUM_ER_LOG_RECOVERY | VACUUM_ER_LOG_TOPOPS,
-		     "Log entry (%lld, %d) belongs to vacuum worker "
-		     "tdes. tdes->trid=%d, tdes->tail_lsa=(%lld, %d). ", (long long int) log_lsa->pageid,
-		     (int) log_lsa->offset, worker->sys_tdes->get_tdes ()->trid,
-		     (long long int) worker->sys_tdes->get_tdes ()->tail_lsa.pageid,
-		     (int) worker->sys_tdes->get_tdes ()->tail_lsa.offset);
-
-      return worker->sys_tdes->get_tdes ();
+      // *INDENT-OFF*
+      return log_system_tdes::rv_get_or_alloc_tdes (trid);
+      // *INDENT-ON*
     }
 
   /*
@@ -3426,7 +3416,7 @@ logtb_is_current_active (THREAD_ENTRY * thread_p)
     }
   else
     {
-      assert (tdes == NULL || tdes->is_normal_transaction ());
+      assert (tdes == NULL || tdes->is_active_worker_transaction ());
       return false;
     }
 }
@@ -4734,7 +4724,7 @@ logtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p)
 {
   LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
 
-  if (!tdes->is_normal_transaction ())
+  if (!tdes->is_active_worker_transaction ())
     {
       /* System transactions do not have snapshots */
       return NULL;
@@ -5294,16 +5284,24 @@ logtb_set_num_loose_end_trans (THREAD_ENTRY * thread_p)
  * Note: Find the maximum log sequence address to undo during the undo
  *              crash recovery phase.
  */
-LOG_LSA *
-log_find_unilaterally_largest_undo_lsa (THREAD_ENTRY * thread_p)
+void
+log_find_unilaterally_largest_undo_lsa (THREAD_ENTRY * thread_p, LOG_LSA & max_undo_lsa)
 {
+  // *INDENT-OFF*
   int i;
   LOG_TDES *tdes;		/* Transaction descriptor */
-  LOG_LSA *max = NULL;		/* The maximum LSA value */
-  TRANID trid;
-  VACUUM_WORKER *worker = NULL;
 
   TR_TABLE_CS_ENTER_READ_MODE (thread_p);
+
+  LSA_SET_NULL (&max_undo_lsa);
+
+  auto max_undo_lsa_func = [&] (log_tdes & tdes)
+    {
+      if (LSA_LT (&max_undo_lsa, &tdes.undo_nxlsa))
+        {
+          max_undo_lsa = tdes.undo_nxlsa;
+        }
+    };
 
   /* Check active transactions. */
   for (i = 0; i < NUM_TOTAL_TRAN_INDICES; i++)
@@ -5312,32 +5310,17 @@ log_find_unilaterally_largest_undo_lsa (THREAD_ENTRY * thread_p)
 	{
 	  tdes = log_Gl.trantable.all_tdes[i];
 	  if (tdes != NULL && tdes->trid != NULL_TRANID
-	      && (tdes->state == TRAN_UNACTIVE_UNILATERALLY_ABORTED || tdes->state == TRAN_UNACTIVE_ABORTED)
-	      && !LSA_ISNULL (&tdes->undo_nxlsa) && (max == NULL || LSA_LT (max, &tdes->undo_nxlsa)))
+	      && (tdes->state == TRAN_UNACTIVE_UNILATERALLY_ABORTED || tdes->state == TRAN_UNACTIVE_ABORTED))
 	    {
-	      max = &tdes->undo_nxlsa;
+	      max_undo_lsa_func (*tdes);
 	    }
 	}
     }
-  /* Check vacuum worker transactions. */
-  for (trid = LOG_FIRST_VACUUM_WORKER_TRANID; trid <= LOG_LAST_VACUUM_WORKER_TRANID; trid++)
-    {
-      worker = vacuum_rv_get_worker_by_trid (thread_p, trid);
-      if (worker->state != VACUUM_WORKER_STATE_RECOVERY)
-	{
-	  /* Worker doesn't need any recovery. */
-	  continue;
-	}
-      tdes = worker->sys_tdes->get_tdes ();
-      if (max == NULL || LSA_LT (max, &tdes->undo_nxlsa))
-	{
-	  max = &tdes->undo_nxlsa;
-	}
-    }
+  /* Check system worker transactions. */
+  log_system_tdes::rv_map_all_tdes (max_undo_lsa_func);
 
   TR_TABLE_CS_EXIT (thread_p);
-
-  return max;
+  // *INDENT-ON*
 }
 
 /*
@@ -7768,7 +7751,7 @@ logtb_find_current_tdes (THREAD_ENTRY * thread_p)
 // C++
 
 bool
-log_tdes::is_normal_transaction () const
+log_tdes::is_active_worker_transaction () const
 {
   return tran_index > LOG_SYSTEM_TRAN_INDEX && tran_index < log_Gl.trantable.num_total_indices;
 }
@@ -7780,9 +7763,21 @@ log_tdes::is_system_transaction () const
 }
 
 bool
+log_tdes::is_system_main_transaction () const
+{
+  return is_system_transaction () && trid == NULL_TRANID;
+}
+
+bool
+log_tdes::is_system_worker_transaction () const
+{
+  return is_system_transaction () && trid < NULL_ATTRID;
+}
+
+bool
 log_tdes::is_allowed_sysop () const
 {
-  return is_normal_transaction () || trid < NULL_TRANID;
+  return is_active_worker_transaction () || is_system_worker_transaction ();
 }
 
 bool
@@ -7794,13 +7789,13 @@ log_tdes::is_under_sysop () const
 bool
 log_tdes::is_allowed_undo () const
 {
-  return is_normal_transaction () || is_under_sysop ();
+  return is_active_worker_transaction () || is_under_sysop ();
 }
 
 void
 log_tdes::lock_topop ()
 {
-  if (LOG_ISRESTARTED () && is_normal_transaction ())
+  if (LOG_ISRESTARTED () && is_active_worker_transaction ())
     {
       int r = rmutex_lock (NULL, &rmutex_topop);
       assert (r == NO_ERROR);
@@ -7810,7 +7805,7 @@ log_tdes::lock_topop ()
 void
 log_tdes::unlock_topop ()
 {
-  if (LOG_ISRESTARTED () && is_normal_transaction ())
+  if (LOG_ISRESTARTED () && is_active_worker_transaction ())
     {
       int r = rmutex_unlock (NULL, &rmutex_topop);
       assert (r == NO_ERROR);

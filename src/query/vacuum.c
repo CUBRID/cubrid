@@ -634,6 +634,7 @@ static void print_not_vacuumed_to_log (OID * oid, OID * class_oid, MVCC_REC_HEAD
 static bool vacuum_is_empty (void);
 static void vacuum_convert_thread_to_master (THREAD_ENTRY * thread_p, thread_type & save_type);
 static void vacuum_convert_thread_to_worker (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, thread_type & save_type);
+static void vacuum_restore_thread (THREAD_ENTRY * thread_p, thread_type save_type);
 
 #if !defined (NDEBUG)
 /* Debug function to verify vacuum data. */
@@ -3487,36 +3488,6 @@ vacuum_finalize_worker (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker_info)
     {
       free_and_init (worker_info->prefetch_log_buffer);
     }
-}
-
-/*
- * vacuum_rv_get_worker_by_trid () - Get vacuum worker identified by TRANID to recover its system operations.
- *
- * return	    : Transaction descriptor.
- * thread_p (in)    : Thread entry.
- * TRANID trid (in) : Transaction identifier.
- *
- * NOTE: This is currently only called during recovery.
- */
-VACUUM_WORKER *
-vacuum_rv_get_worker_by_trid (THREAD_ENTRY * thread_p, TRANID trid)
-{
-  int worker_index;
-
-  if (trid == LOG_VACUUM_MASTER_TRANID)
-    {
-      return &vacuum_Master;
-    }
-
-  /* Convert trid to vacuum worker index */
-  worker_index = VACUUM_WORKER_TRANID_TO_INDEX (trid);
-  /* Check valid TRANID/index */
-  assert (worker_index >= 0 && worker_index < VACUUM_MAX_WORKER_COUNT);
-  /* Check this is called under recovery context. */
-  assert (!LOG_ISRESTARTED ());
-
-  /* Return worker identifier by TRANID */
-  return &vacuum_Workers[worker_index];
 }
 
 /*
@@ -7943,35 +7914,12 @@ vacuum_convert_thread_to_worker (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker
 }
 
 /*
- * vacuum_convert_thread_to_vacuum () - convert this thread to a vacuum master or worker
- *
- * thread_p (in)   : thread entry
- * trid (in)       : transaction ID
- * save_type (out) : save previous thread type
- */
-void
-vacuum_rv_convert_thread_to_vacuum (THREAD_ENTRY * thread_p, TRANID trid, thread_type & save_type)
-{
-  if (trid == LOG_VACUUM_MASTER_TRANID)
-    {
-      vacuum_convert_thread_to_master (thread_p, save_type);
-    }
-  else
-    {
-      // safe-guard: state is expected to be in-recovery
-      assert (vacuum_rv_get_worker_by_trid (thread_p, trid)->state
-	      == VACUUM_WORKER_STATE::VACUUM_WORKER_STATE_RECOVERY);
-      vacuum_convert_thread_to_worker (thread_p, vacuum_rv_get_worker_by_trid (thread_p, trid), save_type);
-    }
-}
-
-/*
  * vacuum_restore_thread - restore thread previously converted to a vacuum worker
  *
  * thread_p (in)  : thread entry
  * save_type (in) : saved type of thread entry
  */
-void
+static void
 vacuum_restore_thread (THREAD_ENTRY * thread_p, thread_type save_type)
 {
   if (thread_p == NULL)

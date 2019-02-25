@@ -2170,12 +2170,12 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_
 	  || rcvindex == RVHF_INSERT_NEWHOME)
 	{
 	  LSA_COPY (&tdes->repl_update_lsa, &tdes->tail_lsa);
-	  assert (tdes->is_normal_transaction ());
+	  assert (tdes->is_active_worker_transaction ());
 	}
       else if (rcvindex == RVHF_INSERT || rcvindex == RVHF_MVCC_INSERT)
 	{
 	  LSA_COPY (&tdes->repl_insert_lsa, &tdes->tail_lsa);
-	  assert (tdes->is_normal_transaction ());
+	  assert (tdes->is_active_worker_transaction ());
 	}
     }
 }
@@ -2406,12 +2406,12 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
       if (rcvindex == RVHF_UPDATE || rcvindex == RVOVF_CHANGE_LINK || rcvindex == RVHF_UPDATE_NOTIFY_VACUUM)
 	{
 	  LSA_COPY (&tdes->repl_update_lsa, &tdes->tail_lsa);
-	  assert (tdes->is_normal_transaction ());
+	  assert (tdes->is_active_worker_transaction ());
 	}
       else if (rcvindex == RVHF_INSERT || rcvindex == RVHF_MVCC_INSERT)
 	{
 	  LSA_COPY (&tdes->repl_insert_lsa, &tdes->tail_lsa);
-	  assert (tdes->is_normal_transaction ());
+	  assert (tdes->is_active_worker_transaction ());
 	}
     }
 }
@@ -3130,7 +3130,7 @@ log_append_ha_server_state (THREAD_ENTRY * thread_p, int state)
     {
       return;
     }
-  assert (tdes->is_normal_transaction ());
+  assert (tdes->is_active_worker_transaction ());
 
   node = prior_lsa_alloc_and_copy_data (thread_p, LOG_DUMMY_HA_SERVER_STATE, RV_NOT_DEFINED, NULL, 0, NULL, 0, NULL);
   if (node == NULL)
@@ -3325,7 +3325,7 @@ log_append_savepoint (THREAD_ENTRY * thread_p, const char *savept_name)
       error_code = ER_LOG_UNKNOWN_TRANINDEX;
       return NULL;
     }
-  assert (tdes->is_normal_transaction ());
+  assert (tdes->is_active_worker_transaction ());
 
   if (!LOG_ISTRAN_ACTIVE (tdes))
     {
@@ -3841,7 +3841,8 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
 		  && (tdes->state != TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE || is_rv_finish_postpone));
 	}
 
-      if (!LOG_CHECK_LOG_APPLIER (thread_p) && tdes->is_normal_transaction () && log_does_allow_replication () == true)
+      if (!LOG_CHECK_LOG_APPLIER (thread_p) && tdes->is_active_worker_transaction ()
+	  && log_does_allow_replication () == true)
 	{
 	  /* for the replication agent guarantee the order of transaction */
 	  /* for CC(Click Counter) : at here */
@@ -4013,7 +4014,8 @@ log_sysop_abort (THREAD_ENTRY * thread_p)
     {
       TRAN_STATE save_state;
 
-      if (!LOG_CHECK_LOG_APPLIER (thread_p) && tdes->is_normal_transaction () && log_does_allow_replication () == true)
+      if (!LOG_CHECK_LOG_APPLIER (thread_p) && tdes->is_active_worker_transaction ()
+	  && log_does_allow_replication () == true)
 	{
 	  repl_log_abort_after_lsa (tdes, LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes));
 	}
@@ -5432,7 +5434,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	   * is resumed by this committing transaction(T1) commits and a crash happens before T1 completes, transaction
 	   * consistencies will be broken because T1 will be aborted during restart recovery and T2 was already
 	   * committed. */
-	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && tdes->is_normal_transaction ()
+	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && tdes->is_active_worker_transaction ()
 	      && log_does_allow_replication () == true)
 	    {
 	      /* for the replication agent guarantee the order of transaction */
@@ -5591,7 +5593,7 @@ log_commit (THREAD_ENTRY * thread_p, int tran_index, bool retain_lock)
       error_code = ER_LOG_UNKNOWN_TRANINDEX;
       return TRAN_UNACTIVE_UNKNOWN;
     }
-  assert (tdes->is_normal_transaction ());
+  assert (tdes->is_active_worker_transaction ());
 
   if (!LOG_ISTRAN_ACTIVE (tdes) && !LOG_ISTRAN_2PC_PREPARE (tdes) && LOG_ISRESTARTED ())
     {
@@ -5708,7 +5710,7 @@ log_abort (THREAD_ENTRY * thread_p, int tran_index)
       error_code = ER_LOG_UNKNOWN_TRANINDEX;
       return TRAN_UNACTIVE_UNKNOWN;
     }
-  assert (tdes->is_normal_transaction ());
+  assert (tdes->is_active_worker_transaction ());
 
   if (LOG_HAS_LOGGING_BEEN_IGNORED ())
     {
@@ -5896,7 +5898,7 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
   TRAN_STATE state;		/* State of transaction */
 
   assert (iscommitted == LOG_COMMIT || iscommitted == LOG_ABORT);
-  assert (tdes->is_normal_transaction ());
+  assert (tdes->is_active_worker_transaction ());
 
   state = tdes->state;
 
@@ -6015,7 +6017,7 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
   int wait_msecs;
 
   assert (iscommitted == LOG_COMMIT || iscommitted == LOG_ABORT);
-  assert (tdes->is_normal_transaction ());
+  assert (tdes->is_active_worker_transaction ());
 
   state = tdes->state;
 

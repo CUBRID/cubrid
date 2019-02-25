@@ -24,7 +24,12 @@
 #ifndef _LOG_SYSTEM_TRAN_HPP_
 #define _LOG_SYSTEM_TRAN_HPP_
 
+#include "storage_common.h"       // TRANID
+
+#include <functional>
+
 struct log_tdes;
+struct log_lsa;
 
 class log_system_tdes
 {
@@ -39,7 +44,24 @@ class log_system_tdes
     void on_sysop_start ();
     void on_sysop_end ();
 
+    static void init_system_transations ();
+    static void destroy_system_transactions ();
+
+    using rv_map_func = std::function<void (log_tdes &)>;
+    using rv_delete_if_func = std::function<bool (const log_tdes &)>;
+
+    static log_tdes *rv_get_or_alloc_tdes (TRANID trid);
+    static log_tdes *rv_get_tdes (TRANID trid);
+    static void rv_map_all_tdes (const rv_map_func &func);
+    static void rv_delete_all_tdes_if (const rv_delete_if_func &func);
+    static void rv_delete_tdes (TRANID trid);
+    static void rv_set_system_tdes (TRANID trid);
+    static void rv_unset_system_tdes ();
+
   private:
+    void create_tdes (TRANID trid);
+    void destroy_tdes ();
+
     log_tdes *m_tdes;
 };
 

@@ -305,7 +305,6 @@ extern void vacuum_cache_log_postpone_redo_data (THREAD_ENTRY * thread_p, char *
 extern void vacuum_cache_log_postpone_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa);
 extern bool vacuum_do_postpone_from_cache (THREAD_ENTRY * thread_p, LOG_LSA * start_postpone_lsa);
 extern int vacuum_rv_redo_start_job (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern VACUUM_WORKER *vacuum_rv_get_worker_by_trid (THREAD_ENTRY * thread_p, TRANID trid);
 extern void vacuum_rv_finish_worker_recovery (THREAD_ENTRY * thread_p, TRANID trid);
 
 extern int vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, int n_heap_objects,
@@ -335,9 +334,6 @@ extern bool vacuum_is_mvccid_vacuumed (MVCCID id);
 extern int vacuum_rv_check_at_undo (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slotid, INT16 rec_type);
 
 extern void vacuum_log_last_blockid (THREAD_ENTRY * thread_p);
-
-extern void vacuum_rv_convert_thread_to_vacuum (THREAD_ENTRY * thread_p, TRANID trid, thread_type & save_type);
-extern void vacuum_restore_thread (THREAD_ENTRY * thread_p, thread_type save_type);
 
 extern int vacuum_rv_es_nop (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 #if defined (SERVER_MODE)

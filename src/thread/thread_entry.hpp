@@ -305,6 +305,14 @@ namespace cubthread
       {
 	return m_systdes;
       }
+      void set_system_tdes (log_system_tdes &sys_tdes)
+      {
+	m_systdes = &sys_tdes;
+      }
+      void reset_system_tdes (void)
+      {
+	m_systdes = NULL;
+      }
 
       void end_resource_tracks (void);
       void push_resource_tracks (void);
