@@ -862,7 +862,7 @@ bool JSON_PATH::points_to_array_cell () const
     }
 
   const TOKEN *last_token = get_last_token ();
-  return (last_token != NULL && (last_token->index != kPointerInvalidIndex || ! (last_token->length == 1
+  return (last_token != NULL && (last_token->index != kPointerInvalidIndex || (last_token->length == 1
 				 && last_token->name[0] == '-')));
 }
 
