@@ -286,15 +286,8 @@ typedef enum
  * For this reason, the first VACUUM_MAX_WORKER_COUNT negative TRANID values
  * under NULL_TRANID are reserved for vacuum workers.
  */
-#define LOG_VACUUM_MASTER_TRANID (NULL_TRANID - 1)
-#define LOG_LAST_VACUUM_WORKER_TRANID (LOG_VACUUM_MASTER_TRANID - 1)
-#define LOG_FIRST_VACUUM_WORKER_TRANID (LOG_VACUUM_MASTER_TRANID - VACUUM_MAX_WORKER_COUNT)
-#define LOG_IS_VACUUM_WORKER_TRANID(trid) \
-  (trid <= LOG_LAST_VACUUM_WORKER_TRANID \
-   && trid >= LOG_FIRST_VACUUM_WORKER_TRANID)
-#define LOG_IS_VACUUM_MASTER_TRANID(trid) ((trid) == LOG_VACUUM_MASTER_TRANID)
-#define LOG_IS_VACUUM_THREAD_TRANID(trid) \
-  (LOG_IS_VACUUM_WORKER_TRANID (trid) || LOG_IS_VACUUM_MASTER_TRANID (trid))
+const TRANID LOG_SYSTEM_WORKER_FIRST_TRANID = NULL_TRANID - 1;
+const int LOG_SYSTEM_WORKER_INCR_TRANID = -1;
 
 #define LOG_SET_DATA_ADDR(data_addr, page, vol_file_id, off) \
   do \
@@ -1687,7 +1680,6 @@ extern void logtb_tran_reset_count_optim_state (THREAD_ENTRY * thread_p);
 extern void logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 extern int logtb_find_log_records_count (int tran_index);
 
-extern void logtb_initialize_vacuum_thread_tdes (LOG_TDES * tdes, TRANID trid);
 extern int logtb_initialize_global_unique_stats_table (THREAD_ENTRY * thread_p);
 extern void logtb_finalize_global_unique_stats_table (THREAD_ENTRY * thread_p);
 extern int logtb_get_global_unique_stats (THREAD_ENTRY * thread_p, BTID * btid, int *num_oids, int *num_nulls,

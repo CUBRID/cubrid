@@ -606,30 +606,6 @@ logtb_initialize_system_tdes (THREAD_ENTRY * thread_p)
 }
 
 /*
- * logtb_initialize_vacuum_thread_tdes () - Allocate a transaction descriptor for vacuum threads to use when starting
- *					    system operations.
- *
- * return    : Void.
- * tdes (in) : Transaction descriptor.
- * trid (in) : Transaction identifier.
- */
-void
-logtb_initialize_vacuum_thread_tdes (LOG_TDES * tdes, TRANID trid)
-{
-  /* Check trid is a valid vacuum worker TRANID. */
-  assert (LOG_IS_VACUUM_THREAD_TRANID (trid));
-
-  /* Initialize transaction descriptor. */
-  logtb_initialize_tdes (tdes, LOG_SYSTEM_TRAN_INDEX);
-
-  /* Set TRANID. */
-  tdes->trid = trid;
-
-  /* Set transaction state to active. */
-  tdes->state = TRAN_ACTIVE;
-}
-
-/*
  * logtb_undefine_trantable - undefine the transaction table
  *
  * return: nothing
@@ -1341,6 +1317,8 @@ logtb_rv_find_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid, const L
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
   int tran_index;
+
+  assert (trid != NULL_TRANID);
 
   if (logtb_is_system_worker_tranid (trid))
     {
@@ -2136,6 +2114,8 @@ logtb_find_tran_index (THREAD_ENTRY * thread_p, TRANID trid)
   int i;
   int tran_index = NULL_TRAN_INDEX;	/* The transaction index */
   LOG_TDES *tdes;		/* Transaction descriptor */
+
+  assert (trid != NULL_TRANID);
 
   /* Avoid searching as much as possible */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);

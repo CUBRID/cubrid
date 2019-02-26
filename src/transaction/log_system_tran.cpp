@@ -32,7 +32,7 @@
 
 std::mutex systb_Mutex;
 std::forward_list<log_tdes *> systb_Free_tdes_list;
-TRANID systb_Next_tranid = -1;
+TRANID systb_Next_tranid = LOG_SYSTEM_WORKER_FIRST_TRANID;
 
 std::map<TRANID, log_system_tdes *> systb_Recovery_system_tdes;
 
@@ -68,7 +68,8 @@ log_system_tdes::claim_tdes ()
   if (systb_Free_tdes_list.empty ())
     {
       // generate new log_tdes
-      create_tdes (systb_Next_tranid--);
+      create_tdes (systb_Next_tranid);
+      systb_Next_tranid += LOG_SYSTEM_WORKER_INCR_TRANID;
     }
   else
     {
