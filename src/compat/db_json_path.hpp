@@ -128,7 +128,7 @@ class JSON_PATH : protected rapidjson::GenericPointer<JSON_VALUE>
 
 typedef JSON_PATH::JSON_PATH_TYPE JSON_PATH_TYPE;
 
-// exposed funcs
+// exposed free funcs
 std::vector<std::string> db_json_split_path_by_delimiters (const std::string &path,
     const std::string &delim, bool allow_empty);
 int db_json_normalize_path (const char *pointer_path, JSON_PATH &json_path,

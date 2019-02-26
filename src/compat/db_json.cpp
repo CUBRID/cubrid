@@ -98,7 +98,7 @@
 #if TODO_OPTIMIZE_JSON_BODY_STRING
 struct JSON_RAW_STRING_DELETER
 {
-  void operator () (char *p) const
+  void operator() (char *p) const
   {
     db_private_free (NULL, p);
   }
@@ -658,15 +658,13 @@ static void db_json_merge_preserve_values (const JSON_VALUE &source, JSON_VALUE 
 static void db_json_merge_patch_values (const JSON_VALUE &source, JSON_VALUE &dest, JSON_PRIVATE_MEMPOOL &allocator);
 
 static void db_json_copy_doc (JSON_DOC &dest, const JSON_DOC *src);
-
 static void db_json_get_paths_helper (const JSON_VALUE &obj, const std::string &sql_path,
 				      std::vector<std::string> &paths);
 
-static int db_json_er_set_path_does_not_exist (const char *file_name, const int line_no, const std::string &path,
-    const JSON_DOC *doc);
-
 static void db_json_value_wrap_as_array (JSON_VALUE &value, JSON_PRIVATE_MEMPOOL &allocator);
 static const char *db_json_get_json_type_as_str (const DB_JSON_TYPE &json_type);
+static int db_json_er_set_path_does_not_exist (const char *file_name, const int line_no, const std::string &path,
+    const JSON_DOC *doc);
 static int db_json_er_set_expected_other_type (const char *file_name, const int line_no, const std::string &path,
     const DB_JSON_TYPE &found_type, const DB_JSON_TYPE &expected_type,
     const DB_JSON_TYPE &expected_type_optional = DB_JSON_NULL);

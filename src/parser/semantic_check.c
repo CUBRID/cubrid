@@ -44,7 +44,6 @@
 #include "partition.h"
 #include "db_json.hpp"
 #include "object_primitive.h"
-#include "db_json.hpp"
 
 #include "dbtype.h"
 #define PT_CHAIN_LENGTH 10

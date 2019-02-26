@@ -37,7 +37,7 @@ db_json_path_is_token_valid_quoted_object_key (const std::string &path, std::siz
   bool unescaped_backslash = false;
   std::size_t backslash_nr = 0;
   // stop at unescaped '"'; note that there should be an odd nr of backslashes before '"' for it to be escaped
-  for (; i < path.length() && (path[i] != '"' || unescaped_backslash); ++i)
+  for (; i < path.length () && (path[i] != '"' || unescaped_backslash); ++i)
     {
       if (path[i] == '\\')
 	{
@@ -49,7 +49,7 @@ db_json_path_is_token_valid_quoted_object_key (const std::string &path, std::siz
 	}
     }
 
-  if (i == path.length())
+  if (i == path.length ())
     {
       return false;
     }
@@ -100,13 +100,13 @@ db_json_path_is_token_valid_unquoted_object_key (const std::string &path, std::s
 
   // todo: this needs change. Besides alphanumerics, object keys can be valid ECMAScript identifiers as defined in
   // http://www.ecma-international.org/ecma-262/5.1/#sec-7.6
-  if (i < path.length() && !std::isalpha (static_cast<unsigned char> (path[i])))
+  if (i < path.length () && !std::isalpha (static_cast<unsigned char> (path[i])))
     {
       return false;
     }
 
   ++i;
-  for (; i < path.length() && std::isalnum (static_cast<unsigned char> (path[i])); ++i);
+  for (; i < path.length () && std::isalnum (static_cast<unsigned char> (path[i])); ++i);
 
   token_begin = i;
 
@@ -138,7 +138,7 @@ db_json_path_is_token_valid_array_index (const std::string &str, bool allow_wild
   if (end == 0)
     {
       // default is end of string
-      end = str.length();
+      end = str.length ();
     }
 
   if (start == end)
@@ -156,7 +156,7 @@ db_json_path_is_token_valid_array_index (const std::string &str, bool allow_wild
   // Remaining invalid cases are: 1. Non-digits are present
   //                              2. Index overflows Rapidjson's index representation type
   rapidjson::SizeType n = 0;
-  for (auto it = str.cbegin() + start; it < str.cbegin() + last_non_space + 1; ++it)
+  for (auto it = str.cbegin () + start; it < str.cbegin () + last_non_space + 1; ++it)
     {
       if (!std::isdigit (static_cast<unsigned char> (*it)))
 	{
@@ -184,7 +184,7 @@ db_json_path_is_token_valid_array_index (const std::string &str, bool allow_wild
 static std::size_t
 skip_whitespaces (const std::string &path, std::size_t pos)
 {
-  for (; pos < path.length() && path[pos] == ' '; ++pos);
+  for (; pos < path.length () && path[pos] == ' '; ++pos);
   return pos;
 }
 
@@ -359,11 +359,11 @@ static void
 json_path_strip_whitespaces (std::string &sql_path)
 {
   std::string result;
-  result.reserve (sql_path.length() + 1);
+  result.reserve (sql_path.length () + 1);
 
   bool skip_spaces = true;
   bool unescaped_backslash = false;
-  for (size_t i = 0; i < sql_path.length(); ++i)
+  for (size_t i = 0; i < sql_path.length (); ++i)
     {
       if (i > 0 && !unescaped_backslash && sql_path[i] == '"')
 	{
@@ -406,7 +406,7 @@ std::vector<std::string> db_json_split_path_by_delimiters (const std::string &pa
 	  if (index_of_closing_quote == std::string::npos)
 	    {
 	      assert (false);
-	      tokens.clear();
+	      tokens.clear ();
 	      return tokens;
 	      /* this should have been catched earlier */
 	    }
@@ -421,7 +421,7 @@ std::vector<std::string> db_json_split_path_by_delimiters (const std::string &pa
       else if (path[end] != '"' || ((end >= 1) && path[end - 1] != '\\'))
 	{
 	  const std::string &substring = path.substr (start, end - start);
-	  if (!substring.empty() || allow_empty)
+	  if (!substring.empty () || allow_empty)
 	    {
 	      tokens.push_back (substring);
 	    }
@@ -432,12 +432,12 @@ std::vector<std::string> db_json_split_path_by_delimiters (const std::string &pa
     }
 
   const std::string &substring = path.substr (start, end);
-  if (!substring.empty() || allow_empty)
+  if (!substring.empty () || allow_empty)
     {
       tokens.push_back (substring);
     }
 
-  std::size_t tokens_size = tokens.size();
+  std::size_t tokens_size = tokens.size ();
   for (std::size_t i = 0; i < tokens_size; i++)
     {
       if (db_json_path_is_token_valid_array_index (tokens[i], false))
@@ -499,16 +499,16 @@ db_json_path_unquote_object_keys (std::string &sql_path)
   std::size_t crt_idx = 0;
   std::string res = "$";
 
-  assert (!tokens.empty() && tokens[0] == "$");
+  assert (!tokens.empty () && tokens[0] == "$");
   for (std::size_t i = 1; i < tokens.size(); ++i)
     {
       if (tokens[i][0] == '"')
 	{
 	  res += ".";
-	  std::string unquoted = tokens[i].substr (1, tokens[i].length() - 2);
+	  std::string unquoted = tokens[i].substr (1, tokens[i].length () - 2);
 	  std::size_t start = 0;
 
-	  if (db_json_path_is_token_valid_unquoted_object_key (unquoted, start) && start >= unquoted.length())
+	  if (db_json_path_is_token_valid_unquoted_object_key (unquoted, start) && start >= unquoted.length ())
 	    {
 	      res.append (unquoted);
 	    }
@@ -564,21 +564,21 @@ JSON_PATH::replace_special_chars_in_tokens (std::string &token,
   size_t step = 1;
 
   // iterate character by character and detect special characters
-  for (size_t token_idx = 0; token_idx < token.length(); /* incremented in for body */)
+  for (size_t token_idx = 0; token_idx < token.length (); /* incremented in for body */)
     {
       replaced = false;
       // compare with special characters
-      for (auto special_it = special_chars.begin(); special_it != special_chars.end(); ++special_it)
+      for (auto special_it = special_chars.begin (); special_it != special_chars.end (); ++special_it)
 	{
 	  // compare special characters with sequence following token_it
-	  if (token_idx + special_it->first.length() <= token.length())
+	  if (token_idx + special_it->first.length () <= token.length ())
 	    {
-	      if (token.compare (token_idx, special_it->first.length(), special_it->first) == 0)
+	      if (token.compare (token_idx, special_it->first.length (), special_it->first) == 0)
 		{
 		  // replace
-		  token.replace (token_idx, special_it->first.length(), special_it->second);
+		  token.replace (token_idx, special_it->first.length (), special_it->second);
 		  // skip replaced
-		  token_idx += special_it->second.length();
+		  token_idx += special_it->second.length ();
 
 		  replaced = true;
 		  // next loop
@@ -626,17 +626,17 @@ bool JSON_PATH::match (const std::vector<PATH_TOKEN>::const_iterator &it1,
 		       const std::vector<PATH_TOKEN>::const_iterator &it2, const std::vector<PATH_TOKEN> &other_tokens,
 		       bool match_prefix) const
 {
-  if (it1 == m_path_tokens.end() && it2 == other_tokens.end())
+  if (it1 == m_path_tokens.end () && it2 == other_tokens.end ())
     {
       return true;
     }
 
-  if (it1 == m_path_tokens.end())
+  if (it1 == m_path_tokens.end ())
     {
       return match_prefix;
     }
 
-  if (it2 == other_tokens.end())
+  if (it2 == other_tokens.end ())
     {
       // note that in case of double wildcard we have guaranteed a token after it
       return false;
@@ -748,10 +748,10 @@ JSON_PATH::dump_json_path (bool skip_json_pointer_minus) const
   std::unordered_map<std::string, std::string> special_chars;
   build_special_chars_map (JSON_PATH_TYPE::JSON_PATH_POINTER, special_chars);
 
-  const TOKEN *tokens = GetTokens();
-  const size_t token_cnt = GetTokenCount();
+  const TOKEN *tokens = GetTokens ();
+  const size_t token_cnt = GetTokenCount ();
   std::string res = "$";
-  for (size_t i = 0; i < GetTokenCount(); ++i)
+  for (size_t i = 0; i < GetTokenCount (); ++i)
     {
       if (tokens[i].index != kPointerInvalidIndex || (tokens[i].length == 1 && tokens[i].name[0] == '-'))
 	{
@@ -770,7 +770,7 @@ JSON_PATH::dump_json_path (bool skip_json_pointer_minus) const
 	  replace_special_chars_in_tokens (token_str, special_chars);
 	  char *quoted_token = NULL;
 	  size_t quoted_size;
-	  (void) db_string_escape (token_str.c_str (), token_str.length(), &quoted_token, &quoted_size);
+	  (void) db_string_escape (token_str.c_str (), token_str.length (), &quoted_token, &quoted_size);
 
 	  res += ".";
 	  res += quoted_token;
@@ -862,12 +862,8 @@ bool JSON_PATH::points_to_array_cell () const
     }
 
   const TOKEN *last_token = get_last_token ();
-  if (last_token == NULL || (last_token->index == kPointerInvalidIndex && ! (last_token->length == 1
-			     && last_token->name[0] == '-')))
-    {
-      return false;
-    }
-  return true;
+  return (last_token != NULL && (last_token->index != kPointerInvalidIndex || ! (last_token->length == 1
+				 && last_token->name[0] == '-')));
 }
 
 bool JSON_PATH::parent_exists (JSON_DOC &jd) const
@@ -898,7 +894,7 @@ int JSON_PATH::init (const char *path)
   return NO_ERROR;
 }
 
-JSON_PATH::JSON_PATH()
+JSON_PATH::JSON_PATH ()
   : JSON_POINTER ("")
 {
   m_backend_json_format = JSON_PATH_TYPE::JSON_PATH_POINTER;
