@@ -1411,14 +1411,9 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 	{
           er_log_debug (ARG_FILE_LINE, "css_init: starting HA : ha_Server_state (%s), server_name (%s)\n",
 			css_ha_server_state_string (ha_Server_state), server_name);
-	  if (ha_Server_state == HA_SERVER_STATE_ACTIVE)
-	    {
-	      cubreplication::master_node::init (server_name);
-	    }
-	  else if (ha_Server_state == HA_SERVER_STATE_STANDBY)
-	    {
-	      cubreplication::slave_node::init (server_name);
-	    }
+	  /* start both master and slave infrastructure */
+          cubreplication::master_node::init (server_name);
+	  cubreplication::slave_node::init (server_name);
 
 #if !defined(WINDOWS)
 	  status = hb_register_to_master (css_Master_conn, HB_PTYPE_SERVER);
@@ -1443,14 +1438,8 @@ shutdown:
 
   if (!HA_DISABLED ())
     {
-      if (ha_Server_state == HA_SERVER_STATE_ACTIVE)
-	{
-	  cubreplication::master_node::final ();
-	}
-      else if (ha_Server_state == HA_SERVER_STATE_STANDBY)
-	{
-	  cubreplication::slave_node::final ();
-	}
+      cubreplication::master_node::final ();
+      cubreplication::slave_node::final ();
     }
 
   // stop threads; in first phase we need to stop active workers, but keep log writers for a while longer to make sure
