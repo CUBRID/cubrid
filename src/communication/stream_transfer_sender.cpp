@@ -32,9 +32,11 @@
 
 #include "stream_transfer_sender.hpp"
 
+#include "system_parameter.h" /* for er_log_debug */
 #include "thread_manager.hpp"
 #include "thread_daemon.hpp"
 #include "thread_entry_task.hpp"
+
 
 namespace cubstream
 {
@@ -64,6 +66,10 @@ namespace cubstream
 	    rc = this_producer_channel.m_channel.recv ((char *) &last_sent_position, max_len);
 	    this_producer_channel.m_last_sent_position = last_sent_position;
 
+            er_log_debug (ARG_FILE_LINE, "transfer_sender_task:execute starting : "
+                          "last_sent_position:%lld, rc:%d\n",
+                          last_sent_position, rc);
+
 	    assert (max_len == sizeof (UINT64));
 
 	    if (rc != NO_ERRORS)
@@ -80,6 +86,9 @@ namespace cubstream
 	    std::size_t byte_count = std::min ((stream_position) cubcomm::MTU,
 					       last_reported_ready_pos - this_producer_channel.m_last_sent_position);
 	    int error_code = NO_ERROR;
+
+            er_log_debug (ARG_FILE_LINE, "transfer_receiver_task:execute reading from stream : pos: %lld, bytes: %d\n",
+                          this_producer_channel.m_last_sent_position, byte_count);
 
 	    error_code = this_producer_channel.m_stream.read (this_producer_channel.m_last_sent_position, byte_count,
 			 this_producer_channel.m_read_action_function);
@@ -134,6 +143,7 @@ namespace cubstream
   {
     if (m_channel.send (ptr, byte_count) == NO_ERRORS)
       {
+        er_log_debug (ARG_FILE_LINE, "transfer_receiver_task:execute send bytes: %d\n", byte_count);
 	m_last_sent_position += byte_count;
 	return NO_ERROR;
       }

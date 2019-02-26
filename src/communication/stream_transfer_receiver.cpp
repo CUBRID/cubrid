@@ -25,6 +25,7 @@
 #include "stream_transfer_receiver.hpp"
 
 #include "byte_order.h"
+#include "system_parameter.h" /* for er_log_debug */
 #include "thread_manager.hpp"
 #include "thread_daemon.hpp"
 #include "thread_entry_task.hpp"
@@ -59,6 +60,10 @@ namespace cubstream
 	    rc = this_consumer_channel.m_channel.send ((char *) &last_recv_pos,
 		 sizeof (UINT64));
 
+            er_log_debug (ARG_FILE_LINE, "transfer_receiver_task:execute starting : "
+                          "m_last_received_position:%lld, rc:%d\n",
+                          this_consumer_channel.m_last_received_position, rc);
+
 	    if (rc != NO_ERRORS)
 	      {
 		assert (false);
@@ -76,11 +81,15 @@ namespace cubstream
 	    return;
 	  }
 
+        er_log_debug (ARG_FILE_LINE, "transfer_receiver_task:execute receiving : %d bytes\n", max_len);
+
 	if (this_consumer_channel.m_stream.write (max_len, this_consumer_channel.m_write_action_function))
 	  {
 	    this_consumer_channel.m_channel.close_connection ();
 	    return;
 	  }
+
+        er_log_debug (ARG_FILE_LINE, "transfer_receiver_task:execute writing to stream : %d bytes\n", max_len);
       }
 
     private:
