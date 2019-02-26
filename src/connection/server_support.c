@@ -1409,6 +1409,8 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 
       if (!HA_DISABLED ())
 	{
+          er_log_debug (ARG_FILE_LINE, "css_init: starting HA : ha_Server_state (%s), server_name (%s)\n",
+			css_ha_server_state_string (ha_Server_state), server_name);
 	  if (ha_Server_state == HA_SERVER_STATE_ACTIVE)
 	    {
 	      cubreplication::master_node::init (server_name);
