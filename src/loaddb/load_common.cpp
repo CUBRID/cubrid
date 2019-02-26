@@ -316,6 +316,7 @@ namespace cubload
 	rtrim (line);
 	if (line.size () > DB_MAX_IDENTIFIER_LENGTH)
 	  {
+	    file.close ();
 	    ignore_classes.clear ();
 	    return ER_FAILED;
 	  }
@@ -328,6 +329,7 @@ namespace cubload
 	ignore_classes.emplace_back (class_name.c_str (), strlen (class_name.c_str ()));
       }
 
+    file.close ();
     return NO_ERROR;
   }
 
