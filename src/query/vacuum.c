@@ -3070,7 +3070,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
   assert (thread_p->get_system_tdes () != NULL);
 
   assert (worker != NULL);
-  assert (thread_p->get_system_tdes ()->get_tdes ()->is_under_sysop ());
+  assert (!thread_p->get_system_tdes ()->get_tdes ()->is_under_sysop ());
 
   PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
   PERF_UTIME_TRACKER_START (thread_p, &job_time_tracker);
@@ -3335,11 +3335,11 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 
       /* do not leak system ops */
       assert (worker->state == VACUUM_WORKER_STATE_EXECUTE);
-      assert (thread_p->get_system_tdes ()->get_tdes ()->is_under_sysop ());
+      assert (!thread_p->get_system_tdes ()->get_tdes ()->is_under_sysop ());
     }
 
   assert (worker->state == VACUUM_WORKER_STATE_EXECUTE);
-  assert (thread_p->get_system_tdes ()->get_tdes ()->is_under_sysop ());
+  assert (!thread_p->get_system_tdes ()->get_tdes ()->is_under_sysop ());
 
   error_code = vacuum_heap (thread_p, worker, threshold_mvccid, was_interrupted);
   if (error_code != NO_ERROR)
@@ -3348,7 +3348,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
       goto end;
     }
   assert (worker->state == VACUUM_WORKER_STATE_EXECUTE);
-  assert (thread_p->get_system_tdes ()->get_tdes ()->is_under_sysop ());
+  assert (!thread_p->get_system_tdes ()->get_tdes ()->is_under_sysop ());
 
   perfmon_add_stat (thread_p, PSTAT_VAC_NUM_VACUUMED_LOG_PAGES, vacuum_Data.log_block_npages);
 
@@ -3356,7 +3356,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 
 end:
 
-  assert (thread_p->get_system_tdes ()->get_tdes ()->is_under_sysop ());
+  assert (!thread_p->get_system_tdes ()->get_tdes ()->is_under_sysop ());
 
   worker->state = VACUUM_WORKER_STATE_INACTIVE;
   if (!sa_mode_partial_block)
