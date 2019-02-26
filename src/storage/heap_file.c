@@ -20137,7 +20137,7 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 #if !defined(NDEBUG)
 	  if (lk_result == LK_NOTGRANTED_DUE_ABORTED)
 	    {
-	      LOG_TDES *tdes = logtb_find_current_tdes (thread_p);
+	      LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
 	      assert (tdes->tran_abort_reason == TRAN_ABORT_DUE_ROLLBACK_ON_ESCALATION);
 	    }
 	  else

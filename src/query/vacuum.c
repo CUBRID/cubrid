@@ -5717,7 +5717,7 @@ vacuum_add_dropped_file (THREAD_ENTRY * thread_p, VFID * vfid, MVCCID mvccid)
   VACUUM_DROPPED_FILES_PAGE *page = NULL, *new_page = NULL;
   INT16 position = -1;
   LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
-  LOG_TDES *tdes = logtb_find_current_tdes (thread_p);
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
   bool found = false;
   PAGE_TYPE ptype = PAGE_DROPPED_FILES;
 

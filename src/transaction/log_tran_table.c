@@ -1396,7 +1396,7 @@ logtb_rv_find_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid, const L
 void
 logtb_rv_assign_mvccid_for_undo_recovery (THREAD_ENTRY * thread_p, MVCCID mvccid)
 {
-  LOG_TDES *tdes = logtb_find_current_tdes (thread_p);
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
 
   assert (tdes != NULL);
   assert (MVCCID_IS_VALID (mvccid));
@@ -2830,7 +2830,7 @@ logtb_find_current_tran_lsa (THREAD_ENTRY * thread_p)
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
 
-  tdes = logtb_find_current_tdes (thread_p);
+  tdes = LOG_FIND_CURRENT_TDES (thread_p);
   return ((tdes != NULL) ? &tdes->tail_lsa : NULL);
 }
 
@@ -6571,7 +6571,7 @@ logtb_update_global_unique_stats_by_delta (THREAD_ENTRY * thread_p, BTID * btid,
 {
   int error_code = NO_ERROR;
   GLOBAL_UNIQUE_STATS *stats = NULL;
-  LOG_TDES *tdes = logtb_find_current_tdes (thread_p);
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
   int num_oids, num_nulls, num_keys;
 
   if (oid_delta == 0 && key_delta == 0 && null_delta == 0)
@@ -7726,7 +7726,7 @@ logtb_get_current_system_tdes (THREAD_ENTRY * thread_p)
 }
 
 LOG_TDES *
-logtb_find_current_tdes (THREAD_ENTRY * thread_p)
+LOG_FIND_CURRENT_TDES (THREAD_ENTRY * thread_p)
 {
   if (thread_p == NULL)
     {

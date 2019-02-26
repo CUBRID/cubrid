@@ -3263,7 +3263,7 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY * thread_p, LOG_PRIOR_NO
       assert (LOG_IS_MVCC_OP_RECORD_TYPE (node->log_header.type));
       assert (LOG_IS_MVCC_OPERATION (rcvindex));
 
-      tdes = logtb_find_current_tdes (thread_p);
+      tdes = LOG_FIND_CURRENT_TDES (thread_p);
       if (tdes == NULL || !MVCCID_IS_VALID (tdes->mvccinfo.id))
 	{
 	  assert_release (false);

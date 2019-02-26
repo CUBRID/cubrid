@@ -2185,7 +2185,7 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
   lk_Gl.TWFG_node[entry_ptr->tran_index].thrd_wait_stime = entry_ptr->thrd_entry->lockwait_stime;
   lk_Gl.deadlock_and_timeout_detector++;
 
-  tdes = logtb_find_current_tdes (thread_p);
+  tdes = LOG_FIND_CURRENT_TDES (thread_p);
 
   /* I must not be a deadlock-victim thread */
   assert (tdes->tran_abort_reason == TRAN_NORMAL);

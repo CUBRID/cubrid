@@ -482,7 +482,7 @@ spage_save_space (THREAD_ENTRY * thread_p, SPAGE_HEADER * page_header_p, PAGE_PT
   if (VACUUM_IS_THREAD_VACUUM_WORKER (thread_p))
     {
       /* Vacuum workers do not rollback their heap changes and don't need to keep track of saved space. */
-      assert (!logtb_find_current_tdes (thread_p)->is_under_sysop () || space < 0);
+      assert (!LOG_FIND_CURRENT_TDES (thread_p)->is_under_sysop () || space < 0);
       return NO_ERROR;
     }
 

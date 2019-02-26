@@ -287,7 +287,7 @@ log_does_allow_replication (void)
   HA_SERVER_STATE ha_state;
 
   /* Vacuum workers are not allowed to reach this code */
-  assert (logtb_find_current_tdes () != NULL && logtb_find_current_tdes ()->is_active_worker_transaction ());
+  assert (LOG_FIND_CURRENT_TDES () != NULL && LOG_FIND_CURRENT_TDES ()->is_active_worker_transaction ());
 
   if (HA_DISABLED ())
     {

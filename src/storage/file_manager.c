@@ -7899,7 +7899,7 @@ file_rv_user_page_unmark_delete_logical (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   addr.offset = (PGLENGTH) (((char *) vpid_in_table) - addr.pgptr);
   save_lsa = *pgbuf_get_lsa (addr.pgptr);
   log_append_compensate (thread_p, RVFL_USER_PAGE_MARK_DELETE_COMPENSATE, pgbuf_get_vpid_ptr (addr.pgptr), addr.offset,
-			 addr.pgptr, 0, NULL, logtb_find_current_tdes (thread_p));
+			 addr.pgptr, 0, NULL, LOG_FIND_CURRENT_TDES (thread_p));
 
   file_log ("file_rv_user_page_unmark_delete_logical",
 	    "unmark delete vpid %d|%d in file %d|%d, page %d|%d, "
@@ -9946,7 +9946,7 @@ file_tracker_item_mark_heap_deleted (THREAD_ENTRY * thread_p, PAGE_PTR page_of_i
     {
       log_append_compensate_with_undo_nxlsa (thread_p, RVFL_TRACKER_HEAP_MARK_DELETED,
 					     pgbuf_get_vpid_ptr (page_of_item), index_item, page_of_item, 0, NULL,
-					     logtb_find_current_tdes (thread_p), &context->ref_lsa);
+					     LOG_FIND_CURRENT_TDES (thread_p), &context->ref_lsa);
     }
   else
     {

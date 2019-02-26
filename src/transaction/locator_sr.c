@@ -5631,7 +5631,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	    {
 	      LOG_TDES *tdes;
 
-	      tdes = logtb_find_current_tdes (thread_p);
+	      tdes = LOG_FIND_CURRENT_TDES (thread_p);
 	      if (!(has_index & LC_FLAG_HAS_UNIQUE_INDEX))
 		{
 		  MVCC_REC_HEADER old_rec_header;
@@ -12108,7 +12108,7 @@ xlocator_upgrade_instances_domain (THREAD_ENTRY * thread_p, OID * class_oid, int
   bool scancache_inited = false;
   bool attrinfo_inited = false;
   int tran_index;
-  LOG_TDES *tdes = logtb_find_current_tdes (thread_p);
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
   MVCCID threshold_mvccid;
 
   HFID_SET_NULL (&hfid);
@@ -12600,7 +12600,7 @@ xchksum_insert_repl_log_and_demote_table_lock (THREAD_ENTRY * thread_p, REPL_INF
   LOG_TDES *tdes;
   int error = NO_ERROR;
 
-  tdes = logtb_find_current_tdes (thread_p);
+  tdes = LOG_FIND_CURRENT_TDES (thread_p);
   if (tdes == NULL)
     {
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1,
@@ -12687,7 +12687,7 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
   int force_count = -1;
   OID oid;
   OID cls_oid;
-  LOG_TDES *tdes = logtb_find_current_tdes (thread_p);
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
   MVCCID threshold_mvccid = MVCCID_NULL;
 
   assert (tdes != NULL);

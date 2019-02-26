@@ -825,7 +825,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   sort_args->scancache_inited = 1;
 
   /* After building index acquire lock on table, the transaction has deadlock priority */
-  tdes = logtb_find_current_tdes (thread_p);
+  tdes = LOG_FIND_CURRENT_TDES (thread_p);
   if (tdes)
     {
       tdes->has_deadlock_priority = true;
@@ -4440,7 +4440,7 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   btid_int.nonleaf_key_type = btree_generate_prefix_domain (&btid_int);
 
   /* After building index acquire lock on table, the transaction has deadlock priority */
-  tdes = logtb_find_current_tdes (thread_p);
+  tdes = LOG_FIND_CURRENT_TDES (thread_p);
   if (tdes)
     {
       tdes->has_deadlock_priority = true;
