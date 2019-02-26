@@ -32,7 +32,6 @@
 #include "lockfree_circular_queue.hpp"
 #include "log_compress.h"
 #include "log_impl.h"
-#include "log_system_tran.hpp"
 #include "mvcc.h"
 #include "overflow_file.h"
 #include "page_buffer.h"
@@ -657,9 +656,7 @@ vacuum_init_thread_context (cubthread::entry &context, thread_type type, VACUUM_
   context.check_interrupt = false;
 
   assert (context.get_system_tdes () == NULL);
-  log_system_tdes *sys_tdes = new log_system_tdes ();
-  sys_tdes->claim_tdes ();
-  context.set_system_tdes (*sys_tdes);
+  context.claim_system_worker ();
 }
 
 // class vacuum_master_context_manager
@@ -681,8 +678,7 @@ class vacuum_master_context_manager : public cubthread::daemon_entry_manager
 
     void on_daemon_retire (cubthread::entry &context) final
     {
-      delete context.get_system_tdes ();
-      context.reset_system_tdes ();
+      context.retire_system_worker ();
 
       vacuum_finalize (&context);    // todo: is this the rightful place?
 
@@ -759,8 +755,7 @@ class vacuum_worker_context_manager : public cubthread::entry_manager
 
     void on_retire (cubthread::entry & context) final
     {
-      delete context.get_system_tdes ();
-      context.reset_system_tdes ();
+      context.retire_system_worker ();
 
       if (context.vacuum_worker != NULL)
 	{
@@ -779,8 +774,8 @@ class vacuum_worker_context_manager : public cubthread::entry_manager
 
     void on_recycle (cubthread::entry & context) final
     {
-      // reset tran_index (it is recycled as -1)
-      context.tran_index = 0;
+      // reset tran_index (it is recycled as NULL_TRAN_INDEX)
+      context.tran_index = LOG_SYSTEM_TRAN_INDEX;
     }
 
     // members
@@ -3070,7 +3065,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
   assert (thread_p->get_system_tdes () != NULL);
 
   assert (worker != NULL);
-  assert (!thread_p->get_system_tdes ()->get_tdes ()->is_under_sysop ());
+  assert (!LOG_FIND_CURRENT_TDES (thread_p)->is_under_sysop ());
 
   PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
   PERF_UTIME_TRACKER_START (thread_p, &job_time_tracker);
@@ -3335,11 +3330,11 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 
       /* do not leak system ops */
       assert (worker->state == VACUUM_WORKER_STATE_EXECUTE);
-      assert (!thread_p->get_system_tdes ()->get_tdes ()->is_under_sysop ());
+      assert (!LOG_FIND_CURRENT_TDES (thread_p)->is_under_sysop ());
     }
 
   assert (worker->state == VACUUM_WORKER_STATE_EXECUTE);
-  assert (!thread_p->get_system_tdes ()->get_tdes ()->is_under_sysop ());
+  assert (!LOG_FIND_CURRENT_TDES (thread_p)->is_under_sysop ());
 
   error_code = vacuum_heap (thread_p, worker, threshold_mvccid, was_interrupted);
   if (error_code != NO_ERROR)
@@ -3348,7 +3343,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
       goto end;
     }
   assert (worker->state == VACUUM_WORKER_STATE_EXECUTE);
-  assert (!thread_p->get_system_tdes ()->get_tdes ()->is_under_sysop ());
+  assert (!LOG_FIND_CURRENT_TDES (thread_p)->is_under_sysop ());
 
   perfmon_add_stat (thread_p, PSTAT_VAC_NUM_VACUUMED_LOG_PAGES, vacuum_Data.log_block_npages);
 
@@ -3356,7 +3351,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 
 end:
 
-  assert (!thread_p->get_system_tdes ()->get_tdes ()->is_under_sysop ());
+  assert (!LOG_FIND_CURRENT_TDES (thread_p)->is_under_sysop ());
 
   worker->state = VACUUM_WORKER_STATE_INACTIVE;
   if (!sa_mode_partial_block)

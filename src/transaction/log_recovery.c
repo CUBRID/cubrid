@@ -767,6 +767,10 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   log_recovery_undo (thread_p);
   boot_reset_db_parm (thread_p);
 
+  // *INDENT-OFF*
+  log_system_tdes::rv_final ();
+  // *INDENT-ON*
+
   if (did_incom_recovery == true)
     {
       log_recovery_notpartof_volumes (thread_p);
@@ -6301,7 +6305,7 @@ log_rv_simulate_runtime_worker (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
     }
   else if (tdes->is_system_worker_transaction ())
     {
-      log_system_tdes::rv_set_system_tdes (tdes->trid);
+      log_system_tdes::rv_simulate_system_tdes (tdes->trid);
     }
   else
     {

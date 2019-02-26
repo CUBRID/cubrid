@@ -7791,4 +7791,36 @@ log_tdes::unlock_topop ()
     }
 }
 
+void
+log_tdes::on_sysop_start ()
+{
+  assert (is_allowed_sysop ());
+  if (is_system_worker_transaction () && topops.last < 0)
+    {
+      // make sure all links to previous records are lost
+      assert (topops.last == -1);
+      LSA_SET_NULL (&head_lsa);
+      LSA_SET_NULL (&tail_lsa);
+      LSA_SET_NULL (&undo_nxlsa);
+      LSA_SET_NULL (&tail_topresult_lsa);
+      LSA_SET_NULL (&rcv.tran_start_postpone_lsa);
+      LSA_SET_NULL (&rcv.sysop_start_postpone_lsa);
+    }
+}
+
+void
+log_tdes::on_sysop_end ()
+{
+  assert (is_allowed_sysop ());
+  if (is_system_worker_transaction() && topops.last < 0)
+    {
+      // make sure this system operation cannot be linked
+      assert (topops.last == -1);
+      LSA_SET_NULL (&head_lsa);
+      LSA_SET_NULL (&tail_lsa);
+      LSA_SET_NULL (&undo_nxlsa);
+      LSA_SET_NULL (&tail_topresult_lsa);
+    }
+}
+
 // *INDENT-ON*

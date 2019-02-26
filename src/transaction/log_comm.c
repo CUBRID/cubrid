@@ -39,7 +39,6 @@
 #include "system_parameter.h"
 #include "misc_string.h"
 #include "intl_support.h"
-//#include "log_impl.h"
 #if defined (SERVER_MODE)
 #include "vacuum.h"
 #endif /* SERVER_MODE */

@@ -1720,6 +1720,9 @@ log_final (THREAD_ENTRY * thread_p)
 #if defined(SERVER_MODE)
   log_daemons_destroy ();
 #endif /* SERVER_MODE */
+  // *INDENT-OFF*
+  log_system_tdes::destroy_system_transactions ();
+  // *INDENT-ON*
 
   LOG_CS_ENTER (thread_p);
 
@@ -3574,22 +3577,19 @@ log_sysop_start (THREAD_ENTRY * thread_p)
 	}
     }
 
-  if (tdes->is_system_transaction ())
+  if (VACUUM_IS_THREAD_VACUUM (thread_p))
     {
-      if (VACUUM_IS_THREAD_VACUUM (thread_p))
-	{
-	  /* should not be in process log */
-	  assert (vacuum_worker_state_is_execute (thread_p));
+      /* should not be in process log */
+      assert (vacuum_worker_state_is_execute (thread_p));
 
-	  vacuum_er_log (VACUUM_ER_LOG_TOPOPS | VACUUM_ER_LOG_WORKER,
-			 "Start system operation. Current worker tdes: tdes->trid=%d, tdes->topops.last=%d, "
-			 "tdes->tail_lsa=(%lld, %d). Worker state=%d.", tdes->trid, tdes->topops.last,
-			 (long long int) tdes->tail_lsa.pageid, (int) tdes->tail_lsa.offset,
-			 vacuum_get_worker_state (thread_p));
-	}
-
-      thread_p->get_system_tdes ()->on_sysop_start ();
+      vacuum_er_log (VACUUM_ER_LOG_TOPOPS | VACUUM_ER_LOG_WORKER,
+		     "Start system operation. Current worker tdes: tdes->trid=%d, tdes->topops.last=%d, "
+		     "tdes->tail_lsa=(%lld, %d). Worker state=%d.", tdes->trid, tdes->topops.last,
+		     (long long int) tdes->tail_lsa.pageid, (int) tdes->tail_lsa.offset,
+		     vacuum_get_worker_state (thread_p));
     }
+
+  tdes->on_sysop_start ();
 
   /* NOTE if tdes->topops.last >= 0, there is an already defined top system operation. */
   tdes->topops.last++;
@@ -3721,26 +3721,20 @@ log_sysop_end_final (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 
   perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_END_TOPOPS);
 
-  if (tdes->is_system_transaction ())
+  if (VACUUM_IS_THREAD_VACUUM (thread_p) && tdes->topops.last < 0)
     {
-      log_system_tdes *sys_tdes = thread_p->get_system_tdes ();
-
-      if (VACUUM_IS_THREAD_VACUUM (thread_p) && tdes->topops.last < 0)
-	{
-	  assert (vacuum_worker_state_is_execute (thread_p));
-	  vacuum_er_log (VACUUM_ER_LOG_TOPOPS,
-			 "Ended all top operations. Tdes: tdes->trid=%d tdes->head_lsa=(%lld, %d), "
-			 "tdes->tail_lsa=(%lld, %d), tdes->undo_nxlsa=(%lld, %d), "
-			 "tdes->tail_topresult_lsa=(%lld, %d). Worker state=%d.", tdes->trid,
-			 (long long int) tdes->head_lsa.pageid, (int) tdes->head_lsa.offset,
-			 (long long int) tdes->tail_lsa.pageid, (int) tdes->tail_lsa.offset,
-			 (long long int) tdes->undo_nxlsa.pageid, (int) tdes->undo_nxlsa.offset,
-			 (long long int) tdes->tail_topresult_lsa.pageid, (int) tdes->tail_topresult_lsa.offset,
-			 vacuum_get_worker_state (thread_p));
-	}
-
-      sys_tdes->on_sysop_end ();
+      assert (vacuum_worker_state_is_execute (thread_p));
+      vacuum_er_log (VACUUM_ER_LOG_TOPOPS,
+		     "Ended all top operations. Tdes: tdes->trid=%d tdes->head_lsa=(%lld, %d), "
+		     "tdes->tail_lsa=(%lld, %d), tdes->undo_nxlsa=(%lld, %d), "
+		     "tdes->tail_topresult_lsa=(%lld, %d). Worker state=%d.", tdes->trid,
+		     (long long int) tdes->head_lsa.pageid, (int) tdes->head_lsa.offset,
+		     (long long int) tdes->tail_lsa.pageid, (int) tdes->tail_lsa.offset,
+		     (long long int) tdes->undo_nxlsa.pageid, (int) tdes->undo_nxlsa.offset,
+		     (long long int) tdes->tail_topresult_lsa.pageid, (int) tdes->tail_topresult_lsa.offset,
+		     vacuum_get_worker_state (thread_p));
     }
+  tdes->on_sysop_end ();
 
   log_sysop_end_random_exit (thread_p);
 

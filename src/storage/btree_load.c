@@ -153,12 +153,18 @@ struct btree_scan_partition_info
 };
 
 // *INDENT-OFF*
-struct index_builder_loader_context
+class index_builder_loader_context : public cubthread::entry_manager
 {
-  std::atomic_bool m_has_error;
-  std::atomic<std::uint64_t> m_tasks_executed;
-  int m_tran_index;
-  int m_error_code;
+  public:
+    std::atomic_bool m_has_error;
+    std::atomic<std::uint64_t> m_tasks_executed;
+    int m_error_code;
+
+    index_builder_loader_context () = default;
+
+  protected:
+    void on_create (context_type & context) override;
+    void on_retire (context_type & context) override;
 };
 
 class index_builder_loader_task: public cubthread::entry_task
@@ -4966,6 +4972,18 @@ btree_is_worker_pool_logging_true ()
   return cubthread::is_logging_configured (cubthread::LOG_WORKER_POOL_INDEX_BUILDER);
 }
 
+void
+index_builder_loader_context::on_create (context_type & context)
+{
+  context.claim_system_worker ();
+}
+
+void
+index_builder_loader_context::on_retire (context_type & context)
+{
+  context.retire_system_worker ();
+}
+
 index_builder_loader_task::index_builder_loader_task (const BTID * btid, const OID * class_oid, const OID * oid,
                                                       int unique_pk, index_builder_loader_context & load_context)
   : m_load_context (load_context)
@@ -4975,7 +4993,6 @@ index_builder_loader_task::index_builder_loader_task (const BTID * btid, const O
   COPY_OID (&m_oid, oid);
   m_unique_pk = unique_pk;
   m_load_context.m_has_error = false;
-  m_load_context.m_tran_index = thread_get_thread_entry_info ()->tran_index;
   db_make_null (&m_key);
 }
 
@@ -5000,8 +5017,6 @@ index_builder_loader_task::execute (cubthread::entry & thread_ref)
     {
       return;
     }
-
-  thread_ref.tran_index = m_load_context.m_tran_index;
 
   ret = btree_online_index_dispatcher (&thread_ref, &m_btid, &m_key, &m_class_oid, &m_oid,
 				       m_unique_pk, BTREE_OP_ONLINE_INDEX_IB_INSERT, NULL);

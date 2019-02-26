@@ -34,11 +34,9 @@ struct log_lsa;
 class log_system_tdes
 {
   public:
-    log_system_tdes () = default;
+    log_system_tdes ();
     ~log_system_tdes ();
 
-    void claim_tdes ();
-    void retire_tdes ();
     log_tdes *get_tdes ();
 
     void on_sysop_start ();
@@ -55,11 +53,11 @@ class log_system_tdes
     static void rv_map_all_tdes (const rv_map_func &func);
     static void rv_delete_all_tdes_if (const rv_delete_if_func &func);
     static void rv_delete_tdes (TRANID trid);
-    static void rv_set_system_tdes (TRANID trid);
-    static void rv_unset_system_tdes ();
+    static void rv_simulate_system_tdes (TRANID trid);
+    static void rv_end_simulation ();
+    static void rv_final ();
 
   private:
-    void create_tdes (TRANID trid);
     void destroy_tdes ();
 
     log_tdes *m_tdes;

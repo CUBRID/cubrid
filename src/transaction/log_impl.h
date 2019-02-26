@@ -1054,8 +1054,12 @@ struct log_tdes
   bool is_allowed_undo () const;
   bool is_allowed_sysop () const;
   bool is_under_sysop () const;
+
   void lock_topop ();
   void unlock_topop ();
+
+  void on_sysop_start ();
+  void on_sysop_end ();
   // *INDENT-ON*
 };
 

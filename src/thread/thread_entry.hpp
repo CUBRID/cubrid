@@ -313,6 +313,8 @@ namespace cubthread
       {
 	m_systdes = NULL;
       }
+      void claim_system_worker ();
+      void retire_system_worker ();
 
       void end_resource_tracks (void);
       void push_resource_tracks (void);
