@@ -208,7 +208,7 @@ namespace cubload
 
   void
   server_class_installer::get_class_attributes (heap_cache_attrinfo &attrinfo, attribute_type attr_type,
-      REFPTR (or_attribute, or_attributes), int *n_attributes)
+      or_attribute *&or_attributes, int *n_attributes)
   {
     *n_attributes = -1;
     switch (attr_type)
