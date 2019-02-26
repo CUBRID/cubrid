@@ -4192,7 +4192,7 @@ log_recovery_finish_all_postpone (THREAD_ENTRY * thread_p)
       log_rv_end_simulation (thread_p);
     };
 
-  for (i = 0; i < log_Gl.trantable.num_total_indices; i++)
+  for (i = 1; i < log_Gl.trantable.num_total_indices; i++)
     {
       tdes_it = LOG_FIND_TDES (i);
       if (tdes_it == NULL || tdes_it->trid == NULL_TRANID)
@@ -4227,7 +4227,7 @@ log_recovery_abort_all_atomic_sysops (THREAD_ENTRY * thread_p)
       log_recovery_abort_atomic_sysop (thread_p, &tdes);
       log_rv_end_simulation (thread_p);
     };
-  for (i = 0; i < log_Gl.trantable.num_total_indices; i++)
+  for (i = 1; i < log_Gl.trantable.num_total_indices; i++)
     {
       tdes_it = LOG_FIND_TDES (i);
       if (tdes_it == NULL || tdes_it->trid == NULL_TRANID)
@@ -4368,17 +4368,14 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
    * table.
    */
 
-  for (tran_index = 0; tran_index < log_Gl.trantable.num_total_indices; tran_index++)
+  for (tran_index = 1; tran_index < log_Gl.trantable.num_total_indices; tran_index++)
     {
-      if (tran_index != LOG_SYSTEM_TRAN_INDEX)
+      if ((tdes = LOG_FIND_TDES (tran_index)) != NULL && tdes->trid != NULL_TRANID
+	  && (tdes->state == TRAN_UNACTIVE_UNILATERALLY_ABORTED || tdes->state == TRAN_UNACTIVE_ABORTED)
+	  && LSA_ISNULL (&tdes->undo_nxlsa))
 	{
-	  if ((tdes = LOG_FIND_TDES (tran_index)) != NULL && tdes->trid != NULL_TRANID
-	      && (tdes->state == TRAN_UNACTIVE_UNILATERALLY_ABORTED || tdes->state == TRAN_UNACTIVE_ABORTED)
-	      && LSA_ISNULL (&tdes->undo_nxlsa))
-	    {
-	      (void) log_complete (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID, LOG_NEED_TO_WRITE_EOT_LOG);
-	      logtb_free_tran_index (thread_p, tran_index);
-	    }
+	  (void) log_complete (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID, LOG_NEED_TO_WRITE_EOT_LOG);
+	  logtb_free_tran_index (thread_p, tran_index);
 	}
     }
   // *INDENT-OFF*
