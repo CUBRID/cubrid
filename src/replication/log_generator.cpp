@@ -294,8 +294,12 @@ namespace cubreplication
     int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
     LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
 
-    set_tran_repl_info (tdes->mvccinfo.id, state);
-    pack_stream_entry ();
+    /* a case may occur (MVCCID_NULL) when the thread connection is closed before acquiring a MVCCID */
+    if (tdes->mvccinfo.id != MVCCID_NULL)
+      {
+        set_tran_repl_info (tdes->mvccinfo.id, state);
+        pack_stream_entry ();
+      }
   }
 
   void
