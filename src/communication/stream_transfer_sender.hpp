@@ -59,7 +59,7 @@ namespace cubstream
 
       friend class transfer_sender_task;
 
-      cubcomm::channel &m_channel;
+      cubcomm::channel m_channel;
       cubstream::stream &m_stream;
       stream_position m_last_sent_position;
       cubthread::daemon *m_sender_daemon;

@@ -82,8 +82,6 @@ namespace cubcomm
     int copy_of_maxlen_in_recvlen_out = (int) maxlen_in_recvlen_out;
     int rc = NO_ERRORS;
 
-    assert (is_connection_alive ());
-
     rc = css_net_recv (m_socket, buffer, &copy_of_maxlen_in_recvlen_out, m_max_timeout_in_ms);
     maxlen_in_recvlen_out = copy_of_maxlen_in_recvlen_out;
     return (css_error_code) rc;
@@ -98,7 +96,6 @@ namespace cubcomm
     css_set_io_vector (&iov[0], &iov[1], buffer, (int) length, &templen);
     total_len = (int) (sizeof (int) + length);
 
-    assert (is_connection_alive ());
     rc = css_send_io_vector_with_socket (m_socket, iov, total_len, vector_length, m_max_timeout_in_ms);
     return (css_error_code) rc;
   }
