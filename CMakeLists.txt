@@ -252,7 +252,7 @@ if(UNIX)
       message(SEND_ERROR "Cannot compile 32-bit program with gcc version (${CMAKE_CXX_COMPILER_VERSION})")
       message(FATAL_ERROR "4.3.4 or higher version is required. (ref. https://gcc.gnu.org/bugzilla/show_bug.cgi?id=16185)")
     endif(ENABLE_32BIT AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.3.4)
-    
+
     if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.4.7)
       message(SEND_ERROR "Cannot compile with gcc version ${CMAKE_CXX_COMPILER_VERSION}. Require at least 4.4.7.")
     endif(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.4.7)
@@ -278,7 +278,7 @@ if(UNIX)
   endif(CMAKE_COMPILER_IS_GNUCC)
 else(UNIX)
   # turn off LinkIncremental option for release build
-  
+
   #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
   string(REPLACE "INCREMENTAL:YES" "INCREMENTAL:NO" replaceIncFlag ${CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO})
   set(CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO "/INCREMENTAL:NO ${replaceIncFlag}" )
@@ -358,8 +358,8 @@ add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/csql_grammar.yy
 
 set(CSQL_GRAMMAR_INPUT ${CMAKE_CURRENT_BINARY_DIR}/csql_grammar.yy)
 
-# because csql_grammar.yy are generated through a custom command 
-# whenever csql_grammar.y is modified, bison and flex will be 
+# because csql_grammar.yy are generated through a custom command
+# whenever csql_grammar.y is modified, bison and flex will be
 # run to create new outputs
 
 bison_target(csql_grammar ${CSQL_GRAMMAR_INPUT} ${CSQL_GRAMMAR_OUTPUT}
@@ -390,8 +390,8 @@ add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/esql_grammar.yy
 
 set(ESQL_GRAMMAR_INPUT ${CMAKE_CURRENT_BINARY_DIR}/esql_grammar.yy)
 
-# because esql_grammar.yy are generated through a custom command 
-# whenever esql_grammar.y is modified, bison and flex will be 
+# because esql_grammar.yy are generated through a custom command
+# whenever esql_grammar.y is modified, bison and flex will be
 # run to create new outputs
 
 bison_target(esql_grammar ${ESQL_GRAMMAR_INPUT} ${ESQL_GRAMMAR_OUTPUT}
