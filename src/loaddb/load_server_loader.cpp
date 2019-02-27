@@ -132,7 +132,7 @@ namespace cubload
 
     int n_attributes = -1;
     or_attribute *or_attributes = NULL;
-    attribute_type attr_type = cmd_spec != NULL ? (attribute_type) cmd_spec->qualifier : LDR_ATTRIBUTE_DEFAULT;
+    attribute_type attr_type = cmd_spec != NULL ? cmd_spec->attr_type : LDR_ATTRIBUTE_DEFAULT;
     get_class_attributes (attrinfo, attr_type, or_attributes, &n_attributes);
 
     // collect class attribute names

@@ -723,9 +723,9 @@ namespace cubload
     ldr_act_init_context (ldr_Current_context, class_name->val, class_name->size);
 
     // setup class attributes
-    if (cmd_spec->qualifier != LDR_ATTRIBUTE_ANY)
+    if (cmd_spec->attr_type != LDR_ATTRIBUTE_ANY)
       {
-	ldr_act_restrict_attributes (ldr_Current_context, (attribute_type) cmd_spec->qualifier);
+	ldr_act_restrict_attributes (ldr_Current_context, cmd_spec->attr_type);
       }
 
     for (string_type *attr = cmd_spec->attr_list; attr; attr = attr->next)
@@ -5289,8 +5289,6 @@ ldr_act_restrict_attributes (LDR_CONTEXT *context, attribute_type type)
       /* Set the appropriate functions to handle class attributes */
       ldr_act = ldr_act_class_attr;
     }
-
-  return;
 }
 
 /*
