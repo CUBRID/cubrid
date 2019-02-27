@@ -495,7 +495,7 @@ namespace cubload
   }
 
   void
-  session::get_stats (stats &stats_)
+  session::fetch_stats (stats &stats_)
   {
     std::unique_lock<std::mutex> ulock (m_stats_mutex);
 

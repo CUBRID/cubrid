@@ -9924,7 +9924,7 @@ sloaddb_fetch_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
     {
       assert (session != NULL);
       load_stats loaddb_stats;
-      session->get_stats (loaddb_stats);
+      session->fetch_stats (loaddb_stats);
 
       packer.set_buffer_and_pack_all (eb, loaddb_stats);
 
