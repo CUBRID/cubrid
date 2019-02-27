@@ -115,7 +115,7 @@ namespace cubload
       char *m_qstr_buf_ptr;
       std::size_t m_qstr_buf_idx;
 
-      char **m_qstr_buf_pool;
+      char m_qstr_buf_pool[QUOTED_STR_BUF_POOL_SIZE][MAX_QUOTED_STR_BUF_SIZE];
       std::size_t m_qstr_buf_pool_idx;
 
       /* private functions */
