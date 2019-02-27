@@ -1100,7 +1100,6 @@ register_signal_handlers ()
   util_arm_signal_handlers (sig_handler, sig_handler);
 }
 
-
 static int
 load_object_file (load_args * args)
 {
@@ -1137,13 +1136,19 @@ load_object_file (load_args * args)
     }
 
   /* *INDENT-OFF* */
-  batch_handler b_handler = [] (const batch &batch)
+  batch_handler b_handler = [] (const batch &batch) -> int
     {
-      return loaddb_load_batch (batch);
+      int ret = loaddb_load_batch (batch);
+      delete &batch;
+
+      return ret;
     };
-  batch_handler c_handler = [] (const batch &batch)
+  batch_handler c_handler = [] (const batch &batch) -> int
     {
-      return loaddb_install_class (batch);
+      int ret = loaddb_install_class (batch);
+      delete &batch;
+
+      return ret;
     };
   /* *INDENT-ON* */
 

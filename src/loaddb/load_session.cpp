@@ -163,8 +163,13 @@ namespace cubload
     public:
       load_worker () = delete; // Default c-tor: deleted.
 
+      ~load_worker () override
+      {
+	delete &m_batch;
+      }
+
       load_worker (const batch &batch, session &session)
-	: m_batch (std::move (batch))
+	: m_batch (batch)
 	, m_session (session)
       {
 	//
@@ -210,7 +215,7 @@ namespace cubload
       }
 
     private:
-      batch m_batch;
+      const batch &m_batch;
       session &m_session;
   };
 
@@ -267,7 +272,7 @@ namespace cubload
   void
   session::wait_for_previous_batch (const batch_id id)
   {
-    auto pred = [this, &id] { return is_failed () || id == (m_last_batch_id + 1); };
+    auto pred = [this, &id] () -> bool { return is_failed () || id == (m_last_batch_id + 1); };
 
     if (id == FIRST_BATCH_ID || pred ())
       {
@@ -281,7 +286,7 @@ namespace cubload
   void
   session::wait_for_completion ()
   {
-    auto pred = [this] { return is_failed () || is_completed (); };
+    auto pred = [this] () -> bool { return is_failed () || is_completed (); };
 
     if (pred ())
       {
@@ -450,6 +455,7 @@ namespace cubload
       }
 
     thread_ref.m_loaddb_driver = NULL;
+    delete &batch;
 
     return error_code;
   }
@@ -475,12 +481,12 @@ namespace cubload
   int
   session::load_file (cubthread::entry &thread_ref)
   {
-    batch_handler b_handler = [this, &thread_ref] (const batch &batch)
+    batch_handler b_handler = [this, &thread_ref] (const batch &batch) -> int
     {
       return load_batch (thread_ref, batch);
     };
 
-    batch_handler c_handler = [this, &thread_ref] (const batch &batch)
+    batch_handler c_handler = [this, &thread_ref] (const batch &batch) -> int
     {
       return install_class (thread_ref, batch);
     };
@@ -488,18 +494,15 @@ namespace cubload
     return split (m_args.periodic_commit, m_args.server_object_file, c_handler, b_handler);
   }
 
-  stats
-  session::get_stats ()
+  void
+  session::get_stats (stats &stats_)
   {
     std::unique_lock<std::mutex> ulock (m_stats_mutex);
 
     m_stats.is_completed = is_completed ();
-    stats copy = m_stats;
+    stats_ = m_stats;
 
     // since client periodically fetches the stats, clear error_message in order not to send twice same message
     m_stats.error_message.clear ();
-
-    return copy;
   }
-
 } // namespace cubload

@@ -71,7 +71,7 @@ namespace cubload
   batch::batch (batch_id id, class_id clsid, std::string &content, int line_offset, int rows)
     : m_id (id)
     , m_clsid (clsid)
-    , m_content (content)
+    , m_content (std::move (content))
     , m_line_offset (line_offset)
     , m_rows (rows)
   {
@@ -216,7 +216,7 @@ namespace cubload
     serializator.pack_string (table_name);
     serializator.pack_string (ignore_class_file);
 
-    serializator.pack_int (ignore_classes.size ());
+    serializator.pack_bigint (ignore_classes.size ());
     for (const std::string &ignore_class : ignore_classes)
       {
 	serializator.pack_string (ignore_class);
@@ -248,11 +248,11 @@ namespace cubload
     deserializator.unpack_string (table_name);
     deserializator.unpack_string (ignore_class_file);
 
-    int ignore_classes_size = 0;
-    deserializator.unpack_int (ignore_classes_size);
+    size_t ignore_classes_size = 0;
+    deserializator.unpack_bigint (ignore_classes_size);
     ignore_classes.reserve (ignore_classes_size);
 
-    for (int i = 0; i < ignore_classes_size; ++i)
+    for (size_t i = 0; i < ignore_classes_size; ++i)
       {
 	std::string ignore_class;
 	deserializator.unpack_string (ignore_class);
@@ -287,7 +287,7 @@ namespace cubload
     size += serializator.get_packed_string_size (table_name, size);
     size += serializator.get_packed_string_size (ignore_class_file, size);
 
-    size += serializator.get_packed_int_size (size); // ignore_classes size
+    size += serializator.get_packed_bigint_size (size); // ignore_classes size
     for (const std::string &ignore_class : ignore_classes)
       {
 	size += serializator.get_packed_string_size (ignore_class, size);
@@ -378,9 +378,9 @@ namespace cubload
     //
   }
 
-  class_command_spec_type::class_command_spec_type (int qualifier, string_type *attr_list,
+  class_command_spec_type::class_command_spec_type (int attr_type, string_type *attr_list,
       constructor_spec_type *ctor_spec)
-    : qualifier (qualifier)
+    : attr_type ((attribute_type) attr_type)
     , attr_list (attr_list)
     , ctor_spec (ctor_spec)
   {
@@ -567,8 +567,8 @@ namespace cubload
 	      }
 
 	    line.append ("\n"); // feed lexer with new line
-	    batch c_batch (batch_id, clsid, line, lineno, 1);
-	    error_code = c_handler (c_batch);
+	    batch *c_batch = new batch (batch_id, clsid, line, lineno, 1);
+	    error_code = c_handler (*c_batch);
 	    if (error_code != NO_ERROR)
 	      {
 		object_file.close ();
@@ -627,8 +627,8 @@ namespace cubload
 	return NO_ERROR;
       }
 
-    batch batch_ (++batch_id, clsid, batch_content, line_offset, rows);
-    int error_code = handler (batch_);
+    batch *batch_ = new batch (++batch_id, clsid, batch_content, line_offset, rows);
+    int error_code = handler (*batch_);
 
     // prepare to start new batch for the class
     batch_content.clear ();

@@ -9842,17 +9842,17 @@ sloaddb_install_class (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   packing_unpacker unpacker (request, (size_t) reqlen);
 
   /* *INDENT-OFF* */
-  cubload::batch batch;
+  cubload::batch *batch = new cubload::batch ();
   /* *INDENT-ON* */
 
-  batch.unpack (unpacker);
+  batch->unpack (unpacker);
 
   load_session *session = NULL;
   int error_code = session_get_load_session (thread_p, session);
   if (error_code == NO_ERROR)
     {
       assert (session != NULL);
-      error_code = session->install_class (*thread_p, batch);
+      error_code = session->install_class (*thread_p, *batch);
     }
   else
     {
@@ -9878,10 +9878,10 @@ sloaddb_load_batch (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
   packing_unpacker unpacker (request, (size_t) reqlen);
 
   /* *INDENT-OFF* */
-  cubload::batch batch;
+  cubload::batch *batch = new cubload::batch ();
   /* *INDENT-ON* */
 
-  batch.unpack (unpacker);
+  batch->unpack (unpacker);
 
   load_session *session = NULL;
   session_get_load_session (thread_p, session);
@@ -9889,7 +9889,7 @@ sloaddb_load_batch (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
   if (error_code == NO_ERROR)
     {
       assert (session != NULL);
-      error_code = session->load_batch (*thread_p, batch);
+      error_code = session->load_batch (*thread_p, *batch);
     }
   else
     {
@@ -9923,7 +9923,8 @@ sloaddb_fetch_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   if (error_code == NO_ERROR)
     {
       assert (session != NULL);
-      load_stats loaddb_stats = session->get_stats ();
+      load_stats loaddb_stats;
+      session->get_stats (loaddb_stats);
 
       packer.set_buffer_and_pack_all (eb, loaddb_stats);
 

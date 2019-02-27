@@ -54,7 +54,7 @@ namespace cubload
       batch (batch &&other) noexcept; // MoveConstructible
       batch &operator= (batch &&other) noexcept; // MoveAssignable
 
-      batch (const batch &copy) = default; // Not CopyConstructible // TODO CBRD-22660 we should not allow copy
+      batch (const batch &copy) = delete; // Not CopyConstructible
       batch &operator= (const batch &copy) = delete; // Not CopyAssignable
 
       batch_id get_id () const;
@@ -207,10 +207,10 @@ namespace cubload
   struct class_command_spec_type
   {
     class_command_spec_type () = delete;
-    class_command_spec_type (int qualifier, string_type *attr_list, constructor_spec_type *ctor_spec);
+    class_command_spec_type (int attr_type, string_type *attr_list, constructor_spec_type *ctor_spec);
     ~class_command_spec_type () = default;
 
-    int qualifier;
+    attribute_type attr_type;
     string_type *attr_list;
     constructor_spec_type *ctor_spec;
   };

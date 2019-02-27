@@ -114,7 +114,8 @@ namespace cubload
 
       void interrupt ();
 
-      stats get_stats ();
+      void get_stats (stats &stats_);
+
       void stats_update_rows_committed (int rows_committed);
       void stats_update_last_committed_line (int last_committed_line);
       void stats_update_current_line (int current_line);
