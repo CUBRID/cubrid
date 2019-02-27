@@ -51,13 +51,13 @@ class JSON_PATH : protected rapidjson::GenericPointer<JSON_VALUE>
 
     DB_JSON_TYPE get_value_type (const JSON_DOC &jd) const;
 
-    JSON_VALUE &set (JSON_DOC &jd, const JSON_VALUE &jv) const;
-
-    JSON_VALUE &set (JSON_DOC &jd, JSON_VALUE &jv) const;
+    void set (JSON_DOC &jd, const JSON_VALUE &jv) const;
 
     bool erase (JSON_DOC &jd) const;
 
     const TOKEN *get_last_token () const;
+
+    size_t get_token_count () const;
 
     bool is_root_path () const;
 
@@ -87,7 +87,9 @@ class JSON_PATH : protected rapidjson::GenericPointer<JSON_VALUE>
 	array_index_wild_card,
 	double_wild_card,
 	object_key,
-	array_index
+	array_index,
+	// token type used to signify json_pointers' '-' special token
+	last_index_special
       } type;
 
       // todo: optimize representation (e.g. have an ull for indexes)
@@ -124,6 +126,8 @@ class JSON_PATH : protected rapidjson::GenericPointer<JSON_VALUE>
 		const std::vector<PATH_TOKEN> &other_tokens, bool match_prefix = false) const;
 
     std::vector<PATH_TOKEN> m_path_tokens;
+    friend class JSON_PATH_SETTER;
+    friend class JSON_PATH_GETTER;
 };
 
 typedef JSON_PATH::JSON_PATH_TYPE JSON_PATH_TYPE;
@@ -134,6 +138,6 @@ std::vector<std::string> db_json_split_path_by_delimiters (const std::string &pa
 int db_json_normalize_path (const char *pointer_path, JSON_PATH &json_path,
 			    bool allow_wildcards = true);
 void db_json_path_unquote_object_keys (std::string &sql_path);
-
+std::vector<std::vector<const JSON_VALUE *>> db_json_get_values_from_path (const std::vector<JSON_PATH> &json_paths);
 
 #endif /* _DB_JSON_HPP_ */

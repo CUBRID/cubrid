@@ -9321,7 +9321,7 @@ pt_check_json_table_node (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   assert (node != NULL && node->node_type == PT_JSON_TABLE_NODE);
 
-  int error_code = db_json_path_validate_external (node->info.json_table_node_info.path, true);
+  int error_code = db_json_normalize_path_string (node->info.json_table_node_info.path, true);
   if (error_code)
     {
       return error_code;
@@ -9360,7 +9360,7 @@ pt_check_json_table_node (PARSER_CONTEXT * parser, PT_NODE * node)
 	  assert (col_info.path == NULL);
 	  continue;
 	}
-      error_code = db_json_path_validate_external (col_info.path, true);
+      error_code = db_json_normalize_path_string (col_info.path, true);
       if (error_code)
 	{
 	  return error_code;

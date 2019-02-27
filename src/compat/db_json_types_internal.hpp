@@ -83,7 +83,61 @@ class JSON_DOC : public rapidjson::GenericDocument <JSON_ENCODING, JSON_PRIVATE_
 #endif // TODO_OPTIMIZE_JSON_BODY_STRING
 };
 
-DB_JSON_TYPE
-db_json_get_type_of_value (const JSON_VALUE *val);
+// JSON WALKER
+//
+// Unlike handler, the walker can call two functions before and after walking/advancing in the JSON "tree".
+// JSON Objects and JSON Arrays are considered tree children.
+//
+// How to use: extend this walker by implementing CallBefore and/or CallAfter functions. By default, they are empty
+//
+class JSON_WALKER
+{
+  public:
+    int WalkDocument (JSON_DOC &document);
+
+  protected:
+    // we should not instantiate this class, but extend it
+    JSON_WALKER ();
+    virtual ~JSON_WALKER () = default;
+
+    virtual int
+    CallBefore (JSON_VALUE &value)
+    {
+      // do nothing
+      return NO_ERROR;
+    }
+
+    virtual int
+    CallAfter (JSON_VALUE &value)
+    {
+      // do nothing
+      return NO_ERROR;
+    }
+
+    virtual int
+    CallOnArrayIterate ()
+    {
+      // do nothing
+      return NO_ERROR;
+    }
+
+    virtual int
+    CallOnKeyIterate (JSON_VALUE &key)
+    {
+      // do nothing
+      return NO_ERROR;
+    }
+
+  private:
+    int WalkValue (JSON_VALUE &value);
+
+  protected:
+    bool m_skip;
+    bool m_stop;
+};
+
+DB_JSON_TYPE db_json_get_type_of_value (const JSON_VALUE *val);
+JSON_VALUE &db_json_doc_to_value (JSON_DOC &doc);
+const JSON_VALUE &db_json_doc_to_value (const JSON_DOC &doc);
 
 #endif // !_DB_JSON_TYPES_INTERNAL_HPP

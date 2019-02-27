@@ -1,6 +1,7 @@
 #include "db_json_path.hpp"
 #include "string_opfunc.h"
 #include <algorithm>
+#include <stack>
 #include <string>
 #include <cctype>
 
@@ -472,6 +473,8 @@ db_json_normalize_path (const char *pointer_path, JSON_PATH &json_path, bool all
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
 	  return ER_JSON_INVALID_PATH;
 	}
+      db_private_free (NULL, (void *) pointer_path);
+      pointer_path = pointer_path_string.c_str ();
       return NO_ERROR;
     }
 
@@ -783,12 +786,22 @@ JSON_PATH::dump_json_path (bool skip_json_pointer_minus) const
 
 std::vector<JSON_VALUE *> JSON_PATH::get (JSON_DOC &jd) const
 {
-  return { Get (jd) };
+  JSON_VALUE *found = nullptr;
+  JSON_PATH_GETTER getter (*this, found);
+
+  getter.WalkDocument (jd);
+
+  return { found };
 }
 
 std::vector<const JSON_VALUE *> JSON_PATH::get (const JSON_DOC &jd) const
 {
-  return { Get (jd) };
+  JSON_VALUE *found = nullptr;
+  JSON_PATH_GETTER getter (*this, found);
+
+  getter.WalkDocument (const_cast<JSON_DOC &> (jd));
+
+  return { found };
 }
 
 DB_JSON_TYPE JSON_PATH::get_value_type (const JSON_DOC &jd) const
@@ -796,26 +809,38 @@ DB_JSON_TYPE JSON_PATH::get_value_type (const JSON_DOC &jd) const
   return db_json_get_type_of_value (get (jd)[0]);
 }
 
-JSON_VALUE &JSON_PATH::set (JSON_DOC &jd, const JSON_VALUE &jv) const
-{
-  return Set (jd, jv, jd.GetAllocator ());
-}
-
-JSON_VALUE &JSON_PATH::set (JSON_DOC &jd, JSON_VALUE &jv) const
-{
-  return Set (jd, jv, jd.GetAllocator ());
-}
-
 bool JSON_PATH::erase (JSON_DOC &jd) const
 {
-  return Erase (jd);
+  if (get_token_count () == 0)
+    {
+      return false;
+    }
+
+  auto value = get_parent ().get (jd)[0];
+
+  const PATH_TOKEN &tkn = m_path_tokens.back ();
+
+  switch (db_json_get_type_of_value (value))
+    {
+    case DB_JSON_ARRAY:
+      return value->Erase (value->Begin () + std::stoi (tkn.token_string));
+    case DB_JSON_OBJECT:
+      return value->EraseMember (tkn.token_string.c_str ());
+    default:
+      return false;
+    }
 }
 
 const TOKEN *JSON_PATH::get_last_token () const
 {
-  size_t token_cnt = GetTokenCount ();
+  size_t token_cnt = get_token_count ();
 
   return token_cnt > 0 ? GetTokens () + (token_cnt - 1) : NULL;
+}
+
+size_t JSON_PATH::get_token_count () const
+{
+  return m_path_tokens.size ();
 }
 
 bool JSON_PATH::is_root_path () const
@@ -961,5 +986,204 @@ JSON_PATH::assign_pointer (const std::string &pointer_path)
       return ER_JSON_INVALID_PATH;
     }
   m_backend_json_format = JSON_PATH_TYPE::JSON_PATH_POINTER;
+  return NO_ERROR;
+}
+
+class JSON_PATH_GETTER : public JSON_WALKER
+{
+  public:
+    JSON_PATH_GETTER () = delete;
+    JSON_PATH_GETTER (const JSON_PATH &json_path, JSON_VALUE *&found_json_value);
+    JSON_PATH_GETTER (JSON_PATH_GETTER &) = delete;
+    ~JSON_PATH_GETTER () override = default;
+
+  private:
+    int CallBefore (JSON_VALUE &value) override;
+    int CallAfter (JSON_VALUE &value) override;
+    int CallOnArrayIterate () override;
+    int CallOnKeyIterate (JSON_VALUE &key) override;
+
+    const JSON_PATH &m_path;
+    size_t m_token_idx;
+    std::stack<rapidjson::SizeType> m_array_idxs;
+    JSON_VALUE *&m_found_json_value;
+};
+
+JSON_PATH_GETTER::JSON_PATH_GETTER (const JSON_PATH &json_path, JSON_VALUE *&found_json_value)
+  : m_path (json_path)
+  , m_found_json_value (found_json_value)
+  , m_token_idx (0)
+{
+
+}
+
+int JSON_PATH_GETTER::CallBefore (JSON_VALUE &value)
+{
+  if (m_token_idx == m_path.m_path_tokens.size ())
+    {
+      // we have now reached the end of the path
+      m_found_json_value = &value;
+      m_stop = true;
+      return NO_ERROR;
+    }
+
+  const JSON_PATH::PATH_TOKEN &tkn = m_path.m_path_tokens[m_token_idx];
+  if ((value.IsArray () && !JSON_PATH::PATH_TOKEN::token_type::array_index) || (value.IsObject ()
+      && !JSON_PATH::PATH_TOKEN::token_type::object_key))
+    {
+      m_stop = true;
+    }
+
+  ++m_token_idx;
+  return NO_ERROR;
+}
+
+int JSON_PATH_GETTER::CallAfter (JSON_VALUE &value)
+{
+  // break previous object/array iterations
+  m_stop = true;
+}
+
+int JSON_PATH_GETTER::CallOnArrayIterate ()
+{
+  const JSON_PATH::PATH_TOKEN &tkn = m_path.m_path_tokens[m_token_idx - 1];
+
+  rapidjson::SizeType array_idx_token = (rapidjson::SizeType) std::stoi (tkn.token_string);
+
+  m_skip = ! (array_idx_token == m_array_idxs.top ());
+
+  ++m_array_idxs.top ();
+
+  return NO_ERROR;
+}
+
+int JSON_PATH_GETTER::CallOnKeyIterate (JSON_VALUE &key)
+{
+  const JSON_PATH::PATH_TOKEN &tkn = m_path.m_path_tokens[m_token_idx - 1];
+}
+
+
+class JSON_PATH_SETTER : public JSON_WALKER
+{
+  public:
+    JSON_PATH_SETTER () = delete;
+    JSON_PATH_SETTER (const JSON_PATH &json_path, JSON_DOC &json_doc, const JSON_VALUE &json_value);
+    JSON_PATH_SETTER (JSON_PATH_SETTER &) = delete;
+    ~JSON_PATH_SETTER () override = default;
+
+  private:
+    int CallBefore (JSON_VALUE &value) override;
+    int CallAfter (JSON_VALUE &value) override;
+    int CallOnArrayIterate () override;
+    int CallOnKeyIterate (JSON_VALUE &key) override;
+
+    const JSON_PATH &m_path;
+    JSON_PRIVATE_MEMPOOL &m_allocator;
+    const JSON_VALUE &m_value;
+    size_t m_token_idx;
+
+    std::stack<rapidjson::SizeType> m_array_idxs;
+    std::stack<rapidjson::SizeType> m_allowed_idxs;
+};
+
+JSON_PATH_SETTER::JSON_PATH_SETTER (const JSON_PATH &json_path, JSON_DOC &json_doc, const JSON_VALUE &json_value)
+  : m_path (json_path)
+  , m_allocator (json_doc.GetAllocator ())
+  , m_value (json_value)
+  , m_token_idx (0)
+{
+
+}
+
+int JSON_PATH_SETTER::CallBefore (JSON_VALUE &value)
+{
+  if (m_token_idx == m_path.m_path_tokens.size ())
+    {
+      // we finished the path
+      value.Set (m_value, m_allocator);
+      return NO_ERROR;
+    }
+
+  const JSON_PATH::PATH_TOKEN &tkn = m_path.m_path_tokens[m_token_idx];
+
+  switch (tkn.type)
+    {
+    case JSON_PATH::PATH_TOKEN::token_type::array_index:
+    case JSON_PATH::PATH_TOKEN::token_type::last_index_special:
+      if (!value.IsArray ())
+	{
+	  value.SetArray ();
+	}
+      break;
+    case JSON_PATH::PATH_TOKEN::token_type::object_key:
+      if (!value.IsObject ())
+	{
+	  value.SetObject ();
+	}
+      break;
+    case JSON_PATH::PATH_TOKEN::token_type::array_index_wild_card:
+    case JSON_PATH::PATH_TOKEN::token_type::object_key_wild_card:
+    case JSON_PATH::PATH_TOKEN::token_type::double_wild_card:
+      // error? unexpected set - wildcards not allowed for set
+      assert (false);
+    }
+
+  if (value.IsArray ())
+    {
+      JSON_VALUE::Array &arr = value.GetArray ();
+      if (tkn.type == JSON_PATH::PATH_TOKEN::token_type::last_index_special)
+	{
+	  // insert dummy
+	  arr.PushBack (JSON_VALUE ().SetNull (), m_allocator);
+	  m_allowed_idxs.push (arr.Size () - 1);
+	}
+      else
+	{
+	  rapidjson::SizeType idx = (rapidjson::SizeType) std::stoi (tkn.token_string);
+	  while (idx >= arr.Size ())
+	    {
+	      arr.PushBack (JSON_VALUE ().SetNull (), m_allocator);
+	    }
+	  m_allowed_idxs.push (idx);
+	}
+      m_array_idxs.push (0);
+    }
+  else if (value.IsObject ())
+    {
+      JSON_VALUE::MemberIterator m = value.FindMember (tkn.token_string.c_str ());
+      if (m == value.MemberEnd ())
+	{
+	  // insert dummy
+	  value.AddMember (JSON_VALUE (tkn.token_string.c_str (), tkn.token_string.length ()), JSON_VALUE ().SetNull (),
+			   m_allocator);
+	}
+    }
+
+  ++m_token_idx;
+  return NO_ERROR;
+}
+
+int JSON_PATH_SETTER::CallAfter (JSON_VALUE &value)
+{
+  // break previous object/array iterations
+  m_stop = true;
+}
+
+int JSON_PATH_SETTER::CallOnArrayIterate ()
+{
+  m_skip = ! (m_array_idxs.top () == m_allowed_idxs.top ());
+
+  ++m_array_idxs.top ();
+  return NO_ERROR;
+}
+
+int JSON_PATH_SETTER::CallOnKeyIterate (JSON_VALUE &key)
+{
+  const JSON_PATH::PATH_TOKEN &tkn = m_path.m_path_tokens[m_token_idx - 1];
+
+  assert (tkn.type == JSON_PATH::PATH_TOKEN::token_type::object_key && key.IsString ());
+
+  m_skip = (strcmp (key.GetString (), tkn.token_string.c_str ()) != 0);
+
   return NO_ERROR;
 }

@@ -382,58 +382,6 @@ class JSON_BASE_HANDLER
     }
 };
 
-// JSON WALKER
-//
-// Unlike handler, the walker can call two functions before and after walking/advancing in the JSON "tree".
-// JSON Objects and JSON Arrays are considered tree children.
-//
-// How to use: extend this walker by implementing CallBefore and/or CallAfter functions. By default, they are empty
-//
-class JSON_WALKER
-{
-  public:
-    int WalkDocument (JSON_DOC &document);
-
-  protected:
-    // we should not instantiate this class, but extend it
-    JSON_WALKER () = default;
-    virtual ~JSON_WALKER () = default;
-
-    virtual int
-    CallBefore (JSON_VALUE &value)
-    {
-      // do nothing
-      return NO_ERROR;
-    }
-
-    virtual int
-    CallAfter (JSON_VALUE &value)
-    {
-      // do nothing
-      return NO_ERROR;
-    }
-
-    virtual int
-    CallOnArrayIterate ()
-    {
-      // do nothing
-      return NO_ERROR;
-    }
-
-    virtual int
-    CallOnKeyIterate (JSON_VALUE &key)
-    {
-      // do nothing
-      return NO_ERROR;
-    }
-
-  private:
-    int WalkValue (JSON_VALUE &value);
-
-  protected:
-    bool m_stop;
-};
-
 /*
 * JSON_DUPLICATE_KEYS_CHECKER - This class extends JSON_WALKER
 *
@@ -915,27 +863,6 @@ const char *
 JSON_VALIDATOR::get_schema_raw () const
 {
   return m_schema_raw;
-}
-
-/*
- * db_json_doc_to_value ()
- * doc (in)
- * value (out)
- * We need this cast in order to use the overloaded methods
- * JSON_DOC is derived from GenericDocument which also extends GenericValue
- * Yet JSON_DOC and JSON_VALUE are two different classes because they are templatized and their type is not known
- * at compile time
- */
-static JSON_VALUE &
-db_json_doc_to_value (JSON_DOC &doc)
-{
-  return reinterpret_cast<JSON_VALUE &> (doc);
-}
-
-static const JSON_VALUE &
-db_json_doc_to_value (const JSON_DOC &doc)
-{
-  return reinterpret_cast<const JSON_VALUE &> (doc);
 }
 
 void
@@ -2667,7 +2594,7 @@ db_json_er_set_expected_other_type (const char *file_name, const int line_no, co
 }
 
 int
-db_json_path_validate_external (const char *pointer_path, bool allow_wildcards)
+db_json_normalize_path_string (const char *&pointer_path, bool allow_wildcards)
 {
   JSON_PATH jp;
   return db_json_normalize_path (pointer_path, jp, allow_wildcards);
@@ -3172,86 +3099,6 @@ db_json_value_wrap_as_array (JSON_VALUE &value, JSON_PRIVATE_MEMPOOL &allocator)
   swap_value.SetArray ();
   swap_value.PushBack (value, allocator);
   swap_value.Swap (value);
-}
-
-int
-JSON_WALKER::WalkDocument (JSON_DOC &document)
-{
-  m_stop = false;
-  return WalkValue (db_json_doc_to_value (document));
-}
-
-int
-JSON_WALKER::WalkValue (JSON_VALUE &value)
-{
-  int error_code = NO_ERROR;
-
-  if (m_stop)
-    {
-      return NO_ERROR;
-    }
-  error_code = CallBefore (value);
-  if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return error_code;
-    }
-  if (m_stop)
-    {
-      return NO_ERROR;
-    }
-
-  if (value.IsObject ())
-    {
-      for (auto it = value.MemberBegin (); it != value.MemberEnd (); ++it)
-	{
-	  CallOnKeyIterate (it->name);
-	  if (m_stop)
-	    {
-	      return NO_ERROR;
-	    }
-	  error_code = WalkValue (it->value);
-	  if (error_code != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	      return error_code;
-	    }
-	  if (m_stop)
-	    {
-	      return NO_ERROR;
-	    }
-	}
-    }
-  else if (value.IsArray ())
-    {
-      for (JSON_VALUE *it = value.Begin (); it != value.End (); ++it)
-	{
-	  CallOnArrayIterate ();
-	  if (m_stop)
-	    {
-	      return NO_ERROR;
-	    }
-	  error_code = WalkValue (*it);
-	  if (error_code != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	      return error_code;
-	    }
-	  if (m_stop)
-	    {
-	      return NO_ERROR;
-	    }
-	}
-    }
-
-  error_code = CallAfter (value);
-  if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return error_code;
-    }
-
-  return NO_ERROR;
 }
 
 bool
