@@ -24,7 +24,7 @@
 #include "thread_entry_task.hpp"
 
 #include "error_manager.h"
-#include "log_comm.h"
+#include "log_impl.h"
 #include "porting.h"
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"

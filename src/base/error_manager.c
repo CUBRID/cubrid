@@ -38,7 +38,6 @@
 #endif /* !SERVER_MODE */
 #include "memory_alloc.h"
 #include "message_catalog.h"
-#include "object_representation.h"
 #if !defined (WINDOWS)
 #include "release_string.h"
 #endif // not WINDOWS

@@ -54,8 +54,8 @@
 #include "environment_variable.h"
 #include "set_object.h"
 #include "language_support.h"
-#include "log_comm.h"
 #include "intl_support.h"
+#include "log_impl.h"
 #include "object_primitive.h"
 #include "dbtype.h"
 

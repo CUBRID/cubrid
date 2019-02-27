@@ -42,13 +42,11 @@
 
 #include <assert.h>
 
-#include "boot_cl.h"
-
 #include "porting.h"
 #if !defined(HPUX)
 #include "util_func.h"
 #endif /* !HPUX */
-#include "connection_globals.h"
+#include "boot_cl.h"
 #include "memory_alloc.h"
 #include "area_alloc.h"
 #include "storage_common.h"
@@ -64,7 +62,6 @@
 #endif /* !WINDOWS */
 #include "transaction_cl.h"
 #include "log_comm.h"
-#include "lzo/lzoconf.h"
 #include "server_interface.h"
 #include "release_string.h"
 #include "system_parameter.h"

@@ -65,7 +65,7 @@
 #include "page_buffer.h"
 #include "session.h"
 #include "vacuum.h"
-#include "log_comm.h"
+#include "log_impl.h"
 #include "log_manager.h"
 #include "xserver_interface.h"
 #include "double_write_buffer.h"

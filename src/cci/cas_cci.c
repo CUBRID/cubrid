@@ -65,13 +65,13 @@
 /************************************************************************
  * OTHER IMPORTED HEADER FILES						*
  ************************************************************************/
-#include "cas_cci.h"
 
 #if defined(WINDOWS)
 #include "version.h"
 #endif
 #include "porting.h"
 #include "cci_common.h"
+#include "cas_cci.h"
 #include "cci_handle_mng.h"
 #include "cci_network.h"
 #include "cci_query_execute.h"

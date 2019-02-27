@@ -577,40 +577,6 @@ typedef enum
 
 /* TYPEDEFS FOR BACKUP/RESTORE */
 
-typedef enum
-{
-  FILEIO_BACKUP_FULL_LEVEL = 0,	/* Full backup */
-  FILEIO_BACKUP_BIG_INCREMENT_LEVEL,	/* Backup since last full backup */
-  FILEIO_BACKUP_SMALL_INCREMENT_LEVEL,	/* Backup since last INCRBIG */
-  FILEIO_BACKUP_UNDEFINED_LEVEL	/* Undefined (must be highest ordinal value) */
-} FILEIO_BACKUP_LEVEL;
-
-typedef enum
-{
-  FILEIO_ZIP_NONE_METHOD,	/* None */
-  FILEIO_ZIP_LZO1X_METHOD,	/* LZO1X */
-  FILEIO_ZIP_ZLIB_METHOD,	/* ZLIB */
-  FILEIO_ZIP_UNDEFINED_METHOD	/* Undefined (must be highest ordinal value) */
-} FILEIO_ZIP_METHOD;
-
-typedef enum
-{
-  FILEIO_ZIP_NONE_LEVEL,	/* None */
-  FILEIO_ZIP_1_LEVEL,		/* best speed */
-  FILEIO_ZIP_2_LEVEL,
-  FILEIO_ZIP_3_LEVEL,
-  FILEIO_ZIP_4_LEVEL,
-  FILEIO_ZIP_5_LEVEL,
-  FILEIO_ZIP_6_LEVEL,
-  FILEIO_ZIP_7_LEVEL,
-  FILEIO_ZIP_8_LEVEL,
-  FILEIO_ZIP_9_LEVEL,		/* best compression */
-  FILEIO_ZIP_UNDEFINED_LEVEL,	/* Undefined (must be highest ordinal value) */
-  FILEIO_ZIP_LZO1X_999_LEVEL = FILEIO_ZIP_9_LEVEL,
-  FILEIO_ZIP_LZO1X_DEFAULT_LEVEL = FILEIO_ZIP_1_LEVEL,
-  FILEIO_ZIP_ZLIB_DEFAULT_LEVEL = FILEIO_ZIP_6_LEVEL
-} FILEIO_ZIP_LEVEL;
-
 /* structure for passing arguments into boot_restart_server et. al. */
 typedef struct bo_restart_arg BO_RESTART_ARG;
 struct bo_restart_arg

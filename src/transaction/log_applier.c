@@ -29,7 +29,6 @@
 #endif
 #include <errno.h>
 #include <fcntl.h>
-#include <signal.h>
 #if !defined (WINDOWS)
 #include <sys/time.h>
 #endif

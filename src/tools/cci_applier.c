@@ -10,20 +10,16 @@
 #include <assert.h>
 #include <libgen.h>
 
-#include "cci_applier.h"
-#include "dbtype_def.h"		// needs to be included before cas_cci.h
-#include "cas_cci.h"
-
 #include "cubrid_getopt.h"
+#include "cas_cci.h"
+#include "cci_applier.h"
 #include "log_applier.h"
 
-#ifndef free_and_init
 #define free_and_init(ptr) \
         do { \
           free ((ptr)); \
           (ptr) = NULL; \
         } while (0)
-#endif // no free_and_init definition
 
 #define CA_IS_DML(stmt) \
   ((stmt) == CUBRID_STMT_UPDATE \

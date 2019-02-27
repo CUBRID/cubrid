@@ -25,7 +25,6 @@
 
 #include "config.h"
 
-#include <signal.h>
 #include <stdlib.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -66,7 +65,6 @@
 #include "porting.h"
 
 #include "chartype.h"
-#include "connection_globals.h"
 #include "file_io.h"
 #include "storage_common.h"
 #include "memory_alloc.h"
@@ -78,7 +76,7 @@
 #include "environment_variable.h"
 #include "connection_error.h"
 #include "release_string.h"
-#include "log_comm.h"
+#include "log_impl.h"
 #include "fault_injection.h"
 #if defined (SERVER_MODE)
 #include "vacuum.h"

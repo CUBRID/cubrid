@@ -27,7 +27,6 @@
 
 #include <stdio.h>
 #include <assert.h>
-#include <signal.h>
 
 #include "db.h"
 #include "environment_variable.h"

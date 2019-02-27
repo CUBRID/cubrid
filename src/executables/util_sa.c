@@ -50,6 +50,7 @@
 #include "btree.h"
 #include "extendible_hash.h"
 #include "locator_sr.h"
+#include "log_impl.h"
 #include "xserver_interface.h"
 #include "utility.h"
 #include "transform.h"
