@@ -10198,14 +10198,16 @@ loaddb_fetch_stats (load_stats * stats)
 
   or_unpack_int (reply, &data_reply_size);
 
-  if (data_reply_size == 0)
+  if (data_reply_size <= 0)
     {
       return ER_FAILED;
     }
 
-  packing_unpacker unpacker (data_reply, data_reply_size);
+  packing_unpacker unpacker (data_reply, (size_t) data_reply_size);
   stats->clear ();
   stats->unpack (unpacker);
+
+  free_and_init (data_reply);
 
   return req_error;
 #else /* CS_MODE */
