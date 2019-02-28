@@ -3445,7 +3445,7 @@ vacuum_worker_allocate_resources (THREAD_ENTRY * thread_p, VACUUM_WORKER * worke
     }
 
   /* Safe guard - it is assumed that transaction descriptor is already initialized. */
-  assert (logtb_get_current_system_tdes (thread_p) != NULL);
+  assert (logtb_get_system_tdes (thread_p) != NULL);
 
   worker->allocated_resources = true;
 

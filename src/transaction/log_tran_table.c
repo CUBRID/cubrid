@@ -7688,14 +7688,14 @@ logtb_get_check_interrupt (THREAD_ENTRY * thread_p)
 }
 
 LOG_TDES *
-logtb_get_current_system_tdes (THREAD_ENTRY * thread_p)
+logtb_get_system_tdes (THREAD_ENTRY * thread_p)
 {
   if (thread_p == NULL)
     {
       thread_p = thread_get_thread_entry_info ();
     }
-  assert (thread_p->tran_index == LOG_SYSTEM_TRAN_INDEX);
-  if (thread_p->get_system_tdes () != NULL)
+  // if requesting system tran_index and this is a system worker, return its own log_tdes
+  if (thread_p->tran_index == LOG_SYSTEM_TRAN_INDEX && thread_p->get_system_tdes () != NULL)
     {
       return thread_p->get_system_tdes ()->get_tdes ();
     }
@@ -7714,7 +7714,7 @@ LOG_FIND_CURRENT_TDES (THREAD_ENTRY * thread_p)
     }
   if (thread_p->tran_index == LOG_SYSTEM_TRAN_INDEX)
     {
-      return logtb_get_current_system_tdes (thread_p);
+      return logtb_get_system_tdes (thread_p);
     }
   else if (thread_p->tran_index > LOG_SYSTEM_TRAN_INDEX && thread_p->tran_index < log_Gl.trantable.num_total_indices)
     {

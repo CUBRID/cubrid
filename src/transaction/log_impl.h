@@ -928,6 +928,7 @@ extern int logtb_collect_local_clients (int **local_client_pids);
 #define LOG_2PC_DONT_OBTAIN_LOCKS false
 
 #if defined(SERVER_MODE)
+// todo - separate the client & server/sa_mode transaction index
 #if !defined(LOG_FIND_THREAD_TRAN_INDEX)
 #define LOG_FIND_THREAD_TRAN_INDEX(thrd) \
   ((thrd) ? (thrd)->tran_index : logtb_get_current_tran_index ())
@@ -2449,7 +2450,7 @@ extern int logpb_set_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgpt
 
 // todo - rename LOG_FIND_CURRENT_TDES
 extern LOG_TDES *LOG_FIND_CURRENT_TDES (THREAD_ENTRY * thread_p = NULL);
-extern LOG_TDES *logtb_get_current_system_tdes (THREAD_ENTRY * thread_p = NULL);
+extern LOG_TDES *logtb_get_system_tdes (THREAD_ENTRY * thread_p = NULL);
 
 //////////////////////////////////////////////////////////////////////////
 // inline/template implementation
@@ -2458,11 +2459,11 @@ extern LOG_TDES *logtb_get_current_system_tdes (THREAD_ENTRY * thread_p = NULL);
 inline LOG_TDES *
 LOG_FIND_TDES (int tran_index)
 {
-  if (tran_index >= LOG_SYSTEM_TRAN_INDEX && log_Gl.trantable.num_total_indices)
+  if (tran_index >= LOG_SYSTEM_TRAN_INDEX && tran_index < log_Gl.trantable.num_total_indices)
     {
       if (tran_index == LOG_SYSTEM_TRAN_INDEX)
 	{
-	  return logtb_get_current_system_tdes ();
+	  return logtb_get_system_tdes ();
 	}
       else
 	{
