@@ -30,7 +30,7 @@
 // forward definitions
 struct qfile_list_id;
 struct regu_variable_list_node;
-struct regu_variable_node;
+class regu_variable_node;
 struct sort_list;
 typedef struct sort_list SORT_LIST;   // todo - rename sort_list member.
 struct tp_domain;

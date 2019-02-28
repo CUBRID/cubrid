@@ -29,7 +29,7 @@
 #include "libregex38a/regex38a.h"   // cub_regex_t
 
 // forward definitions
-struct regu_variable_node;
+class regu_variable_node;
 
 typedef enum
 {

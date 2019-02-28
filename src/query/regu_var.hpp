@@ -30,7 +30,7 @@
 #include "libregex38a/regex38a.h"
 #include "string_opfunc.h"
 
-// *INDENT-OFF*
+#include <functional>
 
 // forward definitions
 struct xasl_node;
@@ -158,33 +158,46 @@ const int REGU_VARIABLE_FETCH_ALL_CONST = 0x40;	/* is all constant */
 const int REGU_VARIABLE_FETCH_NOT_CONST = 0x80;	/* is not constant */
 const int REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE = 0x100;	/* clears regu variable at clone decache */
 
-struct regu_variable_node
+class regu_variable_node
 {
-  REGU_DATATYPE type;
+  public:
+    REGU_DATATYPE type;
 
-  int flags;			/* flags */
+    int flags;			/* flags */
 
-  TP_DOMAIN *domain;		/* domain of the value in this regu variable */
-  TP_DOMAIN *original_domain;	/* original domain, used at execution in case of XASL clones */
-  DB_VALUE *vfetch_to;		/* src db_value to fetch into in qp_fetchvlist */
-  xasl_node *xasl;		/* query xasl pointer */
-  union regu_data_value
-  {
-    /* fields used by both XASL interpreter and regulator */
-    DB_VALUE dbval;		/* for DB_VALUE values */
-    DB_VALUE *dbvalptr;		/* for constant values */
-    ARITH_TYPE *arithptr;	/* arithmetic expression */
-    cubxasl::aggregate_list_node *aggptr;	/* aggregate expression */
-    ATTR_DESCR attr_descr;	/* attribute information */
-    QFILE_TUPLE_VALUE_POSITION pos_descr;	/* list file columns */
-    QFILE_SORTED_LIST_ID *srlist_id;	/* sorted list identifier for subquery results */
-    int val_pos;		/* host variable references */
-    struct function_node *funcp;	/* function */
-    REGU_VALUE_LIST *reguval_list;	/* for "values" query */
-    REGU_VARIABLE_LIST regu_var_list;	/* for CUME_DIST and PERCENT_RANK */
-  } value;
+    TP_DOMAIN *domain;		/* domain of the value in this regu variable */
+    TP_DOMAIN *original_domain;	/* original domain, used at execution in case of XASL clones */
+    DB_VALUE *vfetch_to;		/* src db_value to fetch into in qp_fetchvlist */
+    xasl_node *xasl;		/* query xasl pointer */
+    union regu_data_value
+    {
+      /* fields used by both XASL interpreter and regulator */
+      DB_VALUE dbval;		/* for DB_VALUE values */
+      DB_VALUE *dbvalptr;		/* for constant values */
+      ARITH_TYPE *arithptr;	/* arithmetic expression */
+      cubxasl::aggregate_list_node *aggptr;	/* aggregate expression */
+      ATTR_DESCR attr_descr;	/* attribute information */
+      QFILE_TUPLE_VALUE_POSITION pos_descr;	/* list file columns */
+      QFILE_SORTED_LIST_ID *srlist_id;	/* sorted list identifier for subquery results */
+      int val_pos;		/* host variable references */
+      struct function_node *funcp;	/* function */
+      REGU_VALUE_LIST *reguval_list;	/* for "values" query */
+      REGU_VARIABLE_LIST regu_var_list;	/* for CUME_DIST and PERCENT_RANK */
+    } value;
 
-  regu_variable_node () = default;
+    regu_variable_node () = default;
+
+    using map_func = std::function<void (regu_variable_node &regu, bool &stop)>;
+    // map_reguvar_tree - recursive "walker" of regu variable tree applying function argument
+    //
+    // NOTE:
+    //    stop argument may be used for interrupting mapper
+    //
+    //    !!! implementation is not mature; only arithmetic and function children are mapped.
+    void map_tree (const map_func &func);
+
+  private:
+    void map_tree (const map_func &func, bool &stop);
 };
 
 struct regu_variable_list_node
@@ -211,32 +224,30 @@ struct regu_ptr_list_node
 
 // regular variable flag functions
 // note - uppercase names are used because they used to be macros.
-inline bool REGU_VARIABLE_IS_FLAGED (const regu_variable_node * regu, int flag);
-inline void REGU_VARIABLE_SET_FLAG (regu_variable_node * regu, int flag);
-inline void REGU_VARIABLE_CLEAR_FLAG (regu_variable_node * regu, int flag);
+inline bool REGU_VARIABLE_IS_FLAGED (const regu_variable_node *regu, int flag);
+inline void REGU_VARIABLE_SET_FLAG (regu_variable_node *regu, int flag);
+inline void REGU_VARIABLE_CLEAR_FLAG (regu_variable_node *regu, int flag);
 
 //////////////////////////////////////////////////////////////////////////
 // inline/template implementation
 //////////////////////////////////////////////////////////////////////////
 
 bool
-REGU_VARIABLE_IS_FLAGED (const regu_variable_node * regu, int flag)
+REGU_VARIABLE_IS_FLAGED (const regu_variable_node *regu, int flag)
 {
   return (regu->flags & flag) != 0;
 }
 
 void
-REGU_VARIABLE_SET_FLAG (regu_variable_node * regu, int flag)
+REGU_VARIABLE_SET_FLAG (regu_variable_node *regu, int flag)
 {
   regu->flags |= flag;
 }
 
 void
-REGU_VARIABLE_CLEAR_FLAG (regu_variable_node * regu, int flag)
+REGU_VARIABLE_CLEAR_FLAG (regu_variable_node *regu, int flag)
 {
   regu->flags &= ~flag;
 }
-
-// *INDENT-ON*
 
 #endif /* _REGU_VAR_HPP_ */

@@ -4829,105 +4829,22 @@ error_exit:
 
 // *INDENT-OFF*
 // C++ implementation stuff
-
-using map_reguvar_func = std::function<void(regu_variable_node &regu, bool &stop)>;
-
-const map_reguvar_func map_reguvar_force_not_constant_arithmetic = [] (regu_variable_node &regu, bool & stop)
-  {
-  switch (regu.type)
-    {
-    case TYPE_INARITH:
-    case TYPE_OUTARITH:
-    case TYPE_FUNC:
-      REGU_VARIABLE_SET_FLAG (&regu, REGU_VARIABLE_FETCH_NOT_CONST);
-      break;
-    default:
-      break;
-    }
-  };
-
-// map_reguvar_tree - recursive "walker" of regu variable tree applying function argument
-//
-// NOTE:
-//    stop argument may be used for interrupting mapper
-//
-//    !!! implementation is not mature; only arithmetic and function children are mapped.
-static void
-map_reguvar_tree (regu_variable_node &regu, const map_reguvar_func & f, bool &stop)
-{
-  f (regu, stop);
-  if (stop)
-    {
-      return;
-    }
-  switch (regu.type)
-    {
-    case TYPE_INARITH:
-    case TYPE_OUTARITH:
-      if (regu.value.arithptr == NULL)
-        {
-          assert (false);
-          return;
-        }
-      if (regu.value.arithptr->leftptr)
-        {
-          map_reguvar_tree (*regu.value.arithptr->leftptr, f, stop);
-          if (stop)
-            {
-              return;
-            }
-        }
-      if (regu.value.arithptr->rightptr)
-        {
-          map_reguvar_tree (*regu.value.arithptr->rightptr, f, stop);
-          if (stop)
-            {
-              return;
-            }
-        }
-      if (regu.value.arithptr->rightptr)
-        {
-          map_reguvar_tree (*regu.value.arithptr->thirdptr, f, stop);
-          if (stop)
-            {
-              return;
-            }
-        }
-      break;
-    case TYPE_FUNC:
-      if (regu.value.funcp == NULL)
-        {
-          assert (false);
-          return;
-        }
-      for (regu_variable_list_node *operand = regu.value.funcp->operand; operand != NULL; operand = operand->next)
-        {
-          map_reguvar_tree (operand->value, f, stop);
-          if (stop)
-            {
-              return;
-            }
-        }
-      break;
-    case TYPE_REGUVAL_LIST:
-    case TYPE_REGU_VAR_LIST:
-      // should we map?
-      break;
-    default:
-      break;
-    }
-}
-
-static void
-map_reguvar_tree (regu_variable_node &regu, const map_reguvar_func & f)
-{
-  bool stop = false;
-  map_reguvar_tree (regu, f, stop);
-}
-
 void
 fetch_force_not_const_recursive (REGU_VARIABLE & reguvar)
 {
-  map_reguvar_tree (reguvar, map_reguvar_force_not_constant_arithmetic);
+  auto map_func = [&] (regu_variable_node &regu, bool & stop)
+    {
+    switch (regu.type)
+      {
+      case TYPE_INARITH:
+      case TYPE_OUTARITH:
+      case TYPE_FUNC:
+        REGU_VARIABLE_SET_FLAG (&regu, REGU_VARIABLE_FETCH_NOT_CONST);
+        break;
+      default:
+        break;
+      }
+    };
+  reguvar.map_tree (map_func);
 }
 // *INDENT-ON*

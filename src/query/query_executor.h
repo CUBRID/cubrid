@@ -46,7 +46,7 @@ struct func_pred;
 struct pred_expr_with_context;
 struct qfile_list_id;
 struct qfile_tuple_record;
-struct regu_variable_node;
+class regu_variable_node;
 struct tp_domain;
 struct valptr_list_node;
 struct xasl_node;

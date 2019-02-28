@@ -35,7 +35,7 @@
 // forward declarations
 struct db_value;
 struct tp_domain;
-struct regu_variable_node;
+class regu_variable_node;
 class JSON_DOC;
 class JSON_ITERATOR;
 
