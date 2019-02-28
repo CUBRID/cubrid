@@ -5646,7 +5646,7 @@ log_commit (THREAD_ENTRY * thread_p, int tran_index, bool retain_lock)
       return TRAN_UNACTIVE_UNKNOWN;
     }
 
-  tdes->replication_log_generator.check_commit_end_tran ();
+  tdes->replication_log_generator.on_transaction_pre_finish ();
 
   if (!LOG_ISTRAN_ACTIVE (tdes) && !LOG_ISTRAN_2PC_PREPARE (tdes) && LOG_ISRESTARTED ())
     {
@@ -5818,6 +5818,7 @@ log_abort (THREAD_ENTRY * thread_p, int tran_index)
    * has been taken without using the 2PC.
    */
 
+  tdes->replication_log_generator.on_transaction_pre_abort ();
   if (log_clear_and_is_tran_distributed (tdes))
     {
       /* This is the coordinator of a distributed transaction */

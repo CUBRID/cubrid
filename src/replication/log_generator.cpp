@@ -43,10 +43,10 @@ namespace cubreplication
   }
 
   void
-  log_generator::set_tran_repl_info (MVCCID mvccid, stream_entry_header::TRAN_STATE state)
+  log_generator::set_tran_repl_info (stream_entry_header::TRAN_STATE state)
   {
     assert (m_has_stream);
-    m_stream_entry.set_mvccid (mvccid);
+    assert (MVCCID_IS_VALID (m_stream_entry.get_mvccid ()));
     m_stream_entry.set_state (state);
   }
 
@@ -292,15 +292,39 @@ namespace cubreplication
 	return;
       }
 
+    set_tran_repl_info (state);
+    pack_stream_entry ();
+  }
+
+  void
+  log_generator::on_transaction_pre_commit (void)
+  {
+    check_commit_end_tran ();
+    on_transaction_pre_finish ();
+  }
+
+  void
+  log_generator::on_transaction_pre_abort (void)
+  {
+    on_transaction_pre_finish ();
+  }
+
+  void
+  log_generator::on_transaction_pre_finish (void)
+  {
+    if (is_replication_disabled ())
+      {
+	return;
+      }
+
     cubthread::entry *thread_p = &cubthread::get_entry ();
     int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
     LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
 
-    /* a case may occur (MVCCID_NULL) when the thread connection is closed before acquiring a MVCCID */
-    if (tdes->mvccinfo.id != MVCCID_NULL)
+    /* save MVCCID in pre-commit phase, after commit, the MVCCID is cleanup */
+    if (MVCCID_IS_VALID (tdes->mvccinfo.id))
       {
-        set_tran_repl_info (tdes->mvccinfo.id, state);
-        pack_stream_entry ();
+        m_stream_entry.set_mvccid (tdes->mvccinfo.id);
       }
   }
 
