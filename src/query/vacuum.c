@@ -846,11 +846,14 @@ xvacuum (THREAD_ENTRY * thread_p)
 
   /* Assign worker and allocate required resources. */
   vacuum_convert_thread_to_master (thread_p, save_type);
+  // needs system worker tdes
+  thread_p->claim_system_worker ();
 
   /* Process vacuum data and run vacuum . */
   vacuum_process_vacuum_data (thread_p);
 
   vacuum_restore_thread (thread_p, save_type);
+  thread_p->retire_system_worker ();
 
   return NO_ERROR;
 #endif /* SA_MODE */
