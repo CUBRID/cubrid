@@ -287,7 +287,7 @@ namespace cubreplication
   void
   log_generator::on_transaction_finish (stream_entry_header::TRAN_STATE state)
   {
-    if (is_replication_disabled ())
+    if (is_replication_disabled () || !MVCCID_IS_VALID (m_stream_entry.get_mvccid ()))
       {
 	return;
       }
