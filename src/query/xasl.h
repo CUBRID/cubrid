@@ -195,7 +195,9 @@ struct qproc_db_value_list
   DB_VALUE *val;
   TP_DOMAIN *dom;
 
-    qproc_db_value_list () = default;
+  // *INDENT-OFF*
+  qproc_db_value_list () = default;
+  // *INDENT-ON*
 };
 
 typedef struct val_list_node VAL_LIST;	/* value list */
@@ -204,7 +206,9 @@ struct val_list_node
   QPROC_DB_VALUE_LIST valp;	/* first value node */
   int val_cnt;			/* value count */
 
-    val_list_node () = default;
+  // *INDENT-OFF*
+  val_list_node () = default;
+  // *INDENT-ON*
 };
 
 /* To handle selected update list, click counter related */
@@ -260,7 +264,9 @@ struct odku_info
   HEAP_CACHE_ATTRINFO *attr_info;	/* attr info */
   int *attr_ids;		/* ID's of attributes (array) */
 
-    odku_info () = default;
+  // *INDENT-OFF*
+  odku_info () = default;
+  // *INDENT-ON*
 };
 
 /* new type used by function index for cleaner code */
@@ -270,7 +276,9 @@ struct func_pred
   REGU_VARIABLE *func_regu;	/* function expression regulator variable */
   HEAP_CACHE_ATTRINFO *cache_attrinfo;
 
-    func_pred () = default;
+  // *INDENT-OFF*
+  func_pred () = default;
+  // *INDENT-ON*
 };
 
 /* UNION_PROC, DIFFERENCE_PROC, INTERSECTION_PROC */
