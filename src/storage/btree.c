@@ -48,7 +48,7 @@
 #include "query_executor.h"
 #include "object_primitive.h"
 #include "perf_monitor.h"
-#include "regu_var.h"
+#include "regu_var.hpp"
 #include "fault_injection.h"
 #include "dbtype.h"
 #include "thread_manager.hpp"

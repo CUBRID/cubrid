@@ -46,7 +46,7 @@
 #include "string_opfunc.h"
 #include "server_interface.h"
 #include "query_opfunc.h"
-#include "regu_var.h"
+#include "regu_var.hpp"
 #include "tz_support.h"
 #include "db_date.h"
 #include "xasl.h"

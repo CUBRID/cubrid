@@ -27,7 +27,7 @@
 #include "object_domain.h"
 #include "object_primitive.h"
 #include "query_list.h"
-#include "regu_var.h"
+#include "regu_var.hpp"
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
 #include "xasl_analytic.hpp"

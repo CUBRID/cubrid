@@ -35,7 +35,7 @@
 #include "object_primitive.h"
 #include "object_representation.h"
 #include "query_opfunc.h"
-#include "regu_var.h"
+#include "regu_var.hpp"
 #include "string_opfunc.h"
 #include "xasl.h"                           // QPROC_IS_INTERPOLATION_FUNC
 #include "xasl_aggregate.hpp"

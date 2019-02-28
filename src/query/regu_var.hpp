@@ -18,11 +18,11 @@
  */
 
 /*
- * Regu variable - I don't even know what regu stands for.
+ * Regular variable - functionality encoded into XASL
  */
 
-#ifndef _REGU_VAR_H_
-#define _REGU_VAR_H_
+#ifndef _REGU_VAR_HPP_
+#define _REGU_VAR_HPP_
 
 #include "heap_attrinfo.h"
 #include "object_domain.h"
@@ -239,4 +239,4 @@ REGU_VARIABLE_CLEAR_FLAG (regu_variable_node * regu, int flag)
 
 // *INDENT-ON*
 
-#endif /* _REGU_VAR_H_ */
+#endif /* _REGU_VAR_HPP_ */

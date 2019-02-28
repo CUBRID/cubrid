@@ -71,7 +71,7 @@
 #include "db_json.hpp"
 #include "dbtype.h"
 #include "thread_entry.hpp"
-#include "regu_var.h"
+#include "regu_var.hpp"
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
 #include "xasl_analytic.hpp"

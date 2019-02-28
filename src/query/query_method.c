@@ -36,7 +36,7 @@
 #include "object_primitive.h"
 #include "object_representation.h"
 #include "query_list.h"
-#include "regu_var.h"
+#include "regu_var.hpp"
 
 static int method_initialize_vacomm_buffer (VACOMM_BUFFER * vacomm_buffer, unsigned int rc, char *host,
 					    char *server_name);
