@@ -24,6 +24,7 @@
 #ident "$Id$"
 
 #include "log_consumer.hpp"
+#include "error_manager.h"
 #include "multi_thread_stream.hpp"
 #include "replication_stream_entry.hpp"
 #include "system_parameter.h"
@@ -282,6 +283,7 @@ namespace cubreplication
   void log_consumer::start_daemons (void)
   {
 #if defined (SERVER_MODE)
+    er_log_debug (ARG_FILE_LINE, "log_consumer::start_daemons\n");
     m_consumer_daemon = cubthread::get_manager ()->create_daemon (cubthread::delta_time (0),
 			new consumer_daemon_task (*this),
 			"prepare_stream_entry_daemon");
