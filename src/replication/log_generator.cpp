@@ -233,6 +233,8 @@ namespace cubreplication
   {
     assert (m_has_stream);
 
+    er_log_debug (ARG_FILE_LINE, "log_generator::pack_stream_entry MVCCID:%lld\n", m_stream_entry.get_mvccid ());
+
     m_stream_entry.pack ();
     m_stream_entry.reset ();
     // reset state
