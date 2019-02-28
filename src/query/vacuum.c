@@ -852,8 +852,9 @@ xvacuum (THREAD_ENTRY * thread_p)
   /* Process vacuum data and run vacuum . */
   vacuum_process_vacuum_data (thread_p);
 
-  vacuum_restore_thread (thread_p, save_type);
   thread_p->retire_system_worker ();
+  vacuum_restore_thread (thread_p, save_type);
+  thread_p->tran_index = LOG_SYSTEM_TRAN_INDEX;	// restore tran_index
 
   return NO_ERROR;
 #endif /* SA_MODE */
