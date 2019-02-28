@@ -6008,7 +6008,6 @@ pt_make_regu_arith (const REGU_VARIABLE * arg1, const REGU_VARIABLE * arg2, cons
   arith->domain = (TP_DOMAIN *) domain;
   arith->value = dbval;
   arith->opcode = op;
-  arith->next = NULL;
   arith->leftptr = (REGU_VARIABLE *) arg1;
   arith->rightptr = (REGU_VARIABLE *) arg2;
   arith->thirdptr = (REGU_VARIABLE *) arg3;
@@ -6060,7 +6059,6 @@ pt_make_regu_pred (const PRED_EXPR * pred)
   arith->domain = (TP_DOMAIN *) domain;
   arith->value = dbval;
   arith->opcode = T_PREDICATE;
-  arith->next = NULL;
   arith->leftptr = NULL;
   arith->rightptr = NULL;
   arith->thirdptr = NULL;

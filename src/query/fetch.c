@@ -4845,6 +4845,6 @@ fetch_force_not_const_recursive (REGU_VARIABLE & reguvar)
         break;
       }
     };
-  reguvar.map_tree (map_func);
+  reguvar.map_regu (map_func);
 }
 // *INDENT-ON*

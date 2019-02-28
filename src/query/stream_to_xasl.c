@@ -5437,20 +5437,6 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr, ARITH_TYPE * arith_typ
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
-      arith_type->next = NULL;
-    }
-  else
-    {
-      arith_type->next = stx_restore_arith_type (thread_p, &xasl_unpack_info->packed_xasl[offset]);
-      if (arith_type->next == NULL)
-	{
-	  goto error;
-	}
-    }
-
-  ptr = or_unpack_int (ptr, &offset);
-  if (offset == 0)
-    {
       arith_type->leftptr = NULL;
     }
   else

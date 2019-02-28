@@ -1415,24 +1415,19 @@ qexec_clear_xasl_head (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 static int
 qexec_clear_arith_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ARITH_TYPE * list, bool is_final)
 {
-  ARITH_TYPE *p;
-  int pg_cnt;
+  int pg_cnt = 0;
 
-  pg_cnt = 0;
-  for (p = list; p; p = p->next)
+  /* restore the original domain, in order to avoid coerce when the XASL clones will be used again */
+  list->domain = list->original_domain;
+  pr_clear_value (list->value);
+  pg_cnt += qexec_clear_regu_var (thread_p, xasl_p, list->leftptr, is_final);
+  pg_cnt += qexec_clear_regu_var (thread_p, xasl_p, list->rightptr, is_final);
+  pg_cnt += qexec_clear_regu_var (thread_p, xasl_p, list->thirdptr, is_final);
+  pg_cnt += qexec_clear_pred (thread_p, xasl_p, list->pred, is_final);
+
+  if (list->rand_seed != NULL)
     {
-      /* restore the original domain, in order to avoid coerce when the XASL clones will be used again */
-      p->domain = p->original_domain;
-      pr_clear_value (p->value);
-      pg_cnt += qexec_clear_regu_var (thread_p, xasl_p, p->leftptr, is_final);
-      pg_cnt += qexec_clear_regu_var (thread_p, xasl_p, p->rightptr, is_final);
-      pg_cnt += qexec_clear_regu_var (thread_p, xasl_p, p->thirdptr, is_final);
-      pg_cnt += qexec_clear_pred (thread_p, xasl_p, p->pred, is_final);
-
-      if (p->rand_seed != NULL)
-	{
-	  free_and_init (p->rand_seed);
-	}
+      free_and_init (list->rand_seed);
     }
 
   return pg_cnt;

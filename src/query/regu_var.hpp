@@ -123,7 +123,6 @@ struct valptr_list_node
 typedef struct arith_list_node ARITH_TYPE;
 struct arith_list_node
 {
-  ARITH_TYPE *next;		/* next arithmetic expression */
   TP_DOMAIN *domain;		/* resultant domain */
   TP_DOMAIN *original_domain;	/* original resultant domain, used at execution in case of XASL clones  */
   DB_VALUE *value;		/* value of the subtree */
@@ -198,11 +197,13 @@ class regu_variable_node
     void map_regu (const map_regu_func_type &func);
     void map_regu_and_xasl (const map_regu_func_type &regu_func, const map_xasl_func_type &xasl_func);
 
-    void clear ();
+    void freemem ();
 
   private:
     void map_regu (const map_regu_func_type &func, bool &stop);
     void map_regu_and_xasl (const map_regu_func_type &regu_func, const map_xasl_func_type &xasl_func, bool &stop);
+
+    void freemem_me ();
 };
 
 struct regu_variable_list_node

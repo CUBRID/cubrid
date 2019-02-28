@@ -5148,13 +5148,6 @@ xts_process_arith_type (char *ptr, const ARITH_TYPE * arith)
 
   ptr = or_pack_int (ptr, arith->opcode);
 
-  offset = xts_save_arith_type (arith->next);
-  if (offset == ER_FAILED)
-    {
-      return NULL;
-    }
-  ptr = or_pack_int (ptr, offset);
-
   offset = xts_save_regu_variable (arith->leftptr);
   if (offset == ER_FAILED)
     {

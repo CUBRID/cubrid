@@ -23,6 +23,8 @@
 
 #include "regu_var.hpp"
 
+# include "object_primitive.h"
+
 void
 regu_variable_node::map_regu (const map_regu_func_type &func)
 {
@@ -182,4 +184,46 @@ regu_variable_node::map_regu_and_xasl (const map_regu_func_type &regu_func, cons
 
 #undef map_regu_not_null_and_check_stop
 #undef map_regu_and_check_stop
+}
+
+void
+regu_variable_node::freemem_me ()
+{
+  switch (type)
+    {
+    case TYPE_INARITH:
+    case TYPE_OUTARITH:
+      // todo: clear predicate
+      assert (value.arithptr != NULL);
+      if (value.arithptr->rand_seed != NULL)
+	{
+	  free_and_init (value.arithptr->rand_seed);
+	}
+      break;
+
+    case TYPE_FUNC:
+      assert (value.funcp != NULL);
+      pr_clear_value (value.funcp->value);
+      break;
+
+    case TYPE_DBVAL:
+      pr_clear_value (&value.dbval);
+      break;
+
+    default:
+      break;
+    }
+
+  pr_clear_value (vfetch_to);
+}
+
+void
+regu_variable_node::freemem ()
+{
+  // todo - what about XASL?
+  auto map_func = [] (regu_variable_node & regu, bool & stop)
+  {
+    regu.freemem_me ();
+  };
+  map_regu (map_func);
 }
