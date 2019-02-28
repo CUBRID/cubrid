@@ -6319,7 +6319,7 @@ log_rv_simulate_runtime_worker (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
     {
       thread_p->tran_index = tdes->tran_index;
 #if defined (SA_MODE)
-      LOG_SET_CURRENT_TRAN_INDEX (tdes->tran_index);
+      LOG_SET_CURRENT_TRAN_INDEX (thread_p, tdes->tran_index);
 #endif // SA_MODE
     }
   else if (tdes->is_system_worker_transaction ())
@@ -6339,6 +6339,6 @@ log_rv_end_simulation (THREAD_ENTRY * thread_p)
   thread_p->reset_system_tdes ();
   thread_p->tran_index = LOG_SYSTEM_TRAN_INDEX;
 #if defined (SA_MODE)
-  LOG_SET_CURRENT_TRAN_INDEX (LOG_SYSTEM_TRAN_INDEX);
+  LOG_SET_CURRENT_TRAN_INDEX (thread_p, LOG_SYSTEM_TRAN_INDEX);
 #endif // SA_MODE
 }
