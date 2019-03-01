@@ -3559,7 +3559,7 @@ hb_resource_job_send_master_hostname (HB_JOB_ARG * arg)
   proc = hb_Resource->procs;
   while (proc)
     {
-      if (proc->type == HB_PTYPE_SERVER)
+      if (proc->type == HB_PTYPE_SERVER && proc->state >= HB_PSTATE_REGISTERED)
 	{
 	  if (proc->knows_master_hostname)
 	    {
