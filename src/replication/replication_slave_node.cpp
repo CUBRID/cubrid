@@ -27,6 +27,7 @@
 #include "log_consumer.hpp"
 #include "multi_thread_stream.hpp"
 #include "replication_stream_entry.hpp"
+#include "stream_file.hpp"
 #include "stream_transfer_receiver.hpp"
 #include "system_parameter.h"
 
@@ -62,8 +63,15 @@ namespace cubreplication
     /* consumer needs only one stream appender (the stream transfer receiver) */
     assert (g_instance->m_stream == NULL);
     g_instance->m_stream = new cubstream::multi_thread_stream (buffer_size, 2);
+    g_instance->m_stream->set_name ("repl" + std::string (hostname) + "_replica");
     g_instance->m_stream->set_trigger_min_to_read_size (stream_entry::compute_header_size ());
     g_instance->m_stream->init (g_instance->m_start_position);
+
+    /* create stream file */
+    g_instance->m_stream_file = new cubstream::stream_file (*g_instance->m_stream);
+    std::string replication_path;
+    replication_node::get_replication_file_path (replication_path);
+    g_instance->m_stream_file->set_path (replication_path);
 
     assert (g_instance->m_lc == NULL);
     g_instance->m_lc = new log_consumer ();

@@ -25,7 +25,9 @@
 
 #include "replication_node.hpp"
 #include "multi_thread_stream.hpp"
+#include "boot_sr.h"        /* database full name */
 #include "error_code.h"
+#include "file_io.h"        /* file name manipulation */
 
 namespace cubreplication
 {
@@ -33,12 +35,22 @@ namespace cubreplication
   {
     delete m_stream;
     m_stream = NULL;
+    delete m_stream_file;
+    m_stream_file = NULL;
   }
 
   int replication_node::apply_start_position (void)
   {
     /* TODO set m_start_position from recovery log ? */
     return NO_ERROR;
+  }
+
+  void get_replication_file_path (std::string &path)
+  {
+    char buf_temp_path[PATH_MAX];
+    char *temp_path;
+    temp_path = fileio_get_directory_path (buf_temp_path, boot_db_full_name ());
+    path.assign (temp_path);
   }
 
 } /* namespace cubreplication */

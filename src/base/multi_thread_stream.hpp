@@ -156,6 +156,9 @@ namespace cubstream
 
       stream_file *m_stream_file;
 
+      /* if enabled, it will force flush stream contents after append (still using daemon thread) */
+      bool m_force_flush;
+
       /* stats counters */
       std::uint64_t m_stat_reserve_queue_spins;
       std::uint64_t m_stat_reserve_buffer_spins;
