@@ -325,6 +325,18 @@ set(LOADDB_SOURCES
   ${LOADDB_DIR}/load_session.cpp
   )
 
+set(LOADDB_HEADERS
+  ${BISON_loader_grammar_OUTPUT_HEADER}
+  ${LOADDB_DIR}/load_class_registry.hpp
+  ${LOADDB_DIR}/load_common.hpp
+  ${LOADDB_DIR}/load_db_value_converter.hpp
+  ${LOADDB_DIR}/load_driver.hpp
+  ${LOADDB_DIR}/load_error_handler.hpp
+  ${LOADDB_DIR}/load_semantic_helper.hpp
+  ${LOADDB_DIR}/load_server_loader.hpp
+  ${LOADDB_DIR}/load_session.hpp
+  )
+
 list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)
 if(UNIX)
   list(APPEND BASE_SOURCES ${BASE_DIR}/cubrid_getopt_long.c)
@@ -410,6 +422,7 @@ set (CUBRID_LIB_HEADERS
   ${STORAGE_HEADERS}
   ${STREAM_HEADERS}
   ${XASL_HEADERS}
+  ${LOADDB_HEADERS}
   )
 
 add_library(cubrid SHARED

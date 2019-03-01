@@ -163,8 +163,13 @@ namespace cubload
     public:
       load_worker () = delete; // Default c-tor: deleted.
 
+      ~load_worker () override
+      {
+	delete &m_batch;
+      }
+
       load_worker (const batch &batch, session &session)
-	: m_batch (std::move (batch))
+	: m_batch (batch)
 	, m_session (session)
       {
 	//
@@ -210,16 +215,16 @@ namespace cubload
       }
 
     private:
-      batch m_batch;
+      const batch &m_batch;
       session &m_session;
   };
 
-  session::session (SESSION_ID id)
+  session::session (load_args &args, SESSION_ID id)
     : m_commit_mutex ()
     , m_commit_cond_var ()
     , m_completion_mutex ()
     , m_completion_cond_var ()
-    , m_batch_size (100000) // TODO CBRD-21654 get batch size from cub_admin loaddb
+    , m_args (args)
     , m_last_batch_id {NULL_BATCH_ID}
     , m_max_batch_id {NULL_BATCH_ID}
     , m_worker_pool (NULL)
@@ -241,6 +246,13 @@ namespace cubload
 
     m_driver = new driver ();
     init_driver (m_driver, *this);
+
+    if (!m_args.table_name.empty ())
+      {
+	// just set class id to 1 since only one table can be specified as command line argument
+	m_driver->get_class_installer ().set_class_id (FIRST_CLASS_ID);
+	m_driver->get_class_installer ().install_class (m_args.table_name.c_str ());
+      }
   }
 
   session::~session ()
@@ -260,7 +272,7 @@ namespace cubload
   void
   session::wait_for_previous_batch (const batch_id id)
   {
-    auto pred = [this, &id] { return is_failed () || id == (m_last_batch_id + 1); };
+    auto pred = [this, &id] () -> bool { return is_failed () || id == (m_last_batch_id + 1); };
 
     if (id == FIRST_BATCH_ID || pred ())
       {
@@ -274,7 +286,7 @@ namespace cubload
   void
   session::wait_for_completion ()
   {
-    auto pred = [this] { return is_failed () || is_completed (); };
+    auto pred = [this] () -> bool { return is_failed () || is_completed (); };
 
     if (pred ())
       {
@@ -392,6 +404,24 @@ namespace cubload
     while (!atomic_val.compare_exchange_strong (curr_max, new_max));
   }
 
+  void
+  session::update_class_statistics (cubthread::entry &thread_ref)
+  {
+    if (m_args.disable_statistics)
+      {
+	return;
+      }
+
+    std::vector<const class_entry *> class_entries;
+    m_class_registry.get_all_class_entries (class_entries);
+
+    for (const class_entry *class_entry : class_entries)
+      {
+	OID *class_oid = const_cast<OID *> (&class_entry->get_class_oid ());
+	xstats_update_statistics (&thread_ref, class_oid, STATS_WITH_SAMPLING);
+      }
+  }
+
   class_registry &
   session::get_class_registry ()
   {
@@ -425,6 +455,7 @@ namespace cubload
       }
 
     thread_ref.m_loaddb_driver = NULL;
+    delete &batch;
 
     return error_code;
   }
@@ -448,33 +479,30 @@ namespace cubload
   }
 
   int
-  session::load_file (cubthread::entry &thread_ref, const std::string &file_name)
+  session::load_file (cubthread::entry &thread_ref)
   {
-    batch_handler b_handler = [this, &thread_ref] (const batch &batch)
+    batch_handler b_handler = [this, &thread_ref] (const batch &batch) -> int
     {
       return load_batch (thread_ref, batch);
     };
 
-    batch_handler c_handler = [this, &thread_ref] (const batch &batch)
+    batch_handler c_handler = [this, &thread_ref] (const batch &batch) -> int
     {
       return install_class (thread_ref, batch);
     };
 
-    return split (m_batch_size, file_name, c_handler, b_handler);
+    return split (m_args.periodic_commit, m_args.server_object_file, c_handler, b_handler);
   }
 
-  stats
-  session::get_stats ()
+  void
+  session::fetch_stats (stats &stats_)
   {
     std::unique_lock<std::mutex> ulock (m_stats_mutex);
 
     m_stats.is_completed = is_completed ();
-    stats copy = m_stats;
+    stats_ = m_stats;
 
     // since client periodically fetches the stats, clear error_message in order not to send twice same message
     m_stats.error_message.clear ();
-
-    return copy;
   }
-
 } // namespace cubload

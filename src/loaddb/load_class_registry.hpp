@@ -39,7 +39,7 @@ namespace cubload
   {
     public:
       attribute () = delete; // Not DefaultConstructible
-      attribute (ATTR_ID id, std::string &name, std::size_t index, or_attribute *repr);
+      attribute (std::string &name, std::size_t index, or_attribute *repr);
 
       attribute (attribute &&other) = delete; // Not MoveConstructible
       attribute (const attribute &copy) = delete; // Not CopyConstructible
@@ -47,14 +47,12 @@ namespace cubload
       attribute &operator= (attribute &&other) = delete; // Not MoveAssignable
       attribute &operator= (const attribute &copy) = delete; // Not CopyAssignable
 
-      ATTR_ID get_id () const;
       const char *get_name () const;
       std::size_t get_index () const;
       const or_attribute &get_repr () const;
       const tp_domain &get_domain () const;
 
     private:
-      const ATTR_ID m_id;
       const std::string m_name;
       const std::size_t m_index;
       const or_attribute *m_repr;
@@ -97,12 +95,15 @@ namespace cubload
       class_registry &operator= (const class_registry &copy) = delete; // Not CopyAssignable
 
       const class_entry *get_class_entry (class_id clsid);
+      void get_all_class_entries (std::vector<const class_entry *> &entries) const;
       void register_class (const char *class_name, class_id clsid, OID class_oid,
 			   std::vector<const attribute *> &attributes);
 
     private:
+      using class_map = std::unordered_map<class_id, const class_entry *>;
+
       std::mutex m_mutex;
-      std::unordered_map<class_id, const class_entry *> m_class_by_id;
+      class_map m_class_by_id;
 
       const class_entry *get_class_entry_without_lock (class_id clsid) ;
   };

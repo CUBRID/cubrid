@@ -80,7 +80,7 @@ namespace cubload
 	return;
       }
 
-    register_class_with_attributes (class_name->val, cmd_spec == NULL ? NULL : cmd_spec->attr_list);
+    register_class_with_attributes (class_name->val, cmd_spec);
   }
 
   void
@@ -95,7 +95,7 @@ namespace cubload
   }
 
   void
-  server_class_installer::register_class_with_attributes (const char *class_name, string_type *attr_list)
+  server_class_installer::register_class_with_attributes (const char *class_name, class_command_spec_type *cmd_spec)
   {
     OID class_oid;
     recdes recdes;
@@ -130,18 +130,23 @@ namespace cubload
 	return;
       }
 
-    // collect class attribute names
-    std::map<std::string, ATTR_ID> attr_map;
-    std::vector<const attribute *> attributes;
-    attributes.reserve ((std::size_t) attrinfo.num_values);
+    int n_attributes = -1;
+    or_attribute *or_attributes = NULL;
+    attribute_type attr_type = cmd_spec != NULL ? cmd_spec->attr_type : LDR_ATTRIBUTE_DEFAULT;
+    get_class_attributes (attrinfo, attr_type, or_attributes, &n_attributes);
 
-    for (std::size_t attr_index = 0; attr_index < (std::size_t) attrinfo.num_values; ++attr_index)
+    // collect class attribute names
+    std::map<std::string, or_attribute *> attr_map;
+    std::vector<const attribute *> attributes;
+    attributes.reserve ((std::size_t) n_attributes);
+
+    for (std::size_t attr_index = 0; attr_index < (std::size_t) n_attributes; ++attr_index)
       {
 	char *attr_name = NULL;
 	int free_attr_name = 0;
-	ATTR_ID attr_id = attrinfo.values[attr_index].attrid;
+	or_attribute *attr_repr = &or_attributes[attr_index];
 
-	error_code = or_get_attrname (&recdes, attr_id, &attr_name, &free_attr_name);
+	error_code = or_get_attrname (&recdes, attr_repr->id, &attr_name, &free_attr_name);
 	if (error_code != NO_ERROR)
 	  {
 	    heap_scancache_end (&thread_ref, &scancache);
@@ -151,18 +156,17 @@ namespace cubload
 	  }
 
 	std::string attr_name_ (attr_name);
-	if (attr_list == NULL)
+	if (cmd_spec == NULL)
 	  {
 	    // if attr_list is NULL then register attributes in default order
-	    or_attribute *attr_repr = heap_locate_last_attrepr (attr_id, &attrinfo);
-	    assert (attr_repr != NULL && attr_repr->domain != NULL);
-	    const attribute *attr = new attribute (attr_id, attr_name_, attr_index, attr_repr);
+	    assert (attr_repr->domain != NULL);
+	    const attribute *attr = new attribute (attr_name_, attr_index, attr_repr);
 
 	    attributes.push_back (attr);
 	  }
 	else
 	  {
-	    attr_map.insert (std::make_pair (attr_name_, attr_id));
+	    attr_map.insert (std::make_pair (attr_name_, attr_repr));
 	  }
 
 	// free attr_name if it was allocated
@@ -174,23 +178,59 @@ namespace cubload
 
     // register attributes in specific order required by attr_list
     std::size_t attr_index = 0;
-    for (string_type *str_attr = attr_list; str_attr != NULL; str_attr = str_attr->next, ++attr_index)
+    string_type *str_attr = cmd_spec != NULL ? cmd_spec->attr_list : NULL;
+    for (; str_attr != NULL; str_attr = str_attr->next, ++attr_index)
       {
 	std::string attr_name_ (str_attr->val);
-	ATTR_ID attr_id = attr_map.at (attr_name_);
 
-	or_attribute *attr_repr = heap_locate_last_attrepr (attr_id, &attrinfo);
+	auto found = attr_map.find (attr_name_);
+	if (found == attr_map.end ())
+	  {
+	    heap_scancache_end (&thread_ref, &scancache);
+	    heap_attrinfo_end (&thread_ref, &attrinfo);
+	    m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
+	    return;
+	  }
+
+	or_attribute *attr_repr = found->second;
+
 	assert (attr_repr != NULL && attr_repr->domain != NULL);
-	const attribute *attr = new attribute (attr_id, attr_name_, attr_index, attr_repr);
+	const attribute *attr = new attribute (attr_name_, attr_index, attr_repr);
 
 	attributes.push_back (attr);
       }
 
-    assert ((std::size_t) attrinfo.num_values == attributes.size ());
     m_session.get_class_registry ().register_class (class_name, m_clsid, class_oid, attributes);
 
     heap_scancache_end (&thread_ref, &scancache);
     heap_attrinfo_end (&thread_ref, &attrinfo);
+  }
+
+  void
+  server_class_installer::get_class_attributes (heap_cache_attrinfo &attrinfo, attribute_type attr_type,
+      or_attribute *&or_attributes, int *n_attributes)
+  {
+    *n_attributes = -1;
+    switch (attr_type)
+      {
+      case LDR_ATTRIBUTE_CLASS:
+	or_attributes = attrinfo.last_classrepr->class_attrs;
+	*n_attributes = attrinfo.last_classrepr->n_class_attrs;
+	break;
+      case LDR_ATTRIBUTE_SHARED:
+	or_attributes = attrinfo.last_classrepr->shared_attrs;
+	*n_attributes = attrinfo.last_classrepr->n_shared_attrs;
+	break;
+      case LDR_ATTRIBUTE_ANY:
+      case LDR_ATTRIBUTE_DEFAULT:
+	or_attributes = attrinfo.last_classrepr->attributes;
+	*n_attributes = attrinfo.last_classrepr->n_attributes;
+	break;
+      default:
+	assert (false);
+	break;
+      }
+    assert (*n_attributes >= 0);
   }
 
   server_object_loader::server_object_loader (session &session, error_handler &error_handler)
@@ -283,7 +323,7 @@ namespace cubload
 	  }
 
 	db_value &db_val = get_attribute_db_value (attr_index);
-	heap_attrinfo_set (&m_class_entry->get_class_oid (), attr.get_id (), &db_val, &m_attrinfo);
+	heap_attrinfo_set (&m_class_entry->get_class_oid (), attr.get_repr ().id, &db_val, &m_attrinfo);
       }
 
     if (attr_index < attr_size)
@@ -381,7 +421,6 @@ namespace cubload
       case LDR_OID:
       case LDR_CLASS_OID:
 	// Object References and Class Object Reference are not supported by server loaddb implementation
-	assert (false);
 	error_code = ER_FAILED;
 	m_error_handler.on_failure_with_line (LOADDB_MSG_OID_NOT_SUPPORTED);
 	break;
@@ -481,18 +520,27 @@ namespace cubload
     db_value &db_val = get_attribute_db_value (attr.get_index ());
     for (constant_type *c = cons; c != NULL; c = c->next)
       {
-	if (c->type == LDR_COLLECTION)
+	switch (c->type)
 	  {
+	  case LDR_COLLECTION:
 	    error_code = ER_LDR_NESTED_SET;
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
-	  }
-	else if (c->type == LDR_MONETARY)
-	  {
+	    break;
+
+	  case LDR_MONETARY:
 	    error_code = process_monetary_constant (c, attr);
-	  }
-	else
-	  {
+	    break;
+
+	  case LDR_OID:
+	  case LDR_CLASS_OID:
+	    // Object References and Class Object Reference are not supported by server loaddb implementation
+	    error_code = ER_FAILED;
+	    m_error_handler.on_failure_with_line (LOADDB_MSG_OID_NOT_SUPPORTED);
+	    break;
+
+	  default:
 	    error_code = process_generic_constant (c, attr);
+	    break;
 	  }
 
 	if (error_code != NO_ERROR)

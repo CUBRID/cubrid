@@ -445,9 +445,11 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 118 Maximum length of class name is %1$d bytes.\n
 120 \
 loaddb: データベースにオブジェクトやスキーマロード\n\
-使い方: %1$s loaddb [オプション] <データベース名>\n\
+使い方: %1$s loaddb [オプション] データベース名[@ホスト]\n\
 \n\
 オプション:\n\
+  -S, --SA-mode                 独立モードで実行\n\
+  -C, --CS-mode                 クライアントーサーバモードで実行\n\
   -u, --user=ID                 データベースアクセスに関するユーザー名; デフォルト: 「public」\n\
   -p, --password=PASS           ユーザーパスワード; デフォルト: なし\n\
       --data-file-check-only    文法チェックだけを実行; デフォルト: 文法チェックの後、ロード\n\
@@ -460,6 +462,8 @@ loaddb: データベースにオブジェクトやスキーマロード\n\
   -s, --schema-file=FILE[:LINE] ファイル[:ライン]情報でスキーマ生成\n\
   -i, --index-file=FILE[:LINE]  ファイル[:ライン]情報でインデックス生成\n\
   -d, --data-file=FILE          ロードするデータファイル\n\
+      --server-data-file=FILE   load data with FILE on server,\n\
+                                absolute path must be provided and the file must exist on server file system\n\
   -t, --table=TABLE             データをロードするテーブル名; データファイルにテーブル情報がない場合使う\n\
       --error-control-file=FILE ロード中に発生するエラーに関するコントロールファイル\n\
       --ignore-class-file=FILE  ロードしないクラス名が入っているファイル\n

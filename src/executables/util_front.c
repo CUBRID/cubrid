@@ -199,6 +199,7 @@ static ARG_MAP_TABLE ua_Load_map[] = {
   {"-sf", "--" LOAD_SCHEMA_FILE_L},
   {"-if", "--" LOAD_INDEX_FILE_L},
   {"-of", "--" LOAD_DATA_FILE_L},
+  {"-sof", "--" LOAD_SERVER_DATA_FILE_L},
   {"-ef", "--" LOAD_ERROR_CONTROL_FILE_L},
   {"-nl", "--" LOAD_IGNORE_LOGGING_L},
   {"-vc", (char *) -1},

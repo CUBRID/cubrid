@@ -23,6 +23,7 @@
 
 #include "load_common.hpp"
 
+#include "dbtype_def.h"
 #include "error_code.h"
 
 #include <fstream>
@@ -70,7 +71,7 @@ namespace cubload
   batch::batch (batch_id id, class_id clsid, std::string &content, int line_offset, int rows)
     : m_id (id)
     , m_clsid (clsid)
-    , m_content (content)
+    , m_content (std::move (content))
     , m_line_offset (line_offset)
     , m_rows (rows)
   {
@@ -163,6 +164,175 @@ namespace cubload
     return size;
   }
 
+  load_args::load_args ()
+    : volume ()
+    , input_file ()
+    , user_name ()
+    , password ()
+    , syntax_check (false)
+    , load_only (false)
+    , estimated_size (0)
+    , verbose (false)
+    , disable_statistics (false)
+    , periodic_commit (0)
+    , verbose_commit (false)
+    , no_oid_hint (false)
+    , schema_file ()
+    , index_file ()
+    , object_file ()
+    , server_object_file ()
+    , error_file ()
+    , ignore_logging (false)
+    , compare_storage_order (false)
+    , table_name ()
+    , ignore_class_file ()
+    , ignore_classes ()
+  {
+    //
+  }
+
+  void
+  load_args::pack (cubpacking::packer &serializator) const
+  {
+    serializator.pack_string (volume);
+    serializator.pack_string (input_file);
+    serializator.pack_string (user_name);
+    serializator.pack_string (password);
+    serializator.pack_bool (syntax_check);
+    serializator.pack_bool (load_only);
+    serializator.pack_int (estimated_size);
+    serializator.pack_bool (verbose);
+    serializator.pack_bool (disable_statistics);
+    serializator.pack_int (periodic_commit);
+    serializator.pack_bool (verbose_commit);
+    serializator.pack_bool (no_oid_hint);
+    serializator.pack_string (schema_file);
+    serializator.pack_string (index_file);
+    serializator.pack_string (object_file);
+    serializator.pack_string (server_object_file);
+    serializator.pack_string (error_file);
+    serializator.pack_bool (ignore_logging);
+    serializator.pack_bool (compare_storage_order);
+    serializator.pack_string (table_name);
+    serializator.pack_string (ignore_class_file);
+
+    serializator.pack_bigint (ignore_classes.size ());
+    for (const std::string &ignore_class : ignore_classes)
+      {
+	serializator.pack_string (ignore_class);
+      }
+  }
+
+  void
+  load_args::unpack (cubpacking::unpacker &deserializator)
+  {
+    deserializator.unpack_string (volume);
+    deserializator.unpack_string (input_file);
+    deserializator.unpack_string (user_name);
+    deserializator.unpack_string (password);
+    deserializator.unpack_bool (syntax_check);
+    deserializator.unpack_bool (load_only);
+    deserializator.unpack_int (estimated_size);
+    deserializator.unpack_bool (verbose);
+    deserializator.unpack_bool (disable_statistics);
+    deserializator.unpack_int (periodic_commit);
+    deserializator.unpack_bool (verbose_commit);
+    deserializator.unpack_bool (no_oid_hint);
+    deserializator.unpack_string (schema_file);
+    deserializator.unpack_string (index_file);
+    deserializator.unpack_string (object_file);
+    deserializator.unpack_string (server_object_file);
+    deserializator.unpack_string (error_file);
+    deserializator.unpack_bool (ignore_logging);
+    deserializator.unpack_bool (compare_storage_order);
+    deserializator.unpack_string (table_name);
+    deserializator.unpack_string (ignore_class_file);
+
+    size_t ignore_classes_size = 0;
+    deserializator.unpack_bigint (ignore_classes_size);
+    ignore_classes.reserve (ignore_classes_size);
+
+    for (size_t i = 0; i < ignore_classes_size; ++i)
+      {
+	std::string ignore_class;
+	deserializator.unpack_string (ignore_class);
+	ignore_classes.push_back (ignore_class);
+      }
+  }
+
+  size_t
+  load_args::get_packed_size (cubpacking::packer &serializator) const
+  {
+    size_t size = 0;
+
+    size += serializator.get_packed_string_size (volume, size);
+    size += serializator.get_packed_string_size (input_file, size);
+    size += serializator.get_packed_string_size (user_name, size);
+    size += serializator.get_packed_string_size (password, size);
+    size += serializator.get_packed_bool_size (size); // syntax_check
+    size += serializator.get_packed_bool_size (size); // load_only
+    size += serializator.get_packed_int_size (size); // estimated_size
+    size += serializator.get_packed_bool_size (size); // verbose
+    size += serializator.get_packed_bool_size (size); // disable_statistics
+    size += serializator.get_packed_int_size (size); // periodic_commit
+    size += serializator.get_packed_bool_size (size); // verbose_commit
+    size += serializator.get_packed_bool_size (size); // no_oid_hint
+    size += serializator.get_packed_string_size (schema_file, size);
+    size += serializator.get_packed_string_size (index_file, size);
+    size += serializator.get_packed_string_size (object_file, size);
+    size += serializator.get_packed_string_size (server_object_file, size);
+    size += serializator.get_packed_string_size (error_file, size);
+    size += serializator.get_packed_bool_size (size); // ignore_logging
+    size += serializator.get_packed_bool_size (size); // compare_storage_order
+    size += serializator.get_packed_string_size (table_name, size);
+    size += serializator.get_packed_string_size (ignore_class_file, size);
+
+    size += serializator.get_packed_bigint_size (size); // ignore_classes size
+    for (const std::string &ignore_class : ignore_classes)
+      {
+	size += serializator.get_packed_string_size (ignore_class, size);
+      }
+
+    return size;
+  }
+
+  int
+  load_args::parse_ignore_class_file ()
+  {
+    if (ignore_class_file.empty ())
+      {
+	// it means that ignore class file was not provided, just exit without error
+	return NO_ERROR;
+      }
+
+    std::ifstream file (ignore_class_file, std::fstream::in);
+    if (!file)
+      {
+	return ER_FILE_UNKNOWN_FILE;
+      }
+
+    for (std::string line; std::getline (file, line);)
+      {
+	rtrim (line);
+	if (line.size () > DB_MAX_IDENTIFIER_LENGTH)
+	  {
+	    file.close ();
+	    ignore_classes.clear ();
+	    return ER_FAILED;
+	  }
+
+	const char *fmt= "%s";
+	std::string class_name (line.size (), '\0');
+
+	// scan first string, and ignore rest of the line
+	sscanf (line.c_str (), fmt, class_name.c_str ());
+	ignore_classes.emplace_back (class_name.c_str (), strlen (class_name.c_str ()));
+      }
+
+    file.close ();
+    return NO_ERROR;
+  }
+
   string_type::string_type ()
     : next (NULL)
     , last (NULL)
@@ -208,9 +378,9 @@ namespace cubload
     //
   }
 
-  class_command_spec_type::class_command_spec_type (int qualifier, string_type *attr_list,
+  class_command_spec_type::class_command_spec_type (int attr_type, string_type *attr_list,
       constructor_spec_type *ctor_spec)
-    : qualifier (qualifier)
+    : attr_type ((attribute_type) attr_type)
     , attr_list (attr_list)
     , ctor_spec (ctor_spec)
   {
@@ -353,11 +523,16 @@ namespace cubload
     int batch_rows = 0;
     int lineno = 0;
     int line_offset = 0;
-    class_id clsid = 0;
-    batch_id batch_id = 0;
+    class_id clsid = FIRST_CLASS_ID;
+    batch_id batch_id = NULL_BATCH_ID;
     std::string batch_buffer;
-    std::ifstream object_file (object_file_name, std::fstream::in);
 
+    if (object_file_name.empty ())
+      {
+	return ER_FILE_UNKNOWN_FILE;
+      }
+
+    std::ifstream object_file (object_file_name, std::fstream::in);
     if (!object_file)
       {
 	// file does not exists on server, let client do the split operation
@@ -392,8 +567,8 @@ namespace cubload
 	      }
 
 	    line.append ("\n"); // feed lexer with new line
-	    batch c_batch (batch_id, clsid, line, lineno, 1);
-	    error_code = c_handler (c_batch);
+	    batch *c_batch = new batch (batch_id, clsid, line, lineno, 1);
+	    error_code = c_handler (*c_batch);
 	    if (error_code != NO_ERROR)
 	      {
 		object_file.close ();
@@ -452,8 +627,8 @@ namespace cubload
 	return NO_ERROR;
       }
 
-    batch batch_ (++batch_id, clsid, batch_content, line_offset, rows);
-    int error_code = handler (batch_);
+    batch *batch_ = new batch (++batch_id, clsid, batch_content, line_offset, rows);
+    int error_code = handler (*batch_);
 
     // prepare to start new batch for the class
     batch_content.clear ();

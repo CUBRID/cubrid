@@ -23,37 +23,20 @@
 
 #include "config.h"
 
-#include <stdio.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <stdarg.h>
-#include <assert.h>
-#include <fstream>
-#include <thread>
-
-#if !defined (WINDOWS)
-#include <unistd.h>
-#include <sys/param.h>
-#endif
-#include "porting.h"
+#include "chartype.h"
 #include "db.h"
-#include "utility.h"
-#include "misc_string.h"
+#include "load_object.h"
 #if defined (SA_MODE)
 #include "load_sa_loader.hpp"
 #endif // SA_MODE
-#include "load_object.h"
-#include "environment_variable.h"
-#include "message_catalog.h"
-#include "chartype.h"
+#include "network_interface_cl.h"
+#include "porting.h"
 #include "schema_manager.h"
 #include "transform.h"
-#include "server_interface.h"
-#include "authenticate.h"
-#include "dbi.h"
-#include "network_interface_cl.h"
-#include "util_func.h"
-#include "load_common.hpp"
+#include "utility.h"
+
+#include <fstream>
+#include <thread>
 
 #define LOAD_INDEX_MIN_SORT_BUFFER_PAGES 8192
 #define LOAD_INDEX_MIN_SORT_BUFFER_PAGES_STRING "8192"
@@ -69,16 +52,11 @@ static FILE *loaddb_log_file;
 int interrupt_query = false;
 bool load_interrupted = false;
 
-static int ldr_validate_object_file (FILE * outfp, const char *argv0, load_args * args);
+static int ldr_validate_object_file (const char *argv0, load_args * args);
 static int ldr_check_file_name_and_line_no (load_args * args);
-#if defined (WINDOWS)
-static int run_proc (char *path, char *cmd_line);
-#endif /* WINDOWS */
 static int loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode);
 static void ldr_exec_query_interrupt_handler (void);
-static int ldr_exec_query_from_file (const char *file_name, FILE * file, int *start_line, load_args * args);
-static int get_ignore_class_list (const char *filename);
-static void free_ignoreclasslist (void);
+static int ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start_line, load_args * args);
 static int ldr_compare_attribute_with_meta (char *table_name, char *meta, DB_ATTRIBUTE * attribute);
 static int ldr_compare_storage_order (FILE * schema_file);
 static void get_loaddb_args (UTIL_ARG_MAP * arg_map, load_args * args);
@@ -147,47 +125,43 @@ load_usage (const char *argv0)
 
 /*
  * ldr_validate_object_file - check input file arguments
- *    return: 0 if successful, 1 if error
- *    outfp(out): error message destination
+ *    return: NO_ERROR if successful, ER_FAILED if error
  */
 static int
-ldr_validate_object_file (FILE * outfp, const char *argv0, load_args * args)
+ldr_validate_object_file (const char *argv0, load_args * args)
 {
-  if (args->volume == NULL)
+  if (args->volume.empty ())
     {
       PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_MISSING_DBNAME));
       load_usage (argv0);
-      return 1;
+      return ER_FAILED;
     }
 
-  if (args->input_file[0] == 0 && args->object_file[0] == 0)
+  if (args->input_file.empty () && args->object_file.empty () && args->server_object_file.empty ())
     {
       /* if schema/index file are specified, process them only */
-      if (args->schema_file[0] == 0 && args->index_file[0] == 0)
+      if (args->schema_file.empty () && args->index_file.empty ())
 	{
 	  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
 	  load_usage (argv0);
-	  return 1;
-	}
-      else
-	{
-	  return 0;
+	  return ER_FAILED;
 	}
     }
-  else if (args->input_file[0] != 0 && args->object_file[0] != 0 && strcmp (args->input_file, args->object_file) != 0)
+  else if (!args->input_file.empty () && !args->object_file.empty () && args->input_file != args->object_file)
     {
       PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_GENERAL, MSGCAT_GENERAL_ARG_DUPLICATE),
 			     "input-file");
-      return 1;
+      return ER_FAILED;
     }
   else
     {
-      if (args->object_file[0] == 0)
+      if (args->object_file.empty ())
 	{
 	  args->object_file = args->input_file;
 	}
-      return 0;
     }
+
+  return NO_ERROR;
 }
 
 /*
@@ -199,9 +173,11 @@ ldr_check_file_name_and_line_no (load_args * args)
 {
   char *p, *q;
 
-  if (args->schema_file[0] != 0)
+  if (!args->schema_file.empty ())
     {
-      p = strchr (args->schema_file, ':');
+      /* *INDENT-OFF* */
+      p = strchr (const_cast<char *> (args->schema_file.c_str ()), ':');
+      /* *INDENT-ON* */
       if (p != NULL)
 	{
 	  for (q = p + 1; *q; q++)
@@ -219,9 +195,11 @@ ldr_check_file_name_and_line_no (load_args * args)
 	}
     }
 
-  if (args->index_file[0] != 0)
+  if (!args->index_file.empty ())
     {
-      p = strchr (args->index_file, ':');
+      /* *INDENT-OFF* */
+      p = strchr (const_cast<char *> (args->index_file.c_str ()), ':');
+      /* *INDENT-ON* */
       if (p != NULL)
 	{
 	  for (q = p + 1; *q; q++)
@@ -241,49 +219,6 @@ ldr_check_file_name_and_line_no (load_args * args)
 
   return 0;
 }
-
-#if defined (WINDOWS)
-/*
- * run_proc - run a process with a given command_line
- *    return: 0 for success, non-zero otherwise
- *    path(in): progarm path
- *    cmd_line(in): command line
- */
-static int
-run_proc (char *path, char *cmd_line)
-{
-  STARTUPINFO start_info;
-  PROCESS_INFORMATION proc_info;
-  BOOL status;
-
-  GetStartupInfo (&start_info);
-  start_info.wShowWindow = SW_HIDE;
-  start_info.dwFlags = STARTF_USESTDHANDLES;
-  start_info.hStdInput = GetStdHandle (STD_INPUT_HANDLE);
-  start_info.hStdOutput = GetStdHandle (STD_OUTPUT_HANDLE);
-  start_info.hStdError = GetStdHandle (STD_ERROR_HANDLE);
-
-  status = CreateProcess (path, cmd_line, NULL, NULL, true, 0, NULL, NULL, &start_info, &proc_info);
-  if (status == false)
-    {
-      LPVOID lpMsgBuf;
-      if (FormatMessage
-	  (FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL,
-	   GetLastError (), MAKELANGID (LANG_NEUTRAL, SUBLANG_DEFAULT), (LPTSTR) & lpMsgBuf, 0, NULL))
-	{
-	  printf ("%s\n", (const char *) lpMsgBuf);
-	  LocalFree (lpMsgBuf);
-	}
-
-      return -1;
-    }
-
-  WaitForSingleObject (proc_info.hProcess, INFINITE);
-  CloseHandle (proc_info.hProcess);
-  CloseHandle (proc_info.hThread);
-  return 0;
-}
-#endif /* WINDOWS */
 
 static char *
 ldr_get_token (char *str, char **out_str, char start, char end)
@@ -522,23 +457,23 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   obt_Enable_autoincrement = false;
   load_args args;
 
-    /* *INDENT-OFF* */
+  /* *INDENT-OFF* */
   static std::ifstream object_file;
   /* *INDENT-ON* */
 
   get_loaddb_args (arg_map, &args);
 
-  if (ldr_validate_object_file (stderr, arg->argv0, &args))
+  if (ldr_validate_object_file (arg->argv0, &args) != NO_ERROR)
     {
       status = 1;
       goto error_return;
     }
 
   /* error message log file */
-  sprintf (log_file_name, "%s_%s.err", args.volume, arg->command_name);
+  sprintf (log_file_name, "%s_%s.err", args.volume.c_str (), arg->command_name);
   er_init (log_file_name, ER_NEVER_EXIT);
 
-  if (args.index_file[0] != '\0' && prm_get_integer_value (PRM_ID_SR_NBUFFERS) < LOAD_INDEX_MIN_SORT_BUFFER_PAGES)
+  if (!args.index_file.empty () && prm_get_integer_value (PRM_ID_SR_NBUFFERS) < LOAD_INDEX_MIN_SORT_BUFFER_PAGES)
     {
       sysprm_set_force (prm_get_name (PRM_ID_SR_NBUFFERS), LOAD_INDEX_MIN_SORT_BUFFER_PAGES_STRING);
     }
@@ -546,7 +481,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   sysprm_set_force (prm_get_name (PRM_ID_JAVA_STORED_PROCEDURE), "no");
 
   /* open loaddb log file */
-  sprintf (log_file_name, "%s_%s", args.volume, LOADDB_LOG_FILENAME_SUFFIX);
+  sprintf (log_file_name, "%s_%s", args.volume.c_str (), LOADDB_LOG_FILENAME_SUFFIX);
   loaddb_log_file = fopen (log_file_name, "w+");
   if (loaddb_log_file == NULL)
     {
@@ -556,10 +491,10 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
     }
 
   /* login */
-  if (args.user_name != NULL || !dba_mode)
+  if (!args.user_name.empty () || !dba_mode)
     {
-      (void) db_login (args.user_name, args.password);
-      error = db_restart (arg->command_name, true, args.volume);
+      (void) db_login (args.user_name.c_str (), args.password.c_str ());
+      error = db_restart (arg->command_name, true, args.volume.c_str ());
       if (error != NO_ERROR)
 	{
 	  if (error == ER_AU_INVALID_PASSWORD)
@@ -571,8 +506,8 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 		{
 		  passwd = NULL;
 		}
-	      (void) db_login (args.user_name, passwd);
-	      error = db_restart (arg->command_name, true, args.volume);
+	      (void) db_login (args.user_name.c_str (), passwd);
+	      error = db_restart (arg->command_name, true, args.volume.c_str ());
 	    }
 	}
     }
@@ -582,7 +517,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       AU_DISABLE_PASSWORDS ();
       db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
       (void) db_login ("DBA", NULL);
-      error = db_restart (arg->command_name, true, args.volume);
+      error = db_restart (arg->command_name, true, args.volume.c_str ());
     }
 
   if (error != NO_ERROR)
@@ -595,7 +530,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	}
       else
 	{
-	  PRINT_AND_LOG_ERR_MSG ("Cannot restart database %s\n", args.volume);
+	  PRINT_AND_LOG_ERR_MSG ("Cannot restart database %s\n", args.volume.c_str ());
 	}
       status = 3;
       goto error_return;
@@ -607,31 +542,31 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   /* check if schema/index/object files exist */
   ldr_check_file_name_and_line_no (&args);
 
-  if (args.schema_file[0] != 0)
+  if (!args.schema_file.empty ())
     {
-      schema_file = fopen (args.schema_file, "r");
+      schema_file = fopen (args.schema_file.c_str (), "r");
       if (schema_file == NULL)
 	{
 	  msg_format = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_BAD_INFILE);
-	  print_log_msg (1, msg_format, args.schema_file);
-	  util_log_write_errstr (msg_format, args.schema_file);
+	  print_log_msg (1, msg_format, args.schema_file.c_str ());
+	  util_log_write_errstr (msg_format, args.schema_file.c_str ());
 	  status = 2;
 	  goto error_return;
 	}
     }
-  if (args.index_file[0] != 0)
+  if (!args.index_file.empty ())
     {
-      index_file = fopen (args.index_file, "r");
+      index_file = fopen (args.index_file.c_str (), "r");
       if (index_file == NULL)
 	{
 	  msg_format = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_BAD_INFILE);
-	  print_log_msg (1, msg_format, args.index_file);
-	  util_log_write_errstr (msg_format, args.index_file);
+	  print_log_msg (1, msg_format, args.index_file.c_str ());
+	  util_log_write_errstr (msg_format, args.index_file.c_str ());
 	  status = 2;
 	  goto error_return;
 	}
     }
-  if (args.object_file[0] != 0)
+  if (!args.object_file.empty ())
     {
       /* *INDENT-OFF* */
       object_file.open (args.object_file, std::fstream::in | std::fstream::binary);
@@ -640,8 +575,8 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       if (!object_file.is_open () || !object_file.good ())
 	{
 	  msg_format = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_BAD_INFILE);
-	  print_log_msg (1, msg_format, args.object_file);
-	  util_log_write_errstr (msg_format, args.object_file);
+	  print_log_msg (1, msg_format, args.object_file.c_str ());
+	  util_log_write_errstr (msg_format, args.object_file.c_str ());
 	  status = 2;
 	  goto error_return;
 	}
@@ -649,11 +584,9 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       object_file.close ();
     }
 
-  if (args.ignore_class_file)
+  if (!args.ignore_class_file.empty ())
     {
-      int retval;
-      retval = get_ignore_class_list (args.ignore_class_file);
-
+      int retval = args.parse_ignore_class_file ();
       if (retval < 0)
 	{
 	  status = 2;
@@ -671,7 +604,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       goto error_return;
     }
 
-  if (args.error_file[0] != 0)
+  if (!args.error_file.empty ())
     {
       if (args.syntax_check)
 	{
@@ -681,12 +614,12 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	  status = 1;		/* parsing error */
 	  goto error_return;
 	}
-      error_file = fopen_ex (args.error_file, "rt");
+      error_file = fopen_ex (args.error_file.c_str (), "rt");
       if (error_file == NULL)
 	{
 	  msg_format = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_BAD_INFILE);
-	  print_log_msg (1, msg_format, args.error_file);
-	  util_log_write_errstr (msg_format, args.error_file);
+	  print_log_msg (1, msg_format, args.error_file.c_str ());
+	  util_log_write_errstr (msg_format, args.error_file.c_str ());
 	  status = 2;
 	  goto error_return;
 	}
@@ -721,7 +654,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	  AU_DISABLE (au_save);
 	}
 
-      if (ldr_exec_query_from_file (args.schema_file, schema_file, &schema_file_start_line, &args) != 0)
+      if (ldr_exec_query_from_file (args.schema_file.c_str (), schema_file, &schema_file_start_line, &args) != 0)
 	{
 	  print_log_msg (1, "\nError occurred during schema loading." "\nAborting current transaction...");
 	  msg_format = "Error occurred during schema loading." "Aborting current transaction...\n";
@@ -729,8 +662,8 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	  status = 3;
 	  db_end_session ();
 	  db_shutdown ();
-	  print_log_msg (1, " done.\n\nRestart loaddb with '-%c %s:%d' option\n", LOAD_SCHEMA_FILE_S, args.schema_file,
-			 schema_file_start_line);
+	  print_log_msg (1, " done.\n\nRestart loaddb with '-%c %s:%d' option\n", LOAD_SCHEMA_FILE_S,
+			 args.schema_file.c_str (), schema_file_start_line);
 	  goto error_return;
 	}
 
@@ -739,7 +672,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	  AU_ENABLE (au_save);
 	}
 
-      print_log_msg (1, "Schema loading from %s finished.\n", args.schema_file);
+      print_log_msg (1, "Schema loading from %s finished.\n", args.schema_file.c_str ());
 
       /* update catalog statistics */
       AU_DISABLE (au_save);
@@ -776,7 +709,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   if (!interrupted && index_file != NULL)
     {
       print_log_msg (1, "\nStart index loading.\n");
-      if (ldr_exec_query_from_file (args.index_file, index_file, &index_file_start_line, &args) != 0)
+      if (ldr_exec_query_from_file (args.index_file.c_str (), index_file, &index_file_start_line, &args) != 0)
 	{
 	  print_log_msg (1, "\nError occurred during index loading." "\nAborting current transaction...");
 	  msg_format = "Error occurred during index loading." "Aborting current transaction...\n";
@@ -784,8 +717,8 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	  status = 3;
 	  db_end_session ();
 	  db_shutdown ();
-	  print_log_msg (1, " done.\n\nRestart loaddb with '-%c %s:%d' option\n", LOAD_INDEX_FILE_S, args.index_file,
-			 index_file_start_line);
+	  print_log_msg (1, " done.\n\nRestart loaddb with '-%c %s:%d' option\n", LOAD_INDEX_FILE_S,
+			 args.index_file.c_str (), index_file_start_line);
 	  goto error_return;
 	}
 
@@ -795,7 +728,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       sm_update_catalog_statistics (CT_INDEXKEY_NAME, STATS_WITH_FULLSCAN);
       AU_ENABLE (au_save);
 
-      print_log_msg (1, "Index loading from %s finished.\n", args.index_file);
+      print_log_msg (1, "Index loading from %s finished.\n", args.index_file.c_str ());
       db_commit_transaction ();
     }
 
@@ -808,8 +741,6 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   print_log_msg ((int) args.verbose, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_CLOSING));
   (void) db_end_session ();
   (void) db_shutdown ();
-
-  free_ignoreclasslist ();
 
   fclose (loaddb_log_file);
 
@@ -832,8 +763,6 @@ error_return:
     {
       fclose (loaddb_log_file);
     }
-
-  free_ignoreclasslist ();
 
   return status;
 }
@@ -932,7 +861,7 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 
   util_arm_signal_handlers (&ldr_exec_query_interrupt_handler, &ldr_exec_query_interrupt_handler);
 
-  while (1)
+  while (true)
     {
       if (interrupt_query)
 	{
@@ -1023,123 +952,29 @@ end:
   return error;
 }
 
-static int
-get_ignore_class_list (const char *input_file_name)
-{
-#if defined (SA_MODE)
-  int inc_unit = 128;
-  int list_size;
-  FILE *input_file = NULL;
-  char buffer[DB_MAX_IDENTIFIER_LENGTH], buffer_scan_format[16];
-  char class_name[DB_MAX_IDENTIFIER_LENGTH];
-
-  if (ignore_class_list != NULL)
-    {
-      free_ignoreclasslist ();
-    }
-
-  if (input_file_name == NULL)
-    {
-      return 0;
-    }
-
-  input_file = fopen (input_file_name, "r");
-  if (input_file == NULL)
-    {
-      perror (input_file_name);
-      util_log_write_errid (MSGCAT_UTIL_GENERIC_FILEOPEN_ERROR, input_file_name);
-      return 1;
-    }
-
-  ignore_class_list = (char **) malloc (sizeof (char *) * inc_unit);
-  if (ignore_class_list == NULL)
-    {
-      util_log_write_errid (MSGCAT_UTIL_GENERIC_NO_MEM);
-      goto error;
-    }
-
-  memset (ignore_class_list, '\0', inc_unit);
-
-  list_size = inc_unit;
-  ignore_class_num = 0;
-
-  snprintf (buffer_scan_format, sizeof (buffer_scan_format), "%%%ds\n", (int) (sizeof (buffer) - 1));
-
-  while (fgets ((char *) buffer, DB_MAX_IDENTIFIER_LENGTH, input_file) != NULL)
-    {
-      if ((strchr (buffer, '\n') - buffer) >= 1)
-	{
-	  if (ignore_class_num >= list_size)
-	    {
-	      ignore_class_list = (char **) realloc (ignore_class_list, sizeof (char *) * (list_size + inc_unit));
-	      if (ignore_class_list == NULL)
-		{
-		  util_log_write_errid (MSGCAT_UTIL_GENERIC_NO_MEM);
-		  goto error;
-		}
-
-	      memset (ignore_class_list + list_size, '\0', inc_unit);
-	      list_size = list_size + inc_unit;
-	    }
-
-	  sscanf ((char *) buffer, buffer_scan_format, (char *) class_name);
-	  ignore_class_list[ignore_class_num] = strdup (class_name);
-	  if (ignore_class_list[ignore_class_num] == NULL)
-	    {
-	      util_log_write_errid (MSGCAT_UTIL_GENERIC_NO_MEM);
-	      goto error;
-	    }
-
-	  ignore_class_num++;
-	}
-    }
-
-  fclose (input_file);
-
-  return 0;
-
-error:
-  free_ignoreclasslist ();
-  fclose (input_file);
-
-  return -1;
-#else
-  return 0;
-#endif // SA_MODE
-}
-
-static void
-free_ignoreclasslist (void)
-{
-#if defined (SA_MODE)
-  int i = 0;
-
-  if (ignore_class_list != NULL)
-    {
-      for (i = 0; i < ignore_class_num; i++)
-	{
-	  if (*(ignore_class_list + i) != NULL)
-	    {
-	      free (*(ignore_class_list + i));
-	    }
-	}
-      free (ignore_class_list);
-      ignore_class_list = NULL;
-    }
-  ignore_class_num = 0;
-#else
-#endif // SA_MODE
-}
-
 static void
 get_loaddb_args (UTIL_ARG_MAP * arg_map, load_args * args)
 {
   assert (arg_map != NULL && args != NULL);
 
-  args->volume = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
-  args->input_file = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 1);
-  args->user_name = utility_get_option_string_value (arg_map, LOAD_USER_S, 0);
-  args->password = utility_get_option_string_value (arg_map, LOAD_PASSWORD_S, 0);
+  std::string empty;
+
+  char *volume = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  char *input_file = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 1);
+  char *user_name = utility_get_option_string_value (arg_map, LOAD_USER_S, 0);
+  char *password = utility_get_option_string_value (arg_map, LOAD_PASSWORD_S, 0);
+  char *schema_file = utility_get_option_string_value (arg_map, LOAD_SCHEMA_FILE_S, 0);
+  char *index_file = utility_get_option_string_value (arg_map, LOAD_INDEX_FILE_S, 0);
+  char *object_file = utility_get_option_string_value (arg_map, LOAD_DATA_FILE_S, 0);
+  char *server_object_file = utility_get_option_string_value (arg_map, LOAD_SERVER_DATA_FILE_S, 0);
+  char *error_file = utility_get_option_string_value (arg_map, LOAD_ERROR_CONTROL_FILE_S, 0);
+  char *table_name = utility_get_option_string_value (arg_map, LOAD_TABLE_NAME_S, 0);
+  char *ignore_class_file = utility_get_option_string_value (arg_map, LOAD_IGNORE_CLASS_S, 0);
+
+  args->volume = volume ? volume : empty;
+  args->input_file = input_file ? input_file : empty;
+  args->user_name = user_name ? user_name : empty;
+  args->password = password ? password : empty;
   args->syntax_check = utility_get_option_bool_value (arg_map, LOAD_CHECK_ONLY_S);
   args->load_only = utility_get_option_bool_value (arg_map, LOAD_LOAD_ONLY_S);
   args->estimated_size = utility_get_option_int_value (arg_map, LOAD_ESTIMATED_SIZE_S);
@@ -1148,22 +983,15 @@ get_loaddb_args (UTIL_ARG_MAP * arg_map, load_args * args)
   args->periodic_commit = utility_get_option_int_value (arg_map, LOAD_PERIODIC_COMMIT_S);
   args->verbose_commit = args->periodic_commit > 0;
   args->no_oid_hint = utility_get_option_bool_value (arg_map, LOAD_NO_OID_S);
-  args->schema_file = utility_get_option_string_value (arg_map, LOAD_SCHEMA_FILE_S, 0);
-  args->index_file = utility_get_option_string_value (arg_map, LOAD_INDEX_FILE_S, 0);
-  args->object_file = utility_get_option_string_value (arg_map, LOAD_DATA_FILE_S, 0);
-  args->error_file = utility_get_option_string_value (arg_map, LOAD_ERROR_CONTROL_FILE_S, 0);
+  args->schema_file = schema_file ? schema_file : empty;
+  args->index_file = index_file ? index_file : empty;
+  args->object_file = object_file ? object_file : empty;
+  args->server_object_file = server_object_file ? server_object_file : empty;
+  args->error_file = error_file ? error_file : empty;
   args->ignore_logging = utility_get_option_bool_value (arg_map, LOAD_IGNORE_LOGGING_S);
-  args->table_name = utility_get_option_string_value (arg_map, LOAD_TABLE_NAME_S, 0);
-
-  args->ignore_class_file = utility_get_option_string_value (arg_map, LOAD_IGNORE_CLASS_S, 0);
   args->compare_storage_order = utility_get_option_bool_value (arg_map, LOAD_COMPARE_STORAGE_ORDER_S);
-
-  args->input_file = args->input_file ? args->input_file : (char *) "";
-  args->schema_file = args->schema_file ? args->schema_file : (char *) "";
-  args->index_file = args->index_file ? args->index_file : (char *) "";
-  args->object_file = args->object_file ? args->object_file : (char *) "";
-  args->error_file = args->error_file ? args->error_file : (char *) "";
-  args->table_name = args->table_name ? args->table_name : (char *) "";
+  args->table_name = table_name ? table_name : empty;
+  args->ignore_class_file = ignore_class_file ? ignore_class_file : empty;
 }
 
 static void
@@ -1171,7 +999,7 @@ ldr_server_load (load_args * args, int *status, bool * interrupted)
 {
   register_signal_handlers ();
 
-  int error_code = loaddb_init ();
+  int error_code = loaddb_init (*args);
   if (error_code != NO_ERROR)
     {
       print_er_msg ();
@@ -1272,38 +1100,58 @@ register_signal_handlers ()
   util_arm_signal_handlers (sig_handler, sig_handler);
 }
 
-
 static int
 load_object_file (load_args * args)
 {
-  // resolve absolute path for the object file
-  char object_file_abs_path[PATH_MAX];
-  if (realpath (args->object_file, object_file_abs_path) == NULL)
+  int error_code = NO_ERROR;
+
+  // first try to load directly on server
+  if (!args->server_object_file.empty ())
     {
-      fprintf (stderr, "ERROR: failed to resolve real path name for %s\n", args->object_file);
-      return ER_FAILED;
+      error_code = loaddb_load_object_file ();
+      if (error_code == NO_ERROR)
+	{
+	  // load was performed successfully by the server
+	  return error_code;
+	}
+      else if (error_code == ER_FILE_UNKNOWN_FILE)
+	{
+	  if (args->object_file.empty ())
+	    {
+	      fprintf (stderr, "ERROR: file %s does not exists on the server machine\n",
+		       args->server_object_file.c_str ());
+	      return error_code;
+	    }
+
+	  // server data file does not exists on server file system, try to load client data file
+	  fprintf (stderr,
+		   "ERROR: file %s does not exists on the server machine, try to load %s from the client machine\n",
+		   args->server_object_file.c_str (), args->object_file.c_str ());
+	}
+      else
+	{
+	  // there was an error while loading server data file on server, therefore exit
+	  return error_code;
+	}
     }
 
   /* *INDENT-OFF* */
-  std::string object_file_abs_path_str (object_file_abs_path);
+  batch_handler b_handler = [] (const batch &batch) -> int
+    {
+      int ret = loaddb_load_batch (batch);
+      delete &batch;
+
+      return ret;
+    };
+  batch_handler c_handler = [] (const batch &batch) -> int
+    {
+      int ret = loaddb_install_class (batch);
+      delete &batch;
+
+      return ret;
+    };
   /* *INDENT-ON* */
 
-  int error_code = loaddb_load_object_file (object_file_abs_path_str);
-  if (error_code == ER_FILE_UNKNOWN_FILE)
-    {
-      /* *INDENT-OFF* */
-      batch_handler b_handler = [] (const batch &batch)
-      {
-	return loaddb_load_batch (batch);
-      };
-      batch_handler c_handler = [] (const batch &batch)
-      {
-	return loaddb_install_class (batch);
-      };
-      /* *INDENT-ON* */
-
-      error_code = split (args->periodic_commit, object_file_abs_path_str, c_handler, b_handler);
-    }
-
-  return error_code;
+  // here we are sure that object_file exists since it was validated by loaddb_internal function
+  return split (args->periodic_commit, args->object_file, c_handler, b_handler);
 }

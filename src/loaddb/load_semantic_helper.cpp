@@ -46,24 +46,14 @@ namespace cubload
     , m_qstr_buf (cubmem::EXPONENTIAL_STANDARD_BLOCK_ALLOCATOR)
     , m_qstr_buf_ptr (NULL)
     , m_qstr_buf_idx (0)
-    , m_qstr_buf_pool (NULL)
+    , m_qstr_buf_pool {}
     , m_qstr_buf_pool_idx (0)
   {
-    m_qstr_buf_pool = new char *[QUOTED_STR_BUF_POOL_SIZE];
-    for (std::size_t i = 0; i < QUOTED_STR_BUF_POOL_SIZE; ++i)
-      {
-	m_qstr_buf_pool[i] = new char[MAX_QUOTED_STR_BUF_SIZE];
-      }
+    //
   }
 
   semantic_helper::~semantic_helper ()
   {
-    for (std::size_t i = 0; i < QUOTED_STR_BUF_POOL_SIZE; ++i)
-      {
-	delete [] m_qstr_buf_pool[i];
-      }
-    delete [] m_qstr_buf_pool;
-
     clear ();
   }
 

@@ -447,7 +447,7 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 58 %1$d instanţe commise (salvate)\n
 59 \nNu se poate invoca versiunea neoptimizată a lui loaddb.\n
 60 Eroare la parsarea lui \"%1$s\", ca fiind de tip %2$s.\n
-61 Object Reference is not supported in CS mode.\n
+61 Referinţa de obiecte nu este acceptată în modul de execuţie independent.\n
 112   %1$d instanţe\r
 113 Ultima linie salvata (prin commit) : %1$d\n
 114 error-control-file
@@ -457,9 +457,11 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 118 Maximum length of class name is %1$d bytes.\n
 120 \
 loaddb: Importă obiecte şi scheme în baza de date.\n\
-utilizare: %1$s loaddb [OPŢIUNI] nume-bază-de-date\n\
+utilizare: %1$s loaddb [OPŢIUNI] nume-bază-de-date[@host]\n\
 \n\
 opţiuni valide:\n\
+  -S, --SA-mode                     mod de execuţie independent\n\
+  -C, --CS-mode                     mod de execuţie client-server\n\
   -u, --user=ID                     ID de utilizator pentru acces la baza de date; implicit: "public"\n\
   -p, --password=PAROLA             parola de utilizator; implicit: nulă\n\
       --data-file-check-only        verifică sintaxa pentru fişierul de date fără a-l încarca;\n\
@@ -473,8 +475,11 @@ opţiuni valide:\n\
       --no-oid                      nu se va folosi OID\n\
       --no-statistics               nu se vor actualiza statisticile în timpul încărcării\n\
   -s, --schema-file=FIŞIER[:LINIE]  creează schema de la linia, respectiv din fişierul specificat\n\
-  -i, --index-file=FIŞIER[:LINIE]   creeaza index de la linia, respectiv din fişierul specificat\n\
-  -d, --data-file=FIŞIER            incarca datele din FIŞIER\n\
+  -i, --index-file=FIŞIER[:LINIE]   creează index de la linia, respectiv din fişierul specificat\n\
+  -d, --data-file=FIŞIER            incarcă datele din FIŞIER\n\
+      --server-data-file=FILE       incarcă datele din FIŞIER pe server,\n\
+                                    trebuie specificată calea absolută a fişierului\n\
+                                    şi fişierul trebuie să se afle pe sistemul de fişiere al serverului\n\
   -t, --table=TABELA                numele tabelei înlocuite pentru antetul de clasă absent din fişierul de date\n\
       --error-control-file=FIŞIER   FIŞIER de control al erorilor în timpul încărcării\n\
       --ignore-class-file=FIŞIER    FIŞIER de intrare cu numele claselor ce nu vor fi încărcate\n

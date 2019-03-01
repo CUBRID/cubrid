@@ -143,7 +143,7 @@ namespace cubload
 %token <string> DQS_String_Body
 %token COMMA
 
-%type <int_val> attribute_list_qualifier
+%type <int_val> attribute_list_type
 %type <cmd_spec> class_command_spec
 %type <ctor_spec> constructor_spec
 %type <string> attribute_name
@@ -275,20 +275,20 @@ class_command_spec :
     $$ = new class_command_spec_type (LDR_ATTRIBUTE_ANY, $1, $2);
   }
   |
-  attribute_list_qualifier attribute_list
+  attribute_list_type attribute_list
   {
-    DBG_PRINT ("attribute_list_qualifier attribute_list");
+    DBG_PRINT ("attribute_list_type attribute_list");
     $$ = new class_command_spec_type ($1, $2, NULL);
   }
   |
-  attribute_list_qualifier attribute_list constructor_spec
+  attribute_list_type attribute_list constructor_spec
   {
-    DBG_PRINT ("attribute_list_qualifier attribute_list constructor_spec");
+    DBG_PRINT ("attribute_list_type attribute_list constructor_spec");
     $$ = new class_command_spec_type ($1, $2, $3);
   }
   ;
 
-attribute_list_qualifier :
+attribute_list_type :
   CLASS
   {
     DBG_PRINT ("CLASS");

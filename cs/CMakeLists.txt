@@ -273,6 +273,11 @@ set(LOADDB_SOURCES
   ${LOADDB_DIR}/load_object.c
   )
 
+set(LOADDB_HEADERS
+  ${LOADDB_DIR}/load_common.hpp
+  ${LOADDB_DIR}/load_object.h
+  )
+
 list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)
 if(UNIX)
   list(APPEND EXECUTABLE_SOURCES ${EXECUTABLES_DIR}/checksumdb.c)
@@ -383,6 +388,7 @@ add_library(cubridcs SHARED
   ${XASL_SOURCES}
   ${XASL_HEADERS}
   ${LOADDB_SOURCES}
+  ${LOADDB_HEADERS}
   )
 set_target_properties(cubridcs PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 

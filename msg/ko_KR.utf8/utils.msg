@@ -445,9 +445,11 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 118 클래스 이름의 최대 길이는 %1$d 바이트 입니다.\n
 120 \
 loaddb: 데이터베이스에 객체 및 스키마 적재\n\
-사용법: %1$s loaddb [옵션] <데이터베이스 이름>\n\
+사용법: %1$s loaddb [옵션] 데이터베이스 이름[@호스트]\n\
 \n\
 옵션:\n\
+  -S, --SA-mode                 독립 모드 실행\n\
+  -C, --CS-mode                 클라이언트 서버 모드 실행\n\
   -u, --user=ID                 데이터베이스 접근에 관한 사용자 이름; 기본값: "public"\n\
   -p, --password=PASS           사용자 패스워드; 기본값: 없음\n\
       --data-file-check-only    문법 체크만 수행; 기본값: 문법 체크 이후 적재\n\
@@ -460,6 +462,8 @@ loaddb: 데이터베이스에 객체 및 스키마 적재\n\
   -s, --schema-file=FILE[:LINE] 파일[:라인] 정보로 스키마 생성\n\
   -i, --index-file=FILE[:LINE]  파일[:라인] 정보로 인덱스 생성\n\
   -d, --data-file=FILE          적재할 데이터 파일\n\
+      --server-data-file=FILE   load data with FILE on server,\n\
+                                absolute path must be provided and the file must exist on server file system\n\
   -t, --table=TABLE             데이터를 적재할 테이블 이름; 데이터 파일에 테이블 정보가 없는 경우 사용\n\
       --error-control-file=FILE 적재 시 발생하는 에러에 대한 제어 파일\n\
       --ignore-class-file=FILE  적재하지 않을 클래스 이름이 있는 파일\n

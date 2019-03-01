@@ -445,24 +445,28 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 118 Maximale Länge des Klassennamens ist %1$d Bytes.\n
 120 \
 loaddb: Import von Objekten und Schemas in die Datenbank.\n\
-Anwendung: %1$s loaddb [OPTION] Datenbanknamen\n\
+Anwendung: %1$s loaddb [OPTION] Datenbanknamen[@host]\n\
 \n\
 gültige Optionen:\n\
-  -u, --user=ID                 Benutzer ID für Datenbankzugang; Standard: "public"\n\
-  -p, --password=PASSWORT           Benutzerpasswort; Standard: keinen\n\
-      --data-file-check-only    Syntaxprüfung für Daten ohne Ladung; Standard: Ladung nach Prüfung\n\
-  -l, --load-only               Daten ohne Syntaxprüfung laden; Standard: Ladung nach Prüfung\n\
-      --estimated-size=ANZAHL   abgeschätzte Anzahl von Instanzen; Standard: 5000\n\
-  -v, --verbose                 ausführliche Statusmeldungen aktivieren; Standard: inaktiv\n\
-  -c, --periodic-commit=ANZAHL   Einfügungsanzahl für periodische Festschreibung; Standard: keine Festschreibung während der Ladung\n\
-      --no-oid                  OID nicht anwenden\n\
-      --no-statistics           Statistiken während Ladung nicht aktualisieren \n\
-  -s, --schema-file=DATEI[:ZEILE] Schema ab ZEILE mit DATEI erstellen \n\
-  -i, --index-file=DATEI[:ZEILE]  Index ab ZEILE mit DATEI erstellen \n\
-  -d, --data-file=DATEI          DATEI laden \n\
-  -t, --table=TABLE             Name der Tabelle, die für das fehlende Klassenheader in der Datei ersetzt wird \n\
-      --error-control-file=DATEI DATEI für Fehlerkontrolle während Ladung\n\
-      --ignore-class-file=DATEI  Eingangsdatei für Klassenamen, die nicht geladen werden\n
+  -S, --SA-mode                   Stand-Alone-Ausführung\n\
+  -C, --CS-mode                   Client-Server-Ausführung\n\
+  -u, --user=ID                   Benutzer ID für Datenbankzugang; Standard: "public"\n\
+  -p, --password=PASSWORT         Benutzerpasswort; Standard: keinen\n\
+      --data-file-check-only      Syntaxprüfung für Daten ohne Ladung; Standard: Ladung nach Prüfung\n\
+  -l, --load-only                 Daten ohne Syntaxprüfung laden; Standard: Ladung nach Prüfung\n\
+      --estimated-size=ANZAHL     abgeschätzte Anzahl von Instanzen; Standard: 5000\n\
+  -v, --verbose                   ausführliche Statusmeldungen aktivieren; Standard: inaktiv\n\
+  -c, --periodic-commit=ANZAHL    Einfügungsanzahl für periodische Festschreibung; Standard: keine Festschreibung während der Ladung\n\
+      --no-oid                    OID nicht anwenden\n\
+      --no-statistics             Statistiken während Ladung nicht aktualisieren\n\
+  -s, --schema-file=DATEI[:ZEILE] Schema ab ZEILE mit DATEI erstellen\n\
+  -i, --index-file=DATEI[:ZEILE]  Index ab ZEILE mit DATEI erstellen\n\
+  -d, --data-file=DATEI           DATEI laden\n\
+      --server-data-file=FILE     load data with FILE on server,\n\
+                                  absolute path must be provided and the file must exist on server file system\n\
+  -t, --table=TABLE               Name der Tabelle, die für das fehlende Klassenheader in der Datei ersetzt wird\n\
+      --error-control-file=DATEI  DATEI für Fehlerkontrolle während Ladung\n\
+      --ignore-class-file=DATEI   Eingangsdatei für Klassenamen, die nicht geladen werden\n
 
 $set 13 MSGCAT_UTIL_SET_UNLOADDB
 41 Cached-Seiten-Anzahl ungültig.\n
@@ -479,24 +483,24 @@ unloaddb: Export Objekte und Schemas aus der Datenbank.\n\
 Anwendung: %1$s unloaddb [OPTION] Datenbanknamen\n\
 \n\
 gültige Optionen:\n\
-  -u, --user=ID               Benutzer ID für Datenbankzugang; Standard: "dba"\n\
-  -p, --password=PASSWORT     Benutzerpasswort; Standard: keinen\n\
+  -u, --user=ID                Benutzer ID für Datenbankzugang; Standard: "dba"\n\
+  -p, --password=PASSWORT      Benutzerpasswort; Standard: keinen\n\
   -i, --input-class-file=DATEI Eingangsdatei für Tabellennamen; Standard: Alle Klassen exportieren\n\
-      --include-reference     referenzierte Tabellen einfügen; mit -i Option; Standard: deaktiviert\n\
-      --input-class-only      nur angegebene Klasse einfügen; mit -i Option; Standard: deaktiviert\n\
+      --include-reference      referenzierte Tabellen einfügen; mit -i Option; Standard: deaktiviert\n\
+      --input-class-only       nur angegebene Klasse einfügen; mit -i Option; Standard: deaktiviert\n\
       --lo-count=ANZAHL        lo Datei ANZAHL per Verzeichnis; Standard: 0\n\
-      --estimated-size=ANZAHL abgeschätzte ANZAHL von Instanzen; Standard: autoberechnet\n\
-      --cached-pages= ANZAHL  ANZAHL der cached Seiten; Standard: 100\n\
-  -O, --output-path=PFAD      PFAD des Ausgangsverzeichnis; Standard: Arbeitsverzeichnis\n\
-  -s, --schema-only           nur Schema exportieren; Standard: Schema und die Objekte\n\
-  -d, --data-only             nur Objekte exportieren; Standard: Schema und die Objekte\n\
-      --output-prefix=PRÄFIX PRÄFIX für die Ausgangdateien; Standard: Datenbanknamen\n\
+      --estimated-size=ANZAHL  abgeschätzte ANZAHL von Instanzen; Standard: autoberechnet\n\
+      --cached-pages= ANZAHL   ANZAHL der cached Seiten; Standard: 100\n\
+  -O, --output-path=PFAD       PFAD des Ausgangsverzeichnis; Standard: Arbeitsverzeichnis\n\
+  -s, --schema-only            nur Schema exportieren; Standard: Schema und die Objekte\n\
+  -d, --data-only              nur Objekte exportieren; Standard: Schema und die Objekte\n\
+      --output-prefix=PRÄFIX   PRÄFIX für die Ausgangdateien; Standard: Datenbanknamen\n\
       --hash-file=DATEI        Datei für Hash; Standard: erzeugt bei tmpnam()\n\
-  -v, --verbose               ausführliche Statusmeldungen aktivieren; Standard: inaktiv\n\
-      --use-delimiter         '"' verwenden, wo ein Identifikator anfängt und endet; Standard: nicht verwenden\n\
-  -S, --SA-mode               Stand-Alone-Ausführung\n\
-  -C, --CS-mode               Client-Server-Ausführung\n\
-      --datafile-per-class    eine Objektdatei für jede Klasse erzeugen; Standard: inaktiv\n
+  -v, --verbose                ausführliche Statusmeldungen aktivieren; Standard: inaktiv\n\
+      --use-delimiter          '"' verwenden, wo ein Identifikator anfängt und endet; Standard: nicht verwenden\n\
+  -S, --SA-mode                Stand-Alone-Ausführung\n\
+  -C, --CS-mode                Client-Server-Ausführung\n\
+      --datafile-per-class     eine Objektdatei für jede Klasse erzeugen; Standard: inaktiv\n
 
 
 

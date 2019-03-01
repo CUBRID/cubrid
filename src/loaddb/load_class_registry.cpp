@@ -23,23 +23,18 @@
 
 #include "load_class_registry.hpp"
 
+#include <algorithm>
+
 namespace cubload
 {
 
   // attribute
-  attribute::attribute (ATTR_ID id, std::string &name, std::size_t index, or_attribute *repr)
-    : m_id (id)
-    , m_name (std::move (name))
+  attribute::attribute (std::string &name, std::size_t index, or_attribute *repr)
+    : m_name (std::move (name))
     , m_index (index)
     , m_repr (repr)
   {
     //
-  }
-
-  ATTR_ID
-  attribute::get_id () const
-  {
-    return m_id;
   }
 
   const char *
@@ -155,6 +150,13 @@ namespace cubload
     std::unique_lock<std::mutex> ulock (m_mutex);
 
     return get_class_entry_without_lock (clsid);
+  }
+
+  void
+  class_registry::get_all_class_entries (std::vector<const class_entry *> &entries) const
+  {
+    std::transform (m_class_by_id.begin (), m_class_by_id.end (), std::back_inserter (entries),
+		    std::bind (&class_map::value_type::second, std::placeholders::_1));
   }
 
   const class_entry *

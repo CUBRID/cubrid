@@ -445,9 +445,11 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 118 Maximum length of class name is %1$d bytes.\n
 120 \
 loaddb: Importare oggetti e gli schemi al database.\n\
-uso: %1$s loaddb [OPZIONE] nome-database\n\
+uso: %1$s loaddb [OPZIONE] nome-database[@host]\n\
 \n\
 opzioni valide:\n\
+  -S, --SA-mode                 modalità di esecuzione autonoma\n\
+  -C, --CS-mode                 modalità di esecuzione client-server\n\
   -u, --user=ID                 user ID per l'accesso al database; predefinito: "public"\n\
   -p, --password=PASS           password utente; predefinito: nessuno\n\
       --data-file-check-only    controllare la sintassi per il file di dati senza carico; predefinito: dopo il controllo di carico\n\
@@ -460,6 +462,8 @@ opzioni valide:\n\
   -s, --schema-file=FILE[:LINE] creare schema da LINE con FILE\n\
   -i, --index-file=FILE[:LINE]  creare un indice da LINE con FILE\n\
   -d, --data-file=FILE          dati di carico con FILE\n\
+      --server-data-file=FILE   load data with FILE on server,\n\
+                                absolute path must be provided and the file must exist on server file system\n\
   -t, --table=TABLE             nome della tabella che viene sostituito con manca intestazione di classe nel file di dati\n\
       --error-control-file=FILE FILE per il controllo di errore (s) durante il carico\n\
       --ignore-class-file=FILE  ifile di input di nomi di classe che saltino carico\n

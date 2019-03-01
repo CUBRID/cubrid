@@ -375,6 +375,17 @@ set(LOADDB_SOURCES
   ${LOADDB_DIR}/load_semantic_helper.cpp
   )
 
+set(LOADDB_HEADERS
+  ${BISON_loader_grammar_OUTPUT_HEADER}
+  ${LOADDB_DIR}/load_common.hpp
+  ${LOADDB_DIR}/load_driver.hpp
+  ${LOADDB_DIR}/load_error_handler.hpp
+  ${LOADDB_DIR}/load_object.h
+  ${LOADDB_DIR}/load_object_table.h
+  ${LOADDB_DIR}/load_sa_loader.hpp
+  ${LOADDB_DIR}/load_semantic_helper.hpp
+  )
+
 if(UNIX)
   list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/tcp.c)
   list(APPEND BASE_SOURCES ${BASE_DIR}/dynamic_load.c)
@@ -479,6 +490,7 @@ add_library(cubridsa SHARED
   ${STREAM_SOURCES}
   ${JSP_SOURCES}
   ${THREAD_SOURCES}
+  ${THREAD_HEADERS}
   ${TRANSACTION_SOURCES}
   ${STORAGE_HEADERS}
   ${STORAGE_SOURCES}
@@ -489,6 +501,7 @@ add_library(cubridsa SHARED
   ${XASL_SOURCES}
   ${XASL_HEADERS}
   ${LOADDB_SOURCES}
+  ${LOADDB_HEADERS}
   )
 set_target_properties(cubridsa PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 

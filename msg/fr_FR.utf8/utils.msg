@@ -447,21 +447,25 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 118 La longueur maximale du nom de classe est %1$d bytes.\n
 120 \
 loaddb: Importe les objets et les schémas dans la base de données.\n\
-usage: %1$s loaddb [OPTION] database-name\n\
+usage: %1$s loaddb [OPTION] database-name[@host]\n\
 \n\
 options valids:\n\
-  -u, --user=ID                 ID d'utilisateur pour l'accès à la base de données, par défaut: "public"\n\
-  -p, --password=MOT-DE-PASSE   MOT DE PASSE d'utilisateur; par défaut: aucun\n\
-      --data-file-check-only    vérifie la syntaxe pour le fichier de données sans chargement; par défaut: chargement après vérification\n\
-  -l, --load-only               charge le fichier de données sans vérification de la syntaxe; par défaut: chargement après vérification\n\
-      --estimated-size=NOMBRE   estimation du NOMBRE des instances; par défaut: 5000\n\
-  -v, --verbose                 activer les messages verbeux d'état; par défaut: désactivé\n\
-  -c, --periodic-commit=COMPTE  COMPTE d'insertion pour la validation périodique; par défaut: aucune validation pendant le chargement\n\
-      --no-oid                  utilise pas l'OID\n\
-      --no-statistics           ne met pas à jour les statistiques pendant le chargement\n\
+  -S, --SA-mode                     exécution en mode autonome\n\
+  -C, --CS-mode                     exécution en mode client-serveur\n\
+  -u, --user=ID                     ID d'utilisateur pour l'accès à la base de données, par défaut: "public"\n\
+  -p, --password=MOT-DE-PASSE       MOT DE PASSE d'utilisateur; par défaut: aucun\n\
+      --data-file-check-only        vérifie la syntaxe pour le fichier de données sans chargement; par défaut: chargement après vérification\n\
+  -l, --load-only                   charge le fichier de données sans vérification de la syntaxe; par défaut: chargement après vérification\n\
+      --estimated-size=NOMBRE       estimation du NOMBRE des instances; par défaut: 5000\n\
+  -v, --verbose                     activer les messages verbeux d'état; par défaut: désactivé\n\
+  -c, --periodic-commit=COMPTE      COMPTE d'insertion pour la validation périodique; par défaut: aucune validation pendant le chargement\n\
+      --no-oid                      utilise pas l'OID\n\
+      --no-statistics               ne met pas à jour les statistiques pendant le chargement\n\
   -s, --schema-file=FICHIER[:LIGNE] crée le schéma de la LIGNE en utilisant le FICHIER\n\
   -i, --index-file=FICHIER[:LIGNE]  crée un index de la LIGNE en utilisant le FICHIER\n\
   -d, --data-file=FICHIER           charge des données en utilisant le FICHIER\n\
+      --server-data-file=FILE       load data with FILE on server,\n\
+                                    absolute path must be provided and the file must exist on server file system\n\
   -t, --table=TABLE                 nom de la TABLE qui se substitue à en-tête de\n\
                                     classe manquante dans le fichier de données\n\
       --error-control-file=FICHIER  FICHIER de contrôle d'erreur(s) pendant le chargement\n\
