@@ -188,22 +188,25 @@ class regu_variable_node
 
     using map_regu_func_type = std::function<void (regu_variable_node &regu, bool &stop)>;
     using map_xasl_func_type = std::function<void (xasl_node &xasl, bool &stop)>;
-    // map_reguvar_tree - recursive "walker" of regu variable tree applying function argument
+    // map_regu - recursive "walker" of regu variable tree applying function argument
     //
     // NOTE:
     //    stop argument may be used for interrupting mapper
     //
     //    !!! implementation is not mature; only arithmetic and function children are mapped.
     void map_regu (const map_regu_func_type &func);
+    // map_regu_and_xasl - map regu variable and nested XASL's
     void map_regu_and_xasl (const map_regu_func_type &regu_func, const map_xasl_func_type &xasl_func);
 
-    void freemem ();
+    // free dynamically allocated memory from this node and all its children
+    void clear_xasl ();
 
   private:
     void map_regu (const map_regu_func_type &func, bool &stop);
     void map_regu_and_xasl (const map_regu_func_type &regu_func, const map_xasl_func_type &xasl_func, bool &stop);
 
-    void freemem_me ();
+    // clear dynamically allocated memory from this node
+    void clear_xasl_local ();
 };
 
 struct regu_variable_list_node

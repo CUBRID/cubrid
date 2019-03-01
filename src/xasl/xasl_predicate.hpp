@@ -162,9 +162,7 @@ namespace cubxasl
       } pe;
       TYPE_PRED_EXPR type;
 
-      void freemem ();
-
-    private:
+      void clear_xasl ();
   };
 } // namespace cubxasl
 

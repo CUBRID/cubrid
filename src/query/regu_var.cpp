@@ -26,6 +26,8 @@
 #include "object_primitive.h"
 #include "xasl_predicate.hpp"
 
+using namespace cubxasl;    // it should belong to cubxasl namespace
+
 void
 regu_variable_node::map_regu (const map_regu_func_type &func)
 {
@@ -179,7 +181,7 @@ regu_variable_node::map_regu_and_xasl (const map_regu_func_type &regu_func, cons
       break;
 
     default:
-      // no siblings
+      // no children
       return;
     }
 
@@ -188,7 +190,7 @@ regu_variable_node::map_regu_and_xasl (const map_regu_func_type &regu_func, cons
 }
 
 void
-regu_variable_node::freemem_me ()
+regu_variable_node::clear_xasl_local ()
 {
   switch (type)
     {
@@ -201,7 +203,7 @@ regu_variable_node::freemem_me ()
 	}
       if (value.arithptr->pred != NULL)
 	{
-	  value.arithptr->pred->freemem ();
+	  value.arithptr->pred->clear_xasl ();
 	}
       break;
 
@@ -222,12 +224,12 @@ regu_variable_node::freemem_me ()
 }
 
 void
-regu_variable_node::freemem ()
+regu_variable_node::clear_xasl ()
 {
-  // todo - what about XASL?
+  // todo - call map_regu_and_xasl; it requires similar XASL clear_xasl functionality
   auto map_func = [] (regu_variable_node & regu, bool & stop)
   {
-    regu.freemem_me ();
+    regu.clear_xasl_local ();
   };
   map_regu (map_func);
 }

@@ -29,10 +29,10 @@
 namespace cubxasl
 {
   void
-  pred_expr::freemem ()
+  pred_expr::clear_xasl ()
   {
-#define free_pred_not_null(pr) if ((pr) != NULL) (pr)->freemem ()
-#define free_regu_not_null(regu) if ((regu) != NULL) (regu)->freemem ()
+#define free_pred_not_null(pr) if ((pr) != NULL) (pr)->clear_xasl ()
+#define free_regu_not_null(regu) if ((regu) != NULL) (regu)->clear_xasl ()
 
     switch (type)
       {
