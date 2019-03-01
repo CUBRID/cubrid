@@ -26,7 +26,8 @@
 
 #include "dbtype_def.h"             // DB_TYPE
 
-#include "libregex38a/regex38a.h"   // cub_regex_t
+#include "system.h"     // for regex38a.h
+#include "libregex38a/regex38a.h"
 
 // forward definitions
 class regu_variable_node;
@@ -152,13 +153,18 @@ namespace cubxasl
 
   struct pred_expr
   {
-    union
-    {
-      pred m_pred;
-      eval_term m_eval_term;
-      pred_expr *m_not_term;
-    } pe;
-    TYPE_PRED_EXPR type;
+    public:
+      union
+      {
+	pred m_pred;
+	eval_term m_eval_term;
+	pred_expr *m_not_term;
+      } pe;
+      TYPE_PRED_EXPR type;
+
+      void freemem ();
+
+    private:
   };
 } // namespace cubxasl
 

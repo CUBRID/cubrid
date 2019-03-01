@@ -62,7 +62,7 @@ typedef enum
 } REGU_DATATYPE;
 
 /* declare ahead REGU_VARIABLE */
-typedef struct regu_variable_node REGU_VARIABLE;
+typedef class regu_variable_node REGU_VARIABLE;
 typedef struct regu_variable_list_node *REGU_VARIABLE_LIST;	/* TODO */
 
 /*

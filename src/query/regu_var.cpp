@@ -23,7 +23,8 @@
 
 #include "regu_var.hpp"
 
-# include "object_primitive.h"
+#include "object_primitive.h"
+#include "xasl_predicate.hpp"
 
 void
 regu_variable_node::map_regu (const map_regu_func_type &func)
@@ -193,11 +194,14 @@ regu_variable_node::freemem_me ()
     {
     case TYPE_INARITH:
     case TYPE_OUTARITH:
-      // todo: clear predicate
       assert (value.arithptr != NULL);
       if (value.arithptr->rand_seed != NULL)
 	{
 	  free_and_init (value.arithptr->rand_seed);
+	}
+      if (value.arithptr->pred != NULL)
+	{
+	  value.arithptr->pred->freemem ();
 	}
       break;
 
