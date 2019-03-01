@@ -25,11 +25,13 @@
 #include "stream_transfer_receiver.hpp"
 
 #include "byte_order.h"
+#include "string_buffer.hpp"  /* for data dump */
 #include "system_parameter.h" /* for er_log_debug */
 #include "thread_manager.hpp"
 #include "thread_daemon.hpp"
 #include "thread_entry_task.hpp"
 
+#include <algorithm>    /* for std::min */
 #include <cstring>
 
 namespace cubstream
@@ -60,9 +62,8 @@ namespace cubstream
 	    rc = this_consumer_channel.m_channel.send ((char *) &last_recv_pos,
 		 sizeof (UINT64));
 
-            er_log_debug (ARG_FILE_LINE, "transfer_receiver_task:execute starting : "
-                          "m_last_received_position:%lld, rc:%d\n",
-                          this_consumer_channel.m_last_received_position, rc);
+            er_log_debug_replication (ARG_FILE_LINE, "transfer_receiver_task starting : "
+              "m_last_received_position: %lld, rc: %d\n", this_consumer_channel.m_last_received_position, rc);
 
 	    if (rc != NO_ERRORS)
 	      {
@@ -81,15 +82,25 @@ namespace cubstream
 	    return;
 	  }
 
-        er_log_debug (ARG_FILE_LINE, "transfer_receiver_task:execute receiving : %d bytes\n", max_len);
+        er_log_debug_replication (ARG_FILE_LINE, "transfer_receiver_task receiving : %d bytes\n", max_len);
+
+        int dump_size = prm_get_integer_value (PRM_ID_DEBUG_REPLICATION_BUFFER_SIZE_DUMP);
+        if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA) && dump_size > 0)
+          {
+            string_buffer in;
+            string_buffer out;
+            dump_size = std::min (dump_size, (int) max_len);
+
+            in.add_bytes (dump_size, this_consumer_channel.m_buffer);
+            string_buffer::hex_dump (in, out, dump_size);
+            _er_log_debug (ARG_FILE_LINE, "%s\n", out.get_buffer ());
+          }
 
 	if (this_consumer_channel.m_stream.write (max_len, this_consumer_channel.m_write_action_function))
 	  {
 	    this_consumer_channel.m_channel.close_connection ();
 	    return;
 	  }
-
-        er_log_debug (ARG_FILE_LINE, "transfer_receiver_task:execute writing to stream : %d bytes\n", max_len);
       }
 
     private:
