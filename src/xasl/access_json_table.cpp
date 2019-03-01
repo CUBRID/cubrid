@@ -244,7 +244,10 @@ namespace cubxasl
 	}
 
       (void) pr_clear_value (m_output_value_pointer);
-      (void) db_make_null (m_output_value_pointer);
+      if (m_output_value_pointer != NULL)
+	{
+	  (void) db_make_null (m_output_value_pointer);
+	}
     }
 
     node::node (void)
