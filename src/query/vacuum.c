@@ -678,9 +678,9 @@ class vacuum_master_context_manager : public cubthread::daemon_entry_manager
 
     void on_daemon_retire (cubthread::entry &context) final
     {
-      context.retire_system_worker ();
-
       vacuum_finalize (&context);    // todo: is this the rightful place?
+
+      context.retire_system_worker ();
 
       if (context.vacuum_worker != NULL)
 	{
