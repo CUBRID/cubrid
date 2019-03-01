@@ -212,7 +212,7 @@ namespace cubscan
     scanner::clear (xasl_node *xasl_p, bool is_final, bool is_final_clear)
     {
       // columns should be released every time
-      m_specp->m_root_node->clear_tree (is_final_clear);
+      m_specp->m_root_node->clear_xasl (is_final_clear);
       reset_ordinality (*m_specp->m_root_node);
 
       // all json documents should be release depending on is_final
