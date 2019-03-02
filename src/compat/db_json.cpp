@@ -2041,8 +2041,8 @@ db_json_array_insert_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw
 
   json_parent->GetArray ().PushBack (JSON_VALUE (), doc.GetAllocator ());
   const JSON_PATH::PATH_TOKEN &last_token = *p.get_last_token ();
-  size_t idx = std::stoi (last_token.token_string);
-  for (rapidjson::SizeType i = json_parent->GetArray ().Size () - 1; i >= idx; --i)
+  size_t last_token_idx = std::stoi (last_token.token_string);
+  for (rapidjson::SizeType i = json_parent->GetArray ().Size () - 1; i >= last_token_idx + 1; --i)
     {
       json_parent->GetArray ()[i] = std::move (json_parent->GetArray ()[i - 1]);
     }
