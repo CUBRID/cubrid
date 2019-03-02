@@ -993,6 +993,13 @@ int JSON_PATH_GETTER::CallOnArrayIterate ()
 {
   const JSON_PATH::PATH_TOKEN &tkn = m_path.m_path_tokens[m_token_idx - 1];
 
+  if (tkn.type != JSON_PATH::PATH_TOKEN::array_index)
+    {
+      m_stop = true;
+      return NO_ERROR;
+      // NULL?
+    }
+
   rapidjson::SizeType array_idx_token = (rapidjson::SizeType) std::stoi (tkn.token_string);
 
   m_skip = ! (array_idx_token == m_array_idxs.top ());
@@ -1005,7 +1012,15 @@ int JSON_PATH_GETTER::CallOnArrayIterate ()
 int JSON_PATH_GETTER::CallOnKeyIterate (JSON_VALUE &key)
 {
   const JSON_PATH::PATH_TOKEN &tkn = m_path.m_path_tokens[m_token_idx - 1];
-  assert (tkn.type == JSON_PATH::PATH_TOKEN::token_type::object_key && key.IsString ());
+
+  if (tkn.type != JSON_PATH::PATH_TOKEN::object_key)
+    {
+      m_stop = true;
+      return NO_ERROR;
+      // NULL?
+    }
+
+  assert (key.IsString ());
 
   m_skip = (strcmp (key.GetString (), tkn.token_string.c_str ()) != 0);
 
@@ -1025,9 +1040,7 @@ int JSON_PATH_SETTER::CallBefore (JSON_VALUE &value)
 {
   if (m_token_idx == m_path.m_path_tokens.size ())
     {
-      // we finished the path
-      // set somehow
-      // value.Set (m_value, m_allocator);
+      value.CopyFrom (m_value, m_allocator);
       return NO_ERROR;
     }
 
@@ -1057,7 +1070,7 @@ int JSON_PATH_SETTER::CallBefore (JSON_VALUE &value)
 
   if (value.IsArray ())
     {
-      JSON_VALUE::Array &arr = value.GetArray ();
+      JSON_VALUE::Array arr = value.GetArray ();
       if (tkn.type == JSON_PATH::PATH_TOKEN::token_type::last_index_special)
 	{
 	  // insert dummy
