@@ -153,7 +153,7 @@ class JSON_PATH_GETTER : public JSON_WALKER
 
     const JSON_PATH &m_path;
     size_t m_token_idx;
-    std::stack<rapidjson::SizeType> m_array_idxs;
+    rapidjson::SizeType m_array_idx;
     JSON_VALUE *&m_found_json_value;
 };
 
@@ -176,8 +176,9 @@ class JSON_PATH_SETTER : public JSON_WALKER
     const JSON_VALUE &m_value;
     size_t m_token_idx;
 
-    std::stack<rapidjson::SizeType> m_array_idxs;
-    std::stack<rapidjson::SizeType> m_allowed_idxs;
+    // todo: probably there is no need for a stack, a single siztype is enough
+    rapidjson::SizeType m_array_idx;
+    rapidjson::SizeType m_allowed_idx;
 };
 
 #endif /* _DB_JSON_HPP_ */

@@ -978,6 +978,12 @@ int JSON_PATH_GETTER::CallBefore (JSON_VALUE &value)
       m_stop = true;
     }
 
+  if (value.IsArray ())
+    {
+      // keep current array_idx
+      m_array_idx = 0;
+    }
+
   ++m_token_idx;
   return NO_ERROR;
 }
@@ -1002,9 +1008,9 @@ int JSON_PATH_GETTER::CallOnArrayIterate ()
 
   rapidjson::SizeType array_idx_token = (rapidjson::SizeType) std::stoi (tkn.token_string);
 
-  m_skip = ! (array_idx_token == m_array_idxs.top ());
+  m_skip = ! (array_idx_token == m_array_idx);
 
-  ++m_array_idxs.top ();
+  ++m_array_idx;
 
   return NO_ERROR;
 }
@@ -1040,7 +1046,9 @@ int JSON_PATH_SETTER::CallBefore (JSON_VALUE &value)
 {
   if (m_token_idx == m_path.m_path_tokens.size ())
     {
+      //value = m_value;
       value.CopyFrom (m_value, m_allocator);
+      m_stop = true;
       return NO_ERROR;
     }
 
@@ -1075,7 +1083,7 @@ int JSON_PATH_SETTER::CallBefore (JSON_VALUE &value)
 	{
 	  // insert dummy
 	  arr.PushBack (JSON_VALUE ().SetNull (), m_allocator);
-	  m_allowed_idxs.push (arr.Size () - 1);
+	  m_allowed_idx = arr.Size () - 1;
 	}
       else
 	{
@@ -1084,9 +1092,9 @@ int JSON_PATH_SETTER::CallBefore (JSON_VALUE &value)
 	    {
 	      arr.PushBack (JSON_VALUE ().SetNull (), m_allocator);
 	    }
-	  m_allowed_idxs.push (idx);
+	  m_allowed_idx = idx;
 	}
-      m_array_idxs.push (0);
+      m_array_idx = 0;
     }
   else if (value.IsObject ())
     {
@@ -1094,9 +1102,8 @@ int JSON_PATH_SETTER::CallBefore (JSON_VALUE &value)
       if (m == value.MemberEnd ())
 	{
 	  // insert dummy
-	  value.AddMember (JSON_VALUE (tkn.token_string.c_str (), (rapidjson::SizeType) tkn.token_string.length ()),
-			   JSON_VALUE ().SetNull (),
-			   m_allocator);
+	  value.AddMember (JSON_VALUE (tkn.token_string.c_str (), (rapidjson::SizeType) tkn.token_string.length (), m_allocator),
+			   JSON_VALUE ().SetNull (), m_allocator);
 	}
     }
 
@@ -1113,9 +1120,9 @@ int JSON_PATH_SETTER::CallAfter (JSON_VALUE &value)
 
 int JSON_PATH_SETTER::CallOnArrayIterate ()
 {
-  m_skip = ! (m_array_idxs.top () == m_allowed_idxs.top ());
+  m_skip = m_array_idx != m_allowed_idx;
 
-  ++m_array_idxs.top ();
+  ++m_array_idx;
   return NO_ERROR;
 }
 
