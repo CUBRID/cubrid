@@ -2,9 +2,8 @@
 #define _DB_JSON_TYPES_INTERNAL_HPP
 
 #include "error_manager.h"
-#include "memory_alloc.h"
-#include "system_parameter.h"
 #include "db_json.hpp"
+#include "db_json_private_allocator.hpp"
 
 #include "rapidjson/allocators.h"
 #include "rapidjson/error/en.h"
@@ -14,6 +13,7 @@
 #include "rapidjson/stringbuffer.h"
 #include "rapidjson/writer.h"
 
+#include <stack>
 #include <string>
 #include <vector>
 
@@ -22,19 +22,8 @@
 #undef GetObject
 #endif /* defined GetObject */
 
-class JSON_PRIVATE_ALLOCATOR
-{
-  public:
-    static const bool kNeedFree;
-    void *Malloc (size_t size);
-    void *Realloc (void *originalPtr, size_t originalSize, size_t newSize);
-    static void Free (void *ptr);
-};
-
 typedef rapidjson::UTF8 <> JSON_ENCODING;
-typedef rapidjson::MemoryPoolAllocator <JSON_PRIVATE_ALLOCATOR> JSON_PRIVATE_MEMPOOL;
 typedef rapidjson::GenericValue <JSON_ENCODING, JSON_PRIVATE_MEMPOOL> JSON_VALUE;
-typedef rapidjson::GenericPointer <JSON_VALUE>::Token TOKEN;
 typedef rapidjson::GenericStringBuffer<JSON_ENCODING, JSON_PRIVATE_ALLOCATOR> JSON_STRING_BUFFER;
 typedef rapidjson::GenericMemberIterator<true, JSON_ENCODING, JSON_PRIVATE_MEMPOOL>::Iterator JSON_MEMBER_ITERATOR;
 typedef rapidjson::GenericArray<true, JSON_VALUE>::ConstValueIterator JSON_VALUE_ITERATOR;
@@ -46,8 +35,6 @@ static std::vector<std::pair<std::string, std::string>> uri_fragment_conversions
 };
 
 static const char *db_Json_sql_path_delimiters = "$.[]\"";
-
-static const rapidjson::SizeType kPointerInvalidIndex = rapidjson::kPointerInvalidIndex;
 
 class JSON_DOC : public rapidjson::GenericDocument <JSON_ENCODING, JSON_PRIVATE_MEMPOOL>
 {

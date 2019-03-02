@@ -3250,7 +3250,7 @@ struct pt_json_table_node_info
 {
   PT_NODE *columns;
   PT_NODE *nested_paths;
-  const char *path;
+  char *path;
 };
 
 struct pt_json_table_info

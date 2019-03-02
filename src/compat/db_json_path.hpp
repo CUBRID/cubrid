@@ -30,7 +30,7 @@
 #include <unordered_map>
 #include <string>
 
-class JSON_PATH : protected rapidjson::GenericPointer<JSON_VALUE>
+class JSON_PATH
 {
     typedef rapidjson::GenericPointer<JSON_VALUE> JSON_POINTER;
 
@@ -40,44 +40,6 @@ class JSON_PATH : protected rapidjson::GenericPointer<JSON_VALUE>
       JSON_PATH_SQL_JSON,
       JSON_PATH_POINTER
     };
-
-    std::string dump_json_pointer () const;
-
-    std::string dump_json_path (bool skip_json_pointer_minus = true) const;
-
-    std::vector<JSON_VALUE *> get (JSON_DOC &jd) const;
-
-    std::vector<const JSON_VALUE *> get (const JSON_DOC &jd) const;
-
-    DB_JSON_TYPE get_value_type (const JSON_DOC &jd) const;
-
-    void set (JSON_DOC &jd, const JSON_VALUE &jv) const;
-
-    bool erase (JSON_DOC &jd) const;
-
-    const TOKEN *get_last_token () const;
-
-    size_t get_token_count () const;
-
-    bool is_root_path () const;
-
-    const JSON_PATH get_parent () const;
-
-    bool is_last_array_index_less_than (size_t size) const;
-
-    bool is_last_token_array_index_zero () const;
-
-    bool points_to_array_cell () const;
-
-    bool parent_exists (JSON_DOC &jd) const;
-
-    int init (const char *path);
-
-    bool validate_and_make_json_path (std::string &sql_path, bool allow_wildcards);
-
-    explicit JSON_PATH ();
-
-    explicit JSON_PATH (const TOKEN *tokens, size_t token_cnt);
 
     struct PATH_TOKEN
     {
@@ -100,13 +62,49 @@ class JSON_PATH : protected rapidjson::GenericPointer<JSON_VALUE>
       bool match (const PATH_TOKEN &other) const;
     };
 
+    std::string dump_json_pointer () const;
+
+    std::string dump_json_path (bool skip_json_pointer_minus = true) const;
+
+    std::vector<JSON_VALUE *> get (JSON_DOC &jd) const;
+
+    std::vector<const JSON_VALUE *> get (const JSON_DOC &jd) const;
+
+    DB_JSON_TYPE get_value_type (const JSON_DOC &jd) const;
+
+    void set (JSON_DOC &jd, const JSON_VALUE &jv) const;
+
+    bool erase (JSON_DOC &jd) const;
+
+    const PATH_TOKEN *get_last_token () const;
+
+    size_t get_token_count () const;
+
+    bool is_root_path () const;
+
+    const JSON_PATH get_parent () const;
+
+    bool is_last_array_index_less_than (size_t size) const;
+
+    bool is_last_token_array_index_zero () const;
+
+    bool points_to_array_cell () const;
+
+    bool parent_exists (JSON_DOC &jd) const;
+
+    int init (const char *path);
+
+    bool validate_and_make_json_path (std::string &sql_path);
+
+    explicit JSON_PATH ();
+
+    explicit JSON_PATH (std::vector<PATH_TOKEN> tokens);
+
     bool match (const JSON_PATH &other, bool match_prefix = false) const;
 
     void emplace_back (PATH_TOKEN &&path_token);
 
     void pop ();
-
-    JSON_PATH_TYPE m_backend_json_format;
 
     bool contains_wildcard () const;
 
@@ -135,9 +133,51 @@ typedef JSON_PATH::JSON_PATH_TYPE JSON_PATH_TYPE;
 // exposed free funcs
 std::vector<std::string> db_json_split_path_by_delimiters (const std::string &path,
     const std::string &delim, bool allow_empty);
-int db_json_normalize_path (const char *pointer_path, JSON_PATH &json_path,
-			    bool allow_wildcards = true);
+int db_json_normalize_path (const char *pointer_path, JSON_PATH &json_path);
 void db_json_path_unquote_object_keys (std::string &sql_path);
 std::vector<std::vector<const JSON_VALUE *>> db_json_get_values_from_path (const std::vector<JSON_PATH> &json_paths);
+
+class JSON_PATH_GETTER : public JSON_WALKER
+{
+  public:
+    JSON_PATH_GETTER () = delete;
+    JSON_PATH_GETTER (const JSON_PATH &json_path, JSON_VALUE *&found_json_value);
+    JSON_PATH_GETTER (JSON_PATH_GETTER &) = delete;
+    ~JSON_PATH_GETTER () override = default;
+
+  private:
+    int CallBefore (JSON_VALUE &value) override;
+    int CallAfter (JSON_VALUE &value) override;
+    int CallOnArrayIterate () override;
+    int CallOnKeyIterate (JSON_VALUE &key) override;
+
+    const JSON_PATH &m_path;
+    size_t m_token_idx;
+    std::stack<rapidjson::SizeType> m_array_idxs;
+    JSON_VALUE *&m_found_json_value;
+};
+
+class JSON_PATH_SETTER : public JSON_WALKER
+{
+  public:
+    JSON_PATH_SETTER () = delete;
+    JSON_PATH_SETTER (const JSON_PATH &json_path, JSON_DOC &json_doc, const JSON_VALUE &json_value);
+    JSON_PATH_SETTER (JSON_PATH_SETTER &) = delete;
+    ~JSON_PATH_SETTER () override = default;
+
+  private:
+    int CallBefore (JSON_VALUE &value) override;
+    int CallAfter (JSON_VALUE &value) override;
+    int CallOnArrayIterate () override;
+    int CallOnKeyIterate (JSON_VALUE &key) override;
+
+    const JSON_PATH &m_path;
+    JSON_PRIVATE_MEMPOOL &m_allocator;
+    const JSON_VALUE &m_value;
+    size_t m_token_idx;
+
+    std::stack<rapidjson::SizeType> m_array_idxs;
+    std::stack<rapidjson::SizeType> m_allowed_idxs;
+};
 
 #endif /* _DB_JSON_HPP_ */

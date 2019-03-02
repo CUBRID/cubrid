@@ -23,6 +23,7 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/db_elo.c
   ${COMPAT_DIR}/db_json.cpp
   ${COMPAT_DIR}/db_json_path.cpp
+  ${COMPAT_DIR}/db_json_private_allocator.cpp
   ${COMPAT_DIR}/db_json_types_internal.cpp
   ${COMPAT_DIR}/db_macro.c
   ${COMPAT_DIR}/db_set.c
@@ -32,6 +33,7 @@ set (COMPAT_HEADERS
   ${COMPAT_DIR}/dbtype_def.h
   ${COMPAT_DIR}/db_json.hpp
   ${COMPAT_DIR}/db_json_path.hpp
+  ${COMPAT_DIR}/db_json_private_allocator.hpp
   ${COMPAT_DIR}/db_json_types_internal.hpp
   ${COMPAT_DIR}/dbtype_function.i
   ${COMPAT_DIR}/dbtype_function.h

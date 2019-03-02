@@ -618,8 +618,6 @@ static int db_json_er_set_expected_other_type (const char *file_name, const int 
     const DB_JSON_TYPE &expected_type_optional = DB_JSON_NULL);
 static int db_json_contains_duplicate_keys (JSON_DOC &doc);
 
-STATIC_INLINE JSON_VALUE &db_json_doc_to_value (JSON_DOC &doc) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE const JSON_VALUE &db_json_doc_to_value (const JSON_DOC &doc) __attribute__ ((ALWAYS_INLINE));
 static int db_json_get_json_from_str (const char *json_raw, JSON_DOC &doc, size_t json_raw_length);
 static int db_json_add_json_value_to_object (JSON_DOC &doc, const char *name, JSON_VALUE &value);
 
@@ -665,7 +663,7 @@ JSON_PATH_MAPPER::JSON_PATH_MAPPER (map_func_type func)
   : m_producer (func)
   , m_accumulated_paths ()
 {
-  m_accumulated_paths.m_backend_json_format = JSON_PATH::JSON_PATH_TYPE::JSON_PATH_SQL_JSON;
+
 }
 
 int JSON_PATH_MAPPER::CallBefore (JSON_VALUE &value)
@@ -1126,11 +1124,17 @@ db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<
   for (const auto &path : paths)
     {
       json_paths.emplace_back ();
-      error_code = db_json_normalize_path (path.c_str (), json_paths.back (), allow_wildcards);
+      error_code = db_json_normalize_path (path.c_str (), json_paths.back ());
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  return error_code;
+	}
+
+      if (!allow_wildcards && json_paths.back ().contains_wildcard ())
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
+	  return ER_JSON_INVALID_PATH;
 	}
     }
 
@@ -2036,8 +2040,9 @@ db_json_array_insert_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw
     }
 
   json_parent->GetArray ().PushBack (JSON_VALUE (), doc.GetAllocator ());
-  const TOKEN &last_token = *p.get_last_token ();
-  for (rapidjson::SizeType i = json_parent->GetArray ().Size () - 1; i >= last_token.index + 1; --i)
+  const JSON_PATH::PATH_TOKEN &last_token = *p.get_last_token ();
+  size_t idx = std::stoi (last_token.token_string);
+  for (rapidjson::SizeType i = json_parent->GetArray ().Size () - 1; i >= idx; --i)
     {
       json_parent->GetArray ()[i] = std::move (json_parent->GetArray ()[i - 1]);
     }
@@ -2594,10 +2599,14 @@ db_json_er_set_expected_other_type (const char *file_name, const int line_no, co
 }
 
 int
-db_json_normalize_path_string (const char *&pointer_path, bool allow_wildcards)
+db_json_normalize_path_string (char *&pointer_path, bool allow_wildcards)
 {
   JSON_PATH jp;
-  return db_json_normalize_path (pointer_path, jp, allow_wildcards);
+  return db_json_normalize_path (pointer_path, jp);
+
+  db_private_free (NULL, pointer_path);
+
+  pointer_path = strdup (jp.dump_json_path ().c_str ());
 }
 
 void db_json_path_unquote_object_keys_external (std::string &sql_path)

@@ -157,7 +157,7 @@ int db_value_to_json_doc (const DB_VALUE &db_val, REFPTR (JSON_DOC, json_doc));
 int db_value_to_json_value (const DB_VALUE &db_val, REFPTR (JSON_DOC, json_val));
 int db_value_to_json_path (const DB_VALUE *path_value, FUNC_TYPE fcode, const char **path_str);
 
-int db_json_normalize_path_string (const char *&pointer_path, bool allow_wildcards);
+int db_json_normalize_path_string (char *&pointer_path, bool allow_wildcards);
 void db_json_path_unquote_object_keys_external (std::string &sql_path);
 
 template <typename Fn, typename... Args>

@@ -1,9 +1,11 @@
 #include "db_json_path.hpp"
 #include "string_opfunc.h"
 #include <algorithm>
-#include <stack>
 #include <string>
 #include <cctype>
+
+typedef rapidjson::GenericPointer <JSON_VALUE>::Token TOKEN;
+static const rapidjson::SizeType kPointerInvalidIndex = rapidjson::kPointerInvalidIndex;
 
 static void db_json_trim_leading_spaces (std::string &path_string);
 static JSON_PATH_TYPE db_json_get_path_type (std::string &path_string);
@@ -228,7 +230,7 @@ db_json_get_path_type (std::string &path_string)
  * allow_wild_cards (in)   : whether json_path wildcards are allowed
  */
 bool
-JSON_PATH::validate_and_make_json_path (std::string &sql_path, bool allow_wildcards)
+JSON_PATH::validate_and_make_json_path (std::string &sql_path)
 {
   // skip leading white spaces
   db_json_trim_leading_spaces (sql_path);
@@ -237,8 +239,6 @@ JSON_PATH::validate_and_make_json_path (std::string &sql_path, bool allow_wildca
       // empty
       return false;
     }
-
-  m_backend_json_format = JSON_PATH::JSON_PATH_TYPE::JSON_PATH_SQL_JSON;
 
   if (sql_path[0] != '$')
     {
@@ -266,7 +266,7 @@ JSON_PATH::validate_and_make_json_path (std::string &sql_path, bool allow_wildca
 	    {
 	      return false;
 	    }
-	  if (!db_json_path_is_token_valid_array_index (sql_path, allow_wildcards, i, end_bracket_offset))
+	  if (!db_json_path_is_token_valid_array_index (sql_path, true, i, end_bracket_offset))
 	    {
 	      return false;
 	    }
@@ -303,10 +303,6 @@ JSON_PATH::validate_and_make_json_path (std::string &sql_path, bool allow_wildca
 	      break;
 	    }
 	    case '*':
-	      if (!allow_wildcards)
-		{
-		  return false;
-		}
 	      emplace_back ({ JSON_PATH::PATH_TOKEN::token_type::object_key_wild_card, "*" });
 	      i = skip_whitespaces (sql_path, i + 1);
 	      break;
@@ -326,7 +322,7 @@ JSON_PATH::validate_and_make_json_path (std::string &sql_path, bool allow_wildca
 
 	case '*':
 	  // only ** wildcard is allowed in this case
-	  if (!allow_wildcards || ++i >= sql_path.length () || sql_path[i] != '*')
+	  if (++i >= sql_path.length () || sql_path[i] != '*')
 	    {
 	      return false;
 	    }
@@ -459,7 +455,7 @@ std::vector<std::string> db_json_split_path_by_delimiters (const std::string &pa
  * Example: /0/name1/name2/2 -> $[0]."name1"."name2"[2]
  */
 int
-db_json_normalize_path (const char *pointer_path, JSON_PATH &json_path, bool allow_wildcards)
+db_json_normalize_path (const char *pointer_path, JSON_PATH &json_path)
 {
   std::string pointer_path_string (pointer_path);
   JSON_PATH_TYPE json_path_type = db_json_get_path_type (pointer_path_string);
@@ -468,24 +464,20 @@ db_json_normalize_path (const char *pointer_path, JSON_PATH &json_path, bool all
     {
       // path is not JSON path format; consider it SQL path.
       // sql_path_out = pointer_path_string;
-      if (!json_path.validate_and_make_json_path (pointer_path_string, allow_wildcards))
+      if (!json_path.validate_and_make_json_path (pointer_path_string))
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
 	  return ER_JSON_INVALID_PATH;
 	}
-      db_private_free (NULL, (void *) pointer_path);
-      pointer_path = pointer_path_string.c_str ();
       return NO_ERROR;
     }
 
   int error_code = json_path.init (pointer_path);
   if (error_code)
     {
-      ASSERT_ERROR();
+      ASSERT_ERROR ();
       return error_code;
     }
-
-  db_json_normalize_path (json_path.dump_json_path ().c_str (), json_path, allow_wildcards);
   return NO_ERROR;
 }
 
@@ -722,66 +714,34 @@ JSON_PATH::dump_json_pointer () const
 std::string
 JSON_PATH::dump_json_path (bool skip_json_pointer_minus) const
 {
-  if (m_backend_json_format == JSON_PATH_TYPE::JSON_PATH_SQL_JSON)
-    {
-      std::string res = "$";
-
-      for (const auto &tkn : m_path_tokens)
-	{
-	  switch (tkn.type)
-	    {
-	    case PATH_TOKEN::array_index:
-	      res += '[';
-	      res += tkn.token_string;
-	      res += ']';
-	      break;
-	    case PATH_TOKEN::object_key:
-	      res += '.';
-	      res += tkn.token_string;
-	      break;
-	    default:
-	      // assert (false);
-	      break;
-	    }
-	}
-
-      return res;
-    }
-
-  std::unordered_map<std::string, std::string> special_chars;
-  build_special_chars_map (JSON_PATH_TYPE::JSON_PATH_POINTER, special_chars);
-
-  const TOKEN *tokens = GetTokens ();
-  const size_t token_cnt = GetTokenCount ();
   std::string res = "$";
-  for (size_t i = 0; i < GetTokenCount (); ++i)
+
+  for (const auto &tkn : m_path_tokens)
     {
-      if (tokens[i].index != kPointerInvalidIndex || (tokens[i].length == 1 && tokens[i].name[0] == '-'))
+      switch (tkn.type)
 	{
-	  if (tokens[i].index == kPointerInvalidIndex && skip_json_pointer_minus)
-	    {
-	      continue;
-	    }
-
-	  res += "[";
-	  res += tokens[i].name;
-	  res += "]";
-	}
-      else
-	{
-	  std::string token_str (tokens[i].name);
-	  replace_special_chars_in_tokens (token_str, special_chars);
-	  char *quoted_token = NULL;
-	  size_t quoted_size;
-	  (void) db_string_escape (token_str.c_str (), token_str.length (), &quoted_token, &quoted_size);
-
-	  res += ".";
-	  res += quoted_token;
-
-	  db_private_free (NULL, quoted_token);
+	case PATH_TOKEN::array_index:
+	  res += '[';
+	  res += tkn.token_string;
+	  res += ']';
+	  break;
+	case PATH_TOKEN::object_key:
+	  res += '.';
+	  res += tkn.token_string;
+	  break;
+	default:
+	  // assert (false);
+	  break;
 	}
     }
+
   return res;
+}
+
+void JSON_PATH::set (JSON_DOC &jd, const JSON_VALUE &jv) const
+{
+  JSON_PATH_SETTER setter (*this, jd, jv);
+  setter.WalkDocument (jd);
 }
 
 std::vector<JSON_VALUE *> JSON_PATH::get (JSON_DOC &jd) const
@@ -831,11 +791,9 @@ bool JSON_PATH::erase (JSON_DOC &jd) const
     }
 }
 
-const TOKEN *JSON_PATH::get_last_token () const
+const JSON_PATH::PATH_TOKEN *JSON_PATH::get_last_token () const
 {
-  size_t token_cnt = get_token_count ();
-
-  return token_cnt > 0 ? GetTokens () + (token_cnt - 1) : NULL;
+  return get_token_count () > 0 ? &m_path_tokens[get_token_count () - 1] : NULL;
 }
 
 size_t JSON_PATH::get_token_count () const
@@ -845,12 +803,12 @@ size_t JSON_PATH::get_token_count () const
 
 bool JSON_PATH::is_root_path () const
 {
-  return GetTokenCount () == 0;
+  return get_token_count () == 0;
 }
 
 const JSON_PATH JSON_PATH::get_parent () const
 {
-  if (GetTokenCount () == 0)
+  if (get_token_count () == 0)
     {
       // this should not happen
       assert (false);
@@ -859,41 +817,41 @@ const JSON_PATH JSON_PATH::get_parent () const
     }
   else
     {
-      JSON_PATH parent (GetTokens (), GetTokenCount () - 1);
+      // todo: improve getting a slice of the m_path_tokens vector
+      std::vector<PATH_TOKEN> parent_tokens (m_path_tokens);
+      parent_tokens.pop_back ();
+
+      JSON_PATH parent (parent_tokens);
       return parent;
     }
 }
 
 bool JSON_PATH::is_last_array_index_less_than (size_t size) const
 {
-  const TOKEN *last_token = get_last_token ();
-  assert (last_token != NULL && ((last_token->length == 1 && last_token->name[0] == '-')
-				 || (last_token->index != kPointerInvalidIndex)));
-  return ! ((last_token->length == 1 && last_token->name[0] == '-') || last_token->index >= size);
+  const PATH_TOKEN *last_token = get_last_token ();
+  assert (last_token != NULL);
+  //todo: needed?
+  return ! (last_token->type == PATH_TOKEN::last_index_special || (last_token->type == PATH_TOKEN::array_index
+	    && std::stoi (last_token->token_string) >= size));
 }
 
 bool JSON_PATH::is_last_token_array_index_zero () const
 {
-  const TOKEN *last_token = get_last_token ();
+  const PATH_TOKEN *last_token = get_last_token ();
   assert (last_token != NULL);
-  return (last_token->index != kPointerInvalidIndex && last_token->index == 0);
+  return (last_token->type == PATH_TOKEN::array_index && std::stoi (last_token->token_string) == 0);
 }
 
 bool JSON_PATH::points_to_array_cell () const
 {
-  if (m_backend_json_format == JSON_PATH_TYPE::JSON_PATH_SQL_JSON)
-    {
-      return !m_path_tokens.empty () && m_path_tokens.back ().type == PATH_TOKEN::token_type::array_index;
-    }
-
-  const TOKEN *last_token = get_last_token ();
-  return (last_token != NULL && (last_token->index != kPointerInvalidIndex || (last_token->length == 1
-				 && last_token->name[0] == '-')));
+  const PATH_TOKEN *last_token = get_last_token ();
+  return (last_token != NULL && (last_token->type == PATH_TOKEN::array_index
+				 || (last_token->type == PATH_TOKEN::last_index_special)));
 }
 
 bool JSON_PATH::parent_exists (JSON_DOC &jd) const
 {
-  if (GetTokenCount () == 0)
+  if (get_token_count () == 0)
     {
       return false;
     }
@@ -909,28 +867,20 @@ bool JSON_PATH::parent_exists (JSON_DOC &jd) const
 
 int JSON_PATH::init (const char *path)
 {
-  int error_code = replace_json_pointer (path);
-  if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR();
-      return error_code;
-    }
-
+  // todo: make sure this is called only after path is checked to be json_pointer
+  replace_json_pointer (path);
   return NO_ERROR;
 }
 
 JSON_PATH::JSON_PATH ()
-  : JSON_POINTER ("")
 {
-  m_backend_json_format = JSON_PATH_TYPE::JSON_PATH_POINTER;
+
 }
 
-JSON_PATH::JSON_PATH (const TOKEN *tokens, size_t token_cnt)
-  : JSON_POINTER (tokens, token_cnt)
+JSON_PATH::JSON_PATH (std::vector<PATH_TOKEN> tokens)
+  : m_path_tokens (std::move (tokens))
 {
-  // this object does not get owernship over the TOKEN* resources and does not dealloc them
-  // during destruction
-  m_backend_json_format = JSON_PATH_TYPE::JSON_PATH_POINTER;
+
 }
 
 /*
@@ -952,62 +902,56 @@ JSON_PATH::replace_json_pointer (const char *sql_path)
       return assign_pointer (sql_path_string);
     }
 
-  if (!validate_and_make_json_path (sql_path_string, false))
+  if (!validate_and_make_json_path (sql_path_string))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
       return ER_JSON_INVALID_PATH;
     }
-
-  std::unordered_map<std::string, std::string> special_chars;
-
-  build_special_chars_map (json_path_type, special_chars);
-
-  // split in tokens and convert to JSON pointer format
-  std::vector<std::string> tokens = db_json_split_path_by_delimiters (sql_path_string, db_Json_sql_path_delimiters,
-				    false);
-  sql_path_string = "";
-  for (unsigned int i = 0; i < tokens.size (); ++i)
-    {
-      replace_special_chars_in_tokens (tokens[i], special_chars);
-      sql_path_string += "/" + tokens[i];
-    }
-
-  return assign_pointer (sql_path_string);
+  return NO_ERROR;
 }
 
 int
 JSON_PATH::assign_pointer (const std::string &pointer_path)
 {
-  // Call assignment operator on base class object
-  JSON_POINTER::operator= (JSON_POINTER (pointer_path.c_str ()));
-  if (!IsValid ())
+  JSON_POINTER jp (pointer_path.c_str ());
+  if (!jp.IsValid ())
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
       return ER_JSON_INVALID_PATH;
     }
-  m_backend_json_format = JSON_PATH_TYPE::JSON_PATH_POINTER;
+
+  size_t tkn_cnt = jp.GetTokenCount ();
+  const TOKEN *tokens = jp.GetTokens ();
+
+  // convert rapidjson's tokens to our tokens:
+  for (size_t i = 0; i < tkn_cnt; ++i)
+    {
+      const TOKEN &rapid_token = tokens[i];
+      PATH_TOKEN path_token;
+
+      if (rapid_token.index != kPointerInvalidIndex)
+	{
+	  // array_index
+	  path_token.type = PATH_TOKEN::array_index;
+	  path_token.token_string = std::to_string (rapid_token.index);
+	}
+      else if (rapid_token.length == 1 && rapid_token.name[0] == '-' )
+	{
+	  // '-' special idx token
+	  path_token.type = PATH_TOKEN::last_index_special;
+	}
+      else
+	{
+	  // object_key
+	  path_token.type = PATH_TOKEN::object_key;
+	  path_token.token_string = rapid_token.name;
+	}
+      m_path_tokens.push_back (path_token);
+    }
+
   return NO_ERROR;
 }
 
-class JSON_PATH_GETTER : public JSON_WALKER
-{
-  public:
-    JSON_PATH_GETTER () = delete;
-    JSON_PATH_GETTER (const JSON_PATH &json_path, JSON_VALUE *&found_json_value);
-    JSON_PATH_GETTER (JSON_PATH_GETTER &) = delete;
-    ~JSON_PATH_GETTER () override = default;
-
-  private:
-    int CallBefore (JSON_VALUE &value) override;
-    int CallAfter (JSON_VALUE &value) override;
-    int CallOnArrayIterate () override;
-    int CallOnKeyIterate (JSON_VALUE &key) override;
-
-    const JSON_PATH &m_path;
-    size_t m_token_idx;
-    std::stack<rapidjson::SizeType> m_array_idxs;
-    JSON_VALUE *&m_found_json_value;
-};
 
 JSON_PATH_GETTER::JSON_PATH_GETTER (const JSON_PATH &json_path, JSON_VALUE *&found_json_value)
   : m_path (json_path)
@@ -1042,6 +986,7 @@ int JSON_PATH_GETTER::CallAfter (JSON_VALUE &value)
 {
   // break previous object/array iterations
   m_stop = true;
+  return false;
 }
 
 int JSON_PATH_GETTER::CallOnArrayIterate ()
@@ -1060,31 +1005,12 @@ int JSON_PATH_GETTER::CallOnArrayIterate ()
 int JSON_PATH_GETTER::CallOnKeyIterate (JSON_VALUE &key)
 {
   const JSON_PATH::PATH_TOKEN &tkn = m_path.m_path_tokens[m_token_idx - 1];
+  assert (tkn.type == JSON_PATH::PATH_TOKEN::token_type::object_key && key.IsString ());
+
+  m_skip = (strcmp (key.GetString (), tkn.token_string.c_str ()) != 0);
+
+  return NO_ERROR;
 }
-
-
-class JSON_PATH_SETTER : public JSON_WALKER
-{
-  public:
-    JSON_PATH_SETTER () = delete;
-    JSON_PATH_SETTER (const JSON_PATH &json_path, JSON_DOC &json_doc, const JSON_VALUE &json_value);
-    JSON_PATH_SETTER (JSON_PATH_SETTER &) = delete;
-    ~JSON_PATH_SETTER () override = default;
-
-  private:
-    int CallBefore (JSON_VALUE &value) override;
-    int CallAfter (JSON_VALUE &value) override;
-    int CallOnArrayIterate () override;
-    int CallOnKeyIterate (JSON_VALUE &key) override;
-
-    const JSON_PATH &m_path;
-    JSON_PRIVATE_MEMPOOL &m_allocator;
-    const JSON_VALUE &m_value;
-    size_t m_token_idx;
-
-    std::stack<rapidjson::SizeType> m_array_idxs;
-    std::stack<rapidjson::SizeType> m_allowed_idxs;
-};
 
 JSON_PATH_SETTER::JSON_PATH_SETTER (const JSON_PATH &json_path, JSON_DOC &json_doc, const JSON_VALUE &json_value)
   : m_path (json_path)
@@ -1100,7 +1026,8 @@ int JSON_PATH_SETTER::CallBefore (JSON_VALUE &value)
   if (m_token_idx == m_path.m_path_tokens.size ())
     {
       // we finished the path
-      value.Set (m_value, m_allocator);
+      // set somehow
+      // value.Set (m_value, m_allocator);
       return NO_ERROR;
     }
 
@@ -1154,7 +1081,8 @@ int JSON_PATH_SETTER::CallBefore (JSON_VALUE &value)
       if (m == value.MemberEnd ())
 	{
 	  // insert dummy
-	  value.AddMember (JSON_VALUE (tkn.token_string.c_str (), tkn.token_string.length ()), JSON_VALUE ().SetNull (),
+	  value.AddMember (JSON_VALUE (tkn.token_string.c_str (), (rapidjson::SizeType) tkn.token_string.length ()),
+			   JSON_VALUE ().SetNull (),
 			   m_allocator);
 	}
     }
@@ -1167,6 +1095,7 @@ int JSON_PATH_SETTER::CallAfter (JSON_VALUE &value)
 {
   // break previous object/array iterations
   m_stop = true;
+  return NO_ERROR;
 }
 
 int JSON_PATH_SETTER::CallOnArrayIterate ()
