@@ -1156,9 +1156,7 @@ db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<
   {
     for (std::size_t i = 0; i < json_paths.size (); ++i)
       {
-	bool path_compatible = json_paths[i].match (crt_path);
-
-	if (path_compatible)
+	if (json_paths[i].match (crt_path))
 	  {
 	    produced_array[i].push_back (&jv);
 	  }
@@ -1187,7 +1185,7 @@ db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<
     }
   else
     {
-      assert (produced_array.size () == 1 && (produced_array.empty () || produced_array.size () == 1));
+      assert (produced_array.size () == 1 && (produced_array[0].empty () || produced_array[0].size () == 1));
 
       if (!produced_array[0].empty ())
 	{
