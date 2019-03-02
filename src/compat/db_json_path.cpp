@@ -939,7 +939,7 @@ JSON_PATH::assign_pointer (const std::string &pointer_path)
 	{
 	  // '-' special idx token
 	  path_token.type = PATH_TOKEN::last_index_special;
-	  rapid_token.name = "-";
+	  path_token.token_string = "-";
 	}
       else
 	{
