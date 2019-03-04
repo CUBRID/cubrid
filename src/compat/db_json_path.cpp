@@ -476,9 +476,8 @@ db_json_normalize_path (const char *pointer_path, JSON_PATH &json_path)
   if (error_code)
     {
       ASSERT_ERROR ();
-      return error_code;
     }
-  return NO_ERROR;
+  return error_code;
 }
 
 /*
@@ -785,7 +784,11 @@ bool JSON_PATH::erase (JSON_DOC &jd) const
     case DB_JSON_ARRAY:
       return value->Erase (value->Begin () + std::stoi (tkn.token_string));
     case DB_JSON_OBJECT:
-      return value->EraseMember (tkn.token_string.c_str ());
+    {
+      assert (tkn.token_string.length () >= 2);
+      std::string unescaped = tkn.token_string.substr (1, tkn.token_string.length () - 2);
+      return value->EraseMember (unescaped.c_str ());
+    }
     default:
       return false;
     }
@@ -868,8 +871,12 @@ bool JSON_PATH::parent_exists (JSON_DOC &jd) const
 int JSON_PATH::init (const char *path)
 {
   // todo: make sure this is called only after path is checked to be json_pointer
-  replace_json_pointer (path);
-  return NO_ERROR;
+  int error_code = replace_json_pointer (path);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+    }
+  return error_code;
 }
 
 JSON_PATH::JSON_PATH ()
@@ -899,7 +906,12 @@ JSON_PATH::replace_json_pointer (const char *sql_path)
   if (json_path_type == JSON_PATH_TYPE::JSON_PATH_POINTER)
     {
       // path is not SQL path format; consider it JSON pointer.
-      return assign_pointer (sql_path_string);
+      int error_code = assign_pointer (sql_path_string);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	}
+      return error_code;
     }
 
   if (!validate_and_make_json_path (sql_path_string))
