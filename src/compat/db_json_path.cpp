@@ -958,9 +958,12 @@ JSON_PATH::assign_pointer (const std::string &pointer_path)
 	  // object_key
 	  path_token.type = PATH_TOKEN::object_key;
 	  path_token.token_string = "";
-	  path_token.token_string += '"';
-	  path_token.token_string += rapid_token.name;
-	  path_token.token_string += '"';
+
+	  char *escaped;
+	  size_t escaped_size;
+	  db_string_escape (rapid_token.name, rapid_token.length, &escaped, &escaped_size);
+	  path_token.token_string += escaped;
+	  db_private_free (NULL, escaped);
 	}
       m_path_tokens.push_back (path_token);
     }

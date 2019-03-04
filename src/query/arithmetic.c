@@ -6344,7 +6344,7 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
       size_t escaped_size;
 
       db_json_path_unquote_object_keys_external (paths[0]);
-      error_code = db_string_escape (paths[0].c_str(), paths[0].size (), &escaped, &escaped_size);
+      error_code = db_string_escape (paths[0].c_str (), paths[0].size (), &escaped, &escaped_size);
       if (error_code)
 	{
 	  db_private_free (NULL, escaped);
