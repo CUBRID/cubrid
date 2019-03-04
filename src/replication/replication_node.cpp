@@ -45,7 +45,7 @@ namespace cubreplication
     return NO_ERROR;
   }
 
-  void get_replication_file_path (std::string &path)
+  void replication_node::get_replication_file_path (std::string &path)
   {
     char buf_temp_path[PATH_MAX];
     char *temp_path;
