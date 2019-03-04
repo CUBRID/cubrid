@@ -640,10 +640,12 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERV
   char *server_name = NULL;
   int name_length, buffer;
 
-  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "css_send_to_existing_server request:%d, rid:%d", request, rid);
+  /* TODO : clean up debug messages */
+  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "css_send_to_existing_server request:%d, rid:%d\n", request, rid);
   name_length = 1024;
   if (css_receive_data (conn, rid, &server_name, &name_length, -1) == NO_ERRORS && server_name != NULL)
     {
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "css_send_to_existing_server server_name:%s\n", server_name);
       temp = css_return_entry_of_server (server_name, css_Master_socket_anchor);
       if (temp != NULL
 #if !defined(WINDOWS)
@@ -656,6 +658,7 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERV
 	      /* use old style connection */
 	      if (IS_INVALID_SOCKET (temp->fd))
 		{
+                  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "reject_client_request (INVALID_SOCKET)\n");
 		  css_reject_client_request (conn, rid, SERVER_STARTED);
 		  free_and_init (server_name);
 		  css_free_conn (conn);
@@ -666,12 +669,15 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERV
 #if !defined(WINDOWS)
 		  if (hb_is_hang_process (temp->fd))
 		    {
+                      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "reject_client_request (hb_is_hang_process)\n");
 		      css_reject_client_request (conn, rid, SERVER_HANG);
 		      free_and_init (server_name);
 		      css_free_conn (conn);
 		      return;
 		    }
 #endif
+                  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "css_send_new_request_to_server temp->fd:%d, conn->fd:%d\n",
+                    temp->fd, conn->fd);
 		  if (css_send_new_request_to_server (temp->fd, conn->fd, rid, request))
 		    {
 		      free_and_init (server_name);
@@ -695,18 +701,22 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERV
 #if !defined(WINDOWS)
 	      if (hb_is_hang_process (temp->fd))
 		{
+                  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "reject_client_request (hb_is_hang_process)\n");
 		  css_reject_client_request (conn, rid, SERVER_HANG);
 		  free_and_init (server_name);
 		  css_free_conn (conn);
 		  return;
 		}
 #endif
+              MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "SERVER_CONNECTED_NEW temp->port_id:%d\n",
+                temp->port_id);
 	      buffer = htonl (SERVER_CONNECTED_NEW);
 	      css_send_data (conn, rid, (char *) &buffer, sizeof (int));
 	      buffer = htonl (temp->port_id);
 	      css_send_data (conn, rid, (char *) &buffer, sizeof (int));
 	    }
 	}
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "SERVER_NOT_FOUND\n");
       css_reject_client_request (conn, rid, SERVER_NOT_FOUND);
     }
   css_free_conn (conn);
