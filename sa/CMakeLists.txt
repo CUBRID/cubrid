@@ -177,12 +177,14 @@ set(PARSER_SOURCES
   ${PARSER_DIR}/show_meta.c
   ${PARSER_DIR}/type_checking.c
   ${PARSER_DIR}/view_transform.c
+  ${PARSER_DIR}/xasl_regu_alloc.cpp
   ${PARSER_DIR}/xasl_generation.c
   )
 set(PARSER_HEADERS
   ${PARSER_DIR}/func_type.hpp
   ${PARSER_DIR}/parse_type.hpp
   ${PARSER_DIR}/parser_allocator.hpp
+  ${PARSER_DIR}/xasl_regu_alloc.hpp
   )
 
 set(OPTIMIZER_SOURCES
@@ -205,12 +207,15 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/method_scan.c
   ${QUERY_DIR}/numeric_opfunc.c
   ${QUERY_DIR}/partition.c
+  ${QUERY_DIR}/query_aggregate.cpp
+  ${QUERY_DIR}/query_analytic.cpp
   ${QUERY_DIR}/query_cl.c
   ${QUERY_DIR}/query_dump.c
   ${QUERY_DIR}/query_evaluator.c
   ${QUERY_DIR}/query_executor.c
   ${QUERY_DIR}/query_manager.c
   ${QUERY_DIR}/query_opfunc.c
+  ${QUERY_DIR}/query_reevaluation.cpp
   ${QUERY_DIR}/scan_json_table.cpp
   ${QUERY_DIR}/scan_manager.c
   ${QUERY_DIR}/serial.c
@@ -223,6 +228,9 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/xasl_to_stream.c
   )
 set(QUERY_HEADERS
+  ${QUERY_DIR}/query_aggregate.hpp
+  ${QUERY_DIR}/query_analytic.hpp
+  ${QUERY_DIR}/query_reevaluation.hpp
   ${QUERY_DIR}/scan_json_table.hpp
   )
 
@@ -362,11 +370,15 @@ set(SESSION_SOURCES
 
 set(XASL_SOURCES
   ${XASL_DIR}/access_json_table.cpp
+  ${XASL_DIR}/xasl_analytic.cpp
   ${XASL_DIR}/xasl_stream.cpp
   )
 set(XASL_HEADERS
   ${XASL_DIR}/access_json_table.hpp
+  ${XASL_DIR}/access_spec.hpp
   ${XASL_DIR}/compile_context.h
+  ${XASL_DIR}/xasl_aggregate.hpp
+  ${XASL_DIR}/xasl_analytic.hpp
   ${XASL_DIR}/xasl_stream.hpp
   )
 

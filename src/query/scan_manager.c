@@ -39,11 +39,15 @@
 #include "btree_load.h"
 #include "perf_monitor.h"
 #include "query_manager.h"
+#include "query_evaluator.h"
+#include "query_opfunc.h"
+#include "query_reevaluation.hpp"
 #include "regu_var.h"
 #include "locator_sr.h"
 #include "object_primitive.h"
-#include "query_opfunc.h"
 #include "dbtype.h"
+#include "xasl_predicate.hpp"
+#include "xasl.h"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -4970,7 +4974,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   OID current_oid, *p_current_oid = NULL;
   MVCC_SCAN_REEV_DATA mvcc_sel_reev_data;
   MVCC_REEV_DATA mvcc_reev_data;
-  FILTER_INFO *p_range_filter = NULL, *p_key_filter = NULL;
+  UPDDEL_MVCC_COND_REEVAL upd_reev;
   OID retry_oid;
   LOG_LSA ref_lsa;
   bool is_peeking;
@@ -5131,9 +5135,10 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       if (scan_id->mvcc_select_lock_needed)
 	{
 	  /* data filter already initialized, don't have key or range init scan reevaluation structure */
-	  INIT_SCAN_REEV_DATA (&mvcc_sel_reev_data, p_range_filter, p_key_filter, &data_filter,
-			       &scan_id->qualification);
-	  SET_MVCC_SELECT_REEV_DATA (&mvcc_reev_data, &mvcc_sel_reev_data, V_TRUE);
+	  upd_reev.init (*scan_id);
+	  mvcc_sel_reev_data.set_filters (upd_reev);
+	  mvcc_sel_reev_data.qualification = &scan_id->qualification;
+	  mvcc_reev_data.set_scan_reevaluation (mvcc_sel_reev_data);
 	  COPY_OID (&current_oid, &hsidp->curr_oid);
 	  if (scan_id->fixed)
 	    {
@@ -5927,16 +5932,14 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
 
   if (scan_id->mvcc_select_lock_needed)
     {
-      FILTER_INFO range_filter, key_filter;
+      UPDDEL_MVCC_COND_REEVAL upd_reev;
       MVCC_SCAN_REEV_DATA mvcc_sel_reev_data;
       MVCC_REEV_DATA mvcc_reev_data;
 
-      /* initialize range and key filter, data filter already initialized */
-      INIT_FILTER_INFO_FOR_SCAN_REEV (scan_id, &range_filter, &key_filter, NULL);
-      /* init scan reevaluation structure */
-      INIT_SCAN_REEV_DATA (&mvcc_sel_reev_data, &range_filter, &key_filter, data_filter, &scan_id->qualification);
-      /* set reevaluation data */
-      SET_MVCC_SELECT_REEV_DATA (&mvcc_reev_data, &mvcc_sel_reev_data, V_TRUE);
+      upd_reev.init (*scan_id);
+      mvcc_sel_reev_data.set_filters (upd_reev);
+      mvcc_sel_reev_data.qualification = &scan_id->qualification;
+      mvcc_reev_data.set_scan_reevaluation (mvcc_sel_reev_data);
 
       sp_scan = locator_lock_and_get_object_with_evaluation (thread_p, isidp->curr_oidp, NULL, &recdes,
 							     &isidp->scan_cache, scan_id->fixed, NULL_CHN,
@@ -7275,7 +7278,7 @@ resolve_domains_on_list_scan (LLIST_SCAN_ID * llsidp, val_list_node * ref_val_li
 
   if (llsidp->scan_pred.pred_expr->type == T_EVAL_TERM)
     {
-      EVAL_TERM ev_t = llsidp->scan_pred.pred_expr->pe.eval_term;
+      EVAL_TERM ev_t = llsidp->scan_pred.pred_expr->pe.m_eval_term;
 
       if (ev_t.et_type == T_COMP_EVAL_TERM)
 	{

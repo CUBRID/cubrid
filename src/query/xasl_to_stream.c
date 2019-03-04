@@ -40,6 +40,9 @@
 #include "work_space.h"
 #include "memory_alloc.h"
 #include "xasl.h"
+#include "xasl_aggregate.hpp"
+#include "xasl_analytic.hpp"
+#include "xasl_predicate.hpp"
 #include "xasl_stream.hpp"
 
 #define    BYTE_SIZE        OR_INT_SIZE
@@ -4131,15 +4134,15 @@ xts_process_pred_expr (char *ptr, const PRED_EXPR * pred_expr)
   switch (pred_expr->type)
     {
     case T_PRED:
-      ptr = xts_process_pred (ptr, &pred_expr->pe.pred);
+      ptr = xts_process_pred (ptr, &pred_expr->pe.m_pred);
       break;
 
     case T_EVAL_TERM:
-      ptr = xts_process_eval_term (ptr, &pred_expr->pe.eval_term);
+      ptr = xts_process_eval_term (ptr, &pred_expr->pe.m_eval_term);
       break;
 
     case T_NOT_TERM:
-      offset = xts_save_pred_expr (pred_expr->pe.not_term);
+      offset = xts_save_pred_expr (pred_expr->pe.m_not_term);
       if (offset == ER_FAILED)
 	{
 	  return NULL;
@@ -4176,7 +4179,7 @@ xts_process_pred (char *ptr, const PRED * pred)
   /* Traverse right-linear chains of AND/OR terms */
   while (rhs->type == T_PRED)
     {
-      pred = &rhs->pe.pred;
+      pred = &rhs->pe.m_pred;
 
       offset = xts_save_pred_expr (pred->lhs);	/* lhs */
       if (offset == ER_FAILED)
@@ -4976,7 +4979,7 @@ xts_process_regu_variable (char *ptr, const REGU_VARIABLE * regu_var)
     }
   ptr = or_pack_int (ptr, offset);
 
-  offset = xts_save_xasl_node (REGU_VARIABLE_XASL (regu_var));
+  offset = xts_save_xasl_node (regu_var->xasl);
   if (offset == ER_FAILED)
     {
       return NULL;
@@ -6249,7 +6252,7 @@ xts_sizeof_pred_expr (const PRED_EXPR * pred_expr)
   switch (pred_expr->type)
     {
     case T_PRED:
-      tmp_size = xts_sizeof_pred (&pred_expr->pe.pred);
+      tmp_size = xts_sizeof_pred (&pred_expr->pe.m_pred);
       if (tmp_size == ER_FAILED)
 	{
 	  return ER_FAILED;
@@ -6258,7 +6261,7 @@ xts_sizeof_pred_expr (const PRED_EXPR * pred_expr)
       break;
 
     case T_EVAL_TERM:
-      tmp_size = xts_sizeof_eval_term (&pred_expr->pe.eval_term);
+      tmp_size = xts_sizeof_eval_term (&pred_expr->pe.m_eval_term);
       if (tmp_size == ER_FAILED)
 	{
 	  return ER_FAILED;
@@ -6318,7 +6321,7 @@ xts_sizeof_pred (const PRED * pred)
   /* Traverse right-linear chains of AND/OR terms */
   while (rhs->type == T_PRED)
     {
-      pred = &rhs->pe.pred;
+      pred = &rhs->pe.m_pred;
 
       size += (PTR_SIZE		/* lhs */
 	       + OR_INT_SIZE);	/* bool_op */

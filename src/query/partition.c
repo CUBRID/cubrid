@@ -28,11 +28,13 @@
 #include "fetch.h"
 #include "dbtype.h"
 #include "stream_to_xasl.h"
+#include "query_aggregate.hpp"
 #include "query_executor.h"
 #include "query_opfunc.h"
 #include "object_primitive.h"
 #include "dbtype.h"
 #include "xasl.h"
+#include "xasl_predicate.hpp"
 
 typedef enum match_status
 {
@@ -1840,7 +1842,7 @@ partition_match_pred_expr (PRUNING_CONTEXT * pinfo, const PRED_EXPR * pr, PRUNIN
 	 * partitions matching the right PRED_EXPR and merge or intersect the lists */
 	PRUNING_BITSET left_set, right_set;
 	MATCH_STATUS lstatus, rstatus;
-	BOOL_OP op = pr->pe.pred.bool_op;
+	BOOL_OP op = pr->pe.m_pred.bool_op;
 
 	if (op != B_AND && op != B_OR)
 	  {
@@ -1852,21 +1854,21 @@ partition_match_pred_expr (PRUNING_CONTEXT * pinfo, const PRED_EXPR * pr, PRUNIN
 	pruningset_init (&left_set, PARTITIONS_COUNT (pinfo));
 	pruningset_init (&right_set, PARTITIONS_COUNT (pinfo));
 
-	lstatus = partition_match_pred_expr (pinfo, pr->pe.pred.lhs, &left_set);
-	rstatus = partition_match_pred_expr (pinfo, pr->pe.pred.rhs, &right_set);
+	lstatus = partition_match_pred_expr (pinfo, pr->pe.m_pred.lhs, &left_set);
+	rstatus = partition_match_pred_expr (pinfo, pr->pe.m_pred.rhs, &right_set);
 
 	if (op == B_AND)
 	  {
 	    /* do intersection between left and right */
 	    if (lstatus == MATCH_NOT_FOUND)
 	      {
-		/* pr->pe.pred.lhs does not refer part_expr so return right */
+		/* pr->pe.m_pred.lhs does not refer part_expr so return right */
 		pruningset_copy (pruned, &right_set);
 		status = rstatus;
 	      }
 	    else if (rstatus == MATCH_NOT_FOUND)
 	      {
-		/* pr->pe.pred.rhs does not refer part_expr so return right */
+		/* pr->pe.m_pred.rhs does not refer part_expr so return right */
 		pruningset_copy (pruned, &left_set);
 		status = lstatus;
 	      }
@@ -1896,7 +1898,7 @@ partition_match_pred_expr (PRUNING_CONTEXT * pinfo, const PRED_EXPR * pr, PRUNIN
       }
 
     case T_EVAL_TERM:
-      switch (pr->pe.eval_term.et_type)
+      switch (pr->pe.m_eval_term.et_type)
 	{
 	case T_COMP_EVAL_TERM:
 	  {
@@ -1904,9 +1906,9 @@ partition_match_pred_expr (PRUNING_CONTEXT * pinfo, const PRED_EXPR * pr, PRUNIN
 	    REGU_VARIABLE *left, *right;
 	    PRUNING_OP op;
 
-	    left = pr->pe.eval_term.et.et_comp.lhs;
-	    right = pr->pe.eval_term.et.et_comp.rhs;
-	    op = partition_rel_op_to_pruning_op (pr->pe.eval_term.et.et_comp.rel_op);
+	    left = pr->pe.m_eval_term.et.et_comp.lhs;
+	    right = pr->pe.m_eval_term.et.et_comp.rhs;
+	    op = partition_rel_op_to_pruning_op (pr->pe.m_eval_term.et.et_comp.rel_op);
 
 	    status = MATCH_NOT_FOUND;
 	    if (partition_do_regu_variables_match (pinfo, left, part_expr))
@@ -1925,11 +1927,11 @@ partition_match_pred_expr (PRUNING_CONTEXT * pinfo, const PRED_EXPR * pr, PRUNIN
 	    REGU_VARIABLE *regu, *list;
 	    PRUNING_OP op;
 
-	    regu = pr->pe.eval_term.et.et_alsm.elem;
-	    list = pr->pe.eval_term.et.et_alsm.elemset;
-	    op = partition_rel_op_to_pruning_op (pr->pe.eval_term.et.et_alsm.rel_op);
+	    regu = pr->pe.m_eval_term.et.et_alsm.elem;
+	    list = pr->pe.m_eval_term.et.et_alsm.elemset;
+	    op = partition_rel_op_to_pruning_op (pr->pe.m_eval_term.et.et_alsm.rel_op);
 	    /* adjust rel_op based on the QL_FLAG of the alsm eval node */
-	    if (pr->pe.eval_term.et.et_alsm.eq_flag == F_SOME)
+	    if (pr->pe.m_eval_term.et.et_alsm.eq_flag == F_SOME)
 	      {
 		if (op == PO_EQ)
 		  {
@@ -3591,7 +3593,7 @@ cleanup:
  */
 int
 partition_load_aggregate_helper (PRUNING_CONTEXT * pcontext, access_spec_node * spec, int pruned_count,
-				 BTID * root_btid, hierarchy_aggregate_helper * helper)
+				 BTID * root_btid, HIERARCHY_AGGREGATE_HELPER * helper)
 {
   int error = NO_ERROR, i = 0;
   char *btree_name = NULL;

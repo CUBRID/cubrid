@@ -15205,7 +15205,7 @@ btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid, INDX_
       || (!bts->use_desc_index && BTREE_IS_PART_KEY_DESC (&bts->btid_int)))
     {
       /* Reverse scan and its range. */
-      RANGE_REVERSE (bts->key_range.range);
+      range_reverse (bts->key_range.range);
       swap_key = bts->key_range.lower_key;
       bts->key_range.lower_key = bts->key_range.upper_key;
       bts->key_range.upper_key = swap_key;
@@ -15356,7 +15356,7 @@ btree_scan_update_range (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, key_val_rang
       || (!bts->use_desc_index && BTREE_IS_PART_KEY_DESC (&bts->btid_int)))
     {
       /* Reverse scan and its range. */
-      RANGE_REVERSE (bts->key_range.range);
+      range_reverse (bts->key_range.range);
       swap_key = bts->key_range.lower_key;
       bts->key_range.lower_key = bts->key_range.upper_key;
       bts->key_range.upper_key = swap_key;

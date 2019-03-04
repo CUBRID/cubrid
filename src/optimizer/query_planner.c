@@ -46,6 +46,7 @@
 #include "parser_message.h"
 #include "intl_support.h"
 #include "storage_common.h"
+#include "xasl_analytic.hpp"
 #include "xasl_generation.h"
 #include "schema_manager.h"
 #include "network_interface_cl.h"

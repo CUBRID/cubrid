@@ -41,6 +41,7 @@
 #include "query_executor.h"
 #include "dbtype.h"
 #include "thread_entry.hpp"
+#include "xasl_predicate.hpp"
 
 #define UNKNOWN_CARD   -2	/* Unknown cardinality of a set member */
 
@@ -1646,7 +1647,7 @@ eval_set_list_cmp (THREAD_ENTRY * thread_p, const COMP_EVAL_TERM * et_comp, val_
  *              necessary error code is set and V_ERROR is returned.
  */
 DB_LOGICAL
-eval_pred (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * obj_oid)
+eval_pred (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * obj_oid)
 {
   const COMP_EVAL_TERM *et_comp;
   const ALSM_EVAL_TERM *et_alsm;
@@ -1654,7 +1655,7 @@ eval_pred (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * 
   DB_VALUE *peek_val1, *peek_val2, *peek_val3;
   DB_LOGICAL result = V_UNKNOWN;
   int regexp_res;
-  const pred_expr *t_pr;
+  const PRED_EXPR *t_pr;
   QFILE_SORTED_LIST_ID *srlist_id;
 
   peek_val1 = NULL;
@@ -1674,22 +1675,22 @@ eval_pred (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * 
   switch (pr->type)
     {
     case T_PRED:
-      switch (pr->pe.pred.bool_op)
+      switch (pr->pe.m_pred.bool_op)
 	{
 	case B_AND:
 	  /* 'pt_to_pred_expr()' will generate right-linear tree */
 	  result = V_TRUE;
-	  for (t_pr = pr; result == V_TRUE && t_pr->type == T_PRED && t_pr->pe.pred.bool_op == B_AND;
-	       t_pr = t_pr->pe.pred.rhs)
+	  for (t_pr = pr; result == V_TRUE && t_pr->type == T_PRED && t_pr->pe.m_pred.bool_op == B_AND;
+	       t_pr = t_pr->pe.m_pred.rhs)
 	    {
 	      if (result == V_UNKNOWN)
 		{
-		  result = eval_pred (thread_p, t_pr->pe.pred.lhs, vd, obj_oid);
+		  result = eval_pred (thread_p, t_pr->pe.m_pred.lhs, vd, obj_oid);
 		  result = (result == V_TRUE) ? V_UNKNOWN : result;
 		}
 	      else
 		{
-		  result = eval_pred (thread_p, t_pr->pe.pred.lhs, vd, obj_oid);
+		  result = eval_pred (thread_p, t_pr->pe.m_pred.lhs, vd, obj_oid);
 		}
 
 	      if (result == V_FALSE || result == V_ERROR)
@@ -1712,17 +1713,17 @@ eval_pred (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * 
 	case B_OR:
 	  /* 'pt_to_pred_expr()' will generate right-linear tree */
 	  result = V_FALSE;
-	  for (t_pr = pr; result == V_FALSE && t_pr->type == T_PRED && t_pr->pe.pred.bool_op == B_OR;
-	       t_pr = t_pr->pe.pred.rhs)
+	  for (t_pr = pr; result == V_FALSE && t_pr->type == T_PRED && t_pr->pe.m_pred.bool_op == B_OR;
+	       t_pr = t_pr->pe.m_pred.rhs)
 	    {
 	      if (result == V_UNKNOWN)
 		{
-		  result = eval_pred (thread_p, t_pr->pe.pred.lhs, vd, obj_oid);
+		  result = eval_pred (thread_p, t_pr->pe.m_pred.lhs, vd, obj_oid);
 		  result = (result == V_FALSE) ? V_UNKNOWN : result;
 		}
 	      else
 		{
-		  result = eval_pred (thread_p, t_pr->pe.pred.lhs, vd, obj_oid);
+		  result = eval_pred (thread_p, t_pr->pe.m_pred.lhs, vd, obj_oid);
 		}
 
 	      if (result == V_TRUE || result == V_ERROR)
@@ -1746,8 +1747,8 @@ eval_pred (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * 
 	  {
 	    DB_LOGICAL result_lhs, result_rhs;
 
-	    result_lhs = eval_pred (thread_p, pr->pe.pred.lhs, vd, obj_oid);
-	    result_rhs = eval_pred (thread_p, pr->pe.pred.rhs, vd, obj_oid);
+	    result_lhs = eval_pred (thread_p, pr->pe.m_pred.lhs, vd, obj_oid);
+	    result_rhs = eval_pred (thread_p, pr->pe.m_pred.rhs, vd, obj_oid);
 
 	    if (result_lhs == V_ERROR || result_rhs == V_ERROR)
 	      {
@@ -1773,8 +1774,8 @@ eval_pred (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * 
 	  {
 	    DB_LOGICAL result_lhs, result_rhs;
 
-	    result_lhs = eval_pred (thread_p, pr->pe.pred.lhs, vd, obj_oid);
-	    result_rhs = eval_pred (thread_p, pr->pe.pred.rhs, vd, obj_oid);
+	    result_lhs = eval_pred (thread_p, pr->pe.m_pred.lhs, vd, obj_oid);
+	    result_rhs = eval_pred (thread_p, pr->pe.m_pred.rhs, vd, obj_oid);
 
 	    if (result_lhs == V_ERROR || result_rhs == V_ERROR)
 	      {
@@ -1782,11 +1783,11 @@ eval_pred (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * 
 	      }
 	    else if (result_lhs == result_rhs)
 	      {
-		result = (pr->pe.pred.bool_op == B_IS) ? V_TRUE : V_FALSE;
+		result = (pr->pe.m_pred.bool_op == B_IS) ? V_TRUE : V_FALSE;
 	      }
 	    else
 	      {
-		result = (pr->pe.pred.bool_op == B_IS) ? V_FALSE : V_TRUE;
+		result = (pr->pe.m_pred.bool_op == B_IS) ? V_FALSE : V_TRUE;
 	      }
 	  }
 	  break;
@@ -1798,7 +1799,7 @@ eval_pred (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * 
       break;
 
     case T_EVAL_TERM:
-      switch (pr->pe.eval_term.et_type)
+      switch (pr->pe.m_eval_term.et_type)
 	{
 	case T_COMP_EVAL_TERM:
 	  /*
@@ -1807,7 +1808,7 @@ eval_pred (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * 
 	   * Each datatype defines its own meaning of relationship
 	   * indicated by one of the relational operators.
 	   */
-	  et_comp = &pr->pe.eval_term.et.et_comp;
+	  et_comp = &pr->pe.m_eval_term.et.et_comp;
 
 	  /* evaluate NULL predicate, if specified */
 	  if (et_comp->rel_op == R_NULL)
@@ -1919,7 +1920,7 @@ eval_pred (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * 
 	    DB_TYPE rhs_type = DB_TYPE_UNKNOWN;
 	    bool rhs_is_set = false;
 
-	    et_alsm = &pr->pe.eval_term.et.et_alsm;
+	    et_alsm = &pr->pe.m_eval_term.et.et_alsm;
 
 	    /*
 	     * Note: According to ANSI, if the set or list file is empty,
@@ -2016,7 +2017,7 @@ eval_pred (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * 
 	  break;
 
 	case T_LIKE_EVAL_TERM:
-	  et_like = &pr->pe.eval_term.et.et_like;
+	  et_like = &pr->pe.m_eval_term.et.et_like;
 
 	  /* fetch source text expression */
 	  if (fetch_peek_dbval (thread_p, et_like->src, vd, NULL, obj_oid, NULL, &peek_val1) != NO_ERROR)
@@ -2069,7 +2070,7 @@ eval_pred (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * 
       break;
 
     case T_NOT_TERM:
-      result = eval_pred (thread_p, pr->pe.not_term, vd, obj_oid);
+      result = eval_pred (thread_p, pr->pe.m_not_term, vd, obj_oid);
       /* negate the result */
       result = eval_negative (result);
       break;
@@ -2095,7 +2096,7 @@ exit:
  * Note: single node regular comparison predicate
  */
 DB_LOGICAL
-eval_pred_comp0 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * obj_oid)
+eval_pred_comp0 (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * obj_oid)
 {
   const COMP_EVAL_TERM *et_comp;
   DB_VALUE *peek_val1, *peek_val2;
@@ -2103,7 +2104,7 @@ eval_pred_comp0 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, 
   peek_val1 = NULL;
   peek_val2 = NULL;
 
-  et_comp = &pr->pe.eval_term.et.et_comp;
+  et_comp = &pr->pe.m_eval_term.et.et_comp;
 
   /*
    * fetch left hand size and right hand size values, if one of
@@ -2144,14 +2145,14 @@ eval_pred_comp0 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, 
  * Note: single leaf node NULL predicate
  */
 DB_LOGICAL
-eval_pred_comp1 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * obj_oid)
+eval_pred_comp1 (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * obj_oid)
 {
   const COMP_EVAL_TERM *et_comp;
   DB_VALUE *peek_val1;
 
   peek_val1 = NULL;
 
-  et_comp = &pr->pe.eval_term.et.et_comp;
+  et_comp = &pr->pe.m_eval_term.et.et_comp;
 
   if (fetch_peek_dbval (thread_p, et_comp->lhs, vd, NULL, obj_oid, NULL, &peek_val1) != NO_ERROR)
     {
@@ -2183,14 +2184,14 @@ eval_pred_comp1 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, 
  * Note: single node EXIST predicate
  */
 DB_LOGICAL
-eval_pred_comp2 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * obj_oid)
+eval_pred_comp2 (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * obj_oid)
 {
   const COMP_EVAL_TERM *et_comp;
   DB_VALUE *peek_val1;
 
   peek_val1 = NULL;
 
-  et_comp = &pr->pe.eval_term.et.et_comp;
+  et_comp = &pr->pe.m_eval_term.et.et_comp;
 
   /* evaluate EXISTS predicate, if specified */
   /* leaf node should refer to either a set or list file */
@@ -2240,7 +2241,7 @@ eval_pred_comp2 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, 
  * Note: single node lhs or rhs list file predicate
  */
 DB_LOGICAL
-eval_pred_comp3 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * obj_oid)
+eval_pred_comp3 (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * obj_oid)
 {
   const COMP_EVAL_TERM *et_comp;
   DB_VALUE *peek_val1, *peek_val2;
@@ -2248,7 +2249,7 @@ eval_pred_comp3 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, 
   peek_val1 = NULL;
   peek_val2 = NULL;
 
-  et_comp = &pr->pe.eval_term.et.et_comp;
+  et_comp = &pr->pe.m_eval_term.et.et_comp;
 
   /*
    * fetch left hand size and right hand size values, if one of
@@ -2298,7 +2299,7 @@ eval_pred_comp3 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, 
  * Note: single node all/some predicate with a set
  */
 DB_LOGICAL
-eval_pred_alsm4 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * obj_oid)
+eval_pred_alsm4 (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * obj_oid)
 {
   const ALSM_EVAL_TERM *et_alsm;
   DB_VALUE *peek_val1, *peek_val2;
@@ -2306,7 +2307,7 @@ eval_pred_alsm4 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, 
   peek_val1 = NULL;
   peek_val2 = NULL;
 
-  et_alsm = &pr->pe.eval_term.et.et_alsm;
+  et_alsm = &pr->pe.m_eval_term.et.et_alsm;
 
   /*
    * Note: According to ANSI, if the set or list file is empty,
@@ -2364,7 +2365,7 @@ eval_pred_alsm4 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, 
  * Note: single node all/some  predicate with a list file
  */
 DB_LOGICAL
-eval_pred_alsm5 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * obj_oid)
+eval_pred_alsm5 (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * obj_oid)
 {
   const ALSM_EVAL_TERM *et_alsm;
   DB_VALUE *peek_val1;
@@ -2372,7 +2373,7 @@ eval_pred_alsm5 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, 
 
   peek_val1 = NULL;
 
-  et_alsm = &pr->pe.eval_term.et.et_alsm;
+  et_alsm = &pr->pe.m_eval_term.et.et_alsm;
 
   /* execute linked query */
   EXECUTE_REGU_VARIABLE_XASL (thread_p, et_alsm->elemset, vd);
@@ -2422,7 +2423,7 @@ eval_pred_alsm5 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, 
  * Note: single node like predicate
  */
 DB_LOGICAL
-eval_pred_like6 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * obj_oid)
+eval_pred_like6 (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * obj_oid)
 {
   const LIKE_EVAL_TERM *et_like;
   DB_VALUE *peek_val1, *peek_val2, *peek_val3;
@@ -2432,7 +2433,7 @@ eval_pred_like6 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, 
   peek_val2 = NULL;
   peek_val3 = NULL;
 
-  et_like = &pr->pe.eval_term.et.et_like;
+  et_like = &pr->pe.m_eval_term.et.et_like;
 
   /* fetch source text expression */
   if (fetch_peek_dbval (thread_p, et_like->src, vd, NULL, obj_oid, NULL, &peek_val1) != NO_ERROR)
@@ -2480,7 +2481,7 @@ eval_pred_like6 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, 
  * Note: single node like predicate
  */
 DB_LOGICAL
-eval_pred_rlike7 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd, OID * obj_oid)
+eval_pred_rlike7 (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * obj_oid)
 {
   const RLIKE_EVAL_TERM *et_rlike;
   DB_VALUE *peek_val1, *peek_val2, *peek_val3;
@@ -2490,7 +2491,7 @@ eval_pred_rlike7 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd,
   peek_val2 = NULL;
   peek_val3 = NULL;
 
-  et_rlike = &pr->pe.eval_term.et.et_rlike;
+  et_rlike = &pr->pe.m_eval_term.et.et_rlike;
 
   /* fetch source text expression */
   if (fetch_peek_dbval (thread_p, et_rlike->src, vd, NULL, obj_oid, NULL, &peek_val1) != NO_ERROR)
@@ -2536,7 +2537,7 @@ eval_pred_rlike7 (THREAD_ENTRY * thread_p, const pred_expr * pr, val_descr * vd,
  *   single_node_type(in):
  */
 PR_EVAL_FNC
-eval_fnc (THREAD_ENTRY * thread_p, const pred_expr * pr, DB_TYPE * single_node_type)
+eval_fnc (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, DB_TYPE * single_node_type)
 {
   // todo - thread_p is never used
 
@@ -2551,10 +2552,10 @@ eval_fnc (THREAD_ENTRY * thread_p, const pred_expr * pr, DB_TYPE * single_node_t
 
   if (pr->type == T_EVAL_TERM)
     {
-      switch (pr->pe.eval_term.et_type)
+      switch (pr->pe.m_eval_term.et_type)
 	{
 	case T_COMP_EVAL_TERM:
-	  et_comp = &pr->pe.eval_term.et.et_comp;
+	  et_comp = &pr->pe.m_eval_term.et.et_comp;
 
 	  /*
 	   * et_comp->type can be DB_TYPE_NULL,
@@ -2579,7 +2580,7 @@ eval_fnc (THREAD_ENTRY * thread_p, const pred_expr * pr, DB_TYPE * single_node_t
 	  return (PR_EVAL_FNC) eval_pred_comp0;
 
 	case T_ALSM_EVAL_TERM:
-	  et_alsm = &pr->pe.eval_term.et.et_alsm;
+	  et_alsm = &pr->pe.m_eval_term.et.et_alsm;
 
 	  /*
 	   * et_alsm->item_type can be DB_TYPE_NULL,

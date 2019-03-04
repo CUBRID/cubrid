@@ -50,6 +50,7 @@
 #include "tz_support.h"
 #include "db_date.h"
 #include "xasl.h"
+#include "xasl_predicate.hpp"
 #include "query_executor.h"
 #include "thread_entry.hpp"
 
@@ -4352,7 +4353,7 @@ fetch_peek_min_max_value_of_width_bucket_func (THREAD_ENTRY * thread_p, REGU_VAR
       goto error;
     }
 
-  pred = &pred_expr->pe.pred;
+  pred = &pred_expr->pe.m_pred;
   if (pred->lhs == NULL || pred->lhs->type != T_EVAL_TERM)
     {
       er_status = ER_QPROC_INVALID_XASLNODE;
@@ -4361,7 +4362,7 @@ fetch_peek_min_max_value_of_width_bucket_func (THREAD_ENTRY * thread_p, REGU_VAR
       goto error;
     }
 
-  eval_term1 = &pred->lhs->pe.eval_term;
+  eval_term1 = &pred->lhs->pe.m_eval_term;
   if (eval_term1->et_type != T_COMP_EVAL_TERM)
     {
       er_status = ER_QPROC_INVALID_XASLNODE;
@@ -4383,7 +4384,7 @@ fetch_peek_min_max_value_of_width_bucket_func (THREAD_ENTRY * thread_p, REGU_VAR
       goto error;
     }
 
-  eval_term2 = &pred->rhs->pe.eval_term;
+  eval_term2 = &pred->rhs->pe.m_eval_term;
   if (eval_term2->et_type != T_COMP_EVAL_TERM)
     {
       er_status = ER_QPROC_INVALID_XASLNODE;

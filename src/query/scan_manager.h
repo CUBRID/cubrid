@@ -52,11 +52,19 @@ typedef struct indx_info INDX_INFO;
 struct key_range;
 struct key_val_range;
 struct method_sig_list;
-struct pred_expr;
+
 struct regu_variable_list_node;
 struct val_descr;
 typedef struct val_descr VAL_DESCR;
 struct valptr_list_node;
+
+// *INDENT-OFF*
+namespace cubxasl
+{
+  struct pred_expr;
+}
+using PRED_EXPR = cubxasl::pred_expr;
+// *INDENT-ON*
 
 /*
  *       	TYPEDEFS RELATED TO THE SCAN DATA STRUCTURES
@@ -367,14 +375,14 @@ extern int scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, val_list_node * val_list,
 				val_descr * vd,
 				/* fields of HEAP_SCAN_ID */
-				OID * cls_oid, HFID * hfid, regu_variable_list_node * regu_list_pred, pred_expr * pr,
+				OID * cls_oid, HFID * hfid, regu_variable_list_node * regu_list_pred, PRED_EXPR * pr,
 				regu_variable_list_node * regu_list_rest,
 				int num_attrs_pred, ATTR_ID * attrids_pred, HEAP_CACHE_ATTRINFO * cache_pred,
 				int num_attrs_rest, ATTR_ID * attrids_rest, HEAP_CACHE_ATTRINFO * cache_rest,
 				SCAN_TYPE scan_type, DB_VALUE ** cache_recordinfo,
 				regu_variable_list_node * regu_list_recordinfo);
 extern int scan_open_heap_page_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, val_list_node * val_list,
-				     val_descr * vd, OID * cls_oid, HFID * hfid, pred_expr * pr, SCAN_TYPE scan_type,
+				     val_descr * vd, OID * cls_oid, HFID * hfid, PRED_EXPR * pr, SCAN_TYPE scan_type,
 				     DB_VALUE ** cache_page_info, regu_variable_list_node * regu_list_page_info);
 extern int scan_open_class_attr_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				      /* fields of SCAN_ID */
@@ -382,7 +390,7 @@ extern int scan_open_class_attr_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id
 				      val_list_node * val_list, val_descr * vd,
 				      /* fields of HEAP_SCAN_ID */
 				      OID * cls_oid, HFID * hfid, regu_variable_list_node * regu_list_pred,
-				      pred_expr * pr, regu_variable_list_node * regu_list_rest, int num_attrs_pred,
+				      PRED_EXPR * pr, regu_variable_list_node * regu_list_rest, int num_attrs_pred,
 				      ATTR_ID * attrids_pred, HEAP_CACHE_ATTRINFO * cache_pred, int num_attrs_rest,
 				      ATTR_ID * attrids_rest, HEAP_CACHE_ATTRINFO * cache_rest);
 extern int scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
@@ -392,9 +400,9 @@ extern int scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				 val_descr * vd,
 				 /* fields of INDX_SCAN_ID */
 				 indx_info * indx_info, OID * cls_oid, HFID * hfid,
-				 regu_variable_list_node * regu_list_key, pred_expr * pr_key,
-				 regu_variable_list_node * regu_list_pred, pred_expr * pr,
-				 regu_variable_list_node * regu_list_rest, pred_expr * pr_range,
+				 regu_variable_list_node * regu_list_key, PRED_EXPR * pr_key,
+				 regu_variable_list_node * regu_list_pred, PRED_EXPR * pr,
+				 regu_variable_list_node * regu_list_rest, PRED_EXPR * pr_range,
 				 regu_variable_list_node * regu_list_range, valptr_list_node * output_val_list,
 				 regu_variable_list_node * regu_val_list, int num_attrs_key, ATTR_ID * attrids_key,
 				 HEAP_CACHE_ATTRINFO * cache_key, int num_attrs_pred, ATTR_ID * attrids_pred,
@@ -405,28 +413,28 @@ extern int scan_open_index_key_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * sca
 					  /* fields of SCAN_ID */
 					  val_list_node * val_list, val_descr * vd,
 					  /* fields of INDX_SCAN_ID */
-					  indx_info * indx_info, OID * cls_oid, HFID * hfid, pred_expr * pr,
+					  indx_info * indx_info, OID * cls_oid, HFID * hfid, PRED_EXPR * pr,
 					  valptr_list_node * output_val_list, bool iscan_oid_order, QUERY_ID query_id,
 					  DB_VALUE ** key_info_values, regu_variable_list_node * key_info_regu_list);
 extern int scan_open_index_node_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 					   /* fields of SCAN_ID */
 					   val_list_node * val_list, val_descr * vd,
 					   /* fields of INDX_SCAN_ID */
-					   indx_info * indx_info, pred_expr * pr, DB_VALUE ** node_info_values,
+					   indx_info * indx_info, PRED_EXPR * pr, DB_VALUE ** node_info_values,
 					   regu_variable_list_node * node_info_regu_list);
 extern int scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				/* fields of SCAN_ID */
 				int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval,
 				val_list_node * val_list, val_descr * vd,
 				/* fields of LLIST_SCAN_ID */
-				QFILE_LIST_ID * list_id, regu_variable_list_node * regu_list_pred, pred_expr * pr,
+				QFILE_LIST_ID * list_id, regu_variable_list_node * regu_list_pred, PRED_EXPR * pr,
 				regu_variable_list_node * regu_list_rest);
 extern int scan_open_showstmt_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				    /* fields of SCAN_ID */
 				    int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval,
 				    val_list_node * val_list, val_descr * vd,
 				    /* fields of SHOWSTMT_SCAN_ID */
-				    pred_expr * pr, SHOWSTMT_TYPE show_type, regu_variable_list_node * arg_list);
+				    PRED_EXPR * pr, SHOWSTMT_TYPE show_type, regu_variable_list_node * arg_list);
 extern int scan_open_values_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				  /* fields of SCAN_ID */
 				  int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval,
@@ -438,10 +446,10 @@ extern int scan_open_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 			       int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval,
 			       val_list_node * val_list, val_descr * vd,
 			       /* fields of SET_SCAN_ID */
-			       regu_variable_node * set_ptr, regu_variable_list_node * regu_list_pred, pred_expr * pr);
+			       regu_variable_node * set_ptr, regu_variable_list_node * regu_list_pred, PRED_EXPR * pr);
 extern int scan_open_json_table_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, int grouped,
 				      QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, val_list_node * val_list,
-				      val_descr * vd, pred_expr * pr);
+				      val_descr * vd, PRED_EXPR * pr);
 extern int scan_open_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				  /* fields of SCAN_ID */
 				  int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval,

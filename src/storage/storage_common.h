@@ -256,63 +256,7 @@ typedef enum
 
 typedef UINT64 MVCCID;		/* MVCC ID */
 
-/* TYPE DEFINITIONS RELATED TO KEY AND VALUES */
 
-typedef enum			/* range search option */
-{
-  NA_NA,			/* v1 and v2 are N/A, so that no range is defined */
-  GE_LE,			/* v1 <= key <= v2 */
-  GE_LT,			/* v1 <= key < v2 */
-  GT_LE,			/* v1 < key <= v2 */
-  GT_LT,			/* v1 < key < v2 */
-  GE_INF,			/* v1 <= key (<= the end) */
-  GT_INF,			/* v1 < key (<= the end) */
-  INF_LE,			/* (the beginning <=) key <= v2 */
-  INF_LT,			/* (the beginning <=) key < v2 */
-  INF_INF,			/* the beginning <= key <= the end */
-  EQ_NA,			/* key = v1, v2 is N/A */
-
-  /* following options are reserved for the future use */
-  LE_GE,			/* key <= v1 || key >= v2 or NOT (v1 < key < v2) */
-  LE_GT,			/* key <= v1 || key > v2 or NOT (v1 < key <= v2) */
-  LT_GE,			/* key < v1 || key >= v2 or NOT (v1 <= key < v2) */
-  LT_GT,			/* key < v1 || key > v2 or NOT (v1 <= key <= v2) */
-  NEQ_NA			/* key != v1 */
-} RANGE;
-
-#define RANGE_REVERSE(range) \
-  do \
-    { \
-      switch (range) \
-	{ \
-	case GT_LE: \
-	  (range) = GE_LT; \
-	  break; \
-	case GE_LT: \
-	  (range) = GT_LE; \
-	  break; \
-	case GE_INF: \
-	  (range) = INF_LE; \
-	  break; \
-	case GT_INF: \
-	  (range) = INF_LT; \
-	  break; \
-	case INF_LE: \
-	  (range) = GE_INF; \
-	  break; \
-	case INF_LT: \
-	  (range) = GT_INF; \
-	  break; \
-	case NA_NA: \
-	case GE_LE: \
-	case GT_LT: \
-	case INF_INF: \
-	case EQ_NA: \
-	default: \
-	  /* No change. */ \
-	  break; \
-	} \
-    } while (0)
 
 /* File structure identifiers */
 
@@ -1420,5 +1364,13 @@ typedef enum
   KILLSTMT_TRAN = 0,
   KILLSTMT_QUERY = 1,
 } KILLSTMT_TYPE;
+
+// query module
+typedef enum
+{
+  HS_NONE = 0,			/* no hash aggregation */
+  HS_ACCEPT_ALL,		/* accept tuples in hash table */
+  HS_REJECT_ALL			/* reject tuples, use normal sort-based aggregation */
+} AGGREGATE_HASH_STATE;
 
 #endif /* _STORAGE_COMMON_H_ */

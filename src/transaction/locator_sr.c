@@ -35,6 +35,7 @@
 #include "xserver_interface.h"
 #include "list_file.h"
 #include "query_manager.h"
+#include "query_reevaluation.hpp"
 #include "slotted_page.h"
 #include "btree_load.h"
 #include "heap_file.h"
@@ -51,6 +52,7 @@
 #include "fetch.h"
 #include "query_executor.h"
 #include "xasl_cache.h"
+#include "xasl_predicate.hpp"
 #if defined(DMALLOC)
 #include "dmalloc.h"
 #endif /* DMALLOC */
@@ -13624,9 +13626,7 @@ locator_mvcc_reeval_scan_filters (THREAD_ENTRY * thread_p, const OID * oid, HEAP
       || mvcc_cond_reeval->data_filter.scan_pred != NULL)
     {
       /* evaluate conditions */
-      scan_reev.range_filter = &mvcc_cond_reeval->range_filter;
-      scan_reev.key_filter = &mvcc_cond_reeval->key_filter;
-      scan_reev.data_filter = &mvcc_cond_reeval->data_filter;
+      scan_reev.set_filters (*mvcc_cond_reeval);
       scan_reev.qualification = &mvcc_cond_reeval->qualification;
       ev_res = locator_mvcc_reevaluate_filters (thread_p, &scan_reev, oid_inst, recdesp);
     }

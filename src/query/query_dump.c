@@ -35,6 +35,8 @@
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #endif // SERVER_MODE
 #include "xasl.h"
+#include "xasl_aggregate.hpp"
+#include "xasl_predicate.hpp"
 
 #define foutput stdout
 
@@ -1189,8 +1191,6 @@ qdump_data_type_string (DB_TYPE type)
 static bool
 qdump_print_value (REGU_VARIABLE * value_p)
 {
-  XASL_NODE *xasl_p;
-
   if (value_p == NULL)
     {
       fprintf (foutput, "NIL");
@@ -1201,10 +1201,9 @@ qdump_print_value (REGU_VARIABLE * value_p)
     {
       fprintf (foutput, "[HIDDEN_COLUMN]");
     }
-  xasl_p = REGU_VARIABLE_XASL (value_p);
-  if (xasl_p)
+  if (value_p->xasl)
     {
-      fprintf (foutput, "[xasl:%p]", xasl_p);
+      fprintf (foutput, "[xasl:%p]", value_p->xasl);
     }
 
   fprintf (foutput, "[");
@@ -1465,7 +1464,7 @@ qdump_print_rlike_eval_term (EVAL_TERM * term_p)
 static bool
 qdump_print_eval_term (PRED_EXPR * pred_p)
 {
-  EVAL_TERM *term = &pred_p->pe.eval_term;
+  EVAL_TERM *term = &pred_p->pe.m_eval_term;
 
   switch (term->et_type)
     {
@@ -1507,7 +1506,7 @@ qdump_print_term (PRED_EXPR * pred_p)
     case T_NOT_TERM:
       fprintf (foutput, "(NOT ");
 
-      if (!qdump_print_predicate (pred_p->pe.not_term))
+      if (!qdump_print_predicate (pred_p->pe.m_not_term))
 	{
 	  return false;
 	}
@@ -1554,12 +1553,12 @@ qdump_print_lhs_predicate (PRED_EXPR * pred_p)
 {
   fprintf (foutput, "(");
 
-  if (!qdump_print_predicate (pred_p->pe.pred.lhs))
+  if (!qdump_print_predicate (pred_p->pe.m_pred.lhs))
     {
       return false;
     }
 
-  fprintf (foutput, " %s ", qdump_bool_operator_string (pred_p->pe.pred.bool_op));
+  fprintf (foutput, " %s ", qdump_bool_operator_string (pred_p->pe.m_pred.bool_op));
 
   return true;
 }
@@ -1590,7 +1589,7 @@ qdump_print_predicate (PRED_EXPR * pred_p)
       parn_cnt = 1;
 
       /* Traverse right-linear chains of AND/OR terms */
-      for (pred_p = pred_p->pe.pred.rhs; pred_p->type == T_PRED; pred_p = pred_p->pe.pred.rhs)
+      for (pred_p = pred_p->pe.m_pred.rhs; pred_p->type == T_PRED; pred_p = pred_p->pe.m_pred.rhs)
 	{
 	  if (qdump_print_lhs_predicate (pred_p) == false)
 	    {
