@@ -87,7 +87,7 @@ namespace cubreplication
     int error = NO_ERROR;
 
 #if defined (SERVER_MODE)
-    er_log_debug (ARG_FILE_LINE, "slave_node::connect_to_master host:%s, port: %d\n",
+    er_log_debug_replication (ARG_FILE_LINE, "slave_node::connect_to_master host:%s, port: %d\n",
       master_node_hostname, master_node_port_id);
 
     /* connect to replication master node */

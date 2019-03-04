@@ -833,14 +833,14 @@ css_process_master_hostname ()
 
   assert (hostname_length > 0 && ha_Server_state == HA_SERVER_STATE_STANDBY);
 
+  er_log_debug_replication (ARG_FILE_LINE, "css_process_master_hostname css_Master_server_name:%s,"
+    " ha_Server_master_hostname:%s\n", css_Master_server_name, ha_Server_master_hostname);
+
   error = cubreplication::slave_node::connect_to_master (ha_Server_master_hostname, css_Master_port_id);
   if (error != NO_ERROR)
     {
       return error;
     }
-
-  er_log_debug (ARG_FILE_LINE, "css_process_master_hostname:" "connected to master_hostname:%s\n",
-		ha_Server_master_hostname);
 
   return NO_ERRORS;
 }

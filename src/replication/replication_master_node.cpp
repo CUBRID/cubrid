@@ -78,6 +78,8 @@ namespace cubreplication
 
     master_senders_manager::add_stream_sender
     (new cubstream::transfer_sender (std::move (chn), cubreplication::master_senders_manager::get_stream ()));
+
+    er_log_debug_replication (ARG_FILE_LINE, "new_slave connected");
 #endif
   }
 
