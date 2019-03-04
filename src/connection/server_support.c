@@ -2695,8 +2695,8 @@ css_process_new_slave (SOCKET master_fd)
       assert (false);
       return;
     }
-  er_log_debug (ARG_FILE_LINE, "css_process_new_slave:" "received new slave fd from master fd=%d, current_state=%d\n",
-		new_fd, ha_Server_state);
+  er_log_debug_replication (ARG_FILE_LINE, "css_process_new_slave:" 
+    "received new slave fd from master fd=%d, current_state=%d\n", new_fd, ha_Server_state);
 
   assert (ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE || ha_Server_state == HA_SERVER_STATE_ACTIVE);
 

@@ -73,6 +73,7 @@
 #include "environment_variable.h"
 #include "message_catalog.h"
 #include "dbi.h"
+#include "system_parameter.h"
 #include "util_func.h"
 
 static void css_master_error (const char *error_string);
@@ -639,6 +640,7 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERV
   char *server_name = NULL;
   int name_length, buffer;
 
+  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "css_send_to_existing_server request:%d, rid:%d", request, rid);
   name_length = 1024;
   if (css_receive_data (conn, rid, &server_name, &name_length, -1) == NO_ERRORS && server_name != NULL)
     {
