@@ -1031,8 +1031,11 @@ int JSON_PATH_GETTER::CallOnKeyIterate (JSON_VALUE &key)
     }
 
   assert (key.IsString ());
+  assert (tkn.token_string.length () >= 2);
+  // todo: is unquoting needed?
+  std::string unquoted = tkn.token_string.substr (1, tkn.token_string.length () - 2);
 
-  m_skip = (strcmp (key.GetString (), tkn.token_string.c_str ()) != 0);
+  m_skip = (strcmp (key.GetString (), unquoted.c_str ()) != 0);
 
   return NO_ERROR;
 }
@@ -1102,11 +1105,13 @@ int JSON_PATH_SETTER::CallBefore (JSON_VALUE &value)
     }
   else if (value.IsObject ())
     {
-      JSON_VALUE::MemberIterator m = value.FindMember (tkn.token_string.c_str ());
+      assert (tkn.token_string.length () >= 2);
+      std::string unquoted_key = tkn.token_string.substr (1, tkn.token_string.length () - 2);
+      JSON_VALUE::MemberIterator m = value.FindMember (unquoted_key.c_str ());
       if (m == value.MemberEnd ())
 	{
 	  // insert dummy
-	  value.AddMember (JSON_VALUE (tkn.token_string.c_str (), (rapidjson::SizeType) tkn.token_string.length (), m_allocator),
+	  value.AddMember (JSON_VALUE (unquoted_key.c_str (), (rapidjson::SizeType) unquoted_key.length (), m_allocator),
 			   JSON_VALUE ().SetNull (), m_allocator);
 	}
     }
@@ -1136,7 +1141,8 @@ int JSON_PATH_SETTER::CallOnKeyIterate (JSON_VALUE &key)
 
   assert (tkn.type == JSON_PATH::PATH_TOKEN::token_type::object_key && key.IsString ());
 
-  m_skip = (strcmp (key.GetString (), tkn.token_string.c_str ()) != 0);
+  std::string unquoted_key = tkn.token_string.substr (1, tkn.token_string.length () - 2);
+  m_skip = (strcmp (key.GetString (), unquoted_key.c_str ()) != 0);
 
   return NO_ERROR;
 }
