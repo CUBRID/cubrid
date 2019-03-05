@@ -96,7 +96,8 @@ namespace cubreplication
   {
     /* TODO : we may choose to force flush of all data, even if was read by all senders */
     g_instance->m_stream->set_last_recyclable_pos (pos);
-  }
+    g_instance->m_stream->reset_serial_data_read (pos);
+}
 
 
   master_node *master_node::g_instance = NULL;

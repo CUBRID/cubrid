@@ -749,4 +749,17 @@ namespace cubstream
       }
   }
 
+  /* 
+   * reset_serial_data_read : reset serial data position to requested position pos
+   *
+   * Note : Use this only in context when there is no serial reader
+   *        The purpose is to keep serial read position close to committed position, in order to avoid
+   *        sanity checks failures
+   */
+  int multi_thread_stream::reset_serial_data_read (const stream_position pos)
+  {
+    assert (m_last_committed_pos >= pos);
+    m_read_position = pos;
+  }
+
 } /* namespace cubstream */

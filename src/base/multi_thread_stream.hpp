@@ -193,6 +193,8 @@ namespace cubstream
       int read (const stream_position first_pos, const size_t byte_count, read_func_t &read_action);
       int read_serial (const size_t byte_count, read_prepare_func_t &read_action);
 
+      int reset_serial_data_read (const stream_position pos);
+
       void set_buffer_reserve_margin (const size_t margin)
       {
 	m_bip_buffer.set_reserve_margin (margin);
