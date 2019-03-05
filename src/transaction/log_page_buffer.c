@@ -5371,12 +5371,12 @@ prior_lsa_start_append (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_TDES
 	  LSA_COPY (&tdes->head_lsa, &tdes->tail_lsa);
 	}
 
-      /*
-       * Remember the address of new append record
-       */
-      LSA_COPY (&tdes->tail_lsa, &log_Gl.prior_info.prior_lsa);
       LSA_COPY (&tdes->undo_nxlsa, &log_Gl.prior_info.prior_lsa);
     }
+  /*
+   * Remember the address of new append record
+   */
+  LSA_COPY (&tdes->tail_lsa, &log_Gl.prior_info.prior_lsa);
   LSA_COPY (&node->log_header.back_lsa, &log_Gl.prior_info.prev_lsa);
   LSA_SET_NULL (&node->log_header.forw_lsa);
 

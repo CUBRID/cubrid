@@ -7705,27 +7705,6 @@ logtb_get_system_tdes (THREAD_ENTRY * thread_p)
     }
 }
 
-LOG_TDES *
-LOG_FIND_CURRENT_TDES (THREAD_ENTRY * thread_p)
-{
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
-  if (thread_p->tran_index == LOG_SYSTEM_TRAN_INDEX)
-    {
-      return logtb_get_system_tdes (thread_p);
-    }
-  else if (thread_p->tran_index > LOG_SYSTEM_TRAN_INDEX && thread_p->tran_index < log_Gl.trantable.num_total_indices)
-    {
-      return log_Gl.trantable.all_tdes[thread_p->tran_index];
-    }
-  else
-    {
-      return NULL;
-    }
-}
-
 // *INDENT-OFF*
 // C++
 

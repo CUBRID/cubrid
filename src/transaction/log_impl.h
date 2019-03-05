@@ -2448,8 +2448,6 @@ extern bool logtb_set_check_interrupt (THREAD_ENTRY * thread_p, bool flag);
 extern bool logtb_get_check_interrupt (THREAD_ENTRY * thread_p);
 extern int logpb_set_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr);
 
-// todo - rename LOG_FIND_CURRENT_TDES
-extern LOG_TDES *LOG_FIND_CURRENT_TDES (THREAD_ENTRY * thread_p = NULL);
 extern LOG_TDES *logtb_get_system_tdes (THREAD_ENTRY * thread_p = NULL);
 
 //////////////////////////////////////////////////////////////////////////
@@ -2474,6 +2472,12 @@ LOG_FIND_TDES (int tran_index)
     {
       return NULL;
     }
+}
+
+inline LOG_TDES *
+LOG_FIND_CURRENT_TDES (THREAD_ENTRY * thread_p = NULL)
+{
+  return LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
 }
 
 inline bool
