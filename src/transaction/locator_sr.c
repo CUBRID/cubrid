@@ -5254,6 +5254,12 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid, OID * old_class_o
       return error;
     }
 
+  if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
+    {
+      /* Remove attribute change since we moved, instead of doing update. */
+      logtb_get_tdes (thread_p)->replication_log_generator.remove_attribute_change (*old_class_oid, *obj_oid);
+    }
+
   COPY_OID (obj_oid, &new_obj_oid);
 
   return NO_ERROR;
@@ -7345,6 +7351,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
   HFID class_hfid;
   OID class_oid;
   MVCC_SNAPSHOT *saved_mvcc_snapshot = NULL;
+  bool operation_aborted = false;
 
   /* 
    * While scanning objects, the given scancache does not fix the last
@@ -7354,11 +7361,38 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 
   /* Backup the provided class_oid and class_hfid because the locator actions bellow will change them if this is a
    * pruning operation. This changes must not be reflected in the calls to this function. */
+  OID_SET_NULL (&class_oid);
   HFID_COPY (&class_hfid, hfid);
   if (attr_info != NULL)
     {
       COPY_OID (&class_oid, &attr_info->class_oid);
     }
+  else
+    {
+      heap_get_class_oid (thread_p, oid, &class_oid);
+    }
+
+start_simulate_ha_apply:
+#if defined (SERVER_MODE)
+  if (log_does_allow_replication () == true)
+    {
+      if (operation_aborted)
+	{
+	  logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (true);
+	  /* Try again by simulating apply. */
+	  assert (error_code == NO_ERROR);
+	  error_code =
+	    logtb_get_tdes (thread_p)->replication_log_generator.locator_simulate_repl_apply_rbr_on_master ();
+	  logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (false);
+	  goto end;
+	}
+      else
+	{
+	  log_sysop_start (thread_p);
+	}
+
+    }
+#endif
 
   switch (operation)
     {
@@ -7506,6 +7540,23 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
       error_code = ER_LC_BADFORCE_OPERATION;
       break;
     }
+
+end:
+  if (log_does_allow_replication () == true && operation_aborted == false)
+    {
+      if (error_code == NO_ERROR)
+	{
+	  /* Abort operation and simpulate it with appy. */
+	  log_sysop_abort (thread_p);
+	  operation_aborted = true;
+	  goto start_simulate_ha_apply;
+	}
+      else
+	{
+	  log_sysop_attach_to_outer (thread_p);
+	}
+    }
+
   return error_code;
 }
 
@@ -13619,8 +13670,10 @@ xlocator_demote_class_lock (THREAD_ENTRY * thread_p, const OID * class_oid, LOCK
 #if defined(SERVER_MODE)
 static int
 locator_prepare_rbr_apply (THREAD_ENTRY * thread_p, const LC_COPYAREA_OPERATION rbr_operation, OID * class_oid,
-                           OID * instance_oid, RECDES * old_recdes, RECDES * recdes, DB_VALUE * key_value,
-			   HEAP_SCANCACHE * force_scancache);
+			   OID * instance_oid, RECDES * recdes, const std::vector < int >&changed_att_ids,
+			   const std::vector < DB_VALUE > &new_values, const int key_att_id, DB_VALUE * key_value,
+			   HEAP_SCANCACHE * force_scancache, LC_COPYAREA * &copy_area);
+
 /*
  * locator_repl_apply_rbr () - prepare required info for each operation
  *
@@ -13633,33 +13686,32 @@ locator_prepare_rbr_apply (THREAD_ENTRY * thread_p, const LC_COPYAREA_OPERATION 
  */
 int
 locator_repl_apply_rbr (THREAD_ENTRY * thread_p, const LC_COPYAREA_OPERATION rbr_operation, const char *class_name,
-                        const int key_att_id, DB_VALUE * key_value,
-			const std::vector <int> &changed_att_ids, const std::vector <DB_VALUE> &new_values,
-                        const RECDES *new_recdes_arg)
+			const int key_att_id, DB_VALUE * key_value,
+			const std::vector < int >&changed_att_ids, const std::vector < DB_VALUE > &new_values,
+			const RECDES * new_recdes_arg)
 {
   OID class_oid;
   OID instance_oid;
-  HEAP_CACHE_ATTRINFO attr_info;
   HFID hfid;
-  LC_COPYAREA *copyarea = NULL;
-  RECDES old_recdes, new_recdes;
+  LC_COPYAREA *copy_area = NULL;
+  RECDES new_recdes;
+  LOG_LSA topop_lsa;
   int dummy_force_count;
   int error_code;
   LC_FIND_CLASSNAME status;
-  bool attr_info_inited = false;
   /* TODO : make these arguments of function */
   int op_type = SINGLE_ROW_UPDATE;
   /* TODO : ommit checking foreign key */
   bool do_not_check_fk = true;
-  /* TODO : use locking ? */
-  bool need_locking = false;
   HEAP_SCANCACHE scan_cache;
   bool scan_cache_inited = false;
   int pruning_type = DB_NOT_PARTITIONED_CLASS;
-  /* TODO : has_index : argument in RBR ? */
-  int has_index = 0;
+  int num_retry = 0, max_retry = 5;
 
-  /* TODO : do we really need the lock on class OID ? */
+  /* TODO : do we really need the lock on class OID ?
+   * TODO - Optimizations. Use cached context to avoids finding class_oid, starting scan cache, representation.
+   * Also we may optimize update/delete to not use LC_FLAG_HAS_INDEX flag, if there is no index to update .
+   */
   status = xlocator_find_class_oid (thread_p, class_name, &class_oid, NULL_LOCK);
   if (status != LC_CLASSNAME_EXIST)
     {
@@ -13676,58 +13728,30 @@ locator_repl_apply_rbr (THREAD_ENTRY * thread_p, const LC_COPYAREA_OPERATION rbr
 
   if (new_recdes_arg != NULL)
     {
-      assert (rbr_operation == LC_FLUSH_INSERT || rbr_operation == LC_FLUSH_INSERT_PRUNE
-              || rbr_operation == LC_FLUSH_INSERT_PRUNE_VERIFY);
+      assert (LC_IS_FLUSH_INSERT (rbr_operation) || LC_IS_FLUSH_UPDATE (rbr_operation));
       new_recdes = *new_recdes_arg;
     }
-  else
+
+  error_code = locator_start_force_scan_cache (thread_p, &scan_cache, &hfid, &class_oid, op_type);
+  if (error_code != NO_ERROR)
     {
-      error_code = heap_attrinfo_start (thread_p, &class_oid, -1, NULL, &attr_info);
-      if (error_code != NO_ERROR)
-        {
-          attr_info_inited = true;
-          goto exit;
-        }
+      goto exit;
+    }
+  scan_cache_inited = true;
 
-      error_code = locator_start_force_scan_cache (thread_p, &scan_cache, &hfid, &class_oid, op_type);
-      if (error_code != NO_ERROR)
-        {
-          goto exit;
-        }
-      scan_cache_inited = true;
+  error_code = locator_prepare_rbr_apply (thread_p, rbr_operation, &class_oid, &instance_oid, &new_recdes,
+					  changed_att_ids, new_values, key_att_id, key_value, &scan_cache, copy_area);
+  if (error_code != NO_ERROR)
+    {
+      goto exit;
+    }
 
-      /* search key -> get OID and old RECDES (only for UPDATE) */
-      error_code = locator_prepare_rbr_apply (thread_p, rbr_operation, &class_oid, &instance_oid, &old_recdes,
-					      &new_recdes, key_value, &scan_cache);
-      if (error_code != NO_ERROR)
-        {
-          goto exit;
-        }
+retry:
 
-      /* set key and new values into attr_info */
-      assert (changed_att_ids.size () == new_values.size ());
-
-      for (int i = 0; i < changed_att_ids.size (); i++)
-        {
-          error_code = heap_attrinfo_set (NULL, changed_att_ids[i], &(new_values[i]), &attr_info);
-          if (error_code != NO_ERROR)
-	    {
-	      goto exit;
-	    }
-        }
-
-      error_code = heap_attrinfo_set (NULL, key_att_id, key_value, &attr_info);
-      if (error_code != NO_ERROR)
-        {
-          goto exit;
-        }
-
-      copyarea = locator_allocate_copy_area_by_attr_info (thread_p, &attr_info, &old_recdes, &new_recdes, -1,
-						          LOB_FLAG_INCLUDE_LOB);
-      if (copyarea == NULL)
-        {
-          goto exit;
-        }
+  error_code = xtran_server_start_topop (thread_p, &topop_lsa);
+  if (error_code != NO_ERROR)
+    {
+      goto exit;
     }
 
   switch (rbr_operation)
@@ -13737,7 +13761,7 @@ locator_repl_apply_rbr (THREAD_ENTRY * thread_p, const LC_COPYAREA_OPERATION rbr
     case LC_FLUSH_INSERT_PRUNE_VERIFY:
       pruning_type = locator_area_op_to_pruning_type (rbr_operation);
       error_code =
-	locator_insert_force (thread_p, &hfid, &class_oid, &instance_oid, &new_recdes, has_index,
+	locator_insert_force (thread_p, &hfid, &class_oid, &instance_oid, &new_recdes, LC_FLAG_HAS_INDEX,
 			      SINGLE_ROW_INSERT, &scan_cache, &dummy_force_count, pruning_type, NULL, NULL,
 			      UPDATE_INPLACE_NONE);
 
@@ -13751,23 +13775,26 @@ locator_repl_apply_rbr (THREAD_ENTRY * thread_p, const LC_COPYAREA_OPERATION rbr
     case LC_FLUSH_UPDATE:
     case LC_FLUSH_UPDATE_PRUNE:
     case LC_FLUSH_UPDATE_PRUNE_VERIFY:
+      /* Do not use locking since transactions into a group are independent. */
       pruning_type = locator_area_op_to_pruning_type (rbr_operation);
       error_code =
-	locator_update_force (thread_p, &hfid, &class_oid, &instance_oid, NULL, &new_recdes, has_index,
+	locator_update_force (thread_p, &hfid, &class_oid, &instance_oid, NULL, &new_recdes, LC_FLAG_HAS_INDEX,
 			      NULL, 0, SINGLE_ROW_UPDATE, &scan_cache, &dummy_force_count, false,
-			      REPL_INFO_TYPE_RBR_NORMAL, pruning_type, NULL, NULL, UPDATE_INPLACE_NONE, need_locking);
+			      REPL_INFO_TYPE_RBR_NORMAL, pruning_type, NULL, NULL, UPDATE_INPLACE_NONE, false);
 
       if (error_code == NO_ERROR)
 	{
 	  /* monitor */
 	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_UPDATES);
 	}
+
       break;
 
     case LC_FLUSH_DELETE:
+      /* Do not use locking since transactions into a group are independent.  */
       error_code =
-	locator_delete_force (thread_p, &hfid, &instance_oid, has_index, SINGLE_ROW_DELETE, &scan_cache,
-			      &dummy_force_count, NULL, need_locking);
+	locator_delete_force (thread_p, &hfid, &instance_oid, LC_FLAG_HAS_INDEX, SINGLE_ROW_DELETE, &scan_cache,
+			      &dummy_force_count, NULL, false);
 
       if (error_code == NO_ERROR)
 	{
@@ -13786,17 +13813,32 @@ locator_repl_apply_rbr (THREAD_ENTRY * thread_p, const LC_COPYAREA_OPERATION rbr
 
   if (error_code != NO_ERROR)
     {
+      /* Should not happens. However, we have to handle it. */
       assert (er_errid () != NO_ERROR);
-      /* TODO : error handling */
-      //locator_repl_add_error_to_copyarea (reply_area, &reply_recdes, obj, &key_value, er_errid (), er_msg ());
 
+      (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &topop_lsa);
+      if (num_retry++ < max_retry)
+	{
+	  /* Maybe error caused by concurrent thread, try again. */
+	  er_clear ();
+	  goto retry;
+	}
+
+      /* TODO : error handling */
       error_code = NO_ERROR;
+    }
+  else
+    {
+      (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER, &topop_lsa);
     }
 
 exit:
-  if (attr_info_inited)
+  if (copy_area != NULL)
     {
-      heap_attrinfo_end (thread_p, &attr_info);
+      locator_free_copy_area (copy_area);
+      copy_area = NULL;
+      new_recdes.data = NULL;
+      new_recdes.area_size = 0;
     }
 
   if (scan_cache_inited)
@@ -13813,62 +13855,60 @@ exit:
  * return: NO_ERROR if all OK, ER_ status otherwise
  *
  *   thread_p(in):
- *   obj(in): object that describes the current operation
- *   old_recdes(out): original record needed for update operation
+ *   obj(in): object that describes the current operation 
  *   recdes(in/out): record to be applied
+ *   changed_att_ids(in): changed attribute ids 
+ *   new_values(in): new values
+ *   key_att_id(in): keyy attribute id
  *   key_value(in): primary key value
  *   force_scancache(in):
+ *   copy_area(in/out): copy area
+ *
+ *    Note: This function obtains all informations required to execute rbr. Thus, at delete and update, it obtain OID.
+ *      At insert and update, obtain the new recdes. If is already built, it sets last representation id and chn.
+ *      Otherwise, the new recdes is built based on old recdes and changed attributes (ids and values).
+ *      
+ *  At insert, 
  */
 static int
 locator_prepare_rbr_apply (THREAD_ENTRY * thread_p, const LC_COPYAREA_OPERATION rbr_operation, OID * class_oid,
-                           OID * instance_oid, RECDES * old_recdes, RECDES * recdes, DB_VALUE * key_value,
-                           HEAP_SCANCACHE * force_scancache)
+			   OID * instance_oid, RECDES * recdes, const std::vector < int >&changed_att_ids,
+			   const std::vector < DB_VALUE > &new_values, const int key_att_id, DB_VALUE * key_value,
+			   HEAP_SCANCACHE * force_scancache, LC_COPYAREA * &copy_area)
 {
+  HEAP_CACHE_ATTRINFO attr_info;
+  RECDES old_recdes;
+  BTID btid;
   int error_code = NO_ERROR;
   int last_repr_id = -1;
   int old_chn = -1;
-  BTID btid;
   SCAN_CODE scan;
   SCAN_OPERATION_TYPE scan_op_type;
-
-  if (rbr_operation == LC_FLUSH_DELETE)
-    {
-      scan_op_type = S_DELETE;
-    }
-  else if (LC_IS_FLUSH_UPDATE (rbr_operation) == true)
-    {
-      scan_op_type = S_UPDATE;
-    }
-
-  if (rbr_operation != LC_FLUSH_DELETE)
-    {
-      last_repr_id = heap_get_class_repr_id (thread_p, class_oid);
-      if (last_repr_id == 0)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CT_INVALID_REPRID, 1, last_repr_id);
-	  return ER_CT_INVALID_REPRID;
-	}
-
-      error_code = or_replace_rep_id (recdes, last_repr_id);
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
-	}
-    }
+  bool attr_info_inited = false;
 
   if (LC_IS_FLUSH_INSERT (rbr_operation) == false)
     {
       error_code = btree_get_pkey_btid (thread_p, class_oid, &btid);
       if (error_code != NO_ERROR)
 	{
-	  return error_code;
+	  goto exit;
+	}
+
+      if (rbr_operation == LC_FLUSH_DELETE)
+	{
+	  scan_op_type = S_DELETE;
+	}
+      else if (LC_IS_FLUSH_UPDATE (rbr_operation) == true)
+	{
+	  scan_op_type = S_UPDATE;
 	}
 
       if (xbtree_find_unique (thread_p, &btid, scan_op_type, key_value, class_oid, instance_oid, true) !=
 	  BTREE_KEY_FOUND)
 	{
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_OBJECT_NOT_FOUND, 0);
-	  return ER_OBJ_OBJECT_NOT_FOUND;
+	  error_code = ER_OBJ_OBJECT_NOT_FOUND;
+	  goto exit;
 	}
     }
 
@@ -13876,7 +13916,8 @@ locator_prepare_rbr_apply (THREAD_ENTRY * thread_p, const LC_COPYAREA_OPERATION 
     {
       assert (OID_ISNULL (instance_oid) != true);
 
-      scan = heap_get_visible_version (thread_p, instance_oid, class_oid, old_recdes, force_scancache, PEEK, NULL_CHN);
+      old_recdes.data = NULL;
+      scan = heap_get_visible_version (thread_p, instance_oid, class_oid, &old_recdes, force_scancache, PEEK, NULL_CHN);
 
       if (scan != S_SUCCESS)
 	{
@@ -13888,19 +13929,85 @@ locator_prepare_rbr_apply (THREAD_ENTRY * thread_p, const LC_COPYAREA_OPERATION 
 			    instance_oid->pageid, instance_oid->slotid, instance_oid->volid);
 	    }
 
-	  return error_code;
-	}
-
-      old_chn = or_chn (old_recdes);
-
-      error_code = or_replace_chn (recdes, old_chn + 1);
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
+	  goto exit;
 	}
     }
 
-  return NO_ERROR;
+  /* Build */
+  if (changed_att_ids.size () == 0)
+    {
+      if (rbr_operation != LC_FLUSH_DELETE)
+	{
+	  last_repr_id = heap_get_class_repr_id (thread_p, class_oid);
+	  if (last_repr_id == 0)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CT_INVALID_REPRID, 1, last_repr_id);
+	      error_code = ER_CT_INVALID_REPRID;
+	      goto exit;
+	    }
+
+	  error_code = or_replace_rep_id (recdes, last_repr_id);
+	  if (error_code != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+	}
+
+      if (LC_IS_FLUSH_UPDATE (rbr_operation) == true)
+	{
+	  old_chn = or_chn (&old_recdes);
+
+	  error_code = or_replace_chn (recdes, old_chn + 1);
+	  if (error_code != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+	}
+    }
+  else
+    {
+      assert (LC_IS_FLUSH_UPDATE (rbr_operation));
+      /* search key -> get OID and old RECDES (only for UPDATE), create or update new_recdes */
+      error_code = heap_attrinfo_start (thread_p, class_oid, -1, NULL, &attr_info);
+      if (error_code != NO_ERROR)
+	{
+	  goto exit;
+	}
+      attr_info_inited = true;
+
+      /* set key and new values into attr_info */
+      assert (changed_att_ids.size () == new_values.size ());
+      for (int i = 0; i < changed_att_ids.size (); i++)
+	{
+	  error_code = heap_attrinfo_set (NULL, changed_att_ids[i], &(new_values[i]), &attr_info);
+	  if (error_code != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+	}
+
+      error_code = heap_attrinfo_set (NULL, key_att_id, key_value, &attr_info);
+      if (error_code != NO_ERROR)
+	{
+	  goto exit;
+	}
+
+      copy_area =
+	locator_allocate_copy_area_by_attr_info (thread_p, &attr_info, &old_recdes, recdes, -1, LOB_FLAG_INCLUDE_LOB);
+      if (copy_area == NULL)
+	{
+	  error_code = ER_FAILED;
+	  goto exit;
+	}
+    }
+
+exit:
+  if (attr_info_inited)
+    {
+      heap_attrinfo_end (thread_p, &attr_info);
+    }
+
+  return error_code;
 }
 
 int
@@ -13921,7 +14028,7 @@ check_interrupt_callback (void *data)
 
 int
 locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *db_user, const char *ha_sys_prm_context,
-                        const char *statement)
+			const char *statement)
 {
   char path[PATH_MAX];
   static const char *db_name = boot_db_name ();
@@ -13932,7 +14039,7 @@ locator_repl_apply_sbr (THREAD_ENTRY * thread_p, const char *db_user, const char
   int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
   sprintf (tran_index_str, "%d", tran_index);
-  snprintf (db_user_str, sizeof (db_user_str)  - 1,  "-u%s", db_user);
+  snprintf (db_user_str, sizeof (db_user_str) - 1, "-u%s", db_user);
 
   const char *ddl_argv[10] = {
     path,

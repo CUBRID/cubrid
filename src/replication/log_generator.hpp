@@ -119,6 +119,8 @@ namespace cubreplication
 			   const RECDES *optional_recdes);
       void add_attribute_change (const OID &class_oid, const OID &inst_oid, ATTR_ID col_id, const DB_VALUE &value);
 
+      void remove_attribute_change (const OID &class_oid, const OID &inst_oid);
+
       void abort_pending_repl_objects ();
 
       stream_entry *get_stream_entry (void);
@@ -145,6 +147,7 @@ namespace cubreplication
 
       void set_row_replication_disabled (bool disable_if_true);
       bool is_row_replication_disabled (void);
+      int locator_simulate_repl_apply_rbr_on_master();
 
     private:
 

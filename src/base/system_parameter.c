@@ -656,6 +656,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_REPL_CONSUMER_BUFFER_SIZE "replication_consumer_buffer_size"
 
 #define PRM_NAME_REPL_LOG_GENERATOR_LOGGING "replication_log_generator_logging"
+#define PRM_NAME_REPL_LOG_LOCAL_DEBUG "replication_log_local_debug"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
@@ -2185,6 +2186,10 @@ static unsigned int prm_repl_consumer_buffer_size_flag = 0;
 bool PRM_REPL_LOG_GENERATOR_LOGGING = false;
 static bool prm_repl_log_generator_default = false;
 static unsigned int prm_repl_log_generator_flag = 0;
+
+bool PRM_REPL_LOG_LOCAL_DEBUG = false;
+static bool prm_repl_log_local_debug_default = false;
+static unsigned int prm_repl_log_local_debug_flag = false;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5582,6 +5587,17 @@ static SYSPRM_PARAM prm_Def[] = {
    &prm_repl_log_generator_flag,
    (void *) &prm_repl_log_generator_default,
    (void *) &PRM_REPL_LOG_GENERATOR_LOGGING,
+   (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_REPL_LOG_LOCAL_DEBUG,
+   PRM_NAME_REPL_LOG_LOCAL_DEBUG,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_repl_log_local_debug_flag,
+   (void *) &prm_repl_log_local_debug_default,
+   (void *) &PRM_REPL_LOG_LOCAL_DEBUG,
    (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,

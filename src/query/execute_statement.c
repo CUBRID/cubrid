@@ -14609,10 +14609,10 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   char stmt_separator;
   char *stmt_end = NULL;
 
-  if (log_does_allow_replication () == false)
-    {
-      return NO_ERROR;
-    }
+  //if (log_does_allow_replication () == false)
+  {
+    return NO_ERROR;
+  }
 
   if (statement->sql_user_text == NULL || statement->sql_user_text_len == 0)
     {

@@ -150,6 +150,24 @@ namespace cubreplication
     er_log_repl_obj (entry, "log_generator::add_attribute_change");
   }
 
+
+  void log_generator::remove_attribute_change (const OID &class_oid, const OID &inst_oid)
+    {
+      if (is_row_replication_disabled())
+        {
+          return;
+        }     
+      
+      for (auto repl_obj = m_pending_to_be_added.begin(); repl_obj != m_pending_to_be_added.end(); ++repl_obj)
+        {
+          if ((*repl_obj)->compare_inst_oid (inst_oid))
+          {
+            (void) m_pending_to_be_added.erase (repl_obj);
+            break;
+          }
+        }
+    }
+
   /* first fetch the class name, then set key */
   void
   log_generator::add_update_row (const DB_VALUE &key, const OID &inst_oid, const OID &class_oid,
@@ -245,7 +263,7 @@ namespace cubreplication
     static stream_entry gc_stream_entry (s_stream, MVCCID_NULL, stream_entry_header::GROUP_COMMIT);
     gc_stream_entry.pack ();
   }
-
+  
   void
   log_generator::set_global_stream (cubstream::multi_thread_stream *stream)
   {
@@ -285,7 +303,7 @@ namespace cubreplication
   void
   log_generator::on_transaction_finish (stream_entry_header::TRAN_STATE state)
   {
-    if (is_replication_disabled ())
+    if (is_replication_disabled () || prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG))
       {
 	return;
       }
@@ -341,6 +359,34 @@ namespace cubreplication
   log_generator::set_row_replication_disabled (bool disable_if_true)
   {
     m_is_row_replication_disabled = disable_if_true;
+  }
+
+  /* Debug function */
+  int log_generator::locator_simulate_repl_apply_rbr_on_master ()
+  {
+    int err_code = NO_ERROR;
+    replication_object *repl_obj;
+    cubthread::entry *thread_p = &cubthread::get_entry();    
+
+    cubreplication::stream_entry *stream_entry = logtb_get_tdes(thread_p)->replication_log_generator.get_stream_entry();
+    int count_entries = (int) stream_entry->count_entries();    
+    for (int i = 0; i < count_entries; i++)
+      {         
+        repl_obj = stream_entry->get_object_at(i);
+        if (repl_obj != NULL)
+          {
+            err_code = repl_obj->apply();
+            if (err_code != NO_ERROR)
+              {
+                break;
+              }
+          }        
+      }
+
+    /* Since we applied objects, destroy it. */
+    stream_entry->destroy_objects();
+   
+    return err_code;
   }
 
   cubstream::multi_thread_stream *log_generator::s_stream = NULL;

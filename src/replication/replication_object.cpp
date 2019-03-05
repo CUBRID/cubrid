@@ -495,7 +495,7 @@ namespace cubreplication
   {
     int err = NO_ERROR;
 #if defined (SERVER_MODE)
-    assert (m_type == REPL_DELETE);
+    assert (m_type != REPL_DELETE);
 
     /* TODO : partition prunning  */
     LC_COPYAREA_OPERATION op = op_type_from_repl_type_and_prunning (m_type, DB_NOT_PARTITIONED_CLASS);

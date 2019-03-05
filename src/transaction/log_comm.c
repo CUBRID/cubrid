@@ -269,8 +269,10 @@ log_dump_log_info (const char *logname_info, bool also_stdout, const char *fmt, 
 bool
 log_does_allow_replication (void)
 {
-#if defined(WINDOWS) || defined(SA_MODE)
+#if defined(SA_MODE)
   return false;
+#elif defined(WINDOWS)
+  return prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG);
 
 #elif defined(CS_MODE)		/* WINDOWS || SA_MODE */
   int client_type;
@@ -287,7 +289,16 @@ log_does_allow_replication (void)
   HA_SERVER_STATE ha_state;
 
   /* Vacuum workers are not allowed to reach this code */
-  assert (!VACUUM_IS_THREAD_VACUUM (thread_get_thread_entry_info ()));
+  if (VACUUM_IS_THREAD_VACUUM (thread_get_thread_entry_info ()))
+    {
+      return false;
+    }
+
+  if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG))
+    {
+      /* Testing purpose */
+      return true;
+    }
 
   if (HA_DISABLED ())
     {
