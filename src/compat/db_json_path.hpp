@@ -94,7 +94,7 @@ class JSON_PATH
 
     int init (const char *path);
 
-    bool validate_and_make_json_path (std::string &sql_path);
+    bool validate_and_create_from_json_path (std::string &sql_path);
 
     explicit JSON_PATH ();
 
@@ -109,15 +109,7 @@ class JSON_PATH
     bool contains_wildcard () const;
 
   private:
-    int replace_json_pointer (const char *sql_path);
-
-    void build_special_chars_map (const JSON_PATH_TYPE &json_path_type,
-				  std::unordered_map<std::string, std::string> &special_chars) const;
-
-    int assign_pointer (const std::string &pointer_path);
-
-    void replace_special_chars_in_tokens (std::string &token,
-					  const std::unordered_map<std::string, std::string> &special_chars) const;
+    int from_json_pointer (const std::string &pointer_path);
 
     // todo: find a way to avoid passing reference to get other_tokens.end ()
     bool match (const std::vector<PATH_TOKEN>::const_iterator &it1, const std::vector<PATH_TOKEN>::const_iterator &it2,
@@ -135,7 +127,6 @@ std::vector<std::string> db_json_split_path_by_delimiters (const std::string &pa
     const std::string &delim, bool allow_empty);
 int db_json_normalize_path (const char *pointer_path, JSON_PATH &json_path);
 void db_json_path_unquote_object_keys (std::string &sql_path);
-std::vector<std::vector<const JSON_VALUE *>> db_json_get_values_from_path (const std::vector<JSON_PATH> &json_paths);
 
 class JSON_PATH_GETTER : public JSON_WALKER
 {

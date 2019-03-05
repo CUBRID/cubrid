@@ -28,14 +28,6 @@ typedef rapidjson::GenericStringBuffer<JSON_ENCODING, JSON_PRIVATE_ALLOCATOR> JS
 typedef rapidjson::GenericMemberIterator<true, JSON_ENCODING, JSON_PRIVATE_MEMPOOL>::Iterator JSON_MEMBER_ITERATOR;
 typedef rapidjson::GenericArray<true, JSON_VALUE>::ConstValueIterator JSON_VALUE_ITERATOR;
 
-static std::vector<std::pair<std::string, std::string>> uri_fragment_conversions =
-{
-  std::make_pair ("~", "~0"),
-  std::make_pair ("/", "~1")
-};
-
-static const char *db_Json_sql_path_delimiters = "$.[]\"";
-
 class JSON_DOC : public rapidjson::GenericDocument <JSON_ENCODING, JSON_PRIVATE_MEMPOOL>
 {
   public:

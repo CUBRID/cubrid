@@ -2600,11 +2600,16 @@ int
 db_json_normalize_path_string (char *&pointer_path, bool allow_wildcards)
 {
   JSON_PATH jp;
-  return db_json_normalize_path (pointer_path, jp);
+  int error_code = jp.init (pointer_path);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
 
   db_private_free (NULL, pointer_path);
-
   pointer_path = strdup (jp.dump_json_path ().c_str ());
+  return NO_ERROR;
 }
 
 void db_json_path_unquote_object_keys_external (std::string &sql_path)

@@ -4,7 +4,7 @@
 #include <string>
 #include <cctype>
 
-typedef rapidjson::GenericPointer <JSON_VALUE>::Token TOKEN;
+typedef rapidjson::GenericPointer<JSON_VALUE>::Token TOKEN;
 static const rapidjson::SizeType kPointerInvalidIndex = rapidjson::kPointerInvalidIndex;
 
 static void db_json_trim_leading_spaces (std::string &path_string);
@@ -16,7 +16,6 @@ static bool db_json_path_is_token_valid_array_index (const std::string &str, boo
 static bool db_json_path_is_token_valid_quoted_object_key (const std::string &path, std::size_t &token_begin);
 static bool db_json_path_quote_and_validate_unquoted_object_key (std::string &path, std::size_t &token_begin);
 static bool db_json_path_is_token_valid_unquoted_object_key (const std::string &path, std::size_t &token_begin);
-static void json_path_strip_whitespaces (std::string &sql_path);
 static void db_json_remove_leading_zeros_index (std::string &index);
 static bool db_json_iszero (const unsigned char &ch);
 
@@ -205,7 +204,6 @@ db_json_trim_leading_spaces (std::string &path_string)
   path_string.erase (path_string.begin (), first_non_space);
 }
 
-
 static JSON_PATH_TYPE
 db_json_get_path_type (std::string &path_string)
 {
@@ -221,16 +219,14 @@ db_json_get_path_type (std::string &path_string)
     }
 }
 
-
 /*
- * validate_and_make_json_path () - Check if a given path is a SQL valid path
+ * validate_and_create_from_json_path () - Check if a given path is a SQL valid path
  *
  * return                  : true/false
  * sql_path (in/out)       : path to be checked
- * allow_wild_cards (in)   : whether json_path wildcards are allowed
  */
 bool
-JSON_PATH::validate_and_make_json_path (std::string &sql_path)
+JSON_PATH::validate_and_create_from_json_path (std::string &sql_path)
 {
   // skip leading white spaces
   db_json_trim_leading_spaces (sql_path);
@@ -339,54 +335,8 @@ JSON_PATH::validate_and_make_json_path (std::string &sql_path)
 	  return false;
 	}
     }
-  // todo: remove this?
-  // sql_path not used after call?
-  json_path_strip_whitespaces (sql_path);
   return true;
 }
-
-
-/*
- * json_path_strip_whitespaces () - Remove whitespaces in json_path
- *
- * sql_path (in/out)       : json path
- * NOTE: This can be only called after validation because spaces are not allowed in some cases (e.g. $[1 1] is illegal)
- */
-static void
-json_path_strip_whitespaces (std::string &sql_path)
-{
-  std::string result;
-  result.reserve (sql_path.length () + 1);
-
-  bool skip_spaces = true;
-  bool unescaped_backslash = false;
-  for (size_t i = 0; i < sql_path.length (); ++i)
-    {
-      if (i > 0 && !unescaped_backslash && sql_path[i] == '"')
-	{
-	  skip_spaces = !skip_spaces;
-	}
-
-      if (sql_path[i] == '\\')
-	{
-	  unescaped_backslash = !unescaped_backslash;
-	}
-      else
-	{
-	  unescaped_backslash = false;
-	}
-
-      if (skip_spaces && sql_path[i] == ' ')
-	{
-	  continue;
-	}
-
-      result.push_back (sql_path[i]);
-    }
-
-  sql_path = std::move (result);
-}
-
 
 std::vector<std::string> db_json_split_path_by_delimiters (const std::string &path,
     const std::string &delim, bool allow_empty)
@@ -457,21 +407,6 @@ std::vector<std::string> db_json_split_path_by_delimiters (const std::string &pa
 int
 db_json_normalize_path (const char *pointer_path, JSON_PATH &json_path)
 {
-  std::string pointer_path_string (pointer_path);
-  JSON_PATH_TYPE json_path_type = db_json_get_path_type (pointer_path_string);
-
-  if (json_path_type == JSON_PATH_TYPE::JSON_PATH_SQL_JSON)
-    {
-      // path is not JSON path format; consider it SQL path.
-      // sql_path_out = pointer_path_string;
-      if (!json_path.validate_and_make_json_path (pointer_path_string))
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
-	  return ER_JSON_INVALID_PATH;
-	}
-      return NO_ERROR;
-    }
-
   int error_code = json_path.init (pointer_path);
   if (error_code)
     {
@@ -537,57 +472,6 @@ db_json_remove_leading_zeros_index (std::string &index)
   if (index.empty ())
     {
       index = "0";
-    }
-}
-
-
-/*
- * replace_special_chars_in_tokens ()
- * token (in)
- * special_chars (in)
- * this function does the special characters replacements in a token based on mapper
- * Example: object~1name -> object/name
- */
-void
-JSON_PATH::replace_special_chars_in_tokens (std::string &token,
-    const std::unordered_map<std::string, std::string> &special_chars) const
-{
-  bool replaced = false;
-  size_t start = 0;
-  size_t end = 0;
-  size_t step = 1;
-
-  // iterate character by character and detect special characters
-  for (size_t token_idx = 0; token_idx < token.length (); /* incremented in for body */)
-    {
-      replaced = false;
-      // compare with special characters
-      for (auto special_it = special_chars.begin (); special_it != special_chars.end (); ++special_it)
-	{
-	  // compare special characters with sequence following token_it
-	  if (token_idx + special_it->first.length () <= token.length ())
-	    {
-	      if (token.compare (token_idx, special_it->first.length (), special_it->first) == 0)
-		{
-		  // replace
-		  token.replace (token_idx, special_it->first.length (), special_it->second);
-		  // skip replaced
-		  token_idx += special_it->second.length ();
-
-		  replaced = true;
-		  // next loop
-		  break;
-		}
-	    }
-	}
-
-      if (!replaced)
-	{
-	  // no match; next character
-	  token_idx++;
-	}
-
-      start += step;
     }
 }
 
@@ -669,45 +553,6 @@ bool JSON_PATH::contains_wildcard () const
 	}
     }
   return false;
-}
-
-/*
- * build_special_chars_map ()
- * json_path_type (in)
- * special_chars (out)
- * rapid json pointer supports URI Fragment Representation
- * https://tools.ietf.org/html/rfc3986
- * we need a map in order to know how to escape special characters
- * example from sql_path to pointer_path: $."/a" -> #/~1a
- */
-void
-JSON_PATH::build_special_chars_map (const JSON_PATH_TYPE &json_path_type,
-				    std::unordered_map<std::string, std::string> &special_chars) const
-{
-  for (auto it = uri_fragment_conversions.begin (); it != uri_fragment_conversions.end (); ++it)
-    {
-      if (json_path_type == JSON_PATH_TYPE::JSON_PATH_SQL_JSON)
-	{
-	  special_chars.insert (*it);
-	}
-      else
-	{
-	  special_chars.insert (std::make_pair (it->second, it->first));
-	}
-    }
-}
-
-std::string
-JSON_PATH::dump_json_pointer () const
-{
-  std::string res;
-  for (const PATH_TOKEN &tkn : m_path_tokens)
-    {
-      res += '/';
-      res += tkn.token_string;
-    }
-
-  return res;
 }
 
 std::string
@@ -833,7 +678,6 @@ bool JSON_PATH::is_last_array_index_less_than (size_t size) const
 {
   const PATH_TOKEN *last_token = get_last_token ();
   assert (last_token != NULL);
-  //todo: needed?
   return ! (last_token->type == PATH_TOKEN::last_index_special || (last_token->type == PATH_TOKEN::array_index
 	    && std::stoi (last_token->token_string) >= size));
 }
@@ -867,16 +711,35 @@ bool JSON_PATH::parent_exists (JSON_DOC &jd) const
   return false;
 }
 
-
+/*
+ * init ()
+ *
+ * path (in)
+ * An sql_path is normalized to rapidjson standard path
+ * Example: $[0]."name1".name2[2] -> /0/name1/name2/2
+ */
 int JSON_PATH::init (const char *path)
 {
-  // todo: make sure this is called only after path is checked to be json_pointer
-  int error_code = replace_json_pointer (path);
-  if (error_code != NO_ERROR)
+  std::string sql_path_string (path);
+  JSON_PATH_TYPE json_path_type = db_json_get_path_type (sql_path_string);
+
+  if (json_path_type == JSON_PATH_TYPE::JSON_PATH_POINTER)
     {
-      ASSERT_ERROR ();
+      // path is not SQL path format; consider it JSON pointer.
+      int error_code = from_json_pointer (sql_path_string);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	}
+      return error_code;
     }
-  return error_code;
+
+  if (!validate_and_create_from_json_path (sql_path_string))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
+      return ER_JSON_INVALID_PATH;
+    }
+  return NO_ERROR;
 }
 
 JSON_PATH::JSON_PATH ()
@@ -890,40 +753,8 @@ JSON_PATH::JSON_PATH (std::vector<PATH_TOKEN> tokens)
 
 }
 
-/*
- * replace_json_pointer ()
- *
- * sql_path (in)
- * An sql_path is normalized to rapidjson standard path
- * Example: $[0]."name1".name2[2] -> /0/name1/name2/2
- */
 int
-JSON_PATH::replace_json_pointer (const char *sql_path)
-{
-  std::string sql_path_string (sql_path);
-  JSON_PATH_TYPE json_path_type = db_json_get_path_type (sql_path_string);
-
-  if (json_path_type == JSON_PATH_TYPE::JSON_PATH_POINTER)
-    {
-      // path is not SQL path format; consider it JSON pointer.
-      int error_code = assign_pointer (sql_path_string);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	}
-      return error_code;
-    }
-
-  if (!validate_and_make_json_path (sql_path_string))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_INVALID_PATH, 0);
-      return ER_JSON_INVALID_PATH;
-    }
-  return NO_ERROR;
-}
-
-int
-JSON_PATH::assign_pointer (const std::string &pointer_path)
+JSON_PATH::from_json_pointer (const std::string &pointer_path)
 {
   JSON_POINTER jp (pointer_path.c_str ());
   if (!jp.IsValid ())
@@ -970,7 +801,6 @@ JSON_PATH::assign_pointer (const std::string &pointer_path)
 
   return NO_ERROR;
 }
-
 
 JSON_PATH_GETTER::JSON_PATH_GETTER (const JSON_PATH &json_path, JSON_VALUE *&found_json_value)
   : m_path (json_path)
@@ -1022,7 +852,6 @@ int JSON_PATH_GETTER::CallOnArrayIterate ()
     {
       m_stop = true;
       return NO_ERROR;
-      // NULL?
     }
 
   rapidjson::SizeType array_idx_token = (rapidjson::SizeType) std::stoi (tkn.token_string);
@@ -1042,7 +871,6 @@ int JSON_PATH_GETTER::CallOnKeyIterate (JSON_VALUE &key)
     {
       m_stop = true;
       return NO_ERROR;
-      // NULL?
     }
 
   assert (key.IsString ());
