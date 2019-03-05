@@ -417,7 +417,7 @@ css_read_one_request (CSS_CONN_ENTRY * conn, unsigned short *rid, int *request, 
 
   /* TODO[arnia] : temp debug */
   string_buffer sb1, sb2;
-  sb1.add_bytes (sizeof (local_header), &local_header);
+  sb1.add_bytes (sizeof (local_header), (char *) &local_header);
   string_buffer::hex_dump (sb1, sb2, 100);
   er_log_debug (ARG_FILE_LINE, "css_read_one_request:\n%s\n", sb2.get_buffer ());
 
