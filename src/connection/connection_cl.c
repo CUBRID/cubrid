@@ -69,6 +69,7 @@
 #include "connection_list_cl.h"
 #include "connection_cl.h"
 #include "master_util.h"
+#include "string_buffer.hpp"  /* TODO[arnia] :remove (temporary debug)*/
 
 #if defined(HPUX)
 /*
@@ -413,6 +414,13 @@ css_read_one_request (CSS_CONN_ENTRY * conn, unsigned short *rid, int *request, 
     }
 
   rc = css_read_header (conn, &local_header);
+
+  /* TODO[arnia] : temp debug */
+  string_buffer sb1, sb2;
+  sb1.add_bytes (sizeof (local_header), &local_header);
+  string_buffer::hex_dump (sb1, sb2);
+  er_log_debug (ARG_FILE_LINE, "css_read_one_request:\n%s\n", sb2.get_buffer ());
+
   if (rc == NO_ERRORS)
     {
       *rid = (unsigned short) ntohl (local_header.request_id);
@@ -422,12 +430,20 @@ css_read_one_request (CSS_CONN_ENTRY * conn, unsigned short *rid, int *request, 
 	{
 	  *request = (int) (unsigned short) ntohs (local_header.function_code);
 	  *buffer_size = (int) ntohl (local_header.buffer_size);
+
+          /* TODO[arnia] : temp debug */
+          er_log_debug (ARG_FILE_LINE, "css_read_one_request: COMMAND_TYPE request:%d, buffer_size:%d\n",
+            *request, *buffer_size);
+
 	  return rc;
 	}
       else
 	{
 	  css_queue_unexpected_packet (type, conn, *rid, &local_header, sizeof (NET_HEADER));
 	  rc = WRONG_PACKET_TYPE;
+
+          /* TODO[arnia] : temp debug */
+          er_log_debug (ARG_FILE_LINE, "css_read_one_request: WRONG_PACKET_TYPE\n");
 	}
     }
 
