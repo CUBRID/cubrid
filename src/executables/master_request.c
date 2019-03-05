@@ -1833,7 +1833,7 @@ css_process_server_state (CSS_CONN_ENTRY * conn, unsigned short request_id, char
 #if !defined(WINDOWS)
   SOCKET_QUEUE_ENTRY *temp;
 
-  temp = css_return_entry_of_server (server_name, css_Master_socket_anchor);
+  temp = css_return_entry_of_server (server_name, strlen (server_name), css_Master_socket_anchor);
   if (temp == NULL || IS_INVALID_SOCKET (temp->fd))
     {
       state = HB_PSTATE_DEAD;
