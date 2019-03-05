@@ -1,21 +1,21 @@
 /*
-* Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
-*
-*   This program is free software; you can redistribute it and/or modify
-*   it under the terms of the GNU General Public License as published by
-*   the Free Software Foundation; either version 2 of the License, or
-*   (at your option) any later version.
-*
-*  This program is distributed in the hope that it will be useful,
-*  but WITHOUT ANY WARRANTY; without even the implied warranty of
-*  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-*  GNU General Public License for more details.
-*
-*  You should have received a copy of the GNU General Public License
-*  along with this program; if not, write to the Free Software
-*  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
-*
-*/
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *
+ */
 
 /*
  * db_json_path.hpp - functions related to json paths
@@ -31,26 +31,18 @@
 
 class JSON_PATH
 {
-    typedef rapidjson::GenericPointer<JSON_VALUE> JSON_POINTER;
-
   public:
-    enum class JSON_PATH_TYPE
-    {
-      JSON_PATH_SQL_JSON,
-      JSON_PATH_POINTER
-    };
-
     struct PATH_TOKEN
     {
       enum token_type
       {
-	object_key_wild_card,
-	array_index_wild_card,
-	double_wild_card,
+	object_key_wildcard,
+	array_index_wildcard,
+	double_wildcard,
 	object_key,
 	array_index,
 	// token type used to signify json_pointers' '-' special token
-	last_index_special
+	array_end_index
       } type;
 
       // todo: optimize representation (e.g. have an ull for indexes)
@@ -61,13 +53,11 @@ class JSON_PATH
       bool match (const PATH_TOKEN &other) const;
     };
 
-    std::string dump_json_pointer () const;
-
     std::string dump_json_path (bool skip_json_pointer_minus = true) const;
 
-    std::vector<JSON_VALUE *> get (JSON_DOC &jd) const;
+    JSON_VALUE *get (JSON_DOC &jd) const;
 
-    std::vector<const JSON_VALUE *> get (const JSON_DOC &jd) const;
+    const JSON_VALUE *get (const JSON_DOC &jd) const;
 
     DB_JSON_TYPE get_value_type (const JSON_DOC &jd) const;
 
@@ -101,7 +91,15 @@ class JSON_PATH
 
     bool match (const JSON_PATH &other, bool match_prefix = false) const;
 
-    void emplace_back (PATH_TOKEN &&path_token);
+    void push_array_index (size_t idx);
+
+    void push_array_index_wildcard ();
+
+    void push_object_key (std::string &&object_key);
+
+    void push_object_key_wildcard ();
+
+    void push_double_wildcard ();
 
     void pop ();
 
@@ -119,56 +117,8 @@ class JSON_PATH
     friend class JSON_PATH_GETTER;
 };
 
-typedef JSON_PATH::JSON_PATH_TYPE JSON_PATH_TYPE;
-
 // exposed free funcs
 std::vector<std::string> db_json_split_path_by_delimiters (const std::string &path,
     const std::string &delim, bool allow_empty);
-int db_json_normalize_path (const char *pointer_path, JSON_PATH &json_path);
 void db_json_path_unquote_object_keys (std::string &sql_path);
-
-class JSON_PATH_GETTER : public JSON_WALKER
-{
-  public:
-    JSON_PATH_GETTER () = delete;
-    JSON_PATH_GETTER (const JSON_PATH &json_path, JSON_VALUE *&found_json_value);
-    JSON_PATH_GETTER (JSON_PATH_GETTER &) = delete;
-    ~JSON_PATH_GETTER () override = default;
-
-  private:
-    int CallBefore (JSON_VALUE &value) override;
-    int CallAfter (JSON_VALUE &value) override;
-    int CallOnArrayIterate () override;
-    int CallOnKeyIterate (JSON_VALUE &key) override;
-
-    const JSON_PATH &m_path;
-    size_t m_token_idx;
-    rapidjson::SizeType m_array_idx;
-    JSON_VALUE *&m_found_json_value;
-};
-
-class JSON_PATH_SETTER : public JSON_WALKER
-{
-  public:
-    JSON_PATH_SETTER () = delete;
-    JSON_PATH_SETTER (const JSON_PATH &json_path, JSON_DOC &json_doc, const JSON_VALUE &json_value);
-    JSON_PATH_SETTER (JSON_PATH_SETTER &) = delete;
-    ~JSON_PATH_SETTER () override = default;
-
-  private:
-    int CallBefore (JSON_VALUE &value) override;
-    int CallAfter (JSON_VALUE &value) override;
-    int CallOnArrayIterate () override;
-    int CallOnKeyIterate (JSON_VALUE &key) override;
-
-    const JSON_PATH &m_path;
-    JSON_PRIVATE_MEMPOOL &m_allocator;
-    const JSON_VALUE &m_value;
-    size_t m_token_idx;
-
-    // todo: probably there is no need for a stack, a single siztype is enough
-    rapidjson::SizeType m_array_idx;
-    rapidjson::SizeType m_allowed_idx;
-};
-
 #endif /* _DB_JSON_HPP_ */

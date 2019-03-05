@@ -54,6 +54,9 @@
  * because we used doc's allocator when calling SetString.
  */
 
+#include "db_json_types_internal.hpp"
+#include "db_json_path.hpp"
+#include "db_json.hpp"
 #include "dbtype.h"
 #include "memory_alloc.h"
 #include "memory_private_allocator.hpp"
@@ -61,14 +64,6 @@
 #include "object_primitive.h"
 #include "query_dump.h"
 #include "system_parameter.h"
-
-// we define COPY in storage_common.h, but so does rapidjson in its headers. We don't need the definition from storage
-// common, so thankfully we can undef it here. But we should really consider remove that definition
-#undef COPY
-
-#include "db_json_types_internal.hpp"
-#include "db_json_path.hpp"
-#include "db_json.hpp"
 
 #include <sstream>
 #include <algorithm>
@@ -658,7 +653,8 @@ int JSON_PATH_MAPPER::CallBefore (JSON_VALUE &value)
   if (value.IsObject () || value.IsArray ())
     {
       // should not be used before it gets changed. Only add a stack level
-      m_accumulated_paths.emplace_back (JSON_PATH::PATH_TOKEN ());
+      // dummy
+      m_accumulated_paths.push_array_index (0);
     }
 
   return NO_ERROR;
@@ -683,7 +679,7 @@ int JSON_PATH_MAPPER::CallOnArrayIterate ()
   // todo: instead of pop + push, increment the last token
   m_accumulated_paths.pop ();
 
-  m_accumulated_paths.emplace_back (JSON_PATH::PATH_TOKEN {JSON_PATH::PATH_TOKEN::array_index, std::to_string (m_index.top ()++) });
+  m_accumulated_paths.push_array_index (m_index.top ()++);
 
   return NO_ERROR;
 }
@@ -705,7 +701,7 @@ int JSON_PATH_MAPPER::CallOnKeyIterate (JSON_VALUE &key)
   path_item += object_key;
   path_item += "\"";
 
-  m_accumulated_paths.emplace_back (JSON_PATH::PATH_TOKEN{ JSON_PATH::PATH_TOKEN::object_key, path_item });
+  m_accumulated_paths.push_object_key (std::move (path_item));
   return NO_ERROR;
 }
 
@@ -1106,7 +1102,7 @@ db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<
   for (const auto &path : paths)
     {
       json_paths.emplace_back ();
-      error_code = db_json_normalize_path (path.c_str (), json_paths.back ());
+      error_code = json_paths.back ().init (path.c_str ());
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -1205,7 +1201,7 @@ db_json_contains_path (const JSON_DOC *document, const std::vector<std::string> 
   for (const auto &path : paths)
     {
       json_paths.emplace_back ();
-      error_code = db_json_normalize_path (path.c_str (), json_paths.back ());
+      error_code = json_paths.back ().init (path.c_str ());
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -1598,7 +1594,7 @@ db_json_insert_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path)
       return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p.dump_json_path (true), &doc);
     }
 
-  JSON_VALUE *parent_val = p.get_parent ().get (doc)[0];
+  JSON_VALUE *parent_val = p.get_parent ().get (doc);
 
   if (p.points_to_array_cell ())
     {
@@ -1625,7 +1621,7 @@ db_json_insert_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path)
       if (db_json_get_type_of_value (parent_val) != DB_JSON_OBJECT)
 	{
 	  return db_json_er_set_expected_other_type (ARG_FILE_LINE, p.get_parent ().dump_json_path (),
-		 db_json_get_type_of_value (p.get (doc)[0]), DB_JSON_OBJECT);
+		 db_json_get_type_of_value (p.get (doc)), DB_JSON_OBJECT);
 	}
       if (p.get (doc)[0] != NULL)
 	{
@@ -1719,9 +1715,8 @@ db_json_set_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path)
       return error_code;
     }
 
-  // todo: find a cleaner solution for '$."111"' case
   // test if exists for now
-  if (p.get (doc)[0] != NULL)
+  if (p.get (doc) != NULL)
     {
       p.set (doc, *value);
       return NO_ERROR;
@@ -1732,7 +1727,7 @@ db_json_set_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path)
       return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p.dump_json_path (), &doc);
     }
 
-  JSON_VALUE *parent_val = p.get_parent ().get (doc)[0];
+  JSON_VALUE *parent_val = p.get_parent ().get (doc);
 
   if (p.points_to_array_cell ())
     {
@@ -1759,7 +1754,7 @@ db_json_set_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path)
       if (db_json_get_type_of_value (parent_val) != DB_JSON_OBJECT)
 	{
 	  return db_json_er_set_expected_other_type (ARG_FILE_LINE, p.get_parent ().dump_json_path (),
-		 db_json_get_type_of_value (p.get (doc)[0]), DB_JSON_OBJECT);
+		 db_json_get_type_of_value (p.get (doc)), DB_JSON_OBJECT);
 	}
       p.set (doc, *value);
     }
@@ -1833,7 +1828,7 @@ db_json_search_func (JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALUE *esc
   for (const auto &path : starting_paths)
     {
       json_paths.emplace_back ();
-      int error_code = db_json_normalize_path (path.c_str (), json_paths.back ());
+      int error_code = json_paths.back ().init (path.c_str ());
       if (error_code != NO_ERROR)
 	{
 	  return error_code;
@@ -1916,7 +1911,7 @@ db_json_array_append_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw
     }
 
   JSON_VALUE value_copy (*value, doc.GetAllocator());
-  JSON_VALUE *json_val = p.get (doc)[0];
+  JSON_VALUE *json_val = p.get (doc);
 
   if (p.is_root_path ())
     {
@@ -1930,7 +1925,7 @@ db_json_array_append_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw
       return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p.dump_json_path (), &doc);
     }
 
-  JSON_VALUE *parent_val = p.get_parent ().get (doc)[0];
+  JSON_VALUE *parent_val = p.get_parent ().get (doc);
 
   if (p.points_to_array_cell ())
     {
@@ -2008,10 +2003,10 @@ db_json_array_insert_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw
       return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p.dump_json_path (), &doc);
     }
 
-  db_json_value_wrap_as_array (*p.get_parent ().get (doc)[0], doc.GetAllocator ());
+  db_json_value_wrap_as_array (*p.get_parent ().get (doc), doc.GetAllocator ());
 
   const JSON_PATH parent_path = p.get_parent ();
-  JSON_VALUE *json_parent = parent_path.get (doc)[0];
+  JSON_VALUE *json_parent = parent_path.get (doc);
 
   if (!p.is_last_array_index_less_than (json_parent->GetArray ().Size ()))
     {
@@ -2530,7 +2525,7 @@ db_json_er_set_path_does_not_exist (const char *file_name, const int line_no, co
   int error_code;
 
   // the path must be SQL path
-  error_code = db_json_normalize_path (path.c_str (), json_path);
+  error_code = json_path.init (path.c_str ());
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -2556,7 +2551,7 @@ db_json_er_set_expected_other_type (const char *file_name, const int line_no, co
   int error_code = NO_ERROR;
 
   // the path must be SQL path
-  error_code = db_json_normalize_path (path.c_str (), json_path);
+  error_code = json_path.init (path.c_str ());
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -2684,7 +2679,7 @@ int
 db_json_get_all_paths_func (const JSON_DOC &doc, JSON_DOC *&result_json)
 {
   JSON_PATH p;
-  const JSON_VALUE *head = p.get (doc)[0];
+  const JSON_VALUE *head = p.get (doc);
   std::vector<std::string> paths;
 
   // call the helper to get the paths
@@ -2740,7 +2735,7 @@ db_json_keys_func (const JSON_DOC &doc, JSON_DOC &result_json, const char *raw_p
       return error_code;
     }
 
-  const JSON_VALUE *head = p.get (doc)[0];
+  const JSON_VALUE *head = p.get (doc);
 
   // the specified path does not exist in the current JSON document
   if (head == NULL)

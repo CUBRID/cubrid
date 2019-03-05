@@ -1331,8 +1331,8 @@ typedef enum
 #define SERIAL_ATTR_CACHED_NUM    "cached_num"
 #define SERIAL_ATTR_COMMENT       "comment"
 
-#define PEEK          true	/* Peek for a slotted record */
-#define COPY          false	/* Don't peek, but copy a slotted record */
+static const bool PEEK = true;	/* Peek for a slotted record */
+static const bool COPY = false;	/* Don't peek, but copy a slotted record */
 
 enum
 {
