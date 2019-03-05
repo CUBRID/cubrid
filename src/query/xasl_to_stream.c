@@ -113,6 +113,8 @@ static int xts_save (const T &t);
 
 template <typename T>
 static void xts_debug_check (const T &t, char *pack_start, const char *pack_end);
+template <typename T>
+static void xts_debug_clear (T &t);
 // *INDENT-ON*
 
 static int xts_save_db_value_array (DB_VALUE ** ptr, int size);
@@ -7583,9 +7585,19 @@ xts_debug_check (const T &t, char *pack_start, const char *pack_end)
       assert (false);
     }
 
+  xts_debug_clear (unpack_t);
+
   xasl_unpack_info* unpack_info = stx_get_xasl_unpack_info_ptr (NULL);
   db_private_free_and_init (NULL, unpack_info);
   stx_set_xasl_unpack_info_ptr (NULL, NULL);
 #endif // DEBUG
 }
+
+template <typename T>
+static void
+xts_debug_clear (T &t)
+{
+  t.clear_xasl ();
+}
+
 // *INDENT-ON*
