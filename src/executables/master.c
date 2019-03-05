@@ -1420,7 +1420,7 @@ css_return_entry_of_server (char *name_p, const size_t name_len, SOCKET_QUEUE_EN
       /* if HA server exist */
       if (p->name && (IS_MASTER_CONN_NAME_HA_SERVER (p->name)))
 	{
-	  if (strcmp ((char *) (p->name + 1), name_p, name_len - 1) == 0)
+	  if (strncmp ((char *) (p->name + 1), name_p, name_len - 1) == 0)
 	    {
 	      return p;
 	    }
