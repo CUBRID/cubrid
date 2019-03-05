@@ -418,7 +418,7 @@ css_read_one_request (CSS_CONN_ENTRY * conn, unsigned short *rid, int *request, 
   /* TODO[arnia] : temp debug */
   string_buffer sb1, sb2;
   sb1.add_bytes (sizeof (local_header), (char *) &local_header);
-  string_buffer::hex_dump (sb1, sb2, 100);
+  string_buffer::hex_dump (sb1, sb2, sizeof (local_header));
   er_log_debug (ARG_FILE_LINE, "css_read_one_request:\n%s\n", sb2.get_buffer ());
 
   if (rc == NO_ERRORS)
@@ -522,6 +522,12 @@ begin:
       return rc;
     }
 
+    /* TODO[arnia] : temp debug */
+  string_buffer sb1, sb2;
+  sb1.add_bytes (header_size, (char *) &header);
+  string_buffer::hex_dump (sb1, sb2, header_size);
+  er_log_debug (ARG_FILE_LINE, "css_receive_data : header_size:%d\n%s\n", header_size, sb2.get_buffer ());
+
   assert (header_size == sizeof (NET_HEADER));	// to make it sure.
 
   rid = ntohl (header.request_id);
@@ -579,6 +585,11 @@ begin:
 
       *buffer = buf;
       *buffer_size = buf_size;
+
+      string_buffer sb1, sb2;
+      sb1.add_bytes (*buffer_size, buf);
+      string_buffer::hex_dump (sb1, sb2, *buffer_size);
+      er_log_debug (ARG_FILE_LINE, "css_receive_data : buffer_size:%d\n%s\n", *buffer_size, sb2.get_buffer ());
 
       return rc;
     }
@@ -1341,6 +1352,8 @@ css_return_queued_data (CSS_CONN_ENTRY * conn, unsigned short request_id, char *
       buffer_q_entry_p->buffer = NULL;
       memcpy (*buffer, data_q_entry_p->buffer, *buffer_size);
       css_queue_remove_header_entry_ptr (&conn->buffer_queue, buffer_q_entry_p);
+
+      er_log_debug (ARG_FILE_LINE, "css_return_queued_data buffer_size:%d\n", *buffer_size);
     }
   else
     {
@@ -1351,6 +1364,8 @@ css_return_queued_data (CSS_CONN_ENTRY * conn, unsigned short request_id, char *
        * below doesn't free the buffer out from underneath our caller.
        */
       data_q_entry_p->buffer = NULL;
+
+      er_log_debug (ARG_FILE_LINE, "css_return_queued_data buffer_size:%d\n", *buffer_size);
     }
 
   *rc = data_q_entry_p->rc;
