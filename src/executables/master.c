@@ -645,7 +645,7 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERV
   name_length = 1024;
   if (css_receive_data (conn, rid, &server_name, &name_length, -1) == NO_ERRORS && server_name != NULL)
     {
-      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "css_send_to_existing_server server_name:%s\n", server_name);
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "css_send_to_existing_server server_name:%s, name_length:%d\n", server_name, name_length);
       temp = css_return_entry_of_server (server_name, css_Master_socket_anchor);
       if (temp != NULL
 #if !defined(WINDOWS)
