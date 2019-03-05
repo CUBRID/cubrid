@@ -1417,6 +1417,11 @@ qexec_clear_arith_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ARITH_TYPE 
 {
   int pg_cnt = 0;
 
+  if (list == NULL)
+    {
+      return NO_ERROR;
+    }
+
   /* restore the original domain, in order to avoid coerce when the XASL clones will be used again */
   list->domain = list->original_domain;
   pr_clear_value (list->value);
