@@ -756,7 +756,7 @@ namespace cubstream
    *        The purpose is to keep serial read position close to committed position, in order to avoid
    *        sanity checks failures
    */
-  int multi_thread_stream::reset_serial_data_read (const stream_position pos)
+  void multi_thread_stream::reset_serial_data_read (const stream_position pos)
   {
     assert (m_last_committed_pos >= pos);
     m_read_position = pos;
