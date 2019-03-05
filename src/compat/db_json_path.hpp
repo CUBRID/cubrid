@@ -27,7 +27,6 @@
 #include "db_json_types_internal.hpp"
 #include "db_json.hpp"
 
-#include <unordered_map>
 #include <string>
 
 class JSON_PATH

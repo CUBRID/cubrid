@@ -29,19 +29,16 @@
 
 #if defined (__cplusplus)
 class JSON_DOC;
-class JSON_PATH;
 class JSON_VALIDATOR;
 class JSON_ITERATOR;
 #else
 typedef void JSON_DOC;
-typedef void JSON_PATH;
 typedef void JSON_VALIDATOR;
 typedef void JSON_ITERATOR;
 #endif
 
 #if defined (__cplusplus)
 
-#include <functional>
 #include <vector>
 
 /*

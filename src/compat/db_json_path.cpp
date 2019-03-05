@@ -1,8 +1,12 @@
-#include "db_json_path.hpp"
-#include "string_opfunc.h"
 #include <algorithm>
-#include <string>
 #include <cctype>
+
+// we define COPY in storage_common.h, but so does rapidjson in its headers. We don't need the definition from storage
+// common, so thankfully we can undef it here. But we should really consider remove that definition
+#undef COPY
+
+#include "string_opfunc.h"
+#include "db_json_path.hpp"
 
 typedef rapidjson::GenericPointer<JSON_VALUE>::Token TOKEN;
 static const rapidjson::SizeType kPointerInvalidIndex = rapidjson::kPointerInvalidIndex;

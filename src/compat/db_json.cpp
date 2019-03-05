@@ -54,43 +54,25 @@
  * because we used doc's allocator when calling SetString.
  */
 
-#include "db_json.hpp"
-#include "db_json_path.hpp"
-#include "db_json_types_internal.hpp"
-
 #include "dbtype.h"
 #include "memory_alloc.h"
 #include "memory_private_allocator.hpp"
+#include "string_opfunc.h"
 #include "object_primitive.h"
 #include "query_dump.h"
-#include "string_opfunc.h"
 #include "system_parameter.h"
 
 // we define COPY in storage_common.h, but so does rapidjson in its headers. We don't need the definition from storage
 // common, so thankfully we can undef it here. But we should really consider remove that definition
 #undef COPY
 
-#include "rapidjson/allocators.h"
-#include "rapidjson/error/en.h"
-#include "rapidjson/document.h"
-#include "rapidjson/encodings.h"
-#include "rapidjson/schema.h"
-#include "rapidjson/stringbuffer.h"
-#include "rapidjson/writer.h"
+#include "db_json_types_internal.hpp"
+#include "db_json_path.hpp"
+#include "db_json.hpp"
 
 #include <sstream>
-
 #include <algorithm>
-#include <locale>
-#include <unordered_map>
-#include <unordered_set>
-#include <vector>
 #include <stack>
-#include <memory>
-#include <climits>
-#include <functional>
-
-#include <cctype>
 
 #define TODO_OPTIMIZE_JSON_BODY_STRING true
 

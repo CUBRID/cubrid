@@ -1,7 +1,12 @@
-#include "db_json_private_allocator.hpp"
 
 #include "memory_alloc.h"
 #include "system_parameter.h"
+
+// we define COPY in storage_common.h, but so does rapidjson in its headers. We don't need the definition from storage
+// common, so thankfully we can undef it here. But we should really consider remove that definition
+#undef COPY
+
+#include "db_json_private_allocator.hpp"
 
 void *
 JSON_PRIVATE_ALLOCATOR::Malloc (size_t size)

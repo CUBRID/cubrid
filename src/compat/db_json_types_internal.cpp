@@ -1,10 +1,10 @@
 #include "db_json_types_internal.hpp"
 
-/************************************************************************/
-/* JSON_DOC implementation                                              */
-/************************************************************************/
+// we define COPY in storage_common.h, but so does rapidjson in its headers. We don't need the definition from storage
+// common, so thankfully we can undef it here. But we should really consider remove that definition
+#undef COPY
 
-bool JSON_DOC::IsLeaf()
+bool JSON_DOC::IsLeaf ()
 {
   return !IsArray () && !IsObject ();
 }
