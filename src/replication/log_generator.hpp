@@ -83,7 +83,7 @@ namespace cubreplication
 
       bool m_has_stream;
       bool m_is_row_replication_disabled;
-
+      bool m_enable_debug_repl_local;        
       static cubstream::multi_thread_stream *s_stream;
 
     public:
@@ -96,8 +96,11 @@ namespace cubreplication
       log_generator (cubstream::multi_thread_stream *stream)
 	: m_stream_entry (stream)
 	, m_has_stream (false)
-	, m_is_row_replication_disabled (true)
+	, m_is_row_replication_disabled (true)        
       {
+#if !defined(NDEBUG)
+        m_enable_debug_repl_local = false;
+#endif
       };
 
       ~log_generator ();
@@ -146,6 +149,10 @@ namespace cubreplication
       static void set_global_stream (cubstream::multi_thread_stream *stream);
 
       void set_row_replication_disabled (bool disable_if_true);
+#if !defined(NDEBUG)
+      void disable_debug_repl_local ();
+      bool is_debug_repl_local_disabled ();
+#endif
       bool is_row_replication_disabled (void);
       int locator_simulate_repl_apply_rbr_on_master();
 

@@ -337,6 +337,9 @@ namespace cubreplication
       }
 
     m_is_row_replication_disabled = false;
+#if !defined(NDEBUG)
+    m_enable_debug_repl_local = prm_get_bool_value ( PRM_ID_REPL_LOG_LOCAL_DEBUG);
+#endif
   }
 
   bool
@@ -360,6 +363,18 @@ namespace cubreplication
   {
     m_is_row_replication_disabled = disable_if_true;
   }
+
+#if !defined(NDEBUG)
+  void log_generator::disable_debug_repl_local ()
+  {
+    m_enable_debug_repl_local = true;
+  }
+
+  bool is_debug_repl_local_disabled ()
+  {
+    return m_enable_debug_repl_local;
+  }
+#endif
 
   /* Debug function */
   int log_generator::locator_simulate_repl_apply_rbr_on_master ()

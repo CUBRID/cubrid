@@ -7373,7 +7373,8 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
     }
 
 start_simulate_ha_apply:
-#if defined (SERVER_MODE)
+
+#if !defined(NDEBUG) && defined (SERVER_MODE)
   if (log_does_allow_replication () == true)
     {
       if (operation_aborted)
@@ -7542,7 +7543,9 @@ start_simulate_ha_apply:
     }
 
 end:
-  if (log_does_allow_replication () == true && operation_aborted == false)
+#if !defined(NDEBUG) && defined (SERVER_MODE)
+  if (log_does_allow_replication () == true && operation_aborted == false
+      && !(logtb_get_tdes (thread_p)->replication_log_generator.is_debug_repl_local_disabled ()))
     {
       if (error_code == NO_ERROR)
 	{
@@ -7556,6 +7559,7 @@ end:
 	  log_sysop_attach_to_outer (thread_p);
 	}
     }
+#endif
 
   return error_code;
 }
@@ -13817,14 +13821,15 @@ retry:
       assert (er_errid () != NO_ERROR);
 
       (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &topop_lsa);
+
+      /* TODO : error handling */
+      er_clear ();
       if (num_retry++ < max_retry)
 	{
 	  /* Maybe error caused by concurrent thread, try again. */
-	  er_clear ();
 	  goto retry;
 	}
 
-      /* TODO : error handling */
       error_code = NO_ERROR;
     }
   else
