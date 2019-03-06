@@ -35,7 +35,7 @@
 
 namespace cubreplication
 {
-  static bool enable_log_generator_logging = true;
+  static bool enable_log_generator_logging = false;
 
   log_generator::~log_generator ()
   {

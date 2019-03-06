@@ -5256,7 +5256,7 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid, OID * old_class_o
 
   if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
     {
-      /* Remove attribute change since we moved, instead of doing update. */
+      /* Remove attribute change since we moved, instead of doing update. At abort, all pending objects are removed. */
       logtb_get_tdes (thread_p)->replication_log_generator.remove_attribute_change (*old_class_oid, *obj_oid);
     }
 
@@ -7372,9 +7372,8 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
       heap_get_class_oid (thread_p, oid, &class_oid);
     }
 
-start_simulate_ha_apply:
-
 #if !defined(NDEBUG) && defined (SERVER_MODE)
+start_simulate_ha_apply:
   if (log_does_allow_replication () == true)
     {
       if (operation_aborted)
@@ -7542,12 +7541,12 @@ start_simulate_ha_apply:
       break;
     }
 
-end:
 #if !defined(NDEBUG) && defined (SERVER_MODE)
-  if (log_does_allow_replication () == true && operation_aborted == false
-      && !(logtb_get_tdes (thread_p)->replication_log_generator.is_debug_repl_local_disabled ()))
+end:
+  if (log_does_allow_replication () == true && operation_aborted == false)
     {
-      if (error_code == NO_ERROR)
+      if (error_code == NO_ERROR
+	  && !(logtb_get_tdes (thread_p)->replication_log_generator.is_debug_repl_local_disabled ()))
 	{
 	  /* Abort operation and simpulate it with appy. */
 	  log_sysop_abort (thread_p);
@@ -8287,6 +8286,12 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	  repl_info->need_replication = false;
 	}
 
+      if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
+	{
+	  /* Remove attribute change since we don't have primary key. At abort, all pending objects are removed. */
+	  logtb_get_tdes (thread_p)->replication_log_generator.remove_attribute_change (*class_oid, *oid);
+	}
+
       return NO_ERROR;
     }
 
@@ -8713,8 +8718,13 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
     }
   else
     {
-      // todo - handle no pk case
       /* No need to replicate this record since there is no primary key */
+      if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
+	{
+	  /* Remove attribute change since we don't have primary key. At abort, all pending objects are removed. */
+	  logtb_get_tdes (thread_p)->replication_log_generator.remove_attribute_change (*class_oid, *oid);
+	}
+
       if (repl_info != NULL)
 	{
 	  repl_info->need_replication = false;
