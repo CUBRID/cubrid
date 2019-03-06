@@ -200,6 +200,7 @@ static PT_NODE *pt_check_single_valued_node (PARSER_CONTEXT * parser, PT_NODE * 
 static PT_NODE *pt_check_single_valued_node_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 						  int *continue_walk);
 static void pt_check_into_clause (PARSER_CONTEXT * parser, PT_NODE * qry);
+static int normalize_path (PARSER_CONTEXT * parser, char *&c);
 static int pt_check_json_table_node (PARSER_CONTEXT * pareser, PT_NODE * node);
 static PT_NODE *pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_gen_isnull_preds (PARSER_CONTEXT * parser, PT_NODE * pred, PT_CHAIN_INFO * chain);
@@ -9310,6 +9311,22 @@ pt_check_into_clause (PARSER_CONTEXT * parser, PT_NODE * qry)
     }
 }
 
+static int
+normalize_path (PARSER_CONTEXT * parser, char *&c)
+{
+  std::string normalized_path;
+
+  int error_code = db_json_normalize_path_string (c, normalized_path);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+  char *normalized = (char *) parser_alloc (parser, (int) (normalized_path.length () + 1) * sizeof (char));
+  strcpy (normalized, normalized_path.c_str ());
+  c = normalized;
+  return NO_ERROR;
+}
+
 /*
  * pt_check_json_table_node () - check json_table's paths and type check ON_ERROR & ON_EMPTY
  *
@@ -9321,7 +9338,7 @@ pt_check_json_table_node (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   assert (node != NULL && node->node_type == PT_JSON_TABLE_NODE);
 
-  int error_code = db_json_normalize_path_string (node->info.json_table_node_info.path, true);
+  int error_code = normalize_path (parser, node->info.json_table_node_info.path);
   if (error_code)
     {
       return error_code;
@@ -9360,7 +9377,7 @@ pt_check_json_table_node (PARSER_CONTEXT * parser, PT_NODE * node)
 	  assert (col_info.path == NULL);
 	  continue;
 	}
-      error_code = db_json_normalize_path_string (col_info.path, true);
+      error_code = normalize_path (parser, col_info.path);
       if (error_code)
 	{
 	  return error_code;

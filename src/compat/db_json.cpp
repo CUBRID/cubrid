@@ -1591,7 +1591,7 @@ db_json_insert_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path)
 
   if (!p.parent_exists (doc))
     {
-      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p.dump_json_path (true), &doc);
+      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p.dump_json_path (), &doc);
     }
 
   JSON_VALUE *parent_val = p.get_parent ().get (doc);
@@ -1623,7 +1623,7 @@ db_json_insert_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path)
 	  return db_json_er_set_expected_other_type (ARG_FILE_LINE, p.get_parent ().dump_json_path (),
 		 db_json_get_type_of_value (p.get (doc)), DB_JSON_OBJECT);
 	}
-      if (p.get (doc)[0] != NULL)
+      if (p.get (doc) != NULL)
 	{
 	  return NO_ERROR;
 	}
@@ -1673,7 +1673,7 @@ db_json_replace_func (const JSON_DOC *new_value, JSON_DOC &doc, const char *raw_
       return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p.dump_json_path (), &doc);
     }
 
-  if (p.get (doc)[0] == NULL)
+  if (p.get (doc) == NULL)
     {
       if (!p.is_last_token_array_index_zero ())
 	{
@@ -1793,7 +1793,7 @@ db_json_remove_func (JSON_DOC &doc, const char *raw_path)
       return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p.dump_json_path (), &doc);
     }
 
-  if (p.get (doc)[0] == NULL)
+  if (p.get (doc) == NULL)
     {
       if (!p.is_last_token_array_index_zero () || p.get_parent ().is_root_path ())
 	{
@@ -2015,8 +2015,7 @@ db_json_array_insert_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw
     }
 
   json_parent->GetArray ().PushBack (JSON_VALUE (), doc.GetAllocator ());
-  const JSON_PATH::PATH_TOKEN &last_token = *p.get_last_token ();
-  size_t last_token_idx = std::stoi (last_token.token_string);
+  size_t last_token_idx = p.get_last_token ()->get_array_index ();
   for (rapidjson::SizeType i = json_parent->GetArray ().Size () - 1; i >= last_token_idx + 1; --i)
     {
       json_parent->GetArray ()[i] = std::move (json_parent->GetArray ()[i - 1]);
@@ -2574,7 +2573,7 @@ db_json_er_set_expected_other_type (const char *file_name, const int line_no, co
 }
 
 int
-db_json_normalize_path_string (char *&pointer_path, bool allow_wildcards)
+db_json_normalize_path_string (const char *pointer_path, std::string &output)
 {
   JSON_PATH jp;
   int error_code = jp.init (pointer_path);
@@ -2584,8 +2583,8 @@ db_json_normalize_path_string (char *&pointer_path, bool allow_wildcards)
       return error_code;
     }
 
-  db_private_free (NULL, pointer_path);
-  pointer_path = strdup (jp.dump_json_path ().c_str ());
+  output = jp.dump_json_path ();
+
   return NO_ERROR;
 }
 

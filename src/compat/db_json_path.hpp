@@ -31,35 +31,93 @@
 
 class JSON_PATH
 {
-  public:
     struct PATH_TOKEN
     {
-      enum token_type
-      {
-	object_key_wildcard,
-	array_index_wildcard,
-	double_wildcard,
-	object_key,
-	array_index,
-	// token type used to signify json_pointers' '-' special token
-	array_end_index
-      } type;
+	enum token_type
+	{
+	  object_key_wildcard,
+	  array_index_wildcard,
+	  double_wildcard,
+	  object_key,
+	  array_index,
+	  // token type used to signify json_pointers' '-' special token
+	  array_end_index
+	} type;
 
-      // todo: optimize representation (e.g. have an ull for indexes)
-      std::string token_string;
+	union token_representation
+	{
+public :
+	  token_representation ()
+	    : array_idx (0)
+	  {
 
-      bool is_wildcard () const;
+	  }
 
-      bool match (const PATH_TOKEN &other) const;
+	  token_representation (rapidjson::SizeType array_idx)
+	    : array_idx (array_idx)
+	  {
+
+	  }
+
+	  token_representation (std::string &&s)
+	    : object_key (std::move (s))
+	  {
+
+	  }
+
+	  ~token_representation ()
+	  {
+
+	  }
+
+	  std::string object_key;
+	  rapidjson::SizeType array_idx;
+	} repr;
+
+	PATH_TOKEN ()
+	  : type (array_index)
+	{
+
+	}
+
+	PATH_TOKEN (token_type type, rapidjson::SizeType array_idx)
+	  : type (type)
+	  , repr (array_idx)
+	{
+
+	}
+
+	PATH_TOKEN (token_type type, std::string &&s)
+	  : type (type)
+	  , repr (std::move (s))
+	{
+
+	}
+
+	PATH_TOKEN (const PATH_TOKEN &other)
+	  : type (other.type)
+	{
+	  memcpy (&repr, &other.repr, sizeof (repr));
+	}
+
+	const std::string &get_object_key () const;
+
+	rapidjson::SizeType get_array_index () const;
+
+	bool is_wildcard () const;
+
+	bool match (const PATH_TOKEN &other) const;
     };
 
-    std::string dump_json_path (bool skip_json_pointer_minus = true) const;
+  private:
+    using token_containter_type = std::vector<PATH_TOKEN>;
+
+  public:
+    std::string dump_json_path () const;
 
     JSON_VALUE *get (JSON_DOC &jd) const;
 
     const JSON_VALUE *get (const JSON_DOC &jd) const;
-
-    DB_JSON_TYPE get_value_type (const JSON_DOC &jd) const;
 
     void set (JSON_DOC &jd, const JSON_VALUE &jv) const;
 
@@ -87,11 +145,11 @@ class JSON_PATH
 
     explicit JSON_PATH ();
 
-    explicit JSON_PATH (std::vector<PATH_TOKEN> tokens);
+    explicit JSON_PATH (token_containter_type tokens);
 
     bool match (const JSON_PATH &other, bool match_prefix = false) const;
 
-    void push_array_index (size_t idx);
+    void push_array_index (unsigned idx);
 
     void push_array_index_wildcard ();
 
@@ -109,12 +167,10 @@ class JSON_PATH
     int from_json_pointer (const std::string &pointer_path);
 
     // todo: find a way to avoid passing reference to get other_tokens.end ()
-    bool match (const std::vector<PATH_TOKEN>::const_iterator &it1, const std::vector<PATH_TOKEN>::const_iterator &it2,
-		const std::vector<PATH_TOKEN> &other_tokens, bool match_prefix = false) const;
+    bool match (const token_containter_type::const_iterator &it1, const token_containter_type::const_iterator &it2,
+		const token_containter_type &other_tokens, bool match_prefix = false) const;
 
-    std::vector<PATH_TOKEN> m_path_tokens;
-    friend class JSON_PATH_SETTER;
-    friend class JSON_PATH_GETTER;
+    token_containter_type m_path_tokens;
 };
 
 // exposed free funcs
