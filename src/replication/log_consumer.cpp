@@ -27,6 +27,7 @@
 #include "error_manager.h"
 #include "multi_thread_stream.hpp"
 #include "replication_stream_entry.hpp"
+#include "string_buffer.hpp"
 #include "system_parameter.h"
 #include "thread_daemon.hpp"
 #include "thread_entry_task.hpp"
@@ -117,6 +118,15 @@ namespace cubreplication
       size_t get_entries_cnt (void)
       {
 	return m_repl_stream_entries.size ();
+      }
+
+      void stringify (string_buffer &sb)
+      {
+        sb ("apply_task: stream_entries:%d\n", get_entries_cnt ());
+        for (auto it = m_repl_stream_entries.begin (); it != m_repl_stream_entries.end (); it++)
+          {
+            (*it)->stringify (sb, stream_entry::detailed_dump);
+          }
       }
 
     private:
@@ -235,6 +245,13 @@ namespace cubreplication
 
   void log_consumer::push_entry (stream_entry *entry)
   {
+    if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
+      {
+        string_buffer sb;
+        entry->stringify (sb, stream_entry::short_dump);
+        er_log_debug_replication (ARG_FILE_LINE, "log_consumer push_entry:\n%s", sb.get_buffer ());
+      }
+
     std::unique_lock<std::mutex> ulock (m_queue_mutex);
     m_stream_entries.push (entry);
     m_apply_task_ready = true;
@@ -303,6 +320,13 @@ namespace cubreplication
 
   void log_consumer::execute_task (applier_worker_task *task)
   {
+    if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
+      {
+        string_buffer sb;
+        task->stringify (sb);
+        er_log_debug_replication (ARG_FILE_LINE, "log_consumer::execute_task:\n%s", sb.get_buffer ());
+      }
+
     cubthread::get_manager ()->push_task (m_applier_workers_pool, task);
 
     m_started_tasks++;

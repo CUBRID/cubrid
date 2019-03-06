@@ -27,10 +27,44 @@
 #include "replication_stream_entry.hpp"
 #include "stream_entry.hpp"
 #include "error_code.h"
+#include "string_buffer.hpp"
 #include <algorithm>
 
 namespace cubreplication
 {
+
+  const char *stream_entry_header::tran_state_string (stream_entry_header::TRAN_STATE state)
+  {
+    switch (state)
+      {
+        case ACTIVE:
+          return "ACTIVE";
+        case COMMITTED:
+          return "COMMITTED";
+        case ABORTED:
+          return "ABORTED";
+        case GROUP_COMMIT:
+          return "GROUP_COMMIT";
+        default:
+          break;
+      }
+    return "UNDEFINED";
+  }
+
+  void stream_entry::stringify (string_buffer &sb, string_dump_mode mode)
+  {
+    sb ("HEADER : MVCCID:%lld | tran_state:%s | repl_entries_cnt:%d | data_size:%d\n",
+      m_header.mvccid, stream_entry_header::tran_state_string (m_header.tran_state),
+      m_header.count_replication_entries, m_header.data_size);
+
+    if (mode = detailed_dump)
+      {
+        for (auto it = m_packable_entries.begin (); it != m_packable_entries.end (); it++)
+          {
+            (*it)->stringify (sb);
+          }
+      }
+  }
 
   size_t stream_entry::get_data_packed_size (void)
   {

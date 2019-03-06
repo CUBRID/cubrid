@@ -78,10 +78,19 @@ namespace cubreplication
 
       return header_size;
     }
+
+    static const char *tran_state_string (TRAN_STATE state);
   };
 
   class stream_entry : public cubstream::entry<replication_object>
   {
+    public:
+        enum string_dump_mode
+          {
+            short_dump = 0,
+            detailed_dump = 1
+          };
+
     private:
       stream_entry_header m_header;
       cubpacking::packer m_serializator;
@@ -163,6 +172,8 @@ namespace cubreplication
       int pack_stream_entry_header ();
       int unpack_stream_entry_header ();
       int get_packable_entry_count_from_header (void);
+
+      void stringify (string_buffer &sb, string_dump_mode mode = short_dump);
 
       bool is_equal (const cubstream::entry<replication_object> *other);
       static size_t compute_header_size (void);
