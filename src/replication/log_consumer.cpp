@@ -159,6 +159,13 @@ namespace cubreplication
 		break;
 	      }
 
+            if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
+              {
+                string_buffer sb;
+                se->stringify (sb, stream_entry::short_dump);
+                er_log_debug_replication (ARG_FILE_LINE, "dispatch_daemon_task execute pop_entry:\n%s", sb.get_buffer ());
+              }
+
 	    if (se->is_group_commit ())
 	      {
 		assert (se->get_data_packed_size () == 0);
