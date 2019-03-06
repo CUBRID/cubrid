@@ -370,7 +370,7 @@ namespace cubreplication
     m_enable_debug_repl_local = true;
   }
 
-  bool is_debug_repl_local_disabled ()
+  bool log_generator::is_debug_repl_local_disabled ()
   {
     return m_enable_debug_repl_local;
   }
