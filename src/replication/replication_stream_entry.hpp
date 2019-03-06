@@ -39,13 +39,14 @@ namespace cubreplication
   {
     typedef enum
     {
-      ACTIVE = 0,
+      UNDEFINED = 0,
+      ACTIVE,
       COMMITTED,
       ABORTED,
       GROUP_COMMIT
     } TRAN_STATE;
 
-    const static unsigned STATE_BITS = 2;
+    const static unsigned STATE_BITS = 3;
 
     const static unsigned int STATE_MASK = 0xc0000000;
 
@@ -63,7 +64,7 @@ namespace cubreplication
 	mvccid (MVCCID_NULL),
 	count_replication_entries (0),
 	data_size (0),
-	tran_state (ACTIVE)
+	tran_state (UNDEFINED)
     {
     };
 
@@ -167,6 +168,12 @@ namespace cubreplication
       bool is_tran_abort (void)
       {
 	return m_header.tran_state == stream_entry_header::ABORTED;
+      }
+
+      bool is_tran_state_undefined (void)
+      {
+	return m_header.tran_state < stream_entry_header::ACTIVE
+               || m_header.tran_state > stream_entry_header::GROUP_COMMIT;
       }
 
       int pack_stream_entry_header ();

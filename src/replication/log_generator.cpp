@@ -232,13 +232,18 @@ namespace cubreplication
   log_generator::pack_stream_entry (void)
   {
     assert (m_has_stream);
+    assert (!m_stream_entry.is_tran_state_undefined ());
+    assert (MVCCID_IS_VALID (m_stream_entry.get_mvccid ()));
 
-    er_log_debug (ARG_FILE_LINE, "log_generator::pack_stream_entry MVCCID:%lld\n", m_stream_entry.get_mvccid ());
+    if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
+      {
+        string_buffer sb;
+        m_stream_entry.stringify (sb, stream_entry::detailed_dump);
+        er_log_debug_replication (ARG_FILE_LINE, "log_generator::pack_stream_entry\n%s\n", sb.get_buffer ());
+      }
 
     m_stream_entry.pack ();
     m_stream_entry.reset ();
-    // reset state
-    m_stream_entry.set_state (stream_entry_header::ACTIVE);
   }
 
   void
@@ -294,6 +299,9 @@ namespace cubreplication
 
     set_tran_repl_info (state);
     pack_stream_entry ();
+    m_stream_entry.set_mvccid (MVCCID_NULL);
+    // reset state
+    m_stream_entry.set_state (stream_entry_header::ACTIVE);
   }
 
   void
