@@ -209,7 +209,7 @@ namespace test_replication
 
     /* workaround for seq read position : force read position to append position to avoid stream destructor
      * assertion failure */
-    lg_stream->force_set_read_position (lg_stream->get_last_committed_pos ());
+    lg_stream->reset_serial_data_read (lg_stream->get_last_committed_pos ());
 
     delete lc;
 
@@ -391,7 +391,7 @@ namespace test_replication
 
     /* workaround for seq read position : force read position to append position to avoid stream destructor
      * assertion failure */
-    lg_stream->force_set_read_position (lg_stream->get_last_committed_pos ());
+    lg_stream->reset_serial_data_read (lg_stream->get_last_committed_pos ());
 
     delete lc;
 

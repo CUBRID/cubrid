@@ -108,11 +108,6 @@ namespace cubstream
 	return m_read_position;
       }
 
-      void force_set_read_position (const stream_position &pos)
-      {
-	m_read_position = pos;
-      };
-
       const stream_position &get_last_committed_pos (void)
       {
 	return m_last_committed_pos;
@@ -145,6 +140,14 @@ namespace cubstream
       const std::string &name (void)
       {
 	return m_stream_name;
+      }
+
+      void reset_serial_data_read (const stream_position &pos, const bool force = false)
+      {
+        if (force || pos <= m_last_committed_pos)
+          {
+            m_read_position = pos;
+          }
       }
   };
 

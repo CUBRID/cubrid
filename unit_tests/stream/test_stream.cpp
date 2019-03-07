@@ -1740,7 +1740,7 @@ namespace test_stream
     test_stream_for_read.set_name ("stream_for_pack_mt");
     test_stream_for_read.set_buffer_reserve_margin (100 * 1024);
     test_stream_for_read.init (stream_max_pos);
-    test_stream_for_read.force_set_read_position (stream_read_start);
+    test_stream_for_read.reset_serial_data_read (stream_read_start, true);
 
     cubstream::stream_file *my_stream_file = new cubstream::stream_file (test_stream_for_read, file_size);
     my_stream_file->init (stream_max_pos);
