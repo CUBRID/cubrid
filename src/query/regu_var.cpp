@@ -107,86 +107,20 @@ void
 regu_variable_node::map_regu_and_xasl (const map_regu_func_type &regu_func, const map_xasl_func_type &xasl_func)
 {
   bool stop;
-  return map_regu_and_xasl (regu_func, xasl_func, stop);
-}
-
-void
-regu_variable_node::map_regu_and_xasl (const map_regu_func_type &regu_func, const map_xasl_func_type &xasl_func,
-				       bool &stop)
-{
-  // helper macros to avoid repeating code
-#define map_regu_and_check_stop(regu) \
-  { (regu)->map_regu_and_xasl (regu_func, xasl_func, stop); if (stop) return; }
-#define map_regu_not_null_and_check_stop(regu) \
-  if ((regu) != NULL) map_regu_and_check_stop (regu)
-
-  if (xasl != NULL)
-    {
-      // apply XASL function
-      xasl_func (*xasl, stop);
-      if (stop)
-	{
-	  return;
-	}
-    }
-
-  // apply regu function to me
-  regu_func (*this, stop);
-  if (stop)
-    {
-      return;
-    }
-  switch (type)
-    {
-    case TYPE_INARITH:
-    case TYPE_OUTARITH:
-      if (value.arithptr == NULL)
-	{
-	  assert (false);
-	  return;
-	}
-      map_regu_not_null_and_check_stop (value.arithptr->leftptr);
-      map_regu_not_null_and_check_stop (value.arithptr->rightptr);
-      break;
-
-    case TYPE_FUNC:
-      if (value.funcp == NULL)
-	{
-	  assert (false);
-	  return;
-	}
-      for (regu_variable_list_node *operand = value.funcp->operand; operand != NULL; operand = operand->next)
-	{
-	  map_regu_and_check_stop (&operand->value);
-	}
-      break;
-
-    case TYPE_REGUVAL_LIST:
-      if (value.reguval_list == NULL)
-	{
-	  assert (false);
-	  return;
-	}
-      for (regu_value_item *item = value.reguval_list->regu_list; item != NULL; item = item->next)
-	{
-	  map_regu_not_null_and_check_stop (item->value);
-	}
-      break;
-
-    case TYPE_REGU_VAR_LIST:
-      for (regu_variable_list_node *node = value.regu_var_list; node != NULL; node = node->next)
-	{
-	  map_regu_and_check_stop (&node->value);
-	}
-      break;
-
-    default:
-      // no children
-      return;
-    }
-
-#undef map_regu_not_null_and_check_stop
-#undef map_regu_and_check_stop
+  // wrap regu_func and xasl_func calls into a single map_regu_func_type that can be used by map_regu
+  auto cnv_funcs_to_regu_func = [&] (regu_variable_node &regu, bool &stop)
+  {
+    if (regu.xasl != NULL)
+      {
+	xasl_func (*regu.xasl, stop);
+	if (stop)
+	  {
+	    return;
+	  }
+	regu_func (regu, stop);
+      }
+  };
+  return map_regu (cnv_funcs_to_regu_func, stop);
 }
 
 void

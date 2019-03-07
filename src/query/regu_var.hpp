@@ -203,7 +203,6 @@ class regu_variable_node
 
   private:
     void map_regu (const map_regu_func_type &func, bool &stop);
-    void map_regu_and_xasl (const map_regu_func_type &regu_func, const map_xasl_func_type &xasl_func, bool &stop);
 
     // clear dynamically allocated memory from this node
     void clear_xasl_local ();
