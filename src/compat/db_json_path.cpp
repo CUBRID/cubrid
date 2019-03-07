@@ -828,16 +828,27 @@ bool JSON_PATH::erase (JSON_DOC &jd) const
       return false;
     }
 
-  auto value = get_parent ().get (jd);
+  JSON_VALUE *value = get_parent ().get (jd);
 
   const PATH_TOKEN &tkn = m_path_tokens.back ();
 
   switch (db_json_get_type_of_value (value))
     {
     case DB_JSON_ARRAY:
-      return value->Erase (value->Begin () + tkn.get_array_index ());
+    {
+      if (!is_last_array_index_less_than (value->GetArray ().Size ()))
+	{
+	  return false;
+	}
+      value->Erase (value->Begin () + tkn.get_array_index ());
+      return true;
+    }
     case DB_JSON_OBJECT:
     {
+      if (tkn.type != PATH_TOKEN::object_key)
+	{
+	  return false;
+	}
       assert (tkn.get_object_key ().length () >= 2);
       std::string unescaped = tkn.get_object_key ().substr (1, tkn.get_object_key ().length () - 2);
       return value->EraseMember (unescaped.c_str ());
@@ -886,15 +897,13 @@ bool JSON_PATH::is_last_array_index_less_than (size_t size) const
 {
   const PATH_TOKEN *last_token = get_last_token ();
   assert (last_token != NULL);
-  return ! (last_token->type == PATH_TOKEN::array_end_index || (last_token->type == PATH_TOKEN::array_index
-	    && last_token->get_array_index () >= size));
+
+  return last_token->type == PATH_TOKEN::array_index && last_token->get_array_index () < size;
 }
 
 bool JSON_PATH::is_last_token_array_index_zero () const
 {
-  const PATH_TOKEN *last_token = get_last_token ();
-  assert (last_token != NULL);
-  return (last_token->type == PATH_TOKEN::array_index && last_token->get_array_index () == 0);
+  return is_last_array_index_less_than (1);
 }
 
 bool JSON_PATH::points_to_array_cell () const
