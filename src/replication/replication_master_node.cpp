@@ -98,8 +98,9 @@ namespace cubreplication
     g_instance->m_stream->set_last_recyclable_pos (pos);
     g_instance->m_stream->reset_serial_data_read (pos);
 
-    er_log_debug_replication (ARG_FILE_LINE, "master_node update_senders_min_position: %llu,\n"
-      " stream_read_pos:%llu", pos, g_instance->m_stream->get_curr_read_position ());
+    er_log_debug_replication (ARG_FILE_LINE, "master_node (stream:%s) update_senders_min_position: %llu,\n"
+      " stream_read_pos:%llu, commit_pos:%llu", g_instance->m_stream->name ().c_str (),
+      pos, g_instance->m_stream->get_curr_read_position (), g_instance->m_stream->get_last_committed_pos ());
 }
 
 
