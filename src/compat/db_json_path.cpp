@@ -14,6 +14,8 @@ enum class JSON_PATH_TYPE
   JSON_PATH_POINTER
 };
 
+static std::vector<std::string> db_json_split_path_by_delimiters (const std::string &path, const std::string &delim,
+    bool allow_empty);
 static void db_json_trim_leading_spaces (std::string &path_string);
 static JSON_PATH_TYPE db_json_get_path_type (std::string &path_string);
 static bool db_json_isspace (const unsigned char &ch);
@@ -402,6 +404,54 @@ std::vector<std::string> db_json_split_path_by_delimiters (const std::string &pa
   return tokens;
 }
 
+JSON_PATH::MATCH_RESULT JSON_PATH::match_pattern (const JSON_PATH &pattern,
+    const JSON_PATH::token_containter_type::const_iterator &it1, const JSON_PATH &path,
+    const JSON_PATH::token_containter_type::const_iterator &it2)
+{
+  if (it1 == pattern.m_path_tokens.end () && it2 == path.m_path_tokens.end ())
+    {
+      return FULL_MATCH;
+    }
+
+  if (it1 == pattern.m_path_tokens.end ())
+    {
+      return PREFIX_MATCH;
+    }
+
+  if (it2 == path.m_path_tokens.end ())
+    {
+      // note that in case of double wildcard we have guaranteed a token after it
+      return NO_MATCH;
+    }
+
+  if (it1->type == PATH_TOKEN::double_wildcard)
+    {
+      // for "**" wildcard we try to match the remaining pattern against each suffix of the path
+      MATCH_RESULT advance_pattern = match_pattern (pattern, it1 + 1, path, it2);
+      if (advance_pattern == FULL_MATCH)
+	{
+	  // return early if we have a full result
+	  return advance_pattern;
+	}
+
+      MATCH_RESULT advance_path = match_pattern (pattern, it1, path, it2 + 1);
+      if (advance_path == FULL_MATCH)
+	{
+	  return advance_path;
+	}
+      return (advance_pattern == PREFIX_MATCH || advance_path == PREFIX_MATCH) ? PREFIX_MATCH : NO_MATCH;
+    }
+
+  return !PATH_TOKEN::match_pattern (*it1, *it2) ? NO_MATCH : match_pattern (pattern, it1 + 1, path, it2 + 1);
+}
+
+JSON_PATH::MATCH_RESULT JSON_PATH::match_pattern (const JSON_PATH &pattern, const JSON_PATH &path)
+{
+  assert (!path.contains_wildcard ());
+
+  return match_pattern (pattern, pattern.m_path_tokens.begin (), path,  path.m_path_tokens.begin ());
+}
+
 /*
  * db_json_path_unquote_object_keys () - Unquote, when possible, object_keys of the json_path
  *
@@ -462,6 +512,55 @@ db_json_remove_leading_zeros_index (std::string &index)
     }
 }
 
+JSON_PATH::PATH_TOKEN::token_representation::token_representation ()
+  : array_idx (0)
+{
+
+}
+
+JSON_PATH::PATH_TOKEN::token_representation::token_representation (rapidjson::SizeType array_idx)
+  : array_idx (array_idx)
+{
+
+}
+
+JSON_PATH::PATH_TOKEN::token_representation::token_representation (std::string &&s)
+  : object_key (std::move (s))
+{
+
+}
+
+JSON_PATH::PATH_TOKEN::token_representation::~token_representation ()
+{
+
+}
+
+JSON_PATH::PATH_TOKEN::PATH_TOKEN ()
+  : type (array_index)
+{
+
+}
+
+JSON_PATH::PATH_TOKEN::PATH_TOKEN (token_type type, rapidjson::SizeType array_idx)
+  : type (type)
+  , repr (array_idx)
+{
+
+}
+
+JSON_PATH::PATH_TOKEN::PATH_TOKEN (token_type type, std::string &&s)
+  : type (type)
+  , repr (std::move (s))
+{
+
+}
+
+JSON_PATH::PATH_TOKEN::PATH_TOKEN (const PATH_TOKEN &other)
+  : type (other.type)
+{
+  memcpy (&repr, &other.repr, sizeof (repr));
+}
+
 const std::string &JSON_PATH::PATH_TOKEN::get_object_key () const
 {
   assert (type != array_index);
@@ -481,61 +580,25 @@ bool JSON_PATH::PATH_TOKEN::is_wildcard () const
   return type == object_key_wildcard || type == array_index_wildcard || type == double_wildcard;
 }
 
-bool JSON_PATH::PATH_TOKEN::match (const PATH_TOKEN &other) const
+bool JSON_PATH::PATH_TOKEN::match_pattern (const PATH_TOKEN &matcher, const PATH_TOKEN &matchee)
 {
-  assert (!other.is_wildcard ());
+  assert (!matchee.is_wildcard ());
 
-  switch (type)
+  switch (matcher.type)
     {
     case double_wildcard:
-      return other.type == object_key || other.type == array_index;
+      return matchee.type == object_key || matchee.type == array_index;
     case object_key_wildcard:
-      return other.type == object_key;
+      return matchee.type == object_key;
     case array_index_wildcard:
-      return other.type == array_index;
+      return matchee.type == array_index;
     case object_key:
-      return other.type == object_key && get_object_key () == other.get_object_key ();
+      return matchee.type == object_key && matcher.get_object_key () == matchee.get_object_key ();
     case array_index:
-      return other.type == array_index && get_array_index () == other.get_array_index ();
+      return matchee.type == array_index && matcher.get_array_index () == matchee.get_array_index ();
     default:
       return false;
     }
-}
-
-// todo: find a way to avoid passing reference to get other_tokens.end ()
-bool JSON_PATH::match (const token_containter_type::const_iterator &it1,
-		       const token_containter_type::const_iterator &it2, const token_containter_type &other_tokens,
-		       bool match_prefix) const
-{
-  if (it1 == m_path_tokens.end () && it2 == other_tokens.end ())
-    {
-      return true;
-    }
-
-  if (it1 == m_path_tokens.end ())
-    {
-      return match_prefix;
-    }
-
-  if (it2 == other_tokens.end ())
-    {
-      // note that in case of double wildcard we have guaranteed a token after it
-      return false;
-    }
-
-  if (it1->type == PATH_TOKEN::double_wildcard)
-    {
-      return match (it1 + 1, it2, other_tokens, match_prefix) || match (it1, it2 + 1, other_tokens, match_prefix);
-    }
-
-  return it1->match (*it2) && match (it1 + 1, it2 + 1, other_tokens, match_prefix);
-}
-
-bool JSON_PATH::match (const JSON_PATH &other, bool match_prefix) const
-{
-  assert (!other.contains_wildcard ());
-
-  return match (m_path_tokens.begin (), other.m_path_tokens.begin (), other.m_path_tokens, match_prefix);
 }
 
 void JSON_PATH::push_array_index (unsigned idx)
@@ -616,13 +679,24 @@ JSON_PATH::dump_json_path () const
   return res;
 }
 
+void JSON_PATH::set (JSON_DOC &jd, const JSON_VALUE &jv) const
+{
+  set (jd, jv, jd.GetAllocator ());
+}
+
 /*
  * set () - Create or replace a value at path in the document
  *
  * jd (in)
  * return : found value at path
+ *
+ * Our implementation does not follow the JSON Pointer https://tools.ietf.org/html/rfc6901#section-4 standard fully
+ * We normalize json_pointers to json_paths and resolve token types independently of the document that gets operated
+ * by the normalized path.
+ * Therefore, we cannot traverse the doc contextually as described in the rfc e.g. both '{"0":10}' '[10]' provide same
+ * results for '/1' json_pointer.
  */
-void JSON_PATH::set (JSON_DOC &jd, const JSON_VALUE &jv) const
+void JSON_PATH::set (JSON_DOC &jd, const JSON_VALUE &jv, JSON_PRIVATE_MEMPOOL &allocator) const
 {
   JSON_VALUE *val = &jd;
   for (const PATH_TOKEN &tkn : m_path_tokens)
@@ -656,7 +730,7 @@ void JSON_PATH::set (JSON_DOC &jd, const JSON_VALUE &jv) const
 	  if (tkn.type == JSON_PATH::PATH_TOKEN::token_type::array_end_index)
 	    {
 	      // insert dummy
-	      arr.PushBack (JSON_VALUE ().SetNull (), jd.GetAllocator ());
+	      arr.PushBack (JSON_VALUE ().SetNull (), allocator);
 	      val = &val->GetArray ()[val->GetArray ().Size () - 1];
 	    }
 	  else
@@ -664,7 +738,7 @@ void JSON_PATH::set (JSON_DOC &jd, const JSON_VALUE &jv) const
 	      rapidjson::SizeType idx = tkn.get_array_index ();
 	      while (idx >= arr.Size ())
 		{
-		  arr.PushBack (JSON_VALUE ().SetNull (), jd.GetAllocator ());
+		  arr.PushBack (JSON_VALUE ().SetNull (), allocator);
 		}
 	      val = &val->GetArray ()[idx];
 	    }
@@ -677,8 +751,8 @@ void JSON_PATH::set (JSON_DOC &jd, const JSON_VALUE &jv) const
 	  if (m == val->MemberEnd ())
 	    {
 	      // insert dummy
-	      val->AddMember (JSON_VALUE (unquoted_key.c_str (), (rapidjson::SizeType) unquoted_key.length (), jd.GetAllocator ()),
-			      JSON_VALUE ().SetNull (), jd.GetAllocator ());
+	      val->AddMember (JSON_VALUE (unquoted_key.c_str (), (rapidjson::SizeType) unquoted_key.length (), allocator),
+			      JSON_VALUE ().SetNull (), allocator);
 
 	      val = & (--val->MemberEnd ())->value; // Assume AddMember() appends at the end
 	    }
@@ -689,7 +763,7 @@ void JSON_PATH::set (JSON_DOC &jd, const JSON_VALUE &jv) const
 	}
     }
 
-  val->CopyFrom (jv, jd.GetAllocator ());
+  val->CopyFrom (jv, allocator);
 }
 
 /*

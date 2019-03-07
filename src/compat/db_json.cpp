@@ -1134,7 +1134,7 @@ db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<
   {
     for (std::size_t i = 0; i < json_paths.size (); ++i)
       {
-	if (json_paths[i].match (crt_path))
+	if (JSON_PATH::match_pattern (json_paths[i], crt_path) == JSON_PATH::MATCH_RESULT::FULL_MATCH)
 	  {
 	    produced_array[i].push_back (&jv);
 	  }
@@ -1216,14 +1216,11 @@ db_json_contains_path (const JSON_DOC *document, const std::vector<std::string> 
     }
 
   const map_func_type &f_find = [&json_paths, &found_set, find_all] (const JSON_VALUE &v,
-				const JSON_PATH &accumulated_path,
-				bool &stop) -> int
+				const JSON_PATH &accumulated_path, bool &stop) -> int
   {
     for (std::size_t i = 0; i < json_paths.size (); ++i)
       {
-	bool path_compatible = json_paths[i].match (accumulated_path);
-
-	if (!found_set[i] && path_compatible)
+	if (!found_set[i] && JSON_PATH::match_pattern (json_paths[i], accumulated_path) == JSON_PATH::MATCH_RESULT::FULL_MATCH)
 	  {
 	    found_set[i] = true;
 	    if (!find_all)
@@ -1862,9 +1859,9 @@ db_json_search_func (JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALUE *esc
 
     for (std::size_t i = 0; i < json_paths.size (); ++i)
       {
-	bool path_compatible = json_paths[i].match (crt_path, true);
+	JSON_PATH::MATCH_RESULT res = JSON_PATH::match_pattern (json_paths[i], crt_path);
 
-	if (path_compatible)
+	if (res == JSON_PATH::MATCH_RESULT::PREFIX_MATCH || res == JSON_PATH::MATCH_RESULT::FULL_MATCH)
 	  {
 	    paths.push_back (crt_path.dump_json_path ());
 	    if (!find_all)
