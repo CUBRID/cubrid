@@ -494,12 +494,21 @@ namespace cubstream
   {
     int err = NO_ERROR;
 
+    /* TODO[arnia] : temp debug */
+    er_log_debug_replication (ARG_FILE_LINE, "wait_for_data (%s), read_position:%llu, amount:%d",
+      name ().c_str (), m_read_position, amount);
+
     if (m_read_position + amount <= m_last_committed_pos)
       {
 	if (skip_mode == STREAM_SKIP)
 	  {
 	    m_read_position += amount;
 	  }
+
+        /* TODO[arnia] : temp debug */
+        er_log_debug_replication (ARG_FILE_LINE, "wait_for_data (%s), data ready : read_position:%llu",
+          name ().c_str (), m_read_position);
+
 	return NO_ERROR;
       }
 
@@ -515,7 +524,8 @@ namespace cubstream
     if (m_is_stopped)
       {
 	err = ER_STREAM_NO_MORE_DATA;
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_NO_MORE_DATA, 3, this->name ().c_str (), m_read_position, amount);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_NO_MORE_DATA, 3, this->name ().c_str (),
+                m_read_position, amount);
 	return err;
       }
 
@@ -526,6 +536,10 @@ namespace cubstream
 	assert (err == NO_ERROR);
 	m_read_position += amount;
       }
+
+    /* TODO[arnia] : temp debug */
+    er_log_debug_replication (ARG_FILE_LINE, "wait_for_data (%s), data ready : read_position:%llu",
+      name ().c_str (), m_read_position);
 
     return err;
   }
