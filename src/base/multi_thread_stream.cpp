@@ -288,6 +288,10 @@ namespace cubstream
 	delete [] local_buffer;
       }
 
+    /* TODO[arnia] : temp debug */
+    er_log_debug_replication (ARG_FILE_LINE, "read_serial (%s), already_read:%d, payload_size:%d, read_position:%llu",
+      name ().c_str (), amount, payload_size, m_read_position);
+
     err = wait_for_data (amount + payload_size, STREAM_SKIP);
 
     return (err < 0) ? err : read_bytes;
@@ -495,8 +499,8 @@ namespace cubstream
     int err = NO_ERROR;
 
     /* TODO[arnia] : temp debug */
-    er_log_debug_replication (ARG_FILE_LINE, "wait_for_data (%s), read_position:%llu, amount:%d",
-      name ().c_str (), m_read_position, amount);
+    er_log_debug_replication (ARG_FILE_LINE, "wait_for_data (%s), read_position: %llu, amount:%d (%s)",
+      name ().c_str (), m_read_position, amount, (skip_mode == STREAM_SKIP) ? "SKIP" : "");
 
     if (m_read_position + amount <= m_last_committed_pos)
       {
