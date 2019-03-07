@@ -739,10 +739,12 @@ namespace cubstream
 
   void multi_thread_stream::set_last_recyclable_pos (const stream_position &pos)
   {
+    stream_position new_pos = std::min (pos, m_last_committed_pos);
+
     std::unique_lock<std::mutex> local_lock (m_recyclable_pos_mutex);
-    if (pos > m_last_recyclable_pos)
+    if (new_pos > m_last_recyclable_pos)
       {
-	m_last_recyclable_pos = pos;
+	m_last_recyclable_pos = new_pos;
 	local_lock.unlock ();
 
 	m_recyclable_pos_cv.notify_one ();
@@ -756,10 +758,12 @@ namespace cubstream
    *        The purpose is to keep serial read position close to committed position, in order to avoid
    *        sanity checks failures
    */
-  void multi_thread_stream::reset_serial_data_read (const stream_position pos)
+  void multi_thread_stream::reset_serial_data_read (const stream_position &pos)
   {
-    assert (m_last_committed_pos >= pos);
-    m_read_position = pos;
+    if (pos <= m_last_committed_pos)
+      {
+        m_read_position = pos;
+      }
   }
 
 } /* namespace cubstream */

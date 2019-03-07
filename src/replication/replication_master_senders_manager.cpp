@@ -158,7 +158,7 @@ namespace cubreplication
 #if defined (SERVER_MODE)
     static unsigned int check_conn_delay_counter = 0;
     bool promoted_to_write = false;
-    cubstream::stream_position min_position_send = 0;
+    cubstream::stream_position min_position_send = std::numeric_limits<cubstream::stream_position>::max ();
 
     if (check_conn_delay_counter >
 	SUPERVISOR_DAEMON_CHECK_CONN_MS / SUPERVISOR_DAEMON_DELAY_MS)
