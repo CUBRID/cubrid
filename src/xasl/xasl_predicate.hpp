@@ -153,16 +153,15 @@ namespace cubxasl
 
   struct pred_expr
   {
-    public:
-      union
-      {
-	pred m_pred;
-	eval_term m_eval_term;
-	pred_expr *m_not_term;
-      } pe;
-      TYPE_PRED_EXPR type;
+    union
+    {
+      pred m_pred;
+      eval_term m_eval_term;
+      pred_expr *m_not_term;
+    } pe;
+    TYPE_PRED_EXPR type;
 
-      void clear_xasl ();
+    void clear_xasl ();
   };
 } // namespace cubxasl
 
