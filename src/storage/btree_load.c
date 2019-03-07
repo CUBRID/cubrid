@@ -4839,7 +4839,7 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
       if (sc == S_ERROR)
 	{
 	  ASSERT_ERROR_AND_SET (ret);
-	  return ret;
+	  break;
 	}
       else if (sc == S_END)
 	{
@@ -4855,13 +4855,14 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 	  ret = heap_attrinfo_read_dbvalues (thread_p, &cur_oid, &cur_record, NULL, filter_pred->cache_pred);
 	  if (ret != NO_ERROR)
 	    {
-	      return ret;
+	      break;
 	    }
 
 	  eval_res = (*filter_eval_fnc) (thread_p, filter_pred->pred, NULL, &cur_oid);
 	  if (eval_res == V_ERROR)
 	    {
-	      return ER_FAILED;
+	      ret = ER_FAILED;
+	      break;
 	    }
 	  else if (eval_res != V_TRUE)
 	    {
@@ -4875,7 +4876,7 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 					     p_func_idx_info->expr->cache_attrinfo);
 	  if (ret != NO_ERROR)
 	    {
-	      return ret;
+	      break;
 	    }
 	}
 
@@ -4885,7 +4886,7 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 	  ret = heap_attrinfo_read_dbvalues (thread_p, &cur_oid, &cur_record, NULL, attr_info);
 	  if (ret != NO_ERROR)
 	    {
-	      return ret;
+	      break;
 	    }
 	}
 
@@ -4900,7 +4901,8 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 					      &cur_record, &dbvalue, aligned_midxkey_buf, p_func_idx_info);
       if (p_dbvalue == NULL)
 	{
-	  return ER_FAILED;
+	  ret = ER_FAILED;
+	  break;
 	}
 
       /* Dispatch the insert operation */
@@ -4927,33 +4929,37 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 	}
     }
 
-  /* Check if the workerpool is empty */
-  do
+  /* Check if the workerpool is empty only if we did not get any other errors. */
+  if (ret == NO_ERROR)
     {
-      bool dummy_continue_checking = true;
-
-      if (load_context.m_has_error != NO_ERROR)
+      do
 	{
-	  /* Also stop all threads. */
-	  thread_get_manager ()->destroy_worker_pool (ib_workpool);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, load_context.m_error_code, 0);
-	  return load_context.m_error_code;
-	}
+	  bool dummy_continue_checking = true;
 
-      /* Wait for threads to finish. */
-      thread_sleep (10);
+	  if (load_context.m_has_error != NO_ERROR)
+	    {
+	      /* Also stop all threads. */
+	      thread_get_manager ()->destroy_worker_pool (ib_workpool);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, load_context.m_error_code, 0);
+	      return load_context.m_error_code;
+	    }
 
-      /* Check for interrupts. */
-      if (logtb_is_interrupted (thread_p, true, &dummy_continue_checking))
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
-	  thread_get_manager ()->destroy_worker_pool (ib_workpool);
-	  return ER_INTERRUPTED;
+	  /* Wait for threads to finish. */
+	  thread_sleep (10);
+
+	  /* Check for interrupts. */
+	  if (logtb_is_interrupted (thread_p, true, &dummy_continue_checking))
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	      thread_get_manager ()->destroy_worker_pool (ib_workpool);
+	      return ER_INTERRUPTED;
+	    }
 	}
+      while (load_context.m_tasks_executed != tasks_started);
+
+      assert (load_context.m_tasks_executed == tasks_started);
     }
-  while (load_context.m_tasks_executed != tasks_started);
 
-  assert (load_context.m_tasks_executed == tasks_started);
   thread_get_manager ()->destroy_worker_pool (ib_workpool);
 
   return ret;
