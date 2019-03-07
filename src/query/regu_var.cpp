@@ -117,8 +117,8 @@ regu_variable_node::map_regu_and_xasl (const map_regu_func_type &regu_func, cons
 	  {
 	    return;
 	  }
-	regu_func (regu, stop);
       }
+    regu_func (regu, stop);
   };
   return map_regu (cnv_funcs_to_regu_func, stop);
 }
