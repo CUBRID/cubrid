@@ -27,6 +27,7 @@
 #include "replication_master_senders_manager.hpp"
 #include "stream_file.hpp"
 #include "log_impl.h"
+#include "server_support.h"
 
 
 namespace cubreplication
@@ -64,13 +65,35 @@ namespace cubreplication
     g_instance->m_stream_file->set_path (replication_path);
 
     master_senders_manager::init (g_instance->m_stream);
+
+    enable_active ();
 #endif
   }
-
+    
+  void master_node::enable_active ()
+    {
+#if defined (SERVER_MODE)
+     if (css_ha_server_state () == HA_SERVER_STATE_TO_BE_ACTIVE)
+      {
+        /* this is the first slave connecting to this node */
+        css_change_ha_server_state (NULL, HA_SERVER_STATE_ACTIVE, true, HA_CHANGE_MODE_IMMEDIATELY, true);
+      }
+#endif
+    }
 
   void master_node::new_slave (int fd)
   {
 #if defined (SERVER_MODE)
+
+    enable_active ();
+
+    if (css_ha_server_state () != HA_SERVER_STATE_ACTIVE)
+      {
+        er_log_debug_replication (ARG_FILE_LINE, "new_slave invalid server state :%s",
+          css_ha_server_state_string (css_ha_server_state ()));
+        return;
+      }
+
     cubcomm::channel chn;
 
     css_error_code rc = chn.accept (fd);

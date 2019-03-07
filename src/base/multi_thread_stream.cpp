@@ -218,6 +218,10 @@ namespace cubstream
     size_t payload_size;
     int read_bytes;
 
+    /* TODO[arnia] : temp debug */
+    er_log_debug_replication (ARG_FILE_LINE, "read_serial (%s), read_position:%llu",
+      name ().c_str (), m_read_position);
+
     /* wait for stream to receive data */
     if (m_read_position + amount > m_last_committed_pos)
       {
