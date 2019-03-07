@@ -29,53 +29,53 @@
 
 #include <string>
 
+struct PATH_TOKEN
+{
+  enum token_type
+  {
+    object_key_wildcard,
+    array_index_wildcard,
+    double_wildcard,
+    object_key,
+    array_index,
+    // token type used to signify json_pointers' '-' special token
+    array_end_index
+  } type;
+
+  union token_representation
+  {
+    token_representation ();
+
+    token_representation (rapidjson::SizeType array_idx);
+
+    token_representation (std::string &&s);
+
+    ~token_representation ();
+
+    std::string object_key;
+    rapidjson::SizeType array_idx;
+  } repr;
+
+  PATH_TOKEN ();
+
+  PATH_TOKEN (token_type type, rapidjson::SizeType array_idx);
+
+  PATH_TOKEN (token_type type, std::string &&s);
+
+  PATH_TOKEN (const PATH_TOKEN &other);
+
+  const std::string &get_object_key () const;
+
+  rapidjson::SizeType get_array_index () const;
+
+  bool is_wildcard () const;
+
+  bool static match_pattern (const PATH_TOKEN &matcher, const PATH_TOKEN &matchee);
+};
+
 class JSON_PATH
 {
   private:
-    struct PATH_TOKEN
-    {
-      enum token_type
-      {
-	object_key_wildcard,
-	array_index_wildcard,
-	double_wildcard,
-	object_key,
-	array_index,
-	// token type used to signify json_pointers' '-' special token
-	array_end_index
-      } type;
-
-      union token_representation
-      {
-	token_representation ();
-
-	token_representation (rapidjson::SizeType array_idx);
-
-	token_representation (std::string &&s);
-
-	~token_representation ();
-
-	std::string object_key;
-	rapidjson::SizeType array_idx;
-      } repr;
-
-      PATH_TOKEN ();
-
-      PATH_TOKEN (token_type type, rapidjson::SizeType array_idx);
-
-      PATH_TOKEN (token_type type, std::string &&s);
-
-      PATH_TOKEN (const PATH_TOKEN &other);
-
-      const std::string &get_object_key () const;
-
-      rapidjson::SizeType get_array_index () const;
-
-      bool is_wildcard () const;
-
-      bool static match_pattern (const PATH_TOKEN &matcher, const PATH_TOKEN &matchee);
-    };
-
     using token_containter_type = std::vector<PATH_TOKEN>;
 
   public:
@@ -119,8 +119,6 @@ class JSON_PATH
     bool validate_and_create_from_json_path (std::string &sql_path);
 
     explicit JSON_PATH ();
-
-    explicit JSON_PATH (token_containter_type tokens);
 
     void push_array_index (unsigned idx);
 

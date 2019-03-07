@@ -512,75 +512,75 @@ db_json_remove_leading_zeros_index (std::string &index)
     }
 }
 
-JSON_PATH::PATH_TOKEN::token_representation::token_representation ()
+PATH_TOKEN::token_representation::token_representation ()
   : array_idx (0)
 {
 
 }
 
-JSON_PATH::PATH_TOKEN::token_representation::token_representation (rapidjson::SizeType array_idx)
+PATH_TOKEN::token_representation::token_representation (rapidjson::SizeType array_idx)
   : array_idx (array_idx)
 {
 
 }
 
-JSON_PATH::PATH_TOKEN::token_representation::token_representation (std::string &&s)
+PATH_TOKEN::token_representation::token_representation (std::string &&s)
   : object_key (std::move (s))
 {
 
 }
 
-JSON_PATH::PATH_TOKEN::token_representation::~token_representation ()
+PATH_TOKEN::token_representation::~token_representation ()
 {
 
 }
 
-JSON_PATH::PATH_TOKEN::PATH_TOKEN ()
+PATH_TOKEN::PATH_TOKEN ()
   : type (array_index)
 {
 
 }
 
-JSON_PATH::PATH_TOKEN::PATH_TOKEN (token_type type, rapidjson::SizeType array_idx)
+PATH_TOKEN::PATH_TOKEN (token_type type, rapidjson::SizeType array_idx)
   : type (type)
   , repr (array_idx)
 {
 
 }
 
-JSON_PATH::PATH_TOKEN::PATH_TOKEN (token_type type, std::string &&s)
+PATH_TOKEN::PATH_TOKEN (token_type type, std::string &&s)
   : type (type)
   , repr (std::move (s))
 {
 
 }
 
-JSON_PATH::PATH_TOKEN::PATH_TOKEN (const PATH_TOKEN &other)
+PATH_TOKEN::PATH_TOKEN (const PATH_TOKEN &other)
   : type (other.type)
 {
   memcpy (&repr, &other.repr, sizeof (repr));
 }
 
-const std::string &JSON_PATH::PATH_TOKEN::get_object_key () const
+const std::string &PATH_TOKEN::get_object_key () const
 {
   assert (type != array_index);
 
   return repr.object_key;
 }
 
-rapidjson::SizeType JSON_PATH::PATH_TOKEN::get_array_index () const
+rapidjson::SizeType PATH_TOKEN::get_array_index () const
 {
   assert (type == array_index);
 
   return repr.array_idx;
 }
 
-bool JSON_PATH::PATH_TOKEN::is_wildcard () const
+bool PATH_TOKEN::is_wildcard () const
 {
   return type == object_key_wildcard || type == array_index_wildcard || type == double_wildcard;
 }
 
-bool JSON_PATH::PATH_TOKEN::match_pattern (const PATH_TOKEN &matcher, const PATH_TOKEN &matchee)
+bool PATH_TOKEN::match_pattern (const PATH_TOKEN &matcher, const PATH_TOKEN &matchee)
 {
   assert (!matchee.is_wildcard ());
 
@@ -687,38 +687,40 @@ void JSON_PATH::set (JSON_DOC &jd, const JSON_VALUE &jv) const
 /*
  * set () - Create or replace a value at path in the document
  *
- * jd (in)
+ * jd (in) - document we insert in
+ * jv (in) - value to be inserted
+ * allocator
  * return : found value at path
  *
  * Our implementation does not follow the JSON Pointer https://tools.ietf.org/html/rfc6901#section-4 standard fully
  * We normalize json_pointers to json_paths and resolve token types independently of the document that gets operated
  * by the normalized path.
- * Therefore, we cannot traverse the doc contextually as described in the rfc e.g. both '{"0":10}' '[10]' provide same
- * results for '/1' json_pointer.
+ * Therefore, we cannot traverse the doc contextually as described in the rfc e.g. both '{"0":10}' an '[10]' to provide
+ * same results for '/1' json_pointer.
  */
 void JSON_PATH::set (JSON_DOC &jd, const JSON_VALUE &jv, JSON_PRIVATE_MEMPOOL &allocator) const
 {
-  JSON_VALUE *val = &jd;
+  JSON_VALUE *val = &db_json_doc_to_value (jd);
   for (const PATH_TOKEN &tkn : m_path_tokens)
     {
       switch (tkn.type)
 	{
-	case JSON_PATH::PATH_TOKEN::token_type::array_index:
-	case JSON_PATH::PATH_TOKEN::token_type::array_end_index:
+	case PATH_TOKEN::token_type::array_index:
+	case PATH_TOKEN::token_type::array_end_index:
 	  if (!val->IsArray ())
 	    {
 	      val->SetArray ();
 	    }
 	  break;
-	case JSON_PATH::PATH_TOKEN::token_type::object_key:
+	case PATH_TOKEN::token_type::object_key:
 	  if (!val->IsObject ())
 	    {
 	      val->SetObject ();
 	    }
 	  break;
-	case JSON_PATH::PATH_TOKEN::token_type::array_index_wildcard:
-	case JSON_PATH::PATH_TOKEN::token_type::object_key_wildcard:
-	case JSON_PATH::PATH_TOKEN::token_type::double_wildcard:
+	case PATH_TOKEN::token_type::array_index_wildcard:
+	case PATH_TOKEN::token_type::object_key_wildcard:
+	case PATH_TOKEN::token_type::double_wildcard:
 	  // error? unexpected set - wildcards not allowed for set
 	  assert (false);
 	  return;
@@ -727,7 +729,7 @@ void JSON_PATH::set (JSON_DOC &jd, const JSON_VALUE &jv, JSON_PRIVATE_MEMPOOL &a
       if (val->IsArray ())
 	{
 	  JSON_VALUE::Array arr = val->GetArray ();
-	  if (tkn.type == JSON_PATH::PATH_TOKEN::token_type::array_end_index)
+	  if (tkn.type == PATH_TOKEN::token_type::array_end_index)
 	    {
 	      // insert dummy
 	      arr.PushBack (JSON_VALUE ().SetNull (), allocator);
@@ -766,15 +768,20 @@ void JSON_PATH::set (JSON_DOC &jd, const JSON_VALUE &jv, JSON_PRIVATE_MEMPOOL &a
   val->CopyFrom (jv, allocator);
 }
 
+JSON_VALUE *JSON_PATH::get (JSON_DOC &jd) const
+{
+  return const_cast<JSON_VALUE *> (get (const_cast<const JSON_DOC &> (jd)));
+}
+
 /*
- * get () - Walk a doc following a path
+ * get () - Walk a doc following a path and retrive the value pointed at
  *
  * jd (in)
  * return : found value at path
  */
-JSON_VALUE *JSON_PATH::get (JSON_DOC &jd) const
+const JSON_VALUE *JSON_PATH::get (const JSON_DOC &jd) const
 {
-  JSON_VALUE *val = &jd;
+  const JSON_VALUE *val = &db_json_doc_to_value (jd);
   for (const PATH_TOKEN &tkn : m_path_tokens)
     {
       if (val->IsArray ())
@@ -801,7 +808,7 @@ JSON_VALUE *JSON_PATH::get (JSON_DOC &jd) const
 
 	  assert (tkn.get_object_key ().length () >= 2);
 	  std::string unquoted_key = tkn.get_object_key ().substr (1, tkn.get_object_key ().length () - 2);
-	  JSON_VALUE::MemberIterator m = val->FindMember (unquoted_key.c_str ());
+	  JSON_VALUE::ConstMemberIterator m = val->FindMember (unquoted_key.c_str ());
 	  if (m == val->MemberEnd ())
 	    {
 	      return NULL;
@@ -814,11 +821,6 @@ JSON_VALUE *JSON_PATH::get (JSON_DOC &jd) const
 	}
     }
   return val;
-}
-
-const JSON_VALUE *JSON_PATH::get (const JSON_DOC &jd) const
-{
-  return get (const_cast<JSON_DOC &> (jd));
 }
 
 bool JSON_PATH::erase (JSON_DOC &jd) const
@@ -858,7 +860,7 @@ bool JSON_PATH::erase (JSON_DOC &jd) const
     }
 }
 
-const JSON_PATH::PATH_TOKEN *JSON_PATH::get_last_token () const
+const PATH_TOKEN *JSON_PATH::get_last_token () const
 {
   return get_token_count () > 0 ? &m_path_tokens[get_token_count () - 1] : NULL;
 }
@@ -885,10 +887,8 @@ const JSON_PATH JSON_PATH::get_parent () const
   else
     {
       // todo: improve getting a slice of the m_path_tokens vector
-      std::vector<PATH_TOKEN> parent_tokens (m_path_tokens);
-      parent_tokens.pop_back ();
-
-      JSON_PATH parent (parent_tokens);
+      JSON_PATH parent (*this);
+      parent.pop ();
       return parent;
     }
 }
@@ -960,12 +960,6 @@ int JSON_PATH::init (const char *path)
 }
 
 JSON_PATH::JSON_PATH ()
-{
-
-}
-
-JSON_PATH::JSON_PATH (token_containter_type tokens)
-  : m_path_tokens (std::move (tokens))
 {
 
 }
