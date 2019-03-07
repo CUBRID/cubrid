@@ -1747,15 +1747,6 @@ qdump_print_arith_expression (ARITH_TYPE * arith_p)
       fprintf (foutput, ")");
     }
 
-  if (arith_p->next != NULL)
-    {
-      fprintf (foutput, "; ");
-      if (!qdump_print_arith (ARITH_EXP, (void *) arith_p->next))
-	{
-	  return false;
-	}
-    }
-
   return true;
 }
 

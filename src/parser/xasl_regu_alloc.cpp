@@ -27,7 +27,7 @@
 #include "object_domain.h"
 #include "object_primitive.h"
 #include "query_list.h"
-#include "regu_var.h"
+#include "regu_var.hpp"
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
 #include "xasl_analytic.hpp"
@@ -260,7 +260,6 @@ regu_init (cubxasl::pred_expr &pr)
 void
 regu_init (arith_list_node &arith)
 {
-  arith.next = NULL;
   arith.domain = NULL;
   arith.value = NULL;
   arith.opcode = T_ADD;

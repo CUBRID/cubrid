@@ -42,7 +42,7 @@
 #include "query_evaluator.h"
 #include "query_opfunc.h"
 #include "query_reevaluation.hpp"
-#include "regu_var.h"
+#include "regu_var.hpp"
 #include "locator_sr.h"
 #include "object_primitive.h"
 #include "dbtype.h"

@@ -28,7 +28,7 @@
 #include "storage_common.h"
 
 // forward definitions
-struct regu_variable_node;
+class regu_variable_node;
 
 typedef enum			/* range search option */
 {

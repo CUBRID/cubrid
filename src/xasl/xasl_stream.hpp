@@ -31,7 +31,7 @@
 
 // forward def
 struct db_value;
-struct regu_variable_node;
+class regu_variable_node;
 
 namespace cubxasl
 {

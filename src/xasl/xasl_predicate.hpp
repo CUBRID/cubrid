@@ -26,10 +26,11 @@
 
 #include "dbtype_def.h"             // DB_TYPE
 
-#include "libregex38a/regex38a.h"   // cub_regex_t
+#include "system.h"     // for regex38a.h
+#include "libregex38a/regex38a.h"
 
 // forward definitions
-struct regu_variable_node;
+class regu_variable_node;
 
 typedef enum
 {
@@ -159,6 +160,8 @@ namespace cubxasl
       pred_expr *m_not_term;
     } pe;
     TYPE_PRED_EXPR type;
+
+    void clear_xasl ();
   };
 } // namespace cubxasl
 
