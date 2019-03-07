@@ -49,8 +49,8 @@
 #include "xasl_generation.h"
 #include "schema_manager.h"
 #include "network_interface_cl.h"
-
 #include "dbtype.h"
+#include "regu_var.h"
 
 #define INDENT_INCR		4
 #define INDENT_FMT		"%*c"
@@ -11153,7 +11153,7 @@ qo_plan_print_json (QO_PLAN * plan)
  *   plan(in):
  */
 void
-qo_top_plan_print_json (PARSER_CONTEXT * parser, XASL_NODE * xasl, PT_NODE * select, QO_PLAN * plan)
+qo_top_plan_print_json (PARSER_CONTEXT * parser, xasl_node * xasl, PT_NODE * select, QO_PLAN * plan)
 {
   json_t *json;
   unsigned int save_custom;
@@ -11455,7 +11455,7 @@ qo_plan_print_text (FILE * fp, QO_PLAN * plan, int indent)
  *   plan(in):
  */
 void
-qo_top_plan_print_text (PARSER_CONTEXT * parser, XASL_NODE * xasl, PT_NODE * select, QO_PLAN * plan)
+qo_top_plan_print_text (PARSER_CONTEXT * parser, xasl_node * xasl, PT_NODE * select, QO_PLAN * plan)
 {
   size_t sizeloc;
   char *ptr, *sql;

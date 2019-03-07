@@ -175,7 +175,7 @@ namespace cubmem
 
   // Calls func with the global heap set for allocating memory
   template <typename Func, typename ...Args>
-  inline void switch_to_global_allocator_and_call (Func && func, Args &&... args);
+  inline void switch_to_global_allocator_and_call (Func &&func, Args &&... args);
 
 } // namespace cubmem
 
@@ -214,7 +214,7 @@ namespace cubmem
     m_heapid = other.get_heapid ();
     register_private_allocator (m_thread_p);
   }
-  
+
   template <typename T>
   private_allocator<T>::~private_allocator ()
   {
@@ -349,7 +349,7 @@ namespace cubmem
 
   template < typename Func, typename...Args >
   void
-  switch_to_global_allocator_and_call (Func && func, Args && ... args)
+  switch_to_global_allocator_and_call (Func &&func, Args &&... args)
   {
     HL_HEAPID save_id;
 

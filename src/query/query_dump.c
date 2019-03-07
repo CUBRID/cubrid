@@ -26,6 +26,7 @@
 #include "config.h"
 #include <stdio.h>
 
+#include "jansson.h"
 #include "query_dump.h"
 #include "object_primitive.h"
 #include "system_parameter.h"
@@ -33,6 +34,7 @@
 #if defined (SERVER_MODE)
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #endif // SERVER_MODE
+#include "xasl.h"
 
 #define foutput stdout
 
@@ -1835,7 +1837,7 @@ qdump_print_arith (int type, void *ptr)
  *   xasl(in):
  */
 bool
-qdump_check_xasl_tree (XASL_NODE * xasl_p)
+qdump_check_xasl_tree (xasl_node * xasl_p)
 {
   QDUMP_XASL_CHECK_NODE *chk_nodes[HASH_NUMBER] = { NULL };
 
@@ -2293,7 +2295,7 @@ qdump_print_connect_by_proc_node (XASL_NODE * xasl_p)
  *   xasl(in):
  */
 bool
-qdump_print_xasl (XASL_NODE * xasl_p)
+qdump_print_xasl (xasl_node * xasl_p)
 {
   VAL_LIST *single_tuple_p;
   QPROC_DB_VALUE_LIST value_list;
@@ -2879,7 +2881,7 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
  *   xasl_p(in):
  */
 void
-qdump_print_stats_json (XASL_NODE * xasl_p, json_t * parent)
+qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
 {
   ORDERBY_STATS *ostats;
   GROUPBY_STATS *gstats;
@@ -3173,7 +3175,7 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
  *   indent(in):
  */
 void
-qdump_print_stats_text (FILE * fp, XASL_NODE * xasl_p, int indent)
+qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 {
   ORDERBY_STATS *ostats;
   GROUPBY_STATS *gstats;

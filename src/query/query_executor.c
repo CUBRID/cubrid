@@ -68,6 +68,8 @@
 #include "db_json.hpp"
 #include "dbtype.h"
 #include "thread_entry.hpp"
+#include "regu_var.h"
+#include "xasl.h"
 
 #define GOTO_EXIT_ON_ERROR \
   do \
@@ -2093,7 +2095,7 @@ qexec_clear_agg_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, AGGREGATE_TYP
  * and return the number of total pages deallocated.
  */
 int
-qexec_clear_xasl (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool is_final)
+qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final)
 {
   int pg_cnt;
   int query_save_state;
@@ -2710,8 +2712,8 @@ qexec_clear_update_assignment (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, UPDA
  * specified XASL tree procedure block. This represents the
  * result of the interpretation of the block.
  */
-QFILE_LIST_ID *
-qexec_get_xasl_list_id (XASL_NODE * xasl)
+qfile_list_id *
+qexec_get_xasl_list_id (xasl_node * xasl)
 {
   QFILE_LIST_ID *list_id = (QFILE_LIST_ID *) NULL;
   VAL_LIST *single_tuple;
@@ -12815,7 +12817,7 @@ exit_on_error:
  * DIFFERENCE_PROC and INTERSECTION_PROC.
  */
 int
-qexec_start_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state)
+qexec_start_mainblock_iterations (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * xasl_state)
 {
   QFILE_TUPLE_VALUE_TYPE_LIST type_list;
   QFILE_LIST_ID *t_list_id = NULL;
@@ -13422,7 +13424,7 @@ qexec_clear_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
  *
  */
 int
-qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
+qexec_execute_mainblock (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * xstate,
 			 UPDDEL_CLASS_INSTANCE_LOCK_INFO * p_class_instance_lock_info)
 {
   int error = NO_ERROR;
@@ -13448,7 +13450,7 @@ qexec_execute_mainblock (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
       old_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS);
     }
 
-  error = qexec_execute_mainblock_internal (thread_p, xasl, xasl_state, p_class_instance_lock_info);
+  error = qexec_execute_mainblock_internal (thread_p, xasl, xstate, p_class_instance_lock_info);
 
   if (on_trace)
     {
@@ -14557,8 +14559,8 @@ exit_on_error:
 #define QP_MAX_RE_EXECUTES_UNDER_DEADLOCKS 10
 #endif
 
-QFILE_LIST_ID *
-qexec_execute_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int dbval_cnt, const DB_VALUE * dbval_ptr,
+qfile_list_id *
+qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt, const DB_VALUE * dbval_ptr,
 		     QUERY_ID query_id)
 {
   int re_execute;
@@ -15981,8 +15983,8 @@ exit_on_error:
  *  xasl(in):
  */
 void
-qexec_replace_prior_regu_vars_prior_expr (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu, XASL_NODE * xasl,
-					  XASL_NODE * connect_by_ptr)
+qexec_replace_prior_regu_vars_prior_expr (THREAD_ENTRY * thread_p, regu_variable_node * regu, xasl_node * xasl,
+					  xasl_node * connect_by_ptr)
 {
   if (regu == NULL)
     {
@@ -16141,8 +16143,8 @@ qexec_replace_prior_regu_vars_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pred, X
  *  tplrec(in):
  */
 int
-qexec_insert_tuple_into_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, OUTPTR_LIST * outptr_list,
-			      VAL_DESCR * vd, QFILE_TUPLE_RECORD * tplrec)
+qexec_insert_tuple_into_list (THREAD_ENTRY * thread_p, qfile_list_id * list_id, valptr_list_node * outptr_list,
+			      val_descr * vd, qfile_tuple_record * tplrec)
 {
   QPROC_TPLDESCR_STATUS tpldescr_status;
 
@@ -16189,50 +16191,6 @@ qexec_insert_tuple_into_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, 
   return NO_ERROR;
 }
 
-#if defined (ENABLE_UNUSED_FUNCTION)
-/*
- * qexec_set_tuple_column_value () - helper function for writing a column
- *    value into a tuple
- *  return:
- *  tpl(in/out):
- *  index(in):
- *  valp(in):
- *  domain(in):
- */
-int
-qexec_set_tuple_column_value (QFILE_TUPLE tpl, int index, DB_VALUE * valp, TP_DOMAIN * domain)
-{
-  QFILE_TUPLE_VALUE_FLAG flag;
-  char *ptr;
-  int length;
-  PR_TYPE *pr_type;
-  OR_BUF buf;
-
-  flag = (QFILE_TUPLE_VALUE_FLAG) qfile_locate_tuple_value (tpl, index, &ptr, &length);
-  if (flag == V_BOUND)
-    {
-      pr_type = domain->type;
-      if (pr_type == NULL)
-	{
-	  return ER_FAILED;
-	}
-
-      OR_BUF_INIT (buf, ptr, length);
-
-      if (pr_type->data_writeval (&buf, valp) != NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
-    }
-  else
-    {
-      return ER_FAILED;
-    }
-
-  return NO_ERROR;
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
-
 /*
  * qexec_get_tuple_column_value () - helper function for reading a column
  *    value from a tuple
@@ -16243,7 +16201,7 @@ qexec_set_tuple_column_value (QFILE_TUPLE tpl, int index, DB_VALUE * valp, TP_DO
  *  domain(in):
  */
 int
-qexec_get_tuple_column_value (QFILE_TUPLE tpl, int index, DB_VALUE * valp, TP_DOMAIN * domain)
+qexec_get_tuple_column_value (QFILE_TUPLE tpl, int index, DB_VALUE * valp, tp_domain * domain)
 {
   QFILE_TUPLE_VALUE_FLAG flag;
   char *ptr;
@@ -21429,7 +21387,7 @@ cleanup:
  */
 
 int
-qexec_clear_pred_context (THREAD_ENTRY * thread_p, PRED_EXPR_WITH_CONTEXT * pred_filter, bool dealloc_dbvalues)
+qexec_clear_pred_context (THREAD_ENTRY * thread_p, pred_expr_with_context * pred_filter, bool dealloc_dbvalues)
 {
   XASL_NODE xasl_node;
 
@@ -21454,13 +21412,13 @@ qexec_clear_pred_context (THREAD_ENTRY * thread_p, PRED_EXPR_WITH_CONTEXT * pred
  */
 
 int
-qexec_clear_func_pred (THREAD_ENTRY * thread_p, FUNC_PRED * func_pred)
+qexec_clear_func_pred (THREAD_ENTRY * thread_p, func_pred * fpr)
 {
   XASL_NODE xasl_node;
 
   memset (&xasl_node, 0, sizeof (XASL_NODE));
 
-  (void) qexec_clear_regu_var (thread_p, &xasl_node, func_pred->func_regu, true);
+  (void) qexec_clear_regu_var (thread_p, &xasl_node, fpr->func_regu, true);
 
   return NO_ERROR;
 }
@@ -21472,7 +21430,7 @@ qexec_clear_func_pred (THREAD_ENTRY * thread_p, FUNC_PRED * func_pred)
  * expr (in) :
  */
 int
-qexec_clear_partition_expression (THREAD_ENTRY * thread_p, REGU_VARIABLE * expr)
+qexec_clear_partition_expression (THREAD_ENTRY * thread_p, regu_variable_node * expr)
 {
   XASL_NODE xasl_node;
 

@@ -68,6 +68,8 @@
 #endif /* defined (SA_MODE) */
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
+#include "xasl.h"
+#include "xasl_cache.h"
 
 #define RMUTEX_NAME_TDES_TOPOP "TDES_TOPOP"
 

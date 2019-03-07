@@ -39,6 +39,7 @@
 #include "object_primitive.h"
 #include "work_space.h"
 #include "memory_alloc.h"
+#include "xasl.h"
 #include "xasl_stream.hpp"
 
 #define    BYTE_SIZE        OR_INT_SIZE

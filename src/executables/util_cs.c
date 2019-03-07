@@ -56,6 +56,7 @@
 #include "locator_cl.h"
 #include "dynamic_array.h"
 #include "util_func.h"
+#include "xasl.h"
 #if !defined(WINDOWS)
 #include "heartbeat.h"
 #endif

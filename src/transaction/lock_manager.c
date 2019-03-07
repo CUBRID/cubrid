@@ -64,6 +64,7 @@
 #include "tsc_timer.h"
 #include "wait_for_graph.h"
 #include "xserver_interface.h"
+#include "xasl.h"
 
 #include <array>
 

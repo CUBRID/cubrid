@@ -51,6 +51,9 @@
 
 // forward definitions
 struct compile_context;
+struct xasl_cache_ent;
+struct xasl_stream;
+struct xasl_node_header;
 
 extern int xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH_INFO * db_path_info,
 				    bool db_overwrite, const char *file_addmore_vols, volatile DKNPAGES db_npages,
@@ -204,12 +207,12 @@ extern int xqfile_get_list_file_page (THREAD_ENTRY * thread_p, QUERY_ID query_id
 				      char *page_bufp, int *page_sizep);
 
 /* new query interface */
-extern int xqmgr_prepare_query (THREAD_ENTRY * thrd, compile_context * ctx, XASL_STREAM * stream);
+extern int xqmgr_prepare_query (THREAD_ENTRY * thrd, compile_context * ctx, xasl_stream * stream);
 
 extern QFILE_LIST_ID *xqmgr_execute_query (THREAD_ENTRY * thrd, const XASL_ID * xasl_id, QUERY_ID * query_idp,
 					   int dbval_cnt, void *data, QUERY_FLAG * flagp, CACHE_TIME * clt_cache_time,
 					   CACHE_TIME * srv_cache_time, int query_timeout,
-					   XASL_CACHE_ENTRY ** ret_cache_entry_p);
+					   xasl_cache_ent ** ret_cache_entry_p);
 extern QFILE_LIST_ID *xqmgr_prepare_and_execute_query (THREAD_ENTRY * thrd, char *xasl_stream, int xasl_stream_size,
 						       QUERY_ID * query_id, int dbval_cnt, void *data,
 						       QUERY_FLAG * flag, int query_timeout);
@@ -263,7 +266,7 @@ extern int xsession_reset_cur_insert_id (THREAD_ENTRY * thread_p);
 extern int xsession_create_prepared_statement (THREAD_ENTRY * thread_p, char *name, char *alias_print, SHA1Hash * sha1,
 					       char *info, int info_len);
 extern int xsession_get_prepared_statement (THREAD_ENTRY * thread_p, const char *name, char **info, int *info_len,
-					    XASL_ID * xasl_id, XASL_NODE_HEADER * xasl_header_p);
+					    XASL_ID * xasl_id, xasl_node_header * xasl_header_p);
 extern int xsession_delete_prepared_statement (THREAD_ENTRY * thread_p, const char *name);
 
 extern int xlogin_user (THREAD_ENTRY * thread_p, const char *username);

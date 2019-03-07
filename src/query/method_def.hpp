@@ -17,28 +17,30 @@
  *
  */
 
-/*
- * query_dump.h - Query processor printer
- */
+//
+// method_def.hpp - define structures used by method feature
+//
 
-#ifndef _QUERY_DUMP_H_
-#define _QUERY_DUMP_H_
+#ifndef _METHOD_DEF_H_
+#define _METHOD_DEF_H_
 
-#include "dbtype_def.h"
-#include "storage_common.h"
+typedef enum
+{
+  METHOD_SUCCESS = 1,
+  METHOD_EOF,
+  METHOD_ERROR
+} METHOD_CALL_STATUS;
 
-#include <cstdio>
+typedef enum
+{
+  VACOMM_BUFFER_SEND = 1,
+  VACOMM_BUFFER_ABORT
+} VACOMM_BUFFER_CLIENT_ACTION;
 
-// forward definitions
-struct json_t;
-struct xasl_node;
+#define VACOMM_BUFFER_HEADER_SIZE           (OR_INT_SIZE * 3)
+#define VACOMM_BUFFER_HEADER_LENGTH_OFFSET  (0)
+#define VACOMM_BUFFER_HEADER_STATUS_OFFSET  (OR_INT_SIZE)
+#define VACOMM_BUFFER_HEADER_NO_VALS_OFFSET (OR_INT_SIZE * 2)
+#define VACOMM_BUFFER_HEADER_ERROR_OFFSET   (OR_INT_SIZE * 2)
 
-extern bool qdump_print_xasl (xasl_node * xasl);
-#if defined (SERVER_MODE)
-extern void qdump_print_stats_json (xasl_node * xasl_p, json_t * parent);
-extern void qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent);
-#endif /* SERVER_MODE */
-extern const char *qdump_operator_type_string (OPERATOR_TYPE optype);
-extern const char *qdump_default_expression_string (DB_DEFAULT_EXPR_TYPE default_expr_type);
-
-#endif /* _QUERY_DUMP_H_ */
+#endif // _METHOD_DEF_H_

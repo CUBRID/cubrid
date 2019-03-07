@@ -40,6 +40,7 @@
 #include "log_applier.h"
 #include "crypt_opfunc.h"
 #if defined(SERVER_MODE)
+#include "log_manager.h"
 #include "server_support.h"
 #include "network_interface_sr.h"
 #else /* !defined(SERVER_MODE) */
