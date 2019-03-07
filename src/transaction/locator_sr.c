@@ -7351,8 +7351,9 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
   HFID class_hfid;
   OID class_oid;
   MVCC_SNAPSHOT *saved_mvcc_snapshot = NULL;
-  bool operation_aborted = false;
-
+#if !defined(NDEBUG) && defined (SERVER_MODE)
+  bool sysop_started = false;
+#endif
   /* 
    * While scanning objects, the given scancache does not fix the last
    * accessed page. So, the object must be copied to the record descriptor.
@@ -7373,24 +7374,12 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
     }
 
 #if !defined(NDEBUG) && defined (SERVER_MODE)
-start_simulate_ha_apply:
-  if (log_does_allow_replication () == true)
+  if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG)
+      && logtb_get_tdes (thread_p)->replication_log_generator.get_stream_entry ()->count_entries () == 0)
     {
-      if (operation_aborted)
-	{
-	  logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (true);
-	  /* Try again by simulating apply. */
-	  assert (error_code == NO_ERROR);
-	  error_code =
-	    logtb_get_tdes (thread_p)->replication_log_generator.locator_simulate_repl_apply_rbr_on_master ();
-	  logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (false);
-	  goto end;
-	}
-      else
-	{
-	  log_sysop_start (thread_p);
-	}
-
+      assert (log_does_allow_replication ());
+      log_sysop_start (thread_p);
+      sysop_started = true;
     }
 #endif
 
@@ -7444,7 +7433,8 @@ start_simulate_ha_apply:
       else if (scan == S_ERROR || scan == S_DOESNT_FIT)
 	{
 	  /* Whenever an error including an interrupt was broken out, quit the update. */
-	  return ER_FAILED;
+	  error_code = ER_FAILED;
+	  goto end;
 	}
       else if (scan == S_DOESNT_EXIST)
 	{
@@ -7456,17 +7446,20 @@ start_simulate_ha_apply:
 	    }
 	  else
 	    {
-	      return ((err_id == NO_ERROR) ? ER_HEAP_UNKNOWN_OBJECT : err_id);	/* other errors should return S_ERROR? */
+	      error_code = ((err_id == NO_ERROR) ? ER_HEAP_UNKNOWN_OBJECT : err_id);	/* other errors should return S_ERROR? */
+	      goto end;
 	    }
 	}
       else if (scan == S_SNAPSHOT_NOT_SATISFIED)
 	{
-	  return ER_FAILED;
+	  error_code = ER_FAILED;
+	  goto end;
 	}
       else
 	{
 	  assert (false);
-	  return ER_FAILED;
+	  error_code = ER_FAILED;
+	  goto end;
 	}
 
       old_recdes = &copy_recdes;
@@ -7541,21 +7534,33 @@ start_simulate_ha_apply:
       break;
     }
 
-#if !defined(NDEBUG) && defined (SERVER_MODE)
 end:
-  if (log_does_allow_replication () == true && operation_aborted == false)
+#if !defined(NDEBUG) && defined (SERVER_MODE)
+  if (sysop_started)
     {
-      if (error_code == NO_ERROR
-	  && !(logtb_get_tdes (thread_p)->replication_log_generator.is_debug_repl_local_disabled ()))
+      assert (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG) && log_does_allow_replication ());
+      if (error_code == NO_ERROR)
 	{
-	  /* Abort operation and simpulate it with appy. */
-	  log_sysop_abort (thread_p);
-	  operation_aborted = true;
-	  goto start_simulate_ha_apply;
+	  if (!logtb_get_tdes (thread_p)->replication_log_generator.is_debug_repl_local_disabled ()
+	      && logtb_get_tdes (thread_p)->replication_log_generator.get_stream_entry ()->count_entries () > 0)
+	    {
+	      /* Abort operation and simulate it again with appy. */
+	      log_sysop_abort (thread_p);
+
+	      logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (true);
+	      assert (error_code == NO_ERROR);
+	      error_code =
+		logtb_get_tdes (thread_p)->replication_log_generator.locator_simulate_repl_apply_rbr_on_master ();
+	      logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (false);
+	    }
+	  else
+	    {
+	      log_sysop_attach_to_outer (thread_p);
+	    }
 	}
       else
 	{
-	  log_sysop_attach_to_outer (thread_p);
+	  log_sysop_abort (thread_p);
 	}
     }
 #endif

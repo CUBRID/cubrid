@@ -367,12 +367,12 @@ namespace cubreplication
 #if !defined(NDEBUG)
   void log_generator::disable_debug_repl_local ()
   {
-    m_enable_debug_repl_local = true;
+    m_enable_debug_repl_local = false;
   }
 
   bool log_generator::is_debug_repl_local_disabled ()
   {
-    return m_enable_debug_repl_local;
+    return !m_enable_debug_repl_local;
   }
 #endif
 
