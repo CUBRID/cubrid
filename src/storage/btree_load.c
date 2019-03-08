@@ -4939,9 +4939,9 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 	  if (load_context.m_has_error != NO_ERROR)
 	    {
 	      /* Also stop all threads. */
-	      thread_get_manager ()->destroy_worker_pool (ib_workpool);
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, load_context.m_error_code, 0);
-	      return load_context.m_error_code;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IB_ERROR_ABORT, 0);
+	      ret = load_context.m_error_code;
+	      break;
 	    }
 
 	  /* Wait for threads to finish. */
@@ -4951,13 +4951,11 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 	  if (logtb_is_interrupted (thread_p, true, &dummy_continue_checking))
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
-	      thread_get_manager ()->destroy_worker_pool (ib_workpool);
-	      return ER_INTERRUPTED;
+	      ret = ER_INTERRUPTED;
+	      break;
 	    }
 	}
       while (load_context.m_tasks_executed != tasks_started);
-
-      assert (load_context.m_tasks_executed == tasks_started);
     }
 
   thread_get_manager ()->destroy_worker_pool (ib_workpool);

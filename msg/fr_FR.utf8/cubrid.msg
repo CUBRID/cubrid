@@ -1309,8 +1309,9 @@ $ LOADDB
 1240 Online index is not allowed on classes that are part of a hierarchy chain.
 1241 XASL tree needs recompile.
 1242 Cannot create partition on a class that is part of a hierarchy chain.
+1243 Index loading was aborted after an error.
 
-1243 Dernière erreur
+1244 Dernière erreur
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Erreur dans le sous-système d'erreur (ligne %1$d):
