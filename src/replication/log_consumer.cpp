@@ -202,7 +202,7 @@ namespace cubreplication
 
 	    if (se->is_group_commit () || (applier_threads == 1 && (se->is_tran_commit () || se->is_tran_abort ())))
 	      {
-		assert (se->get_data_packed_size () == 0);
+		assert (applier_threads == 1 || se->get_data_packed_size () == 0);
 
 		/* wait for all started tasks to finish */
                 er_log_debug_replication (ARG_FILE_LINE, "dispatch_daemon_task wait for all working tasks to finish\n");
