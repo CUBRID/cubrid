@@ -66,6 +66,8 @@ namespace cubreplication
 
     master_senders_manager::init (g_instance->m_stream);
 
+    er_log_debug_replication (ARG_FILE_LINE, "master_node:init replication_path:%s", replication_path.c_str ());
+
     enable_active ();
 #endif
   }

@@ -173,11 +173,40 @@ namespace cubreplication
                 er_log_debug_replication (ARG_FILE_LINE, "dispatch_daemon_task execute pop_entry:\n%s", sb.get_buffer ());
               }
 
-	    if (se->is_group_commit ())
+            /* TODO : on-the-fly appier & multi-threaded applier */
+            int applier_threads = 1;
+
+            if (!se->is_group_commit ())
+	      {
+		MVCCID mvccid = se->get_mvccid ();
+		auto it = repl_tasks.find (mvccid);
+
+		if (it != repl_tasks.end ())
+		  {
+		    /* already a task with same MVCCID, add it to existing task */
+		    applier_worker_task *my_repl_applier_worker_task = it->second;
+		    my_repl_applier_worker_task->add_repl_stream_entry (se);
+
+		    assert (my_repl_applier_worker_task->get_entries_cnt () > 0);
+		  }
+		else
+		  {
+		    applier_worker_task *my_repl_applier_worker_task = new applier_worker_task (se, m_lc);
+		    repl_tasks.insert (std::make_pair (mvccid, my_repl_applier_worker_task));
+
+		    assert (my_repl_applier_worker_task->get_entries_cnt () > 0);
+		  }
+
+		/* stream entry is deleted by applier task thread */
+	      }
+
+	    if (se->is_group_commit () || (applier_threads == 1 && (se->is_tran_commit () || se->is_tran_abort ())))
 	      {
 		assert (se->get_data_packed_size () == 0);
 
 		/* wait for all started tasks to finish */
+                er_log_debug_replication (ARG_FILE_LINE, "dispatch_daemon_task wait for all working tasks to finish\n");
+
 		m_lc.wait_for_tasks ();
 
 		for (tasks_map::iterator it = repl_tasks.begin ();
@@ -209,29 +238,6 @@ namespace cubreplication
 
 		/* deleted the group commit stream entry */
 		delete se;
-	      }
-	    else
-	      {
-		MVCCID mvccid = se->get_mvccid ();
-		auto it = repl_tasks.find (mvccid);
-
-		if (it != repl_tasks.end ())
-		  {
-		    /* already a task with same MVCCID, add it to existing task */
-		    applier_worker_task *my_repl_applier_worker_task = it->second;
-		    my_repl_applier_worker_task->add_repl_stream_entry (se);
-
-		    assert (my_repl_applier_worker_task->get_entries_cnt () > 0);
-		  }
-		else
-		  {
-		    applier_worker_task *my_repl_applier_worker_task = new applier_worker_task (se, m_lc);
-		    repl_tasks.insert (std::make_pair (mvccid, my_repl_applier_worker_task));
-
-		    assert (my_repl_applier_worker_task->get_entries_cnt () > 0);
-		  }
-
-		/* stream entry is deleted by applier task thread */
 	      }
 	  }
 
