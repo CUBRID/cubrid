@@ -31,6 +31,7 @@
 #include <string.h>
 #include <time.h>
 
+#include "btree.h"
 #include "porting.h"
 #include "file_manager.h"
 #include "memory_alloc.h"

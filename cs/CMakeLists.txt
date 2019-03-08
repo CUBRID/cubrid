@@ -181,6 +181,7 @@ set(PARSER_SOURCES
   ${PARSER_DIR}/show_meta.c
   ${PARSER_DIR}/type_checking.c
   ${PARSER_DIR}/view_transform.c
+  ${PARSER_DIR}/xasl_regu_alloc.cpp
   ${PARSER_DIR}/xasl_generation.c
   ${PARSER_DIR}/func_type.cpp
   )
@@ -188,6 +189,7 @@ set(PARSER_HEADERS
   ${PARSER_DIR}/func_type.hpp
   ${PARSER_DIR}/parse_type.hpp
   ${PARSER_DIR}/parser_allocator.hpp
+  ${PARSER_DIR}/xasl_regu_alloc.hpp
   )
 
 set(OPTIMIZER_SOURCES
@@ -199,17 +201,18 @@ set(OPTIMIZER_SOURCES
   )
 
 set(QUERY_SOURCES
+  ${QUERY_DIR}/arithmetic.c
+  ${QUERY_DIR}/crypt_opfunc.c
+  ${QUERY_DIR}/cursor.c
   ${QUERY_DIR}/execute_schema.c
   ${QUERY_DIR}/execute_statement.c
-  ${QUERY_DIR}/arithmetic.c
-  ${QUERY_DIR}/cursor.c
-  ${QUERY_DIR}/query_dump.c
-  ${QUERY_DIR}/query_method.c
   ${QUERY_DIR}/numeric_opfunc.c
   ${QUERY_DIR}/query_cl.c
+  ${QUERY_DIR}/query_dump.c
+  ${QUERY_DIR}/query_method.c
+  ${QUERY_DIR}/regu_var.cpp
   ${QUERY_DIR}/string_opfunc.c
   ${QUERY_DIR}/xasl_to_stream.c
-  ${QUERY_DIR}/crypt_opfunc.c
   )
 
 set(OBJECT_SOURCES
@@ -265,11 +268,17 @@ set(STORAGE_SOURCES
   
 set(XASL_SOURCES
   ${XASL_DIR}/access_json_table.cpp
+  ${XASL_DIR}/xasl_analytic.cpp
+  ${XASL_DIR}/xasl_predicate.cpp
   ${XASL_DIR}/xasl_stream.cpp
   )
 set(XASL_HEADERS
   ${XASL_DIR}/access_json_table.hpp
+  ${XASL_DIR}/access_spec.hpp
   ${XASL_DIR}/compile_context.h
+  ${XASL_DIR}/xasl_aggregate.hpp
+  ${XASL_DIR}/xasl_analytic.hpp
+  ${XASL_DIR}/xasl_predicate.hpp
   ${XASL_DIR}/xasl_stream.hpp
   )
 

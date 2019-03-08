@@ -25,16 +25,22 @@
 
 #include "config.h"
 
+#include <assert.h>
+#include <cstring>
 #include <stdio.h>
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
-#include <assert.h>
 
 #include "stream_to_xasl.h"
 
 #include "dbtype.h"
 #include "error_manager.h"
+#include "query_aggregate.hpp"
+#include "xasl.h"
+#include "xasl_aggregate.hpp"
+#include "xasl_analytic.hpp"
+#include "xasl_predicate.hpp"
 #include "xasl_stream.hpp"
 
 static ACCESS_SPEC_TYPE *stx_restore_access_spec_type (THREAD_ENTRY * thread_p, char **ptr, void *arg);
@@ -152,7 +158,7 @@ static char *stx_unpack_long (char *tmp, long *ptr);
  * xasl_stream (in)    : xasl stream.
  */
 int
-stx_map_stream_to_xasl_node_header (THREAD_ENTRY * thread_p, XASL_NODE_HEADER * xasl_header_p, char *xasl_stream)
+stx_map_stream_to_xasl_node_header (THREAD_ENTRY * thread_p, xasl_node_header * xasl_header_p, char *xasl_stream)
 {
   int xasl_stream_header_size = 0, offset = 0;
   char *ptr = NULL;
@@ -188,7 +194,7 @@ stx_map_stream_to_xasl_node_header (THREAD_ENTRY * thread_p, XASL_NODE_HEADER * 
  * xasl_unpack_info_ptr. The free function is stx_free_xasl_unpack_info().
  */
 int
-stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, XASL_NODE ** xasl_tree, bool use_xasl_clone, char *xasl_stream,
+stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, xasl_node ** xasl_tree, bool use_xasl_clone, char *xasl_stream,
 			int xasl_stream_size, void **xasl_unpack_info_ptr)
 {
   XASL_NODE *xasl;
@@ -264,7 +270,7 @@ end:
  *       (*pred)->unpack_info by calling stx_free_xasl_unpack_info().
  */
 int
-stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p, PRED_EXPR_WITH_CONTEXT ** pred, char *pred_stream,
+stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p, pred_expr_with_context ** pred, char *pred_stream,
 			       int pred_stream_size)
 {
   PRED_EXPR_WITH_CONTEXT *pwc = NULL;
@@ -324,7 +330,7 @@ end:
  *   xasl_unpack_info_ptr(in)   : pointer to where to return the pack info
  */
 int
-stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p, FUNC_PRED ** xasl, char *xasl_stream, int xasl_stream_size,
+stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p, func_pred ** xasl, char *xasl_stream, int xasl_stream_size,
 			     void **xasl_unpack_info_ptr)
 {
   FUNC_PRED *p_xasl = NULL;
@@ -521,7 +527,7 @@ stx_restore_analytic_type (THREAD_ENTRY * thread_p, char *ptr)
       return NULL;
     }
 
-  stx_init_analytic_type_unserialized_fields (analytic);
+  analytic->init ();
 
   return analytic;
 }
@@ -2741,7 +2747,9 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr, BUILDLIST_PROC_NOD
     }
 
   ptr = or_unpack_int (ptr, (int *) &stx_build_list_proc->g_hash_eligible);
-  memset (&stx_build_list_proc->agg_hash_context, 0, sizeof (AGGREGATE_HASH_CONTEXT));
+  stx_build_list_proc->agg_hash_context =
+    (AGGREGATE_HASH_CONTEXT *) stx_alloc_struct (thread_p, sizeof (*stx_build_list_proc->agg_hash_context));
+  std::memset (stx_build_list_proc->agg_hash_context, 0, sizeof (*stx_build_list_proc->agg_hash_context));
 
   ptr = or_unpack_int (ptr, (int *) &stx_build_list_proc->g_output_first_tuple);
   ptr = or_unpack_int (ptr, (int *) &stx_build_list_proc->g_hkey_size);
@@ -3952,23 +3960,23 @@ stx_build_pred_expr (THREAD_ENTRY * thread_p, char *ptr, PRED_EXPR * pred_expr)
   switch (pred_expr->type)
     {
     case T_PRED:
-      ptr = stx_build_pred (thread_p, ptr, &pred_expr->pe.pred);
+      ptr = stx_build_pred (thread_p, ptr, &pred_expr->pe.m_pred);
       break;
 
     case T_EVAL_TERM:
-      ptr = stx_build_eval_term (thread_p, ptr, &pred_expr->pe.eval_term);
+      ptr = stx_build_eval_term (thread_p, ptr, &pred_expr->pe.m_eval_term);
       break;
 
     case T_NOT_TERM:
       ptr = or_unpack_int (ptr, &offset);
       if (offset == 0)
 	{
-	  pred_expr->pe.not_term = NULL;
+	  pred_expr->pe.m_not_term = NULL;
 	}
       else
 	{
-	  pred_expr->pe.not_term = stx_restore_pred_expr (thread_p, &xasl_unpack_info->packed_xasl[offset]);
-	  if (pred_expr->pe.not_term == NULL)
+	  pred_expr->pe.m_not_term = stx_restore_pred_expr (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+	  if (pred_expr->pe.m_not_term == NULL)
 	    {
 	      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
 	      return NULL;
@@ -4025,7 +4033,7 @@ stx_build_pred (THREAD_ENTRY * thread_p, char *ptr, PRED * pred)
 
       rhs->type = T_PRED;
 
-      pred = &rhs->pe.pred;
+      pred = &rhs->pe.m_pred;
 
       /* lhs */
       ptr = or_unpack_int (ptr, &offset);
@@ -5429,20 +5437,6 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr, ARITH_TYPE * arith_typ
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
-      arith_type->next = NULL;
-    }
-  else
-    {
-      arith_type->next = stx_restore_arith_type (thread_p, &xasl_unpack_info->packed_xasl[offset]);
-      if (arith_type->next == NULL)
-	{
-	  goto error;
-	}
-    }
-
-  ptr = or_unpack_int (ptr, &offset);
-  if (offset == 0)
-    {
       arith_type->leftptr = NULL;
     }
   else
@@ -6386,7 +6380,7 @@ stx_init_regu_variable (REGU_VARIABLE * regu)
   regu->value.val_pos = 0;
   regu->vfetch_to = NULL;
   regu->domain = NULL;
-  REGU_VARIABLE_XASL (regu) = NULL;
+  regu->xasl = NULL;
 }
 
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -6424,26 +6418,6 @@ stx_unpack_long (char *tmp, long *ptr)
   return tmp;
 }
 #endif
-
-/*
- * stx_init_analytic_type_unserialized_fields () - make other fields initialized
- *   return:
- *   analytic(in/out)    :
- */
-void
-stx_init_analytic_type_unserialized_fields (ANALYTIC_TYPE * analytic)
-{
-  assert (analytic != NULL);
-
-  /* is_first_exec_time */
-  analytic->is_first_exec_time = true;
-
-  /* part_value */
-  db_make_null (&analytic->part_value);
-
-  /* curr_cnt */
-  analytic->curr_cnt = 0;
-}
 
 char *
 stx_build (THREAD_ENTRY * thread_p, char *ptr, regu_variable_node & reguvar)

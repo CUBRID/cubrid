@@ -32,7 +32,6 @@
 #endif /* SERVER_MODE */
 
 #include "dbi.h"
-#include "xasl.h"
 #include "schema_manager.h"
 
 #define UNIQUE_PARTITION_SAVEPOINT_GRANT "pARTITIONgRANT"

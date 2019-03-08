@@ -23,22 +23,21 @@
 
 #ident "$Id$"
 
-#include "config.h"
-
 #include <assert.h>
 
-#include "xasl_support.h"
-
-#include "parser.h"
-#include "xasl_generation.h"
-
-#include "object_primitive.h"
 #include "optimizer.h"
+
+#include "config.h"
+#include "object_primitive.h"
+#include "query_bitset.h"
 #include "query_graph.h"
 #include "query_planner.h"
-#include "query_bitset.h"
-#include "system_parameter.h"
+#include "parser.h"
 #include "parser_support.h"
+#include "system_parameter.h"
+#include "xasl.h"
+#include "xasl_generation.h"
+#include "xasl_predicate.hpp"
 
 typedef int (*ELIGIBILITY_FN) (QO_TERM *);
 
@@ -2354,8 +2353,8 @@ preserve_info (QO_ENV * env, QO_PLAN * plan, XASL_NODE * xasl)
  *	grunge, such as setting up the code for the select list
  *	expressions, etc.
  */
-XASL_NODE *
-qo_to_xasl (QO_PLAN * plan, XASL_NODE * xasl)
+xasl_node *
+qo_to_xasl (QO_PLAN * plan, xasl_node * xasl)
 {
   QO_ENV *env;
   XASL_NODE *lastxasl;
@@ -2816,8 +2815,8 @@ qo_xasl_get_terms (QO_XASL_INDEX_INFO * info)
  *   plan(in):
  *   xasl(in):
  */
-XASL_NODE *
-qo_add_hq_iterations_access_spec (QO_PLAN * plan, XASL_NODE * xasl)
+xasl_node *
+qo_add_hq_iterations_access_spec (QO_PLAN * plan, xasl_node * xasl)
 {
   PARSER_CONTEXT *parser;
   QO_ENV *env;
@@ -3006,14 +3005,14 @@ qo_get_limit_from_eval_term (PARSER_CONTEXT * parser, PRED_EXPR * pred, REGU_PTR
   TP_DOMAIN *dom_bigint = tp_domain_resolve_default (DB_TYPE_BIGINT);
   REGU_VARIABLE *regu_one, *regu_low;
 
-  if (pred == NULL || pred->type != T_EVAL_TERM || pred->pe.eval_term.et_type != T_COMP_EVAL_TERM)
+  if (pred == NULL || pred->type != T_EVAL_TERM || pred->pe.m_eval_term.et_type != T_COMP_EVAL_TERM)
     {
       return false;
     }
 
-  lhs = pred->pe.eval_term.et.et_comp.lhs;
-  rhs = pred->pe.eval_term.et.et_comp.rhs;
-  op = pred->pe.eval_term.et.et_comp.rel_op;
+  lhs = pred->pe.m_eval_term.et.et_comp.lhs;
+  rhs = pred->pe.m_eval_term.et.et_comp.rhs;
+  op = pred->pe.m_eval_term.et.et_comp.rel_op;
 
   if (!lhs || !rhs)
     {
@@ -3029,8 +3028,8 @@ qo_get_limit_from_eval_term (PARSER_CONTEXT * parser, PRED_EXPR * pred, REGU_PTR
   /* switch the ops to transform into instnum rel_op value/hostvar */
   if (rhs->type == TYPE_CONSTANT)
     {
-      rhs = pred->pe.eval_term.et.et_comp.lhs;
-      lhs = pred->pe.eval_term.et.et_comp.rhs;
+      rhs = pred->pe.m_eval_term.et.et_comp.lhs;
+      lhs = pred->pe.m_eval_term.et.et_comp.rhs;
       switch (op)
 	{
 	case R_LE:
@@ -3154,10 +3153,10 @@ qo_get_limit_from_instnum_pred (PARSER_CONTEXT * parser, PRED_EXPR * pred, REGU_
       return false;
     }
 
-  if (pred->type == T_PRED && pred->pe.pred.bool_op == B_AND)
+  if (pred->type == T_PRED && pred->pe.m_pred.bool_op == B_AND)
     {
-      return (qo_get_limit_from_instnum_pred (parser, pred->pe.pred.lhs, lower, upper)
-	      && qo_get_limit_from_instnum_pred (parser, pred->pe.pred.rhs, lower, upper));
+      return (qo_get_limit_from_instnum_pred (parser, pred->pe.m_pred.lhs, lower, upper)
+	      && qo_get_limit_from_instnum_pred (parser, pred->pe.m_pred.rhs, lower, upper));
     }
 
   if (pred->type == T_EVAL_TERM)
@@ -3178,7 +3177,7 @@ qo_get_limit_from_instnum_pred (PARSER_CONTEXT * parser, PRED_EXPR * pred, REGU_
  *   xasl (in):  the full XASL node
  */
 QO_LIMIT_INFO *
-qo_get_key_limit_from_instnum (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xasl)
+qo_get_key_limit_from_instnum (PARSER_CONTEXT * parser, QO_PLAN * plan, xasl_node * xasl)
 {
   REGU_PTR_LIST lower = NULL, upper = NULL, ptr = NULL;
   QO_LIMIT_INFO *limit_infop = NULL;
@@ -3286,7 +3285,7 @@ qo_get_key_limit_from_instnum (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NOD
  *   ignore_lower (in): generate key limit even if ordbynum has a lower limit
  */
 QO_LIMIT_INFO *
-qo_get_key_limit_from_ordbynum (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xasl, bool ignore_lower)
+qo_get_key_limit_from_ordbynum (PARSER_CONTEXT * parser, QO_PLAN * plan, xasl_node * xasl, bool ignore_lower)
 {
   REGU_PTR_LIST lower = NULL, upper = NULL, ptr = NULL;
   QO_LIMIT_INFO *limit_infop;

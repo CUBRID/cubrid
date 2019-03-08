@@ -40,6 +40,7 @@
 #include "log_applier.h"
 #include "crypt_opfunc.h"
 #if defined(SERVER_MODE)
+#include "log_manager.h"
 #include "server_support.h"
 #include "network_interface_sr.h"
 #else /* !defined(SERVER_MODE) */
@@ -1726,7 +1727,7 @@ logwr_check_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr)
       p += sample_nbytes;
     }
 
-  error_code = crypt_crc32 (thread_p, (char *) buf, sizeof_buf, &checksum_crc32);
+  error_code = crypt_crc32 (thread_p, (char *) buf, (int) sizeof_buf, &checksum_crc32);
 
   /* Restores the saved checksum */
   log_pgptr->hdr.checksum = saved_checksum_crc32;

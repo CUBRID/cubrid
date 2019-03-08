@@ -28,9 +28,22 @@
 #error Belongs to server module
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
-#include "query_opfunc.h"
+#include "heap_file.h"
 #include "thread_compat.hpp"
-#include "xasl.h"
+
+// forward definition
+struct access_spec_node;
+struct func_pred;
+struct func_pred_unpack_info;
+struct val_descr;
+
+// *INDENT-OFF*
+namespace cubquery
+{
+  struct hierarchy_aggregate_helper;
+}
+using HIERARCHY_AGGREGATE_HELPER = cubquery::hierarchy_aggregate_helper;
+// *INDENT-ON*
 
 /* object for caching objects used in multi row modify statements for each partition */
 typedef struct pruning_scan_cache PRUNING_SCAN_CACHE;
@@ -38,7 +51,7 @@ struct pruning_scan_cache
 {
   HEAP_SCANCACHE scan_cache;	/* cached partition heap info */
   bool is_scan_cache_started;	/* true if cache has been started */
-  FUNC_PRED_UNPACK_INFO *func_index_pred;	/* an array of function indexes cached for repeated evaluation */
+  func_pred_unpack_info *func_index_pred;	/* an array of function indexes cached for repeated evaluation */
   int n_indexes;		/* number of indexes */
 };
 
@@ -56,8 +69,8 @@ struct pruning_context
   THREAD_ENTRY *thread_p;	/* current thread */
   OID root_oid;			/* OID of the root class */
   REPR_ID root_repr_id;		/* root class representation id */
-  ACCESS_SPEC_TYPE *spec;	/* class to prune */
-  VAL_DESCR *vd;		/* value descriptor */
+  access_spec_node *spec;	/* class to prune */
+  val_descr *vd;		/* value descriptor */
   DB_PARTITION_TYPE partition_type;	/* hash, range, list */
 
   OR_PARTITION *partitions;	/* partitions array */
@@ -67,7 +80,7 @@ struct pruning_context
   int count;			/* number of partitions */
 
   void *fp_cache_context;	/* unpacking info */
-  FUNC_PRED *partition_pred;	/* partition predicate */
+  func_pred *partition_pred;	/* partition predicate */
   int attr_position;		/* attribute position in index key */
   ATTR_ID attr_id;		/* id of the attribute which defines the partitions */
   HEAP_CACHE_ATTRINFO attr_info;	/* attribute info cache for the partition expression */
@@ -96,7 +109,7 @@ extern PRUNING_SCAN_CACHE *partition_get_scancache (PRUNING_CONTEXT * pcontext, 
 
 extern PRUNING_SCAN_CACHE *partition_new_scancache (PRUNING_CONTEXT * pcontext);
 
-extern int partition_prune_spec (THREAD_ENTRY * thread_p, VAL_DESCR * vd, ACCESS_SPEC_TYPE * access_spec);
+extern int partition_prune_spec (THREAD_ENTRY * thread_p, val_descr * vd, access_spec_node * access_spec);
 
 extern int partition_prune_insert (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * recdes,
 				   HEAP_SCANCACHE * scan_cache, PRUNING_CONTEXT * pcontext, int op_type,
@@ -112,7 +125,7 @@ extern int partition_prune_unique_btid (PRUNING_CONTEXT * pcontext, DB_VALUE * k
 extern int partition_get_partition_oids (THREAD_ENTRY * thread_p, const OID * class_oid, OID ** partition_oids,
 					 int *count);
 
-extern int partition_load_aggregate_helper (PRUNING_CONTEXT * pcontext, ACCESS_SPEC_TYPE * spec, int pruned_count,
+extern int partition_load_aggregate_helper (PRUNING_CONTEXT * pcontext, access_spec_node * spec, int pruned_count,
 					    BTID * root_btid, HIERARCHY_AGGREGATE_HELPER * helper);
 #if 0
 extern int partition_is_global_index (THREAD_ENTRY * thread_p, PRUNING_CONTEXT * contextp, OID * class_oid, BTID * btid,

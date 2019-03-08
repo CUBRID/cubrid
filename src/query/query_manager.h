@@ -36,7 +36,9 @@
 #include "list_file.h"
 #include "storage_common.h"
 #include "thread_compat.hpp"
-#include "xasl_cache.h"
+
+// forward definitions
+struct xasl_cache_ent;
 
 #define qmgr_free_old_page_and_init(thread_p, page_p, tfile_vfidp) \
   do \
@@ -120,7 +122,7 @@ struct qmgr_query_entry
 {
   QUERY_ID query_id;		/* unique query identifier */
   XASL_ID xasl_id;		/* XASL tree storage identifier */
-  XASL_CACHE_ENTRY *xasl_ent;	/* XASL cache entry for this query */
+  xasl_cache_ent *xasl_ent;	/* XASL cache entry for this query */
   QFILE_LIST_ID *list_id;	/* result list file identifier */
   QFILE_LIST_CACHE_ENTRY *list_ent;	/* list cache entry for this query */
   QMGR_QUERY_ENTRY *next;

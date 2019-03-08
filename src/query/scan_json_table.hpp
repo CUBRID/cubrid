@@ -73,7 +73,6 @@
 #ifndef _SCAN_JSON_TABLE_HPP_
 #define _SCAN_JSON_TABLE_HPP_
 
-//#include "dbtype_def.h"
 #include "query_evaluator.h"
 
 #include <vector>
@@ -95,6 +94,7 @@ class JSON_ITERATOR;
 // scan_manager.h
 struct scan_id_struct;
 struct val_descr;
+struct xasl_node;
 
 // thread_entry.hpp
 namespace cubthread

@@ -76,6 +76,8 @@
 #include "dbtype.h"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #include "compile_context.h"
+#include "xasl.h"
+#include "xasl_cache.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -6244,7 +6246,7 @@ sct_check_rep_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int
  * NOTE:
  */
 int
-xs_send_method_call_info_to_client (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, METHOD_SIG_LIST * method_sig_list)
+xs_send_method_call_info_to_client (THREAD_ENTRY * thread_p, qfile_list_id * list_id, method_sig_list * methsg_list)
 {
   int length = 0;
   char *databuf;
@@ -6255,7 +6257,7 @@ xs_send_method_call_info_to_client (THREAD_ENTRY * thread_p, QFILE_LIST_ID * lis
 
   rid = css_get_comm_request_id (thread_p);
   length = or_listid_length ((void *) list_id);
-  length += or_method_sig_list_length ((void *) method_sig_list);
+  length += or_method_sig_list_length ((void *) methsg_list);
   ptr = or_pack_int (reply, (int) METHOD_CALL);
   ptr = or_pack_int (ptr, length);
 
@@ -6271,7 +6273,7 @@ xs_send_method_call_info_to_client (THREAD_ENTRY * thread_p, QFILE_LIST_ID * lis
     }
 
   ptr = or_pack_listid (databuf, (void *) list_id);
-  ptr = or_pack_method_sig_list (ptr, (void *) method_sig_list);
+  ptr = or_pack_method_sig_list (ptr, (void *) methsg_list);
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), databuf, length);
   db_private_free_and_init (thread_p, databuf);
   return NO_ERROR;

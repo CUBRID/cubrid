@@ -23,24 +23,27 @@
 
 #ident "$Id$"
 
-#include "config.h"
-
-#include "db.h"
-#include "xasl_support.h"
 #include "query_method.h"
-#include "object_accessor.h"
+
+#include "config.h"
+#include "db.h"
+#include "dbtype.h"
 #include "jsp_cl.h"
-#include "object_primitive.h"
-#include "object_representation.h"
+#include "method_def.hpp"
 #include "network.h"
 #include "network_interface_cl.h"
-#include "dbtype.h"
+#include "object_accessor.h"
+#include "object_primitive.h"
+#include "object_representation.h"
+#include "query_list.h"
+#include "regu_var.hpp"
 
 static int method_initialize_vacomm_buffer (VACOMM_BUFFER * vacomm_buffer, unsigned int rc, char *host,
 					    char *server_name);
 static void method_clear_vacomm_buffer (VACOMM_BUFFER * vacomm_buffer);
 static int method_send_value_to_server (DB_VALUE * dbval, VACOMM_BUFFER * vacomm_buffer);
 static int method_send_eof_to_server (VACOMM_BUFFER * vacomm_buffer);
+static void methid_sig_freemem (method_sig_node * meth_sig);
 
 /*
  * method_clear_vacomm_buffer () - Clears the comm buffer
@@ -265,8 +268,8 @@ method_send_error_to_server (unsigned int rc, char *host_p, char *server_name_p)
  *   method_sig_list(in): Method signatures
  */
 int
-method_invoke_for_server (unsigned int rc, char *host_p, char *server_name_p, QFILE_LIST_ID * list_id_p,
-			  METHOD_SIG_LIST * method_sig_list_p)
+method_invoke_for_server (unsigned int rc, char *host_p, char *server_name_p, qfile_list_id * list_id_p,
+			  method_sig_list * method_sig_list_p)
 {
   DB_VALUE *val_list_p = NULL;
   DB_VALUE **values_p;
@@ -489,5 +492,42 @@ end:
     {
       method_clear_vacomm_buffer (&vacomm_buffer);
       return ER_FAILED;
+    }
+}
+
+/*
+ * methid_sig_freemem () -
+ *   return:
+ *   method_sig(in)     : pointer to a method_sig
+ *
+ * Note: Free function for METHOD_SIG using free_and_init.
+ */
+static void
+methid_sig_freemem (method_sig_node * method_sig)
+{
+  if (method_sig != NULL)
+    {
+      methid_sig_freemem (method_sig->next);
+      db_private_free_and_init (NULL, method_sig->method_name);
+      db_private_free_and_init (NULL, method_sig->class_name);
+      db_private_free_and_init (NULL, method_sig->method_arg_pos);
+      db_private_free_and_init (NULL, method_sig);
+    }
+}
+
+/*
+ * method_sig_list_freemem () -
+ *   return:
+ *   meth_sig_list(in)        : pointer to a meth_sig_list
+ *
+ * Note: Free function for METHOD_SIG_LIST using free_and_init.
+ */
+void
+method_sig_list_freemem (method_sig_list * meth_sig_list)
+{
+  if (meth_sig_list != NULL)
+    {
+      methid_sig_freemem (meth_sig_list->method_sig);
+      db_private_free_and_init (NULL, meth_sig_list);
     }
 }

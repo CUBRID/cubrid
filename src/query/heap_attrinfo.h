@@ -24,10 +24,7 @@
 #ifndef _HEAP_ATTRINFO_H_
 #define _HEAP_ATTRINFO_H_
 
-#if !defined (SERVER_MODE) && !defined (SA_MODE)
-#error Belongs to server module
-#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
-
+#if defined (SERVER_MODE) || defined (SA_MODE)
 #include "object_representation_sr.h"
 
 typedef enum
@@ -73,5 +70,16 @@ struct heap_cache_attrinfo
   int num_values;		/* Number of desired attribute values */
   HEAP_ATTRVALUE *values;	/* Value for the attributes */
 };
+
+#else /* !defined (SERVER_MODE) && !defined (SA_MODE) */
+
+/* XASL generation uses pointer to heap_cache_attrinfo. we need to just declare a dummy struct here. */
+typedef struct heap_cache_attrinfo HEAP_CACHE_ATTRINFO;
+struct heap_cache_attrinfo
+{
+  int dummy;
+};
+
+#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
 #endif /* _HEAP_ATTRINFO_H_ */

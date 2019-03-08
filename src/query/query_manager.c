@@ -43,6 +43,7 @@
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
 #include "thread_entry.hpp"
+#include "xasl_cache.h"
 
 #if !defined (SERVER_MODE)
 
@@ -928,7 +929,7 @@ qmgr_finalize (THREAD_ENTRY * thread_p)
  * and return the cached XASL file id if found. If not found, NULL will be returned.
  */
 int
-xqmgr_prepare_query (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context, XASL_STREAM * stream)
+xqmgr_prepare_query (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context, xasl_stream * stream)
 {
   XASL_CACHE_ENTRY *cache_entry_p = NULL;
   char *p;
@@ -1220,7 +1221,7 @@ exit_on_error:
 QFILE_LIST_ID *
 xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_ID * query_id_p, int dbval_count,
 		     void *dbval_p, QUERY_FLAG * flag_p, CACHE_TIME * client_cache_time_p,
-		     CACHE_TIME * server_cache_time_p, int query_timeout, XASL_CACHE_ENTRY ** ret_cache_entry_p)
+		     CACHE_TIME * server_cache_time_p, int query_timeout, xasl_cache_ent ** ret_cache_entry_p)
 {
   XASL_CACHE_ENTRY *xasl_cache_entry_p = NULL;
   XASL_CLONE xclone = XASL_CLONE_INITIALIZER;

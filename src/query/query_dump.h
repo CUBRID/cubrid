@@ -24,12 +24,19 @@
 #ifndef _QUERY_DUMP_H_
 #define _QUERY_DUMP_H_
 
-#include "xasl.h"
+#include "dbtype_def.h"
+#include "storage_common.h"
 
-extern bool qdump_print_xasl (XASL_NODE * xasl);
+#include <cstdio>
+
+// forward definitions
+struct json_t;
+struct xasl_node;
+
+extern bool qdump_print_xasl (xasl_node * xasl);
 #if defined (SERVER_MODE)
-extern void qdump_print_stats_json (XASL_NODE * xasl_p, json_t * parent);
-extern void qdump_print_stats_text (FILE * fp, XASL_NODE * xasl_p, int indent);
+extern void qdump_print_stats_json (xasl_node * xasl_p, json_t * parent);
+extern void qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent);
 #endif /* SERVER_MODE */
 extern const char *qdump_operator_type_string (OPERATOR_TYPE optype);
 extern const char *qdump_default_expression_string (DB_DEFAULT_EXPR_TYPE default_expr_type);

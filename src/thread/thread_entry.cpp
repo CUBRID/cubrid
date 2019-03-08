@@ -31,6 +31,7 @@
 #include "list_file.h"
 #include "lock_free.h"
 #include "log_compress.h"
+#include "log_system_tran.hpp"
 #include "memory_alloc.h"
 #include "page_buffer.h"
 #include "resource_tracker.hpp"
@@ -79,7 +80,7 @@ namespace cubthread
     , type (TT_WORKER)
     , emulate_tid ()
     , client_id (-1)
-    , tran_index (-1)
+    , tran_index (NULL_TRAN_INDEX)
     , private_lru_index (-1)
     , tran_index_lock ()
     , rid (0)
@@ -136,6 +137,7 @@ namespace cubthread
     , m_pgbuf_tracker (*new cubbase::pgbuf_tracker (PGBUF_TRACK_NAME, ENABLE_TRACKERS, PGBUF_TRACK_MAX_ITEMS,
 		       PGBUF_TRACK_RES_NAME, PGBUF_TRACK_MAX_AMOUNT))
     , m_csect_tracker (*new cubsync::critical_section_tracker (ENABLE_TRACKERS))
+    , m_systdes (NULL)
   {
     if (pthread_mutex_init (&tran_index_lock, NULL) != 0)
       {
@@ -264,6 +266,8 @@ namespace cubthread
     fi_thread_final (this);
 #endif // DEBUG
 
+    assert (m_systdes == NULL);
+
     m_cleared = true;
   }
 
@@ -377,6 +381,22 @@ namespace cubthread
     m_alloc_tracker.pop_track ();
     m_pgbuf_tracker.pop_track ();
     m_csect_tracker.stop ();
+  }
+
+  void
+  entry::claim_system_worker ()
+  {
+    assert (m_systdes == NULL);
+    m_systdes = new log_system_tdes ();
+    tran_index = LOG_SYSTEM_TRAN_INDEX;
+  }
+
+  void
+  entry::retire_system_worker ()
+  {
+    delete m_systdes;
+    m_systdes = NULL;
+    tran_index = NULL_TRAN_INDEX;
   }
 
 } // namespace cubthread
