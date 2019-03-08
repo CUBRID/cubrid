@@ -4923,7 +4923,7 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
       if (load_context.m_has_error)
 	{
 	  /* Also stop all threads. */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, load_context.m_error_code, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IB_ERROR_ABORT, 0);
 	  ret = load_context.m_error_code;
 	  break;
 	}
