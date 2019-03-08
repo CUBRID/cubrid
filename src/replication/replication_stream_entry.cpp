@@ -129,7 +129,7 @@ namespace cubreplication
         string_buffer sb, sb_hex;
         sb.add_bytes (serializator->get_current_size (), (char *) (serializator->get_buffer_start ()));
         string_buffer::hex_dump (sb, sb_hex, serializator->get_current_size ());
-        er_log_debug_replication (ARG_FILE_LINE, "unpack_stream_entry_header:\n%s", sb_hex.get_buffer ());
+        er_log_debug_replication (ARG_FILE_LINE, "unpack_stream_entry_header: size:%d \n%s", serializator->get_current_size (), sb_hex.get_buffer ());
       }
 
     serializator->unpack_bigint (m_header.prev_record);
