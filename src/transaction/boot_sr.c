@@ -46,6 +46,7 @@
 
 #include "btree.h"
 #include "chartype.h"
+#include "dbtran_def.h"
 #include "error_manager.h"
 #include "system_parameter.h"
 #include "object_primitive.h"

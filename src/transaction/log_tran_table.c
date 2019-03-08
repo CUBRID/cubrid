@@ -46,6 +46,7 @@
 #include <sys/stat.h>
 #include <assert.h>
 
+#include "dbtran_def.h"
 #include "log_impl.h"
 #include "log_system_tran.hpp"
 #include "error_manager.h"

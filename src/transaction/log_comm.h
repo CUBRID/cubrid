@@ -23,6 +23,8 @@
 #ident "$Id$"
 
 #include <stdio.h>
+
+#include "dbtran_def.h"
 #include "storage_common.h"
 #include "object_representation.h"
 
