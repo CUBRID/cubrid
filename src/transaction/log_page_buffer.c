@@ -527,7 +527,7 @@ logpb_compute_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, int 
       p += sample_nbytes;
     }
 
-  error_code = crypt_crc32 (thread_p, (char *) buf, sizeof_buf, checksum_crc32);
+  error_code = crypt_crc32 (thread_p, (char *) buf, (int) sizeof_buf, checksum_crc32);
 
   /* Restores the saved checksum */
   log_pgptr->hdr.checksum = saved_checksum_crc32;
@@ -5353,31 +5353,39 @@ prior_lsa_start_append (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, LOG_TDES
    */
   LSA_COPY (&node->start_lsa, &log_Gl.prior_info.prior_lsa);
 
-  LSA_COPY (&node->log_header.prev_tranlsa, &tdes->tail_lsa);
-  LSA_COPY (&node->log_header.back_lsa, &log_Gl.prior_info.prev_lsa);
-  LSA_SET_NULL (&node->log_header.forw_lsa);
+  if (tdes->is_system_worker_transaction () && !tdes->is_under_sysop ())
+    {
+      // lose the link to previous record
+      LSA_SET_NULL (&node->log_header.prev_tranlsa);
+      LSA_SET_NULL (&tdes->head_lsa);
+    }
+  else
+    {
+      LSA_COPY (&node->log_header.prev_tranlsa, &tdes->tail_lsa);
 
+      /*
+       * Is this the first log record of transaction ?
+       */
+      if (LSA_ISNULL (&tdes->head_lsa))
+	{
+	  LSA_COPY (&tdes->head_lsa, &tdes->tail_lsa);
+	}
+
+      LSA_COPY (&tdes->undo_nxlsa, &log_Gl.prior_info.prior_lsa);
+    }
   /*
    * Remember the address of new append record
    */
   LSA_COPY (&tdes->tail_lsa, &log_Gl.prior_info.prior_lsa);
-  LSA_COPY (&tdes->undo_nxlsa, &log_Gl.prior_info.prior_lsa);
-
-  /*
-   * Is this the first log record of transaction ?
-   */
-
-  if (LSA_ISNULL (&tdes->head_lsa))
-    {
-      LSA_COPY (&tdes->head_lsa, &tdes->tail_lsa);
-    }
+  LSA_COPY (&node->log_header.back_lsa, &log_Gl.prior_info.prev_lsa);
+  LSA_SET_NULL (&node->log_header.forw_lsa);
 
   LSA_COPY (&log_Gl.prior_info.prev_lsa, &log_Gl.prior_info.prior_lsa);
+
   /*
    * Set the page dirty, increase and align the append offset
    */
   LOG_PRIOR_LSA_APPEND_ADD_ALIGN (sizeof (LOG_RECORD_HEADER));
-
 }
 
 /*
@@ -8128,6 +8136,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 	    }
 	}
     }
+  // todo - what about system worker transaction descriptors??
 
   /*
    * Reset the structure to the correct number of transactions and

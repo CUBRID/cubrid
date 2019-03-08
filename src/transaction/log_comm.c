@@ -287,7 +287,10 @@ log_does_allow_replication (void)
   HA_SERVER_STATE ha_state;
 
   /* Vacuum workers are not allowed to reach this code */
-  assert (!VACUUM_IS_THREAD_VACUUM (thread_get_thread_entry_info ()));
+  if (LOG_FIND_CURRENT_TDES () == NULL || !LOG_FIND_CURRENT_TDES ()->is_active_worker_transaction ())
+    {
+      return false;
+    }
 
   if (HA_DISABLED ())
     {

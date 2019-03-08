@@ -45,7 +45,7 @@
 #include "dbtype.h"
 #include "object_primitive.h"
 #include "query_list.h"
-#include "regu_var.h"
+#include "regu_var.hpp"
 
 #if !defined(SERVER_MODE)
 extern unsigned int db_on_server;

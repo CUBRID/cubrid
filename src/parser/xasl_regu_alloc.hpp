@@ -40,7 +40,7 @@ struct function_node;
 struct indx_info;
 struct key_range;
 struct qfile_list_id;
-struct regu_variable_node;
+class regu_variable_node;
 struct regu_variable_list_node;
 struct selupd_list;
 struct sort_list;

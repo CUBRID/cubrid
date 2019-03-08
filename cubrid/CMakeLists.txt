@@ -215,6 +215,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/query_manager.c
   ${QUERY_DIR}/query_opfunc.c
   ${QUERY_DIR}/query_reevaluation.cpp
+  ${QUERY_DIR}/regu_var.cpp
   ${QUERY_DIR}/scan_json_table.cpp
   ${QUERY_DIR}/scan_manager.c
   ${QUERY_DIR}/serial.c
@@ -265,6 +266,7 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/log_global.c
   ${TRANSACTION_DIR}/log_page_buffer.c
   ${TRANSACTION_DIR}/log_recovery.c
+  ${TRANSACTION_DIR}/log_system_tran.cpp
   ${TRANSACTION_DIR}/log_tran_table.c
   ${TRANSACTION_DIR}/log_comm.c
   ${TRANSACTION_DIR}/replication.c
@@ -273,6 +275,9 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/wait_for_graph.c
   ${TRANSACTION_DIR}/log_writer.c
   ${TRANSACTION_DIR}/mvcc.c
+  )
+set(TRANSACTION_HEADERS
+  ${TRANSACTION_DIR}/log_system_tran.hpp
   )
 
 set(STORAGE_SOURCES
@@ -311,6 +316,7 @@ set(SESSION_SOURCES
 set(XASL_SOURCES
   ${XASL_DIR}/access_json_table.cpp
   ${XASL_DIR}/xasl_analytic.cpp
+  ${XASL_DIR}/xasl_predicate.cpp
   ${XASL_DIR}/xasl_stream.cpp
   )
 set(XASL_HEADERS
@@ -319,6 +325,7 @@ set(XASL_HEADERS
   ${XASL_DIR}/compile_context.h
   ${XASL_DIR}/xasl_aggregate.hpp
   ${XASL_DIR}/xasl_analytic.hpp
+  ${XASL_DIR}/xasl_predicate.hpp
   ${XASL_DIR}/xasl_stream.hpp
   )
 
@@ -399,9 +406,10 @@ set (CUBRID_LIB_HEADERS
   ${MONITOR_HEADERS}
   ${QUERY_HEADERS}
   ${REPLICATION_HEADERS}
-  ${THREAD_HEADERS}
   ${STORAGE_HEADERS}
   ${STREAM_HEADERS}
+  ${THREAD_HEADERS}
+  ${TRANSACTION_HEADERS}
   ${XASL_HEADERS}
   )
 

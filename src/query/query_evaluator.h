@@ -44,7 +44,7 @@
 
 // forward definitions
 struct regu_variable_list_node;
-struct regu_variable_node;
+class regu_variable_node;
 struct val_descr;
 typedef struct val_descr VAL_DESCR;
 struct val_list_node;

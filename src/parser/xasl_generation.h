@@ -35,7 +35,7 @@
 #include "object_domain.h"
 #include "optimizer.h"
 #include "parser.h"
-#include "regu_var.h"
+#include "regu_var.hpp"
 #include "xasl.h"
 
 // forward definitions
