@@ -200,7 +200,7 @@ static PT_NODE *pt_check_single_valued_node (PARSER_CONTEXT * parser, PT_NODE * 
 static PT_NODE *pt_check_single_valued_node_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 						  int *continue_walk);
 static void pt_check_into_clause (PARSER_CONTEXT * parser, PT_NODE * qry);
-static int normalize_path (PARSER_CONTEXT * parser, char *&c);
+static int normalize_path (PARSER_CONTEXT * parser, REFPTR (char, c));
 static int pt_check_json_table_node (PARSER_CONTEXT * pareser, PT_NODE * node);
 static PT_NODE *pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_gen_isnull_preds (PARSER_CONTEXT * parser, PT_NODE * pred, PT_CHAIN_INFO * chain);
@@ -9312,7 +9312,7 @@ pt_check_into_clause (PARSER_CONTEXT * parser, PT_NODE * qry)
 }
 
 static int
-normalize_path (PARSER_CONTEXT * parser, char *&c)
+normalize_path (PARSER_CONTEXT * parser, REFPTR (char, c))
 {
   std::string normalized_path;
 

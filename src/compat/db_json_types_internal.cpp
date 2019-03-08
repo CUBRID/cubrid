@@ -1,102 +1,27 @@
+/*
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
+ *
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *
+ */
+
 #include "db_json_types_internal.hpp"
 
 bool JSON_DOC::IsLeaf ()
 {
   return !IsArray () && !IsObject ();
-}
-
-JSON_WALKER::JSON_WALKER ()
-  : m_stop (false)
-  , m_skip (false)
-{
-
-}
-
-int
-JSON_WALKER::WalkDocument (JSON_DOC &document)
-{
-  return WalkValue (db_json_doc_to_value (document));
-}
-
-int
-JSON_WALKER::WalkValue (JSON_VALUE &value)
-{
-  int error_code = NO_ERROR;
-
-  if (m_stop)
-    {
-      return NO_ERROR;
-    }
-  error_code = CallBefore (value);
-  if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return error_code;
-    }
-  if (m_stop)
-    {
-      return NO_ERROR;
-    }
-
-  if (value.IsObject ())
-    {
-      for (auto it = value.MemberBegin (); it != value.MemberEnd (); ++it)
-	{
-	  CallOnKeyIterate (it->name);
-	  if (m_stop)
-	    {
-	      return NO_ERROR;
-	    }
-	  if (m_skip)
-	    {
-	      continue;
-	    }
-	  error_code = WalkValue (it->value);
-	  if (error_code != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	      return error_code;
-	    }
-	  if (m_stop)
-	    {
-	      return NO_ERROR;
-	    }
-	}
-    }
-  else if (value.IsArray ())
-    {
-      for (JSON_VALUE *it = value.Begin (); it != value.End (); ++it)
-	{
-	  CallOnArrayIterate ();
-	  if (m_stop)
-	    {
-	      return NO_ERROR;
-	    }
-	  if (m_skip)
-	    {
-	      continue;
-	    }
-	  error_code = WalkValue (*it);
-	  if (error_code != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	      return error_code;
-	    }
-	  if (m_stop)
-	    {
-	      return NO_ERROR;
-	    }
-	}
-    }
-
-  error_code = CallAfter (value);
-  if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return error_code;
-    }
-
-  return NO_ERROR;
 }
 
 DB_JSON_TYPE

@@ -24,8 +24,9 @@
 #ifndef _DB_JSON_PATH_HPP_
 #define _DB_JSON_PATH_HPP_
 
+#include "db_json_allocator.hpp"
+
 #include "db_json_types_internal.hpp"
-#include "db_json.hpp"
 
 #include <string>
 
@@ -40,29 +41,17 @@ struct PATH_TOKEN
     array_index,
     // token type used to signify json_pointers' '-' special token
     array_end_index
-  } type;
+  };
 
-  union token_representation
-  {
-    token_representation ();
-
-    token_representation (rapidjson::SizeType array_idx);
-
-    token_representation (std::string &&s);
-
-    ~token_representation ();
-
-    std::string object_key;
-    rapidjson::SizeType array_idx;
-  } repr;
+  token_type m_type;
+  std::string m_object_key;
+  rapidjson::SizeType m_array_idx;
 
   PATH_TOKEN ();
 
   PATH_TOKEN (token_type type, rapidjson::SizeType array_idx);
 
   PATH_TOKEN (token_type type, std::string &&s);
-
-  PATH_TOKEN (const PATH_TOKEN &other);
 
   const std::string &get_object_key () const;
 
@@ -75,9 +64,6 @@ struct PATH_TOKEN
 
 class JSON_PATH
 {
-  private:
-    using token_containter_type = std::vector<PATH_TOKEN>;
-
   public:
     enum MATCH_RESULT
     {
@@ -94,7 +80,7 @@ class JSON_PATH
 
     void set (JSON_DOC &jd, const JSON_VALUE &jv) const;
 
-    void set (JSON_DOC &jd, const JSON_VALUE &jv, JSON_PRIVATE_MEMPOOL &allocator) const;
+    void set (JSON_VALUE &jd, const JSON_VALUE &jv, JSON_PRIVATE_MEMPOOL &allocator) const;
 
     bool erase (JSON_DOC &jd) const;
 
@@ -116,10 +102,6 @@ class JSON_PATH
 
     int init (const char *path);
 
-    bool validate_and_create_from_json_path (std::string &sql_path);
-
-    explicit JSON_PATH ();
-
     void push_array_index (unsigned idx);
 
     void push_array_index_wildcard ();
@@ -137,13 +119,16 @@ class JSON_PATH
     static MATCH_RESULT match_pattern (const JSON_PATH &pattern, const JSON_PATH &path);
 
   private:
+    using token_containter_type = std::vector<PATH_TOKEN>;
+
     int from_json_pointer (const std::string &pointer_path);
 
-    token_containter_type m_path_tokens;
+    bool validate_and_create_from_json_path (std::string &sql_path);
 
     static MATCH_RESULT match_pattern (const JSON_PATH &pattern, const token_containter_type::const_iterator &it1,
-				       const JSON_PATH &path,
-				       const token_containter_type::const_iterator &it2);
+				       const JSON_PATH &path, const token_containter_type::const_iterator &it2);
+
+    token_containter_type m_path_tokens;
 };
 
 void db_json_path_unquote_object_keys (std::string &sql_path);

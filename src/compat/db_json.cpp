@@ -54,16 +54,21 @@
  * because we used doc's allocator when calling SetString.
  */
 
-#include "db_json_types_internal.hpp"
-#include "db_json_path.hpp"
 #include "db_json.hpp"
+#include "db_json_path.hpp"
+#include "db_json_types_internal.hpp"
 #include "dbtype.h"
 #include "memory_alloc.h"
 #include "memory_private_allocator.hpp"
-#include "string_opfunc.h"
 #include "object_primitive.h"
 #include "query_dump.h"
+#include "string_opfunc.h"
 #include "system_parameter.h"
+
+#include "rapidjson/error/en.h"
+#include "rapidjson/schema.h"
+#include "rapidjson/stringbuffer.h"
+#include "rapidjson/writer.h"
 
 #include <sstream>
 #include <algorithm>
@@ -81,6 +86,10 @@ struct JSON_RAW_STRING_DELETER
   }
 };
 #endif // TODO_OPTIMIZE_JSON_BODY_STRING
+
+typedef rapidjson::GenericStringBuffer<JSON_ENCODING, JSON_PRIVATE_ALLOCATOR> JSON_STRING_BUFFER;
+typedef rapidjson::GenericMemberIterator<true, JSON_ENCODING, JSON_PRIVATE_MEMPOOL>::Iterator JSON_MEMBER_ITERATOR;
+typedef rapidjson::GenericArray<true, JSON_VALUE>::ConstValueIterator JSON_VALUE_ITERATOR;
 
 typedef std::function<int (const JSON_VALUE &, const JSON_PATH &, bool &)> map_func_type;
 
@@ -357,6 +366,57 @@ class JSON_BASE_HANDLER
     {
       return true;
     }
+};
+
+// JSON WALKER
+//
+// Unlike handler, the walker can call two functions before and after walking/advancing in the JSON "tree".
+// JSON Objects and JSON Arrays are considered tree children.
+//
+// How to use: extend this walker by implementing CallBefore and/or CallAfter functions. By default, they are empty
+//
+class JSON_WALKER
+{
+  public:
+    int WalkDocument (JSON_DOC &document);
+
+  protected:
+    // we should not instantiate this class, but extend it
+    virtual ~JSON_WALKER () = default;
+
+    virtual int
+    CallBefore (JSON_VALUE &value)
+    {
+      // do nothing
+      return NO_ERROR;
+    }
+
+    virtual int
+    CallAfter (JSON_VALUE &value)
+    {
+      // do nothing
+      return NO_ERROR;
+    }
+
+    virtual int
+    CallOnArrayIterate ()
+    {
+      // do nothing
+      return NO_ERROR;
+    }
+
+    virtual int
+    CallOnKeyIterate (JSON_VALUE &key)
+    {
+      // do nothing
+      return NO_ERROR;
+    }
+
+  private:
+    int WalkValue (JSON_VALUE &value);
+
+  protected:
+    bool m_stop;
 };
 
 /*
@@ -1814,15 +1874,15 @@ db_json_remove_func (JSON_DOC &doc, const char *raw_path)
  * pattern (in)            : pattern to match against
  * esc_char (in)           : escape sequence used to match the pattern
  * paths (out)             : full paths found
- * regs (in)               : compiled regexes
+ * patterns (in)           : patterns we match against
  * find_all (in)           : whether we need to gather all matches
  */
 int
 db_json_search_func (JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALUE *esc_char, std::vector<std::string> &paths,
-		     const std::vector<std::string> &starting_paths, bool find_all)
+		     const std::vector<std::string> &patterns, bool find_all)
 {
   std::vector<JSON_PATH> json_paths;
-  for (const auto &path : starting_paths)
+  for (const auto &path : patterns)
     {
       json_paths.emplace_back ();
       int error_code = json_paths.back ().init (path.c_str ());
@@ -1873,7 +1933,6 @@ db_json_search_func (JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALUE *esc
       }
 
     return NO_ERROR;
-    // no regex was matched
   };
 
   JSON_PATH_MAPPER json_search_walker (f_search);
@@ -3084,6 +3143,86 @@ db_json_value_wrap_as_array (JSON_VALUE &value, JSON_PRIVATE_MEMPOOL &allocator)
   swap_value.SetArray ();
   swap_value.PushBack (value, allocator);
   swap_value.Swap (value);
+}
+
+int
+JSON_WALKER::WalkDocument (JSON_DOC &document)
+{
+  m_stop = false;
+  return WalkValue (db_json_doc_to_value (document));
+}
+
+int
+JSON_WALKER::WalkValue (JSON_VALUE &value)
+{
+  int error_code = NO_ERROR;
+
+  if (m_stop)
+    {
+      return NO_ERROR;
+    }
+  error_code = CallBefore (value);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+  if (m_stop)
+    {
+      return NO_ERROR;
+    }
+
+  if (value.IsObject ())
+    {
+      for (auto it = value.MemberBegin (); it != value.MemberEnd (); ++it)
+	{
+	  CallOnKeyIterate (it->name);
+	  if (m_stop)
+	    {
+	      return NO_ERROR;
+	    }
+	  error_code = WalkValue (it->value);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return error_code;
+	    }
+	  if (m_stop)
+	    {
+	      return NO_ERROR;
+	    }
+	}
+    }
+  else if (value.IsArray ())
+    {
+      for (JSON_VALUE *it = value.Begin (); it != value.End (); ++it)
+	{
+	  CallOnArrayIterate ();
+	  if (m_stop)
+	    {
+	      return NO_ERROR;
+	    }
+	  error_code = WalkValue (*it);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return error_code;
+	    }
+	  if (m_stop)
+	    {
+	      return NO_ERROR;
+	    }
+	}
+    }
+
+  error_code = CallAfter (value);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  return NO_ERROR;
 }
 
 bool
