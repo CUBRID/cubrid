@@ -59,6 +59,7 @@
 #endif /* SERVER_MODE */
 #include "log_compress.h"
 #include "partition_sr.h"
+#include "log_system_tran.hpp"
 #include "log_writer.h"
 #include "filter_pred_cache.h"
 #include "heap_file.h"
@@ -75,6 +76,7 @@
 #include "string_buffer.hpp"
 #include "boot_sr.h"
 #include "thread_daemon.hpp"
+#include "thread_entry.hpp"
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
 #include "xasl_cache.h"
@@ -1718,6 +1720,9 @@ log_final (THREAD_ENTRY * thread_p)
 #if defined(SERVER_MODE)
   log_daemons_destroy ();
 #endif /* SERVER_MODE */
+  // *INDENT-OFF*
+  log_system_tdes::destroy_system_transactions ();
+  // *INDENT-ON*
 
   LOG_CS_ENTER (thread_p);
 
@@ -2104,18 +2109,7 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_
 
   /* Find transaction descriptor for current logging transaction */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-
-  if (VACUUM_IS_THREAD_VACUUM (thread_p) && vacuum_worker_state_is_topop (thread_p))
-    {
-      /* Vacuum worker has started system operations and all logging should use its reserved transaction descriptor
-       * instead of system tdes. */
-      tdes = vacuum_get_worker_tdes (thread_p);
-    }
-  else
-    {
-      /* Find tdes from transaction table. */
-      tdes = LOG_FIND_TDES (tran_index);
-    }
+  tdes = LOG_FIND_TDES (tran_index);
   if (tdes == NULL)
     {
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
@@ -2173,16 +2167,18 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_
       pgbuf_notify_vacuum_follows (thread_p, addr->pgptr);
     }
 
-  if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p) && log_does_allow_replication () == true)
+  if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
     {
       if (rcvindex == RVHF_UPDATE || rcvindex == RVOVF_CHANGE_LINK || rcvindex == RVHF_UPDATE_NOTIFY_VACUUM
 	  || rcvindex == RVHF_INSERT_NEWHOME)
 	{
 	  LSA_COPY (&tdes->repl_update_lsa, &tdes->tail_lsa);
+	  assert (tdes->is_active_worker_transaction ());
 	}
       else if (rcvindex == RVHF_INSERT || rcvindex == RVHF_MVCC_INSERT)
 	{
 	  LSA_COPY (&tdes->repl_insert_lsa, &tdes->tail_lsa);
+	  assert (tdes->is_active_worker_transaction ());
 	}
     }
 }
@@ -2230,17 +2226,7 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
 
   /* Find transaction descriptor for current logging transaction */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  if (VACUUM_IS_THREAD_VACUUM (thread_p) && vacuum_worker_state_is_topop (thread_p))
-    {
-      /* Vacuum worker has started system operations and all logging should use its reserved transaction descriptor
-       * instead of system tdes. */
-      tdes = vacuum_get_worker_tdes (thread_p);
-    }
-  else
-    {
-      /* Find tdes in transaction table. */
-      tdes = LOG_FIND_TDES (tran_index);
-    }
+  tdes = LOG_FIND_TDES (tran_index);
   if (tdes == NULL)
     {
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
@@ -2368,17 +2354,7 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
 
   /* Find transaction descriptor for current logging transaction */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  if (VACUUM_IS_THREAD_VACUUM (thread_p) && vacuum_worker_state_is_topop (thread_p))
-    {
-      /* Vacuum worker has started system operations and all logging should use its reserved transaction descriptor
-       * instead of system tdes. */
-      tdes = vacuum_get_worker_tdes (thread_p);
-    }
-  else
-    {
-      /* Find tdes in transaction table. */
-      tdes = LOG_FIND_TDES (tran_index);
-    }
+  tdes = LOG_FIND_TDES (tran_index);
   if (tdes == NULL)
     {
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
@@ -2428,15 +2404,17 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
 	}
     }
 
-  if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p) && log_does_allow_replication () == true)
+  if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
     {
       if (rcvindex == RVHF_UPDATE || rcvindex == RVOVF_CHANGE_LINK || rcvindex == RVHF_UPDATE_NOTIFY_VACUUM)
 	{
 	  LSA_COPY (&tdes->repl_update_lsa, &tdes->tail_lsa);
+	  assert (tdes->is_active_worker_transaction ());
 	}
       else if (rcvindex == RVHF_INSERT || rcvindex == RVHF_MVCC_INSERT)
 	{
 	  LSA_COPY (&tdes->repl_insert_lsa, &tdes->tail_lsa);
+	  assert (tdes->is_active_worker_transaction ());
 	}
     }
 }
@@ -2670,9 +2648,6 @@ log_append_dboutside_redo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, int l
       return;
     }
 
-  /* Vacuum workers are not allowed to use this type of log records. */
-  assert (!VACUUM_IS_THREAD_VACUUM_WORKER (thread_p));
-
   /* Find transaction descriptor for current logging transaction */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
@@ -2772,21 +2747,7 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
 
   /* Find transaction descriptor for current logging transaction */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-
-  if (VACUUM_IS_THREAD_VACUUM (thread_p))
-    {
-      /* Vacuum worker */
-      /* Must be under a system operation, otherwise postpone records will not work. */
-      assert (vacuum_worker_state_is_topop (thread_p));
-      /* Use reserved transaction descriptor instead of system tdes. */
-      tdes = vacuum_get_worker_tdes (thread_p);
-    }
-  else
-    {
-      /* Find tdes in transaction table. */
-      tdes = LOG_FIND_TDES (tran_index);
-    }
-
+  tdes = LOG_FIND_TDES (tran_index);
   if (tdes == NULL)
     {
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
@@ -2838,6 +2799,7 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
       /* Cache postpone log record. Redo data must be saved before calling prior_lsa_next_record, which may free this
        * prior node. */
       vacuum_cache_log_postpone_redo_data (thread_p, node->data_header, node->rdata, node->rlength);
+      // todo - extend to all transactions
     }
 
   start_lsa = prior_lsa_next_record (thread_p, node, tdes);
@@ -2846,6 +2808,7 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
       /* Cache postpone log record. An entry for this postpone log record was already created and we also need to save
        * its LSA. */
       vacuum_cache_log_postpone_lsa (thread_p, &start_lsa);
+      // todo - extend to all transactions
     }
 
   /* Set address early in case there is a crash, because of skip_head */
@@ -2906,19 +2869,7 @@ log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DAT
 
   /* Find transaction descriptor for current logging transaction */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  if (VACUUM_IS_THREAD_VACUUM (thread_p))
-    {
-      /* Vacuum worker */
-      /* Must be at the end of a system operation or during recovery. */
-      assert (vacuum_worker_state_is_topop (thread_p) || vacuum_worker_state_is_recovery (thread_p));
-      /* Use reserved transaction descriptor instead of system tdes. */
-      tdes = vacuum_get_worker_tdes (thread_p);
-    }
-  else
-    {
-      /* Find tdes in transaction table. */
-      tdes = LOG_FIND_TDES (tran_index);
-    }
+  tdes = LOG_FIND_TDES (tran_index);
   if (tdes == NULL)
     {
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
@@ -3137,19 +3088,7 @@ log_append_empty_record (THREAD_ENTRY * thread_p, LOG_RECTYPE logrec_type, LOG_D
   LOG_PRIOR_NODE *node;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  if (VACUUM_IS_THREAD_VACUUM (thread_p))
-    {
-      /* Vacuum worker */
-      /* Must be under a system operation, otherwise postpone records will not work. */
-      assert (vacuum_worker_state_is_topop (thread_p));
-      /* Use reserved transaction descriptor instead of system tdes. */
-      tdes = vacuum_get_worker_tdes (thread_p);
-    }
-  else
-    {
-      /* Find tdes in transaction table. */
-      tdes = LOG_FIND_TDES (tran_index);
-    }
+  tdes = LOG_FIND_TDES (tran_index);
   if (tdes == NULL)
     {
       assert (false);
@@ -3188,15 +3127,13 @@ log_append_ha_server_state (THREAD_ENTRY * thread_p, int state)
   LOG_PRIOR_NODE *node;
   LOG_LSA start_lsa;
 
-  /* Vacuum workers are not allowed to use this type of log records. */
-  assert (!VACUUM_IS_THREAD_VACUUM (thread_p));
-
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
   if (tdes == NULL)
     {
       return;
     }
+  assert (tdes->is_active_worker_transaction () || tdes->is_system_main_transaction ());
 
   node = prior_lsa_alloc_and_copy_data (thread_p, LOG_DUMMY_HA_SERVER_STATE, RV_NOT_DEFINED, NULL, 0, NULL, 0, NULL);
   if (node == NULL)
@@ -3383,9 +3320,6 @@ log_append_savepoint (THREAD_ENTRY * thread_p, const char *savept_name)
 
   /* Find transaction descriptor for current logging transaction */
 
-  /* Vacuum workers cannot use save points. */
-  assert (!VACUUM_IS_THREAD_VACUUM (thread_p));
-
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
   if (tdes == NULL)
@@ -3394,6 +3328,7 @@ log_append_savepoint (THREAD_ENTRY * thread_p, const char *savept_name)
       error_code = ER_LOG_UNKNOWN_TRANINDEX;
       return NULL;
     }
+  assert (tdes->is_active_worker_transaction ());
 
   if (!LOG_ISTRAN_ACTIVE (tdes))
     {
@@ -3612,62 +3547,23 @@ log_sysop_start (THREAD_ENTRY * thread_p)
 {
   LOG_TDES *tdes = NULL;
   int tran_index;
-  int r = NO_ERROR;
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  if (VACUUM_IS_THREAD_VACUUM (thread_p))
+  tdes = LOG_FIND_TDES (tran_index);
+  if (tdes == NULL)
     {
-      /* System operations must be isolated and allow undo. It is impossible to use system tdes for more than one
-       * thread, so vacuum workers use a reserved tdes instead. */
-      tdes = vacuum_get_worker_tdes (thread_p);
-
-      /* Vacuum worker state should be either VACUUM_WORKER_STATE_EXECUTE or VACUUM_WORKER_STATE_TOPOP (or
-       * VACUUM_WORKER_STATE_RECOVERY during database recovery phase). */
-      assert (vacuum_worker_state_is_execute (thread_p) || vacuum_worker_state_is_topop (thread_p)
-	      || vacuum_worker_state_is_recovery (thread_p));
-
-      vacuum_er_log (VACUUM_ER_LOG_TOPOPS | VACUUM_ER_LOG_WORKER,
-		     "Start system operation. Current worker tdes: tdes->trid=%d, tdes->topops.last=%d, "
-		     "tdes->tail_lsa=(%lld, %d). Worker state=%d.", tdes->trid, tdes->topops.last,
-		     (long long int) tdes->tail_lsa.pageid, (int) tdes->tail_lsa.offset,
-		     vacuum_get_worker_state (thread_p));
-
-      /* Change worker state to VACUUM_WORKER_STATE_TOPOP */
-      vacuum_set_worker_state (thread_p, VACUUM_WORKER_STATE_TOPOP);
-
-      if (tdes->topops.last < 0)
-	{
-	  assert (tdes->topops.last == -1);
-
-	  /* Vacuum workers/master don't have a parent transaction that is committed. Different system operations that
-	   * are not  nested shouldn't be linked between them. Otherwise, undo recovery, in the attempt to find log
-	   * records to undo will process all system operations until the first one. Since vacuum workers.master never
-	   * rollback, once the last system operation is ended, we can reset all modified LSA's. This way, different
-	   * system operations will not be linked between them. */
-	  LSA_SET_NULL (&tdes->head_lsa);
-	  LSA_SET_NULL (&tdes->tail_lsa);
-	  LSA_SET_NULL (&tdes->undo_nxlsa);
-	  LSA_SET_NULL (&tdes->tail_topresult_lsa);
-	  LSA_SET_NULL (&tdes->rcv.tran_start_postpone_lsa);
-	  LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
-	}
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
+      return;
     }
-  else
-    {
-      /* Active transaction */
-      tdes = LOG_FIND_TDES (tran_index);
-      if (tdes == NULL)
-	{
-	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
-	  return;
-	}
 
-      if (LOG_ISRESTARTED ())
-	{
-	  r = rmutex_lock (thread_p, &tdes->rmutex_topop);
-	  assert (r == NO_ERROR);
-	}
-    }
+  assert (tdes->is_allowed_sysop ());
+
+  tdes->lock_topop ();
 
   /* Can current tdes.topops stack handle another system operation? */
   if (tdes->topops.max == 0 || (tdes->topops.last + 1) >= tdes->topops.max)
@@ -3675,24 +3571,25 @@ log_sysop_start (THREAD_ENTRY * thread_p)
       if (logtb_realloc_topops_stack (tdes, 1) == NULL)
 	{
 	  /* Out of memory */
-	  if (LOG_ISRESTARTED () && !VACUUM_IS_THREAD_VACUUM (thread_p))
-	    {
-	      r = rmutex_unlock (thread_p, &tdes->rmutex_topop);
-	      assert (r == NO_ERROR);
-	    }
-	  if (VACUUM_IS_THREAD_VACUUM (thread_p))
-	    {
-	      /* Restore state */
-	      if (tdes->topops.last < 0)
-		{
-		  vacuum_set_worker_state (thread_p, VACUUM_WORKER_STATE_EXECUTE);
-		}
-	      /* Else */
-	      /* Leave state as VACUUM_WORKER_STATE_TOPOP */
-	    }
+	  assert (false);
+	  tdes->unlock_topop ();
 	  return;
 	}
     }
+
+  if (VACUUM_IS_THREAD_VACUUM (thread_p))
+    {
+      /* should not be in process log */
+      assert (vacuum_worker_state_is_execute (thread_p));
+
+      vacuum_er_log (VACUUM_ER_LOG_TOPOPS | VACUUM_ER_LOG_WORKER,
+		     "Start system operation. Current worker tdes: tdes->trid=%d, tdes->topops.last=%d, "
+		     "tdes->tail_lsa=(%lld, %d). Worker state=%d.", tdes->trid, tdes->topops.last,
+		     (long long int) tdes->tail_lsa.pageid, (int) tdes->tail_lsa.offset,
+		     vacuum_get_worker_state (thread_p));
+    }
+
+  tdes->on_sysop_start ();
 
   /* NOTE if tdes->topops.last >= 0, there is an already defined top system operation. */
   tdes->topops.last++;
@@ -3820,50 +3717,24 @@ log_sysop_end_final (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 
   log_sysop_end_unstack (thread_p, tdes);
 
-  if (LOG_ISRESTARTED () && !VACUUM_IS_THREAD_VACUUM (thread_p))
-    {
-      r = rmutex_unlock (thread_p, &tdes->rmutex_topop);
-      assert (r == NO_ERROR);
-    }
+  tdes->unlock_topop ();
 
   perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_END_TOPOPS);
 
-  if (VACUUM_IS_THREAD_VACUUM (thread_p))
+  if (VACUUM_IS_THREAD_VACUUM (thread_p) && tdes->topops.last < 0)
     {
-      if (tdes->topops.last < 0)
-	{
-	  if (LOG_ISRESTARTED ())
-	    {
-	      /* Change the worker state back to VACUUM_WORKER_STATE_EXECUTE. */
-	      vacuum_set_worker_state (thread_p, VACUUM_WORKER_STATE_EXECUTE);
-	    }
-	  else
-	    {
-	      /* Change the worker state back to VACUUM_WORKER_STATE_RECOVERY. */
-	      vacuum_set_worker_state (thread_p, VACUUM_WORKER_STATE_RECOVERY);
-	    }
-
-	  vacuum_er_log (VACUUM_ER_LOG_TOPOPS,
-			 "Ended all top operations. Tdes: tdes->trid=%d tdes->head_lsa=(%lld, %d), "
-			 "tdes->tail_lsa=(%lld, %d), tdes->undo_nxlsa=(%lld, %d), "
-			 "tdes->tail_topresult_lsa=(%lld, %d). Worker state=%d.", tdes->trid,
-			 (long long int) tdes->head_lsa.pageid, (int) tdes->head_lsa.offset,
-			 (long long int) tdes->tail_lsa.pageid, (int) tdes->tail_lsa.offset,
-			 (long long int) tdes->undo_nxlsa.pageid, (int) tdes->undo_nxlsa.offset,
-			 (long long int) tdes->tail_topresult_lsa.pageid, (int) tdes->tail_topresult_lsa.offset,
-			 vacuum_get_worker_state (thread_p));
-
-	  /* Vacuum workers/master don't have a parent transaction that is committed. Different system operations that
-	   * are not nested shouldn't be linked between them. Otherwise, undo recovery, in the attempt to find log
-	   * records to undo will process all system operations until the first one. Since vacuum workers/master never
-	   * rollback, once the last system operation is ended, we can reset all modified LSA's. This way, different
-	   * system operations will not be linked between them. */
-	  LSA_SET_NULL (&tdes->head_lsa);
-	  LSA_SET_NULL (&tdes->tail_lsa);
-	  LSA_SET_NULL (&tdes->undo_nxlsa);
-	  LSA_SET_NULL (&tdes->tail_topresult_lsa);
-	}
+      assert (vacuum_worker_state_is_execute (thread_p));
+      vacuum_er_log (VACUUM_ER_LOG_TOPOPS,
+		     "Ended all top operations. Tdes: tdes->trid=%d tdes->head_lsa=(%lld, %d), "
+		     "tdes->tail_lsa=(%lld, %d), tdes->undo_nxlsa=(%lld, %d), "
+		     "tdes->tail_topresult_lsa=(%lld, %d). Worker state=%d.", tdes->trid,
+		     (long long int) tdes->head_lsa.pageid, (int) tdes->head_lsa.offset,
+		     (long long int) tdes->tail_lsa.pageid, (int) tdes->tail_lsa.offset,
+		     (long long int) tdes->undo_nxlsa.pageid, (int) tdes->undo_nxlsa.offset,
+		     (long long int) tdes->tail_topresult_lsa.pageid, (int) tdes->tail_topresult_lsa.offset,
+		     vacuum_get_worker_state (thread_p));
     }
+  tdes->on_sysop_end ();
 
   log_sysop_end_random_exit (thread_p);
 
@@ -3949,7 +3820,7 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
 		  && (tdes->state != TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE || is_rv_finish_postpone));
 	}
 
-      if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p)
+      if (!LOG_CHECK_LOG_APPLIER (thread_p) && tdes->is_active_worker_transaction ()
 	  && log_does_allow_replication () == true)
 	{
 	  /* for the replication agent guarantee the order of transaction */
@@ -4122,7 +3993,7 @@ log_sysop_abort (THREAD_ENTRY * thread_p)
     {
       TRAN_STATE save_state;
 
-      if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p)
+      if (!LOG_CHECK_LOG_APPLIER (thread_p) && tdes->is_active_worker_transaction ()
 	  && log_does_allow_replication () == true)
 	{
 	  repl_log_abort_after_lsa (tdes, LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes));
@@ -4173,7 +4044,7 @@ log_sysop_attach_to_outer (THREAD_ENTRY * thread_p)
     }
 
   /* Is attach to outer allowed? */
-  if (tdes->topops.last == 0 && (!LOG_ISTRAN_ACTIVE (tdes) || VACUUM_IS_THREAD_VACUUM (thread_p)))
+  if (tdes->topops.last == 0 && (!LOG_ISTRAN_ACTIVE (tdes) || tdes->is_system_transaction ()))
     {
       /* Nothing to attach to. Be conservative and commit the transaction. */
       assert_release (false);
@@ -4235,17 +4106,7 @@ STATIC_INLINE void
 log_sysop_get_tran_index_and_tdes (THREAD_ENTRY * thread_p, int *tran_index_out, LOG_TDES ** tdes_out)
 {
   *tran_index_out = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-
-  if (VACUUM_IS_THREAD_VACUUM (thread_p))
-    {
-      assert (vacuum_worker_state_is_topop (thread_p) || vacuum_worker_state_is_recovery (thread_p));
-      *tdes_out = vacuum_get_worker_tdes (thread_p);
-    }
-  else
-    {
-      *tdes_out = LOG_FIND_TDES (*tran_index_out);
-    }
-
+  *tdes_out = LOG_FIND_TDES (*tran_index_out);
   if (*tdes_out == NULL)
     {
       assert_release (false);
@@ -4266,16 +4127,7 @@ log_check_system_op_is_started (THREAD_ENTRY * thread_p)
   int tran_index;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  if (VACUUM_IS_THREAD_VACUUM (thread_p))
-    {
-      assert (vacuum_worker_state_is_topop (thread_p) || vacuum_worker_state_is_recovery (thread_p));
-      tdes = vacuum_get_worker_tdes (thread_p);
-    }
-  else
-    {
-      tdes = LOG_FIND_TDES (tran_index);
-    }
-
+  tdes = LOG_FIND_TDES (tran_index);
   if (tdes == NULL)
     {
       assert_release (false);
@@ -4387,9 +4239,10 @@ log_can_skip_undo_logging (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const
       return false;
     }
 
-  if (vacuum_is_skip_undo_allowed (thread_p))
+  if (tdes->is_system_worker_transaction () && !tdes->is_under_sysop ())
     {
       /* If vacuum worker has not started a system operation, it can skip using undo logging. */
+      // note - maybe it is better to add an assert (false)?
       return true;
     }
 
@@ -5561,7 +5414,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	   * is resumed by this committing transaction(T1) commits and a crash happens before T1 completes, transaction
 	   * consistencies will be broken because T1 will be aborted during restart recovery and T2 was already
 	   * committed. */
-	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p)
+	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && tdes->is_active_worker_transaction ()
 	      && log_does_allow_replication () == true)
 	    {
 	      /* for the replication agent guarantee the order of transaction */
@@ -5708,8 +5561,6 @@ log_commit (THREAD_ENTRY * thread_p, int tran_index, bool retain_lock)
   LOG_2PC_EXECUTE execute_2pc_type;
   int error_code = NO_ERROR;
 
-  assert (!VACUUM_IS_THREAD_VACUUM (thread_p));
-
   if (tran_index == NULL_TRAN_INDEX)
     {
       tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -5722,6 +5573,7 @@ log_commit (THREAD_ENTRY * thread_p, int tran_index, bool retain_lock)
       error_code = ER_LOG_UNKNOWN_TRANINDEX;
       return TRAN_UNACTIVE_UNKNOWN;
     }
+  assert (!tdes->is_system_worker_transaction ());
 
   if (!LOG_ISTRAN_ACTIVE (tdes) && !LOG_ISTRAN_2PC_PREPARE (tdes) && LOG_ISRESTARTED ())
     {
@@ -5826,8 +5678,6 @@ log_abort (THREAD_ENTRY * thread_p, int tran_index)
   bool decision;
   int error_code = NO_ERROR;
 
-  assert (!VACUUM_IS_THREAD_VACUUM (thread_p));
-
   if (tran_index == NULL_TRAN_INDEX)
     {
       tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -5840,6 +5690,7 @@ log_abort (THREAD_ENTRY * thread_p, int tran_index)
       error_code = ER_LOG_UNKNOWN_TRANINDEX;
       return TRAN_UNACTIVE_UNKNOWN;
     }
+  assert (!tdes->is_system_worker_transaction ());
 
   if (LOG_HAS_LOGGING_BEEN_IGNORED ())
     {
@@ -6027,7 +5878,7 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
   TRAN_STATE state;		/* State of transaction */
 
   assert (iscommitted == LOG_COMMIT || iscommitted == LOG_ABORT);
-  assert (!VACUUM_IS_THREAD_VACUUM (thread_p));
+  assert (!tdes->is_system_worker_transaction ());
 
   state = tdes->state;
 
@@ -6146,6 +5997,7 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
   int wait_msecs;
 
   assert (iscommitted == LOG_COMMIT || iscommitted == LOG_ABORT);
+  assert (!tdes->is_system_worker_transaction ());
 
   state = tdes->state;
 
@@ -6350,8 +6202,7 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
 	   * is resumed by this committing transaction(T1) commits and a crash happens before T1 completes, transaction
 	   * * consistencies will be broken because T1 will be aborted during restart recovery and T2 was already
 	   * committed. */
-	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p)
-	      && log_does_allow_replication () == true)
+	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
 	    {
 	      log_append_repl_info_and_commit_log (thread_p, tdes, &commit_lsa);
 	    }
@@ -8547,6 +8398,7 @@ log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_E
       && vacuum_do_postpone_from_cache (thread_p, LOG_TDES_LAST_SYSOP_POSP_LSA (tdes)))
     {
       /* Do postpone was run from cached postpone entries. */
+      // todo - extend optimization for all transactions
       tdes->state = save_state;
       return;
     }

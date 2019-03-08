@@ -46,8 +46,8 @@
 #include "system_parameter.h"
 #include "environment_variable.h"
 #include "boot_cl.h"
-#include "xasl_support.h"
 #include "query_method.h"
+#include "method_def.hpp"
 #include "release_string.h"
 #include "log_comm.h"
 #include "file_io.h"
@@ -1851,8 +1851,8 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 			error =
 			  method_invoke_for_server (rc, net_Server_host, net_Server_name, method_call_list_id,
 						    method_call_sig_list);
-			regu_free_listid (method_call_list_id);
-			regu_free_method_sig_list (method_call_sig_list);
+			cursor_free_self_list_id (method_call_list_id);
+			method_sig_list_freemem (method_call_sig_list);
 			if (error != NO_ERROR)
 			  {
 			    assert (er_errid () != NO_ERROR);

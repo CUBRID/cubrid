@@ -928,6 +928,7 @@ extern int logtb_collect_local_clients (int **local_client_pids);
 #define LOG_2PC_DONT_OBTAIN_LOCKS false
 
 #if defined(SERVER_MODE)
+// todo - separate the client & server/sa_mode transaction index
 #if !defined(LOG_FIND_THREAD_TRAN_INDEX)
 #define LOG_FIND_THREAD_TRAN_INDEX(thrd) \
   ((thrd) ? (thrd)->tran_index : logtb_get_current_tran_index ())
@@ -942,16 +943,9 @@ extern int logtb_collect_local_clients (int **local_client_pids);
   log_Tran_index = (index)
 #endif /* SERVER_MODE */
 
-#define LOG_FIND_TDES(tran_index) \
-  (((tran_index) >= 0 && (tran_index) < log_Gl.trantable.num_total_indices) \
-   ? log_Gl.trantable.all_tdes[(tran_index)] : NULL)
-
 #define LOG_FIND_TRAN_LOWEST_ACTIVE_MVCCID(tran_index) \
   (((tran_index) >= 0 && (tran_index) < log_Gl.trantable.num_total_indices) \
   ? (log_Gl.mvcc_table.transaction_lowest_active_mvccids + tran_index) : NULL)
-
-#define LOG_FIND_CURRENT_TDES(thrd) \
-  LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX ((thrd)))
 
 #define LOG_ISTRAN_ACTIVE(tdes) \
   ((tdes)->state == TRAN_ACTIVE && LOG_ISRESTARTED ())
@@ -1003,15 +997,8 @@ extern int logtb_collect_local_clients (int **local_client_pids);
  * For this reason, the first VACUUM_MAX_WORKER_COUNT negative TRANID values
  * under NULL_TRANID are reserved for vacuum workers.
  */
-#define LOG_VACUUM_MASTER_TRANID (NULL_TRANID - 1)
-#define LOG_LAST_VACUUM_WORKER_TRANID (LOG_VACUUM_MASTER_TRANID - 1)
-#define LOG_FIRST_VACUUM_WORKER_TRANID (LOG_VACUUM_MASTER_TRANID - VACUUM_MAX_WORKER_COUNT)
-#define LOG_IS_VACUUM_WORKER_TRANID(trid) \
-  (trid <= LOG_LAST_VACUUM_WORKER_TRANID \
-   && trid >= LOG_FIRST_VACUUM_WORKER_TRANID)
-#define LOG_IS_VACUUM_MASTER_TRANID(trid) ((trid) == LOG_VACUUM_MASTER_TRANID)
-#define LOG_IS_VACUUM_THREAD_TRANID(trid) \
-  (LOG_IS_VACUUM_WORKER_TRANID (trid) || LOG_IS_VACUUM_MASTER_TRANID (trid))
+const TRANID LOG_SYSTEM_WORKER_FIRST_TRANID = NULL_TRANID - 1;
+const int LOG_SYSTEM_WORKER_INCR_TRANID = -1;
 
 #define LOG_SET_DATA_ADDR(data_addr, page, vol_file_id, off) \
   do \
@@ -1766,9 +1753,25 @@ struct log_tdes
 
   LOG_RCV_TDES rcv;
 
+  // *INDENT-OFF*
 #if defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))
-    cubreplication::log_generator replication_log_generator;
+  cubreplication::log_generator replication_log_generator;
+
+  bool is_active_worker_transaction () const;
+  bool is_system_transaction () const;
+  bool is_system_main_transaction () const;
+  bool is_system_worker_transaction () const;
+  bool is_allowed_undo () const;
+  bool is_allowed_sysop () const;
+  bool is_under_sysop () const;
+
+  void lock_topop ();
+  void unlock_topop ();
+
+  void on_sysop_start ();
+  void on_sysop_end ();
 #endif
+  // *INDENT-ON*
 };
 
 typedef struct log_addr_tdesarea LOG_ADDR_TDESAREA;
@@ -2099,10 +2102,7 @@ extern char log_Name_removed_archive[];
 #define LOG_THREAD_TRAN_ARGS(thread_p) "(SA_MODE)"
 #else	/* !SA_MODE */	       /* SERVER_MODE */
 #define LOG_THREAD_TRAN_MSG "(thr=%d, trid=%d)"
-#define LOG_THREAD_TRAN_ARGS(thread_p) \
-  thread_get_current_entry_index (), \
-  vacuum_is_thread_vacuum (thread_p) && vacuum_get_vacuum_worker (thread_p) != NULL ? \
-  vacuum_get_worker_tdes (thread_p)->trid : LOG_FIND_CURRENT_TDES (thread_p)->trid
+#define LOG_THREAD_TRAN_ARGS(thread_p) thread_get_current_entry_index (), LOG_FIND_CURRENT_TDES (thread_p)
 #endif /* SERVER_MODE */
 
 extern int logpb_initialize_pool (THREAD_ENTRY * thread_p);
@@ -2287,6 +2287,7 @@ extern void logtb_rv_assign_mvccid_for_undo_recovery (THREAD_ENTRY * thread_p, M
 extern void logtb_release_tran_index (THREAD_ENTRY * thread_p, int tran_index);
 extern void logtb_free_tran_index (THREAD_ENTRY * thread_p, int tran_index);
 extern void logtb_free_tran_index_with_undo_lsa (THREAD_ENTRY * thread_p, const LOG_LSA * undo_lsa);
+extern void logtb_initialize_tdes (LOG_TDES * tdes, int tran_index);
 extern void logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 extern void logtb_finalize_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 extern int logtb_get_new_tran_id (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
@@ -2345,11 +2346,10 @@ extern void logtb_enable_update (THREAD_ENTRY * thread_p);
 extern void logtb_set_to_system_tran_index (THREAD_ENTRY * thread_p);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
-extern int logtb_set_current_tran_index (THREAD_ENTRY * thread_p, int tran_index);
 extern LOG_LSA *logtb_find_largest_lsa (THREAD_ENTRY * thread_p);
 #endif
 extern int logtb_set_num_loose_end_trans (THREAD_ENTRY * thread_p);
-extern LOG_LSA *log_find_unilaterally_largest_undo_lsa (THREAD_ENTRY * thread_p);
+extern void log_find_unilaterally_largest_undo_lsa (THREAD_ENTRY * thread_p, LOG_LSA & max_undo_lsa);
 extern void logtb_find_smallest_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa);
 extern void logtb_find_smallest_and_largest_active_pages (THREAD_ENTRY * thread_p, LOG_PAGEID * smallest,
 							  LOG_PAGEID * largest);
@@ -2395,7 +2395,6 @@ extern void logtb_tran_reset_count_optim_state (THREAD_ENTRY * thread_p);
 extern void logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 extern int logtb_find_log_records_count (int tran_index);
 
-extern void logtb_initialize_vacuum_thread_tdes (LOG_TDES * tdes, TRANID trid);
 extern int logtb_initialize_global_unique_stats_table (THREAD_ENTRY * thread_p);
 extern void logtb_finalize_global_unique_stats_table (THREAD_ENTRY * thread_p);
 extern int logtb_get_global_unique_stats (THREAD_ENTRY * thread_p, BTID * btid, int *num_oids, int *num_nulls,
@@ -2448,6 +2447,44 @@ extern void logtb_wakeup_thread_with_tran_index (int tran_index, thread_resume_s
 extern bool logtb_set_check_interrupt (THREAD_ENTRY * thread_p, bool flag);
 extern bool logtb_get_check_interrupt (THREAD_ENTRY * thread_p);
 extern int logpb_set_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr);
+
+extern LOG_TDES *logtb_get_system_tdes (THREAD_ENTRY * thread_p = NULL);
+
+//////////////////////////////////////////////////////////////////////////
+// inline/template implementation
+//////////////////////////////////////////////////////////////////////////
+
+inline LOG_TDES *
+LOG_FIND_TDES (int tran_index)
+{
+  if (tran_index >= LOG_SYSTEM_TRAN_INDEX && tran_index < log_Gl.trantable.num_total_indices)
+    {
+      if (tran_index == LOG_SYSTEM_TRAN_INDEX)
+	{
+	  return logtb_get_system_tdes ();
+	}
+      else
+	{
+	  return log_Gl.trantable.all_tdes[tran_index];
+	}
+    }
+  else
+    {
+      return NULL;
+    }
+}
+
+inline LOG_TDES *
+LOG_FIND_CURRENT_TDES (THREAD_ENTRY * thread_p = NULL)
+{
+  return LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+}
+
+inline bool
+logtb_is_system_worker_tranid (TRANID trid)
+{
+  return trid < NULL_TRANID;
+}
 
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 #endif /* _LOG_IMPL_H_ */

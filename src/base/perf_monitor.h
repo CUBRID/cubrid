@@ -148,6 +148,7 @@ extern int log_Tran_index;	/* Index onto transaction table for current thread of
 #endif /* !SERVER_MODE */
 
 #if defined (SERVER_MODE)
+// todo - remove from here
 #if !defined(LOG_FIND_THREAD_TRAN_INDEX)
 #define LOG_FIND_THREAD_TRAN_INDEX(thrd) \
   ((thrd) ? (thrd)->tran_index : logtb_get_current_tran_index())

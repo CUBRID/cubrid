@@ -2128,7 +2128,6 @@ lock_set_error_for_aborted (LK_ENTRY * entry_ptr)
   char *client_user_name;	/* Client user name for transaction */
   char *client_host_name;	/* Client host for transaction */
   int client_pid;		/* Client process id for transaction */
-  LOG_TDES *tdes;
 
   (void) logtb_find_client_name_host_pid (entry_ptr->tran_index, &client_prog_name, &client_user_name,
 					  &client_host_name, &client_pid);
