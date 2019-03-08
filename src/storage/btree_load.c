@@ -4923,9 +4923,9 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
       if (load_context.m_has_error)
 	{
 	  /* Also stop all threads. */
-	  thread_get_manager ()->destroy_worker_pool (ib_workpool);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, load_context.m_error_code, 0);
-	  return load_context.m_error_code;
+	  ret = load_context.m_error_code;
+	  break;
 	}
     }
 
