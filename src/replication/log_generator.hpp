@@ -80,6 +80,7 @@ namespace cubreplication
       std::vector <changed_attrs_row_repl_entry *> m_pending_to_be_added;
 
       stream_entry m_stream_entry;
+      std::vector<stream_entry *> m_sysops_stream_entry;
 
       bool m_has_stream;
       bool m_is_row_replication_disabled;
@@ -96,7 +97,7 @@ namespace cubreplication
       log_generator (cubstream::multi_thread_stream *stream)
 	: m_stream_entry (stream)
 	, m_has_stream (false)
-	, m_is_row_replication_disabled (true)        
+	, m_is_row_replication_disabled (true)
       {
 #if !defined(NDEBUG)
         m_enable_debug_repl_local = false;
@@ -106,9 +107,15 @@ namespace cubreplication
       ~log_generator ();
 
       // act when trasaction is committed; replication entries are logged
-      void on_transaction_commit (void);
+      void on_transaction_commit (void);      
+      // act when sysop with HA info is committed; replication entries are logged
+      void on_sysop_commit (int sysop_index);
       // act when transaction is aborted; replication entries are logged
       void on_transaction_abort (void);
+      // act when sysop is aborted
+      void on_sysop_abort (int sysop_index);
+      // act when sysop is attached to outer
+      void log_generator::on_sysop_attach_to_outer (int sysop_index);
       // clear transaction data (e.g. logtb_clear_tdes)
       void clear_transaction (void);
 
@@ -154,7 +161,9 @@ namespace cubreplication
       bool is_debug_repl_local_disabled ();
 #endif
       bool is_row_replication_disabled (void);
-      int locator_simulate_repl_apply_rbr_on_master();
+      int locator_simulate_repl_apply_rbr_on_master (void);
+
+      void add_stream_entries_for_last_sysop (void);
 
     private:
 
@@ -164,7 +173,9 @@ namespace cubreplication
 	m_has_stream = true;
       }
 
-      void set_tran_repl_info (MVCCID mvccid, stream_entry_header::TRAN_STATE state);
+      void set_tran_repl_info (MVCCID mvccid, stream_entry_header::TRAN_STATE state);      
+
+      void set_sysop_repl_info (MVCCID mvccid, stream_entry_header::TRAN_STATE state);
 
       char *get_classname (const OID &class_oid);     // todo - optimize this step
 

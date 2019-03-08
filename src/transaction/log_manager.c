@@ -3881,7 +3881,7 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
 	{
 	  /* for the replication agent guarantee the order of transaction */
 	  /* for CC(Click Counter) : at here */
-	  log_append_repl_info (thread_p, tdes, false);
+	  tdes->replication_log_generator.on_sysop_commit (tdes->topops.last);	  
 	}
 
       log_record->lastparent_lsa = *LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes);
@@ -4050,7 +4050,7 @@ log_sysop_abort (THREAD_ENTRY * thread_p)
       if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p)
 	  && log_does_allow_replication () == true)
 	{
-	  repl_log_abort_after_lsa (tdes, LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes));
+	  tdes->replication_log_generator.on_sysop_abort (tdes->topops.last);
 	}
 
       /* Abort changes in system op. */
@@ -4122,6 +4122,12 @@ log_sysop_attach_to_outer (THREAD_ENTRY * thread_p)
 	  LSA_COPY (&tdes->posp_nxlsa, &tdes->topops.stack[tdes->topops.last].posp_lsa);
 	}
     }
+
+  if (!LOG_CHECK_LOG_APPLIER(thread_p) && !VACUUM_IS_THREAD_VACUUM(thread_p)
+      && log_does_allow_replication() == true)  
+    {
+      tdes->replication_log_generator.on_sysop_attach_to_outer(tdes->topops.last);
+    }  
 
   log_sysop_end_final (thread_p, tdes);
 }

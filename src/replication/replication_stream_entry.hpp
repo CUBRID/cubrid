@@ -41,6 +41,7 @@ namespace cubreplication
     {
       ACTIVE = 0,
       COMMITTED,
+      SYSOP_COMMITTED,
       ABORTED,
       GROUP_COMMIT
     } TRAN_STATE;
