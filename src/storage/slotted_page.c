@@ -37,6 +37,7 @@
 #include "system_parameter.h"
 #include "memory_hash.h"
 #include "page_buffer.h"
+#include "porting_inline.hpp"
 #include "log_manager.h"
 #include "critical_section.h"
 #include "lock_free.h"

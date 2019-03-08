@@ -41,6 +41,7 @@
 #include "tz_support.h"
 #include "db_date.h"
 #include "mprec.h"
+#include "porting_inline.hpp"
 #include "set_object.h"
 #include "string_opfunc.h"
 #include "tz_support.h"

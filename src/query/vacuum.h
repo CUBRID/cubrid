@@ -32,6 +32,7 @@
 #include "disk_manager.h"
 #include "log_impl.h"
 #include "recovery.h"
+#include "porting_inline.hpp"
 #include "storage_common.h"
 #include "system_parameter.h"
 #include "thread_entry.hpp"

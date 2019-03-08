@@ -41,6 +41,7 @@
 #include "object_primitive.h"
 #include "object_representation.h"
 #include "oid.h"
+#include "porting_inline.hpp"
 #include "query_list.h"
 #include "set_object.h"
 

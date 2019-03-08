@@ -36,6 +36,7 @@
 #include <assert.h>
 
 #include "porting.h"
+#include "porting_inline.hpp"
 #include "dbtype_def.h"
 #include "sha1.h"
 #include "cache_time.h"
