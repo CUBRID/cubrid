@@ -33,6 +33,7 @@
 #include <vector>
 /* TODO[arnia] : temp debug */
 #include "string_buffer.hpp"
+#include "system_parameter.h"
 
 namespace cubstream
 {
