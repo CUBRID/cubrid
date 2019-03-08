@@ -134,7 +134,7 @@ namespace cubstream
   {
     std::size_t recv_bytes = byte_count;
 
-    std::memcpy (ptr + pos, m_buffer, recv_bytes);
+    std::memcpy (ptr, m_buffer, recv_bytes);
     m_last_received_position += recv_bytes;
 
     return NO_ERROR;
