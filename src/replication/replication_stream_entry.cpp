@@ -127,9 +127,10 @@ namespace cubreplication
     if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
       {
         string_buffer sb, sb_hex;
-        sb.add_bytes (serializator->get_current_size (), (char *) (serializator->get_buffer_start ()));
-        string_buffer::hex_dump (sb, sb_hex, serializator->get_current_size ());
-        er_log_debug_replication (ARG_FILE_LINE, "unpack_stream_entry_header: size:%d \n%s", serializator->get_current_size (), sb_hex.get_buffer ());
+        size_t buf_size = serializator->get_buffer_end () - serializator->get_buffer_start ();
+        sb.add_bytes (buf_size, (char *) (serializator->get_buffer_start ()));
+        string_buffer::hex_dump (sb, sb_hex, buf_size);
+        er_log_debug_replication (ARG_FILE_LINE, "unpack_stream_entry_header: size:%d \n%s", buf_size, sb_hex.get_buffer ());
       }
 
     serializator->unpack_bigint (m_header.prev_record);
