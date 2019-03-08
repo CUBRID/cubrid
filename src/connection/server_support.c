@@ -2281,7 +2281,8 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
   HA_SERVER_STATE orig_state;
   int i;
 
-  er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: ha_Server_state %s " "state %s force %c heartbeat %c\n",
+  /* TODO[arnia] : temp debug */
+  er_print_callstack (ARG_FILE_LINE, "css_change_ha_server_state: ha_Server_state %s " "state %s force %c heartbeat %c\n",
 		css_ha_server_state_string (ha_Server_state), css_ha_server_state_string (state), (force ? 't' : 'f'),
 		(heartbeat ? 't' : 'f'));
 

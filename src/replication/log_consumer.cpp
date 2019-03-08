@@ -78,6 +78,13 @@ namespace cubreplication
 
 	    curr_stream_entry->unpack ();
 
+            if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
+              {
+                string_buffer sb;
+                curr_stream_entry->stringify (sb, stream_entry::detailed_dump);
+                er_log_debug_replication (ARG_FILE_LINE, "applier_worker_task execute:\n%s", sb.get_buffer ());
+              }
+
 	    for (int i = 0; i < curr_stream_entry->get_packable_entry_count_from_header (); i++)
 	      {
 		replication_object *obj = curr_stream_entry->get_object_at (i);
