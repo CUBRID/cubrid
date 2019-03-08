@@ -237,7 +237,10 @@ namespace cubreplication
 		  }
 
 		/* deleted the group commit stream entry */
-		delete se;
+                if (se->is_group_commit ())
+                  {
+		    delete se;
+                  }
 	      }
 	  }
 
