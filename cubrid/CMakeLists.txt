@@ -266,6 +266,7 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/log_global.c
   ${TRANSACTION_DIR}/log_page_buffer.c
   ${TRANSACTION_DIR}/log_recovery.c
+  ${TRANSACTION_DIR}/log_system_tran.cpp
   ${TRANSACTION_DIR}/log_tran_table.c
   ${TRANSACTION_DIR}/log_comm.c
   ${TRANSACTION_DIR}/replication.c
@@ -274,6 +275,9 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/wait_for_graph.c
   ${TRANSACTION_DIR}/log_writer.c
   ${TRANSACTION_DIR}/mvcc.c
+  )
+set(TRANSACTION_HEADERS
+  ${TRANSACTION_DIR}/log_system_tran.hpp
   )
 
 set(STORAGE_SOURCES
@@ -402,9 +406,10 @@ set (CUBRID_LIB_HEADERS
   ${MONITOR_HEADERS}
   ${QUERY_HEADERS}
   ${REPLICATION_HEADERS}
-  ${THREAD_HEADERS}
   ${STORAGE_HEADERS}
   ${STREAM_HEADERS}
+  ${THREAD_HEADERS}
+  ${TRANSACTION_HEADERS}
   ${XASL_HEADERS}
   )
 

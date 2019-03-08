@@ -324,6 +324,7 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/log_manager.c
   ${TRANSACTION_DIR}/log_page_buffer.c
   ${TRANSACTION_DIR}/log_recovery.c
+  ${TRANSACTION_DIR}/log_system_tran.cpp
   ${TRANSACTION_DIR}/log_tran_table.c
   ${TRANSACTION_DIR}/replication.c
   ${TRANSACTION_DIR}/recovery.c
@@ -332,6 +333,9 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/wait_for_graph.c
   ${TRANSACTION_DIR}/log_writer.c
   ${TRANSACTION_DIR}/mvcc.c
+  )
+set(TRANSACTION_HEADERS
+  ${TRANSACTION_DIR}/log_system_tran.hpp
   )
 
 set(STORAGE_SOURCES
@@ -495,6 +499,7 @@ add_library(cubridsa SHARED
   ${JSP_SOURCES}
   ${THREAD_SOURCES}
   ${TRANSACTION_SOURCES}
+  ${TRANSACTION_HEADERS}
   ${STORAGE_HEADERS}
   ${STORAGE_SOURCES}
   ${ES_SOURCES}
