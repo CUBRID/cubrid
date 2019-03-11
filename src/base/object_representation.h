@@ -43,6 +43,7 @@
 #include "oid.h"
 #include "byte_order.h"
 #include "memory_alloc.h"
+#include "porting_inline.hpp"
 
 /*
  * NUMERIC TYPE SIZES

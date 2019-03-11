@@ -26,14 +26,16 @@
 #include <assert.h>
 #include <math.h>
 
-#include "system_parameter.h"
 #include "double_write_buffer.h"
+
+#include "system_parameter.h"
 #include "thread_daemon.hpp"
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
 #include "log_impl.h"
 #include "boot_sr.h"
 #include "perf_monitor.h"
+#include "porting_inline.hpp"
 
 
 #define DWB_SLOTS_HASH_SIZE		    1000

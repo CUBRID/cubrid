@@ -29,6 +29,7 @@
 #include "page_buffer.h"
 #include "overflow_file.h"
 #include "perf_monitor.h"
+#include "porting_inline.hpp"
 #include "vacuum.h"
 
 #define MVCC_IS_REC_INSERTER_ACTIVE(thread_p, rec_header_p) \

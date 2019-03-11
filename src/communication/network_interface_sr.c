@@ -31,6 +31,7 @@
 #include <assert.h>
 
 #include "porting.h"
+#include "porting_inline.hpp"
 #include "perf_monitor.h"
 #include "memory_alloc.h"
 #include "storage_common.h"

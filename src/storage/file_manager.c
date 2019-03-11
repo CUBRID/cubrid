@@ -33,6 +33,7 @@
 
 #include "btree.h"
 #include "porting.h"
+#include "porting_inline.hpp"
 #include "file_manager.h"
 #include "memory_alloc.h"
 #include "storage_common.h"

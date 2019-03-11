@@ -58,6 +58,7 @@
 #include "language_support.h"
 #include "message_catalog.h"
 #include "perf_monitor.h"
+#include "porting_inline.hpp"
 #include "set_object.h"
 #include "util_func.h"
 #include "intl_support.h"

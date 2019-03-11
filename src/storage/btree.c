@@ -45,6 +45,7 @@
 #include "utility.h"
 #include "transform.h"
 #include "partition_sr.h"
+#include "porting_inline.hpp"
 #include "query_executor.h"
 #include "object_primitive.h"
 #include "perf_monitor.h"

@@ -37,6 +37,7 @@
 #include "heap_file.h"
 
 #include "porting.h"
+#include "porting_inline.hpp"
 #include "slotted_page.h"
 #include "overflow_file.h"
 #include "boot_sr.h"

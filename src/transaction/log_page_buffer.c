@@ -52,6 +52,7 @@
 #include <assert.h>
 
 #include "porting.h"
+#include "porting_inline.hpp"
 #include "connection_defs.h"
 #include "log_impl.h"
 #include "log_manager.h"

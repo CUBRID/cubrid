@@ -35,6 +35,7 @@
 #include "log_impl.h"
 #endif // SERVER_MODE or SA_MODE
 #include "memory_alloc.h"
+#include "porting_inline.hpp"
 #include "storage_common.h"
 #include "thread_compat.hpp"
 #include "tsc_timer.h"

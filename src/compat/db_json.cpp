@@ -62,6 +62,7 @@
 #include "memory_alloc.h"
 #include "memory_private_allocator.hpp"
 #include "object_primitive.h"
+#include "porting_inline.hpp"
 #include "query_dump.h"
 #include "string_opfunc.h"
 #include "system_parameter.h"

@@ -130,12 +130,13 @@ set(BASE_HEADERS
   ${BASE_DIR}/fileline_location.hpp
   ${BASE_DIR}/mem_block.hpp
   ${BASE_DIR}/memory_private_allocator.cpp
+  ${BASE_DIR}/packable_object.hpp
   ${BASE_DIR}/packer.hpp
   ${BASE_DIR}/perf.hpp
   ${BASE_DIR}/perf_def.hpp
   ${BASE_DIR}/pinning.hpp
   ${BASE_DIR}/pinnable_buffer.hpp
-  ${BASE_DIR}/packable_object.hpp
+  ${BASE_DIR}/porting_inline.hpp
   ${BASE_DIR}/resource_tracker.hpp
 )
 
