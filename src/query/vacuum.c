@@ -846,15 +846,11 @@ xvacuum (THREAD_ENTRY * thread_p)
 
   /* Assign worker and allocate required resources. */
   vacuum_convert_thread_to_master (thread_p, save_type);
-  // needs system worker tdes
-  thread_p->claim_system_worker ();
 
   /* Process vacuum data and run vacuum . */
   vacuum_process_vacuum_data (thread_p);
 
-  thread_p->retire_system_worker ();
   vacuum_restore_thread (thread_p, save_type);
-  thread_p->tran_index = LOG_SYSTEM_TRAN_INDEX;	// restore tran_index
 
   return NO_ERROR;
 #endif /* SA_MODE */
@@ -5484,13 +5480,14 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
     }
 
   /* Consume recovered blocks. */
-  thread_p->claim_system_worker ();
+  thread_type tt;
+  vacuum_convert_thread_to_master (thread_p, tt);
   error_code = vacuum_consume_buffer_log_blocks (thread_p);
   if (error_code != NO_ERROR)
     {
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_recover_lost_block_data");
     }
-  thread_p->retire_system_worker ();
+  vacuum_restore_thread (thread_p, tt);
 
   return error_code;
 }
@@ -7854,6 +7851,10 @@ vacuum_convert_thread_to_master (THREAD_ENTRY * thread_p, thread_type & save_typ
   save_type = thread_p->type;
   thread_p->type = TT_VACUUM_MASTER;
   thread_p->vacuum_worker = &vacuum_Master;
+  if (thread_p->get_system_tdes () == NULL)
+    {
+      thread_p->claim_system_worker ();
+    }
 }
 
 /*
@@ -7877,6 +7878,10 @@ vacuum_convert_thread_to_worker (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker
     {
       assert_release (false);
     }
+  if (thread_p->get_system_tdes () == NULL)
+    {
+      thread_p->claim_system_worker ();
+    }
 }
 
 /*
@@ -7894,6 +7899,8 @@ vacuum_restore_thread (THREAD_ENTRY * thread_p, thread_type save_type)
     }
   thread_p->type = save_type;
   thread_p->vacuum_worker = NULL;
+  thread_p->retire_system_worker ();
+  thread_p->tran_index = LOG_SYSTEM_TRAN_INDEX;	// restore tran_index
 }
 
 /*
