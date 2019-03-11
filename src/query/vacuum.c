@@ -1001,6 +1001,11 @@ vacuum_boot (THREAD_ENTRY * thread_p)
       return NO_ERROR;
     }
 
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
   /* first things first... load vacuum data and do some recovery if required */
   error_code = vacuum_data_load_and_recover (thread_p);
   if (error_code != NO_ERROR)
@@ -5479,14 +5484,15 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
     }
 
   /* Consume recovered blocks. */
+  thread_p->claim_system_worker ();
   error_code = vacuum_consume_buffer_log_blocks (thread_p);
   if (error_code != NO_ERROR)
     {
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_recover_lost_block_data");
-      return error_code;
     }
+  thread_p->retire_system_worker ();
 
-  return NO_ERROR;
+  return error_code;
 }
 
 /*
