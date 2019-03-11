@@ -8532,7 +8532,7 @@ ssession_find_or_create_session (THREAD_ENTRY * thread_p, unsigned int rid, char
   int error = NO_ERROR, update_parameter_values = 0;
 
   ptr = or_unpack_int (request, (int *) &id);
-  ptr = or_unpack_stream (ptr, server_session_key, SERVER_SESSION_KEY_SIZE);
+  ptr = or_unpack_stream (ptr, SERVER_SESSION_KEY_SIZE, server_session_key, NULL);
   ptr = sysprm_unpack_session_parameters (ptr, &session_params);
   ptr = or_unpack_string_alloc (ptr, &db_user);
   ptr = or_unpack_string_alloc (ptr, &host);

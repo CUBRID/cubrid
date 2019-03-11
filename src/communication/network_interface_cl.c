@@ -4236,7 +4236,7 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
 	{
 	  ptr = or_unpack_int (area, (int *) session_id);
 	  ptr = or_unpack_int (ptr, row_count);
-	  ptr = or_unpack_stream (ptr, server_session_key, SERVER_SESSION_KEY_SIZE);
+	  ptr = or_unpack_stream (ptr, SERVER_SESSION_KEY_SIZE, server_session_key, NULL);
 	  ptr = or_unpack_int (ptr, &update_parameter_values);
 	  if (update_parameter_values)
 	    {

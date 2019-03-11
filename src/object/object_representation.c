@@ -3992,24 +3992,39 @@ or_unpack_string (char *ptr, char **string)
 
 /*
  * or_unpack_stream - extracts a stream from a buffer.
- *    return: advanced pointer
+ *    return: advanced pointer (according to actual length of stream)
  *    ptr(in): current pointer
+ *    truncate_len(in): maximum data to return from stream (if zero or negative, returns entire stream)
  *    stream(out): return pointer
+ *    len(out): actual length of stream
  */
 char *
-or_unpack_stream (const char *ptr, char *stream, size_t len)
+or_unpack_stream (const char *ptr, const int truncate_len, char *stream, int *len)
 {
-  int length;
-
+  int length_to_copy;
+  int actual_len;
   ASSERT_ALIGN (ptr, INT_ALIGNMENT);
 
-  length = OR_GET_INT (ptr);
+  actual_len = OR_GET_INT (ptr);
   ptr += OR_INT_SIZE;
 
-  assert_release ((size_t) length >= len);
+  assert_release (actual_len >= truncate_len);
 
-  memcpy (stream, ptr, len);
-  ptr += length;
+  if (truncate_len <= 0)
+    {
+      length_to_copy = actual_len;
+    }
+  else
+    {
+      length_to_copy = truncate_len;
+    }
+
+  memcpy (stream, ptr, length_to_copy);
+  ptr += actual_len;
+  if (len)
+    {
+      *len = actual_len;
+    }
   return (char *)ptr;
 }
 
@@ -7194,7 +7209,7 @@ or_unpack_recdes (char *buf, RECDES ** recdes)
   tmp_recdes->data = ((char *) tmp_recdes) + sizeof (RECDES);
 
   buf = or_unpack_short (buf, &tmp_recdes->type);
-  buf = or_unpack_stream (buf, tmp_recdes->data, length);
+  buf = or_unpack_stream (buf, length, tmp_recdes->data, NULL);
 
   *recdes = tmp_recdes;
   return buf;
