@@ -663,6 +663,7 @@ JSON_PATH::dump_json_path () const
 	  res += "[*]";
 	  break;
 	case PATH_TOKEN::object_key:
+	  res += '.';
 	  res += tkn.get_object_key ();
 	  break;
 	case PATH_TOKEN::object_key_wildcard:
