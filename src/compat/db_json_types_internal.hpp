@@ -22,9 +22,8 @@
 
 #include "db_json_allocator.hpp"
 
-#include "db_json.hpp"
-
 #include "rapidjson/document.h"
+#include "rapidjson/encodings.h"
 
 #if defined GetObject
 /* stupid windows and their definitions; GetObject is defined as GetObjectW or GetObjectA */
@@ -68,7 +67,6 @@ class JSON_DOC : public rapidjson::GenericDocument <JSON_ENCODING, JSON_PRIVATE_
 #endif // TODO_OPTIMIZE_JSON_BODY_STRING
 };
 
-DB_JSON_TYPE db_json_get_type_of_value (const JSON_VALUE *val);
 JSON_VALUE &db_json_doc_to_value (JSON_DOC &doc);
 const JSON_VALUE &db_json_doc_to_value (const JSON_DOC &doc);
 

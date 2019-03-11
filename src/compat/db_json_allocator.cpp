@@ -19,6 +19,7 @@
 
 #include "db_json_allocator.hpp"
 
+#include "error_manager.h"
 #include "memory_alloc.h"
 #include "system_parameter.h"
 

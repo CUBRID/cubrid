@@ -19,6 +19,7 @@
 
 #include "db_json_path.hpp"
 
+#include "memory_alloc.h"
 #include "string_opfunc.h"
 
 #include "rapidjson/pointer.h"
@@ -364,8 +365,8 @@ JSON_PATH::validate_and_create_from_json_path (std::string &sql_path)
   return true;
 }
 
-std::vector<std::string> db_json_split_path_by_delimiters (const std::string &path,
-    const std::string &delim, bool allow_empty)
+std::vector<std::string>
+db_json_split_path_by_delimiters (const std::string &path, const std::string &delim, bool allow_empty)
 {
   std::vector<std::string> tokens;
   std::size_t start = 0;
@@ -423,9 +424,8 @@ std::vector<std::string> db_json_split_path_by_delimiters (const std::string &pa
 }
 
 JSON_PATH::MATCH_RESULT
-JSON_PATH::match_pattern (const JSON_PATH &pattern,
-			  const JSON_PATH::token_containter_type::const_iterator &it1, const JSON_PATH &path,
-			  const JSON_PATH::token_containter_type::const_iterator &it2)
+JSON_PATH::match_pattern (const JSON_PATH &pattern, const JSON_PATH::token_containter_type::const_iterator &it1,
+			  const JSON_PATH &path, const JSON_PATH::token_containter_type::const_iterator &it2)
 {
   if (it1 == pattern.m_path_tokens.end () && it2 == path.m_path_tokens.end ())
     {
@@ -660,14 +660,13 @@ JSON_PATH::dump_json_path () const
 	  res += ']';
 	  break;
 	case PATH_TOKEN::array_index_wildcard:
-	  res += '[';
-	  res += tkn.get_object_key ();
-	  res += ']';
+	  res += "[*]";
 	  break;
 	case PATH_TOKEN::object_key:
-	case PATH_TOKEN::object_key_wildcard:
-	  res += '.';
 	  res += tkn.get_object_key ();
+	  break;
+	case PATH_TOKEN::object_key_wildcard:
+	  res += ".*";
 	  break;
 	case PATH_TOKEN::double_wildcard:
 	  res += "**";
@@ -838,12 +837,14 @@ JSON_PATH::erase (JSON_DOC &jd) const
     }
 
   JSON_VALUE *value = get_parent ().get (jd);
+  if (value == nullptr)
+    {
+      return false;
+    }
 
   const PATH_TOKEN &tkn = m_path_tokens.back ();
 
-  switch (db_json_get_type_of_value (value))
-    {
-    case DB_JSON_ARRAY:
+  if (value->IsArray ())
     {
       if (!is_last_array_index_less_than (value->GetArray ().Size ()))
 	{
@@ -852,7 +853,7 @@ JSON_PATH::erase (JSON_DOC &jd) const
       value->Erase (value->Begin () + tkn.get_array_index ());
       return true;
     }
-    case DB_JSON_OBJECT:
+  else if (value->IsObject ())
     {
       if (tkn.m_type != PATH_TOKEN::object_key)
 	{
@@ -862,9 +863,8 @@ JSON_PATH::erase (JSON_DOC &jd) const
       std::string unescaped = tkn.get_object_key ().substr (1, tkn.get_object_key ().length () - 2);
       return value->EraseMember (unescaped.c_str ());
     }
-    default:
-      return false;
-    }
+
+  return false;
 }
 
 const PATH_TOKEN *
@@ -951,7 +951,7 @@ JSON_PATH::parent_exists (JSON_DOC &jd) const
  * Example: $[0]."name1".name2[2] -> /0/name1/name2/2
  */
 int
-JSON_PATH::init (const char *path)
+JSON_PATH::parse (const char *path)
 {
   std::string sql_path_string (path);
   JSON_PATH_TYPE json_path_type = db_json_get_path_type (sql_path_string);
@@ -979,6 +979,8 @@ int
 JSON_PATH::from_json_pointer (const std::string &pointer_path)
 {
   typedef rapidjson::GenericPointer<JSON_VALUE>::Token TOKEN;
+  static const rapidjson::SizeType kPointerInvalidIndex = rapidjson::kPointerInvalidIndex;
+
   typedef rapidjson::GenericPointer<JSON_VALUE> JSON_POINTER;
 
   JSON_POINTER jp (pointer_path.c_str ());
@@ -996,7 +998,7 @@ JSON_PATH::from_json_pointer (const std::string &pointer_path)
     {
       const TOKEN &rapid_token = tokens[i];
 
-      if (rapid_token.index != rapidjson::kPointerInvalidIndex)
+      if (rapid_token.index != kPointerInvalidIndex)
 	{
 	  // array_index
 	  push_array_index (rapid_token.index);

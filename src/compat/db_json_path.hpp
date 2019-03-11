@@ -25,10 +25,12 @@
 #define _DB_JSON_PATH_HPP_
 
 #include "db_json_allocator.hpp"
-
 #include "db_json_types_internal.hpp"
 
+#include "rapidjson/rapidjson.h"
+
 #include <string>
+#include <vector>
 
 struct PATH_TOKEN
 {
@@ -48,17 +50,13 @@ struct PATH_TOKEN
   rapidjson::SizeType m_array_idx;
 
   PATH_TOKEN ();
-
   PATH_TOKEN (token_type type, rapidjson::SizeType array_idx);
-
   PATH_TOKEN (token_type type, std::string &&s);
 
   const std::string &get_object_key () const;
-
   rapidjson::SizeType get_array_index () const;
 
   bool is_wildcard () const;
-
   bool static match_pattern (const PATH_TOKEN &matcher, const PATH_TOKEN &matchee);
 };
 
@@ -73,48 +71,30 @@ class JSON_PATH
     };
 
     std::string dump_json_path () const;
+    int parse (const char *path);
+    const JSON_PATH get_parent () const;
 
     JSON_VALUE *get (JSON_DOC &jd) const;
-
     const JSON_VALUE *get (const JSON_DOC &jd) const;
-
     void set (JSON_DOC &jd, const JSON_VALUE &jv) const;
-
     void set (JSON_VALUE &jd, const JSON_VALUE &jv, JSON_PRIVATE_MEMPOOL &allocator) const;
-
     bool erase (JSON_DOC &jd) const;
 
     const PATH_TOKEN *get_last_token () const;
-
     size_t get_token_count () const;
-
     bool is_root_path () const;
-
-    const JSON_PATH get_parent () const;
-
     bool is_last_array_index_less_than (size_t size) const;
-
     bool is_last_token_array_index_zero () const;
-
     bool points_to_array_cell () const;
-
     bool parent_exists (JSON_DOC &jd) const;
-
-    int init (const char *path);
+    bool contains_wildcard () const;
 
     void push_array_index (unsigned idx);
-
     void push_array_index_wildcard ();
-
     void push_object_key (std::string &&object_key);
-
     void push_object_key_wildcard ();
-
     void push_double_wildcard ();
-
     void pop ();
-
-    bool contains_wildcard () const;
 
     static MATCH_RESULT match_pattern (const JSON_PATH &pattern, const JSON_PATH &path);
 

@@ -200,7 +200,7 @@ static PT_NODE *pt_check_single_valued_node (PARSER_CONTEXT * parser, PT_NODE * 
 static PT_NODE *pt_check_single_valued_node_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 						  int *continue_walk);
 static void pt_check_into_clause (PARSER_CONTEXT * parser, PT_NODE * qry);
-static int normalize_path (PARSER_CONTEXT * parser, REFPTR (char, c));
+static int pt_normalize_path (PARSER_CONTEXT * parser, REFPTR (char, c));
 static int pt_check_json_table_node (PARSER_CONTEXT * pareser, PT_NODE * node);
 static PT_NODE *pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_gen_isnull_preds (PARSER_CONTEXT * parser, PT_NODE * pred, PT_CHAIN_INFO * chain);
@@ -9312,7 +9312,7 @@ pt_check_into_clause (PARSER_CONTEXT * parser, PT_NODE * qry)
 }
 
 static int
-normalize_path (PARSER_CONTEXT * parser, REFPTR (char, c))
+pt_normalize_path (PARSER_CONTEXT * parser, REFPTR (char, c))
 {
   std::string normalized_path;
 
@@ -9338,7 +9338,7 @@ pt_check_json_table_node (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   assert (node != NULL && node->node_type == PT_JSON_TABLE_NODE);
 
-  int error_code = normalize_path (parser, node->info.json_table_node_info.path);
+  int error_code = pt_normalize_path (parser, node->info.json_table_node_info.path);
   if (error_code)
     {
       return error_code;
@@ -9377,7 +9377,7 @@ pt_check_json_table_node (PARSER_CONTEXT * parser, PT_NODE * node)
 	  assert (col_info.path == NULL);
 	  continue;
 	}
-      error_code = normalize_path (parser, col_info.path);
+      error_code = pt_normalize_path (parser, col_info.path);
       if (error_code)
 	{
 	  return error_code;

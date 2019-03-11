@@ -55,6 +55,7 @@
  */
 
 #include "db_json.hpp"
+
 #include "db_json_path.hpp"
 #include "db_json_types_internal.hpp"
 #include "dbtype.h"
@@ -66,6 +67,7 @@
 #include "system_parameter.h"
 
 #include "rapidjson/error/en.h"
+#include "rapidjson/rapidjson.h"
 #include "rapidjson/schema.h"
 #include "rapidjson/stringbuffer.h"
 #include "rapidjson/writer.h"
@@ -451,7 +453,7 @@ class JSON_PATH_MAPPER : public JSON_WALKER
 
     map_func_type m_producer;
     std::stack<unsigned int> m_index;
-    JSON_PATH m_accumulated_paths;
+    JSON_PATH m_current_path;
 };
 
 class JSON_SERIALIZER_LENGTH : public JSON_BASE_HANDLER
@@ -621,6 +623,7 @@ const int JSON_DOC::MAX_CHUNK_SIZE = 64 * 1024; /* TODO does 64K serve our needs
 static unsigned int db_json_value_get_depth (const JSON_VALUE *doc);
 static int db_json_value_is_contained_in_doc_helper (const JSON_VALUE *doc, const JSON_VALUE *value, bool &result);
 static bool db_json_value_has_numeric_type (const JSON_VALUE *doc);
+DB_JSON_TYPE db_json_get_type_of_value (const JSON_VALUE *val);
 static int db_json_get_int_from_value (const JSON_VALUE *val);
 static std::int64_t db_json_get_bigint_from_value (const JSON_VALUE *val);
 static double db_json_get_double_from_value (const JSON_VALUE *doc);
@@ -648,9 +651,9 @@ static void db_json_get_paths_helper (const JSON_VALUE &obj, const std::string &
 
 static void db_json_value_wrap_as_array (JSON_VALUE &value, JSON_PRIVATE_MEMPOOL &allocator);
 static const char *db_json_get_json_type_as_str (const DB_JSON_TYPE &json_type);
-static int db_json_er_set_path_does_not_exist (const char *file_name, const int line_no, const std::string &path,
+static int db_json_er_set_path_does_not_exist (const char *file_name, const int line_no, const JSON_PATH &path,
     const JSON_DOC *doc);
-static int db_json_er_set_expected_other_type (const char *file_name, const int line_no, const std::string &path,
+static int db_json_er_set_expected_other_type (const char *file_name, const int line_no, const JSON_PATH &path,
     const DB_JSON_TYPE &found_type, const DB_JSON_TYPE &expected_type,
     const DB_JSON_TYPE &expected_type_optional = DB_JSON_NULL);
 static int db_json_contains_duplicate_keys (JSON_DOC &doc);
@@ -670,7 +673,8 @@ static int db_json_unpack_array_to_value (OR_BUF *buf, JSON_VALUE &value, JSON_P
 
 static void db_json_add_element_to_array (JSON_DOC *doc, const JSON_VALUE *value);
 
-int JSON_DUPLICATE_KEYS_CHECKER::CallBefore (JSON_VALUE &value)
+int
+JSON_DUPLICATE_KEYS_CHECKER::CallBefore (JSON_VALUE &value)
 {
   std::vector<const char *> inserted_keys;
 
@@ -698,12 +702,13 @@ int JSON_DUPLICATE_KEYS_CHECKER::CallBefore (JSON_VALUE &value)
 
 JSON_PATH_MAPPER::JSON_PATH_MAPPER (map_func_type func)
   : m_producer (func)
-  , m_accumulated_paths ()
+  , m_current_path ()
 {
 
 }
 
-int JSON_PATH_MAPPER::CallBefore (JSON_VALUE &value)
+int
+JSON_PATH_MAPPER::CallBefore (JSON_VALUE &value)
 {
   if (value.IsArray ())
     {
@@ -714,13 +719,14 @@ int JSON_PATH_MAPPER::CallBefore (JSON_VALUE &value)
     {
       // should not be used before it gets changed. Only add a stack level
       // dummy
-      m_accumulated_paths.push_array_index (0);
+      m_current_path.push_array_index (0);
     }
 
   return NO_ERROR;
 }
 
-int JSON_PATH_MAPPER::CallAfter (JSON_VALUE &value)
+int
+JSON_PATH_MAPPER::CallAfter (JSON_VALUE &value)
 {
   if (value.IsArray ())
     {
@@ -729,24 +735,26 @@ int JSON_PATH_MAPPER::CallAfter (JSON_VALUE &value)
 
   if (value.IsArray () || value.IsObject ())
     {
-      m_accumulated_paths.pop ();
+      m_current_path.pop ();
     }
-  return m_producer (value, m_accumulated_paths, m_stop);
+  return m_producer (value, m_current_path, m_stop);
 }
 
-int JSON_PATH_MAPPER::CallOnArrayIterate ()
+int
+JSON_PATH_MAPPER::CallOnArrayIterate ()
 {
   // todo: instead of pop + push, increment the last token
-  m_accumulated_paths.pop ();
+  m_current_path.pop ();
 
-  m_accumulated_paths.push_array_index (m_index.top ()++);
+  m_current_path.push_array_index (m_index.top ()++);
 
   return NO_ERROR;
 }
 
-int JSON_PATH_MAPPER::CallOnKeyIterate (JSON_VALUE &key)
+int
+JSON_PATH_MAPPER::CallOnKeyIterate (JSON_VALUE &key)
 {
-  m_accumulated_paths.pop ();
+  m_current_path.pop ();
   std::string path_item = "\"";
 
   std::string object_key = key.GetString ();
@@ -761,7 +769,7 @@ int JSON_PATH_MAPPER::CallOnKeyIterate (JSON_VALUE &key)
   path_item += object_key;
   path_item += "\"";
 
-  m_accumulated_paths.push_object_key (std::move (path_item));
+  m_current_path.push_object_key (std::move (path_item));
   return NO_ERROR;
 }
 
@@ -1156,13 +1164,12 @@ db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<
       return NO_ERROR;
     }
 
-  //std::vector<std::string> transformed_paths;
   std::vector<JSON_PATH> json_paths;
 
   for (const auto &path : paths)
     {
       json_paths.emplace_back ();
-      error_code = json_paths.back ().init (path.c_str ());
+      error_code = json_paths.back ().parse (path.c_str ());
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -1261,7 +1268,7 @@ db_json_contains_path (const JSON_DOC *document, const std::vector<std::string> 
   for (const auto &path : paths)
     {
       json_paths.emplace_back ();
-      error_code = json_paths.back ().init (path.c_str ());
+      error_code = json_paths.back ().parse (path.c_str ());
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -1634,7 +1641,7 @@ db_json_insert_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path)
     }
 
   JSON_PATH p;
-  int error_code = p.init (raw_path);
+  int error_code = p.parse (raw_path);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -1648,7 +1655,7 @@ db_json_insert_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path)
 
   if (!p.parent_exists (doc))
     {
-      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p.dump_json_path (), &doc);
+      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p, &doc);
     }
 
   JSON_VALUE *parent_val = p.get_parent ().get (doc);
@@ -1677,7 +1684,7 @@ db_json_insert_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path)
     {
       if (db_json_get_type_of_value (parent_val) != DB_JSON_OBJECT)
 	{
-	  return db_json_er_set_expected_other_type (ARG_FILE_LINE, p.get_parent ().dump_json_path (),
+	  return db_json_er_set_expected_other_type (ARG_FILE_LINE, p.get_parent (),
 		 db_json_get_type_of_value (p.get (doc)), DB_JSON_OBJECT);
 	}
       if (p.get (doc) != NULL)
@@ -1712,7 +1719,7 @@ db_json_replace_func (const JSON_DOC *new_value, JSON_DOC &doc, const char *raw_
     }
 
   JSON_PATH p;
-  int error_code = p.init (raw_path);
+  int error_code = p.parse (raw_path);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -1727,14 +1734,14 @@ db_json_replace_func (const JSON_DOC *new_value, JSON_DOC &doc, const char *raw_
 
   if (!p.parent_exists (doc))
     {
-      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p.dump_json_path (), &doc);
+      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p, &doc);
     }
 
   if (p.get (doc) == NULL)
     {
       if (!p.is_last_token_array_index_zero ())
 	{
-	  return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p.dump_json_path (), &doc);
+	  return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p, &doc);
 	}
 
       p.get_parent ().set (doc, *new_value);
@@ -1765,7 +1772,7 @@ db_json_set_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path)
     }
 
   JSON_PATH p;
-  int error_code = p.init (raw_path);
+  int error_code = p.parse (raw_path);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -1781,7 +1788,7 @@ db_json_set_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path)
 
   if (!p.parent_exists (doc))
     {
-      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p.dump_json_path (), &doc);
+      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p, &doc);
     }
 
   JSON_VALUE *parent_val = p.get_parent ().get (doc);
@@ -1810,7 +1817,7 @@ db_json_set_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw_path)
     {
       if (db_json_get_type_of_value (parent_val) != DB_JSON_OBJECT)
 	{
-	  return db_json_er_set_expected_other_type (ARG_FILE_LINE, p.get_parent ().dump_json_path (),
+	  return db_json_er_set_expected_other_type (ARG_FILE_LINE, p.get_parent (),
 		 db_json_get_type_of_value (p.get (doc)), DB_JSON_OBJECT);
 	}
       p.set (doc, *value);
@@ -1831,7 +1838,7 @@ int
 db_json_remove_func (JSON_DOC &doc, const char *raw_path)
 {
   JSON_PATH p;
-  int error_code = p.init (raw_path);
+  int error_code = p.parse (raw_path);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -1847,14 +1854,14 @@ db_json_remove_func (JSON_DOC &doc, const char *raw_path)
 
   if (!p.parent_exists (doc))
     {
-      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p.dump_json_path (), &doc);
+      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p, &doc);
     }
 
   if (p.get (doc) == NULL)
     {
       if (!p.is_last_token_array_index_zero () || p.get_parent ().is_root_path ())
 	{
-	  return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p.dump_json_path (), &doc);
+	  return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p, &doc);
 	}
 
       p.get_parent ().erase (doc);
@@ -1885,7 +1892,7 @@ db_json_search_func (JSON_DOC &doc, const DB_VALUE *pattern, const DB_VALUE *esc
   for (const auto &path : patterns)
     {
       json_paths.emplace_back ();
-      int error_code = json_paths.back ().init (path.c_str ());
+      int error_code = json_paths.back ().parse (path.c_str ());
       if (error_code != NO_ERROR)
 	{
 	  return error_code;
@@ -1959,7 +1966,7 @@ db_json_array_append_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw
     }
 
   JSON_PATH p;
-  int error_code = p.init (raw_path);
+  int error_code = p.parse (raw_path);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -1978,7 +1985,7 @@ db_json_array_append_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw
 
   if (!p.parent_exists (doc))
     {
-      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p.dump_json_path (), &doc);
+      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p, &doc);
     }
 
   JSON_VALUE *parent_val = p.get_parent ().get (doc);
@@ -1989,7 +1996,7 @@ db_json_array_append_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw
 	{
 	  if (!p.is_last_array_index_less_than (parent_val->GetArray ().Size ()))
 	    {
-	      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p.dump_json_path (), &doc);
+	      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p, &doc);
 	    }
 
 	  assert (json_val != NULL);
@@ -2000,7 +2007,7 @@ db_json_array_append_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw
 	{
 	  if (!p.is_last_token_array_index_zero ())
 	    {
-	      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p.dump_json_path (), &doc);
+	      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p, &doc);
 	    }
 
 	  db_json_value_wrap_as_array (*parent_val, doc.GetAllocator ());
@@ -2012,7 +2019,7 @@ db_json_array_append_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw
       // only valid case is when path exists and its parent is a json object
       if (db_json_get_type_of_value (parent_val) != DB_JSON_OBJECT || json_val == NULL)
 	{
-	  return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p.dump_json_path (), &doc);
+	  return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p, &doc);
 	}
 
       db_json_value_wrap_as_array (*json_val, doc.GetAllocator ());
@@ -2041,7 +2048,7 @@ db_json_array_insert_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw
     }
 
   JSON_PATH p;
-  int error_code = p.init (raw_path);
+  int error_code = p.parse (raw_path);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -2056,7 +2063,7 @@ db_json_array_insert_func (const JSON_DOC *value, JSON_DOC &doc, const char *raw
 
   if (!p.parent_exists (doc))
     {
-      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p.dump_json_path (), &doc);
+      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p, &doc);
     }
 
   db_json_value_wrap_as_array (*p.get_parent ().get (doc), doc.GetAllocator ());
@@ -2238,27 +2245,31 @@ db_json_validate_json (const char *json_body)
   return NO_ERROR;
 }
 
-JSON_DOC *db_json_allocate_doc ()
+JSON_DOC *
+db_json_allocate_doc ()
 {
   JSON_DOC *doc = new JSON_DOC ();
   return doc;
 }
 
-JSON_DOC *db_json_make_json_object ()
+JSON_DOC *
+db_json_make_json_object ()
 {
   JSON_DOC *doc = new JSON_DOC ();
   doc->SetObject ();
   return doc;
 }
 
-JSON_DOC *db_json_make_json_array ()
+JSON_DOC *
+db_json_make_json_array ()
 {
   JSON_DOC *doc = new JSON_DOC();
   doc->SetArray ();
   return doc;
 }
 
-void db_json_delete_doc (JSON_DOC *&doc)
+void
+db_json_delete_doc (JSON_DOC *&doc)
 {
   delete doc;
   doc = NULL;
@@ -2469,6 +2480,50 @@ db_json_copy_string_from_document (const JSON_DOC *doc)
   return db_json_copy_string_from_value (doc);
 }
 
+DB_JSON_TYPE
+db_json_get_type_of_value (const JSON_VALUE *val)
+{
+  if (val == NULL)
+    {
+      return DB_JSON_NULL;
+    }
+
+  if (val->IsString ())
+    {
+      return DB_JSON_STRING;
+    }
+  else if (val->IsInt ())
+    {
+      return DB_JSON_INT;
+    }
+  else if (val->IsInt64 ())
+    {
+      return DB_JSON_BIGINT;
+    }
+  else if (val->IsFloat () || val->IsDouble ())
+    {
+      return DB_JSON_DOUBLE;
+    }
+  else if (val->IsObject ())
+    {
+      return DB_JSON_OBJECT;
+    }
+  else if (val->IsArray ())
+    {
+      return DB_JSON_ARRAY;
+    }
+  else if (val->IsNull ())
+    {
+      return DB_JSON_NULL;
+    }
+  else if (val->IsBool ())
+    {
+      return DB_JSON_BOOL;
+    }
+
+  return DB_JSON_UNKNOWN;
+}
+
 int
 db_json_get_int_from_value (const JSON_VALUE *val)
 {
@@ -2573,46 +2628,24 @@ db_json_get_bool_from_value (const JSON_VALUE *doc)
  * doc (in)                : json document
  */
 static int
-db_json_er_set_path_does_not_exist (const char *file_name, const int line_no, const std::string &path,
+db_json_er_set_path_does_not_exist (const char *file_name, const int line_no, const JSON_PATH &path,
 				    const JSON_DOC *doc)
 {
-  JSON_PATH json_path;
-  int error_code;
-
-  // the path must be SQL path
-  error_code = json_path.init (path.c_str ());
-  if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return error_code;
-    }
-
   // get the json body
   char *raw_json_body = db_json_get_raw_json_body_from_document (doc);
   cubmem::private_unique_ptr<char> unique_ptr (raw_json_body, NULL);
 
   er_set (ER_ERROR_SEVERITY, file_name, line_no, ER_JSON_PATH_DOES_NOT_EXIST, 2,
-	  json_path.dump_json_path ().c_str (), raw_json_body);
+	  path.dump_json_path ().c_str (), raw_json_body);
 
   return ER_JSON_PATH_DOES_NOT_EXIST;
 }
 
 static int
-db_json_er_set_expected_other_type (const char *file_name, const int line_no, const std::string &path,
+db_json_er_set_expected_other_type (const char *file_name, const int line_no, const JSON_PATH &path,
 				    const DB_JSON_TYPE &found_type, const DB_JSON_TYPE &expected_type,
 				    const DB_JSON_TYPE &expected_type_optional)
 {
-  JSON_PATH json_path;
-  int error_code = NO_ERROR;
-
-  // the path must be SQL path
-  error_code = json_path.init (path.c_str ());
-  if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return error_code;
-    }
-
   const char *found_type_str = db_json_get_json_type_as_str (found_type);
   std::string expected_type_str = db_json_get_json_type_as_str (expected_type);
 
@@ -2623,7 +2656,7 @@ db_json_er_set_expected_other_type (const char *file_name, const int line_no, co
     }
 
   er_set (ER_ERROR_SEVERITY, file_name, line_no, ER_JSON_EXPECTED_OTHER_TYPE, 3,
-	  json_path.dump_json_path ().c_str (), expected_type_str.c_str (), found_type_str);
+	  path.dump_json_path ().c_str (), expected_type_str.c_str (), found_type_str);
 
   return ER_JSON_EXPECTED_OTHER_TYPE;
 }
@@ -2632,7 +2665,7 @@ int
 db_json_normalize_path_string (const char *pointer_path, std::string &output)
 {
   JSON_PATH jp;
-  int error_code = jp.init (pointer_path);
+  int error_code = jp.parse (pointer_path);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -2644,16 +2677,17 @@ db_json_normalize_path_string (const char *pointer_path, std::string &output)
   return NO_ERROR;
 }
 
-void db_json_path_unquote_object_keys_external (std::string &sql_path)
+void
+db_json_path_unquote_object_keys_external (std::string &sql_path)
 {
   db_json_path_unquote_object_keys (sql_path);
 }
 
 /*
-* db_json_path_contains_wildcard () - Check whether a given sql_path contains wildcards
-*
-* sql_path (in)       : null-terminated string
-*/
+ * db_json_path_contains_wildcard () - Check whether a given sql_path contains wildcards
+ *
+ * sql_path (in)       : null-terminated string
+ */
 bool
 db_json_path_contains_wildcard (const char *sql_path)
 {
@@ -2783,7 +2817,7 @@ int
 db_json_keys_func (const JSON_DOC &doc, JSON_DOC &result_json, const char *raw_path)
 {
   JSON_PATH p;
-  int error_code = p.init (raw_path);
+  int error_code = p.parse (raw_path);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -2795,7 +2829,7 @@ db_json_keys_func (const JSON_DOC &doc, JSON_DOC &result_json, const char *raw_p
   // the specified path does not exist in the current JSON document
   if (head == NULL)
     {
-      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, raw_path, &doc);
+      return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p, &doc);
     }
   else if (head->IsObject ())
     {
@@ -2958,27 +2992,32 @@ db_json_value_is_contained_in_doc_helper (const JSON_VALUE *doc, const JSON_VALU
   return error_code;
 }
 
-void db_json_set_string_to_doc (JSON_DOC *doc, const char *str, unsigned len)
+void
+db_json_set_string_to_doc (JSON_DOC *doc, const char *str, unsigned len)
 {
   doc->SetString (str, len, doc->GetAllocator ());
 }
 
-void db_json_set_double_to_doc (JSON_DOC *doc, double d)
+void
+db_json_set_double_to_doc (JSON_DOC *doc, double d)
 {
   doc->SetDouble (d);
 }
 
-void db_json_set_int_to_doc (JSON_DOC *doc, int i)
+void
+db_json_set_int_to_doc (JSON_DOC *doc, int i)
 {
   doc->SetInt (i);
 }
 
-void db_json_set_bigint_to_doc (JSON_DOC *doc, std::int64_t i)
+void
+db_json_set_bigint_to_doc (JSON_DOC *doc, std::int64_t i)
 {
   doc->SetInt64 (i);
 }
 
-bool db_json_are_docs_equal (const JSON_DOC *doc1, const JSON_DOC *doc2)
+bool
+db_json_are_docs_equal (const JSON_DOC *doc1, const JSON_DOC *doc2)
 {
   if (doc1 == NULL || doc2 == NULL)
     {
@@ -2996,12 +3035,14 @@ db_json_make_document_null (JSON_DOC *doc)
     }
 }
 
-bool db_json_doc_has_numeric_type (const JSON_DOC *doc)
+bool
+db_json_doc_has_numeric_type (const JSON_DOC *doc)
 {
   return db_json_value_has_numeric_type (doc);
 }
 
-bool db_json_doc_is_uncomparable (const JSON_DOC *doc)
+bool
+db_json_doc_is_uncomparable (const JSON_DOC *doc)
 {
   DB_JSON_TYPE type = db_json_get_type (doc);
 
@@ -3249,37 +3290,43 @@ JSON_SERIALIZER::SetSizePointers (SizeType size)
   or_pack_int (buf, (int) size);
 }
 
-bool JSON_SERIALIZER::PackType (const DB_JSON_TYPE &type)
+bool
+JSON_SERIALIZER::PackType (const DB_JSON_TYPE &type)
 {
   m_error = or_put_int (m_buffer, static_cast<int> (type));
   return !HasError ();
 }
 
-bool JSON_SERIALIZER::PackString (const char *str)
+bool
+JSON_SERIALIZER::PackString (const char *str)
 {
   m_error = or_put_string_aligned_with_length (m_buffer, str);
   return !HasError ();
 }
 
-bool JSON_SERIALIZER_LENGTH::Null ()
+bool
+JSON_SERIALIZER_LENGTH::Null ()
 {
   m_length += GetTypePackedSize ();
   return true;
 }
 
-bool JSON_SERIALIZER::Null ()
+bool
+JSON_SERIALIZER::Null ()
 {
   return PackType (DB_JSON_NULL);
 }
 
-bool JSON_SERIALIZER_LENGTH::Bool (bool b)
+bool
+JSON_SERIALIZER_LENGTH::Bool (bool b)
 {
   // the encode will be TYPE|VALUE, where TYPE is int and value is int (0 or 1)
   m_length += GetTypePackedSize () + OR_INT_SIZE;
   return true;
 }
 
-bool JSON_SERIALIZER::Bool (bool b)
+bool
+JSON_SERIALIZER::Bool (bool b)
 {
   if (!PackType (DB_JSON_BOOL))
     {
@@ -3290,14 +3337,16 @@ bool JSON_SERIALIZER::Bool (bool b)
   return !HasError ();
 }
 
-bool JSON_SERIALIZER_LENGTH::Int (int i)
+bool
+JSON_SERIALIZER_LENGTH::Int (int i)
 {
   // the encode will be TYPE|VALUE, where TYPE is int and value is int
   m_length += GetTypePackedSize () + OR_INT_SIZE + OR_INT_SIZE;
   return true;
 }
 
-bool JSON_SERIALIZER::Int (int i)
+bool
+JSON_SERIALIZER::Int (int i)
 {
   if (!PackType (DB_JSON_INT))
     {
@@ -3311,14 +3360,16 @@ bool JSON_SERIALIZER::Int (int i)
   return !HasError ();
 }
 
-bool JSON_SERIALIZER_LENGTH::Uint (unsigned i)
+bool
+JSON_SERIALIZER_LENGTH::Uint (unsigned i)
 {
   // the encode will be TYPE|VALUE, where TYPE is int and value is int
   m_length += GetTypePackedSize () + OR_INT_SIZE + OR_INT_SIZE;
   return true;
 }
 
-bool JSON_SERIALIZER::Uint (unsigned i)
+bool
+JSON_SERIALIZER::Uint (unsigned i)
 {
   if (!PackType (DB_JSON_INT))
     {
@@ -3332,14 +3383,16 @@ bool JSON_SERIALIZER::Uint (unsigned i)
   return !HasError ();
 }
 
-bool JSON_SERIALIZER_LENGTH::Int64 (std::int64_t i)
+bool
+JSON_SERIALIZER_LENGTH::Int64 (std::int64_t i)
 {
   // the encode will be TYPE|VALUE, where TYPE is int and value is int64
   m_length += GetTypePackedSize () + OR_INT_SIZE + OR_BIGINT_SIZE;
   return true;
 }
 
-bool JSON_SERIALIZER::Int64 (std::int64_t i)
+bool
+JSON_SERIALIZER::Int64 (std::int64_t i)
 {
   if (!PackType (DB_JSON_BIGINT))
     {
@@ -3353,14 +3406,16 @@ bool JSON_SERIALIZER::Int64 (std::int64_t i)
   return !HasError ();
 }
 
-bool JSON_SERIALIZER_LENGTH::Uint64 (std::uint64_t i)
+bool
+JSON_SERIALIZER_LENGTH::Uint64 (std::uint64_t i)
 {
   // the encode will be TYPE|VALUE, where TYPE is int and value is int64
   m_length += GetTypePackedSize () + OR_INT_SIZE + OR_BIGINT_SIZE;
   return true;
 }
 
-bool JSON_SERIALIZER::Uint64 (std::uint64_t i)
+bool
+JSON_SERIALIZER::Uint64 (std::uint64_t i)
 {
   if (!PackType (DB_JSON_BIGINT))
     {
@@ -3374,14 +3429,16 @@ bool JSON_SERIALIZER::Uint64 (std::uint64_t i)
   return !HasError ();
 }
 
-bool JSON_SERIALIZER_LENGTH::Double (double d)
+bool
+JSON_SERIALIZER_LENGTH::Double (double d)
 {
   // the encode will be TYPE|VALUE, where TYPE is int and value is double
   m_length += GetTypePackedSize () + OR_DOUBLE_SIZE;
   return true;
 }
 
-bool JSON_SERIALIZER::Double (double d)
+bool
+JSON_SERIALIZER::Double (double d)
 {
   if (!PackType (DB_JSON_DOUBLE))
     {
@@ -3392,37 +3449,43 @@ bool JSON_SERIALIZER::Double (double d)
   return !HasError ();
 }
 
-bool JSON_SERIALIZER_LENGTH::String (const Ch *str, SizeType length, bool copy)
+bool
+JSON_SERIALIZER_LENGTH::String (const Ch *str, SizeType length, bool copy)
 {
   m_length += GetTypePackedSize () + GetStringPackedSize (str);
   return true;
 }
 
-bool JSON_SERIALIZER::String (const Ch *str, SizeType length, bool copy)
+bool
+JSON_SERIALIZER::String (const Ch *str, SizeType length, bool copy)
 {
   return PackType (DB_JSON_STRING) && PackString (str);
 }
 
-bool JSON_SERIALIZER_LENGTH::Key (const Ch *str, SizeType length, bool copy)
+bool
+JSON_SERIALIZER_LENGTH::Key (const Ch *str, SizeType length, bool copy)
 {
   // we encode directly the key because we know we are dealing with object
   m_length += GetStringPackedSize (str);
   return true;
 }
 
-bool JSON_SERIALIZER::Key (const Ch *str, SizeType length, bool copy)
+bool
+JSON_SERIALIZER::Key (const Ch *str, SizeType length, bool copy)
 {
   return PackString (str);
 }
 
-bool JSON_SERIALIZER_LENGTH::StartObject ()
+bool
+JSON_SERIALIZER_LENGTH::StartObject ()
 {
   m_length += GetTypePackedSize ();
   m_length += OR_INT_SIZE;
   return true;
 }
 
-bool JSON_SERIALIZER::StartObject ()
+bool
+JSON_SERIALIZER::StartObject ()
 {
   if (!PackType (DB_JSON_OBJECT))
     {
@@ -3434,14 +3497,16 @@ bool JSON_SERIALIZER::StartObject ()
   return SaveSizePointers (m_buffer->ptr);
 }
 
-bool JSON_SERIALIZER_LENGTH::StartArray ()
+bool
+JSON_SERIALIZER_LENGTH::StartArray ()
 {
   m_length += GetTypePackedSize ();
   m_length += OR_INT_SIZE;
   return true;
 }
 
-bool JSON_SERIALIZER::StartArray ()
+bool
+JSON_SERIALIZER::StartArray ()
 {
   if (!PackType (DB_JSON_ARRAY))
     {
@@ -3453,31 +3518,36 @@ bool JSON_SERIALIZER::StartArray ()
   return SaveSizePointers (m_buffer->ptr);
 }
 
-bool JSON_SERIALIZER_LENGTH::EndObject (SizeType memberCount)
+bool
+JSON_SERIALIZER_LENGTH::EndObject (SizeType memberCount)
 {
   return true;
 }
 
-bool JSON_SERIALIZER::EndObject (SizeType memberCount)
+bool
+JSON_SERIALIZER::EndObject (SizeType memberCount)
 {
   // overwrite the count
   SetSizePointers (memberCount);
   return true;
 }
 
-bool JSON_SERIALIZER_LENGTH::EndArray (SizeType elementCount)
+bool
+JSON_SERIALIZER_LENGTH::EndArray (SizeType elementCount)
 {
   return true;
 }
 
-bool JSON_SERIALIZER::EndArray (SizeType elementCount)
+bool
+JSON_SERIALIZER::EndArray (SizeType elementCount)
 {
   // overwrite the count
   SetSizePointers (elementCount);
   return true;
 }
 
-void JSON_PRETTY_WRITER::WriteDelimiters (bool is_key)
+void
+JSON_PRETTY_WRITER::WriteDelimiters (bool is_key)
 {
   // just a scalar, no indentation needed
   if (m_level_stack.empty ())
@@ -3514,7 +3584,8 @@ void JSON_PRETTY_WRITER::WriteDelimiters (bool is_key)
     }
 }
 
-void JSON_PRETTY_WRITER::PushLevel (const DB_JSON_TYPE &type)
+void
+JSON_PRETTY_WRITER::PushLevel (const DB_JSON_TYPE &type)
 {
   // advance one level
   m_current_indent += LEVEL_INDENT_UNIT;
@@ -3523,19 +3594,22 @@ void JSON_PRETTY_WRITER::PushLevel (const DB_JSON_TYPE &type)
   m_level_stack.push (level_context (type, true));
 }
 
-void JSON_PRETTY_WRITER::PopLevel ()
+void
+JSON_PRETTY_WRITER::PopLevel ()
 {
   // reestablish the old context
   m_current_indent -= LEVEL_INDENT_UNIT;
   m_level_stack.pop ();
 }
 
-void JSON_PRETTY_WRITER::SetIndentOnNewLine ()
+void
+JSON_PRETTY_WRITER::SetIndentOnNewLine ()
 {
   m_buffer.append ("\n").append (m_current_indent, ' ');
 }
 
-bool JSON_PRETTY_WRITER::Null ()
+bool
+JSON_PRETTY_WRITER::Null ()
 {
   WriteDelimiters ();
 
@@ -3544,7 +3618,8 @@ bool JSON_PRETTY_WRITER::Null ()
   return true;
 }
 
-bool JSON_PRETTY_WRITER::Bool (bool b)
+bool
+JSON_PRETTY_WRITER::Bool (bool b)
 {
   WriteDelimiters ();
 
@@ -3553,7 +3628,8 @@ bool JSON_PRETTY_WRITER::Bool (bool b)
   return true;
 }
 
-bool JSON_PRETTY_WRITER::Int (int i)
+bool
+JSON_PRETTY_WRITER::Int (int i)
 {
   WriteDelimiters ();
 
@@ -3562,7 +3638,8 @@ bool JSON_PRETTY_WRITER::Int (int i)
   return true;
 }
 
-bool JSON_PRETTY_WRITER::Uint (unsigned i)
+bool
+JSON_PRETTY_WRITER::Uint (unsigned i)
 {
   WriteDelimiters ();
 
@@ -3571,7 +3648,8 @@ bool JSON_PRETTY_WRITER::Uint (unsigned i)
   return true;
 }
 
-bool JSON_PRETTY_WRITER::Int64 (std::int64_t i)
+bool
+JSON_PRETTY_WRITER::Int64 (std::int64_t i)
 {
   WriteDelimiters ();
 
@@ -3580,7 +3658,8 @@ bool JSON_PRETTY_WRITER::Int64 (std::int64_t i)
   return true;
 }
 
-bool JSON_PRETTY_WRITER::Uint64 (std::uint64_t i)
+bool
+JSON_PRETTY_WRITER::Uint64 (std::uint64_t i)
 {
   WriteDelimiters ();
 
@@ -3589,7 +3668,8 @@ bool JSON_PRETTY_WRITER::Uint64 (std::uint64_t i)
   return true;
 }
 
-bool JSON_PRETTY_WRITER::Double (double d)
+bool
+JSON_PRETTY_WRITER::Double (double d)
 {
   WriteDelimiters ();
 
@@ -3598,7 +3678,8 @@ bool JSON_PRETTY_WRITER::Double (double d)
   return true;
 }
 
-bool JSON_PRETTY_WRITER::String (const Ch *str, SizeType length, bool copy)
+bool
+JSON_PRETTY_WRITER::String (const Ch *str, SizeType length, bool copy)
 {
   WriteDelimiters ();
 
@@ -3607,7 +3688,8 @@ bool JSON_PRETTY_WRITER::String (const Ch *str, SizeType length, bool copy)
   return true;
 }
 
-bool JSON_PRETTY_WRITER::StartObject ()
+bool
+JSON_PRETTY_WRITER::StartObject ()
 {
   WriteDelimiters ();
 
@@ -3618,7 +3700,8 @@ bool JSON_PRETTY_WRITER::StartObject ()
   return true;
 }
 
-bool JSON_PRETTY_WRITER::Key (const Ch *str, SizeType length, bool copy)
+bool
+JSON_PRETTY_WRITER::Key (const Ch *str, SizeType length, bool copy)
 {
   WriteDelimiters (true);
 
@@ -3627,7 +3710,8 @@ bool JSON_PRETTY_WRITER::Key (const Ch *str, SizeType length, bool copy)
   return true;
 }
 
-bool JSON_PRETTY_WRITER::StartArray ()
+bool
+JSON_PRETTY_WRITER::StartArray ()
 {
   WriteDelimiters ();
 
@@ -3638,7 +3722,8 @@ bool JSON_PRETTY_WRITER::StartArray ()
   return true;
 }
 
-bool JSON_PRETTY_WRITER::EndObject (SizeType memberCount)
+bool
+JSON_PRETTY_WRITER::EndObject (SizeType memberCount)
 {
   PopLevel ();
 
@@ -3653,7 +3738,8 @@ bool JSON_PRETTY_WRITER::EndObject (SizeType memberCount)
   return true;
 }
 
-bool JSON_PRETTY_WRITER::EndArray (SizeType elementCount)
+bool
+JSON_PRETTY_WRITER::EndArray (SizeType elementCount)
 {
   PopLevel ();
 

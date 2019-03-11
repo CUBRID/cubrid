@@ -19,64 +19,21 @@
 
 #include "db_json_types_internal.hpp"
 
-bool JSON_DOC::IsLeaf ()
+bool
+JSON_DOC::IsLeaf ()
 {
   return !IsArray () && !IsObject ();
 }
 
-DB_JSON_TYPE
-db_json_get_type_of_value (const JSON_VALUE *val)
-{
-  if (val == NULL)
-    {
-      return DB_JSON_NULL;
-    }
-
-  if (val->IsString ())
-    {
-      return DB_JSON_STRING;
-    }
-  else if (val->IsInt ())
-    {
-      return DB_JSON_INT;
-    }
-  else if (val->IsInt64 ())
-    {
-      return DB_JSON_BIGINT;
-    }
-  else if (val->IsFloat () || val->IsDouble ())
-    {
-      return DB_JSON_DOUBLE;
-    }
-  else if (val->IsObject ())
-    {
-      return DB_JSON_OBJECT;
-    }
-  else if (val->IsArray ())
-    {
-      return DB_JSON_ARRAY;
-    }
-  else if (val->IsNull ())
-    {
-      return DB_JSON_NULL;
-    }
-  else if (val->IsBool ())
-    {
-      return DB_JSON_BOOL;
-    }
-
-  return DB_JSON_UNKNOWN;
-}
-
 /*
-* db_json_doc_to_value ()
-* doc (in)
-* value (out)
-* We need this cast in order to use the overloaded methods
-* JSON_DOC is derived from GenericDocument which also extends GenericValue
-* Yet JSON_DOC and JSON_VALUE are two different classes because they are templatized and their type is not known
-* at compile time
-*/
+ * db_json_doc_to_value ()
+ * doc (in)
+ * value (out)
+ * We need this cast in order to use the overloaded methods
+ * JSON_DOC is derived from GenericDocument which also extends GenericValue
+ * Yet JSON_DOC and JSON_VALUE are two different classes because they are templatized and their type is not known
+ * at compile time
+ */
 JSON_VALUE &
 db_json_doc_to_value (JSON_DOC &doc)
 {
