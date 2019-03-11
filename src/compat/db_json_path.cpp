@@ -555,7 +555,7 @@ PATH_TOKEN::PATH_TOKEN (token_type type, std::string &&s)
 const std::string &
 PATH_TOKEN::get_object_key () const
 {
-  assert (m_type != array_index);
+  assert (m_type == object_key);
 
   return m_object_key;
 }
