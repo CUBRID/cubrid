@@ -6312,41 +6312,19 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
     }
 
   std::vector<std::string> starting_paths;
-  bool wild_card_present = false;
   for (int i = 4; i < num_args; ++i)
     {
       std::string s (db_get_string (args[i]));
       starting_paths.emplace_back (s);
     }
 
-  std::vector<std::string> regs;
   if (starting_paths.empty ())
     {
       starting_paths.push_back ("$");
     }
 
-  std::vector<std::string> transformed_paths;
-  for (const auto &path : starting_paths)
-    {
-      transformed_paths.emplace_back ();
-      error_code = db_json_normalize_path (path.c_str (), transformed_paths.back ());
-      if (error_code != NO_ERROR)
-	{
-	  db_json_delete_doc (doc);
-	  return error_code;
-	}
-    }
-
-  error_code = db_json_paths_to_regex (transformed_paths, regs);
-  if (error_code != NO_ERROR)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
-      db_json_delete_doc (doc);
-      return error_code;
-    }
-
   std::vector<std::string> paths;
-  error_code = db_json_search_func (*doc, pattern, esc_char, paths, regs, find_all);
+  error_code = db_json_search_func (*doc, pattern, esc_char, paths, starting_paths, find_all);
 
   db_json_delete_doc (doc);
   if (error_code != NO_ERROR)
@@ -6365,8 +6343,8 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
       char *escaped;
       size_t escaped_size;
 
-      db_json_path_unquote_object_keys (paths[0]);
-      error_code = db_string_escape (paths[0].c_str(), paths[0].size (), &escaped, &escaped_size);
+      db_json_path_unquote_object_keys_external (paths[0]);
+      error_code = db_string_escape (paths[0].c_str (), paths[0].size (), &escaped, &escaped_size);
       if (error_code)
 	{
 	  db_private_free (NULL, escaped);
@@ -6388,7 +6366,7 @@ db_evaluate_json_search (DB_VALUE *result, DB_VALUE * const * args, const int nu
       char *escaped;
       size_t escaped_size;
 
-      db_json_path_unquote_object_keys (paths[i]);
+      db_json_path_unquote_object_keys_external (paths[i]);
       error_code = db_string_escape (paths[i].c_str (), paths[i].size (), &escaped, &escaped_size);
       if (error_code)
 	{

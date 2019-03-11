@@ -49,6 +49,9 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/db_elo.c
   ${COMPAT_DIR}/db_info.c
   ${COMPAT_DIR}/db_json.cpp
+  ${COMPAT_DIR}/db_json_allocator.cpp
+  ${COMPAT_DIR}/db_json_path.cpp
+  ${COMPAT_DIR}/db_json_types_internal.cpp
   ${COMPAT_DIR}/db_macro.c
   ${COMPAT_DIR}/db_obj.c
   ${COMPAT_DIR}/db_old.c
