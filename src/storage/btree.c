@@ -23,15 +23,10 @@
 
 #ident "$Id$"
 
-#include "config.h"
-
-#include <stdlib.h>
-#include <string.h>
-#include <assert.h>
-
 #include "btree.h"
 
 #include "btree_load.h"
+#include "config.h"
 #include "db_value_printer.hpp"
 #include "file_manager.h"
 #include "slotted_page.h"
@@ -52,6 +47,10 @@
 #include "fault_injection.h"
 #include "dbtype.h"
 #include "thread_manager.hpp"
+
+#include <stdlib.h>
+#include <string.h>
+#include <assert.h>
 
 #define BTREE_HEALTH_CHECK
 
@@ -19096,7 +19095,7 @@ btree_top_n_items_binary_search (RANGE_OPT_ITEM ** top_n_items, int *att_idxs, T
 static int
 btree_iss_set_key (BTREE_SCAN * bts, INDEX_SKIP_SCAN * iss)
 {
-  struct regu_variable_node *key = NULL;
+  regu_variable_node *key = NULL;
   int ret = NO_ERROR;
 
   /* check environment */

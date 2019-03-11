@@ -31,34 +31,33 @@
 #include <assert.h>
 
 #include "locator_sr.h"
-#include "error_manager.h"
-#include "xserver_interface.h"
-#include "list_file.h"
-#include "query_manager.h"
-#include "query_reevaluation.hpp"
-#include "slotted_page.h"
-#include "btree_load.h"
-#include "heap_file.h"
-#include "lock_manager.h"
-#include "critical_section.h"
-#if defined(SERVER_MODE)
-#endif /* SERVER_MODE */
-#include "object_primitive.h"
-#include "object_representation_sr.h"
+
 #include "boot_sr.h"
-#if defined(ENABLE_SYSTEMTAP)
-#include "probes.h"
-#endif /* ENABLE_SYSTEMTAP */
-#include "filter_pred_cache.h"
-#include "fetch.h"
-#include "query_executor.h"
-#include "xasl_cache.h"
-#include "xasl_predicate.hpp"
+#include "btree_load.h"
+#include "critical_section.h"
+#include "dbtype.h"
 #if defined(DMALLOC)
 #include "dmalloc.h"
 #endif /* DMALLOC */
-#include "dbtype.h"
+#include "error_manager.h"
+#include "fetch.h"
+#include "filter_pred_cache.h"
+#include "heap_file.h"
+#include "list_file.h"
+#include "lock_manager.h"
+#include "object_primitive.h"
+#include "object_representation_sr.h"
+#include "query_executor.h"
+#include "query_manager.h"
+#include "query_reevaluation.hpp"
+#if defined(ENABLE_SYSTEMTAP)
+#include "probes.h"
+#endif /* ENABLE_SYSTEMTAP */
+#include "slotted_page.h"
+#include "xasl_cache.h"
+#include "xasl_predicate.hpp"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
+#include "xserver_interface.h"
 
 /* TODO : remove */
 extern bool catcls_Enable;

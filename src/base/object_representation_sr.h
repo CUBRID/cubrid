@@ -32,6 +32,8 @@
 #error Belongs to server module
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
+#include "dbtype_def.h"
+#include "mvcc.h"
 #include "storage_common.h"
 #include "system_catalog.h"
 
@@ -213,14 +215,12 @@ extern int or_get_unique_hierarchy (THREAD_ENTRY * thread_p, RECDES * record, in
 extern OR_CLASSREP *or_get_classrep (RECDES * record, int repid);
 extern OR_CLASSREP *or_get_classrep_noindex (RECDES * record, int repid);
 extern OR_CLASSREP *or_classrep_load_indexes (OR_CLASSREP * rep, RECDES * record);
-extern int or_class_get_partition_info (RECDES * record, OR_PARTITION * partition_info, int *has_partition_info,
-					REPR_ID * repr_id);
+extern int or_class_get_partition_info (RECDES * record, OR_PARTITION * partition_info, REPR_ID * repr_id,
+					int *has_partition_info);
 const char *or_get_constraint_comment (RECDES * record, const char *constraint_name);
 extern void or_free_classrep (OR_CLASSREP * rep);
 extern int or_get_attrname (RECDES * record, int attrid, char **string, int *alloced_string);
 extern int or_get_attrcomment (RECDES * record, int attrid, char **string, int *alloced_string);
-extern OR_CLASS *or_get_class (RECDES * record);
-extern void or_free_class (OR_CLASS * class_);
 
 /* OLD STYLE INTERFACE */
 #if defined (ENABLE_UNUSED_FUNCTION)

@@ -46,6 +46,7 @@
 #include "memory_alloc.h"
 #include "memory_hash.h"
 #include "message_catalog.h"
+#include "mvcc.h"
 #include "object_representation_sr.h"
 #include "oid.h"
 #include "page_buffer.h"

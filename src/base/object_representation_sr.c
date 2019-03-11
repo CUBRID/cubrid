@@ -25,21 +25,19 @@
 
 #ident "$Id$"
 
+#include "object_representation_sr.h"
+
+#include "btree_load.h"
 #include "config.h"
+#include "dbtype.h"
+#include "error_manager.h"
+#include "object_primitive.h"
+#include "object_representation.h"
+#include "set_object.h"
 
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
-
-#include "object_representation_sr.h"
-
-#include "error_manager.h"
-#include "object_representation.h"
-#include "set_object.h"
-#include "btree_load.h"
-#include "dbtype.h"
-#include "object_primitive.h"
-#include "dbtype.h"
 
 #define DATA_INIT(data, type) memset(data, 0, sizeof(DB_DATA))
 #define OR_ARRAY_EXTENT 10

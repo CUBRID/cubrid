@@ -31,17 +31,17 @@
 #error Belongs to server module
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
-#include "config.h"
-
 #include "access_spec.hpp"
-#include "storage_common.h"
-#include "oid.h"
-#include "statistics.h"
+#include "config.h"
 #include "disk_manager.h"
 #include "object_domain.h"
-#include "query_evaluator.h"
+#include "oid.h"
 #include "lock_manager.h"
+#include "mvcc.h"
+#include "query_evaluator.h"
 #include "recovery.h"
+#include "statistics.h"
+#include "storage_common.h"
 
 // forward definition
 struct key_val_range;

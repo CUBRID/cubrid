@@ -23,19 +23,20 @@
 
 #ident "$Id$"
 
+#include "overflow_file.h"
+
 #include "config.h"
+#include "error_manager.h"
+#include "file_manager.h"
+#include "heap_file.h"
+#include "log_manager.h"
+#include "memory_alloc.h"
+#include "mvcc.h"
+#include "page_buffer.h"
+#include "slotted_page.h"
+#include "storage_common.h"
 
 #include <string.h>
-
-#include "storage_common.h"
-#include "memory_alloc.h"
-#include "error_manager.h"
-#include "page_buffer.h"
-#include "file_manager.h"
-#include "slotted_page.h"
-#include "log_manager.h"
-#include "overflow_file.h"
-#include "heap_file.h"
 
 #define OVERFLOW_ALLOCVPID_ARRAY_SIZE 64
 
