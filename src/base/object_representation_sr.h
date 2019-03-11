@@ -234,4 +234,12 @@ extern void orc_free_class_info (CLS_INFO * info);
 extern int orc_subclasses_from_record (RECDES * record, int *array_size, OID ** array_ptr);
 extern int orc_superclasses_from_record (RECDES * record, int *array_size, OID ** array_ptr);
 extern OR_CLASSREP **or_get_all_representation (RECDES * record, bool do_indexes, int *count);
+
+extern int or_replace_rep_id (RECDES * record, int repid);
+
+extern int or_mvcc_get_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header);
+extern int or_mvcc_set_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header);
+extern int or_mvcc_add_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header, int bound_bit,
+			       int variable_offset_size);
+extern int or_mvcc_set_log_lsa_to_record (RECDES * record, LOG_LSA * lsa);
 #endif /* _OBJECT_REPRESENTATION_SR_H_ */

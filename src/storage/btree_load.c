@@ -37,6 +37,7 @@
 #include "heap_file.h"
 #include "memory_private_allocator.hpp"
 #include "object_primitive.h"
+#include "object_representation_sr.h"
 #include "partition.h"
 #include "partition_sr.h"
 #include "query_executor.h"

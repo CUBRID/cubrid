@@ -45,6 +45,7 @@
 #include "transform.h"		/* for CT_SERIAL_NAME */
 #include "serial.h"
 #include "object_primitive.h"
+#include "object_representation_sr.h"
 #include "xserver_interface.h"
 #include "chartype.h"
 #include "query_executor.h"

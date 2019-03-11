@@ -44,6 +44,7 @@
 #if defined(SERVER_MODE)
 #endif /* SERVER_MODE */
 #include "object_primitive.h"
+#include "object_representation_sr.h"
 #include "boot_sr.h"
 #if defined(ENABLE_SYSTEMTAP)
 #include "probes.h"
