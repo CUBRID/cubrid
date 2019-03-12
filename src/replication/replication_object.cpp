@@ -267,6 +267,9 @@ namespace cubreplication
   {
     int count_new_values = 0;
     int int_val;
+
+    OID_SET_NULL (&m_inst_oid);
+
 #if defined (SERVER_MODE)
     HL_HEAPID save_heapid;
 
@@ -283,10 +286,8 @@ namespace cubreplication
 
     for (std::size_t i = 0; (int) i < count_new_values; i++)
       {
-	DB_VALUE val;
-
-	/* this copies the DB_VALUE to contain, should we avoid this ? */
-	m_new_values.push_back (val);
+	m_new_values.emplace_back ();
+        DB_VALUE &val = m_new_values.back ();
 	deserializator.unpack_db_value (val);
       }
 
