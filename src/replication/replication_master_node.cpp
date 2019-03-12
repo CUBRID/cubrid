@@ -78,7 +78,8 @@ namespace cubreplication
      if (css_ha_server_state () == HA_SERVER_STATE_TO_BE_ACTIVE)
       {
         /* this is the first slave connecting to this node */
-        css_change_ha_server_state (NULL, HA_SERVER_STATE_ACTIVE, true, HA_CHANGE_MODE_IMMEDIATELY, true);
+        cubthread::entry *thread_p = thread_get_thread_entry_info ();
+        css_change_ha_server_state (thread_p, HA_SERVER_STATE_ACTIVE, true, HA_CHANGE_MODE_IMMEDIATELY, true);
       }
 #endif
     }
