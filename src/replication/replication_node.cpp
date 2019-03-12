@@ -28,6 +28,7 @@
 #include "boot_sr.h"        /* database full name */
 #include "error_code.h"
 #include "file_io.h"        /* file name manipulation */
+#include "stream_file.hpp"
 
 namespace cubreplication
 {
