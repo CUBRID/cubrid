@@ -39,6 +39,7 @@
 
 #include "disk_manager.h"
 #include "porting.h"
+#include "porting_inline.hpp"
 #include "system_parameter.h"
 #include "error_manager.h"
 #include "language_support.h"

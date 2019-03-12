@@ -43,6 +43,7 @@
 #include "boot_sr.h"
 #include "locator_sr.h"
 #include "page_buffer.h"
+#include "porting_inline.hpp"
 #include "log_compress.h"
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"

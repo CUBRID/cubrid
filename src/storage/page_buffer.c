@@ -31,6 +31,7 @@
 #include <assert.h>
 
 #include "page_buffer.h"
+
 #include "storage_common.h"
 #include "memory_alloc.h"
 #include "system_parameter.h"
@@ -43,6 +44,7 @@
 #include "memory_hash.h"
 #include "critical_section.h"
 #include "perf_monitor.h"
+#include "porting_inline.hpp"
 #include "environment_variable.h"
 #include "thread_daemon.hpp"
 #include "thread_entry_task.hpp"

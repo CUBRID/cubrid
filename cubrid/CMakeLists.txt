@@ -22,12 +22,19 @@ set(COMPAT_SOURCES
   ${COMPAT_DIR}/db_date.c
   ${COMPAT_DIR}/db_elo.c
   ${COMPAT_DIR}/db_json.cpp
+  ${COMPAT_DIR}/db_json_allocator.cpp
+  ${COMPAT_DIR}/db_json_path.cpp
+  ${COMPAT_DIR}/db_json_types_internal.cpp
   ${COMPAT_DIR}/db_macro.c
   ${COMPAT_DIR}/db_set.c
   ${COMPAT_DIR}/db_value_printer.cpp
   )
 set (COMPAT_HEADERS
   ${COMPAT_DIR}/dbtype_def.h
+  ${COMPAT_DIR}/db_json.hpp
+  ${COMPAT_DIR}/db_json_allocator.hpp
+  ${COMPAT_DIR}/db_json_path.hpp
+  ${COMPAT_DIR}/db_json_types_internal.hpp
   ${COMPAT_DIR}/dbtype_function.i
   ${COMPAT_DIR}/dbtype_function.h
   )
@@ -131,12 +138,13 @@ set (BASE_HEADERS
   ${BASE_DIR}/fileline_location.hpp
   ${BASE_DIR}/mem_block.hpp
   ${BASE_DIR}/memory_private_allocator.hpp
+  ${BASE_DIR}/packable_object.hpp
   ${BASE_DIR}/packer.hpp
   ${BASE_DIR}/perf.hpp
   ${BASE_DIR}/perf_def.hpp
   ${BASE_DIR}/pinning.hpp
   ${BASE_DIR}/pinnable_buffer.hpp
-  ${BASE_DIR}/packable_object.hpp
+  ${BASE_DIR}/porting_inline.hpp
   ${BASE_DIR}/process_util.h
   ${BASE_DIR}/resource_tracker.hpp
   ${BASE_DIR}/string_buffer.hpp

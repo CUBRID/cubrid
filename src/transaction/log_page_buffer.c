@@ -52,6 +52,7 @@
 #include <assert.h>
 
 #include "porting.h"
+#include "porting_inline.hpp"
 #include "connection_defs.h"
 #include "log_impl.h"
 #include "log_manager.h"
@@ -9398,7 +9399,7 @@ logpb_check_stop_at_time (FILEIO_BACKUP_SESSION * session, time_t stop_at, time_
  */
 int
 logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath, const char *prefix_logname,
-	       BO_RESTART_ARG * r_args)
+	       bo_restart_arg * r_args)
 {
   FILEIO_BACKUP_SESSION session_storage;
   FILEIO_BACKUP_SESSION *session = NULL;

@@ -36,6 +36,7 @@
 #include <assert.h>
 
 #include "porting.h"
+#include "porting_inline.hpp"
 #include "dbtype_def.h"
 #include "sha1.h"
 #include "cache_time.h"
@@ -352,20 +353,6 @@ struct recdes
       } \
   } while (false)
 
-/* MVCC RECORD HEADER */
-typedef struct mvcc_rec_header MVCC_REC_HEADER;
-struct mvcc_rec_header
-{
-  INT32 mvcc_flag:8;		/* MVCC flags */
-  INT32 repid:24;		/* representation id */
-  int chn;			/* cache coherency number */
-  MVCCID mvcc_ins_id;		/* MVCC insert id */
-  MVCCID mvcc_del_id;		/* MVCC delete id */
-  LOG_LSA prev_version_lsa;	/* log address of previous version */
-};
-#define MVCC_REC_HEADER_INITIALIZER \
-{ 0, 0, NULL_CHN, MVCCID_NULL, MVCCID_NULL, LSA_INITIALIZER }
-
 typedef struct lorecdes LORECDES;	/* Work area descriptor */
 struct lorecdes
 {
@@ -519,26 +506,7 @@ typedef enum
 				 * compared to. */
 } BTREE_SEARCH;
 
-/* TYPEDEFS FOR BACKUP/RESTORE */
 
-/* structure for passing arguments into boot_restart_server et. al. */
-typedef struct bo_restart_arg BO_RESTART_ARG;
-struct bo_restart_arg
-{
-  bool printtoc;		/* True to show backup's table of contents */
-  time_t stopat;		/* the recovery stop time if restarting from backup */
-  const char *backuppath;	/* Pathname override for location of backup volumes */
-  int level;			/* The backup level to use */
-  const char *verbose_file;	/* restoredb verbose msg file */
-  bool newvolpath;		/* true: restore the database and log volumes to the path specified in the
-				 * database-loc-file */
-  bool restore_upto_bktime;
-
-  bool restore_slave;		/* restore slave */
-  bool is_restore_from_backup;
-  INT64 db_creation;		/* database creation time */
-  LOG_LSA restart_repl_lsa;	/* restart replication lsa after restoreslave */
-};
 
 /* Magic default values */
 #define CUBRID_MAGIC_MAX_LENGTH                 25
@@ -1275,8 +1243,8 @@ typedef enum
 #define SERIAL_ATTR_CACHED_NUM    "cached_num"
 #define SERIAL_ATTR_COMMENT       "comment"
 
-#define PEEK          true	/* Peek for a slotted record */
-#define COPY          false	/* Don't peek, but copy a slotted record */
+static const bool PEEK = true;	/* Peek for a slotted record */
+static const bool COPY = false;	/* Don't peek, but copy a slotted record */
 
 enum
 {

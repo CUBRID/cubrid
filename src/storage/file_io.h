@@ -34,6 +34,7 @@
 #include "lzo/lzo1x.h"
 #include "memory_hash.h"
 #include "porting.h"
+#include "porting_inline.hpp"
 #include "release_string.h"
 #include "storage_common.h"
 #include "thread_compat.hpp"

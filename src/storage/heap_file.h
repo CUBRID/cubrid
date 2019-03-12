@@ -34,6 +34,7 @@
 #include "config.h"
 #include "file_manager.h"
 #include "heap_attrinfo.h"
+#include "mvcc.h"
 #include "page_buffer.h"
 #include "perf_monitor.h"
 #include "storage_common.h"

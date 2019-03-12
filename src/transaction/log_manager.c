@@ -51,6 +51,7 @@
 #include "recovery.h"
 #include "xserver_interface.h"
 #include "page_buffer.h"
+#include "porting_inline.hpp"
 #include "query_manager.h"
 #include "message_catalog.h"
 #include "environment_variable.h"
