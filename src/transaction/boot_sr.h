@@ -86,6 +86,25 @@ struct check_args
 
 extern void boot_server_status (BOOT_SERVER_STATUS status);
 
+/* structure for passing arguments into boot_restart_server et. al. */
+typedef struct bo_restart_arg BO_RESTART_ARG;
+struct bo_restart_arg
+{
+  bool printtoc;		/* True to show backup's table of contents */
+  time_t stopat;		/* the recovery stop time if restarting from backup */
+  const char *backuppath;	/* Pathname override for location of backup volumes */
+  int level;			/* The backup level to use */
+  const char *verbose_file;	/* restoredb verbose msg file */
+  bool newvolpath;		/* true: restore the database and log volumes to the path specified in the
+				 * database-loc-file */
+  bool restore_upto_bktime;
+
+  bool restore_slave;		/* restore slave */
+  bool is_restore_from_backup;
+  INT64 db_creation;		/* database creation time */
+  LOG_LSA restart_repl_lsa;	/* restart replication lsa after restoreslave */
+};
+
 #if defined(SERVER_MODE)
 /* in xserver_interface.h */
 extern void boot_donot_shutdown_server_at_exit (void);

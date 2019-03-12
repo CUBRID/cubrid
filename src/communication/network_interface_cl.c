@@ -4117,6 +4117,7 @@ boot_delete (const char *db_name, bool force_delete)
 #endif /* !CS_MODE */
 }
 
+#if defined (SA_MODE)
 /*
  * boot_restart_from_backup -
  *
@@ -4125,12 +4126,8 @@ boot_delete (const char *db_name, bool force_delete)
  * NOTE:
  */
 int
-boot_restart_from_backup (int print_restart, const char *db_name, BO_RESTART_ARG * r_args)
+boot_restart_from_backup (int print_restart, const char *db_name, bo_restart_arg * r_args)
 {
-#if defined(CS_MODE)
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ONLY_IN_STANDALONE, 1, "restart from backup");
-  return NULL_TRAN_INDEX;
-#else /* CS_MODE */
   int tran_index;
 
   enter_server_no_thread_entry ();
@@ -4140,8 +4137,8 @@ boot_restart_from_backup (int print_restart, const char *db_name, BO_RESTART_ARG
   exit_server_no_thread_entry ();
 
   return tran_index;
-#endif /* !CS_MODE */
 }
+#endif /* SA_MODE */
 
 /*
  * boot_shutdown_server -

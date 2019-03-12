@@ -48,7 +48,10 @@
 #include "parse_tree.h"
 #include "timezone_lib_common.h"
 
-// forward definitions
+// forward declarations
+#if defined (SA_MODE)
+struct bo_restart_arg;
+#endif
 struct compile_context;
 struct xasl_node_header;
 struct xasl_stream;
@@ -188,7 +191,9 @@ extern int boot_find_number_temp_volumes (void);
 extern VOLID boot_find_last_permanent (void);
 extern int boot_find_last_temp (void);
 extern int boot_delete (const char *db_name, bool force_delete);
-extern int boot_restart_from_backup (int print_restart, const char *db_name, BO_RESTART_ARG * r_args);
+#if defined (SA_MODE)
+extern int boot_restart_from_backup (int print_restart, const char *db_name, bo_restart_arg * r_args);
+#endif // SA_MODE
 extern bool boot_shutdown_server (ER_FINAL_CODE iserfinal);
 extern int boot_soft_rename (const char *old_db_name, const char *new_db_name, const char *new_db_path,
 			     const char *new_log_path, const char *new_db_server_host, const char *new_volext_path,
