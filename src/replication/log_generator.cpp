@@ -350,8 +350,7 @@ namespace cubreplication
 #if !defined(NDEBUG)
     if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG))
     {
-      /* Reset stream entry. */
-      assert(m_sysops_stream_entry.size() == 0);      
+      /* Reset stream entry. */      
       m_stream_entry.reset();
       
       return;
@@ -368,35 +367,47 @@ namespace cubreplication
     on_transaction_finish(stream_entry_header::TRAN_STATE::COMMITTED);
   }
 
-  void log_generator::on_sysop_commit (int sysop_index)
-  {    
-    if ((is_replication_disabled() && prm_get_bool_value(PRM_ID_REPL_LOG_LOCAL_DEBUG) == false)
-	|| m_sysops_stream_entry.size() == 0 || sysop_index > m_sysops_stream_entry.size())
+  void log_generator::on_sysop_commit (LOG_LSA &start_lsa)
+  {
+    replication_object *repl_obj;
+    LOG_LSA repl_lsa;
+    cubstream::multi_thread_stream *p_multi_thread_stream = get_stream();
+    cubreplication::stream_entry local_stream_entry (p_multi_thread_stream);    
+    
+    if (m_stream_entry.count_entries() == 0)
       {
-	return;
+        return;
       }
-
-    stream_entry *last_sysop_stream_entry;
-    MVCCID mvccid = logtb_find_current_mvccid (&cubthread::get_entry());
     
-    /* Get the stream entry of last sysop and set MVCCID. */
-    assert(sysop_index == m_sysops_stream_entry.size() - 1);
-    last_sysop_stream_entry = m_sysops_stream_entry.back();
-    last_sysop_stream_entry->set_mvccid (mvccid);
-    
-    /* Write objects in stream and then destroy them. */
-#if !defined(NDEBUG)
-    if (prm_get_bool_value(PRM_ID_REPL_LOG_LOCAL_DEBUG) == false)
+    repl_obj = m_stream_entry.get_object_at ((int) (m_stream_entry.count_entries() - 1));
+    repl_obj->get_lsa (repl_lsa);
+    if (LSA_GT (&start_lsa, &repl_lsa))
     {
-      m_sysops_stream_entry.pop_back();
       return;
-    }    
+    }
+    
+    m_stream_entry.move_replication_objects_after_lsa_to_stream (start_lsa, local_stream_entry);
+#if !defined(NDEBUG)
+    if (prm_get_bool_value(PRM_ID_REPL_LOG_LOCAL_DEBUG))
+    {
+      /* Reset stream entry. */      
+      local_stream_entry.reset();
+
+      return;
+    }
 #endif
 
-    last_sysop_stream_entry->pack();
-    last_sysop_stream_entry->reset();
-    /* Remove stream entry from vector and destroy the stream entry. */
-    m_sysops_stream_entry.pop_back();
+    cubthread::entry *thread_p = &cubthread::get_entry();
+    int tran_index = LOG_FIND_THREAD_TRAN_INDEX(thread_p);
+    LOG_TDES *tdes = LOG_FIND_TDES(tran_index);
+
+    MVCCID mvccid = logtb_find_current_mvccid(&cubthread::get_entry());
+    local_stream_entry.set_mvccid (mvccid);
+    set_tran_repl_info(tdes->mvccinfo.id, stream_entry_header::ACTIVE);    
+
+    /* Write objects in stream and then destroy them. */
+    local_stream_entry.pack ();
+    local_stream_entry.reset ();     
   }  
 
   void
@@ -406,88 +417,17 @@ namespace cubreplication
   }
 
   void log_generator::on_sysop_abort (LOG_LSA &start_lsa)
-  {    
-    //if ((is_replication_disabled() && prm_get_bool_value(PRM_ID_REPL_LOG_LOCAL_DEBUG) == false)
-    //    /*|| m_sysops_stream_entry.size() == 0 || sysop_index > m_sysops_stream_entry.size()*/)
-    //{
-    //  /* Nothing to abort here. */
-    //  return;
-    //}
-
-    replication_object *repl_obj;
-    LOG_LSA repl_lsa;        
-    cubthread::entry *thread_p = &cubthread::get_entry();
-    cubreplication::stream_entry *stream_entry;
-    int count_entries;
-    
-    /* TODO - replace it with lsa stacks */
-    if (m_sysops_stream_entry.size() > 0)
-    { 
-      stream_entry = m_sysops_stream_entry.back();
-#if !defined(NDEBUG)
-      count_entries = (int) stream_entry->count_entries();
-      for (int i = count_entries - 1; i >= 0; i--)
-        {
-          repl_obj = stream_entry->get_object_at(i);
-          repl_obj->get_lsa(repl_lsa);
-
-          if (LSA_GT (&start_lsa, &repl_lsa))
-          {
-            assert (false);
-          }     
-        }
-
-#endif    
-      
-      stream_entry->reset();
-      m_sysops_stream_entry.pop_back();
-    }
-    else
-    {      
-      
-      cubreplication::stream_entry *stream_entry = logtb_get_tdes(thread_p)->replication_log_generator.get_stream_entry();
-      int count_entries = (int) stream_entry->count_entries();
-
-      if (count_entries == 0)
-        {
-          return;
-        }
-
-      stream_entry->destroy_objects_after_lsa (start_lsa);
-    }           
-  }
-
-  void log_generator::on_sysop_attach_to_outer (int sysop_index)
   {
-    if ((is_replication_disabled() && prm_get_bool_value(PRM_ID_REPL_LOG_LOCAL_DEBUG) == false)
-        || m_sysops_stream_entry.size() == 0 || sysop_index > m_sysops_stream_entry.size())
+    cubthread::entry *thread_p = &cubthread::get_entry();
+    cubreplication::stream_entry *stream_entry = logtb_get_tdes(thread_p)->replication_log_generator.get_stream_entry();
+    int count_entries = (int) stream_entry->count_entries();
+
+    if (count_entries == 0)
     {
-      /* Nothing to attach to outer here. */
       return;
     }
 
-    stream_entry *last_sysop_stream_entry, *parent_sysop_stream_entry;    
-
-    /* Get the stream entry of last sysop and move its objects into parent stream. */
-    assert(sysop_index == m_sysops_stream_entry.size() - 1);
-    last_sysop_stream_entry = m_sysops_stream_entry.back();
-
-    if (m_sysops_stream_entry.size() > 1)
-      {
-	parent_sysop_stream_entry = m_sysops_stream_entry.back() - 1;
-      }
-    else
-      {
-	parent_sysop_stream_entry = &m_stream_entry;
-      }
-
-    for (int i = 0; i < last_sysop_stream_entry->count_entries(); i++)
-      {      
-	parent_sysop_stream_entry->add_packable_entry (last_sysop_stream_entry->get_object_at (i));
-      }           
-
-    /* Remove last stream entry from vector and destroy the stream entry. */
-    m_sysops_stream_entry.pop_back();
+    stream_entry->destroy_objects_after_lsa (start_lsa);    
   }
 
   void
@@ -582,31 +522,6 @@ namespace cubreplication
     repl_objects_after_lsa.clear();
 
     return err_code;
-  }
-
-  void log_generator::add_stream_entries_for_last_sysop (void)
-  {
-    stream_entry *p_stream_entry;
-    cubstream::multi_thread_stream *p_multi_thread_stream;
-    cubthread::entry *thread_p;
-    int tran_index, num_new_stream_entries;
-    LOG_TDES *tdes;
-
-    thread_p = &cubthread::get_entry();
-    tran_index = LOG_FIND_THREAD_TRAN_INDEX(thread_p);
-    tdes = LOG_FIND_TDES(tran_index);
-
-    assert(m_has_stream == true && tdes->topops.last > 0);
-    
-    /* Here we may add null streams, to optimize it. */
-    p_multi_thread_stream = get_stream();
-    num_new_stream_entries = tdes->topops.last - (int) m_sysops_stream_entry.size() + 1;
-    for (int i = 0; i < num_new_stream_entries; i++)
-      {
-	p_stream_entry = new stream_entry (p_multi_thread_stream);
-	p_stream_entry->set_stream (p_multi_thread_stream);
-	m_sysops_stream_entry.push_back(p_stream_entry);
-      }
   }
 
   cubstream::multi_thread_stream *log_generator::s_stream = NULL;

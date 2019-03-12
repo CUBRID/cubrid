@@ -80,7 +80,6 @@ namespace cubreplication
       std::vector <changed_attrs_row_repl_entry *> m_pending_to_be_added;
 
       stream_entry m_stream_entry;
-      std::vector<stream_entry *> m_sysops_stream_entry;
 
       bool m_has_stream;
       bool m_is_row_replication_disabled;
@@ -109,13 +108,11 @@ namespace cubreplication
       // act when trasaction is committed; replication entries are logged
       void on_transaction_commit (void);      
       // act when sysop with HA info is committed; replication entries are logged
-      void on_sysop_commit (int sysop_index);
+      void on_sysop_commit (LOG_LSA &start_lsa);
       // act when transaction is aborted; replication entries are logged
       void on_transaction_abort (void);
       // act when sysop is aborted
-      void on_sysop_abort (LOG_LSA &start_lsa);
-      // act when sysop is attached to outer
-      void log_generator::on_sysop_attach_to_outer (int sysop_index);
+      void on_sysop_abort (LOG_LSA &start_lsa);      
       // clear transaction data (e.g. logtb_clear_tdes)
       void clear_transaction (void);
 
@@ -162,9 +159,7 @@ namespace cubreplication
 #endif
       bool is_row_replication_disabled (void);
       /* TO DO - debug */
-      int abort_sysop_and_simulate_apply_repl_on_master (LOG_LSA &filter_replication_lsa);
-
-      void add_stream_entries_for_last_sysop (void);
+      int abort_sysop_and_simulate_apply_repl_on_master (LOG_LSA &filter_replication_lsa);      
 
     private:
 

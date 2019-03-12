@@ -375,24 +375,12 @@ namespace cubstream
           m_packable_entries.erase (m_packable_entries.begin() + start_index,
                                     m_packable_entries.end());
         }        
-      };
+      }; 
 
-    /*  virtual void destroy_objects_partial(unsigned int start_index, unsigned int end_index)
+      void move_replication_objects_after_lsa_to_stream (LOG_LSA &lsa, cubstream::entry<cubreplication::replication_object> &entry)
       {
-        assert(start_index <= end_index && start_index >= 0
-          && end_index < (unsigned int)m_packable_entries.size());
-
-        for (unsigned int i = 0; i < m_packable_entries.size(); i++)
-        {
-          if (m_packable_entries[i] != NULL)
-          {
-            delete (m_packable_entries[i]);
-          }
-        }
-
-        m_packable_entries.erase(m_packable_entries.begin() + start_index,
-                                 m_packable_entries.begin() + end_index + 1);
-      };*/
+        move_replication_objects_after_lsa (lsa, entry.m_packable_entries);
+      }
 
       void move_replication_objects_after_lsa (LOG_LSA &lsa, std::vector <cubreplication::replication_object *> &repl_objects_after_lsa)
       {
@@ -401,6 +389,7 @@ namespace cubstream
         int start_index = 0;
         int i, cnt_entries;
         
+        assert (count_entries() < INT_MAX);
         cnt_entries = (int) count_entries ();        
         for (i = cnt_entries - 1; i >= 0; i--)
         {
