@@ -38,6 +38,7 @@
 #include "thread_manager.hpp"
 #include "thread_looper.hpp"
 #include "porting.h"
+#include "system_parameter.h" /* er_log_debug */
 
 #include <cstdio>     /* for std::remove */
 #include <limits>     /* for std::numeric_limits */
@@ -162,6 +163,9 @@ namespace cubstream
     std::map<int,int>::iterator it;
 
     m_is_stopped = true;
+
+    er_log_debug_replication (ARG_FILE_LINE, "stream_file::finalize file_path:%s, stream:%s\n",
+      m_base_path.c_str (), m_stream.name ().c_str ());
 
     force_start_flush ();
 
