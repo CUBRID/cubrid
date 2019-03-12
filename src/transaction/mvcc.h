@@ -26,7 +26,6 @@
 
 #ident "$Id$"
 
-#include "mvcc.h"
 #include "storage_common.h"
 #include "thread_compat.hpp"
 
