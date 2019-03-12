@@ -191,7 +191,7 @@ db_json_path_is_token_valid_array_index (const std::string &str, bool allow_wild
 
   // we need to check for non-digits since strtoul simply returns 0 in case conversion
   // can not be made
-  for (auto it = str.cbegin () + start; it < str.cbegin () + last_non_space; ++it)
+  for (auto it = str.cbegin () + start; it < str.cbegin () + last_non_space + 1; ++it)
     {
       if (!std::isdigit (static_cast<unsigned char> (*it)))
 	{
