@@ -851,10 +851,10 @@ namespace cubpacking
   }
 
   void
-  unpacker::unpack_buffer_with_length (char *stream, int &length)
+  unpacker::unpack_buffer_with_length (char *stream, const std::size_t length)
   {
     align (INT_ALIGNMENT);
-    m_ptr = or_unpack_stream (m_ptr, 0, stream, &length);
+    m_ptr = or_unpack_stream (m_ptr, stream, length);
   }
 
   void

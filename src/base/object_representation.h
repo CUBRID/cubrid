@@ -1332,7 +1332,7 @@ extern char *or_unpack_date (char *ptr, DB_DATE * date);
 extern char *or_unpack_monetary (char *ptr, DB_MONETARY * money);
 extern char *or_unpack_utime (char *ptr, DB_UTIME * utime);
 #endif
-extern char *or_unpack_stream (const char *ptr, const int truncate_len, char *stream, int *len);
+extern char *or_unpack_stream (const char *ptr, char *stream, size_t len);
 extern char *or_unpack_string (char *ptr, char **string);
 extern char *or_unpack_string_alloc (char *ptr, char **string);
 extern char *or_unpack_string_nocopy (char *ptr, char **string);
