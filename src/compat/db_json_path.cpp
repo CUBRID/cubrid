@@ -26,6 +26,9 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
+#include <limits>
+#include <errno.h>
 
 enum class JSON_PATH_TYPE
 {
@@ -185,19 +188,33 @@ db_json_path_is_token_valid_array_index (const std::string &str, bool allow_wild
 
   // Remaining invalid cases are: 1. Non-digits are present
   //                              2. Index overflows Rapidjson's index representation type
-  rapidjson::SizeType n = 0;
-  for (auto it = str.cbegin () + start; it < str.cbegin () + last_non_space + 1; ++it)
+
+  // we need to check for non-digits since strtoul simply returns 0 in case conversion
+  // can not be made
+  for (auto it = str.cbegin () + start; it < str.cbegin () + last_non_space; ++it)
     {
       if (!std::isdigit (static_cast<unsigned char> (*it)))
 	{
 	  return false;
 	}
-      rapidjson::SizeType m = n * 10 + static_cast<unsigned> (*it - '0');
-      if (m < n)
-	{
-	  return false;
-	}
-      n = m;
+    }
+
+  std::string array_index_str = str.substr (start, last_non_space - start + 1);
+  char *end_str;
+  // use std::stoul since there is no std::strtoui
+  unsigned long parsed_array_index = std::strtoul (array_index_str.c_str (), &end_str, 10);
+  if (errno == ERANGE)
+    {
+      errno = 0;
+      return false;
+    }
+
+  static_assert (sizeof (rapidjson::SizeType) <= sizeof (unsigned long),
+		 "rapidjson::SizeType does not fit in unsigned long");
+  rapidjson::SizeType max_array_index = std::numeric_limits<rapidjson::SizeType>::max ();
+  if ((unsigned long) max_array_index < parsed_array_index)
+    {
+      return false;
     }
 
   // this is a valid array index
@@ -302,7 +319,9 @@ JSON_PATH::validate_and_create_from_json_path (std::string &sql_path)
 	    }
 	  else
 	    {
-	      push_array_index (std::stoi (sql_path.substr (i, end_bracket_offset - i)));
+	      // note that db_json_path_is_token_valid_array_index () checks the index to not overflow
+	      // a rapidjson::SizeType (unsinged int).
+	      push_array_index ((rapidjson::SizeType) std::stoul (sql_path.substr (i, end_bracket_offset - i)));
 	    }
 	  i = skip_whitespaces (sql_path, end_bracket_offset + 1);
 	  break;
