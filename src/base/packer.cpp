@@ -847,14 +847,46 @@ namespace cubpacking
   packer::pack_buffer_with_length (const char *stream, const std::size_t length)
   {
     align (INT_ALIGNMENT);
-    m_ptr = or_pack_stream (m_ptr, stream, length);
+
+    check_range (m_ptr, m_end_ptr, length + OR_INT_SIZE);
+
+    OR_PUT_INT (m_ptr, length);
+    m_ptr += OR_INT_SIZE;
+
+    if (length > 0)
+      {
+        std::memcpy (m_ptr, stream, length);
+        m_ptr += length;
+
+        align (INT_ALIGNMENT);
+      }
+  }
+
+  void unpacker::peek_unpack_buffer_length (int &value)
+  {
+    return peek_unpack_int (value);
   }
 
   void
-  unpacker::unpack_buffer_with_length (char *stream, const std::size_t length)
+  unpacker::unpack_buffer_with_length (char *stream, const std::size_t expected_length)
   {
+    size_t actual_len;
+
     align (INT_ALIGNMENT);
-    m_ptr = or_unpack_stream (m_ptr, stream, length);
+
+    check_range (m_ptr, m_end_ptr, OR_INT_SIZE + expected_length);
+
+    actual_len = OR_GET_INT (m_ptr);
+    m_ptr += OR_INT_SIZE;
+
+    assert_release (actual_len == expected_length);
+
+    if (actual_len > 0)
+      {
+        memcpy (stream, m_ptr, actual_len);
+	m_ptr += actual_len;
+        align (INT_ALIGNMENT);
+      }
   }
 
   void

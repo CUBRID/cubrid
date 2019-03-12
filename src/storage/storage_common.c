@@ -425,17 +425,27 @@ btid_to_string (char *buf, int buf_size, BTID * btid)
 void
 recdes::pack (cubpacking::packer &packer) const
 {
+  packer.pack_short (type);
   packer.pack_buffer_with_length (data, length);
 }
 
 void recdes::unpack (cubpacking::unpacker &unpacker)
 {
-  unpacker.unpack_buffer_with_length (data, length);
+  unpacker.unpack_short (type);
+  unpacker.peek_unpack_buffer_length (length);
+  data = new char [length];
+  if (data)
+    {
+      unpacker.unpack_buffer_with_length (data, length);
+    }
 }
 
 std::size_t recdes::get_packed_size (cubpacking::packer &packer, std::size_t curr_offset) const
 {
-  return packer.get_packed_buffer_size (data, length, curr_offset);
+  std::size_t entry_size = packer.get_packed_short_size (curr_offset);
+  entry_size += packer.get_packed_buffer_size (data, length, entry_size);
+
+  return entry_size;
 }
 #endif
 /* *INDENT-ON* */
