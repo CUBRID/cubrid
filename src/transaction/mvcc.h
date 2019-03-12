@@ -29,6 +29,20 @@
 #include "storage_common.h"
 #include "thread_compat.hpp"
 
+/* MVCC RECORD HEADER */
+typedef struct mvcc_rec_header MVCC_REC_HEADER;
+struct mvcc_rec_header
+{
+  INT32 mvcc_flag:8;		/* MVCC flags */
+  INT32 repid:24;		/* representation id */
+  int chn;			/* cache coherency number */
+  MVCCID mvcc_ins_id;		/* MVCC insert id */
+  MVCCID mvcc_del_id;		/* MVCC delete id */
+  LOG_LSA prev_version_lsa;	/* log address of previous version */
+};
+#define MVCC_REC_HEADER_INITIALIZER \
+{ 0, 0, NULL_CHN, MVCCID_NULL, MVCCID_NULL, LSA_INITIALIZER }
+
 /* MVCC Header Macros */
 #define MVCC_GET_INSID(header) \
   ((header)->mvcc_ins_id)

@@ -33,6 +33,7 @@
 #include "log_compress.h"
 #include "log_impl.h"
 #include "mvcc.h"
+#include "object_representation_sr.h"
 #include "overflow_file.h"
 #include "page_buffer.h"
 #include "perf_monitor.h"
