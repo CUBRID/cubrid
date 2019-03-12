@@ -36,6 +36,21 @@ namespace cubreplication
 {
   static const char *repl_entry_type_str[] = { "update", "insert", "delete" };
 
+  replication_object::replication_object()
+  {
+    LSA_SET_NULL (&m_lsa);
+  }
+
+  replication_object::replication_object (LOG_LSA &lsa)
+  {
+    LSA_COPY (&m_lsa, &lsa);
+  }
+
+  void replication_object::get_lsa (LOG_LSA &lsa)
+  {
+    LSA_COPY (&lsa, &m_lsa);
+  }
+
   static LC_COPYAREA_OPERATION
   op_type_from_repl_type_and_prunning (repl_entry_type repl_type, DB_CLASS_PARTITION_TYPE prunning_type)
   {
@@ -83,8 +98,9 @@ namespace cubreplication
     return LC_FETCH;
   }
 
-  single_row_repl_entry::single_row_repl_entry (const repl_entry_type type, const char *class_name)
-    : m_type (type),
+  single_row_repl_entry::single_row_repl_entry (const repl_entry_type type, const char *class_name, LOG_LSA &lsa)
+    : replication_object(lsa),
+      m_type (type),
       m_class_name (class_name)
   {
   }
@@ -207,11 +223,13 @@ namespace cubreplication
   }
 
   /////////////////////////////////
-  sbr_repl_entry::sbr_repl_entry (const char *statement, const char *user, const char *sys_prm_ctx)
-    : m_statement (statement),
+  sbr_repl_entry::sbr_repl_entry (const char *statement, const char *user, const char *sys_prm_ctx, LOG_LSA &lsa)
+    : replication_object (lsa),
+      m_statement (statement),
       m_db_user (user),
       m_sys_prm_context (sys_prm_ctx)
   {
+    m_lsa = LSA_INITIALIZER;
   }
 
   int
@@ -484,8 +502,8 @@ namespace cubreplication
   }
 
   changed_attrs_row_repl_entry::changed_attrs_row_repl_entry (repl_entry_type type, const char *class_name,
-      const OID &inst_oid)
-    : single_row_repl_entry (type, class_name)
+      const OID &inst_oid, LOG_LSA &lsa)
+    : single_row_repl_entry (type, class_name, lsa)
   {
     m_inst_oid = inst_oid;
   }
@@ -609,8 +627,8 @@ namespace cubreplication
     return true;
   }
 
-  rec_des_row_repl_entry::rec_des_row_repl_entry (repl_entry_type type, const char *class_name, const RECDES &rec_des)
-    : single_row_repl_entry (type, class_name)
+  rec_des_row_repl_entry::rec_des_row_repl_entry (repl_entry_type type, const char *class_name, const RECDES &rec_des, LOG_LSA &lsa)
+    : single_row_repl_entry (type, class_name, lsa)
   {
     m_rec_des.length = rec_des.length;
     m_rec_des.area_size = rec_des.area_size;

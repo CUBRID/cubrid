@@ -287,7 +287,9 @@ namespace cubstream
 
       void reset (void)
       {
-	destroy_objects ();
+        LOG_LSA lsa;
+        LSA_SET_NULL (&lsa);
+	destroy_objects_after_lsa (lsa);
       };
 
       size_t get_entries_size (void)
@@ -331,17 +333,98 @@ namespace cubstream
       virtual int get_packable_entry_count_from_header (void) = 0;
       virtual bool is_equal (const entry *other) = 0;   
 
-      virtual void destroy_objects ()
+      virtual void destroy_objects_after_lsa (LOG_LSA &start_lsa)
       {
-	for (unsigned int i = 0; i < m_packable_entries.size (); i++)
-	  {
-	    if (m_packable_entries[i] != NULL)
-	      {
-		delete (m_packable_entries[i]);
-	      }
-	  }
-	m_packable_entries.clear ();
+        if (LSA_ISNULL(&start_lsa))
+        {
+          for (unsigned int i = 0; i < m_packable_entries.size(); i++)
+          {
+            if (m_packable_entries[i] != NULL)
+            {
+              delete (m_packable_entries[i]);
+            }
+          }
+          m_packable_entries.clear();
+        }
+        else
+        {          
+          cubreplication::replication_object *repl_obj;
+          LOG_LSA repl_lsa;
+          int start_index = 0;
+
+          for (int i = (int) (count_entries() - 1); i >= 0; i--)
+          {
+            repl_obj = m_packable_entries[i];
+            repl_obj->get_lsa(repl_lsa);
+
+            if (LSA_LE(&repl_lsa, &start_lsa))
+            {
+              start_index = i + 1;
+              break;
+            }
+          }
+
+          for (unsigned int i = start_index; i < m_packable_entries.size(); i++)
+          {
+            if (m_packable_entries[i] != NULL)
+            {
+              delete (m_packable_entries[i]);
+            }
+          }
+
+          m_packable_entries.erase (m_packable_entries.begin() + start_index,
+                                    m_packable_entries.end());
+        }        
       };
+
+    /*  virtual void destroy_objects_partial(unsigned int start_index, unsigned int end_index)
+      {
+        assert(start_index <= end_index && start_index >= 0
+          && end_index < (unsigned int)m_packable_entries.size());
+
+        for (unsigned int i = 0; i < m_packable_entries.size(); i++)
+        {
+          if (m_packable_entries[i] != NULL)
+          {
+            delete (m_packable_entries[i]);
+          }
+        }
+
+        m_packable_entries.erase(m_packable_entries.begin() + start_index,
+                                 m_packable_entries.begin() + end_index + 1);
+      };*/
+
+      void move_replication_objects_after_lsa (LOG_LSA &lsa, std::vector <cubreplication::replication_object *> &repl_objects_after_lsa)
+      {
+        cubreplication::replication_object *repl_obj;
+        LOG_LSA repl_lsa;
+        int start_index = 0;
+        int i, cnt_entries;
+        
+        cnt_entries = (int) count_entries ();        
+        for (i = cnt_entries - 1; i >= 0; i--)
+        {
+          repl_obj = get_object_at(i);
+          repl_obj->get_lsa(repl_lsa);
+          if (LSA_GT (&lsa, &repl_lsa))
+          {
+            start_index = i + 1;
+            break;
+          }
+        }        
+
+        /* Add it to repl_objects_after_lsa. */
+        for (i = start_index; i < cnt_entries; i++)
+        {
+          repl_objects_after_lsa.push_back(get_object_at(i));
+        }
+
+        /* Remove it from repl_objects_after_lsa. */
+        for (i = 0; i < cnt_entries - start_index; i++)
+        {
+          m_packable_entries.pop_back();
+        }
+      }     
   };
 
 } /* namespace cubstream */

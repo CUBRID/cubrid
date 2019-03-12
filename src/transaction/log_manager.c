@@ -3881,7 +3881,7 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
 	{
 	  /* for the replication agent guarantee the order of transaction */
 	  /* for CC(Click Counter) : at here */
-	  tdes->replication_log_generator.on_sysop_commit (tdes->topops.last);	  
+	  tdes->replication_log_generator.on_sysop_commit (tdes->topops.last);
 	}
 
       log_record->lastparent_lsa = *LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes);
@@ -4050,7 +4050,7 @@ log_sysop_abort (THREAD_ENTRY * thread_p)
       if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p)
 	  && log_does_allow_replication () == true)
 	{
-	  tdes->replication_log_generator.on_sysop_abort (tdes->topops.last);
+	  tdes->replication_log_generator.on_sysop_abort (*LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes));
 	}
 
       /* Abort changes in system op. */
@@ -4123,11 +4123,10 @@ log_sysop_attach_to_outer (THREAD_ENTRY * thread_p)
 	}
     }
 
-  if (!LOG_CHECK_LOG_APPLIER(thread_p) && !VACUUM_IS_THREAD_VACUUM(thread_p)
-      && log_does_allow_replication() == true)  
+  if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p) && log_does_allow_replication () == true)
     {
-      tdes->replication_log_generator.on_sysop_attach_to_outer(tdes->topops.last);
-    }  
+      tdes->replication_log_generator.on_sysop_attach_to_outer (tdes->topops.last);
+    }
 
   log_sysop_end_final (thread_p, tdes);
 }
@@ -6538,8 +6537,8 @@ log_dump_header (FILE * out_fp, LOG_HEADER * log_header_p)
 }
 
 static LOG_PAGE *
-log_dump_record_undoredo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
-			  LOG_ZIP * log_zip_p)
+log_dump_record_undoredo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
+			  LOG_PAGE * log_page_p, LOG_ZIP * log_zip_p)
 {
   LOG_REC_UNDOREDO *undoredo;
   int undo_length;
@@ -6625,8 +6624,8 @@ log_dump_record_redo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
 }
 
 static LOG_PAGE *
-log_dump_record_mvcc_undoredo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
-			       LOG_ZIP * log_zip_p)
+log_dump_record_mvcc_undoredo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
+			       LOG_PAGE * log_page_p, LOG_ZIP * log_zip_p)
 {
   LOG_REC_MVCC_UNDOREDO *mvcc_undoredo;
   int undo_length;
@@ -6663,8 +6662,8 @@ log_dump_record_mvcc_undoredo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA *
 }
 
 static LOG_PAGE *
-log_dump_record_mvcc_undo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
-			   LOG_ZIP * log_zip_p)
+log_dump_record_mvcc_undo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
+			   LOG_PAGE * log_page_p, LOG_ZIP * log_zip_p)
 {
   LOG_REC_MVCC_UNDO *mvcc_undo;
   int undo_length;
@@ -6695,8 +6694,8 @@ log_dump_record_mvcc_undo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log
 }
 
 static LOG_PAGE *
-log_dump_record_mvcc_redo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
-			   LOG_ZIP * log_zip_p)
+log_dump_record_mvcc_redo (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
+			   LOG_PAGE * log_page_p, LOG_ZIP * log_zip_p)
 {
   LOG_REC_MVCC_REDO *mvcc_redo;
   int redo_length;
@@ -6851,8 +6850,8 @@ log_dump_record_replication (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * l
  * log_zip_p (in/out)  : log unzip
  */
 static LOG_PAGE *
-log_dump_record_sysop_start_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
-				      LOG_ZIP * log_zip_p)
+log_dump_record_sysop_start_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
+				      LOG_PAGE * log_page_p, LOG_ZIP * log_zip_p)
 {
   LOG_REC_SYSOP_START_POSTPONE sysop_start_postpone;
 
@@ -6879,8 +6878,8 @@ log_dump_record_sysop_start_postpone (THREAD_ENTRY * thread_p, FILE * out_fp, LO
  * out_fp (in/out)     : dump output
  */
 static LOG_PAGE *
-log_dump_record_sysop_end_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * sysop_end, LOG_LSA * log_lsa,
-				    LOG_PAGE * log_page_p, LOG_ZIP * log_zip_p, FILE * out_fp)
+log_dump_record_sysop_end_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * sysop_end,
+				    LOG_LSA * log_lsa, LOG_PAGE * log_page_p, LOG_ZIP * log_zip_p, FILE * out_fp)
 {
   int undo_length;
   LOG_RCVINDEX rcvindex;
@@ -6951,8 +6950,8 @@ log_dump_record_sysop_end_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END *
  * out_fp (in/out)     : Dump output.
  */
 static LOG_PAGE *
-log_dump_record_sysop_end (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p, LOG_ZIP * log_zip_p,
-			   FILE * out_fp)
+log_dump_record_sysop_end (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
+			   LOG_ZIP * log_zip_p, FILE * out_fp)
 {
   LOG_REC_SYSOP_END *sysop_end;
 

@@ -113,7 +113,7 @@ namespace cubreplication
       // act when transaction is aborted; replication entries are logged
       void on_transaction_abort (void);
       // act when sysop is aborted
-      void on_sysop_abort (int sysop_index);
+      void on_sysop_abort (LOG_LSA &start_lsa);
       // act when sysop is attached to outer
       void log_generator::on_sysop_attach_to_outer (int sysop_index);
       // clear transaction data (e.g. logtb_clear_tdes)
@@ -161,7 +161,8 @@ namespace cubreplication
       bool is_debug_repl_local_disabled ();
 #endif
       bool is_row_replication_disabled (void);
-      int locator_simulate_repl_apply_rbr_on_master (void);
+      /* TO DO - debug */
+      int abort_sysop_and_simulate_apply_repl_on_master (LOG_LSA &filter_replication_lsa);
 
       void add_stream_entries_for_last_sysop (void);
 

@@ -294,6 +294,7 @@ log_does_allow_replication (void)
       return false;
     }
 
+  /* TODO - move it outside */
   if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG))
     {
       /* Testing purpose */

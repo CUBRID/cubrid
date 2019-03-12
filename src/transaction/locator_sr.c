@@ -7352,6 +7352,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
   OID class_oid;
   MVCC_SNAPSHOT *saved_mvcc_snapshot = NULL;
 #if !defined(NDEBUG) && defined (SERVER_MODE)
+  LOG_LSA filter_replication_lsa;
   bool sysop_started = false;
 #endif
   /* 
@@ -7374,11 +7375,12 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
     }
 
 #if !defined(NDEBUG) && defined (SERVER_MODE)
-  if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG)
-      && logtb_get_tdes (thread_p)->replication_log_generator.get_stream_entry ()->count_entries () == 0)
+  if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG))
     {
       assert (log_does_allow_replication ());
       log_sysop_start (thread_p);
+      LSA_COPY (&filter_replication_lsa, &logtb_get_tdes (thread_p)->tail_lsa);
+
       sysop_started = true;
     }
 #endif
@@ -7541,17 +7543,14 @@ end:
       assert (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG) && log_does_allow_replication ());
       if (error_code == NO_ERROR)
 	{
+	  cubreplication::stream_entry * stream_entry =
+	    logtb_get_tdes (thread_p)->replication_log_generator.get_stream_entry ();
 	  if (!logtb_get_tdes (thread_p)->replication_log_generator.is_debug_repl_local_disabled ()
-	      && logtb_get_tdes (thread_p)->replication_log_generator.get_stream_entry ()->count_entries () > 0)
+	      && stream_entry->count_entries () > 0)
 	    {
-	      /* Abort operation and simulate it again with appy. */
-	      log_sysop_abort (thread_p);
-
-	      logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (true);
-	      assert (error_code == NO_ERROR);
 	      error_code =
-		logtb_get_tdes (thread_p)->replication_log_generator.locator_simulate_repl_apply_rbr_on_master ();
-	      logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (false);
+		logtb_get_tdes (thread_p)->replication_log_generator.
+		abort_sysop_and_simulate_apply_repl_on_master (filter_replication_lsa);
 	    }
 	  else
 	    {
