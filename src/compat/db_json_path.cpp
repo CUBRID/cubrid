@@ -23,7 +23,7 @@
 #include "string_opfunc.h"
 
 #include "pragma_push.h"
-#include "pragma_supress.h"
+#include "pragma_suppress.h"
 #include "rapidjson/pointer.h"
 #include "pragma_pop.h"
 
