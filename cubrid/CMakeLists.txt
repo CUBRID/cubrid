@@ -288,6 +288,12 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/log_system_tran.hpp
   )
 
+set(UTILS_HEADERS
+  ${UTILS_DIR}/pragma_pop.h
+  ${UTILS_DIR}/pragma_push.h
+  ${UTILS_DIR}/pragma_suppress.h
+  )
+
 set(STORAGE_SOURCES
   ${STORAGE_DIR}/btree.c
   ${STORAGE_DIR}/btree_load.c

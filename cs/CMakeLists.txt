@@ -263,6 +263,12 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/transaction_cl.c
   ${TRANSACTION_DIR}/log_writer.c
   )
+    
+set(UTILS_HEADERS
+  ${UTILS_DIR}/pragma_pop.h
+  ${UTILS_DIR}/pragma_push.h
+  ${UTILS_DIR}/pragma_suppress.h
+  )
 
 set(STORAGE_SOURCES
   ${STORAGE_DIR}/storage_common.c

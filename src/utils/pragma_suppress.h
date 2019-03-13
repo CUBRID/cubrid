@@ -2,6 +2,6 @@
 # pragma warning (disable: C4068)
 #endif
 
-#ifdef (__GNUC__)
+#if defined (__GNUC__)
 # pragma GCC diagnostic ignored "-Wunknown-pragmas"
 #endif
