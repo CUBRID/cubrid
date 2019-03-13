@@ -639,7 +639,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_DWB_LOGGING "double_write_buffer_logging"
 
 #define PRM_NAME_JSON_LOG_ALLOCATIONS "json_log_allocations"
-#define PRM_NAME_JSON_MAX_ARRAY_IDX "json_log_allocations"
+#define PRM_NAME_JSON_MAX_ARRAY_IDX "json_array_max_array_idx"
 
 #define PRM_NAME_CONNECTION_LOGGING "connection_logging"
 
@@ -5473,7 +5473,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_JSON_MAX_ARRAY_IDX,
    PRM_NAME_JSON_MAX_ARRAY_IDX,
-   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_FOR_CLIENT),
+   (PRM_FOR_SERVER | PRM_USER_CHANGE),
    PRM_INTEGER,
    &prm_json_max_array_idx_flag,
    (void *) &prm_json_max_array_idx_default,
