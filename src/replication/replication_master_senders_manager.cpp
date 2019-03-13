@@ -187,9 +187,9 @@ namespace cubreplication
 	      }
 	    else
 	      {
-                cubstream::stream_position this_sender_pos = (*it)->get_last_sent_position ();
-                min_position_send = std::min (this_sender_pos, min_position_send);
-                active_senders++;
+		cubstream::stream_position this_sender_pos = (*it)->get_last_sent_position ();
+		min_position_send = std::min (this_sender_pos, min_position_send);
+		active_senders++;
 		++it;
 	      }
 	  }
@@ -203,10 +203,10 @@ namespace cubreplication
 	  }
 	check_conn_delay_counter = 0;
 
-        if (active_senders > 0)
-          {
-            cubreplication::master_node::update_senders_min_position (min_position_send);
-          }
+	if (active_senders > 0)
+	  {
+	    cubreplication::master_node::update_senders_min_position (min_position_send);
+	  }
       }
 
     check_conn_delay_counter++;

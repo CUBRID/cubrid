@@ -87,7 +87,7 @@ namespace cubreplication
 	  m_identity (name)
       {
 	m_stream = NULL;
-        m_stream_file = NULL;
+	m_stream_file = NULL;
       }
 
     public:

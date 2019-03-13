@@ -86,11 +86,11 @@ namespace cubreplication
   class stream_entry : public cubstream::entry<replication_object>
   {
     public:
-        enum string_dump_mode
-          {
-            short_dump = 0,
-            detailed_dump = 1
-          };
+      enum string_dump_mode
+      {
+	short_dump = 0,
+	detailed_dump = 1
+      };
 
     private:
       stream_entry_header m_header;
@@ -173,7 +173,7 @@ namespace cubreplication
       bool is_tran_state_undefined (void)
       {
 	return m_header.tran_state < stream_entry_header::ACTIVE
-               || m_header.tran_state > stream_entry_header::GROUP_COMMIT;
+	       || m_header.tran_state > stream_entry_header::GROUP_COMMIT;
       }
 
       int pack_stream_entry_header ();

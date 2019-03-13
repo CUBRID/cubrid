@@ -855,10 +855,10 @@ namespace cubpacking
 
     if (length > 0)
       {
-        std::memcpy (m_ptr, stream, length);
-        m_ptr += length;
+	std::memcpy (m_ptr, stream, length);
+	m_ptr += length;
 
-        align (INT_ALIGNMENT);
+	align (INT_ALIGNMENT);
       }
   }
 
@@ -883,9 +883,9 @@ namespace cubpacking
 
     if (actual_len > 0)
       {
-        memcpy (stream, m_ptr, actual_len);
+	memcpy (stream, m_ptr, actual_len);
 	m_ptr += actual_len;
-        align (INT_ALIGNMENT);
+	align (INT_ALIGNMENT);
       }
   }
 

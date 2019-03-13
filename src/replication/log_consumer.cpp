@@ -71,19 +71,19 @@ namespace cubreplication
       void execute (cubthread::entry &thread_ref) final
       {
 	for (std::vector<stream_entry *>::iterator it = m_repl_stream_entries.begin ();
-	     it != m_repl_stream_entries.end ();
-	     it++)
+	it != m_repl_stream_entries.end ();
+	it++)
 	  {
 	    stream_entry *curr_stream_entry = *it;
 
 	    curr_stream_entry->unpack ();
 
-            if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
-              {
-                string_buffer sb;
-                curr_stream_entry->stringify (sb, stream_entry::detailed_dump);
-                er_log_debug_replication (ARG_FILE_LINE, "applier_worker_task execute:\n%s", sb.get_buffer ());
-              }
+	    if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
+	      {
+		string_buffer sb;
+		curr_stream_entry->stringify (sb, stream_entry::detailed_dump);
+		er_log_debug_replication (ARG_FILE_LINE, "applier_worker_task execute:\n%s", sb.get_buffer ());
+	      }
 
 	    for (int i = 0; i < curr_stream_entry->get_packable_entry_count_from_header (); i++)
 	      {
@@ -129,11 +129,11 @@ namespace cubreplication
 
       void stringify (string_buffer &sb)
       {
-        sb ("apply_task: stream_entries:%d\n", get_entries_cnt ());
-        for (auto it = m_repl_stream_entries.begin (); it != m_repl_stream_entries.end (); it++)
-          {
-            (*it)->stringify (sb, stream_entry::detailed_dump);
-          }
+	sb ("apply_task: stream_entries:%d\n", get_entries_cnt ());
+	for (auto it = m_repl_stream_entries.begin (); it != m_repl_stream_entries.end (); it++)
+	  {
+	    (*it)->stringify (sb, stream_entry::detailed_dump);
+	  }
       }
 
     private:
@@ -166,17 +166,17 @@ namespace cubreplication
 		break;
 	      }
 
-            if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
-              {
-                string_buffer sb;
-                se->stringify (sb, stream_entry::short_dump);
-                er_log_debug_replication (ARG_FILE_LINE, "dispatch_daemon_task execute pop_entry:\n%s", sb.get_buffer ());
-              }
+	    if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
+	      {
+		string_buffer sb;
+		se->stringify (sb, stream_entry::short_dump);
+		er_log_debug_replication (ARG_FILE_LINE, "dispatch_daemon_task execute pop_entry:\n%s", sb.get_buffer ());
+	      }
 
-            /* TODO[replication] : on-the-fly appier & multi-threaded applier */
-            int applier_threads = 1;
+	    /* TODO[replication] : on-the-fly appier & multi-threaded applier */
+	    int applier_threads = 1;
 
-            if (!se->is_group_commit ())
+	    if (!se->is_group_commit ())
 	      {
 		MVCCID mvccid = se->get_mvccid ();
 		auto it = repl_tasks.find (mvccid);
@@ -205,7 +205,7 @@ namespace cubreplication
 		assert (applier_threads == 1 || se->get_data_packed_size () == 0);
 
 		/* wait for all started tasks to finish */
-                er_log_debug_replication (ARG_FILE_LINE, "dispatch_daemon_task wait for all working tasks to finish\n");
+		er_log_debug_replication (ARG_FILE_LINE, "dispatch_daemon_task wait for all working tasks to finish\n");
 
 		m_lc.wait_for_tasks ();
 
@@ -237,10 +237,10 @@ namespace cubreplication
 		  }
 
 		/* deleted the group commit stream entry */
-                if (se->is_group_commit ())
-                  {
+		if (se->is_group_commit ())
+		  {
 		    delete se;
-                  }
+		  }
 	      }
 	  }
 
@@ -268,9 +268,9 @@ namespace cubreplication
   {
     if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
       {
-        string_buffer sb;
-        entry->stringify (sb, stream_entry::short_dump);
-        er_log_debug_replication (ARG_FILE_LINE, "log_consumer push_entry:\n%s", sb.get_buffer ());
+	string_buffer sb;
+	entry->stringify (sb, stream_entry::short_dump);
+	er_log_debug_replication (ARG_FILE_LINE, "log_consumer push_entry:\n%s", sb.get_buffer ());
       }
 
     std::unique_lock<std::mutex> ulock (m_queue_mutex);
@@ -343,9 +343,9 @@ namespace cubreplication
   {
     if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
       {
-        string_buffer sb;
-        task->stringify (sb);
-        er_log_debug_replication (ARG_FILE_LINE, "log_consumer::execute_task:\n%s", sb.get_buffer ());
+	string_buffer sb;
+	task->stringify (sb);
+	er_log_debug_replication (ARG_FILE_LINE, "log_consumer::execute_task:\n%s", sb.get_buffer ());
       }
 
     cubthread::get_manager ()->push_task (m_applier_workers_pool, task);

@@ -102,7 +102,7 @@ class string_buffer
     template<typename... Args> inline int operator() (Args &&... args); //add with printf format
 
     static void hex_dump (const string_buffer &in, string_buffer &out, const size_t max_to_dump,
-                          const size_t line_size = 16, const bool print_ascii = true);
+			  const size_t line_size = 16, const bool print_ascii = true);
 
   private:
     string_buffer (const string_buffer &) = delete;               //copy ctor

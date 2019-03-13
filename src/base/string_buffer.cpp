@@ -34,9 +34,9 @@ void string_buffer::add_bytes (size_t len, char *bytes)
   m_ext_block.get_ptr ()[m_len] = '\0';
 }
 
-void 
+void
 string_buffer::hex_dump (const string_buffer &in, string_buffer &out, const size_t max_to_dump,
-                         const size_t line_size, const bool print_ascii)
+			 const size_t line_size, const bool print_ascii)
 {
   const char *ptr = in.get_buffer ();
   const char *ptr_line = ptr;
@@ -47,30 +47,30 @@ string_buffer::hex_dump (const string_buffer &in, string_buffer &out, const size
     {
       out ("%02X ", (unsigned char) (*ptr++));
       if (print_ascii == true
-          && (i % line_size == (line_size - 1) || i == length - 1))
-        {
-          const char *ptr_print;
+	  && (i % line_size == (line_size - 1) || i == length - 1))
+	{
+	  const char *ptr_print;
 
-          if (i % line_size != (line_size - 1))
-            {
-              std::string spaces (3 * (line_size - 1 - (i % line_size)), ' ');
-              out ("%s", spaces.c_str ());
-            }
-          
-          for (ptr_print = ptr_line; ptr_print < ptr; ptr_print++)
-            {
-              if (*ptr_print >= 32 && *ptr_print < 128)
-                {
-                  out ("%c", *ptr_print);
-                }
-              else
-                {
-                  out (".");
-                }
-            }
+	  if (i % line_size != (line_size - 1))
+	    {
+	      std::string spaces (3 * (line_size - 1 - (i % line_size)), ' ');
+	      out ("%s", spaces.c_str ());
+	    }
 
-          ptr_line += line_size;
-        }
+	  for (ptr_print = ptr_line; ptr_print < ptr; ptr_print++)
+	    {
+	      if (*ptr_print >= 32 && *ptr_print < 128)
+		{
+		  out ("%c", *ptr_print);
+		}
+	      else
+		{
+		  out (".");
+		}
+	    }
+
+	  ptr_line += line_size;
+	}
 
       if (i % line_size == (line_size - 1) && i != length)
 	{

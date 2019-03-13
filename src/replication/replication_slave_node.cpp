@@ -88,7 +88,7 @@ namespace cubreplication
 
 #if defined (SERVER_MODE)
     er_log_debug_replication (ARG_FILE_LINE, "slave_node::connect_to_master host:%s, port: %d\n",
-      master_node_hostname, master_node_port_id);
+			      master_node_hostname, master_node_port_id);
 
     /* connect to replication master node */
     cubcomm::server_channel srv_chn (g_instance->m_identity.get_hostname ().c_str ());
@@ -105,7 +105,7 @@ namespace cubreplication
     /* TODO[replication] : last position to be retrieved from recovery module */
     cubstream::stream_position start_position = 0;
     g_instance->m_transfer_receiver = new cubstream::transfer_receiver (std::move (srv_chn), *g_instance->m_stream,
-      start_position);
+	start_position);
 #endif
 
     return error;

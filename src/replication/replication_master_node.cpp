@@ -71,18 +71,18 @@ namespace cubreplication
     enable_active ();
 #endif
   }
-    
+
   void master_node::enable_active ()
-    {
+  {
 #if defined (SERVER_MODE)
-     if (css_ha_server_state () == HA_SERVER_STATE_TO_BE_ACTIVE)
+    if (css_ha_server_state () == HA_SERVER_STATE_TO_BE_ACTIVE)
       {
-        /* this is the first slave connecting to this node */
-        cubthread::entry *thread_p = thread_get_thread_entry_info ();
-        css_change_ha_server_state (thread_p, HA_SERVER_STATE_ACTIVE, true, HA_CHANGE_MODE_IMMEDIATELY, true);
+	/* this is the first slave connecting to this node */
+	cubthread::entry *thread_p = thread_get_thread_entry_info ();
+	css_change_ha_server_state (thread_p, HA_SERVER_STATE_ACTIVE, true, HA_CHANGE_MODE_IMMEDIATELY, true);
       }
 #endif
-    }
+  }
 
   void master_node::new_slave (int fd)
   {
@@ -92,9 +92,9 @@ namespace cubreplication
 
     if (css_ha_server_state () != HA_SERVER_STATE_ACTIVE)
       {
-        er_log_debug_replication (ARG_FILE_LINE, "new_slave invalid server state :%s",
-          css_ha_server_state_string (css_ha_server_state ()));
-        return;
+	er_log_debug_replication (ARG_FILE_LINE, "new_slave invalid server state :%s",
+				  css_ha_server_state_string (css_ha_server_state ()));
+	return;
       }
 
     cubcomm::channel chn;
@@ -125,9 +125,9 @@ namespace cubreplication
     g_instance->m_stream->reset_serial_data_read (pos);
 
     er_log_debug_replication (ARG_FILE_LINE, "master_node (stream:%s) update_senders_min_position: %llu,\n"
-      " stream_read_pos:%llu, commit_pos:%llu", g_instance->m_stream->name ().c_str (),
-      pos, g_instance->m_stream->get_curr_read_position (), g_instance->m_stream->get_last_committed_pos ());
-}
+			      " stream_read_pos:%llu, commit_pos:%llu", g_instance->m_stream->name ().c_str (),
+			      pos, g_instance->m_stream->get_curr_read_position (), g_instance->m_stream->get_last_committed_pos ());
+  }
 
 
   master_node *master_node::g_instance = NULL;

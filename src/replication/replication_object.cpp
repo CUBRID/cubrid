@@ -207,7 +207,7 @@ namespace cubreplication
   sbr_repl_entry::stringify (string_buffer &str)
   {
     str ("sbr_repl_entry: statement=%s\nUSER=%s\nSYS_PRM=%s\n",
-         m_statement.c_str (), m_db_user.c_str (), m_sys_prm_context.c_str ());
+	 m_statement.c_str (), m_db_user.c_str (), m_sys_prm_context.c_str ());
   }
 
   changed_attrs_row_repl_entry::~changed_attrs_row_repl_entry ()
@@ -287,7 +287,7 @@ namespace cubreplication
     for (std::size_t i = 0; (int) i < count_new_values; i++)
       {
 	m_new_values.emplace_back ();
-        DB_VALUE &val = m_new_values.back ();
+	DB_VALUE &val = m_new_values.back ();
 	deserializator.unpack_db_value (val);
       }
 

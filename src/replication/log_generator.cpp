@@ -237,9 +237,9 @@ namespace cubreplication
 
     if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
       {
-        string_buffer sb;
-        m_stream_entry.stringify (sb, stream_entry::detailed_dump);
-        er_log_debug_replication (ARG_FILE_LINE, "log_generator::pack_stream_entry\n%s\n", sb.get_buffer ());
+	string_buffer sb;
+	m_stream_entry.stringify (sb, stream_entry::detailed_dump);
+	er_log_debug_replication (ARG_FILE_LINE, "log_generator::pack_stream_entry\n%s\n", sb.get_buffer ());
       }
 
     m_stream_entry.pack ();
@@ -332,7 +332,7 @@ namespace cubreplication
     /* save MVCCID in pre-commit phase, after commit, the MVCCID is cleanup */
     if (MVCCID_IS_VALID (tdes->mvccinfo.id))
       {
-        m_stream_entry.set_mvccid (tdes->mvccinfo.id);
+	m_stream_entry.set_mvccid (tdes->mvccinfo.id);
       }
   }
 

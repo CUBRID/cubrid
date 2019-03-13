@@ -369,7 +369,7 @@ namespace cubstream
 
     if (m_force_flush && collapsed_reserve)
       {
-        wake_up_flusher (2.0f, m_last_recyclable_pos, new_completed_position - m_last_recyclable_pos);
+	wake_up_flusher (2.0f, m_last_recyclable_pos, new_completed_position - m_last_recyclable_pos);
       }
   }
 
@@ -513,7 +513,7 @@ namespace cubstream
       {
 	err = ER_STREAM_NO_MORE_DATA;
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_NO_MORE_DATA, 3, this->name ().c_str (),
-                m_read_position, amount);
+		m_read_position, amount);
 	return err;
       }
 
