@@ -21,11 +21,15 @@
 
 #include "memory_alloc.h"
 #include "string_opfunc.h"
+#include "system_parameter.h"
 
 #include "rapidjson/pointer.h"
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
+#include <errno.h>
+#include <limits>
 
 enum class JSON_PATH_TYPE
 {
@@ -39,8 +43,8 @@ static void db_json_trim_leading_spaces (std::string &path_string);
 static JSON_PATH_TYPE db_json_get_path_type (std::string &path_string);
 static bool db_json_isspace (const unsigned char &ch);
 static std::size_t skip_whitespaces (const std::string &path, std::size_t token_begin);
-static bool db_json_path_is_token_valid_array_index (const std::string &str, bool allow_wildcards,
-    std::size_t start = 0, std::size_t end = 0);
+static bool db_json_path_is_token_valid_array_index (const std::string &str,
+    bool allow_wildcards, unsigned long &index, std::size_t start = 0, std::size_t end = 0);
 static bool db_json_path_is_token_valid_quoted_object_key (const std::string &path, std::size_t &token_begin);
 static bool db_json_path_quote_and_validate_unquoted_object_key (std::string &path, std::size_t &token_begin);
 static bool db_json_path_is_token_valid_unquoted_object_key (const std::string &path, std::size_t &token_begin);
@@ -150,12 +154,13 @@ db_json_path_is_token_valid_unquoted_object_key (const std::string &path, std::s
  * return          : true if all token characters are digits followed by spaces (valid index)
  * str (in)        : token or the string that token belong to
  * allow_wildcards : whether json_path wildcards are allowed
+ * index (out)     : created index token
  * start (in)      : start of token; default is start of string
  * end (in)        : end of token; default is end of string; 0 is considered default value
  */
 static bool
-db_json_path_is_token_valid_array_index (const std::string &str, bool allow_wildcards, std::size_t start,
-    std::size_t end)
+db_json_path_is_token_valid_array_index (const std::string &str, bool allow_wildcards, unsigned long &index,
+    std::size_t start, std::size_t end)
 {
   // json pointer will corespond the symbol '-' to JSON_ARRAY length
   // so if we have the json {"A":[1,2,3]} and the path /A/-
@@ -185,23 +190,27 @@ db_json_path_is_token_valid_array_index (const std::string &str, bool allow_wild
 
   // Remaining invalid cases are: 1. Non-digits are present
   //                              2. Index overflows Rapidjson's index representation type
-  rapidjson::SizeType n = 0;
+
+  // we need to check for non-digits since strtoul simply returns 0 in case conversion
+  // can not be made
   for (auto it = str.cbegin () + start; it < str.cbegin () + last_non_space + 1; ++it)
     {
       if (!std::isdigit (static_cast<unsigned char> (*it)))
 	{
 	  return false;
 	}
-      rapidjson::SizeType m = n * 10 + static_cast<unsigned> (*it - '0');
-      if (m < n)
-	{
-	  return false;
-	}
-      n = m;
+    }
+
+  char *end_str;
+  index = std::strtoul (str.c_str () + start, &end_str, 10);
+  if (errno == ERANGE)
+    {
+      errno = 0;
+      return false;
     }
 
   // this is a valid array index
-  return true;
+  return index <= (unsigned long) prm_get_integer_value (PRM_ID_JSON_MAX_ARRAY_IDX);
 }
 
 /*
@@ -290,7 +299,8 @@ JSON_PATH::validate_and_create_from_json_path (std::string &sql_path)
 	    {
 	      return false;
 	    }
-	  if (!db_json_path_is_token_valid_array_index (sql_path, true, i, end_bracket_offset))
+	  unsigned long index;
+	  if (!db_json_path_is_token_valid_array_index (sql_path, true, index, i, end_bracket_offset))
 	    {
 	      return false;
 	    }
@@ -302,7 +312,9 @@ JSON_PATH::validate_and_create_from_json_path (std::string &sql_path)
 	    }
 	  else
 	    {
-	      push_array_index (std::stoi (sql_path.substr (i, end_bracket_offset - i)));
+	      // note that db_json_path_is_token_valid_array_index () checks the index to not overflow
+	      // a rapidjson::SizeType (unsinged int).
+	      push_array_index (index);
 	    }
 	  i = skip_whitespaces (sql_path, end_bracket_offset + 1);
 	  break;
@@ -414,7 +426,8 @@ db_json_split_path_by_delimiters (const std::string &path, const std::string &de
   std::size_t tokens_size = tokens.size ();
   for (std::size_t i = 0; i < tokens_size; i++)
     {
-      if (db_json_path_is_token_valid_array_index (tokens[i], false))
+      unsigned long index;
+      if (db_json_path_is_token_valid_array_index (tokens[i], false, index))
 	{
 	  db_json_remove_leading_zeros_index (tokens[i]);
 	}
@@ -538,7 +551,7 @@ PATH_TOKEN::PATH_TOKEN ()
 
 }
 
-PATH_TOKEN::PATH_TOKEN (token_type type, rapidjson::SizeType array_idx)
+PATH_TOKEN::PATH_TOKEN (token_type type, unsigned long array_idx)
   : m_type (type)
   , m_array_idx (array_idx)
 {
@@ -560,7 +573,7 @@ PATH_TOKEN::get_object_key () const
   return m_object_key;
 }
 
-rapidjson::SizeType
+unsigned long
 PATH_TOKEN::get_array_index () const
 {
   assert (m_type == array_index);
@@ -597,7 +610,7 @@ PATH_TOKEN::match_pattern (const PATH_TOKEN &matcher, const PATH_TOKEN &matchee)
 }
 
 void
-JSON_PATH::push_array_index (unsigned idx)
+JSON_PATH::push_array_index (unsigned long idx)
 {
   m_path_tokens.emplace_back (PATH_TOKEN::token_type::array_index, idx);
 }
@@ -741,7 +754,7 @@ JSON_PATH::set (JSON_VALUE &jd, const JSON_VALUE &jv, JSON_PRIVATE_MEMPOOL &allo
 	    }
 	  else
 	    {
-	      rapidjson::SizeType idx = tkn.get_array_index ();
+	      rapidjson::SizeType idx = (rapidjson::SizeType) tkn.get_array_index ();
 	      while (idx >= arr.Size ())
 		{
 		  arr.PushBack (JSON_VALUE ().SetNull (), allocator);
