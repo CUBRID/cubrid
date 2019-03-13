@@ -22,7 +22,10 @@
 #include "memory_alloc.h"
 #include "string_opfunc.h"
 
+#include "pragma_push.h"
+#include "pragma_supress.h"
 #include "rapidjson/pointer.h"
+#include "pragma_pop.h"
 
 #include <algorithm>
 #include <cctype>

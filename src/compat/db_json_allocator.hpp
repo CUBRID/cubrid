@@ -20,7 +20,10 @@
 #ifndef _DB_JSON_PRIVATE_ALLOCATOR_
 #define _DB_JSON_PRIVATE_ALLOCATOR_
 
+#include "pragma_push.h"
+#include "pragma_supress.h"
 #include "rapidjson/allocators.h"
+#include "pragma_pop.h"
 
 class JSON_PRIVATE_ALLOCATOR
 {
