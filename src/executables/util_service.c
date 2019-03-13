@@ -3621,7 +3621,6 @@ ret:
   return status;
 }
 
-/* TODO[replication]: */
 /*
  * us_hb_util_get_options -
  * return: NO_ERROR or error code
@@ -3867,6 +3866,7 @@ process_heartbeat_stop (HA_CONF * ha_conf, int argc, const char **argv)
 	      util_log_write_errid (MSGCAT_UTIL_GENERIC_NOT_HA_MODE);
 	      goto ret;
 	    }
+
 	  status = us_hb_process_stop (ha_conf, db_name);
 	}
       else

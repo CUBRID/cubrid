@@ -105,7 +105,7 @@ namespace cubstream
 
     private:
       cubstream::transfer_receiver &this_consumer_channel;
-      bool m_first_loop; /* TODO[arnia] may be a good idea to use create_context instead */
+      bool m_first_loop; /* TODO[replication] may be a good idea to use create_context instead */
   };
 
   transfer_receiver::transfer_receiver (cubcomm::channel &&chn,

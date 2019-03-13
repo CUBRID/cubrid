@@ -395,7 +395,7 @@ EXPORTS
     er_final
     er_init
     er_set
-	_er_log_debug
+    _er_log_debug
     getopt
     getopt_long
     ini_findsec

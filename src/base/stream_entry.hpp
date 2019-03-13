@@ -31,9 +31,6 @@
 #include <mutex>
 #include <functional>
 #include <vector>
-/* TODO[arnia] : temp debug */
-#include "string_buffer.hpp"
-#include "system_parameter.h"
 
 namespace cubstream
 {
@@ -129,15 +126,6 @@ namespace cubstream
 	assert (header_size == get_packed_header_size ());
 
 	deserializator->set_buffer (ptr, header_size);
-
-        if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA))
-          {
-            string_buffer sb, sb_hex;
-            size_t buf_size = deserializator->get_buffer_end () - deserializator->get_buffer_start ();
-            sb.add_bytes (buf_size, (char *) (deserializator->get_buffer_start ()));
-            string_buffer::hex_dump (sb, sb_hex, buf_size);
-            er_log_debug_replication (ARG_FILE_LINE, "prepare_func: header_size:%d, buf_size:%d\n%s", header_size, buf_size, sb_hex.get_buffer ());
-          }
 
 	error_code = unpack_stream_entry_header ();
 	if (error_code != NO_ERROR)

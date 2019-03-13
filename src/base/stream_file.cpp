@@ -544,7 +544,7 @@ namespace cubstream
 	    fd = create_file (file_path);
 	    if (fd < 0)
 	      {
-		/* TODO[arnia] : error */
+		/* TODO[replication] : error */
 		assert (false);
 		return -1;
 	      }
@@ -561,7 +561,7 @@ namespace cubstream
 
     if (fd < 0)
       {
-	/* TODO[arnia] : error */
+	/* TODO[replication] : error */
 	assert (false);
       }
 
@@ -580,7 +580,7 @@ namespace cubstream
 
     if (fd < 0)
       {
-	/* TODO[arnia] : error */
+	/* TODO[replication] : error */
       }
 
     return fd;

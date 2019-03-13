@@ -433,7 +433,7 @@ void recdes::unpack (cubpacking::unpacker &unpacker)
 {
   unpacker.unpack_short (type);
   unpacker.peek_unpack_buffer_length (length);
-  data = new char [length];
+  data = (char *) malloc (length);
   if (data)
     {
       unpacker.unpack_buffer_with_length (data, length);

@@ -864,7 +864,7 @@ static UTIL_MAP ua_Utility_Map[] = {
    ua_Statdump_Option, ua_Statdump_Option_Map},
   {CHANGEMODE, CS_ONLY, 1, UTIL_OPTION_CHANGEMODE, "changemode",
    ua_Changemode_Option, ua_Changemode_Option_Map},
-#if defined (ENABLE_OLD_REPLICATION)  
+#if defined (ENABLE_OLD_REPLICATION)
   {COPYLOGDB, CS_ONLY, 1, UTIL_OPTION_COPYLOGDB, "copylogdb",
    ua_Copylog_Option, ua_Copylog_Option_Map},
   {APPLYLOGDB, CS_ONLY, 1, UTIL_OPTION_APPLYLOGDB, "applylogdb",

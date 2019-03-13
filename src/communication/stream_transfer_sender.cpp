@@ -135,7 +135,7 @@ namespace cubstream
     return m_channel;
   }
 
-  //TODO[arnia] make this atomic
+  //TODO[replication] make this atomic
   stream_position transfer_sender::get_last_sent_position ()
   {
     return m_last_sent_position;

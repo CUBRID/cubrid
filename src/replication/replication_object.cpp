@@ -42,7 +42,7 @@ namespace cubreplication
 
   single_row_repl_entry::~single_row_repl_entry ()
   {
-    //TODO[arnia] optimize
+    //TODO[replication] optimize
     cubthread::entry *my_thread = thread_get_thread_entry_info ();
 
     HL_HEAPID save_heapid;

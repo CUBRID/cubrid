@@ -91,7 +91,7 @@ namespace cubreplication
 		int err = obj->apply ();
 		if (err != NO_ERROR)
 		  {
-		    /* TODO */
+		    /* TODO[replication] : error handling */
 		  }
 	      }
 
@@ -173,7 +173,7 @@ namespace cubreplication
                 er_log_debug_replication (ARG_FILE_LINE, "dispatch_daemon_task execute pop_entry:\n%s", sb.get_buffer ());
               }
 
-            /* TODO : on-the-fly appier & multi-threaded applier */
+            /* TODO[replication] : on-the-fly appier & multi-threaded applier */
             int applier_threads = 1;
 
             if (!se->is_group_commit ())
@@ -252,8 +252,6 @@ namespace cubreplication
 
   log_consumer::~log_consumer ()
   {
-    /* TODO : move to external code (a higher level object) stop & destroy of log_consumer and stream */
-
     set_stop ();
 
     if (m_use_daemons)

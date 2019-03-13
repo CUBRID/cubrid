@@ -102,7 +102,7 @@ namespace cubreplication
       }
     /* start transfer receiver */
     assert (g_instance->m_transfer_receiver == NULL);
-    /* TODO : last position to be retrieved from recovery module */
+    /* TODO[replication] : last position to be retrieved from recovery module */
     cubstream::stream_position start_position = 0;
     g_instance->m_transfer_receiver = new cubstream::transfer_receiver (std::move (srv_chn), *g_instance->m_stream,
       start_position);

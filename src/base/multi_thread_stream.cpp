@@ -218,10 +218,6 @@ namespace cubstream
     size_t payload_size;
     int read_bytes;
 
-    /* TODO[arnia] : temp debug */
-    er_log_debug_replication (ARG_FILE_LINE, "read_serial (%s), read_position:%llu",
-      name ().c_str (), m_read_position);
-
     /* wait for stream to receive data */
     if (m_read_position + amount > m_last_committed_pos)
       {
@@ -287,10 +283,6 @@ namespace cubstream
       {
 	delete [] local_buffer;
       }
-
-    /* TODO[arnia] : temp debug */
-    er_log_debug_replication (ARG_FILE_LINE, "read_serial (%s), already_read:%d, payload_size:%d, read_position:%llu",
-      name ().c_str (), amount, payload_size, m_read_position);
 
     err = wait_for_data (amount + payload_size, STREAM_SKIP);
 
@@ -498,20 +490,12 @@ namespace cubstream
   {
     int err = NO_ERROR;
 
-    /* TODO[arnia] : temp debug */
-    er_log_debug_replication (ARG_FILE_LINE, "wait_for_data (%s), read_position: %llu, amount:%d (%s)",
-      name ().c_str (), m_read_position, amount, (skip_mode == STREAM_SKIP) ? "SKIP" : "");
-
     if (m_read_position + amount <= m_last_committed_pos)
       {
 	if (skip_mode == STREAM_SKIP)
 	  {
 	    m_read_position += amount;
 	  }
-
-        /* TODO[arnia] : temp debug */
-        er_log_debug_replication (ARG_FILE_LINE, "wait_for_data (%s), data ready : read_position:%llu",
-          name ().c_str (), m_read_position);
 
 	return NO_ERROR;
       }
@@ -540,10 +524,6 @@ namespace cubstream
 	assert (err == NO_ERROR);
 	m_read_position += amount;
       }
-
-    /* TODO[arnia] : temp debug */
-    er_log_debug_replication (ARG_FILE_LINE, "wait_for_data (%s), data ready : read_position:%llu",
-      name ().c_str (), m_read_position);
 
     return err;
   }
