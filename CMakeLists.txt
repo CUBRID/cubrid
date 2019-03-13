@@ -490,7 +490,6 @@ set(STORAGE_DIR              ${CMAKE_SOURCE_DIR}/src/storage)
 set(THREAD_DIR               ${CMAKE_SOURCE_DIR}/src/thread)
 set(TOOLS_DIR                ${CMAKE_SOURCE_DIR}/src/tools)
 set(TRANSACTION_DIR          ${CMAKE_SOURCE_DIR}/src/transaction)
-set(UTILS_DIR                ${CMAKE_SOURCE_DIR}/src/utils)
 set(WIN_TOOLS_DIR            ${CMAKE_SOURCE_DIR}/src/win_tools)
 set(XASL_DIR                 ${CMAKE_SOURCE_DIR}/src/xasl)
 
@@ -518,7 +517,6 @@ include_directories(
   src/thread
   src/tools
   src/transaction
-  src/utils
   src/xasl
   )
 

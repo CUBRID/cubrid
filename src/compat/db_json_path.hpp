@@ -27,10 +27,7 @@
 #include "db_json_allocator.hpp"
 #include "db_json_types_internal.hpp"
 
-#include "pragma_push.h"
-#include "pragma_suppress.h"
 #include "rapidjson/rapidjson.h"
-#include "pragma_pop.h"
 
 #include <string>
 #include <vector>

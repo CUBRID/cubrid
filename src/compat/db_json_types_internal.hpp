@@ -22,11 +22,8 @@
 
 #include "db_json_allocator.hpp"
 
-#include "pragma_push.h"
-#include "pragma_suppress.h"
 #include "rapidjson/document.h"
 #include "rapidjson/encodings.h"
-#include "pragma_pop.h"
 
 #if defined GetObject
 /* stupid windows and their definitions; GetObject is defined as GetObjectW or GetObjectA */

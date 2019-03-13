@@ -263,12 +263,6 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/transaction_cl.c
   ${TRANSACTION_DIR}/log_writer.c
   )
-    
-set(UTILS_HEADERS
-  ${UTILS_DIR}/pragma_pop.h
-  ${UTILS_DIR}/pragma_push.h
-  ${UTILS_DIR}/pragma_suppress.h
-  )
 
 set(STORAGE_SOURCES
   ${STORAGE_DIR}/storage_common.c
@@ -319,6 +313,13 @@ set_source_files_properties(${FLEX_csql_lexer_OUTPUTS} PROPERTIES GENERATED true
 set_source_files_properties(${BISON_loader_grammar_OUTPUTS} PROPERTIES GENERATED true)
 set_source_files_properties(${FLEX_loader_lexer_OUTPUTS} PROPERTIES GENERATED true)
 set_source_files_properties(${PROBES_OBJECT} PROPERTIES EXTERNAL_OBJECT true GENERATED true)
+
+if(UNIX)
+  set_source_files_properties(${COMPAT_DIR}/db_json.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
+  set_source_files_properties(${COMPAT_DIR}/db_json_allocator.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
+  set_source_files_properties(${COMPAT_DIR}/db_json_path.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
+  set_source_files_properties(${COMPAT_DIR}/db_json_types_internal.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
+endif(UNIX)
 
 SET_SOURCE_FILES_PROPERTIES(
   ${EXECUTABLES_DIR}/compactdb_cl.c
