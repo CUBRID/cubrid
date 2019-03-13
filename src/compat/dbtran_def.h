@@ -45,7 +45,11 @@ typedef enum
   MVCC_TRAN_DEFAULT_ISOLATION = TRAN_READ_COMMITTED,
 
   TRAN_MINVALUE_ISOLATION = 0x04,	/* internal use only */
-  TRAN_MAXVALUE_ISOLATION = 0x06	/* internal use only */
+  TRAN_MAXVALUE_ISOLATION = 0x06,	/* internal use only */
+
+  // aliases for CCI compatibility
+  TRAN_ISOLATION_MIN = 0x04,
+  TRAN_ISOLATION_MAX = 0x06,
 } DB_TRAN_ISOLATION;
 
 #define IS_VALID_ISOLATION_LEVEL(isolation_level) \
