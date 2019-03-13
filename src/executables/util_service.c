@@ -84,7 +84,7 @@ typedef enum
   ACCESS_CONTROL,
   RESET,
   INFO,
-#if defined (ENABLE_OLD_REPLICATION) 
+#if defined (ENABLE_OLD_REPLICATION)
   SC_COPYLOGDB,
   SC_APPLYLOGDB,
 #endif
@@ -219,7 +219,7 @@ static UTIL_SERVICE_OPTION_MAP_T us_Command_map[] = {
   {ACCESS_CONTROL, COMMAND_TYPE_ACL, MASK_SERVER | MASK_BROKER},
   {RESET, COMMAND_TYPE_RESET, MASK_BROKER},
   {INFO, COMMAND_TYPE_INFO, MASK_BROKER},
-#if defined (ENABLE_OLD_REPLICATION) 
+#if defined (ENABLE_OLD_REPLICATION)
   {SC_COPYLOGDB, COMMAND_TYPE_COPYLOGDB, MASK_HEARTBEAT},
   {SC_APPLYLOGDB, COMMAND_TYPE_APPLYLOGDB, MASK_HEARTBEAT},
 #endif
@@ -261,7 +261,7 @@ static int process_heartbeat_stop (HA_CONF * ha_conf, int argc, const char **arg
 static int process_heartbeat_deregister (int argc, const char **argv);
 static int process_heartbeat_status (int argc, const char **argv);
 static int process_heartbeat_reload (int argc, const char **argv);
-#if defined (ENABLE_OLD_REPLICATION)  
+#if defined (ENABLE_OLD_REPLICATION)
 static int process_heartbeat_util (HA_CONF * ha_conf, int command_type, int argc, const char **argv);
 #endif
 static int process_heartbeat_replication (HA_CONF * ha_conf, int argc, const char **argv);
@@ -374,7 +374,7 @@ command_string (int command_type)
     case ACCESS_CONTROL:
       command = PRINT_CMD_ACL;
       break;
-#if defined (ENABLE_OLD_REPLICATION) 
+#if defined (ENABLE_OLD_REPLICATION)
     case SC_COPYLOGDB:
       command = PRINT_CMD_COPYLOGDB;
       break;
@@ -4093,7 +4093,7 @@ process_heartbeat_reload (int argc, const char **argv)
 }
 
 #if !defined(WINDOWS)
-#if defined (ENABLE_OLD_REPLICATION) 
+#if defined (ENABLE_OLD_REPLICATION)
 /*
  * process_heartbeat_util -
  *
@@ -4301,7 +4301,7 @@ process_heartbeat (int command_type, int argc, const char **argv)
     case RELOAD:
       status = process_heartbeat_reload (argc, argv);
       break;
-#if defined (ENABLE_OLD_REPLICATION)  
+#if defined (ENABLE_OLD_REPLICATION)
     case SC_COPYLOGDB:
     case SC_APPLYLOGDB:
       status = process_heartbeat_util (&ha_conf, command_type, argc, argv);

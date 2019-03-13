@@ -1185,7 +1185,7 @@ error_return:
 #endif
 }
 
-#if defined (ENABLE_OLD_REPLICATION)  
+#if defined (ENABLE_OLD_REPLICATION)
 /*
  * css_process_kill_all_ha_process()
  *   return: none

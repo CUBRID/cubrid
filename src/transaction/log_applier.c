@@ -2605,8 +2605,8 @@ la_find_log_pagesize (LA_ACT_LOG * act_log, const char *logpath, const char *dbn
 	  snprintf (err_msg, sizeof (err_msg) - 1,
 		    "Active log file(%s) charset is not valid (%s), expecting %s.",
 		    act_log->path,
-		    lang_charset_cubrid_name ((INTL_CODESET) act_log->
-					      log_hdr->db_charset), lang_charset_cubrid_name (lang_charset ()));
+		    lang_charset_cubrid_name ((INTL_CODESET) act_log->log_hdr->db_charset),
+		    lang_charset_cubrid_name (lang_charset ()));
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOC_INIT, 1, err_msg);
 	  return ER_LOC_INIT;
 	}
@@ -6278,8 +6278,7 @@ la_change_state (void)
       sprintf (buffer,
 	       "change the state of HA server (%s@%s) from '%s' to '%s'",
 	       la_slave_db_name, la_peer_host,
-	       css_ha_server_state_string ((HA_SERVER_STATE) la_Info.
-					   last_server_state),
+	       css_ha_server_state_string ((HA_SERVER_STATE) la_Info.last_server_state),
 	       css_ha_server_state_string ((HA_SERVER_STATE) la_Info.act_log.log_hdr->ha_server_state));
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, buffer);
     }
@@ -6387,8 +6386,7 @@ la_change_state (void)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ER_HA_LA_FAILED_TO_CHANGE_STATE, 2,
-		  css_ha_applier_state_string ((HA_LOG_APPLIER_STATE) la_Info.
-					       apply_state),
+		  css_ha_applier_state_string ((HA_LOG_APPLIER_STATE) la_Info.apply_state),
 		  css_ha_applier_state_string ((HA_LOG_APPLIER_STATE) new_state));
 	}
     }
@@ -8014,11 +8012,11 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 	    }
 
 	  memcpy (&final_log_hdr, la_Info.act_log.log_hdr, sizeof (LOG_HEADER));
-          int dummy_wait = 0;
+	  int dummy_wait = 0;
 #if defined (ENABLE_OLD_REPLICATION)
-          dummy_wait = prm_get_integer_value (PRM_ID_HA_APPLYLOGDB_LOG_WAIT_TIME_IN_SECS)
+	  dummy_wait = prm_get_integer_value (PRM_ID_HA_APPLYLOGDB_LOG_WAIT_TIME_IN_SECS)
 #endif
-	  if (dummy_wait >= 0)
+	    if (dummy_wait >= 0)
 	    {
 	      if (final_log_hdr.ha_server_state == HA_SERVER_STATE_DEAD
 		  && LSA_EQ (&last_eof_lsa, &final_log_hdr.eof_lsa))
@@ -8164,10 +8162,9 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 			{
 			  er_log_debug (ARG_FILE_LINE,
 					"skip this page (pageid=%lld/%lld/%lld)",
-					(long long int) la_Info.final_lsa.
-					pageid,
-					(long long int) final_log_hdr.eof_lsa.
-					pageid, (long long int) final_log_hdr.append_lsa.pageid);
+					(long long int) la_Info.final_lsa.pageid,
+					(long long int) final_log_hdr.eof_lsa.pageid,
+					(long long int) final_log_hdr.append_lsa.pageid);
 			  /* skip it */
 			  la_Info.final_lsa.pageid++;
 			  la_Info.final_lsa.offset = 0;

@@ -396,7 +396,7 @@ extern void hb_get_node_info_string (char **str, bool verbose_yn);
 extern void hb_get_process_info_string (char **str, bool verbose_yn);
 extern void hb_get_ping_host_info_string (char **str);
 extern void hb_get_admin_info_string (char **str);
-#if defined (ENABLE_OLD_REPLICATION)  
+#if defined (ENABLE_OLD_REPLICATION)
 extern void hb_kill_all_heartbeat_process (char **str);
 #endif
 

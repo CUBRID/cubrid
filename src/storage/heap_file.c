@@ -11232,7 +11232,7 @@ heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HE
   if (inst_oid != NULL)
     {
       logtb_get_tdes (thread_p)->replication_log_generator.add_attribute_change (attr_info->class_oid, *inst_oid,
-                                                                                 attrid, *attr_val);
+										 attrid, *attr_val);
     }
 
   return ret;

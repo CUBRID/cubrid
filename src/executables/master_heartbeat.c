@@ -3560,7 +3560,7 @@ hb_resource_job_send_master_hostname (HB_JOB_ARG * arg)
   while (proc)
     {
       MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "send_master_hostname type:%d, state:%d, knows_master_hostname:%d\n",
-        proc->type, proc->state, proc->knows_master_hostname);
+			   proc->type, proc->state, proc->knows_master_hostname);
       if (proc->type == HB_PTYPE_SERVER && proc->state >= HB_PSTATE_REGISTERED)
 	{
 	  if (proc->knows_master_hostname)

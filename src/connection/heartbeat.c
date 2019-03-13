@@ -428,7 +428,7 @@ hb_process_master_request_info (CSS_CONN_ENTRY * conn)
 static const char *
 hb_type_to_str (HB_PROC_TYPE type)
 {
- #if defined (ENABLE_OLD_REPLICATION)
+#if defined (ENABLE_OLD_REPLICATION)
   if (type == HB_PTYPE_COPYLOGDB)
     {
       return "copylogdb";

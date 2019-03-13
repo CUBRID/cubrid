@@ -838,7 +838,7 @@ typedef struct _ha_config
 #define PRINT_CMD_LIST          "list"
 #define PRINT_CMD_RELOAD        "reload"
 #define PRINT_CMD_ACL           "acl"
-#if defined (ENABLE_OLD_REPLICATION) 
+#if defined (ENABLE_OLD_REPLICATION)
 #define PRINT_CMD_COPYLOGDB     "copylogdb"
 #define PRINT_CMD_APPLYLOGDB    "applylogdb"
 #endif

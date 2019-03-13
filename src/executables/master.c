@@ -552,7 +552,7 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
 		  if (server_name_buf_size < server_name_length)
 		    {
 		      entry = css_return_entry_of_server (server_name, server_name_buf_size - 1,
-                                                          css_Master_socket_anchor);
+							  css_Master_socket_anchor);
 		      if (entry != NULL)
 			{
 			  char *recv_data;

@@ -1409,10 +1409,10 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 
       if (!HA_DISABLED ())
 	{
-          er_log_debug (ARG_FILE_LINE, "css_init: starting HA : ha_Server_state (%s), server_name (%s)\n",
+	  er_log_debug (ARG_FILE_LINE, "css_init: starting HA : ha_Server_state (%s), server_name (%s)\n",
 			css_ha_server_state_string (ha_Server_state), server_name);
 	  /* start both master and slave infrastructure */
-          cubreplication::master_node::init (server_name);
+	  cubreplication::master_node::init (server_name);
 	  cubreplication::slave_node::init (server_name);
 
 #if !defined(WINDOWS)
@@ -2695,8 +2695,8 @@ css_process_new_slave (SOCKET master_fd)
       assert (false);
       return;
     }
-  er_log_debug_replication (ARG_FILE_LINE, "css_process_new_slave:" 
-    "received new slave fd from master fd=%d, current_state=%d\n", new_fd, ha_Server_state);
+  er_log_debug_replication (ARG_FILE_LINE, "css_process_new_slave:"
+			    "received new slave fd from master fd=%d, current_state=%d\n", new_fd, ha_Server_state);
 
   assert (ha_Server_state == HA_SERVER_STATE_TO_BE_ACTIVE || ha_Server_state == HA_SERVER_STATE_ACTIVE);
 
