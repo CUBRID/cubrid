@@ -168,6 +168,7 @@ class index_builder_loader_context : public cubthread::entry_manager
   protected:
     void on_create (context_type & context) override;
     void on_retire (context_type & context) override;
+    void on_recycle (context_type & context) override;
 };
 
 struct index_builder_key_oid
@@ -5021,6 +5022,12 @@ void
 index_builder_loader_context::on_retire (context_type & context)
 {
   context.retire_system_worker ();
+}
+
+void
+index_builder_loader_context::on_recycle (context_type & context)
+{
+  context.tran_index = LOG_SYSTEM_TRAN_INDEX;
 }
 
 index_builder_loader_task::index_builder_loader_task (const BTID * btid, const OID * class_oid, int unique_pk,

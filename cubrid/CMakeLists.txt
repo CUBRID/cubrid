@@ -502,7 +502,7 @@ install(FILES
   RENAME dbi.h
   )
 install(FILES
-  ${COMPAT_DIR}/dbtran_def.h
+  # ${COMPAT_DIR}/dbtran_def.h // temporary disabled
   ${COMPAT_DIR}/dbtype_def.h
   ${COMPAT_DIR}/dbtype_function.h
   ${COMPAT_DIR}/db_date.h
