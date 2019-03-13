@@ -1740,12 +1740,23 @@ db_json_replace_func (const JSON_DOC *new_value, JSON_DOC &doc, const char *raw_
 
   if (p.get (doc) == NULL)
     {
-      if (!p.is_last_token_array_index_zero ())
+      if (p.is_last_token_array_index_zero ())
+	{
+	  p.get_parent ().set (doc, *new_value);
+	  return NO_ERROR;
+	}
+
+      const JSON_VALUE *parent_val = p.get_parent ().get (doc);
+      if (db_json_get_type_of_value (parent_val) == DB_JSON_OBJECT || db_json_get_type_of_value (parent_val) == DB_JSON_ARRAY)
+	{
+	  // if we have an inexistent object_key in an object or an array_index outside of the array we do a no_op
+	  return NO_ERROR;
+	}
+      else
 	{
 	  return db_json_er_set_path_does_not_exist (ARG_FILE_LINE, p, &doc);
 	}
 
-      p.get_parent ().set (doc, *new_value);
       return NO_ERROR;
     }
   p.set (doc, *new_value);
