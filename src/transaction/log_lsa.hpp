@@ -30,6 +30,7 @@
 
 #include <cassert>
 #include <cinttypes>
+#include <cstddef>
 
 struct log_lsa
 {
