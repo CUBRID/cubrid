@@ -57,6 +57,7 @@ namespace cubreplication
       virtual void stringify (string_buffer &str) = 0;
       
       void get_lsa (LOG_LSA &lsa);
+      void set_lsa (const LOG_LSA &lsa);
 
   protected:
     LOG_LSA m_lsa;
@@ -98,7 +99,7 @@ namespace cubreplication
 
       virtual bool is_equal (const cubpacking::packable_object *other);
 
-      void set_key_value (const DB_VALUE &db_val);
+      void set_key_value (const DB_VALUE &db_val);      
       single_row_repl_entry (const repl_entry_type type, const char *class_name, LOG_LSA &lsa);
       single_row_repl_entry () = default;
 
@@ -160,7 +161,7 @@ namespace cubreplication
       virtual std::size_t get_packed_size (cubpacking::packer *serializator, std::size_t start_offset = 0) override final;
 
       bool is_equal (const cubpacking::packable_object *other) override final;
-      void stringify (string_buffer &str) override final;
+      void stringify (string_buffer &str) override final;      
 
       inline bool compare_inst_oid (const OID &other)
       {

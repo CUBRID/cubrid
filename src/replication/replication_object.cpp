@@ -51,6 +51,11 @@ namespace cubreplication
     LSA_COPY (&lsa, &m_lsa);
   }
 
+  void replication_object::set_lsa (const LOG_LSA &lsa)
+  {
+    LSA_COPY(&m_lsa, &lsa);
+  }
+
   static LC_COPYAREA_OPERATION
   op_type_from_repl_type_and_prunning (repl_entry_type repl_type, DB_CLASS_PARTITION_TYPE prunning_type)
   {
@@ -133,7 +138,7 @@ namespace cubreplication
     std::vector <int> dummy_int_vector;
     std::vector <DB_VALUE> dummy_val_vector;
 
-    err = locator_repl_apply_rbr (&my_thread, op, m_class_name.c_str (), 0, &m_key_value,
+    err = locator_repl_apply_rbr (&my_thread, op, m_class_name.c_str (), &m_key_value,
                                   dummy_int_vector, dummy_val_vector, NULL);
 #endif
     return err;
@@ -163,6 +168,8 @@ namespace cubreplication
     pr_clone_value (&db_val, &m_key_value);
     (void) db_change_private_heap (NULL, save_heapid);
   }
+
+  void set_log_lsa(const LOG_LSA &lsa);
 
   std::size_t
   single_row_repl_entry::get_packed_size (cubpacking::packer *serializator, std::size_t start_offset)
@@ -354,7 +361,7 @@ namespace cubreplication
 
     cubthread::entry &my_thread = cubthread::get_entry ();
 
-    err = locator_repl_apply_rbr (&my_thread, op, m_class_name.c_str (), 0, &m_key_value,
+    err = locator_repl_apply_rbr (&my_thread, op, m_class_name.c_str (), &m_key_value,
                                   m_changed_attributes, m_new_values, NULL);
 #endif
     return err;
@@ -523,7 +530,7 @@ namespace cubreplication
     std::vector <int> dummy_int_vector;
     std::vector <DB_VALUE> dummy_val_vector;
 
-    err = locator_repl_apply_rbr (&my_thread, op, m_class_name.c_str (), 0, &m_key_value,
+    err = locator_repl_apply_rbr (&my_thread, op, m_class_name.c_str (), &m_key_value,
                                   dummy_int_vector, dummy_val_vector, &m_rec_des);
 #endif
     return err;

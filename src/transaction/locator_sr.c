@@ -5898,6 +5898,13 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	}
       isold_object = update_context.is_logical_old;
 
+
+      if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
+	{
+	  /* Update lsa to be sure that the object is part of current sys operation. */
+	  logtb_get_tdes (thread_p)->replication_log_generator.add_update_lsa (*oid);
+	}
+
 #if defined(ENABLE_UNUSED_FUNCTION)
       if (isold_object == false)
 	{
@@ -13689,7 +13696,7 @@ xlocator_demote_class_lock (THREAD_ENTRY * thread_p, const OID * class_oid, LOCK
 static int
 locator_prepare_rbr_apply (THREAD_ENTRY * thread_p, const LC_COPYAREA_OPERATION rbr_operation, OID * class_oid,
 			   OID * instance_oid, RECDES * recdes, const std::vector < int >&changed_att_ids,
-			   const std::vector < DB_VALUE > &new_values, const int key_att_id, DB_VALUE * key_value,
+			   const std::vector < DB_VALUE > &new_values, DB_VALUE * key_value,
 			   HEAP_SCANCACHE * force_scancache, LC_COPYAREA * &copy_area);
 
 /*
@@ -13704,9 +13711,8 @@ locator_prepare_rbr_apply (THREAD_ENTRY * thread_p, const LC_COPYAREA_OPERATION 
  */
 int
 locator_repl_apply_rbr (THREAD_ENTRY * thread_p, const LC_COPYAREA_OPERATION rbr_operation, const char *class_name,
-			const int key_att_id, DB_VALUE * key_value,
-			const std::vector < int >&changed_att_ids, const std::vector < DB_VALUE > &new_values,
-			const RECDES * new_recdes_arg)
+			DB_VALUE * key_value, const std::vector < int >&changed_att_ids,
+			const std::vector < DB_VALUE > &new_values, const RECDES * new_recdes_arg)
 {
   OID class_oid;
   OID instance_oid;
@@ -13758,7 +13764,7 @@ locator_repl_apply_rbr (THREAD_ENTRY * thread_p, const LC_COPYAREA_OPERATION rbr
   scan_cache_inited = true;
 
   error_code = locator_prepare_rbr_apply (thread_p, rbr_operation, &class_oid, &instance_oid, &new_recdes,
-					  changed_att_ids, new_values, key_att_id, key_value, &scan_cache, copy_area);
+					  changed_att_ids, new_values, key_value, &scan_cache, copy_area);
   if (error_code != NO_ERROR)
     {
       goto exit;
@@ -13876,9 +13882,8 @@ exit:
  *   thread_p(in):
  *   obj(in): object that describes the current operation 
  *   recdes(in/out): record to be applied
- *   changed_att_ids(in): changed attribute ids 
+ *   changed_att_ids(in): changed attribute ids
  *   new_values(in): new values
- *   key_att_id(in): keyy attribute id
  *   key_value(in): primary key value
  *   force_scancache(in):
  *   copy_area(in/out): copy area
@@ -13892,7 +13897,7 @@ exit:
 static int
 locator_prepare_rbr_apply (THREAD_ENTRY * thread_p, const LC_COPYAREA_OPERATION rbr_operation, OID * class_oid,
 			   OID * instance_oid, RECDES * recdes, const std::vector < int >&changed_att_ids,
-			   const std::vector < DB_VALUE > &new_values, const int key_att_id, DB_VALUE * key_value,
+			   const std::vector < DB_VALUE > &new_values, DB_VALUE * key_value,
 			   HEAP_SCANCACHE * force_scancache, LC_COPYAREA * &copy_area)
 {
   HEAP_CACHE_ATTRINFO attr_info;
@@ -14003,12 +14008,6 @@ locator_prepare_rbr_apply (THREAD_ENTRY * thread_p, const LC_COPYAREA_OPERATION 
 	    {
 	      goto exit;
 	    }
-	}
-
-      error_code = heap_attrinfo_set (NULL, key_att_id, key_value, &attr_info);
-      if (error_code != NO_ERROR)
-	{
-	  goto exit;
 	}
 
       copy_area =

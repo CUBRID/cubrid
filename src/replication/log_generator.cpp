@@ -244,6 +244,40 @@ namespace cubreplication
     free(class_name);
   }
 
+  void
+    log_generator::add_update_lsa (const OID &inst_oid)
+  {
+    
+    if (is_row_replication_disabled())
+    {
+      return;
+    }
+    
+    replication_object *repl_obj;
+    changed_attrs_row_repl_entry *changed_repl_entry;
+    cubthread::entry *thread_p = &cubthread::get_entry();
+    bool found = false;
+    int count_entries = (int) m_stream_entry.count_entries ();            
+    LOG_LSA *p_lsa = logtb_find_current_tran_lsa(thread_p);
+    assert (p_lsa != NULL);
+
+    for (int i = count_entries - 1; i >= 0; i--)
+    {
+      repl_obj = m_stream_entry.get_object_at(i);
+      changed_repl_entry = dynamic_cast<changed_attrs_row_repl_entry *> (repl_obj);
+      if (changed_repl_entry == NULL)
+      {
+        continue;
+      }
+            
+      if (changed_repl_entry->compare_inst_oid (inst_oid))
+      {        
+        changed_repl_entry->set_lsa (*p_lsa);
+        break;
+      }
+    }
+  }
+
   char *
     log_generator::get_classname(const OID &class_oid)
   {
@@ -497,6 +531,8 @@ namespace cubreplication
     /* First abort the operation. */
     log_sysop_abort (thread_p);          
 
+    /* Disable row replication, while we apply. */
+    logtb_get_tdes(thread_p)->replication_log_generator.set_row_replication_disabled (true);
     /* Simulate it again with apply . */
     for (unsigned int i = 0; i < repl_objects_after_lsa.size(); i++)
     {
@@ -510,6 +546,7 @@ namespace cubreplication
         }
       }
     }  
+    logtb_get_tdes(thread_p)->replication_log_generator.set_row_replication_disabled(false);
 
     /* Now, destroy */
     for (unsigned int i = 0; i < repl_objects_after_lsa.size(); i++)
