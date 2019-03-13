@@ -36,6 +36,7 @@
 #include "log_manager.h"
 #include "log_impl.h"
 #include "log_comm.h"
+#include "log_lsa.hpp"
 #include "lock_manager.h"
 #include "memory_alloc.h"
 #include "storage_common.h"
@@ -52,7 +53,6 @@
 #include "wintcp.h"
 #include "porting.h"
 #endif /* !WINDOWS */
-
 
 #if !defined(SERVER_MODE)
 #define	CSS_ENABLE_INTERRUPTS

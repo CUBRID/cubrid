@@ -48,6 +48,7 @@
 #include "file_io.h"
 #include "page_buffer.h"
 #include "log_manager.h"
+#include "log_lsa.hpp"
 #include "critical_section.h"
 #include "boot_sr.h"
 #include "tz_support.h"
@@ -300,6 +301,13 @@ struct disk_reserve_context
 /************************************************************************/
 /* Utility section                                                      */
 /************************************************************************/
+
+STATIC_INLINE void
+LSA_SET_TEMP_LSA (LOG_LSA * lsa_ptr)
+{
+  lsa_ptr->pageid = NULL_PAGEID - 1;
+  lsa_ptr->offset = NULL_OFFSET - 1;
+}
 
 /* logging */
 static bool disk_Logging = false;
@@ -3034,7 +3042,8 @@ disk_volume_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** o
   db_make_int (out_values[idx], vhdr->db_charset);
   idx++;
 
-  error = db_make_string_copy (out_values[idx], lsa_to_string (buf, sizeof (buf), &vhdr->chkpt_lsa));
+  lsa_to_string (buf, sizeof (buf), &vhdr->chkpt_lsa);
+  error = db_make_string_copy (out_values[idx], buf);
   idx++;
   if (error != NO_ERROR)
     {

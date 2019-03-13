@@ -30,6 +30,7 @@
 
 #include "config.h"
 #include "dbtype_def.h"
+#include "log_lsa.hpp"
 #include "lzo/lzoconf.h"
 #include "lzo/lzo1x.h"
 #include "memory_hash.h"

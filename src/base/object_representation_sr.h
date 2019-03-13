@@ -33,6 +33,7 @@
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
 #include "dbtype_def.h"
+#include "log_lsa.hpp"
 #include "mvcc.h"
 #include "storage_common.h"
 #include "system_catalog.h"

@@ -42,6 +42,7 @@
 #include "file_io.h"
 #include "locator.h"
 #include "log_comm.h"
+#include "log_lsa.hpp"
 #include "query_list.h"
 #include "query_manager.h"
 #include "perf_monitor.h"

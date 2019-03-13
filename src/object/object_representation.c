@@ -37,6 +37,7 @@
 #include "dbtype.h"
 #include "error_manager.h"
 #include "file_io.h"
+#include "log_lsa.hpp"
 #include "method_def.hpp"
 #include "object_primitive.h"
 #include "object_representation.h"
@@ -3227,7 +3228,7 @@ or_unpack_btid (char *ptr, BTID * btid)
  *    lsa(in): LOG_LSA value
  */
 char *
-or_pack_log_lsa (const char *ptr, const LOG_LSA * lsa)
+or_pack_log_lsa (const char *ptr, const log_lsa * lsa)
 {
   char *new_;
 
@@ -3259,7 +3260,7 @@ or_pack_log_lsa (const char *ptr, const LOG_LSA * lsa)
  *    lsa(out): LOG_LSA value
  */
 char *
-or_unpack_log_lsa (char *ptr, LOG_LSA * lsa)
+or_unpack_log_lsa (char *ptr, log_lsa * lsa)
 {
   ASSERT_ALIGN (ptr, INT_ALIGNMENT);
 

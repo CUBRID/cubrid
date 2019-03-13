@@ -65,6 +65,7 @@
 #include "message_catalog.h"
 #include "critical_section.h"
 #include "lock_manager.h"
+#include "log_lsa.hpp"
 #include "log_manager.h"
 #include "network.h"
 #include "jsp_sr.h"

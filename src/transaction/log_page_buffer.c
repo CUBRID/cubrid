@@ -55,6 +55,7 @@
 #include "porting_inline.hpp"
 #include "connection_defs.h"
 #include "log_impl.h"
+#include "log_lsa.hpp"
 #include "log_manager.h"
 #include "log_comm.h"
 #include "log_writer.h"
@@ -308,8 +309,6 @@ static char *log_data_ptr = NULL;
 static int log_data_length = 0;
 #endif
 
-LOG_LSA NULL_LSA = { NULL_PAGEID, NULL_OFFSET };
-
 static int log_Zip_min_size_to_compress = 255;
 
 /*
@@ -409,7 +408,7 @@ static int logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_A
 static void logpb_fatal_error_internal (THREAD_ENTRY * thread_p, bool log_exit, bool need_flush, const char *file_name,
 					const int lineno, const char *fmt, va_list ap);
 
-static void logpb_set_nxio_lsa (LOG_LSA * lsa);
+static void logpb_set_nxio_lsa (const LOG_LSA * lsa);
 
 static int logpb_copy_log_header (THREAD_ENTRY * thread_p, LOG_HEADER * to_hdr, const LOG_HEADER * from_hdr);
 STATIC_INLINE LOG_BUFFER *logpb_get_log_buffer (LOG_PAGE * log_pg) __attribute__ ((ALWAYS_INLINE));
@@ -12242,7 +12241,7 @@ logpb_get_nxio_lsa (LOG_LSA * nxio_lsa_p)
  * logpb_set_nxio_lsa -
  */
 static void
-logpb_set_nxio_lsa (LOG_LSA * lsa)
+logpb_set_nxio_lsa (const LOG_LSA * lsa)
 {
 #if defined(HAVE_ATOMIC_BUILTINS)
   UINT64 tmp_int64;

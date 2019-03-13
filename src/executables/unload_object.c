@@ -43,6 +43,7 @@
 
 #include "utility.h"
 #include "load_object.h"
+#include "log_lsa.hpp"
 #include "file_hash.h"
 #include "db.h"
 #include "memory_hash.h"

@@ -28,7 +28,9 @@
 #include <assert.h>
 
 #include "transaction_sr.h"
+
 #include "locator_sr.h"
+#include "log_lsa.hpp"
 #include "log_manager.h"
 #if defined(SERVER_MODE)
 #endif

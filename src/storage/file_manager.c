@@ -43,6 +43,7 @@
 #include "disk_manager.h"
 #include "log_manager.h"
 #include "log_impl.h"
+#include "log_lsa.hpp"
 #include "lock_manager.h"
 #include "system_parameter.h"
 #include "boot_sr.h"
@@ -6638,7 +6639,7 @@ file_extdata_collect_ftab_pages (THREAD_ENTRY * thread_p, const FILE_EXTENSIBLE_
   VSID vsid_this;
   int idx_sect = 0;
 
-  if (!LSA_ISNULL (&extdata->vpid_next))
+  if (!VPID_ISNULL (&extdata->vpid_next))
     {
       VSID_FROM_VPID (&vsid_this, &extdata->vpid_next);
 

@@ -31,6 +31,7 @@
 #include "heap_file.h"
 #include "lockfree_circular_queue.hpp"
 #include "log_compress.h"
+#include "log_lsa.hpp"
 #include "log_impl.h"
 #include "mvcc.h"
 #include "object_representation_sr.h"

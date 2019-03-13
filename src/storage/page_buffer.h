@@ -32,6 +32,7 @@
 #include "error_manager.h"
 #include "disk_manager.h"
 #include "lock_manager.h"
+#include "log_lsa.hpp"
 #include "mem_block.hpp"
 #include "perf_monitor.h"
 #include "storage_common.h"

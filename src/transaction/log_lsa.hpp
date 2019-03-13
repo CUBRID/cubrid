@@ -28,7 +28,6 @@
 #define Wrong module
 #endif
 
-#include <atomic>
 #include <cassert>
 #include <cinttypes>
 
@@ -53,11 +52,13 @@ struct log_lsa
 };
 
 using LOG_LSA = log_lsa;	/* Log address identifier */
-using atomic_log_lsa = std::atomic<log_lsa>;
 
 static const std::int64_t NULL_LOG_PAGEID = -1;
 static const std::int16_t NULL_LOG_OFFSET = -1;
 const log_lsa NULL_LSA = { NULL_LOG_PAGEID, NULL_LOG_OFFSET };
+
+// functions
+void lsa_to_string (char *buf, int buf_size, const log_lsa *lsa);
 
 //
 // macro replacements

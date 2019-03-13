@@ -18,6 +18,16 @@
  */
 
 //
-// log_lsa.hpp - log sequence address implementation
+// log_lsa.cpp - log sequence address implementation
 //
 
+#include "log_lsa.hpp"
+
+#include <cstdio>
+
+void
+lsa_to_string (char *buf, int buf_size, const log_lsa *lsa)
+{
+  std::snprintf (buf, buf_size, "(%lld|%d)", LSA_AS_ARGS (lsa));
+  buf[buf_size - 1] = 0;
+}

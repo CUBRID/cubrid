@@ -31,6 +31,7 @@
 #include "dbtype_def.h"
 #include "disk_manager.h"
 #include "log_impl.h"
+#include "log_lsa.hpp"
 #include "recovery.h"
 #include "porting_inline.hpp"
 #include "storage_common.h"

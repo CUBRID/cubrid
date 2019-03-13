@@ -44,6 +44,7 @@
 #include "filter_pred_cache.h"
 #include "heap_file.h"
 #include "list_file.h"
+#include "log_lsa.hpp"
 #include "lock_manager.h"
 #include "object_primitive.h"
 #include "object_representation_sr.h"
