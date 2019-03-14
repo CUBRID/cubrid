@@ -4398,6 +4398,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 
 		  if (fkref->del_action == SM_FOREIGN_KEY_CASCADE)
 		    {
+		      bool changed_row_replication_state = false;
 		      if (lob_exist)
 			{
 			  error_code = locator_delete_lob_force (thread_p, &fkref->self_oid, oid_ptr, NULL);
@@ -4407,10 +4408,23 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 			  goto error1;
 			}
 
+		      if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG)
+			  && !logtb_get_tdes (thread_p)->replication_log_generator.is_row_replication_disabled ())
+			{
+			  logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (true);
+			  changed_row_replication_state = true;
+			}
+
 		      /* oid already locked at locator_lock_and_get_object */
 		      error_code =
 			locator_delete_force (thread_p, &hfid, oid_ptr, true, SINGLE_ROW_DELETE, &scan_cache,
 					      &force_count, NULL, false);
+
+		      if (changed_row_replication_state)
+			{
+			  logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (false);
+			}
+
 		      if (error_code == ER_MVCC_NOT_SATISFIED_REEVALUATION)
 			{
 			  /* skip foreign keys that were already deleted. For example the "cross type" reference */
@@ -7033,12 +7047,21 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
   int error_code = NO_ERROR;
   int pruning_type = 0;
   int has_index;
+  bool changed_row_replication_state = false;
 
   /* need to start a topop to ensure the atomic operation. */
   error_code = xtran_server_start_topop (thread_p, &lsa);
   if (error_code != NO_ERROR)
     {
       return error_code;
+    }
+
+  /* TO DO - test and not HA */
+  if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG)
+      && !logtb_get_tdes (thread_p)->replication_log_generator.is_row_replication_disabled ())
+    {
+      logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (true);
+      changed_row_replication_state = true;
     }
 
   mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (force_area);
@@ -7208,6 +7231,11 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
 
   (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER, &lsa);
 
+  if (changed_row_replication_state)
+    {
+      logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (false);
+    }
+
   return error_code;
 
 error:
@@ -7222,6 +7250,11 @@ error:
     }
 
   (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &lsa);
+
+  if (changed_row_replication_state)
+    {
+      logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (false);
+    }
 
   return error_code;
 }
