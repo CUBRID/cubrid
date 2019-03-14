@@ -30,6 +30,7 @@
 #if !defined(WINDOWS)
 #include <dirent.h>
 #endif /* !WINDOWNS */
+#include <signal.h>
 
 #include "log_writer.h"
 

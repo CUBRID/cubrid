@@ -35,7 +35,7 @@
 #include "util_func.h"
 #include "porting.h"
 #include "message_catalog.h"
-#include "log_impl.h"
+#include "log_common_impl.h"
 #include "mprec.h"
 #include "system_parameter.h"
 #include "environment_variable.h"

@@ -26,8 +26,12 @@
 
 #ident "$Id$"
 
-#include "log_impl.h"
+#include "log_common_impl.h"
 #include "log_lsa.hpp"
+#include "storage_common.h"
+#if defined (SERVER_MODE)
+#include "thread_compat.hpp"
+#endif // SERVER_MODE
 
 #include <stdio.h>
 

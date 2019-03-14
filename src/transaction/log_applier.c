@@ -32,6 +32,7 @@
 #if !defined (WINDOWS)
 #include <sys/time.h>
 #endif
+#include <signal.h>
 
 #include "log_applier.h"
 

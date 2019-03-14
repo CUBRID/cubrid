@@ -85,6 +85,7 @@
 #include "tz_support.h"
 #include "dbtype.h"
 #include "object_primitive.h"
+#include "connection_globals.h"
 
 #if defined(CS_MODE)
 #include "network.h"

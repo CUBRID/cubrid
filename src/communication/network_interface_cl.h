@@ -44,7 +44,7 @@
 #include "connection_defs.h"
 #include "log_writer.h"
 #include "language_support.h"
-#include "log_impl.h"
+#include "log_common_impl.h"
 #include "parse_tree.h"
 #include "timezone_lib_common.h"
 
