@@ -22,11 +22,11 @@
 
 #ident "$Id$"
 
-#include <stdio.h>
-
 #include "dbtran_def.h"
-#include "storage_common.h"
 #include "object_representation.h"
+#include "storage_common.h"
+
+#include <stdio.h>
 
 #define LOG_USERNAME_MAX        (DB_MAX_USER_LENGTH + 1)
 
