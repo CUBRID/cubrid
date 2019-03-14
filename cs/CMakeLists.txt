@@ -265,6 +265,7 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/transaction_cl.c
   )
 set(TRANSACTION_HEADERS
+  ${TRANSACTION_DIR}/log_common_impl.h
   ${TRANSACTION_DIR}/log_lsa.hpp
   )
 
