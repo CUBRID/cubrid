@@ -164,9 +164,6 @@ namespace cubstream
 
     m_is_stopped = true;
 
-    er_log_debug_replication (ARG_FILE_LINE, "stream_file::finalize file_path:%s, stream:%s\n",
-			      m_base_path.c_str (), m_stream.name ().c_str ());
-
     force_start_flush ();
 
     cubthread::get_manager ()->destroy_daemon (m_write_daemon);

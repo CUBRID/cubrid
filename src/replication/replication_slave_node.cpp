@@ -26,6 +26,7 @@
 #include "replication_slave_node.hpp"
 #include "log_consumer.hpp"
 #include "multi_thread_stream.hpp"
+#include "replication_common.hpp"
 #include "replication_stream_entry.hpp"
 #include "stream_file.hpp"
 #include "stream_transfer_receiver.hpp"

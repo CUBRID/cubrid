@@ -26,6 +26,7 @@
 #include "log_consumer.hpp"
 #include "error_manager.h"
 #include "multi_thread_stream.hpp"
+#include "replication_common.hpp"
 #include "replication_stream_entry.hpp"
 #include "string_buffer.hpp"
 #include "system_parameter.h"

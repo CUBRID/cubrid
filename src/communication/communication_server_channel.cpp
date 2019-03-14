@@ -54,7 +54,7 @@ namespace cubcomm
     unsigned short m_request_id;
     css_error_code rc = NO_ERRORS;
 
-    er_log_debug_replication (ARG_FILE_LINE, "connecting to %s, port:%d\n", hostname, port);
+    er_log_debug (ARG_FILE_LINE, "connecting to %s, port:%d\n", hostname, port);
 
     rc = channel::connect (hostname, port);
     if (rc != NO_ERRORS)
@@ -72,7 +72,7 @@ namespace cubcomm
       }
 
     /* send request */
-    er_log_debug_replication (ARG_FILE_LINE, "SERVER_REQUEST_CONNECT_NEW_SLAVE to %s, port:%d, server_name:%s,"
+    er_log_debug (ARG_FILE_LINE, "SERVER_REQUEST_CONNECT_NEW_SLAVE to %s, port:%d, server_name:%s,"
       " server_name_size:%d\n", hostname, port, m_server_name.c_str (), m_server_name.size ());
 
     rc = (css_error_code) css_send_request_with_socket (m_socket, SERVER_REQUEST_CONNECT_NEW_SLAVE, &m_request_id,

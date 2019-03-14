@@ -194,6 +194,7 @@ set(MONITOR_HEADERS
 set (REPLICATION_HEADERS
   ${REPLICATION_DIR}/log_generator.hpp
   ${REPLICATION_DIR}/log_consumer.hpp
+  ${REPLICATION_DIR}/replication_common.hpp
   ${REPLICATION_DIR}/replication_master_node.hpp
   ${REPLICATION_DIR}/replication_master_senders_manager.hpp
   ${REPLICATION_DIR}/replication_node.hpp

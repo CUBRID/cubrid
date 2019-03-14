@@ -27,13 +27,14 @@
 
 #include "config.h"
 #include "multi_thread_stream.hpp"
+#include "replication_common.hpp"
+#include "replication_master_node.hpp"
+#include "replication_slave_node.hpp"
 #include "session.h"
 #include "thread_entry_task.hpp"
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
 #include "thread_worker_pool.hpp"
-#include "replication_master_node.hpp"
-#include "replication_slave_node.hpp"
 
 #include <stdio.h>
 #include <stdlib.h>

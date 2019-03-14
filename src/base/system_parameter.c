@@ -669,7 +669,6 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_LOG_CHKPT_DETAILED "detailed_checkpoint_logging"
 
 #define PRM_NAME_REPL_LOG_GENERATOR_LOGGING "replication_log_generator_logging"
-#define PRM_NAME_DEBUG_REPLICATION_BUFFER_SIZE_DUMP "debug_replication_buffer_size_dump"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
@@ -2238,12 +2237,6 @@ static unsigned int prm_log_chkpt_detailed_flag = 0;
 bool PRM_REPL_LOG_GENERATOR_LOGGING = false;
 static bool prm_repl_log_generator_default = false;
 static unsigned int prm_repl_log_generator_flag = 0;
-
-int PRM_DEBUG_REPLICATION_BUFFER_SIZE_DUMP = 128;
-static int prm_debug_replication_buffer_size_dump_default = 10 * 1024 * 1024;
-static int prm_debug_replication_buffer_size_dump_lower = 0;
-static int prm_debug_replication_buffer_size_dump_upper = 16384;
-static unsigned int prm_debug_replication_buffer_size_dump_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5745,18 +5738,6 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_repl_log_generator_default,
    (void *) &PRM_REPL_LOG_GENERATOR_LOGGING,
    (void *) NULL, (void *) NULL,
-   (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
-  {PRM_ID_DEBUG_REPLICATION_BUFFER_SIZE_DUMP,
-   PRM_NAME_DEBUG_REPLICATION_BUFFER_SIZE_DUMP,
-   (PRM_FOR_SERVER | PRM_HIDDEN),
-   PRM_INTEGER,
-   &prm_debug_replication_buffer_size_dump_flag,
-   (void *) &prm_debug_replication_buffer_size_dump_default,
-   (void *) &PRM_DEBUG_REPLICATION_BUFFER_SIZE_DUMP,
-   (void *) &prm_debug_replication_buffer_size_dump_upper,
-   (void *) &prm_debug_replication_buffer_size_dump_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}

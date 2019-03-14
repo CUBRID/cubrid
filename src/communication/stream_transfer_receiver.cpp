@@ -62,8 +62,9 @@ namespace cubstream
 	    rc = this_consumer_channel.m_channel.send ((char *) &last_recv_pos,
 		 sizeof (UINT64));
 
-	    er_log_debug_replication (ARG_FILE_LINE, "transfer_receiver_task starting : "
-				      "m_last_received_position: %lld, rc: %d\n", this_consumer_channel.m_last_received_position, rc);
+	    er_log_debug (ARG_FILE_LINE, "transfer_receiver_task starting : "
+			  "m_last_received_position: %lld, rc: %d\n",
+                          this_consumer_channel.m_last_received_position, rc);
 
 	    if (rc != NO_ERRORS)
 	      {
@@ -82,14 +83,13 @@ namespace cubstream
 	    return;
 	  }
 
-	er_log_debug_replication (ARG_FILE_LINE, "transfer_receiver_task receiving : %d bytes\n", max_len);
+	er_log_debug (ARG_FILE_LINE, "transfer_receiver_task receiving : %d bytes\n", max_len);
 
-	int dump_size = prm_get_integer_value (PRM_ID_DEBUG_REPLICATION_BUFFER_SIZE_DUMP);
-	if (prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA) && dump_size > 0)
+	if (prm_get_bool_value (PRM_ID_ER_LOG_DEBUG))
 	  {
 	    string_buffer in;
 	    string_buffer out;
-	    dump_size = std::min (dump_size, (int) max_len);
+	    size_t dump_size = std::min (cubcomm::MTU, max_len);
 
 	    in.add_bytes (dump_size, this_consumer_channel.m_buffer);
 	    string_buffer::hex_dump (in, out, dump_size);

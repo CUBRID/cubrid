@@ -23,8 +23,9 @@
 
 #ident "$Id$"
 
-#include "replication_object.hpp"
 #include "replication_stream_entry.hpp"
+#include "replication_object.hpp"
+#include "replication_common.hpp"
 #include "stream_entry.hpp"
 #include "error_code.h"
 #include "string_buffer.hpp"
