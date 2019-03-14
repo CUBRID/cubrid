@@ -7415,7 +7415,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
     }
 
 #if !defined(NDEBUG) && defined (SERVER_MODE)
-  if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG))
+  if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG) && !logtb_get_tdes(thread_p)->replication_log_generator.is_row_replication_disabled())
     {
       assert (log_does_allow_replication ());
       log_sysop_start (thread_p);

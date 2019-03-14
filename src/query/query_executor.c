@@ -10603,6 +10603,7 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku, H
   int local_op_type = SINGLE_ROW_UPDATE;
   HEAP_SCANCACHE *local_scan_cache = NULL;
   int ispeeking;
+  bool changed_row_replication_state = false;
 
   OID_SET_NULL (&unique_oid);
 
@@ -10634,6 +10635,13 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku, H
       error = ER_FAILED;
       goto exit_on_error;
     }
+
+  if (prm_get_bool_value(PRM_ID_REPL_LOG_LOCAL_DEBUG)
+    && !logtb_get_tdes(thread_p)->replication_log_generator.is_row_replication_disabled())
+  {
+    logtb_get_tdes(thread_p)->replication_log_generator.set_row_replication_disabled(true);
+    changed_row_replication_state = true;
+  }
 
   /* setup operation type and handle partition representation id */
   if (pruning_type == DB_PARTITIONED_CLASS)
@@ -10730,6 +10738,11 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku, H
   heap_attrinfo_clear_dbvalues (attr_info);
   heap_attrinfo_clear_dbvalues (odku->attr_info);
 
+  if (changed_row_replication_state)
+  {
+    logtb_get_tdes(thread_p)->replication_log_generator.set_row_replication_disabled(false);
+  }
+
   return error;
 
 exit_on_error:
@@ -10738,6 +10751,11 @@ exit_on_error:
     {
       heap_attrinfo_clear_dbvalues (odku->attr_info);
     }
+
+  if (changed_row_replication_state)
+  {
+    logtb_get_tdes(thread_p)->replication_log_generator.set_row_replication_disabled(false);
+  }
 
   assert (error != NO_ERROR);
 
