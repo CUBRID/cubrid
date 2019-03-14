@@ -33,14 +33,30 @@ void string_buffer::add_bytes (size_t len, char *bytes)
   m_len += len;
   m_ext_block.get_ptr ()[m_len] = '\0';
 }
-
+/*
+ * hex_dump : creates an output string_buffer containing hex dump of input and optionally the ASCII content
+ *
+ * in : input string
+ * out : output string formatted
+ * max_to_dump : maximum contents to dump from input
+ * line_size : number of characters to dump in each line (counting from input)
+ * print_ascii : if true, prints the ASCII content of input on the right of hex dump
+ */
 void
 string_buffer::hex_dump (const string_buffer &in, string_buffer &out, const size_t max_to_dump,
 			 const size_t line_size, const bool print_ascii)
 {
-  const char *ptr = in.get_buffer ();
+  const char *buf = in.get_buffer ();
+  size_t buf_len = std::min (max_to_dump, in.len ());
+
+  return string_buffer::hex_dump (buf, buf_len, out, line_size, print_ascii);
+}
+
+void
+string_buffer::hex_dump (const char *ptr, const size_t length, string_buffer &out,
+			 const size_t line_size, const bool print_ascii)
+{
   const char *ptr_line = ptr;
-  size_t length = std::min (max_to_dump, in.len ());
 
   out ("  0000: ");
   for (int i = 0; i < length; i++)
