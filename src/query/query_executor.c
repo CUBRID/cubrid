@@ -55,6 +55,7 @@
 #include "elo.h"
 #include "db_elo.h"
 #include "locator_sr.h"
+#include "log_lsa.hpp"
 #include "xserver_interface.h"
 #include "tz_support.h"
 #include "session.h"

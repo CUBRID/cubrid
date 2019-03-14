@@ -38,6 +38,7 @@
 #include "file_io.h"
 #include "log_comm.h"
 #include "log_impl.h"
+#include "log_lsa.hpp"
 #include "recovery.h"
 #include "storage_common.h"
 #include "thread_compat.hpp"

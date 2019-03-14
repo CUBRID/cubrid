@@ -44,6 +44,7 @@
 #include "query_reevaluation.hpp"
 #include "regu_var.hpp"
 #include "locator_sr.h"
+#include "log_lsa.hpp"
 #include "object_primitive.h"
 #include "dbtype.h"
 #include "xasl_predicate.hpp"

@@ -33,6 +33,7 @@
 #if defined(SERVER_MODE) || defined(SA_MODE)
 #include "log_impl.h"
 #endif /* defined(SERVER_MODE) || defined(SA_MODE) */
+#include "log_lsa.hpp"
 #include "memory_alloc.h"
 #include "oid.h"
 #include "system_parameter.h"

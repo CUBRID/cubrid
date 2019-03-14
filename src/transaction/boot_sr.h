@@ -40,6 +40,7 @@
 #include "oid.h"
 #include "disk_manager.h"
 #include "log_comm.h"
+#include "log_lsa.hpp"
 #include "file_io.h"
 
 #if defined (SERVER_MODE)

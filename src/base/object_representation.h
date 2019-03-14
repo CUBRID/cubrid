@@ -38,12 +38,15 @@
 #include <netinet/in.h>
 #endif /* !WINDOWS */
 
-#include "error_manager.h"
-#include "storage_common.h"
-#include "oid.h"
 #include "byte_order.h"
+#include "error_manager.h"
 #include "memory_alloc.h"
+#include "oid.h"
 #include "porting_inline.hpp"
+#include "storage_common.h"
+
+// forward declarations
+struct log_lsa;
 
 /*
  * NUMERIC TYPE SIZES
@@ -1290,8 +1293,8 @@ extern char *or_pack_hfid (const char *ptr, const HFID * hfid);
 extern char *or_pack_btid (char *buf, const BTID * btid);
 extern char *or_pack_ehid (char *buf, EHID * btid);
 extern char *or_pack_recdes (char *buf, RECDES * recdes);
-extern char *or_pack_log_lsa (const char *ptr, const LOG_LSA * lsa);
-extern char *or_unpack_log_lsa (char *ptr, LOG_LSA * lsa);
+extern char *or_pack_log_lsa (const char *ptr, const struct log_lsa *lsa);
+extern char *or_unpack_log_lsa (char *ptr, struct log_lsa *lsa);
 extern char *or_unpack_set (char *ptr, SETOBJ ** set, struct tp_domain *domain);
 extern char *or_unpack_setref (char *ptr, DB_SET ** ref);
 extern char *or_pack_listid (char *ptr, void *listid);

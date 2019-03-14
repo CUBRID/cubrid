@@ -18,7 +18,7 @@
  */
 
 /*
- * disk_manager.h - Disk managment module (at server)
+ * disk_manager.h - Disk management module (at server)
  */
 
 #ifndef _DISK_MANAGER_H_
@@ -27,10 +27,10 @@
 #ident "$Id$"
 
 #include "config.h"
-
 #include "error_manager.h"
-#include "storage_common.h"
+#include "log_lsa.hpp"
 #include "recovery.h"
+#include "storage_common.h"
 #include "thread_compat.hpp"
 
 #define DISK_VOLHEADER_PAGE      0	/* Page of the volume header */

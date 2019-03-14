@@ -263,28 +263,30 @@ set(JSP_SOURCES
   )
 
 set(TRANSACTION_SOURCES
-  ${TRANSACTION_DIR}/log_compress.c
   ${TRANSACTION_DIR}/boot_sr.c
   ${TRANSACTION_DIR}/locator.c
   ${TRANSACTION_DIR}/locator_sr.c
-  ${TRANSACTION_DIR}/lock_table.c
   ${TRANSACTION_DIR}/lock_manager.c
-  ${TRANSACTION_DIR}/log_manager.c
+  ${TRANSACTION_DIR}/lock_table.c
   ${TRANSACTION_DIR}/log_2pc.c
+  ${TRANSACTION_DIR}/log_comm.c
+  ${TRANSACTION_DIR}/log_compress.c
   ${TRANSACTION_DIR}/log_global.c
+  ${TRANSACTION_DIR}/log_lsa.cpp
+  ${TRANSACTION_DIR}/log_manager.c
   ${TRANSACTION_DIR}/log_page_buffer.c
   ${TRANSACTION_DIR}/log_recovery.c
   ${TRANSACTION_DIR}/log_system_tran.cpp
   ${TRANSACTION_DIR}/log_tran_table.c
-  ${TRANSACTION_DIR}/log_comm.c
-  ${TRANSACTION_DIR}/replication.c
-  ${TRANSACTION_DIR}/recovery.c
-  ${TRANSACTION_DIR}/transaction_sr.c
-  ${TRANSACTION_DIR}/wait_for_graph.c
   ${TRANSACTION_DIR}/log_writer.c
   ${TRANSACTION_DIR}/mvcc.c
+  ${TRANSACTION_DIR}/recovery.c
+  ${TRANSACTION_DIR}/replication.c
+  ${TRANSACTION_DIR}/transaction_sr.c
+  ${TRANSACTION_DIR}/wait_for_graph.c
   )
 set(TRANSACTION_HEADERS
+  ${TRANSACTION_DIR}/log_lsa.hpp
   ${TRANSACTION_DIR}/log_system_tran.hpp
   )
 

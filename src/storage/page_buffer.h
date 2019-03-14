@@ -32,6 +32,7 @@
 #include "error_manager.h"
 #include "disk_manager.h"
 #include "lock_manager.h"
+#include "log_lsa.hpp"
 #include "mem_block.hpp"
 #include "perf_monitor.h"
 #include "storage_common.h"
@@ -240,6 +241,8 @@ using pgbuf_resizable_buffer = cubmem::extensible_stack_block<(size_t) IO_MAX_PA
 
 extern HFID *pgbuf_ordered_null_hfid;
 
+const log_lsa PGBUF_TEMP_LSA = { NULL_LOG_PAGEID - 1, NULL_LOG_OFFSET - 1 };
+
 extern unsigned int pgbuf_hash_vpid (const void *key_vpid, unsigned int htsize);
 extern int pgbuf_compare_vpid (const void *key_vpid1, const void *key_vpid2);
 extern int pgbuf_initialize (void);
@@ -362,7 +365,6 @@ extern void pgbuf_force_to_check_for_interrupts (void);
 extern bool pgbuf_is_log_check_for_interrupts (THREAD_ENTRY * thread_p);
 extern void pgbuf_unfix_all (THREAD_ENTRY * thread_p);
 extern void pgbuf_set_lsa_as_temporary (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
-extern void pgbuf_set_lsa_as_permanent (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 extern void pgbuf_set_page_ptype (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PAGE_TYPE ptype);
 extern bool pgbuf_is_lsa_temporary (PAGE_PTR pgptr);
 extern bool pgbuf_check_page_ptype (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PAGE_TYPE ptype);

@@ -41,10 +41,11 @@
 #if defined (SERVER_MODE) || defined (SA_MODE)
 #include "lock_free.h"
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
+#include "log_comm.h"
 #if defined (SERVER_MODE) || defined (SA_MODE)
 #include "lock_manager.h"
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
-#include "log_comm.h"
+#include "log_lsa.hpp"
 #if defined (SERVER_MODE) || defined (SA_MODE)
 #include "mvcc.h"
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */

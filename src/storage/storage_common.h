@@ -99,69 +99,6 @@ typedef INT16 PGLENGTH;		/* Page length */
 typedef PAGEID FILEID;		/* File identifier */
 typedef INT32 LOLENGTH;		/* Length for a large object */
 
-/* Log address structure */
-
-struct log_lsa
-{
-  INT64 pageid:48;		/* Log page identifier : 6 bytes length */
-  INT64 offset:16;		/* Offset in page : 2 bytes length */
-  /* The offset field is defined as 16bit-INT64 type (not short), because of alignment in windows */
-};
-
-typedef struct log_lsa LOG_LSA;	/* Log address identifier */
-
-STATIC_INLINE void
-LSA_COPY (LOG_LSA * plsa1, const LOG_LSA * plsa2)
-{
-  plsa1->pageid = plsa2->pageid;
-  plsa1->offset = plsa2->offset;
-}
-
-STATIC_INLINE void
-LSA_SET_NULL (LOG_LSA * lsa_ptr)
-{
-  lsa_ptr->pageid = NULL_PAGEID;
-  lsa_ptr->offset = NULL_OFFSET;
-}
-
-STATIC_INLINE void
-LSA_SET_TEMP_LSA (LOG_LSA * lsa_ptr)
-{
-  lsa_ptr->pageid = NULL_PAGEID - 1;
-  lsa_ptr->offset = NULL_OFFSET - 1;
-}
-
-#define LSA_INITIALIZER	{NULL_PAGEID, NULL_OFFSET}
-
-#define LSA_AS_ARGS(lsa_ptr) (long long int) (lsa_ptr)->pageid, (int) (lsa_ptr)->offset
-
-#define LSA_SET_INIT_NONTEMP(lsa_ptr) LSA_SET_NULL(lsa_ptr)
-#define LSA_SET_INIT_TEMP(lsa_ptr)\
-  do {									      \
-    (lsa_ptr)->pageid = NULL_PAGEID - 1;                                      \
-    (lsa_ptr)->offset = NULL_OFFSET - 1;                                      \
-  } while(0)
-
-#define LSA_ISNULL(lsa_ptr) ((lsa_ptr)->pageid == NULL_PAGEID)
-#define LSA_IS_INIT_NONTEMP(lsa_ptr) LSA_ISNULL(lsa_ptr)
-#define LSA_IS_INIT_TEMP(lsa_ptr) (((lsa_ptr)->pageid == NULL_PAGEID - 1) &&  \
-				  ((lsa_ptr)->offset == NULL_OFFSET - 1))
-
-#define LSA_LT(lsa_ptr1, lsa_ptr2)                                            \
-  ((lsa_ptr1) != (lsa_ptr2) &&                                                \
-   ((lsa_ptr1)->pageid < (lsa_ptr2)->pageid ||                                \
-    ((lsa_ptr1)->pageid == (lsa_ptr2)->pageid &&                              \
-     (lsa_ptr1)->offset < (lsa_ptr2)->offset)))                               \
-
-#define LSA_EQ(lsa_ptr1, lsa_ptr2)                                            \
-  ((lsa_ptr1) == (lsa_ptr2) ||                                                \
-    ((lsa_ptr1)->pageid == (lsa_ptr2)->pageid &&                              \
-     (lsa_ptr1)->offset == (lsa_ptr2)->offset))
-
-#define LSA_LE(lsa_ptr1, lsa_ptr2) (!LSA_LT(lsa_ptr2, lsa_ptr1))
-#define LSA_GT(lsa_ptr1, lsa_ptr2) LSA_LT(lsa_ptr2, lsa_ptr1)
-#define LSA_GE(lsa_ptr1, lsa_ptr2) LSA_LE(lsa_ptr2, lsa_ptr1)
-
 /* BOTH IO_PAGESIZE AND DB_PAGESIZE MUST BE MULTIPLE OF sizeof(int) */
 
 #define IO_DEFAULT_PAGE_SIZE    (16 * ONE_K)
@@ -759,7 +696,6 @@ extern int recdes_allocate_data_area (RECDES * rec, int size);
 extern void recdes_free_data_area (RECDES * rec);
 extern void recdes_set_data_area (RECDES * rec, char *data, int size);
 
-extern char *lsa_to_string (char *buf, int buf_size, LOG_LSA * lsa);
 extern char *oid_to_string (char *buf, int buf_size, OID * oid);
 extern char *vpid_to_string (char *buf, int buf_size, VPID * vpid);
 extern char *vfid_to_string (char *buf, int buf_size, VFID * vfid);

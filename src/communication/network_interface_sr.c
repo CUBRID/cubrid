@@ -40,6 +40,7 @@
 #include "btree_load.h"
 #include "perf_monitor.h"
 #include "log_impl.h"
+#include "log_lsa.hpp"
 #include "boot_sr.h"
 #include "locator_sr.h"
 #include "server_interface.h"

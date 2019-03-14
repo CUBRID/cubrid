@@ -27,6 +27,7 @@
 #ident "$Id$"
 
 #include "file_io.h"
+#include "log_lsa.hpp"
 
 /* The double write slot type */
 typedef struct double_write_slot DWB_SLOT;

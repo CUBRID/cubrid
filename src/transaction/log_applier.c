@@ -40,6 +40,7 @@
 #include "environment_variable.h"
 #include "message_catalog.h"
 #include "log_compress.h"
+#include "log_lsa.hpp"
 #include "parser.h"
 #include "object_primitive.h"
 #include "db_value_printer.hpp"

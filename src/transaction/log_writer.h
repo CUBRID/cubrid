@@ -26,8 +26,10 @@
 
 #ident "$Id$"
 
-#include <stdio.h>
 #include "log_impl.h"
+#include "log_lsa.hpp"
+
+#include <stdio.h>
 
 typedef struct logwr_context LOGWR_CONTEXT;
 struct logwr_context

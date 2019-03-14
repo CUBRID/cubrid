@@ -37,6 +37,7 @@
 #include "object_domain.h"
 #include "oid.h"
 #include "lock_manager.h"
+#include "log_lsa.hpp"
 #include "mvcc.h"
 #include "query_evaluator.h"
 #include "recovery.h"

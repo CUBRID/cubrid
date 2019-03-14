@@ -254,14 +254,18 @@ set(JSP_SOURCES
   )
 
 set(TRANSACTION_SOURCES
-  ${TRANSACTION_DIR}/log_compress.c
   ${TRANSACTION_DIR}/boot_cl.c
   ${TRANSACTION_DIR}/locator.c
   ${TRANSACTION_DIR}/locator_cl.c
   ${TRANSACTION_DIR}/lock_table.c
   ${TRANSACTION_DIR}/log_comm.c
-  ${TRANSACTION_DIR}/transaction_cl.c
+  ${TRANSACTION_DIR}/log_compress.c
+  ${TRANSACTION_DIR}/log_lsa.cpp
   ${TRANSACTION_DIR}/log_writer.c
+  ${TRANSACTION_DIR}/transaction_cl.c
+  )
+set(TRANSACTION_HEADERS
+  ${TRANSACTION_DIR}/log_lsa.hpp
   )
 
 set(STORAGE_SOURCES
@@ -402,6 +406,7 @@ add_library(cubridcs SHARED
   ${OBJECT_SOURCES}
   ${JSP_SOURCES}
   ${TRANSACTION_SOURCES}
+  ${TRANSACTION_HEADERS}
   ${STORAGE_SOURCES}
   ${ES_SOURCES}
   ${PROBES_OBJECT}
