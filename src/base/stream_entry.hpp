@@ -323,11 +323,6 @@ namespace cubstream
       virtual int get_packable_entry_count_from_header (void) = 0;
       virtual bool is_equal (const entry *other) = 0;
 
-      const stream_position& get_data_start_position (void) const
-        {
-          return m_data_start_position;
-        }
-
       virtual void destroy_objects ()
       {
 	for (unsigned int i = 0; i < m_packable_entries.size (); i++)

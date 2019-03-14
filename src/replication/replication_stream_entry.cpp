@@ -56,7 +56,7 @@ namespace cubreplication
   {
     sb ("HEADER : MVCCID:%lld | tran_state:%s | repl_entries_cnt:%d | data_size:%d | data_start_pos:%lld | %p\n",
 	m_header.mvccid, stream_entry_header::tran_state_string (m_header.tran_state),
-	m_header.count_replication_entries, m_header.data_size, get_data_start_position (), this);
+	m_header.count_replication_entries, m_header.data_size, m_data_start_position, this);
 
     if (mode = detailed_dump)
       {
