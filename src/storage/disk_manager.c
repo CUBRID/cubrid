@@ -302,13 +302,6 @@ struct disk_reserve_context
 /* Utility section                                                      */
 /************************************************************************/
 
-STATIC_INLINE void
-LSA_SET_TEMP_LSA (LOG_LSA * lsa_ptr)
-{
-  lsa_ptr->pageid = NULL_PAGEID - 1;
-  lsa_ptr->offset = NULL_OFFSET - 1;
-}
-
 /* logging */
 static bool disk_Logging = false;
 #define disk_log(func, msg, ...) \
@@ -758,13 +751,11 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
 	}
       if (ext_info->voltype == DB_PERMANENT_VOLTYPE)
 	{
-	  LSA_SET_TEMP_LSA (&init_with_temp_lsa);
-
 	  /* Flush all dirty pages and then invalidate them from page buffer pool. So that we can reset the recovery
 	   * information directly using the io module */
 
 	  (void) pgbuf_invalidate_all (thread_p, volid);	/* Flush and invalidate */
-	  error_code = fileio_reset_volume (thread_p, vdes, vol_fullname, max_npages, &init_with_temp_lsa);
+	  error_code = fileio_reset_volume (thread_p, vdes, vol_fullname, max_npages, &PGBUF_TEMP_LSA);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
