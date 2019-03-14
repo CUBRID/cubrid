@@ -638,6 +638,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_DWB_LOGGING "double_write_buffer_logging"
 
 #define PRM_NAME_JSON_LOG_ALLOCATIONS "json_log_allocations"
+#define PRM_NAME_JSON_MAX_ARRAY_IDX "json_max_array_idx"
 
 #define PRM_NAME_CONNECTION_LOGGING "connection_logging"
 
@@ -2123,6 +2124,12 @@ static unsigned int prm_cte_max_recursions_flag = 0;
 bool PRM_JSON_LOG_ALLOCATIONS = false;
 static bool prm_json_log_allocations_default = false;
 static unsigned int prm_json_log_allocations_flag = 0;
+
+int PRM_JSON_MAX_ARRAY_IDX = 64 * ONE_K;
+static int prm_json_max_array_idx_default = 64 * ONE_K;
+static unsigned int prm_json_max_array_idx_flag = 0;
+static int prm_json_max_array_idx_upper = ONE_M;
+static int prm_json_max_array_idx_lower = ONE_K;
 
 bool PRM_CONNECTION_LOGGING = false;
 static bool prm_connection_logging_default = false;
@@ -5460,6 +5467,18 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_json_log_allocations_default,
    (void *) &PRM_JSON_LOG_ALLOCATIONS,
    (void *) NULL, (void *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_JSON_MAX_ARRAY_IDX,
+   PRM_NAME_JSON_MAX_ARRAY_IDX,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE),
+   PRM_INTEGER,
+   &prm_json_max_array_idx_flag,
+   (void *) &prm_json_max_array_idx_default,
+   (void *) &PRM_JSON_MAX_ARRAY_IDX,
+   (void *) &prm_json_max_array_idx_upper,
+   (void *) &prm_json_max_array_idx_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},

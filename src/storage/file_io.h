@@ -217,22 +217,6 @@ fileio_init_lsa_of_page (FILEIO_PAGE * io_page, PGLENGTH page_size)
 }
 
 STATIC_INLINE void
-fileio_init_lsa_of_temp_page (FILEIO_PAGE * io_page, PGLENGTH page_size)
-{
-  LOG_LSA *lsa_ptr;
-
-  lsa_ptr = &io_page->prv.lsa;
-  lsa_ptr->pageid = NULL_PAGEID - 1;
-  lsa_ptr->offset = NULL_OFFSET - 1;
-
-  FILEIO_PAGE_WATERMARK *prv2 = fileio_get_page_watermark_pos (io_page, page_size);
-
-  lsa_ptr = &prv2->lsa;
-  lsa_ptr->pageid = NULL_PAGEID - 1;
-  lsa_ptr->offset = NULL_OFFSET - 1;
-}
-
-STATIC_INLINE void
 fileio_reset_page_lsa (FILEIO_PAGE * io_page, PGLENGTH page_size)
 {
   LSA_SET_NULL (&io_page->prv.lsa);
@@ -486,7 +470,7 @@ extern void fileio_unformat_and_rename (THREAD_ENTRY * thread_p, const char *vla
 extern int fileio_copy_volume (THREAD_ENTRY * thread_p, int from_vdes, DKNPAGES npages, const char *to_vlabel,
 			       VOLID to_volid, bool reset_recvinfo);
 extern int fileio_reset_volume (THREAD_ENTRY * thread_p, int vdes, const char *vlabel, DKNPAGES npages,
-				LOG_LSA * reset_lsa);
+				const LOG_LSA * reset_lsa);
 extern int fileio_mount (THREAD_ENTRY * thread_p, const char *db_fullname, const char *vlabel, VOLID volid,
 			 int lockwait, bool dosync);
 extern void fileio_dismount (THREAD_ENTRY * thread_p, int vdes);

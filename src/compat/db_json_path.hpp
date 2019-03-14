@@ -47,14 +47,14 @@ struct PATH_TOKEN
 
   token_type m_type;
   std::string m_object_key;
-  rapidjson::SizeType m_array_idx;
+  unsigned long m_array_idx;
 
   PATH_TOKEN ();
-  PATH_TOKEN (token_type type, rapidjson::SizeType array_idx);
+  PATH_TOKEN (token_type type, unsigned long array_idx);
   PATH_TOKEN (token_type type, std::string &&s);
 
   const std::string &get_object_key () const;
-  rapidjson::SizeType get_array_index () const;
+  unsigned long get_array_index () const;
 
   bool is_wildcard () const;
   bool static match_pattern (const PATH_TOKEN &matcher, const PATH_TOKEN &matchee);
@@ -89,7 +89,7 @@ class JSON_PATH
     bool parent_exists (JSON_DOC &jd) const;
     bool contains_wildcard () const;
 
-    void push_array_index (unsigned idx);
+    void push_array_index (unsigned long idx);
     void push_array_index_wildcard ();
     void push_object_key (std::string &&object_key);
     void push_object_key_wildcard ();

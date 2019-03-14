@@ -2880,7 +2880,8 @@ error:
  *   reset_lsa(in): The reset recovery information LSA
  */
 int
-fileio_reset_volume (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, DKNPAGES npages, LOG_LSA * reset_lsa_p)
+fileio_reset_volume (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, DKNPAGES npages,
+		     const LOG_LSA * reset_lsa_p)
 {
   PAGEID page_id;
   FILEIO_PAGE *malloc_io_page_p;
