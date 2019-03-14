@@ -302,13 +302,6 @@ struct disk_reserve_context
 /* Utility section                                                      */
 /************************************************************************/
 
-STATIC_INLINE void
-LSA_SET_TEMP_LSA (LOG_LSA * lsa_ptr)
-{
-  lsa_ptr->pageid = NULL_PAGEID - 1;
-  lsa_ptr->offset = NULL_OFFSET - 1;
-}
-
 /* logging */
 static bool disk_Logging = false;
 #define disk_log(func, msg, ...) \

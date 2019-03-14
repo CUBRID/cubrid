@@ -887,10 +887,6 @@ struct pgbuf_fix_perf
   UINT64 fix_wait_time;
 };
 
-#define LSA_IS_INIT_NONTEMP(lsa_ptr) LSA_ISNULL(lsa_ptr)
-#define LSA_IS_INIT_TEMP(lsa_ptr) (((lsa_ptr)->pageid == NULL_PAGEID - 1) &&  \
-				  ((lsa_ptr)->offset == NULL_OFFSET - 1))
-
 #if defined (NDEBUG)
 /* note: release bugs can be hard to debug due to compile optimization. the crash call-stack may point to a completely
  *       different code than the one that caused the crash. my workaround is to save the line of code in this global
