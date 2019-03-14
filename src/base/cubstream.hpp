@@ -142,12 +142,17 @@ namespace cubstream
 	return m_stream_name;
       }
 
-      void reset_serial_data_read (const stream_position &pos, const bool force = false)
+      void reset_serial_data_read (const stream_position &pos)
       {
-	if (force || pos <= m_last_committed_pos)
+	if (pos <= m_last_committed_pos)
 	  {
 	    m_read_position = pos;
 	  }
+      }
+
+      void force_serial_data_read (const stream_position &pos)
+      {
+        m_read_position = pos;
       }
   };
 
