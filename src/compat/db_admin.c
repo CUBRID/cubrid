@@ -32,6 +32,7 @@
 #include <stdarg.h>
 #include <ctype.h>
 #include <assert.h>
+#include <signal.h>
 
 #include "porting.h"
 #include "system_parameter.h"
