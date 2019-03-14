@@ -21,8 +21,8 @@
  * log implementation common part to server/client modules.
  */
 
-#ifndef _LOG_COMMON_IMLP_H_
-#define _LOG_COMMON_IMLP_H_
+#ifndef _LOG_COMMON_IMPL_H_
+#define _LOG_COMMON_IMPL_H_
 
 #include "file_io.h"
 #include "log_comm.h"
@@ -738,4 +738,4 @@ extern int logtb_collect_local_clients (int **local_client_pids);
 /* End of part shared with client.                                      */
 /************************************************************************/
 
-#endif // _LOG_COMMON_IMLP_H_
+#endif // _LOG_COMMON_IMPL_H_
