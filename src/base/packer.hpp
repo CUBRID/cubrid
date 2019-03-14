@@ -197,7 +197,7 @@ namespace cubpacking
       void unpack_overloaded (packable_object &po);
 
       void peek_unpack_buffer_length (int &value);
-      void unpack_buffer_with_length (char *stream, const std::size_t length);
+      void unpack_buffer_with_length (char *stream, const std::size_t max_length);
 
       const char *get_curr_ptr (void);
       void align (const size_t req_alignment);

@@ -30,10 +30,10 @@
 #include "object_representation.h"
 #include "packable_object.hpp"
 
+#include <algorithm>
+#include <cstring>
 #include <vector>
 #include <string>
-
-#include <cstring>
 
 namespace cubpacking
 {
@@ -868,22 +868,23 @@ namespace cubpacking
   }
 
   void
-  unpacker::unpack_buffer_with_length (char *stream, const std::size_t expected_length)
+  unpacker::unpack_buffer_with_length (char *stream, const std::size_t max_length)
   {
-    size_t actual_len;
+    size_t actual_len, copy_length;
 
     align (INT_ALIGNMENT);
-
-    check_range (m_ptr, m_end_ptr, OR_INT_SIZE + expected_length);
 
     actual_len = OR_GET_INT (m_ptr);
     m_ptr += OR_INT_SIZE;
 
-    assert_release (actual_len == expected_length);
+    check_range (m_ptr, m_end_ptr, OR_INT_SIZE + actual_len);
+
+    assert (max_length <= actual_len);
+    copy_length = std::min (actual_len, max_length);
 
     if (actual_len > 0)
       {
-	memcpy (stream, m_ptr, actual_len);
+	memcpy (stream, m_ptr, copy_length);
 	m_ptr += actual_len;
 	align (INT_ALIGNMENT);
       }
