@@ -66,7 +66,7 @@ namespace cubstream
 
     m_stream_file = NULL;
 
-    m_force_flush = false;
+    m_flush_on_commit = false;
   }
 
   multi_thread_stream::~multi_thread_stream ()
@@ -78,7 +78,7 @@ namespace cubstream
   {
     stream::init (start_position);
     m_oldest_buffered_position = start_position;
-    m_force_flush = prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA);
+    m_flush_on_commit = prm_get_bool_value (PRM_ID_DEBUG_REPLICATION_DATA);
     return NO_ERROR;
   }
 
@@ -367,7 +367,7 @@ namespace cubstream
 	m_last_notified_committed_pos = new_completed_position;
       }
 
-    if (m_force_flush && collapsed_reserve)
+    if (m_flush_on_commit && collapsed_reserve)
       {
 	wake_up_flusher (2.0f, m_last_recyclable_pos, new_completed_position - m_last_recyclable_pos);
       }
