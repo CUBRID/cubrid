@@ -61,9 +61,6 @@
 #include "environment_variable.h"
 #include "error_context.hpp"
 #include "porting.h"
-#if !defined(WINDOWS)
-#include "log_impl.h"
-#endif
 #include "system_parameter.h"
 #include "error_manager.h"
 #include "connection_defs.h"

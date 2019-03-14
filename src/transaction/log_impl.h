@@ -28,52 +28,35 @@
 
 #ident "$Id$"
 
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#error Wrong module
+#endif // not SERVER/SA modes
+
 #include "boot.h"
 #include "config.h"
 #include "connection_globals.h"
-#if defined (SERVER_MODE) || defined (SA_MODE)
 #include "critical_section.h"
-#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
-#if defined (SERVER_MODE) || defined (SA_MODE)
 #include "es.h"
-#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 #include "file_io.h"
-#if defined (SERVER_MODE) || defined (SA_MODE)
 #include "lock_free.h"
-#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 #include "log_comm.h"
 #include "log_common_impl.h"
-#if defined (SERVER_MODE) || defined (SA_MODE)
 #include "lock_manager.h"
-#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 #include "log_lsa.hpp"
-#if defined (SERVER_MODE) || defined (SA_MODE)
 #include "mvcc.h"
-#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 #include "porting.h"
 #include "rb_tree.h"
 #include "recovery.h"
 #include "release_string.h"
 #include "storage_common.h"
-#if defined (SERVER_MODE)
 #include "thread_entry.hpp"
-#else // not SERVER_MODE = SA_MODE or CS_MODE
-#include "thread_compat.hpp"
-#endif // not SERVER_MODE = SA_MODE or CS_MODE
-#if defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))
 #include "log_generator.hpp"
-#endif // defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))
-
 
 #include <assert.h>
 #if defined(SOLARIS)
 #include <netdb.h>		/* for MAXHOSTNAMELEN */
 #endif /* SOLARIS */
 #include <signal.h>
-
-///
-
-#if !defined (CS_MODE)
 
 // forward declarations
 struct bo_restart_arg;
@@ -1787,5 +1770,4 @@ logtb_is_system_worker_tranid (TRANID trid)
   return trid < NULL_TRANID;
 }
 
-#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 #endif /* _LOG_IMPL_H_ */

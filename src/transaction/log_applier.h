@@ -27,7 +27,7 @@
 #ident "$Id$"
 
 #if defined (CS_MODE)
-#include "log_impl.h"
+#include "log_common_impl.h"
 #include "log_lsa.hpp"
 #endif /* CS_MODE */
 
