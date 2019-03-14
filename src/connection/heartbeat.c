@@ -31,6 +31,7 @@
 #include <errno.h>
 #include <sys/types.h>
 #include <assert.h>
+#include <signal.h>
 
 #if defined(WINDOWS)
 #include <winsock2.h>
