@@ -121,8 +121,10 @@ namespace cubload
       void stats_update_current_line (int current_line);
 
       void update_class_statistics (cubthread::entry &thread_ref);
+      load_args get_args ();
 
       class_registry &get_class_registry ();
+      driver* get_driver ();
 
     private:
       void notify_waiting_threads ();

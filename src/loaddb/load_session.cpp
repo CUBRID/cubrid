@@ -428,6 +428,18 @@ namespace cubload
     return m_class_registry;
   }
 
+  load_args
+  session::get_args ()
+  {
+    return m_args;
+  }
+
+  driver*
+  session::get_driver()
+  {
+    return m_driver;
+  }
+
   void
   session::notify_waiting_threads ()
   {

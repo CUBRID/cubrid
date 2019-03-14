@@ -297,12 +297,21 @@ namespace cubload
 
     std::size_t attr_index = 0;
     std::size_t attr_size = m_class_entry->get_attributes_size ();
+    bool is_syntax_check_only = m_session.get_args ().syntax_check;
+    driver *m_driver = m_session.get_driver ();
 
     if (cons != NULL && attr_size == 0)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_NO_CLASS_OR_NO_ATTRIBUTE, 0);
-	m_error_handler.on_failure ();
-	return;
+        er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_NO_CLASS_OR_NO_ATTRIBUTE, 0);
+        if (!is_syntax_check_only)
+          {
+	    m_error_handler.on_failure ();
+	    return;
+          }
+        else
+          {
+            m_error_handler.on_error_with_line (LOADDB_MSG_SYNTAX_ERR);
+          }
       }
 
     for (constant_type *c = cons; c != NULL; c = c->next, attr_index++)
@@ -310,16 +319,30 @@ namespace cubload
 	if (attr_index == attr_size)
 	  {
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_VALUE_OVERFLOW, 1, attr_index);
-	    m_error_handler.on_failure ();
-	    return;
+	    if (!is_syntax_check_only)
+              {
+	        m_error_handler.on_failure ();
+	        return;
+              }
+            else
+              {
+                m_error_handler.on_error_with_line (LOADDB_MSG_SYNTAX_ERR);
+              }
 	  }
 
 	const attribute &attr = m_class_entry->get_attribute (attr_index);
 	int error_code = process_constant (c, attr);
 	if (error_code != NO_ERROR)
 	  {
-	    m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
-	    return;
+	    if (!is_syntax_check_only)
+              {
+	        m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
+	        return;
+              }
+            else
+              {
+                m_error_handler.on_error_with_line (LOADDB_MSG_SYNTAX_ERR);
+              }
 	  }
 
 	db_value &db_val = get_attribute_db_value (attr_index);
@@ -329,7 +352,16 @@ namespace cubload
     if (attr_index < attr_size)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_MISSING_ATTRIBUTES, 2, attr_size, attr_index);
-	m_error_handler.on_failure ();
+
+	if (!is_syntax_check_only)
+          {
+	    m_error_handler.on_failure (LOADDB_MSG_LOAD_FAIL);
+	    return;
+          }
+        else
+          {
+            m_error_handler.on_error_with_line (LOADDB_MSG_SYNTAX_ERR);
+          }
       }
   }
 
@@ -345,15 +377,19 @@ namespace cubload
     int force_count = 0;
     int pruning_type = 0;
     int op_type = SINGLE_ROW_INSERT;
+    bool is_syntax_check_only = m_session.get_args ().syntax_check;
 
-    int error_code = locator_attribute_info_force (m_thread_ref, &m_scancache.node.hfid, &oid, &m_attrinfo, NULL, 0,
-		     LC_FLUSH_INSERT, op_type, &m_scancache, &force_count, false,
-		     REPL_INFO_TYPE_RBR_NORMAL, pruning_type, NULL, NULL, NULL,
-		     UPDATE_INPLACE_NONE, NULL, false);
-    if (error_code != NO_ERROR)
-      {
-	m_error_handler.on_failure ();
-	return;
+    if (!is_syntax_check_only)
+      { // Skip loading if syntax check only is enabled.
+        int error_code = locator_attribute_info_force (m_thread_ref, &m_scancache.node.hfid, &oid, &m_attrinfo, NULL, 0,
+		         LC_FLUSH_INSERT, op_type, &m_scancache, &force_count, false,
+		         REPL_INFO_TYPE_RBR_NORMAL, pruning_type, NULL, NULL, NULL,
+		         UPDATE_INPLACE_NONE, NULL, false);
+        if (error_code != NO_ERROR)
+          {
+	    m_error_handler.on_failure ();
+	    return;
+          }
       }
 
     m_session.stats_update_current_line (m_thread_ref->m_loaddb_driver->get_scanner ().lineno () + 1);
