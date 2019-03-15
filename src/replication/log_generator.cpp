@@ -250,7 +250,8 @@ namespace cubreplication
   void
   log_generator::pack_group_commit_entry (void)
   {
-    static stream_entry gc_stream_entry (s_stream, MVCCID_NULL, stream_entry_header::GROUP_COMMIT);
+    /* use non-NULL MVCCID to prevent assertion fail on stream packer */
+    static stream_entry gc_stream_entry (s_stream, MVCCID_FIRST, stream_entry_header::GROUP_COMMIT);
     gc_stream_entry.pack ();
   }
 
