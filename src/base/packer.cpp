@@ -877,7 +877,7 @@ namespace cubpacking
     actual_len = OR_GET_INT (m_ptr);
     m_ptr += OR_INT_SIZE;
 
-    check_range (m_ptr, m_end_ptr, OR_INT_SIZE + actual_len);
+    check_range (m_ptr, m_end_ptr, actual_len);
 
     assert (max_length <= actual_len);
     copy_length = std::min (actual_len, max_length);
