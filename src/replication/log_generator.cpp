@@ -45,11 +45,7 @@ namespace cubreplication
   }
 
   void log_generator::set_tran_repl_info(MVCCID mvccid, stream_entry_header::TRAN_STATE state)
-  {
-
-    if (prm_get_bool_value(PRM_ID_REPL_LOG_LOCAL_DEBUG) == true)
-      {
-      }
+  {    
     assert(m_has_stream);
     m_stream_entry.set_mvccid(mvccid);
     m_stream_entry.set_state(state);
@@ -274,7 +270,7 @@ namespace cubreplication
             
       if (changed_repl_entry->compare_inst_oid (inst_oid))
       {        
-        changed_repl_entry->set_lsa (*p_lsa);
+        changed_repl_entry->set_lsa_stamp (*p_lsa);
         break;
       }
     }
@@ -313,13 +309,6 @@ namespace cubreplication
   void
     log_generator::pack_stream_entry(void)
   {
-#if !defined(NDEBUG)
-    if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG))
-      {
-        /* Testing purpose. */
-        return;
-      }
-#endif
     assert(m_has_stream);
     
     m_stream_entry.pack();
@@ -387,14 +376,13 @@ namespace cubreplication
     if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG))
     {
       /* Reset stream entry. */      
-      m_stream_entry.reset();
-      
+      m_stream_entry.reset();      
       return;
     }    
 #endif
 
-    set_tran_repl_info(tdes->mvccinfo.id, state);
-    pack_stream_entry();
+    set_tran_repl_info (tdes->mvccinfo.id, state);
+    pack_stream_entry ();
   }
 
   void
@@ -406,7 +394,7 @@ namespace cubreplication
   void log_generator::on_sysop_commit (LOG_LSA &start_lsa)
   {
     replication_object *repl_obj;
-    LOG_LSA repl_lsa;
+    LOG_LSA highest_repl_lsa_stamp;
     cubstream::multi_thread_stream *p_multi_thread_stream = get_stream();
     cubreplication::stream_entry local_stream_entry (p_multi_thread_stream);    
     
@@ -415,20 +403,21 @@ namespace cubreplication
         return;
       }
     
+    /* Get the highest lsa. */
     repl_obj = m_stream_entry.get_object_at ((int) (m_stream_entry.count_entries() - 1));
-    repl_obj->get_lsa (repl_lsa);
-    if (LSA_GT (&start_lsa, &repl_lsa))
+    repl_obj->get_lsa_stamp (highest_repl_lsa_stamp);
+    if (LSA_LE (&highest_repl_lsa_stamp, &start_lsa))
     {
+      /* No object in current sysop. */
       return;
     }
     
     m_stream_entry.move_replication_objects_after_lsa_to_stream (start_lsa, local_stream_entry);
 #if !defined(NDEBUG)
-    if (prm_get_bool_value(PRM_ID_REPL_LOG_LOCAL_DEBUG))
+    if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG))
     {
       /* Reset stream entry. */      
       local_stream_entry.reset();
-
       return;
     }
 #endif
@@ -437,13 +426,12 @@ namespace cubreplication
     int tran_index = LOG_FIND_THREAD_TRAN_INDEX(thread_p);
     LOG_TDES *tdes = LOG_FIND_TDES(tran_index);
 
-    MVCCID mvccid = logtb_find_current_mvccid(&cubthread::get_entry());
-    local_stream_entry.set_mvccid (mvccid);
-    set_tran_repl_info(tdes->mvccinfo.id, stream_entry_header::ACTIVE);    
+    MVCCID mvccid = logtb_find_current_mvccid(&cubthread::get_entry());    
+    set_tran_repl_info (mvccid, stream_entry_header::ACTIVE);
 
     /* Write objects in stream and then destroy them. */
     local_stream_entry.pack ();
-    local_stream_entry.reset ();     
+    local_stream_entry.reset ();
   }  
 
   void
@@ -475,9 +463,6 @@ namespace cubreplication
     }
 
     m_is_row_replication_disabled = false;
-#if !defined(NDEBUG)
-    m_enable_debug_repl_local = prm_get_bool_value(PRM_ID_REPL_LOG_LOCAL_DEBUG);
-#endif
   }
 
   bool
@@ -501,21 +486,8 @@ namespace cubreplication
   {
     m_is_row_replication_disabled = disable_if_true;
   }
-
-#if !defined(NDEBUG)
-  void log_generator::disable_debug_repl_local()
-  {
-    m_enable_debug_repl_local = false;
-  }
-
-  bool log_generator::is_debug_repl_local_disabled()
-  {
-    return !m_enable_debug_repl_local;
-  }
-#endif
-
-  /* Debug function */
-  /* Abort operation and simulate it again with apply. */
+  
+#if !defined(NDEBUG) && defined (SERVER_MODE)
   int log_generator::abort_sysop_and_simulate_apply_repl_on_master (LOG_LSA &filter_replication_lsa)
   {
     int err_code = NO_ERROR;
@@ -524,7 +496,7 @@ namespace cubreplication
     LOG_TDES * tdes = logtb_get_tdes (&cubthread::get_entry());
     cubreplication::stream_entry *stream_entry = tdes->replication_log_generator.get_stream_entry ();
 
-    assert(!tdes->replication_log_generator.is_debug_repl_local_disabled() && stream_entry->count_entries() > 0);
+    assert(stream_entry->count_entries() > 0);
     
     /* Save the replication objects, before abort. */
     std::vector <cubreplication::replication_object *> repl_objects_after_lsa;
@@ -534,7 +506,8 @@ namespace cubreplication
     log_sysop_abort (thread_p);          
 
     /* Disable row replication, while we apply. */
-    logtb_get_tdes(thread_p)->replication_log_generator.set_row_replication_disabled (true);
+    logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (true);
+
     /* Simulate it again with apply . */
     for (unsigned int i = 0; i < repl_objects_after_lsa.size(); i++)
     {
@@ -562,6 +535,7 @@ namespace cubreplication
 
     return err_code;
   }
+#endif
 
   cubstream::multi_thread_stream *log_generator::s_stream = NULL;
 } /* namespace cubreplication */

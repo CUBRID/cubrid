@@ -899,9 +899,6 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
   if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
     {
       tdes->replication_log_generator.add_update_row (*key_val, *serial_oidp, *serial_class_oidp, &new_recdesc);
-#if !defined(NDEBUG)
-      tdes->replication_log_generator.disable_debug_repl_local ();
-#endif
     }
 
   if (lock_mode != X_LOCK)

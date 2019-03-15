@@ -4398,7 +4398,8 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 
 		  if (fkref->del_action == SM_FOREIGN_KEY_CASCADE)
 		    {
-		      bool changed_row_replication_state = false;
+		      bool disabled_row_replication = false;
+
 		      if (lob_exist)
 			{
 			  error_code = locator_delete_lob_force (thread_p, &fkref->self_oid, oid_ptr, NULL);
@@ -4408,11 +4409,14 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 			  goto error1;
 			}
 
-		      if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG)
-			  && !logtb_get_tdes (thread_p)->replication_log_generator.is_row_replication_disabled ())
+		      if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
 			{
-			  logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (true);
-			  changed_row_replication_state = true;
+			  if (!logtb_get_tdes (thread_p)->replication_log_generator.is_row_replication_disabled ())
+			    {
+			      /* Disable row replication. */
+			      logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (true);
+			      disabled_row_replication = true;
+			    }
 			}
 
 		      /* oid already locked at locator_lock_and_get_object */
@@ -4420,8 +4424,9 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 			locator_delete_force (thread_p, &hfid, oid_ptr, true, SINGLE_ROW_DELETE, &scan_cache,
 					      &force_count, NULL, false);
 
-		      if (changed_row_replication_state)
+		      if (disabled_row_replication)
 			{
+			  /* Enable row replication. */
 			  logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (false);
 			}
 
@@ -7047,7 +7052,9 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
   int error_code = NO_ERROR;
   int pruning_type = 0;
   int has_index;
-  bool changed_row_replication_state = false;
+#if !defined(NDEBUG)
+  bool disabled_row_replication = false;
+#endif
 
   /* need to start a topop to ensure the atomic operation. */
   error_code = xtran_server_start_topop (thread_p, &lsa);
@@ -7056,13 +7063,15 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
       return error_code;
     }
 
-  /* TO DO - test and not HA */
+#if !defined(NDEBUG) && defined (SERVER_MODE)
   if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG)
       && !logtb_get_tdes (thread_p)->replication_log_generator.is_row_replication_disabled ())
     {
+      /* TODO - Remove this code, test and fix. For now, disable testing HA. */
       logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (true);
-      changed_row_replication_state = true;
+      disabled_row_replication = true;
     }
+#endif
 
   mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (force_area);
   obj = LC_START_ONEOBJ_PTR_IN_COPYAREA (mobjs);
@@ -7231,10 +7240,13 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
 
   (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER, &lsa);
 
-  if (changed_row_replication_state)
+#if !defined(NDEBUG) && defined (SERVER_MODE)
+  if (disabled_row_replication)
     {
+      /* Enable row replication. */
       logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (false);
     }
+#endif
 
   return error_code;
 
@@ -7251,10 +7263,12 @@ error:
 
   (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &lsa);
 
-  if (changed_row_replication_state)
+#if !defined(NDEBUG) && defined (SERVER_MODE)
+  if (disabled_row_replication)
     {
       logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (false);
     }
+#endif
 
   return error_code;
 }
@@ -7415,7 +7429,8 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
     }
 
 #if !defined(NDEBUG) && defined (SERVER_MODE)
-  if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG) && !logtb_get_tdes(thread_p)->replication_log_generator.is_row_replication_disabled())
+  if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG)
+      && !logtb_get_tdes (thread_p)->replication_log_generator.is_row_replication_disabled ())
     {
       assert (log_does_allow_replication ());
       log_sysop_start (thread_p);
@@ -7585,9 +7600,9 @@ end:
 	{
 	  cubreplication::stream_entry * stream_entry =
 	    logtb_get_tdes (thread_p)->replication_log_generator.get_stream_entry ();
-	  if (!logtb_get_tdes (thread_p)->replication_log_generator.is_debug_repl_local_disabled ()
-	      && stream_entry->count_entries () > 0)
+	  if (stream_entry->count_entries () > 0)
 	    {
+	      /* Abort and simulate apply on master node. */
 	      error_code =
 		logtb_get_tdes (thread_p)->replication_log_generator.
 		abort_sysop_and_simulate_apply_repl_on_master (filter_replication_lsa);
@@ -12101,9 +12116,22 @@ xlocator_upgrade_instances_domain (THREAD_ENTRY * thread_p, OID * class_oid, int
   int tran_index;
   LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
   MVCCID threshold_mvccid;
+#if !defined(NDEBUG) && defined (SERVER_MODE)
+  bool disabled_row_replication = false;
+#endif
 
   HFID_SET_NULL (&hfid);
   OID_SET_NULL (&last_oid);
+
+#if !defined(NDEBUG) && defined (SERVER_MODE)
+  if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG)
+      && !logtb_get_tdes (thread_p)->replication_log_generator.is_row_replication_disabled ())
+    {
+      /* TODO - Remove this code, test and fix. For now, disable testing HA. */
+      logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (true);
+      disabled_row_replication = true;
+    }
+#endif
 
   if (class_oid == NULL || OID_ISNULL (class_oid) || att_id < 0)
     {
@@ -12242,6 +12270,14 @@ error_exit:
     {
       heap_scancache_end_modify (thread_p, &upd_scancache);
     }
+
+#if !defined(NDEBUG) && defined (SERVER_MODE)
+  if (disabled_row_replication)
+    {
+      /* Enable row replication. */
+      logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (false);
+    }
+#endif
 
   return error;
 }

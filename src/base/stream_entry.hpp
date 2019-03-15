@@ -349,15 +349,15 @@ namespace cubstream
         else
         {          
           cubreplication::replication_object *repl_obj;
-          LOG_LSA repl_lsa;
+          LOG_LSA repl_lsa_stamp;
           int start_index = 0;
 
           for (int i = (int) (count_entries() - 1); i >= 0; i--)
           {
             repl_obj = m_packable_entries[i];
-            repl_obj->get_lsa(repl_lsa);
+            repl_obj->get_lsa_stamp (repl_lsa_stamp);
 
-            if (LSA_LE(&repl_lsa, &start_lsa))
+            if (LSA_LE (&repl_lsa_stamp, &start_lsa))
             {
               start_index = i + 1;
               break;
@@ -385,7 +385,7 @@ namespace cubstream
       void move_replication_objects_after_lsa (LOG_LSA &lsa, std::vector <cubreplication::replication_object *> &repl_objects_after_lsa)
       {
         cubreplication::replication_object *repl_obj;
-        LOG_LSA repl_lsa;
+        LOG_LSA repl_lsa_stamp;
         int start_index = 0;
         int i, cnt_entries;
         
@@ -394,8 +394,8 @@ namespace cubstream
         for (i = cnt_entries - 1; i >= 0; i--)
         {
           repl_obj = get_object_at(i);
-          repl_obj->get_lsa(repl_lsa);
-          if (LSA_GT (&lsa, &repl_lsa))
+          repl_obj->get_lsa_stamp (repl_lsa_stamp);
+          if (LSA_LE (&repl_lsa_stamp, &lsa))
           {
             start_index = i + 1;
             break;

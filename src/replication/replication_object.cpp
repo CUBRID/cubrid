@@ -38,22 +38,22 @@ namespace cubreplication
 
   replication_object::replication_object()
   {
-    LSA_SET_NULL (&m_lsa);
+    LSA_SET_NULL (&m_lsa_stamp);
   }
 
-  replication_object::replication_object (LOG_LSA &lsa)
+  replication_object::replication_object (LOG_LSA &lsa_stamp)
   {
-    LSA_COPY (&m_lsa, &lsa);
+    LSA_COPY (&m_lsa_stamp, &lsa_stamp);
   }
 
-  void replication_object::get_lsa (LOG_LSA &lsa)
+  void replication_object::get_lsa_stamp (LOG_LSA &lsa_stamp)
   {
-    LSA_COPY (&lsa, &m_lsa);
+    LSA_COPY (&lsa_stamp, &m_lsa_stamp);
   }
 
-  void replication_object::set_lsa (const LOG_LSA &lsa)
+  void replication_object::set_lsa_stamp (const LOG_LSA &lsa_stamp)
   {
-    LSA_COPY(&m_lsa, &lsa);
+    LSA_COPY (&m_lsa_stamp, &lsa_stamp);
   }
 
   static LC_COPYAREA_OPERATION
@@ -103,8 +103,8 @@ namespace cubreplication
     return LC_FETCH;
   }
 
-  single_row_repl_entry::single_row_repl_entry (const repl_entry_type type, const char *class_name, LOG_LSA &lsa)
-    : replication_object(lsa),
+  single_row_repl_entry::single_row_repl_entry (const repl_entry_type type, const char *class_name, LOG_LSA &lsa_stamp)
+    : replication_object(lsa_stamp),
       m_type (type),
       m_class_name (class_name)
   {
@@ -167,9 +167,7 @@ namespace cubreplication
     save_heapid = db_change_private_heap (NULL, 0);
     pr_clone_value (&db_val, &m_key_value);
     (void) db_change_private_heap (NULL, save_heapid);
-  }
-
-  void set_log_lsa(const LOG_LSA &lsa);
+  }  
 
   std::size_t
   single_row_repl_entry::get_packed_size (cubpacking::packer *serializator, std::size_t start_offset)
@@ -230,13 +228,12 @@ namespace cubreplication
   }
 
   /////////////////////////////////
-  sbr_repl_entry::sbr_repl_entry (const char *statement, const char *user, const char *sys_prm_ctx, LOG_LSA &lsa)
-    : replication_object (lsa),
+  sbr_repl_entry::sbr_repl_entry (const char *statement, const char *user, const char *sys_prm_ctx, LOG_LSA &lsa_stamp)
+    : replication_object (lsa_stamp),
       m_statement (statement),
       m_db_user (user),
       m_sys_prm_context (sys_prm_ctx)
-  {
-    m_lsa = LSA_INITIALIZER;
+  {    
   }
 
   int
@@ -509,8 +506,8 @@ namespace cubreplication
   }
 
   changed_attrs_row_repl_entry::changed_attrs_row_repl_entry (repl_entry_type type, const char *class_name,
-      const OID &inst_oid, LOG_LSA &lsa)
-    : single_row_repl_entry (type, class_name, lsa)
+      const OID &inst_oid, LOG_LSA &lsa_stamp)
+    : single_row_repl_entry (type, class_name, lsa_stamp)
   {
     m_inst_oid = inst_oid;
   }
@@ -634,8 +631,8 @@ namespace cubreplication
     return true;
   }
 
-  rec_des_row_repl_entry::rec_des_row_repl_entry (repl_entry_type type, const char *class_name, const RECDES &rec_des, LOG_LSA &lsa)
-    : single_row_repl_entry (type, class_name, lsa)
+  rec_des_row_repl_entry::rec_des_row_repl_entry (repl_entry_type type, const char *class_name, const RECDES &rec_des, LOG_LSA &lsa_stamp)
+    : single_row_repl_entry (type, class_name, lsa_stamp)
   {
     m_rec_des.length = rec_des.length;
     m_rec_des.area_size = rec_des.area_size;
