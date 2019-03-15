@@ -172,7 +172,7 @@ namespace cubreplication
 		string_buffer sb;
 		se->stringify (sb, stream_entry::short_dump);
 		er_log_debug_replication (ARG_FILE_LINE, "dispatch_daemon_task execute pop_entry:\n%s",
-                  sb.get_buffer ());
+					  sb.get_buffer ());
 	      }
 
 	    /* TODO[replication] : on-the-fly applier & multi-threaded applier */
@@ -197,13 +197,13 @@ namespace cubreplication
 		      }
 		    else if (my_repl_applier_worker_task->has_abort ())
 		      {
-                        /* TODO[replication] : when on-fly apply is active, we need to abort the transaction;
-                         * for now, we are sure that no change has been made on slave on behalf of this task,
-                         * just drop the task */
+			/* TODO[replication] : when on-fly apply is active, we need to abort the transaction;
+			 * for now, we are sure that no change has been made on slave on behalf of this task,
+			 * just drop the task */
 		      }
 		    else
 		      {
-                        /* tasks without commit or abort are postponed to next group commit */
+			/* tasks without commit or abort are postponed to next group commit */
 			assert (it->second->get_entries_cnt () > 0);
 			nonexecutable_repl_tasks.insert (std::make_pair (it->first, it->second));
 		      }
@@ -217,9 +217,9 @@ namespace cubreplication
 
 		/* delete the group commit stream entry */
 		assert (se->is_group_commit ());
-                delete se;
+		delete se;
 	      }
-            else
+	    else
 	      {
 		MVCCID mvccid = se->get_mvccid ();
 		auto it = repl_tasks.find (mvccid);
