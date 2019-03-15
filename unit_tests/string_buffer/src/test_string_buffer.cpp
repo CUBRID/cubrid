@@ -187,10 +187,10 @@ void test_dump (void)
   string_buffer sb_hex2;
   string_buffer sb_hex3;
   string_buffer sb_hex4;
-  string_buffer::hex_dump (sb1, sb_hex1, 100);
-  string_buffer::hex_dump (sb1, sb_hex2, sb1.len (), 8, true);
-  string_buffer::hex_dump (sb1, sb_hex3, sb1.len (), 12, false);
-  string_buffer::hex_dump (sb1, sb_hex4, sb1.len (), 12, true);
+  sb_hex1.hex_dump (sb1, 100);
+  sb_hex2.hex_dump (sb1, sb1.len (), 8, true);
+  sb_hex3.hex_dump (sb1, sb1.len (), 12, false);
+  sb_hex4.hex_dump (sb1, sb1.len (), 12, true);
 
   printf ("%s\n", sb_hex1.get_buffer ());
   printf ("%s\n", sb_hex2.get_buffer ());

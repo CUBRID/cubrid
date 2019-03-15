@@ -92,7 +92,7 @@ namespace cubstream
 	    size_t dump_size = std::min (cubcomm::MTU, max_len);
 
 	    in.add_bytes (dump_size, this_consumer_channel.m_buffer);
-	    string_buffer::hex_dump (in, out, dump_size);
+	    out.hex_dump (in, dump_size);
 	    _er_log_debug (ARG_FILE_LINE, "%s\n", out.get_buffer ());
 	  }
 

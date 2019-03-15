@@ -152,7 +152,7 @@ namespace cubstream
 	    size_t dump_size = std::min (cubcomm::MTU, byte_count);
 
 	    in.add_bytes (dump_size, ptr);
-	    string_buffer::hex_dump (in, out, dump_size);
+	    out.hex_dump (in, dump_size);
 	    _er_log_debug (ARG_FILE_LINE, "%s\n", out.get_buffer ());
 	  }
 	m_last_sent_position += byte_count;
