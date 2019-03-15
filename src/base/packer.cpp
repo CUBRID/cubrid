@@ -867,6 +867,11 @@ namespace cubpacking
     return peek_unpack_int (value);
   }
 
+  /*
+   * unpack_buffer_with_length : unpacks a stream into a preallocated buffer
+   * stream (in/out) : output stream
+   * max_length (in) : maximum length to unpack
+   */
   void
   unpacker::unpack_buffer_with_length (char *stream, const std::size_t max_length)
   {
@@ -877,12 +882,12 @@ namespace cubpacking
     actual_len = OR_GET_INT (m_ptr);
     m_ptr += OR_INT_SIZE;
 
-    check_range (m_ptr, m_end_ptr, actual_len);
-
-    assert (max_length <= actual_len);
+    assert (actual_len <= max_length);
     copy_length = std::min (actual_len, max_length);
 
-    if (actual_len > 0)
+    check_range (m_ptr, m_end_ptr, copy_length);
+
+    if (copy_length > 0)
       {
 	memcpy (stream, m_ptr, copy_length);
 	m_ptr += actual_len;
