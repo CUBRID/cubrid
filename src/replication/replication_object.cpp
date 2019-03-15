@@ -83,11 +83,18 @@ namespace cubreplication
       m_type (type),
       m_class_name (class_name)
   {
+    db_make_null (&m_key_value);
   }
 
   single_row_repl_entry::~single_row_repl_entry ()
   {
     //TODO[arnia] optimize
+
+    if (DB_IS_NULL (&m_key_value))
+      {
+        return;
+      }
+
     cubthread::entry *my_thread = thread_get_thread_entry_info ();
 
     HL_HEAPID save_heapid;

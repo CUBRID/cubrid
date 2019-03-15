@@ -7064,7 +7064,7 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
     }
 
 #if !defined(NDEBUG) && defined (SERVER_MODE)
-  if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG)
+  if (!LOG_CHECK_LOG_APPLIER (thread_p) && prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG)
       && !logtb_get_tdes (thread_p)->replication_log_generator.is_row_replication_disabled ())
     {
       /* TODO - Remove this code, test and fix. For now, disable testing HA. */
@@ -7429,7 +7429,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
     }
 
 #if !defined(NDEBUG) && defined (SERVER_MODE)
-  if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG)
+  if (!LOG_CHECK_LOG_APPLIER (thread_p) && prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG)
       && !logtb_get_tdes (thread_p)->replication_log_generator.is_row_replication_disabled ())
     {
       /* Used for testing apply on master. */
@@ -7596,7 +7596,7 @@ end:
 #if !defined(NDEBUG) && defined (SERVER_MODE)
   if (sysop_started)
     {
-      assert (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG));
+      assert (!LOG_CHECK_LOG_APPLIER (thread_p) && prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG));
       if (error_code == NO_ERROR)
 	{
 	  cubreplication::stream_entry * stream_entry =
@@ -12125,7 +12125,7 @@ xlocator_upgrade_instances_domain (THREAD_ENTRY * thread_p, OID * class_oid, int
   OID_SET_NULL (&last_oid);
 
 #if !defined(NDEBUG) && defined (SERVER_MODE)
-  if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG)
+  if (!LOG_CHECK_LOG_APPLIER (thread_p) && prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG)
       && !logtb_get_tdes (thread_p)->replication_log_generator.is_row_replication_disabled ())
     {
       /* TODO - Remove this code, test and fix. For now, disable testing HA. */
