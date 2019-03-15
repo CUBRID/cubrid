@@ -57,41 +57,16 @@ namespace cubreplication
   }
 
   static LC_COPYAREA_OPERATION
-  op_type_from_repl_type_and_prunning (repl_entry_type repl_type, DB_CLASS_PARTITION_TYPE prunning_type)
+  op_type_from_repl_type_and_prunning (repl_entry_type repl_type)
   {
+    assert(repl_type == REPL_UPDATE || repl_type == LC_FLUSH_INSERT || LC_FLUSH_DELETE);
     switch (repl_type)
       {
         case REPL_UPDATE:
-          if (prunning_type == DB_NOT_PARTITIONED_CLASS)
-            {
-              return LC_FLUSH_UPDATE;
-            }
-          else if (prunning_type == DB_PARTITIONED_CLASS)
-            {
-              return LC_FLUSH_UPDATE_PRUNE;
-            }
-          else
-            {
-              assert (prunning_type == DB_PARTITION_CLASS);
-              return LC_FLUSH_UPDATE_PRUNE_VERIFY;
-            }
-          break;
+          return LC_FLUSH_UPDATE;         
 
         case REPL_INSERT:
-          if (prunning_type == DB_NOT_PARTITIONED_CLASS)
-            {
-              return LC_FLUSH_INSERT;
-            }
-          else if (prunning_type == DB_PARTITIONED_CLASS)
-            {
-              return LC_FLUSH_INSERT_PRUNE;
-            }
-          else
-            {
-              assert (prunning_type == DB_PARTITION_CLASS);
-              return LC_FLUSH_INSERT_PRUNE_VERIFY;
-            }
-          break;
+          return LC_FLUSH_INSERT;          
 
         case REPL_DELETE:
           return LC_FLUSH_DELETE;
@@ -131,7 +106,7 @@ namespace cubreplication
     assert (m_type == REPL_DELETE);
 
     /* TODO : partition prunning  */
-    LC_COPYAREA_OPERATION op = op_type_from_repl_type_and_prunning (m_type, DB_NOT_PARTITIONED_CLASS);
+    LC_COPYAREA_OPERATION op = op_type_from_repl_type_and_prunning (m_type);
 
     cubthread::entry &my_thread = cubthread::get_entry ();
 
@@ -354,7 +329,7 @@ namespace cubreplication
 #if defined (SERVER_MODE)
 
     /* TODO : partition prunning  */
-    LC_COPYAREA_OPERATION op = op_type_from_repl_type_and_prunning (m_type, DB_NOT_PARTITIONED_CLASS);
+    LC_COPYAREA_OPERATION op = op_type_from_repl_type_and_prunning (m_type);
 
     cubthread::entry &my_thread = cubthread::get_entry ();
 
@@ -518,9 +493,8 @@ namespace cubreplication
     int err = NO_ERROR;
 #if defined (SERVER_MODE)
     assert (m_type != REPL_DELETE);
-
-    /* TODO : partition prunning  */
-    LC_COPYAREA_OPERATION op = op_type_from_repl_type_and_prunning (m_type, DB_NOT_PARTITIONED_CLASS);
+    
+    LC_COPYAREA_OPERATION op = op_type_from_repl_type_and_prunning (m_type);
 
     cubthread::entry &my_thread = cubthread::get_entry ();
 

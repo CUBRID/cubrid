@@ -7432,6 +7432,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
   if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG)
       && !logtb_get_tdes (thread_p)->replication_log_generator.is_row_replication_disabled ())
     {
+      /* Used for testing apply on master. */
       assert (log_does_allow_replication ());
       log_sysop_start (thread_p);
       LSA_COPY (&filter_replication_lsa, &logtb_get_tdes (thread_p)->tail_lsa);
@@ -7595,7 +7596,7 @@ end:
 #if !defined(NDEBUG) && defined (SERVER_MODE)
   if (sysop_started)
     {
-      assert (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG) && log_does_allow_replication ());
+      assert (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG));
       if (error_code == NO_ERROR)
 	{
 	  cubreplication::stream_entry * stream_entry =

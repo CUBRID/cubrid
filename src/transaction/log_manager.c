@@ -3881,6 +3881,7 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
 	{
 	  /* for the replication agent guarantee the order of transaction */
 	  /* for CC(Click Counter) : at here */
+	  log_append_repl_info (thread_p, tdes, false);
 	  tdes->replication_log_generator.on_sysop_commit (*LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes));
 	}
 
