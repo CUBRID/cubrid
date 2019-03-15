@@ -34,34 +34,32 @@ void string_buffer::add_bytes (size_t len, char *bytes)
   m_ext_block.get_ptr ()[m_len] = '\0';
 }
 /*
- * hex_dump : creates an output string_buffer containing hex dump of input and optionally the ASCII content
+ * hex_dump : appends a buffer containing hex dump of input and optionally the ASCII content
  *
  * in : input string
- * out : output string formatted
  * max_to_dump : maximum contents to dump from input
  * line_size : number of characters to dump in each line (counting from input)
  * print_ascii : if true, prints the ASCII content of input on the right of hex dump
  */
 void
-string_buffer::hex_dump (const string_buffer &in, string_buffer &out, const size_t max_to_dump,
-			 const size_t line_size, const bool print_ascii)
+string_buffer::hex_dump (const string_buffer &in, const size_t max_to_dump,
+                         const size_t line_size, const bool print_ascii)
 {
   const char *buf = in.get_buffer ();
   size_t buf_len = std::min (max_to_dump, in.len ());
 
-  return string_buffer::hex_dump (buf, buf_len, out, line_size, print_ascii);
+  return hex_dump (buf, buf_len, line_size, print_ascii);
 }
 
 void
-string_buffer::hex_dump (const char *ptr, const size_t length, string_buffer &out,
-			 const size_t line_size, const bool print_ascii)
+string_buffer::hex_dump (const char *ptr, const size_t length, const size_t line_size, const bool print_ascii)
 {
   const char *ptr_line = ptr;
 
-  out ("  0000: ");
+  this->operator() ("  0000: ");
   for (int i = 0; i < length; i++)
     {
-      out ("%02X ", (unsigned char) (*ptr++));
+      this->operator() ("%02X ", (unsigned char) (*ptr++));
       if (print_ascii == true
 	  && (i % line_size == (line_size - 1) || i == length - 1))
 	{
@@ -70,18 +68,18 @@ string_buffer::hex_dump (const char *ptr, const size_t length, string_buffer &ou
 	  if (i % line_size != (line_size - 1))
 	    {
 	      std::string spaces (3 * (line_size - 1 - (i % line_size)), ' ');
-	      out ("%s", spaces.c_str ());
+	      this->operator() ("%s", spaces.c_str ());
 	    }
 
 	  for (ptr_print = ptr_line; ptr_print < ptr; ptr_print++)
 	    {
 	      if (*ptr_print >= 32 && *ptr_print < 128)
 		{
-		  out ("%c", *ptr_print);
+		  this->operator() ("%c", *ptr_print);
 		}
 	      else
 		{
-		  out (".");
+		  this->operator() (".");
 		}
 	    }
 
@@ -90,8 +88,8 @@ string_buffer::hex_dump (const char *ptr, const size_t length, string_buffer &ou
 
       if (i % line_size == (line_size - 1) && i != length)
 	{
-	  out ("\n  %04d: ", i + 1);
+	  this->operator() ("\n  %04d: ", i + 1);
 	}
     }
-  out ("\n");
+  this->operator() ("\n");
 }
