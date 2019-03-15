@@ -199,13 +199,21 @@ namespace cubreplication
 
     char *class_name = get_classname(class_oid);
     bool found = false;
+    LOG_LSA *p_lsa;
+    cubthread::entry *thread_p = &cubthread::get_entry();
+
+    p_lsa = logtb_find_current_tran_lsa(thread_p);
+    assert (p_lsa != NULL);
 
     for (auto repl_obj_it = m_pending_to_be_added.begin(); repl_obj_it != m_pending_to_be_added.end(); ++repl_obj_it)
     {
       changed_attrs_row_repl_entry *repl_obj = *repl_obj_it;
       if (repl_obj->compare_inst_oid(inst_oid))
       {
-	repl_obj->set_key_value(key);
+	repl_obj->set_key_value(key);        
+
+        /* Set the current transaction lsa. It may be rewritten later. */
+        repl_obj->set_lsa_stamp (*p_lsa);
 
 	append_repl_object(*repl_obj);
 	er_log_repl_obj(repl_obj, "log_generator::set_key_to_repl_object");
@@ -222,12 +230,7 @@ namespace cubreplication
     if (!found)
     {
       assert(optional_recdes != NULL);
-
-      LOG_LSA *p_lsa;
-      cubthread::entry *thread_p = &cubthread::get_entry();
-      p_lsa = logtb_find_current_tran_lsa(thread_p);
-      assert(p_lsa != NULL);
-
+            
       cubreplication::rec_des_row_repl_entry *entry =
 	new cubreplication::rec_des_row_repl_entry(cubreplication::repl_entry_type::REPL_UPDATE, class_name,
 	  *optional_recdes, *p_lsa);
