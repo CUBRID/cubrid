@@ -40,6 +40,7 @@
 #include "utility.h"
 #include "environment_variable.h"
 #include "message_catalog.h"
+#include "msgcat_set_log.hpp"
 #include "log_compress.h"
 #include "log_lsa.hpp"
 #include "parser.h"
