@@ -27,7 +27,6 @@
 #include "file_io.h"
 #include "log_comm.h"
 #include "log_lsa.hpp"
-#include "msgcat_set_log.hpp"
 #include "recovery.h"
 #include "release_string.h"
 #include "storage_common.h"
