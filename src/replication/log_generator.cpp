@@ -236,6 +236,8 @@ namespace cubreplication
 	new cubreplication::rec_des_row_repl_entry(cubreplication::repl_entry_type::REPL_UPDATE, class_name,
 	  *optional_recdes, *p_lsa);
 
+      entry->set_key_value(key);
+
       append_repl_object(*entry);
 
       er_log_repl_obj(entry, "log_generator::set_key_to_repl_object");

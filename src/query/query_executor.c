@@ -10636,12 +10636,12 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku, H
       goto exit_on_error;
     }
 
-  if (prm_get_bool_value(PRM_ID_REPL_LOG_LOCAL_DEBUG)
-    && !logtb_get_tdes(thread_p)->replication_log_generator.is_row_replication_disabled())
-  {
-    logtb_get_tdes(thread_p)->replication_log_generator.set_row_replication_disabled(true);
-    changed_row_replication_state = true;
-  }
+  if (prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG)
+      && !logtb_get_tdes (thread_p)->replication_log_generator.is_row_replication_disabled ())
+    {
+      logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (true);
+      changed_row_replication_state = true;
+    }
 
   /* setup operation type and handle partition representation id */
   if (pruning_type == DB_PARTITIONED_CLASS)
@@ -10739,9 +10739,9 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku, H
   heap_attrinfo_clear_dbvalues (odku->attr_info);
 
   if (changed_row_replication_state)
-  {
-    logtb_get_tdes(thread_p)->replication_log_generator.set_row_replication_disabled(false);
-  }
+    {
+      logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (false);
+    }
 
   return error;
 
@@ -10753,9 +10753,9 @@ exit_on_error:
     }
 
   if (changed_row_replication_state)
-  {
-    logtb_get_tdes(thread_p)->replication_log_generator.set_row_replication_disabled(false);
-  }
+    {
+      logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (false);
+    }
 
   assert (error != NO_ERROR);
 
@@ -12554,13 +12554,6 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
       (void) heap_scancache_end (thread_p, &scan_cache);
       scan_cache_inited = false;
     }
-  
-#if !defined(NDEBUG)
-  if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
-    {
-      tdes->replication_log_generator.disable_debug_repl_local ();
-    }
-#endif
 
   if (savepoint_used)
     {
@@ -12599,7 +12592,7 @@ exit_on_error:
       (void) heap_scancache_end (thread_p, &scan_cache);
       scan_cache_inited = false;
     }
-  
+
   if (savepoint_used)
     {
       log_sysop_abort (thread_p);
