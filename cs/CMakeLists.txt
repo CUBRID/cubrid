@@ -267,6 +267,7 @@ set(TRANSACTION_SOURCES
 set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/log_common_impl.h
   ${TRANSACTION_DIR}/log_lsa.hpp
+  ${TRANSACTION_DIR}/log_record.hpp
   )
 
 set(STORAGE_SOURCES
