@@ -28,6 +28,7 @@
 // todo - add to a proper namespace
 
 #include "log_lsa.hpp"
+#include "recovery.h"
 #include "storage_common.h"
 #include "system.h"
 
