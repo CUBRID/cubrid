@@ -19,7 +19,6 @@
 
 #include "test_stream.hpp"
 
-#include "string_buffer.hpp"
 #include <iostream>
 
 template <typename Func, typename ... Args>
