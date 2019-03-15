@@ -300,6 +300,9 @@ namespace cubreplication
 
     set_tran_repl_info (state);
     pack_stream_entry ();
+    /* TODO[replication] : force a group commit :
+     * move this to log_manager group commit when multi-threaded apply is enabled */
+    pack_group_commit_entry ();
     m_stream_entry.set_mvccid (MVCCID_NULL);
     // reset state
     m_stream_entry.set_state (stream_entry_header::ACTIVE);
