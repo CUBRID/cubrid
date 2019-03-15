@@ -5646,7 +5646,9 @@ log_commit (THREAD_ENTRY * thread_p, int tran_index, bool retain_lock)
       return TRAN_UNACTIVE_UNKNOWN;
     }
 
-  tdes->replication_log_generator.on_transaction_pre_finish ();
+  /* TODO[replication] : this is called here to save MVCCID into log_generator/stream_entry before 
+   * clear_tdes; refactor this in context in packging */
+  tdes->replication_log_generator.on_transaction_pre_commit ();
 
   if (!LOG_ISTRAN_ACTIVE (tdes) && !LOG_ISTRAN_2PC_PREPARE (tdes) && LOG_ISRESTARTED ())
     {
@@ -5818,6 +5820,8 @@ log_abort (THREAD_ENTRY * thread_p, int tran_index)
    * has been taken without using the 2PC.
    */
 
+  /* TODO[replication] : this is called here to save MVCCID into log_generator/stream_entry before 
+   * clear_tdes; refactor this in context in packging */
   tdes->replication_log_generator.on_transaction_pre_abort ();
   if (log_clear_and_is_tran_distributed (tdes))
     {

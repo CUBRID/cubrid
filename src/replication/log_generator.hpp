@@ -106,8 +106,6 @@ namespace cubreplication
 
       void on_transaction_pre_commit (void);
 
-      void on_transaction_pre_finish (void);
-
       // act when trasaction is committed; replication entries are logged
       void on_transaction_commit (void);
       // act when transaction is aborted; replication entries are logged
@@ -163,6 +161,8 @@ namespace cubreplication
       void set_tran_repl_info (stream_entry_header::TRAN_STATE state);
 
       char *get_classname (const OID &class_oid);     // todo - optimize this step
+
+      void on_transaction_pre_finish (void);
 
       // common point for transaction commit/abort; replication entries are logged
       void on_transaction_finish (stream_entry_header::TRAN_STATE state);
