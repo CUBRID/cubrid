@@ -626,6 +626,12 @@ logwr_set_hdr_and_flush_info (void)
       else
 	{
 	  logwr_Gl.last_recv_pageid = logwr_Gl.hdr.eof_lsa.pageid;
+
+	  if (logwr_Gl.action & LOGWR_ACTION_DELAYED_WRITE)
+	    {
+	      /* In case that it finishes delay write */
+	      logwr_Gl.action = (LOGWR_ACTION) (logwr_Gl.action & ~LOGWR_ACTION_DELAYED_WRITE);
+	    }
 	}
     }
   else
