@@ -82,7 +82,7 @@ namespace cubreplication
       stream_entry m_stream_entry;
 
       bool m_has_stream;
-      bool m_is_row_replication_disabled;      
+      bool m_is_row_replication_disabled;
       static cubstream::multi_thread_stream *s_stream;
 
     public:
@@ -120,7 +120,7 @@ namespace cubreplication
       void add_insert_row (const DB_VALUE &key, const OID &class_oid, const RECDES &record);
       void add_update_row (const DB_VALUE &key, const OID &inst_oid, const OID &class_oid,
 			   const RECDES *optional_recdes);
-      void add_update_lsa (const OID &inst_oid);
+      void update_lsastamp_for_changed_repl_object (const OID &inst_oid);
       void add_attribute_change (const OID &class_oid, const OID &inst_oid, ATTR_ID col_id, const DB_VALUE &value);
 
       void remove_attribute_change (const OID &class_oid, const OID &inst_oid);
@@ -164,8 +164,6 @@ namespace cubreplication
       }
 
       void set_tran_repl_info (MVCCID mvccid, stream_entry_header::TRAN_STATE state);      
-
-      void set_sysop_repl_info (MVCCID mvccid, stream_entry_header::TRAN_STATE state);
 
       char *get_classname (const OID &class_oid);     // todo - optimize this step
 

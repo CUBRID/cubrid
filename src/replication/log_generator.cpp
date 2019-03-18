@@ -35,7 +35,7 @@
 
 namespace cubreplication
 {
-  static bool enable_log_generator_logging = false;
+  static bool enable_log_generator_logging = true;
 
   log_generator::~log_generator()
   {
@@ -246,9 +246,8 @@ namespace cubreplication
   }
 
   void
-    log_generator::add_update_lsa (const OID &inst_oid)
+    log_generator::update_lsastamp_for_changed_repl_object (const OID &inst_oid)
   {
-    
     if (is_row_replication_disabled())
     {
       return;
@@ -406,7 +405,7 @@ namespace cubreplication
         return;
       }
     
-    /* Get the highest lsa. */
+    /* Get the highest lsa stamp. */
     repl_obj = m_stream_entry.get_object_at ((int) (m_stream_entry.count_entries() - 1));
     repl_obj->get_lsa_stamp (highest_repl_lsa_stamp);
     if (LSA_LE (&highest_repl_lsa_stamp, &start_lsa))
@@ -425,11 +424,11 @@ namespace cubreplication
     }
 #endif
 
-    cubthread::entry *thread_p = &cubthread::get_entry();
-    int tran_index = LOG_FIND_THREAD_TRAN_INDEX(thread_p);
-    LOG_TDES *tdes = LOG_FIND_TDES(tran_index);
+    cubthread::entry *thread_p = &cubthread::get_entry ();
+    int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+    LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
 
-    MVCCID mvccid = logtb_find_current_mvccid(&cubthread::get_entry());    
+    MVCCID mvccid = logtb_find_current_mvccid (&cubthread::get_entry ());
     set_tran_repl_info (mvccid, stream_entry_header::ACTIVE);
 
     /* Write objects in stream and then destroy them. */
@@ -446,8 +445,8 @@ namespace cubreplication
   void log_generator::on_sysop_abort (LOG_LSA &start_lsa)
   {
     cubthread::entry *thread_p = &cubthread::get_entry();
-    cubreplication::stream_entry *stream_entry = logtb_get_tdes(thread_p)->replication_log_generator.get_stream_entry();
-    int count_entries = (int) stream_entry->count_entries();
+    cubreplication::stream_entry *stream_entry = logtb_get_tdes (thread_p)->replication_log_generator.get_stream_entry ();
+    int count_entries = (int) stream_entry->count_entries ();
 
     if (count_entries == 0)
     {
@@ -493,6 +492,7 @@ namespace cubreplication
 #if !defined(NDEBUG) && defined (SERVER_MODE)
   int log_generator::abort_sysop_and_simulate_apply_repl_on_master (LOG_LSA &filter_replication_lsa)
   {
+    /* This function is used for debug purpose only. */
     int err_code = NO_ERROR;
     replication_object *repl_obj;
     cubthread::entry *thread_p = &cubthread::get_entry();       
@@ -512,21 +512,21 @@ namespace cubreplication
     logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (true);
 
     /* Simulate it again with apply . */
-    for (unsigned int i = 0; i < repl_objects_after_lsa.size(); i++)
+    for (unsigned int i = 0; i < repl_objects_after_lsa.size (); i++)
     {
       repl_obj = repl_objects_after_lsa[i];
       if (repl_obj != NULL)
       {
-        err_code = repl_obj->apply();
+        err_code = repl_obj->apply ();
         if (err_code != NO_ERROR)
         {
           break;
         }
       }
     }  
-    logtb_get_tdes(thread_p)->replication_log_generator.set_row_replication_disabled(false);
+    logtb_get_tdes(thread_p)->replication_log_generator.set_row_replication_disabled (false);
 
-    /* Now, destroy */
+    /* Now, destroy the replication objects. */
     for (unsigned int i = 0; i < repl_objects_after_lsa.size(); i++)
     {
       if (repl_objects_after_lsa[i] != NULL)
@@ -534,7 +534,7 @@ namespace cubreplication
         delete (repl_objects_after_lsa[i]);
       }
     }
-    repl_objects_after_lsa.clear();
+    repl_objects_after_lsa.clear ();
 
     return err_code;
   }

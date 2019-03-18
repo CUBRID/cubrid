@@ -6682,48 +6682,48 @@ qexec_close_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec)
       return;
     }
 
-      /* monitoring */
-      switch (curr_spec->type)
+  /* monitoring */
+  switch (curr_spec->type)
+    {
+    case TARGET_CLASS:
+      if (curr_spec->access == ACCESS_METHOD_SEQUENTIAL || curr_spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO
+	  || curr_spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN)
 	{
-	case TARGET_CLASS:
-	  if (curr_spec->access == ACCESS_METHOD_SEQUENTIAL || curr_spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO
-	      || curr_spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN)
-	    {
-	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_SSCANS);
-	    }
-	  else if (IS_ANY_INDEX_ACCESS (curr_spec->access))
-	    {
-	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_ISCANS);
-	    }
+	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_SSCANS);
+	}
+      else if (IS_ANY_INDEX_ACCESS (curr_spec->access))
+	{
+	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_ISCANS);
+	}
 
-	  if (curr_spec->parts != NULL)
-	    {
-	      /* reset pruning info */
-	      db_private_free (thread_p, curr_spec->parts);
-	      curr_spec->parts = NULL;
-	      curr_spec->curent = NULL;
-	      curr_spec->pruned = false;
-	    }
-	  break;
+      if (curr_spec->parts != NULL)
+	{
+	  /* reset pruning info */
+	  db_private_free (thread_p, curr_spec->parts);
+	  curr_spec->parts = NULL;
+	  curr_spec->curent = NULL;
+	  curr_spec->pruned = false;
+	}
+      break;
 
-	case TARGET_CLASS_ATTR:
-	  break;
+    case TARGET_CLASS_ATTR:
+      break;
 
-	case TARGET_LIST:
-	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_LSCANS);
-	  break;
+    case TARGET_LIST:
+      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_LSCANS);
+      break;
 
-	case TARGET_SHOWSTMT:
-	  /* do nothing */
-	  break;
+    case TARGET_SHOWSTMT:
+      /* do nothing */
+      break;
 
-	case TARGET_REGUVAL_LIST:
-	  /* currently do nothing */
-	  break;
+    case TARGET_REGUVAL_LIST:
+      /* currently do nothing */
+      break;
 
-	case TARGET_SET:
-	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_SETSCANS);
-	  break;
+    case TARGET_SET:
+      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_SETSCANS);
+      break;
 
     case TARGET_JSON_TABLE:
       /* currently do nothing
@@ -6731,13 +6731,13 @@ qexec_close_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec)
        */
       break;
 
-	case TARGET_METHOD:
-	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_METHSCANS);
-	  break;
-	}
-
-      scan_close_scan (thread_p, &curr_spec->s_id);
+    case TARGET_METHOD:
+      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_METHSCANS);
+      break;
     }
+
+  scan_close_scan (thread_p, &curr_spec->s_id);
+}
 
 /*
  * qexec_end_scan () -
@@ -8725,8 +8725,8 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 
   if (qexec_execute_mainblock (thread_p, aptr, xasl_state, p_class_instance_lock_info) != NO_ERROR)
     {
-	  GOTO_EXIT_ON_ERROR;
-	}
+      GOTO_EXIT_ON_ERROR;
+    }
 
   if (p_class_instance_lock_info && p_class_instance_lock_info->instances_locked)
     {
@@ -9661,8 +9661,8 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 
   if (qexec_execute_mainblock (thread_p, aptr, xasl_state, p_class_instance_lock_info) != NO_ERROR)
     {
-	  GOTO_EXIT_ON_ERROR;
-	}
+      GOTO_EXIT_ON_ERROR;
+    }
 
   if (p_class_instance_lock_info && p_class_instance_lock_info->instances_locked)
     {
@@ -11152,7 +11152,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		    {
 		    case 0:
 		      error = pr_type->data_readval (&buf, &insert_val, attr->domain,
-							  attr->current_default_value.val_length, copy, NULL, 0);
+						     attr->current_default_value.val_length, copy, NULL, 0);
 		      if (error != NO_ERROR)
 			{
 			  GOTO_EXIT_ON_ERROR;
@@ -12493,6 +12493,9 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
       lock_start_instant_lock_mode (tran_index);
     }
 
+  // todo - why was repl_start_flush_mark used here?
+  // http://jira.cubrid.org/browse/CBRD-22340
+
   tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
   curr_mvcc_info = &tdes->mvccinfo;
 
@@ -12558,20 +12561,20 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 	  n_increment = (varptr->value.arithptr->opcode == T_INCR ? 1 : -1);
 
 	  /* check if class oid/hfid does not set, find class oid/hfid to access */
-		      bool found = false;
+	  bool found = false;
 	  err = qexec_execute_selupd_list_find_class (thread_p, xasl, &xasl_state->vd, oid, selupd, &class_oid_buf,
 						      class_hfid, &needs_pruning, &found);
-			  if (err != NO_ERROR)
-			    {
-			      goto exit_on_error;
-			    }
+	  if (err != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
 	  if (!found)
-			{
-		      /* not found hfid */
-		      er_log_debug (ARG_FILE_LINE, "qexec_execute_selupd_list: class hfid to access is null\n");
-		      assert (false);
-		      goto exit_on_error;
-		    }
+	    {
+	      /* not found hfid */
+	      er_log_debug (ARG_FILE_LINE, "qexec_execute_selupd_list: class hfid to access is null\n");
+	      assert (false);
+	      goto exit_on_error;
+	    }
 
 	  class_oid = &class_oid_buf;
 
@@ -12670,6 +12673,9 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
       scan_cache_inited = false;
     }
 
+  // todo - why was repl_end_flush_mark used here?
+  // http://jira.cubrid.org/browse/CBRD-22340
+
   if (savepoint_used)
     {
       if (lock_is_instant_lock_mode (tran_index))
@@ -12707,6 +12713,9 @@ exit_on_error:
       (void) heap_scancache_end (thread_p, &scan_cache);
       scan_cache_inited = false;
     }
+
+  // todo - why was repl_end_flush_mark used here?
+  // http://jira.cubrid.org/browse/CBRD-22340
 
   if (savepoint_used)
     {

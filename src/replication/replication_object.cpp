@@ -60,17 +60,17 @@ namespace cubreplication
 
   replication_object::replication_object ()
   {
-    LSA_SET_NULL(&m_lsa_stamp);
+    LSA_SET_NULL (&m_lsa_stamp);
   }
 
   replication_object::replication_object (LOG_LSA &lsa_stamp)
   {
-    LSA_COPY(&m_lsa_stamp, &lsa_stamp);
+    LSA_COPY (&m_lsa_stamp, &lsa_stamp);
   }
 
   void replication_object::get_lsa_stamp (LOG_LSA &lsa_stamp)
   {
-    LSA_COPY(&lsa_stamp, &m_lsa_stamp);
+    LSA_COPY (&lsa_stamp, &m_lsa_stamp);
   }
 
   void replication_object::set_lsa_stamp (const LOG_LSA &lsa_stamp)
@@ -112,11 +112,8 @@ namespace cubreplication
 #if defined (SERVER_MODE)
     assert (m_type == REPL_DELETE);
 
-    /* TODO : partition prunning  */
     LC_COPYAREA_OPERATION op = op_type_from_repl_type_and_prunning (m_type);
-
     cubthread::entry &my_thread = cubthread::get_entry ();
-
     std::vector <int> dummy_int_vector;
     std::vector <DB_VALUE> dummy_val_vector;
 
@@ -327,9 +324,7 @@ namespace cubreplication
     int err = NO_ERROR;
 #if defined (SERVER_MODE)
 
-    /* TODO : partition prunning  */
     LC_COPYAREA_OPERATION op = op_type_from_repl_type_and_prunning (m_type);
-
     cubthread::entry &my_thread = cubthread::get_entry ();
 
     err = locator_repl_apply_rbr (&my_thread, op, m_class_name.c_str (), &m_key_value,
@@ -482,7 +477,6 @@ namespace cubreplication
     assert (m_type != REPL_DELETE);
     
     LC_COPYAREA_OPERATION op = op_type_from_repl_type_and_prunning (m_type);
-
     cubthread::entry &my_thread = cubthread::get_entry ();
 
     std::vector <int> dummy_int_vector;

@@ -283,6 +283,7 @@ namespace cubstream
 
       void reset (void)
       {
+        /* Destroy all replication objects. */
         LOG_LSA lsa;
         LSA_SET_NULL (&lsa);
 	destroy_objects_after_lsa (lsa);
@@ -316,7 +317,7 @@ namespace cubstream
 
       size_t count_entries ()
       {
-        return m_packable_entries.size();
+        return m_packable_entries.size ();
       }
 
       /* stream entry header methods : header is implementation dependent, is not known here ! */
@@ -332,16 +333,16 @@ namespace cubstream
 
       virtual void destroy_objects_after_lsa (LOG_LSA &start_lsa)
       {
-        if (LSA_ISNULL(&start_lsa))
+        if (LSA_ISNULL (&start_lsa))
         {
-          for (unsigned int i = 0; i < m_packable_entries.size(); i++)
+          for (unsigned int i = 0; i < m_packable_entries.size (); i++)
           {
             if (m_packable_entries[i] != NULL)
             {
               delete (m_packable_entries[i]);
             }
           }
-          m_packable_entries.clear();
+          m_packable_entries.clear ();
         }
         else
         {          

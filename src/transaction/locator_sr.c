@@ -5921,7 +5921,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
       if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
 	{
 	  /* Update lsa to be sure that the object is part of current sys operation. */
-	  logtb_get_tdes (thread_p)->replication_log_generator.add_update_lsa (*oid);
+	  logtb_get_tdes (thread_p)->replication_log_generator.update_lsastamp_for_changed_repl_object (*oid);
 	}
 
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -7907,14 +7907,14 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 	      if (index->index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
 		{
 		  /* Online index is currently loading. */
-	      error_code =
+		  error_code =
 		    btree_online_index_dispatcher (thread_p, &btid, key_dbvalue, class_oid, inst_oid, unique_pk,
 						   BTREE_OP_ONLINE_INDEX_TRAN_INSERT, NULL);
 		}
 	      else
 		{
 		  error_code =
-		btree_insert (thread_p, &btid, key_dbvalue, class_oid, inst_oid, op_type, unique_stat_info,
+		    btree_insert (thread_p, &btid, key_dbvalue, class_oid, inst_oid, op_type, unique_stat_info,
 				  &unique_pk, p_mvcc_rec_header);
 		}
 #if defined(ENABLE_SYSTEMTAP)
@@ -7938,11 +7938,11 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 		    }
 		  else
 		    {
-		  /* in MVCC logical deletion means MVCC DEL_ID insertion */
-		  error_code =
-		    btree_mvcc_delete (thread_p, &btid, key_dbvalue, class_oid, inst_oid, op_type, unique_stat_info,
+		      /* in MVCC logical deletion means MVCC DEL_ID insertion */
+		      error_code =
+			btree_mvcc_delete (thread_p, &btid, key_dbvalue, class_oid, inst_oid, op_type, unique_stat_info,
 					   &unique_pk, p_mvcc_rec_header);
-		}
+		    }
 		}
 	      else
 		{
@@ -8628,30 +8628,30 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 		    }
 		  else
 		    {		/* Not online index. */
-		  if (use_mvcc)
-		    {
-		      /* in MVCC logical deletion means MVCC DEL_ID insertion */
-		      error_code =
-			btree_mvcc_delete (thread_p, &old_btid, old_key, class_oid, oid, op_type, unique_stat_info,
+		      if (use_mvcc)
+			{
+			  /* in MVCC logical deletion means MVCC DEL_ID insertion */
+			  error_code =
+			    btree_mvcc_delete (thread_p, &old_btid, old_key, class_oid, oid, op_type, unique_stat_info,
 					       &unique_pk, p_mvcc_rec_header);
-		      if (error_code != NO_ERROR)
-			{
-			  assert (er_errid () != NO_ERROR);
-			  goto error;
+			  if (error_code != NO_ERROR)
+			    {
+			      assert (er_errid () != NO_ERROR);
+			      goto error;
+			    }
 			}
-		    }
-		  else
-		    {
-		      error_code =
+		      else
+			{
+			  error_code =
 			    btree_physical_delete (thread_p, &old_btid, old_key, oid, class_oid, &unique_pk, op_type,
-					       unique_stat_info);
-		      if (error_code != NO_ERROR)
-			{
-			  ASSERT_ERROR ();
-			  goto error;
+						   unique_stat_info);
+			  if (error_code != NO_ERROR)
+			    {
+			      ASSERT_ERROR ();
+			      goto error;
+			    }
 			}
 		    }
-		}
 		}
 	      else
 		{
@@ -8669,14 +8669,14 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 		      if (index->index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
 			{
 			  /* Online index loading on current index. */
-		      error_code =
+			  error_code =
 			    btree_online_index_dispatcher (thread_p, &index->btid, new_key, class_oid, oid,
 							   unique_pk, BTREE_OP_ONLINE_INDEX_TRAN_INSERT, NULL);
 			}
 		      else
 			{
 			  error_code =
-			btree_insert (thread_p, &old_btid, new_key, class_oid, oid, op_type, unique_stat_info,
+			    btree_insert (thread_p, &old_btid, new_key, class_oid, oid, op_type, unique_stat_info,
 					  &unique_pk, p_mvcc_rec_header);
 			}
 
@@ -8695,7 +8695,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 
 			  /* Delete old key. */
 
-		      error_code =
+			  error_code =
 			    btree_online_index_dispatcher (thread_p, &index->btid, old_key, class_oid, oid,
 							   unique_pk, BTREE_OP_ONLINE_INDEX_TRAN_DELETE, NULL);
 			  if (error_code != NO_ERROR)
@@ -8711,16 +8711,16 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 		      else
 			{
 			  error_code =
-			btree_update (thread_p, &old_btid, old_key, new_key, class_oid, oid, op_type,
+			    btree_update (thread_p, &old_btid, old_key, new_key, class_oid, oid, op_type,
 					  unique_stat_info, &unique_pk, p_mvcc_rec_header);
 
-		      if (error_code != NO_ERROR)
-			{
-			  goto error;
+			  if (error_code != NO_ERROR)
+			    {
+			      goto error;
+			    }
 			}
 		    }
 		}
-	    }
 	    }
 
 #if defined(ENABLE_SYSTEMTAP)
@@ -13894,7 +13894,8 @@ locator_repl_apply_rbr (THREAD_ENTRY * thread_p, const LC_COPYAREA_OPERATION rbr
 
   /* TODO : do we really need the lock on class OID ?
    * TODO - Optimizations. Use cached context to avoids finding class_oid, starting scan cache, representation.
-   * Also we may optimize update/delete to not use LC_FLAG_HAS_INDEX flag, if there is no index to update .
+   * Also we may optimize update/delete to not use LC_FLAG_HAS_INDEX flag, if there is no index to update.
+   * Do not use locking since transactions included in a group are independent.
    */
   status = xlocator_find_class_oid (thread_p, class_name, &class_oid, NULL_LOCK);
   if (status != LC_CLASSNAME_EXIST)
@@ -13959,7 +13960,6 @@ retry:
     case LC_FLUSH_UPDATE:
     case LC_FLUSH_UPDATE_PRUNE:
     case LC_FLUSH_UPDATE_PRUNE_VERIFY:
-      /* Do not use locking since transactions into a group are independent. */
       pruning_type = locator_area_op_to_pruning_type (rbr_operation);
       error_code =
 	locator_update_force (thread_p, &hfid, &class_oid, &instance_oid, NULL, &new_recdes, LC_FLAG_HAS_INDEX,
@@ -13975,7 +13975,6 @@ retry:
       break;
 
     case LC_FLUSH_DELETE:
-      /* Do not use locking since transactions into a group are independent.  */
       error_code =
 	locator_delete_force (thread_p, &hfid, &instance_oid, LC_FLAG_HAS_INDEX, SINGLE_ROW_DELETE, &scan_cache,
 			      &dummy_force_count, NULL, false);
@@ -14003,14 +14002,15 @@ retry:
       (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &topop_lsa);
 
       /* TODO : error handling */
-      er_clear ();
+
       if (num_retry++ < max_retry)
 	{
+	  er_clear ();
+	  error_code = NO_ERROR;
+
 	  /* Maybe error caused by concurrent thread, try again. */
 	  goto retry;
 	}
-
-      error_code = NO_ERROR;
     }
   else
     {
@@ -14051,8 +14051,7 @@ exit:
  *    Note: This function obtains all informations required to execute rbr. Thus, at delete and update, it obtain OID.
  *      At insert and update, obtain the new recdes. If is already built, it sets last representation id and chn.
  *      Otherwise, the new recdes is built based on old recdes and changed attributes (ids and values).
- *      
- *  At insert, 
+ *
  */
 static int
 locator_prepare_rbr_apply (THREAD_ENTRY * thread_p, const LC_COPYAREA_OPERATION rbr_operation, OID * class_oid,
