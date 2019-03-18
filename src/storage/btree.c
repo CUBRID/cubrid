@@ -27810,7 +27810,7 @@ btree_key_lock_and_append_object_unique (THREAD_ENTRY * thread_p, BTID_INT * bti
 	      return ER_BTREE_UNIQUE_FAILED;
 	    }
 	}
-      else if (insert_helper->is_ha_enabled)
+      else if (log_does_allow_replication ())
 	{
 	  /* When HA is enabled, unique constraint can never be violated. */
 	  error_code = ER_REPL_MULTI_UPDATE_UNIQUE_VIOLATION;
