@@ -4866,9 +4866,6 @@ la_apply_delete_log (LA_ITEM * item)
 	  if (sl_write_delete_sql (item->class_name, mclass, la_get_item_pk_value (item)) != NO_ERROR)
 	    {
 	      sb.clear ();
-	      help_sprint_value (&item->key, sb);
-	      snprintf (sql_log_err, sizeof (sql_log_err),
-			"failed to write SQL log. class: %s, key: %s", item->class_name, sb.get_buffer ());
 	      db_sprint_value (&item->key, sb);
 	      snprintf (sql_log_err, sizeof (sql_log_err), "failed to write SQL log. class: %s, key: %s",
 			item->class_name, sb.get_buffer ());
