@@ -1447,14 +1447,14 @@ boot_shutdown_client (bool is_er_final, BOOT_CLIENT_TERMINATION_MODE termination
     {
       if (termination_mode == BOOT_END_TRANSACTION)
 	{
-      /*
+	  /*
 	   * wait for other server request to finish.
 	   * if db_shutdown() is called by signal handler or atexit handler,
 	   * the server request may be running.
 	   */
 	  tran_wait_server_active_trans ();
 
-      /*
+	  /*
 	   * Either Abort or commit the current transaction depending upon the value
 	   * of the commit_on_shutdown system parameter.
 	   */
