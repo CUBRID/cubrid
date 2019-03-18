@@ -390,17 +390,6 @@ enum LOG_HA_FILESTAT
 /* Volid of double write buffer */
 #define LOG_DBDWB_VOLID		 (LOG_DBFIRST_VOLID - 22)
 
-typedef struct tran_query_exec_info TRAN_QUERY_EXEC_INFO;
-struct tran_query_exec_info
-{
-  char *wait_for_tran_index_string;
-  float query_time;
-  float tran_time;
-  char *query_stmt;
-  char *sql_id;
-  XASL_ID xasl_id;
-};
-
 #define LOG_SYSTEM_TRAN_INDEX 0	/* The recovery & vacuum worker system transaction index. */
 #define LOG_SYSTEM_TRANID     0	/* The recovery & vacuum worker system transaction. */
 
