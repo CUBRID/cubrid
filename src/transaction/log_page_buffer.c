@@ -7768,11 +7768,11 @@ logpb_verify_length (const char *db_fullname, const char *log_path, const char *
       return ER_LOG_NOFULL_DATABASE_NAME_IS_TOO_LONG;
     }
 
-  if ((int) (strlen (log_prefix) + 1) > filename_max || (int) (strlen (log_prefix) + 1) > MAXLOGNAME)
+  if ((int) (strlen (log_prefix) + 1) > filename_max || (strlen (log_prefix) + 1) > MAXLOGNAME)
     {
       /* Bad prefix log name */
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PREFIX_NAME_IS_TOO_LONG, 2, log_prefix,
-	      ((MAXLOGNAME > filename_max) ? filename_max - 1 : MAXLOGNAME - 1));
+	      (((int) MAXLOGNAME > filename_max) ? filename_max - 1 : (int) MAXLOGNAME - 1));
       return ER_LOG_PREFIX_NAME_IS_TOO_LONG;
     }
 
