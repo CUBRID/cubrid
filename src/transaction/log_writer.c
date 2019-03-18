@@ -627,7 +627,7 @@ logwr_set_hdr_and_flush_info (void)
 	{
 	  logwr_Gl.last_recv_pageid = logwr_Gl.hdr.eof_lsa.pageid;
 
-	  if (logwr_Gl.hdr.perm_status == LOG_PSTAT_HDRFLUSH_INPPROCESS || logwr_Gl.action & LOGWR_ACTION_DELAYED_WRITE)
+	  if (logwr_Gl.action & LOGWR_ACTION_DELAYED_WRITE)
 	    {
 	      /* In case that it finishes delay write */
 	      logwr_Gl.action = (LOGWR_ACTION) (logwr_Gl.action & ~LOGWR_ACTION_DELAYED_WRITE);

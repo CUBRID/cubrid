@@ -31,13 +31,13 @@
 
 #ident "$Id$"
 
-#include "config.h"
-
 #if !defined (SERVER_MODE) && !defined (SA_MODE)
 #error Belongs to server module
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
 #include "boot.h"
+#include "config.h"
+#include "elo.h"
 #include "error_manager.h"
 #include "file_io.h"
 #include "locator.h"

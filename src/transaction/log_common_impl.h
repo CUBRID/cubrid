@@ -156,8 +156,7 @@ struct log_header
   bool has_logging_been_skipped;	/* Has logging been skipped ? */
   /* Here exists 5 bytes */
   VACUUM_LOG_BLOCKID vacuum_last_blockid;	/* Last processed blockid needed for vacuum. */
-  int perm_status;		/* Reserved for future expansion and permanent status indicators, e.g. to mark
-				 * RESTORE_IN_PROGRESS */
+  int perm_status_obsolete;
   /* Here exists 4 bytes */
   LOG_HDR_BKUP_LEVEL_INFO bkinfo[FILEIO_BACKUP_UNDEFINED_LEVEL];
   /* backup specific info for future growth */
@@ -355,44 +354,6 @@ struct log_arv_header
 #define LOG_ARV_HEADER_INITIALIZER \
   { /* magic */ {'0'}, 0, 0, 0, 0, 0, 0, 0 }
 
-/* there can be following transitions in transient lobs
-
-   -------------------------------------------------------------------------
-   | 	       locator  | created               | deleted		   |
-   |--------------------|-----------------------|--------------------------|
-   | in     | transient | LOB_TRANSIENT_CREATED i LOB_UNKNOWN		   |
-   | tran   |-----------|-----------------------|--------------------------|
-   |        | permanent | LOB_PERMANENT_CREATED | LOB_PERMANENT_DELETED    |
-   |--------------------|-----------------------|--------------------------|
-   | out of | transient | LOB_UNKNOWN		| LOB_UNKNOWN		   |
-   | tran   |-----------|-----------------------|--------------------------|
-   |        | permanent | LOB_UNKNOWN 		| LOB_TRANSIENT_DELETED    |
-   -------------------------------------------------------------------------
-
-   s1: create a transient locator and delete it
-       LOB_TRANSIENT_CREATED -> LOB_UNKNOWN
-
-   s2: create a transient locator and bind it to a row in table
-       LOB_TRANSIENT_CREATED -> LOB_PERMANENT_CREATED
-
-   s3: bind a transient locator to a row and delete the locator
-       LOB_PERMANENT_CREATED -> LOB_PERMANENT_DELETED
-
-   s4: delete a locator to be create out of transaction
-       LOB_UNKNOWN -> LOB_TRANSIENT_DELETED
-
- */
-enum lob_locator_state
-{
-  LOB_UNKNOWN,
-  LOB_TRANSIENT_CREATED,
-  LOB_TRANSIENT_DELETED,
-  LOB_PERMANENT_CREATED,
-  LOB_PERMANENT_DELETED,
-  LOB_NOT_FOUND
-};
-typedef enum lob_locator_state LOB_LOCATOR_STATE;
-
 enum LOG_HA_FILESTAT
 {
   LOG_HA_FILESTAT_CLEAR = 0,
@@ -428,20 +389,6 @@ enum LOG_HA_FILESTAT
 #define LOG_DBCOPY_VOLID         (LOG_DBFIRST_VOLID - 19)
 /* Volid of double write buffer */
 #define LOG_DBDWB_VOLID		 (LOG_DBFIRST_VOLID - 22)
-
-/*
- * Specify up to int bits of permanent status indicators.
- * Restore in progress is the only one so far, the rest are reserved
- * for future use.  Note these must be specified and used as mask values
- * to test and set individual bits.
- */
-enum LOG_PSTATUS
-{
-  LOG_PSTAT_CLEAR = 0x00,
-  LOG_PSTAT_BACKUP_INPROGRESS = 0x01,	/* only one backup at a time */
-  LOG_PSTAT_RESTORE_INPROGRESS = 0x02,	/* unset upon successful restore */
-  LOG_PSTAT_HDRFLUSH_INPPROCESS = 0x04	/* need to flush log header */
-};
 
 #define LOG_SYSTEM_TRAN_INDEX 0	/* The recovery & vacuum worker system transaction index. */
 #define LOG_SYSTEM_TRANID     0	/* The recovery & vacuum worker system transaction. */

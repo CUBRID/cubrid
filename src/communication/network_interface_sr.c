@@ -80,6 +80,7 @@
 #include "compile_context.h"
 #include "xasl.h"
 #include "xasl_cache.h"
+#include "elo.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))

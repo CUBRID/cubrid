@@ -48,6 +48,7 @@
 #include "log_manager.h"
 
 #include "btree.h"
+#include "elo.h"
 #include "recovery.h"
 #include "xserver_interface.h"
 #include "page_buffer.h"
@@ -9570,8 +9571,7 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
   db_make_int (out_values[idx], header->has_logging_been_skipped);
   idx++;
 
-  str = logpb_perm_status_to_string ((LOG_PSTATUS) header->perm_status);
-  db_make_string_by_const_str (out_values[idx], str);
+  db_make_string_by_const_str (out_values[idx], "LOG_PSTATUS_OBSOLETE");
   idx++;
 
   logpb_backup_level_info_to_string (buf, sizeof (buf), header->bkinfo + FILEIO_BACKUP_FULL_LEVEL);
