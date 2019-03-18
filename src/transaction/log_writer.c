@@ -81,7 +81,9 @@ init_cs_logwr_header ()
 
 LOGWR_GLOBAL logwr_Gl = {
   /* log header */
+  // *INDENT-OFF*
   init_cs_logwr_header (),
+  // *INDENT-ON*
   /* loghdr_pgptr */
   NULL,
   /* db_name */
@@ -132,7 +134,9 @@ LOGWR_GLOBAL logwr_Gl = {
   {0, 0}
   ,
   /* background archiving info */
+  // *INDENT-OFF*
   background_archiving_info (),
+  // *INDENT-ON*
   /* bg_archive_name */
   {'0'}
   ,
