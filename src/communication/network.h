@@ -234,13 +234,6 @@ enum net_server_request
 
   NET_SERVER_BO_REGISTER_CLIENT_WITH_TRAN_INDEX,
 
-  /* 
-=======
-  /*
->>>>>>> 83e66e2a93c85db2aaf9b0108e9ca48079eb0db6
-   * This is the last entry. It is also used for the end of an
-   * array of statistics information on client/server communication.
-   */
   NET_SERVER_REQUEST_END,
   /*
    * This request number must be preserved.
