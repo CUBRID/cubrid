@@ -48,6 +48,7 @@
 #include "log_manager.h"
 
 #include "btree.h"
+#include "elo.h"
 #include "recovery.h"
 #include "xserver_interface.h"
 #include "page_buffer.h"
