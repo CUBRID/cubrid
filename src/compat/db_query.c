@@ -964,7 +964,7 @@ db_alloc_query_result (DB_RESULT_TYPE r_type, int col_cnt)
 	    db_free_query_result (r);
 	    return NULL;
 	  }
-	/* 
+	/*
 	 * Initialize the vector so that db_free_query_result() doesn't go
 	 * haywire if this QUERY_RESULT gets freed before being completely
 	 * populated.
@@ -1782,7 +1782,7 @@ db_query_format_is_non_null (DB_QUERY_TYPE * query_type)
 	}
     }
 
-  /* 
+  /*
    * query_type is not an attribute.
    * It may be an expression and will be treated as nullable.
    */
@@ -3348,9 +3348,9 @@ db_sqlx_debug_print_result (DB_QUERY_RESULT * result)
 /*
  * db_query_end() - This function must be called when the application is
  *    finished with the query result descriptor that was returned by either
- *    db_execute() or db_execute_oid() function. 
- *    This frees the descriptor and all storage related to the query results. 
- *    Since query results can be of considerable size, 
+ *    db_execute() or db_execute_oid() function.
+ *    This frees the descriptor and all storage related to the query results.
+ *    Since query results can be of considerable size,
  *    it is important that they be freed as soon as they are no longer necessary.
  * return : error code
  * result(in): Pointer to the query result structure

@@ -23,7 +23,6 @@
 
 #ident "$Id$"
 
-
 #include "config.h"
 
 #include <assert.h>
@@ -61,6 +60,7 @@
 #include "object_printer.hpp"
 #include "string_buffer.hpp"
 #include "dbtype.h"
+#include "parser_allocator.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -675,7 +675,8 @@ pt_is_aggregate_function (PARSER_CONTEXT * parser, const PT_NODE * node)
 	      || function_type == PT_AGG_BIT_AND || function_type == PT_AGG_BIT_OR || function_type == PT_AGG_BIT_XOR
 	      || function_type == PT_GROUP_CONCAT || function_type == PT_MEDIAN || function_type == PT_PERCENTILE_CONT
 	      || function_type == PT_PERCENTILE_DISC || function_type == PT_CUME_DIST
-	      || function_type == PT_PERCENT_RANK))
+	      || function_type == PT_PERCENT_RANK || function_type == PT_JSON_ARRAYAGG
+	      || function_type == PT_JSON_OBJECTAGG))
 	{
 	  return true;
 	}
@@ -718,11 +719,26 @@ pt_is_expr_wrapped_function (PARSER_CONTEXT * parser, const PT_NODE * node)
   if (node->node_type == PT_FUNCTION)
     {
       function_type = node->info.function.function_type;
-      if (function_type == F_INSERT_SUBSTRING || function_type == F_ELT || function_type == F_JSON_OBJECT
-	  || function_type == F_JSON_ARRAY || function_type == F_JSON_INSERT || function_type == F_JSON_REMOVE
-	  || function_type == F_JSON_MERGE || function_type == F_JSON_ARRAY_APPEND
-	  || function_type == F_JSON_GET_ALL_PATHS || function_type == F_JSON_REPLACE || function_type == F_JSON_SET
-	  || function_type == F_JSON_KEYS)
+      if (function_type == F_INSERT_SUBSTRING
+	  || function_type == F_ELT
+	  || function_type == F_JSON_ARRAY
+	  || function_type == F_JSON_ARRAY_APPEND || function_type == F_JSON_ARRAY_INSERT
+	  || function_type == F_JSON_CONTAINS || function_type == F_JSON_CONTAINS_PATH
+	  || function_type == F_JSON_DEPTH
+	  || function_type == F_JSON_EXTRACT
+	  || function_type == F_JSON_GET_ALL_PATHS
+	  || function_type == F_JSON_INSERT
+	  || function_type == F_JSON_KEYS
+	  || function_type == F_JSON_LENGTH
+	  || function_type == F_JSON_MERGE || function_type == F_JSON_MERGE_PATCH
+	  || function_type == F_JSON_OBJECT
+	  || function_type == F_JSON_PRETTY
+	  || function_type == F_JSON_QUOTE
+	  || function_type == F_JSON_REMOVE
+	  || function_type == F_JSON_REPLACE
+	  || function_type == F_JSON_SEARCH
+	  || function_type == F_JSON_SET
+	  || function_type == F_JSON_TYPE || function_type == F_JSON_UNQUOTE || function_type == F_JSON_VALID)
 	{
 	  return true;
 	}
@@ -2136,7 +2152,7 @@ pt_get_first_arg_ignore_prior (PT_NODE * node)
     {
       arg1 = arg1->info.expr.arg1;
     }
-  /* Although semantically valid, PRIOR(PRIOR(expr)) is not allowed at runtime so this combination is restricted during 
+  /* Although semantically valid, PRIOR(PRIOR(expr)) is not allowed at runtime so this combination is restricted during
    * parsing. See the parser rule for PRIOR for details. */
   assert (!PT_IS_EXPR_NODE_WITH_OPERATOR (arg1, PT_PRIOR));
 
@@ -2438,7 +2454,7 @@ pt_is_filtering_predicate (PARSER_CONTEXT * parser, PT_NODE * predicate)
     }
   else
     {
-      /* It references more than one spec (like a join predicate), but we consider it to be a filtering predicate if it 
+      /* It references more than one spec (like a join predicate), but we consider it to be a filtering predicate if it
        * contains certain expressions. */
       return info.must_be_filtering;
     }
@@ -4469,7 +4485,7 @@ regu_agg_init (AGGREGATE_TYPE * ptr)
   ptr->accumulator.curr_cnt = 0;
   ptr->function = (FUNC_TYPE) 0;
   ptr->option = (QUERY_OPTIONS) 0;
-  regu_var_init (&ptr->operand);
+  ptr->operands = NULL;
   ptr->list_id = NULL;
   ptr->sort_list = NULL;
   memset (&ptr->info, 0, sizeof (AGGREGATE_SPECIFIC_FUNCTION_INFO));
@@ -4809,6 +4825,12 @@ regu_spec_init (ACCESS_SPEC_TYPE * ptr, TARGET_TYPE type)
       ACCESS_SPEC_METHOD_REGU_LIST (ptr) = NULL;
       ACCESS_SPEC_XASL_NODE (ptr) = NULL;
       ACCESS_SPEC_METHOD_SIG_LIST (ptr) = NULL;
+    }
+  else if (type == TARGET_JSON_TABLE)
+    {
+      ACCESS_SPEC_JSON_TABLE_REGU_VAR (ptr) = NULL;
+      ACCESS_SPEC_JSON_TABLE_ROOT_NODE (ptr) = NULL;
+      ACCESS_SPEC_JSON_TABLE_M_NODE_COUNT (ptr) = 0;
     }
   ptr->single_fetch = (QPROC_SINGLE_FETCH) false;
   ptr->s_dbval = NULL;
@@ -5174,7 +5196,7 @@ regu_domain_init (SM_DOMAIN * ptr)
 {
   ptr->next = NULL;
   ptr->next_list = NULL;
-  ptr->type = PR_TYPE_FROM_ID (DB_TYPE_INTEGER);
+  ptr->type = pr_type_from_id (DB_TYPE_INTEGER);
   ptr->precision = 0;
   ptr->scale = 0;
   ptr->class_mop = NULL;
@@ -6561,7 +6583,7 @@ pt_dup_key_update_stmt (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * assig
   /* We need the OID PT_VALUE to become a host variable, see qo_optimize_queries () */
   node->info.update.search_cond->force_auto_parameterize = 1;
 
-  /* We don't want constant folding on the WHERE clause because it might result in the host variable being removed from 
+  /* We don't want constant folding on the WHERE clause because it might result in the host variable being removed from
    * the tree. */
   node->info.update.search_cond->do_not_fold = 1;
 
@@ -7967,7 +7989,7 @@ pt_make_field_key_type_expr_node (PARSER_CONTEXT * parser)
   }
 
   {
-    /* mul_count : (SELECT count (*) FROM (SELECT IK.key_attr_name ATTR FROM _db_index_key IK , _db_index I WHERE IK IN 
+    /* mul_count : (SELECT count (*) FROM (SELECT IK.key_attr_name ATTR FROM _db_index_key IK , _db_index I WHERE IK IN
      * I.key_attrs AND IK.key_attr_name = A.attr_name AND I.class_of = A.class_of AND A.class_of.class_name =
      * C.class_name AND IK.key_order = 0) constraints_no_index ) */
     PT_NODE *sub_query = NULL;
@@ -9087,24 +9109,8 @@ pt_make_query_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
   assert (table_name != NULL);
   assert (table_name->node_type == PT_NAME);
 
-  /* *INDENT-OFF* */
-  string_buffer strbuf {
-    [&parser] (mem::block &block, size_t len)
-    {
-      size_t dim = block.dim ? block.dim : 1;
-
-      for (; dim < block.dim + len; dim *= 2) // calc next power of 2 >= b.dim+len
-	;
-
-      mem::block b{ dim, (char *) parser_alloc (parser, dim) };
-      memcpy (b.ptr, block.ptr, block.dim); // copy old content
-      block = std::move (b);
-    },
-    [](mem::block &block) //no need to deallocate for parser_context
-    {
-    }
-  };
-  /* *INDENT-ON* */
+  parser_block_allocator alloc (parser);
+  string_buffer strbuf (alloc);
 
   pt_help_show_create_table (parser, table_name, strbuf);
   if (strbuf.len () == 0)
@@ -9120,7 +9126,7 @@ pt_make_query_show_create_table (PARSER_CONTEXT * parser, PT_NODE * table_name)
 
   PT_SELECT_INFO_SET_FLAG (select, PT_SELECT_INFO_READ_ONLY);
 
-  /* 
+  /*
    * SELECT 'table_name' as TABLE, 'create table ...' as CREATE TABLE
    *      FROM db_root
    */
@@ -9547,7 +9553,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
   PT_SELECT_INFO_SET_FLAG (node, PT_SELECT_INFO_READ_ONLY);
 
   /* ------ SELECT list ------- */
-  /* 
+  /*
    *      CONCAT ( 'GRANT ',
    *                GROUP_CONCAT(AU.auth_type ORDER BY 1 SEPARATOR ', '),
    *                ' ON ' ,
@@ -9639,7 +9645,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
   from_item = pt_add_table_name_to_from_list (parser, node, "_db_auth", "AU", DB_AUTH_SELECT);
 
   /* ------ SELECT ... WHERE ------- */
-  /* 
+  /*
    * WHERE AU.class_of.class_name = C.class_name AND
    *    C.is_system_class='NO' AND
    *    ( AU.grantee.name=<user_name> OR
@@ -9757,7 +9763,7 @@ pt_is_spec_referenced (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, 
     {
       /* The only part of a spec node that could contain references to the given spec_id are derived tables,
        * path_entities, path_conjuncts, and on_cond. All the rest of the name nodes for the spec are not references,
-       * but range variables, class names, etc. We don't want to mess with these. We'll handle the ones that we want by 
+       * but range variables, class names, etc. We don't want to mess with these. We'll handle the ones that we want by
        * hand. */
       parser_walk_tree (parser, node->info.spec.derived_table, pt_is_spec_referenced, void_arg, pt_continue_walk, NULL);
       parser_walk_tree (parser, node->info.spec.path_entities, pt_is_spec_referenced, void_arg, pt_continue_walk, NULL);
@@ -9769,7 +9775,7 @@ pt_is_spec_referenced (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, 
       return node;
     }
 
-  /* Data type nodes can not contain any valid references.  They do contain class names and other things we don't want. 
+  /* Data type nodes can not contain any valid references.  They do contain class names and other things we don't want.
    */
   if (node->node_type == PT_DATA_TYPE)
     {
@@ -10658,7 +10664,7 @@ pt_process_spec_for_update (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * n
 	  name = temp_name;
 	}
 
-      /* we now have the derived table subtree populated with oids; we can add oids to this derived table's select list 
+      /* we now have the derived table subtree populated with oids; we can add oids to this derived table's select list
        * as well */
       spec->info.spec.derived_table = derived_table;
       spec = pt_rewrite_derived_for_upd_del (parser, spec, PT_SPEC_FLAG_UPDATE, (derived_table == dt_arg1));
@@ -11403,7 +11409,7 @@ pt_check_ordby_num_for_multi_range_opt (PARSER_CONTEXT * parser, PT_NODE * query
     }
 
 end_mro_candidate:
-  /* should be here if multi range optimization could not be validated because upper limit is too large or it could not 
+  /* should be here if multi range optimization could not be validated because upper limit is too large or it could not
    * be evaluated. However, the query may still use optimization for different host variable values. */
   if (mro_candidate != NULL)
     {
@@ -11957,7 +11963,7 @@ pt_make_query_show_trace (PARSER_CONTEXT * parser)
 }
 
 /*
- * pt_has_non_groupby_column_node () - Use parser_walk_tree to check having 
+ * pt_has_non_groupby_column_node () - Use parser_walk_tree to check having
  *                                     clause.
  * return	      : node.
  * parser (in)	      : parser context.
@@ -11965,8 +11971,8 @@ pt_make_query_show_trace (PARSER_CONTEXT * parser)
  * arg (in)	      : pt_non_groupby_col_info
  * continue_walk (in) : continue walk.
  *
- * NOTE: Make sure to set has_non_groupby_col to false before calling 
- *       parser_walk_tree. 
+ * NOTE: Make sure to set has_non_groupby_col to false before calling
+ *       parser_walk_tree.
  */
 PT_NODE *
 pt_has_non_groupby_column_node (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)

@@ -1547,9 +1547,9 @@
 #define ER_JSON_PATH_DOES_NOT_EXIST                 -1202
 #define ER_JSON_EXPECTED_OTHER_TYPE                 -1203
 #define ER_JSON_DUPLICATE_KEY                       -1204
+#define ER_JSON_EXPECTING_JSON_DOC                  -1205
 
-#define ER_JSON_RESERVED_ERROR_0                    -1205
-#define ER_JSON_RESERVED_ERROR_1                    -1206
+#define ER_JSON_PATH_IS_NOT_ARRAY_CELL              -1206
 #define ER_JSON_RESERVED_ERROR_2                    -1207
 #define ER_JSON_RESERVED_ERROR_3                    -1208
 #define ER_JSON_RESERVED_ERROR_4                    -1209
@@ -1561,9 +1561,10 @@
 
 #define ER_STREAM_NO_MORE_DATA                      -1215
 #define ER_STREAM_UNPACKING_INV_OBJ_ID              -1216
-#define ER_STREAM_RESERVED_2                        -1217
-#define ER_STREAM_RESERVED_3                        -1218
-#define ER_STREAM_RESERVED_4                        -1219
+#define ER_STREAM_FILE_INVALID_READ                 -1217
+#define ER_STREAM_FILE_INVALID_WRITE                -1218
+#define ER_STREAM_FILE_CANNOT_READ                  -1219
+#define ER_STREAM_FILE_CANNOT_WRITE                 -1219
 #define ER_STREAM_RESERVED_5                        -1220
 #define ER_STREAM_RESERVED_6                        -1221
 #define ER_STREAM_RESERVED_7                        -1222
@@ -1584,8 +1585,16 @@
 #define ER_DWB_DISABLED                             -1236
 
 #define ER_SM_INDEX_STATUS_CHANGE_NOT_ALLOWED       -1237
+#define ER_JSON_TABLE_ON_EMPTY_ERROR                -1238
+#define ER_JSON_TABLE_ON_ERROR_INCOMP_DOMAIN        -1239
+#define ER_SM_ONLINE_INDEX_ON_HIERARCHY             -1240
 
-#define ER_LAST_ERROR                               -1238
+#define ER_QPROC_XASLNODE_RECOMPILE_REQUESTED       -1241
+
+#define ER_SM_NO_PARTITION_ON_HIERARCHIES           -1242
+
+
+#define ER_LAST_ERROR                               -1243
 
 /*
  * CAUTION!

@@ -81,5 +81,12 @@ namespace cubreplication
 #endif
   }
 
+  void master_node::update_senders_min_position (const cubstream::stream_position &pos)
+  {
+    /* TODO : we may choose to force flush of all data, even if was read by all senders */
+    g_instance->m_stream->set_last_recyclable_pos (pos);
+  }
+
+
   master_node *master_node::g_instance = NULL;
 } /* namespace cubreplication */

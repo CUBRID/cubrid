@@ -47,6 +47,7 @@
 
 #include "log_manager.h"
 
+#include "btree.h"
 #include "recovery.h"
 #include "xserver_interface.h"
 #include "page_buffer.h"
@@ -63,6 +64,7 @@
 #include "heap_file.h"
 #include "slotted_page.h"
 #include "object_primitive.h"
+#include "tz_support.h"
 #include "db_date.h"
 #include "fault_injection.h"
 #if defined (SA_MODE)
@@ -76,6 +78,7 @@
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
 #include "replication_stream_entry.hpp"
+#include "xasl_cache.h"
 
 #include "dbtype.h"
 
@@ -125,7 +128,7 @@ static int rv;
   } while (0)
 #endif /* SERVER_MODE */
 
-  /* 
+  /*
    * Some log record rcvindex types should never be skipped.
    * In the case of LINK_PERM_VOLEXT, the link of a permanent temp
    * volume must be logged to support media failures.
@@ -227,7 +230,7 @@ public:
   void execute (context_type &thread_ref) final override;
 
   // retire deletes me
-    
+
 private:
   log_tdes &m_tdes;
 };
@@ -341,7 +344,7 @@ static void log_cleanup_modified_class_list (THREAD_ENTRY * thread_p, LOG_TDES *
 
 static void log_append_compensate_internal (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VPID * vpid,
 					    PGLENGTH offset, PAGE_PTR pgptr, int length, const void *data,
-					    LOG_TDES * tdes, LOG_LSA * undo_nxlsa);
+					    LOG_TDES * tdes, const LOG_LSA * undo_nxlsa);
 
 STATIC_INLINE void log_sysop_end_random_exit (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void log_sysop_end_begin (THREAD_ENTRY * thread_p, int *tran_index_out, LOG_TDES ** tdes_out)
@@ -357,6 +360,8 @@ STATIC_INLINE int log_sysop_get_level (THREAD_ENTRY * thread_p) __attribute__ ((
 static void log_tran_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 static void log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_END * sysop_end,
 				   int data_size, const char *data);
+
+static int logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, void *args);
 
 #if defined(SERVER_MODE)
 // *INDENT-OFF*
@@ -747,7 +752,7 @@ log_get_num_pages_for_creation (int db_npages)
   log_npages = db_npages;
   if (log_npages < 0)
     {
-      /* 
+      /*
        * Use the default that is the size of the database
        * Don't use DK since the database may not be restarted at all.
        */
@@ -844,7 +849,7 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const cha
       log_final (thread_p);
     }
 
-  /* 
+  /*
    * Turn off creation bits for group and others
    */
 
@@ -875,7 +880,7 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const cha
 
   loghdr_pgptr = logpb_create_header_page (thread_p);
 
-  /* 
+  /*
    * Format the volume and fetch the header page and the first append page
    */
   log_Gl.append.vdes =
@@ -890,7 +895,7 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const cha
   /* copy log_Gl.append.prev_lsa to log_Gl.prior_info.prev_lsa */
   LOG_RESET_PREV_LSA (&log_Gl.append.prev_lsa);
 
-  /* 
+  /*
    * Flush the append page, so that the end of the log mark is written.
    * Then, free the page, same for the header page.
    */
@@ -939,7 +944,7 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const cha
 
   /* logpb_flush_header(); */
 
-  /* 
+  /*
    * Free the append and header page and dismount the lg active volume
    */
   log_Gl.append.log_pgptr = NULL;
@@ -1084,7 +1089,7 @@ log_initialize (THREAD_ENTRY * thread_p, const char *db_fullname, const char *lo
  *                      one given during the creation of the database.
  *   ismedia_crash(in): Are we recovering from media crash ?.
  *   stopat(in): If we are recovering from a media crash, we can stop
- *                      the recovery process at a given time. 
+ *                      the recovery process at a given time.
  *
  * NOTE:
  */
@@ -1147,7 +1152,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
     {
       if (ismedia_crash != false)
 	{
-	  /* 
+	  /*
 	   * Set an approximate log header to continue the recovery process
 	   */
 	  INT64 db_creation = -1;	/* Database creation time in volume */
@@ -1195,7 +1200,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
   /* Make sure that this is the desired log */
   if (strcmp (log_Gl.hdr.prefix_name, prefix_logname) != 0)
     {
-      /* 
+      /*
        * This looks like the log or the log was renamed. Incompatible
        * prefix name with the prefix stored on disk
        */
@@ -1204,7 +1209,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
       /* Continue anyhow */
     }
 
-  /* 
+  /*
    * Make sure that we are running with the same page size. If we are not,
    * restart again since page and log buffers may reflect an incorrect
    * pagesize
@@ -1212,7 +1217,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 
   if (log_Gl.hdr.db_iopagesize != IO_PAGESIZE || log_Gl.hdr.db_logpagesize != LOG_PAGESIZE)
     {
-      /* 
+      /*
        * Pagesize is incorrect. We need to undefine anything that has been
        * created with old pagesize and start again
        */
@@ -1222,7 +1227,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 	  error_code = ER_FAILED;
 	  goto error;
 	}
-      /* 
+      /*
        * Call the function again... since we have a different setting for the
        * page size
        */
@@ -1262,7 +1267,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 
   if (rel_is_log_compatible (log_Gl.hdr.db_release, rel_release_string ()) != true)
     {
-      /* 
+      /*
        * First time this database is restarted using the current version of
        * CUBRID. Recovery should be done using the old version of the
        * system
@@ -1271,7 +1276,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 	{
 	  const char *env_value;
 	  bool unsafe;
-	  /* 
+	  /*
 	   * Check environment variable to see if caller want to force to continue
 	   * the recovery using current version.
 	   */
@@ -1301,7 +1306,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 	    }
 	}
 
-      /* 
+      /*
        * It seems safe to move to new version of the system
        */
 
@@ -1315,12 +1320,12 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
       strncpy (log_Gl.hdr.db_release, rel_release_string (), REL_MAX_RELEASE_LENGTH);
     }
 
-  /* 
+  /*
    * Create the transaction table and make sure that data volumes and log
    * volumes belong to the same database
    */
 #if 1
-  /* 
+  /*
    * for XA support: there is prepared transaction after recovery.
    *                 so, can not recreate transaction description
    *                 table after recovery.
@@ -1362,12 +1367,12 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
       init_emergency = true;
     }
 
-  /* 
+  /*
    * Was the database system shut down or was it involved in a crash ?
    */
   if (init_emergency == false && (log_Gl.hdr.is_shutdown == false || ismedia_crash == true))
     {
-      /* 
+      /*
        * System was involved in a crash.
        * Execute the recovery process
        */
@@ -1385,7 +1390,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 	    }
 	}
 
-      /* 
+      /*
        * The system was shut down. There is nothing to recover.
        * Find the append page and start execution
        */
@@ -1407,7 +1412,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
       LSA_COPY (&log_Gl.flushed_lsa_lower_bound, &log_Gl.append.prev_lsa);
 #endif /* SERVER_MODE */
 
-      /* 
+      /*
        * Indicate that database system is UP,... flush the header so that we
        * we know that the system was running in the even of crashes
        */
@@ -1432,7 +1437,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
       LOG_RESET_APPEND_LSA (&log_Gl.hdr.append_lsa);
     }
 
-  /* 
+  /*
    *
    * Don't checkpoint to sizes smaller than the number of log buffers
    */
@@ -1700,7 +1705,7 @@ log_final (THREAD_ENTRY * thread_p)
       return;
     }
 
-  /* 
+  /*
    * Cannot use the critical section here since we are assigning the
    * transaction index and the critical sections are base on the transaction
    * index. Acquire the critical section and the get out immediately.. by
@@ -1727,7 +1732,7 @@ log_final (THREAD_ENTRY * thread_p)
 
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, save_tran_index);
 
-  /* 
+  /*
    * Flush all log append dirty pages and all data dirty pages
    */
   logpb_flush_pages_direct (thread_p);
@@ -1740,7 +1745,7 @@ log_final (THREAD_ENTRY * thread_p)
 
   logpb_decache_archive_info (thread_p);
 
-  /* 
+  /*
    * Flush the header of the log with information to restart the system
    * easily. For example, without a recovery process
    */
@@ -2028,7 +2033,7 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_
 #if defined(CUBRID_DEBUG)
   if (addr->pgptr == NULL)
     {
-      /* 
+      /*
        * Redo is always an operation page level logging. Thus, a data page
        * pointer must have been given as part of the address
        */
@@ -2076,20 +2081,20 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_
       return;
     }
 
-  /* 
+  /*
    * If we are not in a top system operation, the transaction is unactive, and
    * the transaction is not in the process of been aborted, we do nothing.
    */
   if (tdes->topops.last < 0 && !LOG_ISTRAN_ACTIVE (tdes) && !LOG_ISTRAN_ABORTED (tdes))
     {
-      /* 
+      /*
        * We do not log anything when the transaction is unactive and it is not
        * in the process of aborting.
        */
       return;
     }
 
-  /* 
+  /*
    * is undo logging needed ?
    */
 
@@ -2100,7 +2105,7 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_
       return;
     }
 
-  /* 
+  /*
    * Now do the UNDO & REDO portion
    */
 
@@ -2188,20 +2193,20 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
       return;
     }
 
-  /* 
+  /*
    * If we are not in a top system operation, the transaction is unactive, and
    * the transaction is not in the process of been aborted, we do nothing.
    */
   if (tdes->topops.last < 0 && !LOG_ISTRAN_ACTIVE (tdes) && !LOG_ISTRAN_ABORTED (tdes))
     {
-      /* 
+      /*
        * We do not log anything when the transaction is unactive and it is not
        * in the process of aborting.
        */
       return;
     }
 
-  /* 
+  /*
    * is undo logging needed ?
    */
   if (log_can_skip_undo_logging (thread_p, rcvindex, tdes, addr) == true)
@@ -2211,7 +2216,7 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
       return;
     }
 
-  /* 
+  /*
    * NOW do the UNDO ...
    */
 
@@ -2283,7 +2288,7 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
 #if defined(CUBRID_DEBUG)
   if (addr->pgptr == NULL)
     {
-      /* 
+      /*
        * Redo is always an operation page level logging. Thus, a data page
        * pointer must have been given as part of the address
        */
@@ -2326,13 +2331,13 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
       return;
     }
 
-  /* 
+  /*
    * If we are not in a top system operation, the transaction is unactive, and
    * the transaction is not in the process of been aborted, we do nothing.
    */
   if (tdes->topops.last < 0 && !LOG_ISTRAN_ACTIVE (tdes) && !LOG_ISTRAN_ABORTED (tdes))
     {
-      /* 
+      /*
        * We do not log anything when the transaction is unactive and it is not
        * in the process of aborting.
        */
@@ -2352,7 +2357,7 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
 
   start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
-  /* 
+  /*
    * Set the LSA on the data page of the corresponding log record for page
    * operation logging.
    *
@@ -2611,13 +2616,13 @@ log_append_dboutside_redo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, int l
       return;
     }
 
-  /* 
+  /*
    * If we are not in a top system operation, the transaction is unactive, and
    * the transaction is not in the process of been aborted, we do nothing.
    */
   if (tdes->topops.last < 0 && !LOG_ISTRAN_ACTIVE (tdes) && !LOG_ISTRAN_ABORTED (tdes))
     {
-      /* 
+      /*
        * We do not log anything when the transaction is unactive and it is not
        * in the process of aborting.
        */
@@ -2664,7 +2669,7 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
 #if defined(CUBRID_DEBUG)
   if (addr->pgptr == NULL)
     {
-      /* 
+      /*
        * Postpone is always an operation page level logging. Thus, a data page
        * pointer must have been given as part of the address
        */
@@ -2681,7 +2686,7 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
 
   if (log_No_logging)
     {
-      /* 
+      /*
        * We are not logging. Execute the postpone operation immediately since
        * we cannot undo
        */
@@ -2725,7 +2730,7 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
   skipredo = log_can_skip_redo_logging (rcvindex, tdes, addr);
   if (skipredo == true || (tdes->topops.last < 0 && !LOG_ISTRAN_ACTIVE (tdes) && !LOG_ISTRAN_ABORTED (tdes)))
     {
-      /* 
+      /*
        * Warning postpone logging is ignored during REDO recovery, normal
        * rollbacks, and for temporary data pages
        */
@@ -2744,7 +2749,7 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
       return;
     }
 
-  /* 
+  /*
    * If the transaction has not logged any record, add a dummy record to
    * start the postpone purposes during the commit.
    */
@@ -2789,7 +2794,7 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
       LSA_COPY (&tdes->posp_nxlsa, &tdes->tail_lsa);
     }
 
-  /* 
+  /*
    * Note: The lsa of the page is not set for postpone log records since
    * the change has not been done (has been postpone) to the page.
    */
@@ -2884,7 +2889,7 @@ log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DAT
 
       start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
-      /* 
+      /*
        * Set the LSA on the data page of the corresponding log record for page operation logging.
        * Make sure that I should log. Page operational logging is not done for temporary data of temporary files/volumes
        */
@@ -2950,7 +2955,7 @@ log_append_compensate (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VPI
 void
 log_append_compensate_with_undo_nxlsa (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VPID * vpid,
 				       PGLENGTH offset, PAGE_PTR pgptr, int length, const void *data, LOG_TDES * tdes,
-				       LOG_LSA * undo_nxlsa)
+				       const LOG_LSA * undo_nxlsa)
 {
   assert (undo_nxlsa != NULL);
 
@@ -2985,7 +2990,8 @@ log_append_compensate_with_undo_nxlsa (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcv
  */
 static void
 log_append_compensate_internal (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VPID * vpid, PGLENGTH offset,
-				PAGE_PTR pgptr, int length, const void *data, LOG_TDES * tdes, LOG_LSA * undo_nxlsa)
+				PAGE_PTR pgptr, int length, const void *data, LOG_TDES * tdes,
+				const LOG_LSA * undo_nxlsa)
 {
   LOG_REC_COMPENSATE *compensate;	/* Compensate log record */
   LOG_LSA prev_lsa;		/* LSA of next record to undo */
@@ -2997,7 +3003,7 @@ log_append_compensate_internal (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, 
 
   if (vpid->volid == NULL_VOLID || vpid->pageid == NULL_PAGEID)
     {
-      /* 
+      /*
        * Compensate is always an operation page level logging. Thus, a data page
        * pointer must have been given as part of the address
        */
@@ -3034,7 +3040,7 @@ log_append_compensate_internal (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, 
 
   start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
-  /* 
+  /*
    * Set the LSA on the data page of the corresponding log record for page
    * operation logging.
    * Make sure that I should log. Page operational logging is not done for
@@ -3234,7 +3240,7 @@ log_skip_logging (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr)
 	  return;
 	}
 
-      /* 
+      /*
        * If the page LSA has not been changed since the lsa checkpoint record,
        * change it to either the checkpoint record or the restart LSA.
        */
@@ -3263,7 +3269,7 @@ log_skip_logging (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr)
 	}
       else
 	{
-	  /* 
+	  /*
 	   * Likely the system is not restarted
 	   */
 	  if (LSA_GT (&tdes->tail_lsa, page_lsa))
@@ -3324,7 +3330,7 @@ log_append_savepoint (THREAD_ENTRY * thread_p, const char *savept_name)
 
   if (!LOG_ISTRAN_ACTIVE (tdes))
     {
-      /* 
+      /*
        * Error, a user savepoint cannot be added when the transaction is not
        * active
        */
@@ -3427,7 +3433,7 @@ log_get_savepoint_lsa (THREAD_ENTRY * thread_p, const char *savept_name, LOG_TDE
 	  length = savept->length;
 
 	  LOG_READ_ADD_ALIGN (thread_p, sizeof (*savept), &log_lsa, log_pgptr);
-	  /* 
+	  /*
 	   * Is the name contained in only one buffer, or in several buffers
 	   */
 
@@ -3939,6 +3945,8 @@ log_sysop_end_logical_undo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, cons
 {
   LOG_REC_SYSOP_END log_record;
 
+  assert (rcvindex != RV_NOT_DEFINED);
+
   if (LOG_IS_MVCC_OPERATION (rcvindex))
     {
       log_record.type = LOG_SYSOP_END_LOGICAL_MVCC_UNDO;
@@ -4303,7 +4311,7 @@ log_is_tran_in_system_op (THREAD_ENTRY * thread_p)
 static bool
 log_can_skip_undo_logging (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const LOG_TDES * tdes, LOG_DATA_ADDR * addr)
 {
-  /* 
+  /*
    * Some log record types (rcvindex) should never be skipped.
    * In the case of LINK_PERM_VOLEXT, the link of a permanent temp volume must be logged to support media failures.
    * See also log_can_skip_redo_logging.
@@ -4319,7 +4327,7 @@ log_can_skip_undo_logging (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const
       return true;
     }
 
-  /* 
+  /*
    * Operation level undo can be skipped on temporary pages. For example, those of temporary files.
    * No-operational level undo (i.e., logical logging) can be skipped for temporary files.
    */
@@ -4347,14 +4355,14 @@ log_can_skip_undo_logging (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const
  *   ignore_tdes(in):
  *   addr(in): Address (Volume, page, and offset) of data
  *
- * NOTE: Find if it is safe to skip redo logging for data related to given file. 
+ * NOTE: Find if it is safe to skip redo logging for data related to given file.
  *       Redo logging can be skip on any temporary page. For example, pages of temporary files on any volume.
  *       Some rcvindex values should never be skipped.
  */
 static bool
 log_can_skip_redo_logging (LOG_RCVINDEX rcvindex, const LOG_TDES * ignore_tdes, LOG_DATA_ADDR * addr)
 {
-  /* 
+  /*
    * Some log record types (rcvindex) should never be skipped.
    * In the case of LINK_PERM_VOLEXT, the link of a permanent temp volume must be logged to support media failures.
    * See also log_can_skip_undo_logging.
@@ -4364,7 +4372,7 @@ log_can_skip_redo_logging (LOG_RCVINDEX rcvindex, const LOG_TDES * ignore_tdes, 
       return false;
     }
 
-  /* 
+  /*
    * Operation level redo can be skipped on temporary pages. For example, those of temporary files
    */
   if (addr->pgptr != NULL && pgbuf_is_lsa_temporary (addr->pgptr) == true)
@@ -4515,11 +4523,11 @@ log_append_repl_info_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool i
  *
  * return: none
  *
- *   tdes(in): 
+ *   tdes(in):
  *   commit_lsa(out): LSA of commit log
  *
- * NOTE: Atomic write of replication log and commit log is crucial for replication consistencies. 
- *       When a commit log of others is written in the middle of one's replication and commit log, 
+ * NOTE: Atomic write of replication log and commit log is crucial for replication consistencies.
+ *       When a commit log of others is written in the middle of one's replication and commit log,
  *       a restart of replication will break consistencies of slaves/replicas.
  */
 static void
@@ -4540,7 +4548,7 @@ log_append_repl_info_and_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, L
  *
  * return: none
  *
- *   tdes(in): 
+ *   tdes(in):
  *   eot_lsa(out): LSA of COMMIT/ABORT log
  *   iscommitted(in): Is transaction been finished as committed?
  *   with_lock(in): whether it has mutex or not.
@@ -4651,7 +4659,7 @@ log_append_commit_log_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_L
 }
 
 /*
- * log_append_abort_log - append abort log record along with time of termination 
+ * log_append_abort_log - append abort log record along with time of termination
  *
  * return: nothing
  *
@@ -5340,7 +5348,7 @@ log_clear_lob_locator_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool at_co
  * NOTE:
  *
  * Ordering relation of lob locator entry is defined as (key_hash, key).
- * Because it is very UNLIKELY in normal case that two different locators have same hash value, this compare function 
+ * Because it is very UNLIKELY in normal case that two different locators have same hash value, this compare function
  * is very efficient.
  *
  */
@@ -5373,9 +5381,9 @@ RB_GENERATE_STATIC (lob_rb_root, lob_locator_entry, head, lob_locator_cmp);
  *                    true  = retain locks
  *   is_local_tran(in): Is a local transaction?
  *
- * NOTE:  Commit the current transaction locally. If there are postpone actions, the transaction is declared 
- *        committed_with_postpone_actions by logging a log record indicating this state. Then, the postpone actions 
- *        are executed. When the transaction is declared as fully committed, the locks acquired by the transaction 
+ * NOTE:  Commit the current transaction locally. If there are postpone actions, the transaction is declared
+ *        committed_with_postpone_actions by logging a log record indicating this state. Then, the postpone actions
+ *        are executed. When the transaction is declared as fully committed, the locks acquired by the transaction
  *        are released. A committed transaction is not subject to deadlock when postpone operations are executed.
  *	  The function returns the state of the transaction(i.e. whether it is completely committed or not).
  */
@@ -5387,15 +5395,15 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
   /* log_clear_lob_locator_list and logtb_complete_mvcc operations must be done before entering unactive state because
    * they do some logging. We must NOT log (or do other regular changes to the database) after the transaction enters
    * the unactive state because of the following scenario: 1. enter TRAN_UNACTIVE_WILL_COMMIT state 2. a checkpoint
-   * occurs and finishes. All active transactions are saved in log including their state. Our transaction will be saved 
+   * occurs and finishes. All active transactions are saved in log including their state. Our transaction will be saved
    * with TRAN_UNACTIVE_WILL_COMMIT state. 3. a crash occurs before our logging. Here, for example in case of unique
-   * statistics, we will lost logging of unique statistics. 4. A recovery will occur. Because our transaction was saved 
+   * statistics, we will lost logging of unique statistics. 4. A recovery will occur. Because our transaction was saved
    * at checkpoint with TRAN_UNACTIVE_WILL_COMMIT state, it will be committed. Because we didn't logged the changes
    * made by the transaction we will not reflect the changes. They will be definitely lost. */
   log_clear_lob_locator_list (thread_p, tdes, true, NULL);
 
   /* clear mvccid before releasing the locks. This operation must be done before do_postpone because it stores unique
-   * statistics for all B-trees and if an error occurs those operations and all operations of current transaction must 
+   * statistics for all B-trees and if an error occurs those operations and all operations of current transaction must
    * be rolled back. */
   logtb_complete_mvcc (thread_p, tdes, true);
 
@@ -5410,7 +5418,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 
   if (!LSA_ISNULL (&tdes->tail_lsa))
     {
-      /* 
+      /*
        * Transaction updated data.
        */
 
@@ -5431,7 +5439,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	  LOG_LSA commit_lsa;
 
 	  /* To write unlock log before releasing locks for transactional consistencies. When a transaction(T2) which
-	   * is resumed by this committing transaction(T1) commits and a crash happens before T1 completes, transaction 
+	   * is resumed by this committing transaction(T1) commits and a crash happens before T1 completes, transaction
 	   * consistencies will be broken because T1 will be aborted during restart recovery and T2 was already
 	   * committed. */
 	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p)
@@ -5460,11 +5468,11 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
     }
   else
     {
-      /* 
+      /*
        * Transaction did not update anything or we are not logging
        */
 
-      /* 
+      /*
        * We are not logging, and changes were done
        */
       if (tdes->first_save_entry != NULL)
@@ -5493,7 +5501,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
  *   is_local_tran(in): Is a local transaction? (It is not used at this point)
  *
  * NOTE: Abort the current transaction locally.
- *	 When the transaction is declared as fully aborted, the locks acquired by the transaction are released and 
+ *	 When the transaction is declared as fully aborted, the locks acquired by the transaction are released and
  *	 query cursors are closed.
  *       This function is used for both local and coordinator transactions.
  */
@@ -5509,11 +5517,13 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran)
 
   if (!LSA_ISNULL (&tdes->tail_lsa))
     {
-      /* 
+      /*
        * Transaction updated data.
        */
 
       log_rollback (thread_p, tdes, NULL);
+
+      log_update_global_btid_online_index_stats (thread_p);
 
       log_cleanup_modified_class_list (thread_p, tdes, NULL, true, true);
 
@@ -5531,7 +5541,7 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran)
     }
   else
     {
-      /* 
+      /*
        * Transaction did not update anything or we are not logging
        */
 
@@ -5649,7 +5659,7 @@ log_commit (THREAD_ENTRY * thread_p, int tran_index, bool retain_lock)
     }
   else
     {
-      /* 
+      /*
        * This is a local transaction or is a participant of a distributed transaction
        */
       state = log_commit_local (thread_p, tdes, retain_lock, true);
@@ -5664,7 +5674,7 @@ log_commit (THREAD_ENTRY * thread_p, int tran_index, bool retain_lock)
       (void) pgbuf_flush_all_unfixed (thread_p, NULL_VOLID);
       if (LOG_HAS_LOGGING_BEEN_IGNORED ())
 	{
-	  /* 
+	  /*
 	   * Indicate that logging has not been ignored for next transaction
 	   */
 	  log_Gl.hdr.has_logging_been_skipped = false;
@@ -5725,7 +5735,7 @@ log_abort (THREAD_ENTRY * thread_p, int tran_index)
 
   if (!LOG_ISTRAN_ACTIVE (tdes) && !LOG_ISTRAN_2PC_PREPARE (tdes))
     {
-      /* 
+      /*
        * May be a system error: Transaction is not in an active state nor
        * prepare to commit state
        */
@@ -5734,7 +5744,7 @@ log_abort (THREAD_ENTRY * thread_p, int tran_index)
 
   if (tdes->topops.last >= 0)
     {
-      /* 
+      /*
        * This is likely a system error since the transaction is being aborted
        * when there are system permananet operations attached to it. Abort those
        * operations too.
@@ -5759,7 +5769,7 @@ log_abort (THREAD_ENTRY * thread_p, int tran_index)
       tdes->max_unique_btrees = 0;
     }
 
-  /* 
+  /*
    * If we are in prepare to commit mode. I cannot be the root coodinator,
    * so the decision has already been taken at this moment by the root
    * coordinator. If a distributed transaction is not in 2PC, the decision
@@ -5773,7 +5783,7 @@ log_abort (THREAD_ENTRY * thread_p, int tran_index)
     }
   else
     {
-      /* 
+      /*
        * This is a local transaction or is a participant of a distributed transaction.
        * Perform the server rollback first.
        */
@@ -5825,7 +5835,7 @@ log_abort_partial (THREAD_ENTRY * thread_p, const char *savepoint_name, LOG_LSA 
 
   if (!LOG_ISTRAN_ACTIVE (tdes))
     {
-      /* 
+      /*
        * May be a system error: Transaction is not in an active state
        */
       return tdes->state;
@@ -5839,7 +5849,7 @@ log_abort_partial (THREAD_ENTRY * thread_p, const char *savepoint_name, LOG_LSA 
 
   if (tdes->topops.last >= 0)
     {
-      /* 
+      /*
        * This is likely a system error since the transaction is being partially
        * aborted when there are nested top system permanent operations
        * attached to it. Abort those operations too.
@@ -5876,7 +5886,7 @@ log_abort_partial (THREAD_ENTRY * thread_p, const char *savepoint_name, LOG_LSA 
 
   log_clear_lob_locator_list (thread_p, tdes, false, savept_lsa);
 
-  /* 
+  /*
    * The following is done so that if we go over several savepoints, they
    * get undefined and cannot get call by the user any longer.
    */
@@ -5897,7 +5907,7 @@ log_abort_partial (THREAD_ENTRY * thread_p, const char *savepoint_name, LOG_LSA 
  *   iscommitted(in): Is transaction been finished as committed ?
  *   get_newtrid(in):
  *
- * NOTE: This function does not consider 2PC. 
+ * NOTE: This function does not consider 2PC.
  *       Find the existing function as log_complete_for_2pc
  */
 TRAN_STATE
@@ -5911,7 +5921,7 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
 
   state = tdes->state;
 
-  /* 
+  /*
    * DECLARE THE TRANSACTION AS COMPLETED
    */
 
@@ -5931,8 +5941,8 @@ log_complete (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
     }
   else
     {
-      /* 
-       * Transaction updated data 
+      /*
+       * Transaction updated data
        */
       if (wrote_eot_log == LOG_NEED_TO_WRITE_EOT_LOG)
 	{
@@ -6031,7 +6041,7 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
 
   if (tdes->coord != NULL && tdes->coord->ack_received != NULL)
     {
-      /* 
+      /*
        * Make sure that all acknowledgments from participants have been received
        * before declaring the transaction as finished.
        */
@@ -6040,7 +6050,7 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
 	  if (tdes->coord->ack_received[i] == false)
 	    {
 	      all_acks = false;
-	      /* 
+	      /*
 	       * There are missing acknowledgments. The transaction cannot be
 	       * completed at this moment. If we are not in the restart recovery
 	       * process, the transaction is transfered to another transaction
@@ -6093,7 +6103,7 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
 		      logpb_flush_pages (thread_p, &start_lsa);
 		    }
 		}
-	      /* 
+	      /*
 	       * If this is not a loose end transaction and the system is not
 	       * in restart recovery, transfer the transaction to another
 	       * transaction index
@@ -6116,7 +6126,7 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
 		      return state;
 		    }
 
-		  /* 
+		  /*
 		   * Copy of tdes structures, and then reset memory allocated fields
 		   * for only one the new or the old one.
 		   */
@@ -6135,14 +6145,14 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
 		  TR_TABLE_CS_ENTER (thread_p);
 		  log_Gl.trantable.num_coord_loose_end_indices++;
 		  TR_TABLE_CS_EXIT (thread_p);
-		  /* 
+		  /*
 		   * Start a new transaction for our original transaction index.
 		   * Set the coordinator stuff to NULL, in our original index since
 		   * it has been transfer to another index. That is, distributed
 		   * information should be freed using the new transaction index.
 		   */
 
-		  /* 
+		  /*
 		   * Go back to the old index
 		   */
 
@@ -6164,17 +6174,17 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
 	    }
 	}
 
-      /* 
+      /*
        * All acknowledgments of participants have been received, declare the
        * the transaction as completed
        */
     }
 
-  /* 
+  /*
    * DECLARE THE TRANSACTION AS COMPLETED
    */
 
-  /* 
+  /*
    * Check if this index needs to be returned after finishing the transaction
    */
 
@@ -6189,7 +6199,7 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
 
   if (LSA_ISNULL (&tdes->tail_lsa))
     {
-      /* 
+      /*
        * Transaction did not update any data, thus we do not need to log a
        * commit/abort log record
        */
@@ -6219,7 +6229,7 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
     }
   else
     {
-      /* 
+      /*
        * Transaction updated data or this is a coordinator
        */
       if (iscommitted == LOG_COMMIT)
@@ -6227,7 +6237,7 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
 	  LOG_LSA commit_lsa;
 
 	  /* To write unlock log before releasing locks for transactional consistencies. When a transaction(T2) which
-	   * is resumed by this committing transaction(T1) commits and a crash happens before T1 completes, transaction 
+	   * is resumed by this committing transaction(T1) commits and a crash happens before T1 completes, transaction
 	   * * consistencies will be broken because T1 will be aborted during restart recovery and T2 was already
 	   * committed. */
 	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && !VACUUM_IS_THREAD_VACUUM (thread_p)
@@ -6426,7 +6436,7 @@ log_dump_data (THREAD_ENTRY * thread_p, FILE * out_fp, int length, LOG_LSA * log
   bool is_unzipped = false;
   /* Call the dumper function */
 
-  /* 
+  /*
    * If data is contained in only one buffer, pass pointer directly.
    * Otherwise, allocate a contiguous area, copy the data and pass this
    * area. At the end deallocate the area
@@ -6973,7 +6983,7 @@ static void
 log_dump_checkpoint_topops (FILE * out_fp, int length, void *data)
 {
   int ntops, i;
-  LOG_INFO_CHKPT_SYSOP *chkpt_topops;	/* Checkpoint top system operations that are in commit postpone 
+  LOG_INFO_CHKPT_SYSOP *chkpt_topops;	/* Checkpoint top system operations that are in commit postpone
 					 * mode */
   LOG_INFO_CHKPT_SYSOP *chkpt_topone;	/* One top system ope */
 
@@ -7361,7 +7371,7 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward, LOG_PAGEID sta
 	    }
 	  return;
 	}
-      /* 
+      /*
        * If offset is missing, it is because we archive an incomplete
        * log record or we start dumping the log not from its first page. We
        * have to find the offset by searching for the next log_record in the page
@@ -7392,7 +7402,7 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward, LOG_PAGEID sta
 	  type = log_rec->type;
 
 	  {
-	    /* 
+	    /*
 	     * The following is just for debugging next address calculations
 	     */
 	    LOG_LSA next_lsa;
@@ -7425,7 +7435,7 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward, LOG_PAGEID sta
 		{
 		  LSA_COPY (&lsa, &log_rec->forw_lsa);
 		}
-	      /* 
+	      /*
 	       * If the next page is NULL_PAGEID and the current page is an archive
 	       * page, this is not the end, this situation happens when an incomplete
 	       * log record was archived.
@@ -7472,7 +7482,7 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward, LOG_PAGEID sta
 	  LOG_READ_ADD_ALIGN (thread_p, sizeof (*log_rec), &log_lsa, log_pgptr);
 	  log_pgptr = log_dump_record (thread_p, out_fp, type, &log_lsa, log_pgptr, log_dump_ptr);
 	  fflush (out_fp);
-	  /* 
+	  /*
 	   * We can fix the lsa.pageid in the case of log_records without forward
 	   * address at this moment.
 	   */
@@ -7539,19 +7549,14 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
   int rv_err;
   bool is_zipped = false;
 
-  /* 
+  /*
    * Fetch the page for physical log records. If the page does not exist
    * anymore or there are problems fetching the page, continue anyhow, so that
    * compensating records are logged.
    */
 
-#if defined(CUBRID_DEBUG)
-  if (RV_fun[rcvindex].undofun == NULL)
-    {
-      assert (false);
-      return;
-    }
-#endif /* CUBRID_DEBUG */
+  assert (rcvindex != RV_NOT_DEFINED);
+  assert (RV_fun[rcvindex].undofun != NULL);
 
   if (RCV_IS_LOGICAL_LOG (rcv_vpid, rcvindex))
     {
@@ -7568,7 +7573,7 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
 
   /* GET BEFORE DATA */
 
-  /* 
+  /*
    * If data is contained in only one buffer, pass pointer directly.
    * Otherwise, allocate a contiguous area, copy the data and pass this area.
    * At the end deallocate the area.
@@ -7629,7 +7634,7 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
   /* Now call the UNDO recovery function */
   if (rcv->pgptr != NULL || RCV_IS_LOGICAL_LOG (rcv_vpid, rcvindex))
     {
-      /* 
+      /*
        * Write a compensating log record for operation page level logging.
        * For logical level logging, the recovery undo function must log an
        * redo/CLR log to describe the undo. This in turn will be translated
@@ -7718,7 +7723,7 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
 	    LOG_LSA check_tail_lsa;
 
 	    LSA_COPY (&check_tail_lsa, &tdes->tail_lsa);
-	    /* 
+	    /*
 	     * Note that tail_lsa is changed by the following function
 	     */
 	    /* Invoke Undo recovery function */
@@ -7755,7 +7760,7 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
     }
   else
     {
-      /* 
+      /*
        * Unable to fetch page of volume... May need media recovery on such
        * page... write a CLR anyhow
        */
@@ -7876,7 +7881,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
-  /* 
+  /*
    * Execute every single undo log record upto the given upto_lsa_ptr since it
    * is not a system crash
    */
@@ -7887,7 +7892,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
       return;
     }
 
-  /* 
+  /*
    * I should not timeout on a page that I need to undo, otherwise, I may
    * end up with database corruption problems. That is, no timeouts during
    * rollback.
@@ -7895,7 +7900,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
   old_wait_msecs = xlogtb_reset_wait_msecs (thread_p, TRAN_LOCK_INFINITE_WAIT);
 
   LSA_COPY (&prev_tranlsa, &tdes->undo_nxlsa);
-  /* 
+  /*
    * In some cases what upto_lsa_ptr points to is volatile, e.g.
    * when it is from the topops stack (which can be reallocated by
    * operations during this rollback).
@@ -7952,7 +7957,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 	  log_lsa.offset = prev_tranlsa.offset;
 	  log_rec = LOG_GET_LOG_RECORD_HEADER (log_pgptr, &log_lsa);
 
-	  /* 
+	  /*
 	   * Next record to undo.. that is previous record in the chain.
 	   * We need to save it in this variable since the undo_nxlsa pointer
 	   * may be set when we log something related to rollback (e.g., case
@@ -8054,7 +8059,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 	      break;
 
 	    case LOG_COMPENSATE:
-	      /* 
+	      /*
 	       * We found a partial rollback, use the CLR to find the next record
 	       * to undo
 	       */
@@ -8067,7 +8072,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 	      break;
 
 	    case LOG_SYSOP_END:
-	      /* 
+	      /*
 	       * We found a system top operation that should be skipped from rollback.
 	       */
 
@@ -8291,7 +8296,7 @@ log_get_next_nested_top (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * sta
 	  top_result = (LOG_REC_SYSOP_END *) ((char *) log_pgptr->area + tmp_log_lsa.offset);
 	  last_fetch_page_id = tmp_log_lsa.pageid;
 
-	  /* 
+	  /*
 	   * There may be some nested top system operations that are committed
 	   * and aborted in the desired region
 	   */
@@ -8408,7 +8413,7 @@ log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_E
  *   tdes(in): Transaction descriptor
  *   start_posplsa(in): Where to start looking for postpone records
  *
- * NOTE: Scan the log forward doing postpone operations of given transaction. 
+ * NOTE: Scan the log forward doing postpone operations of given transaction.
  *       This function is invoked after a transaction is declared committed with postpone actions.
  */
 void
@@ -8477,7 +8482,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 	  LSA_SET_NULL (&next_start_seek_lsa);
 	}
 
-      /* 
+      /*
        * Start doing postpone operation for this range
        */
 
@@ -8507,7 +8512,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 		  break;
 		}
 
-	      /* 
+	      /*
 	       * If an offset is missing, it is because we archive an incomplete log record.
 	       * This log_record was completed later.
 	       * Thus, we have to find the offset by searching for the next log_record in the page.
@@ -8632,7 +8637,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 		    }
 		}
 
-	      /* 
+	      /*
 	       * We can fix the lsa.pageid in the case of log_records without forward address at this moment.
 	       */
 
@@ -8839,7 +8844,7 @@ log_find_end_log (THREAD_ENTRY * thread_p, LOG_LSA * end_lsa)
 
       while (end_lsa->pageid == pageid)
 	{
-	  /* 
+	  /*
 	   * If an offset is missing, it is because we archive an incomplete
 	   * log record. This log_record was completed later. Thus, we have to
 	   * find the offset by searching for the next log_record in the page
@@ -8847,7 +8852,7 @@ log_find_end_log (THREAD_ENTRY * thread_p, LOG_LSA * end_lsa)
 	  if (!(end_lsa->offset == NULL_OFFSET && (end_lsa->offset = log_pgptr->hdr.offset) == NULL_OFFSET))
 	    {
 	      eof = LOG_GET_LOG_RECORD_HEADER (log_pgptr, end_lsa);
-	      /* 
+	      /*
 	       * If the type is an EOF located at the active portion of the log,
 	       * stop
 	       */
@@ -8881,7 +8886,7 @@ log_find_end_log (THREAD_ENTRY * thread_p, LOG_LSA * end_lsa)
 	      LSA_SET_NULL (end_lsa);
 	    }
 
-	  /* 
+	  /*
 	   * If the next page is NULL_PAGEID and the current page is an archive
 	   * page, this is not the end, this situation happens because of an
 	   * incomplete log record was archived.
@@ -8895,7 +8900,7 @@ log_find_end_log (THREAD_ENTRY * thread_p, LOG_LSA * end_lsa)
 
       if (type == LOG_END_OF_LOG && eof != NULL && !LSA_EQ (end_lsa, &log_Gl.hdr.append_lsa))
 	{
-	  /* 
+	  /*
 	   * Reset the log header for future reads, multiple restart crashes,
 	   * and so on
 	   */
@@ -8979,11 +8984,11 @@ log_recreate (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logp
 
   (void) log_initialize_internal (thread_p, db_fullname, logpath, prefix_logname, false, NULL, true);
 
-  /* 
+  /*
    * RESET RECOVERY INFORMATION ON ALL DATA VOLUMES
    */
 
-  LSA_SET_INIT_NONTEMP (&init_nontemp_lsa);
+  LSA_SET_NULL (&init_nontemp_lsa);
 
   for (volid = LOG_DBFIRST_VOLID; volid != NULL_VOLID; volid = fileio_find_next_perm_volume (thread_p, volid))
     {
@@ -9001,7 +9006,7 @@ log_recreate (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logp
 
       vdes = fileio_get_volume_descriptor (volid);
 
-      /* 
+      /*
        * Flush all dirty pages and then invalidate them from page buffer pool.
        * So that we can reset the recovery information directly using the io
        * module
@@ -9028,12 +9033,12 @@ log_recreate (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logp
 
       (void) pgbuf_flush_all_unfixed_and_set_lsa_as_null (thread_p, volid);
 
-      /* 
+      /*
        * reset temp LSA to special temp LSA
        */
       (void) logpb_check_and_reset_temp_lsa (thread_p, volid);
 
-      /* 
+      /*
        * add volume info to vinf
        */
       xdisk_get_fullname (thread_p, volid, vol_fullname);
@@ -9085,10 +9090,10 @@ log_get_io_page_size (THREAD_ENTRY * thread_p, const char *db_fullname, const ch
   int dummy;
 
   LOG_CS_ENTER (thread_p);
-  if (logpb_find_header_parameters (thread_p, db_fullname, logpath, prefix_logname, &db_iopagesize,
+  if (logpb_find_header_parameters (thread_p, false, db_fullname, logpath, prefix_logname, &db_iopagesize,
 				    &log_page_size, &ignore_dbcreation, &ignore_dbcomp, &dummy) == -1)
     {
-      /* 
+      /*
        * For case where active log could not be found, user still needs
        * an error.
        */
@@ -9159,11 +9164,11 @@ log_get_charset_from_header_page (THREAD_ENTRY * thread_p, const char *db_fullna
   int db_charset = INTL_CODESET_NONE;
 
   LOG_CS_ENTER (thread_p);
-  if (logpb_find_header_parameters (thread_p, db_fullname, logpath, prefix_logname, &dummy_db_iopagesize,
+  if (logpb_find_header_parameters (thread_p, false, db_fullname, logpath, prefix_logname, &dummy_db_iopagesize,
 				    &dummy_ignore_log_page_size, &dummy_ignore_dbcreation, &dummy_ignore_dbcomp,
 				    &db_charset) == -1)
     {
-      /* 
+      /*
        * For case where active log could not be found, user still needs
        * an error.
        */
@@ -9849,7 +9854,7 @@ log_set_ha_promotion_time (THREAD_ENTRY * thread_p, INT64 ha_promotion_time)
 }
 
 /*
- * log_set_db_restore_time () - set db restore time 
+ * log_set_db_restore_time () - set db restore time
  *   return: none
  *
  *   thread_p(in):
@@ -9868,7 +9873,7 @@ log_set_db_restore_time (THREAD_ENTRY * thread_p, INT64 db_restore_time)
 /*
  * log_get_undo_record () - gets undo record from log lsa adress
  *   return: S_SUCCESS or ER_code
- * 
+ *
  * thread_p (in):
  * lsa_addr (in):
  * page (in):
@@ -9955,7 +9960,7 @@ log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA pro
       udata_size = udata_length;
     }
 
-  /* 
+  /*
    * If data is contained in only one buffer, pass pointer directly.
    * Otherwise, copy the data into a contiguous area and pass this area.
    */
@@ -10016,7 +10021,7 @@ log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA pro
   recdes->length = udata_size - sizeof (recdes->type);
   if (recdes->area_size < 0 || recdes->area_size < (int) recdes->length)
     {
-      /* 
+      /*
        * DOES NOT FIT
        * Give a hint to the user of the needed length. Hint is given as a
        * negative value
@@ -10678,3 +10683,76 @@ log_abort_task::execute (context_type &thread_ref)
 }
 #endif // SERVER_MODE
 // *INDENT-ON*
+
+void
+log_update_global_btid_online_index_stats (THREAD_ENTRY * thread_p)
+{
+  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+  int error_code = NO_ERROR;
+
+  if (tdes == NULL)
+    {
+      return;
+    }
+
+  error_code =
+    mht_map_no_key (thread_p, tdes->log_upd_stats.unique_stats_hash, logtb_tran_update_stats_online_index_rb, thread_p);
+
+  if (error_code != NO_ERROR)
+    {
+      assert (false);
+    }
+}
+
+/*
+ * logtb_tran_update_stats_online_index_rb - Updates statistics during an online index when a transaction
+ *                                           gets rollbacked.
+ *
+ * TODO: This can be easily optimized since it is slow. Try to find a better approach!
+ */
+static int
+logtb_tran_update_stats_online_index_rb (THREAD_ENTRY * thread_p, void *data, void *args)
+{
+  /* This is called only during a rollback on a transaction that has updated an index which was under
+   * online loading.
+   */
+  LOG_TRAN_BTID_UNIQUE_STATS *unique_stats = (LOG_TRAN_BTID_UNIQUE_STATS *) data;
+  int error_code = NO_ERROR;
+  OID class_oid;
+#if !defined (NDEBUG)
+  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+
+  assert (LOG_ISTRAN_ABORTED (tdes));
+#endif /* !NDEBUG */
+
+  if (unique_stats->deleted)
+    {
+      /* ignore if deleted */
+      return NO_ERROR;
+    }
+
+  OID_SET_NULL (&class_oid);
+
+  error_code = btree_get_class_oid_of_unique_btid (thread_p, &unique_stats->btid, &class_oid);
+  if (error_code != NO_ERROR)
+    {
+      assert (false);
+      return error_code;
+    }
+
+  assert (!OID_ISNULL (&class_oid));
+
+  if (!btree_is_btid_online_index (thread_p, &class_oid, &unique_stats->btid))
+    {
+      /* We can skip. */
+      return NO_ERROR;
+    }
+
+  /* We can update the statistics. */
+  error_code =
+    logtb_update_global_unique_stats_by_delta (thread_p, &unique_stats->btid, unique_stats->tran_stats.num_oids,
+					       unique_stats->tran_stats.num_nulls, unique_stats->tran_stats.num_keys,
+					       false);
+
+  return error_code;
+}

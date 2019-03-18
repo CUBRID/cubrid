@@ -35,7 +35,6 @@
 #include <stdio.h>
 #include <time.h>
 #include "dbtype_def.h"
-#include "dbdef.h"
 #include "db_date.h"
 #include "db_elo.h"
 #include "db_query.h"
@@ -50,38 +49,7 @@ extern "C"
 #define db_utime_to_string db_timestamp_to_string
 #define db_string_to_utime db_string_to_timestamp
 
-/* the order to connect to db-hosts in databases.txt */
-#define DB_CONNECT_ORDER_SEQ         0
-#define DB_CONNECT_ORDER_RANDOM      1
-
-/* abnormal DB host status */
-#define DB_HS_NORMAL                    0x00000000
-#define DB_HS_CONN_TIMEOUT              0x00000001
-#define DB_HS_CONN_FAILURE              0x00000002
-#define DB_HS_MISMATCHED_RW_MODE        0x00000004
-#define DB_HS_HA_DELAYED                0x00000008
-#define DB_HS_NON_PREFFERED_HOSTS       0x00000010
-#define DB_HS_UNUSABLE_DATABASES        0x00000020
-
-#define DB_HS_RECONNECT_INDICATOR \
-  (DB_HS_MISMATCHED_RW_MODE | DB_HS_HA_DELAYED | DB_HS_NON_PREFFERED_HOSTS)
-
-/* host status for marking abnormal host status */
-  typedef struct db_host_status DB_HOST_STATUS;
-  struct db_host_status
-  {
-    char hostname[MAXHOSTNAMELEN];
-    int status;
-  };
-
-  typedef struct db_host_status_list DB_HOST_STATUS_LIST;
-  struct db_host_status_list
-  {
-    /* preferred_hosts + db-hosts */
-    DB_HOST_STATUS hostlist[MAX_NUM_DB_HOSTS * 2];
-    DB_HOST_STATUS *connected_host_status;
-    int last_host_idx;
-  };
+  /* todo: These functions are duplicated in dbi_compat.h. Find a workaround. */
 
 /* constants for db_include_oid */
   enum

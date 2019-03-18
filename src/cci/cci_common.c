@@ -486,7 +486,7 @@ cci_mht_rem (CCI_MHT_TABLE * ht, void *key, bool free_key, bool free_data)
 
   assert (ht != NULL && key != NULL);
 
-  /* 
+  /*
    * Hash the key and make sure that the return value is between 0 and size
    * of hash table
    */
@@ -578,7 +578,7 @@ cci_mht_get (CCI_MHT_TABLE * ht, void *key)
 
   assert (ht != NULL && key != NULL);
 
-  /* 
+  /*
    * Hash the key and make sure that the return value is between 0 and size
    * of hash table
    */
@@ -600,7 +600,7 @@ cci_mht_get (CCI_MHT_TABLE * ht, void *key)
 }
 
 /*
- * cci_mht_put_internal - internal function for cci_mht_put(), 
+ * cci_mht_put_internal - internal function for cci_mht_put(),
  *                        cci_mht_put_new(), and cci_mht_put_data();
  *                        insert an entry associating key with data
  *   return: Returns key if insertion was OK, otherwise, it returns NULL
@@ -624,7 +624,7 @@ cci_mht_put_internal (CCI_MHT_TABLE * ht, void *key, void *data, CCI_MHT_PUT_OPT
 
   assert (ht != NULL && key != NULL);
 
-  /* 
+  /*
    * Hash the key and make sure that the return value is between 0 and size
    * of hash table
    */
@@ -668,7 +668,7 @@ cci_mht_put_internal (CCI_MHT_TABLE * ht, void *key, void *data, CCI_MHT_PUT_OPT
 	}
     }
 
-  /* 
+  /*
    * Link the new entry to the double link list of active entries and the
    * hash itself. The previous entry should point to new one.
    */
@@ -698,7 +698,7 @@ cci_mht_put_internal (CCI_MHT_TABLE * ht, void *key, void *data, CCI_MHT_PUT_OPT
   ht->table[hash] = hentry;
   ht->nentries++;
 
-  /* 
+  /*
    * Rehash if almost all entries of hash table are used and there are at least
    * 5% of collisions
    */
@@ -753,7 +753,7 @@ hostname2uchar (char *host, unsigned char *ip_addr)
 {
   in_addr_t in_addr;
 
-  /* 
+  /*
    * First try to convert to the host name as a dotten-decimal number.
    * Only if that fails do we call gethostbyname.
    */

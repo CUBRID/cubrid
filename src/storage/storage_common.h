@@ -39,9 +39,9 @@
 #endif
 
 #include "porting.h"
-#include "dbdef.h"
 #include "dbtype_def.h"
 #include "sha1.h"
+#include "cache_time.h"
 
   /* LIMITS AND NULL VALUES ON DISK RELATED DATATYPES */
 
@@ -111,6 +111,7 @@ struct log_lsa
 };
 
 typedef struct log_lsa LOG_LSA;	/* Log address identifier */
+
 STATIC_INLINE void
 LSA_COPY (LOG_LSA * plsa1, const LOG_LSA * plsa2)
 {
@@ -123,15 +124,24 @@ LSA_COPY (LOG_LSA * plsa1, const LOG_LSA * plsa2)
 namespace cubpacking
 {
   class packer;
+  class unpacker;
 }
 #endif
 /* *INDENT-ON* */
 
-#define LSA_SET_NULL(lsa_ptr)\
-  do {									      \
-    (lsa_ptr)->pageid = NULL_PAGEID;                                          \
-    (lsa_ptr)->offset = NULL_OFFSET;                                          \
-  } while(0)
+STATIC_INLINE void
+LSA_SET_NULL (LOG_LSA * lsa_ptr)
+{
+  lsa_ptr->pageid = NULL_PAGEID;
+  lsa_ptr->offset = NULL_OFFSET;
+}
+
+STATIC_INLINE void
+LSA_SET_TEMP_LSA (LOG_LSA * lsa_ptr)
+{
+  lsa_ptr->pageid = NULL_PAGEID - 1;
+  lsa_ptr->offset = NULL_OFFSET - 1;
+}
 
 #define LSA_INITIALIZER	{NULL_PAGEID, NULL_OFFSET}
 
@@ -357,9 +367,9 @@ struct recdes
 
 /* *INDENT-OFF* */
 #if defined (__cplusplus)
-  int pack (cubpacking::packer *packer);
-  int unpack (cubpacking::packer *packer);
-  std::size_t get_packed_size (cubpacking::packer *packer, std::size_t curr_offset);
+  void pack (cubpacking::packer &packer) const;
+  void unpack (cubpacking::unpacker &unpacker);
+  std::size_t get_packed_size (cubpacking::packer &packer, std::size_t curr_offset) const;
 #endif
 /* *INDENT-ON* */
 };
@@ -755,7 +765,7 @@ typedef enum
 {
   LOG_ERROR_IF_DELETED,		/* set error when locking deleted objects */
   LOG_WARNING_IF_DELETED	/* set warning when locking deleted objects - the case when it is expected and
-				 * accepted to find a deleted object; for example when er_clear() is used afterwards if 
+				 * accepted to find a deleted object; for example when er_clear() is used afterwards if
 				 * ER_HEAP_UNKNOWN_OBJECT is set in er_errid */
 } NON_EXISTENT_HANDLING;
 
@@ -1070,13 +1080,6 @@ typedef enum
   T_CURRENT_DATE,
   T_CURRENT_TIME,
   T_CONV_TZ,
-  T_JSON_CONTAINS,
-  T_JSON_TYPE,
-  T_JSON_EXTRACT,
-  T_JSON_VALID,
-  T_JSON_LENGTH,
-  T_JSON_DEPTH,
-  T_JSON_SEARCH,
 } OPERATOR_TYPE;		/* arithmetic operator types */
 
 typedef enum
@@ -1094,6 +1097,8 @@ typedef enum
   PT_RANK,
   PT_DENSE_RANK,
   PT_NTILE,
+  PT_JSON_ARRAYAGG,
+  PT_JSON_OBJECTAGG,
   PT_TOP_AGG_FUNC,
   /* only aggregate functions should be below PT_TOP_AGG_FUNC */
 
@@ -1111,9 +1116,12 @@ typedef enum
 
   /* "normal" functions, arguments are values */
   F_SET, F_MULTISET, F_SEQUENCE, F_VID, F_GENERIC, F_CLASS_OF,
-  F_INSERT_SUBSTRING, F_ELT, F_JSON_OBJECT, F_JSON_ARRAY, F_JSON_MERGE,
-  F_JSON_INSERT, F_JSON_REMOVE, F_JSON_ARRAY_APPEND, F_JSON_GET_ALL_PATHS,
-  F_JSON_REPLACE, F_JSON_SET, F_JSON_KEYS,
+  F_INSERT_SUBSTRING, F_ELT, F_JSON_OBJECT, F_JSON_ARRAY, F_JSON_MERGE, F_JSON_MERGE_PATCH, F_JSON_INSERT,
+  F_JSON_REMOVE, F_JSON_ARRAY_APPEND, F_JSON_GET_ALL_PATHS, F_JSON_REPLACE, F_JSON_SET, F_JSON_KEYS,
+  F_JSON_ARRAY_INSERT, F_JSON_SEARCH, F_JSON_CONTAINS_PATH, F_JSON_EXTRACT, F_JSON_CONTAINS, F_JSON_DEPTH,
+  F_JSON_LENGTH, F_JSON_PRETTY, F_JSON_QUOTE, F_JSON_TYPE, F_JSON_UNQUOTE, F_JSON_VALID,
+
+  F_BENCHMARK,
 
   /* only for FIRST_VALUE. LAST_VALUE, NTH_VALUE analytic functions */
   PT_FIRST_VALUE, PT_LAST_VALUE, PT_NTH_VALUE,
@@ -1125,19 +1133,19 @@ typedef enum
   PT_PERCENTILE_DISC
 } FUNC_TYPE;
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif				// c++
+  const char *fcode_get_lowercase_name (FUNC_TYPE ftype);
+  const char *fcode_get_uppercase_name (FUNC_TYPE ftype);
+#ifdef __cplusplus
+}
+#endif				// c++
+
 /************************************************************************/
 /* QUERY                                                                */
 /************************************************************************/
-
-/*
- * CACHE TIME RELATED DEFINITIONS
- */
-typedef struct cache_time CACHE_TIME;
-struct cache_time
-{
-  int sec;
-  int usec;
-};
 
 #define CACHE_TIME_AS_ARGS(ct)	(ct)->sec, (ct)->usec
 
@@ -1368,12 +1376,12 @@ enum
   REC_BIGONE = 5,
 
 /* Slot does not describe any record.
- * A record was stored in this slot.  Slot cannot be reused. 
+ * A record was stored in this slot.  Slot cannot be reused.
  */
   REC_MARKDELETED = 6,
 
 /* Slot does not describe any record.
- * A record was stored in this slot.  Slot will be reused. 
+ * A record was stored in this slot.  Slot will be reused.
  */
   REC_DELETED_WILL_REUSE = 7,
 
@@ -1390,5 +1398,48 @@ enum
   REC_4BIT_USED_TYPE_MAX = REC_DELETED_WILL_REUSE,
   REC_4BIT_TYPE_MAX = REC_RESERVED_TYPE_15
 };
+
+typedef struct dbdef_vol_ext_info DBDEF_VOL_EXT_INFO;
+struct dbdef_vol_ext_info
+{
+  const char *path;		/* Directory where the volume extension is created.  If NULL, is given, it defaults to
+				 * the system parameter. */
+  const char *name;		/* Name of the volume extension If NULL, system generates one like "db".ext"volid"
+				 * where "db" is the database name and "volid" is the volume identifier to be assigned
+				 * to the volume extension. */
+  const char *comments;		/* Comments which are included in the volume extension header. */
+  int max_npages;		/* Maximum pages of this volume */
+  int extend_npages;		/* Number of pages to extend - used for generic volume only */
+  INT32 nsect_total;		/* DKNSECTS type, number of sectors for volume extension */
+  INT32 nsect_max;		/* DKNSECTS type, maximum number of sectors for volume extension */
+  int max_writesize_in_sec;	/* the amount of volume written per second */
+  DB_VOLPURPOSE purpose;	/* The purpose of the volume extension. One of the following: -
+				 * DB_PERMANENT_DATA_PURPOSE, DB_TEMPORARY_DATA_PURPOSE */
+  DB_VOLTYPE voltype;		/* Permanent of temporary volume type */
+  bool overwrite;
+};
+
+#define SERVER_SESSION_KEY_SIZE			8
+
+typedef enum
+{
+  DB_PARTITION_HASH = 0,
+  DB_PARTITION_RANGE,
+  DB_PARTITION_LIST
+} DB_PARTITION_TYPE;
+
+typedef enum
+{
+  DB_NOT_PARTITIONED_CLASS = 0,
+  DB_PARTITIONED_CLASS = 1,
+  DB_PARTITION_CLASS = 2
+} DB_CLASS_PARTITION_TYPE;
+
+// TODO: move me in a proper place
+typedef enum
+{
+  KILLSTMT_TRAN = 0,
+  KILLSTMT_QUERY = 1,
+} KILLSTMT_TYPE;
 
 #endif /* _STORAGE_COMMON_H_ */

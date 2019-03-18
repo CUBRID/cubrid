@@ -86,6 +86,7 @@ namespace cubreplication
     private:
       stream_entry_header m_header;
       cubpacking::packer m_serializator;
+      cubpacking::unpacker m_deserializator;
 
       static cubstream::entry<replication_object>::packable_factory *s_replication_factory_po;
 
@@ -93,16 +94,18 @@ namespace cubreplication
 
     public:
       stream_entry (cubstream::multi_thread_stream *stream_p)
-	: entry (stream_p),
-	  m_serializator (NULL, 0)
+	: entry (stream_p)
+	, m_serializator ()
+	, m_deserializator ()
       {
       };
 
       stream_entry (cubstream::multi_thread_stream *stream_p,
 		    MVCCID arg_mvccid,
 		    stream_entry_header::TRAN_STATE state)
-	: entry (stream_p),
-	  m_serializator (NULL, 0)
+	: entry (stream_p)
+	, m_serializator ()
+	, m_deserializator ()
       {
 	m_header.mvccid = arg_mvccid;
 	m_header.tran_state = state;
@@ -121,6 +124,11 @@ namespace cubreplication
       cubpacking::packer *get_packer ()
       {
 	return &m_serializator;
+      }
+
+      cubpacking::unpacker *get_unpacker ()
+      {
+	return &m_deserializator;
       }
 
       void set_mvccid (MVCCID mvccid)

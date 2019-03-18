@@ -17,26 +17,29 @@
  *
  */
 
-/*
- * stream_io.hpp
- */
+//
+// parser_allocator.hpp - C++ extensions to parser allocation
+//
 
-#ifndef _STREAM_IO_HPP_
-#define _STREAM_IO_HPP_
+#ifndef _PARSER_ALLOCATOR_HPP_
+#define _PARSER_ALLOCATOR_HPP_
 
-#ident "$Id$"
+#include "mem_block.hpp"
 
-namespace cubstream
+// forward def
+struct parser_context;
+
+class parser_block_allocator : public cubmem::block_allocator
 {
+  public:
+    parser_block_allocator () = delete;
+    parser_block_allocator (parser_context *parser);
 
-  class stream_io
-  {
-    public:
-      virtual int write (const stream_position &pos, const char *buf, const size_t amount) = 0;
+  private:
+    void alloc (cubmem::block &b, size_t size);
+    void dealloc (cubmem::block &b);
 
-      virtual int read (const stream_position &pos, const char *buf, const size_t amount) = 0;
-  };
+    parser_context *m_parser;
+};
 
-} /*  namespace cubstream */
-
-#endif /* _STREAM_IO_HPP_ */
+#endif // _PARSER_ALLOCATOR_HPP_

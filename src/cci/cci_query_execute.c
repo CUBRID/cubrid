@@ -2499,7 +2499,7 @@ qe_get_last_insert_id (T_REQ_HANDLE * req_handle, T_CON_HANDLE * con_handle, voi
   NET_STR_TO_INT (valsize, ptr);
   if (valsize == -1)
     {
-      /* 
+      /*
        * CCI_ER_NO_ERROR with NULL value
        * means DB NULL
        */
@@ -3263,6 +3263,7 @@ qe_get_data_str (T_VALUE_BUF * conv_val_buf, T_CCI_U_TYPE u_type, char *col_valu
     case CCI_U_TYPE_VARNCHAR:
     case CCI_U_TYPE_NUMERIC:
     case CCI_U_TYPE_ENUM:
+    case CCI_U_TYPE_JSON:
       {
 	*((char **) value) = col_value_p;
 	*indicator = col_val_size - 1;
@@ -5094,7 +5095,7 @@ fetch_info_decode (char *buf, int size, int num_cols, T_TUPLE_VALUE ** tuple_val
 
 	  if (charset != NULL
 	      && (u_type == CCI_U_TYPE_CHAR || u_type == CCI_U_TYPE_STRING || u_type == CCI_U_TYPE_NCHAR
-		  || u_type == CCI_U_TYPE_VARNCHAR || u_type == CCI_U_TYPE_ENUM))
+		  || u_type == CCI_U_TYPE_VARNCHAR || u_type == CCI_U_TYPE_ENUM || u_type == CCI_U_TYPE_JSON))
 	    {
 	      err_code = decode_result_col (col_p, data_size, &(tmp_tuple_value[i].column_ptr[j]), charset);
 
@@ -5728,6 +5729,7 @@ bind_value_conversion (T_CCI_A_TYPE a_type, T_CCI_U_TYPE u_type, char flag, void
 	case CCI_U_TYPE_VARNCHAR:
 	case CCI_U_TYPE_NUMERIC:
 	case CCI_U_TYPE_ENUM:
+	case CCI_U_TYPE_JSON:
 	  if (length == UNMEASURED_LENGTH)
 	    {
 	      bind_value->size = strlen ((const char *) value);
@@ -6632,6 +6634,7 @@ bind_value_to_net_buf (T_NET_BUF * net_buf, T_CCI_U_TYPE u_type, void *value, in
     case CCI_U_TYPE_NCHAR:
     case CCI_U_TYPE_VARNCHAR:
     case CCI_U_TYPE_ENUM:
+    case CCI_U_TYPE_JSON:
       if (value == NULL)
 	{
 	  ADD_ARG_BIND_STR (net_buf, "", 1, charset);

@@ -39,7 +39,7 @@
  * - the capacity of queue is fixed
  * - the actual maximum size is (capacity - 1)
  */
-namespace mem
+namespace cubmem
 {
   template <typename T>
   class collapsable_circular_queue
@@ -143,7 +143,7 @@ namespace mem
 
 	int last_element = (m_tail == 0) ? (m_capacity - 1) : (m_tail - 1);
 
-	assert (pos = last_element);
+	assert (pos == last_element);
 
 	assert (m_buffer[pos].flags == CCQ_USED);
 
@@ -219,6 +219,6 @@ namespace mem
       CCQ_SLOT *m_buffer;
   };
 
-} /* namespace mem */
+} /* namespace cubmem */
 
 #endif /* _COLLAPSABLE_CIRCULAR_QUEUE_HPP_ */

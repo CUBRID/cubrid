@@ -4124,7 +4124,7 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
 	    {
 	      char *val_print = NULL;
 
-	      val_print = pr_valstring (thread_p, key_dbvalue);
+	      val_print = pr_valstring (key_dbvalue);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, index->fk->fkname,
 		      (val_print ? val_print : "unknown value"));
 	      error_code = ER_FK_INVALID;
@@ -7749,7 +7749,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
   BTID btid;
   DB_VALUE *key_dbvalue, *key_ins_del = NULL;
   DB_VALUE dbvalue;
-  int dummy_unique;
+  int unique_pk;
   BTREE_UNIQUE_STATS *unique_stat_info;
   HEAP_IDX_ELEMENTS_INFO idx_info;
   char buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_buf;
@@ -7880,6 +7880,16 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 	      p_mvcc_rec_header = mvcc_rec_header;
 	    }
 
+	  unique_pk = 0;
+	  if (index->type == BTREE_UNIQUE || index->type == BTREE_REVERSE_UNIQUE)
+	    {
+	      unique_pk = BTREE_CONSTRAINT_UNIQUE;
+	    }
+	  else if (index->type == BTREE_PRIMARY_KEY)
+	    {
+	      unique_pk = BTREE_CONSTRAINT_UNIQUE | BTREE_CONSTRAINT_PRIMARY_KEY;
+	    }
+
 	  if (is_insert)
 	    {
 #if defined(ENABLE_SYSTEMTAP)
@@ -7894,10 +7904,19 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 		    }
 		}
 
+	      if (index->index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+		{
+		  /* Online index is currently loading. */
 	      error_code =
+		    btree_online_index_dispatcher (thread_p, &btid, key_dbvalue, class_oid, inst_oid, unique_pk,
+						   BTREE_OP_ONLINE_INDEX_TRAN_INSERT, NULL);
+		}
+	      else
+		{
+		  error_code =
 		btree_insert (thread_p, &btid, key_dbvalue, class_oid, inst_oid, op_type, unique_stat_info,
-			      &dummy_unique, p_mvcc_rec_header);
-
+				  &unique_pk, p_mvcc_rec_header);
+		}
 #if defined(ENABLE_SYSTEMTAP)
 	      CUBRID_IDX_INSERT_END (classname, index->btname, (error_code != NO_ERROR));
 #endif /* ENABLE_SYSTEMTAP */
@@ -7910,15 +7929,25 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 
 	      if (use_mvcc == true)
 		{
+		  if (index->index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+		    {
+		      /* Online index is currently loading. */
+		      error_code =
+			btree_online_index_dispatcher (thread_p, &btid, key_dbvalue, class_oid, inst_oid,
+						       unique_pk, BTREE_OP_ONLINE_INDEX_TRAN_DELETE, NULL);
+		    }
+		  else
+		    {
 		  /* in MVCC logical deletion means MVCC DEL_ID insertion */
 		  error_code =
 		    btree_mvcc_delete (thread_p, &btid, key_dbvalue, class_oid, inst_oid, op_type, unique_stat_info,
-				       &dummy_unique, p_mvcc_rec_header);
+					   &unique_pk, p_mvcc_rec_header);
+		}
 		}
 	      else
 		{
 		  error_code =
-		    btree_physical_delete (thread_p, &btid, key_dbvalue, inst_oid, class_oid, &dummy_unique, op_type,
+		    btree_physical_delete (thread_p, &btid, key_dbvalue, inst_oid, class_oid, &unique_pk, op_type,
 					   unique_stat_info);
 		  if (error_code != NO_ERROR)
 		    {
@@ -8253,7 +8282,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
   bool new_isnull, old_isnull;
   PR_TYPE *pr_type;
   OR_INDEX *index = NULL;
-  int i, j, k, num_btids, old_num_btids, unique;
+  int i, j, k, num_btids, old_num_btids, unique_pk;
   bool found_btid = true;
   BTREE_UNIQUE_STATS *unique_stat_info;
   HEAP_IDX_ELEMENTS_INFO new_idx_info;
@@ -8515,7 +8544,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 
       new_isnull = db_value_is_null (new_key);
       old_isnull = db_value_is_null (old_key);
-      pr_type = PR_TYPE_FROM_ID (dbval_type);
+      pr_type = pr_type_from_id (dbval_type);
       if (pr_type == NULL)
 	{
 	  error_code = ER_FAILED;
@@ -8573,14 +8602,38 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 							mvcc_rec_header);
 		  p_mvcc_rec_header = mvcc_rec_header;
 		}
+
+	      unique_pk = 0;
+	      if (index->type == BTREE_UNIQUE || index->type == BTREE_REVERSE_UNIQUE)
+		{
+		  unique_pk = BTREE_CONSTRAINT_UNIQUE;
+		}
+	      else if (index->type == BTREE_PRIMARY_KEY)
+		{
+		  unique_pk = BTREE_CONSTRAINT_UNIQUE | BTREE_CONSTRAINT_PRIMARY_KEY;
+		}
+
 	      if (do_delete_only)
 		{
+		  if (index->index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+		    {
+		      error_code =
+			btree_online_index_dispatcher (thread_p, &index->btid, old_key, class_oid, oid, unique_pk,
+						       BTREE_OP_ONLINE_INDEX_TRAN_DELETE, NULL);
+		      if (error_code != NO_ERROR)
+			{
+			  ASSERT_ERROR ();
+			  goto error;
+			}
+		    }
+		  else
+		    {		/* Not online index. */
 		  if (use_mvcc)
 		    {
 		      /* in MVCC logical deletion means MVCC DEL_ID insertion */
 		      error_code =
 			btree_mvcc_delete (thread_p, &old_btid, old_key, class_oid, oid, op_type, unique_stat_info,
-					   &unique, p_mvcc_rec_header);
+					       &unique_pk, p_mvcc_rec_header);
 		      if (error_code != NO_ERROR)
 			{
 			  assert (er_errid () != NO_ERROR);
@@ -8590,7 +8643,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 		  else
 		    {
 		      error_code =
-			btree_physical_delete (thread_p, &old_btid, old_key, oid, class_oid, &unique, op_type,
+			    btree_physical_delete (thread_p, &old_btid, old_key, oid, class_oid, &unique_pk, op_type,
 					       unique_stat_info);
 		      if (error_code != NO_ERROR)
 			{
@@ -8598,6 +8651,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 			  goto error;
 			}
 		    }
+		}
 		}
 	      else
 		{
@@ -8612,9 +8666,20 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 			    }
 			}
 
+		      if (index->index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+			{
+			  /* Online index loading on current index. */
 		      error_code =
+			    btree_online_index_dispatcher (thread_p, &index->btid, new_key, class_oid, oid,
+							   unique_pk, BTREE_OP_ONLINE_INDEX_TRAN_INSERT, NULL);
+			}
+		      else
+			{
+			  error_code =
 			btree_insert (thread_p, &old_btid, new_key, class_oid, oid, op_type, unique_stat_info,
-				      &unique, p_mvcc_rec_header);
+					  &unique_pk, p_mvcc_rec_header);
+			}
+
 		      if (error_code != NO_ERROR)
 			{
 			  ASSERT_ERROR ();
@@ -8623,9 +8688,31 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 		    }
 		  else
 		    {
+		      if (index->index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+			{
+			  /* Online index loading on current index. */
+			  /* This translates into a delete of the old key and an insert of the new key. */
+
+			  /* Delete old key. */
+
 		      error_code =
+			    btree_online_index_dispatcher (thread_p, &index->btid, old_key, class_oid, oid,
+							   unique_pk, BTREE_OP_ONLINE_INDEX_TRAN_DELETE, NULL);
+			  if (error_code != NO_ERROR)
+			    {
+			      goto error;
+			    }
+
+			  /* Insert new key. */
+			  error_code =
+			    btree_online_index_dispatcher (thread_p, &index->btid, new_key, class_oid, oid,
+							   unique_pk, BTREE_OP_ONLINE_INDEX_TRAN_INSERT, NULL);
+			}
+		      else
+			{
+			  error_code =
 			btree_update (thread_p, &old_btid, old_key, new_key, class_oid, oid, op_type,
-				      unique_stat_info, &unique, p_mvcc_rec_header);
+					  unique_stat_info, &unique_pk, p_mvcc_rec_header);
 
 		      if (error_code != NO_ERROR)
 			{
@@ -8633,6 +8720,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 			}
 		    }
 		}
+	    }
 	    }
 
 #if defined(ENABLE_SYSTEMTAP)
@@ -9253,6 +9341,8 @@ locator_repair_btree_by_delete (THREAD_ENTRY * thread_p, OID * class_oid, BTID *
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 #endif /* SERVER_MODE */
 
+  btree_init_temp_key_value (&clear_key, &key);
+
   if (btree_find_key (thread_p, btid, inst_oid, &key, &clear_key) != DISK_VALID)
     {
       return DISK_INVALID;
@@ -9465,7 +9555,7 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, HFID * hfid, 
 		    {
 		      char *key_dmp;
 
-		      key_dmp = pr_valstring (thread_p, key);
+		      key_dmp = pr_valstring (key);
 
 		      if (!OID_ISNULL (class_oid))
 			{
@@ -9915,7 +10005,7 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, OID * 
 			{
 			  char *key_dmp;
 
-			  key_dmp = pr_valstring (thread_p, key);
+			  key_dmp = pr_valstring (key);
 			  if (!OID_ISNULL (class_oid))
 			    {
 			      if (heap_get_class_name (thread_p, class_oid, &classname) != NO_ERROR)
@@ -12476,8 +12566,8 @@ locator_prefetch_index_page_internal (THREAD_ENTRY * thread_p, BTID * btid, OID 
       goto free_and_return;
     }
 
-  PR_SHARE_VALUE (key, &key_val_range.key1);
-  PR_SHARE_VALUE (key, &key_val_range.key2);
+  pr_share_value (key, &key_val_range.key1);
+  pr_share_value (key, &key_val_range.key2);
   key_val_range.range = GE_LE;
   key_val_range.num_index_term = 0;
 

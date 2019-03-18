@@ -57,6 +57,7 @@
 #include "serial.h"
 #include "show_scan.h"
 #include "boot_sr.h"
+#include "tz_support.h"
 #include "db_date.h"
 #include "dbtype.h"
 #if defined (SERVER_MODE)
@@ -67,6 +68,8 @@
 #endif /* defined (SA_MODE) */
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
+#include "xasl.h"
+#include "xasl_cache.h"
 
 #define RMUTEX_NAME_TDES_TOPOP "TDES_TOPOP"
 
@@ -238,7 +241,7 @@ logtb_allocate_tdes_area (int num_indices)
   int i, tran_index;
   size_t area_size;
 
-  /* 
+  /*
    * Allocate an area for the transaction descriptors, set the address of
    * each transaction descriptor, and keep the address of the area for
    * deallocation purposes at shutdown time.
@@ -258,7 +261,7 @@ logtb_allocate_tdes_area (int num_indices)
     }
   area->next = log_Gl.trantable.area;
 
-  /* 
+  /*
    * Initialize every newly created transaction descriptor index
    */
   for (i = 0, tran_index = NUM_TOTAL_TRAN_INDICES; i < num_indices; tran_index++, i++)
@@ -290,7 +293,7 @@ logtb_expand_trantable (THREAD_ENTRY * thread_p, int num_new_indices)
   MVCCTABLE *mvcc_table;
 
 #if defined(SERVER_MODE)
-  /* 
+  /*
    * When second time this function invoked during normal processing,
    * just return.
    */
@@ -325,7 +328,7 @@ logtb_expand_trantable (THREAD_ENTRY * thread_p, int num_new_indices)
   total_indices = NUM_TOTAL_TRAN_INDICES + num_new_indices;
 #endif
 
-  /* 
+  /*
    * NOTE that this realloc is OK since we are in a critical section.
    * Nobody should have pointer to transaction table
    */
@@ -345,7 +348,7 @@ logtb_expand_trantable (THREAD_ENTRY * thread_p, int num_new_indices)
       goto error;
     }
 
-  /* 
+  /*
    * Notify other modules of new number of transaction indices
    */
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -453,7 +456,7 @@ logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p, int num_expected_tran
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
-  /* 
+  /*
    * for XA support: there is prepared transaction after recovery.
    *                 so, can not recreate transaction description
    *                 table after recovery.
@@ -476,14 +479,14 @@ logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p, int num_expected_tran
       logtb_initialize_trantable (&log_Gl.trantable);
     }
 
-  /* 
+  /*
    * Create an area to keep the number of desired transaction descriptors
    */
 
   error_code = logtb_expand_trantable (thread_p, num_expected_tran_indices);
   if (error_code != NO_ERROR)
     {
-      /* 
+      /*
        * Unable to create transaction table to hold the desired number
        * of indices. Probably, a lot of indices were requested.
        * try again with defaults.
@@ -512,7 +515,7 @@ logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p, int num_expected_tran
 
   logtb_set_number_of_assigned_tran_indices (1);	/* sys tran */
 
-  /* 
+  /*
    * Assign the first entry for the system transaction. System transaction
    * has an infinite timeout
    */
@@ -660,13 +663,13 @@ logtb_undefine_trantable (THREAD_ENTRY * thread_p)
 
   if (log_Gl.trantable.area != NULL)
     {
-      /* 
+      /*
        * If any one of the transaction indices has coordinator info,
        * free this area
        */
       for (i = 0; i < NUM_TOTAL_TRAN_INDICES; i++)
 	{
-	  /* 
+	  /*
 	   * If there is any memory allocated in the transaction descriptor,
 	   * release it
 	   */
@@ -1037,7 +1040,7 @@ logtb_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid, TRAN_STATE stat
 	}
     }
 
-  /* 
+  /*
    * Note that we could have found the entry already and it may be stored in
    * tran_index.
    */
@@ -1372,7 +1375,7 @@ logtb_rv_find_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid, const L
       return worker->tdes;
     }
 
-  /* 
+  /*
    * If this is the first time, the transaction is seen. Assign a new
    * index to describe it and assume that the transaction was active
    * at the time of the crash, and thus it will be unilaterally aborted
@@ -1387,7 +1390,7 @@ logtb_rv_find_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid, const L
       tdes = LOG_FIND_TDES (tran_index);
       if (tran_index == NULL_TRAN_INDEX || tdes == NULL)
 	{
-	  /* 
+	  /*
 	   * Unable to assign a transaction index. The recovery process
 	   * cannot continue
 	   */
@@ -1454,7 +1457,7 @@ logtb_release_tran_index (THREAD_ENTRY * thread_p, int tran_index)
       MVCC_CLEAR_MVCC_INFO (&tdes->mvccinfo);
       TR_TABLE_CS_ENTER (thread_p);
 
-      /* 
+      /*
        * Free the top system operation stack since the transaction entry may
        * not be freed (i.e., left as loose end distributed transaction)
        */
@@ -4215,7 +4218,7 @@ start_get_mvcc_table:
 
   if (p_transaction_lowest_active_mvccid)
     {
-      /* 
+      /*
        *  First, by setting MVCCID_ALL_VISIBLE we will tell to VACUUM that transaction lowest MVCCID will be set soon.
        *  This is needed since setting p_transaction_lowest_active_mvccid is not an atomic operation (global
        * lowest_active_mvccid must be obtained first). We want to avoid a possible scenario (even if the chances
@@ -4230,7 +4233,7 @@ start_get_mvcc_table:
        *  less than the previously threshold
        */
       ATOMIC_TAS_64 (p_transaction_lowest_active_mvccid, MVCCID_ALL_VISIBLE);
-      /* 
+      /*
        * Is important that between next two code lines to not have delays (to not execute any other code).
        * Otherwise, VACUUM may delay, waiting more in logtb_get_oldest_active_mvccid.
        */
@@ -4554,7 +4557,7 @@ logtb_get_oldest_active_mvccid (THREAD_ENTRY * thread_p)
  * return: error code
  *
  *  thread_p(in):
- *  curr_mvcc_info(in/out): 
+ *  curr_mvcc_info(in/out):
  *    Note: This function get new MVCCID for current transaction. This means
  * extending bit area length with 1, reset corresponding bit in bit area,
  * and store MVCCID in curr_mvcc_info.
@@ -4903,7 +4906,7 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
 	{
 	  goto check_if_full_bitarea;
 	}
-      /* 
+      /*
        *  We need to cleanup bit area - called not too often. There are at least two
        * elements bits and at least the first block contains only committed
        * transactions (64 committed transactions).
@@ -4954,9 +4957,9 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
 	  goto end_completed;
 	}
 
-      /* 
+      /*
        * Search for long transactions. Remove committed transactions and add
-       * active transactions to long transactions array       
+       * active transactions to long transactions array
        */
       bit_area = current_trans_status->bit_area;
       count = MVCC_BITAREA_BITS_TO_ELEMENTS (bit_area_length);
@@ -5060,7 +5063,7 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
 
       pthread_mutex_unlock (&mvcc_table->active_trans_mutex);
 
-      /* 
+      /*
        *  Check whether advancing lowest_active_mvccid is possible. Normally, we have to advance only when
        * lowest_active_mvccid == mvccid. However, for safety reason, is better to also check bit_area_start_mvccid.
        *  If lowest_active_mvccid < bit_area_start_mvccid, it means that something wrong happened (except long
@@ -5121,7 +5124,7 @@ logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed)
 #else	/* !SA_MODE */	       /* SERVER_MODE */
       if (committed)
 	{
-	  /* There is one unique index that can be modified with no MVCCID being generated: db_serial primary key. This 
+	  /* There is one unique index that can be modified with no MVCCID being generated: db_serial primary key. This
 	   * could happen in a transaction that only does a create serial and commits. Next code makes sure serial
 	   * index statistics are reflected. */
 	  BTID serial_index_btid = BTID_INITIALIZER;
@@ -5914,7 +5917,7 @@ logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
     {
       goto check_if_full_bitarea;
     }
-  /* 
+  /*
    *  We need to cleanup bit area - called not too often. There are at least two
    * elements bits and at least the first block contains only committed
    * transactions (64 committed transactions).
@@ -5964,9 +5967,9 @@ check_if_full_bitarea:
       goto end_completed;
     }
 
-  /* 
+  /*
    * Search for long transactions. Remove committed transactions and add
-   * active transactions to long transactions array       
+   * active transactions to long transactions array
    */
   bit_area = current_trans_status->bit_area;
   count = MVCC_BITAREA_BITS_TO_ELEMENTS (bit_area_length);
@@ -6128,16 +6131,16 @@ end_completed:
  * logtb_get_highest_completed_mvccid - get highest completed MVCCID
  *
  * return: error code
- * 
+ *
  * bit_area(in): bit area
  * bit_area_length(in): bit area length
  * bit_area_start_mvccid(in): bit area start MVCCID
  * long_tran_mvccids(in): long time MVCCID array
  * long_tran_mvccids_length(in): long time MVCCID array length
  * highest_completed_position(out): highest completed position
- * 
+ *
  * Note: This function get the position in bit area of the highest completed
- *     MVCCID. If bit_area_length is 0 or all bits in bit area are 0 
+ *     MVCCID. If bit_area_length is 0 or all bits in bit area are 0
  *     the highest completed MVCCID is set to bit_area_start_mvccid - 1
  */
 void
@@ -6202,14 +6205,14 @@ logtb_get_highest_completed_mvccid (UINT64 * bit_area, int bit_area_length, MVCC
  * logtb_get_lowest_active_mvccid - get lowest active MVCID
  *
  * return: error code
- * 
+ *
  * bit_area(in): bit area
  * bit_area_length(in): bit area length
  * bit_area_start_mvccid(in): bit area start MVCCID
  * long_tran_mvccids(in): long time MVCCID array
  * long_tran_mvccids_length(in): long time MVCCID array length
  * lowest_active_mvccid(out): lowest active MVCCID
- * 
+ *
  * Note: This function get the lowest active MVCCID in bit area.
  *     If have long transactions (long_tran_mvccids not null),
  *     long_tran_mvccids[0] is the lowest active MVCCID. If bit_area_length is 0
@@ -6371,7 +6374,7 @@ logtb_global_unique_stat_key_copy (void *src, void *dest)
  *						   global structure for global
  *						   unique statistics
  *   return: error code
- *   thread_p  (in) : 
+ *   thread_p  (in) :
  */
 int
 logtb_initialize_global_unique_stats_table (THREAD_ENTRY * thread_p)
@@ -6425,7 +6428,7 @@ logtb_initialize_global_unique_stats_table (THREAD_ENTRY * thread_p)
  * logtb_finalize_global_unique_stats_table () - Finalize global structure for
  *						 global unique statistics
  *   return: error code
- *   thread_p  (in) : 
+ *   thread_p  (in) :
  */
 void
 logtb_finalize_global_unique_stats_table (THREAD_ENTRY * thread_p)
@@ -6553,7 +6556,7 @@ logtb_get_global_unique_stats (THREAD_ENTRY * thread_p, BTID * btid, int *num_oi
  *   return: error code
  *   thread_p  (in) :
  *   btid (in) : the btree id for which the statistics will be updated
- *   num_oids (in) : the new number of oids 
+ *   num_oids (in) : the new number of oids
  *   num_nulls (in) : the new number of nulls
  *   num_keys (in) : the new number of keys
  */
@@ -6602,7 +6605,7 @@ logtb_rv_update_global_unique_stats_by_abs (THREAD_ENTRY * thread_p, BTID * btid
  *   return: error code
  *   thread_p  (in) :
  *   btid (in) : the btree id for which the statistics will be updated
- *   oid_delta (in) : the delta of oids that will be added 
+ *   oid_delta (in) : the delta of oids that will be added
  *   null_delta (in) : the delta of nulls that will be added
  *   key_delta (in) : the delta of keys that will be added
  *   log (in) : true if we need to log the changes
@@ -6637,7 +6640,7 @@ logtb_update_global_unique_stats_by_delta (THREAD_ENTRY * thread_p, BTID * btid,
       char undo_rec_buf[(3 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE + BTREE_MAX_ALIGN], *datap = NULL;
       char redo_rec_buf[(3 * OR_INT_SIZE) + OR_BTID_ALIGNED_SIZE + BTREE_MAX_ALIGN];
 
-      /* although we don't change the btree header, we still need to log here the new values of statistics so that they 
+      /* although we don't change the btree header, we still need to log here the new values of statistics so that they
        * can be recovered at recover stage. For undo purposes we log the increments. */
       undo_rec.data = NULL;
       undo_rec.area_size = 3 * OR_INT_SIZE + OR_BTID_ALIGNED_SIZE;
@@ -6702,7 +6705,7 @@ logtb_update_global_unique_stats_by_delta (THREAD_ENTRY * thread_p, BTID * btid,
 /*
  * logtb_delete_global_unique_stats () - deletes the entry associated with
  *					 the given btid from global unique
- *					 statistics hash 
+ *					 statistics hash
  *   return: error code
  *   thread_p  (in) :
  *   btid (in) : the btree id for which the statistics entry will be deleted
@@ -7412,7 +7415,7 @@ xlogtb_kill_tran_index (THREAD_ENTRY * thread_p, int kill_tran_index, char *kill
   if (kill_tran_index == NULL_TRAN_INDEX || kill_user_p == NULL || kill_host_p == NULL || strcmp (kill_user_p, "") == 0
       || strcmp (kill_host_p, "") == 0)
     {
-      /* 
+      /*
        * Not enough information to kill specific transaction..
        *
        * For now.. I am setting an er_set..since I have so many files out..and
@@ -7548,7 +7551,7 @@ xlogtb_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_index, bool is_
 
   if (is_trx_exists == false)
     {
-      /* 
+      /*
        * Note that the following error will be ignored by
        * sthread_kill_or_interrupt_tran().
        */

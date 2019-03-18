@@ -32,7 +32,7 @@
 #include <assert.h>
 #include <bitset>
 
-namespace mem
+namespace cubmem
 {
   /*
    * Implementation of a enhanced Bipartite circular buffer : returns a contiguous memory for append
@@ -111,11 +111,17 @@ namespace mem
 	m_reserve_margin = margin;
       };
 
-      const char *reserve (const size_t amount)
+      const size_t get_reserve_margin (void)
+      {
+	return m_reserve_margin;
+      };
+
+      const char *reserve (const size_t amount, bool &need_read_range_adjust)
       {
 	const char *reserved_ptr = NULL;
 	bool need_take_margin = true;
 
+        need_read_range_adjust = false;
 	/* TODO : adaptive reserve margin */
 	/* TODO : a possible optimization would be to increase m_ptr_end_a with page increments,
 	 * instead of keeping it consistently ahead of append with a fixed amount */
@@ -142,6 +148,7 @@ namespace mem
 		activate_region_b ();
 	      }
 	    switch_to_region_b ();
+            need_read_range_adjust = true;
 	    /* fall through */
 	  }
 
@@ -150,6 +157,7 @@ namespace mem
 	    /* enough till end of buffer, but need to extend region A */
 	    take_margin_in_region_a (amount);
 	    need_take_margin = false;
+            need_read_range_adjust = true;
 	    /* fall through */
 	  }
 
@@ -167,6 +175,7 @@ namespace mem
 	if (need_take_margin)
 	  {
 	    take_margin_in_region_a (0);
+            need_read_range_adjust = true;
 	  }
 
 	return reserved_ptr;
@@ -201,7 +210,7 @@ namespace mem
 	return NO_ERROR;
       };
 
-      int start_read (const char *ptr, const size_t amount, mem::buffer_latch_read_id &latched_page_idx)
+      int start_read (const char *ptr, const size_t amount, cubmem::buffer_latch_read_id &latched_page_idx)
       {
 	int start_page_idx;
 
@@ -274,7 +283,7 @@ namespace mem
 	return NO_ERROR;
       };
 
-      int end_read (const mem::buffer_latch_read_id &page_idx)
+      int end_read (const cubmem::buffer_latch_read_id &page_idx)
       {
 	assert (page_idx >= 0 && page_idx < P);
 
@@ -517,6 +526,6 @@ namespace mem
       std::uint64_t m_cycles;
   };
 
-} /* namespace mem */
+} /* namespace cubmem */
 
 #endif /* _BIP_BUFFER_HPP_ */

@@ -84,7 +84,7 @@
 #include "show_meta.h"
 #include "tz_support.h"
 #include "dbtype.h"
-
+#include "object_primitive.h"
 
 #if defined(CS_MODE)
 #include "network.h"
@@ -1447,14 +1447,14 @@ boot_shutdown_client (bool is_er_final, BOOT_CLIENT_TERMINATION_MODE termination
     {
       if (termination_mode == BOOT_END_TRANSACTION)
 	{
-	  /*
+      /*
 	   * wait for other server request to finish.
 	   * if db_shutdown() is called by signal handler or atexit handler,
 	   * the server request may be running.
 	   */
 	  tran_wait_server_active_trans ();
 
-	  /*
+      /*
 	   * Either Abort or commit the current transaction depending upon the value
 	   * of the commit_on_shutdown system parameter.
 	   */
@@ -1591,6 +1591,14 @@ boot_client_all_finalize (bool is_er_final)
       if (boot_Server_credential.host_name)
 	{
 	  db_private_free_and_init (NULL, boot_Server_credential.host_name);
+	}
+      if (boot_Server_credential.lob_path)
+	{
+	  db_private_free_and_init (NULL, boot_Server_credential.lob_path);
+	}
+      if (boot_Server_credential.db_lang)
+	{
+	  db_private_free_and_init (NULL, boot_Server_credential.db_lang);
 	}
 
       showstmt_metadata_final ();
@@ -2989,7 +2997,8 @@ boot_add_data_type (MOP class_mop)
     NULL /* TABLE */ ,
     "BIGINT", "DATETIME",
     "BLOB", "CLOB", "ENUM",
-    "TIMESTAMPTZ", "TIMESTAMPLTZ", "DATETIMETZ", "DATETIMELTZ"
+    "TIMESTAMPTZ", "TIMESTAMPLTZ", "DATETIMETZ", "DATETIMELTZ",
+    "JSON"
   };
 
   for (i = 0; i < DB_TYPE_LAST; i++)

@@ -35,27 +35,7 @@
 namespace cubreplication
 {
   static const char *repl_entry_type_str[] = { "update", "insert", "delete" };
-
-  replication_object::replication_object()
-  {
-    LSA_SET_NULL (&m_lsa_stamp);
-  }
-
-  replication_object::replication_object (LOG_LSA &lsa_stamp)
-  {
-    LSA_COPY (&m_lsa_stamp, &lsa_stamp);
-  }
-
-  void replication_object::get_lsa_stamp (LOG_LSA &lsa_stamp)
-  {
-    LSA_COPY (&lsa_stamp, &m_lsa_stamp);
-  }
-
-  void replication_object::set_lsa_stamp (const LOG_LSA &lsa_stamp)
-  {
-    LSA_COPY (&m_lsa_stamp, &lsa_stamp);
-  }
-
+ 
   static LC_COPYAREA_OPERATION
   op_type_from_repl_type_and_prunning (repl_entry_type repl_type)
   {
@@ -76,6 +56,26 @@ namespace cubreplication
       }
 
     return LC_FETCH;
+  }
+
+  replication_object::replication_object ()
+  {
+    LSA_SET_NULL(&m_lsa_stamp);
+  }
+
+  replication_object::replication_object (LOG_LSA &lsa_stamp)
+  {
+    LSA_COPY(&m_lsa_stamp, &lsa_stamp);
+  }
+
+  void replication_object::get_lsa_stamp (LOG_LSA &lsa_stamp)
+  {
+    LSA_COPY(&lsa_stamp, &m_lsa_stamp);
+  }
+
+  void replication_object::set_lsa_stamp (const LOG_LSA &lsa_stamp)
+  {
+    LSA_COPY (&m_lsa_stamp, &lsa_stamp);
   }
 
   single_row_repl_entry::single_row_repl_entry (const repl_entry_type type, const char *class_name, LOG_LSA &lsa_stamp)
@@ -152,32 +152,30 @@ namespace cubreplication
   }  
 
   std::size_t
-  single_row_repl_entry::get_packed_size (cubpacking::packer *serializator, std::size_t start_offset)
+  single_row_repl_entry::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
     std::size_t entry_size = start_offset;
 
     /* we assume that offset start has already MAX_ALIGNMENT */
 
     /* type of RBR entry */
-    entry_size += serializator->get_packed_int_size (entry_size);
-    entry_size += serializator->get_packed_string_size (m_class_name, entry_size);
-    entry_size += serializator->get_packed_db_value_size (m_key_value, entry_size);
+    entry_size += serializator.get_packed_int_size (entry_size);
+    entry_size += serializator.get_packed_string_size (m_class_name, entry_size);
+    entry_size += serializator.get_packed_db_value_size (m_key_value, entry_size);
 
     return entry_size;
   }
 
-  int
-  single_row_repl_entry::pack (cubpacking::packer *serializator)
+  void
+  single_row_repl_entry::pack (cubpacking::packer &serializator) const
   {
-    serializator->pack_int ((int) m_type);
-    serializator->pack_string (m_class_name);
-    serializator->pack_db_value (m_key_value);
-
-    return NO_ERROR;
+    serializator.pack_int ((int) m_type);
+    serializator.pack_string (m_class_name);
+    serializator.pack_db_value (m_key_value);
   }
 
-  int
-  single_row_repl_entry::unpack (cubpacking::packer *serializator)
+  void
+  single_row_repl_entry::unpack (cubpacking::unpacker &deserializator)
   {
     int int_val;
     HL_HEAPID save_heapid;
@@ -185,22 +183,20 @@ namespace cubreplication
     save_heapid = db_change_private_heap (NULL, 0);
 
     /* RBR type */
-    serializator->unpack_int (&int_val);
+    deserializator.unpack_int (int_val);
     m_type = (repl_entry_type) int_val;
 
-    serializator->unpack_string (m_class_name);
+    deserializator.unpack_string (m_class_name);
 
-    serializator->unpack_db_value (&m_key_value);
+    deserializator.unpack_db_value (m_key_value);
 
     (void) db_change_private_heap (NULL, save_heapid);
-
-    return NO_ERROR;
   }
 
   void
   single_row_repl_entry::stringify (string_buffer &str)
   {
-    char *key_to_string = pr_valstring (NULL, &m_key_value);
+    char *key_to_string = pr_valstring (&m_key_value);
 
     str ("single_row_repl_entry(%s) key_type=%s key_dbvalue=%s table=%s\n", repl_entry_type_str[m_type],
 	 pr_type_name (DB_VALUE_TYPE (&m_key_value)), key_to_string,
@@ -247,44 +243,40 @@ namespace cubreplication
   }
 
   std::size_t
-  sbr_repl_entry::get_packed_size (cubpacking::packer *serializator, std::size_t start_offset)
+  sbr_repl_entry::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
     /* we assume that offset start has already MAX_ALIGNMENT */
 
     /* type of packed object */
     std::size_t entry_size = start_offset;
 
-    entry_size += serializator->get_packed_int_size (0);
+    entry_size += serializator.get_packed_int_size (0);
 
-    entry_size += serializator->get_packed_string_size (m_statement, entry_size);
-    entry_size += serializator->get_packed_string_size (m_db_user, entry_size);
-    entry_size += serializator->get_packed_string_size (m_sys_prm_context, entry_size);
+    entry_size += serializator.get_packed_string_size (m_statement, entry_size);
+    entry_size += serializator.get_packed_string_size (m_db_user, entry_size);
+    entry_size += serializator.get_packed_string_size (m_sys_prm_context, entry_size);
 
     return entry_size;
   }
 
-  int
-  sbr_repl_entry::pack (cubpacking::packer *serializator)
+  void
+  sbr_repl_entry::pack (cubpacking::packer &serializator) const
   {
-    serializator->pack_int (sbr_repl_entry::PACKING_ID);
-    serializator->pack_string (m_statement);
-    serializator->pack_string (m_db_user);
-    serializator->pack_string (m_sys_prm_context);
-
-    return NO_ERROR;
+    serializator.pack_int (sbr_repl_entry::PACKING_ID);
+    serializator.pack_string (m_statement);
+    serializator.pack_string (m_db_user);
+    serializator.pack_string (m_sys_prm_context);
   }
 
-  int
-  sbr_repl_entry::unpack (cubpacking::packer *serializator)
+  void
+  sbr_repl_entry::unpack (cubpacking::unpacker &deserializator)
   {
     int entry_type_not_used;
 
-    serializator->unpack_int (&entry_type_not_used);
-    serializator->unpack_string (m_statement);
-    serializator->unpack_string (m_db_user);
-    serializator->unpack_string (m_sys_prm_context);
-
-    return NO_ERROR;
+    deserializator.unpack_int (entry_type_not_used);
+    deserializator.unpack_string (m_statement);
+    deserializator.unpack_string (m_db_user);
+    deserializator.unpack_string (m_sys_prm_context);
   }
 
   void
@@ -346,32 +338,22 @@ namespace cubreplication
     return err;
   }
 
-  int
-  changed_attrs_row_repl_entry::pack (cubpacking::packer *serializator)
-  {
-    int rc = NO_ERROR;
-
-    rc = serializator->pack_int (changed_attrs_row_repl_entry::PACKING_ID);
-    if (rc != NO_ERROR)
-      {
-	assert (false);
-	return rc;
-      }
-
+  void
+  changed_attrs_row_repl_entry::pack (cubpacking::packer &serializator) const
+  {    
+    serializator.pack_int (changed_attrs_row_repl_entry::PACKING_ID);
     single_row_repl_entry::pack (serializator);
-    serializator->pack_int_vector (m_changed_attributes);
-    serializator->pack_int ((int) m_new_values.size ());
+    serializator.pack_int_vector (m_changed_attributes);
+    serializator.pack_int ((int) m_new_values.size ());
 
     for (std::size_t i = 0; i < m_new_values.size (); i++)
       {
-	serializator->pack_db_value (m_new_values[i]);
+	serializator.pack_db_value (m_new_values[i]);
       }
-
-    return NO_ERROR;
   }
 
-  int
-  changed_attrs_row_repl_entry::unpack (cubpacking::packer *serializator)
+  void
+  changed_attrs_row_repl_entry::unpack (cubpacking::unpacker &deserializator)
   {
     int count_new_values = 0;
     int int_val;
@@ -381,13 +363,13 @@ namespace cubreplication
     save_heapid = db_change_private_heap (NULL, 0);
 #endif
     /* create id */
-    serializator->unpack_int (&int_val);
+    deserializator.unpack_int (int_val);
 
-    single_row_repl_entry::unpack (serializator);
+    single_row_repl_entry::unpack (deserializator);
 
-    serializator->unpack_int_vector (m_changed_attributes);
+    deserializator.unpack_int_vector (m_changed_attributes);
 
-    serializator->unpack_int (&count_new_values);
+    deserializator.unpack_int (count_new_values);
 
     for (std::size_t i = 0; (int) i < count_new_values; i++)
       {
@@ -395,33 +377,31 @@ namespace cubreplication
 
 	/* this copies the DB_VALUE to contain, should we avoid this ? */
 	m_new_values.push_back (val);
-	serializator->unpack_db_value (&val);
+	deserializator.unpack_db_value (val);
       }
 
 #if defined (SERVER_MODE)
     (void) db_change_private_heap (NULL, save_heapid);
 #endif
-
-    return NO_ERROR;
   }
 
   std::size_t
-  changed_attrs_row_repl_entry::get_packed_size (cubpacking::packer *serializator, std::size_t start_offset)
+  changed_attrs_row_repl_entry::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
     /* we assume that offset start has already MAX_ALIGNMENT */
 
     /* type of packed object */
     std::size_t entry_size = start_offset;
 
-    entry_size += serializator->get_packed_int_size (0);
+    entry_size += serializator.get_packed_int_size (0);
 
     entry_size = single_row_repl_entry::get_packed_size (serializator, entry_size);
 
-    entry_size += serializator->get_packed_int_vector_size (entry_size, (int) m_changed_attributes.size ());
-    entry_size += serializator->get_packed_int_size (entry_size);
+    entry_size += serializator.get_packed_int_vector_size (entry_size, (int) m_changed_attributes.size ());
+    entry_size += serializator.get_packed_int_size (entry_size);
     for (std::size_t i = 0; i < m_new_values.size (); i++)
       {
-	entry_size += serializator->get_packed_db_value_size (m_new_values[i], entry_size);
+	entry_size += serializator.get_packed_db_value_size (m_new_values[i], entry_size);
       }
 
     return entry_size;
@@ -475,7 +455,7 @@ namespace cubreplication
 
     for (std::size_t i = 0; i < m_changed_attributes.size (); i++)
       {
-	char *key_to_string = pr_valstring (NULL, &m_new_values[i]);
+	char *key_to_string = pr_valstring (&m_new_values[i]);
 	assert (key_to_string != NULL);
 
 	str ("attr_id=%d type=%s value=%s\n", m_changed_attributes[i], pr_type_name (DB_VALUE_TYPE (&m_new_values[i])),
@@ -514,63 +494,36 @@ namespace cubreplication
     return err;
   }
 
-  int
-  rec_des_row_repl_entry::pack (cubpacking::packer *serializator)
+  void
+  rec_des_row_repl_entry::pack (cubpacking::packer &serializator) const
   {
-    int rc;
-
-    rc = serializator->pack_int (rec_des_row_repl_entry::PACKING_ID);
-    if (rc != NO_ERROR)
-      {
-	assert (false);
-	return rc;
-      }
-
+    serializator.pack_int (rec_des_row_repl_entry::PACKING_ID);
     (void) single_row_repl_entry::pack (serializator);
 
-    rc = m_rec_des.pack (serializator);
-    if (rc != NO_ERROR)
-      {
-	assert (false);
-	return rc;
-      }
-
-    return NO_ERROR;
+    m_rec_des.pack (serializator);
   }
 
-  int
-  rec_des_row_repl_entry::unpack (cubpacking::packer *serializator)
+  void
+  rec_des_row_repl_entry::unpack (cubpacking::unpacker &deserializator)
   {
-    int entry_type_not_used, rc;
+    int entry_type_not_used;
 
-    rc = serializator->unpack_int (&entry_type_not_used);
-    if (rc != NO_ERROR)
-      {
-	assert (false);
-	return rc;
+    deserializator.unpack_int (entry_type_not_used);
+
+    (void) single_row_repl_entry::unpack (deserializator);
+
+    m_rec_des.unpack (deserializator);
       }
-
-    (void) single_row_repl_entry::unpack (serializator);
-
-    rc = m_rec_des.unpack (serializator);
-    if (rc != NO_ERROR)
-      {
-	assert (false);
-	return rc;
-      }
-
-    return NO_ERROR;
-  }
 
   std::size_t
-  rec_des_row_repl_entry::get_packed_size (cubpacking::packer *serializator, std::size_t start_offset)
+  rec_des_row_repl_entry::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
     /* we assume that offset start has already MAX_ALIGNMENT */
 
     /* type of packed object */
     std::size_t entry_size = start_offset;
 
-    entry_size += serializator->get_packed_int_size (0);
+    entry_size += serializator.get_packed_int_size (0);
 
     entry_size = single_row_repl_entry::get_packed_size (serializator, entry_size);
     entry_size += m_rec_des.get_packed_size (serializator, entry_size);

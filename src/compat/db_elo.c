@@ -30,6 +30,7 @@
 #include "storage_common.h"
 #include "object_primitive.h"
 #include "db.h"
+#include "elo.h"
 #include "db_elo.h"
 #include "dbtype.h"
 

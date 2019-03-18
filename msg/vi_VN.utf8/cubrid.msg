@@ -1271,8 +1271,8 @@ $ LOADDB
 1202 Json PATH "%1$s" does not exist in %2$s
 1203 Invalid JSON type at path %1$s. Expected %2$s, but found %3$s.
 1204 Json KEY "%1$s" is duplicate
-1205 Reserved error for JSON.
-1206 Reserved error for JSON.
+1205 Invalid type %1$s. Expecting JSON document compatible data type (STRING or JSON).
+1206 Json PATH "%1$s" does not address a cell in an Json ARRAY.
 1207 Reserved error for JSON.
 1208 Reserved error for JSON.
 1209 Reserved error for JSON.
@@ -1283,10 +1283,10 @@ $ LOADDB
 1214 Reserved error for JSON.
 1215 No more data to read from stream %1$s at position %2$lld, amount %3$zu.
 1216 Invalid object id %1$d when trying to unpack.
-1217 Reserved error for stream/replication.
-1218 Reserved error for stream/replication.
-1219 Reserved error for stream/replication.
-1220 Reserved error for stream/replication.
+1217 Invalid read from stream file %1$s at position %2$lld, amount %3$lld.
+1218 Invalid write to stream file %1$s at position %2$lld, amount %3$lld.
+1219 Cannot read from stream volume %1$s at offset %2$lld, amount %3$lld.
+1220 Cannot write to stream volume %1$s at offset %2$lld, amount %3$lld.
 1221 Reserved error for stream/replication.
 1222 Reserved error for stream/replication.
 1223 Reserved error for stream/replication.
@@ -1304,8 +1304,13 @@ $ LOADDB
 1235 Reserved error for stream/replication.
 1236 Double Write Buffer is disabled.
 1237 Cannot change status on %1$s because %2$s is a %3$s.
+1238 Missing value for JSON_TABLE column '%1$s'.
+1239 Cannot coerce value from JSON "%1$s" at path "%2$s" to JSON_TABLE column "%3$s" of domain "%4$s". 
+1240 Online index is not allowed on classes that are part of a hierarchy chain.
+1241 XASL tree needs recompile.
+1242 Cannot create partition on a class that is part of a hierarchy chain.
 
-1238 Last Error
+1243 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
@@ -1461,6 +1466,8 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 125 invalid use of sessiontimezone\n sessiontimezone
 126 Maximum length of a class/vclass comment is %1$d bytes.
 127 Maximum length of a comment is %1$d bytes.
+128 Invalid number of arguments for JSON_OBJECTAGG
+129 PARALLEL count argument must be between %1$d and %2$d.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Out of memory.
@@ -1763,6 +1770,11 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 298 Recursive CTE '%1$s' must be referenced directly in its recursive query.
 299 Error in CTE '%1$s': The non-recursive part and the recursive part must be connected with UNION ALL.
 300 Subquery is not allowed in DEFAULT clause.
+301 Could not find signatures for function %1$s()
+302 Incompatible argument type %1$s, expected type is: %2$s.
+303 Unexpected number of arguments %1$d.
+304 Could not find compatible signature for function %1$s()
+305 Signature %1$s is not compatible with function arguments.
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 Out of virtual memory: unable to allocate %1$d bytes.

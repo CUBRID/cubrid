@@ -59,6 +59,7 @@ set(THREAD_HEADERS
 set(STREAM_SOURCES
   ${BASE_DIR}/cubstream.cpp
   ${BASE_DIR}/multi_thread_stream.cpp
+  ${BASE_DIR}/stream_file.cpp
   )
 set (STREAM_HEADERS
   ${BASE_DIR}/bip_buffer.hpp
@@ -66,7 +67,7 @@ set (STREAM_HEADERS
   ${BASE_DIR}/cubstream.hpp
   ${BASE_DIR}/multi_thread_stream.hpp
   ${BASE_DIR}/stream_entry.hpp
-  ${BASE_DIR}/stream_io.hpp
+  ${BASE_DIR}/stream_file.hpp
   )
 
 set(BASE_SOURCES
@@ -94,8 +95,10 @@ set(BASE_SOURCES
   ${BASE_DIR}/locale_support.c
   ${BASE_DIR}/lock_free.c
   ${BASE_DIR}/md5.c
+  ${BASE_DIR}/mem_block.cpp
   ${BASE_DIR}/memory_alloc.c
   ${BASE_DIR}/memory_hash.c
+  ${BASE_DIR}/memory_private_allocator.cpp
   ${BASE_DIR}/message_catalog.c
   ${BASE_DIR}/misc_string.c
   ${BASE_DIR}/mprec.c
@@ -122,14 +125,13 @@ set(BASE_SOURCES
   ${BASE_DIR}/xml_parser.c
   )
 set (BASE_HEADERS
-  ${BASE_DIR}/contiguous_memory_buffer.hpp
-  ${BASE_DIR}/db_private_allocator.hpp
   ${BASE_DIR}/error_code.h
   ${BASE_DIR}/error_context.hpp
   ${BASE_DIR}/error_manager.h
   ${BASE_DIR}/extensible_array.hpp
   ${BASE_DIR}/fileline_location.hpp
   ${BASE_DIR}/mem_block.hpp
+  ${BASE_DIR}/memory_private_allocator.hpp
   ${BASE_DIR}/packer.hpp
   ${BASE_DIR}/perf.hpp
   ${BASE_DIR}/perf_def.hpp
@@ -214,6 +216,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/query_executor.c
   ${QUERY_DIR}/query_manager.c
   ${QUERY_DIR}/query_opfunc.c
+  ${QUERY_DIR}/scan_json_table.cpp
   ${QUERY_DIR}/scan_manager.c
   ${QUERY_DIR}/serial.c
   ${QUERY_DIR}/set_scan.c
@@ -223,10 +226,12 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/vacuum.c
   ${QUERY_DIR}/xasl_cache.c
   )
+set(QUERY_HEADERS
+  ${QUERY_DIR}/scan_json_table.hpp
+  )
 
 set(OBJECT_SOURCES
   ${OBJECT_DIR}/elo.c
-  ${OBJECT_DIR}/object_print.c
   ${OBJECT_DIR}/set_object.c
   ${OBJECT_DIR}/object_representation.c
   ${OBJECT_DIR}/object_primitive.c
@@ -274,30 +279,44 @@ set(TRANSACTION_SOURCES
 set(STORAGE_SOURCES
   ${STORAGE_DIR}/btree.c
   ${STORAGE_DIR}/btree_load.c
-  ${STORAGE_DIR}/system_catalog.c
   ${STORAGE_DIR}/catalog_class.c
   ${STORAGE_DIR}/compactdb_sr.c
+  ${STORAGE_DIR}/double_write_buffer.c
   ${STORAGE_DIR}/disk_manager.c
-  ${STORAGE_DIR}/storage_common.c
+  ${STORAGE_DIR}/es.c
+  ${STORAGE_DIR}/es_common.c
+  ${STORAGE_DIR}/es_posix.c
   ${STORAGE_DIR}/extendible_hash.c
+  ${STORAGE_DIR}/external_sort.c
+  ${STORAGE_DIR}/file_io.c
   ${STORAGE_DIR}/file_manager.c
   ${STORAGE_DIR}/heap_file.c
-  ${STORAGE_DIR}/file_io.c
   ${STORAGE_DIR}/oid.c
   ${STORAGE_DIR}/overflow_file.c
   ${STORAGE_DIR}/page_buffer.c
-  ${STORAGE_DIR}/double_write_buffer.c
-  ${STORAGE_DIR}/statistics_sr.c
+  ${STORAGE_DIR}/record_descriptor.cpp
   ${STORAGE_DIR}/slotted_page.c
-  ${STORAGE_DIR}/external_sort.c
-  ${STORAGE_DIR}/es_common.c
-  ${STORAGE_DIR}/es.c
-  ${STORAGE_DIR}/es_posix.c
+  ${STORAGE_DIR}/statistics_sr.c
+  ${STORAGE_DIR}/storage_common.c
+  ${STORAGE_DIR}/system_catalog.c
   )
+set(STORAGE_HEADERS
+  ${STORAGE_DIR}/record_descriptor.hpp
+)
 
 set(SESSION_SOURCES
   ${SESSION_DIR}/session.c
   ${SESSION_DIR}/session_sr.c
+  )
+
+set(XASL_SOURCES
+  ${XASL_DIR}/access_json_table.cpp
+  ${XASL_DIR}/xasl_stream.cpp
+  )
+set(XASL_HEADERS
+  ${XASL_DIR}/access_json_table.hpp
+  ${XASL_DIR}/compile_context.h
+  ${XASL_DIR}/xasl_stream.hpp
   )
 
 list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)
@@ -338,6 +357,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${STORAGE_SOURCES}
   ${THREAD_SOURCES}
   ${TRANSACTION_SOURCES}
+  ${XASL_SOURCES}
   PROPERTIES LANGUAGE CXX
   )
 
@@ -366,6 +386,7 @@ set (CUBRID_LIB_SOURCES
   ${STREAM_SOURCES}
   ${THREAD_SOURCES}
   ${TRANSACTION_SOURCES}
+  ${XASL_SOURCES}
   )
 
 set (CUBRID_LIB_HEADERS
@@ -373,9 +394,12 @@ set (CUBRID_LIB_HEADERS
   ${COMMUNICATION_HEADERS}
   ${COMPAT_HEADERS}
   ${MONITOR_HEADERS}
+  ${QUERY_HEADERS}
   ${REPLICATION_HEADERS}
   ${THREAD_HEADERS}
+  ${STORAGE_HEADERS}
   ${STREAM_HEADERS}
+  ${XASL_HEADERS}
   )
 
 add_library(cubrid SHARED
@@ -459,6 +483,9 @@ install(FILES
 install(FILES
   ${COMPAT_DIR}/dbtype_def.h
   ${COMPAT_DIR}/dbtype_function.h
+  ${COMPAT_DIR}/db_date.h
+  ${COMPAT_DIR}/db_elo.h
+  ${COMPAT_DIR}/cache_time.h
   DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header  
   )
 install(FILES

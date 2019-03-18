@@ -32,11 +32,13 @@
 #include "memory_hash.h"
 #include "storage_common.h"
 #include "heap_file.h"
+#include "numeric_opfunc.h"
 #include "object_primitive.h"
 #include "server_interface.h"
 #include "xserver_interface.h"
 #include "slotted_page.h"
 #include "dbtype.h"
+#include "xasl_cache.h"
 
 #if !defined(SERVER_MODE)
 #define pthread_mutex_init(a, b)
@@ -239,7 +241,7 @@ xserial_get_current_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_n
 
   cur_val = heap_attrinfo_access (attrid, attr_info_p);
 
-  PR_SHARE_VALUE (cur_val, result_num);
+  pr_share_value (cur_val, result_num);
 
   heap_attrinfo_end (thread_p, attr_info_p);
 
@@ -669,32 +671,32 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
   attrid = serial_get_attrid (thread_p, SERIAL_ATTR_CURRENT_VAL_INDEX);
   assert (attrid != NOT_FOUND);
   val = heap_attrinfo_access (attrid, attr_info_p);
-  PR_SHARE_VALUE (val, &cur_val);
+  pr_share_value (val, &cur_val);
 
   attrid = serial_get_attrid (thread_p, SERIAL_ATTR_INCREMENT_VAL_INDEX);
   assert (attrid != NOT_FOUND);
   val = heap_attrinfo_access (attrid, attr_info_p);
-  PR_SHARE_VALUE (val, &inc_val);
+  pr_share_value (val, &inc_val);
 
   attrid = serial_get_attrid (thread_p, SERIAL_ATTR_MAX_VAL_INDEX);
   assert (attrid != NOT_FOUND);
   val = heap_attrinfo_access (attrid, attr_info_p);
-  PR_SHARE_VALUE (val, &max_val);
+  pr_share_value (val, &max_val);
 
   attrid = serial_get_attrid (thread_p, SERIAL_ATTR_MIN_VAL_INDEX);
   assert (attrid != NOT_FOUND);
   val = heap_attrinfo_access (attrid, attr_info_p);
-  PR_SHARE_VALUE (val, &min_val);
+  pr_share_value (val, &min_val);
 
   attrid = serial_get_attrid (thread_p, SERIAL_ATTR_CYCLIC_INDEX);
   assert (attrid != NOT_FOUND);
   val = heap_attrinfo_access (attrid, attr_info_p);
-  PR_SHARE_VALUE (val, &cyclic);
+  pr_share_value (val, &cyclic);
 
   attrid = serial_get_attrid (thread_p, SERIAL_ATTR_STARTED_INDEX);
   assert (attrid != NOT_FOUND);
   val = heap_attrinfo_access (attrid, attr_info_p);
-  PR_SHARE_VALUE (val, &started);
+  pr_share_value (val, &started);
 
   db_make_null (&last_val);
 
@@ -707,7 +709,7 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
       ret = heap_attrinfo_set (serial_oidp, attrid, &started, attr_info_p);
       if (ret == NO_ERROR)
 	{
-	  PR_SHARE_VALUE (&cur_val, &next_val);
+	  pr_share_value (&cur_val, &next_val);
 	  if (cached_num > 1)
 	    {
 	      assert (1 <= num_alloc);
@@ -768,7 +770,7 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
     }
 
   /* copy result value */
-  PR_SHARE_VALUE (&next_val, result_num);
+  pr_share_value (&next_val, result_num);
 
   pr_clear_value (&key_val);
 
@@ -792,7 +794,7 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
 	    }
 	  else
 	    {
-	      PR_SHARE_VALUE (&next_val, &cur_val);
+	      pr_share_value (&next_val, &cur_val);
 	      serial_set_cache_entry (entry, &inc_val, &cur_val, &min_val, &max_val, &started, &cyclic, &last_val,
 				      cached_num);
 	    }
@@ -854,7 +856,7 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
 
   /* need to start topop for replication Replication will recognize and realize a special type of update for serial by
    * this top operation log record. If lock_mode is X_LOCK means we created or altered the serial obj in an
-   * uncommitted trans For this case, topop and flush mark are not used, since these may cause problem with replication 
+   * uncommitted trans For this case, topop and flush mark are not used, since these may cause problem with replication
    * log. */
   if (lock_mode != X_LOCK)
     {
@@ -954,7 +956,7 @@ serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val
     }
   else
     {
-      PR_SHARE_VALUE (inc_val, &add_val);
+      pr_share_value (inc_val, &add_val);
     }
 
   /* inc_val_flag (1 or 0) */
@@ -976,7 +978,7 @@ serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val
 	{
 	  if (db_get_int (cyclic))
 	    {
-	      PR_SHARE_VALUE (min_val, result_val);
+	      pr_share_value (min_val, result_val);
 	    }
 	  else
 	    {
@@ -1007,7 +1009,7 @@ serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val
 	{
 	  if (db_get_int (cyclic))
 	    {
-	      PR_SHARE_VALUE (max_val, result_val);
+	      pr_share_value (max_val, result_val);
 	    }
 	  else
 	    {
@@ -1383,8 +1385,8 @@ serial_alloc_cache_area (int num)
  * return	 : Error Code.
  * thread_p (in) : Thread entry.
  *
- * NOTE that workspace manager is unavailable when restarting from backup. 
- * It is possible to allow SA_MODE executables except restoredb to use the function, 
+ * NOTE that workspace manager is unavailable when restarting from backup.
+ * It is possible to allow SA_MODE executables except restoredb to use the function,
  * however, it is better not to use it in SA_MODE for clarity.
  */
 int
@@ -1415,8 +1417,8 @@ serial_cache_index_btid (THREAD_ENTRY * thread_p)
  * return      : Void.
  * output (in) : Serial index btid.
  *
- * NOTE that workspace manager is unavailable when restarting from backup. 
- * It is possible to allow SA_MODE executables except restoredb to use the function, 
+ * NOTE that workspace manager is unavailable when restarting from backup.
+ * It is possible to allow SA_MODE executables except restoredb to use the function,
  * however, it is better not to use it in SA_MODE for clarity.
  */
 void

@@ -1687,7 +1687,7 @@ chksum_calculate_checksum (PARSER_CONTEXT * parser, const OID * class_oidp, cons
 
   query = (const char *) pt_get_varchar_bytes (checksum_query);
 
-  /* 
+  /*
    * write replication log first and release all locks
    * to avoid long lock wait of other concurrent clients on active server
    */

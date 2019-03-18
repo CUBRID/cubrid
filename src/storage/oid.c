@@ -1,19 +1,19 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -67,6 +67,7 @@ static OID oid_DB_root_class = { 0, 0, 0 };
 static OID oid_Rep_Read_Tran = { 0, (short int) 0x8000, 0 };
 
 const OID oid_Null_oid = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
+
 PAGEID oid_Next_tempid = NULL_PAGEID;
 
 /* ROOT_CLASS OID values. Set during restart/initialization.*/
@@ -111,7 +112,7 @@ OID_CACHE_ENTRY oid_Cache[OID_CACHE_SIZE] = {
  * oid_set_root() -  Set the value of the root oid to the given value
  *   return: void
  *   oid(in): Rootoid value
- *   
+ *
  * Note:  This function is used during restart/initialization.
  */
 void
@@ -140,7 +141,7 @@ oid_is_root (const OID * oid)
 /*
  * oid_set_serial () - Store serial class OID
  *
- * return   : 
+ * return   :
  * oid (in) :
  */
 void
@@ -152,7 +153,7 @@ oid_set_serial (const OID * oid)
 /*
  * ois_is_serial () - Compare OID with serial class OID.
  *
- * return : 
+ * return :
  * const OID * oid (in) :
  */
 bool
@@ -176,7 +177,7 @@ oid_get_serial_oid (OID * oid)
 /*
  * oid_set_partition () - Store _db_partition class OID
  *
- * return   : 
+ * return   :
  * oid (in) :
  */
 void
@@ -188,7 +189,7 @@ oid_set_partition (const OID * oid)
 /*
  * ois_is_partition () - Compare OID with partition class OID.
  *
- * return : 
+ * return :
  * const OID * oid (in) :
  */
 bool
@@ -302,7 +303,7 @@ oid_hash (const void *key_oid, unsigned int htsize)
 
 /*
  * oid_compare_equals() - Compare oids key for hashing
- *   return: 
+ *   return:
  *   key_oid1: First key
  *   key_oid2: Second key
  */
@@ -319,7 +320,7 @@ oid_compare_equals (const void *key_oid1, const void *key_oid2)
  * oid_is_cached_class_oid () - Compare OID with the cached OID identified by
  *				cache_id
  *
- * return : 
+ * return :
  * cache_id (in) :
  * oid (in) :
  */
@@ -344,7 +345,7 @@ oid_set_cached_class_oid (const int cache_id, const OID * oid)
 /*
  * oid_get_cached_class_name () - get the name of cached class
  *
- * return   : 
+ * return   :
  * cache_id (in) :
  */
 const char *
@@ -378,7 +379,7 @@ oid_is_cached_class_oid (const OID * class_oid)
 
 /*
  * oid_get_rep_read_tran_oid () - Get OID that is used for RR transactions
- *				  locking. 
+ *				  locking.
  *
  * return    : return the OID.
  */

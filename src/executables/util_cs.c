@@ -56,6 +56,7 @@
 #include "locator_cl.h"
 #include "dynamic_array.h"
 #include "util_func.h"
+#include "xasl.h"
 #if !defined(WINDOWS)
 #include "heartbeat.h"
 #endif
@@ -1335,13 +1336,13 @@ dump_trantb (TRANS_INFO * info, TRANDUMP_LEVEL dump_level)
 
   if (info != NULL && info->num_trans > 0)
     {
-      /* 
+      /*
        * remember that we have to print the messages one at a time, mts_
        * reuses the message buffer on each call.
        */
       for (i = 0; i < info->num_trans; i++)
 	{
-	  /* 
+	  /*
 	   * Display transactions in transaction table that seems to be valid
 	   */
 	  if (isvalid_transaction (&info->tran[i]))
@@ -1463,7 +1464,7 @@ kill_transactions (TRANS_INFO * info, int *tran_index_list, int list_size, const
 
   if (i >= info->num_trans)
     {
-      /* 
+      /*
        * There is not matches
        */
       PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_KILLTRAN, KILLTRAN_MSG_NO_MATCHES));
@@ -1477,7 +1478,7 @@ kill_transactions (TRANS_INFO * info, int *tran_index_list, int list_size, const
       else
 	{
 	  ok = 0;
-	  /* 
+	  /*
 	   * display the transactin identifiers that we are about to kill
 	   */
 	  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_KILLTRAN, KILLTRAN_MSG_READY_TO_KILL));
@@ -1523,7 +1524,7 @@ kill_transactions (TRANS_INFO * info, int *tran_index_list, int list_size, const
 		    }
 		  else
 		    {
-		      /* 
+		      /*
 		       * Fail to kill the transaction
 		       */
 		      if (nfailures == 0)
@@ -1686,7 +1687,7 @@ tranlist (UTIL_FUNCTION_ARG * arg)
 
       if (error == ER_AU_INVALID_PASSWORD && password == NULL)
 	{
-	  /* 
+	  /*
 	   * prompt for a valid password and try again, need a reusable
 	   * password prompter so we can use getpass() on platforms that
 	   * support it.
@@ -1722,7 +1723,7 @@ tranlist (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  /* 
+  /*
    * Get the current state of transaction table information. All the
    * transaction kills are going to be based on this information. The
    * transaction information may be changed back in the server if there
@@ -1878,7 +1879,7 @@ killtran (UTIL_FUNCTION_ARG * arg)
     {
       if (error == ER_AU_INVALID_PASSWORD && (dba_password == NULL || strlen (dba_password) == 0))
 	{
-	  /* 
+	  /*
 	   * prompt for a valid password and try again, need a reusable
 	   * password prompter so we can use getpass() on platforms that
 	   * support it.
@@ -1910,7 +1911,7 @@ killtran (UTIL_FUNCTION_ARG * arg)
 	}
     }
 
-  /* 
+  /*
    * Get the current state of transaction table information. All the
    * transaction kills are going to be based on this information. The
    * transaction information may be changed back in the server if there
@@ -2685,6 +2686,7 @@ copylogdb (UTIL_FUNCTION_ARG * arg)
 
 	  return EXIT_FAILURE;
 	}
+      er_set_ignore_uninit (true);
     }
 #endif
 
@@ -2891,6 +2893,7 @@ applylogdb (UTIL_FUNCTION_ARG * arg)
 	    }
 	  return EXIT_FAILURE;
 	}
+      er_set_ignore_uninit (true);
     }
 
   if (HA_GET_MODE () == HA_MODE_REPLICA)

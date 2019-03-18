@@ -19,7 +19,7 @@
 
 
 /*
- * broker_proxy_conn.h - 
+ * broker_proxy_conn.h -
  *
  */
 

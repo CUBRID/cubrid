@@ -47,6 +47,8 @@ namespace cubreplication
       static void init (const char *name);
       static void new_slave (int fd);
       static void final (void);
+
+      static void update_senders_min_position (const cubstream::stream_position &pos);
   };
 
 } /* namespace cubreplication */

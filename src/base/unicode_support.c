@@ -867,7 +867,7 @@ unicode_process_normalization (LOCALE_DATA * ld, bool is_verbose)
 	}
     }
 
-  /* Sort/group the decompositions in list_unicode_decomp_maps by the value of the first codepoint in each mapping. The 
+  /* Sort/group the decompositions in list_unicode_decomp_maps by the value of the first codepoint in each mapping. The
    * grouping is necessary for optimizing the future search for possible decompositions when putting a string in fully
    * composed form. */
   qsort (temp_list_unicode_decomp_maps, norm->unicode_mappings_count, sizeof (UNICODE_CP_MAPPING),
@@ -1236,7 +1236,7 @@ unicode_compose_string (const char *str_in, const int size_in, char *str_out, in
 	    }
 	}
 
-      /* If no composition can be matched to start with the decoded codepoint, just copy the bytes corresponding to the 
+      /* If no composition can be matched to start with the decoded codepoint, just copy the bytes corresponding to the
        * codepoint from the input string to the output, adjust pointers and loop again. */
     match_not_found:
       if (!match_found)

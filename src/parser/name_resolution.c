@@ -26,6 +26,7 @@
 #include "config.h"
 
 #include <assert.h>
+#include <unordered_map>
 
 #include "porting.h"
 #include "error_manager.h"
@@ -34,6 +35,7 @@
 #include "semantic_check.h"
 #include "dbtype.h"
 #include "object_domain.h"
+#include "object_primitive.h"
 #include "memory_alloc.h"
 #include "intl_support.h"
 #include "memory_hash.h"
@@ -54,6 +56,7 @@
 extern "C"
 {
   extern int parser_function_code;
+  extern size_t json_table_column_count;
 }
 
 #define PT_NAMES_HASH_SIZE                50
@@ -128,6 +131,10 @@ static int pt_find_name_in_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NOD
 static int pt_check_unique_exposed (PARSER_CONTEXT * parser, const PT_NODE * p);
 static PT_NODE *pt_common_attribute (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE * q);
 static PT_NODE *pt_get_all_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * cls, PT_NODE * from);
+static PT_NODE *pt_get_all_json_table_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * json_table_node,
+							    const char *json_table_alias);
+static PT_NODE *pt_json_table_gather_attribs (PARSER_CONTEXT * parser, PT_NODE * json_table_node, void *args,
+					      int *continue_walk);
 static PT_NODE *pt_get_all_showstmt_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * derived_table);
 static void pt_get_attr_data_type (PARSER_CONTEXT * parser, DB_ATTRIBUTE * att, PT_NODE * attr);
 static PT_NODE *pt_unwhacked_spec (PARSER_CONTEXT * parser, PT_NODE * scope, PT_NODE * spec);
@@ -175,6 +182,7 @@ static void pt_bind_names_merge_insert (PARSER_CONTEXT * parser, PT_NODE * node,
 static void pt_bind_names_merge_update (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NAMES_ARG * bind_arg,
 					SCOPES * scopestack, PT_EXTRA_SPECS_FRAME * specs_frame);
 static const char *pt_get_unique_exposed_name (PARSER_CONTEXT * parser, PT_NODE * first_spec);
+static PT_NODE *pt_bind_name_to_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 
 static PT_NODE *pt_resolve_natural_join (PARSER_CONTEXT * parser, PT_NODE * node, void *chk_parent, int *continue_walk);
 
@@ -527,7 +535,7 @@ pt_bind_parameter_path (PARSER_CONTEXT * parser, PT_NODE * path)
 	{
 	  return NULL;
 	}
-      /* If we succesfully resolved the parameter, mark the right hand side as parameter too. This will be evaluated at 
+      /* If we succesfully resolved the parameter, mark the right hand side as parameter too. This will be evaluated at
        * run time. */
       path->info.dot.arg1 = arg1;
       path->info.dot.arg2->info.name.meta_class = PT_PARAMETER;
@@ -967,7 +975,7 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 
       if (PT_SPEC_IS_DERIVED (spec))
 	{
-	  /* evaluate the names of the current table. The name scope of the first spec, is only the outer level scopes. The 
+	  /* evaluate the names of the current table. The name scope of the first spec, is only the outer level scopes. The
 	   * outer scopes are pointed to by scopes->next. The null "scopes" spec is kept to maintain correlation level
 	   * calculation.
 	   */
@@ -975,7 +983,19 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 
 	  assert (!PT_SPEC_IS_ENTITY (spec) && !PT_SPEC_IS_CTE (spec));
 	  table = spec->info.spec.derived_table;
-	  table = parser_walk_tree (parser, table, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
+	  if (table->node_type == PT_JSON_TABLE)
+	    {
+	      assert (spec->info.spec.derived_table_type == PT_DERIVED_JSON_TABLE);
+	      table->info.json_table_info.expr =
+		parser_walk_tree (parser, table->info.json_table_info.expr, pt_bind_names, bind_arg, pt_bind_names_post,
+				  bind_arg);
+	      table->info.json_table_info.tree =
+		parser_walk_tree (parser, table->info.json_table_info.tree, pt_bind_name_to_spec, spec, NULL, NULL);
+	    }
+	  else
+	    {
+	      table = parser_walk_tree (parser, table, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
+	    }
 	  spec->info.spec.derived_table = table;
 
 	  /* must bind any expr types in table. pt_bind_types requires it. */
@@ -1216,7 +1236,7 @@ pt_bind_names_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 	      }
 	    else
 	      {
-		/* 
+		/*
 		 * pt_value_to_db has already filled the contents
 		 * of node->info.value.db_value; we don't need to
 		 * repeat that work here.
@@ -1230,7 +1250,7 @@ pt_bind_names_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 	else
 	  {
 	    PT_NODE *arg_list = node->info.value.data_value.set;
-	    /* roll back error messages for set values. this is a set function reference, which we just realized, since 
+	    /* roll back error messages for set values. this is a set function reference, which we just realized, since
 	     * the syntax for constant sets and set functions is the same. Convert the node to a set function. */
 	    node->node_type = PT_FUNCTION;
 	    /* make info set up properly */
@@ -1448,7 +1468,7 @@ pt_set_fill_default_in_path_expression (PT_NODE * node)
 
       /* We also need to clear the spec id because this PT_NAME node might be a copy of a node that has been resolved
        * without filling in the default value. The parser_copy_tree() call in
-       * fill_in_insert_default_function_arguments() is an example. We mark the current node as not resolved so that it 
+       * fill_in_insert_default_function_arguments() is an example. We mark the current node as not resolved so that it
        * is resolved again, this time filling in the default value. */
       node->info.name.spec_id = 0;
     }
@@ -1514,7 +1534,7 @@ fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser, PT_NODE * co
 
   for (crt_list = values_list; crt_list != NULL; crt_list = crt_list->next)
     {
-      /* 
+      /*
        * If the statement such as "INSERT INTO tbl DEFAULT" is given,
        * we rewrite it to "INSERT INTO tbl VALUES (DEFAULT, DEFAULT, ...)"
        * to support "server-side insertion" simply.
@@ -1682,7 +1702,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	}
 
       /* 0-step: check for hints that can affect name resolving. some hints are supposed to change the result type by
-       * obtaining record information or page header information and so on. In these cases, names will be resolved to a 
+       * obtaining record information or page header information and so on. In these cases, names will be resolved to a
        * set of reserved names for each type of results. The query spec must be marked accordingly. NOTE: These hints
        * can be applied on single-spec queries. If this is a joined-spec query, just ignore the hints. */
       if (node->info.query.q.select.from != NULL && node->info.query.q.select.from->next == NULL)
@@ -1739,7 +1759,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	    }
 	}
 
-      /* resolve '*' for rewritten multicolumn subquery during parsing STEP 1: remove sequence from select_list STEP 2: 
+      /* resolve '*' for rewritten multicolumn subquery during parsing STEP 1: remove sequence from select_list STEP 2:
        * resolve '*', if exists STEP 3: restore sequence */
 
       /* STEP 1 */
@@ -1953,7 +1973,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
       /* pop the extra spec frame and add any extra specs to the from list */
       node->info.query.q.select.from = parser_append_node (spec_frame.extra_specs, node->info.query.q.select.from);
 
-      /* 
+      /*
        * Oracle style outer join support: convert to ANSI standard style
        * only permit the following predicate
        * 'single_column(+) op expression_'
@@ -2842,7 +2862,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
       break;
 
     case PT_METHOD_CALL:
-      /* 
+      /*
        * We accept two different method call syntax:
        *      1) method_name(...) on target
        *      2) method_name(target, ...)
@@ -2873,7 +2893,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	  node->info.method_call.method_name->info.name.spec_id = (UINTPTR) node->info.method_call.method_name;
 	  node->info.method_call.method_name->info.name.meta_class = PT_METHOD;
 
-	  /* 
+	  /*
 	   * bind the names in the method arguments and target, their
 	   * scope will be the same as the method node's scope
 	   */
@@ -2991,7 +3011,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 
 	  if (node->info.function.function_type == PT_GENERIC)
 	    {
-	      /* 
+	      /*
 	       * It may be a method call since they are parsed as
 	       * nodes PT_FUNCTION.  If so, pt_make_method_call() will
 	       * translate it into a method_call.
@@ -3600,6 +3620,16 @@ pt_find_name_in_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * name)
 	    }
 	  name->info.name.spec_id = spec->info.spec.id;
 	  name->info.name.meta_class = PT_NORMAL;
+
+	  if (spec->info.spec.derived_table_type == PT_DERIVED_JSON_TABLE)
+	    {
+	      // calling default() on any json_table's columns should return NULL
+	      // set PT_NAME_DEFAULTF_ACCEPTS flag to pass pt_check_defaultf()
+	      DB_VALUE val;
+	      db_make_null (&val);
+	      name->info.name.default_value = pt_dbval_to_value (parser, &val);
+	      PT_NAME_INFO_SET_FLAG (name, PT_NAME_DEFAULTF_ACCEPTS);
+	    }
 	}
     }
 
@@ -3771,7 +3801,7 @@ pt_check_unique_exposed (PARSER_CONTEXT * parser, const PT_NODE * p)
 
 	      if (p_type != q_type && (p_type == PT_META_CLASS || q_type == PT_META_CLASS))
 		{
-		  /* this happens in statements like: SELECT class t, t.attr FROM t which are rewriten to: SELECT class 
+		  /* this happens in statements like: SELECT class t, t.attr FROM t which are rewriten to: SELECT class
 		   * t, t.attr FROM t, class t In this context, t is different from class t and we should not flag an
 		   * error */
 		  q = q->next;	/* check the next one inner loop */
@@ -4040,7 +4070,7 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
 	    {
 	      if (result)
 		{
-		  /* 
+		  /*
 		   * We want to make sure that the flat name list
 		   * hanging off of the first PT_DATA_TYPE node is the
 		   * union of all flat name lists from all nodes in
@@ -4064,7 +4094,7 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
 	}
       result_last_node = NULL;
 
-      /* 
+      /*
        * Now run back over the flattened name list and ensure that
        * they all have the same spec id.
        */
@@ -4346,6 +4376,77 @@ on_error:
   return NULL;
 }
 
+static PT_NODE *
+pt_json_table_gather_attribs (PARSER_CONTEXT * parser, PT_NODE * json_table_column, void *args, int *continue_walk)
+{
+  PT_NODE **attribs = (PT_NODE **) args;
+
+  if (json_table_column->node_type == PT_JSON_TABLE_COLUMN)
+    {
+      PT_NODE *next_attr = json_table_column->info.json_table_column_info.name;
+      next_attr->type_enum = json_table_column->type_enum;
+      next_attr->info.name.json_table_column_index = json_table_column->info.json_table_column_info.index;
+      if (json_table_column->data_type != NULL)
+	{
+	  next_attr->data_type = parser_copy_tree (parser, json_table_column->data_type);
+	}
+      *attribs = parser_append_node (next_attr, *attribs);
+    }
+
+  return json_table_column;
+}
+
+static PT_NODE *
+pt_get_all_json_table_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * json_table_node,
+					    const char *json_table_alias)
+{
+  PT_NODE *attribs = NULL;
+  PT_NODE *copy_node = NULL;
+
+  parser_walk_tree (parser, json_table_node, pt_json_table_gather_attribs, &attribs, NULL, NULL);
+
+  if (attribs == NULL)
+    {
+      assert (false);
+      return NULL;
+    }
+
+  // *INDENT-OFF*
+  std::unordered_map<size_t, PT_NODE *> sorted_attrs;
+  // *INDENT-ON*
+
+  for (PT_NODE * attr = attribs; attr; attr = attr->next)
+    {
+      size_t index = attr->info.name.json_table_column_index;
+      assert (strcmp (json_table_alias, attr->info.name.resolved) == 0);
+
+      // we need copies of the actual names
+      copy_node = pt_name (parser, attr->info.name.original);
+      copy_node->type_enum = attr->type_enum;
+      copy_node->info.name.resolved = json_table_alias;
+      if (attr->data_type != NULL)
+	{
+	  copy_node->data_type = parser_copy_tree (parser, attr->data_type);
+	}
+      sorted_attrs[index] = copy_node;	// we have to copy, cannot use same node
+    }
+
+  size_t columns_nr = sorted_attrs.size ();
+
+  for (unsigned int i = 0; i < columns_nr - 1; i++)
+    {
+      if (sorted_attrs[i] == NULL)
+	{
+	  assert (false);
+	  return NULL;
+	}
+      sorted_attrs[i]->next = sorted_attrs[i + 1];
+    }
+  sorted_attrs[columns_nr - 1]->next = NULL;
+
+  return sorted_attrs[0];
+}
+
 /*
  * pt_get_all_showstmt_attributes_and_types () -
  *   return:  show list attributes list if all OK, NULL otherwise.
@@ -4495,7 +4596,7 @@ pt_resolve_correlation (PARSER_CONTEXT * parser, PT_NODE * in_node, PT_NODE * sc
   /* If so, name resolves to scope's flat list of entities */
   if (exposed_spec)
     {
-      /* the exposed name of a derived table or a CTE may not be used alone, ie, "select e from (select a from c) e" 
+      /* the exposed name of a derived table or a CTE may not be used alone, ie, "select e from (select a from c) e"
        * is disallowed. */
       if (col_name && (PT_SPEC_IS_DERIVED (exposed_spec) || PT_SPEC_IS_CTE (exposed_spec))
 	  && exposed_spec->info.spec.range_var != in_node)
@@ -4562,7 +4663,7 @@ pt_resolve_correlation (PARSER_CONTEXT * parser, PT_NODE * in_node, PT_NODE * sc
       corr_name->info.name.resolved = exposed_spec->info.spec.range_var->info.name.original;
       if (PT_IS_SPEC_REAL_TABLE (exposed_spec))
 	{
-	  PT_NAME_INFO_SET_FLAG (corr_name, PT_NAME_REAL_TABLE);
+	  PT_NAME_INFO_SET_FLAG (corr_name, PT_NAME_DEFAULTF_ACCEPTS);
 	}
 
       /* attach the data type */
@@ -4712,7 +4813,7 @@ pt_get_resolution (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg, PT_NOD
       else
 	{
 	  /* We are on the left of a dot node. (because we are recursing) Here, correlation names have precedence over
-	   * column names. (for ANSI compatibility). For unqualified names, column names have precedence. For qualifier 
+	   * column names. (for ANSI compatibility). For unqualified names, column names have precedence. For qualifier
 	   * names, correlation names have precedence. */
 	  exposed_spec = pt_is_correlation_name (parser, scope, in_node);
 	  if (exposed_spec)
@@ -4744,7 +4845,7 @@ pt_get_resolution (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg, PT_NOD
 
 	  if (PT_IS_SPEC_REAL_TABLE (savespec))
 	    {
-	      PT_NAME_INFO_SET_FLAG (in_node, PT_NAME_REAL_TABLE);
+	      PT_NAME_INFO_SET_FLAG (in_node, PT_NAME_DEFAULTF_ACCEPTS);
 	    }
 
 	  savespec = pt_unwhacked_spec (parser, scope, savespec);
@@ -4815,7 +4916,7 @@ pt_get_resolution (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg, PT_NOD
 	      in_node->info.name.meta_class = PT_META_CLASS;
 	      in_node->info.name.spec_id = class_spec->info.spec.id;
 	      in_node->info.name.resolved = class_spec->info.spec.range_var->info.name.original;
-	      PT_NAME_INFO_SET_FLAG (in_node, PT_NAME_REAL_TABLE);
+	      PT_NAME_INFO_SET_FLAG (in_node, PT_NAME_DEFAULTF_ACCEPTS);
 	      /* attach the data type */
 	      in_node->type_enum = PT_TYPE_OBJECT;
 	      if (class_spec->info.spec.flat_entity_list)
@@ -4935,9 +5036,9 @@ pt_get_resolution (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg, PT_NOD
 	    {
 	      /* only mark it resolved if it was found! transfer the info from arg1 to arg2 */
 	      arg2->info.name.resolved = arg1->info.name.resolved;
-	      if (PT_NAME_INFO_IS_FLAGED (arg1, PT_NAME_REAL_TABLE))
+	      if (PT_NAME_INFO_IS_FLAGED (arg1, PT_NAME_DEFAULTF_ACCEPTS))
 		{
-		  PT_NAME_INFO_SET_FLAG (arg2, PT_NAME_REAL_TABLE);
+		  PT_NAME_INFO_SET_FLAG (arg2, PT_NAME_DEFAULTF_ACCEPTS);
 		}
 	      /* don't loose list */
 	      arg2->next = in_node->next;
@@ -4992,9 +5093,9 @@ pt_get_resolution (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg, PT_NOD
 
 	      /* A meta class attribute, transfer the class info from arg1 to arg2 */
 	      arg2->info.name.resolved = arg1->info.name.resolved;
-	      if (PT_NAME_INFO_IS_FLAGED (arg1, PT_NAME_REAL_TABLE))
+	      if (PT_NAME_INFO_IS_FLAGED (arg1, PT_NAME_DEFAULTF_ACCEPTS))
 		{
-		  PT_NAME_INFO_SET_FLAG (arg2, PT_NAME_REAL_TABLE);
+		  PT_NAME_INFO_SET_FLAG (arg2, PT_NAME_DEFAULTF_ACCEPTS);
 		}
 	      /* don't lose list */
 	      arg2->next = in_node->next;
@@ -5120,7 +5221,7 @@ pt_get_resolution (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg, PT_NOD
 			    }
 			}
 		    }
-		  /* make sure the selector variable refers to an entity spec that is a subclass of the arg1->data_type 
+		  /* make sure the selector variable refers to an entity spec that is a subclass of the arg1->data_type
 		   * class. */
 		  if (!pt_has_error (parser) && arg1->data_type && arg1->data_type->node_type == PT_DATA_TYPE
 		      && (arg1dt = arg1->data_type->info.data_type.entity) && arg1dt->node_type == PT_NAME
@@ -5637,7 +5738,7 @@ pt_make_subclass_list (PARSER_CONTEXT * parser, DB_OBJECT * db, int line_num, in
       return NULL;
     }				/* not a class name (error) */
 
-  /* Check to see if this classname is already known, and only add a (name) node if we have never seen it before. Note: 
+  /* Check to see if this classname is already known, and only add a (name) node if we have never seen it before. Note:
    * Even if we have visited it, we still need to recursively check its subclasses (see dbl below) in order to maintain
    * the correct ordering of classnames found via our depth-first search. */
   if (names_mht == NULL || !mht_get (names_mht, classname))
@@ -5678,7 +5779,7 @@ pt_make_subclass_list (PARSER_CONTEXT * parser, DB_OBJECT * db, int line_num, in
   dbl = NULL;
   dbl = db_get_subclasses (db);
 
-  /* 
+  /*
    * Build a hash table for all class and subclass names.  This
    * helps us keep from building pt_name nodes for classes we
    * already know about.  Also we only need to build the hash table if
@@ -6042,7 +6143,7 @@ pt_must_have_exposed_name (PARSER_CONTEXT * parser, PT_NODE * p)
 	      else
 		{
 		  const char *unique_exposed_name;
-		  /* 
+		  /*
 		   * Was sublist, they didn't give a correlation variable name so We generate a unique name and attach
 		   * it. */
 		  r = parser_new_node (parser, PT_NAME);
@@ -6079,7 +6180,7 @@ pt_must_have_exposed_name (PARSER_CONTEXT * parser, PT_NODE * p)
 	      q->info.name.resolved = p->info.spec.range_var->info.name.original;
 	      if (PT_IS_SPEC_REAL_TABLE (p))
 		{
-		  PT_NAME_INFO_SET_FLAG (q, PT_NAME_REAL_TABLE);
+		  PT_NAME_INFO_SET_FLAG (q, PT_NAME_DEFAULTF_ACCEPTS);
 		}
 	      q = q->next;
 	    }
@@ -6865,14 +6966,11 @@ pt_resolve_using_index (PARSER_CONTEXT * parser, PT_NODE * index, PT_NODE * from
 				  pt_short_print (parser, index));
 		      return NULL;
 		    }
-		  else if (cons->index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+		  else if (cons->index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS
+			   || cons->index_status == SM_INVISIBLE_INDEX)
 		    {
-		      // TODO: raise an error?
-		      return NULL;	// unusable index
-		    }
-		  else if (cons->index_status == SM_INVISIBLE_INDEX)
-		    {
-		      // TODO: raise an error?
+		      PT_ERRORmf (parser, index, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USING_INDEX_ERR_1,
+				  pt_short_print (parser, index));
 		      return NULL;	// unusable index
 		    }
 		}
@@ -6926,8 +7024,7 @@ pt_resolve_using_index (PARSER_CONTEXT * parser, PT_NODE * index, PT_NODE * from
 		  return NULL;
 		}
 	      cons = classobj_find_class_index (class_, index->info.name.original);
-	      if (cons != NULL
-		  && (cons->index_status == SM_NORMAL_INDEX || cons->index_status == SM_ONLINE_INDEX_BUILDING_DONE))
+	      if (cons != NULL && (cons->index_status == SM_NORMAL_INDEX))
 		{
 		  /* found the class; resolve index name */
 		  found++;
@@ -7160,7 +7257,7 @@ generate_natural_join_attrs_from_subquery (PT_NODE * subquery_attrs_list, NATURA
 
   for (pt_cur = subquery_attrs_list; pt_cur != NULL; pt_cur = pt_cur->next)
     {
-      /* 
+      /*
        * We just deal the attributes which have name. It means we just
        * deal PT_NAME or other's pt_node have alias_name. For example,
        * select 1 from t1. The '1' is impossible to be used in natural
@@ -7180,7 +7277,7 @@ generate_natural_join_attrs_from_subquery (PT_NODE * subquery_attrs_list, NATURA
 
       attr_cur->next = NULL;
 
-      /* 
+      /*
        * Alias name have higher priority. select a as txx from ....
        * We consider txx as the attribute's name and ignore a.
        */
@@ -7434,7 +7531,7 @@ pt_create_pt_name (PARSER_CONTEXT * parser, PT_NODE * spec, NATURAL_JOIN_ATTR_IN
 
   if (PT_IS_SPEC_REAL_TABLE (spec))
     {
-      PT_NAME_INFO_SET_FLAG (name, PT_NAME_REAL_TABLE);
+      PT_NAME_INFO_SET_FLAG (name, PT_NAME_DEFAULTF_ACCEPTS);
     }
 
   name->info.name.spec_id = spec->info.spec.id;
@@ -7533,7 +7630,7 @@ pt_resolve_natural_join_internal (PARSER_CONTEXT * parser, PT_NODE * join_lhs, P
 	      goto exit_on_create_node_error;
 	    }
 
-	  /* 
+	  /*
 	   * step4: If there is no on_cond, the new expr we created will be on_cond.
 	   *   If not, it means there is old on_conds. So we will create a new expr
 	   *   like "(old on_cond) and (new on_cond)".
@@ -7966,7 +8063,7 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
 	  return NULL;
 	}
 
-      /* 
+      /*
        * The process converts natural join to inner/outer join.
        * The on_cond is added there.
        */
@@ -8059,7 +8156,7 @@ pt_resolve_spec_to_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
   return node;
 }
 
-/* pt_resolve_spec_to_cte_and_count - search for matches of spec in each CTE from cte_defs list 
+/* pt_resolve_spec_to_cte_and_count - search for matches of spec in each CTE from cte_defs list
  *                                    and sets node->etc as counter if found
  *
  *   return:
@@ -8132,8 +8229,8 @@ pt_count_ctes_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 /* pt_resolve_cte_specs () - resolves all CTEs involved in a query
 *   return:
 *   parser(in):
-*   node(in): 
-*   arg(out): 
+*   node(in):
+*   arg(out):
 *   continue_walk(in):
 */
 PT_NODE *
@@ -9056,7 +9153,7 @@ pt_make_flat_list_from_data_types (PARSER_CONTEXT * parser, PT_NODE * res_list, 
       node->info.name.resolved = entity->info.spec.entity_name->info.name.original;
       if (PT_IS_SPEC_REAL_TABLE (entity))
 	{
-	  PT_NAME_INFO_SET_FLAG (node, PT_NAME_REAL_TABLE);
+	  PT_NAME_INFO_SET_FLAG (node, PT_NAME_DEFAULTF_ACCEPTS);
 	}
       node->info.name.meta_class = PT_CLASS;
     }
@@ -9549,7 +9646,7 @@ pt_resolve_partition_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * sp
  *				      This function is supposed to resolve
  *				      data type for such attributes.
  *
- * return	      : Original node with updated type_enum. 
+ * return	      : Original node with updated type_enum.
  * parser (in)	      : Parser context.
  * node (in)	      : Parse tree node.
  * arg (in)	      : Index key data type.
@@ -9576,7 +9673,7 @@ pt_set_reserved_name_key_type (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
   return node;
 }
 
-/* 
+/*
  * pt_bind_names_in_with_clause () - resolve names in with clause of node
  *
  * return             : void
@@ -9585,7 +9682,7 @@ pt_set_reserved_name_key_type (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
  * bind_arg (in)      : Bind names arg.
  *
  * Note: The names from the with clause should be resolved before resolving the actual query;
- *       Since CTEs may be referenced multiple times in a query, better resolve them separately 
+ *       Since CTEs may be referenced multiple times in a query, better resolve them separately
  *       instead of resolving each occurence
  */
 static void
@@ -9635,7 +9732,7 @@ pt_bind_names_in_with_clause (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_N
 }
 
 
-/* 
+/*
  * pt_resolve_names_in_cte - resolve names in cte definition
  *
  * return             : void
@@ -9660,7 +9757,7 @@ pt_bind_names_in_cte (PARSER_CONTEXT * parser, PT_NODE * cte_def, PT_BIND_NAMES_
       return;
     }
 
-  /* Evaluate the non-recursive part: 
+  /* Evaluate the non-recursive part:
    *    bind the names and the types from the non-recursive part and set cte->as_attr_list accordingly;
    *    the recursive part(if it exists) will use the as_attr_list to bind its own names and types;
    */
@@ -9730,8 +9827,8 @@ end:
 }
 
 /*
- * pt_bind_cte_self_references_types () - used to bind types of self reference specs in recursive cte part; 
- *					  this can be done only after bind_names is complete and 
+ * pt_bind_cte_self_references_types () - used to bind types of self reference specs in recursive cte part;
+ *					  this can be done only after bind_names is complete and
  *					  final cte attributes types are set
  *   return:
  *   parser(in):
@@ -9798,56 +9895,61 @@ pt_get_attr_list_of_derived_table (PARSER_CONTEXT * parser, PT_MISC_TYPE derived
       break;
 
     case PT_IS_SUBQUERY:
-      {
-	/* must be a subquery derived table */
-	/* select_list must have passed star expansion */
-	PT_NODE *att, *col;
+      /* must be a subquery derived table */
+      /* select_list must have passed star expansion */
+      PT_NODE * att, *col;
 
-	select_list = pt_get_select_list (parser, derived_table);
-	if (!select_list)
-	  {
-	    return NULL;
-	  }
+      select_list = pt_get_select_list (parser, derived_table);
+      if (!select_list)
+	{
+	  return NULL;
+	}
 
-	for (att = select_list, i = 0; att; att = att->next, i++)
-	  {
-	    if (att->alias_print)
-	      {
-		col = pt_name (parser, att->alias_print);
-	      }
-	    else
-	      {
-		if (att->node_type == PT_NAME && att->info.name.original != NULL && att->info.name.original[0] != '\0')
-		  {
-		    col = pt_name (parser, att->info.name.original);
-		  }
-		else if (att->node_type == PT_VALUE && att->info.value.text != NULL && att->info.value.text[0] != '\0')
-		  {
-		    col = pt_name (parser, att->info.value.text);
-		  }
-		else if (att->node_type == PT_EXPR || att->node_type == PT_FUNCTION)
-		  {
-		    PARSER_VARCHAR *alias;
-		    alias = pt_print_bytes (parser, att);
-		    col = pt_name (parser, (const char *) alias->bytes);
-		  }
-		else
-		  {		/* generate column name */
-		    id = i;
-		    col = pt_name (parser, mq_generate_name (parser, derived_alias->info.name.original, &id));
-		  }
-	      }
+      for (att = select_list, i = 0; att; att = att->next, i++)
+	{
+	  if (att->alias_print)
+	    {
+	      col = pt_name (parser, att->alias_print);
+	    }
+	  else
+	    {
+	      if (att->node_type == PT_NAME && att->info.name.original != NULL && att->info.name.original[0] != '\0')
+		{
+		  col = pt_name (parser, att->info.name.original);
+		}
+	      else if (att->node_type == PT_VALUE && att->info.value.text != NULL && att->info.value.text[0] != '\0')
+		{
+		  col = pt_name (parser, att->info.value.text);
+		}
+	      else if (att->node_type == PT_EXPR || att->node_type == PT_FUNCTION)
+		{
+		  PARSER_VARCHAR *alias;
+		  alias = pt_print_bytes (parser, att);
+		  col = pt_name (parser, (const char *) alias->bytes);
+		}
+	      else
+		{		/* generate column name */
+		  id = i;
+		  col = pt_name (parser, mq_generate_name (parser, derived_alias->info.name.original, &id));
+		}
+	    }
 
-	    col->type_enum = att->type_enum;
-	    if (att->data_type)
-	      {
-		col->data_type = parser_copy_tree_list (parser, att->data_type);
-	      }
+	  col->type_enum = att->type_enum;
+	  if (att->data_type)
+	    {
+	      col->data_type = parser_copy_tree_list (parser, att->data_type);
+	    }
 
-	    as_attr_list = parser_append_node (col, as_attr_list);
-	  }
-	break;
-      }
+	  as_attr_list = parser_append_node (col, as_attr_list);
+	}
+      break;
+
+    case PT_DERIVED_JSON_TABLE:
+      assert (derived_table->node_type == PT_JSON_TABLE);
+
+      as_attr_list = pt_get_all_json_table_attributes_and_types (parser, derived_table->info.json_table_info.tree,
+								 derived_alias->info.name.original);
+      break;
 
     default:
       /* this can't happen since we removed MERGE/CSELECT from grammar */
@@ -9993,6 +10095,10 @@ pt_set_attr_list_types (PARSER_CONTEXT * parser, PT_NODE * as_attr_list, PT_MISC
 	}
       break;
 
+    case PT_DERIVED_JSON_TABLE:
+      // nothing to do? Types already set during pt_json_table_gather_attribs ()
+      return;
+
     default:
       /* this can't happen since we removed MERGE/CSELECT from grammar */
       assert (derived_table_type == PT_IS_CSELECT);
@@ -10020,5 +10126,33 @@ pt_count_with_clauses (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
       (*cnt)++;
     }
 
+  return node;
+}
+
+static PT_NODE *
+pt_bind_name_to_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_NODE *spec = REINTERPRET_CAST (PT_NODE *, arg);
+  if (spec->node_type != PT_SPEC)
+    {
+      assert (false);
+      return node;
+    }
+
+  if (node->node_type != PT_NAME)
+    {
+      // not relevant
+      return node;
+    }
+
+  if (pt_resolved (node))
+    {
+      assert (node->info.name.spec_id == spec->info.spec.id);
+      return node;
+    }
+
+  node->info.name.spec_id = spec->info.spec.id;
+  node->info.name.resolved = spec->info.spec.range_var->info.name.original;
+  node->info.name.meta_class = PT_NORMAL;	// so far, only normals are used.
   return node;
 }

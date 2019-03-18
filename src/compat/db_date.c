@@ -29,6 +29,7 @@
 #include <time.h>
 
 #include "system.h"
+#include "tz_support.h"
 #include "db_date.h"
 
 #include <assert.h>
@@ -144,7 +145,7 @@ julian_encode (int m, int d, int y)
 
   jul = (int) (FLOOR (365.25 * jy) + FLOOR (30.6001 * jm) + d + 1720995);
 
-  /* 
+  /*
    * Test whether to convert to gregorian calander, started Oct 15, 1582
    */
   if ((d + 31L * (m + 12L * y)) >= IGREG1)
@@ -292,7 +293,7 @@ db_date_encode (DB_DATE * date, int month, int day, int year)
   else
     {
       tmp = julian_encode (month, day, year);
-      /* 
+      /*
        * Now turn around and decode the produced date; if it doesn't
        * jive with the parameters that came in, someone tried to give
        * us some bogus data.
@@ -624,7 +625,7 @@ db_timestamp_encode_sys (const DB_DATE * date, const DB_TIME * timeval, DB_TIMES
 
 /*
  * db_timestamp_encode_utc() - This function is used to construct DB_TIMESTAMP
- *			       from DB_DATE and DB_TIME considering the date and 
+ *			       from DB_DATE and DB_TIME considering the date and
  *			       time in UTC
  * return : error code
  * date(in): encoded julian date
@@ -696,7 +697,7 @@ db_timestamp_encode_utc (const DB_DATE * date, const DB_TIME * timeval, DB_TIMES
   return NO_ERROR;
 }
 
-/* 
+/*
  * db_timestamp_encode_w_reg() - This function is used to construct
  *    DB_TIMESTAMP from DB_DATE and DB_TIME considering the date and time in
  *    timezone tz_region
@@ -753,7 +754,7 @@ db_timestamp_encode_w_reg (const DB_DATE * date, const DB_TIME * timeval, const 
 
 /*
  * db_timestamp_decode_ses() - This function converts a DB_TIMESTAMP into
- *			       a DB_DATE and DB_TIME pair, considering the 
+ *			       a DB_DATE and DB_TIME pair, considering the
  *                             session local timezone
  * return : void
  * time(in): universal time
@@ -1251,7 +1252,7 @@ parse_date (const char *buf, int buf_len, DB_DATE * date)
   month = part[month_part];
   day = part[day_part];
 
-  /* 
+  /*
    * 0000-00-00 00:00:00 means timestamp 1970-01-01 00:00:00
    * but 0000-00-00 XX:XX:XX (one of X is not zero) means error
    * so in this parse_date return OK but set date as 0
@@ -1263,7 +1264,7 @@ parse_date (const char *buf, int buf_len, DB_DATE * date)
       return p;
     }
 
-  /* 
+  /*
    * Now encode it and then decode it again and see if we get the same
    * day; if not, it was a bogus specification, like 2/29 on a non-leap
    * year.
@@ -1319,7 +1320,7 @@ parse_time (const char *buf, int buf_len, DB_TIME * time)
 
 /*
  * db_string_check_explicit_time() -
- * return : true if explicit time expression 
+ * return : true if explicit time expression
  * str(in): pointer to time expression
  * str_len(in): the length of the string to be checked
  */
@@ -1501,7 +1502,7 @@ fill_local_ampm_str (char str[10], bool am)
     }
   else
     {
-      /* 
+      /*
        * Use strftime() to try to find out this locale's idea of
        * the am/pm designators.
        */
@@ -1684,7 +1685,7 @@ parse_date_separated (char const *str, char const *strend, DB_DATE * date, char 
 	  if (year_digits && date_parts[parts_found] >= DATETIME_FIELD_LIMIT)
 	    {
 	      /* In a context where the number of digits specified for the year is requested (when reading a time from
-	       * a datetime string), having any date part larger than the field limit is not only an invalid value, but 
+	       * a datetime string), having any date part larger than the field limit is not only an invalid value, but
 	       * also a parsing error. */
 	      return NULL;
 	    }
@@ -1991,7 +1992,7 @@ parse_mtime_separated (char const *str, char const *strend, unsigned int *mtime,
 
 			  /* attempting to round, instead of truncate, the number of milliseconds will result in
 			   * userspace problems when '11-02-24 23:59:59.9999' is converted to DATETIME, and then
-			   * '11-02-24' is converted to DATE and '23:59:59:9999' is converted to TIME User might expect 
+			   * '11-02-24' is converted to DATE and '23:59:59:9999' is converted to TIME User might expect
 			   * to get the same results in both cases, when in fact the wrap-around for the time value
 			   * will give different results if the number of milliseconds is rounded. */
 			  while (p < strend && char_isdigit (*p))
@@ -2077,7 +2078,7 @@ parse_mtime_separated (char const *str, char const *strend, unsigned int *mtime,
 	}
     }
 
-  /* check the numeric values allowing an hours value of 24, to be treated as 00, would no longer be mysql-compatible, 
+  /* check the numeric values allowing an hours value of 24, to be treated as 00, would no longer be mysql-compatible,
    * since mysql actually stores the value '24', not 00 */
   if (h > 23 || m > 59 || s > 59)
     {
@@ -2274,7 +2275,7 @@ parse_explicit_mtime_separated (char const *str, char const *strend, unsigned in
  *					format
  *				    '.0' is a valid time that can also be
  *				    written as '.'
- * returns:	pointer in the input string to the character after 
+ * returns:	pointer in the input string to the character after
  *		the converted time, if successfull, or NULL on error
  * str(in):	the [DATE]TIME string, in compact form, to be converted
  * strend(in):  the end of the string to be parsed
@@ -2527,7 +2528,7 @@ parse_explicit_mtime_compact (char const *str, char const *strend, unsigned int 
  *		    If not NULL and parsing successfull, will receive true if
  *		    the input string explicitly specifies the number of
  *		    milliseconds or the decimal point for time
- * 
+ *
  */
 static char const *
 parse_timestamp_compact (char const *str, char const *strend, DB_DATE * date, unsigned int *mtime,
@@ -2713,7 +2714,7 @@ parse_timestamp_compact (char const *str, char const *strend, DB_DATE * date, un
 
   if (ndigits > 8 || ndigits == 7)
     {
-      /* the hour or the time-of-day are included in the compact string look for either the local or the English am/pm 
+      /* the hour or the time-of-day are included in the compact string look for either the local or the English am/pm
        * strings */
 
       /* skip optional whitespace before the am/pm string following the numeric time value */
@@ -3012,7 +3013,7 @@ db_date_parse_time (char const *str, int str_len, DB_TIME * time, int *milliseco
 		    }
 		  else
 		    {
-		      /* no time value found following the date and separator check whether is a Date string with space 
+		      /* no time value found following the date and separator check whether is a Date string with space
 		       * suffix for example,"2012-8-15 " */
 		      if (has_explicit_date_part)
 			{
@@ -3137,7 +3138,7 @@ db_date_parse_time (char const *str, int str_len, DB_TIME * time, int *milliseco
  *		If not NULL and parsing successfull will receive true if the
  *		input string explicitly specifies the time part
  * has_explicit_msec(out):
- *		If not NULL and parsing successfull will receive true if the 
+ *		If not NULL and parsing successfull will receive true if the
  *		input string explicitly specifies the number of milliseconds
  *		or the decimal point for the time part
  * fits_as_timestamp(out):
@@ -3448,7 +3449,7 @@ db_date_parse_timestamp (char const *str, int str_len, DB_TIMESTAMP * utime)
   return ER_TIMESTAMP_CONVERSION;
 }
 
-/* 
+/*
  * db_date_parse_date() - Reads a DATE from a DATE string or a DATETIME
  *			    string, in any of the separated or compact formats
  *			    the string might be in.
@@ -3600,7 +3601,7 @@ finalcheck:
 
 /*
  * db_string_check_explicit_date() - check if a string is formated as a date
- * return : true if str is formated exactly as a date 
+ * return : true if str is formated exactly as a date
  *	    (not a datetime or a timestamp)
  * str(in): the string to be checked
  * str_len(in): the length of the string to be parsed
@@ -4687,7 +4688,7 @@ db_get_day_of_year (int year, int month, int day)
 
   day_of_year += day;
 
-  /* for leap years, add one extra day if we're past February. A leap year i a year that is divisible by 4 and if it is 
+  /* for leap years, add one extra day if we're past February. A leap year i a year that is divisible by 4 and if it is
    * divisible 100 it is also divisible by 400 */
   if (month > 2 && IS_LEAP_YEAR (year))
     {
@@ -4717,13 +4718,13 @@ db_get_day_of_week (int year, int month, int day)
 	  (int) (year / 400) + 1) % 7;
 }
 
-/* 
+/*
  *  get_end_of_week_one_of_year() - returns the day number (1-15) at which
  *                                  week 1 in the year ends
  *    year(in)	: year
  *    mode	: specifies the way in which to consider what "week 1" means
  *
- *	    mode  First day   Range Week 1 is the first week 
+ *	    mode  First day   Range Week 1 is the first week
  *		  of week
  *	    0	  Sunday      0-53  with a Sunday in this year
  *	    1	  Monday      0-53  with more than 3 days this year
@@ -4819,7 +4820,7 @@ get_end_of_week_one_of_year (int year, int mode)
  *    day(in)	: day of month
  *    mode	: specifies the way in which to compute the week number:
  *
- *	    mode  First day   Range Week 1 is the first week 
+ *	    mode  First day   Range Week 1 is the first week
  *		  of week
  *	    0	  Sunday      0-53  with a Sunday in this year
  *	    1	  Monday      0-53  with more than 3 days this year

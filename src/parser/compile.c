@@ -252,7 +252,7 @@ pt_add_oid_to_select_list (PARSER_CONTEXT * parser, PT_NODE * statement, VIEW_HA
     {
       PT_NODE *p, *ord;
 
-      /* 
+      /*
        * It would be nice to make this adjustment more automatic by
        * actually counting the number of "invisible" columns and keeping a
        * running adjustment bias, but right now there doesn't seem to be a
@@ -556,7 +556,7 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       if (find_result == LC_CLASSNAME_ERROR && er_errid () == ER_LK_UNILATERALLY_ABORTED)
 	{
-	  /* 
+	  /*
 	   * Transaction has been aborted, the dirty objects and cached
 	   * locks has been cleared in current client during the above
 	   * locator_lockhint_classes () process. Therefore, must return from
@@ -689,7 +689,7 @@ pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks, PT_NODE * spe
 
   if (lcks->num_classes >= lcks->allocated_count)
     {
-      /* Need to allocate more space in the locks array. Do not free locks array if memory allocation fails, it will be 
+      /* Need to allocate more space in the locks array. Do not free locks array if memory allocation fails, it will be
        * freed by the caller of this function */
       void *ptr = NULL;
       size_t new_size = lcks->allocated_count + 1;
@@ -1039,7 +1039,7 @@ pt_compile_trigger_stmt (PARSER_CONTEXT * parser, const char *trigger_stmt, DB_O
 	  return NULL;		/* deleted object */
 	}
 
-      /* The name that could be an argument to UPDATE OBJECT will always be the first name supplied here. Don't need to 
+      /* The name that could be an argument to UPDATE OBJECT will always be the first name supplied here. Don't need to
        * initialize a label as we'll convert the PT_PARAMETER node into a PT_TRIGGER_OID later. */
       if (name1 != NULL)
 	{
@@ -1137,7 +1137,7 @@ pt_compile_trigger_stmt (PARSER_CONTEXT * parser, const char *trigger_stmt, DB_O
     {
       statement->info.scope.stmt->info.trigger_action.expression =
 	mq_translate (parser, statement->info.scope.stmt->info.trigger_action.expression);
-      /* 
+      /*
        * Trigger statement node must use the datetime information of the
        * node corresponding the action to be made.
        */

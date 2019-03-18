@@ -47,7 +47,7 @@ typedef enum
   TZ_DS_TYPE_VAR_GREATER
 } TZ_DS_TYPE;
 
-/* 
+/*
  * The values below are needed for identifying and properly computing time
  * when a daylight saving event occurs, namely to track the suffixes
  * 's' (standard local time), 'g', 'u' and 'z' (GMT/UTC/Zulu), 'w' or
@@ -68,17 +68,17 @@ typedef enum
  * necessary to also generate either a new or an updated C file containing
  * timezone names and IDs (which should be included in the new CUBRID release)
  * TZ_GEN_TYPE_NEW - generate the TZ/ID arrays from scratch;
- *		   - include all the data from the TZ database into the 
+ *		   - include all the data from the TZ database into the
  *		     C file to be compiled into the TZ shared library
  * TZ_GEN_TYPE_UPDATE - don't generate any TZ/ID arrays
- *		      - use the existing TZ/ID arrays to identify which 
+ *		      - use the existing TZ/ID arrays to identify which
  *		      timezones need to be updated;
  *		      - no new time zones are added;
  * TZ_GEN_TYPE_EXTEND - this flag is used when generating a new timezone library
  *		        using the old library and the new timezone data
- *		      
- *		      
- *		      
+ *		
+ *		
+ *		
  */
 typedef enum
 {
@@ -226,7 +226,7 @@ struct tz_data
   int windows_iana_map_count;
   TZ_WINDOWS_IANA_MAP *windows_iana_map;
 #endif
-  /* 
+  /*
    * 32 digits for the md5 checksum
    */
   char checksum[TZ_CHECKSUM_SIZE + 1];

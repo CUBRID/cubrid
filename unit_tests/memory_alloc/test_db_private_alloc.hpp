@@ -23,7 +23,7 @@
 namespace test_memalloc
 {
 
-int test_db_private_alloc (void);
+  int test_db_private_alloc (void);
 
 }  // namespace test_memalloc
 

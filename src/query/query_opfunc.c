@@ -37,26 +37,32 @@
 #include "error_manager.h"
 #include "fetch.h"
 #include "list_file.h"
+#include "object_domain.h"
 #include "object_primitive.h"
 #include "set_object.h"
 #include "query_executor.h"
 #include "databases_file.h"
 #include "tz_support.h"
+#include "memory_hash.h"
 #include "numeric_opfunc.h"
+#include "tz_support.h"
 #include "db_date.h"
 #include "dbtype.h"
 #include "query_dump.h"
+#include "query_list.h"
 #include "db_json.hpp"
 #include "arithmetic.h"
+#include "xasl.h"
 
 #include "dbtype.h"
+
+#include <chrono>
 
 #define NOT_NULL_VALUE(a, b)	((a) ? (a) : (b))
 #define INITIAL_OID_STACK_SIZE  1
 
 #define	SYS_CONNECT_BY_PATH_MEM_STEP	256
 
-static int qdata_dummy (THREAD_ENTRY * thread_p, DB_VALUE * result_p, int num_args, DB_VALUE ** args);
 static bool qdata_is_zero_value_date (DB_VALUE * dbval_p);
 
 static int qdata_add_short (short s, DB_VALUE * dbval_p, DB_VALUE * result_p);
@@ -187,7 +193,7 @@ static int qdata_divide_double_to_dbval (DB_VALUE * double_val_p, DB_VALUE * dbv
 static int qdata_divide_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p);
 static int qdata_divide_monetary_to_dbval (DB_VALUE * monetary_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p);
 
-static int qdata_process_distinct_or_sort (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_p, QUERY_ID query_id);
+static int qdata_process_distinct_or_sort (THREAD_ENTRY * thread_p, aggregate_list_node * agg_p, QUERY_ID query_id);
 
 static DB_VALUE *qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 							      VAL_DESCR * val_desc_p);
@@ -201,87 +207,30 @@ static int qdata_get_class_of_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE *
 static int qdata_convert_table_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype, REGU_VARIABLE * func,
 				       VAL_DESCR * val_desc_p);
 
-static int qdata_group_concat_first_value (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_p, DB_VALUE * dbvalue);
+static int qdata_group_concat_first_value (THREAD_ENTRY * thread_p, aggregate_list_node * agg_p, DB_VALUE * dbvalue);
 
-static int qdata_group_concat_value (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_p, DB_VALUE * dbvalue);
+static int qdata_group_concat_value (THREAD_ENTRY * thread_p, aggregate_list_node * agg_p, DB_VALUE * dbvalue);
 
 static int qdata_insert_substring_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
 					    OID * obj_oid_p, QFILE_TUPLE tuple);
 
 static int qdata_elt (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
 		      QFILE_TUPLE tuple);
+static int qdata_benchmark (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
+			    OID * obj_oid_p, QFILE_TUPLE tuple);
 
-static int
-qdata_convert_operands_to_value_and_call (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
-					  OID * obj_oid_p, QFILE_TUPLE tuple,
-					  int (*function_to_call) (DB_VALUE *, DB_VALUE **, int const));
+static int qdata_convert_operands_to_value_and_call (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p,
+						     VAL_DESCR * val_desc_p, OID * obj_oid_p, QFILE_TUPLE tuple,
+						     int (*function_to_call) (DB_VALUE *, DB_VALUE * const *,
+									      int const));
 
-static int
-qdata_json_object (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-		   QFILE_TUPLE tuple);
-
-static int
-qdata_json_array (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-		  QFILE_TUPLE tuple);
-static int
-qdata_json_insert (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-		   QFILE_TUPLE tuple);
-
-static int
-qdata_json_replace (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-		    QFILE_TUPLE tuple);
-
-static int
-qdata_json_set (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-		QFILE_TUPLE tuple);
-
-static int
-qdata_json_keys (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-		 QFILE_TUPLE tuple);
-
-static int
-qdata_json_remove (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-		   QFILE_TUPLE tuple);
-
-static int
-qdata_json_array_append (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-			 QFILE_TUPLE tuple);
-
-static int
-qdata_json_get_all_paths (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-			  QFILE_TUPLE tuple);
-
-static int
-qdata_json_merge (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-		  QFILE_TUPLE tuple);
-
-static int (*generic_func_ptrs[]) (THREAD_ENTRY * thread_p, DB_VALUE *, int, DB_VALUE **) =
-{
-qdata_dummy};
-
-static int qdata_calculate_aggregate_cume_dist_percent_rank (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_p,
+static int qdata_calculate_aggregate_cume_dist_percent_rank (THREAD_ENTRY * thread_p, aggregate_list_node * agg_p,
 							     VAL_DESCR * val_desc_p);
 
-static int qdata_update_agg_interpolation_func_value_and_domain (AGGREGATE_TYPE * agg_p, DB_VALUE * val);
+static int qdata_update_agg_interpolation_func_value_and_domain (aggregate_list_node * agg_p, DB_VALUE * val);
 
 static int qdata_evaluate_interpolation_function (THREAD_ENTRY * thread_p, void *func_p, QFILE_LIST_SCAN_ID * scan_id,
 						  bool is_analytic);
-
-/*
- * qdata_dummy () -
- *   return:
- *   res(in)    :
- *   num_args(in)       :
- *   args(in)   :
- *
- * Note: dummy generic function.
- */
-static int
-qdata_dummy (THREAD_ENTRY * thread_p, DB_VALUE * result_p, int num_args, DB_VALUE ** args)
-{
-  db_make_null (result_p);
-  return ER_FAILED;
-}
 
 static bool
 qdata_is_zero_value_date (DB_VALUE * dbval_p)
@@ -336,7 +285,7 @@ qdata_is_zero_value_date (DB_VALUE * dbval_p)
  * Note: Set all db_values on the value list to null.
  */
 void
-qdata_set_value_list_to_null (VAL_LIST * val_list_p)
+qdata_set_value_list_to_null (val_list_node * val_list_p)
 {
   QPROC_DB_VALUE_LIST db_val_list;
 
@@ -365,8 +314,8 @@ qdata_set_value_list_to_null (VAL_LIST * val_list_p)
  *
  * Note: Copy source value to destination value.
  */
-int
-qdata_copy_db_value (DB_VALUE * dest_p, DB_VALUE * src_p)
+bool
+qdata_copy_db_value (DB_VALUE * dest_p, const DB_VALUE * src_p)
 {
   PR_TYPE *pr_type_p;
   DB_TYPE src_type;
@@ -381,13 +330,13 @@ qdata_copy_db_value (DB_VALUE * dest_p, DB_VALUE * src_p)
   (void) pr_clear_value (dest_p);
 
   src_type = DB_VALUE_DOMAIN_TYPE (src_p);
-  pr_type_p = PR_TYPE_FROM_ID (src_type);
+  pr_type_p = pr_type_from_id (src_type);
   if (pr_type_p == NULL)
     {
       return false;
     }
 
-  if ((*(pr_type_p->setval)) (dest_p, src_p, true) == NO_ERROR)
+  if (pr_type_p->setval (dest_p, src_p, true) == NO_ERROR)
     {
       return true;
     }
@@ -430,7 +379,7 @@ qdata_copy_db_value_to_tuple_value (DB_VALUE * dbval_p, bool clear_compressed_st
       val_p = (char *) tuple_val_p + QFILE_TUPLE_VALUE_HEADER_SIZE;
 
       dbval_type = DB_VALUE_DOMAIN_TYPE (dbval_p);
-      pr_type = PR_TYPE_FROM_ID (dbval_type);
+      pr_type = pr_type_from_id (dbval_type);
       if (pr_type == NULL)
 	{
 	  return ER_FAILED;
@@ -438,7 +387,7 @@ qdata_copy_db_value_to_tuple_value (DB_VALUE * dbval_p, bool clear_compressed_st
 
       val_size = pr_data_writeval_disk_size (dbval_p);
       OR_BUF_INIT (buf, val_p, val_size);
-      rc = (*(pr_type->data_writeval)) (&buf, dbval_p);
+      rc = pr_type->data_writeval (&buf, dbval_p);
 
       if (rc != NO_ERROR)
 	{
@@ -490,8 +439,8 @@ qdata_copy_db_value_to_tuple_value (DB_VALUE * dbval_p, bool clear_compressed_st
  * that are hidden columns are not copied to the list file tuple
  */
 int
-qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p, VALPTR_LIST * valptr_list_p, VAL_DESCR * val_desc_p,
-				 QFILE_TUPLE_RECORD * tuple_record_p)
+qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list_p, val_descr * val_desc_p,
+				 qfile_tuple_record * tuple_record_p)
 {
   REGU_VARIABLE_LIST reg_var_p;
   DB_VALUE *dbval_p;
@@ -537,7 +486,7 @@ qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p, VALPTR_LIST * valptr_l
 
 	  if ((tuple_record_p->size - toffset) < n_size)
 	    {
-	      /* no space left in tuple to put next item, increase the tuple size by the max of n_size and DB_PAGE_SIZE 
+	      /* no space left in tuple to put next item, increase the tuple size by the max of n_size and DB_PAGE_SIZE
 	       * since we can't compute the actual tuple size without re-evaluating the expressions.  This guarantees
 	       * that we can at least get the next value into the tuple. */
 	      tpl_size = MAX (tuple_record_p->size, QFILE_TUPLE_LENGTH_SIZE);
@@ -594,8 +543,8 @@ qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p, VALPTR_LIST * valptr_l
  * to the list file tuple
  */
 QPROC_TPLDESCR_STATUS
-qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, VALPTR_LIST * valptr_list_p, VAL_DESCR * val_desc_p,
-					   QFILE_TUPLE_DESCRIPTOR * tuple_desc_p)
+qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list_p,
+					   val_descr * val_desc_p, qfile_tuple_descriptor * tuple_desc_p)
 {
   REGU_VARIABLE_LIST reg_var_p;
   int i;
@@ -678,7 +627,7 @@ exit_with_status:
  * Note: Set valptr_list values UNBOUND.
  */
 int
-qdata_set_valptr_list_unbound (THREAD_ENTRY * thread_p, VALPTR_LIST * valptr_list_p, VAL_DESCR * val_desc_p)
+qdata_set_valptr_list_unbound (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list_p, val_descr * val_desc_p)
 {
   REGU_VARIABLE_LIST reg_var_p;
   DB_VALUE *dbval_p;
@@ -2414,7 +2363,7 @@ qdata_cast_to_domain (DB_VALUE * dbval_p, DB_VALUE * result_p, TP_DOMAIN * domai
  *                        MAX_FLT + MAX_DBL = MAX_DBL
  */
 int
-qdata_add_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
+qdata_add_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, tp_domain * domain_p)
 {
   DB_TYPE type1;
   DB_TYPE type2;
@@ -2731,7 +2680,7 @@ qdata_add_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, 
  */
 int
 qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p,
-			 TP_DOMAIN * domain_p, const int max_allowed_size, const char *warning_context)
+			 tp_domain * domain_p, const int max_allowed_size, const char *warning_context)
 {
   DB_TYPE type2, type1;
   int error = NO_ERROR;
@@ -4502,7 +4451,7 @@ qdata_subtract_date_to_dbval (DB_VALUE * date_val_p, DB_VALUE * dbval_p, DB_VALU
  *                        MAX_FLT - MAX_DBL = -MAX_DBL
  */
 int
-qdata_subtract_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
+qdata_subtract_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, tp_domain * domain_p)
 {
   DB_TYPE type1;
   DB_TYPE type2;
@@ -5205,7 +5154,7 @@ qdata_multiply_sequence_to_dbval (DB_VALUE * seq_val_p, DB_VALUE * dbval_p, DB_V
  * Note: Multiply two db_values.
  */
 int
-qdata_multiply_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
+qdata_multiply_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, tp_domain * domain_p)
 {
   DB_TYPE type1;
   DB_TYPE type2;
@@ -5809,7 +5758,7 @@ qdata_divide_monetary_to_dbval (DB_VALUE * monetary_val_p, DB_VALUE * dbval_p, D
  *     platform where DBL_EPSILON approaches the value of FLT_MIN.
  */
 int
-qdata_divide_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
+qdata_divide_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, tp_domain * domain_p)
 {
   DB_TYPE type1;
   DB_TYPE type2;
@@ -6063,71 +6012,13 @@ qdata_unary_minus_dbval (DB_VALUE * result_p, DB_VALUE * dbval_p)
  * Note: Extract a datetime field from db_value.
  */
 int
-qdata_extract_dbval (const MISC_OPERAND extr_operand, DB_VALUE * dbval_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
+qdata_extract_dbval (const MISC_OPERAND extr_operand, DB_VALUE * dbval_p, DB_VALUE * result_p, tp_domain * domain_p)
 {
   if (db_string_extract_dbval (extr_operand, dbval_p, result_p, domain_p) != NO_ERROR)
     {
       return ER_FAILED;
     }
   return NO_ERROR;
-}
-
-int
-qdata_json_contains_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * dbval3_p, DB_VALUE * result_p,
-			   TP_DOMAIN * domain_p)
-{
-  int error_code = db_json_contains_dbval (dbval1_p, dbval2_p, dbval3_p, result_p);
-
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return qdata_coerce_result_to_domain (result_p, domain_p);
-}
-
-int
-qdata_json_type_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
-{
-  int error_code = db_json_type_dbval (dbval1_p, result_p);
-
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return qdata_coerce_result_to_domain (result_p, domain_p);
-}
-
-int
-qdata_json_valid_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
-{
-  int error_code = db_json_valid_dbval (dbval1_p, result_p);
-
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  return qdata_coerce_result_to_domain (result_p, domain_p);
-}
-
-int
-qdata_json_length_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
-{
-  return db_json_length_dbval (dbval1_p, dbval2_p, result_p);
-}
-
-int
-qdata_json_depth_dbval (DB_VALUE * dbval1_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
-{
-  return db_json_depth_dbval (dbval1_p, result_p);
-}
-
-int
-qdata_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE * json_res, TP_DOMAIN * domain_p)
-{
-  return db_json_extract_dbval (json, path, json_res);
 }
 
 /*
@@ -6139,7 +6030,7 @@ qdata_json_extract_dbval (const DB_VALUE * json, const DB_VALUE * path, DB_VALUE
  *   domain(in) :
  */
 int
-qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
+qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, tp_domain * domain_p)
 {
   DB_TYPE type1, type2;
   int error = NO_ERROR;
@@ -6339,7 +6230,7 @@ qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
  */
 
 static int
-qdata_process_distinct_or_sort (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_p, QUERY_ID query_id)
+qdata_process_distinct_or_sort (THREAD_ENTRY * thread_p, aggregate_list_node * agg_p, QUERY_ID query_id)
 {
   QFILE_TUPLE_VALUE_TYPE_LIST type_list;
   QFILE_LIST_ID *list_id_p;
@@ -6360,9 +6251,9 @@ qdata_process_distinct_or_sort (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_p,
       return ER_FAILED;
     }
 
-  type_list.domp[0] = agg_p->operand.domain;
+  type_list.domp[0] = agg_p->operands->value.domain;
   /* if the agg has ORDER BY force setting 'QFILE_FLAG_ALL' : in this case, no additional SORT_LIST will be created,
-   * but the one in the AGGREGATE_TYPE structure will be used */
+   * but the one in the aggregate_list_node structure will be used */
   if (agg_p->sort_list != NULL)
     {
       ls_flag = QFILE_FLAG_ALL;
@@ -6400,9 +6291,9 @@ qdata_process_distinct_or_sort (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_p,
  * Note: Initialize the aggregate expression list.
  */
 int
-qdata_initialize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_list_p, QUERY_ID query_id)
+qdata_initialize_aggregate_list (THREAD_ENTRY * thread_p, aggregate_list_node * agg_list_p, QUERY_ID query_id)
 {
-  AGGREGATE_TYPE *agg_p;
+  aggregate_list_node *agg_p;
 
   for (agg_p = agg_list_p; agg_p != NULL; agg_p = agg_p->next)
     {
@@ -6469,9 +6360,9 @@ qdata_initialize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_l
  *   new_acc(in): source2 accumulator
  */
 int
-qdata_aggregate_accumulator_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMULATOR * acc,
-					    AGGREGATE_ACCUMULATOR_DOMAIN * acc_dom, FUNC_TYPE func_type,
-					    TP_DOMAIN * func_domain, AGGREGATE_ACCUMULATOR * new_acc)
+qdata_aggregate_accumulator_to_accumulator (THREAD_ENTRY * thread_p, aggregate_accumulator * acc,
+					    aggregate_accumulator_domain * acc_dom, FUNC_TYPE func_type,
+					    tp_domain * func_domain, aggregate_accumulator * new_acc)
 {
   TP_DOMAIN *double_domain;
   int error = NO_ERROR;
@@ -6491,8 +6382,14 @@ qdata_aggregate_accumulator_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_A
     case PT_AGG_BIT_XOR:
     case PT_AVG:
     case PT_SUM:
-      /* these functions only affect acc.value and new_acc can be treated as an ordinary value */
+      // these functions only affect acc.value and new_acc can be treated as an ordinary value
       error = qdata_aggregate_value_to_accumulator (thread_p, acc, acc_dom, func_type, func_domain, new_acc->value);
+      break;
+
+      // for these two situations we just need to merge
+    case PT_JSON_ARRAYAGG:
+    case PT_JSON_OBJECTAGG:
+      error = db_evaluate_json_merge_preserve (new_acc->value, &acc->value, 1);
       break;
 
     case PT_STDDEV:
@@ -6521,8 +6418,8 @@ qdata_aggregate_accumulator_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_A
 	  pr_clear_value (acc->value2);
 
 	  /* set values */
-	  (*(double_domain->type->setval)) (acc->value, new_acc->value, true);
-	  (*(double_domain->type->setval)) (acc->value2, new_acc->value2, true);
+	  double_domain->type->setval (acc->value, new_acc->value, true);
+	  double_domain->type->setval (acc->value2, new_acc->value2, true);
 	}
       else if (acc->curr_cnt >= 1 && new_acc->curr_cnt >= 1)
 	{
@@ -6565,28 +6462,36 @@ qdata_aggregate_accumulator_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_A
  *   func_type(in): function type
  *   func_domain(in): function domain
  *   value(in): value
+ *   value_next(int): value of the second argument; used only for JSON_OBJECTAGG
  */
 int
-qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMULATOR * acc,
-				      AGGREGATE_ACCUMULATOR_DOMAIN * domain, FUNC_TYPE func_type,
-				      TP_DOMAIN * func_domain, DB_VALUE * value)
+qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p, aggregate_accumulator * acc,
+				      aggregate_accumulator_domain * domain, FUNC_TYPE func_type,
+				      tp_domain * func_domain, DB_VALUE * value)
 {
   DB_VALUE squared;
   bool copy_operator = false;
-  int coll_id;
+  int coll_id = -1;
 
   if (DB_IS_NULL (value))
     {
       return NO_ERROR;
     }
 
-  coll_id = domain->value_dom->collation_id;
+  if (domain != NULL && domain->value_dom != NULL)
+    {
+      coll_id = domain->value_dom->collation_id;
+    }
 
   /* aggregate new value */
   switch (func_type)
     {
     case PT_MIN:
-      if (acc->curr_cnt < 1 || (*(domain->value_dom->type->cmpval)) (acc->value, value, 1, 1, NULL, coll_id) > 0)
+      if (coll_id == -1)
+	{
+	  return ER_FAILED;
+	}
+      if (acc->curr_cnt < 1 || domain->value_dom->type->cmpval (acc->value, value, 1, 1, NULL, coll_id) > 0)
 	{
 	  /* we have new minimum */
 	  copy_operator = true;
@@ -6594,7 +6499,11 @@ qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMUL
       break;
 
     case PT_MAX:
-      if (acc->curr_cnt < 1 || (*(domain->value_dom->type->cmpval)) (acc->value, value, 1, 1, NULL, coll_id) < 0)
+      if (coll_id == -1)
+	{
+	  return ER_FAILED;
+	}
+      if (acc->curr_cnt < 1 || domain->value_dom->type->cmpval (acc->value, value, 1, 1, NULL, coll_id) < 0)
 	{
 	  /* we have new maximum */
 	  copy_operator = true;
@@ -6713,8 +6622,8 @@ qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMUL
 	  pr_clear_value (acc->value2);
 
 	  /* set values */
-	  (*(domain->value_dom->type->setval)) (acc->value, value, true);
-	  (*(domain->value2_dom->type->setval)) (acc->value2, &squared, true);
+	  domain->value_dom->type->setval (acc->value, value, true);
+	  domain->value2_dom->type->setval (acc->value2, &squared, true);
 	}
       else
 	{
@@ -6740,6 +6649,13 @@ qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMUL
 
 	  /* done with squared */
 	  pr_clear_value (&squared);
+	}
+      break;
+
+    case PT_JSON_ARRAYAGG:
+      if (db_accumulate_json_arrayagg (value, acc->value) != NO_ERROR)
+	{
+	  return ER_FAILED;
 	}
       break;
 
@@ -6773,6 +6689,45 @@ qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMUL
   return NO_ERROR;
 }
 
+/* *INDENT-OFF* */
+int
+qdata_aggregate_multiple_values_to_accumulator (THREAD_ENTRY * thread_p, aggregate_accumulator * acc,
+						aggregate_accumulator_domain * domain, FUNC_TYPE func_type,
+						tp_domain * func_domain, std::vector<DB_VALUE> & db_values)
+{
+  // we have only one argument so aggregate only the first db_value
+  if (db_values.size () == 1)
+    {
+      return qdata_aggregate_value_to_accumulator (thread_p, acc, domain, func_type, func_domain, &db_values[0]);
+    }
+
+  // maybe this condition will be changed in the future based on the future arguments conditions
+  for (DB_VALUE &db_value : db_values)
+    {
+      if (DB_IS_NULL (&db_value))
+	{
+	  return NO_ERROR;
+	}
+    }
+
+  switch (func_type)
+    {
+    case PT_JSON_OBJECTAGG:
+      if (db_accumulate_json_objectagg (&db_values[0], &db_values[1], acc->value) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+      break;
+
+    default:
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+/* *INDENT-ON* */
+
 /*
  * qdata_evaluate_aggregate_list () -
  *   return: NO_ERROR, or ER_code
@@ -6786,23 +6741,26 @@ qdata_aggregate_value_to_accumulator (THREAD_ENTRY * thread_p, AGGREGATE_ACCUMUL
  *        the GROUP_CONCAT and MEDIAN function.
  */
 int
-qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_list_p, VAL_DESCR * val_desc_p,
-			       AGGREGATE_ACCUMULATOR * alt_acc_list)
+qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, aggregate_list_node * agg_list_p, VAL_DESCR * val_desc_p,
+			       aggregate_accumulator * alt_acc_list)
 {
-  AGGREGATE_TYPE *agg_p;
+  aggregate_list_node *agg_p;
   AGGREGATE_ACCUMULATOR *accumulator;
-  DB_VALUE dbval, *percentile_val = NULL;
+  DB_VALUE *percentile_val = NULL;
   PR_TYPE *pr_type_p;
   DB_TYPE dbval_type;
   OR_BUF buf;
   char *disk_repr_p = NULL;
   int dbval_size, i, error;
   AGGREGATE_PERCENTILE_INFO *percentile = NULL;
-
-  db_make_null (&dbval);
+  DB_VALUE *db_value_p = NULL;
 
   for (agg_p = agg_list_p, i = 0; agg_p != NULL; agg_p = agg_p->next, i++)
     {
+      /* *INDENT-OFF* */
+      std::vector<DB_VALUE> db_values;
+      /* *INDENT-ON* */
+
       /* determine accumulator */
       accumulator = (alt_acc_list != NULL ? &alt_acc_list[i] : &agg_p->accumulator);
 
@@ -6817,7 +6775,7 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	  continue;
 	}
 
-      /* 
+      /*
        * the value of groupby_num() remains unchanged;
        * it will be changed while evaluating groupby_num predicates
        * against each group at 'xs_eval_grbynum_pred()'
@@ -6840,27 +6798,73 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	  continue;
 	}
 
-      /* 
-       * fetch operand value. aggregate regulator variable should only
-       * contain constants
-       */
-      if (fetch_copy_dbval (thread_p, &agg_p->operand, val_desc_p, NULL, NULL, NULL, &dbval) != NO_ERROR)
+      /* fetch operands value. aggregate regulator variable should only contain constants */
+      REGU_VARIABLE_LIST operand = NULL;
+      for (operand = agg_p->operands; operand != NULL; operand = operand->next)
 	{
-	  return ER_FAILED;
-	}
+	  // create an empty value
+	  db_values.emplace_back ();
 
-      /* eliminate null values */
-      if (DB_IS_NULL (&dbval))
-	{
-	  if ((agg_p->function == PT_COUNT || agg_p->function == PT_COUNT_STAR) && DB_IS_NULL (accumulator->value))
+	  // fetch it
+	  if (fetch_copy_dbval (thread_p, &operand->value, val_desc_p, NULL, NULL, NULL,
+				&db_values.back ()) != NO_ERROR)
 	    {
-	      /* we might get a NULL count if aggregating with hash table and group has only one tuple; correct that */
-	      db_make_int (accumulator->value, 0);
+	      pr_clear_value_vector (db_values);
+	      return ER_FAILED;
 	    }
-	  continue;
 	}
 
-      /* 
+      /*
+       * eliminate null values
+       * consider only the first argument, because for the rest will depend on the function
+       */
+      db_value_p = &db_values[0];
+      if (DB_IS_NULL (db_value_p))
+	{
+	  /*
+	   * for JSON_ARRAYAGG we need to include also NULL values in the result set
+	   * so we need to construct a NULL JSON value
+	   */
+	  if (agg_p->function == PT_JSON_ARRAYAGG)
+	    {
+	      // this creates a new JSON_DOC with the type DB_JSON_NULL
+	      db_make_json (db_value_p, db_json_allocate_doc (), true);
+	    }
+	  /*
+	   * for JSON_OBJECTAGG we need to include keep track of key-value pairs
+	   * the key can not be NULL so this will throw an error
+	   * the value can be NULL and we will wrap this into a JSON with DB_JSON_NULL type in the next statement
+	   */
+	  else if (agg_p->function == PT_JSON_OBJECTAGG)
+	    {
+	      pr_clear_value_vector (db_values);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_OBJECT_NAME_IS_NULL, 0);
+	      return ER_JSON_OBJECT_NAME_IS_NULL;
+	    }
+	  else
+	    {
+	      if ((agg_p->function == PT_COUNT || agg_p->function == PT_COUNT_STAR) && DB_IS_NULL (accumulator->value))
+		{
+		  /* we might get a NULL count if aggregating with hash table and group has only one tuple; correct that */
+		  db_make_int (accumulator->value, 0);
+		}
+	      pr_clear_value_vector (db_values);
+	      continue;
+	    }
+	}
+
+      /*
+       * for JSON_OBJECTAGG, we wrap the second argument with a null JSON only if the value is NULL
+       */
+      if (agg_p->function == PT_JSON_OBJECTAGG)
+	{
+	  if (DB_IS_NULL (&db_values[1]))
+	    {
+	      db_make_json (&db_values[1], db_json_allocate_doc (), true);
+	    }
+	}
+
+      /*
        * handle distincts by inserting each operand into a list file,
        * which will be distinct-ified and counted/summed/averaged
        * in qdata_finalize_aggregate_list ()
@@ -6871,55 +6875,55 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	  if (QPROC_IS_INTERPOLATION_FUNC (agg_p))
 	    {
 	      /* never be null type */
-	      assert (!DB_IS_NULL (&dbval));
+	      assert (!DB_IS_NULL (db_value_p));
 
-	      error = qdata_update_agg_interpolation_func_value_and_domain (agg_p, &dbval);
+	      error = qdata_update_agg_interpolation_func_value_and_domain (agg_p, db_value_p);
 	      if (error != NO_ERROR)
 		{
-		  pr_clear_value (&dbval);
+		  pr_clear_value_vector (db_values);
 		  return ER_FAILED;
 		}
 	    }
 
-	  dbval_type = DB_VALUE_DOMAIN_TYPE (&dbval);
-	  pr_type_p = PR_TYPE_FROM_ID (dbval_type);
+	  dbval_type = DB_VALUE_DOMAIN_TYPE (db_value_p);
+	  pr_type_p = pr_type_from_id (dbval_type);
 
 	  if (pr_type_p == NULL)
 	    {
-	      pr_clear_value (&dbval);
+	      pr_clear_value_vector (db_values);
 	      return ER_FAILED;
 	    }
 
-	  dbval_size = pr_data_writeval_disk_size (&dbval);
+	  dbval_size = pr_data_writeval_disk_size (db_value_p);
 	  if (dbval_size > 0 && (disk_repr_p = (char *) db_private_alloc (thread_p, dbval_size)) != NULL)
 	    {
 	      OR_BUF_INIT (buf, disk_repr_p, dbval_size);
-	      error = (*(pr_type_p->data_writeval)) (&buf, &dbval);
+	      error = pr_type_p->data_writeval (&buf, db_value_p);
 	      if (error != NO_ERROR)
 		{
 		  /* ER_TF_BUFFER_OVERFLOW means that val_size or packing is bad. */
 		  assert (error != ER_TF_BUFFER_OVERFLOW);
 
 		  db_private_free_and_init (thread_p, disk_repr_p);
-		  pr_clear_value (&dbval);
+		  pr_clear_value_vector (db_values);
 		  return ER_FAILED;
 		}
 	    }
 	  else
 	    {
-	      pr_clear_value (&dbval);
+	      pr_clear_value_vector (db_values);
 	      return ER_FAILED;
 	    }
 
 	  if (qfile_add_item_to_list (thread_p, disk_repr_p, dbval_size, agg_p->list_id) != NO_ERROR)
 	    {
 	      db_private_free_and_init (thread_p, disk_repr_p);
-	      pr_clear_value (&dbval);
+	      pr_clear_value_vector (db_values);
 	      return ER_FAILED;
 	    }
 
 	  db_private_free_and_init (thread_p, disk_repr_p);
-	  pr_clear_value (&dbval);
+	  pr_clear_value_vector (db_values);
 
 	  /* for PERCENTILE funcs, we have to check percentile value */
 	  if (agg_p->function != PT_PERCENTILE_CONT && agg_p->function != PT_PERCENTILE_DISC)
@@ -6990,18 +6994,19 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 		    case DB_TYPE_TIME:
 		      break;
 		    default:
-		      assert (agg_p->operand.type == TYPE_CONSTANT || agg_p->operand.type == TYPE_DBVAL);
+		      assert (agg_p->operands->value.type == TYPE_CONSTANT ||
+			      agg_p->operands->value.type == TYPE_DBVAL);
 
 		      /* try to cast dbval to double, datetime then time */
 		      tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DOUBLE);
 
-		      status = tp_value_cast (&dbval, &dbval, tmp_domain_p, false);
+		      status = tp_value_cast (db_value_p, db_value_p, tmp_domain_p, false);
 		      if (status != DOMAIN_COMPATIBLE)
 			{
 			  /* try datetime */
 			  tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DATETIME);
 
-			  status = tp_value_cast (&dbval, &dbval, tmp_domain_p, false);
+			  status = tp_value_cast (db_value_p, db_value_p, tmp_domain_p, false);
 			}
 
 		      /* try time */
@@ -7009,16 +7014,16 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 			{
 			  tmp_domain_p = tp_domain_resolve_default (DB_TYPE_TIME);
 
-			  status = tp_value_cast (&dbval, &dbval, tmp_domain_p, false);
+			  status = tp_value_cast (db_value_p, db_value_p, tmp_domain_p, false);
 			}
 
 		      if (status != DOMAIN_COMPATIBLE)
 			{
 			  error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
 			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2,
-				  qdump_function_type_string (agg_p->function), "DOUBLE, DATETIME, TIME");
+				  fcode_get_uppercase_name (agg_p->function), "DOUBLE, DATETIME, TIME");
 
-			  pr_clear_value (&dbval);
+			  pr_clear_value_vector (db_values);
 			  return error;
 			}
 
@@ -7027,17 +7032,17 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 		    }
 
 		  pr_clear_value (agg_p->accumulator.value);
-		  error = pr_clone_value (&dbval, agg_p->accumulator.value);
+		  error = pr_clone_value (db_value_p, agg_p->accumulator.value);
 		  if (error != NO_ERROR)
 		    {
-		      pr_clear_value (&dbval);
+		      pr_clear_value_vector (db_values);
 		      return error;
 		    }
 		}
 	    }
 
 	  /* clear value */
-	  pr_clear_value (&dbval);
+	  pr_clear_value_vector (db_values);
 
 	  /* percentile value check */
 	  if (agg_p->function == PT_PERCENTILE_CONT || agg_p->function == PT_PERCENTILE_DISC)
@@ -7057,18 +7062,18 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	  /* group concat function requires special care */
 	  if (agg_p->accumulator.curr_cnt < 1)
 	    {
-	      error = qdata_group_concat_first_value (thread_p, agg_p, &dbval);
+	      error = qdata_group_concat_first_value (thread_p, agg_p, db_value_p);
 	    }
 	  else
 	    {
-	      error = qdata_group_concat_value (thread_p, agg_p, &dbval);
+	      error = qdata_group_concat_value (thread_p, agg_p, db_value_p);
 	    }
 
 	  /* increment tuple count */
 	  agg_p->accumulator.curr_cnt++;
 
 	  /* clear value */
-	  pr_clear_value (&dbval);
+	  pr_clear_value_vector (db_values);
 
 	  /* check error */
 	  if (error != NO_ERROR)
@@ -7079,14 +7084,14 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
       else
 	{
 	  /* aggregate value */
-	  error = qdata_aggregate_value_to_accumulator (thread_p, accumulator, &agg_p->accumulator_domain,
-							agg_p->function, agg_p->domain, &dbval);
+	  error = qdata_aggregate_multiple_values_to_accumulator (thread_p, accumulator, &agg_p->accumulator_domain,
+								  agg_p->function, agg_p->domain, db_values);
 
 	  /* increment tuple count */
 	  accumulator->curr_cnt++;
 
-	  /* clear value */
-	  pr_clear_value (&dbval);
+	  /* clear values */
+	  pr_clear_value_vector (db_values);
 
 	  /* handle error */
 	  if (error != NO_ERROR)
@@ -7110,7 +7115,7 @@ qdata_evaluate_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
  *		    will be retrieved from the heap.
  */
 int
-qdata_evaluate_aggregate_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_p, HFID * hfid_p, OID * super_oid)
+qdata_evaluate_aggregate_optimize (THREAD_ENTRY * thread_p, aggregate_list_node * agg_p, HFID * hfid_p, OID * super_oid)
 {
   int oid_count = 0, null_count = 0, key_count = 0;
   int flag_btree_stat_needed = true;
@@ -7193,8 +7198,8 @@ qdata_evaluate_aggregate_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg
  * helper (in)	  : hierarchy helper
  */
 int
-qdata_evaluate_aggregate_hierarchy (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_p, HFID * root_hfid, BTID * root_btid,
-				    HIERARCHY_AGGREGATE_HELPER * helper)
+qdata_evaluate_aggregate_hierarchy (THREAD_ENTRY * thread_p, aggregate_list_node * agg_p, HFID * root_hfid,
+				    BTID * root_btid, HIERARCHY_AGGREGATE_HELPER * helper)
 {
   int error = NO_ERROR, i, cmp = DB_EQ, cur_cnt = 0;
   DB_VALUE result;
@@ -7327,10 +7332,10 @@ cleanup:
  * Note: Make the final evaluation on the aggregate expression list.
  */
 int
-qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_list_p, bool keep_list_file)
+qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, aggregate_list_node * agg_list_p, bool keep_list_file)
 {
   int error = NO_ERROR;
-  AGGREGATE_TYPE *agg_p;
+  aggregate_list_node *agg_p;
   DB_VALUE sqr_val;
   DB_VALUE dbval;
   DB_VALUE xavgval, xavg_1val, x2avgval;
@@ -7440,7 +7445,7 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 		  qfile_close_list (thread_p, list_id_p);
 		  qfile_destroy_list (thread_p, list_id_p);
 		  list_id_p = NULL;
-		  error = er_errid ();
+		  ASSERT_ERROR_AND_SET (error);
 		  goto exit;
 		}
 
@@ -7449,9 +7454,9 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 		  if (!er_has_error ())
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+		      error = ER_GENERIC_ERROR;
 		    }
 
-		  error = er_errid ();
 		  goto exit;
 		}
 
@@ -7469,6 +7474,7 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 		  error = qfile_open_list_scan (list_id_p, &scan_id);
 		  if (error != NO_ERROR)
 		    {
+		      ASSERT_ERROR ();
 		      qfile_close_list (thread_p, list_id_p);
 		      qfile_destroy_list (thread_p, list_id_p);
 		      goto exit;
@@ -7480,6 +7486,7 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 		      error = qdata_evaluate_interpolation_function (thread_p, agg_p, &scan_id, false);
 		      if (error != NO_ERROR)
 			{
+			  ASSERT_ERROR ();
 			  qfile_close_scan (thread_p, &scan_id);
 			  qfile_close_list (thread_p, list_id_p);
 			  qfile_destroy_list (thread_p, list_id_p);
@@ -7516,10 +7523,11 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 				   QFILE_GET_TUPLE_VALUE_LENGTH (tuple_p));
 
 			  (void) pr_clear_value (&dbval);
-			  error = (*(pr_type_p->data_readval)) (&buf, &dbval, list_id_p->type_list.domp[0], -1, true,
-								NULL, 0);
+			  error =
+			    pr_type_p->data_readval (&buf, &dbval, list_id_p->type_list.domp[0], -1, true, NULL, 0);
 			  if (error != NO_ERROR)
 			    {
+			      ASSERT_ERROR ();
 			      qfile_close_scan (thread_p, &scan_id);
 			      qfile_close_list (thread_p, list_id_p);
 			      qfile_destroy_list (thread_p, list_id_p);
@@ -7532,11 +7540,11 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 			    {
 			      if (tp_value_coerce (&dbval, &dbval, tmp_domain_ptr) != DOMAIN_COMPATIBLE)
 				{
+				  ASSERT_ERROR_AND_SET (error);
 				  (void) pr_clear_value (&dbval);
 				  qfile_close_scan (thread_p, &scan_id);
 				  qfile_close_list (thread_p, list_id_p);
 				  qfile_destroy_list (thread_p, list_id_p);
-				  error = ER_FAILED;
 				  goto exit;
 				}
 			    }
@@ -7547,14 +7555,14 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 			      PR_TYPE *tmp_pr_type;
 			      DB_TYPE dbval_type = DB_VALUE_DOMAIN_TYPE (&dbval);
 
-			      tmp_pr_type = PR_TYPE_FROM_ID (dbval_type);
+			      tmp_pr_type = pr_type_from_id (dbval_type);
 			      if (tmp_pr_type == NULL)
 				{
+				  ASSERT_ERROR_AND_SET (error);
 				  (void) pr_clear_value (&dbval);
 				  qfile_close_scan (thread_p, &scan_id);
 				  qfile_close_list (thread_p, list_id_p);
 				  qfile_destroy_list (thread_p, list_id_p);
-				  error = ER_FAILED;
 				  goto exit;
 				}
 
@@ -7565,6 +7573,7 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 				  error = qdata_multiply_dbval (&dbval, &dbval, &sqr_val, tmp_domain_ptr);
 				  if (error != NO_ERROR)
 				    {
+				      ASSERT_ERROR ();
 				      (void) pr_clear_value (&dbval);
 				      qfile_close_scan (thread_p, &scan_id);
 				      qfile_close_list (thread_p, list_id_p);
@@ -7572,13 +7581,19 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 				      goto exit;
 				    }
 
-				  (*(tmp_pr_type->setval)) (agg_p->accumulator.value2, &sqr_val, true);
+				  if (tmp_pr_type->setval (agg_p->accumulator.value2, &sqr_val, true) != NO_ERROR)
+				    {
+				      assert (false);
+				      error = ER_FAILED;
+				      goto exit;
+				    }
 				}
 			      if (agg_p->function == PT_GROUP_CONCAT)
 				{
 				  error = qdata_group_concat_first_value (thread_p, agg_p, &dbval);
 				  if (error != NO_ERROR)
 				    {
+				      ASSERT_ERROR ();
 				      (void) pr_clear_value (&dbval);
 				      qfile_close_scan (thread_p, &scan_id);
 				      qfile_close_list (thread_p, list_id_p);
@@ -7588,7 +7603,12 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 				}
 			      else
 				{
-				  (*(tmp_pr_type->setval)) (agg_p->accumulator.value, &dbval, true);
+				  if (tmp_pr_type->setval (agg_p->accumulator.value, &dbval, true) != NO_ERROR)
+				    {
+				      assert (false);
+				      error = ER_FAILED;
+				      goto exit;
+				    }
 				}
 			    }
 			  else
@@ -7600,6 +7620,7 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 				  error = qdata_multiply_dbval (&dbval, &dbval, &sqr_val, tmp_domain_ptr);
 				  if (error != NO_ERROR)
 				    {
+				      ASSERT_ERROR ();
 				      (void) pr_clear_value (&dbval);
 				      qfile_close_scan (thread_p, &scan_id);
 				      qfile_close_list (thread_p, list_id_p);
@@ -7612,6 +7633,7 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 						     tmp_domain_ptr);
 				  if (error != NO_ERROR)
 				    {
+				      ASSERT_ERROR ();
 				      (void) pr_clear_value (&dbval);
 				      (void) pr_clear_value (&sqr_val);
 				      qfile_close_scan (thread_p, &scan_id);
@@ -7626,6 +7648,7 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 				  error = qdata_group_concat_value (thread_p, agg_p, &dbval);
 				  if (error != NO_ERROR)
 				    {
+				      ASSERT_ERROR ();
 				      (void) pr_clear_value (&dbval);
 				      qfile_close_scan (thread_p, &scan_id);
 				      qfile_close_list (thread_p, list_id_p);
@@ -7651,6 +7674,7 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 						     domain_ptr);
 				  if (error != NO_ERROR)
 				    {
+				      ASSERT_ERROR ();
 				      (void) pr_clear_value (&dbval);
 				      qfile_close_scan (thread_p, &scan_id);
 				      qfile_close_list (thread_p, list_id_p);
@@ -7692,6 +7716,7 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	  error = qdata_divide_dbval (agg_p->accumulator.value, &dbval, &xavgval, double_domain_ptr);
 	  if (error != NO_ERROR)
 	    {
+	      ASSERT_ERROR ();
 	      goto exit;
 	    }
 
@@ -7699,7 +7724,7 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	    {
 	      if (tp_value_coerce (&xavgval, agg_p->accumulator.value, double_domain_ptr) != DOMAIN_COMPATIBLE)
 		{
-		  error = ER_FAILED;
+		  ASSERT_ERROR_AND_SET (error);
 		  goto exit;
 		}
 
@@ -7731,6 +7756,7 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	  error = qdata_divide_dbval (agg_p->accumulator.value2, &dbval, &x2avgval, double_domain_ptr);
 	  if (error != NO_ERROR)
 	    {
+	      ASSERT_ERROR ();
 	      goto exit;
 	    }
 
@@ -7738,6 +7764,7 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	  error = qdata_divide_dbval (agg_p->accumulator.value, &dbval, &xavg_1val, double_domain_ptr);
 	  if (error != NO_ERROR)
 	    {
+	      ASSERT_ERROR ();
 	      goto exit;
 	    }
 
@@ -7745,6 +7772,7 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	  error = qdata_multiply_dbval (&xavgval, &xavg_1val, &xavg2val, double_domain_ptr);
 	  if (error != NO_ERROR)
 	    {
+	      ASSERT_ERROR ();
 	      goto exit;
 	    }
 
@@ -7753,6 +7781,7 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	  error = qdata_subtract_dbval (&x2avgval, &xavg2val, &varval, double_domain_ptr);
 	  if (error != NO_ERROR)
 	    {
+	      ASSERT_ERROR ();
 	      goto exit;
 	    }
 
@@ -7772,7 +7801,7 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	      tmp_domain_ptr = tp_domain_resolve_default (DB_TYPE_DOUBLE);
 	      if (tp_value_coerce (&varval, &dval, tmp_domain_ptr) != DOMAIN_COMPATIBLE)
 		{
-		  error = ER_FAILED;
+		  ASSERT_ERROR_AND_SET (error);
 		  goto exit;
 		}
 
@@ -7790,7 +7819,7 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	}
 
       /* Resolve the final result of aggregate function. Since the evaluation value might be changed to keep the
-       * precision during the aggregate function evaluation, for example, use DOUBLE instead FLOAT, we need to cast the 
+       * precision during the aggregate function evaluation, for example, use DOUBLE instead FLOAT, we need to cast the
        * result to the original domain. */
       if (agg_p->function == PT_SUM && agg_p->domain != agg_p->accumulator_domain.value_dom)
 	{
@@ -7798,6 +7827,7 @@ qdata_finalize_aggregate_list (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	  error = db_value_coerce (agg_p->accumulator.value, agg_p->accumulator.value, agg_p->domain);
 	  if (error != NO_ERROR)
 	    {
+	      ASSERT_ERROR ();
 	      return ER_FAILED;
 	    }
 	}
@@ -7834,16 +7864,12 @@ qdata_get_tuple_value_size_from_dbval (DB_VALUE * dbval_p)
   else
     {
       dbval_type = DB_VALUE_DOMAIN_TYPE (dbval_p);
-      type_p = PR_TYPE_FROM_ID (dbval_type);
+      type_p = pr_type_from_id (dbval_type);
       if (type_p)
 	{
-	  if (type_p->data_lengthval == NULL)
+	  val_size = type_p->get_disk_size_of_value (dbval_p);
+	  if (type_p->is_size_computed ())
 	    {
-	      val_size = type_p->disksize;
-	    }
-	  else
-	    {
-	      val_size = (*(type_p->data_lengthval)) (dbval_p, 1);
 	      if (pr_is_string_type (dbval_type))
 		{
 		  int precision = DB_VALUE_PRECISION (dbval_p);
@@ -7871,7 +7897,7 @@ qdata_get_tuple_value_size_from_dbval (DB_VALUE * dbval_p)
 		      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_DATA_IS_TRUNCATED_TO_PRECISION, 2, precision,
 			      string_length);
 
-		      val_size = (*(type_p->data_lengthval)) (dbval_p, 1);
+		      val_size = type_p->get_disk_size_of_value (dbval_p);
 		    }
 		}
 	    }
@@ -7891,7 +7917,7 @@ qdata_get_tuple_value_size_from_dbval (DB_VALUE * dbval_p)
  *   single_tuple(in)   : VAL_LIST
  */
 int
-qdata_get_single_tuple_from_list_id (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, VAL_LIST * single_tuple_p)
+qdata_get_single_tuple_from_list_id (THREAD_ENTRY * thread_p, qfile_list_id * list_id_p, val_list_node * single_tuple_p)
 {
   QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
   QFILE_LIST_SCAN_ID scan_id;
@@ -7959,7 +7985,7 @@ qdata_get_single_tuple_from_list_id (THREAD_ENTRY * thread_p, QFILE_LIST_ID * li
 	  OR_BUF_INIT (buf, ptr, length);
 	  if (flag == V_BOUND)
 	    {
-	      if ((*(pr_type_p->data_readval)) (&buf, value_list->val, domain_p, -1, true, NULL, 0) != NO_ERROR)
+	      if (pr_type_p->data_readval (&buf, value_list->val, domain_p, -1, true, NULL, 0) != NO_ERROR)
 		{
 		  qfile_close_scan (thread_p, &scan_id);
 		  return ER_FAILED;
@@ -7990,8 +8016,8 @@ qdata_get_single_tuple_from_list_id (THREAD_ENTRY * thread_p, QFILE_LIST_ID * li
  * in the list file.
  */
 int
-qdata_get_valptr_type_list (THREAD_ENTRY * thread_p, VALPTR_LIST * valptr_list_p,
-			    QFILE_TUPLE_VALUE_TYPE_LIST * type_list_p)
+qdata_get_valptr_type_list (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list_p,
+			    qfile_tuple_value_type_list * type_list_p)
 {
   REGU_VARIABLE_LIST reg_var_p;
   int i, count;
@@ -8180,7 +8206,7 @@ qdata_convert_dbvals_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype, REGU_VARIAB
       goto error;
     }
 
-  /* 
+  /*
    * DON'T set the "set"'s domain if it's really a vobj; they don't
    * play by quite the same rules.  The domain coming in here is some
    * flavor of vobj domain,  which is definitely *not* what the
@@ -8214,7 +8240,7 @@ qdata_convert_dbvals_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype, REGU_VARIAB
        * clone/free. */
       error_code = setobj_put_value (setobj_p, n, &dbval);
 
-      /* 
+      /*
        * if we attempt to add a duplicate value to a set,
        * clear the value, but do not set an error code
        */
@@ -8262,70 +8288,8 @@ static int
 qdata_evaluate_generic_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
 				 OID * obj_oid_p, QFILE_TUPLE tuple)
 {
-#if defined(ENABLE_UNUSED_FUNCTION)
-  DB_VALUE *args[NUM_F_GENERIC_ARGS];
-  DB_VALUE *result_p = function_p->value;
-  DB_VALUE *offset_dbval_p;
-  int offset;
-  REGU_VARIABLE_LIST operand = function_p->operand;
-  int i, num_args;
-  int (*function) (THREAD_ENTRY * thread_p, DB_VALUE *, int, DB_VALUE **);
-
-  /* by convention the first argument for the function is the function jump table offset and is not a real argument to
-   * the function. */
-  if (!operand
-      || fetch_peek_dbval (thread_p, &operand->value, val_desc_p, NULL, obj_oid_p, tuple, &offset_dbval_p) != NO_ERROR
-      || db_value_type (offset_dbval_p) != DB_TYPE_INTEGER)
-    {
-      goto error;
-    }
-
-  offset = db_get_int (offset_dbval_p);
-  if (offset >= (SSIZEOF (generic_func_ptrs) / SSIZEOF (generic_func_ptrs[0])))
-    {
-      goto error;
-    }
-
-  function = generic_func_ptrs[offset];
-  /* initialize the argument array */
-  for (i = 0; i < NUM_F_GENERIC_ARGS; i++)
-    {
-      args[i] = NULL;
-    }
-
-  /* skip the first argument, it is only the offset into the jump table */
-  operand = operand->next;
-  num_args = 0;
-
-  while (operand)
-    {
-      num_args++;
-      if (num_args > NUM_F_GENERIC_ARGS)
-	{
-	  goto error;
-	}
-
-      if (fetch_peek_dbval (thread_p, &operand->value, val_desc_p, NULL, obj_oid_p, tuple, &args[num_args - 1]) !=
-	  NO_ERROR)
-	{
-	  goto error;
-	}
-
-      operand = operand->next;
-    }
-
-  if ((*function) (thread_p, result_p, num_args, args) != NO_ERROR)
-    {
-      goto error;
-    }
-
-  return NO_ERROR;
-
-error:
-#else /* ENABLE_UNUSED_FUNCTION */
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_GENERIC_FUNCTION_FAILURE, 0);
   return ER_FAILED;
-#endif /* ENABLE_UNUSED_FUNCTION */
 }
 
 /*
@@ -8401,8 +8365,8 @@ qdata_get_class_of_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p
  * Note: Evaluate given function.
  */
 int
-qdata_evaluate_function (THREAD_ENTRY * thread_p, REGU_VARIABLE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-			 QFILE_TUPLE tuple)
+qdata_evaluate_function (THREAD_ENTRY * thread_p, regu_variable_node * function_p, val_descr * val_desc_p,
+			 OID * obj_oid_p, QFILE_TUPLE tuple)
 {
   FUNCTION_TYPE *funcp;
 
@@ -8447,35 +8411,100 @@ qdata_evaluate_function (THREAD_ENTRY * thread_p, REGU_VARIABLE * function_p, VA
     case F_ELT:
       return qdata_elt (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
 
-    case F_JSON_OBJECT:
-      return qdata_json_object (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+    case F_BENCHMARK:
+      return qdata_benchmark (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
 
     case F_JSON_ARRAY:
-      return qdata_json_array (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
-
-    case F_JSON_INSERT:
-      return qdata_json_insert (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
-
-    case F_JSON_REPLACE:
-      return qdata_json_replace (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
-
-    case F_JSON_SET:
-      return qdata_json_set (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
-
-    case F_JSON_KEYS:
-      return qdata_json_keys (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
-
-    case F_JSON_REMOVE:
-      return qdata_json_remove (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+						       db_evaluate_json_array);
 
     case F_JSON_ARRAY_APPEND:
-      return qdata_json_array_append (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+						       db_evaluate_json_array_append);
+
+    case F_JSON_ARRAY_INSERT:
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+						       db_evaluate_json_array_insert);
+
+    case F_JSON_CONTAINS:
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+						       db_evaluate_json_contains);
+
+    case F_JSON_CONTAINS_PATH:
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+						       db_evaluate_json_contains_path);
+
+    case F_JSON_DEPTH:
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+						       db_evaluate_json_depth);
+
+    case F_JSON_EXTRACT:
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+						       db_evaluate_json_extract);
 
     case F_JSON_GET_ALL_PATHS:
-      return qdata_json_get_all_paths (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+						       db_evaluate_json_get_all_paths);
+
+    case F_JSON_INSERT:
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+						       db_evaluate_json_insert);
+
+    case F_JSON_KEYS:
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+						       db_evaluate_json_keys);
+
+    case F_JSON_LENGTH:
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+						       db_evaluate_json_length);
 
     case F_JSON_MERGE:
-      return qdata_json_merge (thread_p, funcp, val_desc_p, obj_oid_p, tuple);
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+						       db_evaluate_json_merge_preserve);
+
+    case F_JSON_MERGE_PATCH:
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+						       db_evaluate_json_merge_patch);
+
+    case F_JSON_OBJECT:
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+						       db_evaluate_json_object);
+
+    case F_JSON_PRETTY:
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+						       db_evaluate_json_pretty);
+
+    case F_JSON_QUOTE:
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+						       db_evaluate_json_quote);
+
+    case F_JSON_REMOVE:
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+						       db_evaluate_json_remove);
+
+    case F_JSON_REPLACE:
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+						       db_evaluate_json_replace);
+
+    case F_JSON_SEARCH:
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+						       db_evaluate_json_search);
+
+    case F_JSON_SET:
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+						       db_evaluate_json_set);
+
+    case F_JSON_TYPE:
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+						       db_evaluate_json_type_dbval);
+
+    case F_JSON_UNQUOTE:
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+						       db_evaluate_json_unquote);
+
+    case F_JSON_VALID:
+      return qdata_convert_operands_to_value_and_call (thread_p, funcp, val_desc_p, obj_oid_p, tuple,
+						       db_evaluate_json_valid);
 
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
@@ -8553,7 +8582,7 @@ qdata_convert_table_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype, REGU_VARIABL
       return ER_FAILED;
     }
 
-  /* 
+  /*
    * Don't need to worry about the vobj case here; this function can't
    * be called in a context where it's expected to produce a vobj.  See
    * xd_dbvals_to_set for the contrasting case.
@@ -8577,7 +8606,7 @@ qdata_convert_table_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype, REGU_VARIABL
 	{
 	  /* grab column i and add it to the col */
 	  type = TP_DOMAIN_TYPE (list_id_p->type_list.domp[i]);
-	  pr_type_p = PR_TYPE_FROM_ID (type);
+	  pr_type_p = pr_type_from_id (type);
 	  if (pr_type_p == NULL)
 	    {
 	      qfile_close_scan (thread_p, &scan_id);
@@ -8588,21 +8617,20 @@ qdata_convert_table_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype, REGU_VARIABL
 	    {
 	      or_init (&buf, ptr, val_size);
 
-	      if ((*(pr_type_p->data_readval)) (&buf, &dbval, list_id_p->type_list.domp[i], -1, true, NULL, 0) !=
-		  NO_ERROR)
+	      if (pr_type_p->data_readval (&buf, &dbval, list_id_p->type_list.domp[i], -1, true, NULL, 0) != NO_ERROR)
 		{
 		  qfile_close_scan (thread_p, &scan_id);
 		  return ER_FAILED;
 		}
 	    }
 
-	  /* 
+	  /*
 	   * using setobj_put_value transfers "ownership" of the
 	   * db_value memory to the set. This avoids a redundant clone/free.
 	   */
 	  error = setobj_put_value (setobj_p, seq_pos++, &dbval);
 
-	  /* 
+	  /*
 	   * if we attempt to add a duplicate value to a set,
 	   * clear the value, but do not set an error
 	   */
@@ -8637,8 +8665,8 @@ qdata_convert_table_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype, REGU_VARIABL
  *  vd(in):
  */
 bool
-qdata_evaluate_connect_by_root (THREAD_ENTRY * thread_p, void *xasl_p, REGU_VARIABLE * regu_p, DB_VALUE * result_val_p,
-				VAL_DESCR * vd)
+qdata_evaluate_connect_by_root (THREAD_ENTRY * thread_p, void *xasl_p, regu_variable_node * regu_p,
+				DB_VALUE * result_val_p, val_descr * vd)
 {
   QFILE_TUPLE tpl;
   QFILE_LIST_ID *list_id_p;
@@ -8764,8 +8792,8 @@ qdata_evaluate_connect_by_root (THREAD_ENTRY * thread_p, void *xasl_p, REGU_VARI
  *  vd(in):
  */
 bool
-qdata_evaluate_qprior (THREAD_ENTRY * thread_p, void *xasl_p, REGU_VARIABLE * regu_p, DB_VALUE * result_val_p,
-		       VAL_DESCR * vd)
+qdata_evaluate_qprior (THREAD_ENTRY * thread_p, void *xasl_p, regu_variable_node * regu_p, DB_VALUE * result_val_p,
+		       val_descr * vd)
 {
   QFILE_TUPLE tpl;
   QFILE_LIST_ID *list_id_p;
@@ -8880,8 +8908,8 @@ qdata_evaluate_qprior (THREAD_ENTRY * thread_p, void *xasl_p, REGU_VARIABLE * re
  *  result_val_p(in/out):
  */
 bool
-qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, REGU_VARIABLE * regu_p,
-				    DB_VALUE * value_char, DB_VALUE * result_p, VAL_DESCR * vd)
+qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, regu_variable_node * regu_p,
+				    DB_VALUE * value_char, DB_VALUE * result_p, val_descr * vd)
 {
   QFILE_TUPLE tpl;
   QFILE_LIST_ID *list_id_p;
@@ -9259,7 +9287,7 @@ error2:
  *
  */
 int
-qdata_bit_not_dbval (DB_VALUE * dbval_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
+qdata_bit_not_dbval (DB_VALUE * dbval_p, DB_VALUE * result_p, tp_domain * domain_p)
 {
   DB_TYPE type;
 
@@ -9306,7 +9334,7 @@ qdata_bit_not_dbval (DB_VALUE * dbval_p, DB_VALUE * result_p, TP_DOMAIN * domain
  *
  */
 int
-qdata_bit_and_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
+qdata_bit_and_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, tp_domain * domain_p)
 {
   DB_TYPE type[2];
   DB_BIGINT bi[2];
@@ -9368,7 +9396,7 @@ qdata_bit_and_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result
  *
  */
 int
-qdata_bit_or_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
+qdata_bit_or_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, tp_domain * domain_p)
 {
   DB_TYPE type[2];
   DB_BIGINT bi[2];
@@ -9430,7 +9458,7 @@ qdata_bit_or_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
  *
  */
 int
-qdata_bit_xor_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
+qdata_bit_xor_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, tp_domain * domain_p)
 {
   DB_TYPE type[2];
   DB_BIGINT bi[2];
@@ -9493,7 +9521,7 @@ qdata_bit_xor_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result
  */
 int
 qdata_bit_shift_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, OPERATOR_TYPE op, DB_VALUE * result_p,
-		       TP_DOMAIN * domain_p)
+		       tp_domain * domain_p)
 {
   DB_TYPE type[2];
   DB_BIGINT bi[2];
@@ -9570,7 +9598,7 @@ qdata_bit_shift_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, OPERATOR_TYPE o
  */
 int
 qdata_divmod_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, OPERATOR_TYPE op, DB_VALUE * result_p,
-		    TP_DOMAIN * domain_p)
+		    tp_domain * domain_p)
 {
   DB_TYPE type[2];
   DB_BIGINT bi[2];
@@ -9681,7 +9709,7 @@ qdata_divmod_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, OPERATOR_TYPE op, 
  *   domain(in): domain
  */
 int
-qdata_list_dbs (THREAD_ENTRY * thread_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
+qdata_list_dbs (THREAD_ENTRY * thread_p, DB_VALUE * result_p, tp_domain * domain_p)
 {
   DB_INFO *db_info_p;
 
@@ -9776,28 +9804,33 @@ error:
  *   dbvalue(in)  : current value
  */
 int
-qdata_group_concat_first_value (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_p, DB_VALUE * dbvalue)
+qdata_group_concat_first_value (THREAD_ENTRY * thread_p, aggregate_list_node * agg_p, DB_VALUE * dbvalue)
 {
   TP_DOMAIN *result_domain;
   DB_TYPE agg_type;
   int max_allowed_size;
   DB_VALUE tmp_val;
+  int error_code = NO_ERROR;
 
   db_make_null (&tmp_val);
 
   agg_type = DB_VALUE_DOMAIN_TYPE (agg_p->accumulator.value);
   /* init the aggregate value domain */
-  if (db_value_domain_init (agg_p->accumulator.value, agg_type, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE) != NO_ERROR)
+  error_code = db_value_domain_init (agg_p->accumulator.value, agg_type, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+  if (error_code != NO_ERROR)
     {
+      ASSERT_ERROR ();
       pr_clear_value (dbvalue);
-      return ER_FAILED;
+      return error_code;
     }
 
-  if (db_string_make_empty_typed_string (agg_p->accumulator.value, agg_type, DB_DEFAULT_PRECISION,
-					 TP_DOMAIN_CODESET (agg_p->domain), TP_DOMAIN_COLLATION (agg_p->domain))
-      != NO_ERROR)
+  error_code = db_string_make_empty_typed_string (agg_p->accumulator.value, agg_type, DB_DEFAULT_PRECISION,
+						  TP_DOMAIN_CODESET (agg_p->domain),
+						  TP_DOMAIN_COLLATION (agg_p->domain));
+  if (error_code != NO_ERROR)
     {
-      return ER_FAILED;
+      ASSERT_ERROR ();
+      return error_code;
     }
 
   if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING) == true)
@@ -9810,11 +9843,13 @@ qdata_group_concat_first_value (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_p,
 
   max_allowed_size = (int) prm_get_bigint_value (PRM_ID_GROUP_CONCAT_MAX_LEN);
 
-  if (qdata_concatenate_dbval (thread_p, agg_p->accumulator.value, dbvalue, &tmp_val, result_domain, max_allowed_size,
-			       "GROUP_CONCAT()") != NO_ERROR)
+  error_code = qdata_concatenate_dbval (thread_p, agg_p->accumulator.value, dbvalue, &tmp_val, result_domain,
+					max_allowed_size, "GROUP_CONCAT()");
+  if (error_code != NO_ERROR)
     {
+      ASSERT_ERROR ();
       pr_clear_value (dbvalue);
-      return ER_FAILED;
+      return error_code;
     }
 
   /* check for concat success */
@@ -9837,7 +9872,7 @@ qdata_group_concat_first_value (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_p,
  *   dbvalue(in)  : current value
  */
 int
-qdata_group_concat_value (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_p, DB_VALUE * dbvalue)
+qdata_group_concat_value (THREAD_ENTRY * thread_p, aggregate_list_node * agg_p, DB_VALUE * dbvalue)
 {
   TP_DOMAIN *result_domain;
   DB_TYPE agg_type;
@@ -9917,7 +9952,7 @@ qdata_group_concat_value (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_p, DB_VA
  */
 
 int
-qdata_regu_list_to_regu_array (FUNCTION_TYPE * function_p, const int array_size, REGU_VARIABLE * regu_array[],
+qdata_regu_list_to_regu_array (function_node * function_p, const int array_size, regu_variable_node * regu_array[],
 			       int *num_regu)
 {
   REGU_VARIABLE_LIST operand = function_p->operand;
@@ -10089,7 +10124,7 @@ qdata_elt (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_
       goto error_exit;
     }
 
-  /* 
+  /*
    * operand should already be cast to the right type (CHAR
    * or NCHAR VARYING)
    */
@@ -10102,10 +10137,102 @@ error_exit:
   return error_status;
 }
 
+//
+// qdata_benchmark () - "benchmark" function execution; repeatedly run nested operation
+//
+static int
+qdata_benchmark (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
+		 QFILE_TUPLE tuple)
+{
+  assert (function_p);
+
+  if (function_p == NULL || function_p->operand == NULL || function_p->operand->next == NULL)
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+
+  if (function_p->value == NULL)
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+
+  db_make_null (function_p->value);
+
+  REGU_VARIABLE *count_reguvar = &function_p->operand->value;
+  REGU_VARIABLE *target_reguvar = &function_p->operand->next->value;
+
+  DB_VALUE *count_value = NULL;
+  DB_VALUE *target_value = NULL;
+
+  int error = fetch_peek_dbval (thread_p, count_reguvar, val_desc_p, NULL, obj_oid_p, tuple, &count_value);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error;
+    }
+
+  if (db_value_is_null (count_value))
+    {
+      return NO_ERROR;
+    }
+
+  INT64 count = 0;
+
+  switch (db_value_domain_type (count_value))
+    {
+    case DB_TYPE_SMALLINT:
+      count = STATIC_CAST (INT64, db_get_short (count_value));
+      break;
+    case DB_TYPE_INTEGER:
+      count = STATIC_CAST (INT64, db_get_int (count_value));
+      break;
+    case DB_TYPE_BIGINT:
+      count = db_get_bigint (count_value);
+      break;
+    default:
+      assert (false);
+      return ER_FAILED;
+    }
+
+  if (count <= 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  using bench_clock = std::chrono::system_clock;
+  bench_clock::time_point start_timept = bench_clock::now ();
+
+  for (INT64 step = 0; step < count; step++)
+    {
+      // we're trying to benchmark the expression in target reguvar by running it many times. even if all operands are
+      // constant, we still have to repeat the operations. for that, we need to make sure nested regu variables are not
+      // flagged as constants
+      //
+      // node that they still may be other optimizations that are not so easily disabled
+      fetch_force_not_const_recursive (*target_reguvar);
+      error = fetch_peek_dbval (thread_p, target_reguvar, val_desc_p, NULL, obj_oid_p, tuple, &target_value);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error;
+	}
+      pr_clear_value (target_value);
+    }
+
+  bench_clock::time_point end_timept = bench_clock::now ();
+  std::chrono::duration < double >secs = end_timept - start_timept;
+
+  db_make_double (function_p->value, secs.count ());
+  return NO_ERROR;
+}
+
 static int
 qdata_convert_operands_to_value_and_call (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
 					  OID * obj_oid_p, QFILE_TUPLE tuple,
-					  int (*function_to_call) (DB_VALUE *, DB_VALUE **, int const))
+					  int (*function_to_call) (DB_VALUE *, DB_VALUE * const *, int const))
 {
   DB_VALUE *value;
   REGU_VARIABLE_LIST operand;
@@ -10154,78 +10281,6 @@ qdata_convert_operands_to_value_and_call (THREAD_ENTRY * thread_p, FUNCTION_TYPE
 exit:
   db_private_free (thread_p, args);
   return error_status;
-}
-
-static int
-qdata_json_object (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-		   QFILE_TUPLE tuple)
-{
-  return qdata_convert_operands_to_value_and_call (thread_p, function_p, val_desc_p, obj_oid_p, tuple, db_json_object);
-}
-
-static int
-qdata_json_array (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-		  QFILE_TUPLE tuple)
-{
-  return qdata_convert_operands_to_value_and_call (thread_p, function_p, val_desc_p, obj_oid_p, tuple, db_json_array);
-}
-
-static int
-qdata_json_insert (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-		   QFILE_TUPLE tuple)
-{
-  return qdata_convert_operands_to_value_and_call (thread_p, function_p, val_desc_p, obj_oid_p, tuple, db_json_insert);
-}
-
-static int
-qdata_json_replace (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-		    QFILE_TUPLE tuple)
-{
-  return qdata_convert_operands_to_value_and_call (thread_p, function_p, val_desc_p, obj_oid_p, tuple, db_json_replace);
-}
-
-static int
-qdata_json_set (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-		QFILE_TUPLE tuple)
-{
-  return qdata_convert_operands_to_value_and_call (thread_p, function_p, val_desc_p, obj_oid_p, tuple, db_json_set);
-}
-
-static int
-qdata_json_keys (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-		 QFILE_TUPLE tuple)
-{
-  return qdata_convert_operands_to_value_and_call (thread_p, function_p, val_desc_p, obj_oid_p, tuple, db_json_keys);
-}
-
-static int
-qdata_json_remove (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-		   QFILE_TUPLE tuple)
-{
-  return qdata_convert_operands_to_value_and_call (thread_p, function_p, val_desc_p, obj_oid_p, tuple, db_json_remove);
-}
-
-static int
-qdata_json_array_append (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-			 QFILE_TUPLE tuple)
-{
-  return qdata_convert_operands_to_value_and_call (thread_p, function_p, val_desc_p,
-						   obj_oid_p, tuple, db_json_array_append);
-}
-
-static int
-qdata_json_get_all_paths (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-			  QFILE_TUPLE tuple)
-{
-  return qdata_convert_operands_to_value_and_call (thread_p, function_p, val_desc_p,
-						   obj_oid_p, tuple, db_json_get_all_paths);
-}
-
-static int
-qdata_json_merge (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p, OID * obj_oid_p,
-		  QFILE_TUPLE tuple)
-{
-  return qdata_convert_operands_to_value_and_call (thread_p, function_p, val_desc_p, obj_oid_p, tuple, db_json_merge);
 }
 
 /*
@@ -10307,7 +10362,7 @@ exit:
  *
  */
 int
-qdata_initialize_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, QUERY_ID query_id)
+qdata_initialize_analytic_func (THREAD_ENTRY * thread_p, analytic_list_node * func_p, QUERY_ID query_id)
 {
   func_p->curr_cnt = 0;
   if (db_value_domain_init (func_p->value, DB_VALUE_DOMAIN_TYPE (func_p->value), DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE)
@@ -10367,7 +10422,7 @@ qdata_initialize_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p,
  *
  */
 int
-qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, VAL_DESCR * val_desc_p)
+qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, analytic_list_node * func_p, VAL_DESCR * val_desc_p)
 {
   DB_VALUE dbval, sqr_val;
   DB_VALUE *opr_dbval_p = NULL;
@@ -10378,7 +10433,6 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, V
   int copy_opr;
   TP_DOMAIN *tmp_domain_p = NULL;
   DB_TYPE dbval_type;
-  double ntile_bucket = 0.0;
   int error = NO_ERROR;
   TP_DOMAIN_STATUS dom_status;
   int coll_id;
@@ -10470,7 +10524,7 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, V
     {
       /* handle distincts by adding to the temp list file */
       dbval_type = DB_VALUE_DOMAIN_TYPE (&dbval);
-      pr_type_p = PR_TYPE_FROM_ID (dbval_type);
+      pr_type_p = pr_type_from_id (dbval_type);
 
       if (pr_type_p == NULL)
 	{
@@ -10482,7 +10536,7 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, V
       if (dbval_size > 0 && (disk_repr_p = (char *) db_private_alloc (thread_p, dbval_size)) != NULL)
 	{
 	  OR_BUF_INIT (buf, disk_repr_p, dbval_size);
-	  error = (*(pr_type_p->data_writeval)) (&buf, &dbval);
+	  error = pr_type_p->data_writeval (&buf, &dbval);
 	  if (error != NO_ERROR)
 	    {
 	      /* ER_TF_BUFFER_OVERFLOW means that val_size or packing is bad. */
@@ -10541,10 +10595,10 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, V
 	      goto exit;
 	    }
 
-	  ntile_bucket = db_get_double (&dbval);
+	  int ntile_bucket = (int) floor (db_get_double (&dbval));
 
 	  /* boundary check */
-	  if (ntile_bucket < 1.0 || ntile_bucket > DB_INT32_MAX)
+	  if (ntile_bucket < 1 || ntile_bucket > DB_INT32_MAX)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NTILE_INVALID_BUCKET_NUMBER, 0);
 	      error = ER_NTILE_INVALID_BUCKET_NUMBER;
@@ -10553,7 +10607,7 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, V
 
 	  /* we're sure the operand is not null */
 	  func_p->info.ntile.is_null = false;
-	  func_p->info.ntile.bucket_count = (int) floor (ntile_bucket);
+	  func_p->info.ntile.bucket_count = ntile_bucket;
 	}
       break;
 
@@ -10586,7 +10640,7 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, V
     case PT_MIN:
       opr_dbval_p = &dbval;
       if ((func_p->curr_cnt < 1 || DB_IS_NULL (func_p->value))
-	  || (*(func_p->domain->type->cmpval)) (func_p->value, &dbval, 1, 1, NULL, coll_id) > 0)
+	  || func_p->domain->type->cmpval (func_p->value, &dbval, 1, 1, NULL, coll_id) > 0)
 	{
 	  copy_opr = true;
 	}
@@ -10595,7 +10649,7 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, V
     case PT_MAX:
       opr_dbval_p = &dbval;
       if ((func_p->curr_cnt < 1 || DB_IS_NULL (func_p->value))
-	  || (*(func_p->domain->type->cmpval)) (func_p->value, &dbval, 1, 1, NULL, coll_id) < 0)
+	  || func_p->domain->type->cmpval (func_p->value, &dbval, 1, 1, NULL, coll_id) < 0)
 	{
 	  copy_opr = true;
 	}
@@ -10610,7 +10664,7 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, V
 
 	  if (TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (opr_dbval_p)))
 	    {
-	      /* char types default to double; coerce here so we don't mess up the accumulator when we copy the operand 
+	      /* char types default to double; coerce here so we don't mess up the accumulator when we copy the operand
 	       */
 	      if (tp_value_coerce (&dbval, &dbval, func_p->domain) != DOMAIN_COMPATIBLE)
 		{
@@ -10743,15 +10797,15 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, V
 	  (void) pr_clear_value (func_p->value);
 	  (void) pr_clear_value (func_p->value2);
 	  dbval_type = DB_VALUE_DOMAIN_TYPE (func_p->value);
-	  pr_type_p = PR_TYPE_FROM_ID (dbval_type);
+	  pr_type_p = pr_type_from_id (dbval_type);
 	  if (pr_type_p == NULL)
 	    {
 	      error = ER_FAILED;
 	      goto exit;
 	    }
 
-	  (*(pr_type_p->setval)) (func_p->value, &dbval, true);
-	  (*(pr_type_p->setval)) (func_p->value2, &sqr_val, true);
+	  pr_type_p->setval (func_p->value, &dbval, true);
+	  pr_type_p->setval (func_p->value2, &sqr_val, true);
 	}
       else
 	{
@@ -10933,7 +10987,7 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, V
 		  if (dom_status != DOMAIN_COMPATIBLE)
 		    {
 		      error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, qdump_function_type_string (func_p->function),
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, fcode_get_uppercase_name (func_p->function),
 			      "DOUBLE, DATETIME, TIME");
 		      goto exit;
 		    }
@@ -10985,14 +11039,14 @@ qdata_evaluate_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, V
       /* copy resultant operand value to analytic node */
       (void) pr_clear_value (func_p->value);
       dbval_type = DB_VALUE_DOMAIN_TYPE (func_p->value);
-      pr_type_p = PR_TYPE_FROM_ID (dbval_type);
+      pr_type_p = pr_type_from_id (dbval_type);
       if (pr_type_p == NULL)
 	{
 	  error = ER_FAILED;
 	  goto exit;
 	}
 
-      (*(pr_type_p->setval)) (func_p->value, opr_dbval_p, true);
+      pr_type_p->setval (func_p->value, opr_dbval_p, true);
     }
 
   func_p->curr_cnt++;
@@ -11011,7 +11065,7 @@ exit:
  *
  */
 int
-qdata_finalize_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, bool is_same_group)
+qdata_finalize_analytic_func (THREAD_ENTRY * thread_p, analytic_list_node * func_p, bool is_same_group)
 {
   DB_VALUE dbval;
   QFILE_LIST_ID *list_id_p;
@@ -11120,7 +11174,7 @@ qdata_finalize_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, b
 
 		  or_init (&buf, (char *) tuple_p + QFILE_TUPLE_VALUE_HEADER_SIZE,
 			   QFILE_GET_TUPLE_VALUE_LENGTH (tuple_p));
-		  if ((*(pr_type_p->data_readval)) (&buf, &dbval, list_id_p->type_list.domp[0], -1, true, NULL, 0) !=
+		  if (pr_type_p->data_readval (&buf, &dbval, list_id_p->type_list.domp[0], -1, true, NULL, 0) !=
 		      NO_ERROR)
 		    {
 		      qfile_close_scan (thread_p, &scan_id);
@@ -11149,7 +11203,7 @@ qdata_finalize_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, b
 		      PR_TYPE *tmp_pr_type;
 		      DB_TYPE dbval_type = DB_VALUE_DOMAIN_TYPE (&dbval);
 
-		      tmp_pr_type = PR_TYPE_FROM_ID (dbval_type);
+		      tmp_pr_type = pr_type_from_id (dbval_type);
 		      if (tmp_pr_type == NULL)
 			{
 			  (void) pr_clear_value (&dbval);
@@ -11172,10 +11226,10 @@ qdata_finalize_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, b
 			      return ER_FAILED;
 			    }
 
-			  (*(tmp_pr_type->setval)) (func_p->value2, &sqr_val, true);
+			  tmp_pr_type->setval (func_p->value2, &sqr_val, true);
 			}
 
-		      (*(tmp_pr_type->setval)) (func_p->value, &dbval, true);
+		      tmp_pr_type->setval (func_p->value, &dbval, true);
 		    }
 		  else
 		    {
@@ -11304,7 +11358,7 @@ qdata_finalize_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, b
 	  goto error;
 	}
 
-      /* compute VAR(X) = SUM(X^2)/(n) - AVG(X) * {SUM(X) / (n)} OR VAR(X) = SUM(X^2)/(n-1) - AVG(X) * {SUM(X) / (n-1)} 
+      /* compute VAR(X) = SUM(X^2)/(n) - AVG(X) * {SUM(X) / (n)} OR VAR(X) = SUM(X^2)/(n-1) - AVG(X) * {SUM(X) / (n-1)}
        * for xxx_SAMP aggregates */
       if (qdata_subtract_dbval (&x2avgval, &xavg2val, &varval, double_domain_ptr) != NO_ERROR)
 	{
@@ -11367,7 +11421,7 @@ error:
  * Note: Values are cloned in the values array
  */
 int
-qdata_tuple_to_values_array (THREAD_ENTRY * thread_p, QFILE_TUPLE_DESCRIPTOR * tuple, DB_VALUE ** values)
+qdata_tuple_to_values_array (THREAD_ENTRY * thread_p, qfile_tuple_descriptor * tuple, DB_VALUE ** values)
 {
   DB_VALUE *vals;
   int error = NO_ERROR, i;
@@ -11418,7 +11472,7 @@ error_return:
  *   result(out): result as DB_VALUE
  */
 int
-qdata_apply_interpolation_function_coercion (DB_VALUE * f_value, TP_DOMAIN ** result_dom, DB_VALUE * result,
+qdata_apply_interpolation_function_coercion (DB_VALUE * f_value, tp_domain ** result_dom, DB_VALUE * result,
 					     FUNC_TYPE function)
 {
   DB_TYPE type;
@@ -11499,7 +11553,7 @@ qdata_apply_interpolation_function_coercion (DB_VALUE * f_value, TP_DOMAIN ** re
 	    {
 	      assert (error == ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN);
 
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, qdump_function_type_string (function),
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, fcode_get_uppercase_name (function),
 		      "DOUBLE, DATETIME, TIME");
 
 	      error = ER_FAILED;
@@ -11536,7 +11590,7 @@ end:
  */
 int
 qdata_interpolation_function_values (DB_VALUE * f_value, DB_VALUE * c_value, double row_num_d, double f_row_num_d,
-				     double c_row_num_d, TP_DOMAIN ** result_dom, DB_VALUE * result, FUNC_TYPE function)
+				     double c_row_num_d, tp_domain ** result_dom, DB_VALUE * result, FUNC_TYPE function)
 {
   DB_DATE date;
   DB_DATETIME datetime;
@@ -11563,7 +11617,7 @@ qdata_interpolation_function_values (DB_VALUE * f_value, DB_VALUE * c_value, dou
 	    {
 	      assert (error == ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN);
 
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, qdump_function_type_string (function),
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, fcode_get_uppercase_name (function),
 		      "DOUBLE, DATETIME, TIME");
 
 	      error = ER_FAILED;
@@ -11838,9 +11892,9 @@ end:
  *
  */
 int
-qdata_get_interpolation_function_result (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id, TP_DOMAIN * domain,
+qdata_get_interpolation_function_result (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id, tp_domain * domain,
 					 int pos, double row_num_d, double f_row_num_d, double c_row_num_d,
-					 DB_VALUE * result, TP_DOMAIN ** result_dom, FUNC_TYPE function)
+					 DB_VALUE * result, tp_domain ** result_dom, FUNC_TYPE function)
 {
   int error = NO_ERROR;
   QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
@@ -11943,7 +11997,7 @@ end:
  *
  */
 static int
-qdata_calculate_aggregate_cume_dist_percent_rank (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_p,
+qdata_calculate_aggregate_cume_dist_percent_rank (THREAD_ENTRY * thread_p, aggregate_list_node * agg_p,
 						  VAL_DESCR * val_desc_p)
 {
   DB_VALUE *val_node, **val_node_p;
@@ -11958,9 +12012,9 @@ qdata_calculate_aggregate_cume_dist_percent_rank (THREAD_ENTRY * thread_p, AGGRE
   DB_DOMAIN *dom;
   HL_HEAPID save_heapid = 0;
 
-  assert (agg_p != NULL && agg_p->sort_list != NULL && agg_p->operand.type == TYPE_REGU_VAR_LIST);
+  assert (agg_p != NULL && agg_p->sort_list != NULL && agg_p->operands->value.type == TYPE_REGU_VAR_LIST);
 
-  regu_var_list = agg_p->operand.value.regu_var_list;
+  regu_var_list = agg_p->operands->value.value.regu_var_list;
   info_p = &agg_p->info.dist_percent;
   assert (regu_var_list != NULL && info_p != NULL);
 
@@ -12091,9 +12145,9 @@ qdata_calculate_aggregate_cume_dist_percent_rank (THREAD_ENTRY * thread_p, AGGRE
       else
 	{
 	  /* non-NULL values comparison */
-	  pr_type_p = PR_TYPE_FROM_ID (DB_VALUE_DOMAIN_TYPE (val_node));
-	  cmp = (*(pr_type_p->cmpval)) (val_node, info_p->const_array[i], 1, 0, NULL,
-					regu_var_node->value.domain->collation_id);
+	  pr_type_p = pr_type_from_id (DB_VALUE_DOMAIN_TYPE (val_node));
+	  cmp = pr_type_p->cmpval (val_node, info_p->const_array[i], 1, 0, NULL,
+				   regu_var_node->value.domain->collation_id);
 
 	  assert (cmp != DB_UNK);
 	}
@@ -12149,16 +12203,16 @@ exit_on_error:
  *   val_cnt(in): size of key
  *   alloc_vals(in): if true will allocate dbvalues
  */
-AGGREGATE_HASH_KEY *
+aggregate_hash_key *
 qdata_alloc_agg_hkey (THREAD_ENTRY * thread_p, int val_cnt, bool alloc_vals)
 {
-  AGGREGATE_HASH_KEY *key;
+  aggregate_hash_key *key;
   int i;
 
-  key = (AGGREGATE_HASH_KEY *) db_private_alloc (thread_p, sizeof (AGGREGATE_HASH_KEY));
+  key = (aggregate_hash_key *) db_private_alloc (thread_p, sizeof (aggregate_hash_key));
   if (key == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (AGGREGATE_HASH_KEY));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (aggregate_hash_key));
       return NULL;
     }
 
@@ -12189,7 +12243,7 @@ qdata_alloc_agg_hkey (THREAD_ENTRY * thread_p, int val_cnt, bool alloc_vals)
  *   key(in): aggregate hash key
  */
 void
-qdata_free_agg_hkey (THREAD_ENTRY * thread_p, AGGREGATE_HASH_KEY * key)
+qdata_free_agg_hkey (THREAD_ENTRY * thread_p, aggregate_hash_key * key)
 {
   int i = 0;
 
@@ -12224,17 +12278,17 @@ qdata_free_agg_hkey (THREAD_ENTRY * thread_p, AGGREGATE_HASH_KEY * key)
  *   returns: pointer to new structure or NULL on error
  *   thread_p(in): thread
  */
-AGGREGATE_HASH_VALUE *
+aggregate_hash_value *
 qdata_alloc_agg_hvalue (THREAD_ENTRY * thread_p, int func_cnt)
 {
-  AGGREGATE_HASH_VALUE *value;
+  aggregate_hash_value *value;
   int i;
 
   /* alloc structure */
-  value = (AGGREGATE_HASH_VALUE *) db_private_alloc (thread_p, sizeof (AGGREGATE_HASH_VALUE));
+  value = (aggregate_hash_value *) db_private_alloc (thread_p, sizeof (aggregate_hash_value));
   if (value == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (AGGREGATE_HASH_VALUE));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (aggregate_hash_value));
       return NULL;
     }
 
@@ -12280,7 +12334,7 @@ qdata_alloc_agg_hvalue (THREAD_ENTRY * thread_p, int func_cnt)
  *   key(in): aggregate hash key
  */
 void
-qdata_free_agg_hvalue (THREAD_ENTRY * thread_p, AGGREGATE_HASH_VALUE * value)
+qdata_free_agg_hvalue (THREAD_ENTRY * thread_p, aggregate_hash_value * value)
 {
   int i = 0;
 
@@ -12325,7 +12379,7 @@ qdata_free_agg_hvalue (THREAD_ENTRY * thread_p, AGGREGATE_HASH_VALUE * value)
  *   key(in): hash key
  */
 int
-qdata_get_agg_hkey_size (AGGREGATE_HASH_KEY * key)
+qdata_get_agg_hkey_size (aggregate_hash_key * key)
 {
   int i, size = 0;
 
@@ -12337,7 +12391,7 @@ qdata_get_agg_hkey_size (AGGREGATE_HASH_KEY * key)
 	}
     }
 
-  return size + sizeof (AGGREGATE_HASH_KEY);
+  return size + sizeof (aggregate_hash_key);
 }
 
 /*
@@ -12348,7 +12402,7 @@ qdata_get_agg_hkey_size (AGGREGATE_HASH_KEY * key)
  *                  size between previously computed size and current size
  */
 int
-qdata_get_agg_hvalue_size (AGGREGATE_HASH_VALUE * value, bool ret_delta)
+qdata_get_agg_hvalue_size (aggregate_hash_value * value, bool ret_delta)
 {
   int i, size = 0, old_size = 0;
 
@@ -12368,7 +12422,7 @@ qdata_get_agg_hvalue_size (AGGREGATE_HASH_VALUE * value, bool ret_delta)
 	}
     }
 
-  size += sizeof (AGGREGATE_HASH_VALUE);
+  size += sizeof (aggregate_hash_value);
   size += value->first_tuple.size;
 
   old_size = (ret_delta ? value->curr_size : 0);
@@ -12388,8 +12442,8 @@ qdata_get_agg_hvalue_size (AGGREGATE_HASH_VALUE * value, bool ret_delta)
 int
 qdata_free_agg_hentry (const void *key, void *data, void *args)
 {
-  AGGREGATE_HASH_KEY *hkey = (AGGREGATE_HASH_KEY *) key;
-  AGGREGATE_HASH_VALUE *hvalue = (AGGREGATE_HASH_VALUE *) data;
+  aggregate_hash_key *hkey = (aggregate_hash_key *) key;
+  aggregate_hash_value *hvalue = (aggregate_hash_value *) data;
   THREAD_ENTRY *thread_p = (THREAD_ENTRY *) args;
 
   /* free key */
@@ -12411,7 +12465,7 @@ qdata_free_agg_hentry (const void *key, void *data, void *args)
 unsigned int
 qdata_hash_agg_hkey (const void *key, unsigned int ht_size)
 {
-  AGGREGATE_HASH_KEY *ckey = (AGGREGATE_HASH_KEY *) key;
+  aggregate_hash_key *ckey = (aggregate_hash_key *) key;
   unsigned int hash_val = 0;
   int i;
 
@@ -12432,7 +12486,7 @@ qdata_hash_agg_hkey (const void *key, unsigned int ht_size)
  *   diff_pos(out): if not equal, position of difference, otherwise -1
  */
 DB_VALUE_COMPARE_RESULT
-qdata_agg_hkey_compare (AGGREGATE_HASH_KEY * ckey1, AGGREGATE_HASH_KEY * ckey2, int *diff_pos)
+qdata_agg_hkey_compare (aggregate_hash_key * ckey1, aggregate_hash_key * ckey2, int *diff_pos)
 {
   DB_VALUE_COMPARE_RESULT result;
   int i;
@@ -12476,8 +12530,8 @@ qdata_agg_hkey_compare (AGGREGATE_HASH_KEY * ckey1, AGGREGATE_HASH_KEY * ckey2, 
 int
 qdata_agg_hkey_eq (const void *key1, const void *key2)
 {
-  AGGREGATE_HASH_KEY *ckey1 = (AGGREGATE_HASH_KEY *) key1;
-  AGGREGATE_HASH_KEY *ckey2 = (AGGREGATE_HASH_KEY *) key2;
+  aggregate_hash_key *ckey1 = (aggregate_hash_key *) key1;
+  aggregate_hash_key *ckey2 = (aggregate_hash_key *) key2;
   int decoy;
 
   /* compare for equality */
@@ -12490,10 +12544,10 @@ qdata_agg_hkey_eq (const void *key1, const void *key2)
  *   thread_p(in): thread
  *   key(in): source key
  */
-AGGREGATE_HASH_KEY *
-qdata_copy_agg_hkey (THREAD_ENTRY * thread_p, AGGREGATE_HASH_KEY * key)
+aggregate_hash_key *
+qdata_copy_agg_hkey (THREAD_ENTRY * thread_p, aggregate_hash_key * key)
 {
-  AGGREGATE_HASH_KEY *new_key = NULL;
+  aggregate_hash_key *new_key = NULL;
   int i = 0;
 
   if (key)
@@ -12524,7 +12578,7 @@ qdata_copy_agg_hkey (THREAD_ENTRY * thread_p, AGGREGATE_HASH_KEY * key)
  *   copy_vals(in): true for deep copy of DB_VALUES, false for shallow copy
  */
 void
-qdata_load_agg_hvalue_in_agg_list (AGGREGATE_HASH_VALUE * value, AGGREGATE_TYPE * agg_list, bool copy_vals)
+qdata_load_agg_hvalue_in_agg_list (aggregate_hash_value * value, aggregate_list_node * agg_list, bool copy_vals)
 {
   int i = 0;
   DB_TYPE db_type;
@@ -12609,12 +12663,14 @@ qdata_load_agg_hvalue_in_agg_list (AGGREGATE_HASH_VALUE * value, AGGREGATE_TYPE 
  *   list_id(in): target list file
  */
 int
-qdata_save_agg_hentry_to_list (THREAD_ENTRY * thread_p, AGGREGATE_HASH_KEY * key, AGGREGATE_HASH_VALUE * value,
-			       DB_VALUE * temp_dbval_array, QFILE_LIST_ID * list_id)
+qdata_save_agg_hentry_to_list (THREAD_ENTRY * thread_p, aggregate_hash_key * key, aggregate_hash_value * value,
+			       DB_VALUE * temp_dbval_array, qfile_list_id * list_id)
 {
   DB_VALUE tuple_count;
   int tuple_size = QFILE_TUPLE_LENGTH_SIZE;
   int col = 0, i;
+  QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
+  int error = NO_ERROR;
 
   /* build tuple descriptor */
   for (i = 0; i < key->val_count; i++)
@@ -12640,12 +12696,34 @@ qdata_save_agg_hentry_to_list (THREAD_ENTRY * thread_p, AGGREGATE_HASH_KEY * key
   list_id->tpl_descr.f_valp[col++] = &tuple_count;
   tuple_size += qdata_get_tuple_value_size_from_dbval (&tuple_count);
 
-  /* add to list file */
   list_id->tpl_descr.tpl_size = tuple_size;
-  qfile_generate_tuple_into_list (thread_p, list_id, T_NORMAL);
+  /* add to list file */
+  if (tuple_size <= QFILE_MAX_TUPLE_SIZE_IN_PAGE)
+    {
+      qfile_generate_tuple_into_list (thread_p, list_id, T_NORMAL);
+    }
+  else
+    {
+      error = qfile_copy_tuple_descr_to_tuple (thread_p, &list_id->tpl_descr, &tplrec);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+      error = qfile_add_tuple_to_list (thread_p, list_id, tplrec.tpl);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+    }
+
+cleanup:
+  if (tplrec.tpl != NULL)
+    {
+      db_private_free (thread_p, tplrec.tpl);
+    }
 
   /* all ok */
-  return NO_ERROR;
+  return error;
 }
 
 /*
@@ -12660,9 +12738,9 @@ qdata_save_agg_hentry_to_list (THREAD_ENTRY * thread_p, AGGREGATE_HASH_KEY * key
  *   acc_dom(in): accumulator domains
  */
 int
-qdata_load_agg_hentry_from_tuple (THREAD_ENTRY * thread_p, QFILE_TUPLE tuple, AGGREGATE_HASH_KEY * key,
-				  AGGREGATE_HASH_VALUE * value, TP_DOMAIN ** key_dom,
-				  AGGREGATE_ACCUMULATOR_DOMAIN ** acc_dom)
+qdata_load_agg_hentry_from_tuple (THREAD_ENTRY * thread_p, QFILE_TUPLE tuple, aggregate_hash_key * key,
+				  aggregate_hash_value * value, tp_domain ** key_dom,
+				  aggregate_accumulator_domain ** acc_dom)
 {
   QFILE_TUPLE_VALUE_FLAG flag;
   DB_VALUE int_val;
@@ -12690,7 +12768,7 @@ qdata_load_agg_hentry_from_tuple (THREAD_ENTRY * thread_p, QFILE_TUPLE tuple, AG
       (void) pr_clear_value (key->values[i]);
       if (flag == V_BOUND)
 	{
-	  (key_dom[i]->type->data_readval) (&buf, key->values[i], key_dom[i], -1, true, NULL, 0);
+	  key_dom[i]->type->data_readval (&buf, key->values[i], key_dom[i], -1, true, NULL, 0);
 	}
       else
 	{
@@ -12711,8 +12789,8 @@ qdata_load_agg_hentry_from_tuple (THREAD_ENTRY * thread_p, QFILE_TUPLE tuple, AG
       (void) pr_clear_value (value->accumulators[i].value);
       if (flag == V_BOUND)
 	{
-	  (acc_dom[i]->value_dom->type->data_readval) (&buf, value->accumulators[i].value, acc_dom[i]->value_dom, -1,
-						       true, NULL, 0);
+	  acc_dom[i]->value_dom->type->data_readval (&buf, value->accumulators[i].value, acc_dom[i]->value_dom, -1,
+						     true, NULL, 0);
 	}
       else
 	{
@@ -12729,8 +12807,8 @@ qdata_load_agg_hentry_from_tuple (THREAD_ENTRY * thread_p, QFILE_TUPLE tuple, AG
       (void) pr_clear_value (value->accumulators[i].value2);
       if (flag == V_BOUND)
 	{
-	  (acc_dom[i]->value2_dom->type->data_readval) (&buf, value->accumulators[i].value2, acc_dom[i]->value2_dom, -1,
-							true, NULL, 0);
+	  acc_dom[i]->value2_dom->type->data_readval (&buf, value->accumulators[i].value2, acc_dom[i]->value2_dom, -1,
+						      true, NULL, 0);
 	}
       else
 	{
@@ -12746,7 +12824,7 @@ qdata_load_agg_hentry_from_tuple (THREAD_ENTRY * thread_p, QFILE_TUPLE tuple, AG
 
       if (flag == V_BOUND)
 	{
-	  (tp_Integer_domain.type->data_readval) (&buf, &int_val, &tp_Integer_domain, -1, true, NULL, 0);
+	  tp_Integer_domain.type->data_readval (&buf, &int_val, &tp_Integer_domain, -1, true, NULL, 0);
 	  value->accumulators[i].curr_cnt = int_val.data.i;
 	}
       else
@@ -12765,7 +12843,7 @@ qdata_load_agg_hentry_from_tuple (THREAD_ENTRY * thread_p, QFILE_TUPLE tuple, AG
 
   if (flag == V_BOUND)
     {
-      (tp_Integer_domain.type->data_readval) (&buf, &int_val, &tp_Integer_domain, -1, true, NULL, 0);
+      tp_Integer_domain.type->data_readval (&buf, &int_val, &tp_Integer_domain, -1, true, NULL, 0);
       value->tuple_count = int_val.data.i;
     }
   else
@@ -12789,9 +12867,9 @@ qdata_load_agg_hentry_from_tuple (THREAD_ENTRY * thread_p, QFILE_TUPLE tuple, AG
  *   acc_dom(in): accumulator domains
  */
 SCAN_CODE
-qdata_load_agg_hentry_from_list (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * list_scan_id, AGGREGATE_HASH_KEY * key,
-				 AGGREGATE_HASH_VALUE * value, TP_DOMAIN ** key_dom,
-				 AGGREGATE_ACCUMULATOR_DOMAIN ** acc_dom)
+qdata_load_agg_hentry_from_list (THREAD_ENTRY * thread_p, qfile_list_scan_id * list_scan_id, aggregate_hash_key * key,
+				 aggregate_hash_value * value, tp_domain ** key_dom,
+				 aggregate_accumulator_domain ** acc_dom)
 {
   SCAN_CODE sc;
   QFILE_TUPLE_RECORD tuple_rec;
@@ -12820,11 +12898,11 @@ qdata_load_agg_hentry_from_list (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * l
  * NOTE: This function will clear the hash table!
  */
 int
-qdata_save_agg_htable_to_list (THREAD_ENTRY * thread_p, MHT_TABLE * hash_table, QFILE_LIST_ID * tuple_list_id,
-			       QFILE_LIST_ID * partial_list_id, DB_VALUE * temp_dbval_array)
+qdata_save_agg_htable_to_list (THREAD_ENTRY * thread_p, mht_table * hash_table, qfile_list_id * tuple_list_id,
+			       qfile_list_id * partial_list_id, DB_VALUE * temp_dbval_array)
 {
-  AGGREGATE_HASH_KEY *key = NULL;
-  AGGREGATE_HASH_VALUE *value = NULL;
+  aggregate_hash_key *key = NULL;
+  aggregate_hash_value *value = NULL;
   HENTRY_PTR head;
   int rc;
 
@@ -12837,8 +12915,8 @@ qdata_save_agg_htable_to_list (THREAD_ENTRY * thread_p, MHT_TABLE * hash_table, 
   head = hash_table->act_head;
   while (head != NULL)
     {
-      key = (AGGREGATE_HASH_KEY *) head->key;
-      value = (AGGREGATE_HASH_VALUE *) head->data;
+      key = (aggregate_hash_key *) head->key;
+      value = (aggregate_hash_value *) head->data;
 
       /* dump first tuple to unsorted list */
       if (value->first_tuple.tpl != NULL)
@@ -12883,7 +12961,7 @@ qdata_save_agg_htable_to_list (THREAD_ENTRY * thread_p, MHT_TABLE * hash_table, 
  *
  */
 static int
-qdata_update_agg_interpolation_func_value_and_domain (AGGREGATE_TYPE * agg_p, DB_VALUE * dbval)
+qdata_update_agg_interpolation_func_value_and_domain (aggregate_list_node * agg_p, DB_VALUE * dbval)
 {
   int error = NO_ERROR;
   DB_TYPE dbval_type;
@@ -12912,7 +12990,7 @@ qdata_update_agg_interpolation_func_value_and_domain (AGGREGATE_TYPE * agg_p, DB
 	{
 	  assert (error == ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN);
 
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, qdump_function_type_string (agg_p->function),
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, fcode_get_uppercase_name (agg_p->function),
 		  "DOUBLE, DATETIME, TIME");
 	  goto end;
 	}
@@ -13006,7 +13084,7 @@ qdata_evaluate_interpolation_function (THREAD_ENTRY * thread_p, void *func_p, QF
   int tuple_count;
   double row_num_d, f_row_num_d, c_row_num_d, percentile_d;
   FUNC_TYPE function;
-  AGGREGATE_TYPE *agg_p = NULL;
+  aggregate_list_node *agg_p = NULL;
   ANALYTIC_TYPE *ana_p = NULL;
   double cur_group_percentile;
 
@@ -13022,7 +13100,7 @@ qdata_evaluate_interpolation_function (THREAD_ENTRY * thread_p, void *func_p, QF
     }
   else
     {
-      agg_p = (AGGREGATE_TYPE *) func_p;
+      agg_p = (aggregate_list_node *) func_p;
       assert (QPROC_IS_INTERPOLATION_FUNC (agg_p));
 
       function = agg_p->function;

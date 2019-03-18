@@ -172,8 +172,10 @@ extern int nchar_compare (const unsigned char *string1, int size1, const unsigne
 			  INTL_CODESET codeset);
 extern int bit_compare (const unsigned char *string1, int size1, const unsigned char *string2, int size2);
 extern int varbit_compare (const unsigned char *string1, int size1, const unsigned char *string2, int size2);
+extern int regex_matches (const char *pattern, const char *str, int reg_flags, bool * match);
 extern int get_last_day (int month, int year);
 extern int get_day (int month, int day, int year);
+
 extern int db_string_compare (const DB_VALUE * string1, const DB_VALUE * string2, DB_VALUE * result);
 extern int db_string_unique_prefix (const DB_VALUE * db_string1, const DB_VALUE * db_string2, DB_VALUE * db_result,
 				    TP_DOMAIN * key_domain);
@@ -186,6 +188,7 @@ extern int db_string_position (const DB_VALUE * sub_string, const DB_VALUE * src
 extern int db_string_substring (const MISC_OPERAND substr_operand, const DB_VALUE * src_string,
 				const DB_VALUE * start_position, const DB_VALUE * extraction_length,
 				DB_VALUE * sub_string);
+extern int db_string_quote (const DB_VALUE * src_string, DB_VALUE * res);
 extern int db_string_repeat (const DB_VALUE * src_string, const DB_VALUE * count, DB_VALUE * result);
 extern int db_string_substring_index (DB_VALUE * src_string, DB_VALUE * delim_string, const DB_VALUE * count,
 				      DB_VALUE * result);
@@ -198,16 +201,7 @@ extern int db_string_space (DB_VALUE const *count, DB_VALUE * result);
 extern int db_string_insert_substring (DB_VALUE * src_string, const DB_VALUE * position, const DB_VALUE * length,
 				       DB_VALUE * sub_string, DB_VALUE * result);
 extern int db_string_elt (DB_VALUE * result, DB_VALUE * args[], int const num_args);
-extern int db_json_object (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
-extern int db_json_array (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
-extern int db_json_insert (DB_VALUE * result, DB_VALUE * arg[], const int num_args);
-extern int db_json_replace (DB_VALUE * result, DB_VALUE * arg[], const int num_args);
-extern int db_json_set (DB_VALUE * result, DB_VALUE * arg[], const int num_args);
-extern int db_json_keys (DB_VALUE * result, DB_VALUE * arg[], const int num_args);
-extern int db_json_remove (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
-extern int db_json_array_append (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
-extern int db_json_merge (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
-extern int db_json_get_all_paths (DB_VALUE * result, DB_VALUE * arg[], int const num_args);
+extern int db_string_escape (const char *src_str, size_t src_size, char **res_string, size_t * dest_size);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern int db_string_byte_length (const DB_VALUE * string, DB_VALUE * byte_count);

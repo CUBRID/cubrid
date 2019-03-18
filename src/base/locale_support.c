@@ -7370,7 +7370,7 @@ exit:
         ((char *)((((UINTPTR)(buf) + ((UINTPTR)((align)-1)))) \
                   & ~((UINTPTR)((align)-1))))
 
-/* 
+/*
  * locale_compute_coll_checksum() - Computes the MD5 checksum of collation
  *
  * Returns: error status

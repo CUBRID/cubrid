@@ -1,19 +1,19 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution. 
+ * Copyright (C) 2008 Search Solution Corporation. All rights reserved by Search Solution.
  *
- *   This program is free software; you can redistribute it and/or modify 
- *   it under the terms of the GNU General Public License as published by 
- *   the Free Software Foundation; either version 2 of the License, or 
- *   (at your option) any later version. 
+ *   This program is free software; you can redistribute it and/or modify
+ *   it under the terms of the GNU General Public License as published by
+ *   the Free Software Foundation; either version 2 of the License, or
+ *   (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful, 
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of 
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
- *  GNU General Public License for more details. 
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License 
- *  along with this program; if not, write to the Free Software 
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA 
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
 
@@ -776,7 +776,7 @@ YY_DECL
   /* Preliminary "actions" */
   if (cnv_fmt__unlex && yy_current_buffer->yy_eof_status != EOF_DONE)
     {
-      /* 
+      /*
        * Push back current token so that it can be read again.
        * See cnv_fmt_unlex().
        */
@@ -1410,8 +1410,8 @@ YY_DECL
 
 		    if (yywrap ())
 		      {
-			/* note: because we've taken care in yy_get_next_buffer() to have set up yytext, we can now set 
-			 * up yy_c_buf_p so that if some total hoser (like flex itself) wants to call the scanner after 
+			/* note: because we've taken care in yy_get_next_buffer() to have set up yytext, we can now set
+			 * up yy_c_buf_p so that if some total hoser (like flex itself) wants to call the scanner after
 			 * we return the YY_NULL, it'll still work - another YY_NULL will get returned. */
 			yy_c_buf_p = yytext + YY_MORE_ADJ;
 
@@ -1462,9 +1462,9 @@ YY_DECL
  *
  * synopsis
  *     int yy_get_next_buffer();
- *     
+ *
  * returns a code representing an action
- *     EOB_ACT_LAST_MATCH - 
+ *     EOB_ACT_LAST_MATCH -
  *     EOB_ACT_CONTINUE_SCAN - continue scanning from current position
  *     EOB_ACT_END_OF_FILE - end of file
  */
@@ -1760,7 +1760,7 @@ yy_switch_to_buffer (new_buffer)
   yy_current_buffer = new_buffer;
   yy_load_buffer_state ();
 
-  /* we don't actually know whether we did this switch during EOF (yywrap()) processing, but the only time this flag is 
+  /* we don't actually know whether we did this switch during EOF (yywrap()) processing, but the only time this flag is
    * looked at is after yywrap() is called, so it's safe to go ahead and always set it. */
   yy_did_buffer_switch_on_eof = 1;
 }
@@ -1955,7 +1955,7 @@ cnv_fmt_number_mode (INTL_ZONE zone)
 
 
 /*
- * cnv_fmt_time_mode() - Return the time value scan mode for the given zone. 
+ * cnv_fmt_time_mode() - Return the time value scan mode for the given zone.
  * return:
  * zone(in) :
  */
