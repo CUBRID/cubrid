@@ -54,6 +54,7 @@
 #include "porting_inline.hpp"
 #include "query_manager.h"
 #include "message_catalog.h"
+#include "msgcat_set_log.hpp"
 #include "environment_variable.h"
 #if defined(SERVER_MODE)
 #include "server_support.h"

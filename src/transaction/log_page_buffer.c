@@ -81,6 +81,7 @@
 #include "memory_hash.h"
 #include "release_string.h"
 #include "message_catalog.h"
+#include "msgcat_set_log.hpp"
 #include "environment_variable.h"
 #include "util_func.h"
 #include "errno.h"

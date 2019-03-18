@@ -40,6 +40,7 @@
 #include "error_manager.h"
 #include "system_parameter.h"
 #include "message_catalog.h"
+#include "msgcat_set_log.hpp"
 #include "slotted_page.h"
 #include "boot_sr.h"
 #include "locator_sr.h"

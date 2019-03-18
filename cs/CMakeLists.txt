@@ -136,6 +136,7 @@ set(BASE_HEADERS
   ${BASE_DIR}/fileline_location.hpp
   ${BASE_DIR}/mem_block.hpp
   ${BASE_DIR}/memory_private_allocator.hpp
+  ${BASE_DIR}/msgcat_set_log.hpp
   ${BASE_DIR}/packable_object.hpp
   ${BASE_DIR}/packer.hpp
   ${BASE_DIR}/perf.hpp
