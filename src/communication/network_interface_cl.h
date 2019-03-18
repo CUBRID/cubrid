@@ -40,6 +40,7 @@
 #include "storage_common.h"
 #include "object_domain.h"
 #include "query_list.h"
+#include "query_monitoring.hpp"
 #include "statistics.h"
 #include "connection_defs.h"
 #include "log_writer.h"
