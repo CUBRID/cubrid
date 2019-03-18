@@ -55,6 +55,7 @@
 #include "xserver_interface.h"
 #include "file_manager.h"
 #include "query_manager.h"
+#include "query_monitoring.hpp"
 #include "partition_sr.h"
 #include "btree_load.h"
 #include "serial.h"

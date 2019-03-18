@@ -223,6 +223,9 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/string_opfunc.c
   ${QUERY_DIR}/xasl_to_stream.c
   )
+set(QUERY_HEADERS
+  ${QUERY_DIR}/query_monitoring.hpp
+)
 
 set(OBJECT_SOURCES
   ${OBJECT_DIR}/authenticate.c
@@ -406,6 +409,7 @@ add_library(cubridcs SHARED
   ${PARSER_HEADERS}
   ${OPTIMIZER_SOURCES}
   ${QUERY_SOURCES}
+  ${QUERY_HEADERS}
   ${OBJECT_SOURCES}
   ${JSP_SOURCES}
   ${TRANSACTION_SOURCES}

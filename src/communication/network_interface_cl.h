@@ -34,12 +34,14 @@
 #include <stdio.h>
 
 #include "dbtype_def.h"
+#include "elo.h"
 #include "replication.h"
 #include "server_interface.h"
 #include "perf_monitor.h"
 #include "storage_common.h"
 #include "object_domain.h"
 #include "query_list.h"
+#include "query_monitoring.hpp"
 #include "statistics.h"
 #include "connection_defs.h"
 #include "log_writer.h"

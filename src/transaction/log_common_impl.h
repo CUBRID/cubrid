@@ -311,44 +311,6 @@ struct log_arv_header
 #define LOG_ARV_HEADER_INITIALIZER \
   { /* magic */ {'0'}, 0, 0, 0, 0, 0, 0, 0 }
 
-/* there can be following transitions in transient lobs
-
-   -------------------------------------------------------------------------
-   | 	       locator  | created               | deleted		   |
-   |--------------------|-----------------------|--------------------------|
-   | in     | transient | LOB_TRANSIENT_CREATED i LOB_UNKNOWN		   |
-   | tran   |-----------|-----------------------|--------------------------|
-   |        | permanent | LOB_PERMANENT_CREATED | LOB_PERMANENT_DELETED    |
-   |--------------------|-----------------------|--------------------------|
-   | out of | transient | LOB_UNKNOWN		| LOB_UNKNOWN		   |
-   | tran   |-----------|-----------------------|--------------------------|
-   |        | permanent | LOB_UNKNOWN 		| LOB_TRANSIENT_DELETED    |
-   -------------------------------------------------------------------------
-
-   s1: create a transient locator and delete it
-       LOB_TRANSIENT_CREATED -> LOB_UNKNOWN
-
-   s2: create a transient locator and bind it to a row in table
-       LOB_TRANSIENT_CREATED -> LOB_PERMANENT_CREATED
-
-   s3: bind a transient locator to a row and delete the locator
-       LOB_PERMANENT_CREATED -> LOB_PERMANENT_DELETED
-
-   s4: delete a locator to be create out of transaction
-       LOB_UNKNOWN -> LOB_TRANSIENT_DELETED
-
- */
-enum lob_locator_state
-{
-  LOB_UNKNOWN,
-  LOB_TRANSIENT_CREATED,
-  LOB_TRANSIENT_DELETED,
-  LOB_PERMANENT_CREATED,
-  LOB_PERMANENT_DELETED,
-  LOB_NOT_FOUND
-};
-typedef enum lob_locator_state LOB_LOCATOR_STATE;
-
 enum LOG_HA_FILESTAT
 {
   LOG_HA_FILESTAT_CLEAR = 0,
@@ -384,17 +346,6 @@ enum LOG_HA_FILESTAT
 #define LOG_DBCOPY_VOLID         (LOG_DBFIRST_VOLID - 19)
 /* Volid of double write buffer */
 #define LOG_DBDWB_VOLID		 (LOG_DBFIRST_VOLID - 22)
-
-typedef struct tran_query_exec_info TRAN_QUERY_EXEC_INFO;
-struct tran_query_exec_info
-{
-  char *wait_for_tran_index_string;
-  float query_time;
-  float tran_time;
-  char *query_stmt;
-  char *sql_id;
-  XASL_ID xasl_id;
-};
 
 #if !defined (NDEBUG) && !defined (WINDOWS)
 extern int logtb_collect_local_clients (int **local_client_pids);
