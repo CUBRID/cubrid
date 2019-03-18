@@ -26,6 +26,7 @@
 
 #ident "$Id$"
 
+#include "log_archives.hpp"
 #include "log_common_impl.h"
 #include "log_lsa.hpp"
 #include "storage_common.h"

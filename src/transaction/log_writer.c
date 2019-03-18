@@ -40,6 +40,8 @@
 #include "system_parameter.h"
 #include "connection_support.h"
 #include "log_applier.h"
+#include "log_storage.hpp"
+#include "log_volids.hpp"
 #include "crypt_opfunc.h"
 #if defined(SERVER_MODE)
 #include "log_manager.h"
@@ -64,21 +66,38 @@ static bool logwr_need_shutdown = false;
 static int logwr_check_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr);
 
 #if defined(CS_MODE)
+static log_header
+init_cs_logwr_header ()
+{
+  log_header hdr;
+  hdr.next_trid = NULL_TRANID;
+  hdr.nxarv_pageid = NULL_PAGEID;
+  hdr.nxarv_phy_pageid = NULL_PAGEID;
+  hdr.nxarv_num = -1;
+  hdr.last_arv_num_for_syscrashes = -1;
+  hdr.last_deleted_arv_num = -1;
+  return hdr;
+}
+
 LOGWR_GLOBAL logwr_Gl = {
   /* log header */
-  LOGWR_HEADER_INITIALIZER,
+  init_cs_logwr_header (),
   /* loghdr_pgptr */
   NULL,
   /* db_name */
-  {'0'},
+  {'0'}
+  ,
   /* hostname */
   NULL,
   /* log_path */
-  {'0'},
+  {'0'}
+  ,
   /* loginf_path */
-  {'0'},
+  {'0'}
+  ,
   /* active_name */
-  {'0'},
+  {'0'}
+  ,
   /* append_vdes */
   NULL_VOLDES,
   /* logpg_area */
@@ -110,11 +129,13 @@ LOGWR_GLOBAL logwr_Gl = {
   /* force_flush */
   false,
   /* last_flush_time */
-  {0, 0},
+  {0, 0}
+  ,
   /* background archiving info */
-  BACKGROUND_ARCHIVING_INFO_INITIALIZER,
+  background_archiving_info (),
   /* bg_archive_name */
-  {'0'},
+  {'0'}
+  ,
   /* ori_nxarv_pageid */
   NULL_PAGEID,
   /* start_pageid */
@@ -122,7 +143,6 @@ LOGWR_GLOBAL logwr_Gl = {
   /* reinit_copylog */
   false
 };
-
 
 static int logwr_fetch_header_page (LOG_PAGE * log_pgptr, int vol_fd);
 static int logwr_read_log_header (void);

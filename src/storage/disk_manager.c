@@ -49,6 +49,7 @@
 #include "page_buffer.h"
 #include "log_manager.h"
 #include "log_lsa.hpp"
+#include "log_volids.hpp"
 #include "critical_section.h"
 #include "boot_sr.h"
 #include "tz_support.h"
@@ -722,7 +723,6 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
     {
       /* todo: understand what this code is supposed to do */
       PAGE_PTR pgptr = NULL;	/* Page pointer */
-      LOG_LSA init_with_temp_lsa;	/* A lsa for temporary purposes */
       bool flushed;
 
       /* Flush the pages so that the log is forced */

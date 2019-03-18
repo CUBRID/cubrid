@@ -58,6 +58,7 @@
 #include "log_lsa.hpp"
 #include "log_manager.h"
 #include "log_comm.h"
+#include "log_volids.hpp"
 #include "log_writer.h"
 #include "lock_manager.h"
 #include "boot_sr.h"

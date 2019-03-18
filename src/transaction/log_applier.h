@@ -29,6 +29,7 @@
 #if defined (CS_MODE)
 #include "log_common_impl.h"
 #include "log_lsa.hpp"
+#include "log_storage.hpp"
 #endif /* CS_MODE */
 
 #define LA_RETRY_ON_ERROR(error) \

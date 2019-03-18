@@ -24,15 +24,16 @@
 #ident "$Id$"
 
 #include "config.h"
+#include "file_io.h"
+#include "log_archives.hpp"
+#include "log_impl.h"
+#include "log_storage.hpp"
+#include "porting.h"
+#include "storage_common.h"
 
+#include <limits.h>
 #include <stddef.h>
 #include <stdlib.h>
-#include <limits.h>
-
-#include "porting.h"
-#include "log_impl.h"
-#include "storage_common.h"
-#include "file_io.h"
 
 /* Variables */
 #if !defined(SERVER_MODE)
@@ -51,10 +52,10 @@ LOG_GLOBAL log_Gl = {
   LOG_PRIOR_LSA_INFO_INITIALIZER,
 
   /* hdr */
-  LOG_HEADER_INITIALIZER,
+  log_header (),
 
   /* archive */
-  LOG_ARCHIVES_INITIALIZER,
+  log_archives (),
 
   /* run_nxchkpt_atpageid */
   NULL_PAGEID,
@@ -97,7 +98,7 @@ LOG_GLOBAL log_Gl = {
   LOGWR_INFO_INITIALIZER,
 
   /* background archiving info */
-  BACKGROUND_ARCHIVING_INFO_INITIALIZER,
+  background_archiving_info (),
 
   /* mvcctable */
   MVCCTABLE_INITIALIZER,

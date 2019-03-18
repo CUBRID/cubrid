@@ -39,10 +39,12 @@
 #include "es.h"
 #include "file_io.h"
 #include "lock_free.h"
+#include "lock_manager.h"
+#include "log_archives.hpp"
 #include "log_comm.h"
 #include "log_common_impl.h"
-#include "lock_manager.h"
 #include "log_lsa.hpp"
+#include "log_storage.hpp"
 #include "mvcc.h"
 #include "porting.h"
 #include "rb_tree.h"
@@ -1106,19 +1108,6 @@ enum log_recvphase
   LOG_RECOVERY_FINISH_2PC_PHASE	/* Finishing up transactions that were in 2PC protocol at the time of the crash */
 };
 typedef enum log_recvphase LOG_RECVPHASE;
-
-typedef struct log_archives LOG_ARCHIVES;
-struct log_archives
-{
-  int vdes;			/* Last archived accessed */
-  LOG_ARV_HEADER hdr;		/* The log archive header */
-  int max_unav;			/* Max size of unavailable array */
-  int next_unav;		/* Last unavailable entry */
-  int *unav_archives;		/* Unavailable archives */
-};
-
-#define LOG_ARCHIVES_INITIALIZER \
-  { NULL_VOLDES, LOG_ARV_HEADER_INITIALIZER, 0, 0, NULL /* unav_archives */ }
 
 typedef struct log_data_addr LOG_DATA_ADDR;
 struct log_data_addr
