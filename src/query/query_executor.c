@@ -8678,6 +8678,9 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
   UPDATE_MVCC_REEV_ASSIGNMENT *mvcc_reev_assigns = NULL;
   bool need_locking;
   UPDDEL_CLASS_INSTANCE_LOCK_INFO class_instance_lock_info, *p_class_instance_lock_info = NULL;
+#if !defined(NDEBUG) && defined (SERVER_MODE)
+  bool disabled_row_replication = false;
+#endif
 
   /* get the snapshot, before acquiring locks, since the transaction may be blocked and we need the snapshot when
    * update starts, not later */
@@ -8687,6 +8690,17 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
   SET_MVCC_UPDATE_REEV_DATA (&mvcc_reev_data, &mvcc_upddel_reev_data, V_TRUE);
   class_oid_cnt = update->num_classes;
   mvcc_reev_class_cnt = update->num_reev_classes;
+
+#if !defined(NDEBUG) && defined (SERVER_MODE)
+  if (class_oid_cnt > 1
+      && !LOG_CHECK_LOG_APPLIER (thread_p) && prm_get_bool_value (PRM_ID_REPL_LOG_LOCAL_DEBUG)
+      && !logtb_get_tdes (thread_p)->replication_log_generator.is_row_replication_disabled ())
+    {
+      /* Disable testing HA for multi update. */
+      logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (true);
+      disabled_row_replication = true;
+    }
+#endif
 
   /* Allocate memory for oids, hfids and attributes cache info of all classes used in update */
   error = qexec_create_internal_classes (thread_p, update->classes, class_oid_cnt, &internal_classes);
@@ -9308,6 +9322,13 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
       if (xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER, &lsa) != TRAN_ACTIVE)
 	{
 	  qexec_failure_line (__LINE__, xasl_state);
+#if !defined(NDEBUG) && defined (SERVER_MODE)
+	  if (disabled_row_replication)
+	    {
+	      /* Enable row replication. */
+	      logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (false);
+	    }
+#endif
 	  return ER_FAILED;
 	}
     }
@@ -9330,6 +9351,14 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
     }
 #endif
 
+#if !defined(NDEBUG) && defined (SERVER_MODE)
+  if (disabled_row_replication)
+    {
+      /* Enable row replication. */
+      logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (false);
+    }
+
+#endif
   return NO_ERROR;
 
 exit_on_error:
@@ -9371,6 +9400,14 @@ exit_on_error:
       qexec_clear_internal_classes (thread_p, internal_classes, class_oid_cnt);
       db_private_free_and_init (thread_p, internal_classes);
     }
+
+#if !defined(NDEBUG) && defined (SERVER_MODE)
+  if (disabled_row_replication)
+    {
+      /* Enable row replication. */
+      logtb_get_tdes (thread_p)->replication_log_generator.set_row_replication_disabled (false);
+    }
+#endif
 
   return ER_FAILED;
 }
