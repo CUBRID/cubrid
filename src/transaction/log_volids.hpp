@@ -32,27 +32,27 @@
  *       volumes (e.g., logs, backups)
  */
 
-#define LOG_MAX_DBVOLID          (VOLID_MAX - 1)
+const VOLID LOG_MAX_DBVOLID = VOLID_MAX - 1;
 
 /* Volid of database.txt */
-#define LOG_DBTXT_VOLID          (SHRT_MIN + 1)
-#define LOG_DBFIRST_VOLID        0
+const VOLID LOG_DBTXT_VOLID = SHRT_MIN + 1;
+const VOLID LOG_DBFIRST_VOLID = 0;
 
 /* Volid of volume information */
-#define LOG_DBVOLINFO_VOLID      (LOG_DBFIRST_VOLID - 5)
+const VOLID LOG_DBVOLINFO_VOLID = LOG_DBFIRST_VOLID - 5;
 /* Volid of info log */
-#define LOG_DBLOG_INFO_VOLID     (LOG_DBFIRST_VOLID - 4)
+const VOLID LOG_DBLOG_INFO_VOLID = LOG_DBFIRST_VOLID - 4;
 /* Volid of backup info log */
-#define LOG_DBLOG_BKUPINFO_VOLID (LOG_DBFIRST_VOLID - 3)
+const VOLID LOG_DBLOG_BKUPINFO_VOLID = LOG_DBFIRST_VOLID - 3;
 /* Volid of active log */
-#define LOG_DBLOG_ACTIVE_VOLID   (LOG_DBFIRST_VOLID - 2)
+const VOLID LOG_DBLOG_ACTIVE_VOLID = LOG_DBFIRST_VOLID - 2;
 /* Volid of background archive logs */
-#define LOG_DBLOG_BG_ARCHIVE_VOLID  (LOG_DBFIRST_VOLID - 21)
+const VOLID LOG_DBLOG_BG_ARCHIVE_VOLID = LOG_DBFIRST_VOLID - 21;
 /* Volid of archive logs */
-#define LOG_DBLOG_ARCHIVE_VOLID  (LOG_DBFIRST_VOLID - 20)
+const VOLID LOG_DBLOG_ARCHIVE_VOLID = LOG_DBFIRST_VOLID - 20;
 /* Volid of copies */
-#define LOG_DBCOPY_VOLID         (LOG_DBFIRST_VOLID - 19)
+const VOLID LOG_DBCOPY_VOLID = LOG_DBFIRST_VOLID - 19;
 /* Volid of double write buffer */
-#define LOG_DBDWB_VOLID		 (LOG_DBFIRST_VOLID - 22)
+const VOLID LOG_DBDWB_VOLID = LOG_DBFIRST_VOLID - 22;
 
 #endif // !_LOG_VOLIDS_HPP_
