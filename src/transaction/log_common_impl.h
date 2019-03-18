@@ -38,45 +38,6 @@
 /* module on client. Most are used by log_writer.c and log_applier.c    */
 /************************************************************************/
 
-#define LOGPB_HEADER_PAGE_ID             (-9)	/* The first log page in the infinite log sequence. It is always kept
-						 * on the active portion of the log. Log records are not stored on this
-						 * page. This page is backed up in all archive logs */
-
-#define LOGPB_IO_NPAGES                  4
-
-#define LOGPB_BUFFER_NPAGES_LOWER        128
-
-
-
-/*
- * LOG PAGE
- */
-
-typedef struct log_hdrpage LOG_HDRPAGE;
-struct log_hdrpage
-{
-  LOG_PAGEID logical_pageid;	/* Logical pageid in infinite log */
-  PGLENGTH offset;		/* Offset of first log record in this page. This may be useful when previous log page
-				 * is corrupted and an archive of that page does not exist. Instead of losing the whole
-				 * log because of such bad page, we could salvage the log starting at the offset
-				 * address, that is, at the next log record */
-  short dummy1;			/* Dummy field for 8byte align */
-  int checksum;			/* checksum - currently CRC32 is used to check log page consistency. */
-};
-
-/* WARNING:
- * Don't use sizeof(LOG_PAGE) or of any structure that contains it
- * Use macro LOG_PAGESIZE instead.
- * It is also bad idea to allocate a variable for LOG_PAGE on the stack.
- */
-
-typedef struct log_page LOG_PAGE;
-struct log_page
-{				/* The log page */
-  LOG_HDRPAGE hdr;
-  char area[1];
-};
-
 /* Uses 0xff to fills up the page, before writing in it. This helps recovery to detect the end of the log in
  * case of log page corruption, caused by partial page flush. Thus, at recovery analysis, we can easily
  * detect the last valid log record - the log record having NULL_LSA (0xff) in its forward address field.
@@ -101,16 +62,12 @@ struct log_hdr_bkup_level_info
   int io_numpages;		/* total number of pages in last backup */
 };
 
-#define MAXLOGNAME          (30 - 12)
-
 #define NUM_NORMAL_TRANS (prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS))
 #define NUM_SYSTEM_TRANS 1
 #define NUM_NON_SYSTEM_TRANS (css_get_max_conn ())
 #define MAX_NTRANS \
   (NUM_NON_SYSTEM_TRANS + NUM_SYSTEM_TRANS)
 
-// vacuum blocks
-typedef INT64 VACUUM_LOG_BLOCKID;
 #define VACUUM_NULL_LOG_BLOCKID -1
 
 /*
@@ -438,9 +395,6 @@ struct tran_query_exec_info
   char *sql_id;
   XASL_ID xasl_id;
 };
-
-#define LOG_SYSTEM_TRAN_INDEX 0	/* The recovery & vacuum worker system transaction index. */
-#define LOG_SYSTEM_TRANID     0	/* The recovery & vacuum worker system transaction. */
 
 #if !defined (NDEBUG) && !defined (WINDOWS)
 extern int logtb_collect_local_clients (int **local_client_pids);
