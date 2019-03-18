@@ -79,27 +79,22 @@ init_cs_logwr_header ()
   return hdr;
 }
 
+// *INDENT-OFF*
 LOGWR_GLOBAL logwr_Gl = {
   /* log header */
-  // *INDENT-OFF*
   init_cs_logwr_header (),
-  // *INDENT-ON*
   /* loghdr_pgptr */
   NULL,
   /* db_name */
-  {'0'}
-  ,
+  {'0'},
   /* hostname */
   NULL,
   /* log_path */
-  {'0'}
-  ,
+  {'0'},
   /* loginf_path */
-  {'0'}
-  ,
+  {'0'},
   /* active_name */
-  {'0'}
-  ,
+  {'0'},
   /* append_vdes */
   NULL_VOLDES,
   /* logpg_area */
@@ -131,22 +126,25 @@ LOGWR_GLOBAL logwr_Gl = {
   /* force_flush */
   false,
   /* last_flush_time */
-  {0, 0}
-  ,
+  {0, 0},
   /* background archiving info */
   // *INDENT-OFF*
   background_archiving_info (),
   // *INDENT-ON*
+
   /* bg_archive_name */
-  {'0'}
-  ,
+{
+'0'}
+
+,
   /* ori_nxarv_pageid */
   NULL_PAGEID,
   /* start_pageid */
   -2,
   /* reinit_copylog */
-  false
-};
+false};
+
+// *INDENT-ON*
 
 static int logwr_fetch_header_page (LOG_PAGE * log_pgptr, int vol_fd);
 static int logwr_read_log_header (void);
