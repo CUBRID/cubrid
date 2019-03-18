@@ -128,22 +128,16 @@ LOGWR_GLOBAL logwr_Gl = {
   /* last_flush_time */
   {0, 0},
   /* background archiving info */
-  // *INDENT-OFF*
   background_archiving_info (),
-  // *INDENT-ON*
-
   /* bg_archive_name */
-{
-'0'}
-
-,
+  {'0'},
   /* ori_nxarv_pageid */
   NULL_PAGEID,
   /* start_pageid */
   -2,
   /* reinit_copylog */
-false};
-
+  false
+};
 // *INDENT-ON*
 
 static int logwr_fetch_header_page (LOG_PAGE * log_pgptr, int vol_fd);
