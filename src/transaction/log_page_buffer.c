@@ -1494,7 +1494,7 @@ logpb_initialize_header (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr, const cha
       loghdr->prefix_name[0] = '\0';
     }
   loghdr->vacuum_last_blockid = 0;
-  loghdr->perm_status = LOG_PSTAT_CLEAR;
+  loghdr->perm_status_obsolete = 0;
 
   for (i = 0; i < FILEIO_BACKUP_UNDEFINED_LEVEL; i++)
     {
@@ -12306,30 +12306,6 @@ logpb_backup_level_info_to_string (char *buf, int buf_size, const LOG_HDR_BKUP_L
     }
 
   return buf;
-}
-
-/*
- * logpb_perm_status_to_string() - return the string alias of enum value
- *
- *   return: constant string
- *
- *   val(in): the enum value
- */
-const char *
-logpb_perm_status_to_string (enum LOG_PSTATUS val)
-{
-  switch (val)
-    {
-    case LOG_PSTAT_CLEAR:
-      return "LOG_PSTAT_CLEAR";
-    case LOG_PSTAT_BACKUP_INPROGRESS:
-      return "LOG_PSTAT_BACKUP_INPROGRESS";
-    case LOG_PSTAT_RESTORE_INPROGRESS:
-      return "LOG_PSTAT_RESTORE_INPROGRESS";
-    case LOG_PSTAT_HDRFLUSH_INPPROCESS:
-      return "LOG_PSTAT_HDRFLUSH_INPPROCESS";
-    }
-  return "UNKNOWN_LOG_PSTATUS";
 }
 
 /*
