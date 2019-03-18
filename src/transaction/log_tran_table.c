@@ -1940,7 +1940,7 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
 
   /* TODO[replication] : replace this condition on merging with develop branch */
-  if (!VACUUM_IS_THREAD_VACUUM (thread_p))
+  if (thread_p != NULL && !VACUUM_IS_THREAD_VACUUM (thread_p))
     {
       tdes->replication_log_generator.clear_transaction ();
     }
