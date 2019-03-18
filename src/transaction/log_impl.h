@@ -1645,7 +1645,6 @@ extern void xlogtb_dump_trantable (THREAD_ENTRY * thread_p, FILE * out_fp);
 extern bool logpb_need_wal (const LOG_LSA * lsa);
 extern char *logpb_backup_level_info_to_string (char *buf, int buf_size, const LOG_HDR_BKUP_LEVEL_INFO * info);
 extern void logpb_get_nxio_lsa (LOG_LSA * lsa_p);
-extern const char *logpb_perm_status_to_string (enum LOG_PSTATUS val);
 extern const char *tran_abort_reason_to_string (TRAN_ABORT_REASON val);
 extern int logtb_descriptors_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int arg_cnt,
 					 void **ctx);

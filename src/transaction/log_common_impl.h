@@ -156,8 +156,7 @@ struct log_header
   bool has_logging_been_skipped;	/* Has logging been skipped ? */
   /* Here exists 5 bytes */
   VACUUM_LOG_BLOCKID vacuum_last_blockid;	/* Last processed blockid needed for vacuum. */
-  int perm_status;		/* Reserved for future expansion and permanent status indicators, e.g. to mark
-				 * RESTORE_IN_PROGRESS */
+  int perm_status_obsolete;
   /* Here exists 4 bytes */
   LOG_HDR_BKUP_LEVEL_INFO bkinfo[FILEIO_BACKUP_UNDEFINED_LEVEL];
   /* backup specific info for future growth */
@@ -428,20 +427,6 @@ enum LOG_HA_FILESTAT
 #define LOG_DBCOPY_VOLID         (LOG_DBFIRST_VOLID - 19)
 /* Volid of double write buffer */
 #define LOG_DBDWB_VOLID		 (LOG_DBFIRST_VOLID - 22)
-
-/*
- * Specify up to int bits of permanent status indicators.
- * Restore in progress is the only one so far, the rest are reserved
- * for future use.  Note these must be specified and used as mask values
- * to test and set individual bits.
- */
-enum LOG_PSTATUS
-{
-  LOG_PSTAT_CLEAR = 0x00,
-  LOG_PSTAT_BACKUP_INPROGRESS = 0x01,	/* only one backup at a time */
-  LOG_PSTAT_RESTORE_INPROGRESS = 0x02,	/* unset upon successful restore */
-  LOG_PSTAT_HDRFLUSH_INPPROCESS = 0x04	/* need to flush log header */
-};
 
 typedef struct tran_query_exec_info TRAN_QUERY_EXEC_INFO;
 struct tran_query_exec_info
