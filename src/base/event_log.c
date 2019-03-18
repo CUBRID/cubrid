@@ -61,7 +61,7 @@ static char event_log_file_path[PATH_MAX];
 
 static FILE *event_file_open (const char *path);
 static FILE *event_file_backup (FILE * fp, const char *path);
-static void event_log_print_client_ids_info (LOG_CLIENTIDS * client_info, int indent);
+static void event_log_print_client_ids_info (CLIENTIDS * client_info, int indent);
 
 /*
  * event_init - Initialize event log module
@@ -306,7 +306,7 @@ event_log_end (THREAD_ENTRY * thread_p)
  *   return:
  */
 static void
-event_log_print_client_ids_info (LOG_CLIENTIDS * client_info, int indent)
+event_log_print_client_ids_info (CLIENTIDS * client_info, int indent)
 {
   if (event_Fp == NULL)
     {
@@ -444,7 +444,7 @@ event_log_bind_values (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_index, i
  *   writer_time(in): time spent by last LWT (normally same as flush wait time)
  */
 void
-event_log_log_flush_thr_wait (THREAD_ENTRY * thread_p, int flush_count, log_clientids * client_info, int flush_time,
+event_log_log_flush_thr_wait (THREAD_ENTRY * thread_p, int flush_count, clientids * client_info, int flush_time,
 			      int flush_wait_time, int writer_time)
 {
   FILE *log_fp;

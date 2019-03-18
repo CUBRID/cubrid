@@ -897,6 +897,7 @@ logtb_set_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const BOOT_CLIENT_CRED
   logtb_set_client_ids_all (&tdes->client, client_credential->client_type, client_credential->client_info,
 			    client_credential->db_user, client_credential->program_name, client_credential->login_name,
 			    client_credential->host_name, client_credential->process_id);
+  tdes->is_user_active = false;
 #if defined(SERVER_MODE)
   if (thread_p == NULL)
     {
@@ -1439,6 +1440,7 @@ logtb_release_tran_index (THREAD_ENTRY * thread_p, int tran_index)
 	    {
 	      logtb_free_tran_index (thread_p, tran_index);
 	      logtb_set_client_ids_all (&tdes->client, BOOT_CLIENT_UNKNOWN, NULL, NULL, NULL, NULL, NULL, -1);
+	      tdes->is_user_active = false;
 	    }
 	}
 
@@ -2003,6 +2005,7 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
 
   logtb_set_client_ids_all (&tdes->client, BOOT_CLIENT_UNKNOWN, NULL, NULL, NULL, NULL, NULL, -1);
   tdes->block_global_oldest_active_until_commit = false;
+  tdes->is_user_active = false;
   tdes->modified_class_list = NULL;
 
   LSA_SET_NULL (&tdes->rcv.tran_start_postpone_lsa);
@@ -2237,10 +2240,10 @@ logtb_find_current_tranid (THREAD_ENTRY * thread_p)
  * NOTE: Set client identifications.
  */
 void
-logtb_set_client_ids_all (LOG_CLIENTIDS * client, int client_type, const char *client_info, const char *db_user,
+logtb_set_client_ids_all (CLIENTIDS * client, int client_type, const char *client_info, const char *db_user,
 			  const char *program_name, const char *login_name, const char *host_name, int process_id)
 {
-  client->client_type = client_type;
+  client->client_type = (boot_client_type) client_type;
   strncpy (client->client_info, (client_info) ? client_info : "", DB_MAX_IDENTIFIER_LENGTH);
   client->client_info[DB_MAX_IDENTIFIER_LENGTH] = '\0';
   strncpy (client->db_user, (db_user) ? db_user : log_Client_id_unknown_string, LOG_USERNAME_MAX - 1);
@@ -2255,7 +2258,6 @@ logtb_set_client_ids_all (LOG_CLIENTIDS * client, int client_type, const char *c
   strncpy (client->host_name, (host_name) ? host_name : log_Client_id_unknown_string, MAXHOSTNAMELEN);
   client->host_name[MAXHOSTNAMELEN] = '\0';
   client->process_id = process_id;
-  client->is_user_active = false;
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -2437,7 +2439,7 @@ logtb_set_current_user_active (THREAD_ENTRY * thread_p, bool is_user_active)
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
 
-  tdes->client.is_user_active = is_user_active;
+  tdes->is_user_active = is_user_active;
 }
 
 /*
@@ -2521,11 +2523,11 @@ logtb_find_client_tran_name_host_pid (int &tran_index, char **client_prog_name, 
  * return: NO_ERROR if all OK, ER_ status otherwise
  *
  *   tran_index(in): Index of transaction
- *   client_info(out): pointer to LOG_CLIENTIDS structure
+ *   client_info(out): pointer to CLIENTIDS structure
  *
  */
 int
-logtb_get_client_ids (int tran_index, LOG_CLIENTIDS * client_info)
+logtb_get_client_ids (int tran_index, CLIENTIDS * client_info)
 {
   LOG_TDES *tdes;
 
@@ -6770,7 +6772,7 @@ xlogtb_does_active_user_exist (THREAD_ENTRY * thread_p, const char *user_name)
   for (i = 0; i < NUM_TOTAL_TRAN_INDICES; i++)
     {
       tdes = log_Gl.trantable.all_tdes[i];
-      if (tdes != NULL && tdes->client.is_user_active && strcmp (tdes->client.db_user, user_name) == 0)
+      if (tdes != NULL && tdes->is_user_active && strcmp (tdes->client.db_user, user_name) == 0)
 	{
 	  existed = true;
 	  break;

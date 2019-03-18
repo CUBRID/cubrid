@@ -4574,11 +4574,11 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	{
 	  flush_start_time = log_get_clock_msec ();
 
-	  memset (&writer_info->last_writer_client_info, 0, sizeof (LOG_CLIENTIDS));
+	  memset (&writer_info->last_writer_client_info, 0, sizeof (CLIENTIDS));
 
 	  writer_info->trace_last_writer = true;
 	  writer_info->last_writer_elapsed_time = 0;
-	  writer_info->last_writer_client_info.client_type = -1;
+	  writer_info->last_writer_client_info.client_type = BOOT_CLIENT_UNKNOWN;
 	}
 
       entry = writer_info->writer_list;
