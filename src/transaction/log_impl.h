@@ -1576,27 +1576,27 @@ extern int logtb_count_clients_with_type (THREAD_ENTRY * thread_p, int client_ty
 extern int logtb_count_clients (THREAD_ENTRY * thread_p);
 extern int logtb_count_not_allowed_clients_in_maintenance_mode (THREAD_ENTRY * thread_p);
 extern int logtb_find_client_type (int tran_index);
-extern char *logtb_find_client_name (int tran_index);
+extern const char *logtb_find_client_name (int tran_index);
 extern void logtb_set_user_name (int tran_index, const char *client_name);
 extern void logtb_set_current_user_name (THREAD_ENTRY * thread_p, const char *client_name);
-extern char *logtb_find_client_hostname (int tran_index);
+extern const char *logtb_find_client_hostname (int tran_index);
 extern void logtb_set_current_user_active (THREAD_ENTRY * thread_p, bool is_user_active);
-extern int logtb_find_client_name_host_pid (int tran_index, char **client_prog_name, char **client_user_name,
-					    char **client_host_name, int *client_pid);
+extern int logtb_find_client_name_host_pid (int tran_index, const char **client_prog_name,
+					    const char **client_user_name, const char **client_host_name,
+					    int *client_pid);
 #if !defined(NDEBUG)
 extern void logpb_debug_check_log_page (THREAD_ENTRY * thread_p, void *log_pgptr_ptr);
 #endif
 #if defined (SERVER_MODE)
-extern int logtb_find_client_tran_name_host_pid (int &tran_index, char **client_prog_name, char **client_user_name,
-						 char **client_host_name, int *client_pid);
+extern int logtb_find_client_tran_name_host_pid (int &tran_index, const char **client_prog_name,
+						 const char **client_user_name, const char **client_host_name,
+						 int *client_pid);
 #endif // SERVER_MODE
-extern int logtb_find_current_client_name_host_pid (char **client_prog_name, char **client_user_name,
-						    char **client_host_name, int *client_pid);
 extern int logtb_get_client_ids (int tran_index, CLIENTIDS * client_info);
 
 extern int logtb_find_current_client_type (THREAD_ENTRY * thread_p);
-extern char *logtb_find_current_client_name (THREAD_ENTRY * thread_p);
-extern char *logtb_find_current_client_hostname (THREAD_ENTRY * thread_p);
+extern const char *logtb_find_current_client_name (THREAD_ENTRY * thread_p);
+extern const char *logtb_find_current_client_hostname (THREAD_ENTRY * thread_p);
 extern LOG_LSA *logtb_find_current_tran_lsa (THREAD_ENTRY * thread_p);
 extern TRAN_STATE logtb_find_state (int tran_index);
 extern int logtb_find_wait_msecs (int tran_index);

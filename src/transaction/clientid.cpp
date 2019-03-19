@@ -19,31 +19,17 @@
 
 #include "clientid.hpp"
 
-#include <cstring>
+#include "porting.h"
 
-// str_safe_copy - copy string to char array without overflowing and always ending in a terminator character
-//
-template <size_t Size>
-static void str_safe_copy (std::array<char, Size> &buffer, const char *str);
+static void
+string_ncopy (std::string &dest, const char *src, size_t max_size)
+{
+  const char *copyupto = std::find (src, src + max_size, 0);  // find terminator
+  dest.assign (src, copyupto);
+}
 
 clientids::~clientids ()
 {
-  delete m_own_buffer;
-}
-
-void
-clientids::init_buffers ()
-{
-  if (m_own_buffer == NULL)
-    {
-      m_own_buffer = new membuf ();
-
-      client_info = m_own_buffer->m_client_info_buffer.data ();
-      db_user = m_own_buffer->m_db_user_buffer.data ();
-      program_name = m_own_buffer->m_program_name_buffer.data ();
-      login_name = m_own_buffer->m_login_name_buffer.data ();
-      host_name = m_own_buffer->m_host_name_buffer.data ();
-    }
 }
 
 void
@@ -51,18 +37,11 @@ clientids::set_ids (boot_client_type type_arg, const char *client_info_arg, cons
 		    const char *program_name_arg, const char *login_name_arg, const char *host_name_arg,
 		    int process_id_arg)
 {
-  init_buffers ();
-
-  // macro helper to safely copy each string to its corresponding buffer
-#define LOCAL_STRNCPY(idname) \
-  str_safe_copy (m_own_buffer->m_##idname##_buffer, idname##_arg);
-
-  LOCAL_STRNCPY (client_info);
-  LOCAL_STRNCPY (db_user);
-  LOCAL_STRNCPY (program_name);
-  LOCAL_STRNCPY (login_name);
-  LOCAL_STRNCPY (host_name);
-#undef LOCAL_STRNCPY
+  set_client_info (client_info_arg);
+  set_user (db_user_arg);
+  set_program_name (program_name_arg);
+  set_login_name (login_name_arg);
+  set_host_name (host_name_arg);
 
   client_type = type_arg;
   process_id = process_id_arg;
@@ -71,14 +50,44 @@ clientids::set_ids (boot_client_type type_arg, const char *client_info_arg, cons
 void
 clientids::set_ids (const clientids &other)
 {
-  set_ids (other.client_type, other.client_info, other.db_user, other.program_name, other.login_name, other.host_name,
-	   other.process_id);
+  set_ids (other.client_type, other.client_info.c_str (), other.db_user.c_str (), other.program_name.c_str (),
+	   other.login_name.c_str (), other.host_name.c_str (), other.process_id);
+}
+
+void
+clientids::set_client_info (const char *client_info_arg)
+{
+  string_ncopy (client_info, client_info_arg, DB_MAX_IDENTIFIER_LENGTH);
+}
+
+void
+clientids::set_user (const char *db_user_arg)
+{
+  string_ncopy (db_user, db_user_arg, LOG_USERNAME_MAX);
+}
+
+void
+clientids::set_program_name (const char *program_name_arg)
+{
+  string_ncopy (program_name, program_name_arg, PATH_MAX);
+}
+
+void
+clientids::set_login_name (const char *login_name_arg)
+{
+  string_ncopy (login_name, login_name_arg, L_cuserid);
+}
+
+void
+clientids::set_host_name (const char *host_name_arg)
+{
+  string_ncopy (host_name, host_name_arg, MAXHOSTNAMELEN);
 }
 
 void
 clientids::set_system_internal ()
 {
-  clear ();
+  reset ();
   client_type = BOOT_CLIENT_SYSTEM_INTERNAL;
 }
 
@@ -86,53 +95,44 @@ void
 clientids::set_system_internal_with_user (const char *db_user_arg)
 {
   set_system_internal ();
-
-  init_buffers ();
-  str_safe_copy (m_own_buffer->m_db_user_buffer, db_user_arg);
+  db_user = db_user_arg;
 }
 
 void
 clientids::reset ()
 {
-  clear ();
+  client_info.clear ();
+  db_user.clear ();
+  program_name.clear ();
+  login_name.clear ();
+  host_name.clear ();
+  process_id = 0;
   client_type = BOOT_CLIENT_UNKNOWN;
 }
 
-void
-clientids::clear ()
-{
-  if (m_own_buffer != NULL)
-    {
-      m_own_buffer->clear ();
-    }
-}
+//
+// packing:
+//
 
-//
-// membuf
-//
-clientids::membuf::membuf ()
+#define PACKER_ARGS(client_type_as_int) \
+  client_type_as_int, client_info, db_user, program_name, login_name, host_name, process_id
+
+size_t
+clientids::get_packed_size (cubpacking::packer &serializator) const
 {
-  clear ();
+  return serializator.get_all_packed_size (PACKER_ARGS (static_cast<int> (client_type)));
 }
 
 void
-clientids::membuf::clear ()
+clientids::pack (cubpacking::packer &serializator) const
 {
-  m_client_info_buffer.fill (0);
-  m_db_user_buffer.fill (0);
-  m_program_name_buffer.fill (0);
-  m_login_name_buffer.fill (0);
-  m_host_name_buffer.fill (0);
+  serializator.pack_all (PACKER_ARGS (static_cast<int> (client_type)));
 }
 
-//
-// static functions
-//
-
-template <size_t Size>
-static void
-str_safe_copy (std::array<char, Size> &buffer, const char *str)
+void
+clientids::unpack (cubpacking::unpacker &deserializator)
 {
-  std::strncpy (buffer.data (), str, Size - 1);
-  assert (buffer.at (Size) == '\0');
+  int read_int;
+  deserializator.unpack_all (PACKER_ARGS (read_int));
+  client_type = static_cast<boot_client_type> (read_int);
 }

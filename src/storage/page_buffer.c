@@ -5830,9 +5830,9 @@ do_block:
 
       if (wait_msec == LK_ZERO_WAIT)
 	{
-	  char *client_prog_name;	/* Client program name for tran */
-	  char *client_user_name;	/* Client user name for tran */
-	  char *client_host_name;	/* Client host for tran */
+	  const char *client_prog_name;	/* Client program name for tran */
+	  const char *client_user_name;	/* Client user name for tran */
+	  const char *client_host_name;	/* Client host for tran */
 	  int client_pid;	/* Client process identifier for tran */
 
 	  /* setup timeout error, if wait_msec == LK_ZERO_WAIT */
@@ -6482,9 +6482,9 @@ pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, THREAD_ENTRY * t
   int wait_secs;
   int old_wait_msecs;
   int save_request_latch_mode;
-  char *client_prog_name;	/* Client program name for trans */
-  char *client_user_name;	/* Client user name for tran */
-  char *client_host_name;	/* Client host for tran */
+  const char *client_prog_name;	/* Client program name for trans */
+  const char *client_user_name;	/* Client user name for tran */
+  const char *client_host_name;	/* Client host for tran */
   int client_pid;		/* Client process identifier for tran */
 
   TSC_TICKS start_tick, end_tick;
@@ -6598,9 +6598,9 @@ er_set_return:
       PGBUF_BCB_UNLOCK (bufptr);
       if (logtb_is_current_active (thread_p) == true)
 	{
-	  char *client_prog_name;	/* Client user name for transaction */
-	  char *client_user_name;	/* Client user name for transaction */
-	  char *client_host_name;	/* Client host for transaction */
+	  const char *client_prog_name;	/* Client user name for transaction */
+	  const char *client_user_name;	/* Client user name for transaction */
+	  const char *client_host_name;	/* Client host for transaction */
 	  int client_pid;	/* Client process identifier for transaction */
 	  int tran_index;
 

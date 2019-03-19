@@ -25,9 +25,9 @@
 #define _CLIENTID_HPP_
 
 #include "dbtype_def.h"
-#include "porting.h"
+#include "packable_object.hpp"
 
-#include <array>
+#include <string>
 
 /* this enumeration should be matched with DB_CLIENT_TYPE_XXX in db.h */
 enum boot_client_type
@@ -54,45 +54,39 @@ typedef enum boot_client_type BOOT_CLIENT_TYPE;
 const size_t LOG_USERNAME_MAX = DB_MAX_USER_LENGTH + 1;
 
 typedef struct clientids CLIENTIDS;
-struct clientids		/* see BOOT_CLIENT_CREDENTIAL */
+struct clientids : public cubpacking::packable_object
 {
   public:
     boot_client_type client_type;
-    char *client_info;// [DB_MAX_IDENTIFIER_LENGTH + 1];
-    char *db_user;// [LOG_USERNAME_MAX];
-    char *program_name;// [PATH_MAX + 1];
-    char *login_name;// [L_cuserid + 1];
-    char *host_name;// [MAXHOSTNAMELEN + 1];
+    std::string client_info;
+    std::string db_user;
+    std::string program_name;
+    std::string login_name;
+    std::string host_name;
     int process_id;
 
     clientids () = default;
-    ~clientids ();
+    ~clientids () override;
 
     void set_ids (boot_client_type type, const char *client_info, const char *db_user, const char *program_name,
 		  const char *login_name, const char *host_name, int process_id);
     void set_ids (const clientids &other);
+    void set_user (const char *db_user);
 
     void set_system_internal ();
     void set_system_internal_with_user (const char *db_user);
     void reset ();
 
+    // packable_object
+    virtual size_t get_packed_size (cubpacking::packer &serializator) const override;
+    virtual void pack (cubpacking::packer &serializator) const override;
+    virtual void unpack (cubpacking::unpacker &deserializator) override;
+
   private:
-    void clear ();
-    void init_buffers ();
-
-    struct membuf
-    {
-      std::array<char, DB_MAX_IDENTIFIER_LENGTH + 1> m_client_info_buffer;
-      std::array<char, LOG_USERNAME_MAX + 1> m_db_user_buffer;
-      std::array<char, PATH_MAX + 1> m_program_name_buffer;
-      std::array<char, L_cuserid + 1> m_login_name_buffer;
-      std::array<char, MAXHOSTNAMELEN + 1> m_host_name_buffer;
-
-      membuf ();
-      void clear ();
-    };
-
-    membuf *m_own_buffer;
+    void set_client_info (const char *client_info);
+    void set_program_name (const char *program_name);
+    void set_login_name (const char *login_name);
+    void set_host_name (const char *host_name);
 };
 
 typedef struct boot_client_credential BOOT_CLIENT_CREDENTIAL;
