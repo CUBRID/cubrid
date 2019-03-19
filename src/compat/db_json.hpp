@@ -57,11 +57,33 @@ enum DB_JSON_TYPE
   DB_JSON_BOOL,
 };
 
+class JSON_DOC_WRAPPER
+{
+  public:
+
+    JSON_DOC_WRAPPER ();
+    JSON_DOC_WRAPPER (JSON_DOC_WRAPPER &&other);
+    JSON_DOC_WRAPPER &&operator= (JSON_DOC_WRAPPER &&other);
+
+    const JSON_DOC *get_borrowed () const;
+    JSON_DOC *get_owned ();
+    JSON_DOC *transfer_ownership ();
+
+    void borrow_doc (JSON_DOC *jd);
+    void own_doc (JSON_DOC *jd);
+
+    void release_owning ();
+    ~JSON_DOC_WRAPPER ();
+  private:
+    const JSON_DOC *m_borrowed_doc;
+    JSON_DOC *m_owning_doc;
+};
+
 bool db_json_is_valid (const char *json_str);
 const char *db_json_get_type_as_str (const JSON_DOC *document);
 unsigned int db_json_get_length (const JSON_DOC *document);
 unsigned int db_json_get_depth (const JSON_DOC *doc);
-int db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<std::string> &raw_path,
+int db_json_extract_document_from_path (const JSON_DOC *document, const std::vector<const char *> &raw_path,
 					JSON_DOC *&result, bool allow_wildcards = true);
 int db_json_contains_path (const JSON_DOC *document, const std::vector<std::string> &paths, bool find_all,
 			   bool &result);
@@ -149,8 +171,8 @@ bool db_json_doc_has_numeric_type (const JSON_DOC *doc);
 bool db_json_doc_is_uncomparable (const JSON_DOC *doc);
 
 // DB_VALUE manipulation functions
-int db_value_to_json_doc (const DB_VALUE &db_val, REFPTR (JSON_DOC, json_doc));
-int db_value_to_json_value (const DB_VALUE &db_val, REFPTR (JSON_DOC, json_val));
+int db_value_to_json_doc (const DB_VALUE &db_val, JSON_DOC_WRAPPER &jdw, bool copy_json);
+int db_value_to_json_value (const DB_VALUE &db_val, JSON_DOC_WRAPPER &jdw);
 int db_value_to_json_path (const DB_VALUE *path_value, FUNC_TYPE fcode, const char **path_str);
 
 int db_json_normalize_path_string (const char *pointer_path, std::string &normalized_path);
