@@ -3497,7 +3497,6 @@ boot_register_client (BOOT_CLIENT_CREDENTIAL * client_credential, int client_loc
 
   request_size = (clientid_size	/* m_clientids */
 		  + length_const_string (client_credential->db_name, NULL)	/* db_name */
-		  + length_const_string (client_credential->db_user, NULL)	/* db_user */
 		  + length_const_string (client_credential->db_password, NULL)	/* db_password */
 		  + length_const_string (client_credential->program_name, NULL)	/* prog_name */
 		  + length_const_string (client_credential->login_name, NULL)	/* login_name */
@@ -3518,7 +3517,6 @@ boot_register_client (BOOT_CLIENT_CREDENTIAL * client_credential, int client_loc
 
   ptr = request + clientid_size;
   ptr = pack_const_string (ptr, client_credential->db_name);
-  ptr = pack_const_string (ptr, client_credential->db_user);
   ptr = pack_const_string (ptr, client_credential->db_password);
   ptr = pack_const_string (ptr, client_credential->program_name);
   ptr = pack_const_string (ptr, client_credential->login_name);

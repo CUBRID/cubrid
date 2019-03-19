@@ -310,7 +310,6 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
 #if defined (CS_MODE)
   char format[BOOT_FORMAT_MAX_LENGTH];
 #endif
-  bool is_db_user_alloced = false;
 
   assert (client_credential != NULL);
   assert (db_path_info != NULL);
@@ -474,7 +473,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
   er_clear ();
 
   /* Get the user name */
-  if (client_credential->db_user == NULL)
+  if (client_credential->m_clientids.db_user.empty ())
     {
       char *user_name = au_user_name_dup ();
       int upper_case_name_size;
@@ -492,16 +491,15 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
 	  else
 	    {
 	      intl_identifier_upper (user_name, upper_case_name);
-	      client_credential->db_user = upper_case_name;
-	      is_db_user_alloced = true;
+	      client_credential->m_clientids.db_user = upper_case_name;
 	    }
 	  free_and_init (user_name);
 	}
       upper_case_name = NULL;
 
-      if (client_credential->db_user == NULL)
+      if (client_credential->m_clientids.db_user.empty ())
 	{
-	  client_credential->db_user = (char *) boot_Client_no_user_string;
+	  client_credential->m_clientids.db_user = boot_Client_no_user_string;
 	}
     }
   /* Get the login name, host, and process identifier */
@@ -576,13 +574,6 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
     boot_initialize_server (client_credential, db_path_info, db_overwrite, file_addmore_vols, npages,
 			    db_desired_pagesize, log_npages, db_desired_log_page_size, &rootclass_oid, &rootclass_hfid,
 			    tran_lock_wait_msecs, tran_isolation);
-  if (is_db_user_alloced == true)
-    {
-      assert (client_credential->db_user != NULL);
-      assert (client_credential->db_user != boot_Client_no_user_string);
-      free_and_init (client_credential->db_user);
-      is_db_user_alloced = false;
-    }
 
   if (tran_index == NULL_TRAN_INDEX)
     {
@@ -597,7 +588,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
     }
 
   // create session
-  (void) db_find_or_create_session (client_credential->db_user, client_credential->program_name);
+  (void) db_find_or_create_session (client_credential->m_clientids.db_user.c_str (), client_credential->program_name);
 
   oid_set_root (&rootclass_oid);
   OID_INIT_TEMPID ();
@@ -668,13 +659,6 @@ error_exit:
     {
       cfg_free_directory (db);
       db = NULL;
-    }
-
-  if (is_db_user_alloced == true)
-    {
-      assert (client_credential->db_user != NULL);
-      assert (client_credential->db_user != boot_Client_no_user_string);
-      free_and_init (client_credential->db_user);
     }
 
   if (BOOT_IS_CLIENT_RESTARTED ())
@@ -776,7 +760,6 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   bool skip_preferred_hosts = false;
   bool skip_db_info = false;
 #endif /* CS_MODE */
-  bool is_db_user_alloced = false;
 
   assert (client_credential != NULL);
 
@@ -927,26 +910,25 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   er_clear ();
 
   /* Get the user name */
-  if (client_credential->db_user == NULL)
+  if (client_credential->m_clientids.db_user.empty ())
     {
       char *user_name = au_user_name_dup ();
 
       if (user_name != NULL)
 	{
 	  /* user name is upper-cased in server using server's charset */
-	  client_credential->db_user = user_name;
-	  is_db_user_alloced = true;
+	  client_credential->m_clientids.db_user = user_name;
 	}
 
-      if (client_credential->db_user == NULL)
+      if (client_credential->m_clientids.db_user.empty ())
 	{
-	  client_credential->db_user = (char *) boot_Client_no_user_string;
+	  // no user string
+	  client_credential->m_clientids.db_user = boot_Client_no_user_string;
 	}
-      else if (client_credential->db_user[0] == '\0')
+      else if (client_credential->m_clientids.db_user == "\0")
 	{
-	  free_and_init (client_credential->db_user);
-	  is_db_user_alloced = false;
-	  client_credential->db_user = (char *) AU_PUBLIC_USER_NAME;
+	  // empty user string
+	  client_credential->m_clientids.db_user = AU_PUBLIC_USER_NAME;
 	}
     }
   /* Get the login name, host, and process identifier */
@@ -1198,7 +1180,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   er_log_debug (ARG_FILE_LINE,
 		"boot_restart_client: register client { type %d db %s user %s password %s "
 		"program %s login %s host %s pid %d }\n", client_credential->m_clientids.client_type,
-		client_credential->db_name, client_credential->db_user,
+		client_credential->db_name, client_credential->m_clientids.db_user.c_str (),
 		client_credential->db_password == NULL ? "(null)" : client_credential->db_password,
 		client_credential->program_name, client_credential->login_name, client_credential->host_name,
 		client_credential->process_id);
@@ -1268,16 +1250,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
       goto error;
     }
 
-  (void) db_find_or_create_session (client_credential->db_user, client_credential->program_name);
-  /* free the thing get from au_user_name_dup() */
-  if (is_db_user_alloced == true)
-    {
-      assert (client_credential->db_user != NULL);
-      assert (client_credential->db_user != boot_Client_no_user_string);
-      assert (client_credential->db_user != AU_PUBLIC_USER_NAME);
-      free_and_init (client_credential->db_user);
-      is_db_user_alloced = false;
-    }
+  (void) db_find_or_create_session (client_credential->m_clientids.db_user.c_str (), client_credential->program_name);
 
 #if defined(CS_MODE)
   error_code = boot_check_locales (client_credential);
@@ -1352,15 +1325,6 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   return error_code;
 
 error:
-
-  /* free the thing get from au_user_name_dup() */
-  if (is_db_user_alloced == true)
-    {
-      assert (client_credential->db_user != NULL);
-      assert (client_credential->db_user != boot_Client_no_user_string);
-      assert (client_credential->db_user != AU_PUBLIC_USER_NAME);
-      free_and_init (client_credential->db_user);
-    }
 
   /* Protect against falsely returning NO_ERROR to caller */
   if (error_code == NO_ERROR)

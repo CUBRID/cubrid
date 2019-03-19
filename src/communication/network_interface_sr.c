@@ -3175,7 +3175,6 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 
   ptr = request + unpacker.get_current_size ();
   ptr = or_unpack_string_nocopy (ptr, &client_credential.db_name);
-  ptr = or_unpack_string_nocopy (ptr, &client_credential.db_user);
   ptr = or_unpack_string_nocopy (ptr, &client_credential.db_password);
   ptr = or_unpack_string_nocopy (ptr, &client_credential.program_name);
   ptr = or_unpack_string_nocopy (ptr, &client_credential.login_name);

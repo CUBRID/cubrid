@@ -2992,7 +2992,9 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
 		       BOOT_SERVER_CREDENTIAL * server_credential)
 {
   int tran_index;
-  char *db_user_save;
+  // *INDENT-OFF*
+  std::string db_user_save;
+  // *INDENT-ON*
   char db_user_upper[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 #if defined(SA_MODE)
   char *adm_prg_file_name = NULL;
@@ -3047,11 +3049,11 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
   /* Initialize scan function pointers of show statements */
   showstmt_scan_init ();
 
-  db_user_save = client_credential->db_user;
-  if (client_credential->db_user != NULL)
+  db_user_save = client_credential->m_clientids.db_user;
+  if (!client_credential->m_clientids.db_user.empty ())
     {
-      intl_identifier_upper (client_credential->db_user, db_user_upper);
-      client_credential->db_user = db_user_upper;
+      intl_identifier_upper (client_credential->m_clientids.db_user.c_str (), db_user_upper);
+      client_credential->m_clientids.db_user = db_user_upper;
     }
 
   /* Assign a transaction index to the client */
@@ -3105,7 +3107,7 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
 	      logtb_release_tran_index (thread_p, tran_index);
 	      er_log_debug (ARG_FILE_LINE, "xboot_register_client: css_check_ha_server_state_for_client() error\n");
 	      *tran_state = TRAN_UNACTIVE_UNKNOWN;
-	      client_credential->db_user = db_user_save;
+	      client_credential->m_clientids.db_user = db_user_save;
 	      return NULL_TRAN_INDEX;
 	    }
 	}
@@ -3120,10 +3122,10 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
     }
 
 #if defined(ENABLE_SYSTEMTAP) && defined(SERVER_MODE)
-  CUBRID_CONN_START (thread_p->conn_entry->client_id, client_credential->db_user);
+  CUBRID_CONN_START (thread_p->conn_entry->client_id, client_credential->m_clientids.db_user.c_str ());
 #endif /* ENABLE_SYSTEMTAP */
 
-  client_credential->db_user = db_user_save;
+  client_credential->m_clientids.db_user = db_user_save;
   return tran_index;
 }
 

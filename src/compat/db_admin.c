@@ -252,7 +252,6 @@ db_init (const char *program, int print_version, const char *dbname, const char 
 
   client_credential.m_clientids.client_type = BOOT_CLIENT_ADMIN_UTILITY;
   client_credential.db_name = (char *) dbname;
-  client_credential.db_user = NULL;
   client_credential.db_password = NULL;
   client_credential.program_name = (char *) program;
   client_credential.login_name = NULL;
@@ -887,7 +886,6 @@ db_restart (const char *program, int print_version, const char *volume)
 
       client_credential.m_clientids.client_type = (BOOT_CLIENT_TYPE) db_Client_type;
       client_credential.db_name = (char *) volume;
-      client_credential.db_user = NULL;
       client_credential.db_password = NULL;
       client_credential.program_name = (char *) program;
       client_credential.login_name = NULL;
