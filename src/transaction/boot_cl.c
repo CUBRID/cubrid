@@ -538,8 +538,8 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
 #if defined(CS_MODE)
   /* Initialize the communication subsystem */
   error_code =
-    boot_client_initialize_css (db, client_credential->client_type, false, BOOT_NO_OPT_CAP, false, DB_CONNECT_ORDER_SEQ,
-				false);
+    boot_client_initialize_css (db, client_credential->m_clientids.client_type, false, BOOT_NO_OPT_CAP, false,
+				DB_CONNECT_ORDER_SEQ, false);
   if (error_code != NO_ERROR)
     {
       goto error_exit;
@@ -875,9 +875,9 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 
       if (db == NULL
 	  || (db->num_hosts > 1
-	      && (BOOT_ADMIN_CLIENT_TYPE (client_credential->client_type)
-		  || BOOT_LOG_REPLICATOR_TYPE (client_credential->client_type)
-		  || BOOT_CSQL_CLIENT_TYPE (client_credential->client_type))))
+	      && (BOOT_ADMIN_CLIENT_TYPE (client_credential->m_clientids.client_type)
+		  || BOOT_LOG_REPLICATOR_TYPE (client_credential->m_clientids.client_type)
+		  || BOOT_CSQL_CLIENT_TYPE (client_credential->m_clientids.client_type))))
 	{
 	  error_code = ER_NET_NO_EXPLICIT_SERVER_HOST;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
@@ -890,7 +890,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
       /* db_name@host_name */
 #if defined(CS_MODE)
       *ptr = '\0';		/* screen 'db@host' */
-      if (BOOT_BROKER_AND_DEFAULT_CLIENT_TYPE (client_credential->client_type))
+      if (BOOT_BROKER_AND_DEFAULT_CLIENT_TYPE (client_credential->m_clientids.client_type))
 	{
 	  ha_node_list = ptr + 1;
 	  ha_hosts = cfg_get_hosts (ha_node_list, &num_hosts, false);
@@ -981,7 +981,8 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 #endif /* !WINDOWS */
 
   /* read only mode? */
-  if (prm_get_bool_value (PRM_ID_READ_ONLY_MODE) || BOOT_READ_ONLY_CLIENT_TYPE (client_credential->client_type))
+  if (prm_get_bool_value (PRM_ID_READ_ONLY_MODE)
+      || BOOT_READ_ONLY_CLIENT_TYPE (client_credential->m_clientids.client_type))
     {
       db_disable_modification ();
     }
@@ -1005,8 +1006,8 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 	    }
 	  else			/* second */
 	    {
-	      if (!BOOT_REPLICA_ONLY_BROKER_CLIENT_TYPE (client_credential->client_type)
-		  && BOOT_NORMAL_CLIENT_TYPE (client_credential->client_type))
+	      if (!BOOT_REPLICA_ONLY_BROKER_CLIENT_TYPE (client_credential->m_clientids.client_type)
+		  && BOOT_NORMAL_CLIENT_TYPE (client_credential->m_clientids.client_type))
 		{
 		  check_capabilities = false;
 		}
@@ -1035,8 +1036,8 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 
 	  /* connect to preferred hosts in a sequential order even though a user sets CONNECT_ORDER to RANDOM */
 	  error_code =
-	    boot_client_initialize_css (tmp_db, client_credential->client_type, check_capabilities, optional_cap, false,
-					DB_CONNECT_ORDER_SEQ, true);
+	    boot_client_initialize_css (tmp_db, client_credential->m_clientids.client_type, check_capabilities,
+					optional_cap, false, DB_CONNECT_ORDER_SEQ, true);
 
 	  if (error_code != NO_ERROR)
 	    {
@@ -1067,8 +1068,8 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 	  /* connected to any preferred hosts successfully */
 	  break;
 	}
-      else if (BOOT_REPLICA_ONLY_BROKER_CLIENT_TYPE (client_credential->client_type)
-	       || client_credential->client_type == BOOT_CLIENT_SLAVE_ONLY_BROKER)
+      else if (BOOT_REPLICA_ONLY_BROKER_CLIENT_TYPE (client_credential->m_clientids.client_type)
+	       || client_credential->m_clientids.client_type == BOOT_CLIENT_SLAVE_ONLY_BROKER)
 
 	{
 	  check_capabilities = true;
@@ -1082,10 +1083,10 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 	    }
 
 	  error_code =
-	    boot_client_initialize_css (db, client_credential->client_type, check_capabilities, optional_cap, false,
-					client_credential->connect_order, false);
+	    boot_client_initialize_css (db, client_credential->m_clientids.client_type, check_capabilities,
+					optional_cap, false, client_credential->connect_order, false);
 	}
-      else if (BOOT_CSQL_CLIENT_TYPE (client_credential->client_type))
+      else if (BOOT_CSQL_CLIENT_TYPE (client_credential->m_clientids.client_type))
 	{
 	  assert (!BOOT_IS_PREFERRED_HOSTS_SET (client_credential));
 
@@ -1093,11 +1094,11 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 	  optional_cap = BOOT_NO_OPT_CAP;
 
 	  error_code =
-	    boot_client_initialize_css (db, client_credential->client_type, check_capabilities, optional_cap, false,
-					DB_CONNECT_ORDER_SEQ, false);
+	    boot_client_initialize_css (db, client_credential->m_clientids.client_type, check_capabilities,
+					optional_cap, false, DB_CONNECT_ORDER_SEQ, false);
 	  break;		/* dont retry */
 	}
-      else if (BOOT_NORMAL_CLIENT_TYPE (client_credential->client_type))
+      else if (BOOT_NORMAL_CLIENT_TYPE (client_credential->m_clientids.client_type))
 	{
 	  if (i == 0)		/* first */
 	    {
@@ -1111,8 +1112,8 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 	    }
 
 	  error_code =
-	    boot_client_initialize_css (db, client_credential->client_type, check_capabilities, optional_cap, false,
-					client_credential->connect_order, false);
+	    boot_client_initialize_css (db, client_credential->m_clientids.client_type, check_capabilities,
+					optional_cap, false, client_credential->connect_order, false);
 
 	}
       else
@@ -1122,8 +1123,8 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 	  check_capabilities = false;
 	  optional_cap = BOOT_NO_OPT_CAP;
 	  error_code =
-	    boot_client_initialize_css (db, client_credential->client_type, check_capabilities, optional_cap, false,
-					client_credential->connect_order, false);
+	    boot_client_initialize_css (db, client_credential->m_clientids.client_type, check_capabilities,
+					optional_cap, false, client_credential->connect_order, false);
 	  break;		/* dont retry */
 	}
 
@@ -1196,8 +1197,8 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 
   er_log_debug (ARG_FILE_LINE,
 		"boot_restart_client: register client { type %d db %s user %s password %s "
-		"program %s login %s host %s pid %d }\n", client_credential->client_type, client_credential->db_name,
-		client_credential->db_user,
+		"program %s login %s host %s pid %d }\n", client_credential->m_clientids.client_type,
+		client_credential->db_name, client_credential->db_user,
 		client_credential->db_password == NULL ? "(null)" : client_credential->db_password,
 		client_credential->program_name, client_credential->login_name, client_credential->host_name,
 		client_credential->process_id);

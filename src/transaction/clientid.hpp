@@ -93,7 +93,6 @@ typedef struct boot_client_credential BOOT_CLIENT_CREDENTIAL;
 struct boot_client_credential
 {
   clientids m_clientids;
-  BOOT_CLIENT_TYPE client_type;
   char *client_info;		/* DB_MAX_IDENTIFIER_LENGTH */
   char *db_name;		/* DB_MAX_IDENTIFIER_LENGTH */
   char *db_user;		/* DB_MAX_USER_LENGTH */

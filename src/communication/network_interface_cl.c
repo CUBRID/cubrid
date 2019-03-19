@@ -3450,87 +3450,9 @@ boot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_D
 			TRAN_ISOLATION client_isolation)
 {
 #if defined(CS_MODE)
-#if defined(ENABLE_UNUSED_FUNCTION)
-  int tran_index = NULL_TRAN_INDEX;
-  int request_size;
-  int req_error;
-  char *request, *ptr;
-  OR_ALIGNED_BUF (OR_INT_SIZE + OR_OID_SIZE + OR_HFID_SIZE) a_reply;
-  char *reply;
-
-  reply = OR_ALIGNED_BUF_START (a_reply);
-
-  request_size = (OR_INT_SIZE	/* client_type */
-		  + length_const_string (client_credential->client_info, NULL)	/* client_info */
-		  + length_const_string (client_credential->db_name, NULL)	/* db_name */
-		  + length_const_string (client_credential->db_user, NULL)	/* db_user */
-		  + length_const_string (client_credential->db_password, NULL)	/* db_password */
-		  + length_const_string (client_credential->program_name, NULL)	/* program_name */
-		  + length_const_string (client_credential->login_name, NULL)	/* login_name */
-		  + length_const_string (client_credential->host_name, NULL)	/* host_name */
-		  + OR_INT_SIZE	/* process_id */
-		  + OR_INT_SIZE	/* db_overwrite */
-		  + OR_INT_SIZE	/* db_desired_pagesize */
-		  + OR_INT_SIZE	/* db_npages */
-		  + OR_INT_SIZE	/* db_desired_log_page_size */
-		  + OR_INT_SIZE	/* log_npages */
-		  + length_const_string (db_path_info->db_path, NULL)	/* db_path */
-		  + length_const_string (db_path_info->vol_path, NULL)	/* vol_path */
-		  + length_const_string (db_path_info->log_path, NULL)	/* log_path */
-		  + length_const_string (db_path_info->db_host, NULL)	/* db_host */
-		  + length_const_string (db_path_info->db_comments, NULL)	/* db_comments */
-		  + length_const_string (file_addmore_vols, NULL)	/* file_addmore_vols */
-		  + OR_INT_SIZE	/* client_lock_wait */
-		  + OR_INT_SIZE /* client_isolation */ );
-
-  request = (char *) malloc (request_size);
-  if (request)
-    {
-      ptr = or_pack_int (request, client_credential->client_type);
-      ptr = pack_const_string (ptr, client_credential->client_info);
-      ptr = pack_const_string (ptr, client_credential->db_name);
-      ptr = pack_const_string (ptr, client_credential->db_user);
-      ptr = pack_const_string (ptr, client_credential->db_password);
-      ptr = pack_const_string (ptr, client_credential->program_name);
-      ptr = pack_const_string (ptr, client_credential->login_name);
-      ptr = pack_const_string (ptr, client_credential->host_name);
-      ptr = or_pack_int (ptr, client_credential->process_id);
-      ptr = or_pack_int (ptr, db_overwrite);
-      ptr = or_pack_int (ptr, db_desired_pagesize);
-      ptr = or_pack_int (ptr, db_npages);
-      ptr = or_pack_int (ptr, db_desired_log_page_size);
-      ptr = or_pack_int (ptr, log_npages);
-      ptr = pack_const_string (ptr, db_path_info->db_path);
-      ptr = pack_const_string (ptr, db_path_info->vol_path);
-      ptr = pack_const_string (ptr, db_path_info->log_path);
-      ptr = pack_const_string (ptr, db_path_info->db_host);
-      ptr = pack_const_string (ptr, db_path_info->db_comments);
-      ptr = pack_const_string (ptr, file_addmore_vols);
-      ptr = or_pack_int (ptr, client_lock_wait);
-      ptr = or_pack_int (ptr, (int) client_isolation);
-
-      req_error =
-	net_client_request (NET_SERVER_BO_INIT_SERVER, request, request_size, reply, OR_ALIGNED_BUF_SIZE (a_reply),
-			    NULL, 0, NULL, 0);
-      if (!req_error)
-	{
-	  ptr = or_unpack_int (reply, &tran_index);
-	  ptr = or_unpack_oid (ptr, rootclass_oid);
-	  ptr = or_unpack_hfid (ptr, rootclass_hfid);
-	}
-      free_and_init (request);
-    }
-  else
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
-    }
-
-  return tran_index;
-#else /* ENABLE_UNUSED_FUNCTION */
   /* Should not called in CS_MODE */
   assert (0);
   return NULL_TRAN_INDEX;
-#endif /* !ENABLE_UNUSED_FUNCTION */
 #else /* CS_MODE */
   int tran_index = NULL_TRAN_INDEX;
 
@@ -3570,7 +3492,10 @@ boot_register_client (BOOT_CLIENT_CREDENTIAL * client_credential, int client_loc
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  request_size = (OR_INT_SIZE	/* client_type */
+  packing_packer packer;
+  size_t clientid_size = client_credential->m_clientids.get_packed_size (packer);
+
+  request_size = (clientid_size	/* m_clientids */
 		  + length_const_string (client_credential->client_info, NULL)	/* client_info */
 		  + length_const_string (client_credential->db_name, NULL)	/* db_name */
 		  + length_const_string (client_credential->db_user, NULL)	/* db_user */
@@ -3589,7 +3514,10 @@ boot_register_client (BOOT_CLIENT_CREDENTIAL * client_credential, int client_loc
       return NULL_TRAN_INDEX;
     }
 
-  ptr = or_pack_int (request, (int) client_credential->client_type);
+  packer.set_buffer (request, clientid_size);
+  client_credential->m_clientids.pack (packer);
+
+  ptr = request + clientid_size;
   ptr = pack_const_string (ptr, client_credential->client_info);
   ptr = pack_const_string (ptr, client_credential->db_name);
   ptr = pack_const_string (ptr, client_credential->db_user);

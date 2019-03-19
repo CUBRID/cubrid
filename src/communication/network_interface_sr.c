@@ -3136,68 +3136,7 @@ stran_lock_rep_read (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 void
 sboot_initialize_server (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-#if defined(ENABLE_UNUSED_FUNCTION)
-  int xint;
-  BOOT_CLIENT_CREDENTIAL client_credential;
-  BOOT_DB_PATH_INFO db_path_info;
-  int db_overwrite;
-  DKNPAGES db_npages;
-  int db_desired_pagesize;
-  DKNPAGES log_npages;
-  int db_desired_log_page_size;
-  OID rootclass_oid;
-  HFID rootclass_hfid;
-  char *file_addmore_vols;
-  int client_lock_wait;
-  TRAN_ISOLATION client_isolation;
-  int tran_index;
-  char *ptr;
-  OR_ALIGNED_BUF (OR_INT_SIZE + OR_OID_SIZE + OR_HFID_SIZE) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-
-  memset (&client_credential, 0, sizeof (client_credential));
-  ptr = or_unpack_int (request, &xint);
-  client_credential.client_type = (BOOT_CLIENT_TYPE) xint;
-  ptr = or_unpack_string_nocopy (ptr, &client_credential.client_info);
-  ptr = or_unpack_string_nocopy (ptr, &client_credential.db_name);
-  ptr = or_unpack_string_nocopy (ptr, &client_credential.db_user);
-  ptr = or_unpack_string_nocopy (ptr, &client_credential.db_password);
-  ptr = or_unpack_string_nocopy (ptr, &client_credential.program_name);
-  ptr = or_unpack_string_nocopy (ptr, &client_credential.login_name);
-  ptr = or_unpack_string_nocopy (ptr, &client_credential.host_name);
-  ptr = or_unpack_int (ptr, &client_credential.process_id);
-  ptr = or_unpack_int (ptr, &db_overwrite);
-  ptr = or_unpack_int (ptr, &db_desired_pagesize);
-  ptr = or_unpack_int (ptr, &db_npages);
-  ptr = or_unpack_int (ptr, &db_desired_log_page_size);
-  ptr = or_unpack_int (ptr, &log_npages);
-  memset (&db_path_info, 0, sizeof (db_path_info));
-  ptr = or_unpack_string_nocopy (ptr, &db_path_info.db_path);
-  ptr = or_unpack_string_nocopy (ptr, &db_path_info.vol_path);
-  ptr = or_unpack_string_nocopy (ptr, &db_path_info.log_path);
-  ptr = or_unpack_string_nocopy (ptr, &db_path_info.db_host);
-  ptr = or_unpack_string_nocopy (ptr, &db_path_info.db_comments);
-  ptr = or_unpack_string_nocopy (ptr, &file_addmore_vols);
-  ptr = or_unpack_int (ptr, &client_lock_wait);
-  ptr = or_unpack_int (ptr, &xint);
-  client_isolation = (TRAN_ISOLATION) xint;
-
-  tran_index =
-    xboot_initialize_server (thread_p, &client_credential, &db_path_info, db_overwrite, file_addmore_vols, db_npages,
-			     db_desired_pagesize, log_npages, db_desired_log_page_size, &rootclass_oid, &rootclass_hfid,
-			     client_lock_wait, client_isolation);
-  if (tran_index == NULL_TRAN_INDEX)
-    {
-      (void) return_error_to_client (thread_p, rid);
-    }
-
-  ptr = or_pack_int (reply, tran_index);
-  ptr = or_pack_oid (ptr, &rootclass_oid);
-  ptr = or_pack_hfid (ptr, &rootclass_hfid);
-  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-#else /* ENABLE_UNUSED_FUNCTION */
   css_send_abort_to_client (thread_p->conn_entry, rid);
-#endif /* !ENABLE_UNUSED_FUNCTION */
 }
 
 /*
@@ -3222,6 +3161,7 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   TRAN_STATE tran_state;
   int area_size, strlen1, strlen2, strlen3, strlen4;
   char *reply, *area, *ptr;
+  packing_unpacker unpacker;
 
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
 
@@ -3230,8 +3170,10 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
   memset (&client_credential, 0, sizeof (client_credential));
   memset (&server_credential, 0, sizeof (server_credential));
 
-  ptr = or_unpack_int (request, &xint);
-  client_credential.client_type = (BOOT_CLIENT_TYPE) xint;
+  unpacker.set_buffer (request, (size_t) reqlen);
+  client_credential.m_clientids.unpack (unpacker);
+
+  ptr = request + unpacker.get_current_size ();
   ptr = or_unpack_string_nocopy (ptr, &client_credential.client_info);
   ptr = or_unpack_string_nocopy (ptr, &client_credential.db_name);
   ptr = or_unpack_string_nocopy (ptr, &client_credential.db_user);

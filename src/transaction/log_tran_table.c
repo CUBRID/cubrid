@@ -116,7 +116,6 @@ static const int LOG_TOPOPS_STACK_INCREMENT = 3;	/* No more than 3 nested top sy
 static const char *log_Client_id_unknown_string = "(unknown)";
 static BOOT_CLIENT_CREDENTIAL log_Client_credential = {
   clientids (),
-  BOOT_CLIENT_SYSTEM_INTERNAL,	/* client_type */
   NULL,				/* client_info */
   NULL,				/* db_name */
   NULL,				/* db_user */
@@ -5182,7 +5181,7 @@ logtb_set_loose_end_tdes (LOG_TDES * tdes)
 		   "\n*** Transaction = %d (index = %d) is prepared to commit as gobal tran = %d\n"
 		   "    The coordinator site (maybe the client user = %s) needs to attach\n"
 		   "    to this transaction and either commit or abort it. ***\n", tdes->trid, tdes->tran_index,
-		   tdes->gtrid, tdes->client.db_user);
+		   tdes->gtrid, tdes->client.db_user.c_str ());
 	  fflush (stdout);
 	}
 #endif
@@ -5199,7 +5198,8 @@ logtb_set_loose_end_tdes (LOG_TDES * tdes)
 		   "    about its fate = %s and collect participant acknowledgements.\n"
 		   "    This transaction has been disassociated from the client user = %s.\n"
 		   "    The transaction will be completely finished by the system ***\n", tdes->trid,
-		   tdes->tran_index, ((LOG_ISTRAN_COMMITTED (tdes)) ? "COMMIT" : "ABORT"), tdes->client.db_user);
+		   tdes->tran_index, ((LOG_ISTRAN_COMMITTED (tdes)) ? "COMMIT" : "ABORT"),
+		   tdes->client.db_user.c_str ());
 	  fflush (stdout);
 	}
 #endif

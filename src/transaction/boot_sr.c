@@ -3001,7 +3001,7 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
 
 #if defined(SA_MODE)
   if (client_credential != NULL && client_credential->program_name != NULL
-      && client_credential->client_type == BOOT_CLIENT_ADMIN_UTILITY)
+      && client_credential->m_clientids.client_type == BOOT_CLIENT_ADMIN_UTILITY)
     {
       adm_prg_file_name = client_credential->program_name + strlen (client_credential->program_name) - 1;
       while (adm_prg_file_name > client_credential->program_name && *adm_prg_file_name != PATH_SEPARATOR)
@@ -3098,7 +3098,7 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
 
 #if defined(SERVER_MODE)
       /* Check the server's state for HA action for this client */
-      if (BOOT_NORMAL_CLIENT_TYPE (client_credential->client_type))
+      if (BOOT_NORMAL_CLIENT_TYPE (client_credential->m_clientids.client_type))
 	{
 	  if (css_check_ha_server_state_for_client (thread_p, 1) != NO_ERROR)
 	    {
@@ -3109,7 +3109,7 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
 	      return NULL_TRAN_INDEX;
 	    }
 	}
-      if (client_credential->client_type == BOOT_CLIENT_LOG_APPLIER)
+      if (client_credential->m_clientids.client_type == BOOT_CLIENT_LOG_APPLIER)
 	{
 	  css_notify_ha_log_applier_state (thread_p, HA_LOG_APPLIER_STATE_UNREGISTERED);
 	}
