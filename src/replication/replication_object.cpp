@@ -78,6 +78,11 @@ namespace cubreplication
     LSA_COPY (&m_lsa_stamp, &lsa_stamp);
   }
 
+  bool replication_object::is_instance_changing_attr (const OID &inst_oid)
+  {
+    return false;
+  }
+
   single_row_repl_entry::single_row_repl_entry (const repl_entry_type type, const char *class_name, LOG_LSA &lsa_stamp)
     : replication_object(lsa_stamp),
       m_type (type),
@@ -201,7 +206,7 @@ namespace cubreplication
 
     db_private_free (NULL, key_to_string);
   }
-
+  
   /////////////////////////////////
   sbr_repl_entry::sbr_repl_entry (const char *statement, const char *user, const char *sys_prm_ctx, LOG_LSA &lsa_stamp)
     : replication_object (lsa_stamp),
@@ -460,6 +465,16 @@ namespace cubreplication
       }
 
     str ("inst oid: pageid:%d slotid:%d volid:%d\n", m_inst_oid.pageid, m_inst_oid.slotid, m_inst_oid.volid);
+  }
+
+  bool changed_attrs_row_repl_entry::is_instance_changing_attr (const OID &inst_oid)
+  {
+    if (compare_inst_oid (inst_oid))
+      {
+        return true;
+      }
+
+    return false;
   }
 
   changed_attrs_row_repl_entry::changed_attrs_row_repl_entry (repl_entry_type type, const char *class_name,

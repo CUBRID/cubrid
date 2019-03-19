@@ -55,6 +55,7 @@ namespace cubreplication
       replication_object (LOG_LSA &lsa_stamp);
       virtual int apply (void) = 0;
       virtual void stringify (string_buffer &str) = 0;
+      virtual bool is_instance_changing_attr (const OID &inst_oid);
       
       void get_lsa_stamp (LOG_LSA &lsa_stamp);
       void set_lsa_stamp (const LOG_LSA &lsa_stamp);
@@ -88,7 +89,7 @@ namespace cubreplication
 
       std::size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset = 0) const;
 
-      void stringify (string_buffer &str) override final;
+      void stringify (string_buffer &str) override final;      
   };
 
   class single_row_repl_entry : public replication_object
@@ -111,7 +112,7 @@ namespace cubreplication
       virtual void unpack (cubpacking::unpacker &deserializator);
       virtual std::size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset = 0) const;
 
-      void stringify (string_buffer &str) override;
+      void stringify (string_buffer &str) override;      
 
       repl_entry_type m_type;
       std::string m_class_name;
@@ -137,7 +138,7 @@ namespace cubreplication
       virtual std::size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset = 0) const final;
 
       bool is_equal (const cubpacking::packable_object *other) final;
-      void stringify (string_buffer &str) final;
+      void stringify (string_buffer &str) final;      
 
     private:
       RECDES m_rec_des;
@@ -162,7 +163,8 @@ namespace cubreplication
       virtual std::size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset = 0) const override final;
 
       bool is_equal (const cubpacking::packable_object *other) override final;
-      void stringify (string_buffer &str) override final;      
+      void stringify (string_buffer &str) override final;
+      bool is_instance_changing_attr (const OID &inst_oid) override final;
 
       inline bool compare_inst_oid (const OID &other)
       {

@@ -1605,6 +1605,8 @@ log_abort_all_active_transaction (THREAD_ENTRY * thread_p)
   int i;
   LOG_TDES *tdes;		/* Transaction descriptor */
 #if defined(SERVER_MODE)
+  int repeat_loop;
+  int *abort_thread_running;
   static int already_called = 0;
 
   if (already_called)
@@ -1618,14 +1620,55 @@ log_abort_all_active_transaction (THREAD_ENTRY * thread_p)
       return;
     }
 
+  abort_thread_running = (int *) malloc (sizeof (int) * log_Gl.trantable.num_total_indices);
+  if (abort_thread_running == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (int) * log_Gl.trantable.num_total_indices);
+      return;
+    }
+  memset (abort_thread_running, 0, sizeof (int) * log_Gl.trantable.num_total_indices);
+
   /* Abort all active transactions */
 loop:
+  repeat_loop = false;
+
   for (i = 0; i < log_Gl.trantable.num_total_indices; i++)
     {
       if (i != LOG_SYSTEM_TRAN_INDEX && (tdes = LOG_FIND_TDES (i)) != NULL && tdes->trid != NULL_TRANID)
 	{
-	  assert (false);
+	  if (css_count_transaction_worker_threads (thread_p, i, tdes->client_id) > 0)
+	    {
+	      repeat_loop = true;
+	    }
+	  else if (LOG_ISTRAN_ACTIVE (tdes) && abort_thread_running[i] == 0)
+	    {
+	      css_push_external_task (css_find_conn_by_tran_index (i), new log_abort_task (*tdes));
+	      abort_thread_running[i] = 1;
+	      repeat_loop = true;
+	    }
 	}
+    }
+
+  if (repeat_loop)
+    {
+      thread_sleep (50);	/* sleep 0.05 sec */
+      if (css_is_shutdown_timeout_expired ())
+	{
+	  if (abort_thread_running != NULL)
+	    {
+	      free_and_init (abort_thread_running);
+	    }
+	  /* exit process after some tries */
+	  er_log_debug (ARG_FILE_LINE, "log_abort_all_active_transaction: _exit(0)\n");
+	  _exit (0);
+	}
+      goto loop;
+    }
+
+  if (abort_thread_running != NULL)
+    {
+      free_and_init (abort_thread_running);
     }
 
 #else /* SERVER_MODE */
