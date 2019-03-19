@@ -3495,7 +3495,8 @@ boot_register_client (BOOT_CLIENT_CREDENTIAL * client_credential, int client_loc
 
   packing_packer packer;
   cubmem::extensible_block ext_blk;
-  packer.set_buffer_and_pack_all (ext_blk, *client_credential, client_lock_wait, (int) client_isolation);
+  int clisol_toint = (int) clisol_toint;
+  packer.set_buffer_and_pack_all (ext_blk, *client_credential, client_lock_wait, clisol_toint);
 
   req_error = net_client_request2 (NET_SERVER_BO_REGISTER_CLIENT, ext_blk.get_ptr (), (int) packer.get_current_size (),
 				   reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
