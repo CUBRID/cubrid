@@ -80,6 +80,7 @@
 #include "connection_error.h"
 #include "release_string.h"
 #include "log_common_impl.h"
+#include "log_volids.hpp"
 #include "fault_injection.h"
 #if defined (SERVER_MODE)
 #include "vacuum.h"

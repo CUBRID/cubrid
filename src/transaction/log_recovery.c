@@ -36,6 +36,7 @@
 #include "log_lsa.hpp"
 #include "log_manager.h"
 #include "log_system_tran.hpp"
+#include "log_volids.hpp"
 #include "recovery.h"
 #include "error_manager.h"
 #include "system_parameter.h"

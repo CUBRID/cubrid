@@ -33,6 +33,7 @@
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
 #include "log_impl.h"
+#include "log_volids.hpp"
 #include "boot_sr.h"
 #include "perf_monitor.h"
 #include "porting_inline.hpp"

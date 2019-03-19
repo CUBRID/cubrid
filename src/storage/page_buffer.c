@@ -40,6 +40,7 @@
 #include "lockfree_circular_queue.hpp"
 #include "log_manager.h"
 #include "log_impl.h"
+#include "log_volids.hpp"
 #include "transaction_sr.h"
 #include "memory_hash.h"
 #include "critical_section.h"
