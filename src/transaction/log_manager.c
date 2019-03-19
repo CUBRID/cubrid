@@ -5499,7 +5499,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	      log_append_commit_log (thread_p, tdes, &commit_lsa);
 	    }
 
-          tdes->replication_log_generator.on_transaction_commit ();
+	  tdes->replication_log_generator.on_transaction_commit ();
 
 	  if (retain_lock != true)
 	    {

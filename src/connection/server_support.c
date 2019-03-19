@@ -761,12 +761,12 @@ css_process_change_server_ha_mode_request (SOCKET master_fd)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_FROM_SERVER, 1, "Cannot change server HA mode");
 	}
       else
-        {
-          if (state == HA_SERVER_STATE_ACTIVE)
-            {
-              cubreplication::master_node::enable_active ();
-            }
-        }
+	{
+	  if (state == HA_SERVER_STATE_ACTIVE)
+	    {
+	      cubreplication::master_node::enable_active ();
+	    }
+	}
     }
   else
     {
